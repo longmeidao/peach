@@ -107,8 +107,9 @@ and writes `<data root>/config.toml`. The default data root is `peach-data/` nex
 replication switches are all edited in that settings file, explained item by item in
 [`docs/OPERATIONS.md`](docs/OPERATIONS.md). The tray is started with `peach-tray`, without arguments.
 
-Four facts:
+Five facts:
 
+- Listening on `127.0.0.1` needs no token. Reaching the service from a phone or any other device on the LAN (`--host 0.0.0.0`, and everything the tray starts) does: `peach init` has already written one to `<data root>/secrets/auth-token`, `peach token` prints it, and each device pastes it into the login page once. `peach serve` refuses to start when it binds a non-loopback address without a token, because that puts the whole collection and the write endpoints on the local network.
 - `-e` is a hard requirement: the wheel contains only the packages under `src/`, and the repository-root `migrations/` and `web/` are not in it, so under a non-editable install `peach init` fails outright because it cannot find the migrations directory.
 - When `--data-root` points somewhere else, `peach serve` looks for the data root only via `PEACH_DATA_ROOT` and the `peach-data/` directories a few levels above the repository, so set `PEACH_DATA_ROOT` as well; the default data root needs no such step.
 - The declared roots of the three sources in the settings file default to `local = R:\media`, `115 = B:/` and `pikpak = A:/`. These are example drive letters and must be changed to your own paths under `[media.locations]` and `[media.mounts]`; leaving them means every source is offline, not an error. CloudDrive is not required — any cloud drive that mounts as a local path works; 115 and PikPak are recommendations, not requirements.

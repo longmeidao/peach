@@ -101,8 +101,9 @@ peach-app/
 之后 `peach serve` 就能起服务；监听地址、端口、媒体盘符映射和复制开关都在那个设置文件里改，
 逐项说明见 [`docs/OPERATIONS.md`](docs/OPERATIONS.md)。托盘由 `peach-tray` 启动，不带参数。
 
-四个事实：
+五个事实：
 
+- 只监听 `127.0.0.1` 不需要口令。要让手机或局域网里别的设备访问（`--host 0.0.0.0`、托盘起的服务都算），就必须有访问口令：`peach init` 已经在 `<数据根>/secrets/auth-token` 生成一份，`peach token` 打印出来，设备第一次访问时贴进登录页。绑非回环地址却读不到口令时 `peach serve` 拒绝启动，因为那等于把整个馆藏和写接口摆在同网段上。
 - `-e` 是硬性要求：wheel 只含 `src/` 下的包，仓库根的 `migrations/` 与 `web/` 不在里面，非可编辑安装下 `peach init` 找不到迁移目录会直接报错。
 - `--data-root` 指到别处时，`peach serve` 只按 `PEACH_DATA_ROOT` 和仓库上方几层的 `peach-data/` 找数据根，所以要同时设 `PEACH_DATA_ROOT`；用默认数据根没有这一步。
 - 设置文件里三个来源的声明根默认是 `local = R:\media`、`115 = B:/`、`pikpak = A:/`，这只是示例盘符，必须在 `[media.locations]` 与 `[media.mounts]` 里改成自己的路径；不改的结果是全部来源脱盘，而不是报错。CloudDrive 不是必需，任何能挂成本地路径的网盘都行；115 与 PikPak 是推荐项，不是要求。
