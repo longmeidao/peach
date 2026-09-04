@@ -5089,19 +5089,25 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(
             "  .index .ihead .tagmodes,.index .ihead .iconswitch{order:3;flex:none}")
 
-    def test_the_alphabet_switch_is_labelled_with_the_aa_glyph(self):
-        """字母表按钮的图标要说「按字母排」，不是三条粗细不同的横线。
+    def test_the_two_filled_glyph_icons_say_what_a_stroked_icon_cannot(self):
+        """字母表是 Aa，播放列表是队列。
 
-        `list-filter` 是筛选，和它旁边的「标签云」讲的不是同一件事；Aa 取 vendored
-        lucide-static 1.37.0 的 a-large-small，不另画。
+        `list-filter` 的本义是筛选，只有源筛选那一处该用它。这两枚取 Phosphor
+        regular，填充声明写在 symbol 上——全局 svg 是
+        `stroke:currentColor;fill:none`，只补 path 会让填充图标整枚不可见。
         """
-        self.assertPageContains("${icon('a-large-small')}字母表")
-        self.assertPageContains(
-            '<symbol id="i-a-large-small" viewBox="0 0 24 24">'
-            '<path d="m15 16 2.536-7.328a1.02 1.02 1 0 1 1.928 0L22 16" />'
-            '<path d="M15.697 14h5.606" />'
-            '<path d="m2 16 4.039-9.69a.5.5 0 0 1 .923 0L11 16" />'
-            '<path d="M3.304 13h6.392" /></symbol>')
+        self.assertPageContains("${icon('text-aa')}字母表")
+        self.assertPageContains("['playlists','播放列表','playlist'],")
+        self.assertPageContains("emptyState('playlist','还没有播放列表'")
+        self.assertPageContains('aria-label="编辑播放列表">${icon(\'playlist\')}')
+        self.assertPageContains('title="加入播放列表">${icon(\'playlist\')}')
+        # 剩下的那一处 list-filter 是真的筛选，不能一起换掉。
+        self.assertPageContains("${icon('list-filter')}<span data-srcfilter-label>")
+        for symbol in ("text-aa", "playlist"):
+            self.assertPageContains(
+                f'<symbol id="i-{symbol}" viewBox="0 0 256 256" fill="currentColor" stroke="none">')
+        self.assertPageContains("Phosphor 2.1.1 regular, MIT")
+        self.assertPageLacks("i-a-large-small")
 
     def test_an_online_tag_opens_the_follow_page_not_a_catalog_filter(self):
         """在线标签标注的是还没入库的在线更新，拿去筛目录必然一条不中。"""

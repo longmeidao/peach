@@ -3127,7 +3127,7 @@ async function openPlaylists(push=true){
     return `<article class="playlistcard" data-playlist-card="${list.id}"><button class="playlistcover" data-open-playlist="${list.id}" ${resume?'':'disabled'}>${poster}<span>${list.item_count} 个视频</span></button>
       <div class="playlistmeta"><input data-playlist-name maxlength="80" value="${esc(list.name)}" aria-label="播放列表名称"><small>${list.source_kind==='mix'?'由 Mix 保存':'手动播放列表'}</small></div>
       <div class="playlistactions"><button data-rename-playlist="${list.id}">保存名称</button><button data-open-playlist="${list.id}" ${resume?'':'disabled'}>继续播放</button><button class="danger" data-delete-playlist="${list.id}">删除</button></div></article>`}).join('');
-  $('#stats').innerHTML=`<section class="playlistpage"><header><div><h2>播放列表</h2><p>保存 Mix，按自己的顺序继续播放。</p></div><form class="playlistcreate" id="newPlaylist"><label>新播放列表<input name="name" maxlength="80" placeholder="输入名称" required></label><button type="submit">新建</button><span data-playlist-state></span></form></header><div class="playlistcards">${cards||emptyState('list-filter','还没有播放列表','保存 Mix 或新建列表后，会在这里按自己的顺序继续播放。')}</div></section>`;
+  $('#stats').innerHTML=`<section class="playlistpage"><header><div><h2>播放列表</h2><p>保存 Mix，按自己的顺序继续播放。</p></div><form class="playlistcreate" id="newPlaylist"><label>新播放列表<input name="name" maxlength="80" placeholder="输入名称" required></label><button type="submit">新建</button><span data-playlist-state></span></form></header><div class="playlistcards">${cards||emptyState('playlist','还没有播放列表','保存 Mix 或新建列表后，会在这里按自己的顺序继续播放。')}</div></section>`;
   $('#newPlaylist').onsubmit=async event=>{event.preventDefault();const form=event.currentTarget;
     try{await api('/api/playlist',{method:'POST',body:JSON.stringify({action:'create',name:new FormData(form).get('name'),asset_ids:[]})});await openPlaylists(false);actionReceipt('已新建播放列表')}
     catch(error){form.querySelector('[data-playlist-state]').textContent=error.message||'新建失败'}};
@@ -5239,7 +5239,7 @@ async function openIndex(kind,q,push=true,refine=false){
       <h2 class="disp indexheading">${kind==='tags'?icon('tags'):''}${title}</h2>
       <span class="mono" id="indexCount">${countText}</span>
       ${kind==='tags'?`<div class="tagmodes"><button data-tag-scope="local" aria-pressed="${!onlineTags}">${icon('database')}本地</button><button data-tag-scope="online" aria-pressed="${onlineTags}">${icon('globe')}在线</button></div>
-      <div class="tagmodes"><button data-tag-view="cloud" aria-pressed="${tagIndexMode==='cloud'}">${icon('tags')}标签云</button><button data-tag-view="alphabet" aria-pressed="${tagIndexMode==='alphabet'}">${icon('a-large-small')}字母表</button></div>`:''}
+      <div class="tagmodes"><button data-tag-view="cloud" aria-pressed="${tagIndexMode==='cloud'}">${icon('tags')}标签云</button><button data-tag-view="alphabet" aria-pressed="${tagIndexMode==='alphabet'}">${icon('text-aa')}字母表</button></div>`:''}
       ${people?peopleLayoutButtons():''}
       ${searchInputHtml({id:'iq',label:'过滤'+title,value:q||''})}
     </div><div id="indexFilters">${filters}</div><div id="indexBody">${body}</div><button class="indexmore" id="indexMore" type="button" ${d.has_more?'':'hidden'}>载入更多</button>`;
@@ -5859,7 +5859,7 @@ const EDGE_ICONS=[
   ['tags','标签','tags'],
   ['jav','JAV','jav'],
   ['flagged','已标记','star'],
-  ['playlists','播放列表','list-filter'],
+  ['playlists','播放列表','playlist'],
   ['follow','关注','rss'],
   ['immerse','沉浸模式','play'],
   ['manage','管理','database'],
@@ -6533,7 +6533,7 @@ const EDITION_TONE={'中字':'subtitle','无码':'uncensored','无码破解':'cr
 function queueHtml(queue,itemId){
   const action=queue.kind==='mix'
     ? `<button data-save-mix title="保存为播放列表" aria-label="保存为播放列表">${icon('bookmark-plus')}</button>`
-    : queue.kind==='playlist'?`<button data-edit-playlist title="编辑播放列表" aria-label="编辑播放列表">${icon('list-filter')}</button>`:'';
+    : queue.kind==='playlist'?`<button data-edit-playlist title="编辑播放列表" aria-label="编辑播放列表">${icon('playlist')}</button>`:'';
   const countLabel=queue.kind==='parts'?`${queue.items.length} 卷`
     :queue.kind==='editions'?`${queue.items.length} 个版本`:`${queue.items.length} 个视频`;
   const kindLabel={mix:'Mix',parts:'分卷',editions:'版本',playlist:'播放列表'}[queue.kind]||'视频合集';
@@ -6755,7 +6755,7 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
         <button class="dislike" data-kind="dislike" aria-label="不合口味" title="不合口味 · 降低推荐权重" aria-pressed="${it.feedback==='dislike'}">${icon('thumbs-down')}</button>
         <button class="seen" data-kind="seen" aria-label="看过了" title="看过了 · 只降低近期推荐" aria-pressed="${it.feedback==='seen'}">${icon('eye')}</button>
         <button class="later" id="stageLater" aria-label="稍后看" title="稍后看 · 加入或移出队列" aria-pressed="${!!it.watch_later}">${it.watch_later?icon('check'):icon('bookmark-plus')}</button>
-        <button class="playlistadd" id="addPlaylist" aria-label="加入播放列表" title="加入播放列表">${icon('list-filter')}</button>
+        <button class="playlistadd" id="addPlaylist" aria-label="加入播放列表" title="加入播放列表">${icon('playlist')}</button>
         <button class="upgrade" id="betterVersion" aria-label="寻找更好版本" title="寻找高清、无水印或完整版" aria-pressed="${!!it.better_version}">${icon('sparkles')}</button>
         <button class="dispose" data-kind="dispose" aria-label="加入回收站" title="加入回收站 · 文件仍保留，可从回收站永久清除" aria-pressed="${it.disposal==='trash'}">${icon('trash')}</button></div>
       <div class="preference" id="preferencePanel" hidden>

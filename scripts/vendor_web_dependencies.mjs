@@ -92,12 +92,25 @@ for (const [symbol, icon] of lucideIcons) {
   index = index.replace(pattern, `<symbol id="i-${symbol}" viewBox="0 0 24 24">${inner}</symbol>`);
 }
 
+// Phosphor 是填充图标，Peach 全局是描边：填充声明写在 symbol 上，路径不改一个字，
+// 换版本时不必再核每条 path 有没有被补过 fill。viewBox 也和 Lucide 那套不同。
+const phosphorIcons = new Map([["text-aa", "text-aa"], ["playlist", "playlist"]]);
+const PHOSPHOR_ATTRS = 'viewBox="0 0 256 256" fill="currentColor" stroke="none"';
+for (const [symbol, icon] of phosphorIcons) {
+  const inner = svgInner(text("node_modules", "@phosphor-icons/core", "assets", "regular", `${icon}.svg`));
+  const pattern = new RegExp(`<symbol id="i-${symbol}" ${PHOSPHOR_ATTRS}>[\\s\\S]*?<\\/symbol>`);
+  if (!pattern.test(index)) throw new Error(`缺少 Phosphor symbol：${symbol}`);
+  index = index.replace(pattern, `<symbol id="i-${symbol}" ${PHOSPHOR_ATTRS}>${inner}</symbol>`);
+}
+
 const healthInner = svgInner(text("node_modules", "healthicons", "public", "icons", "svg", "outline-24px", "contraceptives", "sperm.svg"));
 index = index.replace(/<symbol id="i-sperm" viewBox="0 0 24 24">[\s\S]*?<\/symbol>/,
   `<symbol id="i-sperm" viewBox="0 0 24 24">${healthInner}</symbol>`);
 index = index.replace(/Lucide static [0-9.]+, ISC/, `Lucide static ${versions["lucide-static"]}, ISC`);
 index = index.replace(/Health Icons sperm outline-24px, CC0\/public domain/,
   `Health Icons ${versions.healthicons} sperm outline-24px, CC0/public domain`);
+index = index.replace(/Phosphor [0-9.]+ regular, MIT/,
+  `Phosphor ${versions["@phosphor-icons/core"]} regular, MIT`);
 index = index.replaceAll(/\/vendor\/videojs\/[0-9.]+\//g, `/vendor/videojs/${versions["video.js"]}/`);
 stage("web/index.html", index);
 
@@ -123,6 +136,15 @@ stage("web/vendor/lucide-ORIGIN.md",
   `- 许可证：ISC；原文见 \`lucide-LICENSE.txt\`\n` +
   `- 消费者：\`web/index.html\` 内联的 ${lucideIcons.size} 个 symbol\n\n` +
   "`i-jav`、`i-alert` 是 Peach 自绘图标；RSS 与拖动点保留填充修正，避免小圆点在全局描边样式下消失。\n");
+stage("web/vendor/phosphor-LICENSE.txt", read("node_modules", "@phosphor-icons/core", "LICENSE"));
+stage("web/vendor/phosphor-ORIGIN.md",
+  `# Phosphor icons ${versions["@phosphor-icons/core"]}\n\n` +
+  `- npm 包：\`@phosphor-icons/core@${versions["@phosphor-icons/core"]}\`\n` +
+  `- npm lock integrity：\`${integrity("@phosphor-icons/core")}\`\n` +
+  `- 许可证：MIT；原文见 \`phosphor-LICENSE.txt\`\n` +
+  `- 消费者：\`web/index.html\` 内联的 ${phosphorIcons.size} 个 regular 权重 symbol\n\n` +
+  "只在描边画法说不清那件事时才用这一套：`text-aa` 是字母表，`playlist` 是播放列表。\n" +
+  "填充声明写在 symbol 上，压住全局的 `stroke:currentColor;fill:none`。\n");
 stage("web/vendor/healthicons-LICENSE.txt", read("node_modules", "healthicons", "LICENSE"));
 stage("web/vendor/healthicons-ORIGIN.md",
   `# Health Icons ${versions.healthicons}\n\n` +
@@ -151,7 +173,7 @@ if (checkOnly) {
     console.error(`前端固定依赖未同步：\n${problems.map(path => `- ${path}`).join("\n")}`);
     process.exit(1);
   }
-  console.log(`前端固定依赖已同步：Video.js ${versions["video.js"]}、Swiper ${versions.swiper}、Lucide ${versions["lucide-static"]}、Health Icons ${versions.healthicons}`);
+  console.log(`前端固定依赖已同步：Video.js ${versions["video.js"]}、Swiper ${versions.swiper}、Lucide ${versions["lucide-static"]}、Phosphor ${versions["@phosphor-icons/core"]}、Health Icons ${versions.healthicons}`);
   process.exit(0);
 }
 
