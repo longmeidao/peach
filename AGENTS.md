@@ -20,7 +20,7 @@
 
 同一件事只用一个词，回话时也用这些词，不要换成同义说法。
 
-- **你**：正在读本文件并改动 Peach 的智能体（Codex 或 Claude）。**我 / 用户**：Peach 的唯一使用者兼维护者。 <!-- copy-lint-disable-line -->
+- **你**：正在读本文件并改动 Peach 的智能体（Codex 或 Claude）。**我 / 用户**：在这台机器上部署、使用并维护 Peach 的人；每个部署只有一人。 <!-- copy-lint-disable-line -->
 - **ledger / 账本**：每台机器 `peach-data/database/ledger.db` 的本地工作副本，唯一真相源。**真相字段**：直接构成 ledger 断言的列。
 - **候选 candidate**：带来源与置信度、未经复核的断言。只有用户复核后才 `approved`，工作者不得自行升级。
 - **复核产物**：CSV 等可机读、可重放的中间结果；结论必须落在这里，不能只存在于对话。
@@ -53,10 +53,10 @@
 
 ## 工作规则
 
-- `peach-app` is the only GitHub-synced tree. `peach-data`, `.venv`, build output, worktree directories, media and CloudDrive mounts never enter Git. Windows and macOS both run code, data and worktrees from their internal disks; the external disk only supplies media. See ADR-0017, and check `docs/STATUS.md` for the real mount shape before assuming a path exists.
+- `peach-app` is the only GitHub-synced tree. `peach-data`, `.venv`, build output, worktree directories, media and CloudDrive mounts never enter Git. Code, data and worktrees live on internal disks; external disks only supply media. See ADR-0017, and check `docs/STATUS.md` for the real mount shape before assuming a path exists.
 - Ledger paths are always written in the Windows shape (`R:\Media\...`, `A:\...`, `B:\...`). `src/peach/platform.py` translates them to local mounts at read time; never rewrite the ledger to a POSIX shape, and never write `asset.path` from macOS.
 - `peach-data/database/ledger.db` is the truth store. Tests use temporary databases only. A real migration requires a SQLite backup and before/after count checks; follow `peach-ledger-write` before any real write.
-- The project is an early personal project: aggressively remove obsolete code and compatibility layers when the replacement is tested. Do not preserve dead interfaces merely for history; Git is the archive.
+- Peach is a single-person self-hosted app: aggressively remove obsolete code and compatibility layers when the replacement is tested. Do not preserve dead interfaces merely for history; Git is the archive.
 - Preserve real media, ledger rows, behavior history, credentials, network/firewall state, and unrelated long-running jobs.
 - Inspect `git status` and the active listeners/processes before work. Never claim candidate code is production until the service has actually been switched and checked.
 - Keep the architecture a FastAPI modular monolith with a separate web surface. Do not introduce microservices, PostgreSQL or a full multi-account system without a new ADR.
@@ -81,7 +81,7 @@
 
 ## 常犯错误（没有自动拦截，都是真实重犯过的）
 
-- 写命令前先分辨当前 shell，不混用语法：PowerShell 里 `cat`、`ls`、`where` 是别名，Bash 里没有 `Get-ChildItem`；需要 PowerShell 时用 `pwsh`（7.x，本机已装），不回退 `powershell.exe`（5.1），从 Bash 调用加 `-NoProfile`。引号默认单引号，需要变量展开才用双引号，有歧义写 `${name}`；`rg` 不收含 `*` 的路径参数，筛选用 `-g`，退出码 1 是无匹配不是错误。多行内容一律用写入工具或脚本落盘，不用 heredoc——转义曾毁掉整个测试文件。
+- 写命令前先分辨当前 shell，不混用语法：PowerShell 里 `cat`、`ls`、`where` 是别名，Bash 里没有 `Get-ChildItem`；需要 PowerShell 时用 `pwsh`（7.x），不回退 `powershell.exe`（5.1），从 Bash 调用加 `-NoProfile`。引号默认单引号，需要变量展开才用双引号，有歧义写 `${name}`；`rg` 不收含 `*` 的路径参数，筛选用 `-g`，退出码 1 是无匹配不是错误。多行内容一律用写入工具或脚本落盘，不用 heredoc——转义曾毁掉整个测试文件。
 - PowerShell 变量必须使用任务专属名称；禁止声明 `$HOME`、`$home`、`$CODEX_HOME` 等系统变量的任何大小写变体。`foreach {}` 的结果先存入任务专属数组，再单独接管道格式化，禁止在闭合花括号后直接写管道。
 - HTTPS 结论必须使用项目 CA 做严格校验；Schannel、浏览器或取证入口失败时，立即报告原始错误和未取得的验收面，不能改用 HTTP 成功来声称 HTTPS 已通过。
 - UI 标签、身份、反馈状态和搜索推荐属于语义契约。修改时必须同时增加数据层测试和页面源测试，不能只改显示文本；推荐词上线前必须对真实 `/api/items` 验证至少一个命中，说明性后缀不得混入搜索词。
