@@ -9,6 +9,7 @@ import ast
 import pathlib
 import re
 import subprocess
+import tomllib
 import unittest
 
 import peach
@@ -266,6 +267,16 @@ class ReleaseFilesTests(unittest.TestCase):
         for marker in ("GNU AFFERO GENERAL PUBLIC LICENSE", "Version 3"):
             self.assertIn(marker, text,
                           "许可证是 AGPL-3.0-or-later（ADR-0023 第 4 阶段），换许可证要先改 ADR")
+
+    def test_pyproject_licence_expression_matches_the_licence_file(self):
+        """pyproject 的 SPDX 表达式和 LICENSE 全文是同一份许可证的两种写法。"""
+        with (REPO / "pyproject.toml").open("rb") as handle:
+            project = tomllib.load(handle)["project"]
+        self.assertEqual(
+            project.get("license"), "AGPL-3.0-or-later",
+            "pyproject.toml 的 SPDX 表达式必须与 LICENSE 全文和 ADR-0023 第 4 阶段一致；"
+            "换许可证要 LICENSE、pyproject.toml、ADR-0023 三处同改",
+        )
 
 
 class MachineCoordinateTests(unittest.TestCase):

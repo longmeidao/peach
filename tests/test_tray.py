@@ -1,5 +1,7 @@
+import contextlib
 import importlib.util
 import inspect
+import io
 import os
 import plistlib
 import sys
@@ -28,6 +30,7 @@ from peach.tray import (
     launchd_owns_this_process, ledger_menu_items, restart_tray_process,
     tray_restart_required,
 )
+from peach.tray import main as tray_main
 from peach.sync import SyncPlan
 from peach.versioning import UpdateResult, VersionSnapshot
 from peach.windows_update import PendingWindowsUpdate, WindowsUpdatePreparation
@@ -676,6 +679,54 @@ class MacAppBundleTests(unittest.TestCase):
         (app / "Contents" / "MacOS" / "stale").write_text("x", encoding="utf-8")
         self.module.build(self.root, self.tray)
         self.assertFalse((app / "Contents" / "MacOS" / "stale").exists())
+
+
+class TrayCommandLineTests(unittest.TestCase):
+    """`peach-tray` 的参数解析先于一切进程级副作用。
+
+    新用户试探 `peach-tray --help` 时，程序不能先去拿单实例锁：那一步会在 venv 旁边
+    凭空建出 `peach-data/state/`，之后的安装探测就把这台机器当成已配置。
+    """
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.state_dir = Path(self._tmp.name).resolve() / "state"
+        for target in ("peach.tray.enable_hidpi", "peach.tray.SingleInstance",
+                       "peach.tray.ServiceManager", "peach.tray.webbrowser"):
+            patcher = patch(target)
+            self.addCleanup(patcher.stop)
+            setattr(self, target.rsplit(".", 1)[1], patcher.start())
+        patcher = patch("peach.tray.STATE_DIR", self.state_dir)
+        self.addCleanup(patcher.stop)
+        patcher.start()
+
+    def _run(self, argv):
+        stdout, stderr = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+            with self.assertRaises(SystemExit) as raised:
+                tray_main(argv)
+        return raised.exception.code, stdout.getvalue(), stderr.getvalue()
+
+    def _assert_nothing_touched(self):
+        self.assertFalse(self.state_dir.exists(), "帮助与参数错误不得创建状态目录")
+        self.enable_hidpi.assert_not_called()
+        self.SingleInstance.assert_not_called()
+        self.ServiceManager.assert_not_called()
+        self.webbrowser.open.assert_not_called()
+
+    def test_help_exits_zero_and_leaves_the_state_directory_alone(self):
+        code, stdout, _ = self._run(["--help"])
+        self.assertEqual(code, 0)
+        self.assertIn("peach-tray", stdout)
+        self.assertIn("托盘", stdout)
+        self._assert_nothing_touched()
+
+    def test_unknown_argument_exits_two_and_leaves_the_state_directory_alone(self):
+        code, _, stderr = self._run(["--bogus"])
+        self.assertEqual(code, 2)
+        self.assertIn("--bogus", stderr)
+        self._assert_nothing_touched()
 
 
 if __name__ == "__main__":

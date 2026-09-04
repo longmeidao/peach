@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import ctypes
 import logging
 import os
@@ -985,7 +986,19 @@ def run_macos_menu_bar(manager: "ServiceManager") -> None:
         watcher.stop()
 
 
-def main() -> int:
+def build_parser() -> argparse.ArgumentParser:
+    """`peach-tray` 的命令行。它没有子命令和选项，正常使用不带任何参数。"""
+    return argparse.ArgumentParser(
+        prog="peach-tray",
+        description="启动 Peach 托盘（macOS 上是菜单栏项）并接管本机服务；通常不带参数直接运行。",
+    )
+
+
+def main(argv: list[str] | None = None) -> int:
+    # 参数解析必须排在任何进程级副作用之前：`--help` 和拼错的参数都要在 HiDPI 设置、
+    # 单实例锁和目录创建之前退出，否则一条试探命令就会在磁盘上凭空造出一个数据根，
+    # 让之后的安装探测把这台机器误判成已配置。
+    build_parser().parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     enable_hidpi()
     instance = SingleInstance(STATE_DIR / "peach-tray.lock")
