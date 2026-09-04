@@ -383,3 +383,62 @@ export function wireAnchoredMenu(mount,toggle,menu){
     if(event.key==='Escape'&&!menu.hidden){setOpen(false);toggle.focus()}});
   return {setOpen,isOpen:()=>!menu.hidden};
 }
+
+/* Geist Modal：一次写操作落库前的确认。
+
+   实测 https://vercel.com/geist/modal（2026-09-04）：卡片 540px 宽、12px 圆角、窄屏两侧
+   各留 10px，正文 20px 内边距、14px/20px，标题是 20px/26px 的 600 字重 h3，底部操作条
+   12px 内边距、粘在底、两端对齐，按钮 32px 高、6px 圆角、14px/500，遮罩纯黑不带模糊。
+   标题写成陈述句而不是问句；主按钮是与标题同一个动词的「动词+名词」，取消键就写「取消」；
+   成功后的 Toast 与主按钮共用那个动词。
+
+   用原生 <dialog> 承载：焦点陷阱、Escape、背景 inert 和关掉后把焦点还给触发钮都由它给，
+   自己搭一遍只会少掉其中一两样。onConfirm 失败时弹层不关，原因留在原位等重试。 */
+let modalSeq=0;
+export function confirmModal({title,body,confirmLabel,cancelLabel='取消',onConfirm=null}={}){
+  const trigger=document.activeElement;
+  const dialog=document.createElement('dialog');
+  dialog.className='geist-modal';
+  const titleId=`geist-modal-title-${++modalSeq}`;
+  dialog.setAttribute('aria-labelledby',titleId);
+  dialog.innerHTML=`<div class="geist-modal-body">
+      <h3 id="${titleId}"></h3><p></p><div data-modal-error></div></div>
+    <footer class="geist-modal-footer">
+      <div><button type="button" class="geist-button" data-modal-cancel></button></div>
+      <div><button type="button" class="geist-button primary" data-modal-confirm></button></div>
+    </footer>`;
+  dialog.querySelector('h3').textContent=title;
+  dialog.querySelector('.geist-modal-body p').textContent=body;
+  const cancel=dialog.querySelector('[data-modal-cancel]');
+  const accept=dialog.querySelector('[data-modal-confirm]');
+  const failure=dialog.querySelector('[data-modal-error]');
+  cancel.textContent=cancelLabel;
+  accept.textContent=confirmLabel;
+  document.body.append(dialog);
+  return new Promise(resolve=>{
+    let settled=null;
+    dialog.addEventListener('close',()=>{
+      dialog.remove();
+      if(trigger instanceof HTMLElement&&trigger.isConnected)trigger.focus();
+      resolve(settled||{confirmed:false});
+    },{once:true});
+    cancel.onclick=()=>dialog.close();
+    /* 遮罩上的点击落在 <dialog> 自己身上，卡片里的落在子元素上。这个动作可撤销，
+       按 Geist 的判据允许点外面关掉。 */
+    dialog.addEventListener('click',event=>{if(event.target===dialog)dialog.close()});
+    accept.onclick=async()=>{
+      if(!onConfirm){settled={confirmed:true};dialog.close();return}
+      failure.innerHTML='';
+      setActionBusy(accept);
+      try{
+        settled={confirmed:true,result:await onConfirm()};
+        dialog.close();
+      }catch(error){
+        failure.innerHTML=noteHtml(error.message||'操作未完成',{variant:'error'});
+        setActionBusy(accept,false);
+      }
+    };
+    dialog.showModal();
+    accept.focus();
+  });
+}

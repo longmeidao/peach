@@ -97,6 +97,8 @@
 @media (max-width:760px){
   .readout{display:none} .brand .sub{display:none}
   :root{--tile:168px;--topH:52px;--sortH:60px}
+  /* 确认弹层的两个键是本项目 44px 命中区的对象，桌面的 32px 是 Geist 控件高度。 */
+  .geist-modal-footer .geist-button{min-height:44px;padding:0 14px}
   /* 管理入口在手机上先收成一行，按需展开为两列。当前页仍有明确上下文，
      但不会让八个入口挤成三四行、把正文推到屏幕下方。 */
   .managebar{display:block;width:100%;margin-bottom:14px;padding:0;border:0;background:transparent}
