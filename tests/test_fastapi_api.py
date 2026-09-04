@@ -212,7 +212,7 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         con.commit()
         con.close()
         self.settings = PeachSettings(
-            db_path=self.db, token="secret", page_path=self.page, vendor_path=self.vendor_root,
+            db_path=self.db, configured=True, token="secret", page_path=self.page, vendor_path=self.vendor_root,
             allowed_media_roots=(self.media_root,), snapshot_root=self.snapshot_root,
             legacy_snapshot_roots=(self.legacy_snapshot_root,),
             poster_root=self.poster_root, avatar_root=self.avatar_root, logo_root=self.logo_root,

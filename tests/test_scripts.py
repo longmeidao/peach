@@ -900,8 +900,8 @@ class OperationalScriptTests(unittest.TestCase):
                 mark.putpixel((x, y), (0, 174, 239, 255))
 
         with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp) / "logos"
-            backup = Path(tmp) / "backup"
+            root = Path(tmp).resolve() / "logos"
+            backup = Path(tmp).resolve() / "backup"
             root.mkdir()
             originals = {
                 "wide.img": png(Image.new("RGB", (400, 100), (196, 20, 24))),
