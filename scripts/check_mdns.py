@@ -12,7 +12,7 @@
 真实答案。
 
     python scripts/check_mdns.py
-    python scripts/check_mdns.py --name peach --expect 192.168.1.16
+    python scripts/check_mdns.py --name peach --expect 198.51.100.16
 """
 from __future__ import annotations
 

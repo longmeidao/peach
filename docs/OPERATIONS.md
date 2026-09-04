@@ -107,7 +107,7 @@ launchctl kickstart -k gui/$(id -u)/gg.lmd.peach.tray
 
 - 托盘管理 HTTP `0.0.0.0:80` 和当前路由选出的 LAN IPv4 上的 HTTPS 443，显式参数、`PEACH_LAN_ADDRESS`、`lan_ipv4()` 依次覆盖；服务日志写入本机 `peach-data/logs`。
 - `peach serve` 按平台发布固定 mDNS 主机名，不在源码钉家庭 IP，仍保留 `Zeroconf()` 全合格网卡监听；mDNS 验收必须包含单元测试、运行态 health、DNS-SD、主机名解析和真实 LAN 客户端。
-- 双机广播分工固定：macOS 是 `peach.local`，Windows 是 `peach-win.local`，默认值收敛到 `peach.config.MDNS_NAME`，`PEACH_MDNS_NAME` 只做临时覆盖。服务可以同时跑，但两边同时写入会很快冲突转只读。
+- 双机广播分工固定：macOS 是 `peach.local`，Windows 是 `peach-writer.local`，默认值收敛到 `peach.config.MDNS_NAME`，`PEACH_MDNS_NAME` 只做临时覆盖。服务可以同时跑，但两边同时写入会很快冲突转只读。
 - `.local` 使用本地 CA，不使用 Let's Encrypt。证书与私钥保存在本机 `peach-data/secrets`；TLS 私钥禁用 ACL 继承，只允许实际服务身份、SYSTEM 和 Administrators。macOS/iOS 只安装并信任 `peach-local-ca.crt`，不分发任何私钥。
 - 两台机器各有独立的本机 CA（secrets 按设计不共享）：iPhone/iPad 必须信任「当前正在服务的那台」的 CA，换机器服务后要装对应的 `peach-local-ca.crt` 并开完全信任，指纹用 `openssl x509 -noout -fingerprint` 核对。
 - 对本机服务的 HTTP 探测必须 `trust_env=False`：代理客户端会设置系统级 HTTP 代理，httpx 默认经 `urllib.getproxies()` 读它，探测 `127.0.0.1` 的请求被送进代理并由代理回 503，服务活着却被判「未运行」。修复在 `peach.tray.ServiceManager.healthy`，`test_health_check_never_goes_through_a_proxy` 守门，新写的健康检查同样适用。

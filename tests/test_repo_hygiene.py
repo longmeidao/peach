@@ -144,7 +144,7 @@ class BacklogSelfConsistencyTests(unittest.TestCase):
 
 #: 只属于某一台机器的字面量。它们要么住在设置文件里，要么由用户在命令行给，
 #: 不能编译进 `src/peach/`——否则第一个陌生用户跑起来就连着别人家的坐标（ADR-0023）。
-#: 文档与技能里的同类字面量是第四阶段的事，这个门槛只管源码。
+#: 挂载点与项目位置只在源码里拦：说明文档要讲清双机布局，就得点出具体落点。
 PERSONAL_LITERAL = re.compile(
     r"""(?xi)
     Desktop[\\/]peach                                # 某一台机器的项目位置
@@ -159,6 +159,31 @@ PERSONAL_LITERAL = re.compile(
     | \b172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}
     """
 )
+
+#: 全树一律不许出现的机器坐标：私网地址的具体一台、本机用户名、个人目录名、SMB 账号名，
+#: 以及某一台机器的 mDNS 名。仓库公开后它们既是别人家的坐标又是个人信息（ADR-0023
+#: 第四阶段）。要举例子就用 RFC 5737 的 192.0.2.0/24、198.51.100.0/24、203.0.113.0/24
+#: 与中性主机名，那些地址不属于任何人，读者也不会照抄进自己的配置。
+#:
+#: 判据是「只对某一台机器成立」，不是「像个名字」：仓库的 GitHub 归属与 LICENSE 的
+#: 版权人本来就要公开署名，它们不在拦截范围内，所以本机用户名按词边界匹配。
+MACHINE_COORDINATE = re.compile(
+    r"""(?xi)
+    \b192\.168\.\d{1,3}\.\d{1,3}                     # 私网地址
+    | \b10\.\d{1,3}\.\d{1,3}\.\d{1,3}\b
+    | \b172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}
+    | \blongm\b                                      # 本机用户名
+    | lmd[.-]gg                                      # 个人目录名与同名的托管项目
+    | peachsync                                      # SMB 账号名
+    | peach-win                                      # 某一台机器的 mDNS 名
+    """
+)
+
+#: 门槛自身要写出它拦的形状，所以只有它自己豁免。
+COORDINATE_EXEMPT_FILES = frozenset({"tests/test_repo_hygiene.py"})
+
+#: 第三方代码与构建产物的措辞不由本仓库决定，压缩后的它们也没有可读的行。
+COORDINATE_EXEMPT_PREFIXES = ("web/vendor/", "web/dist/")
 
 
 def _live_strings(path: pathlib.Path) -> list[tuple[int, str]]:
@@ -241,6 +266,64 @@ class ReleaseFilesTests(unittest.TestCase):
         for marker in ("GNU AFFERO GENERAL PUBLIC LICENSE", "Version 3"):
             self.assertIn(marker, text,
                           "许可证是 AGPL-3.0-or-later（ADR-0023 第 4 阶段），换许可证要先改 ADR")
+
+
+class MachineCoordinateTests(unittest.TestCase):
+    """Git 跟踪的每个文本文件都不许写出某一台机器的坐标。
+
+    只管源码的门槛拦不住这件事：真实 IP、用户名和账号名过去散在测试夹具、安装脚本、
+    ADR、状态文档与技能里，它们都不是「默认值」，公开仓库后却一样把用户的网络布局
+    和账号名交出去。所以判据是 `git ls-files` 的全部文本，不是某个目录。
+    """
+
+    def _tracked_text_files(self):
+        done = subprocess.run(["git", "ls-files", "-z"], cwd=REPO,
+                              capture_output=True, check=False)
+        if done.returncode != 0:
+            self.skipTest(f"git 不可用或不是仓库：{done.stderr.decode('utf-8', 'replace')}")
+        for name in done.stdout.decode("utf-8").split("\0"):
+            if not name or name in COORDINATE_EXEMPT_FILES:
+                continue
+            if name.startswith(COORDINATE_EXEMPT_PREFIXES):
+                continue
+            path = REPO / name
+            if not path.is_file():
+                continue
+            raw = path.read_bytes()
+            if b"\0" in raw:
+                continue
+            try:
+                yield name, raw.decode("utf-8")
+            except UnicodeDecodeError:
+                continue
+
+    def test_no_tracked_file_names_a_machine_coordinate(self):
+        offenders = []
+        for name, text in self._tracked_text_files():
+            for number, line in enumerate(text.splitlines(), 1):
+                found = MACHINE_COORDINATE.search(line)
+                if found:
+                    offenders.append(f"{name}:{number}：{found.group(0)}")
+        self.assertEqual(
+            offenders, [],
+            "换成 RFC 5737 的文档地址（192.0.2.0/24、198.51.100.0/24、203.0.113.0/24）"
+            "或中性的主机名、账号名、`<用户目录>` 这类占位",
+        )
+
+    def test_the_whole_tree_guard_catches_the_shape_it_describes(self):
+        """门槛自身也要能被证伪，否则它可能只是一段永远为真的代码。"""
+        for sample in ("https://192.168.50.162", "PEACH_SHARED_SMB_HOST=192.168.1.9",
+                       "review_writer_origin = 'https://10.0.0.5'", "172.31.112.1",
+                       r"C:\Users\longm\Desktop\peach", "~/Desktop/lmd.gg/peach",
+                       "smb://peachsync@peach-win.local/peach-sync"):
+            self.assertTrue(MACHINE_COORDINATE.search(sample), sample)
+        for allowed in ("127.0.0.1", "0.0.0.0", "224.0.0.251", "198.18.0.1",
+                        "192.0.2.2", "198.51.100.162", "203.0.113.1",
+                        "peach.local", "peach-writer.local", "peach-sync",
+                        "Chrome/131.0.0.0", "10.0.26200.1234", r"R:\media",
+                        "https://github.com/longmeidao/peach-app",
+                        "Copyright (C) 2026 longmeidao"):
+            self.assertIsNone(MACHINE_COORDINATE.search(allowed), allowed)
 
 
 class ArchitectureDriftTests(unittest.TestCase):

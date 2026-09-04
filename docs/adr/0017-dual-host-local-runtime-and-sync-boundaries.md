@@ -18,10 +18,10 @@ Peach 的目标是 Windows 与 macOS 各自拥有内置盘上的代码、运行�
 
 ### 每台机器独立持有运行环境
 
-- Windows 根目录为 `C:\Users\longm\Desktop\peach`：`peach-app`、`peach-data`、
+- Windows 根目录为 `C:\Users\<user>\Desktop\peach`：`peach-app`、`peach-data`、
   `peach-worktrees` 和 `peach-sync` 均位于内置盘。`R:\peach-app`、`R:\peach-data` 是迁移前的旧运行位置，
   不再是当前路径。
-- macOS 保持 `~/Desktop/lmd.gg/peach/{peach-app,peach-data,peach-worktrees}`。
+- macOS 保持 `~/Desktop/<用户目录>/peach/{peach-app,peach-data,peach-worktrees}`。
 - 外置盘的正式职责收窄为媒体资源：Windows `R:\media`，macOS
   `/Volumes/RESOURCES/media`。拔盘只让 `local` 来源进入脱盘模式，不影响代码、账本、115/PikPak
   或应用启动。
@@ -56,7 +56,7 @@ Peach 的目标是 Windows 与 macOS 各自拥有内置盘上的代码、运行�
 
 ### 两个局域网入口
 
-- macOS 固定使用 `peach.local`，Windows 固定使用 `peach-win.local`，两台可以同时广播，避免
+- macOS 固定使用 `peach.local`，Windows 固定使用 `peach-writer.local`，两台可以同时广播，避免
   同名 mDNS 记录互相覆盖。
 
 ## 放弃方案
@@ -82,7 +82,7 @@ Peach 的目标是 Windows 与 macOS 各自拥有内置盘上的代码、运行�
 
 1. 已完成：Windows 内置盘 checkout、`.venv`、`peach-data`、worktree、账本播种、
    内置盘 SMB 同步点、默认路径和指向内置盘的 Startup 托盘入口。
-2. 已完成：Windows 固定发布 `peach-win.local`；外置盘只保留 `R:\media` 媒体职责。
+2. 已完成：Windows 固定发布 `peach-writer.local`；外置盘只保留 `R:\media` 媒体职责。
 3. 已完成：五类图片 artifact 单向同步；Mac reader 可实时或从最近缓存浏览 writer 复核队列，
    不复制候选 CSV，也没有第二条写入路径。
 4. 待续：其余 durable artifact 拆分，以及拔盘后的双机完整验收。

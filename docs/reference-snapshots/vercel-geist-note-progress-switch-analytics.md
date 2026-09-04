@@ -5,12 +5,12 @@
 - 官方页：<https://vercel.com/geist/note>、<https://vercel.com/geist/progress>、<https://vercel.com/geist/switch>。
 - **不登记进 `docs/reference-sources.json`**：下面锁的是当次 HTML 的 SHA-256 和登录态截图，
   仓库里没有可比对的上游快照文件；登记表要求的是「快照文件 + 可重抓 URL」这一对。
-- Windows Schannel 路径反复返回凭据错误，本次固定使用仓库外已有的 OpenSSL curl 入口 `C:\Users\longm\.local\bin\curl-ossl.cmd`，请求头为 `Accept: text/html,application/xhtml+xml` 与 `User-Agent: Mozilla/5.0`。
+- Windows Schannel 路径反复返回凭据错误，本次固定使用仓库外已有的 OpenSSL curl 入口 `<用户目录>\.local\bin\curl-ossl.cmd`，请求头为 `Accept: text/html,application/xhtml+xml` 与 `User-Agent: Mozilla/5.0`。
 - 页面 HTML SHA-256：Note `18FF709BAE3813D8153DE2631793280614B1290941E4BD11D67026EC17E2B5FC`；Progress `2DD846E2EC4A8ADF7D3FD1F5C6CE4ACCEA95E29D71881DF8AC6F6874290AD744`；Switch `075696BCEEB320D2267179AA86E1B037D7607C977DA7B1E6B93366A9990EF6A5`。
-- 登录态 Analytics：<https://vercel.com/sandun-bingshi/lmd-gg/analytics>，由 Codex 内置浏览器读取
+- 登录态 Analytics：`https://vercel.com/<account>/<project>/analytics`，由 Codex 内置浏览器读取
   DOM 与 1178×900 当前视图截图；导航、全局筛选、三个摘要指标、图表、维度 tablist、数据行与
   空状态均已取得。
-- 登录态 Speed Insights：<https://vercel.com/sandun-bingshi/lmd-gg/speed-insights>，2026-08-30
+- 登录态 Speed Insights：`https://vercel.com/<account>/<project>/speed-insights`，2026-08-30
   重新取证成功。浏览器首次直接导航等待 30 秒后报 `js execution timed out; kernel reset`，但标签页
   实际已经到达目标；重连后用当前标签取得 1192×911 截图、完整可访问 DOM 与计算样式。当前页面
   资源清单含 31 个 CSS；清单 SHA-256 为

@@ -115,10 +115,10 @@ class MdnsPublisherTests(unittest.TestCase):
         with patch("peach.mdns.Zeroconf") as zeroconf_type, \
                 patch("peach.mdns.answers_on_network", return_value=True):
             publisher = MdnsPublisher(
-                "peach", 80, address_resolver=lambda: "192.168.50.162", refresh_seconds=0,
+                "peach", 80, address_resolver=lambda: "198.51.100.162", refresh_seconds=0,
             )
             publisher.start()
-            self.assertEqual(publisher.address, "192.168.50.162")
+            self.assertEqual(publisher.address, "198.51.100.162")
             publisher.stop()
         zeroconf_type.assert_called_once_with()
 
@@ -128,10 +128,12 @@ class MdnsPublisherTests(unittest.TestCase):
         with patch("peach.mdns.socket.socket", return_value=fake_socket), patch(
             "peach.mdns.socket.gethostname", return_value="host",
         ), patch(
+            # 前两个是虚拟网卡那种网关端点（末段 1 或 2），`lan_ipv4` 按端点评分把它们
+            # 排在真实接口后面，所以第三个胜出。
             "peach.mdns.socket.gethostbyname_ex",
-            return_value=("host", [], ["172.31.112.1", "192.168.56.1", "192.168.50.162"]),
+            return_value=("host", [], ["192.0.2.2", "203.0.113.1", "198.51.100.162"]),
         ):
-            self.assertEqual(lan_ipv4(), "192.168.50.162")
+            self.assertEqual(lan_ipv4(), "198.51.100.162")
 
 
 class ReachabilityTests(unittest.TestCase):

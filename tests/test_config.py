@@ -287,7 +287,7 @@ class SerialisationTests(unittest.TestCase):
                 tree.load(),
                 overrides={
                     "mdns_name": "peach-two", "port": 9443,
-                    "review_writer_origin": "https://10.0.0.5",
+                    "review_writer_origin": "https://192.0.2.5",
                     "smb_host": "other.local", "smb_user": "someone",
                 },
                 # 反斜杠和 Windows 盘符必须原样活过一次往返：序列化器要是把 `\m`
@@ -369,7 +369,7 @@ class ModuleConstantTests(unittest.TestCase):
     def test_share_coordinates_can_be_overridden_without_editing_source(self):
         # 主机名换了、共享改名、账号换一个，都不该要求改源码再发一次版。
         overrides = {
-            "PEACH_SHARED_SMB_HOST": "192.168.1.9",
+            "PEACH_SHARED_SMB_HOST": "198.51.100.9",
             "PEACH_SHARED_SMB_SHARE": "ledger-drop",
             "PEACH_SHARED_SMB_USER": "someone",
         }
@@ -377,13 +377,13 @@ class ModuleConstantTests(unittest.TestCase):
             with patch.dict(os.environ, overrides):
                 settings_file.reset_cache()
                 reloaded = importlib.reload(config)
-                self.assertEqual(reloaded.SHARED_SMB_HOST, "192.168.1.9")
+                self.assertEqual(reloaded.SHARED_SMB_HOST, "198.51.100.9")
                 self.assertEqual(reloaded.SHARED_SMB_SHARE, "ledger-drop")
                 self.assertEqual(reloaded.SHARED_SMB_USER, "someone")
         finally:
             settings_file.reset_cache()
             importlib.reload(config)
-        self.assertNotEqual(config.SHARED_SMB_HOST, "192.168.1.9")
+        self.assertNotEqual(config.SHARED_SMB_HOST, "198.51.100.9")
 
 
 if __name__ == "__main__":

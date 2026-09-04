@@ -6,7 +6,7 @@
   Geist 文档站是 React 渲染，视觉规格拿不到可哈希的快照，与
   `vercel-geist-controls-measured.md` 同一策略，不在 `docs/reference-sources.json` 登记）
 - 上游版本：未取得（页面无锁定资源版本记录；复核需重新抓取）
-- 附带核对：登录态后台 `vercel.com/sandun-bingshi/~/settings` 的 route header
+- 附带核对：登录态后台 `vercel.com/<account>/~/settings` 的 route header
   里有同语义 `nav[aria-label="Breadcrumb"]`，但当时处于水合前的 inert 隐藏态，
   只能确认 `text-heading-14 font-medium`、`gap-0.5` 的头部形态，组件规格以
   文档页实测为准。

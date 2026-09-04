@@ -10,7 +10,7 @@ description: 在 macOS 上开工、改动路径解析或挂载判定、遇到 gi
 
 ## 何时使用
 
-- 当前工作目录在 macOS 上（`~/Desktop/lmd.gg/peach/peach-app`），或改动要交回 Windows 那台继续。
+- 当前工作目录在 macOS 上（`~/Desktop/<用户目录>/peach/peach-app`），或改动要交回 Windows 那台继续。
 - 改动涉及 `asset.path` 解析、`allowed_media_roots`、挂载可达性或磁盘闸门；`git status` 显示大量文件被修改，但 `git diff` 是空的。
 
 ## 路径口径
@@ -29,8 +29,8 @@ description: 在 macOS 上开工、改动路径解析或挂载判定、遇到 gi
 用 `PEACH_MEDIA_MOUNTS=local=/mnt/res,115=/mnt/115` 覆盖；数据目录用 `PEACH_DATA_ROOT`。
 CloudDrive 在 Windows 是盘符、在 macOS 是 macFUSE 挂载点，这层不是可选优化。
 
-运行目录不跟着媒体盘符走。Windows 根目录是 `C:\Users\longm\Desktop\peach`，macOS 是
-`~/Desktop/lmd.gg/peach`；代码、数据、venv 和 worktree 都在内置盘。外置 `R:` 只承担媒体资源。
+运行目录不跟着媒体盘符走。Windows 根目录是 `C:\Users\<user>\Desktop\peach`，macOS 是
+`~/Desktop/<用户目录>/peach`；代码、数据、venv 和 worktree 都在内置盘。外置 `R:` 只承担媒体资源。
 
 ## 三条只在 Windows 成立的假设
 
@@ -82,7 +82,7 @@ macOS 的 FFmpeg 走 PATH（`brew install ffmpeg`）；Windows 的 FFmpeg bundle
 
 ## 代码同步
 
-代码在私有仓库 `longmeidao/peach-app`（`origin`），两台机器手动 push/pull，**不自动推送**。
+代码在 `origin` 指向的那个仓库，两台机器手动 push/pull，**不自动推送**。
 开工前先 `sh scripts/sync_status.sh`：落后远端就先 `git pull --rebase`，别在旧代码上接着
 写；账本是另一条链路（`peach.sync`），同一个脚本会一并报告。
 
@@ -99,7 +99,7 @@ macOS 因此用 `dns-sd -P` 请系统 mDNSResponder 代发，Windows 继续用 z
 `scripts/check_mdns.py`（从终端跑）。排查手法：同一条命令分别从 shell 和 launchd 起各查一次，
 差异只在启动者时就是这个门。
 
-macOS 固定 `peach.local`，Windows 固定 `peach-win.local`；`check_mdns.py` 负责验证没有撞名。
+macOS 固定 `peach.local`，Windows 固定 `peach-writer.local`；`check_mdns.py` 负责验证没有撞名。
 
 ## Git 陷阱
 - **换行**由 `.gitattributes` 的 `* text=auto eol=lf` 固定，不要依赖各自的
