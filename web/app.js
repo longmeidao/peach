@@ -195,7 +195,8 @@ function renderCatalogLoading(label='正在读取作品'){
    showManagementBody 认出是同一张后不再重画。 */
 const MANAGEMENT_PLACEHOLDERS={
   '/stats':()=>`<div class="insightpage">${pageSkeletonHtml('正在读取统计',{variant:'dashboard'})}</div>`,
-  '/taste':()=>`<div class="tastepage">${pageSkeletonHtml('正在读取口味分析')}</div>`,
+  // 口味页与统计页同一套版式：指标带、一块主详情、下面同层的数据面板。
+  '/taste':()=>`<div class="tastepage">${pageSkeletonHtml('正在读取口味分析',{variant:'dashboard'})}</div>`,
   '/data-cleanup':()=>`<div class="cleanuppage">${
     pageSkeletonHtml('正在读取数据管理状态',
       {cards:true,fill:false,className:'cleanup-skeleton'})}</div>`,
@@ -215,6 +216,9 @@ const managementPlaceholder=path=>
 /* 顶部三层只属于首页。深链启动时先画一遍再由路由收起来，等于向管理页和索引页
    承诺了三条永远不会到货的横条。 */
 const hideDiscoveryBars=()=>{$('#tiers').style.display='none';$('#tagbar').style.display='none'};
+/* 启动那一屏收没收横条，就是这一次启动要不要那两个聚合查询。问屏幕不问路径：
+   判断只写在上面那个函数里一份，两边各抄一张路径表迟早会对不上。 */
+const wantsDiscoveryBars=()=>$('#tiers').style.display!=='none';
 function renderInitialSurfaceLoading(){
   const path=decodeURIComponent(location.pathname);
   if(path==='/junk-files'){
@@ -7598,8 +7602,14 @@ async function restoreRoute(){
   }finally{lastRoutePath=path}
 }
 window.addEventListener('popstate',restoreRoute);
-buildEdge();
+/* 左侧导航、管理条、页面标题和面包屑只认 location 和本地设置，一个请求都不等。
+   挂在下面那条链上时它们排在 /api/sources 和 /api/facets 后面，实测让骨架先顶着
+   一个没有标题的空壳站了约半秒。buildManageBar() 内部会一并建好左侧导航，
+   所以这里不再单独调 buildEdge()。 */
+buildManageBar();
+/* 那两个聚合查询喂的是首页顶部三条横条。深链进管理页或索引页时横条一开始就收着，
+   结果没人看，却排在这一页自己的数据前面。 */
 loadSourceStatus()
-  .then(buildBars)
+  .then(()=>wantsDiscoveryBars()?buildBars():null)
   .then(async()=>{buildEdge();wireAllDrag();await restoreRoute();scheduleStickySurfaces()})
   .then(loadSyncedSettings);
