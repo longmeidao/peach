@@ -1654,6 +1654,24 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("    wireViewPills();")
         # 宽度是定值，随机会让同一次冷启动在两台机器上长得不一样，也没法测。
 
+    def test_the_metric_strip_compresses_before_it_starts_scrolling(self):
+        """指标带在窄屏先压宽度，横向滚动留给手机和真放不下的时候。
+
+        下限按内容实测取：一格里最宽的是 24px 的数字和那行 12px 的补充说明，加左右
+        各 16px 内边距是 140px。四格因此到 645px 视口仍是一整条——实测每格 153px，
+        标签、数字、说明三行都不截断。再窄由手机规则接手，改成露边滚动。
+        """
+        self.assertPageContains(
+            ".metricstrip,.tastesummaries{display:grid;grid-auto-flow:column;"
+            "grid-auto-columns:minmax(140px,1fr);")
+        self.assertPageContains(
+            ".metricstrip,.tastesummaries{grid-auto-columns:minmax(168px,82%)}")
+        self.assertPageContains("@media(max-width:640px){.insighttoolbar,.tastehead{align-items:stretch}")
+        # 下限是照这两行的字号算的，字号变了下限也得跟着重算。
+        self.assertPageContains(
+            ".metricstrip b,.tastesummary>b{font-size:var(--fs-2xl);line-height:1.15;")
+        self.assertPageContains("padding:14px 16px;")
+
     def test_skeleton_slots_are_counted_from_the_container_instead_of_a_fixed_number(self):
         """枚数由容器当下的宽度算出来，不写死。
 
