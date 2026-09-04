@@ -508,8 +508,12 @@ def _drop_community_challenges_to_official(connection, rows: list[dict]) -> list
         except (TypeError, ValueError):
             continue
         spec = SOURCE_SPECS.get(str(parsed.get("source") or "").strip())
-        if spec is not None and spec.official:
-            official_values[str(item_key)] = str(parsed.get("value") or "")
+        value = str(parsed.get("value") or "").strip()
+        # 只认记下了取值的那种记录。人工批准的 note 只记 `candidate_key` 与 `source`，
+        # 证明不了账本现在这一个就是它写的；候选后来消失时更是无从判断。拿它当
+        # 「official 已确认」会把该重开的字段永久压在队列外面。
+        if value and spec is not None and spec.official:
+            official_values[str(item_key)] = value
     if not official_values:
         return rows
 
@@ -518,8 +522,7 @@ def _drop_community_challenges_to_official(connection, rows: list[dict]) -> list
         if item_key not in official_values:
             return True
         # 现值被别的动作改过就不能再算「official 写的那一个」，交回人工。
-        recorded = official_values[item_key].strip()
-        if recorded and recorded != str(row.get("current_value") or "").strip():
+        if official_values[item_key] != str(row.get("current_value") or "").strip():
             return True
         return any(
             (spec := SOURCE_SPECS.get(str(c.get("source") or "").strip())) is not None

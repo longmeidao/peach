@@ -283,6 +283,29 @@ class ReviewQueueTests(unittest.TestCase):
         ])
         self.assertEqual(self.queue_keys("metadata_fields"), ["FFF"])
 
+    def test_a_decision_without_a_recorded_value_never_suppresses_the_row(self):
+        """人工批准的 note 只记 `candidate_key` 与 `source`，不记写进去的值。
+
+        没记值就证明不了账本现在这一个是它写的，拿它当「official 已确认」会把
+        `_metadata_decision_is_stale` 本该重开的字段永久压在队列外面。
+        """
+        self._asset(98, "GGG-7", "GGG-7.mp4")
+        con = sqlite3.connect(self.db_path)
+        try:
+            con.execute(
+                "INSERT INTO review_decision(category,item_key,status,note,updated_at) "
+                "VALUES('metadata_fields','GGG','approved',?,'2026-08-30T00:00:00Z')",
+                (json.dumps({"candidate_key": "GGG:release_date:r18dev:gone",
+                             "source": "r18dev", "user_note": ""}),))
+            con.commit()
+        finally:
+            con.close()
+        self.write_metadata_rows([
+            {"item_key": "GGG", "field": "release_date", "current": "2016-06-06",
+             "candidates": ["2016-09-09"], "code": "GGG-7", "source": "javbus"},
+        ])
+        self.assertEqual(self.queue_keys("metadata_fields"), ["GGG"])
+
     def test_metadata_candidates_that_repeat_the_current_value_never_queue(self):
         """复核的成本是注意力：和现值一模一样的行会把真正要判的淹掉。
 
