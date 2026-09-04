@@ -7,6 +7,7 @@ import json
 import sqlite3
 import sys
 import tempfile
+import tomllib
 import unittest
 from contextlib import redirect_stdout
 from pathlib import Path, PureWindowsPath
@@ -264,6 +265,22 @@ class OperationalScriptTests(unittest.TestCase):
                     "test.ps1" in line or "test.sh" in line,
                     f"{relative}:{number} 单独出现了裸命令，读者会照抄；必须同时点明正式入口",
                 )
+
+    def test_python_floor_is_declared_once_and_ci_tests_both_ends(self):
+        """`requires-python` 是唯一真相；CI 矩阵与两份 README 都从它推出来。
+
+        下限是陌生用户按 `pip install` 装的那一端，3.14 是维护者本机运行的那一端；
+        两端都在矩阵里，README 的前置条件写的也是同一个下限，三处任一处单改都要红。
+        """
+        project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
+        floor = project["requires-python"].removeprefix(">=")
+        self.assertEqual(floor, "3.12")
+        for version in (floor, "3.14"):
+            self.assertIn(f"Programming Language :: Python :: {version}", project["classifiers"])
+        workflow = (ROOT / ".github" / "workflows" / "test.yml").read_text(encoding="utf-8")
+        self.assertIn(f'python: ["{floor}", "3.14"]', workflow)
+        self.assertIn(f"Python {floor} 或更高", (ROOT / "README.md").read_text(encoding="utf-8"))
+        self.assertIn(f"Python {floor} or newer", (ROOT / "README.en.md").read_text(encoding="utf-8"))
 
     def test_functional_test_scopes_are_explicit_and_full_remains_the_default(self):
         runner = load_script("test_runner")

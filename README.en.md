@@ -66,7 +66,7 @@ The repository stores no media, databases, credentials, logs, `.venv`, build out
 
 ## Prerequisites
 
-- **Python 3.14**: a hard requirement from `requires-python`. Windows needs the py launcher (`py -3.14`); in a console using the cp936 code page the CLI's Chinese output is garbled, and `PYTHONIOENCODING=utf-8` fixes it.
+- **Python 3.12 or newer**: a hard requirement from `requires-python`; the maintainer runs 3.14, and CI tests both 3.12 and 3.14. Windows needs the py launcher (`py -3.14`, substitute the version you installed); in a console using the cp936 code page the CLI's Chinese output is garbled, and `PYTHONIOENCODING=utf-8` fixes it.
 - **Git**: the editable install runs from a checked-out repository.
 - **FFmpeg and ffprobe**: not distributed with the repository, which has no downloader for them either. Lookup order: the `PEACH_FFMPEG` / `PEACH_FFPROBE` environment variables → `<data root>/tools/ffmpeg/bin/ffmpeg(.exe)` and `ffprobe(.exe)` → `PATH`. Without them `/healthz` reports `ffmpeg: unavailable`, and frame extraction, contact sheets, probing and covers are all unavailable; browsing and playback of compatible formats still work.
 - **openssl** (optional, HTTPS only): required to generate the local CA. On Windows it usually comes from Git for Windows (choose the option that puts the Unix tools on `PATH`). Without it `peach init` prints that no local CA was generated and completes normally; once installed, `peach init --force` fills it in.
@@ -128,8 +128,8 @@ self-hosted frontend packages are pinned jointly by `package.json`, `package-loc
 | `maintenance-115` | 115 SHA-1 reconciliation script |
 
 GitHub Dependabot checks Python, npm and GitHub Actions weekly; every update PR runs the official
-tests on Windows and macOS with Python 3.14. After a frontend dependency update, first install the
-locked packages:
+tests on Windows and macOS with Python 3.12 and 3.14. After a frontend dependency update, first
+install the locked packages:
 
 ```powershell
 npm ci --ignore-scripts

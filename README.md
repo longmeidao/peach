@@ -63,7 +63,7 @@ peach-app/
 
 ## 前置条件
 
-- **Python 3.14**：`requires-python` 的硬要求。Windows 需要 py launcher（`py -3.14`）；控制台是 cp936 代码页时 CLI 的中文输出会乱码，设 `PYTHONIOENCODING=utf-8` 即可。
+- **Python 3.12 或更高**：`requires-python` 的硬要求，维护者以 3.14 运行，CI 同时测 3.12 与 3.14。Windows 需要 py launcher（`py -3.14`，按本机装的版本换）；控制台是 cp936 代码页时 CLI 的中文输出会乱码，设 `PYTHONIOENCODING=utf-8` 即可。
 - **Git**：以可编辑方式安装要从检出的仓库运行。
 - **FFmpeg 与 ffprobe**：不随仓库分发，仓库里也没有下载器。查找顺序：环境变量 `PEACH_FFMPEG` / `PEACH_FFPROBE` → `<数据根>/tools/ffmpeg/bin/ffmpeg(.exe)` 与 `ffprobe(.exe)` → `PATH`。缺了 `/healthz` 报 `ffmpeg: unavailable`，抽帧、接触表、探测和封面全部不可用；浏览与播放兼容格式仍可用。
 - **openssl**（可选，仅 HTTPS）：生成本机 CA 的前置。Windows 上通常来自 Git for Windows（安装时选把 Unix 工具放进 `PATH`）。缺了 `peach init` 打印「未生成本机 CA」并正常完成，装好后 `peach init --force` 补上。
@@ -119,8 +119,8 @@ Python 运行时与可选工具全部在 `pyproject.toml` 精确固定版本；�
 | `vision` | 头像、封面的人脸取景脚本 |
 | `maintenance-115` | 115 SHA-1 对账脚本 |
 
-GitHub Dependabot 每周检查 Python、npm 和 GitHub Actions；每个更新 PR 都运行 Windows/macOS、
-Python 3.14 正式测试。前端依赖更新后，先安装锁定包：
+GitHub Dependabot 每周检查 Python、npm 和 GitHub Actions；每个更新 PR 都在 Windows/macOS 上以
+Python 3.12 与 3.14 运行正式测试。前端依赖更新后，先安装锁定包：
 
 ```powershell
 npm ci --ignore-scripts
