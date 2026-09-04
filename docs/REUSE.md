@@ -52,6 +52,7 @@
 | 女优姓名对照 | `li-peifeng/Jav-Actors-Mapping` 的固定 revision，仅作私有输入（仓库未声明许可证，不随 Peach 分发） | 精确匹配、冲突复核、别名、来源与真实 ledger 写入 |
 | 女优头像候选 | Gfriends 的 GitHub raw 索引与单张媒体（只作外部 Provider，不克隆图库） | 名字链、质量档位、格式/尺寸/SHA-256 门槛、候选缓存、provenance、健康统计和人工复核 |
 | 厂牌 Logo 候选 | 厂牌官网确认的社交 handle → unavatar URL 解析 → 平台 CDN 单图 | handle 归属、内容缓存、方形归一、精确/感知哈希、provenance、健康统计与变化复核 |
+| 厂牌字标名录 | 发行平台自己的厂牌名录：MGStage `/ppv/makers.php` 十一页 351 家（`harvest_mgstage_makers.py`），jae.tokyo 展会名录 26 家 | slug↔账本对账（四路判据、空罗马字形当不可比）、烤方、两位共用、复核 CSV 与安装闸门。不推导 URL、不猜名字：名录给什么用什么 |
 | JAV 元数据查询 | Javinizer-Go v1.5.1 单来源 JSON CLI（MIT）；MetaTube SDK `6a5e6128c725187aeaf921d48ed7d9cd9f30671b`（Apache-2.0）只作来源身份与丰富字段模型参考 | 只发送规范番号；Peach 管 source profile、`provider_id`／`content_id`、逐字段优先级、原始证据、丰富目录证据、健康统计、候选复核与批准后的 ledger 投影 |
 | 已确认厂牌的目录归位 | Javinizer-Go v1.5.1 organizer 只作冲突预检、模板化目录和回滚边界参考，不让它持有 Peach ledger | `rehome_unknown_jav.py` 只消费人工确认映射；先出逐文件 CSV，拒绝扁平化重名与厂牌冲突，SQLite 备份后移动文件并同步 Peach 路径／实体 provenance |
 | FC2 目录元数据与跨号证据 | 已缓存的 fc2cmadb Inertia `article`／评论收获；Javinizer-Go v1.5.1 的 FC2 解析器只作官方商品页字段边界参考 | 2026-08-31 登录态实测旧文章仍提供标题、原始标签、日期、时长、卖家、FC2 CDN 封面与 `comments`；Peach 只把无歧义标签翻译成现有词表，标题／标签进入 `/review`，实测 `w1200` 封面经尺寸与解码门槛落生成产物；稳定 pair、合集/分片保护、hash/时长/尺寸佐证、库外 evidence、健康统计和人工复核仍由 Peach 管，不依赖 FC2-Leak-Detector/JavSP，也不把镜像候选直写 ledger |
