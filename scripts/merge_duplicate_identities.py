@@ -6,6 +6,9 @@ r"""同一个人被记成两条实体的去重（跨 kind 与同 kind 两类）�
 可以并存。实际发生了 35 组：卡片上的头像和名字会一个跳 `/performers/x`、另一个跳
 `/creators/x`，统计、筛选和资料页也各算各的。
 
+第三类是艺名重复：一个名字已经作为别名登记在另一条实体上，它却还自己占着一条实体。
+判据与闸门见 `_stage_name_plan`。
+
 两条来路很清楚：
 
     creator   ← source='legacy:asset'，从目录名投影出来（ADR-0013：目录名只是候选证据）
@@ -80,6 +83,10 @@ JOINER_TOKENS = frozenset({"&", "＆", "+", "＋", "/", "／", "、", "，", ","
 
 #: 目录名投影的唯一来源标记：没有别名、没有外部引用，只有从路径投影出来的断言。
 PROJECTION_SOURCES = frozenset({"legacy:asset"})
+
+#: 能证明「这个名字是那个人的另一个艺名」的别名来源。本地化、简繁转换和系列译名
+#: 写的别名说的是同一个名字的另一种写法，不是另一个艺名，不能拿来判同人。
+STAGE_NAME_ALIAS_SOURCES = ("r18:performer", "javbus:performer", "avdb-actor-mapping")
 
 
 def _fold(value: str) -> str:
@@ -301,6 +308,100 @@ def collect(connection: sqlite3.Connection) -> list[dict[str, object]]:
     # 第二趟再引用同一个 id 就是合并进一条不存在的实体。
     engaged = {int(row["keep_id"]) for row in plan} | {int(row["drop_id"]) for row in plan}
     plan.extend(_variant_plan(entity_rows, aliases, assets, engaged))
+    engaged |= {int(row["keep_id"]) for row in plan} | {int(row["drop_id"]) for row in plan}
+    stage_aliases = [
+        (int(row["entity_id"]), str(row["alias"]), str(row["normalized_alias"]),
+         str(row["source"] or ""))
+        for row in connection.execute(
+            "SELECT entity_id,alias,normalized_alias,source FROM entity_alias"
+            " ORDER BY entity_id,alias")
+    ]
+    refs: dict[int, dict[str, str]] = {}
+    for row in connection.execute(
+        "SELECT entity_id,provider,external_id FROM entity_external_ref ORDER BY entity_id"
+    ):
+        refs.setdefault(int(row["entity_id"]), {})[str(row["provider"])] = str(
+            row["external_id"])
+    plan.extend(_stage_name_plan(entity_rows, aliases, stage_aliases, refs, engaged))
+    return plan
+
+
+def _stage_name_plan(
+    entity_rows: list[sqlite3.Row],
+    aliases: dict[int, list[str]],
+    stage_aliases: list[tuple[int, str, str, str]],
+    refs: dict[int, dict[str, str]],
+    engaged: set[int],
+) -> list[dict[str, object]]:
+    """艺名已经登记成另一条实体的别名，那个名字却还自己占着一条实体。
+
+    实测 `飯岡かなこ`（1 部）与 `森泽佳奈`（2 部）：r18 早已把前者记成后者的别名，
+    `/performers/飯岡かなこ` 却还在。`link_entity` 只在建实体那一刻查别名，两条都是
+    Stash 那次批量导入建的，别名是之后才由 r18 补上的——建的时候没有可查的东西。
+
+    三道闸都是为了排掉实测里的假阳性，缺一条就会把两个人并成一个：
+
+    1. **别名要出自发行元数据。** 本地化与简繁转换也往别名表里写（`綾乃梓` 之于
+       `绫乃梓`），它们说的是同一个名字的另一种写法，证不了「这是那个人的另一个艺名」。
+       系列译名同样落在别名表里（`Night Safari` 写进 `クロロホルムレ●プ`），虽然这一趟
+       只扫 person，判据本身不该依赖扫描范围。
+    2. **被丢弃方自己的别名必须全在保留方的名字集里。** `Ako Shiraishi` 这条实体的
+       每一个别名和 r18 引用都指向 平沢すず，规范名却写着另一个人——它是错标，
+       并进 `白石亚子` 等于把两位女优搅在一起。
+    3. **同一个 provider 的外部引用不能各指一个 ID。** `NOZOMI`（stash 610）撞上
+       `绫乃梓`（stash 538）的别名 `Nozomi`，那是素人企划里常见的通名撞上罗马字读音。
+
+    命中两条以上保留方同样交人工：这条判据唯一的身份保证就是那一条别名。
+    """
+    by_id = {int(row["id"]): row for row in entity_rows}
+    owners: dict[tuple[str, str], set[int]] = {}
+    alias_note: dict[tuple[str, int], tuple[str, str]] = {}
+    for entity_id, alias, normalized, source in stage_aliases:
+        row = by_id.get(entity_id)
+        if row is None or not normalized:
+            continue
+        if not source.startswith(STAGE_NAME_ALIAS_SOURCES):
+            continue
+        owners.setdefault((str(row["kind"]), normalized), set()).add(entity_id)
+        alias_note[(normalized, entity_id)] = (alias, source)
+
+    plan: list[dict[str, object]] = []
+    for drop_id, drop in sorted(by_id.items()):
+        if drop_id in engaged:
+            continue
+        normalized = str(drop["normalized_name"])
+        found = sorted(owners.get((str(drop["kind"]), normalized), set()) - {drop_id}
+                       - engaged)
+        if len(found) != 1:
+            continue
+        keep_id = found[0]
+        keep = by_id[keep_id]
+        keep_names = {_fold(str(keep["canonical_name"]))}
+        keep_names |= {_fold(value) for value in aliases.get(keep_id, [])}
+        stray = [value for value in aliases.get(drop_id, [])
+                 if _fold(value) and _fold(value) not in keep_names]
+        if stray:
+            continue
+        drop_refs, keep_refs = refs.get(drop_id, {}), refs.get(keep_id, {})
+        if any(keep_refs[provider] != value for provider, value in drop_refs.items()
+               if provider in keep_refs):
+            continue
+        alias, source = alias_note[(normalized, keep_id)]
+        plan.append({
+            "normalized_name": normalized,
+            "match_evidence": f"艺名已登记为保留方别名「{alias}」（{source}）",
+            "keep_kind": keep["kind"],
+            "keep_id": keep["id"],
+            "keep_name": keep["canonical_name"],
+            "keep_links": keep["links"],
+            "drop_kind": drop["kind"],
+            "drop_id": drop["id"],
+            "drop_name": drop["canonical_name"],
+            "drop_links": drop["links"],
+            "keep_sources": keep["sources"] or "",
+            "drop_sources": drop["sources"] or "",
+            "evidence": "发行元数据登记的艺名",
+        })
     return plan
 
 
