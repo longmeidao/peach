@@ -5840,6 +5840,34 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".fsechead .fmeta{flex:1 1 0;min-width:0;overflow:hidden")
         self.assertPageContains("  .fsechead .fmeta{display:none}")
 
+    def test_manage_sort_select_lets_the_active_theme_decide_its_option_list(self):
+        """排序框的原生弹出列表跟随当前主题，控件自己不声明 color-scheme。
+
+        `color-scheme` 是继承属性，两条主题选择路径（prefers-color-scheme 与
+        `:root[data-theme]`）都已经把它落在 `html` 上。控件再声明一档，浅色主题下就出现
+        闭合的框是浅底、展开的选项列表是深底浅字的两套配色。
+        """
+        css = stylesheet_source()
+        start = css.index(".fmanagesort select{")
+        rule = css[start:css.index("}", start)]
+        for declaration in ("background:var(--surface)", "color:var(--ink-2)"):
+            self.assertIn(declaration, rule, f".fmanagesort select 缺少 {declaration}")
+        self.assertNotIn("color-scheme", rule, ".fmanagesort select 不该自己声明 color-scheme")
+        # 主题两条路径都把 color-scheme 落在 `html`，控件靠继承拿到它。
+        self.assertPageContains("html{color-scheme:light")
+        self.assertPageContains(
+            '@media (prefers-color-scheme:dark){html:not([data-theme="light"]){color-scheme:dark}}')
+        self.assertPageContains('html[data-theme="dark"]{color-scheme:dark}')
+        # 自绘箭头由后面的规则给 background-image，而这条规则的 background 简写会清掉它：
+        # 两者的层叠顺序反过来，下拉就只剩一个空的右内边距。
+        self.assertLess(
+            start, css.index(".settingrow select,.tasteactions select,.fmanagesort select{"),
+            "自绘箭头必须排在 .fmanagesort select 的 background 简写之后")
+        # 高度不收进 --control-h：这一行的按钮和版式开关都在 32px 上，排序框单独抬一档
+        # 就是同一行里出现两种「同一种控件」。
+        self.assertIn("height:32px", rule, ".fmanagesort select 与标题行同高")
+        self.assertPageContains("gap:6px;height:32px")
+
     def test_destructive_buttons_fill_red_on_hover(self):
         """危险动作的悬停态一律是 --drop 实底加白字，全站一个写法。
 
