@@ -186,7 +186,9 @@ def host_owners(connection: sqlite3.Connection) -> dict[str, str]:
         label, count = max(tally.items(), key=lambda item: item[1])
         if count >= OWNER_QUORUM and label != "官方网站":
             owners[host] = label
-    # 厂牌那一手证据后写，压过女优链接里的共识。
+    # 厂牌那一手证据后写，压过女优链接里的共识。事务所的官网链接不算在内：
+    # 那批链接是 `install_agencies.py` 反过来照这个函数的结论装的，再收回来当
+    # 证据就是拿自己的输出确认自己。
     for host, name in connection.execute(
         "SELECT hostname,canonical_name FROM entity_link l JOIN entity e ON e.id=l.entity_id"
         " WHERE e.kind='studio' AND l.link_kind='official' AND l.hostname<>''"

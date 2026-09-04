@@ -56,6 +56,9 @@ CREATE TABLE asset_entity(
   asset_id INTEGER,entity_id INTEGER,role TEXT,source TEXT,confidence REAL,
   metadata_json TEXT DEFAULT '{}',first_seen_at TEXT,last_seen_at TEXT,
   UNIQUE(asset_id,entity_id,role,source));
+CREATE TABLE entity_membership(
+  member_id INTEGER PRIMARY KEY,agency_id INTEGER,source TEXT,
+  confidence REAL DEFAULT 1.0,checked_at TEXT);
 CREATE TABLE watch_queue(profile_id TEXT,asset_id INTEGER,added_at TEXT,source TEXT,
   PRIMARY KEY(profile_id,asset_id));
 CREATE TABLE playlist(

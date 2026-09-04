@@ -240,7 +240,7 @@ function renderInitialSurfaceLoading(){
     return;
   }
   if(path==='/performers'||path==='/creators'||path==='/tags'||
-      /^\/(?:performers|creators|studios)\//.test(path)){
+      /^\/(?:performers|creators|studios|agencies)\//.test(path)){
     hideDiscoveryBars();
     $('#index').hidden=false;$('#grid').innerHTML='';
     $('#index').innerHTML=pageSkeletonHtml('正在读取页面',{cards:true});
@@ -5827,8 +5827,21 @@ async function openEntity(kind,name,push=true){
      只有一个写法时不出这个控件，那里没有可选的东西。 */
   /* 事务所是身份信息，不是链接。它此前寄居在官方链接的标签里，于是那个控件同时替
      两家公司说话——文字是事务所名，图标和落点却是片商的站。名字归名字、链接归链接，
-     它就跟着别名和作品数排在同一行。 */
-  const agencyName=(d.metadata||{}).agency?.name||'';
+     它就跟着别名和作品数排在同一行。
+
+     账本里有这家事务所的实体时给出去处：`d.agency` 是那条实体，点进去是它的资料页。
+     只有 `metadata.agency` 时仍写名字但不做链接——那是采到的原文，还没有对应身份，
+     做成链接会通向一个不存在的页面。 */
+  const agencyHome=d.agency||null;
+  const agencyName=agencyHome?agencyHome.canonical_name:((d.metadata||{}).agency?.name||'');
+  const agencyHtml=!agencyName?''
+    :agencyHome?` · 事务所 <a class="entitylink" href="${esc(entityPath('agency',agencyName))}"
+        data-agency="${esc(agencyName)}">${esc(agencyName)}</a>`
+    :` · 事务所 ${esc(agencyName)}`;
+  /* 事务所页数的是人，不是片。它名下那 N 个视频是成员拍的，只报视频数会让「这家有
+     几个人」这个它唯一独有的读数消失。 */
+  const memberHtml=kind==='agency'
+    ?` · <b>${(d.member_count||0).toLocaleString()}</b> 位艺人`:'';
   const nameChoices=[d.canonical_name,...(d.aliases||[])]
     .filter((option,index,all)=>option&&all.indexOf(option)===index);
   const namePick=nameChoices.length>1?`<div class="namepick" data-namepick>
@@ -5842,8 +5855,7 @@ async function openEntity(kind,name,push=true){
   $('#index').dataset.entityKind=kind;$('#index').dataset.entityName=name;
   $('#index').innerHTML=`<div class="entityhero"><div class="entityportrait ${kind==='performer'||kind==='creator'?'':'square'}">${image}<span>${esc(name.slice(0,1))}</span></div>
       <div><div class="entitytitle"><h2>${esc(d.canonical_name)}</h2>${namePick}</div>
-        <div class="alias">${(d.display_aliases||[]).length?`${d.display_aliases.map(esc).join(' / ')} · `:''}<b>${d.asset_count.toLocaleString()}</b> 个视频${
-          agencyName?` · 事务所 ${esc(agencyName)}`:''}</div>
+        <div class="alias">${(d.display_aliases||[]).length?`${d.display_aliases.map(esc).join(' / ')} · `:''}<b>${d.asset_count.toLocaleString()}</b> 个视频${memberHtml}${agencyHtml}</div>
         ${links?`<div class="entitylinks">${links}</div>`:''}</div></div>
     ${related?`<div class="entitymeta"><section aria-label="同台艺人"><div class="relatedpeople">${related}</div></section></div>`:''}
     ${(tags||mediaToggle)?`<section class="entitytagbar" aria-label="媒体与标签"><div class="entitytags">${mediaToggle}${tags}</div></section>`:''}
@@ -5853,6 +5865,9 @@ async function openEntity(kind,name,push=true){
     toggleTag(b.dataset.entityTag));
   $('#index').querySelectorAll('[data-related-performer]').forEach(b=>b.onclick=()=>
     openEntity('performer',b.dataset.relatedPerformer));
+  // 站内跳转走同一个 SPA 入口，不让浏览器整页重载。
+  $('#index').querySelectorAll('[data-agency]').forEach(a=>a.onclick=event=>{
+    event.preventDefault();openEntity('agency',a.dataset.agency)});
   if(namePick)wireNamePicker(kind,d.canonical_name);
   entityPhotos=photos&&!photos.error?photos:null;
   if(entityMediaView.media==='photos'&&!photoTotalOf())entityMediaView=emptyMediaView();

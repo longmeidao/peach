@@ -178,7 +178,7 @@ def merge_entity(
     """
     stamp = now or datetime.now(timezone.utc).isoformat()
     moved = {"assets": 0, "aliases": 0, "refs": 0, "links": 0, "terms": 0,
-             "dropped_refs": 0}
+             "dropped_refs": 0, "memberships": 0, "members": 0}
 
     # 被并入的名字本身留作别名，否则按旧名搜索会落空。
     connection.execute(
@@ -226,6 +226,19 @@ def merge_entity(
         (target_id, source_id))
     moved["terms"] = connection.execute("SELECT changes()").fetchone()[0]
     connection.execute("DELETE FROM entity_search_term WHERE entity_id=?", (source_id,))
+
+    # 归属关系两个方向都要跟着走。做成员那一侧主键在 `member_id` 上，target 已有现役
+    # 归属时 source 那条只能丢——一个人一条现役归属是这张表的语义，合并不该破例造出
+    # 第二条。做事务所那一侧没有这个限制，成员整批改指向 target。
+    connection.execute(
+        "INSERT OR IGNORE INTO entity_membership(member_id,agency_id,source,confidence,checked_at)"
+        " SELECT ?,agency_id,source,confidence,checked_at FROM entity_membership WHERE member_id=?",
+        (target_id, source_id))
+    moved["memberships"] = connection.execute("SELECT changes()").fetchone()[0]
+    connection.execute("DELETE FROM entity_membership WHERE member_id=?", (source_id,))
+    connection.execute(
+        "UPDATE entity_membership SET agency_id=? WHERE agency_id=?", (target_id, source_id))
+    moved["members"] = connection.execute("SELECT changes()").fetchone()[0]
 
     connection.execute("UPDATE entity SET updated_at=? WHERE id=?", (stamp, target_id))
     connection.execute("DELETE FROM entity WHERE id=?", (source_id,))

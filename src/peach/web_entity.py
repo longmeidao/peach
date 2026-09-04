@@ -25,15 +25,32 @@ from .web_catalog import (
 from .web_state import WebContract
 
 
+#: 有资料页的实体种类。事务所（agency）和厂牌是两件事：厂牌出片、事务所出人，
+#: 一位女优可以在同一年里给多个厂牌拍片而只属于一家事务所。
+PROFILE_KINDS = {"performer", "studio", "creator", "series", "agency"}
+
+
+def scope_predicate(kind: str, column: str) -> str:
+    """这一页的作品挂在谁名下的 SQL 判据，占位符恒为一个。
+
+    事务所自己不挂作品——作品是它的成员拍的，`asset_entity` 里没有它的行。把范围
+    从「这个 id」换成「这组 id」之后，事务所页和女优页共用同一批统计、标签和图集
+    查询，而不是各写一份再慢慢漂移。
+    """
+    if kind == "agency":
+        return f"{column} IN (SELECT member_id FROM entity_membership WHERE agency_id=?)"
+    return f"{column}=?"
+
+
 def q_entity(contract: WebContract, args):
-    """女优、厂牌、创作者等实体的资料页。
+    """女优、厂牌、事务所等实体的资料页。
 
     `source_reference` 是私人馆藏来源证据：API 只返回站点名和备注，不把敏感下载
     地址变成可点击链接。官方、社交和资料库链接可直接访问。
     """
     kind = args.get("kind", "")
     name = args.get("name", "")
-    if kind not in {"performer", "studio", "creator", "series"} or not name:
+    if kind not in PROFILE_KINDS or not name:
         return {"error": "invalid entity"}
     with contract.read_connection() as c:
         row = resolve_entity(c, kind, name)
@@ -84,13 +101,15 @@ def q_entity(contract: WebContract, args):
             "FROM entity_external_ref WHERE entity_id=? ORDER BY provider,external_kind",
             (d["id"],),
         )]
+        scope = scope_predicate(kind, "ae.entity_id")
         count, rep = c.execute(
             "SELECT count(DISTINCT ae.asset_id),"
             "(SELECT a2.id FROM asset_entity ae2 JOIN asset a2 ON a2.id=ae2.asset_id "
-            " WHERE ae2.entity_id=? AND a2.medium='video' AND a2.snapshot_path IS NOT NULL "
+            " WHERE " + scope_predicate(kind, "ae2.entity_id") +
+            " AND a2.medium='video' AND a2.snapshot_path IS NOT NULL "
             " ORDER BY a2.size DESC LIMIT 1) "
             "FROM asset_entity ae JOIN asset a ON a.id=ae.asset_id "
-            "WHERE ae.entity_id=? AND a.medium='video'", (d["id"], d["id"]),
+            "WHERE " + scope + " AND a.medium='video'", (d["id"], d["id"]),
         ).fetchone()
         d["asset_count"] = count
         d["representative_asset_id"] = rep
@@ -101,31 +120,60 @@ def q_entity(contract: WebContract, args):
             "JOIN asset_entity tagged ON tagged.asset_id=scope.asset_id "
             "JOIN entity tag ON tag.id=tagged.entity_id "
             "JOIN asset a ON a.id=scope.asset_id "
-            "WHERE scope.entity_id=? AND a.medium='video' AND tag.kind='tag' "
+            "WHERE " + scope_predicate(kind, "scope.entity_id") +
+            " AND a.medium='video' AND tag.kind='tag' "
             "AND " + tag_is_not_a_performer_name("tag.normalized_name") + " "
             f"AND tag.canonical_name NOT IN ({','.join('?' for _ in LENGTH_TAGS)}) "
             "AND " + tag_not_hidden("scope.asset_id", "tag.normalized_name") + " "
             "GROUP BY tag.id,tag.canonical_name ORDER BY n DESC,tag.canonical_name LIMIT 36",
             (d["id"], *sorted(LENGTH_TAGS)),
         )]
-        related = []
-        for performer in c.execute(
-            "SELECT person.id,person.canonical_name k,count(DISTINCT scope.asset_id) n,"
-            "(SELECT a2.id FROM asset_entity ae2 JOIN asset a2 ON a2.id=ae2.asset_id "
-            " WHERE ae2.entity_id=person.id AND a2.medium='video' AND a2.snapshot_path IS NOT NULL "
-            " ORDER BY COALESCE(a2.play_count,0) DESC,COALESCE(a2.play_seconds,0) DESC,"
-            " COALESCE(a2.width,0)*COALESCE(a2.height,0) DESC,a2.size DESC LIMIT 1) rep "
-            "FROM asset_entity scope "
-            "JOIN asset_entity co ON co.asset_id=scope.asset_id "
-            "JOIN entity person ON person.id=co.entity_id "
-            "JOIN asset a ON a.id=scope.asset_id "
-            "WHERE scope.entity_id=? AND a.medium='video' AND person.kind='performer' "
-            "AND person.id<>? "
-            "GROUP BY person.id,person.canonical_name ORDER BY n DESC,person.canonical_name LIMIT 18",
-            (d["id"], d["id"]),
-        ):
-            related.append(dict(performer))
-        d["related_performers"] = related
+        # 那排圆头像，事务所页问的是另一个问题。别的资料页问「谁和这条实体同台」，
+        # 事务所页问「这家有哪些人」——共演者对它没有意义，它自己一部片都没拍。
+        # 契约形状保持一致（id / k / n / rep），前端仍是同一个组件。
+        if kind == "agency":
+            roster = c.execute(
+                "SELECT person.id,person.canonical_name k,"
+                "(SELECT count(DISTINCT ae.asset_id) FROM asset_entity ae "
+                " JOIN asset a ON a.id=ae.asset_id "
+                " WHERE ae.entity_id=person.id AND a.medium='video') n,"
+                "(SELECT a2.id FROM asset_entity ae2 JOIN asset a2 ON a2.id=ae2.asset_id "
+                " WHERE ae2.entity_id=person.id AND a2.medium='video' "
+                " AND a2.snapshot_path IS NOT NULL "
+                " ORDER BY COALESCE(a2.play_count,0) DESC,COALESCE(a2.play_seconds,0) DESC,"
+                " COALESCE(a2.width,0)*COALESCE(a2.height,0) DESC,a2.size DESC LIMIT 1) rep "
+                "FROM entity_membership m JOIN entity person ON person.id=m.member_id "
+                "WHERE m.agency_id=? ORDER BY n DESC,person.canonical_name",
+                (d["id"],))
+        else:
+            roster = c.execute(
+                "SELECT person.id,person.canonical_name k,count(DISTINCT scope.asset_id) n,"
+                "(SELECT a2.id FROM asset_entity ae2 JOIN asset a2 ON a2.id=ae2.asset_id "
+                " WHERE ae2.entity_id=person.id AND a2.medium='video' "
+                " AND a2.snapshot_path IS NOT NULL "
+                " ORDER BY COALESCE(a2.play_count,0) DESC,COALESCE(a2.play_seconds,0) DESC,"
+                " COALESCE(a2.width,0)*COALESCE(a2.height,0) DESC,a2.size DESC LIMIT 1) rep "
+                "FROM asset_entity scope "
+                "JOIN asset_entity co ON co.asset_id=scope.asset_id "
+                "JOIN entity person ON person.id=co.entity_id "
+                "JOIN asset a ON a.id=scope.asset_id "
+                "WHERE scope.entity_id=? AND a.medium='video' AND person.kind='performer' "
+                "AND person.id<>? "
+                "GROUP BY person.id,person.canonical_name "
+                "ORDER BY n DESC,person.canonical_name LIMIT 18",
+                (d["id"], d["id"]))
+        d["related_performers"] = [dict(person) for person in roster]
+        d["member_count"] = c.execute(
+            "SELECT count(*) FROM entity_membership WHERE agency_id=?", (d["id"],)).fetchone()[0]
+        # 这条实体现在归哪家事务所。`metadata.agency` 记的是采到的原文和采集时间，
+        # 这里给的是账本里那条实体——前者是证据，后者才是能点进去的身份。
+        d["agency"] = None
+        home = c.execute(
+            "SELECT agency.id,agency.canonical_name,m.source,m.checked_at "
+            "FROM entity_membership m JOIN entity agency ON agency.id=m.agency_id "
+            "WHERE m.member_id=?", (d["id"],)).fetchone()
+        if home:
+            d["agency"] = dict(home)
     # 厂牌页那个大位先取 `/logo`、取不到才退到实体图。没装标识时直接从实体图起步，
     # 省掉必然 404 的那一跳；别的实体没有这个位置，标志只对厂牌成立。
     if kind == "studio":
@@ -164,7 +212,7 @@ def _display_entity_aliases(canonical_name: str, aliases: list[str]) -> list[str
 def q_entity_photos(contract: WebContract, args):
     """实体名下的图片瀑布流；目录分组只保留为兼容元数据。"""
     kind, name = args.get("kind", ""), args.get("name", "")
-    if kind not in {"performer", "studio", "creator", "series"} or not name:
+    if kind not in PROFILE_KINDS or not name:
         return {"error": "invalid entity"}
     try:
         limit = max(1, min(int(args.get("limit") or 120), 600))
@@ -185,7 +233,8 @@ def q_entity_photos(contract: WebContract, args):
         } for item in c.execute(
             f"SELECT {PHOTO_DIR} dir,min(a.id) id,count(*) n,sum(a.size) bytes,a.location "
             "FROM asset_entity ae JOIN asset a ON a.id=ae.asset_id "
-            "WHERE ae.entity_id=? AND a.medium='image' AND a.name IS NOT NULL "
+            "WHERE " + scope_predicate(kind, "ae.entity_id") +
+            " AND a.medium='image' AND a.name IS NOT NULL "
             "AND (a.disposal IS NULL OR a.disposal<>'trash') "
             f"GROUP BY {PHOTO_DIR},a.location ORDER BY n DESC,dir",
             (row["id"],),
@@ -193,7 +242,8 @@ def q_entity_photos(contract: WebContract, args):
         total = c.execute(
             "SELECT count(DISTINCT a.id) "
             "FROM asset_entity ae JOIN asset a ON a.id=ae.asset_id "
-            "WHERE ae.entity_id=? AND a.medium='image' AND a.name IS NOT NULL "
+            "WHERE " + scope_predicate(kind, "ae.entity_id") +
+            " AND a.medium='image' AND a.name IS NOT NULL "
             "AND (a.disposal IS NULL OR a.disposal<>'trash')",
             (row["id"],),
         ).fetchone()[0]
@@ -202,7 +252,8 @@ def q_entity_photos(contract: WebContract, args):
                  for item in c.execute(
                      f"SELECT a.id,a.name,a.size,a.location,{PHOTO_DIR} dir "
                      "FROM asset_entity ae JOIN asset a ON a.id=ae.asset_id "
-                     "WHERE ae.entity_id=? AND a.medium='image' AND a.name IS NOT NULL "
+                     "WHERE " + scope_predicate(kind, "ae.entity_id") +
+                     " AND a.medium='image' AND a.name IS NOT NULL "
                      "AND (a.disposal IS NULL OR a.disposal<>'trash') "
                      f"GROUP BY a.id,a.name,a.size,a.location,{PHOTO_DIR} "
                      "ORDER BY dir,a.name,a.id LIMIT ? OFFSET ?",
@@ -330,7 +381,7 @@ def w_entity_name(contract: WebContract, body):
     kind = str(body.get("kind", "")).strip()
     name = str(body.get("name", "")).strip()
     chosen = str(body.get("canonical", "")).strip()
-    if kind not in {"performer", "studio", "creator", "series"} or not name:
+    if kind not in PROFILE_KINDS or not name:
         raise ValueError("kind must be a known entity kind and name is required")
     if not chosen:
         raise ValueError("canonical is required")
