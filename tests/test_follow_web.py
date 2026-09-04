@@ -2042,6 +2042,9 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertNotIn('class="fcollectionthumb" href=', self.page)
         self.assertPageContains("route(followDetailReturnPath||'/follow')")
         self.assertPageContains(".followitem a{text-decoration:none}")
+        # 标签紧跟动作条。错误行 `.fstate` 带着 `flex:1 1 100%`，在纵向 flex 的右栏里
+        # 会把剩余高度全算给自己，把标签压到栏底、中间空一大段。
+        self.assertPageContains(".followdetailside .fstate{flex:none}")
 
     def test_one_fanbox_collection_keeps_its_gofile_folder_sections(self):
         self.assertPageContains("const followGroupedMediaOwner=group=>")

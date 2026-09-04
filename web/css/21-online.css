@@ -69,6 +69,9 @@
 @media (hover:none),(pointer:coarse){.followitem .factions{opacity:1;pointer-events:auto}}
 .select-mode .followitem a,.select-mode .followitem [data-follow-detail],.select-mode .followitem .factions,.select-mode .followitem .mixbadge{pointer-events:none!important}
 .fstate{flex:1 1 100%;font-size:var(--fs-xs);color:var(--drop)}
+/* 详情右栏是纵向 flex：`flex:1 1 100%` 在这里会把整栏的剩余高度都算给这条
+   错误行，标签被推到栏底、中间空出一大段。错误行按内容高就够。 */
+.followdetailside .fstate{flex:none}
 .fvkind{display:inline-block;max-width:120px;margin-right:6px;padding:1px 7px;border-radius:var(--badge-radius);overflow:hidden;text-overflow:ellipsis;vertical-align:-2px;background:var(--overlay-5);color:var(--muted);font-size:var(--fs-xs);font-style:normal}
 .fvkind.wip{color:var(--meter)}.fvkind.alt{color:var(--ink-2)}
 .followdetailmedia{--follow-image-arrow-inset:16px;min-height:min(62vh,640px)}.followdetailmedia.image{min-height:0;background:color-mix(in srgb,var(--video-glow,#15202a) 12%,var(--surface) 88%)}.followdetailposter.zoomable{cursor:zoom-in}.followdetailposter{position:relative;z-index:1;display:block;width:auto;height:auto;max-width:100%;max-height:76vh;object-fit:contain;background:transparent}.followimagearrow{position:absolute;z-index:4;top:50%;transform:translateY(-50%)}.followimagearrow.prev{left:var(--follow-image-arrow-inset)}.followimagearrow.next{right:var(--follow-image-arrow-inset)}.followimagedots{position:absolute;z-index:4;left:50%;bottom:18px;transform:translateX(-50%);display:flex;align-items:center;justify-content:center;gap:8px;max-width:calc(100% - 120px);padding:8px 11px;border-radius:var(--pill-radius);background:rgba(0,0,0,.5);overflow:hidden}.followimagedots button{flex:none;width:8px;height:8px;padding:0;border:0;border-radius:50%;background:rgba(255,255,255,.42);cursor:pointer}.followimagedots button[aria-current="true"]{width:20px;border-radius:var(--pill-radius);background:#fff}
