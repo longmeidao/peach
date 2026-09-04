@@ -695,7 +695,7 @@ class WebUiSourceTests(unittest.TestCase):
                 (".geist-button{", "var(--control-radius)"),
                 (".searchmenu{", "var(--floating-radius)"),
                 (".searchoption{", "var(--control-radius)"),
-                (".playlistcreate button,.playlistactions button{", "var(--control-radius)"),
+                (".playlistactions button{", "var(--control-radius)"),
                 (".playlistdialog{", "var(--floating-radius)"),
                 (".playlistpickrow{", "var(--control-radius)"),
                 (".settingscard{", "var(--floating-radius)"),
@@ -5152,7 +5152,12 @@ class WebUiSourceTests(unittest.TestCase):
         把提交键顶到下一行。纯文本输入框全站共用 `.geist-input`。
         """
         self.assertPageContains(".geist-input{box-sizing:border-box;width:100%;min-width:0;height:38px;")
-        self.assertPageContains(".playlistcreate button{height:38px}")
+        self.assertPageContains(".playlistcreate .geist-button{height:38px;padding:0 13px}")
+        # 提交键是主动作，实心档由共用的 .geist-button.primary 给，不再本地拼一套描边。
+        for label in ("保存 ${mix.items.length} 个视频", "新建并加入", "新建"):
+            self.assertPageContains(
+                f'<button class="geist-button primary" type="submit">{label}</button>')
+        self.assertPageLacks(".playlistcreate button,.playlistactions button{")
         self.assertPageContains(".faliasform .fbtn{height:38px;min-height:38px}")
         self.assertPageContains(".playlistcreate label{display:grid;gap:5px;color:var(--muted);"
                                 "font-size:var(--fs-xs);flex:1 1 200px;max-width:320px}")
