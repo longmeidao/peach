@@ -12,9 +12,12 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0--or--later-blue" alt="license"></a>
   <img src="https://img.shields.io/badge/python-3.12%2B-3776AB?logo=python&logoColor=white" alt="Python 3.12+">
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS-lightgrey" alt="Windows | macOS">
+  <img src="https://img.shields.io/badge/18%2B-adult%20content-critical" alt="18+ adult content">
 </p>
 
 <p align="center"><a href="README.md">中文</a> · English</p>
+
+> **18+** Peach is for adults and manages an adult-content collection. The repository, its documentation and screenshots contain SFW material only; the boundaries are in "Scope and disclaimer" below.
 
 Peach is a single-user, local-first personal media system, built for one person self-hosting on their own machines over a LAN — not for teams or public deployment. It indexes media you already own — local disks, CloudDrive mounts, followed online sources — and serves search, playback, profile pages, playlists, review and follow from one FastAPI process. The local SQLite ledger is the single source of truth and also stores viewing behavior and manual decisions; whatever CloudDrive, online sites or AI return is a candidate with provenance and confidence, and becomes truth only after the user reviews it.
 

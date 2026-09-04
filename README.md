@@ -12,9 +12,12 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0--or--later-blue" alt="license"></a>
   <img src="https://img.shields.io/badge/python-3.12%2B-3776AB?logo=python&logoColor=white" alt="Python 3.12+">
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS-lightgrey" alt="Windows | macOS">
+  <img src="https://img.shields.io/badge/18%2B-adult%20content-critical" alt="18+ adult content">
 </p>
 
 <p align="center">中文 · <a href="README.en.md">English</a></p>
+
+> **18+** Peach 面向成年人，管理的是成人内容馆藏。仓库、文档与截图只出现 SFW 素材；边界见下文「范围与免责声明」。
 
 Peach（蜜桃）是单用户、本地优先的个人媒体系统，只为一个人在自己的机器上经局域网自用而设计，不面向团队或公开部署。它统一索引你已经拥有的媒体——本地磁盘、CloudDrive 挂载和在线关注来源——由一个 FastAPI 进程提供搜索、播放、资料页、播放列表、复核与追更。本地 SQLite ledger 是唯一真相源，观看行为和人工决定都保存在这里；CloudDrive、在线站点和 AI 取回的内容只是带来源与置信度的候选，经用户复核后才成为真相。
 
