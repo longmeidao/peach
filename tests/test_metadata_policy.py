@@ -49,15 +49,23 @@ class MetadataPolicyTests(unittest.TestCase):
         """
         for profile in ("baseline", "censored", "uncensored", "fc2"):
             policy = resolve_policy(profile=profile)
-            for code in ("WX-017", "AR-301", "JI-103", "ar-301", "AR301"):
+            for code in ("WX-017", "AR-301", "JI-103", "SA-104", "MY-102",
+                         "ar-301", "AR301"):
                 self.assertFalse(policy.allows_code(code), f"{profile} 放行了 {code}")
         # 显式点名来源也不能绕过：这不是「这次不想问」，是「问了必错」。
         self.assertFalse(resolve_policy(sources="javbus").allows_code(
             "AR-301", explicit_sources=True,
         ))
-        # 前缀相同但不是 `<字母>-<数字>` 的照常放行，别误伤素人系与真厂牌番号。
+
+    def test_two_letter_prefix_alone_never_blocks_a_real_jav_studio(self):
+        """判据是实测出来的前缀表，不是「两字母前缀就不是 JAV」那条形状。
+
+        2026-09-04 实测的 24 种两字母前缀里有三个例外：BeFree 的 `BF-366` 是真作品，
+        `TZ` 来自转载站水印 `[ThZu.Cc]`，`FC-437689` 是 FC2 变体。按形状一刀切会
+        把 BeFree 一起拦掉，而它的片子就在 `B:\\番号\\BeFree\\` 下。
+        """
         baseline = resolve_policy(profile="baseline")
-        for code in ("ARM-123", "JILL-002", "300MIUM-1239", "ABW-232"):
+        for code in ("BF-366", "ARM-123", "JILL-002", "300MIUM-1239", "ABW-232"):
             self.assertTrue(baseline.allows_code(code), f"baseline 误拦了 {code}")
 
     def test_every_field_uses_policy_order_and_explicit_official_metadata(self):

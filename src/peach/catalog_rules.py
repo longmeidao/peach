@@ -158,10 +158,20 @@ RELEASE_EVIDENCE_KINDS = frozenset({"performer", "studio", "series"})
 #: 标题因此全错，20 条 studio 无一例外全是误判（`peach-data/review/mib-studio-mismatch-20260902.md`）。
 #: `_identity_mismatch` 只拦得住来源自报了番号的那部分，剩下的照样落进候选队列。
 #:
-#: 所以判据前移到刮削入口：这些番号一开始就不该被拿去问 JAV 来源。2026-09-04 实测账本里
-#: `AR-` 8 条、`JI-` 3 条全部位于 MIB 目录下、目录外零条，`WX-` 当时尚未入库，
-#: 按前缀拦截在当前账本上没有误伤。前缀表是用户口径，不要按形状自行推广。
-KOREAN_MIB_PREFIXES = frozenset({"WX", "AR", "JI"})
+#: 所以判据前移到刮削入口：这些番号一开始就不该被拿去问 JAV 来源。
+#:
+#: 前缀是 MIB 演员名的缩写，不是厂牌代号——`AR` 是 Ari、`JH` 是 Juhee、`SA` 是 Suah，
+#: 一个演员一个前缀，所以表会随片源增加而变长，不要指望它收敛。2026-09-04 实测账本里
+#: 两字母前缀番号共 24 种 75 条，其中 21 种全部位于 `B:\MVP\MIB\` 下、目录外零条。
+#:
+#: **不要退化成「两字母前缀就不是 JAV」这条形状判据。** 同一批实测里的三个例外正是反例：
+#: `BF-366` 在 `B:\番号\BeFree\` 下，BeFree 是真实 JAV 厂牌；`TZ-105` 的 `TZ` 来自转载站
+#: 水印 `[ThZu.Cc]`，压根不是番号（`is_repost_site_label` 那条路管它）；`FC-437689` 是 FC2
+#: 的变体写法。按形状一刀切会把 BeFree 的真作品一起拦掉。
+KOREAN_MIB_PREFIXES = frozenset({
+    "WX", "AR", "JH", "CA", "IY", "JA", "MY", "SH", "HA", "MH", "DB", "JI",
+    "ES", "SR", "SY", "CD", "YH", "UY", "NN", "SA", "JE", "YR",
+})
 _KOREAN_MIB_CODE = re.compile(r"^([A-Z]{2,4})-\d+$")
 
 DUPLICATE_TOLERANCE = 0.005

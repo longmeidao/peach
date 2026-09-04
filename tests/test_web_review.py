@@ -268,11 +268,15 @@ class ReviewQueueTests(unittest.TestCase):
              "candidates": ["2009-12-05"], "code": "JI-103"},
             {"item_key": "MIB-WX", "field": "title", "current": "",
              "candidates": ["某标题"], "code": "WX-017"},
-            # 字母段撞上但不是 MIB 番号形状的必须照常进队列。
+            {"item_key": "MIB-SA", "field": "series", "current": "",
+             "candidates": ["某系列"], "code": "SA-104"},
+            # BeFree 是真实 JAV 厂牌，两字母前缀不能连它一起拦。
+            {"item_key": "BEFREE", "field": "studio", "current": "",
+             "candidates": ["BeFree"], "code": "BF-366"},
             {"item_key": "REAL", "field": "studio", "current": "",
              "candidates": ["Faleno"], "code": "ARM-123"},
         ])
-        self.assertEqual(self.queue_keys("metadata_fields"), ["REAL"])
+        self.assertEqual(sorted(self.queue_keys("metadata_fields")), ["BEFREE", "REAL"])
 
     def test_japanese_performer_candidate_folds_onto_the_localised_entity(self):
         """r18dev 给日文名，账本规范名多已本地化成中文，而日文名早登记为别名。
