@@ -135,7 +135,7 @@
   .entitycollectionhead{align-items:flex-start;flex-direction:column}
   .entitycollectionhead .sorts{width:100%;margin-left:0;padding-bottom:2px}
   .entitycollectionhead .sorts button{min-height:36px}
-  .playlistpage>header{align-items:stretch;flex-direction:column}.playlistcreate input{min-width:0;width:100%}.playlistcreate label{flex:1 1 100%}.playlistcard{grid-template-columns:92px minmax(0,1fr)}.playlistactions{justify-content:flex-start;overflow-x:auto}.playlistactions button{white-space:nowrap}
+  .playlistpage>header{align-items:stretch;flex-direction:column}.playlistcreate label{max-width:none}.playlistcreate input{min-width:0}.playlistcard{grid-template-columns:92px minmax(0,1fr)}.playlistactions{justify-content:flex-start;overflow-x:auto}.playlistactions button{white-space:nowrap}
   .fb{width:100%}.fb button{flex:1 1 0;min-width:38px}
   /* 关注详情只有三四个动作键，撑满一行就是四个大得离谱的方块。 */
   .fb.followdetailactions{width:max-content;max-width:100%}

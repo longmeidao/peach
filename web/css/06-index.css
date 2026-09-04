@@ -30,6 +30,8 @@ body.entity-open .index{overflow-x:visible}
 .tagmodes{display:flex;gap:4px;padding:3px;border:1px solid var(--line-soft);border-radius:var(--surface-radius);background:var(--surface)}
 .tagmodes button{border:0;border-radius:var(--control-radius);background:transparent;color:var(--muted);padding:6px 10px;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
 .tagmodes button svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.8}
+/* 「Aa」是 1.4:1 的字形，宽高都锁 15px 只能按宽缩，画出来比邻座矮一截。 */
+.tagmodes button svg.iconwide{width:auto}
 .tagmodes button:hover{color:var(--ink)}
 .tagmodes button[aria-pressed="true"]{background:var(--hover);color:var(--ink)}
 .tagfilters{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 18px}

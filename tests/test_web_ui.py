@@ -5012,7 +5012,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks("$('#iClose').onclick")
 
     def test_entity_and_follow_pages_share_round_video_image_buttons(self):
-        self.assertPageContains('id="i-pics" viewBox="0 0 16 16" fill="currentColor" stroke="none"')
+        self.assertPageContains('id="i-pics" viewBox="-1.6 -1.6 19.2 19.2" fill="currentColor" stroke="none"')
         self.assertPageContains('export function mediaViewButtonsHtml({')
         self.assertPageContains('class="mediaviewbutton" type="button" data-media-view="${esc(value)}"')
         self.assertPageContains("const mediaToggle=photoCount?mediaViewButtonsHtml({active:mediaSelected?'photos':'videos'")
@@ -5104,10 +5104,69 @@ class WebUiSourceTests(unittest.TestCase):
         # 剩下的那一处 list-filter 是真的筛选，不能一起换掉。
         self.assertPageContains("${icon('list-filter')}<span data-srcfilter-label>")
         for symbol in ("text-aa", "playlist"):
-            self.assertPageContains(
-                f'<symbol id="i-{symbol}" viewBox="0 0 256 256" fill="currentColor" stroke="none">')
+            self.assertRegex(
+                self.page,
+                rf'<symbol id="i-{symbol}" viewBox="[-\d. ]+" fill="currentColor" stroke="none">')
         self.assertPageContains("Phosphor 2.1.1 regular, MIT")
         self.assertPageLacks("i-a-large-small")
+
+    def test_mixed_icon_sets_land_on_one_optical_grid(self):
+        """同样 15px 要画得一样大，靠的是把内容外框补到 Lucide 的 20/24 活区。
+
+        每套图标在自己画格里留的白不一样：Phosphor 的框是 256、Health Icons 是 24、
+        自绘的 pics 是 16 且满格出血。照抄 viewBox 的结果是 pics 比邻座大两成、
+        Aa 矮一截。这几个框是量出内容外框后算的，换版本时由生成脚本重放。
+        """
+        for symbol, box in (
+                ("pics", "-1.6 -1.6 19.2 19.2"),
+                ("text-aa", "-7.3 32.8 262.5 182.9"),
+                ("playlist", "10.4 10.5 259.2 259.2"),
+                ("sperm", "1.5 1.2 21.2 21.2"),
+                ("brand-x", "-0.9 -0.9 25.9 25.9")):
+            self.assertPageContains(f'<symbol id="i-{symbol}" viewBox="{box}"')
+        # 框由生成脚本负责重放：`npm run vendor:web` 每次都写出同一份。
+        generator = (Path(__file__).resolve().parents[1]
+                     / "scripts" / "vendor_web_dependencies.mjs").read_text(encoding="utf-8")
+        self.assertIn('viewBox: "-7.3 32.8 262.5 182.9"', generator)
+        self.assertIn('viewBox: "10.4 10.5 259.2 259.2"', generator)
+        self.assertIn('const SPERM_VIEWBOX = "1.5 1.2 21.2 21.2";', generator)
+
+    def test_a_wide_glyph_gets_a_wide_slot_instead_of_being_shrunk_to_fit(self):
+        """1.4:1 的字形锁死方形槽位只能按宽缩，画出来就比满格的邻座矮一截。
+
+        外层 `<svg>` 的 viewBox 也得跟着 symbol 的比例，否则 `use` 仍旧 meet 进
+        24×24 的方框，把 symbol 那侧的宽框白改了。宽度交给 CSS 按高推。
+        """
+        self.assertPageContains("const WIDE_ICONS={'text-aa':1.435};")
+        self.assertPageContains(
+            "const ratio=WIDE_ICONS[name],classes=[ratio?'iconwide':'',cls].filter(Boolean).join(' ');")
+        self.assertPageContains(
+            "const box=ratio?`0 0 ${(24*ratio).toFixed(2)} 24`:'0 0 24 24';")
+        self.assertPageContains(".tagmodes button svg.iconwide{width:auto}")
+
+    def test_plain_text_inputs_share_one_token_so_the_button_beside_them_matches(self):
+        """控件高度只有一档：输入框 38px，同一行的按钮照抄这个数。
+
+        窄屏那条 `font-size:16px!important` 会把没写死高度的输入框抬 3px，旁边的
+        按钮不动，一行里两个控件差一截；播放列表那张表还因为 `flex:1 1 100%`
+        把提交键顶到下一行。纯文本输入框全站共用 `.geist-input`。
+        """
+        self.assertPageContains(".geist-input{box-sizing:border-box;width:100%;min-width:0;height:38px;")
+        self.assertPageContains(".playlistcreate button{height:38px}")
+        self.assertPageContains(".faliasform .fbtn{height:38px;min-height:38px}")
+        self.assertPageContains(".playlistcreate label{display:grid;gap:5px;color:var(--muted);"
+                                "font-size:var(--fs-xs);flex:1 1 200px;max-width:320px}")
+        self.assertPageLacks(".playlistcreate label{flex:1 1 100%}")
+        # 自己拼内边距的那几处已经并入 token，别再冒出第二份。
+        self.assertPageLacks(".playlistcreate input,.playlistmeta input{min-width:220px;")
+        self.assertPageLacks(".faliasform input{min-width:0;height:34px;")
+        for needle in (
+                '<label>名称<input class="geist-input" name="name"',
+                '<label>新播放列表<input class="geist-input" name="name"',
+                '<input class="geist-input" data-playlist-name',
+                '<input class="geist-input" name="canonical"',
+                '<input class="geist-input" name="alias"'):
+            self.assertPageContains(needle)
 
     def test_an_online_tag_opens_the_follow_page_not_a_catalog_filter(self):
         """在线标签标注的是还没入库的在线更新，拿去筛目录必然一条不中。"""
