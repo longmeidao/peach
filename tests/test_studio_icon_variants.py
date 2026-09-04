@@ -435,13 +435,21 @@ class LogoSourceTests(unittest.TestCase):
         """同一个厂牌落进两张表时，谁盖谁全看代码顺序——那是看不出来的差别。"""
         self.assertEqual(set(self.original) & set(MODULE.WORDMARK_SOURCES_BY_SAFE), set())
 
+    def test_no_two_keys_collapse_onto_one_file_name(self):
+        """键写的是账本 canonical_name。同一家的别名写法再写一条，`..._BY_SAFE` 会把
+        两条折成一个键，谁盖谁全看字典顺序，而两条指向的 URL 未必是同一张图。"""
+        for table in (MODULE.LOGO_SOURCES, MODULE.WORDMARK_SOURCES):
+            with self.subTest(table=len(table)):
+                keys = [MODULE.safe_name(name) for name in table]
+                self.assertEqual(sorted(keys), sorted(set(keys)))
+
     def test_the_expo_directory_is_the_source_for_the_studios_with_no_image(self):
         """用户 2026-09-04 指定 jae.tokyo：名录每届各带一套厂商自己交的 logo。
 
         2016 那届只有图没有名字，认不出是谁家的，所以表里没有 jae2016。
         """
         expo = [url for url in MODULE.LOGO_SOURCES.values() if "jae.tokyo" in url]
-        self.assertEqual(len(expo), 26)
+        self.assertEqual(len(expo), 24)
         self.assertEqual([url for url in expo if "jae2016" in url], [])
         for url in expo:
             with self.subTest(url=url):
@@ -450,8 +458,7 @@ class LogoSourceTests(unittest.TestCase):
     def test_the_mousouzoku_directory_supplies_square_logos_not_wordmarks(self):
         """妄想族名录给的是 200×200 真方标，所以进这一张表而不是字标那张。
 
-        `AVS collector's` 在账本里直撇号与弯撇号各存了一个实体，两种写法过
-        `safe_name` 落到同一个键，一条覆盖两个。
+        `AVS collector's` 的弯撇号写法是别名，过 `safe_name` 落到同一个键。
         """
         directory = [url for url in MODULE.LOGO_SOURCES.values() if "mousouzoku-av" in url]
         self.assertEqual(len(directory), 3)

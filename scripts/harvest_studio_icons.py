@@ -98,26 +98,25 @@ MIN_LOGO_SHORT_EDGE = 96
 #:
 #: 剩下 26 条来自 jae.tokyo（Japan Adult Expo 2014／2015／2017 的参展厂牌名录），
 #: 用户 2026-09-04 指定的来源。名录每届各带一套厂商 logo：2017 是 320×320，2015 是
-#: 188×188，2014 是 270×180，同一家出现在多届时取像素最多的那一届。名字对不上却是
-#: 同一家的按厂牌自称收在这里（`ムーディーズ` 的名录条目写作 `MOODYZ`），2016 那届
-#: 只有图没有名字，认不出是谁家的，不取。
+#: 188×188，2014 是 270×180，同一家出现在多届时取像素最多的那一届。键一律写账本
+#: canonical_name，名录上厂牌自称的写法只用来认人：名录写 `ムーディーズ`、账本写
+#: `MOODYZ`，落盘名跟账本走。2016 那届只有图没有名字，认不出是谁家的，不取。
 #: 这 26 家在账本里一张图都没有，且绝大多数连一条 official／catalog 链接都没有——
 #: favicon 那条路走不到它们，所以小位也从这一张烤（见 `icon_from_logo`）。
 LOGO_SOURCES: dict[str, str] = {
     "FC2-PPV": "https://images.seeklogo.com/logo-png/42/1/fc2-logo-png_seeklogo-429409.png",
     "ラグジュTV": "http://www.jae.tokyo/jae2017/images/maker/maker_image/036.png",
     "BAZOOKA": "http://www.jae.tokyo/jae2017/images/maker/maker_image/009.png",
-    "プレステージ": "http://www.jae.tokyo/jae2017/images/maker/maker_image/023.png",
+    "Prestige": "http://www.jae.tokyo/jae2017/images/maker/maker_image/023.png",
     "JET Eizo": "http://www.jae.tokyo/jae2017/images/maker/maker_image/042.png",
-    "ムーディーズ": "http://www.jae.tokyo/jae2017/images/maker/maker_image/054.png",
+    "MOODYZ": "http://www.jae.tokyo/jae2017/images/maker/maker_image/054.png",
     "MARRION": "http://www.jae.tokyo/jae2017/images/maker/maker_image/050.png",
     "V&R PRODUCE": "http://www.jae.tokyo/jae2014/exhibitor/images/logo/vr_logo.jpg",
-    "エスワン ナンバーワンスタイル": "http://www.jae.tokyo/jae2017/images/maker/maker_image/053.png",
+    "S1 NO.1 STYLE": "http://www.jae.tokyo/jae2017/images/maker/maker_image/053.png",
     "センタービレッジ": "http://www.jae.tokyo/jae2015/images/maker/08_center@vllage.png",
     "DOC": "http://www.jae.tokyo/jae2017/images/maker/maker_image/025.png",
     "MAXING": "http://www.jae.tokyo/jae2014/exhibitor/images/logo/MAXING_logo.jpg",
-    "SODクリエイト": "http://www.jae.tokyo/jae2015/images/maker/11_sod.png",
-    "V＆R PRODUCE": "http://www.jae.tokyo/jae2014/exhibitor/images/logo/vr_logo.jpg",
+    "SOD Create": "http://www.jae.tokyo/jae2015/images/maker/11_sod.png",
     "million": "http://www.jae.tokyo/jae2017/images/maker/maker_image/011.png",
     "Baltan": "http://www.jae.tokyo/jae2014/exhibitor/images/logo/baltan_logo.jpg",
     "BeFree": "http://www.jae.tokyo/jae2015/images/maker/17_befree.png",
@@ -126,10 +125,9 @@ LOGO_SOURCES: dict[str, str] = {
     "Ranmaru": "http://www.jae.tokyo/jae2015/images/maker/21_ran.png",
     "TEPPAN": "http://www.jae.tokyo/jae2014/exhibitor/images/logo/teppan_logo.jpg",
     "kira*kira": "http://www.jae.tokyo/jae2014/exhibitor/images/logo/kirakira_logo.jpg",
-    "kira☆kira": "http://www.jae.tokyo/jae2014/exhibitor/images/logo/kirakira_logo.jpg",
     "ゲッツ！！ボンボン/妄想族": "http://www.jae.tokyo/jae2017/images/maker/maker_image/029.png",
     "シロウトTV": "http://www.jae.tokyo/jae2017/images/maker/maker_image/034.png",
-    "プレミアム": "http://www.jae.tokyo/jae2015/images/maker/27_premium.png",
+    "PREMIUM": "http://www.jae.tokyo/jae2015/images/maker/27_premium.png",
     "俺の素人": "http://www.jae.tokyo/jae2017/images/maker/maker_image/018.png",
     # 妄想族自家发行目录 `mousouzoku-av.com/maker/list/<50音>/`（用户 2026-09-04 指定），
     # 213 家一律 `contents/maker/id<N>/logo_l.jpg`、200×200 真方标——这一位要的正是方的，
@@ -138,8 +136,8 @@ LOGO_SOURCES: dict[str, str] = {
     # 名录写日文、账本写罗马字（`Asia/妄想族` 对 `Asia / Mousouzoku`），按斜杠左半对。
     "ABC / Mousouzoku": "https://www.mousouzoku-av.com/contents/maker/id001/logo_l.jpg",
     "Asia / Mousouzoku": "https://www.mousouzoku-av.com/contents/maker/id003/logo_l.jpg",
-    # 账本里这家存了两个实体，直撇号与弯撇号各一份（5562／8606，各 6 部）。两种写法过
-    # `safe_name` 都落到 `AVS_collector_s`，所以这一条同时覆盖两个——合并之前也不缺图。
+    # 直撇号是账本 canonical_name 的写法；弯撇号那一份是别名，过 `safe_name` 同样落到
+    # `AVS_collector_s`，按哪一种写都取得到同一个文件。
     "AVS collector's": "https://www.mousouzoku-av.com/contents/maker/id358/logo_l.jpg",
 }
 
