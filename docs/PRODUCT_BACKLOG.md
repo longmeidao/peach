@@ -66,4 +66,4 @@
 25. 其他厂牌官网的厂标与演员资料广度扫描（SOD、FALENO、Attackers、S1、Moodyz 等），用户 2026-09-04 定为「先做 b 看效果」之后的下一轮。
 26. 用 javtiful 的 `/ja/actress/<slug>` 补演员的罗马字↔日文配对：315 页约 7560 位，切语言前缀就出日文名。厂牌名不随语言切换，这条只服务演员别名。
 27. 37 位演员在 javdb 上只有日文名（`同形`），另有 5 位未取得，中文名要换来源：javtiful 的 `/ja/actress/<slug>`（第 26 条）或 javdatabase 的 idol 页。复核产物 `peach-data/review/javdb-cn-names-20260904.csv` 逐行带 verdict 和证据，可直接筛。
-28. 复核 `peach-data/review/composite-names-20260904.csv` 里 56 条带括号的名字：creator 规范名 35 条（`Egami(えがみ)` 这类读音可拆，`快慢扳机（接稿中）`、`幼月月@一日目(土)東オ54a`、`kitty(1)` 这类不是名字）、series 19 条（括号里是厂牌消歧，拆了会把三个 `AV DEBUT` 撞成一个）、studio 1 条 `プレステージプレミアム(PRESTIGEPREMIUM)`（英文可拆）、performer 规范名 1 条 `Mana(23)`。同一份 CSV 里 575 条 tag 是角色的作品出处消歧，不在此列、不要动。
+28. `peach-data/review/composite-names-20260904.csv` 里还剩 28 条 creator 规范名带括号，括号里是读音或罗马音（`Egami(えがみ)`、`永地(eichi)`、`猫屋(NEKOYA)`），用户定了不拆——它们不像艺名那样各自独立，是同一个名字的注音。同一份 CSV 里 575 条 tag 是角色的作品出处消歧，10 条 series 括号里是厂牌或载体消歧（拆了会把三个 `AV DEBUT` 撞成一个），都不要动。剩下真正待判的只有 performer 规范名 `Mana(23)` 一条：数字是去重后缀还是名字的一部分要看源站。
