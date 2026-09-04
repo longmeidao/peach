@@ -8,18 +8,22 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import io
+import os
 import sqlite3
 import tempfile
 import unittest
 from contextlib import redirect_stdout
-from pathlib import Path
+from dataclasses import replace
+from pathlib import Path, PureWindowsPath
 from unittest import mock
 
-from peach import cli, settings_file
+from peach import cli, onboarding, settings_file
 from peach.migrations import plan, upgrade
 
 ROOT = Path(__file__).resolve().parents[1]
 MIGRATIONS = ROOT / "migrations"
+
+HAS_HTTP_DEPS = all(importlib.util.find_spec(name) for name in ("fastapi", "httpx"))
 
 
 def load_script(name: str):
@@ -214,6 +218,264 @@ class InitCommandTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(database.read_bytes(), b"not really a database")
         self.assertIn("--from-existing", output)
+
+
+class InteractiveInitTests(unittest.TestCase):
+    """`peach init` 不带参数、stdin 是终端时的问答流。
+
+    答案脚本化、平台注入：Windows 形态与 POSIX 形态各走一条，不看测试机自己是什么。
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name).resolve()
+        self.data_root = self.root / "peach-data"
+        self.home = self.root / "home"
+        self.home.mkdir()
+        self.media = self.root / "media"
+        (self.media / "sub").mkdir(parents=True)
+        (self.media / "sub" / "a.mp4").write_bytes(b"0" * 10)
+        (self.media / "b.jpg").write_bytes(b"1")
+        patcher = mock.patch.object(cli.certs, "bootstrap_certificates")
+        self.certs = patcher.start()
+        self.addCleanup(patcher.stop)
+        # 第一题的默认值要落在临时目录里，回车接受默认才不会碰真实数据根。
+        env = mock.patch.dict(os.environ, {"PEACH_DATA_ROOT": str(self.data_root)})
+        env.start()
+        self.addCleanup(env.stop)
+
+    def _run(self, answers, *, windows):
+        queue = list(answers)
+        prompts: list[str] = []
+
+        def ask(prompt: str, default: str) -> str:
+            prompts.append(prompt)
+            return queue.pop(0)
+
+        output = io.StringIO()
+        with redirect_stdout(output):
+            code = cli._init_interactive(ask, windows=windows, home=self.home)
+        return code, output.getvalue(), prompts
+
+    def _ledger_paths(self):
+        connection = sqlite3.connect(self.data_root / "database" / "ledger.db")
+        try:
+            return sorted(row[0] for row in connection.execute("SELECT path FROM asset"))
+        finally:
+            connection.close()
+
+    def _loaded(self):
+        return settings_file.load_config(environ={"PEACH_DATA_ROOT": str(self.data_root)})
+
+    def test_windows_flow_declares_the_directory_and_scans_it(self):
+        code, output, prompts = self._run(["", str(self.media), "", "", "", ""], windows=True)
+        self.assertEqual(code, 0)
+        self.assertEqual(len(prompts), 6)
+        self.assertTrue(prompts[-1].startswith("现在扫描 "))
+        loaded = self._loaded()
+        self.assertTrue(loaded.present)
+        self.assertEqual(loaded.locations, {"local": str(self.media)})
+        self.assertEqual(loaded.mounts, {})
+        self.assertEqual((loaded.server.host, loaded.server.port, loaded.server.mdns_name),
+                         ("127.0.0.1", 8900, "peach"))
+        self.assertFalse(loaded.replication.enabled)
+        for key in settings_file.DIRECTORY_KEYS:
+            self.assertTrue((self.data_root / key).is_dir(), key)
+        self.certs.assert_called_once()
+        # 账本里的路径就是本机路径，每一行都指向真实文件。
+        self.assertEqual(self._ledger_paths(),
+                         sorted([str(self.media / "b.jpg"), str(self.media / "sub" / "a.mp4")]))
+        self.assertIn("✓ local: 2 文件", output)
+        self.assertIn("下一步", output)
+        self.assertIn("扫描结果：", output)
+        self.assertNotIn("115", (self.data_root / "config.toml").read_text(encoding="utf-8"))
+
+    def test_posix_flow_keeps_the_ledger_shape_and_mounts_the_directory(self):
+        code, output, _ = self._run(["", str(self.media), "2", "9443", "peach-two", ""],
+                                    windows=False)
+        self.assertEqual(code, 0)
+        loaded = self._loaded()
+        self.assertEqual(loaded.locations, {"local": r"R:\media"})
+        self.assertEqual(loaded.mounts, {"local": str(self.media)})
+        self.assertEqual((loaded.server.host, loaded.server.port, loaded.server.mdns_name),
+                         ("0.0.0.0", 9443, "peach-two"))
+        self.assertIn("本机挂载点", output)
+        paths = self._ledger_paths()
+        self.assertEqual(paths, [r"R:\media\b.jpg", r"R:\media\sub\a.mp4"])
+        # 读取侧按同一套规则翻回去：声明根后的层级接到挂载点上。
+        for path in paths:
+            tail = PureWindowsPath(path).relative_to(PureWindowsPath(r"R:\media")).parts
+            self.assertTrue(Path(loaded.mounts["local"]).joinpath(*tail).is_file(), path)
+
+    def test_an_invalid_media_directory_is_asked_again(self):
+        missing = self.root / "nope"
+        code, output, prompts = self._run(
+            ["", str(missing), str(self.media), "", "", "", "n"], windows=True)
+        self.assertEqual(code, 0)
+        self.assertEqual(prompts.count("本地媒体目录（来源 local，必须已存在）"), 2)
+        self.assertIn("目录不存在", output)
+        self.assertFalse(missing.exists(), "问答不替人建媒体目录")
+
+    def test_three_bad_answers_abort_before_anything_is_written(self):
+        with self.assertRaises(SystemExit) as caught:
+            self._run(["", "/nope1", "/nope2", "/nope3"], windows=True)
+        self.assertIn("3 次", str(caught.exception))
+        self.assertIn("没有写任何文件", str(caught.exception))
+        self.assertFalse(self.data_root.exists())
+
+    def test_the_scan_can_be_declined(self):
+        code, output, _ = self._run(["", str(self.media), "", "", "", "n"], windows=True)
+        self.assertEqual(code, 0)
+        self.assertEqual(self._ledger_paths(), [])
+        self.assertNotIn("扫描结果", output)
+        self.assertIn("下一步", output)
+
+    def test_an_existing_settings_file_is_not_overwritten(self):
+        self.data_root.mkdir()
+        (self.data_root / "config.toml").write_text("[server]\nport = 9100\n", encoding="utf-8")
+        code, output, _ = self._run(["", str(self.media), "", "", ""], windows=True)
+        self.assertEqual(code, 3)
+        self.assertIn("已存在", output)
+        self.assertEqual((self.data_root / "config.toml").read_text(encoding="utf-8"),
+                         "[server]\nport = 9100\n")
+
+    @unittest.skipUnless(HAS_HTTP_DEPS, "需要 fastapi 与 httpx")
+    def test_a_config_declaring_only_local_serves_health_items_and_sources(self):
+        """只声明 `local` 的设置文件要能直接起服务：没有 115/pikpak 不是错误。"""
+        import asyncio
+
+        import httpx
+
+        from peach import routes_api, web_resource_sync
+        from peach.api import create_app
+        from peach.config import PeachSettings
+        from peach.platform import translate_roots
+
+        self._run(["", str(self.media), "", "", "", ""], windows=True)
+        loaded = self._loaded()
+        settings = PeachSettings(
+            db_path=loaded.directory("database") / "ledger.db", configured=True, token="secret",
+            allowed_media_roots=translate_roots(tuple(loaded.locations.values())),
+        )
+
+        async def probe():
+            app = create_app(settings)
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),
+                                         base_url="http://test") as client:
+                health = await client.get("/healthz")
+                items = await client.get("/api/items?limit=10", headers={"Cookie": "tok=secret"})
+                sources = await client.get("/api/sources", headers={"Cookie": "tok=secret"})
+                return health, items, sources
+
+        with mock.patch.object(routes_api, "LOCATION_ROOT_DECLARATIONS", dict(loaded.locations)), \
+                mock.patch.object(web_resource_sync, "LOCATION_ROOT_DECLARATIONS",
+                                  dict(loaded.locations)):
+            health, items, sources = asyncio.run(probe())
+        self.assertEqual(health.status_code, 200)
+        self.assertEqual(items.status_code, 200)
+        self.assertGreaterEqual(items.json()["total"], 1, "扫进去的本地资产要能列出来")
+        self.assertEqual(sources.status_code, 200)
+        self.assertEqual([row["location"] for row in sources.json()["sources"]], ["local"])
+        self.assertTrue(web_resource_sync.source_is_online("local"))
+        self.assertFalse(web_resource_sync.source_is_online("115"))
+
+
+class InitDispatchTests(unittest.TestCase):
+    """问答只在「不带任何参数且 stdin 是终端」时进入；其余一律走非交互路径。"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name).resolve() / "peach-data"
+        patcher = mock.patch.object(cli, "_init_interactive", return_value=0)
+        self.interactive = patcher.start()
+        self.addCleanup(patcher.stop)
+        certs = mock.patch.object(cli.certs, "bootstrap_certificates")
+        certs.start()
+        self.addCleanup(certs.stop)
+
+    def _run(self, argv, *, tty):
+        with mock.patch.object(onboarding, "is_interactive", return_value=tty), \
+                redirect_stdout(io.StringIO()):
+            return cli.main(argv)
+
+    def test_bare_init_on_a_terminal_enters_the_interview(self):
+        self.assertEqual(self._run(["init"], tty=True), 0)
+        self.interactive.assert_called_once_with()
+
+    def test_bare_init_without_a_terminal_stays_non_interactive(self):
+        with mock.patch.dict(os.environ, {"PEACH_DATA_ROOT": str(self.root)}):
+            self.assertEqual(self._run(["init"], tty=False), 0)
+        self.interactive.assert_not_called()
+        self.assertTrue((self.root / "config.toml").is_file())
+
+    def test_any_argument_or_no_input_stays_non_interactive(self):
+        self.assertEqual(self._run(["init", "--data-root", str(self.root)], tty=True), 0)
+        self.assertEqual(
+            self._run(["init", "--data-root", str(self.root), "--no-input", "--force"], tty=True), 0)
+        self.interactive.assert_not_called()
+        loaded = settings_file.load_config(environ={"PEACH_DATA_ROOT": str(self.root)})
+        # 非交互路径的形状不变：三个来源的默认声明根照旧写出。
+        self.assertEqual(set(loaded.locations), {"local", "115", "pikpak"})
+
+
+class ScanCommandTests(unittest.TestCase):
+    """`peach scan <来源ID> [根目录]`：根目录省略时取设置文件里的声明根。"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name).resolve()
+        self.db = self.root / "ledger.db"
+        upgrade(self.db, MIGRATIONS)
+        self.media = self.root / "media"
+        (self.media / "sub").mkdir(parents=True)
+        (self.media / "sub" / "a.mp4").write_bytes(b"0")
+        (self.media / "b.jpg").write_bytes(b"1")
+        config = settings_file.load_config(environ={}, strict=False)
+        fixed = replace(config, locations={"local": str(self.media)})
+        for target in (mock.patch.object(settings_file, "active", lambda: fixed),
+                       mock.patch.object(cli, "location_mounts", lambda: {}),
+                       mock.patch.object(cli, "SETTINGS_ERROR", None)):
+            target.start()
+            self.addCleanup(target.stop)
+
+    def _run(self, argv):
+        output = io.StringIO()
+        with redirect_stdout(output):
+            code = cli.main(argv)
+        return code, output.getvalue()
+
+    def _count(self):
+        connection = sqlite3.connect(self.db)
+        try:
+            return connection.execute("SELECT COUNT(*) FROM asset").fetchone()[0]
+        finally:
+            connection.close()
+
+    def test_root_defaults_to_the_declared_root(self):
+        code, output = self._run(["scan", "local", "--db", str(self.db)])
+        self.assertEqual(code, 0)
+        self.assertIn("✓ local: 2 文件", output)
+        self.assertEqual(self._count(), 2)
+
+    def test_an_explicit_subdirectory_is_scanned_alone(self):
+        code, _ = self._run(["scan", "local", str(self.media / "sub"), "--db", str(self.db)])
+        self.assertEqual(code, 0)
+        self.assertEqual(self._count(), 1)
+
+    def test_an_undeclared_source_is_refused_and_lists_the_known_ones(self):
+        with self.assertRaises(SystemExit) as caught:
+            self._run(["scan", "nas", "--db", str(self.db)])
+        self.assertIn("nas", str(caught.exception))
+        self.assertIn("local", str(caught.exception))
+        self.assertEqual(self._count(), 0)
+
+    def test_a_missing_ledger_points_at_init(self):
+        code, output = self._run(["scan", "local", "--db", str(self.root / "nope.db")])
+        self.assertEqual(code, 4)
+        self.assertIn("peach init", output)
 
 
 class ReplicationAssemblyTests(unittest.TestCase):

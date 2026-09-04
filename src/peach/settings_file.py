@@ -254,9 +254,13 @@ def _merge(
             "路径填该来源的声明根在本机的落点，例如 "
             "`local = '/mnt/media'`"
         ))
-    locations = dict(DEFAULT_LOCATION_ROOTS)
-    locations.update(
-        _string_map(_table(media, _LOCATIONS_KEY, path), path, "media.locations."))
+    # 文件里写了 `[media.locations]` 就以它为准：`peach init` 的问答只声明用户给过的
+    # 来源，内建默认那三个示例盘符不能从旁边混进来，否则陌生人的机器上会多出两个
+    # 永远脱盘的来源。没写这张表才退回内建默认。
+    if _LOCATIONS_KEY in media:
+        locations = _string_map(_table(media, _LOCATIONS_KEY, path), path, "media.locations.")
+    else:
+        locations = dict(DEFAULT_LOCATION_ROOTS)
     mounts = _string_map(_table(media, _MOUNTS_KEY, path), path, "media.mounts.")
     unknown_mounts = sorted(set(mounts) - set(locations))
     if unknown_mounts:
