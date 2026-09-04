@@ -74,7 +74,8 @@ class DependencyPolicyTests(unittest.TestCase):
         manifest = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))
         self.assertTrue(manifest["private"])
         versions = manifest["devDependencies"]
-        self.assertEqual(set(versions), {"healthicons", "lucide-static", "swiper", "video.js"})
+        self.assertEqual(set(versions), {"@phosphor-icons/core", "healthicons",
+                                         "lucide-static", "swiper", "video.js"})
         for version in versions.values():
             self.assertRegex(version, r"^\d+\.\d+\.\d+$")
 
@@ -86,6 +87,7 @@ class DependencyPolicyTests(unittest.TestCase):
         self.assertIn(f'/vendor/videojs/{versions["video.js"]}/video.min.js', app)
         self.assertIn(f"Lucide static {versions['lucide-static']}", index)
         self.assertIn(f"Health Icons {versions['healthicons']}", index)
+        self.assertIn(f"Phosphor {versions['@phosphor-icons/core']} regular", index)
         self.assertIn(f"/vendor/swiper/{versions['swiper']}/", app)
 
     def test_automation_monitors_all_dependency_manifests(self):
