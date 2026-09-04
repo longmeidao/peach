@@ -447,6 +447,21 @@ class LogoSourceTests(unittest.TestCase):
             with self.subTest(url=url):
                 self.assertRegex(url, r"^http://www\.jae\.tokyo/jae201[457]/")
 
+    def test_the_mousouzoku_directory_supplies_square_logos_not_wordmarks(self):
+        """妄想族名录给的是 200×200 真方标，所以进这一张表而不是字标那张。
+
+        `AVS collector's` 在账本里直撇号与弯撇号各存了一个实体，两种写法过
+        `safe_name` 落到同一个键，一条覆盖两个。
+        """
+        directory = [url for url in MODULE.LOGO_SOURCES.values() if "mousouzoku-av" in url]
+        self.assertEqual(len(directory), 3)
+        for url in directory:
+            with self.subTest(url=url):
+                self.assertRegex(
+                    url, r"^https://www\.mousouzoku-av\.com/contents/maker/id\d+/logo_l\.jpg$")
+        self.assertEqual(MODULE.safe_name("AVS collector's"),
+                         MODULE.safe_name("AVS collector’s"))
+
     def test_fc2_is_the_registered_logo_source(self):
         """用户 2026-09-03 指定的是 seeklogo 的 429409（600×600 方形锁定图）。
 

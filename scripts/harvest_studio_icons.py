@@ -131,6 +131,16 @@ LOGO_SOURCES: dict[str, str] = {
     "シロウトTV": "http://www.jae.tokyo/jae2017/images/maker/maker_image/034.png",
     "プレミアム": "http://www.jae.tokyo/jae2015/images/maker/27_premium.png",
     "俺の素人": "http://www.jae.tokyo/jae2017/images/maker/maker_image/018.png",
+    # 妄想族自家发行目录 `mousouzoku-av.com/maker/list/<50音>/`（用户 2026-09-04 指定），
+    # 213 家一律 `contents/maker/id<N>/logo_l.jpg`、200×200 真方标——这一位要的正是方的，
+    # 不必烤。目录里 173 家挂 妄想族、39 家挂 エマニエル，都是同人／独立厂牌，
+    # 和账本只交出 4 家：`ゲッツ！！ボンボン/妄想族` 已有 jae.tokyo 的图，其余三家在这里。
+    # 名录写日文、账本写罗马字（`Asia/妄想族` 对 `Asia / Mousouzoku`），按斜杠左半对。
+    "ABC / Mousouzoku": "https://www.mousouzoku-av.com/contents/maker/id001/logo_l.jpg",
+    "Asia / Mousouzoku": "https://www.mousouzoku-av.com/contents/maker/id003/logo_l.jpg",
+    # 账本里这家存了两个实体，直撇号与弯撇号各一份（5562／8606，各 6 部）。两种写法过
+    # `safe_name` 都落到 `AVS_collector_s`，所以这一条同时覆盖两个——合并之前也不缺图。
+    "AVS collector's": "https://www.mousouzoku-av.com/contents/maker/id358/logo_l.jpg",
 }
 
 
