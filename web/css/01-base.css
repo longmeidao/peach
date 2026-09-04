@@ -4,7 +4,7 @@
    2026-08-30 按实际画面回执，把 ground 从 #020408 抬到 #080A0D；所有使用
    token 的页面、侧栏、输入与选中面同步生效。 */
 :root{
-  --ground:#FFFFFF; --surface:#F7F8FA; --sunk:#ECEEF2; --hover:#EEF1F5;
+  --ground:#FFFFFF; --surface:#F7F8FA; --sunk:#ECEEF2; --hover:#EEF1F5; --skeleton-sheen:#E1E6EC;
   --line:#D9DDE4; --line-soft:#E8EBF0;
   --ink:#14161A; --ink-2:#454B55; --muted:#767C87;
   /* 蓝只给焦点环、链接、进度／数据和 Toggle 开态；按下／选中态与主动作走 --ink／--ink-2 反相，
@@ -37,7 +37,7 @@
   --sb:#3A3A40; --sb-hover:#55555E;   /* 336 = 168×2，与目标站的模块单位一致 */
 }
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
-  --ground:#080A0D; --surface:#0C0F14; --sunk:#0B0D11; --hover:rgba(255,255,255,.07);
+  --ground:#080A0D; --surface:#0C0F14; --sunk:#0B0D11; --hover:rgba(255,255,255,.07); --skeleton-sheen:rgba(255,255,255,.12);
   --line:#3A3A3D; --line-soft:#2C2C30;
   --ink:#FFFFFF; --ink-2:#C9CDD4; --muted:#9AA0A8;
   --tungsten:#0095F6;
@@ -45,7 +45,7 @@
   --overlay-5:rgba(245,250,255,.05);--border-10:rgba(245,250,255,.10);--border-15:rgba(245,250,255,.15);
   --loupe:#6FD0C8; --keep:#5FB95F; --meter:#E0912F; --drop:#FF5252; --success:#5FB95F; --ambient-opacity:1;}}
 :root[data-theme="dark"]{
-  --ground:#080A0D; --surface:#0C0F14; --sunk:#0B0D11; --hover:rgba(255,255,255,.07);
+  --ground:#080A0D; --surface:#0C0F14; --sunk:#0B0D11; --hover:rgba(255,255,255,.07); --skeleton-sheen:rgba(255,255,255,.12);
   --line:#3A3A3D; --line-soft:#2C2C30;
   --ink:#FFFFFF; --ink-2:#C9CDD4; --muted:#9AA0A8;
   --tungsten:#0095F6;

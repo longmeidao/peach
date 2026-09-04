@@ -1594,7 +1594,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(
             ".countskeleton{display:inline-block;width:150px;height:14px;"
             "border-radius:var(--control-radius);\n"
-            "  background:var(--hover);animation:skeleton-pulse 1.4s ease-in-out infinite}")
+            "  background:var(--hover)}")
         self.assertPageContains(".entitycollectionhead h3 .countskeleton{width:96px}")
         self.assertPageContains("  min-height:var(--sortH);color:var(--ink-2);margin:0 -16px 16px;padding:8px 16px;")
         self.assertPageContains("  min-height:var(--sortH);margin:0 -16px 12px;padding:8px 16px;min-width:0;")
@@ -1605,6 +1605,70 @@ class WebUiSourceTests(unittest.TestCase):
             '.entitycollectionhead[aria-busy="true"] .entitybatch svg{\n'
             "  animation:peach-spinner-linspin .9s linear infinite}")
         self.assertPageContains("@keyframes peach-spinner-linspin{to{transform:rotate(1turn)}}")
+
+    def test_skeletons_shimmer_by_sweeping_instead_of_breathing(self):
+        """微光是横向扫光，不是整块呼吸。
+
+        2026-09-04 实测 vercel.com/geist/skeleton：Geist 不动元素自己的不透明度，而是
+        在 `::after` 上铺一条比容器宽三倍的横向渐变，用 transform 左右扫，容器
+        overflow 裁掉溢出。渐变只在 gray-100 与 gray-200 之间走，明度差两个百分点：
+        微光靠移动被看见，不靠明暗跳变，一屏十几块同时闪不会比内容还抢眼。
+        """
+        self.assertPageContains("@keyframes skeleton-sweep{to{transform:translateX(-50%)}}")
+        self.assertPageContains(
+            "  visibility:visible;border-radius:inherit;\n"
+            "  background:linear-gradient(to right,var(--hover),var(--skeleton-sheen) 50%,var(--hover));\n"
+            "  background-size:50% 100%;\n"
+            "  animation:skeleton-sweep 1.5s ease-in-out infinite reverse}")
+        self.assertPageContains("--skeleton-sheen:rgba(255,255,255,.12);")
+        self.assertPageContains("--skeleton-sheen:#E1E6EC;")
+        self.assertPageLacks("skeleton-pulse", "呼吸已经换成扫光，不留死引用")
+        # 框体（数据管理的操作条、关注管理的头部条）不是待填内容，不参与微光。
+        self.assertPageContains(
+            ".cleanup-skeleton .skeletoncard em::after,\n"
+            ".followmanage-skeleton .skeletoncard i::after{content:none}")
+
+    def test_the_top_bars_get_a_first_paint_skeleton_shaped_like_the_real_thing(self):
+        """顶部三层与标签条的首屏骨架照真实几何画，形状按 Geist 的判据选。
+
+        首屏这两处还没有内容：标签条有固定高度不塌，头像那一排只有 18px 内边距，
+        内容到位时要长到一百多，会把整页往下推一截。骨架直接套 .av/.ring/.nm 与
+        .brandpill、.pill 本身，宽高就是最终内容的宽高，不另算一套；头像因此是圆的
+        （Geist 把 pill 变体指给头像），胶囊是圆角。
+        """
+        self.assertPageContains("function renderBarsLoading(filterState){")
+        self.assertPageContains("  renderBarsLoading(filterState);")
+        self.assertPageContains('<span class="av avskeleton"><span class="ring"></span>')
+        self.assertPageContains(
+            '`<span class="brandpill brandskeleton" style="width:${width}px">'
+            '<span class="mk"></span></span>`')
+        self.assertPageContains('`<span class="pill tagskeleton" style="width:${width}px"></span>`')
+        self.assertPageContains(".avskeleton .ring,.avskeleton .nm{background:var(--hover)}")
+        # 只在还空着时画：导航到已经有内容的页面不是从无到有，不该铺骨架。
+        self.assertPageContains("  if(!tiers.innerHTML){")
+        self.assertPageContains("  if(!tagbar.innerHTML){")
+        self.assertPageContains("  $('#tiers').removeAttribute('aria-busy');")
+        self.assertPageContains("  $('#tagbar').removeAttribute('aria-busy');")
+        # 四枚视图胶囊由 state 决定，加载期间就画成最终样子并接上事件，和排序条同规矩。
+        self.assertPageContains("const viewPillsHtml=filterState=>VIEW_PILLS.map(v=>")
+        self.assertPageContains("    wireViewPills();")
+        # 宽度是定值，随机会让同一次冷启动在两台机器上长得不一样，也没法测。
+        self.assertPageContains("const TAG_SKELETON_WIDTHS=[92,68,104,76,88,64,96,72,100,80,68,92,76,84];")
+
+    def test_refreshing_wraps_the_tag_pills_instead_of_replacing_them(self):
+        """换一批时标签胶囊走 wrap-children 骨架：真实元素留着，用 visibility 藏起来。
+
+        框就是胶囊自己的框，所以零位移；visibility:hidden 的元素同时不可聚焦，正好
+        满足规范里「加载期间不要把可聚焦控件放进骨架」。只盖会变的标签胶囊——四枚
+        视图胶囊由 state 决定，这次请求不改它们。
+        """
+        self.assertPageContains(
+            "body.refreshing #tagbar [data-tag]{visibility:hidden;"
+            "background:var(--hover);border-color:transparent}")
+        self.assertPageContains("body.refreshing #tagbar [data-tag]{position:relative;overflow:hidden}")
+        self.assertPageContains("body.refreshing #tagbar [data-tag]::after{content:'';position:absolute;inset:0;right:-200%;")
+        self.assertPageLacks("body.refreshing #tagbar [data-state]",
+                             "视图胶囊不随这次请求变，不进骨架")
 
     def test_the_profile_collection_head_switches_sort_before_the_request_returns(self):
         """资料页表头与首页同规矩：排序条立刻到位，只有 `视频 · N` 换成骨架。
@@ -4000,7 +4064,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".followmanage-skeleton .skeletoncard:nth-child(1) b{height:38px}")
         # 头部条是框体不是待填内容：跟 .fsechead 一样 56px，不参与呼吸。
         self.assertPageContains(".followmanage-skeleton .skeletoncard i{aspect-ratio:auto;height:56px")
-        self.assertPageContains("border-bottom:1px solid var(--border-10);animation:none}")
+        self.assertPageContains("border-bottom:1px solid var(--border-10)}")
         # 关注更新流仍是同质卡片流，它那张骨架不受影响。
         self.assertPageContains("pageSkeletonHtml(label,{cards:true,className:'follow-content-skeleton'})")
 
