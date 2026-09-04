@@ -3165,10 +3165,46 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("function enterManagementSurface()")
         self.assertPageContains("loadRequestSeq++;listLoading=false;$('#combo').innerHTML=''")
 
-    def test_sidebar_add_controls_have_one_explicit_height(self):
-        self.assertPageContains(".sidebaradd .sidebaraddfield{display:grid;grid-template-columns:auto minmax(0,1fr) auto;width:100%;height:42px;box-sizing:border-box;align-items:center;justify-items:start")
+    def test_sidebar_add_row_wears_the_shared_input_and_primary_button(self):
+        """这一行有三条判据：颜色只走 token、高度只引用 --control-h、主次动作分得开。
+
+        触发器是 listbox 入口，穿 `.geist-input` 那身盒子；右边「添加」是这一屏的主动作，
+        走 `.geist-button.primary`。写死的 `#181a1d` 在浅色主题下是深色控件配浅色面板，
+        而图标键那条基样式一旦兼管这一行，两个控件就得靠三条规则叠回来。
+        """
+        self.assertPageContains("--control-h:38px;")
+        self.assertPageContains(
+            "/* 它是 listbox 触发器，不是按钮：穿输入框那身盒子，"
+            "右边的实心档才是这一屏的主动作。 */")
+        self.assertPageContains(
+            ".sidebaradd .sidebaraddfield{display:grid;"
+            "grid-template-columns:auto minmax(0,1fr) auto;width:100%;height:var(--control-h);"
+            "box-sizing:border-box;align-items:center;justify-items:start;gap:9px;padding:0 11px;"
+            "border:1px solid var(--border-15);border-radius:var(--control-radius);"
+            "background:var(--ground);color:var(--ink);text-align:left;font:inherit;"
+            "cursor:pointer}")
+        self.assertPageContains(
+            ".sidebaradd .sidebaraddfield:hover:not(:disabled){border-color:var(--line)}"
+            ".sidebaradd .sidebaraddfield:disabled{color:var(--muted);cursor:default}")
+        self.assertPageContains(".sidebaradd .geist-button{height:var(--control-h);padding:0 14px}")
+        self.assertPageContains(
+            ".sidebaradd .sidebaraddmenu button{grid-template-columns:auto minmax(0,1fr);"
+            "width:100%;height:var(--control-h);")
         self.assertPageContains(".sidebaraddfield svg:last-child{justify-self:end;color:var(--muted)}")
-        self.assertPageContains(".sidebaradd>button{height:42px;box-sizing:border-box}")
+        self.assertPageContains(
+            '<button type="button" class="geist-button primary" data-sidebar-add')
+        # 「添加」两个字已经把动词说完，前面不挂 plus：判据见
+        # docs/reference-snapshots/vercel-geist-button-icons.md。
+        self.assertPageLacks("${icon('plus')}<span>添加</span>")
+        # 图标键那条基样式只管排序行，不兼管添加行的触发器和主动作。
+        self.assertPageLacks(".sidebaradd button{grid-template-columns:auto auto;")
+        self.assertPageLacks(".sidebaradd>button{")
+        self.assertPageLacks(".sidebarorderrow button,.sidebaradd button{")
+        # 这一行的浮层与控件底色只走 token。
+        self.assertPageLacks("background:#181a1d;box-shadow:0 16px 44px -20px #000}")
+        self.assertPageContains(
+            ".geist-button.primary:disabled{border-color:var(--border-15);"
+            "background:var(--surface);color:var(--muted)}")
 
     def test_edge_and_drawer_share_one_navigation_dispatch(self):
         """窄栏和抽屉各写一份分支时，抽屉那份漏了追更和播放列表。
@@ -5207,7 +5243,7 @@ class WebUiSourceTests(unittest.TestCase):
         按钮不动，一行里两个控件差一截；播放列表那张表还因为 `flex:1 1 100%`
         把提交键顶到下一行。纯文本输入框全站共用 `.geist-input`。
         """
-        self.assertPageContains(".geist-input{box-sizing:border-box;width:100%;min-width:0;height:38px;")
+        self.assertPageContains(".geist-input{box-sizing:border-box;width:100%;min-width:0;height:var(--control-h);")
         self.assertPageContains(".playlistcreate .geist-button{height:38px;padding:0 13px}")
         # 提交键是主动作，实心档由共用的 .geist-button.primary 给，不再本地拼一套描边。
         for label in ("保存 ${mix.items.length} 个视频", "新建并加入", "新建"):
