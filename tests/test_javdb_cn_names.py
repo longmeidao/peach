@@ -231,6 +231,13 @@ class MappingCsvTests(unittest.TestCase):
         self.write({"jp": "深田えいみ", "zh_cn": "深田咏美", "verdict": "ok", "actor_id": "A1"})
         self.assertEqual(self.module.read_mapping_csv(self.path)[0].key, "javdb:A1")
 
+    def test_the_index_points_back_into_the_returned_list(self):
+        """`collect` 拿 `index` 当下标回查。跳过的行也算数就会指到别人身上。"""
+        self.write({"jp": "跳过", "zh_cn": "", "verdict": "同形（站上只有日文名）"},
+                   {"jp": "深田えいみ", "zh_cn": "深田咏美", "verdict": "ok", "actor_id": "A1"})
+        mappings = self.module.read_mapping_csv(self.path)
+        self.assertEqual(mappings[mappings[0].index].jp, "深田えいみ")
+
     def test_a_japanese_glyph_left_by_the_traditional_conversion_is_normalized(self):
         """opencc 转的是繁简，不管日本字形：`滝` 中文写 `泷`。字形不需要外部证据。"""
         self.write({"jp": "滝田あゆ", "zh_cn": "滝田亚由", "verdict": "ok", "actor_id": "A2"})

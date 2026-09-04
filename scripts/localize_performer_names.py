@@ -109,7 +109,7 @@ def read_mapping_csv(path: Path) -> list[ActorMapping]:
     这一步不需要外部证据，也不该等下一轮跑 `localize-kanji` 才补上。
     """
     rows = []
-    for index, record in enumerate(read_rows(path)):
+    for record in read_rows(path):
         if str(record.get("verdict") or "").strip() != "ok":
             continue
         zh_cn = simplify_kanji(str(record.get("zh_cn") or "").strip())
@@ -118,7 +118,9 @@ def read_mapping_csv(path: Path) -> list[ActorMapping]:
             if part.strip()))
         actor = str(record.get("actor_id") or "").strip()
         rows.append(ActorMapping(
-            index=index, jp=str(record.get("jp") or "").strip(), zh_cn=zh_cn,
+            # `index` 是在返回列表里的位置，`collect` 拿它当下标回查。这里会跳过
+            # 判定不是 `ok` 的行，用读入序号就会越界或指到别人。
+            index=len(rows), jp=str(record.get("jp") or "").strip(), zh_cn=zh_cn,
             zh_tw=str(record.get("zh_tw") or "").strip(), keywords=keywords,
             tmdb_id="", verified="", key_hint=f"javdb:{actor}" if actor else ""))
     return rows
