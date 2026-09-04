@@ -1,6 +1,6 @@
 # Peach 产品待办
 
-更新时间：2026-09-04。这里只记录尚未完成或只完成一部分的需求；运行数字以 `peach-data/state/job-status.md` 的自动区块为准。
+更新时间：2026-09-05。这里只记录尚未完成或只完成一部分的需求；运行数字以 `peach-data/state/job-status.md` 的自动区块为准。
 
 ## 已有骨架、尚未完成（6 项）
 
@@ -11,7 +11,7 @@
 5. **厂牌 Logo 补齐与持续校验**：14 个已确认社交 handle 已有内容缓存、provenance、精确/感知哈希、质量与重复门槛及健康报告；仍有 72 个厂牌没有可信 handle，必须继续从官网/公开来源取证，不能猜账号。
 6. **口味证据持续刷新**：ledger 已实时记录搜索、播放、高潮、喜欢/理由、不合口味和稍后看；浏览器历史现可用 SQLite 一致性副本增量进入私有源库，并生成不含 URL/标题的 creator/tag candidate 与聚合报告。旧 2026-08-13 原始包已确认不在 Windows 外置盘；仍需在 Mac 开启 iCloud Safari、完成首次导入，并把两端每周刷新装成系统计划任务。AI 结论不得直接改真相字段。
 
-## 尚未实现（19 项）
+## 尚未实现（23 项）
 
 1. AI Provider 的真实调用、能力协商、Credential Manager 凭据和候选审核 UI。
 2. 剩余单一创作者风格板复核、无标签内容补标。
@@ -33,7 +33,12 @@
 18. 口味导入引导：`/taste` 上传（Takeout ZIP、browserexport 兼容文件）与 `scripts/taste_history.py` 直读本机浏览器库两条路都能用，但没有面向陌生人的文档。需要一页「各浏览器怎么导出、多台设备怎么各自刷新」教程，把脚本折进 `peach` CLI（见第 7 条），并写明定时刷新的安装方式。
 19. README 瘦身：把「依赖维护」「开发」两节移到 `CONTRIBUTING.md`，「目录」并入 `docs/ARCHITECTURE.md`，「主要页面」「关注与候选」压成一张表；README 只留是什么、边界、前置条件、安装、下载、文档入口与许可证。中英两份同步。
 
-合计：**25 项开放需求**，其中 6 项已有骨架，19 项尚未实现。已完成的需求不在这里留痕，去 Git 历史查。
+20. 局域网入口默认无鉴权：`routes_auth._authorized` 在口令为空时整体放行，而托盘 `build_service_specs` 起的正是 `--host 0.0.0.0`（Windows 80、macOS 8900）与局域网 `:443`，三条命令都不带 `--token`；口令只能由 `peach serve --token` 给出，`config.toml` 没有这个字段。于是按 README 装完、用托盘自启动的陌生用户，同网段任何设备都能读整库并调写接口——SECURITY.md 写的「绑定局域网就必须配口令」在自带入口上不成立。要做三件事：非回环监听且无有效口令时**拒绝启动**而不是告警（托盘在后台起服务，告警没人看得到）；`peach init` 生成至少 256 bit 的随机口令存进 `peach-data/secrets/`，不写 `config.toml`、也不以 `--token <口令>` 长期留在进程命令行里；托盘与服务读同一个文件。局域网明文口只做跳转、手机端一次性配对码排在这三件之后。这改的是现有部署的访问方式，实施前要在同一轮拿到用户确认。
+21. 全新安装的自动门槛：现有 `Test` 装的是 `-e ".[build,vision,maintenance-115,naming]"` 全套可选依赖、开着 pip 缓存、只跑单元测试，证明不了「陌生用户按 README 装完能用」。补三条互相独立的冒烟：① minimal source——全新 venv、`--no-cache-dir` 只装默认依赖、`peach init`（连跑两次验幂等）、`migrate status`、**离开仓库根目录**再 `peach serve`，请求 `/healthz`、`/`、`/api/items`，覆盖 3.12／3.14 × Windows／macOS 以及无 FFmpeg／OpenSSL／Node 的机器；② wheel——`python -m build` 后在不 checkout 源码的 job 里装 `dist/*.whl` 走同一条链路，它通过才能去掉 README 的 `-e` 硬要求（依赖第 12 条）；③ artifact-only——只下载刚构建的制品、不 checkout 源码地跑起来（依赖第 15 条）。消费方一律不许 checkout：工作目录会替漏文件的制品兜底，那是假通过。失败场景也要覆盖：数据根不可写、端口被占、账本损坏、未配置媒体目录、无 FFmpeg、非回环监听但无口令、两个 writer 同时起。
+22. `peach doctor` 与分级 `/healthz`：`doctor`（另带 `--json`）逐项报版本、数据根可写性、配置文件合法性、数据库能否打开、schema 版本与待执行迁移、FFmpeg／ffprobe／OpenSSL 路径、挂载点可达性、端口占用、是否处在「局域网暴露但无口令」状态、后台任务最近一次失败；输出脱敏，不带口令、cookie、站点凭据和完整媒体路径。`/healthz` 相应从布尔改成分项状态（`database`／`schema`／`configured`／`ffmpeg`／`media_mounts`／`security`），与第 13 条一起做。
+23. 性能基准：用 SFW 合成数据生成 1k／10k／100k／500k 四档库，nightly 测冷启动到 `/healthz`、目录页与详情页 p95、两字以上搜索 p95、本地 SSD 与网盘挂载的 Range 首字节、空闲 RSS、后台扫描时前台退化倍数、备份期间读请求不失败。门槛用「相对上一次基线下降超过 20%」，不给绝对毫秒数——不同机器不可比。数据集与第 16 条的演示数据集共用。
+
+合计：**29 项开放需求**，其中 6 项已有骨架，23 项尚未实现。已完成的需求不在这里留痕，去 Git 历史查。
 
 ## 待执行的操作（30 项）
 

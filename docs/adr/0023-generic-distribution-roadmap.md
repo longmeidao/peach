@@ -130,3 +130,18 @@ Peach 要发布到 GitHub 供所有人维护与使用。使用形态不变：每
 - 公开后的补漏（同日）：`MachineCoordinateTests` 改成只写形状不点名的门槛（家目录路径、私网 IP、`.local` 主机名、本机账号与主机名运行时派生）；发行名定为 `peach`，目录名 `peach-app` 不变；macOS bundle ID 改中性 ID 由用户定为待办第 28 条。
 - 开箱引导的顺序由用户定：先 CLI 问答（`peach init` 无参数进入问答并可首扫，在 `agent/claude/oss-init-wizard` 分支实施，验收清单见待办第 29 条），再 GUI 引导（托盘首启打开首次运行页升级成的表单，复用同一套逻辑）。
 - 剩余工作只在 `docs/PRODUCT_BACKLOG.md`：独立发行版、口味导入引导、README 瘦身到 `CONTRIBUTING.md` 与 `docs/`、第 28 与 29 条。
+
+### 外部评审的取舍（2026-09-05）
+
+用户带来一份外部模型对本仓库的评审。逐条对过代码后，采纳的四条已进 `docs/PRODUCT_BACKLOG.md`
+第 20 至 23 条（局域网默认鉴权、全新安装冒烟、`peach doctor`、性能基准），其中第 20 条是发布口径下
+唯一真正的缺陷。以下三类不采纳，记在这里是为了不被反复重提：
+
+- **已经是这样，评审读错了**：目录页默认排序用的是按日期取种的 `((a.id * seed) % 99991)` 而不是
+  `ORDER BY RANDOM()`（`RANDOM()` 只在用户显式选「随机」时用）；`/api/items` 已支持 `count=0` 跳过
+  精确总数；索引已按真实 ledger 的查询计划验证过。
+- **方向已定，不重开**：微服务、PostgreSQL、Redis、换前端框架、容器化公网部署，见本 ADR「决策」节
+  与 ADR-0022；Linux 与 Intel Mac 不在支持范围，CI 不加 `macos-*-intel`。
+- **顺手做，不立专项**：`AppContext` 组合根替换 `config.py` 的模块级全局量、拆 `follow_sources.py`
+  一类超大模块、主浏览流从 OFFSET 换 keyset 分页。都成立，但都属于改到那块时一并做，单独立项只会
+  在待办里长期挂着。
