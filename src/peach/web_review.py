@@ -19,6 +19,7 @@ from urllib.parse import quote
 
 from .catalog_rules import (
     collapse_superseded_taste_tags,
+    is_korean_mib_code,
     normalise_code_key,
     superseded_taste_tags,
 )
@@ -351,6 +352,12 @@ def _review_rows(contract: ReviewContract, category: str) -> tuple[list[dict], s
             # 和账本已有的值比一遍，只把真差异留在队列里。实测 43 条候选里 24 条
             # 没有任何新信息：17 条与当前值逐字相同、7 条标签只是顺序不同。
             rows = [row for row in rows if _metadata_row_adds_information(connection, row)]
+            # 韩国 MIB 的番号不适用 JAV 规则，`allows_code` 已经拦在刮削入口。但候选件是
+            # 历史产物，闸门只管以后不再生成，管不了已经落盘的那些：2026-09-04 实测队列里
+            # 还有 49 条（AR 39、JI 10，覆盖 title/studio/series/performers/release_date）。
+            # 这些值全是 JAV 目录站按错番号返回的别的作品，没有一条值得占用人的注意力。
+            rows = [row for row in rows
+                    if not is_korean_mib_code(str(row.get("code") or ""))]
         elif category == "performer_avatars":
             # 候选 CSV 里的 `current_name` 是抓取来源给的罗马音；账本早就有更好的
             # 规范名（`Alice Shaku` 的规范名是 `释爱丽丝`），罗马音本身也已经登记

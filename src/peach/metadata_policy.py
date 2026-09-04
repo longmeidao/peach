@@ -4,7 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Iterable, Mapping, Sequence
 
-from .catalog_rules import is_uncensored_code
+from .catalog_rules import is_korean_mib_code, is_uncensored_code
 
 
 POLICY_VERSION = "metadata-source-policy-v4"
@@ -159,6 +159,11 @@ class MetadataPolicy:
 
     def allows_code(self, code: str, *, include_fc2: bool = False,
                     explicit_sources: bool = False) -> bool:
+        # 韩国 MIB 不适用 JAV 规则，任何 profile 都不问：JAV 目录站对这些番号只会
+        # 返回别的作品，而那份错值一旦落进候选队列，就要靠人一条条认出来。
+        # 这道拦截优先于 profile 与 `--sources`——它不是「这次不想问」，是「问了必错」。
+        if is_korean_mib_code(code):
+            return False
         is_fc2 = str(code or "").upper().startswith("FC2")
         if self.profile == "fc2":
             return is_fc2

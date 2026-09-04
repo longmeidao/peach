@@ -254,6 +254,26 @@ class ReviewQueueTests(unittest.TestCase):
         ])
         self.assertEqual(sorted(self.queue_keys("metadata_fields")), ["EMPTY", "REAL"])
 
+    def test_korean_mib_candidates_never_reach_the_review_queue(self):
+        """韩国 MIB 不适用 JAV 规则，它的候选没有一条值得占用注意力。
+
+        `allows_code` 拦在刮削入口，管的是以后不再生成；候选件是历史产物，闸门管不着。
+        2026-09-04 实测队列里还有 49 条（AR 39、JI 10），值全是 JAV 目录站按错番号返回的
+        **别的作品**，让人一条条认出来正是这道过滤要省掉的事。
+        """
+        self.write_metadata_rows([
+            {"item_key": "MIB-AR", "field": "studio", "current": "",
+             "candidates": ["Attackers"], "code": "AR-301"},
+            {"item_key": "MIB-JI", "field": "release_date", "current": "",
+             "candidates": ["2009-12-05"], "code": "JI-103"},
+            {"item_key": "MIB-WX", "field": "title", "current": "",
+             "candidates": ["某标题"], "code": "WX-017"},
+            # 字母段撞上但不是 MIB 番号形状的必须照常进队列。
+            {"item_key": "REAL", "field": "studio", "current": "",
+             "candidates": ["Faleno"], "code": "ARM-123"},
+        ])
+        self.assertEqual(self.queue_keys("metadata_fields"), ["REAL"])
+
     def test_japanese_performer_candidate_folds_onto_the_localised_entity(self):
         """r18dev 给日文名，账本规范名多已本地化成中文，而日文名早登记为别名。
 

@@ -41,6 +41,25 @@ class MetadataPolicyTests(unittest.TestCase):
             "FC2-PPV-1234567", explicit_sources=True,
         ))
 
+    def test_korean_mib_codes_are_refused_by_every_profile(self):
+        """韩国 MIB 不适用 JAV 规则，任何 profile、任何 `--sources` 都不问。
+
+        这些番号的形状和厂牌番号一样，只有前缀能把它们分出来。放行一次的代价是
+        整批错值落进候选队列，再靠人一条条认出来。
+        """
+        for profile in ("baseline", "censored", "uncensored", "fc2"):
+            policy = resolve_policy(profile=profile)
+            for code in ("WX-017", "AR-301", "JI-103", "ar-301", "AR301"):
+                self.assertFalse(policy.allows_code(code), f"{profile} 放行了 {code}")
+        # 显式点名来源也不能绕过：这不是「这次不想问」，是「问了必错」。
+        self.assertFalse(resolve_policy(sources="javbus").allows_code(
+            "AR-301", explicit_sources=True,
+        ))
+        # 前缀相同但不是 `<字母>-<数字>` 的照常放行，别误伤素人系与真厂牌番号。
+        baseline = resolve_policy(profile="baseline")
+        for code in ("ARM-123", "JILL-002", "300MIUM-1239", "ABW-232"):
+            self.assertTrue(baseline.allows_code(code), f"baseline 误拦了 {code}")
+
     def test_every_field_uses_policy_order_and_explicit_official_metadata(self):
         policy = resolve_policy(profile="censored")
         candidates = [
