@@ -92,7 +92,16 @@ jobs:
         run: |
           git add --intent-to-add -- web/dist
           git diff --exit-code -- web/dist
-      - run: npm --prefix frontend audit --audit-level=high
+      # 与下面 web-vendor 的 audit 同一口径：advisories 端点偶发 503，退避重试三次。
+      - name: npm audit (frontend)
+        shell: bash
+        run: |
+          for attempt in 1 2 3; do
+            npm --prefix frontend audit --audit-level=high && exit 0
+            echo "npm audit 第 ${attempt} 次未成功，60 秒后重试"
+            sleep 60
+          done
+          exit 1
 
   web-vendor:
     name: 固定前端依赖
