@@ -123,7 +123,11 @@ export function skeletonHtml(label='正在读取内容',{className='',variant='p
     ?Array.from({length:Math.max(1,count)},
       ()=>`<span class="skeletoncard"><i></i><s></s><b></b><em></em><u></u></span>`).join('')
     :kind==='dashboard'
-      ?`<span class="skeletondashhero"><i></i><b></b></span>
+      /* 指标带是统计与口味两页真正的第一屏内容，四格的位置和高度都是定死的。
+         骨架从大区开始画，等数据到货再从上面挤进一条 96px 的带子，整页往下跳一次。 */
+      ?`<span class="skeletondashstrip">${Array.from({length:4},
+          ()=>`<span><i></i><b></b><em></em></span>`).join('')}</span>
+        <span class="skeletondashhero"><i></i><b></b></span>
         <span class="skeletondashpanel"><i></i><b></b><em></em></span>
         <span class="skeletondashpanel"><i></i><b></b><em></em></span>`
     :`<span class="skeleton" style="width:38%"></span>

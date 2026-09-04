@@ -1742,6 +1742,55 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertEqual(self.page.count("hideDiscoveryBars();"), 3,
                          "管理页、索引页和中央清理函数各调一次，收起动作本身只写一处")
 
+    def test_the_page_chrome_paints_without_waiting_for_any_request(self):
+        """左侧导航、管理条、标题和面包屑只认 location，不该排在网络请求后面。
+
+        它们挂在 loadSourceStatus().then(buildBars) 那条链上时，实测深链进统计页要等
+        /api/sources 和 /api/facets 共约 585ms 才出现标题，骨架先顶着一个没有标题的
+        空壳。buildManageBar() 内部会一并建左侧导航，所以链外只调它一个。
+        """
+        boot = self.app_js.split("window.addEventListener('popstate',restoreRoute);", 1)[1]
+        self.assertLess(boot.index("buildManageBar();"), boot.index("loadSourceStatus()"),
+                        "管理条与标题要在派发请求之前画完")
+        self.assertNotIn("\nbuildEdge();", boot,
+                         "左侧导航由 buildManageBar() 建，链外不再单独调一次")
+
+    def test_a_deep_link_that_hides_the_home_bars_skips_their_two_queries(self):
+        """首页三条横条的聚合查询只服务首页，深链进管理页时它们的结果没人看。
+
+        /api/facets 冷启动实测 547ms，排在这一页自己的数据前面。要不要跑问屏幕：
+        判断只写在 renderInitialSurfaceLoading() 一处，两边各抄一张路径表迟早对不上。
+        """
+        self.assertPageContains("const wantsDiscoveryBars=()=>$('#tiers').style.display!=='none';")
+        self.assertPageContains("  .then(()=>wantsDiscoveryBars()?buildBars():null)")
+        self.assertPageLacks("  .then(buildBars)")
+        # 回首页时横条要重新有内容：showHomeSurfaces 放开 display，buildBars 在那条路径上补画。
+        self.assertPageContains("$('#tiers').style.display='';$('#tagbar').style.display='';")
+        self.assertPageContains("buildManageBar();paintListTitle();")
+
+    def test_the_dashboard_skeleton_reserves_the_metric_strip_it_stands_in_for(self):
+        """统计与口味两页的第一屏内容是那条指标带，骨架从大区画起会让整页往下跳一次。
+
+        四格的宽高不是新数字：下限 140px、单格 96px、内边距 14/16、间隙 4px 都取自
+        .metricstrip / .tastesummaries，手机档同样露边滚动。
+        """
+        self.assertPageContains(
+            '?`<span class="skeletondashstrip">${Array.from({length:4},\n'
+            "          ()=>`<span><i></i><b></b><em></em></span>`).join('')}</span>")
+        self.assertPageContains(
+            ".skeletondashstrip{display:grid;grid-auto-flow:column;"
+            "grid-auto-columns:minmax(140px,1fr);overflow-x:auto;")
+        self.assertPageContains(
+            ".skeletondashstrip>span{box-sizing:border-box;min-height:96px;min-width:0;"
+            "display:grid;align-content:center;\n  gap:4px;padding:14px 16px;"
+            "border-right:1px solid var(--line-soft)}")
+        self.assertPageContains(
+            "@media(max-width:640px){.skeletondashstrip{grid-auto-columns:minmax(168px,82%)}}")
+        self.assertPageContains(".skeletondashstrip i::after,.skeletondashstrip b::after,"
+                                ".skeletondashstrip em::after,")
+        # 口味页与统计页同一套版式，占位也该是同一张。
+        self.assertPageContains("pageSkeletonHtml('正在读取口味分析',{variant:'dashboard'})")
+
     def test_refreshing_wraps_the_tag_pills_instead_of_replacing_them(self):
         """换一批时标签胶囊走 wrap-children 骨架：真实元素留着，用 visibility 藏起来。
 
