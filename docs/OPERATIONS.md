@@ -9,10 +9,24 @@
 - 设置文件固定是 `<数据根>/config.toml`。数据根按三步找：环境变量 `PEACH_DATA_ROOT`、
   项目根同级（含上溯四层，覆盖主检出、`peach-worktrees/<任务>` 和打包后的 `dist/Peach/_internal`）
   的 `peach-data/`、都没有就是「未配置」。优先级是环境变量 > 设置文件 > 内建默认。
-- 全新机器只跑 `peach init`：建齐 `database`／`generated`／`sources`／`state`／`secrets`／
-  `logs`／`tools`／`review` 八个目录、把账本迁到最新 schema、生成本机 CA、写出设置文件，
-  最后打印下一步。可用 `--data-root`／`--host`／`--port`／`--mdns-name`／
-  `--mount local=/mnt/media` 预置值；已有账本不会被重建，它会提示改用 `--from-existing`。
+- 全新机器只跑 `peach init`。不带参数且 stdin 是终端时进问答（题目、默认值与落盘逻辑在
+  `src/peach/onboarding.py`，托盘设置页复用同一组函数）：问数据根、一个已存在的本地媒体
+  目录、监听范围（仅本机／局域网）、端口、局域网名字，每题回车取默认，连续三次无效即退出且
+  不写任何文件。然后建齐 `database`／`generated`／`sources`／`state`／`secrets`／`logs`／
+  `tools`／`review` 八个目录、把账本迁到最新 schema、生成本机 CA、写出设置文件，问一句
+  「现在扫描 <目录>？」（默认是）调 `peach.scan.scan_location` 登记文件，最后打印下一步与
+  扫描摘要。写出的 `[media.locations]` 只有 `local`：Windows 上直接是那个目录、
+  `[media.mounts]` 为空；macOS 上声明根是 `R:\media`、目录写进 `[media.mounts] local`。
+  复制、writer 镜像、SMB 一律不问，保持关闭或留空。
+- 给了任何参数、加了 `--no-input`、或 stdin 不是终端，`peach init` 走非交互路径：按内建默认
+  与 `--data-root`／`--host`／`--port`／`--mdns-name`／`--mount local=/mnt/media` 直接生成，
+  写出的文件带 `local`／`115`／`pikpak` 三个示例声明根。已有账本不会被重建，它会提示改用
+  `--from-existing`。
+- `peach scan <来源ID> [根目录]` 把一个目录的文件元数据 upsert 进账本，只新增行与刷新
+  `size`／`mtime`／`last_seen`，不改真相字段、不删行。根目录省略时取该来源在
+  `[media.locations]` 的声明根，本机目录按 `[media.mounts]` 取；给了目录则必须落在声明根
+  （macOS 上是挂载点）之内，否则拒绝——写进去的行否则翻译不回本机路径。
+  `scripts/ledger.py scan` 是同一实现的薄委托。
 - 已经在跑的机器用 `peach init --from-existing`：只写设置文件，不建库、不动 `peach-data/`
   下任何现有文件。它把当前实际生效的配置原样落盘，猜不出来的坐标（局域网 writer 地址、
   SMB 主机与账号）留空并逐条打印出来，用 `--writer-origin`／`--smb-host`／`--smb-user`

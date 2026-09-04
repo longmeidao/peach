@@ -96,16 +96,32 @@ peach-app/
 & .\.venv\Scripts\peach.exe init                    # macOS: ./.venv/bin/peach init
 ```
 
-`peach init` 建数据根、把账本迁到最新 schema、生成本机 CA，并写出 `<数据根>/config.toml`。
-默认数据根是仓库同级的 `peach-data/`，`--data-root` 可改，环境变量 `PEACH_DATA_ROOT` 覆盖它。
-之后 `peach serve` 就能起服务；监听地址、端口、媒体盘符映射和复制开关都在那个设置文件里改，
-逐项说明见 [`docs/OPERATIONS.md`](docs/OPERATIONS.md)。托盘由 `peach-tray` 启动，不带参数。
+不带参数的 `peach init` 在终端里问五个问题，每一题回车即接受方括号里的默认值：
+
+| 问题 | 默认值 |
+| --- | --- |
+| 数据根（账本、缓存与设置文件都放这里） | 仓库同级的 `peach-data/` |
+| 本地媒体目录（来源 `local`，必须已存在） | `~\Videos`（macOS 为 `~/Movies`），不存在则必填 |
+| 监听范围：1 = 仅本机（127.0.0.1），2 = 局域网（0.0.0.0） | `1` |
+| 服务端口 | `8900` |
+| 局域网名字（`<名字>.local`，只在监听局域网时发布） | `peach` |
+
+回答完它建数据根、把账本迁到最新 schema、生成本机 CA、写出 `<数据根>/config.toml`，然后问
+「现在扫描 <目录>？」（默认是）把那个目录的文件登记进账本，最后打印下一步。设置文件里只有你
+声明过的那一个来源；之后 `peach serve` 就能起服务，`peach scan local` 可以随时重扫。监听地址、
+端口、来源与复制开关都在那个设置文件里改，逐项说明见 [`docs/OPERATIONS.md`](docs/OPERATIONS.md)。
+托盘由 `peach-tray` 启动，不带参数。
+
+不想问答就给参数：`peach init --no-input`（或任何一个参数，例如 `--data-root`、`--port`、
+`--mount local=/mnt/media`）按内建默认与参数直接生成；stdin 不是终端时也走这条路。这条路写出的
+设置文件带三个示例来源 `local = R:\media`、`115 = B:/`、`pikpak = A:/`，必须在 `[media.locations]`
+与 `[media.mounts]` 里改成自己的路径，不改的结果是全部来源脱盘，而不是报错。
 
 四个事实：
 
 - `-e` 是硬性要求：wheel 只含 `src/` 下的包，仓库根的 `migrations/` 与 `web/` 不在里面，非可编辑安装下 `peach init` 找不到迁移目录会直接报错。
-- `--data-root` 指到别处时，`peach serve` 只按 `PEACH_DATA_ROOT` 和仓库上方几层的 `peach-data/` 找数据根，所以要同时设 `PEACH_DATA_ROOT`；用默认数据根没有这一步。
-- 设置文件里三个来源的声明根默认是 `local = R:\media`、`115 = B:/`、`pikpak = A:/`，这只是示例盘符，必须在 `[media.locations]` 与 `[media.mounts]` 里改成自己的路径；不改的结果是全部来源脱盘，而不是报错。CloudDrive 不是必需，任何能挂成本地路径的网盘都行；115 与 PikPak 是推荐项，不是要求。
+- 数据根不在仓库同级时，`peach serve` 只按 `PEACH_DATA_ROOT` 和仓库上方几层的 `peach-data/` 找数据根，所以要同时设 `PEACH_DATA_ROOT`；用默认数据根没有这一步。
+- 账本里的路径一律是 Windows 形态。Windows 上媒体目录直接写进 `[media.locations]`；macOS 上声明根写 `R:\media`、目录写进 `[media.mounts]`，由本机挂载点负责翻译。CloudDrive 不是必需，任何能挂成本地路径的网盘都行；115 与 PikPak 是推荐项，不是要求。
 - 界面目前只有中文。
 
 没有设置文件也能启动：`/healthz` 报 `configured=false`，页面提示先跑 `peach init`。

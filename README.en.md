@@ -100,18 +100,34 @@ Three steps, with no directories or configuration files to prepare in advance. R
 & .\.venv\Scripts\peach.exe init                    # macOS: ./.venv/bin/peach init
 ```
 
-`peach init` creates the data root, migrates the ledger to the latest schema, generates the local CA
-and writes `<data root>/config.toml`. The default data root is `peach-data/` next to the repository;
-`--data-root` changes it, and the `PEACH_DATA_ROOT` environment variable overrides it. After that,
-`peach serve` starts the service; the listen address, port, media drive-letter mappings and
-replication switches are all edited in that settings file, explained item by item in
+Run without arguments, `peach init` asks five questions in the terminal; pressing Enter accepts the default shown in brackets:
+
+| Question | Default |
+| --- | --- |
+| Data root (ledger, caches and the settings file live here) | `peach-data/` next to the repository |
+| Local media directory (source `local`, must already exist) | `~\Videos` (`~/Movies` on macOS); required when that folder is missing |
+| Listen scope: 1 = this machine only (127.0.0.1), 2 = LAN (0.0.0.0) | `1` |
+| Service port | `8900` |
+| LAN name (`<name>.local`, published only when listening on the LAN) | `peach` |
+
+It then creates the data root, migrates the ledger to the latest schema, generates the local CA, writes
+`<data root>/config.toml`, asks "scan <directory> now?" (default yes) to register that directory's files
+in the ledger, and prints the next steps. The settings file declares only the one source you named; after
+that `peach serve` starts the service and `peach scan local` rescans at any time. The listen address, port,
+sources and replication switches are all edited in that settings file, explained item by item in
 [`docs/OPERATIONS.md`](docs/OPERATIONS.md). The tray is started with `peach-tray`, without arguments.
+
+To skip the questions, pass arguments: `peach init --no-input` (or any single option such as `--data-root`,
+`--port` or `--mount local=/mnt/media`) generates the file from the built-in defaults plus your arguments;
+the same path is taken when stdin is not a terminal. A file written this way carries three example sources,
+`local = R:\media`, `115 = B:/` and `pikpak = A:/`, which must be changed to your own paths under
+`[media.locations]` and `[media.mounts]`; leaving them means every source is offline, not an error.
 
 Four facts:
 
 - `-e` is a hard requirement: the wheel contains only the packages under `src/`, and the repository-root `migrations/` and `web/` are not in it, so under a non-editable install `peach init` fails outright because it cannot find the migrations directory.
-- When `--data-root` points somewhere else, `peach serve` looks for the data root only via `PEACH_DATA_ROOT` and the `peach-data/` directories a few levels above the repository, so set `PEACH_DATA_ROOT` as well; the default data root needs no such step.
-- The declared roots of the three sources in the settings file default to `local = R:\media`, `115 = B:/` and `pikpak = A:/`. These are example drive letters and must be changed to your own paths under `[media.locations]` and `[media.mounts]`; leaving them means every source is offline, not an error. CloudDrive is not required — any cloud drive that mounts as a local path works; 115 and PikPak are recommendations, not requirements.
+- When the data root is not next to the repository, `peach serve` looks for it only via `PEACH_DATA_ROOT` and the `peach-data/` directories a few levels above the repository, so set `PEACH_DATA_ROOT` as well; the default data root needs no such step.
+- Ledger paths are always in the Windows shape. On Windows the media directory goes straight into `[media.locations]`; on macOS the declared root is `R:\media` and the directory goes into `[media.mounts]`, where the local mount point does the translation. CloudDrive is not required — any cloud drive that mounts as a local path works; 115 and PikPak are recommendations, not requirements.
 - The interface is currently available in Chinese only.
 
 The service also starts without a settings file: `/healthz` reports `configured=false`, and the pages prompt you to run `peach init` first.
