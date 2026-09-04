@@ -5805,8 +5805,8 @@ async function openEntity(kind,name,push=true){
     /* 厂牌页的官网链接不放图标，直接给网址。
 
        这一页的头像就是厂牌 logo，旁边再放一枚同品牌的小图标只是把同一个东西说两遍；
-       而域名本身就是名字，比图标说得更清楚。女优页不一样：那里的头像是人，事务所
-       图标不构成重复，标签也是事务所名而非域名。 */
+       而域名本身就是名字，比图标说得更清楚。女优页不一样：那里的头像是人，站点图标
+       不构成重复，标签写的是这个域名归谁——图标、文字和落点因此说的是同一件事。 */
     if(kind==='studio')
       return `<a class="urllink" href="${esc(x.url)}" target="_blank" rel="noreferrer" title="${esc(x.label)}"><span class="entitylinklabel">${esc(linkHost(x.url)||x.label)}</span></a>`;
     return `<a href="${esc(x.url)}" target="_blank" rel="noreferrer" title="${esc(x.label)}"><span class="entitylinkicon">${icon('globe')}<img class="entityfavicon" src="${esc(linkMarkUrl(x))}" alt="" loading="lazy" referrerpolicy="no-referrer" data-drop="self"></span><span class="entitylinklabel">${esc(x.label)}</span></a>`;
@@ -5825,6 +5825,10 @@ async function openEntity(kind,name,push=true){
      标题上是他的偏好，账本里没有能推出答案的字段。菜单只列这条实体名下已有的写法：
      换统称是换显示的那一个，不是改名——改名要有来源和证据，不该由一次点击完成。
      只有一个写法时不出这个控件，那里没有可选的东西。 */
+  /* 事务所是身份信息，不是链接。它此前寄居在官方链接的标签里，于是那个控件同时替
+     两家公司说话——文字是事务所名，图标和落点却是片商的站。名字归名字、链接归链接，
+     它就跟着别名和作品数排在同一行。 */
+  const agencyName=(d.metadata||{}).agency?.name||'';
   const nameChoices=[d.canonical_name,...(d.aliases||[])]
     .filter((option,index,all)=>option&&all.indexOf(option)===index);
   const namePick=nameChoices.length>1?`<div class="namepick" data-namepick>
@@ -5838,7 +5842,8 @@ async function openEntity(kind,name,push=true){
   $('#index').dataset.entityKind=kind;$('#index').dataset.entityName=name;
   $('#index').innerHTML=`<div class="entityhero"><div class="entityportrait ${kind==='performer'||kind==='creator'?'':'square'}">${image}<span>${esc(name.slice(0,1))}</span></div>
       <div><div class="entitytitle"><h2>${esc(d.canonical_name)}</h2>${namePick}</div>
-        <div class="alias">${(d.display_aliases||[]).length?`${d.display_aliases.map(esc).join(' / ')} · `:''}<b>${d.asset_count.toLocaleString()}</b> 个视频</div>
+        <div class="alias">${(d.display_aliases||[]).length?`${d.display_aliases.map(esc).join(' / ')} · `:''}<b>${d.asset_count.toLocaleString()}</b> 个视频${
+          agencyName?` · 事务所 ${esc(agencyName)}`:''}</div>
         ${links?`<div class="entitylinks">${links}</div>`:''}</div></div>
     ${related?`<div class="entitymeta"><section aria-label="同台艺人"><div class="relatedpeople">${related}</div></section></div>`:''}
     ${(tags||mediaToggle)?`<section class="entitytagbar" aria-label="媒体与标签"><div class="entitytags">${mediaToggle}${tags}</div></section>`:''}

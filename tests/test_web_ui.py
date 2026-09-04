@@ -3889,6 +3889,16 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("(d.display_aliases||[]).length")
         self.assertPageLacks("(d.aliases||[]).length?'别名")
 
+    def test_the_agency_reads_as_identity_not_as_a_link(self):
+        """事务所此前寄居在官方链接的标签里，那个控件于是同时替两家公司说话。
+
+        它没有网址，做不成链接；它是这个人签在谁名下，和别名、作品数是同一类事实。
+        """
+        self.assertCode("const agencyName=(d.metadata||{}).agency?.name||'';")
+        self.assertPageContains("agencyName?` · 事务所 ${esc(agencyName)}`:''")
+        # 链接标签写的是域名归谁，不是事务所名。
+        self.assertPageContains("标签写的是这个域名归谁")
+
     def test_entity_name_picker_offers_only_this_entity_existing_names(self):
         # 候选取的是身份契约 `aliases`（完整），不是收窄过的展示别名：罗马字也是
         # 这个人真的用过的写法，用户想拿它当统称就该能选。
