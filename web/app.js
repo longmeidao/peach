@@ -2181,8 +2181,11 @@ function wireCards(root,onClick){
           }})}).catch(error=>actionFailure('更新稍后看',error)).finally(()=>setActionBusy(later,false));return}
       if(selectMode||e.shiftKey||e.ctrlKey||e.metaKey){e.preventDefault();e.stopPropagation();toggleSelection(it.id,e.shiftKey);return}
       if(e.target.closest('[data-open]')){e.stopPropagation();openCard(+el.dataset.id,el);return}
+      /* 只认卡片自己身上的实体链接。资料页把 `data-entity-kind` 写在 `#index` 上，
+         无界的 `closest` 会一路找到它：卡片上任何一次点击都变成「再打开一次这一页」，
+         底下的标签和播放分支一个都轮不到。 */
       const ent=e.target.closest('[data-entity-kind]');
-      if(ent){e.stopPropagation();openEntity(ent.dataset.entityKind,ent.dataset.entityName);return}
+      if(ent&&el.contains(ent)){e.stopPropagation();openEntity(ent.dataset.entityKind,ent.dataset.entityName);return}
       /* 卡片上的标签是「只看这个标签」，已经在筛它就取消。在哪一屏点就在哪一屏
          生效：目录上换成这个标签，资料页上是在这个人／厂牌内部换。 */
       const tg=e.target.closest('.tg');
