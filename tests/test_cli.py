@@ -103,7 +103,7 @@ class InitCommandTests(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         self.root = Path(self.tmp.name).resolve() / "peach-data"
         # 证书生成要调 openssl；那是 `test_certs.py` 的事，这里只验初始化流程。
-        patcher = mock.patch.object(cli.certs, "bootstrap_certificates")
+        patcher = mock.patch.object(cli.onboarding.certs, "bootstrap_certificates")
         self.certs = patcher.start()
         self.addCleanup(patcher.stop)
 
@@ -240,7 +240,7 @@ class InteractiveInitTests(unittest.TestCase):
         (self.media / "sub").mkdir(parents=True)
         (self.media / "sub" / "a.mp4").write_bytes(b"0" * 10)
         (self.media / "b.jpg").write_bytes(b"1")
-        patcher = mock.patch.object(cli.certs, "bootstrap_certificates")
+        patcher = mock.patch.object(cli.onboarding.certs, "bootstrap_certificates")
         self.certs = patcher.start()
         self.addCleanup(patcher.stop)
         # 第一题的默认值要落在临时目录里，回车接受默认才不会碰真实数据根。
@@ -405,7 +405,7 @@ class InitDispatchTests(unittest.TestCase):
         patcher = mock.patch.object(cli, "_init_interactive", return_value=0)
         self.interactive = patcher.start()
         self.addCleanup(patcher.stop)
-        certs = mock.patch.object(cli.certs, "bootstrap_certificates")
+        certs = mock.patch.object(cli.onboarding.certs, "bootstrap_certificates")
         certs.start()
         self.addCleanup(certs.stop)
 

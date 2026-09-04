@@ -1,9 +1,10 @@
 """首次运行问答：问什么、怎么校验、写出什么样的设置文件。
 
 这里只有纯逻辑，不碰终端：`peach init` 的命令行问答是它的第一个前端，托盘首启打开的
-设置页是第二个，两边都调同一组函数——`questions()` 给出题目、默认值和校验器，
-`interview()` 用注入的 `ask` 把题目走一遍，`configure()` 把答案落成 `PeachConfig`。
-前端只负责把字串送进来、把错误显示出去。
+设置页（`routes_pages`）是第二个，两边都调同一组函数——`questions()` 给出题目、默认值
+和校验器，`interview()` 用注入的 `ask` 把题目走一遍，`configure()` 把答案落成
+`PeachConfig`，`apply()` 把它变成一台能直接起服务的机器（目录、账本、CA、口令、设置
+文件）。前端只负责把字串送进来、把结果和错误显示出去。
 
 问答刻意只收最小集合：数据根、一个本地媒体目录、监听范围、端口、局域网名字。复制、
 115、PikPak、writer 镜像与 SMB 一律保持默认关闭或留空——陌生人第一次跑不该被这些问题
@@ -17,12 +18,14 @@
 """
 from __future__ import annotations
 
+import os
 import re
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 from pathlib import Path
 
-from . import settings_file
+from . import auth, certs, settings_file
+from .migrations import upgrade
 from .platform import is_windows_path
 from .settings_file import PeachConfig
 
@@ -38,6 +41,12 @@ MAX_ATTEMPTS = 3
 POSIX_LOCAL_DECLARED_ROOT = r"R:\media"
 #: 本地来源的 ID。v1 只收一个目录，它就是 `asset.location = 'local'`。
 LOCAL_LOCATION = "local"
+#: 迁移随代码走，不随数据走。这里不 import `peach.config`：那个模块的常量在进程启动
+#: 那一刻就定型了，而首次设置正是要改变它们指向的数据根。
+MIGRATIONS_DIR = settings_file.PROJECT_ROOT / "migrations"
+#: 「现在扫描」的一次性标记，落在 `<数据根>/state/`。设置页写它、托盘消费它：
+#: 设置页所在的引导服务在设置完成的那一刻就会被托盘停掉，扫描不能跑在它的进程里。
+SCAN_REQUEST_NAME = "first-scan.request"
 
 _DNS_LABEL = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$")
 _HOST_CHOICES = {
@@ -211,12 +220,129 @@ def configure(config: PeachConfig, answers: Answers, *, windows: bool) -> PeachC
     return replace(prepared, locations=locations)
 
 
+@dataclass(frozen=True)
+class DataTree:
+    """`create_data_tree()` 做了什么。前端自己决定这些事实怎么说出来。"""
+
+    data_root: Path
+    database: Path
+    #: 这次应用了几个迁移。账本本来就在时是 0。
+    migrations: int
+    ledger_existed: bool
+    token_path: Path
+    token_created: bool
+    #: 没有 openssl 时 CA 生成失败，`ca_cert` 为 None、`ca_error` 是原因。
+    ca_cert: Path | None
+    ca_error: str | None
+
+
+@dataclass(frozen=True)
+class Applied:
+    """一次完整的首次设置：目录、账本、CA、口令、设置文件都已落盘。"""
+
+    config: PeachConfig
+    settings_path: Path
+    tree: DataTree
+
+
+def resolve_config(
+    data_root: Path | None = None, environ: dict[str, str] | None = None,
+) -> tuple[PeachConfig, settings_file.SettingsFileError | None]:
+    """按给定数据根重新解析设置；文件坏了就退回内建默认并把错误一并交出。
+
+    `peach init` 与设置页都要在拿到数据根之后重新解析一次：数据根决定设置文件在哪，
+    而进程启动时那一份是按发现顺序算的，用户完全可以填一个别的目录。
+    """
+    environ = dict(os.environ if environ is None else environ)
+    if data_root is not None:
+        environ["PEACH_DATA_ROOT"] = str(data_root)
+    try:
+        return settings_file.load_config(environ=environ), None
+    except settings_file.SettingsFileError as exc:
+        return settings_file.load_config(environ=environ, strict=False), exc
+
+
+def create_data_tree(config: PeachConfig) -> DataTree:
+    """建目录、把库迁到最新、生成本机 CA、确保口令存在。已经有账本就不碰它。
+
+    只做事、不打印：`peach init` 把结果写到终端，设置页把同一批结果写进成功页。
+    """
+    for key in settings_file.DIRECTORY_KEYS:
+        config.directory(key).mkdir(parents=True, exist_ok=True)
+    tls_dir = config.directory("secrets") / "tls"
+    tls_dir.mkdir(parents=True, exist_ok=True)
+
+    database = config.directory("database") / "ledger.db"
+    existed = database.is_file()
+    # 已有账本却在跑全新 init：不迁移、不备份、不覆盖，让人自己决定。
+    applied = 0 if existed else len(upgrade(database, MIGRATIONS_DIR))
+
+    ca_cert: Path | None = None
+    ca_error: str | None = None
+    try:
+        ca_cert = certs.bootstrap_certificates(
+            tls_dir, config.server.mdns_name + ".local").ca_cert
+    except (RuntimeError, OSError) as exc:
+        # 没有 openssl 不该挡住初始化：HTTP 本地访问照样能用，装 openssl 后重跑即可。
+        ca_error = str(exc)
+
+    secrets_dir = config.directory("secrets")
+    _token, created = auth.ensure_token(secrets_dir)
+    return DataTree(
+        data_root=config.data_root, database=database, migrations=applied,
+        ledger_existed=existed, token_path=auth.token_path(secrets_dir),
+        token_created=created, ca_cert=ca_cert, ca_error=ca_error,
+    )
+
+
+def apply(
+    config: PeachConfig, answers: Answers, *, windows: bool, force: bool = False,
+) -> Applied:
+    """把答案变成一台可以直接起服务的机器：目录、账本、CA、口令、设置文件。
+
+    `config` 要按 `answers.data_root` 重新解析过（`resolve_config`）。CLI 问答和托盘的
+    设置页都只调这一个函数，两条前端因此不可能在「首次运行到底做了什么」上分叉。
+    """
+    prepared = configure(config, answers, windows=windows)
+    tree = create_data_tree(prepared)
+    path = settings_file.write(prepared, force=force)
+    return Applied(config=prepared, settings_path=path, tree=tree)
+
+
+def scan_request_path(config: PeachConfig) -> Path:
+    return config.directory("state") / SCAN_REQUEST_NAME
+
+
+def request_first_scan(config: PeachConfig, location: str = LOCAL_LOCATION) -> Path:
+    """记下「用户要求首扫」。内容是来源 ID，托盘据此拉起 `peach scan <来源>`。"""
+    path = scan_request_path(config)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(location, encoding="utf-8")
+    return path
+
+
+def take_first_scan_request(config: PeachConfig) -> str | None:
+    """读走首扫标记并删掉它，没有就返回 None。只消费一次：删除在读取之后立刻发生，
+    托盘的健康轮询每几秒跑一轮，留着它等于每一轮都再扫一遍整个媒体目录。
+    """
+    path = scan_request_path(config)
+    try:
+        location = path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    try:
+        path.unlink()
+    except OSError:
+        return None
+    return location or None
+
+
 def scan_root(config: PeachConfig) -> str:
     """首次扫描的账本口径根：就是 `local` 的声明根。本机目录由 `peach.scan` 按挂载表取。"""
     return config.locations[LOCAL_LOCATION]
 
 
-def mounts_explanation(media_dir: Path) -> str:
+def mounts_explanation(media_dir: Path | str) -> str:
     """非 Windows 平台写出的两行为什么长那样，一句话说清。"""
     return (f"账本用统一的 Windows 形态记路径（{POSIX_LOCAL_DECLARED_ROOT}\\...），"
             f"本机挂载点 [media.mounts] local = {media_dir} 负责翻译成真实文件。")
@@ -240,8 +366,10 @@ def is_interactive(stdin) -> bool:
 
 
 __all__ = [
-    "Answers", "Ask", "LOCAL_LOCATION", "MAX_ATTEMPTS", "OnboardingAborted",
-    "POSIX_LOCAL_DECLARED_ROOT", "Question", "ask_until_valid", "configure",
-    "console_ask", "default_media_dir", "interview", "is_interactive",
-    "mounts_explanation", "questions", "scan_question", "scan_root",
+    "Answers", "Applied", "Ask", "DataTree", "LOCAL_LOCATION", "MAX_ATTEMPTS",
+    "OnboardingAborted", "POSIX_LOCAL_DECLARED_ROOT", "Question", "apply",
+    "ask_until_valid", "configure", "console_ask", "create_data_tree",
+    "default_media_dir", "interview", "is_interactive", "mounts_explanation",
+    "questions", "request_first_scan", "resolve_config", "scan_question",
+    "scan_request_path", "scan_root", "take_first_scan_request",
 ]
