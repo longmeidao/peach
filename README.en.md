@@ -1,15 +1,24 @@
-[中文](README.md)
+<p align="center">
+  <img src="resources/peach-logo.png" alt="Peach" width="128">
+</p>
 
-# Peach
+<h1 align="center">Peach</h1>
 
-Peach is a single-user, local-first personal media system: it indexes media you already own —
-local disks, CloudDrive mounts, followed online sources — and serves search, playback, profile
-pages, playlists, review and follow from one FastAPI process backed by the local SQLite ledger,
-which also stores viewing behavior and manual decisions. It is built for one person self-hosting
-on their own machines over a LAN, not for teams or public deployment. Status: pre-1.0. Windows and
-macOS are first-class; Linux is not supported and has not been tested.
+<p align="center">A single-user, local-first personal media system</p>
 
-Peach runs completely on a single machine. Windows and macOS are first-class platforms; Linux is not supported and has not been tested. Single-writer replication between machines is optional and off by default, and so far it has been verified in exactly one shape: a Windows writer with a macOS reader. The current runtime state and verification results are in [`docs/STATUS.md`](docs/STATUS.md), open work is in [`docs/PRODUCT_BACKLOG.md`](docs/PRODUCT_BACKLOG.md), and development constraints start at [`AGENTS.md`](AGENTS.md).
+<p align="center">
+  <a href="https://github.com/longmeidao/peach/actions/workflows/test.yml"><img src="https://img.shields.io/github/actions/workflow/status/longmeidao/peach/test.yml?branch=master&label=tests" alt="tests"></a>
+  <a href="https://github.com/longmeidao/peach/releases"><img src="https://img.shields.io/github/v/release/longmeidao/peach?include_prereleases&label=release" alt="release"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0--or--later-blue" alt="license"></a>
+  <img src="https://img.shields.io/badge/python-3.12%2B-3776AB?logo=python&logoColor=white" alt="Python 3.12+">
+  <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS-lightgrey" alt="Windows | macOS">
+</p>
+
+<p align="center"><a href="README.md">中文</a> · English</p>
+
+Peach is a single-user, local-first personal media system, built for one person self-hosting on their own machines over a LAN — not for teams or public deployment. It indexes media you already own — local disks, CloudDrive mounts, followed online sources — and serves search, playback, profile pages, playlists, review and follow from one FastAPI process. The local SQLite ledger is the single source of truth and also stores viewing behavior and manual decisions; whatever CloudDrive, online sites or AI return is a candidate with provenance and confidence, and becomes truth only after the user reviews it.
+
+Peach runs completely on a single machine and is pre-1.0. Windows and macOS are first-class platforms; Linux is not supported and has not been tested. Single-writer replication between machines is optional and off by default, and so far it has been verified in exactly one shape: a Windows writer with a macOS reader. The current runtime state and verification results are in [`docs/STATUS.md`](docs/STATUS.md), open work is in [`docs/PRODUCT_BACKLOG.md`](docs/PRODUCT_BACKLOG.md), and development constraints start at [`AGENTS.md`](AGENTS.md).
 
 ## Core capabilities
 
@@ -214,7 +223,7 @@ Fetched updates stay in the `new` or `seen` candidate state. Only after an expli
 - [`docs/REUSE.md`](docs/REUSE.md): the reuse checklist to consult before adding or replacing an implementation.
 - [`docs/adr/`](docs/adr/): architecture decisions, their reasons and trade-offs.
 
-The documents above are currently available in Chinese only.
+The documents above are currently available in Chinese only. [`CONTRIBUTING.md`](CONTRIBUTING.md) and [`SECURITY.md`](SECURITY.md) each open with an English summary.
 
 ## License
 
