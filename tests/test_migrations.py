@@ -81,6 +81,26 @@ class MigrationTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             plan(self.db, MIGRATIONS)
 
+    def test_missing_migration_directory_is_rejected_instead_of_reported_empty(self):
+        """migration 目录不存在时拒绝，不要把空账本当成迁移到位的账本。
+
+        `pip install .`（非 editable）只装 `src/` 下的包，仓库根的 `migrations/` 不进
+        wheel。目录缺失若被读成「0 个迁移」，`peach init` 会打印成功并留下 0 字节账本，
+        `peach migrate status` 还跟着报 0 pending。
+        """
+        absent = self.root / "no-such-migrations"
+        with self.assertRaises(FileNotFoundError) as caught:
+            plan(self.db, absent)
+        self.assertIn(str(absent), str(caught.exception))
+        with self.assertRaises(FileNotFoundError):
+            upgrade(self.db, absent)
+        self.assertFalse(self.db.exists())
+
+    def test_empty_migration_directory_reports_nothing_to_apply(self):
+        empty = self.root / "empty-migrations"
+        empty.mkdir()
+        self.assertEqual(upgrade(self.db, empty), [])
+
     def test_entity_migration_backfills_flattened_relations(self):
         base_migrations = self.root / "base-migrations"
         base_migrations.mkdir()
