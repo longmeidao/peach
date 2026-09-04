@@ -7,10 +7,9 @@ local disks, CloudDrive mounts, followed online sources — and serves search, p
 pages, playlists, review and follow from one FastAPI process backed by the local SQLite ledger,
 which also stores viewing behavior and manual decisions. It is built for one person self-hosting
 on their own machines over a LAN, not for teams or public deployment. Status: pre-1.0. Windows and
-macOS are first-class; on Linux only the Python service and the CLI are supported, without tray or
-mount integration.
+macOS are first-class; Linux is not supported and has not been tested.
 
-Peach runs completely on a single machine. Windows and macOS are first-class platforms; Linux supports only the service and the CLI, without tray or mount integration. Single-writer replication between machines is optional and off by default, and so far it has been verified in exactly one shape: a Windows writer with a macOS reader. The current runtime state and verification results are in [`docs/STATUS.md`](docs/STATUS.md), open work is in [`docs/PRODUCT_BACKLOG.md`](docs/PRODUCT_BACKLOG.md), and development constraints start at [`AGENTS.md`](AGENTS.md).
+Peach runs completely on a single machine. Windows and macOS are first-class platforms; Linux is not supported and has not been tested. Single-writer replication between machines is optional and off by default, and so far it has been verified in exactly one shape: a Windows writer with a macOS reader. The current runtime state and verification results are in [`docs/STATUS.md`](docs/STATUS.md), open work is in [`docs/PRODUCT_BACKLOG.md`](docs/PRODUCT_BACKLOG.md), and development constraints start at [`AGENTS.md`](AGENTS.md).
 
 ## Core capabilities
 
@@ -38,6 +37,9 @@ When replication is enabled, each machine keeps its own local working copy of th
 
 ## Scope and disclaimer
 
+- Peach is built for a personal collection of adult content (JAV, creator subscriptions and the
+  like); the repository itself contains none of it. Screenshots in the README, the documentation and
+  the website always use SFW demo data, never a real collection.
 - The repository contains only code, documentation and pinned frontend dependencies. It ships no
   media, covers, thumbnails or metadata, and no copy of any site's data; what it indexes is the
   library the person running it already owns.
@@ -66,7 +68,7 @@ The repository stores no media, databases, credentials, logs, `.venv`, build out
 
 ## Prerequisites
 
-- **Python 3.14**: a hard requirement from `requires-python`. Windows needs the py launcher (`py -3.14`); in a console using the cp936 code page the CLI's Chinese output is garbled, and `PYTHONIOENCODING=utf-8` fixes it.
+- **Python 3.12 or newer**: a hard requirement from `requires-python`; the maintainer runs 3.14, and CI tests both 3.12 and 3.14. Windows needs the py launcher (`py -3.14`, substitute the version you installed); in a console using the cp936 code page the CLI's Chinese output is garbled, and `PYTHONIOENCODING=utf-8` fixes it.
 - **Git**: the editable install runs from a checked-out repository.
 - **FFmpeg and ffprobe**: not distributed with the repository, which has no downloader for them either. Lookup order: the `PEACH_FFMPEG` / `PEACH_FFPROBE` environment variables → `<data root>/tools/ffmpeg/bin/ffmpeg(.exe)` and `ffprobe(.exe)` → `PATH`. Without them `/healthz` reports `ffmpeg: unavailable`, and frame extraction, contact sheets, probing and covers are all unavailable; browsing and playback of compatible formats still work.
 - **openssl** (optional, HTTPS only): required to generate the local CA. On Windows it usually comes from Git for Windows (choose the option that puts the Unix tools on `PATH`). Without it `peach init` prints that no local CA was generated and completes normally; once installed, `peach init --force` fills it in.
@@ -109,8 +111,10 @@ Each platform has exactly one official test entry point. The script locates the 
 
 During development, run the tests for the affected functional domain, for example
 `& .\scripts\test.ps1 -Scope follow` on Windows and `./scripts/test.sh follow` on macOS/Linux.
-The available domains are `follow`, `catalog`, `media`, `sync`, `metadata` and `tooling`; with no
-argument the default `full` scope runs. Changes that span several domains, touch migrations, shared
+The available domains are `follow`, `catalog`, `media`, `sync`, `metadata`, `tooling` and `web`; with
+no argument the default `full` scope runs. `auto` picks domains from the changed files and falls back
+to `full` when a file maps to none or touches migrations, shared test infrastructure or a dependency
+manifest. Changes that span several domains, touch migrations, shared
 test infrastructure or dependencies, prepare a release or have a large footprint must run the full
 scope; a single local change does not need to rerun unrelated tests over and over.
 
@@ -128,8 +132,8 @@ self-hosted frontend packages are pinned jointly by `package.json`, `package-loc
 | `maintenance-115` | 115 SHA-1 reconciliation script |
 
 GitHub Dependabot checks Python, npm and GitHub Actions weekly; every update PR runs the official
-tests on Windows and macOS with Python 3.14. After a frontend dependency update, first install the
-locked packages:
+tests on Windows and macOS with Python 3.12 and 3.14. After a frontend dependency update, first
+install the locked packages:
 
 ```powershell
 npm ci --ignore-scripts

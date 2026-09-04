@@ -18,7 +18,7 @@ description: 在用户说并行、工作树、暂存、提交、ready、集成�
 1. 协调者在主目录创建隔离工作树：`& .\.venv\Scripts\python.exe scripts\agent_worktree.py create --agent claude --task <task>`。它建在 `peach-worktrees/`，Codex 和 Claude 共用这一个目录。**不要用 Claude Code 内置的工作树机制（`.claude/worktrees/`）**：它在分支被集成后会被回收，目录却留在原地。
 
 2. 工作者只在自己的工作树内编辑。工作树不复制 `.venv`。
-3. 测试在当前工作树根目录运行，每个平台只有一个入口。日常开发先跑本功能域：Windows `& .\scripts\test.ps1 -Scope follow`，macOS/Linux `./scripts/test.sh follow`。可选域为 `follow`、`catalog`、`media`、`sync`、`metadata`、`tooling`、`web`；不传参数是 `full`。只改 `web/` 的文案、CSS 或页面脚本时跑 `-Scope web`：约 380 个用例、6 秒上下，`full` 要 30～45 分钟。域清单的真相在 `scripts/test_runner.py` 的 `SCOPES`，本行漏掉一个域，代价就是每次界面改动多等四十分钟。
+3. 测试在当前工作树根目录运行，每个平台只有一个入口。日常开发先跑本功能域：Windows `& .\scripts\test.ps1 -Scope follow`，macOS/Linux `./scripts/test.sh follow`。可选域为 `follow`、`catalog`、`media`、`sync`、`metadata`、`tooling`、`web`；不传参数是 `full`。只改 `web/` 的文案、CSS 或页面脚本时跑 `-Scope web`：约 380 个用例、6 秒上下，`full` 要 30～45 分钟。域清单的真相在 `scripts/test_runner.py` 的 `SCOPES`，本行漏掉一个域，代价就是每次界面改动多等四十分钟。不确定该跑哪个域就用 `-Scope auto`（macOS/Linux `./scripts/test.sh auto`），它按改动文件选域，映射不到才退化为 `full`。
    两者契约相同：从 Git common directory 定位主项目 venv，强制 `PYTHONPATH=<当前工作树>/src`，
    核对 `peach.__file__` 后运行标准库 `unittest`。禁止手工拼接 venv 路径或调用 pytest。
    跨多个域、迁移、共享测试设施、依赖、构建/发布或大面积改动必须跑 `full`；局部功能只跑

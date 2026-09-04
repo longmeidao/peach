@@ -4,13 +4,12 @@ Peach is a single-user, local-first personal media system: it indexes media you 
 local disks, mounted cloud drives, online subscriptions — and serves search, playback, profile
 pages, playlists and manual review from one FastAPI process backed by a local SQLite ledger.
 It is built for one person self-hosting on their own machines over a LAN, not for teams or public
-deployment. Status: pre-1.0. Windows and macOS are first-class; on Linux only the Python service
-and the CLI are supported, without tray or mount integration. A full English version is in
-[`README.en.md`](README.en.md).
+deployment. Status: pre-1.0. Windows and macOS are first-class; Linux is not supported and has not
+been tested. A full English version is in [`README.en.md`](README.en.md).
 
 Peach（蜜桃）是单用户、本地优先的个人媒体系统。它统一索引本地磁盘、CloudDrive 和在线关注来源，提供搜索、播放、资料页、播放列表、复核与追更，并把观看行为和人工决定保存到本地 SQLite ledger。
 
-Peach 在一台机器上就能完整运行。Windows 与 macOS 是一等平台；Linux 只支持服务与 CLI，没有托盘和挂载集成。多台机器之间的单写者复制是可选项，默认关闭，目前只在「Windows 写者 + macOS 读者」一种形状上验证过。当前运行状态与验证结果见 [`docs/STATUS.md`](docs/STATUS.md)，待办见 [`docs/PRODUCT_BACKLOG.md`](docs/PRODUCT_BACKLOG.md)；开发约束从 [`AGENTS.md`](AGENTS.md) 开始读。
+Peach 在一台机器上就能完整运行。Windows 与 macOS 是一等平台；Linux 不在支持范围，未测试。多台机器之间的单写者复制是可选项，默认关闭，目前只在「Windows 写者 + macOS 读者」一种形状上验证过。当前运行状态与验证结果见 [`docs/STATUS.md`](docs/STATUS.md)，待办见 [`docs/PRODUCT_BACKLOG.md`](docs/PRODUCT_BACKLOG.md)；开发约束从 [`AGENTS.md`](AGENTS.md) 开始读。
 
 ## 核心能力
 
@@ -38,6 +37,8 @@ Ledger 是资产、身份、行为和复核决定的真相源。CloudDrive、在
 
 ## 范围与免责声明
 
+- Peach 面向成人内容的个人馆藏（JAV、创作者订阅等），仓库本身不含任何此类内容；README、
+  文档与网站里的截图一律使用 SFW 演示数据，不使用真实馆藏。
 - 仓库只有代码、文档和固定的前端依赖。它不包含任何媒体、封面、缩略图或元数据，也不附带任何
   站点的数据副本；它索引的是运行它的人自己已有的库。
 - 连接器只访问使用者自己有权访问的来源，凭据由使用者自己提供。Peach 不绕过机器人验证、付费墙
@@ -63,7 +64,7 @@ peach-app/
 
 ## 前置条件
 
-- **Python 3.14**：`requires-python` 的硬要求。Windows 需要 py launcher（`py -3.14`）；控制台是 cp936 代码页时 CLI 的中文输出会乱码，设 `PYTHONIOENCODING=utf-8` 即可。
+- **Python 3.12 或更高**：`requires-python` 的硬要求，维护者以 3.14 运行，CI 同时测 3.12 与 3.14。Windows 需要 py launcher（`py -3.14`，按本机装的版本换）；控制台是 cp936 代码页时 CLI 的中文输出会乱码，设 `PYTHONIOENCODING=utf-8` 即可。
 - **Git**：以可编辑方式安装要从检出的仓库运行。
 - **FFmpeg 与 ffprobe**：不随仓库分发，仓库里也没有下载器。查找顺序：环境变量 `PEACH_FFMPEG` / `PEACH_FFPROBE` → `<数据根>/tools/ffmpeg/bin/ffmpeg(.exe)` 与 `ffprobe(.exe)` → `PATH`。缺了 `/healthz` 报 `ffmpeg: unavailable`，抽帧、接触表、探测和封面全部不可用；浏览与播放兼容格式仍可用。
 - **openssl**（可选，仅 HTTPS）：生成本机 CA 的前置。Windows 上通常来自 Git for Windows（安装时选把 Unix 工具放进 `PATH`）。缺了 `peach init` 打印「未生成本机 CA」并正常完成，装好后 `peach init --force` 补上。
@@ -104,7 +105,8 @@ peach-app/
 
 开发时按功能域运行必要测试，例如 Windows 用 `& .\scripts\test.ps1 -Scope follow`，
 macOS/Linux 用 `./scripts/test.sh follow`。可选域为 `follow`、`catalog`、`media`、`sync`、
-`metadata`、`tooling`；不传参数仍跑 `full`。跨多个域、修改迁移/共享测试设施/依赖、准备发布或
+`metadata`、`tooling`、`web`；不传参数仍跑 `full`。`auto` 按改动文件选域，映射不到或触及迁移、
+共享测试设施、依赖清单时退化为 `full`。跨多个域、修改迁移/共享测试设施/依赖、准备发布或
 改动影响面较大时必须跑全量，单一局部功能不再反复跑无关测试。
 
 ## 依赖维护
@@ -119,8 +121,8 @@ Python 运行时与可选工具全部在 `pyproject.toml` 精确固定版本；�
 | `vision` | 头像、封面的人脸取景脚本 |
 | `maintenance-115` | 115 SHA-1 对账脚本 |
 
-GitHub Dependabot 每周检查 Python、npm 和 GitHub Actions；每个更新 PR 都运行 Windows/macOS、
-Python 3.14 正式测试。前端依赖更新后，先安装锁定包：
+GitHub Dependabot 每周检查 Python、npm 和 GitHub Actions；每个更新 PR 都在 Windows/macOS 上以
+Python 3.12 与 3.14 运行正式测试。前端依赖更新后，先安装锁定包：
 
 ```powershell
 npm ci --ignore-scripts

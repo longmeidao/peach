@@ -1,6 +1,6 @@
 ﻿[CmdletBinding()]
 param(
-    [ValidateSet('full', 'follow', 'catalog', 'media', 'sync', 'metadata', 'tooling', 'web')]
+    [ValidateSet('full', 'auto', 'follow', 'catalog', 'media', 'sync', 'metadata', 'tooling', 'web')]
     [string]$Scope = 'full'
 )
 

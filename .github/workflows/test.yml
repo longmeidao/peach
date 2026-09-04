@@ -28,11 +28,10 @@ jobs:
       fail-fast: false
       matrix:
         os: [windows-latest, macos-latest]
-        # 只测实际运行的版本。两台机器都按 README 用 3.14 建 venv，Peach 不发 PyPI，
-        # 没有第三方按 requires-python 安装，所以再测一遍声明下限是空跑：同一个缺陷
-        # 报四遍，唯一一次 3.12 单独红（run 33368707206）也是预览并发那条计时敏感
-        # 用例的偶发，不是版本不兼容。要重新加版本，先把使用者是谁写清楚。
-        python: ["3.14"]
+        # 只测两端：3.12 是 `requires-python` 对外声明的下限，陌生用户按它装；
+        # 3.14 是维护者两台机器实际运行的版本。中间的 3.13 不测——源码没有用到
+        # 3.13 独有的特性，两端都绿时它红的概率不值一个 job。
+        python: ["3.12", "3.14"]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
