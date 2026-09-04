@@ -694,14 +694,16 @@ class SetupGate:
         # 中文会变成替换字符；这里和账本同步用同一条约定。
         environment["PYTHONIOENCODING"] = "utf-8"
         try:
-            handle = (log_dir / "tray-scan.out.log").open("ab")
-            process = self._popen(
-                [str(_peach_executable()), "scan", location],
-                cwd=str(PROJECT_ROOT), stdin=subprocess.DEVNULL,
-                stdout=handle, stderr=subprocess.STDOUT, shell=False,
-                creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
-                env=environment,
-            )
+            # 句柄开着只为了交给子进程；`Popen` 复制过去之后父进程这一份立刻关掉，
+            # 否则 Windows 上这个文件会被托盘一直占着，谁也删不掉它。
+            with (log_dir / "tray-scan.out.log").open("ab") as handle:
+                process = self._popen(
+                    [str(_peach_executable()), "scan", location],
+                    cwd=str(PROJECT_ROOT), stdin=subprocess.DEVNULL,
+                    stdout=handle, stderr=subprocess.STDOUT, shell=False,
+                    creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+                    env=environment,
+                )
         except (OSError, subprocess.SubprocessError) as exc:
             self.notify(f"首次扫描没能启动：{exc}", "Peach")
             return None

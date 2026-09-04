@@ -24,14 +24,15 @@ def load_script(name: str):
     return module
 
 
-from peach import appid
+from peach import appid, onboarding, settings_file
 from peach import tray as tray_module
 from peach.config import SECRETS_DIR
 from peach.tray import (
-    AlreadyRunning, PeachTray, ServiceManager, ServiceSpec, SingleInstance,
-    apply_macos_template, build_service_specs, create_icon, enable_hidpi,
-    launchd_owns_this_process, ledger_menu_items, restart_tray_process,
-    tray_restart_required,
+    AlreadyRunning, PeachTray, ServiceManager, ServiceSpec, SetupGate,
+    SingleInstance, apply_macos_template, build_service_specs,
+    build_setup_service_specs, create_icon, enable_hidpi,
+    launchd_owns_this_process, ledger_menu_items, needs_setup,
+    restart_tray_process, tray_restart_required,
 )
 from peach.tray import main as tray_main
 from peach.sync import SyncPlan
@@ -445,6 +446,113 @@ class ReplicationSwitchTests(unittest.TestCase):
         self.assertIn("replication.enabled", message)
         plan.assert_not_called()
         mount.assert_not_called()
+
+
+class SetupGateTests(unittest.TestCase):
+    """首次设置期间的服务切换（ADR-0023 的 GUI 引导）。
+
+    托盘不重启自己就要完成切换，所以这里断言的是「规格换了、日志目录和 PEACH_DATA_ROOT
+    跟着换了、首扫标记只被消费一次」，而不是某个平台的菜单长什么样。
+    """
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.root = Path(self._tmp.name).resolve()
+        self.data_root = self.root / "peach-data"
+        patcher = patch("peach.tray._peach_executable", return_value=Path("/venv/peach"))
+        self.addCleanup(patcher.stop)
+        patcher.start()
+
+    def _config(self):
+        return settings_file.load_config(
+            project_root=self.root / "app",
+            environ={"PEACH_DATA_ROOT": str(self.data_root)})
+
+    def _tls(self, config):
+        tls_dir = config.directory("secrets") / "tls"
+        tls_dir.mkdir(parents=True, exist_ok=True)
+        for name in ("peach-local-ca.crt", "peach.crt", "peach.key"):
+            (tls_dir / name).write_text("test-only", encoding="utf-8")
+
+    def test_a_fresh_machine_needs_setup_even_after_a_state_directory_appeared(self):
+        self.assertTrue(needs_setup(self._config()))
+        # 托盘的单实例锁会建出 `state/`，数据根目录于是存在、`configured` 变成 True。
+        (self.data_root / "state").mkdir(parents=True)
+        self.assertTrue(self._config().configured)
+        self.assertTrue(needs_setup(self._config()), "空数据根不算配置过")
+
+    def test_an_existing_deployment_without_a_settings_file_is_left_alone(self):
+        (self.data_root / "database").mkdir(parents=True)
+        (self.data_root / "database" / "ledger.db").write_bytes(b"")
+        self.assertFalse(needs_setup(self._config()))
+
+    def test_the_setup_service_is_loopback_only_without_tls_or_a_token(self):
+        specs = build_setup_service_specs(self._config())
+        self.assertEqual([spec.name for spec in specs], ["setup"])
+        command = specs[0].command
+        self.assertIn("--setup", command)
+        self.assertEqual(command[command.index("--host") + 1], "127.0.0.1")
+        self.assertEqual(command[command.index("--port") + 1], "8900")
+        self.assertNotIn("--ssl-certfile", command)
+        self.assertNotIn("0.0.0.0", command)
+        self.assertEqual(specs[0].health_url, "http://127.0.0.1:8900/healthz")
+
+    def test_an_unconfigured_machine_starts_the_setup_service_not_the_normal_one(self):
+        config = self._config()
+        manager = ServiceManager(build_setup_service_specs(config),
+                                 log_dir=config.directory("logs"))
+        gate = SetupGate(manager, config, waiting=True, load=self._config)
+        self.assertTrue(gate.waiting)
+        self.assertEqual(gate.open_url(), "http://127.0.0.1:8900/")
+        self.assertEqual(gate.open_label(), "重新打开设置页")
+        self.assertIn("等待完成首次设置", gate.status_line())
+        self.assertFalse(gate.poll(), "设置还没做完，轮询不动任何东西")
+        self.assertEqual([spec.name for spec in manager.specs], ["setup"])
+
+    def test_a_finished_setup_switches_to_the_normal_services_and_runs_the_first_scan(self):
+        config = self._config()
+        manager = ServiceManager(build_setup_service_specs(config),
+                                 log_dir=config.directory("logs"),
+                                 popen=Mock(), health_get=lambda *a, **k: Response())
+        scan_popen = Mock()
+        gate = SetupGate(manager, config, waiting=True, load=self._config,
+                         popen=scan_popen, open_browser=Mock())
+        self._tls(config)
+        (self.data_root / "config.toml").write_text(
+            "[server]\nport = 9100\nmdns_name = 'peach-writer'\n", encoding="utf-8")
+        onboarding.request_first_scan(self._config())
+
+        with patch("peach.tray.lan_ipv4", return_value="192.0.2.10"):
+            self.assertTrue(gate.poll())
+        self.assertFalse(gate.waiting)
+        self.assertNotIn("setup", [spec.name for spec in manager.specs])
+        self.assertTrue(manager.specs, "切换之后必须有正常服务规格")
+        self.assertEqual(manager.log_dir, self.data_root / "logs")
+        self.assertEqual(manager.child_environment()["PEACH_DATA_ROOT"], str(self.data_root))
+        self.assertEqual(gate.open_label(), "打开 Peach")
+        self.assertEqual(gate.open_url(), "https://peach-writer.local/")
+
+        scan = scan_popen.call_args
+        self.assertEqual(list(scan.args[0][1:]), ["scan", "local"])
+        self.assertEqual(scan.kwargs["env"]["PEACH_DATA_ROOT"], str(self.data_root))
+        # 标记只消费一次：下一轮轮询已经不在等待状态，也不会再拉起一次扫描。
+        self.assertFalse(gate.poll())
+        self.assertEqual(scan_popen.call_count, 1)
+        self.assertIsNone(gate.start_first_scan(self._config()))
+
+    def test_missing_tls_material_keeps_the_gate_waiting(self):
+        """没有 openssl 的机器上 CA 生成会失败；那时不能拿一组缺文件的规格去启动。"""
+        config = self._config()
+        manager = ServiceManager(build_setup_service_specs(config),
+                                 log_dir=config.directory("logs"))
+        gate = SetupGate(manager, config, waiting=True, load=self._config)
+        self.data_root.mkdir(parents=True, exist_ok=True)
+        (self.data_root / "config.toml").write_text("[server]\nport = 8900\n", encoding="utf-8")
+        with patch("peach.tray.lan_ipv4", return_value="192.0.2.10"):
+            self.assertFalse(gate.poll())
+        self.assertTrue(gate.waiting)
+        self.assertEqual([spec.name for spec in manager.specs], ["setup"])
 
 
 class SourceSyncTests(unittest.TestCase):

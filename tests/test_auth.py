@@ -154,7 +154,7 @@ class InitProvisionsTokenTests(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.root = Path(self.tmp.name).resolve() / "peach-data"
-        patcher = mock.patch.object(cli.certs, "bootstrap_certificates")
+        patcher = mock.patch.object(cli.onboarding.certs, "bootstrap_certificates")
         patcher.start()
         self.addCleanup(patcher.stop)
 

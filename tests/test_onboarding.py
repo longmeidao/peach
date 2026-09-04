@@ -6,16 +6,20 @@ CLI 与将来的托盘设置页共用这一层，所以这里只用脚本化答�
 """
 from __future__ import annotations
 
+import importlib.util
 import io
 import os
+import sqlite3
 import tempfile
 import unittest
+from html import escape
 from pathlib import Path
 from unittest import mock
 
 from peach import onboarding, settings_file
 
 NATIVE_WINDOWS = os.name == "nt"
+HAS_HTTP_DEPS = all(importlib.util.find_spec(name) for name in ("fastapi", "httpx"))
 
 
 def scripted(*answers: str):
@@ -206,6 +210,226 @@ class InterviewTests(_Case):
         self.assertFalse(onboarding.is_interactive(io.StringIO()))
         self.assertFalse(onboarding.is_interactive(None))
         self.assertTrue(onboarding.is_interactive(mock.Mock(isatty=lambda: True)))
+
+
+class ApplyTests(_Case):
+    """`apply()` 是 CLI 问答与设置页共用的落盘入口。"""
+
+    def setUp(self):
+        super().setUp()
+        (self.media / "sub").mkdir()
+        (self.media / "sub" / "a.mp4").write_bytes(b"0" * 10)
+        patcher = mock.patch.object(onboarding.certs, "bootstrap_certificates")
+        self.certs = patcher.start()
+        self.certs.return_value.ca_cert = self.root / "peach-data" / "secrets" / "tls" / "ca.crt"
+        self.addCleanup(patcher.stop)
+
+    def _answers(self, **overrides):
+        base = dict(data_root=self.root / "peach-data", media_dir=self.media,
+                    host="127.0.0.1", port=8900, mdns_name="peach")
+        base.update(overrides)
+        return onboarding.Answers(**base)
+
+    def test_apply_builds_the_whole_tree_and_writes_the_settings_file(self):
+        applied = onboarding.apply(self.config, self._answers(), windows=NATIVE_WINDOWS)
+        data_root = self.root / "peach-data"
+        for key in settings_file.DIRECTORY_KEYS:
+            self.assertTrue((data_root / key).is_dir(), key)
+        self.assertTrue((data_root / "secrets" / "tls").is_dir())
+        self.assertEqual(applied.settings_path, data_root / "config.toml")
+        self.assertTrue(applied.settings_path.is_file())
+        self.assertFalse(applied.tree.ledger_existed)
+        self.assertGreater(applied.tree.migrations, 0)
+        self.assertTrue(applied.tree.database.is_file())
+        self.assertTrue(applied.tree.token_path.is_file())
+        self.assertTrue(applied.tree.token_created)
+        self.certs.assert_called_once()
+        # 账本真的被迁到最新：`asset` 表在，且是空的（apply 不扫描）。
+        connection = sqlite3.connect(applied.tree.database)
+        try:
+            self.assertEqual(connection.execute("SELECT COUNT(*) FROM asset").fetchone()[0], 0)
+        finally:
+            connection.close()
+
+    def test_an_existing_ledger_is_never_migrated_or_overwritten(self):
+        first = onboarding.apply(self.config, self._answers(), windows=NATIVE_WINDOWS)
+        again = onboarding.create_data_tree(first.config)
+        self.assertTrue(again.ledger_existed)
+        self.assertEqual(again.migrations, 0)
+        self.assertFalse(again.token_created, "口令沿用已有的那份，不重新生成")
+
+    def test_a_missing_openssl_is_reported_instead_of_aborting_the_setup(self):
+        self.certs.side_effect = RuntimeError("openssl 不在 PATH 上")
+        applied = onboarding.apply(self.config, self._answers(), windows=NATIVE_WINDOWS)
+        self.assertIsNone(applied.tree.ca_cert)
+        self.assertIn("openssl", applied.tree.ca_error)
+        self.assertTrue(applied.settings_path.is_file(), "没有 CA 也要把设置文件写出来")
+
+    def test_writing_over_an_existing_settings_file_needs_force(self):
+        onboarding.apply(self.config, self._answers(), windows=NATIVE_WINDOWS)
+        with self.assertRaises(settings_file.SettingsFileError):
+            onboarding.apply(self.config, self._answers(), windows=NATIVE_WINDOWS)
+        onboarding.apply(self.config, self._answers(port=9100),
+                         windows=NATIVE_WINDOWS, force=True)
+        loaded, _ = onboarding.resolve_config(self.root / "peach-data", environ={})
+        self.assertEqual(loaded.server.port, 9100)
+
+    def test_the_first_scan_marker_is_consumed_exactly_once(self):
+        applied = onboarding.apply(self.config, self._answers(), windows=NATIVE_WINDOWS)
+        config = applied.config
+        self.assertIsNone(onboarding.take_first_scan_request(config))
+        path = onboarding.request_first_scan(config)
+        self.assertEqual(path, config.directory("state") / onboarding.SCAN_REQUEST_NAME)
+        self.assertEqual(onboarding.take_first_scan_request(config), "local")
+        self.assertFalse(path.exists())
+        self.assertIsNone(onboarding.take_first_scan_request(config))
+
+    def test_resolve_config_follows_the_given_data_root(self):
+        elsewhere = self.root / "somewhere-else"
+        config, broken = onboarding.resolve_config(elsewhere, environ={})
+        self.assertIsNone(broken)
+        self.assertEqual(config.data_root, elsewhere)
+        self.assertEqual(config.path, elsewhere / "config.toml")
+
+    def test_a_broken_settings_file_falls_back_and_hands_over_the_error(self):
+        data_root = self.root / "peach-data"
+        data_root.mkdir()
+        (data_root / "config.toml").write_text("[server\nport = ", encoding="utf-8")
+        config, broken = onboarding.resolve_config(data_root, environ={})
+        self.assertIsNotNone(broken)
+        self.assertEqual(config.server.port, 8900, "坏文件退回内建默认")
+
+
+@unittest.skipUnless(HAS_HTTP_DEPS, "需要 fastapi 与 httpx")
+class SetupPageTests(_Case):
+    """首次运行表单的 HTTP 契约：页面字段、逐字段校验、守卫与落盘。
+
+    这一层和 `peach init` 的问答共用 `peach.onboarding`，所以这里断言的是「页面渲染
+    出来的字段和 `questions()` 同名同序」，而不是另抄一份字段清单去比对。
+    """
+
+    def setUp(self):
+        super().setUp()
+        (self.media / "a.mp4").write_bytes(b"0" * 10)
+        patcher = mock.patch.object(onboarding.certs, "bootstrap_certificates")
+        self.certs = patcher.start()
+        self.addCleanup(patcher.stop)
+        active = mock.patch.object(settings_file, "active", lambda: self.config)
+        active.start()
+        self.addCleanup(active.stop)
+        self.data_root = self.root / "peach-data"
+
+    def _client(self, *, configured: bool = False, client=("127.0.0.1", 12345)):
+        import httpx
+
+        from peach.api import create_app
+        from peach.config import PeachSettings
+
+        app = create_app(PeachSettings(
+            db_path=self.data_root / "database" / "ledger.db",
+            configured=configured, token="",
+        ))
+        return httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app, client=client),
+            base_url="http://test")
+
+    def _get(self, path, **kwargs):
+        import asyncio
+
+        async def run():
+            async with self._client(**kwargs) as client:
+                return await client.get(path)
+
+        return asyncio.run(run())
+
+    def _post(self, path, data, **kwargs):
+        import asyncio
+
+        async def run():
+            async with self._client(**kwargs) as client:
+                return await client.post(path, data=data)
+
+        return asyncio.run(run())
+
+    def _form(self, **overrides):
+        base = {"data_root": str(self.data_root), "media_dir": str(self.media),
+                "host": "1", "port": "8900", "mdns_name": "peach", "scan_now": "y"}
+        base.update(overrides)
+        return {key: value for key, value in base.items() if value is not None}
+
+    def _loaded(self):
+        return settings_file.load_config(environ={"PEACH_DATA_ROOT": str(self.data_root)})
+
+    def test_the_first_run_page_renders_every_question_plus_the_scan_checkbox(self):
+        response = self._get("/")
+        self.assertEqual(response.status_code, 200)
+        body = response.text
+        self.assertIn('<form method="post" action="/setup">', body)
+        for question in onboarding.questions(self.config, windows=NATIVE_WINDOWS):
+            self.assertIn(f'name="{question.key}"', body)
+            # `<名字>.local` 那一题的题面带尖括号，页面里是转义过的。
+            self.assertIn(escape(question.prompt), body)
+        self.assertIn('name="scan_now"', body)
+        self.assertIn("checked", body)
+        # 监听范围是下拉，两个选项由 `HOST_OPTIONS` 给出，不在页面里另写一遍。
+        for value, label in onboarding.HOST_OPTIONS:
+            self.assertIn(f'value="{value}"', body)
+            self.assertIn(label, body)
+
+    @unittest.skipIf(NATIVE_WINDOWS, "盘符本身就是挂载点，Windows 上没有这句话")
+    def test_the_mounts_explanation_sits_under_the_media_field_on_posix(self):
+        self.assertIn("本机挂载点", self._get("/").text)
+
+    def test_invalid_values_come_back_as_a_form_with_per_field_messages(self):
+        missing = self.root / "nope"
+        response = self._post("/setup", self._form(media_dir=str(missing), port="0"))
+        self.assertEqual(response.status_code, 400)
+        body = response.text
+        self.assertIn("目录不存在", body)
+        self.assertIn("端口要是 1 到 65535 之间的整数", body)
+        self.assertIn(f'value="{missing}"', body, "填错的值要留在表单里")
+        self.assertFalse(missing.exists(), "校验不替人建目录")
+        self.assertFalse(self.data_root.exists(), "校验失败不落任何文件")
+
+    def test_a_valid_submission_builds_the_tree_and_shows_what_happens_next(self):
+        response = self._post("/setup", self._form())
+        self.assertEqual(response.status_code, 200)
+        for key in settings_file.DIRECTORY_KEYS:
+            self.assertTrue((self.data_root / key).is_dir(), key)
+        self.assertTrue((self.data_root / "database" / "ledger.db").is_file())
+        self.assertTrue((self.data_root / "secrets" / "tls").is_dir())
+        self.assertTrue((self.data_root / "config.toml").is_file())
+        self.certs.assert_called_once()
+        loaded = self._loaded()
+        self.assertTrue(loaded.present)
+        self.assertEqual((loaded.server.host, loaded.server.port), ("127.0.0.1", 8900))
+        self.assertFalse(loaded.replication.enabled)
+        # 勾了「现在扫描」就留下标记，扫描本身不在这条请求里跑。
+        self.assertTrue((self.data_root / "state" / onboarding.SCAN_REQUEST_NAME).is_file())
+        body = response.text
+        self.assertIn("设置完成", body)
+        self.assertIn("peach token", body)
+        self.assertIn(str(self.data_root), body)
+
+    def test_declining_the_scan_leaves_no_marker(self):
+        self._post("/setup", self._form(scan_now=None))
+        self.assertFalse((self.data_root / "state" / onboarding.SCAN_REQUEST_NAME).exists())
+
+    def test_a_configured_machine_does_not_have_this_endpoint(self):
+        response = self._post("/setup", self._form(), configured=True)
+        self.assertEqual(response.status_code, 404)
+        self.assertFalse(self.data_root.exists())
+
+    def test_a_non_loopback_client_is_refused(self):
+        response = self._post("/setup", self._form(), client=("198.51.100.7", 51000))
+        self.assertEqual(response.status_code, 403)
+        self.assertFalse(self.data_root.exists())
+
+    def test_a_second_submission_refuses_to_overwrite_the_settings_file(self):
+        self.assertEqual(self._post("/setup", self._form()).status_code, 200)
+        again = self._post("/setup", self._form(port="9100"))
+        self.assertEqual(again.status_code, 409)
+        self.assertEqual(self._loaded().server.port, 8900, "第二次提交不得改掉已写好的设置")
 
 
 if __name__ == "__main__":
