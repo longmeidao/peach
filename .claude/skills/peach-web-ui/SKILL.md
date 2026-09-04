@@ -12,7 +12,7 @@ description: 在新增、修改或复核 Peach 页面、控件、提示、错误
 1. 读取相关页面、`web/js/ui-components.js`、`web/css/` 与 `tests/test_web_ui.py`，先找现成控件、token 和行为。
 2. 外部产品被称为参考时同时执行 `peach-reference-evidence`；没有当前可复现证据就写 `未取得`，不补动画、间距或交互猜测。
 3. 视觉与交互先过 `docs/reference-snapshots/vercel-web-interface-guidelines.md` 的 Focus States、Forms、Animation、Content 四节，以及 `vercel-report-design.md`（即 `vercel.com/design.md`）的「Reject generated-design reflexes」；第三方逆向测量的 DESIGN.md（如 design-bites）不作证据。
-4. 新控件先检查 `docs/reference-snapshots/vercel-geist-controls-measured.md`、`vercel-geist-semantics-measured.md`、`vercel-geist-note-progress-switch-analytics.md` 与 `vercel-geist-command-search-loading.md`。
+4. 新控件先检查 `docs/reference-snapshots/vercel-geist-controls-measured.md`、`vercel-geist-semantics-measured.md`、`vercel-geist-note-progress-switch-analytics.md`、`vercel-geist-command-search-loading.md` 与 `vercel-geist-button-icons.md`。
 
 ## 组件选择
 
@@ -57,6 +57,8 @@ description: 在新增、修改或复核 Peach 页面、控件、提示、错误
 - 关注来源标签先服从来源记录的类型：只有明确标为 `general` 的标签才能进入卡片、顶部筛选和在线标签页，`artist`／`character`／`copyright`／`metadata` 与未知类型不得靠词形猜成 `general`。通用词清理是第二道门槛，只处理已经确认的 `general`；详情可显示全部来源标签，并按真实类型着色。
 - 危险动作的悬停态一律 `--drop` 实底加白字。只描红边、红字的话，静止态和悬停态在暗色底上几乎一样亮，按下去之前看不出这是不可逆动作；带文字的销毁按钮全站一个写法，纯图标删除键不适用。Geist 的 error Button 同样是实心红填充，只是它静止态就红。实测见 `vercel-geist-controls-measured.md`。
 - 下拉框的用途用框内左侧 16px 前缀图标标明，不在同一行挂一个文字标签：Geist 的文字 Label 是块级、排在控件上方，行内并排那种写法它没有，而工具行没有上方空间。无障碍名称改由 `aria-label` 承担。
+- 按钮的前置图标只在图标指向对象（来源站点、当前选中项、平台）或形态方向（触发器右侧的 `chevron-down`）时出现；文字已经把动词说完的不加，`+ 添加`、`↻ 刷新`、`✓ 保存` 这枚多余字形会把同一行主次动作的视觉重量拉平。图标键必须给 `aria-label`，名称点出动作和对象、不描述图标形状。判据与 Geist Button 文档正文见 `docs/reference-snapshots/vercel-geist-button-icons.md`；官方 Geist 图标 SVG 没有可直取的入口，同一份快照记了原因。
+- 同一行里的输入框和按钮共用 `--control-h`，不各写一个像素数：两个控件差 3px 就不是一行了，而差值往往来自窄屏那条防放大规则只抬其中一个。
 - 播放器控制条的窄屏折叠按播放器自身宽度判定（`ResizeObserver` 观察 `player.el()`），不用媒体查询：同一个视口下影院模式和普通视图的播放器宽度差一大截，用视口判据会在影院模式下白折叠、在普通视图下继续超框。门槛与提示外观见 `youtube-player-controls-user-screenshot.md`。
 - 分页末尾、空页和“没有更多内容”是中性终止状态，用可关闭 Note；只有需要恢复或处理的故障才能进入红色 error Note。
 - 弹层标题栏与滚动正文分层：标题分隔线属于卡片全宽，滚动条只属于正文。
