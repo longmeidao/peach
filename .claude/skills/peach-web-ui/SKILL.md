@@ -48,7 +48,7 @@ description: 在新增、修改或复核 Peach 页面、控件、提示、错误
 - `outline:0`／`outline:none` 只允许出现在同一规则给出替代焦点样式的地方（`box-shadow` 或子元素 outline），或输入框由带 `:focus-within` 的容器接管焦点时；reduced motion 由全局 `@media (prefers-reduced-motion:reduce)` 统一关闭，不逐处补。
 - Progress 必须有真实 `value/max`、可见单位与 `aria-valuemin/max/now`；分隔线放在完整指标（含进度条）之后。
 - Switch 必须共享 radio `name`、初始一个 `checked`、键盘可用；布尔状态继续使用 Toggle。
-- 菜单每项包含与入口相同的图标和文字，菜单内部滚动、`overscroll-behavior:contain`，不得把浏览器页面撑出滚动条。
+- 菜单每项包含与入口相同的图标和文字，菜单内部滚动、`overscroll-behavior:contain`，不得把浏览器页面撑出滚动条。锚定菜单一律走 `wireAnchoredMenu`：高度压到触发钮那一侧真正剩下的空间（上沿是 `--topH` 顶栏下缘），装不下就在菜单内滚，不横跨触发钮；页面滚动关掉菜单，菜单自身的滚动不关。
 - 只读查询（搜索、筛选）不配提交按钮：回车即执行，忙态落在表单自己身上（`form[aria-busy]` 加前缀原位换 Spinner）。有副作用的提交必须有按钮，且回车同样要能提交。表单里除这个输入框外还有别的字段时浏览器不做隐式提交，回车要自己接管 `requestSubmit()` 并跳过 `isComposing`。判据与实测见 `docs/reference-snapshots/vercel-forms-submit-affordance.md`。
 - Spinner 只反馈用户直接触发的动作，触发器统一调用 `setActionBusy()`：写入 `aria-busy=true` 与 `aria-disabled=true`、视觉变灰、拦截重复触发，同时保持可聚焦；请求等待期不得再用原生 `disabled`，它只留给缺输入、无权限等动作确实不可执行的状态。未知时长的后台抓取使用 Loading Dots。整页或大区块首次取数使用 Skeleton 预留最终结构。Spinner／Loading Dots 保留可见状态文字；Skeleton 只保留给辅助技术的状态名，不另画「正在读取」文案。三者都尊重 reduced motion。
 - 用户写操作只在服务端终态成功后调用共享 `actionReceipt()` 发一条过去时 Toast；可由安全逆操作完整恢复的状态提供 8 秒“撤销”，永久删除、凭据、保存到账本等不伪造撤销。仅打开面板／菜单／Dialog 不算操作完成，不发 Toast；失败除短 Toast 外仍在原位置保留原因与重试入口。
