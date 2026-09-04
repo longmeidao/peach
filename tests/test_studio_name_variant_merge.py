@@ -199,6 +199,8 @@ class ApplyTests(unittest.TestCase):
             " created_at TEXT, updated_at TEXT, UNIQUE(entity_id, url));"
             "CREATE TABLE entity_search_term(entity_id INTEGER, term TEXT,"
             " purpose TEXT, source TEXT, created_at TEXT, UNIQUE(entity_id, term));"
+            "CREATE TABLE entity_membership(member_id INTEGER PRIMARY KEY,"
+            " agency_id INTEGER, source TEXT, confidence REAL, checked_at TEXT);"
             "CREATE TABLE asset(id INTEGER PRIMARY KEY, code TEXT, studio TEXT);"
             "CREATE TABLE asset_entity(asset_id INTEGER, entity_id INTEGER, role TEXT,"
             " source TEXT, confidence REAL, metadata_json TEXT, first_seen_at TEXT,"

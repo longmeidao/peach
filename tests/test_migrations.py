@@ -24,7 +24,7 @@ class MigrationTests(unittest.TestCase):
         backup = self.root / "before.db"
         done = upgrade(self.db, MIGRATIONS, backup)
         self.assertEqual([m.version for m in done],
-                         ["0000", "0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012", "0013", "0014", "0015", "0016", "0017", "0018", "0019", "0020", "0021", "0022", "0023", "0024"])
+                         ["0000", "0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012", "0013", "0014", "0015", "0016", "0017", "0018", "0019", "0020", "0021", "0022", "0023", "0024", "0025"])
         self.assertTrue(backup.exists())
         con = sqlite3.connect(self.db)
         tables = {row[0] for row in con.execute(
@@ -41,7 +41,7 @@ class MigrationTests(unittest.TestCase):
                          "playlist", "playlist_item",
                          "asset_tag_preference", "asset_search", "follow_playback",
                          "schema_migration"} <= tables)
-        self.assertEqual(versions, ["0000", "0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012", "0013", "0014", "0015", "0016", "0017", "0018", "0019", "0020", "0021", "0022", "0023", "0024"])
+        self.assertEqual(versions, ["0000", "0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012", "0013", "0014", "0015", "0016", "0017", "0018", "0019", "0020", "0021", "0022", "0023", "0024", "0025"])
         self.assertEqual(upgrade(self.db, MIGRATIONS), [])
         self.assertEqual(plan(self.db, MIGRATIONS)[1], [])
 
@@ -441,14 +441,23 @@ class ForeignKeyDeleteRuleTests(unittest.TestCase):
         self.root = Path(self.tmp.name).resolve()
         self.db = self.root / "ledger.db"
 
-    def _upgrade_through_0023(self):
-        directory = self.root / "through-0023"
+    def _migrations_below(self, upper: str):
+        """只含版本号小于 `upper` 的迁移目录。
+
+        按上界取，不按「排除 0024」取补集：补集会把后来新增的每一个版本都算进这份
+        「到 0023 为止」的目录，而 0025 与 0024 无关，照样装得上。这一组用例盯的是
+        0024 那次重建，多装一个版本就会把它新增的表和索引算成 0024 的账。
+        """
+        directory = self.root / f"below-{upper}"
         directory.mkdir()
         for path in sorted(MIGRATIONS.glob("*.sql")):
-            if not path.name.startswith("0024_"):
+            if path.name < upper:
                 shutil.copyfile(path, directory / path.name)
+        return directory
+
+    def _upgrade_through_0023(self):
         sqlite3.connect(self.db).close()
-        upgrade(self.db, directory)
+        upgrade(self.db, self._migrations_below("0024"))
 
     def _seed(self):
         connection = sqlite3.connect(self.db)
@@ -512,7 +521,8 @@ class ForeignKeyDeleteRuleTests(unittest.TestCase):
         self.assertEqual(before_counts["asset_tag"], 3)
         self.assertEqual(before_counts["follow_playback"], 2)
 
-        self.assertEqual([m.version for m in upgrade(self.db, MIGRATIONS)], ["0024"])
+        self.assertEqual(
+            [m.version for m in upgrade(self.db, self._migrations_below("0025"))], ["0024"])
 
         connection = self._open()
         self.assertEqual(self._counts(connection), before_counts)

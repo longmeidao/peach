@@ -1,0 +1,299 @@
+"""事务所是实体：有资料页、有成员、搜得到。"""
+import shutil
+import sqlite3
+import tempfile
+import unittest
+from pathlib import Path
+
+from peach import web_contract as rm_web
+from peach.entities import merge_entity
+from peach.migrations import needs_foreign_keys_off, upgrade
+from peach.web_entity import PROFILE_KINDS, scope_predicate
+from scripts.dedupe_entity_links import collect as dedupe_plan
+from scripts.dedupe_entity_links import destination
+from scripts.install_agencies import collect as agency_plan
+from scripts.install_agencies import apply_rows as install_agencies
+from scripts.install_agencies import split_name
+
+ROOT = Path(__file__).resolve().parents[1]
+MIGRATIONS = ROOT / "migrations"
+STAMP = "2026-09-05T00:00:00Z"
+
+
+class ForeignKeysOffMarkerTests(unittest.TestCase):
+    """重建父表的迁移要能关掉外键，而且只有它能。"""
+
+    def test_the_marker_is_read_from_the_leading_comment_block(self):
+        self.assertTrue(needs_foreign_keys_off(
+            "-- peach:foreign_keys=off\n-- 说明\nCREATE TABLE t(id INTEGER);\n"))
+
+    def test_a_migration_without_the_marker_keeps_foreign_keys_on(self):
+        self.assertFalse(needs_foreign_keys_off("-- 说明\nCREATE TABLE t(id INTEGER);\n"))
+
+    def test_the_marker_after_the_first_statement_does_not_count(self):
+        """pragma 要在整个文件开跑之前决定，写在语句之间等于没写。"""
+        self.assertFalse(needs_foreign_keys_off(
+            "CREATE TABLE t(id INTEGER);\n-- peach:foreign_keys=off\n"))
+
+    def test_rebuilding_entity_keeps_every_child_row(self):
+        """外键开着时 DROP TABLE entity 会 CASCADE 删空子表，这条迁移不能那样。"""
+        with tempfile.TemporaryDirectory() as tmp:
+            older = Path(tmp).resolve() / "migrations"
+            older.mkdir()
+            for path in sorted(MIGRATIONS.glob("[0-9][0-9][0-9][0-9]_*.sql")):
+                if path.name < "0025":
+                    shutil.copy2(path, older / path.name)
+            db = Path(tmp).resolve() / "ledger.db"
+            upgrade(db, older)
+            con = sqlite3.connect(db)
+            con.execute("INSERT INTO entity(id,kind,canonical_name,normalized_name,"
+                        "created_at,updated_at) VALUES(7,'performer','阿花','阿花','t','t')")
+            con.execute("INSERT INTO entity_alias(entity_id,alias,normalized_alias,source)"
+                        " VALUES(7,'Hana','hana','test')")
+            con.execute("INSERT INTO entity_link(entity_id,link_kind,label,url,hostname,"
+                        "created_at,updated_at) VALUES(7,'social','X','https://x.com/h','x.com','t','t')")
+            con.commit()
+            con.close()
+
+            upgrade(db, MIGRATIONS)
+
+            con = sqlite3.connect(db)
+            try:
+                counts = (con.execute("SELECT count(*) FROM entity_alias").fetchone()[0],
+                          con.execute("SELECT count(*) FROM entity_link").fetchone()[0])
+                name = con.execute("SELECT canonical_name FROM entity WHERE id=7").fetchone()[0]
+                broken = len(con.execute("PRAGMA foreign_key_check").fetchall())
+            finally:
+                # Windows 上临时目录删不掉带着打开句柄的库文件，断言失败也要先关。
+                con.close()
+        self.assertEqual(counts, (1, 1))
+        self.assertEqual(name, "阿花")
+        self.assertEqual(broken, 0)
+
+    def test_the_search_index_trigger_survives_the_rebuild(self):
+        """DROP TABLE 把挂在 entity 上的触发器一起带走，迁移必须补回来。"""
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp).resolve() / "ledger.db"
+            upgrade(db, MIGRATIONS)
+            con = sqlite3.connect(db)
+            try:
+                triggers = con.execute(
+                    "SELECT count(*) FROM sqlite_master WHERE type='trigger'"
+                    " AND name='asset_search_entity_update'").fetchone()[0]
+            finally:
+                con.close()
+        self.assertEqual(triggers, 1)
+
+    def test_agency_is_an_accepted_entity_kind(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp).resolve() / "ledger.db"
+            upgrade(db, MIGRATIONS)
+            con = sqlite3.connect(db)
+            try:
+                con.execute(
+                    "INSERT INTO entity(kind,canonical_name,normalized_name,"
+                    "created_at,updated_at) VALUES('agency','Capsule','capsule','t','t')")
+                with self.assertRaises(sqlite3.IntegrityError):
+                    con.execute(
+                        "INSERT INTO entity(kind,canonical_name,normalized_name,"
+                        "created_at,updated_at) VALUES('label','X','x','t','t')")
+            finally:
+                con.close()
+
+
+class AgencyNameTests(unittest.TestCase):
+    """括号里是读音或旧名，括号外才是现用名。"""
+
+    def test_a_plain_name_has_no_aliases(self):
+        self.assertEqual(split_name("Capsule Agency"), ("Capsule Agency", []))
+
+    def test_the_reading_in_parentheses_becomes_an_alias(self):
+        self.assertEqual(split_name("ACT(アクト)"), ("ACT", ["アクト"]))
+
+    def test_a_former_name_loses_its_prefix(self):
+        self.assertEqual(split_name("Wish(元・GIRFY)"), ("Wish", ["GIRFY"]))
+
+    def test_a_former_name_after_the_closing_bracket_is_kept(self):
+        self.assertEqual(
+            split_name("SO MODEL AGENT(ソウ モデルエージェント)旧・Eightman Production"),
+            ("SO MODEL AGENT", ["ソウ モデルエージェント", "Eightman Production"]))
+
+
+class LinkDestinationTests(unittest.TestCase):
+    """写法不同、去处相同的链接是一条，不是两条。"""
+
+    def test_a_trailing_slash_is_the_same_destination(self):
+        self.assertEqual(destination("http://kawakami-yuu.livedoor.biz"),
+                         destination("http://kawakami-yuu.livedoor.biz/"))
+
+    def test_a_post_belongs_to_the_same_account_as_its_profile(self):
+        self.assertEqual(destination("https://x.com/yu_kinao"),
+                         destination("https://x.com/yu_kinao/status/1221041995415580672"))
+
+    def test_two_accounts_on_one_platform_stay_apart(self):
+        self.assertNotEqual(destination("https://x.com/one"), destination("https://x.com/two"))
+
+    def test_a_query_string_still_distinguishes_pages(self):
+        self.assertNotEqual(destination("https://a.jp/t?id=3"), destination("https://a.jp/t?id=4"))
+
+
+class AgencyLedgerTests(unittest.TestCase):
+    """按真实形状建一份小账本：两家事务所、三位女优、几条链接。"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        root = Path(self.tmp.name).resolve()
+        self.db = root / "ledger.db"
+        upgrade(self.db, MIGRATIONS)
+        self.con = sqlite3.connect(self.db)
+        self.con.row_factory = sqlite3.Row
+        self.addCleanup(self.con.close)
+        self.con.executemany(
+            "INSERT INTO asset(id,location,path,name,medium,size,first_seen)"
+            " VALUES(?,'local',?,?,'video',100,'2026-01-01')",
+            [(1, r"R:\Media\a.mp4", "a.mp4"), (2, r"R:\Media\b.mp4", "b.mp4"),
+             (3, r"R:\Media\c.mp4", "c.mp4")])
+        self.con.executemany(
+            "INSERT INTO entity(id,kind,canonical_name,normalized_name,metadata_json,"
+            "created_at,updated_at) VALUES(?,?,?,?,?,'t','t')",
+            [(11, "performer", "七泽美亚", "七泽美亚",
+              '{"agency":{"name":"Capsule Agency","checked_at":"2026-09-04T00:00:00Z"}}'),
+             (12, "performer", "神雪", "神雪",
+              '{"agency":{"name":"Capsule Agency","checked_at":"2026-09-04T00:00:00Z"}}'),
+             (13, "performer", "白石亚子", "白石亚子",
+              '{"agency":{"name":"ACT(アクト)","checked_at":"2026-09-04T00:00:00Z"}}'),
+             (20, "tag", "足交", "足交", "{}")])
+        self.con.executemany(
+            "INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence)"
+            " VALUES(?,?,?,'test',1.0)",
+            [(1, 11, "performer"), (2, 12, "performer"), (3, 13, "performer"),
+             (1, 20, "tag")])
+        # 归属域名的共识：三条同标签的链接指向同一个主机。
+        self.con.executemany(
+            "INSERT INTO entity_link(entity_id,link_kind,label,url,hostname,"
+            "created_at,updated_at) VALUES(?,'official','ACT(アクト)',?,"
+            "'actentertainment.jp','t','t')",
+            [(11, "https://actentertainment.jp/a"), (12, "https://actentertainment.jp/b"),
+             (13, "https://actentertainment.jp/c")])
+        self.con.commit()
+        rows = agency_plan(self.con)
+        install_agencies(self.con, rows, STAMP)
+        self.con.commit()
+        self.logos = root / "logos"; self.logos.mkdir()
+        self.avatars = root / "avatars"; self.avatars.mkdir()
+        self.contract = rm_web.WebContract(
+            self.db, avatar_root=self.avatars, logo_root=self.logos)
+
+    def page(self, kind, name):
+        return rm_web.q_entity(self.contract, {"kind": kind, "name": name})
+
+    def test_every_performer_with_an_agency_gets_exactly_one_membership(self):
+        self.assertEqual(
+            self.con.execute("SELECT count(*) FROM entity_membership").fetchone()[0], 3)
+
+    def test_the_agency_profile_counts_the_works_of_its_members(self):
+        page = self.page("agency", "Capsule Agency")
+        self.assertEqual(page["asset_count"], 2)
+        self.assertEqual(page["member_count"], 2)
+
+    def test_the_agency_profile_lists_its_roster_not_co_stars(self):
+        names = [person["k"] for person in self.page("agency", "Capsule Agency")
+                 ["related_performers"]]
+        self.assertEqual(sorted(names), ["七泽美亚", "神雪"])
+
+    def test_the_agency_profile_carries_the_tags_of_its_members_works(self):
+        self.assertIn("足交", [tag["k"] for tag in
+                              self.page("agency", "Capsule Agency")["tags"]])
+
+    def test_a_performer_profile_points_at_her_agency_entity(self):
+        home = self.page("performer", "七泽美亚")["agency"]
+        self.assertEqual(home["canonical_name"], "Capsule Agency")
+        self.assertEqual(home["checked_at"], "2026-09-04T00:00:00Z")
+
+    def test_an_agency_profile_has_no_agency_of_its_own(self):
+        self.assertIsNone(self.page("agency", "Capsule Agency")["agency"])
+
+    def test_the_agency_is_reachable_by_its_former_name(self):
+        """`ACT(アクト)` 的读音留成别名，按它也要能打开这一页。"""
+        self.assertEqual(self.page("agency", "アクト")["canonical_name"], "ACT")
+
+    def test_the_agency_keeps_its_own_official_site(self):
+        page = self.page("agency", "ACT")
+        self.assertEqual([link["url"] for link in page["links"]],
+                         ["https://actentertainment.jp/"])
+
+    def test_agency_is_a_profile_kind(self):
+        self.assertIn("agency", PROFILE_KINDS)
+
+    def test_an_unknown_kind_is_still_refused(self):
+        self.assertEqual(rm_web.q_entity(self.contract, {"kind": "label", "name": "x"}),
+                         {"error": "invalid entity"})
+
+    def test_the_catalog_can_be_filtered_by_agency(self):
+        items = rm_web.q_items(self.contract, {"agency": "Capsule Agency", "limit": "10"})
+        self.assertEqual(sorted(item["id"] for item in items["items"]), [1, 2])
+
+    def test_searching_an_agency_name_finds_the_works_of_its_members(self):
+        """用户搜「Capsule」时，账本里确实有它，只是此前没有一条路把它接上作品。"""
+        items = rm_web.q_items(self.contract, {"q": "Capsule", "limit": "10"})
+        self.assertEqual(sorted(item["id"] for item in items["items"]), [1, 2])
+
+    def test_a_short_query_reaches_the_agency_too(self):
+        """短查询走 LIKE 分支，两条分支要覆盖同样的身份写法。"""
+        items = rm_web.q_items(self.contract, {"q": "AC", "limit": "10"})
+        self.assertEqual([item["id"] for item in items["items"]], [3])
+
+    def test_agency_facets_come_from_the_same_rows_as_its_items(self):
+        facets = rm_web.q_facets(self.contract, scope_kind="agency",
+                                 scope_name="Capsule Agency")
+        self.assertEqual(sum(row["n"] for row in facets["locations"]), 2)
+
+    def test_the_scope_predicate_takes_one_placeholder_either_way(self):
+        self.assertEqual(scope_predicate("performer", "ae.entity_id").count("?"), 1)
+        self.assertEqual(scope_predicate("agency", "ae.entity_id").count("?"), 1)
+
+    def test_merging_a_performer_carries_her_membership_over(self):
+        self.con.execute(
+            "INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at)"
+            " VALUES(99,'performer','Mia Nanasawa','mia nanasawa','t','t')")
+        moved = merge_entity(self.con, target_id=99, source_id=11,
+                             source_name="七泽美亚", alias_source="merge:test")
+        # 资料页读的是另一条只读连接，不提交就还看得见合并前的账本。
+        self.con.commit()
+        self.assertEqual(moved["memberships"], 1)
+        self.assertEqual(self.con.execute(
+            "SELECT count(*) FROM entity_membership WHERE member_id=11").fetchone()[0], 0)
+        self.assertEqual(self.page("agency", "Capsule Agency")["member_count"], 2)
+
+    def test_merging_two_agencies_moves_the_roster(self):
+        target = self.con.execute(
+            "SELECT id FROM entity WHERE kind='agency' AND canonical_name='ACT'").fetchone()[0]
+        source = self.con.execute(
+            "SELECT id FROM entity WHERE kind='agency' AND canonical_name='Capsule Agency'"
+        ).fetchone()[0]
+        moved = merge_entity(self.con, target_id=target, source_id=source,
+                             source_name="Capsule Agency", alias_source="merge:test")
+        self.con.commit()
+        self.assertEqual(moved["members"], 2)
+        self.assertEqual(self.page("agency", "ACT")["member_count"], 3)
+
+    def test_duplicate_links_on_one_entity_collapse_to_the_https_one(self):
+        self.con.executemany(
+            "INSERT INTO entity_link(entity_id,link_kind,label,url,hostname,"
+            "created_at,updated_at) VALUES(11,'social','X',?,'x.com','t','t')",
+            [("https://x.com/mia",), ("https://x.com/mia/status/1",)])
+        self.con.execute(
+            "INSERT INTO entity_link(entity_id,link_kind,label,url,hostname,"
+            "created_at,updated_at) VALUES(12,'official','ACT',"
+            "'http://actentertainment.jp/b','actentertainment.jp','t','t')")
+        self.con.commit()
+        verdicts = {row["url"]: row["verdict"] for row in dedupe_plan(self.con)}
+        self.assertEqual(verdicts["https://x.com/mia"], "keep")
+        self.assertEqual(verdicts["https://x.com/mia/status/1"], "delete")
+        self.assertEqual(verdicts["https://actentertainment.jp/b"], "keep")
+        self.assertEqual(verdicts["http://actentertainment.jp/b"], "delete")
+
+
+if __name__ == "__main__":
+    unittest.main()

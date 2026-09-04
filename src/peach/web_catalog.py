@@ -92,6 +92,28 @@ def tag_not_hidden(asset: str, tag: str) -> str:
             f"AND p.hidden=1 AND p.normalized_tag={tag})")
 
 
+#: 「这部作品属于某家事务所」的判据：它的出镜者里有这家的现役成员。
+#: 归属是人的属性，作品只是顺着人被算进来的——所以这里比的是 `entity_membership`，
+#: 不是给作品另存一个事务所字段。多存一份就会漂移，而漂移的那份没人会发现。
+AGENCY_ASSET_CLAUSE = (
+    "EXISTS(SELECT 1 FROM asset_entity ae "
+    "JOIN entity_membership m ON m.member_id=ae.entity_id "
+    "JOIN entity agency ON agency.id=m.agency_id "
+    "WHERE ae.asset_id=a.id AND agency.kind='agency' AND agency.canonical_name=?)"
+)
+
+#: 搜索里的同一条关系，但按名字模糊比，并且认别名——事务所改名比女优改艺名还常见，
+#: 「GRANZPRO」和「LiStarPRO」是同一批人。
+AGENCY_SEARCH_CLAUSE = (
+    "EXISTS(SELECT 1 FROM asset_entity ae "
+    "JOIN entity_membership m ON m.member_id=ae.entity_id "
+    "JOIN entity agency ON agency.id=m.agency_id "
+    "WHERE ae.asset_id=a.id AND agency.kind='agency' "
+    "AND (agency.canonical_name LIKE ? OR EXISTS(SELECT 1 FROM entity_alias al "
+    "WHERE al.entity_id=agency.id AND al.alias LIKE ?)))"
+)
+
+
 def q_items(contract: WebContract, args):
     trash = args.get("state") == "trash"
     # 普通馆藏仍是视频表面；回收站必须展示所有文件类型，否则从垃圾复核移入的
@@ -124,6 +146,9 @@ def q_items(contract: WebContract, args):
             "EXISTS(SELECT 1 FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
             "WHERE ae.asset_id=a.id AND e.kind='series' AND e.canonical_name=?)"
         ); par.append(args["series"])
+    # 事务所隔一层：作品是它的成员拍的，`asset_entity` 里没有事务所的行。
+    if args.get("agency"):
+        where.append(AGENCY_ASSET_CLAUSE); par.append(args["agency"])
     if args.get("tag"):
         tags = [x for x in args["tag"].split(",") if x]
         tag_clause = (
@@ -159,16 +184,21 @@ def q_items(contract: WebContract, args):
     if args.get("q"):
         query = args["q"].strip()
         if len(query) >= 3 and contract.has_fts():
+            # 事务所名不在 FTS 索引里，也不该进去：`asset_search` 索引的是作品自己的
+            # 文字和它名下的实体名，而事务所隔着一层成员关系。搜「Capsule Agency」
+            # 要能出这家人的片，所以在这里并联一条成员关系的判据。
             where.append(
-                "a.id IN (SELECT asset_id FROM asset_search WHERE asset_search MATCH ?)"
+                "(a.id IN (SELECT asset_id FROM asset_search WHERE asset_search MATCH ?)"
+                " OR " + AGENCY_SEARCH_CLAUSE + ")"
             )
             par.append('"' + query.replace('"', '""') + '"')
+            par += [f"%{query}%"] * 2
         else:
             # 短查询走 LIKE，必须和 FTS 覆盖同样的身份写法：规范名、别名和检索词。
             # 只比 canonical_name 会让「凉森」搜不到 `涼森れむ`——trigram 要求三字
             # 起步，两字查询永远落在这条分支上，补检索词也救不了。
             where.append(
-                "(a.name LIKE ? OR a.catalog_title LIKE ? OR a.original_title LIKE ? "
+                "((a.name LIKE ? OR a.catalog_title LIKE ? OR a.original_title LIKE ? "
                 "OR a.code LIKE ? OR EXISTS("
                 "SELECT 1 FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
                 "WHERE ae.asset_id=a.id AND e.kind IN ('creator','performer','studio') "
@@ -177,9 +207,10 @@ def q_items(contract: WebContract, args):
                 "AND al.alias LIKE ?) "
                 "OR EXISTS(SELECT 1 FROM entity_search_term st WHERE st.entity_id=e.id "
                 "AND st.term LIKE ?))))"
+                " OR " + AGENCY_SEARCH_CLAUSE + ")"
             )
             pattern = f"%{query}%"
-            par += [pattern] * 7
+            par += [pattern] * 9
     state = state_predicate(str(args.get("state") or ""))
     if state:
         where.append(state)
@@ -836,15 +867,21 @@ def q_facets(
             scope += "AND a.id=? "
             scope_params.append(int(asset_id))
         elif scope_kind or scope_name:
-            if scope_kind not in {"creator", "performer", "studio", "series"} or not scope_name:
+            if (scope_kind not in {"creator", "performer", "studio", "series", "agency"}
+                    or not scope_name):
                 raise ValueError("invalid facet scope")
-            scope += (
-                "AND EXISTS(SELECT 1 FROM asset_entity scope_ae "
-                "JOIN entity scope_e ON scope_e.id=scope_ae.entity_id "
-                "WHERE scope_ae.asset_id=a.id AND scope_e.kind=? "
-                "AND scope_e.canonical_name=?) "
-            )
-            scope_params.extend((scope_kind, scope_name))
+            if scope_kind == "agency":
+                # 事务所的筛选项必须和它的作品列表同源，否则右栏会给出点进去是 0 条的项。
+                scope += "AND " + AGENCY_ASSET_CLAUSE + " "
+                scope_params.append(scope_name)
+            else:
+                scope += (
+                    "AND EXISTS(SELECT 1 FROM asset_entity scope_ae "
+                    "JOIN entity scope_e ON scope_e.id=scope_ae.entity_id "
+                    "WHERE scope_ae.asset_id=a.id AND scope_e.kind=? "
+                    "AND scope_e.canonical_name=?) "
+                )
+                scope_params.extend((scope_kind, scope_name))
         out = {}
         out["locations"] = [dict(r) for r in c.execute(
             "SELECT a.location AS k, count(*) AS n, "

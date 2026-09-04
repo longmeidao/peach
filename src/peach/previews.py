@@ -41,7 +41,7 @@ def logo_key(studio: str) -> str:
 
 #: `/entity-image` 认得的实体种类。取图和可用性判定必须认同一份清单：这边多认一种，
 #: 页面就会为一个必然 404 的地址出 `<img>`；少认一种，装好的图从此不显示。
-ENTITY_IMAGE_KINDS = ("performer", "studio", "creator", "series")
+ENTITY_IMAGE_KINDS = ("performer", "studio", "creator", "series", "agency")
 
 
 def entity_image_key(kind: str, entity_id: int) -> str:
