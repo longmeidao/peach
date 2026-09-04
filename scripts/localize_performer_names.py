@@ -40,6 +40,9 @@ from peach.scripting import add_ledger_write_args, counts_of, open_for_write, ve
 
 RELEASE_SOURCES = frozenset({"r18:performer", "javbus:performer"})
 ALIAS_SOURCE_PREFIX = "avdb-actor-mapping"
+#: javdb 资料页那一份。两份映射的别名来源必须分得开：回溯「这个中文名是谁写的」
+#: 时，来源前缀是唯一留着这个区别的地方。
+JAVDB_ALIAS_SOURCE = "javdb-actor-page"
 MERGE_ALIAS_SOURCE = "merge:performer-localization"
 KANJI_ALIAS_SOURCE = "kanji-simplification"
 KANJI_ONLY_REVISION = "kanji-only"
@@ -59,7 +62,7 @@ JP_KANJI_TO_SIMPLIFIED = {
     "斎": "斋", "齋": "斋", "斉": "齐", "齊": "齐",
     "桜": "樱", "櫻": "樱", "橋": "桥", "歩": "步", "満": "满",
     "沢": "泽", "澤": "泽", "沖": "冲", "浜": "滨", "濱": "滨", "渋": "涩",
-    "涼": "凉", "湊": "凑", "瀬": "濑", "瀨": "濑", "瀧": "泷", "稲": "稻",
+    "涼": "凉", "湊": "凑", "瀬": "濑", "瀨": "濑", "滝": "泷", "瀧": "泷", "稲": "稻",
     "穂": "穗", "紀": "纪", "紗": "纱", "結": "结", "絵": "绘", "絢": "绚",
     "綾": "绫", "緒": "绪", "織": "织", "聖": "圣", "華": "华", "葉": "叶",
     "蔵": "藏", "藍": "蓝", "蘭": "兰", "見": "见", "遠": "远", "鈴": "铃",
@@ -97,9 +100,13 @@ class ActorMapping:
     keywords: tuple[str, ...]
     tmdb_id: str
     verified: str
+    #: 来源自己的身份键。javdb 的资料页有站内 id，比名字稳，也让 provenance 指得回那一页。
+    key_hint: str = ""
 
     @property
     def key(self) -> str:
+        if self.key_hint:
+            return self.key_hint
         return f"tmdb:{self.tmdb_id}" if self.tmdb_id else f"xml:{self.index}:{self.jp}"
 
 
@@ -120,6 +127,29 @@ def read_mapping(path: Path) -> list[ActorMapping]:
             tmdb_id=node.attrib.get("tmdb_id", "").strip(),
             verified=node.attrib.get("verified", "").strip(),
         ))
+    return rows
+
+
+def read_mapping_csv(path: Path) -> list[ActorMapping]:
+    """读 `harvest_javdb_cn_names.py` 产出的映射，只收判成 `ok` 的行。
+
+    中文写法在这里再过一次字形归一：javdb 给的是繁体中文，opencc 转完仍可能留着
+    日本字形（`滝田亞由` → `滝田亚由`，`滝` 中文写 `泷`）。字形不是译名判断，
+    这一步不需要外部证据，也不该等下一轮跑 `localize-kanji` 才补上。
+    """
+    rows = []
+    for index, record in enumerate(read_rows(path)):
+        if str(record.get("verdict") or "").strip() != "ok":
+            continue
+        zh_cn = simplify_kanji(str(record.get("zh_cn") or "").strip())
+        keywords = tuple(dict.fromkeys(
+            part.strip() for part in str(record.get("keywords") or "").split("|")
+            if part.strip()))
+        actor = str(record.get("actor_id") or "").strip()
+        rows.append(ActorMapping(
+            index=index, jp=str(record.get("jp") or "").strip(), zh_cn=zh_cn,
+            zh_tw=str(record.get("zh_tw") or "").strip(), keywords=keywords,
+            tmdb_id="", verified="", key_hint=f"javdb:{actor}" if actor else ""))
     return rows
 
 
@@ -439,13 +469,14 @@ def report_conflicts(rows: list[dict[str, object]]) -> int:
 
 def apply_rows(
     connection: sqlite3.Connection, rows: list[dict[str, object]], revision: str,
+    prefix: str = ALIAS_SOURCE_PREFIX,
 ) -> dict[str, int]:
     counts = Counter()
     # 重名冲突只挡住它自己那一行：下面的写入循环本来就跳过 conflict，整批拒绝扣住的
     # 是另外九十条毫无关系的改名——一个等人授权的同人合并不该冻住整轮本地化。跳过的
     # 行照样计数、照样让退出码非零，不会悄悄消失。
     counts["conflicts_skipped"] = sum(1 for row in rows if row["action"] == "conflict")
-    source = f"{ALIAS_SOURCE_PREFIX}@{revision[:12]}"
+    source = f"{prefix}@{revision[:12]}"
     by_id = {int(row["entity_id"]): row for row in rows}
 
     for row in rows:
@@ -496,7 +527,7 @@ def apply_rows(
             except (TypeError, ValueError):
                 metadata = {}
             metadata["name_localization"] = {
-                "source": ALIAS_SOURCE_PREFIX,
+                "source": prefix,
                 "revision": revision,
                 "mapping_key": row["mapping_key"],
                 "jp": row["mapping_jp"],
@@ -533,6 +564,9 @@ def build_parser() -> argparse.ArgumentParser:
     # 映射 XML 不在仓库里，也可能已经不在这台机器上。不给就只跑字形归一，
     # 那一道不需要外部来源，缺了 XML 也不该把整个脚本变成跑不起来。
     parser.add_argument("--mapping-xml", type=Path)
+    # javdb 资料页取回的映射（`harvest_javdb_cn_names.py`）。它覆盖的是假名规范名，
+    # XML 那份覆盖的是已收录艺人，两份不冲突也不必同时给。
+    parser.add_argument("--mapping-csv", type=Path)
     parser.add_argument("--mapping-revision", default="")
     parser.add_argument(
         "--identity-review", type=Path,
@@ -544,7 +578,12 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def run(args: argparse.Namespace) -> int:
-    mappings = read_mapping(args.mapping_xml) if args.mapping_xml else []
+    mappings: list[ActorMapping] = []
+    prefix = ALIAS_SOURCE_PREFIX
+    if args.mapping_xml:
+        mappings = read_mapping(args.mapping_xml)
+    elif args.mapping_csv:
+        mappings, prefix = read_mapping_csv(args.mapping_csv), JAVDB_ALIAS_SOURCE
     identity_review = read_identity_review(args.identity_review)
     connection = open_for_write(args)
     try:
@@ -559,7 +598,7 @@ def run(args: argparse.Namespace) -> int:
         print(f"  已备份到 {args.backup}")
         before = counts_of(connection, EXTRA_COUNTS)
         with connection:
-            changed = apply_rows(connection, rows, args.mapping_revision)
+            changed = apply_rows(connection, rows, args.mapping_revision, prefix)
         after = counts_of(connection, EXTRA_COUNTS)
         integrity, foreign_keys = verify_after_write(connection)
         print("  写入结果：", changed)
@@ -575,8 +614,10 @@ def run(args: argparse.Namespace) -> int:
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
-    if args.mapping_xml and not args.mapping_revision:
-        parser.error("给了 --mapping-xml 就必须给 --mapping-revision，别名要记得住来源")
+    if args.mapping_xml and args.mapping_csv:
+        parser.error("两份映射只能给一份：混着跑的话，别名来源记的是哪一份就说不清了")
+    if (args.mapping_xml or args.mapping_csv) and not args.mapping_revision:
+        parser.error("给了映射就必须给 --mapping-revision，别名要记得住来源")
     args.mapping_revision = args.mapping_revision or KANJI_ONLY_REVISION
     return run(args)
 
