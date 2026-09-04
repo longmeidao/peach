@@ -1,6 +1,6 @@
 # Peach 当前状态
 
-最后核验：2026-09-03
+最后核验：2026-09-04
 
 本文件写「现在是什么样」，不按批次累积：待办去 `docs/PRODUCT_BACKLOG.md`，长期规则去
 `docs/HANDOFF.md` 与 `docs/REUSE.md`，已完成批次与事故由 Git 历史保存。
@@ -18,6 +18,7 @@
 - 服务运行期不连 Stash，媒体解析只有 `FilesystemBackend` 一条路径（ADR-0021）；只剩两个离线导入脚本按需连它，见 `docs/STASH.md`。
 - 前端按 ADR-0022 以 Preact island 逐岛迁往 `frontend/`（Vite + TypeScript），产物 `web/dist/peach-ui.js` 进 Git、经 `/dist/{name}` 提供，`/quality-goals` 已迁；改前端需 Node 24+，见 `docs/FRONTEND.md`。
 - 本机运行 Python 3.14；`requires-python` 下限 3.12，GitHub Actions 同时测 3.12 与 3.14；Windows FFmpeg/ffprobe 位于 `peach-data/tools/ffmpeg`，macOS 走 PATH。
+- 发行名 `peach`，目录名 `peach-app`；两台机器的 venv 各跑一次 `pip uninstall -y peach-app && pip install -e .`，Windows 与 macOS 均未执行。
 
 ## 已核验能力
 

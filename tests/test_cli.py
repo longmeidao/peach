@@ -173,7 +173,7 @@ class InitCommandTests(unittest.TestCase):
             (self.root / "config.toml").read_text(encoding="utf-8"), stamp)
 
     def test_from_existing_only_writes_the_settings_file(self):
-        code, _ = self._init("--from-existing", "--smb-host", "other.local",
+        code, _ = self._init("--from-existing", "--smb-host", "peach-writer.local",
                              "--smb-user", "someone")
         self.assertEqual(code, 0)
         self.assertFalse((self.root / "database").exists())
@@ -182,7 +182,7 @@ class InitCommandTests(unittest.TestCase):
         loaded = settings_file.load_config(environ={"PEACH_DATA_ROOT": str(self.root)})
         # 现有部署本来就在复制；写一份设置文件不该把它悄悄关掉。
         self.assertTrue(loaded.replication.enabled)
-        self.assertEqual(loaded.replication.smb_host, "other.local")
+        self.assertEqual(loaded.replication.smb_host, "peach-writer.local")
         self.assertEqual(loaded.replication.smb_user, "someone")
 
     def test_from_existing_says_so_when_the_old_file_is_unreadable(self):
