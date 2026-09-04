@@ -3611,7 +3611,10 @@ class WebUiSourceTests(unittest.TestCase):
     def test_entity_tags_filter_inside_the_current_entity_page(self):
         self.assertPageContains("ENTITY_FILTER_KEYS.forEach(key=>{if(filters[key]&&key!==kind&&key!=='sort')p.set(key,filters[key])})")
         self.assertPageContains("async function updateEntityCollection")
-        self.assertPageContains("updateEntityCollection(kind,name,nextFilters,true)")
+        # 资料页的标签走全站共用的那个开关，落在这一页的筛选上，不重开页面。
+        self.assertCode("$('#index').querySelectorAll('[data-entity-tag]').forEach(b=>b.onclick=()=>\n"
+                        "    toggleTag(b.dataset.entityTag));")
+        self.assertPageContains("updateEntityCollection(barsContext.kind,barsContext.name,filters,true)")
         self.assertPageContains("renderEntityCollection(kind,name,items,filters)")
         self.assertPageLacks("openEntity(kind,name,true,next)")
         self.assertPageLacks(
@@ -4389,7 +4392,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("function paintNav(){")
         self.assertPageContains(".edge button[data-nav],#drawer .dnav button[data-nav]")
         # 组合标签：pill 按按下态逐个命中；combo 芯片显示显示名、操作用原始 key。
-        self.assertPageContains("String(filterState.tag||'').split(',').includes(String(t.k))")
+        self.assertPageContains("tagPressed(filterState.tag,t.k)")
         self.assertPageContains("${esc(tagLabel(t))} <b data-untag=\"${esc(t)}\">✕</b>")
         # fwarn 提供 dismiss（会话内记忆），关闭钮样式与 toast 关闭钮同量纲。
         self.assertPageContains("data-fwarn-dismiss")
@@ -5172,6 +5175,64 @@ class WebUiSourceTests(unittest.TestCase):
         # 这两个元素——它换的是目录自己的形态，而不是切去另一个页面。
         self.assertEqual(self.page.count("$('#tagbar').style.display='none'"), 2,
                          "又有地方手抄了清理逻辑，请改调 enterManagementSurface()")
+
+    def test_the_filter_chips_paint_only_while_the_catalog_is_on_screen(self):
+        """芯片的存在由屏幕决定，不由每个整页入口记得清一次决定。
+
+        用户实测：首页筛住「网红主播」后点一个厂牌，资料页标题上面挂着
+        「网红主播 ✕ 全部清除」——那条筛选对资料页的作品集不生效，点它的 ✕ 还会把人
+        带回目录。三类整页视图都会碰上：资料页、索引页（/tags、/performers、
+        /creators）和管理页。
+
+        清除侧只覆盖管理页，资料页和索引页各自走 `showHomeSurfaces()`；就算给它们
+        补一行清除也不够——`openEntity` 结尾还会 `buildBars()`，把芯片重新画回来。
+        所以判据落在绘制侧：目录不在屏幕上就不画。
+        """
+        self.assertPageContains("const catalogOnScreen=()=>$('#index').hidden&&$('#stats').hidden;",
+                                "整页视图铺开的是这两个容器，它们就是「目录被盖住了」的判据")
+        combo = self._js_function("renderCombo")
+        self.assertIn("if(!catalogOnScreen()){$('#combo').innerHTML='';return}", combo,
+                      "芯片必须先问过屏幕再画，否则每加一个整页视图就复发一次")
+        self.assertLess(combo.index("catalogOnScreen()"), combo.index("$('#combo').innerHTML=\n"),
+                        "判据要在拼 HTML 之前，不能画完再擦")
+        # 详情页内联在目录里，两个容器都还藏着：芯片在那里继续成立，不能被一起收掉。
+        self.assertPageContains("if(push&&!queueContext)route('/item/'+id);")
+
+    def test_tag_toggles_land_in_the_context_the_click_happened_in(self):
+        """标签开关作用在当前这一屏的筛选上，读写用同一个判据。
+
+        资料页顶部标签条的按下态读的是这一页的筛选（`filterState`），点击却直接改
+        `state` 并跳回目录：同一枚标签的显示和行为说的不是一回事，点下去人就从
+        「新有菜」被扔到 `/?tag=苗条`。抽屉筛选和详情页标签早就走
+        `commitContextFilter`，标签条、卡片上的标签和芯片的 ✕ 也必须走它。
+
+        「一个标签是否生效」同样只留一份判据：多处手写 `split(',')` 或
+        `=== filters.tag` 时，按下态按多选算、点击按单选写，两边会各自漂开。
+        """
+        self.assertPageContains("const tagPressed=(value,tag)=>tagList(value).includes(String(tag));")
+        self.assertPageContains("const withTagToggled=(value,tag)=>{")
+        self.assertPageContains(
+            "function toggleTag(t){commitContextFilter("
+            "filters=>{filters.tag=t?withTagToggled(filters.tag,t):''})}")
+        self.assertPageLacks("state.tag=tg.dataset.tag",
+                             "卡片上的标签绕过语境，在资料页点一下就把人带回目录")
+        # 顶部标签条、资料页标签、卡片标签、芯片的 ✕ 与「全部清除」：五个入口一个落点。
+        self.assertPageContains("$('#tagbar').querySelectorAll('[data-tag]')"
+                                ".forEach(b=>b.onclick=()=>{toggleTag(b.dataset.tag)});")
+        self.assertCode("$('#index').querySelectorAll('[data-entity-tag]').forEach(b=>b.onclick=()=>\n"
+                        "    toggleTag(b.dataset.entityTag));")
+        self.assertCode("commitContextFilter(filters=>{\n"
+                        "          filters.tag=tagPressed(filters.tag,tg.dataset.tag)?'':tg.dataset.tag});")
+        self.assertPageContains("$('#combo').querySelectorAll('[data-untag]')"
+                                ".forEach(b=>b.onclick=()=>toggleTag(b.dataset.untag));")
+        self.assertCode("$('#clrAll').onclick=()=>commitContextFilter(filters=>{\n"
+                        "    filters.tag='';filters.creator='';filters.studio=''});")
+        # 按下态与表头也读同一份判据，资料页的标签因此和目录一样能叠加。
+        self.assertPageContains("tagPressed(filterState.tag,t.k)")
+        self.assertPageContains("aria-pressed=\"${tagPressed(filters.tag,x.k)}\"")
+        self.assertPageContains(
+            "b.setAttribute('aria-pressed',String(tagPressed(filters.tag,b.dataset.entityTag)))")
+        self.assertPageContains("const entityTags=tagList(filters.tag).map(tagLabel);")
 
     def test_the_follow_url_is_the_only_source_of_truth_for_its_filters(self):
         """关注页的五个筛选必须能在 URL 和界面之间原样往返。
