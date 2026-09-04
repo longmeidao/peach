@@ -332,7 +332,7 @@ class MachineCoordinateTests(unittest.TestCase):
                         "192.0.2.2", "198.51.100.162", "203.0.113.1",
                         "peach.local", "peach-writer.local", "peach-sync",
                         "Chrome/131.0.0.0", "10.0.26200.1234", r"R:\media",
-                        "https://github.com/longmeidao/peach-app",
+                        "https://github.com/longmeidao/peach",
                         "Copyright (C) 2026 longmeidao"):
             self.assertIsNone(MACHINE_COORDINATE.search(allowed), allowed)
 
