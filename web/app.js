@@ -4108,7 +4108,7 @@ function followCheckFailNote(report){
   if(!failed.length&&!evidence.length&&!exhausted.length)return '';
   const dismiss=`<button type="button" class="wclose" data-follow-report-dismiss
     aria-label="关闭检查结果">${icon('x')}</button>`;
-  const ended=exhausted.length?`<div class="geist-note geist-note-secondary fcheckreport neutral" role="note">
+  const ended=exhausted.length?`<div class="geist-note geist-note-secondary fcheckreport" role="note">
     ${icon('info')}<div><p><b>${exhausted.length} 个来源没有更多内容</b></p>
     ${exhausted.map(row=>`<p class="fchecknote">${esc([row.provider_label||row.provider,row.ref]
       .filter(Boolean).join(' '))}：没有更多历史内容</p>`).join('')}</div>${dismiss}</div>`:'';
@@ -4220,7 +4220,7 @@ function renderFollow(){
           `<button class="pill r34-${esc(groupTagType(groups,key))}" data-follow-tag="${esc(key)}" aria-pressed="${followTags.has(key)}">${
             esc(label)}${n?` <span class="n mono">${n}</span>`:''}</button>`).join(''):''}</div>
     ${broken.length&&!sessionStorage.getItem('peach-fwarn-dismissed')
-      ?`<p class="geist-banner fwarn">${icon('alert')}<span>${broken.length} 个来源上次检查失败，去<button class="flink" data-follow-manage>管理关注</button>看原因。</span><button class="wclose" data-fwarn-dismiss title="本次会话不再显示" aria-label="关闭提醒">${icon('x')}</button></p>`:''}
+      ?`<div class="geist-note geist-note-error fwarn" role="alert">${icon('alert')}<span>${broken.length} 个来源上次检查失败，去<button class="flink" data-follow-manage>管理关注</button>看原因。</span><button class="wclose" data-fwarn-dismiss title="本次会话不再显示" aria-label="关闭提醒">${icon('x')}</button></div>`:''}
     <div class="followlist${followMediaView==='images'?' followphotowall':''}">${visible.length?visible.map(group=>{
       const source=sourceOf(group),siblings=source&&authorSources.get(source.author_key)||[];
       return followCard(group,siblings)}).join('')
@@ -4532,7 +4532,7 @@ function followCredentialRow(row){
           <span data-cred-state aria-live="polite"></span></div></form>
       ${(row.shared_fields||[]).length?`<p class="fnote">${esc(row.shared_fields.join('、'))} 是从共享副本回填的，本机没有单独存。清除会把两边一起删。</p>`:''}
       <p class="fcredpath mono">${esc(row.path)}</p>
-      ${row.world_readable?'<p class="fnote warn">文件权限过宽，请在运行 Peach 的 POSIX 主机上收紧为 0600。</p>':''}`;
+      ${row.world_readable?noteHtml('文件权限过宽，请在运行 Peach 的 POSIX 主机上收紧为 0600。',{variant:'error'}):''}`;
   // 两个分支必须用同一个状态类，否则「不需要」那几行走 .fmeta、其余走 .fstate，
   // 同一列出现两套样式和两种对齐——用户一眼就看出来了。
   /* 站点标记跟着来源走：凭据配的就是那个站，来源行已经用同一枚 favicon 指认它。
@@ -4613,7 +4613,7 @@ function renderFollowManage(credentials){
             icon('refresh-cw')}检查全部</button>
           <button class="fbtn" data-follow-view>${icon('rss')}去看更新</button></div>
         ${followCheckReport?followCheckFailNote(followCheckReport):''}
-        ${broken.length?`<p class="fnote warn">${broken.length} 个来源上次检查失败，原因见对应那一行。</p>`:''}
+        ${broken.length?noteHtml(`${broken.length} 个来源上次检查失败，原因见对应那一行。`,{variant:'error'}):''}
         ${sources.length?`<div class="frows fsources" data-layout="${followListLayout()}">${
           followAuthorGroups(sources).map(followAuthorBlock).join('')}</div>
           ${counts.new?`<div class="fsecfoot"><p class="fnote fbulkrow"><span class="fbulkcounts">未看 ${counts.new} · 已看 ${counts.seen||0}
@@ -5978,7 +5978,7 @@ function renderSidebarOrderSetting(){
       <button type="button" class="sidebaraddfield" data-sidebar-add-trigger aria-haspopup="listbox" aria-expanded="false"${available.length?'':' disabled'}>
         ${available.length?`${icon(available[0][2])}<span data-sidebar-add-label>${esc(available[0][1])}</span>${icon('chevron-down')}`:`${icon('check')}<span>全部页面都已显示</span>`}
       </button>
-      ${available.length?`<div class="sidebaraddmenu" data-sidebar-add-menu role="listbox" aria-label="选择要添加的页面" hidden>${available.map(([key,label,ic],index)=>
+      ${available.length?`<div class="popmenu sidebaraddmenu" data-sidebar-add-menu role="listbox" aria-label="选择要添加的页面" hidden>${available.map(([key,label,ic],index)=>
         `<button type="button" role="option" data-sidebar-add-option="${esc(key===''?'__home__':key)}" aria-selected="${index===0}" tabindex="${index===0?'0':'-1'}">${icon(ic)}<span>${esc(label)}</span></button>`).join('')}</div>`:''}
     </div>
     <button type="button" class="geist-button primary" data-sidebar-add${available.length?'':' disabled'}>添加</button></div>`;

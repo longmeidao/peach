@@ -3125,7 +3125,17 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("noteHtml(error.message,{variant:'error',label:'扫描失败'})")
         self.assertPageContains("noteHtml(error.message||'分析未取得',{variant:'error',label:'分析未取得'})")
         self.assertPageContains('class="geist-note geist-note-error fcheckreport" role="alert"')
-        self.assertPageContains('class="geist-banner fwarn"')
+        self.assertPageContains('class="geist-note geist-note-secondary fcheckreport" role="note"')
+        # 每一条失败都进 Note，没有第二套「红字一行」的写法：红色文字既没有图标
+        # 也没有边框，在暗色底上和普通说明文字只差一个色相，扫读时整条会被跳过。
+        self.assertPageContains('class="geist-note geist-note-error fwarn" role="alert"')
+        self.assertPageContains(
+            "noteHtml(`${broken.length} 个来源上次检查失败，原因见对应那一行。`,{variant:'error'})")
+        self.assertPageContains(
+            "noteHtml('文件权限过宽，请在运行 Peach 的 POSIX 主机上收紧为 0600。',{variant:'error'})")
+        self.assertPageLacks('class="fnote warn"')
+        self.assertPageLacks(".fnote.warn{")
+        self.assertPageLacks("geist-banner")
 
     def test_note_and_info_surfaces_reuse_the_photo_detail_info_icon(self):
         self.assertPageContains('<symbol id="i-info" viewBox="0 0 24 24">')
@@ -4746,9 +4756,13 @@ class WebUiSourceTests(unittest.TestCase):
         # fwarn 提供 dismiss（会话内记忆），关闭钮样式与 toast 关闭钮同量纲。
         self.assertPageContains("data-fwarn-dismiss")
         self.assertPageContains("sessionStorage.setItem('peach-fwarn-dismissed','1')")
-        self.assertPageContains(".fwarn .wclose,.fcheckreport .wclose{flex:none;width:24px;height:24px;margin-left:auto;padding:0;border:0;")
-        # 报告条：danger 语义（红发丝边 + 微红底），不再是左侧粗条。
-        self.assertCode("background:color-mix(in srgb,var(--drop) 7%,transparent);\n  border:1px solid color-mix(in srgb,var(--drop) 30%,transparent);")
+        self.assertPageContains(".fwarn .wclose,.fcheckreport .wclose{width:24px;height:24px;padding:0;border:0;")
+        # 报告条的红发丝边和微红底由共用 Note 提供，本页只补关闭键那一列。
+        self.assertPageContains(
+            ".fcheckreport,.fwarn{grid-template-columns:16px minmax(0,1fr) 24px;margin:10px 0 14px}")
+        self.assertPageContains(
+            ".geist-note-error{border-color:color-mix(in srgb,var(--drop) 30%,transparent);"
+            "background:color-mix(in srgb,var(--drop) 7%,transparent)}")
         self.assertPageLacks("border-left:2px solid var(--drop)")
         # 来源行状态徽章（ok 绿 tint / 失败红 tint / 未检查灰）。
         self.assertPageContains('<span class="sbadge ${badge}" title="${esc(stateTitle)}"><i aria-hidden="true"></i>')
@@ -4761,7 +4775,11 @@ class WebUiSourceTests(unittest.TestCase):
         # Geist 菜单：触发器和每个选项都有入口图标，菜单内部滚动且不加猜测动画。
         self.assertPageContains('data-sidebar-add-trigger aria-haspopup="listbox" aria-expanded="false"')
         self.assertPageContains('role="option" data-sidebar-add-option=')
-        self.assertPageContains(".sidebaraddmenu{position:absolute;z-index:4;left:0;right:0;bottom:calc(100% + 6px);max-height:min(312px,48vh);overflow:auto;overscroll-behavior:contain")
+        # 弹层盒子走共用的 .popmenu：发丝边、投影和 2px 行距只有一份定义，本页只接管定位。
+        # 行距不能省——相邻两项一个悬停一个选中时，两块填充会连成一整条，看不出是两行。
+        self.assertPageContains('<div class="popmenu sidebaraddmenu"')
+        self.assertPageContains("background:var(--surface);box-shadow:0 12px 40px #0006;display:grid;gap:2px;")
+        self.assertPageContains(".sidebaraddmenu{position:absolute;z-index:4;left:0;right:0;bottom:calc(100% + 6px);max-height:min(312px,48vh)}")
         self.assertPageContains("if(e.key==='Escape'){e.preventDefault();closeAddMenu();addTrigger.focus();return}")
         # 设置分组用框体隔开（用户回执）：每组建卡，分隔线顶格到卡边，
         # 标题字号与行内边距对齐 Vercel 后台设置卡。
