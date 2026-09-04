@@ -12,16 +12,25 @@ import html
 import re
 import sqlite3
 import unicodedata
+from collections.abc import Callable
 from urllib.parse import urlsplit, urlunsplit
 
 from .catalog_rules import is_jav_code
 from .entities import name_chain
 
-SOCIAL_HOSTS = ("x.com", "twitter.com", "instagram.com", "tiktok.com", "youtube.com")
+#: Facebook 和 Linktree 也在这里：它们此前不在表里，于是走了 official 分支，被贴上
+#: 事务所名——古川伊织的个人 Facebook 页在资料页上写着「T-POWERS」。本人账号就该按
+#: 本人账号显示，事务所名是另一件事。
+SOCIAL_HOSTS = ("x.com", "twitter.com", "instagram.com", "tiktok.com", "youtube.com",
+                "facebook.com", "linktr.ee")
 #: 博客也是本人的社交存在，但它没有 handle 概念，标签另算。
-BLOG_HOSTS = ("ameblo.jp", "lineblog.me", "note.com", "livedoor.jp", "hatenablog.com")
+#: `livedoor.biz` 与 `livedoor.jp` 是同一家的两个域，`plaza.rakuten.co.jp` 和
+#: `blog.dmm.co.jp` 同样是博客托管——它们不在表里时都走了 official 分支，被贴上事务所名。
+BLOG_HOSTS = ("ameblo.jp", "lineblog.me", "note.com", "livedoor.jp", "livedoor.biz",
+              "hatenablog.com", "plaza.rakuten.co.jp", "blog.dmm.co.jp")
 PLATFORM_NAMES = {("x.com", "twitter.com"): "X", ("instagram.com",): "Instagram",
-                  ("tiktok.com",): "TikTok", ("youtube.com",): "YouTube"}
+                  ("tiktok.com",): "TikTok", ("youtube.com",): "YouTube",
+                  ("facebook.com",): "Facebook", ("linktr.ee",): "Linktree"}
 #: 这些首段不是 handle，是平台的路径前缀：`youtube.com/channel/UC…`、`youtube.com/c/名字`。
 PATH_PREFIXES = frozenset({"channel", "c", "user"})
 #: 这些首段是平台功能页，不是任何人的账号：`x.com/intent/follow?…`、`instagram.com/p/…`。
@@ -112,11 +121,18 @@ def handle(url: str) -> str:
     return account_segment(url).casefold()
 
 
-def classify(url: str, agency: str = "") -> tuple[str, str]:
+def classify(url: str, agency: str = "",
+             owner_of: Callable[[str], str] | None = None) -> tuple[str, str]:
     """(link_kind, label)。label 就是资料页上那行链接文字，所以要说清点过去是什么。
 
-    事务所页面用事务所名当标签（`T-POWERS` 而不是通用的「官方网站」）：用户要的正是
-    厂商链接，而这个名字资料表里已经给了，退回通用词等于把取到的信息扔掉。
+    **标签跟着域名走，不跟着事务所字段走。** minnano-av 的资料表里「所属事務所」和
+    「公式サイト」是两行不同的事实：白石亚子的事务所是 T-POWERS，公式サイト填的却是
+    Prestige 的専属宣传页。把事务所名贴到这条链接上，一个控件就同时替两家公司说话——
+    图标按域名取，于是页面上写着 T-POWERS、图标和落点都是 Prestige。
+
+    `owner_of(hostname)` 给出账本已知的域名归属（厂牌官网、事务所自己的站）。知道归谁
+    就用谁的名字；不知道才退回事务所名，那时它至少没有和已知事实矛盾。两样都没有就写
+    「官方网站」——这个词不承诺点过去会见到谁，是唯一诚实的兜底。
     """
     name = platform(url)
     if name:
@@ -125,9 +141,58 @@ def classify(url: str, agency: str = "") -> tuple[str, str]:
         if name == "YouTube" and re.fullmatch(r"UC[\w-]{22}", shown):
             shown = ""
         return "social", (f"{name} @{shown}" if shown else name)
-    if under(host_of(url), BLOG_HOSTS):
+    host = host_of(url)
+    if under(host, BLOG_HOSTS):
         return "social", "博客"
-    return "official", (agency.strip() or "官方网站")
+    # `owner_of` 常常就是某个 dict 的 `.get`，未命中给的是 None 不是空串。
+    owner = str(owner_of(host) or "" if owner_of else "").strip()
+    return "official", (owner or agency.strip() or "官方网站")
+
+
+#: 一个域名要被多少条链接指认成同一家，才算「账本知道它归谁」。
+#: 1 会让香西咲个人站 `saki-k.com` 上那一条孤证自我确认成 T-POWERS 的站。
+OWNER_QUORUM = 3
+
+
+def owner_key(hostname: str) -> str:
+    """归属表的键。
+
+    同一家站在账本里两种写法都有（`bambi.ne.jp` 与 `www.bambi.ne.jp`），落成哪一种是
+    采集时抓到什么决定的。键和 `host_of` 用同一条归一规则，写入和查询才对得上——
+    两边各归一各的，`www.` 那一半就永远查不到归属、白白退回事务所名。
+    """
+    return (hostname or "").casefold().removeprefix("www.")
+
+
+def host_owners(connection: sqlite3.Connection) -> dict[str, str]:
+    """域名 → 账本知道的归属方名字。
+
+    两种证据，厂牌优先：厂牌实体自己挂的官网链接直接指认（`www.prestige-av.com` 是
+    Prestige 的），这是一手的。其次是女优 official 链接里已经形成共识的那些——
+    `www.t-powers.co.jp` 上 37 条都写着 T-POWERS，那它就是 T-POWERS 的站。
+
+    共识要够多条才作数。孤证会自我确认：香西咲的个人站只出现过一次、恰好被贴了
+    T-POWERS，采信它等于把错误当成证据再用一遍。
+    """
+    owners: dict[str, str] = {}
+    votes: dict[str, dict[str, int]] = {}
+    for host, label in connection.execute(
+        "SELECT hostname,label FROM entity_link l JOIN entity e ON e.id=l.entity_id"
+        " WHERE e.kind='performer' AND l.link_kind='official' AND l.hostname<>''"
+    ):
+        host = owner_key(host)
+        votes.setdefault(host, {})[label] = votes.setdefault(host, {}).get(label, 0) + 1
+    for host, tally in votes.items():
+        label, count = max(tally.items(), key=lambda item: item[1])
+        if count >= OWNER_QUORUM and label != "官方网站":
+            owners[host] = label
+    # 厂牌那一手证据后写，压过女优链接里的共识。
+    for host, name in connection.execute(
+        "SELECT hostname,canonical_name FROM entity_link l JOIN entity e ON e.id=l.entity_id"
+        " WHERE e.kind='studio' AND l.link_kind='official' AND l.hostname<>''"
+    ):
+        owners[owner_key(host)] = name
+    return owners
 
 
 def name_key(name: str) -> str:

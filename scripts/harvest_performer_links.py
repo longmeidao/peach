@@ -32,7 +32,9 @@ from peach.jobs import job_main   # noqa: E402
 from peach.review_csv import write_rows   # noqa: E402
 from peach.scripting import USER_AGENT, open_readonly   # noqa: E402
 # 平台判据与选人规则和目录型采集器共用，定义在 peach.social_links；这里只保留 minnano-av 的解析。
-from peach.social_links import classify, load_performers, under   # noqa: E402,F401
+from peach.social_links import (   # noqa: E402,F401
+    classify, host_owners, load_performers, under,
+)
 
 SEARCH = "https://www.minnano-av.com/search_result.php?search_scope=actress&search_word="
 ACTRESS_PAGE = re.compile(r"/actress(\d+)\.html")
@@ -76,8 +78,13 @@ def profile_text(html: str, label: str) -> str:
     return ""
 
 
-def scan(http, name: str, timeout: float) -> tuple[list[dict], str, str, str]:
-    """返回（链接行, actress_id, 所属事务所, 判定说明）。"""
+def scan(http, name: str, timeout: float, owner_of=None) -> tuple[list[dict], str, str, str]:
+    """返回（链接行, actress_id, 所属事务所, 判定说明）。
+
+    「所属事務所」和「公式サイト」是资料表里两行不同的事实，别把前者当成后者的名字：
+    専属女优的「公式サイト」填的常是片商的宣传页，贴上事务所名就等于替两家公司说话。
+    `owner_of` 把域名归属交给 `classify` 判，事务所名另行写进实体元数据。
+    """
     response = http(HttpRequest("GET", search_url(name), {"User-Agent": USER_AGENT}),
                     timeout, 4 << 20)
     if response.status != 200:
@@ -92,7 +99,7 @@ def scan(http, name: str, timeout: float) -> tuple[list[dict], str, str, str]:
         if label not in LINK_LABELS:
             continue
         for url in urls:
-            link_kind, link_label = classify(url, agency)
+            link_kind, link_label = classify(url, agency, owner_of)
             rows.append({"link_kind": link_kind, "label": link_label, "url": url,
                          "evidence": f"minnano-av actress{found_id} 资料表「{label}」"})
     note = (f"命中 actress{found_id}，{len(rows)} 条外链" if rows
@@ -116,6 +123,7 @@ def run(args) -> int:
     connection = open_readonly(args.db)
     try:
         performers = load_performers(connection, args.min_assets)
+        owners = host_owners(connection)
     finally:
         connection.close()
     if args.limit:
@@ -135,7 +143,8 @@ def run(args) -> int:
                     time.sleep(wait)
                 last = time.monotonic()
                 try:
-                    rows, found_id, agency, note = scan(http, candidate, args.timeout)
+                    rows, found_id, agency, note = scan(http, candidate, args.timeout,
+                                                        owners.get)
                 except Exception as exc:
                     rows, found_id, agency, note = [], "", "", f"未取得：{type(exc).__name__}"
                 used = candidate
