@@ -549,7 +549,7 @@ const seededSample=(rows,count,seed,key=row=>row.k)=>{
 };
 const initialParams=new URLSearchParams(location.search);
 const JUNK_KIND_OPTIONS=[['','全部','layout-grid'],['video','视频','play'],['image','图片','pics'],
-  ['archive','压缩包','folder-open'],['audio','音频','volume-2'],['url','网址','globe'],
+  ['archive','压缩包','file-archive'],['audio','音频','file-audio'],['url','网址','globe'],
   ['other','其它','hard-drive']];
 const cleanJunkKind=value=>JUNK_KIND_OPTIONS.some(([key])=>key===value)?value:'';
 let junkKind=cleanJunkKind(initialParams.get('type')||'');
@@ -1889,8 +1889,8 @@ function resourceCardHtml(it){
     </div></div></article>`;
 }
 const JUNK_KIND_META={
-  video:['视频','play'],image:['图片','pics'],archive:['压缩包','folder-open'],
-  audio:['音频','volume-2'],url:['网址快捷方式','globe'],other:['其它文件','hard-drive'],
+  video:['视频','play'],image:['图片','pics'],archive:['压缩包','file-archive'],
+  audio:['音频','file-audio'],url:['网址快捷方式','globe'],other:['其它文件','hard-drive'],
 };
 function junkCardHtml(it){
   const kind=it.junk_kind||'other',meta=JUNK_KIND_META[kind]||JUNK_KIND_META.other;
@@ -3312,7 +3312,7 @@ function renderDuplicates(){
         <span class="mono">${fmtSize(f.size||0)}</span>
         <span class="mono">${fmtDur(f.duration)}</span>
         <span class="mono duppath" data-middle-truncate title="${esc(f.path||'')}">${esc(f.path||'')}</span></div>`).join('')}</div>
-    </section>`).join(''):emptyState('database','没有找到重复文件','所有来源之间没有检测到内容相同的文件。扫描新来源后，这里会自动更新。')}</div>`;
+    </section>`).join(''):emptyState('file-stack','没有找到重复文件','所有来源之间没有检测到内容相同的文件。扫描新来源后，这里会自动更新。')}</div>`;
   $('#stats').querySelectorAll('[data-open-dup]').forEach(b=>
     b.onclick=()=>openItem(+b.dataset.openDup));
   $('#stats').querySelectorAll('[data-dup-keep]').forEach(b=>
@@ -4224,11 +4224,11 @@ function renderFollow(){
     <div class="followlist${followMediaView==='images'?' followphotowall':''}">${visible.length?visible.map(group=>{
       const source=sourceOf(group),siblings=source&&authorSources.get(source.author_key)||[];
       return followCard(group,siblings)}).join('')
-      :groups.length?emptyState('layout-grid','当前筛选下没有更新','切换媒体类型、作者、来源或标签后再试。')
+      :groups.length?emptyState('search-x','当前筛选下没有更新','切换媒体类型、作者、来源或标签后再试。')
       :sources.length?emptyState('rss','没有符合条件的更新','切换状态或来源筛选后再试。')
       :emptyState('rss','还没有关注任何来源','添加作者或订阅来源后，更新会集中显示在这里。',{actions:'<button class="fbtn primary" data-follow-manage>添加关注</button>'})}</div>
     ${followData.has_more||sources.some(source=>source.can_backfill)?`<div class="followpagination">
-      ${followData.has_more?`<span class="followpageaction"><button class="fbtn" data-follow-more>${icon('refresh-cw')}加载更多</button>
+      ${followData.has_more?`<span class="followpageaction"><button class="fbtn" data-follow-more>${icon('chevron-down')}加载更多</button>
         <span class="fmeta">已显示 ${visible.length.toLocaleString()} / ${
         (followFilter?counts[followFilter]||0:allCount).toLocaleString()} 项</span></span>`:''}
       ${sources.some(source=>source.can_backfill)?`<span class="followpageaction"><button class="fbtn" data-follow-older>${icon('history')}抓更早的一页</button>
@@ -5204,7 +5204,7 @@ async function openIndex(kind,q,push=true,refine=false){
   }else $('#index').innerHTML=`<div class="ihead">
       <h2 class="disp indexheading">${kind==='tags'?icon('tags'):''}${title}</h2>
       <span class="mono" id="indexCount">${countText}</span>
-      ${kind==='tags'?`<div class="tagmodes"><button data-tag-scope="local" aria-pressed="${!onlineTags}">${icon('database')}本地</button><button data-tag-scope="online" aria-pressed="${onlineTags}">${icon('globe')}在线</button></div>
+      ${kind==='tags'?`<div class="tagmodes"><button data-tag-scope="local" aria-pressed="${!onlineTags}">${icon('hard-drive')}本地</button><button data-tag-scope="online" aria-pressed="${onlineTags}">${icon('rss')}在线</button></div>
       <div class="tagmodes"><button data-tag-view="cloud" aria-pressed="${tagIndexMode==='cloud'}">${icon('tags')}标签云</button><button data-tag-view="alphabet" aria-pressed="${tagIndexMode==='alphabet'}">${icon('text-aa')}字母表</button></div>`:''}
       ${people?peopleLayoutButtons():''}
       ${searchInputHtml({id:'iq',label:'过滤'+title,value:q||''})}
@@ -5870,10 +5870,10 @@ const EDGE_ICONS=[
   ['performers','艺人','user-round'],
   ['tags','标签','tags'],
   ['jav','JAV','jav'],
-  ['flagged','已标记','star'],
+  ['flagged','已标记','bookmark'],
   ['playlists','播放列表','playlist'],
   ['follow','关注','rss'],
-  ['immerse','沉浸模式','play'],
+  ['immerse','沉浸模式','gallery-vertical-end'],
   ['manage','管理','database'],
 ];
 /* 每个管理页的身份（标题、图标、可直达的 URL）。用户仍可在设置里把其中任何
@@ -6763,7 +6763,7 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
       </div>
       <div class="fb">
         <button class="like" id="likeBtn" aria-label="${it.liked?'取消喜欢':'喜欢'}" title="喜欢 · 记录口味偏好" aria-pressed="${!!it.liked}">${icon('thumbs-up')}</button>
-        <button class="reason" id="preferenceToggle" aria-label="喜爱理由" title="喜爱理由" aria-expanded="false" aria-controls="preferencePanel" data-has-reason="${!!it.like_reason}">${icon('heart')}</button>
+        <button class="reason" id="preferenceToggle" aria-label="喜爱理由" title="喜爱理由" aria-expanded="false" aria-controls="preferencePanel" data-has-reason="${!!it.like_reason}">${icon('notebook-pen')}</button>
         <button class="dislike" data-kind="dislike" aria-label="不合口味" title="不合口味 · 降低推荐权重" aria-pressed="${it.feedback==='dislike'}">${icon('thumbs-down')}</button>
         <button class="seen" data-kind="seen" aria-label="看过了" title="看过了 · 只降低近期推荐" aria-pressed="${it.feedback==='seen'}">${icon('eye')}</button>
         <button class="later" id="stageLater" aria-label="稍后看" title="稍后看 · 加入或移出队列" aria-pressed="${!!it.watch_later}">${it.watch_later?icon('check'):icon('bookmark-plus')}</button>

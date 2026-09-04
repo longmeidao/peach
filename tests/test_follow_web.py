@@ -2568,7 +2568,7 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("else if(item.media_kind==='image'||item.media_kind==='video')kinds.add(item.media_kind)")
         self.assertPageLacks("else kinds.add(item.media_kind==='image'?'image':'video')")
         self.assertPageContains('class="followpagination"')
-        self.assertPageContains("${icon('refresh-cw')}加载更多")
+        self.assertPageContains("${icon('chevron-down')}加载更多")
         self.assertPageLacks("${icon('plus')}加载更多")
         self.assertPageContains("${icon('history')}抓更早的一页")
         self.assertPageContains("spinnerHtml('加载更多')")

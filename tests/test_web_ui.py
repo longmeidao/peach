@@ -3616,7 +3616,7 @@ class WebUiSourceTests(unittest.TestCase):
             'body[data-density="dense"] .junkcard .junkactions button{justify-content:center}')
         self.assertPageContains("function renderJunkNavigation(data)")
         self.assertPageContains("['video','视频','play'],['image','图片','pics']")
-        self.assertPageContains("['archive','压缩包','folder-open'],['audio','音频','volume-2']")
+        self.assertPageContains("['archive','压缩包','file-archive'],['audio','音频','file-audio']")
         self.assertPageContains("href=\"${junkPath(key,junkView)}\"")
         self.assertPageContains("${icon(glyph)}${esc(label)}")
         self.assertPageContains("${icon(junkView==='dismissed'?'rotate-ccw':'eye-off')}")
@@ -5222,7 +5222,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".alphatag.r34-copyright")
         self.assertPageContains(".alphatag.r34-metadata")
         self.assertPageContains("indexheading")
-        self.assertPageContains("${icon('database')}本地")
+        self.assertPageContains("${icon('hard-drive')}本地")
 
     def test_an_alphabet_entry_stays_on_one_line(self):
         """一枚标签占一行，长名字截断。
@@ -5269,6 +5269,41 @@ class WebUiSourceTests(unittest.TestCase):
                 rf'<symbol id="i-{symbol}" viewBox="[-\d. ]+" fill="currentColor" stroke="none">')
         self.assertPageContains("Phosphor 2.1.1 regular, MIT")
         self.assertPageLacks("i-a-large-small")
+
+    def test_each_glyph_names_the_thing_it_sits_next_to(self):
+        """一枚字形只代表一个意思，同一个意思也只有一枚字形。
+
+        一枚字形背两个意思时，用户在一处学会的含义会在另一处骗他，所以各归各的：
+        `refresh-cw` 只归原地换一批，`database` 只归管理入口，`folder-open` 只归
+        打开位置，`play` 只归真的起播，音量键不去标音频文件。这条逐枚钉住归属。
+
+        `i-clock` 没有使用者，是用户点名留的备用件，不要当死代码清掉。
+        """
+        # 文件类型标的是文件，不是打开动作，也不是音量。
+        self.assertPageContains("['archive','压缩包','file-archive'],['audio','音频','file-audio']")
+        self.assertPageContains("archive:['压缩包','file-archive'],")
+        self.assertPageContains("audio:['音频','file-audio'],")
+        # 「加载更多」往下接一页，方向由字形给出；`refresh-cw` 是原地换一批。
+        self.assertPageContains("data-follow-more>${icon('chevron-down')}加载更多</button>")
+        self.assertPageContains('title="换一批" aria-label="换一批">${icon(\'refresh-cw\')}')
+        # 两个空态各说自己那件事：筛不出结果，和一次比对没有发现。
+        self.assertPageContains("emptyState('search-x','当前筛选下没有更新'")
+        self.assertPageContains("emptyState('file-stack','没有找到重复文件'")
+        # 本地是磁盘、在线是订阅源；标签条这一对和关注页的来源图标同一套。
+        self.assertPageContains('data-tag-scope="local" aria-pressed="${!onlineTags}">${icon(\'hard-drive\')}本地')
+        self.assertPageContains('data-tag-scope="online" aria-pressed="${onlineTags}">${icon(\'rss\')}在线')
+        # 「喜爱理由」开的是一个写字面板，不是喜欢开关——那个是旁边的 thumbs-up。
+        self.assertPageContains('data-has-reason="${!!it.like_reason}">${icon(\'notebook-pen\')}')
+        self.assertPageContains('aria-label="${it.liked?\'取消喜欢\':\'喜欢\'}"')
+        # 侧栏：已标记是书签，沉浸模式是一叠竖着翻的卡；`play` 留给真的起播。
+        self.assertPageContains("['flagged','已标记','bookmark'],")
+        self.assertPageContains("['immerse','沉浸模式','gallery-vertical-end'],")
+        self.assertPageContains("<span>进入沉浸模式</span>")
+        self.assertPageContains("class=\"shorts-enter\" type=\"button\">${icon('play')}")
+        # 换下来的三枚没有别的使用者，雪碧图里也不留。
+        for gone in ("i-monitor-cog", "i-star", "i-volume-2"):
+            self.assertPageLacks(f'<symbol id="{gone}"')
+        self.assertPageContains('<symbol id="i-clock" viewBox="0 0 24 24">')
 
     def test_mixed_icon_sets_land_on_one_optical_grid(self):
         """同样 15px 要画得一样大，靠的是把内容外框补到 Lucide 的 20/24 活区。
