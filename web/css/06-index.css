@@ -2,7 +2,7 @@
 .index{padding:4px 0 20px;min-width:0;max-width:100%;overflow-x:clip}
 /* 实体吸顶栏用负边距把分隔线铺到 main 左右边缘；默认的横向裁剪会把这 16 px 截掉。 */
 body.entity-open .index{overflow-x:visible}
-.index .ihead{display:flex;align-items:center;gap:12px;margin-bottom:14px}
+.index .ihead{display:flex;align-items:center;gap:12px;margin-bottom:20px}
 .index .ihead h2{margin:0}
 .indexheading{display:inline-flex;align-items:center;gap:9px}.indexheading svg{width:25px;height:25px;stroke:currentColor;fill:none;stroke-width:1.8}
 .index .ihead .geist-search{flex:1;max-width:320px;margin-left:auto}

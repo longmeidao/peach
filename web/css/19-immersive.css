@@ -183,7 +183,7 @@
   .stats h2{font-size:var(--fs-xl)}.stats .insightcopy h2{font-size:var(--fs-3xl)}
   /* 窄屏下标题也得一起缩。`/follow` 渲染在 `#stats` 里，上面那条 `.stats h2`
      会只把它打到 23px，而 `#manageTitle` 在 `#stats` 外面，手机上又变成两种大小。 */
-  .pagetitle,.listtitle,.managetitle,.index .ihead h2,.playlistpage h2{font-size:var(--fs-xl)}
+  .pagetitle,.listtitle,.managetitle,.index .ihead h2,.playlistpage h2{font-size:var(--fs-2xl)}
   .kv .u{display:block;margin-left:0;margin-top:2px}
   .ctags .tg:nth-child(n+3){display:none}
   .tokstage,.tokstage.wide{inset:0;width:100%;height:100%;aspect-ratio:auto;transform:none}
@@ -199,6 +199,12 @@
 /* 这个 16px 是 iOS 的阈值，不是刻度里的一档：Safari 对小于 16px 的输入框会自动放大页面。
    所以它写死，不跟 --fs-lg 走——刻度改一档就把这个防放大保护悄悄破坏掉了。 */
 @media (max-width:760px){input,textarea,select{font-size:16px!important}}
+/* 标题分两级往下收：平板宽度走 24px，真手机才到 20px。一步从 32 掉到 20 会把
+   页面标题压得比它下面 24px 的指标数字还小，层级整个翻过来。24 这一档是 Geist
+   自己就有的 Heading 24，不是新开的字号。 */
+@media (max-width:640px){
+  .pagetitle,.listtitle,.managetitle,.index .ihead h2,.playlistpage h2{font-size:var(--fs-xl)}
+}
 #searchBtn{display:none}
 .searchback{display:none}
 .reviewimage{width:160px;height:112px;border-radius:var(--surface-radius);overflow:hidden;background:#000;margin:8px 0}.reviewimage img{width:100%;height:100%;object-fit:contain;display:block}

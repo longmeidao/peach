@@ -3239,8 +3239,30 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks(".index .ihead h2{margin:0;font-size:20px;font-weight:500}")
         self.assertPageLacks(".playlistpage h2{margin:0 0 5px;font-size:28px}")
         self.assertPageContains('<h2 class="disp pagetitle">关注</h2>')
-        self.assertPageContains(".listtitle,.managetitle,.follow>.pagetitle{margin:0 0 12px}")
+        self.assertPageContains(".listtitle,.managetitle,.follow>.pagetitle{margin:0 0 20px}")
         self.assertPageContains('id="listTitle" hidden')
+        # 索引页和关注页的标题外边距记在各自的头部容器上，三处必须是同一个值。
+        self.assertPageContains(".index .ihead{display:flex;align-items:center;gap:12px;margin-bottom:20px}")
+        self.assertPageContains(
+            ".followhead{display:flex;align-items:center;justify-content:space-between;"
+            "gap:14px;margin-bottom:20px}")
+
+    def test_page_titles_step_down_twice_instead_of_falling_straight_to_phone_size(self):
+        """标题分两级往下收：平板宽度走 24px，真手机才到 20px。
+
+        一步从 32 掉到 20 会把页面标题压得比它下面 24px 的指标数字还小，层级整个
+        翻过来——用户在 720px 的窗口里看到的就是那个 20px。24 这一档是 Geist 自己
+        就有的 Heading 24，不是新开的字号；行高 1.25 也取自实测的 Heading 32。
+        """
+        self.assertPageContains(
+            "  .pagetitle,.listtitle,.managetitle,.index .ihead h2,.playlistpage h2"
+            "{font-size:var(--fs-2xl)}")
+        self.assertPageContains(
+            "@media (max-width:640px){\n"
+            "  .pagetitle,.listtitle,.managetitle,.index .ihead h2,.playlistpage h2"
+            "{font-size:var(--fs-xl)}\n}")
+        # 三档都必须在既有刻度里，新增字号前先证明现有 8 档都不合适。
+        self.assertPageContains("--fs-xl:20px; --fs-2xl:24px; --fs-3xl:32px;")
 
     def test_immersive_progress_bar_is_reachable_and_draggable(self):
         """4px 高、贴在屏幕最下沿、只能点不能拖——鼠标难瑞，手机几乎摸不到。"""
@@ -4522,7 +4544,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".settinggroup .settingrow{margin:0 -16px;padding-left:16px;padding-right:16px}")
         self.assertCode(
             ".pagetitle,.listtitle,.managetitle,.index .ihead h2,.playlistpage h2{"
-            "\n  font-size:var(--fs-3xl);line-height:1.15;letter-spacing:-.01em;font-weight:600}")
+            "\n  font-size:var(--fs-3xl);line-height:1.25;letter-spacing:-.01em;font-weight:600}")
         # 全站字体栈必须有 CJK sans 兜底：Bahnschrift/Consolas 都没有中文字形，
         # generic sans-serif/monospace 在中文 Chrome 的默认可能落到宋体。
         css = stylesheet_source()
