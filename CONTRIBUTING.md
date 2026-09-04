@@ -1,5 +1,13 @@
 # 参与 Peach
 
+Issues and pull requests are welcome: small fixes (bugs, copy, documentation, tests) can go straight
+to a PR, while large changes — new pages, new connectors, contract or data-layer changes, anything
+an ADR covers — should be discussed in an issue first. Read [`AGENTS.md`](AGENTS.md) before opening
+a PR; it is the single entry point for development boundaries and gates, and reviews follow it.
+Each platform has exactly one test entry point: `& .\scripts\test.ps1` on Windows and
+`./scripts/test.sh` on macOS/Linux. By submitting a contribution you agree to license it under
+AGPL-3.0-or-later. The rest of this document is in Chinese.
+
 Peach 是单人自托管应用，维护规模很小。Issue 与 PR 都欢迎。小修（缺陷修复、文案、文档、测试）
 直接提 PR；大改动——新页面、新连接器、改契约或数据层、被 ADR 涉及的方向——建议先开 issue
 讨论，免得做完才发现与既定边界冲突。提交贡献即同意以 AGPL-3.0-or-later 授权。

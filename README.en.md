@@ -1,0 +1,204 @@
+[中文](README.md)
+
+# Peach
+
+Peach is a single-user, local-first personal media system: it indexes media you already own —
+local disks, CloudDrive mounts, followed online sources — and serves search, playback, profile
+pages, playlists, review and follow from one FastAPI process backed by the local SQLite ledger,
+which also stores viewing behavior and manual decisions. It is built for one person self-hosting
+on their own machines over a LAN, not for teams or public deployment. Status: pre-1.0. Windows and
+macOS are first-class; on Linux only the Python service and the CLI are supported, without tray or
+mount integration.
+
+Peach is meant to run on two personal devices, one Windows and one macOS. The current runtime state and verification results are in [`docs/STATUS.md`](docs/STATUS.md), open work is in [`docs/PRODUCT_BACKLOG.md`](docs/PRODUCT_BACKLOG.md), and development constraints start at [`AGENTS.md`](AGENTS.md).
+
+## Core capabilities
+
+- Browse the collection by item, performer, studio, creator, series and tag.
+- Play local and cloud-drive media; incompatible containers get a deletable transcode cache, and original files are never rewritten.
+- Save watch later, reasons for liking, watched state, automatic Mixes and persistent playlists.
+- Review external metadata, identity, image and media-failure candidates through `/review`.
+- Discover updates from the official FANBOX, SubscribeStar and Patreon channels, the Kemono/Pawchive/Coomer archive sites, Rule34Video, Rule34.xxx, Rule34 Paheal and F95zone; SimpCity's bot verification is not bypassed.
+- Replicate the ledger explicitly between the Windows writer and the macOS reader; on divergence the reader turns read-only, with no automatic merge.
+
+## Data boundaries
+
+The ledger is the source of truth for assets, identities, behavior and review decisions. CloudDrive, online sites and AI are adapters or candidate sources; none of them may write truth fields directly.
+
+| Content | Location or rule |
+| --- | --- |
+| Database | `peach-data/database/ledger.db` |
+| Media paths | The ledger always stores Windows drive letters; macOS translates them at read time |
+| Credentials | `peach-data/secrets/`; never enter Git, logs or API responses |
+| Derived images | Deletable and rebuildable; one-way sync Windows → macOS |
+| Real writes | Only the current writer may write; migrations and irreversible operations require a backup and authorization first |
+| Tests | Use temporary SQLite databases and temporary media only |
+
+Each machine keeps its own local working copy of the ledger; the shared directory is only a transfer point. Starting the service does not replicate anything; "Sync Ledger" and "Take over ledger writes" are explicit operations. The detailed design is in [`ADR-0017`](docs/adr/0017-dual-host-local-runtime-and-sync-boundaries.md).
+
+## Scope and disclaimer
+
+- The repository contains only code, documentation and pinned frontend dependencies. It ships no
+  media, covers, thumbnails or metadata, and no copy of any site's data; what it indexes is the
+  library the person running it already owns.
+- Connectors access only sources the user is entitled to access, with credentials the user supplies.
+  Peach does not bypass bot verification, paywalls or any access control: when it meets such a block
+  it records "not obtained" — the fixed wording for a failed acquisition — and stops there.
+- Titles, images and descriptions fetched from external sources remain the content and copyright of
+  the respective sites and their creators. Peach stores them as candidates, keeps their provenance
+  and confidence, and leaves verification to the user.
+
+## Layout
+
+```text
+peach-app/
+├─ src/peach/        FastAPI, media, ledger, migrations and providers
+├─ web/              Frontend without a build step
+├─ migrations/       Versioned, checksummed SQLite migrations
+├─ scripts/          Build, check and batch-job entry points
+├─ tests/            Isolated tests
+├─ docs/             Status, architecture, reuse decisions and ADRs
+├─ AGENTS.md         Shared entry point for Codex and Claude
+└─ CLAUDE.md         Import entry point for Claude
+```
+
+The repository stores no media, databases, credentials, logs, `.venv`, build output or worktrees.
+
+## Installation
+
+Three steps, with no directories or configuration files to prepare in advance. Run from the repository root:
+
+```powershell
+& py -3.14 -m venv .venv                            # macOS: python3.14 -m venv .venv
+& .\.venv\Scripts\python.exe -m pip install -e .    # macOS: ./.venv/bin/python -m pip install -e ".[macos]"
+& .\.venv\Scripts\peach.exe init                    # macOS: ./.venv/bin/peach init
+```
+
+`peach init` creates the data root, migrates the ledger to the latest schema, generates the local CA
+and writes `<data root>/config.toml`. The default data root is `peach-data/` next to the repository;
+`--data-root` changes it, and the `PEACH_DATA_ROOT` environment variable overrides it. After that,
+`peach serve` starts the service; the listen address, port, media drive-letter mappings and
+replication switches are all edited in that settings file, explained item by item in
+[`docs/OPERATIONS.md`](docs/OPERATIONS.md).
+
+The service also starts without a settings file: `/healthz` reports `configured=false`, and the pages prompt you to run `peach init` first.
+
+## Development
+
+After initializing the virtual environment, run the tests with `& .\scripts\test.ps1` on Windows and `./scripts/test.sh` on macOS/Linux.
+Each platform has exactly one official test entry point. The script locates the main project's virtual environment, forces the current worktree's `src` onto the import path and verifies the actual import location. The repository uses the standard-library `unittest`, not pytest.
+
+During development, run the tests for the affected functional domain, for example
+`& .\scripts\test.ps1 -Scope follow` on Windows and `./scripts/test.sh follow` on macOS/Linux.
+The available domains are `follow`, `catalog`, `media`, `sync`, `metadata` and `tooling`; with no
+argument the default `full` scope runs. Changes that span several domains, touch migrations, shared
+test infrastructure or dependencies, prepare a release or have a large footprint must run the full
+scope; a single local change does not need to rerun unrelated tests over and over.
+
+## Dependency maintenance
+
+The Python runtime and optional tools are all pinned to exact versions in `pyproject.toml`; the
+self-hosted frontend packages are pinned jointly by `package.json`, `package-lock.json` and
+`web/vendor/`. Optional dependencies stay out of the default runtime environment:
+
+| extra | Consumer |
+| --- | --- |
+| `build` | PyInstaller packaging |
+| `macos` | AppKit menu bar |
+| `vision` | Face-framing scripts for avatars and covers |
+| `maintenance-115` | 115 SHA-1 reconciliation script |
+
+GitHub Dependabot checks Python, npm and GitHub Actions weekly; every update PR runs the official
+tests on Windows and macOS with Python 3.14. After a frontend dependency update, first install the
+locked packages:
+
+```powershell
+npm ci --ignore-scripts
+```
+
+Then rebuild the self-hosted files and source hashes from the locked packages:
+
+```powershell
+npm run vendor:web
+```
+
+Finally confirm that the pinned files in the repository match the manifest:
+
+```powershell
+npm run check:vendor
+```
+
+This Node tooling exists only to maintain the pinned frontend files; Peach pages still have no runtime build step and do not depend on a CDN.
+
+Check the migration status and start a local development server:
+
+```powershell
+& .\.venv\Scripts\peach.exe migrate status
+& .\.venv\Scripts\peach.exe serve --port 8900
+```
+
+The current entry points and limits of the production tray, the macOS menu bar, the local CA, mDNS and ledger replication are in [`docs/STATUS.md`](docs/STATUS.md) and [`docs/HANDOFF.md`](docs/HANDOFF.md). The README does not duplicate IPs, versions, port ownership or certificate state, all of which go stale quickly.
+
+## Main pages
+
+| Route | Purpose |
+| --- | --- |
+| `/` | Home |
+| `/item/{id}` | Item details |
+| `/performers` | Performer index |
+| `/performers/{name}` | Performer profile |
+| `/creators/{name}` | Creator profile and galleries |
+| `/tags` | Tag management |
+| `/immerse` | Immersive mode |
+| `/playlists` | Playlists |
+| `/follow` | Watch followed sources |
+| `/follow-manage` | Manage followed sources and credential status |
+| `/review` | Manual review |
+| `/data-cleanup` | Data cleanup overview: junk files, duplicate files and empty folders |
+| `/junk-files` | Junk file classification and decisions |
+| `/trash` | Trash |
+| `/stats` | Statistics, cloud-drive resource sync and orphaned-cache cleanup |
+| `/taste` | Taste profile and browsing-history management |
+
+`/healthz` provides side-effect-free health status, and `/api/sources` provides source reachability. Other API contracts are defined by the implementation and its tests; the README does not maintain the full set of endpoints, which drifts easily.
+
+After deleting files by hand in a cloud-drive or local resource directory, open "Manage → Statistics → Resource sync" (`管理 → 统计 → 资源同步` in the interface) and scan for differences first. The scan runs in the background and shows progress per source; leaving the page does not interrupt it. Peach checks only mounted sources, and a directory that is temporarily unreadable is skipped rather than judged deleted. Missing entries go to the trash first, so recoverable ledger metadata is not lost immediately. Confirming the sync re-checks the candidates and cleans up screenshots, posters, image thumbnails, covers and playback caches that nothing in the regular collection still uses; candidate CSVs, source evidence, performer avatars and studio logos are never deleted as caches.
+
+Promotional videos, advertisement images, URL shortcuts and other files bundled inside media packages go to "Manage → Data cleanup" (`管理 → 数据清理`, `/data-cleanup`). The junk-files page groups them into video, image, archive, audio, URL and other files; each entry can open its location on the cloud drive, be moved to the trash, or be marked "not junk" (`不是垃圾`) and undone under "Excluded" (`已排除`). Duplicate files share this management entry with junk files, and empty folders are cleaned up explicitly from a separate fieldset within it. Multi-select in the top bar batch-runs whichever decision or trash operations the current view offers. Peach lists candidates by file name, promotional directories and whatever duration or size evidence each type offers, and never permanently deletes on its own; after a physical file is permanently deleted from the trash, only parent directories inside the same source root that become empty as a result are removed with it — the source root itself is never deleted.
+
+## Follow and candidates
+
+Follow management accepts pasted links, names or IDs, and official creator pages on FANBOX, Patreon
+and SubscribeStar can be registered directly. A checkbox per channel decides whether it takes part
+in update checks; network access happens only during explicit lookups and update checks. Disabled
+channels do not appear on the follow watch page and reappear once re-enabled. Service startup, health checks and ordinary browsing never go online.
+When the F95zone site index has no match for a name, the results area offers a corresponding Google query; Google results are only for a person to verify the real thread link and never register a source automatically.
+
+Rule34.xxx tag identities are case-insensitive. Cross-site sources are grouped by canonical author; `Collection(s)` in an F95 title is not part of the author name.
+When an official homepage gives both a unique author name and a platform account, Peach learns that platform alias automatically; an existing manual decision is never overwritten.
+A mere name similarity without an official identity chain only produces a suggestion, which is merged only after the user confirms; aliases can be removed at any time. Author avatars are taken preferentially from verified
+official FANBOX/Pixiv pages, with archive sites as a fallback only. Connector design and evidence are in
+[`ADR-0019`](docs/adr/0019-site-follow-connectors-and-variant-grouping.md).
+
+Fetched updates stay in the `new` or `seen` candidate state. Only after an explicit save or approval in `/review` does the data enter the corresponding ledger truth or online assets.
+
+## Documentation
+
+- [`AGENTS.md`](AGENTS.md): the boundaries and skill index every change must follow.
+- [`docs/STATUS.md`](docs/STATUS.md): current runtime state and verification results.
+- [`docs/PRODUCT_BACKLOG.md`](docs/PRODUCT_BACKLOG.md): open requirements and pending operations.
+- [`docs/HANDOFF.md`](docs/HANDOFF.md): facts and working conventions that hold across tasks.
+- [`docs/REUSE.md`](docs/REUSE.md): the reuse checklist to consult before adding or replacing an implementation.
+- [`docs/adr/`](docs/adr/): architecture decisions, their reasons and trade-offs.
+
+The documents above are currently available in Chinese only.
+
+## License
+
+Peach is released under AGPL-3.0-or-later; the full text is in [`LICENSE`](LICENSE). In practice this means: distributing a
+modified version, or offering a modified version to others as a network service, requires publishing the source under the same license.
+
+Copyright (C) 2026 longmeidao
+
+The third-party frontend files pinned in the repository keep their upstream licenses; the files and source hashes are in
+[`web/vendor/`](web/vendor/). FFmpeg is not distributed with the repository or the build output; users install it themselves and comply with its license.
