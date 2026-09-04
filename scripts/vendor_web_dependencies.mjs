@@ -77,6 +77,17 @@ const lucideIcons = new Map([
   ["chevron-up", "chevron-up"], ["chevron-down", "chevron-down"], ["heart", "heart"],
   ["upload", "upload"], ["database", "database"], ["play", "play"], ["clock", "clock"],
   ["external-link", "external-link"], ["bookmark-plus", "bookmark-plus"],
+  // 这七枚只画在雪碧图里、不在这张表上，`npm run vendor:web` 从不刷新它们。
+  // 名字和上游对不上的只有排序键：Peach 叫 `sort`，Lucide 叫 `sort-desc`。
+  ["sort", "sort-desc"], ["arrow-up", "arrow-up"], ["arrow-down", "arrow-down"],
+  ["calendar", "calendar"], ["download", "download"], ["monitor", "monitor"],
+  ["volume-2", "volume-2"],
+]);
+
+// 自绘 symbol：没有上游可对，所以在这里逐个点名。下面那道分区检查要求雪碧图里
+// 每一枚要么由某一套生成、要么写在这张名单上——漏一枚就会被当成忘了纳管。
+const handDrawnIcons = new Set([
+  "alert", "pics", "jav", "theater-enter", "theater-exit", "brand-x",
 ]);
 
 const svgInner = source => {
@@ -145,7 +156,8 @@ stage("web/vendor/lucide-ORIGIN.md",
   `- npm lock integrity：\`${integrity("lucide-static")}\`\n` +
   `- 许可证：ISC；原文见 \`lucide-LICENSE.txt\`\n` +
   `- 消费者：\`web/index.html\` 内联的 ${lucideIcons.size} 个 symbol\n\n` +
-  "`i-jav`、`i-alert` 是 Peach 自绘图标；RSS 与拖动点保留填充修正，避免小圆点在全局描边样式下消失。\n");
+  `雪碧图里另有 ${handDrawnIcons.size} 枚自绘 symbol（${[...handDrawnIcons].join("、")}）与 16 枚 player-* 前缀的播放器图标，都没有上游可对。\n` +
+  "RSS 与拖动点保留填充修正，避免小圆点在全局描边样式下消失。\n");
 stage("web/vendor/phosphor-LICENSE.txt", lfText("node_modules", "@phosphor-icons/core", "LICENSE"));
 stage("web/vendor/phosphor-ORIGIN.md",
   `# Phosphor icons ${versions["@phosphor-icons/core"]}\n\n` +
@@ -162,6 +174,17 @@ stage("web/vendor/healthicons-ORIGIN.md",
   `- npm lock integrity：\`${integrity("healthicons")}\`\n` +
   "- 许可证：npm 包为 MIT，图标由上游声明为 CC0/public domain；原文见 `healthicons-LICENSE.txt`\n" +
   "- 消费者：`web/index.html` 的 `sperm` outline-24px symbol\n");
+
+// 雪碧图的分区检查。少了它，新画一枚 symbol 只会安静地待在 index.html 里，
+// 换 Lucide 版本时不跟着刷新，也没人看得出它是自绘的还是忘了纳管。
+const spriteSymbols = [...index.matchAll(/id="i-([a-z0-9-]+)"/g)].map(m => m[1]);
+const owned = new Set([...lucideIcons.keys(), ...phosphorIcons.keys(),
+  ...handDrawnIcons, "sperm"]);
+const orphans = spriteSymbols.filter(
+  name => !name.startsWith("player-") && !owned.has(name));
+if (orphans.length) {
+  throw new Error(`雪碧图里这些 symbol 没有归属，加进对应图标集或 handDrawnIcons：${orphans.join("、")}`);
+}
 
 const versionRoots = [
   ["web/vendor/videojs", versions["video.js"]],

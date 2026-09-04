@@ -90,6 +90,37 @@ class DependencyPolicyTests(unittest.TestCase):
         self.assertIn(f"Phosphor {versions['@phosphor-icons/core']} regular", index)
         self.assertIn(f"/vendor/swiper/{versions['swiper']}/", app)
 
+    def test_every_sprite_symbol_has_a_declared_owner(self):
+        """雪碧图里每一枚 symbol 都归某一套图标集或自绘名单。
+
+        没有归属的那几枚只画在 index.html 里，`npm run vendor:web` 从不刷新它们，
+        换上游版本时新旧画法混在同一条按钮上。归属由生成脚本自己在写文件前拦，
+        这里核的是那道拦阻还在、名单也还覆盖得住实际的雪碧图。
+        """
+        generator = (ROOT / "scripts" / "vendor_web_dependencies.mjs").read_text(
+            encoding="utf-8")
+        self.assertIn("const handDrawnIcons = new Set([", generator)
+        self.assertIn("if (orphans.length) {", generator)
+
+        def body(block: str) -> str:
+            return generator.split(block, 1)[1].split("]);", 1)[0]
+
+        def map_keys(block: str) -> set[str]:
+            # Map 的第二项是上游名字，只取键；否则 sort-desc 这类上游名会混进来。
+            return set(re.findall(r'\["([a-z0-9-]+)"', body(block)))
+
+        owned = (map_keys("const lucideIcons = new Map([")
+                 | map_keys("const phosphorIcons = new Map([")
+                 | set(re.findall(r'"([a-z0-9-]+)"',
+                                  body("const handDrawnIcons = new Set([")))
+                 | {"sperm"})
+        index = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
+        sprite = {name for name in re.findall(r'id="i-([a-z0-9-]+)"', index)
+                  if not name.startswith("player-")}
+        self.assertEqual(sprite - owned, set())
+        # 名单里挂着雪碧图已经没有的名字，等于换版本时静默少刷一枚。
+        self.assertEqual(owned - sprite - {"sperm"}, set())
+
     def test_automation_monitors_all_dependency_manifests(self):
         dependabot = (ROOT / ".github" / "dependabot.yml").read_text(encoding="utf-8")
         for ecosystem in ("pip", "npm", "github-actions"):
