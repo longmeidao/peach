@@ -17,7 +17,8 @@ TESTS = ROOT / "tests"
 COMMON_PATTERNS = ("test_context_budget.py", "test_test_collection.py")
 SCOPES: dict[str, tuple[str, ...]] = {
     "follow": ("test_follow*.py", "test_http.py", "test_migrations.py"),
-    "catalog": ("test_ad_judgement.py", "test_duplicate_identity_merge.py",
+    "catalog": ("test_ad_judgement.py", "test_composite_name_split.py",
+                "test_duplicate_identity_merge.py",
                 "test_entity_merge.py", "test_fastapi_api.py", "test_migrations.py",
                 "test_review_mirror.py", "test_rm_ledger.py", "test_rm_web.py",
                 "test_entity_link_install.py", "test_web_links.py",

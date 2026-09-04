@@ -73,6 +73,38 @@ def collapse_repeated_entity_name(name: str) -> str:
     return original
 
 
+#: `Ako Momona (Kou Akemi, Mari Koizumi)` 这种一格装了三个艺名的写法。签名收得很紧：
+#: 括号前有一个空格、括号内逗号分隔、整串只有拉丁字母与 `. ' -` 这几个名字里出现的标点。
+#: 放宽任何一条都会误伤——`AV DEBUT（本物人妻）` 的括号里是厂牌消歧，`アスナ(SAO)` 是
+#: 角色的出处，`快慢扳机（接稿中）` 是接稿状态，`kitty(1)` 是去重后缀。它们和艺名共用
+#: 「名字后面跟一对括号」这个形状，只有「两侧都是罗马字人名」能把它们分开。
+COMPOSITE_PERSON_NAME = re.compile(
+    r"^([A-Za-z][A-Za-z .'-]*) \(([A-Za-z][A-Za-z .',-]*)\)$")
+
+
+def split_composite_person_name(name: str) -> list[str]:
+    """把 `现用名 (曾用名, 曾用名)` 拆成一个人的若干个名字，顺序保持原样、去重。
+
+    r18.dev 的罗马字字段本身就是这个渲染格式，导入时一个字段写一行，于是整串成了一条
+    别名。它做别名是死的：没有人叫「Ako Momona (Kou Akemi, Mari Koizumi)」，按任何一段
+    都搜不到，选成统称更是不成立。同一条实体的假名和汉字写法本来就各自成行，缺的只是
+    这几个罗马字。
+
+    不匹配签名的原样返回一个元素，调用方不必先判断。
+    """
+    matched = COMPOSITE_PERSON_NAME.match(strip_zero_width(name).strip())
+    if not matched:
+        stripped = strip_zero_width(name).strip()
+        return [stripped] if stripped else []
+    parts = [matched.group(1).strip()]
+    parts.extend(part.strip() for part in matched.group(2).split(","))
+    unique: list[str] = []
+    for part in parts:
+        if part and part not in unique:
+            unique.append(part)
+    return unique
+
+
 #: 规范名里要剥掉的零宽字符。上游译名夹带过 `‌斋藤亚美里`（performer）和
 #: `比特ビット‌`（creator）：页面上和普通名字一模一样，但 `strip()` 不认它们不是
 #: 空白，`normalized_name` 也就带着它，于是同一个人在账本里能存成两个实体、按名字搜
