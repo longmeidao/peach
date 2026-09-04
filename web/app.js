@@ -2248,9 +2248,45 @@ const followTagFacet=async()=>{
   }catch(_e){followTagCache=followTagCache||[]}
   return followTagCache;
 };
+/* 首屏时顶部三层和标签条还是两个空 div，而这一次请求要花约一秒。Geist 的判据是
+   骨架宽高必须等于最终内容——「200×20 的块变成 80×16 的字读起来像故障」——所以
+   这里直接套真实类名，让几何自己对上。只在还空着时画：导航到已经有内容的页面
+   留着旧内容等新内容，那不是从无到有，不该铺骨架。四枚视图胶囊由 state 决定，
+   这次请求不改它们，所以现在就画成最终样子并接上事件。 */
+const VIEW_PILLS=[{k:'',label:'全部'},{k:'fresh',label:'没看过'},
+                  {k:'later',label:'稍后看'},{k:'flagged',label:'已标记'}];
+const viewPillsHtml=filterState=>VIEW_PILLS.map(v=>
+    `<a class="pill" href="${v.k?STATE_ROUTES[v.k]:'/'}" data-state="${v.k}" aria-pressed="${
+      filterState.state===v.k}">${v.label}</a>`).join('')+`<span class="sep"></span>`;
+function wireViewPills(){
+  $('#tagbar').querySelectorAll('[data-state]').forEach(b=>b.onclick=e=>{
+    e.preventDefault();state.state=b.dataset.state;route(homePath());buildBars();load(true)});
+}
+// 宽度是一组定值而不是随机数：随机会让同一次冷启动在两台机器上长得不一样，也没法测。
+const TAG_SKELETON_WIDTHS=[92,68,104,76,88,64,96,72,100,80,68,92,76,84];
+const BRAND_SKELETON_WIDTHS=[132,158,118,146,124,164,138];
+const barsSkeletonHtml=()=>`<div class="tier">${
+    Array.from({length:9},()=>`<span class="av avskeleton"><span class="ring"></span>
+      <span class="nm">&nbsp;</span></span>`).join('')}</div><div class="tier">${
+    BRAND_SKELETON_WIDTHS.map(width=>
+      `<span class="brandpill brandskeleton" style="width:${width}px"><span class="mk"></span></span>`
+    ).join('')}</div>`;
+function renderBarsLoading(filterState){
+  const tiers=$('#tiers'),tagbar=$('#tagbar');
+  if(!tiers.innerHTML){
+    tiers.hidden=false;tiers.setAttribute('aria-busy','true');tiers.innerHTML=barsSkeletonHtml();
+  }
+  if(!tagbar.innerHTML){
+    tagbar.setAttribute('aria-busy','true');
+    tagbar.innerHTML=viewPillsHtml(filterState)+TAG_SKELETON_WIDTHS.map(width=>
+      `<span class="pill tagskeleton" style="width:${width}px"></span>`).join('');
+    wireViewPills();
+  }
+}
 async function buildBars(){
   const requestSeq=++barsRequestSeq;
   const context=barsContext,filterState=activeFilterState();
+  renderBarsLoading(filterState);
   // 两个聚合查询互不依赖。冷启动各需约 1 秒，串行会让手机首屏白等；
   // 并行取回后再一次性绘制顶部与抽屉。
   const [[facetData,tops],followTagRows]=await Promise.all([
@@ -2301,6 +2337,7 @@ async function buildBars(){
   const tier=html=>html?`<div class="tier">${html}</div>`:'';
   $('#tiers').innerHTML=tier(perfRow)+tier(studioRow);
   $('#tiers').hidden=!(perfRow||studioRow);
+  $('#tiers').removeAttribute('aria-busy');
   $('#tiers').querySelectorAll('[data-entity-kind]').forEach(b=>b.onclick=()=>
     openEntity(b.dataset.entityKind,b.dataset.entityName));
   // 兜底只剩「装了但读不出来」这一种：文件坏了，或归一漏掉、图小到看不出是什么。
@@ -2311,16 +2348,12 @@ async function buildBars(){
     img.addEventListener('load',()=>{if(img.naturalWidth<32)fallback()},{once:true});
   });
 
-  const views=[{k:'',label:'全部'},{k:'fresh',label:'没看过'},
-               {k:'later',label:'稍后看'},{k:'flagged',label:'已标记'}];
-  $('#tagbar').innerHTML=
-    views.map(v=>`<a class="pill" href="${v.k?STATE_ROUTES[v.k]:'/'}" data-state="${v.k}" aria-pressed="${filterState.state===v.k}">${v.label}</a>`).join('')
-    +`<span class="sep"></span>`
+  $('#tagbar').removeAttribute('aria-busy');
+  $('#tagbar').innerHTML=viewPillsHtml(filterState)
     +seededSample(topTags,26,`tags:${state.seed||''}`).map(t=>
       `<button class="pill" data-tag="${esc(t.k)}" aria-pressed="${
         String(filterState.tag||'').split(',').includes(String(t.k))}">${esc(tagLabel(t.k))}</button>`).join('');
-  $('#tagbar').querySelectorAll('[data-state]').forEach(b=>b.onclick=e=>{
-    e.preventDefault();state.state=b.dataset.state;route(homePath());buildBars();load(true)});
+  wireViewPills();
   $('#tagbar').querySelectorAll('[data-tag]').forEach(b=>b.onclick=()=>{toggleTag(b.dataset.tag)});
   renderCombo(); wireAllDrag();
 
