@@ -1,17 +1,21 @@
 """`peach.onboarding`：首次运行问答的题目、校验与落盘，纯逻辑、可注入。
 
-CLI 与将来的托盘设置页共用这一层，所以这里只用脚本化答案驱动，不碰 stdin；平台用
-`windows=` 注入，不看测试机自己是什么系统。
+CLI 与将来的托盘设置页共用这一层，所以这里只用脚本化答案驱动，不碰 stdin；平台由
+`windows=` 注入。只有一处例外：媒体目录题要收一个真实存在的目录，而那个目录是不是盘符
+路径由测试机决定，所以走到这道题的用例按 `NATIVE_WINDOWS` 用本机形态。
 """
 from __future__ import annotations
 
 import io
+import os
 import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
 
 from peach import onboarding, settings_file
+
+NATIVE_WINDOWS = os.name == "nt"
 
 
 def scripted(*answers: str):
@@ -174,7 +178,7 @@ class ConfigureTests(_Case):
 class InterviewTests(_Case):
     def test_scripted_answers_drive_the_whole_interview(self):
         ask = scripted("", str(self.media), "2", "", "peach-two")
-        answers = onboarding.interview(self.config, ask, windows=True, home=self.home,
+        answers = onboarding.interview(self.config, ask, windows=NATIVE_WINDOWS, home=self.home,
                                        report=lambda _: None)
         self.assertEqual(answers, onboarding.Answers(
             data_root=self.root / "peach-data", media_dir=self.media, host="0.0.0.0",

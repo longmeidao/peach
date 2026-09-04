@@ -1,12 +1,16 @@
 """`peach.scan`：扫描写进账本的行必须能被读取侧翻译回同一个文件。
 
 两种设置文件写法各一条：Windows 上 `[media.locations] local = <真实目录>`、挂载表为空；
-macOS 上声明根仍是 `R:\\media`，`[media.mounts] local = <真实目录>`。两条都在临时目录里跑，
-平台用 `windows=` 参数注入，不看测试机自己是什么系统。
+macOS 上声明根仍是 `R:\\media`，`[media.mounts] local = <真实目录>`。两条都在临时目录里跑。
+
+POSIX 形态那条平台无关，哪台机器上都跑。Windows 形态那条只在 Windows 上跑：它的前提是
+声明根本身就是一个真实存在的盘符目录，而 POSIX 机器上造不出这种目录——拿 `/var/...` 配
+`windows=True` 不是注入平台，是喂一个账本里不可能出现的形态，写入侧门槛会当场拒收。
 """
 from __future__ import annotations
 
 import io
+import os
 import sqlite3
 import tempfile
 import unittest
@@ -48,6 +52,7 @@ class _ScanCase(unittest.TestCase):
         return result, output.getvalue()
 
 
+@unittest.skipUnless(os.name == "nt", "声明根要是真实存在的盘符目录，只有 Windows 造得出来")
 class WindowsShapeTests(_ScanCase):
     """Windows：声明根就是真实目录，路径原样进账本。"""
 
