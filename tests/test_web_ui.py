@@ -3970,8 +3970,9 @@ class WebUiSourceTests(unittest.TestCase):
         # 实测 https://vercel.com/geist/modal（2026-09-04），见
         # docs/reference-snapshots/vercel-geist-modal-measured.md。
         self.assertPageContains(
-            ".geist-modal{box-sizing:border-box;width:min(540px,calc(100vw - 20px));"
-            "max-height:min(800px,80vh);")
+            ".geist-modal{box-sizing:border-box;width:min(540px,calc(100vw - 20px));")
+        # <dialog> 的 UA 样式带一条更小的 max-width，窄屏上会把卡片再压窄十几像素。
+        self.assertPageContains("max-width:min(540px,calc(100vw - 20px));max-height:min(800px,80vh);")
         self.assertPageContains("border-radius:var(--floating-radius);")
         # 遮罩纯黑不带模糊：Geist 的 backdrop 没有 blur。
         self.assertPageContains(".geist-modal::backdrop{background:#0009;opacity:0;")
