@@ -4775,7 +4775,11 @@ class WebUiSourceTests(unittest.TestCase):
         # Geist 菜单：触发器和每个选项都有入口图标，菜单内部滚动且不加猜测动画。
         self.assertPageContains('data-sidebar-add-trigger aria-haspopup="listbox" aria-expanded="false"')
         self.assertPageContains('role="option" data-sidebar-add-option=')
-        self.assertPageContains(".sidebaraddmenu{position:absolute;z-index:4;left:0;right:0;bottom:calc(100% + 6px);max-height:min(312px,48vh);overflow:auto;overscroll-behavior:contain")
+        # 弹层盒子走共用的 .popmenu：发丝边、投影和 2px 行距只有一份定义，本页只接管定位。
+        # 行距不能省——相邻两项一个悬停一个选中时，两块填充会连成一整条，看不出是两行。
+        self.assertPageContains('<div class="popmenu sidebaraddmenu"')
+        self.assertPageContains("background:var(--surface);box-shadow:0 12px 40px #0006;display:grid;gap:2px;")
+        self.assertPageContains(".sidebaraddmenu{position:absolute;z-index:4;left:0;right:0;bottom:calc(100% + 6px);max-height:min(312px,48vh)}")
         self.assertPageContains("if(e.key==='Escape'){e.preventDefault();closeAddMenu();addTrigger.focus();return}")
         # 设置分组用框体隔开（用户回执）：每组建卡，分隔线顶格到卡边，
         # 标题字号与行内边距对齐 Vercel 后台设置卡。

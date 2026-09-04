@@ -5978,7 +5978,7 @@ function renderSidebarOrderSetting(){
       <button type="button" class="sidebaraddfield" data-sidebar-add-trigger aria-haspopup="listbox" aria-expanded="false"${available.length?'':' disabled'}>
         ${available.length?`${icon(available[0][2])}<span data-sidebar-add-label>${esc(available[0][1])}</span>${icon('chevron-down')}`:`${icon('check')}<span>全部页面都已显示</span>`}
       </button>
-      ${available.length?`<div class="sidebaraddmenu" data-sidebar-add-menu role="listbox" aria-label="选择要添加的页面" hidden>${available.map(([key,label,ic],index)=>
+      ${available.length?`<div class="popmenu sidebaraddmenu" data-sidebar-add-menu role="listbox" aria-label="选择要添加的页面" hidden>${available.map(([key,label,ic],index)=>
         `<button type="button" role="option" data-sidebar-add-option="${esc(key===''?'__home__':key)}" aria-selected="${index===0}" tabindex="${index===0?'0':'-1'}">${icon(ic)}<span>${esc(label)}</span></button>`).join('')}</div>`:''}
     </div>
     <button type="button" class="geist-button primary" data-sidebar-add${available.length?'':' disabled'}>添加</button></div>`;
