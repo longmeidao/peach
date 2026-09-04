@@ -105,4 +105,14 @@ jobs:
           cache: npm
       - run: npm ci --ignore-scripts
       - run: npm run check:vendor
-      - run: npm audit --audit-level=high
+      # 审计结果来自 registry.npmjs.org 的 advisories 端点，它偶发 503；
+      # 退避重试三次，仍失败才算红——那时是真的查不到，不是本仓库的问题。
+      - name: npm audit
+        shell: bash
+        run: |
+          for attempt in 1 2 3; do
+            npm audit --audit-level=high && exit 0
+            echo "npm audit 第 ${attempt} 次未成功，60 秒后重试"
+            sleep 60
+          done
+          exit 1
