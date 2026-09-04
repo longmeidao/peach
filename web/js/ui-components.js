@@ -345,13 +345,22 @@ if(!globalThis.__peachMenuCloser){
     if(openedMenu&&!openedMenu.mount.contains(event.target))openedMenu.setOpen(false)},true);
 }
 export function closeAnchoredMenu(){if(openedMenu)openedMenu.setOpen(false)}
+/* 可用的视口上沿是固定顶栏的下缘。顶栏在每一页都盖着最上面那一条，菜单顶到 8px
+   会被它压掉半截，而且看不出是被压住的——只是第一项凭空不见了。 */
+const viewportTop=()=>8+(parseFloat(getComputedStyle(document.documentElement)
+  .getPropertyValue('--topH'))||0);
 export function wireAnchoredMenu(mount,toggle,menu){
   const position=()=>{
     const anchor=toggle.getBoundingClientRect(),width=menu.getBoundingClientRect().width;
-    const height=Math.min(menu.scrollHeight,innerHeight-16);
-    const below=anchor.bottom+8;
+    const top=viewportTop(),under=innerHeight-8-anchor.bottom-8,over=anchor.top-8-top;
+    /* 下方放不下就改到上方；两侧都放不下时取宽的那一侧，并把菜单压到那一侧的高度，
+       内容在菜单内滚。不压高度的话它会横跨触发钮盖住自己，点开之后连改的是哪一个
+       名字都看不见。 */
+    const downward=under>=menu.scrollHeight||under>=over;
+    const height=Math.min(menu.scrollHeight,Math.max(downward?under:over,0));
+    menu.style.maxHeight=height+'px';
     menu.style.left=Math.max(8,Math.min(anchor.right-width,innerWidth-width-8))+'px';
-    menu.style.top=(below+height<=innerHeight-8?below:Math.max(8,anchor.top-height-8))+'px'};
+    menu.style.top=(downward?anchor.bottom+8:anchor.top-8-height)+'px'};
   const closeFromViewport=()=>setOpen(false);
   const setOpen=open=>{
     if(open){
@@ -359,7 +368,7 @@ export function wireAnchoredMenu(mount,toggle,menu){
       window.addEventListener('resize',position);
       window.addEventListener('scroll',closeFromViewport,{capture:true,passive:true});
     }else{
-      menu.hidden=true;menu.style.left='';menu.style.top='';
+      menu.hidden=true;menu.style.left='';menu.style.top='';menu.style.maxHeight='';
       window.removeEventListener('resize',position);
       window.removeEventListener('scroll',closeFromViewport,true);
     }

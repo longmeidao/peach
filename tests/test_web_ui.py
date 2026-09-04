@@ -3859,6 +3859,22 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("const anchored=wireAnchoredMenu(mount,toggle,menu);")
         self.assertPageContains('<div class="popmenu npmenu"')
 
+    def test_anchored_menu_fits_the_room_it_has_instead_of_covering_its_toggle(self):
+        # 资料页的统称菜单挂在标题上，上方只有一条顶栏的距离、下方也未必够高。
+        # 两侧都放不下时压到宽的那一侧、内部滚，不横跨触发钮。
+        self.assertCode("const downward=under>=menu.scrollHeight||under>=over;")
+        self.assertCode(
+            "const height=Math.min(menu.scrollHeight,Math.max(downward?under:over,0));")
+        self.assertCode("menu.style.maxHeight=height+'px';")
+        self.assertCode(
+            "menu.style.top=(downward?anchor.bottom+8:anchor.top-8-height)+'px'")
+        # 可用上沿是固定顶栏的下缘，不是视口顶端。
+        self.assertCode(
+            "const viewportTop=()=>8+(parseFloat(getComputedStyle(document.documentElement)")
+        self.assertCode(".getPropertyValue('--topH'))||0);")
+        self.assertPageContains(
+            "menu.hidden=true;menu.style.left='';menu.style.top='';menu.style.maxHeight='';")
+
     def test_entity_name_picker_writes_through_the_server_before_repainting(self):
         self.assertCode("const rename=(from,to)=>api('/api/entity-name',")
         self.assertCode(
