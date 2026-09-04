@@ -31,6 +31,7 @@
   别名精确命中 creator 名，或 creator 名由 performer 本名与账号别名组成时才自动归并。
 - `r18:performer` / `javbus:performer` 是正式发行出演元数据，保留 performer；通用 `performer` 是压平后的
   兼容断言，保留 creator。合并要同步 `asset.creator` 与 `演员:` 投影，否则已删实体仍会在详情页伪造链接。
+- r18.dev 的罗马字字段本身就是「现用名 (曾用名, 曾用名)」这个渲染格式，一个字段装了一个人的若干个艺名；假名与汉字写法各自成行，罗马字只有这一份。落库时按 `peach.entities.split_composite_person_name` 拆开，签名是「括号前有空格、括号内逗号分隔、两侧都是罗马字」。同一个字面形状在账本里还承载厂牌消歧（`AV DEBUT（本物人妻）`）、角色出处（`アスナ(SAO)`）、接稿状态和去重后缀，只能靠这条签名收窄。
 - `XX XX` 是来源节点文字重复而不是合法别名：person 名进入 CSV、兼容字段或 `upsert_asset_entity` 前先
   收敛完整重复串，清理时同时审计 `asset.creator`、`演员:` 标签和 `entity_alias`。
 - `merge_entity` 的两条陷阱：sqlite 连接默认 `foreign_keys=OFF`，子表行必须在函数内显式 DELETE；计数用
