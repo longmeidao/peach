@@ -81,7 +81,7 @@ cp ../peach-data/config.toml ../peach-data/config.toml.bak 2>/dev/null
 ./.venv/bin/peach init --from-existing --force \
   --mount local=/Volumes/RESOURCES/media \
   --writer-origin https://<writer>.local --smb-host <writer>.local --smb-user <钥匙串账号>
-launchctl kickstart -k gui/$(id -u)/gg.lmd.peach.tray
+launchctl kickstart -k gui/$(id -u)/io.github.longmeidao.peach.tray
 ```
 
 核对：随便打开一个本地媒体资产能播（挂载表生效）、`/healthz` 报 `ledger_sync: reader`、
@@ -94,6 +94,22 @@ launchctl kickstart -k gui/$(id -u)/gg.lmd.peach.tray
 ## 桌面入口与发布
 
 - Windows 日常入口是当前用户 Startup 里唯一的 `Peach.lnk`，指向项目内的 `dist\Peach\Peach.exe`。
+- macOS 日常入口是 LaunchAgent `io.github.longmeidao.peach.tray`，由 `python scripts/install_macos_agent.py`（`install`／`status`／`uninstall`）管理；`.app` 外壳的 bundle ID 是 `io.github.longmeidao.peach.app`，80/443 的转发落在 pf anchor `io.github.longmeidao.peach`。三个标识都取自 `src/peach/appid.py`，`setup_macos_port80.sh` 里那份 shell 字面量由 `tests/test_tray.py` 钉住一致。
+- 标识变更在 Mac 上生效要跑一遍下面这串，遗留的 LaunchAgent 与 pf anchor 由 `install` 自己清掉：
+
+```bash
+launchctl bootout gui/$(id -u)/gg.lmd.peach.tray || true
+python scripts/install_macos_agent.py install
+sudo sh scripts/setup_macos_port80.sh install
+python scripts/install_macos_agent.py status
+launchctl print gui/$(id -u)/io.github.longmeidao.peach.tray | grep -E '^\s+pid'
+launchctl print gui/$(id -u)/gg.lmd.peach.tray            # 期望「Could not find service」
+sudo pfctl -a io.github.longmeidao.peach -s nat
+curl -s --noproxy '*' -o /dev/null -w '%{http_code}\n' http://peach.local/healthz
+curl -s --noproxy '*' -o /dev/null -w '%{http_code}\n' https://peach.local/healthz
+```
+
+  验收四项：菜单栏只出现一个 Peach 图标且 `status` 报「已加载」；`launchctl print` 的 pid 就是那个菜单栏进程；`pfctl -s nat` 列出 80 → 8900、443 → 8443 两条 rdr；两条 `/healthz` 都回 200。`peach.local` 换成本机 `[server].mdns_name` 的值。
 - 发布入口是 `scripts/build_windows.ps1`：先用 `scripts/generate_brand_assets.py` 生成方形 Logo 与多尺寸 `.ico`，再构建单一 `dist/Peach/Peach.exe`；无参数运行托盘，`serve`／`migrate` 运行 CLI。桌面快捷方式由 `scripts/create_desktop_shortcut.ps1` 创建，自启动只由 `scripts/manage_tray_startup.ps1` 管理。
 - 对外发布由 `.github/workflows/release.yml` 承担：推 `v<__version__>` 形式的 tag（`v0.7.13` ↔ `0.7.13`）就在 GitHub 上跑 `build_windows.ps1` 与 `build_macos_app.py`，产出 `Peach-<版本>-windows-x64.zip` 与 `Peach-<版本>-macos-<arch>.zip` 并挂到同名 Release；tag 与 `__version__` 不一致在构建前失败。Release 正文取附注 tag 的正文，轻量 tag 由 GitHub 按提交历史生成。`workflow_dispatch` 只上传 artifact，不发布。
 - 刷新源码运行态不要用 Computer Use 点托盘：`python scripts/restart_windows_tray.py` 按精确 EXE 路径找到 pystray 隐藏窗口、发送正常停止消息、等托盘自行关闭子服务，再静默启动并核对新托盘重新拥有两个服务；找不到唯一窗口或退出超时就拒绝，绝不强杀后另启。

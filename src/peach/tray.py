@@ -18,6 +18,7 @@ import httpx
 import pystray
 from PIL import Image
 
+from .appid import MACOS_LAUNCH_AGENT_LABEL
 from .certs import ensure_certificate
 from .config import (
     DATABASE_PATH, LOG_DIR, MDNS_HOSTNAME, PROJECT_ROOT, REPLICATION_ENABLED,
@@ -45,8 +46,8 @@ MACOS_TLS_PORT = 8443
 #: 高位端口（scripts/setup_macos_port80.sh）。
 OPEN_URL = f"https://{MDNS_HOSTNAME}/"
 
-#: LaunchAgent 的标签，和 `scripts/install_macos_agent.py` 里那个必须一致。
-LAUNCH_AGENT_LABEL = "gg.lmd.peach.tray"
+#: LaunchAgent 的标签。托盘、安装脚本和 `.app` 外壳共用 `peach.appid` 这一处定义。
+LAUNCH_AGENT_LABEL = MACOS_LAUNCH_AGENT_LABEL
 
 
 def ledger_menu_items(make_item, sync_ledger, take_ownership) -> list:
