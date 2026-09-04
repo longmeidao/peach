@@ -372,6 +372,10 @@ class InteractiveInitTests(unittest.TestCase):
                 mock.patch.object(web_resource_sync, "LOCATION_ROOT_DECLARATIONS",
                                   dict(loaded.locations)):
             health, items, sources = asyncio.run(probe())
+            # 两个闸门断言必须留在 patch 里：出了 with 就换回模块默认声明，
+            # 那份声明带着 115/pikpak，在真挂上它们的机器上 source_is_online 会返回 True。
+            self.assertTrue(web_resource_sync.source_is_online("local"))
+            self.assertFalse(web_resource_sync.source_is_online("115"))
         self.assertEqual(health.status_code, 200)
         self.assertEqual(items.status_code, 200)
         self.assertGreaterEqual(items.json()["total"], 1, "扫进去的本地资产要能列出来")
@@ -380,8 +384,6 @@ class InteractiveInitTests(unittest.TestCase):
         self.assertIn("local", listed)
         self.assertNotIn("115", listed)
         self.assertNotIn("pikpak", listed)
-        self.assertTrue(web_resource_sync.source_is_online("local"))
-        self.assertFalse(web_resource_sync.source_is_online("115"))
 
 
 class InitDispatchTests(unittest.TestCase):
