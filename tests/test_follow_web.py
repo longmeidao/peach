@@ -2062,9 +2062,13 @@ class FollowWebSourceTests(unittest.TestCase):
         # videojs 的 qualityLevels 只认 HLS/DASH 的自适应轨道，看不到它们。
         self.assertPageContains(
             "function mountPlayerQualityControl(player,video,fallbackHeight=0,initialSourceQualities=null)")
-        self.assertPageContains("const qualitiesPromise=api(`/follow-qualities?id=${encodeURIComponent(item.id)}`)")
-        self.assertPageContains("qualitiesPromise",
-                                "关注详情要异步补上来源档位")
+        self.assertPageContains(
+            "const mediaPromise=api(`/follow-qualities?id=${encodeURIComponent(item.id)}`).catch(()=>null);")
+        self.assertPageContains("mediaPromise",
+                                "关注详情要异步补上来源档位和字节数")
+        # 档位和字节数是同一趟回源的产物，播放器两样都从这个应答里取。
+        self.assertPageContains("updateQualities?.(next?.qualities?.length?next.qualities:null);")
+        self.assertPageContains("const size=Number(next?.size)||0;")
         detail = self.page.split("async function openFollowDetail", 1)[1].split(
             "function renderFollow", 1)[0]
         self.assertNotIn("await api(`/follow-qualities", detail,
@@ -2612,7 +2616,12 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains('.sgrid.mixgrid>.mixqueue .mixqueueactions{grid-column:2;grid-row:1;align-self:center}')
         self.assertPageContains("wireDrag($('#stage').querySelector('.mixlist'))")
         self.assertPageContains("followdetailmedia${selectedKind==='image'?' image':''}")
-        self.assertPageContains('.followdetailmedia.image{min-height:0;background:')
+        self.assertPageContains('.followdetailmedia.image{background:')
+        # 媒体框不给视口高度的地板：里面的播放器高度由 16:9 和自己的宽度推出来，地板挂在
+        # vh 上时两个量在窄屏上朝相反方向走，框比画面高出一大截，上下各空一片。
+        self.assertPageContains('.followdetailmedia{--follow-image-arrow-inset:16px}')
+        self.assertPageLacks('min-height:min(62vh,640px)')
+        self.assertPageContains('.followdetailplaceholder{aspect-ratio:16/9;display:grid;place-items:center;')
 
     def test_follow_uses_the_global_multi_select_mode(self):
         self.assertPageContains("const selected=new Set(),followSelected=new Set();")
