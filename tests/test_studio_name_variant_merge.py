@@ -121,6 +121,64 @@ class ScriptVariantTests(unittest.TestCase):
                                         {1: {"MIDV"}, 2: {"MIDV"}}, taken), [])
 
 
+class RelinkTests(unittest.TestCase):
+    """合并只改账本，标识却按 canonical_name 落盘，不改挂就成了没人认领的文件。"""
+
+    def setUp(self):
+        self.module = load_module()
+        from peach.previews import logo_key
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name).resolve()
+        self.row = {"keep_name": "Prestige", "drop_name": "プレステージ"}
+        self.drop = logo_key(str(self.row["drop_name"]))
+        self.keep = logo_key(str(self.row["keep_name"]))
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def write(self, name, body=b"x"):
+        (self.root / name).write_bytes(body)
+
+    def test_the_discarded_name_hands_its_plates_to_the_survivor(self):
+        self.write(f"{self.drop}.logo.img", b"jae")
+        moved = self.module.relink_logos([self.row], self.root)
+        self.assertEqual(moved["moved"],
+                         [f"{self.drop}.logo.img -> {self.keep}.logo.img"])
+        self.assertEqual((self.root / f"{self.keep}.logo.img").read_bytes(), b"jae")
+        self.assertFalse((self.root / f"{self.drop}.logo.img").exists())
+
+    def test_a_plate_the_survivor_already_has_is_never_overwritten(self):
+        """和安装同一条口径：已有的一个字节都不动，多出来的那张留在原地等人看。"""
+        self.write(f"{self.drop}.icon.img", b"old")
+        self.write(f"{self.keep}.icon.img", b"current")
+        moved = self.module.relink_logos([self.row], self.root)
+        self.assertEqual(moved["moved"], [])
+        self.assertEqual(moved["left"], [f"{self.drop}.icon.img"])
+        self.assertEqual((self.root / f"{self.keep}.icon.img").read_bytes(), b"current")
+
+    def test_the_sidecars_travel_with_the_plate(self):
+        """`.ct` 记着这张图是什么类型，落在旧名下 `/logo` 就答不出 Content-Type。"""
+        self.write(f"{self.drop}.logo.img", b"jae")
+        self.write(f"{self.drop}.logo.img.ct", b"image/png")
+        self.write(f"{self.drop}.logo.img.provenance.json", b"{}")
+        self.module.relink_logos([self.row], self.root)
+        self.assertEqual((self.root / f"{self.keep}.logo.img.ct").read_bytes(),
+                         b"image/png")
+        self.assertTrue((self.root / f"{self.keep}.logo.img.provenance.json").is_file())
+
+    def test_a_pair_that_lands_on_one_file_name_is_left_alone(self):
+        """两个名字折成同一个落盘名时，搬运就是把文件搬到它自己头上。"""
+        self.write("Same.logo.img", b"one")
+        moved = self.module.relink_logos(
+            [{"keep_name": "Same", "drop_name": "Same"}], self.root)
+        self.assertEqual(moved, {"moved": [], "left": []})
+        self.assertEqual((self.root / "Same.logo.img").read_bytes(), b"one")
+
+    def test_a_pair_with_nothing_installed_is_a_no_op(self):
+        self.assertEqual(self.module.relink_logos([self.row], self.root),
+                         {"moved": [], "left": []})
+
+
 class ApplyTests(unittest.TestCase):
     def setUp(self):
         self.module = load_module()

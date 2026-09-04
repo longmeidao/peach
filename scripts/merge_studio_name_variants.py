@@ -26,6 +26,7 @@ r"""同一家厂牌被记成两条实体的去重：写法变体与日文名／�
 from __future__ import annotations
 
 import argparse
+import csv
 import re
 import sqlite3
 import sys
@@ -166,6 +167,40 @@ def apply_rows(connection: sqlite3.Connection, rows: list[dict]) -> dict[str, in
     return dict(counts)
 
 
+def relink_logos(rows: list[dict], logo_root: Path) -> dict[str, list[str]]:
+    """把被丢弃那一侧的标识文件挪到保留名下。
+
+    合并只改账本，标识却按 `logo_key(canonical_name)` 落盘，所以 `プレステージ.logo.img`
+    在合并那一刻起就没人认领了——而它正是 jae.tokyo 那套 320×320 方标，比保留方手上的
+    那张好。`Prestige.logo.img` 缺着，页面大位就回落到补白字标。
+
+    只补保留方缺的变体，已有的一个字节都不动（和 `harvest_studio_icons.install` 同一条
+    口径）。挪不动的留在原地并列出来：孤儿文件不会被读到，删它需要单独的授权。
+    """
+    from peach.previews import logo_key
+
+    moved: list[str] = []
+    left: list[str] = []
+    for row in rows:
+        drop, keep = logo_key(str(row["drop_name"])), logo_key(str(row["keep_name"]))
+        if drop == keep:
+            continue
+        for suffix in (".icon.img", ".logo.img", ".img"):
+            source, target = logo_root / f"{drop}{suffix}", logo_root / f"{keep}{suffix}"
+            if not source.is_file():
+                continue
+            if target.exists():
+                left.append(source.name)
+                continue
+            source.replace(target)
+            moved.append(f"{source.name} -> {target.name}")
+            for sidecar in logo_root.glob(f"{drop}{suffix}.*"):
+                companion = logo_root / f"{keep}{suffix}{sidecar.name[len(source.name):]}"
+                if not companion.exists():
+                    sidecar.replace(companion)
+    return {"moved": moved, "left": left}
+
+
 EXTRA_COUNTS = {
     "studio_entities": "SELECT count(*) FROM entity WHERE kind='studio'",
     "studio_aliases": "SELECT count(*) FROM entity_alias a JOIN entity e"
@@ -180,19 +215,41 @@ def build_parser() -> argparse.ArgumentParser:
     add_ledger_write_args(parser)
     parser.add_argument("--review-csv", type=Path,
                         default=GENERATED_DIR / "studio-name-variant-merge.csv")
+    parser.add_argument("--logo-root", type=Path,
+                        help="移动标识文件：把被丢弃名下的挪到保留名下，保留方缺哪个补哪个")
     return parser
+
+
+def _recorded_pairs(path: Path) -> list[dict]:
+    """从复核件读回已经合并过的那些对。
+
+    标识按 canonical_name 落盘，只能在账本改完之后再动；那时 `collect` 已经找不到
+    这些对了——它们在账本里已经是一条。复核件是可重放的中间结果，这一步靠它。
+    """
+    if not path.is_file():
+        return []
+    with path.open(encoding="utf-8-sig", newline="") as handle:
+        return list(csv.DictReader(handle))
 
 
 def run(args: argparse.Namespace) -> int:
     connection = open_for_write(args)
     try:
         rows = collect(connection)
-        write_rows(args.review_csv, FIELDS, rows)
+        recorded = _recorded_pairs(args.review_csv) if args.logo_root else []
+        if rows:
+            write_rows(args.review_csv, FIELDS, rows)
         print(f"重复厂牌 {len(rows)} 组，复核 CSV：{args.review_csv}")
         print("  判据分布：", dict(Counter(str(row["klass"]) for row in rows)))
         for row in rows:
             print(f"    {row['drop_name']}（{row['drop_assets']} 部）"
                   f" -> {row['keep_name']}（{row['keep_assets']} 部）  {row['evidence']}")
+        if args.logo_root:
+            relinked = relink_logos(rows or recorded, args.logo_root)
+            print(f"  标识改挂 {len(relinked['moved'])} 个文件"
+                  f"（保留方已有、留在原地的 {len(relinked['left'])} 个）")
+            for line in relinked["moved"]:
+                print(f"    {line}")
         if not args.apply:
             print("  未写 ledger（加 --apply --backup 才写）")
             return 0
