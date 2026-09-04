@@ -121,3 +121,10 @@ Peach 要发布到 GitHub 供所有人维护与使用。使用形态不变：每
 4. 【授权】GitHub Settings → General → Change visibility → Public。
 5. 【授权】随即开启：Secret scanning 与 Push protection、master 分支保护、Private vulnerability reporting；Discussions 视需要。
 6. 发布后第一周只处理 issue，不改架构边界。
+
+### 执行记录（2026-09-04）
+
+- 仓库 `longmeidao/peach` 已 Public；第 1 至 5 步全部完成，打 tag 与正式 Release 留待独立发行版可用时一起做。
+- `Test` 在 windows/macos × 3.12/3.14 与两个 web job 全绿的提交是 `4ca8433`；靶机上暴露并修掉的测试缺陷有两类：契约测试没显式传 `configured=True`（无 peach-data 的机器会拿到首次运行页），脚本测试的临时目录没 `.resolve()`。`npm audit` 对 registry 503 退避重试三次。
+- 分支规则集 `protect-master`（id 22263433）：默认分支禁删除、禁强推。Secret scanning、Push protection、Private vulnerability reporting、Dependabot alerts 已开启；Dependabot security updates 未开，自动开 PR 由用户决定。
+- 剩余工作只在 `docs/PRODUCT_BACKLOG.md`：独立发行版、口味导入引导、README 瘦身到 `CONTRIBUTING.md` 与 `docs/`。
