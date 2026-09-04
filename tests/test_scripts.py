@@ -242,7 +242,7 @@ class OperationalScriptTests(unittest.TestCase):
         self.assertIn("$env:PYTHONPATH = $SourceRoot", windows)
         self.assertIn("peach.__file__", windows)
         self.assertIn("scripts\\test_runner.py --scope $Scope", windows)
-        self.assertIn("ValidateSet('full', 'follow'", windows)
+        self.assertIn("ValidateSet('full', 'auto', 'follow'", windows)
         self.assertNotIn("pytest", windows.lower())
         # 两个平台各有一个入口，契约必须相同——否则「两边都要绿」只是句口号。
         posix = (ROOT / "scripts" / "test.sh").read_text(encoding="utf-8")
@@ -251,6 +251,7 @@ class OperationalScriptTests(unittest.TestCase):
         self.assertIn("peach.__file__", posix)
         self.assertIn('scripts/test_runner.py --scope "$SCOPE"', posix)
         self.assertIn('SCOPE="${1:-full}"', posix)
+        self.assertIn("full|auto|follow|catalog|media|sync|metadata|tooling|web)", posix)
         self.assertNotIn("pytest", posix.lower())
         # 文档里可以「提到」裸命令来说明它为什么不可信，但绝不能让它单独出现成为一条可照抄的指令。
         # 判据因此不是黑名单，而是：凡出现该命令的行，必须在同一行指向某个正式入口。
@@ -290,8 +291,61 @@ class OperationalScriptTests(unittest.TestCase):
         self.assertIn("test_migrations.py", follow)
         self.assertNotIn("test_media.py", follow)
         self.assertGreater(len(full), len(follow))
-        self.assertEqual(runner.unclassified_files(), (),
-                         "每个测试文件都应属于至少一个功能域")
+        with redirect_stdout(io.StringIO()) as listed:
+            self.assertEqual(runner.main(["--list-scopes"]), 0)
+        self.assertEqual(listed.getvalue().split(), ["full", "auto", *runner.SCOPES])
+
+    def test_every_test_file_is_registered_in_a_scope(self):
+        """新测试文件必须登记进 `scripts/test_runner.py` 的域，否则只有 `full` 才跑到它。"""
+        runner = load_script("test_runner")
+        patterns = (*runner.COMMON_PATTERNS,
+                    *(pattern for scopes in runner.SCOPES.values() for pattern in scopes))
+        orphans = sorted(
+            path.name for path in (ROOT / "tests").glob("test_*.py")
+            if not any(path.match(pattern) for pattern in patterns))
+        self.assertEqual(
+            orphans, [],
+            "这些测试文件不属于任何域，把它们登记进 scripts/test_runner.py 的 SCOPES"
+            "（或 COMMON_PATTERNS），否则只有 full 才跑到它们：\n  " + "\n  ".join(orphans))
+        self.assertEqual(runner.unclassified_files(), ())
+
+    def test_auto_scope_maps_changed_files_and_falls_back_to_full(self):
+        """`auto` 的选域是纯函数：喂文件清单，不碰 git。"""
+        runner = load_script("test_runner")
+        pick = runner.scopes_for_changes
+        # 前缀表：多个文件取并集，反斜杠路径也认。
+        self.assertEqual(pick(["src/peach/follow_store.py", "web/app.js"])[0], ("follow", "web"))
+        self.assertEqual(pick(["src\\peach\\tray.py"])[0], ("sync",))
+        self.assertEqual(pick(["scripts/probe.py", "pyproject.toml", ".github/workflows/test.yml"])[0],
+                         ("tooling",))
+        self.assertEqual(pick(["README.md", "docs/STATUS.md", ".claude/skills/x/SKILL.md"])[0],
+                         ("tooling",))
+        self.assertEqual(pick(["src/peach/web_entity.py", "src/peach/routes_pages.py"])[0],
+                         ("catalog",))
+        self.assertEqual(pick(["src/peach/web_follow.py"])[0], ("follow",))
+        # 模块名 ↔ 测试文件名推断，登记在几个域就跑几个域。
+        self.assertEqual(pick(["src/peach/media.py"])[0], ("media",))
+        self.assertEqual(pick(["src/peach/jobs.py"])[0], ("media", "tooling"))
+        self.assertEqual(pick(["src/peach/metadata.py"])[0], ("metadata",))
+        # 测试文件按自己的文件名归域；公共门槛文件归 tooling。
+        self.assertEqual(pick(["tests/test_certs.py"])[0], ("sync", "tooling"))
+        self.assertEqual(pick(["tests/test_context_budget.py"])[0], ("tooling",))
+        scopes, why = pick(["src/peach/follow.py", "web/app.js"])
+        self.assertTrue(why.startswith("Peach auto scope: follow, web <- "), why)
+        self.assertIn("web: web/app.js", why)
+        # 退化为 full：必须 full 的面、映射不到的文件、没有改动。
+        for paths, fragment in ((["migrations/0099_next.sql"], "必须 full"),
+                                (["tests/support/ledger.py"], "必须 full"),
+                                (["tests/conftest.py"], "必须 full"),
+                                (["package-lock.json"], "必须 full"),
+                                (["frontend/package.json"], "必须 full"),
+                                (["LICENSE"], "映射不到"),
+                                (["src/peach/kanji.py", "web/app.js"], "映射不到"),
+                                ([], "没有改动文件")):
+            scopes, why = pick(paths)
+            self.assertEqual(scopes, ("full",), paths)
+            self.assertTrue(why.startswith("Peach auto scope: full <- "), why)
+            self.assertIn(fragment, why)
 
     def test_the_full_runner_can_import_repository_scripts(self):
         runner = load_script("test_runner")

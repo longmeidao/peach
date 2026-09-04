@@ -104,7 +104,8 @@ peach-app/
 
 开发时按功能域运行必要测试，例如 Windows 用 `& .\scripts\test.ps1 -Scope follow`，
 macOS/Linux 用 `./scripts/test.sh follow`。可选域为 `follow`、`catalog`、`media`、`sync`、
-`metadata`、`tooling`；不传参数仍跑 `full`。跨多个域、修改迁移/共享测试设施/依赖、准备发布或
+`metadata`、`tooling`、`web`；不传参数仍跑 `full`。`auto` 按改动文件选域，映射不到或触及迁移、
+共享测试设施、依赖清单时退化为 `full`。跨多个域、修改迁移/共享测试设施/依赖、准备发布或
 改动影响面较大时必须跑全量，单一局部功能不再反复跑无关测试。
 
 ## 依赖维护

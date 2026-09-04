@@ -109,8 +109,10 @@ Each platform has exactly one official test entry point. The script locates the 
 
 During development, run the tests for the affected functional domain, for example
 `& .\scripts\test.ps1 -Scope follow` on Windows and `./scripts/test.sh follow` on macOS/Linux.
-The available domains are `follow`, `catalog`, `media`, `sync`, `metadata` and `tooling`; with no
-argument the default `full` scope runs. Changes that span several domains, touch migrations, shared
+The available domains are `follow`, `catalog`, `media`, `sync`, `metadata`, `tooling` and `web`; with
+no argument the default `full` scope runs. `auto` picks domains from the changed files and falls back
+to `full` when a file maps to none or touches migrations, shared test infrastructure or a dependency
+manifest. Changes that span several domains, touch migrations, shared
 test infrastructure or dependencies, prepare a release or have a large footprint must run the full
 scope; a single local change does not need to rerun unrelated tests over and over.
 

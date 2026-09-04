@@ -5,6 +5,13 @@
 set -euo pipefail
 
 SCOPE="${1:-full}"
+case "$SCOPE" in
+    full|auto|follow|catalog|media|sync|metadata|tooling|web) ;;
+    *)
+        echo "未知测试域：$SCOPE（可选 full、auto、follow、catalog、media、sync、metadata、tooling、web）" >&2
+        exit 2
+        ;;
+esac
 
 WORKTREE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
