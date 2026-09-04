@@ -361,7 +361,11 @@ export function wireAnchoredMenu(mount,toggle,menu){
     menu.style.maxHeight=height+'px';
     menu.style.left=Math.max(8,Math.min(anchor.right-width,innerWidth-width-8))+'px';
     menu.style.top=(downward?anchor.bottom+8:anchor.top-8-height)+'px'};
-  const closeFromViewport=()=>setOpen(false);
+  /* 页面滚走了就关掉：菜单固定在视口里，锚点跟着内容跑，留着就悬在半空。
+     菜单自己的滚动不算——它装不下时本来就要在内部滚，滚一下就关等于底下那几项
+     根本够不着。捕获阶段连菜单内部的滚动一并收得到，所以这里必须自己分开。 */
+  const closeFromViewport=event=>{
+    if(!(event.target instanceof Node&&menu.contains(event.target)))setOpen(false)};
   const setOpen=open=>{
     if(open){
       menu.hidden=false;position();
