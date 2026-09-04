@@ -21,7 +21,7 @@ description: 在新增、修改或复核 Peach 页面、控件、提示、错误
 | 字段、卡片、分区旁的持久反馈 | Note | Toast、空状态 |
 | 页面／系统级问题与恢复动作 | Banner | Note |
 | 短暂操作回执 | Toast | 持久 Note |
-| 销毁确认 | Modal／现有 confirm | Toast |
+| 写操作前的确认 | `confirmModal()` | 原生 `confirm()`、Toast |
 | 已知总量的进行状态 | Progress | 装饰性蓝条 |
 | 用户触发动作等待结果 | Spinner | 旋转原操作图标、Loading Dots |
 | 后台任务仍在推进 | Loading Dots | Spinner、假百分比 |
@@ -51,6 +51,10 @@ description: 在新增、修改或复核 Peach 页面、控件、提示、错误
 - 菜单每项包含与入口相同的图标和文字，菜单内部滚动、`overscroll-behavior:contain`，不得把浏览器页面撑出滚动条。锚定菜单一律走 `wireAnchoredMenu`：高度压到触发钮那一侧真正剩下的空间（上沿是 `--topH` 顶栏下缘），装不下就在菜单内滚，不横跨触发钮；页面滚动关掉菜单，菜单自身的滚动不关。
 - 只读查询（搜索、筛选）不配提交按钮：回车即执行，忙态落在表单自己身上（`form[aria-busy]` 加前缀原位换 Spinner）。有副作用的提交必须有按钮，且回车同样要能提交。表单里除这个输入框外还有别的字段时浏览器不做隐式提交，回车要自己接管 `requestSubmit()` 并跳过 `isComposing`。判据与实测见 `docs/reference-snapshots/vercel-forms-submit-affordance.md`。
 - Spinner 只反馈用户直接触发的动作，触发器统一调用 `setActionBusy()`：写入 `aria-busy=true` 与 `aria-disabled=true`、视觉变灰、拦截重复触发，同时保持可聚焦；请求等待期不得再用原生 `disabled`，它只留给缺输入、无权限等动作确实不可执行的状态。未知时长的后台抓取使用 Loading Dots。整页或大区块首次取数使用 Skeleton 预留最终结构。Spinner／Loading Dots 保留可见状态文字；Skeleton 只保留给辅助技术的状态名，不另画「正在读取」文案。三者都尊重 reduced motion。
+- 确认弹层一律走 `confirmModal()`：原生 `<dialog>` 承载，标题是陈述句，正文先说后果并点名
+  涉及的两个值，主按钮是与标题同一动词的「动词+名词」，取消键就写「取消」，成功 Toast 与主
+  按钮的动词一一对应。写入交给 `onConfirm`，忙态落在主按钮上，失败时弹层不关、原因留在正文
+  下方等重试。形状与文案判据见 `docs/reference-snapshots/vercel-geist-modal-measured.md`。
 - 用户写操作只在服务端终态成功后调用共享 `actionReceipt()` 发一条过去时 Toast；可由安全逆操作完整恢复的状态提供 8 秒“撤销”，永久删除、凭据、保存到账本等不伪造撤销。仅打开面板／菜单／Dialog 不算操作完成，不发 Toast；失败除短 Toast 外仍在原位置保留原因与重试入口。
 - 同一次页面进入只呈现一段等待态；深链启动与页面取数复用同一个 Skeleton，禁止 Spinner 再切换成 Loading Dots 或 Skeleton。
 - Skeleton 只覆盖真正等待的内容区；静态标题、导航和能同步得到的筛选控件立即显示。骨架必须复用最终容器的宽度、列数与对齐方式：卡片网格横向铺满，居中面板仍居中，不得用一列通用占位替代不同页面结构。

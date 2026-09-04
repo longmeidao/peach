@@ -3924,12 +3924,75 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertCode("const rename=(from,to)=>api('/api/entity-name',")
         self.assertCode(
             "{method:'POST',body:JSON.stringify({kind,name:from,canonical:to})});")
-        self.assertPageContains("setActionBusy(item);")
-        self.assertCode("const result=await rename(current,chosen);")
-        self.assertCode("if(!result.changed)return;")
+        self.assertCode("onConfirm:()=>rename(current,chosen)});")
+        self.assertCode("if(!confirmed||!result?.changed)return;")
         # 撤销是一次真实写回，不在本地把标题改回去。
         self.assertCode("await rename(result.canonical_name,result.previous_name);")
-        self.assertPageContains("actionFailure('修改统称',error)")
+
+    def test_entity_name_picker_confirms_and_names_both_writings_first(self):
+        # 换统称会重写整条实体的扁平投影，写之前必须让用户看见换成什么、旧写法去哪。
+        self.assertCode("const {confirmed,result}=await confirmModal({")
+        self.assertCode("title:'更改统称',")
+        self.assertCode(
+            "body:`「${chosen}」将成为这条实体的规范名，「${current}」留作别名。`")
+        self.assertCode("+'作品上的署名、搜索和标签都会跟着改写。',")
+        # Geist 的判据：主按钮是与标题同一个动词的「动词+名词」，成功回执共用那个动词。
+        self.assertCode("confirmLabel:'更改统称',")
+        self.assertCode("actionReceipt(`已把统称更改为 ${result.canonical_name}`,{undo:async()=>{")
+        # 弹层顶上来之前先把菜单收掉，否则它固定在视口里会浮在遮罩上。
+        self.assertCode("anchored.setOpen(false);")
+
+    def test_confirm_modal_is_one_shared_component_on_a_native_dialog(self):
+        # 焦点陷阱、Escape、背景 inert 和关掉后归还焦点都由原生 <dialog> 给。
+        self.assertCode("export function confirmModal({title,body,confirmLabel,")
+        self.assertPageContains("dialog.showModal();")
+        self.assertPageContains('dialog.className=\'geist-modal\';')
+        self.assertPageContains("dialog.setAttribute('aria-labelledby',titleId);")
+        # 标题与正文是数据，走 textContent，不进 innerHTML。
+        self.assertPageContains("dialog.querySelector('h3').textContent=title;")
+        self.assertPageContains(
+            "dialog.querySelector('.geist-modal-body p').textContent=body;")
+        # 遮罩上的点击落在 <dialog> 自己身上；这个动作可撤销，允许点外面关掉。
+        self.assertCode(
+            "dialog.addEventListener('click',event=>{if(event.target===dialog)dialog.close()});")
+
+    def test_confirm_modal_keeps_a_failed_write_in_place_with_its_reason(self):
+        # 忙态落在主按钮上，不落在已经收起来的菜单项上。
+        self.assertPageContains("setActionBusy(accept);")
+        self.assertCode("settled={confirmed:true,result:await onConfirm()};")
+        self.assertCode(
+            "failure.innerHTML=noteHtml(error.message||'操作未完成',{variant:'error'});")
+        self.assertPageContains("setActionBusy(accept,false);")
+        # 取消、Escape 和点遮罩都走同一条出口，一律回 confirmed:false。
+        self.assertCode("resolve(settled||{confirmed:false});")
+
+    def test_confirm_modal_matches_the_measured_geist_modal(self):
+        # 实测 https://vercel.com/geist/modal（2026-09-04），见
+        # docs/reference-snapshots/vercel-geist-modal-measured.md。
+        self.assertPageContains(
+            ".geist-modal{box-sizing:border-box;width:min(540px,calc(100vw - 20px));"
+            "max-height:min(800px,80vh);")
+        self.assertPageContains("border-radius:var(--floating-radius);")
+        # 遮罩纯黑不带模糊：Geist 的 backdrop 没有 blur。
+        self.assertPageContains(".geist-modal::backdrop{background:#0009;opacity:0;")
+        self.assertPageLacks(".geist-modal::backdrop{background:#000a;backdrop-filter")
+        self.assertPageContains(
+            ".geist-modal-body{padding:20px;font-size:var(--fs-md);line-height:20px;")
+        self.assertPageContains(
+            ".geist-modal-body h3{margin:0;font-size:var(--fs-xl);line-height:26px;"
+            "font-weight:600;color:var(--ink)}")
+        # 操作条粘在底、两端对齐；取消在左，主动作在右。
+        self.assertPageContains(
+            ".geist-modal-footer{position:sticky;bottom:0;display:flex;"
+            "justify-content:space-between;gap:16px;")
+        self.assertPageContains(".geist-modal-footer>div{display:flex;gap:16px}")
+        # 两个键都走全站唯一那份 Geist Button，不另起一套尺寸。
+        self.assertCode('<div><button type="button" class="geist-button" data-modal-cancel>')
+        self.assertCode(
+            '<div><button type="button" class="geist-button primary" data-modal-confirm>')
+        # 手机上按本项目的 44px 命中区放大。
+        self.assertPageContains(
+            ".geist-modal-footer .geist-button{min-height:44px;padding:0 14px}")
 
     def test_entity_name_picker_marks_the_current_name_with_fill_and_a_check(self):
         self.assertPageContains(

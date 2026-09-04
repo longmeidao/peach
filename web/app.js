@@ -5,7 +5,7 @@ import { matchRoute, routeLabel } from './js/routes.js';
 import { initMiddleTruncate } from './js/middle-truncate.js';
 import { tagLabel } from './js/tags.js';
 import {
-  breadcrumbHtml, checkboxHtml, closeAnchoredMenu, emptyStateHtml, fieldsetTitle,
+  breadcrumbHtml, checkboxHtml, closeAnchoredMenu, confirmModal, emptyStateHtml, fieldsetTitle,
   fillSkeletonTier, fitSkeleton, iconSwitchHtml, loadingDotsHtml,
   mediaViewButtonsHtml, noteHtml, progressHtml, scrollerHtml, searchInputHtml, setActionBusy,
   skeletonHtml, spinnerHtml, wireAnchoredMenu, wireBusyActions, wireCollapse, wireIconSwitch,
@@ -5724,17 +5724,21 @@ function wireNamePicker(kind,current){
     {method:'POST',body:JSON.stringify({kind,name:from,canonical:to})});
   menu.querySelectorAll('[data-namepick-name]').forEach(item=>item.onclick=async()=>{
     const chosen=item.dataset.namepickName;
-    if(chosen===current){anchored.setOpen(false);return}
-    setActionBusy(item);
-    try{
-      const result=await rename(current,chosen);
-      anchored.setOpen(false);
-      if(!result.changed)return;
-      actionReceipt(`已把统称改为 ${result.canonical_name}`,{undo:async()=>{
-        await rename(result.canonical_name,result.previous_name);
-        await openEntity(kind,result.previous_name)}});
-      await openEntity(kind,result.canonical_name);
-    }catch(error){actionFailure('修改统称',error);setActionBusy(item,false)}
+    anchored.setOpen(false);
+    if(chosen===current)return;
+    /* 换统称要重写整条实体的扁平投影，先把代价说清再问。确认键、标题和成功回执共用
+       「更改统称」这一个动词；写入失败时弹层留在原地，原因写在正文下方等重试。 */
+    const {confirmed,result}=await confirmModal({
+      title:'更改统称',
+      body:`「${chosen}」将成为这条实体的规范名，「${current}」留作别名。`
+        +'作品上的署名、搜索和标签都会跟着改写。',
+      confirmLabel:'更改统称',
+      onConfirm:()=>rename(current,chosen)});
+    if(!confirmed||!result?.changed)return;
+    actionReceipt(`已把统称更改为 ${result.canonical_name}`,{undo:async()=>{
+      await rename(result.canonical_name,result.previous_name);
+      await openEntity(kind,result.previous_name)}});
+    await openEntity(kind,result.canonical_name);
   });
 }
 
