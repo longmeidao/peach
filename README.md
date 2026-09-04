@@ -5,8 +5,8 @@ local disks, mounted cloud drives, online subscriptions — and serves search, p
 pages, playlists and manual review from one FastAPI process backed by a local SQLite ledger.
 It is built for one person self-hosting on their own machines over a LAN, not for teams or public
 deployment. Status: pre-1.0. Windows and macOS are first-class; on Linux only the Python service
-and the CLI are supported, without tray or mount integration. The rest of this document is in
-Chinese — read 「范围与免责声明」 and 「安装」 first if you want to try it.
+and the CLI are supported, without tray or mount integration. A full English version is in
+[`README.en.md`](README.en.md).
 
 Peach（蜜桃）是单用户、本地优先的个人媒体系统。它统一索引本地磁盘、CloudDrive 和在线关注来源，提供搜索、播放、资料页、播放列表、复核与追更，并把观看行为和人工决定保存到本地 SQLite ledger。
 
