@@ -455,8 +455,8 @@ def build_macos_service_specs() -> tuple[ServiceSpec, ...]:
             "http",
             f"http://127.0.0.1:{MACOS_PORT}/healthz",
             (
-                peach, "serve", "--host", "0.0.0.0", "--port", str(MACOS_PORT),
-                "--no-ledger-sync",
+                peach, "serve", "--host", "127.0.0.1", "--port", str(MACOS_PORT),
+                "--no-ledger-sync", "--no-mdns",
             ),
             True,
         ),
@@ -465,6 +465,11 @@ def build_macos_service_specs() -> tuple[ServiceSpec, ...]:
     ca, cert, key = (cert_dir / n for n in
                      ("peach-local-ca.crt", "peach.crt", "peach.key"))
     if all(path.is_file() for path in (ca, cert, key)):
+        specs[0] = ServiceSpec(
+            "http", f"http://127.0.0.1:{MACOS_PORT}/healthz",
+            (peach, "serve", "--host", "0.0.0.0", "--port", str(MACOS_PORT),
+             "--redirect-origin", f"https://{MDNS_HOSTNAME}"), True,
+        )
         specs.append(ServiceSpec(
             "https",
             # 健康检查走回环，不走局域网地址。走 `peach.local` 会先解析到本机的
@@ -474,7 +479,7 @@ def build_macos_service_specs() -> tuple[ServiceSpec, ...]:
             f"https://127.0.0.1:{MACOS_TLS_PORT}/healthz",
             (
                 peach, "serve", "--host", "0.0.0.0", "--port", str(MACOS_TLS_PORT),
-                "--no-mdns", "--no-ledger-sync",
+                "--no-ledger-sync",
                 "--ssl-certfile", str(cert), "--ssl-keyfile", str(key),
             ),
             str(ca),
@@ -504,7 +509,7 @@ def build_service_specs(
             "http://127.0.0.1/healthz",
             (
                 peach, "serve", "--host", "0.0.0.0", "--port", "80",
-                "--mdns-address", address, "--no-ledger-sync",
+                "--redirect-origin", f"https://{MDNS_HOSTNAME}",
             ),
             True,
         ),
@@ -512,7 +517,7 @@ def build_service_specs(
             "https",
             f"https://{address}/healthz",
             (
-                peach, "serve", "--host", address, "--port", "443", "--no-mdns",
+                peach, "serve", "--host", address, "--port", "443", "--mdns-address", address,
                 "--no-ledger-sync",
                 "--ssl-certfile", str(cert), "--ssl-keyfile", str(key),
             ),

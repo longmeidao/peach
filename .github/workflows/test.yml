@@ -21,6 +21,28 @@ env:
   PYTHONIOENCODING: "utf-8"
 
 jobs:
+  wheel-smoke:
+    name: wheel 最小安装 / ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.14'
+      - name: 构建并安装正式 wheel
+        shell: bash
+        run: |
+          python -m pip wheel . --no-deps --no-cache-dir -w wheelhouse
+          python -m pip install --no-cache-dir wheelhouse/*.whl
+          python -m pip check
+      - name: 源码树外冒烟
+        shell: bash
+        run: |
+          cd "$RUNNER_TEMP"
+          python "$GITHUB_WORKSPACE/scripts/smoke_wheel.py"
   python:
     name: ${{ matrix.os }} / Python ${{ matrix.python }}
     runs-on: ${{ matrix.os }}

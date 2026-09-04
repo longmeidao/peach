@@ -263,7 +263,12 @@ def create_app(
     # 健康检查常被 HEAD 探测（`curl -I`、各种 uptime 工具）。本仓库其他公开端点
     # 都显式声明了 GET+HEAD，只有这个漏了，HEAD 会拿到 405。
     @app.api_route("/healthz", methods=["GET", "HEAD"])
-    def healthz() -> dict[str, Any]:
+    def healthz(ready: bool = False):
+        if ready:
+            from .health import readiness
+            result = readiness(settings)
+            return JSONResponse(result, status_code=200 if result["ready"] else 503,
+                                headers={"Cache-Control": "no-store"})
         # 不探测共享目录或迁移数据库；健康检查必须无副作用。
         ffmpeg = resolver.ffmpeg()
         read_only = bool(sync is not None and sync.read_only)

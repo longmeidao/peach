@@ -7,6 +7,8 @@
 
 ## 运行态
 
+- 复评候选代码包含 HTTP 导航入口、提交后缓存失效、图片复验、关系筛选与 wheel 资源；生产仍以下列已验证运行态为准。Windows 最小 wheel 安装与仓库外冒烟已通过，macOS 同项由 CI 验证，未取得本机 macOS 运行证据。
+
 - Windows 是当前 ledger writer，入口 `dist\Peach\Peach.exe`；代码、`peach-data`、worktree 和共享传输点同在一个顶层目录，外置盘只提供 `R:\media`。
 - 托盘必须以普通权限启动：提升权限后的令牌看不到 CloudDrive 的 `A:` / `B:`，会把 PikPak 和 115 误报为脱盘。
 - Windows HTTP 为 `0.0.0.0:80`，HTTPS 为当前 LAN IPv4 的 443，mDNS 名见 `[server].mdns_name`；线上版本 `0.7.13`、`ledger_sync=writer`。

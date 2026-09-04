@@ -5,6 +5,9 @@
 
 ## 界面、媒体与复核的既定判据
 
+- Windows 和有 TLS 的 macOS 托盘入口由 HTTP 导航进程与 HTTPS 业务进程组成；HTTP 的 `/healthz` 仅证明跳转进程存活，`/healthz?ready=1` 在业务入口验证配置、页面、数据库和迁移校验和。
+- wheel 将 `web`、`migrations`、`resources` 装入 `peach/_resources`；源码维护位置不变。`scripts/smoke_wheel.py` 必须用已安装 wheel 的解释器在仓库外运行，只使用临时账本。
+
 页面密度、控件、提示与响应式的实现门槛见 `.claude/skills/peach-web-ui/SKILL.md`，这里只留代码看不出来的判据。
 
 - 截图与视觉验收的画面保护：审查遮挡（设置面板「安全」组，`#censorSetting`，localStorage `peach-censor`）默认关闭、不在导航栏。只有当本轮截图会交给会审查内容的模型（自动视觉审查或外发工具）时才开启，开完记得关；普通个人浏览一律不遮挡。

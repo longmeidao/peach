@@ -16,6 +16,7 @@ class LedgerDatabase:
     def __init__(self, db_path: Path):
         self.db_path = Path(db_path)
         self.write_lock = threading.Lock()
+        self.after_commit = lambda: None
 
     def connect(self, *, write: bool = False) -> sqlite3.Connection:
         target = (
@@ -56,6 +57,7 @@ class LedgerDatabase:
                 raise
             else:
                 connection.commit()
+                self.after_commit()
             finally:
                 connection.close()
 
