@@ -11,26 +11,29 @@
    会在一列长条中间凭空插两块灰。默认关掉，由用得上的那张骨架自己打开。 */
 .skeletoncard s,.skeletoncard u{display:none}
 .grid>.skeletonpanel{grid-column:1/-1;width:100%;min-width:0}
-/* 首页网格的骨架照 .card 的实测轮廓画：列宽、列距和行距直接沿用 .grid 的算式，
+/* 海报卡骨架照 .card 的实测轮廓画：列宽、列距和行距直接沿用 .grid 的算式，
    卡内每一格的高度都由真实卡片同一枚 token 算出——标题是 .meta .t 的 2.7em、
    归属行是 .mono 的一行 1.45em、标签行再加上 .tg 的内边距与描边。这样一行骨架
    和一行真卡等高，数据到位那一下下面的内容不会往上跳。
    封面与下面那组之间是 8px：行距 3px 由 .mtext 的行距定，剩下 5px 记在头像格和
-   标题格的上边距里，两格一起加才不会把头像顶偏。 */
-.catalog-skeleton>div{grid-template-columns:repeat(auto-fill,minmax(var(--tile),1fr));gap:16px 8px}
-.catalog-skeleton .skeletoncard{grid-template-columns:38px minmax(0,1fr);column-gap:10px;row-gap:3px;
+   标题格的上边距里，两格一起加才不会把头像顶偏。
+   首页和关注页是同一种卡，所以共用这一块；关注页只差归属行高一点，见下面那条。 */
+.postercard-skeleton>div{grid-template-columns:repeat(auto-fill,minmax(var(--tile),1fr));gap:16px 8px}
+.postercard-skeleton .skeletoncard{grid-template-columns:38px minmax(0,1fr);column-gap:10px;row-gap:3px;
   align-content:start}
-.catalog-skeleton .skeletoncard i{grid-column:1/-1}
-.catalog-skeleton .skeletoncard s{display:block;grid-column:1;grid-row:2/span 3;align-self:start;
+.postercard-skeleton .skeletoncard i{grid-column:1/-1}
+.postercard-skeleton .skeletoncard s{display:block;grid-column:1;grid-row:2/span 3;align-self:start;
   width:38px;height:38px;margin-top:5px;border-radius:50%;background:var(--hover)}
-.catalog-skeleton .skeletoncard b,
-.catalog-skeleton .skeletoncard em,
-.catalog-skeleton .skeletoncard u{grid-column:2}
-.catalog-skeleton .skeletoncard b{width:100%;margin-top:5px;font-size:var(--fs-md);height:2.7em}
-.catalog-skeleton .skeletoncard em{width:58%;font-size:var(--fs-xs);height:1.45em}
-.catalog-skeleton .skeletoncard u{display:block;width:64%;font-size:var(--fs-xs);
+.postercard-skeleton .skeletoncard b,
+.postercard-skeleton .skeletoncard em,
+.postercard-skeleton .skeletoncard u{grid-column:2}
+.postercard-skeleton .skeletoncard b{width:100%;margin-top:5px;font-size:var(--fs-md);height:2.7em}
+.postercard-skeleton .skeletoncard em{width:58%;font-size:var(--fs-xs);height:1.45em}
+.postercard-skeleton .skeletoncard u{display:block;width:64%;font-size:var(--fs-xs);
   height:calc(1.45em + var(--tag-pad-y) * 2 + 2px);
   border-radius:var(--tag-radius);background:var(--hover)}
+/* 关注卡的归属行有 min-height，比首页那条高 3.6px：一页十来行叠起来就是一屏的错位。 */
+.follow-content-skeleton .skeletoncard em{height:21px}
 /* 数据管理是一列 fieldset，不是海报网格：骨架照 fieldset 的轮廓排，
    否则整页刷新先看到三列 16:9 占位，加载完又整个换成一列长条。
    底部那条是操作条的位置，不参与微光——它是框体，不是待填的内容。 */

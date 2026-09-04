@@ -5,7 +5,8 @@ import { matchRoute, routeLabel } from './js/routes.js';
 import { initMiddleTruncate } from './js/middle-truncate.js';
 import { tagLabel } from './js/tags.js';
 import {
-  breadcrumbHtml, checkboxHtml, emptyStateHtml, fieldsetTitle, iconSwitchHtml, loadingDotsHtml,
+  breadcrumbHtml, checkboxHtml, emptyStateHtml, fieldsetTitle, fillSkeletonTier, fitSkeleton,
+  iconSwitchHtml, loadingDotsHtml,
   mediaViewButtonsHtml, noteHtml, progressHtml, scrollerHtml, searchInputHtml, setActionBusy,
   skeletonHtml, spinnerHtml, wireBusyActions, wireCollapse, wireIconSwitch, wireScrollers,
 } from './js/ui-components.js';
@@ -132,12 +133,17 @@ const ROUTES=[
 const registerRoute=spec=>{ROUTES.push(spec);return spec};
 window.peachRegisterRoute=registerRoute;
 
-const pageSkeletonHtml=(label,{cards=false,className='',variant='',count}={})=>
+const pageSkeletonHtml=(label,{cards=false,className='',variant='',count,fill}={})=>
   skeletonHtml(label,{variant:variant||(cards?'cards':'panel'),className,
-    ...(count?{count}:{})});
+    ...(count?{count}:{}),...(fill===undefined?{}:{fill})});
+/* 关注页的骨架跟首页共用海报卡那套几何：网格算式、卡内每一格都一样，只有归属行
+   高一点（`.followitem .meta .s` 有 min-height）。上面两条是它自己的作者行和筛选
+   行，形状取 `.tier`/`.tagbar` 本身，所以和首页顶栏是同一枚，不必另画一套。 */
 const followSkeletonHtml=(label='正在读取关注内容')=>`<div class="follow">
   <div class="followhead"><h2 class="pagetitle">关注</h2></div>
-  ${pageSkeletonHtml(label,{cards:true,className:'follow-content-skeleton'})}</div>`;
+  <div class="tier followauthors" data-skeleton-tier="av"></div>
+  <div class="tagbar followfilters" data-skeleton-tier="pill"></div>
+  ${pageSkeletonHtml(label,{cards:true,className:'follow-content-skeleton postercard-skeleton'})}</div>`;
 $('#loadSentinel').innerHTML=loadingDotsHtml('继续载入中…');
 $('#tokLoader').insertAdjacentHTML('afterbegin',spinnerHtml('媒体加载中'));
 /* 筛选条只由当前 state 决定，这次加载不会改变它，所以它现在就能画成最终样子。
@@ -179,7 +185,9 @@ function renderCatalogLoading(label='正在读取作品'){
      铺着两种等待动画，而实际只有一次请求在跑。哨兵的可见性由数据落地后的
      `has_more` 重新决定，所以这里只管收，不必记住原值。 */
   $('#loadSentinel').hidden=true;
-  $('#grid').innerHTML=pageSkeletonHtml(label,{cards:true,className:'catalog-skeleton'});
+  $('#grid').innerHTML=pageSkeletonHtml(label,
+    {cards:true,className:'catalog-skeleton postercard-skeleton'});
+  fitSkeleton($('#grid'));
 }
 /* 每个管理表面的加载态只有一份定义，深链启动和路由到位后都从这里取。
    两处各写各的时，整页刷新会连播两段动画：先一张通用大布局骨架，再各页自己的
@@ -189,7 +197,8 @@ const MANAGEMENT_PLACEHOLDERS={
   '/stats':()=>`<div class="insightpage">${pageSkeletonHtml('正在读取统计',{variant:'dashboard'})}</div>`,
   '/taste':()=>`<div class="tastepage">${pageSkeletonHtml('正在读取口味分析')}</div>`,
   '/data-cleanup':()=>`<div class="cleanuppage">${
-    pageSkeletonHtml('正在读取数据管理状态',{cards:true,className:'cleanup-skeleton'})}</div>`,
+    pageSkeletonHtml('正在读取数据管理状态',
+      {cards:true,fill:false,className:'cleanup-skeleton'})}</div>`,
   // /resource-sync 只是数据管理页上的一个锚点，启动时占位也该是数据管理那张。
   '/resource-sync':()=>MANAGEMENT_PLACEHOLDERS['/data-cleanup'](),
   '/duplicates':()=>pageSkeletonHtml('正在比对重复内容',{cards:true}),
@@ -199,10 +208,13 @@ const MANAGEMENT_PLACEHOLDERS={
   // 关注管理是三个大区（添加关注、关注列表、凭据），不是一屏同质卡片：
   // 骨架照 .fsec 的轮廓画三块，六张 16:9 占位说的是另一个页面的结构。
   '/follow-manage':()=>`<div class="follow">${pageSkeletonHtml('正在读取关注管理',
-    {cards:true,count:3,className:'followmanage-skeleton'})}</div>`,
+    {cards:true,count:3,fill:false,className:'followmanage-skeleton'})}</div>`,
 };
 const managementPlaceholder=path=>
   (MANAGEMENT_PLACEHOLDERS[path]||(()=>pageSkeletonHtml('正在读取页面')))();
+/* 顶部三层只属于首页。深链启动时先画一遍再由路由收起来，等于向管理页和索引页
+   承诺了三条永远不会到货的横条。 */
+const hideDiscoveryBars=()=>{$('#tiers').style.display='none';$('#tagbar').style.display='none'};
 function renderInitialSurfaceLoading(){
   const path=decodeURIComponent(location.pathname);
   if(path==='/junk-files'){
@@ -214,16 +226,20 @@ function renderInitialSurfaceLoading(){
   const management=new Set(['/stats','/taste','/review','/data-cleanup','/duplicates','/quality-goals',
     '/playlists','/resource-sync','/follow','/follow-manage']);
   if(management.has(path)||path.startsWith('/follow/item/')){
+    hideDiscoveryBars();
     const stats=$('#stats');stats.hidden=false;$('#grid').innerHTML='';
     stats.innerHTML=path.startsWith('/follow')&&path!=='/follow-manage'
       ?followSkeletonHtml('正在读取关注内容')
       :managementPlaceholder(path);
+    fitSkeleton(stats);
     return;
   }
   if(path==='/performers'||path==='/creators'||path==='/tags'||
       /^\/(?:performers|creators|studios)\//.test(path)){
+    hideDiscoveryBars();
     $('#index').hidden=false;$('#grid').innerHTML='';
     $('#index').innerHTML=pageSkeletonHtml('正在读取页面',{cards:true});
+    fitSkeleton($('#index'));
     return;
   }
   renderCatalogLoading();
@@ -2276,23 +2292,18 @@ function wireViewPills(){
     e.preventDefault();state.state=b.dataset.state;route(homePath());buildBars();load(true)});
 }
 // 宽度是一组定值而不是随机数：随机会让同一次冷启动在两台机器上长得不一样，也没法测。
-const TAG_SKELETON_WIDTHS=[92,68,104,76,88,64,96,72,100,80,68,92,76,84];
-const BRAND_SKELETON_WIDTHS=[132,158,118,146,124,164,138];
-const barsSkeletonHtml=()=>`<div class="tier">${
-    Array.from({length:9},()=>`<span class="av avskeleton"><span class="ring"></span>
-      <span class="nm">&nbsp;</span></span>`).join('')}</div><div class="tier">${
-    BRAND_SKELETON_WIDTHS.map(width=>
-      `<span class="brandpill brandskeleton" style="width:${width}px"><span class="mk"></span></span>`
-    ).join('')}</div>`;
 function renderBarsLoading(filterState){
   const tiers=$('#tiers'),tagbar=$('#tagbar');
   if(!tiers.innerHTML){
-    tiers.hidden=false;tiers.setAttribute('aria-busy','true');tiers.innerHTML=barsSkeletonHtml();
+    tiers.hidden=false;tiers.setAttribute('aria-busy','true');
+    tiers.innerHTML=`<div class="tier" data-skeleton-tier="av"></div>
+      <div class="tier" data-skeleton-tier="brandpill"></div>`;
+    fitSkeleton(tiers);
   }
   if(!tagbar.innerHTML){
     tagbar.setAttribute('aria-busy','true');
-    tagbar.innerHTML=viewPillsHtml(filterState)+TAG_SKELETON_WIDTHS.map(width=>
-      `<span class="pill tagskeleton" style="width:${width}px"></span>`).join('');
+    tagbar.innerHTML=viewPillsHtml(filterState);
+    fillSkeletonTier(tagbar,'pill');
     wireViewPills();
   }
 }
@@ -2552,7 +2563,7 @@ function showManagementBody({manage=true,placeholder=''}={}){
      整页刷新看到的就是同一段动画闪两次。 */
   const painted=$('#stats').querySelector('[data-skeleton]')?.dataset.skeleton||'';
   const next=skeletonKeyOf(placeholder);
-  if(!next||next!==painted)$('#stats').innerHTML=placeholder;
+  if(!next||next!==painted){$('#stats').innerHTML=placeholder;fitSkeleton($('#stats'))}
 }
 /* 铺开索引页与资料页。这一屏盖住目录，所以在这里收掉目录的筛选芯片，与管理页那侧的
    `enterManagementSurface()` 对称：索引页此后不再重画芯片，画上去的那条会一直留着。
@@ -2562,12 +2573,13 @@ function showIndexLoading(label){
   $('#stats').hidden=true;$('#index').hidden=false;$('#grid').innerHTML='';$('#combo').innerHTML='';
   $('#count').textContent='';$('#loadSentinel').hidden=true;$('#shortsSec').hidden=true;
   $('#index').innerHTML=pageSkeletonHtml(label,{cards:true});
+  fitSkeleton($('#index'));
 }
 function enterManagementSurface(){
   // A catalog request started before browser Back must not repaint filters over
   // the management page after it resolves.
   loadRequestSeq++;listLoading=false;$('#combo').innerHTML='';
-  $('#tiers').style.display='none';$('#tagbar').style.display='none';
+  hideDiscoveryBars();
   document.body.classList.remove('entity-open','index-open');
 }
 async function openStats(push=true){

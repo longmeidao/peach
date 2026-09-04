@@ -117,7 +117,7 @@ export function loadingDotsHtml(label='正在处理', {className=''}={}){
 /** Geist Skeleton: reserve a large content region while its structure is loading. */
 /* `count` 只对 cards 生效：块数是骨架说出口的结构预告，六块对上的是海报网格，
    而行政界面往往只有两三个大区。多画的块加载完就消失，那不是占位是误报。 */
-export function skeletonHtml(label='正在读取内容',{className='',variant='panel',count=6}={}){
+export function skeletonHtml(label='正在读取内容',{className='',variant='panel',count=6,fill=true}={}){
   const kind=new Set(['panel','cards','dashboard']).has(variant)?variant:'panel';
   const body=kind==='cards'
     ?Array.from({length:Math.max(1,count)},
@@ -133,9 +133,55 @@ export function skeletonHtml(label='正在读取内容',{className='',variant='p
   /* data-skeleton 是这张骨架的身份。深链启动先画一张、路由到位后各页再画一张，
      整页刷新就会连闪两段动画；调用方拿这个键判断「已经是同一张了」，跳过重画。 */
   return `<div class="skeletonpanel skeleton-${kind}${className?` ${esc(className)}`:''}"
-    data-skeleton="${esc(kind)}${className?`/${esc(className)}`:''}"
+    data-skeleton="${esc(kind)}${className?`/${esc(className)}`:''}"${kind==='cards'&&fill?' data-fill=""':''}
     role="status" aria-label="${esc(label)}"><span class="sr-only">${esc(label)}</span>
     <div aria-hidden="true">${body}</div></div>`;
+}
+
+/* 骨架的枚数由容器当下的宽度决定，不写死一个数：横向一行铺到右缘为止，网格补满
+   整行。写死的话宽屏最后一行留一截豁口，窄屏和手机端又多出一堆要横滑才看得见的
+   占位；算出来就不必再为断点各写一套。宽度序列只是让胶囊长短不一，像真词。 */
+const SKELETON_SLOT={
+  av:()=>`<span class="av avskeleton"><span class="ring"></span><span class="nm">&nbsp;</span></span>`,
+  brandpill:width=>`<span class="brandpill brandskeleton" style="width:${width}px"><span class="mk"></span></span>`,
+  pill:width=>`<span class="pill tagskeleton" style="width:${width}px"></span>`,
+};
+const SKELETON_SLOT_WIDTHS={
+  av:[0],
+  brandpill:[132,158,118,146,124,164,138],
+  pill:[92,68,104,76,88,64,96,72,100,80,68,92,76,84],
+};
+
+/** 一行横向骨架：逐枚追加到溢出容器右缘为止。上限只是死循环的护栏。 */
+export function fillSkeletonTier(row,kind){
+  const slot=SKELETON_SLOT[kind],widths=SKELETON_SLOT_WIDTHS[kind];
+  if(!slot||!row)return;
+  for(let i=0;i<64;i++){
+    row.insertAdjacentHTML('beforeend',slot(widths[i%widths.length]));
+    if(row.scrollWidth>row.clientWidth)break;
+  }
+}
+
+/** 骨架落进 DOM 之后按实际尺寸补齐：横向一行铺满，卡片网格补到整行且盖住视口余量。 */
+export function fitSkeleton(root){
+  if(!root)return;
+  const scoped=selector=>[...(root.matches?.(selector)?[root]:[]),...root.querySelectorAll(selector)];
+  for(const row of scoped('[data-skeleton-tier]'))fillSkeletonTier(row,row.dataset.skeletonTier);
+  for(const grid of scoped('.skeletonpanel[data-fill]>div')){
+    const first=grid.firstElementChild,style=getComputedStyle(grid);
+    /* 横排的推荐行不是网格，列数无从谈起，按整行补会把它裁成一张。 */
+    if(!first||style.display!=='grid')continue;
+    const columns=style.gridTemplateColumns.split(' ').filter(Boolean).length;
+    const rowGap=parseFloat(style.rowGap)||0,cardHeight=first.getBoundingClientRect().height;
+    if(!columns||!cardHeight)continue;
+    /* 骨架说的是「这块地方等下会被填满」，所以铺到视口下沿；四行是护栏，
+       再多也是一屏之外看不见的占位，白占动画。 */
+    const room=window.innerHeight-grid.getBoundingClientRect().top;
+    const rows=Math.max(1,Math.min(4,Math.ceil((room+rowGap)/(cardHeight+rowGap))));
+    const want=columns*rows;
+    while(grid.children.length>want)grid.lastElementChild.remove();
+    while(grid.children.length<want)grid.appendChild(first.cloneNode(true));
+  }
 }
 
 /** Shared video/image view buttons for entity profiles and the follow feed. */
