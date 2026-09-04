@@ -40,7 +40,7 @@
 
 合计：**30 项开放需求**，其中 6 项已有骨架，24 项尚未实现。已完成的需求不在这里留痕，去 Git 历史查。
 
-## 待执行的操作（30 项）
+## 待执行的操作（31 项）
 
 需要另行授权、外部条件或人工判断才能做的具体操作与复核批次，比上面的需求细一层；做完就删，不在这里留痕。待办只放这一处：`docs/STATUS.md` 每次会话开头都要读，队列不该常驻在那种入口文件里。
 
@@ -74,3 +74,4 @@
 28. macOS launchd 标签与 bundle ID 改为中性的 `io.github.longmeidao.peach.*`（用户 2026-09-04 决定，现值由维护者域名反写）。涉及 `src/peach/tray.py`、`scripts/build_macos_app.py`、`scripts/install_macos_agent.py`、`scripts/setup_macos_port80.sh`、`docs/OPERATIONS.md`、`tests/test_tray.py`。代码改动在 Windows 就能做并跑 `sync` 域；生效必须在 Mac 上：`launchctl bootout gui/$(id -u)/<旧标签>` 卸旧 agent，重跑 `install_macos_agent.py` 与 `setup_macos_port80.sh` 装新标签，再核对菜单栏进程、80 端口转发与 `/healthz`。这是换生产入口，Mac 上执行前要在同一轮拿到用户确认。
 29. 托盘首启的 GUI 引导：发现未配置就打开浏览器到现有「还没初始化」页，那一页升级成表单，提交后调 `peach.onboarding` 的 `questions()`／`interview()`／`configure()`，与 CLI 问答同一套逻辑。
 30. `peach-data/review/composite-names-20260904.csv` 里还剩 28 条 creator 规范名带括号，括号里是读音或罗马音（`Egami(えがみ)`、`永地(eichi)`、`猫屋(NEKOYA)`），用户定了不拆——它们不像艺名那样各自独立，是同一个名字的注音。同一份 CSV 里 575 条 tag 是角色的作品出处消歧，10 条 series 括号里是厂牌或载体消歧（拆了会把三个 `AV DEBUT` 撞成一个），都不要动。剩下真正待判的只有 performer 规范名 `Mana(23)` 一条：数字是去重后缀还是名字的一部分要看源站。
+31. Mac 追上 master 的一组操作，按顺序做完再重启菜单栏——做完之前不要重启：master 上的 `peach serve --host 0.0.0.0` 没有口令会拒绝启动，reader 会直接消失。① `git pull` 到 master；② `pip uninstall -y peach-app && pip install -e ".[macos]"`；③ 先把 Windows 的 `peach-data/secrets/auth-token` 复制到 Mac 数据根的同一路径——reader 取 writer 复核结果发的是自己的口令，两边必须是同一份，而 `--from-existing` 找不到文件会自己生成一份不同的；④ `peach init --from-existing --mount local=<落点>`；⑤ 重启菜单栏，核对 `/healthz`、`/review` 能读到 writer，手机与 Mac 浏览器各登录一次。第 28 条的标签改名可以放进同一个维护窗口。
