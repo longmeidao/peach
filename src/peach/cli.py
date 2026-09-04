@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import argparse
 import os
+import sys
 from datetime import datetime
 from pathlib import Path
 
-from . import auth, certs, settings_file
+from . import auth, certs, onboarding, scan, settings_file
 from .api import create_app
 from .config import (
     DATABASE_PATH,
@@ -21,6 +22,7 @@ from .config import (
 )
 from .follow_cli import register as register_follow
 from .migrations import plan, upgrade
+from .platform import location_mounts
 from .scripting import open_readonly
 from .sync import LedgerSync, device_id
 from .sync import plan as sync_plan
@@ -296,7 +298,12 @@ def _init(args: argparse.Namespace) -> int:
     证书，只把当前生效的配置落成设置文件。现有部署的坐标散在环境变量和运行现场里，
     进程看不见的那几项（局域网地址、钥匙串账号名）由命令行显式补，落不下的会在末尾
     逐条列出来，绝不拿猜的值填。
+
+    一个参数都没给、stdin 又是终端时进问答（`_init_interactive`）；给了任何参数、
+    加了 `--no-input` 或 stdin 不是终端，都走下面这条非交互路径。
     """
+    if _wants_interview(args):
+        return _init_interactive()
     config, broken = _resolved_config(args.data_root)
     if config.path.exists() and not args.force:
         print(f"设置文件已存在：{config.path}")
@@ -338,6 +345,89 @@ def _init(args: argparse.Namespace) -> int:
     return 0
 
 
+def _wants_interview(args: argparse.Namespace) -> bool:
+    """`peach init` 不带任何参数、stdin 是终端，才进问答。
+
+    「不带任何参数」按 parser 的默认值判，不另抄一份参数名：加一个开关就多一处要同步。
+    `--no-input` 本身就是一个参数，所以它天然落到非交互路径。
+    """
+    bare = build_parser().parse_args(["init"])
+    return vars(args) == vars(bare) and onboarding.is_interactive(sys.stdin)
+
+
+def _init_interactive(
+    ask: onboarding.Ask = onboarding.console_ask, *,
+    windows: bool | None = None, home: Path | None = None,
+) -> int:
+    """首次运行问答。题目、校验与落盘全在 `peach.onboarding`，这里只是终端前端。
+
+    `ask`、`windows`、`home` 可注入：测试用脚本化答案驱动，不碰真实 stdin，也不看
+    测试机自己是什么系统。托盘的设置页复用同一组函数，不走这个入口。
+    """
+    windows = os.name == "nt" if windows is None else windows
+    config, _broken = _resolved_config(None)
+    print("首次运行问答：每一题直接回车就接受方括号里的默认值。")
+    try:
+        answers = onboarding.interview(config, ask, windows=windows, home=home)
+    except onboarding.OnboardingAborted as exc:
+        raise SystemExit(f"{exc}已退出，没有写任何文件。") from None
+    config, _broken = _resolved_config(answers.data_root)
+    if config.path.exists():
+        print(f"设置文件已存在：{config.path}")
+        print("要重新生成就跑 `peach init --force`；它会覆盖这个文件，不动数据。")
+        return 3
+    prepared = onboarding.configure(config, answers, windows=windows)
+    _create_data_tree(prepared)
+    path = settings_file.write(prepared)
+    print(f"设置文件：{path}")
+    if not windows:
+        print(onboarding.mounts_explanation(answers.media_dir))
+
+    summary = None
+    try:
+        scan_now = onboarding.ask_until_valid(onboarding.scan_question(answers.media_dir), ask)
+    except onboarding.OnboardingAborted as exc:
+        print(f"{exc}跳过扫描，之后可以跑 `peach scan local`。")
+        scan_now = False
+    if scan_now:
+        result = scan.scan_location(
+            prepared.directory("database") / "ledger.db", onboarding.LOCAL_LOCATION,
+            onboarding.scan_root(prepared), declared_roots=prepared.locations,
+            mounts=prepared.mounts, report=print, windows=windows,
+        )
+        summary = result.summary()
+    _print_next_steps(prepared, from_existing=False)
+    if summary:
+        print(f"  扫描结果：{summary}")
+    return 0
+
+
+def _scan(args: argparse.Namespace) -> int:
+    """`peach scan <来源ID> [根目录]`：根目录省略时取该来源的声明根（本机目录按挂载表取）。"""
+    _require_readable_settings()
+    if not args.db.is_file():
+        print(f"账本不存在：{args.db}")
+        print("这台机器还没初始化过，先跑 `peach init`。")
+        return 4
+    config = settings_file.active()
+    mounts = {location: str(mount) for location, mount in location_mounts().items()}
+    try:
+        if args.root is None:
+            if args.location not in config.locations:
+                known = "、".join(sorted(config.locations)) or "（设置文件里一个都没有）"
+                raise scan.ScanTargetError(
+                    f"✗ 未声明的来源 {args.location!r}；[media.locations] 里已知：{known}")
+            root = config.locations[args.location]
+        else:
+            root = scan.ledger_root_for(
+                args.location, args.root, declared_roots=config.locations, mounts=mounts)
+        scan.scan_location(args.db, args.location, root, declared_roots=config.locations,
+                           mounts=mounts, report=lambda line: print(line, flush=True))
+    except scan.ScanTargetError as exc:
+        raise SystemExit(str(exc)) from None
+    return 0
+
+
 def _create_data_tree(config: settings_file.PeachConfig) -> None:
     """建目录、把库迁到最新、生成本机 CA。已经有账本就不碰它。"""
     for key in settings_file.DIRECTORY_KEYS:
@@ -371,11 +461,11 @@ def _announce_token(config: settings_file.PeachConfig) -> str:
     终端输出会进日志、截图和 issue，口令不该顺着这条路走出去。
     """
     secrets_dir = config.directory("secrets")
-    _token, created = auth.ensure_token(secrets_dir)
+    token, created = auth.ensure_token(secrets_dir)
     path = auth.token_path(secrets_dir)
     print(f"访问口令：{path}" + ("" if created else "（沿用已有的那份）"))
     print("绑局域网地址的服务必须读得到它，`peach token` 看内容。")
-    return _token
+    return token
 
 
 def _token(args: argparse.Namespace) -> int:
@@ -429,17 +519,27 @@ def _print_next_steps(config: settings_file.PeachConfig, *, from_existing: bool)
     if from_existing:
         print("  1. 打开上面那个文件核对一遍，尤其是 [media.mounts] 和 [replication]。")
         print("  2. 重启服务让它生效。这一步之前，运行行为和现在完全一样。")
+        print("  3. `peach token` 取口令：绑局域网地址的服务读不到它就起不来，"
+              "已经在用的设备也要重新登录一次。")
         return
     print(f"  1. peach serve --host {config.server.host} --port {config.server.port}")
     print("  2. 浏览器打开 http://127.0.0.1:%d/ 确认页面可用。" % config.server.port)
-    print("  3. 要在局域网访问就改 --host 0.0.0.0，并把本机 CA 装进各设备的信任列表。")
+    if _is_loopback(config.server.host):
+        print("  3. 要在局域网访问就改 --host 0.0.0.0：把本机 CA 装进各设备的信任列表，"
+              "再用 `peach token` 取口令，设备第一次访问时贴进登录页。")
+    else:
+        print("  3. 局域网设备要装本机 CA，并用 `peach token` 取口令，"
+              "第一次访问时贴进登录页。")
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="peach")
     commands = parser.add_subparsers(dest="command", required=True)
 
-    init = commands.add_parser("init", help="首次运行：建数据目录、建库、写设置文件")
+    init = commands.add_parser(
+        "init", help="首次运行：不带参数在终端里问答；带任何参数或 --no-input 走非交互")
+    init.add_argument("--no-input", action="store_true",
+                      help="不进入问答，按参数与内建默认直接生成")
     init.add_argument("--data-root", type=Path, help="数据根；默认沿用当前发现结果")
     init.add_argument("--from-existing", action="store_true",
                       help="只为已在运行的部署生成设置文件，不建目录、不建库")
@@ -473,6 +573,14 @@ def build_parser() -> argparse.ArgumentParser:
     serve.add_argument("--ssl-certfile", type=Path)
     serve.add_argument("--ssl-keyfile", type=Path)
     serve.set_defaults(handler=_serve)
+
+    scan_parser = commands.add_parser(
+        "scan", help="扫描一个来源的目录，把文件元数据写进账本")
+    scan_parser.add_argument("location", help="来源 ID（asset.location），要在 [media.locations] 里声明过")
+    scan_parser.add_argument("root", nargs="?",
+                             help="要扫的目录；省略时取该来源的声明根（本机目录按 [media.mounts] 取）")
+    scan_parser.add_argument("--db", type=Path, default=DEFAULT_DB)
+    scan_parser.set_defaults(handler=_scan)
 
     token = commands.add_parser("token", help="查看局域网访问口令，没有就生成一份")
     token.add_argument("--rotate", action="store_true",
