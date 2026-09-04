@@ -44,8 +44,11 @@
 /* 版式开关和排序框、按钮同处分区标题行，收到同一个 32px 高度上（fieldset 自带 1px 边框）。 */
 .fsechead .iconswitch{display:inline-flex;gap:2px;flex:none;padding:2px}
 .fsechead .iconswitch label{width:32px;height:26px}
+/* 原生弹出的选项列表由 color-scheme 决定，而 color-scheme 是继承属性：01-base.css 把
+   prefers-color-scheme 和 `[data-theme]` 两条选择路径都映射到 `html`，控件这里只声明颜色。
+   在控件上单独写一档，浅色主题下闭合的框是浅底，展开的选项列表是深底浅字。 */
 .fmanagesort select{height:32px;padding:0 10px;border:1px solid var(--border-15);border-radius:var(--control-radius);
-  background:var(--surface);color:var(--ink-2);font:inherit;font-size:var(--fs-sm);color-scheme:dark;cursor:pointer}
+  background:var(--surface);color:var(--ink-2);font:inherit;font-size:var(--fs-sm);cursor:pointer}
 .fmanagesort select:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}
 /* 全站原生下拉共用同一个自绘箭头。SVG 笔画自身有 4px 透明边，背景右移 6px 后，
    可见笔画到右边框正好与文字到左边框同为 10px。 */
