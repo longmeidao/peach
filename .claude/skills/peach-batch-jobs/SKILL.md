@@ -5,7 +5,7 @@ description: 在用户说抽帧、接触表、probe、sheets、creator_boards、
 
 # 长跑批处理与流量边界
 
-最后复核：2026-08-27
+最后复核：2026-09-04
 证据来源：`scripts/probe.py`、`scripts/sheets.py`、`src/peach/jobs.py`、相关单元测试与 ADR-0015。
 
 ## 失败值
@@ -33,7 +33,9 @@ description: 在用户说抽帧、接触表、probe、sheets、creator_boards、
   的空档去查 av-wiki 和 javdb，实测 12 位从约 8 秒/位降到 4.4 秒/位。
 - 限流参数只能用与真实批次同量级的运行来标定。r18 在 12 个请求的短测里 1.0 秒间隔全过，
   据此降参后连跑约 18 分钟开始被拒，556 位里 203 位成了假阴性；改回 2.0 秒连跑 62 分钟稳定。
-- 被 Cloudflare 拦的站一律放弃，不绕过机器人检测。
+- 被 Cloudflare 拦的站一律放弃，不绕过机器人检测。按出口 IP 计的速率配额是另一类：那道判的是
+  「这个出口发得太快」而不是「你是不是机器人」，换节点可用，来源下限和撞 403 收工照守，不在
+  封禁期里换着节点连打。javdb 的实测数据与本机 `🎬 JavDB` 策略组见 `docs/SOURCING.md`。
 
 ## 续跑
 
