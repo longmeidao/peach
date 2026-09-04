@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 安全漏洞
+    url: https://github.com/longmeidao/peach-app/security/advisories/new
+    about: 走 Private vulnerability reporting，不要开公开 issue。
+  - name: 开发边界与门槛
+    url: https://github.com/longmeidao/peach-app/blob/master/AGENTS.md
+    about: 提 PR 前先读这份入口文件。

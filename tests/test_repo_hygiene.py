@@ -211,6 +211,37 @@ class PersonalLiteralTests(unittest.TestCase):
             self.assertIsNone(PERSONAL_LITERAL.search(allowed), allowed)
 
 
+class ReleaseFilesTests(unittest.TestCase):
+    """公开发布必须齐备的治理文件（ADR-0023 第 4 阶段）。
+
+    仓库一旦公开，许可证、贡献说明、安全说明和 issue/PR 模板就是陌生人判断「能不能用、
+    怎么报问题」的唯一依据。缺一份的后果不是报错而是沉默：使用者无从判断授权范围，
+    漏洞只能开成公开 issue。它们又都是「一次写好、之后没人再看」的文件，正是重构和
+    路径调整时最容易被顺手删掉的那一类，所以在这里钉住存在性。
+    """
+
+    #: 相对仓库根的路径。清单只增不减，删除任何一项都要先改 ADR-0023。
+    REQUIRED = (
+        "LICENSE",
+        "CONTRIBUTING.md",
+        "SECURITY.md",
+        ".github/PULL_REQUEST_TEMPLATE.md",
+        ".github/ISSUE_TEMPLATE/config.yml",
+    )
+
+    def test_every_release_file_exists_and_has_content(self):
+        missing = [name for name in self.REQUIRED if not (REPO / name).is_file()]
+        self.assertEqual(missing, [], "公开发布缺少治理文件")
+        empty = [name for name in self.REQUIRED
+                 if not (REPO / name).read_text(encoding="utf-8").strip()]
+        self.assertEqual(empty, [], "治理文件存在但是空的，等于没有")
+
+    def test_the_licence_is_the_mit_licence(self):
+        text = (REPO / "LICENSE").read_text(encoding="utf-8")
+        self.assertIn("MIT License", text,
+                      "许可证是 MIT（ADR-0023 第 4 阶段），换许可证要先改 ADR")
+
+
 class ArchitectureDriftTests(unittest.TestCase):
     """架构文档点名的模块必须真的存在。
 
