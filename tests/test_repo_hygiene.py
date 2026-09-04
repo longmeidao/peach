@@ -164,12 +164,15 @@ PERSONAL_LITERAL = re.compile(
 #: 以及某一台机器的 mDNS 名。仓库公开后它们既是别人家的坐标又是个人信息（ADR-0023
 #: 第四阶段）。要举例子就用 RFC 5737 的 192.0.2.0/24、198.51.100.0/24、203.0.113.0/24
 #: 与中性主机名，那些地址不属于任何人，读者也不会照抄进自己的配置。
+#:
+#: 判据是「只对某一台机器成立」，不是「像个名字」：仓库的 GitHub 归属与 LICENSE 的
+#: 版权人本来就要公开署名，它们不在拦截范围内，所以本机用户名按词边界匹配。
 MACHINE_COORDINATE = re.compile(
     r"""(?xi)
     \b192\.168\.\d{1,3}\.\d{1,3}                     # 私网地址
     | \b10\.\d{1,3}\.\d{1,3}\.\d{1,3}\b
     | \b172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}
-    | longm                                          # 本机用户名与由它派生的账号
+    | \blongm\b                                      # 本机用户名
     | lmd[.-]gg                                      # 个人目录名与同名的托管项目
     | peachsync                                      # SMB 账号名
     | peach-win                                      # 某一台机器的 mDNS 名
@@ -179,8 +182,7 @@ MACHINE_COORDINATE = re.compile(
 #: 门槛自身要写出它拦的形状，所以只有它自己豁免。
 COORDINATE_EXEMPT_FILES = frozenset({"tests/test_repo_hygiene.py"})
 
-#: 第三方代码与构建产物的措辞不由本仓库决定：Video.js 压缩产物里的 `longmapsto`
-#: 就是一个 MathML 实体名，扫它只会得到噪声。
+#: 第三方代码与构建产物的措辞不由本仓库决定，压缩后的它们也没有可读的行。
 COORDINATE_EXEMPT_PREFIXES = ("web/vendor/", "web/dist/")
 
 
@@ -318,7 +320,9 @@ class MachineCoordinateTests(unittest.TestCase):
         for allowed in ("127.0.0.1", "0.0.0.0", "224.0.0.251", "198.18.0.1",
                         "192.0.2.2", "198.51.100.162", "203.0.113.1",
                         "peach.local", "peach-writer.local", "peach-sync",
-                        "Chrome/131.0.0.0", "10.0.26200.1234", r"R:\media"):
+                        "Chrome/131.0.0.0", "10.0.26200.1234", r"R:\media",
+                        "https://github.com/longmeidao/peach-app",
+                        "Copyright (C) 2026 longmeidao"):
             self.assertIsNone(MACHINE_COORDINATE.search(allowed), allowed)
 
 
