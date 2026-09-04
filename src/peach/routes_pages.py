@@ -16,11 +16,14 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import re
 
+from html import escape
 from pathlib import Path
+from urllib.parse import parse_qs
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import (
     FileResponse,
     HTMLResponse,
@@ -29,40 +32,151 @@ from fastapi.responses import (
     Response,
 )
 
-from .config import DATA_ROOT, PROJECT_ROOT, SETTINGS_PATH
+from . import onboarding, settings_file
+from .config import PROJECT_ROOT
 from .routes_auth import require_asset_auth, require_page_auth, set_auth_cookie
 from .web_state import FAVICON
 
 router = APIRouter()
 
-#: 未配置时的首次运行页。刻意不引用 `web/` 里的任何资产：那一套一上来就会去打
-#: `/api/items`，而未配置的机器还没有数据库，页面只会是一屏红色报错。
-_SETUP_PAGE = """<!doctype html>
-<html lang="zh-CN"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Peach · 首次运行</title>
-<style>body{{margin:0;padding:3rem 1.5rem;background:#141216;color:#f2eef5;
-font:16px/1.7 system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif}}
-main{{max-width:36rem;margin:0 auto}}h1{{font-size:1.5rem;margin:0 0 1rem}}
-code{{background:#231f27;border-radius:.3rem;padding:.15rem .4rem}}
-pre{{background:#231f27;border-radius:.5rem;padding:.9rem 1rem;overflow-x:auto}}
-dt{{color:#b9aec4;font-size:.9rem}}dd{{margin:0 0 .6rem;word-break:break-all}}</style>
-</head><body><main>
-<h1>Peach 还没初始化</h1>
-<p>这台机器上还没有数据根和设置文件，所以没有账本可读。服务本身是正常的。</p>
-<pre>peach init</pre>
-<p>它会建好数据目录、把数据库迁到最新、生成设置文件和本机 CA，然后告诉你下一步。
-已经在跑的旧部署改用 <code>peach init --from-existing</code>：只生成设置文件，不动现有数据。</p>
-<dl><dt>数据根（预定落点）</dt><dd>{data_root}</dd>
-<dt>设置文件</dt><dd>{settings_path}</dd></dl>
-<p><code>/healthz</code> 会报 <code>configured: false</code>，初始化完刷新本页即可。</p>
-</main></body></html>
-"""
+#: 回环地址的三种写法。既用来判提交端点的调用方，也用来判「仅本机」那个监听选择。
+_LOOPBACK = frozenset({"127.0.0.1", "::1", "localhost"})
+
+#: 首次运行页的样式。刻意不引用 `web/` 里的任何资产：那一套一上来就会去打
+#: `/api/items`，而未配置的机器还没有数据库，页面只会是一屏红色报错。这一页因此
+#: 落在 SPA 外壳之外，不是一个 `frontend/` island（ADR-0022、docs/FRONTEND.md）。
+_SETUP_STYLE = """<style>
+body{margin:0;padding:3rem 1.5rem;background:#141216;color:#f2eef5;
+font:16px/1.7 system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif}
+main{max-width:36rem;margin:0 auto}h1{font-size:1.5rem;margin:0 0 1rem}
+code{background:#231f27;border-radius:.3rem;padding:.15rem .4rem}
+dt{color:#b9aec4;font-size:.9rem}dd{margin:0 0 .6rem;word-break:break-all}
+label{display:block;margin:1.4rem 0 .35rem;color:#e7dff0}
+input[type=text],input[type=number],select{width:100%;box-sizing:border-box;height:2.6rem;
+padding:0 .7rem;border:1px solid #3a3340;border-radius:.5rem;background:#0f0d12;
+color:#f2eef5;font:inherit}
+input:focus,select:focus{outline:none;border-color:#ff8b70}
+.note{margin:.35rem 0 0;color:#b9aec4;font-size:.88rem}
+.bad{margin:.35rem 0 0;color:#ff9a9a;font-size:.9rem}
+.check{display:flex;align-items:center;gap:.6rem;margin:1.6rem 0 0;color:#e7dff0}
+.check input{width:1.1rem;height:1.1rem;margin:0}
+button{margin-top:1.8rem;width:100%;height:2.8rem;border:0;border-radius:.6rem;
+cursor:pointer;background:linear-gradient(135deg,#ff9a76,#f2557b);color:#130609;
+font:700 15px system-ui,sans-serif}
+button:hover{filter:brightness(1.06)}
+</style>"""
+
+_SETUP_HEAD = ('<!doctype html>\n<html lang="zh-CN"><head><meta charset="utf-8">'
+               '<meta name="viewport" content="width=device-width,initial-scale=1">'
+               '<meta name="color-scheme" content="dark">')
+
+#: 键 -> 输入控件类型。题目、默认值与顺序全部来自 `onboarding.questions()`，
+#: 这里只决定同一道题在浏览器里长什么样，不另抄一份字段清单。
+_SETUP_WIDGETS = {"host": "select", "port": "number"}
 
 
-def setup_page() -> str:
-    """未配置提示页。路径是这一页唯一的动态内容，别让人自己去猜文件在哪。"""
-    return _SETUP_PAGE.format(data_root=DATA_ROOT, settings_path=SETTINGS_PATH)
+def _document(title: str, body: str) -> str:
+    return (f"{_SETUP_HEAD}<title>{title}</title>{_SETUP_STYLE}"
+            f"</head><body><main>{body}</main></body></html>\n")
+
+
+def _field_html(
+    question, value: str, error: str, note: str,
+) -> str:
+    key = escape(question.key, quote=True)
+    label = f'<label for="f-{key}">{escape(question.prompt)}</label>'
+    if _SETUP_WIDGETS.get(question.key) == "select":
+        options = "".join(
+            f'<option value="{escape(choice, quote=True)}"'
+            f'{" selected" if choice == value else ""}>{escape(text)}</option>'
+            for choice, text in onboarding.HOST_OPTIONS
+        )
+        control = f'<select id="f-{key}" name="{key}">{options}</select>'
+    else:
+        kind = _SETUP_WIDGETS.get(question.key, "text")
+        control = (f'<input id="f-{key}" name="{key}" type="{kind}" required '
+                   f'value="{escape(value, quote=True)}">')
+    tail = f'<p class="note">{escape(note)}</p>' if note else ""
+    tail += f'<p class="bad" role="alert">{escape(error)}</p>' if error else ""
+    return label + control + tail
+
+
+def setup_page(
+    config, *, windows: bool, values: dict[str, str] | None = None,
+    errors: dict[str, str] | None = None, scan_now: bool = True,
+) -> str:
+    """首次运行表单。题目、默认值与顺序全部来自 `onboarding.questions()`。
+
+    校验失败时带着 `values` 和 `errors` 重新渲染：已经填对的几项不能让人再填一遍，
+    错在哪一项也要写在那一项底下，而不是页首一句「有字段不合法」。
+    """
+    values = values or {}
+    errors = errors or {}
+    asked = onboarding.questions(config, windows=windows)
+    fields = []
+    for question in asked:
+        value = values.get(question.key, question.default)
+        note = ""
+        if question.key == "media_dir" and not windows:
+            note = onboarding.mounts_explanation(value or "你在上面填的目录")
+        fields.append(_field_html(question, value, errors.get(question.key, ""), note))
+    media_value = values.get("media_dir") or next(
+        (q.default for q in asked if q.key == "media_dir"), "") or "这个目录"
+    scan_label = onboarding.SCAN_PROMPT.format(target=media_value)
+    body = (
+        "<h1>欢迎使用 Peach</h1>"
+        "<p>这台机器还没有数据根和设置文件。填完下面几项就能开始用；"
+        "每一项都已经填好默认值，不确定就直接提交。</p>"
+        '<form method="post" action="/setup">'
+        + "".join(fields)
+        + f'<label class="check"><input type="checkbox" name="scan_now" value="y"'
+        + (" checked" if scan_now else "")
+        + f'>{escape(scan_label)}</label>'
+        '<p class="note">扫描只读取文件名、大小和修改时间，不改动任何媒体文件。</p>'
+        '<button type="submit">完成设置</button></form>'
+    )
+    return _document("Peach · 首次运行", body)
+
+
+def setup_done_page(applied, *, windows: bool, scan_requested: bool) -> str:
+    """成功页：接下来会自动发生什么，以及口令在哪。口令本身不显示在页面上。"""
+    tree = applied.tree
+    config = applied.config
+    ledger = (f"账本已存在，没有动它：{tree.database}" if tree.ledger_existed
+              else f"账本：{tree.database}（已应用 {tree.migrations} 个迁移）")
+    ca = (f"本机 CA：{tree.ca_cert}" if tree.ca_cert is not None
+          else f"未生成本机 CA（{tree.ca_error}）；装好 openssl 后跑 "
+               "<code>peach init --force</code> 补上。局域网设备要装这份 CA 才不报证书错。")
+    scan = ("<li>首次扫描已排队，托盘会在服务起来之后在后台跑，期间页面照常能用。</li>"
+            if scan_requested else
+            "<li>没有请求首次扫描；要扫就跑 <code>peach scan local</code>。</li>")
+    mounts = ("" if windows else
+              f"<p>{escape(onboarding.mounts_explanation(config.mounts.get('local', '')))}</p>")
+    body = (
+        "<h1>设置完成</h1>"
+        "<p>托盘正在停掉这条引导服务，改用正常的 Peach 服务；这个页面几秒后就会连不上，"
+        f"届时打开 <code>{escape(_normal_url(config))}</code> 即可。</p>"
+        "<ul>"
+        f"<li>{escape(ledger)}</li>"
+        f"<li>{ca}</li>"
+        f"<li>访问口令文件：<code>{escape(str(tree.token_path))}</code>；"
+        "口令内容用 <code>peach token</code> 看，别的设备第一次访问时贴进登录页。</li>"
+        f"{scan}"
+        "</ul>"
+        f"{mounts}"
+        "<dl>"
+        f"<dt>数据根</dt><dd>{escape(str(config.data_root))}</dd>"
+        f"<dt>设置文件</dt><dd>{escape(str(applied.settings_path))}</dd>"
+        "</dl>"
+    )
+    return _document("Peach · 设置完成", body)
+
+
+def _normal_url(config) -> str:
+    """设置完成之后正常服务的地址。仅本机就给回环，局域网给 `<名字>.local`。"""
+    if config.server.host in _LOOPBACK:
+        return f"http://127.0.0.1:{config.server.port}/"
+    return f"https://{config.server.mdns_name}.local/"
 
 
 def asset_response(request: Request, path: Path, media: str) -> Response:
@@ -135,14 +249,75 @@ def index(request: Request, args: dict[str, str] = Depends(require_page_auth)):
         set_auth_cookie(response, request)
         return response
     if not settings.configured:
-        # 未配置不是错误状态：服务照常起，页面告诉人去跑 `peach init`。
-        return HTMLResponse(setup_page())
+        # 未配置不是错误状态：服务照常起，首页变成首次运行表单。
+        return HTMLResponse(setup_page(settings_file.active(), windows=os.name == "nt"))
     if not settings.page_path.is_file():
         return PlainTextResponse("Peach page missing", status_code=500)
     response = FileResponse(settings.page_path, media_type="text/html")
     response.headers["Cache-Control"] = "no-store"
     set_auth_cookie(response, request)
     return response
+
+
+@router.post("/setup")
+async def setup_submit(request: Request):
+    """首次运行表单的提交端点。落盘逻辑全在 `peach.onboarding`，这里只做守卫和渲染。
+
+    三道守卫，形态各不相同因为原因各不相同：已经配置过的机器上这个端点根本不存在
+    （404，不是「禁止」——把它做成一条可探测的 403 等于对外宣告这里有个初始化入口）；
+    非回环调用方是 403（引导服务只绑 127.0.0.1，能走到这里说明有人转发了它）；
+    设置文件已经在了是 409（并发提交或刷新重发，不能覆盖别人刚写好的那份）。
+
+    扫描不在这里跑：这条引导服务在设置完成的那一刻就会被托盘停掉，跑在它进程里的
+    扫描会跟着一起死。这里只写一个标记，由托盘切到正常服务之后消费。
+    """
+    settings = request.app.state.settings
+    if settings.configured:
+        raise HTTPException(status_code=404, detail="not found")
+    host = request.client.host if request.client else ""
+    if host not in _LOOPBACK:
+        raise HTTPException(status_code=403, detail="setup is loopback-only")
+
+    windows = os.name == "nt"
+    form = parse_qs((await request.body()).decode("utf-8", "replace"), keep_blank_values=True)
+    submitted = {key: (value or [""])[0] for key, value in form.items()}
+    scan_now = "scan_now" in form
+
+    config = settings_file.active()
+    answers, errors = _read_answers(config, submitted, windows=windows)
+    if errors:
+        return HTMLResponse(
+            setup_page(config, windows=windows, values=submitted, errors=errors,
+                       scan_now=scan_now),
+            status_code=400,
+        )
+    # 数据根决定设置文件在哪，所以拿到它之后要按它重新解析一次，不能沿用进程启动
+    # 那一刻按发现顺序算出来的这份。
+    resolved, _broken = onboarding.resolve_config(answers.data_root)
+    if resolved.path.exists():
+        raise HTTPException(status_code=409, detail="settings file already exists")
+    applied = onboarding.apply(resolved, answers, windows=windows)
+    if scan_now:
+        onboarding.request_first_scan(applied.config)
+    return HTMLResponse(
+        setup_done_page(applied, windows=windows, scan_requested=scan_now))
+
+
+def _read_answers(
+    config, submitted: dict[str, str], *, windows: bool,
+) -> tuple[object, dict[str, str]]:
+    """逐字段校验，错误按字段收集。校验器和 CLI 问答用的是同一批。"""
+    values: dict[str, object] = {}
+    errors: dict[str, str] = {}
+    for question in onboarding.questions(config, windows=windows):
+        raw = submitted.get(question.key, "")
+        try:
+            values[question.key] = question.validate(raw if raw.strip() else question.default)
+        except ValueError as exc:
+            errors[question.key] = str(exc)
+    if errors:
+        return None, errors
+    return onboarding.Answers(**values), {}  # type: ignore[arg-type]
 
 
 @router.api_route("/app.css", methods=["GET", "HEAD"])

@@ -48,6 +48,12 @@ MIGRATIONS_DIR = settings_file.PROJECT_ROOT / "migrations"
 #: 设置页所在的引导服务在设置完成的那一刻就会被托盘停掉，扫描不能跑在它的进程里。
 SCAN_REQUEST_NAME = "first-scan.request"
 
+#: 监听范围的两个选项：(提交值, 说明)。题目文本和设置页的下拉都由它生成，
+#: 所以两处永远是同一批选项，改一个不会漏掉另一个。
+HOST_OPTIONS = (("1", "仅本机（127.0.0.1）"), ("2", "局域网（0.0.0.0）"))
+#: 首扫题的题面。CLI 在后面接 `(Y/n)`，设置页把它当勾选框的标签。
+SCAN_PROMPT = "现在扫描 {target}？"
+
 _DNS_LABEL = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$")
 _HOST_CHOICES = {
     "1": LOOPBACK_HOST, "本机": LOOPBACK_HOST, LOOPBACK_HOST: LOOPBACK_HOST,
@@ -157,7 +163,8 @@ def questions(
         Question("media_dir", "本地媒体目录（来源 local，必须已存在）",
                  str(media_default) if media_default else "",
                  media_dir_validator(windows=windows)),
-        Question("host", "监听范围：1 = 仅本机（127.0.0.1），2 = 局域网（0.0.0.0）",
+        Question("host",
+                 "监听范围：" + "，".join(f"{value} = {label}" for value, label in HOST_OPTIONS),
                  "1", validate_host),
         Question("port", "服务端口", str(config.server.port), validate_port),
         Question("mdns_name", "局域网名字（<名字>.local，只在监听局域网时发布）",
@@ -165,8 +172,9 @@ def questions(
     )
 
 
-def scan_question(media_dir: Path) -> Question:
-    return Question("scan_now", f"现在扫描 {media_dir}？(Y/n)", "Y", validate_yes_no)
+def scan_question(media_dir: Path | str) -> Question:
+    return Question("scan_now", SCAN_PROMPT.format(target=media_dir) + "(Y/n)",
+                    "Y", validate_yes_no)
 
 
 def ask_until_valid(
@@ -366,6 +374,7 @@ def is_interactive(stdin) -> bool:
 
 
 __all__ = [
+    "HOST_OPTIONS", "SCAN_PROMPT",
     "Answers", "Applied", "Ask", "DataTree", "LOCAL_LOCATION", "MAX_ATTEMPTS",
     "OnboardingAborted", "POSIX_LOCAL_DECLARED_ROOT", "Question", "apply",
     "ask_until_valid", "configure", "console_ask", "create_data_tree",
