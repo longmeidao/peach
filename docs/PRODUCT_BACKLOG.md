@@ -1,6 +1,6 @@
 # Peach 产品待办
 
-更新时间：2026-09-04。这里只记录尚未完成或只完成一部分的需求；运行数字以 `peach-data/state/job-status.md` 的自动区块为准。
+更新时间：2026-09-05。这里只记录尚未完成或只完成一部分的需求；运行数字以 `peach-data/state/job-status.md` 的自动区块为准。
 
 ## 已有骨架、尚未完成（6 项）
 
@@ -11,7 +11,7 @@
 5. **厂牌 Logo 补齐与持续校验**：14 个已确认社交 handle 已有内容缓存、provenance、精确/感知哈希、质量与重复门槛及健康报告；仍有 72 个厂牌没有可信 handle，必须继续从官网/公开来源取证，不能猜账号。
 6. **口味证据持续刷新**：ledger 已实时记录搜索、播放、高潮、喜欢/理由、不合口味和稍后看；浏览器历史现可用 SQLite 一致性副本增量进入私有源库，并生成不含 URL/标题的 creator/tag candidate 与聚合报告。旧 2026-08-13 原始包已确认不在 Windows 外置盘；仍需在 Mac 开启 iCloud Safari、完成首次导入，并把两端每周刷新装成系统计划任务。AI 结论不得直接改真相字段。
 
-## 尚未实现（19 项）
+## 尚未实现（23 项）
 
 1. AI Provider 的真实调用、能力协商、Credential Manager 凭据和候选审核 UI。
 2. 剩余单一创作者风格板复核、无标签内容补标。
@@ -32,10 +32,14 @@
 17. 项目网站：一页说明是什么、截图、安装入口与文档链接。
 18. 口味导入引导：`/taste` 上传（Takeout ZIP、browserexport 兼容文件）与 `scripts/taste_history.py` 直读本机浏览器库两条路都能用，但没有面向陌生人的文档。需要一页「各浏览器怎么导出、多台设备怎么各自刷新」教程，把脚本折进 `peach` CLI（见第 7 条），并写明定时刷新的安装方式。
 19. README 瘦身：把「依赖维护」「开发」两节移到 `CONTRIBUTING.md`，「目录」并入 `docs/ARCHITECTURE.md`，「主要页面」「关注与候选」压成一张表；README 只留是什么、边界、前置条件、安装、下载、文档入口与许可证。中英两份同步。
+20. 局域网访问还差两件。一是局域网明文口只做跳到 HTTPS 的重定向，不再提供完整应用面：Windows 的 80 和 macOS 的 8900 现在都是完整的 HTTP 服务，口令、cookie 和媒体流在同网段上是明文。二是配对体验：设备第一次访问要人把 43 个字符手输或粘贴进登录页，改成桌面端显示一次性配对码或局域网 HTTPS 地址的二维码，扫完直接写设备 cookie。口令的生成、取用与「绑非回环地址却没有口令就拒绝启动」在 `src/peach/auth.py` 与 `cli._serve_token`，不在这条里。
+21. 全新安装的自动门槛：现有 `Test` 装的是 `-e ".[build,vision,maintenance-115,naming]"` 全套可选依赖、开着 pip 缓存、只跑单元测试，证明不了「陌生用户按 README 装完能用」。补三条互相独立的冒烟：① minimal source——全新 venv、`--no-cache-dir` 只装默认依赖、`peach init`（连跑两次验幂等）、`migrate status`、**离开仓库根目录**再 `peach serve`，请求 `/healthz`、`/`、`/api/items`，覆盖 3.12／3.14 × Windows／macOS 以及无 FFmpeg／OpenSSL／Node 的机器；② wheel——`python -m build` 后在不 checkout 源码的 job 里装 `dist/*.whl` 走同一条链路，它通过才能去掉 README 的 `-e` 硬要求（依赖第 12 条）；③ artifact-only——只下载刚构建的制品、不 checkout 源码地跑起来（依赖第 15 条）。消费方一律不许 checkout：工作目录会替漏文件的制品兜底，那是假通过。失败场景也要覆盖：数据根不可写、端口被占、账本损坏、未配置媒体目录、无 FFmpeg、非回环监听但无口令、两个 writer 同时起。
+22. `peach doctor` 与分级 `/healthz`：`doctor`（另带 `--json`）逐项报版本、数据根可写性、配置文件合法性、数据库能否打开、schema 版本与待执行迁移、FFmpeg／ffprobe／OpenSSL 路径、挂载点可达性、端口占用、是否处在「局域网暴露但无口令」状态、后台任务最近一次失败；输出脱敏，不带口令、cookie、站点凭据和完整媒体路径。`/healthz` 相应从布尔改成分项状态（`database`／`schema`／`configured`／`ffmpeg`／`media_mounts`／`security`），与第 13 条一起做。
+23. 性能基准：用 SFW 合成数据生成 1k／10k／100k／500k 四档库，nightly 测冷启动到 `/healthz`、目录页与详情页 p95、两字以上搜索 p95、本地 SSD 与网盘挂载的 Range 首字节、空闲 RSS、后台扫描时前台退化倍数、备份期间读请求不失败。门槛用「相对上一次基线下降超过 20%」，不给绝对毫秒数——不同机器不可比。数据集与第 16 条的演示数据集共用。
 
-合计：**25 项开放需求**，其中 6 项已有骨架，19 项尚未实现。已完成的需求不在这里留痕，去 Git 历史查。
+合计：**29 项开放需求**，其中 6 项已有骨架，23 项尚未实现。已完成的需求不在这里留痕，去 Git 历史查。
 
-## 待执行的操作（28 项）
+## 待执行的操作（30 项）
 
 需要另行授权、外部条件或人工判断才能做的具体操作与复核批次，比上面的需求细一层；做完就删，不在这里留痕。待办只放这一处：`docs/STATUS.md` 每次会话开头都要读，队列不该常驻在那种入口文件里。
 
@@ -66,4 +70,6 @@
 25. 其他厂牌官网的厂标与演员资料广度扫描（SOD、FALENO、Attackers、S1、Moodyz 等），用户 2026-09-04 定为「先做 b 看效果」之后的下一轮。
 26. 用 javtiful 的 `/ja/actress/<slug>` 补演员的罗马字↔日文配对：315 页约 7560 位，切语言前缀就出日文名。厂牌名不随语言切换，这条只服务演员别名。
 27. 37 位演员在 javdb 上只有日文名（`同形`），另有 5 位未取得，中文名要换来源：javtiful 的 `/ja/actress/<slug>`（第 26 条）或 javdatabase 的 idol 页。复核产物 `peach-data/review/javdb-cn-names-20260904.csv` 逐行带 verdict 和证据，可直接筛。
-28. `peach-data/review/composite-names-20260904.csv` 里还剩 28 条 creator 规范名带括号，括号里是读音或罗马音（`Egami(えがみ)`、`永地(eichi)`、`猫屋(NEKOYA)`），用户定了不拆——它们不像艺名那样各自独立，是同一个名字的注音。同一份 CSV 里 575 条 tag 是角色的作品出处消歧，10 条 series 括号里是厂牌或载体消歧（拆了会把三个 `AV DEBUT` 撞成一个），都不要动。剩下真正待判的只有 performer 规范名 `Mana(23)` 一条：数字是去重后缀还是名字的一部分要看源站。
+28. macOS launchd 标签与 bundle ID 改为中性的 `io.github.longmeidao.peach.*`（用户 2026-09-04 决定，现值由维护者域名反写）。涉及 `src/peach/tray.py`、`scripts/build_macos_app.py`、`scripts/install_macos_agent.py`、`scripts/setup_macos_port80.sh`、`docs/OPERATIONS.md`、`tests/test_tray.py`。代码改动在 Windows 就能做并跑 `sync` 域；生效必须在 Mac 上：`launchctl bootout gui/$(id -u)/<旧标签>` 卸旧 agent，重跑 `install_macos_agent.py` 与 `setup_macos_port80.sh` 装新标签，再核对菜单栏进程、80 端口转发与 `/healthz`。这是换生产入口，Mac 上执行前要在同一轮拿到用户确认。
+29. 验收并集成 `agent/claude/oss-init-wizard`（工作树 `peach-worktrees/claude-oss-init-wizard`，Fable 工作者 2026-09-04 在跑，报告只回给了已耗尽额度的协调者会话，接手者按下面清单自己验）：① 分支上 `-Scope full` 全绿，唯一允许的红是 `.claude/worktrees/` 残留目录那条；② `peach init` 无参数且 stdin 为 TTY 时进入问答，问数据根、一个本地媒体目录、监听范围、端口、mDNS 名，不问复制与网盘；给任何参数、非 TTY 或 `--no-input` 时行为与原非交互路径一字不变，`--from-existing` 不动；③ 设置文件只写用户声明的来源，Windows 写 `[media.locations] local = <路径>`、mounts 留空，macOS 声明根 `R:\media` 加 `[media.mounts] local = <路径>`；有测试证明只声明 `local` 的配置能 `serve` 且 `/api/items`、`/healthz` 200；④ 扫描核心从 `scripts/ledger.py` 搬进 `src/peach/`，脚本改薄委托，`peach scan <来源ID> [根目录]` 可用，`check_scan_target` 一致性门槛保留；⑤ 问答函数可注入、可复用，报告或 docstring 写明 GUI 引导要调哪个函数；⑥ README 双语「安装」节以问答为主线且章节对应，ADR-0023 第 1 阶段补句，本文件第 11 条只留剩余两件。全部成立才 `agent_worktree.py integrate --branch agent/claude/oss-init-wizard`，随后推送、看 CI、`prune --apply`。GUI 引导排在它之后：托盘首启发现未配置就打开浏览器到现有「还没初始化」页，那一页升级成表单，提交后调同一套逻辑。
+30. `peach-data/review/composite-names-20260904.csv` 里还剩 28 条 creator 规范名带括号，括号里是读音或罗马音（`Egami(えがみ)`、`永地(eichi)`、`猫屋(NEKOYA)`），用户定了不拆——它们不像艺名那样各自独立，是同一个名字的注音。同一份 CSV 里 575 条 tag 是角色的作品出处消歧，10 条 series 括号里是厂牌或载体消歧（拆了会把三个 `AV DEBUT` 撞成一个），都不要动。剩下真正待判的只有 performer 规范名 `Mana(23)` 一条：数字是去重后缀还是名字的一部分要看源站。

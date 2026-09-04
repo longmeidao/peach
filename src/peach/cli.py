@@ -6,7 +6,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-from . import certs, onboarding, scan, settings_file
+from . import auth, certs, onboarding, scan, settings_file
 from .api import create_app
 from .config import (
     DATABASE_PATH,
@@ -73,7 +73,7 @@ def _serve(args: argparse.Namespace) -> int:
         )
     settings = PeachSettings(
         db_path=args.db,
-        token=args.token,
+        token=_serve_token(args),
         docs_enabled=args.docs,
         mdns_enabled=publish_mdns,
         mdns_name=args.mdns_name,
@@ -88,6 +88,24 @@ def _serve(args: argparse.Namespace) -> int:
         ssl_keyfile=str(args.ssl_keyfile) if args.ssl_keyfile else None,
     )
     return 0
+
+
+def _serve_token(args: argparse.Namespace) -> str:
+    """取这次启动要用的口令，并在绑局域网却没有口令时拒绝启动。
+
+    拒绝而不是告警：托盘在后台起服务，告警不会有人看见，服务却已经把整个馆藏和写接口
+    摆在同网段上了。回环地址不拦——那时只有本机进程够得着，与文件系统同级。
+    """
+    secrets_dir = settings_file.active().directory("secrets")
+    token = auth.resolve_token(args.token, secrets_dir)
+    if token or _is_loopback(args.host):
+        return token
+    raise SystemExit(
+        f"拒绝启动：--host {args.host} 不是回环地址，而这台机器还没有访问口令。\n"
+        f"这样起服务，同网段的任何设备都能读整个馆藏并调用写接口。\n"
+        f"先跑 `peach token` 生成并查看口令（存在 {auth.token_path(secrets_dir)}），"
+        f"再重新启动；只给本机用就改成 --host 127.0.0.1。"
+    )
 
 
 def _build_sync(args: argparse.Namespace, settings: PeachSettings) -> LedgerSync | None:
@@ -316,6 +334,10 @@ def _init(args: argparse.Namespace) -> int:
 
     if not args.from_existing:
         _create_data_tree(prepared)
+    else:
+        # `--from-existing` 不建目录也不迁库，但口令要补：现有部署正是靠托盘绑局域网
+        # 起服务的，没有这个文件下一次重启就会被 `_serve_token` 拒掉。
+        _announce_token(prepared)
     path = settings_file.write(prepared, force=args.force)
     print(f"设置文件：{path}")
     _report_blanks(prepared)
@@ -430,6 +452,40 @@ def _create_data_tree(config: settings_file.PeachConfig) -> None:
         # 没有 openssl 不该挡住初始化：HTTP 本地访问照样能用，装 openssl 后重跑即可。
         print(f"未生成本机 CA（{exc}）。装好 openssl 后重跑 `peach init --force` 补上。")
 
+    _announce_token(config)
+
+
+def _announce_token(config: settings_file.PeachConfig) -> str:
+    """确保口令文件存在，并把路径报出来。口令本身不打印，用 `peach token` 单独看。
+
+    终端输出会进日志、截图和 issue，口令不该顺着这条路走出去。
+    """
+    secrets_dir = config.directory("secrets")
+    token, created = auth.ensure_token(secrets_dir)
+    path = auth.token_path(secrets_dir)
+    print(f"访问口令：{path}" + ("" if created else "（沿用已有的那份）"))
+    print("绑局域网地址的服务必须读得到它，`peach token` 看内容。")
+    return token
+
+
+def _token(args: argparse.Namespace) -> int:
+    """`peach token` 打印口令，没有就补一份；`--rotate` 换一个。
+
+    手机和别的设备第一次访问会跳登录页，把这里打印的那串贴进去，之后走 cookie。
+    """
+    _require_readable_settings()
+    secrets_dir = settings_file.active().directory("secrets")
+    if args.rotate:
+        token, fresh = auth.write_token(secrets_dir), True
+    else:
+        token, fresh = auth.ensure_token(secrets_dir)
+    print(f"口令文件：{auth.token_path(secrets_dir)}")
+    print(f"口令：{token}")
+    if fresh:
+        print("已经登录过的浏览器要再登录一次；正在跑的服务要重启才会读到这份口令。")
+    print("两台机器互取复核结果时发的是自己的口令，reader 要用和 writer 相同的这份文件。")
+    return 0
+
 
 #: 留空就会改变行为的坐标。进程猜不出来，只能让人在命令行给。
 _BLANK_HINTS = (
@@ -463,10 +519,17 @@ def _print_next_steps(config: settings_file.PeachConfig, *, from_existing: bool)
     if from_existing:
         print("  1. 打开上面那个文件核对一遍，尤其是 [media.mounts] 和 [replication]。")
         print("  2. 重启服务让它生效。这一步之前，运行行为和现在完全一样。")
+        print("  3. `peach token` 取口令：绑局域网地址的服务读不到它就起不来，"
+              "已经在用的设备也要重新登录一次。")
         return
     print(f"  1. peach serve --host {config.server.host} --port {config.server.port}")
     print("  2. 浏览器打开 http://127.0.0.1:%d/ 确认页面可用。" % config.server.port)
-    print("  3. 要在局域网访问就改 --host 0.0.0.0，并把本机 CA 装进各设备的信任列表。")
+    if _is_loopback(config.server.host):
+        print("  3. 要在局域网访问就改 --host 0.0.0.0：把本机 CA 装进各设备的信任列表，"
+              "再用 `peach token` 取口令，设备第一次访问时贴进登录页。")
+    else:
+        print("  3. 局域网设备要装本机 CA，并用 `peach token` 取口令，"
+              "第一次访问时贴进登录页。")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -518,6 +581,11 @@ def build_parser() -> argparse.ArgumentParser:
                              help="要扫的目录；省略时取该来源的声明根（本机目录按 [media.mounts] 取）")
     scan_parser.add_argument("--db", type=Path, default=DEFAULT_DB)
     scan_parser.set_defaults(handler=_scan)
+
+    token = commands.add_parser("token", help="查看局域网访问口令，没有就生成一份")
+    token.add_argument("--rotate", action="store_true",
+                       help="换一个新口令，已签发的 cookie 立即失效")
+    token.set_defaults(handler=_token)
 
     migrate = commands.add_parser("migrate", help="inspect or apply SQLite migrations")
     migrate.add_argument("action", choices=("status", "upgrade"), nargs="?", default="status")

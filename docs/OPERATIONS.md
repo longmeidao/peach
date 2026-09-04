@@ -13,7 +13,7 @@
   `src/peach/onboarding.py`，托盘设置页复用同一组函数）：问数据根、一个已存在的本地媒体
   目录、监听范围（仅本机／局域网）、端口、局域网名字，每题回车取默认，连续三次无效即退出且
   不写任何文件。然后建齐 `database`／`generated`／`sources`／`state`／`secrets`／`logs`／
-  `tools`／`review` 八个目录、把账本迁到最新 schema、生成本机 CA、写出设置文件，问一句
+  `tools`／`review` 八个目录、把账本迁到最新 schema、生成本机 CA 与访问口令、写出设置文件，问一句
   「现在扫描 <目录>？」（默认是）调 `peach.scan.scan_location` 登记文件，最后打印下一步与
   扫描摘要。写出的 `[media.locations]` 只有 `local`：Windows 上直接是那个目录、
   `[media.mounts]` 为空；macOS 上声明根是 `R:\media`、目录写进 `[media.mounts] local`。
@@ -121,13 +121,15 @@ launchctl kickstart -k gui/$(id -u)/gg.lmd.peach.tray
 ## 网络、证书与 mDNS
 
 - 托盘管理 HTTP `0.0.0.0:80` 和当前路由选出的 LAN IPv4 上的 HTTPS 443，显式参数、`PEACH_LAN_ADDRESS`、`lan_ipv4()` 依次覆盖；服务日志写入本机 `peach-data/logs`。
+- 托盘起的服务全是非回环绑定，所以这台机器必须有访问口令，否则 `peach serve` 直接退出、托盘把那条服务显示成未运行。`peach token` 打印 `<数据根>/secrets/auth-token`（没有就现生成），`peach token --rotate` 换一个。换完要重启服务——进程只在启动时读一次——已登录的设备也要重新登录。
+- 设备第一次访问跳登录页，把口令贴进去换成一年期的 HttpOnly cookie。reader 取 writer 的复核结果时发的是自己的口令，所以两台机器要用同一份 `auth-token`，复制过去即可。
 - `peach serve` 按平台发布固定 mDNS 主机名，不在源码钉家庭 IP，仍保留 `Zeroconf()` 全合格网卡监听；mDNS 验收必须包含单元测试、运行态 health、DNS-SD、主机名解析和真实 LAN 客户端。
 - 双机广播分工固定：macOS 是 `peach.local`，Windows 是 `peach-writer.local`，默认值收敛到 `peach.config.MDNS_NAME`，`PEACH_MDNS_NAME` 只做临时覆盖。服务可以同时跑，但两边同时写入会很快冲突转只读。
 - `.local` 使用本地 CA，不使用 Let's Encrypt。证书与私钥保存在本机 `peach-data/secrets`；TLS 私钥禁用 ACL 继承，只允许实际服务身份、SYSTEM 和 Administrators。macOS/iOS 只安装并信任 `peach-local-ca.crt`，不分发任何私钥。
 - 两台机器各有独立的本机 CA（secrets 按设计不共享）：iPhone/iPad 必须信任「当前正在服务的那台」的 CA，换机器服务后要装对应的 `peach-local-ca.crt` 并开完全信任，指纹用 `openssl x509 -noout -fingerprint` 核对。
 - 对本机服务的 HTTP 探测必须 `trust_env=False`：代理客户端会设置系统级 HTTP 代理，httpx 默认经 `urllib.getproxies()` 读它，探测 `127.0.0.1` 的请求被送进代理并由代理回 503，服务活着却被判「未运行」。修复在 `peach.tray.ServiceManager.healthy`，`test_health_check_never_goes_through_a_proxy` 守门，新写的健康检查同样适用。
 - macOS 系统代理的例外列表必须包含 `*.local`、`localhost`、`127.0.0.1` 和本机局域网网段：代理核心解析不了 mDNS 名字，浏览器打开 `.local` 会被代理回 503（终端直连正常）。用 `networksetup -setproxybypassdomains` 设置、`scutil --proxy` 的 `ExceptionsList` 复查；代理客户端重设系统代理后这一列表可能被清掉。
-- FastAPI 是唯一 Web server，不得恢复平行 `http.server` 或动态 legacy loader；配置 `--token` 时通过 `/login` POST 取得 HttpOnly cookie，旧 `?t=` 只做一次兼容重定向。
+- FastAPI 是唯一 Web server，不得恢复平行 `http.server` 或动态 legacy loader；口令通过 `/login` POST 换成 HttpOnly cookie，`?t=` 只做一次性场合，它会把口令留在访问日志和浏览历史里。
 - 切换服务前检查 80、443、8900 端口和实际进程归属。9999 已移出这份清单：服务运行期不再连接 Stash（ADR-0021）。
 
 ## 媒体解析与转码
