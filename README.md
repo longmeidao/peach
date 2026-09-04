@@ -1,15 +1,24 @@
-# Peach
+<p align="center">
+  <img src="resources/peach-logo.png" alt="Peach" width="128">
+</p>
 
-Peach is a single-user, local-first personal media system: it indexes media you already own —
-local disks, mounted cloud drives, online subscriptions — and serves search, playback, profile
-pages, playlists and manual review from one FastAPI process backed by a local SQLite ledger.
-It is built for one person self-hosting on their own machines over a LAN, not for teams or public
-deployment. Status: pre-1.0. Windows and macOS are first-class; Linux is not supported and has not
-been tested. A full English version is in [`README.en.md`](README.en.md).
+<h1 align="center">Peach</h1>
 
-Peach（蜜桃）是单用户、本地优先的个人媒体系统。它统一索引本地磁盘、CloudDrive 和在线关注来源，提供搜索、播放、资料页、播放列表、复核与追更，并把观看行为和人工决定保存到本地 SQLite ledger。
+<p align="center">单用户、本地优先的个人媒体系统</p>
 
-Peach 在一台机器上就能完整运行。Windows 与 macOS 是一等平台；Linux 不在支持范围，未测试。多台机器之间的单写者复制是可选项，默认关闭，目前只在「Windows 写者 + macOS 读者」一种形状上验证过。当前运行状态与验证结果见 [`docs/STATUS.md`](docs/STATUS.md)，待办见 [`docs/PRODUCT_BACKLOG.md`](docs/PRODUCT_BACKLOG.md)；开发约束从 [`AGENTS.md`](AGENTS.md) 开始读。
+<p align="center">
+  <a href="https://github.com/longmeidao/peach/actions/workflows/test.yml"><img src="https://img.shields.io/github/actions/workflow/status/longmeidao/peach/test.yml?branch=master&label=tests" alt="tests"></a>
+  <a href="https://github.com/longmeidao/peach/releases"><img src="https://img.shields.io/github/v/release/longmeidao/peach?include_prereleases&label=release" alt="release"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0--or--later-blue" alt="license"></a>
+  <img src="https://img.shields.io/badge/python-3.12%2B-3776AB?logo=python&logoColor=white" alt="Python 3.12+">
+  <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS-lightgrey" alt="Windows | macOS">
+</p>
+
+<p align="center">中文 · <a href="README.en.md">English</a></p>
+
+Peach（蜜桃）是单用户、本地优先的个人媒体系统，只为一个人在自己的机器上经局域网自用而设计，不面向团队或公开部署。它统一索引你已经拥有的媒体——本地磁盘、CloudDrive 挂载和在线关注来源——由一个 FastAPI 进程提供搜索、播放、资料页、播放列表、复核与追更。本地 SQLite ledger 是唯一真相源，观看行为和人工决定都保存在这里；CloudDrive、在线站点和 AI 取回的内容只是带来源与置信度的候选，经用户复核后才成为真相。
+
+Peach 在一台机器上就能完整运行，目前处于 pre-1.0 阶段。Windows 与 macOS 是一等平台；Linux 不在支持范围，未测试。多台机器之间的单写者复制是可选项，默认关闭，目前只在「Windows 写者 + macOS 读者」一种形状上验证过。当前运行状态与验证结果见 [`docs/STATUS.md`](docs/STATUS.md)，待办见 [`docs/PRODUCT_BACKLOG.md`](docs/PRODUCT_BACKLOG.md)；开发约束从 [`AGENTS.md`](AGENTS.md) 开始读。
 
 ## 核心能力
 
@@ -201,6 +210,7 @@ Rule34.xxx 标签身份不区分大小写。跨站来源按规范作者归组，
 - [`docs/HANDOFF.md`](docs/HANDOFF.md)：跨任务长期有效的事实与工作约定。
 - [`docs/REUSE.md`](docs/REUSE.md)：新增或替换实现前的复用清单。
 - [`docs/adr/`](docs/adr/)：架构决定、原因和取舍。
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) 与 [`SECURITY.md`](SECURITY.md)：参与方式，以及威胁模型与漏洞报告。
 
 ## 许可证
 
