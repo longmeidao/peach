@@ -521,7 +521,7 @@ class WordmarkSourceTests(unittest.TestCase):
         self.assertEqual(icon["mark_size"], logo["mark_size"])
         self.assertEqual(icon["sha256"], logo["sha256"], "两位装的必须是同一张")
         self.assertEqual(icon["mark_size"].split("x")[0], icon["mark_size"].split("x")[1])
-        self.assertIn("400x80", icon["evidence"], "复核件要能看出源图原本多宽")
+        self.assertIn("400x80", icon["evidence"], "复核件要能看出源图多宽")
 
     def test_both_rows_are_installable_and_stored_under_their_own_names(self):
         icon, logo = self.rows(block_png((400, 80)))

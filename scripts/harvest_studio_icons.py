@@ -143,9 +143,9 @@ LOGO_SOURCES: dict[str, str] = {
 #: 问题不在 96 这个数，在于宽扁字标根本不该走那条原样装的路。
 #:
 #: 来源是 MGStage 的厂牌名录 `/ppv/makers.php`（用户 2026-09-04 指定），十一页 351 家，
-#: 由 `harvest_mgstage_makers.py` 对账后人工确认。2026-09-04 实测只有两种规格：
-#: 通用的 `pc/<slug>.gif` 是 180×54，首页轮播位另有 `pc/top/<slug>.jpg` 400×80 或
-#: 406×86，29 家对上账本的里只有 7 家有后者——有就取大的那份。
+#: 由 `harvest_mgstage_makers.py` 对账后人工确认。站上有两种规格（2026-09-04 量过）：
+#: 通用的 `pc/<slug>.gif` 是 180×54 白底纯字标，首页轮播位另有 `pc/top/<slug>.jpg`
+#: 400×80／406×86，29 家对上账本的里 7 家有。取的一律是前者，理由见下面 Jackson 那条。
 #:
 #: 只收当前**一张图都没有**的厂牌。已装的那些多来自 jae.tokyo 名录（320×320 的真方标），
 #: 拿 180×54 的字标去换是降级；而补白过的厂牌本来就在目标集里，收进来只会把它们
@@ -159,7 +159,10 @@ WORDMARK_SOURCES: dict[str, str] = {
     "HMJM": "https://static.mgstage.com/mgs/img/pc/hmjm.gif",
     "Ienergy": "https://static.mgstage.com/mgs/img/pc/ienergy.gif",
     "いんすた": "https://static.mgstage.com/mgs/img/pc/insta.gif",
-    "Jackson": "https://static.mgstage.com/mgs/img/pc/top/jackson.jpg",
+    # 首页轮播位那份 `top/jackson.jpg` 大一倍（400×80），但它是带洋红底的横幅：
+    # 烤成方图后上下补出两大块洋红，标识本身只剩正中一条。通用位这份是白底透明的
+    # 纯字标，小四倍也是对的那一张。大不等于好——2026-09-04 两份都烤出来比过。
+    "Jackson": "https://static.mgstage.com/mgs/img/pc/jackson.gif",
     "まんまんランド": "https://static.mgstage.com/mgs/img/pc/manmanland.gif",
     "Planet Plus": "https://static.mgstage.com/mgs/img/pc/planetplus.gif",
     "Radix": "https://static.mgstage.com/mgs/img/pc/radix.gif",
