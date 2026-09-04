@@ -164,3 +164,11 @@ button[aria-busy="true"],[role="button"][aria-busy="true"]{
    一条，不要再逐处补 padding。`.followauthors` 自带余量，不在此列。 */
 .tier,.relatedpeople{padding-top:3px;margin-top:-3px}
 
+
+/* 锚定菜单：无展开动画，固定在视口内，内容在菜单内滚动而不是把页面撑出滚动条。
+   Vercel 项目页的 Filter and Sort 菜单就是这个形状。 */
+.popmenu{position:fixed;z-index:var(--layer-popover);max-height:calc(100dvh - 16px);
+  padding:6px;border:1px solid var(--border-15);border-radius:var(--floating-radius);
+  background:var(--surface);box-shadow:0 12px 40px #0006;display:grid;gap:2px;
+  overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain}
+.popmenu[hidden]{display:none}

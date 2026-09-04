@@ -1623,20 +1623,25 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains('aria-label="${esc(label())}" title="${esc(label())}"')
         self.assertPageContains("data-srcfilter-label")
         self.assertPageContains("'全部来源'")
+        # 视口内固定、内部滚动、无展开动画属于全站的锚定菜单，来源筛选只多一个宽度。
+        shared = self.page[self.page.index(".popmenu{"):]
+        shared = shared[:shared.index("}")]
+        self.assertIn("position:fixed", shared)
+        self.assertIn("overflow-x:hidden", shared)
+        self.assertIn("overflow-y:auto", shared)
+        self.assertIn("overscroll-behavior:contain", shared)
+        self.assertNotIn("transition", shared)
         menu = self.page[self.page.index(".fsrcmenu{"):]
         menu = menu[:menu.index("}")]
-        self.assertIn("position:fixed", menu)
         self.assertIn("width:min(250px,calc(100vw - 16px))", menu)
-        self.assertIn("overflow-x:hidden", menu)
-        self.assertIn("overflow-y:auto", menu)
-        self.assertIn("overscroll-behavior:contain", menu)
-        self.assertNotIn("transition", menu)
         source_filter = self.page[self.page.index("function renderFollowSrcFilter("):
                                   self.page.index("function renderFollowPicks(")]
         self.assertNotIn("transitionend", source_filter)
         self.assertNotIn("style.height", source_filter)
-        self.assertIn("innerWidth-width-8", source_filter)
-        self.assertIn("innerHeight-8", source_filter)
+        self.assertIn("wireAnchoredMenu(mount,toggle,menu);", source_filter)
+        anchored = self.page[self.page.index("export function wireAnchoredMenu("):]
+        self.assertIn("innerWidth-width-8", anchored)
+        self.assertIn("innerHeight-8", anchored)
 
     def test_the_manage_page_is_ordered_by_what_you_do_first(self):
         # 只看管理页那一段：同样的标题在别的页面上也出现过，全页搜索会命中错的那个。

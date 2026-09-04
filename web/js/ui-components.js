@@ -332,3 +332,41 @@ export function wireCollapse(root,selector,idPrefix){
     });
   });
 }
+
+/* 锚定在触发钮上的菜单：无展开动画，固定在视口内，内容在菜单内滚动。
+
+   Vercel 项目页的 Filter and Sort 菜单没有展开动画。优先从触发钮右缘向左展开，
+   下方放不下时改到上方。全站的锚定菜单共用这一份定位与开关：菜单在视口边缘的表现
+   最容易各写各的，同一语义留两份实现就只会有一份被修。 */
+let openedMenu=null;
+if(!globalThis.__peachMenuCloser){
+  globalThis.__peachMenuCloser=true;
+  document.addEventListener('click',event=>{
+    if(openedMenu&&!openedMenu.mount.contains(event.target))openedMenu.setOpen(false)},true);
+}
+export function closeAnchoredMenu(){if(openedMenu)openedMenu.setOpen(false)}
+export function wireAnchoredMenu(mount,toggle,menu){
+  const position=()=>{
+    const anchor=toggle.getBoundingClientRect(),width=menu.getBoundingClientRect().width;
+    const height=Math.min(menu.scrollHeight,innerHeight-16);
+    const below=anchor.bottom+8;
+    menu.style.left=Math.max(8,Math.min(anchor.right-width,innerWidth-width-8))+'px';
+    menu.style.top=(below+height<=innerHeight-8?below:Math.max(8,anchor.top-height-8))+'px'};
+  const closeFromViewport=()=>setOpen(false);
+  const setOpen=open=>{
+    if(open){
+      menu.hidden=false;position();
+      window.addEventListener('resize',position);
+      window.addEventListener('scroll',closeFromViewport,{capture:true,passive:true});
+    }else{
+      menu.hidden=true;menu.style.left='';menu.style.top='';
+      window.removeEventListener('resize',position);
+      window.removeEventListener('scroll',closeFromViewport,true);
+    }
+    toggle.setAttribute('aria-expanded',String(open));
+    openedMenu=open?{mount,setOpen}:(openedMenu&&openedMenu.mount===mount?null:openedMenu)};
+  toggle.addEventListener('click',event=>{event.stopPropagation();setOpen(menu.hidden)});
+  mount.addEventListener('keydown',event=>{
+    if(event.key==='Escape'&&!menu.hidden){setOpen(false);toggle.focus()}});
+  return {setOpen,isOpen:()=>!menu.hidden};
+}

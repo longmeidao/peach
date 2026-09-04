@@ -3843,6 +3843,42 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("(d.display_aliases||[]).length")
         self.assertPageLacks("(d.aliases||[]).length?'别名")
 
+    def test_entity_name_picker_offers_only_this_entity_existing_names(self):
+        # 候选取的是身份契约 `aliases`（完整），不是收窄过的展示别名：罗马字也是
+        # 这个人真的用过的写法，用户想拿它当统称就该能选。
+        self.assertCode("const nameChoices=[d.canonical_name,...(d.aliases||[])]")
+        self.assertCode(
+            ".filter((option,index,all)=>option&&all.indexOf(option)===index);")
+        # 只有一种写法时没有可选的东西，控件不出。
+        self.assertCode("const namePick=nameChoices.length>1?")
+        self.assertPageContains('data-namepick-toggle aria-haspopup="menu"')
+        self.assertPageContains('role="menuitemradio"')
+        self.assertPageContains('aria-checked="${option===d.canonical_name}"')
+
+    def test_entity_name_picker_reuses_the_shared_anchored_menu(self):
+        self.assertPageContains("const anchored=wireAnchoredMenu(mount,toggle,menu);")
+        self.assertPageContains('<div class="popmenu npmenu"')
+
+    def test_entity_name_picker_writes_through_the_server_before_repainting(self):
+        self.assertCode("const rename=(from,to)=>api('/api/entity-name',")
+        self.assertCode(
+            "{method:'POST',body:JSON.stringify({kind,name:from,canonical:to})});")
+        self.assertPageContains("setActionBusy(item);")
+        self.assertCode("const result=await rename(current,chosen);")
+        self.assertCode("if(!result.changed)return;")
+        # 撤销是一次真实写回，不在本地把标题改回去。
+        self.assertCode("await rename(result.canonical_name,result.previous_name);")
+        self.assertPageContains("actionFailure('修改统称',error)")
+
+    def test_entity_name_picker_marks_the_current_name_with_fill_and_a_check(self):
+        self.assertPageContains(
+            '.npmenu button[aria-checked="true"]{background:var(--hover);color:var(--ink)}')
+        self.assertPageContains('.npmenu button[aria-checked="true"] svg{visibility:visible}')
+        # 未选中那几行也占着勾的位置，切换时文字不横向跳。
+        self.assertPageContains("visibility:hidden")
+        # 窄屏的资料页整块居中，flex 标题行得自己居中。
+        self.assertPageContains(".entitytitle{justify-content:center}")
+
     def test_jav_cards_prefer_the_canonical_performer_over_legacy_creator_text(self):
         self.assertPageContains("const primaryCreator=it.is_jav&&performer?'':it.creator")
         self.assertPageContains("const identity=primaryCreator?{kind:'creator',name:primaryCreator}")

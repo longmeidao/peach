@@ -29,7 +29,7 @@ from .web_catalog import (
     q_tops,
     w_item_tag,
 )
-from .web_entity import q_entity, q_entity_photos, q_index, q_photo_set
+from .web_entity import q_entity, q_entity_photos, q_index, q_photo_set, w_entity_name
 from .web_follow import (
     q_follow,
     q_follow_credentials,
@@ -227,6 +227,7 @@ POST_HANDLERS = {
     "/api/review/auto-apply": w_review_auto_apply,
     "/api/review/decision": w_review_decision,
     "/api/settings": w_settings,
+    "/api/entity-name": w_entity_name,
 }
 
 
