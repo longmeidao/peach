@@ -1665,10 +1665,76 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(
             "body.refreshing #tagbar [data-tag]{visibility:hidden;"
             "background:var(--hover);border-color:transparent}")
-        self.assertPageContains("body.refreshing #tagbar [data-tag]{position:relative;overflow:hidden}")
-        self.assertPageContains("body.refreshing #tagbar [data-tag]::after{content:'';position:absolute;inset:0;right:-200%;")
+        self.assertPageContains(
+            "body.refreshing #tagbar [data-tag],body.refreshing #tiers .av .ring,\n"
+            "body.refreshing #tiers .av .nm,body.refreshing #tiers .brandpill"
+            "{position:relative;overflow:hidden}")
+        self.assertPageContains(
+            "body.refreshing #tagbar [data-tag]::after,body.refreshing #tiers .av .ring::after,\n"
+            "body.refreshing #tiers .av .nm::after,\n"
+            "body.refreshing #tiers .brandpill::after{content:'';position:absolute;inset:0;right:-200%;")
         self.assertPageLacks("body.refreshing #tagbar [data-state]",
                              "视图胶囊不随这次请求变，不进骨架")
+
+    def test_refreshing_wraps_the_avatar_and_brand_tiers_the_same_way(self):
+        """换一批换的是顶部三层的成员，所以三层一起走 wrap-children，不只标签条。
+
+        头像那格分成圆片和名字条两块，尺寸取首屏骨架的同一组值，两条通道看起来是
+        同一枚；`.av` 宽度写死，名字条居中收窄不动周围任何元素，厂牌胶囊保留自己的
+        框，所以换批前后零位移。
+        """
+        self.assertPageContains(
+            "body.refreshing #tiers .av .ring,body.refreshing #tiers .av .nm,\n"
+            "body.refreshing #tiers .brandpill{visibility:hidden;background:var(--hover)}")
+        self.assertPageContains(
+            "body.refreshing #tiers .av .nm{width:52px;margin:0 auto;"
+            "border-radius:var(--control-radius)}")
+        self.assertPageContains("body.refreshing #tiers .brandpill{border-color:transparent}")
+        # 首屏骨架的名字条同宽，两条通道才是同一枚。
+        self.assertPageContains(".avskeleton .nm{width:52px;margin:0 auto;")
+
+    def test_the_catalog_skeleton_card_is_built_to_the_real_card_height(self):
+        """首页骨架一行和真卡一行等高，内容到位那一下下面不会往上跳。
+
+        列宽、列距和行距沿用 .grid 的同一条算式，卡内每格的高度都由真卡同一枚 token
+        算出：标题是 .meta .t 的 2.7em、归属行是 .mono 的一行 1.45em、标签行再加上
+        .tg 的内边距与描边。封面到下面那组之间的 8px 拆成 3px 行距加 5px 上边距。
+        """
+        self.assertPageContains(
+            ".catalog-skeleton>div{grid-template-columns:repeat(auto-fill,minmax(var(--tile),1fr));"
+            "gap:16px 8px}")
+        self.assertPageContains(".grid{display:grid;grid-template-columns:"
+                                "repeat(auto-fill,minmax(var(--tile),1fr));gap:16px 8px}")
+        self.assertPageContains(
+            ".catalog-skeleton .skeletoncard{grid-template-columns:38px minmax(0,1fr);"
+            "column-gap:10px;row-gap:3px;\n  align-content:start}")
+        self.assertPageContains(
+            ".catalog-skeleton .skeletoncard b{width:100%;margin-top:5px;"
+            "font-size:var(--fs-md);height:2.7em}")
+        self.assertPageContains(
+            ".catalog-skeleton .skeletoncard em{width:58%;font-size:var(--fs-xs);height:1.45em}")
+        self.assertPageContains(
+            "  height:calc(1.45em + var(--tag-pad-y) * 2 + 2px);\n"
+            "  border-radius:var(--tag-radius);background:var(--hover)}")
+        # 三格的高度算式必须和真卡那三行同源，否则两边各改各的就会重新错开。
+        self.assertPageContains("font-size:var(--fs-md);line-height:1.35;min-height:2.7em;")
+        self.assertPageContains("--tag-pad-y:4px;")
+        self.assertPageContains(".mtext{display:flex;flex-direction:column;gap:3px;")
+        self.assertPageContains(".card{cursor:pointer;display:flex;flex-direction:column;gap:8px;")
+        self.assertPageContains(".mav{width:38px;height:38px;border-radius:50%;")
+        self.assertPageContains(".meta{display:flex;gap:10px;min-width:0}")
+
+    def test_the_two_extra_card_slots_stay_off_outside_the_poster_grid(self):
+        """头像格与标签格默认不画：行政界面的骨架是一列 fieldset，不是海报网格。
+
+        默认开着的话，数据管理和关注管理那一列长条中间会凭空多出两块灰，而它们
+        对应的真实界面里根本没有这两样东西。
+        """
+        self.assertPageContains(
+            '<span class="skeletoncard"><i></i><s></s><b></b><em></em><u></u></span>')
+        self.assertPageContains(".skeletoncard s,.skeletoncard u{display:none}")
+        self.assertPageContains(".catalog-skeleton .skeletoncard s{display:block;")
+        self.assertPageContains(".catalog-skeleton .skeletoncard u{display:block;")
 
     def test_the_profile_collection_head_switches_sort_before_the_request_returns(self):
         """资料页表头与首页同规矩：排序条立刻到位，只有 `视频 · N` 换成骨架。

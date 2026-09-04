@@ -121,7 +121,7 @@ export function skeletonHtml(label='正在读取内容',{className='',variant='p
   const kind=new Set(['panel','cards','dashboard']).has(variant)?variant:'panel';
   const body=kind==='cards'
     ?Array.from({length:Math.max(1,count)},
-      ()=>`<span class="skeletoncard"><i></i><b></b><em></em></span>`).join('')
+      ()=>`<span class="skeletoncard"><i></i><s></s><b></b><em></em><u></u></span>`).join('')
     :kind==='dashboard'
       ?`<span class="skeletondashhero"><i></i><b></b></span>
         <span class="skeletondashpanel"><i></i><b></b><em></em></span>
