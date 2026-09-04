@@ -19,6 +19,7 @@ from urllib.parse import quote
 
 from .catalog_rules import (
     collapse_superseded_taste_tags,
+    is_korean_mib_code,
     normalise_code_key,
     superseded_taste_tags,
 )
@@ -351,6 +352,13 @@ def _review_rows(contract: ReviewContract, category: str) -> tuple[list[dict], s
             # 和账本已有的值比一遍，只把真差异留在队列里。实测 43 条候选里 24 条
             # 没有任何新信息：17 条与当前值逐字相同、7 条标签只是顺序不同。
             rows = [row for row in rows if _metadata_row_adds_information(connection, row)]
+            # 韩国 MIB 的番号不适用 JAV 规则，`allows_code` 已经拦在刮削入口。但候选件是
+            # 历史产物，闸门只管以后不再生成，管不了已经落盘的那些：2026-09-04 实测队列里
+            # 还有 214 条（title 51、studio 51、release_date 51、performers 39、series 22）。
+            # 这些值全是 JAV 目录站按错番号返回的别的作品，没有一条值得占用人的注意力。
+            rows = [row for row in rows
+                    if not is_korean_mib_code(str(row.get("code") or ""))]
+            rows = _drop_community_challenges_to_official(connection, rows)
         elif category == "performer_avatars":
             # 候选 CSV 里的 `current_name` 是抓取来源给的罗马音；账本早就有更好的
             # 规范名（`Alice Shaku` 的规范名是 `释爱丽丝`），罗马音本身也已经登记
@@ -474,6 +482,57 @@ def _metadata_row_adds_information(connection, row: dict) -> bool:
     return any(str(c.get("display_value") or "").strip() != current for c in candidates)
 
 
+def _drop_community_challenges_to_official(connection, rows: list[dict]) -> list[dict]:
+    """community 源推不翻 official 源已确认的值，这种行不该进队列。
+
+    用户 2026-09-04 定的口径：按官方来。实测 26 条发行日期「冲突」里，账本现值全部由
+    official 源写入（r18dev 10、aventertainment 9、libredmm 1），挑战方无一例外是
+    javbus。它们不是「两个日期二选一」，而是 community 源要覆盖 official 源——项目自己的
+    `SOURCE_SPECS` 早就排好了序，让人再判一遍等于把已经定好的信任模型丢回给人。
+
+    判据只认账本里留下的落库记录：`review_decision` 的 note 记着当初是哪个来源写的。
+    没有记录的行照常进队列——那说明现值来路不明（早期导入、文件名推断），community
+    源的异议就有意义，拦掉它才是真的丢信息。
+    """
+    keyed = {str(row.get("item_key") or ""): row for row in rows
+             if str(row.get("current_value") or "").strip()}
+    if not keyed:
+        return rows
+    official_values: dict[str, str] = {}
+    marks = ",".join("?" * len(keyed))
+    for item_key, note in connection.execute(
+            f"SELECT item_key,note FROM review_decision WHERE category='metadata_fields' "
+            f"AND status='approved' AND item_key IN ({marks})", list(keyed)):
+        try:
+            parsed = json.loads(str(note or "{}"))
+        except (TypeError, ValueError):
+            continue
+        spec = SOURCE_SPECS.get(str(parsed.get("source") or "").strip())
+        value = str(parsed.get("value") or "").strip()
+        # 只认记下了取值的那种记录。人工批准的 note 只记 `candidate_key` 与 `source`，
+        # 证明不了账本现在这一个就是它写的；候选后来消失时更是无从判断。拿它当
+        # 「official 已确认」会把该重开的字段永久压在队列外面。
+        if value and spec is not None and spec.official:
+            official_values[str(item_key)] = value
+    if not official_values:
+        return rows
+
+    def keep(row: dict) -> bool:
+        item_key = str(row.get("item_key") or "")
+        if item_key not in official_values:
+            return True
+        # 现值被别的动作改过就不能再算「official 写的那一个」，交回人工。
+        if official_values[item_key] != str(row.get("current_value") or "").strip():
+            return True
+        return any(
+            (spec := SOURCE_SPECS.get(str(c.get("source") or "").strip())) is not None
+            and spec.official
+            for c in row.get("candidates") or []
+        )
+
+    return [row for row in rows if keep(row)]
+
+
 def _use_canonical_entity_names(connection, rows: list[dict]) -> None:
     """把候选行的显示名换成账本规范名，来源写法留在 `source_name`。"""
     ids = [int(row["entity_id"]) for row in rows
@@ -497,22 +556,37 @@ def _use_canonical_entity_names(connection, rows: list[dict]) -> None:
 AUTO_APPLY_FIELDS = frozenset({"release_date"})
 
 
+def _auto_apply_rule(candidate: dict) -> str:
+    """这条自动落库该记在哪条规则名下。
+
+    official 与 community 两类补空在 `review_decision` 里必须分得开：出了问题要回溯的
+    是「哪些值是 community 源补的」，而 note 是唯一留着这个区别的地方。
+    """
+    spec = SOURCE_SPECS.get(str(candidate.get("source") or "").strip())
+    kind = "official" if spec is not None and spec.official else "community"
+    return f"adr-0018-empty-field-single-{kind}-source"
+
+
 def metadata_auto_apply_candidate(connection, row: dict) -> dict | None:
     """这一行能否不经复核直接落库；不能就返回 None。
 
-    四项必须同时成立，缺一项就仍然走人工：
+    三项必须同时成立，缺一项就仍然走人工：
 
     1. 目标字段当前为空——只补空，永不覆盖既有真相字段；
     2. 只有一个候选——有第二个值就存在取舍，那正是复核要做的事；
-    3. 来源在当前 policy 下是 official / official_mirror；
-    4. 番号在该番号名下**每一条**资产的文件名里逐字出现。
+    3. 番号在该番号名下**每一条**资产的文件名里逐字出现。
 
-    第 4 条是这条捷径唯一的身份保证。刮削按番号取值，番号错则值错；文件名里
+    来源是不是 official 不在其中（用户 2026-09-04 决定）。补空不覆盖任何东西，唯一的
+    风险是「这个值属不属于这部片」，而那由第 3 条管，与来源可信度无关。卡住 official
+    这条的代价是实测 76 条 javbus 补空候选全部滞留人工，它们补的都是账本里空着的发行
+    日期——没有可判断项，却要人逐条点过。落库时按来源实际级别记规则名，回溯得出来。
+
+    第 3 条是这条捷径唯一的身份保证。刮削按番号取值，番号错则值错；文件名里
     逐字出现是本机可核验的证据，而复核界面其实给不了这个保证——它只并排显示
     番号和日期，并不告诉你番号跟这个文件对不对得上。
 
-    `official` 一律按当前 policy 解析，不读候选 CSV 里的同名字段：那是抓取当时
-    的快照，实测 r18dev 在 CSV 里写着 False，而现行 policy 认它是 official_mirror。
+    来源级别一律按当前 policy 解析，不读候选 CSV 里的同名字段：那是抓取当时的
+    快照，实测 r18dev 在 CSV 里写着 False，而现行 policy 认它是 official_mirror。
     """
     if str(row.get("field") or "").strip() not in AUTO_APPLY_FIELDS:
         return None
@@ -522,8 +596,7 @@ def metadata_auto_apply_candidate(connection, row: dict) -> dict | None:
     if len(candidates) != 1:
         return None
     candidate = candidates[0]
-    spec = SOURCE_SPECS.get(str(candidate.get("source") or "").strip())
-    if spec is None or not spec.official:
+    if str(candidate.get("source") or "").strip() not in SOURCE_SPECS:
         return None
     code = str(row.get("code") or "").strip()
     query = str(row.get("query") or code).strip()
@@ -1016,7 +1089,10 @@ def w_review_auto_apply(contract: ReviewContract, _body=None):
                 "ON CONFLICT(category,item_key) DO UPDATE SET status=excluded.status,"
                 "note=excluded.note,updated_at=excluded.updated_at",
                 (item_key, json.dumps({
-                    "auto_applied": True, "rule": "adr-0018-empty-field-single-official-source",
+                    "auto_applied": True,
+                    # 规则名记来源的实际级别，不写死 official：补空对 community 源同样
+                    # 成立，但两者日后要分开回溯时，note 是唯一还留着这个区别的地方。
+                    "rule": _auto_apply_rule(candidate),
                     "candidate_key": candidate.get("candidate_key"),
                     "source": candidate.get("source"),
                     "value": candidate.get("display_value"),

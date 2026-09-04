@@ -41,6 +41,33 @@ class MetadataPolicyTests(unittest.TestCase):
             "FC2-PPV-1234567", explicit_sources=True,
         ))
 
+    def test_korean_mib_codes_are_refused_by_every_profile(self):
+        """韩国 MIB 不适用 JAV 规则，任何 profile、任何 `--sources` 都不问。
+
+        这些番号的形状和厂牌番号一样，只有前缀能把它们分出来。放行一次的代价是
+        整批错值落进候选队列，再靠人一条条认出来。
+        """
+        for profile in ("baseline", "censored", "uncensored", "fc2"):
+            policy = resolve_policy(profile=profile)
+            for code in ("WX-017", "AR-301", "JI-103", "SA-104", "MY-102",
+                         "ar-301", "AR301"):
+                self.assertFalse(policy.allows_code(code), f"{profile} 放行了 {code}")
+        # 显式点名来源也不能绕过：这不是「这次不想问」，是「问了必错」。
+        self.assertFalse(resolve_policy(sources="javbus").allows_code(
+            "AR-301", explicit_sources=True,
+        ))
+
+    def test_two_letter_prefix_alone_never_blocks_a_real_jav_studio(self):
+        """判据是实测出来的前缀表，不是「两字母前缀就不是 JAV」那条形状。
+
+        2026-09-04 实测的 24 种两字母前缀里有三个例外：BeFree 的 `BF-366` 是真作品，
+        `TZ` 来自转载站水印 `[ThZu.Cc]`，`FC-437689` 是 FC2 变体。按形状一刀切会
+        把 BeFree 一起拦掉，而它的片子就在 `B:\\番号\\BeFree\\` 下。
+        """
+        baseline = resolve_policy(profile="baseline")
+        for code in ("BF-366", "ARM-123", "JILL-002", "300MIUM-1239", "ABW-232"):
+            self.assertTrue(baseline.allows_code(code), f"baseline 误拦了 {code}")
+
     def test_every_field_uses_policy_order_and_explicit_official_metadata(self):
         policy = resolve_policy(profile="censored")
         candidates = [

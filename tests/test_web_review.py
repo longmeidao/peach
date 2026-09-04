@@ -225,7 +225,12 @@ class ReviewQueueTests(unittest.TestCase):
         self.assertEqual(self._auto()["applied"], 0)
         self.assertEqual(sorted(self.queue_keys("metadata_fields")), ["AAA", "BBB"])
 
-    def test_auto_apply_ignores_community_sources_and_other_fields(self):
+    def test_auto_apply_fills_empty_fields_from_community_sources_too(self):
+        """补空不覆盖任何东西，唯一的风险由「番号在文件名里」那条管，与来源级别无关。
+
+        卡住 official 的代价是实测 76 条 javbus 补空候选全部滞留人工，补的都是账本里
+        空着的发行日期——没有可判断项，却要人逐条点过。白名单之外的字段仍然不走这条路。
+        """
         self._asset(94, "CCC-3", "CCC-3.mp4")
         self._asset(95, "DDD-4", "DDD-4.mp4")
         self.write_metadata_rows([
@@ -235,7 +240,71 @@ class ReviewQueueTests(unittest.TestCase):
             {"item_key": "DDD", "field": "performers", "current": "",
              "candidates": ["某人"], "code": "DDD-4"},
         ])
-        self.assertEqual(self._auto()["applied"], 0)
+        self.assertEqual(self._auto()["applied"], 1)
+        con = sqlite3.connect(self.db_path)
+        try:
+            self.assertEqual(
+                con.execute("SELECT release_date FROM asset WHERE id=94").fetchone()[0],
+                "2015-02-20")
+            note = con.execute(
+                "SELECT note FROM review_decision WHERE item_key='CCC'").fetchone()[0]
+        finally:
+            con.close()
+        # 规则名要留下来源级别，否则日后回溯不出哪些值是 community 源补的。
+        self.assertEqual(json.loads(note)["rule"],
+                         "adr-0018-empty-field-single-community-source")
+
+    def test_community_candidate_never_challenges_an_official_written_value(self):
+        """按官方来：community 源推不翻 official 源已确认的值，这种行不进队列。
+
+        实测 26 条发行日期「冲突」里，账本现值全部由 official 源写入（r18dev 10、
+        aventertainment 9、libredmm 1），挑战方无一例外是 javbus。让人再判一遍等于把
+        `SOURCE_SPECS` 早就排好的信任模型丢回给人。
+        """
+        self._asset(96, "EEE-5", "EEE-5.mp4")
+        self._asset(97, "FFF-6", "FFF-6.mp4")
+        con = sqlite3.connect(self.db_path)
+        try:
+            con.execute(
+                "INSERT INTO review_decision(category,item_key,status,note,updated_at) "
+                "VALUES('metadata_fields','EEE','approved',?,'2026-08-30T00:00:00Z')",
+                (json.dumps({"auto_applied": True, "source": "r18dev",
+                             "value": "2015-05-30"}),))
+            con.commit()
+        finally:
+            con.close()
+        self.write_metadata_rows([
+            # 现值由 r18dev 写入，javbus 想改成别的日期：按信任模型直接不进队列。
+            {"item_key": "EEE", "field": "release_date", "current": "2015-05-30",
+             "candidates": ["2015-08-30"], "code": "EEE-5", "source": "javbus"},
+            # 现值来路不明（没有落库记录）时，community 的异议仍然有意义。
+            {"item_key": "FFF", "field": "release_date", "current": "2014-01-01",
+             "candidates": ["2014-03-03"], "code": "FFF-6", "source": "javbus"},
+        ])
+        self.assertEqual(self.queue_keys("metadata_fields"), ["FFF"])
+
+    def test_a_decision_without_a_recorded_value_never_suppresses_the_row(self):
+        """人工批准的 note 只记 `candidate_key` 与 `source`，不记写进去的值。
+
+        没记值就证明不了账本现在这一个是它写的，拿它当「official 已确认」会把
+        `_metadata_decision_is_stale` 本该重开的字段永久压在队列外面。
+        """
+        self._asset(98, "GGG-7", "GGG-7.mp4")
+        con = sqlite3.connect(self.db_path)
+        try:
+            con.execute(
+                "INSERT INTO review_decision(category,item_key,status,note,updated_at) "
+                "VALUES('metadata_fields','GGG','approved',?,'2026-08-30T00:00:00Z')",
+                (json.dumps({"candidate_key": "GGG:release_date:r18dev:gone",
+                             "source": "r18dev", "user_note": ""}),))
+            con.commit()
+        finally:
+            con.close()
+        self.write_metadata_rows([
+            {"item_key": "GGG", "field": "release_date", "current": "2016-06-06",
+             "candidates": ["2016-09-09"], "code": "GGG-7", "source": "javbus"},
+        ])
+        self.assertEqual(self.queue_keys("metadata_fields"), ["GGG"])
 
     def test_metadata_candidates_that_repeat_the_current_value_never_queue(self):
         """复核的成本是注意力：和现值一模一样的行会把真正要判的淹掉。
@@ -253,6 +322,30 @@ class ReviewQueueTests(unittest.TestCase):
              "candidates": ["Faleno"]},
         ])
         self.assertEqual(sorted(self.queue_keys("metadata_fields")), ["EMPTY", "REAL"])
+
+    def test_korean_mib_candidates_never_reach_the_review_queue(self):
+        """韩国 MIB 不适用 JAV 规则，它的候选没有一条值得占用注意力。
+
+        `allows_code` 拦在刮削入口，管的是以后不再生成；候选件是历史产物，闸门管不着。
+        2026-09-04 实测队列里还有 49 条（AR 39、JI 10），值全是 JAV 目录站按错番号返回的
+        **别的作品**，让人一条条认出来正是这道过滤要省掉的事。
+        """
+        self.write_metadata_rows([
+            {"item_key": "MIB-AR", "field": "studio", "current": "",
+             "candidates": ["Attackers"], "code": "AR-301"},
+            {"item_key": "MIB-JI", "field": "release_date", "current": "",
+             "candidates": ["2009-12-05"], "code": "JI-103"},
+            {"item_key": "MIB-WX", "field": "title", "current": "",
+             "candidates": ["某标题"], "code": "WX-017"},
+            {"item_key": "MIB-SA", "field": "series", "current": "",
+             "candidates": ["某系列"], "code": "SA-104"},
+            # BeFree 是真实 JAV 厂牌，两字母前缀不能连它一起拦。
+            {"item_key": "BEFREE", "field": "studio", "current": "",
+             "candidates": ["BeFree"], "code": "BF-366"},
+            {"item_key": "REAL", "field": "studio", "current": "",
+             "candidates": ["Faleno"], "code": "ARM-123"},
+        ])
+        self.assertEqual(sorted(self.queue_keys("metadata_fields")), ["BEFREE", "REAL"])
 
     def test_japanese_performer_candidate_folds_onto_the_localised_entity(self):
         """r18dev 给日文名，账本规范名多已本地化成中文，而日文名早登记为别名。

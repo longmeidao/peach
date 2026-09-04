@@ -149,6 +149,31 @@ _FC2_ID = re.compile(r"^FC2(?:[-_. ]?PPV)?[-_. ]?(\d{5,})$", re.I)
 #: 挂上了不代表这条记录对应某个发行物。
 RELEASE_EVIDENCE_KINDS = frozenset({"performer", "studio", "series"})
 
+#: 韩国 MIB 的番号前缀（用户 2026-09-04 指定）。这些是韩国内容，不是 JAV，拿它们去查
+#: javbus／javdatabase 这类 JAV 目录站，取回的一定是**别的作品**。
+#:
+#: 形状上它们和厂牌番号毫无区别，所以 `is_jav_code` 认得它们，`is_jav_asset` 也只要求
+#: 「有发行证据」——而那份证据恰恰是刮削自己写进去的，跑一轮就自我坐实了。2026-09-02 实测
+#: `B:\MVP\MIB\` 下 68 次匹配有 58 次返回的番号根本不是查询的番号，整目录的厂牌、系列、
+#: 标题因此全错，20 条 studio 无一例外全是误判（`peach-data/review/mib-studio-mismatch-20260902.md`）。
+#: `_identity_mismatch` 只拦得住来源自报了番号的那部分，剩下的照样落进候选队列。
+#:
+#: 所以判据前移到刮削入口：这些番号一开始就不该被拿去问 JAV 来源。
+#:
+#: 前缀是 MIB 演员名的缩写，不是厂牌代号——`AR` 是 Ari、`JH` 是 Juhee、`SA` 是 Suah，
+#: 一个演员一个前缀，所以表会随片源增加而变长，不要指望它收敛。2026-09-04 实测账本里
+#: 两字母前缀番号共 24 种 75 条，其中 21 种全部位于 `B:\MVP\MIB\` 下、目录外零条。
+#:
+#: **不要退化成「两字母前缀就不是 JAV」这条形状判据。** 同一批实测里的三个例外正是反例：
+#: `BF-366` 在 `B:\番号\BeFree\` 下，BeFree 是真实 JAV 厂牌；`TZ-105` 的 `TZ` 来自转载站
+#: 水印 `[ThZu.Cc]`，压根不是番号（`is_repost_site_label` 那条路管它）；`FC-437689` 是 FC2
+#: 的变体写法。按形状一刀切会把 BeFree 的真作品一起拦掉。
+KOREAN_MIB_PREFIXES = frozenset({
+    "WX", "AR", "JH", "CA", "IY", "JA", "MY", "SH", "HA", "MH", "DB", "JI",
+    "ES", "SR", "SY", "CD", "YH", "UY", "NN", "SA", "JE", "YR",
+})
+_KOREAN_MIB_CODE = re.compile(r"^([A-Z]{2,4})-\d+$")
+
 DUPLICATE_TOLERANCE = 0.005
 DUPLICATE_FLOOR_SECONDS = 15.0
 _PART_MARKER = re.compile(
@@ -213,6 +238,17 @@ def is_jav_code(code: str | None) -> bool:
         or _CODE_AMATEUR.match(value)
         or _CODE_DATE.match(value)
     )
+
+
+def is_korean_mib_code(code: str | None) -> bool:
+    """True 表示这个番号属于韩国 MIB，不适用 JAV 规则。
+
+    只认 `<字母>-<数字>` 这一种写法下的前缀。素人系的三位数字前缀（`300MIUM-1239`）
+    和 FC2 都不在此列：它们的字母段虽然可能撞上，但发行体系本来就不是 MIB。
+    """
+    value = normalise_code_key(code)
+    shape = _KOREAN_MIB_CODE.match(value)
+    return bool(shape and shape.group(1) in KOREAN_MIB_PREFIXES)
 
 
 def code_query_variants(code: str | None) -> tuple[str, ...]:
