@@ -4,6 +4,16 @@
 
 ## 已有骨架、尚未完成（6 项）
 
+本轮实施顺序（评审来源：[外部复评](https://chatgpt.com/c/6a9ad810-6148-83e9-95dd-6b58ef28e7ec)，按当前源码核对）：
+
+- 运行与一致性：HTTP 只跳转 HTTPS；业务与调度由单一应用拥有；成功提交后失效缓存；缓存有界；可更新图片可复验；列表参数有上下界。
+- 数据与查询：标签、实体筛选从关系索引驱动；随机排序有唯一次序；重复索引与外键启用先做副本验证；补固定规模基准。
+- 安装与诊断：下面第 12、13、21、22、23 项按依赖实施，覆盖最小源码安装、wheel 资源、仓库外启动、就绪检查。独立桌面制品及操作系统 VM 验收仍按第 15、21 项推进。
+- 后续结构：显式 API 模型、前端构建与高频页面迁移、候选分页、任务持久化按垂直功能实施；不为 AppContext 或文件尺寸单独做全仓搬迁。
+- Linux 首版候选为 headless、预挂载媒体与独立 wheel。外部容器用了替身依赖，其结果不构成锁定依赖和 Linux 的正式支持证据，优先级低于 Windows/macOS。
+
+外部评审提到的空口令拒绝启动、secret 文件读取、count=0 已有实现；不重复登记。shuffle_key 改变随机浏览的序列语义，先测关系筛选收益再决定。真实 ledger 迁移、双机复制取消和系统级安装另有明确授权边界。
+
 1. **寻找更好版本**：已经能逐条标记「高清 / 无水印 / 完整版」等目标；后续仍需相似内容匹配、候选去重、来源发现和人工替换确认。
 2. **现代自适应播放**：Video.js、Range、统计面板和面向 115/PikPak 原生 MP4 的按需 HLS 清单已经上线；自适应码率、多路清单、快速首帧和来源层大块预取优化仍未完成。
 3. **在线追更**：`src/peach/follow_providers.py` 登记的十一个来源（FANBOX、SubscribeStar、Patreon、Kemono、Pawchive、Coomer、Rule34Video、Rule34.xxx、Rule34 Paheal、F95zone、SimpCity）、WIP/alt/跨站重复判定、`follow_source`/`follow_item`、`peach follow`、看的 `/follow` 与管的 `/follow-manage` 两个页面已上线，writer 用 APScheduler 按设置自动轮询，在线资产可就地播放。仍缺的是下载落地（凭据、流量与磁盘预算未定，见下面「待执行的操作」第 12 条）和 simpcity 的可用入口（DDoS-Guard，未取得）。
