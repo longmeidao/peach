@@ -27,6 +27,13 @@ class Migration:
 
 
 def discover(directory: Path) -> list[Migration]:
+    # `Path.glob` 对不存在的目录返回空序列，于是「一个 migration 都没有」和「根本没找到
+    # migration 目录」会长得一模一样：`upgrade` 报 0 个迁移、`status` 报 0 pending，
+    # 而账本是个 0 字节的空文件。空账本被当成迁移到位的账本是数据完整性问题，所以这里
+    # 直接拒绝。目录缺失的真实原因通常是 `pip install .`（非 editable）——wheel 只装
+    # `src/` 下的包，仓库根的 `migrations/` 不在里面。
+    if not directory.is_dir():
+        raise FileNotFoundError(f"migration 目录不存在：{directory}")
     migrations: list[Migration] = []
     for path in sorted(directory.glob("[0-9][0-9][0-9][0-9]_*.sql")):
         version, name = path.stem.split("_", 1)
