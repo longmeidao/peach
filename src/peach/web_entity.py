@@ -44,8 +44,12 @@ def q_entity(contract: WebContract, args):
         except (TypeError, ValueError):
             metadata = {}
         d["metadata"] = metadata
+        # 同一个名字按来源分行（主键含 source），合并会再写一条 `merge:*`，所以同一个
+        # 写法能出现两次。留痕属于账本，展示不该把同一个名字并排列两遍：按归一形取
+        # 置信度最高的那一条。`max()` 让 SQLite 把裸列取自同一行，结果是确定的。
         d["aliases"] = [r[0] for r in c.execute(
-            "SELECT alias FROM entity_alias WHERE entity_id=? ORDER BY confidence DESC,alias",
+            "SELECT alias,max(confidence) AS top FROM entity_alias WHERE entity_id=?"
+            " GROUP BY normalized_alias ORDER BY top DESC,alias",
             (d["id"],),
         )]
         # 罗马字仍是检索和旧链接的重要身份键，但中文/日文规范名下面再把英文全列一遍

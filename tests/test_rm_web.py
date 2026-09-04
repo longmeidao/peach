@@ -1322,6 +1322,26 @@ class WebDataTests(unittest.TestCase):
         self.assertIn("Alice Shaku", localized["aliases"], "罗马字仍须可用于身份检索")
         self.assertEqual(localized["display_aliases"], ["しゃくありす", "釈アリス"])
 
+    def test_one_name_recorded_by_two_sources_is_listed_once(self):
+        """`entity_alias` 的主键含 source，合并会再写一条 `merge:*`：同一个写法两行。
+
+        留痕属于账本，资料页不该把同一个名字并排列两遍。取置信度最高的那一条。
+        """
+        con = sqlite3.connect(self.db_path)
+        con.execute(
+            "INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at)"
+            " VALUES(19,'performer','白石亚子','白石亚子','2026-01-01','2026-01-01')")
+        con.executemany(
+            "INSERT INTO entity_alias VALUES(?,?,?,?,?)",
+            [(19, "Ako Shiraishi", "ako shiraishi", "r18:performer", 0.9),
+             (19, "Ako Shiraishi", "ako shiraishi", "merge:duplicate-identity", 1.0),
+             (19, "平沢すず", "平沢すず", "avdb-actor-mapping", 1.0)])
+        con.commit(); con.close()
+
+        entity = rm_web.q_entity(self.contract, {"kind": "performer", "name": "白石亚子"})
+        self.assertEqual(entity["aliases"].count("Ako Shiraishi"), 1)
+        self.assertIn("平沢すず", entity["aliases"])
+
     def test_entity_filter_and_video_sort_compose_in_one_items_query(self):
         con = sqlite3.connect(self.db_path)
         con.execute(
