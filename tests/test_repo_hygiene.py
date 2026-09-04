@@ -236,10 +236,11 @@ class ReleaseFilesTests(unittest.TestCase):
                  if not (REPO / name).read_text(encoding="utf-8").strip()]
         self.assertEqual(empty, [], "治理文件存在但是空的，等于没有")
 
-    def test_the_licence_is_the_mit_licence(self):
+    def test_the_licence_is_the_agpl_v3(self):
         text = (REPO / "LICENSE").read_text(encoding="utf-8")
-        self.assertIn("MIT License", text,
-                      "许可证是 MIT（ADR-0023 第 4 阶段），换许可证要先改 ADR")
+        for marker in ("GNU AFFERO GENERAL PUBLIC LICENSE", "Version 3"):
+            self.assertIn(marker, text,
+                          "许可证是 AGPL-3.0-or-later（ADR-0023 第 4 阶段），换许可证要先改 ADR")
 
 
 class ArchitectureDriftTests(unittest.TestCase):

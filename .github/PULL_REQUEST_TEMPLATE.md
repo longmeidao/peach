@@ -8,7 +8,7 @@ Closes #
 
 ## 检查项
 
-- [ ] 已先开 issue 并拿到方向确认
+- [ ] 大改动已先开 issue 讨论（小修不需要）
 - [ ] 跑过测试，写明测试域：`& .\scripts\test.ps1 -Scope <域>` 或 `./scripts/test.sh <域>`，
       结果贴在下面
 - [ ] 按 `.claude/skills/peach-surfaces/SKILL.md` 逐项说明影响面（数据层、API、页面、契约、
