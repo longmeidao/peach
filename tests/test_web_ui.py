@@ -1653,7 +1653,74 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("const viewPillsHtml=filterState=>VIEW_PILLS.map(v=>")
         self.assertPageContains("    wireViewPills();")
         # 宽度是定值，随机会让同一次冷启动在两台机器上长得不一样，也没法测。
-        self.assertPageContains("const TAG_SKELETON_WIDTHS=[92,68,104,76,88,64,96,72,100,80,68,92,76,84];")
+
+    def test_skeleton_slots_are_counted_from_the_container_instead_of_a_fixed_number(self):
+        """枚数由容器当下的宽度算出来，不写死。
+
+        写死的话宽屏最后一行留一截豁口——用户实测首页第二行只有一张卡；窄屏和手机端
+        又多出一堆要横滑才看得见的占位。算出来就不必再为断点各写一套。
+        """
+        self.assertPageContains("export function fillSkeletonTier(row,kind){")
+        self.assertPageContains(
+            "    row.insertAdjacentHTML('beforeend',slot(widths[i%widths.length]));\n"
+            "    if(row.scrollWidth>row.clientWidth)break;")
+        self.assertPageContains("export function fitSkeleton(root){")
+        self.assertPageContains(
+            "    const columns=style.gridTemplateColumns.split(' ').filter(Boolean).length;")
+        self.assertPageContains(
+            "    const rows=Math.max(1,Math.min(4,Math.ceil((room+rowGap)/(cardHeight+rowGap))));\n"
+            "    const want=columns*rows;\n"
+            "    while(grid.children.length>want)grid.lastElementChild.remove();\n"
+            "    while(grid.children.length<want)grid.appendChild(first.cloneNode(true));")
+        # 横排的推荐行不是网格，按整行补会把它裁成一张。
+        self.assertPageContains("    if(!first||style.display!=='grid')continue;")
+        # 每个铺骨架的表面都要接上，否则那一屏又回到写死的六张。
+        for call in ("fitSkeleton($('#grid'));", "fitSkeleton($('#index'));",
+                     "fitSkeleton(stats);", "fitSkeleton(tiers);"):
+            self.assertPageContains("  " + call)
+        self.assertPageContains("    fillSkeletonTier(tagbar,'pill');")
+        # 一列 fieldset 的两张骨架照自己的轮廓排，补整行会把它们撑成海报网格。
+        self.assertPageContains("{cards:true,fill:false,className:'cleanup-skeleton'})}</div>`,")
+        self.assertPageContains("{cards:true,count:3,fill:false,className:'followmanage-skeleton'})}</div>`,")
+        self.assertPageContains("""${kind==='cards'&&fill?' data-fill=""':''}""")
+        self.assertPageContains(".skeletonpanel[data-fill]>div")
+
+    def test_the_follow_skeleton_reuses_the_poster_card_shape_and_adds_its_own_rows(self):
+        """关注页跟首页是同一种海报卡，几何共用一块；它自己多两条横排。
+
+        作者行和筛选行的形状取 `.tier`/`.tagbar` 本身，跟首页顶栏是同一枚，不另画
+        一套。真正的差别只有归属行：`.followitem .meta .s` 有 min-height，比首页那条
+        高 3.6px，一页十来行叠起来就是一屏的错位。
+        """
+        self.assertPageContains(
+            '''  <div class="tier followauthors" data-skeleton-tier="av"></div>''')
+        self.assertPageContains(
+            '''  <div class="tagbar followfilters" data-skeleton-tier="pill"></div>''')
+        self.assertPageContains(
+            "{cards:true,className:'follow-content-skeleton postercard-skeleton'})}</div>`;")
+        self.assertPageContains(".follow-content-skeleton .skeletoncard em{height:21px}")
+        self.assertPageContains('.followitem .meta .s{min-height:21px}')
+        # 真实页面就是这两个类名与这张网格，骨架照抄才可能不位移。
+        self.assertPageContains('<div class="tier followauthors" aria-label="按作者筛选">')
+        self.assertPageContains('<div class="tagbar followfilters" aria-label="关注筛选">')
+        self.assertPageContains(
+            ".followlist{display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--tile),1fr));"
+            "gap:16px 8px}")
+
+    def test_a_deep_link_to_a_management_page_does_not_promise_the_home_bars(self):
+        """顶部三层只属于首页：深链启动先画一遍再由路由收起来，等于承诺永不到货的横条。
+
+        收起动作只有一处定义，中央清理函数也走它——手抄一份正是筛选条漏在关注页
+        标题上方那个 bug 的来源。
+        """
+        self.assertPageContains(
+            "const hideDiscoveryBars=()=>{$('#tiers').style.display='none';"
+            "$('#tagbar').style.display='none'};")
+        self.assertPageContains(
+            "  loadRequestSeq++;listLoading=false;$('#combo').innerHTML='';\n"
+            "  hideDiscoveryBars();")
+        self.assertEqual(self.page.count("hideDiscoveryBars();"), 3,
+                         "管理页、索引页和中央清理函数各调一次，收起动作本身只写一处")
 
     def test_refreshing_wraps_the_tag_pills_instead_of_replacing_them(self):
         """换一批时标签胶囊走 wrap-children 骨架：真实元素留着，用 visibility 藏起来。
@@ -1701,18 +1768,18 @@ class WebUiSourceTests(unittest.TestCase):
         .tg 的内边距与描边。封面到下面那组之间的 8px 拆成 3px 行距加 5px 上边距。
         """
         self.assertPageContains(
-            ".catalog-skeleton>div{grid-template-columns:repeat(auto-fill,minmax(var(--tile),1fr));"
+            ".postercard-skeleton>div{grid-template-columns:repeat(auto-fill,minmax(var(--tile),1fr));"
             "gap:16px 8px}")
         self.assertPageContains(".grid{display:grid;grid-template-columns:"
                                 "repeat(auto-fill,minmax(var(--tile),1fr));gap:16px 8px}")
         self.assertPageContains(
-            ".catalog-skeleton .skeletoncard{grid-template-columns:38px minmax(0,1fr);"
+            ".postercard-skeleton .skeletoncard{grid-template-columns:38px minmax(0,1fr);"
             "column-gap:10px;row-gap:3px;\n  align-content:start}")
         self.assertPageContains(
-            ".catalog-skeleton .skeletoncard b{width:100%;margin-top:5px;"
+            ".postercard-skeleton .skeletoncard b{width:100%;margin-top:5px;"
             "font-size:var(--fs-md);height:2.7em}")
         self.assertPageContains(
-            ".catalog-skeleton .skeletoncard em{width:58%;font-size:var(--fs-xs);height:1.45em}")
+            ".postercard-skeleton .skeletoncard em{width:58%;font-size:var(--fs-xs);height:1.45em}")
         self.assertPageContains(
             "  height:calc(1.45em + var(--tag-pad-y) * 2 + 2px);\n"
             "  border-radius:var(--tag-radius);background:var(--hover)}")
@@ -1733,8 +1800,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(
             '<span class="skeletoncard"><i></i><s></s><b></b><em></em><u></u></span>')
         self.assertPageContains(".skeletoncard s,.skeletoncard u{display:none}")
-        self.assertPageContains(".catalog-skeleton .skeletoncard s{display:block;")
-        self.assertPageContains(".catalog-skeleton .skeletoncard u{display:block;")
+        self.assertPageContains(".postercard-skeleton .skeletoncard s{display:block;")
+        self.assertPageContains(".postercard-skeleton .skeletoncard u{display:block;")
 
     def test_the_profile_collection_head_switches_sort_before_the_request_returns(self):
         """资料页表头与首页同规矩：排序条立刻到位，只有 `视频 · N` 换成骨架。
@@ -4063,7 +4130,8 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_page_loading_uses_one_structural_skeleton_phase(self):
         self.assertPageContains("function renderCatalogLoading(label='正在读取作品')")
-        self.assertPageContains("$('#grid').innerHTML=pageSkeletonHtml(label,{cards:true,className:'catalog-skeleton'})")
+        self.assertPageContains("$('#grid').innerHTML=pageSkeletonHtml(label,\n"
+            "    {cards:true,className:'catalog-skeleton postercard-skeleton'});")
         self.assertPageContains("count.setAttribute('aria-label',label);")
         self.assertPageContains(".grid>.skeletonpanel{grid-column:1/-1;width:100%;min-width:0}")
         self.assertPageContains("function renderInitialSurfaceLoading()")
@@ -4100,7 +4168,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertCode('''data-skeleton="${esc(kind)}${className?`/${esc(className)}`:''}"''')
         self.assertPageContains(
             "const painted=$('#stats').querySelector('[data-skeleton]')?.dataset.skeleton||''")
-        self.assertPageContains("if(!next||next!==painted)$('#stats').innerHTML=placeholder")
+        self.assertPageContains(
+            "if(!next||next!==painted){$('#stats').innerHTML=placeholder;fitSkeleton($('#stats'))}")
         # 数据管理不在骨架之后再盖一层 Loading Dots：那就是第二段动画。
         self.assertPageLacks("loadingDotsHtml('正在读取数据管理状态…')")
         self.assertPageLacks(".cleanuploading")
@@ -4117,12 +4186,12 @@ class WebUiSourceTests(unittest.TestCase):
         """
         self.assertCode(
             "'/follow-manage':()=>`<div class=\"follow\">${pageSkeletonHtml('正在读取关注管理',")
-        self.assertPageContains("{cards:true,count:3,className:'followmanage-skeleton'})}</div>`,")
+        self.assertPageContains("{cards:true,count:3,fill:false,className:'followmanage-skeleton'})}</div>`,")
         self.assertPageContains(
-            "const pageSkeletonHtml=(label,{cards=false,className='',variant='',count}={})=>")
+            "const pageSkeletonHtml=(label,{cards=false,className='',variant='',count,fill}={})=>")
         self.assertPageContains("skeletonHtml(label,{variant:variant||(cards?'cards':'panel'),className,")
         self.assertPageContains(
-            "export function skeletonHtml(label='正在读取内容',{className='',variant='panel',count=6}={})")
+            "export function skeletonHtml(label='正在读取内容',{className='',variant='panel',count=6,fill=true}={})")
         self.assertPageContains("?Array.from({length:Math.max(1,count)},")
         # 版式：一列对上 .followmanage，宽度也跟它一样是 812px 居中。
         self.assertPageContains(
@@ -4135,7 +4204,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".followmanage-skeleton .skeletoncard i{aspect-ratio:auto;height:56px")
         self.assertPageContains("border-bottom:1px solid var(--border-10)}")
         # 关注更新流仍是同质卡片流，它那张骨架不受影响。
-        self.assertPageContains("pageSkeletonHtml(label,{cards:true,className:'follow-content-skeleton'})")
+        self.assertPageContains("pageSkeletonHtml(label,{cards:true,className:'follow-content-skeleton postercard-skeleton'})")
 
     def test_loading_actions_are_inert_and_dimmed_without_losing_focus(self):
         """用户触发的等待态统一走 Geist loading button，而不是各页自造半套状态。"""
