@@ -71,7 +71,7 @@ Peach 要发布到 GitHub 供所有人维护与使用。使用形态不变：每
 
 - ledger 仍是唯一真相源；AI 与刮削结果仍是候选，不因通用化放宽。
 - 单进程 FastAPI 模块化单体不变；不引入 PostgreSQL、微服务或多账号。
-- Windows 与 macOS 都是一等运行平台，Linux 只保证 Python 服务与 CLI 可跑，托盘与挂载不承诺。
+- Windows 与 macOS 都是一等运行平台；Linux 不在支持范围，未测试（2026-09-04 用户决定）。
 - 任何阶段都不允许把当前用户的数据形状写死为默认值；默认值必须对一个全新用户成立。
 
 ## 后果
@@ -79,3 +79,45 @@ Peach 要发布到 GitHub 供所有人维护与使用。使用形态不变：每
 - 短期新增一层设置文件读取与校验代码，换来删除 `config.py` 中所有个人字面量。
 - 现有部署首次升级需要一次 `peach init --from-existing` 把当前环境写成设置文件；步骤写进 HANDOFF。
 - 阶段 2 的真实迁移与阶段 3 的默认关闭会改变当前用户的运行方式，实施前必须在同一轮拿到明确授权并保留回退路径。
+
+## 第 4 阶段实施记录（2026-09-04）
+
+本节是交接面：任何智能体接手开源发布，只读本节加 `docs/PRODUCT_BACKLOG.md` 即可，不需要对话记录。
+
+### 用户已定的决定
+
+- 许可证 **AGPL-3.0-or-later**。`LICENSE` 全文、`pyproject.toml` 的 `license`、README 双语「许可证」节与本 ADR 四处一致，`tests/test_repo_hygiene.py::ReleaseFilesTests` 钉住前两处。
+- **Git 历史不重写**。历史提交里保留局域网 IP、本机用户名、主机名与共享账号名，用户接受这一代价；当前树由 `MachineCoordinateTests` 全树门槛保证不含个人坐标，例子一律用 RFC 5737 地址与中性主机名。
+- 接受 issue 与 PR，大改动先开 issue 讨论；模板在 `.github/`，规则在 `CONTRIBUTING.md`。
+- `AGENTS.md`、`CLAUDE.md` 与 `.claude/skills/` 随仓库公开，术语表的「我 / 用户」指任何部署者。
+- Linux 不在支持范围；界面只有中文，国际化在待办；Python 下限 3.12（本机 3.14），CI 测两端，3.12 只靠 CI 验证、本机没有该解释器。
+- 仓库定位直说成人内容个人馆藏；README、文档与网站截图一律用 SFW 演示数据（数据集在待办）。
+- 制品：`.github/workflows/release.yml` 在 `v*.*.*` tag 时产出 Windows 与 macOS 压缩包，但两者都是托盘外壳，运行仍依赖本机源码安装；独立发行版是待办中「可下载制品」条目的剩余部分。
+
+### 已实测的事实
+
+- 全新 venv 里 `pip install -e .` 约 16 秒；`peach init` 25 个迁移、CA、`config.toml` 一次落地；`peach serve` 后 `/healthz`、`GET /`、`/api/items` 均 200。
+- `pip install .`（非 editable）装出的环境缺 `migrations/` 与 `web/`，`migrations.discover()` 对缺失目录抛 `FileNotFoundError`，init 因此报错而不是静默建空账本。
+- `peach-tray --help` 只打印帮助，未知参数退出 2，都不触碰数据根。
+- 三个来源的默认声明根仍是示例盘符，来源 ID `local/115/pikpak` 在 `web_resource_sync.py` 与 `media.py` 里被点名；单机多本地目录做不到。这是第 5 阶段候选，见待办「来源与默认值通用化」。
+
+### 翻公开前的验收清单
+
+1. 本机 `& .\scripts\test.ps1`（full）全绿，且 `.claude/worktrees/` 下无未注册目录。
+2. master 推到 origin 后，`Test` 工作流在 windows/macos × 3.12/3.14 与两个 web job 全绿。这是唯一能证明「没有 peach-data 的干净机器可跑」的证据；本机 master 领先 origin 数百个提交时，旧的绿结果不算。
+3. `workflow_dispatch` 跑一次 `Release`，两个 build job 成功上传 artifact。
+4. `MachineCoordinateTests` 通过，等价于全树 grep 个人坐标为零。
+5. `README.md` 与 `README.en.md` 章节一一对应，「前置条件」「安装」「范围与免责声明」「许可证」四节都在。
+6. `pip show peach` 的 `License-Expression` 为 `AGPL-3.0-or-later`。
+7. 在全新 venv 里重跑一遍上面「已实测的事实」第一条。
+
+### 翻公开的操作顺序
+
+标【授权】的动作必须在同一轮拿到用户明确同意，不得由智能体自行执行。
+
+1. 【授权】`git push origin master`。推送前确认网络出口能稳定连 GitHub：2026-09-04 一次 `git fetch` 遇到 TLS 连接中途断开。
+2. 等 `Test` 工作流绿，红则先修再继续。
+3. 【授权】`workflow_dispatch` 试跑 `Release`；通过后打 annotated tag `v<version>`（与 `peach.__version__` 一致）并推送。
+4. 【授权】GitHub Settings → General → Change visibility → Public。
+5. 【授权】随即开启：Secret scanning 与 Push protection、master 分支保护、Private vulnerability reporting；Discussions 视需要。
+6. 发布后第一周只处理 issue，不改架构边界。
