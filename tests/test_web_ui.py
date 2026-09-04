@@ -5184,9 +5184,9 @@ class WebUiSourceTests(unittest.TestCase):
         带回目录。三类整页视图都会碰上：资料页、索引页（/tags、/performers、
         /creators）和管理页。
 
-        清除侧只覆盖管理页，资料页和索引页各自走 `showHomeSurfaces()`；就算给它们
-        补一行清除也不够——`openEntity` 结尾还会 `buildBars()`，把芯片重新画回来。
-        所以判据落在绘制侧：目录不在屏幕上就不画。
+        绘制侧和清除侧都要有。绘制侧管住「谁都别再画上去」：`openEntity` 结尾还会
+        `buildBars()`，只在入口擦一次的话它转手就把芯片画回来。清除侧管住「当场擦掉」：
+        索引页进去以后一次都不重画芯片，只有绘制侧判据的话，画在那儿的那条会一直留着。
         """
         self.assertPageContains("const catalogOnScreen=()=>$('#index').hidden&&$('#stats').hidden;",
                                 "整页视图铺开的是这两个容器，它们就是「目录被盖住了」的判据")
@@ -5195,6 +5195,14 @@ class WebUiSourceTests(unittest.TestCase):
                       "芯片必须先问过屏幕再画，否则每加一个整页视图就复发一次")
         self.assertLess(combo.index("catalogOnScreen()"), combo.index("$('#combo').innerHTML=\n"),
                         "判据要在拼 HTML 之前，不能画完再擦")
+        # 铺开索引页／资料页与进入管理页是同一件事的两侧，各自的共用函数都要收掉芯片。
+        self.assertPageContains(
+            "$('#stats').hidden=true;$('#index').hidden=false;$('#grid').innerHTML='';"
+            "$('#combo').innerHTML='';",
+            "索引页与资料页的共用铺开函数必须收掉目录的筛选芯片")
+        for name in ("openIndex", "openEntity"):
+            self.assertIn("showIndexLoading(", self._js_function(name),
+                          name + " 自己铺索引页主体，多半又抄漏了一行")
         # 详情页内联在目录里，两个容器都还藏着：芯片在那里继续成立，不能被一起收掉。
         self.assertPageContains("if(push&&!queueContext)route('/item/'+id);")
 
