@@ -34,7 +34,7 @@ Peach 要发布到 GitHub 供所有人维护与使用。使用形态不变：每
 
 4. **发布准备**
    - 清扫文档与技能中的个人信息：IP、主机名、账号名、磁盘序列、备份文件名、个人目录。`tests/test_repo_hygiene.py` 增加对已知个人字面量的拒绝门槛。
-   - 增加 `LICENSE`（待用户选定）、`CONTRIBUTING.md`（指向 AGENTS.md 与测试入口）、`SECURITY.md`（凭据存储与网络暴露说明）。
+   - 增加 `LICENSE`（AGPL-3.0-or-later，2026-09-04 定稿）、`CONTRIBUTING.md`（指向 AGENTS.md 与测试入口）、`SECURITY.md`（凭据存储与网络暴露说明）。
    - README 改为面向陌生用户：是什么、怎么装、怎么跑、怎么贡献；个人运行态从 STATUS 移出仓库。
    - 第三方依赖许可证核对：FFmpeg 构建、Video.js、前端依赖（ADR-0022）。
 

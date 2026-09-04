@@ -1,5 +1,13 @@
 # Peach
 
+Peach is a single-user, local-first personal media system: it indexes media you already own —
+local disks, mounted cloud drives, online subscriptions — and serves search, playback, profile
+pages, playlists and manual review from one FastAPI process backed by a local SQLite ledger.
+It is built for one person self-hosting on their own machines over a LAN, not for teams or public
+deployment. Status: pre-1.0. Windows and macOS are first-class; on Linux only the Python service
+and the CLI are supported, without tray or mount integration. The rest of this document is in
+Chinese — read 「范围与免责声明」 and 「安装」 first if you want to try it.
+
 Peach（蜜桃）是单用户、本地优先的个人媒体系统。它统一索引本地磁盘、CloudDrive 和在线关注来源，提供搜索、播放、资料页、播放列表、复核与追更，并把观看行为和人工决定保存到本地 SQLite ledger。
 
 Peach 适合在 Windows 与 macOS 两台个人设备上运行。当前运行状态与验证结果见 [`docs/STATUS.md`](docs/STATUS.md)，待办见 [`docs/PRODUCT_BACKLOG.md`](docs/PRODUCT_BACKLOG.md)；开发约束从 [`AGENTS.md`](AGENTS.md) 开始读。
@@ -27,6 +35,15 @@ Ledger 是资产、身份、行为和复核决定的真相源。CloudDrive、在
 | 测试 | 只使用临时 SQLite 和临时媒体 |
 
 两台机器各有本地 ledger 工作副本，共享目录只作传输点。服务启动不会自动复制；「同步 Ledger」和「接管 Ledger 写入」是显式操作。详细设计见 [`ADR-0017`](docs/adr/0017-dual-host-local-runtime-and-sync-boundaries.md)。
+
+## 范围与免责声明
+
+- 仓库只有代码、文档和固定的前端依赖。它不包含任何媒体、封面、缩略图或元数据，也不附带任何
+  站点的数据副本；它索引的是运行它的人自己已有的库。
+- 连接器只访问使用者自己有权访问的来源，凭据由使用者自己提供。Peach 不绕过机器人验证、付费墙
+  或任何访问控制：遇到这类拦截时它报告「未取得」并停在那里。
+- 从外部来源取回的标题、图片和说明，内容与版权属于各站点及其创作者。Peach 把它们当候选保存，
+  并保留来源与置信度，供使用者自己核对。
 
 ## 目录
 
@@ -163,3 +180,13 @@ Rule34.xxx 标签身份不区分大小写。跨站来源按规范作者归组，
 - [`docs/HANDOFF.md`](docs/HANDOFF.md)：跨任务长期有效的事实与工作约定。
 - [`docs/REUSE.md`](docs/REUSE.md)：新增或替换实现前的复用清单。
 - [`docs/adr/`](docs/adr/)：架构决定、原因和取舍。
+
+## 许可证
+
+Peach 以 AGPL-3.0-or-later 发布，全文见 [`LICENSE`](LICENSE)。它的实际含义：修改后分发，或修改后作为网络服务
+提供给他人，都必须以同一许可证公开源码。
+
+Copyright (C) 2026 longmeidao
+
+固定在仓库里的第三方前端文件各自保留上游许可证，文件与来源哈希在
+[`web/vendor/`](web/vendor/)。FFmpeg 不随仓库或构建产物分发，由使用者自行安装并遵守其许可证。
