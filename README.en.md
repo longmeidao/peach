@@ -72,6 +72,10 @@ The repository stores no media, databases, credentials, logs, `.venv`, build out
 - **openssl** (optional, HTTPS only): required to generate the local CA. On Windows it usually comes from Git for Windows (choose the option that puts the Unix tools on `PATH`). Without it `peach init` prints that no local CA was generated and completes normally; once installed, `peach init --force` fills it in.
 - Node is not a runtime prerequisite; it only maintains the pinned frontend files (see "Dependency maintenance").
 
+## Downloads
+
+Every `v<version>` tag publishes two archives on GitHub Releases: `Peach-<version>-windows-x64.zip` (a single-file `Peach.exe`) and `Peach-<version>-macos-<arch>.zip` (the menu-bar `Peach.app`). They are only the tray and menu-bar entry points, not a portable build: the service process still runs from the repository's `.venv`, so complete the three steps under "Installation" first, then place the extracted `Peach.exe` somewhere inside the repository (for example `dist\Peach\`); double-clicking the macOS `Peach.app` only kicks the LaunchAgent, which is registered with `./.venv/bin/python scripts/install_macos_agent.py install`. FFmpeg is still installed by you, as listed under Prerequisites. The tray's "Check for updates" only reports the version for these archives; it downloads and installs nothing (ADR-0012).
+
 ## Installation
 
 Three steps, with no directories or configuration files to prepare in advance. Run from the repository root:
