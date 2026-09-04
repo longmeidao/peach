@@ -3911,6 +3911,11 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(
             "menu.hidden=true;menu.style.left='';menu.style.top='';menu.style.maxHeight='';")
 
+    def test_anchored_menu_closes_on_page_scroll_but_not_on_its_own(self):
+        # 菜单装不下时本来就要在内部滚；捕获阶段的 scroll 连它自己的也收得到。
+        self.assertCode(
+            "if(!(event.target instanceof Node&&menu.contains(event.target)))setOpen(false)")
+
     def test_entity_name_picker_keeps_a_touch_target_on_phones(self):
         self.assertPageContains(".npbtn{width:44px;height:44px}")
         self.assertPageContains(".npmenu button{min-height:44px}")
