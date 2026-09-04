@@ -5231,6 +5231,12 @@ class WebUiSourceTests(unittest.TestCase):
                         "    toggleTag(b.dataset.entityTag));")
         self.assertCode("commitContextFilter(filters=>{\n"
                         "          filters.tag=tagPressed(filters.tag,tg.dataset.tag)?'':tg.dataset.tag});")
+        # 卡片上的实体链接必须限定在卡片自己身上。资料页把 `data-entity-kind` 写在
+        # `#index` 上，无界的 closest 会一路找到它：卡片上点标签只会把这一页重开一遍，
+        # 标签分支永远轮不到。
+        self.assertPageContains("if(ent&&el.contains(ent)){e.stopPropagation();"
+                                "openEntity(ent.dataset.entityKind,ent.dataset.entityName);return}")
+        self.assertPageContains("$('#index').dataset.entityKind=kind;$('#index').dataset.entityName=name;")
         self.assertPageContains("$('#combo').querySelectorAll('[data-untag]')"
                                 ".forEach(b=>b.onclick=()=>toggleTag(b.dataset.untag));")
         self.assertCode("$('#clrAll').onclick=()=>commitContextFilter(filters=>{\n"
