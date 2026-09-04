@@ -6,7 +6,24 @@ build-backend = "setuptools.build_meta"
 name = "peach-app"
 dynamic = ["version"]
 description = "Local-first media library, behavior ledger, and discovery application"
+readme = "README.md"
+# SPDX 表达式必须和 `LICENSE` 全文一致，换许可证要先改 ADR-0023 第 4 阶段；
+# `tests/test_repo_hygiene.py` 钉住 LICENSE 那一侧。
+license = "AGPL-3.0-or-later"
 requires-python = ">=3.14"
+# `Private :: Do Not Upload` 不是修饰语：Peach 只自托管、不发 PyPI
+# （`.github/workflows/test.yml`），PyPI 拒收带这枚 classifier 的包，
+# 所以误跑 `twine upload` 会在传上去之前就被挡住。
+classifiers = [
+  "Private :: Do Not Upload",
+  "Environment :: Web Environment",
+  "Operating System :: MacOS",
+  "Operating System :: Microsoft :: Windows",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.14",
+  "Topic :: Database :: Front-Ends",
+  "Topic :: Multimedia :: Video",
+]
 dependencies = [
   "APScheduler==3.11.3",
   "beautifulsoup4==4.15.0",
@@ -23,6 +40,11 @@ dependencies = [
   "uvicorn==0.52.4",
   "zeroconf==0.151.3",
 ]
+
+[project.urls]
+Homepage = "https://github.com/longmeidao/peach-app"
+Repository = "https://github.com/longmeidao/peach-app"
+Issues = "https://github.com/longmeidao/peach-app/issues"
 
 [project.scripts]
 peach = "peach.cli:main"
