@@ -2148,7 +2148,14 @@ function wireMixCards(root){
     wireMixFlip(el,seedId);
   });
 }
-function wireCards(root,onClick,onTag){
+/* 一个标签是否生效、按一下变成什么，全站只有这一份判据。目录、资料页和详情页各自
+   存着自己的筛选，谁在那里手写一次 `split(',')` 或 `=== filters.tag`，谁就会与其余
+   几处漂开：按下态按多选算、点击按单选写，同一枚标签的显示和行为对不上。 */
+const tagList=(value=state.tag)=>String(value||'').split(',').filter(Boolean);
+const tagPressed=(value,tag)=>tagList(value).includes(String(tag));
+const withTagToggled=(value,tag)=>{const cur=tagList(value);const index=cur.indexOf(tag);
+  index>=0?cur.splice(index,1):cur.push(tag);return cur.join(',')};
+function wireCards(root,onClick){
   root.querySelectorAll('[data-id]').forEach(el=>{
     if(el.dataset.wired)return; el.dataset.wired='1';
     const it=CACHE[el.dataset.id];
@@ -2176,9 +2183,12 @@ function wireCards(root,onClick,onTag){
       if(e.target.closest('[data-open]')){e.stopPropagation();openCard(+el.dataset.id,el);return}
       const ent=e.target.closest('[data-entity-kind]');
       if(ent){e.stopPropagation();openEntity(ent.dataset.entityKind,ent.dataset.entityName);return}
+      /* 卡片上的标签是「只看这个标签」，已经在筛它就取消。在哪一屏点就在哪一屏
+         生效：目录上换成这个标签，资料页上是在这个人／厂牌内部换。 */
       const tg=e.target.closest('.tg');
-      if(tg){e.stopPropagation();if(onTag){onTag(tg.dataset.tag);return}
-        state.tag=tg.dataset.tag;buildBars();load(true);
+      if(tg){e.stopPropagation();
+        commitContextFilter(filters=>{
+          filters.tag=tagPressed(filters.tag,tg.dataset.tag)?'':tg.dataset.tag});
         window.scrollTo({top:0,behavior:'smooth'});return}
       if(e.shiftKey||e.ctrlKey||e.metaKey||selectMode){e.preventDefault();toggleSelection(it.id,e.shiftKey);return}
       openCard(+el.dataset.id,el);
@@ -2352,7 +2362,7 @@ async function buildBars(){
   $('#tagbar').innerHTML=viewPillsHtml(filterState)
     +seededSample(topTags,26,`tags:${state.seed||''}`).map(t=>
       `<button class="pill" data-tag="${esc(t.k)}" aria-pressed="${
-        String(filterState.tag||'').split(',').includes(String(t.k))}">${esc(tagLabel(t.k))}</button>`).join('');
+        tagPressed(filterState.tag,t.k)}">${esc(tagLabel(t.k))}</button>`).join('');
   wireViewPills();
   $('#tagbar').querySelectorAll('[data-tag]').forEach(b=>b.onclick=()=>{toggleTag(b.dataset.tag)});
   renderCombo(); wireAllDrag();
@@ -2469,14 +2479,17 @@ function renderCount(){
 }
 
 /* ── 组合筛选：多个标签同时生效 ── */
-const tagList=()=>(state.tag||'').split(',').filter(Boolean);
-function toggleTag(t){
-  if(!t){state.tag='';}
-  else{const cur=tagList();const i=cur.indexOf(t);
-    i>=0?cur.splice(i,1):cur.push(t);state.tag=cur.join(',')}
-  route(homePath());buildBars();load(true);
-}
+/* 标签开关作用在当前语境上：目录上筛目录，资料页上就在这个人／厂牌内部筛。写入一律
+   走 `commitContextFilter`，它是筛选的唯一落点；绕过它直接改 `state`，在资料页上点
+   一个标签就会被扔回目录，而按下态读的是资料页自己的筛选，两边说的不是一回事。 */
+function toggleTag(t){commitContextFilter(filters=>{filters.tag=t?withTagToggled(filters.tag,t):''})}
+/* 芯片是目录列表自己的生效筛选，只在目录铺在屏幕上时才有所指。资料页、索引页和管理页
+   都会铺开 `#index` 或 `#stats` 盖住目录，那时它指的那个列表不在屏幕上，画出来就是一条
+   对本页无效、点下去还会把人带走的筛选条。判据取自屏幕本身，不依赖每个整页入口记得
+   清一次——绘制侧无条件画，清除侧就得在每个新入口补一遍，补漏一个就复发。 */
+const catalogOnScreen=()=>$('#index').hidden&&$('#stats').hidden;
 function renderCombo(){
+  if(!catalogOnScreen()){$('#combo').innerHTML='';return}
   const cur=tagList(); const extra=[];
   if(state.creator)extra.push(['creator',state.creator]);
   if(state.studio)extra.push(['studio',state.studio]);
@@ -2487,9 +2500,10 @@ function renderCombo(){
     +cur.map(t=>`<span class="cb">${esc(tagLabel(t))} <b data-untag="${esc(t)}">✕</b></span>`).join('')
     +`<button class="clr" id="clrAll">全部清除</button>`;
   $('#combo').querySelectorAll('[data-untag]').forEach(b=>b.onclick=()=>toggleTag(b.dataset.untag));
-  $('#combo').querySelectorAll('[data-clear]').forEach(b=>b.onclick=()=>{
-    state[b.dataset.clear]='';buildBars();load(true)});
-  $('#clrAll').onclick=()=>{state.tag='';state.creator='';state.studio='';buildBars();load(true)};
+  $('#combo').querySelectorAll('[data-clear]').forEach(b=>b.onclick=()=>
+    commitContextFilter(filters=>{filters[b.dataset.clear]=''}));
+  $('#clrAll').onclick=()=>commitContextFilter(filters=>{
+    filters.tag='';filters.creator='';filters.studio=''});
 }
 
 /* ── 统计与管理 ── */
@@ -5305,7 +5319,8 @@ function markEntityCollectionBusy(kind,name,filters){
   wireEntityCollectionHead(section,kind,name,filters);
 }
 function renderEntityCollection(kind,name,items,filters,append=false){
-  const entityTag=filters.tag||'';
+  // 资料页的标签同样可以叠加，表头把生效的几个都写出来。
+  const entityTags=tagList(filters.tag).map(tagLabel);
   const section=$('#index').querySelector('.entitysection');if(!section)return;
   if(!append){
     renderedPartGroups.clear();renderedEditionGroups.clear();
@@ -5314,7 +5329,7 @@ function renderEntityCollection(kind,name,items,filters,append=false){
     section.innerHTML=`<div class="entitycollectionhead"><h3></h3>${entityCollectionSortsHtml(filters)}</div>
       <div class="grid"></div><button class="entitymore" type="button">载入更多</button>`;
     section.dataset.total=String(items.total||0);
-    section.querySelector('h3').textContent=`视频 · ${(items.total||0).toLocaleString()}${entityTag?' · '+entityTag:''}`;
+    section.querySelector('h3').textContent=`视频 · ${(items.total||0).toLocaleString()}${entityTags.length?' · '+entityTags.join(' · '):''}`;
     wireEntityCollectionHead(section,kind,name,filters);
   }else{
     entityCollectionPage.items.push(...(items.items||[]));
@@ -5323,8 +5338,7 @@ function renderEntityCollection(kind,name,items,filters,append=false){
   const grid=section.querySelector('.grid');
   grid.insertAdjacentHTML('beforeend',
     collapseEditionGroups(collapseMultipartItems(items.items)).map(it=>cardHtml(it)).join(''));
-  wireCards(grid,undefined,tag=>updateEntityCollection(
-    kind,name,{...filters,tag:tag===entityTag?'':tag},true));
+  wireCards(grid);
   const more=section.querySelector('.entitymore');
   more.hidden=!entityCollectionPage.has_more;
   const requestMore=async()=>{if(more.hidden||more.disabled)return;more.disabled=true;const seq=entityRequestSeq;
@@ -5347,7 +5361,7 @@ async function updateEntityCollection(kind,name,filters,push=true){
   if(seq!==entityRequestSeq)return;
   renderEntityMediaToggle(kind,name,filters);
   $('#index').querySelectorAll('[data-entity-tag]').forEach(b=>
-    b.setAttribute('aria-pressed',String(b.dataset.entityTag===filters.tag)));
+    b.setAttribute('aria-pressed',String(tagPressed(filters.tag,b.dataset.entityTag))));
   renderEntityCollection(kind,name,items,filters)
 }
 /* ── 资料页的照片 ─────────────────────────────────────────────────────────────
@@ -5708,12 +5722,10 @@ async function openPhotoLightbox(index,source=null){
   document.addEventListener('keydown',photoLightKeys,true);
 }
 
-async function openEntity(kind,name,push=true,requestedTag){
+async function openEntity(kind,name,push=true){
   releaseHoverPreviews();
   const filters=push?emptyEntityFilters():parseEntityFilters(location.search);
-  if(requestedTag!==undefined)filters.tag=requestedTag;
   if(kind==='creator')filters.creator='';
-  const entityTag=filters.tag||'';
   const expectedPath=entityPath(kind,name);
   // 深链和前进后退要能直接落到照片视图；点进来的新页面一律从作品开始。
   entityMediaView=push?emptyMediaView():parseMediaView(location.search);
@@ -5779,7 +5791,7 @@ async function openEntity(kind,name,push=true,requestedTag){
       return `<a class="urllink" href="${esc(x.url)}" target="_blank" rel="noreferrer" title="${esc(x.label)}"><span class="entitylinklabel">${esc(linkHost(x.url)||x.label)}</span></a>`;
     return `<a href="${esc(x.url)}" target="_blank" rel="noreferrer" title="${esc(x.label)}"><span class="entitylinkicon">${icon('globe')}<img class="entityfavicon" src="${esc(linkMarkUrl(x))}" alt="" loading="lazy" referrerpolicy="no-referrer" data-drop="self"></span><span class="entitylinklabel">${esc(x.label)}</span></a>`;
   }).join('');
-  const tags=(d.tags||[]).map(x=>`<button class="pill" data-entity-tag="${esc(x.k)}" aria-pressed="${entityTag===x.k}">${esc(tagLabel(x.k))}<small>${x.n.toLocaleString()}</small></button>`).join('');
+  const tags=(d.tags||[]).map(x=>`<button class="pill" data-entity-tag="${esc(x.k)}" aria-pressed="${tagPressed(filters.tag,x.k)}">${esc(tagLabel(x.k))}<small>${x.n.toLocaleString()}</small></button>`).join('');
   const related=(d.related_performers||[]).map(x=>`<button class="relatedperson" data-related-performer="${esc(x.k)}">
       <span class="ring"><span>${esc(x.k.slice(0,1))}</span>${entityFaceImg(
         {id:x.id,hasImage:x.has_image,rep:x.has_avatar?x.rep:null})}</span>
@@ -5797,10 +5809,9 @@ async function openEntity(kind,name,push=true,requestedTag){
     ${related?`<div class="entitymeta"><section aria-label="同台艺人"><div class="relatedpeople">${related}</div></section></div>`:''}
     ${(tags||mediaToggle)?`<section class="entitytagbar" aria-label="媒体与标签"><div class="entitytags">${mediaToggle}${tags}</div></section>`:''}
     <div class="entitysection"></div>`;
-  $('#index').querySelectorAll('[data-entity-tag]').forEach(b=>b.onclick=()=>{
-    const next=b.dataset.entityTag===entityTag?'':b.dataset.entityTag;
-    const nextFilters={...filters,tag:next};barsContext={type:'entity',kind,name,filters:nextFilters};
-    buildBars();updateEntityCollection(kind,name,nextFilters,true)});
+  // 资料页的标签和顶部标签条是同一个开关，读的写的都是这一页的筛选。
+  $('#index').querySelectorAll('[data-entity-tag]').forEach(b=>b.onclick=()=>
+    toggleTag(b.dataset.entityTag));
   $('#index').querySelectorAll('[data-related-performer]').forEach(b=>b.onclick=()=>
     openEntity('performer',b.dataset.relatedPerformer));
   entityPhotos=photos&&!photos.error?photos:null;
