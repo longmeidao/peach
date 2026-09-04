@@ -128,7 +128,7 @@ button[aria-busy="true"],[role="button"][aria-busy="true"]{
 }
 .geist-button.primary{border-color:var(--ink);background:var(--ink);color:var(--ground)}
 .geist-button.primary:hover:not(:disabled){border-color:color-mix(in srgb,var(--ink) 88%,var(--ground));
-  background:color-mix(in srgb,var(--ink) 88%,var(--ground))}
+  background:color-mix(in srgb,var(--ink) 88%,var(--ground));color:var(--ground)}
 .skiplink{position:fixed;z-index:1000;left:12px;top:8px;transform:translateY(-150%);
   padding:9px 13px;border-radius:var(--control-radius);background:var(--ink);color:var(--ground);text-decoration:none;
   transition:transform .12s ease}

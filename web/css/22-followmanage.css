@@ -136,7 +136,7 @@
 .fbtn:hover:not(:disabled){background:var(--hover)}
 .fbtn:disabled{background:var(--surface);border-color:var(--border-15);color:var(--muted);cursor:default}
 .fbtn.primary{background:var(--ink);border-color:var(--ink);color:var(--ground);font-weight:500}
-.fbtn.primary:hover:not(:disabled){background:color-mix(in srgb,var(--ink) 88%,var(--ground));border-color:color-mix(in srgb,var(--ink) 88%,var(--ground))}
+.fbtn.primary:hover:not(:disabled){background:color-mix(in srgb,var(--ink) 88%,var(--ground));border-color:color-mix(in srgb,var(--ink) 88%,var(--ground));color:var(--ground)}
 .fbtn.small{height:26px;padding:0 10px;font-size:var(--fs-sm)}
 .fbtn.fquiet{border-color:transparent;color:var(--muted)}
 .fbtn.fquiet:hover{background:var(--drop);border-color:var(--drop);color:#fff}
@@ -291,7 +291,7 @@ details.fcred{display:block}
   font-family:inherit;cursor:pointer;
   transition:background-color .15s ease-in-out,border-color .15s ease-in-out,color .15s ease-in-out}
 .fcredactions button:hover:not(:disabled){background:color-mix(in srgb,var(--ink) 88%,var(--ground));
-  border-color:color-mix(in srgb,var(--ink) 88%,var(--ground))}
+  border-color:color-mix(in srgb,var(--ink) 88%,var(--ground));color:var(--ground)}
 .fcredactions button:disabled{background:var(--surface);border-color:var(--border-15);color:var(--muted);cursor:default}
 .fcredactions button.fquiet{background:transparent;border-color:var(--border-15);
   color:var(--muted)}
@@ -363,7 +363,11 @@ details.fcred{display:block}
 .fpickactions button{border:1px solid var(--border-15);border-radius:var(--control-radius);background:transparent;color:var(--ink-2);padding:6px 14px;font-size:var(--fs-xs);cursor:pointer}
 .fpickactions button:hover:not(:disabled){background:var(--hover);color:var(--ink)}
 .fpickactions [data-pick-add]{background:var(--ink);border-color:var(--ink);color:var(--ground);font-weight:600}
-.fpickactions [data-pick-add]:hover:not(:disabled){background:color-mix(in srgb,var(--ink) 88%,var(--ground));border-color:color-mix(in srgb,var(--ink) 88%,var(--ground))}
+/* 主动作的悬停必须自己写文字色：同一组里更宽的 `.fpickactions button:hover` 把
+   文字提到 --ink，而它的 color 在这条只声明 background 的规则里没有对手，浅色
+   实底上就落成白字白底。Geist Button 的 primary 悬停只把 #EDEDED 掉一档到 #ccc，
+   文字色不动。 */
+.fpickactions [data-pick-add]:hover:not(:disabled){background:color-mix(in srgb,var(--ink) 88%,var(--ground));border-color:color-mix(in srgb,var(--ink) 88%,var(--ground));color:var(--ground)}
 .fpickactions button:disabled{background:var(--surface);border-color:var(--border-15);color:var(--muted);cursor:default}
 .fpickactions [data-pick-state]{display:flex;align-items:center;min-width:0;overflow:hidden;
   white-space:nowrap;text-overflow:ellipsis;font-size:var(--fs-xs);color:var(--muted)}
