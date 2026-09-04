@@ -73,31 +73,23 @@
 .fdescpop code{font-family:"Cascadia Mono",Consolas,ui-monospace,"Microsoft YaHei UI","PingFang SC",monospace}
 .fnote{margin:12px 0 0;font-size:var(--fs-sm);line-height:1.7;color:var(--muted)}
 .fnote:empty{display:none}
-.fnote.warn{color:var(--drop)}
 .fnote b{color:var(--ink-2);font-weight:600}
 .fnote code{font-size:var(--fs-xs)}
 [data-follow-add-state]{color:var(--ink-2)}
 
-/* Geist Note：只装紧邻字段、卡片或分区的持久上下文。页面级问题继续用
-   .geist-banner，瞬时回执继续用 toast，销毁确认继续用 dialog/confirm。 */
+/* Geist Note：字段、卡片、分区旁的持久上下文，以及需要用户处理的失败，全部走这里。
+   瞬时回执用 toast，销毁确认用 dialog/confirm。整页范围的失败也是这个盒子，只是多
+   一个关闭键（见下面的 .fwarn／.fcheckreport），不另立一套横幅。 */
 .geist-note{display:grid;grid-template-columns:16px minmax(0,1fr);align-items:start;gap:9px;margin:10px 0;padding:11px 12px;border:1px solid var(--line-soft);border-radius:var(--surface-radius);background:var(--overlay-5);color:var(--ink-2);font-size:var(--fs-sm);line-height:1.55}.geist-note>svg{width:16px;height:16px;margin-top:2px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}.geist-note>p{margin:0}.geist-note>p b{margin-right:7px;color:var(--ink)}.geist-note-secondary{color:var(--muted)}.geist-note-warning{border-color:color-mix(in srgb,var(--meter) 32%,transparent);background:color-mix(in srgb,var(--meter) 7%,transparent)}.geist-note-error{border-color:color-mix(in srgb,var(--drop) 30%,transparent);background:color-mix(in srgb,var(--drop) 7%,transparent)}.geist-note-error>svg{color:var(--drop)}.geist-note-success{border-color:color-mix(in srgb,var(--success) 30%,transparent);background:color-mix(in srgb,var(--success) 7%,transparent)}.geist-note-success>svg{color:var(--success)}
 
 /* 检查结果的页内持久行（.fwarn 是上次检查的存量失败，.fcheckreport 是这次
-   检查的失败明细）。Geist 的 toast 处方：失败不能只发 toast——那是转身就丢的
-   通知；原因和恢复入口必须留在页面上。红色发丝边让「没有更新」和「检查失败」
-   不用读文字就能分辨。成功的摘要不再落在这里，整条交给 toast。 */
-.fcheckreport,.fwarn{display:flex;align-items:flex-start;gap:8px;margin:10px 0 14px;
-  padding:10px 12px;border-radius:var(--control-radius);
-  background:color-mix(in srgb,var(--drop) 7%,transparent);
-  border:1px solid color-mix(in srgb,var(--drop) 30%,transparent);
-  font-size:var(--fs-sm);line-height:1.7;color:var(--ink-2)}
-.fcheckreport>svg,.fwarn>svg{width:14px;height:14px;flex:none;margin-top:4px;
-  stroke:var(--drop);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-.fcheckreport>div{flex:1;min-width:0}
-.fcheckreport.neutral{background:var(--overlay-5);border-color:var(--line-soft);color:var(--muted)}
-.fcheckreport.neutral>svg{stroke:var(--muted)}
+   检查的失败明细）。失败不能只发 toast——那是转身就丢的通知；原因和恢复入口
+   必须留在页面上，所以它们是 Geist Note 的可关闭变体：盒子、发丝边、图标尺寸
+   和 error／secondary 两套配色全部来自 `.geist-note`，这里只补关闭键那一列。
+   自带一份边框和内距的话，同一条失败在关注页和管理页会长成两个样子。 */
+.fcheckreport,.fwarn{grid-template-columns:16px minmax(0,1fr) 24px;margin:10px 0 14px}
+.fcheckreport>div,.fwarn>span{min-width:0}
 .fcheckreport p,.fwarn p{margin:0}
-.fwarn>span{flex:1;min-width:0}
 .fcheckreport b{color:var(--ink);font-variant-numeric:tabular-nums}
 .fcheckfail{color:var(--drop)}
 .fchecknote{color:var(--muted);font-size:var(--fs-xs)}
@@ -107,7 +99,7 @@
 .sbadge i{width:6px;height:6px;border-radius:50%;background:var(--muted);flex:none}
 .sbadge.ok i{background:var(--success)}
 .sbadge.error i{background:var(--drop)}
-.fwarn .wclose,.fcheckreport .wclose{flex:none;width:24px;height:24px;margin-left:auto;padding:0;border:0;
+.fwarn .wclose,.fcheckreport .wclose{width:24px;height:24px;padding:0;border:0;
   border-radius:var(--control-radius);background:transparent;color:var(--muted);
   display:grid;place-items:center;cursor:pointer}
 .fwarn .wclose:hover,.fcheckreport .wclose:hover{background:var(--hover);color:var(--ink)}
