@@ -5239,7 +5239,7 @@ async function openIndex(kind,q,push=true,refine=false){
       <h2 class="disp indexheading">${kind==='tags'?icon('tags'):''}${title}</h2>
       <span class="mono" id="indexCount">${countText}</span>
       ${kind==='tags'?`<div class="tagmodes"><button data-tag-scope="local" aria-pressed="${!onlineTags}">${icon('database')}本地</button><button data-tag-scope="online" aria-pressed="${onlineTags}">${icon('globe')}在线</button></div>
-      <div class="tagmodes"><button data-tag-view="cloud" aria-pressed="${tagIndexMode==='cloud'}">${icon('tags')}标签云</button><button data-tag-view="alphabet" aria-pressed="${tagIndexMode==='alphabet'}">${icon('list-filter')}字母表</button></div>`:''}
+      <div class="tagmodes"><button data-tag-view="cloud" aria-pressed="${tagIndexMode==='cloud'}">${icon('tags')}标签云</button><button data-tag-view="alphabet" aria-pressed="${tagIndexMode==='alphabet'}">${icon('a-large-small')}字母表</button></div>`:''}
       ${people?peopleLayoutButtons():''}
       ${searchInputHtml({id:'iq',label:'过滤'+title,value:q||''})}
     </div><div id="indexFilters">${filters}</div><div id="indexBody">${body}</div><button class="indexmore" id="indexMore" type="button" ${d.has_more?'':'hidden'}>载入更多</button>`;

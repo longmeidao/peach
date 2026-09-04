@@ -5064,6 +5064,45 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("indexheading")
         self.assertPageContains("${icon('database')}本地")
 
+    def test_an_alphabet_entry_stays_on_one_line(self):
+        """一枚标签占一行，长名字截断。
+
+        `text-overflow:ellipsis` 少了 `white-space:nowrap` 就永远不触发：实测在线
+        词表里 clothed_female_nude_male 一类名字改成折行，同一行其它标签被拉高，
+        两列的行高也对不齐。
+        """
+        self.assertPageContains(
+            ".alphatag span:first-of-type{overflow:hidden;text-overflow:ellipsis;"
+            "white-space:nowrap;flex:1}")
+
+    def test_the_index_header_moves_the_switches_to_their_own_row_when_narrow(self):
+        """表头一行放不下五样东西，挤在一行时每样都被压成竖排两行。
+
+        实测 459px 视口：标题「标签」两字上下叠、计数叠成两行、四个开关按钮各自
+        叠成两行、过滤框被压成 0 宽。760px 以下改成标题与过滤框一行、开关另起一行。
+        """
+        self.assertPageContains("@media (max-width:760px){\n  .index .ihead{flex-wrap:wrap}")
+        self.assertPageContains("  .indexheading,#indexCount,.tagmodes button{white-space:nowrap}")
+        # 换行位靠一个零高的伪元素占满整行，开关的 order 排在它之后。
+        self.assertPageContains('  .index .ihead::after{content:"";order:2;flex-basis:100%;height:0}')
+        self.assertPageContains("  .index .ihead .geist-search{order:1}")
+        self.assertPageContains(
+            "  .index .ihead .tagmodes,.index .ihead .iconswitch{order:3;flex:none}")
+
+    def test_the_alphabet_switch_is_labelled_with_the_aa_glyph(self):
+        """字母表按钮的图标要说「按字母排」，不是三条粗细不同的横线。
+
+        `list-filter` 是筛选，和它旁边的「标签云」讲的不是同一件事；Aa 取 vendored
+        lucide-static 1.37.0 的 a-large-small，不另画。
+        """
+        self.assertPageContains("${icon('a-large-small')}字母表")
+        self.assertPageContains(
+            '<symbol id="i-a-large-small" viewBox="0 0 24 24">'
+            '<path d="m15 16 2.536-7.328a1.02 1.02 1 0 1 1.928 0L22 16" />'
+            '<path d="M15.697 14h5.606" />'
+            '<path d="m2 16 4.039-9.69a.5.5 0 0 1 .923 0L11 16" />'
+            '<path d="M3.304 13h6.392" /></symbol>')
+
     def test_an_online_tag_opens_the_follow_page_not_a_catalog_filter(self):
         """在线标签标注的是还没入库的在线更新，拿去筛目录必然一条不中。"""
         self.assertPageContains("if(onlineTags){")
