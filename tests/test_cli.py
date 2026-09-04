@@ -24,6 +24,7 @@ ROOT = Path(__file__).resolve().parents[1]
 MIGRATIONS = ROOT / "migrations"
 
 HAS_HTTP_DEPS = all(importlib.util.find_spec(name) for name in ("fastapi", "httpx"))
+NATIVE_WINDOWS = os.name == "nt"
 
 
 def load_script(name: str):
@@ -223,7 +224,9 @@ class InitCommandTests(unittest.TestCase):
 class InteractiveInitTests(unittest.TestCase):
     """`peach init` 不带参数、stdin 是终端时的问答流。
 
-    答案脚本化、平台注入：Windows 形态与 POSIX 形态各走一条，不看测试机自己是什么。
+    答案一律脚本化。两种形态各有一条专属用例，其余与形态无关的用例按 `NATIVE_WINDOWS`
+    走本机形态：媒体目录题只收真实存在的目录，而目录是不是盘符路径由测试机决定，
+    在 POSIX 上硬填 `windows=True` 会被媒体目录校验直接拒掉。
     """
 
     def setUp(self):
@@ -268,6 +271,7 @@ class InteractiveInitTests(unittest.TestCase):
     def _loaded(self):
         return settings_file.load_config(environ={"PEACH_DATA_ROOT": str(self.data_root)})
 
+    @unittest.skipUnless(NATIVE_WINDOWS, "声明根要是真实存在的盘符目录，只有 Windows 造得出来")
     def test_windows_flow_declares_the_directory_and_scans_it(self):
         code, output, prompts = self._run(["", str(self.media), "", "", "", ""], windows=True)
         self.assertEqual(code, 0)
@@ -311,7 +315,7 @@ class InteractiveInitTests(unittest.TestCase):
     def test_an_invalid_media_directory_is_asked_again(self):
         missing = self.root / "nope"
         code, output, prompts = self._run(
-            ["", str(missing), str(self.media), "", "", "", "n"], windows=True)
+            ["", str(missing), str(self.media), "", "", "", "n"], windows=NATIVE_WINDOWS)
         self.assertEqual(code, 0)
         self.assertEqual(prompts.count("本地媒体目录（来源 local，必须已存在）"), 2)
         self.assertIn("目录不存在", output)
@@ -319,13 +323,13 @@ class InteractiveInitTests(unittest.TestCase):
 
     def test_three_bad_answers_abort_before_anything_is_written(self):
         with self.assertRaises(SystemExit) as caught:
-            self._run(["", "/nope1", "/nope2", "/nope3"], windows=True)
+            self._run(["", "/nope1", "/nope2", "/nope3"], windows=NATIVE_WINDOWS)
         self.assertIn("3 次", str(caught.exception))
         self.assertIn("没有写任何文件", str(caught.exception))
         self.assertFalse(self.data_root.exists())
 
     def test_the_scan_can_be_declined(self):
-        code, output, _ = self._run(["", str(self.media), "", "", "", "n"], windows=True)
+        code, output, _ = self._run(["", str(self.media), "", "", "", "n"], windows=NATIVE_WINDOWS)
         self.assertEqual(code, 0)
         self.assertEqual(self._ledger_paths(), [])
         self.assertNotIn("扫描结果", output)
@@ -334,7 +338,7 @@ class InteractiveInitTests(unittest.TestCase):
     def test_an_existing_settings_file_is_not_overwritten(self):
         self.data_root.mkdir()
         (self.data_root / "config.toml").write_text("[server]\nport = 9100\n", encoding="utf-8")
-        code, output, _ = self._run(["", str(self.media), "", "", ""], windows=True)
+        code, output, _ = self._run(["", str(self.media), "", "", ""], windows=NATIVE_WINDOWS)
         self.assertEqual(code, 3)
         self.assertIn("已存在", output)
         self.assertEqual((self.data_root / "config.toml").read_text(encoding="utf-8"),
@@ -352,8 +356,13 @@ class InteractiveInitTests(unittest.TestCase):
         from peach.config import PeachSettings
         from peach.platform import translate_roots
 
-        self._run(["", str(self.media), "", "", "", ""], windows=True)
+        self._run(["", str(self.media), "", "", "", ""], windows=NATIVE_WINDOWS)
         loaded = self._loaded()
+        # POSIX 形态的声明根是 `R:\media`，翻回本机目录要读这份设置的 [media.mounts]；
+        # 模块级 `active()` 指的是这台机器自己的设置，临时目录不在里面。
+        active = mock.patch.object(settings_file, "active", lambda: loaded)
+        active.start()
+        self.addCleanup(active.stop)
         settings = PeachSettings(
             db_path=loaded.directory("database") / "ledger.db", configured=True, token="secret",
             allowed_media_roots=translate_roots(tuple(loaded.locations.values())),
@@ -426,7 +435,11 @@ class InitDispatchTests(unittest.TestCase):
 
 
 class ScanCommandTests(unittest.TestCase):
-    """`peach scan <来源ID> [根目录]`：根目录省略时取设置文件里的声明根。"""
+    """`peach scan <来源ID> [根目录]`：根目录省略时取设置文件里的声明根。
+
+    `cli._scan` 不带 `windows=`，走的就是测试机的形态，所以设置也按本机形态搭：Windows 上
+    声明根是真实目录、挂载表为空，POSIX 上声明根是 `R:\\media`、挂载表指向真实目录。
+    """
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -439,9 +452,12 @@ class ScanCommandTests(unittest.TestCase):
         (self.media / "sub" / "a.mp4").write_bytes(b"0")
         (self.media / "b.jpg").write_bytes(b"1")
         config = settings_file.load_config(environ={}, strict=False)
-        fixed = replace(config, locations={"local": str(self.media)})
+        declared = str(self.media) if NATIVE_WINDOWS else r"R:\media"
+        mounts = {} if NATIVE_WINDOWS else {"local": Path(self.media)}
+        fixed = replace(config, locations={"local": declared},
+                        mounts={key: str(value) for key, value in mounts.items()})
         for target in (mock.patch.object(settings_file, "active", lambda: fixed),
-                       mock.patch.object(cli, "location_mounts", lambda: {}),
+                       mock.patch.object(cli, "location_mounts", lambda: mounts),
                        mock.patch.object(cli, "SETTINGS_ERROR", None)):
             target.start()
             self.addCleanup(target.stop)
