@@ -6,7 +6,9 @@ from pathlib import Path
 
 from peach.entities import split_composite_person_name
 from peach.migrations import upgrade
-from scripts.split_composite_aliases import apply_rows, collect
+from scripts.split_composite_aliases import (
+    CLEANUP_SOURCE, apply_review, apply_rows, collect,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -111,6 +113,110 @@ class CompositeAliasSplitTests(unittest.TestCase):
         self.assertEqual(
             self.con.execute("SELECT canonical_name FROM entity WHERE id=13")
             .fetchone()[0], "アスナ(SAO)")
+
+
+class ReviewedNameCleanupTests(unittest.TestCase):
+    """形状分不开、只有人能判的那些：复核 CSV 填 `verdict` 与 `target` 再执行。"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.db = Path(self.tmp.name).resolve() / "ledger.db"
+        upgrade(self.db, ROOT / "migrations")
+        self.con = sqlite3.connect(self.db)
+        self.addCleanup(self.con.close)
+        self.con.executemany(
+            "INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at)"
+            " VALUES(?,?,?,?,'t','t')",
+            [(20, "creator", "幼月月@一日目(土)東オ54a", "幼月月@一日目(土)東オ54a"),
+             (21, "studio", "プレステージプレミアム", "プレステージプレミアム"),
+             (22, "performer", "白石亚子", "白石亚子"),
+             (23, "creator", "みどりふう", "みどりふう")])
+        self.con.execute(
+            "INSERT INTO entity_alias(entity_id,alias,normalized_alias,source,confidence)"
+            " VALUES(21,'プレステージプレミアム(PRESTIGEPREMIUM)',"
+            "'プレステージプレミアム(prestigepremium)','javdb:studio',1.0)")
+        self.con.executemany(
+            "INSERT INTO asset(id,location,path,name,medium,creator)"
+            " VALUES(?,'online',?,?,'image',?)",
+            [(1, "pixiv/1", "a", "幼月月@一日目(土)東オ54a"),
+             (2, "pixiv/2", "b", "幼月月@一日目(土)東オ54a"),
+             (3, "pixiv/3", "c", "みどりふう")])
+        self.con.execute(
+            "INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence)"
+            " VALUES(1,20,'creator','pixiv',1.0)")
+        self.con.commit()
+
+    def _row(self, verdict, entity_id, value, target, kind="creator", source=""):
+        return {"verdict": verdict, "kind": kind, "entity_id": str(entity_id),
+                "value": value, "target": target, "source": source}
+
+    def test_stripping_a_booth_suffix_renames_the_entity_and_its_assets(self):
+        done = apply_review(self.con, [
+            self._row("strip", 20, "幼月月@一日目(土)東オ54a", "幼月月")])
+        self.assertEqual((done["strip"], done["flat"]), (1, 2))
+        self.assertEqual(
+            self.con.execute("SELECT canonical_name,normalized_name FROM entity"
+                             " WHERE id=20").fetchone(), ("幼月月", "幼月月"))
+        # 扁平投影跟着改，否则卡片还写着旧名、按旧名照样搜得到。
+        self.assertEqual(
+            sorted(name for (name,) in self.con.execute(
+                "SELECT creator FROM asset WHERE creator IS NOT NULL")),
+            ["みどりふう", "幼月月", "幼月月"])
+
+    def test_the_stripped_name_stays_as_an_alias_under_the_cleanup_source(self):
+        apply_review(self.con, [self._row("strip", 20, "幼月月@一日目(土)東オ54a", "幼月月")])
+        self.assertEqual(
+            self.con.execute("SELECT alias,source FROM entity_alias WHERE entity_id=20")
+            .fetchall(), [("幼月月@一日目(土)東オ54a", CLEANUP_SOURCE)])
+
+    def test_splitting_a_studio_alias_keeps_the_source_that_gave_it(self):
+        done = apply_review(self.con, [
+            self._row("split", 21, "プレステージプレミアム(PRESTIGEPREMIUM)",
+                      "プレステージプレミアム | PRESTIGEPREMIUM",
+                      kind="studio", source="javdb:studio")])
+        self.assertEqual(done["split"], 1)
+        self.assertEqual(
+            sorted(alias for (alias,) in self.con.execute(
+                "SELECT alias FROM entity_alias WHERE entity_id=21")),
+            ["PRESTIGEPREMIUM", "プレステージプレミアム"])
+
+    def test_a_target_taken_by_another_entity_is_refused_not_written(self):
+        # 撞上另一条实体的规范名意味着两条可能该合并，那是合并要回答的问题。
+        done = apply_review(self.con, [
+            self._row("strip", 20, "幼月月@一日目(土)東オ54a", "みどりふう")])
+        self.assertEqual(done["strip"], 0)
+        self.assertEqual(len(done["blocked"]), 1)
+        self.assertIn("撞 entity 23", done["blocked"][0])
+        self.assertEqual(
+            self.con.execute("SELECT canonical_name FROM entity WHERE id=20").fetchone()[0],
+            "幼月月@一日目(土)東オ54a")
+
+    def test_rows_left_at_review_do_nothing(self):
+        done = apply_review(self.con, [
+            self._row("review", 20, "幼月月@一日目(土)東オ54a", "幼月月"),
+            self._row("strip", 20, "幼月月@一日目(土)東オ54a", "")])
+        self.assertEqual((done["strip"], done["split"], done["flat"]), (0, 0, 0))
+        self.assertEqual(
+            self.con.execute("SELECT canonical_name FROM entity WHERE id=20").fetchone()[0],
+            "幼月月@一日目(土)東オ54a")
+
+    def test_a_performer_strip_rewrites_the_flat_tag(self):
+        self.con.execute(
+            "INSERT INTO asset(id,location,path,name,medium)"
+            " VALUES(4,'online','pixiv/4','d','image')")
+        self.con.execute(
+            "INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence)"
+            " VALUES(4,22,'performer','javdb',1.0)")
+        self.con.execute(
+            "INSERT INTO asset_tag(asset_id,tag,confidence,source)"
+            " VALUES(4,'演员:白石亚子',1.0,'javdb')")
+        done = apply_review(self.con, [
+            self._row("strip", 22, "白石亚子", "白石 あこ", kind="performer")])
+        self.assertEqual((done["strip"], done["flat"]), (1, 1))
+        self.assertEqual(
+            [tag for (tag,) in self.con.execute(
+                "SELECT tag FROM asset_tag WHERE asset_id=4")], ["演员:白石 あこ"])
 
 
 if __name__ == "__main__":
