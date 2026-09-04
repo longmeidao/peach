@@ -249,8 +249,7 @@
 .faliassuggest i{font-style:normal;color:var(--muted)}
 .faliassuggest small{color:var(--muted)}
 .faliasform{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;gap:7px;margin-top:10px}
-.faliasform input{min-width:0;height:34px;padding:0 10px;border:1px solid var(--border-15);
-  border-radius:var(--control-radius);background:var(--ground);color:var(--ink);font:inherit}
+.faliasform .fbtn{height:38px;min-height:38px}
 .faliaschip{display:inline-flex;align-items:center;gap:3px;color:var(--ink-2)}
 .faliaschip button{width:24px;height:24px;padding:0;border:0;background:transparent;color:var(--muted);
   display:grid;place-items:center;cursor:pointer}

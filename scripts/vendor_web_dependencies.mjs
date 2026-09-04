@@ -12,6 +12,9 @@ const expectedFiles = new Map();
 
 const read = (...parts) => readFileSync(join(root, ...parts));
 const text = (...parts) => read(...parts).toString("utf8");
+// .gitattributes 让整仓签出 LF，而 npm 包里的许可证原文有 CRLF 的。照抄字节的话，
+// 提交后签出来的那份和这里算出来的期望值差在换行上，--check 每次都报未同步。
+const lfText = (...parts) => text(...parts).replace(/\r\n/g, "\n");
 const sha256 = value => createHash("sha256").update(value).digest("hex").toUpperCase();
 const integrity = name => lock.packages[`node_modules/${name}`]?.integrity || "未取得";
 const stage = (path, value) => expectedFiles.set(path, Buffer.isBuffer(value) ? value : Buffer.from(value));
@@ -25,7 +28,7 @@ const copyPackageFiles = ({ packageName, vendorName, files, note }) => {
     stage(target, payload);
     hashes.push(`- \`${destination}\` SHA-256：\`${sha256(payload)}\``);
   }
-  const license = read("node_modules", packageName, "LICENSE");
+  const license = lfText("node_modules", packageName, "LICENSE");
   stage(`web/vendor/${vendorName}/${version}/LICENSE`, license);
   stage(`web/vendor/${vendorName}/${version}/ORIGIN.md`,
     `# ${packageName} ${version}\n\n` +
@@ -93,19 +96,26 @@ for (const [symbol, icon] of lucideIcons) {
 }
 
 // Phosphor 是填充图标，Peach 全局是描边：填充声明写在 symbol 上，路径不改一个字，
-// 换版本时不必再核每条 path 有没有被补过 fill。viewBox 也和 Lucide 那套不同。
-const phosphorIcons = new Map([["text-aa", "text-aa"], ["playlist", "playlist"]]);
-const PHOSPHOR_ATTRS = 'viewBox="0 0 256 256" fill="currentColor" stroke="none"';
-for (const [symbol, icon] of phosphorIcons) {
+// 换版本时不必再核每条 path 有没有被补过 fill。
+// viewBox 也不原样照抄：每套图标在自己画格里留的白不一样，同样 15px 画出来一大一小。
+// 这里的框是量出来的——把内容外框补到 Lucide 的 20/24 活区，字形按高、图形按长边。
+const phosphorIcons = new Map([
+  ["text-aa", { icon: "text-aa", viewBox: "-7.3 32.8 262.5 182.9" }],
+  ["playlist", { icon: "playlist", viewBox: "10.4 10.5 259.2 259.2" }],
+]);
+for (const [symbol, { icon, viewBox }] of phosphorIcons) {
   const inner = svgInner(text("node_modules", "@phosphor-icons/core", "assets", "regular", `${icon}.svg`));
-  const pattern = new RegExp(`<symbol id="i-${symbol}" ${PHOSPHOR_ATTRS}>[\\s\\S]*?<\\/symbol>`);
+  const attrs = `viewBox="${viewBox}" fill="currentColor" stroke="none"`;
+  const pattern = new RegExp(`<symbol id="i-${symbol}" ${attrs.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}>[\\s\\S]*?<\\/symbol>`);
   if (!pattern.test(index)) throw new Error(`缺少 Phosphor symbol：${symbol}`);
-  index = index.replace(pattern, `<symbol id="i-${symbol}" ${PHOSPHOR_ATTRS}>${inner}</symbol>`);
+  index = index.replace(pattern, `<symbol id="i-${symbol}" ${attrs}>${inner}</symbol>`);
 }
 
 const healthInner = svgInner(text("node_modules", "healthicons", "public", "icons", "svg", "outline-24px", "contraceptives", "sperm.svg"));
-index = index.replace(/<symbol id="i-sperm" viewBox="0 0 24 24">[\s\S]*?<\/symbol>/,
-  `<symbol id="i-sperm" viewBox="0 0 24 24">${healthInner}</symbol>`);
+const SPERM_VIEWBOX = "1.5 1.2 21.2 21.2";
+index = index.replace(
+  new RegExp(`<symbol id="i-sperm" viewBox="${SPERM_VIEWBOX}">[\\s\\S]*?<\\/symbol>`),
+  `<symbol id="i-sperm" viewBox="${SPERM_VIEWBOX}">${healthInner}</symbol>`);
 index = index.replace(/Lucide static [0-9.]+, ISC/, `Lucide static ${versions["lucide-static"]}, ISC`);
 index = index.replace(/Health Icons sperm outline-24px, CC0\/public domain/,
   `Health Icons ${versions.healthicons} sperm outline-24px, CC0/public domain`);
@@ -128,7 +138,7 @@ reuse = reuse.replace(/Video\.js [0-9.]+/, `Video.js ${versions["video.js"]}`);
 reuse = reuse.replace(/Swiper [0-9.]+/, `Swiper ${versions.swiper}`);
 stage("docs/REUSE.md", reuse);
 
-stage("web/vendor/lucide-LICENSE.txt", read("node_modules", "lucide-static", "LICENSE"));
+stage("web/vendor/lucide-LICENSE.txt", lfText("node_modules", "lucide-static", "LICENSE"));
 stage("web/vendor/lucide-ORIGIN.md",
   `# Lucide static ${versions["lucide-static"]}\n\n` +
   `- npm 包：\`lucide-static@${versions["lucide-static"]}\`\n` +
@@ -136,7 +146,7 @@ stage("web/vendor/lucide-ORIGIN.md",
   `- 许可证：ISC；原文见 \`lucide-LICENSE.txt\`\n` +
   `- 消费者：\`web/index.html\` 内联的 ${lucideIcons.size} 个 symbol\n\n` +
   "`i-jav`、`i-alert` 是 Peach 自绘图标；RSS 与拖动点保留填充修正，避免小圆点在全局描边样式下消失。\n");
-stage("web/vendor/phosphor-LICENSE.txt", read("node_modules", "@phosphor-icons/core", "LICENSE"));
+stage("web/vendor/phosphor-LICENSE.txt", lfText("node_modules", "@phosphor-icons/core", "LICENSE"));
 stage("web/vendor/phosphor-ORIGIN.md",
   `# Phosphor icons ${versions["@phosphor-icons/core"]}\n\n` +
   `- npm 包：\`@phosphor-icons/core@${versions["@phosphor-icons/core"]}\`\n` +
@@ -145,7 +155,7 @@ stage("web/vendor/phosphor-ORIGIN.md",
   `- 消费者：\`web/index.html\` 内联的 ${phosphorIcons.size} 个 regular 权重 symbol\n\n` +
   "只在描边画法说不清那件事时才用这一套：`text-aa` 是字母表，`playlist` 是播放列表。\n" +
   "填充声明写在 symbol 上，压住全局的 `stroke:currentColor;fill:none`。\n");
-stage("web/vendor/healthicons-LICENSE.txt", read("node_modules", "healthicons", "LICENSE"));
+stage("web/vendor/healthicons-LICENSE.txt", lfText("node_modules", "healthicons", "LICENSE"));
 stage("web/vendor/healthicons-ORIGIN.md",
   `# Health Icons ${versions.healthicons}\n\n` +
   `- npm 包：\`healthicons@${versions.healthicons}\`\n` +

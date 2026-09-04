@@ -113,6 +113,18 @@ button,a,input,textarea,select,summary{touch-action:manipulation}
   border-color:color-mix(in srgb,var(--tungsten) 72%,transparent);
   box-shadow:0 0 0 3px color-mix(in srgb,var(--tungsten) 26%,transparent)}
 .geist-search:focus-within .geist-search-prefix{color:var(--ink)}
+/* 纯文本输入框：全站唯一一份。此前每处自己拼内边距，控件高度散在 34/40/43 三档，
+   而 <=760px 那条把输入框字号顶到 16 像素的防放大规则只抬没写死高度的那几个，
+   同一行里的按钮不动，两个控件就差一截。
+   高度取 38px，与 .geist-search 同档，旁边的按钮照抄这个数。 */
+.geist-input{box-sizing:border-box;width:100%;min-width:0;height:38px;
+  border:1px solid var(--border-15);border-radius:var(--control-radius);
+  background:var(--ground);color:var(--ink);padding:0 12px;
+  font:inherit;font-size:var(--fs-md);line-height:20px;transition:border-color .12s ease}
+.geist-input::placeholder{color:var(--muted)}
+.geist-input:focus{outline:0;
+  border-color:color-mix(in srgb,var(--tungsten) 72%,transparent);
+  box-shadow:0 0 0 3px color-mix(in srgb,var(--tungsten) 26%,transparent)}
 .geist-button{box-sizing:border-box;height:32px;padding:0 6px;border:1px solid var(--border-15);
   border-radius:var(--control-radius);background:transparent;color:var(--ink);display:inline-flex;
   align-items:center;justify-content:center;gap:6px;font:inherit;font-size:var(--fs-md);font-weight:500;
