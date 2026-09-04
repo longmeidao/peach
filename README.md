@@ -4,13 +4,12 @@ Peach is a single-user, local-first personal media system: it indexes media you 
 local disks, mounted cloud drives, online subscriptions — and serves search, playback, profile
 pages, playlists and manual review from one FastAPI process backed by a local SQLite ledger.
 It is built for one person self-hosting on their own machines over a LAN, not for teams or public
-deployment. Status: pre-1.0. Windows and macOS are first-class; on Linux only the Python service
-and the CLI are supported, without tray or mount integration. A full English version is in
-[`README.en.md`](README.en.md).
+deployment. Status: pre-1.0. Windows and macOS are first-class; Linux is not supported and has not
+been tested. A full English version is in [`README.en.md`](README.en.md).
 
 Peach（蜜桃）是单用户、本地优先的个人媒体系统。它统一索引本地磁盘、CloudDrive 和在线关注来源，提供搜索、播放、资料页、播放列表、复核与追更，并把观看行为和人工决定保存到本地 SQLite ledger。
 
-Peach 在一台机器上就能完整运行。Windows 与 macOS 是一等平台；Linux 只支持服务与 CLI，没有托盘和挂载集成。多台机器之间的单写者复制是可选项，默认关闭，目前只在「Windows 写者 + macOS 读者」一种形状上验证过。当前运行状态与验证结果见 [`docs/STATUS.md`](docs/STATUS.md)，待办见 [`docs/PRODUCT_BACKLOG.md`](docs/PRODUCT_BACKLOG.md)；开发约束从 [`AGENTS.md`](AGENTS.md) 开始读。
+Peach 在一台机器上就能完整运行。Windows 与 macOS 是一等平台；Linux 不在支持范围，未测试。多台机器之间的单写者复制是可选项，默认关闭，目前只在「Windows 写者 + macOS 读者」一种形状上验证过。当前运行状态与验证结果见 [`docs/STATUS.md`](docs/STATUS.md)，待办见 [`docs/PRODUCT_BACKLOG.md`](docs/PRODUCT_BACKLOG.md)；开发约束从 [`AGENTS.md`](AGENTS.md) 开始读。
 
 ## 核心能力
 
@@ -38,6 +37,8 @@ Ledger 是资产、身份、行为和复核决定的真相源。CloudDrive、在
 
 ## 范围与免责声明
 
+- Peach 面向成人内容的个人馆藏（JAV、创作者订阅等），仓库本身不含任何此类内容；README、
+  文档与网站里的截图一律使用 SFW 演示数据，不使用真实馆藏。
 - 仓库只有代码、文档和固定的前端依赖。它不包含任何媒体、封面、缩略图或元数据，也不附带任何
   站点的数据副本；它索引的是运行它的人自己已有的库。
 - 连接器只访问使用者自己有权访问的来源，凭据由使用者自己提供。Peach 不绕过机器人验证、付费墙

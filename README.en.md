@@ -7,10 +7,9 @@ local disks, CloudDrive mounts, followed online sources — and serves search, p
 pages, playlists, review and follow from one FastAPI process backed by the local SQLite ledger,
 which also stores viewing behavior and manual decisions. It is built for one person self-hosting
 on their own machines over a LAN, not for teams or public deployment. Status: pre-1.0. Windows and
-macOS are first-class; on Linux only the Python service and the CLI are supported, without tray or
-mount integration.
+macOS are first-class; Linux is not supported and has not been tested.
 
-Peach runs completely on a single machine. Windows and macOS are first-class platforms; Linux supports only the service and the CLI, without tray or mount integration. Single-writer replication between machines is optional and off by default, and so far it has been verified in exactly one shape: a Windows writer with a macOS reader. The current runtime state and verification results are in [`docs/STATUS.md`](docs/STATUS.md), open work is in [`docs/PRODUCT_BACKLOG.md`](docs/PRODUCT_BACKLOG.md), and development constraints start at [`AGENTS.md`](AGENTS.md).
+Peach runs completely on a single machine. Windows and macOS are first-class platforms; Linux is not supported and has not been tested. Single-writer replication between machines is optional and off by default, and so far it has been verified in exactly one shape: a Windows writer with a macOS reader. The current runtime state and verification results are in [`docs/STATUS.md`](docs/STATUS.md), open work is in [`docs/PRODUCT_BACKLOG.md`](docs/PRODUCT_BACKLOG.md), and development constraints start at [`AGENTS.md`](AGENTS.md).
 
 ## Core capabilities
 
@@ -38,6 +37,9 @@ When replication is enabled, each machine keeps its own local working copy of th
 
 ## Scope and disclaimer
 
+- Peach is built for a personal collection of adult content (JAV, creator subscriptions and the
+  like); the repository itself contains none of it. Screenshots in the README, the documentation and
+  the website always use SFW demo data, never a real collection.
 - The repository contains only code, documentation and pinned frontend dependencies. It ships no
   media, covers, thumbnails or metadata, and no copy of any site's data; what it indexes is the
   library the person running it already owns.
