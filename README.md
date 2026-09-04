@@ -10,7 +10,7 @@ and the CLI are supported, without tray or mount integration. A full English ver
 
 Peach（蜜桃）是单用户、本地优先的个人媒体系统。它统一索引本地磁盘、CloudDrive 和在线关注来源，提供搜索、播放、资料页、播放列表、复核与追更，并把观看行为和人工决定保存到本地 SQLite ledger。
 
-Peach 适合在 Windows 与 macOS 两台个人设备上运行。当前运行状态与验证结果见 [`docs/STATUS.md`](docs/STATUS.md)，待办见 [`docs/PRODUCT_BACKLOG.md`](docs/PRODUCT_BACKLOG.md)；开发约束从 [`AGENTS.md`](AGENTS.md) 开始读。
+Peach 在一台机器上就能完整运行。Windows 与 macOS 是一等平台；Linux 只支持服务与 CLI，没有托盘和挂载集成。多台机器之间的单写者复制是可选项，默认关闭，目前只在「Windows 写者 + macOS 读者」一种形状上验证过。当前运行状态与验证结果见 [`docs/STATUS.md`](docs/STATUS.md)，待办见 [`docs/PRODUCT_BACKLOG.md`](docs/PRODUCT_BACKLOG.md)；开发约束从 [`AGENTS.md`](AGENTS.md) 开始读。
 
 ## 核心能力
 
@@ -19,7 +19,7 @@ Peach 适合在 Windows 与 macOS 两台个人设备上运行。当前运行状�
 - 保存稍后看、喜欢理由、观看状态、自动 Mix 和持久播放列表。
 - 通过 `/review` 复核外部元数据、身份、图片和媒体失败候选。
 - 从 FANBOX、SubscribeStar、Patreon 官方渠道，Kemono/Pawchive/Coomer 归档站，Rule34Video、Rule34.xxx、Rule34 Paheal 和 F95zone 发现更新；SimpCity 的机器人验证不会被绕过。
-- 在 Windows writer 与 macOS reader 之间显式复制 ledger；发生分叉时转只读，不自动合并。
+- 可选：在两台机器之间显式复制 ledger；发生分叉时转只读，不自动合并。
 
 ## 数据边界
 
@@ -34,7 +34,7 @@ Ledger 是资产、身份、行为和复核决定的真相源。CloudDrive、在
 | 真实写入 | 只允许当前 writer；迁移和不可逆操作必须先备份并取得授权 |
 | 测试 | 只使用临时 SQLite 和临时媒体 |
 
-两台机器各有本地 ledger 工作副本，共享目录只作传输点。服务启动不会自动复制；「同步 Ledger」和「接管 Ledger 写入」是显式操作。详细设计见 [`ADR-0017`](docs/adr/0017-dual-host-local-runtime-and-sync-boundaries.md)。
+开启复制时，两台机器各有本地 ledger 工作副本，共享目录只作传输点。服务启动不会自动复制；「同步 Ledger」和「接管 Ledger 写入」是显式操作。详细设计见 [`ADR-0017`](docs/adr/0017-dual-host-local-runtime-and-sync-boundaries.md)。
 
 ## 范围与免责声明
 
@@ -61,6 +61,14 @@ peach-app/
 
 仓库不保存媒体、数据库、凭据、日志、`.venv`、构建产物或 worktree。
 
+## 前置条件
+
+- **Python 3.14**：`requires-python` 的硬要求。Windows 需要 py launcher（`py -3.14`）；控制台是 cp936 代码页时 CLI 的中文输出会乱码，设 `PYTHONIOENCODING=utf-8` 即可。
+- **Git**：以可编辑方式安装要从检出的仓库运行。
+- **FFmpeg 与 ffprobe**：不随仓库分发，仓库里也没有下载器。查找顺序：环境变量 `PEACH_FFMPEG` / `PEACH_FFPROBE` → `<数据根>/tools/ffmpeg/bin/ffmpeg(.exe)` 与 `ffprobe(.exe)` → `PATH`。缺了 `/healthz` 报 `ffmpeg: unavailable`，抽帧、接触表、探测和封面全部不可用；浏览与播放兼容格式仍可用。
+- **openssl**（可选，仅 HTTPS）：生成本机 CA 的前置。Windows 上通常来自 Git for Windows（安装时选把 Unix 工具放进 `PATH`）。缺了 `peach init` 打印「未生成本机 CA」并正常完成，装好后 `peach init --force` 补上。
+- Node 不是运行前置，只用于维护固定的前端文件（见「依赖维护」）。
+
 ## 安装
 
 三步，不需要事先准备任何目录或配置文件。在仓库根目录执行：
@@ -74,7 +82,14 @@ peach-app/
 `peach init` 建数据根、把账本迁到最新 schema、生成本机 CA，并写出 `<数据根>/config.toml`。
 默认数据根是仓库同级的 `peach-data/`，`--data-root` 可改，环境变量 `PEACH_DATA_ROOT` 覆盖它。
 之后 `peach serve` 就能起服务；监听地址、端口、媒体盘符映射和复制开关都在那个设置文件里改，
-逐项说明见 [`docs/OPERATIONS.md`](docs/OPERATIONS.md)。
+逐项说明见 [`docs/OPERATIONS.md`](docs/OPERATIONS.md)。托盘由 `peach-tray` 启动，不带参数。
+
+四个事实：
+
+- `-e` 是硬性要求：wheel 只含 `src/` 下的包，仓库根的 `migrations/` 与 `web/` 不在里面，非可编辑安装下 `peach init` 找不到迁移目录会直接报错。
+- `--data-root` 指到别处时，`peach serve` 只按 `PEACH_DATA_ROOT` 和仓库上方几层的 `peach-data/` 找数据根，所以要同时设 `PEACH_DATA_ROOT`；用默认数据根没有这一步。
+- 设置文件里三个来源的声明根默认是 `local = R:\media`、`115 = B:/`、`pikpak = A:/`，这只是示例盘符，必须在 `[media.locations]` 与 `[media.mounts]` 里改成自己的路径；不改的结果是全部来源脱盘，而不是报错。CloudDrive 不是必需，任何能挂成本地路径的网盘都行；115 与 PikPak 是推荐项，不是要求。
+- 界面目前只有中文。
 
 没有设置文件也能启动：`/healthz` 报 `configured=false`，页面提示先跑 `peach init`。
 

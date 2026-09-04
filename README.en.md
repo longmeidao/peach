@@ -10,7 +10,7 @@ on their own machines over a LAN, not for teams or public deployment. Status: pr
 macOS are first-class; on Linux only the Python service and the CLI are supported, without tray or
 mount integration.
 
-Peach is meant to run on two personal devices, one Windows and one macOS. The current runtime state and verification results are in [`docs/STATUS.md`](docs/STATUS.md), open work is in [`docs/PRODUCT_BACKLOG.md`](docs/PRODUCT_BACKLOG.md), and development constraints start at [`AGENTS.md`](AGENTS.md).
+Peach runs completely on a single machine. Windows and macOS are first-class platforms; Linux supports only the service and the CLI, without tray or mount integration. Single-writer replication between machines is optional and off by default, and so far it has been verified in exactly one shape: a Windows writer with a macOS reader. The current runtime state and verification results are in [`docs/STATUS.md`](docs/STATUS.md), open work is in [`docs/PRODUCT_BACKLOG.md`](docs/PRODUCT_BACKLOG.md), and development constraints start at [`AGENTS.md`](AGENTS.md).
 
 ## Core capabilities
 
@@ -19,7 +19,7 @@ Peach is meant to run on two personal devices, one Windows and one macOS. The cu
 - Save watch later, reasons for liking, watched state, automatic Mixes and persistent playlists.
 - Review external metadata, identity, image and media-failure candidates through `/review`.
 - Discover updates from the official FANBOX, SubscribeStar and Patreon channels, the Kemono/Pawchive/Coomer archive sites, Rule34Video, Rule34.xxx, Rule34 Paheal and F95zone; SimpCity's bot verification is not bypassed.
-- Replicate the ledger explicitly between the Windows writer and the macOS reader; on divergence the reader turns read-only, with no automatic merge.
+- Optional: replicate the ledger explicitly between two machines; on divergence the reader turns read-only, with no automatic merge.
 
 ## Data boundaries
 
@@ -34,7 +34,7 @@ The ledger is the source of truth for assets, identities, behavior and review de
 | Real writes | Only the current writer may write; migrations and irreversible operations require a backup and authorization first |
 | Tests | Use temporary SQLite databases and temporary media only |
 
-Each machine keeps its own local working copy of the ledger; the shared directory is only a transfer point. Starting the service does not replicate anything; "Sync Ledger" and "Take over ledger writes" are explicit operations. The detailed design is in [`ADR-0017`](docs/adr/0017-dual-host-local-runtime-and-sync-boundaries.md).
+When replication is enabled, each machine keeps its own local working copy of the ledger; the shared directory is only a transfer point. Starting the service does not replicate anything; "Sync Ledger" and "Take over ledger writes" are explicit operations. The detailed design is in [`ADR-0017`](docs/adr/0017-dual-host-local-runtime-and-sync-boundaries.md).
 
 ## Scope and disclaimer
 
@@ -64,6 +64,14 @@ peach-app/
 
 The repository stores no media, databases, credentials, logs, `.venv`, build output or worktrees.
 
+## Prerequisites
+
+- **Python 3.14**: a hard requirement from `requires-python`. Windows needs the py launcher (`py -3.14`); in a console using the cp936 code page the CLI's Chinese output is garbled, and `PYTHONIOENCODING=utf-8` fixes it.
+- **Git**: the editable install runs from a checked-out repository.
+- **FFmpeg and ffprobe**: not distributed with the repository, which has no downloader for them either. Lookup order: the `PEACH_FFMPEG` / `PEACH_FFPROBE` environment variables → `<data root>/tools/ffmpeg/bin/ffmpeg(.exe)` and `ffprobe(.exe)` → `PATH`. Without them `/healthz` reports `ffmpeg: unavailable`, and frame extraction, contact sheets, probing and covers are all unavailable; browsing and playback of compatible formats still work.
+- **openssl** (optional, HTTPS only): required to generate the local CA. On Windows it usually comes from Git for Windows (choose the option that puts the Unix tools on `PATH`). Without it `peach init` prints that no local CA was generated and completes normally; once installed, `peach init --force` fills it in.
+- Node is not a runtime prerequisite; it only maintains the pinned frontend files (see "Dependency maintenance").
+
 ## Installation
 
 Three steps, with no directories or configuration files to prepare in advance. Run from the repository root:
@@ -79,7 +87,14 @@ and writes `<data root>/config.toml`. The default data root is `peach-data/` nex
 `--data-root` changes it, and the `PEACH_DATA_ROOT` environment variable overrides it. After that,
 `peach serve` starts the service; the listen address, port, media drive-letter mappings and
 replication switches are all edited in that settings file, explained item by item in
-[`docs/OPERATIONS.md`](docs/OPERATIONS.md).
+[`docs/OPERATIONS.md`](docs/OPERATIONS.md). The tray is started with `peach-tray`, without arguments.
+
+Four facts:
+
+- `-e` is a hard requirement: the wheel contains only the packages under `src/`, and the repository-root `migrations/` and `web/` are not in it, so under a non-editable install `peach init` fails outright because it cannot find the migrations directory.
+- When `--data-root` points somewhere else, `peach serve` looks for the data root only via `PEACH_DATA_ROOT` and the `peach-data/` directories a few levels above the repository, so set `PEACH_DATA_ROOT` as well; the default data root needs no such step.
+- The declared roots of the three sources in the settings file default to `local = R:\media`, `115 = B:/` and `pikpak = A:/`. These are example drive letters and must be changed to your own paths under `[media.locations]` and `[media.mounts]`; leaving them means every source is offline, not an error. CloudDrive is not required — any cloud drive that mounts as a local path works; 115 and PikPak are recommendations, not requirements.
+- The interface is currently available in Chinese only.
 
 The service also starts without a settings file: `/healthz` reports `configured=false`, and the pages prompt you to run `peach init` first.
 
