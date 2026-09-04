@@ -1,6 +1,6 @@
 # Peach 产品待办
 
-更新时间：2026-09-03。这里只记录尚未完成或只完成一部分的需求；运行数字以 `peach-data/state/job-status.md` 的自动区块为准。
+更新时间：2026-09-04。这里只记录尚未完成或只完成一部分的需求；运行数字以 `peach-data/state/job-status.md` 的自动区块为准。
 
 ## 已有骨架、尚未完成（6 项）
 
@@ -11,7 +11,7 @@
 5. **厂牌 Logo 补齐与持续校验**：14 个已确认社交 handle 已有内容缓存、provenance、精确/感知哈希、质量与重复门槛及健康报告；仍有 72 个厂牌没有可信 handle，必须继续从官网/公开来源取证，不能猜账号。
 6. **口味证据持续刷新**：ledger 已实时记录搜索、播放、高潮、喜欢/理由、不合口味和稍后看；浏览器历史现可用 SQLite 一致性副本增量进入私有源库，并生成不含 URL/标题的 creator/tag candidate 与聚合报告。旧 2026-08-13 原始包已确认不在 Windows 外置盘；仍需在 Mac 开启 iCloud Safari、完成首次导入，并把两端每周刷新装成系统计划任务。AI 结论不得直接改真相字段。
 
-## 尚未实现（10 项）
+## 尚未实现（18 项）
 
 1. AI Provider 的真实调用、能力协商、Credential Manager 凭据和候选审核 UI。
 2. 剩余单一创作者风格板复核、无标签内容补标。
@@ -23,8 +23,16 @@
 8. 开源通用化的发布准备（ADR-0023 第 4 阶段）：清扫 `docs/` 与 `.claude/skills/` 里的局域网地址、主机名、账号名、备份文件名与个人目录，把只对一台机器成立的运行态移出仓库，并把 `tests/test_repo_hygiene.py` 的个人字面量门槛从 `src/peach/` 扩到文档与技能。许可证、贡献与安全说明、issue/PR 模板在仓库里；设置层、来源挂载点 ID 与可整体关闭的复制链路在 Windows 生效，macOS 待跑 `peach init --from-existing --mount local=<落点>`。
 9. 女优高清头像的写入侧：`scripts/audit_performer_portraits.py` 已能出候选与实测证据，仍缺按复核结果复制头像文件那一步，以及实体合并后孤立头像的 relink（如 `8022 <- 8168`：只有旧 ID 的 provenance 名唯一命中当前实体、当前目标又不存在时才算候选，不覆盖、不删除旧文件）。
 10. 文件名与网盘目录整理的落地：`scripts/clean_names.py` 与目录计划只出 dry-run CSV。真正改名要独立维护窗口——停同类任务、确认本机是 writer、SQLite backup、逐条同目录 rename 并同步账本 path/name、失败时文件名回滚，最后跑完整性、外键与路径存在性检查；不跨盘移动，也不按文件夹名猜创作者。
+11. 来源与默认值通用化（ADR-0023 第 5 阶段候选）：`DEFAULT_LOCATION_ROOTS` 写死的 `R:\media`、`B:/`、`A:/` 是维护者自己的盘符，陌生用户不改设置文件就是全部来源脱盘。要做三件事：`peach init` 按本机实际路径生成 `[media.locations]` 声明根；来源用「本地 / 远端挂载」类型字段代替代码里按 `local`/`115`/`pikpak` 名字点名（`web_resource_sync.py` 的 SQL、`media.py` 的 HLS 规则）；复制链路支持 win↔win、mac↔mac 与任意一台当写者，目前只验证过 Windows 写者 + macOS 读者。
+12. `pip install .`（非 editable）可用：wheel 只含 `src/` 下的包，`migrations/` 与 `web/` 留在仓库根，非可编辑安装下 `migrations.discover()` 抛 `FileNotFoundError`。把这两个目录做成 package data，并让 `PROJECT_ROOT` 的解析在 site-packages 里也成立。
+13. `/healthz` 的 `db` 判据改为「`schema_migration` 有行」：目前只看文件存在，空账本也报 available。
+14. 界面国际化：界面目前只有中文，先补英文。
+15. Python 下限：评估从 3.14 降到 3.12，并把两个版本都进 CI 矩阵。
+16. 可下载制品与更新渠道：tag 触发的 Release 工作流产出 Windows 与 macOS 包；托盘「检查更新」目前只对 git 检出成立，要对下载的制品也成立。
+17. 「第一个小时」教程与故障排查文档：init → 声明来源根 → scan → 打开页面 → 手机信任 CA → 托盘/菜单栏自启动，每一步写清失败表现与对应的排查动作。
+18. 项目网站：一页说明是什么、截图、安装入口与文档链接。
 
-合计：**16 项开放需求**，其中 6 项已有骨架，10 项尚未实现。已完成的需求不在这里留痕，去 Git 历史查。
+合计：**24 项开放需求**，其中 6 项已有骨架，18 项尚未实现。已完成的需求不在这里留痕，去 Git 历史查。
 
 ## 待执行的操作（27 项）
 
