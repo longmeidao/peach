@@ -1,4 +1,5 @@
 """事务所是实体：有资料页、有成员、搜得到。"""
+import re
 import shutil
 import sqlite3
 import tempfile
@@ -293,6 +294,26 @@ class AgencyLedgerTests(unittest.TestCase):
         self.assertEqual(verdicts["https://x.com/mia/status/1"], "delete")
         self.assertEqual(verdicts["https://actentertainment.jp/b"], "keep")
         self.assertEqual(verdicts["http://actentertainment.jp/b"], "delete")
+
+
+class DeepLinkRouteTests(unittest.TestCase):
+    """资料页的地址得能直接打开，而不只是在应用里点得到。"""
+
+    def test_every_entity_route_is_served_as_a_page(self):
+        """前端认得的每一种实体路由，服务端都要发页面。
+
+        少一条不会报错，只会在直接打开地址时回 404：应用内点进去照常，刷新一下就没了。
+        所以判据取自 `core.js` 的路由表本身，加一种实体就自动多一条要求。
+        """
+        routes = re.search(r"const ENTITY_ROUTES=\{([^}]*)\}",
+                           (ROOT / "web" / "js" / "core.js").read_text(encoding="utf-8"))
+        self.assertIsNotNone(routes, "core.js 里没有 ENTITY_ROUTES")
+        wanted = re.findall(r"[:,]\s*'([a-z]+)'", "," + routes.group(1))
+        self.assertIn("agencies", wanted, "路由表没解析出来")
+        pages = (ROOT / "src" / "peach" / "routes_pages.py").read_text(encoding="utf-8")
+        for route in wanted:
+            with self.subTest(route=route):
+                self.assertIn(f'"/{route}/{{name:path}}"', pages)
 
 
 if __name__ == "__main__":

@@ -223,6 +223,7 @@ def peach_logo():
 @router.api_route("/studios/{name:path}", methods=["GET", "HEAD"])
 @router.api_route("/creators/{name:path}", methods=["GET", "HEAD"])
 @router.api_route("/series/{name:path}", methods=["GET", "HEAD"])
+@router.api_route("/agencies/{name:path}", methods=["GET", "HEAD"])
 @router.api_route("/performers", methods=["GET", "HEAD"])
 @router.api_route("/creators", methods=["GET", "HEAD"])
 @router.api_route("/tags", methods=["GET", "HEAD"])
