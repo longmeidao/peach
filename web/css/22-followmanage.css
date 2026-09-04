@@ -109,8 +109,12 @@
 .fwarn .wclose svg,.fcheckreport .wclose svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round}
 /* 批量动作是 2292 条级别的操作，不是行内文字链接：按钮的边界让「这会改状态」
    在点击前就看得见，也和本页其他 .fbtn（检查全部／去看更新）同一套语言。 */
-.fbulk{display:inline-flex;gap:8px;margin-left:auto}
-.fnote.fbulkrow{display:flex;align-items:center;flex-wrap:wrap;gap:4px 10px}
+.fbulk{display:inline-flex;gap:8px;margin-left:auto;flex:none}
+/* 底部这条和分区标题行是同一种行：一行里唯一可以缩的是说明文字，两个动作键要完整读出来。
+   允许换行的话，窄屏上四段计数加两个键一定放不下，于是键被甩到第二行、底栏长出一截。
+   基准取 0 而不是 auto：按内容宽度参与排线的话，它会先把整行挤断，缩放根本轮不到发生。 */
+.fnote.fbulkrow{display:flex;align-items:center;gap:4px 10px}
+.fbulkcounts{flex:1 1 0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
 /* 状态标签：四种状态四种颜色，待办和完成一眼分得开。 */
 /* 凭据状态。类名不能叫 `.fstate`——观看页的卡片错误行已经占了那个名字
@@ -138,8 +142,6 @@
 .fbtn svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.8}
 
 .faddform{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:start}
-/* 输入框本体是共用的 `.geist-search`；这里只管它和旁边按钮的高度对齐。 */
-.faddform .fbtn{height:38px;min-height:38px}
 /* 没有按钮可以变灰，查找中的唯一凭据就是前缀位上的 Spinner——输入框自己必须还能改。 */
 .faddform[aria-busy="true"] input[type="search"]{color:var(--muted)}
 

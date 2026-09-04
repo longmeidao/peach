@@ -5122,6 +5122,9 @@ class WebUiSourceTests(unittest.TestCase):
         reviewed_end_selectors = {
             ".alphatag span:first-of-type", ".av .nm", ".entitylinklabel",
             ".fauthor .fsource.frow>b", ".fauthorhead b",
+            # 四段计数按重要性从左排（未看在最前），尾部省略切掉的正是最不影响判断的那几段；
+            # 它不是标识符，中间截断只会把「未看 3」也切开。
+            ".fbulkcounts",
             ".fchip", ".followpageaction .fmeta", ".fpickactions [data-pick-state]",
             ".fsechead .fmeta",
             ".frow>b", ".fvkind", ".idname", ".kv>span:first-child",
@@ -5883,6 +5886,42 @@ class WebUiSourceTests(unittest.TestCase):
                          ".playlistactions .danger:hover{",
                          ".reviewactions .reject:hover{"):
             self.assertPageContains(selector + fill, f"{selector} 的悬停态要填 --drop")
+
+    def test_bulk_footer_keeps_one_line_and_ellipsises_its_counts(self):
+        """底部批量条保持一行，宽度不够时省略说明文字，而不是把动作键甩到第二行。
+
+        它和分区标题行是同一种行：一行里唯一可以缩的是说明文字，动作键要完整读出来。
+        允许换行的话，窄屏上四段计数加两个键一定放不下，键落到第二行、底栏白长一截。
+        基准取 0 而不是 auto：按内容宽度参与排线的话，它先把整行挤断，缩放轮不到发生。
+        """
+        self.assertPageContains(".fnote.fbulkrow{display:flex;align-items:center;gap:4px 10px}")
+        self.assertPageLacks(".fnote.fbulkrow{display:flex;align-items:center;flex-wrap:wrap",
+                             "换行是这条行长成两行的原因")
+        self.assertPageContains(".fbulkcounts{flex:1 1 0;min-width:0;overflow:hidden;"
+                                "text-overflow:ellipsis;white-space:nowrap}")
+        self.assertPageContains(".fbulk{display:inline-flex;gap:8px;margin-left:auto;flex:none}")
+        # 标题行早就是这个写法，同一种行的两处行为要对得上。
+        self.assertPageContains(".fsechead .fmeta{flex:1 1 0;min-width:0;overflow:hidden")
+        self.assertPageContains(".fsechead .fbtn,.fsechead .fmanagesort{flex:none}")
+
+    def test_add_form_only_sizes_the_one_button_it_actually_has(self):
+        """`.faddform` 里唯一的按钮是来源筛选触发器，高度由它自己那条给。
+
+        这个表单没有提交键——只读查询回车即执行。再留一条按 `.faddform .fbtn` 写的通用
+        高度，读的人会以为旁边还有个提交键；而它被更具体的那条完全盖住，改它不会有任何
+        效果，是一条只会误导人的死规则。
+        """
+        self.assertPageContains(
+            ".faddform .fsrcfilter .fbtn{width:auto;height:38px;min-height:38px;padding:0 11px}")
+        self.assertPageLacks(".faddform .fbtn{height:38px;min-height:38px}",
+                             "被更具体那条完全盖住的死规则")
+        start = self.app_js.index('<form class="faddform" id="followAdd">')
+        form = self.app_js[start:self.app_js.index("</form>", start)]
+        self.assertNotIn('type="submit"', form, "添加表单没有提交键，回车即执行")
+        self.assertIn('<div class="fsrcfilter" id="followSrcFilter"></div>', form)
+        # 别名表单那个提交键是活的，别顺手一起删。
+        self.assertPageContains(".faliasform .fbtn{height:38px;min-height:38px}")
+        self.assertPageContains('<button class="fbtn" type="submit">保存别名</button>')
 
     def test_follow_filter_buttons_write_the_url_before_refetching(self):
         """先写 URL 再重取。反过来的话 openFollow 会照旧 URL 把状态推回去。"""
