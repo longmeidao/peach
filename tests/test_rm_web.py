@@ -775,6 +775,7 @@ class WebDataTests(unittest.TestCase):
             "/api/follow/source", "/api/follow/resolve", "/api/follow/credential",
             "/api/follow/author-alias", "/api/follow/schedule",
             "/api/taste/refresh", "/api/taste/source", "/api/settings",
+            "/api/entity-name",
         })
         with self.assertRaises(rm_web.ContractRouteNotFound):
             rm_web.dispatch_api_get(self.contract, "/api/typo", {})
@@ -1321,6 +1322,130 @@ class WebDataTests(unittest.TestCase):
             self.contract, {"kind": "performer", "name": "释爱丽丝"})
         self.assertIn("Alice Shaku", localized["aliases"], "罗马字仍须可用于身份检索")
         self.assertEqual(localized["display_aliases"], ["しゃくありす", "釈アリス"])
+
+    def test_one_name_recorded_by_two_sources_is_listed_once(self):
+        """`entity_alias` 的主键含 source，合并会再写一条 `merge:*`：同一个写法两行。
+
+        留痕属于账本，资料页不该把同一个名字并排列两遍。取置信度最高的那一条。
+        """
+        con = sqlite3.connect(self.db_path)
+        con.execute(
+            "INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at)"
+            " VALUES(19,'performer','白石亚子','白石亚子','2026-01-01','2026-01-01')")
+        con.executemany(
+            "INSERT INTO entity_alias VALUES(?,?,?,?,?)",
+            [(19, "Ako Shiraishi", "ako shiraishi", "r18:performer", 0.9),
+             (19, "Ako Shiraishi", "ako shiraishi", "merge:duplicate-identity", 1.0),
+             (19, "平沢すず", "平沢すず", "avdb-actor-mapping", 1.0)])
+        con.commit(); con.close()
+
+        entity = rm_web.q_entity(self.contract, {"kind": "performer", "name": "白石亚子"})
+        self.assertEqual(entity["aliases"].count("Ako Shiraishi"), 1)
+        self.assertIn("平沢すず", entity["aliases"])
+
+    def _performer_with_two_names(self):
+        con = sqlite3.connect(self.db_path)
+        con.execute(
+            "INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at)"
+            " VALUES(20,'performer','飯岡かなこ','飯岡かなこ','2026-01-01','2026-01-01')")
+        con.execute("INSERT INTO entity_alias VALUES(20,'森泽佳奈','森泽佳奈','javdb',1.0)")
+        con.execute(
+            "INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence)"
+            " VALUES(1,20,'performer','test',1.0)")
+        con.execute(
+            "INSERT INTO asset_tag(asset_id,tag,source) VALUES(1,'演员:飯岡かなこ','performer')")
+        con.commit(); con.close()
+
+    def _names_of(self, entity_id=20):
+        con = sqlite3.connect(self.db_path)
+        canonical = con.execute(
+            "SELECT canonical_name FROM entity WHERE id=?", (entity_id,)).fetchone()[0]
+        aliases = {row[0]: row[1] for row in con.execute(
+            "SELECT alias,source FROM entity_alias WHERE entity_id=?", (entity_id,))}
+        # 只看这两个写法：夹具本来就给 asset 1 挂着另一位女优的扁平标签。
+        tags = [row[0] for row in con.execute(
+            "SELECT tag FROM asset_tag WHERE tag IN ('演员:飯岡かなこ','演员:森泽佳奈')"
+            " ORDER BY tag")]
+        con.close()
+        return canonical, aliases, tags
+
+    def test_preferred_name_promotes_an_existing_alias_and_demotes_the_old_one(self):
+        """统称是用户的偏好，不是新证据：换的是哪个写法顶在标题上。
+
+        被换下的旧规范名必须留成别名——它是这个人真用过的名字，也是换回去的入口。
+        """
+        self._performer_with_two_names()
+        result = rm_web.w_entity_name(self.contract, {
+            "kind": "performer", "name": "飯岡かなこ", "canonical": "森泽佳奈"})
+        self.assertEqual(result["canonical_name"], "森泽佳奈")
+        self.assertEqual(result["previous_name"], "飯岡かなこ")
+        self.assertTrue(result["changed"])
+
+        canonical, aliases, tags = self._names_of()
+        self.assertEqual(canonical, "森泽佳奈")
+        self.assertEqual(aliases.get("飯岡かなこ"), "user:preferred-name")
+        # 扁平投影跟着走，否则卡片上还写着旧名、按旧名也照样查得到。
+        self.assertEqual(tags, ["演员:森泽佳奈"])
+        self.assertEqual(result["flat_rewritten"], 1)
+
+    def test_preferred_name_can_be_chosen_back(self):
+        self._performer_with_two_names()
+        rm_web.w_entity_name(self.contract, {
+            "kind": "performer", "name": "飯岡かなこ", "canonical": "森泽佳奈"})
+        back = rm_web.w_entity_name(self.contract, {
+            "kind": "performer", "name": "森泽佳奈", "canonical": "飯岡かなこ"})
+        self.assertEqual(back["canonical_name"], "飯岡かなこ")
+        canonical, aliases, tags = self._names_of()
+        self.assertEqual(canonical, "飯岡かなこ")
+        self.assertIn("森泽佳奈", aliases)
+        self.assertEqual(tags, ["演员:飯岡かなこ"])
+
+    def test_preferred_name_is_a_no_op_when_it_is_already_the_canonical_one(self):
+        self._performer_with_two_names()
+        result = rm_web.w_entity_name(self.contract, {
+            "kind": "performer", "name": "飯岡かなこ", "canonical": "飯岡かなこ"})
+        self.assertFalse(result["changed"])
+
+    def test_preferred_name_refuses_free_text(self):
+        """自由文本是改名，要有来源和证据，不是一次点击该干的事。"""
+        self._performer_with_two_names()
+        with self.assertRaises(ValueError):
+            rm_web.w_entity_name(self.contract, {
+                "kind": "performer", "name": "飯岡かなこ", "canonical": "另一个人"})
+        self.assertEqual(self._names_of()[0], "飯岡かなこ")
+
+    def test_preferred_name_reports_a_clash_with_another_entity(self):
+        """规范名唯一。撞上另一条实体时只报冲突：那是该合并还是同名不同人，得人来判。"""
+        self._performer_with_two_names()
+        con = sqlite3.connect(self.db_path)
+        con.execute(
+            "INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at)"
+            " VALUES(21,'performer','森泽佳奈','森泽佳奈','2026-01-01','2026-01-01')")
+        con.commit(); con.close()
+        with self.assertRaises(ValueError):
+            rm_web.w_entity_name(self.contract, {
+                "kind": "performer", "name": "飯岡かなこ", "canonical": "森泽佳奈"})
+        self.assertEqual(self._names_of()[0], "飯岡かなこ")
+
+    def test_preferred_name_rewrites_the_flat_column_for_non_performers(self):
+        con = sqlite3.connect(self.db_path)
+        con.execute(
+            "INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at)"
+            " VALUES(22,'series','NightSafari','nightsafari','2026-01-01','2026-01-01')")
+        con.execute("INSERT INTO entity_alias VALUES(22,'Night Safari','night safari','javdb',1.0)")
+        con.execute(
+            "INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence)"
+            " VALUES(1,22,'series','test',1.0)")
+        con.execute("UPDATE asset SET series='NightSafari' WHERE id=1")
+        con.commit(); con.close()
+
+        result = rm_web.w_entity_name(self.contract, {
+            "kind": "series", "name": "NightSafari", "canonical": "Night Safari"})
+        self.assertEqual(result["flat_rewritten"], 1)
+        con = sqlite3.connect(self.db_path)
+        self.assertEqual(
+            con.execute("SELECT series FROM asset WHERE id=1").fetchone()[0], "Night Safari")
+        con.close()
 
     def test_entity_filter_and_video_sort_compose_in_one_items_query(self):
         con = sqlite3.connect(self.db_path)

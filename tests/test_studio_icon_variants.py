@@ -341,14 +341,23 @@ class HarvestTargetTests(unittest.TestCase):
         self.links = {"Fitch": [{"url": "https://fitch-av.com/"}],
                       "Hon_Naka": [{"url": "https://honnaka.jp/"}],
                       "S1": [{"url": "https://s1s1s1.com/"}]}
-        # 指定来源那张真表有二十多条，留着会盖住这里每一条判据。要用的测试自己往里放。
+        # 两张指定来源表加起来三十多条，留着会盖住这里每一条判据。要用的测试自己往里放。
         self.sources = dict(MODULE.LOGO_SOURCES_BY_SAFE)
+        self.wordmarks = dict(MODULE.WORDMARK_SOURCES_BY_SAFE)
         MODULE.LOGO_SOURCES_BY_SAFE.clear()
+        MODULE.WORDMARK_SOURCES_BY_SAFE.clear()
 
     def tearDown(self):
         MODULE.LOGO_SOURCES_BY_SAFE.clear()
         MODULE.LOGO_SOURCES_BY_SAFE.update(self.sources)
+        MODULE.WORDMARK_SOURCES_BY_SAFE.clear()
+        MODULE.WORDMARK_SOURCES_BY_SAFE.update(self.wordmarks)
         self.tmp.cleanup()
+
+    def test_a_designated_wordmark_source_is_reason_enough(self):
+        """字标来源那批在账本里连一条链接都没有，按「有链接」收目标一条都收不到。"""
+        MODULE.WORDMARK_SOURCES_BY_SAFE["Jackson"] = "https://static.example/jackson.jpg"
+        self.assertIn("Jackson", MODULE.harvest_targets({}, {}, self.logos))
 
     def test_a_studio_with_no_image_at_all_is_included(self):
         """Hon Naka 不在补白名单里——它没有可补白的文件。可它两个位置一样是空的。"""
@@ -409,12 +418,30 @@ class LogoSourceTests(unittest.TestCase):
                                Fetch(pages, reachable=reachable), self.candidates)
 
     def test_every_registered_source_is_reachable_by_its_file_name(self):
-        """两张表按同一条命名规则建，键对不上时复核件上的名字会退成一排下划线。"""
-        self.assertEqual(sorted(self.original), sorted(MODULE.LOGO_SOURCE_NAMES))
+        """反向索引按同一条命名规则建，键对不上时复核件上的名字会退成一排下划线。
+
+        它同时覆盖 logo 与字标两张来源表：只认前一张的话，字标来源那批在复核件上
+        会认不出是谁。
+        """
+        registered = {**MODULE.LOGO_SOURCES, **MODULE.WORDMARK_SOURCES}
+        self.assertEqual(sorted(MODULE.LOGO_SOURCE_NAMES),
+                         sorted(set(self.original) | set(MODULE.WORDMARK_SOURCES_BY_SAFE)))
         for safe, studio in MODULE.LOGO_SOURCE_NAMES.items():
             with self.subTest(studio=studio):
                 self.assertEqual(MODULE.safe_name(studio), safe)
-                self.assertIn(studio, MODULE.LOGO_SOURCES)
+                self.assertIn(studio, registered)
+
+    def test_no_studio_is_registered_in_both_source_tables(self):
+        """同一个厂牌落进两张表时，谁盖谁全看代码顺序——那是看不出来的差别。"""
+        self.assertEqual(set(self.original) & set(MODULE.WORDMARK_SOURCES_BY_SAFE), set())
+
+    def test_no_two_keys_collapse_onto_one_file_name(self):
+        """键写的是账本 canonical_name。同一家的别名写法再写一条，`..._BY_SAFE` 会把
+        两条折成一个键，谁盖谁全看字典顺序，而两条指向的 URL 未必是同一张图。"""
+        for table in (MODULE.LOGO_SOURCES, MODULE.WORDMARK_SOURCES):
+            with self.subTest(table=len(table)):
+                keys = [MODULE.safe_name(name) for name in table]
+                self.assertEqual(sorted(keys), sorted(set(keys)))
 
     def test_the_expo_directory_is_the_source_for_the_studios_with_no_image(self):
         """用户 2026-09-04 指定 jae.tokyo：名录每届各带一套厂商自己交的 logo。
@@ -422,11 +449,25 @@ class LogoSourceTests(unittest.TestCase):
         2016 那届只有图没有名字，认不出是谁家的，所以表里没有 jae2016。
         """
         expo = [url for url in MODULE.LOGO_SOURCES.values() if "jae.tokyo" in url]
-        self.assertEqual(len(expo), 26)
+        self.assertEqual(len(expo), 24)
         self.assertEqual([url for url in expo if "jae2016" in url], [])
         for url in expo:
             with self.subTest(url=url):
                 self.assertRegex(url, r"^http://www\.jae\.tokyo/jae201[457]/")
+
+    def test_the_mousouzoku_directory_supplies_square_logos_not_wordmarks(self):
+        """妄想族名录给的是 200×200 真方标，所以进这一张表而不是字标那张。
+
+        `AVS collector's` 的弯撇号写法是别名，过 `safe_name` 落到同一个键。
+        """
+        directory = [url for url in MODULE.LOGO_SOURCES.values() if "mousouzoku-av" in url]
+        self.assertEqual(len(directory), 3)
+        for url in directory:
+            with self.subTest(url=url):
+                self.assertRegex(
+                    url, r"^https://www\.mousouzoku-av\.com/contents/maker/id\d+/logo_l\.jpg$")
+        self.assertEqual(MODULE.safe_name("AVS collector's"),
+                         MODULE.safe_name("AVS collector’s"))
 
     def test_fc2_is_the_registered_logo_source(self):
         """用户 2026-09-03 指定的是 seeklogo 的 429409（600×600 方形锁定图）。
@@ -467,6 +508,97 @@ class LogoSourceTests(unittest.TestCase):
         row = self.row(b"<html>404</html>")
         self.assertEqual(row["verdict"], MODULE.MISSING)
         self.assertIn("解不开", row["evidence"])
+
+
+class WordmarkSourceTests(unittest.TestCase):
+    """指定字标来源：宽扁图只有烤成方图这一条用法，两位装同一张。"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.candidates = Path(self.tmp.name).resolve() / "candidates"
+        self.target = {"original_size": "", "installed": ""}
+        self.url = "https://static.example/marks/jackson.jpg"
+        self.original = dict(MODULE.WORDMARK_SOURCES_BY_SAFE)
+        MODULE.WORDMARK_SOURCES_BY_SAFE["Jackson"] = self.url
+
+    def tearDown(self):
+        MODULE.WORDMARK_SOURCES_BY_SAFE.clear()
+        MODULE.WORDMARK_SOURCES_BY_SAFE.update(self.original)
+        self.tmp.cleanup()
+
+    def rows(self, payload=None, reachable=True):
+        pages = {self.url: payload} if payload is not None else {}
+        return MODULE.wordmark_source_rows(
+            "Jackson", self.target, Fetch(pages, reachable=reachable), self.candidates)
+
+    def test_a_wide_wordmark_fills_both_slots_from_one_square_plate(self):
+        """400×80 的官方字标烤成方图，小位记 `字标补白`、大位记 `ok`。
+
+        大位不能装原图：`.entityportrait` 是 `aspect-ratio:1` + `object-fit:cover`
+        的方框，宽扁图进去只剩正中间那几个字母。
+        """
+        icon, logo = self.rows(block_png((400, 80)))
+        self.assertEqual((icon["variant"], icon["verdict"]), (MODULE.ICON, MODULE.PADDED))
+        self.assertEqual((logo["variant"], logo["verdict"]), (MODULE.LOGO, MODULE.OK))
+        self.assertEqual(icon["mark_size"], logo["mark_size"])
+        self.assertEqual(icon["sha256"], logo["sha256"], "两位装的必须是同一张")
+        self.assertEqual(icon["mark_size"].split("x")[0], icon["mark_size"].split("x")[1])
+        self.assertIn("400x80", icon["evidence"], "复核件要能看出源图多宽")
+
+    def test_both_rows_are_installable_and_stored_under_their_own_names(self):
+        icon, logo = self.rows(block_png((400, 80)))
+        self.assertIn(icon["verdict"], MODULE.INSTALLABLE)
+        self.assertIn(logo["verdict"], MODULE.INSTALLABLE)
+        self.assertTrue(str(icon["candidate"]).endswith("Jackson.png"))
+        self.assertTrue(str(logo["candidate"]).endswith("Jackson.logo.png"))
+        for row in (icon, logo):
+            stored = Path(str(row["candidate"])).read_bytes()
+            self.assertEqual(hashlib.sha256(stored).hexdigest(), row["sha256"])
+
+    def test_the_recorded_url_is_the_mark_not_a_website(self):
+        """这批厂牌账本里一条链接都没有，`url` 列写的只能是取图那一份的地址。"""
+        icon, logo = self.rows(block_png((400, 80)))
+        self.assertEqual((icon["url"], logo["url"]), (self.url, self.url))
+        self.assertEqual(icon["link_kind"], "wordmark-source")
+        self.assertEqual(icon["studio"], "Jackson", "复核件上要认得出是谁")
+
+    def test_a_studio_without_a_registered_wordmark_gets_no_rows(self):
+        self.assertEqual(
+            MODULE.wordmark_source_rows("HEYZO", self.target, Fetch(), self.candidates),
+            (None, None))
+
+    def test_a_mark_below_the_icon_floor_is_refused_without_a_candidate(self):
+        """短边 32 是小位的下限。缩到 28 px 的筛选片上，比它小的只是一团糊。"""
+        icon, logo = self.rows(block_png((90, 20)))
+        self.assertEqual(icon["verdict"], MODULE.TOOSMALL)
+        self.assertEqual(icon["candidate"], "")
+        self.assertIsNone(logo)
+
+    def test_an_unreachable_or_undecodable_source_is_未取得(self):
+        for payload, reachable in ((None, False), (b"<html>404</html>", True)):
+            with self.subTest(reachable=reachable):
+                icon, logo = self.rows(payload, reachable=reachable)
+                self.assertEqual(icon["verdict"], MODULE.MISSING)
+                self.assertEqual(icon["candidate"], "")
+                self.assertIsNone(logo)
+
+    def test_a_registered_wordmark_studio_never_falls_back_to_link_discovery(self):
+        """指定字标来源就是答案。放它去走发现流程只会多记一行「无官网链接」。"""
+        fetch = Fetch({self.url: block_png((400, 80))})
+        rows = MODULE.harvest({"Jackson": self.target}, {}, fetch, self.candidates)
+        self.assertEqual([row["verdict"] for row in rows], [MODULE.PADDED, MODULE.OK])
+        self.assertEqual(fetch.asked, [self.url])
+
+    def test_the_mgstage_directory_is_the_source_and_only_for_imageless_studios(self):
+        """用户 2026-09-04 指定 MGStage 名录；只收当前一张图都没有的厂牌。
+
+        已装的那些多来自 jae.tokyo 的 320×320 方标，换成 180×54 的字标是降级。
+        """
+        self.assertTrue(self.original, "字标来源表不能是空的")
+        for studio, url in MODULE.WORDMARK_SOURCES.items():
+            with self.subTest(studio=studio):
+                self.assertRegex(url, r"^https://static\.mgstage\.com/mgs/img/pc/")
+                self.assertNotIn(studio, MODULE.LOGO_SOURCES)
 
 
 class Fetch:
@@ -936,13 +1068,17 @@ class RunTests(unittest.TestCase):
              (4, "official", "官方网站", "https://honnaka.jp/")])
         connection.commit()
         connection.close()
-        # 指定来源那张真表指向站外地址，留着这一整套测试就会去联网取图。
+        # 两张指定来源表都指向站外地址，留着这一整套测试就会去联网取图。
         self.sources = dict(MODULE.LOGO_SOURCES_BY_SAFE)
+        self.wordmarks = dict(MODULE.WORDMARK_SOURCES_BY_SAFE)
         MODULE.LOGO_SOURCES_BY_SAFE.clear()
+        MODULE.WORDMARK_SOURCES_BY_SAFE.clear()
 
     def tearDown(self):
         MODULE.LOGO_SOURCES_BY_SAFE.clear()
         MODULE.LOGO_SOURCES_BY_SAFE.update(self.sources)
+        MODULE.WORDMARK_SOURCES_BY_SAFE.clear()
+        MODULE.WORDMARK_SOURCES_BY_SAFE.update(self.wordmarks)
         self.tmp.cleanup()
 
     def invoke(self, install=False, marks=None):

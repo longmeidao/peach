@@ -50,6 +50,7 @@ from urllib.parse import quote, urljoin, urlsplit
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+from peach import javdb   # noqa: E402
 from peach.config import STATE_DIR   # noqa: E402
 from peach.jobs import job_main   # noqa: E402
 from peach.page_cache import HttpStatusError, Site, USER_AGENT   # noqa: E402
@@ -145,23 +146,13 @@ JAE_PLACEHOLDER = ("nophoto", "noimage", "no_photo", "comingsoon")
 JAVDB = "https://javdb.com/"
 #: 图片走独立的静态域；两个都算本站。
 JAVDB_OWN = ("javdb.com", "jdbstatic.com")
-JAVDB_SEARCH = JAVDB + "search?f=actor&q={}"
-#: 搜索结果里的演员卡。`title` 一栏就是这个人在站上的全部写法，不必先点进去。
-JAVDB_BOX = re.compile(r'class="box actor-box">\s*<a href="(/actors/[^"]+)" title="([^"]*)"',
-                       re.S)
-#: 资料页顶部：`actor-section-name` 是主名连它的繁简写法，紧随的 `section-meta` 是旧艺名。
-JAVDB_NAME = re.compile(r'class="actor-section-name">([^<]*)<')
-JAVDB_META = re.compile(r'class="section-meta">([^<]*)<')
-#: 「323 部影片」也在 `section-meta` 里，它不是名字。
-JAVDB_COUNT = re.compile(r"^\d+\s*部影片$")
+JAVDB_SEARCH = javdb.SEARCH
 #: 圆头像是 span 的背景图；搜索结果里的同名 class 是 `<img src>`，这条只认资料页那个。
 JAVDB_AVATAR = re.compile(r'class="avatar" style="background-image: url\(([^)]+)\)')
 #: 社媒按钮只在这一块里。页面别处的站外链接是广告、姊妹站和 RTA 标签，每页都有一份。
 JAVDB_ADDITION = re.compile(r'class="column section-addition">(.*?)<div class="toolbar"', re.S)
-#: 一部分资料页要登录才给，回的是登入页而不是 401/403。同一位女优在站上常有两条
-#: 记录（有碼那条公开、無碼那条要登录），搜索结果把两条都给出来，所以这不是抓失败。
-#: 不注册账号，记一行未取得。
-JAVDB_LOGIN = re.compile(r"<title>\s*登入\s*\|")
+#: 资料页要登录才给时不注册账号，记一行未取得。判据在 `peach.javdb`。
+JAVDB_LOGIN = javdb.LOGIN
 
 
 X_PROFILE = "https://x.com/{}"
@@ -515,16 +506,6 @@ def collect_jae(site: Site, limit: int = 0) -> tuple[list[str], list[dict]]:
     return [], pages
 
 
-def javdb_names(html: str) -> list[str]:
-    """资料页顶部那几行名字。「323 部影片」同处一个 class，按写法排除。"""
-    names: list[str] = []
-    for text in JAVDB_NAME.findall(html) + JAVDB_META.findall(html):
-        value = clean(text)
-        if value and not JAVDB_COUNT.match(value):
-            names += split_names(value)
-    return dedupe(names)
-
-
 def javdb_links(html: str) -> list[str]:
     """只取社媒按钮那一块。整页的站外链接里还有广告与姊妹站，每一页都一样。"""
     block = JAVDB_ADDITION.search(html)
@@ -537,20 +518,8 @@ def javdb_portrait(html: str) -> str:
 
 
 def javdb_hits(html: str, wanted: set[str]) -> list[str]:
-    """搜索结果里名字对得上的资料页。
-
-    搜的是账本里的名字，回来的却不一定是同一个人（javdb 的演员搜索会给近似结果）。
-    卡片的 `title` 一栏已经列出这个人在站上的全部写法，够判是不是同一个人：对不上的
-    不点进去，省一次请求，也不给 judge() 送一页与账本无关的名字。
-
-    对得上的全都返回，不只取第一个。同一个名字在站上真有两位时，两页都进判定——
-    第二页的账号会撞成 `conflict` 落进复核表，而取第一个是默默替用户挑了一位。
-    """
-    out = []
-    for path, title in JAVDB_BOX.findall(html):
-        if wanted & {name_key(name) for name in split_names(clean(title))}:
-            out.append(urljoin(JAVDB, path))
-    return dedupe(out)
+    """搜索结果里名字对得上的资料页，绝对地址。判据在 `peach.javdb.search_hits`。"""
+    return [urljoin(JAVDB, path) for path in javdb.search_hits(html, wanted)]
 
 
 def collect_javdb(site: Site, limit: int, performers: list[dict]) -> tuple[list[str], list[dict]]:
@@ -600,7 +569,7 @@ def collect_javdb(site: Site, limit: int, performers: list[dict]) -> tuple[list[
                 pages.append(page_record("javdb", detail, record["chain"], [],
                                          note="javdb 这一页要登录才给，不注册账号"))
                 continue
-            pages.append(page_record("javdb", detail, javdb_names(html), javdb_links(html),
+            pages.append(page_record("javdb", detail, javdb.all_names(html), javdb_links(html),
                                      portrait=javdb_portrait(html)))
         if stop:
             break

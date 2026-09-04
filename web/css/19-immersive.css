@@ -178,6 +178,8 @@
   .entityhero{grid-template-columns:minmax(0,1fr);gap:12px;padding:8px 0 18px;justify-items:center;text-align:center}
   .entityportrait{width:112px}.entityhero h2{font-size:var(--fs-xl)}
   .entityhero>div:last-child{width:100%}
+  /* 标题行是 flex，`text-align:center` 管不到它，得自己居中。 */
+  .entitytitle{justify-content:center}
   .entityhero .alias{margin-bottom:10px}
   .entityhero .entitylinks{justify-content:center;margin-top:13px}
   .stats h2{font-size:var(--fs-xl)}.stats .insightcopy h2{font-size:var(--fs-3xl)}

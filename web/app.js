@@ -5,10 +5,11 @@ import { matchRoute, routeLabel } from './js/routes.js';
 import { initMiddleTruncate } from './js/middle-truncate.js';
 import { tagLabel } from './js/tags.js';
 import {
-  breadcrumbHtml, checkboxHtml, emptyStateHtml, fieldsetTitle, fillSkeletonTier, fitSkeleton,
-  iconSwitchHtml, loadingDotsHtml,
+  breadcrumbHtml, checkboxHtml, closeAnchoredMenu, emptyStateHtml, fieldsetTitle,
+  fillSkeletonTier, fitSkeleton, iconSwitchHtml, loadingDotsHtml,
   mediaViewButtonsHtml, noteHtml, progressHtml, scrollerHtml, searchInputHtml, setActionBusy,
-  skeletonHtml, spinnerHtml, wireBusyActions, wireCollapse, wireIconSwitch, wireScrollers,
+  skeletonHtml, spinnerHtml, wireAnchoredMenu, wireBusyActions, wireCollapse, wireIconSwitch,
+  wireScrollers,
 } from './js/ui-components.js';
 
 initMiddleTruncate(document);
@@ -3538,13 +3539,6 @@ const followRandomOrder=(rows,key)=>[...rows].sort((a,b)=>
 /* 来源筛选：fsrcProviders 记录见过的全部来源（默认全选），
    fsrcUnchecked 只记被取消勾选的——新来源自动进入「全选」。 */
 const fsrcProviders=new Set(),fsrcUnchecked=new Set();
-let fsrcOpened=null;
-if(!globalThis.__peachFsrcCloser){
-  globalThis.__peachFsrcCloser=true;
-  document.addEventListener('click',event=>{
-    if(fsrcOpened&&!fsrcOpened.mount.contains(event.target)){
-      fsrcOpened.setOpen(false);fsrcOpened=null}},true);
-}
 /* 关注页一次取一屏。counts 是全库口径（「未看 2292」），groups 只有这一页——
    两个数并排显示时看起来像自相矛盾，实际是两个口径，所以列表底部要能继续加载。 */
 const FOLLOW_PAGE=300;
@@ -4937,7 +4931,7 @@ function wireFollowManage(){
    默认全选；取消勾选的来源，其查找结果行隐藏、也不进「添加选中」。 */
 function renderFollowSrcFilter(mount){
   if(!mount)return;
-  if(fsrcOpened){fsrcOpened.setOpen(false);fsrcOpened=null}
+  closeAnchoredMenu();
   const providers=[...new Set((followData?.sources||[])
     .map(source=>source.provider_label).filter(Boolean))];
   /* 下拉里的每一行带上该来源的 favicon：label 只是展示名，图标要靠 provider
@@ -4952,40 +4946,12 @@ function renderFollowSrcFilter(mount){
       aria-expanded="false" aria-haspopup="menu" aria-controls="follow-source-menu"
       aria-label="${esc(label())}" title="${esc(label())}">
       ${icon('list-filter')}<span data-srcfilter-label>${esc(label())}</span></button>
-    <div class="fsrcmenu" id="follow-source-menu" role="menu" data-srcfilter-menu hidden>${providers.map(provider=>
+    <div class="popmenu fsrcmenu" id="follow-source-menu" role="menu" data-srcfilter-menu hidden>${providers.map(provider=>
       `<label>${checkboxHtml(`data-srcfilter="${esc(provider)}"${fsrcUnchecked.has(provider)?'':' checked'}`)}
         ${sourceIcon(providerIcon.get(provider)||'')}<span>${esc(provider)}</span></label>`).join('')}</div>`;
   const toggle=mount.querySelector('[data-srcfilter-toggle]');
   const menu=mount.querySelector('[data-srcfilter-menu]');
-  /* Vercel 项目页的 Filter and Sort 菜单没有展开动画。菜单固定在视口内，
-     优先从触发钮右缘向左展开；下方放不下时改到上方，内容在菜单内滚动。 */
-  const positionMenu=()=>{
-    const anchor=toggle.getBoundingClientRect(),width=menu.getBoundingClientRect().width;
-    const height=Math.min(menu.scrollHeight,innerHeight-16);
-    const left=Math.max(8,Math.min(anchor.right-width,innerWidth-width-8));
-    const below=anchor.bottom+8;
-    const top=below+height<=innerHeight-8?below:Math.max(8,anchor.top-height-8);
-    menu.style.left=left+'px';menu.style.top=top+'px'};
-  const closeFromViewport=()=>setOpenTracked(false);
-  const setOpen=open=>{
-    if(open){
-      menu.hidden=false;
-      positionMenu();
-      window.addEventListener('resize',positionMenu);
-      window.addEventListener('scroll',closeFromViewport,{capture:true,passive:true});
-    }else{
-      menu.hidden=true;menu.style.left='';menu.style.top='';
-      window.removeEventListener('resize',positionMenu);
-      window.removeEventListener('scroll',closeFromViewport,true);
-    }
-    toggle.setAttribute('aria-expanded',String(open));
-  };
-  const setOpenTracked=open=>{
-    setOpen(open);
-    fsrcOpened=open?{mount,setOpen}:null};
-  toggle.onclick=e=>{e.stopPropagation();setOpenTracked(menu.hidden)};
-  mount.onkeydown=event=>{
-    if(event.key==='Escape'&&!menu.hidden){setOpenTracked(false);toggle.focus()}};
+  wireAnchoredMenu(mount,toggle,menu);
   menu.querySelectorAll('[data-srcfilter]').forEach(input=>input.onchange=()=>{
     input.checked?fsrcUnchecked.delete(input.dataset.srcfilter)
       :fsrcUnchecked.add(input.dataset.srcfilter);
@@ -5745,6 +5711,33 @@ async function openPhotoLightbox(index,source=null){
   document.addEventListener('keydown',photoLightKeys,true);
 }
 
+/* 统称选择器的行为。换统称改的是 `entity.canonical_name` 这个真相字段，所以只在
+   服务端换完之后才重画这一页；撤销同样是一次真实写回，不在本地把标题改回去当成功。
+   页面重画会把菜单连同这里绑的处理器一起换掉，每次渲染重新绑一遍。 */
+function wireNamePicker(kind,current){
+  const mount=$('#index').querySelector('[data-namepick]');
+  if(!mount)return;
+  const toggle=mount.querySelector('[data-namepick-toggle]');
+  const menu=mount.querySelector('[data-namepick-menu]');
+  const anchored=wireAnchoredMenu(mount,toggle,menu);
+  const rename=(from,to)=>api('/api/entity-name',
+    {method:'POST',body:JSON.stringify({kind,name:from,canonical:to})});
+  menu.querySelectorAll('[data-namepick-name]').forEach(item=>item.onclick=async()=>{
+    const chosen=item.dataset.namepickName;
+    if(chosen===current){anchored.setOpen(false);return}
+    setActionBusy(item);
+    try{
+      const result=await rename(current,chosen);
+      anchored.setOpen(false);
+      if(!result.changed)return;
+      actionReceipt(`已把统称改为 ${result.canonical_name}`,{undo:async()=>{
+        await rename(result.canonical_name,result.previous_name);
+        await openEntity(kind,result.previous_name)}});
+      await openEntity(kind,result.canonical_name);
+    }catch(error){actionFailure('修改统称',error);setActionBusy(item,false)}
+  });
+}
+
 async function openEntity(kind,name,push=true){
   releaseHoverPreviews();
   const filters=push?emptyEntityFilters():parseEntityFilters(location.search);
@@ -5824,9 +5817,23 @@ async function openEntity(kind,name,push=true){
   const mediaToggle=photoCount?mediaViewButtonsHtml({active:mediaSelected?'photos':'videos',
     imageValue:'photos',imageLabel:'照片',videoCount:d.asset_count,imageCount:photoCount,
     className:'entitymediaview'}):'';
+  /* 统称由用户自己定。同一个人在库里常有中文、日文、罗马字几种写法，哪一个该顶在
+     标题上是他的偏好，账本里没有能推出答案的字段。菜单只列这条实体名下已有的写法：
+     换统称是换显示的那一个，不是改名——改名要有来源和证据，不该由一次点击完成。
+     只有一个写法时不出这个控件，那里没有可选的东西。 */
+  const nameChoices=[d.canonical_name,...(d.aliases||[])]
+    .filter((option,index,all)=>option&&all.indexOf(option)===index);
+  const namePick=nameChoices.length>1?`<div class="namepick" data-namepick>
+      <button type="button" class="npbtn" data-namepick-toggle aria-haspopup="menu"
+        aria-expanded="false" aria-controls="entity-name-menu"
+        aria-label="选择统称" title="选择统称">${icon('chevron-down')}</button>
+      <div class="popmenu npmenu" id="entity-name-menu" role="menu" data-namepick-menu hidden>${
+        nameChoices.map(option=>`<button type="button" role="menuitemradio"
+          data-namepick-name="${esc(option)}" aria-checked="${option===d.canonical_name}"
+          >${icon('check')}<span>${esc(option)}</span></button>`).join('')}</div></div>`:'';
   $('#index').dataset.entityKind=kind;$('#index').dataset.entityName=name;
   $('#index').innerHTML=`<div class="entityhero"><div class="entityportrait ${kind==='performer'||kind==='creator'?'':'square'}">${image}<span>${esc(name.slice(0,1))}</span></div>
-      <div><h2>${esc(d.canonical_name)}</h2>
+      <div><div class="entitytitle"><h2>${esc(d.canonical_name)}</h2>${namePick}</div>
         <div class="alias">${(d.display_aliases||[]).length?`${d.display_aliases.map(esc).join(' / ')} · `:''}<b>${d.asset_count.toLocaleString()}</b> 个视频</div>
         ${links?`<div class="entitylinks">${links}</div>`:''}</div></div>
     ${related?`<div class="entitymeta"><section aria-label="同台艺人"><div class="relatedpeople">${related}</div></section></div>`:''}
@@ -5837,6 +5844,7 @@ async function openEntity(kind,name,push=true){
     toggleTag(b.dataset.entityTag));
   $('#index').querySelectorAll('[data-related-performer]').forEach(b=>b.onclick=()=>
     openEntity('performer',b.dataset.relatedPerformer));
+  if(namePick)wireNamePicker(kind,d.canonical_name);
   entityPhotos=photos&&!photos.error?photos:null;
   if(entityMediaView.media==='photos'&&!photoTotalOf())entityMediaView=emptyMediaView();
   renderEntityMediaToggle(kind,name,filters);

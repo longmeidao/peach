@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 
 from urllib.parse import urlsplit
 
@@ -44,8 +45,12 @@ def q_entity(contract: WebContract, args):
         except (TypeError, ValueError):
             metadata = {}
         d["metadata"] = metadata
+        # 同一个名字按来源分行（主键含 source），合并会再写一条 `merge:*`，所以同一个
+        # 写法能出现两次。留痕属于账本，展示不该把同一个名字并排列两遍：按归一形取
+        # 置信度最高的那一条。`max()` 让 SQLite 把裸列取自同一行，结果是确定的。
         d["aliases"] = [r[0] for r in c.execute(
-            "SELECT alias FROM entity_alias WHERE entity_id=? ORDER BY confidence DESC,alias",
+            "SELECT alias,max(confidence) AS top FROM entity_alias WHERE entity_id=?"
+            " GROUP BY normalized_alias ORDER BY top DESC,alias",
             (d["id"],),
         )]
         # 罗马字仍是检索和旧链接的重要身份键，但中文/日文规范名下面再把英文全列一遍
@@ -303,3 +308,86 @@ def q_index(contract: WebContract, kind, q="", limit=600, offset=0, category="")
     if kind == "tags":
         result["categories"] = category_counts
     return result
+
+
+#: 用户在资料页选定统称时，被换下的旧规范名记这个来源。合并留的是 `merge:*`，
+#: 刮削留的是站点名；分得开才答得出「这个名字是谁定的」。
+PREFERRED_NAME_SOURCE = "user:preferred-name"
+
+#: 规范名有一份扁平投影（ADR-0005）：女优落在 `asset_tag` 的 `演员:` 标签里，其余三种
+#: 落在 `asset` 的同名列里。只改实体名不改这一份，卡片上还写着旧名、按旧名也照样查得到，
+#: 资料页和卡片就各说各话了。
+_FLAT_COLUMN = {"studio": "studio", "creator": "creator", "series": "series"}
+
+
+def _rewrite_flat_projection(c, kind, entity_id, old_name, new_name):
+    column = _FLAT_COLUMN.get(kind)
+    if column:
+        c.execute(f"UPDATE asset SET {column}=? WHERE {column}=?", (new_name, old_name))
+        return c.execute("SELECT changes()").fetchone()[0]
+    rewritten = 0
+    old_tag, new_tag = f"演员:{old_name}", f"演员:{new_name}"
+    for item in c.execute(
+        "SELECT DISTINCT asset_id FROM asset_entity WHERE entity_id=?", (entity_id,)
+    ):
+        asset_id = int(item[0])
+        # 置信度与来源跟着旧标签走：换的是写法，不是这条标注的可信程度。
+        c.execute(
+            "INSERT OR IGNORE INTO asset_tag(asset_id,tag,confidence,source) "
+            "SELECT asset_id,?,confidence,source FROM asset_tag WHERE asset_id=? AND tag=?",
+            (new_tag, asset_id, old_tag))
+        c.execute("DELETE FROM asset_tag WHERE asset_id=? AND tag=?", (asset_id, old_tag))
+        if c.execute("SELECT changes()").fetchone()[0]:
+            rewritten += 1
+    return rewritten
+
+
+def w_entity_name(contract: WebContract, body):
+    """把这个实体已有的某个名字提为统称，旧规范名转成别名。
+
+    统称就是 `entity.canonical_name`，它是真相字段。所以这里只做「换一个已经在
+    这条实体名下的名字」：候选必须是现在的规范名或它的别名之一，不收自由文本——
+    自由文本是改名，那要有来源和证据，不是一次点击该干的事。
+
+    规范名唯一（`entity(kind, normalized_name)`），选中的名字若已经是另一条实体的
+    规范名，这里只报冲突。那种情况要么是两条该合并，要么是同名不同人，都得人来判。
+
+    这是可逆的：把换下来的那个再选回去就还原了。
+    """
+    contract.cache_bust()
+    kind = str(body.get("kind", "")).strip()
+    name = str(body.get("name", "")).strip()
+    chosen = str(body.get("canonical", "")).strip()
+    if kind not in {"performer", "studio", "creator", "series"} or not name:
+        raise ValueError("kind must be a known entity kind and name is required")
+    if not chosen:
+        raise ValueError("canonical is required")
+    with contract.write_transaction() as c:
+        row = resolve_entity(c, kind, name)
+        if not row:
+            raise ValueError("entity not found")
+        entity_id, current = int(row["id"]), str(row["canonical_name"])
+        chosen_key = normalize_entity_name(chosen)
+        if chosen_key == normalize_entity_name(current):
+            return {"ok": True, "canonical_name": current, "changed": False}
+        known = {normalize_entity_name(str(item[0])): str(item[0]) for item in c.execute(
+            "SELECT alias FROM entity_alias WHERE entity_id=?", (entity_id,))}
+        if chosen_key not in known:
+            raise ValueError("canonical must be one of this entity's existing names")
+        taken = c.execute(
+            "SELECT canonical_name FROM entity WHERE kind=? AND normalized_name=? AND id<>?",
+            (kind, chosen_key, entity_id)).fetchone()
+        if taken:
+            raise ValueError(f"another {kind} is already named {taken[0]}")
+        stamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        c.execute(
+            "UPDATE entity SET canonical_name=?,normalized_name=?,updated_at=? WHERE id=?",
+            (known[chosen_key], chosen_key, stamp, entity_id))
+        # 旧规范名留成别名：它是这个人真的用过的名字，也是选回去的入口。
+        c.execute(
+            "INSERT OR IGNORE INTO entity_alias(entity_id,alias,normalized_alias,source,confidence)"
+            " VALUES(?,?,?,?,1.0)",
+            (entity_id, current, normalize_entity_name(current), PREFERRED_NAME_SOURCE))
+        flat = _rewrite_flat_projection(c, kind, entity_id, current, known[chosen_key])
+        return {"ok": True, "canonical_name": known[chosen_key], "changed": True,
+                "previous_name": current, "flat_rewritten": flat}

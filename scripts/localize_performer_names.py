@@ -23,6 +23,7 @@ import sqlite3
 import xml.etree.ElementTree as ET
 import sys
 from collections import Counter, defaultdict
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -34,41 +35,19 @@ if str(SRC_DIR) not in sys.path:
 
 from peach.config import DATA_ROOT, GENERATED_DIR
 from peach.entities import merge_entity, normalize_entity_name
+from peach.kanji import JP_KANJI_TO_SIMPLIFIED, simplify_kanji   # noqa: F401 - 供测试与脚本共用
 from peach.review_csv import read_rows, write_rows
 from peach.scripting import add_ledger_write_args, counts_of, open_for_write, verify_after_write
 
 
 RELEASE_SOURCES = frozenset({"r18:performer", "javbus:performer"})
 ALIAS_SOURCE_PREFIX = "avdb-actor-mapping"
+#: javdb 资料页那一份。两份映射的别名来源必须分得开：回溯「这个中文名是谁写的」
+#: 时，来源前缀是唯一留着这个区别的地方。
+JAVDB_ALIAS_SOURCE = "javdb-actor-page"
 MERGE_ALIAS_SOURCE = "merge:performer-localization"
 KANJI_ALIAS_SOURCE = "kanji-simplification"
 KANJI_ONLY_REVISION = "kanji-only"
-
-# 日本汉字（新字体与旧字体）在简体中文里有确定对应字形的，逐字换。这里换的是字形不是名字，
-# 所以不需要外部证据：中文资料页写「凉森玲梦」和写「涼森玲夢」指的是同一个人。
-# 收录范围是本库出现过的字形，加上人名里常见、对应关系同样没有歧义的那批。
-# 逐字换只看名字里实际写的那个字：`斎`／`齋` 换成 `斋`，`斉`／`齊` 换成 `齐`。
-# 它们是两个字（斋藤／齐藤），日文一侧写什么都不构成改字的理由——拿日文名去推断中文名里的
-# `斋` 写错了，`安斋拉拉` 就会被改成 `安齐拉拉`。
-# 这张表不靠手写记对：`tests/test_performer_localization.py` 拿 opencc 逐字复核，`斎`
-# 曾被写成 `齐`（`斋藤満里奈` 于是落成 `齐藤满里奈`），就是那道复核抓出来的。
-JP_KANJI_TO_SIMPLIFIED = {
-    "並": "并", "亜": "亚", "亞": "亚", "倉": "仓", "児": "儿", "凜": "凛",
-    "実": "实", "實": "实", "宮": "宫", "島": "岛", "嶋": "岛", "嵐": "岚",
-    "塩": "盐", "姫": "姬", "尋": "寻", "恵": "惠", "愛": "爱",
-    "斎": "斋", "齋": "斋", "斉": "齐", "齊": "齐",
-    "桜": "樱", "櫻": "樱", "橋": "桥", "歩": "步", "満": "满",
-    "沢": "泽", "澤": "泽", "沖": "冲", "浜": "滨", "濱": "滨", "渋": "涩",
-    "涼": "凉", "湊": "凑", "瀬": "濑", "瀨": "濑", "瀧": "泷", "稲": "稻",
-    "穂": "穗", "紀": "纪", "紗": "纱", "結": "结", "絵": "绘", "絢": "绚",
-    "綾": "绫", "緒": "绪", "織": "织", "聖": "圣", "華": "华", "葉": "叶",
-    "蔵": "藏", "藍": "蓝", "蘭": "兰", "見": "见", "遠": "远", "鈴": "铃",
-    "鳥": "鸟", "鳩": "鸠", "須": "须", "優": "优", "飯": "饭", "岡": "冈",
-    "時": "时", "場": "场", "圓": "圆", "廣": "广", "國": "国", "學": "学",
-    "風": "风", "樂": "乐", "楽": "乐", "榮": "荣", "豐": "丰", "龍": "龙",
-    "鶴": "鹤", "蓮": "莲", "東": "东", "納": "纳", "樹": "树", "麗": "丽",
-    "靜": "静", "貴": "贵", "藝": "艺", "歐": "欧", "慶": "庆",
-}
 
 # 上游译名偶尔夹带零宽字符（`\u200c斋藤亚美里`）。页面上和普通名字看不出差别，
 # 搜索、去重和名字唯一约束却全按另一个字符串算，等于库里多出一个查不到的人。
@@ -78,10 +57,6 @@ _ZERO_WIDTH = re.compile(r"[\u200b-\u200f\u2060\ufeff]")
 def strip_zero_width(name: str) -> str:
     return _ZERO_WIDTH.sub("", name or "")
 
-
-# 简体中文没有对应字形的日本汉字：咲 凪 雫 辻 笹 榊 槙 䌷。中文资料页一律照抄，
-# 表里不收，逐字换的时候原样留下——`桜咲姫莉` 该变成 `樱咲姬莉`，不是变成半个空格。
-_KANA = re.compile(r"[぀-ヿ]")
 
 # 该映射条目的 zh_cn 仍误填日文，但 keyword 同时给出简/繁中文；中文资料页也交叉确认。
 # 只在外部条目确实携带这个候选时启用，避免脱离来源硬编码一个无法追溯的译名。
@@ -97,9 +72,16 @@ class ActorMapping:
     keywords: tuple[str, ...]
     tmdb_id: str
     verified: str
+    #: 来源自己的身份键。javdb 的资料页有站内 id，比名字稳，也让 provenance 指得回那一页。
+    key_hint: str = ""
+    #: 这一条的拉丁写法是不是艺名本身。XML 那份偶尔把 `zh_cn` 填成罗马字，所以默认
+    #: 当成误填；javdb 的现名栏写着 `JULIA`、`RARA` 时那就是艺名，不是转写。
+    latin_is_a_stage_name: bool = False
 
     @property
     def key(self) -> str:
+        if self.key_hint:
+            return self.key_hint
         return f"tmdb:{self.tmdb_id}" if self.tmdb_id else f"xml:{self.index}:{self.jp}"
 
 
@@ -123,6 +105,47 @@ def read_mapping(path: Path) -> list[ActorMapping]:
     return rows
 
 
+def read_mapping_csv(path: Path, accept: Sequence[str] = ("ok",)) -> list[ActorMapping]:
+    """读 `harvest_javdb_cn_names.py` 产出的映射，只收 `accept` 里那几种判定的行。
+
+    默认只收 `ok`。站上已经改了名的（`改艺名`、`旧名`）要不要跟着改，是人的决定，
+    所以得在命令行里点名——判定名照抄 CSV 里那一列的字面值。
+
+    `jp` 取账本规范名而不是页面上的日文写法：规范名在账本里唯一，拿它回查是一对一，
+    页面写法还要绕别名。采用的名字在这里再过一次字形归一：javdb 给的是繁体中文，
+    opencc 转完仍可能留着日本字形（`滝田亞由` → `滝田亚由`，`滝` 中文写 `泷`）。
+    字形不是译名判断，这一步不需要外部证据。
+    """
+    rows = []
+    order = {str(value).strip(): rank for rank, value in enumerate(accept)}
+    taken: dict[str, int] = {}
+    candidates = [record for record in read_rows(path)
+                  if str(record.get("verdict") or "").strip() in order]
+    # 同一位女优可能命中多页（`アンナ` 命中了 `安娜`、`Anna`、`ANNA` 三页）。
+    # 按 `--accept` 的书写次序定优先级：先写的判定先采用，一位只留一条。
+    candidates.sort(key=lambda record: order[str(record["verdict"]).strip()])
+    for record in candidates:
+        name = str(record.get("current_name") or "").strip()
+        if not name or name in taken:
+            continue
+        taken[name] = 1
+        zh_cn = simplify_kanji(str(record.get("adopt") or "").strip())
+        if not zh_cn:
+            continue
+        keywords = tuple(dict.fromkeys(
+            part.strip() for part in str(record.get("keywords") or "").split("|")
+            if part.strip()))
+        actor = str(record.get("actor_id") or "").strip()
+        rows.append(ActorMapping(
+            # `index` 是在返回列表里的位置，`collect` 拿它当下标回查。这里会跳过
+            # 判定不是 `ok` 的行，用读入序号就会越界或指到别人。
+            index=len(rows), jp=name, zh_cn=zh_cn,
+            zh_tw=str(record.get("zh_tw") or "").strip(), keywords=keywords,
+            tmdb_id="", verified="", key_hint=f"javdb:{actor}" if actor else "",
+            latin_is_a_stage_name=True))
+    return rows
+
+
 def read_identity_review(path: Path | None) -> dict[int, dict[str, str]]:
     if path is None or not path.is_file():
         return {}
@@ -141,25 +164,6 @@ def _contains_latin(value: str) -> bool:
 def _is_non_latin_east_asian(value: str) -> bool:
     return bool(re.search(r"[\u3040-\u30ff\u3400-\u9fff]", value or "")) \
         and not _contains_latin(value)
-
-
-def simplify_kanji(name: str) -> str:
-    """把纯汉字姓名里的日本字形换成简体字形；含假名或拉丁字母的名字原样返回。
-
-    假名和罗马字要的是译名，不是字形：`飯岡かなこ` 逐字换只得到 `饭冈かなこ`，
-    一个半中半日的名字，比原样留着更糟。那种名字只能等映射 XML 收录。
-    """
-    if not name or _KANA.search(name) or _contains_latin(name):
-        return name
-    out: list[str] = []
-    for char in name:
-        # 「々」是日语的叠字符号，中文没有这个写法，照抄下来 `野々宮蘭` 就还是半个日文名。
-        # 它的意思是「重复上一个字」，展开成 `野野宫兰` 没有任何判断空间。
-        if char == "々" and out:
-            out.append(out[-1])
-            continue
-        out.append(JP_KANJI_TO_SIMPLIFIED.get(char, char))
-    return "".join(out)
 
 
 def _target_name(mapping: ActorMapping) -> tuple[str, str]:
@@ -295,7 +299,7 @@ def collect(
         target, target_source = _target_name(mapping)
         # 外部映射偶有把 `zh_cn` 填成罗马字。不能因此把已有的日文/中文规范名
         # 倒退成英文；已发生倒退时，仅用同时出现在该映射条目中的 r18 发行名恢复。
-        if _contains_latin(target):
+        if _contains_latin(target) and not mapping.latin_is_a_stage_name:
             release_name = str(entity["release_name"] or "").strip()
             mapping_names = {
                 normalize_entity_name(value)
@@ -439,13 +443,14 @@ def report_conflicts(rows: list[dict[str, object]]) -> int:
 
 def apply_rows(
     connection: sqlite3.Connection, rows: list[dict[str, object]], revision: str,
+    prefix: str = ALIAS_SOURCE_PREFIX,
 ) -> dict[str, int]:
     counts = Counter()
     # 重名冲突只挡住它自己那一行：下面的写入循环本来就跳过 conflict，整批拒绝扣住的
     # 是另外九十条毫无关系的改名——一个等人授权的同人合并不该冻住整轮本地化。跳过的
     # 行照样计数、照样让退出码非零，不会悄悄消失。
     counts["conflicts_skipped"] = sum(1 for row in rows if row["action"] == "conflict")
-    source = f"{ALIAS_SOURCE_PREFIX}@{revision[:12]}"
+    source = f"{prefix}@{revision[:12]}"
     by_id = {int(row["entity_id"]): row for row in rows}
 
     for row in rows:
@@ -496,7 +501,7 @@ def apply_rows(
             except (TypeError, ValueError):
                 metadata = {}
             metadata["name_localization"] = {
-                "source": ALIAS_SOURCE_PREFIX,
+                "source": prefix,
                 "revision": revision,
                 "mapping_key": row["mapping_key"],
                 "jp": row["mapping_jp"],
@@ -533,6 +538,13 @@ def build_parser() -> argparse.ArgumentParser:
     # 映射 XML 不在仓库里，也可能已经不在这台机器上。不给就只跑字形归一，
     # 那一道不需要外部来源，缺了 XML 也不该把整个脚本变成跑不起来。
     parser.add_argument("--mapping-xml", type=Path)
+    # javdb 资料页取回的映射（`harvest_javdb_cn_names.py`）。它覆盖的是假名规范名，
+    # XML 那份覆盖的是已收录艺人，两份不冲突也不必同时给。
+    parser.add_argument("--mapping-csv", type=Path)
+    # 站上已经改了名的要不要跟着改，是人的决定，所以判定要在命令行里点名。
+    parser.add_argument(
+        "--accept", default="ok",
+        help="逗号分隔的判定名，照抄 CSV 的 verdict 列；默认只收 ok")
     parser.add_argument("--mapping-revision", default="")
     parser.add_argument(
         "--identity-review", type=Path,
@@ -544,7 +556,13 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def run(args: argparse.Namespace) -> int:
-    mappings = read_mapping(args.mapping_xml) if args.mapping_xml else []
+    mappings: list[ActorMapping] = []
+    prefix = ALIAS_SOURCE_PREFIX
+    if args.mapping_xml:
+        mappings = read_mapping(args.mapping_xml)
+    elif args.mapping_csv:
+        accept = [part.strip() for part in str(args.accept).split(",") if part.strip()]
+        mappings, prefix = read_mapping_csv(args.mapping_csv, accept), JAVDB_ALIAS_SOURCE
     identity_review = read_identity_review(args.identity_review)
     connection = open_for_write(args)
     try:
@@ -559,7 +577,7 @@ def run(args: argparse.Namespace) -> int:
         print(f"  已备份到 {args.backup}")
         before = counts_of(connection, EXTRA_COUNTS)
         with connection:
-            changed = apply_rows(connection, rows, args.mapping_revision)
+            changed = apply_rows(connection, rows, args.mapping_revision, prefix)
         after = counts_of(connection, EXTRA_COUNTS)
         integrity, foreign_keys = verify_after_write(connection)
         print("  写入结果：", changed)
@@ -575,8 +593,10 @@ def run(args: argparse.Namespace) -> int:
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
-    if args.mapping_xml and not args.mapping_revision:
-        parser.error("给了 --mapping-xml 就必须给 --mapping-revision，别名要记得住来源")
+    if args.mapping_xml and args.mapping_csv:
+        parser.error("两份映射只能给一份：混着跑的话，别名来源记的是哪一份就说不清了")
+    if (args.mapping_xml or args.mapping_csv) and not args.mapping_revision:
+        parser.error("给了映射就必须给 --mapping-revision，别名要记得住来源")
     args.mapping_revision = args.mapping_revision or KANJI_ONLY_REVISION
     return run(args)
 

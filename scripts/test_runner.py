@@ -43,6 +43,8 @@ SCOPES: dict[str, tuple[str, ...]] = {
                  "test_entity_link_install.py", "test_studio_site_harvest.py",
                  "test_performer_link_harvest.py", "test_directory_link_harvest.py",
                  "test_studio_name_localization.py", "test_studio_icon_variants.py",
+                 "test_mgstage_maker_harvest.py", "test_studio_name_variant_merge.py",
+                 "test_javdb_cn_names.py",
                  "test_link_rediscovery.py"),
     "tooling": ("test_scripts.py", "test_cli.py", "test_script_policy.py",
                 "test_agent_worktree.py", "test_dependency_policy.py",

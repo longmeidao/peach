@@ -330,11 +330,7 @@ details.fcred{display:block}
 .fpickhead h3{margin:0;font-size:var(--fs-md)}
 .fsrcfilter{position:relative;display:inline-flex;min-width:0}
 .faddform .fsrcfilter .fbtn{width:auto;height:38px;min-height:38px;padding:0 11px}
-.fsrcmenu{position:fixed;z-index:var(--layer-popover);width:min(250px,calc(100vw - 16px));
-  max-height:calc(100dvh - 16px);padding:6px;border:1px solid var(--border-15);
-  border-radius:var(--floating-radius);background:var(--surface);box-shadow:0 12px 40px #0006;
-  display:grid;gap:2px;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain}
-.fsrcmenu[hidden]{display:none}
+.fsrcmenu{width:min(250px,calc(100vw - 16px))}
 .fsrcmenu label{display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:var(--control-radius);
   cursor:pointer;font-size:var(--fs-sm);color:var(--ink-2)}
 .fsrcmenu label:hover{background:var(--hover)}

@@ -1,4 +1,5 @@
 """creator / performer 跨类重复身份审计与兼容投影回归。"""
+import json
 import sqlite3
 import tempfile
 import unittest
@@ -10,6 +11,7 @@ from scripts.merge_duplicate_identities import (
     apply_rows,
     collect,
     collect_repeated_projections,
+    named_pairs,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -273,6 +275,267 @@ class ContainedAssetSetMergeTests(unittest.TestCase):
         """
         self.assertNotIn(
             "桉X", {row["drop_name"] for row in collect(self.con)})
+
+
+class StageNameDuplicateTests(unittest.TestCase):
+    """艺名已登记为别名、那个名字却还自己占一条实体。三道闸都拿实测假阳性做样本。"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.db = Path(self.tmp.name).resolve() / "ledger.db"
+        upgrade(self.db, ROOT / "migrations")
+        self.con = sqlite3.connect(self.db)
+        self.con.executemany(
+            "INSERT INTO asset(id,location,path,name,medium,code) "
+            "VALUES(?,'local',?,?,'video',?)",
+            [(1, "/x/1.mp4", "1.mp4", "CEAD-275"), (2, "/x/2.mp4", "2.mp4", "SKY-250"),
+             (3, "/x/3.mp4", "3.mp4", "MIZD-998"), (4, "/x/4.mp4", "4.mp4", "ABP-951"),
+             (5, "/x/5.mp4", "5.mp4", "DPMX-016"),
+             (6, "/x/6.mp4", "6.mp4", "300MIUM-1219")])
+        self.con.executemany(
+            "INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at)"
+            " VALUES(?,?,?,?,'t','t')",
+            [(20, "performer", "森泽佳奈", "森泽佳奈"),
+             (21, "performer", "飯岡かなこ", "飯岡かなこ"),
+             (22, "performer", "白石亚子", "白石亚子"),
+             (23, "performer", "Ako Shiraishi", "ako shiraishi"),
+             (24, "performer", "绫乃梓", "绫乃梓"),
+             (25, "performer", "NOZOMI", "nozomi")])
+        self.con.executemany(
+            "INSERT INTO entity_alias(entity_id,alias,normalized_alias,source,confidence)"
+            " VALUES(?,?,?,?,0.9)",
+            [(20, "飯岡かなこ", "飯岡かなこ", "r18:performer"),
+             (22, "Ako Shiraishi", "ako shiraishi", "r18:performer"),
+             (23, "Suzu Hirasawa", "suzu hirasawa", "r18:performer"),
+             (23, "平沢すず", "平沢すず", "avdb-actor-mapping@8e2d5b7a"),
+             (24, "Nozomi", "nozomi", "r18:performer")])
+        self.con.executemany(
+            "INSERT INTO entity_external_ref(entity_id,provider,external_kind,external_id)"
+            " VALUES(?,?,'performer',?)",
+            [(23, "r18", "平沢すず"), (24, "stash", "538"), (25, "stash", "610")])
+        self.con.executemany(
+            "INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence)"
+            " VALUES(?,?,'performer',?,0.9)",
+            [(1, 20, "r18:performer"), (2, 21, "javbus:performer"),
+             (3, 23, "r18:performer"), (4, 22, "r18:performer"),
+             (5, 24, "r18:performer"), (6, 25, "javbus:performer")])
+        self.con.commit()
+
+    def tearDown(self):
+        self.con.close()
+        self.tmp.cleanup()
+
+    def drops(self):
+        return {str(row["drop_name"]): row for row in collect(self.con)}
+
+    def test_a_stage_name_registered_as_another_entity_alias_is_a_duplicate(self):
+        """r18 早已把 `飯岡かなこ` 记成 `森泽佳奈` 的别名，那个名字却还自己占一条实体。"""
+        row = self.drops()["飯岡かなこ"]
+        self.assertEqual(row["keep_id"], 20)
+        self.assertEqual(row["keep_name"], "森泽佳奈")
+        self.assertIn("飯岡かなこ", str(row["match_evidence"]))
+        self.assertIn("r18:performer", str(row["match_evidence"]))
+
+    def test_an_entity_whose_own_aliases_name_someone_else_is_left_to_a_human(self):
+        """`Ako Shiraishi` 的每个别名和 r18 引用都指向 平沢すず——规范名写错了人。
+
+        并进 `白石亚子` 就是把两位女优搅在一起，不可逆。这条要改的是规范名，不是合并。
+        """
+        self.assertNotIn("Ako Shiraishi", self.drops())
+
+    def test_two_entities_with_different_ids_at_one_provider_are_two_people(self):
+        """`NOZOMI` 是素人企划里的通名，撞上的是 `绫乃梓` 罗马字读音那条别名。
+
+        两条各有自己的 stash performer id，那就是站方也认为的两个人。
+        """
+        self.assertNotIn("NOZOMI", self.drops())
+
+    def test_a_localization_alias_is_not_evidence_of_a_second_stage_name(self):
+        """简繁与本地化别名说的是同一个名字的另一种写法，证不了这是那个人的另一个艺名。"""
+        self.con.execute(
+            "INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at)"
+            " VALUES(30,'performer','綾乃梓','綾乃梓','t','t')")
+        self.con.execute(
+            "INSERT INTO entity_alias(entity_id,alias,normalized_alias,source,confidence)"
+            " VALUES(24,'綾乃梓','綾乃梓','kanji-simplification',1.0)")
+        self.con.execute(
+            "INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence)"
+            " VALUES(1,30,'performer','legacy:asset',0.8)")
+        self.con.commit()
+        self.assertNotIn("綾乃梓", self.drops())
+
+    def test_the_merge_keeps_the_alias_holder_and_moves_its_assets(self):
+        counts = apply_rows(self.con, collect(self.con))
+        self.con.commit()
+        self.assertEqual(counts["merged"], 1)
+        self.assertIsNone(self.con.execute("SELECT 1 FROM entity WHERE id=21").fetchone())
+        self.assertEqual(self.con.execute(
+            "SELECT count(*) FROM asset_entity WHERE entity_id=20").fetchone()[0], 2)
+        self.assertIn("飯岡かなこ", [row[0] for row in self.con.execute(
+            "SELECT alias FROM entity_alias WHERE entity_id=20")])
+
+
+class DirectoryIdentityTests(unittest.TestCase):
+    """名录页号是身份，比名字和别名都强：换过艺名的人靠它才认得出来。"""
+
+    LINK = "http://www.prestige-av.com/special/shiraishi_ako.php"
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.db = Path(self.tmp.name).resolve() / "ledger.db"
+        upgrade(self.db, ROOT / "migrations")
+        self.con = sqlite3.connect(self.db)
+        self.con.executemany(
+            "INSERT INTO asset(id,location,path,name,medium,code)"
+            " VALUES(?,'local',?,?,'video',?)",
+            [(1, "/x/1.mp4", "1.mp4", "ABP-951"), (2, "/x/2.mp4", "2.mp4", "MIZD-998")])
+        self.con.executemany(
+            "INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at)"
+            " VALUES(?,'performer',?,?,'t','t')",
+            [(40, "白石亚子", "白石亚子"), (41, "Ako Shiraishi", "ako shiraishi")])
+        self.con.executemany(
+            "INSERT INTO entity_alias(entity_id,alias,normalized_alias,source,confidence)"
+            " VALUES(?,?,?,'r18:performer',0.9)",
+            [(40, "白石あこ", "白石あこ"), (41, "平沢すず", "平沢すず")])
+        self.con.executemany(
+            "INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence)"
+            " VALUES(?,?,'performer','r18:performer',0.9)",
+            [(1, 40), (2, 41)])
+        self.con.commit()
+
+    def tearDown(self):
+        self.con.close()
+        self.tmp.cleanup()
+
+    def install(self, entity_id, evidence, url=None):
+        self.con.execute(
+            "INSERT INTO entity_link(entity_id,link_kind,label,url,hostname,is_sensitive,"
+            "metadata_json,created_at,updated_at)"
+            " VALUES(?,'official','T-POWERS',?,'www.prestige-av.com',0,?,'t','t')",
+            (entity_id, url or f"{self.LINK}?{entity_id}",
+             json.dumps({"evidence": evidence}, ensure_ascii=False)))
+        self.con.commit()
+
+    def test_two_entities_on_one_directory_page_are_one_person(self):
+        """艺名换过一次，账本各存了一条；两侧各按自己的名字检索，落到同一页。"""
+        self.install(40, "minnano-av actress37250 资料表「公式サイト」；经「白石あこ」检索命中")
+        self.install(41, "minnano-av actress37250 资料表「公式サイト」；经「平沢すず」检索命中")
+        rows = collect(self.con)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["keep_name"], "白石亚子")
+        self.assertEqual(rows[0]["drop_name"], "Ako Shiraishi")
+        self.assertEqual(rows[0]["evidence"], "名录页号")
+        self.assertIn("actress37250", str(rows[0]["match_evidence"]))
+
+    def test_the_localized_name_is_the_one_that_survives(self):
+        """用户 2026-09-04 的口径：用更知名的名字，其余叫法留在别名里。"""
+        self.install(40, "minnano-av actress37250 经「白石あこ」检索命中")
+        self.install(41, "minnano-av actress37250 经「平沢すず」检索命中")
+        apply_rows(self.con, collect(self.con))
+        self.con.commit()
+        self.assertIsNone(self.con.execute("SELECT 1 FROM entity WHERE id=41").fetchone())
+        aliases = [row[0] for row in self.con.execute(
+            "SELECT alias FROM entity_alias WHERE entity_id=40")]
+        self.assertIn("Ako Shiraishi", aliases)
+        self.assertIn("平沢すず", aliases)
+
+    def test_two_different_pages_are_two_people(self):
+        """同一家事务所的两位女优也会共用一条官网 URL——URL 不是身份，页号才是。"""
+        self.install(40, "minnano-av actress37250 经「白石あこ」检索命中", url=self.LINK)
+        self.install(41, "minnano-av actress99999 经「平沢すず」检索命中", url=self.LINK)
+        self.assertEqual(collect(self.con), [])
+
+    def test_a_link_without_a_page_number_is_not_evidence(self):
+        self.install(40, "X @shiraishi 简介外链")
+        self.install(41, "X @suzu 简介外链")
+        self.assertEqual(collect(self.con), [])
+
+    def test_three_entities_on_one_page_are_left_to_a_human(self):
+        """三条要先决定并的顺序，那不是脚本该替人做的。"""
+        self.con.execute(
+            "INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at)"
+            " VALUES(42,'performer','平泽铃','平泽铃','t','t')")
+        self.con.execute(
+            "INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence)"
+            " VALUES(1,42,'performer','r18:performer',0.9)")
+        for entity_id in (40, 41, 42):
+            self.install(entity_id, f"minnano-av actress37250 经「{entity_id}」检索命中")
+        self.assertEqual(collect(self.con), [])
+
+
+
+
+class NamedPairTests(unittest.TestCase):
+    """命令行点名的一对：证据在站外时，唯一说得清来由的就是那段话。"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.db = Path(self.tmp.name).resolve() / "ledger.db"
+        upgrade(self.db, ROOT / "migrations")
+        self.con = sqlite3.connect(self.db)
+        self.con.executemany(
+            "INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at)"
+            " VALUES(?,?,?,?,'t','t')",
+            [(1, "performer", "五十岚星兰", "五十岚星兰"),
+             (2, "performer", "五十嵐星蘭", "五十嵐星蘭"),
+             (3, "studio", "别的种类", "别的种类")])
+        self.con.commit()
+
+    def tearDown(self):
+        self.con.close()
+        self.tmp.cleanup()
+
+    def pairs(self, *values, engaged=None):
+        return named_pairs(self.con, list(values), engaged)
+
+    def test_the_evidence_is_carried_through_to_the_review_file(self):
+        row = self.pairs("1:2:javdb 资料页把五个艺名列在一起")[0]
+        self.assertEqual(row["match_evidence"], "javdb 资料页把五个艺名列在一起")
+        self.assertEqual((row["keep_id"], row["drop_id"]), (1, 2))
+        self.assertEqual(row["drop_name"], "五十嵐星蘭")
+
+    def test_a_pair_without_evidence_is_refused(self):
+        """合并不可逆。没有证据的一对说不清来由，比不合更糟。"""
+        with self.assertRaises(SystemExit):
+            self.pairs("1:2:")
+        with self.assertRaises(SystemExit):
+            self.pairs("1:2")
+
+    def test_two_different_kinds_are_never_the_same_identity(self):
+        with self.assertRaises(SystemExit):
+            self.pairs("1:3:随便什么理由")
+
+    def test_an_entity_already_planned_by_a_detector_is_refused(self):
+        """自动判据先合会把 id 删掉，第二趟再引用同一个 id 就是合进一条不存在的实体。"""
+        with self.assertRaises(SystemExit):
+            self.pairs("1:2:证据", engaged={2})
+
+    def test_a_missing_entity_is_refused(self):
+        with self.assertRaises(SystemExit):
+            self.pairs("1:99:证据")
+
+    def test_merging_series_rewrites_the_flat_column(self):
+        """只搬关系不改 `asset.series`，卡片上还写着被丢弃的系列名。"""
+        self.con.executemany(
+            "INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at)"
+            " VALUES(?,'series',?,?,'t','t')",
+            [(4, "Night Safari", "night safari"), (5, "旧写法", "旧写法")])
+        self.con.executemany(
+            "INSERT INTO asset(id,location,path,name,medium,code,series)"
+            " VALUES(?,'local',?,?,'video',?,?)",
+            [(1, "/x/1.mp4", "1.mp4", "AKA-022", "旧写法"),
+             (2, "/x/2.mp4", "2.mp4", "AKA-024", "Night Safari")])
+        self.con.executemany(
+            "INSERT INTO asset_entity(asset_id,entity_id,role,source)"
+            " VALUES(?,?,'series','r18:series')",
+            [(1, 5), (2, 4)])
+        self.con.commit()
+        with self.con:
+            counts = apply_rows(self.con, self.pairs("4:5:外部资料页说这两部同属一个系列"))
+        self.assertEqual(counts["merged"], 1)
+        self.assertEqual(
+            [row[0] for row in self.con.execute("SELECT series FROM asset ORDER BY id")],
+            ["Night Safari", "Night Safari"])
 
 
 if __name__ == "__main__":
