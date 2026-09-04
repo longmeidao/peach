@@ -288,7 +288,7 @@ class SerialisationTests(unittest.TestCase):
                 overrides={
                     "mdns_name": "peach-two", "port": 9443,
                     "review_writer_origin": "https://192.0.2.5",
-                    "smb_host": "other.local", "smb_user": "someone",
+                    "smb_host": "peach-writer.local", "smb_user": "someone",
                 },
                 # 反斜杠和 Windows 盘符必须原样活过一次往返：序列化器要是把 `\m`
                 # 当转义处理，挂载点就会变成另一个目录。

@@ -31,7 +31,7 @@ MOUNTS_ENV = "PEACH_MEDIA_MOUNTS"
 
 @lru_cache(maxsize=8)
 def _parse_override(raw: str) -> tuple[tuple[str, str], ...]:
-    """`PEACH_MEDIA_MOUNTS=local=/Volumes/RESOURCES/media,115=/Users/me/115` 形式的覆盖。"""
+    """`PEACH_MEDIA_MOUNTS=local=/Volumes/RESOURCES/media,115=/Volumes/CloudDrive/115` 形式的覆盖。"""
     pairs: list[tuple[str, str]] = []
     for chunk in raw.split(","):
         location, separator, mount = chunk.partition("=")
