@@ -130,6 +130,7 @@ Peach 要发布到 GitHub 供所有人维护与使用。使用形态不变：每
 - 分支规则集 `protect-master`（id 22263433）：默认分支禁删除、禁强推。Secret scanning、Push protection、Private vulnerability reporting、Dependabot alerts 已开启；Dependabot security updates 未开，自动开 PR 由用户决定。
 - 公开后的补漏（同日）：`MachineCoordinateTests` 改成只写形状不点名的门槛（家目录路径、私网 IP、`.local` 主机名、本机账号与主机名运行时派生）；发行名定为 `peach`，目录名 `peach-app` 不变；macOS bundle ID 改中性 ID 由用户定为待办第 28 条。
 - 开箱引导的顺序由用户定：先 CLI 问答（`peach init` 无参数进入问答并可首扫，逻辑在 `peach.onboarding`，已在 master），再 GUI 引导（托盘首启打开首次运行页升级成的表单，调同一组函数，待办第 29 条）。
+- GUI 引导已落地：未配置的机器上 `peach-tray` 起一条只绑回环的 `peach serve --setup` 引导服务并打开浏览器，首次运行页是表单，`POST /setup` 调与 CLI 同一个 `onboarding.apply()`；`tray.SetupGate` 在健康轮询里新鲜读设置文件，完成后不重启托盘进程就切到正常服务，并消费 `<数据根>/state/first-scan.request` 用子进程跑首扫。需要设置的判据是「没有 config.toml 且没有账本」，端口与失败形态见 `docs/OPERATIONS.md`「首次运行与设置文件」。
 - 剩余工作只在 `docs/PRODUCT_BACKLOG.md`：独立发行版、口味导入引导、README 瘦身到 `CONTRIBUTING.md` 与 `docs/`、第 28 与 29 条。
 
 ### 外部评审的取舍（2026-09-05）

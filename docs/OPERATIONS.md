@@ -17,7 +17,25 @@
   「现在扫描 <目录>？」（默认是）调 `peach.scan.scan_location` 登记文件，最后打印下一步与
   扫描摘要。写出的 `[media.locations]` 只有 `local`：Windows 上直接是那个目录、
   `[media.mounts]` 为空；macOS 上声明根是 `R:\media`、目录写进 `[media.mounts] local`。
-  复制、writer 镜像、SMB 一律不问，保持关闭或留空。
+  复制、writer 镜像、SMB 一律不问，保持关闭或留空。建目录、迁库、生成 CA 与口令、写设置文件
+  这一整段在 `onboarding.apply()`，CLI 与设置页调的是同一个函数，只在打印方式上不同。
+- 不进终端的那条路是托盘首启的引导服务。`peach-tray` 启动时新鲜读一次设置文件，判据在
+  `tray.needs_setup()`：**没有 `config.toml` 且没有账本**才算需要设置。刻意不用
+  `PeachConfig.configured`——托盘的单实例锁一启动就在数据根下建出 `state/`，而数据根的发现
+  只看目录在不在，只用 `configured` 的话一次失败的启动就足以让下一次误判成已配置；反过来
+  还没生成过 `config.toml` 的老部署账本是在的，不能被拖进首次设置。
+- 需要设置时托盘不构建正常规格（全新机器上 `build_service_specs()` 会因为缺 TLS 材料抛
+  `FileNotFoundError`），改起一条 `peach serve --setup --host 127.0.0.1 --port <设置里的端口，
+  默认 8900> --no-mdns --no-ledger-sync`，然后把浏览器打开到 `http://127.0.0.1:<端口>/`。
+  这条服务没有 TLS、口令强制置空（安全边界就是那个绑定地址），首页是首次运行表单，提交端点
+  是 `POST /setup`：应用已配置回 404、非回环调用方回 403、设置文件已存在回 409。
+- 切换由 `tray.SetupGate` 做，Windows 托盘与 macOS 菜单栏共用。它挂在健康轮询里（Windows 10 秒、
+  macOS 5 秒），每轮新鲜 `settings_file.load_config()`：不再需要设置且 TLS 材料齐了，就停掉引导
+  服务、按新数据根构建正常规格（`build_service_specs(tls_dir=...)`）并启动，托盘进程本身不重启。
+  TLS 还没齐（例如这台机器没有 openssl）就原地等下一轮，不会拿一组缺文件的规格去启动。
+- 首扫不跑在引导服务里——那个进程在切换的那一刻就被停掉了。表单勾了「现在扫描」只写一个
+  一次性标记 `<数据根>/state/first-scan.request`（内容是来源 ID），托盘切换完成后读走并删除它，
+  用子进程跑 `peach scan <来源>`，输出落在 `<数据根>/logs/tray-scan.out.log`。标记只消费一次。
 - 给了任何参数、加了 `--no-input`、或 stdin 不是终端，`peach init` 走非交互路径：按内建默认
   与 `--data-root`／`--host`／`--port`／`--mdns-name`／`--mount local=/mnt/media` 直接生成，
   写出的文件带 `local`／`115`／`pikpak` 三个示例声明根。已有账本不会被重建，它会提示改用
