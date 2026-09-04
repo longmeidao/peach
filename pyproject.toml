@@ -3,7 +3,7 @@ requires = ["setuptools==84.0.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "peach-app"
+name = "peach"
 dynamic = ["version"]
 description = "Local-first media library, behavior ledger, and discovery application"
 readme = "README.md"
