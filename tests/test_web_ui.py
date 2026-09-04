@@ -444,6 +444,34 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertEqual(offenders, [],
                          f"这些 hover 在提亮边框，请改成只抬 background：{offenders}")
 
+    def test_the_primary_hover_spells_out_its_own_text_colour(self):
+        """主动作的悬停规则必须自己写 `color`，不能指望静止态那条留下来。
+
+        `:hover` 只声明 background 时，同一组里更宽的通用悬停（`.fpickactions
+        button:hover`、`.tagselection button:hover` 都是）会把文字提到 `--ink`：
+        它的选择器更弱，可 `color` 在主动作这条里没有对手，于是浅色实底上落成
+        白字白底，鼠标一压按钮上的字就没了。2026-09-04 用户在关注管理页的
+        「添加选中」上第二次遇到同一个坑。
+
+        取值只能是静止态那个 `--ground`：Geist Button 的 primary 悬停只把 #EDEDED
+        掉一档到 #ccc，文字色不动（`vercel-geist-semantics-measured.md`
+        「Button 全变体与状态」）。
+        """
+        css = re.sub(r"/\*.*?\*/", "", stylesheet_source(), flags=re.S)
+        primary_hover = "background:color-mix(in srgb,var(--ink) 88%,var(--ground))"
+        offenders = []
+        seen = 0
+        for match in re.finditer(r"([^{}]+)\{([^{}]*)\}", css):
+            leaf, body = match.group(1).strip().split("{")[-1], match.group(2)
+            if ":hover" not in leaf or primary_hover not in body:
+                continue
+            seen += 1
+            if not re.search(r"(?<![-\w])color:var\(--ground\)", body):
+                offenders.append(leaf)
+        self.assertEqual(offenders, [],
+                         f"主动作悬停请补 color:var(--ground)，别把文字交给通用 hover：{offenders}")
+        self.assertGreaterEqual(seen, 6, "主动作悬停规则少于预期，检查断言是否还找得到它们")
+
     # 悬停允许照旧抬填充的两类控件。孤立开关：没有并排的同类邻居，鼠标压着的那颗
     # 就是你正在问的那颗，看不出「按没按」不构成误读。侧栏导航：Geist 自己就把分工
     # 反过来写，见 test_sidebar_nav_keeps_the_hover_fill_and_leaves_state_to_the_color。

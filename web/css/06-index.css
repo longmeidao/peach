@@ -47,7 +47,7 @@ body.entity-open .index{overflow-x:visible}
 .tagselection button{height:34px;padding:0 13px;border:1px solid var(--border-15);border-radius:var(--control-radius);background:transparent;color:var(--ink-2);cursor:pointer}
 .tagselection button:hover:not(:disabled){background:var(--hover);color:var(--ink)}
 .tagselection button.primary{background:var(--ink);border-color:var(--ink);color:var(--ground);font-weight:600}
-.tagselection button.primary:hover:not(:disabled){background:color-mix(in srgb,var(--ink) 88%,var(--ground));border-color:color-mix(in srgb,var(--ink) 88%,var(--ground))}
+.tagselection button.primary:hover:not(:disabled){background:color-mix(in srgb,var(--ink) 88%,var(--ground));border-color:color-mix(in srgb,var(--ink) 88%,var(--ground));color:var(--ground)}
 .tagselection button:disabled{background:var(--surface);border-color:var(--border-15);color:var(--muted);cursor:default}
 .tagfilters .all::before{background:linear-gradient(135deg,#55A7FF,#D783FF)}
 .index-tags .tg,.alphatag{--tag-color:#7A91A8}
