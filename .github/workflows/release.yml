@@ -1,0 +1,181 @@
+name: Release
+
+# 推 `vX.Y.Z` tag 就出 Windows 与 macOS 制品并挂到 GitHub Release；手动触发只上传
+# artifact 供试跑，不发布。版本唯一来源是 `src/peach/__init__.py::__version__`
+# （ADR-0012），tag 名必须等于 `v<__version__>`，不一致在构建前就失败。
+on:
+  push:
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# 与 test.yml 同一口径：Windows runner 的 stdout 默认 cp1252，打包脚本里的中文提示
+# 会抛 UnicodeEncodeError。
+env:
+  PYTHONUTF8: "1"
+  PYTHONIOENCODING: "utf-8"
+
+jobs:
+  windows:
+    name: Windows x64 制品
+    runs-on: windows-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+          cache: pip
+          check-latest: true
+      # 打包脚本会重建 island 产物（ADR-0022），运行时没有 Node，所以这里要装。
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: 核对 tag 与 __version__
+        id: version
+        shell: bash
+        run: |
+          version="$(sed -n 's/^__version__ = "\(.*\)"$/\1/p' src/peach/__init__.py)"
+          if [ -z "$version" ]; then
+            echo "::error::src/peach/__init__.py 里读不到 __version__"
+            exit 1
+          fi
+          if [ "$GITHUB_REF_TYPE" = "tag" ] && [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "::error::tag $GITHUB_REF_NAME 与 __version__ $version 不一致；发布 tag 必须是 v$version"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: 安装依赖
+        shell: pwsh
+        run: |
+          python -m venv .venv
+          & .\.venv\Scripts\python.exe -m pip install --upgrade pip
+          & .\.venv\Scripts\python.exe -m pip install -e ".[build]"
+          & .\.venv\Scripts\python.exe -m pip check
+
+      - name: 打包 Peach.exe
+        shell: pwsh
+        run: '& .\scripts\build_windows.ps1'
+
+      - name: 压缩
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path release | Out-Null
+          Compress-Archive -Path dist\Peach\Peach.exe -DestinationPath "release\Peach-${{ steps.version.outputs.version }}-windows-x64.zip"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: Peach-${{ steps.version.outputs.version }}-windows-x64
+          path: release/*.zip
+          if-no-files-found: error
+
+  macos:
+    name: macOS 制品
+    runs-on: macos-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+          cache: pip
+          check-latest: true
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: 核对 tag 与 __version__
+        id: version
+        shell: bash
+        run: |
+          version="$(sed -n 's/^__version__ = "\(.*\)"$/\1/p' src/peach/__init__.py)"
+          if [ -z "$version" ]; then
+            echo "::error::src/peach/__init__.py 里读不到 __version__"
+            exit 1
+          fi
+          if [ "$GITHUB_REF_TYPE" = "tag" ] && [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "::error::tag $GITHUB_REF_NAME 与 __version__ $version 不一致；发布 tag 必须是 v$version"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: 安装依赖
+        shell: bash
+        run: |
+          python -m venv .venv
+          ./.venv/bin/python -m pip install --upgrade pip
+          ./.venv/bin/python -m pip install -e ".[build,macos]"
+          ./.venv/bin/python -m pip check
+
+      - name: 生成 Peach.app
+        shell: bash
+        run: ./.venv/bin/python scripts/build_macos_app.py
+
+      # ditto 保留 bundle 的可执行位与资源分支；zip 会丢。
+      - name: 压缩
+        id: archive
+        shell: bash
+        run: |
+          arch="$(uname -m)"
+          mkdir -p release
+          ditto -c -k --keepParent dist/Peach.app "release/Peach-${{ steps.version.outputs.version }}-macos-${arch}.zip"
+          echo "arch=$arch" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: Peach-${{ steps.version.outputs.version }}-macos-${{ steps.archive.outputs.arch }}
+          path: release/*.zip
+          if-no-files-found: error
+
+  release:
+    name: GitHub Release
+    if: github.ref_type == 'tag'
+    needs: [windows, macos]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          path: release
+          merge-multiple: true
+
+      # checkout 把 tag 指向提交对象，附注 tag 的正文取不到，所以按 ref 再拉一次原 tag。
+      # 轻量 tag 没有正文，交给 GitHub 按提交历史生成说明。
+      - name: 取 tag 正文
+        id: notes
+        shell: bash
+        run: |
+          git fetch --force origin "refs/tags/$GITHUB_REF_NAME:refs/tags/$GITHUB_REF_NAME"
+          if [ "$(git cat-file -t "$GITHUB_REF_NAME")" = "tag" ]; then
+            git for-each-ref --format='%(contents:subject)%0a%0a%(contents:body)' "refs/tags/$GITHUB_REF_NAME" > notes.md
+          fi
+          if [ -s notes.md ] && [ -n "$(tr -d '[:space:]' < notes.md)" ]; then
+            echo "source=tag" >> "$GITHUB_OUTPUT"
+          else
+            echo "source=generated" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: 创建 Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.windows.outputs.version }}
+        run: |
+          ls -l release
+          if [ "${{ steps.notes.outputs.source }}" = "tag" ]; then
+            gh release create "$GITHUB_REF_NAME" release/*.zip --verify-tag --title "Peach $VERSION" --notes-file notes.md
+          else
+            gh release create "$GITHUB_REF_NAME" release/*.zip --verify-tag --title "Peach $VERSION" --generate-notes
+          fi

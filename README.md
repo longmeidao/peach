@@ -69,6 +69,10 @@ peach-app/
 - **openssl**（可选，仅 HTTPS）：生成本机 CA 的前置。Windows 上通常来自 Git for Windows（安装时选把 Unix 工具放进 `PATH`）。缺了 `peach init` 打印「未生成本机 CA」并正常完成，装好后 `peach init --force` 补上。
 - Node 不是运行前置，只用于维护固定的前端文件（见「依赖维护」）。
 
+## 下载制品
+
+每个 `v<版本>` tag 在 GitHub Releases 挂两个压缩包：`Peach-<版本>-windows-x64.zip`（单文件 `Peach.exe`）与 `Peach-<版本>-macos-<arch>.zip`（菜单栏 `Peach.app`）。它们只是托盘与菜单栏的入口，不是免安装的绿色版：服务进程仍由仓库的 `.venv` 承担，所以先按下面「安装」完成三步，再把解压出的 `Peach.exe` 放进仓库目录下（例如 `dist\Peach\`）；macOS 的 `Peach.app` 双击只是唤起 LaunchAgent，先 `./.venv/bin/python scripts/install_macos_agent.py install` 注册。FFmpeg 仍按前置条件自装。托盘「检查更新」对制品只报告版本，不下载也不安装更新（ADR-0012）。
+
 ## 安装
 
 三步，不需要事先准备任何目录或配置文件。在仓库根目录执行：
