@@ -846,6 +846,22 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(accepted.headers["location"], "/stats")
         self.assertNotIn("secret", accepted.headers["location"])
 
+    async def test_the_login_page_follows_the_chosen_theme(self):
+        """登录页在拿到 cookie 之前出图，所以它自带一份最小色板，跟着同一个选择走。
+
+        它取不到 `/app.css`，颜色只能写在页面里。写死一档的话，固定浅色的人从地址栏
+        直接进来先看见一整屏黑，登录完才跳回浅色——同一次打开出现两套配色。
+        """
+        page = await self.client.get("/login?next=/")
+        self.assertEqual(page.status_code, 200)
+        self.assertIn('<meta name="color-scheme" content="light dark">', page.text)
+        self.assertIn(":root{color-scheme:light;--bg:#FFFFFF;", page.text)
+        self.assertIn('@media (prefers-color-scheme:dark){html:not([data-theme="light"])', page.text)
+        self.assertIn('html[data-theme="dark"]{color-scheme:dark;', page.text)
+        self.assertIn("background:var(--bg);color:var(--ink)", page.text)
+        # 手动选的那一档存在页面自己的 localStorage 里，首帧之前就要读出来。
+        self.assertIn('localStorage.getItem("peach.settings.v1")', page.text)
+
     async def test_client_routes_serve_the_single_page_surface(self):
         await self.client.post(
             "/login", content="token=secret&next=%2F",
