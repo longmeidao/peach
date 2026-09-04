@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import logging
 import os
+from collections.abc import Mapping
 from functools import lru_cache
 from pathlib import Path, PureWindowsPath
 
@@ -64,20 +65,26 @@ def declared_root(location: str) -> str | None:
     return location_roots().get(location)
 
 
-def resolve_location(raw: str | os.PathLike[str]) -> tuple[str | None, tuple[str, ...]]:
+def resolve_location(
+    raw: str | os.PathLike[str], roots: Mapping[str, str] | None = None,
+) -> tuple[str | None, tuple[str, ...]]:
     """账本路径属于哪个来源，以及它在声明根之后的层级。
 
     翻译和写入侧门槛共用这一段判定，所以它只碰 `PureWindowsPath` 和字符串，
     在两个平台上行为一致、也都能测。声明根重叠时取最长的那个（`R:\\` 与
     `R:\\media` 同时声明时，`R:\\media\\x` 归后者）。大小写不敏感由
     `PureWindowsPath` 负责：账本里写 `R:\\Media`、声明根写 `R:\\media` 是同一处。
+
+    `roots` 缺省取当前生效的 `[media.locations]`。`peach init` 刚写完设置文件时进程里
+    那份缓存还是旧的，这种调用方把要用的声明根显式传进来。
     """
     text = os.fspath(raw)
     if not is_windows_path(text):
         return None, ()
     candidate = PureWindowsPath(text)
     best: tuple[int, str] | None = None
-    for location, root in location_roots().items():
+    declared_roots = location_roots() if roots is None else roots
+    for location, root in declared_roots.items():
         declared = PureWindowsPath(root)
         if candidate == declared or candidate.is_relative_to(declared):
             depth = len(declared.parts)
@@ -88,12 +95,14 @@ def resolve_location(raw: str | os.PathLike[str]) -> tuple[str | None, tuple[str
     return best[1], candidate.parts[best[0]:]
 
 
-def location_of(raw: str | os.PathLike[str]) -> str | None:
+def location_of(
+    raw: str | os.PathLike[str], roots: Mapping[str, str] | None = None,
+) -> str | None:
     """账本路径属于哪个来源；不在任何声明根下则返回 None。
 
-    写入侧用它拦截「location 和 root 对不上」的导入（`scripts/ledger.py scan`）。
+    写入侧用它拦截「location 和 root 对不上」的导入（`peach.scan.check_scan_target`）。
     """
-    return resolve_location(raw)[0]
+    return resolve_location(raw, roots)[0]
 
 
 def root_online(root: Path) -> bool:

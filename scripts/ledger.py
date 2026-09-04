@@ -27,15 +27,13 @@ if str(SRC_DIR) not in sys.path:
 from peach.stash import StashClient, StashError
 from peach.entities import canonicalize_entity_name, upsert_asset_entity
 from peach.config import DATABASE_PATH
-from peach.platform import declared_root, location_of, location_roots
+from peach.platform import location_mounts, location_roots
+from peach.scan import ScanTargetError, ledger_root_for, scan_location
+from peach.scan import check_scan_target as _check_scan_target
 
 # 账本位置只有 `peach.config` 一处判据，这里不写死 `R:\peach-data\...` 之类的盘上
 # 路径：数据根搬走时写死的路径不会报「配置过时」，它只会安静地建一个空库。
 DB = str(DATABASE_PATH)
-VIDEO = {".mp4", ".m4v", ".mkv", ".avi", ".wmv", ".mov", ".ts", ".flv", ".rmvb", ".mpg", ".m2ts"}
-IMAGE = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"}
-AUDIO = {".mp3", ".flac", ".wav", ".m4a", ".ogg", ".opus"}
-ARCHIVE = {".zip", ".rar", ".7z", ".tar", ".gz"}
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS source(
@@ -136,15 +134,6 @@ def conn():
     return c
 
 
-def medium_of(name):
-    e = os.path.splitext(name)[1].lower()
-    if e in VIDEO: return "video"
-    if e in IMAGE: return "image"
-    if e in AUDIO: return "audio"
-    if e in ARCHIVE: return "archive"
-    return "other"
-
-
 def ctx_from(size, w=None, h=None, dur=None):
     orient = quality = length = None
     if w and h:
@@ -162,59 +151,24 @@ def cmd_init():
 
 
 def check_scan_target(location, root):
-    """扫描根必须落在这个来源的声明根内，否则拒绝。
-
-    `asset.location` 是挂载点 ID，`[media.locations]` 给出它在账本里的声明根。
-    这两者对不上时写进去的行既翻译不出本机路径、也通不过授权根，而且要等到有人
-    点开那个资产才会发现。ADR-0023 第 2 阶段把这一条从口头约定变成写入侧门槛。
-    """
-    declared = declared_root(location)
-    if declared is None:
-        known = "、".join(sorted(location_roots())) or "（设置文件里一个都没有）"
-        sys.exit(f"✗ 未声明的来源 {location!r}；[media.locations] 里已知：{known}")
-    actual = location_of(root)
-    if actual != location:
-        sys.exit(
-            f"✗ 扫描根与来源对不上：{location} 的声明根是 {declared}，"
-            f"但要扫的是 {root}"
-            + (f"（那是 {actual} 的地盘）" if actual else "（不在任何声明根下）")
-        )
+    """扫描根必须落在这个来源的声明根内，否则拒绝。判据在 `peach.scan`，这里只转成退出码。"""
+    try:
+        _check_scan_target(location, root, declared_roots=location_roots())
+    except ScanTargetError as exc:
+        sys.exit(str(exc))
 
 
 def cmd_scan(location, root):
+    """薄委托：声明根与挂载表取当前设置文件，扫描本体在 `peach.scan.scan_location`。"""
+    roots, mounts = location_roots(), location_mounts()
+    try:
+        root = ledger_root_for(location, root, declared_roots=roots, mounts=mounts)
+    except ScanTargetError as exc:
+        sys.exit(str(exc))
     check_scan_target(location, root)
-    c = conn(); c.executescript(SCHEMA)
-    now = time.strftime("%Y-%m-%d %H:%M:%S")
-    t0 = time.time(); n = 0; tot = 0
-    batch = []
-    for dp, dn, fns in os.walk(root, onerror=lambda e: None):
-        for f in fns:
-            p = os.path.join(dp, f)
-            try:
-                st = os.stat(p)
-                sz, mt = st.st_size, time.strftime("%Y-%m-%d", time.localtime(st.st_mtime))
-            except OSError:
-                continue
-            batch.append((location, p, f, medium_of(f), sz, mt, now, now))
-            n += 1; tot += sz
-            if len(batch) >= 2000:
-                c.executemany("""INSERT INTO asset(location,path,name,medium,size,mtime,first_seen,last_seen)
-                                 VALUES(?,?,?,?,?,?,?,?)
-                                 ON CONFLICT(location,path) DO UPDATE SET
-                                   size=excluded.size, mtime=excluded.mtime, last_seen=excluded.last_seen""", batch)
-                c.commit(); batch.clear()
-                print(f"  {time.time()-t0:5.0f}s  {n:,} 文件  {tot/1024**4:.2f} TB", flush=True)
-    if batch:
-        c.executemany("""INSERT INTO asset(location,path,name,medium,size,mtime,first_seen,last_seen)
-                         VALUES(?,?,?,?,?,?,?,?)
-                         ON CONFLICT(location,path) DO UPDATE SET
-                           size=excluded.size, mtime=excluded.mtime, last_seen=excluded.last_seen""", batch)
-    # 标记本次没扫到的（= 已删除）
-    c.execute("UPDATE asset SET last_seen=last_seen WHERE location=?", (location,))
-    c.commit()
-    gone = c.execute("SELECT COUNT(*) FROM asset WHERE location=? AND last_seen<?", (location, now)).fetchone()[0]
-    print(f"✓ {location}: {n:,} 文件 / {tot/1024**4:.2f} TB / 耗时 {time.time()-t0:.0f}s；清单中已消失 {gone:,} 个")
-    c.close()
+    c = conn(); c.executescript(SCHEMA); c.commit(); c.close()
+    scan_location(DB, location, root, declared_roots=roots, mounts=mounts,
+                  report=lambda line: print(line, flush=True))
 
 
 def cmd_stash(client=None):
