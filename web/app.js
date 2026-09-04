@@ -7,9 +7,9 @@ import { tagLabel } from './js/tags.js';
 import {
   breadcrumbHtml, checkboxHtml, closeAnchoredMenu, confirmModal, emptyStateHtml, fieldsetTitle,
   fillSkeletonTier, fitSkeleton, iconSwitchHtml, loadingDotsHtml,
-  mediaViewButtonsHtml, noteHtml, progressHtml, scrollerHtml, searchInputHtml, setActionBusy,
-  skeletonHtml, spinnerHtml, wireAnchoredMenu, wireBusyActions, wireCollapse, wireIconSwitch,
-  wireScrollers,
+  mediaViewButtonsHtml, noteHtml, progressHtml, scrollerHtml, searchInputHtml, selectFieldHtml,
+  setActionBusy, skeletonHtml, spinnerHtml, wireAnchoredMenu, wireBusyActions, wireCollapse,
+  wireIconSwitch, wireScrollers, wireSelectField,
 } from './js/ui-components.js';
 
 initMiddleTruncate(document);
@@ -41,6 +41,7 @@ const FOLLOW_SORT_LABELS={checked:'检查时间',added:'添加时间',name:'作�
 const FOLLOW_SORT_DIR_WORDS={checked:['从近到远','从远到近'],added:['从近到远','从远到近'],
   name:['倒序','正序'],sources:['从多到少','从少到多']};
 const FOLLOW_SORT_DEFAULT_DIR={checked:'desc',added:'desc',name:'asc',sources:'desc'};
+const FOLLOW_SORT_OPTIONS=[['checked','检查时间'],['added','添加时间'],['name','作者名称'],['sources','来源数量']];
 /* 同 `sortButtonHtml`：这枚键的无障碍名称说的是点下去会得到什么，所以取反方向的词。 */
 const followSortLabel=()=>`按${FOLLOW_SORT_LABELS[followManageSort]||'关注列表'}${
   (FOLLOW_SORT_DIR_WORDS[followManageSort]||[])[followManageDir==='asc'?0:1]||''}排序`;
@@ -336,7 +337,15 @@ const SORT_DIR_WORDS={rating:['从高到低','从低到高'],o:['从多到少','
 const SORT_ALIASES={big:['size','desc'],short:['dur','asc'],long:['dur','desc']};
 const sortDirWord=(key,dir)=>(SORT_DIR_WORDS[key]||[])[dir==='asc'?1:0]||'';
 const defaultSortDir=key=>SORT_DIR_WORDS[key]?'desc':'';
-const DEFAULT_SETTINGS={batchSize:60,defaultSort:'seed',sortDefaultsVersion:3,hoverDelaySeconds:5,seekSeconds:10,searchHistoryLimit:10,relatedLimit:20,javLayout:'big',followLayout:'cozy',peopleLayout:'big',ambientMode:true,theaterMode:false,groupCollapse:true,sidebarOrder:DEFAULT_SIDEBAR_ORDER};
+/* 主题三档，键名与 <html> 上的 data-theme 同一套写法：web/css/01-base.css 的色板
+   已经按 `prefers-color-scheme` 和 `[data-theme]` 两条路径写好，这里只负责选哪一条。
+   跟随系统是默认档，选它等于不写属性。 */
+const THEME_CHOICES=['system','light','dark'];
+/* 跟随系统那一档跟 vercel.com 后台一样用显示器：这一档说的是「照这台设备的设定走」，
+   讲的是设备而不是明暗，日月合体的那枚反而在说明暗。`monitor` 因此归给它，详情页的
+   画面尺寸改用 `ratio`——那里量的是画幅本身，不是放画幅的那台机器。 */
+const THEME_OPTIONS=[['system','跟随系统','monitor'],['light','浅色','sun'],['dark','深色','moon']];
+const DEFAULT_SETTINGS={batchSize:60,defaultSort:'seed',sortDefaultsVersion:3,hoverDelaySeconds:5,seekSeconds:10,searchHistoryLimit:10,relatedLimit:20,javLayout:'big',followLayout:'cozy',peopleLayout:'big',ambientMode:true,theaterMode:false,theme:'system',groupCollapse:true,sidebarOrder:DEFAULT_SIDEBAR_ORDER};
 let appSettings={...DEFAULT_SETTINGS};
 try{appSettings={...DEFAULT_SETTINGS,...JSON.parse(localStorage.getItem(SETTINGS_KEY)||'{}')}}catch(_e){}
 const allowedSetting=(value,allowed,fallback)=>allowed.includes(value)?value:fallback;
@@ -360,20 +369,77 @@ appSettings.theaterMode=appSettings.theaterMode===true;
 appSettings.groupCollapse=appSettings.groupCollapse!==false;
 appSettings.searchHistoryLimit=allowedSetting(+appSettings.searchHistoryLimit,[5,10,20],10);
 appSettings.relatedLimit=allowedSetting(+appSettings.relatedLimit,[12,20,30],20);
+appSettings.theme=allowedSetting(appSettings.theme,THEME_CHOICES,'system');
 const sidebarKeyAlias=key=>key==='ads'||key==='dupes'?'data-cleanup':key;
 appSettings.sidebarOrder=[...new Set((Array.isArray(appSettings.sidebarOrder)?appSettings.sidebarOrder:DEFAULT_SIDEBAR_ORDER).map(sidebarKeyAlias))].filter(key=>ALL_SIDEBAR_KEYS.includes(key));
 if(!appSettings.sidebarOrder.length)appSettings.sidebarOrder=[...DEFAULT_SIDEBAR_ORDER];
 document.documentElement.style.setProperty('--hover-delay',`${appSettings.hoverDelaySeconds}s`);
 const saveSettings=()=>localStorage.setItem(SETTINGS_KEY,JSON.stringify(appSettings));
 if(sortDefaultsMigrated)saveSettings();
+/* 主题只写属性，不写颜色：两套色板都在 web/css/01-base.css，选跟随系统就把属性摘掉，
+   交还给 `prefers-color-scheme`。地址栏色块跟着同一次调用走——两枚 meta 各代表一档，
+   选中的那枚开到 `all`、另一枚关成 `not all`，否则手机上的地址栏还留在系统那一档。
+   `index.html` 的首屏内联脚本做的是同两件事，它只负责第一帧，之后都从这里出。 */
+const prefersDark=matchMedia('(prefers-color-scheme: dark)');
+function applyTheme(choice=appSettings.theme){
+  const root=document.documentElement;
+  if(choice==='system')delete root.dataset.theme;else root.dataset.theme=choice;
+  const dark=choice==='dark'||(choice==='system'&&prefersDark.matches);
+  document.querySelectorAll('meta[data-theme-color]').forEach(meta=>{
+    meta.media=(meta.dataset.themeColor==='dark')===dark?'all':'not all';
+  });
+}
+applyTheme();
+prefersDark.addEventListener('change',()=>{if(appSettings.theme==='system')applyTheme()});
+/* 三档互斥视图是 Geist Switch（一组共享 name 的 radio），与卡片版式切换共用同一份模板；
+   形状按 vercel.com 的主题选择器单独给，见 web/css/16-settings.css。 */
+function renderThemeSetting(){
+  const mount=$('#themeSetting');
+  mount.innerHTML=iconSwitchHtml('theme','主题',THEME_OPTIONS,appSettings.theme,{attr:'data-theme-choice',className:'themeswitch'});
+  wireIconSwitch(mount,'data-theme-choice',choice=>{appSettings.theme=choice;saveSettings();applyTheme()});
+}
+/* 设置面板里的每个下拉：选项、当前值和应用方式写在一起。它们此前是 index.html 里的
+   浏览器自带的 select，弹出层由系统画、跟不上站内色板；换成 Geist Select 之后这里是唯一
+   一处写它们的地方，面板每次打开重画一遍。关注自动更新那一档也在表里，它的应用是
+   一次网络写入，所以额外报告状态并在往返期间禁用自己。 */
+const SETTING_SELECTS=[
+  ['batchSizeSetting','每批作品',[['30','30 个'],['60','60 个'],['90','90 个']],
+    ()=>appSettings.batchSize,
+    value=>{appSettings.batchSize=+value||60;saveSettings();if(location.pathname==='/')load(true)}],
+  ['defaultSortSetting','默认排序',[['seed','随机'],['rating','评分'],['o','高潮计数'],['plays','观看次数'],
+    ['dur','时长'],['size','体积'],['new','入库时间'],['played','观看时间']],
+    ()=>appSettings.defaultSort,
+    value=>{appSettings.defaultSort=value;saveSettings();state.sort=appSettings.defaultSort;
+      state.dir=defaultSortDir(state.sort);if(location.pathname==='/')load(true)}],
+  ['hoverDelaySetting','悬停放大',[['3','3 秒'],['5','5 秒'],['8','8 秒']],
+    ()=>appSettings.hoverDelaySeconds,
+    value=>{appSettings.hoverDelaySeconds=+value||5;
+      document.documentElement.style.setProperty('--hover-delay',`${appSettings.hoverDelaySeconds}s`);saveSettings()}],
+  ['seekSecondsSetting','快进 / 快退',[['5','5 秒'],['10','10 秒'],['30','30 秒']],
+    ()=>appSettings.seekSeconds,
+    value=>{appSettings.seekSeconds=+value||10;saveSettings()}],
+  ['relatedLimitSetting','相关推荐',[['12','12 个'],['20','20 个'],['30','30 个']],
+    ()=>appSettings.relatedLimit,
+    value=>{appSettings.relatedLimit=+value||20;saveSettings()}],
+  ['searchHistoryLimitSetting','搜索记录',[['5','最近 5 条'],['10','最近 10 条'],['20','最近 20 条']],
+    ()=>appSettings.searchHistoryLimit,
+    value=>{appSettings.searchHistoryLimit=+value||10;saveSettings();writeSearchHistory(readSearchHistory())}],
+  ['followScheduleSetting','关注自动更新',[['0','关闭'],['15','每 15 分钟'],['30','每 30 分钟'],['60','每小时'],
+    ['180','每 3 小时'],['360','每 6 小时'],['720','每 12 小时'],['1440','每天']],
+    ()=>'0',value=>saveFollowSchedule(+value)],
+];
+function renderSettingSelects(){
+  for(const [id,label,options,read,apply] of SETTING_SELECTS){
+    const mount=$(`#${id}`);if(!mount)continue;
+    mount.innerHTML=selectFieldHtml(options,read(),{label});
+    const field=wireSelectField(mount.firstElementChild);
+    field.addEventListener('change',()=>apply(field.value));
+  }
+}
 function syncSettingsPanel(){
-  $('#batchSizeSetting').value=String(appSettings.batchSize);
-  $('#defaultSortSetting').value=appSettings.defaultSort;
-  $('#hoverDelaySetting').value=String(appSettings.hoverDelaySeconds);
   $('#groupCollapseSetting').checked=appSettings.groupCollapse;
-  $('#seekSecondsSetting').value=String(appSettings.seekSeconds);
-  $('#searchHistoryLimitSetting').value=String(appSettings.searchHistoryLimit);
-  $('#relatedLimitSetting').value=String(appSettings.relatedLimit);
+  renderSettingSelects();
+  renderThemeSetting();
   renderSidebarOrderSetting();
   loadFollowScheduleSetting();
 }
@@ -403,21 +469,15 @@ $('#settingsBtn').onclick=()=>openSettings(true);$('#settingsClose').onclick=()=
 $('#settingsPanel').onclick=e=>{if(e.target===$('#settingsPanel'))openSettings(false)};
 $('#settingsPanel').onkeydown=e=>{
   if(e.key!=='Tab')return;
-  const focusable=[...e.currentTarget.querySelectorAll('button:not([disabled]),select:not([disabled]),input:not([disabled]),textarea:not([disabled]),a[href]')];
+  const focusable=[...e.currentTarget.querySelectorAll('button:not([disabled]),input:not([disabled]),textarea:not([disabled]),a[href]')];
   if(!focusable.length)return;
   const first=focusable[0],last=focusable.at(-1);
   if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus()}
   else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus()}
 };
-$('#batchSizeSetting').onchange=e=>{appSettings.batchSize=+e.target.value||60;saveSettings();if(location.pathname==='/')load(true)};
-$('#defaultSortSetting').onchange=e=>{appSettings.defaultSort=e.target.value;saveSettings();state.sort=appSettings.defaultSort;state.dir=defaultSortDir(state.sort);if(location.pathname==='/')load(true)};
-$('#hoverDelaySetting').onchange=e=>{appSettings.hoverDelaySeconds=+e.target.value||5;document.documentElement.style.setProperty('--hover-delay',`${appSettings.hoverDelaySeconds}s`);saveSettings()};
 /* 关掉后同一番号的每个分卷／版次各占一张卡。改完要重取当前列表：折叠是在渲染
    时做的，不重画的话已经被跳过的那些卡不会自己冒出来。 */
 $('#groupCollapseSetting').onchange=e=>{appSettings.groupCollapse=!!e.target.checked;saveSettings();reloadCurrentSurface()};
-$('#seekSecondsSetting').onchange=e=>{appSettings.seekSeconds=+e.target.value||10;saveSettings()};
-$('#searchHistoryLimitSetting').onchange=e=>{appSettings.searchHistoryLimit=+e.target.value||10;saveSettings();writeSearchHistory(readSearchHistory())};
-$('#relatedLimitSetting').onchange=e=>{appSettings.relatedLimit=+e.target.value||20;saveSettings()};
 let followScheduleRequest=0;
 const followScheduleCopy=status=>{
   if(!status.available)return '只在账本写入端运行';
@@ -427,24 +487,25 @@ const followScheduleCopy=status=>{
   if(status.next_run_at)return `下次 ${localTime(status.next_run_at)}`;
   return status.enabled?'等待首次运行':'已关闭';
 };
+const followScheduleField=()=>$('#followScheduleSetting .gselect');
 async function loadFollowScheduleSetting(){
-  const select=$('#followScheduleSetting'),state=$('#followScheduleState'),request=++followScheduleRequest;
-  select.disabled=true;state.innerHTML=loadingDotsHtml('正在读取状态');
+  const field=followScheduleField(),state=$('#followScheduleState'),request=++followScheduleRequest;
+  field.disabled=true;state.innerHTML=loadingDotsHtml('正在读取状态');
   try{
     const status=await api('/api/follow/schedule');if(request!==followScheduleRequest)return;
-    select.value=status.enabled?String(status.interval_minutes):'0';
-    select.disabled=!status.available;state.textContent=followScheduleCopy(status);
+    field.value=status.enabled?String(status.interval_minutes):'0';
+    field.disabled=!status.available;state.textContent=followScheduleCopy(status);
   }catch(error){if(request===followScheduleRequest)state.textContent=`状态未取得：${error.message||error}`}
 }
-$('#followScheduleSetting').onchange=async e=>{
-  const minutes=+e.target.value,state=$('#followScheduleState');e.target.disabled=true;
+async function saveFollowSchedule(minutes){
+  const field=followScheduleField(),state=$('#followScheduleState');field.disabled=true;
   state.innerHTML=`${spinnerHtml('保存中')}<span>正在保存…</span>`;
   try{
     const status=await api('/api/follow/schedule',{method:'POST',body:JSON.stringify({enabled:minutes>0,interval_minutes:minutes||60})});
     state.textContent=followScheduleCopy(status);
   }catch(error){state.textContent=error.message||'保存失败'}
-  finally{e.target.disabled=false}
-};
+  finally{field.disabled=false}
+}
 /* 来源图标：品牌使用已缓存的官方资产；通用操作图标统一使用本地 Lucide 子集。 */
 const SRCICON={
   local:icon('hard-drive'),
@@ -2868,6 +2929,7 @@ function readTasteCache(){
       entry.dashboard&&typeof entry.dashboard==='object'))
   }catch(_error){return new Map()}
 }
+const TASTE_WINDOWS=[['all','全部时间'],['365d','最近一年'],['90d','最近 90 天']];
 let tasteWindow='all',tasteEvidence='browser',tasteDimension={browser:'tags',peach:'tags'};
 let tasteCache=readTasteCache(),tasteRequest=0;
 function tasteCacheSet(window,dashboard){
@@ -2955,8 +3017,7 @@ function renderTaste(d){
     <header class="tastehead"><div class="insightswitch" role="radiogroup" aria-label="口味证据来源">
         <label><input type="radio" name="taste-evidence" value="browser"${tasteEvidence==='browser'?' checked':''}><span>浏览器记录</span></label>
         <label><input type="radio" name="taste-evidence" value="peach"${tasteEvidence==='peach'?' checked':''}><span>Peach 内部</span></label></div>
-      <div class="tasteactions"><select data-taste-window aria-label="分析范围">
-        <option value="all">全部时间</option><option value="365d">最近一年</option><option value="90d">最近 90 天</option></select>
+      <div class="tasteactions">${selectFieldHtml(TASTE_WINDOWS,d.window||tasteWindow,{label:'分析范围',attr:'data-taste-window'})}
         <button data-taste-refresh>${icon('refresh-cw')}读取 Peach 主机</button>
         <button data-taste-import>${icon('upload')}导入历史</button><input data-taste-file type="file" hidden></div></header>
     <div class="tastestate" data-taste-state role="status" aria-live="polite"></div>
@@ -3001,7 +3062,6 @@ function renderTaste(d){
       <div class="insightpanelbody"><div>${sourceRows||emptyStateHtml('database','还没有数据源','导入或读取浏览记录后，这里会列出已采集设备。')}</div></div></section>
   </div>`;
   const root=$('#stats'),stateEl=root.querySelector('[data-taste-state]'),file=root.querySelector('[data-taste-file]');
-  root.querySelector('[data-taste-window]').value=d.window||tasteWindow;
   root.querySelectorAll('input[name="taste-evidence"]').forEach(input=>input.onchange=()=>{
     tasteEvidence=input.value;
     root.querySelectorAll('[data-taste-summary]').forEach(panel=>panel.hidden=panel.dataset.tasteSummary!==tasteEvidence);
@@ -3013,7 +3073,8 @@ function renderTaste(d){
       const selected=tab===button;tab.setAttribute('aria-selected',String(selected));tab.tabIndex=selected?0:-1});
     root.querySelectorAll(`[data-taste-dimension-panel^="${source}:"]`).forEach(panel=>panel.hidden=panel.dataset.tasteDimensionPanel!==button.dataset.tasteDimension)
   });
-  root.querySelector('[data-taste-window]').onchange=e=>{tasteWindow=e.target.value;openTaste(false)};
+  const tasteWindowField=wireSelectField(root.querySelector('[data-taste-window]'));
+  tasteWindowField.addEventListener('change',()=>{tasteWindow=tasteWindowField.value;openTaste(false)});
   /* 总结里的下一步动作按路径走，派发仍旧交给 ROUTES：在这里比对一遍路径字符串，
      就又多出一处会和那张表不一致的知识。 */
   root.querySelectorAll('[data-taste-route]').forEach(button=>button.onclick=()=>{
@@ -4600,12 +4661,8 @@ function renderFollowManage(credentials){
         <div class="fsechead"><h3>关注列表</h3>
           <span class="fmeta">${sources.length} 个来源${
             counts.new?` · <b>${counts.new}</b> 条未看`:''}</span>
-          <label class="fmanagesort">${icon('sort')}<select data-follow-sort aria-label="关注列表排序">
-            <option value="checked"${followManageSort==='checked'?' selected':''}>检查时间</option>
-            <option value="added"${followManageSort==='added'?' selected':''}>添加时间</option>
-            <option value="name"${followManageSort==='name'?' selected':''}>作者名称</option>
-            <option value="sources"${followManageSort==='sources'?' selected':''}>来源数量</option>
-          </select></label>
+          <span class="fmanagesort">${icon('sort')}${selectFieldHtml(FOLLOW_SORT_OPTIONS,followManageSort,
+            {label:'关注列表排序',attr:'data-follow-sort'})}</span>
           <button class="fbtn fmanagedir" type="button" data-follow-dir aria-label="${
             followSortLabel()}">${icon(followManageDir==='asc'?'arrow-up':'arrow-down')}</button>
           ${followLayoutButtons()}
@@ -4709,12 +4766,12 @@ function wireFollowItems(){
 function wireFollowManage(){
   const root=$('#stats'),form=root.querySelector('#followAdd');
   wireScrollers(root);
-  const sort=root.querySelector('[data-follow-sort]');
-  if(sort)sort.onchange=()=>{
-    followManageSort=sort.value;
+  const sortField=root.querySelector('[data-follow-sort]');
+  if(sortField)wireSelectField(sortField).addEventListener('change',()=>{
+    followManageSort=sortField.value;
     followManageDir=FOLLOW_SORT_DEFAULT_DIR[followManageSort]||'desc';
     routeFollowManageSort();
-  };
+  });
   const dir=root.querySelector('[data-follow-dir]');
   if(dir)dir.onclick=()=>{
     followManageDir=followManageDir==='asc'?'desc':'asc';
@@ -6756,7 +6813,7 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
         <div class="stitle">${javTitleHtml(it)}${it.location==='online'?'':`<span class="srctools detailtitletools">${sourceToolButtons(it.id)}</span>`}</div></div>
       ${it.location==='online'?'':`<span class="srcstate detailtitlestate" aria-live="polite"></span>`}
       <div class="smeta mono">
-        <span class="detailmetaitem">${icon('monitor')}<span>${it.width||'?'}×${it.height||'?'}</span></span>
+        <span class="detailmetaitem">${icon('ratio')}<span>${it.width||'?'}×${it.height||'?'}</span></span>
         <span class="detailmetaitem">${icon('hard-drive')}<span>${fmtSize(it.size||0)}</span></span>
         ${it.release_date?`<span class="detailmetaitem">${icon('calendar')}<span>${esc(it.release_date)}</span></span>`:''}</div>
       <div class="detailidentity">${identityRows||`<div class="identityrow"><span></span><span class="ilabel">归属</span><span>${esc(who)}</span></div>`}</div>

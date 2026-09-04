@@ -384,6 +384,67 @@ export function wireAnchoredMenu(mount,toggle,menu){
   return {setOpen,isOpen:()=>!menu.hidden};
 }
 
+/* Geist Select：站内每一个下拉都是它，没有一个走浏览器自带的 select 控件。
+
+   原生下拉的弹出层由操作系统画，不认站内色板：浅色主题下它要么跟着系统换成另一套灰白，
+   要么只能用 `color-scheme` 整个按回深色——设置面板里那七个此前就是被按成深色的，
+   白底页面上七块黑。2026-09-04 实测 vercel.com 后台：整站没有一个原生下拉，触发器是
+   button，面板是自绘 listbox，面板底色就是页面底色（浅色下纯白 --ds-background-100），
+   行高 36px、圆角 6px、行内边距 0 8px，悬停与选中都是 5% 中性填充。Peach 的行高走站内
+   已有的 --control-h（38px），面板与定位复用 .popmenu 和 wireAnchoredMenu。
+
+   `value`、`disabled` 和 `change` 三样按原生 select 的写法留在根元素上：调用方读写它跟
+   读写原生下拉一样，换掉的只是画法。 */
+export function selectFieldHtml(options,current,{label='',attr='',className=''}={}){
+  const chosen=options.find(([value])=>String(value)===String(current))||options[0]||['',''];
+  const rows=options.map(([value,text])=>
+    `<button type="button" role="option" data-select-option="${esc(value)}"
+      aria-selected="${String(value)===String(chosen[0])}" tabindex="-1">${icon('check')}<span>${esc(text)}</span></button>`).join('');
+  return `<div class="gselect${className?` ${esc(className)}`:''}" ${attr}>
+    <button type="button" class="gselectfield" data-select-trigger aria-haspopup="listbox"
+      aria-expanded="false" aria-label="${esc(label)}"><span data-select-label>${esc(chosen[1])}</span>${icon('chevron-down')}</button>
+    <div class="popmenu gselectmenu" role="listbox" aria-label="${esc(label)}" data-select-menu hidden>${rows}</div></div>`;
+}
+
+/** 接上 selectFieldHtml 画出来的一个下拉；返回的就是根元素，带 value / disabled。 */
+export function wireSelectField(root){
+  const trigger=root.querySelector('[data-select-trigger]');
+  const menu=root.querySelector('[data-select-menu]'),label=root.querySelector('[data-select-label]');
+  const options=()=>[...menu.querySelectorAll('[data-select-option]')];
+  const current=()=>menu.querySelector('[aria-selected="true"]');
+  /* 面板至少和触发器一样宽。菜单是 fixed 的，宽度不会自己跟着触发器走，而一个比触发器
+     还窄的面板看着不像同一个控件。这条要接在 wireAnchoredMenu 之前：它按当前宽度定位。 */
+  trigger.addEventListener('click',()=>{menu.style.minWidth=`${trigger.getBoundingClientRect().width}px`});
+  const anchored=wireAnchoredMenu(root,trigger,menu);
+  trigger.addEventListener('click',()=>{if(!menu.hidden)current()?.focus()});
+  const choose=value=>{
+    const picked=options().find(option=>option.dataset.selectOption===String(value));
+    if(!picked)return;
+    options().forEach(option=>{
+      option.setAttribute('aria-selected',String(option===picked));option.tabIndex=option===picked?0:-1});
+    label.textContent=picked.querySelector('span').textContent;
+  };
+  options().forEach(option=>{
+    option.onclick=()=>{
+      const changed=option.getAttribute('aria-selected')!=='true';
+      choose(option.dataset.selectOption);anchored.setOpen(false);trigger.focus();
+      if(changed)root.dispatchEvent(new Event('change',{bubbles:true}));
+    };
+    option.onkeydown=event=>{
+      if(event.key!=='ArrowDown'&&event.key!=='ArrowUp')return;
+      event.preventDefault();
+      const all=options(),at=all.indexOf(option);
+      all[(at+(event.key==='ArrowDown'?1:-1)+all.length)%all.length].focus();
+    };
+  });
+  if(current())current().tabIndex=0;
+  Object.defineProperty(root,'value',{configurable:true,
+    get:()=>current()?.dataset.selectOption??'',set:value=>choose(value)});
+  Object.defineProperty(root,'disabled',{configurable:true,
+    get:()=>trigger.disabled,set:value=>{trigger.disabled=!!value;if(value)anchored.setOpen(false)}});
+  return root;
+}
+
 /* Geist Modal：一次写操作落库前的确认。
 
    实测 https://vercel.com/geist/modal（2026-09-04）：卡片 540px 宽、12px 圆角、窄屏两侧

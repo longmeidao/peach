@@ -184,7 +184,7 @@
      统称的开关和菜单项按本项目的 44px 命中区放大，桌面的 32px 是 Geist 控件高度。 */
   .entitytitle{justify-content:center}
   .npbtn{width:44px;height:44px}
-  .npmenu button{min-height:44px}
+  .npmenu button,.gselectmenu button{min-height:44px}
   .entityhero .alias{margin-bottom:10px}
   .entityhero .entitylinks{justify-content:center;margin-top:13px}
   .stats h2{font-size:var(--fs-xl)}.stats .insightcopy h2{font-size:var(--fs-3xl)}

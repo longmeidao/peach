@@ -182,6 +182,75 @@ error 底 `rgb(217,48,54)` 字 `#fff`；warning 底 `rgb(255,153,10)` 字 `rgb(1
 `bg-[--ds-background-100]` + `shadow-[0_0_0_1px_var(--ds-gray-400)]`。它加环是因为选中项
 的底色和容器同色，填充本身分不出来；不是通用做法。
 
+### 主题选择器：整件几何（2026-09-04 实测，深色主题）
+
+- URL：<https://vercel.com/geist/switch>，1440×900 视口（它挂在 `hidden xl:block` 的
+  文档栏里，窄视口下三档的盒子都是 0，必须先把视口撑到 xl 再读）。
+- 取证方式：按 `aria-label` 取 `system`／`light`／`dark` 三个 `type=radio`，读它们的
+  `label` 与外层 `fieldset` 的 `getBoundingClientRect` 和 `getComputedStyle`；悬停与
+  选中的规则原文取自 Tailwind 类名（`peer-checked:`／`hover:` 前缀就是规则本身）。
+
+| 部位 | 值 |
+| --- | --- |
+| 外框 `fieldset` | 96×32，`rounded-full`，无填充，`--ds-shadow-border`（`0 0 0 1px`）一圈环，`p-0`、`border-0` |
+| 每一档 `label` | 32×32 正圆（`size-8 rounded-full`），图标 16×16 |
+| 未选中 | 透明底，图标 `--ds-gray-700`（`rgb(143,143,143)`）；`hover:text-[var(--ds-gray-1000)]`，不上填充 |
+| 选中 | 底 `--ds-background-100`（`rgb(10,10,10)`，与页面同色），`shadow-[0_0_0_1px_var(--ds-gray-400),0_1px_2px_0_var(--ds-gray-alpha-100)]`，图标 `--ds-gray-1000` |
+| 语义 | `fieldset` + `legend.sr-only`「Select a display theme:」+ 三个共享 name 的 radio，每档一个 `span.sr-only` 写档位名 |
+| 焦点 | `peer-focus-visible:shadow-[var(--ds-focus-ring)]`，环由 radio 的焦点态传给同级 label |
+
+三枚图标都是 16×16 的 Geist 私有 SVG：system 是一台显示器，light 是太阳，dark 是月亮带星。
+
+2026-09-04 在登录态的 <https://vercel.com/sandun-bingshi> 复读同一个控件（账户菜单里的
+「Theme」行），类名与上表逐条一致，只多一个把 32 收成 24 的 `data-small` 档。这套几何在
+文档站与后台是同一份。
+
+**Peach 采用与差异**：形状、尺寸、语义和「选中项加环」照抄，颜色换成本仓库 token
+（外框环 `--border-15`，选中底 `--ground`、环 `--line` 加 `0 1px 2px var(--overlay-5)`，
+未选中 `--muted`、悬停提到 `--ink`）。跟随系统那一档同样用显示器字形（Lucide `monitor`）：
+这一档说的是「照这台设备的设定走」，讲的是设备而不是明暗。详情页的画面尺寸因此换成
+`ratio`——那里量的是画幅本身，不是放画幅的机器。一处有意不同：`≤760px` 时三档各撑到
+44×44，这是本仓库的手机命中区要求，Geist 没有这一档。
+
+### 下拉：后台没有一个原生控件（2026-09-04 实测，登录态）
+
+- URL：<https://vercel.com/sandun-bingshi>（Projects 后台首页）。
+- 取证方式：先枚举页面里的 `select` 与 `[role="combobox"]`——两者都是 0 个；触发器一律是
+  `button[aria-haspopup="true"]`（Filter and Sort Projects、Add New、Preview Menu…）。
+  然后点开 Filter and Sort，读面板与行的 `getComputedStyle`，规则原文取自类名与 CSSOM。
+
+| 部位 | 值 |
+| --- | --- |
+| 触发器 | 36×36，6px 圆角，`0 0 0 1px rgb(46,46,46)` 一圈环，无实心底 |
+| 面板 | `ul[role="menu"]`，宽 250px（inline style），`--ds-background-100` 底（**浅色下是纯白**），12px 圆角，`padding:6px` |
+| 面板阴影 | `--ds-shadow-menu`：`0 0 0 1px 边框色, 0 1px 1px #00000005, 0 4px 8px -4px #0000000a, 0 16px 24px -8px #0000000f` |
+| 行 | `--ds-popover-row-height:36px`、`--ds-popover-row-radius:6px`、`--ds-popover-row-padding:0 8px`，14px/400 |
+| 行的悬停与选中 | 同一个 token：`data-highlighted:bg-gray-alpha-100`、`data-selected:bg-gray-alpha-100`（浅色 `#0000000d`，深色 `#ffffff0f`），`transition:background .1s` |
+| 行内次要文字 | `--ds-gray-900` |
+
+### 浅色一档的中性刻度（2026-09-04 实测）
+
+在同一页把 `<html>` 的 `dark-theme` 换成 `light-theme` 读 `:root` 的计算值（只改 DOM，不动
+账号设置），拿到两档并排的刻度：
+
+| token | 浅色 | 深色 |
+| --- | --- | --- |
+| `--ds-background-100` / `-200` | `#FFFFFF` / `#FAFAFA` | `hsl(0 0% 4%)` / `#000` |
+| `--ds-gray-100` / `-200` / `-300` / `-400` | `#F2F2F2` / `#EBEBEB` / `#E5E5E5` / `#EBEBEB` | 10% / 12% / 16% / 18% |
+| `--ds-gray-700` / `-900` / `-1000` | `#8F8F8F` / `#4D4D4D` / `#171717` | 56% / 63% / 93% |
+| `--ds-gray-alpha-100` / `-200` / `-300` | `#0000000d` / `#00000014` / `#0000001a` | `#ffffff0f` / `#ffffff17` / `#ffffff21` |
+
+要点：浅色这一档**没有色相**，从纸白到近黑全部落在 `hsl(0,0%,·)` 上；中间态（悬停、选中）
+是纯黑透明度而不是调过色的实色灰，所以它永远比所在面板重一点点，不会自己变成一块底。
+
+**Peach 采用与差异**：浅色色板照这张表改成无色相，`--hover` 从实色 `#EEF1F5` 换成
+`rgba(0,0,0,.05)`；`--surface`/`--sunk`/`--line`/`--line-soft` 取 `#FAFAFA`/`#F2F2F2`/
+`#E5E5E5`/`#EBEBEB`，`--ink`/`--ink-2` 取 `#171717`/`#4D4D4D`。两处不同：`--muted` 用
+`#666666` 而不是 Geist 的 `#8F8F8F`（本仓库这一档要承担 12–13px 的说明文字，56% 灰在白底
+上读不动），`--border-10`/`--border-15` 保留本仓库自己的 10%／15% 两档而不是收到 Geist 的
+8%。下拉面板与菜单行按上表：`.popmenu` 底色改成 `--ground`、阴影换成那四层薄影，行高走
+本仓库既有的 `--control-h`（38px）而不是 36px，悬停与选中共用 `--hover`。
+
 ### 侧栏导航是例外：分工反过来（2026-09-04 实测，深色主题）
 
 上一节那张表只取了横排选项组（Switch、Tabs），当时把结论推广到了侧栏，这是错的。

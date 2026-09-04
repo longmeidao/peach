@@ -2574,12 +2574,10 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("spinnerHtml('抓取中')")
 
     def test_follow_management_list_has_routed_sorting(self):
-        self.assertPageContains('data-follow-sort aria-label="关注列表排序"')
-        self.assertPageContains('<option value="checked"')
-        self.assertPageContains(">检查时间</option>")
-        self.assertPageContains('<option value="added"')
-        self.assertPageContains('<option value="name"')
-        self.assertPageContains('<option value="sources"')
+        self.assertPageContains("{label:'关注列表排序',attr:'data-follow-sort'}")
+        self.assertPageContains(
+            "const FOLLOW_SORT_OPTIONS=[['checked','检查时间'],['added','添加时间'],"
+            "['name','作者名称'],['sources','来源数量']]")
         self.assertPageContains("followManageSort=['checked','added','name','sources'].includes(requested)?requested:'checked'")
         self.assertPageContains("const added=group=>Math.max(...group.map(source=>Date.parse(source.created_at||'')||0))")
         self.assertPageContains("if(followManageSort==='added')return flip*(added(b)-added(a))||byName(a,b);")

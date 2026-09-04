@@ -481,6 +481,7 @@ class WebUiSourceTests(unittest.TestCase):
         ".playerstatsbtn",  # 播放器覆盖层，悬停走 ::after 另一层
         ".fb .like",        # 这一排彩色反馈按钮的既有约定就是悬停预览按下后的颜色
         ".tagpickitem",     # 选中由图标换成对勾表达，填充留给悬停与键盘游标
+        ".gselectmenu button",  # 同上；2026-09-04 实测 vercel.com 后台的菜单行，悬停与选中共用同一枚 5% 填充
         ".edge button",     # 窄栏，实测 vercel.com/geist 左栏就是悬停抬填充
         ".dnav button",     # 抽屉是窄栏的展开态，同一条例外
     )
@@ -699,7 +700,7 @@ class WebUiSourceTests(unittest.TestCase):
                 (".playlistdialog{", "var(--floating-radius)"),
                 (".playlistpickrow{", "var(--control-radius)"),
                 (".settingscard{", "var(--floating-radius)"),
-                (".settingrow select{", "var(--control-radius)"),
+                (".gselectfield{", "var(--control-radius)"),
         ):
             start = css.index(selector)
             rule = css[start:css.index("}", start)]
@@ -1475,8 +1476,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("}finally{lastRoutePath=path}")
         self.assertPageContains("enteringHome?rollSeed():state.seed||rollSeed()")
         self.assertPageContains("const SORTS=[['seed','随机'],['rating','评分']")
-        self.assertPageContains('<option value="seed">随机</option>')
-        for option in ('<option value="daily">', '<option value="rand">'):
+        self.assertPageContains("['seed','随机'],['rating','评分'],['o','高潮计数']")
+        for option in ("['daily',", "['rand',"):
             self.assertPageLacks(option, "不使用会让分页重复的 SQL RANDOM 或重复的每日模式")
         self.assertPageLacks('id="rotateSetting"')
         self.assertPageContains("defaultSort:'seed',sortDefaultsVersion:3")
@@ -1543,8 +1544,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(
             "if((+appSettings.sortDefaultsVersion||0)<3&&SORT_ALIASES[appSettings.defaultSort]){")
         # 设置里的默认排序与排序条同源：列名中性，方向由列自己的默认值决定。
-        self.assertPageContains('<option value="dur">时长</option><option value="size">体积</option>')
-        for legacy in ('<option value="long">', '<option value="big">', '<option value="short">'):
+        self.assertPageContains("['dur','时长'],['size','体积'],['new','入库时间'],['played','观看时间']")
+        for legacy in ("['long','", "['short','"):
             self.assertPageLacks(legacy, "默认排序只列中性列名，不列把方向写进键名的值")
 
     def test_horizontal_choice_groups_start_from_the_muted_base_color(self):
@@ -1649,7 +1650,7 @@ class WebUiSourceTests(unittest.TestCase):
             "  background-size:50% 100%;\n"
             "  animation:skeleton-sweep 1.5s ease-in-out infinite reverse}")
         self.assertPageContains("--skeleton-sheen:rgba(255,255,255,.12);")
-        self.assertPageContains("--skeleton-sheen:#E1E6EC;")
+        self.assertPageContains("--skeleton-sheen:#EBEBEB;")
         self.assertPageLacks("skeleton-pulse", "呼吸已经换成扫光，不留死引用")
         # 框体（数据管理的操作条、关注管理的头部条）不是待填内容，不参与微光。
         self.assertPageContains(
@@ -1929,16 +1930,20 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("if(initialParams.get('loc'))return;")
         self.assertPageContains("dropOfflineFromDefaultLoc();")
 
-    def test_select_arrow_is_drawn_once_with_balanced_right_spacing(self):
-        """全站下拉箭头必须共用自绘样式，并和右边框保留稳定间距。
+    def test_no_dropdown_falls_back_to_the_browser_control(self):
+        """全站下拉都是自绘的 listbox，一个原生控件都不留。
 
-        留 34px 右内边距却不画箭头、交给系统控件的话，Safari 把箭头画在内边距里侧，
-        离右边框差一大截，和桌面 Chromium 的样子也对不上。
+        原生下拉的弹出层由操作系统画，不认站内色板：设置面板里那七个此前只能靠
+        `color-scheme:dark` 把系统弹出层整个压成深色，浅色主题下就是白底页面上七块黑。
+        2026-09-04 实测 vercel.com 后台：整站没有一个原生下拉，触发器是 button，面板是
+        自绘 listbox，面板底色就是页面底色，箭头是触发器里的 chevron。
         """
-        self.assertPageContains(".settingrow select,.tasteactions select,.fmanagesort select{")
-        self.assertPageContains("padding-left:10px;padding-right:32px;appearance:none;-webkit-appearance:none")
-        self.assertPageContains("appearance:none;-webkit-appearance:none")
-        self.assertPageContains("background-position:right 6px center")
+        self.assertPageLacks("<select", "下拉一律走 Geist Select，不回落到浏览器控件")
+        self.assertPageLacks("color-scheme:dark;", "只有 <html> 声明配色，控件不再各自钉死一档")
+        self.assertCode(
+            "<span data-select-label>${esc(chosen[1])}</span>${icon('chevron-down')}")
+        self.assertPageContains(
+            ".gselectfield>svg{width:16px;height:16px;flex:none;stroke:currentColor;fill:none;color:var(--muted)}")
 
     def test_settings_panel_fits_the_visible_viewport_on_ios(self):
         """iOS 上 `vh` 算的是不减地址栏的「大视口」。
@@ -3938,7 +3943,7 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_entity_name_picker_keeps_a_touch_target_on_phones(self):
         self.assertPageContains(".npbtn{width:44px;height:44px}")
-        self.assertPageContains(".npmenu button{min-height:44px}")
+        self.assertPageContains(".npmenu button,.gselectmenu button{min-height:44px}")
 
     def test_entity_name_picker_writes_through_the_server_before_repainting(self):
         self.assertCode("const rename=(from,to)=>api('/api/entity-name',")
@@ -4277,9 +4282,10 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("background:transparent;border-bottom:1px solid transparent")
         self.assertPageContains(
             ".tagbar.is-stuck,.count.is-stuck,.entitytagbar.is-stuck,.entitycollectionhead.is-stuck"
-            "{background:color-mix(in srgb,#080A0D 84%,transparent)"
+            "{background:color-mix(in srgb,var(--ground) 84%,transparent)"
         )
-        self.assertPageContains("background:color-mix(in srgb,#080A0D 84%,transparent)")
+        self.assertPageLacks("color-mix(in srgb,#080A0D 84%,transparent)",
+                             "吸顶条跟着 --ground 走，浅色主题下不许铺出一条黑带")
         self.assertPageContains("backdrop-filter:saturate(1.35) blur(16px)")
         self.assertPageContains("function updateStickySurfaces()")
         self.assertPageContains("css.position==='sticky'")
@@ -4788,7 +4794,7 @@ class WebUiSourceTests(unittest.TestCase):
         # 弹层盒子走共用的 .popmenu：发丝边、投影和 2px 行距只有一份定义，本页只接管定位。
         # 行距不能省——相邻两项一个悬停一个选中时，两块填充会连成一整条，看不出是两行。
         self.assertPageContains('<div class="popmenu sidebaraddmenu"')
-        self.assertPageContains("background:var(--surface);box-shadow:0 12px 40px #0006;display:grid;gap:2px;")
+        self.assertPageContains("background:var(--ground);display:grid;gap:2px;")
         self.assertPageContains(".sidebaraddmenu{position:absolute;z-index:4;left:0;right:0;bottom:calc(100% + 6px);max-height:min(312px,48vh)}")
         self.assertPageContains("if(e.key==='Escape'){e.preventDefault();closeAddMenu();addTrigger.focus();return}")
         # 设置分组用框体隔开（用户回执）：每组建卡，分隔线顶格到卡边，
@@ -4893,7 +4899,85 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".settingscard{display:flex;flex-direction:column;width:min(520px,100%);max-height:min(720px,90vh);max-height:min(720px,90dvh);overflow:hidden")
         self.assertPageContains(".settingsscroll{flex:1;min-height:0;overflow-y:auto")
         self.assertPageContains("document.dispatchEvent(new CustomEvent('peachambientchange'")
-        self.assertPageContains("color:#f5f7fa;color-scheme:dark")
+        self.assertPageContains(".settingrow .gselect{min-width:148px}")
+
+    def test_theme_is_a_three_way_choice_that_defaults_to_the_system(self):
+        """主题三档：跟随系统、浅色、深色。
+
+        色板的两条分支（`prefers-color-scheme` 与 `[data-theme]`）本来就写在
+        01-base.css 里，这里补的是「选哪一条」。三档互斥，所以是 Geist Switch——
+        一组共享 name 的 radio，不是 Toggle；跟随系统等于不写属性，把判断还给媒体查询。
+        """
+        self.assertPageContains("const THEME_CHOICES=['system','light','dark']")
+        self.assertPageContains(
+            "const THEME_OPTIONS=[['system','跟随系统','monitor'],"
+            "['light','浅色','sun'],['dark','深色','moon']]")
+        self.assertPageContains("theaterMode:false,theme:'system',groupCollapse:true")
+        self.assertPageContains(
+            "appSettings.theme=allowedSetting(appSettings.theme,THEME_CHOICES,'system')")
+        self.assertCode(
+            "if(choice==='system')delete root.dataset.theme;else root.dataset.theme=choice;")
+        self.assertCode("const dark=choice==='dark'||(choice==='system'&&prefersDark.matches);")
+        # 地址栏色块也归这次调用：两枚 meta 各代表一档，选中的开到 all、另一枚关掉。
+        self.assertCode("meta.media=(meta.dataset.themeColor==='dark')===dark?'all':'not all';")
+        self.assertCode(
+            "prefersDark.addEventListener('change',()=>{if(appSettings.theme==='system')applyTheme()});")
+        self.assertPageContains(
+            '<meta name="theme-color" content="#FFFFFF" media="(prefers-color-scheme: light)"'
+            ' data-theme-color="light">')
+        self.assertPageContains(
+            '<meta name="theme-color" content="#080A0D" media="(prefers-color-scheme: dark)"'
+            ' data-theme-color="dark">')
+        # 面板里的控件复用卡片版式那份模板，只是形状另给。
+        self.assertPageContains('<div id="themeSetting"></div>')
+        self.assertCode(
+            "mount.innerHTML=iconSwitchHtml('theme','主题',THEME_OPTIONS,appSettings.theme,"
+            "{attr:'data-theme-choice',className:'themeswitch'});")
+        self.assertCode(
+            "wireIconSwitch(mount,'data-theme-choice',"
+            "choice=>{appSettings.theme=choice;saveSettings();applyTheme()});")
+        self.assertCode("renderThemeSetting();")
+
+    def test_first_paint_already_knows_which_theme_was_chosen(self):
+        """选择要在第一帧之前生效。
+
+        `app.js` 是 module，等同 defer：轮到它跑的时候浏览器已经按系统色画过一帧，
+        手动选浅色的人每次进页面都先看一下深色。所以 index.html 里有一段内联脚本
+        只做「写 data-theme、切地址栏色块」这两件事，其余仍只有 applyTheme() 一份。
+        """
+        self.assertPageContains(
+            "const choice=JSON.parse(localStorage.getItem('peach.settings.v1')||'{}').theme;")
+        self.assertCode("if(choice!=='light'&&choice!=='dark')return;")
+        self.assertCode("document.documentElement.dataset.theme=choice;")
+        self.assertCode("meta.media=meta.dataset.themeColor===choice?'all':'not all';")
+        # 色板不许在这里再写一份：内联脚本一个颜色字面量都不带。
+        script = self.page.split("<script>", 1)[1].split("</script>", 1)[0]
+        self.assertNotIn("#", script)
+
+    def test_theme_switch_wears_the_measured_vercel_theme_selector(self):
+        """主题选择器是 Geist 里唯一给选中项加环的控件。
+
+        三档的底色和它坐着的面板同色，光靠填充分不出当前是哪一档，所以选中项
+        额外加一圈环——2026-09-04 实测 vercel.com 的 system／light／dark 三枚圆形按钮：
+        外框 32px 高的无填充胶囊加 1px 环，每档 32×32 正圆、图标 16px。
+        未选中不铺填充、悬停只提文字色，这两条由 `.iconswitch` 本体给。
+        """
+        self.assertCode(
+            ".iconswitch.themeswitch{display:inline-flex;flex:none;padding:0;border:0;"
+            "background:transparent;border-radius:var(--pill-radius);"
+            "box-shadow:0 0 0 1px var(--border-15)}")
+        self.assertCode(".iconswitch.themeswitch label{width:32px;height:32px;border-radius:50%}")
+        self.assertCode(
+            ".iconswitch.themeswitch label:has(input:checked){background:var(--ground);"
+            "box-shadow:0 0 0 1px var(--line),0 1px 2px var(--overlay-5)}")
+        self.assertCode(".iconswitch.themeswitch svg{width:16px;height:16px}")
+        # 手机上三枚圆撑到 44px 命中区。
+        self.assertCode(
+            "@media (max-width:760px){.iconswitch.themeswitch label{width:44px;height:44px}}")
+        # 分隔线属于整块卡片，铺到框边再断。
+        self.assertCode(
+            ".settinggroup .settingrow+.sidebarsetting{margin:0 -16px;padding:14px 16px 0;"
+            "border-top:1px solid var(--line-soft)}")
 
     def test_search_menu_has_local_history_and_recommendations(self):
         self.assertPageContains("/api/search-history")
@@ -4967,10 +5051,10 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".detailtitle .stitle{min-width:0;margin:0;line-height:1.75}")
 
     def test_detail_metadata_uses_icons_instead_of_release_copy(self):
-        self.assertPageContains('<span class="detailmetaitem">${icon(\'monitor\')}')
+        self.assertPageContains('<span class="detailmetaitem">${icon(\'ratio\')}')
         self.assertPageContains('<span class="detailmetaitem">${icon(\'hard-drive\')}')
         self.assertPageContains('<span class="detailmetaitem">${icon(\'calendar\')}')
-        self.assertPageContains('id="i-monitor"')
+        self.assertPageContains('id="i-ratio"')
         self.assertPageContains('id="i-calendar"')
         self.assertPageLacks("发行 ${esc(it.release_date)}")
 
@@ -5146,6 +5230,7 @@ class WebUiSourceTests(unittest.TestCase):
             ".reviewitem h4", ".searchoption span",
             ".sgrid.mixgrid>.mixqueue .mixqueuehead span", ".sidebarorderlabel>b",
             ".insightrankrow>span:nth-child(2)", ".insighttablerow span", ".metricstrip small,.tastesummary>small",
+            ".gselectfield>span",
             ".tagpickitem .pickname", ".tasterank b,.tasterank small",
             ".tastesource b,.tastesource small", ".tg",
             ".tokui .toktitle", "body[data-density=\"dense\"] .card .ctags .tg",
@@ -5332,8 +5417,14 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("['immerse','沉浸模式','gallery-vertical-end'],")
         self.assertPageContains("<span>进入沉浸模式</span>")
         self.assertPageContains("class=\"shorts-enter\" type=\"button\">${icon('play')}")
+        # 主题三档各归各的：太阳是浅色、月亮是深色；跟随系统那档说的是「照这台设备走」，
+        # 讲的是设备不是明暗，所以跟 vercel.com 后台一样用显示器。画面尺寸量的是画幅本身，
+        # 归 `ratio`。
+        self.assertPageContains(
+            "[['system','跟随系统','monitor'],['light','浅色','sun'],['dark','深色','moon']]")
+        self.assertPageContains("${icon('ratio')}<span>${it.width||'?'}×${it.height||'?'}</span>")
         # 换下来的三枚没有别的使用者，雪碧图里也不留。
-        for gone in ("i-monitor-cog", "i-star", "i-volume-2"):
+        for gone in ("i-monitor-cog", "i-star", "i-volume-2", "i-sun-moon"):
             self.assertPageLacks(f'<symbol id="{gone}"')
         self.assertPageContains('<symbol id="i-clock" viewBox="0 0 24 24">')
 
@@ -5840,45 +5931,40 @@ class WebUiSourceTests(unittest.TestCase):
         `pl-10`），而它的文字 Label 是块级、排在控件上方（`block ... mb-2`）——行内并排
         那种写法 Geist 没有。工具行没有上方空间，图标又足够把下拉框和普通按钮区分开。
         """
-        self.assertPageContains("""<label class="fmanagesort">${icon('sort')}<select data-follow-sort aria-label="关注列表排序">""")
+        self.assertPageContains(
+            """<span class="fmanagesort">${icon('sort')}${selectFieldHtml(FOLLOW_SORT_OPTIONS,followManageSort,""")
         self.assertPageContains('id="i-sort"')
         self.assertPageContains(".fmanagesort{position:relative;display:inline-flex;align-items:center")
         self.assertPageContains(".fmanagesort>svg{position:absolute;z-index:1;left:9px;width:16px;height:16px")
-        self.assertPageContains(".fmanagesort select{padding-left:31px}")
-        # 无障碍名称只剩 aria-label 一处，去掉标签后它必须留着。
-        self.assertPageContains('aria-label="关注列表排序"')
+        self.assertPageContains(".fmanagesort .gselectfield{height:32px;padding:0 10px 0 31px")
+        # 无障碍名称只剩 aria-label 一处，去掉标签后它必须留着；它由组件写到触发器上。
+        self.assertPageContains("{label:'关注列表排序',attr:'data-follow-sort'}")
+        self.assertCode('aria-expanded="false" aria-label="${esc(label)}"')
         # 标题行里三个可缩项只有说明文字，排序框和动作键都保持完整宽度。
         self.assertPageContains(".fsechead .fbtn,.fsechead .fmanagesort{flex:none}")
         # 允许换行的一行里，说明文字必须以基准 0 参与排线，否则先断行再谈缩放。
         self.assertPageContains(".fsechead .fmeta{flex:1 1 0;min-width:0;overflow:hidden")
         self.assertPageContains("  .fsechead .fmeta{display:none}")
 
-    def test_manage_sort_select_lets_the_active_theme_decide_its_option_list(self):
-        """排序框的原生弹出列表跟随当前主题，控件自己不声明 color-scheme。
+    def test_manage_sort_field_stays_in_the_page_palette(self):
+        """排序框的选项列表由站内自绘，配色跟着当前主题走。
 
-        `color-scheme` 是继承属性，两条主题选择路径（prefers-color-scheme 与
-        `:root[data-theme]`）都已经把它落在 `html` 上。控件再声明一档，浅色主题下就出现
-        闭合的框是浅底、展开的选项列表是深底浅字的两套配色。
+        原生下拉的弹出层由操作系统画，不认站内色板；控件各自钉一档 `color-scheme`，
+        浅色主题下就是闭合的框浅底、展开的列表深底浅字两套配色。这里的面板底色就是
+        页面底色，两条主题选择路径（prefers-color-scheme 与 `[data-theme]`）都落在
+        `html` 上，控件靠继承拿到它。
         """
         css = stylesheet_source()
-        start = css.index(".fmanagesort select{")
+        start = css.index(".fmanagesort .gselectfield{")
         rule = css[start:css.index("}", start)]
-        for declaration in ("background:var(--surface)", "color:var(--ink-2)"):
-            self.assertIn(declaration, rule, f".fmanagesort select 缺少 {declaration}")
-        self.assertNotIn("color-scheme", rule, ".fmanagesort select 不该自己声明 color-scheme")
-        # 主题两条路径都把 color-scheme 落在 `html`，控件靠继承拿到它。
+        self.assertNotIn("color-scheme", rule, ".fmanagesort 的触发器不声明 color-scheme")
         self.assertPageContains("html{color-scheme:light")
         self.assertPageContains(
             '@media (prefers-color-scheme:dark){html:not([data-theme="light"]){color-scheme:dark}}')
         self.assertPageContains('html[data-theme="dark"]{color-scheme:dark}')
-        # 自绘箭头由后面的规则给 background-image，而这条规则的 background 简写会清掉它：
-        # 两者的层叠顺序反过来，下拉就只剩一个空的右内边距。
-        self.assertLess(
-            start, css.index(".settingrow select,.tasteactions select,.fmanagesort select{"),
-            "自绘箭头必须排在 .fmanagesort select 的 background 简写之后")
         # 高度不收进 --control-h：这一行的按钮和版式开关都在 32px 上，排序框单独抬一档
         # 就是同一行里出现两种「同一种控件」。
-        self.assertIn("height:32px", rule, ".fmanagesort select 与标题行同高")
+        self.assertIn("height:32px", rule, ".fmanagesort 的触发器与标题行同高")
         self.assertPageContains("gap:6px;height:32px")
 
     def test_destructive_buttons_fill_red_on_hover(self):

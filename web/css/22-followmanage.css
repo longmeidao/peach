@@ -44,18 +44,9 @@
 /* 版式开关和排序框、按钮同处分区标题行，收到同一个 32px 高度上（fieldset 自带 1px 边框）。 */
 .fsechead .iconswitch{display:inline-flex;gap:2px;flex:none;padding:2px}
 .fsechead .iconswitch label{width:32px;height:26px}
-/* 原生弹出的选项列表由 color-scheme 决定，而 color-scheme 是继承属性：01-base.css 把
-   prefers-color-scheme 和 `[data-theme]` 两条选择路径都映射到 `html`，控件这里只声明颜色。
-   在控件上单独写一档，浅色主题下闭合的框是浅底，展开的选项列表是深底浅字。 */
-.fmanagesort select{height:32px;padding:0 10px;border:1px solid var(--border-15);border-radius:var(--control-radius);
-  background:var(--surface);color:var(--ink-2);font:inherit;font-size:var(--fs-sm);cursor:pointer}
-.fmanagesort select:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}
-/* 全站原生下拉共用同一个自绘箭头。SVG 笔画自身有 4px 透明边，背景右移 6px 后，
-   可见笔画到右边框正好与文字到左边框同为 10px。 */
-.fmanagesort select{padding-left:31px}
-.settingrow select,.tasteactions select,.fmanagesort select{padding-left:10px;padding-right:32px;appearance:none;-webkit-appearance:none;
-  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238e949e' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
-  background-repeat:no-repeat;background-position:right 6px center;background-size:16px 16px}
+/* 这一档比设置面板里的下拉矮一号，和同排的 .fbtn 齐平；排序图标压在触发器左侧，
+   所以左内边距要给它让出位置。 */
+.fmanagesort .gselectfield{height:32px;padding:0 10px 0 31px;color:var(--ink-2);font-size:var(--fs-sm)}
 .fmeta{font-size:var(--fs-xs);color:var(--muted)}
 .fmeta b{color:var(--ink);font-variant-numeric:tabular-nums}
 .fmeta.warn{color:var(--drop)}
