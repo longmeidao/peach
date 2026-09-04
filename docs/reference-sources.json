@@ -185,10 +185,10 @@
     {
       "id": "vercel-notifications-note",
       "name": "Vercel Notifications 中性说明 Note",
-      "url": "https://vercel.com/sandun-bingshi/~/settings/notifications",
+      "url": "https://vercel.com/<account>/~/settings/notifications",
       "snapshot": "docs/reference-snapshots/vercel-notifications-note.md",
       "checked_on": "2026-08-30",
-      "sha256": "3d3c919475d61910fb15d5c5b68272953fc16036338c5e46d2cbde6f6b475348",
+      "sha256": "022ff589df68eded7830aa5d655735d196eef7d9f75cb744342bf8a9a82dbb90",
       "role": "口味页底部补充说明的中性 Note 结构依据；信息图标使用 2px 圆端描边，无真实动作时不伪造链接。",
       "consumers": [
         "web/css/",

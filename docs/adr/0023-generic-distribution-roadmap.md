@@ -8,7 +8,7 @@
 
 Peach 要发布到 GitHub 供所有人维护与使用。使用形态不变：每个部署仍是单人、本地优先、ledger 是唯一真相源。但代码和文档里嵌着只对当前用户成立的事实：
 
-- `src/peach/config.py` 用 `Path.home()/Desktop/peach`、`Desktop/lmd.gg/peach`、`peach-win.local`、`peachsync` 等字面量给默认值；代理与局域网 IP 散在 HANDOFF、STATUS 与技能文件里。
+- `src/peach/config.py` 用 `Path.home()/Desktop/peach`、`Desktop/<用户目录>/peach`、写者主机的 mDNS 名、SMB 账号名等字面量给默认值；代理与局域网 IP 散在 HANDOFF、STATUS 与技能文件里。
 - ledger 路径固定写成 Windows 盘符形状（`R:\Media\...`、`A:\`、`B:\`），由 `peach.platform` 在读取时翻译成本机挂载点；盘符含义只在文档里说明。
 - Windows 写者 / macOS 读者的单写者复制（SMB 共享、mDNS 名、钥匙串账号）是默认开启的必经链路，而多数用户只有一台机器。
 - `docs/STATUS.md`、`docs/HANDOFF.md` 与多份技能文件记录了个人运行态、真实 IP、备份文件名与磁盘布局。

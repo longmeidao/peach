@@ -83,7 +83,7 @@
   `0BD8AA9351E4CAA33F01CCEC48C68EDAD491BD1D25234964A4482B7E7E273982`。
   触发器使用 `aria-controls`／`aria-expanded`；内容区关闭时 `inert`，以测量高度写入
   inline `height`，`overflow-y:hidden`，高度和 chevron 都使用 200ms `ease-in-out`。
-- 登录态 Projects 页 <https://vercel.com/sandun-bingshi>：2026-08-30 的可见 DOM
+- 登录态 Projects 页 `https://vercel.com/<account>`：2026-08-30 的可见 DOM
   顺序为 Search、`Filter and Sort Projects`、Add New；实测同一行 36px 高、8px gap，
   搜索占剩余宽度，筛选按钮 36×36px，Add New 115×36px。筛选菜单 250px 宽、6px
   内边距、12px 圆角，内部纵向滚动且 `overscroll-behavior:contain`；展开没有动画。

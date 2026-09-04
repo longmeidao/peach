@@ -1,7 +1,10 @@
 [CmdletBinding()]
 param(
-    [string]$Address = '192.168.50.162',
-    [string]$DnsName = 'peach-win.local',
+    # Defaults to the IPv4 of the interface that owns the default gateway, matching
+    # peach.mdns.lan_ipv4. Pass -Address when a full-tunnel proxy owns that route.
+    [string]$Address = (Get-NetIPConfiguration | Where-Object { $_.IPv4DefaultGateway } |
+        Select-Object -First 1).IPv4Address.IPAddress,
+    [string]$DnsName = 'peach.local',
     [string]$OutDir = (Join-Path ([Environment]::GetFolderPath('Desktop')) 'peach\peach-data\secrets\tls'),
     [switch]$TrustCurrentUser,
     [switch]$Force

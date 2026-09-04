@@ -4,17 +4,32 @@
 # CA 不动，所以已经在 Mac 钥匙串和 iPhone 上信任过的那张根证书继续有效，不用重新装。
 # 换掉的只有服务器证书（叶子证书）。
 #
-# 为什么要重签：原来的 SAN 是 `DNS:peach.local, IP:192.168.50.162`——那个 IP 是
+# 为什么要重签：原来的 SAN 是 `DNS:peach.local, IP:198.51.100.162`——那个 IP 是
 # Windows 那台的。于是
 #   * 本机用 `https://127.0.0.1:8443` 做健康检查会因为主机名不匹配失败；
 #   * 手机只能用 `https://peach.local/`，用局域网 IP 直接开一定报错。
 # 补上 localhost / 127.0.0.1 / 本机当前局域网地址之后两个问题一起消失。
 #
 #   sh scripts/setup_local_tls.sh
-#   PEACH_EXTRA_IP=192.168.1.20 sh scripts/setup_local_tls.sh   # 再多加一个地址
+#   PEACH_EXTRA_IP=198.51.100.20 sh scripts/setup_local_tls.sh   # 再多加一个地址
 set -eu
 
-TLS_DIR="${PEACH_TLS_DIR:-$HOME/Desktop/lmd.gg/peach/peach-data/secrets/tls}"
+# 数据根的定位口径和 `peach.settings_file.discover_data_root` 一致：先看
+# `PEACH_DATA_ROOT`，否则从仓库往上找同级的 `peach-data/`。
+PEACH_REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+PEACH_DATA_ROOT_GUESS="${PEACH_DATA_ROOT:-}"
+if [ -z "$PEACH_DATA_ROOT_GUESS" ]; then
+    PEACH_SEARCH="$PEACH_REPO_ROOT"
+    PEACH_DATA_ROOT_GUESS="$(dirname "$PEACH_REPO_ROOT")/peach-data"
+    while [ "$PEACH_SEARCH" != "/" ]; do
+        PEACH_SEARCH="$(dirname "$PEACH_SEARCH")"
+        if [ -d "$PEACH_SEARCH/peach-data" ]; then
+            PEACH_DATA_ROOT_GUESS="$PEACH_SEARCH/peach-data"
+            break
+        fi
+    done
+fi
+TLS_DIR="${PEACH_TLS_DIR:-$PEACH_DATA_ROOT_GUESS/secrets/tls}"
 CA_CRT="$TLS_DIR/peach-local-ca.crt"
 CA_KEY="$TLS_DIR/peach-local-ca.key"
 NAME="${PEACH_MDNS_NAME:-peach}.local"
