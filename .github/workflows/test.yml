@@ -21,21 +21,38 @@ env:
   PYTHONIOENCODING: "utf-8"
 
 jobs:
-  wheel-smoke:
-    name: wheel 最小安装 / ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [windows-latest, macos-latest]
-    runs-on: ${{ matrix.os }}
+  wheel-build:
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
         with:
           python-version: '3.14'
-      - name: 构建并安装正式 wheel
+      - run: python -m pip wheel . --no-deps --no-cache-dir -w wheelhouse
+      - uses: actions/upload-artifact@v7
+        with:
+          name: wheel-smoke
+          path: |
+            wheelhouse/*.whl
+            scripts/smoke_wheel.py
+  wheel-smoke:
+    name: wheel 最小安装 / ${{ matrix.os }} / ${{ matrix.python }}
+    needs: wheel-build
+    strategy:
+      matrix:
+        os: [windows-latest, macos-latest]
+        python: ['3.12', '3.14']
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: wheel-smoke
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python }}
+      - name: 安装正式 wheel
         shell: bash
         run: |
-          python -m pip wheel . --no-deps --no-cache-dir -w wheelhouse
           python -m pip install --no-cache-dir wheelhouse/*.whl
           python -m pip check
       - name: 源码树外冒烟

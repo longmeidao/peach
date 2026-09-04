@@ -11,7 +11,7 @@ from peach.redirect import create_redirect_app
 from peach.routes_media import _image_response
 from peach.web_state import WebContract
 from peach.config import PeachSettings
-from peach.health import readiness
+from peach.health import database_status, readiness
 from support.ledger import fresh_ledger
 
 
@@ -23,7 +23,11 @@ class RuntimeConsistencyTests(unittest.TestCase):
             settings = PeachSettings(db_path=path, configured=True)
             self.assertFalse(readiness(settings)["ready"])
             self.assertFalse(path.exists())
+            self.assertEqual(database_status(path), "missing")
+            path.touch()
+            self.assertEqual(database_status(path), "empty")
             fresh_ledger(root)
+            self.assertEqual(database_status(path), "available")
             self.assertTrue(readiness(settings)["ready"])
             connection = sqlite3.connect(path)
             try:

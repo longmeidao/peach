@@ -6,6 +6,18 @@ from .config import MIGRATIONS_DIR, PeachSettings
 from .migrations import applied, discover
 
 
+def database_status(path) -> str:
+    if not path.is_file():
+        return "missing"
+    try:
+        with closing(sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True,
+                                     timeout=1)) as connection:
+            connection.execute("PRAGMA query_only=ON")
+            return "available" if applied(connection) else "empty"
+    except (sqlite3.Error, OSError):
+        return "unavailable"
+
+
 def readiness(settings: PeachSettings) -> dict:
     checks = {"configured": bool(settings.configured),
               "web": settings.page_path.is_file(), "database": False, "schema": False}
