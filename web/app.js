@@ -3079,7 +3079,7 @@ async function saveMixAsPlaylist(mix){
   if(mix?.kind!=='mix')return;
   const dialog=playlistDialog({title:'保存 Mix',body:`<form class="playlistcreate" data-save-mix-form>
     <label>名称<input class="geist-input" name="name" maxlength="80" value="${esc(mix.title)}" required></label>
-    <button type="submit">保存 ${mix.items.length} 个视频</button><span data-playlist-state></span></form>`});
+    <button class="geist-button primary" type="submit">保存 ${mix.items.length} 个视频</button><span data-playlist-state></span></form>`});
   dialog.querySelector('form').onsubmit=async event=>{event.preventDefault();
     const form=event.currentTarget,stateEl=form.querySelector('[data-playlist-state]');
     try{const result=await api('/api/playlist',{method:'POST',body:JSON.stringify({action:'create',name:new FormData(form).get('name'),asset_ids:mix.items.map(item=>item.id),source_kind:'mix',source_seed_asset_id:mix.seedId})});
@@ -3092,7 +3092,7 @@ async function openAddToPlaylist(item){
   const lists=(await api('/api/playlists')).items||[];
   const rows=lists.map(list=>`<button type="button" class="playlistpickrow" data-add-playlist="${list.id}"><span>${esc(list.name)}</span><small>${list.item_count} 个视频</small></button>`).join('');
   const dialog=playlistDialog({title:'加入播放列表',body:`<form class="playlistcreate" data-create-playlist>
-      <label>新播放列表<input class="geist-input" name="name" maxlength="80" placeholder="输入名称" required></label><button type="submit">新建并加入</button><span data-playlist-state></span></form>
+      <label>新播放列表<input class="geist-input" name="name" maxlength="80" placeholder="输入名称" required></label><button class="geist-button primary" type="submit">新建并加入</button><span data-playlist-state></span></form>
     <div class="playlistpicklist">${rows||'<p class="empty">还没有播放列表</p>'}</div>`});
   const finish=async body=>{const stateEl=dialog.querySelector('[data-playlist-state]');
     try{await api('/api/playlist',{method:'POST',body:JSON.stringify(body)});dialog.close();actionReceipt('已加入播放列表')}
@@ -3127,7 +3127,7 @@ async function openPlaylists(push=true){
     return `<article class="playlistcard" data-playlist-card="${list.id}"><button class="playlistcover" data-open-playlist="${list.id}" ${resume?'':'disabled'}>${poster}<span>${list.item_count} 个视频</span></button>
       <div class="playlistmeta"><input class="geist-input" data-playlist-name maxlength="80" value="${esc(list.name)}" aria-label="播放列表名称"><small>${list.source_kind==='mix'?'由 Mix 保存':'手动播放列表'}</small></div>
       <div class="playlistactions"><button data-rename-playlist="${list.id}">保存名称</button><button data-open-playlist="${list.id}" ${resume?'':'disabled'}>继续播放</button><button class="danger" data-delete-playlist="${list.id}">删除</button></div></article>`}).join('');
-  $('#stats').innerHTML=`<section class="playlistpage"><header><div><h2>播放列表</h2><p>保存 Mix，按自己的顺序继续播放。</p></div><form class="playlistcreate" id="newPlaylist"><label>新播放列表<input class="geist-input" name="name" maxlength="80" placeholder="输入名称" required></label><button type="submit">新建</button><span data-playlist-state></span></form></header><div class="playlistcards">${cards||emptyState('playlist','还没有播放列表','保存 Mix 或新建列表后，会在这里按自己的顺序继续播放。')}</div></section>`;
+  $('#stats').innerHTML=`<section class="playlistpage"><header><div><h2>播放列表</h2><p>保存 Mix，按自己的顺序继续播放。</p></div><form class="playlistcreate" id="newPlaylist"><label>新播放列表<input class="geist-input" name="name" maxlength="80" placeholder="输入名称" required></label><button class="geist-button primary" type="submit">新建</button><span data-playlist-state></span></form></header><div class="playlistcards">${cards||emptyState('playlist','还没有播放列表','保存 Mix 或新建列表后，会在这里按自己的顺序继续播放。')}</div></section>`;
   $('#newPlaylist').onsubmit=async event=>{event.preventDefault();const form=event.currentTarget;
     try{await api('/api/playlist',{method:'POST',body:JSON.stringify({action:'create',name:new FormData(form).get('name'),asset_ids:[]})});await openPlaylists(false);actionReceipt('已新建播放列表')}
     catch(error){form.querySelector('[data-playlist-state]').textContent=error.message||'新建失败'}};
