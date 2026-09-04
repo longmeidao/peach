@@ -1608,9 +1608,8 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertNotIn("resize:", rule)
         button = page[page.index("\n.fbtn{"):]
         self.assertIn("height:32px", button[:button.index("}")])
-        # faddform 里的按钮随输入栏同高（Geist 输入 32px 基线之上的一档）。
-        add_button = page[page.index(".faddform .fbtn{"):]
-        self.assertIn("height:38px", add_button[:add_button.index("}")])
+        # 添加表单没有自己的按钮高度规则：输入框几何由 .geist-search 统一给。
+        self.assertNotIn(".faddform .fbtn{", page)
 
     def test_source_filter_uses_the_project_toolbar_layout_without_menu_motion(self):
         # Vercel Projects：搜索占剩余宽度，筛选带明确标签，主操作在右；
@@ -2437,8 +2436,8 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains('<button class="fbtn" data-follow-bulk="seen">全部标记已看</button>')
         self.assertPageContains('<button class="fbtn" data-follow-bulk="ignored">全部忽略</button>')
         self.assertPageLacks('class="flink" data-follow-bulk')
-        # 不另起一行：按钮内联在计数行里（用户回执）。
-        self.assertPageContains('.fbulk{display:inline-flex;gap:8px;margin-left:auto}')
+        # 不另起一行：按钮内联在计数行里，且不参与收缩，窄屏上只压计数文字（用户回执）。
+        self.assertPageContains('.fbulk{display:inline-flex;gap:8px;margin-left:auto;flex:none}')
 
     def test_sources_by_the_same_author_are_one_block(self):
         """同一个作者在几个站上是几条来源、一个人。
