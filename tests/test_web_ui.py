@@ -1699,6 +1699,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(
             "{cards:true,className:'follow-content-skeleton postercard-skeleton'})}</div>`;")
         self.assertPageContains(".follow-content-skeleton .skeletoncard em{height:21px}")
+        self.assertPageContains(".follow-content-skeleton .skeletoncard{padding-bottom:8px}")
+        self.assertPageContains('<span class="fstate" aria-live="polite"></span></article>`;')
         self.assertPageContains('.followitem .meta .s{min-height:21px}')
         # 真实页面就是这两个类名与这张网格，骨架照抄才可能不位移。
         self.assertPageContains('<div class="tier followauthors" aria-label="按作者筛选">')
