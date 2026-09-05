@@ -53,7 +53,7 @@
 
 合计：**32 项开放需求**，其中 6 项已有骨架，26 项尚未实现。已完成的需求不在这里留痕，去 Git 历史查。
 
-## 待执行的操作（33 项）
+## 待执行的操作（32 项）
 
 需要另行授权、外部条件或人工判断才能做的具体操作与复核批次，比上面的需求细一层；做完就删，不在这里留痕。待办只放这一处：`docs/STATUS.md` 每次会话开头都要读，队列不该常驻在那种入口文件里。
 
@@ -87,6 +87,5 @@
 28. macOS 标识 `io.github.longmeidao.peach.*` 在 Mac 上生效：代码已在 master（`src/peach/appid.py` 是唯一来源，`install_macos_agent.py` 与 `setup_macos_port80.sh` 会自己清掉遗留标签），命令与四项核对见 `docs/OPERATIONS.md`「桌面入口与发布」。放进第 30 条的维护窗口一起做；两台机器都跑过之后删掉 `peach.appid` 里的遗留标签表和用到它的分支。这是换生产入口，执行前要在同一轮拿到用户确认。
 29. `peach-data/review/composite-names-20260904.csv` 里还剩 28 条 creator 规范名带括号，括号里是读音或罗马音（`Egami(えがみ)`、`永地(eichi)`、`猫屋(NEKOYA)`），用户定了不拆——它们不像艺名那样各自独立，是同一个名字的注音。同一份 CSV 里 575 条 tag 是角色的作品出处消歧，10 条 series 括号里是厂牌或载体消歧（拆了会把三个 `AV DEBUT` 撞成一个），都不要动。剩下真正待判的只有 performer 规范名 `Mana(23)` 一条：数字是去重后缀还是名字的一部分要看源站。
 30. Mac 追上 master 的一组操作，按顺序做完再重启菜单栏——做完之前不要重启：master 上的 `peach serve --host 0.0.0.0` 没有口令会拒绝启动，reader 会直接消失。① `git pull` 到 master；② `pip uninstall -y peach-app && pip install -e ".[macos]"`；③ 先把 Windows 的 `peach-data/secrets/auth-token` 复制到 Mac 数据根的同一路径——reader 取 writer 复核结果发的是自己的口令，两边必须是同一份，而 `--from-existing` 找不到文件会自己生成一份不同的；④ `peach init --from-existing --mount local=<落点>`；⑤ 重启菜单栏，核对 `/healthz`、`/review` 能读到 writer，手机与 Mac 浏览器各登录一次。第 28 条的标签改名可以放进同一个维护窗口。
-31. 给事务所补一个 `/agencies` 索引页。现在进事务所页的入口只有女优页上的那个名字，55 家里没有关系的那几十家等于只能靠猜地址。`q_index` 的 `performers` 分支按作品数排、带头像，事务所要的是按成员数排；`openIndex` 里 `people`、`entityKind`、加载文案三处是按 kind 写死的，加一种就要各动一处。
+31. 给事务所补一个 `/agencies` 索引页。现在进事务所页的入口只有女优页上的那个名字，57 家里没有关系的那几十家等于只能靠猜地址。`q_index` 的 `performers` 分支按作品数排、带头像，事务所要的是按成员数排；`openIndex` 里 `people`、`entityKind`、加载文案三处是按 kind 写死的，加一种就要各动一处。
 32. `install_entity_links.py` 的可达性门槛按「非 200 就跳过」执行，而同文件的 `is_gone()` 明确写着 403／5xx／连接错误不能当「页面没了」。首批 703 条里 137 条因此没装，其中 31 条 twitter.com、23 条 t-powers.co.jp。把跳过分成「确证没了」和「这次没取到」两档：后者留进待复查队列，配合 `rediscover_entity_links.py` 对 t-powers／nax-pro／mines-pro 这些已经搬家的域名上溯找新锚，再装一次。
-33. 名册对账结果待授权装入：`scripts/harvest_agency_rosters.py` 2026-09-05 跑完 55 家，`peach-data/review/agency-rosters.csv` 398 行里 172 条「新增归属」可直接装（另有归属 0 条、重名 0 条），`--apply --backup <落点>` 由用户另行授权。52 行「不在库」是名册上有、账本里没有的人，属于扩库线索不是错误。LIGHT 一家未取得：站上它的成员现在挂在 `ELTRA(エルトラ)旧・LIGHT`（production=1251）与 `EST(エスト)旧・LIGHT`（production=1252）名下，这家已拆成两家继任公司，账本怎么记要用户定。
