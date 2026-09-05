@@ -4282,6 +4282,30 @@ class WebUiSourceTests(unittest.TestCase):
         # 队列长度不能被悬浮预取剪短：两边用同一个 limit。
         self.assertPageContains("api('/api/related?id='+seedId+'&limit=28')")
 
+    def test_multipart_cards_flip_through_their_parts_on_hover(self):
+        """分卷卡悬浮翻各卷画面，版次卡继续走分段视频预览。
+
+        有码、中字、无码是同一段画面的几个来源，翻过去前后两张几乎一样，看着像图
+        卡住了；各卷是不同画面，翻动才说明这张卡代表不止一条。分卷卡因此也不带
+        倒计时环和快退／快进那三颗——它们要操作的 `video.hv` 在这种卡上不存在。
+        各卷只取一次，悬浮预取后点开分卷队列不再发第二个请求。
+        """
+        self.assertPageContains(
+            """${parts?'<div class="mixfaces" data-mix-faces hidden></div>':''}""")
+        self.assertPageContains("function wirePartFlip(el,it){")
+        self.assertPageContains("if(it?.part_group)wirePartFlip(el,it);")
+        self.assertPageContains(
+            "else if(it&&(!it.medium||it.medium==='video'))wireHover(el,it);")
+        # 和 Mix 共用同一套时序、门槛和面渲染，不另写一份动效。
+        self.assertPageContains("wireStackFlip(el,async()=>{")
+        self.assertPageContains(".filter(x=>mixHasPicture(x,layout)).slice(0,MIX_FLIP_FACES)")
+        # 第一张是卡片自己的静止封面，翻进来的才不会跳取景。
+        self.assertPageContains("return [it,...items.filter(x=>x.id!==it.id)]")
+        self.assertPageContains("const tools=parts?laterTool:")
+        self.assertPageContains("const partGroupCache=new Map();")
+        self.assertPageContains("try{group=await partGroup(seedId)}catch(_e)")
+        self.assertPageLacks("const group=await api('/api/parts?id='+seedId);")
+
     def test_stacked_cards_pile_upward_and_keep_the_row_bottom_aligned(self):
         """Mix、分卷、版次和关注合集的叠层往上溢出，卡片本体不为它留白。
 
@@ -4421,22 +4445,27 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("section.querySelector('h3').textContent=`视频 ·")
         self.assertPageLacks("的馆藏作品 ·")
 
-    def test_hover_seek_controls_are_bare_icons_over_the_frame(self):
-        """悬停放大时居中的快退／快进／全屏是裸图标，不是压在画面上的磨砂圆饼。
+    def test_hover_seek_controls_wear_the_watch_later_button_skin(self):
+        """居中的快退／快进／全屏和右下角「稍后看」是同一种控件，只是尺寸不同。
 
-        三个 58px 的实心圆落在封面正中，遮住的画面比按钮本身还多，而这一层出现的时机
-        恰恰是用户在看画面。命中区域仍留 58px（触摸目标不缩），只是不再画出底和边；
-        秒数交给 `title`／`aria-label`，图标上不再压一个数字。
+        磨砂圆底、边框和悬停填充全部由 `.hovertools button` 一条规则给出，
+        58px 圆配 34px 图标，与 36px 圆配 21px 图标同一个比例。
+        秒数交给 `title`／`aria-label`，图标上不压数字。
         证据与「beeg 那一侧未取得」的结论见
         `docs/reference-snapshots/hover-seek-controls-user-screenshot.md`。
         """
         self.assertPageContains(
-            ".hovertools.seektools button{border:0;background:none;backdrop-filter:none;")
-        self.assertPageContains(".hovertools.seektools button svg{width:34px;height:34px;stroke-width:1.5}")
-        self.assertPageContains(".hovertools.seektools button:hover{background:none}")
-        # 命中区域仍由共用规则给出 58px 圆，裸图标只是不画它。
-        self.assertPageContains(".hovertools button{pointer-events:none;width:58px;height:58px;border-radius:50%")
-        # 数字角标随之退役：DOM 里不再有它，样式也不该留着。
+            ".hovertools button{pointer-events:none;width:58px;height:58px;border-radius:50%;"
+            "border:1px solid rgba(255,255,255,.12);")
+        self.assertPageContains("background:rgba(0,0,0,.24);color:#fff;backdrop-filter:saturate(180%) blur(12px);")
+        self.assertPageContains(".hovertools button:hover{transform:scale(1.12);background:rgba(0,0,0,.34)}")
+        self.assertPageContains(".hovertools.seektools button svg{width:34px;height:34px}")
+        self.assertPageContains(".hovertools .laterbtn{width:36px;height:36px;padding:0;font-family:inherit}")
+        self.assertPageContains(".hovertools .laterbtn svg{width:21px;height:21px}")
+        # 这一层里没有第二套外观：不画底和边、靠投影描边的写法一处都不留。
+        self.assertPageLacks(".hovertools.seektools button{border:0;background:none")
+        self.assertPageLacks("filter:drop-shadow(0 1px 4px rgba(0,0,0,.6))")
+        # 数字角标不在 DOM 里，样式也不留。
         self.assertPageLacks("<b>${appSettings.seekSeconds}</b>")
         self.assertPageLacks(".hovertools button b{")
         self.assertPageContains('title="后退 ${appSettings.seekSeconds} 秒"')
@@ -5063,7 +5092,7 @@ class WebUiSourceTests(unittest.TestCase):
         """
         self.assertPageContains(
             '<div class="detailtitle">${srcBadge(it.location,it.cost,\'srcbig\')}\n'
-            '        <div class="stitle">${javTitleHtml(it)}'
+            '        <div class="stitle">${javTitleHtml(it)}${partLabelBadge(it,queueContext)}'
             '${it.location===\'online\'?\'\':`<span class="srctools detailtitletools">'
             '${sourceToolButtons(it.id)}</span>`}</div></div>')
         self.assertPageContains(".detailtitle{display:flow-root;margin-bottom:10px}")
@@ -5672,6 +5701,21 @@ class WebUiSourceTests(unittest.TestCase):
         """没抽过帧的条目在队列里退回番号封套，而不是一个纯黑块。"""
         self.assertPageContains(
             ':(x.is_jav&&x.code?`<img src="/cover?code=${encodeURIComponent(x.code)}"')
+
+    def test_the_detail_title_names_which_volume_is_playing(self):
+        """分卷队列里换一卷，右侧标题栏必须跟着变。
+
+        同一部片的几卷共用文件名，标题、女优、厂牌逐字相同（实测 PPT-018 三卷）。
+        标题栏不写卷号的话，点了队列里另一条，整栏看上去纹丝不动。卷号是「第几份
+        文件」而不是版次，所以用中性灰，和无码／中字／破解三种版次色分开。
+        """
+        self.assertPageContains("const partLabelBadge=(it,queue)=>queue?.kind==='parts'&&it.part_label")
+        self.assertPageContains(
+            """? `<small class="javedition partlabel">第 ${esc(it.part_label)} 卷</small>`:'';""")
+        self.assertPageContains("${javTitleHtml(it)}${partLabelBadge(it,queueContext)}")
+        self.assertPageContains(".javedition.partlabel{color:var(--muted);margin-left:6px}")
+        # 队列条目那一侧本来就写着卷号，两处用的是同一个字段。
+        self.assertPageContains("queue.kind==='parts'?`第 ${esc(x.part_label)} 卷`")
 
     def test_the_edition_queue_head_only_states_the_count(self):
         """标题栏已经写着「版本」，番号又印在正上方的详情标题里，说明只留数量。

@@ -1867,10 +1867,13 @@ function cardHtml(it,cls){
     : (it.leave_ratio!=null?`<div class="scrub"><i style="width:${Math.round(it.leave_ratio*100)}%"></i></div>`:'');
   const sizeText=Number(shownSize)>0?fmtSize(Number(shownSize)):'大小未知';
   const tgs=(it.tags||[]).slice(0,3).map(x=>`<span class="tg general" data-tag="${esc(x)}">${esc(tagLabel(x))}</span>`).join('');
-  const tools=`<button class="previewcounter" data-open title="打开预览" aria-label="打开预览">
+  const laterTool=`<div class="hovertools later-tools"><button class="laterbtn" data-later aria-pressed="${!!it.watch_later}" title="稍后看" aria-label="稍后看">
+      ${it.watch_later?icon('check'):icon('bookmark-plus')}</button></div>`;
+  /* 分卷卡悬浮翻的是各卷首帧，没有可控的视频：倒计时环和快退／快进那三颗留着的话，
+     按下去找不到 `video.hv`，等于三颗空按钮压在正在翻的画面上。 */
+  const tools=parts?laterTool:`<button class="previewcounter" data-open title="打开预览" aria-label="打开预览">
       <svg viewBox="-18 -18 36 36"><circle r="17"></circle><circle r="17"></circle></svg>${icon('play','ringplay')}</button>
-    <div class="hovertools later-tools"><button class="laterbtn" data-later aria-pressed="${!!it.watch_later}" title="稍后看" aria-label="稍后看">
-      ${it.watch_later?icon('check'):icon('bookmark-plus')}</button></div>
+    ${laterTool}
     <div class="hovertools seektools">
       <button data-seek="-${appSettings.seekSeconds}" title="后退 ${appSettings.seekSeconds} 秒" aria-label="后退 ${appSettings.seekSeconds} 秒">${icon('rotate-ccw')}</button>
       <button data-seek="${appSettings.seekSeconds}" title="前进 ${appSettings.seekSeconds} 秒" aria-label="前进 ${appSettings.seekSeconds} 秒">${icon('rotate-cw')}</button>
@@ -1880,7 +1883,7 @@ function cardHtml(it,cls){
      同样被折叠过的版次卡长得和普通卡一模一样，只有角标能看出来。 */
   const stacked=parts||editions;
   return `<article class="card ${stacked?'partcard ':''}${cls||''} ${it.disposal==='trash'?'pending-delete':''}" data-id="${it.id}"${parts?` data-part-seed="${parts.seed_id}"`:''}>
-    ${stacked?'<div class="partstack">':''}<div class="pic" style="--card-ratio:${ar}">${thumb}<button class="cardopenhit" data-open aria-label="打开 ${esc(shownName)}${parts?'分卷':editions?'版本':'详情'}"></button>
+    ${stacked?'<div class="partstack">':''}<div class="pic" style="--card-ratio:${ar}">${thumb}${parts?'<div class="mixfaces" data-mix-faces hidden></div>':''}<button class="cardopenhit" data-open aria-label="打开 ${esc(shownName)}${parts?'分卷':editions?'版本':'详情'}"></button>
       <div class="badge mono">${srcBadge(it.location,it.cost)}</div>
       <span class="selectionMark">${icon('check')}</span><span class="deleteMark">${icon('trash')}<b>回收站</b></span>
       ${parts?`<span class="partbadge">${parts.count} 卷</span>`:''}${editions?`<span class="partbadge editionbadge" title="${esc(editions.editions.join(' · '))}">${editions.count} 个版本</span>`:''}<span class="dur mono">${fmtDur(shownDuration)}</span>${tr}${tools}</div>${stacked?'</div>':''}
@@ -2175,6 +2178,26 @@ function wireMixFlip(el,seedId){
       .map(x=>mixFacePoster(x,layout,true));
   });
 }
+/* 分卷组每个 seed 只取一次：悬浮翻动和点开后的分卷队列用的是同一份。 */
+const partGroupCache=new Map();
+function partGroup(seedId){
+  if(!partGroupCache.has(seedId))
+    partGroupCache.set(seedId,api('/api/parts?id='+seedId)
+      .then(group=>{if(group.error)throw new Error(group.error);cache(group.items);return group})
+      .catch(error=>{partGroupCache.delete(seedId);throw error}));
+  return partGroupCache.get(seedId);
+}
+/* 分卷卡悬浮翻的是同一部片各卷的画面，和 Mix 用同一套时序与门槛。版次组不翻：
+   有码、中字、无码是同一段画面的几个来源，翻过去前后两张几乎一样，看着像图卡住了，
+   那种卡继续用分段视频预览。第一张是卡片自己的静止封面，翻进来的才不会跳取景。 */
+function wirePartFlip(el,it){
+  wireStackFlip(el,async()=>{
+    const items=await partGroup(it.part_group.seed_id).then(group=>group.items),layout=javLayout();
+    return [it,...items.filter(x=>x.id!==it.id)]
+      .filter(x=>mixHasPicture(x,layout)).slice(0,MIX_FLIP_FACES)
+      .map(x=>mixFacePoster(x,layout,true));
+  });
+}
 /* 关注页的合集翻的是卡片渲染时就写进 DOM 的那几张缩略图：同一组媒体已经在
    手上，悬浮不该再为动画发一次请求。第一张必须是静止封面本身，否则一翻就
    露出取景差别。 */
@@ -2245,7 +2268,8 @@ function wireCards(root,onClick){
       opener.dataset.openWired='1';
       opener.onclick=e=>{e.stopPropagation();if(selectMode||e.shiftKey||e.ctrlKey||e.metaKey){e.preventDefault();toggleSelection(it.id,e.shiftKey);return}openCard(+el.dataset.id,el)};
     });
-    if(it&&(!it.medium||it.medium==='video'))wireHover(el,it);
+    if(it?.part_group)wirePartFlip(el,it);
+    else if(it&&(!it.medium||it.medium==='video'))wireHover(el,it);
   });
 }
 
@@ -6659,6 +6683,10 @@ async function loadShorts(requestSeq=loadRequestSeq,surface=surfaceToken(surface
 /* 版次徽章的配色跟卡片标题上的那套走。多一个 `有码`：卡片上正片不加角标是对的
    （没角标就是正片），但队列里两条并排时「什么都不写」等于让人自己猜哪条是哪条。 */
 const EDITION_TONE={'中字':'subtitle','无码':'uncensored','无码破解':'cracked','有码':'censored'};
+/* 同一部片的几卷共用文件名，标题、女优、厂牌逐字相同：详情标题不写卷号的话，在队列里
+   换一卷，右侧整栏看上去纹丝不动。卷号说的是「第几份文件」而不是版次，用中性灰。 */
+const partLabelBadge=(it,queue)=>queue?.kind==='parts'&&it.part_label
+  ? `<small class="javedition partlabel">第 ${esc(it.part_label)} 卷</small>`:'';
 function queueHtml(queue,itemId){
   const action=queue.kind==='mix'
     ? `<button data-save-mix title="保存为播放列表" aria-label="保存为播放列表">${icon('bookmark-plus')}</button>`
@@ -6715,9 +6743,9 @@ async function openParts(seedId,itemId=seedId,push=true,anchor=null){
   if(push&&!previous)detailReturnPath=location.pathname+location.search;
   let queue=previous;
   if(!queue){
-    const group=await api('/api/parts?id='+seedId);
-    if(group.error){await openItem(itemId,true);return}
-    queue={kind:'parts',seedId,title:`分卷 · ${group.title}`,items:group.items};cache(queue.items);
+    let group;
+    try{group=await partGroup(seedId)}catch(_e){await openItem(itemId,true);return}
+    queue={kind:'parts',seedId,title:`分卷 · ${group.title}`,items:group.items};
   }
   const chosen=queue.items.some(item=>item.id===itemId)?itemId:queue.items[0].id;
   await openItem(chosen,false,queue,anchor);
@@ -6865,7 +6893,7 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
     </div>${queueContext?queueHtml(queueContext,it.id):''}
     <div class="side"><div class="sidecontent">
       <div class="detailtitle">${srcBadge(it.location,it.cost,'srcbig')}
-        <div class="stitle">${javTitleHtml(it)}${it.location==='online'?'':`<span class="srctools detailtitletools">${sourceToolButtons(it.id)}</span>`}</div></div>
+        <div class="stitle">${javTitleHtml(it)}${partLabelBadge(it,queueContext)}${it.location==='online'?'':`<span class="srctools detailtitletools">${sourceToolButtons(it.id)}</span>`}</div></div>
       ${it.location==='online'?'':`<span class="srcstate detailtitlestate" aria-live="polite"></span>`}
       <div class="smeta mono">
         <span class="detailmetaitem">${icon('monitor')}<span>${it.width||'?'}×${it.height||'?'}</span></span>
