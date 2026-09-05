@@ -1848,8 +1848,24 @@ function faceBoxAttrs(f){
 function avatarFrame(img){
   const ring=img.parentElement;
   if(!ring)return;
-  const [cx,cy,faceW,imgW,imgH]=String(img.dataset.facebox).split(' ').map(Number);
   const rect=ring.getBoundingClientRect();
+  /* 图加载完时框还没布局，是真会发生的一整类情况：面板隐藏、`display:none` 的页签、
+     缓存直出。那一刻框是 0×0，算出来的倍数只能是 1，而 `load` 不会再来第二次——
+     放大于是静默地永不生效，页面上看不出和「这张图不需要放大」有任何区别。
+     实测在资料页复现过：框已经 160×160、图也 complete，style 里却只有平移。
+     等到框拿到尺寸再算一次，等不到就维持不放大。 */
+  if(!(rect.width>0&&rect.height>0)){
+    if(typeof ResizeObserver!=='function')return;
+    const watch=new ResizeObserver(()=>{
+      const now=ring.getBoundingClientRect();
+      if(!(now.width>0&&now.height>0))return;
+      watch.disconnect();
+      avatarFrame(img);
+    });
+    watch.observe(ring);
+    return;
+  }
+  const [cx,cy,faceW,imgW,imgH]=String(img.dataset.facebox).split(' ').map(Number);
   const frame=faceFrame({cx,cy,faceW,imgW,imgH},
     {w:rect.width,h:rect.height},window.devicePixelRatio||1);
   // 放不大就一个字都不写：留下的是 CSS 里那份几何，`object-position` 照旧生效。
