@@ -28,6 +28,8 @@ from dataclasses import dataclass, field, replace
 from functools import lru_cache
 from pathlib import Path
 
+from . import distribution
+
 #: 设置文件名。位置固定为数据根下，不做多候选路径搜索。
 SETTINGS_FILENAME = "config.toml"
 DATA_ROOT_ENV = "PEACH_DATA_ROOT"
@@ -65,7 +67,10 @@ class SettingsFileError(RuntimeError):
 
 
 def _project_root(module_file: str = __file__, bundle_root: str | None = None) -> Path:
-    """源码树保留 `src/` 层；PyInstaller 的资源直接落在 `_MEIPASS`。"""
+    """资源来自源码树、wheel 内的资源目录或 PyInstaller 的 `_MEIPASS`。"""
+    packaged = Path(module_file).resolve().parent / "_resources"
+    if bundle_root is None and packaged.is_dir():
+        return packaged
     return (Path(bundle_root) if bundle_root is not None
             else Path(module_file).resolve().parents[2])
 
@@ -87,6 +92,9 @@ def discover_data_root(
     explicit = (environ.get(DATA_ROOT_ENV) or "").strip()
     if explicit:
         return Path(explicit), True
+    if distribution.standalone():
+        candidate = distribution.user_data_root(environ)
+        return candidate, (candidate / SETTINGS_FILENAME).is_file()
     for parent in project_root.parents[:_SEARCH_DEPTH]:
         candidate = parent / DATA_ROOT_DIRNAME
         if candidate.is_dir():
@@ -254,9 +262,13 @@ def _merge(
             "路径填该来源的声明根在本机的落点，例如 "
             "`local = '/mnt/media'`"
         ))
-    locations = dict(DEFAULT_LOCATION_ROOTS)
-    locations.update(
-        _string_map(_table(media, _LOCATIONS_KEY, path), path, "media.locations."))
+    # 文件里写了 `[media.locations]` 就以它为准：`peach init` 的问答只声明用户给过的
+    # 来源，内建默认那三个示例盘符不能从旁边混进来，否则陌生人的机器上会多出两个
+    # 永远脱盘的来源。没写这张表才退回内建默认。
+    if _LOCATIONS_KEY in media:
+        locations = _string_map(_table(media, _LOCATIONS_KEY, path), path, "media.locations.")
+    else:
+        locations = dict(DEFAULT_LOCATION_ROOTS)
     mounts = _string_map(_table(media, _MOUNTS_KEY, path), path, "media.mounts.")
     unknown_mounts = sorted(set(mounts) - set(locations))
     if unknown_mounts:

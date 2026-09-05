@@ -1,15 +1,27 @@
-# Peach
+<p align="center">
+  <img src="resources/peach-logo.png" alt="Peach" width="128">
+</p>
 
-Peach is a single-user, local-first personal media system: it indexes media you already own —
-local disks, mounted cloud drives, online subscriptions — and serves search, playback, profile
-pages, playlists and manual review from one FastAPI process backed by a local SQLite ledger.
-It is built for one person self-hosting on their own machines over a LAN, not for teams or public
-deployment. Status: pre-1.0. Windows and macOS are first-class; Linux is not supported and has not
-been tested. A full English version is in [`README.en.md`](README.en.md).
+<h1 align="center">Peach</h1>
 
-Peach（蜜桃）是单用户、本地优先的个人媒体系统。它统一索引本地磁盘、CloudDrive 和在线关注来源，提供搜索、播放、资料页、播放列表、复核与追更，并把观看行为和人工决定保存到本地 SQLite ledger。
+<p align="center">单用户、本地优先的个人媒体系统</p>
 
-Peach 在一台机器上就能完整运行。Windows 与 macOS 是一等平台；Linux 不在支持范围，未测试。多台机器之间的单写者复制是可选项，默认关闭，目前只在「Windows 写者 + macOS 读者」一种形状上验证过。当前运行状态与验证结果见 [`docs/STATUS.md`](docs/STATUS.md)，待办见 [`docs/PRODUCT_BACKLOG.md`](docs/PRODUCT_BACKLOG.md)；开发约束从 [`AGENTS.md`](AGENTS.md) 开始读。
+<p align="center">
+  <a href="https://github.com/longmeidao/peach/actions/workflows/test.yml"><img src="https://img.shields.io/github/actions/workflow/status/longmeidao/peach/test.yml?branch=master&label=tests" alt="tests"></a>
+  <a href="https://github.com/longmeidao/peach/releases"><img src="https://img.shields.io/github/v/release/longmeidao/peach?include_prereleases&label=release" alt="release"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0--or--later-blue" alt="license"></a>
+  <img src="https://img.shields.io/badge/python-3.12%2B-3776AB?logo=python&logoColor=white" alt="Python 3.12+">
+  <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS-lightgrey" alt="Windows | macOS">
+  <img src="https://img.shields.io/badge/18%2B-adult%20content-critical" alt="18+ adult content">
+</p>
+
+<p align="center">中文 · <a href="README.en.md">English</a></p>
+
+> **18+** Peach 面向成年人，管理的是成人内容馆藏。仓库、文档与截图只出现 SFW 素材；边界见下文「范围与免责声明」。
+
+Peach（蜜桃）是单用户、本地优先的个人媒体系统，只为一个人在自己的机器上经局域网自用而设计，不面向团队或公开部署。它统一索引你已经拥有的媒体——本地磁盘、CloudDrive 挂载和在线关注来源——由一个 FastAPI 进程提供搜索、播放、资料页、播放列表、复核与追更。本地 SQLite ledger 是唯一真相源，观看行为和人工决定都保存在这里；CloudDrive、在线站点和 AI 取回的内容只是带来源与置信度的候选，经用户复核后才成为真相。
+
+Peach 在一台机器上就能完整运行，目前处于 pre-1.0 阶段。Windows 与 macOS 是一等平台；Linux 不在支持范围，未测试。多台机器之间的单写者复制是可选项，默认关闭，目前只在「Windows 写者 + macOS 读者」一种形状上验证过。当前运行状态与验证结果见 [`docs/STATUS.md`](docs/STATUS.md)，待办见 [`docs/PRODUCT_BACKLOG.md`](docs/PRODUCT_BACKLOG.md)；开发约束从 [`AGENTS.md`](AGENTS.md) 开始读。
 
 ## 核心能力
 
@@ -72,7 +84,7 @@ peach-app/
 
 ## 下载制品
 
-每个 `v<版本>` tag 在 GitHub Releases 挂两个压缩包：`Peach-<版本>-windows-x64.zip`（单文件 `Peach.exe`）与 `Peach-<版本>-macos-<arch>.zip`（菜单栏 `Peach.app`）。它们只是托盘与菜单栏的入口，不是免安装的绿色版：服务进程仍由仓库的 `.venv` 承担，所以先按下面「安装」完成三步，再把解压出的 `Peach.exe` 放进仓库目录下（例如 `dist\Peach\`）；macOS 的 `Peach.app` 双击只是唤起 LaunchAgent，先 `./.venv/bin/python scripts/install_macos_agent.py install` 注册。FFmpeg 仍按前置条件自装。托盘「检查更新」对制品只报告版本，不下载也不安装更新（ADR-0012）。
+Windows 调试用户下载 [GitHub Releases](https://github.com/longmeidao/peach/releases) 的 `Peach-<版本>-windows-x64.zip`，完整解压后双击 `Peach.exe`，在首次设置页选择媒体文件夹即可开始。程序自带运行环境，支持本机访问；配置入口在页面「设置」和托盘菜单。FFmpeg 另装，更新时完整替换程序目录。详细步骤见 [Windows 测试版](docs/TESTING_DESKTOP.md)。macOS 当前按下面的源码安装流程使用。
 
 ## 安装
 
@@ -84,19 +96,42 @@ peach-app/
 & .\.venv\Scripts\peach.exe init                    # macOS: ./.venv/bin/peach init
 ```
 
-`peach init` 建数据根、把账本迁到最新 schema、生成本机 CA，并写出 `<数据根>/config.toml`。
-默认数据根是仓库同级的 `peach-data/`，`--data-root` 可改，环境变量 `PEACH_DATA_ROOT` 覆盖它。
-之后 `peach serve` 就能起服务；监听地址、端口、媒体盘符映射和复制开关都在那个设置文件里改，
-逐项说明见 [`docs/OPERATIONS.md`](docs/OPERATIONS.md)。托盘由 `peach-tray` 启动，不带参数。
+不带参数的 `peach init` 在终端里问五个问题，每一题回车即接受方括号里的默认值：
 
-四个事实：
+| 问题 | 默认值 |
+| --- | --- |
+| 数据根（账本、缓存与设置文件都放这里） | 仓库同级的 `peach-data/` |
+| 本地媒体目录（来源 `local`，必须已存在） | `~\Videos`（macOS 为 `~/Movies`），不存在则必填 |
+| 监听范围：1 = 仅本机（127.0.0.1），2 = 局域网（0.0.0.0） | `1` |
+| 服务端口 | `8900` |
+| 局域网名字（`<名字>.local`，只在监听局域网时发布） | `peach` |
 
-- `-e` 是硬性要求：wheel 只含 `src/` 下的包，仓库根的 `migrations/` 与 `web/` 不在里面，非可编辑安装下 `peach init` 找不到迁移目录会直接报错。
-- `--data-root` 指到别处时，`peach serve` 只按 `PEACH_DATA_ROOT` 和仓库上方几层的 `peach-data/` 找数据根，所以要同时设 `PEACH_DATA_ROOT`；用默认数据根没有这一步。
-- 设置文件里三个来源的声明根默认是 `local = R:\media`、`115 = B:/`、`pikpak = A:/`，这只是示例盘符，必须在 `[media.locations]` 与 `[media.mounts]` 里改成自己的路径；不改的结果是全部来源脱盘，而不是报错。CloudDrive 不是必需，任何能挂成本地路径的网盘都行；115 与 PikPak 是推荐项，不是要求。
+回答完它建数据根、把账本迁到最新 schema、生成本机 CA、写出 `<数据根>/config.toml`，然后问
+「现在扫描 <目录>？」（默认是）把那个目录的文件登记进账本，最后打印下一步。设置文件里只有你
+声明过的那一个来源；之后 `peach serve` 就能起服务，`peach scan local` 可以随时重扫。监听地址、
+端口、来源与复制开关都在那个设置文件里改，逐项说明见 [`docs/OPERATIONS.md`](docs/OPERATIONS.md)。
+托盘由 `peach-tray` 启动，不带参数。
+
+不想在终端里回答也行：跳过第三步，直接跑 `peach-tray`（或双击 `Peach.exe` / `Peach.app`）。
+托盘看到这台机器还没配置，就起一条只监听 `127.0.0.1` 的引导服务并把浏览器打开到它，页面
+是同样五个问题的一张表单，外加一个默认勾上的「现在扫描」。提交之后托盘自动停掉引导服务、
+换成正常的 Peach 服务，勾了扫描就在后台跑一遍。这条路和 `peach init` 调的是同一组逻辑，
+落盘结果完全一样。托盘菜单在等待期间显示「等待完成首次设置」，第一项变成「重新打开设置页」。
+
+不想问答就给参数：`peach init --no-input`（或任何一个参数，例如 `--data-root`、`--port`、
+`--mount local=/mnt/media`）按内建默认与参数直接生成；stdin 不是终端时也走这条路。这条路写出的
+设置文件带三个示例来源 `local = R:\media`、`115 = B:/`、`pikpak = A:/`，必须在 `[media.locations]`
+与 `[media.mounts]` 里改成自己的路径，不改的结果是全部来源脱盘，而不是报错。
+
+五个事实：
+
+- 只监听 `127.0.0.1` 不需要口令。要让手机或局域网里别的设备访问（`--host 0.0.0.0`、托盘起的服务都算），就必须有访问口令：`peach init` 已经在 `<数据根>/secrets/auth-token` 生成一份，`peach token` 打印出来，设备第一次访问时贴进登录页。绑非回环地址却读不到口令时 `peach serve` 拒绝启动，因为那等于把整个馆藏和写接口摆在同网段上。
+- 源码开发使用 `-e`；普通安装与 wheel 自带页面和迁移文件，可从任意工作目录运行。
+- 数据根不在仓库同级时，`peach serve` 只按 `PEACH_DATA_ROOT` 和仓库上方几层的 `peach-data/` 找数据根，所以要同时设 `PEACH_DATA_ROOT`；用默认数据根没有这一步。
+- 账本里的路径一律是 Windows 形态。Windows 上媒体目录直接写进 `[media.locations]`；macOS 上声明根写 `R:\media`、目录写进 `[media.mounts]`，由本机挂载点负责翻译。CloudDrive 不是必需，任何能挂成本地路径的网盘都行；115 与 PikPak 是推荐项，不是要求。
 - 界面目前只有中文。
 
-没有设置文件也能启动：`/healthz` 报 `configured=false`，页面提示先跑 `peach init`。
+没有设置文件也能启动：`/healthz` 报 `configured=false`，首页是上面那张首次运行表单。
 
 ## 开发
 
@@ -201,6 +236,7 @@ Rule34.xxx 标签身份不区分大小写。跨站来源按规范作者归组，
 - [`docs/HANDOFF.md`](docs/HANDOFF.md)：跨任务长期有效的事实与工作约定。
 - [`docs/REUSE.md`](docs/REUSE.md)：新增或替换实现前的复用清单。
 - [`docs/adr/`](docs/adr/)：架构决定、原因和取舍。
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) 与 [`SECURITY.md`](SECURITY.md)：参与方式，以及威胁模型与漏洞报告。
 
 ## 许可证
 

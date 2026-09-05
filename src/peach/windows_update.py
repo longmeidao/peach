@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import shutil
 import subprocess
@@ -12,6 +13,12 @@ from typing import Callable
 
 from .fsutil import atomic_write_text
 
+
+log = logging.getLogger(__name__)
+
+BACKUP_GLOB = "Peach.pre-source-sync-*.exe"
+STAGING_DIRNAME = "source-sync-build"
+KEEP_BACKUPS = 2
 
 WINDOWS_TRAY_INPUTS = (
     "src/peach/",
@@ -94,6 +101,43 @@ class WindowsUpdateInstaller:
 
     def clear_pending(self) -> None:
         self.pending_path.unlink(missing_ok=True)
+
+    def sweep_artifacts(self, *, keep_backups: int = KEEP_BACKUPS) -> tuple[Path, ...]:
+        """删掉更新流程留下、已经没人会读的产物，托盘每次启动调一次。
+
+        每次更新都会在 EXE 旁边留一份 `Peach.pre-source-sync-<时间>.exe` 备份、在
+        `state/source-sync-build/<commit>/` 留一份暂存构建，两者各约 40 MB。备份只留最新
+        `keep_backups` 份；暂存目录只留待应用记录指着的那个提交——替换助手要等新托盘
+        活过 3 秒才清掉待应用记录，所以刚换上来的那份到下一次启动才会被清。只认更新器
+        自己的命名，`Peach.exe` 本体和手工放进目录的任何文件一律不碰；删不掉的只记日志，
+        不影响启动。
+        """
+        removed: list[Path] = []
+        backups = sorted(self.current_executable.parent.glob(BACKUP_GLOB))
+        stale_count = max(len(backups) - max(keep_backups, 0), 0)
+        for stale in backups[:stale_count]:
+            try:
+                stale.unlink()
+            except OSError as exc:
+                log.warning("旧托盘备份未能删除 %s: %s", stale, exc)
+                continue
+            removed.append(stale)
+
+        pending = self.pending()
+        staging_root = self.state_dir / STAGING_DIRNAME
+        if staging_root.is_dir():
+            for entry in sorted(staging_root.iterdir()):
+                if not entry.is_dir():
+                    continue
+                if pending is not None and entry.name == pending.commit:
+                    continue
+                try:
+                    shutil.rmtree(entry)
+                except OSError as exc:
+                    log.warning("暂存构建未能删除 %s: %s", entry, exc)
+                    continue
+                removed.append(entry)
+        return tuple(removed)
 
     def _powershell_executable(self) -> str | None:
         if self._powershell:

@@ -5,6 +5,11 @@
 
 ## 复用决策门槛
 
+- 独立 Windows 测试包复用 PyInstaller 6.22.2（GPL-2.0-or-later，带分发 bootloader 例外）的 [onedir 与自启动子进程](https://pyinstaller.org/en/stable/common-issues-and-pitfalls.html)；使用已有精确固定的 build 依赖。Python 3.14 / Windows x64 在清除开发工具 PATH、隔离数据目录下实测初始化、页面与 API。保留 Peach 的进程所有权、数据目录、配置和扫描策略；onefile 的托盘入口只用于既有源码部署，独立包采用完整目录以共享资源并避免重复解包。没有新增运行时依赖。
+
+- 运行一致性复评：复用 `LedgerDatabase.write_transaction` 的提交边界和标准库 `OrderedDict`；HTTP 导航复用 FastAPI/Starlette，图片复验复用 `StaticFiles.is_not_modified` 与 `FileResponse` 的 ETag。列表使用 SQLite 的 IN/UNION 保留隐藏标签与多标签组合，不引入查询框架。
+- wheel 资源复用 setuptools 84.0.0 的 `build_py.copy_tree`，资源位置遵循[官方包内数据建议](https://setuptools.pypa.io/en/stable/userguide/datafiles.html)。自定义钩子仅复制三个既有资源目录，因为源码、桌面构建和前端产物仍共用其维护位置；Windows 基础依赖全新安装及仓库外 API 冒烟已验证。
+
 - 先用真实输入做无写入 POC，再决定“直接依赖、固定来源实现、保留自研”三者之一。
 - 采用项要记录固定版本、许可证、首个消费者和 Peach 保留的领域边界；候选依赖不得空转。
 - 保留自研要记录被拒绝的候选和不可替代约束，不能只写“特殊需求”。
@@ -124,4 +129,3 @@ Python、npm 与 GitHub Actions 的版本由 `.github/dependabot.yml` 每周检�
    AVBase 已变为 Cloudflare 验证页，批量流程不再请求也不绕过；DUGA Web API 需代理店应用 ID，未配置前
    只复用成功日志的精确 URL。MDC-NG 公共仓库只证明 Amazon 日本渠道存在，后端匹配逻辑未公开，故只留
    POC 候选。该流程不新增依赖、不写 ledger，操作步骤见 `peach-jav-cover-workflow`。
-

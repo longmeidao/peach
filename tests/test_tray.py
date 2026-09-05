@@ -4,6 +4,7 @@ import inspect
 import io
 import os
 import plistlib
+import re
 import sys
 import tempfile
 import threading
@@ -23,12 +24,15 @@ def load_script(name: str):
     return module
 
 
+from peach import appid, onboarding, settings_file
+from peach import tray as tray_module
 from peach.config import SECRETS_DIR
 from peach.tray import (
-    AlreadyRunning, PeachTray, ServiceManager, ServiceSpec, SingleInstance,
-    apply_macos_template, build_service_specs, create_icon, enable_hidpi,
-    launchd_owns_this_process, ledger_menu_items, restart_tray_process,
-    tray_restart_required,
+    AlreadyRunning, PeachTray, ServiceManager, ServiceSpec, SetupGate,
+    SingleInstance, apply_macos_template, build_service_specs,
+    build_setup_service_specs, create_icon, enable_hidpi,
+    launchd_owns_this_process, ledger_menu_items, needs_setup,
+    restart_tray_process, tray_restart_required,
 )
 from peach.tray import main as tray_main
 from peach.sync import SyncPlan
@@ -64,10 +68,15 @@ class TrayTests(unittest.TestCase):
             for name in ("peach-local-ca.crt", "peach.crt", "peach.key"):
                 (tls_dir / name).write_text("test-only", encoding="utf-8")
             specs = build_service_specs(lan_address="192.0.2.10", tls_dir=tls_dir)
-        owners = [spec for spec in specs if "--no-ledger-sync" not in spec.command]
+        owners = [spec for spec in specs if "--no-ledger-sync" not in spec.command
+                  and "--redirect-origin" not in spec.command]
         self.assertEqual(owners, [])
         for spec in specs:
-            self.assertIn("--no-ledger-sync", spec.command)
+            if spec.name == "https":
+                self.assertIn("--no-ledger-sync", spec.command)
+                self.assertNotIn("--no-mdns", spec.command)
+            else:
+                self.assertIn("--redirect-origin", spec.command)
 
     @unittest.skipUnless(
         os.name == "nt", "macOS 走 build_macos_service_specs，不发布 LAN 地址"
@@ -444,6 +453,155 @@ class ReplicationSwitchTests(unittest.TestCase):
         mount.assert_not_called()
 
 
+class SetupGateTests(unittest.TestCase):
+    """首次设置期间的服务切换（ADR-0023 的 GUI 引导）。
+
+    托盘不重启自己就要完成切换，所以这里断言的是「规格换了、日志目录和 PEACH_DATA_ROOT
+    跟着换了、首扫标记只被消费一次」，而不是某个平台的菜单长什么样。
+    """
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.root = Path(self._tmp.name).resolve()
+        self.data_root = self.root / "peach-data"
+        patcher = patch("peach.tray._peach_executable", return_value=Path("/venv/peach"))
+        self.addCleanup(patcher.stop)
+        patcher.start()
+
+    def _config(self):
+        return settings_file.load_config(
+            project_root=self.root / "app",
+            environ={"PEACH_DATA_ROOT": str(self.data_root)})
+
+    def _tls(self, config):
+        tls_dir = config.directory("secrets") / "tls"
+        tls_dir.mkdir(parents=True, exist_ok=True)
+        for name in ("peach-local-ca.crt", "peach.crt", "peach.key"):
+            (tls_dir / name).write_text("test-only", encoding="utf-8")
+
+    def test_a_fresh_machine_needs_setup_even_after_a_state_directory_appeared(self):
+        self.assertTrue(needs_setup(self._config()))
+        # 托盘的单实例锁会建出 `state/`，数据根目录于是存在、`configured` 变成 True。
+        (self.data_root / "state").mkdir(parents=True)
+        self.assertTrue(self._config().configured)
+        self.assertTrue(needs_setup(self._config()), "空数据根不算配置过")
+
+    def test_an_existing_deployment_without_a_settings_file_is_left_alone(self):
+        (self.data_root / "database").mkdir(parents=True)
+        (self.data_root / "database" / "ledger.db").write_bytes(b"")
+        self.assertFalse(needs_setup(self._config()))
+
+    def test_the_setup_service_is_loopback_only_without_tls_or_a_token(self):
+        specs = build_setup_service_specs(self._config())
+        self.assertEqual([spec.name for spec in specs], ["setup"])
+        command = specs[0].command
+        self.assertIn("--setup", command)
+        self.assertEqual(command[command.index("--host") + 1], "127.0.0.1")
+        self.assertEqual(command[command.index("--port") + 1], "8900")
+        self.assertNotIn("--ssl-certfile", command)
+        self.assertNotIn("0.0.0.0", command)
+        self.assertEqual(specs[0].health_url, "http://127.0.0.1:8900/healthz")
+
+    def test_an_unconfigured_machine_starts_the_setup_service_not_the_normal_one(self):
+        config = self._config()
+        manager = ServiceManager(build_setup_service_specs(config),
+                                 log_dir=config.directory("logs"))
+        gate = SetupGate(manager, config, waiting=True, load=self._config)
+        self.assertTrue(gate.waiting)
+        self.assertEqual(gate.open_url(), "http://127.0.0.1:8900/")
+        self.assertEqual(gate.open_label(), "重新打开设置页")
+        self.assertIn("等待完成首次设置", gate.status_line())
+        self.assertFalse(gate.poll(), "设置还没做完，轮询不动任何东西")
+        self.assertEqual([spec.name for spec in manager.specs], ["setup"])
+
+    def test_a_finished_setup_switches_to_the_normal_services_and_runs_the_first_scan(self):
+        config = self._config()
+        manager = ServiceManager(build_setup_service_specs(config),
+                                 log_dir=config.directory("logs"),
+                                 popen=Mock(), health_get=lambda *a, **k: Response())
+        scan_popen = Mock()
+        gate = SetupGate(manager, config, waiting=True, load=self._config,
+                         popen=scan_popen, open_browser=Mock())
+        self._tls(config)
+        (self.data_root / "config.toml").write_text(
+            "[server]\nport = 9100\nmdns_name = 'peach-writer'\n", encoding="utf-8")
+        onboarding.request_first_scan(self._config())
+
+        with patch("peach.tray.lan_ipv4", return_value="192.0.2.10"):
+            self.assertTrue(gate.poll())
+        self.assertFalse(gate.waiting)
+        self.assertNotIn("setup", [spec.name for spec in manager.specs])
+        self.assertTrue(manager.specs, "切换之后必须有正常服务规格")
+        self.assertEqual(manager.log_dir, self.data_root / "logs")
+        self.assertEqual(manager.child_environment()["PEACH_DATA_ROOT"], str(self.data_root))
+        self.assertEqual(gate.open_label(), "打开 Peach")
+        self.assertEqual(gate.open_url(), "https://peach-writer.local/")
+
+        scan = scan_popen.call_args
+        self.assertEqual(list(scan.args[0][1:]), ["scan", "local"])
+        self.assertEqual(scan.kwargs["env"]["PEACH_DATA_ROOT"], str(self.data_root))
+        # 标记只消费一次：下一轮轮询已经不在等待状态，也不会再拉起一次扫描。
+        self.assertFalse(gate.poll())
+        self.assertEqual(scan_popen.call_count, 1)
+        self.assertIsNone(gate.start_first_scan(self._config()))
+
+    def test_the_plain_port_redirects_to_the_name_the_setup_form_just_wrote(self):
+        """明文口的跳转目标取新鲜读到的 mDNS 名，不用模块常量。
+
+        `MDNS_HOSTNAME` 在 import 期就按当时的设置文件定型，而首次设置里那一题正是它；
+        托盘不重启自己就完成切换，用常量会把人跳到一个不存在的 `.local` 名下。
+        """
+        config = self._config()
+        manager = ServiceManager(build_setup_service_specs(config),
+                                 log_dir=config.directory("logs"),
+                                 popen=Mock(), health_get=lambda *a, **k: Response())
+        gate = SetupGate(manager, config, waiting=True, load=self._config,
+                         popen=Mock(), open_browser=Mock())
+        self._tls(config)
+        (self.data_root / "config.toml").write_text(
+            "[server]\nport = 9100\nmdns_name = 'peach-writer'\n", encoding="utf-8")
+
+        # 打进去的是 import 期那份旧名字；跳转目标必须是表单刚写下的那个。
+        with patch("peach.tray.MDNS_HOSTNAME", "peach-reader.local"), patch(
+                "peach.tray.lan_ipv4", return_value="192.0.2.10"):
+            self.assertTrue(gate.poll())
+        redirecting = [spec for spec in manager.specs
+                       if "--redirect-origin" in spec.command]
+        self.assertTrue(redirecting, "正常规格里必须有一条只做跳转的明文口")
+        for spec in redirecting:
+            command = spec.command
+            self.assertEqual(command[command.index("--redirect-origin") + 1],
+                             "https://peach-writer.local")
+
+    def test_missing_tls_material_keeps_the_gate_waiting(self):
+        """没有 openssl 的机器上 CA 生成会失败；那时不能拿一组缺文件的规格去启动。
+
+        macOS 的规格是另一种约定：证书缺失只是不起 HTTPS，闸门照样打开，只带明文口。
+        两种行为都在这里钉住，`popen` 必须是替身——闸门一开就会真的去拉起服务进程。
+        """
+        config = self._config()
+        popen = Mock()
+        manager = ServiceManager(build_setup_service_specs(config),
+                                 log_dir=config.directory("logs"),
+                                 popen=popen, health_get=lambda *a, **k: Response())
+        gate = SetupGate(manager, config, waiting=True, load=self._config,
+                         popen=Mock(), open_browser=Mock())
+        self.data_root.mkdir(parents=True, exist_ok=True)
+        (self.data_root / "config.toml").write_text("[server]\nport = 8900\n", encoding="utf-8")
+        with patch("peach.tray.lan_ipv4", return_value="192.0.2.10"):
+            opened = gate.poll()
+        if sys.platform == "darwin":
+            self.assertTrue(opened)
+            self.assertFalse(gate.waiting)
+            self.assertEqual([spec.name for spec in manager.specs], ["http"])
+            return
+        self.assertFalse(opened)
+        self.assertTrue(gate.waiting)
+        self.assertEqual([spec.name for spec in manager.specs], ["setup"])
+        popen.assert_not_called()
+
+
 class SourceSyncTests(unittest.TestCase):
     """「同步开发进度」这条路径：拉到的代码要真的跑起来，托盘不能自己骗自己。"""
 
@@ -484,7 +642,8 @@ class SourceSyncTests(unittest.TestCase):
 
     def test_windows_tray_lists_source_sync_next_to_ledger(self):
         source = inspect.getsource(PeachTray.__init__)
-        self.assertIn('MenuItem("同步开发进度", self.sync_source)', source)
+        self.assertIn('MenuItem("同步开发进度", self.sync_source,', source)
+        self.assertIn('visible=lambda _: not standalone()', source)
         self.assertLess(source.index("同步开发进度"), source.index("ledger_menu_items"))
         self.assertLess(source.index("ledger_menu_items"), source.index("重启服务"))
 
@@ -573,7 +732,8 @@ class SourceSyncTests(unittest.TestCase):
         restart_tray_process(runner, uid=501)
         self.assertEqual(
             runner.call_args.args[0],
-            ["launchctl", "kickstart", "-k", "gui/501/gg.lmd.peach.tray"],
+            ["launchctl", "kickstart", "-k",
+             "gui/501/io.github.longmeidao.peach.tray"],
         )
 
     def test_sync_changes_restart_the_tray_and_failed_kickstart_restores_services(self):
@@ -617,7 +777,7 @@ class MacMenuBarTests(unittest.TestCase):
             command = specs["https"].command
             self.assertIn("--ssl-certfile", command)
             # 两份服务只能有一份发布 mDNS，否则同名记录互相打架。
-            self.assertIn("--no-mdns", command)
+            self.assertNotIn("--no-mdns", command)
             self.assertTrue(str(specs["https"].verify).endswith("peach-local-ca.crt"))
 
 
@@ -679,6 +839,90 @@ class MacAppBundleTests(unittest.TestCase):
         (app / "Contents" / "MacOS" / "stale").write_text("x", encoding="utf-8")
         self.module.build(self.root, self.tray)
         self.assertFalse((app / "Contents" / "MacOS" / "stale").exists())
+
+
+class MacIdentityTests(unittest.TestCase):
+    """bundle ID、launchd 标签与 pf anchor 名只有 `peach.appid` 一个来源。
+
+    这四处名字对不上时没有任何报错：`launchctl kickstart` 去踢一个不存在的服务、
+    pf 加载一个空 anchor，表现只是菜单栏没图标、`peach.local` 不带端口打不开。
+    所以每个消费者都在这里对着同一处常量核一遍。
+    """
+
+    def setUp(self):
+        self.shell = (ROOT / "scripts" / "setup_macos_port80.sh").read_text(encoding="utf-8")
+
+    def test_every_consumer_takes_the_identifier_from_peach_appid(self):
+        self.assertEqual(tray_module.LAUNCH_AGENT_LABEL, appid.MACOS_LAUNCH_AGENT_LABEL)
+        self.assertEqual(load_script("build_macos_app").BUNDLE_ID, appid.MACOS_BUNDLE_ID)
+        self.assertEqual(load_script("build_macos_app").LABEL,
+                         appid.MACOS_LAUNCH_AGENT_LABEL)
+        self.assertEqual(load_script("install_macos_agent").LABEL,
+                         appid.MACOS_LAUNCH_AGENT_LABEL)
+
+    def test_the_identifier_is_the_repository_owner_not_a_private_domain(self):
+        """下载者装上的东西不该带着维护者的私有域名（ADR-0023 第 4 阶段）。"""
+        for value in (appid.MACOS_BUNDLE_ID, appid.MACOS_LAUNCH_AGENT_LABEL,
+                      appid.MACOS_PF_ANCHOR):
+            self.assertTrue(value.startswith("io.github."), value)
+
+    def test_the_shell_script_pins_the_same_anchor_names(self):
+        """POSIX shell import 不了 Python，那两行字面量只能由这条用例守住。"""
+        found = dict(re.findall(r'^(ANCHOR_NAME|LEGACY_ANCHOR_NAMES)="([^"]*)"',
+                                self.shell, re.MULTILINE))
+        self.assertEqual(found.get("ANCHOR_NAME"), appid.MACOS_PF_ANCHOR)
+        self.assertEqual(found.get("LEGACY_ANCHOR_NAMES"),
+                         " ".join(appid.LEGACY_MACOS_PF_ANCHORS))
+
+    def test_the_port_forward_script_clears_the_legacy_anchor_on_both_paths(self):
+        """遗留 anchor 的那份 LaunchDaemon 每次开机都抢同一个 80/443 转发目标。"""
+        self.assertIn("remove_legacy()", self.shell)
+        uninstall = self.shell.split('if [ "$ACTION" = "uninstall" ]', 1)[1]
+        self.assertIn("remove_legacy", uninstall)
+        self.assertIn("strip_conf /etc/pf.conf", uninstall)
+
+
+class MacLegacyAgentTests(unittest.TestCase):
+    """装新标签之前先卸掉遗留标签的 LaunchAgent。
+
+    `launchctl bootout` 只作用于给定的那一个 label，装新标签这一步碰不到遗留的那份：
+    它会继续开机自启一个菜单栏进程，也继续占着 80/443 的转发。
+    """
+
+    def setUp(self):
+        self.module = load_script("install_macos_agent")
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.agents = Path(tmp.name).resolve() / "LaunchAgents"
+        self.agents.mkdir()
+        self.module.launch_agents_dir = lambda: self.agents
+        self.calls: list[tuple[str, ...]] = []
+
+    def _launchctl(self, *args: str, loaded: bool):
+        self.calls.append(args)
+        returncode = 0 if (args[0] == "print" and loaded) else 1
+        return Mock(returncode=returncode, stdout="", stderr="")
+
+    def test_installing_boots_out_the_legacy_label_and_deletes_its_plist(self):
+        legacy = appid.LEGACY_MACOS_LAUNCH_AGENT_LABELS[0]
+        stale = self.agents / f"{legacy}.plist"
+        stale.write_bytes(b"stale")
+        self.module.launchctl = lambda *args: self._launchctl(*args, loaded=True)
+
+        self.assertEqual(self.module.remove_legacy_agents("gui/501"), [legacy])
+        self.assertFalse(stale.exists())
+        self.assertIn(("bootout", f"gui/501/{legacy}"), self.calls)
+
+    def test_a_machine_without_the_legacy_label_is_left_alone(self):
+        self.module.launchctl = lambda *args: self._launchctl(*args, loaded=False)
+        self.assertEqual(self.module.remove_legacy_agents("gui/501"), [])
+        self.assertEqual([args[0] for args in self.calls], ["print"])
+
+    def test_install_clears_the_legacy_label_before_writing_the_new_plist(self):
+        """顺序反了就会把刚装好的那份又 bootout 掉一次，白等一轮超时。"""
+        source = inspect.getsource(self.module.run)
+        self.assertLess(source.index("remove_legacy_agents"),
+                        source.index("plistlib.dumps"))
 
 
 class TrayCommandLineTests(unittest.TestCase):

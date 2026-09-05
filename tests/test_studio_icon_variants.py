@@ -276,7 +276,10 @@ class PageSourceTests(unittest.TestCase):
         cls.source = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
 
     def test_the_studio_hero_asks_for_the_wordmark(self):
-        self.assertIn("/logo?studio=${encodeURIComponent(d.canonical_name)}&variant=logo",
+        """大位和小位共用一条取图链，变体由调用方按位置给：大位默认就是字标。"""
+        self.assertIn("logoVariant='logo',alt='',lazy=true", self.source)
+        self.assertIn("logo:company&&d.has_logo?d.canonical_name:'',", self.source)
+        self.assertIn("`/logo?studio=${encodeURIComponent(logo)}&variant=${logoVariant}`",
                       self.source)
 
     def test_every_small_surface_asks_for_the_icon(self):
@@ -1059,13 +1062,14 @@ class RunTests(unittest.TestCase):
         connection.executemany(
             "INSERT INTO entity(id, kind, canonical_name) VALUES(?,?,?)",
             [(1, "studio", "Fitch"), (2, "studio", "HEYZO"), (3, "studio", "kawaii"),
-             (4, "studio", "Hon Naka")])
+             (4, "studio", "Hon Naka"), (5, "agency", "T-POWERS")])
         connection.executemany(
             "INSERT INTO entity_link(entity_id, link_kind, label, url) VALUES(?,?,?,?)",
             [(1, "official", "官方网站", "https://fitch-av.com/"),
              (2, "official", "官方网站", "https://www.heyzo.com/"),
              # 有链接、一张图都没有：账本里 Hon Naka 就是这一例。
-             (4, "official", "官方网站", "https://honnaka.jp/")])
+             (4, "official", "官方网站", "https://honnaka.jp/"),
+             (5, "official", "T-POWERS", "https://t-powers.co.jp/")])
         connection.commit()
         connection.close()
         # 两张指定来源表都指向站外地址，留着这一整套测试就会去联网取图。
@@ -1094,13 +1098,46 @@ class RunTests(unittest.TestCase):
             return MODULE.run(SimpleNamespace(
                 database=self.database, output=self.root / "studio-icons.csv",
                 logo_root=self.logos, candidate_dir=self.root / "candidates",
-                only=[], interval=0.0, timeout=1.0, install=install))
+                only=[], kind="studio", interval=0.0, timeout=1.0, install=install))
         finally:
             MODULE.site_icons.best_mark = original
 
     def read_csv(self):
         from peach.review_csv import read_rows
         return list(read_rows(self.root / "studio-icons.csv"))
+
+    def test_an_agency_run_looks_only_at_agencies(self):
+        """事务所和厂牌是同一件事的两批公司，只是这一趟收谁由 kind 定。"""
+        original = MODULE.site_icons.best_mark
+        MODULE.site_icons.best_mark = (
+            lambda url, fetcher, render, fallback=None, accept=None: None)
+        try:
+            MODULE.run(SimpleNamespace(
+                database=self.database, output=self.root / "agency-icons.csv",
+                logo_root=self.logos, candidate_dir=self.root / "candidates",
+                only=[], kind="agency", interval=0.0, timeout=1.0, install=False))
+        finally:
+            MODULE.site_icons.best_mark = original
+        from peach.review_csv import read_rows
+        rows = list(read_rows(self.root / "agency-icons.csv"))
+        self.assertEqual({row["safe"] for row in rows}, {"T-POWERS"})
+
+    def test_an_agency_run_skips_the_studio_only_backlog(self):
+        """补白名单和那两张指定来源表都是厂牌那一趟的，按名字撞上就会装错图。"""
+        MODULE.LOGO_SOURCES_BY_SAFE["Fitch"] = "https://example.invalid/fitch.png"
+        original = MODULE.site_icons.best_mark
+        MODULE.site_icons.best_mark = (
+            lambda url, fetcher, render, fallback=None, accept=None: None)
+        try:
+            MODULE.run(SimpleNamespace(
+                database=self.database, output=self.root / "agency-icons.csv",
+                logo_root=self.logos, candidate_dir=self.root / "candidates",
+                only=[], kind="agency", interval=0.0, timeout=1.0, install=False))
+        finally:
+            MODULE.site_icons.best_mark = original
+        from peach.review_csv import read_rows
+        self.assertEqual({row["safe"] for row in read_rows(self.root / "agency-icons.csv")},
+                         {"T-POWERS"})
 
     def test_the_csv_covers_every_target_studio(self):
         stats = self.invoke()
@@ -1136,7 +1173,7 @@ class RunTests(unittest.TestCase):
             stats = MODULE.run(SimpleNamespace(
                 database=self.database, output=self.root / "studio-icons.csv",
                 logo_root=self.logos, candidate_dir=self.root / "candidates",
-                only=["HEYZO"], interval=0.0, timeout=1.0, install=False))
+                only=["HEYZO"], kind="studio", interval=0.0, timeout=1.0, install=False))
         finally:
             MODULE.site_icons.best_mark = original
         self.assertEqual(stats["复核行"], 1)

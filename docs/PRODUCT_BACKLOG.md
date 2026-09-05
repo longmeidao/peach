@@ -1,8 +1,19 @@
 # Peach 产品待办
 
-更新时间：2026-09-04。这里只记录尚未完成或只完成一部分的需求；运行数字以 `peach-data/state/job-status.md` 的自动区块为准。
+更新时间：2026-09-05。这里只记录尚未完成或只完成一部分的需求；运行数字以 `peach-data/state/job-status.md` 的自动区块为准。
 
 ## 已有骨架、尚未完成（6 项）
+
+本轮实施顺序（评审来源：[外部复评](https://chatgpt.com/c/6a9ad810-6148-83e9-95dd-6b58ef28e7ec)，按当前源码核对；候选实现与生产验收分开）：
+
+- 运行与一致性：HTTP 只跳转 HTTPS；业务与调度由单一应用拥有；成功提交后失效缓存；缓存有界；可更新图片可复验；列表参数有上下界。
+- 数据与查询：标签、实体筛选从关系索引驱动；随机排序有唯一次序；重复索引与外键启用先做副本验证；补固定规模基准。
+- 安装与诊断：下面第 12、13、21、22、23 项按依赖实施，覆盖最小源码安装、wheel 资源、仓库外启动、就绪检查。独立桌面制品及操作系统 VM 验收仍按第 15、21 项推进。
+- 后续结构：显式 API 模型、前端构建与高频页面迁移、候选分页、任务持久化按垂直功能实施；不为 AppContext 或文件尺寸单独做全仓搬迁。
+  当前已实现运行缓存、关系筛选、wheel 资源、仓库外冒烟和分级健康检查；Windows 基础依赖安装通过。真实库只读对照七轮中位数：标签 195.5→25.5 ms、创作者 148.8→45.6 ms、女优 162.7→15.7 ms、厂牌 162.0→19.6 ms，返回 ID 与总数一致；这不是浏览器端延迟。
+- Linux 首版候选为 headless、预挂载媒体与独立 wheel。外部容器用了替身依赖，其结果不构成锁定依赖和 Linux 的正式支持证据，优先级低于 Windows/macOS。
+
+外部评审提到的空口令拒绝启动、secret 文件读取、count=0 已有实现；不重复登记。shuffle_key 改变随机浏览的序列语义，先测关系筛选收益再决定。真实 ledger 迁移、双机复制取消和系统级安装另有明确授权边界。
 
 1. **寻找更好版本**：已经能逐条标记「高清 / 无水印 / 完整版」等目标；后续仍需相似内容匹配、候选去重、来源发现和人工替换确认。
 2. **现代自适应播放**：Video.js、Range、统计面板和面向 115/PikPak 原生 MP4 的按需 HLS 清单已经上线；自适应码率、多路清单、快速首帧和来源层大块预取优化仍未完成。
@@ -11,7 +22,7 @@
 5. **厂牌 Logo 补齐与持续校验**：14 个已确认社交 handle 已有内容缓存、provenance、精确/感知哈希、质量与重复门槛及健康报告；仍有 72 个厂牌没有可信 handle，必须继续从官网/公开来源取证，不能猜账号。
 6. **口味证据持续刷新**：ledger 已实时记录搜索、播放、高潮、喜欢/理由、不合口味和稍后看；浏览器历史现可用 SQLite 一致性副本增量进入私有源库，并生成不含 URL/标题的 creator/tag candidate 与聚合报告。旧 2026-08-13 原始包已确认不在 Windows 外置盘；仍需在 Mac 开启 iCloud Safari、完成首次导入，并把两端每周刷新装成系统计划任务。AI 结论不得直接改真相字段。
 
-## 尚未实现（17 项）
+## 尚未实现（25 项）
 
 1. AI Provider 的真实调用、能力协商、Credential Manager 凭据和候选审核 UI。
 2. 剩余单一创作者风格板复核、无标签内容补标。
@@ -23,17 +34,25 @@
 8. 开源通用化的发布准备（ADR-0023 第 4 阶段）：清扫 `docs/` 与 `.claude/skills/` 里的局域网地址、主机名、账号名、备份文件名与个人目录，把只对一台机器成立的运行态移出仓库，并把 `tests/test_repo_hygiene.py` 的个人字面量门槛从 `src/peach/` 扩到文档与技能。许可证、贡献与安全说明、issue/PR 模板在仓库里；设置层、来源挂载点 ID 与可整体关闭的复制链路在 Windows 生效，macOS 待跑 `peach init --from-existing --mount local=<落点>`。
 9. 女优高清头像的写入侧：`scripts/audit_performer_portraits.py` 已能出候选与实测证据，仍缺按复核结果复制头像文件那一步，以及实体合并后孤立头像的 relink（如 `8022 <- 8168`：只有旧 ID 的 provenance 名唯一命中当前实体、当前目标又不存在时才算候选，不覆盖、不删除旧文件）。
 10. 文件名与网盘目录整理的落地：`scripts/clean_names.py` 与目录计划只出 dry-run CSV。真正改名要独立维护窗口——停同类任务、确认本机是 writer、SQLite backup、逐条同目录 rename 并同步账本 path/name、失败时文件名回滚，最后跑完整性、外键与路径存在性检查；不跨盘移动，也不按文件夹名猜创作者。
-11. 来源与默认值通用化（ADR-0023 第 5 阶段候选）：`DEFAULT_LOCATION_ROOTS` 写死的 `R:\media`、`B:/`、`A:/` 是维护者自己的盘符，陌生用户不改设置文件就是全部来源脱盘。要做三件事：`peach init` 按本机实际路径生成 `[media.locations]` 声明根；来源用「本地 / 远端挂载」类型字段代替代码里按 `local`/`115`/`pikpak` 名字点名（`web_resource_sync.py` 的 SQL、`media.py` 的 HLS 规则）；复制链路支持 win↔win、mac↔mac 与任意一台当写者，目前只验证过 Windows 写者 + macOS 读者。
-12. `pip install .`（非 editable）可用：wheel 只含 `src/` 下的包，`migrations/` 与 `web/` 留在仓库根，非可编辑安装下 `migrations.discover()` 抛 `FileNotFoundError`。把这两个目录做成 package data，并让 `PROJECT_ROOT` 的解析在 site-packages 里也成立。
-13. `/healthz` 的 `db` 判据改为「`schema_migration` 有行」：目前只看文件存在，空账本也报 available。
+11. 来源与默认值通用化（ADR-0023 第 5 阶段候选）：`peach init` 的问答已按本机路径只声明 `local`，非交互路径写出的 `DEFAULT_LOCATION_ROOTS`（`R:\media`、`B:/`、`A:/`）仍是维护者的示例盘符。剩两件事：来源用「本地 / 远端挂载」类型字段代替代码里按 `local`/`115`/`pikpak` 名字点名（`web_resource_sync.py` 的 SQL、`media.py` 的 HLS 规则）；复制链路支持 win↔win、mac↔mac 与任意一台当写者，目前只验证过 Windows 写者 + macOS 读者。
+12. 非 editable 安装的跨平台验收：wheel 资源与 Windows 基础依赖、仓库外 CLI 冒烟已就绪，仍需取得 macOS、Python 3.12 消费任务结果。
+13. 健康检查生产验收：`db` 区分 missing、empty、available、unavailable，`?ready=1` 检查 schema 校验和；待部署后用项目 CA 验证 HTTPS 与损坏／未初始化状态。
 14. 界面国际化：界面目前只有中文，先补英文。
-15. 制品对下载者可用与更新渠道：Release 工作流已按 tag 产出 Windows 与 macOS 压缩包，但两者都只是托盘／菜单栏入口，服务仍由仓库 `.venv` 承担，下载者仍要先完成源码安装；要做成不依赖检出的独立发行版，并让托盘「检查更新」对下载的制品也成立（目前只对 git 检出成立）。
+15. 制品与更新渠道：Windows 独立测试包、首次引导与本机配置表单已实现，Release 消费任务只下载制品验收。剩余为 macOS 独立包、代码签名、自动更新、局域网配对和更完整的配置管理。测试包更新采用退出程序后完整解压新版，数据目录保持独立。
 16. 「第一个小时」教程与故障排查文档：init → 声明来源根 → scan → 打开页面 → 手机信任 CA → 托盘/菜单栏自启动，每一步写清失败表现与对应的排查动作；截图用一套小的 SFW 演示数据集生成，不取自真实馆藏。
 17. 项目网站：一页说明是什么、截图、安装入口与文档链接。
+18. 口味导入引导：`/taste` 上传（Takeout ZIP、browserexport 兼容文件）与 `scripts/taste_history.py` 直读本机浏览器库两条路都能用，但没有面向陌生人的文档。需要一页「各浏览器怎么导出、多台设备怎么各自刷新」教程，把脚本折进 `peach` CLI（见第 7 条），并写明定时刷新的安装方式。
+19. README 瘦身：把「依赖维护」「开发」两节移到 `CONTRIBUTING.md`，「目录」并入 `docs/ARCHITECTURE.md`，「主要页面」「关注与候选」压成一张表；README 只留是什么、边界、前置条件、安装、下载、文档入口与许可证。中英两份同步。
+20. 局域网访问：HTTP 导航与 HTTPS 单一业务入口的候选代码已就绪，待生产部署验证。配对仍需一次性配对码或 HTTPS 地址二维码，减少设备首次访问时手输口令；现有口令生成、取用与非回环无口令拒绝启动不重复实现。
+21. 全新安装的自动门槛：现有 `Test` 装的是 `-e ".[build,vision,maintenance-115,naming]"` 全套可选依赖、开着 pip 缓存、只跑单元测试，证明不了「陌生用户按 README 装完能用」。补三条互相独立的冒烟：① minimal source——全新 venv、`--no-cache-dir` 只装默认依赖、`peach init`（连跑两次验幂等）、`migrate status`、**离开仓库根目录**再 `peach serve`，请求 `/healthz`、`/`、`/api/items`，覆盖 3.12／3.14 × Windows／macOS 以及无 FFmpeg／OpenSSL／Node 的机器；② wheel——`python -m build` 后在不 checkout 源码的 job 里装 `dist/*.whl` 走同一条链路，它通过才能去掉 README 的 `-e` 硬要求（依赖第 12 条）；③ artifact-only——只下载刚构建的制品、不 checkout 源码地跑起来（依赖第 15 条）。消费方一律不许 checkout：工作目录会替漏文件的制品兜底，那是假通过。失败场景也要覆盖：数据根不可写、端口被占、账本损坏、未配置媒体目录、无 FFmpeg、非回环监听但无口令、两个 writer 同时起。
+22. `peach doctor` 与分级 `/healthz`：`doctor`（另带 `--json`）逐项报版本、数据根可写性、配置文件合法性、数据库能否打开、schema 版本与待执行迁移、FFmpeg／ffprobe／OpenSSL 路径、挂载点可达性、端口占用、是否处在「局域网暴露但无口令」状态、后台任务最近一次失败；输出脱敏，不带口令、cookie、站点凭据和完整媒体路径。`/healthz` 相应从布尔改成分项状态（`database`／`schema`／`configured`／`ffmpeg`／`media_mounts`／`security`），与第 13 条一起做。
+23. 性能基准：用 SFW 合成数据生成 1k／10k／100k／500k 四档库，nightly 测冷启动到 `/healthz`、目录页与详情页 p95、两字以上搜索 p95、本地 SSD 与网盘挂载的 Range 首字节、空闲 RSS、后台扫描时前台退化倍数、备份期间读请求不失败。门槛用「相对上一次基线下降超过 20%」，不给绝对毫秒数——不同机器不可比。数据集与第 16 条的演示数据集共用。
+24. CI 的 Windows job 太慢，一次 push 的墙钟由它决定。同一批 2786 个用例在 `macos-latest`（arm64）上 57 秒，在 `windows-latest` 上 1475 秒，本机 Windows 是 324 秒——runner 比开发机还慢 4.6 倍。按时间戳差算，250 个用例（9%）吃掉 1119 秒，每个稳定在 4.5 秒上下，形状像每建一个临时文件被 Defender 扫一遍。两条路各自独立：一是在 Windows job 里对 runner 的临时目录加 `Add-MpPreference -ExclusionPath`，先量一轮确认是不是 Defender；二是把 `scripts/test_runner.py` 的域拆成矩阵分片并行跑，代价是每个分片重付一次装依赖的 37 秒。不要为了缩短墙钟把 Windows job 从矩阵里去掉：它是生产平台，也是唯一能拦住 Windows 独有回归的地方。
+25. 托盘子服务的日志不轮转：`ServiceManager` 以追加模式打开 `logs/tray-<服务>.out.log` 与 `.err.log`，本机一周就长到 28 MB，`tray-scan.out.log` 与 `windows-source-sync.log` 同样只增不减。在起服务前按大小轮转，超过阈值改名保留一代即可；写文件的是子进程的 stdout，不经 `logging`，所以 `RotatingFileHandler` 用不上。
 
-合计：**23 项开放需求**，其中 6 项已有骨架，17 项尚未实现。已完成的需求不在这里留痕，去 Git 历史查。
+合计：**31 项开放需求**，其中 6 项已有骨架，25 项尚未实现。已完成的需求不在这里留痕，去 Git 历史查。
 
-## 待执行的操作（27 项）
+## 待执行的操作（32 项）
 
 需要另行授权、外部条件或人工判断才能做的具体操作与复核批次，比上面的需求细一层；做完就删，不在这里留痕。待办只放这一处：`docs/STATUS.md` 每次会话开头都要读，队列不该常驻在那种入口文件里。
 
@@ -64,3 +83,8 @@
 25. 其他厂牌官网的厂标与演员资料广度扫描（SOD、FALENO、Attackers、S1、Moodyz 等），用户 2026-09-04 定为「先做 b 看效果」之后的下一轮。
 26. 用 javtiful 的 `/ja/actress/<slug>` 补演员的罗马字↔日文配对：315 页约 7560 位，切语言前缀就出日文名。厂牌名不随语言切换，这条只服务演员别名。
 27. 37 位演员在 javdb 上只有日文名（`同形`），另有 5 位未取得，中文名要换来源：javtiful 的 `/ja/actress/<slug>`（第 26 条）或 javdatabase 的 idol 页。复核产物 `peach-data/review/javdb-cn-names-20260904.csv` 逐行带 verdict 和证据，可直接筛。
+28. macOS 标识 `io.github.longmeidao.peach.*` 在 Mac 上生效：代码已在 master（`src/peach/appid.py` 是唯一来源，`install_macos_agent.py` 与 `setup_macos_port80.sh` 会自己清掉遗留标签），命令与四项核对见 `docs/OPERATIONS.md`「桌面入口与发布」。放进第 30 条的维护窗口一起做；两台机器都跑过之后删掉 `peach.appid` 里的遗留标签表和用到它的分支。这是换生产入口，执行前要在同一轮拿到用户确认。
+29. `peach-data/review/composite-names-20260904.csv` 里还剩 28 条 creator 规范名带括号，括号里是读音或罗马音（`Egami(えがみ)`、`永地(eichi)`、`猫屋(NEKOYA)`），用户定了不拆——它们不像艺名那样各自独立，是同一个名字的注音。同一份 CSV 里 575 条 tag 是角色的作品出处消歧，10 条 series 括号里是厂牌或载体消歧（拆了会把三个 `AV DEBUT` 撞成一个），都不要动。剩下真正待判的只有 performer 规范名 `Mana(23)` 一条：数字是去重后缀还是名字的一部分要看源站。
+30. Mac 追上 master 的一组操作，按顺序做完再重启菜单栏——做完之前不要重启：master 上的 `peach serve --host 0.0.0.0` 没有口令会拒绝启动，reader 会直接消失。① `git pull` 到 master；② `pip uninstall -y peach-app && pip install -e ".[macos]"`；③ 先把 Windows 的 `peach-data/secrets/auth-token` 复制到 Mac 数据根的同一路径——reader 取 writer 复核结果发的是自己的口令，两边必须是同一份，而 `--from-existing` 找不到文件会自己生成一份不同的；④ `peach init --from-existing --mount local=<落点>`；⑤ 重启菜单栏，核对 `/healthz`、`/review` 能读到 writer，手机与 Mac 浏览器各登录一次。第 28 条的标签改名可以放进同一个维护窗口。
+31. 给事务所补一个 `/agencies` 索引页。现在进事务所页的入口只有女优页上的那个名字，55 家里没有关系的那几十家等于只能靠猜地址。`q_index` 的 `performers` 分支按作品数排、带头像，事务所要的是按成员数排；`openIndex` 里 `people`、`entityKind`、加载文案三处是按 kind 写死的，加一种就要各动一处。
+32. `install_entity_links.py` 的可达性门槛按「非 200 就跳过」执行，而同文件的 `is_gone()` 明确写着 403／5xx／连接错误不能当「页面没了」。首批 703 条里 137 条因此没装，其中 31 条 twitter.com、23 条 t-powers.co.jp。把跳过分成「确证没了」和「这次没取到」两档：后者留进待复查队列，配合 `rediscover_entity_links.py` 对 t-powers／nax-pro／mines-pro 这些已经搬家的域名上溯找新锚，再装一次。

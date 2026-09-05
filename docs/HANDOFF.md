@@ -35,7 +35,7 @@
 
 - Codex 自动读取项目层级中的 `AGENTS.md`；Claude Code 通过 `CLAUDE.md` 导入同一文件。技能只有 Claude 侧封装（`.claude/skills/`），Codex 不自动加载，只能靠 `AGENTS.md` 索引表主动读同一份文件。
 - 正式测试入口只有 Windows `& .\scripts\test.ps1` 和 macOS/Linux `./scripts/test.sh`，不要另拼测试命令。日常用 `-Scope <域>` / `<域>` 只跑当前功能与公共门槛；跨域、迁移、共享测试设施、依赖、构建/发布或大面积改动跑默认 `full`。
-- 两个智能体使用同一入口、同一必读顺序，不再生成按日期命名的临时交接文档。
+- 两个智能体使用同一入口，按任务读取相关文档；交接更新长期文件。
 - 新任务以当前机器真实的 `peach-app` 为工作目录，并说：「接手 Peach，按项目入口文件继续 STATUS 中的下一任务。」
 - 改变运行事实的任务同时更新 `docs/STATUS.md`；长期规则更新本文件、`docs/REUSE.md` 或 ADR；可执行流程写成 `.claude/skills/<name>/SKILL.md`。分层判据见 ADR-0015，步骤见 `peach-context-rules`。
 - 触发是概率性的：必须每次成立的规则要由脚本、测试或 hook 强制，不能只写成技能。
@@ -49,7 +49,7 @@
 
 ## 只存在于聊天中的结论等于不存在
 
-- 得出结论的同一步必须写入 ledger、CSV 或其他持久产物，verdict 旁必须保存证据和来源，完成前把声明意图与数据库实际行对账。
+- 复核结论写入带证据和来源的 CSV 或其他持久产物；真实 ledger 写入须另满足授权与备份门槛，执行后对账。
 - 结论被修正时所有派生产物必须重建，只改说明文字不够：过期的删除清单比没有清单更危险。
 - 直接证据：视觉逐条任务在聊天里说「已保存」但 `asset_tag` 的 `source='vision'` 为 0，根本没有写入步骤；`disposal-candidates.csv` 在 `BNST033` 修正后未重建，把真实 3.2 GB 正片列为待删。
 - 解析用的固定件必须是抓回来的那份 HTML，不能照记忆重画：那样只能证明代码和记忆一致，会出现测试全绿而线上一个字段都没采到（实例见 `docs/SOURCING.md`）。
@@ -80,7 +80,7 @@ React 渲染的规格页、用户截图这类给不出可重抓字节的实测�
 - 统计与口味两页的层级，Note／Progress／Switch／Fieldset／Scroller／Empty State 的语义，按钮的尺寸档与三态：`vercel-geist-semantics-measured`、`vercel-geist-note-progress-switch-analytics`、`vercel-geist-fieldset-scroller-empty-state`。
 - 分类切换条属于 Tabs 的 secondary 变体而不是分段器：`vercel-geist-tabs-secondary-measured`。
 - 表格、排行与面包屑：`vercel-geist-table-ranking`、`vercel-geist-breadcrumbs`；同形可比较数据才用语义 `table` 并保持 tabular numerals，内容标签是固定 Top 排行和直接筛选，不伪装成可排序数据表。
-- 设置 Dialog 动效、搜索期 Spinner、后台 Loading Dots 与 busy 按钮：`vercel-geist-command-search-loading`；中性说明 Note：`vercel-notifications-note`；具名动作 Toast：`vercel-geist-toast`。用户直接触发的动作用 Spinner，后台扫描用 Loading Dots，等待按钮经共享 busy 状态变灰但不用原生 `disabled`。
+- 设置 Dialog 动效、搜索期 Spinner、后台 Loading Dots 与 busy 按钮：`vercel-geist-command-search-loading`；中性说明 Note：`vercel-notifications-note`；具名动作 Toast：`vercel-geist-toast`；写操作前的确认弹层：`vercel-geist-modal-measured`。
 - 资料页阅读顺序与照片入口：`beeg-profile-layout`；JAV 标题显示语义：`jav-title-user-screenshot`；卡片悬停的快退／快进控件：`hover-seek-controls-user-screenshot`（beeg 现网没有这个控件，只依据用户截图）。
 - 播放器控制栏、设置浮层、影院与全屏几何：`youtube-player-controls-user-screenshot`；沉浸页版式：`youtube-shorts-immersive-user-screenshot`；播放统计滚动历史：`youtube-stats-buffer-measured`。Peach 不复制没有实际能力的字幕、睡眠定时或自动播放按钮。
 - 追更与文件站的凭据与解析边界：`f95-masked-gofile-media`、`follow-fanbox-gofile-paheal`、`fanbox-browser-transport`、`rule34-follow-tags-and-collections`；厂牌 Logo 候选发现：`fiu758-studio-logo-discovery`，只作发现来源不作真相源。
@@ -122,18 +122,18 @@ React 渲染的规格页、用户截图这类给不出可重抓字节的实测�
 - 测试必须使用临时 SQLite、媒体和全部缓存根，不得写真实 ledger 或 `generated`；FastAPI 测试须显式传入 snapshots、posters、photo-thumbs、transcodes、stream-segments、按 asset 生成的头像与 covers。
 - 可重建缓存的删除边界由当前数据库路径拥有，生产库只可清理同一 `peach-data` 下的缓存，边界外一律跳过：一次漏配曾在清空回收站的测试里删掉真实 JAV 封面。
 - 已应用的迁移文件不得修改，任何后续变更必须新增版本；真实迁移与缓存删除的操作序列见 `docs/OPERATIONS.md`。
-- 外键 `ON DELETE` 是安全网不是删除路径：运行时连接不开 `PRAGMA foreign_keys`，物理删除仍走 `ASSET_REFERENCE_TABLES` 与 `web_playlists` 的显式 DELETE；`profile.user_id` 留 NO ACTION，重建 `profile` 会让隐式删除级联掉 profile 私有状态。
+- 外键 `ON DELETE` 是安全网不是删除路径：运行时连接不开 `PRAGMA foreign_keys`，物理删除仍走 `ASSET_REFERENCE_TABLES` 与 `web_playlists` 的显式 DELETE；重建被别人引用的父表要在迁移首行写 `-- peach:foreign_keys=off`，改名那步开 `PRAGMA legacy_alter_table=ON`，判据见 `0025`。
 - 外置盘目标只保存 `media`，代码、运行数据、venv 和 worktree 在两台机器各自的内置盘；`peach-data` 不进入仓库，也不整体交给文件同步，分通道边界见 ADR-0017。
 
 ## 运行与部署
 
 命令、顺序、失败表现和踩过的坑见 `docs/OPERATIONS.md`，这里只留边界。
 
-- Windows 日常入口是当前用户 Startup 里唯一的 `Peach.lnk`，指向项目内打包的托盘 EXE；它不是可移动发行版，服务进程仍由项目 venv 的 `peach.exe` 承担。刷新源码运行态走 `scripts/restart_windows_tray.py`。
+- 源码部署由项目 venv 持有服务，刷新入口为 `scripts/restart_windows_tray.py`。独立测试包自带运行环境，数据在用户目录；配置更改由托盘消费标记并重启子服务。
 - 「同步开发进度」（GitHub）和「同步 Ledger」（SMB 共享）是两条独立通道，任一方不可达都不该拖住另一方；服务只观察角色不自动复制。
 - 两台机器可以同时跑服务，但同时写入会很快冲突转只读；「接管 Ledger 写入」的短路与拒绝条件见 OPERATIONS。
 - `src/peach/__init__.py::__version__` 是版本唯一来源；自动更新只做 `merge --ff-only`，不 stash、不 rebase、不 `--force`，工作区脏或两边分叉就原样报出来交给人——并行工作树和主检出共用同一个对象库。
-- 本机坐标在 `<数据根>/config.toml`（环境变量 > 它 > 内建默认），`src/peach/` 不写死本机字面量或家庭 IP；现有部署各跑一次 `peach init --from-existing`。`[media.mounts]` 按 `asset.location` 给本机落点，Windows 上整表为空；`replication.enabled` 默认关，关掉即整条复制链路不装配，`/healthz` 报 `disabled`。
+- 本机坐标在 `<数据根>/config.toml`（环境变量 > 它 > 内建默认），`src/peach/` 不写死本机字面量或家庭 IP。`[media.mounts]` 按 `asset.location` 给本机落点，Windows 上整表为空；`replication.enabled` 默认关，关掉即整条复制链路不装配。首次运行问答与扫描是 `peach.onboarding`／`peach.scan` 的纯逻辑，CLI 与托盘设置页共用。
 - `.local` 用本机 CA 而不是 Let's Encrypt，证书与私钥留在本机 `peach-data/secrets` 且按设计不跨机共享；FastAPI 是唯一 Web server，探测本机服务必须绕过系统代理，否则代理会替服务回 503。
 - 网盘目录整理后必须经「管理 → 资源同步」显式对账，不做后台静默删除；源文件缺失的 asset 和垃圾文件候选都只能先进回收站，清空回收站才永久删除账本行。
 - 长任务只停止自己拥有且命令行匹配的 Python/FFmpeg 进程树，禁止全机终止 FFmpeg；转码只写缓存，永不改写原媒体。

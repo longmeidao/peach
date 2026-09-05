@@ -21,6 +21,45 @@ env:
   PYTHONIOENCODING: "utf-8"
 
 jobs:
+  wheel-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.14'
+      - run: python -m pip wheel . --no-deps --no-cache-dir -w wheelhouse
+      - uses: actions/upload-artifact@v7
+        with:
+          name: wheel-smoke
+          path: |
+            wheelhouse/*.whl
+            scripts/smoke_wheel.py
+  wheel-smoke:
+    name: wheel 最小安装 / ${{ matrix.os }} / ${{ matrix.python }}
+    needs: wheel-build
+    strategy:
+      matrix:
+        os: [windows-latest, macos-latest]
+        python: ['3.12', '3.14']
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: wheel-smoke
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python }}
+      - name: 安装正式 wheel
+        shell: bash
+        run: |
+          python -m pip install --no-cache-dir wheelhouse/*.whl
+          python -m pip check
+      - name: 源码树外冒烟
+        shell: bash
+        run: |
+          cd "$RUNNER_TEMP"
+          python "$GITHUB_WORKSPACE/scripts/smoke_wheel.py"
   python:
     name: ${{ matrix.os }} / Python ${{ matrix.python }}
     runs-on: ${{ matrix.os }}
@@ -46,7 +85,7 @@ jobs:
         run: |
           python -m venv .venv
           & .\.venv\Scripts\python.exe -m pip install --upgrade pip
-          & .\.venv\Scripts\python.exe -m pip install -e ".[build,vision,maintenance-115]"
+          & .\.venv\Scripts\python.exe -m pip install -e ".[build,vision,maintenance-115,naming]"
           & .\.venv\Scripts\python.exe -m pip check
 
       - name: 运行 Windows 正式测试
@@ -60,7 +99,7 @@ jobs:
         run: |
           python -m venv .venv
           ./.venv/bin/python -m pip install --upgrade pip
-          ./.venv/bin/python -m pip install -e ".[build,macos,vision,maintenance-115]"
+          ./.venv/bin/python -m pip install -e ".[build,macos,vision,maintenance-115,naming]"
           ./.venv/bin/python -m pip check
 
       - name: 运行 macOS 正式测试
@@ -92,7 +131,16 @@ jobs:
         run: |
           git add --intent-to-add -- web/dist
           git diff --exit-code -- web/dist
-      - run: npm --prefix frontend audit --audit-level=high
+      # 与下面 web-vendor 的 audit 同一口径：advisories 端点偶发 503，退避重试三次。
+      - name: npm audit (frontend)
+        shell: bash
+        run: |
+          for attempt in 1 2 3; do
+            npm --prefix frontend audit --audit-level=high && exit 0
+            echo "npm audit 第 ${attempt} 次未成功，60 秒后重试"
+            sleep 60
+          done
+          exit 1
 
   web-vendor:
     name: 固定前端依赖
@@ -105,4 +153,14 @@ jobs:
           cache: npm
       - run: npm ci --ignore-scripts
       - run: npm run check:vendor
-      - run: npm audit --audit-level=high
+      # 审计结果来自 registry.npmjs.org 的 advisories 端点，它偶发 503；
+      # 退避重试三次，仍失败才算红——那时是真的查不到，不是本仓库的问题。
+      - name: npm audit
+        shell: bash
+        run: |
+          for attempt in 1 2 3; do
+            npm audit --audit-level=high && exit 0
+            echo "npm audit 第 ${attempt} 次未成功，60 秒后重试"
+            sleep 60
+          done
+          exit 1

@@ -20,6 +20,11 @@ Vite + TypeScript + Preact。迁移方式是 strangler：**遗留路由继续拥
 | `frontend/test/` | vitest 用例与遗留模块的桩 |
 | `web/dist/peach-ui.js` | 构建产物，**进 Git**，由 `/dist/{name}` 提供 |
 
+首次运行页（未配置时的 `GET /` 与 `POST /setup`）不在这张表里：它是 SPA 外壳之外的一张
+独立页面，HTML 与样式都自包含在 `src/peach/routes_pages.py`，不引 `web/` 的任何资产，也不是
+island。原因是那一套一上来就打 `/api/items`，而未配置的机器还没有数据库；它也没有客户端
+状态，原生 `<form method="post">` 不写一行 JS 就能工作。本机 `/configuration` 复用同一套服务端表单和主题 token，设置成功以浏览器 cookie 登录并跳入馆藏。
+
 产物名字不带内容哈希：引用它的 `web/app.js` 不经过构建，构建时改不了那里的路径。
 缓存由服务端兜住：`/dist/` 与 `/app.js`、`/app.css`、`/js/` 同一档，回
 `Cache-Control: no-cache` 加一个 mtime＋字节数的 ETag——每次都回源问，没变时回 304

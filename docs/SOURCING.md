@@ -31,6 +31,7 @@
   别名精确命中 creator 名，或 creator 名由 performer 本名与账号别名组成时才自动归并。
 - `r18:performer` / `javbus:performer` 是正式发行出演元数据，保留 performer；通用 `performer` 是压平后的
   兼容断言，保留 creator。合并要同步 `asset.creator` 与 `演员:` 投影，否则已删实体仍会在详情页伪造链接。
+- r18.dev 的罗马字字段本身就是「现用名 (曾用名, 曾用名)」这个渲染格式，一个字段装了一个人的若干个艺名；假名与汉字写法各自成行，罗马字只有这一份。落库时按 `peach.entities.split_composite_person_name` 拆开，签名是「括号前有空格、括号内逗号分隔、两侧都是罗马字」。同一个字面形状在账本里还承载厂牌消歧（`AV DEBUT（本物人妻）`）、角色出处（`アスナ(SAO)`）、接稿状态和去重后缀，只能靠这条签名收窄。
 - `XX XX` 是来源节点文字重复而不是合法别名：person 名进入 CSV、兼容字段或 `upsert_asset_entity` 前先
   收敛完整重复串，清理时同时审计 `asset.creator`、`演员:` 标签和 `entity_alias`。
 - `merge_entity` 的两条陷阱：sqlite 连接默认 `foreign_keys=OFF`，子表行必须在函数内显式 DELETE；计数用
@@ -101,6 +102,26 @@
 - 页面上的名字（中文名、日文名、别名）按 `peach.social_links.name_key`（NFKC、casefold、去空白）与账本
   `canonical_name` 及 `name_chain` 匹配，一页命中两个实体记「需人工消歧」而不是猜。
 - 站点自己的社媒账号（laoshi 首页那几枚）先从每页外链里减掉，否则会给每个女优装上站方的 X。
+- **一个字段的值只描述它自己那一行。** minnano-av 资料表里「所属事務所」和「公式サイト」是两件事：
+  白石亚子的事务所是 T-POWERS，公式サイト填的却是 Prestige 的専属宣传页。此前把事务所名当成每条
+  official 链接的标签，资料页上就出现一个同时替两家公司说话的控件——文字写着 T-POWERS，图标（按域名取）
+  和落点都是 Prestige。实测 23 条这样贴错，另有 5 条博客和平台账号因为不在平台表里被当成了官网。
+- official 链接的标签改成按域名归属写（`peach.social_links.host_owners`）。两种证据：厂牌实体自己挂的
+  官网链接直接指认，其次是女优 official 链接里已成共识的那些（同一域名上 `OWNER_QUORUM` 条以上写同一个
+  名字）。共识要够多条才作数——孤证会自我确认，香西咲个人站 `saki-k.com` 只出现过一次、恰好被贴了
+  T-POWERS，采信它等于把错误当证据再用一遍。归属未取得时才退回事务所名，那时它至少不和已知事实矛盾。
+- 事务所名住在 `entity.metadata_json.agency`，带 `source` 与 `checked_at`。女优会移籍，按最新覆盖；
+  标签的语义是「点过去会看到什么」，装不下「她签在谁名下」。已入库的错标由 `scripts/repair_link_labels.py`
+  修，默认只出复核 CSV。
+- 结论那一侧是实体：`scripts/install_agencies.py` 把这些名字装成 `entity.kind='agency'`，归属写进
+  `entity_membership`（主键在成员一侧，一个人只有一条现役归属，移籍是覆盖）。原文留在 `metadata.agency`
+  当证据，两者都在，结论错了才有得回溯。事务所不进 `asset_entity`——作品是成员拍的，给作品另存一个
+  事务所字段就会漂移，而漂移的那份没人会发现。
+- 事务所名里的括号按同一条规则拆：括号外是现用名，括号里的读音和括号后跟着的 `旧・`／`元・` 都是别名。
+  旧称撞上另一家的现用名时不写别名——`GG(旧・Prime Agency)` 的旧称正是仍在营业的 `Prime Agency`，
+  写进去会让按名字找人落到错的那一家。
+- 官网取成员 official 链接里标签等于本家名字的那些，用它们的域名根地址，不用某位女优的个人页：
+  那是她的页面，不是这家公司的首页。名字拆过之后要按原文再查一次，否则 `ACT(アクト)` 这类明明有站却查不到。
 - 判词四种：`ok` 进装入队列、`已有`（同平台同 handle，不分主机写法与大小写）、`conflict`（账本同平台是
   另一个 handle）、`未取得`（页面失败或没有社媒）。
 - 来源本身可能是过期数据：目录站抄的 X 账号很多已封停、本人早换新号，所以 X 的 `ok`／`conflict` 行都用

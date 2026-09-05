@@ -123,7 +123,7 @@ class WebContract:
         self.db_path = self.database.db_path
         self.snapshot_root = Path(snapshot_root) if snapshot_root is not None else None
         self.legacy_snapshot_roots = tuple(Path(path) for path in legacy_snapshot_roots)
-        self.cache: dict[str, tuple[float, object]] = {}
+        self.cache: OrderedDict[str, tuple[float, object]] = OrderedDict()
         self.cache_lock = threading.Lock()
         #: 按资产取键的读缓存，LRU 限界。键空间不封闭的场景走这里，见 `cached_lru()`。
         self.keyed_cache: OrderedDict[str, tuple[float, object]] = OrderedDict()
@@ -136,6 +136,7 @@ class WebContract:
         self.resource_scan = BackgroundJob("PeachResourceScanJob", id_key="scan_id")
         self.link_check = BackgroundJob("PeachLinkCheckJob", id_key="check_id")
         self._fts_available: bool | None = None
+        self.database.after_commit = self.cache_bust
 
     def cached(self, key, fn):
         """带 TTL 的读缓存。`fn` 刻意在锁外算——它会读 CSV、查库，拿着锁算会把
@@ -148,10 +149,11 @@ class WebContract:
 
         用代次挡住：写回前确认这期间没有失效过，否则丢弃这次结果。
         """
-        now = time.time()
+        now = time.monotonic()
         with self.cache_lock:
             hit = self.cache.get(key)
             if hit and now - hit[0] < CACHE_TTL:
+                self.cache.move_to_end(key)
                 return hit[1]
             generation = self.cache_generation
         value = fn()
@@ -160,17 +162,18 @@ class WebContract:
                 # 时间戳沿用进入时的 now：算得比 TTL 还久的结果直接算过期，
                 # 宁可下次重算，也不要把一份已经旧了的数据当新的用。
                 self.cache[key] = (now, value)
+                self.cache.move_to_end(key)
+                while len(self.cache) > 192:
+                    self.cache.popitem(last=False)
         return value
 
     def cached_lru(self, key, fn, *, maxsize: int = 192, ttl: float = CACHE_TTL):
         """带 TTL 的 LRU 读缓存，给键空间不封闭的场景用（`/api/related` 按资产取键）。
 
-        `cached()` 的字典只在 `cache_bust()` 时清空，所以它的键空间必须封闭——
-        stats、tops 只有几个固定键，放得下；related 的键跟着浏览过的资料页数量走，
-        不限界就是无上限的内存增长。LRU 驱逐之外，TTL 与代次失效的语义和
-        `cached()` 逐字一致，包括「`fn` 在锁外算」和「失效过就丢弃这次结果」。
+        与聚合缓存分开计量，容量和 TTL 可由调用方指定。计算在锁外进行，
+        计算期间发生提交或显式失效时，结果不进入缓存。
         """
-        now = time.time()
+        now = time.monotonic()
         with self.cache_lock:
             hit = self.keyed_cache.get(key)
             if hit and now - hit[0] < ttl:

@@ -3,7 +3,7 @@ requires = ["setuptools==84.0.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "peach-app"
+name = "peach"
 dynamic = ["version"]
 description = "Local-first media library, behavior ledger, and discovery application"
 readme = "README.md"
@@ -44,9 +44,9 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/longmeidao/peach-app"
-Repository = "https://github.com/longmeidao/peach-app"
-Issues = "https://github.com/longmeidao/peach-app/issues"
+Homepage = "https://github.com/longmeidao/peach"
+Repository = "https://github.com/longmeidao/peach"
+Issues = "https://github.com/longmeidao/peach/issues"
 
 [project.scripts]
 peach = "peach.cli:main"

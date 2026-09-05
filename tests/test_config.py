@@ -234,6 +234,19 @@ class BadFileTests(unittest.TestCase):
         self.assertEqual(loaded.locations["nas"], "N:/")
         self.assertEqual(loaded.mounts, {"nas": "/mnt/nas"})
 
+    def test_a_declared_locations_table_is_authoritative(self):
+        """`peach init` 的问答只声明 local；内建默认的示例盘符不得从旁边混进来。"""
+        with TempTree() as tree:
+            tree.write("[media.locations]\nlocal = 'D:\\Videos'\n")
+            loaded = tree.load()
+        self.assertEqual(loaded.locations, {"local": r"D:\Videos"})
+
+    def test_without_a_locations_table_the_builtin_defaults_apply(self):
+        with TempTree() as tree:
+            tree.write("[server]\nport = 9100\n")
+            loaded = tree.load()
+        self.assertEqual(loaded.locations, settings_file.DEFAULT_LOCATION_ROOTS)
+
     def test_lenient_load_falls_back_to_builtin_defaults(self):
         """坏文件不能让进程连数据根都不知道——发现顺序不看文件内容。"""
         with TempTree() as tree:
@@ -288,7 +301,7 @@ class SerialisationTests(unittest.TestCase):
                 overrides={
                     "mdns_name": "peach-two", "port": 9443,
                     "review_writer_origin": "https://192.0.2.5",
-                    "smb_host": "other.local", "smb_user": "someone",
+                    "smb_host": "peach-writer.local", "smb_user": "someone",
                 },
                 # 反斜杠和 Windows 盘符必须原样活过一次往返：序列化器要是把 `\m`
                 # 当转义处理，挂载点就会变成另一个目录。

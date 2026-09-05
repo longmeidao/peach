@@ -6,13 +6,49 @@
 
 ## 首次运行与设置文件
 
+- 配置完成之后，Windows 和有 TLS 的 macOS 托盘由 HTTP 导航进程与 HTTPS 业务进程组成；HTTP 的 `/healthz` 仅证明导航进程存活。业务入口 `/healthz?ready=1` 检查配置、页面、数据库查询和迁移校验和，不就绪返回 503；不带参数仍只探活。还没配置的机器上托盘只起一条引导服务，见下面的首次设置几条。
+- wheel 将 `web`、`migrations`、`resources` 装入 `peach/_resources`。`scripts/smoke_wheel.py` 在仓库外使用安装 wheel 的解释器运行；CI 消费任务只下载制品，不检出源码。测试只使用临时数据根。
 - 设置文件固定是 `<数据根>/config.toml`。数据根按三步找：环境变量 `PEACH_DATA_ROOT`、
   项目根同级（含上溯四层，覆盖主检出、`peach-worktrees/<任务>` 和打包后的 `dist/Peach/_internal`）
   的 `peach-data/`、都没有就是「未配置」。优先级是环境变量 > 设置文件 > 内建默认。
-- 全新机器只跑 `peach init`：建齐 `database`／`generated`／`sources`／`state`／`secrets`／
-  `logs`／`tools`／`review` 八个目录、把账本迁到最新 schema、生成本机 CA、写出设置文件，
-  最后打印下一步。可用 `--data-root`／`--host`／`--port`／`--mdns-name`／
-  `--mount local=/mnt/media` 预置值；已有账本不会被重建，它会提示改用 `--from-existing`。
+- 全新机器只跑 `peach init`。不带参数且 stdin 是终端时进问答（题目、默认值与落盘逻辑在
+  `src/peach/onboarding.py`，托盘设置页复用同一组函数）：问数据根、一个已存在的本地媒体
+  目录、监听范围（仅本机／局域网）、端口、局域网名字，每题回车取默认，连续三次无效即退出且
+  不写任何文件。然后建齐 `database`／`generated`／`sources`／`state`／`secrets`／`logs`／
+  `tools`／`review` 八个目录、把账本迁到最新 schema、生成本机 CA 与访问口令、写出设置文件，问一句
+  「现在扫描 <目录>？」（默认是）调 `peach.scan.scan_location` 登记文件，最后打印下一步与
+  扫描摘要。写出的 `[media.locations]` 只有 `local`：Windows 上直接是那个目录、
+  `[media.mounts]` 为空；macOS 上声明根是 `R:\media`、目录写进 `[media.mounts] local`。
+  复制、writer 镜像、SMB 一律不问，保持关闭或留空。建目录、迁库、生成 CA 与口令、写设置文件
+  这一整段在 `onboarding.apply()`，CLI 与设置页调的是同一个函数，只在打印方式上不同。
+- 不进终端的那条路是托盘首启的引导服务。`peach-tray` 启动时新鲜读一次设置文件，判据在
+  `tray.needs_setup()`：**没有 `config.toml` 且没有账本**才算需要设置。刻意不用
+  `PeachConfig.configured`——托盘的单实例锁一启动就在数据根下建出 `state/`，而数据根的发现
+  只看目录在不在，只用 `configured` 的话一次失败的启动就足以让下一次误判成已配置；反过来
+  还没生成过 `config.toml` 的老部署账本是在的，不能被拖进首次设置。
+- 需要设置时托盘不构建正常规格（全新机器上 `build_service_specs()` 会因为缺 TLS 材料抛
+  `FileNotFoundError`），改起一条 `peach serve --setup --host 127.0.0.1 --port <设置里的端口，
+  默认 8900> --no-mdns --no-ledger-sync`，然后把浏览器打开到 `http://127.0.0.1:<端口>/`。
+  这条服务没有 TLS、口令强制置空（安全边界就是那个绑定地址），首页是首次运行表单，提交端点
+  是 `POST /setup`：应用已配置回 404、非回环调用方回 403、设置文件已存在回 409。
+- 切换由 `tray.SetupGate` 做，Windows 托盘与 macOS 菜单栏共用。它挂在健康轮询里（Windows 10 秒、
+  macOS 5 秒），每轮新鲜 `settings_file.load_config()`：不再需要设置且 TLS 材料齐了，就停掉引导
+  服务、按新数据根构建正常规格（`build_service_specs(tls_dir=..., mdns_hostname=...)`）并启动，
+  托盘进程本身不重启。TLS 还没齐（例如这台机器没有 openssl）就原地等下一轮，不会拿一组缺文件
+  的规格去启动。mDNS 名同样由这里传进规格：明文口的 `--redirect-origin` 必须是表单刚写下的
+  `<mdns_name>.local`，而 `peach.config.MDNS_HOSTNAME` 是托盘 import 期就定型的旧值。
+- 首扫不跑在引导服务里——那个进程在切换的那一刻就被停掉了。表单勾了「现在扫描」只写一个
+  一次性标记 `<数据根>/state/first-scan.request`（内容是来源 ID），托盘切换完成后读走并删除它，
+  用子进程跑 `peach scan <来源>`，输出落在 `<数据根>/logs/tray-scan.out.log`。标记只消费一次。
+- 给了任何参数、加了 `--no-input`、或 stdin 不是终端，`peach init` 走非交互路径：按内建默认
+  与 `--data-root`／`--host`／`--port`／`--mdns-name`／`--mount local=/mnt/media` 直接生成，
+  写出的文件带 `local`／`115`／`pikpak` 三个示例声明根。已有账本不会被重建，它会提示改用
+  `--from-existing`。
+- `peach scan <来源ID> [根目录]` 把一个目录的文件元数据 upsert 进账本，只新增行与刷新
+  `size`／`mtime`／`last_seen`，不改真相字段、不删行。根目录省略时取该来源在
+  `[media.locations]` 的声明根，本机目录按 `[media.mounts]` 取；给了目录则必须落在声明根
+  （macOS 上是挂载点）之内，否则拒绝——写进去的行否则翻译不回本机路径。
+  `scripts/ledger.py scan` 是同一实现的薄委托。
 - 已经在跑的机器用 `peach init --from-existing`：只写设置文件，不建库、不动 `peach-data/`
   下任何现有文件。它把当前实际生效的配置原样落盘，猜不出来的坐标（局域网 writer 地址、
   SMB 主机与账号）留空并逐条打印出来，用 `--writer-origin`／`--smb-host`／`--smb-user`
@@ -67,7 +103,7 @@ cp ../peach-data/config.toml ../peach-data/config.toml.bak 2>/dev/null
 ./.venv/bin/peach init --from-existing --force \
   --mount local=/Volumes/RESOURCES/media \
   --writer-origin https://<writer>.local --smb-host <writer>.local --smb-user <钥匙串账号>
-launchctl kickstart -k gui/$(id -u)/gg.lmd.peach.tray
+launchctl kickstart -k gui/$(id -u)/io.github.longmeidao.peach.tray
 ```
 
 核对：随便打开一个本地媒体资产能播（挂载表生效）、`/healthz` 报 `ledger_sync: reader`、
@@ -80,10 +116,27 @@ launchctl kickstart -k gui/$(id -u)/gg.lmd.peach.tray
 ## 桌面入口与发布
 
 - Windows 日常入口是当前用户 Startup 里唯一的 `Peach.lnk`，指向项目内的 `dist\Peach\Peach.exe`。
+- macOS 日常入口是 LaunchAgent `io.github.longmeidao.peach.tray`，由 `python scripts/install_macos_agent.py`（`install`／`status`／`uninstall`）管理；`.app` 外壳的 bundle ID 是 `io.github.longmeidao.peach.app`，80/443 的转发落在 pf anchor `io.github.longmeidao.peach`。三个标识都取自 `src/peach/appid.py`，`setup_macos_port80.sh` 里那份 shell 字面量由 `tests/test_tray.py` 钉住一致。
+- 标识变更在 Mac 上生效要跑一遍下面这串，遗留的 LaunchAgent 与 pf anchor 由 `install` 自己清掉：
+
+```bash
+launchctl bootout gui/$(id -u)/gg.lmd.peach.tray || true
+python scripts/install_macos_agent.py install
+sudo sh scripts/setup_macos_port80.sh install
+python scripts/install_macos_agent.py status
+launchctl print gui/$(id -u)/io.github.longmeidao.peach.tray | grep -E '^\s+pid'
+launchctl print gui/$(id -u)/gg.lmd.peach.tray            # 期望「Could not find service」
+sudo pfctl -a io.github.longmeidao.peach -s nat
+curl -s --noproxy '*' -o /dev/null -w '%{http_code}\n' http://peach.local/healthz
+curl -s --noproxy '*' -o /dev/null -w '%{http_code}\n' https://peach.local/healthz
+```
+
+  验收四项：菜单栏只出现一个 Peach 图标且 `status` 报「已加载」；`launchctl print` 的 pid 就是那个菜单栏进程；`pfctl -s nat` 列出 80 → 8900、443 → 8443 两条 rdr；两条 `/healthz` 都回 200。`peach.local` 换成本机 `[server].mdns_name` 的值。
 - 发布入口是 `scripts/build_windows.ps1`：先用 `scripts/generate_brand_assets.py` 生成方形 Logo 与多尺寸 `.ico`，再构建单一 `dist/Peach/Peach.exe`；无参数运行托盘，`serve`／`migrate` 运行 CLI。桌面快捷方式由 `scripts/create_desktop_shortcut.ps1` 创建，自启动只由 `scripts/manage_tray_startup.ps1` 管理。
-- 对外发布由 `.github/workflows/release.yml` 承担：推 `v<__version__>` 形式的 tag（`v0.7.13` ↔ `0.7.13`）就在 GitHub 上跑 `build_windows.ps1` 与 `build_macos_app.py`，产出 `Peach-<版本>-windows-x64.zip` 与 `Peach-<版本>-macos-<arch>.zip` 并挂到同名 Release；tag 与 `__version__` 不一致在构建前失败。Release 正文取附注 tag 的正文，轻量 tag 由 GitHub 按提交历史生成。`workflow_dispatch` 只上传 artifact，不发布。
+- 对外测试包由 `.github/workflows/release.yml` 承担：`build_windows.ps1 -Standalone` 用 PyInstaller onedir 生成完整 Windows 程序目录，压缩后由不检出源码的消费任务运行 `scripts/smoke_desktop.py`。`v<__version__>` tag 与版本不一致会失败，通过制品验收才创建 GitHub 预发布并附 SHA256；`workflow_dispatch` 只生成和验收 artifact。macOS 独立包另列待办，源码菜单栏构建入口仍为 `build_macos_app.py`。
 - 刷新源码运行态不要用 Computer Use 点托盘：`python scripts/restart_windows_tray.py` 按精确 EXE 路径找到 pystray 隐藏窗口、发送正常停止消息、等托盘自行关闭子服务，再静默启动并核对新托盘重新拥有两个服务；找不到唯一窗口或退出超时就拒绝，绝不强杀后另启。
 - `dist/Peach/Peach.exe` 是本机打包入口而不是可移动的独立发行版：托盘只打包了自己，服务进程仍由项目 venv 的 `peach.exe` 承担，`_peach_executable()` 从 exe 位置逐级向上找 `.venv\Scripts\peach.exe`，所以不要按「单文件绿色版」对外描述。
+- 更新与打包的产物自带清退：托盘每次启动只保留最近 2 份 `dist/Peach/Peach.pre-source-sync-*.exe` 备份，并删掉 `<数据根>/state/source-sync-build/` 里不属于待应用记录的暂存构建（`WindowsUpdateInstaller.sweep_artifacts`）；`build_windows.ps1` 成功后删掉 PyInstaller 工作目录 `build/windows/app`。自动边界只认这两个命名：`Peach.exe` 本体、手工放进 `dist/` 的目录、`build/release-*`、`attic/` 都不碰，手工构建的残留自己删。
 - PyInstaller 的资源直接位于 `sys._MEIPASS`，没有源码树的 `src/` 层；打包后的 `migrate`、Web 与品牌资源必须从这里解析，不能对 `config.py` 固定取 `parents[2]`。
 - 创建 Win32 窗口前必须启用 Per-Monitor V2 DPI；正常动作不弹模态 MessageBox，更新检查在后台线程执行并用 pystray 原生非模态通知反馈。
 - 菜单栏与托盘状态行逐个点名每个服务，例如 `HTTP 正常 · HTTPS 异常（状态码 503）`，异常附最近一次失败原因，不要改回只报「未运行」。
@@ -107,13 +160,15 @@ launchctl kickstart -k gui/$(id -u)/gg.lmd.peach.tray
 ## 网络、证书与 mDNS
 
 - 托盘管理 HTTP `0.0.0.0:80` 和当前路由选出的 LAN IPv4 上的 HTTPS 443，显式参数、`PEACH_LAN_ADDRESS`、`lan_ipv4()` 依次覆盖；服务日志写入本机 `peach-data/logs`。
+- 托盘起的服务全是非回环绑定，所以这台机器必须有访问口令，否则 `peach serve` 直接退出、托盘把那条服务显示成未运行。`peach token` 打印 `<数据根>/secrets/auth-token`（没有就现生成），`peach token --rotate` 换一个。换完要重启服务——进程只在启动时读一次——已登录的设备也要重新登录。
+- 设备第一次访问跳登录页，把口令贴进去换成一年期的 HttpOnly cookie。reader 取 writer 的复核结果时发的是自己的口令，所以两台机器要用同一份 `auth-token`，复制过去即可。
 - `peach serve` 按平台发布固定 mDNS 主机名，不在源码钉家庭 IP，仍保留 `Zeroconf()` 全合格网卡监听；mDNS 验收必须包含单元测试、运行态 health、DNS-SD、主机名解析和真实 LAN 客户端。
 - 双机广播分工固定：macOS 是 `peach.local`，Windows 是 `peach-writer.local`，默认值收敛到 `peach.config.MDNS_NAME`，`PEACH_MDNS_NAME` 只做临时覆盖。服务可以同时跑，但两边同时写入会很快冲突转只读。
 - `.local` 使用本地 CA，不使用 Let's Encrypt。证书与私钥保存在本机 `peach-data/secrets`；TLS 私钥禁用 ACL 继承，只允许实际服务身份、SYSTEM 和 Administrators。macOS/iOS 只安装并信任 `peach-local-ca.crt`，不分发任何私钥。
 - 两台机器各有独立的本机 CA（secrets 按设计不共享）：iPhone/iPad 必须信任「当前正在服务的那台」的 CA，换机器服务后要装对应的 `peach-local-ca.crt` 并开完全信任，指纹用 `openssl x509 -noout -fingerprint` 核对。
 - 对本机服务的 HTTP 探测必须 `trust_env=False`：代理客户端会设置系统级 HTTP 代理，httpx 默认经 `urllib.getproxies()` 读它，探测 `127.0.0.1` 的请求被送进代理并由代理回 503，服务活着却被判「未运行」。修复在 `peach.tray.ServiceManager.healthy`，`test_health_check_never_goes_through_a_proxy` 守门，新写的健康检查同样适用。
 - macOS 系统代理的例外列表必须包含 `*.local`、`localhost`、`127.0.0.1` 和本机局域网网段：代理核心解析不了 mDNS 名字，浏览器打开 `.local` 会被代理回 503（终端直连正常）。用 `networksetup -setproxybypassdomains` 设置、`scutil --proxy` 的 `ExceptionsList` 复查；代理客户端重设系统代理后这一列表可能被清掉。
-- FastAPI 是唯一 Web server，不得恢复平行 `http.server` 或动态 legacy loader；配置 `--token` 时通过 `/login` POST 取得 HttpOnly cookie，旧 `?t=` 只做一次兼容重定向。
+- FastAPI 是唯一 Web server，不得恢复平行 `http.server` 或动态 legacy loader；口令通过 `/login` POST 换成 HttpOnly cookie，`?t=` 只做一次性场合，它会把口令留在访问日志和浏览历史里。
 - 切换服务前检查 80、443、8900 端口和实际进程归属。9999 已移出这份清单：服务运行期不再连接 Stash（ADR-0021）。
 
 ## 媒体解析与转码
