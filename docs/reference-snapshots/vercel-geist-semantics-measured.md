@@ -383,3 +383,30 @@ Peach 的两列侧栏导航按上表对齐：`.edge button` 与 `.dnav button` �
   所以取 `#04060A` 而不是纯黑，方向与 Vercel 一致（操作条比正文更深）。
 - 按钮次级档填 `--ground` 而不是透明，悬停抬到 `--surface`；禁用落到 `--sunk`。
 - 滚动条不写任何自定义样式，交给 `html` 上的 `color-scheme`。
+
+## 2026-09-05 实测 vercel.com/<team>/~/deployments 的筛选行
+
+取证方式与上一节相同：内置浏览器登录态下打开该页，用 `getComputedStyle` 读实际值。
+
+### 结构
+
+`Add Filter | Author lmd | Environment Production | Status Error`，右侧另有
+`Status 6/7`、`Select Date Range`、`All Environments`。不是一排互斥药丸，是可叠加的维度令牌：
+每个令牌自带下拉，可单独摘掉，`Add Filter` 负责再加一个维度。
+
+### 三态
+
+| 态 | 背景 | 描边 |
+| --- | --- | --- |
+| 未生效（建议中的维度） | `rgba(0,0,0,0)` | `1px dashed rgba(0,0,0,.21)` |
+| 悬停／键盘聚焦 | `#FFFFFF` | `1px solid rgba(0,0,0,.08)` |
+| 下拉展开 | `gray-200` | 实线 `gray-500` |
+
+高 32px、圆角 `10ex`（视觉上等于全圆）。填色画在一个绝对定位的
+`div[data-pill-background]` 上，按钮本身不带背景，所以描边虚实可以和填色各自过渡。
+
+### 这套配色成立的前提
+
+该页页面底色是 `#FAFAFA`（`bg-background-200`），`--ds-background-100` 才是纯白。
+所以「填成 `#FFFFFF` = 更亮 = 生效」是相对页面底色抬了一档。Peach 首页的 `--ground` 已经是纯白，
+同一套写法没有可填的更亮档；要照搬得先把页面底色降到 `--surface` 这一层。
