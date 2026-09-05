@@ -6,7 +6,7 @@
 
 ## 运行态
 
-- 代码 `0.7.29` 已生效，HTTPS 就绪检查通过；采集页路由已加载，四〇四页使用返回首页按钮；未打标签发布。
+- HTTPS 就绪检查通过；未打标签发布。
 
 - Windows 是当前 ledger writer，入口 `dist\Peach\Peach.exe`；代码、`peach-data`、worktree 和共享传输点同在一个顶层目录，外置盘只提供 `R:\media`。
 - 托盘必须以普通权限启动：提升权限后的令牌看不到 CloudDrive 的 `A:` / `B:`，会把 PikPak 和 115 误报为脱盘。

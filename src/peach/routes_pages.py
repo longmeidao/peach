@@ -51,6 +51,10 @@ _SETUP_STYLE = """<style>
 body{margin:0;padding:48px 24px;background:var(--ground);color:var(--ink);
 font:var(--fs-md)/1.6 system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif}
 main{max-width:560px;margin:0 auto}
+body:has(.error-page){min-height:100svh;display:grid;align-items:center}
+body:has(.error-page)>main{width:min(560px,100%)}
+.error-page{display:grid;justify-items:start;gap:32px}
+.error-page>h1,.error-page>p{margin:0}
 .mark{display:block;width:40px;height:40px;border-radius:50%}
 h1{font-size:var(--fs-3xl);font-weight:600;line-height:1.25;margin:16px 0 0}
 .lede{margin:6px 0 0;color:var(--muted)}
@@ -279,8 +283,8 @@ def error_page(status: int, message: str) -> str:
     """浏览器导航撞上 403／404／409 时给人看的那一页，不是一行 JSON。"""
     title = {403: "这里不能打开", 404: "四〇四", 409: "现在不能这样做"}.get(status, "出了点问题")
     description = '' if status == 404 else f'<p class="lede">{escape(message)}</p>'
-    body = (f'<img class="mark" src="/peach-logo.png" alt=""><h1>{title}</h1>'
-            f'{description}<p><a class="geist-button primary" href="/">返回首页</a></p>')
+    body = (f'<section class="error-page"><img class="mark" src="/peach-logo.png" alt=""><h1>{title}</h1>'
+            f'{description}<p><a class="geist-button primary" href="/">返回首页</a></p></section>')
     return _document(f"Peach · {title}", body)
 
 
