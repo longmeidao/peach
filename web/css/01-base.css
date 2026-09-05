@@ -85,8 +85,13 @@
 *,*::before,*::after{box-sizing:border-box}
 .sr-only{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
 /* 滚动条槽位一直留着。设置面板、灯箱和播放器都会给 body 加 overflow:hidden，
-   槽位不预留时滚动条一消失，整页就横向跳一次；关掉再跳回来。 */
-html{color-scheme:light;scroll-padding-top:calc(var(--topH) + 8px);scrollbar-gutter:stable}
+   槽位不预留时滚动条一消失，整页就横向跳一次；关掉再跳回来。
+   槽底透明，让页面底自己透上来：浏览器默认那条槽在浅色一档是块死白，比 --page 还亮，
+   窗口右边于是多出一条从头贯到底的白带，比页面上任何一张卡都显眼。滑块取
+   --field-ring-hover，和标签药丸的虚线、分隔线同一个刻度，两档主题各自换成同位置的
+   黑/白透明度。scrollbar-color 必须两个值一起给，没有「槽透明、滑块仍交给浏览器」这种写法。 */
+html{color-scheme:light;scroll-padding-top:calc(var(--topH) + 8px);scrollbar-gutter:stable;
+  scrollbar-color:var(--field-ring-hover) transparent}
 @media (prefers-color-scheme:dark){html:not([data-theme="light"]){color-scheme:dark}}
 html[data-theme="dark"]{color-scheme:dark}
 html,body{margin:0;padding:0}
@@ -183,11 +188,10 @@ button[aria-busy="true"],[role="button"][aria-busy="true"]{
   padding:9px 13px;border-radius:var(--control-radius);background:var(--ink);color:var(--ground);text-decoration:none;
   transition:transform .12s ease}
 .skiplink:focus-visible{transform:translateY(0)}
-/* 滚动条交给浏览器：`html` 上的 color-scheme 已经把明暗两档告诉了它，浅色出浅条、
-   深色出深条，跟着系统的滚动条设置走。2026-09-05 实测 vercel.com：整站的
-   scrollbar-width 与 scrollbar-color 都是 auto，没有一条 ::-webkit-scrollbar 规则，
-   只在个别内部滚动区把滚动条整个藏掉。自己画一档的代价是它只在一种主题下成立——
-   写死的深灰滑块落在浅色底上就是一条突兀的粗杠。 */
+/* 滚动条只在 `html` 上改一次颜色（见上面 scrollbar-color 那条），形状、宽度和滚轮行为
+   仍交给浏览器：2026-09-05 实测 vercel.com 整站没有一条 ::-webkit-scrollbar 规则，
+   只在个别内部滚动区把滚动条整个藏掉，Peach 照这个分寸。滑块用的是主题变量而不是写死的
+   灰值——写死一档的代价是它只在一种主题下成立，深灰滑块落在浅色底上就是一条突兀的粗杠。 */
 /* 横向行不显示滚动条（本来就能拖动/滚轮横滚） */
 .tier,.tagbar,.srow,.nrow{scrollbar-width:none}
 .tier::-webkit-scrollbar,.tagbar::-webkit-scrollbar,

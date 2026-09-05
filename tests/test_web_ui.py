@@ -440,17 +440,19 @@ class WebUiSourceTests(unittest.TestCase):
             self.assertIn("background:var(--ground)", rule, f"{name} 是次级档，自己是一块亮面")
             self.assertIn("border:1px solid var(--line-soft)", rule, f"{name} 的边与次级档一致")
 
-    def test_scrollbars_are_left_to_the_browser(self):
-        """滚动条不自绘，由 `html` 上的 color-scheme 决定明暗。
+    def test_the_scrollbar_track_is_transparent_and_the_thumb_follows_the_theme(self):
+        """槽底透明让页面底透上来，滑块取主题变量；形状和宽度仍交给浏览器。
 
-        2026-09-05 实测 vercel.com：整站 `scrollbar-width` 与 `scrollbar-color` 都是 `auto`，
-        没有一条 `::-webkit-scrollbar` 规则，只在个别内部滚动区把滚动条整个藏掉。自己画
-        一档的代价是它只在一种主题下成立——写死的深灰滑块落在浅色底上就是一条突兀的粗杠。
+        浏览器默认那条槽在浅色一档是块死白，比 `--page` 还亮，窗口右边于是多出一条
+        从头贯到底的白带。滑块不写死灰值：写死一档只在一种主题下成立，深灰滑块落在
+        浅色底上就是一条突兀的粗杠。2026-09-05 实测 vercel.com：整站没有一条
+        `::-webkit-scrollbar` 规则，只在个别内部滚动区把滚动条整个藏掉，这个分寸不变。
         """
         css = stylesheet_source()
         rules = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
         self.assertNotIn("--sb:", rules, "滚动条不需要专属颜色 token")
-        self.assertNotIn("scrollbar-color", rules, "滚动条配色交给浏览器")
+        self.assertIn("scrollbar-color:var(--field-ring-hover) transparent", rules)
+        self.assertEqual(rules.count("scrollbar-color"), 1, "配色只在 html 上定一次")
         for hidden in ("::-webkit-scrollbar{display:none}", "scrollbar-width:none"):
             self.assertIn(hidden, rules, "内部滚动区仍然可以把滚动条整个藏掉")
         self.assertNotIn("::-webkit-scrollbar-thumb", rules, "不自绘滑块")
@@ -528,13 +530,16 @@ class WebUiSourceTests(unittest.TestCase):
             self.assertPageContains(base + ":hover{border-color:var(--field-ring-hover);color:var(--ink)}")
             self.assertPageContains(base + '[aria-pressed="true"]{border-color:var(--field-ring);'
                                            "background:var(--ground);color:var(--ink)}")
-        self.assertPageContains('#tagbar .pill:not([aria-pressed="true"])'
+        self.assertPageContains('#tagbar .pill[data-tag]:not([aria-pressed="true"])'
                                 "{border-style:dashed;border-color:var(--field-ring-hover)}")
-        self.assertPageContains('#tagbar .pill:not([aria-pressed="true"]):hover{border-style:solid}')
+        self.assertPageContains(
+            '#tagbar .pill[data-tag]:not([aria-pressed="true"]):hover{border-style:solid}')
         # 药丸里的虚线只此一条：多一条就说明它不再指向「这条筛选还没加上去」。
         dashed_pills = [line for line in css.splitlines()
                         if "dashed" in line and "pill" in line and not line.startswith(" ")]
         self.assertEqual(len(dashed_pills), 1, dashed_pills)
+        # 左边四枚视图胶囊四选一、恒有一枚生效，「这条筛选还没加上去」对它们从来不成立。
+        self.assertNotIn("[data-state]", dashed_pills[0])
         # 已经生效的交集筛选和选中的药丸是同一件事，穿同一身。
         start = css.index(".combo .cb{")
         applied = css[start:css.index("}", start)]
@@ -563,7 +568,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertNotIn("border:", card, "卡片不自带描边，框由网格出")
         start = css.index(chr(10) + ".shorts-inline{")
         strip = css[start:css.index("}", start)]
-        self.assertIn("background:var(--ground)", strip, "竖屏带和框、和卡片同一张面")
+        self.assertIn("background:var(--ground)", strip, "竖屏带和视频段同一张面")
         self.assertNotIn("var(--page)", strip, "底色一退就读成陷进去的一格")
 
     # 选中态允许高对比反相的两处：都压在媒体画面上，画面本身会把 --hover 那层
@@ -1466,7 +1471,7 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_scrollbar_gutter_is_reserved_so_overlays_do_not_shift_the_page(self):
         """设置面板给 body 加 overflow:hidden，滚动条一消失整页就横向跳一次。"""
-        self.assertPageContains("scrollbar-gutter:stable}")
+        self.assertPageContains("scrollbar-gutter:stable;")
         self.assertPageContains("body.settings-open{overflow:hidden}")
 
     def test_closing_a_deep_linked_player_reloads_the_home_feed(self):
@@ -4595,7 +4600,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("window.addEventListener('pagehide',()=>releaseHoverPreviews())")
         self.assertPageContains("if(document.hidden)releaseHoverPreviews()")
         self.assertPageContains("if(reset)releaseHoverPreviews($('#grid'))")
-        self.assertPageContains("releaseHoverPreviews(grid.querySelector('#shortsInline'))")
+        self.assertPageContains("if(reset)releaseHoverPreviews($('#grid'))")
 
     def test_remote_hover_scan_is_an_overlay_so_every_jav_layout_has_it(self):
         """远端源的扫视图叠一层，不改任何已有 `<img>` 的 src。
@@ -4658,7 +4663,7 @@ class WebUiSourceTests(unittest.TestCase):
         body = body.split("\n}", 1)[0]
         self.assertIn("$('#loadSentinel').hidden=true;", body)
         self.assertLess(body.index("$('#loadSentinel').hidden=true;"),
-                        body.index("$('#grid').innerHTML=pageSkeletonHtml"),
+                        body.index("setGridCards(pageSkeletonHtml"),
                         "哨兵要在骨架铺上之前收掉，别让 dots 和骨架同时存在一帧")
         # 目录这条链上收哨兵只有这一处：分支里再补一次就是又一个会漏掉的地方。
         ads = self.app_js.split("if(state.state==='ads'){", 1)[1].split("adsBatch=null;", 1)[0]
@@ -4668,8 +4673,8 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_page_loading_uses_one_structural_skeleton_phase(self):
         self.assertPageContains("function renderCatalogLoading(label='正在读取作品')")
-        self.assertPageContains("$('#grid').innerHTML=pageSkeletonHtml(label,\n"
-            "    {cards:true,className:'catalog-skeleton postercard-skeleton'});")
+        self.assertPageContains("setGridCards(pageSkeletonHtml(label,\n"
+            "    {cards:true,className:'catalog-skeleton postercard-skeleton'}));")
         self.assertPageContains("count.setAttribute('aria-label',label);")
         self.assertPageContains(".grid>.skeletonpanel{grid-column:1/-1;width:100%;min-width:0}")
         self.assertPageContains("function renderInitialSurfaceLoading()")
@@ -4877,27 +4882,43 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks("it.ctx_orient==='竖屏'||cls==='scard'")
         self.assertPageContains("(jav&&layout==='big'?COVER_FRONT_RATIO:16/9)")
 
-    def test_the_portrait_strip_cuts_the_stream_open_on_a_row_boundary(self):
-        """竖屏条穿插在视频流里，整行占位、插在行边界上，用上下两条发丝线把框断开。
+    def test_the_portrait_strip_lands_at_a_random_row_boundary_on_every_page(self):
+        """每接一页出现一条竖屏带，落点在这一页新增的那几行里随机取一个行边界。
 
-        它不置顶：竖屏是同一批内容里的另一种形状，钉在最上面就成了一个常驻栏目。
+        固定第几行的写法从第二屏起就成了可预期的栏目，而这条带子的作用正是打断节奏——
+        位置可预期，节奏就不再被打断。只在行边界上剪，否则上一行会被截断留下一段空白；
+        两端各留至少一行，剪在头尾就成了置顶或垫底，不是穿插。
         余位不另拉一批横屏视频来补——那批 id 不在分页序列里，翻下一页必然重复，
         而且被当作 `scard` 渲染会按竖屏比例压扁横屏画面。
         静态标记里不留一份用不到的 `#shortsSec`：这一段只由 `loadShorts` 现画。
         """
         self.assertPageLacks('id="shortsSec"')
         self.assertPageLacks('id="tokBtn"')
-        self.assertPageContains("const SHORTS_ROW_OFFSET=2;")
-        self.assertPageContains("const anchor=cards[Math.min(cards.length,columns*SHORTS_ROW_OFFSET)]||null;")
-        self.assertPageContains("if(anchor)anchor.insertAdjacentHTML('beforebegin',inline);"
-                                " else grid.insertAdjacentHTML('beforeend',inline);")
+        self.assertPageLacks("SHORTS_ROW_OFFSET")
+        # 每一页都插，不再只在 reset 时插一条。
+        self.assertPageContains("loadShorts(requestSeq,surface,{reset,addedFrom});")
+        self.assertPageContains("function splitGridForShorts(html,addedFrom){")
+        self.assertPageContains(
+            "  for(let i=Math.max(columns,Math.ceil(Math.max(0,addedFrom)/columns)*columns);"
+            "i<cards.length;i+=columns)")
+        self.assertPageContains(
+            "  const at=cards[boundaries[Math.floor(Math.random()*boundaries.length)]];")
+        # 剪开当前这段：剪点之后的卡整段搬进新的 .grid，带子插在两段之间。
+        self.assertPageContains(
+            "  for(let node=at;node;){const move=node;node=node.nextElementSibling;tail.append(move)}")
+        self.assertPageContains("  section.after(tail);")
+        self.assertPageContains("  tail.insertAdjacentHTML('beforebegin',html);")
+        # 每条带子取不同的一批，翻下去不会反复看到同 18 个。
+        self.assertPageContains("p.set('orient','竖屏');p.set('limit',SHORTS_BATCH);p.set('offset',shortsOffset);")
+        self.assertPageContains("shortsOffset=d.has_more===false?0:shortsOffset+SHORTS_BATCH;")
         css = stylesheet_source()
+        self.assertPageContains(".gridstack{display:flex;flex-direction:column;gap:16px}")
         start = css.index(chr(10) + ".shorts-inline{")
         strip = css[start:css.index("}", start)]
-        self.assertIn("grid-column:1/-1", strip, "整行占位")
-        self.assertIn("margin:0 -16px", strip, "左右顶到视频框内沿")
-        for edge in ("border-top:1px solid var(--field-ring)", "border-bottom:1px solid var(--field-ring)"):
-            self.assertIn(edge, strip, "上下各一条发丝线，把那一框视频断开")
+        for piece in ("background:var(--ground)", "border:1px solid var(--field-ring)",
+                      "border-radius:var(--floating-radius)"):
+            self.assertIn(piece, strip, "竖屏带是这一叠卡里的一张，和上下两段视频平级")
+        self.assertNotIn("grid-column", strip, "它不是网格里的一格，是叠在网格旁边的一张卡")
         self.assertPageLacks("fillerParams")
         self.assertPageLacks('const remainder=')
         # 竖屏比例只给 `scard`（和显式筛了竖屏时）。按 `it.ctx_orient` 逐条算的话，
@@ -4911,10 +4932,17 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("if(isCatalogPath(decodeURIComponent(location.pathname))&&!state.q&&!state.orient)p.set('exclude_vertical','1')")
         self.assertPageLacks("if(!state.orient)p.set('exclude_vertical','1')")
 
-    def test_grid_count_and_range_select_ignore_the_portrait_strip(self):
-        """竖屏条嵌在网格里，但它既不是「显示 N」的一员，也不该被 Shift 范围选中。"""
-        self.assertPageContains("$('#grid').querySelectorAll(':scope > .card[data-id]').length")
-        self.assertPageContains("document.querySelectorAll('#grid > .card[data-id]')")
+    def test_grid_count_and_range_select_read_across_sections_but_skip_the_strip(self):
+        """目录是一叠 `.grid`，不是一个；竖屏带里的卡既不计入「显示 N」，也不参与范围选中。
+
+        判据统一写成 `#grid > .grid > .card[data-id]`：跨过分段这一层，同时把竖屏带
+        排除在外——它的卡在 `.srow` 里，不属于任何一段。
+        """
+        self.assertPageContains(
+            "const gridCards=()=>document.querySelectorAll('#grid > .grid > .card[data-id]');")
+        self.assertPageContains(
+            "function visibleCardIds(){return [...gridCards()].map(card=>+card.dataset.id)}")
+        self.assertPageContains("const n=gridCards().length;")
 
     def test_recycle_bin_has_its_own_route_and_reports_undeletable_files(self):
         self.assertRoute('/trash', "section:'trash'", "openTrash(push)")

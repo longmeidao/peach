@@ -174,6 +174,16 @@ function wireCountRow(){
    `.count:empty` 还会让整行折叠，网格跟着往上跳一截。计数骨架宽高固定、行本身有
    `min-height:var(--sortH)` 兜底，所以数字回来时不发生位移。上方的标签条和已选条件
    同理不动——它们本来就不随这次请求变。 */
+/* 目录列表是一叠 `.grid`，不是一个：竖屏带把当前这段从行边界剪开后，上下两半各自
+   是一段。所有「本页有哪些卡」的判断都按 `#grid > .grid > .card` 走，跨过分段这一层，
+   同时把竖屏带里的 `.scard` 排除在外——它们在 `.srow` 里，不属于任何一段。 */
+const lastGridSection=()=>{
+  const grid=$('#grid'),last=grid.lastElementChild;
+  if(last&&last.classList.contains('grid'))return last;
+  const section=document.createElement('div');section.className='grid';grid.append(section);return section};
+const setGridCards=html=>{$('#grid').innerHTML=`<div class="grid">${html}</div>`};
+const appendGridCards=html=>lastGridSection().insertAdjacentHTML('beforeend',html);
+const gridCards=()=>document.querySelectorAll('#grid > .grid > .card[data-id]');
 function renderCatalogLoading(label='正在读取作品'){
   const count=$('#count');
   count.setAttribute('aria-busy','true');
@@ -187,8 +197,8 @@ function renderCatalogLoading(label='正在读取作品'){
      铺着两种等待动画，而实际只有一次请求在跑。哨兵的可见性由数据落地后的
      `has_more` 重新决定，所以这里只管收，不必记住原值。 */
   $('#loadSentinel').hidden=true;
-  $('#grid').innerHTML=pageSkeletonHtml(label,
-    {cards:true,className:'catalog-skeleton postercard-skeleton'});
+  setGridCards(pageSkeletonHtml(label,
+    {cards:true,className:'catalog-skeleton postercard-skeleton'}));
   fitSkeleton($('#grid'));
 }
 /* 每个管理表面的加载态只有一份定义，深链启动和路由到位后都从这里取。
@@ -662,13 +672,21 @@ function homePath(filters=state){
   if(!STATE_ROUTES[filters.state]&&filters.state)params.set('state',filters.state);
   return path+(params.size?'?'+params:'');
 }
+/* 顶部三层与筛选条画的是哪一套筛选，由它说了算。声明必须排在 resetHomeState 之前：
+   那个函数会把它拨回 home，而它是 let，用在声明之前就是 TDZ。 */
+let barsContext={type:'home',filters:state},detailReturnBarsContext=null;
 /* 所有明确的「回首页」动作必须得到同一个干净状态。只改地址为 `/` 不够：state.jav
    等内存筛选还会继续进入 /api/items，让页面看似首页却只剩 JAV。来源选择是用户的
-   浏览范围，继续保留；其余分类、搜索和排序恢复首页默认值。 */
+   浏览范围，继续保留；其余分类、搜索和排序恢复首页默认值。
+   barsContext 也在这里回到 home：从资料页点侧栏或左上角标志回首页时，load(true)
+   确实会把它拨回来，但 openHome 是先 buildBars() 后 load(true)，buildBars 开头就把
+   activeFilterState() 取走了——取到的是资料页那份筛选，它没有 state 这个键，
+   于是四枚视图胶囊一枚都不亮，首页看上去像谁都没选中。 */
 function resetHomeState(){
   state={loc:state.loc,creator:'',studio:'',tag:'',tag_match:'all',len:'',dur_min:'',dur_max:'',
     orient:'',state:'',sort:appSettings.defaultSort,dir:defaultSortDir(appSettings.defaultSort),
     seed:rollSeed(),q:'',jav:'',thumb:'1'};
+  barsContext={type:'home',filters:state};detailReturnBarsContext=null;
   barsDataCache=null;barsDataPromise=null;
 }
 function openHome(scroll=false){
@@ -686,7 +704,6 @@ const entityFilterSearch=filters=>{const params=new URLSearchParams();
   ENTITY_FILTER_KEYS.forEach(key=>{if(filters[key]&&!(key==='sort'&&filters[key]==='new')
     &&!(key==='dir'&&filters[key]===defaultSortDir(filters.sort)))params.set(key,filters[key])});
   return params.toString()};
-let barsContext={type:'home',filters:state},detailReturnBarsContext=null;
 const cloneBarsContext=context=>context&&context.type==='entity'
   ? {...context,filters:{...context.filters}}:context;
 const activeFilterState=()=>barsContext.type==='home'?state:barsContext.filters;
@@ -1548,7 +1565,7 @@ function setSelectMode(on,clear=false){
   if(selectMode)releaseHoverPreviews();
   $('#selectMode').setAttribute('aria-pressed',selectMode);if(clear){selected.clear();followSelected.clear();selectedIndexTags.clear();lastSelectedId=null;followLastSelectedId=null}paintSelection()}
 /* 只取网格直属卡片：竖屏条是嵌在网格里的横向滚动条，不该被 Shift 范围选中顺带框进来。 */
-function visibleCardIds(){return [...document.querySelectorAll('#grid > .card[data-id]')].map(card=>+card.dataset.id)}
+function visibleCardIds(){return [...gridCards()].map(card=>+card.dataset.id)}
 function toggleSelection(id,range=false){
   if(range&&lastSelectedId!=null){const ids=visibleCardIds(),a=ids.indexOf(lastSelectedId),b=ids.indexOf(id);
     if(a>=0&&b>=0){for(let i=Math.min(a,b);i<=Math.max(a,b);i++)selected.add(ids[i])}
@@ -2540,7 +2557,7 @@ async function buildBars(){
 }
 /* 排序和换批都属于当前列表，放在计数行，不占用全局导航。 */
 function renderCount(){
-  const n=$('#grid').querySelectorAll(':scope > .card[data-id]').length;   // 竖屏条不计入「显示 N」
+  const n=gridCards().length;   // 竖屏带里的 .scard 不计入「显示 N」
   const trash=state.state==='trash';
   /* 「清空回收站」和左边的计数说的是同一批文件，挂在说明行右端。它自己占一行时，
      标题和网格之间会空出一条只放一个按钮的带子。 */
@@ -6441,9 +6458,9 @@ async function load(reset){
     const html=batch.map(junkCardHtml).join('');
     if(reset)releaseHoverPreviews($('#grid'));
     if(reset&&!batch.length)$('#grid').innerHTML=emptyState('check',junkView==='dismissed'?'没有已排除的文件':'没有待判断的垃圾文件',junkView==='dismissed'?'点“不是垃圾”的资源会保留在这里，可随时重新判断。':'当前分类没有候选文件。');
-    else if(reset)$('#grid').innerHTML=html;else $('#grid').insertAdjacentHTML('beforeend',html);
+    else if(reset)setGridCards(html);else appendGridCards(html);
     renderJunkNavigation(adsBatch);
-    $('#loadSentinel').hidden=$('#grid').children.length>=adsBatch.items.length;
+    $('#loadSentinel').hidden=$('#grid').querySelectorAll('.junkcard').length>=adsBatch.items.length;
     wireJunkCards($('#grid'));paintSelection();return;
   }
   adsBatch=null;
@@ -6467,15 +6484,18 @@ async function load(reset){
     $('#grid').innerHTML=emptyState('trash','回收站是空的','删掉的内容会先到这里；确认不再需要后再清空。');
   else if(reset&&!d.items.length)
     $('#grid').innerHTML=emptyState('search','没有符合条件的作品','调整筛选或搜索条件后再试。');
-  else if(reset)$('#grid').innerHTML=html;
-  else $('#grid').insertAdjacentHTML('beforeend',html);
+  /* 接下来这一页新增在当前这段里的起点：竖屏带的落点要落在新增的那几行之间，
+     不能又插回已经看过的上半屏。 */
+  const addedFrom=reset?0:[...lastGridSection().children].filter(x=>x.matches('.card[data-id]')).length;
+  if(reset)setGridCards(html);
+  else appendGridCards(html);
   renderCount();
   $('#loadSentinel').hidden=reset?d.items.length>=total:!d.has_more;
   wireCards($('#grid'),state.state==='trash'?openResourceCard:undefined);
   if(state.state==='trash')wireResourceCardActions($('#grid'));
   wireMixCards($('#grid'));
   paintSelection();
-  if(reset)loadShorts(requestSeq,surface);
+  loadShorts(requestSeq,surface,{reset,addedFrom});
   }finally{if(!reset&&requestSeq===loadRequestSeq)listLoading=false}
 }
 const loadObserver=new IntersectionObserver(entries=>{
@@ -6582,37 +6602,51 @@ $('#q').onkeydown=e=>{
 };
 $('#q').addEventListener('focus',()=>{Promise.all([loadSearchHistory(),loadSearchPool()]).then(renderSearchMenu)});
 
-const SHORTS_ROW_OFFSET=2;   // 竖屏条插在第几行之后，0 表示置顶
-const removeShortsStrip=()=>$('#grid').querySelector('#shortsInline')?.remove();
-async function loadShorts(requestSeq=loadRequestSeq,surface=surfaceToken(surfacePath())){
-  // JAV 模式不插竖屏条：番号发行物本身是横版，竖屏是另一类内容。
+/* 竖屏带每接一页出现一条，位置在这一页新增的那几行里随机取一个行边界。
+   固定第几行的写法从第二屏起就成了可预期的栏目，而这条带子的作用正是打断节奏——
+   位置可预期，节奏就不再被打断。每条带子取不同的一批竖屏，翻下去不会反复看到同 18 个。 */
+const SHORTS_BATCH=18;
+let shortsOffset=0;
+async function loadShorts(requestSeq,surface,{reset=false,addedFrom=0}={}){
+  // JAV 模式不插竖屏带：番号发行物本身是横版，竖屏是另一类内容。
   // 主列表的 exclude_vertical 管不到这条——它是独立请求、独立插入的。
   if(!isCatalogPath(decodeURIComponent(location.pathname))||javActive()||state.orient==='竖屏'
-     ||state.state==='ads'||state.state==='trash'){removeShortsStrip();return}
+     ||state.state==='ads'||state.state==='trash')return;
+  if(reset)shortsOffset=0;
   const p=new URLSearchParams(Object.entries(state).filter(([,v])=>v));
-  /* 排序跟着主列表走，不再写死 sort=new；换一批时竖屏条也要一起换。 */
-  p.set('orient','竖屏');p.set('limit',18);p.set('offset',0);
+  /* 排序跟着主列表走，不再写死 sort=new；换一批时竖屏带也要一起换。 */
+  p.set('orient','竖屏');p.set('limit',SHORTS_BATCH);p.set('offset',shortsOffset);
   const d=await surfaceApi(surface,'/api/items?'+p);
   if(requestSeq!==loadRequestSeq||!surfaceCurrent(surface))return;
-  if(!d.items.length){removeShortsStrip();return}
+  if(!d.items.length){shortsOffset=0;return}
   cache(d.items);
-  const grid=$('#grid');
-  releaseHoverPreviews(grid.querySelector('#shortsInline'));
-  removeShortsStrip();
-  /* 竖屏条整行占位（grid-column:1/-1），插在行边界上才不会把上一行截断留空。
-     余位不另拉一批横屏视频来补：那批 id 不在分页序列里，翻下一页必然重复，
-     而且被当成 scard 渲染会把横屏压成竖框。 */
-  const columns=Math.max(1,getComputedStyle(grid).gridTemplateColumns.split(' ').length);
-  const cards=[...grid.children].filter(x=>x.matches('.card[data-id]'));
-  const anchor=cards[Math.min(cards.length,columns*SHORTS_ROW_OFFSET)]||null;
-  const inline=`<section class="shorts-inline" id="shortsInline"><h2 class="disp">竖屏 <span class="mono shortscount">${
+  const html=`<section class="shorts-inline"><h2 class="disp">竖屏 <span class="mono shortscount">${
     d.total.toLocaleString()} 个</span><button class="shorts-enter" type="button">${
     icon('play')}<span>进入沉浸模式</span></button></h2><div class="srow">${
     d.items.map(it=>cardHtml(it,'scard')).join('')}</div></section>`;
-  if(anchor)anchor.insertAdjacentHTML('beforebegin',inline); else grid.insertAdjacentHTML('beforeend',inline);
-  const section=grid.querySelector('#shortsInline');
-  section.querySelector('.shorts-enter').onclick=()=>openTok();
-  wireCards(section.querySelector('.srow'),openTok); wireDrag(section.querySelector('.srow'));
+  const strip=splitGridForShorts(html,addedFrom);
+  if(!strip)return;
+  shortsOffset=d.has_more===false?0:shortsOffset+SHORTS_BATCH;
+  strip.querySelector('.shorts-enter').onclick=()=>openTok();
+  wireCards(strip.querySelector('.srow'),openTok); wireDrag(strip.querySelector('.srow'));
+}
+/* 从行边界剪开当前这段视频：剪点之后的卡整段搬进新的 `.grid`，竖屏带插在两段之间。
+   只在行边界上剪，否则上一行会被截断留下一段空白；两端各留至少一行，
+   剪在头尾就成了「置顶」或「垫底」，不是穿插。 */
+function splitGridForShorts(html,addedFrom){
+  const section=lastGridSection();
+  const cards=[...section.children].filter(x=>x.matches('.card[data-id]'));
+  const columns=Math.max(1,getComputedStyle(section).gridTemplateColumns.split(' ').length);
+  const boundaries=[];
+  for(let i=Math.max(columns,Math.ceil(Math.max(0,addedFrom)/columns)*columns);i<cards.length;i+=columns)
+    boundaries.push(i);
+  if(!boundaries.length)return null;
+  const at=cards[boundaries[Math.floor(Math.random()*boundaries.length)]];
+  const tail=document.createElement('div');tail.className='grid';
+  for(let node=at;node;){const move=node;node=node.nextElementSibling;tail.append(move)}
+  section.after(tail);
+  tail.insertAdjacentHTML('beforebegin',html);
+  return tail.previousElementSibling;
 }
 
 /* ── 就地展开播放 ── */

@@ -75,6 +75,9 @@ body.refreshing #batchAction svg,
 .count .sorts #batchAction,.entitycollectionhead .sorts .entitybatch{width:36px;padding:0;display:inline-grid;place-items:center}
 .count .sorts #batchAction svg,.entitycollectionhead .sorts .entitybatch svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2}
 .count .sorts .batchaction:hover,.entitycollectionhead .sorts .batchaction:hover{background:color-mix(in srgb,var(--ink) 88%,var(--ground));border-color:color-mix(in srgb,var(--ink) 88%,var(--ground));color:var(--ground)}
+/* 目录列表是一叠卡：连续的一段视频合成一个 `.grid`，竖屏带插进来时把那一段从行边界
+   剪开，上下两半于是各自成为一张独立的卡。`#grid` 本身只是这叠卡的容器，不再是网格。 */
+.gridstack{display:flex;flex-direction:column;gap:16px}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--tile),1fr));gap:16px 8px}
 /* 视频区是一整块面，框画在网格上，卡片本身不填色也不描边——一张卡一个框会在一屏里
    画出几十条互相平行的细线，读起来是表格不是图墙。垃圾复核用的是同一个 #grid，
@@ -354,13 +357,11 @@ body[data-density="dense"] .card .ctags{height:30px;align-items:flex-start;flex-
 body[data-density="dense"] .card .meta .why,
 body[data-density="dense"] .card .meta .watchcount{display:none}
 
-/* 短片带穿插在视频流里，不置顶：竖屏是同一批内容里的另一种形状，钉在最上面就成了
-   一个永远在场的栏目。它整行占位，左右用负边距顶到视频框的内沿，上下各一条发丝线，
-   于是把那一框视频从中间断开——「隔开」是这条带子唯一的形状语言。
-   面仍是 --ground，和框、和卡片同一张：只有位置和两条线在说话，不另立第三张面，
-   底色一退就读成陷进去的一格，跟「和其他视频同级」正好相反。 */
-.shorts-inline{grid-column:1/-1;margin:0 -16px;padding:16px;background:var(--ground);
-  border-top:1px solid var(--field-ring);border-bottom:1px solid var(--field-ring)}
+/* 短片带是这一叠卡里的一张，和上下两段视频平级：同一张 --ground 面、同一圈发丝边、
+   同一个圆角，只有内容不同。它不套在视频框里，也不是把一个框从中间划开——划开的是
+   一张卡，两张卡之间那 16px 页面底才是分隔。 */
+.shorts-inline{padding:16px;background:var(--ground);
+  border:1px solid var(--field-ring);border-radius:var(--floating-radius)}
 .shorts-inline h2{margin:0 0 11px;font-size:var(--fs-lg);display:flex;align-items:center;gap:10px}
 .shorts-inline .scard .pic{aspect-ratio:var(--card-ratio,9/16)}
 /* 竖屏计数的灰字。index.html 和 openItem 的内联片段原先各写一份，一模一样。 */
