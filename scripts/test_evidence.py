@@ -6,6 +6,7 @@ import importlib.metadata
 import json
 import os
 import platform
+import re
 import shutil
 import stat
 import subprocess
@@ -32,7 +33,7 @@ def digest(value: object) -> str:
     return hashlib.sha256(json.dumps(value, sort_keys=True).encode()).hexdigest()
 
 
-def snapshot(root: Path) -> str:
+def manifest(root: Path) -> dict:
     names = git(root, "ls-files", "--cached", "--others", "--exclude-standard", "-z")
     files = {}
     for name in sorted(set(names.split("\0")) - {""}):
@@ -45,7 +46,14 @@ def snapshot(root: Path) -> str:
             files[name] = "deleted"
         else:
             raise ValueError(f"无法为文件生成验证快照：{name}")
-    return digest(files)
+    version = root / "src/peach/__init__.py"
+    body = version.read_text(encoding="utf-8") if version.is_file() else ""
+    body = re.sub(r'(?m)^__version__ = "\d+\.\d+\.\d+"$', '__version__ = "VERSION"', body)
+    return {"files": files, "version_body": digest(body)}
+
+
+def snapshot(root: Path) -> str:
+    return digest(manifest(root))
 
 
 def environment(root: Path) -> str:
@@ -73,6 +81,34 @@ def key(root: Path) -> str:
     return digest([snapshot(root), environment(root)])
 
 
+def inputs(root: Path) -> dict:
+    content, dependencies = manifest(root), environment(root)
+    return {"manifest": content, "environment": dependencies,
+            "state": digest([digest(content), dependencies])}
+
+
+def baselines(root: Path, current: dict):
+    folder = evidence_dir(root)
+    paths = sorted(folder.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)[:32]
+    for path in paths:
+        record = read(root, path.stem)
+        if "full" not in record.get("passed", ()) or record.get("environment") != current["environment"]:
+            continue
+        old = record.get("manifest", {})
+        new = current["manifest"]
+        if not isinstance(old.get("files"), dict):
+            continue
+        changed = sorted(name for name in old["files"].keys() | new["files"].keys()
+                         if old["files"].get(name) != new["files"].get(name))
+        version = "src/peach/__init__.py"
+        version_only = version in changed and version in old["files"] and version in new["files"] \
+            and old.get("version_body") == new.get("version_body") \
+            and old["files"][version][0] == new["files"][version][0]
+        if version_only:
+            changed.remove(version)
+        yield record, changed, version_only
+
+
 def read(root: Path, state: str) -> dict:
     try:
         record = json.loads((evidence_dir(root) / f"{state}.json").read_text(encoding="utf-8"))
@@ -93,14 +129,18 @@ def covers(record: dict, scopes: tuple[str, ...]) -> bool:
 
 
 def write(root: Path, state: str, scopes: tuple[str, ...], *, success: bool,
-          elapsed: float, slowest: list, count: int, previous: dict | None = None) -> None:
+          elapsed: float, slowest: list, count: int, previous: dict | None = None,
+          context: dict | None = None, baseline: dict | None = None) -> None:
     folder = evidence_dir(root)
     folder.mkdir(parents=True, exist_ok=True)
     prior = previous if previous is not None else read(root, state)
     validated = dict(prior.get("validated", {})) if success else {}
     if success:
         validated.update({scope: time.time() for scope in scopes})
-    record = {"state": state, "validated": validated, "finished": time.time(),
+        if baseline:
+            validated["full"] = baseline["validated"]["full"]
+    record = {**(context or inputs(root)), "state": state, "validated": validated, "finished": time.time(),
+              "baseline": baseline.get("state") if baseline else None,
               "elapsed": elapsed, "count": count, "slowest": slowest}
     temporary = folder / f"{state}.{os.getpid()}.tmp"
     temporary.write_text(json.dumps(record, ensure_ascii=False, indent=2), encoding="utf-8")

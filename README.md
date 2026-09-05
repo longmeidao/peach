@@ -149,6 +149,7 @@ macOS/Linux 用 `./scripts/test.sh follow`。可选域为 `follow`、`catalog`�
 `metadata`、`tooling`、`web`、`checks`；默认 `auto` 按改动文件取影响域并集。迁移、共享测试设施、
 依赖、构建和未知影响面选 `full`；CI 与发布显式跑全量。相同代码与环境可复用 24 小时内的记录，
 Windows `-Fresh`、POSIX 第二参数 `--fresh` 强制重跑；显式 `full` 总是实际执行。
+同环境有有效全量基线时，`auto` 只补测新增差异的影响域；未知差异仍做全量验证。
 
 ## 依赖维护
 

@@ -154,6 +154,8 @@ The default `auto` selects the union of affected domains. Shared test infrastruc
 build inputs, migrations and unknown paths select `full`; CI and releases explicitly run `full`.
 Local results are reusable for 24 hours when code, environment and scope match. Use `-Fresh` on
 Windows or a second `--fresh` argument on macOS/Linux to rerun; explicit `full` always runs.
+With a valid full baseline in the same environment, `auto` tests affected domains for the new
+differences. Unknown differences still require a full run.
 
 ## Dependency maintenance
 

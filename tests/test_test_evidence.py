@@ -173,6 +173,44 @@ class VerificationTests(unittest.TestCase):
             self.assertEqual(runner.main(["--scope", "checks", "--fresh"]), 1)
             self.assertFalse(evidence.covers(evidence.read(self.repo, evidence.key(self.repo)), ("checks",)))
 
+    def test_full_baseline_requires_only_new_scopes_without_extending_its_age(self):
+        original = self.certify(self.repo, ("full",))
+        stamp = evidence.read(self.repo, original)["validated"]["full"]
+        (self.repo / "README.md").write_text("集成差异\n", encoding="utf-8")
+        with redirect_stderr(io.StringIO()), redirect_stdout(io.StringIO()), \
+                mock.patch.object(runner, "ROOT", self.repo), \
+                mock.patch.object(runner, "resolve_auto_scope", return_value=(("full",), "fixture")), \
+                mock.patch.object(runner, "build_suite", return_value=unittest.TestSuite([
+                    unittest.FunctionTestCase(lambda: None)])) as build:
+            self.assertEqual(runner.main(["--scope", "auto"]), 0)
+        build.assert_called_once_with("checks")
+        record = evidence.read(self.repo, evidence.key(self.repo))
+        self.assertEqual(record["baseline"], original)
+        self.assertEqual(record["validated"]["full"], stamp)
+        self.assertTrue(evidence.covers(record, ("full",)))
+
+    def test_full_baseline_cannot_cover_shared_or_unknown_changes(self):
+        self.certify(self.repo, ("full",))
+        (self.repo / "pyproject.toml").write_text("# shared\n")
+        with redirect_stderr(io.StringIO()), redirect_stdout(io.StringIO()), \
+                mock.patch.object(runner, "ROOT", self.repo), \
+                mock.patch.object(runner, "resolve_auto_scope", return_value=(("full",), "fixture")), \
+                mock.patch.object(runner, "build_suite", return_value=unittest.TestSuite([
+                    unittest.FunctionTestCase(lambda: None)])) as build:
+            self.assertEqual(runner.main(["--scope", "auto"]), 0)
+        build.assert_called_once_with("full")
+
+    def test_baseline_distinguishes_version_assignment_and_package_logic(self):
+        self.certify(self.repo, ("full",))
+        version = self.repo / "src/peach/__init__.py"
+        version.write_text('__version__ = "0.7.31"\n')
+        candidates = list(evidence.baselines(self.repo, evidence.inputs(self.repo)))
+        self.assertTrue(candidates[0][2])
+        version.write_text('__version__ = "0.7.31"\nflag = True\n')
+        candidates = list(evidence.baselines(self.repo, evidence.inputs(self.repo)))
+        self.assertFalse(candidates[0][2])
+        self.assertIn("src/peach/__init__.py", candidates[0][1])
+
     def test_runner_rejects_changes_during_verification(self):
         def mutate():
             (self.repo / "README.md").write_text("测试期间改动\n", encoding="utf-8")

@@ -276,7 +276,8 @@ def main(argv: list[str] | None = None) -> int:
         print(explanation, flush=True)
     files = {path for scope in scopes for path in selected_files(scope)}
     print(f"Peach test scope: {' '.join(scopes)} ({len(files)} files)", flush=True)
-    state = test_evidence.key(ROOT)
+    context = test_evidence.inputs(ROOT)
+    state = context["state"]
     try:
         with test_evidence.run_lock(ROOT, state):
             if not args.fresh and args.scope != "full" and test_evidence.covers(
@@ -284,6 +285,19 @@ def main(argv: list[str] | None = None) -> int:
                 print("复用本机测试记录：代码、依赖环境和范围匹配（24 小时内）。", flush=True)
                 return 0
             previous = test_evidence.read(ROOT, state)
+            baseline = None
+            if args.scope == "auto" and not args.fresh and not previous:
+                choices = []
+                for record, delta, version_only in test_evidence.baselines(ROOT, context):
+                    needed, _ = scopes_for_changes(delta)
+                    if version_only and "full" not in needed:
+                        needed = tuple(dict.fromkeys((*needed, "tooling")))
+                    if "full" not in needed:
+                        weight = len({p for scope in needed for p in selected_files(scope)})
+                        choices.append((weight, record, needed))
+                if choices:
+                    _, baseline, scopes = min(choices, key=lambda item: item[0])
+                    print(f"复用全量基线 {baseline['state'][:12]}；新增差异补测：{' '.join(scopes)}", flush=True)
             folder = test_evidence.evidence_dir(ROOT)
             full_lock = test_evidence.FileLock(folder / "full-suite.lock", timeout=0) \
                 if "full" in scopes else nullcontext()
@@ -295,6 +309,7 @@ def main(argv: list[str] | None = None) -> int:
             success = result.wasSuccessful() and stable and result.testsRun > 0
             slowest = sorted(result.timings, reverse=True)[:20]
             test_evidence.write(ROOT, state, scopes, success=success, previous=previous,
+                                context=context, baseline=baseline,
                                 elapsed=time.monotonic() - started, slowest=slowest, count=result.testsRun)
             for seconds, name in slowest[:5]:
                 print(f"慢测试 {seconds:.3f}s：{name}", flush=True)
