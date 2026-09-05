@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string]$OutputDirectory = (Join-Path $PSScriptRoot '..\dist\Peach')
 )
 
@@ -41,15 +41,21 @@ if (-not (Test-Path -LiteralPath (Join-Path $ProjectRoot 'web\dist\peach-ui.js')
 }
 
 $BuildPath = Join-Path $ProjectRoot 'build\windows'
+$WorkPath = Join-Path $BuildPath 'app'
 New-Item -ItemType Directory -Path $OutputPath -Force | Out-Null
 & $Python -m PyInstaller --noconfirm --clean --onefile --windowed --name Peach `
-    --distpath $OutputPath --workpath (Join-Path $BuildPath 'app') --specpath $BuildPath `
+    --distpath $OutputPath --workpath $WorkPath --specpath $BuildPath `
     --icon (Join-Path $ProjectRoot 'resources\peach.ico') `
     --add-data "$(Join-Path $ProjectRoot 'web');web" `
     --add-data "$(Join-Path $ProjectRoot 'migrations');migrations" `
     --add-data "$(Join-Path $ProjectRoot 'resources');resources" `
     (Join-Path $ProjectRoot 'scripts\build_app_entry.py')
 if ($LASTEXITCODE -ne 0) { throw 'Peach build failed.' }
+
+# 工作目录只服务这一次构建：`--clean` 已让下一次不复用它，留着只是几十 MB 的中间产物。
+if (Test-Path -LiteralPath $WorkPath) {
+    Remove-Item -LiteralPath $WorkPath -Recurse -Force
+}
 
 [pscustomobject]@{
     Executable = Join-Path $OutputPath 'Peach.exe'

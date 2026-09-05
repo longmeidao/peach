@@ -976,6 +976,9 @@ class PeachTray:
 
     def run(self) -> None:
         self.manager.start_missing()
+        # 上一次更新留下的备份与暂存构建在这里清退：替换助手结束时托盘已经不在，
+        # 只有下一次启动能确认「新托盘已经活下来、旧备份可以少留一份」。
+        self.windows_updates.sweep_artifacts()
         self._startup_warning = None
         if self.gate.waiting:
             if self.manager.wait_until_ready():
