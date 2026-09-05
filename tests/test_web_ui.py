@@ -5722,6 +5722,10 @@ class WebUiSourceTests(unittest.TestCase):
             """? `<small class="javedition partlabel">第 ${esc(it.part_label)} 卷</small>`:'';""")
         self.assertPageContains("${javTitleHtml(it)}${partLabelBadge(it,queueContext)}")
         self.assertPageContains(".javedition.partlabel{color:var(--muted);margin-left:6px}")
+        # `/api/item` 是单条口径，答不出「这是第几卷」；不从队列补，标题栏就一直空着。
+        self.assertPageContains("if(queueContext?.kind==='parts')")
+        self.assertPageContains(
+            "it.part_label=queueContext.items.find(part=>part.id===it.id)?.part_label||'';")
         # 队列条目那一侧本来就写着卷号，两处用的是同一个字段。
         self.assertPageContains("queue.kind==='parts'?`第 ${esc(x.part_label)} 卷`")
 
