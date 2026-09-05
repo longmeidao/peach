@@ -215,7 +215,8 @@ class WindowsUpdateInstaller:
 
         test_script = self.root / "scripts" / "test.ps1"
         test_exit = self._run_logged(
-            [shell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(test_script)],
+            [shell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(test_script),
+             "-Scope", "full", "-Fresh"],
             append=False,
         )
         if test_exit != 0:

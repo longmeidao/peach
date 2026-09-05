@@ -1,7 +1,8 @@
 ﻿[CmdletBinding()]
 param(
-    [ValidateSet('full', 'auto', 'follow', 'catalog', 'media', 'sync', 'metadata', 'tooling', 'web')]
-    [string]$Scope = 'full'
+    [ValidateSet('full', 'auto', 'follow', 'catalog', 'media', 'sync', 'metadata', 'tooling', 'web', 'checks')]
+    [string]$Scope = 'auto',
+    [switch]$Fresh
 )
 
 $ErrorActionPreference = 'Stop'
@@ -50,7 +51,9 @@ try {
     }
 
     Write-Host "Peach source: $LoadedPath"
-    & $Python scripts\test_runner.py --scope $Scope
+    $PeachTestExtra = @()
+    if ($Fresh) { $PeachTestExtra += '--fresh' }
+    & $Python scripts\test_runner.py --scope $Scope @PeachTestExtra
     exit $LASTEXITCODE
 } finally {
     Pop-Location

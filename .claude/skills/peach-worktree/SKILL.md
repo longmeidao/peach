@@ -17,16 +17,18 @@ description: 在用户说并行、工作树、暂存、提交、ready、集成�
 
 1. 协调者在主目录创建隔离工作树：`& .\.venv\Scripts\python.exe scripts\agent_worktree.py create --agent claude --task <task>`。它建在 `peach-worktrees/`，Codex 和 Claude 共用这一个目录。**不要用 Claude Code 内置的工作树机制（`.claude/worktrees/`）**：它在分支被集成后会被回收，目录却留在原地。
 
-2. 工作者只在自己的工作树内编辑。工作树不复制 `.venv`。
-3. 测试在当前工作树根目录运行，每个平台只有一个入口。日常开发先跑本功能域：Windows `& .\scripts\test.ps1 -Scope follow`，macOS/Linux `./scripts/test.sh follow`。可选域为 `follow`、`catalog`、`media`、`sync`、`metadata`、`tooling`、`web`；不传参数是 `full`。只改 `web/` 的文案、CSS 或页面脚本时跑 `-Scope web`：约 380 个用例、6 秒上下，`full` 要 30～45 分钟。域清单的真相在 `scripts/test_runner.py` 的 `SCOPES`，本行漏掉一个域，代价就是每次界面改动多等四十分钟。不确定该跑哪个域就用 `-Scope auto`（macOS/Linux `./scripts/test.sh auto`），它按改动文件选域，映射不到才退化为 `full`。
+2. 工作者只在自己的工作树内编辑。`create` 自动锁定工作树，成功集成后解锁；不复制 `.venv`。
+3. 测试在当前工作树根目录运行：Windows `& .\scripts\test.ps1`，macOS/Linux `./scripts/test.sh`。默认 `auto` 按改动文件取影响域并集；文档及无改动检查 `checks`，未知影响面、共享测试设施、依赖、构建选 `full`。域清单唯一真相在 `scripts/test_runner.py`；局部调试可显式选域。
    两者契约相同：从 Git common directory 定位主项目 venv，强制 `PYTHONPATH=<当前工作树>/src`，
    核对 `peach.__file__` 后运行标准库 `unittest`。禁止手工拼接 venv 路径或调用 pytest。
-   跨多个域、迁移、共享测试设施、依赖、构建/发布或大面积改动必须跑 `full`；局部功能只跑
-   本域及其公共门槛。两个平台的入口契约都要保持可用。
-4. 报告 `ready` 前先 rebase 到当前 `master` 并重跑测试；同文件冲突在工作者分支解决。
-5. 协调者审核后运行 `integrate`。完成顺序不决定覆盖顺序。版本号默认 `--bump auto`：改动碰到
+   记录绑定完整代码内容、依赖环境和范围，24 小时有效；失败、验证期间改动使记录无效。
+   相同状态复用记录；Windows `-Fresh`、POSIX 第二参数 `--fresh` 强制重跑；显式 `full` 总是实际执行。
+4. `ready` 前将当前 `master` 纳入工作树并运行 `auto`。相同内容可复用记录；目标变化重算影响域。`ready` / `integrate` 拒绝缺记录、范围不足或目标分支未纳入的提交。
+5. 协调者统一运行 `integrate`：锁内复查、合并固定提交、推进版本。锁忙就等待后重试，禁止直接 merge。同一批任务由协调者整理 `STATUS` 和版本，工作者按文件分工；共享文件安排顺序。版本号默认 `--bump auto`：改动碰到
    运行时输入才动，`feat`／破坏性标记／新迁移推 minor，其余推 patch（ADR-0012 修订）。
    它不打标签：发布走 `scripts/release_tag.py`，那是唯一入口。
+   CI 与发布显式跑 `full`；合并完成不机械追加全量。耗时和慢测试记录在主目录 `build/agent-verification/`。
+   记录和锁约束统一入口，不是权限隔离；直接 Git 或篡改记录仍可绕过，不能宣称绝对防绕过。
 
 ## 暂存与提交
 
@@ -69,9 +71,8 @@ description: 在用户说并行、工作树、暂存、提交、ready、集成�
 分支照样删；注册还在才进 `failed`，分支保留。看完 JSON 里的 `residue` 再手工 `rmdir`
 那几个空目录。一失败就中止整轮的话，连跑 5 次才摘完 5 个工作树、分支一条没删（2026-09-01）。 <!-- copy-lint-disable-line -->
 
-刚建的空工作树和 `git reset --hard master` 过的工作树在 prune 眼里同样是「已并入且干净」，
-会被别人并发跑的 `prune --apply` 一并回收——2026-09-03 一个工作者这样丢过分支，只能凭 reflog
-找回。建完先落一个提交再离开，工作树里不要 reset 到 master。
+`prune` 保留锁定的活动工作树。不要手动解锁正在编辑的工作树；任务中止时先核对任务归属、
+改动与提交，再决定是否解锁回收。
 
 `Desktop\peach` 顶层只放 ADR-0017 定义的四个运行时目录加一个 `attic/`：
 

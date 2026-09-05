@@ -85,13 +85,13 @@ jobs:
         run: |
           python -m venv .venv
           & .\.venv\Scripts\python.exe -m pip install --upgrade pip
-          & .\.venv\Scripts\python.exe -m pip install -e ".[build,vision,maintenance-115,naming]"
+          & .\.venv\Scripts\python.exe -m pip install -e ".[dev,build,vision,maintenance-115,naming]"
           & .\.venv\Scripts\python.exe -m pip check
 
       - name: 运行 Windows 正式测试
         if: runner.os == 'Windows'
         shell: pwsh
-        run: '& .\scripts\test.ps1'
+        run: '& .\scripts\test.ps1 -Scope full -Fresh'
 
       - name: 安装 macOS 依赖
         if: runner.os == 'macOS'
@@ -99,13 +99,13 @@ jobs:
         run: |
           python -m venv .venv
           ./.venv/bin/python -m pip install --upgrade pip
-          ./.venv/bin/python -m pip install -e ".[build,macos,vision,maintenance-115,naming]"
+          ./.venv/bin/python -m pip install -e ".[dev,build,macos,vision,maintenance-115,naming]"
           ./.venv/bin/python -m pip check
 
       - name: 运行 macOS 正式测试
         if: runner.os == 'macOS'
         shell: bash
-        run: ./scripts/test.sh
+        run: ./scripts/test.sh full --fresh
 
   web-bundle:
     name: island 产物与前端测试

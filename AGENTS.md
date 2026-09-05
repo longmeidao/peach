@@ -71,7 +71,7 @@
 
 ## 门槛（由脚本、测试或 hook 拒绝，不是提醒）
 
-- **测试入口**：每个平台只有一个，Windows `& .\scripts\test.ps1`，macOS/Linux `./scripts/test.sh`，只在当前隔离 worktree 根目录运行。局部改动跑对应功能域；跨域、迁移、共享测试设施、依赖、构建/发布或大面积改动跑默认 `full`。两者自动定位主项目 venv、强制 `PYTHONPATH=<当前 worktree>/src`、核对 `peach.__file__` 后运行 `unittest`；禁止手工拼接 venv 路径或调用 pytest。健康检查只使用 `/healthz`。
+- **测试入口**：Windows `& .\scripts\test.ps1`、macOS/Linux `./scripts/test.sh`，在当前隔离 worktree 根目录运行。默认 `auto` 按影响域取并集；共享设施、依赖、构建和未知影响面选 `full`，发布显式跑 `full`。入口定位主 venv、强制当前树 `PYTHONPATH` 并核对 `peach.__file__`；禁止另拼测试命令。`ready` / `integrate` 拒收无有效记录的分支；集成事务互斥。健康检查只用 `/healthz`。
 - **上下文预算**：入口文件与技能有行数、字节数和最长行三重预算，由 `scripts/check_context_budget.py` 与 `tests/test_context_budget.py` 强制。写不下就说明该内容属于 `docs/` 或某个技能，不是往本文件加行。
 - **分层**：新增或删除规则前按 `peach-context-rules` 判层；本文件的技能索引必须与 `.claude/skills/` 一一对应，技能缺 frontmatter、name 不符或缺 `最后复核` 会被拒。
 - **工作树**：并发改代码时主检出只做集成。每个智能体在 `scripts/agent_worktree.py create` 建于 `peach-worktrees/` 的隔离工作树里干活；提交前 `git rev-parse --show-toplevel` 必须不是主检出，工作者只交分支、从不自己合并。细节见 `peach-worktree`。

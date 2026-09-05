@@ -40,6 +40,7 @@ class DependencyPolicyTests(unittest.TestCase):
             "curl_cffi": "curl_cffi",
             "cv2": "opencv-python-headless",
             "fastapi": "fastapi",
+            "filelock": "filelock",
             "httpx": "httpx",
             "numpy": "numpy",
             "objc": "pyobjc-framework-Cocoa",

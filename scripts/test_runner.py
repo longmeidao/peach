@@ -6,16 +6,24 @@ import fnmatch
 import importlib
 import subprocess
 import sys
+import time
 import unittest
 from collections.abc import Iterable
+from contextlib import nullcontext
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
 TESTS = ROOT / "tests"
 
+if not __package__:
+    sys.path.insert(0, str(ROOT))
+    __package__ = "scripts"
+from . import test_evidence
+
 COMMON_PATTERNS = ("test_context_budget.py", "test_test_collection.py")
 SCOPES: dict[str, tuple[str, ...]] = {
+    "checks": ("test_copy_final_state.py", "test_dependency_policy.py", "test_repo_hygiene.py"),
     "follow": ("test_follow*.py", "test_http.py", "test_migrations.py"),
     "catalog": ("test_ad_judgement.py", "test_composite_name_split.py",
                 "test_duplicate_identity_merge.py",
@@ -55,7 +63,7 @@ SCOPES: dict[str, tuple[str, ...]] = {
                  "test_agency_entity.py"),
     "tooling": ("test_scripts.py", "test_auth.py", "test_cli.py", "test_script_policy.py",
                 "test_scan.py", "test_onboarding.py", "test_configuration_sources.py", "test_folder_picker.py", "test_ledger_backups.py",
-                "test_agent_worktree.py", "test_dependency_policy.py",
+                "test_agent_worktree.py", "test_test_evidence.py", "test_dependency_policy.py",
                 "test_restart_windows_tray.py",
                 "test_buildinfo.py", "test_versioning.py",
                 "test_windows_update.py", "test_certs.py", "test_config.py",
@@ -111,6 +119,9 @@ AUTO_SCOPE_PREFIXES: tuple[tuple[str, str], ...] = (
 
 # AGENTS.md 规定必须跑 `full` 的面：迁移、共享测试设施、依赖清单。命中任一个就不再选域。
 FULL_ONLY_PREFIXES: tuple[str, ...] = (
+    "pyproject.toml",
+    "scripts/test_runner.py", "scripts/test_evidence.py", "scripts/test.ps1", "scripts/test.sh",
+    "scripts/build_", "scripts/release_", ".github/workflows/",
     "migrations/",
     "tests/support/",
     "package.json",
@@ -171,8 +182,10 @@ def scopes_for_changes(paths: Iterable[str]) -> tuple[tuple[str, ...], str]:
         scopes: tuple[str, ...] = ()
         if path.startswith("tests/test_") and path.endswith(".py"):
             scopes = scopes_of_test_file(name)
-        elif "/" not in path and path.endswith(".md"):
-            scopes = ("tooling",)
+        elif path.endswith(".md"):
+            scopes = ("checks",)
+        elif path == "src/peach/routes_pages.py":
+            scopes = ("catalog", "tooling", "web")
         else:
             for prefix, scope in AUTO_SCOPE_PREFIXES:
                 if path.startswith(prefix):
@@ -188,7 +201,7 @@ def scopes_for_changes(paths: Iterable[str]) -> tuple[tuple[str, ...], str]:
     if full_reasons:
         return ("full",), "Peach auto scope: full <- " + "; ".join(full_reasons)
     if not picked:
-        return ("full",), "Peach auto scope: full <- 没有改动文件"
+        return ("checks",), "Peach auto scope: checks <- 没有改动文件，检查公共门槛"
     ordered = tuple(scope for scope in SCOPES if scope in picked)
     detail = "; ".join(f"{scope}: {', '.join(picked[scope])}" for scope in ordered)
     return ordered, f"Peach auto scope: {', '.join(ordered)} <- {detail}"
@@ -203,6 +216,7 @@ def changed_files(root: Path = ROOT, base: str = "master") -> list[str]:
     )
     found: set[str] = set()
     for command in commands:
+        command = ("git", "-c", f"safe.directory={root.as_posix()}", *command[1:])
         output = subprocess.run(command, cwd=root, capture_output=True, text=True,
                                 encoding="utf-8", check=True).stdout
         found.update(part for part in output.split("\0") if part)
@@ -233,9 +247,24 @@ def build_suite(*scopes: str) -> unittest.TestSuite:
     return suite
 
 
+class TimedResult(unittest.TextTestResult):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.timings = []
+
+    def startTest(self, test):
+        self.started = time.monotonic()
+        super().startTest(test)
+
+    def stopTest(self, test):
+        self.timings.append((round(time.monotonic() - self.started, 3), test.id()))
+        super().stopTest(test)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--scope", choices=("full", "auto", *SCOPES), default="full")
+    parser.add_argument("--scope", choices=("full", "auto", *SCOPES), default="auto")
+    parser.add_argument("--fresh", action="store_true", help="实际重跑，不复用本机记录")
     parser.add_argument("--list-scopes", action="store_true")
     args = parser.parse_args(argv)
     if args.list_scopes:
@@ -247,8 +276,34 @@ def main(argv: list[str] | None = None) -> int:
         print(explanation, flush=True)
     files = {path for scope in scopes for path in selected_files(scope)}
     print(f"Peach test scope: {' '.join(scopes)} ({len(files)} files)", flush=True)
-    result = unittest.TextTestRunner(verbosity=2).run(build_suite(*scopes))
-    return 0 if result.wasSuccessful() else 1
+    state = test_evidence.key(ROOT)
+    try:
+        with test_evidence.run_lock(ROOT, state):
+            if not args.fresh and args.scope != "full" and test_evidence.covers(
+                    test_evidence.read(ROOT, state), scopes):
+                print("复用本机测试记录：代码、依赖环境和范围匹配（24 小时内）。", flush=True)
+                return 0
+            previous = test_evidence.read(ROOT, state)
+            folder = test_evidence.evidence_dir(ROOT)
+            full_lock = test_evidence.FileLock(folder / "full-suite.lock", timeout=0) \
+                if "full" in scopes else nullcontext()
+            with full_lock:
+                (folder / f"{state}.json").unlink(missing_ok=True)
+                started = time.monotonic()
+                result = unittest.TextTestRunner(verbosity=2, resultclass=TimedResult).run(build_suite(*scopes))
+            stable = state == test_evidence.key(ROOT)
+            success = result.wasSuccessful() and stable and result.testsRun > 0
+            slowest = sorted(result.timings, reverse=True)[:20]
+            test_evidence.write(ROOT, state, scopes, success=success, previous=previous,
+                                elapsed=time.monotonic() - started, slowest=slowest, count=result.testsRun)
+            for seconds, name in slowest[:5]:
+                print(f"慢测试 {seconds:.3f}s：{name}", flush=True)
+            if not stable:
+                print("验证期间代码或依赖环境改变，本次记录无效。", flush=True)
+            return 0 if success else 1
+    except test_evidence.Timeout:
+        print("相同状态的验证或本仓库全量测试正在运行，请等待该次结果。", flush=True)
+        return 2
 
 
 if __name__ == "__main__":
