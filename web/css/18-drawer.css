@@ -29,12 +29,17 @@ body{padding-left:var(--railW)}
    （窄栏行距 52px、抽屉 47px、起点还差 54px），瞄准「在线追更」点下去打开的是「统计」。
    与其逐像素对齐两套各自会因溢出、滚动、条目增减而漂移的列表，不如让它们不重叠——
    光标底下的图标就永远不动。 */
+/* 抽屉自己不再滚，滚的是里面那层。分开是为了给覆盖式滚动条腾出一个定位祖先：
+   轨道必须是滚动容器的兄弟，跟着内容一起滚的轨道等于没有轨道。 */
 .drawer{position:fixed;top:0;bottom:0;left:0;width:360px;z-index:97;
   background:linear-gradient(180deg,var(--frost-light),var(--frost-panel));
   backdrop-filter:saturate(1.8) blur(20px);-webkit-backdrop-filter:saturate(1.8) blur(20px);
-  border-right:1px solid var(--line);padding:16px 12px 60px;
-  overflow-y:auto;overflow-x:hidden;
+  border-right:1px solid var(--line);overflow:hidden;
   transform:translateX(-100%);transition:transform .2s cubic-bezier(.3,.8,.3,1)}
+.drawerscroll{height:100%;box-sizing:border-box;padding:16px 12px 60px;
+  overflow-y:auto;overflow-x:hidden;scrollbar-width:none}
+.drawerscroll::-webkit-scrollbar{display:none}
+
 .drawer.open{transform:none;box-shadow:18px 0 60px -24px #000}
 /* 窄栏必须压在抽屉之上，否则抽屉一弹出就吃掉窄栏的点击 */
 .edge{z-index:96}

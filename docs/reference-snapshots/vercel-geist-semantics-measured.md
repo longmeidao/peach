@@ -430,3 +430,45 @@ Peach 的两列侧栏导航按上表对齐：`.edge button` 与 `.dnav button` �
 Vercel 的令牌可叠加，悬停预演成生效态没有代价；Peach 首页那一排是单选、恒有一颗生效，
 悬停也填就会同屏出现两颗选中。文字色也没照搬：Vercel 一行只有四颗，Peach 那一排有二十来颗，
 全部提到 `--ink` 会让整条筛选比页面其它部分都重，所以未生效仍停在 `--muted`。
+
+## 覆盖式滚动条（2026-09-05 实测）
+
+- URL：<https://vercel.com/dashboard>（登录后的团队概览，左侧栏）
+- 取证方式：Chrome 148 读 `getComputedStyle` 与 `getBoundingClientRect`；同一页在内置
+  浏览器面板里量到的是 `display:none`，因为那个面板报的是粗指针，轨道的 `pointer-fine:block`
+  不成立。结论以真实 Chrome 为准。
+
+侧栏容器 `nav.overflow-x-clip.overflow-y-auto`：`scrollbar-width:none`、`padding-right:0px`、
+`clientWidth === offsetWidth`（255），即原生滚动条整个关掉，也不给它留槽。
+
+轨道是容器的兄弟，同在一个 `position:relative` 的父级（`div.md:flex-1.relative.md:min-h-0`）里：
+
+| 元素 | 类 | 实测 |
+| --- | --- | --- |
+| 轨道 | `group/track absolute right-0 top-2 bottom-2 w-3 hidden pointer-fine:block` | `position:absolute`、12px 宽、`background:rgba(0,0,0,0)`、`border-radius:0` |
+| 滑块 | `absolute right-0 w-[3px] group-hover/track:w-1.5 rounded-full bg-gray-500 cursor-default transition-[width] duration-150` | 静息 3px、轨道悬停 6px、`border-radius` 9999px、`background:rgb(69,69,69)`（暗色 `--ds-gray-500`；浅色一档是 `rgb(201,201,201)`）、`transition:width .15s cubic-bezier(.4,0,.2,1)` |
+
+几何写在滑块的行内样式上，不是 CSS 规则：`height` = 可视高 / 内容高 × 轨道高
+（实测 805 / 851 × 789 = 746.35），`transform:translateY()` = 滚动进度 × (轨道高 − 滑块高)。
+根滚动条**没有**被接管：`html` 上 `scrollbar-width:auto`、`scrollbar-color:auto`、
+`scrollbar-gutter:auto`，量到 15px 实宽。站内其余滚动区多数只写
+`scrollbar-width:thin; scrollbar-color:var(--ds-gray-500) transparent`。
+
+### Peach 对应（2026-09-05）
+
+`.ovtrack` / `.ovthumb` 与 `attachOverlayScrollbar()` 照抄上面的几何与两档宽度，颜色换成
+`--field-ring-hover`：它在浅色一档是 `rgba(0,0,0,.21)`，压在白面上正好是 `rgb(201,201,201)`，
+和实测值同一个数，还自带暗色一档。有意差异三条：
+
+1. **粗指针仍然画滑块。** Vercel 的轨道 `hidden pointer-fine:block`，触屏上整条不画。Peach 的
+   原生滚动条同样已经关掉，跟着收掉就等于触屏上既没有滑块也没有系统指示器，读不出这一列
+   有多长、自己停在哪儿。滑块不占宽度，留着不挡任何东西；「能拖」才收给细指针，靠
+   `pointer-events` 分档，拖不动的东西不该吃走触摸事件。
+2. **整页也换掉。** Vercel 只接管内部滚动区，根滚动条留给浏览器。Peach 的根滚动条本来要靠
+   `scrollbar-gutter:stable` 永久扣下 15px 才不跳版，等于为一条装饰付一整列；换成覆盖式之后
+   宽度归零，跳版的前提也一起消失。
+3. **整页那条的命中区收到滑块本身。** 侧栏轨道只覆盖侧栏，吃掉的点击本来就是它自己的；整页
+   那条从窗口顶贯到底，12px 的透明条会把右边缘所有点击一并吃掉，而设置面板正贴在那儿。
+
+设置面板内部的 `.settingsscroll` 仍是原生滚动条加 `scrollbar-gutter:stable both-edges`，
+没有跟这次一起换。

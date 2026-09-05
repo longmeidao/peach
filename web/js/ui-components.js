@@ -248,6 +248,78 @@ export function wireScrollers(root=document){
 }
 
 /**
+ * 覆盖式滚动条：滑块浮在内容上，一列宽度都不占。
+ *
+ * 已有的 `.geist-scroller` 解决的是另一半问题——它用两端渐隐说明「还能往下」，
+ * 但没有滑块，读不出这一列有多长、自己停在哪儿，而且要求内容套进它自己的包装层。
+ * 这里只往既有滚动容器的父元素上挂一条轨道，不动内容结构，两者可以叠加使用。
+ *
+ * 容器负责关掉原生滚动条并保证父元素是定位祖先；轨道必须是容器的兄弟，
+ * 跟着内容一起滚的轨道等于没有轨道。整页那一条是唯一的例外：`html` 没有元素父级，
+ * 轨道挂进 body 并由 `.page` 改成 fixed，位置照样只认视口右边。
+ * 几何按 2026-09-05 实测 vercel.com 侧栏：
+ * 滑块高 = 可视高 / 内容高 × 轨道高，位移 = 滚动进度 × (轨道高 − 滑块高)。
+ * 返回一个手动重算函数，给那些既不改容器尺寸也不改子树的情形（例如换字体后重排）。
+ */
+export function attachOverlayScrollbar(container,{variant=''}={}){
+  if(!container||container.dataset.overlayScrollbar)return null;
+  const root=container===document.documentElement;
+  const host=root?document.body:container.parentElement;
+  if(!host)return null;
+  container.dataset.overlayScrollbar='true';
+  const track=document.createElement('div');
+  track.className=`ovtrack${variant?` ${variant}`:''}`;
+  const thumb=document.createElement('div');
+  thumb.className='ovthumb';
+  track.append(thumb);
+  host.append(track);
+  const sync=()=>{
+    const range=container.scrollHeight-container.clientHeight;
+    if(range<=1){track.hidden=true;return}
+    // 先显再量：藏起来的轨道高度是 0，拿它当「量不到」会把自己永久锁在隐藏态。
+    track.hidden=false;
+    const trackH=track.clientHeight;
+    if(!trackH)return;
+    // 短到抓不住的滑块等于没有滑块：内容特别长时给它一个下限，代价是滑块位置与
+    // 滚动进度不再严格线性，但可拖动比可换算重要。
+    const thumbH=Math.max(24,Math.min(trackH,container.clientHeight/container.scrollHeight*trackH));
+    const travel=trackH-thumbH;
+    thumb.style.height=`${thumbH}px`;
+    thumb.style.transform=`translateY(${travel>0?container.scrollTop/range*travel:0}px)`;
+  };
+  (root?document:container).addEventListener('scroll',sync,{passive:true});
+  new ResizeObserver(sync).observe(container);
+  // 内容长短变了但容器盒子没变（抽屉重建、分区展开），容器自己的 ResizeObserver 一声不响。
+  // 整页那一条改看 body：它的高度就是内容高度，而在 documentElement 上挂 subtree 的
+  // MutationObserver 等于每渲染一张卡都强制一次重排。
+  if(root)new ResizeObserver(sync).observe(document.body);
+  else new MutationObserver(sync).observe(container,{childList:true,subtree:true});
+  track.addEventListener('pointerdown',event=>{
+    const trackRect=track.getBoundingClientRect(),thumbRect=thumb.getBoundingClientRect();
+    const travel=trackRect.height-thumbRect.height,range=container.scrollHeight-container.clientHeight;
+    if(travel<=0||range<=0)return;
+    // 按在滑块上就保持按住的那一点，按在轨道空白处则把滑块中心挪过来。
+    const grab=event.clientY>=thumbRect.top&&event.clientY<=thumbRect.bottom
+      ?event.clientY-thumbRect.top:thumbRect.height/2;
+    const to=clientY=>{container.scrollTop=Math.max(0,Math.min(range,
+      (clientY-trackRect.top-grab)/travel*range))};
+    const stop=()=>{track.classList.remove('dragging');
+      track.removeEventListener('pointermove',move);track.removeEventListener('pointerup',stop);
+      track.removeEventListener('pointercancel',stop)};
+    const move=moved=>to(moved.clientY);
+    track.classList.add('dragging');
+    track.setPointerCapture(event.pointerId);
+    track.addEventListener('pointermove',move);
+    track.addEventListener('pointerup',stop);
+    track.addEventListener('pointercancel',stop);
+    to(event.clientY);
+    event.preventDefault();
+  });
+  sync();
+  return sync;
+}
+
+/**
  * Geist Switch：2–3 个互斥视图用共享 name 的一组 radio，不用 Toggle。
  *
  * JAV 卡片版式和关注列表版式是同一个控件——只有 name、选项和当前值不同，所以模板

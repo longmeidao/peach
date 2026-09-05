@@ -5,7 +5,7 @@ import { matchRoute, routeLabel } from './js/routes.js';
 import { initMiddleTruncate } from './js/middle-truncate.js';
 import { tagLabel } from './js/tags.js';
 import {
-  breadcrumbHtml, checkboxHtml, closeAnchoredMenu, confirmModal, emptyStateHtml, fieldsetTitle,
+  attachOverlayScrollbar, breadcrumbHtml, checkboxHtml, closeAnchoredMenu, confirmModal, emptyStateHtml, fieldsetTitle,
   fillSkeletonTier, fitSkeleton, iconSwitchHtml, loadingDotsHtml,
   mediaViewButtonsHtml, noteHtml, progressHtml, scrollerHtml, searchInputHtml, selectFieldHtml,
   setActionBusy, skeletonHtml, spinnerHtml, wireAnchoredMenu, wireBusyActions, wireCollapse,
@@ -14,6 +14,8 @@ import {
 
 initMiddleTruncate(document);
 wireBusyActions(document);
+attachOverlayScrollbar(document.documentElement,{variant:'page'});
+attachOverlayScrollbar($('#drawerScroll'));
 /* 图片回退链全站只有这一条监听。`error` 不冒泡，但捕获阶段照样经过祖先，所以
    挂在 body 上就能接住任何后代 <img>——模板里不再有内联 `onerror`。 */
 wireImageFallbacks(document.body);
@@ -2491,7 +2493,7 @@ async function buildBars(){
   // 与窄栏共用 EDGE_ICONS —— 两边条目必须一致，抽屉不另写一份硬编码
   const navBtn=(k,label,ic)=>`<button data-nav="${k}" draggable="true" aria-pressed="${navOn(k)}">
     ${icon(ic)}<span>${label}</span></button>`;
-  $('#drawer').innerHTML=
+  $('#drawerScroll').innerHTML=
     `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
       <b class="disp" style="font-size:15px;letter-spacing:.1em">导航与筛选</b>
       <button id="drawerClose" class="ib" title="收起">${icon('x')}</button></div>`+

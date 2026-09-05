@@ -440,22 +440,78 @@ class WebUiSourceTests(unittest.TestCase):
             self.assertIn("background:var(--ground)", rule, f"{name} 是次级档，自己是一块亮面")
             self.assertIn("border:1px solid var(--line-soft)", rule, f"{name} 的边与次级档一致")
 
-    def test_the_scrollbar_track_is_transparent_and_the_thumb_follows_the_theme(self):
-        """槽底透明让页面底透上来，滑块取主题变量；形状和宽度仍交给浏览器。
+    def test_the_scrollbar_thumb_floats_over_the_content_and_takes_no_width(self):
+        """滑块自绘、浮在内容上，一列宽度都不占；颜色取主题变量。
 
-        浏览器默认那条槽在浅色一档是块死白，比 `--page` 还亮，窗口右边于是多出一条
-        从头贯到底的白带。滑块不写死灰值：写死一档只在一种主题下成立，深灰滑块落在
-        浅色底上就是一条突兀的粗杠。2026-09-05 实测 vercel.com：整站没有一条
-        `::-webkit-scrollbar` 规则，只在个别内部滚动区把滚动条整个藏掉，这个分寸不变。
+        原生滚动条自己占 15px 实宽，浅色一档的槽还是块比 `--page` 更亮的死白，窗口
+        右边于是常年挂着一条从头贯到底的白带。滑块不写死灰值：写死一档只在一种主题
+        下成立，深灰滑块落在浅色底上就是一条突兀的粗杠。几何按 2026-09-05 实测
+        vercel.com 侧栏：轨道 12px 只是命中区，看得见的是 3px，悬停 6px。
         """
         css = stylesheet_source()
         rules = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
         self.assertNotIn("--sb:", rules, "滚动条不需要专属颜色 token")
-        self.assertIn("scrollbar-color:var(--field-ring-hover) transparent", rules)
-        self.assertEqual(rules.count("scrollbar-color"), 1, "配色只在 html 上定一次")
-        for hidden in ("::-webkit-scrollbar{display:none}", "scrollbar-width:none"):
-            self.assertIn(hidden, rules, "内部滚动区仍然可以把滚动条整个藏掉")
-        self.assertNotIn("::-webkit-scrollbar-thumb", rules, "不自绘滑块")
+        self.assertIn("html{color-scheme:light;scroll-padding-top:calc(var(--topH) + 8px);"
+                      "scrollbar-width:none}", rules)
+        self.assertNotIn("scrollbar-color", rules, "原生滑块已经不画了，没有配色可调")
+        self.assertIn(".ovtrack{position:absolute;right:0;top:8px;bottom:8px;width:12px;"
+                      "z-index:2;pointer-events:none}", rules)
+        self.assertIn(".ovthumb{position:absolute;right:0;top:0;width:3px;"
+                      "border-radius:var(--pill-radius);background:var(--field-ring-hover);", rules)
+        self.assertIn("transition:width .15s cubic-bezier(.4,0,.2,1)}", rules)
+        self.assertIn(".ovtrack:hover .ovthumb,.ovtrack.dragging .ovthumb{width:6px}", rules)
+        # 粗指针没有悬停也没有可指的滑块，但滑块照画：原生的已经关掉，跟着一起收
+        # 就等于触屏上读不出这一列有多长、自己在哪儿。
+        self.assertIn("@media (pointer:fine){.ovtrack{pointer-events:auto}}", rules)
+        self.assertNotIn("::-webkit-scrollbar-thumb", rules, "滑块是元素，不是伪元素")
+
+    def test_the_page_track_only_takes_pointer_events_on_the_thumb_itself(self):
+        """整页那条轨道横跨窗口右边，命中区必须收到 3px 的滑块上。
+
+        侧栏轨道 12px 宽、只覆盖侧栏，吃掉的点击本来就是侧栏自己的。整页那条不一样：
+        它从窗口顶贯到底，12px 的透明条会把右边缘所有点击一并吃掉，而设置面板正贴
+        在那儿。宽出来的命中区换不到什么，丢掉的是右侧一整列控件。
+        """
+        css = stylesheet_source()
+        rules = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
+        self.assertIn(".ovtrack.page{position:fixed;top:0;bottom:0;z-index:91;"
+                      "pointer-events:none}", rules)
+        self.assertIn("@media (pointer:fine){.ovtrack.page .ovthumb{pointer-events:auto}}", rules)
+        self.assertIn(".ovtrack.page:hover .ovthumb{width:3px}", rules)
+        self.assertIn(".ovtrack.page .ovthumb:hover,.ovtrack.page.dragging .ovthumb{width:6px}",
+                      rules)
+
+    def test_the_overlay_thumb_is_sized_and_moved_by_the_measured_ratio(self):
+        """滑块高按可视高/内容高，位移按滚动进度×可走距离；不可滚就整条收起。
+
+        2026-09-05 实测 vercel.com 侧栏：轨道 789px、可视 805、内容 851，滑块高
+        746.35 —— 正好是 805/851×789，位移写在行内 `transform:translateY()` 上。
+        另一半是自锁陷阱：藏起来的轨道 `clientHeight` 是 0，拿它当「量不到」就再也
+        显不回来，所以顺序必须是先显再量。
+        """
+        self.assertPageContains("const thumbH=Math.max(24,Math.min(trackH,"
+                                "container.clientHeight/container.scrollHeight*trackH));")
+        self.assertPageContains("thumb.style.transform=`translateY(${travel>0?"
+                                "container.scrollTop/range*travel:0}px)`;")
+        self.assertPageContains("if(range<=1){track.hidden=true;return}")
+        self.assertPageContains("track.hidden=false;")
+        # 抽屉重建后内容长短变了，容器盒子没变；整页那条改看 body 的高度，避免在
+        # documentElement 上挂 subtree 的 MutationObserver。
+        self.assertPageContains("if(root)new ResizeObserver(sync).observe(document.body);")
+        self.assertPageContains("else new MutationObserver(sync).observe("
+                                "container,{childList:true,subtree:true});")
+
+    def test_the_drawer_scrolls_in_an_inner_layer_so_the_track_can_stay_put(self):
+        """抽屉自己不滚，滚的是里面那层：跟着内容一起滚的轨道等于没有轨道。"""
+        self.assertPageContains('<aside class="drawer" id="drawer">'
+                                '<div class="drawerscroll" id="drawerScroll"></div></aside>')
+        self.assertPageContains("$('#drawerScroll').innerHTML=")
+        self.assertPageContains(".drawerscroll{height:100%;box-sizing:border-box;"
+                                "padding:16px 12px 60px;")
+        self.assertPageContains("overflow-y:auto;overflow-x:hidden;scrollbar-width:none}")
+        self.assertPageContains(".drawer{position:fixed;top:0;bottom:0;left:0;width:360px;")
+        self.assertPageContains("attachOverlayScrollbar(document.documentElement,{variant:'page'});")
+        self.assertPageContains("attachOverlayScrollbar($('#drawerScroll'));")
 
     def test_anchored_menus_open_in_the_top_layer_so_animated_ancestors_cannot_clip_them(self):
         """自绘下拉的面板进顶层，祖先上的 transform 与 overflow 都够不着它。
@@ -1469,9 +1525,15 @@ class WebUiSourceTests(unittest.TestCase):
         # 去重靠调用点的 seen 集合。
         self.assertPageContains("const seen=new Set(tokList.map(x=>x.id))")
 
-    def test_scrollbar_gutter_is_reserved_so_overlays_do_not_shift_the_page(self):
-        """设置面板给 body 加 overflow:hidden，滚动条一消失整页就横向跳一次。"""
-        self.assertPageContains("scrollbar-gutter:stable;")
+    def test_no_gutter_is_reserved_because_nothing_disappears_when_scrolling_locks(self):
+        """设置面板给 body 加 overflow:hidden 时，整页不再横向跳。
+
+        `scrollbar-gutter:stable` 用永久扣下 15px 换「消失时不跳」。滑块浮在内容上，
+        没有东西会消失，跳版的前提不成立，那一列也就不必留。
+        """
+        css = stylesheet_source()
+        rules = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
+        self.assertNotIn("scrollbar-gutter:stable;", rules)
         self.assertPageContains("body.settings-open{overflow:hidden}")
 
     def test_closing_a_deep_linked_player_reloads_the_home_feed(self):
