@@ -1,7 +1,7 @@
 """媒体来源表单与配置映射；来源 ID 直接沿用扫描及流量策略。"""
 from __future__ import annotations
 
-from pathlib import Path, PureWindowsPath, PurePosixPath
+from pathlib import Path, PurePath, PureWindowsPath, PurePosixPath
 from typing import Any
 
 from . import platform
@@ -28,16 +28,18 @@ def validate(raws: object, *, windows: bool) -> tuple[dict, dict, list[str]]:
     locations: dict[str, list[str]] = {}
     mounts: dict[str, list[str]] = {}
     errors = [""] * len(raws)
-    seen: list[tuple[int, PureWindowsPath, Path]] = []
+    seen: list[tuple[PureWindowsPath, PurePath]] = []
     for index, row in enumerate(raws):
         try:
             if not isinstance(row, dict):
                 raise ValueError("媒体来源格式不正确")
             location = row.get("location")
-            if location not in dict(SOURCE_OPTIONS):
+            if not isinstance(location, str) or location not in dict(SOURCE_OPTIONS):
                 raise ValueError("请选择本地磁盘、115 或 PikPak")
             text = str(row.get("path", "")).strip()
             root = text if windows else str(row.get("root", "")).strip()
+            if any(ord(char) < 32 for char in text + root):
+                raise ValueError("路径不能包含控制字符")
             if not platform.is_windows_path(root) or ".." in PureWindowsPath(root).parts:
                 raise ValueError("账本根目录必须是绝对盘符路径，例如 B:\\")
             path = PureWindowsPath(text) if windows else PurePosixPath(text)
@@ -46,13 +48,13 @@ def validate(raws: object, *, windows: bool) -> tuple[dict, dict, list[str]]:
             if ".." in path.parts:
                 raise ValueError("挂载点不能包含上级目录 ..")
             declared = PureWindowsPath(root)
-            for _, other_root, other_path in seen:
+            for other_root, other_path in seen:
                 if (declared == other_root or declared.is_relative_to(other_root)
                         or other_root.is_relative_to(declared)):
                     raise ValueError("账本根目录与另一行重复或重叠")
                 if path == other_path or path.is_relative_to(other_path) or other_path.is_relative_to(path):
                     raise ValueError("本机挂载点与另一行重复或重叠")
-            seen.append((index, declared, path))
+            seen.append((declared, path))
             locations.setdefault(location, []).append(str(declared))
             if not windows:
                 mounts.setdefault(location, []).append(str(path))

@@ -3,6 +3,7 @@ from dataclasses import replace
 from pathlib import Path
 import tempfile
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from peach import media_configuration as media_config, onboarding, settings_file
@@ -28,6 +29,8 @@ class MediaConfigurationTests(unittest.TestCase):
 
     def test_invalid_and_overlapping_roots_return_row_errors(self):
         for rows in ([{"location": "bad", "path": "B:/"}],
+                     [{"location": [], "path": "B:/"}],
+                     [{"location": "115", "path": "B:/bad\u0000file"}],
                      [{"location": "115", "path": "../115"}],
                      [{"location": "115", "path": "B:/"}, {"location": "local", "path": "b:/Movies"}]):
             self.assertTrue(media_config.validate(rows, windows=True)[2])
@@ -64,3 +67,17 @@ class MediaConfigurationTests(unittest.TestCase):
             self.assertIn('value="115" selected', html)
             self.assertIn('name="media_root"', html)
             self.assertIn('value="B:/"', html)
+
+    def test_cloud_only_completion_page_shows_its_mount_and_scan_command(self):
+        from peach.routes_pages import setup_done_page
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory).resolve()
+            config = replace(settings_file.load_config(environ={"PEACH_DATA_ROOT": str(base)}),
+                             locations={"115": ("B:/",)}, mounts={"115": ("/Volumes/115",)})
+            tree = SimpleNamespace(database=base / 'ledger.db', ledger_existed=False, migrations=0,
+                                   ca_cert=None, ca_error='unavailable', token_path=base / 'token')
+            with patch('peach.distribution.standalone', return_value=False):
+                html = setup_done_page(SimpleNamespace(config=config, tree=tree), windows=False, scan_requested=False)
+            self.assertIn('/Volumes/115', html)
+            self.assertIn('peach scan configured', html)
+            self.assertNotIn('peach scan local', html)

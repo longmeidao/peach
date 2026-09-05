@@ -497,9 +497,11 @@ def setup_done_page(applied, *, windows: bool, scan_requested: bool) -> str:
                "<code>peach init --force</code> 补上。局域网设备要装这份 CA 才不报证书错。")
     scan = ("<li>首次扫描已排队，托盘会在服务起来之后在后台跑，期间页面照常能用。</li>"
             if scan_requested else
-            "<li>没有请求首次扫描；要扫就跑 <code>peach scan local</code>。</li>")
-    mounts = ("" if windows else
-              f"<p>{escape(onboarding.mounts_explanation(config.mounts.get('local', ())))}</p>")
+            "<li>没有请求首次扫描；要扫就跑 <code>peach scan configured</code>。</li>")
+    from .media_configuration import rows
+    mounts = ("" if windows else '<dl class="facts">' + ''.join(
+        f'<dt>{escape(row["location"])} · {escape(row["root"])}</dt><dd>{escape(row["path"])}</dd>'
+        for row in rows(config, windows=False)) + '</dl>')
     body = (
         "<h1>设置完成</h1>"
         "<p>托盘正在停掉这条引导服务，改用正常的 Peach 服务；这个页面几秒后就会连不上，"
