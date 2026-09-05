@@ -425,6 +425,23 @@ class WebUiSourceTests(unittest.TestCase):
             self.assertIn("background:var(--overlay-5)", rule, f"{name} 是操作条")
             self.assertIn("var(--line-soft)", rule, f"{name} 与正文之间是一条发丝线")
 
+    def test_the_follow_job_panel_is_the_same_container_tier_as_its_neighbours(self):
+        """检查更新的进度面板与 `.fsec` 同档：`--field-ring` 的发丝边配 `--ground` 的面。
+
+        它在 `/follow-manage` 上就夹在两张 `.fsec` 中间，容器档位一不一样一眼就看得出来：
+        亮一档的面加淡一档的边会让同一列里出现两种卡片，而它承载的只是同一页的一段进度。
+        """
+        css = stylesheet_source()
+        panel = css[css.index(".followtask{"):]
+        panel = panel[:panel.index("}")]
+        section = css[css.index(".fsec{"):]
+        section = section[:section.index("}")]
+        for token in ("border:1px solid var(--field-ring)", "background:var(--ground)"):
+            self.assertIn(token, panel, "进度面板与分区容器同档")
+            self.assertIn(token, section, "分区容器是这一档的基准")
+        self.assertPageContains('<section class="followtask" data-geist-fieldset '
+                                'aria-label="检查更新进度">')
+
     def test_buttons_keep_two_tiers_a_solid_primary_and_a_bright_secondary(self):
         """按钮只有两档：主动作实底墨色，次级是比容器亮一档的面加一圈发丝边。
 
