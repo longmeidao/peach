@@ -129,7 +129,7 @@ f95zone 线程 50685，`creator` 字段写作 `LazyProcrastinator/LazyProcrast`�
 
 ### 站点表补记（2026-08-29）
 
-上表为 2026-08-25 的初始实测；其后接入的内容按当前 `docs/STATUS.md`「已核验能力」补齐，
+上表为 2026-08-25 的初始实测；其后接入的内容按当前 `docs/REUSE.md`「已定型的产品行为」补齐，
 连接器细节以 `follow_sources.py`／`follow_providers.py` 登记为准：
 
 | 来源 | 入口 | 凭据 | 结论 |

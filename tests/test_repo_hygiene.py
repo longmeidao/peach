@@ -135,6 +135,21 @@ class BacklogSelfConsistencyTests(unittest.TestCase):
             "入口文件不留编号待办：写现状用无序列表，要做的事去 docs/PRODUCT_BACKLOG.md",
         )
 
+    def test_the_status_entry_file_only_holds_runtime_state(self):
+        """入口文件的小节是白名单，加一节要先来改这里。
+
+        `docs/STATUS.md` 装得下的只有「原地替换、边界固定」的内容：机器、端口、链路、
+        账本版本。清单型的小节一进来就再也不出去——每上线一个特性加一行，永不减，
+        因为「已经做过」这个断言没有任何事件能让它失效。已定型的行为判据去
+        `docs/REUSE.md`，要做的事去 `docs/PRODUCT_BACKLOG.md`，长期知识去
+        `docs/HANDOFF.md`，三处都是按需读取，不占每轮预算。
+        """
+        status = (DOCS / "STATUS.md").read_text(encoding="utf-8")
+        self.assertEqual(
+            re.findall(r"^## (.+)$", status, re.M), ["运行态", "批处理进度"],
+            "入口文件只留这两节；新内容按判据落到 REUSE／PRODUCT_BACKLOG／HANDOFF",
+        )
+
     def test_the_section_headings_declare_their_own_counts(self):
         for heading, actual in (("已有骨架、尚未完成", self._numbered("## 已有骨架、尚未完成")),
                                 ("尚未实现", self._numbered("## 尚未实现")),
