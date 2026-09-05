@@ -55,7 +55,8 @@ main{max-width:560px;margin:0 auto}
 h1{font-size:var(--fs-3xl);font-weight:600;line-height:1.25;margin:16px 0 0}
 .lede{margin:6px 0 0;color:var(--muted)}
 h2{font-size:var(--fs-lg);font-weight:600;margin-top:32px;padding-top:24px;border-top:1px solid var(--line)}
-p{color:var(--ink-2)}a{color:var(--tungsten);text-underline-offset:3px}
+p{color:var(--ink-2)}a{color:var(--tungsten);text-decoration:none}
+a:hover{text-decoration:none}
 code{font:var(--fs-xs)/1.5 ui-monospace,Consolas,"Cascadia Mono",monospace;
 background:var(--surface);border:1px solid var(--line-soft);border-radius:var(--badge-radius);
 padding:2px 6px;overflow-wrap:anywhere}
@@ -275,16 +276,23 @@ def _scrollbar_rules() -> str:
 
 def error_page(status: int, message: str) -> str:
     """浏览器导航撞上 403／404／409 时给人看的那一页，不是一行 JSON。"""
-    title = {403: "这里不能打开", 404: "没有这一页", 409: "现在不能这样做"}.get(status, "出了点问题")
+    title = {403: "这里不能打开", 404: "四〇四", 409: "现在不能这样做"}.get(status, "出了点问题")
+    description = '' if status == 404 else f'<p class="lede">{escape(message)}</p>'
     body = (f'<img class="mark" src="/peach-logo.png" alt=""><h1>{title}</h1>'
-            f'<p class="lede">{escape(message)}</p><p><a href="/">返回馆藏</a></p>')
+            f'{description}<p><a class="geist-button primary" href="/">返回首页</a></p>')
     return _document(f"Peach · {title}", body)
+
+
+def _button_rules() -> str:
+    """独立页面直接使用主站的 Geist Button 规则。"""
+    base = (PROJECT_ROOT / "web/css/01-base.css").read_text(encoding="utf-8")
+    return '\n'.join(re.findall(r'^\.geist-button[^{}]*\{[^}]*\}', base, re.M))
 
 
 def _document(title: str, body: str) -> str:
     # 页内脚本对两张页面都生效：找不到对应控件时它什么也不做。
     return (f"{_SETUP_HEAD}<title>{title}</title><style>{_theme_tokens()}{_scrollbar_rules()}</style>"
-            f"{_SETUP_STYLE}</head><body><main>{body}</main>{_SETUP_SCRIPT}{_SHARED_SCRIPT}</body></html>\n")
+            f"{_SETUP_STYLE}<style>{_button_rules()}</style></head><body><main>{body}</main>{_SETUP_SCRIPT}{_SHARED_SCRIPT}</body></html>\n")
 
 
 def _check_html(name: str, text_html: str, *, checked: bool) -> str:
@@ -758,6 +766,7 @@ def peach_logo():
 @router.api_route("/data-cleanup", methods=["GET", "HEAD"])
 @router.api_route("/duplicates", methods=["GET", "HEAD"])
 @router.api_route("/quality-goals", methods=["GET", "HEAD"])
+@router.api_route("/scraping", methods=["GET", "HEAD"])
 @router.api_route("/resource-sync", methods=["GET", "HEAD"])
 @router.api_route("/follow", methods=["GET", "HEAD"])
 @router.api_route("/follow-manage", methods=["GET", "HEAD"])

@@ -78,6 +78,8 @@ import httpx
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from peach import face_detect, images, link_marks, site_icons, site_logos  # noqa: E402
+from peach.http import HttpRequest, HttpxTransport
+from peach.scripting import RateLimiter
 from peach.config import GENERATED_DIR, REVIEW_DIR, STATE_DIR
 from peach.review_csv import write_rows
 
@@ -330,13 +332,14 @@ class Fetcher:
     def __init__(self, client: httpx.Client, timeout: float, interval: float,
                  retries: int = 2, backoff: float = 2.0):
         self.client = client
+        self.transport = HttpxTransport(client)
         self.timeout = timeout
         self.interval = interval
         self.retries = retries
         self.backoff = backoff
         self.fetched = 0
         self.retried = 0
-        self._last = 0.0
+        self._limiter = RateLimiter(interval)
         #: 同一份首页这一趟会被要三次：`site_icons` 找声明、这边找 header 的 `<img>`、
         #: 再找页面上的 X 账号。缓存把它压回一次，省的是站点的带宽和这一轮的墙上时间。
         self._cache: dict[str, tuple[bytes, str] | None] = {}
@@ -353,13 +356,10 @@ class Fetcher:
 
     def _get(self, target: str):
         for attempt in range(self.retries + 1):
-            wait = self.interval - (time.monotonic() - self._last)
-            if wait > 0:
-                time.sleep(wait)
-            self._last = time.monotonic()
+            self._limiter.wait()
             try:
-                response = self.client.get(target, headers={"User-Agent": USER_AGENT},
-                                           timeout=self.timeout, follow_redirects=True)
+                response = self.transport(HttpRequest("GET", target, {"User-Agent": USER_AGENT}),
+                                          self.timeout, 16 * 1024 * 1024)
             except (OSError, httpx.HTTPError):
                 # 和 `page_cache.Site` 同一条规矩：这些站的 TLS 大约三次断一次，重试即成。
                 # 上一轮 Fitch、Idea Pocket、Wanz Factory 都取到了，这一轮四个全断，
@@ -370,10 +370,10 @@ class Fetcher:
                 time.sleep(self.backoff * (attempt + 1))
                 continue
             # 状态码不重试：404 重试三次还是 404。
-            if response.status_code != 200 or not response.content:
+            if response.status != 200 or not response.body or len(response.body) > 16 * 1024 * 1024:
                 return None
             self.fetched += 1
-            return response.content, response.headers.get("content-type", "")
+            return response.body, response.headers.get("content-type", "")
         return None
 
 

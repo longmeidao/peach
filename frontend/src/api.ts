@@ -57,9 +57,9 @@ export async function apiGet<T>(path: string, signal?: AbortSignal): Promise<T> 
 }
 
 /** 带 JSON 请求体的写操作。失败时原响应体挂在 `ApiError.body` 上，字段级原因由调用方取。 */
-export async function apiSend<T>(path: string, body: unknown, method = 'POST'): Promise<T> {
+export async function apiSend<T>(path: string, body: unknown, method = 'POST', signal?: AbortSignal): Promise<T> {
   const response = await fetch(path, {
-    method,
+    method, ...(signal ? { signal } : {}),
     headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
     credentials: 'same-origin',
     body: JSON.stringify(body),

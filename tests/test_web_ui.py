@@ -3311,6 +3311,19 @@ class WebUiSourceTests(unittest.TestCase):
                          "统计页只讲库里现在有多少，不该再挂对齐外部现实的面板")
         self.assertNotIn("resourceSyncMarkup()", stats)
 
+    def test_scraping_uses_shared_controls_and_source_links(self):
+        self.assertPageContains("'/scraping':'采集来源'")
+        self.assertPageContains('data-cleanup-open="scraping"')
+        self.assertPageContains('.scraping-fields .gselectfield{justify-content:space-between;padding-right:16px;')
+        self.assertPageContains('.scraping-fields .scraping-url{text-decoration:none;')
+        self.assertPageContains('.scraping-fields .scraping-url:hover{color:var(--ink);text-decoration:none}')
+        self.assertPageContains('.scraping-fields .scraping-cover-form{display:flex;align-items:center;')
+        source = (Path(__file__).resolve().parents[1] / 'frontend/src/islands/scraping.tsx').read_text(encoding='utf-8')
+        self.assertIn('wireSelectField(root.firstElementChild!)', source)
+        self.assertNotIn('<select', source)
+        self.assertIn('提供 Cookie 的方式（二选一）', source)
+        self.assertIn('class="scraping-url" href={source.login}', source)
+
     def test_data_management_subpages_carry_geist_breadcrumbs(self):
         """数据管理五张卡进的是它的子页，得有回去的路和自己的名字。
 

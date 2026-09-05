@@ -321,7 +321,7 @@ def probe(url: str, timeout: float, retries: int = 2, backoff: float = 2.0
     这个空结论当成事实。只重试传输层异常：HTTP 状态码是站点的回答，不是抖动。
     """
     for attempt in range(retries + 1):
-        http = HttpxTransport(crawler_client())
+        http = HttpxTransport(crawler_client(), owns_client=True)
         try:
             response = http(HttpRequest("GET", url, {"User-Agent": USER_AGENT}),
                             timeout, 4 << 20)

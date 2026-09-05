@@ -52,6 +52,7 @@ from .web_playlists import q_playlist, q_playlists, w_playlist
 from .web_resource_sync import w_purge_missing, w_resource_sync_apply, w_resource_sync_scan
 from .web_review import q_review, w_review_auto_apply, w_review_decision
 from .web_settings import q_settings, w_settings
+from .web_scraping import q_scraping, w_scraping_settings, w_scraping_check, w_scraping_cover
 from .web_state import WebContract
 from .web_stats import (
     q_quality_goals,
@@ -172,6 +173,8 @@ def _post_empty_trash(contract, _body):
 
 
 GET_HANDLERS = {
+    "/api/scraping": q_scraping,
+    "/api/scraping/cover": lambda contract, args: contract.scraping_cover_job.snapshot() or {"status": "idle"},
     "/api/settings": q_settings,
     "/api/follow": q_follow,
     "/api/follow/credentials": q_follow_credentials,
@@ -206,6 +209,9 @@ GET_HANDLERS = {
 }
 
 POST_HANDLERS = {
+    "/api/scraping/settings": w_scraping_settings,
+    "/api/scraping/cover": w_scraping_cover,
+    "/api/scraping/check": w_scraping_check,
     "/api/follow/check": w_follow_check,
     "/api/follow/schedule": w_follow_schedule,
     "/api/follow/source": w_follow_source,
@@ -246,6 +252,7 @@ POST_HANDLERS = {
 #: 不该拦它们——「查找」只联网、「存凭据」只写本机 secrets 文件，都不碰账本。
 #: 追更的「查找」在只读端被拦成 409 是实测踩到的。
 READ_ONLY_POST_ROUTES = frozenset({
+    "/api/scraping/settings", "/api/scraping/check",
     "/api/follow/resolve", "/api/follow/credential",
     "/api/taste/refresh", "/api/taste/source", "/api/resource-sync/scan",
     "/api/links/check", "/api/data-cleanup/empty-folders",
