@@ -81,7 +81,7 @@
 
 ## 常犯错误（没有自动拦截，都是真实重犯过的）
 
-- 写命令前先分辨当前 shell，不混用语法：PowerShell 里 `cat`、`ls`、`where` 是别名，Bash 里没有 `Get-ChildItem`；需要 PowerShell 时用 `pwsh`（7.x），不回退 `powershell.exe`（5.1），从 Bash 调用加 `-NoProfile`。引号默认单引号，需要变量展开才用双引号，有歧义写 `${name}`；`rg` 不收含 `*` 的路径参数，筛选用 `-g`，退出码 1 是无匹配不是错误。多行内容一律用写入工具或脚本落盘，不用 heredoc——转义曾毁掉整个测试文件。
+- 命令按当前 shell 编写：PowerShell 的 `cat`、`ls`、`where` 是别名，Bash 没有 `Get-ChildItem`。PowerShell 只用 `pwsh` 7.x，从 Bash 调用加 `-NoProfile`。默认单引号，需展开用双引号，歧义用 `${name}`。`rg` 路径不含 `*`，用 `-g` 筛选；退出码 1 表示无匹配。Python CLI 加 `-X utf8`，读 UTF-8 日志加 `-Encoding utf8`。多行内容用写入工具或脚本落盘，不用 heredoc，防止转义损坏。
 - PowerShell 变量必须使用任务专属名称；禁止声明 `$HOME`、`$home`、`$CODEX_HOME` 等系统变量的任何大小写变体。`foreach {}` 的结果先存入任务专属数组，再单独接管道格式化，禁止在闭合花括号后直接写管道。
 - HTTPS 结论必须使用项目 CA 做严格校验；Schannel、浏览器或取证入口失败时，立即报告原始错误和未取得的验收面，不能改用 HTTP 成功来声称 HTTPS 已通过。
 - UI 标签、身份、反馈状态和搜索推荐属于语义契约。修改时必须同时增加数据层测试和页面源测试，不能只改显示文本；推荐词上线前必须对真实 `/api/items` 验证至少一个命中，说明性后缀不得混入搜索词。
