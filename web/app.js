@@ -137,6 +137,9 @@ const ROUTES=[
     open:(params,push)=>openFollow(push),reload:()=>openFollow(false)},
   {match:'/follow-manage',section:'follow',title:'关注管理',refresh:'skip',
     open:(params,push)=>openFollowManage(push)},
+  // 这台电脑的媒体文件夹与端口。页面是 island，数据走 /api/configuration。
+  {match:'/configuration',section:'configuration',title:'配置',refresh:'reopen',
+    open:(params,push)=>openConfiguration(push)},
   {match:'/immerse',nav:'immerse',title:'沉浸模式',
     open:(params,push)=>openTok(immerseStartId(),push)},
 ];
@@ -224,6 +227,9 @@ const MANAGEMENT_PLACEHOLDERS={
   // 骨架照 .fsec 的轮廓画三块，六张 16:9 占位说的是另一个页面的结构。
   '/follow-manage':()=>`<div class="follow">${pageSkeletonHtml('正在读取关注管理',
     {cards:true,count:3,fill:false,className:'followmanage-skeleton'})}</div>`,
+  // 配置页是两块同宽的卡（表单、运行信息），骨架照数据管理那套单列卡片的轮廓画两块。
+  '/configuration':()=>`<div class="configpage">${pageSkeletonHtml('正在读取配置',
+    {cards:true,count:2,fill:false,className:'cleanup-skeleton'})}</div>`,
 };
 const managementPlaceholder=path=>
   (MANAGEMENT_PLACEHOLDERS[path]||(()=>pageSkeletonHtml('正在读取页面')))();
@@ -242,7 +248,7 @@ function renderInitialSurfaceLoading(){
     return;
   }
   const management=new Set(['/stats','/taste','/review','/data-cleanup','/duplicates','/quality-goals',
-    '/playlists','/resource-sync','/follow','/follow-manage']);
+    '/playlists','/resource-sync','/follow','/follow-manage','/configuration']);
   if(management.has(path)||path.startsWith('/follow/item/')){
     hideDiscoveryBars();
     const stats=$('#stats');stats.hidden=false;$('#grid').innerHTML='';
@@ -3589,6 +3595,19 @@ async function openQualityGoals(push=true){
   await ui.mountIsland('quality-goals',$('#stats'),props,{isCurrent:()=>surfaceCurrent(surface)});
   if(surfaceCurrent(surface))window.scrollTo({top:0,behavior:'smooth'});
 }
+/* 配置页（这台电脑的媒体文件夹与端口）同样是 island。它只在运行 Peach 的这台电脑上
+   有意义：服务端按回环地址与独立包两道门放行，手机上的管理菜单也不列它
+   （见 runtimeConfigurable）。保存成功的回执由遗留层的 Toast 发，island 只管表单。 */
+async function openConfiguration(push=true){
+  releaseHoverPreviews();disposeStage(false);enterManagementSurface();
+  if(push)route('/configuration');
+  const surface=claimSurface('/configuration');
+  showManagementBody({placeholder:managementPlaceholder('/configuration')});
+  const ui=await import('/dist/peach-ui.js');
+  const props={receipt:message=>actionReceipt(message)};
+  await ui.mountIsland('configuration',$('#stats'),props,{isCurrent:()=>surfaceCurrent(surface)});
+  if(surfaceCurrent(surface))window.scrollTo({top:0,behavior:'smooth'});
+}
 
 /* ── 在线追更 ──
    两个页面，因为是两件事：
@@ -6151,13 +6170,29 @@ const MANAGE_SECTIONS=[
   // `/follow`。两处都叫「关注」时，管理菜单和页标题都在说一个它去不到的地方。
   ['follow','关注管理','rss'],
   ['quality','高清版','sparkles'],
+  // 这台电脑的媒体文件夹与端口，字形是一台电脑；`settings` 归右上角的设置弹层。
+  ['configuration','配置','computer'],
 ];
-/* 管理菜单只留四项。人工复核、回收站、高清版都是「收拾库里已有的东西」，
+/* 管理菜单只留五项。人工复核、回收站、高清版都是「收拾库里已有的东西」，
    和垃圾文件、重复文件、空文件夹是同一件事的不同步骤，统一从数据管理进；
    统计页也因此不再挂链接管理和资源同步这两块跟统计无关的面板。 */
-const MANAGE_MENU_SECTIONS=['stats','taste','cleanup','follow'];
-const manageMenuSections=()=>MANAGE_SECTIONS.filter(([key])=>MANAGE_MENU_SECTIONS.includes(key));
-const OPTIONAL_EDGE_ICONS=MANAGE_SECTIONS.map(([key,label,ic])=>
+const MANAGE_MENU_SECTIONS=['stats','taste','cleanup','follow','configuration'];
+/* 「配置」只对运行 Peach 的这台电脑有意义：服务端按调用方回 `/healthz` 的 `configurable`，
+   手机和另一台电脑的菜单里不列它。第一次画管理条时问一次，答复回来后重画。 */
+let runtimeConfigurable=null;
+function probeConfigurable(){
+  if(runtimeConfigurable!==null)return;
+  runtimeConfigurable=false;
+  api('/healthz').then(runtime=>{
+    runtimeConfigurable=!!runtime.configurable;
+    if(runtimeConfigurable&&manageSection())buildManageBar();
+  }).catch(()=>{});
+}
+const manageMenuSections=()=>MANAGE_SECTIONS.filter(([key])=>MANAGE_MENU_SECTIONS.includes(key)
+  &&(key!=='configuration'||runtimeConfigurable===true));
+/* 配置页绑定这台机器，不进跨机同步的侧栏顺序：钉到手机的侧栏上只会得到一句「请在运行
+   Peach 的电脑上打开」。 */
+const OPTIONAL_EDGE_ICONS=MANAGE_SECTIONS.filter(([key])=>key!=='configuration').map(([key,label,ic])=>
   key==='follow'?['follow-manage',label,ic]
     :key==='cleanup'?['data-cleanup',label,ic]:[key,label,ic]);
 const NAV_CATALOG=[...EDGE_ICONS,...OPTIONAL_EDGE_ICONS];
@@ -6317,6 +6352,7 @@ function manageSection(){
 function buildManageBar(){
   const current=manageSection(),bar=$('#managebar');
   bar.hidden=!current;
+  probeConfigurable();
   // 管理区是行政界面，不该顶着首页的人物/厂牌横条和标签筛选。
   // 隐藏 tagbar 的同时同步 count 栏的吸顶偏移：它默认按「顶栏+筛选条」留位，
   // 筛选条不在时那个偏移会留出一条 58px 的缝，滚动内容从缝里穿出来。
@@ -6357,6 +6393,7 @@ function paintManageTitle(){
      重复文件正文都是全宽网格，跟着居中就是标题在宽屏上凭空左缩一截、跟内容对不齐。 */
   document.body.classList.toggle('cleanup-layout',current==='cleanup'&&decodeURIComponent(location.pathname)==='/data-cleanup');
   document.body.classList.toggle('follow-manage-layout',decodeURIComponent(location.pathname)==='/follow-manage');
+  document.body.classList.toggle('configuration-layout',current==='configuration');
   const entry=MANAGE_SECTIONS.find(([k])=>k===current);
   el.hidden=!entry;
   // 数据管理之下按路径再分一层（MANAGE_CRUMB_PAGES）：垃圾文件/重复文件的

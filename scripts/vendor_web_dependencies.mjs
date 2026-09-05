@@ -85,6 +85,10 @@ const lucideIcons = new Map([
   // 名字和上游对不上的只有排序键：Peach 叫 `sort`，Lucide 叫 `sort-desc`。
   ["sort", "sort-desc"], ["arrow-up", "arrow-up"], ["arrow-down", "arrow-down"],
   ["calendar", "calendar"], ["download", "download"], ["monitor", "monitor"],
+  // 管理菜单里的「配置」：这台电脑。`monitor` 已经归详情页的分辨率，不能兼任。
+  ["computer", "computer"],
+  // 配置页每行文件夹的「选择文件夹」：弹系统对话框去挑。`folder-open` 归「打开位置」，不兼任。
+  ["folder-search", "folder-search"],
 ]);
 
 // 自绘 symbol：没有上游可对，所以在这里逐个点名。下面那道分区检查要求雪碧图里

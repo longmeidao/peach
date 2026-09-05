@@ -11,6 +11,20 @@ export const emptyStateHtml = (
   + `<div class="es-icon" data-icon="${iconName}"></div>`
   + `<div class="es-copy"><h3>${title}</h3><p>${description}</p></div></div>`;
 
+export const fieldsetTitle = (id: string, title: string): string =>
+  `<h3 class="geist-fieldset-title" id="${id}">${title}</h3>`;
+
+export const setActionBusy = (control: Element | null, busy = true): void => {
+  if (!control) return;
+  if (busy) {
+    control.setAttribute('aria-busy', 'true');
+    control.setAttribute('aria-disabled', 'true');
+  } else {
+    control.removeAttribute('aria-busy');
+    control.removeAttribute('aria-disabled');
+  }
+};
+
 export const noteHtml = (
   message: string,
   options: { variant?: string; label?: string } = {},

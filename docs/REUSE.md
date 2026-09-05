@@ -54,6 +54,7 @@
 
 | 能力 | 复用实现 | Peach 负责 |
 |---|---|---|
+| 本机文件夹对话框 | Windows 自带 `powershell.exe` 经 `Add-Type` 调 Shell 的 `IFileOpenDialog`（带地址栏的文件夹选择框）；macOS `osascript` 的 `choose folder` | `src/peach/folder_picker.py` 只拼命令、区分取消与失败、一次只开一个；不为一个对话框引入 tkinter 或 GUI 框架 |
 | HTTP | 默认复用全项目共用的 `httpx.Client`/transport；FANBOX 公开 `post.info` 按固定证据复用 `curl_cffi==0.16.2` | 来源策略、DTO、脱敏、站点限定、大小上限；不求解机器人质询 |
 | RSS/Atom | `feedparser` | 有界抓取、快照、复核、导入 |
 | 追更来源接口 | FANBOX 公开帖子 API（详情只使用用户自己的可选 Cookie 与 Firefox 传输特征）、kemono 系公开 JSON API（`Accept: text/css`，站点自述的抓取路径）、rule34.xxx 官方 dapi（需账号 API key）与官方 tag 补全（公开）、Paheal 标签/详情页、Gofile contents API（需 Premium 账号 API token）、f95zone `latest_data.php`、站内搜索（需登录 cookie）、线程页与站内 masked XHR | 连接器边界、凭据隔离、多媒体顺序、文件站目标校验、变体与跨站重复判定、候选复核与批准后的 online asset 投影 |

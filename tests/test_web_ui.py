@@ -82,7 +82,7 @@ class StylesheetPartitionTests(unittest.TestCase):
         "09-skeleton.css", "10-photolight.css", "11-identity.css", "12-cards.css",
         "13-stage.css", "14-player.css", "15-detail.css", "16-settings.css",
         "17-overlay.css", "18-drawer.css", "19-immersive.css", "20-offdisk.css",
-        "21-online.css", "22-followmanage.css",
+        "21-online.css", "22-followmanage.css", "23-configuration.css",
     )
 
     @classmethod
@@ -2920,12 +2920,30 @@ class WebUiSourceTests(unittest.TestCase):
         sections = self.page.split("const MANAGE_SECTIONS=[", 1)[1].split("];", 1)[0]
         order = [line.split("'")[1] for line in sections.splitlines() if line.strip().startswith("['")]
         self.assertEqual(
-            order, ["stats", "taste", "review", "cleanup", "trash", "follow", "quality"],
+            order, ["stats", "taste", "review", "cleanup", "trash", "follow", "quality", "configuration"],
             "身份注册表保留全部管理页，删掉哪一个就等于让它的标题和直达 URL 一起失效",
         )
         self.assertPageContains(
-            "const MANAGE_MENU_SECTIONS=['stats','taste','cleanup','follow'];")
+            "const MANAGE_MENU_SECTIONS=['stats','taste','cleanup','follow','configuration'];")
         self.assertPageContains("manageMenuSections().map(([k,label,ic])=>")
+
+    def test_the_configuration_entry_only_shows_on_the_machine_that_runs_peach(self):
+        """「配置」改的是这台电脑的文件夹与端口，在手机上点进去只会得到一句拒绝。
+
+        服务端在 `/healthz` 里按调用方回 `configurable`；菜单第一次画时问一次，答复回来
+        再补上这一项。它也不进可钉到侧栏的候选：侧栏顺序跨机同步，钉在手机上就是死链接。
+        """
+        self.assertPageContains("['configuration','配置','computer'],")
+        self.assertPageContains("let runtimeConfigurable=null;")
+        self.assertPageContains("  bar.hidden=!current;\n  probeConfigurable();")
+        self.assertPageContains("api('/healthz').then(runtime=>{")
+        self.assertPageContains("runtimeConfigurable=!!runtime.configurable;")
+        self.assertPageContains("&&(key!=='configuration'||runtimeConfigurable===true));")
+        self.assertPageContains(
+            "const OPTIONAL_EDGE_ICONS=MANAGE_SECTIONS.filter(([key])=>key!=='configuration')")
+        # 入口只有管理菜单这一处：设置弹层里不再挂一条链接。
+        self.assertPageLacks('href="/configuration"')
+        self.assertPageLacks("媒体文件夹与服务配置")
 
     def test_the_follow_management_section_is_named_after_the_page_it_opens(self):
         """管理区那一项叫「关注管理」：它开的是 /follow-manage，不是关注更新流。
@@ -3258,7 +3276,7 @@ class WebUiSourceTests(unittest.TestCase):
                       '/item/:id', '/follow/item/:id', '/performers', '/creators', '/tags',
                       '/stats', '/taste', '/review', '/data-cleanup', '/duplicates',
                       '/resource-sync', '/quality-goals', '/follow', '/follow-manage',
-                      '/immerse'):
+                      '/configuration', '/immerse'):
             self.route_entry(match)
         # 目录页四态和四种实体页由既有的映射生成：两边各写一份就会出现
         # 「路由认得、isCatalogPath 不认得」这种半死路径。
@@ -4625,7 +4643,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("const MANAGEMENT_PLACEHOLDERS={")
         self.assertPageContains("const managementPlaceholder=path=>")
         for path in ("'/stats'", "'/taste'", "'/data-cleanup'", "'/duplicates'",
-                     "'/review'", "'/quality-goals'", "'/playlists'", "'/follow-manage'"):
+                     "'/review'", "'/quality-goals'", "'/playlists'", "'/follow-manage'",
+                     "'/configuration'"):
             self.assertPageContains(f"  {path}:()=>", "占位没有收进唯一那份定义")
             self.assertPageContains(f"managementPlaceholder({path})", "路由没有取那份定义")
         # /resource-sync 只是数据管理页的锚点，启动占位得是数据管理那张。
@@ -5098,6 +5117,26 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("const props={openItem,javTitleHtml,javDisplayName,srcBadge}")
         self.assertPageLacks("data-quality-open")
 
+    def test_the_configuration_page_is_an_island_inside_the_management_shell(self):
+        """这台电脑的媒体文件夹与端口是主站里的一屏，不是另一套独立页面。
+
+        遗留层只铺骨架、交容器、发回执；表单与校验回显在 frontend/ 的 island 里，
+        数据契约由 tests/test_onboarding.py 对 `/api/configuration` 断言。
+        """
+        self.assertRoute('/configuration', "section:'configuration'", "title:'配置'",
+                         "openConfiguration(push)")
+        self.assertPageContains("async function openConfiguration(push=true)")
+        self.assertPageContains(
+            "await ui.mountIsland('configuration',$('#stats'),props,"
+            "{isCurrent:()=>surfaceCurrent(surface)})")
+        self.assertPageContains("const props={receipt:message=>actionReceipt(message)};")
+        self.assertPageContains(
+            "document.body.classList.toggle('configuration-layout',current==='configuration');")
+        # 骨架照最终结构：两块同宽的卡，和数据管理那套单列卡片一个轮廓。
+        self.assertPageContains(
+            "'/configuration':()=>`<div class=\"configpage\">${pageSkeletonHtml('正在读取配置',")
+        self.assertPageContains("{cards:true,count:2,fill:false,className:'cleanup-skeleton'})}</div>`,")
+
     def test_review_page_is_a_separate_management_layer(self):
         self.assertPageContains("route('/review')")
         self.assertPageContains("const REVIEW_LABELS={metadata_fields:'元数据字段',creator_tags:'创作者标签'")
@@ -5498,6 +5537,13 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("['immerse','沉浸模式','gallery-vertical-end'],")
         self.assertPageContains("<span>进入沉浸模式</span>")
         self.assertPageContains("class=\"shorts-enter\" type=\"button\">${icon('play')}")
+        # 管理菜单的「配置」是这台电脑：`monitor` 已归详情页的分辨率，`settings` 归设置弹层。
+        self.assertPageContains("['configuration','配置','computer'],")
+        self.assertPageContains('<symbol id="i-computer" viewBox="0 0 24 24">')
+        # 配置页每行文件夹的「选择文件夹」弹系统对话框去挑：`folder-search`。`folder-open` 归「打开位置」。
+        self.assertPageContains('<symbol id="i-folder-search" viewBox="0 0 24 24">')
+        self.assertIn('href="#i-folder-search"', (Path(__file__).resolve().parents[1] / "frontend" / "src" / "islands" / "configuration.tsx")
+                      .read_text(encoding="utf-8"))
         # 换下来的三枚没有别的使用者，雪碧图里也不留。
         for gone in ("i-monitor-cog", "i-star", "i-volume-2"):
             self.assertPageLacks(f'<symbol id="{gone}"')

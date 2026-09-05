@@ -88,7 +88,21 @@ border-radius:var(--control-radius);color:var(--ink-2);cursor:pointer}
 .switch label:has(input:focus-visible){outline:2px solid var(--tungsten);outline-offset:2px}
 :focus-visible{outline:2px solid var(--tungsten);outline-offset:3px}
 .help{margin:6px 0 0;color:var(--muted);font-size:var(--fs-sm)}
-details{margin-top:24px}summary{cursor:pointer;min-height:44px;display:list-item}
+/* 高级设置是 Geist Collapse：summary 是触发器，chevron 紧跟标题，与高度一样 200ms ease-in-out；
+   折叠体由 /js/ui-components.js 的 wireCollapse 接管。 */
+details{margin-top:24px}
+summary{display:flex;align-items:center;gap:8px;min-height:44px;
+cursor:pointer;list-style:none;font-weight:500;color:var(--ink)}
+summary::-webkit-details-marker{display:none}
+summary svg{width:16px;height:16px;flex:none;stroke:currentColor;fill:none;stroke-width:2;
+stroke-linecap:round;stroke-linejoin:round;color:var(--muted);transition:transform .2s ease-in-out}
+details[open] summary svg{transform:rotate(180deg)}
+/* 折叠体裁切溢出，输入框的焦点环（2px 环加 3px 间距）会被切掉：把裁切框往外放 6px，
+   横向靠 .fcollapse 的负外边距，纵向靠 .fcollapsebody 的内边距——内边距不能落在
+   .fcollapse 自己身上，否则高度收不到 0。 */
+.fcollapse{overflow:hidden;transition:height .2s ease-in-out;margin:0 -6px;padding:0 6px}
+.fcollapsebody{padding:6px 0}
+details .field{margin-top:0}
 .bad{margin:6px 0 0;color:var(--drop);font-size:var(--fs-sm)}
 .check{display:flex;align-items:center;gap:12px;min-height:44px;margin:24px 0 0;cursor:pointer}
 .pcheck{position:relative;display:grid;place-items:center;width:20px;height:20px;flex:none}
@@ -103,23 +117,28 @@ button[type=submit]{margin-top:32px;width:100%;height:var(--control-h);border:1p
 border-radius:var(--control-radius);cursor:pointer;background:var(--ink);color:var(--ground);
 font:500 var(--fs-md) system-ui,sans-serif}
 button[type=submit]:hover{background:color-mix(in srgb,var(--ink) 88%,var(--ground));color:var(--ground)}
-.dir{display:grid;grid-template-columns:1fr auto;gap:8px;margin-top:8px}
-.dir:first-child{margin-top:0}.dir .bad{grid-column:1/-1;margin:0}
-.dir input[type=text]{min-width:0}
-.rm,.add{height:var(--control-h);border:1px solid var(--line);border-radius:var(--control-radius);
+/* 一行：输入框、选择文件夹、移除。flex 而不是 grid：只剩一行时移除键隐藏，
+   grid 的空轨道会留下一段 gap。 */
+.dir{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.dir:first-child{margin-top:0}.dir .bad{flex-basis:100%;margin:0}
+.dir input[type=text]{flex:1 1 auto;width:auto;min-width:0}
+.rm,.pick,.add{height:var(--control-h);border:1px solid var(--line);border-radius:var(--control-radius);
 background:var(--ground);color:var(--ink);cursor:pointer;font:500 var(--fs-sm) system-ui,sans-serif}
-.rm{width:var(--control-h);display:grid;place-items:center;color:var(--muted)}
-.rm svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round}
+.rm,.pick{width:var(--control-h);flex:none;display:grid;place-items:center;color:var(--muted)}
+.rm svg,.pick svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;
+stroke-linejoin:round}
+.pick[aria-busy=true]{color:var(--muted);cursor:progress}
 .add{margin-top:8px;padding:0 12px}
-.rm:hover,.add:hover{background:var(--hover);color:var(--ink)}
-.rm[hidden],.add[hidden]{display:none}
+.rm:hover,.pick:hover,.add:hover{background:var(--hover);color:var(--ink)}
+.rm[hidden],.pick[hidden],.add[hidden]{display:none}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 @media(max-width:760px){input[type=text],input[type=number]{font-size:16px}}
 @media(max-width:440px){body{padding:24px 20px}h1{font-size:var(--fs-2xl)}}
 </style>"""
 
 _SETUP_HEAD = ('<!doctype html>\n<html lang="zh-CN"><head><meta charset="utf-8">'
                '<meta name="viewport" content="width=device-width,initial-scale=1">'
-               '<meta name="color-scheme" content="light">'
+               '<meta name="color-scheme" content="light dark">'
                '<link rel="icon" href="/peach-logo.png" type="image/png">')
 
 #: 键 -> 页面上的题目与一句说明。顺序、默认值与校验仍然来自 `onboarding.questions()`，
@@ -160,9 +179,40 @@ _SETUP_SCRIPT = """<script>
   var rows=function(){return list.querySelectorAll('.dir');};
   var refresh=function(){
     var all=rows();
-    all.forEach(function(row){row.querySelector('.rm').hidden=all.length<2;});
+    all.forEach(function(row){
+      row.querySelector('.rm').hidden=all.length<2;
+      row.querySelector('.pick').hidden=false;
+    });
+  };
+  /* 「选择文件夹」让运行 Peach 的这台电脑弹系统对话框，把选中的绝对路径填回这一行：
+     浏览器自己拿不到本机绝对路径。等待期间按钮置忙，再点不发第二个请求。 */
+  var pickFolder=function(row,button){
+    if(button.getAttribute('aria-busy')==='true'){return;}
+    var input=row.querySelector('input');
+    var bad=row.querySelector('.bad');
+    button.setAttribute('aria-busy','true');button.setAttribute('aria-disabled','true');
+    fetch('/api/pick-folder',{method:'POST',credentials:'same-origin',
+      headers:{'Accept':'application/json','Content-Type':'application/json'},
+      body:JSON.stringify({initial:input.value})})
+      .then(function(response){return response.json().then(function(data){return {ok:response.ok,data:data};});})
+      .then(function(result){
+        if(!result.ok){throw new Error((result.data&&result.data.error)||'没能打开文件夹对话框');}
+        if(result.data.path){
+          input.value=result.data.path;input.setAttribute('aria-invalid','false');
+          if(bad){bad.remove();}
+        }
+        input.focus();
+      })
+      .catch(function(error){
+        var note=bad||document.createElement('p');
+        note.className='bad';note.setAttribute('role','alert');note.textContent=error.message;
+        row.appendChild(note);
+      })
+      .then(function(){button.removeAttribute('aria-busy');button.removeAttribute('aria-disabled');});
   };
   list.addEventListener('click',function(event){
+    var pick=event.target.closest('.pick');
+    if(pick){pickFolder(pick.closest('.dir'),pick);return;}
     var remove=event.target.closest('.rm');
     if(!remove||rows().length<2){return;}
     remove.closest('.dir').remove();
@@ -185,14 +235,51 @@ _CHECK_SVG = ('<svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="
               '<path d="M20 6 9 17l-5-5"/></svg>')
 #: 移除一行媒体文件夹的字形（lucide `x`）。
 _X_SVG = '<svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg>'
+#: 「选择文件夹」（lucide `folder-search`）：弹系统对话框去挑一个文件夹。`folder-open` 归
+#: 站内的「打开位置」，不兼任。
+_FOLDER_SVG = ('<svg viewBox="0 0 24 24"><path d="M10.7 20H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 '
+               '1.69.9l.81 1.2a2 2 0 0 0 1.67.9H20a2 2 0 0 1 2 2v4.1"/><path d="m21 21-1.9-1.9"/>'
+               '<circle cx="17" cy="17" r="3"/></svg>')
+#: 折叠触发器右侧的 chevron（lucide `chevron-down`），展开时转 180 度。
+_CHEVRON_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>'
+#: 高级设置的折叠由站内共用的 wireCollapse 接管：原生 <details> 不过渡高度。
+#: 只在页面里真有 <details> 时才挂，错误页与不带高级设置的首启页不加载这两个模块。
+_COLLAPSE_SCRIPT = ('<script type="module">import{wireCollapse}from"/js/ui-components.js";'
+                    'wireCollapse(document,"details","setup-collapse");</script>')
+
+
+def _theme_tokens() -> str:
+    """主站 `01-base.css` 里的两套色板：浅色的 `:root` 和跟随系统的深色覆盖。
+
+    首启页在 SPA 外壳之外，但它必须和主站同一副面孔：系统是深色时主站是深色，这一页
+    也得是，否则设置完一跳进馆藏就像换了个产品。
+    """
+    base = (PROJECT_ROOT / "web" / "css" / "01-base.css").read_text(encoding="utf-8")
+    light = re.search(r":root\s*\{[^}]+\}", base).group(0)
+    dark = re.search(r"@media \(prefers-color-scheme:dark\)\{:root:not\(\[data-theme=\"light\"\]\)\{[^}]+\}\}",
+                     base).group(0)
+    return light + dark
+
+
+def _scrollbar_rules() -> str:
+    """主站的滚动条：细、无箭头、无轨道底色。首启页装不下时滚起来也得是同一条。"""
+    base = (PROJECT_ROOT / "web" / "css" / "01-base.css").read_text(encoding="utf-8")
+    return re.search(r"\*\{scrollbar-width:thin.*?::-webkit-scrollbar-button\{[^}]*\}", base, re.S).group(0)
+
+
+def error_page(status: int, message: str) -> str:
+    """浏览器导航撞上 403／404／409 时给人看的那一页，不是一行 JSON。"""
+    title = {403: "这里不能打开", 404: "没有这一页", 409: "现在不能这样做"}.get(status, "出了点问题")
+    body = (f'<img class="mark" src="/peach-logo.png" alt=""><h1>{title}</h1>'
+            f'<p class="lede">{escape(message)}</p><p><a href="/">返回馆藏</a></p>')
+    return _document(f"Peach · {title}", body)
 
 
 def _document(title: str, body: str) -> str:
-    base = (PROJECT_ROOT / "web" / "css" / "01-base.css").read_text(encoding="utf-8")
-    tokens = re.search(r":root\s*\{[^}]+\}", base).group(0)
     # 页内脚本对两张页面都生效：找不到对应控件时它什么也不做。
-    return (f"{_SETUP_HEAD}<title>{title}</title><style>{tokens}</style>{_SETUP_STYLE}"
-            f"</head><body><main>{body}</main>{_SETUP_SCRIPT}</body></html>\n")
+    collapse = _COLLAPSE_SCRIPT if "<details" in body else ""
+    return (f"{_SETUP_HEAD}<title>{title}</title><style>{_theme_tokens()}{_scrollbar_rules()}</style>"
+            f"{_SETUP_STYLE}</head><body><main>{body}</main>{_SETUP_SCRIPT}{collapse}</body></html>\n")
 
 
 def _check_html(name: str, text_html: str, *, checked: bool) -> str:
@@ -202,22 +289,26 @@ def _check_html(name: str, text_html: str, *, checked: bool) -> str:
             + f'><span aria-hidden="true">{_CHECK_SVG}</span></span><span>{text_html}</span></label>')
 
 
-def runtime_facts_html(config) -> str:
-    """这台机器上 Peach 的位置与版本：设置完成页和配置页共用同一份。"""
+def runtime_facts(config) -> tuple[tuple[str, str], ...]:
+    """这台机器上 Peach 的位置与版本：设置完成页和 `/api/configuration` 共用同一份。"""
     from . import __version__
     from .ffmpeg import FFmpegResolver
 
     available = FFmpegResolver(config.directory("tools") / "ffmpeg").ffmpeg() is not None
     ffmpeg = "可用" if available else "未安装；MP4 可直接播放，转码和缩略图需要安装 FFmpeg。"
-    rows = (
+    return (
         ("版本", __version__),
         ("数据目录", str(config.data_root)),
         ("设置文件", str(config.path)),
         ("日志目录", str(config.directory("logs"))),
         ("FFmpeg", ffmpeg),
     )
+
+
+def runtime_facts_html(config) -> str:
     return ("<h2>运行信息</h2><dl>"
-            + "".join(f"<dt>{escape(term)}</dt><dd>{escape(value)}</dd>" for term, value in rows)
+            + "".join(f"<dt>{escape(term)}</dt><dd>{escape(value)}</dd>"
+                      for term, value in runtime_facts(config))
             + "</dl>")
 
 
@@ -232,6 +323,7 @@ def _media_dir_row(value: str, error: str, *, first: bool) -> str:
     return (f'<div class="dir"><input name="media_dir" type="text"{attrs} autocomplete="off" '
             f'spellcheck="false" aria-invalid="{"true" if error else "false"}" '
             f'value="{escape(value, quote=True)}">'
+            f'<button type="button" class="pick" aria-label="选择文件夹" hidden>{_FOLDER_SVG}</button>'
             f'<button type="button" class="rm" aria-label="移除这个文件夹" hidden>{_X_SVG}</button>'
             + (f'<p class="bad" role="alert">{escape(error)}</p>' if error else "")
             + "</div>")
@@ -329,7 +421,7 @@ def setup_page(
         field = _field_html(question, value, str(errors.get(question.key, "")), "")
         if distribution.standalone() and question.key == "port":
             opened = " open" if errors.get("port") else ""
-            field = f'<details{opened}><summary>高级设置</summary>{field}</details>'
+            field = f'<details{opened}><summary><span>高级设置</span>{_CHEVRON_SVG}</summary>{field}</details>'
         fields.append(field)
     filled = [path for path in media_dirs if path]
     if distribution.standalone() or not filled:
@@ -673,6 +765,9 @@ def peach_logo():
 @router.api_route("/follow", methods=["GET", "HEAD"])
 @router.api_route("/follow-manage", methods=["GET", "HEAD"])
 @router.api_route("/follow/item/{item_id}", methods=["GET", "HEAD"])
+# 配置页是主站里的一屏（island），数据走 `/api/configuration`。未配置时 `index()` 给的是
+# 首次运行表单，正好就是「请先完成首次设置」该长的样子。
+@router.api_route("/configuration", methods=["GET", "HEAD"])
 def client_route(request: Request, item_id: int | None = None,
                  seed_id: int | None = None, mix_item_id: int | None = None,
                  part_seed_id: int | None = None, part_item_id: int | None = None,
