@@ -4,9 +4,10 @@
 `A:\\...`（PikPak）、`B:\\...`（115）。这是不变量，不随平台改写。
 
 真正会变的是「同一个来源在这台机器上落在哪」。`asset.location` 本来就是挂载点 ID
-（`local` / `115` / `pikpak`），设置文件用 `[media.locations]` 声明每个 ID 的账本口径根，
-用 `[media.mounts]` 声明它在本机的落点，翻译按「声明根前缀 → 本机挂载点」进行
-（ADR-0023 第 2 阶段勘误）。Windows 上盘符本身就是挂载点，路径原样返回。
+（`local` / `115` / `pikpak`），设置文件用 `[media.locations]` 声明每个 ID 的账本口径根
+（一个来源可以有几个根：两块硬盘都算 `local`），用 `[media.mounts]` 按同样的顺序声明每个
+根在本机的落点，翻译按「声明根前缀 → 本机挂载点」进行（ADR-0023 第 2 阶段勘误）。
+Windows 上盘符本身就是挂载点，路径原样返回。
 
 没有挂载点的来源会被映射到 `UNMAPPED_ROOT` 下，一定通不过 `allowed_media_roots`
 授权，于是该来源整体按「脱盘」处理，而不是意外落到当前工作目录下的同名相对路径。
@@ -15,7 +16,7 @@ from __future__ import annotations
 
 import logging
 import os
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from functools import lru_cache
 from pathlib import Path, PureWindowsPath
 
@@ -43,32 +44,39 @@ def _parse_override(raw: str) -> tuple[tuple[str, str], ...]:
     return tuple(pairs)
 
 
-def location_mounts() -> dict[str, Path]:
-    """当前生效的「来源 ID → 本机挂载点」；空值表示显式声明「本机没有这个来源」。
+#: 一个来源的声明根或落点：按顺序一一对应的字符串元组。
+Roots = Mapping[str, Sequence[str]]
+
+
+def location_mounts() -> dict[str, tuple[Path, ...]]:
+    """当前生效的「来源 ID → 本机挂载点」，与该来源的声明根按顺序一一对应；
+    没有条目表示「本机没有这个来源」。
 
     基础映射来自设置文件的 `[media.mounts]`（内建默认为空：一台新机器什么都没挂，
     对应资产按脱盘处理）。`MOUNTS_ENV` 每次现读而不是缓存进设置层——测试和临时诊断
-    会在运行期改它，缓存住就看不到变化。
+    会在运行期改它，缓存住就看不到变化；覆盖值只给一个目录，对应该来源的第一个根。
     """
-    merged = dict(settings_file.active().mounts)
-    merged.update(dict(_parse_override(os.environ.get(MOUNTS_ENV, ""))))
-    return {location: Path(mount) for location, mount in merged.items() if mount}
+    merged: dict[str, tuple[str, ...]] = dict(settings_file.active().mounts)
+    for location, mount in _parse_override(os.environ.get(MOUNTS_ENV, "")):
+        merged[location] = (mount,) if mount else ()
+    return {location: tuple(Path(mount) for mount in mounts)
+            for location, mounts in merged.items() if mounts}
 
 
-def location_roots() -> dict[str, str]:
-    """来源 ID → 账本口径的声明根，来自 `[media.locations]`。"""
+def location_roots() -> dict[str, tuple[str, ...]]:
+    """来源 ID → 账本口径的声明根（至少一个），来自 `[media.locations]`。"""
     return dict(settings_file.active().locations)
 
 
-def declared_root(location: str) -> str | None:
-    """某个来源在账本里的声明根；未声明的来源返回 None。"""
-    return location_roots().get(location)
+def declared_roots_of(location: str) -> tuple[str, ...]:
+    """某个来源在账本里的全部声明根；未声明的来源是空元组。"""
+    return tuple(location_roots().get(location, ()))
 
 
-def resolve_location(
-    raw: str | os.PathLike[str], roots: Mapping[str, str] | None = None,
-) -> tuple[str | None, tuple[str, ...]]:
-    """账本路径属于哪个来源，以及它在声明根之后的层级。
+def resolve_root(
+    raw: str | os.PathLike[str], roots: Roots | None = None,
+) -> tuple[str | None, int, tuple[str, ...]]:
+    """账本路径属于哪个来源的第几个声明根，以及它在那个根之后的层级。
 
     翻译和写入侧门槛共用这一段判定，所以它只碰 `PureWindowsPath` 和字符串，
     在两个平台上行为一致、也都能测。声明根重叠时取最长的那个（`R:\\` 与
@@ -76,27 +84,37 @@ def resolve_location(
     `PureWindowsPath` 负责：账本里写 `R:\\Media`、声明根写 `R:\\media` 是同一处。
 
     `roots` 缺省取当前生效的 `[media.locations]`。`peach init` 刚写完设置文件时进程里
-    那份缓存还是旧的，这种调用方把要用的声明根显式传进来。
+    那份缓存还是旧的，这种调用方把要用的声明根显式传进来。不属于任何来源时返回
+    `(None, -1, ())`。
     """
     text = os.fspath(raw)
     if not is_windows_path(text):
-        return None, ()
+        return None, -1, ()
     candidate = PureWindowsPath(text)
-    best: tuple[int, str] | None = None
+    best: tuple[int, str, int] | None = None
     declared_roots = location_roots() if roots is None else roots
-    for location, root in declared_roots.items():
-        declared = PureWindowsPath(root)
-        if candidate == declared or candidate.is_relative_to(declared):
-            depth = len(declared.parts)
-            if best is None or depth > best[0]:
-                best = (depth, location)
+    for location, location_roots_ in declared_roots.items():
+        for index, root in enumerate(location_roots_):
+            declared = PureWindowsPath(root)
+            if candidate == declared or candidate.is_relative_to(declared):
+                depth = len(declared.parts)
+                if best is None or depth > best[0]:
+                    best = (depth, location, index)
     if best is None:
-        return None, ()
-    return best[1], candidate.parts[best[0]:]
+        return None, -1, ()
+    return best[1], best[2], candidate.parts[best[0]:]
+
+
+def resolve_location(
+    raw: str | os.PathLike[str], roots: Roots | None = None,
+) -> tuple[str | None, tuple[str, ...]]:
+    """账本路径属于哪个来源，以及它在声明根之后的层级。判定见 `resolve_root`。"""
+    location, _index, tail = resolve_root(raw, roots)
+    return location, tail
 
 
 def location_of(
-    raw: str | os.PathLike[str], roots: Mapping[str, str] | None = None,
+    raw: str | os.PathLike[str], roots: Roots | None = None,
 ) -> str | None:
     """账本路径属于哪个来源；不在任何声明根下则返回 None。
 
@@ -160,11 +178,11 @@ def translate_ledger_path(raw: str | os.PathLike[str]) -> Path:
     text = os.fspath(raw)
     if os.name == "nt" or not is_windows_path(text):
         return Path(text)
-    location, tail = resolve_location(text)
+    location, index, tail = resolve_root(text)
     if location is not None:
-        mount = location_mounts().get(location)
-        if mount is not None:
-            return mount.joinpath(*tail)
+        mounts = location_mounts().get(location, ())
+        if index < len(mounts):
+            return mounts[index].joinpath(*tail)
     # 没声明过的前缀（例如遗留的 `R:\\Resources\\...`）或没挂载的来源：落到不可达根，
     # 保留盘符和其余层级，方便日志里认出是哪条路径。
     parts = PureWindowsPath(text).parts

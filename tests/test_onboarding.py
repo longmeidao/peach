@@ -139,23 +139,73 @@ class AskUntilValidTests(_Case):
 
 class ConfigureTests(_Case):
     def _answers(self, **overrides):
-        base = dict(data_root=self.root / "peach-data", media_dir=self.media,
+        base = dict(data_root=self.root / "peach-data", media_dirs=(self.media,),
                     host="127.0.0.1", port=8900, mdns_name="peach")
         base.update(overrides)
         return onboarding.Answers(**base)
 
     def test_windows_declares_the_directory_itself_and_leaves_mounts_empty(self):
         prepared = onboarding.configure(self.config, self._answers(), windows=True)
-        self.assertEqual(prepared.locations, {"local": str(self.media)})
+        self.assertEqual(prepared.locations, {"local": (str(self.media),)})
         self.assertEqual(prepared.mounts, {})
-        self.assertEqual(onboarding.scan_root(prepared), str(self.media))
+        self.assertEqual(onboarding.scan_roots(prepared), (str(self.media),))
 
     def test_posix_keeps_the_ledger_shape_and_mounts_the_directory(self):
         prepared = onboarding.configure(self.config, self._answers(), windows=False)
-        self.assertEqual(prepared.locations, {"local": r"R:\media"})
-        self.assertEqual(prepared.mounts, {"local": str(self.media)})
-        self.assertEqual(onboarding.scan_root(prepared), r"R:\media")
+        self.assertEqual(prepared.locations, {"local": (r"R:\media",)})
+        self.assertEqual(prepared.mounts, {"local": (str(self.media),)})
+        self.assertEqual(onboarding.scan_roots(prepared), (r"R:\media",))
         self.assertIn(str(self.media), onboarding.mounts_explanation(self.media))
+
+    def test_several_directories_all_belong_to_the_local_source(self):
+        """两块硬盘都是 `local`：Windows 上每个目录一个声明根，macOS 上声明根按序号生成。"""
+        second = self.root / "more"
+        second.mkdir()
+        answers = self._answers(media_dirs=(self.media, second))
+        windows = onboarding.configure(self.config, answers, windows=True)
+        self.assertEqual(windows.locations, {"local": (str(self.media), str(second))})
+        self.assertEqual(windows.mounts, {})
+        posix = onboarding.configure(self.config, answers, windows=False)
+        self.assertEqual(posix.locations, {"local": (r"R:\media", r"R:\media2")})
+        self.assertEqual(posix.mounts, {"local": (str(self.media), str(second))})
+        self.assertEqual(onboarding.scan_roots(posix), (r"R:\media", r"R:\media2"))
+        explanation = onboarding.mounts_explanation((self.media, second))
+        self.assertIn(r"R:\media2", explanation)
+        self.assertIn(str(second), explanation)
+
+    def test_directories_must_not_repeat_or_nest(self):
+        nested = self.media / "inner"
+        nested.mkdir()
+        other = self.root / "other"
+        other.mkdir()
+        self.assertEqual(onboarding.check_media_dirs((self.media, other)), {})
+        self.assertEqual(list(onboarding.check_media_dirs((self.media, self.media))), [1])
+        self.assertIn("重复", onboarding.check_media_dirs((self.media, self.media))[1])
+        problems = onboarding.check_media_dirs((self.media, nested))
+        self.assertEqual(list(problems), [1])
+        self.assertIn(str(self.media), problems[1])
+        # 父目录排在后面时，多余的仍是子目录那一行：用户后来给的父目录已经把它包住了。
+        self.assertEqual(list(onboarding.check_media_dirs((nested, self.media))), [0])
+
+    def test_form_rows_are_read_line_by_line_with_errors_kept_in_place(self):
+        validate = onboarding.media_dir_validator(windows=NATIVE_WINDOWS)
+        other = self.root / "other"
+        other.mkdir()
+        # 第一行留空取默认值，中间的空行当没填。
+        paths, problems = onboarding.read_media_dirs(
+            ["", "", str(other)], validate=validate, default=str(self.media))
+        self.assertEqual(paths, [self.media, other])
+        self.assertEqual(problems, [])
+        # 错误与提交的行一一对应：第三行不存在，第二行是空行也占一个位置。
+        _paths, problems = onboarding.read_media_dirs(
+            [str(self.media), "", str(self.root / "nope")], validate=validate)
+        self.assertEqual(problems[:2], ["", ""])
+        self.assertIn("目录不存在", problems[2])
+        (self.media / "inner").mkdir()
+        _paths, problems = onboarding.read_media_dirs(
+            [str(self.media), str(self.media / "inner")], validate=validate)
+        self.assertEqual(problems[0], "")
+        self.assertIn("已经在", problems[1])
 
     def test_only_the_asked_settings_change_and_replication_stays_off(self):
         prepared = onboarding.configure(
@@ -174,26 +224,41 @@ class ConfigureTests(_Case):
         loaded = settings_file.load_config(
             project_root=self.root / "app", environ={"PEACH_DATA_ROOT": str(self.root / "peach-data")})
         self.assertTrue(loaded.present)
-        self.assertEqual(loaded.locations, {"local": str(self.media)})
+        self.assertEqual(loaded.locations, {"local": (str(self.media),)})
         self.assertEqual(loaded.mounts, {})
         self.assertFalse(loaded.replication.enabled)
 
 
 class InterviewTests(_Case):
     def test_scripted_answers_drive_the_whole_interview(self):
-        ask = scripted("", str(self.media), "2", "", "peach-two")
+        second = self.root / "more"
+        second.mkdir()
+        ask = scripted("", str(self.media), str(second), "", "2", "", "peach-two")
         answers = onboarding.interview(self.config, ask, windows=NATIVE_WINDOWS, home=self.home,
                                        report=lambda _: None)
         self.assertEqual(answers, onboarding.Answers(
-            data_root=self.root / "peach-data", media_dir=self.media, host="0.0.0.0",
+            data_root=self.root / "peach-data", media_dirs=(self.media, second), host="0.0.0.0",
             port=8900, mdns_name="peach-two"))
+        # 媒体文件夹问完一个就问「再加一个」，回车结束；追加的目录和第一个走同一套校验。
         self.assertEqual([prompt for prompt, _ in ask.seen], [
             "数据目录（Peach 数据库、缓存和设置文件都放在这里）",
             "媒体文件夹（必须已经存在，可以在外置硬盘上）",
+            "再加一个媒体文件夹（不加就直接回车）",
+            "再加一个媒体文件夹（不加就直接回车）",
             "谁可以访问：1 = 只有这台电脑，2 = 同一局域网的设备",
             "端口",
             "局域网访问地址（<名字>.local，只在允许局域网访问时发布）",
         ])
+
+    def test_an_extra_directory_inside_the_first_is_asked_again(self):
+        nested = self.media / "inner"
+        nested.mkdir()
+        reports: list[str] = []
+        ask = scripted("", str(self.media), str(nested), "", "1", "", "")
+        answers = onboarding.interview(self.config, ask, windows=NATIVE_WINDOWS, home=self.home,
+                                       report=reports.append)
+        self.assertEqual(answers.media_dirs, (self.media,))
+        self.assertTrue(any("已经在" in line for line in reports), reports)
 
     def test_console_ask_shows_the_default_and_treats_eof_as_abort(self):
         with mock.patch("builtins.input", return_value="x") as prompt:
@@ -225,7 +290,7 @@ class ApplyTests(_Case):
         self.addCleanup(patcher.stop)
 
     def _answers(self, **overrides):
-        base = dict(data_root=self.root / "peach-data", media_dir=self.media,
+        base = dict(data_root=self.root / "peach-data", media_dirs=(self.media,),
                     host="127.0.0.1", port=8900, mdns_name="peach")
         base.update(overrides)
         return onboarding.Answers(**base)
@@ -372,6 +437,14 @@ class SetupPageTests(_Case):
             self.assertIn(f">{title}</", body)
         self.assertIn("Peach 数据库、缓存和设置文件都放在这里。", body)
         self.assertIn("可以是外置硬盘上的文件夹", body)
+        # 媒体文件夹是一个可加减的列表：默认一行，「添加文件夹」和移除键由页内脚本亮出来，
+        # 新行从 <template> 里克隆，所以没有脚本时页面只有一个输入框。
+        self.assertEqual(body.count('<div class="dir"><input name="media_dir"'), 2)
+        self.assertIn('<button type="button" class="add" id="add-dir" hidden>添加文件夹</button>', body)
+        self.assertIn('<template id="dir-row"><div class="dir">', body)
+        self.assertIn('class="rm" aria-label="移除这个文件夹" hidden>', body)
+        self.assertIn("template.content.firstElementChild.cloneNode(true)", body)
+        self.assertLess(body.index('id="dirs"'), body.index('id="add-dir"'))
         # 品牌标记在标题上方，说明文字在标题下方。
         self.assertIn('<img class="mark" src="/peach-logo.png"', body)
         self.assertLess(body.index("<h1>"), body.index('class="lede"'))
@@ -409,6 +482,34 @@ class SetupPageTests(_Case):
         self.assertIn(f'value="{missing}"', body, "填错的值要留在表单里")
         self.assertFalse(missing.exists(), "校验不替人建目录")
         self.assertFalse(self.data_root.exists(), "校验失败不落任何文件")
+
+    def test_two_directories_are_declared_together_and_shown_in_the_scan_label(self):
+        second = self.root / "more"
+        second.mkdir()
+        response = self._post("/setup", self._form(media_dir=[str(self.media), str(second)]))
+        self.assertEqual(response.status_code, 200, response.text)
+        loaded = self._loaded()
+        if NATIVE_WINDOWS:
+            self.assertEqual(loaded.locations, {"local": (str(self.media), str(second))})
+        else:
+            self.assertEqual(loaded.locations, {"local": (r"R:\media", r"R:\media2")})
+            self.assertEqual(loaded.mounts, {"local": (str(self.media), str(second))})
+
+    def test_a_nested_second_directory_is_rejected_on_its_own_row(self):
+        nested = self.media / "inner"
+        nested.mkdir()
+        response = self._post("/setup", self._form(media_dir=[str(self.media), str(nested)]))
+        self.assertEqual(response.status_code, 400)
+        body = response.text
+        self.assertEqual(body.count('<div class="dir"><input name="media_dir"'), 3, "两行都回显，外加模板")
+        self.assertIn("已经在", body)
+        # 错误挂在第二行底下，第一行不背锅。
+        first_row = body.index(f'value="{escape(str(self.media), quote=True)}"')
+        second_row = body.index(f'value="{escape(str(nested), quote=True)}"')
+        self.assertLess(first_row, body.index("已经在"))
+        self.assertLess(second_row, body.index("已经在"))
+        self.assertIn("完成设置后扫描这 2 个文件夹", body)
+        self.assertFalse(self.data_root.exists())
 
     def test_a_disabled_lan_address_falls_back_to_the_default_name(self):
         """选「只有这台电脑」后地址框是禁用的，不随表单提交；服务端按默认值补上。"""
@@ -468,7 +569,7 @@ class StandaloneConfigurationTests(_Case):
     def setUp(self):
         super().setUp()
         from dataclasses import replace
-        self.config = replace(self.config, locations={"local": str(self.media)},
+        self.config = replace(self.config, locations={"local": (str(self.media),)},
                               mounts={}, server=settings_file.ServerSettings(port=9123))
         settings_file.write(self.config)
         self.config = settings_file.load_config(environ={"PEACH_DATA_ROOT": str(self.config.data_root)})
@@ -497,6 +598,7 @@ class StandaloneConfigurationTests(_Case):
             self.assertIn('<span class="pcheck"><input type="checkbox" name="scan_now" value="y">', page.text)
             self.assertIn("<h2>运行信息</h2>", page.text)
             self.assertIn("<dt>FFmpeg</dt>", page.text)
+            self.assertIn('id="add-dir"', page.text, "配置页的媒体文件夹同样是可加减的列表")
             self.config.directory("state").mkdir(parents=True, exist_ok=True)
             response = client.post("/configuration", headers=headers, data={
                 "revision": revision(self.config), "media_dir": str(self.media), "port": "9124"})

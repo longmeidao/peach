@@ -106,7 +106,7 @@ Run without arguments, `peach init` asks five questions in the terminal; pressin
 | Question | Default |
 | --- | --- |
 | Data directory (the Peach database, caches and the settings file live here) | `peach-data/` next to the repository |
-| Media folder (must already exist, may live on an external drive; used as source `local`) | `~\Videos` (`~/Movies` on macOS); required when that folder is missing |
+| Media folder (must already exist, may live on an external drive; used as source `local`). Afterwards it keeps asking for one more folder until you press Enter on an empty answer; every folder belongs to `local` | `~\Videos` (`~/Movies` on macOS); required when that folder is missing |
 | Who can access: 1 = only this computer, 2 = devices on the same LAN | `2` |
 | Port | `8900` |
 | LAN address (`<name>.local`, published only when LAN access is allowed) | `peach` |
@@ -137,7 +137,7 @@ Five facts:
 - Listening on `127.0.0.1` needs no token. Reaching the service from a phone or any other device on the LAN (`--host 0.0.0.0`, and everything the tray starts) does: `peach init` has already written one to `<data root>/secrets/auth-token`, `peach token` prints it, and each device pastes it into the login page once. `peach serve` refuses to start when it binds a non-loopback address without a token, because that puts the whole collection and the write endpoints on the local network.
 - Use `-e` for source development. Regular installations and wheels include pages and migrations and support running from any working directory.
 - When the data root is not next to the repository, `peach serve` looks for it only via `PEACH_DATA_ROOT` and the `peach-data/` directories a few levels above the repository, so set `PEACH_DATA_ROOT` as well; the default data root needs no such step.
-- Ledger paths are always in the Windows shape. On Windows the media directory goes straight into `[media.locations]`; on macOS the declared root is `R:\media` and the directory goes into `[media.mounts]`, where the local mount point does the translation. CloudDrive is not required — any cloud drive that mounts as a local path works; 115 and PikPak are recommendations, not requirements.
+- Ledger paths are always in the Windows shape. On Windows the media directories (one or several) go straight into `[media.locations]`; on macOS the declared roots are `R:\media`, `R:\media2`, … and the directories go into `[media.mounts]` in the same order, where the local mount points do the translation. CloudDrive is not required — any cloud drive that mounts as a local path works; 115 and PikPak are recommendations, not requirements.
 - The interface is currently available in Chinese only.
 
 The service also starts without a settings file: `/healthz` reports `configured=false`, and the home page is the first-run form described above.

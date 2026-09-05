@@ -49,8 +49,12 @@ def source_is_online(location: str) -> bool:
     declared = LOCATION_ROOT_DECLARATIONS.get(location)
     if not declared:
         return False
-    resolved = translate_ledger_path(declared)
-    return not is_unmapped(resolved) and root_online(resolved)
+    # 几个根都在才算在线：少一块盘就对账，那块盘上的文件会被整批判成丢失。
+    for root in declared:
+        resolved = translate_ledger_path(root)
+        if is_unmapped(resolved) or not root_online(resolved):
+            return False
+    return True
 
 
 RESOURCE_SCAN_WORKERS = 8

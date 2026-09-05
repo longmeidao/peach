@@ -196,7 +196,7 @@ class WebDataTests(unittest.TestCase):
 
     def test_stats_report_system_resource_and_cloud_volumes(self):
         usage = type("Usage", (), {"free": 20, "total": 100})
-        declarations = {"local": "R:/media", "115": "B:/", "pikpak": "A:/"}
+        declarations = {"local": ("R:/media", "S:/more"), "115": ("B:/",), "pikpak": ("A:/",)}
         with mock.patch.object(web_stats, "LOCATION_ROOT_DECLARATIONS", declarations), \
                 mock.patch.object(web_stats, "system_volume", return_value=Path("X:/")), \
                 mock.patch.object(web_stats, "translate_ledger_path",
@@ -205,14 +205,15 @@ class WebDataTests(unittest.TestCase):
                 mock.patch("shutil.disk_usage", return_value=usage):
             stats = rm_web.q_stats(self.contract)
 
+        # 同一来源的几个根各占一行，用序号区分；单根来源不带序号。
         self.assertEqual(
             [(row["kind"], row["label"]) for row in stats["storage_volumes"]],
-            [("system", "系统盘"), ("local", "资源盘"),
+            [("system", "系统盘"), ("local", "资源盘 1"), ("local", "资源盘 2"),
              ("115", "115 网盘"), ("pikpak", "PikPak 网盘")],
         )
         self.assertEqual(stats["storage_summary"], {
-            "volumes": 4, "online": 4, "measured": 4,
-            "free": 80, "used": 320, "total": 400,
+            "volumes": 5, "online": 5, "measured": 5,
+            "free": 100, "used": 400, "total": 500,
         })
 
     def test_items_support_duration_range(self):
@@ -1026,7 +1027,7 @@ class WebDataTests(unittest.TestCase):
         rm_web.w_feedback(self.contract, {"id": 1, "kind": "dispose"})
 
         with mock.patch.object(
-                web_batch, "LOCATION_ROOT_DECLARATIONS", {"local": str(source_root)}):
+                web_batch, "LOCATION_ROOT_DECLARATIONS", {"local": (str(source_root),)}):
             result = rm_web.w_batch(self.contract, {"ids": [1], "operation": "delete"})
 
         self.assertEqual(result["empty_dirs_removed"], 2)
@@ -1042,7 +1043,7 @@ class WebDataTests(unittest.TestCase):
         offline = Path(self.tmp.name) / "offline"
 
         with mock.patch.object(web_batch, "LOCATION_ROOT_DECLARATIONS", {
-                "local": str(source_root), "115": str(offline),
+                "local": (str(source_root),), "115": (str(offline),),
         }):
             result = rm_web.cleanup_empty_source_directories()
 

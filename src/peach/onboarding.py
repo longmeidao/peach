@@ -6,22 +6,25 @@
 `PeachConfig`，`apply()` 把它变成一台能直接起服务的机器（目录、账本、CA、口令、设置
 文件）。前端只负责把字串送进来、把结果和错误显示出去。
 
-问答刻意只收最小集合：数据根、一个本地媒体目录、监听范围、端口、局域网名字。复制、
+问答刻意只收最小集合：数据根、一个或几个本地媒体目录、监听范围、端口、局域网名字。复制、
 115、PikPak、writer 镜像与 SMB 一律保持默认关闭或留空——陌生人第一次跑不该被这些问题
 拦住，设置文件里也只写用户声明过的来源，不把维护者的示例盘符写进别人的文件。
 
 媒体目录在两个平台上落成不同的写法，因为账本路径的形状是不变量（AGENTS.md）：
 
-- Windows：盘符本身就是挂载点，`[media.locations] local = <该目录>`，`[media.mounts]` 留空。
-- macOS：声明根仍写账本口径的 `R:\\media`，`[media.mounts] local = <该目录>`，读取侧
-  按「声明根前缀 → 本机挂载点」翻译（`peach.platform`），扫描侧按同一规则反着写（`peach.scan`）。
+- Windows：盘符本身就是挂载点，`[media.locations] local = <这些目录>`，`[media.mounts]` 留空。
+- macOS：声明根仍写账本口径的 `R:\\media`（第二个起是 `R:\\media2`、`R:\\media3`……），
+  `[media.mounts] local = <这些目录>` 按同样顺序给出，读取侧按「声明根前缀 → 本机挂载点」
+  翻译（`peach.platform`），扫描侧按同一规则反着写（`peach.scan`）。
+
+几个目录都归同一个来源 `local`：它们是同一块馆藏的几个落点，不是几种来源。
 """
 from __future__ import annotations
 
 import os
 import re
 import socket
-from collections.abc import Callable
+from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
 
@@ -38,10 +41,12 @@ LAN_HOST = "0.0.0.0"
 #: 每题最多问几次。三次都不是有效值就放弃，不能让人困在一个死循环里。
 MAX_ATTEMPTS = 3
 #: 非 Windows 平台上本地来源的账本口径声明根。账本一律 Windows 形态，这个值只是个前缀，
-#: 真正的目录由 `[media.mounts] local` 给出。
+#: 真正的目录由 `[media.mounts] local` 给出。第二个目录起在后面加序号：`R:\media2`。
 POSIX_LOCAL_DECLARED_ROOT = r"R:\media"
-#: 本地来源的 ID。v1 只收一个目录，它就是 `asset.location = 'local'`。
+#: 本地来源的 ID。所有本地媒体目录都是 `asset.location = 'local'`。
 LOCAL_LOCATION = "local"
+#: 命令行里追加目录的题面：空答案就是「不加了」。
+MORE_MEDIA_PROMPT = "再加一个媒体文件夹（不加就直接回车）"
 #: 迁移随代码走，不随数据走。这里不 import `peach.config`：那个模块的常量在进程启动
 #: 那一刻就定型了，而首次设置正是要改变它们指向的数据根。
 MIGRATIONS_DIR = settings_file.PROJECT_ROOT / "migrations"
@@ -81,7 +86,8 @@ class Question:
 @dataclass(frozen=True)
 class Answers:
     data_root: Path
-    media_dir: Path
+    #: 至少一个，都是已经解析过的绝对路径；互不重复，也互不包含。
+    media_dirs: tuple[Path, ...]
     host: str
     port: int
     mdns_name: str
@@ -111,6 +117,68 @@ def media_dir_validator(*, windows: bool) -> Callable[[str], Path]:
         if windows and not is_windows_path(str(resolved)):
             raise ValueError(f"{resolved} 不是盘符路径；网络位置先映射成盘符再来")
         return resolved
+    return validate
+
+
+def check_media_dirs(dirs: Sequence[Path]) -> dict[int, str]:
+    """几个媒体文件夹之间不能重复、不能一个套在另一个里面。
+
+    返回「下标 → 原因」，两个前端各自决定错误写在哪一行。套着的目录会让同一个文件被
+    登记两次，所以和重复一样拒绝，而不是悄悄合并。
+    """
+    problems: dict[int, str] = {}
+    for index, path in enumerate(dirs):
+        for other_index, other in enumerate(dirs):
+            if other_index == index or index in problems:
+                continue
+            if path == other:
+                if other_index < index:
+                    problems[index] = f"和上面的 {other} 重复了"
+            elif path.is_relative_to(other):
+                problems[index] = f"已经在 {other} 里面，不用再加"
+    return problems
+
+
+def read_media_dirs(
+    raws: Sequence[str], *, validate: Callable[[str], Path], default: str = "",
+) -> tuple[list[Path], list[str]]:
+    """页面表单里的几行媒体文件夹：逐行校验，再查行与行之间的关系。
+
+    第一行留空取默认值，后面的空行当没填。返回 `(合格的路径, 每行的错误)`；错误列表与
+    提交的行一一对应，全对时为空列表，页面据此把原因写回出错的那一行底下。
+    """
+    rows = list(raws) or [""]
+    kept = [(index, raw) for index, raw in enumerate(rows) if index == 0 or raw.strip()]
+    paths: list[Path] = []
+    problems = [""] * len(rows)
+    failed = False
+    for index, raw in kept:
+        try:
+            paths.append(validate(raw if raw.strip() else default))
+        except ValueError as exc:
+            problems[index] = str(exc)
+            failed = True
+    if not failed:
+        for offset, why in check_media_dirs(paths).items():
+            problems[kept[offset][0]] = why
+            failed = True
+    return paths, (problems if failed else [])
+
+
+def more_media_dir_validator(
+    *, windows: bool, taken: Sequence[Path],
+) -> Callable[[str], Path | None]:
+    """追加目录：空答案表示不加了，否则和第一个目录同一套校验，再查与已有目录的关系。"""
+    single = media_dir_validator(windows=windows)
+
+    def validate(raw: str) -> Path | None:
+        if not raw.strip():
+            return None
+        path = single(raw)
+        problems = check_media_dirs((*taken, path))
+        if problems:
+            raise ValueError(problems[len(taken)])
+        return path
     return validate
 
 
@@ -184,9 +252,21 @@ def questions(
     )
 
 
-def scan_question(media_dir: Path | str) -> Question:
-    return Question("scan_now", SCAN_PROMPT.format(target=media_dir) + "(Y/n)",
+def scan_target_text(media_dirs: Sequence[Path | str]) -> str:
+    """首扫题里的对象：一个目录就写它的路径，几个就写数目。"""
+    if len(media_dirs) == 1:
+        return str(media_dirs[0])
+    return f"这 {len(media_dirs)} 个文件夹"
+
+
+def scan_question(media_dirs: Sequence[Path | str]) -> Question:
+    return Question("scan_now", SCAN_PROMPT.format(target=scan_target_text(media_dirs)) + "(Y/n)",
                     "Y", validate_yes_no)
+
+
+def more_media_dir_question(*, windows: bool, taken: Sequence[Path]) -> Question:
+    return Question("media_dir", MORE_MEDIA_PROMPT, "",
+                    more_media_dir_validator(windows=windows, taken=taken))
 
 
 def ask_until_valid(
@@ -205,16 +285,38 @@ def ask_until_valid(
     raise OnboardingAborted(f"「{question.prompt}」连续 {max_attempts} 次没有拿到有效值。")
 
 
+def collect(
+    config: PeachConfig, ask: Ask, *, windows: bool, home: Path | None = None,
+    report: Callable[[str], None] = print, max_attempts: int = MAX_ATTEMPTS,
+) -> Iterator[tuple[str, object]]:
+    """逐题产出 `(Answers 的字段名, 值)`。`ask` 由前端注入，测试用脚本化答案驱动。
+
+    媒体文件夹问完第一个之后接着问「再加一个」，回车即结束，整组目录作为 `media_dirs`
+    一次产出；页面上对应的是「添加文件夹」。做成生成器是为了让命令行在数据根那一题
+    之后就能判「设置文件已存在」并退出，不必等剩下的题答完。
+    """
+    for question in questions(config, windows=windows, home=home):
+        value = ask_until_valid(question, ask, report=report, max_attempts=max_attempts)
+        if question.key != "media_dir":
+            yield question.key, value
+            continue
+        media_dirs: list[Path] = [value]  # type: ignore[list-item]
+        while True:
+            more = ask_until_valid(more_media_dir_question(windows=windows, taken=media_dirs),
+                                   ask, report=report, max_attempts=max_attempts)
+            if more is None:
+                break
+            media_dirs.append(more)  # type: ignore[arg-type]
+        yield "media_dirs", tuple(media_dirs)
+
+
 def interview(
     config: PeachConfig, ask: Ask, *, windows: bool, home: Path | None = None,
     report: Callable[[str], None] = print, max_attempts: int = MAX_ATTEMPTS,
 ) -> Answers:
-    """把全部题目走一遍。`ask` 由前端注入，测试用脚本化答案驱动。"""
-    answers: dict[str, object] = {}
-    for question in questions(config, windows=windows, home=home):
-        answers[question.key] = ask_until_valid(
-            question, ask, report=report, max_attempts=max_attempts)
-    return Answers(**answers)  # type: ignore[arg-type]
+    """把全部题目走一遍，落成 `Answers`。"""
+    return Answers(**dict(collect(  # type: ignore[arg-type]
+        config, ask, windows=windows, home=home, report=report, max_attempts=max_attempts)))
 
 
 # --------------------------------------------------------------------------- 落盘
@@ -222,15 +324,16 @@ def interview(
 def configure(config: PeachConfig, answers: Answers, *, windows: bool) -> PeachConfig:
     """把答案落成一份可写回的设置。`config` 要按 `answers.data_root` 重新解析过。
 
-    只写用户声明过的来源：`[media.locations]` 里只有 `local`。复制保持关闭，writer 镜像
-    与 SMB 坐标留空，目录键全部落成显式值——和非交互 `peach init` 同一形状。
+    只写用户声明过的来源：`[media.locations]` 里只有 `local`，几个目录就几个声明根。
+    复制保持关闭，writer 镜像与 SMB 坐标留空，目录键全部落成显式值——和非交互
+    `peach init` 同一形状。
     """
     if windows:
-        locations = {LOCAL_LOCATION: str(answers.media_dir)}
-        mounts: dict[str, str] = {}
+        locations = {LOCAL_LOCATION: tuple(str(path) for path in answers.media_dirs)}
+        mounts: dict[str, tuple[str, ...]] = {}
     else:
-        locations = {LOCAL_LOCATION: POSIX_LOCAL_DECLARED_ROOT}
-        mounts = {LOCAL_LOCATION: str(answers.media_dir)}
+        locations = {LOCAL_LOCATION: posix_declared_roots(len(answers.media_dirs))}
+        mounts = {LOCAL_LOCATION: tuple(str(path) for path in answers.media_dirs)}
     prepared = settings_file.capture_existing(
         config, replication_enabled=False,
         overrides={"host": answers.host, "port": answers.port,
@@ -357,15 +460,25 @@ def take_first_scan_request(config: PeachConfig) -> str | None:
     return location or None
 
 
-def scan_root(config: PeachConfig) -> str:
-    """首次扫描的账本口径根：就是 `local` 的声明根。本机目录由 `peach.scan` 按挂载表取。"""
-    return config.locations[LOCAL_LOCATION]
+def posix_declared_roots(count: int) -> tuple[str, ...]:
+    """非 Windows 平台上 `count` 个本地目录的账本口径声明根：`R:\\media`、`R:\\media2`……"""
+    return tuple(POSIX_LOCAL_DECLARED_ROOT + ("" if index == 0 else str(index + 1))
+                 for index in range(count))
 
 
-def mounts_explanation(media_dir: Path | str) -> str:
+def scan_roots(config: PeachConfig) -> tuple[str, ...]:
+    """首次扫描的账本口径根：`local` 的全部声明根。本机目录由 `peach.scan` 按挂载表取。"""
+    return tuple(config.locations[LOCAL_LOCATION])
+
+
+def mounts_explanation(media_dirs: Sequence[Path | str] | Path | str) -> str:
     """非 Windows 平台写出的两行为什么长那样，一句话说清。"""
-    return (f"账本用统一的 Windows 形态记路径（{POSIX_LOCAL_DECLARED_ROOT}\\...），"
-            f"本机挂载点 [media.mounts] local = {media_dir} 负责翻译成真实文件。")
+    if isinstance(media_dirs, (Path, str)):
+        media_dirs = (media_dirs,)
+    shown = "、".join(str(path) for path in media_dirs) or "（还没填）"
+    roots = "、".join(posix_declared_roots(max(len(media_dirs), 1)))
+    return (f"账本用统一的 Windows 形态记路径（{roots} 下的 ...），"
+            f"本机挂载点 [media.mounts] local = {shown} 按同样的顺序负责翻译成真实文件。")
 
 
 def console_ask(prompt: str, default: str) -> str:

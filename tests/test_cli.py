@@ -136,7 +136,7 @@ class InitCommandTests(unittest.TestCase):
         self.assertTrue(loaded.configured)
         self.assertEqual(loaded.server.mdns_name, "peach-two")
         self.assertEqual(loaded.server.port, 9443)
-        self.assertEqual(loaded.mounts, {"local": "/mnt/media"})
+        self.assertEqual(loaded.mounts, {"local": ("/mnt/media",)})
         # 全新机器不开复制：单机用户不该凭空多出一条同步路径。
         self.assertFalse(loaded.replication.enabled)
 
@@ -155,8 +155,12 @@ class InitCommandTests(unittest.TestCase):
     def test_mount_ids_keep_their_case(self):
         """来源 ID 不是盘符，`local` 不能被改写成 `LOCAL`。"""
         self.assertEqual(
-            cli._parse_mounts(["local=/mnt/res"], {"local": r"R:\media"}),
-            {"local": "/mnt/res"})
+            cli._parse_mounts(["local=/mnt/res"], {"local": (r"R:\media",)}),
+            {"local": ("/mnt/res",)})
+        # 同一来源重复给，就按顺序对应它的几个声明根。
+        self.assertEqual(
+            cli._parse_mounts(["local=/mnt/a", "local=/mnt/b"], {"local": (r"R:\media", r"R:\media2")}),
+            {"local": ("/mnt/a", "/mnt/b")})
 
     def test_the_new_ledger_is_readable_by_status(self):
         self._init()
@@ -273,13 +277,18 @@ class InteractiveInitTests(unittest.TestCase):
 
     @unittest.skipUnless(NATIVE_WINDOWS, "声明根要是真实存在的盘符目录，只有 Windows 造得出来")
     def test_windows_flow_declares_the_directory_and_scans_it(self):
-        code, output, prompts = self._run(["", str(self.media), "", "", "", ""], windows=True)
+        second = self.root / "more"
+        second.mkdir()
+        (second / "c.mp4").write_bytes(b"2")
+        code, output, prompts = self._run(
+            ["", str(self.media), str(second), "", "", "", "", ""], windows=True)
         self.assertEqual(code, 0)
-        self.assertEqual(len(prompts), 6)
-        self.assertTrue(prompts[-1].startswith("现在扫描 "))
+        self.assertEqual(len(prompts), 8)
+        self.assertEqual(prompts[2], prompts[3], "追加目录问到回车为止")
+        self.assertTrue(prompts[-1].startswith("现在扫描 这 2 个文件夹"))
         loaded = self._loaded()
         self.assertTrue(loaded.present)
-        self.assertEqual(loaded.locations, {"local": str(self.media)})
+        self.assertEqual(loaded.locations, {"local": (str(self.media), str(second))})
         self.assertEqual(loaded.mounts, {})
         self.assertEqual((loaded.server.host, loaded.server.port, loaded.server.mdns_name),
                          ("0.0.0.0", 8900, "peach"))
@@ -289,19 +298,21 @@ class InteractiveInitTests(unittest.TestCase):
         self.certs.assert_called_once()
         # 账本里的路径就是本机路径，每一行都指向真实文件。
         self.assertEqual(self._ledger_paths(),
-                         sorted([str(self.media / "b.jpg"), str(self.media / "sub" / "a.mp4")]))
+                         sorted([str(self.media / "b.jpg"), str(self.media / "sub" / "a.mp4"),
+                                 str(second / "c.mp4")]))
         self.assertIn("✓ local: 2 文件", output)
+        self.assertIn("✓ local: 1 文件", output)
         self.assertIn("下一步", output)
-        self.assertIn("扫描结果：", output)
+        self.assertEqual(output.count("扫描结果："), 2, "每个目录各报一行")
         self.assertNotIn("115", (self.data_root / "config.toml").read_text(encoding="utf-8"))
 
     def test_posix_flow_keeps_the_ledger_shape_and_mounts_the_directory(self):
-        code, output, _ = self._run(["", str(self.media), "2", "9443", "peach-two", ""],
+        code, output, _ = self._run(["", str(self.media), "", "2", "9443", "peach-two", ""],
                                     windows=False)
         self.assertEqual(code, 0)
         loaded = self._loaded()
-        self.assertEqual(loaded.locations, {"local": r"R:\media"})
-        self.assertEqual(loaded.mounts, {"local": str(self.media)})
+        self.assertEqual(loaded.locations, {"local": (r"R:\media",)})
+        self.assertEqual(loaded.mounts, {"local": (str(self.media),)})
         self.assertEqual((loaded.server.host, loaded.server.port, loaded.server.mdns_name),
                          ("0.0.0.0", 9443, "peach-two"))
         self.assertIn("本机挂载点", output)
@@ -310,12 +321,12 @@ class InteractiveInitTests(unittest.TestCase):
         # 读取侧按同一套规则翻回去：声明根后的层级接到挂载点上。
         for path in paths:
             tail = PureWindowsPath(path).relative_to(PureWindowsPath(r"R:\media")).parts
-            self.assertTrue(Path(loaded.mounts["local"]).joinpath(*tail).is_file(), path)
+            self.assertTrue(Path(loaded.mounts["local"][0]).joinpath(*tail).is_file(), path)
 
     def test_an_invalid_media_directory_is_asked_again(self):
         missing = self.root / "nope"
         code, output, prompts = self._run(
-            ["", str(missing), str(self.media), "", "", "", "n"], windows=NATIVE_WINDOWS)
+            ["", str(missing), str(self.media), "", "", "", "", "n"], windows=NATIVE_WINDOWS)
         self.assertEqual(code, 0)
         self.assertEqual(prompts.count("媒体文件夹（必须已经存在，可以在外置硬盘上）"), 2)
         self.assertIn("目录不存在", output)
@@ -329,7 +340,7 @@ class InteractiveInitTests(unittest.TestCase):
         self.assertFalse(self.data_root.exists())
 
     def test_the_scan_can_be_declined(self):
-        code, output, _ = self._run(["", str(self.media), "", "", "", "n"], windows=NATIVE_WINDOWS)
+        code, output, _ = self._run(["", str(self.media), "", "", "", "", "n"], windows=NATIVE_WINDOWS)
         self.assertEqual(code, 0)
         self.assertEqual(self._ledger_paths(), [])
         self.assertNotIn("扫描结果", output)
@@ -356,7 +367,7 @@ class InteractiveInitTests(unittest.TestCase):
         from peach.config import PeachSettings
         from peach.platform import translate_roots
 
-        self._run(["", str(self.media), "", "", "", ""], windows=NATIVE_WINDOWS)
+        self._run(["", str(self.media), "", "", "", "", ""], windows=NATIVE_WINDOWS)
         loaded = self._loaded()
         # POSIX 形态的声明根是 `R:\media`，翻回本机目录要读这份设置的 [media.mounts]；
         # 模块级 `active()` 指的是这台机器自己的设置，临时目录不在里面。
@@ -365,7 +376,7 @@ class InteractiveInitTests(unittest.TestCase):
         self.addCleanup(active.stop)
         settings = PeachSettings(
             db_path=loaded.directory("database") / "ledger.db", configured=True, token="secret",
-            allowed_media_roots=translate_roots(tuple(loaded.locations.values())),
+            allowed_media_roots=translate_roots(tuple(root for roots in loaded.locations.values() for root in roots)),
         )
 
         async def probe():
@@ -453,9 +464,10 @@ class ScanCommandTests(unittest.TestCase):
         (self.media / "b.jpg").write_bytes(b"1")
         config = settings_file.load_config(environ={}, strict=False)
         declared = str(self.media) if NATIVE_WINDOWS else r"R:\media"
-        mounts = {} if NATIVE_WINDOWS else {"local": Path(self.media)}
-        fixed = replace(config, locations={"local": declared},
-                        mounts={key: str(value) for key, value in mounts.items()})
+        mounts = {} if NATIVE_WINDOWS else {"local": (Path(self.media),)}
+        fixed = replace(config, locations={"local": (declared,)},
+                        mounts={key: tuple(str(item) for item in value)
+                                for key, value in mounts.items()})
         for target in (mock.patch.object(settings_file, "active", lambda: fixed),
                        mock.patch.object(cli, "location_mounts", lambda: mounts),
                        mock.patch.object(cli, "SETTINGS_ERROR", None)):

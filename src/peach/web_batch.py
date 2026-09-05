@@ -315,14 +315,18 @@ def _restore_staged_media(staged):
             os.replace(quarantine, original)
 
 
-def _online_source_roots() -> dict[str, Path]:
-    """Return only declared physical roots that can be enumerated now."""
-    roots: dict[str, Path] = {}
-    for location, declaration in LOCATION_ROOT_DECLARATIONS.items():
-        root = translate_ledger_path(declaration)
-        if is_unmapped(root) or not root.is_dir() or not root_online(root):
-            continue
-        roots[location] = root
+def _online_source_roots() -> dict[str, tuple[Path, ...]]:
+    """Return only declared physical roots that can be enumerated now, per source."""
+    roots: dict[str, tuple[Path, ...]] = {}
+    for location, declarations in LOCATION_ROOT_DECLARATIONS.items():
+        online = []
+        for declaration in declarations:
+            root = translate_ledger_path(declaration)
+            if is_unmapped(root) or not root.is_dir() or not root_online(root):
+                continue
+            online.append(root)
+        if online:
+            roots[location] = tuple(online)
     return roots
 
 
@@ -364,10 +368,10 @@ def cleanup_empty_source_directories() -> dict[str, object]:
     """
     results: list[dict[str, object]] = []
     total_scanned = total_removed = total_errors = 0
-    for location, declaration in LOCATION_ROOT_DECLARATIONS.items():
-        root = translate_ledger_path(declaration)
-        mapped = not is_unmapped(root)
-        online = bool(mapped and root.is_dir() and root_online(root))
+    for location, declarations in LOCATION_ROOT_DECLARATIONS.items():
+        roots = [translate_ledger_path(declaration) for declaration in declarations]
+        mapped = all(not is_unmapped(root) for root in roots)
+        online = mapped and all(root.is_dir() and root_online(root) for root in roots)
         row: dict[str, object] = {
             "location": location,
             "mapped": mapped,
@@ -381,22 +385,23 @@ def cleanup_empty_source_directories() -> dict[str, object]:
             continue
 
         walk_errors: list[OSError] = []
-        for directory, _subdirectories, _files in os.walk(
-                root, topdown=False, onerror=walk_errors.append, followlinks=False):
-            candidate = Path(directory)
-            if candidate == root or candidate.is_symlink():
-                continue
-            row["scanned"] = int(row["scanned"]) + 1
-            try:
-                candidate.rmdir()
-            except FileNotFoundError:
-                # CloudDrive can remove the same empty directory concurrently.
-                continue
-            except OSError as error:
-                if error.errno not in {errno.ENOTEMPTY, errno.EEXIST}:
-                    row["errors"] = int(row["errors"]) + 1
-            else:
-                row["removed"] = int(row["removed"]) + 1
+        for root in roots:
+            for directory, _subdirectories, _files in os.walk(
+                    root, topdown=False, onerror=walk_errors.append, followlinks=False):
+                candidate = Path(directory)
+                if candidate == root or candidate.is_symlink():
+                    continue
+                row["scanned"] = int(row["scanned"]) + 1
+                try:
+                    candidate.rmdir()
+                except FileNotFoundError:
+                    # CloudDrive can remove the same empty directory concurrently.
+                    continue
+                except OSError as error:
+                    if error.errno not in {errno.ENOTEMPTY, errno.EEXIST}:
+                        row["errors"] = int(row["errors"]) + 1
+                else:
+                    row["removed"] = int(row["removed"]) + 1
         row["errors"] = int(row["errors"]) + len(walk_errors)
         total_scanned += int(row["scanned"])
         total_removed += int(row["removed"])
@@ -426,7 +431,7 @@ def _finish_purge(outcome):
             snapshot.unlink(missing_ok=True)
         except OSError:
             pass
-    source_roots = tuple(_online_source_roots().values())
+    source_roots = tuple(root for roots in _online_source_roots().values() for root in roots)
     removed_directories: set[Path] = set()
     for parent in outcome.pop("_parents"):
         removed_directories.update(_remove_empty_ancestors(parent, source_roots))
