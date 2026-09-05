@@ -3135,8 +3135,7 @@ class WebUiSourceTests(unittest.TestCase):
         # 每一条失败都进 Note，没有第二套「红字一行」的写法：红色文字既没有图标
         # 也没有边框，在暗色底上和普通说明文字只差一个色相，扫读时整条会被跳过。
         self.assertPageContains('class="geist-note geist-note-error fwarn" role="alert"')
-        self.assertPageContains(
-            "noteHtml(`${broken.length} 个来源上次检查失败，原因见对应那一行。`,{variant:'error'})")
+        self.assertPageContains("${followCheckReport?followCheckFailNote(followCheckReport):''}")
         self.assertPageContains(
             "noteHtml('文件权限过宽，请在运行 Peach 的 POSIX 主机上收紧为 0600。',{variant:'error'})")
         self.assertPageLacks('class="fnote warn"')

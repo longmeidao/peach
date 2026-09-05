@@ -4182,8 +4182,8 @@ function followCheckFailNote(report){
       .filter(Boolean).join(' '))}：没有更多历史内容</p>`).join('')}</div>${dismiss}</div>`:'';
   const errors=failed.length||evidence.length?`<div class="geist-note geist-note-error fcheckreport" role="alert">${icon('alert')}<div>
     ${failed.length?`<p><b>${failed.length} 个来源检查失败</b></p>`:''}
-    ${failed.map(row=>`<p class="fcheckfail">${esc([row.provider_label||row.provider,row.ref]
-      .filter(Boolean).join(' '))}${row.provider?'：':''}${esc(row.error||'未说明原因')}</p>`).join('')}
+    ${failed.map(row=>`<p class="fcheckfail"><strong>${esc(row.provider_label||row.provider||'')}</strong>
+      <strong>${esc(row.author||row.label||row.ref||'')}</strong>${row.provider?'：':''}${esc(row.error||'未说明原因')}</p>`).join('')}
     ${evidence.length?`<p class="fchecknote">候选已入库，但这一次的原始响应没有留档：${
       esc(evidence[0].evidence_error)}</p>`:''}
   </div>${dismiss}</div>`:'';
@@ -4352,7 +4352,8 @@ function followBackfillState(sources){
    所以往回抓是一个独立的、显式的动作，点一次走一页，不自动、不连翻。 */
 async function wireFollowProgress(){
   const host=$('#stats').querySelector('.followmanage')||$('#stats'),surface=surfaceToken(surfacePath());
-  const marker=document.createElement('div');host.prepend(marker);
+  host.querySelector('[data-follow-progress]')?.remove();
+  const marker=document.createElement('div');marker.dataset.followProgress='';host.prepend(marker);
   const ui=await import('/dist/peach-ui.js');
   if(!surfaceCurrent(surface)||!marker.isConnected)return;
   ui.followJobProgress({host:marker,active:()=>surfaceCurrent(surface),
@@ -4362,9 +4363,21 @@ async function wireFollowProgress(){
     complete:report=>{followCheckReport=report.status==='failed'
       ?{results:[{ok:false,error:report.error}]}:report;
       followCheckToast(followCheckReport);
-      if(surfaceCurrent(surface))void (surface.path==='/follow-manage'?openFollowManage(false):openFollow(false))},
+      if(surfaceCurrent(surface))void refreshFollowSurface(surface)},
     note:text=>noteHtml(text,{label:'任务状态'}),loading:text=>loadingDotsHtml(text),
+    container:content=>`<section class="followtask" data-geist-fieldset aria-label="检查更新进度"><div class="geist-fieldset-content">${content}</div></section>`,
     progress:(value,max)=>progressHtml(`已完成 ${value}/${max} 个来源`,value,max)});
+}
+async function refreshFollowSurface(surface){
+  try{
+    const [data,credentials]=await Promise.all([
+      surfaceApi(surface,surface.path==='/follow-manage'?'/api/follow?limit=1':followPageUrl(0)),
+      surfaceApi(surface,'/api/follow/credentials')]);
+    if(!surfaceCurrent(surface))return;
+    followData=data;
+    if(surface.path==='/follow-manage')renderFollowManage(credentials);
+    else renderFollow();
+  }catch(error){if(surfaceCurrent(surface))toast(error.message,{warn:true})}
 }
 async function wireOperationProgress({host,path,key,title,busy,complete}){
   if(!host)return;
@@ -4404,7 +4417,7 @@ function wireFollowOlder(){
       const started=await api('/api/follow/check',
         {method:'POST',body:JSON.stringify({older:true,background:true})});
       sessionStorage.setItem('peach-follow-job',started.job_id);
-      if(button.isConnected)await openFollow(false);
+      if(button.isConnected)void wireFollowProgress();
     }catch(error){
       followCheckReport={results:[{ok:false,error:error.message}]};
       followCheckToast(followCheckReport);
@@ -4546,6 +4559,8 @@ function followAuthorBlock(group){
   return `<div class="fauthor${bad?' bad':''}">
     <div class="fauthorhead">${followAuthorAvatar(group)}
       <b>${esc(name)}</b>
+      <button type="button" class="frowicon" data-follow-check="" data-follow-sources="${group.filter(s=>s.enabled).map(s=>s.id).join(',')}"
+        ${group.some(s=>s.enabled)?'':'disabled'} title="检查此作者" aria-label="检查 ${esc(name)} 的全部来源">${icon('refresh-cw')}</button>
       <span class="fmeta"${group.length>1?` title="${group.length} 个来源"`:''}>${group.length>1
         ? group.map(source=>sourceIcon(source.provider)).join('')
         : sourceIcon(group[0].provider)+esc(group[0].provider_label)}</span>
@@ -4725,7 +4740,6 @@ function renderFollowManage(credentials){
             icon('refresh-cw')}检查全部</button>
           <button class="fbtn" data-follow-view>${icon('rss')}去看更新</button></div>
         ${followCheckReport?followCheckFailNote(followCheckReport):''}
-        ${broken.length?noteHtml(`${broken.length} 个来源上次检查失败，原因见对应那一行。`,{variant:'error'}):''}
         ${sources.length?`<div class="frows fsources" data-layout="${followListLayout()}">${
           followAuthorGroups(sources).map(followAuthorBlock).join('')}</div>
           ${counts.new?`<div class="fsecfoot"><p class="fnote fbulkrow"><span class="fbulkcounts">未看 ${counts.new} · 已看 ${counts.seen||0}
@@ -4924,7 +4938,7 @@ function wireFollowManage(){
   });
   root.querySelectorAll('[data-follow-check]').forEach(button=>button.onclick=async()=>{
     if(followBusy)return;
-    followBusy=true;const oldTitle=button.title;
+    followBusy=true;let startedJob=false;const oldTitle=button.title;
     const oldAria=button.getAttribute('aria-label');
     const oldButton=button.innerHTML;
     setActionBusy(button);button.title='检查中…';
@@ -4932,10 +4946,13 @@ function wireFollowManage(){
     button.innerHTML=`${spinnerHtml('检查中')}${button.matches('.frowicon')?'':'<span>检查中…</span>'}`;
     try{
       const id=button.dataset.followCheck;
+      const sources=button.dataset.followSources?.split(',').filter(Boolean).map(Number);
       const started=await api('/api/follow/check',{method:'POST',
-        body:JSON.stringify({...(id?{source:+id}:{}),background:true})});
+        body:JSON.stringify({...(sources?{sources}:id?{source:+id}:{}),background:true})});
       sessionStorage.setItem('peach-follow-job',started.job_id);
-      if(button.isConnected)await openFollowManage(false);
+      followCheckReport=null;root.querySelector('.fcheckreports')?.remove();
+      startedJob=true;
+      if(button.isConnected)void wireFollowProgress();
     }catch(e){
       // 整个请求就失败了（断网、写入端不可达）：同样走那块报告，不弹 alert。
       followCheckReport={results:[{ok:false,error:e.message}]};
@@ -4945,7 +4962,7 @@ function wireFollowManage(){
        if(box)box.outerHTML=note;
       else $('#stats').querySelector('.fsec')?.insertAdjacentHTML('afterbegin',note);
     }
-    finally{if(button.isConnected)followBusy=false;setActionBusy(button,false);button.innerHTML=oldButton;
+    finally{if(button.isConnected)followBusy=startedJob;setActionBusy(button,startedJob);button.innerHTML=oldButton;
       button.title=oldTitle;if(oldAria===null)button.removeAttribute('aria-label');
       else button.setAttribute('aria-label',oldAria)}
   });

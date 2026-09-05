@@ -12,9 +12,11 @@ describe('后台任务状态恢复', () => {
       current: {label: '演示来源', attempt: 3, max_attempts: 5, retry_in: 2}};
     const mount = (element: HTMLElement) => followJobProgress({host: element,
       active: () => true, read: async () => state, busy: () => {}, complete,
-      note: text => text, loading: text => text, progress: () => ''});
+      note: text => text, loading: text => text, progress: () => '',
+      container: content => `<section data-geist-fieldset>${content}</section>`});
     mount(host); await vi.advanceTimersByTimeAsync(0);
     expect(host.textContent).toContain('1/3');
+    expect(host.querySelector('[data-geist-fieldset]')).not.toBeNull();
     expect(host.textContent).toContain('第 3/5 次尝试');
     host.remove();
     const fresh = document.createElement('div'); document.body.append(fresh);
