@@ -3,14 +3,12 @@
   border-bottom:1px solid transparent;background:transparent;
   display:flex;gap:7px;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;align-items:center}
 .tagbar::-webkit-scrollbar{display:none}
-/* 药丸只有一条共同约定：选中就浮到 --ground 那张面上，未选中留在页面底。
-   选中填 --hover 在浅色一档说不通：它是 5% 黑，比页面底还深，读成被按凹进去，
-   跟暗色一档「选中更亮」正好相反，同一个控件于是有两套相反的语义。 */
+/* 选中药丸和生效筛选共用高亮填充。 */
 .pill{flex:none;height:var(--filterItemH);padding:0 20px;border:1px solid var(--field-ring);
   border-radius:var(--pill-radius);background:transparent;display:inline-flex;align-items:center;justify-content:center;
   color:var(--muted);cursor:pointer;font-size:var(--fs-lg);white-space:nowrap;text-decoration:none}
 .pill:hover{border-color:var(--field-ring-hover);color:var(--ink)}
-.pill[aria-pressed="true"]{border-color:var(--field-ring);background:var(--ground);color:var(--ink)}
+.pill[aria-pressed="true"]{border-color:var(--field-ring);background:var(--hover);color:var(--ink)}
 
 /* 虚线只画在首页筛选条右半截的标签药丸上，别处一律实线。
    2026-09-05 实测 vercel.com/<team>/~/deployments 的筛选令牌，两端是这样的：
@@ -29,10 +27,10 @@
 
 /* 多标签交集筛选条 */
 .combo{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:0 0 10px}
-/* 交集条上的每一颗都是已经生效的筛选，所以穿的是选中药丸那身：实线边加 --ground 填充。 */
+/* 交集条上的每一颗都是已经生效的筛选。 */
 .combo .cb{min-height:36px;box-sizing:border-box;display:inline-flex;align-items:center;gap:7px;padding:0 9px 0 12px;
   border-radius:var(--tag-radius);border:1px solid var(--field-ring);color:var(--ink-2);
-  background:var(--ground);font-size:var(--fs-xs)}
+  background:var(--hover);font-size:var(--fs-xs)}
 .combo .cb b{cursor:pointer;opacity:.7;font-weight:400}
 .combo .cb b:hover{opacity:1}
 .combo .clr{min-height:36px;display:inline-flex;align-items:center;padding:0 8px;background:none;border:0;color:var(--muted);cursor:pointer;font-size:var(--fs-xs);text-decoration:none}

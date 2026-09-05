@@ -596,7 +596,7 @@ class WebUiSourceTests(unittest.TestCase):
             self.assertIn("var(--ground)", rule, f"{name} 是页面上的一个面")
 
     def test_only_the_home_filter_bar_draws_the_dashed_unapplied_edge(self):
-        """虚线只在 `#tagbar` 那一排，别处的药丸一律实线；选中一律填 --ground。
+        """虚线只在 `#tagbar` 那一排，别处的药丸一律实线；选中一律填 --hover。
 
         2026-09-05 实测 vercel.com/<team>/~/deployments 的筛选令牌：未生效
         `rgba(0,0,0,0)` 配 `1px dashed rgba(0,0,0,.21)`，已生效 `#FFFFFF` 配
@@ -615,7 +615,7 @@ class WebUiSourceTests(unittest.TestCase):
             self.assertNotIn("dashed", rule, f"{base} 的默认态不画虚线")
             self.assertPageContains(base + ":hover{border-color:var(--field-ring-hover);color:var(--ink)}")
             self.assertPageContains(base + '[aria-pressed="true"]{border-color:var(--field-ring);'
-                                           "background:var(--ground);color:var(--ink)}")
+                                           "background:var(--hover);color:var(--ink)}")
         self.assertPageContains('#tagbar .pill[data-tag]:not([aria-pressed="true"])'
                                 "{border-style:dashed;border-color:var(--field-ring-hover)}")
         self.assertPageContains(
@@ -629,7 +629,7 @@ class WebUiSourceTests(unittest.TestCase):
         # 已经生效的交集筛选和选中的药丸是同一件事，穿同一身。
         start = css.index(".combo .cb{")
         applied = css[start:css.index("}", start)]
-        self.assertIn("background:var(--ground)", applied)
+        self.assertIn("background:var(--hover)", applied)
         self.assertIn("1px solid var(--field-ring)", applied)
         # 没有 JS 会挂 .act，留着只会让人以为选中态有两套写法。
         self.assertPageLacks(".pill.act{")
@@ -1112,8 +1112,8 @@ class WebUiSourceTests(unittest.TestCase):
         也不该重画表头。表头里随查询变的只有计数，单独改它。
         """
         self.assertPageContains("async function openIndex(kind,q,push=true,refine=false)")
-        self.assertPageContains("if(!refine)showIndexLoading('正在读取'+(INDEX_TITLES[kind]||'标签'))")
-        self.assertCode("""if(refine&&$('#iq')){
+        self.assertPageContains("if(!refine)showIndexLoading('正在读取'+(INDEX_TITLES[kind]||'标签'),kind,q)")
+        self.assertCode("""if($('#indexFilters')){
     $('#indexCount').textContent=countText;
     $('#indexFilters').innerHTML=filters;
     $('#indexBody').innerHTML=body;
@@ -1981,6 +1981,20 @@ class WebUiSourceTests(unittest.TestCase):
             ".cleanup-skeleton .skeletoncard em::after,\n"
             ".followmanage-skeleton .skeletoncard i::after{content:none}")
 
+    def test_index_skeletons_share_final_geometry_and_keep_the_header(self):
+        self.assertPageContains('export function indexSkeletonHtml(')
+        self.assertPageContains('class="icell"><span class="ring skeleton"')
+        self.assertPageContains("company?'company':'people'")
+        self.assertPageContains('class="tagwall index-tags"')
+        self.assertPageContains('.index-skeleton[data-fill]>section>div')
+        self.assertPageContains("indexHeaderHtml(kind,q,'<span class=\"countskeleton\"></span>')")
+        self.assertPageContains("if($('#indexFilters')){")
+        self.assertPageContains("showIndexLoading('正在读取索引',path.slice(1)")
+        self.assertPageContains("querySelector('[data-skeleton]')?.dataset.skeleton!==next")
+
+    def test_inline_portrait_cards_follow_dense_mode(self):
+        self.assertPageContains('body[data-density="dense"] .shorts-inline .scard{width:calc(214px * 168 / 336)}')
+
     def test_the_top_bars_get_a_first_paint_skeleton_shaped_like_the_real_thing(self):
         """顶部三层与标签条的首屏骨架照真实几何画，形状按 Geist 的判据选。
 
@@ -2039,7 +2053,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(
             "    const columns=style.gridTemplateColumns.split(' ').filter(Boolean).length;")
         self.assertPageContains(
-            "    const rows=Math.max(1,Math.min(4,Math.ceil((room+rowGap)/(cardHeight+rowGap))));\n"
+            "    const rows=Math.max(1,Math.min(maxRows,Math.ceil((room+rowGap)/(cardHeight+rowGap))));\n"
             "    const want=columns*rows;\n"
             "    while(grid.children.length>want)grid.lastElementChild.remove();\n"
             "    while(grid.children.length<want)grid.appendChild(first.cloneNode(true));")
@@ -2092,8 +2106,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(
             "  loadRequestSeq++;listLoading=false;$('#combo').innerHTML='';\n"
             "  hideDiscoveryBars();")
-        self.assertEqual(self.page.count("hideDiscoveryBars();"), 3,
-                         "管理页、索引页和中央清理函数各调一次，收起动作本身只写一处")
+        self.assertEqual(self.page.count("hideDiscoveryBars();"), 4,
+                         "管理页、索引列表、实体资料页和中央清理函数各调一次，收起动作本身只写一处")
 
     def test_a_narrow_state_falls_back_to_the_whole_library_for_the_top_tiers(self):
         """状态页收窄到聚合为空时，顶部三层退回全库口径，不整块消失。
@@ -4975,7 +4989,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("placeholder:followSkeletonHtml('正在读取关注内容')")
         self.assertPageContains("pageSkeletonHtml('正在读取统计',{variant:'dashboard'})")
         self.assertPageContains(".skeletondashhero{min-height:330px;grid-template-columns:minmax(260px,36%) minmax(0,1fr)}")
-        self.assertPageContains("if(!refine)showIndexLoading('正在读取'+(INDEX_TITLES[kind]||'标签'))")
+        self.assertPageContains("if(!refine)showIndexLoading('正在读取'+(INDEX_TITLES[kind]||'标签'),kind,q)")
         self.assertPageContains("$('#loadSentinel').innerHTML=loadingDotsHtml('继续载入中…')")
         self.assertPageContains("pageSkeletonHtml('正在读取推荐',{cards:true,className:'related-skeleton'})")
         self.assertPageLacks("count.innerHTML=`${spinnerHtml(label)}<span>载入中…</span>`")
@@ -6731,6 +6745,7 @@ class WebUiSourceTests(unittest.TestCase):
             "  saveSettings();\n"
             "  document.querySelectorAll('.igrid')"
             ".forEach(grid=>{grid.dataset.layout=peopleIndexLayout()});\n"
+            "  fitSkeleton($('#index'));\n"
             "}")
 
     def test_the_big_people_layout_frames_the_detected_face(self):

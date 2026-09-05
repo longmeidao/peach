@@ -372,4 +372,4 @@ body[data-density="dense"] .card .meta .watchcount{display:none}
 .shorts-inline h2 button svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2}
 .srow{display:flex;gap:13px;overflow-x:auto;padding-bottom:7px}
 .srow .scard{flex:none;width:214px;cursor:pointer}
-
+body[data-density="dense"] .shorts-inline .scard{width:calc(214px * 168 / 336)}
