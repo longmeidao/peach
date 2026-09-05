@@ -6234,10 +6234,11 @@ async function openEntity(kind,name,push=true){
 let drawerSuppressUntil=0;
 /* 抽屉里所有重画都只写 #drawerScroll：#drawer 本身是定位宿主，覆盖式滚动条的轨道和
    这层滚动容器都挂在它身上，整块 innerHTML 一换就把 buildBars() 要写的容器连轨道一起
-   抹掉，首页从此停在骨架态。 */
+   抹掉，首页从此停在骨架态。换页面的判据 data-surface 也记在滚动层上：
+   syncSidebarSurface() 认定换了页面就 replaceChildren()，传宿主进去等于把滚动层删掉。 */
 function buildDrawerNavigation(){
-  const drawer=$('#drawer'),scroll=$('#drawerScroll'),key=surfacePath()+location.search;
-  if(!syncSidebarSurface(drawer,key)){
+  const scroll=$('#drawerScroll'),key=surfacePath()+location.search;
+  if(!syncSidebarSurface(scroll,key)){
     scroll.querySelectorAll('[data-nav]').forEach(button=>
       button.setAttribute('aria-pressed',String(navOn(button.dataset.nav))));
     return;
