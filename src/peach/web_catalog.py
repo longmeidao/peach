@@ -875,8 +875,11 @@ def q_tops(contract: WebContract, n=28, jav=False, seed="", state=""):
         studio["has_logo"] = contract.has_logo(studio["k"])
     # 女优那排同理，只是它有两级图：规范实体图优先，取不到才回落到代表作头像。
     # 两级都要标志，否则第一级空着的那些人会各打一个必然 404 的请求再回落。
+    # 取景与索引页同一份 sidecar、同一个换算。这排圆框只有 64 px，框越小，同一张图
+    # 能无损放大的余量越大，全身站姿照在这里才谈得上看清是谁。
     for performer in out["performers"]:
         performer["has_image"] = contract.has_entity_image("performer", performer["id"])
+        performer["avatar_focus"] = contract.avatar_focus("performer", performer["id"])
     # 厂牌那排自己不出头像，但两排的 `rep` 都会进前端的 REP 表，卡片头像回落时读的
     # 就是它——所以两排都得判。
     attach_avatar_availability(contract, out["performers"] + out["studios"])

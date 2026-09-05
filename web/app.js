@@ -1,4 +1,5 @@
 import {$, ENTITY_ROUTES, LOC, ROUTE_ENTITIES, ROUTE_STATES, SITE_FAVICONS, STATE_LABELS, STATE_ROUTES, api, isAbort, mapLimit, brandIcon, entityPath, esc, faviconFallbackUrl, faviconUrl, linkHost, linkMarkUrl, fmtClock, fmtDur, fmtSize, foldName, icon, isCatalogPath, realDuration} from './js/core.js';
+import { faceFrame } from './js/face-frame.js';
 import { imageFallbackAttrs, wireImageFallbacks } from './js/image-fallback.js';
 import { javDisplayName, javTitleHtml } from './js/jav-title.js';
 import { matchRoute, routeLabel } from './js/routes.js';
@@ -1774,7 +1775,8 @@ document.addEventListener('visibilitychange',()=>{if(document.hidden)releaseHove
    兜底链最后一环必须真的把 `<img>` 拿掉（`data-drop="self"`）：留着取不到图的
    `<img>`，`:has(img)` 仍然匹配，首字母垫底回不来，浏览器还会把 alt 画出来。 */
 function entityFaceImg({kind='performer',id=null,hasImage=false,rep=null,mark=null,logo='',
-                        logoVariant='logo',alt='',lazy=true,style='',dropStyle=false}={}){
+                        logoVariant='logo',alt='',lazy=true,style='',dropStyle=false,
+                        focus=null}={}){
   const useEntity=!!(id&&hasImage);
   const entitySrc=useEntity?`/entity-image?kind=${kind}&id=${id}`:'';
   // `rep` 由服务端的 has_avatar 决定有没有值，没有就不出这一环。
@@ -1790,19 +1792,23 @@ function entityFaceImg({kind='performer',id=null,hasImage=false,rep=null,mark=nu
     :(useEntity&&avatarSrc?[avatarSrc]:[]);
   // 人脸取景是按实体图算出来的，回落图是另一张照片，脸不在同一位置：只贴给第一环。
   const framed=useEntity&&!useLogo;
+  const faceBox=framed?faceBoxAttrs(focus):'';
+  /* 贴了脸框就一定要能撤 style：放大是 avatarFrame 写进 img 内联 style 的，回落时
+     不撤，那几个百分比会按上一张图的尺寸套在这一张上。调用点不必记得开这个开关——
+     忘了开的代价是页面上一张明显错位的图，而它只在回落发生时才现形。 */
   return `<img src="${src}" alt="${alt}"${lazy?' loading="lazy"':''}${framed?style:''} `+
-    `${imageFallbackAttrs({dropStyle:dropStyle&&framed,fallbacks})}>`;
+    `${faceBox}${imageFallbackAttrs({dropStyle:(dropStyle||!!faceBox)&&framed,fallbacks})}>`;
 }
 /* 头像内层：先垫首字母，再叠真实图。
 
    `has_image` 缺席按「没图」处理，和 entityFaceImg 的默认值一致：每一个调用点的
    ref 都由服务端带着标志下发（卡片署名、索引页、口味榜、复核卡片、沉浸模式），
    宽容缺席只会让下一个忘了挂标志的端点悄悄退回「无条件出图、等 404 再摘」。 */
-function avatarInner(name,ref,repId,kind='performer',markId=null,logoName=''){
+function avatarInner(name,ref,repId,kind='performer',markId=null,logoName='',focus=null){
   // 这一层全是小圆框和窄格子，厂牌标识在这里要方形图标而不是横着的字标。
   return `<span class="ini">${esc((name||'?').slice(0,1))}</span>`+
     entityFaceImg({kind,id:ref&&ref.id,hasImage:!!(ref&&ref.has_image),rep:repId,mark:markId,
-                   logo:logoName,logoVariant:'icon'});
+                   logo:logoName,logoVariant:'icon',focus});
 }
 /* 人脸取景：资料页圆框按检出的人脸中心取景（/api/entity 的 avatar_focus）。
    没检出或没算过返回空串维持几何居中；换回落图时必须撤掉——那是另一张照片，
@@ -1817,6 +1823,42 @@ function faceOrigin(f){
 function facePos(f){
   const origin=faceOrigin(f);
   return origin?` style="object-position:${origin}"`:'';
+}
+/* 人脸放大：把脸框的像素尺寸交给页面，倍数在图加载后按框的真实尺寸算。
+
+   只挪解决不了「脸太小」——cover 的缩放由框和图的比例定死，脸在图里占多少，在框里
+   就占多少。539 张里有 29 张是全身站姿照，脸落在画面上半截的一小块里，挪到正中依旧
+   是一颗认不出是谁的头。放大倍数由 `web/js/face-frame.js` 夹在「够看清」「不上采样」
+   「不切头」三条之间，服务端算不了：它不知道这个框有多大、这块屏幕几倍像素。
+
+   属性而不是 style：倍数得等图和框都落地才算得出来，和封面的 `data-cx`／`coverAnchor`
+   同一条路。缺 `box` 的 sidecar（补字段之前算的）不贴属性，那些图照旧只挪不放大。
+
+   五个数挤在一个属性里，是为了让回落只需要摘一样东西：脸框只描述第一环那张实体图，
+   换到 `/avatar` 那张就整个作废，见 image-fallback.js 的 advanceImageFallback。 */
+function faceBoxAttrs(f){
+  const b=f&&f.box;
+  if(!b)return '';
+  return ` data-facebox="${[b.cx,b.cy,b.faceW,b.imgW,b.imgH].map(Number).join(' ')}"`;
+}
+/* 圆框里那张图按人脸取景。放大靠改 img 自己的尺寸和偏移，不用 transform：
+   `object-position` 只能在 cover 裁掉的那部分里挪，方图根本没得挪，而 transform
+   缩放会连圆框的描边一起放大。元素撑到「图按 cover 缩放再乘倍数」那么大，再用负偏移
+   把脸心拉到框心，圆框的 `overflow:hidden` 负责裁——和不放大时是同一套几何。 */
+function avatarFrame(img){
+  const ring=img.parentElement;
+  if(!ring)return;
+  const [cx,cy,faceW,imgW,imgH]=String(img.dataset.facebox).split(' ').map(Number);
+  const rect=ring.getBoundingClientRect();
+  const frame=faceFrame({cx,cy,faceW,imgW,imgH},
+    {w:rect.width,h:rect.height},window.devicePixelRatio||1);
+  // 放不大就一个字都不写：留下的是 CSS 里那份几何，`object-position` 照旧生效。
+  if(!frame)return;
+  const s=img.style;
+  // `inset:0` 定了 right/bottom，和这里的 left+width 过约束；显式撤掉，不靠浏览器取舍。
+  s.position='absolute';s.right='auto';s.bottom='auto';
+  s.left=`${frame.left}%`;s.top=`${frame.top}%`;
+  s.width=`${frame.width}%`;s.height=`${frame.height}%`;
 }
 /* 官方封面有三种形态，实测过：整张封套约 1.48（左侧是剧照拼贴，右侧才是正封），
    竖版正封约 0.70（本身就是正封，没有左半边可裁），16:9 官方剧照约 1.78（整幅
@@ -1861,7 +1903,10 @@ function coverFace(img,axis){
    ReferenceError，封面全部按回落取景。`load` 不冒泡，但捕获阶段照样收得到。 */
 document.addEventListener('load',event=>{
   const img=event.target;
-  if(img instanceof HTMLImageElement&&img.classList.contains('cover'))coverAnchor(img);
+  if(!(img instanceof HTMLImageElement))return;
+  if(img.classList.contains('cover'))coverAnchor(img);
+  // 头像走同一条路，理由也同一个：倍数要等图和框都落地才算得出来。
+  else if(img.dataset.facebox)avatarFrame(img);
 },true);
 /* 整张封套里右侧正封占的宽高比。裁切靠的是容器比例而不是 CSS 裁剪：`object-fit:cover`
    只在容器比图片更「竖」时才会横向裁；容器一旦宽过 1.48 就变成纵向裁、整张封套原样
@@ -2503,9 +2548,13 @@ async function buildBars(){
      「目录里有没有那张 jpg」——`/avatar` 按需生成，还没抓过的那条路留着。 */
   tops.performers.forEach(x=>{if(x.rep&&x.has_avatar)REP[x.k]=x.rep});
   tops.studios.forEach(x=>{if(x.rep&&x.has_avatar)REP[x.k]=x.rep});
+  /* 这排圆框只有 64 px，脸在里面本来就小。框越小，同一张图能无损放大的余量越大：
+     `performer-8711` 那种全身站姿照在资料页只放得到 2 倍，在这里放到 3 倍还没碰到
+     源图 1:1。取景与索引页同一份 sidecar、同一个换算。 */
   const avHtml=x=>`<button class="av" data-entity-kind="performer" data-entity-name="${esc(x.k)}">
     <span class="ring"><span class="ini">${esc(x.k.slice(0,1))}</span>${entityFaceImg(
-      {id:x.id,hasImage:x.has_image,rep:x.has_avatar?x.rep:null})}</span>
+      {id:x.id,hasImage:x.has_image,rep:x.has_avatar?x.rep:null,
+       style:facePos(x.avatar_focus),focus:x.avatar_focus})}</span>
     <span class="nm">${esc(x.k)}</span></button>`;
   /* 正规厂牌用官网 logo；缺失时只显示首字母，绝不把作品截图冒充厂牌图标。
 
@@ -5395,8 +5444,9 @@ function setPeopleIndexLayout(value){
 /* 一格人：圆框或竖幅头像、名字、一个读数。索引页和事务所名册摆的是同一样东西，
    区别只在读数的口径，所以模板只有这一份，版式也由同一个 `.igrid[data-layout]` 管。
 
-   取景挂在圆框上而不是 img 上：竖幅裁到 3:4 时几何居中会切掉脸，而 img 由八处共用的
-   avatarInner 拼，两个版式都只能从容器这一侧改。 */
+   平移挂在圆框上而不是 img 上：竖幅裁到 3:4 时几何居中会切掉脸，而 img 由八处共用的
+   avatarInner 拼，两个版式都只能从容器这一侧改。放大反过来只能挂在 img 上——那改的
+   是图自己的尺寸和偏移——所以脸框穿过 avatarInner 贴到 img 上，两件事各走各的。 */
 function personCellHtml(x,kind,countText){
   const face=faceOrigin(x.avatar_focus);
   const ref=x.entity_id||x.id;
@@ -5406,7 +5456,8 @@ function personCellHtml(x,kind,countText){
   return `<button class="icell" data-k="${esc(x.k)}" data-kind="${kind}">
       <span class="ring"${face?` style="--face:${face}"`:''}>${avatarInner(x.k,
         ref?{id:ref,has_image:x.has_image}:null,
-        x.has_avatar&&!company?x.rep:null, kind, x.mark, x.has_logo?x.k:'')}</span>
+        x.has_avatar&&!company?x.rep:null, kind, x.mark, x.has_logo?x.k:'',
+        company?null:x.avatar_focus)}</span>
       <span class="nm">${esc(x.k)}</span><span class="n">${countText}</span></button>`;
 }
 const INDEX_TITLES={performers:'艺人',creators:'创作者',studios:'厂牌',
@@ -6136,7 +6187,8 @@ async function openEntity(kind,name,push=true){
     mark:kind==='agency'?d.mark_link_id:null,
     logo:company&&d.has_logo?d.canonical_name:'',
     alt:esc(d.canonical_name),lazy:false,
-    style:company?'':facePos(d.avatar_focus),dropStyle:true}):'';
+    style:company?'':facePos(d.avatar_focus),focus:company?null:d.avatar_focus,
+    dropStyle:true}):'';
   /* 链接按 beeg 的资料页形态：社媒收成纯图标，官网／事务所保留名字。
 
      社媒的 handle 是网址的一部分，写出来只是把 URL 抄一遍——`X @remu19971203` 里
