@@ -68,8 +68,7 @@ _CODE_STUDIO = re.compile(r"^[A-Z]{2,8}-\d{2,5}$")
 _CODE_AMATEUR = re.compile(r"^\d{3}[A-Z]{2,8}-\d{2,5}$")
 _CODE_DATE = re.compile(r"^\d{6}-\d{2,4}$")
 
-#: 字母段 → 片商数字前缀。`259LUXU-1642` 与 `LUXU-1642` 是同一部作品的两种写法：
-#: 前缀标的是 DMM 上的发行方，不属于作品身份，来源站点也只索引其中一种。
+#: 字母段 → 搜索扩展前缀。这里只生成查询词，不断言两种编号属于同一发行。
 #:
 #: 这张表按账本里实测出现过的字母段登记，不凭记忆扩展。补前缀会改变发给来源的查询，
 #: 猜错就是拿别人的番号去查——这正是 2026-09-02 那批误匹配的成因。新增一行之前先在
@@ -82,8 +81,10 @@ MAKER_NUMBER_PREFIX = {
     "SIMM": "345", "SUKE": "428",
 }
 _CODE_MAKER_PREFIXED = re.compile(r"^(\d{3})([A-Z]{2,8})-(\d{2,5})$")
-#: 来源返回的 id 允许带片商数字前缀、补零和重制尾字母；`h_` 是 DMM 的 label 标记。
-_RELEASE_ID = re.compile(r"^(?:\d{1,4})?([A-Z]{2,8})0*(\d{1,5})[A-Z]?$")
+#: 数字前缀单独保留；`h_` 是 DMM content_id 的 label 标记。
+_RELEASE_ID = re.compile(r"^(\d{1,4})?([A-Z]{2,8})0*(\d{1,5})([A-Z]?)$")
+# 仅登记已核验的写法关系；查询扩展表不是身份等价表。
+_RELEASE_PREFIX_ALIASES = {("259", "LUXU"), ("7", "BAZX"), ("49", "HA")}
 _DMM_LABEL_PREFIX = re.compile(r"^H_(?=\d)")
 _MEDIA_EXTENSION = re.compile(
     r"\.(?:mp4|mkv|avi|wmv|mov|m4v|webm|ts|m2ts|mts|mpg|mpeg|flv|rm|rmvb|iso)$",
@@ -258,8 +259,8 @@ def code_query_variants(code: str | None) -> tuple[str, ...]:
     和 `KBI-019`，共 6 个字母段 13 个裸写法。来源站点通常只索引一种，拿另一种查会
     落空。所以先查规范写法，落空再换另一种写法。
 
-    两个方向不对称，是刻意的：**去掉**前缀只是丢掉番号里本来就有的一段，不会凭空
-    编东西；**补上**前缀要填三位数字，只对 `MAKER_NUMBER_PREFIX` 里登记过的字母段做。
+    去前缀仅生成搜索词；补前缀只对 `MAKER_NUMBER_PREFIX` 登记过的字母段做。
+    消费者必须按原始编号另行核验返回作品，不能用扩展查询词代替发行身份。
     """
     primary = normalise_code_key(code)
     if not primary:
@@ -281,10 +282,8 @@ def code_query_variants(code: str | None) -> tuple[str, ...]:
 def release_identity(code: str | None) -> str:
     """把番号或来源返回的 id 收敛成可比对的作品身份。
 
-    比对不能用裸字符串相等。全库扫描出的 281 个「不相等」里绝大多数是良性差异，
-    四类各有实例：片商数字前缀（`390JAC-040` / `JAC-040`）、DMM 的 label 前缀
-    （`BAZX-123` / `7BAZX-123`、`h_113sy00101`）、补零（`IQQQ-026` / `IQQQ-26`）、
-    重制尾字母（`49ha102r`）。这些是同一部作品。
+    数字前缀保留作品身份，只有登记过的等价写法和显式 DMM h_ 标记可归一。
+    搜索变体不证明发行相同：390JAC-040 配信与 JAC-040 DVD 合集分别保留。
 
     认不出形态的值原样返回，只和自己相等：`20211103_JENNIFERMENDEZ` 这种关键词
     搜索结果不该和任何番号算成同一部。
@@ -303,7 +302,11 @@ def release_identity(code: str | None) -> str:
         return f"{dated.group(1)}-{dated.group(2)}"
     shape = _RELEASE_ID.fullmatch(value)
     if shape:
-        return f"{shape.group(1)}-{int(shape.group(2))}"
+        prefix, letters, number, suffix = shape.groups()
+        prefix = prefix or ""
+        if (prefix, letters) in _RELEASE_PREFIX_ALIASES or str(code or "").upper().strip().startswith("H_"):
+            prefix = ""
+        return f"{prefix}{letters}-{int(number)}"
     return value
 
 

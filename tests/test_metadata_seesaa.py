@@ -58,7 +58,7 @@ class SeesaaMetadataTests(unittest.TestCase):
             provider = self.provider(root, transport)
             self.assertEqual(len(provider.query('ABC-007')['actresses']), 2)
             self.assertEqual(transport.call_count, 3)
-            self.assertEqual(provider.query('123ABC-007')['id'], 'ABC-007')
+            self.assertIsNone(provider._match('123ABC-007'))
             self.assertEqual(transport.call_count, 3)
 
     def test_success_cache_resumes_and_failures_remain_retryable(self):
@@ -104,6 +104,14 @@ class SeesaaMetadataTests(unittest.TestCase):
             provider.records['two'] = parse_page(fixture(actors='<a href="/w/sougouwiki/d/C">架空夏子</a>'), ROOT+'d/Two')
             with self.assertRaisesRegex(MetadataProviderError, '冲突'):
                 provider._match('ABC-007')
+
+    def test_mgs_and_dvd_rows_keep_separate_release_identities(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            provider = self.provider(Path(tmp).resolve(), Mock())
+            provider.records['mgs'] = parse_page(fixture('390JAC-040'), ROOT+'d/Jackson')
+            provider.records['dvd'] = parse_page(fixture('JAC-040', actors='未詳'), ROOT+'d/Jackson')
+            self.assertEqual(provider._match('390JAC-040')['id'], '390JAC-040')
+            self.assertEqual(provider._match('JAC-040')['id'], 'JAC-040')
 
     def test_cli_outputs_community_candidates_without_javinizer_or_ledger_changes(self):
         path = Path(__file__).resolve().parents[1] / 'scripts/scrape_codes.py'

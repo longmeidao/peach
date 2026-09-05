@@ -5,6 +5,11 @@
 
 ## 复用决策门槛
 
+- 发行身份继续复用 Javinizer-Go v1.5.1 与 Seesaa 原始 DTO；数字前缀等价属于 Peach 领域 policy，不新增依赖。
+  真实 r18dev 快照中请求 `390JAC-040` 却返回 `JAC-040`／`118jac040`；Jackson 表中两者是不同商品行。
+  查询回退不能承担身份确认；所有响应按原始查询检查，MGStage 官方详情路径可佐证展示编号别名。
+  外部适配器负责取值，不采用其首条搜索命中作为 ledger 身份断言。
+
 - Seesaa 作品表复用 HTTPX 0.28.1（BSD-3-Clause）、Beautiful Soup 4.15.0（MIT）及现有
   `HostLimiter`、番号规范化、字段候选和快照协议；不新增依赖，沿用 Python 3.12+ 与 Windows/macOS。
   2026-09-06 检查 Javinizer-Go `d9724f239d7e127afcb747fa8ce4358685912f50`（MIT）及 MetaTube
