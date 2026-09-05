@@ -34,6 +34,7 @@ from .sync import COPY_ACTIONS, SyncPlan, device_id, resolve
 from .versioning import VersionManager, VersionSnapshot
 from .windows_update import (
     PendingWindowsUpdate, WindowsUpdateInstaller, windows_tray_rebuild_required,
+    sweep_onefile_extractions,
 )
 
 
@@ -1068,6 +1069,7 @@ class PeachTray:
         # 上一次更新留下的备份与暂存构建在这里清退：替换助手结束时托盘已经不在，
         # 只有下一次启动能确认「新托盘已经活下来、旧备份可以少留一份」。
         self.windows_updates.sweep_artifacts()
+        sweep_onefile_extractions()
         # 账本备份同理：每个 --apply 都留一份整库，复核过后就没人再读。规则与拒绝条件在
         # `peach.ledger_backups`；这里失败只记日志，不能因为清退不了而不起托盘。
         try:
