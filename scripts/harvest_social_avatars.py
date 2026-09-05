@@ -340,7 +340,7 @@ def load_jae_rows(path: Path) -> dict[int, list[dict]]:
 
 
 def load_targets(connection: sqlite3.Connection, avatar_dir: Path,
-                 entities: list[int], force: bool) -> list[dict]:
+                 entities: list[int], force: bool, *, include_cover_targets: bool = False) -> list[dict]:
     """本轮要跑的人：缺头像、且至少有一条可扩张的路径。
 
     performer 走社媒路线（账本里有 X 链接）与 jae 名录路线（jae 人像候选表的命中行）；
@@ -377,7 +377,7 @@ def load_targets(connection: sqlite3.Connection, avatar_dir: Path,
             routes["babepedia"] = babe[entity_id]
         if entity_id in jae:
             routes["jae"] = jae[entity_id]
-        if not routes and kind != "performer":
+        if not routes and not (include_cover_targets and kind == "performer"):
             continue
         targets.append({**info, "routes": routes})
     return targets
@@ -726,7 +726,7 @@ def run(args) -> int:
     installed = 0
     try:
         entities = [int(v) for v in str(args.entities).split(",") if v.strip().isdigit()]
-        targets = load_targets(connection, args.avatars, entities, args.force)
+        targets = load_targets(connection, args.avatars, entities, args.force, include_cover_targets=True)
         if args.limit:
             targets = targets[:args.limit]
         print(f"待跑 {len(targets)} 人："
