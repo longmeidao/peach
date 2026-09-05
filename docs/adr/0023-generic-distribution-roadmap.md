@@ -22,6 +22,7 @@ Peach 要发布到 GitHub 供所有人维护与使用。使用形态不变：每
 1. **配置层与首次运行**
    - 新增 `peach-data/config.toml`（或同等设置文件）承载数据根、媒体根、监听地址、代理、复制开关；环境变量继续作为覆盖，`config.py` 只保留读取与校验逻辑，不再含个人路径与主机名。
    - 新增 `peach init` 子命令：创建数据目录、跑迁移、生成设置文件与自签 CA，并输出下一步。
+   - 不带参数的 `peach init` 在终端里问答（数据根、一个本地媒体目录、监听范围、端口、局域网名字），写出只声明 `local` 的设置文件并可选地首次扫描；问答逻辑在 `peach.onboarding`，托盘设置页复用（2026-09-04 落地）。
    - 「未配置」是明确状态：服务能启动并在页面提示去设置，而不是因缺目录崩掉。
 
 2. **来源挂载点取代盘符**
@@ -121,3 +122,29 @@ Peach 要发布到 GitHub 供所有人维护与使用。使用形态不变：每
 4. 【授权】GitHub Settings → General → Change visibility → Public。
 5. 【授权】随即开启：Secret scanning 与 Push protection、master 分支保护、Private vulnerability reporting；Discussions 视需要。
 6. 发布后第一周只处理 issue，不改架构边界。
+
+### 执行记录（2026-09-04）
+
+- 仓库 `longmeidao/peach` 已 Public；第 1 至 5 步全部完成，打 tag 与正式 Release 留待独立发行版可用时一起做。
+- `Test` 在 windows/macos × 3.12/3.14 与两个 web job 全绿的提交是 `4ca8433`；靶机上暴露并修掉的测试缺陷有两类：契约测试没显式传 `configured=True`（无 peach-data 的机器会拿到首次运行页），脚本测试的临时目录没 `.resolve()`。`npm audit` 对 registry 503 退避重试三次。
+- 分支规则集 `protect-master`（id 22263433）：默认分支禁删除、禁强推。Secret scanning、Push protection、Private vulnerability reporting、Dependabot alerts 已开启；Dependabot security updates 未开，自动开 PR 由用户决定。
+- 公开后的补漏（同日）：`MachineCoordinateTests` 改成只写形状不点名的门槛（家目录路径、私网 IP、`.local` 主机名、本机账号与主机名运行时派生）；发行名定为 `peach`，目录名 `peach-app` 不变；macOS bundle ID 改中性 ID 由用户定为待办第 28 条。
+- 开箱引导的顺序由用户定：先 CLI 问答（`peach init` 无参数进入问答并可首扫，逻辑在 `peach.onboarding`，已在 master），再 GUI 引导（托盘首启打开首次运行页升级成的表单，调同一组函数），两者都已在 master。
+- GUI 引导已落地：未配置的机器上 `peach-tray` 起一条只绑回环的 `peach serve --setup` 引导服务并打开浏览器，首次运行页是表单，`POST /setup` 调与 CLI 同一个 `onboarding.apply()`；`tray.SetupGate` 在健康轮询里新鲜读设置文件，完成后不重启托盘进程就切到正常服务，并消费 `<数据根>/state/first-scan.request` 用子进程跑首扫。需要设置的判据是「没有 config.toml 且没有账本」，端口与失败形态见 `docs/OPERATIONS.md`「首次运行与设置文件」。
+- 剩余工作只在 `docs/PRODUCT_BACKLOG.md`：独立发行版、口味导入引导、README 瘦身到 `CONTRIBUTING.md` 与 `docs/`，以及「待执行的操作」里 Mac 侧的第 28 与 30 条。
+
+### 外部评审的取舍（2026-09-05）
+
+用户带来一份外部模型对本仓库的评审。逐条对过代码后，采纳的四条已进 `docs/PRODUCT_BACKLOG.md`
+第 20 至 23 条（局域网默认鉴权、全新安装冒烟、`peach doctor`、性能基准），其中第 20 条是发布口径下
+唯一真正的缺陷；它的口令层已经落地（`src/peach/auth.py` 与 `cli._serve_token`），条目里只剩
+局域网明文口与手机端配对码。以下三类不采纳，记在这里是为了不被反复重提：
+
+- **已经是这样，评审读错了**：目录页默认排序用的是按日期取种的 `((a.id * seed) % 99991)` 而不是
+  `ORDER BY RANDOM()`（`RANDOM()` 只在用户显式选「随机」时用）；`/api/items` 已支持 `count=0` 跳过
+  精确总数；索引已按真实 ledger 的查询计划验证过。
+- **方向已定，不重开**：微服务、PostgreSQL、Redis、换前端框架、容器化公网部署，见本 ADR「决策」节
+  与 ADR-0022；Linux 与 Intel Mac 不在支持范围，CI 不加 `macos-*-intel`。
+- **顺手做，不立专项**：`AppContext` 组合根替换 `config.py` 的模块级全局量、拆 `follow_sources.py`
+  一类超大模块、主浏览流从 OFFSET 换 keyset 分页。都成立，但都属于改到那块时一并做，单独立项只会
+  在待办里长期挂着。

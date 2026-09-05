@@ -673,6 +673,39 @@ def _bare_first_part_plausible(bare: dict, parts: list[dict]) -> bool:
     return min(rest) / PART_DURATION_SPREAD <= own <= max(rest) * PART_DURATION_SPREAD
 
 
+def names_without_shared_part_tail(items: list[dict]) -> list[str]:
+    """把这一组文件名共有的那段尾缀剥掉，卷号才回到扩展名前面。
+
+    `PPT-018-1-uncensored.mp4`／`-2-`／`-3-` 是库里成批出现的写法：版次、修复标记和
+    分辨率跟在卷号后面（实测还有 `_prob3`、`-4K修复`、`_8k`、`.1080p`），卷号不紧邻
+    扩展名，三卷于是各占一张卡、标题还一模一样。
+
+    判据是组内共有而不是词表：只剥每个文件名都带的那一段，且它必须从分隔符起头。
+    `040221-001-carib-1080p` 与 `-720p` 的公共尾部是 `0p`，不从分隔符起头，剥不动——
+    那两份是同一段画面的两个清晰度，本来就不该合成分卷。剥不出东西时返回空列表。
+    """
+    names = [str(item.get("name") or "") for item in items]
+    stems = [name.rpartition(".")[0] for name in names]
+    if len(stems) < 2 or not all(stems):
+        return []
+    common = stems[0]
+    for stem in stems[1:]:
+        while common and not stem.endswith(common):
+            common = common[1:]
+    separator = re.search(r"[-_. ]", common)
+    tail = common[separator.start():] if separator else ""
+    if not tail:
+        return []
+    stripped = []
+    for name in names:
+        stem, dot, suffix = name.rpartition(".")
+        head = stem[: len(stem) - len(tail)]
+        if not head:
+            return []                     # 整个名字都是尾缀，剥完什么都不剩
+        stripped.append(f"{head}{dot}{suffix}")
+    return stripped
+
+
 def ordered_multipart_items(items: list[dict]) -> list[dict]:
     """Return one unambiguous, contiguous multipart release in playback order.
 
@@ -684,8 +717,19 @@ def ordered_multipart_items(items: list[dict]) -> list[dict]:
     盗版站常把第一卷留成裸名、后续卷才加 `-2`/`-3`（TRE-080 实测：9163/11255/8530 秒）。
     裸名也可能是整部完整版，所以只在数字标记、标记正好从 2 连续排起、且裸名时长与
     其他卷相差不大时，才把它当第 1 卷；字母卷缺 A 时无从判断裸名是不是 A，不猜。
+
+    文件名原样认不出卷号时再按 `names_without_shared_part_tail` 剥一次共有尾缀重试：
+    先原样、后剥缀，已经成组的那些走的仍是第一条路，判据一个没松。
     """
-    marked = [(item, part_marker(str(item.get("name") or ""))) for item in items]
+    ordered = _ordered_by_markers(items, [str(item.get("name") or "") for item in items])
+    if ordered:
+        return ordered
+    stripped = names_without_shared_part_tail(items)
+    return _ordered_by_markers(items, stripped) if stripped else []
+
+
+def _ordered_by_markers(items: list[dict], names: list[str]) -> list[dict]:
+    marked = [(item, part_marker(name)) for item, name in zip(items, names)]
     if len(marked) < 2:
         return []
     bare = [item for item, marker in marked if not marker]

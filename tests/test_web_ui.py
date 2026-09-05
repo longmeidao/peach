@@ -831,7 +831,7 @@ class WebUiSourceTests(unittest.TestCase):
         也不该重画表头。表头里随查询变的只有计数，单独改它。
         """
         self.assertPageContains("async function openIndex(kind,q,push=true,refine=false)")
-        self.assertPageContains("if(!refine)showIndexLoading(people?'正在读取作者':'正在读取标签')")
+        self.assertPageContains("if(!refine)showIndexLoading('正在读取'+(INDEX_TITLES[kind]||'标签'))")
         self.assertCode("""if(refine&&$('#iq')){
     $('#indexCount').textContent=countText;
     $('#indexFilters').innerHTML=filters;
@@ -903,15 +903,21 @@ class WebUiSourceTests(unittest.TestCase):
             "function entityFaceImg({kind='performer',id=null,hasImage=false,rep=null,")
         self.assertPageContains("const useEntity=!!(id&&hasImage);")
         self.assertPageContains(
-            "const src=useEntity?`/entity-image?kind=${kind}&id=${id}`:(rep?`/avatar?id=${rep}`:'');")
+            "const entitySrc=useEntity?`/entity-image?kind=${kind}&id=${id}`:'';")
+        self.assertPageContains("const avatarSrc=rep?`/avatar?id=${rep}`:'';")
+        self.assertCode(
+            "const src=useLogo?`/logo?studio=${encodeURIComponent(logo)}&variant=${logoVariant}`\n"
+            "    :(entitySrc||avatarSrc||(mark?`/link-mark?id=${mark}`:''));")
         # 一环都取不到就一个 `<img>` 都不出，首字母垫底直接露出来。
         self.assertPageContains("if(!src)return '';")
         # kind 参数化后，创作者复核卡片也能走同一条链；默认仍是 performer，
         # 既有调用点不受影响。
-        self.assertPageContains("function avatarInner(name,ref,repId,kind='performer')")
+        self.assertPageContains(
+            "function avatarInner(name,ref,repId,kind='performer',markId=null,logoName='')")
         # 兜底链声明在模板里，行为归 image-fallback 那条委托监听。
-        self.assertPageContains("const fallbacks=useEntity&&rep?[`/avatar?id=${rep}`]:[];")
-        self.assertPageContains("imageFallbackAttrs({dropStyle:dropStyle&&useEntity,fallbacks})")
+        self.assertCode("const fallbacks=useLogo?[entitySrc,avatarSrc].filter(Boolean)\n"
+                        "    :(useEntity&&avatarSrc?[avatarSrc]:[]);")
+        self.assertPageContains("imageFallbackAttrs({dropStyle:dropStyle&&framed,fallbacks})")
 
     def test_no_face_image_is_emitted_before_the_server_says_it_can_be_fetched(self):
         """先问再出图：没有可用性标志兜住的 `/entity-image`／`/avatar` 一处都不许有。
@@ -947,8 +953,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("hasImage:!!(ref&&ref.has_image)")
         # 索引页（`/api/index`）：实体图看 has_image、代表作头像看 has_avatar，kind
         # 跟着这一页的身份走——创作者的图写成 `performer-<id>.img` 是读不到的。
-        self.assertPageContains("x.entity_id?{id:x.entity_id,has_image:x.has_image}:null,")
-        self.assertPageContains("x.has_avatar?x.rep:null, entityKind)")
+        self.assertPageContains("ref?{id:ref,has_image:x.has_image}:null,")
+        self.assertPageContains("x.has_avatar&&!company?x.rep:null, kind, x.mark, x.has_logo?x.k:'')")
         # 口味榜（`/api/taste`）：两列直接长在榜行上，判据仍是同一对。
         self.assertPageContains(
             "const ref=row.entity_id?{id:row.entity_id,has_image:row.has_image}:null,")
@@ -1011,10 +1017,10 @@ class WebUiSourceTests(unittest.TestCase):
         # 资料页圆框按检出的人脸取景；换回落图时必须先摘掉内联 object-position——
         # 回落图是另一张照片，脸不在同一位置。
         self.assertPageContains("function facePos(f)")
-        self.assertPageContains("style:facePos(d.avatar_focus),dropStyle:true")
+        self.assertPageContains("style:company?'':facePos(d.avatar_focus),dropStyle:true")
         # 取景是按实体图算出来的，所以内联 style 和 data-drop-style 只贴给第一环。
-        self.assertPageContains("${useEntity?style:''}")
-        self.assertPageContains("imageFallbackAttrs({dropStyle:dropStyle&&useEntity,fallbacks})")
+        self.assertPageContains("${framed?style:''}")
+        self.assertPageContains("imageFallbackAttrs({dropStyle:dropStyle&&framed,fallbacks})")
         self.assertPageContains("if ('dropStyle' in image.dataset) image.removeAttribute('style');")
 
     def test_entity_link_favicons_do_not_leak_the_page_url_to_the_linked_site(self):
@@ -3125,7 +3131,17 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("noteHtml(error.message,{variant:'error',label:'扫描失败'})")
         self.assertPageContains("noteHtml(error.message||'分析未取得',{variant:'error',label:'分析未取得'})")
         self.assertPageContains('class="geist-note geist-note-error fcheckreport" role="alert"')
-        self.assertPageContains('class="geist-banner fwarn"')
+        self.assertPageContains('class="geist-note geist-note-secondary fcheckreport" role="note"')
+        # 每一条失败都进 Note，没有第二套「红字一行」的写法：红色文字既没有图标
+        # 也没有边框，在暗色底上和普通说明文字只差一个色相，扫读时整条会被跳过。
+        self.assertPageContains('class="geist-note geist-note-error fwarn" role="alert"')
+        self.assertPageContains(
+            "noteHtml(`${broken.length} 个来源上次检查失败，原因见对应那一行。`,{variant:'error'})")
+        self.assertPageContains(
+            "noteHtml('文件权限过宽，请在运行 Peach 的 POSIX 主机上收紧为 0600。',{variant:'error'})")
+        self.assertPageLacks('class="fnote warn"')
+        self.assertPageLacks(".fnote.warn{")
+        self.assertPageLacks("geist-banner")
 
     def test_note_and_info_surfaces_reuse_the_photo_detail_info_icon(self):
         self.assertPageContains('<symbol id="i-info" viewBox="0 0 24 24">')
@@ -3616,7 +3632,7 @@ class WebUiSourceTests(unittest.TestCase):
             'body[data-density="dense"] .junkcard .junkactions button{justify-content:center}')
         self.assertPageContains("function renderJunkNavigation(data)")
         self.assertPageContains("['video','视频','play'],['image','图片','pics']")
-        self.assertPageContains("['archive','压缩包','folder-open'],['audio','音频','volume-2']")
+        self.assertPageContains("['archive','压缩包','file-archive'],['audio','音频','file-audio']")
         self.assertPageContains("href=\"${junkPath(key,junkView)}\"")
         self.assertPageContains("${icon(glyph)}${esc(label)}")
         self.assertPageContains("${icon(junkView==='dismissed'?'rotate-ccw':'eye-off')}")
@@ -3783,7 +3799,7 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_entity_profile_hides_home_facets_and_renders_context(self):
         self.assertPageContains("body.entity-open #tiers,body.entity-open #tagbar,")
-        self.assertPageContains('src="/logo?studio=${encodeURIComponent(d.canonical_name)}&variant=logo"')
+        self.assertPageContains("logo:company&&d.has_logo?d.canonical_name:'',")
         self.assertPageContains('class="entitytags"')
         self.assertPageContains('class="pill" data-entity-tag=')
         self.assertPageContains('class="relatedpeople"')
@@ -3879,6 +3895,124 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("(d.display_aliases||[]).length")
         self.assertPageLacks("(d.aliases||[]).length?'别名")
 
+    def test_the_agency_reads_as_identity_and_leads_to_its_own_page(self):
+        """事务所是这个人签在谁名下，和别名、作品数是同一类事实，不是一条外链。
+
+        它在账本里有实体时给出去处：那条链接落在站内的事务所资料页，不是某个片商的站。
+        """
+        self.assertCode("const agencyHome=d.agency||null;")
+        self.assertPageContains("entityPath('agency',agencyName)")
+        self.assertPageContains("${memberHtml}${agencyHtml}")
+        # 没有对应实体时仍写名字，但不做成链接——那会通向一个不存在的页面。
+        self.assertCode(":` · ${esc(agencyName)}`;")
+        # 公司名自己说明了它是什么，这一行只出名字，不加类别名占横向空间。
+        self.assertPageLacks("· 事务所 ${esc(agencyName)}")
+        # 链接标签写的是域名归谁，不是事务所名。
+        self.assertPageContains("标签写的是这个域名归谁")
+
+    def test_the_agency_page_reuses_the_entity_route_table(self):
+        """实体本来就只有 kind 不同，事务所加进同一张表就有了 `/agencies/<名字>`。"""
+        self.assertPageContains("agency:'agencies'")
+        self.assertPageContains("agencies:'agency'")
+
+    def test_the_agency_page_gets_the_same_loading_skeleton(self):
+        self.assertPageContains("performers|creators|studios|agencies")
+
+    def test_the_agency_page_counts_people_not_only_videos(self):
+        """事务所名下的视频是成员拍的，「这家有几个人」才是它独有的读数。"""
+        self.assertPageContains("位艺人")
+
+    def test_the_agency_face_is_its_own_mark_not_a_members_frame(self):
+        """代表作截图是某位成员某部片的画面，当不了一家公司的门面。"""
+        self.assertCode("const company=kind==='studio'||kind==='agency';")
+        self.assertCode("rep:company||!d.has_avatar?null:d.representative_asset_id,")
+        self.assertCode("mark:kind==='agency'?d.mark_link_id:null,")
+        # 取图链最后一环是官网那条链接的站点圆标。
+        self.assertPageContains("mark?`/link-mark?id=${mark}`")
+
+    def test_the_agency_page_opens_on_its_roster(self):
+        """这一页要回答的是「这家签了谁」，所以进页面先摆艺人，视频是另一个视图。"""
+        self.assertPageContains("let agencyRosterView='people',agencyRoster=[];")
+        self.assertCode("  agencyRosterView='people';\n  const seq=++entityRequestSeq;")
+        self.assertCode("if(entityViewNow(kind)==='people')renderAgencyRoster(roster);")
+
+    def test_the_agency_roster_reuses_the_people_index_cell_and_layout(self):
+        """名册和艺人索引摆的是同一格人，模板与版式设置都只有一份。"""
+        self.assertPageContains("function personCellHtml(x,kind,countText){")
+        # 索引页那批行的实体 id 叫 entity_id，名册那批叫 id，取图链只认一个。
+        self.assertPageContains("const ref=x.entity_id||x.id;")
+        self.assertCode(
+            '<div class="igrid" data-layout="${peopleIndexLayout()}">${\n'
+            "      people.map(x=>personCellHtml(x,'performer',x.n.toLocaleString())).join('')}</div>")
+        # 名册占的是正文那一整块，所以这批人不再挤进「同台艺人」那排小圆头像。
+        self.assertCode("const roster=kind==='agency'?(d.related_performers||[]):[];")
+        self.assertCode("const related=roster.length?'':(d.related_performers||[]).map(")
+
+    def test_the_roster_and_the_media_keys_are_one_button_group(self):
+        """三个键问的是同一件事——这一页现在显示什么，所以在同一组里、同一个尺寸。"""
+        self.assertCode(
+            "${peopleValue?control(peopleValue,peopleLabel,peopleCount,'user-round','people'):''}")
+        self.assertPageContains("peopleValue:roster.length?'people':'',peopleCount:roster.length,")
+        # 当前视图只有一个来源，按下哪个键、下面画什么都读它。
+        self.assertPageContains("const entityViewNow=kind=>kind==='agency'"
+                                "&&agencyRosterView==='people'&&agencyRoster.length")
+        self.assertCode("button.setAttribute('aria-pressed',String(now===media));")
+        # 没有照片的实体不出照片键，不是出一个按下去什么都不显示的键。
+        self.assertPageContains("imageValue:photoCount?'photos':'',imageLabel:'照片',")
+        # 标签筛的是作品，点了就回到视频视图，否则开关和内容各说各的。
+        self.assertCode("agencyRosterView='videos';")
+
+    def test_the_profile_rows_that_overflow_get_the_shared_drag_and_wheel(self):
+        """同台艺人和标签这两行没有滚动条，不接拖动就是看得见够不着。"""
+        self.assertPageContains("wireDrag($('#index').querySelector('.relatedpeople'));")
+        self.assertPageContains("wireDrag($('#index').querySelector('.entitytags'));")
+        # 横向滚动行里的开关不能被压扁。
+        self.assertPageContains(".entitytags .iconswitch{flex:none}")
+
+    def test_the_maker_index_switch_moves_between_two_routes(self):
+        """厂牌出片、事务所出人，是两种实体：开关切的是路径，不是同一批数据再筛一次。"""
+        self.assertCode("const MAKER_INDEX_KINDS=[['studios','厂牌','building'],"
+                        "['agencies','事务所','briefcase']];")
+        self.assertPageContains("function makerModeHtml(kind){")
+        self.assertCode("$('#index').querySelectorAll('[data-index-kind]').forEach(b=>b.onclick=()=>{")
+        self.assertCode("openIndex(b.dataset.indexKind,$('#iq').value.trim(),true)});")
+        # 两条索引地址都在路由表里，直达和刷新都得开得出来。
+        self.assertPageContains("{match:'/studios',nav:'studios',title:'厂牌',")
+        self.assertPageContains("{match:'/agencies',title:'事务所',")
+        # 侧栏那一项进的是厂牌索引。
+        self.assertPageContains("['studios','厂商','building'],")
+
+    def test_the_studio_index_wears_the_same_logo_the_profile_does(self):
+        """538 个标识在盘上，索引页却格格首字母的话，这一屏读不出是哪些牌子。"""
+        self.assertPageContains("const useLogo=!!logo;")
+        self.assertPageContains(
+            "const src=useLogo?`/logo?studio=${encodeURIComponent(logo)}&variant=${logoVariant}`")
+        # 索引页那格是小位，要方形图标而不是横着的字标。
+        self.assertPageContains("logo:logoName,logoVariant:'icon'")
+        # 取不到标识就退回实体图、再退到头像，和资料页大位同一条链。
+        self.assertPageContains("const fallbacks=useLogo?[entitySrc,avatarSrc].filter(Boolean)")
+        # 公司这一格不退到代表作截图，和它自己的资料页同一条判据。
+        self.assertPageContains("const company=kind==='studio'||kind==='agency';")
+        # 索引页那格由服务端的 has_logo 决定走不走这一环。
+        self.assertPageContains("x.has_avatar&&!company?x.rep:null, kind, x.mark, x.has_logo?x.k:'')")
+        # 标识不是人脸，取景和摘取景那套只贴给实体图。
+        self.assertPageContains("const framed=useEntity&&!useLogo;")
+
+    def test_the_maker_index_switch_shares_the_view_mode_control(self):
+        """标签页那两组开关和这一组是同一个控件，类名跟着语义走。"""
+        self.assertPageLacks("tagmodes")
+        self.assertPageContains(".viewmodes{")
+
+    def test_the_index_head_controls_stand_on_the_same_plate(self):
+        """并排的两组控件底色一样、高度一样，否则一组读成凭空多出来的一圈线。"""
+        # `--surface` 和 `--ground` 只差四级灰，铺在页头上只剩边框看得见。
+        self.assertPageContains("border-radius:var(--surface-radius);background:var(--overlay-5)}")
+        # 28 + 3 padding + 1 border = 36，和邻座 `.iconswitch` 同高。
+        self.assertPageContains(".viewmodes button{border:0;border-radius:var(--control-radius);"
+                                "background:transparent;color:var(--muted);height:28px;padding:0 10px;")
+        self.assertPageContains(".iconswitch label{position:relative;display:inline-grid;"
+                                "width:34px;height:28px;")
+
     def test_entity_name_picker_offers_only_this_entity_existing_names(self):
         # 候选取的是身份契约 `aliases`（完整），不是收窄过的展示别名：罗马字也是
         # 这个人真的用过的写法，用户想拿它当统称就该能选。
@@ -3924,12 +4058,76 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertCode("const rename=(from,to)=>api('/api/entity-name',")
         self.assertCode(
             "{method:'POST',body:JSON.stringify({kind,name:from,canonical:to})});")
-        self.assertPageContains("setActionBusy(item);")
-        self.assertCode("const result=await rename(current,chosen);")
-        self.assertCode("if(!result.changed)return;")
+        self.assertCode("onConfirm:()=>rename(current,chosen)});")
+        self.assertCode("if(!confirmed||!result?.changed)return;")
         # 撤销是一次真实写回，不在本地把标题改回去。
         self.assertCode("await rename(result.canonical_name,result.previous_name);")
-        self.assertPageContains("actionFailure('修改统称',error)")
+
+    def test_entity_name_picker_confirms_and_names_both_writings_first(self):
+        # 换统称会重写整条实体的扁平投影，写之前必须让用户看见换成什么、旧写法去哪。
+        self.assertCode("const {confirmed,result}=await confirmModal({")
+        self.assertCode("title:'更改统称',")
+        self.assertCode(
+            "body:`「${chosen}」将成为这条实体的规范名，「${current}」留作别名。`")
+        self.assertCode("+'作品上的署名、搜索和标签都会跟着改写。',")
+        # Geist 的判据：主按钮是与标题同一个动词的「动词+名词」，成功回执共用那个动词。
+        self.assertCode("confirmLabel:'更改统称',")
+        self.assertCode("actionReceipt(`已把统称更改为 ${result.canonical_name}`,{undo:async()=>{")
+        # 弹层顶上来之前先把菜单收掉，否则它固定在视口里会浮在遮罩上。
+        self.assertCode("anchored.setOpen(false);")
+
+    def test_confirm_modal_is_one_shared_component_on_a_native_dialog(self):
+        # 焦点陷阱、Escape、背景 inert 和关掉后归还焦点都由原生 <dialog> 给。
+        self.assertCode("export function confirmModal({title,body,confirmLabel,")
+        self.assertPageContains("dialog.showModal();")
+        self.assertPageContains('dialog.className=\'geist-modal\';')
+        self.assertPageContains("dialog.setAttribute('aria-labelledby',titleId);")
+        # 标题与正文是数据，走 textContent，不进 innerHTML。
+        self.assertPageContains("dialog.querySelector('h3').textContent=title;")
+        self.assertPageContains(
+            "dialog.querySelector('.geist-modal-body p').textContent=body;")
+        # 遮罩上的点击落在 <dialog> 自己身上；这个动作可撤销，允许点外面关掉。
+        self.assertCode(
+            "dialog.addEventListener('click',event=>{if(event.target===dialog)dialog.close()});")
+
+    def test_confirm_modal_keeps_a_failed_write_in_place_with_its_reason(self):
+        # 忙态落在主按钮上，不落在已经收起来的菜单项上。
+        self.assertPageContains("setActionBusy(accept);")
+        self.assertCode("settled={confirmed:true,result:await onConfirm()};")
+        self.assertCode(
+            "failure.innerHTML=noteHtml(error.message||'操作未完成',{variant:'error'});")
+        self.assertPageContains("setActionBusy(accept,false);")
+        # 取消、Escape 和点遮罩都走同一条出口，一律回 confirmed:false。
+        self.assertCode("resolve(settled||{confirmed:false});")
+
+    def test_confirm_modal_matches_the_measured_geist_modal(self):
+        # 实测 https://vercel.com/geist/modal（2026-09-04），见
+        # docs/reference-snapshots/vercel-geist-modal-measured.md。
+        self.assertPageContains(
+            ".geist-modal{box-sizing:border-box;width:min(540px,calc(100vw - 20px));")
+        # <dialog> 的 UA 样式带一条更小的 max-width，窄屏上会把卡片再压窄十几像素。
+        self.assertPageContains("max-width:min(540px,calc(100vw - 20px));max-height:min(800px,80vh);")
+        self.assertPageContains("border-radius:var(--floating-radius);")
+        # 遮罩纯黑不带模糊：Geist 的 backdrop 没有 blur。
+        self.assertPageContains(".geist-modal::backdrop{background:#0009;opacity:0;")
+        self.assertPageLacks(".geist-modal::backdrop{background:#000a;backdrop-filter")
+        self.assertPageContains(
+            ".geist-modal-body{padding:20px;font-size:var(--fs-md);line-height:20px;")
+        self.assertPageContains(
+            ".geist-modal-body h3{margin:0;font-size:var(--fs-xl);line-height:26px;"
+            "font-weight:600;color:var(--ink)}")
+        # 操作条粘在底、两端对齐；取消在左，主动作在右。
+        self.assertPageContains(
+            ".geist-modal-footer{position:sticky;bottom:0;display:flex;"
+            "justify-content:space-between;gap:16px;")
+        self.assertPageContains(".geist-modal-footer>div{display:flex;gap:16px}")
+        # 两个键都走全站唯一那份 Geist Button，不另起一套尺寸。
+        self.assertCode('<div><button type="button" class="geist-button" data-modal-cancel>')
+        self.assertCode(
+            '<div><button type="button" class="geist-button primary" data-modal-confirm>')
+        # 手机上按本项目的 44px 命中区放大。
+        self.assertPageContains(
+            ".geist-modal-footer .geist-button{min-height:44px;padding:0 14px}")
 
     def test_entity_name_picker_marks_the_current_name_with_fill_and_a_check(self):
         self.assertPageContains(
@@ -4092,6 +4290,30 @@ class WebUiSourceTests(unittest.TestCase):
         # 队列长度不能被悬浮预取剪短：两边用同一个 limit。
         self.assertPageContains("api('/api/related?id='+seedId+'&limit=28')")
 
+    def test_multipart_cards_flip_through_their_parts_on_hover(self):
+        """分卷卡悬浮翻各卷画面，版次卡继续走分段视频预览。
+
+        有码、中字、无码是同一段画面的几个来源，翻过去前后两张几乎一样，看着像图
+        卡住了；各卷是不同画面，翻动才说明这张卡代表不止一条。分卷卡因此也不带
+        倒计时环和快退／快进那三颗——它们要操作的 `video.hv` 在这种卡上不存在。
+        各卷只取一次，悬浮预取后点开分卷队列不再发第二个请求。
+        """
+        self.assertPageContains(
+            """${parts?'<div class="mixfaces" data-mix-faces hidden></div>':''}""")
+        self.assertPageContains("function wirePartFlip(el,it){")
+        self.assertPageContains("if(it?.part_group)wirePartFlip(el,it);")
+        self.assertPageContains(
+            "else if(it&&(!it.medium||it.medium==='video'))wireHover(el,it);")
+        # 和 Mix 共用同一套时序、门槛和面渲染，不另写一份动效。
+        self.assertPageContains("wireStackFlip(el,async()=>{")
+        self.assertPageContains(".filter(x=>mixHasPicture(x,layout)).slice(0,MIX_FLIP_FACES)")
+        # 第一张是卡片自己的静止封面，翻进来的才不会跳取景。
+        self.assertPageContains("return [it,...items.filter(x=>x.id!==it.id)]")
+        self.assertPageContains("const tools=parts?laterTool:")
+        self.assertPageContains("const partGroupCache=new Map();")
+        self.assertPageContains("try{group=await partGroup(seedId)}catch(_e)")
+        self.assertPageLacks("const group=await api('/api/parts?id='+seedId);")
+
     def test_stacked_cards_pile_upward_and_keep_the_row_bottom_aligned(self):
         """Mix、分卷、版次和关注合集的叠层往上溢出，卡片本体不为它留白。
 
@@ -4231,22 +4453,27 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("section.querySelector('h3').textContent=`视频 ·")
         self.assertPageLacks("的馆藏作品 ·")
 
-    def test_hover_seek_controls_are_bare_icons_over_the_frame(self):
-        """悬停放大时居中的快退／快进／全屏是裸图标，不是压在画面上的磨砂圆饼。
+    def test_hover_seek_controls_wear_the_watch_later_button_skin(self):
+        """居中的快退／快进／全屏和右下角「稍后看」是同一种控件，只是尺寸不同。
 
-        三个 58px 的实心圆落在封面正中，遮住的画面比按钮本身还多，而这一层出现的时机
-        恰恰是用户在看画面。命中区域仍留 58px（触摸目标不缩），只是不再画出底和边；
-        秒数交给 `title`／`aria-label`，图标上不再压一个数字。
+        磨砂圆底、边框和悬停填充全部由 `.hovertools button` 一条规则给出，
+        58px 圆配 34px 图标，与 36px 圆配 21px 图标同一个比例。
+        秒数交给 `title`／`aria-label`，图标上不压数字。
         证据与「beeg 那一侧未取得」的结论见
         `docs/reference-snapshots/hover-seek-controls-user-screenshot.md`。
         """
         self.assertPageContains(
-            ".hovertools.seektools button{border:0;background:none;backdrop-filter:none;")
-        self.assertPageContains(".hovertools.seektools button svg{width:34px;height:34px;stroke-width:1.5}")
-        self.assertPageContains(".hovertools.seektools button:hover{background:none}")
-        # 命中区域仍由共用规则给出 58px 圆，裸图标只是不画它。
-        self.assertPageContains(".hovertools button{pointer-events:none;width:58px;height:58px;border-radius:50%")
-        # 数字角标随之退役：DOM 里不再有它，样式也不该留着。
+            ".hovertools button{pointer-events:none;width:58px;height:58px;border-radius:50%;"
+            "border:1px solid rgba(255,255,255,.12);")
+        self.assertPageContains("background:rgba(0,0,0,.24);color:#fff;backdrop-filter:saturate(180%) blur(12px);")
+        self.assertPageContains(".hovertools button:hover{transform:scale(1.12);background:rgba(0,0,0,.34)}")
+        self.assertPageContains(".hovertools.seektools button svg{width:34px;height:34px}")
+        self.assertPageContains(".hovertools .laterbtn{width:36px;height:36px;padding:0;font-family:inherit}")
+        self.assertPageContains(".hovertools .laterbtn svg{width:21px;height:21px}")
+        # 这一层里没有第二套外观：不画底和边、靠投影描边的写法一处都不留。
+        self.assertPageLacks(".hovertools.seektools button{border:0;background:none")
+        self.assertPageLacks("filter:drop-shadow(0 1px 4px rgba(0,0,0,.6))")
+        # 数字角标不在 DOM 里，样式也不留。
         self.assertPageLacks("<b>${appSettings.seekSeconds}</b>")
         self.assertPageLacks(".hovertools button b{")
         self.assertPageContains('title="后退 ${appSettings.seekSeconds} 秒"')
@@ -4356,7 +4583,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("placeholder:followSkeletonHtml('正在读取关注内容')")
         self.assertPageContains("pageSkeletonHtml('正在读取统计',{variant:'dashboard'})")
         self.assertPageContains(".skeletondashhero{min-height:330px;grid-template-columns:minmax(260px,36%) minmax(0,1fr)}")
-        self.assertPageContains("if(!refine)showIndexLoading(people?'正在读取作者':'正在读取标签')")
+        self.assertPageContains("if(!refine)showIndexLoading('正在读取'+(INDEX_TITLES[kind]||'标签'))")
         self.assertPageContains("$('#loadSentinel').innerHTML=loadingDotsHtml('继续载入中…')")
         self.assertPageContains("pageSkeletonHtml('正在读取推荐',{cards:true,className:'related-skeleton'})")
         self.assertPageLacks("count.innerHTML=`${spinnerHtml(label)}<span>载入中…</span>`")
@@ -4682,9 +4909,13 @@ class WebUiSourceTests(unittest.TestCase):
         # fwarn 提供 dismiss（会话内记忆），关闭钮样式与 toast 关闭钮同量纲。
         self.assertPageContains("data-fwarn-dismiss")
         self.assertPageContains("sessionStorage.setItem('peach-fwarn-dismissed','1')")
-        self.assertPageContains(".fwarn .wclose,.fcheckreport .wclose{flex:none;width:24px;height:24px;margin-left:auto;padding:0;border:0;")
-        # 报告条：danger 语义（红发丝边 + 微红底），不再是左侧粗条。
-        self.assertCode("background:color-mix(in srgb,var(--drop) 7%,transparent);\n  border:1px solid color-mix(in srgb,var(--drop) 30%,transparent);")
+        self.assertPageContains(".fwarn .wclose,.fcheckreport .wclose{width:24px;height:24px;padding:0;border:0;")
+        # 报告条的红发丝边和微红底由共用 Note 提供，本页只补关闭键那一列。
+        self.assertPageContains(
+            ".fcheckreport,.fwarn{grid-template-columns:16px minmax(0,1fr) 24px;margin:10px 0 14px}")
+        self.assertPageContains(
+            ".geist-note-error{border-color:color-mix(in srgb,var(--drop) 30%,transparent);"
+            "background:color-mix(in srgb,var(--drop) 7%,transparent)}")
         self.assertPageLacks("border-left:2px solid var(--drop)")
         # 来源行状态徽章（ok 绿 tint / 失败红 tint / 未检查灰）。
         self.assertPageContains('<span class="sbadge ${badge}" title="${esc(stateTitle)}"><i aria-hidden="true"></i>')
@@ -4697,7 +4928,11 @@ class WebUiSourceTests(unittest.TestCase):
         # Geist 菜单：触发器和每个选项都有入口图标，菜单内部滚动且不加猜测动画。
         self.assertPageContains('data-sidebar-add-trigger aria-haspopup="listbox" aria-expanded="false"')
         self.assertPageContains('role="option" data-sidebar-add-option=')
-        self.assertPageContains(".sidebaraddmenu{position:absolute;z-index:4;left:0;right:0;bottom:calc(100% + 6px);max-height:min(312px,48vh);overflow:auto;overscroll-behavior:contain")
+        # 弹层盒子走共用的 .popmenu：发丝边、投影和 2px 行距只有一份定义，本页只接管定位。
+        # 行距不能省——相邻两项一个悬停一个选中时，两块填充会连成一整条，看不出是两行。
+        self.assertPageContains('<div class="popmenu sidebaraddmenu"')
+        self.assertPageContains("background:var(--surface);box-shadow:0 12px 40px #0006;display:grid;gap:2px;")
+        self.assertPageContains(".sidebaraddmenu{position:absolute;z-index:4;left:0;right:0;bottom:calc(100% + 6px);max-height:min(312px,48vh)}")
         self.assertPageContains("if(e.key==='Escape'){e.preventDefault();closeAddMenu();addTrigger.focus();return}")
         # 设置分组用框体隔开（用户回执）：每组建卡，分隔线顶格到卡边，
         # 标题字号与行内边距对齐 Vercel 后台设置卡。
@@ -4865,7 +5100,7 @@ class WebUiSourceTests(unittest.TestCase):
         """
         self.assertPageContains(
             '<div class="detailtitle">${srcBadge(it.location,it.cost,\'srcbig\')}\n'
-            '        <div class="stitle">${javTitleHtml(it)}'
+            '        <div class="stitle">${javTitleHtml(it)}${partLabelBadge(it,queueContext)}'
             '${it.location===\'online\'?\'\':`<span class="srctools detailtitletools">'
             '${sourceToolButtons(it.id)}</span>`}</div></div>')
         self.assertPageContains(".detailtitle{display:flow-root;margin-bottom:10px}")
@@ -5040,6 +5275,9 @@ class WebUiSourceTests(unittest.TestCase):
         reviewed_end_selectors = {
             ".alphatag span:first-of-type", ".av .nm", ".entitylinklabel",
             ".fauthor .fsource.frow>b", ".fauthorhead b",
+            # 四段计数按重要性从左排（未看在最前），尾部省略切掉的正是最不影响判断的那几段；
+            # 它不是标识符，中间截断只会把「未看 3」也切开。
+            ".fbulkcounts",
             ".fchip", ".followpageaction .fmeta", ".fpickactions [data-pick-state]",
             ".fsechead .fmeta",
             ".frow>b", ".fvkind", ".idname", ".kv>span:first-child",
@@ -5112,10 +5350,10 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('id="i-pics" viewBox="-1.6 -1.6 19.2 19.2" fill="currentColor" stroke="none"')
         self.assertPageContains('export function mediaViewButtonsHtml({')
         self.assertPageContains('class="mediaviewbutton" type="button" data-media-view="${esc(value)}"')
-        self.assertPageContains("const mediaToggle=photoCount?mediaViewButtonsHtml({active:mediaSelected?'photos':'videos'")
-        self.assertPageContains("imageValue:'photos',imageLabel:'照片',videoCount:d.asset_count,imageCount:photoCount")
+        self.assertCode("const mediaToggle=(photoCount||roster.length)?mediaViewButtonsHtml({\n"
+                        "    active:entityViewNow(kind),")
+        self.assertPageContains("videoCount:d.asset_count,imageCount:photoCount,")
         self.assertPageContains('<section class="entitytagbar" aria-label="媒体与标签"><div class="entitytags">${mediaToggle}${tags}</div></section>')
-        self.assertPageContains("controls.hidden=!photos")
         self.assertPageContains("button.dataset.mediaView")
         self.assertPageContains(".mediaviewbuttons .mediaviewbutton{display:grid;place-items:center;flex:0 0 var(--filterItemH);width:var(--filterItemH);height:var(--filterItemH);padding:0;")
         self.assertPageContains(".mediaviewbuttons .mediaviewbutton svg{width:20px;height:20px")
@@ -5159,7 +5397,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".alphatag.r34-copyright")
         self.assertPageContains(".alphatag.r34-metadata")
         self.assertPageContains("indexheading")
-        self.assertPageContains("${icon('database')}本地")
+        self.assertPageContains("${icon('hard-drive')}本地")
 
     def test_an_alphabet_entry_stays_on_one_line(self):
         """一枚标签占一行，长名字截断。
@@ -5179,12 +5417,12 @@ class WebUiSourceTests(unittest.TestCase):
         叠成两行、过滤框被压成 0 宽。760px 以下改成标题与过滤框一行、开关另起一行。
         """
         self.assertPageContains("@media (max-width:760px){\n  .index .ihead{flex-wrap:wrap}")
-        self.assertPageContains("  .indexheading,#indexCount,.tagmodes button{white-space:nowrap}")
+        self.assertPageContains("  .indexheading,#indexCount,.viewmodes button{white-space:nowrap}")
         # 换行位靠一个零高的伪元素占满整行，开关的 order 排在它之后。
         self.assertPageContains('  .index .ihead::after{content:"";order:2;flex-basis:100%;height:0}')
         self.assertPageContains("  .index .ihead .geist-search{order:1}")
         self.assertPageContains(
-            "  .index .ihead .tagmodes,.index .ihead .iconswitch{order:3;flex:none}")
+            "  .index .ihead .viewmodes,.index .ihead .iconswitch{order:3;flex:none}")
 
     def test_the_two_filled_glyph_icons_say_what_a_stroked_icon_cannot(self):
         """字母表是 Aa，播放列表是队列。
@@ -5206,6 +5444,41 @@ class WebUiSourceTests(unittest.TestCase):
                 rf'<symbol id="i-{symbol}" viewBox="[-\d. ]+" fill="currentColor" stroke="none">')
         self.assertPageContains("Phosphor 2.1.1 regular, MIT")
         self.assertPageLacks("i-a-large-small")
+
+    def test_each_glyph_names_the_thing_it_sits_next_to(self):
+        """一枚字形只代表一个意思，同一个意思也只有一枚字形。
+
+        一枚字形背两个意思时，用户在一处学会的含义会在另一处骗他，所以各归各的：
+        `refresh-cw` 只归原地换一批，`database` 只归管理入口，`folder-open` 只归
+        打开位置，`play` 只归真的起播，音量键不去标音频文件。这条逐枚钉住归属。
+
+        `i-clock` 没有使用者，是用户点名留的备用件，不要当死代码清掉。
+        """
+        # 文件类型标的是文件，不是打开动作，也不是音量。
+        self.assertPageContains("['archive','压缩包','file-archive'],['audio','音频','file-audio']")
+        self.assertPageContains("archive:['压缩包','file-archive'],")
+        self.assertPageContains("audio:['音频','file-audio'],")
+        # 「加载更多」往下接一页，方向由字形给出；`refresh-cw` 是原地换一批。
+        self.assertPageContains("data-follow-more>${icon('chevron-down')}加载更多</button>")
+        self.assertPageContains('title="换一批" aria-label="换一批">${icon(\'refresh-cw\')}')
+        # 两个空态各说自己那件事：筛不出结果，和一次比对没有发现。
+        self.assertPageContains("emptyState('search-x','当前筛选下没有更新'")
+        self.assertPageContains("emptyState('file-stack','没有找到重复文件'")
+        # 本地是磁盘、在线是订阅源；标签条这一对和关注页的来源图标同一套。
+        self.assertPageContains('data-tag-scope="local" aria-pressed="${!onlineTags}">${icon(\'hard-drive\')}本地')
+        self.assertPageContains('data-tag-scope="online" aria-pressed="${onlineTags}">${icon(\'rss\')}在线')
+        # 「喜爱理由」开的是一个写字面板，不是喜欢开关——那个是旁边的 thumbs-up。
+        self.assertPageContains('data-has-reason="${!!it.like_reason}">${icon(\'notebook-pen\')}')
+        self.assertPageContains('aria-label="${it.liked?\'取消喜欢\':\'喜欢\'}"')
+        # 侧栏：已标记是书签，沉浸模式是一叠竖着翻的卡；`play` 留给真的起播。
+        self.assertPageContains("['flagged','已标记','bookmark'],")
+        self.assertPageContains("['immerse','沉浸模式','gallery-vertical-end'],")
+        self.assertPageContains("<span>进入沉浸模式</span>")
+        self.assertPageContains("class=\"shorts-enter\" type=\"button\">${icon('play')}")
+        # 换下来的三枚没有别的使用者，雪碧图里也不留。
+        for gone in ("i-monitor-cog", "i-star", "i-volume-2"):
+            self.assertPageLacks(f'<symbol id="{gone}"')
+        self.assertPageContains('<symbol id="i-clock" viewBox="0 0 24 24">')
 
     def test_mixed_icon_sets_land_on_one_optical_grid(self):
         """同样 15px 要画得一样大，靠的是把内容外框补到 Lucide 的 20/24 活区。
@@ -5239,7 +5512,7 @@ class WebUiSourceTests(unittest.TestCase):
             "const ratio=WIDE_ICONS[name],classes=[ratio?'iconwide':'',cls].filter(Boolean).join(' ');")
         self.assertPageContains(
             "const box=ratio?`0 0 ${(24*ratio).toFixed(2)} 24`:'0 0 24 24';")
-        self.assertPageContains(".tagmodes button svg.iconwide{width:auto}")
+        self.assertPageContains(".viewmodes button svg.iconwide{width:auto}")
 
     def test_plain_text_inputs_share_one_token_so_the_button_beside_them_matches(self):
         """控件高度只有一档：输入框 38px，同一行的按钮照抄这个数。
@@ -5436,6 +5709,25 @@ class WebUiSourceTests(unittest.TestCase):
         """没抽过帧的条目在队列里退回番号封套，而不是一个纯黑块。"""
         self.assertPageContains(
             ':(x.is_jav&&x.code?`<img src="/cover?code=${encodeURIComponent(x.code)}"')
+
+    def test_the_detail_title_names_which_volume_is_playing(self):
+        """分卷队列里换一卷，右侧标题栏必须跟着变。
+
+        同一部片的几卷共用文件名，标题、女优、厂牌逐字相同（实测 PPT-018 三卷）。
+        标题栏不写卷号的话，点了队列里另一条，整栏看上去纹丝不动。卷号是「第几份
+        文件」而不是版次，所以用中性灰，和无码／中字／破解三种版次色分开。
+        """
+        self.assertPageContains("const partLabelBadge=(it,queue)=>queue?.kind==='parts'&&it.part_label")
+        self.assertPageContains(
+            """? `<small class="javedition partlabel">第 ${esc(it.part_label)} 卷</small>`:'';""")
+        self.assertPageContains("${javTitleHtml(it)}${partLabelBadge(it,queueContext)}")
+        self.assertPageContains(".javedition.partlabel{color:var(--muted);margin-left:6px}")
+        # `/api/item` 是单条口径，答不出「这是第几卷」；不从队列补，标题栏就一直空着。
+        self.assertPageContains("if(queueContext?.kind==='parts')")
+        self.assertPageContains(
+            "it.part_label=queueContext.items.find(part=>part.id===it.id)?.part_label||'';")
+        # 队列条目那一侧本来就写着卷号，两处用的是同一个字段。
+        self.assertPageContains("queue.kind==='parts'?`第 ${esc(x.part_label)} 卷`")
 
     def test_the_edition_queue_head_only_states_the_count(self):
         """标题栏已经写着「版本」，番号又印在正上方的详情标题里，说明只留数量。
@@ -5723,6 +6015,34 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".fsechead .fmeta{flex:1 1 0;min-width:0;overflow:hidden")
         self.assertPageContains("  .fsechead .fmeta{display:none}")
 
+    def test_manage_sort_select_lets_the_active_theme_decide_its_option_list(self):
+        """排序框的原生弹出列表跟随当前主题，控件自己不声明 color-scheme。
+
+        `color-scheme` 是继承属性，两条主题选择路径（prefers-color-scheme 与
+        `:root[data-theme]`）都已经把它落在 `html` 上。控件再声明一档，浅色主题下就出现
+        闭合的框是浅底、展开的选项列表是深底浅字的两套配色。
+        """
+        css = stylesheet_source()
+        start = css.index(".fmanagesort select{")
+        rule = css[start:css.index("}", start)]
+        for declaration in ("background:var(--surface)", "color:var(--ink-2)"):
+            self.assertIn(declaration, rule, f".fmanagesort select 缺少 {declaration}")
+        self.assertNotIn("color-scheme", rule, ".fmanagesort select 不该自己声明 color-scheme")
+        # 主题两条路径都把 color-scheme 落在 `html`，控件靠继承拿到它。
+        self.assertPageContains("html{color-scheme:light")
+        self.assertPageContains(
+            '@media (prefers-color-scheme:dark){html:not([data-theme="light"]){color-scheme:dark}}')
+        self.assertPageContains('html[data-theme="dark"]{color-scheme:dark}')
+        # 自绘箭头由后面的规则给 background-image，而这条规则的 background 简写会清掉它：
+        # 两者的层叠顺序反过来，下拉就只剩一个空的右内边距。
+        self.assertLess(
+            start, css.index(".settingrow select,.tasteactions select,.fmanagesort select{"),
+            "自绘箭头必须排在 .fmanagesort select 的 background 简写之后")
+        # 高度不收进 --control-h：这一行的按钮和版式开关都在 32px 上，排序框单独抬一档
+        # 就是同一行里出现两种「同一种控件」。
+        self.assertIn("height:32px", rule, ".fmanagesort select 与标题行同高")
+        self.assertPageContains("gap:6px;height:32px")
+
     def test_destructive_buttons_fill_red_on_hover(self):
         """危险动作的悬停态一律是 --drop 实底加白字，全站一个写法。
 
@@ -5738,6 +6058,42 @@ class WebUiSourceTests(unittest.TestCase):
                          ".playlistactions .danger:hover{",
                          ".reviewactions .reject:hover{"):
             self.assertPageContains(selector + fill, f"{selector} 的悬停态要填 --drop")
+
+    def test_bulk_footer_keeps_one_line_and_ellipsises_its_counts(self):
+        """底部批量条保持一行，宽度不够时省略说明文字，而不是把动作键甩到第二行。
+
+        它和分区标题行是同一种行：一行里唯一可以缩的是说明文字，动作键要完整读出来。
+        允许换行的话，窄屏上四段计数加两个键一定放不下，键落到第二行、底栏白长一截。
+        基准取 0 而不是 auto：按内容宽度参与排线的话，它先把整行挤断，缩放轮不到发生。
+        """
+        self.assertPageContains(".fnote.fbulkrow{display:flex;align-items:center;gap:4px 10px}")
+        self.assertPageLacks(".fnote.fbulkrow{display:flex;align-items:center;flex-wrap:wrap",
+                             "换行是这条行长成两行的原因")
+        self.assertPageContains(".fbulkcounts{flex:1 1 0;min-width:0;overflow:hidden;"
+                                "text-overflow:ellipsis;white-space:nowrap}")
+        self.assertPageContains(".fbulk{display:inline-flex;gap:8px;margin-left:auto;flex:none}")
+        # 标题行早就是这个写法，同一种行的两处行为要对得上。
+        self.assertPageContains(".fsechead .fmeta{flex:1 1 0;min-width:0;overflow:hidden")
+        self.assertPageContains(".fsechead .fbtn,.fsechead .fmanagesort{flex:none}")
+
+    def test_add_form_only_sizes_the_one_button_it_actually_has(self):
+        """`.faddform` 里唯一的按钮是来源筛选触发器，高度由它自己那条给。
+
+        这个表单没有提交键——只读查询回车即执行。再留一条按 `.faddform .fbtn` 写的通用
+        高度，读的人会以为旁边还有个提交键；而它被更具体的那条完全盖住，改它不会有任何
+        效果，是一条只会误导人的死规则。
+        """
+        self.assertPageContains(
+            ".faddform .fsrcfilter .fbtn{width:auto;height:38px;min-height:38px;padding:0 11px}")
+        self.assertPageLacks(".faddform .fbtn{height:38px;min-height:38px}",
+                             "被更具体那条完全盖住的死规则")
+        start = self.app_js.index('<form class="faddform" id="followAdd">')
+        form = self.app_js[start:self.app_js.index("</form>", start)]
+        self.assertNotIn('type="submit"', form, "添加表单没有提交键，回车即执行")
+        self.assertIn('<div class="fsrcfilter" id="followSrcFilter"></div>', form)
+        # 别名表单那个提交键是活的，别顺手一起删。
+        self.assertPageContains(".faliasform .fbtn{height:38px;min-height:38px}")
+        self.assertPageContains('<button class="fbtn" type="submit">保存别名</button>')
 
     def test_follow_filter_buttons_write_the_url_before_refetching(self):
         """先写 URL 再重取。反过来的话 openFollow 会照旧 URL 把状态推回去。"""

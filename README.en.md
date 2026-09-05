@@ -1,15 +1,27 @@
-[中文](README.md)
+<p align="center">
+  <img src="resources/peach-logo.png" alt="Peach" width="128">
+</p>
 
-# Peach
+<h1 align="center">Peach</h1>
 
-Peach is a single-user, local-first personal media system: it indexes media you already own —
-local disks, CloudDrive mounts, followed online sources — and serves search, playback, profile
-pages, playlists, review and follow from one FastAPI process backed by the local SQLite ledger,
-which also stores viewing behavior and manual decisions. It is built for one person self-hosting
-on their own machines over a LAN, not for teams or public deployment. Status: pre-1.0. Windows and
-macOS are first-class; Linux is not supported and has not been tested.
+<p align="center">A single-user, local-first personal media system</p>
 
-Peach runs completely on a single machine. Windows and macOS are first-class platforms; Linux is not supported and has not been tested. Single-writer replication between machines is optional and off by default, and so far it has been verified in exactly one shape: a Windows writer with a macOS reader. The current runtime state and verification results are in [`docs/STATUS.md`](docs/STATUS.md), open work is in [`docs/PRODUCT_BACKLOG.md`](docs/PRODUCT_BACKLOG.md), and development constraints start at [`AGENTS.md`](AGENTS.md).
+<p align="center">
+  <a href="https://github.com/longmeidao/peach/actions/workflows/test.yml"><img src="https://img.shields.io/github/actions/workflow/status/longmeidao/peach/test.yml?branch=master&label=tests" alt="tests"></a>
+  <a href="https://github.com/longmeidao/peach/releases"><img src="https://img.shields.io/github/v/release/longmeidao/peach?include_prereleases&label=release" alt="release"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0--or--later-blue" alt="license"></a>
+  <img src="https://img.shields.io/badge/python-3.12%2B-3776AB?logo=python&logoColor=white" alt="Python 3.12+">
+  <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS-lightgrey" alt="Windows | macOS">
+  <img src="https://img.shields.io/badge/18%2B-adult%20content-critical" alt="18+ adult content">
+</p>
+
+<p align="center"><a href="README.md">中文</a> · English</p>
+
+> **18+** Peach is for adults and manages an adult-content collection. The repository, its documentation and screenshots contain SFW material only; the boundaries are in "Scope and disclaimer" below.
+
+Peach is a single-user, local-first personal media system, built for one person self-hosting on their own machines over a LAN — not for teams or public deployment. It indexes media you already own — local disks, CloudDrive mounts, followed online sources — and serves search, playback, profile pages, playlists, review and follow from one FastAPI process. The local SQLite ledger is the single source of truth and also stores viewing behavior and manual decisions; whatever CloudDrive, online sites or AI return is a candidate with provenance and confidence, and becomes truth only after the user reviews it.
+
+Peach runs completely on a single machine and is pre-1.0. Windows and macOS are first-class platforms; Linux is not supported and has not been tested. Single-writer replication between machines is optional and off by default, and so far it has been verified in exactly one shape: a Windows writer with a macOS reader. The current runtime state and verification results are in [`docs/STATUS.md`](docs/STATUS.md), open work is in [`docs/PRODUCT_BACKLOG.md`](docs/PRODUCT_BACKLOG.md), and development constraints start at [`AGENTS.md`](AGENTS.md).
 
 ## Core capabilities
 
@@ -76,7 +88,7 @@ The repository stores no media, databases, credentials, logs, `.venv`, build out
 
 ## Downloads
 
-Every `v<version>` tag publishes two archives on GitHub Releases: `Peach-<version>-windows-x64.zip` (a single-file `Peach.exe`) and `Peach-<version>-macos-<arch>.zip` (the menu-bar `Peach.app`). They are only the tray and menu-bar entry points, not a portable build: the service process still runs from the repository's `.venv`, so complete the three steps under "Installation" first, then place the extracted `Peach.exe` somewhere inside the repository (for example `dist\Peach\`); double-clicking the macOS `Peach.app` only kicks the LaunchAgent, which is registered with `./.venv/bin/python scripts/install_macos_agent.py install`. FFmpeg is still installed by you, as listed under Prerequisites. The tray's "Check for updates" only reports the version for these archives; it downloads and installs nothing (ADR-0012).
+Windows testers can download `Peach-<version>-windows-x64.zip` from [GitHub Releases](https://github.com/longmeidao/peach/releases), extract the complete folder, and double-click `Peach.exe`. Choose a media folder in the first-run page to get started. The runtime is bundled and access is local to this computer. Configuration is available from Settings and the tray menu. Install FFmpeg separately; replace the entire program folder when updating. See [Windows testing guide](docs/TESTING_DESKTOP.md). macOS users currently follow the source installation steps below.
 
 ## Installation
 
@@ -88,21 +100,46 @@ Three steps, with no directories or configuration files to prepare in advance. R
 & .\.venv\Scripts\peach.exe init                    # macOS: ./.venv/bin/peach init
 ```
 
-`peach init` creates the data root, migrates the ledger to the latest schema, generates the local CA
-and writes `<data root>/config.toml`. The default data root is `peach-data/` next to the repository;
-`--data-root` changes it, and the `PEACH_DATA_ROOT` environment variable overrides it. After that,
-`peach serve` starts the service; the listen address, port, media drive-letter mappings and
-replication switches are all edited in that settings file, explained item by item in
+Run without arguments, `peach init` asks five questions in the terminal; pressing Enter accepts the default shown in brackets:
+
+| Question | Default |
+| --- | --- |
+| Data root (ledger, caches and the settings file live here) | `peach-data/` next to the repository |
+| Local media directory (source `local`, must already exist) | `~\Videos` (`~/Movies` on macOS); required when that folder is missing |
+| Listen scope: 1 = this machine only (127.0.0.1), 2 = LAN (0.0.0.0) | `1` |
+| Service port | `8900` |
+| LAN name (`<name>.local`, published only when listening on the LAN) | `peach` |
+
+It then creates the data root, migrates the ledger to the latest schema, generates the local CA, writes
+`<data root>/config.toml`, asks "scan <directory> now?" (default yes) to register that directory's files
+in the ledger, and prints the next steps. The settings file declares only the one source you named; after
+that `peach serve` starts the service and `peach scan local` rescans at any time. The listen address, port,
+sources and replication switches are all edited in that settings file, explained item by item in
 [`docs/OPERATIONS.md`](docs/OPERATIONS.md). The tray is started with `peach-tray`, without arguments.
 
-Four facts:
+You can answer in a browser instead of the terminal: skip step three and run `peach-tray` (or
+double-click `Peach.exe` / `Peach.app`). Seeing that the machine is not configured yet, the tray starts a
+setup service bound to `127.0.0.1` only and opens a browser on it. The page is the same five questions as a
+form, plus a "scan now" checkbox that is ticked by default. On submit the tray stops the setup service,
+switches to the normal Peach services, and runs the scan in the background if you asked for it. This path
+calls the same logic as `peach init` and writes exactly the same files. While it waits, the tray menu reads
+"等待完成首次设置" and its first item becomes "重新打开设置页".
 
-- `-e` is a hard requirement: the wheel contains only the packages under `src/`, and the repository-root `migrations/` and `web/` are not in it, so under a non-editable install `peach init` fails outright because it cannot find the migrations directory.
-- When `--data-root` points somewhere else, `peach serve` looks for the data root only via `PEACH_DATA_ROOT` and the `peach-data/` directories a few levels above the repository, so set `PEACH_DATA_ROOT` as well; the default data root needs no such step.
-- The declared roots of the three sources in the settings file default to `local = R:\media`, `115 = B:/` and `pikpak = A:/`. These are example drive letters and must be changed to your own paths under `[media.locations]` and `[media.mounts]`; leaving them means every source is offline, not an error. CloudDrive is not required — any cloud drive that mounts as a local path works; 115 and PikPak are recommendations, not requirements.
+To skip the questions, pass arguments: `peach init --no-input` (or any single option such as `--data-root`,
+`--port` or `--mount local=/mnt/media`) generates the file from the built-in defaults plus your arguments;
+the same path is taken when stdin is not a terminal. A file written this way carries three example sources,
+`local = R:\media`, `115 = B:/` and `pikpak = A:/`, which must be changed to your own paths under
+`[media.locations]` and `[media.mounts]`; leaving them means every source is offline, not an error.
+
+Five facts:
+
+- Listening on `127.0.0.1` needs no token. Reaching the service from a phone or any other device on the LAN (`--host 0.0.0.0`, and everything the tray starts) does: `peach init` has already written one to `<data root>/secrets/auth-token`, `peach token` prints it, and each device pastes it into the login page once. `peach serve` refuses to start when it binds a non-loopback address without a token, because that puts the whole collection and the write endpoints on the local network.
+- Use `-e` for source development. Regular installations and wheels include pages and migrations and support running from any working directory.
+- When the data root is not next to the repository, `peach serve` looks for it only via `PEACH_DATA_ROOT` and the `peach-data/` directories a few levels above the repository, so set `PEACH_DATA_ROOT` as well; the default data root needs no such step.
+- Ledger paths are always in the Windows shape. On Windows the media directory goes straight into `[media.locations]`; on macOS the declared root is `R:\media` and the directory goes into `[media.mounts]`, where the local mount point does the translation. CloudDrive is not required — any cloud drive that mounts as a local path works; 115 and PikPak are recommendations, not requirements.
 - The interface is currently available in Chinese only.
 
-The service also starts without a settings file: `/healthz` reports `configured=false`, and the pages prompt you to run `peach init` first.
+The service also starts without a settings file: `/healthz` reports `configured=false`, and the home page is the first-run form described above.
 
 ## Development
 
@@ -214,7 +251,7 @@ Fetched updates stay in the `new` or `seen` candidate state. Only after an expli
 - [`docs/REUSE.md`](docs/REUSE.md): the reuse checklist to consult before adding or replacing an implementation.
 - [`docs/adr/`](docs/adr/): architecture decisions, their reasons and trade-offs.
 
-The documents above are currently available in Chinese only.
+The documents above are currently available in Chinese only. [`CONTRIBUTING.md`](CONTRIBUTING.md) and [`SECURITY.md`](SECURITY.md) each open with an English summary.
 
 ## License
 

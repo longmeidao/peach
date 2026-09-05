@@ -5,7 +5,7 @@ description: 在用户说加条规则、写进 AGENTS.md、写个技能、文件
 
 # 上下文写作与清退
 
-最后复核：2026-09-03
+最后复核：2026-09-05
 证据来源：ADR-0015、`scripts/check_context_budget.py`、`tests/test_context_budget.py`、用户于
 2026-08-17 提供的 `My AGENTS.md & SKILLS.md Breakdown` 逐字稿。
 
@@ -20,8 +20,8 @@ description: 在用户说加条规则、写进 AGENTS.md、写个技能、文件
 2. 只有某类任务才需要，且是「步骤」？→ 新建或补充 `.claude/skills/<name>/SKILL.md`。
 3. 是事实、数字、事故证据或历史结论？→ `docs/STATUS.md`（运行态）、`docs/HANDOFF.md`
    （长期事实）、`docs/REUSE.md`（复用决策）或新 ADR（架构取舍）。
-4. 与仓库无关、跨项目成立？→ `~/.claude/CLAUDE.md`；超过 5 行的成套流程改写成
-   `~/.claude/skills/<name>/SKILL.md`。
+4. 与仓库无关、跨项目成立？→ 当前智能体全局入口（Codex 为 `~/.codex/AGENTS.md`，
+   Claude 为 `~/.claude/CLAUDE.md`）；成套流程进入对应用户级技能，事实进入按需参考文档。
 5. 只对本次对话有效？→ 不写入任何文件。
 
 补充要求：
@@ -108,7 +108,7 @@ Codex 完全不自动加载 `.claude/skills`，只能靠 `AGENTS.md` 索引表�
 
 步骤：
 
-1. 运行 `& .\.venv\Scripts\python.exe scripts\check_context_budget.py`：退出码 0 通过，1 有超预算或结构错误，3 只有 `最后复核` 超过 180 天的条目。
+1. 运行 `python scripts/check_context_budget.py`：退出码 0 通过，1 有超预算或结构错误，3 只有 `最后复核` 超过 180 天的条目。
 
 2. 逐条问：这条规则的事故或证据还能指认吗？对应实现还在吗？已经有门槛了吗？
 3. 该删就整段删除，不留「已废弃」注释——Git 是归档。被 ADR 取代的段落只留一行指向 ADR。

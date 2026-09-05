@@ -181,3 +181,29 @@ button[aria-busy="true"],[role="button"][aria-busy="true"]{
   background:var(--surface);box-shadow:0 12px 40px #0006;display:grid;gap:2px;
   overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain}
 .popmenu[hidden]{display:none}
+
+/* Geist Modal：确认一次写操作。实测 https://vercel.com/geist/modal（2026-09-04）：
+   540px 宽、12px 圆角、窄屏两侧各留 10px，正文 20px 内边距，操作条粘在底、12px 内边距、
+   两端对齐，遮罩纯黑不带模糊。淡入用它给出的 .3s cubic-bezier(.175,.885,.32,1.1)；
+   它同时过渡 transform，起始值未取得，所以这里只做透明度。 */
+.geist-modal{box-sizing:border-box;width:min(540px,calc(100vw - 20px));
+  /* max-width 要自己写死：<dialog> 的 UA 样式带一条 calc((100% - 6px) - 2em)，
+     窄屏上它比 Geist 的 calc(100vw - 20px) 更小，卡片会莫名再窄十几像素。 */
+  max-width:min(540px,calc(100vw - 20px));max-height:min(800px,80vh);
+  padding:0;border:0;border-radius:var(--floating-radius);
+  background:var(--surface);color:var(--ink);overflow:hidden auto;overscroll-behavior:contain;
+  box-shadow:0 0 0 1px var(--border-15),0 32px 72px -12px #0009,0 8px 32px -12px #0009;
+  opacity:0;transition:opacity .3s cubic-bezier(.175,.885,.32,1.1),
+    overlay .3s allow-discrete,display .3s allow-discrete}
+.geist-modal::backdrop{background:#0009;opacity:0;
+  transition:opacity .3s cubic-bezier(.175,.885,.32,1.1),
+    overlay .3s allow-discrete,display .3s allow-discrete}
+.geist-modal[open],.geist-modal[open]::backdrop{opacity:1}
+@starting-style{.geist-modal[open],.geist-modal[open]::backdrop{opacity:0}}
+.geist-modal-body{padding:20px;font-size:var(--fs-md);line-height:20px;color:var(--ink-2)}
+.geist-modal-body h3{margin:0;font-size:var(--fs-xl);line-height:26px;font-weight:600;color:var(--ink)}
+.geist-modal-body p{margin:8px 0 0;line-height:20px;overflow-wrap:anywhere}
+.geist-modal-body [data-modal-error]:not(:empty){margin-top:12px}
+.geist-modal-footer{position:sticky;bottom:0;display:flex;justify-content:space-between;gap:16px;
+  padding:12px;background:var(--surface)}
+.geist-modal-footer>div{display:flex;gap:16px}

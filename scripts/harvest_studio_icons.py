@@ -254,14 +254,19 @@ def harvest_targets(padded: dict[str, dict[str, object]],
 ICON_LINK_KINDS = ("official", "catalog")
 
 
-def studio_links(connection: sqlite3.Connection) -> dict[str, list[dict[str, str]]]:
-    """按 safe 文件名归拢厂牌的站点链接；社媒不算，那是另一条线的头像。"""
+def studio_links(connection: sqlite3.Connection,
+                 kind: str = "studio") -> dict[str, list[dict[str, str]]]:
+    """按 safe 文件名归拢这类实体的站点链接；社媒不算，那是另一条线的头像。
+
+    `kind` 是这一趟的实体种类。事务所和厂牌在这里没有区别：都是有官网、要在页面上
+    顶一枚标识的公司，标识落盘按名字（`logo_key`）而不按种类，取图那条链也是同一条。
+    """
     placeholders = ",".join("?" * len(ICON_LINK_KINDS))
     rows = connection.execute(
         "SELECT e.id, e.canonical_name, l.link_kind, l.url"
         " FROM entity e JOIN entity_link l ON l.entity_id = e.id"
-        f" WHERE e.kind = 'studio' AND l.link_kind IN ({placeholders})"
-        " ORDER BY e.canonical_name, l.id", ICON_LINK_KINDS).fetchall()
+        f" WHERE e.kind = ? AND l.link_kind IN ({placeholders})"
+        " ORDER BY e.canonical_name, l.id", (kind, *ICON_LINK_KINDS)).fetchall()
     grouped: dict[str, list[dict[str, str]]] = {}
     for row in rows:
         grouped.setdefault(safe_name(row["canonical_name"]), []).append(
@@ -685,11 +690,16 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     connection = sqlite3.connect(f"file:{args.database}?mode=ro", uri=True)
     connection.row_factory = sqlite3.Row
     try:
-        links = studio_links(connection)
+        links = studio_links(connection, args.kind)
     finally:
         connection.close()
 
-    targets = harvest_targets(padded_studios(logo_root), links, logo_root)
+    # 补白名单和那两张指定来源表都是厂牌那一趟的历史遗留，事务所一条都不该收：
+    # 按名字撞上就会给一家事务所装上同名厂牌指好的图。事务所的入场理由只有链接。
+    if args.kind == "studio":
+        targets = harvest_targets(padded_studios(logo_root), links, logo_root)
+    else:
+        targets = {safe: {"original_size": "", "installed": ""} for safe in links}
     if args.only:
         wanted = {safe_name(name) for name in args.only}
         targets = {key: value for key, value in targets.items() if key in wanted}
@@ -724,7 +734,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--candidate-dir", type=Path,
                         default=REVIEW_DIR / "studio-icons")
     parser.add_argument("--only", nargs="*", default=[],
-                        help="只处理这几个厂牌，按 canonical_name 给")
+                        help="只处理这几个，按 canonical_name 给")
+    parser.add_argument("--kind", default="studio", choices=("studio", "agency"),
+                        help="这一趟补的是哪一类公司的标识")
     parser.add_argument("--interval", type=float, default=1.5)
     parser.add_argument("--timeout", type=float, default=20.0)
     parser.add_argument("--install", action="store_true",

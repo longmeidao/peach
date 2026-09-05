@@ -67,7 +67,7 @@ class ParseTests(unittest.TestCase):
                          ("official", "官方网站"))
 
     def test_an_agency_page_is_labelled_with_the_agency_name(self):
-        """用户要的就是厂商链接，而事务所名资料表已经给了。
+        """域名归属未知时才退回事务所名：那时它至少没有和已知事实矛盾。
 
         退回通用的「官方网站」等于把取到的信息扔掉——资料页上一排链接全叫同一个名字，
         点之前看不出哪个是事务所。
@@ -75,6 +75,36 @@ class ParseTests(unittest.TestCase):
         self.assertEqual(
             self.module.classify("http://www.t-powers.co.jp/official/talent/x", "T-POWERS"),
             ("official", "T-POWERS"))
+
+    def test_the_label_follows_the_domain_not_the_agency_field(self):
+        """白石亚子的「所属事務所」是 T-POWERS，「公式サイト」却是 Prestige 的宣传页。
+
+        这是资料表里两行不同的事实。把事务所名贴到这条链接上，一个控件就同时替两家公司
+        说话：文字写着 T-POWERS，图标和落点都是 Prestige。
+        """
+        # 归属表的键和 `host_of` 用同一条归一规则，都不带 `www.`。
+        owners = {"prestige-av.com": "Prestige"}
+        self.assertEqual(
+            self.module.classify("http://www.prestige-av.com/special/shiraishi_ako.php",
+                                 "T-POWERS", owners.get),
+            ("official", "Prestige"))
+        # 域名确实归事务所时，两条规则给出同一个答案。
+        self.assertEqual(
+            self.module.classify("http://www.t-powers.co.jp/official/talent/x", "T-POWERS",
+                                 {"t-powers.co.jp": "T-POWERS"}.get),
+            ("official", "T-POWERS"))
+
+    def test_a_personal_platform_account_is_not_an_agency_page(self):
+        """Facebook 和 Linktree 此前不在平台表里，走了 official 分支、被贴上事务所名。"""
+        self.assertEqual(
+            self.module.classify("https://www.facebook.com/miho.tanaka.334491", "T-POWERS"),
+            ("social", "Facebook @miho.tanaka.334491"))
+        self.assertEqual(
+            self.module.classify("http://linktr.ee/sawa_sasaki", "GG"),
+            ("social", "Linktree @sawa_sasaki"))
+        self.assertEqual(
+            self.module.classify("http://kawakami-yuu.livedoor.biz/", "Ys Promotion"),
+            ("social", "博客"))
 
     def test_a_blog_is_social_not_an_official_site(self):
         """`blog.livedoor.jp/kaede_fuyutuki/` 是本人的博客，不是公式站。

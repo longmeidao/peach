@@ -53,8 +53,8 @@ const STATE_ROUTES={fresh:'/unseen',later:'/watch-later',flagged:'/flagged',ads:
 const ROUTE_STATES=Object.fromEntries(Object.entries(STATE_ROUTES).map(([state,path])=>[path,state]));
 const STATE_LABELS={fresh:'没看过',later:'稍后看',flagged:'已标记',ads:'垃圾文件'};
 const isCatalogPath=path=>path==='/'||Object.prototype.hasOwnProperty.call(ROUTE_STATES,path);
-const ENTITY_ROUTES={performer:'performers',studio:'studios',creator:'creators',series:'series'};
-const ROUTE_ENTITIES={performers:'performer',studios:'studio',creators:'creator',series:'series'};
+const ENTITY_ROUTES={performer:'performers',studio:'studios',creator:'creators',series:'series',agency:'agencies'};
+const ROUTE_ENTITIES={performers:'performer',studios:'studio',creators:'creator',series:'series',agencies:'agency'};
 const entityPath=(kind,name)=>`/${ENTITY_ROUTES[kind]||kind}/${encodeURIComponent(name)}`;
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const SITE_FAVICONS={

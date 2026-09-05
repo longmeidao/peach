@@ -44,8 +44,11 @@
 /* 版式开关和排序框、按钮同处分区标题行，收到同一个 32px 高度上（fieldset 自带 1px 边框）。 */
 .fsechead .iconswitch{display:inline-flex;gap:2px;flex:none;padding:2px}
 .fsechead .iconswitch label{width:32px;height:26px}
+/* 原生弹出的选项列表由 color-scheme 决定，而 color-scheme 是继承属性：01-base.css 把
+   prefers-color-scheme 和 `[data-theme]` 两条选择路径都映射到 `html`，控件这里只声明颜色。
+   在控件上单独写一档，浅色主题下闭合的框是浅底，展开的选项列表是深底浅字。 */
 .fmanagesort select{height:32px;padding:0 10px;border:1px solid var(--border-15);border-radius:var(--control-radius);
-  background:var(--surface);color:var(--ink-2);font:inherit;font-size:var(--fs-sm);color-scheme:dark;cursor:pointer}
+  background:var(--surface);color:var(--ink-2);font:inherit;font-size:var(--fs-sm);cursor:pointer}
 .fmanagesort select:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}
 /* 全站原生下拉共用同一个自绘箭头。SVG 笔画自身有 4px 透明边，背景右移 6px 后，
    可见笔画到右边框正好与文字到左边框同为 10px。 */
@@ -73,31 +76,23 @@
 .fdescpop code{font-family:"Cascadia Mono",Consolas,ui-monospace,"Microsoft YaHei UI","PingFang SC",monospace}
 .fnote{margin:12px 0 0;font-size:var(--fs-sm);line-height:1.7;color:var(--muted)}
 .fnote:empty{display:none}
-.fnote.warn{color:var(--drop)}
 .fnote b{color:var(--ink-2);font-weight:600}
 .fnote code{font-size:var(--fs-xs)}
 [data-follow-add-state]{color:var(--ink-2)}
 
-/* Geist Note：只装紧邻字段、卡片或分区的持久上下文。页面级问题继续用
-   .geist-banner，瞬时回执继续用 toast，销毁确认继续用 dialog/confirm。 */
+/* Geist Note：字段、卡片、分区旁的持久上下文，以及需要用户处理的失败，全部走这里。
+   瞬时回执用 toast，销毁确认用 dialog/confirm。整页范围的失败也是这个盒子，只是多
+   一个关闭键（见下面的 .fwarn／.fcheckreport），不另立一套横幅。 */
 .geist-note{display:grid;grid-template-columns:16px minmax(0,1fr);align-items:start;gap:9px;margin:10px 0;padding:11px 12px;border:1px solid var(--line-soft);border-radius:var(--surface-radius);background:var(--overlay-5);color:var(--ink-2);font-size:var(--fs-sm);line-height:1.55}.geist-note>svg{width:16px;height:16px;margin-top:2px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}.geist-note>p{margin:0}.geist-note>p b{margin-right:7px;color:var(--ink)}.geist-note-secondary{color:var(--muted)}.geist-note-warning{border-color:color-mix(in srgb,var(--meter) 32%,transparent);background:color-mix(in srgb,var(--meter) 7%,transparent)}.geist-note-error{border-color:color-mix(in srgb,var(--drop) 30%,transparent);background:color-mix(in srgb,var(--drop) 7%,transparent)}.geist-note-error>svg{color:var(--drop)}.geist-note-success{border-color:color-mix(in srgb,var(--success) 30%,transparent);background:color-mix(in srgb,var(--success) 7%,transparent)}.geist-note-success>svg{color:var(--success)}
 
 /* 检查结果的页内持久行（.fwarn 是上次检查的存量失败，.fcheckreport 是这次
-   检查的失败明细）。Geist 的 toast 处方：失败不能只发 toast——那是转身就丢的
-   通知；原因和恢复入口必须留在页面上。红色发丝边让「没有更新」和「检查失败」
-   不用读文字就能分辨。成功的摘要不再落在这里，整条交给 toast。 */
-.fcheckreport,.fwarn{display:flex;align-items:flex-start;gap:8px;margin:10px 0 14px;
-  padding:10px 12px;border-radius:var(--control-radius);
-  background:color-mix(in srgb,var(--drop) 7%,transparent);
-  border:1px solid color-mix(in srgb,var(--drop) 30%,transparent);
-  font-size:var(--fs-sm);line-height:1.7;color:var(--ink-2)}
-.fcheckreport>svg,.fwarn>svg{width:14px;height:14px;flex:none;margin-top:4px;
-  stroke:var(--drop);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-.fcheckreport>div{flex:1;min-width:0}
-.fcheckreport.neutral{background:var(--overlay-5);border-color:var(--line-soft);color:var(--muted)}
-.fcheckreport.neutral>svg{stroke:var(--muted)}
+   检查的失败明细）。失败不能只发 toast——那是转身就丢的通知；原因和恢复入口
+   必须留在页面上，所以它们是 Geist Note 的可关闭变体：盒子、发丝边、图标尺寸
+   和 error／secondary 两套配色全部来自 `.geist-note`，这里只补关闭键那一列。
+   自带一份边框和内距的话，同一条失败在关注页和管理页会长成两个样子。 */
+.fcheckreport,.fwarn{grid-template-columns:16px minmax(0,1fr) 24px;margin:10px 0 14px}
+.fcheckreport>div,.fwarn>span{min-width:0}
 .fcheckreport p,.fwarn p{margin:0}
-.fwarn>span{flex:1;min-width:0}
 .fcheckreport b{color:var(--ink);font-variant-numeric:tabular-nums}
 .fcheckfail{color:var(--drop)}
 .fchecknote{color:var(--muted);font-size:var(--fs-xs)}
@@ -107,15 +102,19 @@
 .sbadge i{width:6px;height:6px;border-radius:50%;background:var(--muted);flex:none}
 .sbadge.ok i{background:var(--success)}
 .sbadge.error i{background:var(--drop)}
-.fwarn .wclose,.fcheckreport .wclose{flex:none;width:24px;height:24px;margin-left:auto;padding:0;border:0;
+.fwarn .wclose,.fcheckreport .wclose{width:24px;height:24px;padding:0;border:0;
   border-radius:var(--control-radius);background:transparent;color:var(--muted);
   display:grid;place-items:center;cursor:pointer}
 .fwarn .wclose:hover,.fcheckreport .wclose:hover{background:var(--hover);color:var(--ink)}
 .fwarn .wclose svg,.fcheckreport .wclose svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round}
 /* 批量动作是 2292 条级别的操作，不是行内文字链接：按钮的边界让「这会改状态」
    在点击前就看得见，也和本页其他 .fbtn（检查全部／去看更新）同一套语言。 */
-.fbulk{display:inline-flex;gap:8px;margin-left:auto}
-.fnote.fbulkrow{display:flex;align-items:center;flex-wrap:wrap;gap:4px 10px}
+.fbulk{display:inline-flex;gap:8px;margin-left:auto;flex:none}
+/* 底部这条和分区标题行是同一种行：一行里唯一可以缩的是说明文字，两个动作键要完整读出来。
+   允许换行的话，窄屏上四段计数加两个键一定放不下，于是键被甩到第二行、底栏长出一截。
+   基准取 0 而不是 auto：按内容宽度参与排线的话，它会先把整行挤断，缩放根本轮不到发生。 */
+.fnote.fbulkrow{display:flex;align-items:center;gap:4px 10px}
+.fbulkcounts{flex:1 1 0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
 /* 状态标签：四种状态四种颜色，待办和完成一眼分得开。 */
 /* 凭据状态。类名不能叫 `.fstate`——观看页的卡片错误行已经占了那个名字
@@ -143,8 +142,6 @@
 .fbtn svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.8}
 
 .faddform{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:start}
-/* 输入框本体是共用的 `.geist-search`；这里只管它和旁边按钮的高度对齐。 */
-.faddform .fbtn{height:38px;min-height:38px}
 /* 没有按钮可以变灰，查找中的唯一凭据就是前缀位上的 Spinner——输入框自己必须还能改。 */
 .faddform[aria-busy="true"] input[type="search"]{color:var(--muted)}
 

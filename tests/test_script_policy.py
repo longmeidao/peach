@@ -116,8 +116,8 @@ class ScriptPathPolicyTests(unittest.TestCase):
     def test_the_guard_catches_the_shape_it_describes(self):
         """门槛自身也要能被证伪，否则它可能只是一段永远为真的代码。"""
         self.assertTrue(DATA_ROOT_LITERAL.search(r"R:\peach-data\database\ledger.db"))
-        self.assertTrue(DATA_ROOT_LITERAL.search("C:/Users/someone/Desktop/peach"))
-        self.assertTrue(DATA_ROOT_LITERAL.search("/Users/someone/Desktop/peach"))
+        self.assertTrue(DATA_ROOT_LITERAL.search("C:/Users/<user>/Desktop/peach"))
+        self.assertTrue(DATA_ROOT_LITERAL.search("/Users/<user>/Desktop/peach"))
         self.assertIsNone(DATA_ROOT_LITERAL.search("peach-data/generated"))
 
 
