@@ -36,10 +36,12 @@ SOURCE_SPECS = {
         "dlgetchu": "official", "fc2": "official",
         "javlibrary": "community", "javdb": "community", "javbus": "community",
         "jav321": "community", "javstash": "community",
+        "sougouwiki": "community",
     }.items()
 }
 
 PROFILE_SOURCES = {
+    "seesaa": ("sougouwiki",),
     "baseline": ("r18dev",),
     "censored": (
         "dmm", "libredmm", "r18dev", "mgstage", "aventertainment",

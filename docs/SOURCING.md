@@ -1,5 +1,33 @@
 # 身份、来源与标识采集
 
+## Seesaa Wiki 作品证据
+
+`scripts/scrape_codes.py --profile seesaa` 使用素人系総合 Wiki 的公开搜索与作品表格，产出既有
+`metadata-field-candidates` CSV。可通过 `--wiki-pages-file` 预取目录页；页内全部作品复用同一次请求，
+`--wiki-max-requests` 默认 80，每次最多 4 MiB、请求间隔至少 2 秒。成功页缓存可续跑，
+`--refresh` 重取页面；403、429 与机器人验证停止本批联网，未取得不冻结成永久无结果。
+
+番号通过作品表的 `NO` 列精确回配，支持既有数字前缀／补零规范化。`ACTRESS` 的链接显示名是
+出演候选，链接目标只保留为身份核验线索；EUC-JP 页面按来源编码解码。含未知出演者的名单仅留
+原文证据；冲突行报告错误。`TITLE`、`RELEASE` 可出标题／日期候选；`SUBTITLE` 不冒充完整标题。
+封面 URL、人物页链接、备注和跨平台编号保留在原始快照及候选证据中，不下载图片、不自动合并人物或作品。
+
+Seesaa 是托管平台，以下 Wiki 由各自维护者编辑，不能按平台名当成互相独立的印证：
+
+| 来源 | 已核验的用途 |
+| --- | --- |
+| [素人系総合 Wiki](https://seesaawiki.jp/w/sougouwiki/) | 厂牌作品表、合集名单、名义与人物页链接、日期、图片及跨平台线索；已接入脚本 |
+| [このAV女優の名前教えてwiki](https://seesaawiki.jp/av_neme/) | DMM、MGS、S-Cute、舞ワイフ出演名义核验 |
+| [AV女優大辞典wiki](https://av-help.memo.wiki/) | 女优与出演作品索引 |
+| [AV女優の名前特定wiki](https://seesaawiki.jp/av_name/) | FANZA 素人作品番号与出演者对应 |
+| [AV女優パーフェクトWiki](https://seesaawiki.jp/av_video/) | 作品、厂牌、系列索引及出演者线索 |
+| [シロウトTV・ナンパTV](https://seesaawiki.jp/pre_shiro/) | MGS 相关作品的出演名义核验 |
+| [人妻系まとめ](https://hitoduma-matome.memo.wiki/)／[素人AV女優名鑑](https://shiroutoav.memo.wiki/) | 特定类别人物与作品线索 |
+| [VR作品](https://seesaawiki.jp/vr_video/)／[成人映画](https://seesaawiki.jp/nikkatsu/)／[NHpedia](https://seesaawiki.jp/nhpedia/) | VR、成人电影、跨性别演员等分领域索引 |
+
+以上入口已于 2026-09-06 取页。除素人系総合外仅完成来源调查，详情解析尚未接入；平台首页的
+游戏、小说、生成模型教程和场所服务 Wiki 不适用于现有视频作品元数据补全。
+
 ## 本机采集入口
 
 「数据管理」→「设置采集来源」（`/scraping`）提供官方高清封面定点抓取和来源连接设置。
