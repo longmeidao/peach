@@ -142,6 +142,22 @@ export function skeletonHtml(label='正在读取内容',{className='',variant='p
     <div aria-hidden="true">${body}</div></div>`;
 }
 
+/** 索引占位复用最终网格、头像和词表的尺寸。 */
+export function indexSkeletonHtml({kind,layout='big',mode='alphabet'}={}){
+  const people=kind!=='tags',company=kind==='studios'||kind==='agencies';
+  const cell=people
+    ?'<span class="icell"><span class="ring skeleton"></span><span class="nm skeleton">&nbsp;</span><span class="n skeleton">&nbsp;</span></span>'
+    :'<span class="alphatag"><span class="skeleton"></span><span class="n skeleton"></span></span>';
+  const grid=people?`igrid" data-cells="${company?'company':'people'}" data-layout="${esc(layout)}`:'alphalist';
+  const body=!people&&mode==='cloud'
+    ?`<div class="tagwall index-tags">${Array.from({length:60},(_,i)=>
+      `<span class="tg skeleton" style="width:${[92,128,76,108,144][i%5]}px">&nbsp;</span>`).join('')}</div>`
+    :`${!people?'<span class="indexletterskeleton skeleton"></span>':''}<div class="${grid}">${cell.repeat(12)}</div>`;
+  const label='正在读取索引';
+  return `<div class="skeletonpanel index-skeleton" data-skeleton="index/${esc(kind)}/${esc(layout)}/${esc(mode)}"${people||mode!=='cloud'?' data-fill=""':''}
+    role="status" aria-label="${label}"><span class="sr-only">${label}</span><section aria-hidden="true">${body}</section></div>`;
+}
+
 /* 骨架的枚数由容器当下的宽度决定，不写死一个数：横向一行铺到右缘为止，网格补满
    整行。写死的话宽屏最后一行留一截豁口，窄屏和手机端又多出一堆要横滑才看得见的
    占位；算出来就不必再为断点各写一套。宽度序列只是让胶囊长短不一，像真词。 */
@@ -171,7 +187,7 @@ export function fitSkeleton(root){
   if(!root)return;
   const scoped=selector=>[...(root.matches?.(selector)?[root]:[]),...root.querySelectorAll(selector)];
   for(const row of scoped('[data-skeleton-tier]'))fillSkeletonTier(row,row.dataset.skeletonTier);
-  for(const grid of scoped('.skeletonpanel[data-fill]>div')){
+  for(const grid of scoped('.skeletonpanel[data-fill]>div,.index-skeleton[data-fill]>section>div')){
     const first=grid.firstElementChild,style=getComputedStyle(grid);
     /* 横排的推荐行不是网格，列数无从谈起，按整行补会把它裁成一张。 */
     if(!first||style.display!=='grid')continue;
@@ -181,7 +197,8 @@ export function fitSkeleton(root){
     /* 骨架说的是「这块地方等下会被填满」，所以铺到视口下沿；四行是护栏，
        再多也是一屏之外看不见的占位，白占动画。 */
     const room=window.innerHeight-grid.getBoundingClientRect().top;
-    const rows=Math.max(1,Math.min(4,Math.ceil((room+rowGap)/(cardHeight+rowGap))));
+    const maxRows=grid.classList.contains('alphalist')?24:4;
+    const rows=Math.max(1,Math.min(maxRows,Math.ceil((room+rowGap)/(cardHeight+rowGap))));
     const want=columns*rows;
     while(grid.children.length>want)grid.lastElementChild.remove();
     while(grid.children.length<want)grid.appendChild(first.cloneNode(true));

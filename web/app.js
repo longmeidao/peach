@@ -7,7 +7,7 @@ import { tagLabel } from './js/tags.js';
 import { syncSidebarSurface, sidebarTagCounts, sidebarHasCatalogContent } from './dist/peach-ui.js';
 import {
   attachOverlayScrollbar, breadcrumbHtml, checkboxHtml, closeAnchoredMenu, confirmModal, emptyStateHtml, fieldsetTitle,
-  fillSkeletonTier, fitSkeleton, iconSwitchHtml, loadingDotsHtml,
+  fillSkeletonTier, fitSkeleton, iconSwitchHtml, indexSkeletonHtml, loadingDotsHtml,
   mediaViewButtonsHtml, noteHtml, progressHtml, scrollerHtml, searchInputHtml, selectFieldHtml,
   setActionBusy, skeletonHtml, spinnerHtml, wireAnchoredMenu, wireBusyActions, wireCollapse,
   wireIconSwitch, wireOverlayScrollbars, wireScrollers, wireSelectField,
@@ -284,8 +284,13 @@ function renderInitialSurfaceLoading(){
     fitSkeleton(stats);
     return;
   }
-  if(path==='/performers'||path==='/creators'||path==='/tags'||
-      /^\/(?:performers|creators|studios|agencies)\//.test(path)){
+  if(/^\/(performers|creators|studios|agencies|tags)$/.test(path)){
+    hideDiscoveryBars();
+    if(path==='/tags')readTagIndexRoute(new URLSearchParams(location.search));
+    showIndexLoading('正在读取索引',path.slice(1),new URLSearchParams(location.search).get('q')||'');
+    return;
+  }
+  if(/^\/(?:performers|creators|studios|agencies)\//.test(path)){
     hideDiscoveryBars();
     $('#index').hidden=false;$('#grid').innerHTML='';
     $('#index').innerHTML=pageSkeletonHtml('正在读取页面',{cards:true});
@@ -294,7 +299,6 @@ function renderInitialSurfaceLoading(){
   }
   renderCatalogLoading();
 }
-renderInitialSurfaceLoading();
 
 /* 路由同时把页面表面写进 body[data-surface]：限宽等按表面生效的版式
    （管理页不全宽）靠它切换，不用每个渲染函数自己记得加类。
@@ -2729,12 +2733,6 @@ function showManagementBody({manage=true,placeholder=''}={}){
    `enterManagementSurface()` 对称：索引页此后不再重画芯片，画上去的那条会一直留着。
    `renderCombo()` 自己也拦得住（它先问过屏幕），两侧都要有——一个负责当场擦掉，
    一个负责之后谁都别再画上去。 */
-function showIndexLoading(label){
-  $('#stats').hidden=true;$('#index').hidden=false;$('#grid').innerHTML='';$('#combo').innerHTML='';
-  $('#count').textContent='';$('#loadSentinel').hidden=true;
-  $('#index').innerHTML=pageSkeletonHtml(label,{cards:true});
-  fitSkeleton($('#index'));
-}
 function enterManagementSurface(){
   // A catalog request started before browser Back must not repaint filters over
   // the management page after it resolves.
@@ -5393,6 +5391,7 @@ function setPeopleIndexLayout(value){
   appSettings.peopleLayout=value;
   saveSettings();
   document.querySelectorAll('.igrid').forEach(grid=>{grid.dataset.layout=peopleIndexLayout()});
+  fitSkeleton($('#index'));
 }
 /* 一格人：圆框或竖幅头像、名字、一个读数。索引页和事务所名册摆的是同一样东西，
    区别只在读数的口径，所以模板只有这一份，版式也由同一个 `.igrid[data-layout]` 管。
@@ -5421,6 +5420,62 @@ function makerModeHtml(kind){
     `<button data-index-kind="${key}" aria-pressed="${kind===key}">${icon(symbol)}${label}</button>`
     ).join('')+`</div>`;
 }
+function indexHeaderHtml(kind,q,countText){
+  const title=INDEX_TITLES[kind]||'标签',people=kind!=='tags';
+  const onlineTags=tagIndexScope==='online';
+  return `<div class="ihead">
+      <h2 class="disp indexheading">${kind==='tags'?icon('tags'):''}${title}</h2>
+      <span class="mono" id="indexCount">${countText}</span>
+      ${kind==='tags'?`<div class="viewmodes"><button data-tag-scope="local" aria-pressed="${!onlineTags}">${icon('hard-drive')}本地</button><button data-tag-scope="online" aria-pressed="${onlineTags}">${icon('rss')}在线</button></div>
+      <div class="viewmodes"><button data-tag-view="cloud" aria-pressed="${tagIndexMode==='cloud'}">${icon('tags')}标签云</button><button data-tag-view="alphabet" aria-pressed="${tagIndexMode==='alphabet'}">${icon('text-aa')}字母表</button></div>`:''}
+      ${MAKER_INDEX_KINDS.some(([key])=>key===kind)?makerModeHtml(kind):''}
+      ${people?peopleLayoutButtons():''}
+      ${searchInputHtml({id:'iq',label:'过滤'+title,value:q||''})}
+    </div>`;
+}
+function wireIndexControls(kind){
+  const iq=$('#iq');let it2;
+  const refineIndex=()=>{clearTimeout(it2);
+    it2=setTimeout(()=>openIndex(kind,iq.value.trim(),true,true),300)};
+  /* 中文输入法在选字过程中一样发 input，事件上的 isComposing 是唯一可靠的判据：
+     拿还没定型的拼音去筛选，筛的是「zhon」这种半截输入。组完字由 compositionend 接手。 */
+  iq.oninput=e=>{if(e.isComposing)return;refineIndex()};
+  iq.oncompositionend=refineIndex;
+  /* 只读筛选不配提交按钮，回车就是「别等那 300 ms，现在就查」。组字过程中的回车
+     是在定字，放过去会拿半截拼音发请求。 */
+  iq.onkeydown=e=>{if(e.isComposing||e.key!=='Enter')return;
+    e.preventDefault();clearTimeout(it2);openIndex(kind,iq.value.trim(),true,true)};
+  wireIconSwitch($('#index'),'data-people-layout',setPeopleIndexLayout);
+  /* 厂牌与事务所各有自己的地址，所以这个开关走的是 openIndex 的另一条 kind，
+     不是在同一批数据上再筛一次。过滤词跟着走：它问的是同一个问题。 */
+  $('#index').querySelectorAll('[data-index-kind]').forEach(b=>b.onclick=()=>{
+    if(kind===b.dataset.indexKind)return;
+    openIndex(b.dataset.indexKind,$('#iq').value.trim(),true)});
+  $('#index').querySelectorAll('[data-tag-scope]').forEach(b=>b.onclick=()=>{
+    if(tagIndexScope===b.dataset.tagScope)return;
+    tagIndexScope=b.dataset.tagScope;
+    // 在线标签全是英文，字母表才是它的形态；切过去时顺手换上，不必用户再点一次。
+    if(tagIndexScope==='online')tagIndexMode='alphabet';
+    tagIndexCategory='all';
+    selectedIndexTags.clear();
+    openIndex('tags',$('#iq').value.trim(),true)});
+  $('#index').querySelectorAll('[data-tag-view]').forEach(b=>b.onclick=()=>{
+    tagIndexMode=b.dataset.tagView;openIndex('tags',$('#iq').value.trim(),true)});
+  $('#index').querySelectorAll('[data-tag-category]').forEach(b=>b.onclick=()=>{
+    tagIndexCategory=b.dataset.tagCategory;openIndex('tags',$('#iq').value.trim(),true)});
+}
+function showIndexLoading(label,kind='',q=''){
+  $('#stats').hidden=true;$('#index').hidden=false;$('#grid').innerHTML='';$('#combo').innerHTML='';
+  $('#count').textContent='';$('#loadSentinel').hidden=true;
+  const placeholder=kind?indexHeaderHtml(kind,q,'<span class="countskeleton"></span>')+
+    `<div id="indexFilters"></div><div id="indexBody">${indexSkeletonHtml({kind,layout:peopleIndexLayout(),mode:tagIndexMode})}</div><button class="indexmore" id="indexMore" type="button" hidden>载入更多</button>`
+    :pageSkeletonHtml(label,{cards:true});
+  const next=skeletonKeyOf(placeholder);
+  if($('#index').querySelector('[data-skeleton]')?.dataset.skeleton!==next){
+    $('#index').innerHTML=placeholder;fitSkeleton($('#index'));
+  }
+  if(kind)wireIndexControls(kind);
+}
 /* refine=true 表示这一次是筛选框自己重跑，不是一次页面进入：既不铺骨架，也不重画表头。 */
 async function openIndex(kind,q,push=true,refine=false){
   releaseHoverPreviews();
@@ -5445,7 +5500,7 @@ async function openIndex(kind,q,push=true,refine=false){
   disposeStage(false);
   /* 骨架只盖真正在等的内容区。筛选重跑时页面已经在这儿了，把骨架铺上去会连筛选框
      一起吃掉——同步就能给出的控件不进骨架，正在打字的那个更不能。 */
-  if(!refine)showIndexLoading('正在读取'+(INDEX_TITLES[kind]||'标签'));
+  if(!refine)showIndexLoading('正在读取'+(INDEX_TITLES[kind]||'标签'),kind,q);
   /* 在线标签走关注页那套统计，形状与 /api/index 一致，所以分页、搜索和「载入更多」
      这三处现成的机制换个地址就能用。 */
   const indexApi=offset=>onlineTags
@@ -5498,49 +5553,13 @@ async function openIndex(kind,q,push=true,refine=false){
   const countText=`${tagItems.length}${d.has_more?'+':''} 项`;
   /* 筛选重跑不重画表头：输入框是同一个节点，焦点、光标位置和中文输入法正在组的字
      才不会在 300 ms 后被换掉。表头里随查询变的只有计数一处，单独改它。 */
-  if(refine&&$('#iq')){
+  if($('#indexFilters')){
     $('#indexCount').textContent=countText;
     $('#indexFilters').innerHTML=filters;
     $('#indexBody').innerHTML=body;
     $('#indexMore').hidden=!d.has_more;
-  }else $('#index').innerHTML=`<div class="ihead">
-      <h2 class="disp indexheading">${kind==='tags'?icon('tags'):''}${title}</h2>
-      <span class="mono" id="indexCount">${countText}</span>
-      ${kind==='tags'?`<div class="viewmodes"><button data-tag-scope="local" aria-pressed="${!onlineTags}">${icon('hard-drive')}本地</button><button data-tag-scope="online" aria-pressed="${onlineTags}">${icon('rss')}在线</button></div>
-      <div class="viewmodes"><button data-tag-view="cloud" aria-pressed="${tagIndexMode==='cloud'}">${icon('tags')}标签云</button><button data-tag-view="alphabet" aria-pressed="${tagIndexMode==='alphabet'}">${icon('text-aa')}字母表</button></div>`:''}
-      ${MAKER_INDEX_KINDS.some(([key])=>key===kind)?makerModeHtml(kind):''}
-      ${people?peopleLayoutButtons():''}
-      ${searchInputHtml({id:'iq',label:'过滤'+title,value:q||''})}
-    </div><div id="indexFilters">${filters}</div><div id="indexBody">${body}</div><button class="indexmore" id="indexMore" type="button" ${d.has_more?'':'hidden'}>载入更多</button>`;
-  const iq=$('#iq');let it2;
-  const refineIndex=()=>{clearTimeout(it2);
-    it2=setTimeout(()=>openIndex(kind,iq.value.trim(),true,true),300)};
-  /* 中文输入法在选字过程中一样发 input，事件上的 isComposing 是唯一可靠的判据：
-     拿还没定型的拼音去筛选，筛的是「zhon」这种半截输入。组完字由 compositionend 接手。 */
-  iq.oninput=e=>{if(e.isComposing)return;refineIndex()};
-  iq.oncompositionend=refineIndex;
-  /* 只读筛选不配提交按钮，回车就是「别等那 300 ms，现在就查」。组字过程中的回车
-     是在定字，放过去会拿半截拼音发请求。 */
-  iq.onkeydown=e=>{if(e.isComposing||e.key!=='Enter')return;
-    e.preventDefault();clearTimeout(it2);openIndex(kind,iq.value.trim(),true,true)};
-  wireIconSwitch($('#index'),'data-people-layout',setPeopleIndexLayout);
-  /* 厂牌与事务所各有自己的地址，所以这个开关走的是 openIndex 的另一条 kind，
-     不是在同一批数据上再筛一次。过滤词跟着走：它问的是同一个问题。 */
-  $('#index').querySelectorAll('[data-index-kind]').forEach(b=>b.onclick=()=>{
-    if(kind===b.dataset.indexKind)return;
-    openIndex(b.dataset.indexKind,$('#iq').value.trim(),true)});
-  $('#index').querySelectorAll('[data-tag-scope]').forEach(b=>b.onclick=()=>{
-    if(tagIndexScope===b.dataset.tagScope)return;
-    tagIndexScope=b.dataset.tagScope;
-    // 在线标签全是英文，字母表才是它的形态；切过去时顺手换上，不必用户再点一次。
-    if(tagIndexScope==='online')tagIndexMode='alphabet';
-    tagIndexCategory='all';
-    selectedIndexTags.clear();
-    openIndex('tags',$('#iq').value.trim(),true)});
-  $('#index').querySelectorAll('[data-tag-view]').forEach(b=>b.onclick=()=>{
-    tagIndexMode=b.dataset.tagView;openIndex('tags',$('#iq').value.trim(),true)});
-  $('#index').querySelectorAll('[data-tag-category]').forEach(b=>b.onclick=()=>{
-    tagIndexCategory=b.dataset.tagCategory;openIndex('tags',$('#iq').value.trim(),true)});
+  }else $('#index').innerHTML=indexHeaderHtml(kind,q,countText)+`<div id="indexFilters">${filters}</div><div id="indexBody">${body}</div><button class="indexmore" id="indexMore" type="button" ${d.has_more?'':'hidden'}>载入更多</button>`;
+  wireIndexControls(kind);
   const wireIndexEntries=root=>root.querySelectorAll('[data-k]').forEach(b=>b.onclick=()=>{
     if(people){openEntity(b.dataset.kind,b.dataset.k);return}
     /* 在线标签只在关注页有意义——它标注的是还没入库的在线更新，拿去筛目录必然
@@ -8041,14 +8060,15 @@ function indexQuery(){return $('#iq')?.value.trim()||''}
 function openIndexRoute(kind,push,q=null){
   if(push){setSelectMode(false,true);return openIndex(kind)}
   const params=new URLSearchParams(location.search);
-  if(kind==='tags'){
+  if(kind==='tags')readTagIndexRoute(params);
+  return openIndex(kind,q??(params.get('q')||''),false);
+}
+function readTagIndexRoute(params){
     tagIndexScope=params.get('scope')==='online'?'online':'local';
     tagIndexMode=params.get('view')==='cloud'?'cloud':'alphabet';
     const category=params.get('category')||'all';
     const categories=tagIndexScope==='online'?ONLINE_TAG_CATEGORIES:TAG_CATEGORIES;
     tagIndexCategory=categories.some(([key])=>key===category)?category:'all';
-  }
-  return openIndex(kind,q??(params.get('q')||''),false);
 }
 /* 沉浸模式当前这一条写在 `?id=`（见 tokShow），刷新和后退都该回到同一条片子。 */
 function immerseStartId(){
@@ -8079,6 +8099,7 @@ window.addEventListener('popstate',restoreRoute);
    挂在下面那条链上时它们排在 /api/sources 和 /api/facets 后面，实测让骨架先顶着
    一个没有标题的空壳站了约半秒。buildManageBar() 内部会一并建好左侧导航，
    所以这里不再单独调 buildEdge()。 */
+renderInitialSurfaceLoading();
 buildManageBar();
 /* 那两个聚合查询喂的是首页顶部三条横条。深链进管理页或索引页时横条一开始就收着，
    结果没人看，却排在这一页自己的数据前面。 */
