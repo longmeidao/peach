@@ -1409,8 +1409,19 @@ class SiteOwnAssetTests(unittest.TestCase):
         清楚的那张两个位置都顶。187×57 缩进 160 px 的大位是一条糊字。"""
         icon, logo = self.harvest()
         self.assertEqual((logo["variant"], logo["verdict"]), (MODULE.LOGO, MODULE.OK))
-        self.assertEqual(logo["sha256"], icon["sha256"])
+        self.assertEqual(logo["url"], icon["url"], "两个位置装的是同一枚")
+        self.assertIn("与 icon 位同一枚方标", logo["evidence"])
         self.assertTrue(str(logo["candidate"]).endswith("Bambi_Promotion.logo.png"))
+
+    def test_the_hero_still_looks_at_the_header_when_the_declared_icon_won(self):
+        """SO MODEL AGENT 声明的 favicon 只有 114×114，header 里挂着 600×150 的完整字标。
+        小位归声明那一枚，大位仍然该是那张字标——小位定了就不再翻首页的话，
+        大位只能拿那枚 114 顶着。"""
+        icon, logo = self.harvest(fetch=self.fetch(**{self.MARK: block_png((600, 150))}),
+                                  declared=block_png((114, 114)))
+        self.assertEqual((icon["evidence"], icon["mark_size"]), ("官网声明的图标", "114x114"))
+        self.assertIn("站点自己的字标（600x150）", logo["evidence"])
+        self.assertEqual(logo["url"], self.MARK)
 
     def test_a_big_enough_site_wordmark_takes_the_hero_slot(self):
         """大位要的是完整字标，宽扁是它应有的形状。够大就轮不到那枚方标。"""

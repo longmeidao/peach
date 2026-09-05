@@ -383,6 +383,9 @@ class SquareMark:
         self.wordmark: bytes | None = None
         self.wordmark_size = ""
         self.wordmark_aspect = ""
+        #: 那份字标是从哪个地址取回来的。`site_icons.best_mark` 不说它试的是哪一个，
+        #: 所以只有走 `first_mark` 那条路时填得上，复核件上空着就是「随官网那条链接」。
+        self.wordmark_url = ""
 
     def __call__(self, data: bytes, size: int = 0, content_type: str = "") -> bytes | None:
         image = link_marks.decode(data, content_type)
@@ -470,9 +473,12 @@ def first_mark(urls: list[str], fetch, policy: "SquareMark") -> tuple[bytes, str
         got = fetch(url)
         if got is None:
             continue
+        held = policy.wordmark
         made = policy(got[0], content_type=got[1])
         if made:
             return made, url
+        if policy.wordmark is not None and held is None:
+            policy.wordmark_url = url
     return None
 
 
@@ -539,15 +545,19 @@ def _store(candidate_dir: Path, name: str, payload: bytes) -> Path:
 
 
 def _made_rows(safe: str, target: dict[str, str], entry: dict[str, str],
-               policy: "SquareMark", made: bytes, candidate_dir: Path,
-               source: str, evidence: str
+               policy: "SquareMark", found: tuple[bytes, str, str, str, str],
+               candidate_dir: Path
                ) -> tuple[dict[str, object], dict[str, object] | None]:
-    """做成了一枚方标：出 `icon` 行，再看大位能不能从这一趟的收获里一并出。"""
+    """做成了一枚方标：出 `icon` 行，再看大位能不能从这一趟的收获里一并出。
+
+    尺寸和内容比是取到那一刻从 `policy` 记下来的，不在这里现读：大位还要接着用同一个
+    `policy` 去翻站点的字标，翻完那两个字段说的就是别的图了。
+    """
+    made, source, evidence, size, aspect = found
     path = _store(candidate_dir, f"{safe}.png", made)
-    icon = _row(safe, target, entry, ICON, OK, url=source, mark_size=policy.size,
-                content_aspect=policy.aspect,
-                sha256=hashlib.sha256(made).hexdigest(), candidate=str(path),
-                evidence=evidence)
+    icon = _row(safe, target, entry, ICON, OK, url=source, mark_size=size,
+                content_aspect=aspect, sha256=hashlib.sha256(made).hexdigest(),
+                candidate=str(path), evidence=evidence)
     return icon, hunt_logo_row(safe, target, entry, icon, policy, made, candidate_dir)
 
 
@@ -569,31 +579,30 @@ def hunt_logo_row(safe: str, target: dict[str, str], entry: dict[str, str],
     """
     if target["installed"]:
         return None
-    wordmark = policy.wordmark
-    if wordmark is not None and _short_edge(policy.wordmark_size) >= MIN_LOGO_SHORT_EDGE:
-        plate = images.bake_square(wordmark)
+    candidates: list[tuple[bytes, str, str, str]] = []
+    if policy.wordmark is not None:
+        candidates.append((policy.wordmark, policy.wordmark_size, "站点自己的字标",
+                           policy.wordmark_url or str(icon["url"])))
+    candidates.append((made, str(icon["mark_size"]), "与 icon 位同一枚方标",
+                       str(icon["url"])))
+    for payload, size, origin, url in candidates:
+        if _short_edge(size) < MIN_LOGO_SHORT_EDGE:
+            continue
+        plate = images.bake_square(payload)
         square = link_marks.decode(plate) if plate else None
-        if square is not None:
-            payload = _as_png(square)
-            return _row(safe, target, entry, LOGO, OK,
-                        mark_size=f"{square.size[0]}x{square.size[1]}",
-                        content_aspect=f"{link_marks.content_aspect(square):.2f}",
-                        sha256=hashlib.sha256(payload).hexdigest(),
-                        candidate=str(_store(candidate_dir, f"{safe}.logo.png", payload)),
-                        evidence=f"站点自己的字标（{policy.wordmark_size}）烤成方图")
-    if _short_edge(str(icon["mark_size"])) >= MIN_LOGO_SHORT_EDGE:
-        return _row(safe, target, entry, LOGO, OK, url=str(icon["url"]),
-                    mark_size=str(icon["mark_size"]),
-                    content_aspect=str(icon["content_aspect"]),
-                    sha256=str(icon["sha256"]),
-                    candidate=str(_store(candidate_dir, f"{safe}.logo.png", made)),
-                    evidence=f'与 icon 位同一枚方标（{icon["mark_size"]}），'
-                             f"站点自己的字标不够大或者没有")
+        if square is None:
+            continue
+        baked = _as_png(square)
+        return _row(safe, target, entry, LOGO, OK, url=url,
+                    mark_size=f"{square.size[0]}x{square.size[1]}",
+                    content_aspect=f"{link_marks.content_aspect(square):.2f}",
+                    sha256=hashlib.sha256(baked).hexdigest(),
+                    candidate=str(_store(candidate_dir, f"{safe}.logo.png", baked)),
+                    evidence=f"{origin}（{size}）烤成方图")
     return _row(safe, target, entry, LOGO, TOOSMALL, url=str(icon["url"]),
                 mark_size=str(icon["mark_size"]),
-                evidence=f"这一趟取到的都不够大位用：方标 "
-                         f'{icon["mark_size"] or "无"}、字标 '
-                         f'{policy.wordmark_size or "无"}，都不到 {MIN_LOGO_SHORT_EDGE}')
+                evidence=f"这一趟取到的都不到 {MIN_LOGO_SHORT_EDGE}：" + "、".join(
+                    f"{origin} {size}" for _, size, origin, _ in candidates))
 
 
 def icon_row(safe: str, target: dict[str, str], entries: list[dict[str, str]],
@@ -620,19 +629,28 @@ def icon_row(safe: str, target: dict[str, str], entries: list[dict[str, str]],
         made = site_icons.best_mark(
             entry["url"], fetch, policy,
             accept=scope if shares_its_host(entry["url"]) else None)
-        if made:
-            return _made_rows(safe, target, entry, policy, made, candidate_dir,
-                              entry["url"], "官网声明的图标")
-        marks, profiles = site_assets(entry["url"], fetch)
-        own = first_mark(marks, fetch, policy)
-        if own:
-            return _made_rows(safe, target, entry, policy, own[0], candidate_dir,
-                              own[1], "站点 header 里的 <img>")
-        for profile in profiles:
-            avatar = first_mark(avatar_urls(profile, fetch), fetch, policy)
-            if avatar:
-                return _made_rows(safe, target, entry, policy, avatar[0], candidate_dir,
-                                  avatar[1], f"{profile} 的头像")
+        found = ((made, entry["url"], "官网声明的图标", policy.size, policy.aspect)
+                 if made else None)
+        # 声明那一枚做成了、大位还空着时也要翻一遍首页：SO MODEL AGENT 声明的
+        # favicon 只有 114×114，而 header 里挂着 600×150 的完整字标，那才是大位要的。
+        marks, profiles = (site_assets(entry["url"], fetch)
+                           if found is None or not target["installed"] else ([], []))
+        if found is None:
+            own = first_mark(marks, fetch, policy)
+            if own:
+                found = (own[0], own[1], "站点 header 里的 <img>",
+                         policy.size, policy.aspect)
+        elif marks:
+            first_mark(marks, fetch, policy)
+        if found is None:
+            for profile in profiles:
+                avatar = first_mark(avatar_urls(profile, fetch), fetch, policy)
+                if avatar:
+                    found = (avatar[0], avatar[1], f"{profile} 的头像",
+                             policy.size, policy.aspect)
+                    break
+        if found:
+            return _made_rows(safe, target, entry, policy, found, candidate_dir)
         reachable = reachable or getattr(fetch, "fetched", 0) > before
         attempts.append(entry["url"])
 
