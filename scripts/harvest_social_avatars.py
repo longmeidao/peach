@@ -23,6 +23,9 @@ r"""社媒存在感扩张：从已核实的 X 账号走到集链页，扩张全�
 队列存在的理由（KRONE 那次「人对、页面错」就是这一类），所以本脚本和仓库里其余
 写入脚本一样，写盘必须显式 `--apply`。
 
+`--apply` 只往好里换：落盘前先按同一把尺（`rank_key`）量一次盘上那张，脸没有更大就
+不覆盖。头像目录是几条管线共用的，本脚本的候选池未必比别人装的强。
+
 头像源（登出可取；取不到的只记链接，不产头像）：
   X          profile_images 原图（无尺寸后缀），失败退 _400x400 / _200x200
   lit.link   creators/<uuid>/icons/<uuid>.jpe
@@ -52,6 +55,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+from peach.avatar_face import (   # noqa: E402
+    FaceProbe, drop_sidecar, face_px_width, read_sidecar, write_sidecar,
+)
 from peach.avatar_provider import (   # noqa: E402
     POLICY_VERSION,
     AvatarCandidateCache,
@@ -554,7 +560,7 @@ def harvest_entity(record: dict, http: HttpTransport, limiter: HostLimiter,
 
 
 def cover_fallback(connection, record: dict, cache: AvatarCandidateCache,
-                   cover_root: Path = COVER_DIR, face_width=None) -> dict | None:
+                   cover_root: Path = COVER_DIR, probe=None) -> dict | None:
     """仅使用已关联的单人作品封面，保留完整大图和来源。
 
     封面是这条链路上脸最容易被画布口径坑到的一档：JAV 封面普遍是 800×538 的双联版式，
@@ -589,62 +595,28 @@ def cover_fallback(connection, record: dict, cache: AvatarCandidateCache,
                                evidence=f'单人作品 {code} 完整封面'))
     if not candidates:
         return None
-    if face_width is not None:
-        measure_faces(candidates, face_width)
+    if probe is not None:
+        measure_faces(candidates, probe)
     return max(candidates, key=rank_key)
 
 
-class FaceWidth:
-    """一枚候选里那张脸有多少像素宽。检不出脸就是 0。
+def measure_faces(candidates: list[dict], probe) -> None:
+    """就地给每枚候选检一次脸。同一张图（SHA 相同）只检一次。
 
-    模型按需构造，与 `harvest_studio_icons.FaceGate` 同一条理由：一趟里一个候选都
-    没走到就不必去下 232 KB 的 ONNX，而取不到模型也不能让整轮停下——那会把「今天
-    没网」变成「所有人都没有头像」。取不到就退回画布口径，并把原因记进统计。
+    落在候选上的是两样东西：`face_width` 是选图判据——量的是像素不是比例，因为
+    `rank_key` 要回答的是「装进圆框后看不看得清这张脸」，而那取决于脸有多少像素可用，
+    与画布多大无关；`face_record` 是赢家落盘时一并写出的取景 sidecar，同一次检出直接
+    复用，不让页面读的脸框和挑图用的脸框来自两次不同的检测。
     """
-
-    def __init__(self):
-        self._detector = None
-        self._unavailable = ""
-
-    @property
-    def unavailable(self) -> str:
-        return self._unavailable
-
-    def __call__(self, path: Path) -> int:
-        if self._unavailable:
-            return 0
-        if self._detector is None:
-            try:
-                from peach.face_detect import FaceDetector
-                self._detector = FaceDetector()
-            except Exception as error:            # 缺模型、缺 OpenCV、下载失败
-                self._unavailable = str(error)
-                return 0
-        try:
-            import cv2
-            from peach.face_detect import main_face
-            image = cv2.imread(str(path))
-            if image is None:
-                return 0
-            face = main_face(self._detector.detect(image))
-            return round(face.width * image.shape[1]) if face else 0
-        except Exception:                          # 单张图解不开不该拖垮整轮
-            return 0
-
-
-def measure_faces(candidates: list[dict], face_width) -> None:
-    """就地给每枚候选量一次脸宽。同一张图（SHA 相同）只量一次。
-
-    量的是像素不是比例：`select_winner` 要回答的是「装进圆框后看不看得清这张脸」，
-    而那取决于脸有多少像素可用，与画布多大无关。
-    """
-    seen: dict[str, int] = {}
+    seen: dict[str, dict | None] = {}
     for candidate in candidates:
         digest = candidate.get("sha256", "")
         if digest not in seen:
             path = candidate.get("object_path")
-            seen[digest] = face_width(path) if path else 0
-        candidate["face_width"] = seen[digest]
+            seen[digest] = probe(path) if path else None
+        record = seen[digest]
+        candidate["face_record"] = record
+        candidate["face_width"] = face_px_width(record)
 
 
 def rank_key(row: dict) -> tuple[int, int, int, int]:
@@ -687,8 +659,42 @@ def select_winner(candidates: list[dict]) -> tuple[dict | None, list[dict]]:
     return ranked[-1], ranked[:-1]
 
 
+def incumbent_row(destination: Path, probe) -> dict | None:
+    """盘上那张的选图口径，用来和赢家比。没有图、读不出都返回 None。
+
+    先用现成的取景 sidecar，那本来就是同一次 YuNet 检出的结果；没有 sidecar 才真去
+    检一遍。525 张头像各检一次要好几分钟，而绝大多数的 sidecar 早就算好了。
+    """
+    if not destination.is_file():
+        return None
+    record = read_sidecar(destination)
+    if not (record and record.get("px")):
+        record = probe(destination)
+    if not (record and record.get("px")):
+        return None
+    width, height = record["px"][0], record["px"][1]
+    if not (width > 0 and height > 0):
+        return None
+    return {"width": width, "height": height,
+            "face_width": face_px_width(record), "face_record": record}
+
+
+def outranks_incumbent(winner: dict, incumbent: dict | None) -> bool:
+    """赢家值不值得覆盖盘上那张。用的是同一把尺 `rank_key`。
+
+    这道闸门是 `--force` 的安全带。`--force` 的语义是「已有头像也重跑」，覆盖的却是
+    **所有**已装头像，包括别的管线装的——而本脚本的候选池（X 的 400×400、jae 的
+    320×500、作品封面）比 `verified-photo-page` 那类整版人像差一大截。2026-09-06 实测：
+    一趟 `--force --apply` 换掉 350 张，其中 282 张脸变小，脸宽中位数从 262 px 掉到
+    139 px。缺头像时这道闸门是空操作，只在真要覆盖时才拦。
+    """
+    if incumbent is None:
+        return True
+    return rank_key(winner) > rank_key(incumbent)
+
+
 def install_avatar(avatar_dir: Path, kind: str, entity_id: int, winner: dict) -> Path:
-    """赢家直接落盘到 /entity-image 真正读的目录，带 .ct 与 provenance。"""
+    """赢家直接落盘到 /entity-image 真正读的目录，带 .ct、provenance 与取景 sidecar。"""
     destination = avatar_dir / f"{kind}-{entity_id}.img"
     avatar_dir.mkdir(parents=True, exist_ok=True)
     data = winner["object_path"].read_bytes()
@@ -712,6 +718,13 @@ def install_avatar(avatar_dir: Path, kind: str, entity_id: int, winner: dict) ->
         "imported_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "purpose": "local performer identity cache",
     }, ensure_ascii=False, indent=2), encoding="utf-8")
+    # sidecar 必须跟着图一起换。留着上一张图的脸框，页面会拿它给这一张取景、放大到
+    # 一个空位置上，而这在界面上与「这张图本来就该这么显示」看不出区别。
+    record = winner.get("face_record")
+    if record:
+        write_sidecar(destination, record)
+    else:
+        drop_sidecar(destination)
     return destination
 
 
@@ -775,7 +788,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--entities", type=str, default="",
                         help="逗号分隔的 entity id；缺省跑全部缺头像且有路线的人")
     parser.add_argument("--force", action="store_true",
-                        help="已有头像也重跑并覆盖（默认跳过）")
+                        help="已有头像也参加竞选（默认跳过）；只有脸更大才覆盖")
     parser.add_argument("--apply", action="store_true",
                         help="把过线的赢家头像落盘到 --avatars；缺省只产 CSV 不写盘")
     parser.add_argument("--timeout", type=float, default=25.0)
@@ -801,7 +814,8 @@ def run(args) -> int:
     install_rows: list[dict] = []
     review_rows: list[dict] = []
     installed = 0
-    face_width = FaceWidth()
+    kept = 0
+    probe = FaceProbe()
     try:
         entities = [int(v) for v in str(args.entities).split(",") if v.strip().isdigit()]
         targets = load_targets(connection, args.avatars, entities, args.force, include_cover_targets=True)
@@ -839,16 +853,18 @@ def run(args) -> int:
                     review_rows.append(row)
 
             # 先量脸再挑：赢家由脸的像素数定，画布只是没得比时的退路。
-            measure_faces(result["candidates"], face_width)
+            measure_faces(result["candidates"], probe)
             winner, runners_up = select_winner(result["candidates"])
             if (winner is None or not winner.get('matched')
                     or not passes_auto_bar(winner['width'], winner['height'])):
                 fallback = cover_fallback(connection, record, caches['cover'],
-                                          face_width=face_width)
+                                          probe=probe)
                 if fallback:
                     if winner:
                         runners_up.append(winner)
                     winner = fallback
+            # 盘上那张只量一次，赢家拿它当门槛：新的没有更好就不动它。
+            incumbent = incumbent_row(args.avatars / f"{kind}-{entity_id}.img", probe)
             for candidate in ([winner] if winner else []) + runners_up:
                 cache = caches[PROVIDER_CACHES[candidate["provider"]]]
                 provenance_path = cache.store_provenance(
@@ -865,6 +881,10 @@ def run(args) -> int:
                         note += "，未达自动安装线，待复核"
                     elif not args.apply:
                         note += "，已过自动安装线；加 --apply 才落盘"
+                    elif not outranks_incumbent(candidate, incumbent):
+                        note += (f"，盘上那张的脸更大（{incumbent['face_width']} px "
+                                 f"vs {candidate.get('face_width') or 0} px），不覆盖")
+                        kept += 1
                     else:
                         destination = install_avatar(args.avatars, kind, entity_id,
                                                      candidate)
@@ -908,14 +928,14 @@ def run(args) -> int:
     write_rows(args.candidates, CANDIDATE_FIELDS, candidate_rows, atomic=True)
     write_rows(args.out_links, LINK_FIELDS, install_rows, atomic=True)
     write_rows(args.review_links, LINK_FIELDS, review_rows, atomic=True)
-    if face_width.unavailable:
+    if probe.unavailable:
         # 说清这一轮是按什么挑的。不说的话，一次「今天没网下不到 ONNX」会静悄悄地
         # 把整批退回画布口径，产出看着完全正常，脸却全挑小了。
-        print(f"人脸检测未取得（{face_width.unavailable}）：本轮按画布尺寸挑图，"
+        print(f"人脸检测未取得（{probe.unavailable}）：本轮按画布尺寸挑图，"
               "face_width 一列全是 0；模型可用后加 --force 重跑该批。")
     if not args.apply:
         print("空跑：以上一张头像都没落盘；确认候选无误后加 --apply 重跑。")
-    print({"候选": len(candidate_rows), "自动安装": installed,
+    print({"候选": len(candidate_rows), "自动安装": installed, "在位的更好未覆盖": kept,
            "带脸候选": sum(1 for r in candidate_rows if int(r.get("face_width") or 0) > 0),
            "链接待装": len(install_rows), "链接待复核": len(review_rows),
            "候选 CSV": str(args.candidates), "链接 CSV": str(args.out_links),

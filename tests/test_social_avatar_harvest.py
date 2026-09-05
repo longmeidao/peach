@@ -2,6 +2,7 @@
 import hashlib
 import importlib.util
 import io
+import json
 import sqlite3
 import sys
 import tempfile
@@ -70,10 +71,16 @@ class CoverFallbackTests(unittest.TestCase):
             cache = module.AvatarCandidateCache(root / 'cache')
             faces = {hashlib.sha256(big).hexdigest(): 40,
                      hashlib.sha256(small).hexdigest(): 220}
-            result = module.cover_fallback(
-                con, record, cache, root,
-                face_width=lambda path: faces[
-                    hashlib.sha256(Path(path).read_bytes()).hexdigest()])
+
+            def probe(path):
+                payload = Path(path).read_bytes()
+                width = 1600 if payload == big else 800
+                digest = hashlib.sha256(payload).hexdigest()
+                return {"ratio": 1.5, "px": [width, 1],
+                        "face": {"cx": 0.5, "cy": 0.4, "w": faces[digest] / width,
+                                 "h": 0.2, "score": 0.9}}
+
+            result = module.cover_fallback(con, record, cache, root, probe=probe)
             self.assertEqual(result['external_id'], 'BBB-002')
             con.close()
 
@@ -254,7 +261,7 @@ class SelectionTests(unittest.TestCase):
         self.assertEqual((winner["width"], winner["height"]), (600, 600))
 
     def test_the_same_image_is_measured_once_and_lands_in_the_review_csv(self):
-        """脸宽是 CSV 的一列：复核的人据此判断这张脸够不够大。同图只量一次——
+        """脸宽是 CSV 的一列：复核的人据此判断这张脸够不够大。同图只检一次——
         一个人的 X、lit.link、Instagram 三处常常挂着同一张图。"""
         self.assertIn("face_width", self.module.CANDIDATE_FIELDS)
         sha = hashlib.sha256(b"one").hexdigest()
@@ -264,20 +271,15 @@ class SelectionTests(unittest.TestCase):
 
         def fake(path):
             calls.append(path)
-            return 88
+            return {"ratio": 1.0, "px": [400, 400],
+                    "face": {"cx": 0.5, "cy": 0.4, "w": 0.22, "h": 0.2, "score": 0.9}}
 
         self.module.measure_faces(rows, fake)
         self.assertEqual(len(calls), 2)
         self.assertEqual([row["face_width"] for row in rows], [88, 88, 88])
-
-    def test_a_missing_face_model_records_the_reason_instead_of_raising(self):
-        """下不到 ONNX 不该把「今天没网」变成「所有人都没有头像」。"""
-        measure = self.module.FaceWidth()
-        measure._detector = None
-        with unittest.mock.patch.dict(
-                sys.modules, {"peach.face_detect": None}):
-            self.assertEqual(measure(Path("/tmp/nope.jpg")), 0)
-        self.assertTrue(measure.unavailable)
+        # 同一次检出既定判据也写 sidecar，页面读的脸框和挑图用的脸框不会来自两次检测。
+        self.assertEqual([row["face_record"]["px"] for row in rows],
+                         [[400, 400]] * 3)
 
     def test_same_image_on_two_platforms_collapses_and_merges_evidence(self):
         sha = hashlib.sha256(b"same").hexdigest()
@@ -304,6 +306,104 @@ class SelectionTests(unittest.TestCase):
         self.assertTrue(module.passes_auto_bar(648, 800))
         self.assertFalse(module.passes_auto_bar(320, 320))
         self.assertFalse(module.passes_auto_bar(200, 200))
+
+
+class InstallGateTests(unittest.TestCase):
+    """`--force` 的安全带：只有脸更大才覆盖盘上那张。"""
+
+    def setUp(self):
+        self.module = load_module()
+
+    @staticmethod
+    def record(width, height, face_w):
+        return {"ratio": round(width / height, 3), "px": [width, height],
+                "face": {"cx": 0.5, "cy": 0.4, "w": face_w / width, "h": 0.2,
+                         "score": 0.9}}
+
+    def install(self, directory, name, payload, record):
+        (directory / name).write_bytes(payload)
+        if record is not None:
+            (directory / name).with_suffix(".face.json").write_text(
+                json.dumps(record), encoding="utf-8")
+
+    def winner(self, directory, payload, face_record):
+        cached = directory / "cached.jpg"
+        cached.write_bytes(payload)
+        return {"object_path": cached, "sha256": hashlib.sha256(payload).hexdigest(),
+                "mime_type": "image/jpeg", "provider": "social-web",
+                "source_url": "https://example.invalid/a.jpg", "external_id": "x",
+                "width": 400, "height": 400, "face_record": face_record}
+
+    def test_an_empty_slot_takes_anything_that_won(self):
+        """缺头像时这道闸门是空操作。"""
+        with tempfile.TemporaryDirectory() as tmp:
+            missing = Path(tmp).resolve() / "performer-1.img"
+            self.assertIsNone(self.module.incumbent_row(missing, lambda p: None))
+        self.assertTrue(self.module.outranks_incumbent(
+            {"width": 400, "height": 400, "face_width": 10}, None))
+
+    def test_a_smaller_face_never_overwrites_the_installed_one(self):
+        """2026-09-06 实测：一趟 --force 换掉 350 张，282 张脸更小。本脚本的候选池
+        （X 的 400×400、jae 的 320×500、作品封面）未必比别的管线装的强。"""
+        winner = {"width": 400, "height": 400, "face_width": 137}
+        incumbent = {"width": 2880, "height": 1800, "face_width": 786}
+        self.assertFalse(self.module.outranks_incumbent(winner, incumbent))
+        self.assertTrue(self.module.outranks_incumbent(incumbent, winner))
+
+    def test_the_installed_face_comes_from_the_sidecar_instead_of_a_second_detection(self):
+        """525 张各检一遍要好几分钟，而 sidecar 本来就是同一次检出的结果。"""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp).resolve()
+            self.install(root, "performer-1.img", jpeg(640, 960),
+                         self.record(640, 960, 300))
+            calls = []
+            row = self.module.incumbent_row(root / "performer-1.img",
+                                            lambda path: calls.append(path))
+            self.assertEqual(calls, [])
+            self.assertEqual((row["width"], row["height"], row["face_width"]),
+                             (640, 960, 300))
+
+    def test_an_installed_image_without_a_sidecar_is_detected_once(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp).resolve()
+            self.install(root, "performer-1.img", jpeg(640, 960), None)
+            row = self.module.incumbent_row(
+                root / "performer-1.img", lambda path: self.record(640, 960, 210))
+            self.assertEqual(row["face_width"], 210)
+
+    def test_installing_replaces_the_sidecar_so_the_page_never_frames_the_old_face(self):
+        """留着上一张图的脸框，页面会拿它给这一张取景、放大到一个空位置上，而这在
+        界面上与「这张图本来就该这么显示」看不出区别。"""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp).resolve()
+            self.install(root, "performer-1.img", jpeg(640, 960),
+                         self.record(640, 960, 300))
+            self.module.install_avatar(root, "performer", 1, self.winner(
+                root, jpeg(400, 400, (9, 9, 9)), self.record(400, 400, 120)))
+            written = json.loads(
+                (root / "performer-1.face.json").read_text(encoding="utf-8"))
+            self.assertEqual(written["px"], [400, 400])
+
+    def test_a_winner_with_no_face_record_drops_the_stale_sidecar(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp).resolve()
+            self.install(root, "performer-1.img", jpeg(640, 960),
+                         self.record(640, 960, 300))
+            self.module.install_avatar(root, "performer", 1, self.winner(
+                root, jpeg(400, 400, (9, 9, 9)), None))
+            self.assertFalse((root / "performer-1.face.json").exists())
+
+    def test_a_missing_face_model_records_the_reason_instead_of_raising(self):
+        """下不到 ONNX 不该把「今天没网」变成「所有人都没有头像」。"""
+        from peach.avatar_face import FaceProbe
+        probe = FaceProbe()
+        with unittest.mock.patch("peach.avatar_face.FaceDetector",
+                                 side_effect=RuntimeError("模型未取得")):
+            self.assertIsNone(probe(Path("/tmp/nope.jpg")))
+        self.assertEqual(probe.unavailable, "模型未取得")
+        # 记住之后不再反复重试，也不再抛。
+        self.assertIsNone(probe(Path("/tmp/nope.jpg")))
+
 
 
 class HarvestTests(unittest.TestCase):
