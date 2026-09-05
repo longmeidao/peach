@@ -115,7 +115,9 @@ React 渲染的规格页、用户截图这类给不出可重抓字节的实测�
 
 ## 流量与代理诊断工具
 
-- Windows 代理与流量诊断统一用 FlowLens（面板 `http://127.0.0.1:9091/`，API `/api/v1/connections`、`/summary`、`/status`）：只观测经过 Mihomo 的连接，`DIRECT` 也算被观测，绕过 Mihomo 的连接标「未观测」，不能推断为零。
+- 抓取与 Cookie GUI 见 [审计](SCRAPING_AUDIT.md)。
+
+- Windows 用 FlowLens（`http://127.0.0.1:9091/`；API `/api/v1/connections`、`/summary`、`/status`）查流量。经 Mihomo 的 `DIRECT` 可观测；绕过它的记「未观测」，不推断为零。
 - macOS 的流量诊断统一使用 Stash Dashboard。
 
 ## 数据安全
