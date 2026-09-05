@@ -50,7 +50,7 @@ let entityPhotos=null,entityMediaView=emptyMediaView(),photoWallItems=[];
 /* 事务所页看的是它签了谁，所以进页面先摆艺人。视频照样在，只是换一个开关的距离：
    那批片是成员各自拍的，混成一条 feed 回答不了「这家有哪些人」。每次进页面都回到
    艺人，切到视频是这一次浏览的选择，不是这类页面的常态。 */
-let agencyRosterView='people';
+let agencyRosterView='people',agencyRoster=[];
 let sidebarDragKey=null;
 let edgeT=null;
 /* 搜索下拉里被键盘选中的那一项。列表每次重建都要归零，否则索引会指向已经不存在的行。 */
@@ -5385,7 +5385,6 @@ function markEntityCollectionBusy(kind,name,filters){
   head.querySelector('h3').innerHTML='<span class="countskeleton"></span>';
   wireEntityCollectionHead(section,kind,name,filters);
 }
-const AGENCY_VIEWS=[['people','艺人','user-round'],['videos','视频','play']];
 /* 事务所名册。和艺人索引摆的是同一格、同一套版式设置，只是这批人随资料页一起下来了，
    不再单独请求；读数写的是这个人有多少视频。 */
 function renderAgencyRoster(people){
@@ -5433,8 +5432,6 @@ async function updateEntityCollection(kind,name,filters,push=true){
   // 标签是作品筛选，点了就回到作品视图：留在照片或名册里既不生效，标签条也会自相矛盾。
   entityMediaView=emptyMediaView();
   agencyRosterView='videos';
-  const rosterInput=$('#index').querySelector('[data-agency-view][value="videos"]');
-  if(rosterInput)rosterInput.checked=true;
   const search=entityFilterSearch(filters);
   if(push)route(entityPath(kind,name)+(search?'?'+search:''));
   barsContext={type:'entity',kind,name,filters:{...filters}};
@@ -5466,22 +5463,31 @@ const routeEntityView=(kind,name,view)=>{
   route(entityPath(kind,name)+(search?'?'+search:''))};
 const photoTotalOf=()=>entityPhotos&&!entityPhotos.error?(entityPhotos.total||0):0;
 
+/* 这一页当前是哪个视图。名册和媒体不共用 `entityMediaView`：地址栏只认 `media`，
+   而名册是事务所页的默认视图，进页面就该在那里，不靠一个参数撑着。 */
+const entityViewNow=kind=>kind==='agency'&&agencyRosterView==='people'&&agencyRoster.length
+  ?'people':(entityMediaView.media==='photos'?'photos':'videos');
+
 function renderEntityMediaToggle(kind,name,filters){
   const controls=$('#index').querySelector('.entitymediaview');if(!controls)return;
-  const photos=photoTotalOf();
-  /* 名册不是一种媒体。正看着艺人时「视频／照片」问的不是这一页在显示什么，两个开关
-     摆在一起只会各说各的；切到媒体那一半它才回来。 */
-  controls.hidden=!photos||(kind==='agency'&&agencyRosterView==='people');
-  if(controls.hidden)return;
+  const now=entityViewNow(kind);
   controls.querySelectorAll('[data-media-view]').forEach(button=>{
     const media=button.dataset.mediaView;
-    button.setAttribute('aria-pressed',String(entityMediaView.media===media));
+    button.setAttribute('aria-pressed',String(now===media));
     button.onclick=()=>switchEntityMedia(kind,name,filters,media);
   });
 }
 
 async function switchEntityMedia(kind,name,filters,media){
-  if((entityMediaView.media==='photos')===(media==='photos')&&!entityMediaView.set)return;
+  if(entityViewNow(kind)===media&&!entityMediaView.set)return;
+  agencyRosterView=media==='people'?'people':'videos';
+  if(media==='people'){
+    entityMediaView=emptyMediaView();
+    routeEntityView(kind,name,entityMediaView);
+    renderEntityMediaToggle(kind,name,filters);
+    renderAgencyRoster(agencyRoster);
+    return;
+  }
   entityMediaView=media==='photos'?{media:'photos',set:0}:emptyMediaView();
   routeEntityView(kind,name,entityMediaView);
   renderEntityMediaToggle(kind,name,filters);
@@ -5913,19 +5919,21 @@ async function openEntity(kind,name,push=true){
   /* 事务所名下的这批人不摆在这排小圆头像里：那是「同台艺人」，一条附注；名册是这一页
      的正文，占的是下面那整块。所以同一份 `related_performers` 在事务所页走另一条路。 */
   const roster=kind==='agency'?(d.related_performers||[]):[];
+  agencyRoster=roster;
   const related=roster.length?'':(d.related_performers||[]).map(x=>`<button class="relatedperson" data-related-performer="${esc(x.k)}">
       <span class="ring"><span>${esc(x.k.slice(0,1))}</span>${entityFaceImg(
         {id:x.id,hasImage:x.has_image,rep:x.has_avatar?x.rep:null})}</span>
       <span class="nm">${esc(x.k)}</span></button>`).join('');
   const photoCount=photos&&!photos.error?(photos.total||0):0;
-  const mediaSelected=entityMediaView.media==='photos';
-  const mediaToggle=photoCount?mediaViewButtonsHtml({active:mediaSelected?'photos':'videos',
-    imageValue:'photos',imageLabel:'照片',videoCount:d.asset_count,imageCount:photoCount,
-    className:'entitymediaview'}):'';
-  /* 艺人名册和视频 feed 是同一页的两个互斥视图，两个就用 Switch。切换只重画下面那块，
-     不重开这一页：名册已经随资料下来了，视频那一半本来也要请求。 */
-  const rosterToggle=roster.length?iconSwitchHtml('agency-view','事务所页视图',
-    AGENCY_VIEWS,agencyRosterView,{attr:'data-agency-view',className:'entityview'}):'';
+  /* 艺人名册和视频、照片是这一页的三个互斥视图，共用一组按钮：它们回答的是同一个
+     问题，摆成两个控件只会各说各的。切换只重画下面那块，不重开这一页——名册已经随
+     资料下来了，视频那一半本来也要请求。 */
+  const mediaToggle=(photoCount||roster.length)?mediaViewButtonsHtml({
+    active:entityViewNow(kind),
+    peopleValue:roster.length?'people':'',peopleCount:roster.length,
+    imageValue:photoCount?'photos':'',imageLabel:'照片',
+    videoCount:d.asset_count,imageCount:photoCount,
+    label:roster.length?'页面视图':'媒体类型',className:'entitymediaview'}):'';
   /* 统称由用户自己定。同一个人在库里常有中文、日文、罗马字几种写法，哪一个该顶在
      标题上是他的偏好，账本里没有能推出答案的字段。菜单只列这条实体名下已有的写法：
      换统称是换显示的那一个，不是改名——改名要有来源和证据，不该由一次点击完成。
@@ -5966,7 +5974,7 @@ async function openEntity(kind,name,push=true){
         <div class="alias">${(d.display_aliases||[]).length?`${d.display_aliases.map(esc).join(' / ')} · `:''}<b>${d.asset_count.toLocaleString()}</b> 个视频${memberHtml}${agencyHtml}</div>
         ${links?`<div class="entitylinks">${links}</div>`:''}</div></div>
     ${related?`<div class="entitymeta"><section aria-label="同台艺人"><div class="relatedpeople">${related}</div></section></div>`:''}
-    ${(tags||mediaToggle||rosterToggle)?`<section class="entitytagbar" aria-label="媒体与标签"><div class="entitytags">${rosterToggle}${mediaToggle}${tags}</div></section>`:''}
+    ${(tags||mediaToggle)?`<section class="entitytagbar" aria-label="媒体与标签"><div class="entitytags">${mediaToggle}${tags}</div></section>`:''}
     <div class="entitysection"></div>`;
   // 资料页的标签和顶部标签条是同一个开关，读的写的都是这一页的筛选。
   $('#index').querySelectorAll('[data-entity-tag]').forEach(b=>b.onclick=()=>
@@ -5985,13 +5993,7 @@ async function openEntity(kind,name,push=true){
   entityPhotos=photos&&!photos.error?photos:null;
   if(entityMediaView.media==='photos'&&!photoTotalOf())entityMediaView=emptyMediaView();
   renderEntityMediaToggle(kind,name,filters);
-  if(rosterToggle)wireIconSwitch($('#index'),'data-agency-view',value=>{
-    agencyRosterView=value;
-    renderEntityMediaToggle(kind,name,filters);
-    if(value==='people')renderAgencyRoster(roster);
-    else if(entityMediaView.media==='photos')renderPhotoWall(kind,name,filters,entityPhotos);
-    else renderEntityCollection(kind,name,items,filters)});
-  if(rosterToggle&&agencyRosterView==='people')renderAgencyRoster(roster);
+  if(entityViewNow(kind)==='people')renderAgencyRoster(roster);
   else if(entityMediaView.media!=='photos')renderEntityCollection(kind,name,items,filters);
   else if(entityMediaView.set)await openPhotoSet(kind,name,filters,entityMediaView.set,false);
   else renderPhotoWall(kind,name,filters,entityPhotos);

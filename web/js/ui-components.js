@@ -188,21 +188,28 @@ export function fitSkeleton(root){
   }
 }
 
-/** Shared video/image view buttons for entity profiles and the follow feed. */
+/**
+ * 资料页与关注列表共用的视图按钮：一排、一个尺寸。
+ *
+ * 这几个键问的是同一件事——这一页现在显示什么，所以都是这一组里的按钮，不另起控件。
+ * 给空值的那一位不出按钮：没有照片的人不该看见照片键，不是事务所的实体没有名册。
+ */
 export function mediaViewButtonsHtml({
-  active='videos',videoValue='videos',imageValue='images',videoLabel='视频',imageLabel='图片',
-  videoCount=null,imageCount=null,className='',
+  active='videos',peopleValue='',videoValue='videos',imageValue='images',
+  peopleLabel='艺人',videoLabel='视频',imageLabel='图片',
+  peopleCount=null,videoCount=null,imageCount=null,label='媒体类型',className='',
 }={}){
-  const control=(value,label,count,symbol,kind)=>{
-    const text=count===null||count===undefined
-      ?label:`${label} ${Math.max(0,Number(count)||0).toLocaleString()}`;
+  const control=(value,text,count,symbol,kind)=>{
+    const title=count===null||count===undefined
+      ?text:`${text} ${Math.max(0,Number(count)||0).toLocaleString()}`;
     return `<button class="mediaviewbutton" type="button" data-media-view="${esc(value)}"
-      data-media-icon="${kind}" aria-pressed="${active===value}" aria-label="${esc(text)}"
-      title="${esc(text)}">${icon(symbol)}</button>`;
+      data-media-icon="${kind}" aria-pressed="${active===value}" aria-label="${esc(title)}"
+      title="${esc(title)}">${icon(symbol)}</button>`;
   };
-  return `<div class="mediaviewbuttons${className?` ${esc(className)}`:''}" role="group" aria-label="媒体类型">
-    ${control(videoValue,videoLabel,videoCount,'play','video')}
-    ${control(imageValue,imageLabel,imageCount,'pics','image')}</div>`;
+  return `<div class="mediaviewbuttons${className?` ${esc(className)}`:''}" role="group" aria-label="${esc(label)}">
+    ${peopleValue?control(peopleValue,peopleLabel,peopleCount,'user-round','people'):''}
+    ${videoValue?control(videoValue,videoLabel,videoCount,'play','video'):''}
+    ${imageValue?control(imageValue,imageLabel,imageCount,'pics','image'):''}</div>`;
 }
 
 /** Geist Empty State: icon tile, title and explanatory copy stay one semantic unit. */
