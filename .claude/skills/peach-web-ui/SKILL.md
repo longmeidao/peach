@@ -77,7 +77,7 @@ description: 在新增、修改或复核 Peach 页面、控件、提示、错误
 ## 验收门槛
 
 1. 为语义、DOM、ARIA、复用模块和响应式规则补页面源测试；数据语义变更另补 API／数据层测试。
-2. Windows 只从隔离 worktree 根运行 `& .\scripts\test.ps1`；本轮跨多个页面或改规范时跑默认 `full`。
+2. Windows 从隔离 worktree 根运行 `& .\scripts\test.ps1`，默认 `auto`；按影响域补测，规则见 `peach-worktree`。
 3. 在本地预览检查桌面与 390×844：页面宽度不大于视口、弹层不越界、菜单内部滚动、键盘 focus 可见、控制台无错误。
 4. 接口字段、sidecar 取值和锚点算术走 Python 严格 HTTPS（项目 CA 加 `ProxyHandler({})`）核对，不进浏览器。浏览器只留给布局后才成立的事实：`getComputedStyle`、真实裁切几何、hover／focus 态和实际像素；用读源码顶替这几样是降精度。
 5. 一轮验收要读的页面状态先列全，再合成一次 `javascript_tool` 调用取回。私有网络主机（`.local` 与 `10.`／`172.16-31.`／`192.168.` 段的局域网 IP 归同一类）在桌面应用里只能逐次授权，站点级放行只给只读工具，点击与执行 JS 拿不到常驻许可，每多发一次调用就多一次弹窗。

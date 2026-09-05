@@ -1,7 +1,8 @@
 ﻿[CmdletBinding()]
 param(
-    [ValidateSet('full', 'auto', 'follow', 'catalog', 'media', 'sync', 'metadata', 'tooling', 'web')]
-    [string]$Scope = 'full'
+    [ValidateSet('full', 'auto', 'follow', 'catalog', 'media', 'sync', 'metadata', 'tooling', 'web', 'checks')]
+    [string]$Scope = 'auto',
+    [switch]$Fresh
 )
 
 $ErrorActionPreference = 'Stop'
@@ -18,6 +19,9 @@ if ([IO.Path]::IsPathRooted($GitCommonRaw)) {
 }
 
 $MainRoot = Split-Path -Parent $GitCommon
+if (-not $PSBoundParameters.ContainsKey('Scope') -and $WorktreeRoot -eq $MainRoot) {
+    $Scope = 'full'
+}
 $Python = Join-Path $MainRoot '.venv\Scripts\python.exe'
 if (-not (Test-Path -LiteralPath $Python -PathType Leaf)) {
     throw "Peach 主项目 venv 不存在：$Python"
@@ -25,8 +29,10 @@ if (-not (Test-Path -LiteralPath $Python -PathType Leaf)) {
 
 $SourceRoot = (Resolve-Path -LiteralPath (Join-Path $WorktreeRoot 'src')).Path
 $PreviousPythonPath = $env:PYTHONPATH
+$PreviousPythonIoEncoding = $env:PYTHONIOENCODING
 $PreviousPath = $env:PATH
 $env:PYTHONPATH = $SourceRoot
+$env:PYTHONIOENCODING = 'utf-8'
 
 # Git for Windows 自带项目证书测试所需的 OpenSSL，但默认不会把 usr\bin 放进
 # 用户 PATH。只对本次测试进程补齐，不修改系统或用户环境变量。
@@ -50,10 +56,17 @@ try {
     }
 
     Write-Host "Peach source: $LoadedPath"
-    & $Python scripts\test_runner.py --scope $Scope
+    $PeachTestExtra = @()
+    if ($Fresh) { $PeachTestExtra += '--fresh' }
+    & $Python scripts\test_runner.py --scope $Scope @PeachTestExtra
     exit $LASTEXITCODE
 } finally {
     Pop-Location
+    if ($null -eq $PreviousPythonIoEncoding) {
+        Remove-Item Env:PYTHONIOENCODING -ErrorAction SilentlyContinue
+    } else {
+        $env:PYTHONIOENCODING = $PreviousPythonIoEncoding
+    }
     if ($null -eq $PreviousPythonPath) {
         Remove-Item Env:PYTHONPATH -ErrorAction SilentlyContinue
     } else {

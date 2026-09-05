@@ -5,6 +5,10 @@
 
 ## 复用决策门槛
 
+测试与集成复用 `test_runner.py`、`agent_worktree.py`；进程互斥采用开发依赖
+`filelock==3.32.4` 的 `FileLock`（[官方用法](https://py-filelock.readthedocs.io/en/stable/tutorials.html)）。
+跨进程占锁与释放由临时 Git 仓库回归验证；代码、环境和范围记录属于 Peach 的集成约束。
+
 CloudDrive 引导复用现有 `settings_file`、`platform.root_online`、`scan_location` 和 Preact
 配置 island；来源仍为 `local`、`115`、`pikpak`。外部挂载由已安装的 CloudDrive 负责，
 [官方帮助](https://www.clouddrive2.com/help.html) 规定 Windows 使用盘符、macOS 使用目录挂载点。

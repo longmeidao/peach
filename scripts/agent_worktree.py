@@ -2,13 +2,20 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import shutil
 import stat
 import subprocess
+import sys
 import time
 from collections.abc import Iterable
 from pathlib import Path
+
+if not __package__:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    __package__ = "scripts"
+from . import test_evidence, test_runner
 
 #: Claude Code 内置工作树的落点。分支集成后它自己不收：目录留在主检出里，成了一份看不出
 #: 区别的旧副本（见 CLAUDE.md）。`tests/test_repo_hygiene.py` 拦得住，但拦住之后没有任何
@@ -146,7 +153,8 @@ def create(repo: Path, agent: str, task: str, root: Path | None = None) -> dict[
     if _git(main, "show-ref", "--verify", f"refs/heads/{branch}", check=False).returncode == 0:
         raise WorkspaceError(f"branch exists: {branch}")
     target_root.mkdir(parents=True, exist_ok=True)
-    _git(main, "worktree", "add", "-b", branch, str(target), "HEAD")
+    _git(main, "worktree", "add", "--lock", "--reason", "Peach active agent task",
+         "-b", branch, str(target), "HEAD")
     return {
         "ok": True,
         "action": "create",
@@ -170,6 +178,7 @@ def ready(repo: Path, target_branch: str = "master") -> dict[str, object]:
         raise WorkspaceError("branch has no commits")
     worker_files = set(_lines(_git(repo, "diff", "--name-only", f"{base}..HEAD")))
     target_files = set(_lines(_git(repo, "diff", "--name-only", f"{base}..{target_branch}")))
+    require_verified(repo, target_branch, worker_files)
     return {
         "ok": True,
         "action": "ready",
@@ -182,7 +191,33 @@ def ready(repo: Path, target_branch: str = "master") -> dict[str, object]:
     }
 
 
+def require_verified(worker: Path, target_branch: str, paths: Iterable[str]) -> None:
+    head = _git(worker, "rev-parse", "HEAD").stdout.strip()
+    if _git(worker, "status", "--porcelain").stdout.strip():
+        raise WorkspaceError("验证工作树必须干净")
+    if _git(worker, "merge-base", "--is-ancestor", target_branch, "HEAD", check=False).returncode:
+        raise WorkspaceError("目标分支已前进；请在工作树 rebase 后运行 auto 验证")
+    scopes, _ = test_runner.scopes_for_changes(paths)
+    state = test_evidence.key(worker)
+    if not test_evidence.covers(test_evidence.read(worker, state), scopes):
+        raise WorkspaceError("缺少有效测试记录；请在工作树运行统一测试入口 auto")
+    if _git(worker, "rev-parse", "HEAD").stdout.strip() != head or \
+            _git(worker, "status", "--porcelain").stdout.strip():
+        raise WorkspaceError("验证检查期间工作树改变，请重试")
+
+
 def integrate(repo: Path, worker_branch: str, target_branch: str = "master", *,
+              bump: str = "auto") -> dict[str, object]:
+    folder = test_evidence.evidence_dir(repo)
+    folder.mkdir(parents=True, exist_ok=True)
+    try:
+        with test_evidence.FileLock(folder / "integration.lock", timeout=0):
+            return _integrate_locked(repo, worker_branch, target_branch, bump=bump)
+    except test_evidence.Timeout as error:
+        raise WorkspaceError("另一任务正在集成；本次未修改分支，请等待后重试") from error
+
+
+def _integrate_locked(repo: Path, worker_branch: str, target_branch: str = "master", *,
               bump: str = "auto") -> dict[str, object]:
     """把工作者分支并进 target，并让本地版本号跟着这次集成走。
 
@@ -200,22 +235,35 @@ def integrate(repo: Path, worker_branch: str, target_branch: str = "master", *,
         raise WorkspaceError(f"checkout {target_branch} before integrate")
     if _git(main, "status", "--porcelain").stdout.strip():
         raise WorkspaceError("integration worktree is dirty")
+    before = _git(main, "rev-parse", "HEAD").stdout.strip()
     base = _git(main, "merge-base", target_branch, worker_branch).stdout.strip()
     worker_files = set(_lines(_git(main, "diff", "--name-only", f"{base}..{worker_branch}")))
     target_files = set(_lines(_git(main, "diff", "--name-only", f"{base}..{target_branch}")))
     overlap = sorted(worker_files & target_files)
     if overlap:
         raise WorkspaceError("same-file review required: " + ", ".join(overlap))
-    before = _git(main, "rev-parse", "HEAD").stdout.strip()
+    workers = [Path(item["path"]) for item in _worktree_entries(main)
+               if item.get("branch") == worker_branch]
+    if len(workers) != 1 or _git(workers[0], "status", "--porcelain").stdout.strip():
+        raise WorkspaceError("工作者必须有唯一、干净且已注册的工作树")
+    worker_head = _git(main, "rev-parse", worker_branch).stdout.strip()
+    require_verified(workers[0], target_branch, worker_files)
+    if _git(main, "rev-parse", worker_branch).stdout.strip() != worker_head or \
+            _git(workers[0], "rev-parse", "HEAD").stdout.strip() != worker_head:
+        raise WorkspaceError("验证检查期间工作者分支改变，请重试")
+    if _git(main, "rev-parse", "HEAD").stdout.strip() != before or \
+            _git(main, "status", "--porcelain").stdout.strip():
+        raise WorkspaceError("验证检查期间集成工作树改变，请重试")
     subjects = _lines(_git(main, "log", "--no-merges", "--format=%s", f"{base}..{worker_branch}"))
-    _git(main, "merge", "--no-ff", "--no-edit", worker_branch)
-    merged_files = set(_lines(_git(main, "diff", "--name-only", f"{base}..HEAD")))
-    added_files = _lines(_git(main, "diff", "--name-only", "--diff-filter=A", f"{base}..HEAD"))
+    _git(main, "merge", "--no-ff", "--no-edit", "-m", f"Merge branch '{worker_branch}'", worker_head)
+    merged_files = set(_lines(_git(main, "diff", "--name-only", f"{before}..HEAD")))
+    added_files = _lines(_git(main, "diff", "--name-only", "--diff-filter=A", f"{before}..HEAD"))
     part = bump_part_for(subjects, added_files) if bump == "auto" else bump
     version = read_version(main)
     bumped = part != "none" and runtime_inputs_changed(merged_files)
     if bumped:
         version = _commit_version_bump(main, part)
+    _git(main, "worktree", "unlock", str(workers[0]), check=False)
     return {
         "ok": True,
         "action": "integrate",
@@ -239,6 +287,8 @@ def _worktree_entries(main: Path) -> list[dict[str, str]]:
             entries.append(entry)
         elif line.startswith("branch "):
             entry["branch"] = line[len("branch "):].replace("refs/heads/", "")
+        elif line.startswith("locked"):
+            entry["locked"] = line
     return entries
 
 
@@ -361,6 +411,9 @@ def prune(repo: Path, target_branch: str = "master", *,
         branch = item.get("branch", "")
         if path.resolve() == main.resolve() or path.resolve() == here:
             continue
+        if item.get("locked"):
+            kept.append({"path": str(path), "branch": branch, "why": "工作树被活动任务锁定"})
+            continue
         if branch not in merged:
             kept.append({"path": str(path), "branch": branch, "why": "分支未并入 " + target_branch})
             continue
@@ -433,4 +486,8 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    os.environ["PYTHONIOENCODING"] = "utf-8"
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="backslashreplace")
     raise SystemExit(main())

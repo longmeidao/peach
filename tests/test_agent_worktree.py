@@ -47,6 +47,9 @@ def commit(repo: Path, message: str) -> None:
 
 class AgentWorktreeTests(unittest.TestCase):
     def setUp(self):
+        self.verification = mock.patch.object(agent_worktree, "require_verified")
+        self.verification.start()
+        self.addCleanup(self.verification.stop)
         self.tmp = tempfile.TemporaryDirectory()
         # 先 resolve：prune 报告的是 git worktree list 给出的真实路径，而 CI runner 的
         # 临时目录是别名（macOS /var 软链到 /private/var，Windows 的 RUNNER~1 短名展开
@@ -58,6 +61,8 @@ class AgentWorktreeTests(unittest.TestCase):
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         _git(self.repo, "config", "user.email", "test@example.invalid")
         _git(self.repo, "config", "user.name", "Peach Test")
+        (self.repo / ".gitignore").write_text("build/\n", encoding="utf-8")
+        _git(self.repo, "add", ".gitignore")
         (self.repo / "tracked.txt").write_text("base\n", encoding="utf-8")
         (self.repo / "worker.txt").write_text("base\n", encoding="utf-8")
         (self.repo / "src" / "peach").mkdir(parents=True)

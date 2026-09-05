@@ -146,9 +146,10 @@ Windows 调试用户下载 [GitHub Releases](https://github.com/longmeidao/peach
 
 开发时按功能域运行必要测试，例如 Windows 用 `& .\scripts\test.ps1 -Scope follow`，
 macOS/Linux 用 `./scripts/test.sh follow`。可选域为 `follow`、`catalog`、`media`、`sync`、
-`metadata`、`tooling`、`web`；不传参数仍跑 `full`。`auto` 按改动文件选域，映射不到或触及迁移、
-共享测试设施、依赖清单时退化为 `full`。跨多个域、修改迁移/共享测试设施/依赖、准备发布或
-改动影响面较大时必须跑全量，单一局部功能不再反复跑无关测试。
+`metadata`、`tooling`、`web`、`checks`；默认 `auto` 按改动文件取影响域并集。迁移、共享测试设施、
+依赖、构建和未知影响面选 `full`；CI 与发布显式跑全量。相同代码与环境可复用 24 小时内的记录，
+Windows `-Fresh`、POSIX 第二参数 `--fresh` 强制重跑；显式 `full` 总是实际执行。
+同环境有有效全量基线时，`auto` 只补测新增差异的影响域；未知差异仍做全量验证。
 
 ## 依赖维护
 
