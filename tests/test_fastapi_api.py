@@ -1101,7 +1101,7 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.content, b"clear-jpeg")
         self.assertEqual(response.headers["cache-control"],
-                         f"public, max-age={api_module.MEDIA_CACHE_SECONDS}")
+                         "private, no-cache")
         cover.fail = True
         fallback = await self.client.get(
             "/follow-cover?id=7&t=secret", follow_redirects=False)
@@ -1241,7 +1241,16 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(logo.headers["content-type"], "image/png")
         self.assertEqual(logo.headers["cache-control"], "public, no-cache")
         self.assertEqual(poster.headers["cache-control"],
-                         f"public, max-age={api_module.MEDIA_CACHE_SECONDS}")
+                         "private, no-cache")
+        fresh = await self.client.get("/poster?id=1&c=4", headers={
+            **headers, "If-None-Match": poster.headers["etag"],
+        })
+        self.assertEqual(fresh.status_code, 304)
+        self.assertEqual(fresh.content, b"")
+        denied = await self.client.get("/poster?id=1&c=4", headers={
+            "If-None-Match": poster.headers["etag"],
+        })
+        self.assertEqual(denied.status_code, 401)
 
     async def test_endcard_frame_is_authenticated_and_confined_to_evidence_root(self):
         denied = await self.client.get(

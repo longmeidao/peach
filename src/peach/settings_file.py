@@ -65,7 +65,10 @@ class SettingsFileError(RuntimeError):
 
 
 def _project_root(module_file: str = __file__, bundle_root: str | None = None) -> Path:
-    """源码树保留 `src/` 层；PyInstaller 的资源直接落在 `_MEIPASS`。"""
+    """资源来自源码树、wheel 内的资源目录或 PyInstaller 的 `_MEIPASS`。"""
+    packaged = Path(module_file).resolve().parent / "_resources"
+    if bundle_root is None and packaged.is_dir():
+        return packaged
     return (Path(bundle_root) if bundle_root is not None
             else Path(module_file).resolve().parents[2])
 

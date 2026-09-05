@@ -56,6 +56,13 @@ def _serve(args: argparse.Namespace) -> int:
     import uvicorn
 
     _require_readable_settings()
+    if args.redirect_origin:
+        from .redirect import create_redirect_app
+        if args.ssl_certfile or args.ssl_keyfile:
+            raise SystemExit("redirect listener must use HTTP")
+        uvicorn.run(create_redirect_app(args.redirect_origin), host=args.host,
+                    port=args.port, workers=1)
+        return 0
     if bool(args.ssl_certfile) != bool(args.ssl_keyfile):
         raise SystemExit("--ssl-certfile and --ssl-keyfile must be provided together")
     for path in (args.ssl_certfile, args.ssl_keyfile):
@@ -565,6 +572,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     serve = commands.add_parser("serve", help="run the FastAPI application")
     serve.add_argument("--host", default=SERVE_HOST)
+    serve.add_argument("--redirect-origin", default="", help="HTTP navigation to one HTTPS origin")
     serve.add_argument("--port", type=int, default=SERVE_PORT)
     serve.add_argument("--db", type=Path, default=DEFAULT_DB)
     serve.add_argument("--token", default="")

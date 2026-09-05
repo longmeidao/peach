@@ -29,7 +29,7 @@ SCOPES: dict[str, tuple[str, ...]] = {
                 "test_taste_history.py", "test_web_ui.py", "test_web_js.py",
                 "test_web_perf.py", "test_web_resource_sync.py",
                 "test_web_review.py", "test_web_settings.py"),
-    "media": ("test_endcard.py", "test_fastapi_api.py", "test_jobs.py",
+    "media": ("test_runtime_consistency.py", "test_endcard.py", "test_fastapi_api.py", "test_jobs.py",
               "test_interaction.py", "test_media.py", "test_previews.py",
               "test_providers.py", "test_segments.py", "test_streaming.py",
               "test_transcodes.py"),

@@ -24,6 +24,7 @@ from fastapi.responses import (
     FileResponse, JSONResponse, PlainTextResponse, RedirectResponse, Response,
     StreamingResponse,
 )
+from starlette.staticfiles import StaticFiles
 
 from . import link_marks, site_icons
 from .config import GENERATED_DIR
@@ -62,6 +63,18 @@ ICON_USER_AGENT = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36
 _UNSAFE_FILENAME = re.compile('[\\/:*?"<>|]+|[\x00-\x1f]+')
 
 LOGGER = logging.getLogger(__name__)
+
+
+def _image_response(request: Request, path: Path, media_type: str | None = None):
+    """固定图片 URL 使用私有缓存，并按文件 ETag 复验。"""
+    response = FileResponse(path, media_type=media_type, stat_result=path.stat())
+    response.headers["Cache-Control"] = "private, no-cache"
+    if StaticFiles().is_not_modified(response.headers, request.headers):
+        return Response(status_code=304, headers={
+            "ETag": response.headers["etag"],
+            "Cache-Control": response.headers["cache-control"],
+        })
+    return response
 
 
 def _attachment_disposition(title: str, url: str) -> str:
@@ -235,18 +248,14 @@ async def stream_cancel(request: Request, session: str, args: dict[str, str] = D
 @router.api_route("/thumb", methods=["GET", "HEAD"])
 def thumbnail(request: Request, id: int, args: dict[str, str] = Depends(require_auth)):
     path = request.app.state.media_engine.file_for(id, thumbnail=True)
-    response = FileResponse(path)
-    response.headers["Cache-Control"] = f"public, max-age={MEDIA_CACHE_SECONDS}"
-    return response
+    return _image_response(request, path)
 
 
 @router.api_route("/photo", methods=["GET", "HEAD"])
 def photo(request: Request, id: int, args: dict[str, str] = Depends(require_auth)):
     """图片资产原图。灯箱看大图用这条，瀑布流一律走 `/photo-thumb`。"""
     path = request.app.state.media_engine.file_for(id)
-    response = FileResponse(path)
-    response.headers["Cache-Control"] = f"public, max-age={MEDIA_CACHE_SECONDS}"
-    return response
+    return _image_response(request, path)
 
 
 @router.api_route("/photo-thumb", methods=["GET", "HEAD"])
@@ -257,9 +266,7 @@ def photo_thumb(request: Request, id: int, args: dict[str, str] = Depends(requir
         path = state.photo_service.thumbnail(id, source)
     except PreviewUnavailable:
         return JSONResponse({"error": "unavailable"}, status_code=404)
-    response = FileResponse(path, media_type="image/jpeg")
-    response.headers["Cache-Control"] = f"public, max-age={MEDIA_CACHE_SECONDS}"
-    return response
+    return _image_response(request, path, media_type="image/jpeg")
 
 
 @router.api_route("/poster", methods=["GET", "HEAD"])
@@ -268,9 +275,7 @@ def poster(request: Request, id: int, c: int = 4, args: dict[str, str] = Depends
         path = request.app.state.preview_service.poster(id, c)
     except PreviewUnavailable:
         return JSONResponse({"error": "unavailable"}, status_code=404)
-    response = FileResponse(path, media_type="image/jpeg")
-    response.headers["Cache-Control"] = f"public, max-age={MEDIA_CACHE_SECONDS}"
-    return response
+    return _image_response(request, path, media_type="image/jpeg")
 
 
 @router.api_route("/cover", methods=["GET", "HEAD"])
@@ -279,9 +284,7 @@ def cover(request: Request, code: str = "", args: dict[str, str] = Depends(requi
     path = request.app.state.web_contract.cover_path(code)
     if path is None:
         return JSONResponse({"error": "no cover"}, status_code=404)
-    response = FileResponse(path, media_type="image/jpeg")
-    response.headers["Cache-Control"] = f"public, max-age={MEDIA_CACHE_SECONDS}"
-    return response
+    return _image_response(request, path, media_type="image/jpeg")
 
 
 @router.api_route("/endcard-frame", methods=["GET", "HEAD"])
@@ -306,9 +309,7 @@ def avatar(request: Request, id: int, args: dict[str, str] = Depends(require_aut
         path = request.app.state.preview_service.avatar(id)
     except PreviewUnavailable:
         return JSONResponse({"error": "unavailable"}, status_code=404)
-    response = FileResponse(path, media_type="image/jpeg")
-    response.headers["Cache-Control"] = f"public, max-age={AVATAR_CACHE_SECONDS}"
-    return response
+    return _image_response(request, path, media_type="image/jpeg")
 
 
 @router.api_route("/follow-avatar", methods=["GET", "HEAD"])
@@ -430,9 +431,7 @@ def follow_cover(request: Request, id: int, args: dict[str, str] = Depends(requi
         return Response(PLACEHOLDER_IMAGE, status_code=404,
                         media_type=PLACEHOLDER_CONTENT_TYPE,
                         headers={"cache-control": "no-store"})
-    response = FileResponse(path, media_type="image/jpeg")
-    response.headers["Cache-Control"] = f"public, max-age={MEDIA_CACHE_SECONDS}"
-    return response
+    return _image_response(request, path, media_type="image/jpeg")
 
 
 @router.api_route("/logo", methods=["GET", "HEAD"])
@@ -500,6 +499,4 @@ def entity_image(request: Request, kind: str, id: int, args: dict[str, str] = De
         path, content_type = request.app.state.preview_service.entity_image(kind, id)
     except PreviewUnavailable:
         return JSONResponse({"error": "unavailable"}, status_code=404)
-    response = FileResponse(path, media_type=content_type)
-    response.headers["Cache-Control"] = f"public, max-age={MEDIA_CACHE_SECONDS}"
-    return response
+    return _image_response(request, path, media_type=content_type)

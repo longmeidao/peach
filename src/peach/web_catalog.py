@@ -128,23 +128,23 @@ def q_items(contract: WebContract, args):
         where.append("a.location IN (%s)" % ",".join("?" * len(locs))); par += locs
     if args.get("creator"):
         where.append(
-            "EXISTS(SELECT 1 FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
-            "WHERE ae.asset_id=a.id AND e.kind='creator' AND e.canonical_name=?)"
+            "a.id IN (SELECT ae.asset_id FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
+            "WHERE e.kind='creator' AND e.canonical_name=?)"
         ); par.append(args["creator"])
     if args.get("performer"):
         where.append(
-            "EXISTS(SELECT 1 FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
-            "WHERE ae.asset_id=a.id AND e.kind='performer' AND e.canonical_name=?)"
+            "a.id IN (SELECT ae.asset_id FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
+            "WHERE e.kind='performer' AND e.canonical_name=?)"
         ); par.append(args["performer"])
     if args.get("studio"):
         where.append(
-            "EXISTS(SELECT 1 FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
-            "WHERE ae.asset_id=a.id AND e.kind='studio' AND e.canonical_name=?)"
+            "a.id IN (SELECT ae.asset_id FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
+            "WHERE e.kind='studio' AND e.canonical_name=?)"
         ); par.append(args["studio"])
     if args.get("series"):
         where.append(
-            "EXISTS(SELECT 1 FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
-            "WHERE ae.asset_id=a.id AND e.kind='series' AND e.canonical_name=?)"
+            "a.id IN (SELECT ae.asset_id FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
+            "WHERE e.kind='series' AND e.canonical_name=?)"
         ); par.append(args["series"])
     # 事务所隔一层：作品是它的成员拍的，`asset_entity` 里没有事务所的行。
     if args.get("agency"):
@@ -152,9 +152,9 @@ def q_items(contract: WebContract, args):
     if args.get("tag"):
         tags = [x for x in args["tag"].split(",") if x]
         tag_clause = (
-            "((EXISTS(SELECT 1 FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
-            "WHERE ae.asset_id=a.id AND e.kind='tag' AND e.canonical_name=?) OR "
-            "EXISTS(SELECT 1 FROM asset_tag t WHERE t.asset_id=a.id AND t.tag=?)) AND "
+            "(a.id IN (SELECT ae.asset_id FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
+            "WHERE e.kind='tag' AND e.canonical_name=? UNION "
+            "SELECT t.asset_id FROM asset_tag t WHERE t.tag=?) AND "
             + tag_not_hidden("a.id", "?") + ")"
         )
         if args.get("tag_match") == "any" and len(tags) > 1:
@@ -228,16 +228,16 @@ def q_items(contract: WebContract, args):
     if order is None:
         if args.get("sort") == "seed":
             sd = int(args.get("seed") or 1) % 99991 or 7
-            order = f"((a.id * {sd}) % 99991)"
+            order = f"((a.id * {sd}) % 99991), a.id"
         elif args.get("sort") == "daily" or not args.get("sort"):
             # 每日轮换：用当天日期做种子打散，同一天顺序固定，隔天自动换一批。
             # 不用 RANDOM() —— 那样每次刷新都不同，翻页还会重复/漏掉。
             seed = int(time.strftime("%Y%m%d")) % 9973 or 7
-            order = f"((a.id * {seed}) % 99991)"
+            order = f"((a.id * {seed}) % 99991), a.id"
         else:
             order = "a.id DESC"
-    lim = min(int(args.get("limit", 60)), 200)
-    off = int(args.get("offset", 0))
+    lim = max(1, min(int(args.get("limit", 60)), 200))
+    off = max(0, int(args.get("offset", 0)))
     include_total = args.get("count", "1") != "0"
     fetch_limit = lim if include_total else lim + 1
     sql = ("SELECT a.id,a.location,a.path,a.name,a.catalog_title,a.original_title,a.medium,"
