@@ -158,8 +158,10 @@ class HostLimiter:
     """
 
     def __init__(self, intervals: dict[str, float], *,
-                 clock=time.monotonic, sleeper=time.sleep):
+                 clock=time.monotonic, sleeper=time.sleep, default_interval: float = 0):
         self._intervals = dict(intervals)
+        self._default_interval = max(0.0, default_interval)
+        self._registry_lock = threading.Lock()
         self._locks = {host: threading.Lock() for host in self._intervals}
         self._next = {host: 0.0 for host in self._intervals}
         self._clock = clock
@@ -167,7 +169,14 @@ class HostLimiter:
 
     def _key(self, url: str) -> str | None:
         host = hostname_of(url)
-        return next((h for h in self._intervals if host_under(host, (h,))), None)
+        with self._registry_lock:
+            key = next((h for h in self._intervals if host_under(host, (h,))), None)
+            if key is None and self._default_interval > 0:
+                key = host
+                self._intervals[key] = self._default_interval
+                self._locks[key] = threading.Lock()
+                self._next[key] = 0.0
+            return key
 
     def wait(self, url: str) -> None:
         key = self._key(url)

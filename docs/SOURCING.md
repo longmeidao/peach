@@ -1,5 +1,35 @@
 # 身份、来源与标识采集
 
+## 本机采集入口
+
+「数据管理」→「采集来源与 Cookie 设置」（`/scraping`）提供官方高清封面定点抓取和来源连接设置。
+界面与 `scripts/fetch_jav_covers.py` 共用 `peach.jav_cover_fetch`；不需要把开发者的映射文件或
+Cookie 复制到新用户电脑。已有成功元数据快照优先，缺快照的公开来源可联网查询。
+
+- R18、DMM、Prestige、MGStage 的封面 HTTP 路径使用按来源的环境／应用直连／指定代理配置。
+  DMM 连接检查分别报告页面与高清 CDN；HTTPX 环境代理不等于系统 PAC，应用直连也不能排除 TUN。
+- FC2 的 Cookie 粘贴与 Netscape 文件导入复用 CredentialStore；仅保存当前来源域内未过期项目。
+  `fetch_fc2_metadata.py` 默认读取这份配置，`--cookies` 可显式指定文件。保存不代表登录会话有效。
+- GUI 封面任务每次只接受馆藏命中的一个番号，复用 BackgroundJob；最多 80 个请求、32 MiB，
+  请求发出前检查 180 秒截止时间。只在完整图与探测尺寸相同、可完整解码且面积更大时原子替换。
+  原始字节不降采样；成功边车记录原图与安装摘要，24 小时内摘要匹配则不重复下载。
+- 429 的 Retry-After 冷却落本机文件，新 transport 也遵守；失败不删除已有封面。
+  程序重启不自动重放写入任务，未完成任务由用户重新发起。
+
+该配置目前覆盖封面 HTTP 与 FC2 CLI。Javinizer-Go 子进程、其它采集脚本与 curl_cffi 连接器
+仍使用各自配置；来源清单导出／首次同步、标准模式、浏览器会话导入和完整批量 GUI 尚待实施。
+Instagram 的 Instaloader 4.15.3 匿名 POC 对 Bambi、LINX 返回 ConnectionException；独立用户
+登录会话未取得，不能承诺自动发现全部高清头像。自动适配器不进入正式依赖。
+
+Windows 空数据预览的项目 CA HTTPS、合成 Cookie 保存／撤销、DMM 2184×1464 CDN 与界面产物
+摘要验证通过；这不是第二名真实用户、macOS 或全部地区网络的验收。测试步骤见
+[Windows 测试版](TESTING_DESKTOP.md)，架构完整要求见 [ADR-0024](adr/0024-mark-manifest-not-bundled-bytes.md)。
+
+无元数据缓存的 ABW-232 POC 取得 1024×690，16 次请求、775899 字节。即时 r18 厂牌证据与
+本机快照使用同一来源路由，Prestige 与 MGS 都参加候选比较；原始图片没有派生降采样。
+
+## 采集判据
+
 本文件保存「从外部站点取得身份与标识」这件事的判据细节：脚本分工、实测反例、判词含义和不能走的路。
 `docs/HANDOFF.md` 只留一句话的边界并指到这里；采集本身的限流、续跑与流量预算见
 `.claude/skills/peach-batch-jobs/SKILL.md`，参考产品证据的登记方式见 `.claude/skills/peach-reference-evidence/SKILL.md`。

@@ -40,13 +40,13 @@ class HttpTransport(Protocol):
 class HttpxTransport:
     """可跨请求复用的同步 HTTPX client；不会自动重试或持久化响应。"""
 
-    def __init__(self, client: httpx.Client | None = None):
+    def __init__(self, client: httpx.Client | None = None, *, owns_client: bool = False):
         self.client = client or httpx.Client(
             follow_redirects=True,
             limits=httpx.Limits(max_connections=32, max_keepalive_connections=16),
             headers={"User-Agent": "Peach/0.2"},
         )
-        self._owns_client = client is None
+        self._owns_client = client is None or owns_client
 
     def __call__(
         self,

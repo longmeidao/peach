@@ -32,7 +32,7 @@ from peach.minnano_av import (   # noqa: E402,F401
     actress_id, profile_fields, profile_text, search_url,
 )
 from peach.review_csv import write_rows   # noqa: E402
-from peach.scripting import USER_AGENT, open_readonly   # noqa: E402
+from peach.scripting import USER_AGENT, open_readonly, RateLimiter   # noqa: E402
 # 平台判据与选人规则和目录型采集器共用，定义在 peach.social_links；这里只保留 minnano-av 的解析。
 from peach.social_links import (   # noqa: E402,F401
     classify, host_owners, load_performers, under,
@@ -97,16 +97,13 @@ def run(args) -> int:
 
     results: list[dict[str, object]] = []
     http = HttpxTransport()
-    last = 0.0
+    limiter = RateLimiter(args.interval)
     hit = 0
     try:
         for record in performers:
             rows, found_id, agency, note, used = [], "", "", "未取得：没有可用于日文站的名字", ""
             for candidate in record["chain"]:
-                wait = args.interval - (time.monotonic() - last)
-                if wait > 0:
-                    time.sleep(wait)
-                last = time.monotonic()
+                limiter.wait()
                 try:
                     rows, found_id, agency, note = scan(http, candidate, args.timeout,
                                                         owners.get)

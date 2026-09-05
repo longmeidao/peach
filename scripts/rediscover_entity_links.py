@@ -26,6 +26,9 @@ from pathlib import Path
 from urllib.parse import unquote, urljoin, urlsplit
 
 import httpx
+import tldextract
+
+_PSL = tldextract.TLDExtract(suffix_list_urls=(), cache_dir=None, include_psl_private_domains=True)
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
@@ -52,15 +55,8 @@ def fetch(url: str, timeout: float = 12.0) -> tuple[int, str, str]:
 
 
 def registrable(host: str) -> str:
-    """粗粒度的「同一个站」：取末两段，日本的二级后缀再多取一段。
-
-    不引 publicsuffix 依赖——这里只需要把 `www.t-powers.co.jp` 和 `t-powers.co.jp` 判成
-    一家、把 `x.com` 判成另一家，而不需要处理公共后缀列表的全部边角。
-    """
-    parts = host.casefold().split(".")
-    if len(parts) >= 3 and parts[-2] in {"co", "or", "ne", "ac", "go", "com", "net", "org"}:
-        return ".".join(parts[-3:])
-    return ".".join(parts[-2:])
+    """固定离线 PSL 含 PRIVATE 区段；不同托管租户保持独立。"""
+    return _PSL(host.casefold().rstrip(".")).top_domain_under_public_suffix
 
 
 def same_site(candidate: str, original: str) -> bool:

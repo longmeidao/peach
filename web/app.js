@@ -147,6 +147,8 @@ const ROUTES=[
   {match:'/resource-sync',title:'数据管理',open:(params,push)=>openResourceSync(push)},
   {match:'/quality-goals',section:'quality',title:'高清版',refresh:'reopen',
     open:(params,push)=>openQualityGoals(push)},
+  {match:'/scraping',section:'cleanup',title:'采集来源',refresh:'reopen',
+    open:(params,push)=>openScraping(push)},
   {match:'/follow',nav:'follow',title:'关注',refresh:'skip',
     open:(params,push)=>openFollow(push),reload:()=>openFollow(false)},
   {match:'/follow-manage',section:'follow',title:'关注管理',refresh:'skip',
@@ -271,7 +273,7 @@ function renderInitialSurfaceLoading(){
     renderCatalogLoading('正在读取垃圾文件');
     return;
   }
-  const management=new Set(['/stats','/taste','/review','/data-cleanup','/duplicates','/quality-goals',
+  const management=new Set(['/stats','/taste','/review','/data-cleanup','/duplicates','/quality-goals','/scraping',
     '/playlists','/resource-sync','/follow','/follow-manage','/configuration']);
   if(management.has(path)||path.startsWith('/follow/item/')){
     hideDiscoveryBars();
@@ -3353,7 +3355,7 @@ async function openDataCleanup(push=true){
   const junkBreakdown=[...JUNK_KIND_OPTIONS.filter(([key])=>key&&Number(junkCounts[key])>0)
     .map(([key,label])=>`${esc(label)} ${Number(junkCounts[key]).toLocaleString()}`),
     ...(Number(junk.dismissed_total)>0?[`已忽略 ${Number(junk.dismissed_total).toLocaleString()}`]:[])].join(' · ');
-  $('#stats').innerHTML=`<div class="cleanuppage"><div class="cleanupgrid">
+  $('#stats').innerHTML=`<div class="cleanuppage"><p><a href="/scraping">采集来源与 Cookie 设置</a></p><div class="cleanupgrid">
     <section class="cleanupfieldset" data-geist-fieldset aria-labelledby="cleanupJunkTitle">
       <div class="geist-fieldset-content">${fieldsetTitle('cleanupJunkTitle','垃圾文件')}
         <strong>${Number(junk.pending_total||0).toLocaleString()} 个待判断</strong>
@@ -3709,6 +3711,16 @@ async function openConfiguration(push=true){
   const props={receipt:message=>actionReceipt(message)};
   await ui.mountIsland('configuration',$('#stats'),props,{isCurrent:()=>surfaceCurrent(surface)});
   if(surfaceCurrent(surface))window.scrollTo({top:0,behavior:'smooth'});
+}
+
+async function openScraping(push=true){
+  releaseHoverPreviews();disposeStage(false);enterManagementSurface();
+  if(push)route('/scraping');
+  const surface=claimSurface('/scraping');
+  showManagementBody({placeholder:pageSkeletonHtml('正在读取采集来源',{cards:true})});
+  $('#manageTitle').textContent='采集来源';
+  const ui=await import('/dist/peach-ui.js');
+  await ui.mountIsland('scraping',$('#stats'),{toast},{isCurrent:()=>surfaceCurrent(surface)});
 }
 
 /* ── 在线追更 ──

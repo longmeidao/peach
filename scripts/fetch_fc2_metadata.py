@@ -51,6 +51,8 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from peach.catalog_rules import normalise_code_key
+from peach.config import SECRETS_DIR
+from peach.scraping_access import client_for, cookie_jar, values_for
 from peach.genre_taxonomy import map_genres
 from peach.review_csv import read_rows, write_rows
 from peach.scripting import USER_AGENT, open_readonly
@@ -90,7 +92,7 @@ def high_resolution_cover_url(url: str) -> str:
 
 def load_cookies(path: Path) -> http.cookiejar.MozillaCookieJar:
     jar = http.cookiejar.MozillaCookieJar(str(path))
-    jar.load(ignore_discard=True, ignore_expires=True)
+    jar.load(ignore_discard=True, ignore_expires=False)
     return jar
 
 
@@ -435,19 +437,19 @@ def run(args: argparse.Namespace) -> int:
         write_rows(args.metadata_log, METADATA_FIELDS, candidates)
         print(f"完成：{len(candidates)} 个 FC2 元数据字段候选 -> {args.metadata_log}")
         return 0
-    if args.cookies is None:
-        raise SystemExit("联网抓取必须传 --cookies；离线重建请用 --rebuild-metadata-only")
+    jar = (load_cookies(args.cookies) if args.cookies else
+           cookie_jar(values_for(SECRETS_DIR, "fc2cmadb"), "fc2cmadb"))
+    if not list(jar):
+        raise SystemExit("请在 /scraping 提供 FC2 Cookie，或传 --cookies；离线重建用 --rebuild-metadata-only")
     todo = pending(args.db, args.limit)
     owned = {video_id for _, video_id in todo}
-    jar = load_cookies(args.cookies)
     rows: list[dict] = []
     collected: dict = {}
     stats = {"hit": 0, "miss": 0}
     args.raw.parent.mkdir(parents=True, exist_ok=True)
     raw_log = args.raw.open("w", encoding="utf-8")
     print(f"待抓 {len(todo)} 个 FC2 作品", flush=True)
-    with httpx.Client(cookies=jar, headers={"User-Agent": USER_AGENT},
-                      follow_redirects=True) as client:
+    with client_for(SECRETS_DIR, "fc2cmadb", cookies=jar) as client:
         for index, (code, video_id) in enumerate(todo, 1):
             try:
                 props = fetch_article(client, video_id)

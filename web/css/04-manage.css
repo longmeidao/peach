@@ -77,4 +77,14 @@
 .cleanupfieldset .cleanupstate:empty{display:none}
 .stats h2{margin:0 0 4px;font-size:var(--fs-2xl)}
 .stats .sub{color:var(--muted);margin:0}
-
+/* 采集来源表单复用管理页 Fieldset。 */
+.scraping-page{max-width:960px;margin:0 auto;display:grid;gap:16px}
+.scraping-page>h1,.scraping-page p{margin:0}
+.scraping-fields form{display:grid;gap:12px;justify-items:start}
+.scraping-fields form label{width:100%}
+.scraping-fields{padding:20px;display:grid;gap:16px;min-width:0}
+.scraping-fields label{display:grid;gap:8px;min-width:0}
+.scraping-fields input,.scraping-fields select{width:100%;min-width:0;min-height:var(--control-h);box-sizing:border-box}
+.scraping-source{min-width:0}
+.scraping-source .geist-fieldset-footer{display:flex;gap:8px;flex-wrap:wrap;height:auto;min-height:52px;padding:12px 16px}
+@media(max-width:600px){.scraping-page{--control-h:44px}.scraping-source button{min-height:44px}.scraping-fields{padding:16px}}
