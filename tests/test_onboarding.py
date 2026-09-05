@@ -461,7 +461,8 @@ class SetupPageTests(_Case):
         self.assertEqual(body.count('<span class="req"'), 4)
         # 「谁可以访问」是两段式单选，不用原生下拉；两个选项由 `HOST_OPTIONS` 给出，
         # 局域网在左边并且默认选中。
-        self.assertNotIn("<select", body)
+        self.assertNotIn('<select name="host"', body)
+        self.assertIn('<select name="media_location"', body)
         self.assertIn('class="switch" role="radiogroup"', body)
         for value, label in onboarding.HOST_OPTIONS:
             self.assertIn(f'<input type="radio" name="host" value="{value}"', body)
@@ -696,6 +697,24 @@ class StandaloneConfigurationTests(_Case):
             self.assertTrue(body["errors"]["media_dirs"][1], "重复的那一行要点名")
             self.assertTrue(body["errors"]["port"])
         self.assertEqual(before, self.config.path.read_bytes())
+
+    def test_cloud_configuration_saves_all_sources_and_requests_configured_scan(self):
+        from peach.routes_configuration import revision
+        from peach import media_configuration
+        with self.client() as client:
+            response = client.post('/api/configuration', headers={'X-Token': 'test-token'}, json={
+                'revision': revision(self.config), 'port': 9123, 'scan_now': True,
+                'media_sources': [
+                    {'location': '115', 'path': str(self.media), 'root': 'B:/'},
+                ]})
+            self.assertEqual(response.status_code, 200, response.text)
+            saved = settings_file.load_config()
+            self.assertEqual(set(saved.locations), {'115'})
+            self.assertEqual(onboarding.take_first_scan_request(saved), 'configured')
+            snapshot = client.get('/api/configuration', headers={'X-Token': 'test-token'}).json()
+            self.assertEqual(snapshot['media_sources'][0]['location'], '115')
+            self.assertTrue(snapshot['media_sources'][0]['online'])
+            self.assertFalse((saved.directory('database') / 'ledger.db').exists())
 
     def test_settings_reject_unauthenticated_remote_cross_origin_and_stale_forms(self):
         from peach.routes_configuration import revision

@@ -16,7 +16,7 @@ from typing import Any
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Request
 
-from . import distribution, folder_picker, onboarding, settings_file
+from . import distribution, folder_picker, onboarding, settings_file, media_configuration
 from .routes_auth import require_auth
 from .routes_pages import runtime_facts
 
@@ -62,6 +62,8 @@ def snapshot(config) -> dict[str, Any]:
         "notice": "" if editable else FILE_MANAGED_NOTICE,
         "revision": revision(config),
         "media_dirs": list(media),
+        "media_sources": media_configuration.rows(config, windows=os.name == "nt", probe=True),
+        "windows": os.name == "nt",
         "port": config.server.port,
         "facts": [{"term": term, "value": value} for term, value in runtime_facts(config)],
     }
@@ -82,8 +84,13 @@ def _validate(body: dict[str, Any], config) -> tuple[dict[str, Any], dict[str, A
     validated: dict[str, Any] = {}
     raws = body.get("media_dirs")
     rows = [str(item) for item in raws] if isinstance(raws, list) else [str(raws or "")]
-    paths, problems = onboarding.read_media_dirs(
-        rows, validate=onboarding.media_dir_validator(windows=os.name == "nt"))
+    if "media_sources" in body:
+        locations, mounts, problems = media_configuration.validate(body["media_sources"], windows=os.name == "nt")
+        paths = []
+        validated.update(locations=locations, mounts=mounts)
+    else:
+        paths, problems = onboarding.read_media_dirs(
+            rows, validate=onboarding.media_dir_validator(windows=os.name == "nt"))
     if problems:
         errors["media_dirs"] = problems
     else:
@@ -143,7 +150,13 @@ def save_configuration(request: Request, body: dict[str, Any] = Body(default_fac
             raise HTTPException(400, {"message": "有几项需要修改", "errors": errors})
         paths = validated["media_dirs"]
         locations, mounts = dict(config.locations), dict(config.mounts)
-        if os.name == "nt":
+        if "locations" in validated:
+            locations, mounts = validated["locations"], validated["mounts"]
+            for key in set(config.locations) - dict(media_configuration.SOURCE_OPTIONS).keys():
+                locations[key] = config.locations[key]
+                if key in config.mounts:
+                    mounts[key] = config.mounts[key]
+        elif os.name == "nt":
             locations["local"] = tuple(str(path) for path in paths)
         else:
             locations["local"] = onboarding.posix_declared_roots(len(paths))
@@ -156,7 +169,7 @@ def save_configuration(request: Request, body: dict[str, Any] = Body(default_fac
             temporary.write_text(settings_file.render(prepared), encoding="utf-8")
             os.replace(temporary, config.path)
             if body.get("scan_now"):
-                onboarding.request_first_scan(prepared)
+                onboarding.request_first_scan(prepared, "configured")
             config.directory("state").mkdir(parents=True, exist_ok=True)
             (config.directory("state") / RELOAD_NAME).write_text("reload", encoding="utf-8")
         except OSError as exc:

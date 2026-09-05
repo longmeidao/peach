@@ -6,6 +6,37 @@
 
 ## 首次运行与设置文件
 
+### CloudDrive 配置
+
+1. 在 CloudDrive 中登录网盘并建立挂载点，打开「启动时自动挂载」。步骤见
+   [CloudDrive 官方帮助](https://www.clouddrive2.com/help.html)。
+2. 在 Peach 首次设置页或独立包的「管理 → 配置」中添加文件夹，选择对应来源。
+   115 使用来源 ID `115`，PikPak 使用 `pikpak`，本地磁盘使用 `local`；每个来源可有多个互不重叠的根。
+3. Windows 填本机盘符路径。macOS 的文件夹填本机挂载点，「账本根目录」填该来源原有的
+   Windows 盘符根，例如 `B:\` 对应 `/Volumes/CloudDrive/115`、`A:\` 对应
+   `/Volumes/CloudDrive/PikPak`。已有馆藏必须沿用原账本根目录。
+4. 保存配置，由托盘重新载入。配置页「挂载状态」逐根显示在线或离线；刷新状态保留尚未保存的输入。
+   Windows 的 Peach 与 CloudDrive 应在同一普通用户会话下运行；提升权限的进程可能看不到挂载盘。
+5. 勾选扫描时，托盘顺序扫描配置内的在线来源，离线根跳过。恢复挂载后可再次勾选扫描并保存。
+
+离线来源允许保留配置，重叠盘符根或本机挂载点会在对应行报错。来源判定沿用 `asset.location`，
+115/PikPak 进入既有网盘流量策略。保存配置不修改已有资产的来源归属和账本路径。
+源码部署使用配置文件管理；首次网页引导支持相同来源，终端 `peach init` 的目录问答用于本地来源。
+
+对应 macOS 配置示例：
+
+```toml
+[media.locations]
+"115" = ['B:\']
+pikpak = ['A:\']
+
+[media.mounts]
+"115" = ['/Volumes/CloudDrive/115']
+pikpak = ['/Volumes/CloudDrive/PikPak']
+```
+
+### 初始化与托盘
+
 - 配置完成之后，Windows 和有 TLS 的 macOS 托盘由 HTTP 导航进程与 HTTPS 业务进程组成；HTTP 的 `/healthz` 仅证明导航进程存活。业务入口 `/healthz?ready=1` 检查配置、页面、数据库查询和迁移校验和，不就绪返回 503；不带参数仍只探活。还没配置的机器上托盘只起一条引导服务，见下面的首次设置几条。
 - wheel 将 `web`、`migrations`、`resources` 装入 `peach/_resources`。`scripts/smoke_wheel.py` 在仓库外使用安装 wheel 的解释器运行；CI 消费任务只下载制品，不检出源码。测试只使用临时数据根。
 - 设置文件固定是 `<数据根>/config.toml`。数据根按三步找：环境变量 `PEACH_DATA_ROOT`、

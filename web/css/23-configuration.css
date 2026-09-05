@@ -18,12 +18,17 @@
    flex 而不是 grid：只剩一行时移除键不画，grid 的空轨道会留下一段 gap。 */
 .configdir{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
 .configdir .geist-input{flex:1 1 auto;width:auto;min-width:0}
+.configdir > input.geist-input{flex:1 1 0;width:0}
 .configdir:first-child{margin-top:0}.configdir .configbad{flex-basis:100%;margin:0}
 .configrm.geist-button,.configpick.geist-button{width:var(--control-h);height:var(--control-h);flex:none;padding:0;color:var(--muted)}
 .configrm.geist-button:hover:not(:disabled),.configpick.geist-button:hover:not(:disabled){color:var(--ink)}
 .configrm svg,.configpick svg{width:16px;height:16px;stroke:currentColor;fill:none}
 .configadd{margin-top:8px}
+.configsource{flex-basis:100%;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(220px,100%),1fr));gap:8px}
+.configsource label{min-width:0;display:grid;gap:6px;font-size:var(--fs-sm);color:var(--muted)}
+.configsource .geist-input{width:100%;box-sizing:border-box}
 .configcheck{display:flex;align-items:center;gap:12px;min-height:32px;cursor:pointer;color:var(--ink)}
 .configfacts{margin:0;display:grid;grid-template-columns:max-content minmax(0,1fr);gap:10px 24px;align-items:baseline}
 .configfacts dt{color:var(--muted);font-size:var(--fs-sm)}.configfacts dd{margin:0;overflow-wrap:anywhere}
 @media(max-width:560px){.configfacts{grid-template-columns:minmax(0,1fr)}.configfacts dd{margin-top:-6px}}
+@media(max-width:560px){.configpage{--control-h:44px}.configfieldset>.geist-fieldset-footer{flex-wrap:wrap}.configsource .geist-input{font-size:var(--fs-lg)}}

@@ -128,6 +128,10 @@ button[type=submit]:hover{background:color-mix(in srgb,var(--ink) 88%,var(--grou
 .dir{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
 .dir:first-child{margin-top:0}.dir .bad{flex-basis:100%;margin:0}
 .dir input[type=text]{flex:1 1 auto;width:auto;min-width:0}
+.dir > input[type=text]{flex:1 1 0;width:0}
+.sourcefields{flex-basis:100%;display:grid;gap:8px;min-width:0}
+.sourcefields select{width:100%;height:var(--control-h);border:1px solid var(--line-soft);border-radius:var(--control-radius);background:var(--surface);color:var(--ink);padding:0 12px;font:inherit}
+.sourcefields select:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}
 .rm,.pick,.add{height:var(--control-h);border:1px solid var(--line);border-radius:var(--control-radius);
 background:var(--ground);color:var(--ink);cursor:pointer;font:500 var(--fs-sm) system-ui,sans-serif}
 .rm,.pick{width:var(--control-h);flex:none;display:grid;place-items:center;color:var(--muted)}
@@ -139,6 +143,7 @@ stroke-linejoin:round}
 .rm[hidden],.pick[hidden],.add[hidden]{display:none}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 @media(max-width:760px){input[type=text],input[type=number]{font-size:16px}}
+@media(max-width:560px){body{--control-h:44px}.sourcefields select{font-size:var(--fs-lg)}}
 @media(max-width:440px){body{padding:24px 20px}h1{font-size:var(--fs-2xl)}}
 </style>"""
 
@@ -333,7 +338,13 @@ def _copy_for(key: str, fallback: str) -> tuple[str, str]:
     return _SETUP_COPY.get(key, (fallback, ""))
 
 
-def _media_dir_row(value: str, error: str, *, first: bool) -> str:
+def _media_dir_row(value: str, error: str, *, first: bool, location: str = "local", root: str = "", windows: bool = True) -> str:
+    from .media_configuration import SOURCE_OPTIONS
+    source = '<select name="media_location" aria-label="媒体来源">' + ''.join(
+        f'<option value="{key}"{" selected" if key == location else ""}>{label}</option>'
+        for key, label in SOURCE_OPTIONS) + '</select>'
+    mapping = (f'<input name="media_root" type="text" aria-label="账本根目录" '
+               f'placeholder="账本根目录，例如 B:\\" value="{escape(root, quote=True)}">') if not windows else ''
     attrs = ' id="f-media_dir" required' if first else ' aria-label="媒体文件夹"'
     return (f'<div class="dir"><input name="media_dir" type="text"{attrs} autocomplete="off" '
             f'spellcheck="false" aria-invalid="{"true" if error else "false"}" '
@@ -341,10 +352,10 @@ def _media_dir_row(value: str, error: str, *, first: bool) -> str:
             f'<button type="button" class="pick" aria-label="选择文件夹" hidden>{_FOLDER_SVG}</button>'
             f'<button type="button" class="rm" aria-label="移除这个文件夹" hidden>{_X_SVG}</button>'
             + (f'<p class="bad" role="alert">{escape(error)}</p>' if error else "")
-            + "</div>")
+            + f'<div class="sourcefields">{source}{mapping}</div></div>')
 
 
-def _media_dirs_html(values: Sequence[str], errors: Sequence[str], note: str) -> str:
+def _media_dirs_html(values: Sequence[str], errors: Sequence[str], note: str, *, locations=(), roots=(), windows=True) -> str:
     """媒体文件夹列表：每行一个输入框，行尾是移除键，列表下是「添加文件夹」。
 
     移除键和添加键都带 `hidden`，由页面脚本亮出来：没有脚本时它们什么都做不了，与其留
@@ -354,14 +365,18 @@ def _media_dirs_html(values: Sequence[str], errors: Sequence[str], note: str) ->
     title, help_text = _copy_for("media_dir", "媒体文件夹")
     rows = list(values) or [""]
     body = "".join(
-        _media_dir_row(value, errors[index] if index < len(errors) else "", first=index == 0)
+        _media_dir_row(value, errors[index] if index < len(errors) else "", first=index == 0,
+                       location=locations[index] if index < len(locations) else "local",
+                       root=roots[index] if index < len(roots) else "", windows=windows)
         for index, value in enumerate(rows))
     return (
         '<div class="field">'
         f'<label for="f-media_dir"><span class="req" aria-hidden="true">*</span>{escape(title)}</label>'
         f'<div class="dirs" id="dirs">{body}</div>'
         '<button type="button" class="add" id="add-dir" hidden>添加文件夹</button>'
-        f'<template id="dir-row">{_media_dir_row("", "", first=False)}</template>'
+        f'<template id="dir-row">{_media_dir_row("", "", first=False, windows=windows)}</template>'
+        '<p class="help">CloudDrive：先在 CloudDrive 登录网盘并挂载，再选择对应的 115 或 PikPak 来源。'
+        '<a href="https://www.clouddrive2.com/help.html" target="_blank" rel="noreferrer">挂载帮助</a></p>'
         + "".join(f'<p class="help">{escape(line)}</p>' for line in (help_text, note) if line)
         + "</div>"
     )
@@ -428,7 +443,9 @@ def setup_page(
             row_errors = errors.get("media_dir", [])
             note = "" if windows else onboarding.mounts_explanation(
                 [path for path in media_dirs if path] or ["你在上面填的目录"])
-            fields.append(_media_dirs_html(media_dirs, list(row_errors), note))
+            fields.append(_media_dirs_html(media_dirs, list(row_errors), "" if windows else
+                "本机文件夹填写 macOS 挂载点；账本根目录填写对应的 Windows 盘符路径。",
+                locations=values.get("media_location", ()), roots=values.get("media_root", ()), windows=windows))
             continue
         value = str(values.get(question.key, question.default))
         advanced.append(_field_html(question, value, str(errors.get(question.key, "")), ""))
@@ -474,9 +491,11 @@ def setup_done_page(applied, *, windows: bool, scan_requested: bool) -> str:
                "<code>peach init --force</code> 补上。局域网设备要装这份 CA 才不报证书错。")
     scan = ("<li>首次扫描已排队，托盘会在服务起来之后在后台跑，期间页面照常能用。</li>"
             if scan_requested else
-            "<li>没有请求首次扫描；要扫就跑 <code>peach scan local</code>。</li>")
-    mounts = ("" if windows else
-              f"<p>{escape(onboarding.mounts_explanation(config.mounts.get('local', ())))}</p>")
+            "<li>没有请求首次扫描；要扫就跑 <code>peach scan configured</code>。</li>")
+    from .media_configuration import rows
+    mounts = ("" if windows else '<dl class="facts">' + ''.join(
+        f'<dt>{escape(row["location"])} · {escape(row["root"])}</dt><dd>{escape(row["path"])}</dd>'
+        for row in rows(config, windows=False)) + '</dl>')
     body = (
         "<h1>设置完成</h1>"
         "<p>托盘正在停掉这条引导服务，改用正常的 Peach 服务；这个页面几秒后就会连不上，"
@@ -610,6 +629,9 @@ async def setup_submit(request: Request):
     submitted: dict[str, object] = {key: (value or [""])[0] for key, value in form.items()}
     # 媒体文件夹是一个列表：几行输入框同名提交，回显时也要原样给回几行。
     submitted["media_dir"] = list(form.get("media_dir", []))
+    for key in ("media_location", "media_root"):
+        if key in form:
+            submitted[key] = list(form[key])
     scan_now = "scan_now" in form
 
     config = settings_file.active()
@@ -636,7 +658,7 @@ async def setup_submit(request: Request):
         return HTMLResponse(setup_page(config, windows=windows, values=submitted,
                                       errors={"data_root": str(exc)}, scan_now=scan_now), status_code=400)
     if scan_now:
-        onboarding.request_first_scan(applied.config)
+        onboarding.request_first_scan(applied.config, "configured" if answers.media_sources is not None else "local")
     response = HTMLResponse(setup_done_page(applied, windows=windows, scan_requested=scan_now))
     if distribution.standalone():
         response.set_cookie("tok", auth.read_token(applied.config.directory("secrets")),
@@ -656,6 +678,18 @@ def _read_answers(
     errors: dict[str, object] = {}
     for question in onboarding.questions(config, windows=windows):
         if question.key == "media_dir":
+            if "media_location" in submitted:
+                from . import media_configuration
+                dirs = _media_dir_values(submitted, question.default)
+                kinds = submitted["media_location"]
+                roots = submitted.get("media_root", [])
+                sources = [{"location": kinds[i] if i < len(kinds) else "local", "path": path,
+                            "root": roots[i] if i < len(roots) else ""} for i, path in enumerate(dirs)]
+                _, _, problems = media_configuration.validate(sources, windows=windows)
+                if problems:
+                    errors["media_dir"] = problems
+                values.update(media_dirs=tuple(Path(path) for path in dirs), media_sources=sources)
+                continue
             paths, problems = onboarding.read_media_dirs(
                 _media_dir_values(submitted, ""), validate=question.validate,
                 default=question.default)

@@ -6,9 +6,9 @@
 `PeachConfig`，`apply()` 把它变成一台能直接起服务的机器（目录、账本、CA、口令、设置
 文件）。前端只负责把字串送进来、把结果和错误显示出去。
 
-问答刻意只收最小集合：数据根、一个或几个本地媒体目录、监听范围、端口、局域网名字。复制、
-115、PikPak、writer 镜像与 SMB 一律保持默认关闭或留空——陌生人第一次跑不该被这些问题
-拦住，设置文件里也只写用户声明过的来源，不把维护者的示例盘符写进别人的文件。
+终端问答收集数据根、本地媒体目录、监听范围、端口和局域网名字。网页引导另按每个目录收集
+本地、115 或 PikPak 来源及 macOS 映射，校验由 `media_configuration` 负责。复制、writer
+镜像与 SMB 保持关闭或留空，设置文件只写用户声明过的来源。
 
 媒体目录在两个平台上落成不同的写法，因为账本路径的形状是不变量（AGENTS.md）：
 
@@ -17,7 +17,7 @@
   `[media.mounts] local = <这些目录>` 按同样顺序给出，读取侧按「声明根前缀 → 本机挂载点」
   翻译（`peach.platform`），扫描侧按同一规则反着写（`peach.scan`）。
 
-几个目录都归同一个来源 `local`：它们是同一块馆藏的几个落点，不是几种来源。
+终端问答的目录归 `local`；网页引导用 `Answers.media_sources` 保存逐行选择。
 """
 from __future__ import annotations
 
@@ -91,6 +91,7 @@ class Answers:
     host: str
     port: int
     mdns_name: str
+    media_sources: list[dict[str, str]] | None = None
 
 
 # --------------------------------------------------------------------------- 校验
@@ -324,7 +325,7 @@ def interview(
 def configure(config: PeachConfig, answers: Answers, *, windows: bool) -> PeachConfig:
     """把答案落成一份可写回的设置。`config` 要按 `answers.data_root` 重新解析过。
 
-    只写用户声明过的来源：`[media.locations]` 里只有 `local`，几个目录就几个声明根。
+    只写用户声明过的来源；网页答案包含逐行来源及映射，终端答案按本地目录处理。
     复制保持关闭，writer 镜像与 SMB 坐标留空，目录键全部落成显式值——和非交互
     `peach init` 同一形状。
     """
@@ -334,6 +335,11 @@ def configure(config: PeachConfig, answers: Answers, *, windows: bool) -> PeachC
     else:
         locations = {LOCAL_LOCATION: posix_declared_roots(len(answers.media_dirs))}
         mounts = {LOCAL_LOCATION: tuple(str(path) for path in answers.media_dirs)}
+    if answers.media_sources is not None:
+        from . import media_configuration
+        locations, mounts, errors = media_configuration.validate(answers.media_sources, windows=windows)
+        if errors:
+            raise ValueError("；".join(error for error in errors if error))
     prepared = settings_file.capture_existing(
         config, replication_enabled=False,
         overrides={"host": answers.host, "port": answers.port,
