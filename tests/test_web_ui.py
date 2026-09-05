@@ -530,11 +530,14 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertNotIn("drawer.innerHTML=", source)
         self.assertNotIn("$('#drawer').innerHTML=", source)
         self.assertNotIn("$('#drawer').insertAdjacentHTML(", source)
-        self.assertPageContains("const drawer=$('#drawer'),scroll=$('#drawerScroll'),key=surfacePath()+location.search;")
+        self.assertPageContains("const scroll=$('#drawerScroll'),key=surfacePath()+location.search;")
         self.assertPageContains("scroll.innerHTML=`<div style=\"display:flex;align-items:center;justify-content:space-between;margin-bottom:10px\">")
         self.assertPageContains("scroll.insertAdjacentHTML('beforeend',`<div class=\"sec cat-online\">")
-        # 换页面的判据仍挂在宿主上：它是同一个元素贯穿始终，滚动层的内容会被换掉。
-        self.assertPageContains("syncSidebarSurface(drawer,key)")
+        # 换页面的判据记在滚动层上：syncSidebarSurface() 判定换页就 replaceChildren()，
+        # 传宿主进去会连 #drawerScroll 一起清掉，和整块 innerHTML 是同一种失败。
+        self.assertPageContains("syncSidebarSurface(scroll,key)")
+        self.assertNotIn("syncSidebarSurface(drawer", source)
+        self.assertNotIn("syncSidebarSurface($('#drawer')", source)
 
     def test_anchored_menus_open_in_the_top_layer_so_animated_ancestors_cannot_clip_them(self):
         """自绘下拉的面板进顶层，祖先上的 transform 与 overflow 都够不着它。
@@ -4531,7 +4534,7 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_drawer_filters_follow_entity_and_detail_context(self):
         self.assertPageContains('function buildDrawerNavigation()')
-        self.assertPageContains('syncSidebarSurface(drawer,key)')
+        self.assertPageContains('syncSidebarSurface(scroll,key)')
         self.assertCode('surfaceEpoch++;\n  barsRequestSeq++;')
         self.assertPageContains('key=surfacePath()+location.search')
         self.assertPageLacks("api('/api/follow/tags?limit=30')")
