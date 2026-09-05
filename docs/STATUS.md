@@ -26,7 +26,7 @@
 一条一句，不带日期，只写别处没有的判据：README、`docs/HANDOFF.md`、`docs/REUSE.md`、
 `docs/OPERATIONS.md` 和 ADR 已经写下的不在这里重复，出处用 `git log -S` 查。
 
-- ffprobe 核对内部编码；`mpeg4/AAC` 实片转 H.264/AAC 后画面解码通过，原媒体不改。
+- 不兼容视频按六秒片段转 H.264/AAC；29999、30005 实片首段及跳播解码通过。
 - 29999 及另 16 番号、23 视频补齐女优，账本完整。实屏未验。
 - 远端 MP4 默认走标准 Range，显式开启的 HLS 使用关键帧对齐片段并在失败时回退 Range。
 - 页面共用 SPA、JSON 与 gzip/ETag；侧栏随当前视频集合，已保存在线作品复用关注详情。

@@ -65,6 +65,26 @@ class TranscodeService:
     def needs_transcode(source: Path) -> bool:
         return source.suffix.lower() not in BROWSER_NATIVE_SUFFIXES
 
+    def requires_conversion(self, source: Path, *, session: str = "", registry=None) -> bool:
+        """按容器和内部编码选择浏览器兼容路径，不生成整片缓存。"""
+        if self.needs_transcode(source):
+            return True
+        if self.resolver.ffprobe() is None:
+            return False
+        stat = source.stat()
+        key = (str(source), stat.st_size, stat.st_mtime_ns)
+        with self._locks_guard:
+            profile = self._native_profiles.get(key)
+        if profile is None:
+            profile = self._probe(source, session, registry,
+                                  time.monotonic() + PROBE_TIMEOUT_SECONDS)
+            if profile is not None:
+                with self._locks_guard:
+                    if len(self._native_profiles) >= 512:
+                        self._native_profiles.pop(next(iter(self._native_profiles)))
+                    self._native_profiles[key] = profile
+        return profile is None or not self._browser_compatible(source, profile)
+
     def browser_path(
         self, asset_id: int, source: Path, *, session: str = "", registry=None,
     ) -> tuple[Path, bool]:

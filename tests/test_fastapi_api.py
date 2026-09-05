@@ -1214,6 +1214,20 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(playlist.headers["content-type"], "application/vnd.apple.mpegurl")
         self.assertEqual(playlist.text.count("#EXTINF:"), 3)
 
+    async def test_incompatible_video_uses_time_slices_without_whole_movie_conversion(self):
+        con = sqlite3.connect(self.db)
+        con.execute("UPDATE asset SET duration=7632.28 WHERE id=1")
+        con.commit()
+        con.close()
+        with patch.object(self.app.state.transcode_service, 'requires_conversion', return_value=True), \
+                patch.object(self.app.state.transcode_service, 'browser_path',
+                             side_effect=AssertionError('whole movie conversion')):
+            response = await self.client.get('/api/stream-plan?id=1&session=s&t=secret')
+            self.assertEqual(response.json()['protocol'], 'hls')
+            playlist = await self.client.get('/stream/hls/1/index.m3u8?session=s&t=secret')
+            self.assertEqual(playlist.status_code, 200)
+            self.assertIn('#EXTINF:0.280', playlist.text)
+
     async def test_hls_segment_is_generated_for_one_requested_time_slice(self):
         con = sqlite3.connect(self.db)
         con.execute("UPDATE asset SET location='115', duration=13.5, path=? WHERE id=1",
