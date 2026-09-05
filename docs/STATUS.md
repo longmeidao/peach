@@ -1,6 +1,6 @@
 # Peach 当前状态
 
-最后核验：2026-09-05
+最后核验：2026-09-06
 
 本文件只记录运行态；待办见 `docs/PRODUCT_BACKLOG.md`，已定型的行为判据见 `docs/REUSE.md`，长期知识见 `docs/HANDOFF.md`。
 
@@ -10,7 +10,8 @@
 
 - Windows 是当前 ledger writer，入口 `dist\Peach\Peach.exe`；代码、`peach-data`、worktree 和共享传输点同在一个顶层目录，外置盘只提供 `R:\media`。
 - 托盘必须以普通权限启动：提升权限后的令牌看不到 CloudDrive 的 `A:` / `B:`，会把 PikPak 和 115 误报为脱盘。
-- Windows HTTP 为 `0.0.0.0:80`，HTTPS 为当前 LAN IPv4 的 443，mDNS 名见 `[server].mdns_name`；线上版本 `0.8.7`、`ledger_sync=writer`。
+- Windows HTTP 为 `0.0.0.0:80`，HTTPS 为当前 LAN IPv4 的 443，mDNS 名见 `[server].mdns_name`；线上版本 `0.10.0`、`ledger_sync=writer`。
+- 托盘 EXE 是 2026-09-05 21:08 打的那份，比检出旧：自重建每次都卡在「验证期间代码或依赖环境改变，本次记录无效」（待办第 33 条）。当前检出的包已构建在 `peach-data/state/source-sync-build/<commit>/`，换二进制要单独授权。
 - 口令闸门在 Windows 已生效：不带口令的请求回 401（`/healthz` 除外），设备用 `peach token` 登录一次。
 - macOS 是 reader，代码与 `peach-data` 都在内置盘；`peach.local` 经 8900/8443 和 pf 提供 80/443，GET 正常、写入端点返回 409。
 - 两端各用本机 CA，私钥与凭据不跨机同步；代码走 Git、账本走单写者复制、图片产物走 Syncthing，三条链路互不兜底。本机坐标在 `<数据根>/config.toml`；ADR-0023 第 1～3 阶段已合入并在 Windows 生效。
