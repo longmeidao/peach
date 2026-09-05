@@ -230,6 +230,14 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
             taste_history_manifest=self.taste_manifest,
         )
         self.app = create_app(self.settings)
+        # 字节与时间表夹具不含可解码画面；编码判定由媒体域的真实样本覆盖。
+        from peach.transcodes import _MediaProfile
+        self.profile_patch = patch.object(
+            self.app.state.transcode_service, "_probe",
+            return_value=_MediaProfile("h264", "yuv420p", "aac"),
+        )
+        self.profile_patch.start()
+        self.addCleanup(self.profile_patch.stop)
         self.assertIs(
             self.app.state.web_contract.database,
             self.app.state.repository.database,
@@ -644,6 +652,22 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
             ("颜射", 0.9, "javinizer:r18dev:tag"),
         ])
         connection.close()
+
+    async def test_catalog_keeps_missing_performers_separate_from_release_code(self):
+        with closing(sqlite3.connect(self.db)) as con:
+            con.execute(
+                "INSERT INTO asset(id,location,path,name,medium,size,code,studio,first_seen) "
+                "VALUES(29999,'local',?,'JBS-023.mp4','video',10,'JBS-023','Prestige','2026-09-05')",
+                (str((self.media_root / 'JBS-023.mp4').resolve()),),
+            )
+            con.commit()
+        response = await self.client.get('/api/items?t=secret&loc=local')
+        self.assertEqual(response.status_code, 200)
+        item = next(row for row in response.json()['items'] if row['id'] == 29999)
+        self.assertEqual(item['code'], 'JBS-023')
+        self.assertFalse(item.get('creator'))
+        self.assertEqual(item['performers'], [])
+        self.assertEqual(item['performer_entities'], [])
 
     async def test_auth_and_items_contract(self):
         denied = await self.client.get("/api/items")

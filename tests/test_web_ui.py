@@ -401,13 +401,7 @@ class WebUiSourceTests(unittest.TestCase):
                          "输入框的聚焦环不用蓝，走 --field-ring-focus")
 
     def test_fieldsets_put_the_bright_face_on_the_content_and_the_bar_below_it(self):
-        """框体正文是全站最亮的面，操作条落回页面底那一档，两档都跟着主题走。
-
-        2026-09-05 实测 vercel.com 的团队设置 fieldset：正文 `#FFFFFF`、操作条 `#FAFAFA`
-        加一条 1px `#EBEBEB` 的上边线，外圈是 1px 的 8% 黑；暗色一档是 `#0A0A0A` 正文配
-        纯黑操作条——方向相同，操作条永远更深。操作条与页面底共用 `--page` 是照着 Vercel
-        写的，那边也是同一个 `--ds-background-200`：条子退到后面那张面上，正文浮在它之上。
-        """
+        """操作条以中性透明灰叠在框体上，与骨架使用同一灰阶。"""
         self.assertPageContains("--page:#FAFAFA;")
         self.assertPageContains("--page:#04060A;")
         for selector in (".cleanupfieldset", ".reviewitem", ".fsec",
@@ -418,7 +412,7 @@ class WebUiSourceTests(unittest.TestCase):
                      ".fsechead", ".fsecfoot", ".resourcesyncfooter,.resourceapplyrow"):
             start = css.index(name + "{")
             rule = css[start:css.index("}", start)]
-            self.assertIn("background:var(--page)", rule, f"{name} 是操作条")
+            self.assertIn("background:var(--overlay-5)", rule, f"{name} 是操作条")
             self.assertIn("var(--line-soft)", rule, f"{name} 与正文之间是一条发丝线")
 
     def test_buttons_keep_two_tiers_a_solid_primary_and_a_bright_secondary(self):
@@ -1750,12 +1744,15 @@ class WebUiSourceTests(unittest.TestCase):
         头像先看 performer、名字先看 creator 的话，碰上同名的 creator/performer
         重复实体（账本里 35 组）就会一个跳 /performers/x、另一个跳 /creators/x。
         """
-        self.assertPageContains(
-            "const avatarKind=identity.kind||(performer?'performer':"
-            "(primaryCreator?'creator':(it.studio?'studio':'')));")
-        self.assertPageContains(
-            "const avatarName=identity.kind?identity.name:"
-            "(performer||primaryCreator||it.studio||who);")
+        self.assertPageContains("const avatarKind=identity.kind;")
+        self.assertPageContains("const avatarName=identity.name;")
+
+    def test_missing_person_identity_uses_unassigned_on_cards_and_players(self):
+        self.assertPageContains(":{kind:'',name:'未归属'});")
+        self.assertPageContains("const who=(it.performers||[])[0]||it.creator||'未归属';")
+        self.assertPageContains("const ownerName=cast.length?cast[0]:(full.creator||'未归属');")
+        self.assertPageLacks("it.creator||it.code")
+        self.assertPageLacks("full.creator||it.code")
 
     def test_narrow_search_has_a_way_out(self):
         """窄屏展开搜索后必须有退出入口。
@@ -5146,8 +5143,8 @@ class WebUiSourceTests(unittest.TestCase):
     def test_compact_card_title_is_one_line_and_identity_kind_matches_name(self):
         self.assertPageContains('body[data-density="dense"] .card .meta .t{display:block;max-width:100%;min-height:1.35em;overflow:hidden;')
         self.assertPageContains("performer?{kind:'performer',name:performer}")
-        self.assertPageContains("it.code?{kind:'',name:it.code}")
-        self.assertPageContains("it.studio?{kind:'studio',name:it.studio}")
+        self.assertPageContains(":{kind:'',name:'未归属'});")
+        self.assertPageLacks("it.studio?{kind:'studio',name:it.studio}")
         self.assertPageLacks("const whoKind=it.creator?'creator':(it.studio?'studio':'')")
 
     def test_creator_name_is_single_line_and_ellipsized(self):

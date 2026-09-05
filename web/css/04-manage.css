@@ -13,7 +13,7 @@
 /* 判定状态用左侧色条表达：整卡描边在一列里扫过去时反而认不出来 */
 .reviewitem{position:relative;display:flex;flex-direction:column;box-sizing:border-box;height:var(--review-fieldset-height);margin:0;padding:0;min-width:0;overflow:hidden;background:var(--ground);border:1px solid var(--field-ring);border-radius:var(--floating-radius)}.reviewitem::before{content:'';position:absolute;z-index:3;left:0;top:0;bottom:0;width:3px;background:transparent}.reviewitem[data-decision="approved"]::before{background:var(--keep)}.reviewitem[data-decision="rejected"]::before{background:var(--drop)}.reviewitem[data-decision="skipped"]::before{background:var(--muted)}.reviewitem[data-decision="rejected"],.reviewitem[data-decision="skipped"]{opacity:.6}.reviewitem h4{margin:0 0 6px;font-size:var(--fs-lg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.reviewitem p{margin:4px 0;color:var(--muted);font-size:var(--fs-xs);line-height:1.55;overflow-wrap:anywhere}
 .reviewitem>.geist-fieldset-content{flex:1;min-height:0;padding:20px}.reviewcontent{height:100%}
-.reviewitem .reviewactions{flex:0 0 auto;box-sizing:border-box;min-height:56px;margin:0;padding:12px 12px 12px 20px;background:var(--page);border-top:1px solid var(--line-soft);border-radius:0 0 var(--floating-radius) var(--floating-radius);display:flex;gap:8px}
+.reviewitem .reviewactions{flex:0 0 auto;box-sizing:border-box;min-height:56px;margin:0;padding:12px 12px 12px 20px;background:var(--overlay-5);border-top:1px solid var(--line-soft);border-radius:0 0 var(--floating-radius) var(--floating-radius);display:flex;gap:8px}
 .reviewtags{display:flex;flex-wrap:wrap;gap:5px;margin:9px 0}.reviewtags span{padding:3px 9px;border:1px solid var(--border-15);border-radius:var(--pill-radius);font-size:var(--fs-xs);color:var(--ink-2)}
 /* 唯一候选：纯展示，几何对齐 .revieworigin，不画单选圈。radio 仍在 DOM 里，
    提交路径读的就是它；只是没什么可选的时候不该让人以为还有别的选项。 */
@@ -44,7 +44,7 @@
 .geist-fieldset-title{margin:0 0 10px;color:var(--ink);font-size:var(--fs-xl);font-weight:600}
 .cleanupfieldset>.geist-fieldset-footer{box-sizing:border-box;min-height:var(--fieldset-bar-h);
   margin:0;padding:8px 16px 8px 20px;display:flex;align-items:center;justify-content:flex-end;gap:8px;
-  border-top:1px solid var(--line-soft);background:var(--page)}
+  border-top:1px solid var(--line-soft);background:var(--overlay-5)}
 /* 说明可以换行、按钮不能被压扁：窄屏下操作条仍是一行，说明占剩下的宽度，
    条子按内容长高（证据：vercel.com/geist/fieldset 在 375px 下操作条仍是
    flex-direction:row、nowrap，min-height 56px 实测长到 65/85/105px，

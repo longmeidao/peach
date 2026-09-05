@@ -72,6 +72,8 @@
 
 ## 参考产品证据登记
 
+- 图 3、JavDB：`docs/REUSE.md`。
+
 快照、URL、版本、SHA、未取得面与 Peach 的有意差异统一登记在 `docs/reference-sources.json` 和
 `docs/reference-snapshots/`，每份快照自带「Peach 采用与差异」一节；获取、失效复核与接受更新的流程见
 `.claude/skills/peach-reference-evidence/SKILL.md`。本文件不复制会随上游变化的测量值，只登记哪件事看哪份快照。

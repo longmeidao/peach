@@ -1899,8 +1899,7 @@ function cardIdentity(it,linked=true){
   const primaryCreator=it.is_jav&&performer?'':it.creator;
   const identity=primaryCreator?{kind:'creator',name:primaryCreator}
     :(performer?{kind:'performer',name:performer}
-      :(it.code?{kind:'',name:it.code}
-        :(it.studio?{kind:'studio',name:it.studio}:{kind:'',name:'未归属'})));
+      :{kind:'',name:'未归属'});
   const who=identity.name,whoKind=identity.kind;
   // 共演作品用头像提示多人，但文字只保留第一位，再给总人数。两个长名字加元数据
   // 会在普通卡片里折成三行；「第一位 + 等 N 人」仍能说明身份与规模。
@@ -1913,9 +1912,10 @@ function cardIdentity(it,linked=true){
         /* 头像和名字必须落到同一个身份。各自挑 kind（头像先看 performer、名字先看
            creator）时，同名的 creator/performer 重复实体（账本里有 35 组）会一个跳
            `/performers/x`、另一个跳 `/creators/x`，同一张卡上两个入口去两个地方。 */
-        const avatarKind=identity.kind||(performer?'performer':(primaryCreator?'creator':(it.studio?'studio':'')));
-        const avatarName=identity.kind?identity.name:(performer||primaryCreator||it.studio||who);
-        const inner=avatarInner(avatarName,performerRef,REP[avatarName]||REP[it.creator]||REP[it.studio]);
+        const avatarKind=identity.kind;
+        const avatarName=identity.name;
+        const inner=avatarInner(avatarName,avatarKind==='performer'?performerRef:null,
+          avatarKind?REP[avatarName]:null,avatarKind||'performer');
         return avatarKind
           ? link('mav',`data-entity-kind="${avatarKind}" data-entity-name="${esc(avatarName)}" title="打开${avatarKind==='performer'?esc(performerLabel(it)):'资料'}页"`,inner)
           : `<span class="mav">${inner}</span>`;
@@ -7123,7 +7123,7 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
   const online=it.location==='online';
   /* 保存过的在线资产照常播；只有反查不到关注条目时才拦下来说明原因。 */
   const onlineGated=online&&!it.follow_item_id;
-  const who=it.creator||it.code||it.studio||'未归属';
+  const who=(it.performers||[])[0]||it.creator||'未归属';
   const refs=it.entity_refs||{},studioRef=(refs.studio||[])[0];
   // 共演作品的女优逐行列出，每行带自己的头像；标签只写在第一行，其余留空保持对齐。
   const performerRefs=(refs.performer||[]).length
@@ -7667,9 +7667,9 @@ async function tokShow(dir){
     const cast=full.performers||[];
     const who=cast.length
       ? cast.slice(0,3).join('、')+(cast.length>3?` 等 ${cast.length} 人`:'')
-      : (full.creator||it.code||'未归属');
+      : (full.creator||'未归属');
     const ownerKind=cast.length?'performer':(full.creator?'creator':'');
-    const ownerName=cast.length?cast[0]:(full.creator||it.code||'未归属');
+    const ownerName=cast.length?cast[0]:(full.creator||'未归属');
     const ownerRef=ownerKind?(full.entity_refs?.[ownerKind]?.[0]||null):null;
     $('#tokAvatar').innerHTML=avatarInner(ownerName,ownerRef,REP[ownerName],ownerKind||'performer');
     $('#tokWho').textContent=who;
