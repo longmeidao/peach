@@ -5026,10 +5026,10 @@ class WebUiSourceTests(unittest.TestCase):
         换成 contain，就会在图自带的底之外多围出一圈框，三处还会各自不一致。
         """
         self.assertPageContains(
-            ".brandpill .mk img{position:absolute;inset:0;width:100%;height:100%;")
-        self.assertPageContains(
-            "object-fit:cover;display:block;filter:saturate(.72) brightness(.84)",
-            "小圆片的去饱和保留，但图必须铺满")
+            ".brandpill .mk img{position:absolute;inset:0;width:100%;height:100%;\n"
+            "  object-fit:cover;display:block}")
+        # 厂牌识别色照原样出图：滤镜一挂，同一张标识在三处就是三个颜色。
+        self.assertPageLacks("filter:saturate(.72) brightness(.84)")
         self.assertPageContains(
             ".idface img{position:absolute;inset:0;width:100%;height:100%;"
             "object-fit:cover;display:block}")
