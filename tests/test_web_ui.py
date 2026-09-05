@@ -6494,7 +6494,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("background:true,status_only:true")
         # 上一轮跑完的结果是那一刻的快照。进页面就铺开会被读成现在的账本状态，
         # 而页面上没有任何东西说它是旧的。
-        self.assertPageContains("if(existing.status==='running')void followScan(existing);")
+        self.assertPageContains("if(existing.status==='running')void followScan(existing)")
         self.assertPageContains("同步并清理")
         self.assertPageContains('class="resourcesyncfooter geist-fieldset-footer"')
         self.assertPageContains('class="resourcepanel"')

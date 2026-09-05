@@ -32,6 +32,7 @@ from .web_catalog import (
 from .web_entity import q_entity, q_entity_photos, q_index, q_photo_set, w_entity_name
 from .web_follow import (
     q_follow,
+    q_follow_check,
     q_follow_credentials,
     q_follow_schedule,
     q_follow_tags,
@@ -171,6 +172,9 @@ GET_HANDLERS = {
     "/api/follow/credentials": q_follow_credentials,
     "/api/follow/tags": q_follow_tags,
     "/api/follow/schedule": q_follow_schedule,
+    "/api/follow/check": q_follow_check,
+    "/api/follow/resolve": lambda contract, args: contract.follow_resolve_job.snapshot() or {"status": "idle"},
+    "/api/taste/refresh": lambda contract, args: contract.taste_refresh_job.snapshot() or {"status": "idle"},
     "/api/items": q_items,
     "/api/item": _get_item,
     "/api/parts": q_parts,

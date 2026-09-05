@@ -473,7 +473,7 @@ class Rule34PahealConnectorTests(unittest.TestCase):
         self.assertEqual(item.external_id, "7428820")
         self.assertEqual(item.media_url, "https://r34i.paheal-cdn.net/df/fb/video")
         self.assertEqual(item.group_hint, "rule34paheal:post:7428820")
-        self.assertEqual(waits, [1.0, 2.0, 4.0])
+        self.assertEqual(waits, [1.0, 2.0, 4.0, 8.0])
 
     def test_details_already_taken_cost_no_request_at_all(self):
         """第二阶段只打新条目。这是唯一会让请求数随条目数增长的路径。"""
@@ -1093,7 +1093,7 @@ class Rule34XxxConnectorTests(unittest.TestCase):
         ).fetch("lazyprocrastinator")
         self.assertEqual(len(attempts), 3, "被挡回来要重试，不能一次就当没有类型")
         # 退避节奏本身也是行为：注入假 sleeper 才能断言它，而且测试不会真的等 5.5 秒。
-        self.assertEqual(waits, [1.5, 4.0])
+        self.assertEqual(waits, [1.0, 2.0])
         self.assertEqual(result.candidates[0].extra["tag_types"]["lazyprocrastinator"],
                          "artist")
 
@@ -1112,7 +1112,7 @@ class Rule34XxxConnectorTests(unittest.TestCase):
         self.assertNotIn("tag_types", result.candidates[0].extra)
         self.assertTrue(result.candidates[0].partial,
                         "详情没取到就得留着 partial，否则落库会把上一轮的分类抹掉")
-        self.assertEqual(waits, [1.5, 4.0, 9.0], "退避走完声明的三档才算取不到")
+        self.assertEqual(waits, [1.0, 2.0, 4.0, 8.0], "退避有界且不会叠乘")
 
     def test_autocomplete_reports_the_real_tag_spelling_without_credentials(self):
         # 站上写作 `ria-neearts`，手边的手柄是 `Ria_neearts`；补全是唯一能把两者

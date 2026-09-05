@@ -9,12 +9,13 @@ import re
 import sqlite3
 import stat
 import tempfile
+import threading
 import unittest
 from datetime import datetime, timezone
 from pathlib import Path
 from unittest import mock
 
-from peach import follow_store, web_follow
+from peach import follow_store, web_follow, web_stats
 from peach.follow import FollowHistoryEnd
 from peach.follow import FollowSourceError
 from peach.follow_discovery import Discovery, ExternalSearch
@@ -31,10 +32,78 @@ MOMENT = datetime(2026, 8, 25, 9, 0, tzinfo=timezone.utc)
 
 
 class FollowContractTests(unittest.TestCase):
+    def test_background_check_exposes_progress_and_deduplicates(self):
+        self._seed()
+        entered, release = threading.Event(), threading.Event()
+        original = web_follow.run_check
+        def slow(*args, **kwargs):
+            entered.set()
+            release.wait(5)
+            return original(*args, **kwargs)
+        with mock.patch.object(web_follow, 'run_check', side_effect=slow), \
+             mock.patch.object(web_follow, 'build_connector') as factory:
+            factory.return_value.fetch.side_effect = FollowSourceError('offline')
+            started = self._post('/api/follow/check', {'background': True})
+            try:
+                self.assertTrue(entered.wait(2))
+                snapshot = web_follow.q_follow_check(self.contract, {})
+                self.assertEqual(snapshot['job_id'], started['job_id'])
+                self.assertEqual(snapshot['total'], 1)
+                self.assertEqual(snapshot['checked'], 0)
+                duplicate = self._post('/api/follow/check', {'background': True, 'older': True})
+                self.assertEqual(duplicate['job_id'], started['job_id'])
+            finally:
+                release.set()
+                self.contract.follow_job.thread.join(5)
+        final = web_follow.q_follow_check(self.contract, {})
+        self.assertEqual(final['status'], 'complete')
+        self.assertEqual(final['checked'], 1)
+        self.assertFalse(final['results'][0]['ok'])
+        self.assertEqual(factory.call_count, 1)
+
+    def test_discovery_result_can_be_read_after_request_returns(self):
+        started = self._post('/api/follow/resolve', {'background': True,
+            'lines': ['https://rule34video.com/models/sample/']})
+        self.contract.follow_resolve_job.thread.join(5)
+        final = dispatch_api_get(self.contract, '/api/follow/resolve', {})
+        self.assertEqual(final['job_id'], started['job_id'])
+        self.assertEqual(final['status'], 'complete')
+        self.assertEqual(len(final['results']), 1)
+
+    def test_background_check_records_unexpected_failure(self):
+        self._seed()
+        with mock.patch.object(web_follow, 'run_check', side_effect=RuntimeError('test failure')):
+            self._post('/api/follow/check', {'background': True})
+            self.contract.follow_job.thread.join(5)
+        state = web_follow.q_follow_check(self.contract, {})
+        self.assertEqual(state['status'], 'failed')
+        self.assertIn('test failure', state['error'])
+        self.assertFalse(self.contract.follow_check_lock.locked())
+
+    def test_background_taste_refresh_has_a_readable_result(self):
+        self.contract.taste_history_store = self.root / 'missing-history.sqlite'
+        with mock.patch.object(web_stats, 'discover_history_sources', return_value=[]), \
+             mock.patch.object(web_stats, 'q_taste', return_value={'demo': True}):
+            started = self._post('/api/taste/refresh', {'background': True})
+            self.contract.taste_refresh_job.thread.join(5)
+        final = dispatch_api_get(self.contract, '/api/taste/refresh', {})
+        self.assertEqual(final['job_id'], started['job_id'])
+        self.assertEqual(final['status'], 'complete')
+        self.assertEqual(final['dashboard'], {'demo': True})
+
+    def test_selected_sources_do_not_expand_to_the_whole_follow_list(self):
+        selected = self._seed(ref='selected')
+        self._seed(ref='unrelated')
+        with mock.patch.object(web_follow, 'build_connector') as factory:
+            factory.return_value.fetch.side_effect = FollowSourceError('offline')
+            result = self._post('/api/follow/check', {'sources': [selected]})
+        self.assertEqual([row['source'] for row in result['results']], [selected])
+        self.assertEqual(factory.call_count, 1)
+
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
-        self.root = Path(self.temporary.name)
+        self.root = Path(self.temporary.name).resolve()
         self.db = self.root / "ledger.db"
         connection = sqlite3.connect(self.db)
         for migration in discover(ROOT / "migrations"):
@@ -2367,7 +2436,7 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("function followCheckToast(report)")
         self.assertPageContains("function followCheckFailNote(report)")
         # 重画会把结果冲掉，所以先存再画。
-        self.assertPageContains("followCheckReport=result;")
+        self.assertPageContains("followCheckReport=report.status==='failed'")
         self.assertPageContains("${followCheckReport?followCheckFailNote(followCheckReport):''}")
         for needle in ("新增 <b>", "更新 <b>", "个来源没有更新", "没有任何更新",
                        "个失败", "fcheckfail", "没有更多历史内容",

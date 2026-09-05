@@ -5,6 +5,7 @@
 各站的解析差异仍由 `test_follow_sources.py` 覆盖。测试不联网，transport 全部注入。
 """
 import unittest
+import httpx
 
 from peach.follow import FollowSourceError
 from peach.follow_sources import (
@@ -28,6 +29,38 @@ class _Probe(_BaseConnector):
 
 
 class SharedRequestSkeletonTests(unittest.TestCase):
+    def test_handshake_timeout_recovers_with_bounded_backoff(self):
+        calls, waits, progress = [], [], []
+        def transport(request, timeout, max_bytes):
+            calls.append(request)
+            if len(calls) < 5:
+                raise httpx.ConnectTimeout('_ssl.c:1064: The handshake operation timed out')
+            return HttpResponse(200, {}, b'{}')
+        connector = _Probe(transport=transport, sleeper=waits.append)
+        connector.progress = lambda **state: progress.append(state)
+        self.assertEqual(connector._get('https://example.test').status, 200)
+        self.assertEqual(waits, [1, 2, 4, 8])
+        self.assertEqual(progress[-1]['attempt'], 5)
+
+    def test_retries_exhaust_and_post_is_not_replayed(self):
+        for method, expected in [('GET', 5), ('POST', 1)]:
+            calls = []
+            def transport(*args):
+                calls.append(1)
+                raise httpx.ReadTimeout('temporary')
+            connector = _Probe(transport=transport, sleeper=lambda _: None)
+            with self.assertRaises(FollowSourceError):
+                connector._send(method, 'https://example.test', None, headers={}, base={})
+            self.assertEqual(len(calls), expected)
+
+    def test_access_denied_is_not_retried(self):
+        calls, waits = [], []
+        connector = _Probe(transport=_transport(status=403, record=calls), sleeper=waits.append)
+        with self.assertRaises(FollowSourceError):
+            connector._request('https://example.test', ref='r')
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(waits, [])
+
     def test_first_page_sends_conditional_headers(self):
         seen = []
         connector = _Probe(transport=_transport(body=b"{}", record=seen))

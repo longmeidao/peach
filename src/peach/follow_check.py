@@ -88,7 +88,8 @@ def build_connector_for(provider: str, credentials, connector_factory, *,
 
 
 def run_check(row: Mapping, *, credentials, writer, connector_factory,
-              older: bool = False, moment: datetime | None = None) -> CheckResult:
+              older: bool = False, moment: datetime | None = None,
+              progress=None) -> CheckResult:
     """检查一条来源。
 
     `row` 是 `plan_check` 给出的那种字典。`writer` 是零参可调用对象，返回一个产出
@@ -105,6 +106,8 @@ def run_check(row: Mapping, *, credentials, writer, connector_factory,
         connector = build_connector_for(
             provider, credentials, connector_factory,
             enrich_skip=frozenset(row.get("enrich_skip") or ()))
+        if progress is not None:
+            connector.progress = progress
         fetch = connector.fetch(
             ref,
             etag=None if force else row["etag"],

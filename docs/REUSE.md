@@ -5,6 +5,8 @@
 
 ## 复用决策门槛
 
+- 关注检查、来源查找和口味刷新复用 `jobs.BackgroundJob`，浏览器状态跟进放在 `frontend/src/jobs.ts`；不新增队列或调度依赖。HTTP 继续使用固定的 HTTPX 0.28.1（BSD-3-Clause）和 curl_cffi 0.16.2（MIT），支持现有 Python 3.12+ 与 Windows/macOS 打包。[HTTPX 原生重试](https://www.python-httpx.org/advanced/transports/)只覆盖连接失败，无法统一两个 transport 的读超时、临时 HTTP 状态与页面进度，因此由现有连接器负责 GET 重试策略。截图中的 TLS 握手超时作为隔离 transport 输入，验证第 5 次成功、耗尽、403 单次终止和 POST 不重放；不新增依赖体积。任务状态保存在服务进程，浏览器刷新后通过读接口恢复；服务重启不自动重放任务。
+
 - 标签发布复用系统 Git、GitHub CLI 2.100.0（MIT）和 [Actions runs REST API](https://docs.github.com/en/rest/actions/workflow-runs)，不新增 Python 依赖；`release_tag.py` 只实现版本、主线归属、同提交最新 CI 与不可覆盖策略。Windows Python 3.14 使用提交 `45168dd` 的真实成功 Test 记录完成只读 POC；失败/运行中/其它分支与 master 并发推进用隔离测试拒绝。工作流仍复用既有 Release 制品验收，未引入发布服务。
 
 - 独立 Windows 测试包复用 PyInstaller 6.22.2（GPL-2.0-or-later，带分发 bootloader 例外）的 [onedir 与自启动子进程](https://pyinstaller.org/en/stable/common-issues-and-pitfalls.html)；使用已有精确固定的 build 依赖。Python 3.14 / Windows x64 在清除开发工具 PATH、隔离数据目录下实测初始化、页面与 API。保留 Peach 的进程所有权、数据目录、配置和扫描策略；onefile 的托盘入口只用于既有源码部署，独立包采用完整目录以共享资源并避免重复解包。没有新增运行时依赖。
