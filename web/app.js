@@ -1812,11 +1812,12 @@ function entityFaceImg({kind='performer',id=null,hasImage=false,rep=null,mark=nu
    `has_image` 缺席按「没图」处理，和 entityFaceImg 的默认值一致：每一个调用点的
    ref 都由服务端带着标志下发（卡片署名、索引页、口味榜、复核卡片、沉浸模式），
    宽容缺席只会让下一个忘了挂标志的端点悄悄退回「无条件出图、等 404 再摘」。 */
-function avatarInner(name,ref,repId,kind='performer',markId=null,logoName='',focus=null){
-  // 这一层全是小圆框和窄格子，厂牌标识在这里要方形图标而不是横着的字标。
+function avatarInner(name,ref,repId,kind='performer',markId=null,logoName='',logoVariant='icon',focus=null){
+  // 这一层大多是小圆框和窄格子，厂牌标识在那里要方形图标而不是横着的字标；索引页的
+  // 厂牌大格是同一个模板里的例外，由调用方点名要 `large`。
   return `<span class="ini">${esc((name||'?').slice(0,1))}</span>`+
     entityFaceImg({kind,id:ref&&ref.id,hasImage:!!(ref&&ref.has_image),rep:repId,mark:markId,
-                   logo:logoName,logoVariant:'icon',focus});
+                   logo:logoName,logoVariant,focus});
 }
 /* 人脸取景：资料页圆框按检出的人脸中心取景（/api/entity 的 avatar_focus）。
    没检出或没算过返回空串维持几何居中；换回落图时必须撤掉——那是另一张照片，
@@ -1931,7 +1932,35 @@ document.addEventListener('load',event=>{
   if(img.classList.contains('cover'))coverAnchor(img);
   // 头像走同一条路，理由也同一个：倍数要等图和框都落地才算得出来。
   else if(img.dataset.facebox)avatarFrame(img);
+  fitNativeImage(img);
 },true);
+/* 图比框还小时不再拉伸：原尺寸居中摆，空出来的一圈拿同一张图放大模糊补底。
+
+   厂牌标识实测从 42 px 到 1378 px 都有。`/logo?variant=large` 已经先挑过这个厂牌
+   最清晰的一份，剩下的是本来就没有大图的厂牌——把 112 px 的那张拉满 180 px 的格子
+   只是把糊放大给人看，而摆在原尺寸上，它至少是清楚的。
+
+   度量只能在 `load` 之后做：图没加载完时 `naturalWidth` 读到的是 0。换过回落图后
+   `load` 会再来一次，这里读的 `currentSrc` 也就跟着是当前真正显示的那张。 */
+//: 图至少要占到框的这一成才算「够大，铺满就行」。0.8 等于最多放大 1.25 倍。
+const NATIVE_FIT_FLOOR=0.8;
+function fitNativeImage(img){
+  const box=img.closest('[data-fit-native]');
+  if(!box||!img.naturalWidth)return;
+  /* 只比框小一点点的照旧铺满：放大一成多看不出糊，而按原尺寸摆只会在四周留一圈
+     七八像素的窄边，模糊补底铺在那么窄的地方就是一道生硬的灰线。
+     版式一换框就换了大小，所以这个判断要能重算，见 setPeopleIndexLayout。 */
+  const small=img.naturalWidth<box.clientWidth*NATIVE_FIT_FLOOR
+    ||img.naturalHeight<box.clientHeight*NATIVE_FIT_FLOOR;
+  box.style.setProperty('--markw',small?img.naturalWidth+'px':'100%');
+  box.style.setProperty('--markh',small?img.naturalHeight+'px':'100%');
+  const src=(img.currentSrc||img.src).replace(/"/g,'%22');
+  box.style.setProperty('--markbg',small?`url("${src}")`:'none');
+}
+/* 已经加载完的图不会再发 `load`，容器换了尺寸就得自己重量一遍。 */
+function refitNativeImages(root){
+  (root||document).querySelectorAll('[data-fit-native] img').forEach(fitNativeImage);
+}
 /* 整张封套里右侧正封占的宽高比。裁切靠的是容器比例而不是 CSS 裁剪：`object-fit:cover`
    只在容器比图片更「竖」时才会横向裁；容器一旦宽过 1.48 就变成纵向裁、整张封套原样
    铺满，「大图」于是只撑满画布而取不到右侧。 */
@@ -5447,22 +5476,33 @@ function paintTagIndexSelection(){
   const count=panel.querySelector('[data-tag-selected]');if(count)count.textContent=`已选 ${selectedIndexTags.size} 个标签`;
   const apply=panel.querySelector('[data-tag-apply]');if(apply)apply.disabled=!selectedIndexTags.size;
 }
+const INDEX_TITLES={performers:'艺人',creators:'创作者',studios:'厂牌',
+                    agencies:'事务所',tags:'标签'};
 /* 艺人索引版式，思路同 JAV 大图：列宽不变、只把图从圆框拉成竖幅，一屏里的人数
    不变而每张脸更大；紧凑就是圆头像那一屏。控件与 JAV 版式、关注列表版式共用
    iconSwitchHtml，切换只改容器上的 data-layout——版式是纯展示层的事，不重画列表，
    也不重新请求。 */
 const PEOPLE_LAYOUTS=[['big','大图 · 竖幅头像','maximize'],['compact','紧凑 · 圆形头像','layout-grid']];
+/* 公司那一格摆的是方形标识而不是脸，大图版式也把框做成方的、一个像素都不裁。沿用
+   艺人那套词就是让提示说着「竖幅头像」、屏幕上摆着方标识。档位仍是同一个设置值，
+   分开的只有说法。 */
+const COMPANY_LAYOUTS=[['big','大图 · 完整标识','maximize'],['compact','紧凑 · 圆形标识','layout-grid']];
+function indexLayoutOptions(kind){
+  return kind==='studios'||kind==='agencies'?COMPANY_LAYOUTS:PEOPLE_LAYOUTS;
+}
 function peopleIndexLayout(){
   return allowedSetting(appSettings.peopleLayout,PEOPLE_LAYOUTS.map(([k])=>k),'big');
 }
-function peopleLayoutButtons(){
-  return iconSwitchHtml('people-layout','艺人索引版式',PEOPLE_LAYOUTS,peopleIndexLayout(),
-    {attr:'data-people-layout'});
+function peopleLayoutButtons(kind){
+  return iconSwitchHtml('people-layout',(INDEX_TITLES[kind]||'艺人')+'索引版式',
+    indexLayoutOptions(kind),peopleIndexLayout(),{attr:'data-people-layout'});
 }
 function setPeopleIndexLayout(value){
   appSettings.peopleLayout=value;
   saveSettings();
   document.querySelectorAll('.igrid').forEach(grid=>{grid.dataset.layout=peopleIndexLayout()});
+  // 框换了大小，「这张图要不要补底」得重算：图早加载完了，不会再自己发一次 load。
+  refitNativeImages($('#index'));
   fitSkeleton($('#index'));
 }
 /* 一格人：圆框或竖幅头像、名字、一个读数。索引页和事务所名册摆的是同一样东西，
@@ -5477,15 +5517,15 @@ function personCellHtml(x,kind,countText){
   /* 公司这一格不退到代表作截图，和它自己的资料页保持同一条判据：那是某部片的画面，
      摆在公司名下就是替它拿别人的脸当门面，同一个厂牌两个页面还会各出各的图。 */
   const company=kind==='studio'||kind==='agency';
+  /* 公司这一格摆的是标识而不是脸：要 `large`（这个厂牌手上最清晰的那份），并且允许
+     小图按原尺寸摆——`data-fit-native` 的判据和度量都在 fitNativeImage 里。 */
   return `<button class="icell" data-k="${esc(x.k)}" data-kind="${kind}">
-      <span class="ring"${face?` style="--face:${face}"`:''}>${avatarInner(x.k,
+      <span class="ring"${company?' data-fit-native':''}${face?` style="--face:${face}"`:''}>${avatarInner(x.k,
         ref?{id:ref,has_image:x.has_image}:null,
         x.has_avatar&&!company?x.rep:null, kind, x.mark, x.has_logo?x.k:'',
-        company?null:x.avatar_focus)}</span>
+        company?'large':'icon', company?null:x.avatar_focus)}</span>
       <span class="nm">${esc(x.k)}</span><span class="n">${countText}</span></button>`;
 }
-const INDEX_TITLES={performers:'艺人',creators:'创作者',studios:'厂牌',
-                    agencies:'事务所',tags:'标签'};
 /* 厂牌与事务所是两种实体，不是同一份数据的两种筛选：厂牌出片，事务所出人，一位女优
    可以同一年给多个厂牌拍片而只属于一家事务所。所以这个开关切的是路径，不是筛选。 */
 const MAKER_INDEX_KINDS=[['studios','厂牌','building'],['agencies','事务所','briefcase']];
@@ -5503,7 +5543,7 @@ function indexHeaderHtml(kind,q,countText){
       ${kind==='tags'?`<div class="viewmodes"><button data-tag-scope="local" aria-pressed="${!onlineTags}">${icon('hard-drive')}本地</button><button data-tag-scope="online" aria-pressed="${onlineTags}">${icon('rss')}在线</button></div>
       <div class="viewmodes"><button data-tag-view="cloud" aria-pressed="${tagIndexMode==='cloud'}">${icon('tags')}标签云</button><button data-tag-view="alphabet" aria-pressed="${tagIndexMode==='alphabet'}">${icon('text-aa')}字母表</button></div>`:''}
       ${MAKER_INDEX_KINDS.some(([key])=>key===kind)?makerModeHtml(kind):''}
-      ${people?peopleLayoutButtons():''}
+      ${people?peopleLayoutButtons(kind):''}
       ${searchInputHtml({id:'iq',label:'过滤'+title,value:q||''})}
     </div>`;
 }
@@ -6209,7 +6249,7 @@ async function openEntity(kind,name,push=true){
   const image=d.id?entityFaceImg({kind,id:d.id,hasImage:d.has_image,
     rep:company||!d.has_avatar?null:d.representative_asset_id,
     mark:kind==='agency'?d.mark_link_id:null,
-    logo:company&&d.has_logo?d.canonical_name:'',
+    logo:company&&d.has_logo?d.canonical_name:'',logoVariant:'large',
     alt:esc(d.canonical_name),lazy:false,
     style:company?'':facePos(d.avatar_focus),focus:company?null:d.avatar_focus,
     dropStyle:true}):'';
@@ -6293,7 +6333,7 @@ async function openEntity(kind,name,push=true){
           data-namepick-name="${esc(option)}" aria-checked="${option===d.canonical_name}"
           >${icon('check')}<span>${esc(option)}</span></button>`).join('')}</div></div>`:'';
   $('#index').dataset.entityKind=kind;$('#index').dataset.entityName=name;
-  $('#index').innerHTML=`<div class="entityhero"><div class="entityportrait ${kind==='performer'||kind==='creator'?'':'square'}">${image}<span>${esc(name.slice(0,1))}</span></div>
+  $('#index').innerHTML=`<div class="entityhero"><div class="entityportrait ${kind==='performer'||kind==='creator'?'':'square'}"${company?' data-fit-native':''}>${image}<span>${esc(name.slice(0,1))}</span></div>
       <div><div class="entitytitle"><h2>${esc(d.canonical_name)}</h2>${namePick}</div>
         <div class="alias">${(d.display_aliases||[]).length?`${d.display_aliases.map(esc).join(' / ')} · `:''}<b>${d.asset_count.toLocaleString()}</b> 个视频${memberHtml}${agencyHtml}</div>
         ${links?`<div class="entitylinks">${links}</div>`:''}</div></div>

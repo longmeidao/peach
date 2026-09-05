@@ -113,13 +113,53 @@ class VariantResolutionTests(unittest.TestCase):
         wordmark = self.write("Fitch.logo.img")
         self.assertEqual(self.service.logo("Fitch", "logo")[0], wordmark)
 
+    def test_large_picks_the_sharpest_file_whatever_its_suffix_says(self):
+        """大位按文件的像素量选，不按后缀猜清晰度。
+
+        实测就有后缀与清晰度对不上的：Prestige 的 `icon` 只有 42 px，裸文件却有
+        632 px。按后缀取等于把最糊的那张摆进最大的格子。
+        """
+        base = self.write("Prestige.img", png_bytes((632, 632)), "image/png")
+        self.write("Prestige.logo.img", png_bytes((413, 413)), "image/png")
+        self.write("Prestige.icon.img", png_bytes((42, 42)), "image/png")
+        self.assertEqual(self.service.logo("Prestige", "large"), (base, "image/png"))
+
+    def test_large_keeps_the_wordmark_when_the_files_are_equally_sharp(self):
+        """一样清晰时仍拿字标：大位本来就是它的位置，同分不构成换掉它的理由。"""
+        self.write("ACT.img", png_bytes((400, 400)), "image/png")
+        wordmark = self.write("ACT.logo.img", png_bytes((400, 400)), "image/png")
+        self.write("ACT.icon.img", png_bytes((400, 400)), "image/png")
+        self.assertEqual(self.service.logo("ACT", "large")[0], wordmark)
+
+    def test_large_takes_the_vector_file_over_any_bitmap(self):
+        """矢量放多大都清晰，位图再大也有到头的时候。"""
+        svg = self.write("VirtualTaboo.logo.img",
+                         b"<svg xmlns='http://www.w3.org/2000/svg' width='216' height='80'/>",
+                         "image/svg+xml")
+        self.write("VirtualTaboo.img", png_bytes((1024, 1024)), "image/png")
+        self.assertEqual(self.service.logo("VirtualTaboo", "large"), (svg, "image/svg+xml"))
+
+    def test_large_still_serves_a_file_that_cannot_be_measured(self):
+        """量不出尺寸的照样出图：浏览器认得的格式比 Pillow 多，这一步只排序。"""
+        base = self.write("Fitch.img")
+        self.assertEqual(self.service.logo("Fitch", "large")[0], base)
+
+    def test_large_remeasures_once_the_file_is_replaced(self):
+        """复核批准会原地换掉标识文件。度量记在 (路径, mtime, 字节数) 上，换了文件
+        就是新键，不会一直按旧尺寸挑。"""
+        self.write("Fitch.img", png_bytes((120, 120)), "image/png")
+        icon = self.write("Fitch.icon.img", png_bytes((64, 64)), "image/png")
+        self.assertEqual(self.service.logo("Fitch", "large")[0], self.logos / "Fitch.img")
+        self.write("Fitch.icon.img", png_bytes((900, 900)), "image/png")
+        self.assertEqual(self.service.logo("Fitch", "large")[0], icon)
+
     def test_an_unknown_variant_falls_back_instead_of_404(self):
         """缓存下来的旧页面可能带着别的参数；那也该出图，不该把厂牌页开出个空位。"""
         base = self.write("Fitch.img")
         self.assertEqual(self.service.logo("Fitch", "banner")[0], base)
 
     def test_a_studio_with_no_file_at_all_still_raises(self):
-        for variant in ("", "icon", "logo"):
+        for variant in ("", "icon", "logo", "large"):
             with self.subTest(variant=variant):
                 with self.assertRaises(PreviewUnavailable):
                     self.service.logo("Nobody", variant)

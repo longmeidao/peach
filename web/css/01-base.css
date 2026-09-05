@@ -301,3 +301,21 @@ button[aria-busy="true"],[role="button"][aria-busy="true"]{
 .geist-modal-footer{position:sticky;bottom:0;display:flex;justify-content:space-between;gap:16px;
   padding:12px;background:var(--surface)}
 .geist-modal-footer>div{display:flex;gap:16px}
+
+/* 「图比框小就别放大」的共用摆法。索引页的厂牌大格和厂牌资料页的大位共用它：那两处
+   摆的都是标识，而标识的原始尺寸差得很远，实测 42 px 到 1378 px 都有。
+   度量由 fitNativeImage 在图片加载后写进 --markw / --markh，这里只负责摆：
+   没有变量时 min(100%,100%) 就是铺满，JS 没跑到的地方按 CSS 自己收场。
+   补底那一层是同一张图放大后模糊，往框外多铺一圈，让糊边落在 overflow 之外。 */
+[data-fit-native]{position:relative}
+/* 选择器点名这两处容器：`.icell .ring img` 与 `.entityportrait img` 各自写着
+   width:100% 和 object-fit:cover，光凭一个属性选择器压不过它们。 */
+.icell .ring[data-fit-native] img,.entityportrait[data-fit-native] img{
+  width:auto;height:auto;margin:auto;object-fit:contain;z-index:1;
+  max-width:min(100%,var(--markw,100%));max-height:min(100%,var(--markh,100%))}
+[data-fit-native]::before{content:"";position:absolute;inset:-14%;z-index:0;
+  background:var(--markbg,none) center/cover no-repeat;filter:blur(16px) saturate(1.4);
+  opacity:.55;pointer-events:none}
+/* 首字母是取不到图时的垫底。图不再铺满框之后它会从旁边露出来，所以有图就收起来。
+   资料页那一侧的首字母是 `.entityportrait>span`，`:has(img)` 已经替它收好了。 */
+.icell .ring[data-fit-native]:has(img) .ini{display:none}

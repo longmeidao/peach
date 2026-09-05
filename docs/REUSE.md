@@ -123,7 +123,7 @@ CloudDrive 为外部应用，本项目不捆绑其二进制或依赖其管理 AP
 - 名字里的括号都走 `split_composite_aliases.py`：自动那拨只认罗马字复合人名，把 r18.dev 打包的 17 条拆成 37 条别名；`--from-review` 那拨按人工判定清掉 9 条不承载名字的尾巴，旧写法留作别名。备份是 2026-09-04 的两份 `ledger.pre-*.db`。剩下的读音、厂牌消歧和角色出处不拆，清单见 BACKLOG 第 29 条。
 - 实体链接可安装：`entity_link` 表、`q_entity` 的 `links` 契约、资料页 favicon 与管理页链接管理成套；死链区分「搬走了」和「没了」，`rediscover_entity_links.py` 从站点索引页上溯找新锚。
 - 事务所是实体：57 家各有 `/agencies/<名字>` 页，成员、官网、标签与作品都按 `entity_membership` 算，女优页点得进去，搜名字出这家人的片；原文留在 `metadata.agency`。
-- 外链圆标与厂牌标识取站点自己声明的那份资产，宽扁字标不参加小圆标的竞选；`/logo` 的 `variant` 把厂牌标识分成 `icon` 与 `logo` 两档，只有真有两份时才分岔。
+- 外链圆标与厂牌标识取站点自己声明的那份资产，宽扁字标不参加小圆标的竞选；`/logo` 的 `variant` 分 `icon`、`logo` 与按文件像素量挑最清晰那份的 `large`，索引大格与资料页大位取 `large`；标识不足框八成时按原尺寸居中摆，四周用同图放大模糊补底。
 - 厂牌标识由契约位 `has_logo` 决定出不出图：没装标识的厂牌一个 `<img>` 都不发，改用首字母底板，不靠 404 摘。
 - 关注检查分两阶段：列表阶段落 partial 行，详情补全按 provider 额度只补新行和未补齐行。
 - `/api/related` 用 Tag IDF 加 MMR 排序并缓存；搜索使用 FTS5 trigram，短查询回退 LIKE 并覆盖规范名、别名和检索词，搜索历史在 reader 写入被拒时降级到页面内存。
