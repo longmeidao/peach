@@ -154,6 +154,7 @@ curl -s --noproxy '*' -o /dev/null -w '%{http_code}\n' https://peach.local/healt
 ## 版本、更新与自我重启
 
 - `src/peach/__init__.py::__version__` 是版本唯一来源，采用 pre-1.0 SemVer；Git commit 是构建标识，`vX.Y.Z` tag 是发布点，推到 GitHub 即触发 Release 工作流（见「桌面入口与发布」）。
+- 打标签从干净的 master 主检出执行 `python scripts/release_tag.py`：默认只检查本地与 GitHub master 一致、该提交最新 Test 全绿、版本合法且标签不存在；加 `--apply` 创建 annotated tag 并只推送该标签。版本标签不覆盖，下一版先修改 `__version__`。推送失败若留下本地标签，先检查归属再人工恢复，不强推。Release 工作流再次检查标签提交属于 master 历史且同提交 Test 已通过，随后构建、制品验收、创建预发布；手动 `workflow_dispatch` 仍只验收制品。打标签代表公开预发布，不等于替换本机生产入口。
 - 「检查更新」只 fetch 和比较；「同步开发进度」只做 `merge --ff-only`，不 stash、不 rebase、不 `--force`——并行工作树和主检出共用同一个对象库与 reflog，任何改写历史的「顺手解决」都会把别的分支一起拖下去。工作区脏或两边分叉时原样报出来交给人。
 - 快进动到 `tray.py`／`menubar.py`／`versioning.py`／`certs.py`／`netwatch.py`／`config.py`／`pyproject.toml` 时只重启子服务追不上，托盘要靠 `launchctl kickstart -k` 重启自己，顺序必须先 `stop_owned()` 再 kickstart，且前提是 launchd 报的 pid 等于自己的 pid。
 
