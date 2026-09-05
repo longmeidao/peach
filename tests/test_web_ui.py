@@ -1756,6 +1756,8 @@ class WebUiSourceTests(unittest.TestCase):
         """
         self.assertPageContains("const avatarKind=identity.kind;")
         self.assertPageContains("const avatarName=identity.name;")
+        self.assertPageContains("const avatarRef=avatarKind==='performer'?performerRef:it.creator_entity;")
+        self.assertPageContains("const inner=avatarInner(avatarName,avatarRef,")
 
     def test_missing_person_identity_uses_unassigned_on_cards_and_players(self):
         self.assertPageContains(":{kind:'',name:'未归属'});")
