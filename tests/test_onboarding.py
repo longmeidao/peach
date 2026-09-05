@@ -55,7 +55,7 @@ class QuestionTests(_Case):
                          ["data_root", "media_dir", "host", "port", "mdns_name"])
         by_key = {q.key: q for q in asked}
         self.assertEqual(by_key["data_root"].default, str(self.root / "peach-data"))
-        self.assertEqual(by_key["host"].default, "1")
+        self.assertEqual(by_key["host"].default, "2")
         self.assertEqual(by_key["port"].default, "8900")
         self.assertEqual(by_key["mdns_name"].default, "peach")
 
@@ -188,8 +188,8 @@ class InterviewTests(_Case):
             data_root=self.root / "peach-data", media_dir=self.media, host="0.0.0.0",
             port=8900, mdns_name="peach-two"))
         self.assertEqual([prompt for prompt, _ in ask.seen], [
-            "数据目录（账本、缓存和设置文件都放在这里）",
-            "媒体文件夹（必须已经存在）",
+            "数据目录（Peach 数据库、缓存和设置文件都放在这里）",
+            "媒体文件夹（必须已经存在，可以在外置硬盘上）",
             "谁可以访问：1 = 只有这台电脑，2 = 同一局域网的设备",
             "端口",
             "局域网访问地址（<名字>.local，只在允许局域网访问时发布）",
@@ -370,20 +370,26 @@ class SetupPageTests(_Case):
         # 页面用自己的题面：短名词加一句说明，不把命令行那份带可选值的题面搬上来。
         for title in ("数据目录", "媒体文件夹", "谁可以访问", "端口", "局域网访问地址"):
             self.assertIn(f">{title}</", body)
-        self.assertIn("账本、缓存和设置文件都放在这里。", body)
+        self.assertIn("Peach 数据库、缓存和设置文件都放在这里。", body)
+        self.assertIn("可以是外置硬盘上的文件夹", body)
         # 品牌标记在标题上方，说明文字在标题下方。
         self.assertIn('<img class="mark" src="/peach-logo.png"', body)
         self.assertLess(body.index("<h1>"), body.index('class="lede"'))
         # 四个要手填的字段前面标红星；「谁可以访问」总有一个选中项，不标。
         self.assertEqual(body.count('<span class="req"'), 4)
-        # 「谁可以访问」是两段式单选，不用原生下拉；两个选项由 `HOST_OPTIONS` 给出。
+        # 「谁可以访问」是两段式单选，不用原生下拉；两个选项由 `HOST_OPTIONS` 给出，
+        # 局域网在左边并且默认选中。
         self.assertNotIn("<select", body)
         self.assertIn('class="switch" role="radiogroup"', body)
         for value, label in onboarding.HOST_OPTIONS:
             self.assertIn(f'<input type="radio" name="host" value="{value}"', body)
             self.assertIn(f"<span>{label}</span>", body)
-        # 局域网访问地址只填名字，`.local` 是框内后缀。
-        self.assertIn('<div class="affix">', body)
+        self.assertIn('<input type="radio" name="host" value="2" checked>', body)
+        self.assertLess(body.index('value="2" checked'), body.index('name="host" value="1"'))
+        # 选「只有这台电脑」时局域网地址输入框由页内脚本禁用。
+        self.assertIn("field.disabled=!lan", body)
+        # 局域网访问地址只填名字，框内前缀 `https://`、后缀 `.local` 拼成完整网址。
+        self.assertIn('<div class="affix"><span>https://</span><input', body)
         self.assertIn("<span>.local</span>", body)
         # 勾选框用站内共用的自绘结构，路径在等宽框里。
         self.assertIn('<span class="pcheck"><input type="checkbox" name="scan_now" value="y" checked>', body)
@@ -404,6 +410,13 @@ class SetupPageTests(_Case):
         self.assertFalse(missing.exists(), "校验不替人建目录")
         self.assertFalse(self.data_root.exists(), "校验失败不落任何文件")
 
+    def test_a_disabled_lan_address_falls_back_to_the_default_name(self):
+        """选「只有这台电脑」后地址框是禁用的，不随表单提交；服务端按默认值补上。"""
+        response = self._post("/setup", self._form(host="1", mdns_name=None))
+        self.assertEqual(response.status_code, 200)
+        loaded = self._loaded()
+        self.assertEqual((loaded.server.host, loaded.server.mdns_name), ("127.0.0.1", "peach"))
+
     def test_a_valid_submission_builds_the_tree_and_shows_what_happens_next(self):
         response = self._post("/setup", self._form())
         self.assertEqual(response.status_code, 200)
@@ -422,6 +435,12 @@ class SetupPageTests(_Case):
         body = response.text
         self.assertIn("设置完成", body)
         self.assertIn("peach token", body)
+        self.assertIn("Peach 数据库：", body)
+        self.assertNotIn("账本", body)
+        # 完成页尾部是与配置页共用的运行信息：版本、位置和 FFmpeg 一眼可查。
+        self.assertIn("<h2>运行信息</h2>", body)
+        for term in ("版本", "数据目录", "设置文件", "日志目录", "FFmpeg"):
+            self.assertIn(f"<dt>{term}</dt>", body)
         self.assertIn(str(self.data_root), body)
 
     def test_declining_the_scan_leaves_no_marker(self):
@@ -474,6 +493,10 @@ class StandaloneConfigurationTests(_Case):
             page = client.get("/configuration", headers=headers)
             self.assertEqual(page.status_code, 200)
             self.assertIn("媒体", page.text)
+            # 勾选框与运行信息都复用首启页的实现，不再各写一份。
+            self.assertIn('<span class="pcheck"><input type="checkbox" name="scan_now" value="y">', page.text)
+            self.assertIn("<h2>运行信息</h2>", page.text)
+            self.assertIn("<dt>FFmpeg</dt>", page.text)
             self.config.directory("state").mkdir(parents=True, exist_ok=True)
             response = client.post("/configuration", headers=headers, data={
                 "revision": revision(self.config), "media_dir": str(self.media), "port": "9124"})

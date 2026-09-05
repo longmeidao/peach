@@ -170,14 +170,14 @@ def questions(
     home = Path.home() if home is None else home
     media_default = default_media_dir(home, windows=windows)
     return (
-        Question("data_root", "数据目录（账本、缓存和设置文件都放在这里）",
+        Question("data_root", "数据目录（Peach 数据库、缓存和设置文件都放在这里）",
                  str(config.data_root), validate_data_root),
-        Question("media_dir", "媒体文件夹（必须已经存在）",
+        Question("media_dir", "媒体文件夹（必须已经存在，可以在外置硬盘上）",
                  str(media_default) if media_default else "",
                  media_dir_validator(windows=windows)),
         Question("host",
                  "谁可以访问：" + "，".join(f"{value} = {label}" for value, label in HOST_OPTIONS),
-                 "1", validate_host),
+                 "2", validate_host),
         Question("port", "端口", str(config.server.port), validate_port),
         Question("mdns_name", "局域网访问地址（<名字>.local，只在允许局域网访问时发布）",
                  config.server.mdns_name, validate_mdns_name),
