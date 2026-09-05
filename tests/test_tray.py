@@ -575,17 +575,31 @@ class SetupGateTests(unittest.TestCase):
                              "https://peach-writer.local")
 
     def test_missing_tls_material_keeps_the_gate_waiting(self):
-        """没有 openssl 的机器上 CA 生成会失败；那时不能拿一组缺文件的规格去启动。"""
+        """没有 openssl 的机器上 CA 生成会失败；那时不能拿一组缺文件的规格去启动。
+
+        macOS 的规格是另一种约定：证书缺失只是不起 HTTPS，闸门照样打开，只带明文口。
+        两种行为都在这里钉住，`popen` 必须是替身——闸门一开就会真的去拉起服务进程。
+        """
         config = self._config()
+        popen = Mock()
         manager = ServiceManager(build_setup_service_specs(config),
-                                 log_dir=config.directory("logs"))
-        gate = SetupGate(manager, config, waiting=True, load=self._config)
+                                 log_dir=config.directory("logs"),
+                                 popen=popen, health_get=lambda *a, **k: Response())
+        gate = SetupGate(manager, config, waiting=True, load=self._config,
+                         popen=Mock(), open_browser=Mock())
         self.data_root.mkdir(parents=True, exist_ok=True)
         (self.data_root / "config.toml").write_text("[server]\nport = 8900\n", encoding="utf-8")
         with patch("peach.tray.lan_ipv4", return_value="192.0.2.10"):
-            self.assertFalse(gate.poll())
+            opened = gate.poll()
+        if sys.platform == "darwin":
+            self.assertTrue(opened)
+            self.assertFalse(gate.waiting)
+            self.assertEqual([spec.name for spec in manager.specs], ["http"])
+            return
+        self.assertFalse(opened)
         self.assertTrue(gate.waiting)
         self.assertEqual([spec.name for spec in manager.specs], ["setup"])
+        popen.assert_not_called()
 
 
 class SourceSyncTests(unittest.TestCase):
