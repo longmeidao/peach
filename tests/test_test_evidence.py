@@ -75,6 +75,31 @@ class VerificationTests(unittest.TestCase):
         with self.assertRaisesRegex(coordinator.WorkspaceError, "已前进"):
             coordinator.integrate(self.repo, branch)
 
+    def test_target_change_during_verification_prevents_merge(self):
+        worker, branch = self.worker()
+        self.certify(worker)
+        verify = coordinator.require_verified
+        def advance(*args):
+            verify(*args)
+            (self.repo / "parallel.md").write_text("并发改动\n", encoding="utf-8")
+            self.git("add", "parallel.md")
+            self.git("commit", "-m", "docs: concurrent")
+        with mock.patch.object(coordinator, "require_verified", side_effect=advance):
+            with self.assertRaisesRegex(coordinator.WorkspaceError, "集成工作树改变"):
+                coordinator.integrate(self.repo, branch)
+        self.assertEqual((self.repo / "README.md").read_text(encoding="utf-8"), "内容\n")
+
+    def test_scope_refresh_preserves_expiry_of_other_scopes(self):
+        state = evidence.key(self.repo)
+        with mock.patch.object(evidence.time, "time", return_value=100):
+            self.certify(self.repo, ("full",))
+        with mock.patch.object(evidence.time, "time", return_value=86450):
+            self.certify(self.repo, ("checks",))
+        with mock.patch.object(evidence.time, "time", return_value=86550):
+            record = evidence.read(self.repo, state)
+            self.assertTrue(evidence.covers(record, ("checks",)))
+            self.assertFalse(evidence.covers(record, ("web",)))
+
     def test_snapshot_tracks_untracked_deleted_and_modified_content(self):
         baseline = evidence.snapshot(self.repo)
         path = self.repo / "extra.md"

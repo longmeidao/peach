@@ -191,12 +191,18 @@ def ready(repo: Path, target_branch: str = "master") -> dict[str, object]:
 
 
 def require_verified(worker: Path, target_branch: str, paths: Iterable[str]) -> None:
+    head = _git(worker, "rev-parse", "HEAD").stdout.strip()
+    if _git(worker, "status", "--porcelain").stdout.strip():
+        raise WorkspaceError("验证工作树必须干净")
     if _git(worker, "merge-base", "--is-ancestor", target_branch, "HEAD", check=False).returncode:
         raise WorkspaceError("目标分支已前进；请在工作树 rebase 后运行 auto 验证")
     scopes, _ = test_runner.scopes_for_changes(paths)
     state = test_evidence.key(worker)
     if not test_evidence.covers(test_evidence.read(worker, state), scopes):
         raise WorkspaceError("缺少有效测试记录；请在工作树运行统一测试入口 auto")
+    if _git(worker, "rev-parse", "HEAD").stdout.strip() != head or \
+            _git(worker, "status", "--porcelain").stdout.strip():
+        raise WorkspaceError("验证检查期间工作树改变，请重试")
 
 
 def integrate(repo: Path, worker_branch: str, target_branch: str = "master", *,
@@ -228,6 +234,7 @@ def _integrate_locked(repo: Path, worker_branch: str, target_branch: str = "mast
         raise WorkspaceError(f"checkout {target_branch} before integrate")
     if _git(main, "status", "--porcelain").stdout.strip():
         raise WorkspaceError("integration worktree is dirty")
+    before = _git(main, "rev-parse", "HEAD").stdout.strip()
     base = _git(main, "merge-base", target_branch, worker_branch).stdout.strip()
     worker_files = set(_lines(_git(main, "diff", "--name-only", f"{base}..{worker_branch}")))
     target_files = set(_lines(_git(main, "diff", "--name-only", f"{base}..{target_branch}")))
@@ -240,9 +247,12 @@ def _integrate_locked(repo: Path, worker_branch: str, target_branch: str = "mast
         raise WorkspaceError("工作者必须有唯一、干净且已注册的工作树")
     worker_head = _git(main, "rev-parse", worker_branch).stdout.strip()
     require_verified(workers[0], target_branch, worker_files)
-    if _git(main, "rev-parse", worker_branch).stdout.strip() != worker_head:
+    if _git(main, "rev-parse", worker_branch).stdout.strip() != worker_head or \
+            _git(workers[0], "rev-parse", "HEAD").stdout.strip() != worker_head:
         raise WorkspaceError("验证检查期间工作者分支改变，请重试")
-    before = _git(main, "rev-parse", "HEAD").stdout.strip()
+    if _git(main, "rev-parse", "HEAD").stdout.strip() != before or \
+            _git(main, "status", "--porcelain").stdout.strip():
+        raise WorkspaceError("验证检查期间集成工作树改变，请重试")
     subjects = _lines(_git(main, "log", "--no-merges", "--format=%s", f"{base}..{worker_branch}"))
     _git(main, "merge", "--no-ff", "--no-edit", "-m", f"Merge branch '{worker_branch}'", worker_head)
     merged_files = set(_lines(_git(main, "diff", "--name-only", f"{before}..HEAD")))
