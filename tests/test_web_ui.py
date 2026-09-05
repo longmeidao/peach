@@ -133,6 +133,16 @@ class StylesheetPartitionTests(unittest.TestCase):
 
 
 class WebUiSourceTests(unittest.TestCase):
+    def test_index_and_entity_visibility_targets_exist_in_the_page(self):
+        html = (Path(__file__).resolve().parents[1] / "web/index.html").read_text(encoding="utf-8")
+        for start, end in (("async function openIndex(", "  const title="),
+                           ("async function openEntity(", "  /* 大位")):
+            body = self.app_js.split(start, 1)[1]
+            body = body.split(end, 1)[0]
+            for target in re.findall(r"\$\('#([^']+)'\)\.hidden\s*=", body):
+                with self.subTest(target=target):
+                    self.assertIn(f'id="{target}"', html)
+
     @classmethod
     def setUpClass(cls):
         # 页面拆成 index.html + web/css 下的样式分区 + app.js + web/js 下的 ES module。这些断言

@@ -5458,7 +5458,7 @@ async function openIndex(kind,q,push=true,refine=false){
   const d=await api(indexApi(0));
   if(requestSeq!==indexRequestSeq||location.pathname!=='/'+kind)return;
   $('#index').hidden=false;buildEdge(); $('#grid').innerHTML=''; $('#count').textContent='';
-  $('#loadSentinel').hidden=true; $('#shortsSec').hidden=true;
+  $('#loadSentinel').hidden=true;
   const title=INDEX_TITLES[kind]||'标签';
   const tagItems=[...d.items];
   const tagGroups=items=>{
@@ -6104,7 +6104,7 @@ async function openEntity(kind,name,push=true){
     (state.jav==='1'||(items.items||[]).some(item=>item.is_jav));
   document.body.classList.add('entity-open');
   $('#index').hidden=false;$('#grid').innerHTML='';$('#count').textContent='';
-  $('#loadSentinel').hidden=true;$('#shortsSec').hidden=true;
+  $('#loadSentinel').hidden=true;
   /* 大位这条链每一环都先问过再出图：公司取自己的标识（厂牌是 `/logo`，事务所是官网
      圆标），人是实体图→代表作头像，一环都取不到就一个 `<img>` 都不出，首字母垫底直接
      露出来。四个标志（`has_logo`／`has_image`／`has_avatar`／`mark_link_id`）都由

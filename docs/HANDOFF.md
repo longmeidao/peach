@@ -133,7 +133,7 @@ React 渲染的规格页、用户截图这类给不出可重抓字节的实测�
 
 ## 运行与部署
 
-CloudDrive 配置与运维步骤见 `docs/OPERATIONS.md`。
+CloudDrive 配置与本地免登录测试步骤见 `docs/OPERATIONS.md`。
 
 - 源码部署由项目 venv 持有服务，刷新入口为 `scripts/restart_windows_tray.py`。独立测试包自带运行环境，数据在用户目录；配置更改由托盘消费标记并重启子服务。
 - 「同步开发进度」（GitHub）和「同步 Ledger」（SMB 共享）是两条独立通道，任一方不可达都不该拖住另一方；服务只观察角色不自动复制。
