@@ -5,7 +5,7 @@
 
 ## 界面、媒体与复核的既定判据
 
-- 后台任务与断线恢复见 `docs/REUSE.md`。
+- 后台任务、进度容器与断线恢复见 `docs/REUSE.md`。
 
 页面密度、控件、提示与响应式的实现门槛见 `.claude/skills/peach-web-ui/SKILL.md`，这里只留代码看不出来的判据。
 

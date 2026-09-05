@@ -50,6 +50,7 @@ export function followJobProgress(options: {
   note: (text: string) => string;
   loading: (text: string) => string;
   progress: (value: number, max: number) => string;
+  container?: (content: string) => string;
   storageKey?: string;
   title?: string;
   watchIdle?: boolean;
@@ -80,8 +81,9 @@ export function followJobProgress(options: {
           ? `${state.older ? '抓取历史' : '检查更新'}：已完成 ${state.checked || 0}/${state.total} 个来源`
           : '正在准备检查任务…'))
           + (current ? ` · ${current.label || current.provider || ''}${attempt}` : '');
-        panel.innerHTML = options.loading(text)
+        const content = options.loading(text)
           + ((state.total || 0) > 0 ? options.progress(state.checked || 0, state.total!) : '');
+        panel.innerHTML = options.container ? options.container(content) : content;
       } else if (tracked && tracked === state.job_id) {
         tracked = undefined;
         settled = true;

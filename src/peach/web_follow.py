@@ -879,16 +879,18 @@ def _run_follow_check(contract, body, job_id=None) -> dict:
     for row in rows:
         if job_id and contract.follow_job.snapshot() is None:
             break
-        current = {"source": row["id"], "label": row["label"],
+        current = {"source": row["id"], "label": _author_display_name(row),
                    "provider": PROVIDER_LABELS.get(row["provider"], row["provider"])}
         def progress(**fields):
             if job_id:
                 contract.follow_job.update(job_id, total=len(rows), checked=len(results),
                     results=results.copy(), current={**current, **fields})
         progress(attempt=1, max_attempts=5, retry_in=0)
-        results.append(_check_payload(run_check(
+        result = _check_payload(run_check(
             row, credentials=credentials, writer=writer,
-            connector_factory=build_connector, older=older, progress=progress)))
+            connector_factory=build_connector, older=older, progress=progress))
+        result["author"] = _author_display_name(row)
+        results.append(result)
         progress()
     return {"ok": True, "checked": len(results), "results": results}
 

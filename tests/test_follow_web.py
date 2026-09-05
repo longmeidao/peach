@@ -100,6 +100,13 @@ class FollowContractTests(unittest.TestCase):
         self.assertEqual([row['source'] for row in result['results']], [selected])
         self.assertEqual(factory.call_count, 1)
 
+    def test_failed_numeric_source_has_a_readable_author(self):
+        source = self._seed(ref='patreon/12387984', label='Pantsushi · patreon')
+        with mock.patch.object(web_follow, 'build_connector') as factory:
+            factory.return_value.fetch.side_effect = FollowSourceError('offline')
+            result = self._post('/api/follow/check', {'sources': [source]})
+        self.assertEqual(result['results'][0]['author'], 'Pantsushi')
+
     def test_background_prune_keeps_the_confirmation_and_expiry_gate(self):
         refused = self._post('/api/links/prune', {'background': True})
         self.assertFalse(refused['ok'])
@@ -1481,6 +1488,19 @@ class FollowWebSourceTests(unittest.TestCase):
     def assertPageContains(self, needle, message=""):
         if needle not in self.page:
             self.fail(f"Web 表面缺少：{needle!r}" + (f"（{message}）" if message else ""))
+
+    def test_follow_task_controls_keep_content_and_name_the_author(self):
+        self.assertPageContains('data-follow-sources=')
+        self.assertPageContains('group.filter(s=>s.enabled).map(s=>s.id)')
+        self.assertPageContains('aria-label="检查 ${esc(name)} 的全部来源"')
+        self.assertPageContains('row.author||row.label||row.ref')
+        self.assertPageLacks('个来源上次检查失败，原因见对应那一行。')
+        refresh = self.page.split('async function refreshFollowSurface(surface){', 1)[1].split('async function wireOperationProgress', 1)[0]
+        self.assertNotIn('showManagementBody', refresh)
+        self.assertNotIn('scrollTo', refresh)
+        click = self.page.split("root.querySelectorAll('[data-follow-check]').forEach", 1)[1].split('const saveAuthorAlias', 1)[0]
+        self.assertNotIn('openFollowManage', click)
+        self.assertIn('wireFollowProgress()', click)
 
     def assertPageLacks(self, needle, message=""):
         if needle in self.page:
