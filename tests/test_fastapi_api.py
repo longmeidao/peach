@@ -1001,6 +1001,10 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
                 "</script>").encode("utf-8")
 
         def upstream(request):
+            # 正片的字节数只有上游知道，端点解析完地址后顺手 HEAD 一次拿回来。
+            if request.method == "HEAD":
+                return httpx.Response(200, request=request, headers={
+                    "content-type": "video/mp4", "content-length": "11458972"})
             return httpx.Response(200, stream=httpx.ByteStream(page), request=request,
                                   headers={"content-type": "text/html"})
 
@@ -1020,6 +1024,52 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
             {"height": 480, "label": "480p"},
             {"height": 360, "label": "360p"},
         ])
+        self.assertEqual(response.json()["size"], 11458972)
+
+    async def test_follow_qualities_reports_no_size_when_upstream_refuses_the_head(self):
+        """字节数取不到不是错误：清晰度照给，`size` 给 None。
+
+        浏览器量不到渐进下载的字节速率，播放器要靠文件大小和时长换出平均码率才能报
+        MB/s。取不到时它退回按秒的读数——所以这里绝不能让一次 HEAD 失败把整张档位表
+        也带走，也不能编一个字节数出来。
+        """
+        connection = sqlite3.connect(self.db)
+        connection.executescript((ROOT / "migrations" / "0018_online_follow.sql").read_text(
+            encoding="utf-8"))
+        connection.execute(
+            "INSERT INTO follow_source(id,provider,ref,label,url,semantics,created_at,updated_at)"
+            " VALUES(2,'rule34video','r34/1','Creator','https://rule34video.com/u','work','x','x')"
+        )
+        connection.execute(
+            "INSERT INTO follow_item(id,source_id,external_id,title,url,media_url,release_key,"
+            "first_seen_at,last_seen_at) VALUES(9,2,'9','Remote',"
+            "'https://rule34video.com/video/9/x/','https://rule34video.com/get_file/9.mp4/',"
+            "'remote','x','x')"
+        )
+        connection.commit()
+        connection.close()
+
+        page = ("<script>"
+                "video_url: 'https://rule34video.com/get_file/9_720p.mp4/?v=t0';"
+                "</script>").encode("utf-8")
+
+        def upstream(request):
+            if request.method == "HEAD":
+                return httpx.Response(403, request=request)
+            return httpx.Response(200, stream=httpx.ByteStream(page), request=request,
+                                  headers={"content-type": "text/html"})
+
+        original = self.app.state.http_transport.client
+        fake = httpx.Client(transport=httpx.MockTransport(upstream), follow_redirects=True)
+        self.app.state.http_transport.client = fake
+        try:
+            response = await self.client.get("/follow-qualities?id=9&t=secret")
+        finally:
+            self.app.state.http_transport.client = original
+            fake.close()
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["qualities"], [{"height": 720, "label": "720p"}])
+        self.assertIsNone(response.json()["size"])
 
     async def test_follow_stream_proxies_range_without_exposing_the_upstream_url(self):
         connection = sqlite3.connect(self.db)

@@ -899,20 +899,20 @@ function bufferedFrontier(video){
    resource timing 里就一直不出现新条目。实测本地 MP4 播到 37 秒时仍只有挂载那两条、字节数
    停在 862 KB，面板于是显示「— · 0 请求」。HLS 是另一回事，每个分片都是一次独立完成的请求，
    VHS 自己也报 bandwidth，resource timing 那套口径只对它成立。
-   渐进源改看缓冲前沿的推进：每秒新推进的秒数 × 平均码率就是字节速率；码率未知（在线关注
-   条目没有 size）就只报推进倍速。缓冲吃满后浏览器停拉，增量归零，此时保留上一次读数而不是
-   跳回 0——那不是速度掉了，是没有在下载。 */
+   渐进源改看缓冲前沿的推进：每秒新推进的秒数 × 平均码率就是字节速率。码率要有文件大小才算
+   得出来，关注条目的大小由 `/follow-qualities` 回源 HEAD 带回；连上游都不给 content-length 时
+   没有任何办法把秒换成字节，角标改报还能往前放多久。缓冲吃满后浏览器停拉，增量归零，此时
+   保留上一次读数而不是跳回 0——那不是速度掉了，是没有在下载。 */
 const BUFFER_METER_WINDOW_MS=3000;
 function averageBitrate(size,duration){
   const bytes=Number(size)||0,seconds=realDuration(duration)||0;
   return bytes>0&&seconds>0?bytes*8/seconds:0;
 }
 function createBufferMeter(bitrate){
-  const samples=[];let last=null,advanced=0,bits=0,ratio=0;
+  const samples=[];let last=null,advanced=0,bits=0;
   return {
     bitrate:Number(bitrate)||0,
     get bits(){return bits},
-    get ratio(){return ratio},
     get seconds(){return advanced},
     bytes(){return this.bitrate>0?advanced*this.bitrate/8:0},
     sample(video){
@@ -931,7 +931,7 @@ function createBufferMeter(bitrate){
       samples.push({at,advanced});
       while(samples.length>2&&at-samples[0].at>BUFFER_METER_WINDOW_MS)samples.shift();
       const span=(at-samples[0].at)/1000,gained=advanced-samples[0].advanced;
-      if(span>=.5&&gained>0){ratio=gained/span;bits=this.bitrate>0?gained*this.bitrate/span:0}
+      if(span>=.5&&gained>0&&this.bitrate>0)bits=gained*this.bitrate/span;
       return bits;
     }
   };
@@ -986,10 +986,11 @@ function fmtSpeed(bits){
   const bytes=bits/8;
   return bytes>=1048576?`${(bytes/1048576).toFixed(1)} MB/s`:`${Math.max(1,Math.round(bytes/1024))} KB/s`;
 }
-/* 码率未知时字节速率无从换算，退回缓冲推进倍速：3 秒里多缓冲了 36 秒就是 12× 实时。 */
-function fmtLoadRate(bits,ratio){
+/* 码率未知时字节速率无从换算，退回已经缓冲的秒数：那是这种情况下唯一还能直接用的读数
+   ——现在断网还能往前放多久。 */
+function fmtLoadRate(bits,ahead){
   if(bits>0)return fmtSpeed(bits);
-  return ratio>0?`${ratio.toFixed(1)}× 实时`:fmtSpeed(0);
+  return ahead>0?`已缓冲 ${Math.round(ahead)} 秒`:fmtSpeed(0);
 }
 function applyAmbientMode(enabled,save=true){
   appSettings.ambientMode=!!enabled;if(save)saveSettings();
@@ -1033,23 +1034,34 @@ function applyTheaterMode(enabled,save=true){
   syncPlayerTheaterButton(stage?.querySelector('[data-player-theater]'));
   if(detailPlayer&&!detailPlayer.isDisposed())requestAnimationFrame(()=>detailPlayer.trigger('resize'));
 }
+/* 取样有两条入口：播放中跟着帧回调走，`start` 则立刻取一帧。暂停的画面同样是一帧可画的图，
+   只跟着帧回调走的话，暂停时关掉氛围模式就再也开不回来——关掉抹掉了光，而帧回调只在有新
+   画面时才来。每条采样链带一个 run 号：暂停或页面隐藏时排队的那个回调可能永远不来，用一个
+   「已排队」布尔判重会被它永久锁死；换成 run 号后旧回调醒来直接退出，链上永远只有一条在跑。 */
 function mountPlayerAmbient(video){
   const stage=$('#stage'),canvas=stage?.querySelector('.ambientcanvas');if(!canvas)return()=>{};
-  const ctx=canvas.getContext('2d',{alpha:false});let stopped=false,last=0,scheduled=false;
+  const ctx=canvas.getContext('2d',{alpha:false});let stopped=false,last=0,run=0;
   const clear=()=>{ctx.clearRect(0,0,canvas.width,canvas.height);stage.style.removeProperty('--video-glow')};
-  const schedule=()=>{if(stopped||scheduled||video.paused||!appSettings.ambientMode)return;scheduled=true;
-    if(video.requestVideoFrameCallback)video.requestVideoFrameCallback(t=>paint(t));else requestAnimationFrame(paint)};
-  const paint=now=>{scheduled=false;if(stopped||!appSettings.ambientMode){if(!stopped)clear();return}
-    if(!document.hidden&&!video.paused&&now-last>480){last=now;
-      try{ctx.drawImage(video,0,0,canvas.width,canvas.height);
-        const px=ctx.getImageData(0,0,canvas.width,canvas.height).data;let r=0,g=0,b=0,n=0;
-        for(let i=0;i<px.length;i+=16){r+=px[i];g+=px[i+1];b+=px[i+2];n++}
-        if(n)stage.style.setProperty('--video-glow',`rgb(${Math.round(r/n)} ${Math.round(g/n)} ${Math.round(b/n)})`)
-      }catch(_e){}}
-    schedule()};
-  const onChange=event=>{stage.classList.toggle('ambient-on',event.detail.enabled);if(event.detail.enabled)schedule();else clear()};
-  document.addEventListener('peachambientchange',onChange);video.addEventListener('play',schedule);schedule();
-  return()=>{stopped=true;document.removeEventListener('peachambientchange',onChange);video.removeEventListener('play',schedule);clear()};
+  const sample=()=>{if(video.readyState<2)return;
+    try{ctx.drawImage(video,0,0,canvas.width,canvas.height);
+      const px=ctx.getImageData(0,0,canvas.width,canvas.height).data;let r=0,g=0,b=0,n=0;
+      for(let i=0;i<px.length;i+=16){r+=px[i];g+=px[i+1];b+=px[i+2];n++}
+      if(n)stage.style.setProperty('--video-glow',`rgb(${Math.round(r/n)} ${Math.round(g/n)} ${Math.round(b/n)})`)
+    }catch(_e){}};
+  const queue=id=>{if(video.requestVideoFrameCallback)video.requestVideoFrameCallback(now=>paint(id,now));
+    else requestAnimationFrame(now=>paint(id,now))};
+  const paint=(id,now)=>{if(stopped||id!==run)return;
+    if(!appSettings.ambientMode){clear();return}
+    if(video.paused)return;
+    if(!document.hidden&&now-last>480){last=now;sample()}
+    queue(id)};
+  const start=()=>{if(stopped||!appSettings.ambientMode)return;sample();if(!video.paused)queue(++run)};
+  const onChange=event=>{stage.classList.toggle('ambient-on',event.detail.enabled);
+    if(event.detail.enabled)start();else{run++;clear()}};
+  document.addEventListener('peachambientchange',onChange);
+  video.addEventListener('play',start);video.addEventListener('loadeddata',start);start();
+  return()=>{stopped=true;run++;document.removeEventListener('peachambientchange',onChange);
+    video.removeEventListener('play',start);video.removeEventListener('loadeddata',start);clear()};
 }
 /* `sourceQualities` 是来源自己给的清晰度表（[{height,label}]，从高到低）。
    rule34video 把每档写成独立字段，videojs 的 qualityLevels 看不到它们——那套只认
@@ -1150,9 +1162,9 @@ function mountPlayerQualityControl(player,video,fallbackHeight=0,initialSourceQu
     const clampSpeed=value=>Math.min(max,Math.max(min,Number(value.toFixed(2))));
     const panel=renderPanel(`<div class="vjs-peach-panel-header"><button type="button" class="vjs-peach-menu-back" data-player-menu-back aria-label="返回上一个菜单">${icon('player-menu-back')}</button><strong>播放速度</strong></div>
       <div class="vjs-peach-speed-panel"><div class="vjs-peach-speed-display"><output data-player-speed-display></output></div>
-      <div class="vjs-peach-speed-slider"><button type="button" class="vjs-peach-speed-button" data-player-speed-step="-1" aria-label="播放速度减 0.05">−</button>
+      <div class="vjs-peach-speed-slider"><button type="button" class="vjs-peach-speed-button" data-player-speed-step="-1" aria-label="播放速度减 0.05">${icon('minus')}</button>
       <input type="range" class="vjs-peach-speed-range" data-player-speed-range min="${min}" max="${max}" step="${SPEED_STEP}" aria-label="播放速度">
-      <button type="button" class="vjs-peach-speed-button" data-player-speed-step="1" aria-label="播放速度加 0.05">+</button></div>
+      <button type="button" class="vjs-peach-speed-button" data-player-speed-step="1" aria-label="播放速度加 0.05">${icon('plus')}</button></div>
       <div class="vjs-peach-speed-chips">${SPEED_PRESETS.map(speed=>
         `<span class="vjs-peach-speed-preset"><button type="button" class="vjs-peach-speed-button" data-player-speed-option="${speed}" aria-pressed="false">${speedLabel(speed)}</button>${speed===1?'<span class="vjs-peach-speed-preset-label">正常</span>':''}</span>`).join('')}</div></div>`,direction);
     const display=panel.querySelector('[data-player-speed-display]'),range=panel.querySelector('[data-player-speed-range]');
@@ -1267,7 +1279,11 @@ function mountPlayerChromeLayout(player){
   /* 中心提示照 YouTube delhi-modern（player 9470c977 的 www-player.css 与 base.js）：一块
      78px 的毛玻璃圆闪一下当前动作的图标，1s 走完 0→1.33→1 的缩放淡出。捕获阶段读的是
      切换之前的状态，闪出来的正好是这一次做的事：暂停中点播放键闪播放。键盘快捷键走的
-     也是同一个按钮的点击路径，所以只挂控制条这一处。 */
+     也是同一个按钮的点击路径，所以键盘不用另挂一处。
+     画面中心只允许有这一块提示圆：整个播放器里凡是能切换播放的入口——控制条的播放键、
+     静音键、点画面本身——都汇到这个 flashBezel 上。同一块画面上再挂第二个 78px 圆，
+     两边各按自己的时机取状态，点一下就会一个闪播放一个闪暂停，叠在一起看不清哪个才是
+     刚做的事。 */
   const bezel=document.createElement('div');
   bezel.className='vjs-peach-bezel';bezel.setAttribute('role','status');bezel.hidden=true;
   bezel.innerHTML=`<span class="vjs-peach-bezel-icon">${icon('player-play')}</span>`;
@@ -1280,13 +1296,13 @@ function mountPlayerChromeLayout(player){
     bezelTimer=setTimeout(()=>{bezel.hidden=true;bezel.classList.remove('vjs-peach-bezel-run')},1000);
   };
   player.el().insertBefore(bezel,controlBar);
-  controlBar.addEventListener('click',event=>{
-    if(event.target.closest('.vjs-play-control')){
-      const paused=player.paused()||player.ended();
-      flashBezel(paused?'player-play':'player-pause',paused?'播放':'暂停');
-    }else if(event.target.closest('.vjs-mute-control')){
+  player.el().addEventListener('click',event=>{
+    if(event.target.closest('.vjs-mute-control')){
       const silent=player.muted()||player.volume()===0;
       flashBezel(silent?'player-volume':'player-volume-muted',silent?'取消静音':'静音');
+    }else if(event.target.closest('.vjs-play-control,.vjs-tech,.vjs-poster')){
+      const paused=player.paused()||player.ended();
+      flashBezel(paused?'player-play':'player-pause',paused?'播放':'暂停');
     }
   },true);
   player.on('dispose',()=>{if(bezelTimer)clearTimeout(bezelTimer)});
@@ -1395,25 +1411,12 @@ function mountPlayerSeekPreview(player,it,options={}){
   progress.addEventListener('pointermove',move);progress.addEventListener('pointerleave',hide);
   player.on('dispose',()=>{progress.removeEventListener('pointermove',move);progress.removeEventListener('pointerleave',hide)});
 }
-function mountPlayerCenterControls(player){
-  if(player.el().querySelector('[data-player-center-controls]'))return;
-  const root=document.createElement('div');
-  root.className='vjs-peach-center-controls';root.dataset.playerCenterControls='';
-  root.setAttribute('aria-hidden','true');
-  root.innerHTML=`<span class="vjs-peach-center-bezel"><svg class="vjs-peach-center-play" aria-hidden="true"><use href="#i-player-bezel-play"></use></svg><svg class="vjs-peach-center-pause" aria-hidden="true"><use href="#i-player-bezel-pause"></use></svg></span>`;
-  const playerRoot=player.el();playerRoot.append(root);
-  const spinner=playerRoot.querySelector('.vjs-loading-spinner');
-  if(spinner)spinner.innerHTML='<span class="vjs-peach-spinner-container"><span class="vjs-peach-spinner-rotator"><span class="vjs-peach-spinner-left"><span class="vjs-peach-spinner-circle"></span></span><span class="vjs-peach-spinner-right"><span class="vjs-peach-spinner-circle"></span></span></span></span>';
-  let gesture=false,gestureTimer=0;
-  const sync=()=>{const playing=!player.paused()&&!player.ended();root.dataset.state=playing?'pause':'play'};
-  const feedback=()=>{root.classList.remove('is-feedback');void root.offsetWidth;root.classList.add('is-feedback')};
-  const arm=()=>{gesture=true;clearTimeout(gestureTimer);gestureTimer=setTimeout(()=>{gesture=false},600)};
-  const onKey=event=>{if(event.key===' '||event.key.toLowerCase()==='k')arm()};
-  const onState=()=>{sync();if(gesture){gesture=false;clearTimeout(gestureTimer);feedback()}};
-  const hideFeedback=()=>root.classList.remove('is-feedback');
-  playerRoot.addEventListener('pointerdown',arm,true);playerRoot.addEventListener('keydown',onKey,true);
-  root.addEventListener('animationend',hideFeedback);
-  player.on(['play','pause','ended'],onState);player.on(['waiting','seeking'],hideFeedback);player.on('dispose',()=>{clearTimeout(gestureTimer);playerRoot.removeEventListener('pointerdown',arm,true);playerRoot.removeEventListener('keydown',onKey,true)});sync();
+/* Video.js 自带的转圈是 `:before`／`:after` 画的两条弧，换不掉曲线；YouTube e937390a
+   的 `FsY` 是四段嵌套元素配四段动画。转圈的 DOM 只能整块替换，样式表接不上手。 */
+function mountPlayerSpinner(player){
+  const spinner=player.el().querySelector('.vjs-loading-spinner');
+  if(!spinner||spinner.querySelector('.vjs-peach-spinner-container'))return;
+  spinner.innerHTML='<span class="vjs-peach-spinner-container"><span class="vjs-peach-spinner-rotator"><span class="vjs-peach-spinner-left"><span class="vjs-peach-spinner-circle"></span></span><span class="vjs-peach-spinner-right"><span class="vjs-peach-spinner-circle"></span></span></span></span>';
 }
 /* 播放器按需加载，和灯箱的 Swiper 同一个理由：video.js 676KB，只有真的开始看片才
    用得上，进首屏就是每次开页都白下一遍。灯箱那边还要等一张样式表，所以它保留自己的
@@ -1454,7 +1457,10 @@ async function mountDetailPlayer(it,video,autoplay,options={}){
   // 非正时长一律当未知：强行 player.duration(-1) 会被 Video.js 转成 Infinity 并标成直播。
   const expected=realDuration(it.duration);
   const statsHistory={speed:[],activity:[],buffer:[]};
-  const meter=createBufferMeter(averageBitrate(options.size??it.size,it.duration));
+  /* 关注条目的字节数要回源 HEAD 才知道，跟清晰度表同一趟回来，比挂载晚。码率是速度读数的
+     换算系数，所以留一个可以后填的口子，别把它固定在挂载那一刻。 */
+  let mediaSize=Number(options.size??it.size)||0;
+  const meter=createBufferMeter(averageBitrate(mediaSize,it.duration));
   let statsLoaded=0;
   let correcting=false;
   const enforceDuration=()=>{
@@ -1486,13 +1492,12 @@ async function mountDetailPlayer(it,video,autoplay,options={}){
      const named=String(it.name||'');
      const container=(named.includes('.')?named.split('.').pop()
        :segmented?'':String(detailPlayer.currentSource()?.type||'').split('/').pop()).toUpperCase()||'—';
-     const speedText=speed?`${(speed/1e6).toFixed(1)} Mbps`
-       :(!segmented&&meter.ratio>0?`${meter.ratio.toFixed(1)}× 实时`:'—');
+     const speedText=speed?`${(speed/1e6).toFixed(1)} Mbps`:'—';
      const byteScale=segmented||meter.bitrate>0;
      const loadedRow=segmented
        ?['网络活动',`${bytes?fmtSize(bytes):'—'} · ${resources.length} 请求`,
          `最近一秒网络活动 ${activity?fmtSize(activity):'0 B'}`]
-       :['已下载',byteScale?`${fmtSize(loaded)}${Number(it.size)>0?` / ${fmtSize(Number(it.size))}`:''}`
+       :['已下载',byteScale?`${fmtSize(loaded)}${mediaSize>0?` / ${fmtSize(mediaSize)}`:''}`
            :`${loaded.toFixed(0)} 秒`,
          byteScale?`最近一秒下载 ${activity?fmtSize(activity):'0 B'}`
            :`最近一秒下载 ${activity.toFixed(1)} 秒`];
@@ -1520,7 +1525,7 @@ async function mountDetailPlayer(it,video,autoplay,options={}){
     const segmented=String(player.currentSource()?.type||'').includes('mpegurl');
     if(!segmented)meter.sample(video);
     const bits=playerSpeedBits(player,it.id,detailStreamSession,segmented?null:meter);
-    const rate=segmented?fmtSpeed(bits):fmtLoadRate(bits,meter.ratio);
+    const rate=segmented?fmtSpeed(bits):fmtLoadRate(bits,bufferedAhead(video));
     netBadge.innerHTML=`${icon('gauge')}<span class="sr-only">加载速度</span><span>${esc(rate)}</span>`};
   const showNet=()=>{if(!netBadge)return;netBadge.hidden=false;updateNet();
     if(detailNetTimer)clearInterval(detailNetTimer);detailNetTimer=setInterval(updateNet,500)};
@@ -1545,11 +1550,14 @@ async function mountDetailPlayer(it,video,autoplay,options={}){
   detailPlayer.ready(()=>{
     enforceDuration();
     const updateQualities=mountPlayerQualityControl(detailPlayer,video,it.height,options.qualities);
-    options.qualitiesPromise?.then(next=>{
-      if(detailPlayer===player&&!player.isDisposed())updateQualities?.(next)
+    options.mediaPromise?.then(next=>{
+      if(detailPlayer!==player||player.isDisposed())return;
+      updateQualities?.(next?.qualities?.length?next.qualities:null);
+      const size=Number(next?.size)||0;
+      if(size>0&&!mediaSize){mediaSize=size;meter.bitrate=averageBitrate(size,it.duration)}
     }).catch(()=>{});
     mountPlayerSeekPreview(detailPlayer,it,{thumbnail:!options.source});
-    mountPlayerCenterControls(detailPlayer);
+    mountPlayerSpinner(detailPlayer);
     if(statsButton)statsButton.hidden=false
   });
   if(statsButton&&statsPanel){
@@ -4207,15 +4215,14 @@ async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=fals
   }
   const followVideo=$('#stage').querySelector('.followdetailmedia>video');
   if(followVideo){
-    /* 清晰度解析与默认片源并行。它需要回源抓详情，不能挡住播放器挂载；否则来源慢
-       一点，详情里就会先留下一个没有 src 的空视频框。 */
-    const qualitiesPromise=api(`/follow-qualities?id=${encodeURIComponent(item.id)}`)
-      .then(answer=>answer?.qualities?.length?answer.qualities:null).catch(()=>null);
+    /* 清晰度与字节数的解析跟默认片源并行。它需要回源抓详情、再 HEAD 一次正片，不能挡住
+       播放器挂载；否则来源慢一点，详情里就会先留下一个没有 src 的空视频框。 */
+    const mediaPromise=api(`/follow-qualities?id=${encodeURIComponent(item.id)}`).catch(()=>null);
     const followPlayer=await mountDetailPlayer(item,followVideo,false,{
       source:{src,type:selectedMedia?.media_type||item.media_type||'video/mp4'},
       checkSourceStatus:false,
       size:selectedMedia?.size,
-      qualitiesPromise
+      mediaPromise
     });
     const stopFollowAmbient=mountPlayerAmbient(followVideo);
     followPlayer?.one?.('dispose',stopFollowAmbient);

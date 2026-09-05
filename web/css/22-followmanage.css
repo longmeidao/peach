@@ -175,7 +175,10 @@
    放前面的话选择器里的同名片段会被先匹配到，取回来的是这里的规则。 */
 .fauthor{box-sizing:border-box;height:280px;padding:8px 12px;border:1px solid var(--border-10);
   border-radius:var(--control-radius);background:var(--surface);display:grid;grid-template-rows:auto minmax(0,1fr)}
-.followtask{border:1px solid var(--border-10);border-radius:var(--surface-radius);background:var(--surface);margin-bottom:16px}
+/* 进度面板与它上下的分区是同一档容器：发丝边 --field-ring 加 --ground 的面。
+   `--border-10` 配 `--surface` 会让它在同一列里比 `.fsec` 亮一档、边又淡一档，
+   读起来像另一种东西浮在页面上。 */
+.followtask{border:1px solid var(--field-ring);border-radius:var(--surface-radius);background:var(--ground);margin-bottom:16px}
 .followtask>.geist-fieldset-content{padding:20px;min-width:0;overflow-wrap:anywhere}
 .followmanage .followtask{margin-bottom:0}
 .fcheckfail strong{font-weight:600}

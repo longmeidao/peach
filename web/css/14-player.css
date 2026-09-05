@@ -8,10 +8,11 @@
 /* 计费来源点击前只显示拉流入口。显式 display:block 会覆盖浏览器的 hidden 默认样式，
    让尚未启动的播放器和入口各占一半，所以这里必须让隐藏视频完全退出布局。 */
 .vwrap>video[hidden]{display:none}
-/* 窄屏下 16:9 只剩 200px 出头，设置面板和统计面板都比这高，必然被裁。给播放器一个
-   最低高度，画面按 object-fit:contain 上下补黑边，浮层就有地方站。占位门同用一个值，
-   否则点开的一瞬间整页会往下跳一截。 */
-.vwrap>.video-js{width:100%;height:auto;min-height:320px;max-height:76vh;aspect-ratio:16/9;background:#000}
+/* 高度只由 16:9 和宽度决定，不设最低高度。给一个像素地板的话，窄屏下画面按
+   object-fit:contain 缩在中间，上下各补一条黑边——414px 宽的视口上那是 112px 的空白，
+   比它保护的东西更显眼。设置面板与统计面板本来就是 max-height 加内部滚动，播放器矮下来
+   它们跟着矮，不会被裁。占位门同用一套判据，否则点开的一瞬间整页会往下跳一截。 */
+.vwrap>.video-js{width:100%;height:auto;max-height:76vh;aspect-ratio:16/9;background:#000}
 .vwrap .video-js .vjs-tech{object-fit:contain}
 .vwrap .video-js .vjs-big-play-button{left:50%;top:50%;width:56px;height:56px;margin:0;
   transform:translate(-50%,-50%);border:0;border-radius:50%;
@@ -20,20 +21,8 @@
 .vwrap .video-js .vjs-big-play-button .vjs-icon-placeholder:before{content:"";left:50%;top:50%;width:0;height:0;
   border-top:.72em solid transparent;border-bottom:.72em solid transparent;border-left:1.05em solid #fff;
   transform:translate(-38%,-50%)}
-.vwrap .video-js:has(.vjs-peach-center-controls) .vjs-big-play-button{display:none}
-.vjs-peach-center-controls{position:absolute;z-index:19;left:50%;top:50%;width:78px;height:78px;transform:translate(-50%,-50%);
-  visibility:hidden;pointer-events:none}
-.video-js.vjs-error .vjs-peach-center-controls{display:none}
-.vjs-peach-center-bezel{width:78px;height:78px;border-radius:50%;display:grid;place-items:center;background:rgba(0,0,0,.6);color:#fff;
-  backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px)}
-.vjs-peach-center-play,.vjs-peach-center-pause{width:54px;height:54px;display:block;fill:currentColor;filter:drop-shadow(0 0 1px rgba(0,0,0,.8))}
-.vjs-peach-center-pause{display:none}
-.vjs-peach-center-controls[data-state="pause"] .vjs-peach-center-play{display:none}
-.vjs-peach-center-controls[data-state="pause"] .vjs-peach-center-pause{display:block}
-.vjs-peach-center-controls.is-feedback{visibility:visible;animation:peach-player-bezel-fadeout 1s cubic-bezier(.05,0,0,1) both}
-.video-js.vjs-waiting .vjs-peach-center-controls,.video-js.vjs-seeking .vjs-peach-center-controls{visibility:hidden!important}
-@keyframes peach-player-bezel-fadeout{0%{opacity:0;transform:translate(-50%,-50%) scale(1)}25%,75%{opacity:1;transform:translate(-50%,-50%) scale(1.33)}100%{opacity:0;transform:translate(-50%,-50%) scale(1)}}
-@media (prefers-reduced-motion:reduce){.vjs-peach-center-controls.is-feedback{animation:peach-player-bezel-fadeout .01s linear both}}
+/* 中心提示圆自己就是画面中央的播放态入口，原生大播放键留着只会跟它抢同一块地方。 */
+.vwrap .video-js:has(.vjs-peach-bezel) .vjs-big-play-button{display:none}
 /* YouTube e937390a `FsY` spinner DOM 与当前四段动画；复用 Video.js 的 waiting/seeking 状态。 */
 .vwrap .video-js .vjs-loading-spinner{z-index:18;left:50%;top:50%;width:64px;height:64px;margin:0;padding:0;border:0;border-radius:0;background:transparent;opacity:1;transform:translate(-50%,-50%)}
 .vwrap .video-js .vjs-loading-spinner:before,.vwrap .video-js .vjs-loading-spinner:after{content:none}
@@ -107,6 +96,7 @@
    一排三个黑底就它一个发灰。 */
 .vwrap .video-js .vjs-control-bar>.vjs-volume-panel{box-sizing:border-box;z-index:3;position:relative;align-self:flex-end;flex:0 0 40px;width:40px;height:40px!important;
   margin:0 0 8px 12px;padding:0;border:0;border-radius:var(--pill-radius);background:rgba(0,0,0,.6);box-shadow:none;
+  backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
   display:grid;grid-template-columns:40px 0;column-gap:0;align-items:center;isolation:isolate;overflow:visible;transition:width .2s cubic-bezier(.05,0,0,1),flex-basis .2s cubic-bezier(.05,0,0,1),padding-right .2s cubic-bezier(.05,0,0,1)}
 .vwrap .video-js .vjs-control-bar>.vjs-volume-panel:after{content:"";position:absolute;z-index:0;inset:4px;border-radius:var(--pill-radius);background:transparent;pointer-events:none;transition:background .2s cubic-bezier(.05,0,0,1)}
 .vwrap .video-js .vjs-control-bar>.vjs-volume-panel:hover:after,
@@ -131,7 +121,11 @@
 .vwrap .video-js .vjs-volume-panel .vjs-volume-bar.vjs-slider-horizontal{box-sizing:border-box;position:absolute!important;left:0!important;right:auto!important;top:50%!important;width:52px!important;height:2px!important;margin:0!important;overflow:visible!important;background:rgba(255,255,255,.3);transform:translateY(-50%)}
 .vwrap .video-js .vjs-volume-panel .vjs-volume-level{height:2px;background:#fff}
 .vwrap .video-js .vjs-volume-panel .vjs-volume-level:before{top:50%;right:-6px;width:12px;height:12px;margin:0;font-size:0;border-radius:50%;background:#fff;transform:translateY(-50%)}
-.vwrap .video-js .vjs-volume-panel .vjs-volume-tooltip{z-index:5!important;left:50%;right:auto;top:auto;bottom:calc(100% + 32px);
+/* `right:auto` 必须带 !important：Video.js 的 VolumeLevelTooltip 每 30ms 往元素上写一句
+   行内 `style.right=-Npx`，行内声明压过样式表里同名的普通声明。`left:50%` 和那个 right
+   同时成立时，绝对定位的宽度就由两边反推，不再收缩到文字宽——底色会摊成一块比数字大得多
+   的方块，而且它下一次测量自己时又按新宽度算 N，尺寸每帧都在飘。 */
+.vwrap .video-js .vjs-volume-panel .vjs-volume-tooltip{z-index:5!important;left:50%;right:auto!important;top:auto;bottom:calc(100% + 32px);
   float:none;transform:translateX(-50%);padding:5px 9px;border-radius:var(--surface-radius);background:rgba(0,0,0,.6);
   backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);color:#fff;font-family:inherit;font-size:var(--fs-sm);font-weight:500;
   line-height:15px;text-shadow:0 0 2px #000;overflow:visible;white-space:nowrap}
@@ -247,7 +241,12 @@
 .vjs-peach-settings-menu .vjs-peach-speed-button:before{content:none}
 .vjs-peach-settings-menu .vjs-peach-speed-button:hover{background:rgba(255,255,255,.2)}
 .vjs-peach-settings-menu .vjs-peach-speed-button:active{background:rgba(255,255,255,.3)}
-.vjs-peach-speed-slider .vjs-peach-speed-button{flex:none;width:32px;font-size:var(--fs-2xl)}
+/* 加减两键画的是图标不是字形：`−` 与 `+` 的墨迹绕数学轴排布，行盒居中之后实测还偏
+   下 3.0px、偏左 1.8px（32px 圆里 24px Roboto，行高 16px），而减号的墨迹本身只有 2px 高，
+   这点位移一眼就看得见。文字没有按墨迹居中的写法，换成 24px 图标就是几何居中。 */
+.vjs-peach-speed-slider .vjs-peach-speed-button{flex:none;width:32px}
+.vjs-peach-speed-slider .vjs-peach-speed-button>svg{width:24px;height:24px;display:block;
+  stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round}
 .vjs-peach-speed-chips .vjs-peach-speed-button{width:100%;gap:4px;font-size:var(--fs-xs)}
 .vjs-peach-speed-range{--peach-speed-percent:0%;-webkit-appearance:none;appearance:none;flex:1 1 auto;
   width:100%;min-width:0;height:24px;margin:0;background:transparent;cursor:pointer}
@@ -276,6 +275,9 @@
 @keyframes peach-bezel-fadeout{0%{opacity:0}25%,75%{opacity:1;transform:scale(1.33)}to{opacity:0;transform:scale(1)}}
 .video-js.vjs-peach-xsmall .vjs-peach-bezel{width:64px;height:64px;margin:-32px 0 0 -32px}
 .video-js.vjs-peach-xsmall .vjs-peach-bezel-icon{width:48px;height:48px}
+/* 转圈和报错卡片都停在同一个圆心上：提示圆还在淡出时它们就位，两块东西会叠着画。 */
+.video-js.vjs-waiting .vjs-peach-bezel,.video-js.vjs-seeking .vjs-peach-bezel,
+.video-js.vjs-error .vjs-peach-bezel{display:none}
 /* 悬停提示取自 YouTube delhi-modern（player 9470c977 的 www-player.css）：毛玻璃 blur(16px)、
    8px 圆角（--surface-radius）、5px 9px 内距、13px/15px 500 字重（--fs-sm）、
    text-shadow 0 0 2px #000；快捷键徽标 1px rgba(255,255,255,.3) 边、4px 圆角（--badge-radius）、
@@ -300,8 +302,6 @@
   .vwrap .video-js.vjs-layout-small .vjs-time-divider{display:flex}
   .vwrap .video-js .vjs-time-control{font-size:var(--fs-xs)}
   .vjs-peach-seek-preview img{width:160px}
-  .vjs-peach-center-controls,.vjs-peach-center-bezel{width:64px;height:64px}
-  .vjs-peach-center-play,.vjs-peach-center-pause{width:48px;height:48px}
   .vjs-peach-settings-menu{right:-100px;width:min(274px,calc(100vw - 16px));border-radius:var(--floating-radius)}
 }
 /* 窄屏梯度照搬 YouTube delhi-modern：base.js 9470c977 里 `v.width<528` 打开 ytp-xsmall-width-mode，
@@ -381,7 +381,7 @@
    否则「640 KB/s」会在这条 flex 行里断成两行，把 40px 的胶囊顶破。 */
 .playernet svg{width:18px;height:18px;flex:none;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round}
 .playernet[hidden]{display:none}
-.gate{aspect-ratio:16/9;width:100%;min-height:320px;background:var(--sunk);border:1px dashed var(--meter);
+.gate{aspect-ratio:16/9;width:100%;background:var(--sunk);border:1px dashed var(--meter);
   display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;cursor:pointer}
 /* 占位说明的字号原先写在 openItem 的模板里当内联 style，三处各写一遍、
    连 `color:var(--muted)` 也抄了三份。 */
