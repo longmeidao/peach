@@ -27,8 +27,11 @@ body.entity-open .index{overflow-x:visible}
 .igrid[data-layout="big"] .icell .nm{font-size:var(--fs-sm)}
 .index .ihead .iconswitch{flex:none}
 .tagwall{display:flex;flex-wrap:wrap;gap:7px}
-.viewmodes{display:flex;gap:4px;padding:3px;border:1px solid var(--line-soft);border-radius:var(--surface-radius);background:var(--surface)}
-.viewmodes button{border:0;border-radius:var(--control-radius);background:transparent;color:var(--muted);padding:6px 10px;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+/* 页头这几组控件并排站着，得是同一块板：底色和 `--ground` 只差四级灰的话，剩下能看见的
+   只有那圈边框，读起来是凭空多出来的一条线，而邻座 `.iconswitch` 是有填充的一块。
+   高度也钉成和它一样的 36px（28 + 3 padding + 1 border），并排才谈得上底部对齐。 */
+.viewmodes{display:flex;gap:4px;padding:3px;border:1px solid var(--line-soft);border-radius:var(--surface-radius);background:var(--overlay-5)}
+.viewmodes button{border:0;border-radius:var(--control-radius);background:transparent;color:var(--muted);height:28px;padding:0 10px;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
 .viewmodes button svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.8}
 /* 「Aa」是 1.4:1 的字形，宽高都锁 15px 只能按宽缩，画出来比邻座矮一截。 */
 .viewmodes button svg.iconwide{width:auto}

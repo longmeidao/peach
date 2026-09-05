@@ -3932,14 +3932,9 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_the_agency_page_opens_on_its_roster(self):
         """这一页要回答的是「这家签了谁」，所以进页面先摆艺人，视频是另一个视图。"""
-        self.assertCode(
-            "const AGENCY_VIEWS=[['people','艺人','user-round'],['videos','视频','play']];")
-        self.assertPageContains("let agencyRosterView='people';")
+        self.assertPageContains("let agencyRosterView='people',agencyRoster=[];")
         self.assertCode("  agencyRosterView='people';\n  const seq=++entityRequestSeq;")
-        self.assertCode("if(rosterToggle&&agencyRosterView==='people')renderAgencyRoster(roster);")
-        # 两个互斥视图用 Switch，不是自造按钮组。
-        self.assertPageContains("iconSwitchHtml('agency-view','事务所页视图'")
-        self.assertPageContains("wireIconSwitch($('#index'),'data-agency-view'")
+        self.assertCode("if(entityViewNow(kind)==='people')renderAgencyRoster(roster);")
 
     def test_the_agency_roster_reuses_the_people_index_cell_and_layout(self):
         """名册和艺人索引摆的是同一格人，模板与版式设置都只有一份。"""
@@ -3953,16 +3948,19 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertCode("const roster=kind==='agency'?(d.related_performers||[]):[];")
         self.assertCode("const related=roster.length?'':(d.related_performers||[]).map(")
 
-    def test_the_agency_roster_and_the_media_switch_do_not_talk_over_each_other(self):
-        """名册不是一种媒体：正看着艺人时，「视频／照片」问的不是这一页在显示什么。"""
+    def test_the_roster_and_the_media_keys_are_one_button_group(self):
+        """三个键问的是同一件事——这一页现在显示什么，所以在同一组里、同一个尺寸。"""
         self.assertCode(
-            "controls.hidden=!photos||(kind==='agency'&&agencyRosterView==='people');")
-        # 有显式 display 的元素不吃浏览器默认的 [hidden]，隐藏要自己写一条。
-        self.assertPageContains(".mediaviewbuttons[hidden]{display:none}")
+            "${peopleValue?control(peopleValue,peopleLabel,peopleCount,'user-round','people'):''}")
+        self.assertPageContains("peopleValue:roster.length?'people':'',peopleCount:roster.length,")
+        # 当前视图只有一个来源，按下哪个键、下面画什么都读它。
+        self.assertPageContains("const entityViewNow=kind=>kind==='agency'"
+                                "&&agencyRosterView==='people'&&agencyRoster.length")
+        self.assertCode("button.setAttribute('aria-pressed',String(now===media));")
+        # 没有照片的实体不出照片键，不是出一个按下去什么都不显示的键。
+        self.assertPageContains("imageValue:photoCount?'photos':'',imageLabel:'照片',")
         # 标签筛的是作品，点了就回到视频视图，否则开关和内容各说各的。
         self.assertCode("agencyRosterView='videos';")
-        self.assertCode(
-            "const rosterInput=$('#index').querySelector('[data-agency-view][value=\"videos\"]');")
 
     def test_the_profile_rows_that_overflow_get_the_shared_drag_and_wheel(self):
         """同台艺人和标签这两行没有滚动条，不接拖动就是看得见够不着。"""
@@ -4004,6 +4002,16 @@ class WebUiSourceTests(unittest.TestCase):
         """标签页那两组开关和这一组是同一个控件，类名跟着语义走。"""
         self.assertPageLacks("tagmodes")
         self.assertPageContains(".viewmodes{")
+
+    def test_the_index_head_controls_stand_on_the_same_plate(self):
+        """并排的两组控件底色一样、高度一样，否则一组读成凭空多出来的一圈线。"""
+        # `--surface` 和 `--ground` 只差四级灰，铺在页头上只剩边框看得见。
+        self.assertPageContains("border-radius:var(--surface-radius);background:var(--overlay-5)}")
+        # 28 + 3 padding + 1 border = 36，和邻座 `.iconswitch` 同高。
+        self.assertPageContains(".viewmodes button{border:0;border-radius:var(--control-radius);"
+                                "background:transparent;color:var(--muted);height:28px;padding:0 10px;")
+        self.assertPageContains(".iconswitch label{position:relative;display:inline-grid;"
+                                "width:34px;height:28px;")
 
     def test_entity_name_picker_offers_only_this_entity_existing_names(self):
         # 候选取的是身份契约 `aliases`（完整），不是收窄过的展示别名：罗马字也是
@@ -5342,10 +5350,10 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('id="i-pics" viewBox="-1.6 -1.6 19.2 19.2" fill="currentColor" stroke="none"')
         self.assertPageContains('export function mediaViewButtonsHtml({')
         self.assertPageContains('class="mediaviewbutton" type="button" data-media-view="${esc(value)}"')
-        self.assertPageContains("const mediaToggle=photoCount?mediaViewButtonsHtml({active:mediaSelected?'photos':'videos'")
-        self.assertPageContains("imageValue:'photos',imageLabel:'照片',videoCount:d.asset_count,imageCount:photoCount")
-        self.assertPageContains('<section class="entitytagbar" aria-label="媒体与标签"><div class="entitytags">${rosterToggle}${mediaToggle}${tags}</div></section>')
-        self.assertPageContains("controls.hidden=!photos")
+        self.assertCode("const mediaToggle=(photoCount||roster.length)?mediaViewButtonsHtml({\n"
+                        "    active:entityViewNow(kind),")
+        self.assertPageContains("videoCount:d.asset_count,imageCount:photoCount,")
+        self.assertPageContains('<section class="entitytagbar" aria-label="媒体与标签"><div class="entitytags">${mediaToggle}${tags}</div></section>')
         self.assertPageContains("button.dataset.mediaView")
         self.assertPageContains(".mediaviewbuttons .mediaviewbutton{display:grid;place-items:center;flex:0 0 var(--filterItemH);width:var(--filterItemH);height:var(--filterItemH);padding:0;")
         self.assertPageContains(".mediaviewbuttons .mediaviewbutton svg{width:20px;height:20px")
