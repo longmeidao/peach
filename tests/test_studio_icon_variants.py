@@ -1475,6 +1475,26 @@ class SiteOwnAssetTests(unittest.TestCase):
         self.assertEqual((icon["evidence"], icon["mark_size"]),
                          ("官网声明的图标", "114x114"))
 
+    def test_a_wider_candidate_never_takes_the_small_slot(self):
+        """eltra.jp 实测：声明的是 300×300 纯皇冠，header 那张是 800×536 皇冠加字。
+
+        短边 528 比 292 大出 1.8 倍，可小位是 28 px 的方框，1.50 比的那张装进去只剩
+        一行认不出的字母；300 那枚本来就是照着这个尺寸画的。
+        """
+        icon = self.harvest(fetch=self.fetch(**{self.MARK: block_png((800, 536))}),
+                            declared=block_png((300, 300)))[0]
+        self.assertEqual((icon["evidence"], icon["mark_size"]),
+                         ("官网声明的图标", "300x300"))
+
+    def test_the_hero_slot_takes_the_one_the_small_slot_refused(self):
+        """大位要的正是那张被小位嫌宽的完整标识，两位各挑各的。"""
+        rows = self.harvest(fetch=self.fetch(**{self.MARK: block_png((800, 536))}),
+                            declared=block_png((300, 300)))
+        logo = [row for row in rows if row["variant"] == MODULE.LOGO][0]
+        self.assertEqual(logo["verdict"], MODULE.OK)
+        self.assertEqual(logo["url"], self.MARK)
+        self.assertIn("这一趟取到的最大一枚", logo["evidence"])
+
     def test_a_big_enough_declared_icon_stops_the_walk(self):
         """够大就不再敲别人的门。多问一个来源就多一次请求，而结果不会更好。"""
         fetch = self.fetch()
