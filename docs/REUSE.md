@@ -5,6 +5,15 @@
 
 ## 复用决策门槛
 
+- Seesaa 作品表复用 HTTPX 0.28.1（BSD-3-Clause）、Beautiful Soup 4.15.0（MIT）及现有
+  `HostLimiter`、番号规范化、字段候选和快照协议；不新增依赖，沿用 Python 3.12+ 与 Windows/macOS。
+  2026-09-06 检查 Javinizer-Go `d9724f239d7e127afcb747fa8ce4358685912f50`（MIT）及 MetaTube
+  `6a5e6128c725187aeaf921d48ed7d9cd9f30671b`（Apache-2.0）的来源目录，均无 Seesaa 适配器；
+  两者分别于 2026-09-05、2026-07-12 有仓库更新。本站例外由 `metadata_seesaa` 承担 EUC-JP、
+  作品表列映射、精确行身份与未知名单保护；Javinizer 继续负责其支持的来源。
+  真实 Flower 页 HTTPX 取得 200／253975 字节，FKOS-007 解析出 10 位出演者；公开搜索亦可发现
+  对应表格。`scrape_codes --profile seesaa` 是正式消费者，不另建刮削 CLI。详见 [来源采集](SOURCING.md#seesaa-wiki-作品证据)。
+
 测试与集成复用 `test_runner.py`、`agent_worktree.py`；进程互斥采用开发依赖
 `filelock==3.32.4` 的 `FileLock`（[官方用法](https://py-filelock.readthedocs.io/en/stable/tutorials.html)）。
 跨进程占锁与释放由临时 Git 仓库回归验证；代码、环境和范围记录属于 Peach 的集成约束。

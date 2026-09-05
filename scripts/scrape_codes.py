@@ -48,6 +48,7 @@ from peach.metadata_policy import (
 )
 from peach.platform import system_volume
 from peach.review_csv import ENCODING, write_rows
+from peach.metadata_seesaa import SeesaaProvider, RoutedMetadataProvider
 
 
 _logf = None
@@ -290,7 +291,7 @@ def build_parser() -> argparse.ArgumentParser:
     source_group.add_argument(
         "--profile",
         choices=("baseline", "censored", "uncensored", "fc2",
-                 "official-backfill", "backfill"),
+                 "official-backfill", "backfill", "seesaa"),
         help="explicit Peach source preset; default baseline")
     source_group.add_argument("--sources", help="compatible comma-separated Javinizer scraper names")
     parser.add_argument("--health", type=Path, default=None)
@@ -311,6 +312,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--disk-check-secs", type=float, default=20.0)
     parser.add_argument("--refresh", action="store_true", help="ignore reusable raw snapshots")
     parser.add_argument("--include-fc2", action="store_true")
+    parser.add_argument("--wiki-pages-file", type=Path, help="预取 Wiki 作品目录页，每行一个 URL")
+    parser.add_argument("--wiki-max-requests", type=int, default=80,
+                        help="Wiki 本批 HTTP 请求上限；每个请求最多 4 MiB，间隔至少 2 秒")
     return parser
 
 
@@ -444,7 +448,20 @@ def main(argv: list[str] | None = None, *, provider: JavinizerGoProvider | None 
     sources = list(policy.sources)
     health = _health_rows(policy)
     unmapped_genres: dict[tuple[str, str], list] = {}
-    adapter = provider or JavinizerGoProvider.create(args.binary, args.config)
+    wiki = None
+    if provider is not None:
+        adapter = provider
+    elif 'sougouwiki' in sources:
+        pages = ([line.strip() for line in args.wiki_pages_file.read_text(encoding=ENCODING).splitlines()
+                  if line.strip() and not line.lstrip().startswith('#')]
+                 if args.wiki_pages_file else [])
+        wiki = SeesaaProvider(args.raw_dir / 'seesaa-pages', pages=pages,
+                              max_requests=max(0, args.wiki_max_requests), refresh=args.refresh)
+        javinizer = (JavinizerGoProvider.create(args.binary, args.config)
+                     if any(source != 'sougouwiki' for source in sources) else None)
+        adapter = RoutedMetadataProvider(javinizer, wiki)
+    else:
+        adapter = JavinizerGoProvider.create(args.binary, args.config)
 
     connection = open_readonly(args.db)
     codes = [
@@ -539,6 +556,10 @@ def main(argv: list[str] | None = None, *, provider: JavinizerGoProvider | None 
                     source_health["last_error_kind"] = error.kind
                     source_health["last_error_status"] = error.status_code or ""
                     source_health["last_error_message"] = str(error)[:500]
+                    if source == 'sougouwiki' and (error.kind == 'budget' or error.status_code in {403, 429}):
+                        cooldown_until[source] = float('inf')
+                        source_health['blocked'] += 1
+                        log('sougouwiki 本批联网停止；已取得的候选已保留')
                     if error.retryable or error.status_code in {403, 429, 503}:
                         consecutive_failures[source] = consecutive_failures.get(source, 0) + 1
                         if consecutive_failures[source] >= COOLDOWN_AFTER_FAILURES:
@@ -551,7 +572,7 @@ def main(argv: list[str] | None = None, *, provider: JavinizerGoProvider | None 
                         consecutive_failures[source] = 0
                     # 失败那几次也真的发出去了，占的是同一个限流窗口：跳过间隔直接
                     # 问下一个番号，等于把重试挤在一起，来源只会更快把我们关掉。
-                    if args.delay > 0 and used_network:
+                    if args.delay > 0 and used_network and error.kind != 'budget':
                         time.sleep(args.delay + random.uniform(0, min(0.4, args.delay / 3)))
                     continue
                 consecutive_failures[source] = 0
@@ -581,8 +602,9 @@ def main(argv: list[str] | None = None, *, provider: JavinizerGoProvider | None 
                         "content_id": str(payload.get("content_id") or ""),
                         "value": extracted["value"],
                         "display_value": extracted["display_value"],
-                        "warnings": extracted["warnings"],
+                        "warnings": [*extracted["warnings"], *payload.get("source_warnings", [])],
                         "catalog_evidence": catalog_evidence,
+                        "wiki_evidence": payload.get("wiki_evidence", {}),
                         "raw_snapshot": str(snapshot),
                     }
                     by_field.setdefault(field, []).append(candidate)
@@ -611,6 +633,8 @@ def main(argv: list[str] | None = None, *, provider: JavinizerGoProvider | None 
             if index % 25 == 0:
                 log(f"{index}/{len(codes)}：已落 {groups_written} 个字段组，错误 {errors_written}")
     connection.close()
+    if wiki is not None:
+        wiki.close()
     _write_health(health_path, health)
     _write_unmapped(unmapped_path, unmapped_genres)
     log(f"完成：{groups_written} 个字段候选组 → {output}")
