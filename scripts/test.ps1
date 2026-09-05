@@ -26,8 +26,10 @@ if (-not (Test-Path -LiteralPath $Python -PathType Leaf)) {
 
 $SourceRoot = (Resolve-Path -LiteralPath (Join-Path $WorktreeRoot 'src')).Path
 $PreviousPythonPath = $env:PYTHONPATH
+$PreviousPythonIoEncoding = $env:PYTHONIOENCODING
 $PreviousPath = $env:PATH
 $env:PYTHONPATH = $SourceRoot
+$env:PYTHONIOENCODING = 'utf-8'
 
 # Git for Windows 自带项目证书测试所需的 OpenSSL，但默认不会把 usr\bin 放进
 # 用户 PATH。只对本次测试进程补齐，不修改系统或用户环境变量。
@@ -57,6 +59,11 @@ try {
     exit $LASTEXITCODE
 } finally {
     Pop-Location
+    if ($null -eq $PreviousPythonIoEncoding) {
+        Remove-Item Env:PYTHONIOENCODING -ErrorAction SilentlyContinue
+    } else {
+        $env:PYTHONIOENCODING = $PreviousPythonIoEncoding
+    }
     if ($null -eq $PreviousPythonPath) {
         Remove-Item Env:PYTHONPATH -ErrorAction SilentlyContinue
     } else {

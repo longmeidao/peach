@@ -294,7 +294,8 @@ def main(argv: list[str] | None = None) -> int:
                         needed = tuple(dict.fromkeys((*needed, "tooling")))
                     if "full" not in needed:
                         weight = len({p for scope in needed for p in selected_files(scope)})
-                        choices.append((weight, record, needed))
+                        if weight <= len(files):
+                            choices.append((weight, record, needed))
                 if choices:
                     _, baseline, scopes = min(choices, key=lambda item: item[0])
                     print(f"复用全量基线 {baseline['state'][:12]}；新增差异补测：{' '.join(scopes)}", flush=True)

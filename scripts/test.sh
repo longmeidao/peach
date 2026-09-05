@@ -43,6 +43,7 @@ fi
 
 SOURCE_ROOT="$WORKTREE_ROOT/src"
 export PYTHONPATH="$SOURCE_ROOT"
+export PYTHONIOENCODING=utf-8
 
 cd "$WORKTREE_ROOT"
 LOADED_MODULE="$("$PYTHON" -c 'import peach; print(peach.__file__)')"

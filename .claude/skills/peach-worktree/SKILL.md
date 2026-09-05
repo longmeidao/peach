@@ -15,12 +15,14 @@ description: 在用户说并行、工作树、暂存、提交、ready、集成�
 
 ## 流程
 
-1. 协调者在主目录创建隔离工作树：`& .\.venv\Scripts\python.exe scripts\agent_worktree.py create --agent claude --task <task>`。它建在 `peach-worktrees/`，Codex 和 Claude 共用这一个目录。**不要用 Claude Code 内置的工作树机制（`.claude/worktrees/`）**：它在分支被集成后会被回收，目录却留在原地。
+1. 协调者在主目录创建隔离工作树：`& .\.venv\Scripts\python.exe -X utf8 scripts\agent_worktree.py create --agent claude --task <task>`。它建在 `peach-worktrees/`，Codex 和 Claude 共用这一个目录。**不要用 Claude Code 内置的工作树机制（`.claude/worktrees/`）**：它在分支被集成后会被回收，目录却留在原地。
 
 2. 工作者只在自己的工作树内编辑。`create` 自动锁定工作树，成功集成后解锁；不复制 `.venv`。
 3. 测试在当前工作树根目录运行：Windows `& .\scripts\test.ps1`，macOS/Linux `./scripts/test.sh`。默认 `auto` 按改动文件取影响域并集；文档及无改动检查 `checks`，未知影响面、共享测试设施、依赖、构建选 `full`。域清单唯一真相在 `scripts/test_runner.py`；局部调试可显式选域。
    两者契约相同：从 Git common directory 定位主项目 venv，强制 `PYTHONPATH=<当前工作树>/src`，
    核对 `peach.__file__` 后运行标准库 `unittest`。禁止手工拼接 venv 路径或调用 pytest。
+   测试入口固定 `PYTHONIOENCODING=utf-8`，覆盖标准输出、错误输出及子进程；其他 Python CLI 使用 `-X utf8`。
+   PowerShell 读 UTF-8 日志显式加 `-Encoding utf8`；编码在输出端固定，不能只给读取端指定编码。
    记录绑定完整代码内容、依赖环境和范围，24 小时有效；失败、验证期间改动使记录无效。
    有同环境全量基线时，`auto` 对比文件清单，只补跑新增差异的影响域；共享设施或未知文件仍跑全量。
    差异补测不延长全量基线有效期；版本号行单独变化归 tooling，包内其他逻辑变化仍按源码判断。

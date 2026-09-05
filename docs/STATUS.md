@@ -6,8 +6,7 @@
 
 ## 运行态
 
-- HTTPS 就绪检查通过；未打标签发布。
-- 开发测试默认 `auto`；`ready` / `integrate` 检查本机验证记录，集成互斥，活动工作树锁定。CI 与部署全量验证，流程见 `peach-worktree` 技能。
+- HTTPS 就绪检查通过；未打标签发布。开发验证默认 `auto`。
 
 - Windows 是当前 ledger writer，入口 `dist\Peach\Peach.exe`；代码、`peach-data`、worktree 和共享传输点同在一个顶层目录，外置盘只提供 `R:\media`。
 - 托盘必须以普通权限启动：提升权限后的令牌看不到 CloudDrive 的 `A:` / `B:`，会把 PikPak 和 115 误报为脱盘。

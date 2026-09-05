@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import shutil
 import stat
@@ -485,4 +486,8 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    os.environ["PYTHONIOENCODING"] = "utf-8"
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="backslashreplace")
     raise SystemExit(main())

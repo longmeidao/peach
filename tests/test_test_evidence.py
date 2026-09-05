@@ -138,7 +138,7 @@ class VerificationTests(unittest.TestCase):
         with evidence.FileLock(folder / "integration.lock"):
             result = subprocess.run(command, capture_output=True, text=True,
                                     encoding="utf-8", timeout=15,
-                                    env={**os.environ, "PYTHONIOENCODING": "utf-8"})
+                                    env={**os.environ, "PYTHONIOENCODING": "gbk"})
         self.assertEqual(result.returncode, 2, result.stderr)
         self.assertIn("另一任务正在集成", json.loads(result.stdout)["error"])
         self.assertEqual(self.git("rev-parse", "HEAD"), before)
@@ -199,6 +199,17 @@ class VerificationTests(unittest.TestCase):
                     unittest.FunctionTestCase(lambda: None)])) as build:
             self.assertEqual(runner.main(["--scope", "auto"]), 0)
         build.assert_called_once_with("full")
+
+    def test_baseline_does_not_expand_a_small_requested_scope(self):
+        self.certify(self.repo, ("full",))
+        (self.repo / "src/peach/__init__.py").write_text('__version__ = "0.7.31"\n')
+        with redirect_stderr(io.StringIO()), redirect_stdout(io.StringIO()), \
+                mock.patch.object(runner, "ROOT", self.repo), \
+                mock.patch.object(runner, "resolve_auto_scope", return_value=(("checks",), "fixture")), \
+                mock.patch.object(runner, "build_suite", return_value=unittest.TestSuite([
+                    unittest.FunctionTestCase(lambda: None)])) as build:
+            self.assertEqual(runner.main(["--scope", "auto"]), 0)
+        build.assert_called_once_with("checks")
 
     def test_baseline_distinguishes_version_assignment_and_package_logic(self):
         self.certify(self.repo, ("full",))
