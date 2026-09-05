@@ -534,8 +534,8 @@ class WebUiSourceTests(unittest.TestCase):
         # 没有 JS 会挂 .act，留着只会让人以为选中态有两套写法。
         self.assertPageLacks(".pill.act{")
 
-    def test_the_video_area_is_one_frame_and_the_portrait_strip_nests_inside_it(self):
-        """框画在网格上，卡片本身不带框；中段的竖屏条在框里再退一档，套成第二个框。
+    def test_the_video_area_is_one_frame_and_the_portrait_card_is_its_peer(self):
+        """框画在网格上，卡片本身不带框；竖屏卡与视频区平级，穿同一身。
 
         一张卡一个框会在一屏里画出几十条互相平行的细线，读起来是表格不是图墙。
         垃圾复核用的是同一个 `#grid`，但它那张卡自己就是一块 `--ground` 的面，
@@ -552,10 +552,11 @@ class WebUiSourceTests(unittest.TestCase):
         card = css[start:css.index("}", start)]
         self.assertNotIn("background:", card, "卡片不自带填色，框由网格出")
         self.assertNotIn("border:", card, "卡片不自带描边，框由网格出")
-        start = css.index(".shorts-inline{")
+        start = css.index(chr(10) + ".shorts{")
         strip = css[start:css.index("}", start)]
-        self.assertIn("background:var(--page)", strip, "竖屏条在框里退回后面那张面")
-        self.assertIn("border-radius:var(--surface-radius)", strip, "内框圆角比外框小一档")
+        for piece in ("background:var(--ground)", "border:1px solid var(--field-ring)",
+                      "border-radius:var(--floating-radius)"):
+            self.assertIn(piece, strip, "竖屏卡和视频区是并排的两张卡，穿同一身")
 
     # 选中态允许高对比反相的两处：都压在媒体画面上，画面本身会把 --hover 那层
     # 7% 白吃掉，读不出按没按。
@@ -4826,21 +4827,27 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks("it.ctx_orient==='竖屏'||cls==='scard'")
         self.assertPageContains("(jav&&layout==='big'?COVER_FRONT_RATIO:16/9)")
 
-    def test_portrait_strip_sits_on_a_row_boundary_without_borrowing_extra_items(self):
-        """竖屏条整行占位，必须插在行边界上，而不是另拉一批横屏视频补满余位。
+    def test_the_portrait_strip_is_a_card_beside_the_grid_not_a_row_inside_it(self):
+        """竖屏条是视频区旁边的另一张卡，排在它前面，不再塞进网格当一整行。
 
-        补位的那批 id 不在分页序列里，翻下一页必然重复；而且它们被当作 `scard`
-        渲染会按竖屏比例压扁横屏画面。行边界插入既不额外请求也不会重复。
+        排在后面等于没有：视频区是无限滚动的，这张卡会被一直往下推。
+        网格里也不再另拉一批横屏视频补余位——那批 id 不在分页序列里，翻下一页必然重复，
+        而且被当作 `scard` 渲染会按竖屏比例压扁横屏画面。
         """
-        self.assertPageContains('.shorts-inline{grid-column:1/-1;margin:12px 0 4px;')
+        markup = self.page
+        self.assertLess(markup.index('id="shortsSec"'), markup.index('class="grid" id="grid"'),
+                        "竖屏卡排在视频区前面")
+        self.assertPageContains("$('#srow').innerHTML=d.items.map(it=>cardHtml(it,'scard')).join('')")
+        self.assertPageContains("$('#shortsSec').hidden=false;")
+        # 网格里不再有竖屏条这一行，也就没有行边界锚点和补位那套东西了。
+        self.assertPageLacks("shortsInline")
+        self.assertPageLacks("SHORTS_ROW_OFFSET")
+        self.assertPageLacks("fillerParams")
+        self.assertPageLacks('const remainder=')
         # 竖屏比例只给 `scard`（和显式筛了竖屏时）。按 `it.ctx_orient` 逐条算的话，
         # 任何混着横竖屏的网格都会高低不齐——资料页、相关推荐、搜索结果全中招。
         self.assertPageContains("const portrait=cls==='scard'||state.orient==='竖屏';")
         self.assertPageContains('grid-template-columns:repeat(auto-fill,minmax(var(--tile),1fr))')
-        self.assertPageContains('const anchor=cards[Math.min(cards.length,columns*SHORTS_ROW_OFFSET)]')
-        self.assertPageContains("anchor.insertAdjacentHTML('beforebegin',inline)")
-        self.assertPageLacks("fillerParams")
-        self.assertPageLacks('const remainder=')
         self.assertPageContains('.srow .scard{flex:none;width:214px;cursor:pointer}')
 
     def test_only_the_default_home_list_drops_portrait_videos(self):
@@ -5596,7 +5603,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("['flagged','已标记','bookmark'],")
         self.assertPageContains("['immerse','沉浸模式','gallery-vertical-end'],")
         self.assertPageContains("<span>进入沉浸模式</span>")
-        self.assertPageContains("class=\"shorts-enter\" type=\"button\">${icon('play')}")
+        self.assertPageContains('<button id="tokBtn"><svg viewBox="0 0 24 24" aria-hidden="true">'
+                                '<use href="#i-play"/></svg>')
         # 主题三档各归各的：太阳是浅色、月亮是深色；跟随系统那档说的是「照这台设备走」，
         # 讲的是设备不是明暗，所以跟 vercel.com 后台一样用显示器。画面尺寸量的是画幅本身，
         # 归 `ratio`。

@@ -802,7 +802,7 @@ function placeItemDetail(anchor,above=false){
     else container.append(stage);
     return;
   }
-  const block=card.closest('.shorts-inline,.srow,.nrow,section')||card;
+  const block=card.closest('.shorts,.srow,.nrow,section')||card;
   const parent=block.parentElement;
   if(parent)parent.insertBefore(stage,above?block:block.nextSibling);
   else main.insertBefore(stage,combo);
@@ -6571,13 +6571,12 @@ $('#q').onkeydown=e=>{
 };
 $('#q').addEventListener('focus',()=>{Promise.all([loadSearchHistory(),loadSearchPool()]).then(renderSearchMenu)});
 
-const SHORTS_ROW_OFFSET=2;   // 竖屏条插在第几行之后，0 表示置顶
 async function loadShorts(requestSeq=loadRequestSeq,surface=surfaceToken(surfacePath())){
   // JAV 模式不插竖屏条：番号发行物本身是横版，竖屏是另一类内容。
   // 主列表的 exclude_vertical 管不到这条——它是独立请求、独立插入的。
   if(!isCatalogPath(decodeURIComponent(location.pathname))||javActive()||state.orient==='竖屏'
      ||state.state==='ads'||state.state==='trash'){
-    $('#shortsSec').hidden=true;$('#grid').querySelector('#shortsInline')?.remove();return}
+    $('#shortsSec').hidden=true;return}
   const p=new URLSearchParams(Object.entries(state).filter(([,v])=>v));
   /* 排序跟着主列表走，不再写死 sort=new；换一批时竖屏条也要一起换。 */
   p.set('orient','竖屏');p.set('limit',18);p.set('offset',0);
@@ -6586,18 +6585,12 @@ async function loadShorts(requestSeq=loadRequestSeq,surface=surfaceToken(surface
   if(!d.items.length){$('#shortsSec').hidden=true;return}
   cache(d.items);
   releaseHoverPreviews($('#srow'));
-  const grid=$('#grid');grid.querySelector('#shortsInline')?.remove();
-  /* 竖屏条整行占位（grid-column:1/-1），插在行边界上才不会把上一行截断留空。
-     余位不另拉一批横屏视频来补：那批 id 不在分页序列里，翻下一页必然重复，
-     而且被当成 scard 渲染会把横屏压成竖框。 */
-  const columns=Math.max(1,getComputedStyle(grid).gridTemplateColumns.split(' ').length);
-  const cards=[...grid.children].filter(x=>x.matches('.card[data-id]'));
-  const anchor=cards[Math.min(cards.length,columns*SHORTS_ROW_OFFSET)]||null;
-   const inline=`<section class="shorts-inline" id="shortsInline"><h2 class="disp">竖屏 <span class="mono shortscount">${d.total.toLocaleString()} 个</span><button class="shorts-enter" type="button">${icon('play')}<span>进入沉浸模式</span></button></h2><div class="srow">${d.items.map(it=>cardHtml(it,'scard')).join('')}</div></section>`;
-  if(anchor)anchor.insertAdjacentHTML('beforebegin',inline); else grid.insertAdjacentHTML('beforeend',inline);
-  const section=grid.querySelector('#shortsInline');
-  section.querySelector('.shorts-enter').onclick=()=>openTok();
-  wireCards(section.querySelector('.srow'),openTok); wireDrag(section.querySelector('.srow'));
+  /* 竖屏条是视频区旁边的另一张卡，排在它前面。放后面的话，视频区是无限滚动的，
+     这张卡会被一直往下推，永远滚不到。 */
+  $('#shortsN').textContent=`${d.total.toLocaleString()} 个`;
+  $('#srow').innerHTML=d.items.map(it=>cardHtml(it,'scard')).join('');
+  $('#shortsSec').hidden=false;
+  wireCards($('#srow'),openTok); wireDrag($('#srow'));
 }
 
 /* ── 就地展开播放 ── */

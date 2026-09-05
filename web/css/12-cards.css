@@ -82,14 +82,6 @@ body.refreshing #batchAction svg,
    所以按内容认，不按页面认。 */
 .grid:has(>.card:not(.junkcard)),.grid:has(>.catalog-skeleton){
   padding:16px;border:1px solid var(--field-ring);border-radius:var(--floating-radius);background:var(--ground)}
-/* 竖屏条插在网格中段，是这一框之内的另一框：退回 --page 那张面，读起来是嵌在
-   图墙里的一格凹槽，而不是又一排横屏卡。圆角比外框小一档，两个框才不同心。 */
-.shorts-inline{grid-column:1/-1;margin:12px 0 4px;padding:14px 16px;
-  border:1px solid var(--field-ring);border-radius:var(--surface-radius);background:var(--page)}
-.shorts-inline h2{margin:0 0 10px;font-size:var(--fs-lg);display:flex;align-items:center;gap:10px}
-.shorts-inline h2 button{margin-left:auto;font-size:var(--fs-xs);background:none;border:1px solid var(--line);border-radius:var(--pill-radius);padding:5px 14px;cursor:pointer}
-.shorts-inline .srow{display:flex;gap:13px;overflow-x:auto;padding-bottom:7px}
-.shorts-inline .scard .pic{aspect-ratio:var(--card-ratio,9/16)}
 .card{cursor:pointer;display:flex;flex-direction:column;gap:8px;min-width:0;
   position:relative;transition:transform .18s ease,filter .18s ease;transform-origin:center}
 /* 叠层往上溢出到行间距里，卡片本体不为它留白。留白的写法（padding-top:7px）会把
@@ -355,17 +347,21 @@ body[data-density="dense"] .card .ctags{height:30px;align-items:flex-start;flex-
 body[data-density="dense"] .card .meta .why,
 body[data-density="dense"] .card .meta .watchcount{display:none}
 
-/* 短片带 */
-.shorts{margin:30px 0 8px;border-top:1px solid var(--line-soft);padding-top:16px}
+/* 短片带。它和视频区是并排的两张卡，不是套在视频区里的一格：穿同一张 --ground 面、
+   同一圈发丝边、同一个圆角，只有内容不同。放在视频区上方是因为视频区是无限滚动的，
+   排在它后面等于永远滚不到。 */
+.shorts{margin:0 0 16px;padding:16px;border:1px solid var(--field-ring);
+  border-radius:var(--floating-radius);background:var(--ground)}
 .shorts h2{margin:0 0 11px;font-size:var(--fs-lg);display:flex;align-items:center;gap:10px}
+.shorts .scard .pic{aspect-ratio:var(--card-ratio,9/16)}
 /* 竖屏计数的灰字。index.html 和 openItem 的内联片段原先各写一份，一模一样。 */
 .shortscount{color:var(--muted);font-size:var(--fs-xs)}
-.shorts h2 button,.shorts-enter{margin-left:auto;min-height:48px;display:inline-flex;align-items:center;gap:7px;
+.shorts h2 button{margin-left:auto;min-height:48px;display:inline-flex;align-items:center;gap:7px;
   font-size:var(--fs-xs);background:var(--overlay-5);border:0;border-radius:var(--pill-radius);padding:0 16px;cursor:pointer;
   color:var(--ink);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);transition:background .14s,transform .14s}
-.shorts h2 button:hover,.shorts-enter:hover{background:color-mix(in srgb,var(--ink) 16%,transparent);transform:translateY(-1px)}
-.shorts h2 button:active,.shorts-enter:active{transform:scale(.97)}
-.shorts h2 button svg,.shorts-enter svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2}
+.shorts h2 button:hover{background:color-mix(in srgb,var(--ink) 16%,transparent);transform:translateY(-1px)}
+.shorts h2 button:active{transform:scale(.97)}
+.shorts h2 button svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2}
 .srow{display:flex;gap:13px;overflow-x:auto;padding-bottom:7px}
 .srow .scard{flex:none;width:214px;cursor:pointer}
 
