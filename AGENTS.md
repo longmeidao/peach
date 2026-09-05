@@ -32,7 +32,7 @@
 
 ## 必读顺序
 
-按序读 `README.md`、`docs/STATUS.md`、`docs/ARCHITECTURE.md`、`docs/REUSE.md`、`docs/HANDOFF.md`；`docs/adr/`、`docs/OPERATIONS.md`（运行与部署命令）和 `docs/SOURCING.md`（身份与来源采集）按需选读。
+先读 `README.md`、`docs/STATUS.md` 相关部分；按任务读取架构、复用与交接文档。实现遵循技能索引；部署读 `docs/OPERATIONS.md`，来源采集读 `docs/SOURCING.md`，架构决策读 `docs/adr/`。
 
 ## 技能索引
 
