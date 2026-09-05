@@ -6802,6 +6802,10 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
   const it=await surfaceApi(detailSurface,'/api/item?id='+id);
   if(!surfaceCurrent(detailSurface))return;
   if(it.error)return;
+  /* 卷标只有分卷队列知道：`/api/item` 是单条口径，它答不出「这是第几卷」。不补的话
+     标题栏里的卷号在深链进来和点开队列另一条时都不出现。 */
+  if(queueContext?.kind==='parts')
+    it.part_label=queueContext.items.find(part=>part.id===it.id)?.part_label||'';
   current=it; CACHE[it.id]=it;
   barsContext={type:'item',id:it.id,filters:returnBars?.type==='entity'
     ? {...returnBars.filters}:emptyEntityFilters()};
