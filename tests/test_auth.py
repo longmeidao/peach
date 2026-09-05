@@ -107,6 +107,18 @@ class ServeGateTests(unittest.TestCase):
         self.assertEqual(
             cli._serve_token(self._args("--host", "0.0.0.0", "--token", "given")), "given")
 
+    def test_no_auth_skips_the_login_page_on_loopback_and_leaves_the_token_file_alone(self):
+        token = auth.write_token(self._secrets())
+        self.assertEqual(cli._serve_token(self._args("--host", "127.0.0.1", "--no-auth")), "")
+        # 口令文件是托盘那份服务的门槛，开发时跳过登录不该把它擦掉或改写。
+        self.assertEqual(auth.read_token(self._secrets()), token)
+
+    def test_no_auth_refuses_a_lan_bind_even_when_a_token_exists(self):
+        auth.write_token(self._secrets())
+        with self.assertRaises(SystemExit) as raised:
+            cli._serve_token(self._args("--host", "0.0.0.0", "--no-auth"))
+        self.assertIn("0.0.0.0", str(raised.exception))
+
 
 class TokenCommandTests(unittest.TestCase):
     def setUp(self):
