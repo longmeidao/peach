@@ -1,0 +1,29 @@
+/* 配置页（/configuration）：这台电脑的媒体文件夹与本机端口，加一块运行信息。
+   两块卡与数据管理 hub 同一条 812px 窄列；卡是 Geist Fieldset：正文 20px 内边距，
+   底部操作条 --fieldset-bar-h、左说明右动作。 */
+.configuration-layout .managetitle,.configuration-layout .pagelede{width:min(812px,100%);margin-left:auto;margin-right:auto}
+.configpage{width:min(812px,100%);margin:0 auto;display:grid;gap:20px}
+.configfieldset{display:flex;flex-direction:column;min-width:0;margin:0;padding:0;overflow:hidden;
+  border:1px solid var(--line-soft);border-radius:var(--floating-radius);background:var(--surface)}
+.configfieldset>.geist-fieldset-content{flex:1;min-height:0;padding:20px;display:grid;gap:24px}
+.configfieldset .geist-fieldset-title{margin:0}
+.configfieldset>.geist-fieldset-footer{box-sizing:border-box;min-height:var(--fieldset-bar-h);
+  margin:0;padding:8px 16px 8px 20px;display:flex;align-items:center;justify-content:flex-end;gap:8px;
+  border-top:1px solid var(--border-10);background:var(--overlay-5)}
+.configfieldset>.geist-fieldset-footer>p{min-width:0;margin:0 auto 0 0;color:var(--muted);font-size:var(--fs-sm)}
+.configfield>label,.configfield>.configlabel{display:block;margin:0 0 8px;font-weight:500;color:var(--ink)}
+.confighelp{margin:8px 0 0;color:var(--muted);font-size:var(--fs-sm);line-height:1.5}
+.configbad{margin:6px 0 0;color:var(--drop);font-size:var(--fs-sm)}
+/* 一行一个文件夹：输入框、选择文件夹、移除，三者共用 --control-h，差 3px 就不是一行了。
+   flex 而不是 grid：只剩一行时移除键不画，grid 的空轨道会留下一段 gap。 */
+.configdir{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.configdir .geist-input{flex:1 1 auto;width:auto;min-width:0}
+.configdir:first-child{margin-top:0}.configdir .configbad{flex-basis:100%;margin:0}
+.configrm.geist-button,.configpick.geist-button{width:var(--control-h);height:var(--control-h);flex:none;padding:0;color:var(--muted)}
+.configrm.geist-button:hover:not(:disabled),.configpick.geist-button:hover:not(:disabled){color:var(--ink)}
+.configrm svg,.configpick svg{width:16px;height:16px;stroke:currentColor;fill:none}
+.configadd{margin-top:8px}
+.configcheck{display:flex;align-items:center;gap:12px;min-height:32px;cursor:pointer;color:var(--ink)}
+.configfacts{margin:0;display:grid;grid-template-columns:max-content minmax(0,1fr);gap:10px 24px;align-items:baseline}
+.configfacts dt{color:var(--muted);font-size:var(--fs-sm)}.configfacts dd{margin:0;overflow-wrap:anywhere}
+@media(max-width:560px){.configfacts{grid-template-columns:minmax(0,1fr)}.configfacts dd{margin-top:-6px}}

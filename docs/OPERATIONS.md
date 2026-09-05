@@ -21,6 +21,10 @@
   扫描摘要。写出的 `[media.locations]` 只有 `local`，几个目录就几个声明根：Windows 上直接是
   那些目录、`[media.mounts]` 为空；macOS 上声明根是 `R:\media`（第二个起 `R:\media2`……）、
   目录按同样顺序写进 `[media.mounts] local`。页面上的媒体文件夹是可加减的列表，配置页同样。
+  配置页在主站里：管理菜单 → 配置（`/configuration`），只在运行 Peach 的这台电脑上、
+  且只有独立包才出现；数据走 `/api/configuration`，保存后写重启标记由托盘接手。
+  每行文件夹旁的「选择文件夹」让运行 Peach 的这台电脑弹系统对话框（Windows 资源管理器、
+  macOS Finder），走 `/api/pick-folder`，同样只对本机开放；首启页也有这颗键。
   复制、writer 镜像、SMB 一律不问，保持关闭或留空。建目录、迁库、生成 CA 与口令、写设置文件
   这一整段在 `onboarding.apply()`，CLI 与设置页调的是同一个函数，只在打印方式上不同。
 - 不进终端的那条路是托盘首启的引导服务。`peach-tray` 启动时新鲜读一次设置文件，判据在

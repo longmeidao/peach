@@ -558,6 +558,59 @@ class SetupPageTests(_Case):
         self.assertEqual(response.status_code, 403)
         self.assertFalse(self.data_root.exists())
 
+    def test_the_first_run_page_follows_the_system_theme(self):
+        """首启页在 SPA 之外，配色 token 从 `01-base.css` 的两段 `:root` 抽出来，深色系统就深色。"""
+        body = self._get("/").text
+        self.assertIn('<meta name="color-scheme" content="light dark">', body)
+        self.assertIn(":root{", body)
+        self.assertIn('@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){', body)
+        self.assertIn("--ground:", body)
+
+    def test_each_folder_row_can_open_the_system_folder_dialog(self):
+        """选择键夹在输入框和移除键中间，点了让这台电脑弹系统对话框，路径填回这一行。"""
+        body = self._get("/").text
+        self.assertIn('<button type="button" class="pick" aria-label="选择文件夹" hidden>', body)
+        self.assertLess(body.index('class="pick"'), body.index('class="rm"'))
+        self.assertIn("fetch('/api/pick-folder'", body)
+        self.assertIn("button.setAttribute('aria-busy','true')", body)
+        self.assertIn("row.querySelector('.pick').hidden=false", body)
+        with mock.patch("peach.folder_picker.pick_folder", return_value=str(self.media)) as picker:
+            import asyncio
+
+            async def run():
+                async with self._client() as client:
+                    return await client.post("/api/pick-folder", json={"initial": "E:/old"})
+
+            response = asyncio.run(run())
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json(), {"path": str(self.media)})
+        picker.assert_called_once_with("E:/old")
+
+    def test_advanced_settings_fold_with_the_shared_collapse_and_the_site_scrollbar(self):
+        """高级设置是 Geist Collapse：借主站的 wireCollapse，chevron 与高度都 200ms；滚动条也是主站那条。"""
+        with mock.patch("peach.distribution.standalone", return_value=True):
+            body = self._get("/").text
+        self.assertIn('<summary><span>高级设置</span><svg viewBox="0 0 24 24" aria-hidden="true">', body)
+        self.assertIn('import{attachOverlayScrollbar,wireCollapse}from"/js/ui-components.js";'
+                      'attachOverlayScrollbar(document.documentElement,{variant:"page"});'
+                      'wireCollapse(document,"details","setup-collapse");', body)
+        self.assertIn('.fcollapse{overflow:hidden;transition:height .2s ease-in-out;margin:0 -6px;padding:0 6px}', body)
+        self.assertIn('.fcollapsebody{padding:6px 0}', body, "焦点环要留 6px，不能被折叠体的裁切切掉")
+        self.assertIn('transition:transform .2s ease-in-out}', body)
+        self.assertIn('details .field{margin-top:0}', body, "折叠体里的字段不再叠一层 24px 上边距")
+        self.assertIn('@media (prefers-reduced-motion:reduce)', body)
+        self.assertIn('.ovtrack.page{position:fixed;top:0;bottom:0;right:0;z-index:91;pointer-events:none}', body)
+        self.assertIn('.ovthumb{position:absolute;border-radius:var(--pill-radius);background:var(--field-ring-hover);', body)
+        self.assertIn('[data-overlay-scrollbar]{scrollbar-width:none}', body, "原生滚动条只在脚本挂上覆盖式那条之后才藏")
+        self.assertNotIn('html{color-scheme:light;scroll-padding-top', body, "主站 html 上无条件藏滚动条的那句不借")
+        self.assertNotIn('原生滚动条在挂上覆盖式那条之后才藏', body, "借来的规则不带主站的注释")
+        script = self._get("/js/ui-components.js")
+        self.assertEqual(script.status_code, 200, "首启服务没有令牌，共享控件脚本得放行")
+        self.assertIn("export function wireCollapse", script.text)
+        self.assertIn("export function attachOverlayScrollbar", script.text)
+        plain = self._get("/").text
+        self.assertEqual(plain.count('<script type="module">'), 1, "没有高级设置的页面也挂同一段脚本：滚动条要它")
+
     def test_a_second_submission_refuses_to_overwrite_the_settings_file(self):
         self.assertEqual(self._post("/setup", self._form()).status_code, 200)
         again = self._post("/setup", self._form(port="9100"))
@@ -587,40 +640,133 @@ class StandaloneConfigurationTests(_Case):
                           db_path=self.config.data_root / "database" / "ledger.db")),
                           client=(address, 12345), base_url="http://localhost")
 
-    def test_authenticated_configuration_preserves_values_and_requests_reload(self):
-        from peach.routes_configuration import RELOAD_NAME, revision
+    def test_the_configuration_page_is_a_screen_of_the_app_and_its_data_a_json_contract(self):
+        """`/configuration` 是主站外壳里的一屏，表单由 island 画；真相只在 `/api/configuration`。"""
+        from peach.routes_configuration import RELOAD_NAME
         with self.client() as client:
             headers = {"X-Token": "test-token"}
             page = client.get("/configuration", headers=headers)
             self.assertEqual(page.status_code, 200)
-            self.assertIn("媒体", page.text)
-            # 勾选框与运行信息都复用首启页的实现，不再各写一份。
-            self.assertIn('<span class="pcheck"><input type="checkbox" name="scan_now" value="y">', page.text)
-            self.assertIn("<h2>运行信息</h2>", page.text)
-            self.assertIn("<dt>FFmpeg</dt>", page.text)
-            self.assertIn('id="add-dir"', page.text, "配置页的媒体文件夹同样是可加减的列表")
+            self.assertIn('id="managebar"', page.text, "配置页由 SPA 外壳承载，不是独立页面")
+            self.assertTrue(client.get("/healthz").json()["configurable"])
+            snapshot = client.get("/api/configuration", headers=headers).json()
+            self.assertTrue(snapshot["editable"])
+            self.assertEqual(snapshot["notice"], "")
+            self.assertEqual(snapshot["media_dirs"], [str(self.media)])
+            self.assertEqual(snapshot["port"], 9123)
+            # 运行信息和首启完成页共用同一份 `runtime_facts`，不再各写一份。
+            self.assertIn("FFmpeg", [fact["term"] for fact in snapshot["facts"]])
             self.config.directory("state").mkdir(parents=True, exist_ok=True)
-            response = client.post("/configuration", headers=headers, data={
-                "revision": revision(self.config), "media_dir": str(self.media), "port": "9124"})
+            response = client.post("/api/configuration", headers=headers, json={
+                "revision": snapshot["revision"], "media_dirs": [str(self.media)], "port": "9124"})
             self.assertEqual(response.status_code, 200, response.text)
+            self.assertEqual(response.json()["url"], "http://127.0.0.1:9124/")
             self.assertEqual(settings_file.load_config().server.port, 9124)
             self.assertTrue(self.config.path.with_suffix(".previous.toml").is_file())
             self.assertTrue((self.config.directory("state") / RELOAD_NAME).is_file())
             self.assertFalse((self.config.directory("database") / "ledger.db").exists())
 
+    def test_field_errors_come_back_per_row_and_nothing_is_written(self):
+        from peach.routes_configuration import revision
+        before = self.config.path.read_bytes()
+        with self.client() as client:
+            response = client.post("/api/configuration", headers={"X-Token": "test-token"}, json={
+                "revision": revision(self.config), "media_dirs": [str(self.media), str(self.media)],
+                "port": "not-a-port"})
+            self.assertEqual(response.status_code, 400)
+            body = response.json()
+            self.assertEqual(body["error"], "有几项需要修改")
+            self.assertEqual(body["errors"]["media_dirs"][0], "", "没问题的行给空串，页面据此不画红字")
+            self.assertTrue(body["errors"]["media_dirs"][1], "重复的那一行要点名")
+            self.assertTrue(body["errors"]["port"])
+        self.assertEqual(before, self.config.path.read_bytes())
+
     def test_settings_reject_unauthenticated_remote_cross_origin_and_stale_forms(self):
         from peach.routes_configuration import revision
-        data = {"revision": revision(self.config), "media_dir": str(self.media), "port": "9124"}
+        data = {"revision": revision(self.config), "media_dirs": [str(self.media)], "port": "9124"}
         before = self.config.path.read_bytes()
         with self.client() as client:
             self.assertEqual(client.get("/configuration", follow_redirects=False).status_code, 303)
-            response = client.post("/configuration", headers={"X-Token": "test-token", "Origin": "https://example.org"}, data=data)
+            self.assertEqual(client.get("/api/configuration").status_code, 401)
+            response = client.post("/api/configuration", headers={"X-Token": "test-token", "Origin": "https://example.org"}, json=data)
             self.assertEqual(response.status_code, 403)
-            response = client.post("/configuration", headers={"X-Token": "test-token"}, data={**data, "revision": "stale"})
+            response = client.post("/api/configuration", headers={"X-Token": "test-token"}, json={**data, "revision": "stale"})
             self.assertEqual(response.status_code, 409)
         with self.client(address="192.0.2.1") as client:
-            self.assertEqual(client.get("/configuration", headers={"X-Token": "test-token"}).status_code, 403)
+            headers = {"X-Token": "test-token"}
+            # 外壳照常打开，拒绝的原因由页面里的 Note 说；菜单里根本不会列出这一项。
+            self.assertEqual(client.get("/configuration", headers=headers).status_code, 200)
+            self.assertFalse(client.get("/healthz").json()["configurable"])
+            response = client.get("/api/configuration", headers=headers)
+            self.assertEqual(response.status_code, 403)
+            self.assertEqual(response.json(), {"error": "请在运行 Peach 的电脑上打开配置"})
+            response = client.post("/api/configuration", headers=headers, json=data)
+            self.assertEqual(response.status_code, 403)
         self.assertEqual(before, self.config.path.read_bytes())
+
+    def test_browser_navigations_get_an_error_page_instead_of_raw_json(self):
+        """地址栏里直接打开一个 403／404／409 的路径，看到的是 Peach 的页面，不是一行 JSON。
+
+        `/api/` 下的路径和不要 HTML 的调用方仍拿 JSON——页面脚本按 `error` 字段取原因。
+        """
+        from fastapi import HTTPException
+        from fastapi.testclient import TestClient
+        from peach.api import create_app
+        from peach.config import PeachSettings
+        app = create_app(PeachSettings(configured=True, token="test-token",
+                                       db_path=self.config.data_root / "database" / "ledger.db"))
+
+        def refuse():
+            raise HTTPException(409, "请先完成首次设置")
+        # 页面 catch-all 排在最后会吃掉一切路径，测试路由要插到它前面。
+        app.add_api_route("/refuse", refuse, methods=["GET"])
+        app.router.routes.insert(0, app.router.routes.pop())
+        with TestClient(app, base_url="http://localhost") as client:
+            page = client.get("/refuse", headers={"Accept": "text/html,application/xhtml+xml"})
+            self.assertEqual(page.status_code, 409)
+            self.assertTrue(page.headers["content-type"].startswith("text/html"))
+            self.assertIn("<h1>现在不能这样做</h1>", page.text)
+            self.assertIn('<p class="lede">请先完成首次设置</p>', page.text)
+            self.assertIn('<a href="/">返回馆藏</a>', page.text)
+            self.assertIn("@media (prefers-color-scheme:dark)", page.text)
+            missing = client.get("/no-such-page", headers={"Accept": "text/html"})
+            self.assertEqual(missing.status_code, 404)
+            self.assertIn("<h1>没有这一页</h1>", missing.text, "路由没匹配到的 404 是 Starlette 抛的，也要成页")
+            self.assertIn("这个地址下没有页面。", missing.text, "Starlette 的英文 detail 不能原样给人看")
+            data = client.get("/refuse", headers={"Accept": "application/json"})
+            self.assertEqual(data.status_code, 409)
+            self.assertEqual(data.json(), {"error": "请先完成首次设置"})
+            api = client.get("/api/configuration", headers={"Accept": "text/html"})
+            self.assertEqual(api.status_code, 401)
+            self.assertEqual(api.headers["content-type"], "application/json")
+
+    def test_the_folder_dialog_is_opened_by_this_machine_for_loopback_callers_only(self):
+        """对话框弹在运行 Peach 的电脑上；局域网、跨站与没登录的请求都不能让它弹。"""
+        from peach import folder_picker
+        headers = {"X-Token": "test-token"}
+        with mock.patch("peach.folder_picker.pick_folder", return_value=str(self.media)) as picker:
+            with self.client() as client:
+                response = client.post("/api/pick-folder", headers=headers, json={"initial": ""})
+                self.assertEqual(response.status_code, 200, response.text)
+                self.assertEqual(response.json(), {"path": str(self.media)})
+                picker.assert_called_once_with(None)
+                crossed = client.post("/api/pick-folder", json={},
+                                      headers={**headers, "Origin": "https://example.org"})
+                self.assertEqual(crossed.status_code, 403)
+                self.assertEqual(client.post("/api/pick-folder", json={}).status_code, 401)
+            with self.client(address="192.0.2.1") as client:
+                self.assertEqual(client.post("/api/pick-folder", headers=headers, json={}).status_code, 403)
+            self.assertEqual(picker.call_count, 1)
+        with mock.patch("peach.folder_picker.pick_folder",
+                        side_effect=folder_picker.PickerUnavailable("这个系统上没有可用的文件夹对话框")):
+            with self.client() as client:
+                response = client.post("/api/pick-folder", headers=headers, json={})
+        self.assertEqual(response.status_code, 501)
+        self.assertEqual(response.json()["error"], "这个系统上没有可用的文件夹对话框")
+        busy = folder_picker.PickerBusy("已经有一个选择文件夹的窗口开着")
+        with mock.patch("peach.folder_picker.pick_folder", side_effect=busy):
+            with self.client() as client:
+                self.assertEqual(client.post("/api/pick-folder", headers=headers, json={}).status_code, 409)
 
     def test_standalone_tray_uses_its_own_binary_and_configured_loopback_port(self):
         import sys

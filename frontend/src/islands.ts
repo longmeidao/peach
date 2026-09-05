@@ -13,9 +13,11 @@
  * 容器由遗留层拥有：它会在别的页面进入时直接 `innerHTML=`。因此 `mountIsland` 每次
  * 都先自我卸载，`unmountIsland` 也不假设 DOM 还在原处。 */
 import { h, render } from 'preact';
-import type { ComponentType } from 'preact';
+import type { Attributes, ComponentType } from 'preact';
 
 import { errorMessage } from './api';
+import { Configuration, loadConfiguration } from './islands/configuration';
+import type { ConfigurationData, ConfigurationProps } from './islands/configuration';
 import { QualityGoals, loadQualityGoals } from './islands/quality-goals';
 import type { QualityGoalsProps } from './islands/quality-goals';
 import type { QualityGoalsData } from './state/quality-goals';
@@ -37,6 +39,7 @@ export interface IslandState<D> {
 /** 每个 island 的 props 与首屏数据类型。新增 island 时在这里登记，注册表随之要求实现。 */
 export interface IslandContracts {
   'quality-goals': { props: QualityGoalsProps; data: QualityGoalsData };
+  configuration: { props: ConfigurationProps; data: ConfigurationData };
 }
 
 export type IslandName = keyof IslandContracts;
@@ -51,6 +54,7 @@ interface IslandDefinition<N extends IslandName> {
 
 const REGISTRY: { [N in IslandName]: IslandDefinition<N> } = {
   'quality-goals': { load: loadQualityGoals, component: QualityGoals },
+  configuration: { load: loadConfiguration, component: Configuration },
 };
 
 /** 已注册的 island 名字。遗留层与测试用它核对路由表，不必知道注册表结构。 */
@@ -100,7 +104,10 @@ export async function mountIsland<N extends IslandName>(
   // 旧属性。整个清掉再画，一次替换，只有一次布局变化。
   el.textContent = '';
   mount.painted = true;
-  render(h(island.component, { ...props, ...state }), el);
+  // 注册表有多个 island 之后 `PropsOf<N>` 是按名字分发的索引类型，TS 推不出它与
+  // `Attributes` 相交仍是同一个对象，这里把结论写给它。
+  const attrs = { ...props, ...state } as Attributes & PropsOf<N> & IslandState<DataOf<N>>;
+  render(h(island.component, attrs), el);
 }
 
 /** 卸载容器上的 island：中止在途取数并清空自己画过的内容。没挂过的容器是空操作。 */

@@ -8,11 +8,14 @@
 /** 服务端明确回了非 2xx。`status` 留给调用方区分 401／409／404 这类需要不同处置的情况。 */
 export class ApiError extends Error {
   readonly status: number;
+  /** 响应体原样。表单校验那种 400 会在 `errors` 里按字段给原因，页面要把它们写回原位。 */
+  readonly body: unknown;
 
-  constructor(message: string, status: number) {
+  constructor(message: string, status: number, body: unknown = null) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
+    this.body = body;
   }
 }
 
@@ -49,6 +52,26 @@ export async function apiGet<T>(path: string, signal?: AbortSignal): Promise<T> 
   }
   if (!response.ok) {
     throw new ApiError(reasonOf(payload) || `请求失败（${response.status}）`, response.status);
+  }
+  return payload as T;
+}
+
+/** 带 JSON 请求体的写操作。失败时原响应体挂在 `ApiError.body` 上，字段级原因由调用方取。 */
+export async function apiSend<T>(path: string, body: unknown, method = 'POST'): Promise<T> {
+  const response = await fetch(path, {
+    method,
+    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+    credentials: 'same-origin',
+    body: JSON.stringify(body),
+  });
+  let payload: unknown = null;
+  try {
+    payload = await response.json();
+  } catch {
+    // 同上：失败响应不一定是 JSON。
+  }
+  if (!response.ok) {
+    throw new ApiError(reasonOf(payload) || `请求失败（${response.status}）`, response.status, payload);
   }
   return payload as T;
 }
