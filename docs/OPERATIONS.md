@@ -137,6 +137,9 @@ curl -s --noproxy '*' -o /dev/null -w '%{http_code}\n' https://peach.local/healt
 - 刷新源码运行态不要用 Computer Use 点托盘：`python scripts/restart_windows_tray.py` 按精确 EXE 路径找到 pystray 隐藏窗口、发送正常停止消息、等托盘自行关闭子服务，再静默启动并核对新托盘重新拥有两个服务；找不到唯一窗口或退出超时就拒绝，绝不强杀后另启。
 - `dist/Peach/Peach.exe` 是本机打包入口而不是可移动的独立发行版：托盘只打包了自己，服务进程仍由项目 venv 的 `peach.exe` 承担，`_peach_executable()` 从 exe 位置逐级向上找 `.venv\Scripts\peach.exe`，所以不要按「单文件绿色版」对外描述。
 - 更新与打包的产物自带清退：托盘每次启动只保留最近 2 份 `dist/Peach/Peach.pre-source-sync-*.exe` 备份，并删掉 `<数据根>/state/source-sync-build/` 里不属于待应用记录的暂存构建（`WindowsUpdateInstaller.sweep_artifacts`）；`build_windows.ps1` 成功后删掉 PyInstaller 工作目录 `build/windows/app`。自动边界只认这两个命名：`Peach.exe` 本体、手工放进 `dist/` 的目录、`build/release-*`、`attic/` 都不碰，手工构建的残留自己删。
+- 每个包都带构建身份：`build_windows.ps1` 在调用 PyInstaller 前把 `{commit, version, built_at}` 写进 `build/windows/build-info.json`，再用 `--add-data` 放到包根，本机托盘与独立测试包两种模式共用这一行。构建机没有 git 或源码不是检出时 `commit` 写 `null`，构建照常。`peach.buildinfo.frozen_build()` 只在 `sys.frozen` 时读它；文件缺失或格式坏一律返回 `None`，托盘照常启动，只是把自己当作身份未取得。
+- 本机托盘自己发现「我比检出旧」并重建：判据是构建提交与检出的差，不是与 GitHub 的差——这台机器提交先落本地再推远端，「落后远端」永远不成立。`VersionManager.build_age()` 用 `rev-list --count <构建提交>..HEAD` 数出落后多少，版本菜单显示成 `master@<HEAD> · 托盘构建 <构建提交>，落后 N 个提交`；数不出来（身份未取得、提交不在本检出历史里）按陈旧处理，重建范围退化为 `src/peach/`。「同步开发进度」在 `ahead`／`current`／`error`／`unconfigured` 下改走本地重建，健康轮询另按 5 分钟一轮读本地 HEAD 自动触发，同一个 HEAD 只自动试一次，首次设置未完成时不触发。重建走的仍是既有流程：完整测试 → 暂存构建 → 打包迁移资源检查 → 备份 → 替换助手，任一步失败都只发通知，旧托盘和服务保持运行。失败表现是托盘停在旧版本、通知里写明卡在哪一步，日志见 `<数据根>/logs/windows-source-sync.log`。独立测试包与源码运行的托盘不进这条路径，前者提示下载新版完整替换程序目录，后者提示源码已是最新。
+- 版本号在本地集成时就动：`scripts/agent_worktree.py integrate` 合并后按 `runtime_inputs_changed()` 判断这次改动有没有碰到 `src/peach/`、`web/`、`frontend/`、`migrations/`、`resources/`、`scripts/build_app_entry.py`、`scripts/build_windows.ps1`、`pyproject.toml`，碰到就把 `__version__` 的 patch 位加一，在 master 上单独提交 `chore(release): 版本 <新版本>`。`--bump {patch,minor,major,none}` 默认 `patch`，纯文档、技能与测试改动传 `none`；输出的 `version`／`bumped` 说明这次集成后的版本号。集成不打标签：发布点仍然是 `scripts/release_tag.py --apply` 推上去的 `vX.Y.Z`，它读的正是这里推进后的 `__version__`，并且遇到同名本地标签会直接拒绝——两处都造标签只会把唯一的发布入口挡在门外。
 - PyInstaller 的资源直接位于 `sys._MEIPASS`，没有源码树的 `src/` 层；打包后的 `migrate`、Web 与品牌资源必须从这里解析，不能对 `config.py` 固定取 `parents[2]`。
 - 创建 Win32 窗口前必须启用 Per-Monitor V2 DPI；正常动作不弹模态 MessageBox，更新检查在后台线程执行并用 pystray 原生非模态通知反馈。
 - 菜单栏与托盘状态行逐个点名每个服务，例如 `HTTP 正常 · HTTPS 异常（状态码 503）`，异常附最近一次失败原因，不要改回只报「未运行」。
@@ -155,7 +158,7 @@ curl -s --noproxy '*' -o /dev/null -w '%{http_code}\n' https://peach.local/healt
 
 - `src/peach/__init__.py::__version__` 是版本唯一来源，采用 pre-1.0 SemVer；Git commit 是构建标识，`vX.Y.Z` tag 是发布点，推到 GitHub 即触发 Release 工作流（见「桌面入口与发布」）。
 - 打标签从干净的 master 主检出执行 `python scripts/release_tag.py`：默认只检查本地与 GitHub master 一致、该提交最新 Test 全绿、版本合法且标签不存在；加 `--apply` 创建 annotated tag 并只推送该标签。版本标签不覆盖，下一版先修改 `__version__`。推送失败若留下本地标签，先检查归属再人工恢复，不强推。Release 工作流再次检查标签提交属于 master 历史且同提交 Test 已通过，随后构建、制品验收、创建预发布；手动 `workflow_dispatch` 仍只验收制品。打标签代表公开预发布，不等于替换本机生产入口。
-- 「检查更新」只 fetch 和比较；「同步开发进度」只做 `merge --ff-only`，不 stash、不 rebase、不 `--force`——并行工作树和主检出共用同一个对象库与 reflog，任何改写历史的「顺手解决」都会把别的分支一起拖下去。工作区脏或两边分叉时原样报出来交给人。
+- 「检查更新」只 fetch 和比较；「同步开发进度」只做 `merge --ff-only`，不 stash、不 rebase、不 `--force`——并行工作树和主检出共用同一个对象库与 reflog，任何改写历史的「顺手解决」都会把别的分支一起拖下去。工作区脏或两边分叉时原样报出来交给人。本地不落后远端、或者根本连不上远端时，它转为按构建身份判断打包托盘要不要重建（见「桌面入口与发布」）；那条路径不拦脏工作区，因为构建跑的就是检出里的这一份代码。
 - 快进动到 `tray.py`／`menubar.py`／`versioning.py`／`certs.py`／`netwatch.py`／`config.py`／`pyproject.toml` 时只重启子服务追不上，托盘要靠 `launchctl kickstart -k` 重启自己，顺序必须先 `stop_owned()` 再 kickstart，且前提是 launchd 报的 pid 等于自己的 pid。
 
 ## 网络、证书与 mDNS

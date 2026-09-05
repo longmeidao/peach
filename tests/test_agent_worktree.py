@@ -5,7 +5,13 @@ from pathlib import Path
 from unittest import mock
 
 from scripts import agent_worktree
-from scripts.agent_worktree import WorkspaceError, _git, create, integrate, prune, ready
+from scripts.agent_worktree import (
+    WorkspaceError, _git, _lines, bump_version, create, integrate, prune, read_version,
+    ready, runtime_inputs_changed,
+)
+
+#: 版本号的唯一来源，`src/peach/__init__.py` 在测试仓库里的最小复刻。
+VERSION_SEED = b'"""Peach application package."""\n\n__version__ = "0.7.14"\n'
 
 
 class StuckRemoval:
@@ -54,6 +60,9 @@ class AgentWorktreeTests(unittest.TestCase):
         _git(self.repo, "config", "user.name", "Peach Test")
         (self.repo / "tracked.txt").write_text("base\n", encoding="utf-8")
         (self.repo / "worker.txt").write_text("base\n", encoding="utf-8")
+        (self.repo / "src" / "peach").mkdir(parents=True)
+        (self.repo / "src" / "peach" / "__init__.py").write_bytes(VERSION_SEED)
+        _git(self.repo, "add", "src/peach/__init__.py")
         commit(self.repo, "base")
 
     def tearDown(self):
@@ -252,3 +261,96 @@ class BuiltinLeftoverTests(AgentWorktreeTests):
         self.assertEqual(report["swept"], [])
         self.assertTrue(worker.is_dir())
         self.assertEqual([row["branch"] for row in report["kept"]], ["agent/claude/in-place"])
+
+
+class VersionBumpTests(AgentWorktreeTests):
+    """集成时本地版本号跟着走一格。
+
+    这台机器既是开发机又是生产机：提交先落本地再推 GitHub，本地永远领先，所以版本号
+    必须在集成时就动。手工改那一行的结果是它长期停在同一个值上，托盘、发布 tag 与
+    GitHub Release 全都指着一个说明不了任何事的数字。
+    """
+
+    def worker_touching(self, name: str, path: str, text: str = "改了\n") -> str:
+        result = create(self.repo, "Claude", name, self.root / "worktrees")
+        worker = Path(result["path"])
+        target = worker / path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(text, encoding="utf-8")
+        _git(worker, "add", path)
+        _git(worker, "commit", "-m", f"feat: {name}")
+        return str(result["branch"])
+
+    def test_runtime_inputs_are_told_apart_from_development_only_paths(self):
+        self.assertTrue(runtime_inputs_changed(["src/peach/tray.py"]))
+        self.assertTrue(runtime_inputs_changed(["web/app.js"]))
+        self.assertTrue(runtime_inputs_changed(["frontend/src/main.ts"]))
+        self.assertTrue(runtime_inputs_changed(["migrations/0042_thing.sql"]))
+        self.assertTrue(runtime_inputs_changed(["resources/peach.ico"]))
+        self.assertTrue(runtime_inputs_changed(["scripts/build_windows.ps1"]))
+        self.assertTrue(runtime_inputs_changed(["scripts/build_app_entry.py"]))
+        self.assertTrue(runtime_inputs_changed(["pyproject.toml"]))
+        self.assertTrue(runtime_inputs_changed([r"src\peach\tray.py"]))
+
+        self.assertFalse(runtime_inputs_changed([]))
+        self.assertFalse(runtime_inputs_changed(["docs/STATUS.md", "AGENTS.md"]))
+        self.assertFalse(runtime_inputs_changed(["tests/test_tray.py"]))
+        self.assertFalse(runtime_inputs_changed([".claude/skills/peach-worktree/SKILL.md"]))
+        self.assertFalse(runtime_inputs_changed(["scripts/agent_worktree.py"]))
+
+    def test_only_the_version_line_moves(self):
+        updated, version = bump_version(VERSION_SEED.decode("utf-8"), "patch")
+        self.assertEqual(version, "0.7.15")
+        self.assertEqual(updated,
+                         '"""Peach application package."""\n\n__version__ = "0.7.15"\n')
+
+        self.assertEqual(bump_version('__version__ = "0.7.14"', "minor")[1], "0.8.0")
+        self.assertEqual(bump_version('__version__ = "0.7.14"', "major")[1], "1.0.0")
+        with self.assertRaisesRegex(WorkspaceError, "unknown bump part"):
+            bump_version('__version__ = "0.7.14"', "epoch")
+        with self.assertRaisesRegex(WorkspaceError, "__version__"):
+            bump_version("nothing here\n", "patch")
+
+    def test_integrating_a_runtime_change_publishes_the_next_patch_version(self):
+        branch = self.worker_touching("runtime-change", "src/peach/module.py")
+        report = integrate(self.repo, branch)
+        self.assertTrue(report["bumped"])
+        self.assertEqual(report["version"], "0.7.15")
+        self.assertEqual(read_version(self.repo), "0.7.15")
+        subject = _git(self.repo, "log", "-1", "--format=%s").stdout.strip()
+        self.assertEqual(subject, "chore(release): 版本 0.7.15")
+        touched = _lines(_git(self.repo, "show", "--name-only", "--format=", "HEAD"))
+        self.assertEqual(touched, ["src/peach/__init__.py"])
+
+    def test_documentation_only_work_leaves_the_version_alone(self):
+        branch = self.worker_touching("docs-change", "docs/STATUS.md")
+        report = integrate(self.repo, branch)
+        self.assertFalse(report["bumped"])
+        self.assertEqual(report["version"], "0.7.14")
+        self.assertEqual(read_version(self.repo), "0.7.14")
+        self.assertEqual(_git(self.repo, "log", "-1", "--format=%s").stdout.strip(),
+                         f"Merge branch '{branch}'")
+
+    def test_an_explicit_none_keeps_the_version_even_for_runtime_changes(self):
+        branch = self.worker_touching("held-back", "src/peach/module.py")
+        report = integrate(self.repo, branch, bump="none")
+        self.assertFalse(report["bumped"])
+        self.assertEqual(read_version(self.repo), "0.7.14")
+
+    def test_a_minor_bump_is_available_for_larger_work(self):
+        branch = self.worker_touching("feature-set", "src/peach/module.py")
+        report = integrate(self.repo, branch, bump="minor")
+        self.assertEqual(report["version"], "0.8.0")
+        self.assertEqual(read_version(self.repo), "0.8.0")
+
+    def test_integration_never_creates_a_version_tag_itself(self):
+        """打标签只有 `scripts/release_tag.py` 一个入口，它遇到同名本地标签就拒绝。
+
+        集成这一步再造一个本地标签，等于把唯一的发布入口挡在门外；这里只把
+        `__version__` 推到位，那正是它读的东西。
+        """
+        branch = self.worker_touching("taggable", "src/peach/module.py")
+        report = integrate(self.repo, branch)
+        self.assertEqual(report["version"], "0.7.15")
+        self.assertEqual(report["release_tag_entry"], "scripts/release_tag.py")
+        self.assertEqual(_lines(_git(self.repo, "tag", "--list")), [])
