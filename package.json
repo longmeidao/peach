@@ -12,7 +12,7 @@
   "devDependencies": {
     "@phosphor-icons/core": "2.1.1",
     "healthicons": "2.0.0",
-    "lucide-static": "1.37.0",
+    "lucide-static": "1.38.0",
     "swiper": "14.2.0",
     "video.js": "8.24.0"
   }
