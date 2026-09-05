@@ -600,7 +600,7 @@ class SetupPageTests(_Case):
         """高级设置是 Geist Collapse：借主站的 wireCollapse，chevron 与高度都 200ms；滚动条也是主站那条。"""
         body = self._get("/").text
         self.assertIn('<summary><span>高级设置</span><svg viewBox="0 0 24 24" aria-hidden="true">', body)
-        self.assertIn('import{attachOverlayScrollbar,wireCollapse}from"/js/ui-components.js";'
+        self.assertIn('import{attachOverlayScrollbar,wireCollapse,selectFieldHtml,wireSelectField}from"/js/ui-components.js";'
                       'attachOverlayScrollbar(document.documentElement,{variant:"page"});'
                       'wireCollapse(document,"details","setup-collapse");', body)
         self.assertIn('.fcollapse{overflow:hidden;transition:height .2s ease-in-out;margin:0 -6px;padding:0 6px}', body)

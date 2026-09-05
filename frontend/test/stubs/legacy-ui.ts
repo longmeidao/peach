@@ -17,7 +17,7 @@ export const fieldsetTitle = (id: string, title: string): string =>
 export const selectFieldHtml = (items: string[][], value: string, options: { label?: string } = {}): string =>
   `<div class="gselect" data-value="${value}"><button type="button" aria-haspopup="listbox" aria-label="${options.label}">${items.find(item => item[0] === value)?.[1]}</button></div>`;
 export const wireSelectField = (root: HTMLElement) => {
-  Object.defineProperty(root, 'value', { get: () => root.dataset.value });
+  Object.defineProperty(root, 'value', { get: () => root.dataset.value, set: (value: string) => { root.dataset.value = value; } });
   return root as HTMLElement & { value: string; disabled: boolean };
 };
 

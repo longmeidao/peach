@@ -41,7 +41,7 @@ def validate(raws: object, *, windows: bool) -> tuple[dict, dict, list[str]]:
             if any(ord(char) < 32 for char in text + root):
                 raise ValueError("路径不能包含控制字符")
             if not platform.is_windows_path(root) or ".." in PureWindowsPath(root).parts:
-                raise ValueError("账本根目录必须是绝对盘符路径，例如 B:\\")
+                raise ValueError("Windows 中的对应路径必须包含盘符，例如 B:\\")
             path = PureWindowsPath(text) if windows else PurePosixPath(text)
             if not text or not (platform.is_windows_path(text) if windows else text.startswith("/")):
                 raise ValueError("请填写本机挂载点的绝对路径")
@@ -51,7 +51,7 @@ def validate(raws: object, *, windows: bool) -> tuple[dict, dict, list[str]]:
             for other_root, other_path in seen:
                 if (declared == other_root or declared.is_relative_to(other_root)
                         or other_root.is_relative_to(declared)):
-                    raise ValueError("账本根目录与另一行重复或重叠")
+                    raise ValueError("Windows 中的对应路径与另一文件夹重复或重叠")
                 if path == other_path or path.is_relative_to(other_path) or other_path.is_relative_to(path):
                     raise ValueError("本机挂载点与另一行重复或重叠")
             seen.append((declared, path))

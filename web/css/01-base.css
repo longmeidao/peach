@@ -164,7 +164,7 @@ button,a,input,textarea,select,summary{touch-action:manipulation}
    次级是 --ds-background-100 的白面加一圈 1px #EBEBEB，主动作是 #171717 实底白字、
    不带描边，禁用态落到 #F2F2F2 底 #8F8F8F 字。所以次级不是透明的——它自己是一块面，
    压在 fieldset 的操作条上时要比条子亮，不能透出条子的底。 */
-.geist-button{box-sizing:border-box;height:32px;padding:0 6px;border:1px solid var(--line-soft);
+.geist-button{box-sizing:border-box;height:32px;padding:0 14px;border:1px solid var(--line-soft);
   border-radius:var(--control-radius);background:var(--ground);color:var(--ink);display:inline-flex;
   align-items:center;justify-content:center;gap:6px;font:inherit;font-size:var(--fs-md);font-weight:500;
   line-height:1;white-space:nowrap;cursor:pointer;
