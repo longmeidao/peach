@@ -960,15 +960,35 @@ function Ct(e) {
 	});
 }
 //#endregion
+//#region src/sidebar.ts
+function wt(e) {
+	return [
+		"/",
+		"/unseen",
+		"/watch-later",
+		"/flagged",
+		"/trash",
+		"/junk-files"
+	].includes(e) || /^\/(item|mix|parts|editions)\//.test(e) || /^\/playlists\/\d+\/\d+$/.test(e) || /^\/(performers|studios|creators|series|agencies)\/.+/.test(e);
+}
+function Tt(e, t) {
+	return e.dataset.surface === t && e.querySelector(".dnav") ? !1 : (e.dataset.surface = t, e.replaceChildren(), !0);
+}
+function Et(e) {
+	let t = /* @__PURE__ */ new Map();
+	for (let n of e) for (let e of new Set(n.tags || [])) t.set(e, (t.get(e) || 0) + 1);
+	return [...t].sort((e, t) => t[1] - e[1]).slice(0, 30);
+}
+//#endregion
 //#region src/islands.ts
-var wt = { "quality-goals": {
+var Dt = { "quality-goals": {
 	load: gt,
 	component: vt
-} }, Tt = () => Object.keys(wt), $ = /* @__PURE__ */ new Map();
-async function Et(e, t, n, r = {}) {
-	let i = wt[e];
+} }, Ot = () => Object.keys(Dt), $ = /* @__PURE__ */ new Map();
+async function kt(e, t, n, r = {}) {
+	let i = Dt[e];
 	if (!i) throw Error(`未注册的 island：${String(e)}`);
-	Dt(t);
+	At(t);
 	let a = {
 		controller: new AbortController(),
 		painted: !1
@@ -998,9 +1018,9 @@ async function Et(e, t, n, r = {}) {
 		}), t);
 	}
 }
-function Dt(e) {
+function At(e) {
 	let t = $.get(e);
 	t && (t.controller.abort(), $.delete(e), t.painted && _e(null, e));
 }
 //#endregion
-export { Ct as followJobProgress, Tt as islandNames, Et as mountIsland, xt as refreshStore, bt as storeNames, Dt as unmountIsland, St as watchJob };
+export { Ct as followJobProgress, Ot as islandNames, kt as mountIsland, xt as refreshStore, wt as sidebarHasCatalogContent, Et as sidebarTagCounts, bt as storeNames, Tt as syncSidebarSurface, At as unmountIsland, St as watchJob };

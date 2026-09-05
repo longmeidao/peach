@@ -4,6 +4,7 @@ import { javDisplayName, javTitleHtml } from './js/jav-title.js';
 import { matchRoute, routeLabel } from './js/routes.js';
 import { initMiddleTruncate } from './js/middle-truncate.js';
 import { tagLabel } from './js/tags.js';
+import { syncSidebarSurface, sidebarTagCounts, sidebarHasCatalogContent } from './dist/peach-ui.js';
 import {
   breadcrumbHtml, checkboxHtml, closeAnchoredMenu, confirmModal, emptyStateHtml, fieldsetTitle,
   fillSkeletonTier, fitSkeleton, iconSwitchHtml, loadingDotsHtml,
@@ -302,9 +303,10 @@ const surfaceApi=(token,path,options)=>api(path,{...options,signal:token.signal}
   .catch(error=>{if(isAbort(error))return null;throw error});
 const route=(path,replace=false)=>{
   surfaceEpoch++;
+  barsRequestSeq++;
   history[replace?'replaceState':'pushState']({},'',path);syncPageTitle(path);
   lastRoutePath=decodeURIComponent(new URL(path,location.href).pathname);
-  queueMicrotask(()=>{syncHeaderActions();paintListTitle()});
+  queueMicrotask(()=>{syncHeaderActions();paintListTitle();buildDrawerNavigation()});
 };
 
 /* ── 脱盘模式 ─────────────────────────────────────────────────────────────────
@@ -1848,6 +1850,8 @@ function cardHtml(it,cls){
 
   const thumb=useCover
     ? coverImage(it,layout)
+    : it.follow_thumb_url
+      ? `<img class="poster" src="${esc(it.follow_thumb_url)}" alt="" loading="lazy" referrerpolicy="no-referrer">`
     : (it.has_thumb
       ? `<img class="poster" src="/poster?id=${it.id}&c=4" alt="" loading="lazy">`
       : `<span class="nopic">无预览</span>`);
@@ -1866,7 +1870,7 @@ function cardHtml(it,cls){
     ? `<div class="watchprogress" role="progressbar" aria-label="观看进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(watchedRatio*100)}"><i style="width:${(watchedRatio*100).toFixed(1)}%"></i></div>`
     : (it.leave_ratio!=null?`<div class="scrub"><i style="width:${Math.round(it.leave_ratio*100)}%"></i></div>`:'');
   const sizeText=Number(shownSize)>0?fmtSize(Number(shownSize)):'大小未知';
-  const tgs=(it.tags||[]).slice(0,3).map(x=>`<span class="tg general" data-tag="${esc(x)}">${esc(tagLabel(x))}</span>`).join('');
+  const tgs=(it.follow_tags||it.tags||[]).slice(0,3).map(x=>`<span class="tg general"${it.follow_item_id?'':` data-tag="${esc(x)}"`}>${esc(tagLabel(x))}</span>`).join('');
   const laterTool=`<div class="hovertools later-tools"><button class="laterbtn" data-later aria-pressed="${!!it.watch_later}" title="稍后看" aria-label="稍后看">
       ${it.watch_later?icon('check'):icon('bookmark-plus')}</button></div>`;
   /* 分卷卡悬浮翻的是各卷首帧，没有可控的视频：倒计时环和快退／快进那三颗留着的话，
@@ -2286,6 +2290,12 @@ async function getBarsData(context=barsContext){
   // 已标记/稍后看这类状态页也是一个更窄的集合。不传的话，上面那排头像和
   // 标签条走的是全库口径，列出来的人和标签在本页一个作品都没有。
   if(context.type==='home'&&state.state)facetParams.set('state',state.state);
+  if(context.type!=='item'){
+    const filters=activeFilterState();
+    ['loc','creator','studio','tag','tag_match','len','dur_min','dur_max','orient','q','thumb'].forEach(key=>{
+      if(filters[key])facetParams.set(key,filters[key]);
+    });
+  }
   const scope=facetParams.toString();
   if(scope!==barsDataScope){barsDataCache=null;barsDataPromise=null;barsDataScope=scope}
   if(barsDataCache&&Date.now()-barsDataAt<30000)return barsDataCache;
@@ -2318,18 +2328,6 @@ function commitContextFilter(mutate){
   }
   mutate(state);route(homePath());buildBars();load(true)
 }
-/* 关注标签和目录标签是两套词表：一个来自关注库的在线更新，一个来自 ledger 里已入库
-   的作品，连计数的含义都不同，所以单独取一份。缓存窗口与 getBarsData 对齐——抽屉每
-   次导航都重建，不该每次都问一遍。取不到就当没有，抽屉少一节，不挡其余筛选。 */
-let followTagCache=null,followTagCacheAt=0;
-const followTagFacet=async()=>{
-  if(followTagCache&&Date.now()-followTagCacheAt<30000)return followTagCache;
-  try{
-    const data=await api('/api/follow/tags?limit=30');
-    followTagCache=data.items||[];followTagCacheAt=Date.now();
-  }catch(_e){followTagCache=followTagCache||[]}
-  return followTagCache;
-};
 /* 首屏时顶部三层和标签条还是两个空 div，而这一次请求要花约一秒。Geist 的判据是
    骨架宽高必须等于最终内容——「200×20 的块变成 80×16 的字读起来像故障」——所以
    这里直接套真实类名，让几何自己对上。只在还空着时画：导航到已经有内容的页面
@@ -2362,13 +2360,15 @@ function renderBarsLoading(filterState){
 }
 async function buildBars(){
   const requestSeq=++barsRequestSeq;
+  buildDrawerNavigation();
+  if(!sidebarHasCatalogContent(location.pathname))return;
   const context=barsContext,filterState=activeFilterState();
   renderBarsLoading(filterState);
   // 两个聚合查询互不依赖。冷启动各需约 1 秒，串行会让手机首屏白等；
   // 并行取回后再一次性绘制顶部与抽屉。
-  const [[facetData,tops],followTagRows]=await Promise.all([
-    getBarsData(context),followTagFacet()]);
+  const [facetData,tops]=await getBarsData(context);
   if(requestSeq!==barsRequestSeq)return;
+  const followTagRows=facetData.follow_tags||[];
   if(context.type==='home')facets=facetData;
   // 详情抽屉继续只展示当前作品的真实标签；作品没有内容标签时，顶部发现栏
   // 回退到返回首页的推荐口径，避免把全库标签伪装成作品元数据。
@@ -2465,18 +2465,15 @@ async function buildBars(){
     +sec('创作者',chips(scopedCreators,'creator',false,26),scopedCreators.length>26?'<button data-more="creator">更多</button>':'','artist')
     +sec('内容标签',chips(facetData.tags,'tag',false,30),facetData.tags.length>30?'<button data-more="tag">更多</button>':'','general')
     +sec('影片属性',chips(facetData.tech,'tag',false,16),'','meta')
-    /* 单独一节而不是并进「内容标签」：这些标签指向还没入库的在线更新，混在一起
-       点下去会得到一屏空结果。它们也不能走 chips——那套拼的是目录筛选。 */
     +sec('关注标签',followTagRows.length?`<div class="chips">`+followTagRows.map(row=>
-      `<button class="chip online" data-follow-drawer-tag="${esc(row.k)}">${esc(row.k)}<span class="n">${row.n.toLocaleString()}</span></button>`
+      `<button class="chip online" data-follow-drawer-tag="${esc(row.k)}">${esc(tagLabel(row.k))}<span class="n">${row.n.toLocaleString()}</span></button>`
       ).join('')+`</div>`:'','','online');
   const dc=$('#drawerClose'); if(dc)dc.onclick=()=>openDrawer(false);
   $('#drawer').querySelectorAll('[data-page]').forEach(b=>b.onclick=()=>{
     openIndex(b.dataset.page); closeDrawerAfterNav()});
   $('#drawer').querySelectorAll('[data-nav]').forEach(b=>b.onclick=()=>navTo(b.dataset.nav));
   $('#drawer').querySelectorAll('[data-follow-drawer-tag]').forEach(b=>b.onclick=()=>{
-    // 关注标签只在关注页成立，直接过去；它不是目录筛选，不能走 commitContextFilter。
-    followAuthor='';followProvider='';followMediaView='videos';followFilter='';
+    followAuthor='';followProvider='';followMediaView='videos';followFilter='saved';
     followTags=new Set([b.dataset.followDrawerTag]);
     openDrawer(false);route(followViewPath());openFollow(false)});
   wireNavigationDrag($('#drawer').querySelector('.dnav'));
@@ -3874,9 +3871,10 @@ async function followItemById(id){
 async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=false){
   releaseHoverPreviews();
   const entering=!location.pathname.startsWith('/follow/item/');
-  if(push&&entering)followDetailReturnPath=location.pathname+location.search;
+  if(push&&entering&&!preserveReturn)followDetailReturnPath=location.pathname+location.search;
   if(!push&&!preserveReturn)followDetailReturnPath='/follow';
-  const item=await followItemById(+id);if(!item)return;
+  const surface=surfaceToken(surfacePath());
+  const item=await followItemById(+id);if(!item||!surfaceCurrent(surface))return;
   const group=followGroupByItemId.get(item.id);
   const embedded=item.media_items||[];
   const preferredKind=followMediaView==='images'?'image':'video';
@@ -3891,6 +3889,7 @@ async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=fals
   const collection=!embedded.length&&group&&followVideoItems(group).length>1?group:null;
   disposeStage(false);
   if(push)route(`/follow/item/${item.id}`);
+  renderFollowDrawer([item]);
   const source=(followData?.sources||[]).find(row=>row.id===item.source_id);
   const authorSources=(followData?.sources||[]).filter(row=>
     source?.author_key&&row.author_key===source.author_key);
@@ -3898,7 +3897,7 @@ async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=fals
   const src=item.playable?`/follow-stream?id=${item.id}${selectedMedia?`&media=${selectedMedia.index}`:''}`:'';
   const selectedKind=selectedMedia?.media_kind||item.media_kind;
   const media=item.playable&&selectedKind==='video'
-    ?`<video class="video-js vjs-big-play-centered" controls playsinline preload="metadata"></video>`
+    ?`<video class="video-js vjs-big-play-centered" controls playsinline preload="metadata"${item.thumb_url?` poster="${esc(item.thumb_url)}"`:''}></video>`
     :item.playable&&selectedKind==='image'
       ?`<img class="followdetailposter" src="${src}" alt="${esc(item.title)}">`
       :item.thumb_url
@@ -3935,6 +3934,8 @@ async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=fals
     last.after($('#stage'));
   }else if(followList){
     followList.before($('#stage'));
+  }else{
+    placeItemDetail(detailOriginAnchor,detailOriginAbove);
   }
   $('#stage').hidden=false;document.body.classList.add('detail-open');
   $('#stage').innerHTML=`<div class="sgrid followdetailgrid${collection||embeddedQueue?' mixgrid':''}">
@@ -3966,12 +3967,13 @@ async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=fals
   const closeDetail=async()=>{
     disposeStage(false);
     route(followDetailReturnPath||'/follow');
+    if(location.pathname!=='/follow'){await restoreRoute();return}
     if(followData)renderFollow();else await openFollow(false);
   };
   $('#closeStage').onclick=closeDetail;
   $('#stage').querySelectorAll('[data-follow-queue-close]').forEach(button=>button.onclick=closeDetail);
   $('#stage').querySelectorAll('[data-follow-queue-item]').forEach(button=>button.onclick=()=>
-    openFollowDetail(+button.dataset.followQueueItem,true));
+    openFollowDetail(+button.dataset.followQueueItem,true,null,true));
   $('#stage').querySelectorAll('[data-follow-media-item]').forEach(button=>button.onclick=()=>
     openFollowDetail(+(button.dataset.followMediaOwner||item.id),false,
       +button.dataset.followMediaItem,true));
@@ -4269,6 +4271,7 @@ function renderFollow(){
     mediaCounts[kind==='image'?'images':'videos']++));
   const wantedKind=followMediaView==='images'?'image':'video';
   const visible=groups.filter(group=>followMediaKinds(group).has(wantedKind));
+  renderFollowDrawer(visible.flatMap(group=>followCollectionItems(group)));
   const providerPills=[...providers].map(([key,label])=>
     `<button class="pill sourcepill" data-follow-provider="${esc(key)}" aria-pressed="${key===followProvider}"
       title="${esc(label)}" aria-label="来源：${esc(label)}">${sourceIcon(key)}</button>`).join('');
@@ -6091,6 +6094,34 @@ async function openEntity(kind,name,push=true){
 }
 
 let drawerSuppressUntil=0;
+function buildDrawerNavigation(){
+  const drawer=$('#drawer'),key=surfacePath()+location.search;
+  if(!syncSidebarSurface(drawer,key)){
+    drawer.querySelectorAll('[data-nav]').forEach(button=>
+      button.setAttribute('aria-pressed',String(navOn(button.dataset.nav))));
+    return;
+  }
+  drawer.innerHTML=`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+    <b class="disp" style="font-size:15px;letter-spacing:.1em">导航与筛选</b>
+    <button id="drawerClose" class="ib" title="收起" aria-label="收起导航">${icon('x')}</button></div>
+    <div class="dnav">${orderedEdgeIcons().map(([k,label,ic])=>
+      `<button data-nav="${k}" draggable="true" aria-pressed="${navOn(k)}">${icon(ic)}<span>${label}</span></button>`).join('')}</div>`;
+  $('#drawerClose').onclick=()=>openDrawer(false);
+  $('#drawer').querySelectorAll('[data-nav]').forEach(b=>b.onclick=()=>navTo(b.dataset.nav));
+  wireNavigationDrag(drawer.querySelector('.dnav'));
+}
+function renderFollowDrawer(items){
+  buildDrawerNavigation();
+  $('#drawer').querySelectorAll('.sec').forEach(section=>section.remove());
+  const counts=sidebarTagCounts(items.map(item=>({tags:followCardTags(item)})));
+  if(!counts.length)return;
+  $('#drawer').insertAdjacentHTML('beforeend',`<div class="sec cat-online"><h3>内容标签</h3><div class="chips">${
+    counts.map(([tag,n])=>
+      `<button class="chip online" data-follow-drawer-tag="${esc(tag)}" aria-pressed="${followTags.has(tag)}">${esc(tagLabel(tag))}<span class="n">${n}</span></button>`).join('')}</div></div>`);
+  $('#drawer').querySelectorAll('[data-follow-drawer-tag]').forEach(b=>b.onclick=()=>{
+    followTags=new Set([b.dataset.followDrawerTag]);
+    openDrawer(false);route(followViewPath());openFollow(false)});
+}
 function openDrawer(v){$('#drawer').classList.toggle('open',v);$('#scrim').classList.toggle('on',v);
   document.body.classList.toggle('drawer-open',!!v)}
 function closeDrawerAfterNav(){drawerSuppressUntil=Date.now()+650;openDrawer(false)}
@@ -6522,6 +6553,7 @@ function syncHeaderActions(){
   if(!canSelect&&selectMode)setSelectMode(false,true);
 }
 function buildEdge(){
+  buildDrawerNavigation();
   $('#edge').innerHTML=orderedEdgeIcons().map(([k,t,ic])=>
     `<button data-nav="${k}" draggable="true" title="${t}" aria-pressed="${navOn(k)}">
       ${icon(ic)}</button>`).join('')
@@ -6891,6 +6923,11 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
   const it=await surfaceApi(detailSurface,'/api/item?id='+id);
   if(!surfaceCurrent(detailSurface))return;
   if(it.error)return;
+  if(it.location==='online'&&it.follow_item_id){
+    followDetailReturnPath=detailReturnPath||'/';
+    await openFollowDetail(it.follow_item_id,false,null,true);
+    return;
+  }
   /* 卷标只有分卷队列知道：`/api/item` 是单条口径，它答不出「这是第几卷」。不补的话
      标题栏里的卷号在深链进来和点开队列另一条时都不出现。 */
   if(queueContext?.kind==='parts')
@@ -6898,7 +6935,7 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
   current=it; CACHE[it.id]=it;
   barsContext={type:'item',id:it.id,filters:returnBars?.type==='entity'
     ? {...returnBars.filters}:emptyEntityFilters()};
-  const gated=it.cost==='metered';
+  const gated=it.cost==='metered'&&it.location!=='online';
   const offline=sourceOffline(it.location);
   const online=it.location==='online';
   /* 保存过的在线资产照常播；只有反查不到关注条目时才拦下来说明原因。 */
@@ -7839,7 +7876,9 @@ function immerseStartId(){
 
 async function restoreRoute(){
   surfaceEpoch++;
+  barsRequestSeq++;
   syncPageTitle(location.href);
+  buildDrawerNavigation();
   const path=decodeURIComponent(location.pathname);
   if(path==='/'&&new URLSearchParams(location.search).get('state')==='ads'){
     route(junkPath(),true);await restoreRoute();return;

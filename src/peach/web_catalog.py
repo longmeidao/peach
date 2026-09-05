@@ -115,7 +115,8 @@ AGENCY_SEARCH_CLAUSE = (
 )
 
 
-def q_items(contract: WebContract, args):
+def catalog_filter(contract: WebContract, args):
+    """视频列表与侧栏使用同一组筛选条件。"""
     trash = args.get("state") == "trash"
     # 普通馆藏仍是视频表面；回收站必须展示所有文件类型，否则从垃圾复核移入的
     # 图片、网址快捷方式等会变成不可见、不可恢复，只能被「清空回收站」直接删掉。
@@ -221,6 +222,11 @@ def q_items(contract: WebContract, args):
         # 「在线 1」，点进去却永远是 0 条。
         where.append("(a.snapshot_path IS NOT NULL OR a.location = 'online')")
 
+    return where, par
+
+
+def q_items(contract: WebContract, args):
+    where, par = catalog_filter(contract, args)
     requested = str(args.get("sort") or "")
     sort_key, legacy_dir = SORT_LEGACY_KEYS.get(requested, (requested, ""))
     direction = "ASC" if (str(args.get("dir") or "").lower() or legacy_dir) == "asc" else "DESC"
@@ -308,6 +314,7 @@ def q_items(contract: WebContract, args):
             r["cover_frame"] = contract.cover_frame(r.get("code"))
         r.pop("snapshot_path", None)
         r.pop("path", None)                     # 路径不外发，串流走 id
+    attach_saved_follow_cards(contract, rows)
     attach_multipart_groups(contract, rows)
     attach_edition_groups(contract, rows)
     return {"total": cnt, "bytes": total_bytes, "items": rows, "has_more": has_more}
@@ -364,6 +371,7 @@ def attach_card_performers(contract: WebContract, rows):
     """给各类视频卡片补同一份表演者资料，避免首页/相关/复核卡片各说各话。"""
     if not rows:
         return
+    attach_saved_follow_cards(contract, rows)
     ids = [row["id"] for row in rows]
     qm = ",".join("?" * len(ids))
     names: dict[int, list[str]] = {}
@@ -378,6 +386,32 @@ def attach_card_performers(contract: WebContract, rows):
         row["performers"] = names.get(row["id"], [])[:CARD_PERFORMERS]
         row["performer_entities"] = refs.get(row["id"], [])[:CARD_PERFORMERS]
         row["performer_total"] = len(names.get(row["id"], []))
+
+
+def attach_saved_follow_cards(contract: WebContract, rows):
+    """已保存在线卡片使用关注来源的封面与内容标签。"""
+    from .follow_store import FollowStore
+    from .web_follow import _item_tags, _thumb_url
+
+    ids = [row["id"] for row in rows if row.get("location") == "online"]
+    if not ids:
+        return
+    marks = ",".join("?" * len(ids))
+    with contract.read_connection() as connection:
+        linked = connection.execute(
+            FollowStore._SELECT + f" WHERE i.asset_id IN ({marks}) ORDER BY i.id", ids,
+        ).fetchall()
+    by_asset = {}
+    for record in linked:
+        item = FollowStore._row(record)
+        by_asset.setdefault(item.asset_id, item)
+    for row in rows:
+        item = by_asset.get(row["id"])
+        if item is None or row.get("location") != "online":
+            continue
+        row["follow_item_id"] = item.id
+        row["follow_thumb_url"] = _thumb_url(item)
+        row["follow_tags"] = _item_tags(item)
 
 
 #: 版次的展示次序：正片在前，处理过的在后。这不是偏好排序，只是要一个稳定的
@@ -858,6 +892,7 @@ def q_facets(
     scope_name: str = "",
     asset_id: int | None = None,
     state: str = "",
+    filters: dict | None = None,
 ):
     """返回当前浏览集合真正存在的筛选项。
 
@@ -892,6 +927,10 @@ def q_facets(
             "SUM(CASE WHEN a.play_count>0 THEN 1 ELSE 0 END) AS played "
             "FROM asset a WHERE a.medium='video' " + scope +
             "GROUP BY a.location ORDER BY n DESC", scope_params)]
+        if filters is not None and asset_id is None:
+            conditions, parameters = catalog_filter(contract, {**filters, "state": state})
+            scope += "AND " + " AND ".join(conditions) + " "
+            scope_params.extend(parameters)
         out["orientations"] = [dict(r) for r in c.execute(
             "SELECT a.ctx_orient AS k,count(*) AS n FROM asset a "
             "WHERE a.medium='video' AND a.ctx_orient IS NOT NULL AND a.ctx_orient<>'' " + scope +
@@ -935,6 +974,16 @@ def q_facets(
             "FROM asset a WHERE a.medium='video' AND (a.disposal IS NULL OR a.disposal<>'trash') "
             + scope, scope_params).fetchone()
         out["stats"] = dict(st)
+        saved = [dict(row) for row in c.execute(
+            "SELECT a.id,a.location FROM asset a WHERE a.medium='video' "
+            "AND a.location='online' " + scope, scope_params)]
+    attach_saved_follow_cards(contract, saved)
+    follow_counts: dict[str, int] = {}
+    for item in saved:
+        for tag in set(item.get("follow_tags", [])):
+            follow_counts[tag] = follow_counts.get(tag, 0) + 1
+    out["follow_tags"] = [{"k": tag, "n": count} for tag, count in
+                          sorted(follow_counts.items(), key=lambda row: (-row[1], row[0]))[:30]]
     return out
 
 # ────────────────────────────── 写入 ──────────────────────────────

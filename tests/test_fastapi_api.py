@@ -184,6 +184,8 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         (self.root / "dist" / "peach-ui.css").write_text(".island{}", encoding="utf-8")
         con = sqlite3.connect(self.db)
         con.executescript(BASE_SCHEMA)
+        con.executescript((ROOT / "migrations" / "0018_online_follow.sql").read_text(
+            encoding="utf-8"))
         con.execute(
             """INSERT INTO asset(id,location,path,name,medium,size,creator,studio,duration,
                                   width,height,ctx_orient,snapshot_path,first_seen)

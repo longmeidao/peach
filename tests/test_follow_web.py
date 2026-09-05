@@ -176,6 +176,41 @@ class FollowContractTests(unittest.TestCase):
     def _post(self, path, body):
         return dispatch_api_post(self.contract, path, body)
 
+    def test_saved_catalog_media_uses_the_follow_cover_and_content_tags(self):
+        self._seed(candidates=(FollowCandidate(
+            provider='rule34video', external_id='saved-media', title='Demo video',
+            url='https://example.test/post', media_url='https://example.test/movie.mp4',
+            thumb_url='https://example.test/cover.jpg', duration=20,
+            extra={'tags': ['animation', 'artist_name'],
+                   'tag_types': {'animation': 'general', 'artist_name': 'artist'}},
+        ),))
+        with self.contract.database.write_transaction() as connection:
+            store = FollowStore(lambda: connection)
+            item = store.items()[0]
+            asset_id = store.save_asset(item.id, confirm=True)
+        follow = self._get(item=str(item.id))['groups'][0]['primary']
+        catalog = self._get('/api/items', loc='online')['items'][0]
+        self.assertEqual(catalog['id'], asset_id)
+        self.assertEqual(catalog['follow_item_id'], item.id)
+        self.assertEqual(catalog['follow_thumb_url'], follow['thumb_url'])
+        self.assertEqual(catalog['follow_tags'], follow['tags'])
+        self.assertNotIn('artist_name', catalog['follow_tags'])
+        detail = self._get('/api/item', id=str(asset_id))
+        self.assertEqual(detail['follow_item_id'], item.id)
+        online = self._get('/api/facets', loc='online')
+        self.assertEqual([row['k'] for row in online['follow_tags']], follow['tags'])
+        self.assertEqual(self._get('/api/facets', loc='local')['follow_tags'], [])
+
+    def test_unsaved_follow_tags_do_not_enter_catalog_facets(self):
+        self._seed(candidates=(FollowCandidate(
+            provider='rule34video', external_id='unsaved', title='Demo video',
+            url='https://example.test/unsaved', duration=20,
+            extra={'tags': ['animation'], 'tag_types': {'animation': 'general'}},
+        ),))
+        self.assertTrue(self._get('/api/follow/tags')['items'])
+        self.assertEqual(self._get('/api/facets')['tags'], [])
+        self.assertEqual(self._get('/api/facets')['follow_tags'], [])
+
     def test_paging_back_advances_the_cursor_without_touching_the_etag(self):
         """往回抓推进游标，但**绝不覆盖 etag**。
 
