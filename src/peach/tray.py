@@ -18,7 +18,7 @@ import httpx
 import pystray
 from PIL import Image
 
-from . import ledger_backups, onboarding, settings_file
+from . import ledger_backups, log_retention, onboarding, settings_file
 from .appid import MACOS_LAUNCH_AGENT_LABEL
 from .certs import ensure_certificate
 from .distribution import standalone
@@ -1357,6 +1357,13 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     try:
         specs = build_setup_service_specs(config) if waiting else configured_service_specs(config)
+        # 日志按半年保留、按月切段，必须排在任何子进程打开日志之前：Windows 上被占着的
+        # 文件改不了名也删不掉。整理不了只记日志，不能因此不起托盘。
+        try:
+            for action in log_retention.sweep(config.directory("logs")):
+                logging.getLogger(__name__).info("日志整理：%s", action)
+        except Exception:
+            logging.getLogger(__name__).warning("日志整理失败", exc_info=True)
         manager = ServiceManager(specs, log_dir=config.directory("logs"))
         gate = SetupGate(manager, config, waiting=waiting)
         if sys.platform == "darwin":
