@@ -280,26 +280,35 @@ def harvest_targets(padded: dict[str, dict[str, object]],
 #: 记成「无官网链接」，看起来像是漏采，其实是查都没查。
 ICON_LINK_KINDS = ("official", "catalog")
 
+#: 一条官网都没有时才走的兜底。刚从 LIGHT 拆出来的 EST 只有 `https://x.com/EST_prod`，
+#: 官网还没建，按上面那条它会永远停在「无官网链接」——一家真实存在、账本里有 3 位女优
+#: 的事务所，页面上却连一枚标识都没有。有 official／catalog 的一概不走这条：账本里
+#: 453 条社媒绝大多数挂在艺人身上，混进厂牌小标就成了运营的自拍。
+FALLBACK_LINK_KIND = "social"
+
 
 def studio_links(connection: sqlite3.Connection,
                  kind: str = "studio") -> dict[str, list[dict[str, str]]]:
-    """按 safe 文件名归拢这类实体的站点链接；社媒不算，那是另一条线的头像。
+    """按 safe 文件名归拢这类实体的站点链接；社媒只在没有官网时顶上。
 
     `kind` 是这一趟的实体种类。事务所和厂牌在这里没有区别：都是有官网、要在页面上
     顶一枚标识的公司，标识落盘按名字（`logo_key`）而不按种类，取图那条链也是同一条。
     """
-    placeholders = ",".join("?" * len(ICON_LINK_KINDS))
+    kinds = (*ICON_LINK_KINDS, FALLBACK_LINK_KIND)
+    placeholders = ",".join("?" * len(kinds))
     rows = connection.execute(
         "SELECT e.id, e.canonical_name, l.link_kind, l.url"
         " FROM entity e JOIN entity_link l ON l.entity_id = e.id"
         f" WHERE e.kind = ? AND l.link_kind IN ({placeholders})"
-        " ORDER BY e.canonical_name, l.id", (kind, *ICON_LINK_KINDS)).fetchall()
+        " ORDER BY e.canonical_name, l.id", (kind, *kinds)).fetchall()
     grouped: dict[str, list[dict[str, str]]] = {}
     for row in rows:
         grouped.setdefault(safe_name(row["canonical_name"]), []).append(
             {"entity_id": row["id"], "studio": row["canonical_name"],
              "link_kind": row["link_kind"], "url": row["url"]})
-    return grouped
+    return {safe: [entry for entry in entries if entry["link_kind"] in ICON_LINK_KINDS]
+            or entries
+            for safe, entries in grouped.items()}
 
 
 class Fetcher:
@@ -664,12 +673,15 @@ def icon_row(safe: str, target: dict[str, str], entries: list[dict[str, str]],
     是 119×119，而它 Instagram 的头像是 1000×1000——按「第一枚合格的就用」会把那张
     糊的装上去，页面上一眼就看得出来。
 
+    没有官网、只登记得到社媒的公司走 `FALLBACK_LINK_KIND`：那条链接本身就是账号主页，
+    直接取它的头像，不问声明的图标和 header——X 那两样对每个账号都一样。
+
     第二个返回值是同一趟带出来的 `logo` 行：走字标补白时是那张补白图，做成方标时由
     `hunt_logo_row` 决定，都没有就是 None。
     """
     if not entries:
         return _row(safe, target, None, ICON, SKIP,
-                    evidence="账本里这个厂牌没有 official／catalog 链接"), None
+                    evidence="账本里这个厂牌一条链接都没有"), None
     attempts: list[str] = []
     reachable = False
     policy = SquareMark(faces)
@@ -677,6 +689,16 @@ def icon_row(safe: str, target: dict[str, str], entries: list[dict[str, str]],
     for entry in entries:
         before = getattr(fetch, "fetched", 0)
         found: list[tuple[bytes, str, str, str, str]] = []
+        if entry["link_kind"] == FALLBACK_LINK_KIND:
+            got = first_mark(avatar_urls(entry["url"], fetch), fetch, policy)
+            if got:
+                found.append((got[0], got[1], "账本里登记的社媒头像",
+                              policy.size, policy.aspect))
+            if found:
+                return _made_rows(safe, target, entry, policy, _best(found), candidate_dir)
+            reachable = reachable or getattr(fetch, "fetched", 0) > before
+            attempts.append(entry["url"])
+            continue
         made = site_icons.best_mark(
             entry["url"], fetch, policy,
             accept=scope if shares_its_host(entry["url"]) else None)
