@@ -59,6 +59,17 @@ class LogoImageTests(unittest.TestCase):
         self.assertEqual(site_logos.logo_images(html, "https://x.jp/"),
                          ["https://x.jp/logo.png"])
 
+    def test_an_inline_placeholder_is_not_a_candidate(self):
+        """懒加载占位图顶着标识那张 `<img>` 的 class，词形闸门拦不住它。
+
+        取字节那一步打不开 `data:`，白等两轮重试再记一次「取不回来」；eltra.jp
+        2026-09-05 那一页就有两张。
+        """
+        html = ('<img class="logo" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=">'
+                '<img class="logo" src="/logo.png">')
+        self.assertEqual(site_logos.logo_images(html, "https://x.jp/"),
+                         ["https://x.jp/logo.png"])
+
     def test_an_empty_page_yields_nothing(self):
         self.assertEqual(site_logos.logo_images("", "https://x.jp/"), [])
 

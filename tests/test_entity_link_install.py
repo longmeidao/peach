@@ -215,6 +215,63 @@ class InstallTests(unittest.TestCase):
         self.assertEqual(probed, [])
 
 
+class ResolvesTests(unittest.TestCase):
+    """可达性探测：抖动要重试，状态码是一次成局。"""
+
+    class Client:
+        """`httpx.Client` 的替身，按剧本逐次抛错或返回状态码。"""
+
+        def __init__(self, script):
+            self.script = script
+
+        def __call__(self, **kwargs):
+            return self
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def get(self, url, headers=None):
+            step = self.script.pop(0)
+            if isinstance(step, Exception):
+                raise step
+            return type("Response", (), {"status_code": step})()
+
+    def setUp(self):
+        # `time` 和 `httpx` 是进程共享的真模块，替身必须还回去：这一组用例先跑完，
+        # 后面每个测试的 sleep 就都成了 list.append。
+        self.module = load_module()
+        self.slept = []
+        for holder, name in ((self.module.time, "sleep"), (self.module.httpx, "Client")):
+            self.addCleanup(setattr, holder, name, getattr(holder, name))
+        self.module.time.sleep = self.slept.append
+
+    def use(self, *script):
+        self.module.httpx.Client = self.Client(list(script))
+
+    def test_a_blip_on_the_first_try_is_not_a_conclusion(self):
+        """这条出口的 TLS 大约三次断一次，一次失败就判死会把好站写成死链。"""
+        self.use(ConnectionError("SSL: UNEXPECTED_EOF_WHILE_READING"), 200)
+        self.assertEqual(self.module.resolves("https://eltra.jp/"), (True, "可打开"))
+        self.assertEqual(len(self.slept), 1)
+
+    def test_a_status_code_is_answered_at_once(self):
+        """404 重试三次还是 404，多敲两次只是浪费对方的带宽。"""
+        self.use(404, 200)
+        self.assertEqual(self.module.resolves("https://x.jp/gone"), (False, "HTTP 404"))
+        self.assertEqual(self.slept, [])
+
+    def test_every_try_failing_keeps_the_reason(self):
+        """全程取不到时说明必须留着：那不是「页面没了」，下一步是换个时间复查。"""
+        self.use(*[ConnectionError("boom")] * 3)
+        ok, note = self.module.resolves("https://down.jp/")
+        self.assertFalse(ok)
+        self.assertIn("ConnectionError", note)
+        self.assertFalse(self.module.is_gone(note), "取不到不等于确证没了")
+
+
 class NormalizeHostsTests(unittest.TestCase):
     """twitter.com → x.com 的主机归一：改写要保真，撞上已有的新写法要删而不是炸。
 

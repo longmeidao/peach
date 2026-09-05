@@ -77,6 +77,11 @@ def logo_images(html: str, base_url: str) -> list[str]:
         if not _MARK_WORD.search(haystack) or _NOT_MARK.search(src):
             continue
         url = urljoin(base_url, src)
+        if not url.startswith(("http://", "https://")):
+            # 懒加载占位图是内联的 `data:` 1×1 透明 PNG，而它顶着的正是标识那张
+            # `<img>` 的 class，词形闸门拦不住。取字节那一步 httpx 打不开 `data:`，
+            # 白等两轮重试再记一次「取不回来」——eltra.jp 一页就有两张。
+            continue
         if url not in seen:
             seen.add(url)
             found.append(url)
