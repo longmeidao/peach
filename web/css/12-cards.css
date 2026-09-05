@@ -322,15 +322,22 @@ body[data-density="dense"] .junkcard .junkactions button{justify-content:center}
 .flags i.dispose{background:var(--meter)}
 .flags i.later{background:var(--ink)}
 /* 标签语义分级 */
-.ctags{display:flex;flex-wrap:nowrap;gap:5px;min-width:0;overflow:hidden}
+/* 卡片上宁可少放几个标签，也要把名字写全：截成「主…」「背…」之后，那既不是标签，
+   也认不出原来是哪一个。所以这一行改成可换行、只有一颗标签那么高——放不下的整颗
+   落到第二行，被容器整颗切掉，切掉的是标签本身，不是它的名字。行高按 .tg 的三个
+   token 算出来，改字号或内边距时不用回来对第二个数。
+   .tg 只留 max-width:100% 这一层兜底：一颗标签自己就比整张卡还宽时，横着溢出会
+   压到卡片外面，这时候省略号是唯一的出路。 */
+.ctags{display:flex;flex-wrap:wrap;align-content:flex-start;gap:5px;min-width:0;overflow:hidden;
+  height:calc(var(--fs-xs)*1.45 + var(--tag-pad-y)*2 + 2px)}
 .tg{padding:var(--tag-pad-y) var(--tag-pad-x);border-radius:var(--tag-radius);font-size:var(--fs-xs);border:1px solid var(--line);
-  line-height:1.45;white-space:nowrap;cursor:pointer;color:var(--ink-2);overflow:hidden;text-overflow:ellipsis;max-width:32%;
+  line-height:1.45;white-space:nowrap;cursor:pointer;color:var(--ink-2);overflow:hidden;text-overflow:ellipsis;max-width:100%;
   background:color-mix(in srgb,var(--surface) 82%,var(--ground))}
 .tg.general,.tg.artist,.tg.meta,.tg.relationship,.tg.role,.tg.appearance,.tg.scene,.tg.story,.tg.position{color:var(--ink-2);border-color:var(--line)}
 .tg.artist{font-weight:600}
 .tg:hover{color:var(--ink);background:var(--hover)}
 body[data-density="dense"] .card .ctags .tg:nth-child(n+2){display:none}
-body[data-density="dense"] .card .ctags .tg{max-width:132px;overflow:hidden;text-overflow:ellipsis}
+body[data-density="dense"] .card .ctags .tg{max-width:100%;overflow:hidden;text-overflow:ellipsis}
 /* 顶栏的密集模式固定为标题、身份、标签三行。缺少标签时第三行仍保留，
    同一网格不会再被大小、观看次数或长身份撑成四行。分卷卡已有 7px 叠层空间，
    密集网格的普通卡也保留同一高度，避免每行是否出现分卷卡决定整行高度。 */
@@ -347,21 +354,23 @@ body[data-density="dense"] .card .ctags{height:30px;align-items:flex-start;flex-
 body[data-density="dense"] .card .meta .why,
 body[data-density="dense"] .card .meta .watchcount{display:none}
 
-/* 短片带。它和视频区是并排的两张卡，不是套在视频区里的一格：穿同一张 --ground 面、
-   同一圈发丝边、同一个圆角，只有内容不同。放在视频区上方是因为视频区是无限滚动的，
-   排在它后面等于永远滚不到。 */
-.shorts{margin:0 0 16px;padding:16px;border:1px solid var(--field-ring);
-  border-radius:var(--floating-radius);background:var(--ground)}
-.shorts h2{margin:0 0 11px;font-size:var(--fs-lg);display:flex;align-items:center;gap:10px}
-.shorts .scard .pic{aspect-ratio:var(--card-ratio,9/16)}
+/* 短片带穿插在视频流里，不置顶：竖屏是同一批内容里的另一种形状，钉在最上面就成了
+   一个永远在场的栏目。它整行占位，左右用负边距顶到视频框的内沿，上下各一条发丝线，
+   于是把那一框视频从中间断开——「隔开」是这条带子唯一的形状语言。
+   面仍是 --ground，和框、和卡片同一张：只有位置和两条线在说话，不另立第三张面，
+   底色一退就读成陷进去的一格，跟「和其他视频同级」正好相反。 */
+.shorts-inline{grid-column:1/-1;margin:0 -16px;padding:16px;background:var(--ground);
+  border-top:1px solid var(--field-ring);border-bottom:1px solid var(--field-ring)}
+.shorts-inline h2{margin:0 0 11px;font-size:var(--fs-lg);display:flex;align-items:center;gap:10px}
+.shorts-inline .scard .pic{aspect-ratio:var(--card-ratio,9/16)}
 /* 竖屏计数的灰字。index.html 和 openItem 的内联片段原先各写一份，一模一样。 */
 .shortscount{color:var(--muted);font-size:var(--fs-xs)}
-.shorts h2 button{margin-left:auto;min-height:48px;display:inline-flex;align-items:center;gap:7px;
+.shorts-inline h2 button{margin-left:auto;min-height:48px;display:inline-flex;align-items:center;gap:7px;
   font-size:var(--fs-xs);background:var(--overlay-5);border:0;border-radius:var(--pill-radius);padding:0 16px;cursor:pointer;
   color:var(--ink);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);transition:background .14s,transform .14s}
-.shorts h2 button:hover{background:color-mix(in srgb,var(--ink) 16%,transparent);transform:translateY(-1px)}
-.shorts h2 button:active{transform:scale(.97)}
-.shorts h2 button svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2}
+.shorts-inline h2 button:hover{background:color-mix(in srgb,var(--ink) 16%,transparent);transform:translateY(-1px)}
+.shorts-inline h2 button:active{transform:scale(.97)}
+.shorts-inline h2 button svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2}
 .srow{display:flex;gap:13px;overflow-x:auto;padding-bottom:7px}
 .srow .scard{flex:none;width:214px;cursor:pointer}
 

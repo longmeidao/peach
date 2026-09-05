@@ -802,7 +802,7 @@ function placeItemDetail(anchor,above=false){
     else container.append(stage);
     return;
   }
-  const block=card.closest('.shorts,.srow,.nrow,section')||card;
+  const block=card.closest('.shorts-inline,.srow,.nrow,section')||card;
   const parent=block.parentElement;
   if(parent)parent.insertBefore(stage,above?block:block.nextSibling);
   else main.insertBefore(stage,combo);
@@ -2287,6 +2287,17 @@ function wireCards(root,onClick){
 }
 
 /* ── 顶部标签条 + 抽屉 ── */
+/* 状态页把顶部三层收窄到本页口径，为的是不列出「在这一页一个作品都没有」的人和厂牌。
+   但集合窄到聚合结果为空时（「已标记」常年只有几条），收窄就把整排一并收走了：
+   同一条筛选条上换一格，页面顶上凭空少两层，读起来是跳去了另一个页面而不是换了筛选。
+   空了就退回全库口径。这一排点开的是实体页，本来就要离开当前状态，
+   它回答的从来不是「这一页里有谁」，而是「接下来去看谁」。 */
+async function loadTops(params){
+  const scoped=await api('/api/tops?'+params);
+  if(scoped.performers.length||scoped.studios.length||!params.has('state'))return scoped;
+  const wide=new URLSearchParams(params);wide.delete('state');
+  return api('/api/tops?'+wide)
+}
 let barsDataScope='';
 async function getBarsData(context=barsContext){
   // JAV 模式的顶部三层与筛选面板要跟着收窄，否则会列出只出现在创作者作品里的
@@ -2308,7 +2319,7 @@ async function getBarsData(context=barsContext){
   // 顶部三层跟着「换一批」的同一个种子走，刷新后才真的换人。
   if(!barsDataPromise)barsDataPromise=Promise.all([
       api('/api/facets'+(scope?'?'+scope:'')),
-      api('/api/tops?'+topsParams)])
+      loadTops(topsParams)])
     .then(data=>{barsDataCache=data;barsDataAt=Date.now();return data})
     .finally(()=>{barsDataPromise=null});
   return barsDataPromise
@@ -2420,8 +2431,8 @@ async function buildBars(){
     return `<button class="brandpill" data-entity-kind="studio" data-entity-name="${esc(x.k)}">
       <span class="mk" data-fallback="${fallback}">${mark}</span>${esc(x.k)}</button>`;
   };
-  // 空的一排仍占 28px，在「已标记」这种窄集合上就是两条什么都没有的空带。
-  // 没人就不画那一排，两排都没人就整块收起。
+  // 空的一排仍占 28px，画出来就是一条什么都没有的空带，所以没人就不画那一排。
+  // 「两排都空」现在只剩全库真的一个人都没有这一种：窄集合已经由 loadTops 退回全库口径。
   const perfRow=tops.performers.map(avHtml).join('');
   const studioRow=tops.studios.map(bpHtml).join('');
   const tier=html=>html?`<div class="tier">${html}</div>`:'';
@@ -2621,7 +2632,7 @@ function wireLoadMore(button, load){
 const skeletonKeyOf=html=>String(html).match(/data-skeleton="([^"]*)"/)?.[1]||'';
 function showManagementBody({manage=true,placeholder=''}={}){
   $('#stats').hidden=false;$('#index').hidden=true;$('#grid').innerHTML='';
-  $('#count').textContent='';$('#loadSentinel').hidden=true;$('#shortsSec').hidden=true;
+  $('#count').textContent='';$('#loadSentinel').hidden=true;
   if(manage)buildManageBar();
   else{$('#managebar').hidden=true;$('#manageTitle').hidden=true;buildEdge()}
   if(!placeholder)return;
@@ -2637,7 +2648,7 @@ function showManagementBody({manage=true,placeholder=''}={}){
    一个负责之后谁都别再画上去。 */
 function showIndexLoading(label){
   $('#stats').hidden=true;$('#index').hidden=false;$('#grid').innerHTML='';$('#combo').innerHTML='';
-  $('#count').textContent='';$('#loadSentinel').hidden=true;$('#shortsSec').hidden=true;
+  $('#count').textContent='';$('#loadSentinel').hidden=true;
   $('#index').innerHTML=pageSkeletonHtml(label,{cards:true});
   fitSkeleton($('#index'));
 }
@@ -5213,7 +5224,7 @@ async function openIndex(kind,q,push=true,refine=false){
   const d=await api(indexApi(0));
   if(requestSeq!==indexRequestSeq||location.pathname!=='/'+kind)return;
   $('#index').hidden=false;buildEdge(); $('#grid').innerHTML=''; $('#count').textContent='';
-  $('#loadSentinel').hidden=true; $('#shortsSec').hidden=true;
+  $('#loadSentinel').hidden=true;
   const title=kind==='performers'?'艺人':(kind==='creators'?'创作者':'标签');
   const tagItems=[...d.items];
   const tagGroups=items=>{
@@ -5828,7 +5839,7 @@ async function openEntity(kind,name,push=true){
     (state.jav==='1'||(items.items||[]).some(item=>item.is_jav));
   document.body.classList.add('entity-open');
   $('#index').hidden=false;$('#grid').innerHTML='';$('#count').textContent='';
-  $('#loadSentinel').hidden=true;$('#shortsSec').hidden=true;
+  $('#loadSentinel').hidden=true;
   /* 大位这条链每一环都先问过再出图：厂牌是标识→实体图，其余是实体图→代表作头像，
      一环都取不到就一个 `<img>` 都不出，首字母垫底直接露出来。三个标志
      （`has_logo`／`has_image`／`has_avatar`）都由 `/api/entity` 随资料下发。 */
@@ -6433,7 +6444,7 @@ async function load(reset){
     else if(reset)$('#grid').innerHTML=html;else $('#grid').insertAdjacentHTML('beforeend',html);
     renderJunkNavigation(adsBatch);
     $('#loadSentinel').hidden=$('#grid').children.length>=adsBatch.items.length;
-    $('#shortsSec').hidden=true;wireJunkCards($('#grid'));paintSelection();return;
+    wireJunkCards($('#grid'));paintSelection();return;
   }
   adsBatch=null;
   const p=new URLSearchParams(Object.entries(state).filter(([,v])=>v));
@@ -6571,26 +6582,37 @@ $('#q').onkeydown=e=>{
 };
 $('#q').addEventListener('focus',()=>{Promise.all([loadSearchHistory(),loadSearchPool()]).then(renderSearchMenu)});
 
+const SHORTS_ROW_OFFSET=2;   // 竖屏条插在第几行之后，0 表示置顶
+const removeShortsStrip=()=>$('#grid').querySelector('#shortsInline')?.remove();
 async function loadShorts(requestSeq=loadRequestSeq,surface=surfaceToken(surfacePath())){
   // JAV 模式不插竖屏条：番号发行物本身是横版，竖屏是另一类内容。
   // 主列表的 exclude_vertical 管不到这条——它是独立请求、独立插入的。
   if(!isCatalogPath(decodeURIComponent(location.pathname))||javActive()||state.orient==='竖屏'
-     ||state.state==='ads'||state.state==='trash'){
-    $('#shortsSec').hidden=true;return}
+     ||state.state==='ads'||state.state==='trash'){removeShortsStrip();return}
   const p=new URLSearchParams(Object.entries(state).filter(([,v])=>v));
   /* 排序跟着主列表走，不再写死 sort=new；换一批时竖屏条也要一起换。 */
   p.set('orient','竖屏');p.set('limit',18);p.set('offset',0);
   const d=await surfaceApi(surface,'/api/items?'+p);
   if(requestSeq!==loadRequestSeq||!surfaceCurrent(surface))return;
-  if(!d.items.length){$('#shortsSec').hidden=true;return}
+  if(!d.items.length){removeShortsStrip();return}
   cache(d.items);
-  releaseHoverPreviews($('#srow'));
-  /* 竖屏条是视频区旁边的另一张卡，排在它前面。放后面的话，视频区是无限滚动的，
-     这张卡会被一直往下推，永远滚不到。 */
-  $('#shortsN').textContent=`${d.total.toLocaleString()} 个`;
-  $('#srow').innerHTML=d.items.map(it=>cardHtml(it,'scard')).join('');
-  $('#shortsSec').hidden=false;
-  wireCards($('#srow'),openTok); wireDrag($('#srow'));
+  const grid=$('#grid');
+  releaseHoverPreviews(grid.querySelector('#shortsInline'));
+  removeShortsStrip();
+  /* 竖屏条整行占位（grid-column:1/-1），插在行边界上才不会把上一行截断留空。
+     余位不另拉一批横屏视频来补：那批 id 不在分页序列里，翻下一页必然重复，
+     而且被当成 scard 渲染会把横屏压成竖框。 */
+  const columns=Math.max(1,getComputedStyle(grid).gridTemplateColumns.split(' ').length);
+  const cards=[...grid.children].filter(x=>x.matches('.card[data-id]'));
+  const anchor=cards[Math.min(cards.length,columns*SHORTS_ROW_OFFSET)]||null;
+  const inline=`<section class="shorts-inline" id="shortsInline"><h2 class="disp">竖屏 <span class="mono shortscount">${
+    d.total.toLocaleString()} 个</span><button class="shorts-enter" type="button">${
+    icon('play')}<span>进入沉浸模式</span></button></h2><div class="srow">${
+    d.items.map(it=>cardHtml(it,'scard')).join('')}</div></section>`;
+  if(anchor)anchor.insertAdjacentHTML('beforebegin',inline); else grid.insertAdjacentHTML('beforeend',inline);
+  const section=grid.querySelector('#shortsInline');
+  section.querySelector('.shorts-enter').onclick=()=>openTok();
+  wireCards(section.querySelector('.srow'),openTok); wireDrag(section.querySelector('.srow'));
 }
 
 /* ── 就地展开播放 ── */
@@ -7335,7 +7357,6 @@ async function tokNext(d){
   if(tokIdx<0)tokIdx=tokList.length-1;
   await tokShow(d);
 }
-$('#tokBtn').onclick=()=>openTok();
 $('#immerseBtn').onclick=()=>openTok();
 
 $('#searchBtn').onclick=()=>{const s=$('.search');s.classList.toggle('open');
@@ -7601,7 +7622,7 @@ function wireDrag(el){
 }
 /* `#count` 一起登记：窄屏下排序筛选整行由 `.count` 自己横向滚动，而它没有滚动条，
    不接拖动和滚轮就只剩看得见够不着的半个按钮。 */
-function wireAllDrag(){['#tagbar','#srow','#nrow','#count'].forEach(s=>wireDrag($(s)));
+function wireAllDrag(){['#tagbar','#nrow','#count'].forEach(s=>wireDrag($(s)));
   document.querySelectorAll('.tier').forEach(wireDrag)}
 
 /* 目录页（首页 + 四个筛选态）：筛选全部从 URL 读，路径只决定初始筛选态。

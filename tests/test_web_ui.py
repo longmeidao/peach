@@ -507,25 +507,34 @@ class WebUiSourceTests(unittest.TestCase):
             rule = css[start:css.index("}", start)]
             self.assertIn("var(--ground)", rule, f"{name} 是页面上的一个面")
 
-    def test_filter_pills_use_a_dashed_edge_until_they_take_effect(self):
-        """边的虚实说生不生效，填充说在不在上面那张面，两端与 vercel.com 逐值对齐。
+    def test_only_the_home_filter_bar_draws_the_dashed_unapplied_edge(self):
+        """虚线只在 `#tagbar` 那一排，别处的药丸一律实线；选中一律填 --ground。
 
         2026-09-05 实测 vercel.com/<team>/~/deployments 的筛选令牌：未生效
         `rgba(0,0,0,0)` 配 `1px dashed rgba(0,0,0,.21)`，已生效 `#FFFFFF` 配
         `1px solid rgba(0,0,0,.08)`，两个数正是 `--field-ring-hover` 与 `--field-ring`。
-        悬停只把虚线拉成实线，是 Peach 自己加的中间档：Vercel 的令牌可叠加，悬停直接
-        预演成生效态没有代价；首页这一排是单选、恒有一颗生效，悬停也填就会同屏两颗选中。
+        只借这一处：虚线说的是「这条筛选还没加上去」，配得上它的只有恒常在场、
+        可开可关的那一排；关注页和实体页的药丸随内容来去，全画成虚线，整页就是
+        一片没生效的框。悬停只把虚线拉成实线，是 Peach 自己加的中间档——Vercel 的
+        令牌可叠加，悬停预演成生效态没有代价；首页这一排是单选、恒有一颗生效。
         """
         css = stylesheet_source()
         for base in (".pill", ".brandpill"):
             start = css.index(chr(10) + base + "{")
             rule = css[start:css.index("}", start)]
             self.assertIn("background:transparent", rule, f"{base} 未生效不填色")
-            self.assertIn("1px dashed var(--field-ring-hover)", rule, f"{base} 未生效是虚线")
-        for base in (".pill", ".brandpill"):
-            self.assertPageContains(base + ":hover{border-style:solid;color:var(--ink)}")
-            self.assertPageContains(base + '[aria-pressed="true"]{border:1px solid var(--field-ring);'
+            self.assertIn("1px solid var(--field-ring)", rule, f"{base} 默认是实线")
+            self.assertNotIn("dashed", rule, f"{base} 的默认态不画虚线")
+            self.assertPageContains(base + ":hover{border-color:var(--field-ring-hover);color:var(--ink)}")
+            self.assertPageContains(base + '[aria-pressed="true"]{border-color:var(--field-ring);'
                                            "background:var(--ground);color:var(--ink)}")
+        self.assertPageContains('#tagbar .pill:not([aria-pressed="true"])'
+                                "{border-style:dashed;border-color:var(--field-ring-hover)}")
+        self.assertPageContains('#tagbar .pill:not([aria-pressed="true"]):hover{border-style:solid}')
+        # 药丸里的虚线只此一条：多一条就说明它不再指向「这条筛选还没加上去」。
+        dashed_pills = [line for line in css.splitlines()
+                        if "dashed" in line and "pill" in line and not line.startswith(" ")]
+        self.assertEqual(len(dashed_pills), 1, dashed_pills)
         # 已经生效的交集筛选和选中的药丸是同一件事，穿同一身。
         start = css.index(".combo .cb{")
         applied = css[start:css.index("}", start)]
@@ -534,8 +543,8 @@ class WebUiSourceTests(unittest.TestCase):
         # 没有 JS 会挂 .act，留着只会让人以为选中态有两套写法。
         self.assertPageLacks(".pill.act{")
 
-    def test_the_video_area_is_one_frame_and_the_portrait_card_is_its_peer(self):
-        """框画在网格上，卡片本身不带框；竖屏卡与视频区平级，穿同一身。
+    def test_the_video_area_is_one_frame_and_the_portrait_strip_shares_its_face(self):
+        """框画在网格上，卡片本身不带框；竖屏带和框、和卡片同一张面。
 
         一张卡一个框会在一屏里画出几十条互相平行的细线，读起来是表格不是图墙。
         垃圾复核用的是同一个 `#grid`，但它那张卡自己就是一块 `--ground` 的面，
@@ -552,11 +561,10 @@ class WebUiSourceTests(unittest.TestCase):
         card = css[start:css.index("}", start)]
         self.assertNotIn("background:", card, "卡片不自带填色，框由网格出")
         self.assertNotIn("border:", card, "卡片不自带描边，框由网格出")
-        start = css.index(chr(10) + ".shorts{")
+        start = css.index(chr(10) + ".shorts-inline{")
         strip = css[start:css.index("}", start)]
-        for piece in ("background:var(--ground)", "border:1px solid var(--field-ring)",
-                      "border-radius:var(--floating-radius)"):
-            self.assertIn(piece, strip, "竖屏卡和视频区是并排的两张卡，穿同一身")
+        self.assertIn("background:var(--ground)", strip, "竖屏带和框、和卡片同一张面")
+        self.assertNotIn("var(--page)", strip, "底色一退就读成陷进去的一格")
 
     # 选中态允许高对比反相的两处：都压在媒体画面上，画面本身会把 --hover 那层
     # 7% 白吃掉，读不出按没按。
@@ -1064,6 +1072,30 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("data-entity-name=\"${esc(performer)}\"")
         self.assertPageContains("等 ${performerTotal} 人")
         self.assertPageContains(".mavstack .mav+.mav{margin-left:-14px}")
+
+    def test_card_tags_drop_whole_names_instead_of_ellipsizing_them(self):
+        """卡片上宁可少放几个标签，也要把名字写全。
+
+        截成「主…」「背…」之后那既不是标签，也认不出是哪一个。所以这一行可换行、
+        只有一颗标签那么高：放不下的整颗落到第二行，被容器整颗切掉，切掉的是标签本身。
+        `.tg` 只留 `max-width:100%` 这一层兜底——一颗标签自己就比整张卡还宽时，
+        横着溢出会压到卡片外面，那时候省略号是唯一的出路。
+        """
+        css = stylesheet_source()
+        start = css.index(chr(10) + ".ctags{")
+        row = css[start:css.index("}", start)]
+        self.assertIn("flex-wrap:wrap", row, "放不下的整颗换行，不横着截断")
+        self.assertIn("align-content:flex-start", row)
+        self.assertIn("overflow:hidden", row)
+        self.assertIn("height:calc(var(--fs-xs)*1.45 + var(--tag-pad-y)*2 + 2px)", row,
+                      "行高按 .tg 的三个 token 算，改字号时不用回来对第二个数")
+        start = css.index(chr(10) + ".tg{")
+        tag = css[start:css.index("}", start)]
+        self.assertIn("max-width:100%", tag, "只兜底一颗标签比整张卡还宽的情形")
+        self.assertNotIn("max-width:32%", tag)
+        self.assertPageContains(
+            'body[data-density="dense"] .card .ctags .tg{max-width:100%;'
+            "overflow:hidden;text-overflow:ellipsis}")
 
     def test_dense_cards_use_three_fixed_rows_without_changing_jav_metadata_height(self):
         # 顶栏密集模式固定标题、身份、标签三行；JAV 小图和预览图只换图片来源，
@@ -1951,6 +1983,24 @@ class WebUiSourceTests(unittest.TestCase):
             "  hideDiscoveryBars();")
         self.assertEqual(self.page.count("hideDiscoveryBars();"), 3,
                          "管理页、索引页和中央清理函数各调一次，收起动作本身只写一处")
+
+    def test_a_narrow_state_falls_back_to_the_whole_library_for_the_top_tiers(self):
+        """状态页收窄到聚合为空时，顶部三层退回全库口径，不整块消失。
+
+        收窄本身是对的：不收窄就会列出在这一页一个作品都没有的人和厂牌。但「已标记」
+        这类集合常年只有几条，`/api/tops` 直接回两个空数组，收窄就把整排一起收走了——
+        同一条筛选条上换一格，页面顶上凭空少两层，读起来是跳去了另一个页面。
+        这一排点开的是实体页，本来就要离开当前状态，它回答的从来不是「这一页里有谁」。
+        """
+        self.assertPageContains("async function loadTops(params){")
+        self.assertCode(
+            "  const scoped=await api('/api/tops?'+params);\n"
+            "  if(scoped.performers.length||scoped.studios.length||!params.has('state'))return scoped;\n"
+            "  const wide=new URLSearchParams(params);wide.delete('state');\n"
+            "  return api('/api/tops?'+wide)")
+        # 取数只经这一条路：直接打 /api/tops 的调用会绕过回退。
+        self.assertEqual(self.app_js.count("api('/api/tops?"), 2)
+        self.assertPageContains("      loadTops(topsParams)])")
 
     def test_the_page_chrome_paints_without_waiting_for_any_request(self):
         """左侧导航、管理条、标题和面包屑只认 location，不该排在网络请求后面。
@@ -3968,8 +4018,8 @@ class WebUiSourceTests(unittest.TestCase):
     def test_beeg_evidence_driven_surfaces_are_translucent_and_rail_is_continuous(self):
         self.assertPageContains(".brandpill{")
         self.assertPageContains("background:var(--overlay-5);border:1px solid var(--border-10)")
-        self.assertCode("border:1px dashed var(--field-ring-hover);\n"
-                        "  border-radius:var(--pill-radius);background:transparent")
+        self.assertCode("border-radius:var(--pill-radius);background:transparent;"
+                        "border:1px solid var(--field-ring)")
         self.assertPageContains("--overlay-5:rgba(245,250,255,.05)")
         self.assertPageContains("--border-15:rgba(245,250,255,.15)")
         # 窄栏要有右分割线（用户 2026-08-26 明确要求）：无边框时两边背景太接近，
@@ -4484,7 +4534,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("flex:0 0 auto;white-space:nowrap")
         self.assertPageContains(".count .sorts button{min-height:36px}")
         # 这一行没有滚动条（scrollbar-width:none），不登记拖动就只剩看得见够不着的半个按钮。
-        self.assertPageContains("['#tagbar','#srow','#nrow','#count'].forEach(s=>wireDrag($(s)))")
+        self.assertPageContains("['#tagbar','#nrow','#count'].forEach(s=>wireDrag($(s)))")
         # 同一个元素宽屏不溢出、窄屏才溢出，不判溢出就会在宽屏抢走滚轮和拖动。
         self.assertPageContains("const scrollable=()=>el.scrollWidth-el.clientWidth>1;")
         self.assertPageContains("if(e.button!==0||!scrollable())return;")
@@ -4545,7 +4595,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("window.addEventListener('pagehide',()=>releaseHoverPreviews())")
         self.assertPageContains("if(document.hidden)releaseHoverPreviews()")
         self.assertPageContains("if(reset)releaseHoverPreviews($('#grid'))")
-        self.assertPageContains("releaseHoverPreviews($('#srow'))")
+        self.assertPageContains("releaseHoverPreviews(grid.querySelector('#shortsInline'))")
 
     def test_remote_hover_scan_is_an_overlay_so_every_jav_layout_has_it(self):
         """远端源的扫视图叠一层，不改任何已有 `<img>` 的 src。
@@ -4714,7 +4764,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("setActionBusy(btn)")
 
     def test_follow_separator_uses_the_same_border_token_as_tags(self):
-        self.assertPageContains(".pill{flex:none;height:var(--filterItemH);padding:0 20px;border:1px dashed var(--field-ring-hover)")
+        self.assertPageContains(".pill{flex:none;height:var(--filterItemH);padding:0 20px;border:1px solid var(--field-ring)")
         self.assertPageContains(".followfilters .sep{flex:none;width:1px;height:24px;background:var(--field-ring-hover)")
 
     def test_entity_profile_uses_logo_links_without_a_redundant_back_row(self):
@@ -4827,21 +4877,27 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks("it.ctx_orient==='竖屏'||cls==='scard'")
         self.assertPageContains("(jav&&layout==='big'?COVER_FRONT_RATIO:16/9)")
 
-    def test_the_portrait_strip_is_a_card_beside_the_grid_not_a_row_inside_it(self):
-        """竖屏条是视频区旁边的另一张卡，排在它前面，不再塞进网格当一整行。
+    def test_the_portrait_strip_cuts_the_stream_open_on_a_row_boundary(self):
+        """竖屏条穿插在视频流里，整行占位、插在行边界上，用上下两条发丝线把框断开。
 
-        排在后面等于没有：视频区是无限滚动的，这张卡会被一直往下推。
-        网格里也不再另拉一批横屏视频补余位——那批 id 不在分页序列里，翻下一页必然重复，
+        它不置顶：竖屏是同一批内容里的另一种形状，钉在最上面就成了一个常驻栏目。
+        余位不另拉一批横屏视频来补——那批 id 不在分页序列里，翻下一页必然重复，
         而且被当作 `scard` 渲染会按竖屏比例压扁横屏画面。
+        静态标记里不留一份用不到的 `#shortsSec`：这一段只由 `loadShorts` 现画。
         """
-        markup = self.page
-        self.assertLess(markup.index('id="shortsSec"'), markup.index('class="grid" id="grid"'),
-                        "竖屏卡排在视频区前面")
-        self.assertPageContains("$('#srow').innerHTML=d.items.map(it=>cardHtml(it,'scard')).join('')")
-        self.assertPageContains("$('#shortsSec').hidden=false;")
-        # 网格里不再有竖屏条这一行，也就没有行边界锚点和补位那套东西了。
-        self.assertPageLacks("shortsInline")
-        self.assertPageLacks("SHORTS_ROW_OFFSET")
+        self.assertPageLacks('id="shortsSec"')
+        self.assertPageLacks('id="tokBtn"')
+        self.assertPageContains("const SHORTS_ROW_OFFSET=2;")
+        self.assertPageContains("const anchor=cards[Math.min(cards.length,columns*SHORTS_ROW_OFFSET)]||null;")
+        self.assertPageContains("if(anchor)anchor.insertAdjacentHTML('beforebegin',inline);"
+                                " else grid.insertAdjacentHTML('beforeend',inline);")
+        css = stylesheet_source()
+        start = css.index(chr(10) + ".shorts-inline{")
+        strip = css[start:css.index("}", start)]
+        self.assertIn("grid-column:1/-1", strip, "整行占位")
+        self.assertIn("margin:0 -16px", strip, "左右顶到视频框内沿")
+        for edge in ("border-top:1px solid var(--field-ring)", "border-bottom:1px solid var(--field-ring)"):
+            self.assertIn(edge, strip, "上下各一条发丝线，把那一框视频断开")
         self.assertPageLacks("fillerParams")
         self.assertPageLacks('const remainder=')
         # 竖屏比例只给 `scard`（和显式筛了竖屏时）。按 `it.ctx_orient` 逐条算的话，
@@ -5603,8 +5659,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("['flagged','已标记','bookmark'],")
         self.assertPageContains("['immerse','沉浸模式','gallery-vertical-end'],")
         self.assertPageContains("<span>进入沉浸模式</span>")
-        self.assertPageContains('<button id="tokBtn"><svg viewBox="0 0 24 24" aria-hidden="true">'
-                                '<use href="#i-play"/></svg>')
         # 主题三档各归各的：太阳是浅色、月亮是深色；跟随系统那档说的是「照这台设备走」，
         # 讲的是设备不是明暗，所以跟 vercel.com 后台一样用显示器。画面尺寸量的是画幅本身，
         # 归 `ratio`。
