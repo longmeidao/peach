@@ -10,7 +10,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import type { JSX } from 'preact';
 
-import { fieldsetTitle, noteHtml, setActionBusy, selectFieldHtml, wireSelectField } from '@peach/legacy/ui';
+import { fieldsetTitle, noteHtml, setActionBusy, selectFieldHtml, wireSelectField, MEDIA_SOURCE_ICONS, selectOptionIconHtml } from '@peach/legacy/ui';
 import { ApiError, apiGet, apiSend, errorMessage } from '../api';
 
 export interface ConfigurationProps {
@@ -108,7 +108,7 @@ function MountStatus({ data }: { data: ConfigurationData }) {
   if (!sources) return null;
   return <section class="configfieldset" aria-labelledby="configMountsTitle"><div class="geist-fieldset-content">
     <Html html={fieldsetTitle('configMountsTitle', '挂载状态')} />
-    <dl class="configfacts">{sources.map((row) => <><dt>{({local: '本地磁盘', '115': 'CloudDrive · 115', pikpak: 'CloudDrive · PikPak'} as Record<string, string>)[row.location] || row.location}</dt><dd>{row.path || '未配置挂载点'} <span class={`configstatus ${row.online === true ? 'online' : row.online === false ? 'offline' : 'unknown'}`}>{row.online === true ? '在线' : row.online === false ? '离线' : '未检测'}</span></dd></>)}</dl>
+    <dl class="configfacts">{sources.map((row) => <><dt><span aria-hidden="true" dangerouslySetInnerHTML={{__html:selectOptionIconHtml(MEDIA_SOURCE_ICONS[row.location])}} />{({local: '本地磁盘', '115': 'CloudDrive · 115', pikpak: 'CloudDrive · PikPak'} as Record<string, string>)[row.location] || row.location}</dt><dd>{row.path || '未配置挂载点'} <span class={`configstatus ${row.online === true ? 'online' : row.online === false ? 'offline' : 'unknown'}`}>{row.online === true ? '在线' : row.online === false ? '离线' : '未检测'}</span></dd></>)}</dl>
     {error ? <p class="configbad" role="alert">{error}</p> : null}
     <button type="button" class="geist-button" onClick={(event) => refresh(event.currentTarget)}>刷新挂载状态</button>
   </div></section>;
@@ -121,7 +121,7 @@ function MediaSourceSelect({ value, label, onChange }: { value: string; label: s
   callback.current = onChange;
   useLayoutEffect(() => {
     const root = mount.current!;
-    root.innerHTML = selectFieldHtml([['local', '本地磁盘'], ['115', 'CloudDrive · 115'], ['pikpak', 'CloudDrive · PikPak']], value, { label });
+    root.innerHTML = selectFieldHtml([['local', '本地磁盘'], ['115', 'CloudDrive · 115'], ['pikpak', 'CloudDrive · PikPak']].map(([kind, text]) => [kind!, text!, MEDIA_SOURCE_ICONS[kind!]!]), value, { label });
     const field = wireSelectField(root.firstElementChild!);
     control.current = field;
     const change = () => callback.current(field.value);
