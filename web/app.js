@@ -774,7 +774,6 @@ async function detailStreamSource(it){
   const proxied=followStreamSource(it);
   if(proxied)return proxied;
   const direct=directDetailSource(it);
-  if(!['115','pikpak'].includes(it.location))return direct;
   try{
     const plan=await api(`/api/stream-plan?id=${it.id}&session=${encodeURIComponent(detailStreamSession)}`);
     if(plan.protocol==='hls'&&plan.src)return {src:plan.src,type:plan.mime_type||'application/vnd.apple.mpegurl'};

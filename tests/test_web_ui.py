@@ -2487,6 +2487,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("keepalive:true")
         self.assertPageContains("dataset.peachStreamCancel=JSON.stringify(result)")
         self.assertPageContains("/api/stream-plan?id=")
+        self.assertNotIn("if(!['115','pikpak'].includes(it.location))return direct", self.app_js)
         self.assertPageContains("const source=()=>options.source?Promise.resolve(options.source):detailStreamSource(it)")
         self.assertPageContains("source().then(next=>")
         self.assertPageContains("fallbackUsed=false")

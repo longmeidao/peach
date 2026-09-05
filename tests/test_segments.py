@@ -99,7 +99,7 @@ class SegmentCommandTests(unittest.TestCase):
     也拖不动。缓存目录里三个资产都只留下 0.ts 和 1.ts，没有更靠后的片段。
     """
 
-    def _command_for(self, index: int) -> list[str]:
+    def _command_for(self, index: int, transcode: bool = False) -> list[str]:
         captured: list[list[str]] = []
 
         class _Process:
@@ -141,6 +141,7 @@ class SegmentCommandTests(unittest.TestCase):
                                 source, round(index * 9.993, 3), 9.993,
                                 asset_id=6562, index=index, session="s",
                                 registry=StreamSessionRegistry(),
+                                transcode=transcode,
                             )
                         except Exception:
                             pass
@@ -148,6 +149,13 @@ class SegmentCommandTests(unittest.TestCase):
             asyncio.run(drive())
         self.assertTrue(captured, "没有真的调用 FFmpeg")
         return captured[0]
+
+    def test_conversion_slice_has_bounded_duration_and_absolute_output_timeline(self):
+        command = self._command_for(100, transcode=True)
+        self.assertEqual(command[command.index('-c:v')+1], 'libx264')
+        self.assertEqual(command[command.index('-t')+1], '9.993')
+        self.assertEqual(command[command.index('-output_ts_offset')+1], '999.300')
+        self.assertNotIn('-copyts', command)
 
     def test_silent_ffmpeg_failure_still_says_what_was_observed(self):
         """FFmpeg 可以退出码 0、stderr 全空却写出 0 字节，只报 ffmpeg failed 等于没报。"""

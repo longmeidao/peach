@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import math
 import os
 import subprocess
 import uuid
@@ -92,9 +93,15 @@ class HlsSegmentService:
         self._plans[key] = result
         return result or None
 
-    def cached_path(self, source: Path, asset_id: int, index: int) -> Path:
+    def cached_path(self, source: Path, asset_id: int, index: int, *, transcode: bool = False) -> Path:
         _, size, mtime = self.fingerprint(source)
-        return self.work_root / str(asset_id) / f"{size}-{mtime}-{self.segment_seconds}" / f"{index}.ts"
+        flavor = '-h264-v1' if transcode else ''
+        return self.work_root / str(asset_id) / f"{size}-{mtime}-{self.segment_seconds}{flavor}" / f"{index}.ts"
+
+    def conversion_plan(self, duration: float) -> list[tuple[float, float]]:
+        """编码片段各自以关键帧开始，覆盖完整的播放时间轴。"""
+        return [(float(start), min(float(self.segment_seconds), duration - start))
+                for start in range(0, math.ceil(duration), self.segment_seconds)]
 
     def _evict(self) -> None:
         files = [item for item in self.work_root.rglob("*.ts") if item.is_file()]
@@ -128,8 +135,9 @@ class HlsSegmentService:
         index: int,
         session: str,
         registry: StreamSessionRegistry,
+        transcode: bool = False,
     ) -> Path:
-        target = self.cached_path(source, asset_id, index)
+        target = self.cached_path(source, asset_id, index, transcode=transcode)
         if target.is_file() and target.stat().st_size:
             os.utime(target, None)      # 命中即续期，淘汰按最后访问时间
             return target
@@ -153,6 +161,16 @@ class HlsSegmentService:
             "-copyts", "-muxdelay", "0", "-muxpreload", "0",
             "-f", "mpegts", str(temporary),
         ]
+        if transcode:
+            command = [
+                str(choice.path), "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
+                "-ss", f"{start:.3f}", "-i", str(source), "-t", f"{duration:.3f}",
+                "-map", "0:v:0", "-map", "0:a:0?", "-sn", "-dn",
+                "-c:v", "libx264", "-preset", "veryfast", "-crf", "21",
+                "-pix_fmt", "yuv420p", "-threads", "2", "-c:a", "aac", "-b:a", "160k",
+                "-output_ts_offset", f"{start:.3f}", "-muxdelay", "0", "-muxpreload", "0",
+                "-f", "mpegts", str(temporary),
+            ]
         creationflags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
         process = None
         successful = False
