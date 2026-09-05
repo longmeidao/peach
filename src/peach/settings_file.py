@@ -8,10 +8,10 @@
 数据根的发现刻意**不**依赖设置文件内容——设置文件本身就住在数据根里面：
 
 1. `PEACH_DATA_ROOT` 环境变量；
-2. 从项目根逐级向上，第一个存在的 `<上级目录>/peach-data`。ADR-0017 的顶层布局把
-   `peach-app` 与 `peach-data` 并列，向上找因此同时覆盖三种检出形态：主检出、
-   `peach-worktrees/<task>` 里的隔离工作树，以及打包后落在 `dist/Peach/_internal`
-   的 `_MEIPASS`；
+2. 从起点逐级向上，第一个存在的 `<上级目录>/peach-data`。起点在源码树里是项目根，
+   打包后是 EXE 所在目录——单文件包的 `_MEIPASS` 是 `%TEMP%` 下的临时目录，它上面
+   没有任何东西。ADR-0017 的顶层布局把 `peach-app` 与 `peach-data` 并列，向上找因此
+   覆盖主检出、`peach-worktrees/<task>` 里的隔离工作树和 `dist/Peach` 里的托盘；
 3. 都没有 → 未配置。此时仍然给出一个落点（`peach init` 会去建它），但 `configured`
    为 False：服务照常启动，`/healthz` 报 `configured=false`，页面提示去跑 `peach init`。
 
@@ -78,16 +78,36 @@ def _project_root(module_file: str = __file__, bundle_root: str | None = None) -
 PROJECT_ROOT = _project_root(bundle_root=getattr(sys, "_MEIPASS", None))
 
 
-#: 向上找几层。四层刚好覆盖最深的那种形态（`peach-app/dist/Peach/_internal` 里的
-#: `_MEIPASS` 要走四层才回到 `peach/`）。不做无界搜索：一路走到磁盘根会撞上碰巧同名的
+def _search_anchor(
+    project_root: Path = PROJECT_ROOT, *,
+    frozen: bool = bool(getattr(sys, "frozen", False)), executable: str = sys.executable,
+) -> Path:
+    """向上找数据根的起点：源码树用项目根，打包产物用 EXE 所在目录。
+
+    资源根和发现起点是两回事。PyInstaller 的资源在 `_MEIPASS`，单文件包把它解到
+    `%TEMP%/_MEIxxxx`，从那里向上只会走到用户目录，托盘于是把一台配置好的机器判成
+    首次运行并起 `serve --setup`。`sys.executable` 在两种打包形态里都是 EXE 本身。
+    """
+    if frozen:
+        return Path(executable).resolve().parent
+    return project_root
+
+
+SEARCH_ANCHOR = _search_anchor()
+
+#: 向上找几层。四层刚好覆盖最深的那种形态（`peach-app/dist/Peach` 里的 EXE 走三层
+#: 回到 `peach/`，再留一层给更深的检出）。不做无界搜索：一路走到磁盘根会撞上碰巧同名的
 #: 目录，而那种「找错数据根」的故障看起来完全像是数据丢了。
 _SEARCH_DEPTH = 4
 
 
 def discover_data_root(
-    project_root: Path = PROJECT_ROOT, environ: dict[str, str] | None = None,
+    project_root: Path = SEARCH_ANCHOR, environ: dict[str, str] | None = None,
 ) -> tuple[Path, bool]:
-    """返回 (数据根, 是否真的找到了)。找不到时第一项是 `peach init` 的默认落点。"""
+    """返回 (数据根, 是否真的找到了)。找不到时第一项是 `peach init` 的默认落点。
+
+    `project_root` 是向上找的起点，默认取 `SEARCH_ANCHOR`。
+    """
     environ = os.environ if environ is None else environ
     explicit = (environ.get(DATA_ROOT_ENV) or "").strip()
     if explicit:
@@ -350,7 +370,7 @@ def _apply_environment(config: PeachConfig, environ: dict[str, str]) -> PeachCon
 
 
 def load_config(
-    project_root: Path = PROJECT_ROOT, environ: dict[str, str] | None = None,
+    project_root: Path = SEARCH_ANCHOR, environ: dict[str, str] | None = None,
     *, strict: bool = True,
 ) -> PeachConfig:
     """读一次设置文件并合并三层。

@@ -80,6 +80,24 @@ class DataRootDiscoveryTests(unittest.TestCase):
             self.assertEqual(
                 settings_file.discover_data_root(nested, {}), (tree.data_root, True))
 
+    def test_frozen_build_searches_from_the_executable_directory(self):
+        """单文件包的 `_MEIPASS` 是临时目录，起点必须是 EXE 所在目录才找得到数据根。"""
+        with TempTree() as tree:
+            executable = tree.project / "dist" / "Peach" / "Peach.exe"
+            executable.parent.mkdir(parents=True)
+            executable.write_bytes(b"")
+            anchor = settings_file._search_anchor(
+                tree.root / "temp" / "_MEI123", frozen=True, executable=str(executable))
+            self.assertEqual(anchor, executable.parent)
+            self.assertEqual(
+                settings_file.discover_data_root(anchor, {}), (tree.data_root, True))
+
+    def test_source_tree_searches_from_the_project_root(self):
+        with TempTree() as tree:
+            anchor = settings_file._search_anchor(
+                tree.project, frozen=False, executable=str(tree.root / "python.exe"))
+            self.assertEqual(anchor, tree.project)
+
     def test_missing_data_root_is_an_explicit_unconfigured_state(self):
         with TempTree(with_data_root=False) as tree:
             path, found = settings_file.discover_data_root(tree.project, {})
