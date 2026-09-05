@@ -378,9 +378,12 @@ Peach 的两列侧栏导航按上表对齐：`.edge button` 与 `.dnav button` �
 - 输入框一组边与环收进 `--field-ring`／`--field-ring-hover`／`--field-ring-focus`／`--field-glow`，
   聚焦是 1px 中性边加 4px 辉光，不再是蓝。顶部搜索、`.geist-search`、`.geist-input`、
   `.gselectfield`、`.sidebaraddfield`、偏好文本域共用这一份。
-- 框体两块面收进 `--fieldset-bar`：正文一律 `--ground`，操作条 `--fieldset-bar`，
-  外框 1px `--field-ring`、内部分隔线 `--line-soft`。暗色一档 Peach 的底带蓝，
-  所以取 `#04060A` 而不是纯黑，方向与 Vercel 一致（操作条比正文更深）。
+- 全站收成两张面。`--page` 是退到后面那张：`body`、框体里的操作条。`--ground` 是浮在它
+  上面那张：顶栏、窄栏、卡片、面板、按钮和输入框，外框 1px `--field-ring`、内部分隔线
+  `--line-soft`，不靠投影。暗色一档 Peach 的底带蓝，所以 `--page` 取 `#04060A` 而不是纯黑，
+  方向与 Vercel 一致（面比底亮）。`--surface` 不再当面用，只剩悬停与内嵌那一档。
+- 顶栏与窄栏是有意与 Vercel 分开的一处：Vercel 的页头和页面底同色、不浮起，Peach 有一条
+  从上贯到底的窄栏，两条一起留在 `--ground` 才不会在左上角撞出两种白。
 - 按钮次级档填 `--ground` 而不是透明，悬停抬到 `--surface`；禁用落到 `--sunk`。
 - 滚动条不写任何自定义样式，交给 `html` 上的 `color-scheme`。
 

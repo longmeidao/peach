@@ -14,15 +14,15 @@
 .fsec{min-width:0;border:1px solid var(--field-ring);border-radius:var(--surface-radius);
   background:var(--ground);padding:14px 16px 16px}
 /* 面板上中下异色：头部条与页脚条通到卡边（负边距抵消内边距），
-   正文是全站最亮的 --ground，两条横条落到 --fieldset-bar 并各带一条发丝线；圆角随卡收口。 */
+   正文是全站最亮的 --ground，两条横条落到 --page 并各带一条发丝线；圆角随卡收口。 */
 .fsechead{display:flex;align-items:center;gap:12px;flex-wrap:wrap;box-sizing:border-box;min-height:56px;
-  margin:-14px -16px 12px;padding:11px 16px;background:var(--fieldset-bar);
+  margin:-14px -16px 12px;padding:11px 16px;background:var(--page);
   border-bottom:1px solid var(--line-soft);border-radius:calc(var(--surface-radius) - 1px) calc(var(--surface-radius) - 1px) 0 0}
-.fsecfoot{margin:14px -16px -16px;padding:12px 16px;background:var(--fieldset-bar);
+.fsecfoot{margin:14px -16px -16px;padding:12px 16px;background:var(--page);
   border-top:1px solid var(--line-soft);border-radius:0 0 calc(var(--surface-radius) - 1px) calc(var(--surface-radius) - 1px)}
 .fsecfoot .fnote{margin:0}
 /* 重复页的「操作」条独立于 .fsec 容器：自带卡面与边框，不用负边距。 */
-.dupactions.fsechead{margin:0 0 14px;padding:10px 14px;background:var(--fieldset-bar);
+.dupactions.fsechead{margin:0 0 14px;padding:10px 14px;background:var(--page);
   border:1px solid var(--field-ring);border-radius:var(--surface-radius)}
 .dupactions.fsechead button{min-height:32px;padding:0 12px;border:1px solid var(--line-soft);
   border-radius:var(--control-radius);background:var(--ground);color:var(--ink-2);cursor:pointer;font-size:var(--fs-sm)}

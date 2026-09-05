@@ -73,7 +73,7 @@
 .geist-scroller-overlay::after{bottom:0;background:linear-gradient(to top,var(--surface),transparent)}
 .geist-scroller-overlay.can-scroll-top::before,.geist-scroller-overlay.can-scroll-bottom::after{opacity:1}
 /* Geist Empty State：标题和说明是一个组件；外层容器只负责与上方工具条保持 16px。 */
-.emptystate{grid-column:1/-1;display:grid;justify-items:center;align-content:center;gap:8px;box-sizing:border-box;width:100%;min-height:320px;padding:48px 24px;text-align:center;border:1px solid var(--line-soft);border-radius:var(--floating-radius);background:var(--surface)}
+.emptystate{grid-column:1/-1;display:grid;justify-items:center;align-content:center;gap:8px;box-sizing:border-box;width:100%;min-height:320px;padding:48px 24px;text-align:center;border:1px solid var(--line-soft);border-radius:var(--floating-radius);background:var(--ground)}
 .emptystate.compact{min-height:220px;border:0;background:transparent}
 .emptystate .es-icon{display:grid;place-items:center;box-sizing:border-box;width:54px;height:54px;padding:10px;border-radius:var(--floating-radius);border:1px solid var(--border-15);color:var(--muted);margin-bottom:8px}
 .emptystate .es-icon svg{width:32px;height:32px;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
@@ -103,12 +103,12 @@
      但不会让八个入口挤成三四行、把正文推到屏幕下方。 */
   .managebar{display:block;width:100%;margin-bottom:14px;padding:0;border:0;background:transparent}
   .managebar-toggle{display:flex!important;width:100%;min-height:46px;align-items:center;justify-content:space-between;
-    padding:10px 12px!important;border:1px solid var(--line-soft)!important;border-radius:var(--floating-radius)!important;background:var(--surface)!important;color:var(--ink)!important}
+    padding:10px 12px!important;border:1px solid var(--line-soft)!important;border-radius:var(--floating-radius)!important;background:var(--ground)!important;color:var(--ink)!important}
   .managebar-current{display:inline-flex;align-items:center;gap:8px;font-weight:600}
   .managebar-toggle>svg:last-child{transition:transform .16s ease}
   .managebar.is-open .managebar-toggle>svg:last-child{transform:rotate(180deg)}
   .managebar-menu{display:none;margin-top:8px;padding:6px;border:1px solid var(--line-soft);border-radius:var(--floating-radius);
-    background:var(--surface);grid-template-columns:repeat(2,minmax(0,1fr));gap:4px}
+    background:var(--ground);grid-template-columns:repeat(2,minmax(0,1fr));gap:4px}
   .managebar.is-open .managebar-menu{display:grid}
   .runtimegate a{grid-column:2/-1}
   .managebar-menu button{width:100%;min-height:42px;justify-content:flex-start;padding:9px 11px}

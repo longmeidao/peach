@@ -401,15 +401,15 @@ class WebUiSourceTests(unittest.TestCase):
                          "输入框的聚焦环不用蓝，走 --field-ring-focus")
 
     def test_fieldsets_put_the_bright_face_on_the_content_and_the_bar_below_it(self):
-        """框体正文是全站最亮的面，操作条比它深一档，两档都跟着主题走。
+        """框体正文是全站最亮的面，操作条落回页面底那一档，两档都跟着主题走。
 
         2026-09-05 实测 vercel.com 的团队设置 fieldset：正文 `#FFFFFF`、操作条 `#FAFAFA`
         加一条 1px `#EBEBEB` 的上边线，外圈是 1px 的 8% 黑；暗色一档是 `#0A0A0A` 正文配
-        纯黑操作条——方向相同，操作条永远更深。写成 `--fieldset-bar` 是因为它同时管数据
-        管理、复核、关注管理和资源同步：任何一处单独调，同一页上就会出现两种「同一种条」。
+        纯黑操作条——方向相同，操作条永远更深。操作条与页面底共用 `--page` 是照着 Vercel
+        写的，那边也是同一个 `--ds-background-200`：条子退到后面那张面上，正文浮在它之上。
         """
-        self.assertPageContains("--fieldset-bar:#FAFAFA;")
-        self.assertPageContains("--fieldset-bar:#04060A;")
+        self.assertPageContains("--page:#FAFAFA;")
+        self.assertPageContains("--page:#04060A;")
         for selector in (".cleanupfieldset", ".reviewitem", ".fsec",
                          ".resourcesyncbox,.resourcepanel"):
             self.assertPageContains(selector + "{", f"{selector} 应有一条自己的规则")
@@ -418,7 +418,7 @@ class WebUiSourceTests(unittest.TestCase):
                      ".fsechead", ".fsecfoot", ".resourcesyncfooter,.resourceapplyrow"):
             start = css.index(name + "{")
             rule = css[start:css.index("}", start)]
-            self.assertIn("background:var(--fieldset-bar)", rule, f"{name} 是操作条")
+            self.assertIn("background:var(--page)", rule, f"{name} 是操作条")
             self.assertIn("var(--line-soft)", rule, f"{name} 与正文之间是一条发丝线")
 
     def test_buttons_keep_two_tiers_a_solid_primary_and_a_bright_secondary(self):
@@ -486,6 +486,26 @@ class WebUiSourceTests(unittest.TestCase):
             start = css.index(name + "{")
             rule = css[start:css.index("}", start)]
             self.assertNotIn("backdrop-filter", rule, f"{name} 不带模糊")
+
+    def test_the_page_recedes_so_chrome_and_boxes_can_float_on_it(self):
+        """页面底是退到后面那张面，顶栏、窄栏和页面上的盒子填浮在它上面那张。
+
+        2026-09-05 实测 vercel.com 后台：页面底 `#FAFAFA`，部署行与设置 fieldset 正文
+        `#FFFFFF` 配 1px 的 8% 黑、不带投影；暗色一档是纯黑页面配 `#0A0A0A` 的面，方向不变。
+        两张面填成同一个颜色时，整页只剩文字在排层级，控件和内容分不出谁在前面。
+        """
+        self.assertPageContains("body{background:var(--page);")
+        css = stylesheet_source()
+        for name in (".top", ".edge"):
+            start = css.index(chr(10) + name + "{")
+            rule = css[start:css.index("}", start)]
+            self.assertIn("var(--ground)", rule, f"{name} 浮在页面底之上")
+        # 直接坐在页面上的盒子不能再填 --surface：它与 --page 在浅色一档是同一个 #FAFAFA，
+        # 填上去等于没有盒子。--surface 只剩交互与内嵌那一档。
+        for name in (".insightpanel", ".junkcard", ".managebar", ".emptystate"):
+            start = css.index(name + "{")
+            rule = css[start:css.index("}", start)]
+            self.assertIn("var(--ground)", rule, f"{name} 是页面上的一个面")
 
     def test_brand_pills_start_unfilled_so_the_pressed_state_has_somewhere_to_go(self):
         """厂牌药丸静止态不填色，选中态才抬到 --hover 并把边提到墨色。
@@ -3885,7 +3905,7 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_surface_has_measured_beeg_glow_geometry(self):
         self.assertPageContains("height:49vh")
-        self.assertPageContains("linear-gradient(to bottom,rgba(0,0,0,.6),var(--ground))")
+        self.assertPageContains("linear-gradient(to bottom,rgba(0,0,0,.6),var(--page))")
         self.assertPageContains("animation:ambient-in .8s ease .5s both")
 
     def test_detail_deduplicates_identity_and_supports_tag_editing(self):
@@ -5229,7 +5249,7 @@ class WebUiSourceTests(unittest.TestCase):
         12 颗按钮宽 70–186px，没有一颗铺满。640px 以下把条子竖过来、按钮
         `width:100%` 是我们自己加的，不是 Geist 的做法。
 
-        底色同理：条子是 `--fieldset-bar`，按钮填比它更亮的 `--ground` 才分得出来，
+        底色同理：条子是 `--page`，按钮填比它更亮的 `--ground` 才分得出来，
         与 `.geist-button` 的次级档、同一页「网盘与账本」的 `.resourceaction` 是同一颗按钮。
         """
         self.assertPageContains(".cleanupfieldset>.geist-fieldset-footer{box-sizing:border-box;"
