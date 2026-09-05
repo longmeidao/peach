@@ -420,9 +420,12 @@ Peach 的两列侧栏导航按上表对齐：`.edge button` 与 `.dnav button` �
 
 ### Peach 对应（2026-09-05）
 
-`.pill` 与 `.brandpill` 两端逐值对齐：未生效 `background:transparent` +
+虚线只借给 `#tagbar` 那一排，即首页顶上的筛选条：未生效 `background:transparent` +
 `1px dashed var(--field-ring-hover)`，已生效 `background:var(--ground)` +
 `1px solid var(--field-ring)`；浅色一档实测就是 `rgba(0,0,0,.21)` 与 `rgba(0,0,0,.08)`。
+`.brandpill`、关注页和实体页的 `.pill` 一律实线，只保留「选中填 `--ground`」这一半。
+虚线在 Vercel 上说的是「这条筛选还没加上去」，配得上它的只有恒常在场、可开可关的那一排；
+随内容来去的药丸也画成虚线，整页就是一片没生效的框，虚线不再指向任何东西。
 中间加了一档 Vercel 没有的悬停：只把虚线拉成实线，不填色。原因是语义不同——
 Vercel 的令牌可叠加，悬停预演成生效态没有代价；Peach 首页那一排是单选、恒有一颗生效，
 悬停也填就会同屏出现两颗选中。文字色也没照搬：Vercel 一行只有四颗，Peach 那一排有二十来颗，
