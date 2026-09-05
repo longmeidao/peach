@@ -151,6 +151,14 @@ class MetadataProviderTests(unittest.TestCase):
         }})
 
 class SourceIdentityTests(unittest.TestCase):
+    def test_prefixed_release_requires_matching_product_evidence(self):
+        dvd = {"id": "JAC-040", "content_id": "118jac040",
+               "source_url": "https://www.dmm.co.jp/mono/dvd/-/detail/=/cid=118jac040/"}
+        self.assertFalse(identifies_code("390JAC-040", dvd))
+        self.assertTrue(identifies_code("JAC-040", dvd))
+        self.assertTrue(identifies_code("390JAC-040", {
+            "id": "JAC-040", "source_url": "https://www.mgstage.com/product/product_detail/390JAC-040/"}))
+
     def test_real_source_id_shapes_are_accepted(self):
         # DMM 带厂牌数字前缀，r18dev 对 IQQQ-026 会补零，259 系只在 URL 里出现番号。
         self.assertTrue(identifies_code("ABW-220", {"content_id": "118abw220"}))

@@ -19,6 +19,7 @@ import time
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import urlsplit
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 SRC_DIR = PROJECT_ROOT / "src"
@@ -148,10 +149,31 @@ def _identity_mismatch(query: str, payload: dict) -> MetadataProviderError | Non
     2026-09-02 实测 `B:/MVP/MIB/` 下 68 次匹配有 58 次返回的番号根本不是查询的
     番号，整目录的厂牌、系列、标题因此全错。
 
-    比对走 `same_release_code`，它容忍片商前缀、补零和重制尾字母这些良性差异；
+    比对走 `same_release_code`，只接受已核验的前缀别名、补零和重制尾字母；
     来源没给 id 的不拦——那是缺证据，不是证据相反。
     """
     returned = str(payload.get("id") or payload.get("content_id") or "").strip()
+    # MGStage 的完整商品编号可证明来源省略数字前缀的展示 id。
+    # 仅读取商品详情路径，不把搜索参数、封面地址或相似标题当身份依据。
+    url = urlsplit(str(payload.get("source_url") or ""))
+    product = re.fullmatch(r"/product/product_detail/([^/]+)/?", url.path)
+    if url.hostname in {"mgstage.com", "www.mgstage.com"} and product:
+        product_code = product.group(1)
+        if same_release_code(query, product_code) and (
+            not returned or same_release_code(product_code, returned)
+            or normalise_code_key(returned) in code_query_variants(product_code)
+        ):
+            return None
+        return MetadataProviderError(
+            f"MGStage 商品编号 {product_code} 与查询 {query} 或返回番号 {returned} 不一致",
+            kind="identity_mismatch",
+        )
+    # DMM content_id 的厂牌段属于该来源的编码；只用于没有展示 id 的裸番号查询。
+    if (not payload.get("id") and payload.get("content_id")
+            and re.fullmatch(r"[A-Z]{2,8}-\d{2,5}", query)
+            and url.hostname in {"r18.dev", "www.dmm.co.jp", "dmm.co.jp", "www.dmm.com", "dmm.com"}
+            and identifies_code(query, payload)):
+        return None
     if not returned or same_release_code(query, returned):
         return None
     return MetadataProviderError(
@@ -531,7 +553,7 @@ def main(argv: list[str] | None = None, *, provider: JavinizerGoProvider | None 
                         refresh=args.refresh, health=source_health)
                     used_network = used_network or not reused
                     if payload is not None:
-                        error = _identity_mismatch(attempt, payload)
+                        error = _identity_mismatch(query, payload)
                         if error is not None:
                             payload = None
                     if payload is not None:

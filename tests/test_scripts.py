@@ -1649,13 +1649,18 @@ class OperationalScriptTests(unittest.TestCase):
             connection.executemany(
                 "INSERT INTO asset(id,location,path,name,medium,code) "
                 "VALUES(?,'local',?,?,'video',?)",
-                [(1, "1.mp4", "1.mp4", "CHU-101"), (2, "2.mp4", "2.mp4", "IQQQ-026")])
+                [(1, "1.mp4", "1.mp4", "CHU-101"), (2, "2.mp4", "2.mp4", "IQQQ-026"),
+                 (3, "3.mp4", "3.mp4", "390JAC-040")])
             connection.commit(); connection.close()
 
             class LooseSearchProvider:
                 def query(self, code, source):
                     if code == "CHU-101":
                         return {"source": source, "id": "CHUC-101", "maker": "别人的厂牌"}
+                    if code in {"390JAC-040", "JAC-040"}:
+                        return {"source": source, "id": "JAC-040", "content_id": "118jac040",
+                                "source_url": "https://r18.dev/videos/vod/movies/detail/-/combined=118jac040/json",
+                                "maker": "Prestige"}
                     return {"source": source, "id": "IQQQ-26", "maker": "Attackers"}
 
             raw = root / "raw"
@@ -1670,15 +1675,30 @@ class OperationalScriptTests(unittest.TestCase):
             self.assertEqual(result, 0)
             with errors.open(encoding="utf-8-sig", newline="") as handle:
                 error_rows = list(csv.DictReader(handle))
-            self.assertEqual([(row["code"], row["kind"]) for row in error_rows],
-                             [("CHU-101", "identity_mismatch")])
-            self.assertIn("CHUC-101", error_rows[0]["message"])
+            self.assertCountEqual([(row["code"], row["kind"]) for row in error_rows],
+                             [("390JAC-040", "identity_mismatch"), ("CHU-101", "identity_mismatch")])
+            self.assertTrue(any("CHUC-101" in row["message"] for row in error_rows))
             with output.open(encoding="utf-8-sig", newline="") as handle:
                 rows = list(csv.DictReader(handle))
             # 补零差异是良性的，`IQQQ-26` 必须照常收下。
             self.assertEqual({row["code"] for row in rows}, {"IQQQ-026"})
             # 原始响应仍然落盘：拒收的是候选，不是证据。
             self.assertTrue((raw / "CHU-101" / "javbus.json").is_file())
+
+    def test_scrape_uses_official_product_identity_for_display_alias(self):
+        check = self.scrape_codes._identity_mismatch
+        mgs = "https://www.mgstage.com/product/product_detail/390JAC-040/"
+        self.assertIsNone(check("390JAC-040", {"id": "JAC-040", "source_url": mgs}))
+        dvd = {"content_id": "118jac040",
+               "source_url": "https://www.dmm.co.jp/mono/dvd/-/detail/=/cid=118jac040/"}
+        self.assertIsNone(check("JAC-040", dvd))
+        self.assertEqual(check("390JAC-040", dvd).kind, "identity_mismatch")
+        for payload in (
+            {"id": "JAC-040", "source_url": "https://www.dmm.co.jp/mono/dvd/-/detail/=/cid=118jac040/"},
+            {"id": "390JAC-040", "source_url": mgs.replace("040", "041")},
+            {"id": "JAC-040", "source_url": mgs.replace("www.mgstage.com", "mgstage.com.example.org")},
+        ):
+            self.assertEqual(check("390JAC-040", payload).kind, "identity_mismatch")
 
     def test_creator_tag_review_queue_requires_approval_and_backup(self):
         with tempfile.TemporaryDirectory() as tmp:
