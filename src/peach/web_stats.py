@@ -113,6 +113,9 @@ def q_taste(contract: WebContract, args=None):
 
 
 def w_taste_refresh(contract: WebContract, body):
+    if body.get("background"):
+        return contract.taste_refresh_job.start_result(
+            lambda: w_taste_refresh(contract, {**body, "background": False}))
     window = str(body.get("window") or "all")
     sources = discover_history_sources()
     results = refresh_history(sources, contract.taste_history_store) if sources else []

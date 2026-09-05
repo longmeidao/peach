@@ -35,6 +35,7 @@ class LinkContract(Protocol):
 
     db_path: Path
     link_check: BackgroundJob
+    link_prune_job: BackgroundJob
 
     def read_connection(self): ...
 
@@ -169,6 +170,9 @@ def w_links_prune(contract: LinkContract, body):
     body = body or {}
     if body.get("confirm") is not True:
         return {"ok": False, "error": "需要 confirm"}
+    if body.get("background"):
+        return contract.link_prune_job.start_result(
+            lambda: w_links_prune(contract, {**body, "background": False}))
     state = contract.link_check.snapshot()
     if state is None or state["status"] != "complete":
         return {"ok": False, "error": "没有已完成的检查结果"}

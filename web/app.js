@@ -2792,7 +2792,8 @@ async function wireLinkManager(){
     setActionBusy(button,running);
     if(payload.status==='idle'){result.innerHTML='';return}
     if(payload.status==='failed'){result.innerHTML=noteHtml(payload.error||'检查失败',{variant:'error',label:'检查失败'});return}
-    const progress=running?`<p class="resourcescanning">已检查 ${payload.checked.toLocaleString()} / ${(payload.total||0).toLocaleString()} 条…</p>`:'';
+    const progress=running?loadingDotsHtml(`已检查 ${payload.checked.toLocaleString()} / ${(payload.total||0).toLocaleString()} 条`)
+      +(payload.total?progressHtml('已检查链接',payload.checked,payload.total):''):'';
     /* gone 和 unclear 必须分开摆：`linktr.ee` 回 403 是挡爬虫、`x.com` 回 500 是临时错误，
        链接本身好好的。混成一张表会让人顺手把好链接一起删掉。 */
     const gone=table('已失效',payload.gone||[],'上游明确回 404／410，页面确实没了。');
@@ -2807,24 +2808,33 @@ async function wireLinkManager(){
       setActionBusy(control);
       control.innerHTML=`${spinnerHtml('正在重验')}<span>正在重验并删除…</span>`;
       try{
-        const out=await api('/api/links/prune',{method:'POST',body:JSON.stringify({confirm:true,check_id:payload.check_id})});
-        result.innerHTML=noteHtml(`已删除 ${out.removed} 条；重验时又能打开的 ${out.recovered} 条已保留。`,{label:'完成'});
-        await wireLinkManager();
-      }catch(error){result.insertAdjacentHTML('beforeend',noteHtml(error.message,{variant:'error',label:'删除失败'}))}
+        const out=await api('/api/links/prune',{method:'POST',body:JSON.stringify({confirm:true,check_id:payload.check_id,background:true})});
+        sessionStorage.setItem('peach-link-prune-job',out.job_id);
+        if(active())void wirePruneProgress();
+      }catch(error){if(active()){result.insertAdjacentHTML('beforeend',noteHtml(error.message,{variant:'error',label:'删除失败'}));void wirePruneProgress()}}
     });
   };
 
-  const poll=async()=>{
-    if(!active())return;
-    const payload=await api('/api/links/check',{method:'POST',body:JSON.stringify({status_only:true})});
-    render(payload);
-    if(payload.status==='running')setTimeout(poll,2000);
-  };
+  const ui=await import('/dist/peach-ui.js');
+  let watching=0;
+  const poll=()=>{const generation=++watching;return ui.watchJob({
+    active:()=>active()&&watching===generation,
+    read:signal=>api('/api/links/check',{signal,method:'POST',body:JSON.stringify({status_only:true})}),
+    render,disconnected:()=>{result.innerHTML=noteHtml('暂时无法读取进度，正在重新连接…',{label:'任务状态'})}})};
   button.onclick=async()=>{
-    render(await api('/api/links/check',{method:'POST',body:JSON.stringify({restart:true})}));
-    setTimeout(poll,1200);
+    if(button.getAttribute('aria-busy')==='true')return;
+    setActionBusy(button);
+    try{const payload=await api('/api/links/check',{method:'POST',body:JSON.stringify({restart:true})});
+      if(!active())return;render(payload);void poll();
+    }catch(error){if(active()){result.innerHTML=noteHtml('暂时无法确认启动结果，正在读取任务状态…',{label:'任务状态'});void poll()}}
   };
-  await poll();
+  void poll();
+  void wirePruneProgress();
+}
+function wirePruneProgress(){
+  return wireOperationProgress({host:$('#link-manager'),path:'/api/links/prune',key:'peach-link-prune-job',title:'正在重验并删除失效链接…',
+    busy:running=>{const button=$('#linkPrune');if(button){setActionBusy(button,running);if(!running)button.textContent='重试删除失效链接'}},
+    complete:out=>{$('#linkCheckResult').innerHTML=noteHtml(`已删除 ${out.removed} 条；保留 ${out.recovered} 条恢复的链接。`,{label:'完成'})}});
 }
 function resourceSyncMarkup(){
   return `<section class="resourcesync" id="resource-sync" aria-labelledby="resourceSyncTitle">
@@ -2862,39 +2872,47 @@ async function wireResourceSync(){
       setActionBusy(button);
       button.innerHTML=`${spinnerHtml('正在应用')}<span>正在重新核对并应用…</span>`;
       try{
-        const applied=await api('/api/resource-sync/apply',{method:'POST',body:JSON.stringify({confirm:true,clean_cache:true,scan_id:payload.scan_id||''})});
-        result.innerHTML=`<p class="resourcesyncok">已把 ${applied.moved_to_trash.toLocaleString()} 项移入回收站，清理 ${applied.cache_removed.toLocaleString()} 个缓存，释放 ${fmtSize(applied.bytes_reclaimed||0)}。</p>`;
+        const applied=await api('/api/resource-sync/apply',{method:'POST',body:JSON.stringify({confirm:true,clean_cache:true,scan_id:payload.scan_id||'',background:true})});
+        sessionStorage.setItem('peach-resource-apply-job',applied.job_id);
+        if(active())void wireResourceApplyProgress();
       }catch(error){
         setActionBusy(button,false);
         button.innerHTML=`${icon('refresh-cw')}<span>重试同步</span>`;
-        result.insertAdjacentHTML('beforeend',noteHtml(error.message,{variant:'error',label:'同步失败'}))}
+        result.insertAdjacentHTML('beforeend',noteHtml(error.message,{variant:'error',label:'同步失败'}));if(active())void wireResourceApplyProgress()}
     });
   };
   const followScan=async payload=>{
     setBusy(true);result.innerHTML=`<p class="resourcescanning">${loadingDotsHtml('正在后台核对网盘元数据，不会读取视频内容。')}</p>`;
     try{
-      if(!payload)payload=await api('/api/resource-sync/scan',{method:'POST',body:JSON.stringify({background:true,restart:true})});
-      while(payload.status==='running'){
-        const done=payload.sources||[];
-        result.innerHTML=`<p class="resourcescanning">${loadingDotsHtml(`后台扫描中：已完成 ${payload.completed_sources||0} / ${payload.total_sources||3} 个来源${done.length?`（${done.map(source=>LOC[source.location]||source.location).join('、')}）`:''}。离开本页不会中断。`)}</p>`;
-        await new Promise(resolve=>setTimeout(resolve,2000));
-        if(!active())return;
-        payload=await api('/api/resource-sync/scan',{method:'POST',body:JSON.stringify({background:true})});
-      }
+      if(!payload){try{payload=await api('/api/resource-sync/scan',{method:'POST',body:JSON.stringify({background:true,restart:true})})}
+        catch(error){if(active())result.innerHTML=noteHtml('暂时无法确认启动结果，正在读取任务状态…',{label:'任务状态'})}}
+      const ui=await import('/dist/peach-ui.js');
+      await ui.watchJob({active,
+        read:signal=>api('/api/resource-sync/scan',{signal,method:'POST',body:JSON.stringify({background:true,status_only:true})}),
+        render:state=>{payload=state;if(state.status==='running'){
+          result.innerHTML=loadingDotsHtml(`后台扫描中：已完成 ${state.completed_sources||0}/${state.total_sources||0} 个来源`)
+            +(state.total_sources?progressHtml('已扫描来源',state.completed_sources||0,state.total_sources):'')}},
+        disconnected:()=>{result.innerHTML=noteHtml('暂时无法读取进度，正在重新连接…',{label:'任务状态'})}});
       if(payload.status==='failed')throw new Error(payload.error||'后台扫描失败');
+      if(payload.status==='idle')throw new Error('任务尚未启动，请重试扫描');
       if(!active())return;
       render(payload);
     }
     catch(error){result.innerHTML=noteHtml(error.message,{variant:'error',label:'扫描失败'})}
     finally{setBusy(false,true)}
   };
-  scan.onclick=()=>followScan(null);
-  try{
-    const existing=await api('/api/resource-sync/scan',{method:'POST',body:JSON.stringify({background:true,status_only:true})});
-    /* 只跟进还在跑的那次。上一轮的完成结果是那一刻的快照，进页面就铺开会被当成
-       现在的账本状态——数字早就不准了，而页面上没有任何东西说它是旧的。 */
-    if(existing.status==='running')void followScan(existing);
-  }catch(_error){}
+  scan.onclick=()=>{if(scan.getAttribute('aria-busy')!=='true')void followScan(null)};
+  const ui=await import('/dist/peach-ui.js');
+  void ui.watchJob({active,once:true,
+    read:signal=>api('/api/resource-sync/scan',{signal,method:'POST',body:JSON.stringify({background:true,status_only:true})}),
+    render:existing=>{if(existing.status==='running')void followScan(existing)},
+    disconnected:()=>{result.innerHTML=noteHtml('暂时无法读取进度，正在重新连接…',{label:'任务状态'})}});
+  void wireResourceApplyProgress();
+}
+function wireResourceApplyProgress(){
+  return wireOperationProgress({host:$('#resource-sync'),path:'/api/resource-sync/apply',key:'peach-resource-apply-job',title:'正在核对来源、同步并清理缓存…',
+    busy:running=>{const button=$('#resourceApply');if(button){setActionBusy(button,running);if(!running)button.textContent='同步并清理'}},
+    complete:out=>{$('#resourceSyncResult').innerHTML=noteHtml(`已把 ${out.moved_to_trash} 项移入回收站，清理 ${out.cache_removed} 个缓存，释放 ${fmtSize(out.bytes_reclaimed||0)}。`,{label:'完成'})}});
 }
 /* 旧直达 URL 仍然可用，落点跟着面板一起搬到数据管理。 */
 async function openResourceSync(push=true){
@@ -3071,10 +3089,12 @@ function renderTaste(d){
     setActionBusy(button);
     button.innerHTML=`${spinnerHtml('正在读取')}<span>读取中…</span>`;
     stateEl.textContent='';
-    try{const result=await api('/api/taste/refresh',{method:'POST',body:JSON.stringify({window:tasteWindow})});
-      tasteCacheSet(tasteWindow,result.dashboard);renderTaste(result.dashboard);actionReceipt('已更新口味分析')}
+    try{const result=await api('/api/taste/refresh',{method:'POST',body:JSON.stringify({window:tasteWindow,background:true})});
+      sessionStorage.setItem('peach-taste-job',result.job_id);
+      if(button.isConnected)void wireTasteProgress()}
     catch(error){stateEl.textContent=error.message||'读取失败';setActionBusy(button,false);
-      button.innerHTML=oldButton}};
+      button.innerHTML=oldButton;if(button.isConnected)void wireTasteProgress()}};
+  void wireTasteProgress();
   root.querySelector('[data-taste-import]').onclick=()=>file.click();
   file.onchange=async()=>{const selected=file.files[0];if(!selected)return;stateEl.textContent=`正在导入 ${selected.name}…`;
     try{const response=await fetch('/api/taste/import',{method:'POST',headers:{'Content-Type':'application/octet-stream','X-Peach-Filename':encodeURIComponent(selected.name)},body:selected});
@@ -4285,6 +4305,7 @@ function renderFollow(){
   wireLoadMore(more,()=>loadMoreFollow(more));
   wireFollowItems();
   wireFollowOlder();
+  void wireFollowProgress();
   wireDrag($('#stats').querySelector('.followauthors'));
   wireDrag($('#stats').querySelector('.followfilters'));
   paintSelection();
@@ -4329,6 +4350,49 @@ function followBackfillState(sources){
 /* 一次只往回一页。追更的常规检查永远只看第一页——每次都从头翻一遍站点既慢又没必要；
    但那也意味着每个来源只有第一页那点内容，用户问「怎么这么少」就是这个原因。
    所以往回抓是一个独立的、显式的动作，点一次走一页，不自动、不连翻。 */
+async function wireFollowProgress(){
+  const host=$('#stats').querySelector('.followmanage')||$('#stats'),surface=surfaceToken(surfacePath());
+  const marker=document.createElement('div');host.prepend(marker);
+  const ui=await import('/dist/peach-ui.js');
+  if(!surfaceCurrent(surface)||!marker.isConnected)return;
+  ui.followJobProgress({host:marker,active:()=>surfaceCurrent(surface),
+    read:signal=>api('/api/follow/check',{signal}),
+    busy:running=>{followBusy=running;
+      host.querySelectorAll('[data-follow-check],[data-follow-older]').forEach(button=>setActionBusy(button,running))},
+    complete:report=>{followCheckReport=report.status==='failed'
+      ?{results:[{ok:false,error:report.error}]}:report;
+      followCheckToast(followCheckReport);
+      if(surfaceCurrent(surface))void (surface.path==='/follow-manage'?openFollowManage(false):openFollow(false))},
+    note:text=>noteHtml(text,{label:'任务状态'}),loading:text=>loadingDotsHtml(text),
+    progress:(value,max)=>progressHtml(`已完成 ${value}/${max} 个来源`,value,max)});
+}
+async function wireOperationProgress({host,path,key,title,busy,complete}){
+  if(!host)return;
+  host.querySelector('[data-operation-progress]')?.remove();
+  const marker=document.createElement('div');marker.dataset.operationProgress='';host.append(marker);
+  const surface=surfaceToken(surfacePath()),ui=await import('/dist/peach-ui.js');
+  if(!surfaceCurrent(surface)||!marker.isConnected)return;
+  ui.followJobProgress({host:marker,active:()=>surfaceCurrent(surface),read:signal=>api(path,{signal}),
+    storageKey:key,title,busy,watchIdle:false,complete:report=>{
+      if(report.status==='failed'){marker.innerHTML=noteHtml(report.error||'任务失败',{variant:'error',label:'任务失败'});return}
+      complete(report)},note:text=>noteHtml(text,{label:'任务状态'}),
+    loading:text=>loadingDotsHtml(text),progress:()=>''});
+}
+function wireTasteProgress(){
+  const button=$('#stats').querySelector('[data-taste-refresh]');
+  if(!button)return;
+  return wireOperationProgress({host:$('#stats').querySelector('[data-taste-state]'),
+    path:'/api/taste/refresh',key:'peach-taste-job',title:'正在读取浏览记录并更新口味分析…',
+    busy:running=>{setActionBusy(button,running);button.innerHTML=`${icon('refresh-cw')}读取 Peach 主机`},
+    complete:()=>{tasteCache.clear();void openTaste(false);actionReceipt('已更新口味分析')}});
+}
+function wireResolveProgress(){
+  return wireOperationProgress({host:$('#stats').querySelector('[data-follow-add-state]'),
+    path:'/api/follow/resolve',key:'peach-resolve-job',title:'正在查找关注来源…',
+    busy:running=>{const form=$('#followAdd');
+      if(form){form.dataset.busy=String(running);form.setAttribute('aria-busy',String(running))}},
+    complete:report=>renderFollowPicks(report.results||[])});
+}
 function wireFollowOlder(){
   const button=$('#stats').querySelector('[data-follow-older]');
   if(!button)return;
@@ -4337,15 +4401,15 @@ function wireFollowOlder(){
     followBusy=true;setActionBusy(button);
     button.innerHTML=`${spinnerHtml('抓取中')}<span>抓取中…</span>`;
     try{
-      followCheckReport=await api('/api/follow/check',
-        {method:'POST',body:JSON.stringify({older:true})});
-      followCheckToast(followCheckReport);
-      await openFollow(false);
+      const started=await api('/api/follow/check',
+        {method:'POST',body:JSON.stringify({older:true,background:true})});
+      sessionStorage.setItem('peach-follow-job',started.job_id);
+      if(button.isConnected)await openFollow(false);
     }catch(error){
       followCheckReport={results:[{ok:false,error:error.message}]};
       followCheckToast(followCheckReport);
       await openFollow(false);
-    }finally{followBusy=false;setActionBusy(button,false)}
+    }finally{if(button.isConnected){followBusy=false;setActionBusy(button,false)}}
   };
 }
 
@@ -4682,6 +4746,7 @@ function renderFollowManage(credentials){
       </section>
     </div></div>`;
   wireFollowManage();
+  void wireFollowProgress();
   if(locked)$('#stats').querySelectorAll(
     '#followAdd input,#followAdd button,[data-follow-remove],[data-follow-check],'+
     '[data-follow-enabled],'+
@@ -4755,6 +4820,7 @@ function wireFollowItems(){
 }
 
 function wireFollowManage(){
+  void wireResolveProgress();
   const root=$('#stats'),form=root.querySelector('#followAdd');
   wireScrollers(root);
   const sort=root.querySelector('[data-follow-sort]');
@@ -4827,10 +4893,11 @@ function wireFollowManage(){
     state.textContent=byName?'查找中…（首次按名字查要下载创作者索引，可能几十秒）':'识别中…';
     try{
       const result=await api('/api/follow/resolve',{method:'POST',
-        body:JSON.stringify({lines})});
+        body:JSON.stringify({lines,background:true})});
+      sessionStorage.setItem('peach-resolve-job',result.job_id);
       state.textContent='';if(box)box.value='';
-      renderFollowPicks(result.results||[]);
-    }catch(error){state.textContent=error.message||'查找失败'}
+      if(form.isConnected)void wireResolveProgress();
+    }catch(error){state.textContent=error.message||'查找失败';if(form.isConnected)void wireResolveProgress()}
     finally{form.dataset.busy='false';form.removeAttribute('aria-busy');
       if(prefix)prefix.innerHTML=icon('search')}
   };
@@ -4865,14 +4932,10 @@ function wireFollowManage(){
     button.innerHTML=`${spinnerHtml('检查中')}${button.matches('.frowicon')?'':'<span>检查中…</span>'}`;
     try{
       const id=button.dataset.followCheck;
-      const result=await api('/api/follow/check',{method:'POST',
-        body:JSON.stringify(id?{source:+id}:{})});
-      // 一个来源失败不该让其余来源的更新一起消失，所以逐条报，不整体报错。
-      /* 结果先留下再重画，否则整页重绘会把它冲掉，用户只看到一次闪烁。
-         逐条报而不是整体报错：一个来源缺凭据，不该让其余来源的更新一起消失。 */
-      followCheckReport=result;
-      followCheckToast(result);
-      await openFollowManage(false);
+      const started=await api('/api/follow/check',{method:'POST',
+        body:JSON.stringify({...(id?{source:+id}:{}),background:true})});
+      sessionStorage.setItem('peach-follow-job',started.job_id);
+      if(button.isConnected)await openFollowManage(false);
     }catch(e){
       // 整个请求就失败了（断网、写入端不可达）：同样走那块报告，不弹 alert。
       followCheckReport={results:[{ok:false,error:e.message}]};
@@ -4882,7 +4945,7 @@ function wireFollowManage(){
        if(box)box.outerHTML=note;
       else $('#stats').querySelector('.fsec')?.insertAdjacentHTML('afterbegin',note);
     }
-    finally{followBusy=false;setActionBusy(button,false);button.innerHTML=oldButton;
+    finally{if(button.isConnected)followBusy=false;setActionBusy(button,false);button.innerHTML=oldButton;
       button.title=oldTitle;if(oldAria===null)button.removeAttribute('aria-label');
       else button.setAttribute('aria-label',oldAria)}
   });
@@ -5059,18 +5122,23 @@ function renderFollowPicks(results){
     const state=box.querySelector('[data-pick-state]');
     if(addButton.getAttribute('aria-busy')==='true')return;
     setActionBusy(addButton);
-    let done=0;const failures=[];
+    let done=0;const failures=[],sources=[];
     for(const input of picked){
       state.innerHTML=`${spinnerHtml('添加中')}<span>添加中… ${++done}/${picked.length}</span>`;
       try{
-        await api('/api/follow/source',{method:'POST',body:JSON.stringify(
+        const registered=await api('/api/follow/source',{method:'POST',body:JSON.stringify(
           {action:'add',url:input.value,label:input.dataset.label,
-           author:input.dataset.author})});
+           author:input.dataset.author,defer_check:true})});
+        sources.push(registered.source);
       }catch(error){
         // 一条失败不该把其余的一起丢掉，逐条报。
         failures.push(`${input.dataset.label}：${error.message}`);
       }
     }
+    if(sources.length){try{
+      const started=await api('/api/follow/check',{method:'POST',body:JSON.stringify({sources,background:true})});
+      sessionStorage.setItem('peach-follow-job',started.job_id);
+    }catch(error){failures.push(error.message)}}
     if(failures.length){
       state.textContent=failures.join('；');
       setActionBusy(addButton,false);

@@ -292,6 +292,15 @@ class BackgroundJob:
         if thread is not None and thread.is_alive():
             thread.join(timeout)
 
+    def start_result(self, fn: Callable[[], dict]) -> dict:
+        """执行一次操作并保存终态回执；重复提交只返回进行中的同一任务。"""
+        def work(job_id):
+            result = fn()
+            self.update(job_id, **result, status=(
+                "complete" if result.get("ok", True) else "failed"),
+                completed_at=time.time())
+        return self.start(work, restart=True)
+
     def _run(self, fn: Callable[[str], None], job_id: str) -> None:
         try:
             fn(job_id)

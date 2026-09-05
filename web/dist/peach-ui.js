@@ -296,13 +296,13 @@ function Ne(e, t) {
 }
 function Pe(e, t) {
 	var n = Ne(Se++, 7);
-	return ze(n.__H, t) && (n.__ = e(), n.__H = t, n.__h = e), n.__;
+	return Be(n.__H, t) && (n.__ = e(), n.__H = t, n.__h = e), n.__;
 }
 function Fe() {
 	for (var e; e = Ee.shift();) {
 		var t = e.__H;
 		if (e.__P && t) try {
-			t.__h.some(F), t.__h.some(Re), t.__h = [];
+			t.__h.some(Re), t.__h.some(ze), t.__h = [];
 		} catch (n) {
 			t.__h = [], P.__e(n, e.__v);
 		}
@@ -317,7 +317,7 @@ P.__b = function(e) {
 	var t = (N = e.__c).__H;
 	t && (Ce === N ? (t.__h = [], N.__h = [], t.__.some(function(e) {
 		e.__N && (e.__ = e.__N), e.u = e.__N = void 0;
-	})) : (t.__h.some(F), t.__h.some(Re), t.__h = [], Se = 0)), Ce = N;
+	})) : (t.__h.some(Re), t.__h.some(ze), t.__h = [], Se = 0)), Ce = N;
 }, P.diffed = function(e) {
 	ke && ke(e);
 	var t = e.__c;
@@ -327,8 +327,8 @@ P.__b = function(e) {
 }, P.__c = function(e, t) {
 	t.some(function(e) {
 		try {
-			e.__h.some(F), e.__h = e.__h.filter(function(e) {
-				return !e.__ || Re(e);
+			e.__h.some(Re), e.__h = e.__h.filter(function(e) {
+				return !e.__ || ze(e);
 			});
 		} catch (n) {
 			t.some(function(e) {
@@ -341,7 +341,7 @@ P.__b = function(e) {
 	var t, n = e.__c;
 	n && n.__H && (n.__H.__.some(function(e) {
 		try {
-			F(e);
+			Re(e);
 		} catch (e) {
 			t = e;
 		}
@@ -354,23 +354,23 @@ function Le(e) {
 	}, r = setTimeout(n, 35);
 	Ie && (t = requestAnimationFrame(n));
 }
-function F(e) {
+function Re(e) {
 	var t = N, n = e.__c;
 	typeof n == "function" && (e.__c = void 0, n()), N = t;
 }
-function Re(e) {
+function ze(e) {
 	var t = N;
 	e.__c = e.__(), N = t;
 }
-function ze(e, t) {
+function Be(e, t) {
 	return !e || e.length !== t.length || t.some(function(t, n) {
 		return t !== e[n];
 	});
 }
 //#endregion
 //#region node_modules/@preact/signals-core/dist/signals-core.module.js
-var Be = Symbol.for("preact-signals");
-function Ve() {
+var Ve = Symbol.for("preact-signals");
+function F() {
 	if (z > 1) z--;
 	else {
 		var e, t = !1;
@@ -402,7 +402,7 @@ function He(e) {
 	try {
 		return e();
 	} finally {
-		Ve();
+		F();
 	}
 }
 var I, L = void 0;
@@ -435,7 +435,7 @@ function Ke(e) {
 function U(e, t) {
 	this.v = e, this.i = 0, this.n = void 0, this.t = void 0, this.l = 0, this.W = t?.watched, this.Z = t?.unwatched, this.name = t?.name;
 }
-U.prototype.brand = Be, U.prototype.h = function() {
+U.prototype.brand = Ve, U.prototype.h = function() {
 	return !0;
 }, U.prototype.S = function(e) {
 	var t = this, n = this.t;
@@ -490,7 +490,7 @@ U.prototype.brand = Be, U.prototype.h = function() {
 			try {
 				for (var t = this.t; t !== void 0; t = t.x) t.t.N();
 			} finally {
-				Ve();
+				F();
 			}
 		}
 	}
@@ -570,7 +570,7 @@ function Ze(e) {
 		} catch (t) {
 			throw e.f &= -2, e.f |= 8, Qe(e), t;
 		} finally {
-			L = n, Ve();
+			L = n, F();
 		}
 	}
 }
@@ -580,7 +580,7 @@ function Qe(e) {
 }
 function $e(e) {
 	if (L !== this) throw Error("Out-of-order effect");
-	Xe(this), L = e, this.f &= -2, 8 & this.f && Qe(this), Ve();
+	Xe(this), L = e, this.f &= -2, 8 & this.f && Qe(this), F();
 }
 function K(e, t) {
 	this.x = e, this.m = void 0, this.s = void 0, this.u = void 0, this.f = 32, this.name = t?.name, I && I.push(this);
@@ -625,15 +625,15 @@ q(function() {
 function Y(e, t) {
 	o[e] = t.bind(null, o[e] || function() {});
 }
-function X(e) {
+function rt(e) {
 	if (J) {
 		var t = J;
 		J = void 0, t();
 	}
 	J = e && e.S();
 }
-function rt(e) {
-	var t = this, n = e.data, r = at(n);
+function it(e) {
+	var t = this, n = e.data, r = ot(n);
 	r.name = "ReactiveDom", r.value = n;
 	var i = Pe(function() {
 		for (var e = t, n = t.__v; n = n.__;) if (n.__c) {
@@ -646,7 +646,7 @@ function rt(e) {
 		}), a = G(function() {
 			return !Array.isArray(i.value) && !c(i.value);
 		}), o = q(function() {
-			if (this.N = ct, a.value) {
+			if (this.N = lt, a.value) {
 				var t = i.value;
 				e.__v && e.__v.__e && e.__v.__e.nodeType === 3 && (e.__v.__e.data = t);
 			}
@@ -657,14 +657,14 @@ function rt(e) {
 	}, []), a = i[0], o = i[1];
 	return a.value ? o.peek() : o.value;
 }
-rt.displayName = "ReactiveTextNode", Object.defineProperties(U.prototype, {
+it.displayName = "ReactiveTextNode", Object.defineProperties(U.prototype, {
 	constructor: {
 		configurable: !0,
 		value: void 0
 	},
 	type: {
 		configurable: !0,
-		value: rt
+		value: it
 	},
 	props: {
 		configurable: !0,
@@ -690,7 +690,7 @@ rt.displayName = "ReactiveTextNode", Object.defineProperties(U.prototype, {
 	e(t);
 }), Y("__r", function(e, t) {
 	if (e(t), t.type !== D) {
-		X();
+		rt();
 		var n, r = t.__c;
 		r && (r.__$f &= -2, (n = r.__$u) === void 0 && (r.__$u = n = function(e, t) {
 			var n;
@@ -702,12 +702,12 @@ rt.displayName = "ReactiveTextNode", Object.defineProperties(U.prototype, {
 				var t;
 				tt && ((t = this.y) == null || t.call(this)), e.__$f |= 1, e.setState({});
 			};
-		}(r), typeof t.type == "function" ? t.type.displayName || t.type.name : ""))), X(n);
+		}(r), typeof t.type == "function" ? t.type.displayName || t.type.name : ""))), rt(n);
 	}
 }), Y("__e", function(e, t, n, r) {
-	X(), e(t, n, r);
+	rt(), e(t, n, r);
 }), Y("diffed", function(e, t) {
-	X();
+	rt();
 	var n;
 	if (typeof t.type == "string" && (n = t.__e)) {
 		var r = t.__np, i = t.props, a = n.U;
@@ -717,19 +717,19 @@ rt.displayName = "ReactiveTextNode", Object.defineProperties(U.prototype, {
 		}
 		if (r) for (var c in a || (a = {}, n.U = a), r) {
 			var l = a[c], u = r[c];
-			l === void 0 ? (l = it(n, c, u, i), a[c] = l) : l.o(u, i);
+			l === void 0 ? (l = at(n, c, u, i), a[c] = l) : l.o(u, i);
 		}
 	}
 	e(t);
 });
-function it(e, t, n, r) {
+function at(e, t, n, r) {
 	var i = t in e && e.ownerSVGElement === void 0, a = qe(n);
 	return {
 		o: function(e, t) {
 			a.value = e, r = t;
 		},
 		d: q(function() {
-			this.N = ct;
+			this.N = lt;
 			var n = a.value.value;
 			r[t] !== n && (r[t] = n, i ? e[t] = n : n != null && (!1 !== n || t[4] === "-") ? e.setAttribute(t, n) : e.removeAttribute(t));
 		})
@@ -773,44 +773,44 @@ Y("unmount", function(e, t) {
 	for (var s in this.props) if (!(s in e)) return !0;
 	return !1;
 };
-function at(e, t) {
+function ot(e, t) {
 	return Pe(function() {
 		return qe(e, t);
 	}, []);
 }
-var ot = function(e) {
+var st = function(e) {
 	queueMicrotask(function() {
 		queueMicrotask(e);
 	});
 };
-function st() {
+function ct() {
 	He(function() {
 		for (var e; e = nt.shift();) et.call(e);
 	});
 }
-function ct() {
-	nt.push(this) === 1 && (o.requestAnimationFrame || ot)(st);
+function lt() {
+	nt.push(this) === 1 && (o.requestAnimationFrame || st)(ct);
 }
 //#endregion
 //#region src/state/quality-goals.ts
-var lt = "/api/quality-goals?limit=200", ut = {
+var ut = "/api/quality-goals?limit=200", dt = {
 	data: null,
 	error: ""
-}, Z = qe(ut), dt = 0, ft = G(() => Z.value);
-G(() => Z.value.data?.total ?? null);
+}, X = qe(dt), Z = 0, ft = G(() => X.value);
+G(() => X.value.data?.total ?? null);
 function pt() {
-	dt += 1, Z.value = ut;
+	Z += 1, X.value = dt;
 }
 async function mt(e) {
-	let t = dt += 1;
+	let t = Z += 1;
 	try {
-		let n = await xe(lt, e);
-		return t === dt && (Z.value = {
+		let n = await xe(ut, e);
+		return t === Z && (X.value = {
 			data: n,
 			error: ""
 		}), n;
 	} catch (n) {
-		throw !e?.aborted && t === dt && (Z.value = {
+		throw !e?.aborted && t === Z && (X.value = {
 			data: null,
 			error: be(n)
 		}), n;
@@ -915,15 +915,60 @@ async function xt(e) {
 	}
 }
 //#endregion
+//#region src/jobs.ts
+async function St(e) {
+	let t = e.pause || ((e) => new Promise((t) => setTimeout(t, e))), n = 0;
+	for (; e.active();) {
+		let r;
+		try {
+			r = await e.read(AbortSignal.timeout(15e3));
+		} catch (r) {
+			if (!e.active()) return;
+			n++, e.disconnected(r), await t(Math.min(2e3 * 2 ** Math.min(n, 4), 3e4));
+			continue;
+		}
+		if (!e.active() || (n = 0, e.render(r), e.once) || !e.keepWatching && r.status !== "running") return;
+		await t(2e3);
+	}
+}
+function Ct(e) {
+	let t = document.createElement("div");
+	e.host.hidden = !0, t.dataset.followJob = "", t.setAttribute("aria-live", "polite"), e.host.prepend(t);
+	let n = e.storageKey || "peach-follow-job", r = sessionStorage.getItem(n) || void 0, i = !1;
+	St({
+		read: e.read,
+		active: () => !i && e.active() && t.isConnected,
+		keepWatching: e.watchIdle !== !1,
+		render: (a) => {
+			let o = a.status === "running";
+			if (e.host.hidden = !o, e.busy(o), o) {
+				r = a.job_id, r && sessionStorage.setItem(n, r);
+				let i = a.current, o = (i?.attempt || 1) > 1 ? ` · 第 ${i?.attempt}/${i?.max_attempts} 次尝试${i?.retry_in ? `，${i.retry_in} 秒后重试` : ""}` : "", s = (e.title || (a.total ? `${a.older ? "抓取历史" : "检查更新"}：已完成 ${a.checked || 0}/${a.total} 个来源` : "正在准备检查任务…")) + (i ? ` · ${i.label || i.provider || ""}${o}` : "");
+				t.innerHTML = e.loading(s) + ((a.total || 0) > 0 ? e.progress(a.checked || 0, a.total) : "");
+			} else if (r && r === a.job_id) r = void 0, i = !0, e.host.hidden = a.status !== "failed", sessionStorage.removeItem(n), t.innerHTML = a.status === "failed" ? e.note(a.error || "检查失败") : "", e.complete(a);
+			else {
+				if (r && a.status === "idle") {
+					e.host.hidden = !1, t.innerHTML = e.note("任务状态已失效，请重新发起任务"), sessionStorage.removeItem(n), i = !0;
+					return;
+				}
+				t.innerHTML = "";
+			}
+		},
+		disconnected: () => {
+			e.host.hidden = !1, t.innerHTML = e.note("暂时无法读取进度，正在重新连接…");
+		}
+	});
+}
+//#endregion
 //#region src/islands.ts
-var St = { "quality-goals": {
+var wt = { "quality-goals": {
 	load: gt,
 	component: vt
-} }, Ct = () => Object.keys(St), $ = /* @__PURE__ */ new Map();
-async function wt(e, t, n, r = {}) {
-	let i = St[e];
+} }, Tt = () => Object.keys(wt), $ = /* @__PURE__ */ new Map();
+async function Et(e, t, n, r = {}) {
+	let i = wt[e];
 	if (!i) throw Error(`未注册的 island：${String(e)}`);
-	Tt(t);
+	Dt(t);
 	let a = {
 		controller: new AbortController(),
 		painted: !1
@@ -953,9 +998,9 @@ async function wt(e, t, n, r = {}) {
 		}), t);
 	}
 }
-function Tt(e) {
+function Dt(e) {
 	let t = $.get(e);
 	t && (t.controller.abort(), $.delete(e), t.painted && _e(null, e));
 }
 //#endregion
-export { Ct as islandNames, wt as mountIsland, xt as refreshStore, bt as storeNames, Tt as unmountIsland };
+export { Ct as followJobProgress, Tt as islandNames, Et as mountIsland, xt as refreshStore, bt as storeNames, Dt as unmountIsland, St as watchJob };
