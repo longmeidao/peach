@@ -3,9 +3,13 @@
 r"""给已落盘的实体图算人脸位置，供圆形头像取景用。
 
 实体图多为竖版人像（当前 512 张里 458 张竖版），圆框按几何中心裁切会切掉头顶、
-把脸压到下半圈。这里用与封面同一套 Haar 级联检出最大的人脸，把归一化中心和换算
+把脸压到下半圈。这里用与封面同一套 YuNet 检出最大的人脸，把归一化中心和换算
 好的 object-position 写进 sidecar（`<kind>-<id>.face.json`）；取景公式只有一份，
 在 `peach.web_contract.face_focus`，契约层读 sidecar 原样下发。
+
+脸框尺寸和源图像素一并落盘。取景不止要挪，还要按「这张脸有多少像素」决定能放大
+几倍才不掉清晰度，而那件事没有原图尺寸算不出来：归一化值给得出比例，给不出像素。
+倍数本身由页面按框的实际尺寸和设备像素比算，判据在 `web/js/face-frame.js`。
 
 结果写成每张图一个 sidecar，不写单一索引文件，理由与封面相同：导入任务可能并发
 写同目录。脚本可反复运行，已算过的默认跳过；新增头像后重跑一次即可补齐。未检出
@@ -37,13 +41,15 @@ def detect(path: Path, detector: FaceDetector) -> dict | None:
     height, width = image.shape[:2]
     ratio = round(width / height, 3) if height else 0
     faces = detector.detect(image)
-    record: dict = {"ratio": ratio, "face": None}
+    record: dict = {"ratio": ratio, "px": [width, height], "face": None}
     if not faces:
         return record
     # 多张脸时挑主角：先卡分数再取最大，判据在 peach.face_detect.main_face。
     best = main_face(faces)
     cx, cy = best.cx, best.cy
-    record["face"] = {"cx": cx, "cy": cy, "score": best.score}
+    # `w`/`h` 是归一化的脸框，配上 `px` 才还得出像素数——放大到几倍还清楚问的是像素。
+    record["face"] = {"cx": cx, "cy": cy, "w": best.width, "h": best.height,
+                      "score": best.score}
     focus = face_focus(ratio, cx, cy)
     if focus:
         record["focus"] = focus

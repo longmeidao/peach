@@ -1218,11 +1218,13 @@ class WebUiSourceTests(unittest.TestCase):
         # kind 参数化后，创作者复核卡片也能走同一条链；默认仍是 performer，
         # 既有调用点不受影响。
         self.assertPageContains(
-            "function avatarInner(name,ref,repId,kind='performer',markId=null,logoName='')")
+            "function avatarInner(name,ref,repId,kind='performer',markId=null,logoName='',"
+            "focus=null)")
         # 兜底链声明在模板里，行为归 image-fallback 那条委托监听。
         self.assertCode("const fallbacks=useLogo?[entitySrc,avatarSrc].filter(Boolean)\n"
                         "    :(useEntity&&avatarSrc?[avatarSrc]:[]);")
-        self.assertPageContains("imageFallbackAttrs({dropStyle:dropStyle&&framed,fallbacks})")
+        self.assertPageContains(
+            "imageFallbackAttrs({dropStyle:(dropStyle||!!faceBox)&&framed,fallbacks})")
 
     def test_no_face_image_is_emitted_before_the_server_says_it_can_be_fetched(self):
         """先问再出图：没有可用性标志兜住的 `/entity-image`／`/avatar` 一处都不许有。
@@ -1259,7 +1261,8 @@ class WebUiSourceTests(unittest.TestCase):
         # 索引页（`/api/index`）：实体图看 has_image、代表作头像看 has_avatar，kind
         # 跟着这一页的身份走——创作者的图写成 `performer-<id>.img` 是读不到的。
         self.assertPageContains("ref?{id:ref,has_image:x.has_image}:null,")
-        self.assertPageContains("x.has_avatar&&!company?x.rep:null, kind, x.mark, x.has_logo?x.k:'')")
+        self.assertPageContains(
+            "x.has_avatar&&!company?x.rep:null, kind, x.mark, x.has_logo?x.k:'',")
         # 口味榜（`/api/taste`）：两列直接长在榜行上，判据仍是同一对。
         self.assertPageContains(
             "const ref=row.entity_id?{id:row.entity_id,has_image:row.has_image}:null,")
@@ -1322,11 +1325,36 @@ class WebUiSourceTests(unittest.TestCase):
         # 资料页圆框按检出的人脸取景；换回落图时必须先摘掉内联 object-position——
         # 回落图是另一张照片，脸不在同一位置。
         self.assertPageContains("function facePos(f)")
-        self.assertPageContains("style:company?'':facePos(d.avatar_focus),dropStyle:true")
+        self.assertPageContains(
+            "style:company?'':facePos(d.avatar_focus),focus:company?null:d.avatar_focus,")
         # 取景是按实体图算出来的，所以内联 style 和 data-drop-style 只贴给第一环。
         self.assertPageContains("${framed?style:''}")
-        self.assertPageContains("imageFallbackAttrs({dropStyle:dropStyle&&framed,fallbacks})")
+        self.assertPageContains(
+            "imageFallbackAttrs({dropStyle:(dropStyle||!!faceBox)&&framed,fallbacks})")
         self.assertPageContains("if ('dropStyle' in image.dataset) image.removeAttribute('style');")
+
+    def test_every_avatar_slot_hands_the_face_box_to_the_page(self):
+        """三处圆头像都要拿到脸框，倍数在页面上按各自的框算。
+
+        判据一样、结论不一样：同一张 640×960、脸只有 67 px 的图，资料页 160 px 框
+        只放得到 2 倍，顶栏 64 px 框放到 3 倍还没碰到源图 1:1。所以服务端只下发脸框，
+        少给任何一处，那一处就停在「挪了一下但还是看不清」。
+        """
+        # 资料页大位、顶栏那排、索引页那格。索引页的 img 由共用的 avatarInner 拼，
+        # 脸框得穿过它才到得了 img——平移挂容器、放大挂图，两件事各走各的。
+        self.assertPageContains("focus:company?null:d.avatar_focus,")
+        self.assertPageContains("style:facePos(x.avatar_focus),focus:x.avatar_focus}")
+        self.assertPageContains("company?null:x.avatar_focus)")
+        self.assertPageContains("logo:logoName,logoVariant:'icon',focus}")
+        # 五个数挤一个属性，回落时只要摘一样东西。
+        self.assertPageContains(
+            "data-facebox=\"${[b.cx,b.cy,b.faceW,b.imgW,b.imgH].map(Number).join(' ')}\"")
+        self.assertPageContains("else if(img.dataset.facebox)avatarFrame(img);")
+
+    def test_a_fallback_image_never_inherits_the_previous_faces_box(self):
+        # 回落图是另一张照片，脸不在同一位置、尺寸也不是那个尺寸。留着脸框，下一次
+        # load 就会拿上一张的脸给这一张算放大倍数，页面上是一张明显错位的图。
+        self.assertPageContains("delete image.dataset.facebox;")
 
     def test_entity_link_favicons_do_not_leak_the_page_url_to_the_linked_site(self):
         # 外链的 favicon 是向对方站点发出的真实请求。锚点上的 rel="noreferrer" 只管
@@ -1745,7 +1773,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('<script type="module" src="/app.js"></script>')
         self.assertPageContains("document.addEventListener('load',event=>{")
         self.assertPageContains(
-            "if(img instanceof HTMLImageElement&&img.classList.contains('cover'))coverAnchor(img);")
+            "if(img.classList.contains('cover'))coverAnchor(img);")
         self.assertPageLacks('onload="', "模块作用域的函数在内联属性里取不到")
 
     def test_card_avatar_and_name_open_the_same_entity(self):
@@ -4439,7 +4467,8 @@ class WebUiSourceTests(unittest.TestCase):
         # 公司这一格不退到代表作截图，和它自己的资料页同一条判据。
         self.assertPageContains("const company=kind==='studio'||kind==='agency';")
         # 索引页那格由服务端的 has_logo 决定走不走这一环。
-        self.assertPageContains("x.has_avatar&&!company?x.rep:null, kind, x.mark, x.has_logo?x.k:'')")
+        self.assertPageContains(
+            "x.has_avatar&&!company?x.rep:null, kind, x.mark, x.has_logo?x.k:'',")
         # 标识不是人脸，取景和摘取景那套只贴给实体图。
         self.assertPageContains("const framed=useEntity&&!useLogo;")
 

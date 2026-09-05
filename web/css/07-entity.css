@@ -1,7 +1,10 @@
 .entityhero{display:grid;grid-template-columns:160px minmax(0,1fr);gap:24px;padding:10px 0 24px;
   border:0;background:transparent;margin-bottom:0;align-items:center;min-width:0;max-width:100%}
+/* `position:relative` 是给人脸放大留的包含块：放大后的 img 转成绝对定位，偏移必须
+   相对这个圆框算，否则会挂到最近的定位祖先上去。见 app.js 的 avatarFrame。 */
 .entityportrait{width:160px;aspect-ratio:1;border-radius:50%;overflow:hidden;background:var(--overlay-5);
-  display:grid;place-items:center;font-size:var(--fs-4xl);color:var(--muted);max-width:100%}
+  display:grid;place-items:center;font-size:var(--fs-4xl);color:var(--muted);max-width:100%;
+  position:relative}
 .entityportrait.square{border-radius:var(--floating-radius)}.entityportrait img,.entityportrait>span{grid-area:1/1}
 /* 首字母只是取不到图时的垫底，有图就必须让位：两者叠在同一格里会一起显出来。
    取图失败时 img 会被兜底链移除，:has 随之不匹配，首字母自动回来——不用再写
