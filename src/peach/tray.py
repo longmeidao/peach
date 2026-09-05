@@ -22,7 +22,7 @@ from . import onboarding, settings_file
 from .appid import MACOS_LAUNCH_AGENT_LABEL
 from .certs import ensure_certificate
 from .config import (
-    DATABASE_PATH, LOG_DIR, PROJECT_ROOT, REPLICATION_ENABLED,
+    DATABASE_PATH, LOG_DIR, MDNS_HOSTNAME, PROJECT_ROOT, REPLICATION_ENABLED,
     SECRETS_DIR, SHARED_DATABASE_PATH, SHARED_SMB_HOST, SHARED_SMB_SHARE,
     SHARED_SMB_USER, STATE_DIR,
 )
@@ -468,7 +468,11 @@ def _peach_executable() -> Path:
     raise FileNotFoundError(f"{_EXECUTABLE} is missing; reinstall the editable project")
 
 
-def build_macos_service_specs(*, tls_dir: Path | None = None) -> tuple[ServiceSpec, ...]:
+def build_macos_service_specs(
+    *,
+    tls_dir: Path | None = None,
+    mdns_hostname: str | None = None,
+) -> tuple[ServiceSpec, ...]:
     """macOS 用非特权端口起 HTTP，有 TLS 材料时再加一个 HTTPS。
 
     80/443 在 macOS 上要 root，所以服务本身跑在 8900/8443，由 pf 把 80/443 转过去
@@ -477,8 +481,12 @@ def build_macos_service_specs(*, tls_dir: Path | None = None) -> tuple[ServiceSp
 
     证书缺失时**只是不起 HTTPS**，不像 Windows 那样直接报错——macOS 这份是开发环境，
     没有本机 CA 也应该能用。
+
+    `mdns_hostname` 是明文口跳转的目标主机名，缺省取 `MDNS_HOSTNAME`；首次设置之后
+    必须由调用方传入新鲜读到的名字，理由见 `build_service_specs`。
     """
     peach = str(_peach_executable())
+    redirect_origin = f"https://{mdns_hostname or MDNS_HOSTNAME}"
     specs = [
         ServiceSpec(
             "http",
@@ -497,7 +505,7 @@ def build_macos_service_specs(*, tls_dir: Path | None = None) -> tuple[ServiceSp
         specs[0] = ServiceSpec(
             "http", f"http://127.0.0.1:{MACOS_PORT}/healthz",
             (peach, "serve", "--host", "0.0.0.0", "--port", str(MACOS_PORT),
-             "--redirect-origin", f"https://{MDNS_HOSTNAME}"), True,
+             "--redirect-origin", redirect_origin), True,
         )
         specs.append(ServiceSpec(
             "https",
@@ -520,11 +528,19 @@ def build_service_specs(
     lan_address: str | None = None,
     *,
     tls_dir: Path | None = None,
+    mdns_hostname: str | None = None,
 ) -> tuple[ServiceSpec, ...]:
+    """正常服务的两条规格：明文口只做跳转，HTTPS 那条承载全部应用。
+
+    `mdns_hostname` 缺省取 `MDNS_HOSTNAME`，那是 import 期就按当时的设置文件定型的。
+    首次设置刚让人填过 `[server].mdns_name`，托盘进程里的常量却还是旧值，跳转会把人
+    送到一个不存在的 `.local` 名下——所以 `SetupGate.poll` 必须传入新鲜读到的名字。
+    """
     if sys.platform == "darwin":
-        return build_macos_service_specs(tls_dir=tls_dir)
+        return build_macos_service_specs(tls_dir=tls_dir, mdns_hostname=mdns_hostname)
     address = lan_address or os.environ.get("PEACH_LAN_ADDRESS") or lan_ipv4()
     peach = str(_peach_executable())
+    redirect_origin = f"https://{mdns_hostname or MDNS_HOSTNAME}"
     cert_dir = Path(tls_dir) if tls_dir is not None else SECRETS_DIR / "tls"
     ca = cert_dir / "peach-local-ca.crt"
     cert = cert_dir / "peach.crt"
@@ -538,7 +554,7 @@ def build_service_specs(
             "http://127.0.0.1/healthz",
             (
                 peach, "serve", "--host", "0.0.0.0", "--port", "80",
-                "--redirect-origin", f"https://{MDNS_HOSTNAME}",
+                "--redirect-origin", redirect_origin,
             ),
             True,
         ),
@@ -600,13 +616,20 @@ def setup_url(config) -> str:
     return f"http://127.0.0.1:{config.server.port}/"
 
 
-def normal_url(config) -> str:
-    """正常服务的固定地址 `<mdns_name>.local`，同一局域网里两台机器必须不同名。
+def normal_hostname(config) -> str:
+    """这台机器对外的 `<mdns_name>.local`，同一局域网里两台机器必须不同名。
 
     名字取新鲜读到的设置，不用 import 期就定型的 `MDNS_HOSTNAME`：首次设置里那一题
-    正是它。macOS 上 80/443 由 pf 转到高位端口（scripts/setup_macos_port80.sh）。
+    正是它。菜单里的地址和明文口的跳转目标都走这一处，两边不能各算各的。
     """
-    return f"https://{config.server.mdns_name}.local/"
+    return f"{config.server.mdns_name}.local"
+
+
+def normal_url(config) -> str:
+    """正常服务的固定地址。macOS 上 80/443 由 pf 转到高位端口
+    （scripts/setup_macos_port80.sh）。
+    """
+    return f"https://{normal_hostname(config)}/"
 
 
 class SetupGate:
@@ -660,7 +683,8 @@ class SetupGate:
         """设置完成了就切到正常服务。返回这一轮有没有切。
 
         由健康轮询驱动，所以每几秒问一次：设置文件是新鲜读的，不是模块常量；TLS 材料
-        还没齐就原地等下一轮，而不是拿一组缺文件的规格去启动。
+        还没齐就原地等下一轮，而不是拿一组缺文件的规格去启动。mDNS 名同理由这里传进
+        规格：明文口的跳转目标必须是人刚填的那个名字。
         """
         if not self._waiting:
             return False
@@ -668,7 +692,10 @@ class SetupGate:
         if needs_setup(config):
             return False
         try:
-            specs = build_service_specs(tls_dir=config.directory("secrets") / "tls")
+            specs = build_service_specs(
+                tls_dir=config.directory("secrets") / "tls",
+                mdns_hostname=normal_hostname(config),
+            )
         except FileNotFoundError:
             return False        # CA 还没生成完（或没有 openssl），下一轮再看
         self._waiting = False

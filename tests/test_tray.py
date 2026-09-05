@@ -546,6 +546,34 @@ class SetupGateTests(unittest.TestCase):
         self.assertEqual(scan_popen.call_count, 1)
         self.assertIsNone(gate.start_first_scan(self._config()))
 
+    def test_the_plain_port_redirects_to_the_name_the_setup_form_just_wrote(self):
+        """明文口的跳转目标取新鲜读到的 mDNS 名，不用模块常量。
+
+        `MDNS_HOSTNAME` 在 import 期就按当时的设置文件定型，而首次设置里那一题正是它；
+        托盘不重启自己就完成切换，用常量会把人跳到一个不存在的 `.local` 名下。
+        """
+        config = self._config()
+        manager = ServiceManager(build_setup_service_specs(config),
+                                 log_dir=config.directory("logs"),
+                                 popen=Mock(), health_get=lambda *a, **k: Response())
+        gate = SetupGate(manager, config, waiting=True, load=self._config,
+                         popen=Mock(), open_browser=Mock())
+        self._tls(config)
+        (self.data_root / "config.toml").write_text(
+            "[server]\nport = 9100\nmdns_name = 'peach-writer'\n", encoding="utf-8")
+
+        # 打进去的是 import 期那份旧名字；跳转目标必须是表单刚写下的那个。
+        with patch("peach.tray.MDNS_HOSTNAME", "peach-reader.local"), patch(
+                "peach.tray.lan_ipv4", return_value="192.0.2.10"):
+            self.assertTrue(gate.poll())
+        redirecting = [spec for spec in manager.specs
+                       if "--redirect-origin" in spec.command]
+        self.assertTrue(redirecting, "正常规格里必须有一条只做跳转的明文口")
+        for spec in redirecting:
+            command = spec.command
+            self.assertEqual(command[command.index("--redirect-origin") + 1],
+                             "https://peach-writer.local")
+
     def test_missing_tls_material_keeps_the_gate_waiting(self):
         """没有 openssl 的机器上 CA 生成会失败；那时不能拿一组缺文件的规格去启动。"""
         config = self._config()

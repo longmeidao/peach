@@ -6,9 +6,8 @@
 
 ## 首次运行与设置文件
 
-- Windows 和有 TLS 的 macOS 托盘由 HTTP 导航进程与 HTTPS 业务进程组成；HTTP 的 `/healthz` 仅证明导航进程存活。业务入口 `/healthz?ready=1` 检查配置、页面、数据库查询和迁移校验和，不就绪返回 503；不带参数仍只探活。
+- 配置完成之后，Windows 和有 TLS 的 macOS 托盘由 HTTP 导航进程与 HTTPS 业务进程组成；HTTP 的 `/healthz` 仅证明导航进程存活。业务入口 `/healthz?ready=1` 检查配置、页面、数据库查询和迁移校验和，不就绪返回 503；不带参数仍只探活。还没配置的机器上托盘只起一条引导服务，见下面的首次设置几条。
 - wheel 将 `web`、`migrations`、`resources` 装入 `peach/_resources`。`scripts/smoke_wheel.py` 在仓库外使用安装 wheel 的解释器运行；CI 消费任务只下载制品，不检出源码。测试只使用临时数据根。
-
 - 设置文件固定是 `<数据根>/config.toml`。数据根按三步找：环境变量 `PEACH_DATA_ROOT`、
   项目根同级（含上溯四层，覆盖主检出、`peach-worktrees/<任务>` 和打包后的 `dist/Peach/_internal`）
   的 `peach-data/`、都没有就是「未配置」。优先级是环境变量 > 设置文件 > 内建默认。
@@ -34,8 +33,10 @@
   是 `POST /setup`：应用已配置回 404、非回环调用方回 403、设置文件已存在回 409。
 - 切换由 `tray.SetupGate` 做，Windows 托盘与 macOS 菜单栏共用。它挂在健康轮询里（Windows 10 秒、
   macOS 5 秒），每轮新鲜 `settings_file.load_config()`：不再需要设置且 TLS 材料齐了，就停掉引导
-  服务、按新数据根构建正常规格（`build_service_specs(tls_dir=...)`）并启动，托盘进程本身不重启。
-  TLS 还没齐（例如这台机器没有 openssl）就原地等下一轮，不会拿一组缺文件的规格去启动。
+  服务、按新数据根构建正常规格（`build_service_specs(tls_dir=..., mdns_hostname=...)`）并启动，
+  托盘进程本身不重启。TLS 还没齐（例如这台机器没有 openssl）就原地等下一轮，不会拿一组缺文件
+  的规格去启动。mDNS 名同样由这里传进规格：明文口的 `--redirect-origin` 必须是表单刚写下的
+  `<mdns_name>.local`，而 `peach.config.MDNS_HOSTNAME` 是托盘 import 期就定型的旧值。
 - 首扫不跑在引导服务里——那个进程在切换的那一刻就被停掉了。表单勾了「现在扫描」只写一个
   一次性标记 `<数据根>/state/first-scan.request`（内容是来源 ID），托盘切换完成后读走并删除它，
   用子进程跑 `peach scan <来源>`，输出落在 `<数据根>/logs/tray-scan.out.log`。标记只消费一次。
