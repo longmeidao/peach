@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 r"""用经维护的中日姓名映射本地化番号体系女优名称，并把残留的日本字形归一为简体。
 
-译名只处理带 `r18:performer` / `javbus:performer` 发行来源的实体；账号型 performer 不翻译。
+译名只处理带发行来源的实体，包括 Javinizer 的发行来源；账号型 performer 不翻译。
 匹配按精确证据分层：既有人工复核日文名、当前日文名、既有别名，再到复核表里的旧名。
 一条名字命中多个映射时不猜。多个 ledger 实体落到同一映射条目时，按同一人的旧名合并。
 
@@ -40,7 +40,10 @@ from peach.review_csv import read_rows, write_rows
 from peach.scripting import add_ledger_write_args, counts_of, open_for_write, verify_after_write
 
 
-RELEASE_SOURCES = frozenset({"r18:performer", "javbus:performer"})
+RELEASE_SOURCES = frozenset({
+    "r18:performer", "javbus:performer",
+    "javinizer:r18dev:performer", "javinizer:javbus:performer", "javinizer:javdb:performer",
+})
 ALIAS_SOURCE_PREFIX = "avdb-actor-mapping"
 #: javdb 资料页那一份。两份映射的别名来源必须分得开：回溯「这个中文名是谁写的」
 #: 时，来源前缀是唯一留着这个区别的地方。
