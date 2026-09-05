@@ -250,9 +250,68 @@ class AgencyLedgerTests(unittest.TestCase):
                                  scope_name="Capsule Agency")
         self.assertEqual(sum(row["n"] for row in facets["locations"]), 2)
 
+    def index(self, kind, q=""):
+        return {row["k"]: row for row in
+                rm_web.q_index(self.contract, kind, q=q, limit=50)["items"]}
+
+    def test_the_agency_index_lists_every_agency_by_headcount(self):
+        """事务所自己不挂作品，一家有多少艺人才是它的规模。"""
+        rows = self.index("agencies")
+        self.assertEqual(sorted(rows), ["ACT", "Capsule Agency"])
+        self.assertEqual(rows["Capsule Agency"]["members"], 2)
+        self.assertEqual(rows["ACT"]["members"], 1)
+
+    def test_the_agency_index_counts_works_the_same_way_the_profile_does(self):
+        """判据只有 `scope_predicate` 一份，两个页面数出来的才是同一个数。"""
+        rows = self.index("agencies")
+        for name in rows:
+            with self.subTest(agency=name):
+                self.assertEqual(rows[name]["n"], self.page("agency", name)["asset_count"])
+
+    def test_the_agency_index_hands_out_its_own_mark_not_a_members_frame(self):
+        """索引页那格图取的是官网圆标：作品截图是某位成员某部片的画面。"""
+        rows = self.index("agencies")
+        self.assertIsNotNone(rows["ACT"]["mark"])
+        self.assertFalse(rows["ACT"]["has_avatar"])
+
+    def test_the_agency_index_can_be_filtered_by_name(self):
+        self.assertEqual(sorted(self.index("agencies", q="Capsule")), ["Capsule Agency"])
+
+    def test_both_halves_of_the_maker_switch_have_an_index(self):
+        """开关的两半都得有索引页，否则那个开关有一边是死的。"""
+        for kind in ("studios", "agencies"):
+            with self.subTest(kind=kind):
+                self.assertEqual(rm_web.q_index(self.contract, kind, limit=5)["kind"], kind)
+
+    def test_the_agency_asks_whether_its_logo_is_installed(self):
+        """标识按名字落盘，厂牌和事务所同一个仓：两边都得先问过再出图。"""
+        self.assertIn("has_logo", self.page("agency", "ACT"))
+        self.assertIn("has_logo", self.index("agencies")["ACT"])
+        (self.logos / "ACT.img").write_bytes(b"x")
+        self.contract = rm_web.WebContract(
+            self.db, avatar_root=self.avatars, logo_root=self.logos)
+        self.assertTrue(self.page("agency", "ACT")["has_logo"])
+
+    def test_the_agency_profile_hands_out_the_link_id_for_its_mark(self):
+        page = self.page("agency", "ACT")
+        self.assertEqual(page["mark_link_id"],
+                         next(link["link_id"] for link in page["links"]))
+
+    def test_the_agency_roster_carries_the_focus_the_big_layout_needs(self):
+        """名册摆的是竖幅大图，几何居中会切掉脸，取景要随资料一起下发。"""
+        roster = self.page("agency", "Capsule Agency")["related_performers"]
+        self.assertTrue(roster)
+        for person in roster:
+            with self.subTest(person=person["k"]):
+                self.assertIn("avatar_focus", person)
+
     def test_the_scope_predicate_takes_one_placeholder_either_way(self):
         self.assertEqual(scope_predicate("performer", "ae.entity_id").count("?"), 1)
         self.assertEqual(scope_predicate("agency", "ae.entity_id").count("?"), 1)
+
+    def test_the_index_scope_predicate_reads_the_agency_from_each_row(self):
+        """索引页一句 SQL 数完所有事务所，判据那一侧填的是列名不是占位符。"""
+        self.assertIn("agency_id=e.id", scope_predicate("agency", "ae.entity_id", "e.id"))
 
     def test_merging_a_performer_carries_her_membership_over(self):
         self.con.execute(

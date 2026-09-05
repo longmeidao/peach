@@ -831,7 +831,7 @@ class WebUiSourceTests(unittest.TestCase):
         也不该重画表头。表头里随查询变的只有计数，单独改它。
         """
         self.assertPageContains("async function openIndex(kind,q,push=true,refine=false)")
-        self.assertPageContains("if(!refine)showIndexLoading(people?'正在读取作者':'正在读取标签')")
+        self.assertPageContains("if(!refine)showIndexLoading('正在读取'+(INDEX_TITLES[kind]||'标签'))")
         self.assertCode("""if(refine&&$('#iq')){
     $('#indexCount').textContent=countText;
     $('#indexFilters').innerHTML=filters;
@@ -903,15 +903,21 @@ class WebUiSourceTests(unittest.TestCase):
             "function entityFaceImg({kind='performer',id=null,hasImage=false,rep=null,")
         self.assertPageContains("const useEntity=!!(id&&hasImage);")
         self.assertPageContains(
-            "const src=useEntity?`/entity-image?kind=${kind}&id=${id}`:(rep?`/avatar?id=${rep}`:'');")
+            "const entitySrc=useEntity?`/entity-image?kind=${kind}&id=${id}`:'';")
+        self.assertPageContains("const avatarSrc=rep?`/avatar?id=${rep}`:'';")
+        self.assertCode(
+            "const src=useLogo?`/logo?studio=${encodeURIComponent(logo)}&variant=${logoVariant}`\n"
+            "    :(entitySrc||avatarSrc||(mark?`/link-mark?id=${mark}`:''));")
         # 一环都取不到就一个 `<img>` 都不出，首字母垫底直接露出来。
         self.assertPageContains("if(!src)return '';")
         # kind 参数化后，创作者复核卡片也能走同一条链；默认仍是 performer，
         # 既有调用点不受影响。
-        self.assertPageContains("function avatarInner(name,ref,repId,kind='performer')")
+        self.assertPageContains(
+            "function avatarInner(name,ref,repId,kind='performer',markId=null,logoName='')")
         # 兜底链声明在模板里，行为归 image-fallback 那条委托监听。
-        self.assertPageContains("const fallbacks=useEntity&&rep?[`/avatar?id=${rep}`]:[];")
-        self.assertPageContains("imageFallbackAttrs({dropStyle:dropStyle&&useEntity,fallbacks})")
+        self.assertCode("const fallbacks=useLogo?[entitySrc,avatarSrc].filter(Boolean)\n"
+                        "    :(useEntity&&avatarSrc?[avatarSrc]:[]);")
+        self.assertPageContains("imageFallbackAttrs({dropStyle:dropStyle&&framed,fallbacks})")
 
     def test_no_face_image_is_emitted_before_the_server_says_it_can_be_fetched(self):
         """先问再出图：没有可用性标志兜住的 `/entity-image`／`/avatar` 一处都不许有。
@@ -947,8 +953,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("hasImage:!!(ref&&ref.has_image)")
         # 索引页（`/api/index`）：实体图看 has_image、代表作头像看 has_avatar，kind
         # 跟着这一页的身份走——创作者的图写成 `performer-<id>.img` 是读不到的。
-        self.assertPageContains("x.entity_id?{id:x.entity_id,has_image:x.has_image}:null,")
-        self.assertPageContains("x.has_avatar?x.rep:null, entityKind)")
+        self.assertPageContains("ref?{id:ref,has_image:x.has_image}:null,")
+        self.assertPageContains("x.has_avatar&&!company?x.rep:null, kind, x.mark, x.has_logo?x.k:'')")
         # 口味榜（`/api/taste`）：两列直接长在榜行上，判据仍是同一对。
         self.assertPageContains(
             "const ref=row.entity_id?{id:row.entity_id,has_image:row.has_image}:null,")
@@ -1011,10 +1017,10 @@ class WebUiSourceTests(unittest.TestCase):
         # 资料页圆框按检出的人脸取景；换回落图时必须先摘掉内联 object-position——
         # 回落图是另一张照片，脸不在同一位置。
         self.assertPageContains("function facePos(f)")
-        self.assertPageContains("style:facePos(d.avatar_focus),dropStyle:true")
+        self.assertPageContains("style:company?'':facePos(d.avatar_focus),dropStyle:true")
         # 取景是按实体图算出来的，所以内联 style 和 data-drop-style 只贴给第一环。
-        self.assertPageContains("${useEntity?style:''}")
-        self.assertPageContains("imageFallbackAttrs({dropStyle:dropStyle&&useEntity,fallbacks})")
+        self.assertPageContains("${framed?style:''}")
+        self.assertPageContains("imageFallbackAttrs({dropStyle:dropStyle&&framed,fallbacks})")
         self.assertPageContains("if ('dropStyle' in image.dataset) image.removeAttribute('style');")
 
     def test_entity_link_favicons_do_not_leak_the_page_url_to_the_linked_site(self):
@@ -3793,7 +3799,7 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_entity_profile_hides_home_facets_and_renders_context(self):
         self.assertPageContains("body.entity-open #tiers,body.entity-open #tagbar,")
-        self.assertPageContains('src="/logo?studio=${encodeURIComponent(d.canonical_name)}&variant=logo"')
+        self.assertPageContains("logo:company&&d.has_logo?d.canonical_name:'',")
         self.assertPageContains('class="entitytags"')
         self.assertPageContains('class="pill" data-entity-tag=')
         self.assertPageContains('class="relatedpeople"')
@@ -3898,7 +3904,9 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("entityPath('agency',agencyName)")
         self.assertPageContains("${memberHtml}${agencyHtml}")
         # 没有对应实体时仍写名字，但不做成链接——那会通向一个不存在的页面。
-        self.assertCode(":` · 事务所 ${esc(agencyName)}`;")
+        self.assertCode(":` · ${esc(agencyName)}`;")
+        # 公司名自己说明了它是什么，这一行只出名字，不加类别名占横向空间。
+        self.assertPageLacks("· 事务所 ${esc(agencyName)}")
         # 链接标签写的是域名归谁，不是事务所名。
         self.assertPageContains("标签写的是这个域名归谁")
 
@@ -3913,6 +3921,89 @@ class WebUiSourceTests(unittest.TestCase):
     def test_the_agency_page_counts_people_not_only_videos(self):
         """事务所名下的视频是成员拍的，「这家有几个人」才是它独有的读数。"""
         self.assertPageContains("位艺人")
+
+    def test_the_agency_face_is_its_own_mark_not_a_members_frame(self):
+        """代表作截图是某位成员某部片的画面，当不了一家公司的门面。"""
+        self.assertCode("const company=kind==='studio'||kind==='agency';")
+        self.assertCode("rep:company||!d.has_avatar?null:d.representative_asset_id,")
+        self.assertCode("mark:kind==='agency'?d.mark_link_id:null,")
+        # 取图链最后一环是官网那条链接的站点圆标。
+        self.assertPageContains("mark?`/link-mark?id=${mark}`")
+
+    def test_the_agency_page_opens_on_its_roster(self):
+        """这一页要回答的是「这家签了谁」，所以进页面先摆艺人，视频是另一个视图。"""
+        self.assertCode(
+            "const AGENCY_VIEWS=[['people','艺人','user-round'],['videos','视频','play']];")
+        self.assertPageContains("let agencyRosterView='people';")
+        self.assertCode("  agencyRosterView='people';\n  const seq=++entityRequestSeq;")
+        self.assertCode("if(rosterToggle&&agencyRosterView==='people')renderAgencyRoster(roster);")
+        # 两个互斥视图用 Switch，不是自造按钮组。
+        self.assertPageContains("iconSwitchHtml('agency-view','事务所页视图'")
+        self.assertPageContains("wireIconSwitch($('#index'),'data-agency-view'")
+
+    def test_the_agency_roster_reuses_the_people_index_cell_and_layout(self):
+        """名册和艺人索引摆的是同一格人，模板与版式设置都只有一份。"""
+        self.assertPageContains("function personCellHtml(x,kind,countText){")
+        # 索引页那批行的实体 id 叫 entity_id，名册那批叫 id，取图链只认一个。
+        self.assertPageContains("const ref=x.entity_id||x.id;")
+        self.assertCode(
+            '<div class="igrid" data-layout="${peopleIndexLayout()}">${\n'
+            "      people.map(x=>personCellHtml(x,'performer',x.n.toLocaleString())).join('')}</div>")
+        # 名册占的是正文那一整块，所以这批人不再挤进「同台艺人」那排小圆头像。
+        self.assertCode("const roster=kind==='agency'?(d.related_performers||[]):[];")
+        self.assertCode("const related=roster.length?'':(d.related_performers||[]).map(")
+
+    def test_the_agency_roster_and_the_media_switch_do_not_talk_over_each_other(self):
+        """名册不是一种媒体：正看着艺人时，「视频／照片」问的不是这一页在显示什么。"""
+        self.assertCode(
+            "controls.hidden=!photos||(kind==='agency'&&agencyRosterView==='people');")
+        # 有显式 display 的元素不吃浏览器默认的 [hidden]，隐藏要自己写一条。
+        self.assertPageContains(".mediaviewbuttons[hidden]{display:none}")
+        # 标签筛的是作品，点了就回到视频视图，否则开关和内容各说各的。
+        self.assertCode("agencyRosterView='videos';")
+        self.assertCode(
+            "const rosterInput=$('#index').querySelector('[data-agency-view][value=\"videos\"]');")
+
+    def test_the_profile_rows_that_overflow_get_the_shared_drag_and_wheel(self):
+        """同台艺人和标签这两行没有滚动条，不接拖动就是看得见够不着。"""
+        self.assertPageContains("wireDrag($('#index').querySelector('.relatedpeople'));")
+        self.assertPageContains("wireDrag($('#index').querySelector('.entitytags'));")
+        # 横向滚动行里的开关不能被压扁。
+        self.assertPageContains(".entitytags .iconswitch{flex:none}")
+
+    def test_the_maker_index_switch_moves_between_two_routes(self):
+        """厂牌出片、事务所出人，是两种实体：开关切的是路径，不是同一批数据再筛一次。"""
+        self.assertCode("const MAKER_INDEX_KINDS=[['studios','厂牌','building'],"
+                        "['agencies','事务所','briefcase']];")
+        self.assertPageContains("function makerModeHtml(kind){")
+        self.assertCode("$('#index').querySelectorAll('[data-index-kind]').forEach(b=>b.onclick=()=>{")
+        self.assertCode("openIndex(b.dataset.indexKind,$('#iq').value.trim(),true)});")
+        # 两条索引地址都在路由表里，直达和刷新都得开得出来。
+        self.assertPageContains("{match:'/studios',nav:'studios',title:'厂牌',")
+        self.assertPageContains("{match:'/agencies',title:'事务所',")
+        # 侧栏那一项进的是厂牌索引。
+        self.assertPageContains("['studios','厂商','building'],")
+
+    def test_the_studio_index_wears_the_same_logo_the_profile_does(self):
+        """538 个标识在盘上，索引页却格格首字母的话，这一屏读不出是哪些牌子。"""
+        self.assertPageContains("const useLogo=!!logo;")
+        self.assertPageContains(
+            "const src=useLogo?`/logo?studio=${encodeURIComponent(logo)}&variant=${logoVariant}`")
+        # 索引页那格是小位，要方形图标而不是横着的字标。
+        self.assertPageContains("logo:logoName,logoVariant:'icon'")
+        # 取不到标识就退回实体图、再退到头像，和资料页大位同一条链。
+        self.assertPageContains("const fallbacks=useLogo?[entitySrc,avatarSrc].filter(Boolean)")
+        # 公司这一格不退到代表作截图，和它自己的资料页同一条判据。
+        self.assertPageContains("const company=kind==='studio'||kind==='agency';")
+        # 索引页那格由服务端的 has_logo 决定走不走这一环。
+        self.assertPageContains("x.has_avatar&&!company?x.rep:null, kind, x.mark, x.has_logo?x.k:'')")
+        # 标识不是人脸，取景和摘取景那套只贴给实体图。
+        self.assertPageContains("const framed=useEntity&&!useLogo;")
+
+    def test_the_maker_index_switch_shares_the_view_mode_control(self):
+        """标签页那两组开关和这一组是同一个控件，类名跟着语义走。"""
+        self.assertPageLacks("tagmodes")
+        self.assertPageContains(".viewmodes{")
 
     def test_entity_name_picker_offers_only_this_entity_existing_names(self):
         # 候选取的是身份契约 `aliases`（完整），不是收窄过的展示别名：罗马字也是
@@ -4455,7 +4546,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("placeholder:followSkeletonHtml('正在读取关注内容')")
         self.assertPageContains("pageSkeletonHtml('正在读取统计',{variant:'dashboard'})")
         self.assertPageContains(".skeletondashhero{min-height:330px;grid-template-columns:minmax(260px,36%) minmax(0,1fr)}")
-        self.assertPageContains("if(!refine)showIndexLoading(people?'正在读取作者':'正在读取标签')")
+        self.assertPageContains("if(!refine)showIndexLoading('正在读取'+(INDEX_TITLES[kind]||'标签'))")
         self.assertPageContains("$('#loadSentinel').innerHTML=loadingDotsHtml('继续载入中…')")
         self.assertPageContains("pageSkeletonHtml('正在读取推荐',{cards:true,className:'related-skeleton'})")
         self.assertPageLacks("count.innerHTML=`${spinnerHtml(label)}<span>载入中…</span>`")
@@ -5224,7 +5315,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('class="mediaviewbutton" type="button" data-media-view="${esc(value)}"')
         self.assertPageContains("const mediaToggle=photoCount?mediaViewButtonsHtml({active:mediaSelected?'photos':'videos'")
         self.assertPageContains("imageValue:'photos',imageLabel:'照片',videoCount:d.asset_count,imageCount:photoCount")
-        self.assertPageContains('<section class="entitytagbar" aria-label="媒体与标签"><div class="entitytags">${mediaToggle}${tags}</div></section>')
+        self.assertPageContains('<section class="entitytagbar" aria-label="媒体与标签"><div class="entitytags">${rosterToggle}${mediaToggle}${tags}</div></section>')
         self.assertPageContains("controls.hidden=!photos")
         self.assertPageContains("button.dataset.mediaView")
         self.assertPageContains(".mediaviewbuttons .mediaviewbutton{display:grid;place-items:center;flex:0 0 var(--filterItemH);width:var(--filterItemH);height:var(--filterItemH);padding:0;")
@@ -5289,12 +5380,12 @@ class WebUiSourceTests(unittest.TestCase):
         叠成两行、过滤框被压成 0 宽。760px 以下改成标题与过滤框一行、开关另起一行。
         """
         self.assertPageContains("@media (max-width:760px){\n  .index .ihead{flex-wrap:wrap}")
-        self.assertPageContains("  .indexheading,#indexCount,.tagmodes button{white-space:nowrap}")
+        self.assertPageContains("  .indexheading,#indexCount,.viewmodes button{white-space:nowrap}")
         # 换行位靠一个零高的伪元素占满整行，开关的 order 排在它之后。
         self.assertPageContains('  .index .ihead::after{content:"";order:2;flex-basis:100%;height:0}')
         self.assertPageContains("  .index .ihead .geist-search{order:1}")
         self.assertPageContains(
-            "  .index .ihead .tagmodes,.index .ihead .iconswitch{order:3;flex:none}")
+            "  .index .ihead .viewmodes,.index .ihead .iconswitch{order:3;flex:none}")
 
     def test_the_two_filled_glyph_icons_say_what_a_stroked_icon_cannot(self):
         """字母表是 Aa，播放列表是队列。
@@ -5384,7 +5475,7 @@ class WebUiSourceTests(unittest.TestCase):
             "const ratio=WIDE_ICONS[name],classes=[ratio?'iconwide':'',cls].filter(Boolean).join(' ');")
         self.assertPageContains(
             "const box=ratio?`0 0 ${(24*ratio).toFixed(2)} 24`:'0 0 24 24';")
-        self.assertPageContains(".tagmodes button svg.iconwide{width:auto}")
+        self.assertPageContains(".viewmodes button svg.iconwide{width:auto}")
 
     def test_plain_text_inputs_share_one_token_so_the_button_beside_them_matches(self):
         """控件高度只有一档：输入框 38px，同一行的按钮照抄这个数。

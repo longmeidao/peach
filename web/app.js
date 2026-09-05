@@ -47,6 +47,10 @@ const followSortLabel=()=>`按${FOLLOW_SORT_LABELS[followManageSort]||'关注列
 let followAuthor='',followProvider='',followTags=new Set(),followMediaView='videos',followGroupByItemId=new Map(),followItemsById=new Map(),followDetailReturnPath='/follow';
 const selectedIndexTags=new Set();
 let entityPhotos=null,entityMediaView=emptyMediaView(),photoWallItems=[];
+/* 事务所页看的是它签了谁，所以进页面先摆艺人。视频照样在，只是换一个开关的距离：
+   那批片是成员各自拍的，混成一条 feed 回答不了「这家有哪些人」。每次进页面都回到
+   艺人，切到视频是这一次浏览的选择，不是这类页面的常态。 */
+let agencyRosterView='people';
 let sidebarDragKey=null;
 let edgeT=null;
 /* 搜索下拉里被键盘选中的那一项。列表每次重建都要归零，否则索引会指向已经不存在的行。 */
@@ -102,6 +106,14 @@ const ROUTES=[
   {match:'/creators',title:'创作者',
     open:(params,push)=>openIndexRoute('creators',push),
     reload:()=>openIndexRoute('creators',false,indexQuery())},
+  /* 厂商索引的两半。厂牌出片、事务所出人，是两种实体，所以是两条路径；页内那个
+     开关只是在两条路径之间走，不是同一份数据的两种筛选。 */
+  {match:'/studios',nav:'studios',title:'厂牌',
+    open:(params,push)=>openIndexRoute('studios',push),
+    reload:()=>openIndexRoute('studios',false,indexQuery())},
+  {match:'/agencies',title:'事务所',
+    open:(params,push)=>openIndexRoute('agencies',push),
+    reload:()=>openIndexRoute('agencies',false,indexQuery())},
   {match:'/tags',nav:'tags',title:'标签',
     open:(params,push)=>openIndexRoute('tags',push),
     reload:()=>openIndexRoute('tags',false,indexQuery())},
@@ -319,7 +331,7 @@ async function loadSourceStatus(){
    所以上面这一行调用照样成立。 */
 const DURATION_TAGS=new Set(['短片-2分内','中片-10分内','长片-30分内','超长片-30分上']);
 const SETTINGS_KEY='peach.settings.v1';
-const DEFAULT_SIDEBAR_ORDER=['','performers','tags','jav','flagged','playlists','follow','immerse','manage'];
+const DEFAULT_SIDEBAR_ORDER=['','performers','studios','tags','jav','flagged','playlists','follow','immerse','manage'];
 const OPTIONAL_SIDEBAR_KEYS=['stats','review','data-cleanup','trash','follow-manage','quality'];
 const ALL_SIDEBAR_KEYS=[...DEFAULT_SIDEBAR_ORDER,...OPTIONAL_SIDEBAR_KEYS];
 const SORTS=[['seed','随机'],['rating','评分'],['o','高潮计数'],['plays','观看次数'],['dur','时长'],
@@ -1657,24 +1669,36 @@ document.addEventListener('visibilitychange',()=>{if(document.hidden)releaseHove
 
    兜底链最后一环必须真的把 `<img>` 拿掉（`data-drop="self"`）：留着取不到图的
    `<img>`，`:has(img)` 仍然匹配，首字母垫底回不来，浏览器还会把 alt 画出来。 */
-function entityFaceImg({kind='performer',id=null,hasImage=false,rep=null,
-                        alt='',lazy=true,style='',dropStyle=false}={}){
+function entityFaceImg({kind='performer',id=null,hasImage=false,rep=null,mark=null,logo='',
+                        logoVariant='logo',alt='',lazy=true,style='',dropStyle=false}={}){
   const useEntity=!!(id&&hasImage);
-  const src=useEntity?`/entity-image?kind=${kind}&id=${id}`:(rep?`/avatar?id=${rep}`:'');
+  const entitySrc=useEntity?`/entity-image?kind=${kind}&id=${id}`:'';
+  // `rep` 由服务端的 has_avatar 决定有没有值，没有就不出这一环。
+  const avatarSrc=rep?`/avatar?id=${rep}`:'';
+  /* 公司的门面是它自己的标识，不是作品截图——那是某部片的画面，说的是别人的事。
+     厂牌走 `/logo`：`logo` 只在调用方问过 `has_logo` 时才有值。变体跟着位置走，
+     大位要字标、小位要方形图标。事务所没有标识文件，走官网那条链接的站点圆标 `mark`。 */
+  const useLogo=!!logo;
+  const src=useLogo?`/logo?studio=${encodeURIComponent(logo)}&variant=${logoVariant}`
+    :(entitySrc||avatarSrc||(mark?`/link-mark?id=${mark}`:''));
   if(!src)return '';
-  const fallbacks=useEntity&&rep?[`/avatar?id=${rep}`]:[];
+  const fallbacks=useLogo?[entitySrc,avatarSrc].filter(Boolean)
+    :(useEntity&&avatarSrc?[avatarSrc]:[]);
   // 人脸取景是按实体图算出来的，回落图是另一张照片，脸不在同一位置：只贴给第一环。
-  return `<img src="${src}" alt="${alt}"${lazy?' loading="lazy"':''}${useEntity?style:''} `+
-    `${imageFallbackAttrs({dropStyle:dropStyle&&useEntity,fallbacks})}>`;
+  const framed=useEntity&&!useLogo;
+  return `<img src="${src}" alt="${alt}"${lazy?' loading="lazy"':''}${framed?style:''} `+
+    `${imageFallbackAttrs({dropStyle:dropStyle&&framed,fallbacks})}>`;
 }
 /* 头像内层：先垫首字母，再叠真实图。
 
    `has_image` 缺席按「没图」处理，和 entityFaceImg 的默认值一致：每一个调用点的
    ref 都由服务端带着标志下发（卡片署名、索引页、口味榜、复核卡片、沉浸模式），
    宽容缺席只会让下一个忘了挂标志的端点悄悄退回「无条件出图、等 404 再摘」。 */
-function avatarInner(name,ref,repId,kind='performer'){
+function avatarInner(name,ref,repId,kind='performer',markId=null,logoName=''){
+  // 这一层全是小圆框和窄格子，厂牌标识在这里要方形图标而不是横着的字标。
   return `<span class="ini">${esc((name||'?').slice(0,1))}</span>`+
-    entityFaceImg({kind,id:ref&&ref.id,hasImage:!!(ref&&ref.has_image),rep:repId});
+    entityFaceImg({kind,id:ref&&ref.id,hasImage:!!(ref&&ref.has_image),rep:repId,mark:markId,
+                   logo:logoName,logoVariant:'icon'});
 }
 /* 人脸取景：资料页圆框按检出的人脸中心取景（/api/entity 的 avatar_focus）。
    没检出或没算过返回空串维持几何居中；换回落图时必须撤掉——那是另一张照片，
@@ -5120,14 +5144,42 @@ function setPeopleIndexLayout(value){
   saveSettings();
   document.querySelectorAll('.igrid').forEach(grid=>{grid.dataset.layout=peopleIndexLayout()});
 }
+/* 一格人：圆框或竖幅头像、名字、一个读数。索引页和事务所名册摆的是同一样东西，
+   区别只在读数的口径，所以模板只有这一份，版式也由同一个 `.igrid[data-layout]` 管。
+
+   取景挂在圆框上而不是 img 上：竖幅裁到 3:4 时几何居中会切掉脸，而 img 由八处共用的
+   avatarInner 拼，两个版式都只能从容器这一侧改。 */
+function personCellHtml(x,kind,countText){
+  const face=faceOrigin(x.avatar_focus);
+  const ref=x.entity_id||x.id;
+  /* 公司这一格不退到代表作截图，和它自己的资料页保持同一条判据：那是某部片的画面，
+     摆在公司名下就是替它拿别人的脸当门面，同一个厂牌两个页面还会各出各的图。 */
+  const company=kind==='studio'||kind==='agency';
+  return `<button class="icell" data-k="${esc(x.k)}" data-kind="${kind}">
+      <span class="ring"${face?` style="--face:${face}"`:''}>${avatarInner(x.k,
+        ref?{id:ref,has_image:x.has_image}:null,
+        x.has_avatar&&!company?x.rep:null, kind, x.mark, x.has_logo?x.k:'')}</span>
+      <span class="nm">${esc(x.k)}</span><span class="n">${countText}</span></button>`;
+}
+const INDEX_TITLES={performers:'艺人',creators:'创作者',studios:'厂牌',
+                    agencies:'事务所',tags:'标签'};
+/* 厂牌与事务所是两种实体，不是同一份数据的两种筛选：厂牌出片，事务所出人，一位女优
+   可以同一年给多个厂牌拍片而只属于一家事务所。所以这个开关切的是路径，不是筛选。 */
+const MAKER_INDEX_KINDS=[['studios','厂牌','building'],['agencies','事务所','briefcase']];
+function makerModeHtml(kind){
+  return `<div class="viewmodes">`+MAKER_INDEX_KINDS.map(([key,label,symbol])=>
+    `<button data-index-kind="${key}" aria-pressed="${kind===key}">${icon(symbol)}${label}</button>`
+    ).join('')+`</div>`;
+}
 /* refine=true 表示这一次是筛选框自己重跑，不是一次页面进入：既不铺骨架，也不重画表头。 */
 async function openIndex(kind,q,push=true,refine=false){
   releaseHoverPreviews();
   const requestSeq=++indexRequestSeq;
   document.body.classList.remove('entity-open');
   delete $('#index').dataset.entityKind;delete $('#index').dataset.entityName;
-  const people=kind==='creators'||kind==='performers';
-  const entityKind=kind==='performers'?'performer':'creator';
+  /* 圆头像那一档索引：四种实体同一套版式、同一条取图链，区别只在 kind。 */
+  const people=Object.prototype.hasOwnProperty.call(ROUTE_ENTITIES,kind);
+  const entityKind=ROUTE_ENTITIES[kind]||'performer';
   const indexLimit=people?120:180;
   const indexQuery=new URLSearchParams();if(q)indexQuery.set('q',q);
   const onlineTags=kind==='tags'&&tagIndexScope==='online';
@@ -5143,7 +5195,7 @@ async function openIndex(kind,q,push=true,refine=false){
   disposeStage(false);
   /* 骨架只盖真正在等的内容区。筛选重跑时页面已经在这儿了，把骨架铺上去会连筛选框
      一起吃掉——同步就能给出的控件不进骨架，正在打字的那个更不能。 */
-  if(!refine)showIndexLoading(people?'正在读取作者':'正在读取标签');
+  if(!refine)showIndexLoading('正在读取'+(INDEX_TITLES[kind]||'标签'));
   /* 在线标签走关注页那套统计，形状与 /api/index 一致，所以分页、搜索和「载入更多」
      这三处现成的机制换个地址就能用。 */
   const indexApi=offset=>onlineTags
@@ -5157,7 +5209,7 @@ async function openIndex(kind,q,push=true,refine=false){
   if(requestSeq!==indexRequestSeq||location.pathname!=='/'+kind)return;
   $('#index').hidden=false;buildEdge(); $('#grid').innerHTML=''; $('#count').textContent='';
   $('#loadSentinel').hidden=true; $('#shortsSec').hidden=true;
-  const title=kind==='performers'?'艺人':(kind==='creators'?'创作者':'标签');
+  const title=INDEX_TITLES[kind]||'标签';
   const tagItems=[...d.items];
   const tagGroups=items=>{
     const groups={};[...items].sort((a,b)=>a.k.localeCompare(b.k,'zh-CN',{numeric:true,sensitivity:'base'})).forEach(x=>{
@@ -5167,15 +5219,11 @@ async function openIndex(kind,q,push=true,refine=false){
     return Object.entries(groups).sort(([a],[b])=>a.localeCompare(b,'zh-CN')).map(([letter,items])=>
       `<section class="alphagroup"><h3>${letter}</h3><div class="alphalist">${items.map(x=>
         `<button class="alphatag ${onlineTags?'r34-'+(x.cat||'unknown'):(x.cat||'general')}" data-k="${esc(x.k)}" aria-pressed="${selectedIndexTags.has(x.k)}"><span>${esc(tagLabel(x.k))}</span><span class="n">${x.n.toLocaleString()}</span></button>`).join('')}</div></section>`).join('')};
-  /* 取景挂在圆框上而不是 img 上：竖幅裁到 3:4 时几何居中会切掉脸，而 img 由八处
-     共用的 avatarInner 拼，两个版式都只能从容器这一侧改。 */
-  const peopleHtml=items=>items.map(x=>{
-    const face=faceOrigin(x.avatar_focus);
-    return `<button class="icell" data-k="${esc(x.k)}" data-kind="${entityKind}">
-        <span class="ring"${face?` style="--face:${face}"`:''}>${avatarInner(x.k,
-          x.entity_id?{id:x.entity_id,has_image:x.has_image}:null,
-          x.has_avatar?x.rep:null, entityKind)}</span>
-        <span class="nm">${esc(x.k)}</span><span class="n">${x.n.toLocaleString()}</span></button>`}).join('');
+  const peopleHtml=items=>items.map(x=>
+    /* 事务所数的是人：它名下那 N 个视频是成员拍的，只报视频数会让「这家有几个人」
+       这个它唯一独有的读数消失。数字带单位，否则 411 读不出是人还是片。 */
+    personCellHtml(x,entityKind,entityKind==='agency'
+      ?`${(x.members||0).toLocaleString()} 人`:x.n.toLocaleString())).join('');
   const tagHtml=items=>tagIndexMode==='alphabet'?`<div class="alphabet">${tagGroups(items)}</div>`:`<div class="tagwall index-tags">`+items.map(x=>`<button class="tg ${onlineTags?'r34-'+(x.cat||'unknown'):(x.cat||'general')}" data-k="${esc(x.k)}" aria-pressed="${selectedIndexTags.has(x.k)}"
         >${esc(tagLabel(x.k))}
         <span class="n">${x.n.toLocaleString()}</span></button>`).join('')+`</div>`;
@@ -5204,8 +5252,9 @@ async function openIndex(kind,q,push=true,refine=false){
   }else $('#index').innerHTML=`<div class="ihead">
       <h2 class="disp indexheading">${kind==='tags'?icon('tags'):''}${title}</h2>
       <span class="mono" id="indexCount">${countText}</span>
-      ${kind==='tags'?`<div class="tagmodes"><button data-tag-scope="local" aria-pressed="${!onlineTags}">${icon('hard-drive')}本地</button><button data-tag-scope="online" aria-pressed="${onlineTags}">${icon('rss')}在线</button></div>
-      <div class="tagmodes"><button data-tag-view="cloud" aria-pressed="${tagIndexMode==='cloud'}">${icon('tags')}标签云</button><button data-tag-view="alphabet" aria-pressed="${tagIndexMode==='alphabet'}">${icon('text-aa')}字母表</button></div>`:''}
+      ${kind==='tags'?`<div class="viewmodes"><button data-tag-scope="local" aria-pressed="${!onlineTags}">${icon('hard-drive')}本地</button><button data-tag-scope="online" aria-pressed="${onlineTags}">${icon('rss')}在线</button></div>
+      <div class="viewmodes"><button data-tag-view="cloud" aria-pressed="${tagIndexMode==='cloud'}">${icon('tags')}标签云</button><button data-tag-view="alphabet" aria-pressed="${tagIndexMode==='alphabet'}">${icon('text-aa')}字母表</button></div>`:''}
+      ${MAKER_INDEX_KINDS.some(([key])=>key===kind)?makerModeHtml(kind):''}
       ${people?peopleLayoutButtons():''}
       ${searchInputHtml({id:'iq',label:'过滤'+title,value:q||''})}
     </div><div id="indexFilters">${filters}</div><div id="indexBody">${body}</div><button class="indexmore" id="indexMore" type="button" ${d.has_more?'':'hidden'}>载入更多</button>`;
@@ -5221,6 +5270,11 @@ async function openIndex(kind,q,push=true,refine=false){
   iq.onkeydown=e=>{if(e.isComposing||e.key!=='Enter')return;
     e.preventDefault();clearTimeout(it2);openIndex(kind,iq.value.trim(),true,true)};
   wireIconSwitch($('#index'),'data-people-layout',setPeopleIndexLayout);
+  /* 厂牌与事务所各有自己的地址，所以这个开关走的是 openIndex 的另一条 kind，
+     不是在同一批数据上再筛一次。过滤词跟着走：它问的是同一个问题。 */
+  $('#index').querySelectorAll('[data-index-kind]').forEach(b=>b.onclick=()=>{
+    if(kind===b.dataset.indexKind)return;
+    openIndex(b.dataset.indexKind,$('#iq').value.trim(),true)});
   $('#index').querySelectorAll('[data-tag-scope]').forEach(b=>b.onclick=()=>{
     if(tagIndexScope===b.dataset.tagScope)return;
     tagIndexScope=b.dataset.tagScope;
@@ -5307,6 +5361,19 @@ function markEntityCollectionBusy(kind,name,filters){
   head.querySelector('h3').innerHTML='<span class="countskeleton"></span>';
   wireEntityCollectionHead(section,kind,name,filters);
 }
+const AGENCY_VIEWS=[['people','艺人','user-round'],['videos','视频','play']];
+/* 事务所名册。和艺人索引摆的是同一格、同一套版式设置，只是这批人随资料页一起下来了，
+   不再单独请求；读数写的是这个人有多少视频。 */
+function renderAgencyRoster(people){
+  const section=$('#index').querySelector('.entitysection');if(!section)return;
+  section.innerHTML=`<div class="entitycollectionhead"><h3>艺人 · ${
+      people.length.toLocaleString()}</h3></div>
+    <div class="igrid" data-layout="${peopleIndexLayout()}">${
+      people.map(x=>personCellHtml(x,'performer',x.n.toLocaleString())).join('')}</div>`;
+  section.querySelectorAll('[data-k]').forEach(button=>button.onclick=()=>
+    openEntity('performer',button.dataset.k));
+  scheduleStickySurfaces();
+}
 function renderEntityCollection(kind,name,items,filters,append=false){
   // 资料页的标签同样可以叠加，表头把生效的几个都写出来。
   const entityTags=tagList(filters.tag).map(tagLabel);
@@ -5339,8 +5406,11 @@ function renderEntityCollection(kind,name,items,filters,append=false){
   scheduleStickySurfaces();
 }
 async function updateEntityCollection(kind,name,filters,push=true){
-  // 标签是作品筛选，点了就回到作品视图：留在照片里既不生效，标签条也会自相矛盾。
+  // 标签是作品筛选，点了就回到作品视图：留在照片或名册里既不生效，标签条也会自相矛盾。
   entityMediaView=emptyMediaView();
+  agencyRosterView='videos';
+  const rosterInput=$('#index').querySelector('[data-agency-view][value="videos"]');
+  if(rosterInput)rosterInput.checked=true;
   const search=entityFilterSearch(filters);
   if(push)route(entityPath(kind,name)+(search?'?'+search:''));
   barsContext={type:'entity',kind,name,filters:{...filters}};
@@ -5375,8 +5445,10 @@ const photoTotalOf=()=>entityPhotos&&!entityPhotos.error?(entityPhotos.total||0)
 function renderEntityMediaToggle(kind,name,filters){
   const controls=$('#index').querySelector('.entitymediaview');if(!controls)return;
   const photos=photoTotalOf();
-  controls.hidden=!photos;
-  if(!photos)return;
+  /* 名册不是一种媒体。正看着艺人时「视频／照片」问的不是这一页在显示什么，两个开关
+     摆在一起只会各说各的；切到媒体那一半它才回来。 */
+  controls.hidden=!photos||(kind==='agency'&&agencyRosterView==='people');
+  if(controls.hidden)return;
   controls.querySelectorAll('[data-media-view]').forEach(button=>{
     const media=button.dataset.mediaView;
     button.setAttribute('aria-pressed',String(entityMediaView.media===media));
@@ -5758,6 +5830,7 @@ async function openEntity(kind,name,push=true){
   showIndexLoading('正在读取资料');
   detailReturnBarsContext=null;
   entityJavLayout=false;
+  agencyRosterView='people';
   const seq=++entityRequestSeq;
   const [d,items,photos]=await Promise.all([
     api(`/api/entity?kind=${encodeURIComponent(kind)}&name=${encodeURIComponent(name)}`),
@@ -5772,19 +5845,20 @@ async function openEntity(kind,name,push=true){
   document.body.classList.add('entity-open');
   $('#index').hidden=false;$('#grid').innerHTML='';$('#count').textContent='';
   $('#loadSentinel').hidden=true;$('#shortsSec').hidden=true;
-  /* 大位这条链每一环都先问过再出图：厂牌是标识→实体图，其余是实体图→代表作头像，
-     一环都取不到就一个 `<img>` 都不出，首字母垫底直接露出来。三个标志
-     （`has_logo`／`has_image`／`has_avatar`）都由 `/api/entity` 随资料下发。 */
-  const image=d.id?(kind==='studio'
-    ? (d.has_logo
-      ? `<img src="/logo?studio=${encodeURIComponent(d.canonical_name)}&variant=logo" alt="${esc(d.canonical_name)}"
-          ${imageFallbackAttrs({fallbacks:d.has_image?[`/entity-image?kind=studio&id=${d.id}`]:[]})}>`
-      : entityFaceImg({kind:'studio',id:d.id,hasImage:d.has_image,
-                       alt:esc(d.canonical_name),lazy:false}))
-    : entityFaceImg({kind,id:d.id,hasImage:d.has_image,
-                     rep:d.has_avatar?d.representative_asset_id:null,
-                     alt:esc(d.canonical_name),lazy:false,
-                     style:facePos(d.avatar_focus),dropStyle:true})):'';
+  /* 大位这条链每一环都先问过再出图：公司取自己的标识（厂牌是 `/logo`，事务所是官网
+     圆标），人是实体图→代表作头像，一环都取不到就一个 `<img>` 都不出，首字母垫底直接
+     露出来。四个标志（`has_logo`／`has_image`／`has_avatar`／`mark_link_id`）都由
+     `/api/entity` 随资料下发。
+
+     作品截图不给公司用：厂牌那张是自家片没错，可这一页要认的是牌子；事务所名下的片
+     更是成员各自拍的，拿其中一部的画面当门面，说的是别人的事。 */
+  const company=kind==='studio'||kind==='agency';
+  const image=d.id?entityFaceImg({kind,id:d.id,hasImage:d.has_image,
+    rep:company||!d.has_avatar?null:d.representative_asset_id,
+    mark:kind==='agency'?d.mark_link_id:null,
+    logo:company&&d.has_logo?d.canonical_name:'',
+    alt:esc(d.canonical_name),lazy:false,
+    style:company?'':facePos(d.avatar_focus),dropStyle:true}):'';
   /* 链接按 beeg 的资料页形态：社媒收成纯图标，官网／事务所保留名字。
 
      社媒的 handle 是网址的一部分，写出来只是把 URL 抄一遍——`X @remu19971203` 里
@@ -5812,7 +5886,10 @@ async function openEntity(kind,name,push=true){
     return `<a href="${esc(x.url)}" target="_blank" rel="noreferrer" title="${esc(x.label)}"><span class="entitylinkicon">${icon('globe')}<img class="entityfavicon" src="${esc(linkMarkUrl(x))}" alt="" loading="lazy" referrerpolicy="no-referrer" data-drop="self"></span><span class="entitylinklabel">${esc(x.label)}</span></a>`;
   }).join('');
   const tags=(d.tags||[]).map(x=>`<button class="pill" data-entity-tag="${esc(x.k)}" aria-pressed="${tagPressed(filters.tag,x.k)}">${esc(tagLabel(x.k))}<small>${x.n.toLocaleString()}</small></button>`).join('');
-  const related=(d.related_performers||[]).map(x=>`<button class="relatedperson" data-related-performer="${esc(x.k)}">
+  /* 事务所名下的这批人不摆在这排小圆头像里：那是「同台艺人」，一条附注；名册是这一页
+     的正文，占的是下面那整块。所以同一份 `related_performers` 在事务所页走另一条路。 */
+  const roster=kind==='agency'?(d.related_performers||[]):[];
+  const related=roster.length?'':(d.related_performers||[]).map(x=>`<button class="relatedperson" data-related-performer="${esc(x.k)}">
       <span class="ring"><span>${esc(x.k.slice(0,1))}</span>${entityFaceImg(
         {id:x.id,hasImage:x.has_image,rep:x.has_avatar?x.rep:null})}</span>
       <span class="nm">${esc(x.k)}</span></button>`).join('');
@@ -5821,6 +5898,10 @@ async function openEntity(kind,name,push=true){
   const mediaToggle=photoCount?mediaViewButtonsHtml({active:mediaSelected?'photos':'videos',
     imageValue:'photos',imageLabel:'照片',videoCount:d.asset_count,imageCount:photoCount,
     className:'entitymediaview'}):'';
+  /* 艺人名册和视频 feed 是同一页的两个互斥视图，两个就用 Switch。切换只重画下面那块，
+     不重开这一页：名册已经随资料下来了，视频那一半本来也要请求。 */
+  const rosterToggle=roster.length?iconSwitchHtml('agency-view','事务所页视图',
+    AGENCY_VIEWS,agencyRosterView,{attr:'data-agency-view',className:'entityview'}):'';
   /* 统称由用户自己定。同一个人在库里常有中文、日文、罗马字几种写法，哪一个该顶在
      标题上是他的偏好，账本里没有能推出答案的字段。菜单只列这条实体名下已有的写法：
      换统称是换显示的那一个，不是改名——改名要有来源和证据，不该由一次点击完成。
@@ -5831,13 +5912,16 @@ async function openEntity(kind,name,push=true){
 
      账本里有这家事务所的实体时给出去处：`d.agency` 是那条实体，点进去是它的资料页。
      只有 `metadata.agency` 时仍写名字但不做链接——那是采到的原文，还没有对应身份，
-     做成链接会通向一个不存在的页面。 */
+     做成链接会通向一个不存在的页面。
+
+     这一行不写类别名。`T-POWERS` 这样的公司名摆在别名和作品数中间，读的人一眼就知道
+     那是什么；多出来的两个字只占掉这行本来就不多的横向空间。 */
   const agencyHome=d.agency||null;
   const agencyName=agencyHome?agencyHome.canonical_name:((d.metadata||{}).agency?.name||'');
   const agencyHtml=!agencyName?''
-    :agencyHome?` · 事务所 <a class="entitylink" href="${esc(entityPath('agency',agencyName))}"
+    :agencyHome?` · <a class="entitylink" href="${esc(entityPath('agency',agencyName))}"
         data-agency="${esc(agencyName)}">${esc(agencyName)}</a>`
-    :` · 事务所 ${esc(agencyName)}`;
+    :` · ${esc(agencyName)}`;
   /* 事务所页数的是人，不是片。它名下那 N 个视频是成员拍的，只报视频数会让「这家有
      几个人」这个它唯一独有的读数消失。 */
   const memberHtml=kind==='agency'
@@ -5858,7 +5942,7 @@ async function openEntity(kind,name,push=true){
         <div class="alias">${(d.display_aliases||[]).length?`${d.display_aliases.map(esc).join(' / ')} · `:''}<b>${d.asset_count.toLocaleString()}</b> 个视频${memberHtml}${agencyHtml}</div>
         ${links?`<div class="entitylinks">${links}</div>`:''}</div></div>
     ${related?`<div class="entitymeta"><section aria-label="同台艺人"><div class="relatedpeople">${related}</div></section></div>`:''}
-    ${(tags||mediaToggle)?`<section class="entitytagbar" aria-label="媒体与标签"><div class="entitytags">${mediaToggle}${tags}</div></section>`:''}
+    ${(tags||mediaToggle||rosterToggle)?`<section class="entitytagbar" aria-label="媒体与标签"><div class="entitytags">${rosterToggle}${mediaToggle}${tags}</div></section>`:''}
     <div class="entitysection"></div>`;
   // 资料页的标签和顶部标签条是同一个开关，读的写的都是这一页的筛选。
   $('#index').querySelectorAll('[data-entity-tag]').forEach(b=>b.onclick=()=>
@@ -5868,11 +5952,23 @@ async function openEntity(kind,name,push=true){
   // 站内跳转走同一个 SPA 入口，不让浏览器整页重载。
   $('#index').querySelectorAll('[data-agency]').forEach(a=>a.onclick=event=>{
     event.preventDefault();openEntity('agency',a.dataset.agency)});
+  /* 同台艺人和标签这两行都是 `overflow-x:auto` 加隐藏滚动条：能滚，但鼠标没有一个
+     够得着的入口——滚轮是竖向的，滚动条不画出来，于是第 8 位之后的人和标签看得见
+     够不着。全站横向行的那套拖动加滚轮映射就是为这个写的，登记上即可。 */
+  wireDrag($('#index').querySelector('.relatedpeople'));
+  wireDrag($('#index').querySelector('.entitytags'));
   if(namePick)wireNamePicker(kind,d.canonical_name);
   entityPhotos=photos&&!photos.error?photos:null;
   if(entityMediaView.media==='photos'&&!photoTotalOf())entityMediaView=emptyMediaView();
   renderEntityMediaToggle(kind,name,filters);
-  if(entityMediaView.media!=='photos')renderEntityCollection(kind,name,items,filters);
+  if(rosterToggle)wireIconSwitch($('#index'),'data-agency-view',value=>{
+    agencyRosterView=value;
+    renderEntityMediaToggle(kind,name,filters);
+    if(value==='people')renderAgencyRoster(roster);
+    else if(entityMediaView.media==='photos')renderPhotoWall(kind,name,filters,entityPhotos);
+    else renderEntityCollection(kind,name,items,filters)});
+  if(rosterToggle&&agencyRosterView==='people')renderAgencyRoster(roster);
+  else if(entityMediaView.media!=='photos')renderEntityCollection(kind,name,items,filters);
   else if(entityMediaView.set)await openPhotoSet(kind,name,filters,entityMediaView.set,false);
   else renderPhotoWall(kind,name,filters,entityPhotos);
   buildBars();
@@ -5888,6 +5984,7 @@ $('#filterBtn').onclick=()=>openDrawer(!$('#drawer').classList.contains('open'))
 const EDGE_ICONS=[
   ['','首页','home'],
   ['performers','艺人','user-round'],
+  ['studios','厂商','building'],
   ['tags','标签','tags'],
   ['jav','JAV','jav'],
   ['flagged','已标记','bookmark'],

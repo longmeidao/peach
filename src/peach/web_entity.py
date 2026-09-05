@@ -30,16 +30,26 @@ from .web_state import WebContract
 PROFILE_KINDS = {"performer", "studio", "creator", "series", "agency"}
 
 
-def scope_predicate(kind: str, column: str) -> str:
+def scope_predicate(kind: str, column: str, subject: str = "?") -> str:
     """这一页的作品挂在谁名下的 SQL 判据，占位符恒为一个。
 
     事务所自己不挂作品——作品是它的成员拍的，`asset_entity` 里没有它的行。把范围
     从「这个 id」换成「这组 id」之后，事务所页和女优页共用同一批统计、标签和图集
     查询，而不是各写一份再慢慢漂移。
+
+    `subject` 默认是占位符，索引页那种「一句 SQL 里每行一个实体」的写法传列名
+    （`e.id`）。判据只有这一份，索引页和资料页数出来的作品数才不会各算各的。
     """
     if kind == "agency":
-        return f"{column} IN (SELECT member_id FROM entity_membership WHERE agency_id=?)"
-    return f"{column}=?"
+        return (f"{column} IN (SELECT member_id FROM entity_membership"
+                f" WHERE agency_id={subject})")
+    return f"{column}={subject}"
+
+
+#: 索引页地址 → `entity.kind`。有资料页就该有索引页：只靠女优页上那个名字进事务所页的话，
+#: 名下没有关系的几十家等于只能靠猜地址。标签不在这里，它走另一条分支。
+INDEX_ENTITY_KINDS = {"performers": "performer", "creators": "creator",
+                      "studios": "studio", "agencies": "agency"}
 
 
 def q_entity(contract: WebContract, args):
@@ -174,9 +184,9 @@ def q_entity(contract: WebContract, args):
             "WHERE m.member_id=?", (d["id"],)).fetchone()
         if home:
             d["agency"] = dict(home)
-    # 厂牌页那个大位先取 `/logo`、取不到才退到实体图。没装标识时直接从实体图起步，
-    # 省掉必然 404 的那一跳；别的实体没有这个位置，标志只对厂牌成立。
-    if kind == "studio":
+    # 公司那个大位先取 `/logo`、取不到才退到别的图。没装标识时直接跳过这一环，省掉
+    # 必然 404 的那一跳。标识按名字落盘，厂牌和事务所是同一个仓、同一条取图链。
+    if kind in ("studio", "agency"):
         d["has_logo"] = contract.has_logo(d["canonical_name"])
     # 大位那条链的后两环同样要随资料下发：实体图取不到就直接从代表作头像起步，两样
     # 都取不到就一个 `<img>` 都不出。判定在库连接之外做，它读的是目录索引。
@@ -186,6 +196,16 @@ def q_entity(contract: WebContract, args):
     for person in d["related_performers"]:
         person["has_image"] = contract.has_entity_image("performer", person["id"])
     attach_avatar_availability(contract, d["related_performers"])
+    if kind == "agency":
+        # 事务所页默认摆的是艺人大图，那个版式把头像裁成竖幅，几何居中会切掉脸。
+        # 取景与索引页大图同一份 sidecar、同一个换算，别的页面那排小圆头像用不上。
+        for person in d["related_performers"]:
+            person["avatar_focus"] = contract.avatar_focus("performer", person["id"])
+        # 事务所的门面是它自己的标识。没装实体图时给出官网那条链接的 id，页面拿它去
+        # `/link-mark` 取站点圆标；两样都没有就只剩首字母。作品截图不参加——那是
+        # 某位成员某部片的画面，和这家公司没有关系。
+        d["mark_link_id"] = next(
+            (link["link_id"] for link in d["links"] if link["link_kind"] == "official"), None)
     return d
 
 # ────────────────────────────── 照片 ──────────────────────────────
@@ -305,10 +325,29 @@ def q_photo_set(contract: WebContract, args):
 
 
 def q_index(contract: WebContract, kind, q="", limit=600, offset=0, category=""):
-    """全部艺人 / 创作者 / 标签的索引页数据。"""
+    """全部艺人 / 创作者 / 厂牌 / 事务所 / 标签的索引页数据。"""
     with contract.read_connection() as c:
-        if kind in {"creators", "performers"}:
-            entity_kind = "creator" if kind == "creators" else "performer"
+        if kind == "agencies":
+            # 事务所自己不挂作品，所以它排的是人：一家有多少艺人是它的规模，作品数是
+            # 顺着成员算出来的。代表图也不取作品截图——那是某位成员某部片的画面，
+            # 拿它当一家公司的门面，页面上就会是一张与这家公司无关的脸。
+            sql = ("SELECT e.id entity_id,e.canonical_name k,"
+                   "(SELECT count(*) FROM entity_membership m WHERE m.agency_id=e.id) members,"
+                   "(SELECT count(DISTINCT ae.asset_id) FROM asset_entity ae "
+                   " JOIN asset a ON a.id=ae.asset_id WHERE a.medium='video' AND "
+                   + scope_predicate("agency", "ae.entity_id", "e.id") + ") n,"
+                   "(SELECT l.id FROM entity_link l WHERE l.entity_id=e.id"
+                   " AND l.link_kind='official' ORDER BY l.id LIMIT 1) mark "
+                   "FROM entity e WHERE e.kind='agency' ")
+            par: list = []
+            if q: sql += "AND e.canonical_name LIKE ? "; par.append(f"%{q}%")
+            sql += "ORDER BY members DESC,n DESC,e.canonical_name LIMIT ? OFFSET ?"
+            par.extend((limit + 1, offset))
+            rows = [dict(r) for r in c.execute(sql, par)]
+            has_more = len(rows) > limit
+            rows = rows[:limit]
+        elif kind in INDEX_ENTITY_KINDS:
+            entity_kind = INDEX_ENTITY_KINDS[kind]
             sql = ("SELECT e.id entity_id,e.canonical_name k,count(DISTINCT ae.asset_id) n,"
                    "(SELECT a2.id FROM asset_entity ae2 JOIN asset a2 ON a2.id=ae2.asset_id "
                    " WHERE ae2.entity_id=e.id AND a2.medium='video' AND a2.snapshot_path IS NOT NULL "
@@ -342,8 +381,8 @@ def q_index(contract: WebContract, kind, q="", limit=600, offset=0, category="")
                 all_rows = [row for row in all_rows if row["cat"] == category]
             rows = all_rows[offset:offset + limit]
             has_more = offset + limit < len(all_rows)
-    if kind in {"creators", "performers"}:
-        entity_kind = "creator" if kind == "creators" else "performer"
+    if kind in INDEX_ENTITY_KINDS:
+        entity_kind = INDEX_ENTITY_KINDS[kind]
         # 索引页一屏几十个圆头像，走的是和顶栏那排同一条两级链：规范实体图优先，
         # 取不到才回落到代表作头像。没有这两个标志就只能无条件出图、等 404 再把图摘掉，
         # `/performers` 桌面视口滚三屏实测 77 个取图请求里 5 个是这样的 404。
@@ -355,6 +394,11 @@ def q_index(contract: WebContract, kind, q="", limit=600, offset=0, category="")
         #: sidecar、同一个换算，只是这里按行取；读的是文件，所以放在连接之外。
         for row in rows:
             row["avatar_focus"] = contract.avatar_focus(entity_kind, row["entity_id"])
+        #: 公司的门面是它的标识，和资料页大位同一条链：`/logo` 优先，取不到才退回实体图。
+        #: 索引页一屏几十格，缺了这个标志就只能格格出 `<img>` 等 404。
+        if entity_kind in ("studio", "agency"):
+            for row in rows:
+                row["has_logo"] = contract.has_logo(row["k"])
     result = {"kind": kind, "items": rows, "has_more": has_more}
     if kind == "tags":
         result["categories"] = category_counts
