@@ -19,6 +19,9 @@ if ([IO.Path]::IsPathRooted($GitCommonRaw)) {
 }
 
 $MainRoot = Split-Path -Parent $GitCommon
+if (-not $PSBoundParameters.ContainsKey('Scope') -and $WorktreeRoot -eq $MainRoot) {
+    $Scope = 'full'
+}
 $Python = Join-Path $MainRoot '.venv\Scripts\python.exe'
 if (-not (Test-Path -LiteralPath $Python -PathType Leaf)) {
     throw "Peach 主项目 venv 不存在：$Python"

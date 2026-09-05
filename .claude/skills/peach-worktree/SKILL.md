@@ -22,6 +22,7 @@ description: 在用户说并行、工作树、暂存、提交、ready、集成�
    两者契约相同：从 Git common directory 定位主项目 venv，强制 `PYTHONPATH=<当前工作树>/src`，
    核对 `peach.__file__` 后运行标准库 `unittest`。禁止手工拼接 venv 路径或调用 pytest。
    测试入口固定 `PYTHONIOENCODING=utf-8`，覆盖标准输出、错误输出及子进程；其他 Python CLI 使用 `-X utf8`。
+   主检出无参调用保留全量门槛，覆盖托盘部署调用；开发任务在隔离工作树使用自动选测。
    PowerShell 读 UTF-8 日志显式加 `-Encoding utf8`；编码在输出端固定，不能只给读取端指定编码。
    记录绑定完整代码内容、依赖环境和范围，24 小时有效；失败、验证期间改动使记录无效。
    有同环境全量基线时，`auto` 对比文件清单，只补跑新增差异的影响域；共享设施或未知文件仍跑全量。

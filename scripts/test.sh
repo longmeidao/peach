@@ -53,4 +53,7 @@ if [[ "$LOADED_MODULE" != "$SOURCE_ROOT/"* ]]; then
 fi
 
 echo "Peach source: $LOADED_MODULE"
+if [[ $# -eq 0 && "$WORKTREE_ROOT" = "$(dirname "$GIT_COMMON")" ]]; then
+    SCOPE=full
+fi
 exec "$PYTHON" scripts/test_runner.py --scope "$SCOPE" "${EXTRA[@]}"
