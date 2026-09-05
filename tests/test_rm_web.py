@@ -2222,6 +2222,46 @@ class DuplicateDetectionTests(unittest.TestCase):
         self.assertEqual(rm_web.ordered_multipart_items(duplicate), [])
         self.assertEqual(rm_web.ordered_multipart_items(gapped), [])
 
+    def test_parts_group_when_the_edition_suffix_sits_after_the_volume_number(self):
+        """卷号后面挂着版次或修复标记时，剥掉组内共有尾缀仍认得出这是一部片的几卷。
+
+        实测 PPT-018：三份 `PPT-018-N-uncensored.mp4`（11785／10511／6551 秒）各占一张卡、
+        标题完全相同，点开只能靠时长认是哪一卷。库里同形的还有 `_prob3`、`-4K修复`、
+        `_8k`；全库 156 个同番号多文件组里，这条判据把成组数从 83 抬到 92。
+        """
+        uncensored = [
+            {"id": 31442, "name": "PPT-018-1-uncensored.mp4", "duration": 11785.8},
+            {"id": 31443, "name": "PPT-018-2-uncensored.mp4", "duration": 10511.7},
+            {"id": 31444, "name": "PPT-018-3-uncensored.mp4", "duration": 6551.6},
+        ]
+        self.assertEqual(
+            [item["id"] for item in rm_web.ordered_multipart_items(uncensored)],
+            [31442, 31443, 31444])
+        restored = [
+            {"id": 2, "name": "FC2-PPV-1083921-2-4K修复.mp4"},
+            {"id": 1, "name": "FC2-PPV-1083921-1-4K修复.mp4"},
+        ]
+        self.assertEqual(
+            [item["id"] for item in rm_web.ordered_multipart_items(restored)], [1, 2])
+
+    def test_two_resolutions_of_one_film_are_not_a_multipart_release(self):
+        """共有尾部不从分隔符起头就剥不动，两个清晰度因此仍是两条独立记录。
+
+        实测 040221-001（carib）：`-1080p` 与 `-720p` 的公共尾部只有 `0p`。按字符去剥
+        会把 `1080p` 拆成 `10` 加 `80p`，同一段画面就成了「第 10 卷和第 8 卷」。
+        `ABF-234` 与 `ABF-234-UN` 同理，它们归版次组。
+        """
+        resolutions = [
+            {"id": 1, "name": "040221-001-carib-1080p.mp4"},
+            {"id": 2, "name": "040221-001-carib-720p.mp4"},
+        ]
+        self.assertEqual(rm_web.ordered_multipart_items(resolutions), [])
+        editions = [
+            {"id": 1, "name": "ABF-234.mp4"},
+            {"id": 2, "name": "ABF-234-UN.mp4"},
+        ]
+        self.assertEqual(rm_web.ordered_multipart_items(editions), [])
+
     def test_a_bare_first_part_joins_numbered_parts_when_durations_agree(self):
         # TRE-080 实测：首卷 `TRE-080.mp4` 没有标记，后两卷是 -2/-3，时长 9163/11255/8530 秒。
         items = [
@@ -2278,6 +2318,42 @@ class DuplicateDetectionTests(unittest.TestCase):
         parts = rm_web.q_parts(self.contract, {"id": "6"})
         self.assertEqual([item["name"] for item in parts["items"]],
                          ["TRE-080.mp4", "TRE-080-2.mp4", "TRE-080-3.mp4"])
+        self.assertEqual([item["part_label"] for item in parts["items"]], ["1", "2", "3"])
+
+    def test_volumes_that_carry_an_edition_suffix_still_collapse_into_one_card(self):
+        """PPT-018 的三卷把版次写在卷号后面，仍然折成一张卡和一条 1／2／3 的队列。
+
+        实测三份 `PPT-018-N-uncensored.mp4`：11785／10511／6551 秒。它们此前各占一张卡，
+        标题、女优、厂牌完全一样，在目录里只有时长能区分是哪一卷。
+        """
+        connection = sqlite3.connect(self.db_path)
+        connection.executemany(
+            "INSERT INTO asset(id,location,path,name,medium,size,studio,code,duration,"
+            "width,height,first_seen) VALUES(?,'115',?,?,'video',?,'Prestige','PPT-018',?,"
+            "1920,1080,'2026-08-13')",
+            [
+                (11, r"B:\PPT-018\PPT-018-2-uncensored.mp4", "PPT-018-2-uncensored.mp4",
+                 8_913_529_270, 10511.7),
+                (12, r"B:\PPT-018\PPT-018-1-uncensored.mp4", "PPT-018-1-uncensored.mp4",
+                 10_015_751_441, 11785.8),
+                (13, r"B:\PPT-018\PPT-018-3-uncensored.mp4", "PPT-018-3-uncensored.mp4",
+                 5_560_132_404, 6551.6),
+            ],
+        )
+        connection.commit(); connection.close()
+
+        listed = rm_web.q_items(
+            self.contract, {"q": "PPT-018", "sort": "new", "limit": "10"},
+        )["items"]
+        self.assertEqual({row["part_group"]["count"] for row in listed}, {3})
+        self.assertEqual(listed[0]["part_group"]["seed_id"], 12, "卷号 1 那份是第一卷")
+        self.assertTrue(all("edition_group" not in row for row in listed),
+                        "同一版次的分卷不是多版本")
+
+        parts = rm_web.q_parts(self.contract, {"id": "11"})
+        self.assertEqual([item["name"] for item in parts["items"]],
+                         ["PPT-018-1-uncensored.mp4", "PPT-018-2-uncensored.mp4",
+                          "PPT-018-3-uncensored.mp4"])
         self.assertEqual([item["part_label"] for item in parts["items"]], ["1", "2", "3"])
 
 

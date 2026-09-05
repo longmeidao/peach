@@ -164,15 +164,11 @@ img.hvframes{position:absolute;inset:0;width:100%;height:100%;object-fit:contain
 .hovertools button svg{width:25px;height:25px;stroke:currentColor;fill:none;stroke-width:1.8;
   stroke-linecap:round;stroke-linejoin:round}
 .hovertools button:hover{transform:scale(1.12);background:rgba(0,0,0,.34)}
-/* 居中那三颗是盖在画面上的媒体控件，不是页面控件：三个 58px 的磨砂实心圆压在封面
-   正中，遮住的画面比按钮本身还多，而这一层出现的时候用户正在看的就是画面。改成裸
-   图标——命中区域仍是 58px 的圆，只是不再画出来；描边靠一层投影在浅色画面上保持
-   可读。秒数交给 title／aria-label，图标上不再压一个数字。
-   参考证据见 docs/reference-snapshots/hover-seek-controls-user-screenshot.md。 */
-.hovertools.seektools button{border:0;background:none;backdrop-filter:none;
-  -webkit-backdrop-filter:none;filter:drop-shadow(0 1px 4px rgba(0,0,0,.6))}
-.hovertools.seektools button svg{width:34px;height:34px;stroke-width:1.5}
-.hovertools.seektools button:hover{background:none}
+/* 居中那三颗和右下角的「稍后看」是同一种控件，只是尺寸不同：共用磨砂圆底、同一条
+   边框和同一档悬停填充，图标按 58／36 的比例放到 34px。裸图标在浅色封面上要靠投影
+   才读得出，而投影本身又是这一层里唯一一处没有面的写法。秒数交给 title／aria-label，
+   图标上不压数字。参考证据见 docs/reference-snapshots/hover-seek-controls-user-screenshot.md。 */
+.hovertools.seektools button svg{width:34px;height:34px}
 .hovertools.later-tools{right:12px;bottom:12px}
 .card.longhover .seektools button,.card:hover .later-tools button{pointer-events:auto}
 .hovertools .laterbtn{width:36px;height:36px;padding:0;font-family:inherit}
@@ -308,6 +304,8 @@ body[data-density="dense"] .junkcard .junkactions button{justify-content:center}
 .javedition.uncensored{color:var(--meter)}
 .javedition.cracked{color:var(--drop)}
 .javedition.censored{color:var(--muted)}
+/* 卷号说的是「这是第几份文件」，不是版次，用中性灰和三种版次色区分开。 */
+.javedition.partlabel{color:var(--muted);margin-left:6px}
 .meta .s{display:flex;gap:8px;color:var(--muted);align-items:center;flex-wrap:wrap}
 .meta .who{color:var(--ink-2);min-width:0;max-width:100%;display:inline-block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom}
 /* 没有实体链接的归属只是一段文字：番号、「未归属」这类值没有资料页可去。
