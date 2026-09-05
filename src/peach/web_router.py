@@ -129,12 +129,17 @@ def _get_facets(contract, args):
     asset_id = int(args["id"]) if args.get("id") else None
     state = str(args.get("state", ""))
     scope_key = f"{scope_kind}:{scope_name}:{asset_id or ''}:{state}"
+    filters = {key: args[key] for key in (
+        'loc', 'creator', 'performer', 'studio', 'series', 'agency', 'tag', 'tag_match',
+        'len', 'dur_min', 'dur_max', 'orient', 'exclude_vertical', 'q', 'thumb',
+    ) if args.get(key)}
+    scope_key += repr(sorted(filters.items()))
     return contract.cached(
         f"facets{'-jav' if jav else ''}:{scope_key}",
         lambda: q_facets(
             contract,
             jav=jav, scope_kind=scope_kind, scope_name=scope_name, asset_id=asset_id,
-            state=state,
+            state=state, filters=filters or None,
         ),
     )
 

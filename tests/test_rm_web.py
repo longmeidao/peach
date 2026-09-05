@@ -304,6 +304,16 @@ class WebDataTests(unittest.TestCase):
         flagged = rm_web.q_facets(self.contract, state="flagged")
         self.assertEqual({row["k"] for row in flagged["locations"]}, {"115"})
         self.assertEqual({row["k"] for row in flagged["orientations"]}, {"竖屏"})
+        local = rm_web.q_facets(self.contract, filters={"loc": "local"})
+        remote = rm_web.q_facets(self.contract, filters={"loc": "115"})
+        self.assertEqual(local['stats']['total'], 1)
+        self.assertEqual(remote['stats']['total'], 1)
+        self.assertEqual({row['k'] for row in local['locations']}, {'local', '115'})
+        self.assertNotEqual(local['orientations'], remote['orientations'])
+        empty = rm_web.q_facets(self.contract, filters={"q": "no-matching-demo"})
+        self.assertEqual(empty['tags'], [])
+        self.assertEqual(empty['creators'], [])
+        self.assertEqual(empty['stats']['total'], 0)
         self.assertNotIn("足交", [row["k"] for row in flagged["tags"]])
 
         # 顶部三层同一口径：Alice 只在 1 号上，应该整个消失；

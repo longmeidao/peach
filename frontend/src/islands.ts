@@ -25,6 +25,7 @@ import type { QualityGoalsData } from './state/quality-goals';
  * 怎么写一个 store 见 `./state/index.ts` 和 `docs/FRONTEND.md`。 */
 export { refreshStore, storeNames } from './state';
 export { watchJob, followJobProgress } from './jobs';
+export { syncSidebarSurface, sidebarTagCounts, sidebarHasCatalogContent } from './sidebar';
 export type { StoreName } from './state';
 
 /** 首屏取数的结果。`data` 与 `error` 恰有一个成立。 */

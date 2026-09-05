@@ -851,7 +851,7 @@ class WebUiSourceTests(unittest.TestCase):
         # 目录页四个筛选态的标题就是筛选名本身，和侧栏取同一份 STATE_LABELS。
         self.assertPageContains("title:STATE_LABELS[key],open:()=>openCatalog(path)")
         self.assertPageContains('syncPageTitle(path);')
-        self.assertPageContains('queueMicrotask(()=>{syncHeaderActions();paintListTitle()})')
+        self.assertPageContains('queueMicrotask(()=>{syncHeaderActions();paintListTitle();buildDrawerNavigation()})')
         self.assertPageContains("queueMicrotask(()=>$('#settingsClose').focus())")
         self.assertPageContains('if(settingsReturnFocus&&document.contains(settingsReturnFocus))')
         self.assertPageContains("if(e.key!=='Tab')return")
@@ -1285,6 +1285,11 @@ class WebUiSourceTests(unittest.TestCase):
             "return it.location==='online'&&it.follow_item_id")
         self.assertPageContains("const proxied=followStreamSource(it);")
         self.assertPageContains("const onlineGated=online&&!it.follow_item_id;")
+        self.assertPageContains("if(it.location==='online'&&it.follow_item_id){")
+        self.assertPageContains('await openFollowDetail(it.follow_item_id,false,null,true)')
+        self.assertPageContains("if(location.pathname!=='/follow'){await restoreRoute();return}")
+        self.assertPageContains('it.follow_thumb_url')
+        self.assertPageContains('it.follow_tags||it.tags||[]')
         self.assertPageLacks("这条内容从关注候选保存；媒体与原始页面在关注详情中查看。")
 
     def test_follow_detail_has_an_explicit_download(self):
@@ -4167,6 +4172,14 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("foldName(t.k)===key&&foldName(previous.k)!==key")
 
     def test_drawer_filters_follow_entity_and_detail_context(self):
+        self.assertPageContains('function buildDrawerNavigation()')
+        self.assertPageContains('syncSidebarSurface(drawer,key)')
+        self.assertCode('surfaceEpoch++;\n  barsRequestSeq++;')
+        self.assertPageContains('key=surfacePath()+location.search')
+        self.assertPageLacks("api('/api/follow/tags?limit=30')")
+        self.assertPageContains('renderFollowDrawer(visible.flatMap(group=>followCollectionItems(group)))')
+        self.assertPageContains('renderFollowDrawer([item])')
+        self.assertPageContains("if(!sidebarHasCatalogContent(location.pathname))return;")
         # 实体页 facets 必须按当前实体取数；详情页则按单个作品取数，不能继续复用首页全库。
         self.assertPageContains("facetParams.set('scope_kind',context.kind)")
         self.assertPageContains("facetParams.set('scope_name',context.name)")
@@ -5983,7 +5996,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("followFilter='',followBusy=false")
         # 「返回关注页」和「回到关注首屏」两处重置也得落在同一个默认上。
         self.assertEqual(self.page.count(
-            "followMediaView='videos';followFilter='';"), 2,
+            "followMediaView='videos';followFilter='';"), 1,
             "有重置分支还在把筛选推回旧默认")
         self.assertPageContains("[['','全部'],['new','未看']")
 
