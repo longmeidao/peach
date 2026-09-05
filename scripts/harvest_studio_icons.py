@@ -900,6 +900,21 @@ def harvest(targets: dict[str, dict[str, str]],
     return rows
 
 
+def _shorter_than_installed(destination: Path, payload: bytes) -> bool:
+    """已经装着的那一份更大，这一枚就别覆盖它。
+
+    取数抖一下这一趟就只剩声明的小图标：krone-web.jp 在 2026-09-05 那一次一份字节都没
+    回来，于是 968 的方标被 253 顶掉，而复核件上那一行写的是 `ok`——看不出刚刚发生的是
+    一次网络故障。装图这一步只认更大的，重跑一趟就自己修好。
+    """
+    if not destination.exists():
+        return False
+    now, before = link_marks.decode(payload), link_marks.decode(destination.read_bytes())
+    if now is None or before is None:
+        return False
+    return min(before.size) > min(now.size)
+
+
 def install(rows: list[dict[str, object]], logo_root: Path) -> list[str]:
     """把可装的候选落成 `<safe>.icon.img` / `<safe>.logo.img`。
 
@@ -928,6 +943,8 @@ def install(rows: list[dict[str, object]], logo_root: Path) -> list[str]:
         if not base.exists():
             targets.append(base)
         for destination in targets:
+            if _shorter_than_installed(destination, payload):
+                continue
             staging = destination.with_name(f"{destination.name}.{uuid.uuid4().hex}.tmp")
             staging.write_bytes(payload)
             os.replace(staging, destination)

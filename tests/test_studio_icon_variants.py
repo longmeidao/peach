@@ -1262,6 +1262,23 @@ class InstallTests(unittest.TestCase):
                 MODULE.install([dict(self.row, verdict=verdict)], self.logos)
                 self.assertFalse((self.logos / "Fitch.icon.img").exists())
 
+    def test_a_smaller_mark_never_replaces_a_bigger_installed_one(self):
+        """取数抖一下这一趟就只剩声明的小图标，装上去等于用一次网络故障换掉好图。"""
+        big = png_bytes((968, 968))
+        (self.logos / "Fitch.icon.img").write_bytes(big)
+        self.assertEqual(MODULE.install([self.row], self.logos), [])
+        self.assertEqual((self.logos / "Fitch.icon.img").read_bytes(), big)
+
+    def test_a_bigger_mark_takes_the_slot(self):
+        (self.logos / "Fitch.icon.img").write_bytes(png_bytes((64, 64)))
+        self.assertEqual(MODULE.install([self.row], self.logos), ["Fitch.icon.img"])
+        self.assertEqual((self.logos / "Fitch.icon.img").read_bytes(), self.payload)
+
+    def test_an_unreadable_installed_file_is_not_treated_as_bigger(self):
+        """`<safe>.img` 里躺着的不一定是图；读不出尺寸就按空位办，别把大位卡死。"""
+        (self.logos / "Fitch.icon.img").write_bytes(b"not an image")
+        self.assertEqual(MODULE.install([self.row], self.logos), ["Fitch.icon.img"])
+
     def test_a_padded_wordmark_installs_too(self):
         """用户的口径是「不是 icon 也可以装 icon」，所以这个判词必须真的会落盘。"""
         written = MODULE.install([dict(self.row, verdict=MODULE.PADDED)], self.logos)
