@@ -109,7 +109,9 @@ def identifies_code(code: str, payload: dict) -> bool:
     matched = re.fullmatch(r"(?:\d{3,6})?([A-Z]{2,8})-?(\d{2,5})", value)
     if matched:
         letters, digits = matched.group(1).lower(), matched.group(2).lstrip("0") or "0"
-        return re.search(rf"{letters}0*{digits}(?!\d)", blob) is not None
+        return any(re.search(rf"(?<![a-z]){letters}[-_]?0*{digits}(?!\d)",
+                             str(payload.get(field) or "").lower()) is not None
+                   for field in IDENTITY_FIELDS)
     return _compact(value) in blob
 
 
