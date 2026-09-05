@@ -5,6 +5,12 @@
 
 ## 复用决策门槛
 
+- 抓取入口的复用缺口与证据统一见 [抓取复用审计](SCRAPING_AUDIT.md) 和 [逐脚本 CSV](scraping-audit.csv)；
+  跨用户安装、来源网络、Cookie GUI、最高可得画质与图像清单按 [ADR-0024](adr/0024-mark-manifest-not-bundled-bytes.md)。
+  Instagram 的 Instaloader 4.15.3（MIT）、browser_cookie3 会话导入、tldextract 私有后缀判断均是待 POC
+  候选，本轮未新增依赖。Javinizer-Go、HTTPX、curl_cffi、Pillow 和现有候选缓存继续作为正式基础；
+  各脚本的请求节拍应复用 `scripting.RateLimiter`／`HostLimiter`，不为同一职责再装一套框架。
+
 - 删除失效链接与资源同步的执行阶段复用 `BackgroundJob.start_result` 保存终态回执；刷新只查状态，写入请求不自动重放，原有确认与检查结果过期门槛保持有效。
 - 关注进度复用 Fieldset 与 Progress；完成时保留内容取数，按作者检查复用 `sources` 范围参数，报错作者复用现有身份解析。无新依赖；参考取证见 `reference-snapshots/vercel-geist-note-progress-switch-analytics.md`。
 
