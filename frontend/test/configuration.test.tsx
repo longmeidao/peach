@@ -42,6 +42,30 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+it('托盘管理访问端口时仅展示媒体配置和对应保存说明', () => {
+  const { el } = mount({ port_editable: false });
+  expect(el.querySelector('#configPort')).toBeNull();
+  expect(el.textContent).toContain('保存后 Peach 会重新载入配置。');
+  expect(el.querySelector('form')).not.toBeNull();
+});
+
+it('缺失依赖提供带图标的新窗口下载链接且已安装依赖不提示', () => {
+  const { el } = mount({
+    media_sources: [{ location: '115', root: 'B:\\', path: 'B:\\' }],
+    mount_dependencies: [
+      { name: 'CloudDrive', available: false, download_url: 'https://www.clouddrive2.com/download.html' },
+      { name: 'WinFsp', available: true, download_url: 'https://winfsp.dev/rel/' },
+    ],
+    facts: [{ term: 'FFmpeg', value: '未找到 FFmpeg', download_url: 'https://ffmpeg.org/download.html', download_label: '下载 FFmpeg' }],
+  });
+  for (const href of ['https://www.clouddrive2.com/download.html', 'https://ffmpeg.org/download.html']) {
+    const link = el.querySelector(`a[href="${href}"]`);
+    expect(link?.getAttribute('target')).toBe('_blank');
+    expect(link?.querySelector('use')?.getAttribute('href')).toBe('#i-external-link');
+  }
+  expect(el.textContent).not.toContain('下载 WinFsp');
+});
+
 describe('配置页取数', () => {
   it('首屏走 /api/configuration 并带上中止信号', async () => {
     const fetch = fetchMock(200, data());

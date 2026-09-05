@@ -15,7 +15,7 @@
 
 1. 在 CloudDrive 中登录网盘并建立挂载点，打开「启动时自动挂载」。步骤见
    [CloudDrive 官方帮助](https://www.clouddrive2.com/help.html)。
-2. 在 Peach 首次设置页或独立包的「管理 → 配置」中添加文件夹，选择对应来源。
+2. 在 Peach 首次设置页或托盘管理服务的「管理 → 配置」中添加文件夹，选择对应来源。
    115 使用来源 ID `115`，PikPak 使用 `pikpak`，本地磁盘使用 `local`；每个来源可有多个互不重叠的根。
 3. Windows 填本机盘符路径。macOS 的「本机文件夹」填本机挂载点，「Windows 中的对应路径」填该来源原有的
    Windows 盘符根，例如 `B:\` 对应 `/Volumes/CloudDrive/115`、`A:\` 对应
@@ -24,9 +24,13 @@
    Windows 的 Peach 与 CloudDrive 应在同一普通用户会话下运行；提升权限的进程可能看不到挂载盘。
 5. 勾选扫描时，托盘顺序扫描配置内的在线来源，离线根跳过。恢复挂载后可再次勾选扫描并保存。
 
+选择网盘来源时，首启页与配置页按本机系统检测 CloudDrive 和挂载驱动；未检测到安装会提供带外链图标的下载入口。
+Windows 读取软件安装清单识别 WinFsp，macOS 检查 macFUSE 安装目录；便携版 CloudDrive 可通过 PATH 检测。
+安装证据与挂载在线状态分别显示。运行信息中缺少 FFmpeg 或 ffprobe 时提供 FFmpeg 工具包下载；首次设置缺少 OpenSSL 时提供下载入口。
+
 离线来源允许保留配置，重叠盘符根或本机挂载点会在对应行报错。来源判定沿用 `asset.location`，
 115/PikPak 进入既有网盘流量策略。保存配置不修改已有资产的来源归属和账本路径。
-源码部署使用配置文件管理；首次网页引导支持相同来源，终端 `peach init` 的目录问答用于本地来源。
+直接运行 CLI 的部署使用配置文件管理；首次网页引导支持相同来源，终端 `peach init` 的目录问答用于本地来源。
 
 对应 macOS 配置示例：
 
@@ -58,7 +62,9 @@ pikpak = ['/Volumes/CloudDrive/PikPak']
   那些目录、`[media.mounts]` 为空；macOS 上声明根是 `R:\media`（第二个起 `R:\media2`……）、
   目录按同样顺序写进 `[media.mounts] local`。页面上的媒体文件夹是可加减的列表，配置页同样。
   配置页在主站里：管理菜单 → 配置（`/configuration`），只在运行 Peach 的这台电脑上、
-  且只有独立包才出现；数据走 `/api/configuration`，保存后写重启标记由托盘接手。
+  且由托盘管理的服务才出现；数据走 `/api/configuration`，保存后写重载标记由托盘接手。
+  本机可使用配置的 `.local` 域名、回环地址或服务绑定 IP；通过连接两端 IP 判定本机，其他设备仍不可访问配置接口。
+  正式托盘服务保持其 HTTPS 地址与访问端口；独立测试包可在配置页修改本机端口。
   每行文件夹旁的「选择文件夹」让运行 Peach 的这台电脑弹系统对话框（Windows 资源管理器、
   macOS Finder），走 `/api/pick-folder`，同样只对本机开放；首启页也有这颗键。
   复制、writer 镜像、SMB 一律不问，保持关闭或留空。建目录、迁库、生成 CA 与口令、写设置文件

@@ -35,6 +35,8 @@ Peach 是单用户、本地优先的个人媒体系统。在自己的电脑上�
 
 CloudDrive · 115 与 CloudDrive · PikPak 按本机文件夹接入；先在 CloudDrive 登录并挂载，再交给 Peach 索引。也可以只使用本地磁盘。
 
+托盘管理的服务可在本机通过「管理 → 配置」调整媒体来源；使用局域网域名打开也能进入。首启页和配置页检测缺失依赖时提供下载链接，挂载驱动提示按操作系统显示。
+
 关注来源包括 FANBOX、Patreon、SubscribeStar，以及 Kemono、Pawchive、Coomer、Rule34 系列与 F95zone。来源可用性受站点和使用者权限限制；采集边界与支持情况见 [来源采集](docs/SOURCING.md)。
 
 ## 快速开始

@@ -1,7 +1,7 @@
 /* 配置页（`/configuration`）：这台电脑的媒体文件夹与本机端口，加一块运行信息。
  *
  * 数据契约在 `/api/configuration`（`src/peach/routes_configuration.py`）。服务端按两道门
- * 放行：只有独立包、且只有从运行 Peach 的这台电脑打开时 `editable` 才为真；其它情况
+ * 放行：托盘管理的服务、且从运行 Peach 的这台电脑打开时 `editable` 才为真；其它情况
  * 表单不画，只留一句为什么和运行信息。保存成功后 Peach 会重启，这里给一句持久 Note、
  * 一条新地址的链接，并在托盘换好进程后自己跳过去。
  *
@@ -19,8 +19,10 @@ export interface ConfigurationProps {
 }
 
 export interface ConfigurationFact {
-  term: string;
-  value: string;
+    term: string;
+    value: string;
+    download_url?: string;
+    download_label?: string;
 }
 
 export interface ConfigurationData {
@@ -33,6 +35,8 @@ export interface ConfigurationData {
   media_sources?: { location: string; root: string; path: string; online?: boolean }[];
   windows?: boolean;
   port: number;
+  port_editable?: boolean;
+  mount_dependencies?: { name: string; available: boolean; download_url: string }[];
   facts: ConfigurationFact[];
 }
 
@@ -80,7 +84,7 @@ function Facts({ facts }: { facts: ConfigurationFact[] }) {
           {facts.map((fact) => (
             <>
               <dt>{fact.term}</dt>
-              <dd>{fact.value}</dd>
+              <dd>{fact.value}{fact.download_url ? <span class="confighelp"> <a href={fact.download_url} target="_blank" rel="noreferrer">{fact.download_label}<svg aria-hidden="true" viewBox="0 0 24 24"><use href="#i-external-link" /></svg></a></span> : null}</dd>
             </>
           ))}
         </dl>
@@ -289,10 +293,11 @@ function ConfigurationForm({ data, receipt }: { data: ConfigurationData; receipt
           </div>
           <button type="button" class="geist-button configadd" onClick={add}>添加文件夹</button>
           {kinds.some((kind) => kind === '115' || kind === 'pikpak') ? <p class="confighelp">先在 CloudDrive 登录网盘并完成挂载。<a href="https://www.clouddrive2.com/help.html" target="_blank" rel="noreferrer">挂载帮助<svg aria-hidden="true" viewBox="0 0 24 24"><use href="#i-external-link" /></svg></a></p> : null}
+          {kinds.some((kind) => kind === '115' || kind === 'pikpak') ? data.mount_dependencies?.filter((dependency) => !dependency.available).map((dependency) => <p class="confighelp">未检测到 {dependency.name}。<a href={dependency.download_url} target="_blank" rel="noreferrer">下载 {dependency.name}<svg aria-hidden="true" viewBox="0 0 24 24"><use href="#i-external-link" /></svg></a></p>) : null}
           {data.windows === false ? <p class="confighelp">本机文件夹是这台电脑读取媒体的位置。Windows 中的对应路径用于匹配馆藏中已有的路径，例如 B:\ 对应本机挂载文件夹。</p> : null}
         </div>
-        <div class="configfield">
-          <label for="configPort">本机访问端口</label>
+          {data.port_editable !== false ? <div class="configfield">
+            <label for="configPort">本机访问端口</label>
           <input
             id="configPort"
             class="geist-input"
@@ -303,8 +308,8 @@ function ConfigurationForm({ data, receipt }: { data: ConfigurationData; receipt
             onInput={(event) => setPort(event.currentTarget.value)}
           />
           {portError ? <p class="configbad" role="alert">{portError}</p> : null}
-          <p class="confighelp">浏览器地址里冒号后面的数字，一般不用改。</p>
-        </div>
+            <p class="confighelp">浏览器地址里冒号后面的数字，一般不用改。</p>
+          </div> : null}
         <label class="configcheck">
           <span class="pcheck">
             <input type="checkbox" checked={scanNow} onChange={(event) => setScanNow(event.currentTarget.checked)} />
@@ -315,7 +320,7 @@ function ConfigurationForm({ data, receipt }: { data: ConfigurationData; receipt
         {failure ? <Html html={noteHtml(failure, { variant: 'error', label: '没有保存' })} /> : null}
       </div>
       <div class="geist-fieldset-footer" data-geist-fieldset-footer>
-        <p>保存后 Peach 会重新启动，端口改了就用新地址打开。</p>
+        <p>{data.port_editable === false ? '保存后 Peach 会重新载入配置。' : '保存后 Peach 会重新启动，端口改了就用新地址打开。'}</p>
         <button type="submit" class="geist-button primary" ref={saveButton}>保存配置</button>
       </div>
     </form>

@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import shutil
 from collections.abc import Mapping, Sequence
 import re
 
@@ -202,6 +203,8 @@ _SETUP_SCRIPT = """<script>
     });
     var cloudHelp=document.getElementById('cloudHelp');
     if(cloudHelp){cloudHelp.hidden=!Array.from(list.querySelectorAll('select[name="media_location"]')).some(function(select){return select.value!=='local';});}
+    var cloudDependencies=document.getElementById('cloudDependencies');
+    if(cloudDependencies&&cloudHelp){cloudDependencies.hidden=cloudHelp.hidden;}
   };
   list.addEventListener('change',refresh);
   /* 「选择文件夹」让运行 Peach 的这台电脑弹系统对话框，把选中的绝对路径填回这一行：
@@ -350,10 +353,30 @@ def runtime_facts(config) -> tuple[tuple[str, str], ...]:
     )
 
 
+def runtime_fact_entries(config) -> list[dict[str, str]]:
+    """运行信息中的缺失依赖附带官方下载入口。"""
+    from .ffmpeg import FFmpegResolver
+    entries = [{"term": term, "value": value} for term, value in runtime_facts(config)]
+    resolver = FFmpegResolver(config.directory("tools") / "ffmpeg")
+    missing = [name for name, choice in (("FFmpeg", resolver.ffmpeg()), ("ffprobe", resolver.ffprobe()))
+               if choice is None]
+    if missing:
+        entry = next(row for row in entries if row["term"] == "FFmpeg")
+        entry.update(value="未找到 " + "、".join(missing) + "；转码、媒体信息与缩略图需要 FFmpeg 工具包。",
+                     download_url="https://ffmpeg.org/download.html", download_label="下载 FFmpeg")
+    return entries
+
+
+def dependency_link(url: str, label: str) -> str:
+    return (f'<a href="{escape(url, quote=True)}" target="_blank" rel="noreferrer">{escape(label)}'
+            '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg></a>')
+
+
 def runtime_facts_html(config) -> str:
     return ("<h2>运行信息</h2><dl>"
-            + "".join(f"<dt>{escape(term)}</dt><dd>{escape(value)}</dd>"
-                      for term, value in runtime_facts(config))
+            + "".join(f'<dt>{escape(row["term"])}</dt><dd class="help">{escape(row["value"])}'
+                      + (' ' + dependency_link(row["download_url"], row["download_label"]) if row.get("download_url") else '')
+                      + '</dd>' for row in runtime_fact_entries(config))
             + "</dl>")
 
 
@@ -401,9 +424,17 @@ def _media_dirs_html(values: Sequence[str], errors: Sequence[str], note: str, *,
         '<p class="help" id="cloudHelp" hidden>先在 CloudDrive 登录网盘并完成挂载。'
         '<a href="https://www.clouddrive2.com/help.html" target="_blank" rel="noreferrer">挂载帮助'
         '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg></a></p>'
+        + '<div id="cloudDependencies" hidden>' + mount_dependencies_html(windows=windows) + '</div>'
         + "".join(f'<p class="help">{escape(line)}</p>' for line in (help_text, note) if line)
         + "</div>"
     )
+
+
+def mount_dependencies_html(*, windows: bool) -> str:
+    from .media_configuration import mount_dependencies
+    return ''.join('<p class="help">未检测到 ' + escape(row['name']) + '。'
+                   + dependency_link(row['download_url'], '下载 ' + row['name']) + '</p>'
+                   for row in mount_dependencies(system='win32' if windows else 'darwin') if not row['available'])
 
 
 def _media_dir_values(values: Mapping[str, object], default: str) -> list[str]:
@@ -512,7 +543,9 @@ def setup_done_page(applied, *, windows: bool, scan_requested: bool) -> str:
               else f"Peach 数据库：{tree.database}（已应用 {tree.migrations} 个迁移）")
     ca = (f"本机 CA：{tree.ca_cert}" if tree.ca_cert is not None
           else f"未生成本机 CA（{tree.ca_error}）；装好 openssl 后跑 "
-               "<code>peach init --force</code> 补上。局域网设备要装这份 CA 才不报证书错。")
+               "<code>peach init --force</code> 补上。局域网设备要装这份 CA 才不报证书错。"
+               + ('<span class="help">' + dependency_link('https://openssl-library.org/source/', '下载 OpenSSL') + '</span>'
+                  if not shutil.which('openssl') and (windows or not Path('/usr/bin/openssl').is_file()) else ''))
     scan = ("<li>首次扫描已排队，托盘会在服务起来之后在后台跑，期间页面照常能用。</li>"
             if scan_requested else
             "<li>没有请求首次扫描；要扫就跑 <code>peach scan configured</code>。</li>")

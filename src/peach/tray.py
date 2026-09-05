@@ -282,6 +282,7 @@ class ServiceManager:
             # A frozen tray must not pass its one-file bootloader state to Peach.exe.
             environment["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
         environment.update(self._extra_env)
+        environment["PEACH_TRAY_MANAGED"] = "1"
         return environment
 
     def start_missing(self) -> None:
@@ -721,9 +722,8 @@ class SetupGate:
         还没齐就原地等下一轮，而不是拿一组缺文件的规格去启动。mDNS 名同理由这里传进
         规格：明文口的跳转目标必须是人刚填的那个名字。
         """
-        from .distribution import standalone
         reload_path = self.config.directory("state") / onboarding.RELOAD_NAME
-        if not self._waiting and not (standalone() and reload_path.is_file()):
+        if not self._waiting and not reload_path.is_file():
             return False
         config = self._load()
         if needs_setup(config):
@@ -740,7 +740,7 @@ class SetupGate:
         )
         self.manager.start_missing()
         reload_path.unlink(missing_ok=True)
-        self.notify(f"首次设置完成，正在启动服务：{normal_url(config)}", "Peach")
+        self.notify(f"配置已载入，正在启动服务：{normal_url(config)}", "Peach")
         self.start_first_scan(config)
         return True
 
