@@ -110,22 +110,33 @@ def plan(connection: sqlite3.Connection, rows: list[dict]) -> list[dict]:
 GONE_STATUSES = {404, 410}
 
 
-def resolves(url: str, timeout: float = 12.0) -> tuple[bool, str]:
+def resolves(url: str, timeout: float = 12.0,
+             tries: int = 3, pause: float = 3.0) -> tuple[bool, str]:
     """这个地址现在还能打开吗。返回（能不能, 说明）。
 
     每个请求新建 client 并立刻关掉：这批地址分布在上百个互不相同的主机上，其中不少
     连不上，而失败的连接会在共享池里漏掉槽位，几十个请求之后一切都变成 PoolTimeout。
+
+    传输层异常重试，状态码不重试。这条出口的 TLS 大约三次断一次
+    （`[SSL: UNEXPECTED_EOF_WHILE_READING]`），一次失败就记「打不开」是把抖动写成结论：
+    eltra.jp 2026-09-05 连着两趟这样被判死，而每次重试一下就 200。404 重试三次还是 404。
     """
-    try:
-        with httpx.Client(follow_redirects=True, timeout=timeout,
-                          limits=httpx.Limits(max_connections=4,
-                                              max_keepalive_connections=0)) as client:
-            response = client.get(url, headers={"User-Agent": USER_AGENT})
-    except Exception as exc:
-        return False, f"取不到：{type(exc).__name__}"
-    if response.status_code != 200:
-        return False, f"HTTP {response.status_code}"
-    return True, "可打开"
+    note = "取不到"
+    for attempt in range(tries):
+        try:
+            with httpx.Client(follow_redirects=True, timeout=timeout,
+                              limits=httpx.Limits(max_connections=4,
+                                                  max_keepalive_connections=0)) as client:
+                response = client.get(url, headers={"User-Agent": USER_AGENT})
+        except Exception as exc:
+            note = f"取不到：{type(exc).__name__}"
+            if attempt + 1 < tries:
+                time.sleep(pause)
+            continue
+        if response.status_code != 200:
+            return False, f"HTTP {response.status_code}"
+        return True, "可打开"
+    return False, note
 
 
 def is_gone(note: str) -> bool:

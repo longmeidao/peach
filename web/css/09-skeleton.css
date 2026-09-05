@@ -42,7 +42,7 @@
    底部那条是操作条的位置，不参与微光——它是框体，不是待填的内容。 */
 .cleanup-skeleton>div{grid-template-columns:minmax(0,1fr);gap:16px}
 .cleanup-skeleton .skeletoncard{gap:0;overflow:hidden;border:1px solid var(--line-soft);
-  border-radius:var(--floating-radius);background:var(--surface)}
+  border-radius:var(--floating-radius);background:var(--ground)}
 .cleanup-skeleton .skeletoncard i{aspect-ratio:auto;width:38%;height:20px;margin:20px 20px 0}
 .cleanup-skeleton .skeletoncard b{width:26%;height:16px;margin:12px 20px 20px}
 .cleanup-skeleton .skeletoncard em{width:100%;height:var(--fieldset-bar-h);margin:0;
@@ -53,7 +53,7 @@
 .followmanage-skeleton>div{grid-template-columns:minmax(0,1fr);gap:16px;width:min(812px,100%);
   margin-left:auto;margin-right:auto;align-items:start}
 .followmanage-skeleton .skeletoncard{gap:0;overflow:hidden;border:1px solid var(--border-10);
-  border-radius:var(--surface-radius);background:var(--surface)}
+  border-radius:var(--surface-radius);background:var(--ground)}
 .followmanage-skeleton .skeletoncard i{aspect-ratio:auto;height:56px;border-radius:0;
   background:var(--overlay-5);border-bottom:1px solid var(--border-10)}
 .followmanage-skeleton .skeletoncard b{width:auto;margin:16px 16px 0}
@@ -68,7 +68,7 @@
 /* 四格与真的指标带同宽同高：下限 140px、单格 96px、内边距 14/16、间隙 4px 都取自
    .metricstrip / .tastesummaries，手机上同样露边滚动。 */
 .skeletondashstrip{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(140px,1fr);overflow-x:auto;
-  border:1px solid var(--line-soft);border-radius:var(--floating-radius);background:var(--surface)}
+  border:1px solid var(--line-soft);border-radius:var(--floating-radius);background:var(--ground)}
 .skeletondashstrip>span{box-sizing:border-box;min-height:96px;min-width:0;display:grid;align-content:center;
   gap:4px;padding:14px 16px;border-right:1px solid var(--line-soft)}
 .skeletondashstrip>span:last-child{border-right:0}
@@ -78,7 +78,7 @@
 .skeletondashstrip em{width:60%;height:17px}
 @media(max-width:640px){.skeletondashstrip{grid-auto-columns:minmax(168px,82%)}}
 .skeletondashhero,.skeletondashpanel{display:grid;min-width:0;overflow:hidden;border:1px solid var(--line-soft);
-  border-radius:var(--floating-radius);background:var(--surface)}
+  border-radius:var(--floating-radius);background:var(--ground)}
 .skeletondashhero{min-height:330px;grid-template-columns:minmax(260px,36%) minmax(0,1fr)}
 .skeletondashhero i,.skeletondashhero b,.skeletondashpanel i,.skeletondashpanel b,.skeletondashpanel em{
   display:block;background:var(--hover)}

@@ -1318,23 +1318,31 @@ class StudioLinkTests(unittest.TestCase):
         self.connection.executemany(
             "INSERT INTO entity(id, kind, canonical_name) VALUES(?,?,?)",
             [(1, "studio", "Idea Pocket"), (2, "studio", "Fitch"), (3, "performer", "某人"),
-             (4, "studio", "FC2-PPV")])
+             (4, "studio", "FC2-PPV"), (5, "studio", "EST")])
         self.connection.executemany(
             "INSERT INTO entity_link(entity_id, link_kind, label, url) VALUES(?,?,?,?)",
             [(1, "official", "官方网站", "https://ideapocket.com/"),
              (1, "social", "X", "https://x.com/ideapocket"),
              (3, "official", "官方网站", "https://example.com/"),
-             (4, "catalog", "FC2-PPV", "https://adult.contents.fc2.com/")])
+             (4, "catalog", "FC2-PPV", "https://adult.contents.fc2.com/"),
+             (5, "social", "X", "https://x.com/EST_prod")])
 
     def tearDown(self):
         self.connection.close()
 
-    def test_social_links_are_left_out(self):
-        """社媒头像是另一条线的产物，混进来会把厂牌小标换成运营的自拍。"""
+    def test_the_official_link_pushes_the_social_one_aside(self):
+        """有官网时社媒不进来：那 453 条绝大多数挂在艺人身上，取回来是运营的自拍。"""
         links = MODULE.studio_links(self.connection)
         self.assertEqual([item["url"] for item in links["Idea_Pocket"]],
                          ["https://ideapocket.com/"])
         self.assertNotIn("某人", links, "performer 的链接不该进厂牌图标线")
+
+    def test_a_company_with_only_social_links_still_has_a_source(self):
+        """刚拆分出来的事务所先有 X 账号、官网还没建，那个账号就是它唯一的门面。"""
+        links = MODULE.studio_links(self.connection)
+        self.assertEqual([item["url"] for item in links["EST"]],
+                         ["https://x.com/EST_prod"])
+        self.assertEqual(links["EST"][0]["link_kind"], MODULE.FALLBACK_LINK_KIND)
 
     def test_a_platform_keeps_its_catalog_link_as_an_icon_source(self):
         """发行平台按 `docs/SOURCING.md` 不登记 official——它不是厂牌，没有厂牌官网。
@@ -1343,7 +1351,7 @@ class StudioLinkTests(unittest.TestCase):
         记成「无官网链接」，看起来像漏采，其实是查都没查。
         """
         links = MODULE.studio_links(self.connection)
-        self.assertEqual(sorted(links), ["FC2-PPV", "Idea_Pocket"])
+        self.assertEqual(sorted(links), ["EST", "FC2-PPV", "Idea_Pocket"])
         self.assertEqual([item["url"] for item in links["FC2-PPV"]],
                          ["https://adult.contents.fc2.com/"])
 
@@ -1467,6 +1475,26 @@ class SiteOwnAssetTests(unittest.TestCase):
         self.assertEqual((icon["evidence"], icon["mark_size"]),
                          ("官网声明的图标", "114x114"))
 
+    def test_a_wider_candidate_never_takes_the_small_slot(self):
+        """eltra.jp 实测：声明的是 300×300 纯皇冠，header 那张是 800×536 皇冠加字。
+
+        短边 528 比 292 大出 1.8 倍，可小位是 28 px 的方框，1.50 比的那张装进去只剩
+        一行认不出的字母；300 那枚本来就是照着这个尺寸画的。
+        """
+        icon = self.harvest(fetch=self.fetch(**{self.MARK: block_png((800, 536))}),
+                            declared=block_png((300, 300)))[0]
+        self.assertEqual((icon["evidence"], icon["mark_size"]),
+                         ("官网声明的图标", "300x300"))
+
+    def test_the_hero_slot_takes_the_one_the_small_slot_refused(self):
+        """大位要的正是那张被小位嫌宽的完整标识，两位各挑各的。"""
+        rows = self.harvest(fetch=self.fetch(**{self.MARK: block_png((800, 536))}),
+                            declared=block_png((300, 300)))
+        logo = [row for row in rows if row["variant"] == MODULE.LOGO][0]
+        self.assertEqual(logo["verdict"], MODULE.OK)
+        self.assertEqual(logo["url"], self.MARK)
+        self.assertIn("这一趟取到的最大一枚", logo["evidence"])
+
     def test_a_big_enough_declared_icon_stops_the_walk(self):
         """够大就不再敲别人的门。多问一个来源就多一次请求，而结果不会更好。"""
         fetch = self.fetch()
@@ -1529,6 +1557,71 @@ class SiteOwnAssetTests(unittest.TestCase):
         fetch = self.fetch(**{self.HOME: page.encode()})
         self.harvest(fetch=fetch)
         self.assertNotIn("intent/tweet", " ".join(fetch.asked))
+
+
+class SocialOnlyCompanyTests(unittest.TestCase):
+    """一条官网都没有的公司：那个 X 账号就是它的门面。
+
+    样本按 x.com/EST_prod 2026-09-05 实测：LIGHT 拆出来的 EST 还没建站，账本里只登记
+    得到一条 `social`，而它的头像原图是 1134×1129——这里用同样形状的小样本，
+    `block_png` 是逐像素画的。
+    """
+
+    PROFILE = "https://x.com/EST_prod"
+    AVATAR = "https://pbs.twimg.com/profile_images/2094369416905650176/GyqWkfql.jpg"
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.candidates = Path(self.tmp.name).resolve() / "candidates"
+        self.targets = {"EST": {"original_size": "", "installed": ""}}
+        self.links = {"EST": [{"entity_id": 8710, "studio": "EST",
+                               "link_kind": "social", "url": self.PROFILE}]}
+
+    def fetch(self, **overrides):
+        profile = (f'<meta property="og:image" content="'
+                   f'{self.AVATAR[:-4]}_400x400.jpg">')
+        pages = {self.PROFILE: profile.encode(), self.AVATAR: block_png((404, 402))}
+        pages.update(overrides)
+        return Fetch(pages)
+
+    def harvest(self, fetch=None):
+        original = MODULE.site_icons.best_mark
+
+        def refuse(url, fetcher, policy, fallback=None, accept=None):
+            raise AssertionError("账号主页没有「站点声明的图标」可问")
+
+        MODULE.site_icons.best_mark = refuse
+        try:
+            return MODULE.harvest(self.targets, self.links,
+                                  fetch or self.fetch(), self.candidates)
+        finally:
+            MODULE.site_icons.best_mark = original
+
+    def test_the_registered_account_avatar_becomes_the_mark(self):
+        """没有官网不等于没有标识，之前它只会停在「无官网链接」。"""
+        icon = self.harvest()[0]
+        self.assertEqual(icon["verdict"], MODULE.OK)
+        self.assertEqual(icon["url"], self.AVATAR)
+        self.assertEqual(icon["evidence"], "账本里登记的社媒头像")
+
+    def test_the_same_avatar_fills_the_hero_slot(self):
+        """大位没有别的候选可挑，站点自己那张字标根本不存在。"""
+        logo = [row for row in self.harvest() if row["variant"] == MODULE.LOGO][0]
+        self.assertEqual(logo["verdict"], MODULE.OK)
+        self.assertTrue(logo["candidate"].endswith(".logo.png"))
+
+    def test_only_the_profile_and_the_avatar_are_asked_for(self):
+        """账号主页上没有 header，也没有别人的账号可跟。"""
+        fetch = self.fetch()
+        self.harvest(fetch=fetch)
+        self.assertEqual(fetch.asked, [self.PROFILE, self.AVATAR])
+
+    def test_an_unreachable_account_is_未取得_not_a_conclusion(self):
+        """账号打不开时下一步是换个时间再试，不是断定这家没有标识。"""
+        icon = self.harvest(fetch=Fetch(reachable=False))[0]
+        self.assertEqual(icon["verdict"], MODULE.MISSING)
+        self.assertIn(self.PROFILE, icon["evidence"])
 
 
 class NamedAvatarTests(unittest.TestCase):

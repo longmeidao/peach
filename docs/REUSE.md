@@ -5,6 +5,12 @@
 
 ## 复用决策门槛
 
+- 抓取入口的复用缺口与证据统一见 [抓取复用审计](SCRAPING_AUDIT.md) 和 [逐脚本 CSV](scraping-audit.csv)；
+  跨用户安装、来源网络、Cookie GUI、最高可得画质与图像清单按 [ADR-0024](adr/0024-mark-manifest-not-bundled-bytes.md)。
+  Instagram 的 Instaloader 4.15.3（MIT）、browser_cookie3 会话导入、tldextract 私有后缀判断均是待 POC
+  候选，本轮未新增依赖。Javinizer-Go、HTTPX、curl_cffi、Pillow 和现有候选缓存继续作为正式基础；
+  各脚本的请求节拍应复用 `scripting.RateLimiter`／`HostLimiter`，不为同一职责再装一套框架。
+
 - 删除失效链接与资源同步的执行阶段复用 `BackgroundJob.start_result` 保存终态回执；刷新只查状态，写入请求不自动重放，原有确认与检查结果过期门槛保持有效。
 - 关注进度复用 Fieldset 与 Progress；完成时保留内容取数，按作者检查复用 `sources` 范围参数，报错作者复用现有身份解析。无新依赖；参考取证见 `reference-snapshots/vercel-geist-note-progress-switch-analytics.md`。
 
@@ -128,7 +134,7 @@ Python、npm 与 GitHub Actions 的版本由 `.github/dependabot.yml` 每周检�
 3. `status.py` 已并入 `peach status`，`suggest.py` 已由 `taste_history.py` 与馆藏页取代。剩余的是 `ledger.py`：读取逻辑继续移到 repository/application 端口，摄取入口本身按 ADR-0021 保留。它和 `sync_sha1_115.py` 目前都还没有备份闸门（`tests/test_script_policy.py` 的例外表已记账）。
 4. Peach 不做 token/成本日志扫描器，也不绑定 T3 Code 私有 RPC；使用其界面、CodexBar 和官方实时配额入口。
 5. 「模仿/参考/对齐」不等于允许凭记忆近似。先取得并登记可复现证据；否则标记 `未取得`，不得作为忠实复刻发布。2026-08-17 的 YouTube 详情与 Shorts 动作栏参考已登记在 `docs/HANDOFF.md`，Peach 只复用可测量的层级、尺寸和状态语义。
-6. Web UI 组件优先复用 `web/js/ui-components.js` 和 `.claude/skills/peach-web-ui/SKILL.md` 的语义矩阵。Peach 不引入 Geist React 运行时，只复用已锁定证据中的 Note／Progress／Switch／Tooltip／Collapse／Menu／Fieldset／Scroller／Empty State／Search Input／Spinner／Loading Dots 与 Dialog motion 语义、ARIA 和版式层级；整页异步重绘复用导航代际隔离，没有消费者的 Vercel 后台筛选器不照搬。
+6. Web UI 组件优先复用 `web/js/ui-components.js` 和 `.claude/skills/peach-web-ui/SKILL.md` 的语义矩阵。Peach 不引入 Geist React 运行时，只复用已锁定证据中的 Note／Progress／Switch／Tooltip／Collapse／Menu／Fieldset／Scroller／覆盖式滚动条（`attachOverlayScrollbar`，滑块不占宽度；`.geist-scroller` 只给两端渐隐，两者可叠加）／Empty State／Search Input／Spinner／Loading Dots 与 Dialog motion 语义、ARIA 和版式层级；整页异步重绘复用导航代际隔离，没有消费者的 Vercel 后台筛选器不照搬。
 7. JAV 封面固定参考 Javinizer-Go `dd56998328d078c9baf68ff4fde2e6fcaa2a691a`（MIT）的 DMM
    modern `awsimgsrc.dmm.com/dig/...` 映射与尺寸门槛；Prestige 公开 API 的查询模型参考 MDCX
    `58e3f930f2e864fceb8a53ceef818716e2a6413d`（GPL-3.0，只作协议证据，不复制代码）。Peach 先离线复用

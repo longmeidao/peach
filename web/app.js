@@ -6,15 +6,28 @@ import { initMiddleTruncate } from './js/middle-truncate.js';
 import { tagLabel } from './js/tags.js';
 import { syncSidebarSurface, sidebarTagCounts, sidebarHasCatalogContent } from './dist/peach-ui.js';
 import {
-  breadcrumbHtml, checkboxHtml, closeAnchoredMenu, confirmModal, emptyStateHtml, fieldsetTitle,
+  attachOverlayScrollbar, breadcrumbHtml, checkboxHtml, closeAnchoredMenu, confirmModal, emptyStateHtml, fieldsetTitle,
   fillSkeletonTier, fitSkeleton, iconSwitchHtml, loadingDotsHtml,
-  mediaViewButtonsHtml, noteHtml, progressHtml, scrollerHtml, searchInputHtml, setActionBusy,
-  skeletonHtml, spinnerHtml, wireAnchoredMenu, wireBusyActions, wireCollapse, wireIconSwitch,
-  wireScrollers,
+  mediaViewButtonsHtml, noteHtml, progressHtml, scrollerHtml, searchInputHtml, selectFieldHtml,
+  setActionBusy, skeletonHtml, spinnerHtml, wireAnchoredMenu, wireBusyActions, wireCollapse,
+  wireIconSwitch, wireOverlayScrollbars, wireScrollers, wireSelectField,
 } from './js/ui-components.js';
 
 initMiddleTruncate(document);
 wireBusyActions(document);
+attachOverlayScrollbar(document.documentElement,{variant:'page'});
+attachOverlayScrollbar($('#drawerScroll'));
+// 滚动容器是各处 innerHTML 现画出来的，没有一个统一的渲染出口可以挂。与其在几十个
+// 渲染点各补一行（漏一个就是那一处又冒出系统滚动条），不如认 DOM 变动本身：一批变动
+// 只扫一次，attachOverlayScrollbar() 自带幂等，已经接过的容器直接跳过。
+// 合批用 setTimeout 不用 requestAnimationFrame：页面在后台标签页里时 rAF 整个停摆，
+// 那期间画出来的容器会一直等到重新可见才接上滚动条。
+let overlayScan=0;
+new MutationObserver(()=>{
+  if(overlayScan)return;
+  overlayScan=setTimeout(()=>{overlayScan=0;wireOverlayScrollbars()});
+}).observe(document.body,{childList:true,subtree:true});
+wireOverlayScrollbars();
 /* 图片回退链全站只有这一条监听。`error` 不冒泡，但捕获阶段照样经过祖先，所以
    挂在 body 上就能接住任何后代 <img>——模板里不再有内联 `onerror`。 */
 wireImageFallbacks(document.body);
@@ -34,7 +47,7 @@ wireImageFallbacks(document.body);
 let state;
 let barsRequestSeq=0,barsDataCache=null,barsDataAt=0,barsDataPromise=null;
 let adsBatch=null,loadRequestSeq=0,listLoading=false;
-let followData=null,followRuntime=null,followFilter='',followBusy=false,
+let followData=null,followRuntime=null,followCredentials=null,followFilter='',followBusy=false,
   followManageSort='checked',followManageDir='desc';
 /* 关注列表四列各自的方向词与默认方向。作者名称是文本列，「从多到少」在它身上
    不成立，只说正倒。 */
@@ -42,6 +55,7 @@ const FOLLOW_SORT_LABELS={checked:'检查时间',added:'添加时间',name:'作�
 const FOLLOW_SORT_DIR_WORDS={checked:['从近到远','从远到近'],added:['从近到远','从远到近'],
   name:['倒序','正序'],sources:['从多到少','从少到多']};
 const FOLLOW_SORT_DEFAULT_DIR={checked:'desc',added:'desc',name:'asc',sources:'desc'};
+const FOLLOW_SORT_OPTIONS=[['checked','检查时间'],['added','添加时间'],['name','作者名称'],['sources','来源数量']];
 /* 同 `sortButtonHtml`：这枚键的无障碍名称说的是点下去会得到什么，所以取反方向的词。 */
 const followSortLabel=()=>`按${FOLLOW_SORT_LABELS[followManageSort]||'关注列表'}${
   (FOLLOW_SORT_DIR_WORDS[followManageSort]||[])[followManageDir==='asc'?0:1]||''}排序`;
@@ -189,6 +203,16 @@ function wireCountRow(){
    `.count:empty` 还会让整行折叠，网格跟着往上跳一截。计数骨架宽高固定、行本身有
    `min-height:var(--sortH)` 兜底，所以数字回来时不发生位移。上方的标签条和已选条件
    同理不动——它们本来就不随这次请求变。 */
+/* 目录列表是一叠 `.grid`，不是一个：竖屏带把当前这段从行边界剪开后，上下两半各自
+   是一段。所有「本页有哪些卡」的判断都按 `#grid > .grid > .card` 走，跨过分段这一层，
+   同时把竖屏带里的 `.scard` 排除在外——它们在 `.srow` 里，不属于任何一段。 */
+const lastGridSection=()=>{
+  const grid=$('#grid'),last=grid.lastElementChild;
+  if(last&&last.classList.contains('grid'))return last;
+  const section=document.createElement('div');section.className='grid';grid.append(section);return section};
+const setGridCards=html=>{$('#grid').innerHTML=`<div class="grid">${html}</div>`};
+const appendGridCards=html=>lastGridSection().insertAdjacentHTML('beforeend',html);
+const gridCards=()=>document.querySelectorAll('#grid > .grid > .card[data-id]');
 function renderCatalogLoading(label='正在读取作品'){
   const count=$('#count');
   count.setAttribute('aria-busy','true');
@@ -202,8 +226,8 @@ function renderCatalogLoading(label='正在读取作品'){
      铺着两种等待动画，而实际只有一次请求在跑。哨兵的可见性由数据落地后的
      `has_more` 重新决定，所以这里只管收，不必记住原值。 */
   $('#loadSentinel').hidden=true;
-  $('#grid').innerHTML=pageSkeletonHtml(label,
-    {cards:true,className:'catalog-skeleton postercard-skeleton'});
+  setGridCards(pageSkeletonHtml(label,
+    {cards:true,className:'catalog-skeleton postercard-skeleton'}));
   fitSkeleton($('#grid'));
 }
 /* 每个管理表面的加载态只有一份定义，深链启动和路由到位后都从这里取。
@@ -356,7 +380,15 @@ const SORT_DIR_WORDS={rating:['从高到低','从低到高'],o:['从多到少','
 const SORT_ALIASES={big:['size','desc'],short:['dur','asc'],long:['dur','desc']};
 const sortDirWord=(key,dir)=>(SORT_DIR_WORDS[key]||[])[dir==='asc'?1:0]||'';
 const defaultSortDir=key=>SORT_DIR_WORDS[key]?'desc':'';
-const DEFAULT_SETTINGS={batchSize:60,defaultSort:'seed',sortDefaultsVersion:3,hoverDelaySeconds:5,seekSeconds:10,searchHistoryLimit:10,relatedLimit:20,javLayout:'big',followLayout:'cozy',peopleLayout:'big',ambientMode:true,theaterMode:false,groupCollapse:true,sidebarOrder:DEFAULT_SIDEBAR_ORDER};
+/* 主题三档，键名与 <html> 上的 data-theme 同一套写法：web/css/01-base.css 的色板
+   已经按 `prefers-color-scheme` 和 `[data-theme]` 两条路径写好，这里只负责选哪一条。
+   跟随系统是默认档，选它等于不写属性。 */
+const THEME_CHOICES=['system','light','dark'];
+/* 跟随系统那一档跟 vercel.com 后台一样用显示器：这一档说的是「照这台设备的设定走」，
+   讲的是设备而不是明暗，日月合体的那枚反而在说明暗。`monitor` 因此归给它，详情页的
+   画面尺寸改用 `ratio`——那里量的是画幅本身，不是放画幅的那台机器。 */
+const THEME_OPTIONS=[['system','跟随系统','monitor'],['light','浅色','sun'],['dark','深色','moon']];
+const DEFAULT_SETTINGS={batchSize:60,defaultSort:'seed',sortDefaultsVersion:3,hoverDelaySeconds:5,seekSeconds:10,searchHistoryLimit:10,relatedLimit:20,javLayout:'big',followLayout:'cozy',peopleLayout:'big',ambientMode:true,theaterMode:false,theme:'system',groupCollapse:true,sidebarOrder:DEFAULT_SIDEBAR_ORDER};
 let appSettings={...DEFAULT_SETTINGS};
 try{appSettings={...DEFAULT_SETTINGS,...JSON.parse(localStorage.getItem(SETTINGS_KEY)||'{}')}}catch(_e){}
 const allowedSetting=(value,allowed,fallback)=>allowed.includes(value)?value:fallback;
@@ -380,20 +412,77 @@ appSettings.theaterMode=appSettings.theaterMode===true;
 appSettings.groupCollapse=appSettings.groupCollapse!==false;
 appSettings.searchHistoryLimit=allowedSetting(+appSettings.searchHistoryLimit,[5,10,20],10);
 appSettings.relatedLimit=allowedSetting(+appSettings.relatedLimit,[12,20,30],20);
+appSettings.theme=allowedSetting(appSettings.theme,THEME_CHOICES,'system');
 const sidebarKeyAlias=key=>key==='ads'||key==='dupes'?'data-cleanup':key;
 appSettings.sidebarOrder=[...new Set((Array.isArray(appSettings.sidebarOrder)?appSettings.sidebarOrder:DEFAULT_SIDEBAR_ORDER).map(sidebarKeyAlias))].filter(key=>ALL_SIDEBAR_KEYS.includes(key));
 if(!appSettings.sidebarOrder.length)appSettings.sidebarOrder=[...DEFAULT_SIDEBAR_ORDER];
 document.documentElement.style.setProperty('--hover-delay',`${appSettings.hoverDelaySeconds}s`);
 const saveSettings=()=>localStorage.setItem(SETTINGS_KEY,JSON.stringify(appSettings));
 if(sortDefaultsMigrated)saveSettings();
+/* 主题只写属性，不写颜色：两套色板都在 web/css/01-base.css，选跟随系统就把属性摘掉，
+   交还给 `prefers-color-scheme`。地址栏色块跟着同一次调用走——两枚 meta 各代表一档，
+   选中的那枚开到 `all`、另一枚关成 `not all`，否则手机上的地址栏还留在系统那一档。
+   `index.html` 的首屏内联脚本做的是同两件事，它只负责第一帧，之后都从这里出。 */
+const prefersDark=matchMedia('(prefers-color-scheme: dark)');
+function applyTheme(choice=appSettings.theme){
+  const root=document.documentElement;
+  if(choice==='system')delete root.dataset.theme;else root.dataset.theme=choice;
+  const dark=choice==='dark'||(choice==='system'&&prefersDark.matches);
+  document.querySelectorAll('meta[data-theme-color]').forEach(meta=>{
+    meta.media=(meta.dataset.themeColor==='dark')===dark?'all':'not all';
+  });
+}
+applyTheme();
+prefersDark.addEventListener('change',()=>{if(appSettings.theme==='system')applyTheme()});
+/* 三档互斥视图是 Geist Switch（一组共享 name 的 radio），与卡片版式切换共用同一份模板；
+   形状按 vercel.com 的主题选择器单独给，见 web/css/16-settings.css。 */
+function renderThemeSetting(){
+  const mount=$('#themeSetting');
+  mount.innerHTML=iconSwitchHtml('theme','主题',THEME_OPTIONS,appSettings.theme,{attr:'data-theme-choice',className:'themeswitch'});
+  wireIconSwitch(mount,'data-theme-choice',choice=>{appSettings.theme=choice;saveSettings();applyTheme()});
+}
+/* 设置面板里的每个下拉：选项、当前值和应用方式写在一起。它们此前是 index.html 里的
+   浏览器自带的 select，弹出层由系统画、跟不上站内色板；换成 Geist Select 之后这里是唯一
+   一处写它们的地方，面板每次打开重画一遍。关注自动更新那一档也在表里，它的应用是
+   一次网络写入，所以额外报告状态并在往返期间禁用自己。 */
+const SETTING_SELECTS=[
+  ['batchSizeSetting','每批作品',[['30','30 个'],['60','60 个'],['90','90 个']],
+    ()=>appSettings.batchSize,
+    value=>{appSettings.batchSize=+value||60;saveSettings();if(location.pathname==='/')load(true)}],
+  ['defaultSortSetting','默认排序',[['seed','随机'],['rating','评分'],['o','高潮计数'],['plays','观看次数'],
+    ['dur','时长'],['size','体积'],['new','入库时间'],['played','观看时间']],
+    ()=>appSettings.defaultSort,
+    value=>{appSettings.defaultSort=value;saveSettings();state.sort=appSettings.defaultSort;
+      state.dir=defaultSortDir(state.sort);if(location.pathname==='/')load(true)}],
+  ['hoverDelaySetting','悬停放大',[['3','3 秒'],['5','5 秒'],['8','8 秒']],
+    ()=>appSettings.hoverDelaySeconds,
+    value=>{appSettings.hoverDelaySeconds=+value||5;
+      document.documentElement.style.setProperty('--hover-delay',`${appSettings.hoverDelaySeconds}s`);saveSettings()}],
+  ['seekSecondsSetting','快进 / 快退',[['5','5 秒'],['10','10 秒'],['30','30 秒']],
+    ()=>appSettings.seekSeconds,
+    value=>{appSettings.seekSeconds=+value||10;saveSettings()}],
+  ['relatedLimitSetting','相关推荐',[['12','12 个'],['20','20 个'],['30','30 个']],
+    ()=>appSettings.relatedLimit,
+    value=>{appSettings.relatedLimit=+value||20;saveSettings()}],
+  ['searchHistoryLimitSetting','搜索记录',[['5','最近 5 条'],['10','最近 10 条'],['20','最近 20 条']],
+    ()=>appSettings.searchHistoryLimit,
+    value=>{appSettings.searchHistoryLimit=+value||10;saveSettings();writeSearchHistory(readSearchHistory())}],
+  ['followScheduleSetting','关注自动更新',[['0','关闭'],['15','每 15 分钟'],['30','每 30 分钟'],['60','每小时'],
+    ['180','每 3 小时'],['360','每 6 小时'],['720','每 12 小时'],['1440','每天']],
+    ()=>'0',value=>saveFollowSchedule(+value)],
+];
+function renderSettingSelects(){
+  for(const [id,label,options,read,apply] of SETTING_SELECTS){
+    const mount=$(`#${id}`);if(!mount)continue;
+    mount.innerHTML=selectFieldHtml(options,read(),{label});
+    const field=wireSelectField(mount.firstElementChild);
+    field.addEventListener('change',()=>apply(field.value));
+  }
+}
 function syncSettingsPanel(){
-  $('#batchSizeSetting').value=String(appSettings.batchSize);
-  $('#defaultSortSetting').value=appSettings.defaultSort;
-  $('#hoverDelaySetting').value=String(appSettings.hoverDelaySeconds);
   $('#groupCollapseSetting').checked=appSettings.groupCollapse;
-  $('#seekSecondsSetting').value=String(appSettings.seekSeconds);
-  $('#searchHistoryLimitSetting').value=String(appSettings.searchHistoryLimit);
-  $('#relatedLimitSetting').value=String(appSettings.relatedLimit);
+  renderSettingSelects();
+  renderThemeSetting();
   renderSidebarOrderSetting();
   loadFollowScheduleSetting();
 }
@@ -423,21 +512,15 @@ $('#settingsBtn').onclick=()=>openSettings(true);$('#settingsClose').onclick=()=
 $('#settingsPanel').onclick=e=>{if(e.target===$('#settingsPanel'))openSettings(false)};
 $('#settingsPanel').onkeydown=e=>{
   if(e.key!=='Tab')return;
-  const focusable=[...e.currentTarget.querySelectorAll('button:not([disabled]),select:not([disabled]),input:not([disabled]),textarea:not([disabled]),a[href]')];
+  const focusable=[...e.currentTarget.querySelectorAll('button:not([disabled]),input:not([disabled]),textarea:not([disabled]),a[href]')];
   if(!focusable.length)return;
   const first=focusable[0],last=focusable.at(-1);
   if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus()}
   else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus()}
 };
-$('#batchSizeSetting').onchange=e=>{appSettings.batchSize=+e.target.value||60;saveSettings();if(location.pathname==='/')load(true)};
-$('#defaultSortSetting').onchange=e=>{appSettings.defaultSort=e.target.value;saveSettings();state.sort=appSettings.defaultSort;state.dir=defaultSortDir(state.sort);if(location.pathname==='/')load(true)};
-$('#hoverDelaySetting').onchange=e=>{appSettings.hoverDelaySeconds=+e.target.value||5;document.documentElement.style.setProperty('--hover-delay',`${appSettings.hoverDelaySeconds}s`);saveSettings()};
 /* 关掉后同一番号的每个分卷／版次各占一张卡。改完要重取当前列表：折叠是在渲染
    时做的，不重画的话已经被跳过的那些卡不会自己冒出来。 */
 $('#groupCollapseSetting').onchange=e=>{appSettings.groupCollapse=!!e.target.checked;saveSettings();reloadCurrentSurface()};
-$('#seekSecondsSetting').onchange=e=>{appSettings.seekSeconds=+e.target.value||10;saveSettings()};
-$('#searchHistoryLimitSetting').onchange=e=>{appSettings.searchHistoryLimit=+e.target.value||10;saveSettings();writeSearchHistory(readSearchHistory())};
-$('#relatedLimitSetting').onchange=e=>{appSettings.relatedLimit=+e.target.value||20;saveSettings()};
 let followScheduleRequest=0;
 const followScheduleCopy=status=>{
   if(!status.available)return '只在账本写入端运行';
@@ -447,24 +530,25 @@ const followScheduleCopy=status=>{
   if(status.next_run_at)return `下次 ${localTime(status.next_run_at)}`;
   return status.enabled?'等待首次运行':'已关闭';
 };
+const followScheduleField=()=>$('#followScheduleSetting .gselect');
 async function loadFollowScheduleSetting(){
-  const select=$('#followScheduleSetting'),state=$('#followScheduleState'),request=++followScheduleRequest;
-  select.disabled=true;state.innerHTML=loadingDotsHtml('正在读取状态');
+  const field=followScheduleField(),state=$('#followScheduleState'),request=++followScheduleRequest;
+  field.disabled=true;state.innerHTML=loadingDotsHtml('正在读取状态');
   try{
     const status=await api('/api/follow/schedule');if(request!==followScheduleRequest)return;
-    select.value=status.enabled?String(status.interval_minutes):'0';
-    select.disabled=!status.available;state.textContent=followScheduleCopy(status);
+    field.value=status.enabled?String(status.interval_minutes):'0';
+    field.disabled=!status.available;state.textContent=followScheduleCopy(status);
   }catch(error){if(request===followScheduleRequest)state.textContent=`状态未取得：${error.message||error}`}
 }
-$('#followScheduleSetting').onchange=async e=>{
-  const minutes=+e.target.value,state=$('#followScheduleState');e.target.disabled=true;
+async function saveFollowSchedule(minutes){
+  const field=followScheduleField(),state=$('#followScheduleState');field.disabled=true;
   state.innerHTML=`${spinnerHtml('保存中')}<span>正在保存…</span>`;
   try{
     const status=await api('/api/follow/schedule',{method:'POST',body:JSON.stringify({enabled:minutes>0,interval_minutes:minutes||60})});
     state.textContent=followScheduleCopy(status);
   }catch(error){state.textContent=error.message||'保存失败'}
-  finally{e.target.disabled=false}
-};
+  finally{field.disabled=false}
+}
 /* 来源图标：品牌使用已缓存的官方资产；通用操作图标统一使用本地 Lucide 子集。 */
 const SRCICON={
   local:icon('hard-drive'),
@@ -621,13 +705,21 @@ function homePath(filters=state){
   if(!STATE_ROUTES[filters.state]&&filters.state)params.set('state',filters.state);
   return path+(params.size?'?'+params:'');
 }
+/* 顶部三层与筛选条画的是哪一套筛选，由它说了算。声明必须排在 resetHomeState 之前：
+   那个函数会把它拨回 home，而它是 let，用在声明之前就是 TDZ。 */
+let barsContext={type:'home',filters:state},detailReturnBarsContext=null;
 /* 所有明确的「回首页」动作必须得到同一个干净状态。只改地址为 `/` 不够：state.jav
    等内存筛选还会继续进入 /api/items，让页面看似首页却只剩 JAV。来源选择是用户的
-   浏览范围，继续保留；其余分类、搜索和排序恢复首页默认值。 */
+   浏览范围，继续保留；其余分类、搜索和排序恢复首页默认值。
+   barsContext 也在这里回到 home：从资料页点侧栏或左上角标志回首页时，load(true)
+   确实会把它拨回来，但 openHome 是先 buildBars() 后 load(true)，buildBars 开头就把
+   activeFilterState() 取走了——取到的是资料页那份筛选，它没有 state 这个键，
+   于是四枚视图胶囊一枚都不亮，首页看上去像谁都没选中。 */
 function resetHomeState(){
   state={loc:state.loc,creator:'',studio:'',tag:'',tag_match:'all',len:'',dur_min:'',dur_max:'',
     orient:'',state:'',sort:appSettings.defaultSort,dir:defaultSortDir(appSettings.defaultSort),
     seed:rollSeed(),q:'',jav:'',thumb:'1'};
+  barsContext={type:'home',filters:state};detailReturnBarsContext=null;
   barsDataCache=null;barsDataPromise=null;
 }
 function openHome(scroll=false){
@@ -645,7 +737,6 @@ const entityFilterSearch=filters=>{const params=new URLSearchParams();
   ENTITY_FILTER_KEYS.forEach(key=>{if(filters[key]&&!(key==='sort'&&filters[key]==='new')
     &&!(key==='dir'&&filters[key]===defaultSortDir(filters.sort)))params.set(key,filters[key])});
   return params.toString()};
-let barsContext={type:'home',filters:state},detailReturnBarsContext=null;
 const cloneBarsContext=context=>context&&context.type==='entity'
   ? {...context,filters:{...context.filters}}:context;
 const activeFilterState=()=>barsContext.type==='home'?state:barsContext.filters;
@@ -1507,7 +1598,7 @@ function setSelectMode(on,clear=false){
   if(selectMode)releaseHoverPreviews();
   $('#selectMode').setAttribute('aria-pressed',selectMode);if(clear){selected.clear();followSelected.clear();selectedIndexTags.clear();lastSelectedId=null;followLastSelectedId=null}paintSelection()}
 /* 只取网格直属卡片：竖屏条是嵌在网格里的横向滚动条，不该被 Shift 范围选中顺带框进来。 */
-function visibleCardIds(){return [...document.querySelectorAll('#grid > .card[data-id]')].map(card=>+card.dataset.id)}
+function visibleCardIds(){return [...gridCards()].map(card=>+card.dataset.id)}
 function toggleSelection(id,range=false){
   if(range&&lastSelectedId!=null){const ids=visibleCardIds(),a=ids.indexOf(lastSelectedId),b=ids.indexOf(id);
     if(a>=0&&b>=0){for(let i=Math.min(a,b);i<=Math.max(a,b);i++)selected.add(ids[i])}
@@ -2284,6 +2375,17 @@ function wireCards(root,onClick){
 }
 
 /* ── 顶部标签条 + 抽屉 ── */
+/* 状态页把顶部三层收窄到本页口径，为的是不列出「在这一页一个作品都没有」的人和厂牌。
+   但集合窄到聚合结果为空时（「已标记」常年只有几条），收窄就把整排一并收走了：
+   同一条筛选条上换一格，页面顶上凭空少两层，读起来是跳去了另一个页面而不是换了筛选。
+   空了就退回全库口径。这一排点开的是实体页，本来就要离开当前状态，
+   它回答的从来不是「这一页里有谁」，而是「接下来去看谁」。 */
+async function loadTops(params){
+  const scoped=await api('/api/tops?'+params);
+  if(scoped.performers.length||scoped.studios.length||!params.has('state'))return scoped;
+  const wide=new URLSearchParams(params);wide.delete('state');
+  return api('/api/tops?'+wide)
+}
 let barsDataScope='';
 async function getBarsData(context=barsContext){
   // JAV 模式的顶部三层与筛选面板要跟着收窄，否则会列出只出现在创作者作品里的
@@ -2311,7 +2413,7 @@ async function getBarsData(context=barsContext){
   // 顶部三层跟着「换一批」的同一个种子走，刷新后才真的换人。
   if(!barsDataPromise)barsDataPromise=Promise.all([
       api('/api/facets'+(scope?'?'+scope:'')),
-      api('/api/tops?'+topsParams)])
+      loadTops(topsParams)])
     .then(data=>{barsDataCache=data;barsDataAt=Date.now();return data})
     .finally(()=>{barsDataPromise=null});
   return barsDataPromise
@@ -2413,8 +2515,8 @@ async function buildBars(){
     return `<button class="brandpill" data-entity-kind="studio" data-entity-name="${esc(x.k)}">
       <span class="mk" data-fallback="${fallback}">${mark}</span>${esc(x.k)}</button>`;
   };
-  // 空的一排仍占 28px，在「已标记」这种窄集合上就是两条什么都没有的空带。
-  // 没人就不画那一排，两排都没人就整块收起。
+  // 空的一排仍占 28px，画出来就是一条什么都没有的空带，所以没人就不画那一排。
+  // 「两排都空」现在只剩全库真的一个人都没有这一种：窄集合已经由 loadTops 退回全库口径。
   const perfRow=tops.performers.map(avHtml).join('');
   const studioRow=tops.studios.map(bpHtml).join('');
   const tier=html=>html?`<div class="tier">${html}</div>`:'';
@@ -2456,7 +2558,7 @@ async function buildBars(){
   // 与窄栏共用 EDGE_ICONS —— 两边条目必须一致，抽屉不另写一份硬编码
   const navBtn=(k,label,ic)=>`<button data-nav="${k}" draggable="true" aria-pressed="${navOn(k)}">
     ${icon(ic)}<span>${label}</span></button>`;
-  $('#drawer').innerHTML=
+  $('#drawerScroll').innerHTML=
     `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
       <b class="disp" style="font-size:15px;letter-spacing:.1em">导航与筛选</b>
       <button id="drawerClose" class="ib" title="收起">${icon('x')}</button></div>`+
@@ -2519,7 +2621,7 @@ async function buildBars(){
 }
 /* 排序和换批都属于当前列表，放在计数行，不占用全局导航。 */
 function renderCount(){
-  const n=$('#grid').querySelectorAll(':scope > .card[data-id]').length;   // 竖屏条不计入「显示 N」
+  const n=gridCards().length;   // 竖屏带里的 .scard 不计入「显示 N」
   const trash=state.state==='trash';
   /* 「清空回收站」和左边的计数说的是同一批文件，挂在说明行右端。它自己占一行时，
      标题和网格之间会空出一条只放一个按钮的带子。 */
@@ -2611,7 +2713,7 @@ function wireLoadMore(button, load){
 const skeletonKeyOf=html=>String(html).match(/data-skeleton="([^"]*)"/)?.[1]||'';
 function showManagementBody({manage=true,placeholder=''}={}){
   $('#stats').hidden=false;$('#index').hidden=true;$('#grid').innerHTML='';
-  $('#count').textContent='';$('#loadSentinel').hidden=true;$('#shortsSec').hidden=true;
+  $('#count').textContent='';$('#loadSentinel').hidden=true;
   if(manage)buildManageBar();
   else{$('#managebar').hidden=true;$('#manageTitle').hidden=true;buildEdge()}
   if(!placeholder)return;
@@ -2627,7 +2729,7 @@ function showManagementBody({manage=true,placeholder=''}={}){
    一个负责之后谁都别再画上去。 */
 function showIndexLoading(label){
   $('#stats').hidden=true;$('#index').hidden=false;$('#grid').innerHTML='';$('#combo').innerHTML='';
-  $('#count').textContent='';$('#loadSentinel').hidden=true;$('#shortsSec').hidden=true;
+  $('#count').textContent='';$('#loadSentinel').hidden=true;
   $('#index').innerHTML=pageSkeletonHtml(label,{cards:true});
   fitSkeleton($('#index'));
 }
@@ -2937,6 +3039,7 @@ function readTasteCache(){
       entry.dashboard&&typeof entry.dashboard==='object'))
   }catch(_error){return new Map()}
 }
+const TASTE_WINDOWS=[['all','全部时间'],['365d','最近一年'],['90d','最近 90 天']];
 let tasteWindow='all',tasteEvidence='browser',tasteDimension={browser:'tags',peach:'tags'};
 let tasteCache=readTasteCache(),tasteRequest=0;
 function tasteCacheSet(window,dashboard){
@@ -3024,8 +3127,7 @@ function renderTaste(d){
     <header class="tastehead"><div class="insightswitch" role="radiogroup" aria-label="口味证据来源">
         <label><input type="radio" name="taste-evidence" value="browser"${tasteEvidence==='browser'?' checked':''}><span>浏览器记录</span></label>
         <label><input type="radio" name="taste-evidence" value="peach"${tasteEvidence==='peach'?' checked':''}><span>Peach 内部</span></label></div>
-      <div class="tasteactions"><select data-taste-window aria-label="分析范围">
-        <option value="all">全部时间</option><option value="365d">最近一年</option><option value="90d">最近 90 天</option></select>
+      <div class="tasteactions">${selectFieldHtml(TASTE_WINDOWS,d.window||tasteWindow,{label:'分析范围',attr:'data-taste-window'})}
         <button data-taste-refresh>${icon('refresh-cw')}读取 Peach 主机</button>
         <button data-taste-import>${icon('upload')}导入历史</button><input data-taste-file type="file" hidden></div></header>
     <div class="tastestate" data-taste-state role="status" aria-live="polite"></div>
@@ -3070,7 +3172,6 @@ function renderTaste(d){
       <div class="insightpanelbody"><div>${sourceRows||emptyStateHtml('database','还没有数据源','导入或读取浏览记录后，这里会列出已采集设备。')}</div></div></section>
   </div>`;
   const root=$('#stats'),stateEl=root.querySelector('[data-taste-state]'),file=root.querySelector('[data-taste-file]');
-  root.querySelector('[data-taste-window]').value=d.window||tasteWindow;
   root.querySelectorAll('input[name="taste-evidence"]').forEach(input=>input.onchange=()=>{
     tasteEvidence=input.value;
     root.querySelectorAll('[data-taste-summary]').forEach(panel=>panel.hidden=panel.dataset.tasteSummary!==tasteEvidence);
@@ -3082,7 +3183,8 @@ function renderTaste(d){
       const selected=tab===button;tab.setAttribute('aria-selected',String(selected));tab.tabIndex=selected?0:-1});
     root.querySelectorAll(`[data-taste-dimension-panel^="${source}:"]`).forEach(panel=>panel.hidden=panel.dataset.tasteDimensionPanel!==button.dataset.tasteDimension)
   });
-  root.querySelector('[data-taste-window]').onchange=e=>{tasteWindow=e.target.value;openTaste(false)};
+  const tasteWindowField=wireSelectField(root.querySelector('[data-taste-window]'));
+  tasteWindowField.addEventListener('change',()=>{tasteWindow=tasteWindowField.value;openTaste(false)});
   /* 总结里的下一步动作按路径走，派发仍旧交给 ROUTES：在这里比对一遍路径字符串，
      就又多出一处会和那张表不一致的知识。 */
   root.querySelectorAll('[data-taste-route]').forEach(button=>button.onclick=()=>{
@@ -4749,12 +4851,8 @@ function renderFollowManage(credentials){
         <div class="fsechead"><h3>关注列表</h3>
           <span class="fmeta">${sources.length} 个来源${
             counts.new?` · <b>${counts.new}</b> 条未看`:''}</span>
-          <label class="fmanagesort">${icon('sort')}<select data-follow-sort aria-label="关注列表排序">
-            <option value="checked"${followManageSort==='checked'?' selected':''}>检查时间</option>
-            <option value="added"${followManageSort==='added'?' selected':''}>添加时间</option>
-            <option value="name"${followManageSort==='name'?' selected':''}>作者名称</option>
-            <option value="sources"${followManageSort==='sources'?' selected':''}>来源数量</option>
-          </select></label>
+          <span class="fmanagesort">${icon('sort')}${selectFieldHtml(FOLLOW_SORT_OPTIONS,followManageSort,
+            {label:'关注列表排序',attr:'data-follow-sort'})}</span>
           <button class="fbtn fmanagedir" type="button" data-follow-dir aria-label="${
             followSortLabel()}">${icon(followManageDir==='asc'?'arrow-up':'arrow-down')}</button>
           ${followLayoutButtons()}
@@ -4801,7 +4899,10 @@ function routeFollowManageSort(){
   if(followManageDir!==(FOLLOW_SORT_DEFAULT_DIR[followManageSort]||'desc'))params.set('dir',followManageDir);
   const query=params.toString();
   route('/follow-manage'+(query?'?'+query:''));
-  openFollowManage(false);
+  // 排序是拿手里这份 followData 重排，不是换一批数据，所以不走整页那条路径：那条会先把
+  // 整页换成骨架、再把三个接口重取一遍、最后滚回顶部，而屏幕上真正变的只有下面那份
+  // 关注列表。直接重画，页面不闪、位置不动。
+  renderFollowManage(followCredentials||{});
 }
 async function openFollowManage(push=true){
   releaseHoverPreviews();disposeStage(false);enterManagementSurface();
@@ -4819,7 +4920,7 @@ async function openFollowManage(push=true){
     surfaceApi(surface,'/api/follow?limit=1'),surfaceApi(surface,'/api/follow/credentials'),
     surfaceApi(surface,'/healthz')]);
   if(!surfaceCurrent(surface))return;
-  followData=data;followRuntime=runtime;
+  followData=data;followRuntime=runtime;followCredentials=credentials;
   renderFollowManage(credentials);
   window.scrollTo({top:0,behavior:'smooth'});
 }
@@ -4859,12 +4960,12 @@ function wireFollowManage(){
   void wireResolveProgress();
   const root=$('#stats'),form=root.querySelector('#followAdd');
   wireScrollers(root);
-  const sort=root.querySelector('[data-follow-sort]');
-  if(sort)sort.onchange=()=>{
-    followManageSort=sort.value;
+  const sortField=root.querySelector('[data-follow-sort]');
+  if(sortField)wireSelectField(sortField).addEventListener('change',()=>{
+    followManageSort=sortField.value;
     followManageDir=FOLLOW_SORT_DEFAULT_DIR[followManageSort]||'desc';
     routeFollowManageSort();
-  };
+  });
   const dir=root.querySelector('[data-follow-dir]');
   if(dir)dir.onclick=()=>{
     followManageDir=followManageDir==='asc'?'desc':'asc';
@@ -6669,10 +6770,10 @@ async function load(reset){
     const html=batch.map(junkCardHtml).join('');
     if(reset)releaseHoverPreviews($('#grid'));
     if(reset&&!batch.length)$('#grid').innerHTML=emptyState('check',junkView==='dismissed'?'没有已排除的文件':'没有待判断的垃圾文件',junkView==='dismissed'?'点“不是垃圾”的资源会保留在这里，可随时重新判断。':'当前分类没有候选文件。');
-    else if(reset)$('#grid').innerHTML=html;else $('#grid').insertAdjacentHTML('beforeend',html);
+    else if(reset)setGridCards(html);else appendGridCards(html);
     renderJunkNavigation(adsBatch);
-    $('#loadSentinel').hidden=$('#grid').children.length>=adsBatch.items.length;
-    $('#shortsSec').hidden=true;wireJunkCards($('#grid'));paintSelection();return;
+    $('#loadSentinel').hidden=$('#grid').querySelectorAll('.junkcard').length>=adsBatch.items.length;
+    wireJunkCards($('#grid'));paintSelection();return;
   }
   adsBatch=null;
   const p=new URLSearchParams(Object.entries(state).filter(([,v])=>v));
@@ -6695,15 +6796,18 @@ async function load(reset){
     $('#grid').innerHTML=emptyState('trash','回收站是空的','删掉的内容会先到这里；确认不再需要后再清空。');
   else if(reset&&!d.items.length)
     $('#grid').innerHTML=emptyState('search','没有符合条件的作品','调整筛选或搜索条件后再试。');
-  else if(reset)$('#grid').innerHTML=html;
-  else $('#grid').insertAdjacentHTML('beforeend',html);
+  /* 接下来这一页新增在当前这段里的起点：竖屏带的落点要落在新增的那几行之间，
+     不能又插回已经看过的上半屏。 */
+  const addedFrom=reset?0:[...lastGridSection().children].filter(x=>x.matches('.card[data-id]')).length;
+  if(reset)setGridCards(html);
+  else appendGridCards(html);
   renderCount();
   $('#loadSentinel').hidden=reset?d.items.length>=total:!d.has_more;
   wireCards($('#grid'),state.state==='trash'?openResourceCard:undefined);
   if(state.state==='trash')wireResourceCardActions($('#grid'));
   wireMixCards($('#grid'));
   paintSelection();
-  if(reset)loadShorts(requestSeq,surface);
+  loadShorts(requestSeq,surface,{reset,addedFrom});
   }finally{if(!reset&&requestSeq===loadRequestSeq)listLoading=false}
 }
 const loadObserver=new IntersectionObserver(entries=>{
@@ -6810,33 +6914,51 @@ $('#q').onkeydown=e=>{
 };
 $('#q').addEventListener('focus',()=>{Promise.all([loadSearchHistory(),loadSearchPool()]).then(renderSearchMenu)});
 
-const SHORTS_ROW_OFFSET=2;   // 竖屏条插在第几行之后，0 表示置顶
-async function loadShorts(requestSeq=loadRequestSeq,surface=surfaceToken(surfacePath())){
-  // JAV 模式不插竖屏条：番号发行物本身是横版，竖屏是另一类内容。
+/* 竖屏带每接一页出现一条，位置在这一页新增的那几行里随机取一个行边界。
+   固定第几行的写法从第二屏起就成了可预期的栏目，而这条带子的作用正是打断节奏——
+   位置可预期，节奏就不再被打断。每条带子取不同的一批竖屏，翻下去不会反复看到同 18 个。 */
+const SHORTS_BATCH=18;
+let shortsOffset=0;
+async function loadShorts(requestSeq,surface,{reset=false,addedFrom=0}={}){
+  // JAV 模式不插竖屏带：番号发行物本身是横版，竖屏是另一类内容。
   // 主列表的 exclude_vertical 管不到这条——它是独立请求、独立插入的。
   if(!isCatalogPath(decodeURIComponent(location.pathname))||javActive()||state.orient==='竖屏'
-     ||state.state==='ads'||state.state==='trash'){
-    $('#shortsSec').hidden=true;$('#grid').querySelector('#shortsInline')?.remove();return}
+     ||state.state==='ads'||state.state==='trash')return;
+  if(reset)shortsOffset=0;
   const p=new URLSearchParams(Object.entries(state).filter(([,v])=>v));
-  /* 排序跟着主列表走，不再写死 sort=new；换一批时竖屏条也要一起换。 */
-  p.set('orient','竖屏');p.set('limit',18);p.set('offset',0);
+  /* 排序跟着主列表走，不再写死 sort=new；换一批时竖屏带也要一起换。 */
+  p.set('orient','竖屏');p.set('limit',SHORTS_BATCH);p.set('offset',shortsOffset);
   const d=await surfaceApi(surface,'/api/items?'+p);
   if(requestSeq!==loadRequestSeq||!surfaceCurrent(surface))return;
-  if(!d.items.length){$('#shortsSec').hidden=true;return}
+  if(!d.items.length){shortsOffset=0;return}
   cache(d.items);
-  releaseHoverPreviews($('#srow'));
-  const grid=$('#grid');grid.querySelector('#shortsInline')?.remove();
-  /* 竖屏条整行占位（grid-column:1/-1），插在行边界上才不会把上一行截断留空。
-     余位不另拉一批横屏视频来补：那批 id 不在分页序列里，翻下一页必然重复，
-     而且被当成 scard 渲染会把横屏压成竖框。 */
-  const columns=Math.max(1,getComputedStyle(grid).gridTemplateColumns.split(' ').length);
-  const cards=[...grid.children].filter(x=>x.matches('.card[data-id]'));
-  const anchor=cards[Math.min(cards.length,columns*SHORTS_ROW_OFFSET)]||null;
-   const inline=`<section class="shorts-inline" id="shortsInline"><h2 class="disp">竖屏 <span class="mono shortscount">${d.total.toLocaleString()} 个</span><button class="shorts-enter" type="button">${icon('play')}<span>进入沉浸模式</span></button></h2><div class="srow">${d.items.map(it=>cardHtml(it,'scard')).join('')}</div></section>`;
-  if(anchor)anchor.insertAdjacentHTML('beforebegin',inline); else grid.insertAdjacentHTML('beforeend',inline);
-  const section=grid.querySelector('#shortsInline');
-  section.querySelector('.shorts-enter').onclick=()=>openTok();
-  wireCards(section.querySelector('.srow'),openTok); wireDrag(section.querySelector('.srow'));
+  const html=`<section class="shorts-inline"><h2 class="disp">竖屏 <span class="mono shortscount">${
+    d.total.toLocaleString()} 个</span><button class="shorts-enter" type="button">${
+    icon('play')}<span>进入沉浸模式</span></button></h2><div class="srow">${
+    d.items.map(it=>cardHtml(it,'scard')).join('')}</div></section>`;
+  const strip=splitGridForShorts(html,addedFrom);
+  if(!strip)return;
+  shortsOffset=d.has_more===false?0:shortsOffset+SHORTS_BATCH;
+  strip.querySelector('.shorts-enter').onclick=()=>openTok();
+  wireCards(strip.querySelector('.srow'),openTok); wireDrag(strip.querySelector('.srow'));
+}
+/* 从行边界剪开当前这段视频：剪点之后的卡整段搬进新的 `.grid`，竖屏带插在两段之间。
+   只在行边界上剪，否则上一行会被截断留下一段空白；两端各留至少一行，
+   剪在头尾就成了「置顶」或「垫底」，不是穿插。 */
+function splitGridForShorts(html,addedFrom){
+  const section=lastGridSection();
+  const cards=[...section.children].filter(x=>x.matches('.card[data-id]'));
+  const columns=Math.max(1,getComputedStyle(section).gridTemplateColumns.split(' ').length);
+  const boundaries=[];
+  for(let i=Math.max(columns,Math.ceil(Math.max(0,addedFrom)/columns)*columns);i<cards.length;i+=columns)
+    boundaries.push(i);
+  if(!boundaries.length)return null;
+  const at=cards[boundaries[Math.floor(Math.random()*boundaries.length)]];
+  const tail=document.createElement('div');tail.className='grid';
+  for(let node=at;node;){const move=node;node=node.nextElementSibling;tail.append(move)}
+  section.after(tail);
+  tail.insertAdjacentHTML('beforebegin',html);
+  return tail.previousElementSibling;
 }
 
 /* ── 就地展开播放 ── */
@@ -7065,7 +7187,7 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
         <div class="stitle">${javTitleHtml(it)}${partLabelBadge(it,queueContext)}${it.location==='online'?'':`<span class="srctools detailtitletools">${sourceToolButtons(it.id)}</span>`}</div></div>
       ${it.location==='online'?'':`<span class="srcstate detailtitlestate" aria-live="polite"></span>`}
       <div class="smeta mono">
-        <span class="detailmetaitem">${icon('monitor')}<span>${it.width||'?'}×${it.height||'?'}</span></span>
+        <span class="detailmetaitem">${icon('ratio')}<span>${it.width||'?'}×${it.height||'?'}</span></span>
         <span class="detailmetaitem">${icon('hard-drive')}<span>${fmtSize(it.size||0)}</span></span>
         ${it.release_date?`<span class="detailmetaitem">${icon('calendar')}<span>${esc(it.release_date)}</span></span>`:''}</div>
       <div class="detailidentity">${identityRows||`<div class="identityrow"><span></span><span class="ilabel">归属</span><span>${esc(who)}</span></div>`}</div>
@@ -7594,7 +7716,6 @@ async function tokNext(d){
   if(tokIdx<0)tokIdx=tokList.length-1;
   await tokShow(d);
 }
-$('#tokBtn').onclick=()=>openTok();
 $('#immerseBtn').onclick=()=>openTok();
 
 $('#searchBtn').onclick=()=>{const s=$('.search');s.classList.toggle('open');
@@ -7860,7 +7981,7 @@ function wireDrag(el){
 }
 /* `#count` 一起登记：窄屏下排序筛选整行由 `.count` 自己横向滚动，而它没有滚动条，
    不接拖动和滚轮就只剩看得见够不着的半个按钮。 */
-function wireAllDrag(){['#tagbar','#srow','#nrow','#count'].forEach(s=>wireDrag($(s)));
+function wireAllDrag(){['#tagbar','#nrow','#count'].forEach(s=>wireDrag($(s)));
   document.querySelectorAll('.tier').forEach(wireDrag)}
 
 /* 目录页（首页 + 四个筛选态）：筛选全部从 URL 读，路径只决定初始筛选态。

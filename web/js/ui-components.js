@@ -254,6 +254,126 @@ export function wireScrollers(root=document){
   });
 }
 
+/** 挂覆盖式滚动条的滚动容器。列表只写在这一处，样式那边认的是挂上之后的属性。 */
+const OVERLAY_SCROLLERS=[
+  '.settingsscroll','.sidecontent','.tagpickbody','.mixlist','.playlistpicklist','.playerstats',
+  '.vjs-peach-settings-menu','.geist-scroller-container','.metricstrip','.tastesummaries',
+  '.insighttabs','.insightstorage','.skeletondashstrip','.followpagination','.linktablewrap',
+].join(',');
+
+/**
+ * 覆盖式滚动条：滑块浮在内容上，一列宽度都不占。
+ *
+ * 已有的 `.geist-scroller` 解决的是另一半问题——它用两端渐隐说明「还能往下」，
+ * 但没有滑块，读不出这一列有多长、自己停在哪儿，而且要求内容套进它自己的包装层。
+ * 这里只往既有滚动容器的父元素上挂轨道，不动内容结构，两者可以叠加使用。
+ *
+ * 轨道必须是容器的兄弟：跟着内容一起滚的轨道等于没有轨道。宿主因此得是定位祖先，
+ * 而且不一定和容器一样大（`.settingscard` 还含着标题栏），所以轨道的位置每次都按
+ * 两个 rect 量出来，不假设它们同框。两条轴各一条轨道，谁溢出谁显示——同一个容器
+ * 可能在不同版式下换轴（`.mixlist` 在 mixgrid 里就是横滚）。
+ * 整页那一条是唯一的例外：`html` 没有元素父级，轨道挂进 body 并由 `.page` 改成
+ * fixed，位置只认视口，不用量。
+ * 几何按 2026-09-05 实测 vercel.com 侧栏：
+ * 滑块长 = 可视长 / 内容长 × 轨道长，位移 = 滚动进度 × (轨道长 − 滑块长)。
+ * 返回一个手动重算函数，给那些既不改容器尺寸也不改子树的情形（例如换字体后重排）。
+ */
+export function attachOverlayScrollbar(container,{variant=''}={}){
+  if(!container||container.dataset.overlayScrollbar)return null;
+  const root=container===document.documentElement;
+  const host=root?document.body:container.parentElement;
+  if(!host)return null;
+  container.dataset.overlayScrollbar='true';
+  // 轨道按宿主的内边距框定位，static 的宿主会把它甩到更外层某个祖先上去。
+  if(!root&&getComputedStyle(host).position==='static')host.style.position='relative';
+  const lanes=(root?['y']:['y','x']).map(axis=>{
+    const track=document.createElement('div');
+    // 两个类名写全，别拼 `ov-${axis}`：样式表的选择器要能在源码里查到消费者。
+    track.className=`ovtrack ${axis==='y'?'ov-y':'ov-x'}${variant?` ${variant}`:''}`;
+    const thumb=document.createElement('div');
+    thumb.className='ovthumb';
+    track.append(thumb);
+    host.append(track);
+    return {axis,track,thumb};
+  });
+  const place=({axis,track})=>{
+    if(root)return;
+    const hostRect=host.getBoundingClientRect(),rect=container.getBoundingClientRect();
+    const left=rect.left-hostRect.left-host.clientLeft,top=rect.top-hostRect.top-host.clientTop;
+    if(axis==='y'){
+      track.style.top=`${top+8}px`;
+      track.style.height=`${Math.max(0,container.clientHeight-16)}px`;
+      track.style.right=`${host.clientWidth-left-container.clientWidth}px`;
+    }else{
+      track.style.left=`${left+8}px`;
+      track.style.width=`${Math.max(0,container.clientWidth-16)}px`;
+      track.style.bottom=`${host.clientHeight-top-container.clientHeight}px`;
+    }
+  };
+  const sync=()=>{
+    lanes.forEach(lane=>{
+      const {axis,track,thumb}=lane,vertical=axis==='y';
+      const size=vertical?container.clientHeight:container.clientWidth;
+      const content=vertical?container.scrollHeight:container.scrollWidth;
+      const range=content-size;
+      if(range<=1){track.hidden=true;return}
+      // 先显再量：藏起来的轨道长度是 0，拿它当「量不到」会把自己永久锁在隐藏态。
+      track.hidden=false;
+      place(lane);
+      const trackSize=vertical?track.clientHeight:track.clientWidth;
+      if(!trackSize)return;
+      // 短到抓不住的滑块等于没有滑块：内容特别长时给它一个下限，代价是滑块位置与
+      // 滚动进度不再严格线性，但可拖动比可换算重要。
+      const thumbSize=Math.max(24,Math.min(trackSize,size/content*trackSize));
+      const travel=trackSize-thumbSize;
+      const at=vertical?container.scrollTop:container.scrollLeft;
+      const offset=travel>0?at/range*travel:0;
+      thumb.style[vertical?'height':'width']=`${thumbSize}px`;
+      thumb.style.transform=`translate${vertical?'Y':'X'}(${offset}px)`;
+    });
+  };
+  (root?document:container).addEventListener('scroll',sync,{passive:true});
+  new ResizeObserver(sync).observe(container);
+  // 内容长短变了但容器盒子没变（抽屉重建、分区展开），容器自己的 ResizeObserver 一声不响。
+  // 整页那一条改看 body：它的高度就是内容高度，而在 documentElement 上挂 subtree 的
+  // MutationObserver 等于每渲染一张卡都强制一次重排。
+  if(root)new ResizeObserver(sync).observe(document.body);
+  else new MutationObserver(sync).observe(container,{childList:true,subtree:true});
+  lanes.forEach(({axis,track,thumb})=>track.addEventListener('pointerdown',event=>{
+    const vertical=axis==='y';
+    const trackRect=track.getBoundingClientRect(),thumbRect=thumb.getBoundingClientRect();
+    const travel=(vertical?trackRect.height-thumbRect.height:trackRect.width-thumbRect.width);
+    const range=vertical?container.scrollHeight-container.clientHeight
+      :container.scrollWidth-container.clientWidth;
+    if(travel<=0||range<=0)return;
+    const point=moved=>vertical?moved.clientY:moved.clientX;
+    const head=vertical?thumbRect.top:thumbRect.left,tail=vertical?thumbRect.bottom:thumbRect.right;
+    // 按在滑块上就保持按住的那一点，按在轨道空白处则把滑块中心挪过来。
+    const grab=point(event)>=head&&point(event)<=tail?point(event)-head
+      :(vertical?thumbRect.height:thumbRect.width)/2;
+    const origin=vertical?trackRect.top:trackRect.left;
+    const to=moved=>{const at=Math.max(0,Math.min(range,(point(moved)-origin-grab)/travel*range));
+      if(vertical)container.scrollTop=at;else container.scrollLeft=at};
+    const stop=()=>{track.classList.remove('dragging');
+      track.removeEventListener('pointermove',to);track.removeEventListener('pointerup',stop);
+      track.removeEventListener('pointercancel',stop)};
+    track.classList.add('dragging');
+    track.setPointerCapture(event.pointerId);
+    track.addEventListener('pointermove',to);
+    track.addEventListener('pointerup',stop);
+    track.addEventListener('pointercancel',stop);
+    to(event);
+    event.preventDefault();
+  }));
+  sync();
+  return sync;
+}
+
+/** 把这一批 DOM 里所有该有覆盖式滚动条的容器接上；重复调用只接新出现的那些。 */
+export function wireOverlayScrollbars(root=document){
+  root.querySelectorAll(OVERLAY_SCROLLERS).forEach(el=>attachOverlayScrollbar(el));
+}
+
 /**
  * Geist Switch：2–3 个互斥视图用共享 name 的一组 radio，不用 Toggle。
  *
@@ -373,13 +493,19 @@ export function wireAnchoredMenu(mount,toggle,menu){
      根本够不着。捕获阶段连菜单内部的滚动一并收得到，所以这里必须自己分开。 */
   const closeFromViewport=event=>{
     if(!(event.target instanceof Node&&menu.contains(event.target)))setOpen(false)};
+  /* 带 popover 的菜单进顶层。`position:fixed` 只在没有被祖先接管时才相对视口：祖先上
+     一个 transform、filter 或 backdrop-filter 就会成为它的包含块，算好的视口坐标于是
+     整体偏移，还要被那个祖先的 overflow 裁掉。设置面板的卡片正是这种祖先——入场动画的
+     fill-mode 让 transform 一直挂在上面——菜单于是开在看不见的地方，读起来就是「点不开」。 */
+  const inTopLayer=menu.hasAttribute('popover');
   const setOpen=open=>{
     if(open){
-      menu.hidden=false;position();
+      menu.hidden=false;if(inTopLayer)menu.showPopover();position();
       window.addEventListener('resize',position);
       window.addEventListener('scroll',closeFromViewport,{capture:true,passive:true});
     }else{
       menu.hidden=true;menu.style.left='';menu.style.top='';menu.style.maxHeight='';
+      if(inTopLayer&&menu.matches(':popover-open'))menu.hidePopover();
       window.removeEventListener('resize',position);
       window.removeEventListener('scroll',closeFromViewport,true);
     }
@@ -389,6 +515,67 @@ export function wireAnchoredMenu(mount,toggle,menu){
   mount.addEventListener('keydown',event=>{
     if(event.key==='Escape'&&!menu.hidden){setOpen(false);toggle.focus()}});
   return {setOpen,isOpen:()=>!menu.hidden};
+}
+
+/* Geist Select：站内每一个下拉都是它，没有一个走浏览器自带的 select 控件。
+
+   原生下拉的弹出层由操作系统画，不认站内色板：浅色主题下它要么跟着系统换成另一套灰白，
+   要么只能用 `color-scheme` 整个按回深色——设置面板里那七个此前就是被按成深色的，
+   白底页面上七块黑。2026-09-04 实测 vercel.com 后台：整站没有一个原生下拉，触发器是
+   button，面板是自绘 listbox，面板底色就是页面底色（浅色下纯白 --ds-background-100），
+   行高 36px、圆角 6px、行内边距 0 8px，悬停与选中都是 5% 中性填充。Peach 的行高走站内
+   已有的 --control-h（38px），面板与定位复用 .popmenu 和 wireAnchoredMenu。
+
+   `value`、`disabled` 和 `change` 三样按原生 select 的写法留在根元素上：调用方读写它跟
+   读写原生下拉一样，换掉的只是画法。 */
+export function selectFieldHtml(options,current,{label='',attr='',className=''}={}){
+  const chosen=options.find(([value])=>String(value)===String(current))||options[0]||['',''];
+  const rows=options.map(([value,text])=>
+    `<button type="button" role="option" data-select-option="${esc(value)}"
+      aria-selected="${String(value)===String(chosen[0])}" tabindex="-1">${icon('check')}<span>${esc(text)}</span></button>`).join('');
+  return `<div class="gselect${className?` ${esc(className)}`:''}" ${attr}>
+    <button type="button" class="gselectfield" data-select-trigger aria-haspopup="listbox"
+      aria-expanded="false" aria-label="${esc(label)}"><span data-select-label>${esc(chosen[1])}</span>${icon('chevron-down')}</button>
+    <div class="popmenu gselectmenu" role="listbox" aria-label="${esc(label)}" popover="manual" data-select-menu hidden>${rows}</div></div>`;
+}
+
+/** 接上 selectFieldHtml 画出来的一个下拉；返回的就是根元素，带 value / disabled。 */
+export function wireSelectField(root){
+  const trigger=root.querySelector('[data-select-trigger]');
+  const menu=root.querySelector('[data-select-menu]'),label=root.querySelector('[data-select-label]');
+  const options=()=>[...menu.querySelectorAll('[data-select-option]')];
+  const current=()=>menu.querySelector('[aria-selected="true"]');
+  /* 面板至少和触发器一样宽。菜单是 fixed 的，宽度不会自己跟着触发器走，而一个比触发器
+     还窄的面板看着不像同一个控件。这条要接在 wireAnchoredMenu 之前：它按当前宽度定位。 */
+  trigger.addEventListener('click',()=>{menu.style.minWidth=`${trigger.getBoundingClientRect().width}px`});
+  const anchored=wireAnchoredMenu(root,trigger,menu);
+  trigger.addEventListener('click',()=>{if(!menu.hidden)current()?.focus()});
+  const choose=value=>{
+    const picked=options().find(option=>option.dataset.selectOption===String(value));
+    if(!picked)return;
+    options().forEach(option=>{
+      option.setAttribute('aria-selected',String(option===picked));option.tabIndex=option===picked?0:-1});
+    label.textContent=picked.querySelector('span').textContent;
+  };
+  options().forEach(option=>{
+    option.onclick=()=>{
+      const changed=option.getAttribute('aria-selected')!=='true';
+      choose(option.dataset.selectOption);anchored.setOpen(false);trigger.focus();
+      if(changed)root.dispatchEvent(new Event('change',{bubbles:true}));
+    };
+    option.onkeydown=event=>{
+      if(event.key!=='ArrowDown'&&event.key!=='ArrowUp')return;
+      event.preventDefault();
+      const all=options(),at=all.indexOf(option);
+      all[(at+(event.key==='ArrowDown'?1:-1)+all.length)%all.length].focus();
+    };
+  });
+  if(current())current().tabIndex=0;
+  Object.defineProperty(root,'value',{configurable:true,
+    get:()=>current()?.dataset.selectOption??'',set:value=>choose(value)});
+  Object.defineProperty(root,'disabled',{configurable:true,
+    get:()=>trigger.disabled,set:value=>{trigger.disabled=!!value;if(value)anchored.setOpen(false)}});
+  return root;
 }
 
 /* Geist Modal：一次写操作落库前的确认。

@@ -89,6 +89,7 @@ const lucideIcons = new Map([
   ["computer", "computer"],
   // 配置页每行文件夹的「选择文件夹」：弹系统对话框去挑。`folder-open` 归「打开位置」，不兼任。
   ["folder-search", "folder-search"],
+  ["ratio", "ratio"], ["sun", "sun"], ["moon", "moon"],
 ]);
 
 // 自绘 symbol：没有上游可对，所以在这里逐个点名。下面那道分区检查要求雪碧图里

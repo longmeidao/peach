@@ -33,6 +33,9 @@ favicon 一律退回。实测七个 JAV 厂牌站，六个的 favicon 内容比�
 **够用就停，不够用就比大小。** 排在前面的来源更正式，但正式不等于清楚。取到的短边够
 `GOOD_ENOUGH_SHORT_EDGE` 就不再敲别人的门；到不了就把这条链接的其余来源问完，取明显
 更大的那枚（`BETTER_BY` 倍以上才算「明显」——114 和 119 谁大不该决定用谁的标）。
+**大不能压过形。** 顶替者还要不比被顶的那枚宽出 `ASPECT_SLACK` 倍：eltra.jp 的
+800×536 是皇冠加字，短边大出 1.79 倍，可 28 px 的小位要的是它那枚 300×300 的纯皇冠。
+两位各挑各的——大位另取这一趟最大的一枚，正是被小位嫌宽的那张。
 
 两条实测逼出来的规矩：
 
@@ -113,6 +116,11 @@ GOOD_ENOUGH_SHORT_EDGE = 360
 #: 标：那点差别在页面上看不出来，而来源的正式程度有差。bambi 声明的 16×16 对上
 #: 1000×1000 的头像才是该换的那种差距。
 BETTER_BY = 1.5
+
+#: 顶替者的内容比允许比被顶的那枚宽出多少。`MAX_CONTENT_ASPECT` 管的是「这还算不算
+#: 一枚方标」，这一条管的是同一趟里两枚都合格时谁更适合 28 px 的方框——那个尺寸下
+#: 一点点宽就是一行认不出的字母。
+ASPECT_SLACK = 1.1
 
 #: `logo` 位的指定来源，按 canonical_name。`icon` 位的覆盖在
 #: `site_icons.HOST_OVERRIDES`，两张表不能合并：那一张是「按主机发现图标」的例外，
@@ -280,26 +288,35 @@ def harvest_targets(padded: dict[str, dict[str, object]],
 #: 记成「无官网链接」，看起来像是漏采，其实是查都没查。
 ICON_LINK_KINDS = ("official", "catalog")
 
+#: 一条官网都没有时才走的兜底。刚从 LIGHT 拆出来的 EST 只有 `https://x.com/EST_prod`，
+#: 官网还没建，按上面那条它会永远停在「无官网链接」——一家真实存在、账本里有 3 位女优
+#: 的事务所，页面上却连一枚标识都没有。有 official／catalog 的一概不走这条：账本里
+#: 453 条社媒绝大多数挂在艺人身上，混进厂牌小标就成了运营的自拍。
+FALLBACK_LINK_KIND = "social"
+
 
 def studio_links(connection: sqlite3.Connection,
                  kind: str = "studio") -> dict[str, list[dict[str, str]]]:
-    """按 safe 文件名归拢这类实体的站点链接；社媒不算，那是另一条线的头像。
+    """按 safe 文件名归拢这类实体的站点链接；社媒只在没有官网时顶上。
 
     `kind` 是这一趟的实体种类。事务所和厂牌在这里没有区别：都是有官网、要在页面上
     顶一枚标识的公司，标识落盘按名字（`logo_key`）而不按种类，取图那条链也是同一条。
     """
-    placeholders = ",".join("?" * len(ICON_LINK_KINDS))
+    kinds = (*ICON_LINK_KINDS, FALLBACK_LINK_KIND)
+    placeholders = ",".join("?" * len(kinds))
     rows = connection.execute(
         "SELECT e.id, e.canonical_name, l.link_kind, l.url"
         " FROM entity e JOIN entity_link l ON l.entity_id = e.id"
         f" WHERE e.kind = ? AND l.link_kind IN ({placeholders})"
-        " ORDER BY e.canonical_name, l.id", (kind, *ICON_LINK_KINDS)).fetchall()
+        " ORDER BY e.canonical_name, l.id", (kind, *kinds)).fetchall()
     grouped: dict[str, list[dict[str, str]]] = {}
     for row in rows:
         grouped.setdefault(safe_name(row["canonical_name"]), []).append(
             {"entity_id": row["id"], "studio": row["canonical_name"],
              "link_kind": row["link_kind"], "url": row["url"]})
-    return grouped
+    return {safe: [entry for entry in entries if entry["link_kind"] in ICON_LINK_KINDS]
+            or entries
+            for safe, entries in grouped.items()}
 
 
 class Fetcher:
@@ -521,8 +538,17 @@ def _enough(found: list[tuple[bytes, str, str, str, str]]) -> bool:
 
 def _best(found: list[tuple[bytes, str, str, str, str]]
           ) -> tuple[bytes, str, str, str, str]:
-    """这一趟收到的候选里用哪一枚：来源优先，除非后面有明显更大的。"""
-    ranked = max(found, key=lambda item: _short_edge(item[3]))
+    """这一趟收到的候选里小位用哪一枚：来源优先，除非后面有明显更大、又不更宽的。
+
+    「更大」单看短边会挑错人。eltra.jp 声明的 `ELTRA_icon.png` 是 300×300 的皇冠，
+    header 里那张 `ELTRA_logo.png` 是 800×536 的皇冠加 ELTRA 字样（内容比 1.50）。
+    短边 536 比 300 大出 1.79 倍，可小位是 28 px 的方框，1.50 比的那张装进去
+    只剩一行认不出的字母，而 300 那枚本来就是照着这个尺寸画的。所以宽出
+    `ASPECT_SLACK` 倍以上的候选没有资格顶替，多大都不行。
+    """
+    limit = _aspect(found[0][4]) * ASPECT_SLACK
+    fit = [item for item in found if not limit or _aspect(item[4]) <= limit]
+    ranked = max(fit or found[:1], key=lambda item: _short_edge(item[3]))
     first = max(1, _short_edge(found[0][3]))
     return ranked if _short_edge(ranked[3]) >= first * BETTER_BY else found[0]
 
@@ -533,6 +559,14 @@ def _short_edge(size: str) -> int:
     if len(parts) != 2 or not all(part.isdigit() for part in parts):
         return 0
     return min(int(part) for part in parts)
+
+
+def _aspect(text: str) -> float:
+    """`"1.50"` → 1.5；量不到就是 0，表示「这一枚没有理由被判宽」。"""
+    try:
+        return float(text)
+    except (TypeError, ValueError):
+        return 0.0
 
 
 class EntityScope:
@@ -590,24 +624,28 @@ def _store(candidate_dir: Path, name: str, payload: bytes) -> Path:
 
 
 def _made_rows(safe: str, target: dict[str, str], entry: dict[str, str],
-               policy: "SquareMark", found: tuple[bytes, str, str, str, str],
+               policy: "SquareMark", found: list[tuple[bytes, str, str, str, str]],
                candidate_dir: Path
                ) -> tuple[dict[str, object], dict[str, object] | None]:
-    """做成了一枚方标：出 `icon` 行，再看大位能不能从这一趟的收获里一并出。
+    """做成了方标：小位取 `_best`，大位从这一趟的收获里另挑，两位各按各的尺寸挑。
 
     尺寸和内容比是取到那一刻从 `policy` 记下来的，不在这里现读：大位还要接着用同一个
     `policy` 去翻站点的字标，翻完那两个字段说的就是别的图了。
     """
-    made, source, evidence, size, aspect = found
+    chosen = _best(found)
+    made, source, evidence, size, aspect = chosen
     path = _store(candidate_dir, f"{safe}.png", made)
     icon = _row(safe, target, entry, ICON, OK, url=source, mark_size=size,
                 content_aspect=aspect, sha256=hashlib.sha256(made).hexdigest(),
                 candidate=str(path), evidence=evidence)
-    return icon, hunt_logo_row(safe, target, entry, icon, policy, made, candidate_dir)
+    return icon, hunt_logo_row(safe, target, entry, icon, policy, chosen, found,
+                               candidate_dir)
 
 
 def hunt_logo_row(safe: str, target: dict[str, str], entry: dict[str, str],
-                  icon: dict[str, object], policy: "SquareMark", made: bytes,
+                  icon: dict[str, object], policy: "SquareMark",
+                  chosen: tuple[bytes, str, str, str, str],
+                  found: list[tuple[bytes, str, str, str, str]],
                   candidate_dir: Path) -> dict[str, object] | None:
     """小位做成之后，大位从同一趟的收获里出，没有指定来源也不留空。
 
@@ -618,16 +656,24 @@ def hunt_logo_row(safe: str, target: dict[str, str], entry: dict[str, str],
     清楚的那张两个位置都顶。两条都够不着 `MIN_LOGO_SHORT_EDGE` 就照记一行不装，
     大位会回落到 `<safe>.img`。
 
+    站点的完整标识不一定宽到进 `policy.wordmark`：eltra.jp 那张 800×536 的皇冠加
+    ELTRA 字样内容比只有 1.50，两道闸门都过，进的是 `found`。它太宽当不了小位的图标，
+    却正是大位要的那一张，所以这一趟收到的最大一枚排在小位那枚前面。
+
     已经有 `<safe>.img` 的一律不出这一行。那张多半正是这个厂牌的完整字标（补白名单
     上的每一家都是），而 `.logo.img` 在解析顺序里排在它前面——出这一行等于拿一枚
     28 px 用的方标把大位上本来对的那张字标顶掉。空着才需要补，不空的别动。
     """
     if target["installed"]:
         return None
+    made = chosen[0]
+    biggest = max(found, key=lambda item: _short_edge(item[3]))
     candidates: list[tuple[bytes, str, str, str]] = []
     if policy.wordmark is not None:
         candidates.append((policy.wordmark, policy.wordmark_size, "站点自己的字标",
                            policy.wordmark_url or str(icon["url"])))
+    if biggest[0] is not made:
+        candidates.append((biggest[0], biggest[3], "这一趟取到的最大一枚", biggest[1]))
     candidates.append((made, str(icon["mark_size"]), "与 icon 位同一枚方标",
                        str(icon["url"])))
     for payload, size, origin, url in candidates:
@@ -664,12 +710,15 @@ def icon_row(safe: str, target: dict[str, str], entries: list[dict[str, str]],
     是 119×119，而它 Instagram 的头像是 1000×1000——按「第一枚合格的就用」会把那张
     糊的装上去，页面上一眼就看得出来。
 
+    没有官网、只登记得到社媒的公司走 `FALLBACK_LINK_KIND`：那条链接本身就是账号主页，
+    直接取它的头像，不问声明的图标和 header——X 那两样对每个账号都一样。
+
     第二个返回值是同一趟带出来的 `logo` 行：走字标补白时是那张补白图，做成方标时由
     `hunt_logo_row` 决定，都没有就是 None。
     """
     if not entries:
         return _row(safe, target, None, ICON, SKIP,
-                    evidence="账本里这个厂牌没有 official／catalog 链接"), None
+                    evidence="账本里这个厂牌一条链接都没有"), None
     attempts: list[str] = []
     reachable = False
     policy = SquareMark(faces)
@@ -677,6 +726,16 @@ def icon_row(safe: str, target: dict[str, str], entries: list[dict[str, str]],
     for entry in entries:
         before = getattr(fetch, "fetched", 0)
         found: list[tuple[bytes, str, str, str, str]] = []
+        if entry["link_kind"] == FALLBACK_LINK_KIND:
+            got = first_mark(avatar_urls(entry["url"], fetch), fetch, policy)
+            if got:
+                found.append((got[0], got[1], "账本里登记的社媒头像",
+                              policy.size, policy.aspect))
+            if found:
+                return _made_rows(safe, target, entry, policy, found, candidate_dir)
+            reachable = reachable or getattr(fetch, "fetched", 0) > before
+            attempts.append(entry["url"])
+            continue
         made = site_icons.best_mark(
             entry["url"], fetch, policy,
             accept=scope if shares_its_host(entry["url"]) else None)
@@ -703,7 +762,7 @@ def icon_row(safe: str, target: dict[str, str], entries: list[dict[str, str]],
                     found.append((got[0], got[1], f"{profile} 的头像",
                                   policy.size, policy.aspect))
         if found:
-            return _made_rows(safe, target, entry, policy, _best(found), candidate_dir)
+            return _made_rows(safe, target, entry, policy, found, candidate_dir)
         reachable = reachable or getattr(fetch, "fetched", 0) > before
         attempts.append(entry["url"])
 
