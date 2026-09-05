@@ -3948,6 +3948,17 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertCode("const roster=kind==='agency'?(d.related_performers||[]):[];")
         self.assertCode("const related=roster.length?'':(d.related_performers||[]).map(")
 
+    def test_a_company_cell_is_square_because_it_holds_a_mark_not_a_face(self):
+        """3:4 是给脸留的形状，方标铺进去左右各被 `object-fit:cover` 裁掉四分之一。"""
+        self.assertCode(
+            "const cells=entityKind==='studio'||entityKind==='agency'?'company':'people';")
+        self.assertPageContains('<div class="igrid" data-cells="${cells}" data-layout="${')
+        self.assertPageContains(
+            '.igrid[data-cells="company"][data-layout="big"] .icell .ring{aspect-ratio:1}')
+        # 省下的高度换成宽度：同一屏里公司格比人格宽一档。
+        self.assertPageContains('.igrid[data-cells="company"]{grid-template-columns:'
+                                'repeat(auto-fill,minmax(180px,1fr))}')
+
     def test_the_roster_and_the_media_keys_are_one_button_group(self):
         """三个键问的是同一件事——这一页现在显示什么，所以在同一组里、同一个尺寸。"""
         self.assertCode(
@@ -6172,8 +6183,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("${people?peopleLayoutButtons():''}")
         self.assertPageContains(
             "wireIconSwitch($('#index'),'data-people-layout',setPeopleIndexLayout);")
-        self.assertPageContains(
-            '`<div class="igrid" data-layout="${peopleIndexLayout()}">${peopleHtml(d.items)}</div>`')
+        self.assertCode('`<div class="igrid" data-cells="${cells}" data-layout="${\n'
+                        '    peopleIndexLayout()}">${peopleHtml(d.items)}</div>`')
         self.assertPageContains("peopleLayout:'big'", "默认与 JAV 版式、密度一致：大图为主")
 
     def test_the_big_people_layout_only_stretches_the_frame_it_does_not_change_columns(self):

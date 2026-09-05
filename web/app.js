@@ -5319,7 +5319,11 @@ async function openIndex(kind,q,push=true,refine=false){
   const tagHtml=items=>tagIndexMode==='alphabet'?`<div class="alphabet">${tagGroups(items)}</div>`:`<div class="tagwall index-tags">`+items.map(x=>`<button class="tg ${onlineTags?'r34-'+(x.cat||'unknown'):(x.cat||'general')}" data-k="${esc(x.k)}" aria-pressed="${selectedIndexTags.has(x.k)}"
         >${esc(tagLabel(x.k))}
         <span class="n">${x.n.toLocaleString()}</span></button>`).join('')+`</div>`;
-  const body=people?`<div class="igrid" data-layout="${peopleIndexLayout()}">${peopleHtml(d.items)}</div>`:tagHtml(tagItems);
+  /* 公司格和人格在大图版式下要的形状不一样：竖幅是给脸留的，方标进去左右各被裁掉
+     一截。这一格里装的是什么，只有这里知道，所以在这里写进 DOM。 */
+  const cells=entityKind==='studio'||entityKind==='agency'?'company':'people';
+  const body=people?`<div class="igrid" data-cells="${cells}" data-layout="${
+    peopleIndexLayout()}">${peopleHtml(d.items)}</div>`:tagHtml(tagItems);
   const categoryOptions=onlineTags?ONLINE_TAG_CATEGORIES:TAG_CATEGORIES;
   const visibleTagCategories=categoryOptions.filter(([key])=>key==='all'||Number(d.categories?.[key]||0)>0);
   const categoryFilters=kind==='tags'?`<div class="tagfilters" aria-label="标签类型">${visibleTagCategories.map(([key,label])=>

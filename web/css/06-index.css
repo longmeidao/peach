@@ -25,6 +25,11 @@ body.entity-open .index{overflow-x:visible}
 .igrid[data-layout="big"] .icell .ring{width:100%;height:auto;aspect-ratio:3/4;
   border-radius:var(--surface-radius)}
 .igrid[data-layout="big"] .icell .nm{font-size:var(--fs-sm)}
+/* 公司那一格里是一枚标识。竖幅是给脸留的形状：方标铺进 3:4 的框，`object-fit:cover`
+   左右各裁掉四分之一，SOD 和 S1 的字就顶在边上。方框一个像素都不裁，同一列宽下
+   标识反而更大；列也放宽一档，省下的高度换成宽度。 */
+.igrid[data-cells="company"]{grid-template-columns:repeat(auto-fill,minmax(180px,1fr))}
+.igrid[data-cells="company"][data-layout="big"] .icell .ring{aspect-ratio:1}
 .index .ihead .iconswitch{flex:none}
 .tagwall{display:flex;flex-wrap:wrap;gap:7px}
 /* 页头这几组控件并排站着，得是同一块板：底色和 `--ground` 只差四级灰的话，剩下能看见的
