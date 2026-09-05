@@ -34,7 +34,8 @@ LOCATIONS = {"local": (r"R:\media",), "115": ("B:/",), "pikpak": ("A:/",)}
 
 def _roots(table):
     """测试里写单个字符串更顺手；设置层一律是与声明根按序对应的元组。"""
-    return {key: (value,) if isinstance(value, str) else tuple(value) for key, value in table.items()}
+    return {key: ((value,) if value else ()) if isinstance(value, str) else tuple(value)
+            for key, value in table.items()}
 
 
 def with_media(mounts, locations=None):
@@ -106,6 +107,12 @@ class LocationResolutionTests(unittest.TestCase):
 
 class MountSourceTests(unittest.TestCase):
     """挂载表按来源 ID 取自设置文件；`PEACH_MEDIA_MOUNTS` 仍然压过它。"""
+
+    def test_empty_source_uses_the_settings_parser_shape(self):
+        with with_media({"local": "/mnt/res", "115": "", "pikpak": ""}):
+            with patch.dict("os.environ", {MOUNTS_ENV: ""}):
+                self.assertEqual(settings_file.active().mounts["115"], ())
+                self.assertEqual(location_mounts(), {"local": (Path("/mnt/res"),)})
 
     def test_settings_file_supplies_the_base_mapping(self):
         with with_media({"local": "/mnt/res"}):

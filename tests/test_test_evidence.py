@@ -110,6 +110,18 @@ class VerificationTests(unittest.TestCase):
         (self.repo / "README.md").unlink()
         self.assertNotEqual(baseline, evidence.snapshot(self.repo))
 
+    def test_repeated_import_path_preserves_dependency_identity(self):
+        site = self.root / "site"
+        metadata = site / "peach_evidence_probe-1.0.dist-info" / "METADATA"
+        metadata.parent.mkdir(parents=True)
+        metadata.write_text("Metadata-Version: 2.1\nName: peach-evidence-probe\nVersion: 1.0\n")
+        with mock.patch.object(sys, "path", [str(site), *sys.path]):
+            baseline = evidence.environment(self.repo)
+            sys.path.insert(0, str(site))
+            self.assertEqual(evidence.environment(self.repo), baseline)
+            metadata.write_text("Metadata-Version: 2.1\nName: peach-evidence-probe\nVersion: 2.0\n")
+            self.assertNotEqual(evidence.environment(self.repo), baseline)
+
     def test_commit_metadata_preserves_content_record(self):
         worker, _ = self.worker()
         state = self.certify(worker)
