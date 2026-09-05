@@ -438,6 +438,16 @@ def _scan(args: argparse.Namespace) -> int:
     mounts = {location: tuple(str(mount) for mount in points)
               for location, points in location_mounts().items()}
     try:
+        if args.location == "configured" and args.root is None:
+            from .platform import root_online, translate_ledger_path
+            for location, declared in config.locations.items():
+                for root in declared:
+                    if not root_online(translate_ledger_path(root)):
+                        print(f"{location}：挂载点离线，未扫描", flush=True)
+                        continue
+                    scan.scan_location(args.db, location, root, declared_roots=config.locations,
+                                       mounts=mounts, report=lambda line: print(line, flush=True))
+            return 0
         if args.root is None:
             if args.location not in config.locations:
                 known = "、".join(sorted(config.locations)) or "（设置文件里一个都没有）"

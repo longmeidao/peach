@@ -493,6 +493,17 @@ class ScanCommandTests(unittest.TestCase):
         self.assertIn("✓ local: 2 文件", output)
         self.assertEqual(self._count(), 2)
 
+    def test_configured_scan_uses_each_online_source_id(self):
+        fixed = replace(settings_file.active(), locations={'115': ('B:/',), 'pikpak': ('A:/',)})
+        with mock.patch.object(settings_file, 'active', return_value=fixed), \
+             mock.patch('peach.platform.root_online', side_effect=[False, True]), \
+             mock.patch.object(cli.scan, 'scan_location') as scanner:
+            code, output = self._run(['scan', 'configured', '--db', str(self.db)])
+        self.assertEqual(code, 0)
+        self.assertIn('115', output)
+        self.assertEqual(scanner.call_count, 1)
+        self.assertEqual(scanner.call_args.args[1:3], ('pikpak', 'A:/'))
+
     def test_an_explicit_subdirectory_is_scanned_alone(self):
         code, _ = self._run(["scan", "local", str(self.media / "sub"), "--db", str(self.db)])
         self.assertEqual(code, 0)
