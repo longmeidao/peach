@@ -61,6 +61,7 @@ copyPackageFiles({
 });
 
 const lucideIcons = new Map([
+  ["building", "building"], ["briefcase", "briefcase"],
   ["home", "home"], ["sliders-horizontal", "sliders-horizontal"], ["search", "search"],
   ["layout-grid", "layout-grid"], ["square-check-big", "square-check-big"],
   ["refresh-cw", "refresh-cw"], ["user-round", "user-round"], ["tags", "tags"],

@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import os
 import re
+import socket
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -47,6 +48,7 @@ MIGRATIONS_DIR = settings_file.PROJECT_ROOT / "migrations"
 #: 「现在扫描」的一次性标记，落在 `<数据根>/state/`。设置页写它、托盘消费它：
 #: 设置页所在的引导服务在设置完成的那一刻就会被托盘停掉，扫描不能跑在它的进程里。
 SCAN_REQUEST_NAME = "first-scan.request"
+RELOAD_NAME = "configuration-reload.request"
 
 #: 监听范围的两个选项：(提交值, 说明)。题目文本和设置页的下拉都由它生成，
 #: 所以两处永远是同一批选项，改一个不会漏掉另一个。
@@ -125,6 +127,16 @@ def validate_port(raw: str) -> int:
     if not text.isdigit() or not 1 <= int(text) <= 65535:
         raise ValueError("端口要是 1 到 65535 之间的整数")
     return int(text)
+
+
+def check_available_port(port: int, current: int) -> None:
+    if port == current:
+        return
+    try:
+        with socket.socket() as candidate:
+            candidate.bind(("127.0.0.1", port))
+    except OSError as exc:
+        raise ValueError("这个端口已被占用，请换一个端口") from exc
 
 
 def validate_mdns_name(raw: str) -> str:

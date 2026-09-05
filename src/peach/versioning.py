@@ -98,6 +98,9 @@ class VersionManager:
 
     def inspect(self) -> VersionSnapshot:
         package_version = __version__
+        from .distribution import standalone
+        if standalone():
+            return VersionSnapshot(package_version, "测试包", "release", False, False, None)
         commit = self._text("rev-parse", "--short=8", "HEAD") or "unknown"
         branch = self._text("branch", "--show-current") or "detached"
         dirty = bool(self._text("status", "--porcelain"))
@@ -111,6 +114,9 @@ class VersionManager:
 
     def check(self) -> UpdateResult:
         before = self.inspect()
+        from .distribution import standalone
+        if standalone():
+            return UpdateResult("manual", "测试包请从 GitHub Releases 下载新版并完整解压替换程序目录；数据保存在用户目录。", before)
         if not before.remote_configured:
             return UpdateResult(
                 "unconfigured",

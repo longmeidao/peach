@@ -1,10 +1,15 @@
 ﻿param(
-    [string]$OutputDirectory = (Join-Path $PSScriptRoot '..\dist\Peach')
+    [string]$OutputDirectory = (Join-Path $PSScriptRoot '..\dist\Peach'),
+    [switch]$Standalone
 )
 
 $ErrorActionPreference = 'Stop'
 $ProjectRoot = Split-Path -Parent $PSScriptRoot
 $Python = Join-Path $ProjectRoot '.venv\Scripts\python.exe'
+if (-not (Test-Path -LiteralPath $Python)) {
+    $BuildCommonGit = (& git -C $ProjectRoot rev-parse --path-format=absolute --git-common-dir).Trim()
+    $Python = Join-Path (Split-Path -Parent $BuildCommonGit) '.venv\Scripts\python.exe'
+}
 $OutputPath = if ([System.IO.Path]::IsPathRooted($OutputDirectory)) {
     [System.IO.Path]::GetFullPath($OutputDirectory)
 } else {
@@ -43,14 +48,29 @@ if (-not (Test-Path -LiteralPath (Join-Path $ProjectRoot 'web\dist\peach-ui.js')
 $BuildPath = Join-Path $ProjectRoot 'build\windows'
 $WorkPath = Join-Path $BuildPath 'app'
 New-Item -ItemType Directory -Path $OutputPath -Force | Out-Null
-& $Python -m PyInstaller --noconfirm --clean --onefile --windowed --name Peach `
-    --distpath $OutputPath --workpath $WorkPath --specpath $BuildPath `
+$BuildMode = @('--onefile')
+$BuildDestination = $OutputPath
+if ($Standalone) {
+    $BuildMode = @('--onedir', '--add-data', "$(Join-Path $PSScriptRoot 'standalone.txt');.")
+    $BuildDestination = Split-Path -Parent $OutputPath
+}
+& $Python -m PyInstaller --noconfirm --clean @BuildMode --windowed --name Peach `
+    --distpath $BuildDestination --workpath $WorkPath --specpath $BuildPath `
+    --paths (Join-Path $ProjectRoot 'src') `
+    --collect-all curl_cffi --collect-all resvg_py `
+    --hidden-import uvicorn.logging --hidden-import uvicorn.loops.auto `
+    --hidden-import uvicorn.protocols.http.auto --hidden-import uvicorn.protocols.websockets.auto `
+    --hidden-import uvicorn.lifespan.on `
     --icon (Join-Path $ProjectRoot 'resources\peach.ico') `
     --add-data "$(Join-Path $ProjectRoot 'web');web" `
     --add-data "$(Join-Path $ProjectRoot 'migrations');migrations" `
     --add-data "$(Join-Path $ProjectRoot 'resources');resources" `
     (Join-Path $ProjectRoot 'scripts\build_app_entry.py')
 if ($LASTEXITCODE -ne 0) { throw 'Peach build failed.' }
+if ($Standalone) {
+    Copy-Item -LiteralPath (Join-Path $ProjectRoot 'docs/TESTING_DESKTOP.md') -Destination (Join-Path $OutputPath '开始使用.md')
+    Copy-Item -LiteralPath (Join-Path $ProjectRoot 'LICENSE') -Destination (Join-Path $OutputPath 'LICENSE.txt')
+}
 
 # 工作目录只服务这一次构建：`--clean` 已让下一次不复用它，留着只是几十 MB 的中间产物。
 if (Test-Path -LiteralPath $WorkPath) {

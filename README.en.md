@@ -88,7 +88,7 @@ The repository stores no media, databases, credentials, logs, `.venv`, build out
 
 ## Downloads
 
-Every `v<version>` tag publishes two archives on GitHub Releases: `Peach-<version>-windows-x64.zip` (a single-file `Peach.exe`) and `Peach-<version>-macos-<arch>.zip` (the menu-bar `Peach.app`). They are only the tray and menu-bar entry points, not a portable build: the service process still runs from the repository's `.venv`, so complete the three steps under "Installation" first, then place the extracted `Peach.exe` somewhere inside the repository (for example `dist\Peach\`); double-clicking the macOS `Peach.app` only kicks the LaunchAgent, which is registered with `./.venv/bin/python scripts/install_macos_agent.py install`. FFmpeg is still installed by you, as listed under Prerequisites. The tray's "Check for updates" only reports the version for these archives; it downloads and installs nothing (ADR-0012).
+Windows testers can download `Peach-<version>-windows-x64.zip` from [GitHub Releases](https://github.com/longmeidao/peach/releases), extract the complete folder, and double-click `Peach.exe`. Choose a media folder in the first-run page to get started. The runtime is bundled and access is local to this computer. Configuration is available from Settings and the tray menu. Install FFmpeg separately; replace the entire program folder when updating. See [Windows testing guide](docs/TESTING_DESKTOP.md). macOS users currently follow the source installation steps below.
 
 ## Installation
 

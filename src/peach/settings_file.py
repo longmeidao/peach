@@ -28,6 +28,8 @@ from dataclasses import dataclass, field, replace
 from functools import lru_cache
 from pathlib import Path
 
+from . import distribution
+
 #: 设置文件名。位置固定为数据根下，不做多候选路径搜索。
 SETTINGS_FILENAME = "config.toml"
 DATA_ROOT_ENV = "PEACH_DATA_ROOT"
@@ -90,6 +92,9 @@ def discover_data_root(
     explicit = (environ.get(DATA_ROOT_ENV) or "").strip()
     if explicit:
         return Path(explicit), True
+    if distribution.standalone():
+        candidate = distribution.user_data_root(environ)
+        return candidate, (candidate / SETTINGS_FILENAME).is_file()
     for parent in project_root.parents[:_SEARCH_DEPTH]:
         candidate = parent / DATA_ROOT_DIRNAME
         if candidate.is_dir():

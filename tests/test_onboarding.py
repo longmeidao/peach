@@ -432,5 +432,75 @@ class SetupPageTests(_Case):
         self.assertEqual(self._loaded().server.port, 8900, "第二次提交不得改掉已写好的设置")
 
 
+class StandaloneConfigurationTests(_Case):
+    def setUp(self):
+        super().setUp()
+        from dataclasses import replace
+        self.config = replace(self.config, locations={"local": str(self.media)},
+                              mounts={}, server=settings_file.ServerSettings(port=9123))
+        settings_file.write(self.config)
+        self.config = settings_file.load_config(environ={"PEACH_DATA_ROOT": str(self.config.data_root)})
+        self.addCleanup(mock.patch.stopall)
+        mock.patch("peach.distribution.standalone", return_value=True).start()
+        mock.patch("peach.settings_file.load_config", side_effect=lambda: settings_file._merge(
+            self.config.data_root, self.config.path, True, True,
+            settings_file._read_document(self.config.path), {})).start()
+
+    def client(self, *, token="test-token", address="127.0.0.1"):
+        from fastapi.testclient import TestClient
+        from peach.api import create_app
+        from peach.config import PeachSettings
+        return TestClient(create_app(PeachSettings(configured=True, token=token,
+                          db_path=self.config.data_root / "database" / "ledger.db")),
+                          client=(address, 12345), base_url="http://localhost")
+
+    def test_authenticated_configuration_preserves_values_and_requests_reload(self):
+        from peach.routes_configuration import RELOAD_NAME, revision
+        with self.client() as client:
+            headers = {"X-Token": "test-token"}
+            page = client.get("/configuration", headers=headers)
+            self.assertEqual(page.status_code, 200)
+            self.assertIn("媒体", page.text)
+            self.config.directory("state").mkdir(parents=True, exist_ok=True)
+            response = client.post("/configuration", headers=headers, data={
+                "revision": revision(self.config), "media_dir": str(self.media), "port": "9124"})
+            self.assertEqual(response.status_code, 200, response.text)
+            self.assertEqual(settings_file.load_config().server.port, 9124)
+            self.assertTrue(self.config.path.with_suffix(".previous.toml").is_file())
+            self.assertTrue((self.config.directory("state") / RELOAD_NAME).is_file())
+            self.assertFalse((self.config.directory("database") / "ledger.db").exists())
+
+    def test_settings_reject_unauthenticated_remote_cross_origin_and_stale_forms(self):
+        from peach.routes_configuration import revision
+        data = {"revision": revision(self.config), "media_dir": str(self.media), "port": "9124"}
+        before = self.config.path.read_bytes()
+        with self.client() as client:
+            self.assertEqual(client.get("/configuration", follow_redirects=False).status_code, 303)
+            response = client.post("/configuration", headers={"X-Token": "test-token", "Origin": "https://example.org"}, data=data)
+            self.assertEqual(response.status_code, 403)
+            response = client.post("/configuration", headers={"X-Token": "test-token"}, data={**data, "revision": "stale"})
+            self.assertEqual(response.status_code, 409)
+        with self.client(address="192.0.2.1") as client:
+            self.assertEqual(client.get("/configuration", headers={"X-Token": "test-token"}).status_code, 403)
+        self.assertEqual(before, self.config.path.read_bytes())
+
+    def test_standalone_tray_uses_its_own_binary_and_configured_loopback_port(self):
+        import sys
+        from peach.tray import _peach_executable, configured_service_specs, normal_url
+        self.assertEqual(_peach_executable(), Path(sys.executable).resolve())
+        spec, = configured_service_specs(self.config)
+        self.assertEqual(spec.health_url, "http://127.0.0.1:9123/healthz")
+        self.assertIn("9123", spec.command)
+        self.assertEqual(normal_url(self.config), "http://127.0.0.1:9123/")
+
+    def test_standalone_version_inspection_does_not_execute_git(self):
+        from peach.versioning import VersionManager
+        execute = mock.Mock(side_effect=AssertionError("Git must not run"))
+        manager = VersionManager(execute=execute)
+        self.assertEqual(manager.inspect().branch, "测试包")
+        self.assertEqual(manager.check().state, "manual")
+        execute.assert_not_called()
+
+
 if __name__ == "__main__":
     unittest.main()

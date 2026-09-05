@@ -32,7 +32,7 @@ from fastapi.responses import (
     Response,
 )
 
-from . import onboarding, settings_file
+from . import auth, distribution, onboarding, settings_file
 from .config import PROJECT_ROOT
 from .routes_auth import require_asset_auth, require_page_auth, set_auth_cookie
 from .web_state import FAVICON
@@ -46,29 +46,34 @@ _LOOPBACK = frozenset({"127.0.0.1", "::1", "localhost"})
 #: `/api/items`，而未配置的机器还没有数据库，页面只会是一屏红色报错。这一页因此
 #: 落在 SPA 外壳之外，不是一个 `frontend/` island（ADR-0022、docs/FRONTEND.md）。
 _SETUP_STYLE = """<style>
-body{margin:0;padding:3rem 1.5rem;background:#141216;color:#f2eef5;
-font:16px/1.7 system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif}
-main{max-width:36rem;margin:0 auto}h1{font-size:1.5rem;margin:0 0 1rem}
-code{background:#231f27;border-radius:.3rem;padding:.15rem .4rem}
-dt{color:#b9aec4;font-size:.9rem}dd{margin:0 0 .6rem;word-break:break-all}
-label{display:block;margin:1.4rem 0 .35rem;color:#e7dff0}
-input[type=text],input[type=number],select{width:100%;box-sizing:border-box;height:2.6rem;
-padding:0 .7rem;border:1px solid #3a3340;border-radius:.5rem;background:#0f0d12;
-color:#f2eef5;font:inherit}
-input:focus,select:focus{outline:none;border-color:#ff8b70}
-.note{margin:.35rem 0 0;color:#b9aec4;font-size:.88rem}
-.bad{margin:.35rem 0 0;color:#ff9a9a;font-size:.9rem}
-.check{display:flex;align-items:center;gap:.6rem;margin:1.6rem 0 0;color:#e7dff0}
-.check input{width:1.1rem;height:1.1rem;margin:0}
-button{margin-top:1.8rem;width:100%;height:2.8rem;border:0;border-radius:.6rem;
-cursor:pointer;background:linear-gradient(135deg,#ff9a76,#f2557b);color:#130609;
-font:700 15px system-ui,sans-serif}
-button:hover{filter:brightness(1.06)}
+*{box-sizing:border-box}
+body{margin:0;padding:48px 24px;background:var(--ground);color:var(--ink);
+font:16px/1.6 system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif}
+main{max-width:560px;margin:0 auto}h1{font-size:28px;font-weight:600;margin:24px 0 8px}
+h2{font-size:18px;font-weight:600;margin-top:32px;padding-top:24px;border-top:1px solid var(--line)}
+p{color:var(--ink-2)}a{color:var(--tungsten);text-underline-offset:3px}
+code{background:var(--surface);border-radius:var(--badge-radius);padding:2px 6px}
+dt{color:var(--muted);font-size:14px}dd{margin:0 0 12px;overflow-wrap:anywhere}
+label{display:block;margin:24px 0 8px;color:var(--ink)}
+input[type=text],input[type=number],select{width:100%;height:44px;
+padding:0 12px;border:1px solid var(--line);border-radius:var(--control-radius);
+background:var(--ground);color:var(--ink);font:inherit}
+:focus-visible{outline:2px solid var(--tungsten);outline-offset:3px}
+.note{margin:8px 0 0;color:var(--ink-2);font-size:14px}
+details{margin-top:24px}summary{cursor:pointer;min-height:44px;display:list-item}
+.bad{margin:8px 0 0;color:var(--drop);font-size:14px}
+.check{display:flex;align-items:center;gap:12px;min-height:44px;margin:24px 0 0}
+.check input{width:18px;height:18px;margin:0}
+button{margin-top:24px;width:100%;min-height:44px;border:1px solid var(--ink);
+border-radius:var(--control-radius);cursor:pointer;background:var(--ink);color:var(--ground);
+font:500 16px system-ui,sans-serif}
+button:hover{background:color-mix(in srgb,var(--ink) 88%,var(--ground));color:var(--ground)}
+@media(max-width:440px){body{padding:24px 20px}h1{font-size:24px}}
 </style>"""
 
 _SETUP_HEAD = ('<!doctype html>\n<html lang="zh-CN"><head><meta charset="utf-8">'
                '<meta name="viewport" content="width=device-width,initial-scale=1">'
-               '<meta name="color-scheme" content="dark">')
+               '<meta name="color-scheme" content="light">')
 
 #: 键 -> 输入控件类型。题目、默认值与顺序全部来自 `onboarding.questions()`，
 #: 这里只决定同一道题在浏览器里长什么样，不另抄一份字段清单。
@@ -76,7 +81,9 @@ _SETUP_WIDGETS = {"host": "select", "port": "number"}
 
 
 def _document(title: str, body: str) -> str:
-    return (f"{_SETUP_HEAD}<title>{title}</title>{_SETUP_STYLE}"
+    base = (PROJECT_ROOT / "web" / "css" / "01-base.css").read_text(encoding="utf-8")
+    tokens = re.search(r":root\s*\{[^}]+\}", base).group(0)
+    return (f"{_SETUP_HEAD}<title>{title}</title><style>{tokens}</style>{_SETUP_STYLE}"
             f"</head><body><main>{body}</main></body></html>\n")
 
 
@@ -84,7 +91,10 @@ def _field_html(
     question, value: str, error: str, note: str,
 ) -> str:
     key = escape(question.key, quote=True)
-    label = f'<label for="f-{key}">{escape(question.prompt)}</label>'
+    prompt = question.prompt
+    if distribution.standalone():
+        prompt = {"media_dir": "媒体文件夹", "port": "本机访问端口"}.get(question.key, prompt)
+    label = f'<label for="f-{key}">{escape(prompt)}</label>'
     if _SETUP_WIDGETS.get(question.key) == "select":
         options = "".join(
             f'<option value="{escape(choice, quote=True)}"'
@@ -94,7 +104,8 @@ def _field_html(
         control = f'<select id="f-{key}" name="{key}">{options}</select>'
     else:
         kind = _SETUP_WIDGETS.get(question.key, "text")
-        control = (f'<input id="f-{key}" name="{key}" type="{kind}" required '
+        control = (f'<input id="f-{key}" name="{key}" type="{kind}" required autocomplete="off" '
+                   f'aria-invalid="{"true" if error else "false"}" '
                    f'value="{escape(value, quote=True)}">')
     tail = f'<p class="note">{escape(note)}</p>' if note else ""
     tail += f'<p class="bad" role="alert">{escape(error)}</p>' if error else ""
@@ -114,19 +125,31 @@ def setup_page(
     errors = errors or {}
     asked = onboarding.questions(config, windows=windows)
     fields = []
+    if errors.get("data_root"):
+        fields.append(f'<p class="bad" role="alert">{escape(errors["data_root"])}</p>')
     for question in asked:
         value = values.get(question.key, question.default)
+        if distribution.standalone() and question.key in {"data_root", "host", "mdns_name"}:
+            value = {"data_root": str(config.data_root), "host": "1",
+                     "mdns_name": config.server.mdns_name}[question.key]
+            fields.append(f'<input type="hidden" name="{question.key}" value="{escape(value, quote=True)}">')
+            continue
         note = ""
         if question.key == "media_dir" and not windows:
             note = onboarding.mounts_explanation(value or "你在上面填的目录")
-        fields.append(_field_html(question, value, errors.get(question.key, ""), note))
+        field = _field_html(question, value, errors.get(question.key, ""), note)
+        if distribution.standalone() and question.key == "port":
+            opened = " open" if errors.get("port") else ""
+            field = f'<details{opened}><summary>高级设置</summary>{field}</details>'
+        fields.append(field)
     media_value = values.get("media_dir") or next(
         (q.default for q in asked if q.key == "media_dir"), "") or "这个目录"
     scan_label = onboarding.SCAN_PROMPT.format(target=media_value)
+    if distribution.standalone():
+        scan_label = "完成设置后扫描媒体文件夹"
     body = (
         "<h1>欢迎使用 Peach</h1>"
-        "<p>这台机器还没有数据根和设置文件。填完下面几项就能开始用；"
-        "每一项都已经填好默认值，不确定就直接提交。</p>"
+        "<p>选择一个媒体文件夹，开始整理你的馆藏。</p>"
         '<form method="post" action="/setup">'
         + "".join(fields)
         + f'<label class="check"><input type="checkbox" name="scan_now" value="y"'
@@ -142,6 +165,13 @@ def setup_done_page(applied, *, windows: bool, scan_requested: bool) -> str:
     """成功页：接下来会自动发生什么，以及口令在哪。口令本身不显示在页面上。"""
     tree = applied.tree
     config = applied.config
+    if distribution.standalone():
+        destination = escape(_normal_url(config), quote=True)
+        scan = "首次扫描已排队。" if scan_requested else "你可以稍后在配置界面开始扫描。"
+        return _document("Peach · 设置完成",
+                         '<h1>设置完成</h1><p>正在启动你的馆藏。' + scan + '</p>'
+                         f'<p><a href="{destination}">进入 Peach</a></p>'
+                         f'<meta http-equiv="refresh" content="8;url={destination}">')
     ledger = (f"账本已存在，没有动它：{tree.database}" if tree.ledger_existed
               else f"账本：{tree.database}（已应用 {tree.migrations} 个迁移）")
     ca = (f"本机 CA：{tree.ca_cert}" if tree.ca_cert is not None
@@ -277,6 +307,11 @@ async def setup_submit(request: Request):
     host = request.client.host if request.client else ""
     if host not in _LOOPBACK:
         raise HTTPException(status_code=403, detail="setup is loopback-only")
+    if distribution.standalone() and request.url.hostname not in _LOOPBACK:
+        raise HTTPException(status_code=403, detail="请使用本机地址打开设置")
+    origin = request.headers.get("origin")
+    if origin and origin.rstrip("/") != str(request.base_url).rstrip("/"):
+        raise HTTPException(status_code=403, detail="请从 Peach 设置页提交")
 
     windows = os.name == "nt"
     form = parse_qs((await request.body()).decode("utf-8", "replace"), keep_blank_values=True)
@@ -284,7 +319,15 @@ async def setup_submit(request: Request):
     scan_now = "scan_now" in form
 
     config = settings_file.active()
+    if distribution.standalone():
+        submitted.update(data_root=str(config.data_root), host="1",
+                         mdns_name=config.server.mdns_name)
     answers, errors = _read_answers(config, submitted, windows=windows)
+    if distribution.standalone() and answers is not None:
+        try:
+            onboarding.check_available_port(answers.port, request.url.port or 80)
+        except ValueError as exc:
+            errors["port"] = str(exc)
     if errors:
         return HTMLResponse(
             setup_page(config, windows=windows, values=submitted, errors=errors,
@@ -296,11 +339,19 @@ async def setup_submit(request: Request):
     resolved, _broken = onboarding.resolve_config(answers.data_root)
     if resolved.path.exists():
         raise HTTPException(status_code=409, detail="settings file already exists")
-    applied = onboarding.apply(resolved, answers, windows=windows)
+    try:
+        applied = onboarding.apply(resolved, answers, windows=windows)
+    except (OSError, RuntimeError) as exc:
+        return HTMLResponse(setup_page(config, windows=windows, values=submitted,
+                                      errors={"data_root": str(exc)}, scan_now=scan_now), status_code=400)
     if scan_now:
         onboarding.request_first_scan(applied.config)
-    return HTMLResponse(
-        setup_done_page(applied, windows=windows, scan_requested=scan_now))
+    response = HTMLResponse(setup_done_page(applied, windows=windows, scan_requested=scan_now))
+    if distribution.standalone():
+        response.set_cookie("tok", auth.read_token(applied.config.directory("secrets")),
+                            httponly=True, samesite="strict", max_age=31536000)
+        response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 def _read_answers(

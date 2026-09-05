@@ -129,7 +129,7 @@ React 渲染的规格页、用户截图这类给不出可重抓字节的实测�
 
 命令、顺序、失败表现和踩过的坑见 `docs/OPERATIONS.md`，这里只留边界。
 
-- Windows 日常入口是当前用户 Startup 里唯一的 `Peach.lnk`，指向项目内打包的托盘 EXE；它不是可移动发行版，服务进程仍由项目 venv 的 `peach.exe` 承担。刷新源码运行态走 `scripts/restart_windows_tray.py`。
+- 源码部署由项目 venv 持有服务，刷新入口为 `scripts/restart_windows_tray.py`。独立测试包自带运行环境，数据在用户目录；配置更改由托盘消费标记并重启子服务。
 - 「同步开发进度」（GitHub）和「同步 Ledger」（SMB 共享）是两条独立通道，任一方不可达都不该拖住另一方；服务只观察角色不自动复制。
 - 两台机器可以同时跑服务，但同时写入会很快冲突转只读；「接管 Ledger 写入」的短路与拒绝条件见 OPERATIONS。
 - `src/peach/__init__.py::__version__` 是版本唯一来源；自动更新只做 `merge --ff-only`，不 stash、不 rebase、不 `--force`，工作区脏或两边分叉就原样报出来交给人——并行工作树和主检出共用同一个对象库。
