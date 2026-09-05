@@ -507,28 +507,30 @@ class WebUiSourceTests(unittest.TestCase):
             rule = css[start:css.index("}", start)]
             self.assertIn("var(--ground)", rule, f"{name} 是页面上的一个面")
 
-    def test_filter_pills_light_up_instead_of_sinking_when_selected(self):
-        """筛选层三档一个方向：静止不填，悬停与选中都填更亮的 --ground，选中另加墨色实环。
+    def test_filter_pills_use_a_dashed_edge_until_they_take_effect(self):
+        """边的虚实说生不生效，填充说在不在上面那张面，两端与 vercel.com 逐值对齐。
 
-        药丸这一排坐在 --page 上，比它更亮的面是 --ground，明暗两个主题都成立。
-        选中填 --hover 只在暗色一档说得通：浅色里它是 5% 黑，比页面底还深，
-        读成被按凹进去，同一个控件于是有两套相反的语义。
-        2026-09-05 实测 vercel.com 部署页的筛选令牌是同一套：未生效透明，悬停与键盘
-        聚焦填 `#FFFFFF` 加 1px 的 8% 黑，只有展开时才换成更重的环。
+        2026-09-05 实测 vercel.com/<team>/~/deployments 的筛选令牌：未生效
+        `rgba(0,0,0,0)` 配 `1px dashed rgba(0,0,0,.21)`，已生效 `#FFFFFF` 配
+        `1px solid rgba(0,0,0,.08)`，两个数正是 `--field-ring-hover` 与 `--field-ring`。
+        悬停只把虚线拉成实线，是 Peach 自己加的中间档：Vercel 的令牌可叠加，悬停直接
+        预演成生效态没有代价；首页这一排是单选、恒有一颗生效，悬停也填就会同屏两颗选中。
         """
         css = stylesheet_source()
         for base in (".pill", ".brandpill"):
             start = css.index(chr(10) + base + "{")
             rule = css[start:css.index("}", start)]
-            self.assertIn("background:transparent", rule, f"{base} 静止态不填色")
-        self.assertPageContains(".pill:hover{background:var(--ground);color:var(--ink)}")
-        self.assertPageContains('.pill[aria-pressed="true"]{background:var(--ground);'
-                                "border-color:var(--ink-2);color:var(--ink)}")
-        self.assertPageContains('.brandpill[aria-pressed="true"]{background:var(--ground);'
-                                'color:var(--ink);border-color:var(--ink-2)}')
-        # 已经生效的交集筛选和选中的药丸是同一件事，填同一张面。
+            self.assertIn("background:transparent", rule, f"{base} 未生效不填色")
+            self.assertIn("1px dashed var(--field-ring-hover)", rule, f"{base} 未生效是虚线")
+        for base in (".pill", ".brandpill"):
+            self.assertPageContains(base + ":hover{border-style:solid;color:var(--ink)}")
+            self.assertPageContains(base + '[aria-pressed="true"]{border:1px solid var(--field-ring);'
+                                           "background:var(--ground);color:var(--ink)}")
+        # 已经生效的交集筛选和选中的药丸是同一件事，穿同一身。
         start = css.index(".combo .cb{")
-        self.assertIn("background:var(--ground)", css[start:css.index("}", start)])
+        applied = css[start:css.index("}", start)]
+        self.assertIn("background:var(--ground)", applied)
+        self.assertIn("1px solid var(--field-ring)", applied)
         # 没有 JS 会挂 .act，留着只会让人以为选中态有两套写法。
         self.assertPageLacks(".pill.act{")
 
@@ -3965,7 +3967,8 @@ class WebUiSourceTests(unittest.TestCase):
     def test_beeg_evidence_driven_surfaces_are_translucent_and_rail_is_continuous(self):
         self.assertPageContains(".brandpill{")
         self.assertPageContains("background:var(--overlay-5);border:1px solid var(--border-10)")
-        self.assertCode("border:1px solid var(--border-15);\n  border-radius:var(--pill-radius);background:transparent")
+        self.assertCode("border:1px dashed var(--field-ring-hover);\n"
+                        "  border-radius:var(--pill-radius);background:transparent")
         self.assertPageContains("--overlay-5:rgba(245,250,255,.05)")
         self.assertPageContains("--border-15:rgba(245,250,255,.15)")
         # 窄栏要有右分割线（用户 2026-08-26 明确要求）：无边框时两边背景太接近，
@@ -4710,8 +4713,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("setActionBusy(btn)")
 
     def test_follow_separator_uses_the_same_border_token_as_tags(self):
-        self.assertPageContains(".pill{flex:none;height:var(--filterItemH);padding:0 20px;border:1px solid var(--border-15)")
-        self.assertPageContains(".followfilters .sep{flex:none;width:1px;height:24px;background:var(--border-15)")
+        self.assertPageContains(".pill{flex:none;height:var(--filterItemH);padding:0 20px;border:1px dashed var(--field-ring-hover)")
+        self.assertPageContains(".followfilters .sep{flex:none;width:1px;height:24px;background:var(--field-ring-hover)")
 
     def test_entity_profile_uses_logo_links_without_a_redundant_back_row(self):
         self.assertPageContains('class="entitylinkicon"')

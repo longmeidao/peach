@@ -402,8 +402,12 @@ Peach 的两列侧栏导航按上表对齐：`.edge button` 与 `.dnav button` �
 | 态 | 背景 | 描边 |
 | --- | --- | --- |
 | 未生效（建议中的维度） | `rgba(0,0,0,0)` | `1px dashed rgba(0,0,0,.21)` |
+| 已生效（`Add Filter`、`Author lmd`） | `#FFFFFF` | `1px solid rgba(0,0,0,.08)` |
 | 悬停／键盘聚焦 | `#FFFFFF` | `1px solid rgba(0,0,0,.08)` |
 | 下拉展开 | `gray-200` | 实线 `gray-500` |
+
+四颗令牌的文字全是 `#171717` 14px/400，深浅只差在内部 label 那个 span；
+也就是生不生效**只由边的虚实和填不填色**说，不靠文字色。
 
 高 32px、圆角 `10ex`（视觉上等于全圆）。填色画在一个绝对定位的
 `div[data-pill-background]` 上，按钮本身不带背景，所以描边虚实可以和填色各自过渡。
@@ -413,3 +417,13 @@ Peach 的两列侧栏导航按上表对齐：`.edge button` 与 `.dnav button` �
 该页页面底色是 `#FAFAFA`（`bg-background-200`），`--ds-background-100` 才是纯白。
 所以「填成 `#FFFFFF` = 更亮 = 生效」是相对页面底色抬了一档。Peach 首页的 `--ground` 已经是纯白，
 同一套写法没有可填的更亮档；要照搬得先把页面底色降到 `--surface` 这一层。
+
+### Peach 对应（2026-09-05）
+
+`.pill` 与 `.brandpill` 两端逐值对齐：未生效 `background:transparent` +
+`1px dashed var(--field-ring-hover)`，已生效 `background:var(--ground)` +
+`1px solid var(--field-ring)`；浅色一档实测就是 `rgba(0,0,0,.21)` 与 `rgba(0,0,0,.08)`。
+中间加了一档 Vercel 没有的悬停：只把虚线拉成实线，不填色。原因是语义不同——
+Vercel 的令牌可叠加，悬停预演成生效态没有代价；Peach 首页那一排是单选、恒有一颗生效，
+悬停也填就会同屏出现两颗选中。文字色也没照搬：Vercel 一行只有四颗，Peach 那一排有二十来颗，
+全部提到 `--ink` 会让整条筛选比页面其它部分都重，所以未生效仍停在 `--muted`。

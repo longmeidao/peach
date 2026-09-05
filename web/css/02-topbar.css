@@ -59,14 +59,13 @@
   text-overflow:ellipsis;white-space:nowrap;max-width:76px}
 .av[aria-pressed="true"] .nm{color:var(--ink)}
 /* 二层：厂牌大药丸 */
-/* 静止态不填色，只留一圈发丝线，和下一层的 .pill 同一套写法。浅色主题里 --overlay-5
-   与 --hover 是同一个 5% 黑：填上它，一整排厂牌在没被选中时就已经顶着选中态的底色，
-   既比同屏其它控件重一档，也让真正的选中态无从表达。 */
+/* 生效与否的写法和下一层的 .pill 逐字相同：未选中虚线不填，选中实线加 --ground 填充。
+   两层是同一个筛选动作的两个维度，穿两套衣服的话，同一排里会读出两种「选中」。 */
 .brandpill{flex:none;display:flex;align-items:center;gap:8px;padding:6px 14px 6px 6px;
-  border-radius:var(--pill-radius);background:transparent;border:1px solid var(--border-10);cursor:pointer;
+  border-radius:var(--pill-radius);background:transparent;border:1px dashed var(--field-ring-hover);cursor:pointer;
   font-size:var(--fs-md);white-space:nowrap}
-.brandpill:hover{border-color:var(--border-15);background:var(--ground)}
-.brandpill[aria-pressed="true"]{background:var(--ground);color:var(--ink);border-color:var(--ink-2)}
+.brandpill:hover{border-style:solid;color:var(--ink)}
+.brandpill[aria-pressed="true"]{border:1px solid var(--field-ring);background:var(--ground);color:var(--ink)}
 .brandpill .mk{width:32px;height:32px;border-radius:50%;background:#CFCFCF;flex:none;
   display:flex;align-items:center;justify-content:center;font-size:var(--fs-xs);
   font-family:Bahnschrift,"Microsoft YaHei UI","Microsoft YaHei","PingFang SC",sans-serif;color:var(--ground);overflow:hidden;position:relative}

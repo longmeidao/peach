@@ -3,25 +3,28 @@
   border-bottom:1px solid transparent;background:transparent;
   display:flex;gap:7px;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;align-items:center}
 .tagbar::-webkit-scrollbar{display:none}
-.pill{flex:none;height:var(--filterItemH);padding:0 20px;border:1px solid var(--border-15);
+/* 边的虚实说「生不生效」，填充说「在不在上面那张面」，两件事各管一半。
+   2026-09-05 实测 vercel.com/<team>/~/deployments 的筛选令牌，两端是这样的：
+   未生效 `background:rgba(0,0,0,0)` + `1px dashed rgba(0,0,0,.21)`；
+   已生效 `background:#FFFFFF` + `1px solid rgba(0,0,0,.08)`。两个数就是 Peach 的
+   --field-ring-hover 与 --field-ring，暗色一档换成同位置的白透明度。
+   中间那档是 Peach 自己加的：Vercel 的令牌可叠加，悬停直接预演成生效态没有代价；
+   首页这一排是单选，恒有一颗生效，悬停也画成生效态就会同屏出现两颗选中。
+   所以悬停只把虚线拉成实线——「这颗点得动」——填充留给真正选中的那颗。
+   选中填 --hover 在浅色一档说不通：它是 5% 黑，比页面底还深，读成被按凹进去，
+   跟暗色一档「选中更亮」正好相反，同一个控件于是有两套相反的语义。 */
+.pill{flex:none;height:var(--filterItemH);padding:0 20px;border:1px dashed var(--field-ring-hover);
   border-radius:var(--pill-radius);background:transparent;display:inline-flex;align-items:center;justify-content:center;
   color:var(--muted);cursor:pointer;font-size:var(--fs-lg);white-space:nowrap;text-decoration:none}
-/* 三档全靠「填不填上面那张更亮的面」说话，明暗两个主题同一个方向：
-   静止不填，只有一圈发丝线；悬停填 --ground，读作「鼠标在这儿」；选中同样填 --ground，
-   但把发丝线换成 --ink-2 的实环，读作「你在这儿」。
-   选中填 --hover 在浅色一档说不通：它是 5% 黑，比页面底还深，读成被按凹进去了，
-   跟暗色一档「选中更亮」正好相反，同一个控件于是有两套相反的语义。
-   2026-09-05 实测 vercel.com 部署页的筛选令牌是同一套：未生效透明，悬停与键盘聚焦
-   填 #FFFFFF 加 1px 的 8% 黑，展开时才换成更重的环。 */
-.pill:hover{background:var(--ground);color:var(--ink)}
-.pill[aria-pressed="true"]{background:var(--ground);border-color:var(--ink-2);color:var(--ink)}
-.sep{flex:none;width:1px;height:19px;background:var(--border-15);margin:0 3px}
+.pill:hover{border-style:solid;color:var(--ink)}
+.pill[aria-pressed="true"]{border:1px solid var(--field-ring);background:var(--ground);color:var(--ink)}
+.sep{flex:none;width:1px;height:19px;background:var(--field-ring-hover);margin:0 3px}
 
 /* 多标签交集筛选条 */
 .combo{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:0 0 10px}
-/* 交集条上的每一颗都是已经生效的筛选，所以它们填的是和选中药丸同一张面。 */
+/* 交集条上的每一颗都是已经生效的筛选，所以穿的是选中药丸那身：实线边加 --ground 填充。 */
 .combo .cb{min-height:36px;box-sizing:border-box;display:inline-flex;align-items:center;gap:7px;padding:0 9px 0 12px;
-  border-radius:var(--tag-radius);border:1px solid var(--border-15);color:var(--ink-2);
+  border-radius:var(--tag-radius);border:1px solid var(--field-ring);color:var(--ink-2);
   background:var(--ground);font-size:var(--fs-xs)}
 .combo .cb b{cursor:pointer;opacity:.7;font-weight:400}
 .combo .cb b:hover{opacity:1}
