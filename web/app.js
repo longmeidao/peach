@@ -5497,10 +5497,31 @@ function peopleLayoutButtons(kind){
   return iconSwitchHtml('people-layout',(INDEX_TITLES[kind]||'艺人')+'索引版式',
     indexLayoutOptions(kind),peopleIndexLayout(),{attr:'data-people-layout'});
 }
+/* 换版式不重拼列表：重绘会丢掉滚动位置和已经取回的图，而两个版式之间真正不同的
+   只有标识那一档和「小图要不要按原尺寸摆」。已经回落到实体图的格子不动——那张图
+   不在 `/logo` 这条链上，改它的地址只会指向一个不存在的东西。 */
+function retargetCompanyMarks(root){
+  const big=peopleIndexLayout()==='big';
+  const rings=(root||document).querySelectorAll(
+    '.icell[data-kind="studio"] .ring,.icell[data-kind="agency"] .ring');
+  rings.forEach(ring=>{
+    if(big)ring.setAttribute('data-fit-native','');
+    else{
+      ring.removeAttribute('data-fit-native');
+      ['--markw','--markh','--markbg'].forEach(name=>ring.style.removeProperty(name));
+    }
+    const img=ring.querySelector('img'),src=(img&&img.getAttribute('src'))||'';
+    if(!src.startsWith('/logo?'))return;
+    const next=src.replace(/([?&]variant=)[^&]*/,`$1${big?'large':'icon'}`);
+    if(next!==src)img.setAttribute('src',next);
+  });
+}
 function setPeopleIndexLayout(value){
   appSettings.peopleLayout=value;
   saveSettings();
   document.querySelectorAll('.igrid').forEach(grid=>{grid.dataset.layout=peopleIndexLayout()});
+  // 大格与圆框要的标识不是同一档，换版式就得把已经在页面上的那批换过来。
+  retargetCompanyMarks($('#index'));
   // 框换了大小，「这张图要不要补底」得重算：图早加载完了，不会再自己发一次 load。
   refitNativeImages($('#index'));
   fitSkeleton($('#index'));
@@ -5517,13 +5538,16 @@ function personCellHtml(x,kind,countText){
   /* 公司这一格不退到代表作截图，和它自己的资料页保持同一条判据：那是某部片的画面，
      摆在公司名下就是替它拿别人的脸当门面，同一个厂牌两个页面还会各出各的图。 */
   const company=kind==='studio'||kind==='agency';
-  /* 公司这一格摆的是标识而不是脸：要 `large`（这个厂牌手上最清晰的那份），并且允许
-     小图按原尺寸摆——`data-fit-native` 的判据和度量都在 fitNativeImage 里。 */
+  /* 公司这一格摆的是标识而不是脸，而两个版式要的不是同一份：180 px 的大格要
+     `large`（这个厂牌手上最清晰的那份）并且允许小图按原尺寸摆，圆框要的仍是方标——
+     完整字标横过来塞进圆里，能看清的部分比方标还少。两档各发各的请求：服务端就在
+     本机，为省一次取图让圆框挂上字标不划算。度量在 fitNativeImage 里。 */
+  const bigMark=company&&peopleIndexLayout()==='big';
   return `<button class="icell" data-k="${esc(x.k)}" data-kind="${kind}">
-      <span class="ring"${company?' data-fit-native':''}${face?` style="--face:${face}"`:''}>${avatarInner(x.k,
+      <span class="ring"${bigMark?' data-fit-native':''}${face?` style="--face:${face}"`:''}>${avatarInner(x.k,
         ref?{id:ref,has_image:x.has_image}:null,
         x.has_avatar&&!company?x.rep:null, kind, x.mark, x.has_logo?x.k:'',
-        company?'large':'icon', company?null:x.avatar_focus)}</span>
+        bigMark?'large':'icon', company?null:x.avatar_focus)}</span>
       <span class="nm">${esc(x.k)}</span><span class="n">${countText}</span></button>`;
 }
 /* 厂牌与事务所是两种实体，不是同一份数据的两种筛选：厂牌出片，事务所出人，一位女优

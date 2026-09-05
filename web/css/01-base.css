@@ -309,10 +309,15 @@ button[aria-busy="true"],[role="button"][aria-busy="true"]{
    补底那一层是同一张图放大后模糊，往框外多铺一圈，让糊边落在 overflow 之外。 */
 [data-fit-native]{position:relative}
 /* 选择器点名这两处容器：`.icell .ring img` 与 `.entityportrait img` 各自写着
-   width:100% 和 object-fit:cover，光凭一个属性选择器压不过它们。 */
+   width:100% 和 object-fit:cover，光凭一个属性选择器压不过它们。
+
+   尺寸走 `--markw` / `--markh` 而不是 `width:auto`：还没度量过的图按 auto 是 0×0，
+   而 `loading="lazy"` 见到 0×0 的框就认定它不在视口里，于是永远不去取这张图——
+   图不来就没有 load、没有 load 就没有度量，两边互相等着，格子一直空着。缺省值
+   仍是铺满，度量之后才换成那张图自己的像素数。 */
 .icell .ring[data-fit-native] img,.entityportrait[data-fit-native] img{
-  width:auto;height:auto;margin:auto;object-fit:contain;z-index:1;
-  max-width:min(100%,var(--markw,100%));max-height:min(100%,var(--markh,100%))}
+  width:var(--markw,100%);height:var(--markh,100%);margin:auto;object-fit:contain;
+  max-width:100%;max-height:100%;z-index:1}
 [data-fit-native]::before{content:"";position:absolute;inset:-14%;z-index:0;
   background:var(--markbg,none) center/cover no-repeat;filter:blur(16px) saturate(1.4);
   opacity:.55;pointer-events:none}
