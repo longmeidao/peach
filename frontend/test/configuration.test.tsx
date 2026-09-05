@@ -55,6 +55,28 @@ describe('配置页取数', () => {
 });
 
 describe('媒体文件夹列表', () => {
+  it('Windows 只显示本机路径，CloudDrive 帮助跟随来源', async () => {
+    const { el } = mount({ windows: true, media_sources: [{location:'local',root:'D:/',path:'D:/'}] });
+    expect(el.textContent).not.toContain('Windows 中的对应路径');
+    expect(el.textContent).not.toContain('挂载帮助');
+    expect(el.querySelector('select')).toBeNull();
+    const select = el.querySelector<HTMLElement>('.gselect')!;
+    select.dataset.value = '115'; select.dispatchEvent(new Event('change')); await settle();
+    expect(el.textContent).toContain('挂载帮助');
+    expect(el.textContent).not.toContain('macOS');
+  });
+  it('映射路径与本机文件夹成组，挂载状态保留文字与颜色', () => {
+    const { el } = mount({windows:false, media_sources:[
+      {location:'115',root:'B:/',path:'/Volumes/115',online:true},
+      {location:'pikpak',root:'A:/',path:'/Volumes/PikPak',online:false},
+      {location:'local',root:'D:/',path:'/Volumes/Media'},
+    ]});
+    expect(el.querySelectorAll('.configdir')).toHaveLength(3);
+    expect(el.querySelectorAll('[aria-label^="Windows 中的对应路径"]')).toHaveLength(3);
+    expect(el.querySelector('.configstatus.online')?.textContent).toBe('在线');
+    expect(el.querySelector('.configstatus.offline')?.textContent).toBe('离线');
+    expect(el.querySelector('.configstatus.unknown')?.textContent).toBe('未检测');
+  });
   it('刷新挂载状态保留未保存的路径', async () => {
     const media_sources = [{ location: '115', path: 'B:/', root: 'B:/', online: false }];
     vi.stubGlobal('fetch', fetchMock(200, data({media_sources: [{ ...media_sources[0]!, online: true }]})));
@@ -112,7 +134,7 @@ describe('选择文件夹', () => {
     const { el } = mount();
     const pickButtons = el.querySelectorAll('.configpick');
     expect(pickButtons).toHaveLength(1);
-    expect(el.querySelector('.configdir')?.children[1]).toBe(pickButtons[0]);
+    expect(inputs(el)[0]?.nextElementSibling).toBe(pickButtons[0]);
     el.querySelector<HTMLButtonElement>('.configpick')?.click();
     await settle();
     const [url, init] = fetch.mock.calls[0] ?? [];

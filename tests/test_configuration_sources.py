@@ -10,6 +10,23 @@ from peach import media_configuration as media_config, onboarding, settings_file
 
 
 class MediaConfigurationTests(unittest.TestCase):
+    def test_setup_mapping_fields_follow_the_server_operating_system(self):
+        from peach import routes_pages
+        with tempfile.TemporaryDirectory() as directory:
+            config = settings_file.load_config(environ={"PEACH_DATA_ROOT": str(Path(directory).resolve())})
+            windows = routes_pages.setup_page(config, windows=True)
+            other = routes_pages.setup_page(config, windows=False)
+            self.assertNotIn('name="media_root"', windows)
+            self.assertNotIn('Windows 中的对应路径', windows)
+            self.assertIn('Windows 中的对应路径', other)
+            self.assertIn('wireSelectField', windows)
+            self.assertIn('new MutationObserver(enhance)', windows)
+            self.assertIn('id="i-chevron-down"', windows)
+            self.assertIn('.help a:hover{text-decoration:underline;', windows)
+            facts = dict(routes_pages.runtime_facts(config))
+            self.assertIn('操作系统', facts)
+            self.assertIn('设置文件', facts)
+
     def test_windows_cloud_sources_keep_policy_ids_and_offline_roots(self):
         roots, mounts, errors = media_config.validate([
             {"location": "115", "path": "B:/"}, {"location": "pikpak", "path": "A:/"},

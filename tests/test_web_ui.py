@@ -352,7 +352,7 @@ class WebUiSourceTests(unittest.TestCase):
         ".geist-progress", ".watchprogress", ".vjs-play-progress", ".vjs-progress-holder",
         ".range-fill", "slider-thumb", "range-thumb", ".trace .bar", ".tokbar",  # 进度与数据
         "#censorSetting:checked",  # Toggle 开态：Geist Toggle 实测轨道 rgb(0,112,243)
-        ".entitylink", ".flink", ".fsourcelink", ".fcred a", ".tokauthor>a",  # 真正的链接
+        ".entitylink", ".flink", ".fsourcelink", ".fcred a", ".tokauthor>a", ".confighelp a",  # 真正的链接
     )
 
     def test_tungsten_is_reserved_for_focus_links_progress_and_toggle(self):
@@ -432,7 +432,7 @@ class WebUiSourceTests(unittest.TestCase):
         白字不带描边，次级 `#FFFFFF` 底 `#171717` 字加 `0 0 0 1px #EBEBEB`。次级不是透明的
         ——压在 `#FAFAFA` 的操作条上时，透明会让按钮和条子连成一片，只剩一条边框在飘。
         """
-        self.assertCode(".geist-button{box-sizing:border-box;height:32px;padding:0 6px;"
+        self.assertCode(".geist-button{box-sizing:border-box;height:32px;padding:0 14px;"
                         "border:1px solid var(--line-soft);border-radius:var(--control-radius);"
                         "background:var(--ground);color:var(--ink);display:inline-flex;")
         self.assertPageContains(".geist-button:hover:not(:disabled){background:var(--surface)}")
@@ -2311,11 +2311,24 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("padding-top:max(18px,env(safe-area-inset-top))")
         self.assertPageContains("padding-bottom:max(18px,env(safe-area-inset-bottom))")
 
-    def test_links_never_use_underlines(self):
-        """Peach 的链接反馈只用颜色、背景或描边，任何表面都不画下划线。"""
+    def test_links_only_use_underlines_on_hover(self):
+        """文字链接允许悬停下划线，默认状态保持清爽。"""
         self.assertPageContains(".entitylink:hover{color:var(--ink);text-decoration:none}")
         self.assertPageContains(".idcell.entitylink:hover,.mav.entitylink:hover{text-decoration:none}")
-        self.assertPageLacks("text-decoration:underline")
+        self.assertPageContains(".confighelp a:hover{text-decoration:underline;")
+        for selector, declarations in re.findall(r'([^{}]+)\{([^{}]*)\}', stylesheet_source()):
+            if "text-decoration:underline" in declarations:
+                self.assertIn(":hover", selector)
+
+    def test_configuration_uses_fieldset_surfaces_and_shared_select(self):
+        css = stylesheet_source()
+        for selector, expected in ((".configfieldset", "background:var(--ground)"),
+                                   (".configfieldset>.geist-fieldset-footer", "background:var(--surface)")):
+            start = css.index(selector + "{")
+            rule = css[start:css.index("}", start)]
+            self.assertIn(expected, rule)
+            self.assertIn("solid var(--line)", rule)
+        self.assertIn(".configsourcecontrol .gselectfield{padding-inline:14px}", css)
 
     def test_every_identity_cell_can_carry_its_own_portrait(self):
         # 人物格走和顶栏圆头像同一个 entityFaceImg；这一格没有代表作头像可退，
@@ -4430,9 +4443,10 @@ class WebUiSourceTests(unittest.TestCase):
     def test_anchored_menu_fits_the_room_it_has_instead_of_covering_its_toggle(self):
         # 资料页的统称菜单挂在标题上，上方只有一条顶栏的距离、下方也未必够高。
         # 两侧都放不下时压到宽的那一侧、内部滚，不横跨触发钮。
-        self.assertCode("const downward=under>=menu.scrollHeight||under>=over;")
+        self.assertCode("const naturalHeight=menu.scrollHeight+menu.offsetHeight-menu.clientHeight;")
+        self.assertCode("const downward=under>=naturalHeight||under>=over;")
         self.assertCode(
-            "const height=Math.min(menu.scrollHeight,Math.max(downward?under:over,0));")
+            "const height=Math.min(naturalHeight,Math.max(downward?under:over,0));")
         self.assertCode("menu.style.maxHeight=height+'px';")
         self.assertCode(
             "menu.style.top=(downward?anchor.bottom+8:anchor.top-8-height)+'px'")

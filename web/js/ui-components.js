@@ -500,8 +500,9 @@ export function wireAnchoredMenu(mount,toggle,menu){
     /* 下方放不下就改到上方；两侧都放不下时取宽的那一侧，并把菜单压到那一侧的高度，
        内容在菜单内滚。不压高度的话它会横跨触发钮盖住自己，点开之后连改的是哪一个
        名字都看不见。 */
-    const downward=under>=menu.scrollHeight||under>=over;
-    const height=Math.min(menu.scrollHeight,Math.max(downward?under:over,0));
+    const naturalHeight=menu.scrollHeight+menu.offsetHeight-menu.clientHeight;
+    const downward=under>=naturalHeight||under>=over;
+    const height=Math.min(naturalHeight,Math.max(downward?under:over,0));
     menu.style.maxHeight=height+'px';
     menu.style.left=Math.max(8,Math.min(anchor.right-width,innerWidth-width-8))+'px';
     menu.style.top=(downward?anchor.bottom+8:anchor.top-8-height)+'px'};

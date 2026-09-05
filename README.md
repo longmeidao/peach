@@ -37,7 +37,7 @@ Peach 在一台机器上就能完整运行，目前处于 pre-1.0 阶段。Windo
 
 CloudDrive 在首次设置页与配置页按文件夹选择「CloudDrive · 115」或「CloudDrive · PikPak」。
 先在 CloudDrive 登录对应网盘并完成挂载，再把本机文件夹填入 Peach；Windows 使用盘符路径，
-macOS 同时填写本机挂载点及对应的 Windows 账本根目录。配置页的「挂载状态」可刷新检查各来源。
+macOS 在「本机文件夹」填挂载点，在「Windows 中的对应路径」填馆藏已有的盘符路径。配置页的「挂载状态」可刷新检查各来源。
 离线来源可保存，恢复挂载后再扫描。详细步骤见 [CloudDrive 配置](docs/OPERATIONS.md#clouddrive-配置)。
 
 Ledger 是资产、身份、行为和复核决定的真相源。CloudDrive、在线站点和 AI 都是适配器或候选来源，不能直接改写真相字段。

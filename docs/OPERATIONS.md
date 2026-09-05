@@ -17,9 +17,9 @@
    [CloudDrive 官方帮助](https://www.clouddrive2.com/help.html)。
 2. 在 Peach 首次设置页或独立包的「管理 → 配置」中添加文件夹，选择对应来源。
    115 使用来源 ID `115`，PikPak 使用 `pikpak`，本地磁盘使用 `local`；每个来源可有多个互不重叠的根。
-3. Windows 填本机盘符路径。macOS 的文件夹填本机挂载点，「账本根目录」填该来源原有的
+3. Windows 填本机盘符路径。macOS 的「本机文件夹」填本机挂载点，「Windows 中的对应路径」填该来源原有的
    Windows 盘符根，例如 `B:\` 对应 `/Volumes/CloudDrive/115`、`A:\` 对应
-   `/Volumes/CloudDrive/PikPak`。已有馆藏必须沿用原账本根目录。
+   `/Volumes/CloudDrive/PikPak`。已有馆藏必须沿用原盘符路径。
 4. 保存配置，由托盘重新载入。配置页「挂载状态」逐根显示在线或离线；刷新状态保留尚未保存的输入。
    Windows 的 Peach 与 CloudDrive 应在同一普通用户会话下运行；提升权限的进程可能看不到挂载盘。
 5. 勾选扫描时，托盘顺序扫描配置内的在线来源，离线根跳过。恢复挂载后可再次勾选扫描并保存。

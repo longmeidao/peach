@@ -10,7 +10,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import type { JSX } from 'preact';
 
-import { fieldsetTitle, noteHtml, setActionBusy } from '@peach/legacy/ui';
+import { fieldsetTitle, noteHtml, setActionBusy, selectFieldHtml, wireSelectField } from '@peach/legacy/ui';
 import { ApiError, apiGet, apiSend, errorMessage } from '../api';
 
 export interface ConfigurationProps {
@@ -108,10 +108,28 @@ function MountStatus({ data }: { data: ConfigurationData }) {
   if (!sources) return null;
   return <section class="configfieldset" aria-labelledby="configMountsTitle"><div class="geist-fieldset-content">
     <Html html={fieldsetTitle('configMountsTitle', '挂载状态')} />
-    <dl class="configfacts">{sources.map((row) => <><dt>{row.location} · {row.root}</dt><dd>{row.path || '未配置挂载点'} · {row.online ? '在线' : '离线'}</dd></>)}</dl>
+    <dl class="configfacts">{sources.map((row) => <><dt>{({local: '本地磁盘', '115': 'CloudDrive · 115', pikpak: 'CloudDrive · PikPak'} as Record<string, string>)[row.location] || row.location}</dt><dd>{row.path || '未配置挂载点'} <span class={`configstatus ${row.online === true ? 'online' : row.online === false ? 'offline' : 'unknown'}`}>{row.online === true ? '在线' : row.online === false ? '离线' : '未检测'}</span></dd></>)}</dl>
     {error ? <p class="configbad" role="alert">{error}</p> : null}
     <button type="button" class="geist-button" onClick={(event) => refresh(event.currentTarget)}>刷新挂载状态</button>
   </div></section>;
+}
+
+function MediaSourceSelect({ value, label, onChange }: { value: string; label: string; onChange(value: string): void }) {
+  const mount = useRef<HTMLDivElement>(null);
+  const control = useRef<HTMLElement & { value: string; disabled: boolean } | null>(null);
+  const callback = useRef(onChange);
+  callback.current = onChange;
+  useLayoutEffect(() => {
+    const root = mount.current!;
+    root.innerHTML = selectFieldHtml([['local', '本地磁盘'], ['115', 'CloudDrive · 115'], ['pikpak', 'CloudDrive · PikPak']], value, { label });
+    const field = wireSelectField(root.firstElementChild!);
+    control.current = field;
+    const change = () => callback.current(field.value);
+    field.addEventListener('change', change);
+    return () => { control.current = null; field.disabled = true; field.removeEventListener('change', change); root.replaceChildren(); };
+  }, [label]);
+  useLayoutEffect(() => { if (control.current) control.current.value = value; }, [value]);
+  return <div ref={mount} class="configsourcecontrol" />;
 }
 
 function ConfigurationForm({ data, receipt }: { data: ConfigurationData; receipt: ConfigurationProps['receipt'] }) {
@@ -237,6 +255,7 @@ function ConfigurationForm({ data, receipt }: { data: ConfigurationData; receipt
           <div class="configdirs" role="group" aria-labelledby="configDirsLabel">
             {dirs.map((value, index) => (
               <div class="configdir" key={index}>
+                <span class="configpathlabel">本机文件夹 {index + 1}</span>
                 <input
                   class="geist-input"
                   type="text"
@@ -255,14 +274,12 @@ function ConfigurationForm({ data, receipt }: { data: ConfigurationData; receipt
                   </button>
                 ) : null}
                 <div class="configsource">
-                  <label>媒体来源
-                    <select class="geist-input" aria-label={`媒体来源 ${index + 1}`} value={kinds[index] || 'local'}
-                      onChange={(event) => { const next = [...kinds]; next[index] = event.currentTarget.value; setKinds(next); }}>
-                      <option value="local">本地磁盘</option><option value="115">CloudDrive · 115</option><option value="pikpak">CloudDrive · PikPak</option>
-                    </select>
-                  </label>
-                  {data.windows === false ? <label>账本根目录
-                    <input class="geist-input" aria-label={`账本根目录 ${index + 1}`} value={roots[index] || ''} placeholder="例如 B:\\"
+                  <div class="configsourcelabel">媒体来源
+                    <MediaSourceSelect label={`媒体来源 ${index + 1}`} value={kinds[index] || 'local'}
+                      onChange={(value) => { const next = [...kinds]; next[index] = value; setKinds(next); }} />
+                  </div>
+                  {data.windows === false ? <label>Windows 中的对应路径
+                    <input class="geist-input" aria-label={`Windows 中的对应路径 ${index + 1}`} value={roots[index] || ''} placeholder="例如 B:\\"
                       onInput={(event) => { const next = [...roots]; next[index] = event.currentTarget.value; setRoots(next); }} />
                   </label> : null}
                 </div>
@@ -271,7 +288,8 @@ function ConfigurationForm({ data, receipt }: { data: ConfigurationData; receipt
             ))}
           </div>
           <button type="button" class="geist-button configadd" onClick={add}>添加文件夹</button>
-          <p class="confighelp">CloudDrive：先登录网盘并挂载，再选择对应的 115 或 PikPak 来源。macOS 填本机挂载点与对应的账本盘符根。<a href="https://www.clouddrive2.com/help.html" target="_blank" rel="noreferrer">挂载帮助</a></p>
+          {kinds.some((kind) => kind === '115' || kind === 'pikpak') ? <p class="confighelp">先在 CloudDrive 登录网盘并完成挂载。<a href="https://www.clouddrive2.com/help.html" target="_blank" rel="noreferrer">挂载帮助<svg aria-hidden="true" viewBox="0 0 24 24"><use href="#i-external-link" /></svg></a></p> : null}
+          {data.windows === false ? <p class="confighelp">本机文件夹是这台电脑读取媒体的位置。Windows 中的对应路径用于匹配馆藏中已有的路径，例如 B:\ 对应本机挂载文件夹。</p> : null}
         </div>
         <div class="configfield">
           <label for="configPort">本机访问端口</label>

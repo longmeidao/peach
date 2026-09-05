@@ -125,21 +125,29 @@ font:500 var(--fs-md) system-ui,sans-serif}
 button[type=submit]:hover{background:color-mix(in srgb,var(--ink) 88%,var(--ground));color:var(--ground)}
 /* 一行：输入框、选择文件夹、移除。flex 而不是 grid：只剩一行时移除键隐藏，
    grid 的空轨道会留下一段 gap。 */
-.dir{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.dir{display:flex;flex-wrap:wrap;gap:10px;padding:16px;border:1px solid var(--line-soft);border-radius:var(--control-radius);margin-top:16px}
 .dir:first-child{margin-top:0}.dir .bad{flex-basis:100%;margin:0}
 .dir input[type=text]{flex:1 1 auto;width:auto;min-width:0}
 .dir > input[type=text]{flex:1 1 0;width:0}
 .sourcefields{flex-basis:100%;display:grid;gap:8px;min-width:0}
 .sourcefields select{width:100%;height:var(--control-h);border:1px solid var(--line-soft);border-radius:var(--control-radius);background:var(--surface);color:var(--ink);padding:0 12px;font:inherit}
 .sourcefields select:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}
+.sourcefields select{appearance:none;padding-right:42px;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='m4 6 4 4 4-4' fill='none' stroke='%23888' stroke-width='1.5'/%3E%3C/svg%3E");background-repeat:no-repeat;background-size:16px;background-position:right 14px center}
+.sourcefields label{display:grid;gap:6px;color:var(--muted);font-size:var(--fs-sm)}
+.sourcefields input[type=text]{width:100%;box-sizing:border-box}
+.help a{text-decoration:none}.help a:hover{text-decoration:underline;text-underline-offset:3px}
+.help a svg{width:14px;height:14px;margin-inline-start:4px;vertical-align:-2px;stroke:currentColor;fill:none;stroke-width:2}
+.sourcefields .gselect{display:flex;width:100%}.sourcefields .gselectfield{padding-inline:14px}
+.sourcefields select[hidden]{display:none}
 .rm,.pick,.add{height:var(--control-h);border:1px solid var(--line);border-radius:var(--control-radius);
 background:var(--ground);color:var(--ink);cursor:pointer;font:500 var(--fs-sm) system-ui,sans-serif}
 .rm,.pick{width:var(--control-h);flex:none;display:grid;place-items:center;color:var(--muted)}
 .rm svg,.pick svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;
 stroke-linejoin:round}
 .pick[aria-busy=true]{color:var(--muted);cursor:progress}
-.add{margin-top:8px;padding:0 12px}
+.add{margin-top:8px;padding:0 14px}
 .rm:hover,.pick:hover,.add:hover{background:var(--hover);color:var(--ink)}
+.rm{color:var(--drop)}.rm:hover{background:var(--drop);border-color:var(--drop);color:white}
 .rm[hidden],.pick[hidden],.add[hidden]{display:none}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 @media(max-width:760px){input[type=text],input[type=number]{font-size:16px}}
@@ -192,7 +200,10 @@ _SETUP_SCRIPT = """<script>
       row.querySelector('.rm').hidden=all.length<2;
       row.querySelector('.pick').hidden=false;
     });
+    var cloudHelp=document.getElementById('cloudHelp');
+    if(cloudHelp){cloudHelp.hidden=!Array.from(list.querySelectorAll('select[name="media_location"]')).some(function(select){return select.value!=='local';});}
   };
+  list.addEventListener('change',refresh);
   /* 「选择文件夹」让运行 Peach 的这台电脑弹系统对话框，把选中的绝对路径填回这一行：
      浏览器自己拿不到本机绝对路径。等待期间按钮置忙，再点不发第二个请求。 */
   var pickFolder=function(row,button){
@@ -254,9 +265,17 @@ _CHEVRON_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-
 #: 两样东西借自站内共用控件：整页的覆盖式滚动条（原生那条藏掉，滑块浮在内容上），
 #: 以及高级设置的折叠（原生 <details> 不过渡高度）。页面里没有 <details> 时 wireCollapse
 #: 什么也不做，所以每张页面都挂同一段脚本。
-_SHARED_SCRIPT = ('<script type="module">import{attachOverlayScrollbar,wireCollapse}from"/js/ui-components.js";'
+_SHARED_SCRIPT = ('<script type="module">import{attachOverlayScrollbar,wireCollapse,selectFieldHtml,wireSelectField}from"/js/ui-components.js";'
                   'attachOverlayScrollbar(document.documentElement,{variant:"page"});'
-                  'wireCollapse(document,"details","setup-collapse");</script>')
+                  'wireCollapse(document,"details","setup-collapse");'
+                  'const enhance=()=>document.querySelectorAll("select[name=media_location]:not([hidden])").forEach(select=>{'
+                  'const holder=document.createElement("div");'
+                  'holder.innerHTML=selectFieldHtml(Array.from(select.options,o=>[o.value,o.text]),select.value,{label:select.getAttribute("aria-label")||"媒体来源"});'
+                  'select.after(holder);const field=wireSelectField(holder.firstElementChild);'
+                  'field.addEventListener("change",()=>{select.value=field.value;select.dispatchEvent(new Event("change",{bubbles:true}));});'
+                  'select.hidden=true;});enhance();'
+                  'const dirs=document.getElementById("dirs");if(dirs)new MutationObserver(enhance).observe(dirs,{childList:true});'
+                  '</script>')
 
 
 def _theme_tokens() -> str:
@@ -295,13 +314,15 @@ def error_page(status: int, message: str) -> str:
 def _button_rules() -> str:
     """独立页面直接使用主站的 Geist Button 规则。"""
     base = (PROJECT_ROOT / "web/css/01-base.css").read_text(encoding="utf-8")
-    return '\n'.join(re.findall(r'^\.geist-button[^{}]*\{[^}]*\}', base, re.M))
+    return '\n'.join(re.findall(r'^\.(?:geist-button|gselect|popmenu)[^{}]*\{[^}]*\}', base, re.M))
 
 
 def _document(title: str, body: str) -> str:
     # 页内脚本对两张页面都生效：找不到对应控件时它什么也不做。
+    index = (PROJECT_ROOT / "web/index.html").read_text(encoding="utf-8")
+    symbols = ''.join(re.findall(r'<symbol id="i-(?:check|chevron-down)"[^>]*>.*?</symbol>', index))
     return (f"{_SETUP_HEAD}<title>{title}</title><style>{_theme_tokens()}{_scrollbar_rules()}</style>"
-            f"{_SETUP_STYLE}<style>{_button_rules()}</style></head><body><main>{body}</main>{_SETUP_SCRIPT}{_SHARED_SCRIPT}</body></html>\n")
+            f'{_SETUP_STYLE}<style>{_button_rules()}</style></head><body><svg width="0" height="0" aria-hidden="true" style="position:absolute">{symbols}</svg><main>{body}</main>{_SETUP_SCRIPT}{_SHARED_SCRIPT}</body></html>\n')
 
 
 def _check_html(name: str, text_html: str, *, checked: bool) -> str:
@@ -314,12 +335,14 @@ def _check_html(name: str, text_html: str, *, checked: bool) -> str:
 def runtime_facts(config) -> tuple[tuple[str, str], ...]:
     """这台机器上 Peach 的位置与版本：设置完成页和 `/api/configuration` 共用同一份。"""
     from . import __version__
+    import platform as system_platform
     from .ffmpeg import FFmpegResolver
 
     available = FFmpegResolver(config.directory("tools") / "ffmpeg").ffmpeg() is not None
     ffmpeg = "可用" if available else "未安装；MP4 可直接播放，转码和缩略图需要安装 FFmpeg。"
     return (
         ("版本", __version__),
+        ("操作系统", system_platform.system()),
         ("数据目录", str(config.data_root)),
         ("设置文件", str(config.path)),
         ("日志目录", str(config.directory("logs"))),
@@ -343,8 +366,8 @@ def _media_dir_row(value: str, error: str, *, first: bool, location: str = "loca
     source = '<select name="media_location" aria-label="媒体来源">' + ''.join(
         f'<option value="{key}"{" selected" if key == location else ""}>{label}</option>'
         for key, label in SOURCE_OPTIONS) + '</select>'
-    mapping = (f'<input name="media_root" type="text" aria-label="账本根目录" '
-               f'placeholder="账本根目录，例如 B:\\" value="{escape(root, quote=True)}">') if not windows else ''
+    mapping = (f'<label>Windows 中的对应路径<input name="media_root" type="text" aria-label="Windows 中的对应路径" '
+               f'placeholder="例如 B:\\" value="{escape(root, quote=True)}"></label>') if not windows else ''
     attrs = ' id="f-media_dir" required' if first else ' aria-label="媒体文件夹"'
     return (f'<div class="dir"><input name="media_dir" type="text"{attrs} autocomplete="off" '
             f'spellcheck="false" aria-invalid="{"true" if error else "false"}" '
@@ -352,7 +375,7 @@ def _media_dir_row(value: str, error: str, *, first: bool, location: str = "loca
             f'<button type="button" class="pick" aria-label="选择文件夹" hidden>{_FOLDER_SVG}</button>'
             f'<button type="button" class="rm" aria-label="移除这个文件夹" hidden>{_X_SVG}</button>'
             + (f'<p class="bad" role="alert">{escape(error)}</p>' if error else "")
-            + f'<div class="sourcefields">{source}{mapping}</div></div>')
+            + f'<div class="sourcefields"><label>媒体来源{source}</label>{mapping}</div></div>')
 
 
 def _media_dirs_html(values: Sequence[str], errors: Sequence[str], note: str, *, locations=(), roots=(), windows=True) -> str:
@@ -375,8 +398,9 @@ def _media_dirs_html(values: Sequence[str], errors: Sequence[str], note: str, *,
         f'<div class="dirs" id="dirs">{body}</div>'
         '<button type="button" class="add" id="add-dir" hidden>添加文件夹</button>'
         f'<template id="dir-row">{_media_dir_row("", "", first=False, windows=windows)}</template>'
-        '<p class="help">CloudDrive：先在 CloudDrive 登录网盘并挂载，再选择对应的 115 或 PikPak 来源。'
-        '<a href="https://www.clouddrive2.com/help.html" target="_blank" rel="noreferrer">挂载帮助</a></p>'
+        '<p class="help" id="cloudHelp" hidden>先在 CloudDrive 登录网盘并完成挂载。'
+        '<a href="https://www.clouddrive2.com/help.html" target="_blank" rel="noreferrer">挂载帮助'
+        '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg></a></p>'
         + "".join(f'<p class="help">{escape(line)}</p>' for line in (help_text, note) if line)
         + "</div>"
     )
@@ -444,7 +468,7 @@ def setup_page(
             note = "" if windows else onboarding.mounts_explanation(
                 [path for path in media_dirs if path] or ["你在上面填的目录"])
             fields.append(_media_dirs_html(media_dirs, list(row_errors), "" if windows else
-                "本机文件夹填写 macOS 挂载点；账本根目录填写对应的 Windows 盘符路径。",
+                "本机文件夹是这台电脑读取媒体的位置；Windows 中的对应路径用于匹配馆藏中已有的路径。",
                 locations=values.get("media_location", ()), roots=values.get("media_root", ()), windows=windows))
             continue
         value = str(values.get(question.key, question.default))
