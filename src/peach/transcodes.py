@@ -59,6 +59,7 @@ class TranscodeService:
         self._locks: dict[int, list] = {}
         self._locks_guard = threading.Lock()
         self._slots = threading.Semaphore(max(1, max_concurrent))
+        self._native_profiles: dict[tuple[str, int, int], _MediaProfile] = {}
 
     @staticmethod
     def needs_transcode(source: Path) -> bool:
@@ -67,8 +68,27 @@ class TranscodeService:
     def browser_path(
         self, asset_id: int, source: Path, *, session: str = "", registry=None,
     ) -> tuple[Path, bool]:
+        profile = None
         if not self.needs_transcode(source):
-            return source, False
+            if self.resolver.ffprobe() is None:
+                return source, False
+            try:
+                stat = source.stat()
+            except OSError as exc:
+                raise TranscodeUnavailable("source unavailable") from exc
+            key = (str(source), stat.st_size, stat.st_mtime_ns)
+            with self._locks_guard:
+                profile = self._native_profiles.get(key)
+            if profile is None:
+                profile = self._probe(source, session, registry,
+                                      time.monotonic() + PROBE_TIMEOUT_SECONDS)
+                if profile is not None:
+                    with self._locks_guard:
+                        if len(self._native_profiles) >= 512:
+                            self._native_profiles.pop(next(iter(self._native_profiles)))
+                        self._native_profiles[key] = profile
+            if profile is not None and self._browser_compatible(source, profile):
+                return source, False
 
         choice = self.resolver.ffmpeg()
         if choice is None:
@@ -94,7 +114,8 @@ class TranscodeService:
             try:
                 with self._slots:
                     self._raise_if_cancelled(session, registry)
-                    profile = self._probe(source, session, registry, deadline)
+                    if profile is None:
+                        profile = self._probe(source, session, registry, deadline)
                     for attempt in self._attempts(
                         choice.path, source, temporary, profile,
                     ):
@@ -130,6 +151,18 @@ class TranscodeService:
                 if stale != target:
                     stale.unlink(missing_ok=True)
             return target, True
+
+    @staticmethod
+    def _browser_compatible(source: Path, profile: _MediaProfile) -> bool:
+        if source.suffix.lower() in {".mp4", ".m4v"}:
+            return (profile.video_codec == "h264"
+                    and profile.pixel_format in DIRECT_MP4_PIXEL_FORMATS
+                    and profile.audio_codec in {"", "aac", "mp3"})
+        if source.suffix.lower() == ".webm":
+            return (profile.video_codec in {"vp8", "vp9", "av1"}
+                    and profile.audio_codec in {"", "opus", "vorbis"})
+        return (profile.video_codec == "theora"
+                and profile.audio_codec in {"", "vorbis", "opus"})
 
     def _probe(
         self, source: Path, session: str, registry, deadline: float,

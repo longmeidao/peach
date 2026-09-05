@@ -26,7 +26,8 @@
 一条一句，不带日期，只写别处没有的判据：README、`docs/HANDOFF.md`、`docs/REUSE.md`、
 `docs/OPERATIONS.md` 和 ADR 已经写下的不在这里重复，出处用 `git log -S` 查。
 
-- 本地浏览器支持 MP4/WebM/Ogg，AVI 等由 `TranscodeService` 缓存成 H.264/AAC MP4，永不改写原媒体；ffprobe 探测后可直接复制的流不重编码，其余在 Windows 走 CUDA/NVDEC。
+- ffprobe 核对内部编码；`mpeg4/AAC` 实片转 H.264/AAC 后画面解码通过，原媒体不改。
+- 控件按图 3 恢复灰阶；29999 关联風見あゆむ，账本完整性通过。实屏未验。
 - 远端 MP4 默认走标准 Range，显式开启的 HLS 使用关键帧对齐片段并在失败时回退 Range。
 - 页面共用 SPA、JSON 与 gzip/ETag；侧栏随当前视频集合，已保存在线作品复用关注详情。
 - Logo、侧栏「首页」和沉浸模式关闭统一清除分类、搜索与 JAV 筛选，首页默认稳定随机、换批才换种子，再点当前排序回到随机。
