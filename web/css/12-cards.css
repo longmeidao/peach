@@ -76,7 +76,16 @@ body.refreshing #batchAction svg,
 .count .sorts #batchAction svg,.entitycollectionhead .sorts .entitybatch svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2}
 .count .sorts .batchaction:hover,.entitycollectionhead .sorts .batchaction:hover{background:color-mix(in srgb,var(--ink) 88%,var(--ground));border-color:color-mix(in srgb,var(--ink) 88%,var(--ground));color:var(--ground)}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--tile),1fr));gap:16px 8px}
-.shorts-inline{grid-column:1/-1;margin:28px 0 8px;padding-top:0}
+/* 视频区是一整块面，框画在网格上，卡片本身不填色也不描边——一张卡一个框会在一屏里
+   画出几十条互相平行的细线，读起来是表格不是图墙。垃圾复核用的是同一个 #grid，
+   但它那张卡自己就是一块 --ground 的面，外面再套一层同色的框只会把卡吃掉，
+   所以按内容认，不按页面认。 */
+.grid:has(>.card:not(.junkcard)),.grid:has(>.catalog-skeleton){
+  padding:16px;border:1px solid var(--field-ring);border-radius:var(--floating-radius);background:var(--ground)}
+/* 竖屏条插在网格中段，是这一框之内的另一框：退回 --page 那张面，读起来是嵌在
+   图墙里的一格凹槽，而不是又一排横屏卡。圆角比外框小一档，两个框才不同心。 */
+.shorts-inline{grid-column:1/-1;margin:12px 0 4px;padding:14px 16px;
+  border:1px solid var(--field-ring);border-radius:var(--surface-radius);background:var(--page)}
 .shorts-inline h2{margin:0 0 10px;font-size:var(--fs-lg);display:flex;align-items:center;gap:10px}
 .shorts-inline h2 button{margin-left:auto;font-size:var(--fs-xs);background:none;border:1px solid var(--line);border-radius:var(--pill-radius);padding:5px 14px;cursor:pointer}
 .shorts-inline .srow{display:flex;gap:13px;overflow-x:auto;padding-bottom:7px}

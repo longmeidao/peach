@@ -6,16 +6,23 @@
 .pill{flex:none;height:var(--filterItemH);padding:0 20px;border:1px solid var(--border-15);
   border-radius:var(--pill-radius);background:transparent;display:inline-flex;align-items:center;justify-content:center;
   color:var(--muted);cursor:pointer;font-size:var(--fs-lg);white-space:nowrap;text-decoration:none}
-.pill:hover{color:var(--ink)}
-.pill[aria-pressed="true"]{background:var(--hover);color:var(--ink)}
-.pill.act{border-color:var(--ink-2);color:var(--ink)}
+/* 三档全靠「填不填上面那张更亮的面」说话，明暗两个主题同一个方向：
+   静止不填，只有一圈发丝线；悬停填 --ground，读作「鼠标在这儿」；选中同样填 --ground，
+   但把发丝线换成 --ink-2 的实环，读作「你在这儿」。
+   选中填 --hover 在浅色一档说不通：它是 5% 黑，比页面底还深，读成被按凹进去了，
+   跟暗色一档「选中更亮」正好相反，同一个控件于是有两套相反的语义。
+   2026-09-05 实测 vercel.com 部署页的筛选令牌是同一套：未生效透明，悬停与键盘聚焦
+   填 #FFFFFF 加 1px 的 8% 黑，展开时才换成更重的环。 */
+.pill:hover{background:var(--ground);color:var(--ink)}
+.pill[aria-pressed="true"]{background:var(--ground);border-color:var(--ink-2);color:var(--ink)}
 .sep{flex:none;width:1px;height:19px;background:var(--border-15);margin:0 3px}
 
 /* 多标签交集筛选条 */
 .combo{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:0 0 10px}
+/* 交集条上的每一颗都是已经生效的筛选，所以它们填的是和选中药丸同一张面。 */
 .combo .cb{min-height:36px;box-sizing:border-box;display:inline-flex;align-items:center;gap:7px;padding:0 9px 0 12px;
   border-radius:var(--tag-radius);border:1px solid var(--border-15);color:var(--ink-2);
-  background:var(--overlay-5);font-size:var(--fs-xs)}
+  background:var(--ground);font-size:var(--fs-xs)}
 .combo .cb b{cursor:pointer;opacity:.7;font-weight:400}
 .combo .cb b:hover{opacity:1}
 .combo .clr{min-height:36px;display:inline-flex;align-items:center;padding:0 8px;background:none;border:0;color:var(--muted);cursor:pointer;font-size:var(--fs-xs);text-decoration:none}

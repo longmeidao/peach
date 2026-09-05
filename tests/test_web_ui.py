@@ -507,19 +507,53 @@ class WebUiSourceTests(unittest.TestCase):
             rule = css[start:css.index("}", start)]
             self.assertIn("var(--ground)", rule, f"{name} 是页面上的一个面")
 
-    def test_brand_pills_start_unfilled_so_the_pressed_state_has_somewhere_to_go(self):
-        """厂牌药丸静止态不填色，选中态才抬到 --hover 并把边提到墨色。
+    def test_filter_pills_light_up_instead_of_sinking_when_selected(self):
+        """筛选层三档一个方向：静止不填，悬停与选中都填更亮的 --ground，选中另加墨色实环。
 
-        浅色主题里 `--overlay-5` 与 `--hover` 是同一个 5% 黑：静止态填上它，一整排厂牌
-        在没被选中时就已经顶着选中态的底色，既比同屏其它控件重一档，也让真正的选中态
-        无从表达。第二层筛选条 `.pill` 一直是透明底，这一层跟它同一套写法。
+        药丸这一排坐在 --page 上，比它更亮的面是 --ground，明暗两个主题都成立。
+        选中填 --hover 只在暗色一档说得通：浅色里它是 5% 黑，比页面底还深，
+        读成被按凹进去，同一个控件于是有两套相反的语义。
+        2026-09-05 实测 vercel.com 部署页的筛选令牌是同一套：未生效透明，悬停与键盘
+        聚焦填 `#FFFFFF` 加 1px 的 8% 黑，只有展开时才换成更重的环。
         """
         css = stylesheet_source()
-        start = css.index(".brandpill{")
-        rule = css[start:css.index("}", start)]
-        self.assertIn("background:transparent", rule, "静止态不填色")
-        self.assertPageContains('.brandpill[aria-pressed="true"]{background:var(--hover);'
+        for base in (".pill", ".brandpill"):
+            start = css.index(chr(10) + base + "{")
+            rule = css[start:css.index("}", start)]
+            self.assertIn("background:transparent", rule, f"{base} 静止态不填色")
+        self.assertPageContains(".pill:hover{background:var(--ground);color:var(--ink)}")
+        self.assertPageContains('.pill[aria-pressed="true"]{background:var(--ground);'
+                                "border-color:var(--ink-2);color:var(--ink)}")
+        self.assertPageContains('.brandpill[aria-pressed="true"]{background:var(--ground);'
                                 'color:var(--ink);border-color:var(--ink-2)}')
+        # 已经生效的交集筛选和选中的药丸是同一件事，填同一张面。
+        start = css.index(".combo .cb{")
+        self.assertIn("background:var(--ground)", css[start:css.index("}", start)])
+        # 没有 JS 会挂 .act，留着只会让人以为选中态有两套写法。
+        self.assertPageLacks(".pill.act{")
+
+    def test_the_video_area_is_one_frame_and_the_portrait_strip_nests_inside_it(self):
+        """框画在网格上，卡片本身不带框；中段的竖屏条在框里再退一档，套成第二个框。
+
+        一张卡一个框会在一屏里画出几十条互相平行的细线，读起来是表格不是图墙。
+        垃圾复核用的是同一个 `#grid`，但它那张卡自己就是一块 `--ground` 的面，
+        外面再套一层同色的框只会把卡吃掉——所以这条按内容认，不按页面认。
+        """
+        self.assertPageContains(".grid:has(>.card:not(.junkcard)),.grid:has(>.catalog-skeleton){")
+        css = stylesheet_source()
+        start = css.index(".grid:has(>.card:not(.junkcard))")
+        frame = css[start:css.index("}", start)]
+        for piece in ("background:var(--ground)", "border:1px solid var(--field-ring)",
+                      "border-radius:var(--floating-radius)"):
+            self.assertIn(piece, frame, "视频区是一整块面")
+        start = css.index(chr(10) + ".card{")
+        card = css[start:css.index("}", start)]
+        self.assertNotIn("background:", card, "卡片不自带填色，框由网格出")
+        self.assertNotIn("border:", card, "卡片不自带描边，框由网格出")
+        start = css.index(".shorts-inline{")
+        strip = css[start:css.index("}", start)]
+        self.assertIn("background:var(--page)", strip, "竖屏条在框里退回后面那张面")
+        self.assertIn("border-radius:var(--surface-radius)", strip, "内框圆角比外框小一档")
 
     # 选中态允许高对比反相的两处：都压在媒体画面上，画面本身会把 --hover 那层
     # 7% 白吃掉，读不出按没按。
@@ -689,7 +723,7 @@ class WebUiSourceTests(unittest.TestCase):
                 for state in self.STATE_TOKENS:
                     if part.endswith(state):
                         selected_bases.add(part[: -len(state)].strip())
-        self.assertIn(".pill", selected_bases, "基线选择器没被认出来，测试本身失效了")
+        self.assertIn(".chip", selected_bases, "基线选择器没被认出来，测试本身失效了")
         offenders = []
         for leaf, body in self._leaf_rules():
             if ":hover" not in leaf or "background:var(--hover)" not in body:
@@ -4795,7 +4829,7 @@ class WebUiSourceTests(unittest.TestCase):
         补位的那批 id 不在分页序列里，翻下一页必然重复；而且它们被当作 `scard`
         渲染会按竖屏比例压扁横屏画面。行边界插入既不额外请求也不会重复。
         """
-        self.assertPageContains('.shorts-inline{grid-column:1/-1;margin:28px 0 8px;padding-top:0}')
+        self.assertPageContains('.shorts-inline{grid-column:1/-1;margin:12px 0 4px;')
         # 竖屏比例只给 `scard`（和显式筛了竖屏时）。按 `it.ctx_orient` 逐条算的话，
         # 任何混着横竖屏的网格都会高低不齐——资料页、相关推荐、搜索结果全中招。
         self.assertPageContains("const portrait=cls==='scard'||state.orient==='竖屏';")
