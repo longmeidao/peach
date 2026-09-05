@@ -169,6 +169,11 @@ class SourceIdentityTests(unittest.TestCase):
         self.assertFalse(identifies_code("ABW-220", {}))
         # 番号相邻不等于同一部：ABW-2200 不能拿 ABW-220 的结果顶替。
         self.assertFalse(identifies_code("ABW-2200", {"content_id": "118abw220"}))
+        self.assertFalse(identifies_code("IY-104", {
+            "id": "DIY-104", "source_url": "https://www.javbus.com/ja/DIY-104"}))
+        self.assertFalse(identifies_code("DB-202", {"id": "DDB-202"}))
+        self.assertTrue(identifies_code("JBS-023", {
+            "source_url": "https://www.javbus.com/ja/JBS-023"}))
 
     def test_provider_turns_a_mismatched_product_into_not_found(self):
         def runner(command, **kwargs):
