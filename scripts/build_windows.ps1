@@ -48,6 +48,29 @@ if (-not (Test-Path -LiteralPath (Join-Path $ProjectRoot 'web\dist\peach-ui.js')
 $BuildPath = Join-Path $ProjectRoot 'build\windows'
 $WorkPath = Join-Path $BuildPath 'app'
 New-Item -ItemType Directory -Path $OutputPath -Force | Out-Null
+New-Item -ItemType Directory -Path $BuildPath -Force | Out-Null
+
+# 构建身份随包一起走：冻结的托盘读它才知道自己停在哪个提交上，检出的 HEAD 只代表源码。
+$BuildInfoPath = Join-Path $BuildPath 'build-info.json'
+# git 不可用、或者这份源码根本不是检出（解压出来的 tarball）时 commit 留空，构建照常。
+$BuildCommit = $null
+try {
+    $BuildCommitText = & git -C $ProjectRoot rev-parse HEAD 2>$null
+    if ($BuildCommitText) { $BuildCommit = "$BuildCommitText".Trim() }
+} catch {
+    $BuildCommit = $null
+}
+$global:LASTEXITCODE = 0
+$BuildVersionMatch = Select-String -LiteralPath (Join-Path $ProjectRoot 'src\peach\__init__.py') `
+    -Pattern '__version__\s*=\s*"([^"]+)"'
+if (-not $BuildVersionMatch) { throw 'src/peach/__init__.py does not declare __version__.' }
+$BuildInfo = [ordered]@{
+    commit = $BuildCommit
+    version = $BuildVersionMatch.Matches[0].Groups[1].Value
+    built_at = (Get-Date).ToString('o')
+}
+Set-Content -LiteralPath $BuildInfoPath -Value (ConvertTo-Json $BuildInfo) -Encoding utf8
+
 $BuildMode = @('--onefile')
 $BuildDestination = $OutputPath
 if ($Standalone) {
@@ -65,6 +88,7 @@ if ($Standalone) {
     --add-data "$(Join-Path $ProjectRoot 'web');web" `
     --add-data "$(Join-Path $ProjectRoot 'migrations');migrations" `
     --add-data "$(Join-Path $ProjectRoot 'resources');resources" `
+    --add-data "${BuildInfoPath};." `
     (Join-Path $ProjectRoot 'scripts\build_app_entry.py')
 if ($LASTEXITCODE -ne 0) { throw 'Peach build failed.' }
 if ($Standalone) {

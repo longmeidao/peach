@@ -29,6 +29,12 @@ def discover_repository_root(
     return resource_root
 
 
+#: `build_behind` 的取值：None 表示不适用（源码运行或独立测试包），`UNKNOWN_BUILD_AGE`
+#: 表示托盘是打包的、却数不出它落后多少——身份未取得，或那个提交不在本检出的历史里。
+#: 两种情况都当作陈旧：数不出来不等于没落后，而重建一次的代价只是一次构建。
+UNKNOWN_BUILD_AGE = -1
+
+
 @dataclass(frozen=True)
 class VersionSnapshot:
     package_version: str
@@ -37,11 +43,27 @@ class VersionSnapshot:
     dirty: bool
     remote_configured: bool
     upstream: str | None
+    #: 当前托盘 EXE 是从哪个提交打包出来的。源码运行、独立测试包与身份未取得时为 None。
+    build_commit: str | None = None
+    #: 那份构建落后检出多少个提交。
+    build_behind: int | None = None
+
+    @property
+    def build_stale(self) -> bool:
+        """打包托盘跑的是构建那一刻的代码副本；检出往前走了，它不会跟着变。"""
+        return self.build_behind is not None and self.build_behind != 0
 
     @property
     def build_label(self) -> str:
         dirty = " · 有未提交修改" if self.dirty else ""
-        return f"{self.branch}@{self.commit}{dirty}"
+        base = f"{self.branch}@{self.commit}{dirty}"
+        if not self.build_stale:
+            return base
+        if self.build_commit is None:
+            return f"{base} · 托盘构建身份未取得"
+        if self.build_behind is not None and self.build_behind > 0:
+            return f"{base} · 托盘构建 {self.build_commit[:8]}，落后 {self.build_behind} 个提交"
+        return f"{base} · 托盘构建 {self.build_commit[:8]} 不在本检出历史里"
 
     @property
     def channel_label(self) -> str:
@@ -110,7 +132,45 @@ class VersionManager:
             candidate = f"origin/{branch}"
             if self._git("show-ref", "--verify", f"refs/remotes/{candidate}").returncode == 0:
                 upstream = candidate
-        return VersionSnapshot(package_version, branch, commit, dirty, remote_configured, upstream)
+        build_commit, build_behind = self.build_age()
+        return VersionSnapshot(package_version, branch, commit, dirty, remote_configured,
+                               upstream, build_commit, build_behind)
+
+    def head_commit(self) -> str:
+        """检出当前的 HEAD 完整 sha。只读本地，不联网，够廉价到能反复问。"""
+        return self._text("rev-parse", "HEAD")
+
+    def build_age(self) -> tuple[str | None, int | None]:
+        """当前进程的构建提交，以及它落后检出多少个提交。
+
+        源码运行的托盘没有第二个版本：它 import 的就是检出里的模块，永远不落后。
+        """
+        from .buildinfo import frozen_build
+        if not getattr(sys, "frozen", False):
+            return None, None
+        info = frozen_build()
+        commit = info.commit if info else None
+        if not commit or not self._known_commit(commit):
+            return commit, UNKNOWN_BUILD_AGE
+        counted = self._text("rev-list", "--count", f"{commit}..HEAD")
+        return commit, int(counted) if counted.isdigit() else UNKNOWN_BUILD_AGE
+
+    def _known_commit(self, commit: str) -> bool:
+        return self._git("cat-file", "-e", f"{commit}^{{commit}}").returncode == 0
+
+    def stale_build_paths(self, build_commit: str | None) -> tuple[str, ...]:
+        """从构建那个提交到现在，检出改了哪些仓库相对路径。
+
+        数不出来时返回 `src/peach/`：它必然命中 `WINDOWS_TRAY_INPUTS`，于是「身份未取得」
+        走的是重建而不是静悄悄地跳过。托盘旧着不动才是真正会骗人的那个结果。
+        """
+        if not build_commit or not self._known_commit(build_commit):
+            return ("src/peach/",)
+        return tuple(
+            line for line in
+            self._text("diff", "--name-only", f"{build_commit}..HEAD").splitlines()
+            if line
+        )
 
     def check(self) -> UpdateResult:
         before = self.inspect()

@@ -7,6 +7,7 @@ import shutil
 import stat
 import subprocess
 import time
+from collections.abc import Iterable
 from pathlib import Path
 
 #: Claude Code 内置工作树的落点。分支集成后它自己不收：目录留在主检出里，成了一份看不出
@@ -14,9 +15,79 @@ from pathlib import Path
 #: 入口能清掉已经在那儿的，只能让人手删——`prune --apply` 顺带扫掉这块。
 BUILTIN_WORKTREES = Path(".claude") / "worktrees"
 
+#: 版本号的唯一来源。GitHub Release 的 `v<版本>` tag 必须与它相等。
+VERSION_FILE = "src/peach/__init__.py"
+VERSION_PATTERN = re.compile(r'(__version__\s*=\s*")(\d+)\.(\d+)\.(\d+)(")')
+
+#: 进入运行时产物的输入。改到这些位置就意味着「跑起来的东西变了」，本地版本号跟着走一格；
+#: 文档、技能和测试只改开发过程，版本号不动。清单与 `WINDOWS_TRAY_INPUTS` 各自服务不同的
+#: 问题：那份决定要不要重建 EXE，这份决定要不要发新版本号。
+RUNTIME_INPUTS = (
+    "src/peach/",
+    "web/",
+    "frontend/",
+    "migrations/",
+    "resources/",
+    "scripts/build_app_entry.py",
+    "scripts/build_windows.ps1",
+    "pyproject.toml",
+)
+
 
 class WorkspaceError(RuntimeError):
     pass
+
+
+def runtime_inputs_changed(paths: Iterable[str]) -> bool:
+    """这批改动里有没有会进到运行时产物的。"""
+    normalized = [str(path).replace("\\", "/").strip("/") for path in paths]
+    return any(path == prefix.rstrip("/") or path.startswith(prefix)
+               for path in normalized for prefix in RUNTIME_INPUTS)
+
+
+def bump_version(text: str, part: str) -> tuple[str, str]:
+    """把 `__version__` 那一行往前推一格，返回新正文与新版本号。
+
+    纯函数，只认那一行：整份文件其余部分逐字节保留，换行也不碰。
+    """
+    match = VERSION_PATTERN.search(text)
+    if match is None:
+        raise WorkspaceError(f"{VERSION_FILE} does not declare __version__")
+    major, minor, patch = (int(match.group(index)) for index in (2, 3, 4))
+    if part == "major":
+        major, minor, patch = major + 1, 0, 0
+    elif part == "minor":
+        minor, patch = minor + 1, 0
+    elif part == "patch":
+        patch += 1
+    else:
+        raise WorkspaceError(f"unknown bump part: {part}")
+    version = f"{major}.{minor}.{patch}"
+    updated = text[:match.start()] + f"{match.group(1)}{version}{match.group(5)}" \
+        + text[match.end():]
+    return updated, version
+
+
+def read_version(main: Path) -> str:
+    match = VERSION_PATTERN.search((main / VERSION_FILE).read_bytes().decode("utf-8"))
+    if match is None:
+        raise WorkspaceError(f"{VERSION_FILE} does not declare __version__")
+    return f"{match.group(2)}.{match.group(3)}.{match.group(4)}"
+
+
+def _commit_version_bump(main: Path, part: str) -> str:
+    path = main / VERSION_FILE
+    updated, version = bump_version(path.read_bytes().decode("utf-8"), part)
+    path.write_bytes(updated.encode("utf-8"))
+    _git(main, "add", VERSION_FILE)
+    _git(main, "commit", "-m", f"chore(release): 版本 {version}")
+    return version
+
+
+#: 打版本标签的唯一入口。它核对本地与 GitHub master 一致、同提交 CI 全绿、标签不可覆盖，
+#: 并且遇到同名本地标签就拒绝——集成这一步再造一个本地标签会直接把它挡住。所以这里只推进
+#: `__version__`，标签留给它。
+RELEASE_TAG_ENTRY = "scripts/release_tag.py"
 
 
 def _git(repo: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
@@ -93,7 +164,14 @@ def ready(repo: Path, target_branch: str = "master") -> dict[str, object]:
     }
 
 
-def integrate(repo: Path, worker_branch: str, target_branch: str = "master") -> dict[str, object]:
+def integrate(repo: Path, worker_branch: str, target_branch: str = "master", *,
+              bump: str = "patch") -> dict[str, object]:
+    """把工作者分支并进 target，并让本地版本号跟着这次集成走。
+
+    这台机器既是开发机又是生产机：提交先落本地再推 GitHub，本地永远领先。版本号因此
+    必须在集成时就动，不能等发布——发布点仍然是 `RELEASE_TAG_ENTRY` 推上去的那个
+    `v<版本>` tag，它读的正是这里推进后的 `__version__`。
+    """
     main = _main_worktree(repo)
     if repo.resolve() != main.resolve():
         raise WorkspaceError("integrate must run from the main integration worktree")
@@ -109,6 +187,11 @@ def integrate(repo: Path, worker_branch: str, target_branch: str = "master") -> 
         raise WorkspaceError("same-file review required: " + ", ".join(overlap))
     before = _git(main, "rev-parse", "HEAD").stdout.strip()
     _git(main, "merge", "--no-ff", "--no-edit", worker_branch)
+    merged_files = set(_lines(_git(main, "diff", "--name-only", f"{base}..HEAD")))
+    version = read_version(main)
+    bumped = bump != "none" and runtime_inputs_changed(merged_files)
+    if bumped:
+        version = _commit_version_bump(main, bump)
     return {
         "ok": True,
         "action": "integrate",
@@ -116,6 +199,9 @@ def integrate(repo: Path, worker_branch: str, target_branch: str = "master") -> 
         "before": before,
         "after": _git(main, "rev-parse", "HEAD").stdout.strip(),
         "files": sorted(worker_files),
+        "version": version,
+        "bumped": bumped,
+        "release_tag_entry": RELEASE_TAG_ENTRY,
     }
 
 
@@ -296,6 +382,9 @@ def main() -> int:
     merge = sub.add_parser("integrate")
     merge.add_argument("--branch", required=True)
     merge.add_argument("--target", default="master")
+    merge.add_argument("--bump", choices=("patch", "minor", "major", "none"),
+                       default="patch",
+                       help="改动进到运行时产物时把版本号推一格；纯文档改动传 none")
     sweep = sub.add_parser("prune")
     sweep.add_argument("--target", default="master")
     sweep.add_argument("--apply", action="store_true",
@@ -309,7 +398,7 @@ def main() -> int:
         elif args.command == "prune":
             result = prune(args.repo, args.target, apply=args.apply)
         else:
-            result = integrate(args.repo, args.branch, args.target)
+            result = integrate(args.repo, args.branch, args.target, bump=args.bump)
     except WorkspaceError as exc:
         print(json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=False))
         return 2

@@ -32,7 +32,9 @@ from .netwatch import NetworkChangeWatcher
 from .mount import mount_share as mount_smb_share
 from .sync import COPY_ACTIONS, SyncPlan, device_id, resolve
 from .versioning import VersionManager, VersionSnapshot
-from .windows_update import WindowsUpdateInstaller
+from .windows_update import (
+    PendingWindowsUpdate, WindowsUpdateInstaller, windows_tray_rebuild_required,
+)
 
 
 LOGGER = logging.getLogger(__name__)
@@ -45,6 +47,15 @@ MACOS_PORT = 8900
 MACOS_TLS_PORT = 8443
 #: LaunchAgent 的标签。托盘、安装脚本和 `.app` 外壳共用 `peach.appid` 这一处定义。
 LAUNCH_AGENT_LABEL = MACOS_LAUNCH_AGENT_LABEL
+
+#: 本地领先远端、或者根本连不上远端时，`update()` 给出的这几种状态。这台机器既是开发机
+#: 又是生产机，提交先落本地再推 GitHub，所以它们才是常态，`updated` 反而几乎不出现。
+#: 托盘要不要重建与远端无关，只取决于 EXE 里那份代码和当前检出差了什么。
+LOCAL_REBUILD_STATES = ("ahead", "current", "error", "unconfigured")
+
+#: 自动检查托盘是否比检出旧的间隔。健康轮询每 10 秒一轮，构建陈旧不需要那个频率：
+#: 这一步要跑几条 git，5 分钟一次既跟得上一次集成，也不会让 git 常驻在磁盘上。
+BUILD_CHECK_INTERVAL = 300.0
 
 
 def ledger_menu_items(make_item, sync_ledger, take_ownership) -> list:
@@ -830,6 +841,8 @@ class PeachTray:
         self.version = self.versions.inspect()
         self._stop_event = threading.Event()
         self._action_lock = threading.Lock()
+        self._build_checked_at = time.monotonic()
+        self._build_attempted_head: str | None = None
         version_menu = pystray.Menu(
             pystray.MenuItem(lambda _item: f"Peach {self.version.package_version}", None, enabled=False),
             pystray.MenuItem(lambda _item: self.version.build_label, None, enabled=False),
@@ -928,6 +941,24 @@ class PeachTray:
 
         threading.Thread(target=work, name="PeachUpdate", daemon=True).start()
 
+    def _local_rebuild(self, snapshot: VersionSnapshot) -> tuple[PendingWindowsUpdate | None, str]:
+        """打包托盘比检出旧时，就地登记一次重建；否则给出不重建的理由。
+
+        工作区脏不拦这一步：`prepare` 跑的是检出里的代码，脏工作区里的东西本来就是要被
+        构建进去的那一份。拦住它只会让托盘一直停在旧代码上，而没人在看。
+        """
+        if not getattr(sys, "frozen", False):
+            return None, "当前不是打包托盘，源码已是最新。"
+        if standalone():
+            return None, "独立测试包不自建托盘；请下载新版并完整解压替换程序目录。"
+        if not snapshot.build_stale:
+            return None, f"托盘构建与检出一致（{snapshot.build_label}）。"
+        paths = self.versions.stale_build_paths(snapshot.build_commit)
+        if not windows_tray_rebuild_required(paths):
+            return None, "检出比托盘构建新，但改动不进打包产物，托盘无需重建。"
+        self.windows_updates.mark_pending(snapshot.commit, paths)
+        return self.windows_updates.pending(), ""
+
     def sync_source(self, icon=None, _item=None) -> None:
         if not self._action_lock.acquire(blocking=False):
             return
@@ -945,7 +976,13 @@ class PeachTray:
                         result.snapshot.commit, result.changed_paths,
                     )
                     pending = self.windows_updates.pending()
-                elif result.state != "current" or pending is None:
+                elif result.state in LOCAL_REBUILD_STATES:
+                    if pending is None or pending.commit != result.snapshot.commit:
+                        pending, why = self._local_rebuild(result.snapshot)
+                        if pending is None:
+                            tray_icon.notify(f"{result.message}\n{why}", "Peach 开发进度")
+                            return
+                else:
                     tray_icon.notify(result.message, "Peach 开发进度")
                     return
                 if pending is None or pending.commit != result.snapshot.commit:
@@ -983,6 +1020,32 @@ class PeachTray:
         self.manager.stop_owned()
         (icon or self.icon).stop()
 
+    def poll_build_age(self, now: Callable[[], float] = time.monotonic) -> bool:
+        """每 `BUILD_CHECK_INTERVAL` 秒问一次：托盘 EXE 是不是已经比检出旧了。
+
+        判据是本地 HEAD，不 fetch：这台机器的提交先落本地再推 GitHub，等远端根本等不到。
+        同一个 HEAD 只自动试一次——失败也算试过，重建要跑完整测试和一次打包，反复重试
+        只会让机器空转，而失败原因不会因为多跑一遍就变。下一个 HEAD 才重新开一次机会。
+
+        首次设置没走完时一律不动：那时候连服务都还没定型，重建换掉的是用户正在用的入口。
+        """
+        if not getattr(sys, "frozen", False) or standalone() or self.gate.waiting:
+            return False
+        moment = now()
+        if moment - self._build_checked_at < BUILD_CHECK_INTERVAL:
+            return False
+        self._build_checked_at = moment
+        head = self.versions.head_commit()
+        if not head or head == self._build_attempted_head:
+            return False
+        snapshot = self.versions.inspect()
+        self.version = snapshot
+        if not snapshot.build_stale or self._action_lock.locked():
+            return False
+        self._build_attempted_head = head
+        self.sync_source()
+        return True
+
     def _monitor(self) -> None:
         while not self._stop_event.wait(2 if standalone() else 10):
             # 先看首次设置有没有完成：切换会换掉 `manager.specs`，采样必须落在换完之后。
@@ -990,6 +1053,7 @@ class PeachTray:
             for spec in self.manager.specs:
                 self.manager.healthy(spec)
             self.icon.update_menu()
+            self.poll_build_age()
 
     def _setup(self, icon) -> None:
         icon.visible = True

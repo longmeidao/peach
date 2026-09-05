@@ -744,6 +744,246 @@ class SourceSyncTests(unittest.TestCase):
         self.assertIn("manager.start_missing()", source)
 
 
+class FakeVersions:
+    root = ROOT
+
+    def __init__(self, snapshot, state="ahead", paths=("src/peach/tray.py",),
+                 head="a" * 40):
+        self.snapshot = snapshot
+        self.state = state
+        self.paths = paths
+        self.head = head
+        self.asked: list[str | None] = []
+
+    def inspect(self):
+        return self.snapshot
+
+    def update(self):
+        return UpdateResult(self.state, "当前已比更新通道领先 3 个提交。",
+                            self.snapshot, ahead=3)
+
+    def head_commit(self):
+        return self.head
+
+    def stale_build_paths(self, build_commit):
+        self.asked.append(build_commit)
+        return self.paths
+
+
+class FakeUpdates:
+    def __init__(self, preparation=WindowsUpdatePreparation("replace", "替换已准备。")):
+        self.preparation = preparation
+        self.value = None
+        self.prepared: list[tuple[str, tuple[str, ...]]] = []
+
+    def pending(self):
+        return self.value
+
+    def mark_pending(self, commit, changed_paths):
+        self.value = PendingWindowsUpdate(commit, tuple(changed_paths))
+
+    def prepare(self, commit, changed_paths):
+        self.prepared.append((commit, tuple(changed_paths)))
+        return self.preparation
+
+    def clear_pending(self):
+        self.value = None
+
+
+class LocalRebuildTests(unittest.TestCase):
+    """这台机器既是开发机又是生产机：提交先落本地再推 GitHub，本地永远领先。
+
+    只在「落后远端」时重建的托盘因此从 2026-08-29 起一次都没重建过，运行中的 EXE 一直是
+    旧代码。判据必须改成「EXE 里那份代码与当前检出差了什么」，与远端无关。
+    """
+
+    def snapshot(self, *, behind):
+        return VersionSnapshot(
+            "0.7.14", "master", "abc12345", False, True, "origin/master",
+            build_commit="9f8e7d6c5b4a39281706f5e4d3c2b1a098765432", build_behind=behind,
+        )
+
+    def tray_for(self, versions, updates, manager=None, waiting=False):
+        gate = Mock()
+        gate.waiting = waiting
+        with patch("peach.tray.pystray.Icon", return_value=Mock()):
+            return PeachTray(manager or Mock(), versions, updates, gate)
+
+    def drain(self, tray):
+        deadline = time.monotonic() + 10
+        while tray._action_lock.locked() and time.monotonic() < deadline:
+            time.sleep(0.01)
+        self.assertFalse(tray._action_lock.locked(), "后台线程没有在 10 秒内结束")
+
+    def messages(self, icon) -> str:
+        return "\n".join(str(call.args[0]) for call in icon.notify.call_args_list)
+
+    def test_a_stale_packaged_tray_rebuilds_itself_while_the_local_checkout_leads(self):
+        versions = FakeVersions(self.snapshot(behind=3))
+        updates = FakeUpdates()
+        manager, icon = Mock(), Mock()
+        tray = self.tray_for(versions, updates, manager)
+        with patch.object(sys, "frozen", True, create=True), \
+                patch("peach.tray.standalone", return_value=False):
+            tray.sync_source(icon)
+            self.drain(tray)
+        self.assertEqual(versions.asked,
+                         ["9f8e7d6c5b4a39281706f5e4d3c2b1a098765432"])
+        self.assertEqual(updates.prepared, [("abc12345", ("src/peach/tray.py",))])
+        manager.stop_owned.assert_called_once()
+        icon.stop.assert_called_once()
+
+    def test_changes_that_never_enter_the_package_leave_the_tray_alone(self):
+        versions = FakeVersions(self.snapshot(behind=2), paths=("docs/STATUS.md",))
+        updates = FakeUpdates()
+        icon = Mock()
+        tray = self.tray_for(versions, updates)
+        with patch.object(sys, "frozen", True, create=True), \
+                patch("peach.tray.standalone", return_value=False):
+            tray.sync_source(icon)
+            self.drain(tray)
+        self.assertEqual(updates.prepared, [])
+        self.assertIn("托盘无需重建", self.messages(icon))
+
+    def test_a_tray_built_from_the_current_head_reports_that_it_matches(self):
+        versions = FakeVersions(self.snapshot(behind=0))
+        updates = FakeUpdates()
+        icon = Mock()
+        tray = self.tray_for(versions, updates)
+        with patch.object(sys, "frozen", True, create=True), \
+                patch("peach.tray.standalone", return_value=False):
+            tray.sync_source(icon)
+            self.drain(tray)
+        self.assertEqual(updates.prepared, [])
+        self.assertIn("托盘构建与检出一致", self.messages(icon))
+
+    def test_a_source_checkout_has_nothing_to_rebuild(self):
+        versions = FakeVersions(self.snapshot(behind=5))
+        updates = FakeUpdates()
+        icon = Mock()
+        tray = self.tray_for(versions, updates)
+        with patch.object(sys, "frozen", False, create=True), \
+                patch("peach.tray.standalone", return_value=False):
+            tray.sync_source(icon)
+            self.drain(tray)
+        self.assertEqual(updates.prepared, [])
+        self.assertIn("当前不是打包托盘", self.messages(icon))
+
+    def test_a_standalone_test_package_is_replaced_by_hand_not_rebuilt(self):
+        versions = FakeVersions(self.snapshot(behind=5))
+        updates = FakeUpdates()
+        icon = Mock()
+        tray = self.tray_for(versions, updates)
+        with patch.object(sys, "frozen", True, create=True), \
+                patch("peach.tray.standalone", return_value=True):
+            tray.sync_source(icon)
+            self.drain(tray)
+        self.assertEqual(updates.prepared, [])
+        self.assertIn("独立测试包", self.messages(icon))
+
+    def test_a_fast_forward_from_the_channel_still_uses_the_paths_it_pulled(self):
+        """`updated` 那条路不变：远端真有新提交时，重建范围就是这次快进带来的改动。"""
+        snapshot = self.snapshot(behind=3)
+
+        class Fetched(FakeVersions):
+            def update(self):
+                return UpdateResult("updated", "已同步 1 个提交。", snapshot, behind=1,
+                                    changed_paths=("src/peach/web.py",))
+
+        versions = Fetched(snapshot)
+        updates = FakeUpdates()
+        icon = Mock()
+        tray = self.tray_for(versions, updates)
+        with patch.object(sys, "frozen", True, create=True), \
+                patch("peach.tray.standalone", return_value=False):
+            tray.sync_source(icon)
+            self.drain(tray)
+        self.assertEqual(versions.asked, [], "快进自己就给出了改动清单")
+        self.assertEqual(updates.prepared, [("abc12345", ("src/peach/web.py",))])
+
+
+class AutomaticRebuildTests(unittest.TestCase):
+    """托盘自己发现「我比检出旧」。判据是本地 HEAD，不 fetch。"""
+
+    def setUp(self):
+        self.clock = [1000.0]
+        self.attempts: list[tuple] = []
+
+    def now(self) -> float:
+        return self.clock[0]
+
+    def tray_for(self, versions, *, waiting=False):
+        gate = Mock()
+        gate.waiting = waiting
+        with patch("peach.tray.pystray.Icon", return_value=Mock()):
+            tray = PeachTray(Mock(), versions, FakeUpdates(), gate)
+        tray._build_checked_at = self.clock[0]
+        tray.sync_source = lambda *args, **kwargs: self.attempts.append(args)
+        return tray
+
+    def stale(self, head="a" * 40):
+        return FakeVersions(
+            VersionSnapshot("0.7.14", "master", "abc12345", False, True, "origin/master",
+                            build_commit="9f8e7d6c5b4a39281706f5e4d3c2b1a098765432",
+                            build_behind=3),
+            head=head,
+        )
+
+    def test_the_same_head_is_attempted_once_and_a_new_one_reopens_the_chance(self):
+        """重建要跑完整测试和一次打包。失败也算试过：多跑一遍不会改变失败原因。"""
+        versions = self.stale()
+        tray = self.tray_for(versions)
+        with patch.object(sys, "frozen", True, create=True), \
+                patch("peach.tray.standalone", return_value=False):
+            self.assertFalse(tray.poll_build_age(self.now), "不到间隔不问 git")
+            self.clock[0] += 301
+            self.assertTrue(tray.poll_build_age(self.now))
+            self.clock[0] += 301
+            self.assertFalse(tray.poll_build_age(self.now), "同一个 HEAD 只试一次")
+            versions.head = "b" * 40
+            self.clock[0] += 301
+            self.assertTrue(tray.poll_build_age(self.now))
+        self.assertEqual(len(self.attempts), 2)
+
+    def test_a_tray_that_matches_the_checkout_is_left_running(self):
+        versions = self.stale()
+        versions.snapshot = VersionSnapshot(
+            "0.7.14", "master", "abc12345", False, True, "origin/master",
+            build_commit="9f8e7d6c5b4a39281706f5e4d3c2b1a098765432", build_behind=0,
+        )
+        tray = self.tray_for(versions)
+        with patch.object(sys, "frozen", True, create=True), \
+                patch("peach.tray.standalone", return_value=False):
+            self.clock[0] += 301
+            self.assertFalse(tray.poll_build_age(self.now))
+        self.assertEqual(self.attempts, [])
+
+    def test_first_run_setup_outranks_a_stale_build(self):
+        """首次设置没走完时连服务都还没定型，重建换掉的是用户正在用的入口。"""
+        tray = self.tray_for(self.stale(), waiting=True)
+        with patch.object(sys, "frozen", True, create=True), \
+                patch("peach.tray.standalone", return_value=False):
+            self.clock[0] += 301
+            self.assertFalse(tray.poll_build_age(self.now))
+        self.assertEqual(self.attempts, [])
+
+    def test_source_checkouts_and_standalone_packages_never_build_anything(self):
+        tray = self.tray_for(self.stale())
+        with patch.object(sys, "frozen", False, create=True), \
+                patch("peach.tray.standalone", return_value=False):
+            self.clock[0] += 301
+            self.assertFalse(tray.poll_build_age(self.now))
+        with patch.object(sys, "frozen", True, create=True), \
+                patch("peach.tray.standalone", return_value=True):
+            self.clock[0] += 301
+            self.assertFalse(tray.poll_build_age(self.now))
+        self.assertEqual(self.attempts, [])
+
+    def test_the_health_loop_is_what_asks(self):
+        source = inspect.getsource(PeachTray._monitor)
+        self.assertIn("self.poll_build_age()", source)
+
+
 @unittest.skipUnless(sys.platform == "darwin", "菜单栏图标与服务规格是 macOS 专属")
 class MacMenuBarTests(unittest.TestCase):
     def test_template_icon_is_a_black_silhouette(self):
