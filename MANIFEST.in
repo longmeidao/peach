@@ -1,0 +1,3 @@
+recursive-include migrations *.sql
+recursive-include web *
+recursive-include resources *.png *.ico *.icns

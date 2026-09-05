@@ -12,6 +12,19 @@ export declare function emptyStateHtml(
   options?: { className?: string; actions?: string },
 ): string;
 
+/** Geist Fieldset 的标题：放在框体里的 h3，不用原生 legend。 */
+export declare function fieldsetTitle(id: string, title: string): string;
+
+export declare function selectFieldHtml(items: string[][], current: string,
+  options?: { label?: string; attr?: string; className?: string }): string;
+export declare function wireSelectField(root: Element): HTMLElement & { value: string; disabled: boolean };
+export declare const MEDIA_SOURCE_ICONS: Record<string, string>;
+export declare function selectOptionIconHtml(mark?: string): string;
+
+/** 用户触发的动作等待结果时的忙态：`aria-busy` 与 `aria-disabled` 一起写，控件仍可聚焦，
+ *  重复触发由遗留层的 `wireBusyActions` 拦住。请求等待期不许改用原生 `disabled`。 */
+export declare function setActionBusy(control: Element | null, busy?: boolean): void;
+
 /** Geist Note：字段、卡片、分区旁的持久反馈。 */
 export declare function noteHtml(
   message: string,

@@ -18,8 +18,10 @@ SCRIPTS = ROOT / "scripts"
 SRC = ROOT / "src" / "peach"
 
 #: 数据根的写死形态。搬到内置盘之后 `R:\\peach-data` 已经不存在，而写死的路径不会报
-#: 「配置过时」——它只会安静地建一个空库，或者往一个没人看的目录里写日志。
-DATA_ROOT_LITERAL = re.compile(r"R:[\\/]peach-data|[\\/]Users[\\/]longm", re.I)
+#: 「配置过时」——它只会安静地建一个空库，或者往一个没人看的目录里写日志。用户主目录
+#: 下的具体位置同样算写死：它对任何别的用户都不成立。
+DATA_ROOT_LITERAL = re.compile(
+    r"R:[\\/]peach-data|[\\/](?:Users|home)[\\/][^\\/]+[\\/]Desktop", re.I)
 
 #: 只有这两个模块可以谈论平台与数据根的具体位置，其余一律从它们取。
 PATH_AUTHORITIES = {"config.py", "platform.py"}
@@ -114,7 +116,8 @@ class ScriptPathPolicyTests(unittest.TestCase):
     def test_the_guard_catches_the_shape_it_describes(self):
         """门槛自身也要能被证伪，否则它可能只是一段永远为真的代码。"""
         self.assertTrue(DATA_ROOT_LITERAL.search(r"R:\peach-data\database\ledger.db"))
-        self.assertTrue(DATA_ROOT_LITERAL.search("C:/Users/longm/Desktop/peach"))
+        self.assertTrue(DATA_ROOT_LITERAL.search("C:/Users/<user>/Desktop/peach"))
+        self.assertTrue(DATA_ROOT_LITERAL.search("/Users/<user>/Desktop/peach"))
         self.assertIsNone(DATA_ROOT_LITERAL.search("peach-data/generated"))
 
 

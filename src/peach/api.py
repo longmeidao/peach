@@ -25,13 +25,14 @@ from contextlib import asynccontextmanager
 from typing import Any
 from urllib.parse import quote
 
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse
+from fastapi import FastAPI, Request
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.gzip import DEFAULT_EXCLUDED_CONTENT_TYPES, GZipMiddleware
 
 from . import __version__, web_contract, web_follow
-from . import routes_api, routes_auth, routes_media, routes_pages
+from . import routes_api, routes_auth, routes_configuration, routes_media, routes_pages
 from .config import PeachSettings
 from .ffmpeg import FFmpegResolver
 from .follow_scheduler import FollowUpdateScheduler
@@ -71,6 +72,13 @@ LOGGER = logging.getLogger(__name__)
 COMPRESSION_EXCLUDED_TYPES = (
     *DEFAULT_EXCLUDED_CONTENT_TYPES, "application/octet-stream", "text/plain",
 )
+
+
+#: Starlette 自己抛的那几种 HTTPException 带的是英文 detail，给人看之前换成中文。
+_DEFAULT_DETAILS = {
+    "Not Found": "这个地址下没有页面。",
+    "Method Not Allowed": "这个地址不接受这种请求。",
+}
 
 
 def _offline_response(exc: MediaOffline) -> JSONResponse:
@@ -227,9 +235,24 @@ def create_app(
     def _asset_login_required_handler(request: Request, exc: AssetLoginRequired):
         return PlainTextResponse("需要 ?t=口令", status_code=401)
 
-    @app.exception_handler(HTTPException)
-    def _http_exception_handler(request: Request, exc: HTTPException):
-        return JSONResponse({"error": str(exc.detail)}, status_code=exc.status_code)
+    # 挂在 Starlette 的基类上：路由没匹配到的 404 是它抛的，不是 FastAPI 子类，
+    # 只挂子类的话地址栏敲错一个字母仍会看到一行 JSON。
+    @app.exception_handler(StarletteHTTPException)
+    def _http_exception_handler(request: Request, exc: StarletteHTTPException):
+        detail = exc.detail
+        if isinstance(detail, dict):
+            # 表单校验那种带字段明细的 4xx：`message` 是总话，其余键原样带给页面。
+            body = {"error": str(detail.get("message", "")), **{k: v for k, v in detail.items() if k != "message"}}
+        else:
+            body = {"error": _DEFAULT_DETAILS.get(str(detail), str(detail))}
+        # 浏览器地址栏直接打开一个页面路径撞上 403／404／409 时，给人看的是一页话，
+        # 不是一行 JSON；`/api/` 与脚本取数（Accept 里没有 text/html）照旧回 JSON。
+        navigation = (request.method in {"GET", "HEAD"} and not request.url.path.startswith("/api/")
+                      and "text/html" in request.headers.get("accept", ""))
+        if navigation:
+            return HTMLResponse(routes_pages.error_page(exc.status_code, body["error"]),
+                                status_code=exc.status_code)
+        return JSONResponse(body, status_code=exc.status_code)
 
     # 第三方前端依赖固定版本并随 Peach 自托管；局域网断网时仍可播放。
     app.mount(
@@ -263,14 +286,22 @@ def create_app(
     # 健康检查常被 HEAD 探测（`curl -I`、各种 uptime 工具）。本仓库其他公开端点
     # 都显式声明了 GET+HEAD，只有这个漏了，HEAD 会拿到 405。
     @app.api_route("/healthz", methods=["GET", "HEAD"])
-    def healthz() -> dict[str, Any]:
+    def healthz(request: Request, ready: bool = False):
+        from .health import database_status, readiness
+        if ready:
+            result = readiness(settings)
+            return JSONResponse(result, status_code=200 if result["ready"] else 503,
+                                headers={"Cache-Control": "no-store"})
         # 不探测共享目录或迁移数据库；健康检查必须无副作用。
         ffmpeg = resolver.ffmpeg()
         read_only = bool(sync is not None and sync.read_only)
         return {"ok": True, "service": "peach-api", "version": __version__, "mode": "fastapi",
                 # 这台机器跑过 `peach init` 没有。未配置时服务照常起，只是没有数据。
                 "configured": settings.configured,
-                "db": "available" if settings.db_path.is_file() else "missing",
+                # 这次请求的发起方能不能改这台机器的配置（独立包、回环地址）。它随调用方
+                # 变化，只决定管理菜单里「配置」显不显示；拒绝写入的判定在端点自己那里。
+                "configurable": routes_configuration.configurable(request),
+                "db": database_status(settings.db_path),
                 "ffmpeg": ffmpeg.source if ffmpeg else "unavailable",
                 "mdns": mdns.status if mdns is not None else "disabled",
                 "mdns_backend": mdns.backend if mdns is not None else None,
@@ -287,6 +318,7 @@ def create_app(
     # `/api/stream-cancel` 两条具名 API，所以它也要排在 `routes_api` 之前。
     app.include_router(routes_auth.router)
     app.include_router(routes_pages.router)
+    app.include_router(routes_configuration.router)
     app.include_router(routes_media.router)
     app.include_router(routes_api.router)
     return app

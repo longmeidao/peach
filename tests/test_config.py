@@ -80,6 +80,24 @@ class DataRootDiscoveryTests(unittest.TestCase):
             self.assertEqual(
                 settings_file.discover_data_root(nested, {}), (tree.data_root, True))
 
+    def test_frozen_build_searches_from_the_executable_directory(self):
+        """单文件包的 `_MEIPASS` 是临时目录，起点必须是 EXE 所在目录才找得到数据根。"""
+        with TempTree() as tree:
+            executable = tree.project / "dist" / "Peach" / "Peach.exe"
+            executable.parent.mkdir(parents=True)
+            executable.write_bytes(b"")
+            anchor = settings_file._search_anchor(
+                tree.root / "temp" / "_MEI123", frozen=True, executable=str(executable))
+            self.assertEqual(anchor, executable.parent)
+            self.assertEqual(
+                settings_file.discover_data_root(anchor, {}), (tree.data_root, True))
+
+    def test_source_tree_searches_from_the_project_root(self):
+        with TempTree() as tree:
+            anchor = settings_file._search_anchor(
+                tree.project, frozen=False, executable=str(tree.root / "python.exe"))
+            self.assertEqual(anchor, tree.project)
+
     def test_missing_data_root_is_an_explicit_unconfigured_state(self):
         with TempTree(with_data_root=False) as tree:
             path, found = settings_file.discover_data_root(tree.project, {})
@@ -224,15 +242,61 @@ class BadFileTests(unittest.TestCase):
         with TempTree() as tree:
             tree.write("[media.mounts]\nlocal = '/mnt/res/media'\n")
             loaded = tree.load()
-        self.assertEqual(loaded.mounts, {"local": "/mnt/res/media"})
+        self.assertEqual(loaded.mounts, {"local": ("/mnt/res/media",)})
 
     def test_a_newly_declared_location_can_be_mounted(self):
         with TempTree() as tree:
             tree.write(
                 "[media.locations]\nnas = 'N:/'\n[media.mounts]\nnas = '/mnt/nas'\n")
             loaded = tree.load()
-        self.assertEqual(loaded.locations["nas"], "N:/")
-        self.assertEqual(loaded.mounts, {"nas": "/mnt/nas"})
+        self.assertEqual(loaded.locations["nas"], ("N:/",))
+        self.assertEqual(loaded.mounts, {"nas": ("/mnt/nas",)})
+
+    def test_a_declared_locations_table_is_authoritative(self):
+        """`peach init` 的问答只声明 local；内建默认的示例盘符不得从旁边混进来。"""
+        with TempTree() as tree:
+            tree.write("[media.locations]\nlocal = 'D:\\Videos'\n")
+            loaded = tree.load()
+        self.assertEqual(loaded.locations, {"local": (r"D:\Videos",)})
+
+    def test_a_location_may_declare_several_roots_with_matching_mounts(self):
+        """两块硬盘都是 `local`：声明根写数组，落点按同样的顺序写数组，写回时形状不变。"""
+        with TempTree() as tree:
+            tree.write("[media.locations]\nlocal = ['D:\\Videos', 'E:\\Movies']\n"
+                       "[media.mounts]\nlocal = ['/mnt/a', '/mnt/b']\n")
+            loaded = tree.load()
+            self.assertEqual(loaded.locations, {"local": (r"D:\Videos", r"E:\Movies")})
+            self.assertEqual(loaded.mounts, {"local": ("/mnt/a", "/mnt/b")})
+            rendered = settings_file.render(loaded)
+            self.assertIn("local = ['D:\\Videos', 'E:\\Movies']", rendered)
+            self.assertIn("local = ['/mnt/a', '/mnt/b']", rendered)
+            tree.write(rendered)
+            self.assertEqual(tree.load().locations, loaded.locations)
+
+    def test_mount_count_must_match_the_declared_roots(self):
+        # 落点按顺序对应声明根：数目不齐时猜不出哪个目录漏了，直接拒绝。
+        with TempTree() as tree:
+            tree.write("[media.locations]\nlocal = ['D:\\Videos', 'E:\\Movies']\n"
+                       "[media.mounts]\nlocal = '/mnt/a'\n")
+            with self.assertRaises(SettingsFileError) as caught:
+                tree.load()
+        self.assertIn("2 个根", str(caught.exception))
+        with TempTree() as tree:
+            tree.write("[media.locations]\nlocal = ['D:\\Videos', 'D:\\Videos']\n")
+            with self.assertRaises(SettingsFileError) as caught:
+                tree.load()
+        self.assertIn("重复", str(caught.exception))
+        with TempTree() as tree:
+            tree.write("[media.locations]\nlocal = []\n")
+            with self.assertRaises(SettingsFileError) as caught:
+                tree.load()
+        self.assertIn("没有声明根", str(caught.exception))
+
+    def test_without_a_locations_table_the_builtin_defaults_apply(self):
+        with TempTree() as tree:
+            tree.write("[server]\nport = 9100\n")
+            loaded = tree.load()
+        self.assertEqual(loaded.locations, settings_file.DEFAULT_LOCATION_ROOTS)
 
     def test_lenient_load_falls_back_to_builtin_defaults(self):
         """坏文件不能让进程连数据根都不知道——发现顺序不看文件内容。"""
@@ -287,18 +351,18 @@ class SerialisationTests(unittest.TestCase):
                 tree.load(),
                 overrides={
                     "mdns_name": "peach-two", "port": 9443,
-                    "review_writer_origin": "https://10.0.0.5",
-                    "smb_host": "other.local", "smb_user": "someone",
+                    "review_writer_origin": "https://192.0.2.5",
+                    "smb_host": "peach-writer.local", "smb_user": "someone",
                 },
                 # 反斜杠和 Windows 盘符必须原样活过一次往返：序列化器要是把 `\m`
                 # 当转义处理，挂载点就会变成另一个目录。
-                mounts={"local": r"D:\media", "115": "/mnt/115"},
+                mounts={"local": (r"D:\media",), "115": ("/mnt/115",)},
             )
             settings_file.write(captured)
             reloaded = tree.load()
         self.assertEqual(reloaded.server, captured.server)
         self.assertEqual(reloaded.replication, captured.replication)
-        self.assertEqual(reloaded.mounts, {"local": r"D:\media", "115": "/mnt/115"})
+        self.assertEqual(reloaded.mounts, {"local": (r"D:\media",), "115": ("/mnt/115",)})
         self.assertEqual(reloaded.locations, captured.locations)
         self.assertEqual(reloaded.directories, captured.directories)
         self.assertTrue(reloaded.present)
@@ -357,7 +421,7 @@ class ModuleConstantTests(unittest.TestCase):
         # 账本里的 `asset.path` 是 Windows 形态，声明根必须同口径，否则授权全落空。
         self.assertEqual(set(config.LOCATION_ROOT_DECLARATIONS), {"local", "115", "pikpak"})
         self.assertEqual(
-            tuple(config.LOCATION_ROOT_DECLARATIONS.values()),
+            tuple(root for roots in config.LOCATION_ROOT_DECLARATIONS.values() for root in roots),
             config.MEDIA_ROOT_DECLARATIONS,
         )
 
@@ -369,7 +433,7 @@ class ModuleConstantTests(unittest.TestCase):
     def test_share_coordinates_can_be_overridden_without_editing_source(self):
         # 主机名换了、共享改名、账号换一个，都不该要求改源码再发一次版。
         overrides = {
-            "PEACH_SHARED_SMB_HOST": "192.168.1.9",
+            "PEACH_SHARED_SMB_HOST": "198.51.100.9",
             "PEACH_SHARED_SMB_SHARE": "ledger-drop",
             "PEACH_SHARED_SMB_USER": "someone",
         }
@@ -377,13 +441,13 @@ class ModuleConstantTests(unittest.TestCase):
             with patch.dict(os.environ, overrides):
                 settings_file.reset_cache()
                 reloaded = importlib.reload(config)
-                self.assertEqual(reloaded.SHARED_SMB_HOST, "192.168.1.9")
+                self.assertEqual(reloaded.SHARED_SMB_HOST, "198.51.100.9")
                 self.assertEqual(reloaded.SHARED_SMB_SHARE, "ledger-drop")
                 self.assertEqual(reloaded.SHARED_SMB_USER, "someone")
         finally:
             settings_file.reset_cache()
             importlib.reload(config)
-        self.assertNotEqual(config.SHARED_SMB_HOST, "192.168.1.9")
+        self.assertNotEqual(config.SHARED_SMB_HOST, "198.51.100.9")
 
 
 if __name__ == "__main__":

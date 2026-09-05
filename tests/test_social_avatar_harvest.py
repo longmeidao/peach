@@ -28,6 +28,27 @@ def jpeg(width=400, height=400, color=(200, 30, 30)):
     return buffer.getvalue()
 
 
+class CoverFallbackTests(unittest.TestCase):
+    def test_single_performer_cover_is_used_and_multi_performer_cover_is_excluded(self):
+        module = load_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp).resolve()
+            (root / 'JBS-023.jpg').write_bytes(jpeg(1000, 700))
+            con = sqlite3.connect(':memory:')
+            con.executescript("CREATE TABLE asset(id,code,disposal);"
+                              "CREATE TABLE asset_entity(asset_id,entity_id,role);"
+                              "INSERT INTO asset VALUES(1,'JBS-023',NULL);"
+                              "INSERT INTO asset_entity VALUES(1,5,'performer');")
+            record = dict(kind='performer',entity_id=5,canonical='风见步')
+            cache = module.AvatarCandidateCache(root/'cache')
+            result = module.cover_fallback(con, record, cache, root)
+            self.assertEqual(result['source_kind'], 'single_performer_cover')
+            self.assertEqual((result['width'], result['height']), (1000,700))
+            con.execute("INSERT INTO asset_entity VALUES(1,6,'performer')")
+            self.assertIsNone(module.cover_fallback(con, record, cache, root))
+            con.close()
+
+
 X_BASE = "https://pbs.twimg.com/profile_images/2033362507679850496/4wvXoOFw"
 
 X_PAGE = f"""

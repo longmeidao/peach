@@ -113,6 +113,9 @@ def q_taste(contract: WebContract, args=None):
 
 
 def w_taste_refresh(contract: WebContract, body):
+    if body.get("background"):
+        return contract.taste_refresh_job.start_result(
+            lambda: w_taste_refresh(contract, {**body, "background": False}))
     window = str(body.get("window") or "all")
     sources = discover_history_sources()
     results = refresh_history(sources, contract.taste_history_store) if sources else []
@@ -168,16 +171,20 @@ _STORAGE_LABELS = {
 
 def _storage_volumes() -> list[dict[str, object]]:
     """返回当前主机可验证的系统卷、资源盘和网盘容量。"""
-    declarations = [("system", system_volume(), True)] + [
-        (location, translate_ledger_path(root), False)
-        for location, root in LOCATION_ROOT_DECLARATIONS.items()
+    declarations = [("system", _STORAGE_LABELS["system"], system_volume(), True)] + [
+        # 一个来源有几个根就几行；同名来源用序号区分，单根不加。
+        (location,
+         _STORAGE_LABELS.get(location, location) + (f" {index + 1}" if len(roots) > 1 else ""),
+         translate_ledger_path(root), False)
+        for location, roots in LOCATION_ROOT_DECLARATIONS.items()
+        for index, root in enumerate(roots)
     ]
     volumes: list[dict[str, object]] = []
-    for kind, root, is_system in declarations:
+    for kind, label, root, is_system in declarations:
         mounted = not is_unmapped(root) and (is_system or root_online(root))
         row: dict[str, object] = {
             "kind": kind,
-            "label": _STORAGE_LABELS[kind],
+            "label": label,
             "root": str(root) if not is_unmapped(root) else None,
             "online": mounted,
             "free": None,

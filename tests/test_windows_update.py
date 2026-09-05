@@ -1,9 +1,13 @@
 import importlib.util
+import os
 import subprocess
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest.mock import Mock
+
+from peach.windows_update import sweep_onefile_extractions
 
 from peach.windows_update import (
     WindowsUpdateInstaller,
@@ -74,6 +78,7 @@ class WindowsUpdateInstallerTests(unittest.TestCase):
             self.assertEqual(result.state, "services")
             self.assertEqual(runner.call_count, 1)
             self.assertIn("test.ps1", " ".join(runner.call_args.args[0]))
+            self.assertEqual(runner.call_args.args[0][-3:], ["-Scope", "full", "-Fresh"])
 
     def test_tray_update_builds_validates_backs_up_and_launches_helper(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -117,6 +122,96 @@ class WindowsUpdateInstallerTests(unittest.TestCase):
             self.assertEqual(result.state, "failed")
             popen.assert_not_called()
             self.assertEqual(target.read_bytes(), b"old")
+
+    def test_sweep_keeps_recent_backups_and_pending_staging_only(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            target, state, logs = self.make_tree(root)
+            for stamp in ("20260901-090000", "20260902-090000", "20260903-090000"):
+                (target.parent / f"Peach.pre-source-sync-{stamp}.exe").write_bytes(b"old")
+            manual = target.parent / "Peach.pre-0.7.4-20260828-160731.exe"
+            manual.write_bytes(b"manual")
+            staging = state / "source-sync-build"
+            for commit in ("aaaa1111", "bbbb2222"):
+                (staging / commit).mkdir(parents=True)
+                (staging / commit / "Peach.exe").write_bytes(b"staged")
+            (staging / "windows-source-sync.log").write_text("log", encoding="ascii")
+            installer = WindowsUpdateInstaller(
+                root, state_dir=state, log_dir=logs,
+                current_executable=target, powershell="pwsh", frozen=True,
+            )
+            installer.mark_pending("bbbb2222", ("src/peach/tray.py",))
+
+            removed = installer.sweep_artifacts()
+
+            self.assertEqual(
+                sorted(path.name for path in removed),
+                ["Peach.pre-source-sync-20260901-090000.exe", "aaaa1111"],
+            )
+            self.assertEqual(
+                sorted(path.name for path in target.parent.glob("Peach.pre-source-sync-*.exe")),
+                ["Peach.pre-source-sync-20260902-090000.exe",
+                 "Peach.pre-source-sync-20260903-090000.exe"],
+            )
+            self.assertEqual(target.read_bytes(), b"old", "运行中的 EXE 本体不在清退边界内")
+            self.assertTrue(manual.exists(), "只认更新器自己的命名，手工放的文件不碰")
+            self.assertTrue((staging / "bbbb2222" / "Peach.exe").exists(), "待应用的暂存构建保留")
+            self.assertTrue((staging / "windows-source-sync.log").exists(), "只删目录，不删文件")
+
+            installer.clear_pending()
+            removed = installer.sweep_artifacts()
+            self.assertEqual([path.name for path in removed], ["bbbb2222"])
+            self.assertEqual(
+                sorted(path.name for path in staging.iterdir()), ["windows-source-sync.log"],
+            )
+
+    def test_sweep_is_a_no_op_without_update_history(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            target, state, logs = self.make_tree(root)
+            installer = WindowsUpdateInstaller(
+                root, state_dir=state, log_dir=logs,
+                current_executable=root / "missing" / "python.exe",
+                powershell="pwsh", frozen=False,
+            )
+            self.assertEqual(installer.sweep_artifacts(), ())
+            self.assertFalse(state.exists(), "清退不创建目录")
+
+
+class OnefileExtractionSweepTests(unittest.TestCase):
+    def test_removes_stale_sibling_extractions_only(self):
+        with tempfile.TemporaryDirectory() as raw:
+            temp = Path(raw).resolve()
+            own = temp / "_MEI000001"
+            stale = temp / "_MEI000002"
+            fresh = temp / "_MEI000003"
+            unrelated = temp / "tmpabc123"
+            for directory in (own, stale, fresh, unrelated):
+                directory.mkdir()
+            (stale / "python314.dll").write_bytes(b"x")
+            old = time.time() - 3 * 86400
+            os.utime(own, (old, old))
+            os.utime(stale, (old, old))
+            os.utime(unrelated, (old, old))
+
+            removed = sweep_onefile_extractions(str(own))
+
+            self.assertEqual(removed, (stale,))
+            # 自己的、刚起来的、以及别的程序的临时目录一律不碰。
+            self.assertTrue(own.is_dir())
+            self.assertTrue(fresh.is_dir())
+            self.assertTrue(unrelated.is_dir())
+
+    def test_source_tree_run_has_nothing_to_sweep(self):
+        self.assertEqual(sweep_onefile_extractions(None), ())
+
+
+class WindowsBuildScriptTests(unittest.TestCase):
+    def test_build_script_removes_pyinstaller_work_directory(self):
+        script = (ROOT / "scripts" / "build_windows.ps1").read_text(encoding="utf-8-sig")
+        self.assertIn("--clean", script, "工作目录不复用，所以删掉它不损失任何东西")
+        self.assertIn("--workpath $WorkPath", script)
+        self.assertIn("Remove-Item -LiteralPath $WorkPath -Recurse -Force", script)
 
 
 class WindowsTrayReplacerTests(unittest.TestCase):

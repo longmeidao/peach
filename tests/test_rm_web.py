@@ -90,6 +90,23 @@ class WebDataTests(unittest.TestCase):
         con.close()
         return row
 
+    def test_creator_card_and_detail_share_available_entity_image(self):
+        (self.avatars / f"{entity_image_key('creator', 12)}.img").write_bytes(b"image")
+        row = rm_web.q_items(self.contract, {"limit": "10"})["items"][0]
+        ref = {"id": 12, "name": "Canonical Creator", "has_image": True}
+        self.assertEqual(row["creator_entity"], ref)
+        self.assertEqual(row["creator"], ref["name"])
+        self.assertEqual(rm_web.q_item(self.contract, row["id"])["entity_refs"]["creator"][0], ref)
+        cards = [{"id": 2, "creator": "Bob"}, {"id": 3, "creator": "Alice"}]
+        rm_web.attach_card_performers(self.contract, cards)
+        self.assertEqual(cards[0]["creator_entity"], ref)
+        self.assertIsNone(cards[1]["creator_entity"])
+        self.assertEqual(cards[1]["creator"], "Alice")
+        (self.avatars / f"{entity_image_key('creator', 12)}.img").unlink()
+        fresh = rm_web.WebContract(Path(self.db_path), avatar_root=self.avatars, logo_root=self.logos)
+        rm_web.attach_card_performers(fresh, cards)
+        self.assertFalse(cards[0]["creator_entity"]["has_image"])
+
     def test_default_database_connection_is_readonly(self):
         con = self.contract.db()
         with self.assertRaises(sqlite3.OperationalError):
@@ -196,7 +213,7 @@ class WebDataTests(unittest.TestCase):
 
     def test_stats_report_system_resource_and_cloud_volumes(self):
         usage = type("Usage", (), {"free": 20, "total": 100})
-        declarations = {"local": "R:/media", "115": "B:/", "pikpak": "A:/"}
+        declarations = {"local": ("R:/media", "S:/more"), "115": ("B:/",), "pikpak": ("A:/",)}
         with mock.patch.object(web_stats, "LOCATION_ROOT_DECLARATIONS", declarations), \
                 mock.patch.object(web_stats, "system_volume", return_value=Path("X:/")), \
                 mock.patch.object(web_stats, "translate_ledger_path",
@@ -205,14 +222,15 @@ class WebDataTests(unittest.TestCase):
                 mock.patch("shutil.disk_usage", return_value=usage):
             stats = rm_web.q_stats(self.contract)
 
+        # 同一来源的几个根各占一行，用序号区分；单根来源不带序号。
         self.assertEqual(
             [(row["kind"], row["label"]) for row in stats["storage_volumes"]],
-            [("system", "系统盘"), ("local", "资源盘"),
+            [("system", "系统盘"), ("local", "资源盘 1"), ("local", "资源盘 2"),
              ("115", "115 网盘"), ("pikpak", "PikPak 网盘")],
         )
         self.assertEqual(stats["storage_summary"], {
-            "volumes": 4, "online": 4, "measured": 4,
-            "free": 80, "used": 320, "total": 400,
+            "volumes": 5, "online": 5, "measured": 5,
+            "free": 100, "used": 400, "total": 500,
         })
 
     def test_items_support_duration_range(self):
@@ -304,6 +322,16 @@ class WebDataTests(unittest.TestCase):
         flagged = rm_web.q_facets(self.contract, state="flagged")
         self.assertEqual({row["k"] for row in flagged["locations"]}, {"115"})
         self.assertEqual({row["k"] for row in flagged["orientations"]}, {"竖屏"})
+        local = rm_web.q_facets(self.contract, filters={"loc": "local"})
+        remote = rm_web.q_facets(self.contract, filters={"loc": "115"})
+        self.assertEqual(local['stats']['total'], 1)
+        self.assertEqual(remote['stats']['total'], 1)
+        self.assertEqual({row['k'] for row in local['locations']}, {'local', '115'})
+        self.assertNotEqual(local['orientations'], remote['orientations'])
+        empty = rm_web.q_facets(self.contract, filters={"q": "no-matching-demo"})
+        self.assertEqual(empty['tags'], [])
+        self.assertEqual(empty['creators'], [])
+        self.assertEqual(empty['stats']['total'], 0)
         self.assertNotIn("足交", [row["k"] for row in flagged["tags"]])
 
         # 顶部三层同一口径：Alice 只在 1 号上，应该整个消失；
@@ -753,15 +781,19 @@ class WebDataTests(unittest.TestCase):
 
     def test_contract_handler_registries_are_complete_and_unknown_routes_fail(self):
         self.assertEqual(set(rm_web.GET_HANDLERS), {
+            "/api/scraping", "/api/scraping/cover",
             "/api/items", "/api/item", "/api/entity", "/api/photos", "/api/photo-set",
             "/api/index", "/api/parts", "/api/editions", "/api/duplicates", "/api/quality-goals",
             "/api/stats", "/api/tops", "/api/ads", "/api/related", "/api/facets",
             "/api/search-history", "/api/review", "/api/playlists", "/api/playlist",
             "/api/follow", "/api/follow/credentials", "/api/follow/schedule",
+            "/api/follow/check", "/api/follow/resolve", "/api/taste/refresh",
+            "/api/links/prune", "/api/resource-sync/apply",
             "/api/follow/tags",
             "/api/taste", "/api/settings", "/api/links",
         })
         self.assertEqual(set(rm_web.POST_HANDLERS), {
+            "/api/scraping/settings", "/api/scraping/check", "/api/scraping/cover",
             "/api/activity", "/api/play", "/api/feedback", "/api/watch-later",
             "/api/playlist",
             "/api/preference", "/api/quality-goal", "/api/item-tag", "/api/batch",
@@ -775,6 +807,7 @@ class WebDataTests(unittest.TestCase):
             "/api/follow/source", "/api/follow/resolve", "/api/follow/credential",
             "/api/follow/author-alias", "/api/follow/schedule",
             "/api/taste/refresh", "/api/taste/source", "/api/settings",
+            "/api/entity-name",
         })
         with self.assertRaises(rm_web.ContractRouteNotFound):
             rm_web.dispatch_api_get(self.contract, "/api/typo", {})
@@ -1013,7 +1046,7 @@ class WebDataTests(unittest.TestCase):
         rm_web.w_feedback(self.contract, {"id": 1, "kind": "dispose"})
 
         with mock.patch.object(
-                web_batch, "LOCATION_ROOT_DECLARATIONS", {"local": str(source_root)}):
+                web_batch, "LOCATION_ROOT_DECLARATIONS", {"local": (str(source_root),)}):
             result = rm_web.w_batch(self.contract, {"ids": [1], "operation": "delete"})
 
         self.assertEqual(result["empty_dirs_removed"], 2)
@@ -1029,7 +1062,7 @@ class WebDataTests(unittest.TestCase):
         offline = Path(self.tmp.name) / "offline"
 
         with mock.patch.object(web_batch, "LOCATION_ROOT_DECLARATIONS", {
-                "local": str(source_root), "115": str(offline),
+                "local": (str(source_root),), "115": (str(offline),),
         }):
             result = rm_web.cleanup_empty_source_directories()
 
@@ -1322,6 +1355,130 @@ class WebDataTests(unittest.TestCase):
         self.assertIn("Alice Shaku", localized["aliases"], "罗马字仍须可用于身份检索")
         self.assertEqual(localized["display_aliases"], ["しゃくありす", "釈アリス"])
 
+    def test_one_name_recorded_by_two_sources_is_listed_once(self):
+        """`entity_alias` 的主键含 source，合并会再写一条 `merge:*`：同一个写法两行。
+
+        留痕属于账本，资料页不该把同一个名字并排列两遍。取置信度最高的那一条。
+        """
+        con = sqlite3.connect(self.db_path)
+        con.execute(
+            "INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at)"
+            " VALUES(19,'performer','白石亚子','白石亚子','2026-01-01','2026-01-01')")
+        con.executemany(
+            "INSERT INTO entity_alias VALUES(?,?,?,?,?)",
+            [(19, "Ako Shiraishi", "ako shiraishi", "r18:performer", 0.9),
+             (19, "Ako Shiraishi", "ako shiraishi", "merge:duplicate-identity", 1.0),
+             (19, "平沢すず", "平沢すず", "avdb-actor-mapping", 1.0)])
+        con.commit(); con.close()
+
+        entity = rm_web.q_entity(self.contract, {"kind": "performer", "name": "白石亚子"})
+        self.assertEqual(entity["aliases"].count("Ako Shiraishi"), 1)
+        self.assertIn("平沢すず", entity["aliases"])
+
+    def _performer_with_two_names(self):
+        con = sqlite3.connect(self.db_path)
+        con.execute(
+            "INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at)"
+            " VALUES(20,'performer','飯岡かなこ','飯岡かなこ','2026-01-01','2026-01-01')")
+        con.execute("INSERT INTO entity_alias VALUES(20,'森泽佳奈','森泽佳奈','javdb',1.0)")
+        con.execute(
+            "INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence)"
+            " VALUES(1,20,'performer','test',1.0)")
+        con.execute(
+            "INSERT INTO asset_tag(asset_id,tag,source) VALUES(1,'演员:飯岡かなこ','performer')")
+        con.commit(); con.close()
+
+    def _names_of(self, entity_id=20):
+        con = sqlite3.connect(self.db_path)
+        canonical = con.execute(
+            "SELECT canonical_name FROM entity WHERE id=?", (entity_id,)).fetchone()[0]
+        aliases = {row[0]: row[1] for row in con.execute(
+            "SELECT alias,source FROM entity_alias WHERE entity_id=?", (entity_id,))}
+        # 只看这两个写法：夹具本来就给 asset 1 挂着另一位女优的扁平标签。
+        tags = [row[0] for row in con.execute(
+            "SELECT tag FROM asset_tag WHERE tag IN ('演员:飯岡かなこ','演员:森泽佳奈')"
+            " ORDER BY tag")]
+        con.close()
+        return canonical, aliases, tags
+
+    def test_preferred_name_promotes_an_existing_alias_and_demotes_the_old_one(self):
+        """统称是用户的偏好，不是新证据：换的是哪个写法顶在标题上。
+
+        被换下的旧规范名必须留成别名——它是这个人真用过的名字，也是换回去的入口。
+        """
+        self._performer_with_two_names()
+        result = rm_web.w_entity_name(self.contract, {
+            "kind": "performer", "name": "飯岡かなこ", "canonical": "森泽佳奈"})
+        self.assertEqual(result["canonical_name"], "森泽佳奈")
+        self.assertEqual(result["previous_name"], "飯岡かなこ")
+        self.assertTrue(result["changed"])
+
+        canonical, aliases, tags = self._names_of()
+        self.assertEqual(canonical, "森泽佳奈")
+        self.assertEqual(aliases.get("飯岡かなこ"), "user:preferred-name")
+        # 扁平投影跟着走，否则卡片上还写着旧名、按旧名也照样查得到。
+        self.assertEqual(tags, ["演员:森泽佳奈"])
+        self.assertEqual(result["flat_rewritten"], 1)
+
+    def test_preferred_name_can_be_chosen_back(self):
+        self._performer_with_two_names()
+        rm_web.w_entity_name(self.contract, {
+            "kind": "performer", "name": "飯岡かなこ", "canonical": "森泽佳奈"})
+        back = rm_web.w_entity_name(self.contract, {
+            "kind": "performer", "name": "森泽佳奈", "canonical": "飯岡かなこ"})
+        self.assertEqual(back["canonical_name"], "飯岡かなこ")
+        canonical, aliases, tags = self._names_of()
+        self.assertEqual(canonical, "飯岡かなこ")
+        self.assertIn("森泽佳奈", aliases)
+        self.assertEqual(tags, ["演员:飯岡かなこ"])
+
+    def test_preferred_name_is_a_no_op_when_it_is_already_the_canonical_one(self):
+        self._performer_with_two_names()
+        result = rm_web.w_entity_name(self.contract, {
+            "kind": "performer", "name": "飯岡かなこ", "canonical": "飯岡かなこ"})
+        self.assertFalse(result["changed"])
+
+    def test_preferred_name_refuses_free_text(self):
+        """自由文本是改名，要有来源和证据，不是一次点击该干的事。"""
+        self._performer_with_two_names()
+        with self.assertRaises(ValueError):
+            rm_web.w_entity_name(self.contract, {
+                "kind": "performer", "name": "飯岡かなこ", "canonical": "另一个人"})
+        self.assertEqual(self._names_of()[0], "飯岡かなこ")
+
+    def test_preferred_name_reports_a_clash_with_another_entity(self):
+        """规范名唯一。撞上另一条实体时只报冲突：那是该合并还是同名不同人，得人来判。"""
+        self._performer_with_two_names()
+        con = sqlite3.connect(self.db_path)
+        con.execute(
+            "INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at)"
+            " VALUES(21,'performer','森泽佳奈','森泽佳奈','2026-01-01','2026-01-01')")
+        con.commit(); con.close()
+        with self.assertRaises(ValueError):
+            rm_web.w_entity_name(self.contract, {
+                "kind": "performer", "name": "飯岡かなこ", "canonical": "森泽佳奈"})
+        self.assertEqual(self._names_of()[0], "飯岡かなこ")
+
+    def test_preferred_name_rewrites_the_flat_column_for_non_performers(self):
+        con = sqlite3.connect(self.db_path)
+        con.execute(
+            "INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at)"
+            " VALUES(22,'series','NightSafari','nightsafari','2026-01-01','2026-01-01')")
+        con.execute("INSERT INTO entity_alias VALUES(22,'Night Safari','night safari','javdb',1.0)")
+        con.execute(
+            "INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence)"
+            " VALUES(1,22,'series','test',1.0)")
+        con.execute("UPDATE asset SET series='NightSafari' WHERE id=1")
+        con.commit(); con.close()
+
+        result = rm_web.w_entity_name(self.contract, {
+            "kind": "series", "name": "NightSafari", "canonical": "Night Safari"})
+        self.assertEqual(result["flat_rewritten"], 1)
+        con = sqlite3.connect(self.db_path)
+        self.assertEqual(
+            con.execute("SELECT series FROM asset WHERE id=1").fetchone()[0], "Night Safari")
+        con.close()
+
     def test_entity_filter_and_video_sort_compose_in_one_items_query(self):
         con = sqlite3.connect(self.db_path)
         con.execute(
@@ -1337,6 +1494,17 @@ class WebDataTests(unittest.TestCase):
         })
         self.assertEqual([item["id"] for item in newest["items"]], [1, 2])
         self.assertEqual([item["id"] for item in biggest["items"]], [2, 1])
+
+    def test_items_pagination_is_bounded_and_seed_collisions_have_a_unique_order(self):
+        with self.contract.write_transaction() as connection:
+            connection.execute(
+                "INSERT INTO asset(id,location,path,name,medium) VALUES(99992,'local','collision.mp4','collision.mp4','video')")
+        args = {"seed": "1", "limit": "1"}
+        first = rm_web.q_items(self.contract, args)
+        second = rm_web.q_items(self.contract, {**args, "offset": "1"})
+        self.assertEqual([first["items"][0]["id"], second["items"][0]["id"]], [1, 99992])
+        bounded = rm_web.q_items(self.contract, {"limit": "-1", "offset": "-2", "seed": "1"})
+        self.assertEqual([item["id"] for item in bounded["items"]], [1])
 
     def test_sort_takes_a_direction_and_puts_missing_values_last_either_way(self):
         """方向是独立参数，升序也把空值排在最后。
@@ -2086,6 +2254,46 @@ class DuplicateDetectionTests(unittest.TestCase):
         self.assertEqual(rm_web.ordered_multipart_items(duplicate), [])
         self.assertEqual(rm_web.ordered_multipart_items(gapped), [])
 
+    def test_parts_group_when_the_edition_suffix_sits_after_the_volume_number(self):
+        """卷号后面挂着版次或修复标记时，剥掉组内共有尾缀仍认得出这是一部片的几卷。
+
+        实测 PPT-018：三份 `PPT-018-N-uncensored.mp4`（11785／10511／6551 秒）各占一张卡、
+        标题完全相同，点开只能靠时长认是哪一卷。库里同形的还有 `_prob3`、`-4K修复`、
+        `_8k`；全库 156 个同番号多文件组里，这条判据把成组数从 83 抬到 92。
+        """
+        uncensored = [
+            {"id": 31442, "name": "PPT-018-1-uncensored.mp4", "duration": 11785.8},
+            {"id": 31443, "name": "PPT-018-2-uncensored.mp4", "duration": 10511.7},
+            {"id": 31444, "name": "PPT-018-3-uncensored.mp4", "duration": 6551.6},
+        ]
+        self.assertEqual(
+            [item["id"] for item in rm_web.ordered_multipart_items(uncensored)],
+            [31442, 31443, 31444])
+        restored = [
+            {"id": 2, "name": "FC2-PPV-1083921-2-4K修复.mp4"},
+            {"id": 1, "name": "FC2-PPV-1083921-1-4K修复.mp4"},
+        ]
+        self.assertEqual(
+            [item["id"] for item in rm_web.ordered_multipart_items(restored)], [1, 2])
+
+    def test_two_resolutions_of_one_film_are_not_a_multipart_release(self):
+        """共有尾部不从分隔符起头就剥不动，两个清晰度因此仍是两条独立记录。
+
+        实测 040221-001（carib）：`-1080p` 与 `-720p` 的公共尾部只有 `0p`。按字符去剥
+        会把 `1080p` 拆成 `10` 加 `80p`，同一段画面就成了「第 10 卷和第 8 卷」。
+        `ABF-234` 与 `ABF-234-UN` 同理，它们归版次组。
+        """
+        resolutions = [
+            {"id": 1, "name": "040221-001-carib-1080p.mp4"},
+            {"id": 2, "name": "040221-001-carib-720p.mp4"},
+        ]
+        self.assertEqual(rm_web.ordered_multipart_items(resolutions), [])
+        editions = [
+            {"id": 1, "name": "ABF-234.mp4"},
+            {"id": 2, "name": "ABF-234-UN.mp4"},
+        ]
+        self.assertEqual(rm_web.ordered_multipart_items(editions), [])
+
     def test_a_bare_first_part_joins_numbered_parts_when_durations_agree(self):
         # TRE-080 实测：首卷 `TRE-080.mp4` 没有标记，后两卷是 -2/-3，时长 9163/11255/8530 秒。
         items = [
@@ -2142,6 +2350,42 @@ class DuplicateDetectionTests(unittest.TestCase):
         parts = rm_web.q_parts(self.contract, {"id": "6"})
         self.assertEqual([item["name"] for item in parts["items"]],
                          ["TRE-080.mp4", "TRE-080-2.mp4", "TRE-080-3.mp4"])
+        self.assertEqual([item["part_label"] for item in parts["items"]], ["1", "2", "3"])
+
+    def test_volumes_that_carry_an_edition_suffix_still_collapse_into_one_card(self):
+        """PPT-018 的三卷把版次写在卷号后面，仍然折成一张卡和一条 1／2／3 的队列。
+
+        实测三份 `PPT-018-N-uncensored.mp4`：11785／10511／6551 秒。它们此前各占一张卡，
+        标题、女优、厂牌完全一样，在目录里只有时长能区分是哪一卷。
+        """
+        connection = sqlite3.connect(self.db_path)
+        connection.executemany(
+            "INSERT INTO asset(id,location,path,name,medium,size,studio,code,duration,"
+            "width,height,first_seen) VALUES(?,'115',?,?,'video',?,'Prestige','PPT-018',?,"
+            "1920,1080,'2026-08-13')",
+            [
+                (11, r"B:\PPT-018\PPT-018-2-uncensored.mp4", "PPT-018-2-uncensored.mp4",
+                 8_913_529_270, 10511.7),
+                (12, r"B:\PPT-018\PPT-018-1-uncensored.mp4", "PPT-018-1-uncensored.mp4",
+                 10_015_751_441, 11785.8),
+                (13, r"B:\PPT-018\PPT-018-3-uncensored.mp4", "PPT-018-3-uncensored.mp4",
+                 5_560_132_404, 6551.6),
+            ],
+        )
+        connection.commit(); connection.close()
+
+        listed = rm_web.q_items(
+            self.contract, {"q": "PPT-018", "sort": "new", "limit": "10"},
+        )["items"]
+        self.assertEqual({row["part_group"]["count"] for row in listed}, {3})
+        self.assertEqual(listed[0]["part_group"]["seed_id"], 12, "卷号 1 那份是第一卷")
+        self.assertTrue(all("edition_group" not in row for row in listed),
+                        "同一版次的分卷不是多版本")
+
+        parts = rm_web.q_parts(self.contract, {"id": "11"})
+        self.assertEqual([item["name"] for item in parts["items"]],
+                         ["PPT-018-1-uncensored.mp4", "PPT-018-2-uncensored.mp4",
+                          "PPT-018-3-uncensored.mp4"])
         self.assertEqual([item["part_label"] for item in parts["items"]], ["1", "2", "3"])
 
 

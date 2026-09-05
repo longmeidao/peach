@@ -1,12 +1,13 @@
 # Peach 智能体工作契约
 
 本文件是 Codex 与 Claude 共用的唯一项目入口，只保留「每个任务都必须成立」的边界与索引。
-它不是 README：`README.md` 讲这个项目是什么、怎么跑；本文件讲改动它之前必须先知道什么。
+`README.md` 讲项目与运行方式；本文件讲改动前的约定。
 分层判据、写作规范与清退机制见 `docs/adr/0015-agent-context-layering.md`，不要默认追加到本文件。
 
 面向用户阅读的 README、项目总览、状态、交接、复用清单、待办和 ADR 正文统一使用中文。
 代码标识、命令、协议名、库名和无法准确翻译的专有名词保留英文；不要为了智能体处理方便混写英文叙述。
 中文写作风格按用户级技能 tech-doc-style-chinese 执行；安装方式、项目覆盖与检查命令见 `docs/HANDOFF.md`。
+回复用日常语言讲清结果、原因、处理和验证，技术细节按需展开；结尾保留「我做了什么」「你需要做什么」。
 
 本文件的风格与流程条目是好的默认，用户当场的指令可以覆盖它们。以下不在此列，必须在同一轮
 拿到明确授权：写真实 ledger、不可逆删除、换掉生产入口（端口、主机、二进制或版本）、处理凭据与私钥。
@@ -20,7 +21,7 @@
 
 同一件事只用一个词，回话时也用这些词，不要换成同义说法。
 
-- **你**：正在读本文件并改动 Peach 的智能体（Codex 或 Claude）。**我 / 用户**：Peach 的唯一使用者兼维护者。 <!-- copy-lint-disable-line -->
+- **你**：正在读本文件并改动 Peach 的智能体（Codex 或 Claude）。**我 / 用户**：在这台机器上部署、使用并维护 Peach 的人；每个部署只有一人。 <!-- copy-lint-disable-line -->
 - **ledger / 账本**：每台机器 `peach-data/database/ledger.db` 的本地工作副本，唯一真相源。**真相字段**：直接构成 ledger 断言的列。
 - **候选 candidate**：带来源与置信度、未经复核的断言。只有用户复核后才 `approved`，工作者不得自行升级。
 - **复核产物**：CSV 等可机读、可重放的中间结果；结论必须落在这里，不能只存在于对话。
@@ -32,7 +33,7 @@
 
 ## 必读顺序
 
-按序读 `README.md`、`docs/STATUS.md`、`docs/ARCHITECTURE.md`、`docs/REUSE.md`、`docs/HANDOFF.md`；`docs/adr/`、`docs/OPERATIONS.md`（运行与部署命令）和 `docs/SOURCING.md`（身份与来源采集）按需选读。
+先读 `README.md`、`docs/STATUS.md` 相关部分；按任务读取架构、复用与交接文档。实现遵循技能索引；部署读 `docs/OPERATIONS.md`，来源采集读 `docs/SOURCING.md`，架构决策读 `docs/adr/`。
 
 ## 技能索引
 
@@ -53,10 +54,10 @@
 
 ## 工作规则
 
-- `peach-app` is the only GitHub-synced tree. `peach-data`, `.venv`, build output, worktree directories, media and CloudDrive mounts never enter Git. Windows and macOS both run code, data and worktrees from their internal disks; the external disk only supplies media. See ADR-0017, and check `docs/STATUS.md` for the real mount shape before assuming a path exists.
+- `peach-app` is the only GitHub-synced tree. `peach-data`, `.venv`, build output, worktree directories, media and CloudDrive mounts never enter Git. Code, data and worktrees live on internal disks; external disks only supply media. See ADR-0017, and check `docs/STATUS.md` for the real mount shape before assuming a path exists.
 - Ledger paths are always written in the Windows shape (`R:\Media\...`, `A:\...`, `B:\...`). `src/peach/platform.py` translates them to local mounts at read time; never rewrite the ledger to a POSIX shape, and never write `asset.path` from macOS.
 - `peach-data/database/ledger.db` is the truth store. Tests use temporary databases only. A real migration requires a SQLite backup and before/after count checks; follow `peach-ledger-write` before any real write.
-- The project is an early personal project: aggressively remove obsolete code and compatibility layers when the replacement is tested. Do not preserve dead interfaces merely for history; Git is the archive.
+- Peach is a single-person self-hosted app: aggressively remove obsolete code and compatibility layers when the replacement is tested. Do not preserve dead interfaces merely for history; Git is the archive.
 - Preserve real media, ledger rows, behavior history, credentials, network/firewall state, and unrelated long-running jobs.
 - Inspect `git status` and the active listeners/processes before work. Never claim candidate code is production until the service has actually been switched and checked.
 - Keep the architecture a FastAPI modular monolith with a separate web surface. Do not introduce microservices, PostgreSQL or a full multi-account system without a new ADR.
@@ -71,7 +72,7 @@
 
 ## 门槛（由脚本、测试或 hook 拒绝，不是提醒）
 
-- **测试入口**：每个平台只有一个，Windows `& .\scripts\test.ps1`，macOS/Linux `./scripts/test.sh`，只在当前隔离 worktree 根目录运行。局部改动跑对应功能域；跨域、迁移、共享测试设施、依赖、构建/发布或大面积改动跑默认 `full`。两者自动定位主项目 venv、强制 `PYTHONPATH=<当前 worktree>/src`、核对 `peach.__file__` 后运行 `unittest`；禁止手工拼接 venv 路径或调用 pytest。健康检查只使用 `/healthz`。
+- **测试入口**：Windows `& .\scripts\test.ps1`、macOS/Linux `./scripts/test.sh`，在当前隔离 worktree 根目录运行。默认 `auto` 按影响域取并集；共享设施、依赖、构建和未知影响面选 `full`，发布显式跑 `full`。入口定位主 venv、强制当前树 `PYTHONPATH` 并核对 `peach.__file__`；禁止另拼测试命令。`ready` / `integrate` 拒收无有效记录的分支；集成事务互斥。健康检查只用 `/healthz`。
 - **上下文预算**：入口文件与技能有行数、字节数和最长行三重预算，由 `scripts/check_context_budget.py` 与 `tests/test_context_budget.py` 强制。写不下就说明该内容属于 `docs/` 或某个技能，不是往本文件加行。
 - **分层**：新增或删除规则前按 `peach-context-rules` 判层；本文件的技能索引必须与 `.claude/skills/` 一一对应，技能缺 frontmatter、name 不符或缺 `最后复核` 会被拒。
 - **工作树**：并发改代码时主检出只做集成。每个智能体在 `scripts/agent_worktree.py create` 建于 `peach-worktrees/` 的隔离工作树里干活；提交前 `git rev-parse --show-toplevel` 必须不是主检出，工作者只交分支、从不自己合并。细节见 `peach-worktree`。
@@ -81,7 +82,7 @@
 
 ## 常犯错误（没有自动拦截，都是真实重犯过的）
 
-- 写命令前先分辨当前 shell，不混用语法：PowerShell 里 `cat`、`ls`、`where` 是别名，Bash 里没有 `Get-ChildItem`；需要 PowerShell 时用 `pwsh`（7.x，本机已装），不回退 `powershell.exe`（5.1），从 Bash 调用加 `-NoProfile`。引号默认单引号，需要变量展开才用双引号，有歧义写 `${name}`；`rg` 不收含 `*` 的路径参数，筛选用 `-g`，退出码 1 是无匹配不是错误。多行内容一律用写入工具或脚本落盘，不用 heredoc——转义曾毁掉整个测试文件。
+- 命令按当前 shell 编写：PowerShell 的 `cat`、`ls`、`where` 是别名，Bash 没有 `Get-ChildItem`。PowerShell 只用 `pwsh` 7.x，从 Bash 调用加 `-NoProfile`。默认单引号，需展开用双引号，歧义用 `${name}`。`rg` 路径不含 `*`，用 `-g` 筛选；退出码 1 表示无匹配。Python CLI 加 `-X utf8`，读 UTF-8 日志加 `-Encoding utf8`。多行内容用写入工具或脚本落盘，不用 heredoc，防止转义损坏。
 - PowerShell 变量必须使用任务专属名称；禁止声明 `$HOME`、`$home`、`$CODEX_HOME` 等系统变量的任何大小写变体。`foreach {}` 的结果先存入任务专属数组，再单独接管道格式化，禁止在闭合花括号后直接写管道。
 - HTTPS 结论必须使用项目 CA 做严格校验；Schannel、浏览器或取证入口失败时，立即报告原始错误和未取得的验收面，不能改用 HTTP 成功来声称 HTTPS 已通过。
 - UI 标签、身份、反馈状态和搜索推荐属于语义契约。修改时必须同时增加数据层测试和页面源测试，不能只改显示文本；推荐词上线前必须对真实 `/api/items` 验证至少一个命中，说明性后缀不得混入搜索词。

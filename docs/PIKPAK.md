@@ -32,7 +32,7 @@ CloudDrive 进程连接增量计得下载 126,744,568 字节（120.9 MiB）、�
 先执行以下预检与备份；任何一项不满足就停止，不接管写入端：
 
 ```powershell
-$peachRoot = 'C:\Users\longm\Desktop\peach'
+$peachRoot = Join-Path ([Environment]::GetFolderPath('Desktop')) 'peach'
 $peachApp = Join-Path $peachRoot 'peach-app'
 $peachData = Join-Path $peachRoot 'peach-data'
 $peachPython = Join-Path $peachApp '.venv\Scripts\python.exe'

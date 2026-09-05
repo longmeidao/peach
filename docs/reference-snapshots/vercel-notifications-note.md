@@ -2,7 +2,7 @@
 
 ## 取得方式
 
-- 页面：<https://vercel.com/sandun-bingshi/~/settings/notifications>
+- 页面：`https://vercel.com/<account>/~/settings/notifications`
 - 用户提供当前登录态截图，尺寸 `1990×139`，SHA-256 为
   `ae1d66ee4147aeeeb4c39b48e21cf655fd8c7b73f0b48034fbbc214bfec097c78`。
 - 用户复核 Peach 后提供 `59×61` 的错误图标截图，SHA-256 为

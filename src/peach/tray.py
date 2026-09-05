@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import ctypes
 import logging
 import os
@@ -17,7 +18,10 @@ import httpx
 import pystray
 from PIL import Image
 
+from . import ledger_backups, log_retention, onboarding, settings_file
+from .appid import MACOS_LAUNCH_AGENT_LABEL
 from .certs import ensure_certificate
+from .distribution import standalone
 from .config import (
     DATABASE_PATH, LOG_DIR, MDNS_HOSTNAME, PROJECT_ROOT, REPLICATION_ENABLED,
     SECRETS_DIR, SHARED_DATABASE_PATH, SHARED_SMB_HOST, SHARED_SMB_SHARE,
@@ -28,7 +32,10 @@ from .netwatch import NetworkChangeWatcher
 from .mount import mount_share as mount_smb_share
 from .sync import COPY_ACTIONS, SyncPlan, device_id, resolve
 from .versioning import VersionManager, VersionSnapshot
-from .windows_update import WindowsUpdateInstaller
+from .windows_update import (
+    PendingWindowsUpdate, WindowsUpdateInstaller, windows_tray_rebuild_required,
+    sweep_onefile_extractions,
+)
 
 
 LOGGER = logging.getLogger(__name__)
@@ -39,13 +46,17 @@ LOGGER = logging.getLogger(__name__)
 MACOS_PORT = 8900
 #: HTTPS 同理，443 也要 root，所以走 8443。
 MACOS_TLS_PORT = 8443
-#: 单击菜单栏/托盘图标打开本机的固定地址 `<mdns_name>.local`；名字来自设置文件的
-#: `[server].mdns_name`，同一局域网里两台机器必须不同名。macOS 上 80/443 由 pf 转到
-#: 高位端口（scripts/setup_macos_port80.sh）。
-OPEN_URL = f"https://{MDNS_HOSTNAME}/"
+#: LaunchAgent 的标签。托盘、安装脚本和 `.app` 外壳共用 `peach.appid` 这一处定义。
+LAUNCH_AGENT_LABEL = MACOS_LAUNCH_AGENT_LABEL
 
-#: LaunchAgent 的标签，和 `scripts/install_macos_agent.py` 里那个必须一致。
-LAUNCH_AGENT_LABEL = "gg.lmd.peach.tray"
+#: 本地领先远端、或者根本连不上远端时，`update()` 给出的这几种状态。这台机器既是开发机
+#: 又是生产机，提交先落本地再推 GitHub，所以它们才是常态，`updated` 反而几乎不出现。
+#: 托盘要不要重建与远端无关，只取决于 EXE 里那份代码和当前检出差了什么。
+LOCAL_REBUILD_STATES = ("ahead", "current", "error", "unconfigured")
+
+#: 自动检查托盘是否比检出旧的间隔。健康轮询每 10 秒一轮，构建陈旧不需要那个频率：
+#: 这一步要跑几条 git，5 分钟一次既跟得上一次集成，也不会让 git 常驻在磁盘上。
+BUILD_CHECK_INTERVAL = 300.0
 
 
 def ledger_menu_items(make_item, sync_ledger, take_ownership) -> list:
@@ -55,7 +66,7 @@ def ledger_menu_items(make_item, sync_ledger, take_ownership) -> list:
     然后回一句「盘不可达」——那不是状态，是这台机器根本不做复制（ADR-0023 第 3 阶段）。
     标签在两个平台上共用这一处定义，`make_item` 负责套上各自的菜单项类型。
     """
-    if not REPLICATION_ENABLED:
+    if not REPLICATION_ENABLED or standalone():
         return []
     return [
         make_item("同步 Ledger", sync_ledger),
@@ -192,8 +203,15 @@ class ServiceManager:
         run: Callable[..., subprocess.CompletedProcess] = subprocess.run,
         ledger_plan: Callable[[], SyncPlan] | None = None,
         mount_share: Callable[[], bool] | None = None,
+        log_dir: Path | None = None,
+        extra_env: dict[str, str] | None = None,
     ) -> None:
         self.specs = specs
+        # 日志目录与子进程环境可替换：首次设置完成后数据根可能换了地方，那之后拉起的
+        # 服务必须把日志写进新数据根，也必须显式看到新的 PEACH_DATA_ROOT——托盘进程
+        # 自己的模块常量还停在启动那一刻。
+        self._log_dir = Path(log_dir) if log_dir is not None else LOG_DIR
+        self._extra_env = dict(extra_env or {})
         self._popen = popen
         self._health_get = health_get
         self._run = run
@@ -223,6 +241,10 @@ class ServiceManager:
             self._last_health[spec.name] = (ok, detail)
         return ok
 
+    @property
+    def log_dir(self) -> Path:
+        return self._log_dir
+
     def status(self) -> str:
         """菜单里那一行状态：每个服务逐个点名，正常的和异常的都写出来。
 
@@ -237,12 +259,34 @@ class ServiceManager:
                 parts.append(f"{spec.name.upper()} {state}")
         return " · ".join(parts)
 
-    def start_missing(self) -> None:
-        LOG_DIR.mkdir(parents=True, exist_ok=True)
+    def replace_specs(
+        self, specs: tuple[ServiceSpec, ...], *, log_dir: Path | None = None,
+        extra_env: dict[str, str] | None = None,
+    ) -> None:
+        """换掉这一组服务规格。先停掉旧的那组，调用方随后 `start_missing()`。
+
+        首次设置完成时走这条路：引导服务停下，正常的 HTTP/HTTPS 顶上，托盘进程不重启。
+        """
+        self.stop_owned()
+        with self._lock:
+            self.specs = tuple(specs)
+            if log_dir is not None:
+                self._log_dir = Path(log_dir)
+            if extra_env is not None:
+                self._extra_env = dict(extra_env)
+            self._last_health = {spec.name: (False, "未检测") for spec in self.specs}
+
+    def child_environment(self) -> dict[str, str]:
         environment = os.environ.copy()
         if getattr(sys, "frozen", False):
             # A frozen tray must not pass its one-file bootloader state to Peach.exe.
             environment["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
+        environment.update(self._extra_env)
+        return environment
+
+    def start_missing(self) -> None:
+        self._log_dir.mkdir(parents=True, exist_ok=True)
+        environment = self.child_environment()
         with self._lock:
             for spec in self.specs:
                 owned = self._owned.get(spec.name)
@@ -250,8 +294,8 @@ class ServiceManager:
                     continue
                 if self.healthy(spec):
                     continue
-                stdout = (LOG_DIR / f"tray-{spec.name}.out.log").open("ab")
-                stderr = (LOG_DIR / f"tray-{spec.name}.err.log").open("ab")
+                stdout = (self._log_dir / f"tray-{spec.name}.out.log").open("ab")
+                stderr = (self._log_dir / f"tray-{spec.name}.err.log").open("ab")
                 self._logs.extend((stdout, stderr))
                 creationflags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
                 self._owned[spec.name] = self._popen(
@@ -390,7 +434,7 @@ class ServiceManager:
             ]
             if take_ownership:
                 command.append("--take-ownership")
-            sync_environment = os.environ.copy()
+            sync_environment = self.child_environment()
             # Windows 上 Python 的 stdout 被管道捕获时默认使用 ANSI code page
             #（简中系统是 GBK），而父进程按 UTF-8 解码。明确约定子进程输出 UTF-8，
             # 不能只锁定父进程的 decoding，否则中文通知会全部变成替换字符。
@@ -420,6 +464,9 @@ _EXECUTABLE = "peach.exe" if os.name == "nt" else "peach"
 
 
 def _peach_executable() -> Path:
+    from .distribution import standalone
+    if standalone():
+        return Path(sys.executable).resolve()
     if getattr(sys, "frozen", False):
         # 打包出来的托盘不是可移动的独立发行版：它仍然把服务进程的所有权交给项目 venv，
         # 因为 one-file bootloader 在本 Python 构建上再拉起一个 one-file 进程并不安全。
@@ -437,7 +484,11 @@ def _peach_executable() -> Path:
     raise FileNotFoundError(f"{_EXECUTABLE} is missing; reinstall the editable project")
 
 
-def build_macos_service_specs() -> tuple[ServiceSpec, ...]:
+def build_macos_service_specs(
+    *,
+    tls_dir: Path | None = None,
+    mdns_hostname: str | None = None,
+) -> tuple[ServiceSpec, ...]:
     """macOS 用非特权端口起 HTTP，有 TLS 材料时再加一个 HTTPS。
 
     80/443 在 macOS 上要 root，所以服务本身跑在 8900/8443，由 pf 把 80/443 转过去
@@ -446,23 +497,32 @@ def build_macos_service_specs() -> tuple[ServiceSpec, ...]:
 
     证书缺失时**只是不起 HTTPS**，不像 Windows 那样直接报错——macOS 这份是开发环境，
     没有本机 CA 也应该能用。
+
+    `mdns_hostname` 是明文口跳转的目标主机名，缺省取 `MDNS_HOSTNAME`；首次设置之后
+    必须由调用方传入新鲜读到的名字，理由见 `build_service_specs`。
     """
     peach = str(_peach_executable())
+    redirect_origin = f"https://{mdns_hostname or MDNS_HOSTNAME}"
     specs = [
         ServiceSpec(
             "http",
             f"http://127.0.0.1:{MACOS_PORT}/healthz",
             (
-                peach, "serve", "--host", "0.0.0.0", "--port", str(MACOS_PORT),
-                "--no-ledger-sync",
+                peach, "serve", "--host", "127.0.0.1", "--port", str(MACOS_PORT),
+                "--no-ledger-sync", "--no-mdns",
             ),
             True,
         ),
     ]
-    cert_dir = SECRETS_DIR / "tls"
+    cert_dir = Path(tls_dir) if tls_dir is not None else SECRETS_DIR / "tls"
     ca, cert, key = (cert_dir / n for n in
                      ("peach-local-ca.crt", "peach.crt", "peach.key"))
     if all(path.is_file() for path in (ca, cert, key)):
+        specs[0] = ServiceSpec(
+            "http", f"http://127.0.0.1:{MACOS_PORT}/healthz",
+            (peach, "serve", "--host", "0.0.0.0", "--port", str(MACOS_PORT),
+             "--redirect-origin", redirect_origin), True,
+        )
         specs.append(ServiceSpec(
             "https",
             # 健康检查走回环，不走局域网地址。走 `peach.local` 会先解析到本机的
@@ -472,7 +532,7 @@ def build_macos_service_specs() -> tuple[ServiceSpec, ...]:
             f"https://127.0.0.1:{MACOS_TLS_PORT}/healthz",
             (
                 peach, "serve", "--host", "0.0.0.0", "--port", str(MACOS_TLS_PORT),
-                "--no-mdns", "--no-ledger-sync",
+                "--no-ledger-sync",
                 "--ssl-certfile", str(cert), "--ssl-keyfile", str(key),
             ),
             str(ca),
@@ -484,11 +544,19 @@ def build_service_specs(
     lan_address: str | None = None,
     *,
     tls_dir: Path | None = None,
+    mdns_hostname: str | None = None,
 ) -> tuple[ServiceSpec, ...]:
+    """正常服务的两条规格：明文口只做跳转，HTTPS 那条承载全部应用。
+
+    `mdns_hostname` 缺省取 `MDNS_HOSTNAME`，那是 import 期就按当时的设置文件定型的。
+    首次设置刚让人填过 `[server].mdns_name`，托盘进程里的常量却还是旧值，跳转会把人
+    送到一个不存在的 `.local` 名下——所以 `SetupGate.poll` 必须传入新鲜读到的名字。
+    """
     if sys.platform == "darwin":
-        return build_macos_service_specs()
+        return build_macos_service_specs(tls_dir=tls_dir, mdns_hostname=mdns_hostname)
     address = lan_address or os.environ.get("PEACH_LAN_ADDRESS") or lan_ipv4()
     peach = str(_peach_executable())
+    redirect_origin = f"https://{mdns_hostname or MDNS_HOSTNAME}"
     cert_dir = Path(tls_dir) if tls_dir is not None else SECRETS_DIR / "tls"
     ca = cert_dir / "peach-local-ca.crt"
     cert = cert_dir / "peach.crt"
@@ -502,7 +570,7 @@ def build_service_specs(
             "http://127.0.0.1/healthz",
             (
                 peach, "serve", "--host", "0.0.0.0", "--port", "80",
-                "--mdns-address", address, "--no-ledger-sync",
+                "--redirect-origin", redirect_origin,
             ),
             True,
         ),
@@ -510,13 +578,204 @@ def build_service_specs(
             "https",
             f"https://{address}/healthz",
             (
-                peach, "serve", "--host", address, "--port", "443", "--no-mdns",
+                peach, "serve", "--host", address, "--port", "443", "--mdns-address", address,
                 "--no-ledger-sync",
                 "--ssl-certfile", str(cert), "--ssl-keyfile", str(key),
             ),
             str(ca),
         ),
     )
+
+
+#: 引导服务这条规格的名字。它和 `http`/`https` 互斥：托盘要么在等人填表单，
+#: 要么在跑正常服务，不会两者同时。
+SETUP_SPEC_NAME = "setup"
+
+
+def needs_setup(config) -> bool:
+    """这台机器还得先走一遍首次设置吗。
+
+    判据不是 `config.configured`，而是「没有设置文件，也没有账本」。数据根目录本身
+    不算数：托盘的单实例锁一启动就会在数据根下建出 `state/`，而 `discover_data_root`
+    只看目录在不在——只用 `configured` 的话，一次失败的托盘启动就足以让下一次启动
+    认为这台机器已经配置好，然后照旧倒在缺 TLS 材料上。反过来，还没生成过
+    `config.toml` 的老部署账本是在的，不能被拖进首次设置。
+    """
+    if standalone():
+        return not config.present
+    if config.present:
+        return False
+    return not (config.directory("database") / "ledger.db").is_file()
+
+
+def build_setup_service_specs(config) -> tuple[ServiceSpec, ...]:
+    """首次设置的引导服务：只绑回环、无 TLS、无口令、不发布 mDNS。
+
+    不能用正常规格：全新机器上 `build_service_specs()` 会因为缺 TLS 材料直接抛错，
+    而 macOS 那条即使起得来，`peach serve --host 0.0.0.0` 也会被 `_serve_token`
+    以「没有口令」拒掉。这条服务的安全边界就是那个绑定地址——回环之外够不着它。
+    """
+    peach = str(_peach_executable())
+    port = config.server.port
+    return (
+        ServiceSpec(
+            SETUP_SPEC_NAME,
+            f"http://127.0.0.1:{port}/healthz",
+            (
+                peach, "serve", "--setup", "--host", "127.0.0.1", "--port", str(port),
+                "--no-mdns", "--no-ledger-sync",
+            ),
+            True,
+        ),
+    )
+
+
+def setup_url(config) -> str:
+    return f"http://127.0.0.1:{config.server.port}/"
+
+
+def normal_hostname(config) -> str:
+    """这台机器对外的 `<mdns_name>.local`，同一局域网里两台机器必须不同名。
+
+    名字取新鲜读到的设置，不用 import 期就定型的 `MDNS_HOSTNAME`：首次设置里那一题
+    正是它。菜单里的地址和明文口的跳转目标都走这一处，两边不能各算各的。
+    """
+    return f"{config.server.mdns_name}.local"
+
+
+def normal_url(config) -> str:
+    """正常服务的固定地址。macOS 上 80/443 由 pf 转到高位端口
+    （scripts/setup_macos_port80.sh）。
+    """
+    from .distribution import standalone
+    if standalone():
+        return setup_url(config)
+    return f"https://{normal_hostname(config)}/"
+
+
+def configured_service_specs(config) -> tuple[ServiceSpec, ...]:
+    """独立测试包按设置文件启动本机服务；源码入口沿用其生命周期。"""
+    from .distribution import standalone
+    if not standalone():
+        return build_service_specs(tls_dir=config.directory("secrets") / "tls",
+                                   mdns_hostname=normal_hostname(config))
+    if config.server.host != "127.0.0.1":
+        raise ValueError("独立测试包只支持本机访问，请在配置中选择「只有这台电脑」")
+    return (ServiceSpec("http", setup_url(config) + "healthz",
+                        (str(_peach_executable()), "serve", "--host", "127.0.0.1",
+                         "--port", str(config.server.port), "--no-mdns", "--no-ledger-sync"),
+                        True),)
+
+
+class SetupGate:
+    """首次设置期间的服务切换。Windows 托盘与 macOS 菜单栏共用这一层。
+
+    托盘不重启自己就能完成切换，因为真正读数据根的是**子进程**：`peach serve` 每次
+    都自己读一遍设置文件。托盘进程里剩下的几处依赖都已经改成可传入——服务规格的
+    TLS 目录、日志目录、子进程环境里的 `PEACH_DATA_ROOT`、菜单里的地址。账本复制那
+    几个模块常量不在此列，但首次设置写出的 `replication.enabled` 恒为 false，
+    对应菜单项本来就不装配。
+    """
+
+    def __init__(
+        self,
+        manager: ServiceManager,
+        config,
+        *,
+        waiting: bool,
+        load: Callable[[], object] = settings_file.load_config,
+        popen: Callable[..., subprocess.Popen] = subprocess.Popen,
+        open_browser: Callable[[str], object] = webbrowser.open,
+    ) -> None:
+        self.manager = manager
+        self.config = config
+        self._waiting = waiting
+        self._load = load
+        self._popen = popen
+        self._open_browser = open_browser
+        #: 由各平台的托盘装上；默认丢掉，`SetupGate` 本身不认识通知机制。
+        self.notify: Callable[[str, str], None] = lambda _message, _title: None
+
+    @property
+    def waiting(self) -> bool:
+        return self._waiting
+
+    def open_label(self) -> str:
+        return "重新打开设置页" if self._waiting else "打开 Peach"
+
+    def open_url(self) -> str:
+        return setup_url(self.config) if self._waiting else normal_url(self.config)
+
+    def status_line(self) -> str:
+        if self._waiting:
+            return f"等待完成首次设置 · {self.manager.status()}"
+        return self.manager.status()
+
+    def open(self) -> None:
+        self._open_browser(self.open_url())
+
+    def poll(self) -> bool:
+        """设置完成了就切到正常服务。返回这一轮有没有切。
+
+        由健康轮询驱动，所以每几秒问一次：设置文件是新鲜读的，不是模块常量；TLS 材料
+        还没齐就原地等下一轮，而不是拿一组缺文件的规格去启动。mDNS 名同理由这里传进
+        规格：明文口的跳转目标必须是人刚填的那个名字。
+        """
+        from .distribution import standalone
+        reload_path = self.config.directory("state") / onboarding.RELOAD_NAME
+        if not self._waiting and not (standalone() and reload_path.is_file()):
+            return False
+        config = self._load()
+        if needs_setup(config):
+            return False
+        try:
+            specs = configured_service_specs(config)
+        except FileNotFoundError:
+            return False        # CA 还没生成完（或没有 openssl），下一轮再看
+        self._waiting = False
+        self.config = config
+        self.manager.replace_specs(
+            specs, log_dir=config.directory("logs"),
+            extra_env={"PEACH_DATA_ROOT": str(config.data_root)},
+        )
+        self.manager.start_missing()
+        reload_path.unlink(missing_ok=True)
+        self.notify(f"首次设置完成，正在启动服务：{normal_url(config)}", "Peach")
+        self.start_first_scan(config)
+        return True
+
+    def start_first_scan(self, config) -> subprocess.Popen | None:
+        """消费首扫标记，用子进程跑一遍 `peach scan <来源>`。
+
+        扫描不能跑在引导服务里——那个进程刚被上面停掉；也不能跑在托盘线程里——
+        几万个文件要走十几分钟，会把健康轮询和菜单一起卡住。
+        """
+        location = onboarding.take_first_scan_request(config)
+        if location is None:
+            return None
+        log_dir = config.directory("logs")
+        log_dir.mkdir(parents=True, exist_ok=True)
+        environment = self.manager.child_environment()
+        environment["PEACH_DATA_ROOT"] = str(config.data_root)
+        # Windows 上子进程的 stdout 被重定向时默认走 ANSI code page，扫描进度里的
+        # 中文会变成替换字符；这里和账本同步用同一条约定。
+        environment["PYTHONIOENCODING"] = "utf-8"
+        try:
+            # 句柄开着只为了交给子进程；`Popen` 复制过去之后父进程这一份立刻关掉，
+            # 否则 Windows 上这个文件会被托盘一直占着，谁也删不掉它。
+            with (log_dir / "tray-scan.out.log").open("ab") as handle:
+                process = self._popen(
+                    [str(_peach_executable()), "scan", location],
+                    cwd=str(PROJECT_ROOT), stdin=subprocess.DEVNULL,
+                    stdout=handle, stderr=subprocess.STDOUT, shell=False,
+                    creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+                    env=environment,
+                )
+        except (OSError, subprocess.SubprocessError) as exc:
+            self.notify(f"首次扫描没能启动：{exc}", "Peach")
+            return None
+        self.notify(f"首次扫描已在后台开始，进度写在 {log_dir / 'tray-scan.out.log'}", "Peach")
+        return process
 
 
 def create_icon(size: int = 64, *, template: bool = False) -> Image.Image:
@@ -570,8 +829,10 @@ class PeachTray:
         manager: ServiceManager,
         versions: VersionManager | None = None,
         windows_updates: WindowsUpdateInstaller | None = None,
+        gate: "SetupGate | None" = None,
     ) -> None:
         self.manager = manager
+        self.gate = gate or SetupGate(manager, settings_file.active(), waiting=False)
         self.versions = versions or VersionManager()
         self.windows_updates = windows_updates or WindowsUpdateInstaller(
             getattr(self.versions, "root", PROJECT_ROOT),
@@ -581,6 +842,8 @@ class PeachTray:
         self.version = self.versions.inspect()
         self._stop_event = threading.Event()
         self._action_lock = threading.Lock()
+        self._build_checked_at = time.monotonic()
+        self._build_attempted_head: str | None = None
         version_menu = pystray.Menu(
             pystray.MenuItem(lambda _item: f"Peach {self.version.package_version}", None, enabled=False),
             pystray.MenuItem(lambda _item: self.version.build_label, None, enabled=False),
@@ -594,10 +857,12 @@ class PeachTray:
             create_icon(template=sys.platform == "darwin"),
             "Peach · 蜜桃",
             pystray.Menu(
-                pystray.MenuItem("打开 Peach", self.open, default=True),
-                pystray.MenuItem(lambda _item: f"状态：{self.manager.status()}", None, enabled=False),
+                pystray.MenuItem(lambda _item: self.gate.open_label(), self.open, default=True),
+                pystray.MenuItem("配置 Peach", lambda *_: webbrowser.open(self.gate.open_url() + "configuration")),
+                pystray.MenuItem(lambda _item: f"状态：{self.gate.status_line()}", None, enabled=False),
                 pystray.Menu.SEPARATOR,
-                pystray.MenuItem("同步开发进度", self.sync_source),
+                pystray.MenuItem("同步开发进度", self.sync_source,
+                                 visible=lambda _: not standalone()),
                 *ledger_menu_items(
                     pystray.MenuItem, self.sync_ledger, self.take_ownership),
                 pystray.MenuItem("重启服务", self.restart),
@@ -609,7 +874,8 @@ class PeachTray:
         )
 
     def open(self, _icon=None, _item=None) -> None:
-        webbrowser.open(OPEN_URL)
+        # 等待首次设置时打开的是引导服务的表单，不是那个还没有人在监听的 `.local`。
+        self.gate.open()
 
     def restart(self, icon=None, _item=None) -> None:
         if not self._action_lock.acquire(blocking=False):
@@ -676,6 +942,24 @@ class PeachTray:
 
         threading.Thread(target=work, name="PeachUpdate", daemon=True).start()
 
+    def _local_rebuild(self, snapshot: VersionSnapshot) -> tuple[PendingWindowsUpdate | None, str]:
+        """打包托盘比检出旧时，就地登记一次重建；否则给出不重建的理由。
+
+        工作区脏不拦这一步：`prepare` 跑的是检出里的代码，脏工作区里的东西本来就是要被
+        构建进去的那一份。拦住它只会让托盘一直停在旧代码上，而没人在看。
+        """
+        if not getattr(sys, "frozen", False):
+            return None, "当前不是打包托盘，源码已是最新。"
+        if standalone():
+            return None, "独立测试包不自建托盘；请下载新版并完整解压替换程序目录。"
+        if not snapshot.build_stale:
+            return None, f"托盘构建与检出一致（{snapshot.build_label}）。"
+        paths = self.versions.stale_build_paths(snapshot.build_commit)
+        if not windows_tray_rebuild_required(paths):
+            return None, "检出比托盘构建新，但改动不进打包产物，托盘无需重建。"
+        self.windows_updates.mark_pending(snapshot.commit, paths)
+        return self.windows_updates.pending(), ""
+
     def sync_source(self, icon=None, _item=None) -> None:
         if not self._action_lock.acquire(blocking=False):
             return
@@ -693,7 +977,13 @@ class PeachTray:
                         result.snapshot.commit, result.changed_paths,
                     )
                     pending = self.windows_updates.pending()
-                elif result.state != "current" or pending is None:
+                elif result.state in LOCAL_REBUILD_STATES:
+                    if pending is None or pending.commit != result.snapshot.commit:
+                        pending, why = self._local_rebuild(result.snapshot)
+                        if pending is None:
+                            tray_icon.notify(f"{result.message}\n{why}", "Peach 开发进度")
+                            return
+                else:
                     tray_icon.notify(result.message, "Peach 开发进度")
                     return
                 if pending is None or pending.commit != result.snapshot.commit:
@@ -731,23 +1021,68 @@ class PeachTray:
         self.manager.stop_owned()
         (icon or self.icon).stop()
 
+    def poll_build_age(self, now: Callable[[], float] = time.monotonic) -> bool:
+        """每 `BUILD_CHECK_INTERVAL` 秒问一次：托盘 EXE 是不是已经比检出旧了。
+
+        判据是本地 HEAD，不 fetch：这台机器的提交先落本地再推 GitHub，等远端根本等不到。
+        同一个 HEAD 只自动试一次——失败也算试过，重建要跑完整测试和一次打包，反复重试
+        只会让机器空转，而失败原因不会因为多跑一遍就变。下一个 HEAD 才重新开一次机会。
+
+        首次设置没走完时一律不动：那时候连服务都还没定型，重建换掉的是用户正在用的入口。
+        """
+        if not getattr(sys, "frozen", False) or standalone() or self.gate.waiting:
+            return False
+        moment = now()
+        if moment - self._build_checked_at < BUILD_CHECK_INTERVAL:
+            return False
+        self._build_checked_at = moment
+        head = self.versions.head_commit()
+        if not head or head == self._build_attempted_head:
+            return False
+        snapshot = self.versions.inspect()
+        self.version = snapshot
+        if not snapshot.build_stale or self._action_lock.locked():
+            return False
+        self._build_attempted_head = head
+        self.sync_source()
+        return True
+
     def _monitor(self) -> None:
-        while not self._stop_event.wait(10):
+        while not self._stop_event.wait(2 if standalone() else 10):
+            # 先看首次设置有没有完成：切换会换掉 `manager.specs`，采样必须落在换完之后。
+            self.gate.poll()
             for spec in self.manager.specs:
                 self.manager.healthy(spec)
             self.icon.update_menu()
+            self.poll_build_age()
 
     def _setup(self, icon) -> None:
         icon.visible = True
         # 必须等图标真的创建出来才拿得到底层 NSImage，所以放在 setup 里而不是构造时。
         apply_macos_template(icon)
+        self.gate.notify = lambda message, title: icon.notify(message, title)
         if self._startup_warning:
             icon.notify(self._startup_warning, "Peach")
 
     def run(self) -> None:
         self.manager.start_missing()
+        # 上一次更新留下的备份与暂存构建在这里清退：替换助手结束时托盘已经不在，
+        # 只有下一次启动能确认「新托盘已经活下来、旧备份可以少留一份」。
+        self.windows_updates.sweep_artifacts()
+        sweep_onefile_extractions()
+        # 账本备份同理：每个 --apply 都留一份整库，复核过后就没人再读。规则与拒绝条件在
+        # `peach.ledger_backups`；这里失败只记日志，不能因为清退不了而不起托盘。
+        try:
+            ledger_backups.prune(DATABASE_PATH, apply=True)
+        except Exception:
+            logging.getLogger(__name__).warning("账本备份清退失败", exc_info=True)
         self._startup_warning = None
-        if not self.manager.wait_until_ready():
+        if self.gate.waiting:
+            if self.manager.wait_until_ready():
+                self.gate.open()
+            else:
+                self._startup_warning = "首次设置服务没能启动，请查看日志。"
+        elif not self.manager.wait_until_ready():
             self._startup_warning = "Peach 只启动了部分服务，请查看托盘状态和日志。"
         threading.Thread(target=self._monitor, name="PeachHealth", daemon=True).start()
         try:
@@ -802,7 +1137,7 @@ def restart_tray_process(
     )
 
 
-def run_macos_menu_bar(manager: "ServiceManager") -> None:
+def run_macos_menu_bar(manager: "ServiceManager", gate: "SetupGate | None" = None) -> None:
     """macOS 走原生菜单栏项。
 
     pystray 的 darwin 后端漏了 activation policy 和图标尺寸两件必需的事，补齐等于
@@ -810,6 +1145,7 @@ def run_macos_menu_bar(manager: "ServiceManager") -> None:
     """
     from .menubar import MenuBarApp
 
+    gate = gate or SetupGate(manager, settings_file.active(), waiting=False)
     versions = VersionManager()
     # 「同步开发进度」会把版本行写旧，所以标题读这个可变快照而不是闭包里那一份。
     # 不在标题里直接调 `inspect()`：它要开四次 git，而标题每 5 秒刷新一次。
@@ -902,9 +1238,9 @@ def run_macos_menu_bar(manager: "ServiceManager") -> None:
         create_icon(template=True),
         "Peach · 蜜桃",
         [
-            ("打开 Peach", lambda: webbrowser.open(OPEN_URL)),
-            (lambda: f"状态：{manager.status()}", None),
-            (f"地址：{OPEN_URL}", None),
+            (gate.open_label, gate.open),
+            (lambda: f"状态：{gate.status_line()}", None),
+            (lambda: f"地址：{gate.open_url()}", None),
             (None, None),
             ("同步开发进度", sync_source),
             *ledger_menu_items(
@@ -918,12 +1254,16 @@ def run_macos_menu_bar(manager: "ServiceManager") -> None:
         ],
     )
     app["app"] = menu
+    gate.notify = lambda message, title: notify(message, title)
+    if gate.waiting:
+        gate.open()
 
     # `manager.status()` 读的是 `healthy()` 写下的缓存。pystray 那条路径有 `_monitor`
     # 线程定时重采样，这条路径漏了，于是缓存永远停在启动那一刻——服务还没起来时测的
     # 那一次 False，菜单里就一直显示「未运行」。
     def poll_health() -> None:
         while not stopped.wait(5.0):
+            gate.poll()
             for spec in manager.specs:
                 manager.healthy(spec)
 
@@ -934,7 +1274,11 @@ def run_macos_menu_bar(manager: "ServiceManager") -> None:
         报证书无效。由系统的网络变化事件驱动，不轮询——换 Wi-Fi 的那一刻就跑。
         """
         try:
-            reason = ensure_certificate(SECRETS_DIR / "tls", MDNS_HOSTNAME, {lan_ipv4()})
+            # 目录和主机名取 gate 手上那份配置：首次设置可能刚把数据根和 mDNS 名换掉，
+            # 模块常量还停在托盘启动那一刻。
+            reason = ensure_certificate(
+                gate.config.directory("secrets") / "tls",
+                f"{gate.config.server.mdns_name}.local", {lan_ipv4()})
         except Exception:
             LOGGER.exception("证书自检失败")
             return False
@@ -985,23 +1329,48 @@ def run_macos_menu_bar(manager: "ServiceManager") -> None:
         watcher.stop()
 
 
-def main() -> int:
+def build_parser() -> argparse.ArgumentParser:
+    """`peach-tray` 的命令行。它没有子命令和选项，正常使用不带任何参数。"""
+    return argparse.ArgumentParser(
+        prog="peach-tray",
+        description="启动 Peach 托盘（macOS 上是菜单栏项）并接管本机服务；通常不带参数直接运行。",
+    )
+
+
+def main(argv: list[str] | None = None) -> int:
+    # 参数解析必须排在任何进程级副作用之前：`--help` 和拼错的参数都要在 HiDPI 设置、
+    # 单实例锁和目录创建之前退出，否则一条试探命令就会在磁盘上凭空造出一个数据根，
+    # 让之后的安装探测把这台机器误判成已配置。
+    build_parser().parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     enable_hidpi()
-    instance = SingleInstance(STATE_DIR / "peach-tray.lock")
+    # 设置文件新鲜读一次。`config.py` 的常量是 import 期算的，而首次设置正要改变它们
+    # 指向的数据根；这里只用它判断该起哪一组服务，之后由 `SetupGate` 接手。
+    config = settings_file.load_config()
+    waiting = needs_setup(config)
+    instance = SingleInstance(config.directory("state") / "peach-tray.lock")
     manager = None
     try:
         instance.acquire()
     except AlreadyRunning:
-        webbrowser.open(OPEN_URL)
+        webbrowser.open(setup_url(config) if waiting else normal_url(config))
         return 0
     try:
-        manager = ServiceManager(build_service_specs())
-        manager.start_missing()
+        specs = build_setup_service_specs(config) if waiting else configured_service_specs(config)
+        # 日志按半年保留、按月切段，必须排在任何子进程打开日志之前：Windows 上被占着的
+        # 文件改不了名也删不掉。整理不了只记日志，不能因此不起托盘。
+        try:
+            for action in log_retention.sweep(config.directory("logs")):
+                logging.getLogger(__name__).info("日志整理：%s", action)
+        except Exception:
+            logging.getLogger(__name__).warning("日志整理失败", exc_info=True)
+        manager = ServiceManager(specs, log_dir=config.directory("logs"))
+        gate = SetupGate(manager, config, waiting=waiting)
         if sys.platform == "darwin":
-            run_macos_menu_bar(manager)
+            manager.start_missing()
+            run_macos_menu_bar(manager, gate)
         else:
-            PeachTray(manager).run()
+            PeachTray(manager, gate=gate).run()
     except Exception as exc:
         show_message("Peach 启动失败", str(exc), error=True)
         return 1

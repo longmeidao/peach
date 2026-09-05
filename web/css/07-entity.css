@@ -10,6 +10,26 @@
 .entityportrait img{width:100%;height:100%;object-fit:cover;display:block;z-index:1}
 .entityhero>div:last-child{min-width:0;max-width:100%}.entityhero h2{font-size:var(--fs-3xl);font-weight:400;
   line-height:1.2;letter-spacing:0;margin:0 0 9px;overflow-wrap:anywhere}.entityhero .alias b{color:var(--ink);font-weight:inherit}
+/* 统称选择器贴着标题：它改的就是标题上那个名字，隔开就看不出改的是哪一个。
+   下边距归到这一行上，标题自己不再留。 */
+.entitytitle{display:flex;align-items:center;gap:8px;min-width:0;margin:0 0 9px}
+.entitytitle h2{margin-bottom:0}
+.namepick{position:relative;flex:none}
+.npbtn{width:32px;height:32px;flex:none;border:1px solid var(--border-10);border-radius:var(--control-radius);
+  background:var(--overlay-5);color:var(--muted);display:grid;place-items:center;cursor:pointer}
+.npbtn:hover{background:var(--hover);color:var(--ink)}
+.npbtn svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2;
+  stroke-linecap:round;stroke-linejoin:round}
+.npmenu{width:min(260px,calc(100vw - 16px))}
+.npmenu button{display:flex;align-items:center;gap:8px;width:100%;padding:7px 9px;border:0;
+  border-radius:var(--control-radius);background:transparent;color:var(--ink-2);font-size:var(--fs-sm);
+  text-align:left;cursor:pointer;overflow-wrap:anywhere}
+.npmenu button:hover{background:var(--hover)}
+/* 勾只给当前统称。未选中那几行也占着同样宽度的位置，否则切换时整列文字会横向跳一格。 */
+.npmenu button svg{width:16px;height:16px;flex:none;visibility:hidden;stroke:currentColor;fill:none;
+  stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.npmenu button[aria-checked="true"]{background:var(--hover);color:var(--ink)}
+.npmenu button[aria-checked="true"] svg{visibility:visible}
 .entityhero .alias{color:var(--muted);
   font-size:var(--fs-md);line-height:1.45;margin-bottom:14px;overflow-wrap:anywhere}
 .entitylinks{display:flex;flex-wrap:wrap;gap:8px;margin-top:17px;max-width:100%}
@@ -40,6 +60,8 @@
 .entitytagbar .entitytags{min-width:0;flex:1 1 auto;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;
   overscroll-behavior-inline:contain}.entitytagbar .entitytags::-webkit-scrollbar{display:none}
 .entitytags{display:flex;align-items:center;flex-wrap:wrap;gap:7px}.entitytags .pill{flex:none}
+/* 这条是横向滚动行，里面每一项都得拒绝被压扁——挤瘪的开关点不准，也读不出图标。 */
+.entitytags .iconswitch{flex:none}
 .entitytags small{color:var(--muted);margin-left:4px}
 .mediaviewbuttons{display:inline-flex;align-items:center;gap:2px;flex:none}
 .mediaviewbuttons .mediaviewbutton{display:grid;place-items:center;flex:0 0 var(--filterItemH);width:var(--filterItemH);height:var(--filterItemH);padding:0;

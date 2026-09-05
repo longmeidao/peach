@@ -83,7 +83,7 @@
   `0BD8AA9351E4CAA33F01CCEC48C68EDAD491BD1D25234964A4482B7E7E273982`。
   触发器使用 `aria-controls`／`aria-expanded`；内容区关闭时 `inert`，以测量高度写入
   inline `height`，`overflow-y:hidden`，高度和 chevron 都使用 200ms `ease-in-out`。
-- 登录态 Projects 页 <https://vercel.com/sandun-bingshi>：2026-08-30 的可见 DOM
+- 登录态 Projects 页 `https://vercel.com/<account>`：2026-08-30 的可见 DOM
   顺序为 Search、`Filter and Sort Projects`、Add New；实测同一行 36px 高、8px gap，
   搜索占剩余宽度，筛选按钮 36×36px，Add New 115×36px。筛选菜单 250px 宽、6px
   内边距、12px 圆角，内部纵向滚动且 `overscroll-behavior:contain`；展开没有动画。
@@ -182,6 +182,75 @@ error 底 `rgb(217,48,54)` 字 `#fff`；warning 底 `rgb(255,153,10)` 字 `rgb(1
 `bg-[--ds-background-100]` + `shadow-[0_0_0_1px_var(--ds-gray-400)]`。它加环是因为选中项
 的底色和容器同色，填充本身分不出来；不是通用做法。
 
+### 主题选择器：整件几何（2026-09-04 实测，深色主题）
+
+- URL：<https://vercel.com/geist/switch>，1440×900 视口（它挂在 `hidden xl:block` 的
+  文档栏里，窄视口下三档的盒子都是 0，必须先把视口撑到 xl 再读）。
+- 取证方式：按 `aria-label` 取 `system`／`light`／`dark` 三个 `type=radio`，读它们的
+  `label` 与外层 `fieldset` 的 `getBoundingClientRect` 和 `getComputedStyle`；悬停与
+  选中的规则原文取自 Tailwind 类名（`peer-checked:`／`hover:` 前缀就是规则本身）。
+
+| 部位 | 值 |
+| --- | --- |
+| 外框 `fieldset` | 96×32，`rounded-full`，无填充，`--ds-shadow-border`（`0 0 0 1px`）一圈环，`p-0`、`border-0` |
+| 每一档 `label` | 32×32 正圆（`size-8 rounded-full`），图标 16×16 |
+| 未选中 | 透明底，图标 `--ds-gray-700`（`rgb(143,143,143)`）；`hover:text-[var(--ds-gray-1000)]`，不上填充 |
+| 选中 | 底 `--ds-background-100`（`rgb(10,10,10)`，与页面同色），`shadow-[0_0_0_1px_var(--ds-gray-400),0_1px_2px_0_var(--ds-gray-alpha-100)]`，图标 `--ds-gray-1000` |
+| 语义 | `fieldset` + `legend.sr-only`「Select a display theme:」+ 三个共享 name 的 radio，每档一个 `span.sr-only` 写档位名 |
+| 焦点 | `peer-focus-visible:shadow-[var(--ds-focus-ring)]`，环由 radio 的焦点态传给同级 label |
+
+三枚图标都是 16×16 的 Geist 私有 SVG：system 是一台显示器，light 是太阳，dark 是月亮带星。
+
+2026-09-04 在登录态的 <https://vercel.com/sandun-bingshi> 复读同一个控件（账户菜单里的
+「Theme」行），类名与上表逐条一致，只多一个把 32 收成 24 的 `data-small` 档。这套几何在
+文档站与后台是同一份。
+
+**Peach 采用与差异**：形状、尺寸、语义和「选中项加环」照抄，颜色换成本仓库 token
+（外框环 `--border-15`，选中底 `--ground`、环 `--line` 加 `0 1px 2px var(--overlay-5)`，
+未选中 `--muted`、悬停提到 `--ink`）。跟随系统那一档同样用显示器字形（Lucide `monitor`）：
+这一档说的是「照这台设备的设定走」，讲的是设备而不是明暗。详情页的画面尺寸因此换成
+`ratio`——那里量的是画幅本身，不是放画幅的机器。一处有意不同：`≤760px` 时三档各撑到
+44×44，这是本仓库的手机命中区要求，Geist 没有这一档。
+
+### 下拉：后台没有一个原生控件（2026-09-04 实测，登录态）
+
+- URL：<https://vercel.com/sandun-bingshi>（Projects 后台首页）。
+- 取证方式：先枚举页面里的 `select` 与 `[role="combobox"]`——两者都是 0 个；触发器一律是
+  `button[aria-haspopup="true"]`（Filter and Sort Projects、Add New、Preview Menu…）。
+  然后点开 Filter and Sort，读面板与行的 `getComputedStyle`，规则原文取自类名与 CSSOM。
+
+| 部位 | 值 |
+| --- | --- |
+| 触发器 | 36×36，6px 圆角，`0 0 0 1px rgb(46,46,46)` 一圈环，无实心底 |
+| 面板 | `ul[role="menu"]`，宽 250px（inline style），`--ds-background-100` 底（**浅色下是纯白**），12px 圆角，`padding:6px` |
+| 面板阴影 | `--ds-shadow-menu`：`0 0 0 1px 边框色, 0 1px 1px #00000005, 0 4px 8px -4px #0000000a, 0 16px 24px -8px #0000000f` |
+| 行 | `--ds-popover-row-height:36px`、`--ds-popover-row-radius:6px`、`--ds-popover-row-padding:0 8px`，14px/400 |
+| 行的悬停与选中 | 同一个 token：`data-highlighted:bg-gray-alpha-100`、`data-selected:bg-gray-alpha-100`（浅色 `#0000000d`，深色 `#ffffff0f`），`transition:background .1s` |
+| 行内次要文字 | `--ds-gray-900` |
+
+### 浅色一档的中性刻度（2026-09-04 实测）
+
+在同一页把 `<html>` 的 `dark-theme` 换成 `light-theme` 读 `:root` 的计算值（只改 DOM，不动
+账号设置），拿到两档并排的刻度：
+
+| token | 浅色 | 深色 |
+| --- | --- | --- |
+| `--ds-background-100` / `-200` | `#FFFFFF` / `#FAFAFA` | `hsl(0 0% 4%)` / `#000` |
+| `--ds-gray-100` / `-200` / `-300` / `-400` | `#F2F2F2` / `#EBEBEB` / `#E5E5E5` / `#EBEBEB` | 10% / 12% / 16% / 18% |
+| `--ds-gray-700` / `-900` / `-1000` | `#8F8F8F` / `#4D4D4D` / `#171717` | 56% / 63% / 93% |
+| `--ds-gray-alpha-100` / `-200` / `-300` | `#0000000d` / `#00000014` / `#0000001a` | `#ffffff0f` / `#ffffff17` / `#ffffff21` |
+
+要点：浅色这一档**没有色相**，从纸白到近黑全部落在 `hsl(0,0%,·)` 上；中间态（悬停、选中）
+是纯黑透明度而不是调过色的实色灰，所以它永远比所在面板重一点点，不会自己变成一块底。
+
+**Peach 采用与差异**：浅色色板照这张表改成无色相，`--hover` 从实色 `#EEF1F5` 换成
+`rgba(0,0,0,.05)`；`--surface`/`--sunk`/`--line`/`--line-soft` 取 `#FAFAFA`/`#F2F2F2`/
+`#E5E5E5`/`#EBEBEB`，`--ink`/`--ink-2` 取 `#171717`/`#4D4D4D`。两处不同：`--muted` 用
+`#666666` 而不是 Geist 的 `#8F8F8F`（本仓库这一档要承担 12–13px 的说明文字，56% 灰在白底
+上读不动），`--border-10`/`--border-15` 保留本仓库自己的 10%／15% 两档而不是收到 Geist 的
+8%。下拉面板与菜单行按上表：`.popmenu` 底色改成 `--ground`、阴影换成那四层薄影，行高走
+本仓库既有的 `--control-h`（38px）而不是 36px，悬停与选中共用 `--hover`。
+
 ### 侧栏导航是例外：分工反过来（2026-09-04 实测，深色主题）
 
 上一节那张表只取了横排选项组（Switch、Tabs），当时把结论推广到了侧栏，这是错的。
@@ -238,7 +307,7 @@ Peach 的两列侧栏导航按上表对齐：`.edge button` 与 `.dnav button` �
 - 按钮（无选中态）悬停只抬填充到 `--hover`，边框与文字色不动——同样推翻此前的
   「悬停边提亮到墨色 28%」，那一档在 Peach 是全站最亮的边，实际效果比 Vercel 重得多。
   墨色 28% 的边现在只剩输入框 `.fpicksearch:hover` 一处。
-- 禁用统一 `--surface` 底、`--border-15` 边、`--muted` 字，不用 `opacity`；
+- 禁用统一 `--sunk` 底、`--line-soft` 边、`--muted` 字，不用 `opacity`；
   按下不加 `scale`。Peach 保留 `cursor:default` 而不是 Geist 的 `not-allowed`，
   与本仓库其余禁用态写法一致。
 - 计数徽章（如作者别名「3 组」）走 gray badge：`--overlay-5` 底、`--border-15` 细边、`--muted` 字、`--control-radius`。
@@ -257,3 +326,155 @@ Peach 的两列侧栏导航按上表对齐：`.edge button` 与 `.dnav button` �
   关注）保持全宽。
 - 正文字体栈补 CJK sans：`"Microsoft YaHei UI","Microsoft YaHei","PingFang SC",
   "Hiragino Sans GB","Noto Sans CJK SC"` 置于 sans-serif 前。
+
+## 2026-09-05 实测 vercel.com 后台（浅色档，另加暗色 token 对照）
+
+- 取证方式：内置浏览器登录态下打开 `vercel.com/<team>/~/settings` 与 `vercel.com/<team>`，
+  读 `getComputedStyle`；暗色一档把 `<html>` 的 `light-theme` 换成 `dark-theme` 后重读 token。
+- 这一轮回答的是四个问题：输入框聚焦是什么色、fieldset 两块面各是什么色、
+  按钮是不是「无脑全黑」、滚动条有没有被改写。
+
+### 中性刻度（同一组 token 的明暗两档）
+
+| token | 浅色 | 暗色 |
+| --- | --- | --- |
+| `--ds-background-100`（正文面） | `#FFFFFF` | `hsl(0,0%,4%)` |
+| `--ds-background-200`（操作条） | `#FAFAFA` | `#000000` |
+| `--ds-gray-200`（分隔线） | `#EBEBEB` | `hsl(0,0%,12%)` |
+| `--ds-gray-alpha-400`（静止边） | `#00000014` | `#ffffff24` |
+| `--ds-gray-alpha-500`（悬停边） | `#00000036` | `#ffffff3d` |
+| `--ds-gray-alpha-600`（聚焦边） | `#00000057` | `#ffffff82` |
+| `--geist-radius` | 6px | 6px |
+
+两档的方向是一致的：操作条永远比正文面深一档，边永远是当前主题的中性透明色，
+没有一处焦点或选中用到蓝。
+
+### Fieldset
+
+- 外框：`background:#FFFFFF`、`border-radius:6px`、`overflow:hidden`，边不是 border 而是
+  `box-shadow:rgba(0,0,0,.08) 0 0 0 1px, #FAFAFA 0 0 0 1px`。
+- 正文区：`#FFFFFF`、`padding:20px`；标题 20px/600，说明 14px、`padding:8px 0 20px`。
+- 操作条：`#FAFAFA`、`border-top:1px #EBEBEB`、`min-height:56px`、
+  `padding:12px 12px 12px 20px`，说明推到最左、按钮靠右。
+
+### Button（同一屏上同时出现的两档）
+
+| 档 | 背景 | 文字 | 边 | 几何 |
+| --- | --- | --- | --- | --- |
+| primary（Save／Add New／Import） | `#171717` | `#FFFFFF` | 无 | 32–36px 高、6px 圆角、14px/500 |
+| secondary（Filter and Sort Projects） | `#FFFFFF` | `#171717` | `0 0 0 1px #EBEBEB` | 同上 |
+| disabled（Delete Team／Add more） | `#F2F2F2` | `#8F8F8F` | `0 0 0 1px #EBEBEB` | 同上 |
+
+次级档不是透明的：它自己是一块比所在容器亮的面，所以压在 `#FAFAFA` 的操作条上仍读得出边界。
+仪表盘工具行里两档并排出现，「主动作实底、其余白面」就是这套的全部规则。
+
+### 滚动条
+
+整站 `scrollbar-width` 与 `scrollbar-color` 都是 `auto`，没有一条 `::-webkit-scrollbar` 规则；
+只在个别内部滚动区把滚动条整个藏掉。明暗两档的滚动条外观由 `color-scheme` 交给浏览器。
+
+## Peach 对应（2026-09-05）
+
+- 输入框一组边与环收进 `--field-ring`／`--field-ring-hover`／`--field-ring-focus`／`--field-glow`，
+  聚焦是 1px 中性边加 4px 辉光，不再是蓝。顶部搜索、`.geist-search`、`.geist-input`、
+  `.gselectfield`、`.sidebaraddfield`、偏好文本域共用这一份。
+- 全站收成两张面。`--page` 是退到后面那张：`body`、框体里的操作条。`--ground` 是浮在它
+  上面那张：顶栏、窄栏、卡片、面板、按钮和输入框，外框 1px `--field-ring`、内部分隔线
+  `--line-soft`，不靠投影。暗色一档 Peach 的底带蓝，所以 `--page` 取 `#04060A` 而不是纯黑，
+  方向与 Vercel 一致（面比底亮）。`--surface` 不再当面用，只剩悬停与内嵌那一档。
+- 顶栏与窄栏是有意与 Vercel 分开的一处：Vercel 的页头和页面底同色、不浮起，Peach 有一条
+  从上贯到底的窄栏，两条一起留在 `--ground` 才不会在左上角撞出两种白。
+- 按钮次级档填 `--ground` 而不是透明，悬停抬到 `--surface`；禁用落到 `--sunk`。
+- 滚动条不写任何自定义样式，交给 `html` 上的 `color-scheme`。
+
+## 2026-09-05 实测 vercel.com/<team>/~/deployments 的筛选行
+
+取证方式与上一节相同：内置浏览器登录态下打开该页，用 `getComputedStyle` 读实际值。
+
+### 结构
+
+`Add Filter | Author lmd | Environment Production | Status Error`，右侧另有
+`Status 6/7`、`Select Date Range`、`All Environments`。不是一排互斥药丸，是可叠加的维度令牌：
+每个令牌自带下拉，可单独摘掉，`Add Filter` 负责再加一个维度。
+
+### 三态
+
+| 态 | 背景 | 描边 |
+| --- | --- | --- |
+| 未生效（建议中的维度） | `rgba(0,0,0,0)` | `1px dashed rgba(0,0,0,.21)` |
+| 已生效（`Add Filter`、`Author lmd`） | `#FFFFFF` | `1px solid rgba(0,0,0,.08)` |
+| 悬停／键盘聚焦 | `#FFFFFF` | `1px solid rgba(0,0,0,.08)` |
+| 下拉展开 | `gray-200` | 实线 `gray-500` |
+
+四颗令牌的文字全是 `#171717` 14px/400，深浅只差在内部 label 那个 span；
+也就是生不生效**只由边的虚实和填不填色**说，不靠文字色。
+
+高 32px、圆角 `10ex`（视觉上等于全圆）。填色画在一个绝对定位的
+`div[data-pill-background]` 上，按钮本身不带背景，所以描边虚实可以和填色各自过渡。
+
+### 这套配色成立的前提
+
+该页页面底色是 `#FAFAFA`（`bg-background-200`），`--ds-background-100` 才是纯白。
+所以「填成 `#FFFFFF` = 更亮 = 生效」是相对页面底色抬了一档。Peach 首页的 `--ground` 已经是纯白，
+同一套写法没有可填的更亮档；要照搬得先把页面底色降到 `--surface` 这一层。
+
+### Peach 对应（2026-09-05）
+
+虚线只借给 `#tagbar` 那一排，即首页顶上的筛选条：未生效 `background:transparent` +
+`1px dashed var(--field-ring-hover)`，已生效 `background:var(--ground)` +
+`1px solid var(--field-ring)`；浅色一档实测就是 `rgba(0,0,0,.21)` 与 `rgba(0,0,0,.08)`。
+`.brandpill`、关注页和实体页的 `.pill` 一律实线，只保留「选中填 `--ground`」这一半。
+虚线在 Vercel 上说的是「这条筛选还没加上去」，配得上它的只有恒常在场、可开可关的那一排；
+随内容来去的药丸也画成虚线，整页就是一片没生效的框，虚线不再指向任何东西。
+中间加了一档 Vercel 没有的悬停：只把虚线拉成实线，不填色。原因是语义不同——
+Vercel 的令牌可叠加，悬停预演成生效态没有代价；Peach 首页那一排是单选、恒有一颗生效，
+悬停也填就会同屏出现两颗选中。文字色也没照搬：Vercel 一行只有四颗，Peach 那一排有二十来颗，
+全部提到 `--ink` 会让整条筛选比页面其它部分都重，所以未生效仍停在 `--muted`。
+
+## 覆盖式滚动条（2026-09-05 实测）
+
+- URL：<https://vercel.com/dashboard>（登录后的团队概览，左侧栏）
+- 取证方式：Chrome 148 读 `getComputedStyle` 与 `getBoundingClientRect`；同一页在内置
+  浏览器面板里量到的是 `display:none`，因为那个面板报的是粗指针，轨道的 `pointer-fine:block`
+  不成立。结论以真实 Chrome 为准。
+
+侧栏容器 `nav.overflow-x-clip.overflow-y-auto`：`scrollbar-width:none`、`padding-right:0px`、
+`clientWidth === offsetWidth`（255），即原生滚动条整个关掉，也不给它留槽。
+
+轨道是容器的兄弟，同在一个 `position:relative` 的父级（`div.md:flex-1.relative.md:min-h-0`）里：
+
+| 元素 | 类 | 实测 |
+| --- | --- | --- |
+| 轨道 | `group/track absolute right-0 top-2 bottom-2 w-3 hidden pointer-fine:block` | `position:absolute`、12px 宽、`background:rgba(0,0,0,0)`、`border-radius:0` |
+| 滑块 | `absolute right-0 w-[3px] group-hover/track:w-1.5 rounded-full bg-gray-500 cursor-default transition-[width] duration-150` | 静息 3px、轨道悬停 6px、`border-radius` 9999px、`background:rgb(69,69,69)`（暗色 `--ds-gray-500`；浅色一档是 `rgb(201,201,201)`）、`transition:width .15s cubic-bezier(.4,0,.2,1)` |
+
+几何写在滑块的行内样式上，不是 CSS 规则：`height` = 可视高 / 内容高 × 轨道高
+（实测 805 / 851 × 789 = 746.35），`transform:translateY()` = 滚动进度 × (轨道高 − 滑块高)。
+根滚动条**没有**被接管：`html` 上 `scrollbar-width:auto`、`scrollbar-color:auto`、
+`scrollbar-gutter:auto`，量到 15px 实宽。站内其余滚动区多数只写
+`scrollbar-width:thin; scrollbar-color:var(--ds-gray-500) transparent`。
+
+### Peach 对应（2026-09-05）
+
+`.ovtrack` / `.ovthumb` 与 `attachOverlayScrollbar()` 照抄上面的几何与两档宽度，颜色换成
+`--field-ring-hover`：它在浅色一档是 `rgba(0,0,0,.21)`，压在白面上正好是 `rgb(201,201,201)`，
+和实测值同一个数，还自带暗色一档。有意差异三条：
+
+1. **粗指针仍然画滑块。** Vercel 的轨道 `hidden pointer-fine:block`，触屏上整条不画。Peach 的
+   原生滚动条同样已经关掉，跟着收掉就等于触屏上既没有滑块也没有系统指示器，读不出这一列
+   有多长、自己停在哪儿。滑块不占宽度，留着不挡任何东西；「能拖」才收给细指针，靠
+   `pointer-events` 分档，拖不动的东西不该吃走触摸事件。
+2. **整页也换掉。** Vercel 只接管内部滚动区，根滚动条留给浏览器。Peach 的根滚动条本来要靠
+   `scrollbar-gutter:stable` 永久扣下 15px 才不跳版，等于为一条装饰付一整列；换成覆盖式之后
+   宽度归零，跳版的前提也一起消失。
+3. **整页那条的命中区收到滑块本身。** 侧栏轨道只覆盖侧栏，吃掉的点击本来就是它自己的；整页
+   那条从窗口顶贯到底，12px 的透明条会把右边缘所有点击一并吃掉，而设置面板正贴在那儿。
+
+站内其余滚动容器（设置面板、详情侧栏、标签选择、混播队列、统计页的指标带与宽表、关注管理的
+来源列表与分页条）走同一个 `attachOverlayScrollbar()`，容器名单写在 `web/js/ui-components.js`
+的 `OVERLAY_SCROLLERS` 一处。横轴同样自绘：轨道贴底、滑块 3px→6px，几何换成
+可视宽/内容宽。原生那条由 `[data-overlay-scrollbar]` 关掉——属性是脚本挂上去的，
+所以脚本没跑到的容器留着系统滚动条兜底，不会出现既没滑块又拖不动的死框。
+
+**例外**：`.popmenu` 那类进顶层（`popover`）的菜单仍用原生滚动条。轨道必须是滚动容器的
+兄弟，而顶层元素的兄弟画在原来的层里，位置和裁剪都对不上。

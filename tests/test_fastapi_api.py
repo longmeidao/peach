@@ -56,6 +56,9 @@ CREATE TABLE asset_entity(
   asset_id INTEGER,entity_id INTEGER,role TEXT,source TEXT,confidence REAL,
   metadata_json TEXT DEFAULT '{}',first_seen_at TEXT,last_seen_at TEXT,
   UNIQUE(asset_id,entity_id,role,source));
+CREATE TABLE entity_membership(
+  member_id INTEGER PRIMARY KEY,agency_id INTEGER,source TEXT,
+  confidence REAL DEFAULT 1.0,checked_at TEXT);
 CREATE TABLE watch_queue(profile_id TEXT,asset_id INTEGER,added_at TEXT,source TEXT,
   PRIMARY KEY(profile_id,asset_id));
 CREATE TABLE playlist(
@@ -181,6 +184,8 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         (self.root / "dist" / "peach-ui.css").write_text(".island{}", encoding="utf-8")
         con = sqlite3.connect(self.db)
         con.executescript(BASE_SCHEMA)
+        con.executescript((ROOT / "migrations" / "0018_online_follow.sql").read_text(
+            encoding="utf-8"))
         con.execute(
             """INSERT INTO asset(id,location,path,name,medium,size,creator,studio,duration,
                                   width,height,ctx_orient,snapshot_path,first_seen)
@@ -212,7 +217,7 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         con.commit()
         con.close()
         self.settings = PeachSettings(
-            db_path=self.db, token="secret", page_path=self.page, vendor_path=self.vendor_root,
+            db_path=self.db, configured=True, token="secret", page_path=self.page, vendor_path=self.vendor_root,
             allowed_media_roots=(self.media_root,), snapshot_root=self.snapshot_root,
             legacy_snapshot_roots=(self.legacy_snapshot_root,),
             poster_root=self.poster_root, avatar_root=self.avatar_root, logo_root=self.logo_root,
@@ -225,6 +230,14 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
             taste_history_manifest=self.taste_manifest,
         )
         self.app = create_app(self.settings)
+        # 字节与时间表夹具不含可解码画面；编码判定由媒体域的真实样本覆盖。
+        from peach.transcodes import _MediaProfile
+        self.profile_patch = patch.object(
+            self.app.state.transcode_service, "_probe",
+            return_value=_MediaProfile("h264", "yuv420p", "aac"),
+        )
+        self.profile_patch.start()
+        self.addCleanup(self.profile_patch.stop)
         self.assertIs(
             self.app.state.web_contract.database,
             self.app.state.repository.database,
@@ -640,6 +653,22 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         ])
         connection.close()
 
+    async def test_catalog_keeps_missing_performers_separate_from_release_code(self):
+        with closing(sqlite3.connect(self.db)) as con:
+            con.execute(
+                "INSERT INTO asset(id,location,path,name,medium,size,code,studio,first_seen) "
+                "VALUES(29999,'local',?,'JBS-023.mp4','video',10,'JBS-023','Prestige','2026-09-05')",
+                (str((self.media_root / 'JBS-023.mp4').resolve()),),
+            )
+            con.commit()
+        response = await self.client.get('/api/items?t=secret&loc=local')
+        self.assertEqual(response.status_code, 200)
+        item = next(row for row in response.json()['items'] if row['id'] == 29999)
+        self.assertEqual(item['code'], 'JBS-023')
+        self.assertFalse(item.get('creator'))
+        self.assertEqual(item['performers'], [])
+        self.assertEqual(item['performer_entities'], [])
+
     async def test_auth_and_items_contract(self):
         denied = await self.client.get("/api/items")
         self.assertEqual(denied.status_code, 401)
@@ -845,6 +874,22 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(accepted.status_code, 303)
         self.assertEqual(accepted.headers["location"], "/stats")
         self.assertNotIn("secret", accepted.headers["location"])
+
+    async def test_the_login_page_follows_the_chosen_theme(self):
+        """登录页在拿到 cookie 之前出图，所以它自带一份最小色板，跟着同一个选择走。
+
+        它取不到 `/app.css`，颜色只能写在页面里。写死一档的话，固定浅色的人从地址栏
+        直接进来先看见一整屏黑，登录完才跳回浅色——同一次打开出现两套配色。
+        """
+        page = await self.client.get("/login?next=/")
+        self.assertEqual(page.status_code, 200)
+        self.assertIn('<meta name="color-scheme" content="light dark">', page.text)
+        self.assertIn(":root{color-scheme:light;--bg:#FFFFFF;", page.text)
+        self.assertIn('@media (prefers-color-scheme:dark){html:not([data-theme="light"])', page.text)
+        self.assertIn('html[data-theme="dark"]{color-scheme:dark;', page.text)
+        self.assertIn("background:var(--bg);color:var(--ink)", page.text)
+        # 手动选的那一档存在页面自己的 localStorage 里，首帧之前就要读出来。
+        self.assertIn('localStorage.getItem("peach.settings.v1")', page.text)
 
     async def test_client_routes_serve_the_single_page_surface(self):
         await self.client.post(
@@ -1148,7 +1193,7 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.content, b"clear-jpeg")
         self.assertEqual(response.headers["cache-control"],
-                         f"public, max-age={api_module.MEDIA_CACHE_SECONDS}")
+                         "private, no-cache")
         cover.fail = True
         fallback = await self.client.get(
             "/follow-cover?id=7&t=secret", follow_redirects=False)
@@ -1219,6 +1264,20 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(playlist.headers["content-type"], "application/vnd.apple.mpegurl")
         self.assertEqual(playlist.text.count("#EXTINF:"), 3)
 
+    async def test_incompatible_video_uses_time_slices_without_whole_movie_conversion(self):
+        con = sqlite3.connect(self.db)
+        con.execute("UPDATE asset SET duration=7632.28 WHERE id=1")
+        con.commit()
+        con.close()
+        with patch.object(self.app.state.transcode_service, 'requires_conversion', return_value=True), \
+                patch.object(self.app.state.transcode_service, 'browser_path',
+                             side_effect=AssertionError('whole movie conversion')):
+            response = await self.client.get('/api/stream-plan?id=1&session=s&t=secret')
+            self.assertEqual(response.json()['protocol'], 'hls')
+            playlist = await self.client.get('/stream/hls/1/index.m3u8?session=s&t=secret')
+            self.assertEqual(playlist.status_code, 200)
+            self.assertIn('#EXTINF:0.280', playlist.text)
+
     async def test_hls_segment_is_generated_for_one_requested_time_slice(self):
         con = sqlite3.connect(self.db)
         con.execute("UPDATE asset SET location='115', duration=13.5, path=? WHERE id=1",
@@ -1288,7 +1347,16 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(logo.headers["content-type"], "image/png")
         self.assertEqual(logo.headers["cache-control"], "public, no-cache")
         self.assertEqual(poster.headers["cache-control"],
-                         f"public, max-age={api_module.MEDIA_CACHE_SECONDS}")
+                         "private, no-cache")
+        fresh = await self.client.get("/poster?id=1&c=4", headers={
+            **headers, "If-None-Match": poster.headers["etag"],
+        })
+        self.assertEqual(fresh.status_code, 304)
+        self.assertEqual(fresh.content, b"")
+        denied = await self.client.get("/poster?id=1&c=4", headers={
+            "If-None-Match": poster.headers["etag"],
+        })
+        self.assertEqual(denied.status_code, 401)
 
     async def test_endcard_frame_is_authenticated_and_confined_to_evidence_root(self):
         denied = await self.client.get(
@@ -1445,17 +1513,17 @@ class UnconfiguredMachineTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(body["configured"])
         self.assertEqual(body["db"], "missing")
 
-    async def test_the_page_tells_the_user_to_run_peach_init(self):
+    async def test_the_page_serves_the_first_run_form(self):
         response = await self.client.get("/")
         self.assertEqual(response.status_code, 200)
         self.assertIn("text/html", response.headers["content-type"])
-        self.assertIn("peach init", response.text)
+        self.assertIn('<form method="post" action="/setup"', response.text)
 
-    async def test_deep_links_land_on_the_same_prompt(self):
+    async def test_deep_links_land_on_the_same_form(self):
         # 前端路由全部落到 `index`，未配置时不该只有首页能看。
         response = await self.client.get("/tags")
         self.assertEqual(response.status_code, 200)
-        self.assertIn("peach init", response.text)
+        self.assertIn('<form method="post" action="/setup"', response.text)
 
     async def test_a_configured_machine_still_reports_true(self):
         app = create_app(PeachSettings(configured=True, db_path=self.settings.db_path))

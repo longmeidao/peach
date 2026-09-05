@@ -3,11 +3,31 @@ requires = ["setuptools==84.0.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "peach-app"
+name = "peach"
 dynamic = ["version"]
 description = "Local-first media library, behavior ledger, and discovery application"
-requires-python = ">=3.14"
+readme = "README.md"
+# SPDX 表达式必须和 `LICENSE` 全文一致，换许可证要先改 ADR-0023 第 4 阶段；
+# `tests/test_repo_hygiene.py` 钉住 LICENSE 那一侧。
+license = "AGPL-3.0-or-later"
+requires-python = ">=3.12"
+# `Private :: Do Not Upload` 不是修饰语：Peach 只自托管、不发 PyPI
+# （`.github/workflows/test.yml`），PyPI 拒收带这枚 classifier 的包，
+# 所以误跑 `twine upload` 会在传上去之前就被挡住。
+classifiers = [
+  "Private :: Do Not Upload",
+  "Environment :: Web Environment",
+  "Operating System :: MacOS",
+  "Operating System :: Microsoft :: Windows",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Topic :: Database :: Front-Ends",
+  "Topic :: Multimedia :: Video",
+]
 dependencies = [
+  "tldextract==5.3.2",
   "APScheduler==3.11.3",
   "beautifulsoup4==4.15.0",
   "browserexport==0.4.4",
@@ -24,14 +44,22 @@ dependencies = [
   "zeroconf==0.151.3",
 ]
 
+[project.urls]
+Homepage = "https://github.com/longmeidao/peach"
+Repository = "https://github.com/longmeidao/peach"
+Issues = "https://github.com/longmeidao/peach/issues"
+
 [project.scripts]
 peach = "peach.cli:main"
 peach-tray = "peach.tray:main"
 
 [project.optional-dependencies]
+dev = ["filelock==3.32.4"]
 build = ["pyinstaller==6.22.2"]
 macos = ["pyobjc-framework-Cocoa==12.2.2; sys_platform == 'darwin'"]
-vision = ["opencv-python-headless==5.0.0.93"]
+# numpy 本来就是 opencv 的传递依赖，这里显式钉住：`face_detect.decode` 直接 import 它
+# 把字节喂给 `cv2.imdecode`，被 import 的外部模块必须有声明的归属。
+vision = ["opencv-python-headless==5.0.0.93", "numpy==2.5.2"]
 maintenance-115 = ["p115client==0.0.9.6.5.1"]
 # 字形表的复核轮子，只有 tests/test_performer_localization.py 用它对账。
 naming = ["opencc==1.4.2"]

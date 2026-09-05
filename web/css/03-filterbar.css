@@ -3,19 +3,34 @@
   border-bottom:1px solid transparent;background:transparent;
   display:flex;gap:7px;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;align-items:center}
 .tagbar::-webkit-scrollbar{display:none}
-.pill{flex:none;height:var(--filterItemH);padding:0 20px;border:1px solid var(--border-15);
+/* 选中药丸和生效筛选共用高亮填充。 */
+.pill{flex:none;height:var(--filterItemH);padding:0 20px;border:1px solid var(--field-ring);
   border-radius:var(--pill-radius);background:transparent;display:inline-flex;align-items:center;justify-content:center;
   color:var(--muted);cursor:pointer;font-size:var(--fs-lg);white-space:nowrap;text-decoration:none}
-.pill:hover{color:var(--ink)}
-.pill[aria-pressed="true"]{background:var(--hover);color:var(--ink)}
-.pill.act{border-color:var(--ink-2);color:var(--ink)}
-.sep{flex:none;width:1px;height:19px;background:var(--border-15);margin:0 3px}
+.pill:hover{border-color:var(--field-ring-hover);color:var(--ink)}
+.pill[aria-pressed="true"]{border-color:var(--field-ring);background:var(--hover);color:var(--ink)}
+
+/* 虚线只画在首页筛选条右半截的标签药丸上，别处一律实线。
+   2026-09-05 实测 vercel.com/<team>/~/deployments 的筛选令牌，两端是这样的：
+   未生效 `background:rgba(0,0,0,0)` + `1px dashed rgba(0,0,0,.21)`；
+   已生效 `background:#FFFFFF` + `1px solid rgba(0,0,0,.08)`。两个数就是 Peach 的
+   --field-ring-hover 与 --field-ring，暗色一档换成同位置的白透明度。
+   分界就是那道 `.sep`：左边四枚 `[data-state]` 是视图，四选一、恒有一枚生效，
+   「这条筛选还没加上去」对它们从来不成立，画成虚线等于说三枚视图都还没生效。
+   右边的 `[data-tag]` 才是可加可不加的筛选，虚线在那里才指向一件真事。
+   悬停只把虚线拉成实线——「这颗点得动」——填充留给真正选中的那颗：
+   Vercel 的令牌可叠加，悬停预演成生效态没有代价；Peach 这一排的标签也是可叠加的，
+   但同排还有恒常生效的视图胶囊，悬停也填就会同屏读出两种「已生效」。 */
+#tagbar .pill[data-tag]:not([aria-pressed="true"]){border-style:dashed;border-color:var(--field-ring-hover)}
+#tagbar .pill[data-tag]:not([aria-pressed="true"]):hover{border-style:solid}
+.sep{flex:none;width:1px;height:19px;background:var(--field-ring-hover);margin:0 3px}
 
 /* 多标签交集筛选条 */
 .combo{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:0 0 10px}
+/* 交集条上的每一颗都是已经生效的筛选。 */
 .combo .cb{min-height:36px;box-sizing:border-box;display:inline-flex;align-items:center;gap:7px;padding:0 9px 0 12px;
-  border-radius:var(--tag-radius);border:1px solid var(--border-15);color:var(--ink-2);
-  background:var(--overlay-5);font-size:var(--fs-xs)}
+  border-radius:var(--tag-radius);border:1px solid var(--field-ring);color:var(--ink-2);
+  background:var(--hover);font-size:var(--fs-xs)}
 .combo .cb b{cursor:pointer;opacity:.7;font-weight:400}
 .combo .cb b:hover{opacity:1}
 .combo .clr{min-height:36px;display:inline-flex;align-items:center;padding:0 8px;background:none;border:0;color:var(--muted);cursor:pointer;font-size:var(--fs-xs);text-decoration:none}

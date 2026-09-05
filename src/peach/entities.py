@@ -14,6 +14,30 @@ KANA = re.compile(r"[぀-ゟ゠-ヿ]")
 KANJI = re.compile(r"[一-鿿]")
 
 
+#: 旧称写法的前缀。`旧・GRANZPRO` 与 `元・VERGER` 都是这一类，名字本体在前缀后面。
+FORMER_PREFIX = re.compile(r"^\s*[旧元]\s*[・·]?\s*")
+
+
+def split_name(raw: str) -> tuple[str, list[str]]:
+    """(现用名, 别名列表)。括号外是现用名，括号里和括号后的都是别名。
+
+    实测的三种形态都由这一条覆盖：`ACT(アクト)` 是读音，`Wish(元・GIRFY)` 是旧名，
+    `SO MODEL AGENT(ソウ モデルエージェント)旧・Eightman Production` 两样都有，
+    而旧名跟在右括号后面。
+    """
+    raw = raw.strip()
+    parts = [part for part in re.split(r"[（(]([^）)]*)[）)]", raw) if part is not None]
+    if len(parts) == 1:
+        return raw, []
+    canonical = parts[0].strip()
+    aliases = []
+    for part in parts[1:]:
+        name = FORMER_PREFIX.sub("", part).strip()
+        if name and name != canonical:
+            aliases.append(name)
+    return (canonical or raw), aliases
+
+
 def name_rank(name: str) -> int:
     """这个写法对日文站有多可用，越小越先试。
 
@@ -73,6 +97,38 @@ def collapse_repeated_entity_name(name: str) -> str:
     return original
 
 
+#: `Ako Momona (Kou Akemi, Mari Koizumi)` 这种一格装了三个艺名的写法。签名收得很紧：
+#: 括号前有一个空格、括号内逗号分隔、整串只有拉丁字母与 `. ' -` 这几个名字里出现的标点。
+#: 放宽任何一条都会误伤——`AV DEBUT（本物人妻）` 的括号里是厂牌消歧，`アスナ(SAO)` 是
+#: 角色的出处，`快慢扳机（接稿中）` 是接稿状态，`kitty(1)` 是去重后缀。它们和艺名共用
+#: 「名字后面跟一对括号」这个形状，只有「两侧都是罗马字人名」能把它们分开。
+COMPOSITE_PERSON_NAME = re.compile(
+    r"^([A-Za-z][A-Za-z .'-]*) \(([A-Za-z][A-Za-z .',-]*)\)$")
+
+
+def split_composite_person_name(name: str) -> list[str]:
+    """把 `现用名 (曾用名, 曾用名)` 拆成一个人的若干个名字，顺序保持原样、去重。
+
+    r18.dev 的罗马字字段本身就是这个渲染格式，导入时一个字段写一行，于是整串成了一条
+    别名。它做别名是死的：没有人叫「Ako Momona (Kou Akemi, Mari Koizumi)」，按任何一段
+    都搜不到，选成统称更是不成立。同一条实体的假名和汉字写法本来就各自成行，缺的只是
+    这几个罗马字。
+
+    不匹配签名的原样返回一个元素，调用方不必先判断。
+    """
+    matched = COMPOSITE_PERSON_NAME.match(strip_zero_width(name).strip())
+    if not matched:
+        stripped = strip_zero_width(name).strip()
+        return [stripped] if stripped else []
+    parts = [matched.group(1).strip()]
+    parts.extend(part.strip() for part in matched.group(2).split(","))
+    unique: list[str] = []
+    for part in parts:
+        if part and part not in unique:
+            unique.append(part)
+    return unique
+
+
 #: 规范名里要剥掉的零宽字符。上游译名夹带过 `‌斋藤亚美里`（performer）和
 #: `比特ビット‌`（creator）：页面上和普通名字一模一样，但 `strip()` 不认它们不是
 #: 空白，`normalized_name` 也就带着它，于是同一个人在账本里能存成两个实体、按名字搜
@@ -95,6 +151,42 @@ def canonicalize_entity_name(kind: str, name: str | None) -> str:
     return canonical
 
 
+#: 规范名有一份扁平投影（ADR-0005）：女优落在 `asset_tag` 的 `演员:` 标签里，其余三种
+#: 落在 `asset` 的同名列里。只改实体名不改这一份，卡片上还写着旧名、按旧名也照样查得到，
+#: 资料页和卡片就各说各话了。
+FLAT_COLUMN = {"studio": "studio", "creator": "creator", "series": "series"}
+
+
+def rewrite_flat_projection(connection: Connection, kind: str, entity_id: int,
+                            old_name: str, new_name: str) -> int:
+    """规范名换写法之后，把扁平投影一并改过来，返回改动的资产数。
+
+    资料页的统称选择器和账本清理脚本改的是同一件事，共用这一份：投影跟不上实体名的
+    后果不是报错，是卡片和资料页各说各话，而且按旧名还照样搜得到。
+    """
+    column = FLAT_COLUMN.get(kind)
+    if column:
+        connection.execute(f"UPDATE asset SET {column}=? WHERE {column}=?",
+                           (new_name, old_name))
+        return connection.execute("SELECT changes()").fetchone()[0]
+    rewritten = 0
+    old_tag, new_tag = f"演员:{old_name}", f"演员:{new_name}"
+    for item in connection.execute(
+        "SELECT DISTINCT asset_id FROM asset_entity WHERE entity_id=?", (entity_id,)
+    ):
+        asset_id = int(item[0])
+        # 置信度与来源跟着旧标签走：换的是写法，不是这条标注的可信程度。
+        connection.execute(
+            "INSERT OR IGNORE INTO asset_tag(asset_id,tag,confidence,source) "
+            "SELECT asset_id,?,confidence,source FROM asset_tag WHERE asset_id=? AND tag=?",
+            (new_tag, asset_id, old_tag))
+        connection.execute("DELETE FROM asset_tag WHERE asset_id=? AND tag=?",
+                           (asset_id, old_tag))
+        if connection.execute("SELECT changes()").fetchone()[0]:
+            rewritten += 1
+    return rewritten
+
+
 def merge_entity(
     connection: Connection, *, target_id: int, source_id: int,
     source_name: str, alias_source: str, now: str | None = None,
@@ -110,7 +202,7 @@ def merge_entity(
     """
     stamp = now or datetime.now(timezone.utc).isoformat()
     moved = {"assets": 0, "aliases": 0, "refs": 0, "links": 0, "terms": 0,
-             "dropped_refs": 0}
+             "dropped_refs": 0, "memberships": 0, "members": 0}
 
     # 被并入的名字本身留作别名，否则按旧名搜索会落空。
     connection.execute(
@@ -158,6 +250,19 @@ def merge_entity(
         (target_id, source_id))
     moved["terms"] = connection.execute("SELECT changes()").fetchone()[0]
     connection.execute("DELETE FROM entity_search_term WHERE entity_id=?", (source_id,))
+
+    # 归属关系两个方向都要跟着走。做成员那一侧主键在 `member_id` 上，target 已有现役
+    # 归属时 source 那条只能丢——一个人一条现役归属是这张表的语义，合并不该破例造出
+    # 第二条。做事务所那一侧没有这个限制，成员整批改指向 target。
+    connection.execute(
+        "INSERT OR IGNORE INTO entity_membership(member_id,agency_id,source,confidence,checked_at)"
+        " SELECT ?,agency_id,source,confidence,checked_at FROM entity_membership WHERE member_id=?",
+        (target_id, source_id))
+    moved["memberships"] = connection.execute("SELECT changes()").fetchone()[0]
+    connection.execute("DELETE FROM entity_membership WHERE member_id=?", (source_id,))
+    connection.execute(
+        "UPDATE entity_membership SET agency_id=? WHERE agency_id=?", (target_id, source_id))
+    moved["members"] = connection.execute("SELECT changes()").fetchone()[0]
 
     connection.execute("UPDATE entity SET updated_at=? WHERE id=?", (stamp, target_id))
     connection.execute("DELETE FROM entity WHERE id=?", (source_id,))

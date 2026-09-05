@@ -12,6 +12,9 @@ const expectedFiles = new Map();
 
 const read = (...parts) => readFileSync(join(root, ...parts));
 const text = (...parts) => read(...parts).toString("utf8");
+// .gitattributes 让整仓签出 LF，而 npm 包里的许可证原文有 CRLF 的。照抄字节的话，
+// 提交后签出来的那份和这里算出来的期望值差在换行上，--check 每次都报未同步。
+const lfText = (...parts) => text(...parts).replace(/\r\n/g, "\n");
 const sha256 = value => createHash("sha256").update(value).digest("hex").toUpperCase();
 const integrity = name => lock.packages[`node_modules/${name}`]?.integrity || "未取得";
 const stage = (path, value) => expectedFiles.set(path, Buffer.isBuffer(value) ? value : Buffer.from(value));
@@ -25,7 +28,7 @@ const copyPackageFiles = ({ packageName, vendorName, files, note }) => {
     stage(target, payload);
     hashes.push(`- \`${destination}\` SHA-256：\`${sha256(payload)}\``);
   }
-  const license = read("node_modules", packageName, "LICENSE");
+  const license = lfText("node_modules", packageName, "LICENSE");
   stage(`web/vendor/${vendorName}/${version}/LICENSE`, license);
   stage(`web/vendor/${vendorName}/${version}/ORIGIN.md`,
     `# ${packageName} ${version}\n\n` +
@@ -58,11 +61,12 @@ copyPackageFiles({
 });
 
 const lucideIcons = new Map([
+  ["building", "building"], ["briefcase", "briefcase"],
   ["home", "home"], ["sliders-horizontal", "sliders-horizontal"], ["search", "search"],
   ["layout-grid", "layout-grid"], ["square-check-big", "square-check-big"],
   ["refresh-cw", "refresh-cw"], ["user-round", "user-round"], ["tags", "tags"],
-  ["star", "star"], ["list-filter", "list-filter"], ["chart", "chart-no-axes-column"],
-  ["settings", "settings"], ["monitor-cog", "monitor-cog"], ["gauge", "gauge"],
+  ["list-filter", "list-filter"], ["chart", "chart-no-axes-column"],
+  ["settings", "settings"], ["gauge", "gauge"],
   ["history", "history"], ["sparkles", "sparkles"],
   ["x", "x"], ["folder-open", "folder-open"], ["info", "info"],
   ["hard-drive", "hard-drive"], ["globe", "globe"], ["rss", "rss"],
@@ -74,6 +78,24 @@ const lucideIcons = new Map([
   ["chevron-up", "chevron-up"], ["chevron-down", "chevron-down"], ["heart", "heart"],
   ["upload", "upload"], ["database", "database"], ["play", "play"], ["clock", "clock"],
   ["external-link", "external-link"], ["bookmark-plus", "bookmark-plus"],
+  ["bookmark", "bookmark"], ["gallery-vertical-end", "gallery-vertical-end"],
+  ["notebook-pen", "notebook-pen"], ["search-x", "search-x"],
+  ["file-archive", "file-archive"], ["file-audio", "file-audio"],
+  ["file-stack", "file-stack"],
+  // 名字和上游对不上的只有排序键：Peach 叫 `sort`，Lucide 叫 `sort-desc`。
+  ["sort", "sort-desc"], ["arrow-up", "arrow-up"], ["arrow-down", "arrow-down"],
+  ["calendar", "calendar"], ["download", "download"], ["monitor", "monitor"],
+  // 管理菜单里的「配置」：这台电脑。`monitor` 已经归详情页的分辨率，不能兼任。
+  ["computer", "computer"],
+  // 配置页每行文件夹的「选择文件夹」：弹系统对话框去挑。`folder-open` 归「打开位置」，不兼任。
+  ["folder-search", "folder-search"],
+  ["ratio", "ratio"], ["sun", "sun"], ["moon", "moon"],
+]);
+
+// 自绘 symbol：没有上游可对，所以在这里逐个点名。下面那道分区检查要求雪碧图里
+// 每一枚要么由某一套生成、要么写在这张名单上——漏一枚就会被当成忘了纳管。
+const handDrawnIcons = new Set([
+  "alert", "pics", "jav", "theater-enter", "theater-exit", "brand-x",
 ]);
 
 const svgInner = source => {
@@ -92,12 +114,32 @@ for (const [symbol, icon] of lucideIcons) {
   index = index.replace(pattern, `<symbol id="i-${symbol}" viewBox="0 0 24 24">${inner}</symbol>`);
 }
 
+// Phosphor 是填充图标，Peach 全局是描边：填充声明写在 symbol 上，路径不改一个字，
+// 换版本时不必再核每条 path 有没有被补过 fill。
+// viewBox 也不原样照抄：每套图标在自己画格里留的白不一样，同样 15px 画出来一大一小。
+// 这里的框是量出来的——把内容外框补到 Lucide 的 20/24 活区，字形按高、图形按长边。
+const phosphorIcons = new Map([
+  ["text-aa", { icon: "text-aa", viewBox: "-7.3 32.8 262.5 182.9" }],
+  ["playlist", { icon: "playlist", viewBox: "10.4 10.5 259.2 259.2" }],
+]);
+for (const [symbol, { icon, viewBox }] of phosphorIcons) {
+  const inner = svgInner(text("node_modules", "@phosphor-icons/core", "assets", "regular", `${icon}.svg`));
+  const attrs = `viewBox="${viewBox}" fill="currentColor" stroke="none"`;
+  const pattern = new RegExp(`<symbol id="i-${symbol}" ${attrs.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}>[\\s\\S]*?<\\/symbol>`);
+  if (!pattern.test(index)) throw new Error(`缺少 Phosphor symbol：${symbol}`);
+  index = index.replace(pattern, `<symbol id="i-${symbol}" ${attrs}>${inner}</symbol>`);
+}
+
 const healthInner = svgInner(text("node_modules", "healthicons", "public", "icons", "svg", "outline-24px", "contraceptives", "sperm.svg"));
-index = index.replace(/<symbol id="i-sperm" viewBox="0 0 24 24">[\s\S]*?<\/symbol>/,
-  `<symbol id="i-sperm" viewBox="0 0 24 24">${healthInner}</symbol>`);
+const SPERM_VIEWBOX = "1.5 1.2 21.2 21.2";
+index = index.replace(
+  new RegExp(`<symbol id="i-sperm" viewBox="${SPERM_VIEWBOX}">[\\s\\S]*?<\\/symbol>`),
+  `<symbol id="i-sperm" viewBox="${SPERM_VIEWBOX}">${healthInner}</symbol>`);
 index = index.replace(/Lucide static [0-9.]+, ISC/, `Lucide static ${versions["lucide-static"]}, ISC`);
 index = index.replace(/Health Icons sperm outline-24px, CC0\/public domain/,
   `Health Icons ${versions.healthicons} sperm outline-24px, CC0/public domain`);
+index = index.replace(/Phosphor [0-9.]+ regular, MIT/,
+  `Phosphor ${versions["@phosphor-icons/core"]} regular, MIT`);
 index = index.replaceAll(/\/vendor\/videojs\/[0-9.]+\//g, `/vendor/videojs/${versions["video.js"]}/`);
 stage("web/index.html", index);
 
@@ -115,21 +157,42 @@ reuse = reuse.replace(/Video\.js [0-9.]+/, `Video.js ${versions["video.js"]}`);
 reuse = reuse.replace(/Swiper [0-9.]+/, `Swiper ${versions.swiper}`);
 stage("docs/REUSE.md", reuse);
 
-stage("web/vendor/lucide-LICENSE.txt", read("node_modules", "lucide-static", "LICENSE"));
+stage("web/vendor/lucide-LICENSE.txt", lfText("node_modules", "lucide-static", "LICENSE"));
 stage("web/vendor/lucide-ORIGIN.md",
   `# Lucide static ${versions["lucide-static"]}\n\n` +
   `- npm 包：\`lucide-static@${versions["lucide-static"]}\`\n` +
   `- npm lock integrity：\`${integrity("lucide-static")}\`\n` +
   `- 许可证：ISC；原文见 \`lucide-LICENSE.txt\`\n` +
   `- 消费者：\`web/index.html\` 内联的 ${lucideIcons.size} 个 symbol\n\n` +
-  "`i-jav`、`i-alert` 是 Peach 自绘图标；RSS 与拖动点保留填充修正，避免小圆点在全局描边样式下消失。\n");
-stage("web/vendor/healthicons-LICENSE.txt", read("node_modules", "healthicons", "LICENSE"));
+  `雪碧图里另有 ${handDrawnIcons.size} 枚自绘 symbol（${[...handDrawnIcons].join("、")}）与 16 枚 player-* 前缀的播放器图标，都没有上游可对。\n` +
+  "RSS 与拖动点保留填充修正，避免小圆点在全局描边样式下消失。\n");
+stage("web/vendor/phosphor-LICENSE.txt", lfText("node_modules", "@phosphor-icons/core", "LICENSE"));
+stage("web/vendor/phosphor-ORIGIN.md",
+  `# Phosphor icons ${versions["@phosphor-icons/core"]}\n\n` +
+  `- npm 包：\`@phosphor-icons/core@${versions["@phosphor-icons/core"]}\`\n` +
+  `- npm lock integrity：\`${integrity("@phosphor-icons/core")}\`\n` +
+  `- 许可证：MIT；原文见 \`phosphor-LICENSE.txt\`\n` +
+  `- 消费者：\`web/index.html\` 内联的 ${phosphorIcons.size} 个 regular 权重 symbol\n\n` +
+  "只在描边画法说不清那件事时才用这一套：`text-aa` 是字母表，`playlist` 是播放列表。\n" +
+  "填充声明写在 symbol 上，压住全局的 `stroke:currentColor;fill:none`。\n");
+stage("web/vendor/healthicons-LICENSE.txt", lfText("node_modules", "healthicons", "LICENSE"));
 stage("web/vendor/healthicons-ORIGIN.md",
   `# Health Icons ${versions.healthicons}\n\n` +
   `- npm 包：\`healthicons@${versions.healthicons}\`\n` +
   `- npm lock integrity：\`${integrity("healthicons")}\`\n` +
   "- 许可证：npm 包为 MIT，图标由上游声明为 CC0/public domain；原文见 `healthicons-LICENSE.txt`\n" +
   "- 消费者：`web/index.html` 的 `sperm` outline-24px symbol\n");
+
+// 雪碧图的分区检查。少了它，新画一枚 symbol 只会安静地待在 index.html 里，
+// 换 Lucide 版本时不跟着刷新，也没人看得出它是自绘的还是忘了纳管。
+const spriteSymbols = [...index.matchAll(/id="i-([a-z0-9-]+)"/g)].map(m => m[1]);
+const owned = new Set([...lucideIcons.keys(), ...phosphorIcons.keys(),
+  ...handDrawnIcons, "sperm"]);
+const orphans = spriteSymbols.filter(
+  name => !name.startsWith("player-") && !owned.has(name));
+if (orphans.length) {
+  throw new Error(`雪碧图里这些 symbol 没有归属，加进对应图标集或 handDrawnIcons：${orphans.join("、")}`);
+}
 
 const versionRoots = [
   ["web/vendor/videojs", versions["video.js"]],
@@ -151,7 +214,7 @@ if (checkOnly) {
     console.error(`前端固定依赖未同步：\n${problems.map(path => `- ${path}`).join("\n")}`);
     process.exit(1);
   }
-  console.log(`前端固定依赖已同步：Video.js ${versions["video.js"]}、Swiper ${versions.swiper}、Lucide ${versions["lucide-static"]}、Health Icons ${versions.healthicons}`);
+  console.log(`前端固定依赖已同步：Video.js ${versions["video.js"]}、Swiper ${versions.swiper}、Lucide ${versions["lucide-static"]}、Phosphor ${versions["@phosphor-icons/core"]}、Health Icons ${versions.healthicons}`);
   process.exit(0);
 }
 

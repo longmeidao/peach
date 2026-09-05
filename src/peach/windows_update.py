@@ -1,17 +1,24 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import shutil
 import subprocess
 import sys
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Callable
 
 from .fsutil import atomic_write_text
 
+
+log = logging.getLogger(__name__)
+
+BACKUP_GLOB = "Peach.pre-source-sync-*.exe"
+STAGING_DIRNAME = "source-sync-build"
+KEEP_BACKUPS = 2
 
 WINDOWS_TRAY_INPUTS = (
     "src/peach/",
@@ -44,6 +51,44 @@ class PendingWindowsUpdate:
 class WindowsUpdatePreparation:
     state: str
     message: str
+
+
+#: PyInstaller 单文件包解压目录的固定前缀，位于 `%TEMP%`。
+ONEFILE_GLOB = "_MEI*"
+#: 比这更新的解压目录可能属于正在启动的另一份进程，不碰。
+ONEFILE_MIN_AGE = timedelta(days=1)
+
+
+def sweep_onefile_extractions(
+    bundle_root: str | None = getattr(sys, "_MEIPASS", None), *,
+    now: datetime | None = None, min_age: timedelta = ONEFILE_MIN_AGE,
+) -> tuple[Path, ...]:
+    """删掉单文件包解压后没能自清的 `%TEMP%/_MEIxxxx` 目录，托盘每次启动调一次。
+
+    PyInstaller 的单文件包每次启动都把自己解到临时目录，只在正常退出时删掉它；托盘被
+    结束进程、断电或在替换过程中被接管时那份就一直留着，每份 40–80 MB，几周就以 GB 计。
+    只认 `_MEIPASS` 所在目录里的同前缀兄弟目录：跳过自己，跳过修改时间不满 `min_age`
+    的（可能是正在启动的另一份进程），删不掉的只记日志。源码运行没有 `_MEIPASS`，
+    什么都不做。
+    """
+    if not bundle_root:
+        return ()
+    own = Path(bundle_root).resolve()
+    moment = now or datetime.now()
+    removed: list[Path] = []
+    for entry in sorted(own.parent.glob(ONEFILE_GLOB)):
+        if not entry.is_dir() or entry.resolve() == own:
+            continue
+        try:
+            modified = datetime.fromtimestamp(entry.stat().st_mtime)
+            if moment - modified < min_age:
+                continue
+            shutil.rmtree(entry)
+        except OSError as exc:
+            log.warning("单文件包解压残留未能删除 %s: %s", entry, exc)
+            continue
+        removed.append(entry)
+    return tuple(removed)
 
 
 class WindowsUpdateInstaller:
@@ -95,6 +140,43 @@ class WindowsUpdateInstaller:
     def clear_pending(self) -> None:
         self.pending_path.unlink(missing_ok=True)
 
+    def sweep_artifacts(self, *, keep_backups: int = KEEP_BACKUPS) -> tuple[Path, ...]:
+        """删掉更新流程留下、已经没人会读的产物，托盘每次启动调一次。
+
+        每次更新都会在 EXE 旁边留一份 `Peach.pre-source-sync-<时间>.exe` 备份、在
+        `state/source-sync-build/<commit>/` 留一份暂存构建，两者各约 40 MB。备份只留最新
+        `keep_backups` 份；暂存目录只留待应用记录指着的那个提交——替换助手要等新托盘
+        活过 3 秒才清掉待应用记录，所以刚换上来的那份到下一次启动才会被清。只认更新器
+        自己的命名，`Peach.exe` 本体和手工放进目录的任何文件一律不碰；删不掉的只记日志，
+        不影响启动。
+        """
+        removed: list[Path] = []
+        backups = sorted(self.current_executable.parent.glob(BACKUP_GLOB))
+        stale_count = max(len(backups) - max(keep_backups, 0), 0)
+        for stale in backups[:stale_count]:
+            try:
+                stale.unlink()
+            except OSError as exc:
+                log.warning("旧托盘备份未能删除 %s: %s", stale, exc)
+                continue
+            removed.append(stale)
+
+        pending = self.pending()
+        staging_root = self.state_dir / STAGING_DIRNAME
+        if staging_root.is_dir():
+            for entry in sorted(staging_root.iterdir()):
+                if not entry.is_dir():
+                    continue
+                if pending is not None and entry.name == pending.commit:
+                    continue
+                try:
+                    shutil.rmtree(entry)
+                except OSError as exc:
+                    log.warning("暂存构建未能删除 %s: %s", entry, exc)
+                    continue
+                removed.append(entry)
+        return tuple(removed)
+
     def _powershell_executable(self) -> str | None:
         if self._powershell:
             return self._powershell
@@ -133,7 +215,8 @@ class WindowsUpdateInstaller:
 
         test_script = self.root / "scripts" / "test.ps1"
         test_exit = self._run_logged(
-            [shell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(test_script)],
+            [shell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(test_script),
+             "-Scope", "full", "-Fresh"],
             append=False,
         )
         if test_exit != 0:

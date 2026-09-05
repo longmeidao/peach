@@ -16,12 +16,10 @@
 from __future__ import annotations
 
 import argparse
-import re
 import sqlite3
 import sys
 import time
 from pathlib import Path
-from urllib.parse import quote, urlsplit
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
@@ -29,55 +27,29 @@ from peach.config import STATE_DIR   # noqa: E402
 from peach.entities import name_chain   # noqa: E402,F401  测试从本模块取 name_chain
 from peach.http import HttpRequest, HttpxTransport   # noqa: E402
 from peach.jobs import job_main   # noqa: E402
+# 站点解析和名册采集器共用一份，定义在 peach.minnano_av。
+from peach.minnano_av import (   # noqa: E402,F401
+    actress_id, profile_fields, profile_text, search_url,
+)
 from peach.review_csv import write_rows   # noqa: E402
-from peach.scripting import USER_AGENT, open_readonly   # noqa: E402
+from peach.scripting import USER_AGENT, open_readonly, RateLimiter   # noqa: E402
 # 平台判据与选人规则和目录型采集器共用，定义在 peach.social_links；这里只保留 minnano-av 的解析。
-from peach.social_links import classify, load_performers, under   # noqa: E402,F401
+from peach.social_links import (   # noqa: E402,F401
+    classify, host_owners, load_performers, under,
+)
 
-SEARCH = "https://www.minnano-av.com/search_result.php?search_scope=actress&search_word="
-ACTRESS_PAGE = re.compile(r"/actress(\d+)\.html")
-FIELD = re.compile(r"<td[^>]*>\s*<span[^>]*>(.*?)</span>(.*?)</td>", re.S)
-HREF = re.compile(r'href=["\']([^"\']+)["\']')
 LINK_LABELS = {"ブログ", "公式サイト", "Twitter", "SNS"}
 FIELDS = ("entity_id", "kind", "name", "link_kind", "label", "url", "evidence",
           "actress_id", "agency", "verdict")
 
 
-def search_url(name: str) -> str:
-    return SEARCH + quote(name, encoding="utf-8")
+def scan(http, name: str, timeout: float, owner_of=None) -> tuple[list[dict], str, str, str]:
+    """返回（链接行, actress_id, 所属事务所, 判定说明）。
 
-
-def actress_id(final_url: str) -> str:
-    """唯一命中时最终地址里的女优编号；停在检索页就返回空。"""
-    match = ACTRESS_PAGE.search(urlsplit(final_url).path)
-    return match.group(1) if match else ""
-
-
-def profile_fields(html: str) -> dict[str, list[str]]:
-    """资料表 → {标签: [绝对 URL, ...]}，只留站外链接。
-
-    站内链接（`actress_list.php?blood_type=A` 这类）是检索入口不是这个人的链接，
-    混进来会让每位女优都挂上一串「A 型」「東京都」的站内跳转。
+    「所属事務所」和「公式サイト」是资料表里两行不同的事实，别把前者当成后者的名字：
+    専属女优的「公式サイト」填的常是片商的宣传页，贴上事务所名就等于替两家公司说话。
+    `owner_of` 把域名归属交给 `classify` 判，事务所名另行写进实体元数据。
     """
-    found: dict[str, list[str]] = {}
-    for match in FIELD.finditer(html):
-        label = re.sub(r"<[^>]+>", "", match.group(1)).strip()
-        external = [href for href in HREF.findall(match.group(2))
-                    if urlsplit(href).scheme in {"http", "https"}]
-        if external:
-            found.setdefault(label, []).extend(external)
-    return found
-
-
-def profile_text(html: str, label: str) -> str:
-    for match in FIELD.finditer(html):
-        if re.sub(r"<[^>]+>", "", match.group(1)).strip() == label:
-            return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", match.group(2))).strip()[:80]
-    return ""
-
-
-def scan(http, name: str, timeout: float) -> tuple[list[dict], str, str, str]:
-    """返回（链接行, actress_id, 所属事务所, 判定说明）。"""
     response = http(HttpRequest("GET", search_url(name), {"User-Agent": USER_AGENT}),
                     timeout, 4 << 20)
     if response.status != 200:
@@ -92,7 +64,7 @@ def scan(http, name: str, timeout: float) -> tuple[list[dict], str, str, str]:
         if label not in LINK_LABELS:
             continue
         for url in urls:
-            link_kind, link_label = classify(url, agency)
+            link_kind, link_label = classify(url, agency, owner_of)
             rows.append({"link_kind": link_kind, "label": link_label, "url": url,
                          "evidence": f"minnano-av actress{found_id} 资料表「{label}」"})
     note = (f"命中 actress{found_id}，{len(rows)} 条外链" if rows
@@ -116,6 +88,7 @@ def run(args) -> int:
     connection = open_readonly(args.db)
     try:
         performers = load_performers(connection, args.min_assets)
+        owners = host_owners(connection)
     finally:
         connection.close()
     if args.limit:
@@ -124,18 +97,16 @@ def run(args) -> int:
 
     results: list[dict[str, object]] = []
     http = HttpxTransport()
-    last = 0.0
+    limiter = RateLimiter(args.interval)
     hit = 0
     try:
         for record in performers:
             rows, found_id, agency, note, used = [], "", "", "未取得：没有可用于日文站的名字", ""
             for candidate in record["chain"]:
-                wait = args.interval - (time.monotonic() - last)
-                if wait > 0:
-                    time.sleep(wait)
-                last = time.monotonic()
+                limiter.wait()
                 try:
-                    rows, found_id, agency, note = scan(http, candidate, args.timeout)
+                    rows, found_id, agency, note = scan(http, candidate, args.timeout,
+                                                        owners.get)
                 except Exception as exc:
                     rows, found_id, agency, note = [], "", "", f"未取得：{type(exc).__name__}"
                 used = candidate

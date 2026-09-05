@@ -1,0 +1,105 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  PYTHONUTF8: "1"
+  PYTHONIOENCODING: "utf-8"
+
+jobs:
+  windows:
+    name: Windows x64 独立测试包
+    runs-on: windows-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.14'
+      - name: 核对标签提交的主线 CI
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          python scripts/release_tag.py --repo "$env:GITHUB_REPOSITORY" --verify-sha "$env:GITHUB_SHA"
+          if ($LASTEXITCODE -ne 0) { throw '发布提交未通过主线 CI' }
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+      - name: 核对发布版本
+        id: version
+        shell: pwsh
+        run: |
+          $ReleaseVersion = (Select-String -Path src/peach/__init__.py -Pattern '__version__ = "(.*)"').Matches.Groups[1].Value
+          if (-not $ReleaseVersion) { throw '无法读取版本' }
+          if ($env:GITHUB_REF_TYPE -eq 'tag' -and $env:GITHUB_REF_NAME -ne "v${ReleaseVersion}") { throw 'Tag 与版本不一致' }
+          "version=${ReleaseVersion}" >> $env:GITHUB_OUTPUT
+      - name: 安装构建依赖
+        shell: pwsh
+        run: |
+          python -m venv .venv
+          & ./.venv/Scripts/python.exe -m pip install --no-cache-dir -e '.[build]'
+          & ./.venv/Scripts/python.exe -m pip check
+      - name: 构建独立目录包
+        shell: pwsh
+        run: '& ./scripts/build_windows.ps1 -Standalone'
+      - name: 压缩完整程序目录
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path release | Out-Null
+          Copy-Item docs/TESTING_DESKTOP.md dist/Peach/开始使用.md
+          Compress-Archive -Path dist/Peach -DestinationPath 'release/Peach-${{ steps.version.outputs.version }}-windows-x64.zip'
+          Copy-Item scripts/smoke_desktop.py release/smoke_desktop.py
+      - uses: actions/upload-artifact@v7
+        with:
+          name: desktop-candidate
+          path: release/*
+
+  desktop-smoke:
+    name: 仅下载制品验收
+    needs: windows
+    runs-on: windows-latest
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: desktop-candidate
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.14'
+      - name: 在源码树外验证开箱配置与应用
+        shell: pwsh
+        run: |
+          Expand-Archive -Path 'Peach-${{ needs.windows.outputs.version }}-windows-x64.zip' -DestinationPath candidate
+          python smoke_desktop.py candidate/Peach/Peach.exe
+          if ($LASTEXITCODE -ne 0) { throw '制品验收失败' }
+
+  release:
+    name: GitHub 预发布
+    if: github.ref_type == 'tag'
+    needs: [windows, desktop-smoke]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: desktop-candidate
+          path: release
+      - name: 创建预发布
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ needs.windows.outputs.version }}
+        run: |
+          cd release
+          sha256sum *.zip > SHA256SUMS.txt
+          gh release create "$GITHUB_REF_NAME" *.zip SHA256SUMS.txt --verify-tag --prerelease --title "Peach $VERSION · Windows 测试版" --notes 'Windows x64 独立测试包。完整解压后双击 Peach.exe，选择媒体文件夹即可开始。本机使用；无需 Python、Git 或 Node。FFmpeg 需另装，未安装时不提供转码与缩略图。配置和日志入口见程序内「配置 Peach」。macOS 请按 README 使用源码安装。'

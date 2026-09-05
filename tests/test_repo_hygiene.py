@@ -6,9 +6,12 @@
 也没提，在 peach-app 里干活的人根本看不到。约定不是门槛。
 """
 import ast
+import os
 import pathlib
 import re
+import socket
 import subprocess
+import tomllib
 import unittest
 
 import peach
@@ -132,6 +135,21 @@ class BacklogSelfConsistencyTests(unittest.TestCase):
             "入口文件不留编号待办：写现状用无序列表，要做的事去 docs/PRODUCT_BACKLOG.md",
         )
 
+    def test_the_status_entry_file_only_holds_runtime_state(self):
+        """入口文件的小节是白名单，加一节要先来改这里。
+
+        `docs/STATUS.md` 装得下的只有「原地替换、边界固定」的内容：机器、端口、链路、
+        账本版本。清单型的小节一进来就再也不出去——每上线一个特性加一行，永不减，
+        因为「已经做过」这个断言没有任何事件能让它失效。已定型的行为判据去
+        `docs/REUSE.md`，要做的事去 `docs/PRODUCT_BACKLOG.md`，长期知识去
+        `docs/HANDOFF.md`，三处都是按需读取，不占每轮预算。
+        """
+        status = (DOCS / "STATUS.md").read_text(encoding="utf-8")
+        self.assertEqual(
+            re.findall(r"^## (.+)$", status, re.M), ["运行态", "批处理进度"],
+            "入口文件只留这两节；新内容按判据落到 REUSE／PRODUCT_BACKLOG／HANDOFF",
+        )
+
     def test_the_section_headings_declare_their_own_counts(self):
         for heading, actual in (("已有骨架、尚未完成", self._numbered("## 已有骨架、尚未完成")),
                                 ("尚未实现", self._numbered("## 尚未实现")),
@@ -142,23 +160,52 @@ class BacklogSelfConsistencyTests(unittest.TestCase):
                              f"「{heading}」标题写的条数和实际列出的对不上")
 
 
+#: 家目录路径：`C:\Users\<名字>\…`、`/Users/<名字>/…`、`/home/<名字>/…`。名字段要以字母开头，
+#: `<user>`、`<用户目录>` 这类占位由此放行；前面不许紧贴单词字符，`pixiv.net/users/…` 这种
+#: URL 路径不算家目录。CI 靶机的 `runner`／`runneradmin`（含 8.3 短名 `RUNNER~1`）是文档里
+#: 会正当提到的名字，放行。
+_HOME_DIRECTORY = (r"(?<!\w)[\\/](?:Users|home)[\\/]"
+                   r"(?!(?:runner|runneradmin)\b)[A-Za-z][\w.-]*")
+
+#: mDNS 主机名 `<名字>.local`。只放行三个有文档意义的占位：默认名 `peach` 与讲双机布局用的
+#: `peach-writer`／`peach-reader`。`self.local`／`this.local` 是属性名与后缀同形，不算主机名；
+#: `<mounts.local>` 是占位；`settings.local.json`、`_tcp.local.` 后面还有段，都不是主机名。
+_MDNS_HOST = (r"(?<![\w<-])(?!(?:self|this|peach|peach-writer|peach-reader)\.local\b)"
+              r"[a-z0-9-]+\.local\b(?![.\w])")
+
+#: RFC 1918 私网地址；`10.` 段收尾要词边界，Windows 版本号 `10.0.26200.1234` 才不会被算进去。
+#: 举例用 RFC 5737 的 192.0.2.0/24、198.51.100.0/24、203.0.113.0/24：它们不属于任何人，
+#: 读者也不会照抄进自己的配置。
+_PRIVATE_IPV4 = (r"\b192\.168\.\d{1,3}\.\d{1,3}"
+                 r"|\b10\.\d{1,3}\.\d{1,3}\.\d{1,3}\b"
+                 r"|\b172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}")
+
 #: 只属于某一台机器的字面量。它们要么住在设置文件里，要么由用户在命令行给，
 #: 不能编译进 `src/peach/`——否则第一个陌生用户跑起来就连着别人家的坐标（ADR-0023）。
-#: 文档与技能里的同类字面量是第四阶段的事，这个门槛只管源码。
-PERSONAL_LITERAL = re.compile(
-    r"""(?xi)
-    Desktop[\\/]peach                                # 某一台机器的项目位置
-    | lmd\.gg                                        # macOS 侧的目录名
-    | [\\/]Users[\\/]longm                           # 用户目录
-    | peach-win                                      # Windows 那台的 mDNS 名
-    | peachsync                                      # SMB 账号名
-    | Volumes[\\/](peach-sync|RESOURCES)             # macOS 上的具体挂载点
-    | [\\/]IMSL[\\/]                                 # CloudDrive 挂载目录
-    | \b192\.168\.\d{1,3}\.\d{1,3}                   # 局域网地址
-    | \b10\.\d{1,3}\.\d{1,3}\.\d{1,3}
-    | \b172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}
-    """
-)
+#: 挂载点与项目位置只在源码里拦：说明文档要讲清双机布局，就得点出具体落点。
+PERSONAL_LITERAL = re.compile("(?i)" + "|".join((
+    r"Desktop[\\/]peach",                       # 某一台机器的项目位置
+    _HOME_DIRECTORY,
+    _MDNS_HOST,
+    r"Volumes[\\/](?:peach-sync|RESOURCES)",    # macOS 上的具体挂载点
+    r"[\\/]IMSL[\\/]",                          # CloudDrive 挂载目录
+    _PRIVATE_IPV4,
+)))
+
+#: 全树一律不许出现的机器坐标：私网地址的具体一台、任何人的家目录、任何一台机器的 mDNS 名。
+#: 仓库公开后它们既是别人家的坐标又是个人信息（ADR-0023 第四阶段）。判据写成形状而不是
+#: 点名：门槛自己也进 Git，点名等于把要拦的坐标印在公开代码里。当前维护者的账号名与
+#: 主机名由 `MachineCoordinateTests` 运行时取本机的值再扫一遍，对任何维护者都成立。
+#:
+#: 判据是「只对某一台机器成立」，不是「像个名字」：仓库的 GitHub 归属与 LICENSE 的
+#: 版权人本来就要公开署名，它们不在拦截范围内。
+MACHINE_COORDINATE = re.compile("(?i)" + "|".join((_PRIVATE_IPV4, _HOME_DIRECTORY, _MDNS_HOST)))
+
+#: 门槛自身要写出它拦的形状，所以只有它自己豁免。
+COORDINATE_EXEMPT_FILES = frozenset({"tests/test_repo_hygiene.py"})
+
+#: 第三方代码与构建产物的措辞不由本仓库决定，压缩后的它们也没有可读的行。
+COORDINATE_EXEMPT_PREFIXES = ("web/vendor/", "web/dist/")
 
 
 def _live_strings(path: pathlib.Path) -> list[tuple[int, str]]:
@@ -200,15 +247,143 @@ class PersonalLiteralTests(unittest.TestCase):
 
     def test_the_guard_catches_the_shape_it_describes(self):
         """门槛自身也要能被证伪，否则它可能只是一段永远为真的代码。"""
-        for sample in (r"C:\Users\longm\Desktop\peach\peach-data",
-                       "~/Desktop/lmd.gg/peach", "peach-win.local", "peachsync",
+        for sample in (r"C:\Users\alice\Desktop\peach\peach-data", "~/Desktop/peach",
+                       "/Users/alice/peach", "/home/alice/peach", "alice-mbp.local",
                        "/Volumes/peach-sync", "https://192.168.50.162",
                        "/Volumes/RESOURCES/media", "/Users/x/Desktop/IMSL/115"):
             self.assertTrue(PERSONAL_LITERAL.search(sample), sample)
         for allowed in ("127.0.0.1", "0.0.0.0", "peach.local", "224.0.0.251",
                         "192.0.2.1", r"R:\media", "peach-data", "peach-sync",
-                        "Chrome/131.0.0.0"):
+                        "Chrome/131.0.0.0", r"C:\Users\<user>\peach-data",
+                        "https://www.pixiv.net/users/93812377", "self.local"):
             self.assertIsNone(PERSONAL_LITERAL.search(allowed), allowed)
+
+
+class ReleaseFilesTests(unittest.TestCase):
+    """公开发布必须齐备的治理文件（ADR-0023 第 4 阶段）。
+
+    仓库一旦公开，许可证、贡献说明、安全说明和 issue/PR 模板就是陌生人判断「能不能用、
+    怎么报问题」的唯一依据。缺一份的后果不是报错而是沉默：使用者无从判断授权范围，
+    漏洞只能开成公开 issue。它们又都是「一次写好、之后没人再看」的文件，正是重构和
+    路径调整时最容易被顺手删掉的那一类，所以在这里钉住存在性。
+    """
+
+    #: 相对仓库根的路径。清单只增不减，删除任何一项都要先改 ADR-0023。
+    REQUIRED = (
+        "LICENSE",
+        "CONTRIBUTING.md",
+        "SECURITY.md",
+        ".github/PULL_REQUEST_TEMPLATE.md",
+        ".github/ISSUE_TEMPLATE/config.yml",
+    )
+
+    def test_every_release_file_exists_and_has_content(self):
+        missing = [name for name in self.REQUIRED if not (REPO / name).is_file()]
+        self.assertEqual(missing, [], "公开发布缺少治理文件")
+        empty = [name for name in self.REQUIRED
+                 if not (REPO / name).read_text(encoding="utf-8").strip()]
+        self.assertEqual(empty, [], "治理文件存在但是空的，等于没有")
+
+    def test_the_licence_is_the_agpl_v3(self):
+        text = (REPO / "LICENSE").read_text(encoding="utf-8")
+        for marker in ("GNU AFFERO GENERAL PUBLIC LICENSE", "Version 3"):
+            self.assertIn(marker, text,
+                          "许可证是 AGPL-3.0-or-later（ADR-0023 第 4 阶段），换许可证要先改 ADR")
+
+    def test_pyproject_licence_expression_matches_the_licence_file(self):
+        """pyproject 的 SPDX 表达式和 LICENSE 全文是同一份许可证的两种写法。"""
+        with (REPO / "pyproject.toml").open("rb") as handle:
+            project = tomllib.load(handle)["project"]
+        self.assertEqual(
+            project.get("license"), "AGPL-3.0-or-later",
+            "pyproject.toml 的 SPDX 表达式必须与 LICENSE 全文和 ADR-0023 第 4 阶段一致；"
+            "换许可证要 LICENSE、pyproject.toml、ADR-0023 三处同改",
+        )
+
+
+class MachineCoordinateTests(unittest.TestCase):
+    """Git 跟踪的每个文本文件都不许写出某一台机器的坐标。
+
+    只管源码的门槛拦不住这件事：真实 IP、用户名和账号名过去散在测试夹具、安装脚本、
+    ADR、状态文档与技能里，它们都不是「默认值」，公开仓库后却一样把用户的网络布局
+    和账号名交出去。所以判据是 `git ls-files` 的全部文本，不是某个目录。
+    """
+
+    def _tracked_text_files(self, exempt_files=COORDINATE_EXEMPT_FILES):
+        done = subprocess.run(["git", "ls-files", "-z"], cwd=REPO,
+                              capture_output=True, check=False)
+        if done.returncode != 0:
+            self.skipTest(f"git 不可用或不是仓库：{done.stderr.decode('utf-8', 'replace')}")
+        for name in done.stdout.decode("utf-8").split("\0"):
+            if not name or name in exempt_files:
+                continue
+            if name.startswith(COORDINATE_EXEMPT_PREFIXES):
+                continue
+            path = REPO / name
+            if not path.is_file():
+                continue
+            raw = path.read_bytes()
+            if b"\0" in raw:
+                continue
+            try:
+                yield name, raw.decode("utf-8")
+            except UnicodeDecodeError:
+                continue
+
+    def test_no_tracked_file_names_a_machine_coordinate(self):
+        offenders = []
+        for name, text in self._tracked_text_files():
+            for number, line in enumerate(text.splitlines(), 1):
+                found = MACHINE_COORDINATE.search(line)
+                if found:
+                    offenders.append(f"{name}:{number}：{found.group(0)}")
+        self.assertEqual(
+            offenders, [],
+            "换成 RFC 5737 的文档地址（192.0.2.0/24、198.51.100.0/24、203.0.113.0/24）"
+            "或中性的主机名、账号名、`<用户目录>` 这类占位",
+        )
+
+    def test_no_tracked_file_names_this_machine(self):
+        """本机的账号名与主机名对任何维护者都成立，正好不用在正则里点名。
+
+        本文件自己也扫：形状门槛豁免它是因为它要写出形状，可它没有理由写出这台机器。
+        """
+        if os.environ.get("GITHUB_ACTIONS"):
+            self.skipTest("CI 靶机的账号名是 runner，文档里会正当地提到它")
+        hostname = socket.gethostname()
+        names = {pathlib.Path.home().name, hostname, hostname.split(".", 1)[0]} - {""}
+        this_machine = re.compile(
+            r"(?<![\w-])(?:" + "|".join(sorted(map(re.escape, names))) + r")(?![\w-])",
+            re.IGNORECASE)
+        offenders = []
+        for name, text in self._tracked_text_files(exempt_files=frozenset()):
+            for number, line in enumerate(text.splitlines(), 1):
+                found = this_machine.search(line)
+                if found:
+                    offenders.append(f"{name}:{number}：{found.group(0)}")
+        self.assertEqual(offenders, [], "换成中性的账号名、主机名或 `<用户目录>` 这类占位")
+
+    def test_the_whole_tree_guard_catches_the_shape_it_describes(self):
+        """门槛自身也要能被证伪，否则它可能只是一段永远为真的代码。"""
+        for sample in ("https://192.168.50.162", "PEACH_SHARED_SMB_HOST=192.168.1.9",
+                       "review_writer_origin = 'https://10.0.0.5'", "172.31.112.1",
+                       r"C:\Users\alice\Desktop\peach", "/Users/alice/Desktop/peach",
+                       "/home/alice/peach", "smb://alice@alice-mbp.local/peach-sync",
+                       "peach-two.local", "https://Alice-PC.local/"):
+            self.assertTrue(MACHINE_COORDINATE.search(sample), sample)
+        for allowed in ("127.0.0.1", "0.0.0.0", "224.0.0.251", "198.18.0.1",
+                        "192.0.2.2", "198.51.100.162", "203.0.113.1",
+                        "peach.local", "peach-writer.local", "peach-reader.local",
+                        "https://<writer>.local", "<mounts.local>/x",
+                        ".claude/settings.local.json", "_https._tcp.local.",
+                        "copy_database(self.shared, self.local)", "peach-sync",
+                        r"C:\Users\<user>\Desktop\peach", "~/Desktop/<用户目录>/peach",
+                        r"C:\Users\RUNNER~1\AppData\Local\Temp", "/home/runner/work",
+                        "https://www.pixiv.net/users/93812377",
+                        "Chrome/131.0.0.0", "10.0.26200.1234", r"R:\media",
+                        "https://github.com/longmeidao/peach",
+                        "Copyright (C) 2026 longmeidao"):
+            self.assertIsNone(MACHINE_COORDINATE.search(allowed), allowed)
 
 
 class ArchitectureDriftTests(unittest.TestCase):

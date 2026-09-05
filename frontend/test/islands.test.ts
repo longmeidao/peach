@@ -22,7 +22,7 @@ afterEach(() => {
 
 describe('island 注册表', () => {
   it('登记的名字就是遗留路由能挂载的名字', () => {
-    expect(islandNames()).toEqual(['quality-goals']);
+    expect(islandNames()).toEqual(['scraping', 'quality-goals', 'configuration']);
   });
 
   it('未注册的名字立刻失败，不是静默什么都不画', async () => {

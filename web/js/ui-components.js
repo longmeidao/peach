@@ -1,4 +1,5 @@
 import { esc, icon } from './core.js';
+export { MEDIA_SOURCE_ICONS } from './media-source-icons.js';
 
 const NOTE_VARIANTS=new Set(['secondary','warning','error','success']);
 
@@ -142,6 +143,22 @@ export function skeletonHtml(label='正在读取内容',{className='',variant='p
     <div aria-hidden="true">${body}</div></div>`;
 }
 
+/** 索引占位复用最终网格、头像和词表的尺寸。 */
+export function indexSkeletonHtml({kind,layout='big',mode='alphabet'}={}){
+  const people=kind!=='tags',company=kind==='studios'||kind==='agencies';
+  const cell=people
+    ?'<span class="icell"><span class="ring skeleton"></span><span class="nm skeleton">&nbsp;</span><span class="n skeleton">&nbsp;</span></span>'
+    :'<span class="alphatag"><span class="skeleton"></span><span class="n skeleton"></span></span>';
+  const grid=people?`igrid" data-cells="${company?'company':'people'}" data-layout="${esc(layout)}`:'alphalist';
+  const body=!people&&mode==='cloud'
+    ?`<div class="tagwall index-tags">${Array.from({length:60},(_,i)=>
+      `<span class="tg skeleton" style="width:${[92,128,76,108,144][i%5]}px">&nbsp;</span>`).join('')}</div>`
+    :`${!people?'<span class="indexletterskeleton skeleton"></span>':''}<div class="${grid}">${cell.repeat(12)}</div>`;
+  const label='正在读取索引';
+  return `<div class="skeletonpanel index-skeleton" data-skeleton="index/${esc(kind)}/${esc(layout)}/${esc(mode)}"${people||mode!=='cloud'?' data-fill=""':''}
+    role="status" aria-label="${label}"><span class="sr-only">${label}</span><section aria-hidden="true">${body}</section></div>`;
+}
+
 /* 骨架的枚数由容器当下的宽度决定，不写死一个数：横向一行铺到右缘为止，网格补满
    整行。写死的话宽屏最后一行留一截豁口，窄屏和手机端又多出一堆要横滑才看得见的
    占位；算出来就不必再为断点各写一套。宽度序列只是让胶囊长短不一，像真词。 */
@@ -171,7 +188,7 @@ export function fitSkeleton(root){
   if(!root)return;
   const scoped=selector=>[...(root.matches?.(selector)?[root]:[]),...root.querySelectorAll(selector)];
   for(const row of scoped('[data-skeleton-tier]'))fillSkeletonTier(row,row.dataset.skeletonTier);
-  for(const grid of scoped('.skeletonpanel[data-fill]>div')){
+  for(const grid of scoped('.skeletonpanel[data-fill]>div,.index-skeleton[data-fill]>section>div')){
     const first=grid.firstElementChild,style=getComputedStyle(grid);
     /* 横排的推荐行不是网格，列数无从谈起，按整行补会把它裁成一张。 */
     if(!first||style.display!=='grid')continue;
@@ -181,28 +198,36 @@ export function fitSkeleton(root){
     /* 骨架说的是「这块地方等下会被填满」，所以铺到视口下沿；四行是护栏，
        再多也是一屏之外看不见的占位，白占动画。 */
     const room=window.innerHeight-grid.getBoundingClientRect().top;
-    const rows=Math.max(1,Math.min(4,Math.ceil((room+rowGap)/(cardHeight+rowGap))));
+    const maxRows=grid.classList.contains('alphalist')?24:4;
+    const rows=Math.max(1,Math.min(maxRows,Math.ceil((room+rowGap)/(cardHeight+rowGap))));
     const want=columns*rows;
     while(grid.children.length>want)grid.lastElementChild.remove();
     while(grid.children.length<want)grid.appendChild(first.cloneNode(true));
   }
 }
 
-/** Shared video/image view buttons for entity profiles and the follow feed. */
+/**
+ * 资料页与关注列表共用的视图按钮：一排、一个尺寸。
+ *
+ * 这几个键问的是同一件事——这一页现在显示什么，所以都是这一组里的按钮，不另起控件。
+ * 给空值的那一位不出按钮：没有照片的人不该看见照片键，不是事务所的实体没有名册。
+ */
 export function mediaViewButtonsHtml({
-  active='videos',videoValue='videos',imageValue='images',videoLabel='视频',imageLabel='图片',
-  videoCount=null,imageCount=null,className='',
+  active='videos',peopleValue='',videoValue='videos',imageValue='images',
+  peopleLabel='艺人',videoLabel='视频',imageLabel='图片',
+  peopleCount=null,videoCount=null,imageCount=null,label='媒体类型',className='',
 }={}){
-  const control=(value,label,count,symbol,kind)=>{
-    const text=count===null||count===undefined
-      ?label:`${label} ${Math.max(0,Number(count)||0).toLocaleString()}`;
+  const control=(value,text,count,symbol,kind)=>{
+    const title=count===null||count===undefined
+      ?text:`${text} ${Math.max(0,Number(count)||0).toLocaleString()}`;
     return `<button class="mediaviewbutton" type="button" data-media-view="${esc(value)}"
-      data-media-icon="${kind}" aria-pressed="${active===value}" aria-label="${esc(text)}"
-      title="${esc(text)}">${icon(symbol)}</button>`;
+      data-media-icon="${kind}" aria-pressed="${active===value}" aria-label="${esc(title)}"
+      title="${esc(title)}">${icon(symbol)}</button>`;
   };
-  return `<div class="mediaviewbuttons${className?` ${esc(className)}`:''}" role="group" aria-label="媒体类型">
-    ${control(videoValue,videoLabel,videoCount,'play','video')}
-    ${control(imageValue,imageLabel,imageCount,'pics','image')}</div>`;
+  return `<div class="mediaviewbuttons${className?` ${esc(className)}`:''}" role="group" aria-label="${esc(label)}">
+    ${peopleValue?control(peopleValue,peopleLabel,peopleCount,'user-round','people'):''}
+    ${videoValue?control(videoValue,videoLabel,videoCount,'play','video'):''}
+    ${imageValue?control(imageValue,imageLabel,imageCount,'pics','image'):''}</div>`;
 }
 
 /** Geist Empty State: icon tile, title and explanatory copy stay one semantic unit. */
@@ -245,6 +270,126 @@ export function wireScrollers(root=document){
     }
     requestAnimationFrame(()=>updateScroller(wrapper));
   });
+}
+
+/** 挂覆盖式滚动条的滚动容器。列表只写在这一处，样式那边认的是挂上之后的属性。 */
+const OVERLAY_SCROLLERS=[
+  '.settingsscroll','.sidecontent','.tagpickbody','.mixlist','.playlistpicklist','.playerstats',
+  '.vjs-peach-settings-menu','.geist-scroller-container','.metricstrip','.tastesummaries',
+  '.insighttabs','.insightstorage','.skeletondashstrip','.followpagination','.linktablewrap',
+].join(',');
+
+/**
+ * 覆盖式滚动条：滑块浮在内容上，一列宽度都不占。
+ *
+ * 已有的 `.geist-scroller` 解决的是另一半问题——它用两端渐隐说明「还能往下」，
+ * 但没有滑块，读不出这一列有多长、自己停在哪儿，而且要求内容套进它自己的包装层。
+ * 这里只往既有滚动容器的父元素上挂轨道，不动内容结构，两者可以叠加使用。
+ *
+ * 轨道必须是容器的兄弟：跟着内容一起滚的轨道等于没有轨道。宿主因此得是定位祖先，
+ * 而且不一定和容器一样大（`.settingscard` 还含着标题栏），所以轨道的位置每次都按
+ * 两个 rect 量出来，不假设它们同框。两条轴各一条轨道，谁溢出谁显示——同一个容器
+ * 可能在不同版式下换轴（`.mixlist` 在 mixgrid 里就是横滚）。
+ * 整页那一条是唯一的例外：`html` 没有元素父级，轨道挂进 body 并由 `.page` 改成
+ * fixed，位置只认视口，不用量。
+ * 几何按 2026-09-05 实测 vercel.com 侧栏：
+ * 滑块长 = 可视长 / 内容长 × 轨道长，位移 = 滚动进度 × (轨道长 − 滑块长)。
+ * 返回一个手动重算函数，给那些既不改容器尺寸也不改子树的情形（例如换字体后重排）。
+ */
+export function attachOverlayScrollbar(container,{variant=''}={}){
+  if(!container||container.dataset.overlayScrollbar)return null;
+  const root=container===document.documentElement;
+  const host=root?document.body:container.parentElement;
+  if(!host)return null;
+  container.dataset.overlayScrollbar='true';
+  // 轨道按宿主的内边距框定位，static 的宿主会把它甩到更外层某个祖先上去。
+  if(!root&&getComputedStyle(host).position==='static')host.style.position='relative';
+  const lanes=(root?['y']:['y','x']).map(axis=>{
+    const track=document.createElement('div');
+    // 两个类名写全，别拼 `ov-${axis}`：样式表的选择器要能在源码里查到消费者。
+    track.className=`ovtrack ${axis==='y'?'ov-y':'ov-x'}${variant?` ${variant}`:''}`;
+    const thumb=document.createElement('div');
+    thumb.className='ovthumb';
+    track.append(thumb);
+    host.append(track);
+    return {axis,track,thumb};
+  });
+  const place=({axis,track})=>{
+    if(root)return;
+    const hostRect=host.getBoundingClientRect(),rect=container.getBoundingClientRect();
+    const left=rect.left-hostRect.left-host.clientLeft,top=rect.top-hostRect.top-host.clientTop;
+    if(axis==='y'){
+      track.style.top=`${top+8}px`;
+      track.style.height=`${Math.max(0,container.clientHeight-16)}px`;
+      track.style.right=`${host.clientWidth-left-container.clientWidth}px`;
+    }else{
+      track.style.left=`${left+8}px`;
+      track.style.width=`${Math.max(0,container.clientWidth-16)}px`;
+      track.style.bottom=`${host.clientHeight-top-container.clientHeight}px`;
+    }
+  };
+  const sync=()=>{
+    lanes.forEach(lane=>{
+      const {axis,track,thumb}=lane,vertical=axis==='y';
+      const size=vertical?container.clientHeight:container.clientWidth;
+      const content=vertical?container.scrollHeight:container.scrollWidth;
+      const range=content-size;
+      if(range<=1){track.hidden=true;return}
+      // 先显再量：藏起来的轨道长度是 0，拿它当「量不到」会把自己永久锁在隐藏态。
+      track.hidden=false;
+      place(lane);
+      const trackSize=vertical?track.clientHeight:track.clientWidth;
+      if(!trackSize)return;
+      // 短到抓不住的滑块等于没有滑块：内容特别长时给它一个下限，代价是滑块位置与
+      // 滚动进度不再严格线性，但可拖动比可换算重要。
+      const thumbSize=Math.max(24,Math.min(trackSize,size/content*trackSize));
+      const travel=trackSize-thumbSize;
+      const at=vertical?container.scrollTop:container.scrollLeft;
+      const offset=travel>0?at/range*travel:0;
+      thumb.style[vertical?'height':'width']=`${thumbSize}px`;
+      thumb.style.transform=`translate${vertical?'Y':'X'}(${offset}px)`;
+    });
+  };
+  (root?document:container).addEventListener('scroll',sync,{passive:true});
+  new ResizeObserver(sync).observe(container);
+  // 内容长短变了但容器盒子没变（抽屉重建、分区展开），容器自己的 ResizeObserver 一声不响。
+  // 整页那一条改看 body：它的高度就是内容高度，而在 documentElement 上挂 subtree 的
+  // MutationObserver 等于每渲染一张卡都强制一次重排。
+  if(root)new ResizeObserver(sync).observe(document.body);
+  else new MutationObserver(sync).observe(container,{childList:true,subtree:true});
+  lanes.forEach(({axis,track,thumb})=>track.addEventListener('pointerdown',event=>{
+    const vertical=axis==='y';
+    const trackRect=track.getBoundingClientRect(),thumbRect=thumb.getBoundingClientRect();
+    const travel=(vertical?trackRect.height-thumbRect.height:trackRect.width-thumbRect.width);
+    const range=vertical?container.scrollHeight-container.clientHeight
+      :container.scrollWidth-container.clientWidth;
+    if(travel<=0||range<=0)return;
+    const point=moved=>vertical?moved.clientY:moved.clientX;
+    const head=vertical?thumbRect.top:thumbRect.left,tail=vertical?thumbRect.bottom:thumbRect.right;
+    // 按在滑块上就保持按住的那一点，按在轨道空白处则把滑块中心挪过来。
+    const grab=point(event)>=head&&point(event)<=tail?point(event)-head
+      :(vertical?thumbRect.height:thumbRect.width)/2;
+    const origin=vertical?trackRect.top:trackRect.left;
+    const to=moved=>{const at=Math.max(0,Math.min(range,(point(moved)-origin-grab)/travel*range));
+      if(vertical)container.scrollTop=at;else container.scrollLeft=at};
+    const stop=()=>{track.classList.remove('dragging');
+      track.removeEventListener('pointermove',to);track.removeEventListener('pointerup',stop);
+      track.removeEventListener('pointercancel',stop)};
+    track.classList.add('dragging');
+    track.setPointerCapture(event.pointerId);
+    track.addEventListener('pointermove',to);
+    track.addEventListener('pointerup',stop);
+    track.addEventListener('pointercancel',stop);
+    to(event);
+    event.preventDefault();
+  }));
+  sync();
+  return sync;
+}
+
+/** 把这一批 DOM 里所有该有覆盖式滚动条的容器接上；重复调用只接新出现的那些。 */
+export function wireOverlayScrollbars(root=document){
+  root.querySelectorAll(OVERLAY_SCROLLERS).forEach(el=>attachOverlayScrollbar(el));
 }
 
 /**
@@ -330,5 +475,188 @@ export function wireCollapse(root,selector,idPrefix){
         settle(run,()=>{details.open=false;body.style.height=''});
       }
     });
+  });
+}
+
+/* 锚定在触发钮上的菜单：无展开动画，固定在视口内，内容在菜单内滚动。
+
+   Vercel 项目页的 Filter and Sort 菜单没有展开动画。优先从触发钮右缘向左展开，
+   下方放不下时改到上方。全站的锚定菜单共用这一份定位与开关：菜单在视口边缘的表现
+   最容易各写各的，同一语义留两份实现就只会有一份被修。 */
+let openedMenu=null;
+if(!globalThis.__peachMenuCloser){
+  globalThis.__peachMenuCloser=true;
+  document.addEventListener('click',event=>{
+    if(openedMenu&&!openedMenu.mount.contains(event.target))openedMenu.setOpen(false)},true);
+}
+export function closeAnchoredMenu(){if(openedMenu)openedMenu.setOpen(false)}
+/* 可用的视口上沿是固定顶栏的下缘。顶栏在每一页都盖着最上面那一条，菜单顶到 8px
+   会被它压掉半截，而且看不出是被压住的——只是第一项凭空不见了。 */
+const viewportTop=()=>8+(parseFloat(getComputedStyle(document.documentElement)
+  .getPropertyValue('--topH'))||0);
+export function wireAnchoredMenu(mount,toggle,menu){
+  const position=()=>{
+    const anchor=toggle.getBoundingClientRect(),width=menu.getBoundingClientRect().width;
+    const top=viewportTop(),under=innerHeight-8-anchor.bottom-8,over=anchor.top-8-top;
+    /* 下方放不下就改到上方；两侧都放不下时取宽的那一侧，并把菜单压到那一侧的高度，
+       内容在菜单内滚。不压高度的话它会横跨触发钮盖住自己，点开之后连改的是哪一个
+       名字都看不见。 */
+    const naturalHeight=menu.scrollHeight+menu.offsetHeight-menu.clientHeight;
+    const downward=under>=naturalHeight||under>=over;
+    const height=Math.min(naturalHeight,Math.max(downward?under:over,0));
+    menu.style.maxHeight=height+'px';
+    menu.style.left=Math.max(8,Math.min(anchor.right-width,innerWidth-width-8))+'px';
+    menu.style.top=(downward?anchor.bottom+8:anchor.top-8-height)+'px'};
+  /* 页面滚走了就关掉：菜单固定在视口里，锚点跟着内容跑，留着就悬在半空。
+     菜单自己的滚动不算——它装不下时本来就要在内部滚，滚一下就关等于底下那几项
+     根本够不着。捕获阶段连菜单内部的滚动一并收得到，所以这里必须自己分开。 */
+  const closeFromViewport=event=>{
+    if(!(event.target instanceof Node&&menu.contains(event.target)))setOpen(false)};
+  /* 带 popover 的菜单进顶层。`position:fixed` 只在没有被祖先接管时才相对视口：祖先上
+     一个 transform、filter 或 backdrop-filter 就会成为它的包含块，算好的视口坐标于是
+     整体偏移，还要被那个祖先的 overflow 裁掉。设置面板的卡片正是这种祖先——入场动画的
+     fill-mode 让 transform 一直挂在上面——菜单于是开在看不见的地方，读起来就是「点不开」。 */
+  const inTopLayer=menu.hasAttribute('popover');
+  const setOpen=open=>{
+    if(open){
+      menu.hidden=false;if(inTopLayer)menu.showPopover();position();
+      window.addEventListener('resize',position);
+      window.addEventListener('scroll',closeFromViewport,{capture:true,passive:true});
+    }else{
+      menu.hidden=true;menu.style.left='';menu.style.top='';menu.style.maxHeight='';
+      if(inTopLayer&&menu.matches(':popover-open'))menu.hidePopover();
+      window.removeEventListener('resize',position);
+      window.removeEventListener('scroll',closeFromViewport,true);
+    }
+    toggle.setAttribute('aria-expanded',String(open));
+    openedMenu=open?{mount,setOpen}:(openedMenu&&openedMenu.mount===mount?null:openedMenu)};
+  toggle.addEventListener('click',event=>{event.stopPropagation();setOpen(menu.hidden)});
+  mount.addEventListener('keydown',event=>{
+    if(event.key==='Escape'&&!menu.hidden){setOpen(false);toggle.focus()}});
+  return {setOpen,isOpen:()=>!menu.hidden};
+}
+
+/* Geist Select：站内每一个下拉都是它，没有一个走浏览器自带的 select 控件。
+
+   原生下拉的弹出层由操作系统画，不认站内色板：浅色主题下它要么跟着系统换成另一套灰白，
+   要么只能用 `color-scheme` 整个按回深色——设置面板里那七个此前就是被按成深色的，
+   白底页面上七块黑。2026-09-04 实测 vercel.com 后台：整站没有一个原生下拉，触发器是
+   button，面板是自绘 listbox，面板底色就是页面底色（浅色下纯白 --ds-background-100），
+   行高 36px、圆角 6px、行内边距 0 8px，悬停与选中都是 5% 中性填充。Peach 的行高走站内
+   已有的 --control-h（38px），面板与定位复用 .popmenu 和 wireAnchoredMenu。
+
+   `value`、`disabled` 和 `change` 三样按原生 select 的写法留在根元素上：调用方读写它跟
+   读写原生下拉一样，换掉的只是画法。 */
+export function selectOptionIconHtml(mark){
+  return !mark?'':mark.startsWith('data:image/png;base64,')
+    ?`<img class="gselectmark" src="${esc(mark)}" alt="" width="16" height="16">`:icon(mark,'gselectmark');
+}
+export function selectFieldHtml(options,current,{label='',attr='',className=''}={}){
+  const chosen=options.find(([value])=>String(value)===String(current))||options[0]||['',''];
+  const content=([,text,mark])=>`${selectOptionIconHtml(mark)}${esc(text)}`;
+  const rows=options.map(([value,text,mark])=>
+    `<button type="button" role="option" data-select-option="${esc(value)}"
+      aria-selected="${String(value)===String(chosen[0])}" tabindex="-1">${icon('check')}<span data-select-content>${content([value,text,mark])}</span></button>`).join('');
+  return `<div class="gselect${className?` ${esc(className)}`:''}" ${attr}>
+    <button type="button" class="gselectfield" data-select-trigger aria-haspopup="listbox"
+      aria-expanded="false" aria-label="${esc(label)}"><span data-select-label>${content(chosen)}</span>${icon('chevron-down')}</button>
+    <div class="popmenu gselectmenu" role="listbox" aria-label="${esc(label)}" popover="manual" data-select-menu hidden>${rows}</div></div>`;
+}
+
+/** 接上 selectFieldHtml 画出来的一个下拉；返回的就是根元素，带 value / disabled。 */
+export function wireSelectField(root){
+  const trigger=root.querySelector('[data-select-trigger]');
+  const menu=root.querySelector('[data-select-menu]'),label=root.querySelector('[data-select-label]');
+  const options=()=>[...menu.querySelectorAll('[data-select-option]')];
+  const current=()=>menu.querySelector('[aria-selected="true"]');
+  /* 面板至少和触发器一样宽。菜单是 fixed 的，宽度不会自己跟着触发器走，而一个比触发器
+     还窄的面板看着不像同一个控件。这条要接在 wireAnchoredMenu 之前：它按当前宽度定位。 */
+  trigger.addEventListener('click',()=>{menu.style.minWidth=`${trigger.getBoundingClientRect().width}px`});
+  const anchored=wireAnchoredMenu(root,trigger,menu);
+  trigger.addEventListener('click',()=>{if(!menu.hidden)current()?.focus()});
+  const choose=value=>{
+    const picked=options().find(option=>option.dataset.selectOption===String(value));
+    if(!picked)return;
+    options().forEach(option=>{
+      option.setAttribute('aria-selected',String(option===picked));option.tabIndex=option===picked?0:-1});
+    label.innerHTML=picked.querySelector('[data-select-content]').innerHTML;
+  };
+  options().forEach(option=>{
+    option.onclick=()=>{
+      const changed=option.getAttribute('aria-selected')!=='true';
+      choose(option.dataset.selectOption);anchored.setOpen(false);trigger.focus();
+      if(changed)root.dispatchEvent(new Event('change',{bubbles:true}));
+    };
+    option.onkeydown=event=>{
+      if(event.key!=='ArrowDown'&&event.key!=='ArrowUp')return;
+      event.preventDefault();
+      const all=options(),at=all.indexOf(option);
+      all[(at+(event.key==='ArrowDown'?1:-1)+all.length)%all.length].focus();
+    };
+  });
+  if(current())current().tabIndex=0;
+  Object.defineProperty(root,'value',{configurable:true,
+    get:()=>current()?.dataset.selectOption??'',set:value=>choose(value)});
+  Object.defineProperty(root,'disabled',{configurable:true,
+    get:()=>trigger.disabled,set:value=>{trigger.disabled=!!value;if(value)anchored.setOpen(false)}});
+  return root;
+}
+
+/* Geist Modal：一次写操作落库前的确认。
+
+   实测 https://vercel.com/geist/modal（2026-09-04）：卡片 540px 宽、12px 圆角、窄屏两侧
+   各留 10px，正文 20px 内边距、14px/20px，标题是 20px/26px 的 600 字重 h3，底部操作条
+   12px 内边距、粘在底、两端对齐，按钮 32px 高、6px 圆角、14px/500，遮罩纯黑不带模糊。
+   标题写成陈述句而不是问句；主按钮是与标题同一个动词的「动词+名词」，取消键就写「取消」；
+   成功后的 Toast 与主按钮共用那个动词。
+
+   用原生 <dialog> 承载：焦点陷阱、Escape、背景 inert 和关掉后把焦点还给触发钮都由它给，
+   自己搭一遍只会少掉其中一两样。onConfirm 失败时弹层不关，原因留在原位等重试。 */
+let modalSeq=0;
+export function confirmModal({title,body,confirmLabel,cancelLabel='取消',onConfirm=null}={}){
+  const trigger=document.activeElement;
+  const dialog=document.createElement('dialog');
+  dialog.className='geist-modal';
+  const titleId=`geist-modal-title-${++modalSeq}`;
+  dialog.setAttribute('aria-labelledby',titleId);
+  dialog.innerHTML=`<div class="geist-modal-body">
+      <h3 id="${titleId}"></h3><p></p><div data-modal-error></div></div>
+    <footer class="geist-modal-footer">
+      <div><button type="button" class="geist-button" data-modal-cancel></button></div>
+      <div><button type="button" class="geist-button primary" data-modal-confirm></button></div>
+    </footer>`;
+  dialog.querySelector('h3').textContent=title;
+  dialog.querySelector('.geist-modal-body p').textContent=body;
+  const cancel=dialog.querySelector('[data-modal-cancel]');
+  const accept=dialog.querySelector('[data-modal-confirm]');
+  const failure=dialog.querySelector('[data-modal-error]');
+  cancel.textContent=cancelLabel;
+  accept.textContent=confirmLabel;
+  document.body.append(dialog);
+  return new Promise(resolve=>{
+    let settled=null;
+    dialog.addEventListener('close',()=>{
+      dialog.remove();
+      if(trigger instanceof HTMLElement&&trigger.isConnected)trigger.focus();
+      resolve(settled||{confirmed:false});
+    },{once:true});
+    cancel.onclick=()=>dialog.close();
+    /* 遮罩上的点击落在 <dialog> 自己身上，卡片里的落在子元素上。这个动作可撤销，
+       按 Geist 的判据允许点外面关掉。 */
+    dialog.addEventListener('click',event=>{if(event.target===dialog)dialog.close()});
+    accept.onclick=async()=>{
+      if(!onConfirm){settled={confirmed:true};dialog.close();return}
+      failure.innerHTML='';
+      setActionBusy(accept);
+      try{
+        settled={confirmed:true,result:await onConfirm()};
+        dialog.close();
+      }catch(error){
+        failure.innerHTML=noteHtml(error.message||'操作未完成',{variant:'error'});
+        setActionBusy(accept,false);
+      }
+    };
+    dialog.showModal();
+    accept.focus();
   });
 }

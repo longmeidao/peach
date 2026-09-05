@@ -22,7 +22,12 @@
 #   sh scripts/setup_macos_port80.sh check       # 只验证，不需要 root
 set -eu
 
-ANCHOR_NAME="gg.lmd.peach"
+# 和 src/peach/appid.py 的 MACOS_PF_ANCHOR 必须一致；shell 里 import 不了 Python，
+# 这两行由 tests/test_tray.py 钉住。
+ANCHOR_NAME="io.github.longmeidao.peach"
+# 已部署机器上装着的遗留 anchor 名（peach.appid.LEGACY_MACOS_PF_ANCHORS）。留着不清
+# 会让 /etc/pf.conf 里多一条指向已删除文件的 load anchor，整份包过滤规则加载不起来。
+LEGACY_ANCHOR_NAMES="gg.lmd.peach"
 ANCHOR_FILE="/etc/pf.anchors/${ANCHOR_NAME}"
 DAEMON="/Library/LaunchDaemons/${ANCHOR_NAME}.pf.plist"
 TARGET_PORT="${PEACH_PORT:-8900}"
@@ -34,10 +39,12 @@ IFACE="${IFACE:-en0}"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
-# 去掉本脚本写过的行，并把 rdr-anchor 插回 translation 段。
+# 去掉本脚本写过的行（含遗留 anchor 名那几行），并把 rdr-anchor 插回 translation 段。
 rebuild_conf() {
-    awk -v name="$ANCHOR_NAME" -v anchor_file="$ANCHOR_FILE" '
-        index($0, name) { next }                       # 幂等：先剥掉旧的
+    awk -v name="$ANCHOR_NAME" -v anchor_file="$ANCHOR_FILE" -v legacy="$LEGACY_ANCHOR_NAMES" '
+        BEGIN { split(legacy, stale, " ") }
+        index($0, name) { next }                       # 幂等：本脚本写过的先剥掉
+        { for (k in stale) if (stale[k] != "" && index($0, stale[k])) next }
         { line[++n] = $0; if ($0 ~ /^[[:space:]]*(rdr|nat)-anchor/) last = n }
         END {
             for (i = 1; i <= n; i++) {
@@ -47,6 +54,26 @@ rebuild_conf() {
             printf "load anchor \"%s\" from \"%s\"\n", name, anchor_file
         }
     ' "$1"
+}
+
+# 只剥不加：uninstall 用它把两种 anchor 名的行都从 /etc/pf.conf 里去掉。
+strip_conf() {
+    awk -v name="$ANCHOR_NAME" -v legacy="$LEGACY_ANCHOR_NAMES" '
+        BEGIN { split(legacy, stale, " ") }
+        index($0, name) { next }
+        { for (k in stale) if (stale[k] != "" && index($0, stale[k])) next }
+        { print }
+    ' "$1"
+}
+
+# 卸掉遗留 anchor 名的 LaunchDaemon 并删掉它的 anchor 文件。那个 daemon 每次开机都
+# 重新加载一份指向它自己的规则，留着就和新的抢同一个 80/443 转发。没有就静默跳过。
+remove_legacy() {
+    for stale_name in $LEGACY_ANCHOR_NAMES; do
+        stale_daemon="/Library/LaunchDaemons/${stale_name}.pf.plist"
+        launchctl bootout system "$stale_daemon" 2>/dev/null || true
+        rm -f "$stale_daemon" "/etc/pf.anchors/${stale_name}"
+    done
 }
 
 if [ "$ACTION" = "check" ]; then
@@ -67,12 +94,15 @@ fi
 if [ "$ACTION" = "uninstall" ]; then
     launchctl bootout system "$DAEMON" 2>/dev/null || true
     rm -f "$DAEMON" "$ANCHOR_FILE"
-    grep -v "$ANCHOR_NAME" /etc/pf.conf > "$WORK/pf.conf"
+    remove_legacy
+    strip_conf /etc/pf.conf > "$WORK/pf.conf"
     cp "$WORK/pf.conf" /etc/pf.conf
     pfctl -f /etc/pf.conf 2>/dev/null || true
     echo "已移除 80/443 的重定向"
     exit 0
 fi
+
+remove_legacy
 
 cat > "$ANCHOR_FILE" <<RULES
 # 由 scripts/setup_macos_port80.sh 生成，勿手改。

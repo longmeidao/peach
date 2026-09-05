@@ -5,7 +5,13 @@
 
    `route()` 没有放进来：它要调 syncHeaderActions/paintListTitle，那是 UI 层的事。 */
 const $=s=>document.querySelector(s);
-const icon=(name,cls='')=>`<svg${cls?` class="${cls}"`:''} viewBox="0 0 24 24" aria-hidden="true"><use href="#i-${name}"/></svg>`;
+/* 方形槽位里塞不进 1.4:1 的字形：按宽度对齐它就矮一截，挨着满格的 Lucide
+   图标看就是小一号。这几枚外层 viewBox 跟着 symbol 的比例走，槽位由 CSS 按高定宽。 */
+const WIDE_ICONS={'text-aa':1.435};
+const icon=(name,cls='')=>{
+  const ratio=WIDE_ICONS[name],classes=[ratio?'iconwide':'',cls].filter(Boolean).join(' ');
+  const box=ratio?`0 0 ${(24*ratio).toFixed(2)} 24`:'0 0 24 24';
+  return `<svg${classes?` class="${classes}"`:''} viewBox="${box}" aria-hidden="true"><use href="#i-${name}"/></svg>`};
 /* `signal` 写成显式的一项，不靠 Object.assign 顺带透传：表面切换要能作废上一屏
    还没读完的请求，「这个请求可被取消」得在签名上看得见。 */
 const api=async(p,o)=>{
@@ -47,8 +53,8 @@ const STATE_ROUTES={fresh:'/unseen',later:'/watch-later',flagged:'/flagged',ads:
 const ROUTE_STATES=Object.fromEntries(Object.entries(STATE_ROUTES).map(([state,path])=>[path,state]));
 const STATE_LABELS={fresh:'没看过',later:'稍后看',flagged:'已标记',ads:'垃圾文件'};
 const isCatalogPath=path=>path==='/'||Object.prototype.hasOwnProperty.call(ROUTE_STATES,path);
-const ENTITY_ROUTES={performer:'performers',studio:'studios',creator:'creators',series:'series'};
-const ROUTE_ENTITIES={performers:'performer',studios:'studio',creators:'creator',series:'series'};
+const ENTITY_ROUTES={performer:'performers',studio:'studios',creator:'creators',series:'series',agency:'agencies'};
+const ROUTE_ENTITIES={performers:'performer',studios:'studio',creators:'creator',series:'series',agencies:'agency'};
 const entityPath=(kind,name)=>`/${ENTITY_ROUTES[kind]||kind}/${encodeURIComponent(name)}`;
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const SITE_FAVICONS={

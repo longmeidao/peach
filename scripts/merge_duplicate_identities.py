@@ -6,6 +6,12 @@ r"""同一个人被记成两条实体的去重（跨 kind 与同 kind 两类）�
 可以并存。实际发生了 35 组：卡片上的头像和名字会一个跳 `/performers/x`、另一个跳
 `/creators/x`，统计、筛选和资料页也各算各的。
 
+第三类是名录页重复：两条实体各按自己的名字检索，链接安装时落到同一个 minnano-av
+名录页，那就是站方认为的同一个人。判据见 `_directory_identity_plan`。
+
+第四类是艺名重复：一个名字已经作为别名登记在另一条实体上，它却还自己占着一条实体。
+判据与闸门见 `_stage_name_plan`。
+
 两条来路很清楚：
 
     creator   ← source='legacy:asset'，从目录名投影出来（ADR-0013：目录名只是候选证据）
@@ -49,6 +55,7 @@ creator** 的实体，`(kind, normalized_name)` 唯一约束拦不住它：`小�
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import sqlite3
 import sys
@@ -80,6 +87,16 @@ JOINER_TOKENS = frozenset({"&", "＆", "+", "＋", "/", "／", "、", "，", ","
 
 #: 目录名投影的唯一来源标记：没有别名、没有外部引用，只有从路径投影出来的断言。
 PROJECTION_SOURCES = frozenset({"legacy:asset"})
+
+#: 链接安装把名录页号写进了自由文本证据里（`entity_link.metadata_json` 的 `evidence`）。
+#: minnano-av 每位女优一页，页号就是身份——比名字强，也比别名强：两条实体各按自己的
+#: 名字检索、落到同一页，说明站方认为这是同一个人。页号本身该升成 `entity_external_ref`，
+#: 那样唯一约束会先一步拦住重复；在那之前只能从这段文本里读回来。
+MINNANO_ACTRESS = re.compile(r"minnano-av\s+actress(\d+)")
+
+#: 能证明「这个名字是那个人的另一个艺名」的别名来源。本地化、简繁转换和系列译名
+#: 写的别名说的是同一个名字的另一种写法，不是另一个艺名，不能拿来判同人。
+STAGE_NAME_ALIAS_SOURCES = ("r18:performer", "javbus:performer", "avdb-actor-mapping")
 
 
 def _fold(value: str) -> str:
@@ -301,6 +318,169 @@ def collect(connection: sqlite3.Connection) -> list[dict[str, object]]:
     # 第二趟再引用同一个 id 就是合并进一条不存在的实体。
     engaged = {int(row["keep_id"]) for row in plan} | {int(row["drop_id"]) for row in plan}
     plan.extend(_variant_plan(entity_rows, aliases, assets, engaged))
+    engaged |= {int(row["keep_id"]) for row in plan} | {int(row["drop_id"]) for row in plan}
+    stage_aliases = [
+        (int(row["entity_id"]), str(row["alias"]), str(row["normalized_alias"]),
+         str(row["source"] or ""))
+        for row in connection.execute(
+            "SELECT entity_id,alias,normalized_alias,source FROM entity_alias"
+            " ORDER BY entity_id,alias")
+    ]
+    refs: dict[int, dict[str, str]] = {}
+    for row in connection.execute(
+        "SELECT entity_id,provider,external_id FROM entity_external_ref ORDER BY entity_id"
+    ):
+        refs.setdefault(int(row["entity_id"]), {})[str(row["provider"])] = str(
+            row["external_id"])
+    directory = _directory_identity_plan(entity_rows, connection, engaged)
+    plan.extend(directory)
+    engaged |= {int(row["keep_id"]) for row in directory}
+    engaged |= {int(row["drop_id"]) for row in directory}
+    plan.extend(_stage_name_plan(entity_rows, aliases, stage_aliases, refs, engaged))
+    return plan
+
+
+def _directory_identity_plan(
+    entity_rows: list[sqlite3.Row],
+    connection: sqlite3.Connection,
+    engaged: set[int],
+) -> list[dict[str, object]]:
+    """两条实体的官网链接是按同一个 minnano-av 名录页装上的，那就是同一个人。
+
+    实测 `白石亚子`(#8204) 与 `Ako Shiraishi`(#8435)：前者按「白石あこ」检索、后者按
+    「平沢すず」检索，两条都落到 actress37250。艺名换过一次，账本就各存了一条。
+
+    这条证据压过 `_stage_name_plan` 的「别名互不相识」那道闸——那道闸防的是规范名写错人，
+    而名录页号恰恰能分清「写错了人」和「同一个人的两个艺名」：写错人时两侧不会落到同一页。
+
+    保留规范名已经本地化的那一侧（用户 2026-09-04 的口径：用更知名的名字，其余留作别名），
+    两侧都本地化或都没有时保留作品多的一侧。同一页挂三条以上一律交人工：那要先决定
+    并的顺序，不是脚本该替人做的。
+    """
+    by_id = {int(row["id"]): row for row in entity_rows}
+    owners: dict[str, set[int]] = {}
+    for entity_id, payload in connection.execute(
+        "SELECT entity_id,metadata_json FROM entity_link ORDER BY entity_id"
+    ):
+        if int(entity_id) not in by_id:
+            continue
+        try:
+            evidence = str(json.loads(payload or "{}").get("evidence") or "")
+        except (TypeError, ValueError):
+            continue
+        found = MINNANO_ACTRESS.search(evidence)
+        if found:
+            owners.setdefault(found.group(1), set()).add(int(entity_id))
+
+    plan: list[dict[str, object]] = []
+    for actress, ids in sorted(owners.items()):
+        usable = sorted(ids - engaged)
+        if len(usable) != 2:
+            continue
+        first, second = (by_id[entity_id] for entity_id in usable)
+        localized = [row for row in (first, second)
+                     if not str(row["canonical_name"]).isascii()]
+        if len(localized) == 1:
+            keep = localized[0]
+            why = "保留已本地化的规范名"
+        else:
+            keep = max((first, second), key=lambda row: (int(row["links"]), -int(row["id"])))
+            why = "两侧规范名同为本地化或同为罗马字，保留作品多的一侧"
+        drop = second if keep is first else first
+        plan.append({
+            "normalized_name": drop["normalized_name"],
+            "match_evidence": f"两侧官网链接按同一个 minnano-av 名录页 actress{actress} 装上；{why}",
+            "keep_kind": keep["kind"],
+            "keep_id": keep["id"],
+            "keep_name": keep["canonical_name"],
+            "keep_links": keep["links"],
+            "drop_kind": drop["kind"],
+            "drop_id": drop["id"],
+            "drop_name": drop["canonical_name"],
+            "drop_links": drop["links"],
+            "keep_sources": keep["sources"] or "",
+            "drop_sources": drop["sources"] or "",
+            "evidence": "名录页号",
+        })
+    return plan
+
+
+def _stage_name_plan(
+    entity_rows: list[sqlite3.Row],
+    aliases: dict[int, list[str]],
+    stage_aliases: list[tuple[int, str, str, str]],
+    refs: dict[int, dict[str, str]],
+    engaged: set[int],
+) -> list[dict[str, object]]:
+    """艺名已经登记成另一条实体的别名，那个名字却还自己占着一条实体。
+
+    实测 `飯岡かなこ`（1 部）与 `森泽佳奈`（2 部）：r18 早已把前者记成后者的别名，
+    `/performers/飯岡かなこ` 却还在。`link_entity` 只在建实体那一刻查别名，两条都是
+    Stash 那次批量导入建的，别名是之后才由 r18 补上的——建的时候没有可查的东西。
+
+    三道闸都是为了排掉实测里的假阳性，缺一条就会把两个人并成一个：
+
+    1. **别名要出自发行元数据。** 本地化与简繁转换也往别名表里写（`綾乃梓` 之于
+       `绫乃梓`），它们说的是同一个名字的另一种写法，证不了「这是那个人的另一个艺名」。
+       系列译名同样落在别名表里（`Night Safari` 写进 `クロロホルムレ●プ`），虽然这一趟
+       只扫 person，判据本身不该依赖扫描范围。
+    2. **被丢弃方自己的别名必须全在保留方的名字集里。** `Ako Shiraishi` 这条实体的
+       每一个别名和 r18 引用都指向 平沢すず，规范名却写着另一个人——它是错标，
+       并进 `白石亚子` 等于把两位女优搅在一起。
+    3. **同一个 provider 的外部引用不能各指一个 ID。** `NOZOMI`（stash 610）撞上
+       `绫乃梓`（stash 538）的别名 `Nozomi`，那是素人企划里常见的通名撞上罗马字读音。
+
+    命中两条以上保留方同样交人工：这条判据唯一的身份保证就是那一条别名。
+    """
+    by_id = {int(row["id"]): row for row in entity_rows}
+    owners: dict[tuple[str, str], set[int]] = {}
+    alias_note: dict[tuple[str, int], tuple[str, str]] = {}
+    for entity_id, alias, normalized, source in stage_aliases:
+        row = by_id.get(entity_id)
+        if row is None or not normalized:
+            continue
+        if not source.startswith(STAGE_NAME_ALIAS_SOURCES):
+            continue
+        owners.setdefault((str(row["kind"]), normalized), set()).add(entity_id)
+        alias_note[(normalized, entity_id)] = (alias, source)
+
+    plan: list[dict[str, object]] = []
+    for drop_id, drop in sorted(by_id.items()):
+        if drop_id in engaged:
+            continue
+        normalized = str(drop["normalized_name"])
+        found = sorted(owners.get((str(drop["kind"]), normalized), set()) - {drop_id}
+                       - engaged)
+        if len(found) != 1:
+            continue
+        keep_id = found[0]
+        keep = by_id[keep_id]
+        keep_names = {_fold(str(keep["canonical_name"]))}
+        keep_names |= {_fold(value) for value in aliases.get(keep_id, [])}
+        stray = [value for value in aliases.get(drop_id, [])
+                 if _fold(value) and _fold(value) not in keep_names]
+        if stray:
+            continue
+        drop_refs, keep_refs = refs.get(drop_id, {}), refs.get(keep_id, {})
+        if any(keep_refs[provider] != value for provider, value in drop_refs.items()
+               if provider in keep_refs):
+            continue
+        alias, source = alias_note[(normalized, keep_id)]
+        plan.append({
+            "normalized_name": normalized,
+            "match_evidence": f"艺名已登记为保留方别名「{alias}」（{source}）",
+            "keep_kind": keep["kind"],
+            "keep_id": keep["id"],
+            "keep_name": keep["canonical_name"],
+            "keep_links": keep["links"],
+            "drop_kind": drop["kind"],
+            "drop_id": drop["id"],
+            "drop_name": drop["canonical_name"],
+            "drop_links": drop["links"],
+            "keep_sources": keep["sources"] or "",
+            "drop_sources": drop["sources"] or "",
+            "evidence": "发行元数据登记的艺名",
+        })
     return plan
 
 
@@ -419,6 +599,12 @@ def apply_rows(
                     (asset_id, f"演员:{row['drop_name']}"))
                 counts["actor_tags_removed"] += connection.execute(
                     "SELECT changes()").fetchone()[0]
+        elif row["keep_kind"] == "series":
+            # 扁平 `asset.series` 也得跟着规范关系走（ADR-0005）。只搬关系不改这一列，
+            # 卡片上还写着被丢弃的系列名，按它查也还查得到——资料页和卡片各说各话。
+            connection.execute("UPDATE asset SET series=? WHERE series=?",
+                               (row["keep_name"], row["drop_name"]))
+            counts["flat_rewritten"] += connection.execute("SELECT changes()").fetchone()[0]
         else:
             connection.execute(
                 "UPDATE asset SET creator=NULL WHERE creator=?", (row["drop_name"],))
@@ -608,6 +794,58 @@ def write_projection_csv(path: Path, rows: list[dict[str, object]]) -> None:
     write_rows(path, fields, rows)
 
 
+def named_pairs(connection: sqlite3.Connection, pairs: list[str],
+                engaged: set[int] | None = None) -> list[dict[str, object]]:
+    """命令行点名的一对。用于证据在站外、本地探测不出来的同一人。
+
+    `五十嵐星蘭` 与 `蘭々` 在账本里没有一处相交：外部 id 不同、别名互不相识、
+    作品也不重合。判定它们是同一人靠的是 javdb 资料页把五个艺名列在一起，那份证据
+    进不了自动判据，只能由人带进来——所以每一对都必须自带 `证据` 一段话，它会原样
+    落进复核 CSV，是这次合并唯一说得清来由的东西。
+
+    写法 `保留id:丢弃id:证据`。方向不自动挑：作品数多的一侧不一定是名字对的一侧。
+    """
+    connection.row_factory = sqlite3.Row
+    engaged = engaged or set()
+    plan: list[dict[str, object]] = []
+    for pair in pairs:
+        parts = pair.split(":", 2)
+        if len(parts) != 3 or not parts[2].strip():
+            raise SystemExit(f"--pair 要写成 保留id:丢弃id:证据，收到 {pair!r}")
+        keep_id, drop_id, why = int(parts[0]), int(parts[1]), parts[2].strip()
+        sides = {}
+        for name, entity_id in (("keep", keep_id), ("drop", drop_id)):
+            row = connection.execute(
+                "SELECT id,kind,canonical_name,normalized_name,"
+                " (SELECT count(*) FROM asset_entity ae WHERE ae.entity_id=e.id) AS links,"
+                " (SELECT group_concat(DISTINCT ae.source) FROM asset_entity ae"
+                "   WHERE ae.entity_id=e.id) AS sources"
+                " FROM entity e WHERE e.id=?", (entity_id,)).fetchone()
+            if row is None:
+                raise SystemExit(f"--pair {pair}：实体 {entity_id} 不存在")
+            if entity_id in engaged:
+                raise SystemExit(f"--pair {pair}：实体 {entity_id} 已经在自动判据的计划里")
+            sides[name] = row
+        if sides["keep"]["kind"] != sides["drop"]["kind"]:
+            raise SystemExit(f"--pair {pair}：两侧 kind 不同，不合并")
+        plan.append({
+            "normalized_name": sides["drop"]["normalized_name"],
+            "match_evidence": why,
+            "keep_kind": sides["keep"]["kind"],
+            "keep_id": keep_id,
+            "keep_name": sides["keep"]["canonical_name"],
+            "keep_links": sides["keep"]["links"],
+            "drop_kind": sides["drop"]["kind"],
+            "drop_id": drop_id,
+            "drop_name": sides["drop"]["canonical_name"],
+            "drop_links": sides["drop"]["links"],
+            "keep_sources": sides["keep"]["sources"] or "",
+            "drop_sources": sides["drop"]["sources"] or "",
+            "evidence": "人工指定",
+        })
+    return plan
+
+
 def write_csv(path: Path, rows: list[dict[str, object]]) -> None:
     fields = ["normalized_name", "match_evidence", "keep_kind", "keep_name", "keep_id", "keep_links",
               "drop_kind", "drop_name", "drop_id", "drop_links",
@@ -630,6 +868,8 @@ def build_parser() -> argparse.ArgumentParser:
                         default=GENERATED_DIR / "duplicate-identity-merge.csv")
     parser.add_argument("--projection-review-csv", type=Path,
                         default=GENERATED_DIR / "repeated-identity-name-repair.csv")
+    parser.add_argument("--pair", action="append", default=[], metavar="保留id:丢弃id:证据",
+                        help="人工指定的一对，用于证据在站外、本地探测不出来的同一人")
     return parser
 
 
@@ -637,6 +877,8 @@ def run(args: argparse.Namespace) -> int:
     connection = open_for_write(args)
     try:
         rows = collect(connection)
+        engaged = {int(row["keep_id"]) for row in rows} | {int(row["drop_id"]) for row in rows}
+        rows.extend(named_pairs(connection, args.pair, engaged))
         projection_rows = collect_repeated_projections(connection)
         write_csv(args.review_csv, rows)
         write_projection_csv(args.projection_review_csv, projection_rows)

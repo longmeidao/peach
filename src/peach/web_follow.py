@@ -11,6 +11,9 @@ import html
 import json
 import os
 import re
+import time
+import threading
+import uuid
 import urllib.parse
 
 from . import follow_providers
@@ -767,12 +770,48 @@ def w_follow_check(contract, body) -> dict:
     没有 `source` 就检查全部已启用来源。逐个来源独立成败：一个来源缺凭据或被
     机器人验证挡住，不该让其余来源的更新一起消失。
     """
+    if "sources" in body and (not isinstance(body["sources"], list)
+            or not body["sources"] or not all(type(value) is int for value in body["sources"])):
+        raise ValueError("sources must be a nonempty list of source ids")
+    finished = threading.Event()
+    outcome = {}
+    request_id = uuid.uuid4().hex
+    def work(job_id):
+        try:
+            result = _execute_follow_check(contract, body, job_id)
+            outcome["result"] = result
+            contract.follow_job.update(job_id, **result, status="complete",
+                                     current=None, completed_at=time.time())
+        except Exception as error:
+            outcome["error"] = error
+            raise
+        finally:
+            finished.set()
+    started = contract.follow_job.start(work, restart=True,
+        initial={"ok": True, "checked": 0, "total": 0, "results": [],
+                 "request_id": request_id, "older": bool(body.get("older")), "current": None})
+    if body.get("background"):
+        return started
+    if started["request_id"] != request_id:
+        return {"ok": False, "busy": True, "checked": 0, "results": []}
+    finished.wait()
+    if "error" in outcome:
+        raise outcome["error"]
+    return outcome["result"]
+
+
+def _execute_follow_check(contract, body, job_id):
     if not contract.follow_check_lock.acquire(blocking=False):
         return {"ok": False, "busy": True, "checked": 0, "results": []}
     try:
-        return _run_follow_check(contract, body)
+        return _run_follow_check(contract, body, job_id)
     finally:
         contract.follow_check_lock.release()
+
+
+def q_follow_check(contract, _args) -> dict:
+    """读取检查进度，不发起抓取。"""
+    return contract.follow_job.snapshot() or {"ok": True, "status": "idle"}
 
 
 def _check_writer(contract):
@@ -821,7 +860,7 @@ def _check_payload(result) -> dict:
     return payload
 
 
-def _run_follow_check(contract, body) -> dict:
+def _run_follow_check(contract, body, job_id=None) -> dict:
     requested = body.get("source")
     source_id = requested if isinstance(requested, int) else None
     # 往回抓一页。这是**显式的、一次一页**的动作：常规检查永远只看第一页，
@@ -833,10 +872,26 @@ def _run_follow_check(contract, body) -> dict:
         rows = plan_check(_store(contract, connection), credentials,
                           source_id=source_id, older=older,
                           backfill_providers=_BACKFILL_PROVIDERS)
+    if "sources" in body:
+        rows = [row for row in rows if row["id"] in body["sources"]]
     writer = _check_writer(contract)
-    results = [_check_payload(run_check(
-        row, credentials=credentials, writer=writer,
-        connector_factory=build_connector, older=older)) for row in rows]
+    results = []
+    for row in rows:
+        if job_id and contract.follow_job.snapshot() is None:
+            break
+        current = {"source": row["id"], "label": _author_display_name(row),
+                   "provider": PROVIDER_LABELS.get(row["provider"], row["provider"])}
+        def progress(**fields):
+            if job_id:
+                contract.follow_job.update(job_id, total=len(rows), checked=len(results),
+                    results=results.copy(), current={**current, **fields})
+        progress(attempt=1, max_attempts=5, retry_in=0)
+        result = _check_payload(run_check(
+            row, credentials=credentials, writer=writer,
+            connector_factory=build_connector, older=older, progress=progress))
+        result["author"] = _author_display_name(row)
+        results.append(result)
+        progress()
     return {"ok": True, "checked": len(results), "results": results}
 
 
@@ -920,7 +975,8 @@ def w_follow_source(contract, body) -> dict:
         source_id = _store(contract, connection).register(
             provider=parsed.provider, ref=parsed.ref, label=label, url=parsed.url,
             semantics=parsed.semantics, metadata=metadata)
-    checked = w_follow_check(contract, {"source": source_id})
+    checked = ({"results": []} if body.get("defer_check") else
+               w_follow_check(contract, {"source": source_id}))
     outcome = next((row for row in checked["results"]
                     if row["source"] == source_id), None)
     if outcome is None:
@@ -931,7 +987,8 @@ def w_follow_source(contract, body) -> dict:
             "source": source_id, "provider": parsed.provider,
             "provider_label": PROVIDER_LABELS.get(parsed.provider, parsed.provider),
             "ref": parsed.ref, "label": label, "ok": True, "deferred": True,
-            "message": "已登记，另一次检查正在进行，这条稍后再查",
+            "message": ("已登记，等待检查更新" if body.get("defer_check") else
+                        "已登记，另一次检查正在进行，这条稍后再查"),
         }
     return {"ok": True, "source": source_id, "provider": parsed.provider,
             "ref": parsed.ref, "label": label, "checked": outcome}
@@ -986,6 +1043,9 @@ def w_follow_resolve(contract, body) -> dict:
     由人勾选之后再调 `/api/follow/source` 落地——发现要联网，结果也可能不止一个，
     自动登记等于替用户做决定。
     """
+    if body.get("background"):
+        return contract.follow_resolve_job.start_result(
+            lambda: w_follow_resolve(contract, {**body, "background": False}))
     raw = body.get("lines")
     if isinstance(raw, str):
         raw = raw.splitlines()

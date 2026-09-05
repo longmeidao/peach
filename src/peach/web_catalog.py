@@ -18,6 +18,7 @@ from .catalog_rules import (
     collapse_superseded_taste_tags,
     is_jav_asset,
     jav_display_metadata,
+    names_without_shared_part_tail,
     normalise_code_key,
     ordered_multipart_items,
     part_marker,
@@ -92,7 +93,30 @@ def tag_not_hidden(asset: str, tag: str) -> str:
             f"AND p.hidden=1 AND p.normalized_tag={tag})")
 
 
-def q_items(contract: WebContract, args):
+#: 「这部作品属于某家事务所」的判据：它的出镜者里有这家的现役成员。
+#: 归属是人的属性，作品只是顺着人被算进来的——所以这里比的是 `entity_membership`，
+#: 不是给作品另存一个事务所字段。多存一份就会漂移，而漂移的那份没人会发现。
+AGENCY_ASSET_CLAUSE = (
+    "EXISTS(SELECT 1 FROM asset_entity ae "
+    "JOIN entity_membership m ON m.member_id=ae.entity_id "
+    "JOIN entity agency ON agency.id=m.agency_id "
+    "WHERE ae.asset_id=a.id AND agency.kind='agency' AND agency.canonical_name=?)"
+)
+
+#: 搜索里的同一条关系，但按名字模糊比，并且认别名——事务所改名比女优改艺名还常见，
+#: 「GRANZPRO」和「LiStarPRO」是同一批人。
+AGENCY_SEARCH_CLAUSE = (
+    "EXISTS(SELECT 1 FROM asset_entity ae "
+    "JOIN entity_membership m ON m.member_id=ae.entity_id "
+    "JOIN entity agency ON agency.id=m.agency_id "
+    "WHERE ae.asset_id=a.id AND agency.kind='agency' "
+    "AND (agency.canonical_name LIKE ? OR EXISTS(SELECT 1 FROM entity_alias al "
+    "WHERE al.entity_id=agency.id AND al.alias LIKE ?)))"
+)
+
+
+def catalog_filter(contract: WebContract, args):
+    """视频列表与侧栏使用同一组筛选条件。"""
     trash = args.get("state") == "trash"
     # 普通馆藏仍是视频表面；回收站必须展示所有文件类型，否则从垃圾复核移入的
     # 图片、网址快捷方式等会变成不可见、不可恢复，只能被「清空回收站」直接删掉。
@@ -106,30 +130,33 @@ def q_items(contract: WebContract, args):
         where.append("a.location IN (%s)" % ",".join("?" * len(locs))); par += locs
     if args.get("creator"):
         where.append(
-            "EXISTS(SELECT 1 FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
-            "WHERE ae.asset_id=a.id AND e.kind='creator' AND e.canonical_name=?)"
+            "a.id IN (SELECT ae.asset_id FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
+            "WHERE e.kind='creator' AND e.canonical_name=?)"
         ); par.append(args["creator"])
     if args.get("performer"):
         where.append(
-            "EXISTS(SELECT 1 FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
-            "WHERE ae.asset_id=a.id AND e.kind='performer' AND e.canonical_name=?)"
+            "a.id IN (SELECT ae.asset_id FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
+            "WHERE e.kind='performer' AND e.canonical_name=?)"
         ); par.append(args["performer"])
     if args.get("studio"):
         where.append(
-            "EXISTS(SELECT 1 FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
-            "WHERE ae.asset_id=a.id AND e.kind='studio' AND e.canonical_name=?)"
+            "a.id IN (SELECT ae.asset_id FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
+            "WHERE e.kind='studio' AND e.canonical_name=?)"
         ); par.append(args["studio"])
     if args.get("series"):
         where.append(
-            "EXISTS(SELECT 1 FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
-            "WHERE ae.asset_id=a.id AND e.kind='series' AND e.canonical_name=?)"
+            "a.id IN (SELECT ae.asset_id FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
+            "WHERE e.kind='series' AND e.canonical_name=?)"
         ); par.append(args["series"])
+    # 事务所隔一层：作品是它的成员拍的，`asset_entity` 里没有事务所的行。
+    if args.get("agency"):
+        where.append(AGENCY_ASSET_CLAUSE); par.append(args["agency"])
     if args.get("tag"):
         tags = [x for x in args["tag"].split(",") if x]
         tag_clause = (
-            "((EXISTS(SELECT 1 FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
-            "WHERE ae.asset_id=a.id AND e.kind='tag' AND e.canonical_name=?) OR "
-            "EXISTS(SELECT 1 FROM asset_tag t WHERE t.asset_id=a.id AND t.tag=?)) AND "
+            "(a.id IN (SELECT ae.asset_id FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
+            "WHERE e.kind='tag' AND e.canonical_name=? UNION "
+            "SELECT t.asset_id FROM asset_tag t WHERE t.tag=?) AND "
             + tag_not_hidden("a.id", "?") + ")"
         )
         if args.get("tag_match") == "any" and len(tags) > 1:
@@ -159,16 +186,21 @@ def q_items(contract: WebContract, args):
     if args.get("q"):
         query = args["q"].strip()
         if len(query) >= 3 and contract.has_fts():
+            # 事务所名不在 FTS 索引里，也不该进去：`asset_search` 索引的是作品自己的
+            # 文字和它名下的实体名，而事务所隔着一层成员关系。搜「Capsule Agency」
+            # 要能出这家人的片，所以在这里并联一条成员关系的判据。
             where.append(
-                "a.id IN (SELECT asset_id FROM asset_search WHERE asset_search MATCH ?)"
+                "(a.id IN (SELECT asset_id FROM asset_search WHERE asset_search MATCH ?)"
+                " OR " + AGENCY_SEARCH_CLAUSE + ")"
             )
             par.append('"' + query.replace('"', '""') + '"')
+            par += [f"%{query}%"] * 2
         else:
             # 短查询走 LIKE，必须和 FTS 覆盖同样的身份写法：规范名、别名和检索词。
             # 只比 canonical_name 会让「凉森」搜不到 `涼森れむ`——trigram 要求三字
             # 起步，两字查询永远落在这条分支上，补检索词也救不了。
             where.append(
-                "(a.name LIKE ? OR a.catalog_title LIKE ? OR a.original_title LIKE ? "
+                "((a.name LIKE ? OR a.catalog_title LIKE ? OR a.original_title LIKE ? "
                 "OR a.code LIKE ? OR EXISTS("
                 "SELECT 1 FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
                 "WHERE ae.asset_id=a.id AND e.kind IN ('creator','performer','studio') "
@@ -177,9 +209,10 @@ def q_items(contract: WebContract, args):
                 "AND al.alias LIKE ?) "
                 "OR EXISTS(SELECT 1 FROM entity_search_term st WHERE st.entity_id=e.id "
                 "AND st.term LIKE ?))))"
+                " OR " + AGENCY_SEARCH_CLAUSE + ")"
             )
             pattern = f"%{query}%"
-            par += [pattern] * 7
+            par += [pattern] * 9
     state = state_predicate(str(args.get("state") or ""))
     if state:
         where.append(state)
@@ -189,6 +222,11 @@ def q_items(contract: WebContract, args):
         # 「在线 1」，点进去却永远是 0 条。
         where.append("(a.snapshot_path IS NOT NULL OR a.location = 'online')")
 
+    return where, par
+
+
+def q_items(contract: WebContract, args):
+    where, par = catalog_filter(contract, args)
     requested = str(args.get("sort") or "")
     sort_key, legacy_dir = SORT_LEGACY_KEYS.get(requested, (requested, ""))
     direction = "ASC" if (str(args.get("dir") or "").lower() or legacy_dir) == "asc" else "DESC"
@@ -197,16 +235,16 @@ def q_items(contract: WebContract, args):
     if order is None:
         if args.get("sort") == "seed":
             sd = int(args.get("seed") or 1) % 99991 or 7
-            order = f"((a.id * {sd}) % 99991)"
+            order = f"((a.id * {sd}) % 99991), a.id"
         elif args.get("sort") == "daily" or not args.get("sort"):
             # 每日轮换：用当天日期做种子打散，同一天顺序固定，隔天自动换一批。
             # 不用 RANDOM() —— 那样每次刷新都不同，翻页还会重复/漏掉。
             seed = int(time.strftime("%Y%m%d")) % 9973 or 7
-            order = f"((a.id * {seed}) % 99991)"
+            order = f"((a.id * {seed}) % 99991), a.id"
         else:
             order = "a.id DESC"
-    lim = min(int(args.get("limit", 60)), 200)
-    off = int(args.get("offset", 0))
+    lim = max(1, min(int(args.get("limit", 60)), 200))
+    off = max(0, int(args.get("offset", 0)))
     include_total = args.get("count", "1") != "0"
     fetch_limit = lim if include_total else lim + 1
     sql = ("SELECT a.id,a.location,a.path,a.name,a.catalog_title,a.original_title,a.medium,"
@@ -236,11 +274,14 @@ def q_items(contract: WebContract, args):
             tmap.setdefault(aid, []).append(tag)
         emap: dict[int, dict[str, list[str]]] = {}
         performer_refs: dict[int, list[dict[str, object]]] = {}
+        creator_refs: dict[int, dict[str, object]] = {}
         for aid, entity_id, kind, name in con_entities(contract, ids, qm):
             emap.setdefault(aid, {}).setdefault(kind, []).append(name)
             if kind == "performer":
                 performer_refs.setdefault(aid, []).append(
                     entity_ref(contract, "performer", entity_id, name))
+            elif kind == "creator" and aid not in creator_refs:
+                creator_refs[aid] = entity_ref(contract, kind, entity_id, name)
         for r in rows:
             ts = tmap.get(r["id"], [])
             canonical = emap.get(r["id"], {})
@@ -264,6 +305,9 @@ def q_items(contract: WebContract, args):
             r["performers"] = performers
             refs = performer_refs.get(r["id"], [])
             r["performer_entities"] = refs[:CARD_PERFORMERS]
+            r["creator_entity"] = creator_refs.get(r["id"])
+            if r["creator_entity"]:
+                r["creator"] = r["creator_entity"]["name"]
             r["performer_total"] = len(refs) or len(all_performers)
             r["_entity_kinds"] = tuple(canonical)
     for r in rows:
@@ -276,6 +320,7 @@ def q_items(contract: WebContract, args):
             r["cover_frame"] = contract.cover_frame(r.get("code"))
         r.pop("snapshot_path", None)
         r.pop("path", None)                     # 路径不外发，串流走 id
+    attach_saved_follow_cards(contract, rows)
     attach_multipart_groups(contract, rows)
     attach_edition_groups(contract, rows)
     return {"total": cnt, "bytes": total_bytes, "items": rows, "has_more": has_more}
@@ -332,11 +377,15 @@ def attach_card_performers(contract: WebContract, rows):
     """给各类视频卡片补同一份表演者资料，避免首页/相关/复核卡片各说各话。"""
     if not rows:
         return
+    attach_saved_follow_cards(contract, rows)
     ids = [row["id"] for row in rows]
     qm = ",".join("?" * len(ids))
     names: dict[int, list[str]] = {}
     refs: dict[int, list[dict[str, object]]] = {}
+    creator_refs: dict[int, dict[str, object]] = {}
     for asset_id, entity_id, kind, name in con_entities(contract, ids, qm):
+        if kind == "creator" and asset_id not in creator_refs:
+            creator_refs[asset_id] = entity_ref(contract, kind, entity_id, name)
         if kind != "performer":
             continue
         names.setdefault(asset_id, []).append(name)
@@ -345,7 +394,36 @@ def attach_card_performers(contract: WebContract, rows):
     for row in rows:
         row["performers"] = names.get(row["id"], [])[:CARD_PERFORMERS]
         row["performer_entities"] = refs.get(row["id"], [])[:CARD_PERFORMERS]
+        row["creator_entity"] = creator_refs.get(row["id"])
+        if row["creator_entity"]:
+            row["creator"] = row["creator_entity"]["name"]
         row["performer_total"] = len(names.get(row["id"], []))
+
+
+def attach_saved_follow_cards(contract: WebContract, rows):
+    """已保存在线卡片使用关注来源的封面与内容标签。"""
+    from .follow_store import FollowStore
+    from .web_follow import _item_tags, _thumb_url
+
+    ids = [row["id"] for row in rows if row.get("location") == "online"]
+    if not ids:
+        return
+    marks = ",".join("?" * len(ids))
+    with contract.read_connection() as connection:
+        linked = connection.execute(
+            FollowStore._SELECT + f" WHERE i.asset_id IN ({marks}) ORDER BY i.id", ids,
+        ).fetchall()
+    by_asset = {}
+    for record in linked:
+        item = FollowStore._row(record)
+        by_asset.setdefault(item.asset_id, item)
+    for row in rows:
+        item = by_asset.get(row["id"])
+        if item is None or row.get("location") != "online":
+            continue
+        row["follow_item_id"] = item.id
+        row["follow_thumb_url"] = _thumb_url(item)
+        row["follow_tags"] = _item_tags(item)
 
 
 #: 版次的展示次序：正片在前，处理过的在后。这不是偏好排序，只是要一个稳定的
@@ -530,9 +608,12 @@ def q_parts(contract: WebContract, args):
     if not group or not any(item["id"] == asset_id for item in group):
         return {"error": "multipart release not found"}
     items = []
-    for position, row in enumerate(group, 1):
+    # 卷号后面还挂着版次或修复标记时（`PPT-018-1-uncensored.mp4`），剥掉组内共有的
+    # 那段尾缀才取得到卷标；这一步和分组用的是同一个判据。
+    stripped = names_without_shared_part_tail(group) or [""] * len(group)
+    for position, (row, bare) in enumerate(zip(group, stripped), 1):
         item = q_item(contract, row["id"])
-        marker = part_marker(str(row.get("name") or ""))
+        marker = part_marker(str(row.get("name") or "")) or part_marker(bare)
         # 裸名首卷没有标记，卷标按队列位置给；有标记时沿用文件名里的写法。
         item["part_label"] = (marker.upper() if marker.isalpha() else marker) or str(position)
         items.append(item)
@@ -823,6 +904,7 @@ def q_facets(
     scope_name: str = "",
     asset_id: int | None = None,
     state: str = "",
+    filters: dict | None = None,
 ):
     """返回当前浏览集合真正存在的筛选项。
 
@@ -836,21 +918,31 @@ def q_facets(
             scope += "AND a.id=? "
             scope_params.append(int(asset_id))
         elif scope_kind or scope_name:
-            if scope_kind not in {"creator", "performer", "studio", "series"} or not scope_name:
+            if (scope_kind not in {"creator", "performer", "studio", "series", "agency"}
+                    or not scope_name):
                 raise ValueError("invalid facet scope")
-            scope += (
-                "AND EXISTS(SELECT 1 FROM asset_entity scope_ae "
-                "JOIN entity scope_e ON scope_e.id=scope_ae.entity_id "
-                "WHERE scope_ae.asset_id=a.id AND scope_e.kind=? "
-                "AND scope_e.canonical_name=?) "
-            )
-            scope_params.extend((scope_kind, scope_name))
+            if scope_kind == "agency":
+                # 事务所的筛选项必须和它的作品列表同源，否则右栏会给出点进去是 0 条的项。
+                scope += "AND " + AGENCY_ASSET_CLAUSE + " "
+                scope_params.append(scope_name)
+            else:
+                scope += (
+                    "AND EXISTS(SELECT 1 FROM asset_entity scope_ae "
+                    "JOIN entity scope_e ON scope_e.id=scope_ae.entity_id "
+                    "WHERE scope_ae.asset_id=a.id AND scope_e.kind=? "
+                    "AND scope_e.canonical_name=?) "
+                )
+                scope_params.extend((scope_kind, scope_name))
         out = {}
         out["locations"] = [dict(r) for r in c.execute(
             "SELECT a.location AS k, count(*) AS n, "
             "SUM(CASE WHEN a.play_count>0 THEN 1 ELSE 0 END) AS played "
             "FROM asset a WHERE a.medium='video' " + scope +
             "GROUP BY a.location ORDER BY n DESC", scope_params)]
+        if filters is not None and asset_id is None:
+            conditions, parameters = catalog_filter(contract, {**filters, "state": state})
+            scope += "AND " + " AND ".join(conditions) + " "
+            scope_params.extend(parameters)
         out["orientations"] = [dict(r) for r in c.execute(
             "SELECT a.ctx_orient AS k,count(*) AS n FROM asset a "
             "WHERE a.medium='video' AND a.ctx_orient IS NOT NULL AND a.ctx_orient<>'' " + scope +
@@ -894,6 +986,16 @@ def q_facets(
             "FROM asset a WHERE a.medium='video' AND (a.disposal IS NULL OR a.disposal<>'trash') "
             + scope, scope_params).fetchone()
         out["stats"] = dict(st)
+        saved = [dict(row) for row in c.execute(
+            "SELECT a.id,a.location FROM asset a WHERE a.medium='video' "
+            "AND a.location='online' " + scope, scope_params)]
+    attach_saved_follow_cards(contract, saved)
+    follow_counts: dict[str, int] = {}
+    for item in saved:
+        for tag in set(item.get("follow_tags", [])):
+            follow_counts[tag] = follow_counts.get(tag, 0) + 1
+    out["follow_tags"] = [{"k": tag, "n": count} for tag, count in
+                          sorted(follow_counts.items(), key=lambda row: (-row[1], row[0]))[:30]]
     return out
 
 # ────────────────────────────── 写入 ──────────────────────────────

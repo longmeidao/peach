@@ -18,6 +18,12 @@ def load_module():
 
 
 class SameSiteTests(unittest.TestCase):
+    def test_private_suffix_tenants_are_independent(self):
+        module = load_module()
+        self.assertFalse(module.same_site("https://a.github.io/x", "https://b.github.io/y"))
+        self.assertFalse(module.same_site("https://a.blogspot.com/x", "https://b.blogspot.com/y"))
+        self.assertFalse(module.same_site("https://co.jp/", "https://co.jp/"))
+
     def setUp(self):
         self.module = load_module()
 

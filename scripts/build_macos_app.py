@@ -27,12 +27,13 @@ SRC_DIR = PROJECT_ROOT / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
+from peach.appid import MACOS_BUNDLE_ID, MACOS_LAUNCH_AGENT_LABEL
 from peach.config import PROJECT_ROOT
 
 
-BUNDLE_ID = "gg.lmd.peach.app"
+BUNDLE_ID = MACOS_BUNDLE_ID
 #: LaunchAgent 的 label，双击 .app 时踢它。
-LABEL = "gg.lmd.peach.tray"
+LABEL = MACOS_LAUNCH_AGENT_LABEL
 # 这个外壳**不能**自己 exec 到解释器。macOS 26 上，主可执行文件是 exec 跳板时状态项
 # 注册不上：进程活着、NSStatusItem 也建出来了，但按钮窗口永远是 (0,0,34,0)，菜单栏上
 # 什么都不出现（Apple FB21015611）。同一份代码由 launchd 直接拉起时实测

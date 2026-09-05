@@ -25,13 +25,23 @@ body.entity-open .index{overflow-x:visible}
 .igrid[data-layout="big"] .icell .ring{width:100%;height:auto;aspect-ratio:3/4;
   border-radius:var(--surface-radius)}
 .igrid[data-layout="big"] .icell .nm{font-size:var(--fs-sm)}
+/* 公司那一格里是一枚标识。竖幅是给脸留的形状：方标铺进 3:4 的框，`object-fit:cover`
+   左右各裁掉四分之一，SOD 和 S1 的字就顶在边上。方框一个像素都不裁，同一列宽下
+   标识反而更大；列也放宽一档，省下的高度换成宽度。 */
+.igrid[data-cells="company"]{grid-template-columns:repeat(auto-fill,minmax(180px,1fr))}
+.igrid[data-cells="company"][data-layout="big"] .icell .ring{aspect-ratio:1}
 .index .ihead .iconswitch{flex:none}
 .tagwall{display:flex;flex-wrap:wrap;gap:7px}
-.tagmodes{display:flex;gap:4px;padding:3px;border:1px solid var(--line-soft);border-radius:var(--surface-radius);background:var(--surface)}
-.tagmodes button{border:0;border-radius:var(--control-radius);background:transparent;color:var(--muted);padding:6px 10px;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
-.tagmodes button svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.8}
-.tagmodes button:hover{color:var(--ink)}
-.tagmodes button[aria-pressed="true"]{background:var(--hover);color:var(--ink)}
+/* 页头这几组控件并排站着，得是同一块板：底色和 `--ground` 只差四级灰的话，剩下能看见的
+   只有那圈边框，读起来是凭空多出来的一条线，而邻座 `.iconswitch` 是有填充的一块。
+   高度也钉成和它一样的 36px（28 + 3 padding + 1 border），并排才谈得上底部对齐。 */
+.viewmodes{display:flex;gap:4px;padding:3px;border:1px solid var(--line-soft);border-radius:var(--surface-radius);background:var(--overlay-5)}
+.viewmodes button{border:0;border-radius:var(--control-radius);background:transparent;color:var(--muted);height:28px;padding:0 10px;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+.viewmodes button svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.8}
+/* 「Aa」是 1.4:1 的字形，宽高都锁 15px 只能按宽缩，画出来比邻座矮一截。 */
+.viewmodes button svg.iconwide{width:auto}
+.viewmodes button:hover{color:var(--ink)}
+.viewmodes button[aria-pressed="true"]{background:var(--hover);color:var(--ink)}
 .tagfilters{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 18px}
 .tagfilters button{height:34px;padding:0 13px;border-radius:var(--pill-radius);border:1px solid var(--line-soft);
   background:transparent;color:var(--muted);cursor:pointer;display:inline-flex;align-items:center;gap:7px}
@@ -40,7 +50,7 @@ body.entity-open .index{overflow-x:visible}
 .tagfilters button[aria-pressed="true"]{color:var(--ink);border-color:color-mix(in srgb,var(--tag-color,var(--ink)) 45%,transparent);
   background:color-mix(in srgb,var(--tag-color,var(--ink)) 12%,transparent)}
 .tagselection{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 18px;padding:12px 14px;
-  border:1px solid var(--line-soft);border-radius:var(--floating-radius);background:var(--surface)}
+  border:1px solid var(--line-soft);border-radius:var(--floating-radius);background:var(--ground)}
 .tagselection[hidden]{display:none}.tagselection label{display:flex;align-items:center;gap:9px;margin-right:auto;cursor:pointer}
 .tagselection label>span{display:grid;gap:2px}.tagselection label b{font-size:var(--fs-sm)}
 .tagselection label small{color:var(--muted);font-size:var(--fs-xs)}
@@ -48,7 +58,7 @@ body.entity-open .index{overflow-x:visible}
 .tagselection button:hover:not(:disabled){background:var(--hover);color:var(--ink)}
 .tagselection button.primary{background:var(--ink);border-color:var(--ink);color:var(--ground);font-weight:600}
 .tagselection button.primary:hover:not(:disabled){background:color-mix(in srgb,var(--ink) 88%,var(--ground));border-color:color-mix(in srgb,var(--ink) 88%,var(--ground));color:var(--ground)}
-.tagselection button:disabled{background:var(--surface);border-color:var(--border-15);color:var(--muted);cursor:default}
+.tagselection button:disabled{background:var(--sunk);border-color:var(--line-soft);color:var(--muted);cursor:default}
 .tagfilters .all::before{background:linear-gradient(135deg,#55A7FF,#D783FF)}
 .index-tags .tg,.alphatag{--tag-color:#7A91A8}
 .index-tags .tg.r34-general,.alphatag.r34-general,.tagfilters .general{--tag-color:#55A7FF;--r34-tag:#55A7FF}
@@ -90,8 +100,8 @@ body.entity-open .index{overflow-x:visible}
    开关自己 flex:none，宁可整组换行也不把「标签云」拆成两行。 */
 @media (max-width:760px){
   .index .ihead{flex-wrap:wrap}
-  .indexheading,#indexCount,.tagmodes button{white-space:nowrap}
+  .indexheading,#indexCount,.viewmodes button{white-space:nowrap}
   .index .ihead .geist-search{order:1}
   .index .ihead::after{content:"";order:2;flex-basis:100%;height:0}
-  .index .ihead .tagmodes,.index .ihead .iconswitch{order:3;flex:none}
+  .index .ihead .viewmodes,.index .ihead .iconswitch{order:3;flex:none}
 }

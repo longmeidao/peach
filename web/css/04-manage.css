@@ -1,15 +1,19 @@
 /* 统计页 */
 .stats{padding:0 0 42px}
 .playlistpage{padding:4px 0 42px}.playlistpage>header{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;margin-bottom:16px}.playlistpage h2{margin:0 0 5px}.playlistpage p{margin:0;color:var(--muted);font-size:var(--fs-sm)}
-.playlistcreate{display:flex;align-items:flex-end;gap:8px;flex-wrap:wrap}.playlistcreate label{display:grid;gap:5px;color:var(--muted);font-size:var(--fs-xs)}.playlistcreate input,.playlistmeta input{min-width:220px;border:1px solid var(--border-15);border-radius:var(--control-radius);background:var(--surface);color:var(--ink);padding:9px 11px;font:inherit}.playlistcreate button,.playlistactions button{border:1px solid var(--border-15);border-radius:var(--control-radius);background:transparent;color:var(--ink-2);padding:9px 12px;cursor:pointer}.playlistcreate button:hover,.playlistactions button:hover{background:var(--hover);color:var(--ink)}.playlistcreate [data-playlist-state]{flex-basis:100%;color:var(--drop);font-size:var(--fs-xs)}
-.playlistcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}.playlistcard{display:grid;grid-template-columns:112px minmax(0,1fr);gap:12px;padding:12px;border:1px solid var(--line-soft);border-radius:var(--floating-radius);background:var(--surface);min-width:0}.playlistcover{position:relative;aspect-ratio:16/10;border:0;border-radius:var(--surface-radius);background:#000;overflow:hidden;padding:0;cursor:pointer}.playlistcover:disabled{cursor:default}.playlistcover img{width:100%;height:100%;object-fit:cover}.playlistcover span{position:absolute;right:5px;bottom:5px;border-radius:var(--badge-radius);background:#000b;color:#fff;padding:3px 6px;font-size:var(--fs-xs)}.playlistmeta{display:grid;align-content:center;gap:6px;min-width:0}.playlistmeta input{min-width:0;width:100%;font-weight:600}.playlistmeta small{color:var(--muted)}.playlistactions{grid-column:1/-1;display:flex;gap:7px;justify-content:flex-end}.playlistactions .danger{color:var(--drop)}.playlistactions .danger:hover{background:var(--drop);border-color:var(--drop);color:#fff}
+.playlistcreate{display:flex;align-items:flex-end;gap:8px;flex-wrap:wrap}.playlistcreate label{display:grid;gap:5px;color:var(--muted);font-size:var(--fs-xs);flex:1 1 200px;max-width:320px}.playlistcreate input{min-width:200px}
+/* 提交键是这一屏的主动作，走 Geist 的实心档；38px 取自 .geist-input，
+   与输入框同高才算一行，和「添加关注」那张表也是同一档。 */
+.playlistcreate .geist-button{height:38px;padding:0 13px}
+.playlistactions button{border:1px solid var(--border-15);border-radius:var(--control-radius);background:transparent;color:var(--ink-2);padding:9px 12px;cursor:pointer}.playlistactions button:hover{background:var(--hover);color:var(--ink)}.playlistcreate [data-playlist-state]{flex-basis:100%;color:var(--drop);font-size:var(--fs-xs)}
+.playlistcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}.playlistcard{display:grid;grid-template-columns:112px minmax(0,1fr);gap:12px;padding:12px;border:1px solid var(--line-soft);border-radius:var(--floating-radius);background:var(--surface);min-width:0}.playlistcover{position:relative;aspect-ratio:16/10;border:0;border-radius:var(--surface-radius);background:#000;overflow:hidden;padding:0;cursor:pointer}.playlistcover:disabled{cursor:default}.playlistcover img{width:100%;height:100%;object-fit:cover}.playlistcover span{position:absolute;right:5px;bottom:5px;border-radius:var(--badge-radius);background:#000b;color:#fff;padding:3px 6px;font-size:var(--fs-xs)}.playlistmeta{display:grid;align-content:center;gap:6px;min-width:0}.playlistmeta input{font-weight:600}.playlistmeta small{color:var(--muted)}.playlistactions{grid-column:1/-1;display:flex;gap:7px;justify-content:flex-end}.playlistactions .danger{color:var(--drop)}.playlistactions .danger:hover{background:var(--drop);border-color:var(--drop);color:#fff}
 .playlistdialog{width:min(520px,calc(100vw - 28px));border:1px solid var(--line);border-radius:var(--floating-radius);background:var(--surface);color:var(--ink);padding:0;box-shadow:0 2px 4px #0003,0 24px 80px #000b}.playlistdialog::backdrop{background:#000a;backdrop-filter:blur(5px)}.playlistdialoghead{display:flex;align-items:center;justify-content:space-between;padding:16px 17px;border-bottom:1px solid var(--line-soft)}.playlistdialoghead h2{margin:0;font-size:var(--fs-xl)}.playlistdialoghead button{width:34px;height:34px;border:0;border-radius:var(--control-radius);background:transparent;color:var(--ink);display:grid;place-items:center;cursor:pointer}.playlistdialoghead button:hover{background:var(--hover)}.playlistdialoghead svg{width:19px;height:19px;stroke:currentColor;fill:none}.playlistdialogbody{padding:17px}.playlistpicklist{display:grid;gap:7px;margin-top:16px;max-height:320px;overflow-y:auto;overscroll-behavior:contain}.playlistpickrow{display:flex;align-items:center;justify-content:space-between;gap:10px;border:1px solid var(--border-10);border-radius:var(--control-radius);background:var(--overlay-5);color:var(--ink);padding:11px 12px;text-align:left;cursor:pointer}.playlistpickrow:hover{background:var(--hover)}.playlistpickrow small{color:var(--muted)}
 .runtimegate{display:grid;grid-template-columns:16px minmax(0,1fr) auto;align-items:center;gap:12px;margin:0 0 12px;padding:10px 12px;border:1px solid color-mix(in srgb,var(--meter) 35%,var(--line));border-radius:var(--control-radius);background:color-mix(in srgb,var(--meter) 8%,var(--surface));color:var(--ink);font-size:var(--fs-sm)}.runtimegate>svg{width:16px;height:16px;flex:none;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}.runtimegate span{min-width:0}.runtimegate a{color:var(--ink);font-weight:600;text-decoration:none}.runtimegate a:hover{color:var(--ink-2)}
 .review{--review-fieldset-height:440px;padding:0 0 42px}.reviewsection{margin-bottom:20px}.reviewsection h3{margin:0 0 9px;font-size:var(--fs-lg)}.reviewlist{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:14px;align-items:start}
 /* 判定状态用左侧色条表达：整卡描边在一列里扫过去时反而认不出来 */
-.reviewitem{position:relative;display:flex;flex-direction:column;box-sizing:border-box;height:var(--review-fieldset-height);margin:0;padding:0;min-width:0;overflow:hidden;background:var(--surface);border:1px solid var(--line-soft);border-radius:var(--floating-radius)}.reviewitem::before{content:'';position:absolute;z-index:3;left:0;top:0;bottom:0;width:3px;background:transparent}.reviewitem[data-decision="approved"]::before{background:var(--keep)}.reviewitem[data-decision="rejected"]::before{background:var(--drop)}.reviewitem[data-decision="skipped"]::before{background:var(--muted)}.reviewitem[data-decision="rejected"],.reviewitem[data-decision="skipped"]{opacity:.6}.reviewitem h4{margin:0 0 6px;font-size:var(--fs-lg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.reviewitem p{margin:4px 0;color:var(--muted);font-size:var(--fs-xs);line-height:1.55;overflow-wrap:anywhere}
+.reviewitem{position:relative;display:flex;flex-direction:column;box-sizing:border-box;height:var(--review-fieldset-height);margin:0;padding:0;min-width:0;overflow:hidden;background:var(--ground);border:1px solid var(--field-ring);border-radius:var(--floating-radius)}.reviewitem::before{content:'';position:absolute;z-index:3;left:0;top:0;bottom:0;width:3px;background:transparent}.reviewitem[data-decision="approved"]::before{background:var(--keep)}.reviewitem[data-decision="rejected"]::before{background:var(--drop)}.reviewitem[data-decision="skipped"]::before{background:var(--muted)}.reviewitem[data-decision="rejected"],.reviewitem[data-decision="skipped"]{opacity:.6}.reviewitem h4{margin:0 0 6px;font-size:var(--fs-lg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.reviewitem p{margin:4px 0;color:var(--muted);font-size:var(--fs-xs);line-height:1.55;overflow-wrap:anywhere}
 .reviewitem>.geist-fieldset-content{flex:1;min-height:0;padding:20px}.reviewcontent{height:100%}
-.reviewitem .reviewactions{flex:0 0 auto;box-sizing:border-box;min-height:56px;margin:0;padding:12px 12px 12px 20px;background:var(--overlay-5);border-top:1px solid var(--border-10);border-radius:0 0 var(--floating-radius) var(--floating-radius);display:flex;gap:8px}
+.reviewitem .reviewactions{flex:0 0 auto;box-sizing:border-box;min-height:56px;margin:0;padding:12px 12px 12px 20px;background:var(--overlay-5);border-top:1px solid var(--line-soft);border-radius:0 0 var(--floating-radius) var(--floating-radius);display:flex;gap:8px}
 .reviewtags{display:flex;flex-wrap:wrap;gap:5px;margin:9px 0}.reviewtags span{padding:3px 9px;border:1px solid var(--border-15);border-radius:var(--pill-radius);font-size:var(--fs-xs);color:var(--ink-2)}
 /* 唯一候选：纯展示，几何对齐 .revieworigin，不画单选圈。radio 仍在 DOM 里，
    提交路径读的就是它；只是没什么可选的时候不该让人以为还有别的选项。 */
@@ -40,7 +44,7 @@
 .geist-fieldset-title{margin:0 0 10px;color:var(--ink);font-size:var(--fs-xl);font-weight:600}
 .cleanupfieldset>.geist-fieldset-footer{box-sizing:border-box;min-height:var(--fieldset-bar-h);
   margin:0;padding:8px 16px 8px 20px;display:flex;align-items:center;justify-content:flex-end;gap:8px;
-  border-top:1px solid var(--border-10);background:var(--overlay-5)}
+  border-top:1px solid var(--line-soft);background:var(--overlay-5)}
 /* 说明可以换行、按钮不能被压扁：窄屏下操作条仍是一行，说明占剩下的宽度，
    条子按内容长高（证据：vercel.com/geist/fieldset 在 375px 下操作条仍是
    flex-direction:row、nowrap，min-height 56px 实测长到 65/85/105px，
@@ -50,23 +54,22 @@
 /* 没有 min-height：卡片高度由内容决定，和同页的「网盘与账本」一致。三列时那条
    176px 地板是用来对齐同一行的，改成单列后它只是把每张卡都撑出一段空白。 */
 .cleanupfieldset{display:flex;flex-direction:column;min-width:0;margin:0;padding:0;overflow:hidden;
-  border:1px solid var(--line-soft);border-radius:var(--floating-radius);background:var(--surface)}
+  border:1px solid var(--field-ring);border-radius:var(--floating-radius);background:var(--ground)}
 .cleanupfieldset>.geist-fieldset-content{flex:1;min-height:0;padding:20px}.cleanupfieldset strong{display:block;font-size:var(--fs-md);font-weight:500;color:var(--ink-2)}
 .cleanupfieldset p{margin:0;color:var(--muted);font-size:var(--fs-md);line-height:1.45}
 /* 主数字下面那行分项。空着时整行不占位——没有分项的卡不该比别人多一段留白。 */
 .cleanupmeta{margin-top:6px;font-size:var(--fs-sm)}
 .cleanupmeta:empty{display:none}
-/* 操作条上的按钮一律填 --surface：条子本身是 --overlay-5，比它更深的底才让按钮
-   从条子上分出来。条子本身是 --overlay-5，比它更深的底才让按钮从条子上分出来。
-   hover 只提亮底色、描边和文字，不出蓝色。
+/* 操作条上的按钮一律填 --ground：条子是 --page，按钮要比条子亮才分得出来，
+   与 .geist-button 的次级档同一套。hover 只提亮底色、描边和文字，不出蓝色。
 
    危险按钮 hover 一律填 --drop、白字：只描红边、红字的话，静止态和悬停态在暗色底上
    几乎一样亮，按下去之前看不出这是不可逆动作。Geist 的 error Button 同样是实心红填充
    （oklch(.5801 .227 25.12) 底、白字），只是它在静止态就红，Peach 把红留到悬停。 */
-.cleanupfieldset button{box-sizing:border-box;flex:none;min-height:32px;padding:0 12px;border:1px solid var(--border-15);border-radius:var(--control-radius);
-  background:var(--surface);color:var(--ink-2);display:inline-flex;align-items:center;justify-content:center;gap:6px;cursor:pointer;
+.cleanupfieldset button{box-sizing:border-box;flex:none;min-height:32px;padding:0 12px;border:1px solid var(--line-soft);border-radius:var(--control-radius);
+  background:var(--ground);color:var(--ink-2);display:inline-flex;align-items:center;justify-content:center;gap:6px;cursor:pointer;
   transition:border-color .15s ease-in-out,color .15s ease-in-out,background-color .15s ease-in-out}
-.cleanupfieldset button:hover{background:var(--hover);color:var(--ink)}
+.cleanupfieldset button:hover{background:var(--surface);color:var(--ink)}
 .cleanupfieldset button.danger{color:var(--drop)}
 .cleanupfieldset button.danger:hover{background:var(--drop);border-color:var(--drop);color:#fff}
 .cleanupfieldset button svg{width:16px;height:16px;stroke:currentColor;fill:none}
@@ -74,4 +77,29 @@
 .cleanupfieldset .cleanupstate:empty{display:none}
 .stats h2{margin:0 0 4px;font-size:var(--fs-2xl)}
 .stats .sub{color:var(--muted);margin:0}
-
+/* 采集来源表单复用管理页 Fieldset。 */
+.scraping-page{width:min(812px,100%);margin:0 auto;display:grid;gap:16px}
+.scraping-page>h1,.scraping-page p{margin:0}
+.scraping-fields .scraping-cover-form{display:flex;align-items:center;gap:8px;min-width:0}
+.scraping-cover-form>input{flex:1}
+.scraping-cover-form>button{height:var(--control-h);white-space:nowrap}
+.scraping-fields{padding:20px;display:grid;gap:16px;min-width:0}
+.scraping-fields label,.scraping-label{display:grid;gap:8px;min-width:0}
+.scraping-fields input:not([type=radio]):not([type=file]){width:100%;min-width:0;min-height:var(--control-h);box-sizing:border-box}
+.scraping-fields .scraping-url{text-decoration:none;color:var(--muted);overflow-wrap:anywhere;margin-top:-12px;font-size:var(--fs-md)}
+.scraping-fields .scraping-url:hover{color:var(--ink);text-decoration:none}
+.scraping-network,.scraping-network .gselect{width:100%;min-width:0}
+.scraping-fields .gselectfield{justify-content:space-between;padding-right:16px;border-color:var(--field-ring)}
+.scraping-fields .gselectmenu button{border:0;justify-content:flex-start;padding:0 8px;background:transparent}
+.scraping-fields .gselectmenu button:hover,.scraping-fields .gselectmenu button[aria-selected=true]{background:var(--hover)}
+.scraping-cookie-method{justify-self:start}
+.scraping-cookie-method label{display:block}
+.scraping-cookie-method input:checked+span{font-weight:400}
+.scraping-file-control{position:relative;display:flex;align-items:center;gap:12px;min-width:0;min-height:var(--control-h)}
+.scraping-file-control>.geist-button{flex:none;height:var(--control-h)}
+.scraping-file-name{min-width:0;overflow-wrap:anywhere;color:var(--muted)}
+.scraping-file-control>input{position:absolute;inset:0;opacity:0;width:100%;height:100%;cursor:pointer}
+.scraping-file-control:focus-within{outline:2px solid var(--tungsten);outline-offset:2px;border-radius:var(--control-radius)}
+.scraping-source{min-width:0}
+.scraping-source .geist-fieldset-footer{flex-wrap:wrap}
+@media(max-width:600px){.scraping-page{--control-h:44px}.scraping-source button{min-height:44px}.scraping-cookie-method span{height:44px}}

@@ -2,21 +2,117 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import shutil
 import stat
 import subprocess
+import sys
 import time
+from collections.abc import Iterable
 from pathlib import Path
+
+if not __package__:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    __package__ = "scripts"
+from . import test_evidence, test_runner
 
 #: Claude Code 内置工作树的落点。分支集成后它自己不收：目录留在主检出里，成了一份看不出
 #: 区别的旧副本（见 CLAUDE.md）。`tests/test_repo_hygiene.py` 拦得住，但拦住之后没有任何
 #: 入口能清掉已经在那儿的，只能让人手删——`prune --apply` 顺带扫掉这块。
 BUILTIN_WORKTREES = Path(".claude") / "worktrees"
 
+#: 版本号的唯一来源。GitHub Release 的 `v<版本>` tag 必须与它相等。
+VERSION_FILE = "src/peach/__init__.py"
+VERSION_PATTERN = re.compile(r'(__version__\s*=\s*")(\d+)\.(\d+)\.(\d+)(")')
+
+#: 进入运行时产物的输入。改到这些位置就意味着「跑起来的东西变了」，本地版本号跟着走一格；
+#: 文档、技能和测试只改开发过程，版本号不动。清单与 `WINDOWS_TRAY_INPUTS` 各自服务不同的
+#: 问题：那份决定要不要重建 EXE，这份决定要不要发新版本号。
+RUNTIME_INPUTS = (
+    "src/peach/",
+    "web/",
+    "frontend/",
+    "migrations/",
+    "resources/",
+    "scripts/build_app_entry.py",
+    "scripts/build_windows.ps1",
+    "pyproject.toml",
+)
+
 
 class WorkspaceError(RuntimeError):
     pass
+
+
+def runtime_inputs_changed(paths: Iterable[str]) -> bool:
+    """这批改动里有没有会进到运行时产物的。"""
+    normalized = [str(path).replace("\\", "/").strip("/") for path in paths]
+    return any(path == prefix.rstrip("/") or path.startswith(prefix)
+               for path in normalized for prefix in RUNTIME_INPUTS)
+
+
+#: Conventional Commits 的功能类型；`!` 是破坏性标记。pre-1.0 阶段两者都只推 minor（ADR-0012）。
+FEATURE_SUBJECT = re.compile(r"^(feat|feature)(\(.*\))?!?:|^\w+(\(.*\))?!:")
+
+
+def bump_part_for(subjects: Iterable[str], added_paths: Iterable[str]) -> str:
+    """这批提交该推版本号的哪一位。
+
+    有功能提交（`feat:`）或破坏性标记（`type!:`），或者新增了迁移文件，就是 minor；
+    其余（修复、重构、文案、构建）是 patch。major 只在 1.0 那一次手工给，这里不判。
+    """
+    if any(FEATURE_SUBJECT.match(subject.strip()) for subject in subjects):
+        return "minor"
+    normalized = [str(path).replace("\\", "/").strip("/") for path in added_paths]
+    if any(path.startswith("migrations/") for path in normalized):
+        return "minor"
+    return "patch"
+
+
+def bump_version(text: str, part: str) -> tuple[str, str]:
+    """把 `__version__` 那一行往前推一格，返回新正文与新版本号。
+
+    纯函数，只认那一行：整份文件其余部分逐字节保留，换行也不碰。
+    """
+    match = VERSION_PATTERN.search(text)
+    if match is None:
+        raise WorkspaceError(f"{VERSION_FILE} does not declare __version__")
+    major, minor, patch = (int(match.group(index)) for index in (2, 3, 4))
+    if part == "major":
+        major, minor, patch = major + 1, 0, 0
+    elif part == "minor":
+        minor, patch = minor + 1, 0
+    elif part == "patch":
+        patch += 1
+    else:
+        raise WorkspaceError(f"unknown bump part: {part}")
+    version = f"{major}.{minor}.{patch}"
+    updated = text[:match.start()] + f"{match.group(1)}{version}{match.group(5)}" \
+        + text[match.end():]
+    return updated, version
+
+
+def read_version(main: Path) -> str:
+    match = VERSION_PATTERN.search((main / VERSION_FILE).read_bytes().decode("utf-8"))
+    if match is None:
+        raise WorkspaceError(f"{VERSION_FILE} does not declare __version__")
+    return f"{match.group(2)}.{match.group(3)}.{match.group(4)}"
+
+
+def _commit_version_bump(main: Path, part: str) -> str:
+    path = main / VERSION_FILE
+    updated, version = bump_version(path.read_bytes().decode("utf-8"), part)
+    path.write_bytes(updated.encode("utf-8"))
+    _git(main, "add", VERSION_FILE)
+    _git(main, "commit", "-m", f"chore(release): 版本 {version}")
+    return version
+
+
+#: 打版本标签的唯一入口。它核对本地与 GitHub master 一致、同提交 CI 全绿、标签不可覆盖，
+#: 并且遇到同名本地标签就拒绝——集成这一步再造一个本地标签会直接把它挡住。所以这里只推进
+#: `__version__`，标签留给它。
+RELEASE_TAG_ENTRY = "scripts/release_tag.py"
 
 
 def _git(repo: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
@@ -57,7 +153,8 @@ def create(repo: Path, agent: str, task: str, root: Path | None = None) -> dict[
     if _git(main, "show-ref", "--verify", f"refs/heads/{branch}", check=False).returncode == 0:
         raise WorkspaceError(f"branch exists: {branch}")
     target_root.mkdir(parents=True, exist_ok=True)
-    _git(main, "worktree", "add", "-b", branch, str(target), "HEAD")
+    _git(main, "worktree", "add", "--lock", "--reason", "Peach active agent task",
+         "-b", branch, str(target), "HEAD")
     return {
         "ok": True,
         "action": "create",
@@ -81,6 +178,7 @@ def ready(repo: Path, target_branch: str = "master") -> dict[str, object]:
         raise WorkspaceError("branch has no commits")
     worker_files = set(_lines(_git(repo, "diff", "--name-only", f"{base}..HEAD")))
     target_files = set(_lines(_git(repo, "diff", "--name-only", f"{base}..{target_branch}")))
+    require_verified(repo, target_branch, worker_files)
     return {
         "ok": True,
         "action": "ready",
@@ -93,7 +191,43 @@ def ready(repo: Path, target_branch: str = "master") -> dict[str, object]:
     }
 
 
-def integrate(repo: Path, worker_branch: str, target_branch: str = "master") -> dict[str, object]:
+def require_verified(worker: Path, target_branch: str, paths: Iterable[str]) -> None:
+    head = _git(worker, "rev-parse", "HEAD").stdout.strip()
+    if _git(worker, "status", "--porcelain").stdout.strip():
+        raise WorkspaceError("验证工作树必须干净")
+    if _git(worker, "merge-base", "--is-ancestor", target_branch, "HEAD", check=False).returncode:
+        raise WorkspaceError("目标分支已前进；请在工作树 rebase 后运行 auto 验证")
+    scopes, _ = test_runner.scopes_for_changes(paths)
+    state = test_evidence.key(worker)
+    if not test_evidence.covers(test_evidence.read(worker, state), scopes):
+        raise WorkspaceError("缺少有效测试记录；请在工作树运行统一测试入口 auto")
+    if _git(worker, "rev-parse", "HEAD").stdout.strip() != head or \
+            _git(worker, "status", "--porcelain").stdout.strip():
+        raise WorkspaceError("验证检查期间工作树改变，请重试")
+
+
+def integrate(repo: Path, worker_branch: str, target_branch: str = "master", *,
+              bump: str = "auto") -> dict[str, object]:
+    folder = test_evidence.evidence_dir(repo)
+    folder.mkdir(parents=True, exist_ok=True)
+    try:
+        with test_evidence.FileLock(folder / "integration.lock", timeout=0):
+            return _integrate_locked(repo, worker_branch, target_branch, bump=bump)
+    except test_evidence.Timeout as error:
+        raise WorkspaceError("另一任务正在集成；本次未修改分支，请等待后重试") from error
+
+
+def _integrate_locked(repo: Path, worker_branch: str, target_branch: str = "master", *,
+              bump: str = "auto") -> dict[str, object]:
+    """把工作者分支并进 target，并让本地版本号跟着这次集成走。
+
+    这台机器既是开发机又是生产机：提交先落本地再推 GitHub，本地永远领先。版本号因此
+    必须在集成时就动，不能等发布——发布点仍然是 `RELEASE_TAG_ENTRY` 推上去的那个
+    `v<版本>` tag，它读的正是这里推进后的 `__version__`。
+
+    `bump="auto"` 由 `bump_part_for()` 按这批提交的类型定档；显式传 patch／minor／major
+    是覆盖，`none` 表示不动版本号。
+    """
     main = _main_worktree(repo)
     if repo.resolve() != main.resolve():
         raise WorkspaceError("integrate must run from the main integration worktree")
@@ -101,14 +235,35 @@ def integrate(repo: Path, worker_branch: str, target_branch: str = "master") -> 
         raise WorkspaceError(f"checkout {target_branch} before integrate")
     if _git(main, "status", "--porcelain").stdout.strip():
         raise WorkspaceError("integration worktree is dirty")
+    before = _git(main, "rev-parse", "HEAD").stdout.strip()
     base = _git(main, "merge-base", target_branch, worker_branch).stdout.strip()
     worker_files = set(_lines(_git(main, "diff", "--name-only", f"{base}..{worker_branch}")))
     target_files = set(_lines(_git(main, "diff", "--name-only", f"{base}..{target_branch}")))
     overlap = sorted(worker_files & target_files)
     if overlap:
         raise WorkspaceError("same-file review required: " + ", ".join(overlap))
-    before = _git(main, "rev-parse", "HEAD").stdout.strip()
-    _git(main, "merge", "--no-ff", "--no-edit", worker_branch)
+    workers = [Path(item["path"]) for item in _worktree_entries(main)
+               if item.get("branch") == worker_branch]
+    if len(workers) != 1 or _git(workers[0], "status", "--porcelain").stdout.strip():
+        raise WorkspaceError("工作者必须有唯一、干净且已注册的工作树")
+    worker_head = _git(main, "rev-parse", worker_branch).stdout.strip()
+    require_verified(workers[0], target_branch, worker_files)
+    if _git(main, "rev-parse", worker_branch).stdout.strip() != worker_head or \
+            _git(workers[0], "rev-parse", "HEAD").stdout.strip() != worker_head:
+        raise WorkspaceError("验证检查期间工作者分支改变，请重试")
+    if _git(main, "rev-parse", "HEAD").stdout.strip() != before or \
+            _git(main, "status", "--porcelain").stdout.strip():
+        raise WorkspaceError("验证检查期间集成工作树改变，请重试")
+    subjects = _lines(_git(main, "log", "--no-merges", "--format=%s", f"{base}..{worker_branch}"))
+    _git(main, "merge", "--no-ff", "--no-edit", "-m", f"Merge branch '{worker_branch}'", worker_head)
+    merged_files = set(_lines(_git(main, "diff", "--name-only", f"{before}..HEAD")))
+    added_files = _lines(_git(main, "diff", "--name-only", "--diff-filter=A", f"{before}..HEAD"))
+    part = bump_part_for(subjects, added_files) if bump == "auto" else bump
+    version = read_version(main)
+    bumped = part != "none" and runtime_inputs_changed(merged_files)
+    if bumped:
+        version = _commit_version_bump(main, part)
+    _git(main, "worktree", "unlock", str(workers[0]), check=False)
     return {
         "ok": True,
         "action": "integrate",
@@ -116,6 +271,10 @@ def integrate(repo: Path, worker_branch: str, target_branch: str = "master") -> 
         "before": before,
         "after": _git(main, "rev-parse", "HEAD").stdout.strip(),
         "files": sorted(worker_files),
+        "version": version,
+        "bumped": bumped,
+        "bump": part if bumped else "none",
+        "release_tag_entry": RELEASE_TAG_ENTRY,
     }
 
 
@@ -128,6 +287,8 @@ def _worktree_entries(main: Path) -> list[dict[str, str]]:
             entries.append(entry)
         elif line.startswith("branch "):
             entry["branch"] = line[len("branch "):].replace("refs/heads/", "")
+        elif line.startswith("locked"):
+            entry["locked"] = line
     return entries
 
 
@@ -250,6 +411,9 @@ def prune(repo: Path, target_branch: str = "master", *,
         branch = item.get("branch", "")
         if path.resolve() == main.resolve() or path.resolve() == here:
             continue
+        if item.get("locked"):
+            kept.append({"path": str(path), "branch": branch, "why": "工作树被活动任务锁定"})
+            continue
         if branch not in merged:
             kept.append({"path": str(path), "branch": branch, "why": "分支未并入 " + target_branch})
             continue
@@ -296,6 +460,10 @@ def main() -> int:
     merge = sub.add_parser("integrate")
     merge.add_argument("--branch", required=True)
     merge.add_argument("--target", default="master")
+    merge.add_argument("--bump", choices=("auto", "patch", "minor", "major", "none"),
+                       default="auto",
+                       help="auto 按提交类型定档：feat 或新迁移推 minor，其余推 patch；"
+                            "改动没进运行时产物时不动。显式档位是覆盖，none 表示不动")
     sweep = sub.add_parser("prune")
     sweep.add_argument("--target", default="master")
     sweep.add_argument("--apply", action="store_true",
@@ -309,7 +477,7 @@ def main() -> int:
         elif args.command == "prune":
             result = prune(args.repo, args.target, apply=args.apply)
         else:
-            result = integrate(args.repo, args.branch, args.target)
+            result = integrate(args.repo, args.branch, args.target, bump=args.bump)
     except WorkspaceError as exc:
         print(json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=False))
         return 2
@@ -318,4 +486,8 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    os.environ["PYTHONIOENCODING"] = "utf-8"
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="backslashreplace")
     raise SystemExit(main())

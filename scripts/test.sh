@@ -4,7 +4,21 @@
 # 并核对 peach.__file__ 确实来自这个 worktree。worktree 不复制 .venv。
 set -euo pipefail
 
-SCOPE="${1:-full}"
+SCOPE="${1:-auto}"
+case "$SCOPE" in
+    full|auto|follow|catalog|media|sync|metadata|tooling|web|checks) ;;
+    *)
+        echo "未知测试域：$SCOPE（可选 full、auto、follow、catalog、media、sync、metadata、tooling、web）" >&2
+        exit 2
+        ;;
+esac
+EXTRA=()
+if [[ "${2:-}" = "--fresh" ]]; then
+    EXTRA+=(--fresh)
+elif [[ $# -gt 1 ]]; then
+    echo '第二个参数只接受 --fresh' >&2
+    exit 2
+fi
 
 WORKTREE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
@@ -29,6 +43,7 @@ fi
 
 SOURCE_ROOT="$WORKTREE_ROOT/src"
 export PYTHONPATH="$SOURCE_ROOT"
+export PYTHONIOENCODING=utf-8
 
 cd "$WORKTREE_ROOT"
 LOADED_MODULE="$("$PYTHON" -c 'import peach; print(peach.__file__)')"
@@ -38,4 +53,7 @@ if [[ "$LOADED_MODULE" != "$SOURCE_ROOT/"* ]]; then
 fi
 
 echo "Peach source: $LOADED_MODULE"
-exec "$PYTHON" scripts/test_runner.py --scope "$SCOPE"
+if [[ $# -eq 0 && "$WORKTREE_ROOT" = "$(dirname "$GIT_COMMON")" ]]; then
+    SCOPE=full
+fi
+exec "$PYTHON" scripts/test_runner.py --scope "$SCOPE" "${EXTRA[@]}"

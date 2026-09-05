@@ -7,6 +7,7 @@ import json
 import sqlite3
 import sys
 import tempfile
+import tomllib
 import unittest
 from contextlib import redirect_stdout
 from pathlib import Path, PureWindowsPath
@@ -239,17 +240,23 @@ class OperationalScriptTests(unittest.TestCase):
         windows = (ROOT / "scripts" / "test.ps1").read_text(encoding="utf-8")
         self.assertIn("rev-parse --git-common-dir", windows)
         self.assertIn("$env:PYTHONPATH = $SourceRoot", windows)
+        self.assertIn("$env:PYTHONIOENCODING = 'utf-8'", windows)
+        self.assertIn("$env:PYTHONIOENCODING = $PreviousPythonIoEncoding", windows)
+        self.assertIn("-not $PSBoundParameters.ContainsKey('Scope') -and $WorktreeRoot -eq $MainRoot", windows)
         self.assertIn("peach.__file__", windows)
         self.assertIn("scripts\\test_runner.py --scope $Scope", windows)
-        self.assertIn("ValidateSet('full', 'follow'", windows)
+        self.assertIn("ValidateSet('full', 'auto', 'follow'", windows)
         self.assertNotIn("pytest", windows.lower())
         # 两个平台各有一个入口，契约必须相同——否则「两边都要绿」只是句口号。
         posix = (ROOT / "scripts" / "test.sh").read_text(encoding="utf-8")
         self.assertIn("rev-parse --git-common-dir", posix)
         self.assertIn('export PYTHONPATH="$SOURCE_ROOT"', posix)
+        self.assertIn("export PYTHONIOENCODING=utf-8", posix)
+        self.assertIn('[[ $# -eq 0 && "$WORKTREE_ROOT" = "$(dirname "$GIT_COMMON")" ]]', posix)
         self.assertIn("peach.__file__", posix)
         self.assertIn('scripts/test_runner.py --scope "$SCOPE"', posix)
-        self.assertIn('SCOPE="${1:-full}"', posix)
+        self.assertIn('SCOPE="${1:-auto}"', posix)
+        self.assertIn("full|auto|follow|catalog|media|sync|metadata|tooling|web|checks)", posix)
         self.assertNotIn("pytest", posix.lower())
         # 文档里可以「提到」裸命令来说明它为什么不可信，但绝不能让它单独出现成为一条可照抄的指令。
         # 判据因此不是黑名单，而是：凡出现该命令的行，必须在同一行指向某个正式入口。
@@ -265,7 +272,23 @@ class OperationalScriptTests(unittest.TestCase):
                     f"{relative}:{number} 单独出现了裸命令，读者会照抄；必须同时点明正式入口",
                 )
 
-    def test_functional_test_scopes_are_explicit_and_full_remains_the_default(self):
+    def test_python_floor_is_declared_once_and_ci_tests_both_ends(self):
+        """`requires-python` 是唯一真相；CI 矩阵与两份 README 都从它推出来。
+
+        下限是陌生用户按 `pip install` 装的那一端，3.14 是维护者本机运行的那一端；
+        两端都在矩阵里，README 的前置条件写的也是同一个下限，三处任一处单改都要红。
+        """
+        project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
+        floor = project["requires-python"].removeprefix(">=")
+        self.assertEqual(floor, "3.12")
+        for version in (floor, "3.14"):
+            self.assertIn(f"Programming Language :: Python :: {version}", project["classifiers"])
+        workflow = (ROOT / ".github" / "workflows" / "test.yml").read_text(encoding="utf-8")
+        self.assertIn(f'python: ["{floor}", "3.14"]', workflow)
+        self.assertIn(f"Python {floor} 或更高", (ROOT / "README.md").read_text(encoding="utf-8"))
+        self.assertIn(f"Python {floor} or newer", (ROOT / "README.en.md").read_text(encoding="utf-8"))
+
+    def test_functional_test_scopes_are_explicit(self):
         runner = load_script("test_runner")
         follow = {path.name for path in runner.selected_files("follow")}
         full = {path.name for path in runner.selected_files("full")}
@@ -273,8 +296,61 @@ class OperationalScriptTests(unittest.TestCase):
         self.assertIn("test_migrations.py", follow)
         self.assertNotIn("test_media.py", follow)
         self.assertGreater(len(full), len(follow))
-        self.assertEqual(runner.unclassified_files(), (),
-                         "每个测试文件都应属于至少一个功能域")
+        with redirect_stdout(io.StringIO()) as listed:
+            self.assertEqual(runner.main(["--list-scopes"]), 0)
+        self.assertEqual(listed.getvalue().split(), ["full", "auto", *runner.SCOPES])
+
+    def test_every_test_file_is_registered_in_a_scope(self):
+        """新测试文件必须登记进 `scripts/test_runner.py` 的域，否则只有 `full` 才跑到它。"""
+        runner = load_script("test_runner")
+        patterns = (*runner.COMMON_PATTERNS,
+                    *(pattern for scopes in runner.SCOPES.values() for pattern in scopes))
+        orphans = sorted(
+            path.name for path in (ROOT / "tests").glob("test_*.py")
+            if not any(path.match(pattern) for pattern in patterns))
+        self.assertEqual(
+            orphans, [],
+            "这些测试文件不属于任何域，把它们登记进 scripts/test_runner.py 的 SCOPES"
+            "（或 COMMON_PATTERNS），否则只有 full 才跑到它们：\n  " + "\n  ".join(orphans))
+        self.assertEqual(runner.unclassified_files(), ())
+
+    def test_auto_scope_maps_changed_files_and_falls_back_to_full(self):
+        """`auto` 的选域是纯函数：喂文件清单，不碰 git。"""
+        runner = load_script("test_runner")
+        pick = runner.scopes_for_changes
+        # 前缀表：多个文件取并集，反斜杠路径也认。
+        self.assertEqual(pick(["src/peach/follow_store.py", "web/app.js"])[0], ("follow", "web"))
+        self.assertEqual(pick(["src\\peach\\tray.py"])[0], ("sync",))
+        self.assertEqual(pick(["scripts/probe.py", "pyproject.toml", ".github/workflows/test.yml"])[0],
+                         ("full",))
+        self.assertEqual(pick(["README.md", "docs/STATUS.md", ".claude/skills/x/SKILL.md"])[0],
+                         ("checks",))
+        self.assertEqual(pick(["src/peach/web_entity.py", "src/peach/routes_pages.py"])[0],
+                         ("catalog", "tooling", "web"))
+        self.assertEqual(pick(["src/peach/web_follow.py"])[0], ("follow",))
+        # 模块名 ↔ 测试文件名推断，登记在几个域就跑几个域。
+        self.assertEqual(pick(["src/peach/media.py"])[0], ("media",))
+        self.assertEqual(pick(["src/peach/jobs.py"])[0], ("media", "tooling"))
+        self.assertEqual(pick(["src/peach/metadata.py"])[0], ("metadata",))
+        # 测试文件按自己的文件名归域；公共门槛文件归 tooling。
+        self.assertEqual(pick(["tests/test_certs.py"])[0], ("sync", "tooling"))
+        self.assertEqual(pick(["tests/test_context_budget.py"])[0], ("tooling",))
+        scopes, why = pick(["src/peach/follow.py", "web/app.js"])
+        self.assertTrue(why.startswith("Peach auto scope: follow, web <- "), why)
+        self.assertIn("web: web/app.js", why)
+        self.assertEqual(pick([])[0], ("checks",))
+        # full 覆盖公共设施和未知影响面。
+        for paths, fragment in ((["migrations/0099_next.sql"], "必须 full"),
+                                (["tests/support/ledger.py"], "必须 full"),
+                                (["tests/conftest.py"], "必须 full"),
+                                (["package-lock.json"], "必须 full"),
+                                (["frontend/package.json"], "必须 full"),
+                                (["LICENSE"], "映射不到"),
+                                (["src/peach/kanji.py", "web/app.js"], "映射不到")):
+            scopes, why = pick(paths)
+            self.assertEqual(scopes, ("full",), paths)
+            self.assertTrue(why.startswith("Peach auto scope: full <- "), why)
+            self.assertIn(fragment, why)
 
     def test_the_full_runner_can_import_repository_scripts(self):
         runner = load_script("test_runner")
@@ -829,8 +905,8 @@ class OperationalScriptTests(unittest.TestCase):
                 mark.putpixel((x, y), (0, 174, 239, 255))
 
         with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp) / "logos"
-            backup = Path(tmp) / "backup"
+            root = Path(tmp).resolve() / "logos"
+            backup = Path(tmp).resolve() / "backup"
             root.mkdir()
             originals = {
                 "wide.img": png(Image.new("RGB", (400, 100), (196, 20, 24))),
@@ -2062,6 +2138,63 @@ class ScriptingConventionTests(unittest.TestCase):
         self.assertTrue(scripting.host_under("mobile.X.com", ("x.com",)))
         self.assertFalse(scripting.host_under("notx.com", ("x.com",)))
         self.assertFalse(scripting.host_under("", ("x.com",)))
+
+
+class ReleaseTagTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.release = load_script("release_tag")
+
+    def test_latest_matching_master_run_must_finish_successfully(self):
+        success = dict(id=1, head_sha="abc", head_branch="master", event="push",
+                       status="completed", conclusion="success", html_url="test-url")
+        self.assertEqual(self.release.require_success([success], "abc"), success)
+        for changes in ({"head_sha": "other"}, {"head_branch": "feature"},
+                        {"event": "pull_request"}, {"status": "in_progress"},
+                        {"conclusion": "failure"}, {"conclusion": "cancelled"}):
+            with self.subTest(changes=changes), self.assertRaises(ValueError):
+                self.release.require_success([{**success, **changes}], "abc")
+        with self.assertRaises(ValueError):
+            self.release.require_success([success, {**success, "id": 2, "conclusion": "failure"}], "abc")
+
+    def test_default_is_read_only_and_apply_stops_if_master_moves(self):
+        planned = dict(sha="abc", tag="v1.2.3", repo="owner/repo")
+        with mock.patch.object(self.release, "plan", return_value=planned), \
+                mock.patch.object(self.release, "command") as command, redirect_stdout(io.StringIO()):
+            self.assertEqual(self.release.main([]), 0)
+            command.assert_not_called()
+            with mock.patch.object(self.release, "api", return_value={"object": {"sha": "other"}}):
+                self.assertEqual(self.release.main(["--apply"]), 1)
+            command.assert_not_called()
+
+    def test_apply_pushes_only_the_validated_tag(self):
+        planned = dict(sha="abc", tag="v1.2.3", repo="owner/repo")
+        with mock.patch.object(self.release, "plan", return_value=planned), \
+                mock.patch.object(self.release, "api", return_value={"object": {"sha": "abc"}}), \
+                mock.patch.object(self.release, "command") as command, redirect_stdout(io.StringIO()):
+            self.assertEqual(self.release.main(["--repo", "owner/repo", "--apply"]), 0)
+            self.assertEqual(command.call_args_list[-1], mock.call(
+                "git", "push", "https://github.com/owner/repo.git", "refs/tags/v1.2.3"))
+            self.assertNotIn("--force", str(command.call_args_list))
+
+    def test_unmerged_commit_cannot_pass_release_verification(self):
+        with mock.patch.object(self.release, "api", return_value={"status": "ahead"}), \
+                self.assertRaises(ValueError):
+            self.release.verify("owner/repo", "abc")
+
+    def test_plan_refuses_dirty_checkout_wrong_branch_and_existing_tags(self):
+        base = {("git", "status", "--porcelain"): "",
+                ("git", "branch", "--show-current"): "master",
+                ("git", "rev-parse", "HEAD"): "abc"}
+        for changes, refs in (({("git", "status", "--porcelain"): " M file"}, []),
+                              ({("git", "branch", "--show-current"): "feature"}, []),
+                              ({}, [{"ref": "refs/tags/v0.7.14"}])):
+            with self.subTest(changes=changes, refs=refs), \
+                    mock.patch.object(self.release, "command", side_effect=lambda *args: {**base, **changes}.get(args, "")), \
+                    mock.patch.object(self.release, "api", side_effect=lambda repo, path: {"object": {"sha": "abc"}} if path == "git/ref/heads/master" else refs), \
+                    mock.patch.object(Path, "read_text", return_value='__version__ = "0.7.14"\n'), \
+                    self.assertRaises(ValueError):
+                self.release.plan("owner/repo")
 
 
 if __name__ == "__main__":

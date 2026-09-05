@@ -73,7 +73,7 @@
 .geist-scroller-overlay::after{bottom:0;background:linear-gradient(to top,var(--surface),transparent)}
 .geist-scroller-overlay.can-scroll-top::before,.geist-scroller-overlay.can-scroll-bottom::after{opacity:1}
 /* Geist Empty State：标题和说明是一个组件；外层容器只负责与上方工具条保持 16px。 */
-.emptystate{grid-column:1/-1;display:grid;justify-items:center;align-content:center;gap:8px;box-sizing:border-box;width:100%;min-height:320px;padding:48px 24px;text-align:center;border:1px solid var(--line-soft);border-radius:var(--floating-radius);background:var(--surface)}
+.emptystate{grid-column:1/-1;display:grid;justify-items:center;align-content:center;gap:8px;box-sizing:border-box;width:100%;min-height:320px;padding:48px 24px;text-align:center;border:1px solid var(--line-soft);border-radius:var(--floating-radius);background:var(--ground)}
 .emptystate.compact{min-height:220px;border:0;background:transparent}
 .emptystate .es-icon{display:grid;place-items:center;box-sizing:border-box;width:54px;height:54px;padding:10px;border-radius:var(--floating-radius);border:1px solid var(--border-15);color:var(--muted);margin-bottom:8px}
 .emptystate .es-icon svg{width:32px;height:32px;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
@@ -97,16 +97,18 @@
 @media (max-width:760px){
   .readout{display:none} .brand .sub{display:none}
   :root{--tile:168px;--topH:52px;--sortH:60px}
+  /* 确认弹层的两个键是本项目 44px 命中区的对象，桌面的 32px 是 Geist 控件高度。 */
+  .geist-modal-footer .geist-button{min-height:44px;padding:0 14px}
   /* 管理入口在手机上先收成一行，按需展开为两列。当前页仍有明确上下文，
      但不会让八个入口挤成三四行、把正文推到屏幕下方。 */
   .managebar{display:block;width:100%;margin-bottom:14px;padding:0;border:0;background:transparent}
   .managebar-toggle{display:flex!important;width:100%;min-height:46px;align-items:center;justify-content:space-between;
-    padding:10px 12px!important;border:1px solid var(--line-soft)!important;border-radius:var(--floating-radius)!important;background:var(--surface)!important;color:var(--ink)!important}
+    padding:10px 12px!important;border:1px solid var(--line-soft)!important;border-radius:var(--floating-radius)!important;background:var(--ground)!important;color:var(--ink)!important}
   .managebar-current{display:inline-flex;align-items:center;gap:8px;font-weight:600}
   .managebar-toggle>svg:last-child{transition:transform .16s ease}
   .managebar.is-open .managebar-toggle>svg:last-child{transform:rotate(180deg)}
   .managebar-menu{display:none;margin-top:8px;padding:6px;border:1px solid var(--line-soft);border-radius:var(--floating-radius);
-    background:var(--surface);grid-template-columns:repeat(2,minmax(0,1fr));gap:4px}
+    background:var(--ground);grid-template-columns:repeat(2,minmax(0,1fr));gap:4px}
   .managebar.is-open .managebar-menu{display:grid}
   .runtimegate a{grid-column:2/-1}
   .managebar-menu button{width:100%;min-height:42px;justify-content:flex-start;padding:9px 11px}
@@ -135,7 +137,7 @@
   .entitycollectionhead{align-items:flex-start;flex-direction:column}
   .entitycollectionhead .sorts{width:100%;margin-left:0;padding-bottom:2px}
   .entitycollectionhead .sorts button{min-height:36px}
-  .playlistpage>header{align-items:stretch;flex-direction:column}.playlistcreate input{min-width:0;width:100%}.playlistcreate label{flex:1 1 100%}.playlistcard{grid-template-columns:92px minmax(0,1fr)}.playlistactions{justify-content:flex-start;overflow-x:auto}.playlistactions button{white-space:nowrap}
+  .playlistpage>header{align-items:stretch;flex-direction:column}.playlistcreate label{max-width:none}.playlistcreate input{min-width:0}.playlistcard{grid-template-columns:92px minmax(0,1fr)}.playlistactions{justify-content:flex-start;overflow-x:auto}.playlistactions button{white-space:nowrap}
   .fb{width:100%}.fb button{flex:1 1 0;min-width:38px}
   /* 关注详情只有三四个动作键，撑满一行就是四个大得离谱的方块。 */
   .fb.followdetailactions{width:max-content;max-width:100%}
@@ -178,6 +180,11 @@
   .entityhero{grid-template-columns:minmax(0,1fr);gap:12px;padding:8px 0 18px;justify-items:center;text-align:center}
   .entityportrait{width:112px}.entityhero h2{font-size:var(--fs-xl)}
   .entityhero>div:last-child{width:100%}
+  /* 标题行是 flex，`text-align:center` 管不到它，得自己居中。
+     统称的开关和菜单项按本项目的 44px 命中区放大，桌面的 32px 是 Geist 控件高度。 */
+  .entitytitle{justify-content:center}
+  .npbtn{width:44px;height:44px}
+  .npmenu button,.gselectmenu button{min-height:44px}
   .entityhero .alias{margin-bottom:10px}
   .entityhero .entitylinks{justify-content:center;margin-top:13px}
   .stats h2{font-size:var(--fs-xl)}.stats .insightcopy h2{font-size:var(--fs-3xl)}

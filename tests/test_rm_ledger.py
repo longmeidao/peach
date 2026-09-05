@@ -112,7 +112,7 @@ class ScanTargetTests(unittest.TestCase):
         from peach import settings_file
 
         config = settings_file.load_config(environ={}, strict=False)
-        fixed = replace(config, locations={"local": r"R:\media", "115": "B:/"})
+        fixed = replace(config, locations={"local": (r"R:\media",), "115": ("B:/",)})
         patcher = patch.object(settings_file, "active", lambda: fixed)
         patcher.start()
         self.addCleanup(patcher.stop)

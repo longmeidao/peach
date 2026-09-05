@@ -10,12 +10,13 @@ from peach.media import FilesystemBackend, MediaOffline, MediaUnavailable
 from peach.platform import (
     MOUNTS_ENV,
     UNMAPPED_ROOT,
-    declared_root,
+    declared_roots_of,
     is_unmapped,
     is_windows_path,
     location_mounts,
     location_of,
     resolve_location,
+    resolve_root,
     root_online,
     system_volume,
     translate_ledger_path,
@@ -28,15 +29,20 @@ from peach.repository import MediaAsset
 POSIX_ONLY = unittest.skipIf(os.name == "nt", "路径翻译只在非 Windows 上发生")
 
 #: 测试里固定的账本口径声明根，和内建默认一致；不依赖本机 config.toml。
-LOCATIONS = {"local": r"R:\media", "115": "B:/", "pikpak": "A:/"}
+LOCATIONS = {"local": (r"R:\media",), "115": ("B:/",), "pikpak": ("A:/",)}
+
+
+def _roots(table):
+    """测试里写单个字符串更顺手；设置层一律是与声明根按序对应的元组。"""
+    return {key: (value,) if isinstance(value, str) else tuple(value) for key, value in table.items()}
 
 
 def with_media(mounts, locations=None):
     """把设置层的 `[media.locations]` / `[media.mounts]` 钉死成给定值。"""
     config = settings_file.load_config(environ={}, strict=False)
     fixed = replace(
-        config, mounts=dict(mounts),
-        locations=dict(LOCATIONS if locations is None else locations),
+        config, mounts=_roots(mounts),
+        locations=_roots(LOCATIONS if locations is None else locations),
     )
     return patch.object(settings_file, "active", lambda: fixed)
 
@@ -75,10 +81,27 @@ class LocationResolutionTests(unittest.TestCase):
             # 同一个盘但不在声明根下：`R:\Resources` 不是 `R:\media`。
             self.assertIsNone(location_of(r"R:\Resources\Intake\one.mp4"))
 
-    def test_declared_root_is_read_from_the_settings_layer(self):
+    def test_declared_roots_are_read_from_the_settings_layer(self):
         with with_media({}):
-            self.assertEqual(declared_root("local"), r"R:\media")
-            self.assertIsNone(declared_root("online"))
+            self.assertEqual(declared_roots_of("local"), (r"R:\media",))
+            self.assertEqual(declared_roots_of("online"), ())
+
+    def test_a_source_with_two_roots_resolves_each_to_its_own_index(self):
+        roots = {"local": (r"R:\media", r"S:\more"), "115": ("B:/",)}
+        self.assertEqual(resolve_root(r"R:\media\a.mp4", roots), ("local", 0, ("a.mp4",)))
+        self.assertEqual(resolve_root(r"S:\more\x\b.mp4", roots), ("local", 1, ("x", "b.mp4")))
+        self.assertEqual(resolve_root("B:/c.mp4", roots), ("115", 0, ("c.mp4",)))
+        self.assertEqual(resolve_root(r"Z:\nope", roots), (None, -1, ()))
+
+    @POSIX_ONLY
+    def test_each_root_translates_to_the_mount_at_the_same_position(self):
+        with with_media({"local": ["/Volumes/A", "/Volumes/B"]},
+                        {"local": [r"R:\media", r"R:\media2"]}):
+            self.assertEqual(translate_ledger_path(r"R:\media\one.mp4"), Path("/Volumes/A/one.mp4"))
+            self.assertEqual(translate_ledger_path(r"R:\media2\two.mp4"), Path("/Volumes/B/two.mp4"))
+        # 挂载表比声明根短：多出来的根按脱盘处理，不能悄悄落到别的目录。
+        with with_media({"local": ["/Volumes/A"]}, {"local": [r"R:\media", r"R:\media2"]}):
+            self.assertTrue(is_unmapped(translate_ledger_path(r"R:\media2\two.mp4")))
 
 
 class MountSourceTests(unittest.TestCase):
@@ -87,14 +110,14 @@ class MountSourceTests(unittest.TestCase):
     def test_settings_file_supplies_the_base_mapping(self):
         with with_media({"local": "/mnt/res"}):
             with patch.dict("os.environ", {MOUNTS_ENV: ""}):
-                self.assertEqual(location_mounts(), {"local": Path("/mnt/res")})
+                self.assertEqual(location_mounts(), {"local": (Path("/mnt/res"),)})
 
     def test_environment_still_wins_over_the_settings_file(self):
         with with_media({"local": "/mnt/res", "115": "/mnt/115"}):
             with patch.dict("os.environ", {MOUNTS_ENV: "local=/mnt/other"}):
                 self.assertEqual(
                     location_mounts(),
-                    {"local": Path("/mnt/other"), "115": Path("/mnt/115")})
+                    {"local": (Path("/mnt/other"),), "115": (Path("/mnt/115"),)})
 
     def test_a_fresh_machine_has_no_mounts_at_all(self):
         """内建默认为空：没挂的来源按脱盘处理，绝不猜一个本机路径。"""

@@ -164,6 +164,35 @@ class JobMainTests(unittest.TestCase):
 
 
 class BackgroundJobTests(unittest.TestCase):
+    def test_operation_errors_are_queryable_terminal_receipts(self):
+        job = BackgroundJob('test-operation')
+        started = job.start_result(lambda: {'ok': False, 'error': 'expired'})
+        job.thread.join(2)
+        state = job.snapshot()
+        self.assertEqual(state['job_id'], started['job_id'])
+        self.assertEqual(state['status'], 'failed')
+        self.assertEqual(state['error'], 'expired')
+
+    def test_operation_does_not_replay_while_running(self):
+        job = BackgroundJob('test-operation')
+        entered, release = threading.Event(), threading.Event()
+        calls = []
+        def work():
+            calls.append(1)
+            entered.set()
+            release.wait(3)
+            return {'ok': True, 'removed': 2}
+        first = job.start_result(work)
+        try:
+            self.assertTrue(entered.wait(2))
+            second = job.start_result(work)
+            self.assertEqual(first['job_id'], second['job_id'])
+        finally:
+            release.set()
+            job.thread.join(3)
+        self.assertEqual(calls, [1])
+        self.assertEqual(job.snapshot()['removed'], 2)
+
     """服务里的后台任务状态机。
 
     死链检查和资源对账共用这一份状态机。共用的不只是形状，还有几条容易漏的约定：

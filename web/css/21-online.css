@@ -13,7 +13,7 @@
   padding:9px 0 8px;border-bottom-color:transparent;scrollbar-width:none;overscroll-behavior-inline:contain;
   touch-action:pan-x}
 .followfilters::-webkit-scrollbar{display:none}
-.followfilters .sep{flex:none;width:1px;height:24px;background:var(--border-15);margin:0 3px}
+.followfilters .sep{flex:none;width:1px;height:24px;background:var(--field-ring-hover);margin:0 3px}
 .followfilters .pill .n{margin-left:5px;color:inherit}
 .followfilters .sourcepill{width:40px;padding:0}
 .followfilters .sourcepill .ficon{width:21px;height:21px;margin:0}

@@ -3,38 +3,57 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#FFFFFF" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#080A0D" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#FFFFFF" media="(prefers-color-scheme: light)" data-theme-color="light">
+<meta name="theme-color" content="#080A0D" media="(prefers-color-scheme: dark)" data-theme-color="dark">
 <link rel="icon" href="/peach-logo.png" type="image/png">
 <link rel="stylesheet" href="/vendor/videojs/8.24.0/video-js.min.css">
 <title>Peach · 蜜桃</title>
 <link rel="stylesheet" href="/app.css">
+<!-- 主题必须在第一次绘制之前定下来。app.js 是 module，等同 defer：轮到它跑的时候
+     浏览器已经按系统色画过一帧，手动选了浅色的人每次进页面都要先看一下深色。
+     这段只做两件事——把选择写到 <html> 的 data-theme、把地址栏色块切到同一档；
+     色板只在 web/css/01-base.css 一份，切换逻辑只在 app.js 的 applyTheme() 一份。 -->
+<script>
+(()=>{try{
+  const choice=JSON.parse(localStorage.getItem('peach.settings.v1')||'{}').theme;
+  if(choice!=='light'&&choice!=='dark')return;
+  document.documentElement.dataset.theme=choice;
+  document.querySelectorAll('meta[data-theme-color]').forEach(meta=>{
+    meta.media=meta.dataset.themeColor===choice?'all':'not all';
+  });
+}catch(_e){}})();
+</script>
 </head>
 <body>
 <a class="skiplink" href="#main">跳到正文</a>
-<!-- Lucide static 1.37.0, ISC. Local pinned subset; no CDN/runtime dependency.
-     Climax uses Health Icons 2.0.0 sperm outline-24px, CC0/public domain. -->
+<!-- Lucide static 1.38.0, ISC. Local pinned subset; no CDN/runtime dependency.
+     Climax uses Health Icons 2.0.0 sperm outline-24px, CC0/public domain.
+     Phosphor 2.1.1 regular, MIT: filled glyphs where a stroked icon cannot say it. -->
 <svg aria-hidden="true" width="0" height="0" style="position:absolute;overflow:hidden">
   <symbol id="i-home" viewBox="0 0 24 24"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8" /><path d="M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /></symbol>
   <symbol id="i-sliders-horizontal" viewBox="0 0 24 24"><path d="M10 5H3" /><path d="M12 19H3" /><path d="M14 3v4" /><path d="M16 17v4" /><path d="M21 12h-9" /><path d="M21 19h-5" /><path d="M21 5h-7" /><path d="M8 10v4" /><path d="M8 12H3" /></symbol>
   <symbol id="i-search" viewBox="0 0 24 24"><path d="m21 21-4.34-4.34" /><circle cx="11" cy="11" r="8" /></symbol>
   <symbol id="i-layout-grid" viewBox="0 0 24 24"><rect width="7" height="7" x="3" y="3" rx="1" /><rect width="7" height="7" x="14" y="3" rx="1" /><rect width="7" height="7" x="14" y="14" rx="1" /><rect width="7" height="7" x="3" y="14" rx="1" /></symbol>
   <!-- Beeg PicsIcon，取自 2026-08-30 锁定的 main.9442c3b8.js（module 83646）。 -->
-  <symbol id="i-pics" viewBox="0 0 16 16" fill="currentColor" stroke="none"><path d="M8 3.5C8 4.052 7.552 4.5 7 4.5C6.448 4.5 6 4.052 6 3.5C6 2.948 6.448 2.5 7 2.5C7.552 2.5 8 2.948 8 3.5Z"/><path fill-rule="evenodd" clip-rule="evenodd" d="M3.49402 10.5C3.49402 11.605 4.38902 12.5 5.49402 12.5L14 12.501C15.105 12.501 16 11.606 16 10.501V2.001C16 0.896 15.105 0.001 14 0.001L5.49402 0C4.38902 0 3.49402 0.895 3.49402 2V10.5ZM4.49402 2C4.49402 1.448 4.94202 1 5.49402 1L14 1.001C14.552 1.001 15 1.449 15 2.001V5.84603L14.459 5.30103C14.045 4.88703 13.518 4.71503 13.045 4.71503C12.572 4.71503 12.063 4.87003 11.632 5.30103L9.04502 7.85603C8.91602 7.96603 8.78702 7.98303 8.71902 7.98303C8.64702 7.98303 8.48502 7.96603 8.35502 7.83203L7.64702 7.14803C7.26402 6.82503 6.87702 6.61403 6.23902 6.61403C5.83202 6.61403 5.27002 6.79003 4.87102 7.19903L4.49402 7.58003V2ZM4.49402 8.98503V10.5C4.49402 11.052 4.94202 11.5 5.49402 11.5L14 11.501C14.552 11.501 15 11.053 15 10.501V7.25603L13.752 6.00803C13.521 5.77703 13.23 5.71503 13.045 5.71503C12.85 5.71503 12.556 5.78603 12.339 6.00803L9.76602 8.55303C9.49302 8.82603 9.08202 8.98503 8.75102 8.98503C8.35402 8.98503 8.01102 8.86203 7.71302 8.60403L6.94102 7.86703C6.76302 7.71803 6.54702 7.61303 6.26102 7.61903C5.97402 7.62503 5.74102 7.74803 5.58102 7.90703L4.49402 8.98503Z"/><path d="M0.0310299 12.174C-0.16097 13.262 0.56503 14.299 1.65303 14.491L10.03 15.969C11.119 16.161 12.155 15.435 12.347 14.347L12.496 13.501H11.481L11.362 14.173C11.267 14.717 10.748 15.08 10.204 14.984L1.82703 13.506C1.28303 13.41 0.92003 12.891 1.01603 12.348L2.49203 3.97702C2.49203 3.97302 2.49303 3.96902 2.49403 3.96502V2.40802C1.99103 2.69202 1.61503 3.19002 1.50703 3.80302L0.0310299 12.174Z"/></symbol>
+  <symbol id="i-pics" viewBox="-1.6 -1.6 19.2 19.2" fill="currentColor" stroke="none"><path d="M8 3.5C8 4.052 7.552 4.5 7 4.5C6.448 4.5 6 4.052 6 3.5C6 2.948 6.448 2.5 7 2.5C7.552 2.5 8 2.948 8 3.5Z"/><path fill-rule="evenodd" clip-rule="evenodd" d="M3.49402 10.5C3.49402 11.605 4.38902 12.5 5.49402 12.5L14 12.501C15.105 12.501 16 11.606 16 10.501V2.001C16 0.896 15.105 0.001 14 0.001L5.49402 0C4.38902 0 3.49402 0.895 3.49402 2V10.5ZM4.49402 2C4.49402 1.448 4.94202 1 5.49402 1L14 1.001C14.552 1.001 15 1.449 15 2.001V5.84603L14.459 5.30103C14.045 4.88703 13.518 4.71503 13.045 4.71503C12.572 4.71503 12.063 4.87003 11.632 5.30103L9.04502 7.85603C8.91602 7.96603 8.78702 7.98303 8.71902 7.98303C8.64702 7.98303 8.48502 7.96603 8.35502 7.83203L7.64702 7.14803C7.26402 6.82503 6.87702 6.61403 6.23902 6.61403C5.83202 6.61403 5.27002 6.79003 4.87102 7.19903L4.49402 7.58003V2ZM4.49402 8.98503V10.5C4.49402 11.052 4.94202 11.5 5.49402 11.5L14 11.501C14.552 11.501 15 11.053 15 10.501V7.25603L13.752 6.00803C13.521 5.77703 13.23 5.71503 13.045 5.71503C12.85 5.71503 12.556 5.78603 12.339 6.00803L9.76602 8.55303C9.49302 8.82603 9.08202 8.98503 8.75102 8.98503C8.35402 8.98503 8.01102 8.86203 7.71302 8.60403L6.94102 7.86703C6.76302 7.71803 6.54702 7.61303 6.26102 7.61903C5.97402 7.62503 5.74102 7.74803 5.58102 7.90703L4.49402 8.98503Z"/><path d="M0.0310299 12.174C-0.16097 13.262 0.56503 14.299 1.65303 14.491L10.03 15.969C11.119 16.161 12.155 15.435 12.347 14.347L12.496 13.501H11.481L11.362 14.173C11.267 14.717 10.748 15.08 10.204 14.984L1.82703 13.506C1.28303 13.41 0.92003 12.891 1.01603 12.348L2.49203 3.97702C2.49203 3.97302 2.49303 3.96902 2.49403 3.96502V2.40802C1.99103 2.69202 1.61503 3.19002 1.50703 3.80302L0.0310299 12.174Z"/></symbol>
   <symbol id="i-square-check-big" viewBox="0 0 24 24"><path d="M21 10.656V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h12.344" /><path d="m9 11 3 3L22 4" /></symbol>
   <symbol id="i-refresh-cw" viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" /><path d="M21 3v5h-5" /><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" /><path d="M8 16H3v5" /></symbol>
+  <symbol id="i-building" viewBox="0 0 24 24"><path d="M12 10h.01" /><path d="M12 14h.01" /><path d="M12 6h.01" /><path d="M16 10h.01" /><path d="M16 14h.01" /><path d="M16 6h.01" /><path d="M8 10h.01" /><path d="M8 14h.01" /><path d="M8 6h.01" /><path d="M9 22v-3a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3" /><rect x="4" y="2" width="16" height="20" rx="2" /></symbol>
+  <symbol id="i-briefcase" viewBox="0 0 24 24"><path d="M16 20V4a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" /><rect width="20" height="14" x="2" y="6" rx="2" /></symbol>
   <symbol id="i-user-round" viewBox="0 0 24 24"><circle cx="12" cy="8" r="5" /><path d="M20 21a8 8 0 0 0-16 0" /></symbol>
   <symbol id="i-tags" viewBox="0 0 24 24"><path d="M13.172 2a2 2 0 0 1 1.414.586l6.71 6.71a2.4 2.4 0 0 1 0 3.408l-4.592 4.592a2.4 2.4 0 0 1-3.408 0l-6.71-6.71A2 2 0 0 1 6 9.172V3a1 1 0 0 1 1-1z" /><path d="M2 7v6.172a2 2 0 0 0 .586 1.414l6.71 6.71a2.4 2.4 0 0 0 3.191.193" /><circle cx="10.5" cy="6.5" r=".5" fill="currentColor" /></symbol>
-  <symbol id="i-star" viewBox="0 0 24 24"><path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z" /></symbol>
   <symbol id="i-list-filter" viewBox="0 0 24 24"><path d="M2 5h20" /><path d="M6 12h12" /><path d="M9 19h6" /></symbol>
-  <symbol id="i-a-large-small" viewBox="0 0 24 24"><path d="m15 16 2.536-7.328a1.02 1.02 1 0 1 1.928 0L22 16" /><path d="M15.697 14h5.606" /><path d="m2 16 4.039-9.69a.5.5 0 0 1 .923 0L11 16" /><path d="M3.304 13h6.392" /></symbol>
+  <symbol id="i-text-aa" viewBox="-7.3 32.8 262.5 182.9" fill="currentColor" stroke="none"><path d="M87.24,52.59a8,8,0,0,0-14.48,0l-64,136a8,8,0,1,0,14.48,6.81L39.9,160h80.2l16.66,35.4a8,8,0,1,0,14.48-6.81ZM47.43,144,80,74.79,112.57,144ZM200,96c-12.76,0-22.73,3.47-29.63,10.32a8,8,0,0,0,11.26,11.36c3.8-3.77,10-5.68,18.37-5.68,13.23,0,24,9,24,20v3.22A42.76,42.76,0,0,0,200,128c-22.06,0-40,16.15-40,36s17.94,36,40,36a42.73,42.73,0,0,0,24-7.25,8,8,0,0,0,16-.75V132C240,112.15,222.06,96,200,96Zm0,88c-13.23,0-24-9-24-20s10.77-20,24-20,24,9,24,20S213.23,184,200,184Z"/></symbol>
+  <symbol id="i-playlist" viewBox="10.4 10.5 259.2 259.2" fill="currentColor" stroke="none"><path d="M32,64a8,8,0,0,1,8-8H216a8,8,0,0,1,0,16H40A8,8,0,0,1,32,64Zm8,72H160a8,8,0,0,0,0-16H40a8,8,0,0,0,0,16Zm72,48H40a8,8,0,0,0,0,16h72a8,8,0,0,0,0-16Zm135.66-57.7a8,8,0,0,1-10,5.36L208,122.75V192a32.05,32.05,0,1,1-16-27.69V112a8,8,0,0,1,10.3-7.66l40,12A8,8,0,0,1,247.66,126.3ZM192,192a16,16,0,1,0-16,16A16,16,0,0,0,192,192Z"/></symbol>
   <symbol id="i-sort" viewBox="0 0 24 24"><path d="m3 16 4 4 4-4" /><path d="M7 20V4" /><path d="M11 4h10" /><path d="M11 8h7" /><path d="M11 12h4" /></symbol>
   <symbol id="i-arrow-down" viewBox="0 0 24 24"><path d="M12 5v14" /><path d="m19 12-7 7-7-7" /></symbol>
   <symbol id="i-arrow-up" viewBox="0 0 24 24"><path d="m5 12 7-7 7 7" /><path d="M12 19V5" /></symbol>
   <symbol id="i-chart" viewBox="0 0 24 24"><path d="M5 21v-6" /><path d="M12 21V3" /><path d="M19 21V9" /></symbol>
   <symbol id="i-settings" viewBox="0 0 24 24"><path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915" /><circle cx="12" cy="12" r="3" /></symbol>
-  <symbol id="i-monitor" viewBox="0 0 24 24"><rect width="20" height="14" x="2" y="3" rx="2" /><path d="M8 21h8" /><path d="M12 17v4" /></symbol>
-  <symbol id="i-monitor-cog" viewBox="0 0 24 24"><path d="M12 17v4" /><path d="m14.305 7.53.923-.382" /><path d="m15.228 4.852-.923-.383" /><path d="m16.852 3.228-.383-.924" /><path d="m16.852 8.772-.383.923" /><path d="m19.148 3.228.383-.924" /><path d="m19.53 9.696-.382-.924" /><path d="m20.772 4.852.924-.383" /><path d="m20.772 7.148.924.383" /><path d="M22 13v2a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7" /><path d="M8 21h8" /><circle cx="18" cy="6" r="3" /></symbol>
+  <symbol id="i-monitor" viewBox="0 0 24 24"><rect width="20" height="14" x="2" y="3" rx="2" /><line x1="8" x2="16" y1="21" y2="21" /><line x1="12" x2="12" y1="17" y2="21" /></symbol><symbol id="i-computer" viewBox="0 0 24 24"><rect width="14" height="8" x="5" y="2" rx="2" /><rect width="20" height="8" x="2" y="14" rx="2" /><path d="M6 18h2" /><path d="M12 18h6" /></symbol><symbol id="i-folder-search" viewBox="0 0 24 24"><path d="M10.7 20H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H20a2 2 0 0 1 2 2v4.1" /><path d="m21 21-1.9-1.9" /><circle cx="17" cy="17" r="3" /></symbol>
+  <symbol id="i-ratio" viewBox="0 0 24 24"><rect width="12" height="20" x="6" y="2" rx="2" /><rect width="20" height="12" x="2" y="6" rx="2" /></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4" /><path d="M12 2v2" /><path d="M12 20v2" /><path d="m4.93 4.93 1.41 1.41" /><path d="m17.66 17.66 1.41 1.41" /><path d="M2 12h2" /><path d="M20 12h2" /><path d="m6.34 17.66-1.41 1.41" /><path d="m19.07 4.93-1.41 1.41" /></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20.985 12.486a9 9 0 1 1-9.473-9.472c.405-.022.617.46.402.803a6 6 0 0 0 8.268 8.268c.344-.215.825-.004.803.401" /></symbol>
   <symbol id="i-gauge" viewBox="0 0 24 24"><path d="m12 14 4-4" /><path d="M3.34 19a10 10 0 1 1 17.32 0" /></symbol>
   <symbol id="i-theater-enter" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="18" rx="1.5"/><path d="M2 16h20M8.5 7 5.5 10l3 3M15.5 7l3 3-3 3"/></symbol>
   <symbol id="i-theater-exit" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="18" rx="1.5"/><path d="M2 16h20M5.5 7l3 3-3 3M18.5 7l-3 3 3 3"/></symbol>
@@ -65,7 +84,6 @@
   <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><path d="M12 16v-4" /><path d="M12 8h.01" /></symbol>
   <symbol id="i-hard-drive" viewBox="0 0 24 24"><path d="M10 16h.01" /><path d="M2.212 11.577a2 2 0 0 0-.212.896V18a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-5.527a2 2 0 0 0-.212-.896L18.55 5.11A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" /><path d="M21.946 12.013H2.054" /><path d="M6 16h.01" /></symbol>
   <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20" /><path d="M2 12h20" /></symbol>
-  <symbol id="i-volume-2" viewBox="0 0 24 24"><path d="M11 5 6 9H2v6h4l5 4z" /><path d="M15.54 8.46a5 5 0 0 1 0 7.07" /><path d="M19.07 4.93a10 10 0 0 1 0 14.14" /></symbol>
   <symbol id="i-rss" viewBox="0 0 24 24"><path d="M4 11a9 9 0 0 1 9 9" /><path d="M4 4a16 16 0 0 1 16 16" /><circle cx="5" cy="19" r="1" fill="currentColor" stroke="none"/></symbol>
   <symbol id="i-thumbs-up" viewBox="0 0 24 24"><path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z" /><path d="M7 10v12" /></symbol>
   <symbol id="i-thumbs-down" viewBox="0 0 24 24"><path d="M9 18.12 10 14H4.17a2 2 0 0 1-1.92-2.56l2.33-8A2 2 0 0 1 6.5 2H20a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2.76a2 2 0 0 0-1.79 1.11L12 22a3.13 3.13 0 0 1-3-3.88Z" /><path d="M17 14V2" /></symbol>
@@ -88,7 +106,7 @@
   <symbol id="i-chevron-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6" /></symbol>
   <symbol id="i-heart" viewBox="0 0 24 24"><path d="M2 9.5a5.5 5.5 0 0 1 9.591-3.676.56.56 0 0 0 .818 0A5.49 5.49 0 0 1 22 9.5c0 2.29-1.5 4-3 5.5l-5.492 5.313a2 2 0 0 1-3 .019L5 15c-1.5-1.5-3-3.2-3-5.5" /></symbol>
   <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 3v12" /><path d="m17 8-5-5-5 5" /><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /></symbol>
-  <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 15V3" /><path d="m7 10 5 5 5-5" /><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 15V3" /><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><path d="m7 10 5 5 5-5" /></symbol>
   <symbol id="i-database" viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3" /><path d="M3 5V19A9 3 0 0 0 21 19V5" /><path d="M3 12A9 3 0 0 0 21 12" /></symbol>
   <symbol id="i-play" viewBox="0 0 24 24"><path d="M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z" /></symbol>
   <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><path d="M12 6v6l4 2" /></symbol>
@@ -98,9 +116,16 @@
        不吃通用的 `stroke:currentColor;fill:none`。
        只做 X 一个：416 条社媒链接里 372 条（89%）是 x.com／twitter.com，而 X 恰好
        会挡掉 favicon 请求——资料页上那个空白白圆就是它。其余主机继续走 favicon。 -->
-  <symbol id="i-brand-x" viewBox="0 0 24 24"><path fill="currentColor" stroke="none" d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></symbol>
+  <symbol id="i-brand-x" viewBox="-0.9 -0.9 25.9 25.9"><path fill="currentColor" stroke="none" d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></symbol>
   <symbol id="i-bookmark-plus" viewBox="0 0 24 24"><path d="M12 7v6" /><path d="M15 10H9" /><path d="M17 3a2 2 0 0 1 2 2v15a1 1 0 0 1-1.496.868l-4.512-2.578a2 2 0 0 0-1.984 0l-4.512 2.578A1 1 0 0 1 5 20V5a2 2 0 0 1 2-2z" /></symbol>
-  <symbol id="i-sperm" viewBox="0 0 24 24"><path d="M18.2574 3.04039C16.6079 3.3153 15.3153 4.60785 15.0404 6.25731C14.9261 6.94343 15.1179 7.59015 15.5007 8.08229L15.1947 8.49031C14.8361 8.96852 14.2732 9.24995 13.6754 9.24995H12.8524C10.9372 9.24995 9.58486 11.1262 10.1905 12.9431L10.3037 13.2827C10.5666 14.0715 9.88821 14.8537 9.07014 14.705C7.36157 14.3943 5.83623 15.8176 6.02801 17.5435L6.05171 17.7569C6.12353 18.4033 5.68919 18.9973 5.05144 19.1248L4.35291 19.2645C3.94674 19.3458 3.68333 19.7409 3.76456 20.147C3.8458 20.5532 4.24092 20.8166 4.64709 20.7354L5.34562 20.5957C6.74631 20.3155 7.70028 19.0109 7.54253 17.5912L7.51883 17.3779C7.43795 16.65 8.08124 16.0497 8.80181 16.1808C10.7416 16.5334 12.3502 14.6787 11.7267 12.8083L11.6135 12.4688C11.3317 11.6232 11.9611 10.75 12.8524 10.75H13.6754C14.7453 10.75 15.7528 10.2462 16.3947 9.39031L16.7517 8.9143C17.0623 8.99708 17.3975 9.01704 17.7426 8.95951C19.3921 8.6846 20.6847 7.39205 20.9596 5.7426C21.2244 4.15334 19.8466 2.77552 18.2574 3.04039Z" fill="currentColor"/><path d="M11.0548 3.32416C10.1507 3.47484 9.41308 4.15197 9.17192 5.03625C9.06125 5.44203 9.13468 5.83765 9.32677 6.15771L8.8594 6.85877C8.69647 7.10316 8.42219 7.24995 8.12847 7.24995H7.75C6.64543 7.24995 5.75 8.14538 5.75 9.24995C5.75 9.52609 5.52614 9.74995 5.25 9.74995C4.14543 9.74995 3.25 10.6454 3.25 11.75V12C3.25 12.4142 3.58579 12.75 4 12.75C4.41421 12.75 4.75 12.4142 4.75 12V11.75C4.75 11.4738 4.97386 11.25 5.25 11.25C6.35457 11.25 7.25 10.3545 7.25 9.24995C7.25 8.97381 7.47386 8.74995 7.75 8.74995H8.12847C8.92372 8.74995 9.66635 8.35251 10.1075 7.69082L10.6492 6.87823C10.7526 6.87326 10.8578 6.85692 10.9637 6.82804C11.848 6.58687 12.5251 5.84929 12.6758 4.94518C12.8347 3.9918 12.0081 3.16526 11.0548 3.32416Z" fill="currentColor"/><path d="M18.1471 11.3088C17.2045 11.4659 16.4659 12.2045 16.3088 13.147C16.2724 13.3658 16.2904 13.5775 16.3514 13.7709L15.0321 15.31C14.7928 15.5892 14.4434 15.75 14.0756 15.75C13.1529 15.75 12.2912 16.2111 11.7793 16.9789L11.7373 17.0419C11.4196 17.5185 11.25 18.0785 11.25 18.6513V19C11.25 19.4142 11.5858 19.75 12 19.75C12.4142 19.75 12.75 19.4142 12.75 19V18.6513C12.75 18.3747 12.8319 18.1042 12.9854 17.874L13.0274 17.8109C13.261 17.4605 13.6544 17.25 14.0756 17.25C14.8813 17.25 15.6467 16.8979 16.171 16.2862L17.5255 14.706C17.6318 14.7141 17.7415 14.7097 17.8529 14.6911C18.7955 14.534 19.5341 13.7954 19.6912 12.8529C19.8425 11.9447 19.0552 11.1574 18.1471 11.3088Z" fill="currentColor"/></symbol>
+  <symbol id="i-bookmark" viewBox="0 0 24 24"><path d="M17 3a2 2 0 0 1 2 2v15a1 1 0 0 1-1.496.868l-4.512-2.578a2 2 0 0 0-1.984 0l-4.512 2.578A1 1 0 0 1 5 20V5a2 2 0 0 1 2-2z" /></symbol>
+  <symbol id="i-gallery-vertical-end" viewBox="0 0 24 24"><path d="M7 2h10" /><path d="M5 6h14" /><rect width="18" height="12" x="3" y="10" rx="2" /></symbol>
+  <symbol id="i-notebook-pen" viewBox="0 0 24 24"><path d="M13.4 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7.4" /><path d="M2 6h4" /><path d="M2 10h4" /><path d="M2 14h4" /><path d="M2 18h4" /><path d="M21.378 5.626a1 1 0 1 0-3.004-3.004l-5.01 5.012a2 2 0 0 0-.506.854l-.837 2.87a.5.5 0 0 0 .62.62l2.87-.837a2 2 0 0 0 .854-.506z" /></symbol>
+  <symbol id="i-search-x" viewBox="0 0 24 24"><path d="m13.5 8.5-5 5" /><path d="m8.5 8.5 5 5" /><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></symbol>
+  <symbol id="i-file-archive" viewBox="0 0 24 24"><path d="M13.659 22H18a2 2 0 0 0 2-2V8a2.4 2.4 0 0 0-.706-1.706l-3.588-3.588A2.4 2.4 0 0 0 14 2H6a2 2 0 0 0-2 2v11.5" /><path d="M14 2v5a1 1 0 0 0 1 1h5" /><path d="M8 12v-1" /><path d="M8 18v-2" /><path d="M8 7V6" /><circle cx="8" cy="20" r="2" /></symbol>
+  <symbol id="i-file-audio" viewBox="0 0 24 24"><path d="M4 6.835V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.706.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2h-.343" /><path d="M14 2v5a1 1 0 0 0 1 1h5" /><path d="M2 19a2 2 0 0 1 4 0v1a2 2 0 0 1-4 0v-4a6 6 0 0 1 12 0v4a2 2 0 0 1-4 0v-1a2 2 0 0 1 4 0" /></symbol>
+  <symbol id="i-file-stack" viewBox="0 0 24 24"><path d="M11 21a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-8a1 1 0 0 1 1-1" /><path d="M16 16a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1" /><path d="M21 6a2 2 0 0 0-.586-1.414l-2-2A2 2 0 0 0 17 2h-3a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1z" /></symbol>
+  <symbol id="i-sperm" viewBox="1.5 1.2 21.2 21.2"><path d="M18.2574 3.04039C16.6079 3.3153 15.3153 4.60785 15.0404 6.25731C14.9261 6.94343 15.1179 7.59015 15.5007 8.08229L15.1947 8.49031C14.8361 8.96852 14.2732 9.24995 13.6754 9.24995H12.8524C10.9372 9.24995 9.58486 11.1262 10.1905 12.9431L10.3037 13.2827C10.5666 14.0715 9.88821 14.8537 9.07014 14.705C7.36157 14.3943 5.83623 15.8176 6.02801 17.5435L6.05171 17.7569C6.12353 18.4033 5.68919 18.9973 5.05144 19.1248L4.35291 19.2645C3.94674 19.3458 3.68333 19.7409 3.76456 20.147C3.8458 20.5532 4.24092 20.8166 4.64709 20.7354L5.34562 20.5957C6.74631 20.3155 7.70028 19.0109 7.54253 17.5912L7.51883 17.3779C7.43795 16.65 8.08124 16.0497 8.80181 16.1808C10.7416 16.5334 12.3502 14.6787 11.7267 12.8083L11.6135 12.4688C11.3317 11.6232 11.9611 10.75 12.8524 10.75H13.6754C14.7453 10.75 15.7528 10.2462 16.3947 9.39031L16.7517 8.9143C17.0623 8.99708 17.3975 9.01704 17.7426 8.95951C19.3921 8.6846 20.6847 7.39205 20.9596 5.7426C21.2244 4.15334 19.8466 2.77552 18.2574 3.04039Z" fill="currentColor"/><path d="M11.0548 3.32416C10.1507 3.47484 9.41308 4.15197 9.17192 5.03625C9.06125 5.44203 9.13468 5.83765 9.32677 6.15771L8.8594 6.85877C8.69647 7.10316 8.42219 7.24995 8.12847 7.24995H7.75C6.64543 7.24995 5.75 8.14538 5.75 9.24995C5.75 9.52609 5.52614 9.74995 5.25 9.74995C4.14543 9.74995 3.25 10.6454 3.25 11.75V12C3.25 12.4142 3.58579 12.75 4 12.75C4.41421 12.75 4.75 12.4142 4.75 12V11.75C4.75 11.4738 4.97386 11.25 5.25 11.25C6.35457 11.25 7.25 10.3545 7.25 9.24995C7.25 8.97381 7.47386 8.74995 7.75 8.74995H8.12847C8.92372 8.74995 9.66635 8.35251 10.1075 7.69082L10.6492 6.87823C10.7526 6.87326 10.8578 6.85692 10.9637 6.82804C11.848 6.58687 12.5251 5.84929 12.6758 4.94518C12.8347 3.9918 12.0081 3.16526 11.0548 3.32416Z" fill="currentColor"/><path d="M18.1471 11.3088C17.2045 11.4659 16.4659 12.2045 16.3088 13.147C16.2724 13.3658 16.2904 13.5775 16.3514 13.7709L15.0321 15.31C14.7928 15.5892 14.4434 15.75 14.0756 15.75C13.1529 15.75 12.2912 16.2111 11.7793 16.9789L11.7373 17.0419C11.4196 17.5185 11.25 18.0785 11.25 18.6513V19C11.25 19.4142 11.5858 19.75 12 19.75C12.4142 19.75 12.75 19.4142 12.75 19V18.6513C12.75 18.3747 12.8319 18.1042 12.9854 17.874L13.0274 17.8109C13.261 17.4605 13.6544 17.25 14.0756 17.25C14.8813 17.25 15.6467 16.8979 16.171 16.2862L17.5255 14.706C17.6318 14.7141 17.7415 14.7097 17.8529 14.6911C18.7955 14.534 19.5341 13.7954 19.6912 12.8529C19.8425 11.9447 19.0552 11.1574 18.1471 11.3088Z" fill="currentColor"/></symbol>
 </svg>
 
 <header class="top">
@@ -135,17 +160,12 @@
   <p class="pagelede mono" id="manageLede" hidden></p>
   <section class="stats" id="stats" hidden></section>
   <div class="count mono" id="count" role="status" aria-live="polite" aria-atomic="true"></div>
-  <div class="grid" id="grid"></div>
-  <section class="shorts" id="shortsSec" hidden>
-    <h2 class="disp">竖屏 <span class="mono shortscount" id="shortsN"></span>
-      <button id="tokBtn"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-play"/></svg><span>进入沉浸模式</span></button></h2>
-    <div class="srow" id="srow"></div>
-  </section>
+  <div class="gridstack" id="grid"></div>
   <div class="loadmore mono" id="loadSentinel" hidden></div>
 </main>
 
 <div class="scrim" id="scrim"></div>
-<aside class="drawer" id="drawer"></aside>
+<aside class="drawer" id="drawer"><div class="drawerscroll" id="drawerScroll"></div></aside>
 <div class="batchbar" id="batchbar" hidden><span id="batchCount">已选 0 项</span>
   <button data-batch="like"><svg viewBox="0 0 24 24"><use href="#i-thumbs-up"/></svg>喜欢</button><button data-batch="seen"><svg viewBox="0 0 24 24"><use href="#i-eye"/></svg>看过</button><button data-batch="later"><svg viewBox="0 0 24 24"><use href="#i-bookmark-plus"/></svg>稍后看</button>
   <button class="danger" data-batch="dispose"><svg viewBox="0 0 24 24"><use href="#i-trash"/></svg>加入回收站</button><button data-trash-only data-batch="restore"><svg viewBox="0 0 24 24"><use href="#i-rotate-ccw"/></svg>还原</button><button class="danger" data-trash-only data-batch="delete"><svg viewBox="0 0 24 24"><use href="#i-trash"/></svg>彻底删除</button>
@@ -176,23 +196,25 @@
   <div class="settingscard">
     <div class="settingshead"><h2 id="settingsTitle">设置</h2><button id="settingsClose" aria-label="关闭设置"><svg viewBox="0 0 24 24"><use href="#i-x"/></svg></button></div>
     <div class="settingsscroll">
+      
       <section class="settinggroup"><h3>浏览</h3>
-      <label class="settingrow"><span><b>每批作品</b><small>首页每次加载的作品数量。</small></span><select id="batchSizeSetting"><option value="30">30 个</option><option value="60">60 个</option><option value="90">90 个</option></select></label>
-      <label class="settingrow"><span><b>默认排序</b><small>打开首页时使用的排序。</small></span><select id="defaultSortSetting"><option value="seed">随机</option><option value="rating">评分</option><option value="o">高潮计数</option><option value="plays">观看次数</option><option value="dur">时长</option><option value="size">体积</option><option value="new">入库时间</option><option value="played">观看时间</option></select></label>
-      <label class="settingrow"><span><b>悬停放大</b><small>转圈完成后进入放大预览。</small></span><select id="hoverDelaySetting"><option value="3">3 秒</option><option value="5">5 秒</option><option value="8">8 秒</option></select></label>
+      <div class="settingrow"><span><b>每批作品</b><small>首页每次加载的作品数量。</small></span><div id="batchSizeSetting"></div></div>
+      <div class="settingrow"><span><b>默认排序</b><small>打开首页时使用的排序。</small></span><div id="defaultSortSetting"></div></div>
+      <div class="settingrow"><span><b>悬停放大</b><small>转圈完成后进入放大预览。</small></span><div id="hoverDelaySetting"></div></div>
       <label class="settingrow"><span><b>合并分卷与版本</b><small>同一番号的多个分卷或版次只占一张卡，展示第一个。</small></span><span class="pcheck"><input type="checkbox" id="groupCollapseSetting"><span aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-check"/></svg></span></span></label>
       </section>
       <section class="settinggroup"><h3>播放</h3>
-      <label class="settingrow"><span><b>快进 / 快退</b><small>卡片预览和详情播放器共用。</small></span><select id="seekSecondsSetting"><option value="5">5 秒</option><option value="10">10 秒</option><option value="30">30 秒</option></select></label>
-      <label class="settingrow"><span><b>相关推荐</b><small>详情下方一次显示的相似作品数量。</small></span><select id="relatedLimitSetting"><option value="12">12 个</option><option value="20">20 个</option><option value="30">30 个</option></select></label>
+      <div class="settingrow"><span><b>快进 / 快退</b><small>卡片预览和详情播放器共用。</small></span><div id="seekSecondsSetting"></div></div>
+      <div class="settingrow"><span><b>相关推荐</b><small>详情下方一次显示的相似作品数量。</small></span><div id="relatedLimitSetting"></div></div>
       </section>
       <section class="settinggroup"><h3>搜索</h3>
-      <label class="settingrow"><span><b>搜索记录</b><small>保存在 Peach 账本，所有访问端同步。</small></span><select id="searchHistoryLimitSetting"><option value="5">最近 5 条</option><option value="10">最近 10 条</option><option value="20">最近 20 条</option></select></label>
+      <div class="settingrow"><span><b>搜索记录</b><small>保存在 Peach 账本，所有访问端同步。</small></span><div id="searchHistoryLimitSetting"></div></div>
       </section>
       <section class="settinggroup"><h3>关注</h3>
-      <label class="settingrow"><span><b>关注自动更新</b><small id="followScheduleState" aria-live="polite">读取运行状态…</small></span><select id="followScheduleSetting"><option value="0">关闭</option><option value="15">每 15 分钟</option><option value="30">每 30 分钟</option><option value="60">每小时</option><option value="180">每 3 小时</option><option value="360">每 6 小时</option><option value="720">每 12 小时</option><option value="1440">每天</option></select></label>
+      <div class="settingrow"><span><b>关注自动更新</b><small id="followScheduleState" aria-live="polite">读取运行状态…</small></span><div id="followScheduleSetting"></div></div>
       </section>
       <section class="settinggroup"><h3>界面</h3>
+      <div class="settingrow"><span><b>主题</b><small>跟随系统，或固定用浅色、深色。</small></span><div id="themeSetting"></div></div>
       <section class="sidebarsetting" aria-labelledby="sidebarOrderTitle"><span><b id="sidebarOrderTitle">左侧导航</b><small>直接拖动排序；可隐藏入口，也可从具体页面列表重新添加。窄栏和筛选抽屉会保持一致。</small></span><div class="sidebarorder" id="sidebarOrderSetting"></div></section>
       </section>
       <section class="settinggroup"><h3>安全</h3>

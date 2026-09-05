@@ -1,8 +1,28 @@
-# Peach
+<p align="center">
+  <img src="resources/peach-logo.png" alt="Peach" width="128">
+</p>
 
-Peach（蜜桃）是单用户、本地优先的个人媒体系统。它统一索引本地磁盘、CloudDrive 和在线关注来源，提供搜索、播放、资料页、播放列表、复核与追更，并把观看行为和人工决定保存到本地 SQLite ledger。
+<h1 align="center">Peach</h1>
 
-Peach 适合在 Windows 与 macOS 两台个人设备上运行。当前运行状态与验证结果见 [`docs/STATUS.md`](docs/STATUS.md)，待办见 [`docs/PRODUCT_BACKLOG.md`](docs/PRODUCT_BACKLOG.md)；开发约束从 [`AGENTS.md`](AGENTS.md) 开始读。
+<p align="center">单用户、本地优先的个人媒体系统</p>
+
+<p align="center">
+  <a href="https://github.com/longmeidao/peach/actions/workflows/test.yml"><img src="https://img.shields.io/github/actions/workflow/status/longmeidao/peach/test.yml?branch=master&amp;label=tests&amp;logo=githubactions&amp;logoColor=white" alt="tests"></a>
+  <a href="https://github.com/longmeidao/peach/releases"><img src="https://img.shields.io/github/v/release/longmeidao/peach?include_prereleases&amp;label=release&amp;logo=github&amp;logoColor=white" alt="release"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0--or--later-blue?logo=gnu&amp;logoColor=white" alt="license"></a>
+  <img src="https://img.shields.io/badge/python-3.12%2B-3776AB?logo=python&logoColor=white" alt="Python 3.12+">
+  <img src="https://img.shields.io/badge/platform-Windows-0078D4?logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0id2hpdGUiPjxwYXRoIGQ9Ik0xIDFoMTB2MTBIMXptMTIgMGgxMHYxMEgxM3pNMSAxM2gxMHYxMEgxem0xMiAwaDEwdjEwSDEzeiIvPjwvc3ZnPg%3D%3D" alt="Windows">
+  <img src="https://img.shields.io/badge/platform-macOS-555555?logo=apple&amp;logoColor=white" alt="macOS">
+  <img src="https://img.shields.io/badge/18%2B-adult%20content-critical?logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJ3aGl0ZSIgc3Ryb2tlLXdpZHRoPSIyIj48cGF0aCBkPSJNMTIgMiAzIDZ2NmMwIDUgOSAxMCA5IDEwczktNSA5LTEwVjZ6TTEyIDd2Nm0wIDN2MSIvPjwvc3ZnPg%3D%3D" alt="18+ adult content">
+</p>
+
+<p align="center">中文 · <a href="README.en.md">English</a></p>
+
+> **18+** Peach 面向成年人，管理的是成人内容馆藏。仓库、文档与截图只出现 SFW 素材；边界见下文「范围与免责声明」。
+
+Peach（蜜桃）是单用户、本地优先的个人媒体系统，只为一个人在自己的机器上经局域网自用而设计，不面向团队或公开部署。它统一索引你已经拥有的媒体——本地磁盘、CloudDrive 挂载和在线关注来源——由一个 FastAPI 进程提供搜索、播放、资料页、播放列表、复核与追更。本地 SQLite ledger 是唯一真相源，观看行为和人工决定都保存在这里；CloudDrive、在线站点和 AI 取回的内容只是带来源与置信度的候选，经用户复核后才成为真相。
+
+Peach 在一台机器上就能完整运行，目前处于 pre-1.0 阶段。Windows 与 macOS 是一等平台；Linux 不在支持范围，未测试。多台机器之间的单写者复制是可选项，默认关闭，目前只在「Windows 写者 + macOS 读者」一种形状上验证过。当前运行状态与验证结果见 [`docs/STATUS.md`](docs/STATUS.md)，待办见 [`docs/PRODUCT_BACKLOG.md`](docs/PRODUCT_BACKLOG.md)；开发约束从 [`AGENTS.md`](AGENTS.md) 开始读。
 
 ## 核心能力
 
@@ -11,9 +31,14 @@ Peach 适合在 Windows 与 macOS 两台个人设备上运行。当前运行状�
 - 保存稍后看、喜欢理由、观看状态、自动 Mix 和持久播放列表。
 - 通过 `/review` 复核外部元数据、身份、图片和媒体失败候选。
 - 从 FANBOX、SubscribeStar、Patreon 官方渠道，Kemono/Pawchive/Coomer 归档站，Rule34Video、Rule34.xxx、Rule34 Paheal 和 F95zone 发现更新；SimpCity 的机器人验证不会被绕过。
-- 在 Windows writer 与 macOS reader 之间显式复制 ledger；发生分叉时转只读，不自动合并。
+- 可选：在两台机器之间显式复制 ledger；发生分叉时转只读，不自动合并。
 
 ## 数据边界
+
+CloudDrive 在首次设置页与配置页按文件夹选择「CloudDrive · 115」或「CloudDrive · PikPak」。
+先在 CloudDrive 登录对应网盘并完成挂载，再把本机文件夹填入 Peach；Windows 使用盘符路径，
+macOS 在「本机文件夹」填挂载点，在「Windows 中的对应路径」填馆藏已有的盘符路径。配置页的「挂载状态」可刷新检查各来源。
+离线来源可保存，恢复挂载后再扫描。详细步骤见 [CloudDrive 配置](docs/OPERATIONS.md#clouddrive-配置)。
 
 Ledger 是资产、身份、行为和复核决定的真相源。CloudDrive、在线站点和 AI 都是适配器或候选来源，不能直接改写真相字段。
 
@@ -26,7 +51,18 @@ Ledger 是资产、身份、行为和复核决定的真相源。CloudDrive、在
 | 真实写入 | 只允许当前 writer；迁移和不可逆操作必须先备份并取得授权 |
 | 测试 | 只使用临时 SQLite 和临时媒体 |
 
-两台机器各有本地 ledger 工作副本，共享目录只作传输点。服务启动不会自动复制；「同步 Ledger」和「接管 Ledger 写入」是显式操作。详细设计见 [`ADR-0017`](docs/adr/0017-dual-host-local-runtime-and-sync-boundaries.md)。
+开启复制时，两台机器各有本地 ledger 工作副本，共享目录只作传输点。服务启动不会自动复制；「同步 Ledger」和「接管 Ledger 写入」是显式操作。详细设计见 [`ADR-0017`](docs/adr/0017-dual-host-local-runtime-and-sync-boundaries.md)。
+
+## 范围与免责声明
+
+- Peach 面向成人内容的个人馆藏（JAV、创作者订阅等），仓库本身不含任何此类内容；README、
+  文档与网站里的截图一律使用 SFW 演示数据，不使用真实馆藏。
+- 仓库只有代码、文档和固定的前端依赖。它不包含任何媒体、封面、缩略图或元数据，也不附带任何
+  站点的数据副本；它索引的是运行它的人自己已有的库。
+- 连接器只访问使用者自己有权访问的来源，凭据由使用者自己提供。Peach 不绕过机器人验证、付费墙
+  或任何访问控制：遇到这类拦截时它报告「未取得」并停在那里。
+- 从外部来源取回的标题、图片和说明，内容与版权属于各站点及其创作者。Peach 把它们当候选保存，
+  并保留来源与置信度，供使用者自己核对。
 
 ## 目录
 
@@ -44,6 +80,18 @@ peach-app/
 
 仓库不保存媒体、数据库、凭据、日志、`.venv`、构建产物或 worktree。
 
+## 前置条件
+
+- **Python 3.12 或更高**：`requires-python` 的硬要求，维护者以 3.14 运行，CI 同时测 3.12 与 3.14。Windows 需要 py launcher（`py -3.14`，按本机装的版本换）；控制台是 cp936 代码页时 CLI 的中文输出会乱码，设 `PYTHONIOENCODING=utf-8` 即可。
+- **Git**：以可编辑方式安装要从检出的仓库运行。
+- **FFmpeg 与 ffprobe**：不随仓库分发，仓库里也没有下载器。查找顺序：环境变量 `PEACH_FFMPEG` / `PEACH_FFPROBE` → `<数据根>/tools/ffmpeg/bin/ffmpeg(.exe)` 与 `ffprobe(.exe)` → `PATH`。缺了 `/healthz` 报 `ffmpeg: unavailable`，抽帧、接触表、探测和封面全部不可用；浏览与播放兼容格式仍可用。
+- **openssl**（可选，仅 HTTPS）：生成本机 CA 的前置。Windows 上通常来自 Git for Windows（安装时选把 Unix 工具放进 `PATH`）。缺了 `peach init` 打印「未生成本机 CA」并正常完成，装好后 `peach init --force` 补上。
+- Node 不是运行前置，只用于维护固定的前端文件（见「依赖维护」）。
+
+## 下载制品
+
+Windows 调试用户下载 [GitHub Releases](https://github.com/longmeidao/peach/releases) 的 `Peach-<版本>-windows-x64.zip`，完整解压后双击 `Peach.exe`，在首次设置页选择媒体文件夹即可开始。程序自带运行环境，支持本机访问；配置入口在页面「设置」和托盘菜单。FFmpeg 另装，更新时完整替换程序目录。详细步骤见 [Windows 测试版](docs/TESTING_DESKTOP.md)。macOS 当前按下面的源码安装流程使用。
+
 ## 安装
 
 三步，不需要事先准备任何目录或配置文件。在仓库根目录执行：
@@ -54,12 +102,42 @@ peach-app/
 & .\.venv\Scripts\peach.exe init                    # macOS: ./.venv/bin/peach init
 ```
 
-`peach init` 建数据根、把账本迁到最新 schema、生成本机 CA，并写出 `<数据根>/config.toml`。
-默认数据根是仓库同级的 `peach-data/`，`--data-root` 可改，环境变量 `PEACH_DATA_ROOT` 覆盖它。
-之后 `peach serve` 就能起服务；监听地址、端口、媒体盘符映射和复制开关都在那个设置文件里改，
-逐项说明见 [`docs/OPERATIONS.md`](docs/OPERATIONS.md)。
+不带参数的 `peach init` 在终端里问五个问题，每一题回车即接受方括号里的默认值：
 
-没有设置文件也能启动：`/healthz` 报 `configured=false`，页面提示先跑 `peach init`。
+| 问题 | 默认值 |
+| --- | --- |
+| 数据目录（Peach 数据库、缓存和设置文件都放在这里） | 仓库同级的 `peach-data/` |
+| 媒体文件夹（必须已经存在，可以在外置硬盘上；作为来源 `local`）。答完接着问「再加一个媒体文件夹」，回车结束，几个文件夹都归 `local` | `~\Videos`（macOS 为 `~/Movies`），不存在则必填 |
+| 谁可以访问：1 = 只有这台电脑，2 = 同一局域网的设备 | `2` |
+| 端口 | `8900` |
+| 局域网访问地址（`<名字>.local`，只在允许局域网访问时发布） | `peach` |
+
+回答完它建数据根、把账本迁到最新 schema、生成本机 CA、写出 `<数据根>/config.toml`，然后问
+「现在扫描 <目录>？」（默认是）把那个目录的文件登记进账本，最后打印下一步。设置文件里只有你
+声明过的那一个来源；之后 `peach serve` 就能起服务，`peach scan local` 可以随时重扫。监听地址、
+端口、来源与复制开关都在那个设置文件里改，逐项说明见 [`docs/OPERATIONS.md`](docs/OPERATIONS.md)。
+托盘由 `peach-tray` 启动，不带参数。
+
+不想在终端里回答也行：跳过第三步，直接跑 `peach-tray`（或双击 `Peach.exe` / `Peach.app`）。
+托盘看到这台机器还没配置，就起一条只监听 `127.0.0.1` 的引导服务并把浏览器打开到它，页面
+是同样五个问题的一张表单，外加一个默认勾上的「现在扫描」。提交之后托盘自动停掉引导服务、
+换成正常的 Peach 服务，勾了扫描就在后台跑一遍。这条路和 `peach init` 调的是同一组逻辑，
+落盘结果完全一样。托盘菜单在等待期间显示「等待完成首次设置」，第一项变成「重新打开设置页」。
+
+不想问答就给参数：`peach init --no-input`（或任何一个参数，例如 `--data-root`、`--port`、
+`--mount local=/mnt/media`）按内建默认与参数直接生成；stdin 不是终端时也走这条路。这条路写出的
+设置文件带三个示例来源 `local = R:\media`、`115 = B:/`、`pikpak = A:/`，必须在 `[media.locations]`
+与 `[media.mounts]` 里改成自己的路径，不改的结果是全部来源脱盘，而不是报错。
+
+五个事实：
+
+- 只监听 `127.0.0.1` 不需要口令。要让手机或局域网里别的设备访问（`--host 0.0.0.0`、托盘起的服务都算），就必须有访问口令：`peach init` 已经在 `<数据根>/secrets/auth-token` 生成一份，`peach token` 打印出来，设备第一次访问时贴进登录页。绑非回环地址却读不到口令时 `peach serve` 拒绝启动，因为那等于把整个馆藏和写接口摆在同网段上。
+- 源码开发使用 `-e`；普通安装与 wheel 自带页面和迁移文件，可从任意工作目录运行。
+- 数据根不在仓库同级时，`peach serve` 只按 `PEACH_DATA_ROOT` 和仓库上方几层的 `peach-data/` 找数据根，所以要同时设 `PEACH_DATA_ROOT`；用默认数据根没有这一步。
+- 账本里的路径一律是 Windows 形态。Windows 上媒体目录（一个或几个）直接写进 `[media.locations]`；macOS 上声明根写 `R:\media`（第二个目录起是 `R:\media2`……）、目录按同样顺序写进 `[media.mounts]`，由本机挂载点负责翻译。CloudDrive 不是必需，任何能挂成本地路径的网盘都行；115 与 PikPak 是推荐项，不是要求。
+- 界面目前只有中文。
+
+没有设置文件也能启动：`/healthz` 报 `configured=false`，首页是上面那张首次运行表单。
 
 ## 开发
 
@@ -68,8 +146,10 @@ peach-app/
 
 开发时按功能域运行必要测试，例如 Windows 用 `& .\scripts\test.ps1 -Scope follow`，
 macOS/Linux 用 `./scripts/test.sh follow`。可选域为 `follow`、`catalog`、`media`、`sync`、
-`metadata`、`tooling`；不传参数仍跑 `full`。跨多个域、修改迁移/共享测试设施/依赖、准备发布或
-改动影响面较大时必须跑全量，单一局部功能不再反复跑无关测试。
+`metadata`、`tooling`、`web`、`checks`；默认 `auto` 按改动文件取影响域并集。迁移、共享测试设施、
+依赖、构建和未知影响面选 `full`；CI 与发布显式跑全量。相同代码与环境可复用 24 小时内的记录，
+Windows `-Fresh`、POSIX 第二参数 `--fresh` 强制重跑；显式 `full` 总是实际执行。
+同环境有有效全量基线时，`auto` 只补测新增差异的影响域；未知差异仍做全量验证。
 
 ## 依赖维护
 
@@ -83,8 +163,8 @@ Python 运行时与可选工具全部在 `pyproject.toml` 精确固定版本；�
 | `vision` | 头像、封面的人脸取景脚本 |
 | `maintenance-115` | 115 SHA-1 对账脚本 |
 
-GitHub Dependabot 每周检查 Python、npm 和 GitHub Actions；每个更新 PR 都运行 Windows/macOS、
-Python 3.14 正式测试。前端依赖更新后，先安装锁定包：
+GitHub Dependabot 每周检查 Python、npm 和 GitHub Actions；每个更新 PR 都在 Windows/macOS 上以
+Python 3.12 与 3.14 运行正式测试。前端依赖更新后，先安装锁定包：
 
 ```powershell
 npm ci --ignore-scripts
@@ -163,3 +243,14 @@ Rule34.xxx 标签身份不区分大小写。跨站来源按规范作者归组，
 - [`docs/HANDOFF.md`](docs/HANDOFF.md)：跨任务长期有效的事实与工作约定。
 - [`docs/REUSE.md`](docs/REUSE.md)：新增或替换实现前的复用清单。
 - [`docs/adr/`](docs/adr/)：架构决定、原因和取舍。
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) 与 [`SECURITY.md`](SECURITY.md)：参与方式，以及威胁模型与漏洞报告。
+
+## 许可证
+
+Peach 以 AGPL-3.0-or-later 发布，全文见 [`LICENSE`](LICENSE)。它的实际含义：修改后分发，或修改后作为网络服务
+提供给他人，都必须以同一许可证公开源码。
+
+Copyright (C) 2026 longmeidao
+
+固定在仓库里的第三方前端文件各自保留上游许可证，文件与来源哈希在
+[`web/vendor/`](web/vendor/)。FFmpeg 不随仓库或构建产物分发，由使用者自行安装并遵守其许可证。

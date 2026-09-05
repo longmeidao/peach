@@ -82,7 +82,7 @@ class StylesheetPartitionTests(unittest.TestCase):
         "09-skeleton.css", "10-photolight.css", "11-identity.css", "12-cards.css",
         "13-stage.css", "14-player.css", "15-detail.css", "16-settings.css",
         "17-overlay.css", "18-drawer.css", "19-immersive.css", "20-offdisk.css",
-        "21-online.css", "22-followmanage.css",
+        "21-online.css", "22-followmanage.css", "23-configuration.css",
     )
 
     @classmethod
@@ -133,6 +133,16 @@ class StylesheetPartitionTests(unittest.TestCase):
 
 
 class WebUiSourceTests(unittest.TestCase):
+    def test_index_and_entity_visibility_targets_exist_in_the_page(self):
+        html = (Path(__file__).resolve().parents[1] / "web/index.html").read_text(encoding="utf-8")
+        for start, end in (("async function openIndex(", "  const title="),
+                           ("async function openEntity(", "  /* 大位")):
+            body = self.app_js.split(start, 1)[1]
+            body = body.split(end, 1)[0]
+            for target in re.findall(r"\$\('#([^']+)'\)\.hidden\s*=", body):
+                with self.subTest(target=target):
+                    self.assertIn(f'id="{target}"', html)
+
     @classmethod
     def setUpClass(cls):
         # 页面拆成 index.html + web/css 下的样式分区 + app.js + web/js 下的 ES module。这些断言
@@ -342,7 +352,7 @@ class WebUiSourceTests(unittest.TestCase):
         ".geist-progress", ".watchprogress", ".vjs-play-progress", ".vjs-progress-holder",
         ".range-fill", "slider-thumb", "range-thumb", ".trace .bar", ".tokbar",  # 进度与数据
         "#censorSetting:checked",  # Toggle 开态：Geist Toggle 实测轨道 rgb(0,112,243)
-        ".entitylink", ".flink", ".fsourcelink", ".fcred a", ".tokauthor>a",  # 真正的链接
+        ".entitylink", ".flink", ".fsourcelink", ".fcred a", ".tokauthor>a", ".confighelp a",  # 真正的链接
     )
 
     def test_tungsten_is_reserved_for_focus_links_progress_and_toggle(self):
@@ -375,6 +385,277 @@ class WebUiSourceTests(unittest.TestCase):
                          f"选中态与主动作不得用蓝，改用 --ink／--ink-2 反相：{selected_with_blue}")
         self.assertEqual(offenders, [],
                          f"这些规则的 --tungsten 不在允许的焦点／链接／进度／Toggle 之列：{offenders}")
+
+    def test_field_focus_rings_are_neutral_and_theme_aware(self):
+        """输入框的静止边、悬停边与聚焦环都是当前主题的中性透明色，不是蓝的。
+
+        2026-09-05 实测 vercel.com 后台：输入框静止 1px `--ds-gray-alpha-400`、悬停
+        alpha-500、聚焦 1px alpha-600 再套一圈 4px 的 16% 黑，暗色那档换成 24% 白；
+        整站没有一处焦点或选中用到蓝。同一组 token 写成明暗两档后，全站带输入语义的
+        控件只有这一份配方——否则浅色主题下会留下一圈只在深底上成立的高饱和蓝。
+        """
+        for palette in (":root{", '@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){',
+                        ':root[data-theme="dark"]{'):
+            self.assertPageContains(palette)
+        self.assertPageContains("--field-ring:rgba(0,0,0,.08);--field-ring-hover:rgba(0,0,0,.21);")
+        self.assertPageContains("--field-ring-focus:rgba(0,0,0,.34);--field-glow:rgba(0,0,0,.16);")
+        self.assertPageContains("--field-ring:rgba(255,255,255,.14);--field-ring-hover:rgba(255,255,255,.24);")
+        self.assertPageContains("--field-ring-focus:rgba(255,255,255,.51);--field-glow:rgba(255,255,255,.24);")
+        for selector in ('.geist-search input[type="search"]', ".geist-input", ".preference textarea"):
+            self.assertPageContains(selector + ":hover{border-color:var(--field-ring-hover)}")
+        self.assertPageContains(".search:focus-within{border-color:var(--field-ring-focus);"
+                                "box-shadow:0 0 0 4px var(--field-glow)}")
+        self.assertPageContains('.gselectfield[aria-expanded="true"]{border-color:var(--field-ring-focus);')
+        css = stylesheet_source()
+        self.assertNotIn("color-mix(in srgb,var(--tungsten) 72%,transparent)", css,
+                         "输入框的聚焦环不用蓝，走 --field-ring-focus")
+
+    def test_fieldsets_put_the_bright_face_on_the_content_and_the_bar_below_it(self):
+        """操作条以中性透明灰叠在框体上，与骨架使用同一灰阶。"""
+        self.assertPageContains("--page:#FAFAFA;")
+        self.assertPageContains("--page:#04060A;")
+        for selector in (".cleanupfieldset", ".reviewitem", ".fsec",
+                         ".resourcesyncbox,.resourcepanel"):
+            self.assertPageContains(selector + "{", f"{selector} 应有一条自己的规则")
+        css = stylesheet_source()
+        for name in (".cleanupfieldset>.geist-fieldset-footer", ".reviewitem .reviewactions",
+                     ".fsechead", ".fsecfoot", ".resourcesyncfooter,.resourceapplyrow"):
+            start = css.index(name + "{")
+            rule = css[start:css.index("}", start)]
+            self.assertIn("background:var(--overlay-5)", rule, f"{name} 是操作条")
+            self.assertIn("var(--line-soft)", rule, f"{name} 与正文之间是一条发丝线")
+
+    def test_buttons_keep_two_tiers_a_solid_primary_and_a_bright_secondary(self):
+        """按钮只有两档：主动作实底墨色，次级是比容器亮一档的面加一圈发丝边。
+
+        2026-09-05 实测 vercel.com 的仪表盘工具行，两档同屏并排：主动作 `#171717` 底
+        白字不带描边，次级 `#FFFFFF` 底 `#171717` 字加 `0 0 0 1px #EBEBEB`。次级不是透明的
+        ——压在 `#FAFAFA` 的操作条上时，透明会让按钮和条子连成一片，只剩一条边框在飘。
+        """
+        self.assertCode(".geist-button{box-sizing:border-box;height:32px;padding:0 14px;"
+                        "border:1px solid var(--line-soft);border-radius:var(--control-radius);"
+                        "background:var(--ground);color:var(--ink);display:inline-flex;")
+        self.assertPageContains(".geist-button:hover:not(:disabled){background:var(--surface)}")
+        self.assertPageContains(".geist-button.primary{border-color:var(--ink);background:var(--ink);color:var(--ground)}")
+        css = stylesheet_source()
+        for name in (".cleanupfieldset button{", "\n.fbtn{", ".resourceaction{"):
+            start = css.index(name)
+            rule = css[start:css.index("}", start)]
+            self.assertIn("background:var(--ground)", rule, f"{name} 是次级档，自己是一块亮面")
+            self.assertIn("border:1px solid var(--line-soft)", rule, f"{name} 的边与次级档一致")
+
+    def test_the_scrollbar_thumb_floats_over_the_content_and_takes_no_width(self):
+        """滑块自绘、浮在内容上，一列宽度都不占；颜色取主题变量。
+
+        原生滚动条自己占 15px 实宽，浅色一档的槽还是块比 `--page` 更亮的死白，窗口
+        右边于是常年挂着一条从头贯到底的白带。滑块不写死灰值：写死一档只在一种主题
+        下成立，深灰滑块落在浅色底上就是一条突兀的粗杠。几何按 2026-09-05 实测
+        vercel.com 侧栏：轨道 12px 只是命中区，看得见的是 3px，悬停 6px。
+        """
+        css = stylesheet_source()
+        rules = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
+        self.assertNotIn("--sb:", rules, "滚动条不需要专属颜色 token")
+        self.assertIn("html{color-scheme:light;scroll-padding-top:calc(var(--topH) + 8px);"
+                      "scrollbar-width:none}", rules)
+        self.assertNotIn("scrollbar-color", rules, "原生滑块已经不画了，没有配色可调")
+        self.assertIn(".ovtrack{position:absolute;z-index:2;pointer-events:none}", rules)
+        self.assertIn(".ovtrack.ov-y{right:0;top:8px;bottom:8px;width:12px}", rules)
+        self.assertIn(".ovtrack.ov-x{left:8px;right:8px;bottom:0;height:12px}", rules)
+        self.assertIn(".ovthumb{position:absolute;border-radius:var(--pill-radius);"
+                      "background:var(--field-ring-hover);", rules)
+        self.assertIn(".ov-y .ovthumb{right:0;top:0;width:3px}", rules)
+        self.assertIn(".ov-x .ovthumb{left:0;bottom:0;height:3px}", rules)
+        self.assertIn("transition:width .15s cubic-bezier(.4,0,.2,1),height .15s cubic-bezier(.4,0,.2,1)}",
+                      rules)
+        self.assertIn(".ov-y:hover .ovthumb,.ov-y.dragging .ovthumb{width:6px}", rules)
+        self.assertIn(".ov-x:hover .ovthumb,.ov-x.dragging .ovthumb{height:6px}", rules)
+        # 原生那条只在覆盖式接上之后才藏：脚本没跑到的容器留着系统滚动条兜底。
+        self.assertIn("[data-overlay-scrollbar]{scrollbar-width:none}", rules)
+        self.assertIn("[data-overlay-scrollbar]::-webkit-scrollbar{display:none}", rules)
+        self.assertNotIn("scrollbar-width:thin", rules, "细滚动条也是原生那条，统一交给覆盖式")
+        # 粗指针没有悬停也没有可指的滑块，但滑块照画：原生的已经关掉，跟着一起收
+        # 就等于触屏上读不出这一列有多长、自己在哪儿。
+        self.assertIn("@media (pointer:fine){.ovtrack{pointer-events:auto}}", rules)
+        self.assertNotIn("::-webkit-scrollbar-thumb", rules, "滑块是元素，不是伪元素")
+
+    def test_the_page_track_only_takes_pointer_events_on_the_thumb_itself(self):
+        """整页那条轨道横跨窗口右边，命中区必须收到 3px 的滑块上。
+
+        侧栏轨道 12px 宽、只覆盖侧栏，吃掉的点击本来就是侧栏自己的。整页那条不一样：
+        它从窗口顶贯到底，12px 的透明条会把右边缘所有点击一并吃掉，而设置面板正贴
+        在那儿。宽出来的命中区换不到什么，丢掉的是右侧一整列控件。
+        """
+        css = stylesheet_source()
+        rules = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
+        self.assertIn(".ovtrack.page{position:fixed;top:0;bottom:0;right:0;z-index:91;"
+                      "pointer-events:none}", rules)
+        self.assertIn("@media (pointer:fine){.ovtrack.page .ovthumb{pointer-events:auto}}", rules)
+        self.assertIn(".ovtrack.page:hover .ovthumb{width:3px}", rules)
+        self.assertIn(".ovtrack.page .ovthumb:hover,.ovtrack.page.dragging .ovthumb{width:6px}",
+                      rules)
+
+    def test_the_overlay_thumb_is_sized_and_moved_by_the_measured_ratio(self):
+        """滑块高按可视高/内容高，位移按滚动进度×可走距离；不可滚就整条收起。
+
+        2026-09-05 实测 vercel.com 侧栏：轨道 789px、可视 805、内容 851，滑块高
+        746.35 —— 正好是 805/851×789，位移写在行内 `transform:translateY()` 上。
+        另一半是自锁陷阱：藏起来的轨道 `clientHeight` 是 0，拿它当「量不到」就再也
+        显不回来，所以顺序必须是先显再量。
+        """
+        self.assertPageContains("const thumbSize=Math.max(24,Math.min(trackSize,"
+                                "size/content*trackSize));")
+        self.assertPageContains("const offset=travel>0?at/range*travel:0;")
+        self.assertPageContains("thumb.style[vertical?'height':'width']=`${thumbSize}px`;")
+        self.assertPageContains("thumb.style.transform=`translate${vertical?'Y':'X'}(${offset}px)`;")
+        self.assertPageContains("if(range<=1){track.hidden=true;return}")
+        self.assertPageContains("track.hidden=false;")
+        # 抽屉重建后内容长短变了，容器盒子没变；整页那条改看 body 的高度，避免在
+        # documentElement 上挂 subtree 的 MutationObserver。
+        self.assertPageContains("if(root)new ResizeObserver(sync).observe(document.body);")
+        self.assertPageContains("else new MutationObserver(sync).observe("
+                                "container,{childList:true,subtree:true});")
+
+    def test_the_drawer_scrolls_in_an_inner_layer_so_the_track_can_stay_put(self):
+        """抽屉自己不滚，滚的是里面那层：跟着内容一起滚的轨道等于没有轨道。"""
+        self.assertPageContains('<aside class="drawer" id="drawer">'
+                                '<div class="drawerscroll" id="drawerScroll"></div></aside>')
+        self.assertPageContains("$('#drawerScroll').innerHTML=")
+        self.assertPageContains(".drawerscroll{height:100%;box-sizing:border-box;"
+                                "padding:16px 12px 60px;")
+        self.assertPageContains("overflow-y:auto;overflow-x:hidden;scrollbar-width:none}")
+        self.assertPageContains(".drawer{position:fixed;top:0;bottom:0;left:0;width:360px;")
+        self.assertPageContains("attachOverlayScrollbar(document.documentElement,{variant:'page'});")
+        self.assertPageContains("attachOverlayScrollbar($('#drawerScroll'));")
+
+    def test_every_drawer_repaint_writes_into_the_scroll_layer_not_the_host(self):
+        """#drawer 是滚动容器和轨道的宿主：谁把它整块 innerHTML 换掉，buildBars() 要写的
+        容器就没了，首页停在「正在读取作品」。所有重画只能落在 #drawerScroll 里。"""
+        source = self.page
+        self.assertNotIn("drawer.innerHTML=", source)
+        self.assertNotIn("$('#drawer').innerHTML=", source)
+        self.assertNotIn("$('#drawer').insertAdjacentHTML(", source)
+        self.assertPageContains("const scroll=$('#drawerScroll'),key=surfacePath()+location.search;")
+        self.assertPageContains("scroll.innerHTML=`<div style=\"display:flex;align-items:center;justify-content:space-between;margin-bottom:10px\">")
+        self.assertPageContains("scroll.insertAdjacentHTML('beforeend',`<div class=\"sec cat-online\">")
+        # 换页面的判据记在滚动层上：syncSidebarSurface() 判定换页就 replaceChildren()，
+        # 传宿主进去会连 #drawerScroll 一起清掉，和整块 innerHTML 是同一种失败。
+        self.assertPageContains("syncSidebarSurface(scroll,key)")
+        self.assertNotIn("syncSidebarSurface(drawer", source)
+        self.assertNotIn("syncSidebarSurface($('#drawer')", source)
+
+    def test_anchored_menus_open_in_the_top_layer_so_animated_ancestors_cannot_clip_them(self):
+        """自绘下拉的面板进顶层，祖先上的 transform 与 overflow 都够不着它。
+
+        `position:fixed` 只在没有被祖先接管时才相对视口：祖先上一个 transform、filter 或
+        backdrop-filter 就会成为它的包含块，算好的视口坐标于是整体偏移，还要被那个祖先的
+        overflow 裁掉。设置面板的卡片正是这种祖先——入场动画的 fill-mode 让 transform 一直
+        挂在上面——菜单于是开在看不见的地方，从屏幕上读出来就是「下拉点不开」。
+        """
+        self.assertCode('<div class="popmenu gselectmenu" role="listbox" '
+                        'aria-label="${esc(label)}" popover="manual" data-select-menu hidden>')
+        self.assertPageContains("const inTopLayer=menu.hasAttribute('popover');")
+        self.assertPageContains("menu.hidden=false;if(inTopLayer)menu.showPopover();position();")
+        self.assertPageContains("if(inTopLayer&&menu.matches(':popover-open'))menu.hidePopover();")
+        # 浏览器给 [popover] 的是 inset:0 加 margin:auto 的居中盒，不拆掉的话菜单会被
+        # 拉宽并落在屏幕正中，而定位算的是 left/top。
+        self.assertPageContains(".popmenu[popover]{inset:auto;margin:0}")
+
+    def test_the_settings_backdrop_dims_into_the_page_palette_without_blur(self):
+        """设置面板的遮罩是当前主题里退一档的底色，不是压暗的黑，也不带模糊。
+
+        2026-09-05 实测 vercel.com 的 Modal：浅色是 `#F2F2F2` 压到 80% 不透明度、不带
+        `backdrop-filter`，暗色换成纯黑同样 80%。压暗的黑在浅色主题下会把整页拉成一片脏灰，
+        而这一档只是把底下的内容退到同一片浅灰里，卡片仍然是全站最白的那一块。
+        """
+        self.assertPageContains("background:rgba(242,242,242,.8);padding:18px;")
+        self.assertPageContains(':root[data-theme="dark"] .settingspanel{background:rgba(0,0,0,.8)}')
+        css = stylesheet_source()
+        for name in (".settingspanel", ".settingscard", ".settingshead"):
+            start = css.index(name + "{")
+            rule = css[start:css.index("}", start)]
+            self.assertNotIn("backdrop-filter", rule, f"{name} 不带模糊")
+
+    def test_the_page_recedes_so_chrome_and_boxes_can_float_on_it(self):
+        """页面底是退到后面那张面，顶栏、窄栏和页面上的盒子填浮在它上面那张。
+
+        2026-09-05 实测 vercel.com 后台：页面底 `#FAFAFA`，部署行与设置 fieldset 正文
+        `#FFFFFF` 配 1px 的 8% 黑、不带投影；暗色一档是纯黑页面配 `#0A0A0A` 的面，方向不变。
+        两张面填成同一个颜色时，整页只剩文字在排层级，控件和内容分不出谁在前面。
+        """
+        self.assertPageContains("body{background:var(--page);")
+        css = stylesheet_source()
+        for name in (".top", ".edge"):
+            start = css.index(chr(10) + name + "{")
+            rule = css[start:css.index("}", start)]
+            self.assertIn("var(--ground)", rule, f"{name} 浮在页面底之上")
+        # 直接坐在页面上的盒子不能再填 --surface：它与 --page 在浅色一档是同一个 #FAFAFA，
+        # 填上去等于没有盒子。--surface 只剩交互与内嵌那一档。
+        for name in (".insightpanel", ".junkcard", ".managebar", ".emptystate"):
+            start = css.index(name + "{")
+            rule = css[start:css.index("}", start)]
+            self.assertIn("var(--ground)", rule, f"{name} 是页面上的一个面")
+
+    def test_only_the_home_filter_bar_draws_the_dashed_unapplied_edge(self):
+        """虚线只在 `#tagbar` 那一排，别处的药丸一律实线；选中一律填 --hover。
+
+        2026-09-05 实测 vercel.com/<team>/~/deployments 的筛选令牌：未生效
+        `rgba(0,0,0,0)` 配 `1px dashed rgba(0,0,0,.21)`，已生效 `#FFFFFF` 配
+        `1px solid rgba(0,0,0,.08)`，两个数正是 `--field-ring-hover` 与 `--field-ring`。
+        只借这一处：虚线说的是「这条筛选还没加上去」，配得上它的只有恒常在场、
+        可开可关的那一排；关注页和实体页的药丸随内容来去，全画成虚线，整页就是
+        一片没生效的框。悬停只把虚线拉成实线，是 Peach 自己加的中间档——Vercel 的
+        令牌可叠加，悬停预演成生效态没有代价；首页这一排是单选、恒有一颗生效。
+        """
+        css = stylesheet_source()
+        for base in (".pill", ".brandpill"):
+            start = css.index(chr(10) + base + "{")
+            rule = css[start:css.index("}", start)]
+            self.assertIn("background:transparent", rule, f"{base} 未生效不填色")
+            self.assertIn("1px solid var(--field-ring)", rule, f"{base} 默认是实线")
+            self.assertNotIn("dashed", rule, f"{base} 的默认态不画虚线")
+            self.assertPageContains(base + ":hover{border-color:var(--field-ring-hover);color:var(--ink)}")
+            self.assertPageContains(base + '[aria-pressed="true"]{border-color:var(--field-ring);'
+                                           "background:var(--hover);color:var(--ink)}")
+        self.assertPageContains('#tagbar .pill[data-tag]:not([aria-pressed="true"])'
+                                "{border-style:dashed;border-color:var(--field-ring-hover)}")
+        self.assertPageContains(
+            '#tagbar .pill[data-tag]:not([aria-pressed="true"]):hover{border-style:solid}')
+        # 药丸里的虚线只此一条：多一条就说明它不再指向「这条筛选还没加上去」。
+        dashed_pills = [line for line in css.splitlines()
+                        if "dashed" in line and "pill" in line and not line.startswith(" ")]
+        self.assertEqual(len(dashed_pills), 1, dashed_pills)
+        # 左边四枚视图胶囊四选一、恒有一枚生效，「这条筛选还没加上去」对它们从来不成立。
+        self.assertNotIn("[data-state]", dashed_pills[0])
+        # 已经生效的交集筛选和选中的药丸是同一件事，穿同一身。
+        start = css.index(".combo .cb{")
+        applied = css[start:css.index("}", start)]
+        self.assertIn("background:var(--hover)", applied)
+        self.assertIn("1px solid var(--field-ring)", applied)
+        # 没有 JS 会挂 .act，留着只会让人以为选中态有两套写法。
+        self.assertPageLacks(".pill.act{")
+
+    def test_the_video_area_is_one_frame_and_the_portrait_strip_shares_its_face(self):
+        """框画在网格上，卡片本身不带框；竖屏带和框、和卡片同一张面。
+
+        一张卡一个框会在一屏里画出几十条互相平行的细线，读起来是表格不是图墙。
+        垃圾复核用的是同一个 `#grid`，但它那张卡自己就是一块 `--ground` 的面，
+        外面再套一层同色的框只会把卡吃掉——所以这条按内容认，不按页面认。
+        """
+        self.assertPageContains(".grid:has(>.card:not(.junkcard)),.grid:has(>.catalog-skeleton){")
+        css = stylesheet_source()
+        start = css.index(".grid:has(>.card:not(.junkcard))")
+        frame = css[start:css.index("}", start)]
+        for piece in ("background:var(--ground)", "border:1px solid var(--field-ring)",
+                      "border-radius:var(--floating-radius)"):
+            self.assertIn(piece, frame, "视频区是一整块面")
+        start = css.index(chr(10) + ".card{")
+        card = css[start:css.index("}", start)]
+        self.assertNotIn("background:", card, "卡片不自带填色，框由网格出")
+        self.assertNotIn("border:", card, "卡片不自带描边，框由网格出")
+        start = css.index(chr(10) + ".shorts-inline{")
+        strip = css[start:css.index("}", start)]
+        self.assertIn("background:var(--ground)", strip, "竖屏带和视频段同一张面")
+        self.assertNotIn("var(--page)", strip, "底色一退就读成陷进去的一格")
 
     # 选中态允许高对比反相的两处：都压在媒体画面上，画面本身会把 --hover 那层
     # 7% 白吃掉，读不出按没按。
@@ -481,6 +762,7 @@ class WebUiSourceTests(unittest.TestCase):
         ".playerstatsbtn",  # 播放器覆盖层，悬停走 ::after 另一层
         ".fb .like",        # 这一排彩色反馈按钮的既有约定就是悬停预览按下后的颜色
         ".tagpickitem",     # 选中由图标换成对勾表达，填充留给悬停与键盘游标
+        ".gselectmenu button",  # 同上；2026-09-04 实测 vercel.com 后台的菜单行，悬停与选中共用同一枚 5% 填充
         ".edge button",     # 窄栏，实测 vercel.com/geist 左栏就是悬停抬填充
         ".dnav button",     # 抽屉是窄栏的展开态，同一条例外
     )
@@ -543,7 +825,7 @@ class WebUiSourceTests(unittest.TestCase):
                 for state in self.STATE_TOKENS:
                     if part.endswith(state):
                         selected_bases.add(part[: -len(state)].strip())
-        self.assertIn(".pill", selected_bases, "基线选择器没被认出来，测试本身失效了")
+        self.assertIn(".chip", selected_bases, "基线选择器没被认出来，测试本身失效了")
         offenders = []
         for leaf, body in self._leaf_rules():
             if ":hover" not in leaf or "background:var(--hover)" not in body:
@@ -602,7 +884,7 @@ class WebUiSourceTests(unittest.TestCase):
         css = re.sub(r"/\*.*?\*/", "", stylesheet_source(),
                      flags=re.S)
         self.assertNotIn("scale:.96", css, "Geist 按下没有缩放，别再加回来")
-        disabled = ("{background:var(--surface);border-color:var(--border-15);"
+        disabled = ("{background:var(--sunk);border-color:var(--line-soft);"
                     "color:var(--muted);cursor:default}")
         for selector in (".geist-button:disabled", ".fbtn:disabled",
                          ".tagselection button:disabled", ".fpickactions button:disabled",
@@ -695,11 +977,11 @@ class WebUiSourceTests(unittest.TestCase):
                 (".geist-button{", "var(--control-radius)"),
                 (".searchmenu{", "var(--floating-radius)"),
                 (".searchoption{", "var(--control-radius)"),
-                (".playlistcreate button,.playlistactions button{", "var(--control-radius)"),
+                (".playlistactions button{", "var(--control-radius)"),
                 (".playlistdialog{", "var(--floating-radius)"),
                 (".playlistpickrow{", "var(--control-radius)"),
                 (".settingscard{", "var(--floating-radius)"),
-                (".settingrow select{", "var(--control-radius)"),
+                (".gselectfield{", "var(--control-radius)"),
         ):
             start = css.index(selector)
             rule = css[start:css.index("}", start)]
@@ -740,9 +1022,9 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_settings_titlebar_owns_the_full_width_above_its_scroll_container(self):
         self.assertPageContains(".settingsscroll{flex:1;min-height:0;overflow-y:auto;padding:0 20px 20px")
-        self.assertPageContains("scrollbar-gutter:stable both-edges;overscroll-behavior:contain")
+        self.assertPageContains("padding:0 20px 20px;overscroll-behavior:contain}")
         self.assertPageContains(".settingshead{z-index:2;display:flex")
-        self.assertPageContains("border-bottom:1px solid var(--line-soft);background:var(--frost-panel)")
+        self.assertPageContains("border-bottom:1px solid var(--field-ring);background:var(--ground)")
         self.assertCode('<div class="settingscard">\n    <div class="settingshead">')
         self.assertCode('</div>\n    <div class="settingsscroll">')
         self.assertPageContains("@media(max-width:600px){.settingsscroll{padding:0 17px 17px}")
@@ -768,8 +1050,8 @@ class WebUiSourceTests(unittest.TestCase):
     def test_browser_chrome_focus_and_mobile_inputs_follow_the_ui_checklist(self):
         self.assertPageContains('<meta name="theme-color" content="#FFFFFF"')
         self.assertPageContains('<meta name="theme-color" content="#080A0D"')
-        # 聚焦环用 color-mix 柔化：边框 72% 主调 + 26% 的外圈，仍是「看得见的焦点」。
-        self.assertPageContains('.search:focus-within{border-color:color-mix(in srgb,var(--tungsten) 72%,transparent);box-shadow:')
+        # 聚焦环是中性的：1px 提到 alpha-600 的边加一圈 4px 辉光，仍是「看得见的焦点」。
+        self.assertPageContains('.search:focus-within{border-color:var(--field-ring-focus);box-shadow:0 0 0 4px var(--field-glow)}')
         self.assertPageContains('@media (max-width:760px){input,textarea,select{font-size:16px!important}}')
         self.assertPageContains('button,a,input,textarea,select,summary{touch-action:manipulation}')
 
@@ -787,10 +1069,9 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('<div class="geist-search" data-search-input>')
         self.assertPageContains(
             """<span class="geist-search-prefix" data-search-prefix>${icon('search')}</span>""")
-        # 焦点环与顶部搜索框同一个配方，不是第二种蓝。
+        # 焦点环与顶部搜索框同一个配方，中性不带色相。
         self.assertCode('.geist-search input[type="search"]:focus{outline:0;'
-                        'border-color:color-mix(in srgb,var(--tungsten) 72%,transparent);'
-                        'box-shadow:0 0 0 3px color-mix(in srgb,var(--tungsten) 26%,transparent)}')
+                        'border-color:var(--field-ring-focus);box-shadow:0 0 0 4px var(--field-glow)}')
         # 忙态换的是前缀位，输入框自己不动；hook 跟着组件走，不留关注页专属的名字。
         self.assertPageContains("form.querySelector('[data-search-prefix]')")
         self.assertPageContains("if(prefix)prefix.innerHTML=spinnerHtml('查找中');")
@@ -831,8 +1112,8 @@ class WebUiSourceTests(unittest.TestCase):
         也不该重画表头。表头里随查询变的只有计数，单独改它。
         """
         self.assertPageContains("async function openIndex(kind,q,push=true,refine=false)")
-        self.assertPageContains("if(!refine)showIndexLoading(people?'正在读取作者':'正在读取标签')")
-        self.assertCode("""if(refine&&$('#iq')){
+        self.assertPageContains("if(!refine)showIndexLoading('正在读取'+(INDEX_TITLES[kind]||'标签'),kind,q)")
+        self.assertCode("""if($('#indexFilters')){
     $('#indexCount').textContent=countText;
     $('#indexFilters').innerHTML=filters;
     $('#indexBody').innerHTML=body;
@@ -851,7 +1132,7 @@ class WebUiSourceTests(unittest.TestCase):
         # 目录页四个筛选态的标题就是筛选名本身，和侧栏取同一份 STATE_LABELS。
         self.assertPageContains("title:STATE_LABELS[key],open:()=>openCatalog(path)")
         self.assertPageContains('syncPageTitle(path);')
-        self.assertPageContains('queueMicrotask(()=>{syncHeaderActions();paintListTitle()})')
+        self.assertPageContains('queueMicrotask(()=>{syncHeaderActions();paintListTitle();buildDrawerNavigation()})')
         self.assertPageContains("queueMicrotask(()=>$('#settingsClose').focus())")
         self.assertPageContains('if(settingsReturnFocus&&document.contains(settingsReturnFocus))')
         self.assertPageContains("if(e.key!=='Tab')return")
@@ -883,6 +1164,30 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("等 ${performerTotal} 人")
         self.assertPageContains(".mavstack .mav+.mav{margin-left:-14px}")
 
+    def test_card_tags_drop_whole_names_instead_of_ellipsizing_them(self):
+        """卡片上宁可少放几个标签，也要把名字写全。
+
+        截成「主…」「背…」之后那既不是标签，也认不出是哪一个。所以这一行可换行、
+        只有一颗标签那么高：放不下的整颗落到第二行，被容器整颗切掉，切掉的是标签本身。
+        `.tg` 只留 `max-width:100%` 这一层兜底——一颗标签自己就比整张卡还宽时，
+        横着溢出会压到卡片外面，那时候省略号是唯一的出路。
+        """
+        css = stylesheet_source()
+        start = css.index(chr(10) + ".ctags{")
+        row = css[start:css.index("}", start)]
+        self.assertIn("flex-wrap:wrap", row, "放不下的整颗换行，不横着截断")
+        self.assertIn("align-content:flex-start", row)
+        self.assertIn("overflow:hidden", row)
+        self.assertIn("height:calc(var(--fs-xs)*1.45 + var(--tag-pad-y)*2 + 2px)", row,
+                      "行高按 .tg 的三个 token 算，改字号时不用回来对第二个数")
+        start = css.index(chr(10) + ".tg{")
+        tag = css[start:css.index("}", start)]
+        self.assertIn("max-width:100%", tag, "只兜底一颗标签比整张卡还宽的情形")
+        self.assertNotIn("max-width:32%", tag)
+        self.assertPageContains(
+            'body[data-density="dense"] .card .ctags .tg{max-width:100%;'
+            "overflow:hidden;text-overflow:ellipsis}")
+
     def test_dense_cards_use_three_fixed_rows_without_changing_jav_metadata_height(self):
         # 顶栏密集模式固定标题、身份、标签三行；JAV 小图和预览图只换图片来源，
         # 不再给其中一种额外加一行高度。
@@ -903,15 +1208,21 @@ class WebUiSourceTests(unittest.TestCase):
             "function entityFaceImg({kind='performer',id=null,hasImage=false,rep=null,")
         self.assertPageContains("const useEntity=!!(id&&hasImage);")
         self.assertPageContains(
-            "const src=useEntity?`/entity-image?kind=${kind}&id=${id}`:(rep?`/avatar?id=${rep}`:'');")
+            "const entitySrc=useEntity?`/entity-image?kind=${kind}&id=${id}`:'';")
+        self.assertPageContains("const avatarSrc=rep?`/avatar?id=${rep}`:'';")
+        self.assertCode(
+            "const src=useLogo?`/logo?studio=${encodeURIComponent(logo)}&variant=${logoVariant}`\n"
+            "    :(entitySrc||avatarSrc||(mark?`/link-mark?id=${mark}`:''));")
         # 一环都取不到就一个 `<img>` 都不出，首字母垫底直接露出来。
         self.assertPageContains("if(!src)return '';")
         # kind 参数化后，创作者复核卡片也能走同一条链；默认仍是 performer，
         # 既有调用点不受影响。
-        self.assertPageContains("function avatarInner(name,ref,repId,kind='performer')")
+        self.assertPageContains(
+            "function avatarInner(name,ref,repId,kind='performer',markId=null,logoName='')")
         # 兜底链声明在模板里，行为归 image-fallback 那条委托监听。
-        self.assertPageContains("const fallbacks=useEntity&&rep?[`/avatar?id=${rep}`]:[];")
-        self.assertPageContains("imageFallbackAttrs({dropStyle:dropStyle&&useEntity,fallbacks})")
+        self.assertCode("const fallbacks=useLogo?[entitySrc,avatarSrc].filter(Boolean)\n"
+                        "    :(useEntity&&avatarSrc?[avatarSrc]:[]);")
+        self.assertPageContains("imageFallbackAttrs({dropStyle:dropStyle&&framed,fallbacks})")
 
     def test_no_face_image_is_emitted_before_the_server_says_it_can_be_fetched(self):
         """先问再出图：没有可用性标志兜住的 `/entity-image`／`/avatar` 一处都不许有。
@@ -947,8 +1258,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("hasImage:!!(ref&&ref.has_image)")
         # 索引页（`/api/index`）：实体图看 has_image、代表作头像看 has_avatar，kind
         # 跟着这一页的身份走——创作者的图写成 `performer-<id>.img` 是读不到的。
-        self.assertPageContains("x.entity_id?{id:x.entity_id,has_image:x.has_image}:null,")
-        self.assertPageContains("x.has_avatar?x.rep:null, entityKind)")
+        self.assertPageContains("ref?{id:ref,has_image:x.has_image}:null,")
+        self.assertPageContains("x.has_avatar&&!company?x.rep:null, kind, x.mark, x.has_logo?x.k:'')")
         # 口味榜（`/api/taste`）：两列直接长在榜行上，判据仍是同一对。
         self.assertPageContains(
             "const ref=row.entity_id?{id:row.entity_id,has_image:row.has_image}:null,")
@@ -1011,10 +1322,10 @@ class WebUiSourceTests(unittest.TestCase):
         # 资料页圆框按检出的人脸取景；换回落图时必须先摘掉内联 object-position——
         # 回落图是另一张照片，脸不在同一位置。
         self.assertPageContains("function facePos(f)")
-        self.assertPageContains("style:facePos(d.avatar_focus),dropStyle:true")
+        self.assertPageContains("style:company?'':facePos(d.avatar_focus),dropStyle:true")
         # 取景是按实体图算出来的，所以内联 style 和 data-drop-style 只贴给第一环。
-        self.assertPageContains("${useEntity?style:''}")
-        self.assertPageContains("imageFallbackAttrs({dropStyle:dropStyle&&useEntity,fallbacks})")
+        self.assertPageContains("${framed?style:''}")
+        self.assertPageContains("imageFallbackAttrs({dropStyle:dropStyle&&framed,fallbacks})")
         self.assertPageContains("if ('dropStyle' in image.dataset) image.removeAttribute('style');")
 
     def test_entity_link_favicons_do_not_leak_the_page_url_to_the_linked_site(self):
@@ -1250,9 +1561,15 @@ class WebUiSourceTests(unittest.TestCase):
         # 去重靠调用点的 seen 集合。
         self.assertPageContains("const seen=new Set(tokList.map(x=>x.id))")
 
-    def test_scrollbar_gutter_is_reserved_so_overlays_do_not_shift_the_page(self):
-        """设置面板给 body 加 overflow:hidden，滚动条一消失整页就横向跳一次。"""
-        self.assertPageContains("scrollbar-gutter:stable}")
+    def test_no_gutter_is_reserved_because_nothing_disappears_when_scrolling_locks(self):
+        """设置面板给 body 加 overflow:hidden 时，整页不再横向跳。
+
+        `scrollbar-gutter:stable` 用永久扣下 15px 换「消失时不跳」。滑块浮在内容上，
+        没有东西会消失，跳版的前提不成立，那一列也就不必留。
+        """
+        css = stylesheet_source()
+        rules = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
+        self.assertNotIn("scrollbar-gutter:stable;", rules)
         self.assertPageContains("body.settings-open{overflow:hidden}")
 
     def test_closing_a_deep_linked_player_reloads_the_home_feed(self):
@@ -1279,6 +1596,11 @@ class WebUiSourceTests(unittest.TestCase):
             "return it.location==='online'&&it.follow_item_id")
         self.assertPageContains("const proxied=followStreamSource(it);")
         self.assertPageContains("const onlineGated=online&&!it.follow_item_id;")
+        self.assertPageContains("if(it.location==='online'&&it.follow_item_id){")
+        self.assertPageContains('await openFollowDetail(it.follow_item_id,false,null,true)')
+        self.assertPageContains("if(location.pathname!=='/follow'){await restoreRoute();return}")
+        self.assertPageContains('it.follow_thumb_url')
+        self.assertPageContains('it.follow_tags||it.tags||[]')
         self.assertPageLacks("这条内容从关注候选保存；媒体与原始页面在关注详情中查看。")
 
     def test_follow_detail_has_an_explicit_download(self):
@@ -1432,12 +1754,17 @@ class WebUiSourceTests(unittest.TestCase):
         头像先看 performer、名字先看 creator 的话，碰上同名的 creator/performer
         重复实体（账本里 35 组）就会一个跳 /performers/x、另一个跳 /creators/x。
         """
-        self.assertPageContains(
-            "const avatarKind=identity.kind||(performer?'performer':"
-            "(primaryCreator?'creator':(it.studio?'studio':'')));")
-        self.assertPageContains(
-            "const avatarName=identity.kind?identity.name:"
-            "(performer||primaryCreator||it.studio||who);")
+        self.assertPageContains("const avatarKind=identity.kind;")
+        self.assertPageContains("const avatarName=identity.name;")
+        self.assertPageContains("const avatarRef=avatarKind==='performer'?performerRef:it.creator_entity;")
+        self.assertPageContains("const inner=avatarInner(avatarName,avatarRef,")
+
+    def test_missing_person_identity_uses_unassigned_on_cards_and_players(self):
+        self.assertPageContains(":{kind:'',name:'未归属'});")
+        self.assertPageContains("const who=(it.performers||[])[0]||it.creator||'未归属';")
+        self.assertPageContains("const ownerName=cast.length?cast[0]:(full.creator||'未归属');")
+        self.assertPageLacks("it.creator||it.code")
+        self.assertPageLacks("full.creator||it.code")
 
     def test_narrow_search_has_a_way_out(self):
         """窄屏展开搜索后必须有退出入口。
@@ -1475,8 +1802,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("}finally{lastRoutePath=path}")
         self.assertPageContains("enteringHome?rollSeed():state.seed||rollSeed()")
         self.assertPageContains("const SORTS=[['seed','随机'],['rating','评分']")
-        self.assertPageContains('<option value="seed">随机</option>')
-        for option in ('<option value="daily">', '<option value="rand">'):
+        self.assertPageContains("['seed','随机'],['rating','评分'],['o','高潮计数']")
+        for option in ("['daily',", "['rand',"):
             self.assertPageLacks(option, "不使用会让分页重复的 SQL RANDOM 或重复的每日模式")
         self.assertPageLacks('id="rotateSetting"')
         self.assertPageContains("defaultSort:'seed',sortDefaultsVersion:3")
@@ -1543,8 +1870,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(
             "if((+appSettings.sortDefaultsVersion||0)<3&&SORT_ALIASES[appSettings.defaultSort]){")
         # 设置里的默认排序与排序条同源：列名中性，方向由列自己的默认值决定。
-        self.assertPageContains('<option value="dur">时长</option><option value="size">体积</option>')
-        for legacy in ('<option value="long">', '<option value="big">', '<option value="short">'):
+        self.assertPageContains("['dur','时长'],['size','体积'],['new','入库时间'],['played','观看时间']")
+        for legacy in ("['long','", "['short','"):
             self.assertPageLacks(legacy, "默认排序只列中性列名，不列把方向写进键名的值")
 
     def test_horizontal_choice_groups_start_from_the_muted_base_color(self):
@@ -1649,12 +1976,26 @@ class WebUiSourceTests(unittest.TestCase):
             "  background-size:50% 100%;\n"
             "  animation:skeleton-sweep 1.5s ease-in-out infinite reverse}")
         self.assertPageContains("--skeleton-sheen:rgba(255,255,255,.12);")
-        self.assertPageContains("--skeleton-sheen:#E1E6EC;")
+        self.assertPageContains("--skeleton-sheen:#EBEBEB;")
         self.assertPageLacks("skeleton-pulse", "呼吸已经换成扫光，不留死引用")
         # 框体（数据管理的操作条、关注管理的头部条）不是待填内容，不参与微光。
         self.assertPageContains(
             ".cleanup-skeleton .skeletoncard em::after,\n"
             ".followmanage-skeleton .skeletoncard i::after{content:none}")
+
+    def test_index_skeletons_share_final_geometry_and_keep_the_header(self):
+        self.assertPageContains('export function indexSkeletonHtml(')
+        self.assertPageContains('class="icell"><span class="ring skeleton"')
+        self.assertPageContains("company?'company':'people'")
+        self.assertPageContains('class="tagwall index-tags"')
+        self.assertPageContains('.index-skeleton[data-fill]>section>div')
+        self.assertPageContains("indexHeaderHtml(kind,q,'<span class=\"countskeleton\"></span>')")
+        self.assertPageContains("if($('#indexFilters')){")
+        self.assertPageContains("showIndexLoading('正在读取索引',path.slice(1)")
+        self.assertPageContains("querySelector('[data-skeleton]')?.dataset.skeleton!==next")
+
+    def test_inline_portrait_cards_follow_dense_mode(self):
+        self.assertPageContains('body[data-density="dense"] .shorts-inline .scard{width:calc(214px * 168 / 336)}')
 
     def test_the_top_bars_get_a_first_paint_skeleton_shaped_like_the_real_thing(self):
         """顶部三层与标签条的首屏骨架照真实几何画，形状按 Geist 的判据选。
@@ -1714,7 +2055,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(
             "    const columns=style.gridTemplateColumns.split(' ').filter(Boolean).length;")
         self.assertPageContains(
-            "    const rows=Math.max(1,Math.min(4,Math.ceil((room+rowGap)/(cardHeight+rowGap))));\n"
+            "    const rows=Math.max(1,Math.min(maxRows,Math.ceil((room+rowGap)/(cardHeight+rowGap))));\n"
             "    const want=columns*rows;\n"
             "    while(grid.children.length>want)grid.lastElementChild.remove();\n"
             "    while(grid.children.length<want)grid.appendChild(first.cloneNode(true));")
@@ -1767,8 +2108,26 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(
             "  loadRequestSeq++;listLoading=false;$('#combo').innerHTML='';\n"
             "  hideDiscoveryBars();")
-        self.assertEqual(self.page.count("hideDiscoveryBars();"), 3,
-                         "管理页、索引页和中央清理函数各调一次，收起动作本身只写一处")
+        self.assertEqual(self.page.count("hideDiscoveryBars();"), 4,
+                         "管理页、索引列表、实体资料页和中央清理函数各调一次，收起动作本身只写一处")
+
+    def test_a_narrow_state_falls_back_to_the_whole_library_for_the_top_tiers(self):
+        """状态页收窄到聚合为空时，顶部三层退回全库口径，不整块消失。
+
+        收窄本身是对的：不收窄就会列出在这一页一个作品都没有的人和厂牌。但「已标记」
+        这类集合常年只有几条，`/api/tops` 直接回两个空数组，收窄就把整排一起收走了——
+        同一条筛选条上换一格，页面顶上凭空少两层，读起来是跳去了另一个页面。
+        这一排点开的是实体页，本来就要离开当前状态，它回答的从来不是「这一页里有谁」。
+        """
+        self.assertPageContains("async function loadTops(params){")
+        self.assertCode(
+            "  const scoped=await api('/api/tops?'+params);\n"
+            "  if(scoped.performers.length||scoped.studios.length||!params.has('state'))return scoped;\n"
+            "  const wide=new URLSearchParams(params);wide.delete('state');\n"
+            "  return api('/api/tops?'+wide)")
+        # 取数只经这一条路：直接打 /api/tops 的调用会绕过回退。
+        self.assertEqual(self.app_js.count("api('/api/tops?"), 2)
+        self.assertPageContains("      loadTops(topsParams)])")
 
     def test_the_page_chrome_paints_without_waiting_for_any_request(self):
         """左侧导航、管理条、标题和面包屑只认 location，不该排在网络请求后面。
@@ -1929,16 +2288,20 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("if(initialParams.get('loc'))return;")
         self.assertPageContains("dropOfflineFromDefaultLoc();")
 
-    def test_select_arrow_is_drawn_once_with_balanced_right_spacing(self):
-        """全站下拉箭头必须共用自绘样式，并和右边框保留稳定间距。
+    def test_no_dropdown_falls_back_to_the_browser_control(self):
+        """全站下拉都是自绘的 listbox，一个原生控件都不留。
 
-        留 34px 右内边距却不画箭头、交给系统控件的话，Safari 把箭头画在内边距里侧，
-        离右边框差一大截，和桌面 Chromium 的样子也对不上。
+        原生下拉的弹出层由操作系统画，不认站内色板：设置面板里那七个此前只能靠
+        `color-scheme:dark` 把系统弹出层整个压成深色，浅色主题下就是白底页面上七块黑。
+        2026-09-04 实测 vercel.com 后台：整站没有一个原生下拉，触发器是 button，面板是
+        自绘 listbox，面板底色就是页面底色，箭头是触发器里的 chevron。
         """
-        self.assertPageContains(".settingrow select,.tasteactions select,.fmanagesort select{")
-        self.assertPageContains("padding-left:10px;padding-right:32px;appearance:none;-webkit-appearance:none")
-        self.assertPageContains("appearance:none;-webkit-appearance:none")
-        self.assertPageContains("background-position:right 6px center")
+        self.assertPageLacks("<select", "下拉一律走 Geist Select，不回落到浏览器控件")
+        self.assertPageLacks("color-scheme:dark;", "只有 <html> 声明配色，控件不再各自钉死一档")
+        self.assertCode(
+            "<span data-select-label>${content(chosen)}</span>${icon('chevron-down')}")
+        self.assertPageContains(
+            ".gselectfield>svg{width:16px;height:16px;flex:none;stroke:currentColor;fill:none;color:var(--muted)}")
 
     def test_settings_panel_fits_the_visible_viewport_on_ios(self):
         """iOS 上 `vh` 算的是不减地址栏的「大视口」。
@@ -1950,11 +2313,24 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("padding-top:max(18px,env(safe-area-inset-top))")
         self.assertPageContains("padding-bottom:max(18px,env(safe-area-inset-bottom))")
 
-    def test_links_never_use_underlines(self):
-        """Peach 的链接反馈只用颜色、背景或描边，任何表面都不画下划线。"""
+    def test_links_only_use_underlines_on_hover(self):
+        """文字链接允许悬停下划线，默认状态保持清爽。"""
         self.assertPageContains(".entitylink:hover{color:var(--ink);text-decoration:none}")
         self.assertPageContains(".idcell.entitylink:hover,.mav.entitylink:hover{text-decoration:none}")
-        self.assertPageLacks("text-decoration:underline")
+        self.assertPageContains(".confighelp a:hover{text-decoration:underline;")
+        for selector, declarations in re.findall(r'([^{}]+)\{([^{}]*)\}', stylesheet_source()):
+            if "text-decoration:underline" in declarations:
+                self.assertIn(":hover", selector)
+
+    def test_configuration_uses_fieldset_surfaces_and_shared_select(self):
+        css = stylesheet_source()
+        for selector, expected in ((".configfieldset", "background:var(--ground)"),
+                                   (".configfieldset>.geist-fieldset-footer", "background:var(--surface)")):
+            start = css.index(selector + "{")
+            rule = css[start:css.index("}", start)]
+            self.assertIn(expected, rule)
+            self.assertIn("solid var(--line)", rule)
+        self.assertIn(".configsourcecontrol .gselectfield{padding-inline:14px}", css)
 
     def test_every_identity_cell_can_carry_its_own_portrait(self):
         # 人物格走和顶栏圆头像同一个 entityFaceImg；这一格没有代表作头像可退，
@@ -2126,6 +2502,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("keepalive:true")
         self.assertPageContains("dataset.peachStreamCancel=JSON.stringify(result)")
         self.assertPageContains("/api/stream-plan?id=")
+        self.assertNotIn("if(!['115','pikpak'].includes(it.location))return direct", self.app_js)
         self.assertPageContains("const source=()=>options.source?Promise.resolve(options.source):detailStreamSource(it)")
         self.assertPageContains("source().then(next=>")
         self.assertPageContains("fallbackUsed=false")
@@ -2941,12 +3318,30 @@ class WebUiSourceTests(unittest.TestCase):
         sections = self.page.split("const MANAGE_SECTIONS=[", 1)[1].split("];", 1)[0]
         order = [line.split("'")[1] for line in sections.splitlines() if line.strip().startswith("['")]
         self.assertEqual(
-            order, ["stats", "taste", "review", "cleanup", "trash", "follow", "quality"],
+            order, ["stats", "taste", "review", "cleanup", "trash", "follow", "quality", "configuration"],
             "身份注册表保留全部管理页，删掉哪一个就等于让它的标题和直达 URL 一起失效",
         )
         self.assertPageContains(
-            "const MANAGE_MENU_SECTIONS=['stats','taste','cleanup','follow'];")
+            "const MANAGE_MENU_SECTIONS=['stats','taste','cleanup','follow','configuration'];")
         self.assertPageContains("manageMenuSections().map(([k,label,ic])=>")
+
+    def test_the_configuration_entry_only_shows_on_the_machine_that_runs_peach(self):
+        """「配置」改的是这台电脑的文件夹与端口，在手机上点进去只会得到一句拒绝。
+
+        服务端在 `/healthz` 里按调用方回 `configurable`；菜单第一次画时问一次，答复回来
+        再补上这一项。它也不进可钉到侧栏的候选：侧栏顺序跨机同步，钉在手机上就是死链接。
+        """
+        self.assertPageContains("['configuration','配置','computer'],")
+        self.assertPageContains("let runtimeConfigurable=null;")
+        self.assertPageContains("  bar.hidden=!current;\n  probeConfigurable();")
+        self.assertPageContains("api('/healthz').then(runtime=>{")
+        self.assertPageContains("runtimeConfigurable=!!runtime.configurable;")
+        self.assertPageContains("&&(key!=='configuration'||runtimeConfigurable===true));")
+        self.assertPageContains(
+            "const OPTIONAL_EDGE_ICONS=MANAGE_SECTIONS.filter(([key])=>key!=='configuration')")
+        # 入口只有管理菜单这一处：设置弹层里不再挂一条链接。
+        self.assertPageLacks('href="/configuration"')
+        self.assertPageLacks("媒体文件夹与服务配置")
 
     def test_the_follow_management_section_is_named_after_the_page_it_opens(self):
         """管理区那一项叫「关注管理」：它开的是 /follow-manage，不是关注更新流。
@@ -2987,6 +3382,19 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertNotIn("linkManagerMarkup()", stats,
                          "统计页只讲库里现在有多少，不该再挂对齐外部现实的面板")
         self.assertNotIn("resourceSyncMarkup()", stats)
+
+    def test_scraping_uses_shared_controls_and_source_links(self):
+        self.assertPageContains("'/scraping':'采集来源'")
+        self.assertPageContains('data-cleanup-open="scraping"')
+        self.assertPageContains('.scraping-fields .gselectfield{justify-content:space-between;padding-right:16px;')
+        self.assertPageContains('.scraping-fields .scraping-url{text-decoration:none;')
+        self.assertPageContains('.scraping-fields .scraping-url:hover{color:var(--ink);text-decoration:none}')
+        self.assertPageContains('.scraping-fields .scraping-cover-form{display:flex;align-items:center;')
+        source = (Path(__file__).resolve().parents[1] / 'frontend/src/islands/scraping.tsx').read_text(encoding='utf-8')
+        self.assertIn('wireSelectField(root.firstElementChild!)', source)
+        self.assertNotIn('<select', source)
+        self.assertIn('提供 Cookie 的方式（二选一）', source)
+        self.assertIn('class="scraping-url" href={source.login}', source)
 
     def test_data_management_subpages_carry_geist_breadcrumbs(self):
         """数据管理五张卡进的是它的子页，得有回去的路和自己的名字。
@@ -3157,7 +3565,16 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("noteHtml(error.message,{variant:'error',label:'扫描失败'})")
         self.assertPageContains("noteHtml(error.message||'分析未取得',{variant:'error',label:'分析未取得'})")
         self.assertPageContains('class="geist-note geist-note-error fcheckreport" role="alert"')
-        self.assertPageContains('class="geist-banner fwarn"')
+        self.assertPageContains('class="geist-note geist-note-secondary fcheckreport" role="note"')
+        # 每一条失败都进 Note，没有第二套「红字一行」的写法：红色文字既没有图标
+        # 也没有边框，在暗色底上和普通说明文字只差一个色相，扫读时整条会被跳过。
+        self.assertPageContains('class="geist-note geist-note-error fwarn" role="alert"')
+        self.assertPageContains("${followCheckReport?followCheckFailNote(followCheckReport):''}")
+        self.assertPageContains(
+            "noteHtml('文件权限过宽，请在运行 Peach 的 POSIX 主机上收紧为 0600。',{variant:'error'})")
+        self.assertPageLacks('class="fnote warn"')
+        self.assertPageLacks(".fnote.warn{")
+        self.assertPageLacks("geist-banner")
 
     def test_note_and_info_surfaces_reuse_the_photo_detail_info_icon(self):
         self.assertPageContains('<symbol id="i-info" viewBox="0 0 24 24">')
@@ -3197,10 +3614,46 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("function enterManagementSurface()")
         self.assertPageContains("loadRequestSeq++;listLoading=false;$('#combo').innerHTML=''")
 
-    def test_sidebar_add_controls_have_one_explicit_height(self):
-        self.assertPageContains(".sidebaradd .sidebaraddfield{display:grid;grid-template-columns:auto minmax(0,1fr) auto;width:100%;height:42px;box-sizing:border-box;align-items:center;justify-items:start")
+    def test_sidebar_add_row_wears_the_shared_input_and_primary_button(self):
+        """这一行有三条判据：颜色只走 token、高度只引用 --control-h、主次动作分得开。
+
+        触发器是 listbox 入口，穿 `.geist-input` 那身盒子；右边「添加」是这一屏的主动作，
+        走 `.geist-button.primary`。写死的 `#181a1d` 在浅色主题下是深色控件配浅色面板，
+        而图标键那条基样式一旦兼管这一行，两个控件就得靠三条规则叠回来。
+        """
+        self.assertPageContains("--control-h:38px;")
+        self.assertPageContains(
+            "/* 它是 listbox 触发器，不是按钮：穿输入框那身盒子，"
+            "右边的实心档才是这一屏的主动作。 */")
+        self.assertPageContains(
+            ".sidebaradd .sidebaraddfield{display:grid;"
+            "grid-template-columns:auto minmax(0,1fr) auto;width:100%;height:var(--control-h);"
+            "box-sizing:border-box;align-items:center;justify-items:start;gap:9px;padding:0 11px;"
+            "border:1px solid var(--field-ring);border-radius:var(--control-radius);"
+            "background:var(--ground);color:var(--ink);text-align:left;font:inherit;"
+            "cursor:pointer}")
+        self.assertPageContains(
+            ".sidebaradd .sidebaraddfield:hover:not(:disabled){border-color:var(--field-ring-hover)}"
+            ".sidebaradd .sidebaraddfield:disabled{color:var(--muted);cursor:default}")
+        self.assertPageContains(".sidebaradd .geist-button{height:var(--control-h);padding:0 14px}")
+        self.assertPageContains(
+            ".sidebaradd .sidebaraddmenu button{grid-template-columns:auto minmax(0,1fr);"
+            "width:100%;height:var(--control-h);")
         self.assertPageContains(".sidebaraddfield svg:last-child{justify-self:end;color:var(--muted)}")
-        self.assertPageContains(".sidebaradd>button{height:42px;box-sizing:border-box}")
+        self.assertPageContains(
+            '<button type="button" class="geist-button primary" data-sidebar-add')
+        # 「添加」两个字已经把动词说完，前面不挂 plus：判据见
+        # docs/reference-snapshots/vercel-geist-button-icons.md。
+        self.assertPageLacks("${icon('plus')}<span>添加</span>")
+        # 图标键那条基样式只管排序行，不兼管添加行的触发器和主动作。
+        self.assertPageLacks(".sidebaradd button{grid-template-columns:auto auto;")
+        self.assertPageLacks(".sidebaradd>button{")
+        self.assertPageLacks(".sidebarorderrow button,.sidebaradd button{")
+        # 这一行的浮层与控件底色只走 token。
+        self.assertPageLacks("background:#181a1d;box-shadow:0 16px 44px -20px #000}")
+        self.assertPageContains(
+            ".geist-button.primary:disabled{border-color:var(--line-soft);"
+            "background:var(--sunk);color:var(--muted)}")
 
     def test_edge_and_drawer_share_one_navigation_dispatch(self):
         """窄栏和抽屉各写一份分支时，抽屉那份漏了追更和播放列表。
@@ -3234,7 +3687,7 @@ class WebUiSourceTests(unittest.TestCase):
                       '/item/:id', '/follow/item/:id', '/performers', '/creators', '/tags',
                       '/stats', '/taste', '/review', '/data-cleanup', '/duplicates',
                       '/resource-sync', '/quality-goals', '/follow', '/follow-manage',
-                      '/immerse'):
+                      '/configuration', '/immerse'):
             self.route_entry(match)
         # 目录页四态和四种实体页由既有的映射生成：两边各写一份就会出现
         # 「路由认得、isCatalogPath 不认得」这种半死路径。
@@ -3612,7 +4065,7 @@ class WebUiSourceTests(unittest.TestCase):
             'body[data-density="dense"] .junkcard .junkactions button{justify-content:center}')
         self.assertPageContains("function renderJunkNavigation(data)")
         self.assertPageContains("['video','视频','play'],['image','图片','pics']")
-        self.assertPageContains("['archive','压缩包','folder-open'],['audio','音频','volume-2']")
+        self.assertPageContains("['archive','压缩包','file-archive'],['audio','音频','file-audio']")
         self.assertPageContains("href=\"${junkPath(key,junkView)}\"")
         self.assertPageContains("${icon(glyph)}${esc(label)}")
         self.assertPageContains("${icon(junkView==='dismissed'?'rotate-ccw':'eye-off')}")
@@ -3742,7 +4195,7 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_surface_has_measured_beeg_glow_geometry(self):
         self.assertPageContains("height:49vh")
-        self.assertPageContains("linear-gradient(to bottom,rgba(0,0,0,.6),var(--ground))")
+        self.assertPageContains("linear-gradient(to bottom,rgba(0,0,0,.6),var(--page))")
         self.assertPageContains("animation:ambient-in .8s ease .5s both")
 
     def test_detail_deduplicates_identity_and_supports_tag_editing(self):
@@ -3768,7 +4221,8 @@ class WebUiSourceTests(unittest.TestCase):
     def test_beeg_evidence_driven_surfaces_are_translucent_and_rail_is_continuous(self):
         self.assertPageContains(".brandpill{")
         self.assertPageContains("background:var(--overlay-5);border:1px solid var(--border-10)")
-        self.assertCode("border:1px solid var(--border-15);\n  border-radius:var(--pill-radius);background:transparent")
+        self.assertCode("border-radius:var(--pill-radius);background:transparent;"
+                        "border:1px solid var(--field-ring)")
         self.assertPageContains("--overlay-5:rgba(245,250,255,.05)")
         self.assertPageContains("--border-15:rgba(245,250,255,.15)")
         # 窄栏要有右分割线（用户 2026-08-26 明确要求）：无边框时两边背景太接近，
@@ -3779,7 +4233,7 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_entity_profile_hides_home_facets_and_renders_context(self):
         self.assertPageContains("body.entity-open #tiers,body.entity-open #tagbar,")
-        self.assertPageContains('src="/logo?studio=${encodeURIComponent(d.canonical_name)}&variant=logo"')
+        self.assertPageContains("logo:company&&d.has_logo?d.canonical_name:'',")
         self.assertPageContains('class="entitytags"')
         self.assertPageContains('class="pill" data-entity-tag=')
         self.assertPageContains('class="relatedpeople"')
@@ -3875,6 +4329,261 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("(d.display_aliases||[]).length")
         self.assertPageLacks("(d.aliases||[]).length?'别名")
 
+    def test_the_agency_reads_as_identity_and_leads_to_its_own_page(self):
+        """事务所是这个人签在谁名下，和别名、作品数是同一类事实，不是一条外链。
+
+        它在账本里有实体时给出去处：那条链接落在站内的事务所资料页，不是某个片商的站。
+        """
+        self.assertCode("const agencyHome=d.agency||null;")
+        self.assertPageContains("entityPath('agency',agencyName)")
+        self.assertPageContains("${memberHtml}${agencyHtml}")
+        # 没有对应实体时仍写名字，但不做成链接——那会通向一个不存在的页面。
+        self.assertCode(":` · ${esc(agencyName)}`;")
+        # 公司名自己说明了它是什么，这一行只出名字，不加类别名占横向空间。
+        self.assertPageLacks("· 事务所 ${esc(agencyName)}")
+        # 链接标签写的是域名归谁，不是事务所名。
+        self.assertPageContains("标签写的是这个域名归谁")
+
+    def test_the_agency_page_reuses_the_entity_route_table(self):
+        """实体本来就只有 kind 不同，事务所加进同一张表就有了 `/agencies/<名字>`。"""
+        self.assertPageContains("agency:'agencies'")
+        self.assertPageContains("agencies:'agency'")
+
+    def test_the_agency_page_gets_the_same_loading_skeleton(self):
+        self.assertPageContains("performers|creators|studios|agencies")
+
+    def test_the_agency_page_counts_people_not_only_videos(self):
+        """事务所名下的视频是成员拍的，「这家有几个人」才是它独有的读数。"""
+        self.assertPageContains("位艺人")
+
+    def test_the_agency_face_is_its_own_mark_not_a_members_frame(self):
+        """代表作截图是某位成员某部片的画面，当不了一家公司的门面。"""
+        self.assertCode("const company=kind==='studio'||kind==='agency';")
+        self.assertCode("rep:company||!d.has_avatar?null:d.representative_asset_id,")
+        self.assertCode("mark:kind==='agency'?d.mark_link_id:null,")
+        # 取图链最后一环是官网那条链接的站点圆标。
+        self.assertPageContains("mark?`/link-mark?id=${mark}`")
+
+    def test_the_agency_page_opens_on_its_roster(self):
+        """这一页要回答的是「这家签了谁」，所以进页面先摆艺人，视频是另一个视图。"""
+        self.assertPageContains("let agencyRosterView='people',agencyRoster=[];")
+        self.assertCode("  agencyRosterView='people';\n  const seq=++entityRequestSeq;")
+        self.assertCode("if(entityViewNow(kind)==='people')renderAgencyRoster(roster);")
+
+    def test_the_agency_roster_reuses_the_people_index_cell_and_layout(self):
+        """名册和艺人索引摆的是同一格人，模板与版式设置都只有一份。"""
+        self.assertPageContains("function personCellHtml(x,kind,countText){")
+        # 索引页那批行的实体 id 叫 entity_id，名册那批叫 id，取图链只认一个。
+        self.assertPageContains("const ref=x.entity_id||x.id;")
+        self.assertCode(
+            '<div class="igrid" data-layout="${peopleIndexLayout()}">${\n'
+            "      people.map(x=>personCellHtml(x,'performer',x.n.toLocaleString())).join('')}</div>")
+        # 名册占的是正文那一整块，所以这批人不再挤进「同台艺人」那排小圆头像。
+        self.assertCode("const roster=kind==='agency'?(d.related_performers||[]):[];")
+        self.assertCode("const related=roster.length?'':(d.related_performers||[]).map(")
+
+    def test_a_company_cell_is_square_because_it_holds_a_mark_not_a_face(self):
+        """3:4 是给脸留的形状，方标铺进去左右各被 `object-fit:cover` 裁掉四分之一。"""
+        self.assertCode(
+            "const cells=entityKind==='studio'||entityKind==='agency'?'company':'people';")
+        self.assertPageContains('<div class="igrid" data-cells="${cells}" data-layout="${')
+        self.assertPageContains(
+            '.igrid[data-cells="company"][data-layout="big"] .icell .ring{aspect-ratio:1}')
+        # 省下的高度换成宽度：同一屏里公司格比人格宽一档。
+        self.assertPageContains('.igrid[data-cells="company"]{grid-template-columns:'
+                                'repeat(auto-fill,minmax(180px,1fr))}')
+
+    def test_the_roster_and_the_media_keys_are_one_button_group(self):
+        """三个键问的是同一件事——这一页现在显示什么，所以在同一组里、同一个尺寸。"""
+        self.assertCode(
+            "${peopleValue?control(peopleValue,peopleLabel,peopleCount,'user-round','people'):''}")
+        self.assertPageContains("peopleValue:roster.length?'people':'',peopleCount:roster.length,")
+        # 当前视图只有一个来源，按下哪个键、下面画什么都读它。
+        self.assertPageContains("const entityViewNow=kind=>kind==='agency'"
+                                "&&agencyRosterView==='people'&&agencyRoster.length")
+        self.assertCode("button.setAttribute('aria-pressed',String(now===media));")
+        # 没有照片的实体不出照片键，不是出一个按下去什么都不显示的键。
+        self.assertPageContains("imageValue:photoCount?'photos':'',imageLabel:'照片',")
+        # 标签筛的是作品，点了就回到视频视图，否则开关和内容各说各的。
+        self.assertCode("agencyRosterView='videos';")
+
+    def test_the_profile_rows_that_overflow_get_the_shared_drag_and_wheel(self):
+        """同台艺人和标签这两行没有滚动条，不接拖动就是看得见够不着。"""
+        self.assertPageContains("wireDrag($('#index').querySelector('.relatedpeople'));")
+        self.assertPageContains("wireDrag($('#index').querySelector('.entitytags'));")
+        # 横向滚动行里的开关不能被压扁。
+        self.assertPageContains(".entitytags .iconswitch{flex:none}")
+
+    def test_the_maker_index_switch_moves_between_two_routes(self):
+        """厂牌出片、事务所出人，是两种实体：开关切的是路径，不是同一批数据再筛一次。"""
+        self.assertCode("const MAKER_INDEX_KINDS=[['studios','厂牌','building'],"
+                        "['agencies','事务所','briefcase']];")
+        self.assertPageContains("function makerModeHtml(kind){")
+        self.assertCode("$('#index').querySelectorAll('[data-index-kind]').forEach(b=>b.onclick=()=>{")
+        self.assertCode("openIndex(b.dataset.indexKind,$('#iq').value.trim(),true)});")
+        # 两条索引地址都在路由表里，直达和刷新都得开得出来。
+        self.assertPageContains("{match:'/studios',nav:'studios',title:'厂牌',")
+        self.assertPageContains("{match:'/agencies',title:'事务所',")
+        # 侧栏那一项进的是厂牌索引。
+        self.assertPageContains("['studios','厂商','building'],")
+
+    def test_the_studio_index_wears_the_same_logo_the_profile_does(self):
+        """538 个标识在盘上，索引页却格格首字母的话，这一屏读不出是哪些牌子。"""
+        self.assertPageContains("const useLogo=!!logo;")
+        self.assertPageContains(
+            "const src=useLogo?`/logo?studio=${encodeURIComponent(logo)}&variant=${logoVariant}`")
+        # 索引页那格是小位，要方形图标而不是横着的字标。
+        self.assertPageContains("logo:logoName,logoVariant:'icon'")
+        # 取不到标识就退回实体图、再退到头像，和资料页大位同一条链。
+        self.assertPageContains("const fallbacks=useLogo?[entitySrc,avatarSrc].filter(Boolean)")
+        # 公司这一格不退到代表作截图，和它自己的资料页同一条判据。
+        self.assertPageContains("const company=kind==='studio'||kind==='agency';")
+        # 索引页那格由服务端的 has_logo 决定走不走这一环。
+        self.assertPageContains("x.has_avatar&&!company?x.rep:null, kind, x.mark, x.has_logo?x.k:'')")
+        # 标识不是人脸，取景和摘取景那套只贴给实体图。
+        self.assertPageContains("const framed=useEntity&&!useLogo;")
+
+    def test_the_maker_index_switch_shares_the_view_mode_control(self):
+        """标签页那两组开关和这一组是同一个控件，类名跟着语义走。"""
+        self.assertPageLacks("tagmodes")
+        self.assertPageContains(".viewmodes{")
+
+    def test_the_index_head_controls_stand_on_the_same_plate(self):
+        """并排的两组控件底色一样、高度一样，否则一组读成凭空多出来的一圈线。"""
+        # `--surface` 和 `--ground` 只差四级灰，铺在页头上只剩边框看得见。
+        self.assertPageContains("border-radius:var(--surface-radius);background:var(--overlay-5)}")
+        # 28 + 3 padding + 1 border = 36，和邻座 `.iconswitch` 同高。
+        self.assertPageContains(".viewmodes button{border:0;border-radius:var(--control-radius);"
+                                "background:transparent;color:var(--muted);height:28px;padding:0 10px;")
+        self.assertPageContains(".iconswitch label{position:relative;display:inline-grid;"
+                                "width:34px;height:28px;")
+
+    def test_entity_name_picker_offers_only_this_entity_existing_names(self):
+        # 候选取的是身份契约 `aliases`（完整），不是收窄过的展示别名：罗马字也是
+        # 这个人真的用过的写法，用户想拿它当统称就该能选。
+        self.assertCode("const nameChoices=[d.canonical_name,...(d.aliases||[])]")
+        self.assertCode(
+            ".filter((option,index,all)=>option&&all.indexOf(option)===index);")
+        # 只有一种写法时没有可选的东西，控件不出。
+        self.assertCode("const namePick=nameChoices.length>1?")
+        self.assertPageContains('data-namepick-toggle aria-haspopup="menu"')
+        self.assertPageContains('role="menuitemradio"')
+        self.assertPageContains('aria-checked="${option===d.canonical_name}"')
+
+    def test_entity_name_picker_reuses_the_shared_anchored_menu(self):
+        self.assertPageContains("const anchored=wireAnchoredMenu(mount,toggle,menu);")
+        self.assertPageContains('<div class="popmenu npmenu"')
+
+    def test_anchored_menu_fits_the_room_it_has_instead_of_covering_its_toggle(self):
+        # 资料页的统称菜单挂在标题上，上方只有一条顶栏的距离、下方也未必够高。
+        # 两侧都放不下时压到宽的那一侧、内部滚，不横跨触发钮。
+        self.assertCode("const naturalHeight=menu.scrollHeight+menu.offsetHeight-menu.clientHeight;")
+        self.assertCode("const downward=under>=naturalHeight||under>=over;")
+        self.assertCode(
+            "const height=Math.min(naturalHeight,Math.max(downward?under:over,0));")
+        self.assertCode("menu.style.maxHeight=height+'px';")
+        self.assertCode(
+            "menu.style.top=(downward?anchor.bottom+8:anchor.top-8-height)+'px'")
+        # 可用上沿是固定顶栏的下缘，不是视口顶端。
+        self.assertCode(
+            "const viewportTop=()=>8+(parseFloat(getComputedStyle(document.documentElement)")
+        self.assertCode(".getPropertyValue('--topH'))||0);")
+        self.assertPageContains(
+            "menu.hidden=true;menu.style.left='';menu.style.top='';menu.style.maxHeight='';")
+
+    def test_anchored_menu_closes_on_page_scroll_but_not_on_its_own(self):
+        # 菜单装不下时本来就要在内部滚；捕获阶段的 scroll 连它自己的也收得到。
+        self.assertCode(
+            "if(!(event.target instanceof Node&&menu.contains(event.target)))setOpen(false)")
+
+    def test_entity_name_picker_keeps_a_touch_target_on_phones(self):
+        self.assertPageContains(".npbtn{width:44px;height:44px}")
+        self.assertPageContains(".npmenu button,.gselectmenu button{min-height:44px}")
+
+    def test_entity_name_picker_writes_through_the_server_before_repainting(self):
+        self.assertCode("const rename=(from,to)=>api('/api/entity-name',")
+        self.assertCode(
+            "{method:'POST',body:JSON.stringify({kind,name:from,canonical:to})});")
+        self.assertCode("onConfirm:()=>rename(current,chosen)});")
+        self.assertCode("if(!confirmed||!result?.changed)return;")
+        # 撤销是一次真实写回，不在本地把标题改回去。
+        self.assertCode("await rename(result.canonical_name,result.previous_name);")
+
+    def test_entity_name_picker_confirms_and_names_both_writings_first(self):
+        # 换统称会重写整条实体的扁平投影，写之前必须让用户看见换成什么、旧写法去哪。
+        self.assertCode("const {confirmed,result}=await confirmModal({")
+        self.assertCode("title:'更改统称',")
+        self.assertCode(
+            "body:`「${chosen}」将成为这条实体的规范名，「${current}」留作别名。`")
+        self.assertCode("+'作品上的署名、搜索和标签都会跟着改写。',")
+        # Geist 的判据：主按钮是与标题同一个动词的「动词+名词」，成功回执共用那个动词。
+        self.assertCode("confirmLabel:'更改统称',")
+        self.assertCode("actionReceipt(`已把统称更改为 ${result.canonical_name}`,{undo:async()=>{")
+        # 弹层顶上来之前先把菜单收掉，否则它固定在视口里会浮在遮罩上。
+        self.assertCode("anchored.setOpen(false);")
+
+    def test_confirm_modal_is_one_shared_component_on_a_native_dialog(self):
+        # 焦点陷阱、Escape、背景 inert 和关掉后归还焦点都由原生 <dialog> 给。
+        self.assertCode("export function confirmModal({title,body,confirmLabel,")
+        self.assertPageContains("dialog.showModal();")
+        self.assertPageContains('dialog.className=\'geist-modal\';')
+        self.assertPageContains("dialog.setAttribute('aria-labelledby',titleId);")
+        # 标题与正文是数据，走 textContent，不进 innerHTML。
+        self.assertPageContains("dialog.querySelector('h3').textContent=title;")
+        self.assertPageContains(
+            "dialog.querySelector('.geist-modal-body p').textContent=body;")
+        # 遮罩上的点击落在 <dialog> 自己身上；这个动作可撤销，允许点外面关掉。
+        self.assertCode(
+            "dialog.addEventListener('click',event=>{if(event.target===dialog)dialog.close()});")
+
+    def test_confirm_modal_keeps_a_failed_write_in_place_with_its_reason(self):
+        # 忙态落在主按钮上，不落在已经收起来的菜单项上。
+        self.assertPageContains("setActionBusy(accept);")
+        self.assertCode("settled={confirmed:true,result:await onConfirm()};")
+        self.assertCode(
+            "failure.innerHTML=noteHtml(error.message||'操作未完成',{variant:'error'});")
+        self.assertPageContains("setActionBusy(accept,false);")
+        # 取消、Escape 和点遮罩都走同一条出口，一律回 confirmed:false。
+        self.assertCode("resolve(settled||{confirmed:false});")
+
+    def test_confirm_modal_matches_the_measured_geist_modal(self):
+        # 实测 https://vercel.com/geist/modal（2026-09-04），见
+        # docs/reference-snapshots/vercel-geist-modal-measured.md。
+        self.assertPageContains(
+            ".geist-modal{box-sizing:border-box;width:min(540px,calc(100vw - 20px));")
+        # <dialog> 的 UA 样式带一条更小的 max-width，窄屏上会把卡片再压窄十几像素。
+        self.assertPageContains("max-width:min(540px,calc(100vw - 20px));max-height:min(800px,80vh);")
+        self.assertPageContains("border-radius:var(--floating-radius);")
+        # 遮罩纯黑不带模糊：Geist 的 backdrop 没有 blur。
+        self.assertPageContains(".geist-modal::backdrop{background:#0009;opacity:0;")
+        self.assertPageLacks(".geist-modal::backdrop{background:#000a;backdrop-filter")
+        self.assertPageContains(
+            ".geist-modal-body{padding:20px;font-size:var(--fs-md);line-height:20px;")
+        self.assertPageContains(
+            ".geist-modal-body h3{margin:0;font-size:var(--fs-xl);line-height:26px;"
+            "font-weight:600;color:var(--ink)}")
+        # 操作条粘在底、两端对齐；取消在左，主动作在右。
+        self.assertPageContains(
+            ".geist-modal-footer{position:sticky;bottom:0;display:flex;"
+            "justify-content:space-between;gap:16px;")
+        self.assertPageContains(".geist-modal-footer>div{display:flex;gap:16px}")
+        # 两个键都走全站唯一那份 Geist Button，不另起一套尺寸。
+        self.assertCode('<div><button type="button" class="geist-button" data-modal-cancel>')
+        self.assertCode(
+            '<div><button type="button" class="geist-button primary" data-modal-confirm>')
+        # 手机上按本项目的 44px 命中区放大。
+        self.assertPageContains(
+            ".geist-modal-footer .geist-button{min-height:44px;padding:0 14px}")
+
+    def test_entity_name_picker_marks_the_current_name_with_fill_and_a_check(self):
+        self.assertPageContains(
+            '.npmenu button[aria-checked="true"]{background:var(--hover);color:var(--ink)}')
+        self.assertPageContains('.npmenu button[aria-checked="true"] svg{visibility:visible}')
+        # 未选中那几行也占着勾的位置，切换时文字不横向跳。
+        self.assertPageContains("visibility:hidden")
+        # 窄屏的资料页整块居中，flex 标题行得自己居中。
+        self.assertPageContains(".entitytitle{justify-content:center}")
+
     def test_jav_cards_prefer_the_canonical_performer_over_legacy_creator_text(self):
         self.assertPageContains("const primaryCreator=it.is_jav&&performer?'':it.creator")
         self.assertPageContains("const identity=primaryCreator?{kind:'creator',name:primaryCreator}")
@@ -3894,6 +4603,14 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("foldName(t.k)===key&&foldName(previous.k)!==key")
 
     def test_drawer_filters_follow_entity_and_detail_context(self):
+        self.assertPageContains('function buildDrawerNavigation()')
+        self.assertPageContains('syncSidebarSurface(scroll,key)')
+        self.assertCode('surfaceEpoch++;\n  barsRequestSeq++;')
+        self.assertPageContains('key=surfacePath()+location.search')
+        self.assertPageLacks("api('/api/follow/tags?limit=30')")
+        self.assertPageContains('renderFollowDrawer(visible.flatMap(group=>followCollectionItems(group)))')
+        self.assertPageContains('renderFollowDrawer([item])')
+        self.assertPageContains("if(!sidebarHasCatalogContent(location.pathname))return;")
         # 实体页 facets 必须按当前实体取数；详情页则按单个作品取数，不能继续复用首页全库。
         self.assertPageContains("facetParams.set('scope_kind',context.kind)")
         self.assertPageContains("facetParams.set('scope_name',context.name)")
@@ -4027,6 +4744,30 @@ class WebUiSourceTests(unittest.TestCase):
         # 队列长度不能被悬浮预取剪短：两边用同一个 limit。
         self.assertPageContains("api('/api/related?id='+seedId+'&limit=28')")
 
+    def test_multipart_cards_flip_through_their_parts_on_hover(self):
+        """分卷卡悬浮翻各卷画面，版次卡继续走分段视频预览。
+
+        有码、中字、无码是同一段画面的几个来源，翻过去前后两张几乎一样，看着像图
+        卡住了；各卷是不同画面，翻动才说明这张卡代表不止一条。分卷卡因此也不带
+        倒计时环和快退／快进那三颗——它们要操作的 `video.hv` 在这种卡上不存在。
+        各卷只取一次，悬浮预取后点开分卷队列不再发第二个请求。
+        """
+        self.assertPageContains(
+            """${parts?'<div class="mixfaces" data-mix-faces hidden></div>':''}""")
+        self.assertPageContains("function wirePartFlip(el,it){")
+        self.assertPageContains("if(it?.part_group)wirePartFlip(el,it);")
+        self.assertPageContains(
+            "else if(it&&(!it.medium||it.medium==='video'))wireHover(el,it);")
+        # 和 Mix 共用同一套时序、门槛和面渲染，不另写一份动效。
+        self.assertPageContains("wireStackFlip(el,async()=>{")
+        self.assertPageContains(".filter(x=>mixHasPicture(x,layout)).slice(0,MIX_FLIP_FACES)")
+        # 第一张是卡片自己的静止封面，翻进来的才不会跳取景。
+        self.assertPageContains("return [it,...items.filter(x=>x.id!==it.id)]")
+        self.assertPageContains("const tools=parts?laterTool:")
+        self.assertPageContains("const partGroupCache=new Map();")
+        self.assertPageContains("try{group=await partGroup(seedId)}catch(_e)")
+        self.assertPageLacks("const group=await api('/api/parts?id='+seedId);")
+
     def test_stacked_cards_pile_upward_and_keep_the_row_bottom_aligned(self):
         """Mix、分卷、版次和关注合集的叠层往上溢出，卡片本体不为它留白。
 
@@ -4128,9 +4869,10 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("background:transparent;border-bottom:1px solid transparent")
         self.assertPageContains(
             ".tagbar.is-stuck,.count.is-stuck,.entitytagbar.is-stuck,.entitycollectionhead.is-stuck"
-            "{background:color-mix(in srgb,#080A0D 84%,transparent)"
+            "{background:color-mix(in srgb,var(--ground) 84%,transparent)"
         )
-        self.assertPageContains("background:color-mix(in srgb,#080A0D 84%,transparent)")
+        self.assertPageLacks("color-mix(in srgb,#080A0D 84%,transparent)",
+                             "吸顶条跟着 --ground 走，浅色主题下不许铺出一条黑带")
         self.assertPageContains("backdrop-filter:saturate(1.35) blur(16px)")
         self.assertPageContains("function updateStickySurfaces()")
         self.assertPageContains("css.position==='sticky'")
@@ -4147,7 +4889,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("flex:0 0 auto;white-space:nowrap")
         self.assertPageContains(".count .sorts button{min-height:36px}")
         # 这一行没有滚动条（scrollbar-width:none），不登记拖动就只剩看得见够不着的半个按钮。
-        self.assertPageContains("['#tagbar','#srow','#nrow','#count'].forEach(s=>wireDrag($(s)))")
+        self.assertPageContains("['#tagbar','#nrow','#count'].forEach(s=>wireDrag($(s)))")
         # 同一个元素宽屏不溢出、窄屏才溢出，不判溢出就会在宽屏抢走滚轮和拖动。
         self.assertPageContains("const scrollable=()=>el.scrollWidth-el.clientWidth>1;")
         self.assertPageContains("if(e.button!==0||!scrollable())return;")
@@ -4166,22 +4908,27 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("section.querySelector('h3').textContent=`视频 ·")
         self.assertPageLacks("的馆藏作品 ·")
 
-    def test_hover_seek_controls_are_bare_icons_over_the_frame(self):
-        """悬停放大时居中的快退／快进／全屏是裸图标，不是压在画面上的磨砂圆饼。
+    def test_hover_seek_controls_wear_the_watch_later_button_skin(self):
+        """居中的快退／快进／全屏和右下角「稍后看」是同一种控件，只是尺寸不同。
 
-        三个 58px 的实心圆落在封面正中，遮住的画面比按钮本身还多，而这一层出现的时机
-        恰恰是用户在看画面。命中区域仍留 58px（触摸目标不缩），只是不再画出底和边；
-        秒数交给 `title`／`aria-label`，图标上不再压一个数字。
+        磨砂圆底、边框和悬停填充全部由 `.hovertools button` 一条规则给出，
+        58px 圆配 34px 图标，与 36px 圆配 21px 图标同一个比例。
+        秒数交给 `title`／`aria-label`，图标上不压数字。
         证据与「beeg 那一侧未取得」的结论见
         `docs/reference-snapshots/hover-seek-controls-user-screenshot.md`。
         """
         self.assertPageContains(
-            ".hovertools.seektools button{border:0;background:none;backdrop-filter:none;")
-        self.assertPageContains(".hovertools.seektools button svg{width:34px;height:34px;stroke-width:1.5}")
-        self.assertPageContains(".hovertools.seektools button:hover{background:none}")
-        # 命中区域仍由共用规则给出 58px 圆，裸图标只是不画它。
-        self.assertPageContains(".hovertools button{pointer-events:none;width:58px;height:58px;border-radius:50%")
-        # 数字角标随之退役：DOM 里不再有它，样式也不该留着。
+            ".hovertools button{pointer-events:none;width:58px;height:58px;border-radius:50%;"
+            "border:1px solid rgba(255,255,255,.12);")
+        self.assertPageContains("background:rgba(0,0,0,.24);color:#fff;backdrop-filter:saturate(180%) blur(12px);")
+        self.assertPageContains(".hovertools button:hover{transform:scale(1.12);background:rgba(0,0,0,.34)}")
+        self.assertPageContains(".hovertools.seektools button svg{width:34px;height:34px}")
+        self.assertPageContains(".hovertools .laterbtn{width:36px;height:36px;padding:0;font-family:inherit}")
+        self.assertPageContains(".hovertools .laterbtn svg{width:21px;height:21px}")
+        # 这一层里没有第二套外观：不画底和边、靠投影描边的写法一处都不留。
+        self.assertPageLacks(".hovertools.seektools button{border:0;background:none")
+        self.assertPageLacks("filter:drop-shadow(0 1px 4px rgba(0,0,0,.6))")
+        # 数字角标不在 DOM 里，样式也不留。
         self.assertPageLacks("<b>${appSettings.seekSeconds}</b>")
         self.assertPageLacks(".hovertools button b{")
         self.assertPageContains('title="后退 ${appSettings.seekSeconds} 秒"')
@@ -4208,7 +4955,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("window.addEventListener('pagehide',()=>releaseHoverPreviews())")
         self.assertPageContains("if(document.hidden)releaseHoverPreviews()")
         self.assertPageContains("if(reset)releaseHoverPreviews($('#grid'))")
-        self.assertPageContains("releaseHoverPreviews($('#srow'))")
+        self.assertPageContains("if(reset)releaseHoverPreviews($('#grid'))")
 
     def test_remote_hover_scan_is_an_overlay_so_every_jav_layout_has_it(self):
         """远端源的扫视图叠一层，不改任何已有 `<img>` 的 src。
@@ -4271,7 +5018,7 @@ class WebUiSourceTests(unittest.TestCase):
         body = body.split("\n}", 1)[0]
         self.assertIn("$('#loadSentinel').hidden=true;", body)
         self.assertLess(body.index("$('#loadSentinel').hidden=true;"),
-                        body.index("$('#grid').innerHTML=pageSkeletonHtml"),
+                        body.index("setGridCards(pageSkeletonHtml"),
                         "哨兵要在骨架铺上之前收掉，别让 dots 和骨架同时存在一帧")
         # 目录这条链上收哨兵只有这一处：分支里再补一次就是又一个会漏掉的地方。
         ads = self.app_js.split("if(state.state==='ads'){", 1)[1].split("adsBatch=null;", 1)[0]
@@ -4281,8 +5028,8 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_page_loading_uses_one_structural_skeleton_phase(self):
         self.assertPageContains("function renderCatalogLoading(label='正在读取作品')")
-        self.assertPageContains("$('#grid').innerHTML=pageSkeletonHtml(label,\n"
-            "    {cards:true,className:'catalog-skeleton postercard-skeleton'});")
+        self.assertPageContains("setGridCards(pageSkeletonHtml(label,\n"
+            "    {cards:true,className:'catalog-skeleton postercard-skeleton'}));")
         self.assertPageContains("count.setAttribute('aria-label',label);")
         self.assertPageContains(".grid>.skeletonpanel{grid-column:1/-1;width:100%;min-width:0}")
         self.assertPageContains("function renderInitialSurfaceLoading()")
@@ -4291,7 +5038,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("placeholder:followSkeletonHtml('正在读取关注内容')")
         self.assertPageContains("pageSkeletonHtml('正在读取统计',{variant:'dashboard'})")
         self.assertPageContains(".skeletondashhero{min-height:330px;grid-template-columns:minmax(260px,36%) minmax(0,1fr)}")
-        self.assertPageContains("if(!refine)showIndexLoading(people?'正在读取作者':'正在读取标签')")
+        self.assertPageContains("if(!refine)showIndexLoading('正在读取'+(INDEX_TITLES[kind]||'标签'),kind,q)")
         self.assertPageContains("$('#loadSentinel').innerHTML=loadingDotsHtml('继续载入中…')")
         self.assertPageContains("pageSkeletonHtml('正在读取推荐',{cards:true,className:'related-skeleton'})")
         self.assertPageLacks("count.innerHTML=`${spinnerHtml(label)}<span>载入中…</span>`")
@@ -4310,7 +5057,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("const MANAGEMENT_PLACEHOLDERS={")
         self.assertPageContains("const managementPlaceholder=path=>")
         for path in ("'/stats'", "'/taste'", "'/data-cleanup'", "'/duplicates'",
-                     "'/review'", "'/quality-goals'", "'/playlists'", "'/follow-manage'"):
+                     "'/review'", "'/quality-goals'", "'/playlists'", "'/follow-manage'",
+                     "'/configuration'"):
             self.assertPageContains(f"  {path}:()=>", "占位没有收进唯一那份定义")
             self.assertPageContains(f"managementPlaceholder({path})", "路由没有取那份定义")
         # /resource-sync 只是数据管理页的锚点，启动占位得是数据管理那张。
@@ -4377,8 +5125,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("setActionBusy(btn)")
 
     def test_follow_separator_uses_the_same_border_token_as_tags(self):
-        self.assertPageContains(".pill{flex:none;height:var(--filterItemH);padding:0 20px;border:1px solid var(--border-15)")
-        self.assertPageContains(".followfilters .sep{flex:none;width:1px;height:24px;background:var(--border-15)")
+        self.assertPageContains(".pill{flex:none;height:var(--filterItemH);padding:0 20px;border:1px solid var(--field-ring)")
+        self.assertPageContains(".followfilters .sep{flex:none;width:1px;height:24px;background:var(--field-ring-hover)")
 
     def test_entity_profile_uses_logo_links_without_a_redundant_back_row(self):
         self.assertPageContains('class="entitylinkicon"')
@@ -4396,10 +5144,10 @@ class WebUiSourceTests(unittest.TestCase):
         换成 contain，就会在图自带的底之外多围出一圈框，三处还会各自不一致。
         """
         self.assertPageContains(
-            ".brandpill .mk img{position:absolute;inset:0;width:100%;height:100%;")
-        self.assertPageContains(
-            "object-fit:cover;display:block;filter:saturate(.72) brightness(.84)",
-            "小圆片的去饱和保留，但图必须铺满")
+            ".brandpill .mk img{position:absolute;inset:0;width:100%;height:100%;\n"
+            "  object-fit:cover;display:block}")
+        # 厂牌识别色照原样出图：滤镜一挂，同一张标识在三处就是三个颜色。
+        self.assertPageLacks("filter:saturate(.72) brightness(.84)")
         self.assertPageContains(
             ".idface img{position:absolute;inset:0;width:100%;height:100%;"
             "object-fit:cover;display:block}")
@@ -4468,8 +5216,8 @@ class WebUiSourceTests(unittest.TestCase):
     def test_compact_card_title_is_one_line_and_identity_kind_matches_name(self):
         self.assertPageContains('body[data-density="dense"] .card .meta .t{display:block;max-width:100%;min-height:1.35em;overflow:hidden;')
         self.assertPageContains("performer?{kind:'performer',name:performer}")
-        self.assertPageContains("it.code?{kind:'',name:it.code}")
-        self.assertPageContains("it.studio?{kind:'studio',name:it.studio}")
+        self.assertPageContains(":{kind:'',name:'未归属'});")
+        self.assertPageLacks("it.studio?{kind:'studio',name:it.studio}")
         self.assertPageLacks("const whoKind=it.creator?'creator':(it.studio?'studio':'')")
 
     def test_creator_name_is_single_line_and_ellipsized(self):
@@ -4490,21 +5238,49 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks("it.ctx_orient==='竖屏'||cls==='scard'")
         self.assertPageContains("(jav&&layout==='big'?COVER_FRONT_RATIO:16/9)")
 
-    def test_portrait_strip_sits_on_a_row_boundary_without_borrowing_extra_items(self):
-        """竖屏条整行占位，必须插在行边界上，而不是另拉一批横屏视频补满余位。
+    def test_the_portrait_strip_lands_at_a_random_row_boundary_on_every_page(self):
+        """每接一页出现一条竖屏带，落点在这一页新增的那几行里随机取一个行边界。
 
-        补位的那批 id 不在分页序列里，翻下一页必然重复；而且它们被当作 `scard`
-        渲染会按竖屏比例压扁横屏画面。行边界插入既不额外请求也不会重复。
+        固定第几行的写法从第二屏起就成了可预期的栏目，而这条带子的作用正是打断节奏——
+        位置可预期，节奏就不再被打断。只在行边界上剪，否则上一行会被截断留下一段空白；
+        两端各留至少一行，剪在头尾就成了置顶或垫底，不是穿插。
+        余位不另拉一批横屏视频来补——那批 id 不在分页序列里，翻下一页必然重复，
+        而且被当作 `scard` 渲染会按竖屏比例压扁横屏画面。
+        静态标记里不留一份用不到的 `#shortsSec`：这一段只由 `loadShorts` 现画。
         """
-        self.assertPageContains('.shorts-inline{grid-column:1/-1;margin:28px 0 8px;padding-top:0}')
+        self.assertPageLacks('id="shortsSec"')
+        self.assertPageLacks('id="tokBtn"')
+        self.assertPageLacks("SHORTS_ROW_OFFSET")
+        # 每一页都插，不再只在 reset 时插一条。
+        self.assertPageContains("loadShorts(requestSeq,surface,{reset,addedFrom});")
+        self.assertPageContains("function splitGridForShorts(html,addedFrom){")
+        self.assertPageContains(
+            "  for(let i=Math.max(columns,Math.ceil(Math.max(0,addedFrom)/columns)*columns);"
+            "i<cards.length;i+=columns)")
+        self.assertPageContains(
+            "  const at=cards[boundaries[Math.floor(Math.random()*boundaries.length)]];")
+        # 剪开当前这段：剪点之后的卡整段搬进新的 .grid，带子插在两段之间。
+        self.assertPageContains(
+            "  for(let node=at;node;){const move=node;node=node.nextElementSibling;tail.append(move)}")
+        self.assertPageContains("  section.after(tail);")
+        self.assertPageContains("  tail.insertAdjacentHTML('beforebegin',html);")
+        # 每条带子取不同的一批，翻下去不会反复看到同 18 个。
+        self.assertPageContains("p.set('orient','竖屏');p.set('limit',SHORTS_BATCH);p.set('offset',shortsOffset);")
+        self.assertPageContains("shortsOffset=d.has_more===false?0:shortsOffset+SHORTS_BATCH;")
+        css = stylesheet_source()
+        self.assertPageContains(".gridstack{display:flex;flex-direction:column;gap:16px}")
+        start = css.index(chr(10) + ".shorts-inline{")
+        strip = css[start:css.index("}", start)]
+        for piece in ("background:var(--ground)", "border:1px solid var(--field-ring)",
+                      "border-radius:var(--floating-radius)"):
+            self.assertIn(piece, strip, "竖屏带是这一叠卡里的一张，和上下两段视频平级")
+        self.assertNotIn("grid-column", strip, "它不是网格里的一格，是叠在网格旁边的一张卡")
+        self.assertPageLacks("fillerParams")
+        self.assertPageLacks('const remainder=')
         # 竖屏比例只给 `scard`（和显式筛了竖屏时）。按 `it.ctx_orient` 逐条算的话，
         # 任何混着横竖屏的网格都会高低不齐——资料页、相关推荐、搜索结果全中招。
         self.assertPageContains("const portrait=cls==='scard'||state.orient==='竖屏';")
         self.assertPageContains('grid-template-columns:repeat(auto-fill,minmax(var(--tile),1fr))')
-        self.assertPageContains('const anchor=cards[Math.min(cards.length,columns*SHORTS_ROW_OFFSET)]')
-        self.assertPageContains("anchor.insertAdjacentHTML('beforebegin',inline)")
-        self.assertPageLacks("fillerParams")
-        self.assertPageLacks('const remainder=')
         self.assertPageContains('.srow .scard{flex:none;width:214px;cursor:pointer}')
 
     def test_only_the_default_home_list_drops_portrait_videos(self):
@@ -4512,10 +5288,17 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("if(isCatalogPath(decodeURIComponent(location.pathname))&&!state.q&&!state.orient)p.set('exclude_vertical','1')")
         self.assertPageLacks("if(!state.orient)p.set('exclude_vertical','1')")
 
-    def test_grid_count_and_range_select_ignore_the_portrait_strip(self):
-        """竖屏条嵌在网格里，但它既不是「显示 N」的一员，也不该被 Shift 范围选中。"""
-        self.assertPageContains("$('#grid').querySelectorAll(':scope > .card[data-id]').length")
-        self.assertPageContains("document.querySelectorAll('#grid > .card[data-id]')")
+    def test_grid_count_and_range_select_read_across_sections_but_skip_the_strip(self):
+        """目录是一叠 `.grid`，不是一个；竖屏带里的卡既不计入「显示 N」，也不参与范围选中。
+
+        判据统一写成 `#grid > .grid > .card[data-id]`：跨过分段这一层，同时把竖屏带
+        排除在外——它的卡在 `.srow` 里，不属于任何一段。
+        """
+        self.assertPageContains(
+            "const gridCards=()=>document.querySelectorAll('#grid > .grid > .card[data-id]');")
+        self.assertPageContains(
+            "function visibleCardIds(){return [...gridCards()].map(card=>+card.dataset.id)}")
+        self.assertPageContains("const n=gridCards().length;")
 
     def test_recycle_bin_has_its_own_route_and_reports_undeletable_files(self):
         self.assertRoute('/trash', "section:'trash'", "openTrash(push)")
@@ -4617,9 +5400,13 @@ class WebUiSourceTests(unittest.TestCase):
         # fwarn 提供 dismiss（会话内记忆），关闭钮样式与 toast 关闭钮同量纲。
         self.assertPageContains("data-fwarn-dismiss")
         self.assertPageContains("sessionStorage.setItem('peach-fwarn-dismissed','1')")
-        self.assertPageContains(".fwarn .wclose,.fcheckreport .wclose{flex:none;width:24px;height:24px;margin-left:auto;padding:0;border:0;")
-        # 报告条：danger 语义（红发丝边 + 微红底），不再是左侧粗条。
-        self.assertCode("background:color-mix(in srgb,var(--drop) 7%,transparent);\n  border:1px solid color-mix(in srgb,var(--drop) 30%,transparent);")
+        self.assertPageContains(".fwarn .wclose,.fcheckreport .wclose{width:24px;height:24px;padding:0;border:0;")
+        # 报告条的红发丝边和微红底由共用 Note 提供，本页只补关闭键那一列。
+        self.assertPageContains(
+            ".fcheckreport,.fwarn{grid-template-columns:16px minmax(0,1fr) 24px;margin:10px 0 14px}")
+        self.assertPageContains(
+            ".geist-note-error{border-color:color-mix(in srgb,var(--drop) 30%,transparent);"
+            "background:color-mix(in srgb,var(--drop) 7%,transparent)}")
         self.assertPageLacks("border-left:2px solid var(--drop)")
         # 来源行状态徽章（ok 绿 tint / 失败红 tint / 未检查灰）。
         self.assertPageContains('<span class="sbadge ${badge}" title="${esc(stateTitle)}"><i aria-hidden="true"></i>')
@@ -4632,13 +5419,20 @@ class WebUiSourceTests(unittest.TestCase):
         # Geist 菜单：触发器和每个选项都有入口图标，菜单内部滚动且不加猜测动画。
         self.assertPageContains('data-sidebar-add-trigger aria-haspopup="listbox" aria-expanded="false"')
         self.assertPageContains('role="option" data-sidebar-add-option=')
-        self.assertPageContains(".sidebaraddmenu{position:absolute;z-index:4;left:0;right:0;bottom:calc(100% + 6px);max-height:min(312px,48vh);overflow:auto;overscroll-behavior:contain")
+        # 弹层盒子走共用的 .popmenu：发丝边、投影和 2px 行距只有一份定义，本页只接管定位。
+        # 行距不能省——相邻两项一个悬停一个选中时，两块填充会连成一整条，看不出是两行。
+        self.assertPageContains('<div class="popmenu sidebaraddmenu"')
+        self.assertPageContains("background:var(--ground);display:grid;gap:2px;")
+        self.assertPageContains(".sidebaraddmenu{position:absolute;z-index:4;left:0;right:0;bottom:calc(100% + 6px);max-height:min(312px,48vh)}")
         self.assertPageContains("if(e.key==='Escape'){e.preventDefault();closeAddMenu();addTrigger.focus();return}")
         # 设置分组用框体隔开（用户回执）：每组建卡，分隔线顶格到卡边，
         # 标题字号与行内边距对齐 Vercel 后台设置卡。
-        self.assertPageContains(".settinggroup{margin:16px 0 0;border:1px solid var(--line-soft);border-radius:var(--floating-radius);")
-        # 组卡面与全站卡片同源（--surface 实底），不用白色透明叠加。
-        self.assertPageContains("background:var(--surface);padding:0 16px 12px}")
+        self.assertPageContains(".settinggroup{margin:16px 0 0;border:1px solid var(--field-ring);border-radius:var(--floating-radius);")
+        # 层级和首页一致：壳是退到后面的 --page，分组才是浮起来的 --ground 加一条发丝线。
+        # 反过来写（白壳嵌灰块）会让同一套控件在设置里和在首页上读出相反的层级。
+        self.assertPageContains("background:var(--ground);padding:0 16px 12px}")
+        self.assertPageContains("border:1px solid var(--field-ring);border-radius:var(--floating-radius);background:var(--page)}")
+        self.assertNotIn("box-shadow:0 8px 32px -12px", self.css, "浮层靠发丝线不靠投影")
         # 布尔开关是 Geist 中号 Toggle（36×20 轨道 + 17px 圆点），不是原生复选框；
         # Geist 的 Switch 是分段选择器，别用错控件。
         self.assertPageContains("#censorSetting{appearance:none;-webkit-appearance:none;width:36px;height:20px;flex:none;")
@@ -4736,7 +5530,85 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".settingscard{display:flex;flex-direction:column;width:min(520px,100%);max-height:min(720px,90vh);max-height:min(720px,90dvh);overflow:hidden")
         self.assertPageContains(".settingsscroll{flex:1;min-height:0;overflow-y:auto")
         self.assertPageContains("document.dispatchEvent(new CustomEvent('peachambientchange'")
-        self.assertPageContains("color:#f5f7fa;color-scheme:dark")
+        self.assertPageContains(".settingrow .gselect{min-width:148px}")
+
+    def test_theme_is_a_three_way_choice_that_defaults_to_the_system(self):
+        """主题三档：跟随系统、浅色、深色。
+
+        色板的两条分支（`prefers-color-scheme` 与 `[data-theme]`）本来就写在
+        01-base.css 里，这里补的是「选哪一条」。三档互斥，所以是 Geist Switch——
+        一组共享 name 的 radio，不是 Toggle；跟随系统等于不写属性，把判断还给媒体查询。
+        """
+        self.assertPageContains("const THEME_CHOICES=['system','light','dark']")
+        self.assertPageContains(
+            "const THEME_OPTIONS=[['system','跟随系统','monitor'],"
+            "['light','浅色','sun'],['dark','深色','moon']]")
+        self.assertPageContains("theaterMode:false,theme:'system',groupCollapse:true")
+        self.assertPageContains(
+            "appSettings.theme=allowedSetting(appSettings.theme,THEME_CHOICES,'system')")
+        self.assertCode(
+            "if(choice==='system')delete root.dataset.theme;else root.dataset.theme=choice;")
+        self.assertCode("const dark=choice==='dark'||(choice==='system'&&prefersDark.matches);")
+        # 地址栏色块也归这次调用：两枚 meta 各代表一档，选中的开到 all、另一枚关掉。
+        self.assertCode("meta.media=(meta.dataset.themeColor==='dark')===dark?'all':'not all';")
+        self.assertCode(
+            "prefersDark.addEventListener('change',()=>{if(appSettings.theme==='system')applyTheme()});")
+        self.assertPageContains(
+            '<meta name="theme-color" content="#FFFFFF" media="(prefers-color-scheme: light)"'
+            ' data-theme-color="light">')
+        self.assertPageContains(
+            '<meta name="theme-color" content="#080A0D" media="(prefers-color-scheme: dark)"'
+            ' data-theme-color="dark">')
+        # 面板里的控件复用卡片版式那份模板，只是形状另给。
+        self.assertPageContains('<div id="themeSetting"></div>')
+        self.assertCode(
+            "mount.innerHTML=iconSwitchHtml('theme','主题',THEME_OPTIONS,appSettings.theme,"
+            "{attr:'data-theme-choice',className:'themeswitch'});")
+        self.assertCode(
+            "wireIconSwitch(mount,'data-theme-choice',"
+            "choice=>{appSettings.theme=choice;saveSettings();applyTheme()});")
+        self.assertCode("renderThemeSetting();")
+
+    def test_first_paint_already_knows_which_theme_was_chosen(self):
+        """选择要在第一帧之前生效。
+
+        `app.js` 是 module，等同 defer：轮到它跑的时候浏览器已经按系统色画过一帧，
+        手动选浅色的人每次进页面都先看一下深色。所以 index.html 里有一段内联脚本
+        只做「写 data-theme、切地址栏色块」这两件事，其余仍只有 applyTheme() 一份。
+        """
+        self.assertPageContains(
+            "const choice=JSON.parse(localStorage.getItem('peach.settings.v1')||'{}').theme;")
+        self.assertCode("if(choice!=='light'&&choice!=='dark')return;")
+        self.assertCode("document.documentElement.dataset.theme=choice;")
+        self.assertCode("meta.media=meta.dataset.themeColor===choice?'all':'not all';")
+        # 色板不许在这里再写一份：内联脚本一个颜色字面量都不带。
+        script = self.page.split("<script>", 1)[1].split("</script>", 1)[0]
+        self.assertNotIn("#", script)
+
+    def test_theme_switch_wears_the_measured_vercel_theme_selector(self):
+        """主题选择器是 Geist 里唯一给选中项加环的控件。
+
+        三档的底色和它坐着的面板同色，光靠填充分不出当前是哪一档，所以选中项
+        额外加一圈环——2026-09-04 实测 vercel.com 的 system／light／dark 三枚圆形按钮：
+        外框 32px 高的无填充胶囊加 1px 环，每档 32×32 正圆、图标 16px。
+        未选中不铺填充、悬停只提文字色，这两条由 `.iconswitch` 本体给。
+        """
+        self.assertCode(
+            ".iconswitch.themeswitch{display:inline-flex;flex:none;padding:0;border:0;"
+            "background:transparent;border-radius:var(--pill-radius);"
+            "box-shadow:0 0 0 1px var(--border-15)}")
+        self.assertCode(".iconswitch.themeswitch label{width:32px;height:32px;border-radius:50%}")
+        self.assertCode(
+            ".iconswitch.themeswitch label:has(input:checked){background:var(--ground);"
+            "box-shadow:0 0 0 1px var(--line),0 1px 2px var(--overlay-5)}")
+        self.assertCode(".iconswitch.themeswitch svg{width:16px;height:16px}")
+        # 手机上三枚圆撑到 44px 命中区。
+        self.assertCode(
+            "@media (max-width:760px){.iconswitch.themeswitch label{width:44px;height:44px}}")
+        # 分隔线属于整块卡片，铺到框边再断。
+        self.assertCode(
+            ".settinggroup .settingrow+.sidebarsetting{margin:0 -16px;padding:14px 16px 0;"
+            "border-top:1px solid var(--line-soft)}")
 
     def test_search_menu_has_local_history_and_recommendations(self):
         self.assertPageContains("/api/search-history")
@@ -4786,6 +5658,26 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("const props={openItem,javTitleHtml,javDisplayName,srcBadge}")
         self.assertPageLacks("data-quality-open")
 
+    def test_the_configuration_page_is_an_island_inside_the_management_shell(self):
+        """这台电脑的媒体文件夹与端口是主站里的一屏，不是另一套独立页面。
+
+        遗留层只铺骨架、交容器、发回执；表单与校验回显在 frontend/ 的 island 里，
+        数据契约由 tests/test_onboarding.py 对 `/api/configuration` 断言。
+        """
+        self.assertRoute('/configuration', "section:'configuration'", "title:'配置'",
+                         "openConfiguration(push)")
+        self.assertPageContains("async function openConfiguration(push=true)")
+        self.assertPageContains(
+            "await ui.mountIsland('configuration',$('#stats'),props,"
+            "{isCurrent:()=>surfaceCurrent(surface)})")
+        self.assertPageContains("const props={receipt:message=>actionReceipt(message)};")
+        self.assertPageContains(
+            "document.body.classList.toggle('configuration-layout',current==='configuration');")
+        # 骨架照最终结构：两块同宽的卡，和数据管理那套单列卡片一个轮廓。
+        self.assertPageContains(
+            "'/configuration':()=>`<div class=\"configpage\">${pageSkeletonHtml('正在读取配置',")
+        self.assertPageContains("{cards:true,count:2,fill:false,className:'cleanup-skeleton'})}</div>`,")
+
     def test_review_page_is_a_separate_management_layer(self):
         self.assertPageContains("route('/review')")
         self.assertPageContains("const REVIEW_LABELS={metadata_fields:'元数据字段',creator_tags:'创作者标签'")
@@ -4811,7 +5703,7 @@ class WebUiSourceTests(unittest.TestCase):
         """
         self.assertPageContains(
             '<div class="detailtitle">${srcBadge(it.location,it.cost,\'srcbig\')}\n'
-            '        <div class="stitle">${javTitleHtml(it)}'
+            '        <div class="stitle">${javTitleHtml(it)}${partLabelBadge(it,queueContext)}'
             '${it.location===\'online\'?\'\':`<span class="srctools detailtitletools">'
             '${sourceToolButtons(it.id)}</span>`}</div></div>')
         self.assertPageContains(".detailtitle{display:flow-root;margin-bottom:10px}")
@@ -4821,10 +5713,10 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".detailtitle .stitle{min-width:0;margin:0;line-height:1.75}")
 
     def test_detail_metadata_uses_icons_instead_of_release_copy(self):
-        self.assertPageContains('<span class="detailmetaitem">${icon(\'monitor\')}')
+        self.assertPageContains('<span class="detailmetaitem">${icon(\'ratio\')}')
         self.assertPageContains('<span class="detailmetaitem">${icon(\'hard-drive\')}')
         self.assertPageContains('<span class="detailmetaitem">${icon(\'calendar\')}')
-        self.assertPageContains('id="i-monitor"')
+        self.assertPageContains('id="i-ratio"')
         self.assertPageContains('id="i-calendar"')
         self.assertPageLacks("发行 ${esc(it.release_date)}")
 
@@ -4875,9 +5767,8 @@ class WebUiSourceTests(unittest.TestCase):
         12 颗按钮宽 70–186px，没有一颗铺满。640px 以下把条子竖过来、按钮
         `width:100%` 是我们自己加的，不是 Geist 的做法。
 
-        底色同理：条子是 `--overlay-5`，按钮填比它更深的 `--surface` 才分得出来。
-        数据管理那六颗此前是透明底，和同一页「网盘与账本」的 `.resourceaction`
-        并排时是两种按钮。
+        底色同理：条子是 `--page`，按钮填比它更亮的 `--ground` 才分得出来，
+        与 `.geist-button` 的次级档、同一页「网盘与账本」的 `.resourceaction` 是同一颗按钮。
         """
         self.assertPageContains(".cleanupfieldset>.geist-fieldset-footer{box-sizing:border-box;"
                                 "min-height:var(--fieldset-bar-h);")
@@ -4887,8 +5778,8 @@ class WebUiSourceTests(unittest.TestCase):
         # 说明能被压窄并换行，按钮不参与压缩。
         self.assertPageContains(".resourcesyncfooter>p,.resourceapplyrow>p{min-width:0;margin-right:auto}")
         self.assertPageContains(".cleanupfieldset button{box-sizing:border-box;flex:none;min-height:32px;")
-        self.assertPageContains("background:var(--surface);color:var(--ink-2);display:inline-flex;")
-        self.assertPageContains(".cleanupfieldset button:hover{background:var(--hover);"
+        self.assertPageContains("background:var(--ground);color:var(--ink-2);display:inline-flex;")
+        self.assertPageContains(".cleanupfieldset button:hover{background:var(--surface);"
                                 "color:var(--ink)}")
         self.assertPageLacks(".resourcesyncfooter button{width:100%;justify-content:center}")
         self.assertPageLacks(".resourcesync .resourcesyncfooter{align-items:stretch;flex-direction:column}")
@@ -4986,6 +5877,9 @@ class WebUiSourceTests(unittest.TestCase):
         reviewed_end_selectors = {
             ".alphatag span:first-of-type", ".av .nm", ".entitylinklabel",
             ".fauthor .fsource.frow>b", ".fauthorhead b",
+            # 四段计数按重要性从左排（未看在最前），尾部省略切掉的正是最不影响判断的那几段；
+            # 它不是标识符，中间截断只会把「未看 3」也切开。
+            ".fbulkcounts",
             ".fchip", ".followpageaction .fmeta", ".fpickactions [data-pick-state]",
             ".fsechead .fmeta",
             ".frow>b", ".fvkind", ".idname", ".kv>span:first-child",
@@ -4997,6 +5891,7 @@ class WebUiSourceTests(unittest.TestCase):
             ".reviewitem h4", ".searchoption span",
             ".sgrid.mixgrid>.mixqueue .mixqueuehead span", ".sidebarorderlabel>b",
             ".insightrankrow>span:nth-child(2)", ".insighttablerow span", ".metricstrip small,.tastesummary>small",
+            ".gselectfield>span",
             ".tagpickitem .pickname", ".tasterank b,.tasterank small",
             ".tastesource b,.tastesource small", ".tg",
             ".tokui .toktitle", "body[data-density=\"dense\"] .card .ctags .tg",
@@ -5055,13 +5950,13 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks("$('#iClose').onclick")
 
     def test_entity_and_follow_pages_share_round_video_image_buttons(self):
-        self.assertPageContains('id="i-pics" viewBox="0 0 16 16" fill="currentColor" stroke="none"')
+        self.assertPageContains('id="i-pics" viewBox="-1.6 -1.6 19.2 19.2" fill="currentColor" stroke="none"')
         self.assertPageContains('export function mediaViewButtonsHtml({')
         self.assertPageContains('class="mediaviewbutton" type="button" data-media-view="${esc(value)}"')
-        self.assertPageContains("const mediaToggle=photoCount?mediaViewButtonsHtml({active:mediaSelected?'photos':'videos'")
-        self.assertPageContains("imageValue:'photos',imageLabel:'照片',videoCount:d.asset_count,imageCount:photoCount")
+        self.assertCode("const mediaToggle=(photoCount||roster.length)?mediaViewButtonsHtml({\n"
+                        "    active:entityViewNow(kind),")
+        self.assertPageContains("videoCount:d.asset_count,imageCount:photoCount,")
         self.assertPageContains('<section class="entitytagbar" aria-label="媒体与标签"><div class="entitytags">${mediaToggle}${tags}</div></section>')
-        self.assertPageContains("controls.hidden=!photos")
         self.assertPageContains("button.dataset.mediaView")
         self.assertPageContains(".mediaviewbuttons .mediaviewbutton{display:grid;place-items:center;flex:0 0 var(--filterItemH);width:var(--filterItemH);height:var(--filterItemH);padding:0;")
         self.assertPageContains(".mediaviewbuttons .mediaviewbutton svg{width:20px;height:20px")
@@ -5105,7 +6000,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".alphatag.r34-copyright")
         self.assertPageContains(".alphatag.r34-metadata")
         self.assertPageContains("indexheading")
-        self.assertPageContains("${icon('database')}本地")
+        self.assertPageContains("${icon('hard-drive')}本地")
 
     def test_an_alphabet_entry_stays_on_one_line(self):
         """一枚标签占一行，长名字截断。
@@ -5125,26 +6020,143 @@ class WebUiSourceTests(unittest.TestCase):
         叠成两行、过滤框被压成 0 宽。760px 以下改成标题与过滤框一行、开关另起一行。
         """
         self.assertPageContains("@media (max-width:760px){\n  .index .ihead{flex-wrap:wrap}")
-        self.assertPageContains("  .indexheading,#indexCount,.tagmodes button{white-space:nowrap}")
+        self.assertPageContains("  .indexheading,#indexCount,.viewmodes button{white-space:nowrap}")
         # 换行位靠一个零高的伪元素占满整行，开关的 order 排在它之后。
         self.assertPageContains('  .index .ihead::after{content:"";order:2;flex-basis:100%;height:0}')
         self.assertPageContains("  .index .ihead .geist-search{order:1}")
         self.assertPageContains(
-            "  .index .ihead .tagmodes,.index .ihead .iconswitch{order:3;flex:none}")
+            "  .index .ihead .viewmodes,.index .ihead .iconswitch{order:3;flex:none}")
 
-    def test_the_alphabet_switch_is_labelled_with_the_aa_glyph(self):
-        """字母表按钮的图标要说「按字母排」，不是三条粗细不同的横线。
+    def test_the_two_filled_glyph_icons_say_what_a_stroked_icon_cannot(self):
+        """字母表是 Aa，播放列表是队列。
 
-        `list-filter` 是筛选，和它旁边的「标签云」讲的不是同一件事；Aa 取 vendored
-        lucide-static 1.37.0 的 a-large-small，不另画。
+        `list-filter` 的本义是筛选，只有源筛选那一处该用它。这两枚取 Phosphor
+        regular，填充声明写在 symbol 上——全局 svg 是
+        `stroke:currentColor;fill:none`，只补 path 会让填充图标整枚不可见。
         """
-        self.assertPageContains("${icon('a-large-small')}字母表")
+        self.assertPageContains("${icon('text-aa')}字母表")
+        self.assertPageContains("['playlists','播放列表','playlist'],")
+        self.assertPageContains("emptyState('playlist','还没有播放列表'")
+        self.assertPageContains('aria-label="编辑播放列表">${icon(\'playlist\')}')
+        self.assertPageContains('title="加入播放列表">${icon(\'playlist\')}')
+        # 剩下的那一处 list-filter 是真的筛选，不能一起换掉。
+        self.assertPageContains("${icon('list-filter')}<span data-srcfilter-label>")
+        for symbol in ("text-aa", "playlist"):
+            self.assertRegex(
+                self.page,
+                rf'<symbol id="i-{symbol}" viewBox="[-\d. ]+" fill="currentColor" stroke="none">')
+        self.assertPageContains("Phosphor 2.1.1 regular, MIT")
+        self.assertPageLacks("i-a-large-small")
+
+    def test_each_glyph_names_the_thing_it_sits_next_to(self):
+        """一枚字形只代表一个意思，同一个意思也只有一枚字形。
+
+        一枚字形背两个意思时，用户在一处学会的含义会在另一处骗他，所以各归各的：
+        `refresh-cw` 只归原地换一批，`database` 只归管理入口，`folder-open` 只归
+        打开位置，`play` 只归真的起播，音量键不去标音频文件。这条逐枚钉住归属。
+
+        `i-clock` 没有使用者，是用户点名留的备用件，不要当死代码清掉。
+        """
+        # 文件类型标的是文件，不是打开动作，也不是音量。
+        self.assertPageContains("['archive','压缩包','file-archive'],['audio','音频','file-audio']")
+        self.assertPageContains("archive:['压缩包','file-archive'],")
+        self.assertPageContains("audio:['音频','file-audio'],")
+        # 「加载更多」往下接一页，方向由字形给出；`refresh-cw` 是原地换一批。
+        self.assertPageContains("data-follow-more>${icon('chevron-down')}加载更多</button>")
+        self.assertPageContains('title="换一批" aria-label="换一批">${icon(\'refresh-cw\')}')
+        # 两个空态各说自己那件事：筛不出结果，和一次比对没有发现。
+        self.assertPageContains("emptyState('search-x','当前筛选下没有更新'")
+        self.assertPageContains("emptyState('file-stack','没有找到重复文件'")
+        # 本地是磁盘、在线是订阅源；标签条这一对和关注页的来源图标同一套。
+        self.assertPageContains('data-tag-scope="local" aria-pressed="${!onlineTags}">${icon(\'hard-drive\')}本地')
+        self.assertPageContains('data-tag-scope="online" aria-pressed="${onlineTags}">${icon(\'rss\')}在线')
+        # 「喜爱理由」开的是一个写字面板，不是喜欢开关——那个是旁边的 thumbs-up。
+        self.assertPageContains('data-has-reason="${!!it.like_reason}">${icon(\'notebook-pen\')}')
+        self.assertPageContains('aria-label="${it.liked?\'取消喜欢\':\'喜欢\'}"')
+        # 侧栏：已标记是书签，沉浸模式是一叠竖着翻的卡；`play` 留给真的起播。
+        self.assertPageContains("['flagged','已标记','bookmark'],")
+        self.assertPageContains("['immerse','沉浸模式','gallery-vertical-end'],")
+        self.assertPageContains("<span>进入沉浸模式</span>")
+        # 管理菜单的「配置」是这台电脑：`monitor` 已归详情页的分辨率，`settings` 归设置弹层。
+        self.assertPageContains("['configuration','配置','computer'],")
+        self.assertPageContains('<symbol id="i-computer" viewBox="0 0 24 24">')
+        # 配置页每行文件夹的「选择文件夹」弹系统对话框去挑：`folder-search`。`folder-open` 归「打开位置」。
+        self.assertPageContains('<symbol id="i-folder-search" viewBox="0 0 24 24">')
+        self.assertIn('href="#i-folder-search"', (Path(__file__).resolve().parents[1] / "frontend" / "src" / "islands" / "configuration.tsx")
+                      .read_text(encoding="utf-8"))
+        # 主题三档各归各的：太阳是浅色、月亮是深色；跟随系统那档说的是「照这台设备走」，
+        # 讲的是设备不是明暗，所以跟 vercel.com 后台一样用显示器。画面尺寸量的是画幅本身，
+        # 归 `ratio`。
         self.assertPageContains(
-            '<symbol id="i-a-large-small" viewBox="0 0 24 24">'
-            '<path d="m15 16 2.536-7.328a1.02 1.02 1 0 1 1.928 0L22 16" />'
-            '<path d="M15.697 14h5.606" />'
-            '<path d="m2 16 4.039-9.69a.5.5 0 0 1 .923 0L11 16" />'
-            '<path d="M3.304 13h6.392" /></symbol>')
+            "[['system','跟随系统','monitor'],['light','浅色','sun'],['dark','深色','moon']]")
+        self.assertPageContains("${icon('ratio')}<span>${it.width||'?'}×${it.height||'?'}</span>")
+        # 换下来的三枚没有别的使用者，雪碧图里也不留。
+        for gone in ("i-monitor-cog", "i-star", "i-volume-2", "i-sun-moon"):
+            self.assertPageLacks(f'<symbol id="{gone}"')
+        self.assertPageContains('<symbol id="i-clock" viewBox="0 0 24 24">')
+
+    def test_mixed_icon_sets_land_on_one_optical_grid(self):
+        """同样 15px 要画得一样大，靠的是把内容外框补到 Lucide 的 20/24 活区。
+
+        每套图标在自己画格里留的白不一样：Phosphor 的框是 256、Health Icons 是 24、
+        自绘的 pics 是 16 且满格出血。照抄 viewBox 的结果是 pics 比邻座大两成、
+        Aa 矮一截。这几个框是量出内容外框后算的，换版本时由生成脚本重放。
+        """
+        for symbol, box in (
+                ("pics", "-1.6 -1.6 19.2 19.2"),
+                ("text-aa", "-7.3 32.8 262.5 182.9"),
+                ("playlist", "10.4 10.5 259.2 259.2"),
+                ("sperm", "1.5 1.2 21.2 21.2"),
+                ("brand-x", "-0.9 -0.9 25.9 25.9")):
+            self.assertPageContains(f'<symbol id="i-{symbol}" viewBox="{box}"')
+        # 框由生成脚本负责重放：`npm run vendor:web` 每次都写出同一份。
+        generator = (Path(__file__).resolve().parents[1]
+                     / "scripts" / "vendor_web_dependencies.mjs").read_text(encoding="utf-8")
+        self.assertIn('viewBox: "-7.3 32.8 262.5 182.9"', generator)
+        self.assertIn('viewBox: "10.4 10.5 259.2 259.2"', generator)
+        self.assertIn('const SPERM_VIEWBOX = "1.5 1.2 21.2 21.2";', generator)
+
+    def test_a_wide_glyph_gets_a_wide_slot_instead_of_being_shrunk_to_fit(self):
+        """1.4:1 的字形锁死方形槽位只能按宽缩，画出来就比满格的邻座矮一截。
+
+        外层 `<svg>` 的 viewBox 也得跟着 symbol 的比例，否则 `use` 仍旧 meet 进
+        24×24 的方框，把 symbol 那侧的宽框白改了。宽度交给 CSS 按高推。
+        """
+        self.assertPageContains("const WIDE_ICONS={'text-aa':1.435};")
+        self.assertPageContains(
+            "const ratio=WIDE_ICONS[name],classes=[ratio?'iconwide':'',cls].filter(Boolean).join(' ');")
+        self.assertPageContains(
+            "const box=ratio?`0 0 ${(24*ratio).toFixed(2)} 24`:'0 0 24 24';")
+        self.assertPageContains(".viewmodes button svg.iconwide{width:auto}")
+
+    def test_plain_text_inputs_share_one_token_so_the_button_beside_them_matches(self):
+        """控件高度只有一档：输入框 38px，同一行的按钮照抄这个数。
+
+        窄屏那条 `font-size:16px!important` 会把没写死高度的输入框抬 3px，旁边的
+        按钮不动，一行里两个控件差一截；播放列表那张表还因为 `flex:1 1 100%`
+        把提交键顶到下一行。纯文本输入框全站共用 `.geist-input`。
+        """
+        self.assertPageContains(".geist-input{box-sizing:border-box;width:100%;min-width:0;height:var(--control-h);")
+        self.assertPageContains(".playlistcreate .geist-button{height:38px;padding:0 13px}")
+        # 提交键是主动作，实心档由共用的 .geist-button.primary 给，不再本地拼一套描边。
+        for label in ("保存 ${mix.items.length} 个视频", "新建并加入", "新建"):
+            self.assertPageContains(
+                f'<button class="geist-button primary" type="submit">{label}</button>')
+        self.assertPageLacks(".playlistcreate button,.playlistactions button{")
+        self.assertPageContains(".faliasform .fbtn{height:38px;min-height:38px}")
+        self.assertPageContains(".playlistcreate label{display:grid;gap:5px;color:var(--muted);"
+                                "font-size:var(--fs-xs);flex:1 1 200px;max-width:320px}")
+        self.assertPageLacks(".playlistcreate label{flex:1 1 100%}")
+        # 自己拼内边距的那几处已经并入 token，别再冒出第二份。
+        self.assertPageLacks(".playlistcreate input,.playlistmeta input{min-width:220px;")
+        self.assertPageLacks(".faliasform input{min-width:0;height:34px;")
+        for needle in (
+                '<label>名称<input class="geist-input" name="name"',
+                '<label>新播放列表<input class="geist-input" name="name"',
+                '<input class="geist-input" data-playlist-name',
+                '<input class="geist-input" name="canonical"',
+                '<input class="geist-input" name="alias"'):
+            self.assertPageContains(needle)
 
     def test_an_online_tag_opens_the_follow_page_not_a_catalog_filter(self):
         """在线标签标注的是还没入库的在线更新，拿去筛目录必然一条不中。"""
@@ -5312,6 +6324,25 @@ class WebUiSourceTests(unittest.TestCase):
         """没抽过帧的条目在队列里退回番号封套，而不是一个纯黑块。"""
         self.assertPageContains(
             ':(x.is_jav&&x.code?`<img src="/cover?code=${encodeURIComponent(x.code)}"')
+
+    def test_the_detail_title_names_which_volume_is_playing(self):
+        """分卷队列里换一卷，右侧标题栏必须跟着变。
+
+        同一部片的几卷共用文件名，标题、女优、厂牌逐字相同（实测 PPT-018 三卷）。
+        标题栏不写卷号的话，点了队列里另一条，整栏看上去纹丝不动。卷号是「第几份
+        文件」而不是版次，所以用中性灰，和无码／中字／破解三种版次色分开。
+        """
+        self.assertPageContains("const partLabelBadge=(it,queue)=>queue?.kind==='parts'&&it.part_label")
+        self.assertPageContains(
+            """? `<small class="javedition partlabel">第 ${esc(it.part_label)} 卷</small>`:'';""")
+        self.assertPageContains("${javTitleHtml(it)}${partLabelBadge(it,queueContext)}")
+        self.assertPageContains(".javedition.partlabel{color:var(--muted);margin-left:6px}")
+        # `/api/item` 是单条口径，答不出「这是第几卷」；不从队列补，标题栏就一直空着。
+        self.assertPageContains("if(queueContext?.kind==='parts')")
+        self.assertPageContains(
+            "it.part_label=queueContext.items.find(part=>part.id===it.id)?.part_label||'';")
+        # 队列条目那一侧本来就写着卷号，两处用的是同一个字段。
+        self.assertPageContains("queue.kind==='parts'?`第 ${esc(x.part_label)} 卷`")
 
     def test_the_edition_queue_head_only_states_the_count(self):
         """标题栏已经写着「版本」，番号又印在正上方的详情标题里，说明只留数量。
@@ -5557,7 +6588,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("followFilter='',followBusy=false")
         # 「返回关注页」和「回到关注首屏」两处重置也得落在同一个默认上。
         self.assertEqual(self.page.count(
-            "followMediaView='videos';followFilter='';"), 2,
+            "followMediaView='videos';followFilter='';"), 1,
             "有重置分支还在把筛选推回旧默认")
         self.assertPageContains("[['','全部'],['new','未看']")
 
@@ -5586,18 +6617,42 @@ class WebUiSourceTests(unittest.TestCase):
         `pl-10`），而它的文字 Label 是块级、排在控件上方（`block ... mb-2`）——行内并排
         那种写法 Geist 没有。工具行没有上方空间，图标又足够把下拉框和普通按钮区分开。
         """
-        self.assertPageContains("""<label class="fmanagesort">${icon('sort')}<select data-follow-sort aria-label="关注列表排序">""")
+        self.assertPageContains(
+            """<span class="fmanagesort">${icon('sort')}${selectFieldHtml(FOLLOW_SORT_OPTIONS,followManageSort,""")
         self.assertPageContains('id="i-sort"')
         self.assertPageContains(".fmanagesort{position:relative;display:inline-flex;align-items:center")
         self.assertPageContains(".fmanagesort>svg{position:absolute;z-index:1;left:9px;width:16px;height:16px")
-        self.assertPageContains(".fmanagesort select{padding-left:31px}")
-        # 无障碍名称只剩 aria-label 一处，去掉标签后它必须留着。
-        self.assertPageContains('aria-label="关注列表排序"')
+        self.assertPageContains(".fmanagesort .gselectfield{height:var(--control-h);padding:0 12px 0 33px")
+        # 无障碍名称只剩 aria-label 一处，去掉标签后它必须留着；它由组件写到触发器上。
+        self.assertPageContains("{label:'关注列表排序',attr:'data-follow-sort'}")
+        self.assertCode('aria-expanded="false" aria-label="${esc(label)}"')
         # 标题行里三个可缩项只有说明文字，排序框和动作键都保持完整宽度。
         self.assertPageContains(".fsechead .fbtn,.fsechead .fmanagesort{flex:none}")
         # 允许换行的一行里，说明文字必须以基准 0 参与排线，否则先断行再谈缩放。
         self.assertPageContains(".fsechead .fmeta{flex:1 1 0;min-width:0;overflow:hidden")
         self.assertPageContains("  .fsechead .fmeta{display:none}")
+
+    def test_manage_sort_field_stays_in_the_page_palette(self):
+        """排序框的选项列表由站内自绘，配色跟着当前主题走。
+
+        原生下拉的弹出层由操作系统画，不认站内色板；控件各自钉一档 `color-scheme`，
+        浅色主题下就是闭合的框浅底、展开的列表深底浅字两套配色。这里的面板底色就是
+        页面底色，两条主题选择路径（prefers-color-scheme 与 `[data-theme]`）都落在
+        `html` 上，控件靠继承拿到它。
+        """
+        css = stylesheet_source()
+        start = css.index(".fmanagesort .gselectfield{")
+        rule = css[start:css.index("}", start)]
+        self.assertNotIn("color-scheme", rule, ".fmanagesort 的触发器不声明 color-scheme")
+        self.assertPageContains("html{color-scheme:light")
+        self.assertPageContains(
+            '@media (prefers-color-scheme:dark){html:not([data-theme="light"]){color-scheme:dark}}')
+        self.assertPageContains('html[data-theme="dark"]{color-scheme:dark}')
+        # 这一行的三个控件——版式开关、排序框、动作键——共用 --control-h。下拉单独缩一档
+        # 就是同一行里出现两种「同一种控件」，而缩的偏偏是唯一能改变列表内容的那个。
+        self.assertIn("height:var(--control-h)", rule, ".fmanagesort 的触发器与标题行同高")
+        self.assertPageContains(".fsechead .iconswitch label{width:34px;height:32px}")
+        self.assertPageContains(".fsechead .fbtn,.fsecfoot .fbtn{height:var(--control-h)}")
 
     def test_destructive_buttons_fill_red_on_hover(self):
         """危险动作的悬停态一律是 --drop 实底加白字，全站一个写法。
@@ -5614,6 +6669,42 @@ class WebUiSourceTests(unittest.TestCase):
                          ".playlistactions .danger:hover{",
                          ".reviewactions .reject:hover{"):
             self.assertPageContains(selector + fill, f"{selector} 的悬停态要填 --drop")
+
+    def test_bulk_footer_keeps_one_line_and_ellipsises_its_counts(self):
+        """底部批量条保持一行，宽度不够时省略说明文字，而不是把动作键甩到第二行。
+
+        它和分区标题行是同一种行：一行里唯一可以缩的是说明文字，动作键要完整读出来。
+        允许换行的话，窄屏上四段计数加两个键一定放不下，键落到第二行、底栏白长一截。
+        基准取 0 而不是 auto：按内容宽度参与排线的话，它先把整行挤断，缩放轮不到发生。
+        """
+        self.assertPageContains(".fnote.fbulkrow{display:flex;align-items:center;gap:4px 10px}")
+        self.assertPageLacks(".fnote.fbulkrow{display:flex;align-items:center;flex-wrap:wrap",
+                             "换行是这条行长成两行的原因")
+        self.assertPageContains(".fbulkcounts{flex:1 1 0;min-width:0;overflow:hidden;"
+                                "text-overflow:ellipsis;white-space:nowrap}")
+        self.assertPageContains(".fbulk{display:inline-flex;gap:8px;margin-left:auto;flex:none}")
+        # 标题行早就是这个写法，同一种行的两处行为要对得上。
+        self.assertPageContains(".fsechead .fmeta{flex:1 1 0;min-width:0;overflow:hidden")
+        self.assertPageContains(".fsechead .fbtn,.fsechead .fmanagesort{flex:none}")
+
+    def test_add_form_only_sizes_the_one_button_it_actually_has(self):
+        """`.faddform` 里唯一的按钮是来源筛选触发器，高度由它自己那条给。
+
+        这个表单没有提交键——只读查询回车即执行。再留一条按 `.faddform .fbtn` 写的通用
+        高度，读的人会以为旁边还有个提交键；而它被更具体的那条完全盖住，改它不会有任何
+        效果，是一条只会误导人的死规则。
+        """
+        self.assertPageContains(
+            ".faddform .fsrcfilter .fbtn{width:auto;height:38px;min-height:38px;padding:0 11px}")
+        self.assertPageLacks(".faddform .fbtn{height:38px;min-height:38px}",
+                             "被更具体那条完全盖住的死规则")
+        start = self.app_js.index('<form class="faddform" id="followAdd">')
+        form = self.app_js[start:self.app_js.index("</form>", start)]
+        self.assertNotIn('type="submit"', form, "添加表单没有提交键，回车即执行")
+        self.assertIn('<div class="fsrcfilter" id="followSrcFilter"></div>', form)
+        # 别名表单那个提交键是活的，别顺手一起删。
+        self.assertPageContains(".faliasform .fbtn{height:38px;min-height:38px}")
+        self.assertPageContains('<button class="fbtn" type="submit">保存别名</button>')
 
     def test_follow_filter_buttons_write_the_url_before_refetching(self):
         """先写 URL 再重取。反过来的话 openFollow 会照旧 URL 把状态推回去。"""
@@ -5692,8 +6783,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("${people?peopleLayoutButtons():''}")
         self.assertPageContains(
             "wireIconSwitch($('#index'),'data-people-layout',setPeopleIndexLayout);")
-        self.assertPageContains(
-            '`<div class="igrid" data-layout="${peopleIndexLayout()}">${peopleHtml(d.items)}</div>`')
+        self.assertCode('`<div class="igrid" data-cells="${cells}" data-layout="${\n'
+                        '    peopleIndexLayout()}">${peopleHtml(d.items)}</div>`')
         self.assertPageContains("peopleLayout:'big'", "默认与 JAV 版式、密度一致：大图为主")
 
     def test_the_big_people_layout_only_stretches_the_frame_it_does_not_change_columns(self):
@@ -5714,6 +6805,7 @@ class WebUiSourceTests(unittest.TestCase):
             "  saveSettings();\n"
             "  document.querySelectorAll('.igrid')"
             ".forEach(grid=>{grid.dataset.layout=peopleIndexLayout()});\n"
+            "  fitSkeleton($('#index'));\n"
             "}")
 
     def test_the_big_people_layout_frames_the_detected_face(self):
@@ -6014,14 +7106,14 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("background:true,status_only:true")
         # 上一轮跑完的结果是那一刻的快照。进页面就铺开会被读成现在的账本状态，
         # 而页面上没有任何东西说它是旧的。
-        self.assertPageContains("if(existing.status==='running')void followScan(existing);")
+        self.assertPageContains("if(existing.status==='running')void followScan(existing)")
         self.assertPageContains("同步并清理")
         self.assertPageContains('class="resourcesyncfooter geist-fieldset-footer"')
         self.assertPageContains('class="resourcepanel"')
         self.assertPageContains('class="resourceapplyrow"')
         self.assertPageContains(".resourceaction{box-sizing:border-box;height:36px")
         self.assertPageContains("@media(max-width:640px){.resourcesync .resourcesources{grid-template-columns:1fr}")
-        self.assertPageContains(".resourcesyncbox,.resourcepanel{overflow:clip;border:1px solid var(--line-soft);border-radius:var(--floating-radius)")
+        self.assertPageContains(".resourcesyncbox,.resourcepanel{overflow:clip;border:1px solid var(--field-ring);border-radius:var(--floating-radius)")
         self.assertPageContains(".resourcesources article+article{border-left:1px solid var(--line-soft)}")
         self.assertPageContains(".resourceapplyrow .resourcesyncok{color:var(--success)}")
         self.assertPageContains(".resourcesync{scroll-margin-top:calc(var(--topH) + 18px);display:grid;gap:16px}")

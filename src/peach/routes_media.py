@@ -24,6 +24,7 @@ from fastapi.responses import (
     FileResponse, JSONResponse, PlainTextResponse, RedirectResponse, Response,
     StreamingResponse,
 )
+from starlette.staticfiles import StaticFiles
 
 from . import link_marks, site_icons
 from .config import GENERATED_DIR
@@ -65,6 +66,18 @@ _UNSAFE_FILENAME = re.compile('[\\/:*?"<>|]+|[\x00-\x1f]+')
 LOGGER = logging.getLogger(__name__)
 
 
+def _image_response(request: Request, path: Path, media_type: str | None = None):
+    """固定图片 URL 使用私有缓存，并按文件 ETag 复验。"""
+    response = FileResponse(path, media_type=media_type, stat_result=path.stat())
+    response.headers["Cache-Control"] = "private, no-cache"
+    if StaticFiles().is_not_modified(response.headers, request.headers):
+        return Response(status_code=304, headers={
+            "ETag": response.headers["etag"],
+            "Cache-Control": response.headers["cache-control"],
+        })
+    return response
+
+
 def _attachment_disposition(title: str, url: str) -> str:
     """按条目标题构造下载文件名，扩展名沿用上游地址的后缀。
 
@@ -89,14 +102,15 @@ def _hls_plan(state, asset_id: int, session: str = ""):
     asset = state.media_engine.asset(asset_id)
     # 播放列表和分片端点本身就是 HLS 路径，按 ADR-0016 显式要计划，不受默认值影响。
     choice = state.media_engine.stream_plan(asset_id, mode="hls")
-    if choice.protocol != "hls" or not asset.duration:
+    if not asset.duration:
         return None
     source = state.media_engine.filesystem.file_for(asset, thumbnail=False)
-    source, _ = state.transcode_service.browser_path(
-        asset_id, source, session=session, registry=state.stream_sessions,
-    )
+    if state.transcode_service.requires_conversion(source, session=session, registry=state.stream_sessions):
+        return asset, source, state.hls_service.conversion_plan(asset.duration), True
+    if choice.protocol != "hls":
+        return None
     plan = state.hls_service.plan(source, asset.duration)
-    return None if not plan else (asset, source, plan)
+    return None if not plan else (asset, source, plan, False)
 
 
 @router.api_route("/stream", methods=["GET", "HEAD"])
@@ -136,12 +150,15 @@ def stream_plan(request: Request, id: int, session: str = "", mode: str = "", ar
     asset = state.media_engine.asset(id)
     plan = state.media_engine.stream_plan(id, mode=mode or "auto")
     # 只有真的能读出关键帧才宣告 HLS，否则客户端会拿到一个必然 404 的播放列表。
-    resolved = _hls_plan(state, id) if plan.protocol == "hls" else None
+    source_path = state.media_engine.filesystem.file_for(asset, thumbnail=False)
+    conversion = state.transcode_service.requires_conversion(
+        source_path, session=session, registry=state.stream_sessions)
+    resolved = _hls_plan(state, id, session) if conversion or plan.protocol == "hls" else None
     if resolved and session:
         return {
             "id": id,
             "protocol": "hls",
-            "mime_type": plan.mime_type,
+            "mime_type": "application/vnd.apple.mpegurl",
             "duration": asset.duration,
             "segment_seconds": plan.segment_seconds,
             "segments": len(resolved[2]),
@@ -199,13 +216,14 @@ async def hls_segment(request: Request, id: int, index: int, session: str = "", 
         )
         if resolved is None:
             return JSONResponse({"error": "hls unavailable"}, status_code=404)
-        _, source, plan = resolved
+        _, source, plan, conversion = resolved
         if index < 0 or index >= len(plan):
             return JSONResponse({"error": "invalid segment"}, status_code=416)
         start, duration = plan[index]
         path = await state.hls_service.generate(
             source, start, duration, asset_id=id, index=index,
             session=session, registry=state.stream_sessions,
+            **({"transcode": True} if conversion else {}),
         )
     except SegmentCancelled:
         return Response(status_code=410, headers={"Cache-Control": "no-store"})
@@ -236,18 +254,14 @@ async def stream_cancel(request: Request, session: str, args: dict[str, str] = D
 @router.api_route("/thumb", methods=["GET", "HEAD"])
 def thumbnail(request: Request, id: int, args: dict[str, str] = Depends(require_auth)):
     path = request.app.state.media_engine.file_for(id, thumbnail=True)
-    response = FileResponse(path)
-    response.headers["Cache-Control"] = f"public, max-age={MEDIA_CACHE_SECONDS}"
-    return response
+    return _image_response(request, path)
 
 
 @router.api_route("/photo", methods=["GET", "HEAD"])
 def photo(request: Request, id: int, args: dict[str, str] = Depends(require_auth)):
     """图片资产原图。灯箱看大图用这条，瀑布流一律走 `/photo-thumb`。"""
     path = request.app.state.media_engine.file_for(id)
-    response = FileResponse(path)
-    response.headers["Cache-Control"] = f"public, max-age={MEDIA_CACHE_SECONDS}"
-    return response
+    return _image_response(request, path)
 
 
 @router.api_route("/photo-thumb", methods=["GET", "HEAD"])
@@ -258,9 +272,7 @@ def photo_thumb(request: Request, id: int, args: dict[str, str] = Depends(requir
         path = state.photo_service.thumbnail(id, source)
     except PreviewUnavailable:
         return JSONResponse({"error": "unavailable"}, status_code=404)
-    response = FileResponse(path, media_type="image/jpeg")
-    response.headers["Cache-Control"] = f"public, max-age={MEDIA_CACHE_SECONDS}"
-    return response
+    return _image_response(request, path, media_type="image/jpeg")
 
 
 @router.api_route("/poster", methods=["GET", "HEAD"])
@@ -269,9 +281,7 @@ def poster(request: Request, id: int, c: int = 4, args: dict[str, str] = Depends
         path = request.app.state.preview_service.poster(id, c)
     except PreviewUnavailable:
         return JSONResponse({"error": "unavailable"}, status_code=404)
-    response = FileResponse(path, media_type="image/jpeg")
-    response.headers["Cache-Control"] = f"public, max-age={MEDIA_CACHE_SECONDS}"
-    return response
+    return _image_response(request, path, media_type="image/jpeg")
 
 
 @router.api_route("/cover", methods=["GET", "HEAD"])
@@ -280,9 +290,7 @@ def cover(request: Request, code: str = "", args: dict[str, str] = Depends(requi
     path = request.app.state.web_contract.cover_path(code)
     if path is None:
         return JSONResponse({"error": "no cover"}, status_code=404)
-    response = FileResponse(path, media_type="image/jpeg")
-    response.headers["Cache-Control"] = f"public, max-age={MEDIA_CACHE_SECONDS}"
-    return response
+    return _image_response(request, path, media_type="image/jpeg")
 
 
 @router.api_route("/endcard-frame", methods=["GET", "HEAD"])
@@ -307,9 +315,7 @@ def avatar(request: Request, id: int, args: dict[str, str] = Depends(require_aut
         path = request.app.state.preview_service.avatar(id)
     except PreviewUnavailable:
         return JSONResponse({"error": "unavailable"}, status_code=404)
-    response = FileResponse(path, media_type="image/jpeg")
-    response.headers["Cache-Control"] = f"public, max-age={AVATAR_CACHE_SECONDS}"
-    return response
+    return _image_response(request, path, media_type="image/jpeg")
 
 
 @router.api_route("/follow-avatar", methods=["GET", "HEAD"])
@@ -459,9 +465,7 @@ def follow_cover(request: Request, id: int, args: dict[str, str] = Depends(requi
         return Response(PLACEHOLDER_IMAGE, status_code=404,
                         media_type=PLACEHOLDER_CONTENT_TYPE,
                         headers={"cache-control": "no-store"})
-    response = FileResponse(path, media_type="image/jpeg")
-    response.headers["Cache-Control"] = f"public, max-age={MEDIA_CACHE_SECONDS}"
-    return response
+    return _image_response(request, path, media_type="image/jpeg")
 
 
 @router.api_route("/logo", methods=["GET", "HEAD"])
@@ -529,6 +533,4 @@ def entity_image(request: Request, kind: str, id: int, args: dict[str, str] = De
         path, content_type = request.app.state.preview_service.entity_image(kind, id)
     except PreviewUnavailable:
         return JSONResponse({"error": "unavailable"}, status_code=404)
-    response = FileResponse(path, media_type=content_type)
-    response.headers["Cache-Control"] = f"public, max-age={MEDIA_CACHE_SECONDS}"
-    return response
+    return _image_response(request, path, media_type=content_type)
