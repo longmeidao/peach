@@ -48,6 +48,10 @@ DEFAULT_NMS = 0.3
 MAX_SIDE = 1280
 #: 挑主角时，分数落后最好那张这么多的框不参与「取最大」。
 SCORE_MARGIN = 0.1
+#: 送检前的最小长边。图标常常只有 32×32、64×64，YuNet 在这个尺寸上几乎检不出东西——
+#: 它的输入是定尺寸的，脸在原图里只占十几个像素时进网络已经糊成一团。放大到这个数
+#: 再检，问的才是「这张图里是不是一张脸」，而不是「这张图够不够大」。
+MIN_DETECT_SIDE = 320
 
 
 class FaceModelUnavailable(RuntimeError):
@@ -82,6 +86,46 @@ def main_face(faces: list[Face], margin: float = SCORE_MARGIN) -> Face | None:
     best_score = max(face.score for face in faces)
     strong = [face for face in faces if face.score >= best_score - margin]
     return max(strong, key=lambda face: face.area)
+
+
+def decode(payload: bytes):
+    """图片字节 → OpenCV 的 BGR 数组；解不开返回 None。
+
+    调用方手里常常只有字节（刚从站上取回来的一枚图标），不必先绕一趟 PIL 再转格式。
+    """
+    import cv2
+    import numpy
+
+    if not payload:
+        return None
+    image = cv2.imdecode(numpy.frombuffer(payload, numpy.uint8), cv2.IMREAD_COLOR)
+    if image is None or not image.size:
+        return None
+    return image
+
+
+def shows_a_face(payload: bytes, detector: "FaceDetector") -> Face | None:
+    """这几个字节画的是一张脸吗；是就返回那张脸，用来当「这不是标识」的证据。
+
+    小图先按长边放大到 `MIN_DETECT_SIDE`：一枚 64×64 的头像照原样送进去检不出任何东西，
+    于是「没检到脸」会同时意味着「这是标识」和「这张图太小」，两件事分不开。
+    """
+    image = decode(payload)
+    if image is None:
+        return None
+    return main_face(detector.detect(_upscale(image)))
+
+
+def _upscale(image, side: int = MIN_DETECT_SIDE):
+    import cv2
+
+    height, width = image.shape[:2]
+    longest = max(height, width)
+    if not longest or longest >= side:
+        return image
+    scale = side / longest
+    return cv2.resize(image, (max(1, round(width * scale)), max(1, round(height * scale))),
+                      interpolation=cv2.INTER_CUBIC)
 
 
 def ensure_model(path: Path | None = None, *, allow_download: bool = True) -> Path:

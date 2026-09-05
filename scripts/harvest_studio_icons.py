@@ -6,8 +6,9 @@
 厂牌连一张图都没有（账本里现在是 Hon Naka），它们不在那份名单里，可两个位置一样空着，
 所以也纳进来。
 
-取哪一份交给 `site_icons`：官网首页声明的 apple-touch-icon / SVG / manifest 优先，
-都没有才落到 `/favicon.ico`。合格与否**不能**直接用 `link_marks.render_mark`：
+取哪一份先问 `site_icons`：官网首页声明的 apple-touch-icon / SVG / manifest 优先，
+都没有才落到 `/favicon.ico`。**站点声明的不等于就该用**，还有两条后手（见下）。
+合格与否**不能**直接用 `link_marks.render_mark`：
 它是为 `/link-mark` 那种 128px 圆标写的，`MIN_DESIGNED_SIZE=96` 会把 32×32、64×64 的
 favicon 一律退回。实测七个 JAV 厂牌站，六个的 favicon 内容比在 1.0～1.84 之间——
 是方标，只是小。退给一个 28px 的筛选片用绰绰有余，按「不是标识」退掉是判错了。
@@ -15,6 +16,20 @@ favicon 一律退回。实测七个 JAV 厂牌站，六个的 favicon 内容比�
 所以这里只借 `link_marks` 里真正表达 icon / 字标之分的那一条：`content_aspect` 与
 `MAX_CONTENT_ASPECT`。尺寸另设自己的下限，因为要顶的位置本来就只有 28～32px。
 `MIN_DESIGNED_SIZE` 不动：那是另一个调用方的正确取值。
+
+**声明那一枚可能根本不是标识。** ACT 的官网 `<link rel=icon>` 指着一张艺人照片
+（2026-09-05 实测，YuNet 0.934 分检出一张脸）。它够大、也够方，两道闸门都过，装上去
+事务所页顶着一个人的脸。所以自动发现的候选还要过一道人脸闸：检出脸就退回，判词
+`人像不是标识`。用户指定的来源不过这道闸——指定就是结论。模型取不到时整轮不设这道闸，
+统计里说明，不静默当成「都没有脸」。
+
+**声明之外还有两个来源，按这个顺序。** 站点自己 header 里那张 `<img>`
+（`site_logos.logo_images`），再是它挂在页面上的 X 账号头像
+（`site_logos.x_profiles` + `avatar_tiers`）。bambi.ne.jp 是这条链的实测样本：它只声明
+一枚 16×16 的 `favicon.ico`，按声明走只能得出「只有小图标」；header 那张
+`header_logo.png` 是 187×57 的字标；而它 X 账号的头像是 119×119 的方标——三样里最能顶
+小位的是最后那个。用户 2026-09-05 的口径：站点自己那几张都不清楚、头像反而清楚时，
+头像既做 icon 也做 logo。
 
 两条实测逼出来的规矩：
 
@@ -56,7 +71,7 @@ import httpx
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from peach import images, link_marks, site_icons  # noqa: E402
+from peach import face_detect, images, link_marks, site_icons, site_logos  # noqa: E402
 from peach.config import GENERATED_DIR, REVIEW_DIR
 from peach.review_csv import write_rows
 
@@ -75,6 +90,8 @@ MISSING, SKIP = "未取得", "无官网链接"
 PADDED = "字标补白"
 #: 取到了、也够清楚，但那是整个主机共用的一枚，代表不了这个实体。
 SHARED = "平台通用图标"
+#: 取回来的是一张照片。站点自己声明它是图标也不算数——那一位要的是标识。
+PORTRAIT = "人像不是标识"
 #: 会被 `--install` 落盘的判词。`平台通用图标` 与 `仍是字标` 不在内。
 INSTALLABLE = (OK, PADDED)
 
@@ -293,8 +310,21 @@ class Fetcher:
         self.fetched = 0
         self.retried = 0
         self._last = 0.0
+        #: 同一份首页这一趟会被要三次：`site_icons` 找声明、这边找 header 的 `<img>`、
+        #: 再找页面上的 X 账号。缓存把它压回一次，省的是站点的带宽和这一轮的墙上时间。
+        self._cache: dict[str, tuple[bytes, str] | None] = {}
 
     def __call__(self, target: str):
+        if target in self._cache:
+            cached = self._cache[target]
+            if cached is not None:
+                self.fetched += 1
+            return cached
+        got = self._get(target)
+        self._cache[target] = got
+        return got
+
+    def _get(self, target: str):
         for attempt in range(self.retries + 1):
             wait = self.interval - (time.monotonic() - self._last)
             if wait > 0:
@@ -336,8 +366,13 @@ class SquareMark:
     原样保留像素，不放大：存 128 会把 32×32 插值成一团，而这份图最终只显示在 28px。
     """
 
-    def __init__(self):
+    def __init__(self, faces=None):
+        #: 判「这是不是一张照片」的闸。传 None 就是不设这道闸——用户指定的来源走那条路。
+        self.faces = faces
         self.reasons: list[str] = []
+        #: 因为检出人脸退回的候选。和 `reasons` 分开记：那几条说的是「不够格」，
+        #: 这一条说的是「找错东西了」，下一步不一样。
+        self.portraits: list[str] = []
         self.size = ""
         #: 通过的那一份的内容比。1.0 是正方的标识，越接近 2.2 越可能是一条字标
         #: 侥幸压线——复核时这个数比看文件名有用得多。
@@ -365,9 +400,88 @@ class SquareMark:
         if min(image.size) < MIN_SHORT_EDGE:
             self.reasons.append(f"只有 {image.size[0]}x{image.size[1]}")
             return None
+        payload = _as_png(image)
+        face = self.faces(payload) if self.faces is not None else None
+        if face is not None:
+            self.portraits.append(
+                f"{image.size[0]}x{image.size[1]} 里检出一张脸（{face.score}）")
+            return None
         self.size = f"{image.size[0]}x{image.size[1]}"
         self.aspect = f"{aspect:.2f}"
-        return _as_png(image)
+        return payload
+
+
+class FaceGate:
+    """一枚候选里有没有人脸。有就不是标识，是照片。
+
+    模型是按需构造的：这一趟一个候选都没走到闸门时不必去下 232 KB 的 ONNX。取不到
+    模型也不让整轮停下——那会把「今天没网」变成「所有站点都没有标识」——但要把原因记进
+    统计，让复核的人知道这一轮的照片没人拦。
+    """
+
+    def __init__(self, enabled: bool = True):
+        self.enabled = enabled
+        self.unavailable = ""
+        self.rejected = 0
+        self._detector = None
+
+    def __call__(self, payload: bytes):
+        if not self.enabled or self.unavailable:
+            return None
+        if self._detector is None:
+            try:
+                self._detector = face_detect.FaceDetector()
+            except (face_detect.FaceModelUnavailable, ImportError) as error:
+                self.unavailable = str(error)
+                return None
+        face = face_detect.shows_a_face(payload, self._detector)
+        if face is not None:
+            self.rejected += 1
+        return face
+
+
+def site_assets(url: str, fetch) -> tuple[list[str], list[str]]:
+    """站点首页上自己挂着的标识资产：(header 里的 `<img>`, 页面上的 X 账号)。
+
+    两样从同一份 HTML 里读，因为它们本来就在同一页上，分两次取只是多敲人家一次门。
+    """
+    got = fetch(url)
+    if got is None:
+        return [], []
+    html = got[0].decode("utf-8", "replace")
+    return site_logos.logo_images(html, url), site_logos.x_profiles(html, url)
+
+
+def avatar_urls(profile: str, fetch) -> list[str]:
+    """X 账号主页 → 头像候选，从上传原图退到缩略图。"""
+    got = fetch(profile)
+    if got is None:
+        return []
+    return site_logos.avatar_tiers(got[0].decode("utf-8", "replace"))
+
+
+def first_mark(urls: list[str], fetch, policy: "SquareMark") -> tuple[bytes, str] | None:
+    """按顺序取这几个地址，返回第一枚过闸的方标和它的来源地址。
+
+    过不了闸的照样留在 `policy` 里：宽扁字标进 `wordmark`，人像进 `portraits`，
+    复核件上要看得见每一份被退回的理由。
+    """
+    for url in urls:
+        got = fetch(url)
+        if got is None:
+            continue
+        made = policy(got[0], content_type=got[1])
+        if made:
+            return made, url
+    return None
+
+
+def _short_edge(size: str) -> int:
+    """`"187x57"` → 57；量不到就是 0。"""
+    parts = str(size).split("x")
+    if len(parts) != 2 or not all(part.isdigit() for part in parts):
+        return 0
+    return min(int(part) for part in parts)
 
 
 class EntityScope:
@@ -424,33 +538,103 @@ def _store(candidate_dir: Path, name: str, payload: bytes) -> Path:
     return path
 
 
+def _made_rows(safe: str, target: dict[str, str], entry: dict[str, str],
+               policy: "SquareMark", made: bytes, candidate_dir: Path,
+               source: str, evidence: str
+               ) -> tuple[dict[str, object], dict[str, object] | None]:
+    """做成了一枚方标：出 `icon` 行，再看大位能不能从这一趟的收获里一并出。"""
+    path = _store(candidate_dir, f"{safe}.png", made)
+    icon = _row(safe, target, entry, ICON, OK, url=source, mark_size=policy.size,
+                content_aspect=policy.aspect,
+                sha256=hashlib.sha256(made).hexdigest(), candidate=str(path),
+                evidence=evidence)
+    return icon, hunt_logo_row(safe, target, entry, icon, policy, made, candidate_dir)
+
+
+def hunt_logo_row(safe: str, target: dict[str, str], entry: dict[str, str],
+                  icon: dict[str, object], policy: "SquareMark", made: bytes,
+                  candidate_dir: Path) -> dict[str, object] | None:
+    """小位做成之后，大位从同一趟的收获里出，没有指定来源也不留空。
+
+    大位要的是完整字标，所以站点自己那张字标优先——宽扁是它应有的形状，`logo` 位不过
+    内容比闸门。可它常常小得没法用：bambi.ne.jp 的 `header_logo.png` 只有 187×57
+    （2026-09-05 实测），短边 57 放进 160 px 的大位是一条糊字。这种时候按用户
+    2026-09-05 的口径退到小位那张方标：站点自己那几张都不清楚、头像反而清楚时，
+    清楚的那张两个位置都顶。两条都够不着 `MIN_LOGO_SHORT_EDGE` 就照记一行不装，
+    大位会回落到 `<safe>.img`。
+
+    已经有 `<safe>.img` 的一律不出这一行。那张多半正是这个厂牌的完整字标（补白名单
+    上的每一家都是），而 `.logo.img` 在解析顺序里排在它前面——出这一行等于拿一枚
+    28 px 用的方标把大位上本来对的那张字标顶掉。空着才需要补，不空的别动。
+    """
+    if target["installed"]:
+        return None
+    wordmark = policy.wordmark
+    if wordmark is not None and _short_edge(policy.wordmark_size) >= MIN_LOGO_SHORT_EDGE:
+        plate = images.bake_square(wordmark)
+        square = link_marks.decode(plate) if plate else None
+        if square is not None:
+            payload = _as_png(square)
+            return _row(safe, target, entry, LOGO, OK,
+                        mark_size=f"{square.size[0]}x{square.size[1]}",
+                        content_aspect=f"{link_marks.content_aspect(square):.2f}",
+                        sha256=hashlib.sha256(payload).hexdigest(),
+                        candidate=str(_store(candidate_dir, f"{safe}.logo.png", payload)),
+                        evidence=f"站点自己的字标（{policy.wordmark_size}）烤成方图")
+    if _short_edge(str(icon["mark_size"])) >= MIN_LOGO_SHORT_EDGE:
+        return _row(safe, target, entry, LOGO, OK, url=str(icon["url"]),
+                    mark_size=str(icon["mark_size"]),
+                    content_aspect=str(icon["content_aspect"]),
+                    sha256=str(icon["sha256"]),
+                    candidate=str(_store(candidate_dir, f"{safe}.logo.png", made)),
+                    evidence=f'与 icon 位同一枚方标（{icon["mark_size"]}），'
+                             f"站点自己的字标不够大或者没有")
+    return _row(safe, target, entry, LOGO, TOOSMALL, url=str(icon["url"]),
+                mark_size=str(icon["mark_size"]),
+                evidence=f"这一趟取到的都不够大位用：方标 "
+                         f'{icon["mark_size"] or "无"}、字标 '
+                         f'{policy.wordmark_size or "无"}，都不到 {MIN_LOGO_SHORT_EDGE}')
+
+
 def icon_row(safe: str, target: dict[str, str], entries: list[dict[str, str]],
-             fetch, candidate_dir: Path
+             fetch, candidate_dir: Path, faces=None
              ) -> tuple[dict[str, object], dict[str, object] | None]:
     """`icon` 位一行。一个厂牌可能挂多条链接，第一条做成就停。
 
-    第二个返回值只在走了字标补白时才有：同一枚字标原样出的 `logo` 行。
+    每条链接依次问三个来源：站点声明的图标、站点 header 里那张 `<img>`、站点挂着的
+    X 账号头像。三样都过同一道闸（方、够大、不是人像），所以先问哪一个不影响合不合格，
+    只决定同样合格时用谁的——站点自己声明的最正式，排前面。
+
+    第二个返回值是同一趟带出来的 `logo` 行：走字标补白时是那张补白图，做成方标时由
+    `hunt_logo_row` 决定，都没有就是 None。
     """
     if not entries:
         return _row(safe, target, None, ICON, SKIP,
                     evidence="账本里这个厂牌没有 official／catalog 链接"), None
     attempts: list[str] = []
     reachable = False
-    policy = SquareMark()
+    policy = SquareMark(faces)
     scope = EntityScope()
     for entry in entries:
         before = getattr(fetch, "fetched", 0)
         made = site_icons.best_mark(
             entry["url"], fetch, policy,
             accept=scope if shares_its_host(entry["url"]) else None)
+        if made:
+            return _made_rows(safe, target, entry, policy, made, candidate_dir,
+                              entry["url"], "官网声明的图标")
+        marks, profiles = site_assets(entry["url"], fetch)
+        own = first_mark(marks, fetch, policy)
+        if own:
+            return _made_rows(safe, target, entry, policy, own[0], candidate_dir,
+                              own[1], "站点 header 里的 <img>")
+        for profile in profiles:
+            avatar = first_mark(avatar_urls(profile, fetch), fetch, policy)
+            if avatar:
+                return _made_rows(safe, target, entry, policy, avatar[0], candidate_dir,
+                                  avatar[1], f"{profile} 的头像")
         reachable = reachable or getattr(fetch, "fetched", 0) > before
-        if not made:
-            attempts.append(entry["url"])
-            continue
-        path = _store(candidate_dir, f"{safe}.png", made)
-        return _row(safe, target, entry, ICON, OK, mark_size=policy.size,
-                    content_aspect=policy.aspect,
-                    sha256=hashlib.sha256(made).hexdigest(), candidate=str(path)), None
+        attempts.append(entry["url"])
 
     entry = entries[0]
     tried = "、".join(attempts)
@@ -475,6 +659,10 @@ def icon_row(safe: str, target: dict[str, str], entries: list[dict[str, str]],
         return icon, logo
     if not reachable:
         verdict, evidence = MISSING, f"试过 {tried}，一份字节都没取回来"
+    elif policy.portraits and not policy.reasons:
+        # 站上那几张都是照片。下一步是人工指一张标识，不是换个时间再抓。
+        verdict = PORTRAIT
+        evidence = f"试过 {tried}：" + "、".join(policy.portraits)
     elif scope.rejected and not policy.reasons:
         # 取到了、也够清楚，但那是平台模板的通用图标，和这个实体无关。
         verdict = SHARED
@@ -485,7 +673,7 @@ def icon_row(safe: str, target: dict[str, str], entries: list[dict[str, str]],
     else:
         verdict = WORDMARK
         evidence = f"试过 {tried}：" + "、".join(
-            policy.reasons + scope.rejected or ["没有候选"])
+            policy.reasons + policy.portraits + scope.rejected or ["没有候选"])
     return _row(safe, target, entry, ICON, verdict, evidence=evidence), None
 
 
@@ -601,7 +789,7 @@ def wordmark_source_rows(safe: str, target: dict[str, str], fetch, candidate_dir
 
 def harvest(targets: dict[str, dict[str, str]],
             links: dict[str, list[dict[str, str]]],
-            fetch, candidate_dir: Path) -> list[dict[str, object]]:
+            fetch, candidate_dir: Path, faces=None) -> list[dict[str, object]]:
     """每个目标厂牌出一行 `icon`；有指定 logo 来源或走了字标补白的再出 `logo` 行。
 
     有指定字标来源的厂牌只走那一条，两行都从同一张方图出（`wordmark_source_rows`）。
@@ -624,7 +812,7 @@ def harvest(targets: dict[str, dict[str, str]],
             if marked_logo is not None:
                 rows.append(marked_logo)
             continue
-        icon, wordmark_logo = icon_row(safe, target, entries, fetch, candidate_dir)
+        icon, wordmark_logo = icon_row(safe, target, entries, fetch, candidate_dir, faces)
         logo = logo_row(safe, target, entries, fetch, candidate_dir)
         if (logo is not None and logo["verdict"] == OK
                 and icon["verdict"] not in INSTALLABLE):
@@ -704,21 +892,27 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         wanted = {safe_name(name) for name in args.only}
         targets = {key: value for key, value in targets.items() if key in wanted}
 
+    faces = FaceGate(not args.no_face_gate)
     client = httpx.Client(trust_env=True, follow_redirects=True)
     try:
         rows = harvest(targets, links, Fetcher(client, args.timeout, args.interval),
-                       args.candidate_dir.resolve())
+                       args.candidate_dir.resolve(), faces)
     finally:
         client.close()
 
-    order = {OK: 0, PADDED: 1, TOOSMALL: 2, SHARED: 3, WORDMARK: 4, MISSING: 5, SKIP: 6}
+    order = {OK: 0, PADDED: 1, TOOSMALL: 2, SHARED: 3, PORTRAIT: 4, WORDMARK: 5,
+             MISSING: 6, SKIP: 7}
     rows.sort(key=lambda row: (order.get(row["verdict"], 9), row["safe"], row["variant"]))
     write_rows(args.output, FIELDS, rows)
-    counted = (OK, PADDED, TOOSMALL, SHARED, WORDMARK, MISSING, SKIP)
+    counted = (OK, PADDED, TOOSMALL, SHARED, PORTRAIT, WORDMARK, MISSING, SKIP)
     stats: dict[str, object] = {"目标厂牌": len(targets), "复核行": len(rows)}
     stats.update({verdict: sum(1 for row in rows if row["verdict"] == verdict)
                   for verdict in counted})
     stats["logo 行"] = sum(1 for row in rows if row["variant"] == LOGO)
+    stats["人像闸退回"] = faces.rejected
+    if faces.unavailable:
+        # 这一轮没人拦照片。写进统计，别让它看起来像「查过了，都不是照片」。
+        stats["人像闸未生效"] = faces.unavailable
     stats["output"] = str(args.output)
     if args.install:
         stats["已安装"] = install(rows, logo_root)
@@ -739,6 +933,8 @@ def main(argv: list[str] | None = None) -> int:
                         help="这一趟补的是哪一类公司的标识")
     parser.add_argument("--interval", type=float, default=1.5)
     parser.add_argument("--timeout", type=float, default=20.0)
+    parser.add_argument("--no-face-gate", action="store_true",
+                        help="不检人脸；只在没法取模型又必须出一轮复核件时用")
     parser.add_argument("--install", action="store_true",
                         help="把可装的候选写成 <safe>.icon.img / <safe>.logo.img")
     args = parser.parse_args(argv)

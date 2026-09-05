@@ -1077,18 +1077,24 @@ class RunTests(unittest.TestCase):
         self.wordmarks = dict(MODULE.WORDMARK_SOURCES_BY_SAFE)
         MODULE.LOGO_SOURCES_BY_SAFE.clear()
         MODULE.WORDMARK_SOURCES_BY_SAFE.clear()
+        # `run` 自己造 Fetcher，替身挡不到它：站点自己那两条后手会真的去敲 fitch-av.com。
+        self.assets = MODULE.site_assets
+        MODULE.site_assets = lambda url, fetch: ([], [])
 
     def tearDown(self):
         MODULE.LOGO_SOURCES_BY_SAFE.clear()
         MODULE.LOGO_SOURCES_BY_SAFE.update(self.sources)
         MODULE.WORDMARK_SOURCES_BY_SAFE.clear()
         MODULE.WORDMARK_SOURCES_BY_SAFE.update(self.wordmarks)
+        MODULE.site_assets = self.assets
         self.tmp.cleanup()
 
     def invoke(self, install=False, marks=None):
         """只有 Fitch 能做出方标；kawaii 根本没链接。
 
         替身不调 `fetcher`——真调下去就是往 fitch-av.com 发请求，测试不联网。
+        `run` 自己造 Fetcher，所以站点自己那两条后手也要在这一层挡住；人脸闸同理，
+        开着它会去下模型。
         """
         marks = marks if marks is not None else {"https://fitch-av.com/": png_bytes()}
         original = MODULE.site_icons.best_mark
@@ -1098,7 +1104,8 @@ class RunTests(unittest.TestCase):
             return MODULE.run(SimpleNamespace(
                 database=self.database, output=self.root / "studio-icons.csv",
                 logo_root=self.logos, candidate_dir=self.root / "candidates",
-                only=[], kind="studio", interval=0.0, timeout=1.0, install=install))
+                only=[], kind="studio", interval=0.0, timeout=1.0, install=install,
+                no_face_gate=True))
         finally:
             MODULE.site_icons.best_mark = original
 
@@ -1115,7 +1122,8 @@ class RunTests(unittest.TestCase):
             MODULE.run(SimpleNamespace(
                 database=self.database, output=self.root / "agency-icons.csv",
                 logo_root=self.logos, candidate_dir=self.root / "candidates",
-                only=[], kind="agency", interval=0.0, timeout=1.0, install=False))
+                only=[], kind="agency", interval=0.0, timeout=1.0, install=False,
+                no_face_gate=True))
         finally:
             MODULE.site_icons.best_mark = original
         from peach.review_csv import read_rows
@@ -1132,7 +1140,8 @@ class RunTests(unittest.TestCase):
             MODULE.run(SimpleNamespace(
                 database=self.database, output=self.root / "agency-icons.csv",
                 logo_root=self.logos, candidate_dir=self.root / "candidates",
-                only=[], kind="agency", interval=0.0, timeout=1.0, install=False))
+                only=[], kind="agency", interval=0.0, timeout=1.0, install=False,
+                no_face_gate=True))
         finally:
             MODULE.site_icons.best_mark = original
         from peach.review_csv import read_rows
@@ -1173,7 +1182,8 @@ class RunTests(unittest.TestCase):
             stats = MODULE.run(SimpleNamespace(
                 database=self.database, output=self.root / "studio-icons.csv",
                 logo_root=self.logos, candidate_dir=self.root / "candidates",
-                only=["HEYZO"], kind="studio", interval=0.0, timeout=1.0, install=False))
+                only=["HEYZO"], kind="studio", interval=0.0, timeout=1.0, install=False,
+                no_face_gate=True))
         finally:
             MODULE.site_icons.best_mark = original
         self.assertEqual(stats["复核行"], 1)
@@ -1323,6 +1333,202 @@ class StudioLinkTests(unittest.TestCase):
     def test_the_key_is_the_installed_file_name(self):
         """归拢键必须是文件名，否则和 `padded_studios` 对不上。"""
         self.assertIn("Idea_Pocket", MODULE.studio_links(self.connection))
+
+
+def a_face(score=0.934):
+    return MODULE.face_detect.Face(cx=0.5, cy=0.4, width=0.3, height=0.3, score=score)
+
+
+class SiteOwnAssetTests(unittest.TestCase):
+    """站点声明的那一枚不合用时的两条后手：header 里的 `<img>`、页面上的 X 账号头像。
+
+    样本按 bambi.ne.jp 2026-09-05 实测：只声明一枚 16×16 的 `favicon.ico`，header 那张
+    是 187×57 的字标，而它 X 账号的头像是 119×119 的方标。
+    """
+
+    HOME = "https://bambi.ne.jp/"
+    MARK = "https://bambi.ne.jp/images/_/header_logo.png"
+    PROFILE = "https://x.com/BambiPromotion"
+    AVATAR = "https://pbs.twimg.com/profile_images/1/7N42mRCO.jpg"
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.candidates = Path(self.tmp.name).resolve() / "candidates"
+        self.targets = {"Bambi_Promotion": {"original_size": "", "installed": ""}}
+        self.links = {"Bambi_Promotion": [
+            {"entity_id": 9001, "studio": "Bambi Promotion",
+             "link_kind": "official", "url": self.HOME}]}
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def fetch(self, **overrides):
+        page = (f'<header><img src="images/_/header_logo.png" alt="logo"></header>'
+                f'<a href="{self.PROFILE}">X</a>')
+        profile = ('<meta property="og:image" content="https://pbs.twimg.com/'
+                   'profile_images/1/7N42mRCO_400x400.jpg">')
+        pages = {self.HOME: page.encode(), self.MARK: block_png((187, 57)),
+                 self.PROFILE: profile.encode(), self.AVATAR: block_png((119, 119))}
+        pages.update(overrides)
+        return Fetch(pages)
+
+    def harvest(self, fetch=None, faces=None, declared=None, targets=None):
+        original = MODULE.site_icons.best_mark
+
+        def stub(url, fetcher, policy, fallback=None, accept=None):
+            fetcher(url)
+            if declared is not None:
+                return policy(declared)
+            policy.reasons.append("只有 16x16")
+            return None
+
+        MODULE.site_icons.best_mark = stub
+        try:
+            return MODULE.harvest(self.targets if targets is None else targets,
+                                  self.links, fetch or self.fetch(),
+                                  self.candidates, faces)
+        finally:
+            MODULE.site_icons.best_mark = original
+
+    def test_the_avatar_is_the_mark_when_the_site_only_declares_a_16px_icon(self):
+        """声明的那一枚够不着，header 那张是字标，头像才是这家唯一的方标。"""
+        icon = self.harvest()[0]
+        self.assertEqual(icon["verdict"], MODULE.OK)
+        self.assertEqual(icon["url"], self.AVATAR)
+        self.assertIn("的头像", icon["evidence"])
+
+    def test_the_site_mark_is_preferred_over_the_avatar(self):
+        """站点自己那张更正式。同样合格时用它，头像只是后手。"""
+        icon = self.harvest(fetch=self.fetch(**{self.MARK: block_png((256, 256))}))[0]
+        self.assertEqual(icon["verdict"], MODULE.OK)
+        self.assertEqual(icon["url"], self.MARK)
+        self.assertIn("header", icon["evidence"])
+
+    def test_the_avatar_also_fills_the_hero_slot_when_the_wordmark_is_too_small(self):
+        """用户 2026-09-05 的口径：站点自己那几张都不清楚、头像反而清楚时，
+        清楚的那张两个位置都顶。187×57 缩进 160 px 的大位是一条糊字。"""
+        icon, logo = self.harvest()
+        self.assertEqual((logo["variant"], logo["verdict"]), (MODULE.LOGO, MODULE.OK))
+        self.assertEqual(logo["sha256"], icon["sha256"])
+        self.assertTrue(str(logo["candidate"]).endswith("Bambi_Promotion.logo.png"))
+
+    def test_a_big_enough_site_wordmark_takes_the_hero_slot(self):
+        """大位要的是完整字标，宽扁是它应有的形状。够大就轮不到那枚方标。"""
+        icon, logo = self.harvest(fetch=self.fetch(**{self.MARK: block_png((600, 200))}))
+        self.assertEqual(icon["url"], self.AVATAR, "小位仍然是那枚方标")
+        self.assertEqual(logo["verdict"], MODULE.OK)
+        self.assertIn("站点自己的字标（600x200）", logo["evidence"])
+        with Image.open(io.BytesIO(Path(str(logo["candidate"])).read_bytes())) as image:
+            self.assertEqual(image.size[0], image.size[1], "装盘的一律是方图")
+
+    def test_an_installed_image_keeps_the_hero_slot(self):
+        """`<safe>.img` 多半正是这家的完整字标，而 `.logo.img` 排在它前面。
+        出这一行等于拿一枚 28 px 用的方标把大位上本来对的那张顶掉。"""
+        targets = {"Bambi_Promotion": {"original_size": "187x57",
+                                       "installed": "Bambi_Promotion.img"}}
+        self.assertEqual([row["variant"] for row in self.harvest(targets=targets)],
+                         [MODULE.ICON])
+
+    def test_a_portrait_is_refused_even_when_the_site_declares_it(self):
+        """ACT 的官网 `<link rel=icon>` 指着一张艺人照片（2026-09-05 实测）。
+        够大、也够方，两道闸门都过，装上去事务所页顶着一个人的脸。"""
+        rows = self.harvest(fetch=Fetch({self.HOME: b"<html></html>"}),
+                            faces=lambda payload: a_face(),
+                            declared=block_png((256, 256)))
+        self.assertEqual([row["verdict"] for row in rows], [MODULE.PORTRAIT])
+        self.assertEqual(rows[0]["candidate"], "")
+        self.assertIn("检出一张脸（0.934）", rows[0]["evidence"])
+        self.assertNotIn(MODULE.PORTRAIT, MODULE.INSTALLABLE)
+
+    def test_the_gate_does_not_touch_a_source_the_user_named(self):
+        """指定就是结论。用户指着的那一张不再拿模型去否决他。"""
+        url = "https://logos.example/bambi.png"
+        original = dict(MODULE.LOGO_SOURCES_BY_SAFE)
+        MODULE.LOGO_SOURCES_BY_SAFE["Bambi_Promotion"] = url
+        try:
+            rows = self.harvest(fetch=self.fetch(**{url: block_png((600, 200))}),
+                                faces=lambda payload: a_face())
+        finally:
+            MODULE.LOGO_SOURCES_BY_SAFE.clear()
+            MODULE.LOGO_SOURCES_BY_SAFE.update(original)
+        logo = [row for row in rows if row["variant"] == MODULE.LOGO][0]
+        self.assertEqual((logo["verdict"], logo["url"]), (MODULE.OK, url))
+
+    def test_a_share_button_is_not_asked_for_an_avatar(self):
+        page = (f'<a href="https://x.com/intent/tweet?url={self.HOME}">分享</a>'
+                f'<a href="{self.PROFILE}">X</a>')
+        fetch = self.fetch(**{self.HOME: page.encode()})
+        self.harvest(fetch=fetch)
+        self.assertNotIn("intent/tweet", " ".join(fetch.asked))
+
+
+class FetcherCacheTests(unittest.TestCase):
+    """同一份首页这一趟要被问三次：声明、header 里的 `<img>`、页面上的账号。"""
+
+    class Client:
+        def __init__(self, status=200):
+            self.status = status
+            self.calls: list[str] = []
+
+        def get(self, url, **kwargs):
+            self.calls.append(url)
+            return SimpleNamespace(status_code=self.status, content=b"<html></html>",
+                                   headers={"content-type": "text/html"})
+
+    def test_the_same_page_is_only_fetched_once(self):
+        client = self.Client()
+        fetch = MODULE.Fetcher(client, timeout=1.0, interval=0.0)
+        self.assertEqual(fetch("https://x.jp/"), fetch("https://x.jp/"))
+        self.assertEqual(client.calls, ["https://x.jp/"])
+        self.assertEqual(fetch.fetched, 2, "缓存命中也算取到了：这个站是可达的")
+
+    def test_a_refusal_is_remembered_too(self):
+        """404 问三遍还是 404，可每问一遍都要等一个 interval。"""
+        client = self.Client(status=404)
+        fetch = MODULE.Fetcher(client, timeout=1.0, interval=0.0)
+        self.assertIsNone(fetch("https://x.jp/"))
+        self.assertIsNone(fetch("https://x.jp/"))
+        self.assertEqual(client.calls, ["https://x.jp/"])
+        self.assertEqual(fetch.fetched, 0)
+
+
+class FaceGateTests(unittest.TestCase):
+    """模型这一层的降级行为。检不了不能等于「都不是照片」。"""
+
+    def setUp(self):
+        self.detector = MODULE.face_detect.FaceDetector
+        self.detect = MODULE.face_detect.shows_a_face
+
+    def tearDown(self):
+        MODULE.face_detect.FaceDetector = self.detector
+        MODULE.face_detect.shows_a_face = self.detect
+
+    def test_a_disabled_gate_never_builds_a_model(self):
+        MODULE.face_detect.FaceDetector = lambda: self.fail("不该构造模型")
+        gate = MODULE.FaceGate(enabled=False)
+        self.assertIsNone(gate(png_bytes()))
+        self.assertEqual(gate.rejected, 0)
+
+    def test_a_missing_model_disables_the_gate_and_says_so(self):
+        calls = []
+
+        def refuse():
+            calls.append(1)
+            raise MODULE.face_detect.FaceModelUnavailable("缺少人脸模型：yunet.onnx")
+
+        MODULE.face_detect.FaceDetector = refuse
+        gate = MODULE.FaceGate()
+        self.assertIsNone(gate(png_bytes()))
+        self.assertIsNone(gate(png_bytes()))
+        self.assertIn("缺少人脸模型", gate.unavailable)
+        self.assertEqual(calls, [1], "取不到就别每张图再试一遍")
+
+    def test_a_detected_face_is_counted_for_the_report(self):
+        MODULE.face_detect.FaceDetector = lambda: object()
+        MODULE.face_detect.shows_a_face = lambda payload, detector: a_face()
+        gate = MODULE.FaceGate()
+        self.assertEqual(gate(png_bytes()).score, 0.934)
+        self.assertEqual((gate.rejected, gate.unavailable), (1, ""))
 
 
 if __name__ == "__main__":

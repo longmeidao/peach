@@ -55,7 +55,9 @@ peach-tray = "peach.tray:main"
 [project.optional-dependencies]
 build = ["pyinstaller==6.22.2"]
 macos = ["pyobjc-framework-Cocoa==12.2.2; sys_platform == 'darwin'"]
-vision = ["opencv-python-headless==5.0.0.93"]
+# numpy 本来就是 opencv 的传递依赖，这里显式钉住：`face_detect.decode` 直接 import 它
+# 把字节喂给 `cv2.imdecode`，被 import 的外部模块必须有声明的归属。
+vision = ["opencv-python-headless==5.0.0.93", "numpy==2.5.2"]
 maintenance-115 = ["p115client==0.0.9.6.5.1"]
 # 字形表的复核轮子，只有 tests/test_performer_localization.py 用它对账。
 naming = ["opencc==1.4.2"]

@@ -22,7 +22,7 @@ SCOPES: dict[str, tuple[str, ...]] = {
                 "test_entity_merge.py", "test_fastapi_api.py", "test_migrations.py",
                 "test_review_mirror.py", "test_rm_ledger.py", "test_rm_web.py",
                 "test_entity_link_install.py", "test_web_links.py",
-                "test_link_marks.py", "test_site_icons.py",
+                "test_link_marks.py", "test_site_icons.py", "test_site_logos.py",
                 "test_studio_icon_variants.py",
                 "test_review_csv.py", "test_related.py",
                 "test_jav_code_domain.py",
