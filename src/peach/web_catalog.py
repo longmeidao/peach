@@ -274,11 +274,14 @@ def q_items(contract: WebContract, args):
             tmap.setdefault(aid, []).append(tag)
         emap: dict[int, dict[str, list[str]]] = {}
         performer_refs: dict[int, list[dict[str, object]]] = {}
+        creator_refs: dict[int, dict[str, object]] = {}
         for aid, entity_id, kind, name in con_entities(contract, ids, qm):
             emap.setdefault(aid, {}).setdefault(kind, []).append(name)
             if kind == "performer":
                 performer_refs.setdefault(aid, []).append(
                     entity_ref(contract, "performer", entity_id, name))
+            elif kind == "creator" and aid not in creator_refs:
+                creator_refs[aid] = entity_ref(contract, kind, entity_id, name)
         for r in rows:
             ts = tmap.get(r["id"], [])
             canonical = emap.get(r["id"], {})
@@ -302,6 +305,9 @@ def q_items(contract: WebContract, args):
             r["performers"] = performers
             refs = performer_refs.get(r["id"], [])
             r["performer_entities"] = refs[:CARD_PERFORMERS]
+            r["creator_entity"] = creator_refs.get(r["id"])
+            if r["creator_entity"]:
+                r["creator"] = r["creator_entity"]["name"]
             r["performer_total"] = len(refs) or len(all_performers)
             r["_entity_kinds"] = tuple(canonical)
     for r in rows:
@@ -376,7 +382,10 @@ def attach_card_performers(contract: WebContract, rows):
     qm = ",".join("?" * len(ids))
     names: dict[int, list[str]] = {}
     refs: dict[int, list[dict[str, object]]] = {}
+    creator_refs: dict[int, dict[str, object]] = {}
     for asset_id, entity_id, kind, name in con_entities(contract, ids, qm):
+        if kind == "creator" and asset_id not in creator_refs:
+            creator_refs[asset_id] = entity_ref(contract, kind, entity_id, name)
         if kind != "performer":
             continue
         names.setdefault(asset_id, []).append(name)
@@ -385,6 +394,9 @@ def attach_card_performers(contract: WebContract, rows):
     for row in rows:
         row["performers"] = names.get(row["id"], [])[:CARD_PERFORMERS]
         row["performer_entities"] = refs.get(row["id"], [])[:CARD_PERFORMERS]
+        row["creator_entity"] = creator_refs.get(row["id"])
+        if row["creator_entity"]:
+            row["creator"] = row["creator_entity"]["name"]
         row["performer_total"] = len(names.get(row["id"], []))
 
 

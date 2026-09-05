@@ -76,6 +76,8 @@ describe('媒体文件夹列表', () => {
     expect(el.querySelector('.configstatus.online')?.textContent).toBe('在线');
     expect(el.querySelector('.configstatus.offline')?.textContent).toBe('离线');
     expect(el.querySelector('.configstatus.unknown')?.textContent).toBe('未检测');
+    expect([...el.querySelectorAll('.configfacts [data-source-icon]')].map(node => node.getAttribute('data-source-icon')))
+      .toEqual(['fixture-115', 'fixture-pikpak', 'hard-drive']);
   });
   it('刷新挂载状态保留未保存的路径', async () => {
     const media_sources = [{ location: '115', path: 'B:/', root: 'B:/', online: false }];

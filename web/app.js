@@ -1962,7 +1962,8 @@ function cardIdentity(it,linked=true){
            `/performers/x`、另一个跳 `/creators/x`，同一张卡上两个入口去两个地方。 */
         const avatarKind=identity.kind;
         const avatarName=identity.name;
-        const inner=avatarInner(avatarName,avatarKind==='performer'?performerRef:null,
+        const avatarRef=avatarKind==='performer'?performerRef:it.creator_entity;
+        const inner=avatarInner(avatarName,avatarRef,
           avatarKind?REP[avatarName]:null,avatarKind||'performer');
         return avatarKind
           ? link('mav',`data-entity-kind="${avatarKind}" data-entity-name="${esc(avatarName)}" title="打开${avatarKind==='performer'?esc(performerLabel(it)):'资料'}页"`,inner)

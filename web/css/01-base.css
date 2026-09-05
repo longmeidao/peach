@@ -258,6 +258,9 @@ button[aria-busy="true"],[role="button"][aria-busy="true"]{
   background:var(--ground);color:var(--ink);font:inherit;font-size:var(--fs-md);line-height:20px;
   text-align:left;cursor:pointer;transition:border-color .12s ease,background-color .12s ease}
 .gselectfield>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gselectmenu [data-select-content]{display:flex;align-items:center;gap:8px;min-width:0}
+.gselectfield .gselectmark{vertical-align:-3px;margin-inline-end:8px}
+.gselectmark{width:16px;height:16px;flex:none;object-fit:contain;stroke:currentColor;fill:none}
 .gselectfield>svg{width:16px;height:16px;flex:none;stroke:currentColor;fill:none;color:var(--muted)}
 .gselectfield:hover:not(:disabled){border-color:var(--field-ring-hover)}
 /* 展开时按住焦点态：菜单开着而触发器看起来没被点中，读起来像两个控件。 */
@@ -269,9 +272,9 @@ button[aria-busy="true"],[role="button"][aria-busy="true"]{
   padding:0 8px;border:0;border-radius:var(--control-radius);background:transparent;color:var(--ink-2);
   font:inherit;font-size:var(--fs-md);text-align:left;cursor:pointer}
 .gselectmenu button:hover{background:var(--hover);color:var(--ink)}
-.gselectmenu button svg{width:16px;height:16px;flex:none;visibility:hidden;stroke:currentColor;fill:none}
+.gselectmenu button>svg{width:16px;height:16px;flex:none;visibility:hidden;stroke:currentColor;fill:none}
 .gselectmenu button[aria-selected="true"]{background:var(--hover);color:var(--ink)}
-.gselectmenu button[aria-selected="true"] svg{visibility:visible}
+.gselectmenu button[aria-selected="true"]>svg{visibility:visible}
 
 /* Geist Modal：确认一次写操作。实测 https://vercel.com/geist/modal（2026-09-04）：
    540px 宽、12px 圆角、窄屏两侧各留 10px，正文 20px 内边距，操作条粘在底、12px 内边距、

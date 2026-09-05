@@ -1784,6 +1784,8 @@ class WebUiSourceTests(unittest.TestCase):
         """
         self.assertPageContains("const avatarKind=identity.kind;")
         self.assertPageContains("const avatarName=identity.name;")
+        self.assertPageContains("const avatarRef=avatarKind==='performer'?performerRef:it.creator_entity;")
+        self.assertPageContains("const inner=avatarInner(avatarName,avatarRef,")
 
     def test_missing_person_identity_uses_unassigned_on_cards_and_players(self):
         self.assertPageContains(":{kind:'',name:'未归属'});")
@@ -2325,7 +2327,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks("<select", "下拉一律走 Geist Select，不回落到浏览器控件")
         self.assertPageLacks("color-scheme:dark;", "只有 <html> 声明配色，控件不再各自钉死一档")
         self.assertCode(
-            "<span data-select-label>${esc(chosen[1])}</span>${icon('chevron-down')}")
+            "<span data-select-label>${content(chosen)}</span>${icon('chevron-down')}")
         self.assertPageContains(
             ".gselectfield>svg{width:16px;height:16px;flex:none;stroke:currentColor;fill:none;color:var(--muted)}")
 

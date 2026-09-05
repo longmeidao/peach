@@ -22,7 +22,7 @@ OPENCC_JP2T = opencc.OpenCC("jp2t")
 class PerformerLocalizationTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
-        root = Path(self.tmp.name)
+        root = Path(self.tmp.name).resolve()
         self.db = root / "ledger.db"
         upgrade(self.db, ROOT / "migrations")
         self.con = sqlite3.connect(self.db)
@@ -126,6 +126,16 @@ class PerformerLocalizationTests(unittest.TestCase):
         self.assertEqual(rows[15]["target_name"], "星谷瞳")
         self.assertEqual(rows[15]["action"], "localize")
         self.assertIn("r18-nonlatin-release-name", rows[15]["resolution"])
+
+    def test_javinizer_release_sources_use_verified_name_mappings(self):
+        for source in ("javinizer:r18dev:performer", "javinizer:javbus:performer",
+                       "javinizer:javdb:performer"):
+            with self.subTest(source=source):
+                self.con.execute("UPDATE asset_entity SET source=? WHERE entity_id=10", (source,))
+                rows = {int(row["entity_id"]): row for row in self.plan()}
+                self.assertEqual(rows[10]["target_name"], "释爱丽丝")
+                self.assertEqual(rows[10]["action"], "localize")
+                self.assertEqual(rows[14]["action"], "keep-non-release")
 
     def test_apply_preserves_aliases_and_rewrites_actor_tags(self):
         counts = apply_rows(self.con, self.plan(), "abc123")

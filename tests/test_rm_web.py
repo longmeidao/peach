@@ -90,6 +90,23 @@ class WebDataTests(unittest.TestCase):
         con.close()
         return row
 
+    def test_creator_card_and_detail_share_available_entity_image(self):
+        (self.avatars / f"{entity_image_key('creator', 12)}.img").write_bytes(b"image")
+        row = rm_web.q_items(self.contract, {"limit": "10"})["items"][0]
+        ref = {"id": 12, "name": "Canonical Creator", "has_image": True}
+        self.assertEqual(row["creator_entity"], ref)
+        self.assertEqual(row["creator"], ref["name"])
+        self.assertEqual(rm_web.q_item(self.contract, row["id"])["entity_refs"]["creator"][0], ref)
+        cards = [{"id": 2, "creator": "Bob"}, {"id": 3, "creator": "Alice"}]
+        rm_web.attach_card_performers(self.contract, cards)
+        self.assertEqual(cards[0]["creator_entity"], ref)
+        self.assertIsNone(cards[1]["creator_entity"])
+        self.assertEqual(cards[1]["creator"], "Alice")
+        (self.avatars / f"{entity_image_key('creator', 12)}.img").unlink()
+        fresh = rm_web.WebContract(Path(self.db_path), avatar_root=self.avatars, logo_root=self.logos)
+        rm_web.attach_card_performers(fresh, cards)
+        self.assertFalse(cards[0]["creator_entity"]["has_image"])
+
     def test_default_database_connection_is_readonly(self):
         con = self.contract.db()
         with self.assertRaises(sqlite3.OperationalError):
