@@ -56,7 +56,7 @@ if ($Standalone) {
 }
 & $Python -m PyInstaller --noconfirm --clean @BuildMode --windowed --name Peach `
     --distpath $BuildDestination --workpath $WorkPath --specpath $BuildPath `
-    --paths (Join-Path $ProjectRoot 'src') `
+    --paths (Join-Path $ProjectRoot 'src') --python-option 'X utf8' `
     --collect-all curl_cffi --collect-all resvg_py `
     --hidden-import uvicorn.logging --hidden-import uvicorn.loops.auto `
     --hidden-import uvicorn.protocols.http.auto --hidden-import uvicorn.protocols.websockets.auto `

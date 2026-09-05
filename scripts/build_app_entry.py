@@ -39,6 +39,10 @@ def _open_std_handle(handle_id: int):
 def _prepare_console() -> None:
     if os.name != "nt":
         return
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is not None:
+            reconfigure(encoding="utf-8", errors="backslashreplace")
     if sys.stdout is not None and sys.stderr is not None:
         return
     try:

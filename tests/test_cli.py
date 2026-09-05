@@ -559,6 +559,16 @@ class PackagedEntryTests(unittest.TestCase):
         self.assertIn("follow", subcommands)
         self.assertEqual(subcommands, self.entry.cli_commands())
 
+    def test_windows_redirected_console_accepts_chinese_startup_messages(self):
+        output = io.BytesIO()
+        stream = io.TextIOWrapper(output, encoding="cp1252", newline="\n")
+        with mock.patch.object(self.entry.os, "name", "nt"), mock.patch.object(
+            self.entry.sys, "stdout", stream
+        ), mock.patch.object(self.entry.sys, "stderr", stream):
+            self.entry._prepare_console()
+            print("服务已启动", flush=True)
+        self.assertEqual(output.getvalue(), "服务已启动\n".encode("utf-8"))
+
     def test_tray_still_starts_when_the_first_argument_is_not_a_subcommand(self):
         self.assertFalse(self.entry.wants_cli(["peach.exe"]))
         self.assertFalse(self.entry.wants_cli(["peach.exe", "--tray-only"]))
