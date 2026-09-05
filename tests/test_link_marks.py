@@ -2,9 +2,9 @@
 import io
 import sys
 import tempfile
-import time
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from PIL import Image
 
@@ -236,12 +236,16 @@ class CacheTests(unittest.TestCase):
         self.assertIsNone(link_marks.cached_path(Path("/tmp"), "not a url"))
 
     def test_freshness_expires_and_a_missing_file_is_never_fresh(self):
-        tmp = Path(tempfile.mkdtemp()) / "mark.png"
-        self.assertFalse(link_marks.is_fresh(tmp))
-        tmp.write_bytes(b"x")
-        self.assertTrue(link_marks.is_fresh(tmp))
-        self.assertFalse(link_marks.is_fresh(
-            tmp, now=time.time() + link_marks.CACHE_TTL + 1))
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory).resolve() / "mark.png"
+            self.assertFalse(link_marks.is_fresh(tmp))
+            tmp.write_bytes(b"x")
+            modified = tmp.stat().st_mtime
+            with patch.object(link_marks.time, "time", return_value=modified):
+                self.assertTrue(link_marks.is_fresh(tmp))
+            self.assertFalse(link_marks.is_fresh(tmp, now=modified - 1))
+            self.assertTrue(link_marks.is_fresh(tmp, now=modified + link_marks.CACHE_TTL - 1))
+            self.assertFalse(link_marks.is_fresh(tmp, now=modified + link_marks.CACHE_TTL))
 
 
 if __name__ == "__main__":
