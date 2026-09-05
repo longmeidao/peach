@@ -60,8 +60,12 @@
 .entitytagbar .entitytags{min-width:0;flex:1 1 auto;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;
   overscroll-behavior-inline:contain}.entitytagbar .entitytags::-webkit-scrollbar{display:none}
 .entitytags{display:flex;align-items:center;flex-wrap:wrap;gap:7px}.entitytags .pill{flex:none}
+/* 这条是横向滚动行，里面每一项都得拒绝被压扁——挤瘪的开关点不准，也读不出图标。 */
+.entitytags .iconswitch{flex:none}
 .entitytags small{color:var(--muted);margin-left:4px}
+/* 有显式 display 的元素不会被浏览器默认的 [hidden]{display:none} 隐藏，得自己写。 */
 .mediaviewbuttons{display:inline-flex;align-items:center;gap:2px;flex:none}
+.mediaviewbuttons[hidden]{display:none}
 .mediaviewbuttons .mediaviewbutton{display:grid;place-items:center;flex:0 0 var(--filterItemH);width:var(--filterItemH);height:var(--filterItemH);padding:0;
   border:0;border-radius:50%;background:transparent;color:var(--muted);cursor:pointer}
 .mediaviewbuttons .mediaviewbutton svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2}
