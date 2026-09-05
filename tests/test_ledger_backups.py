@@ -60,7 +60,7 @@ class LedgerBackupRetentionTests(unittest.TestCase):
             recent = [
                 self.make_backup(root, f"ledger.pre-recent-{index}.db",
                                  NOW - timedelta(days=3, hours=index))
-                for index in range(5)
+                for index in range(3)
             ]
             young = self.make_backup(root, "ledger.pre-young.db", NOW - timedelta(hours=2))
             future = self.make_backup(root, "ledger.pre-future.db", NOW - timedelta(hours=1))

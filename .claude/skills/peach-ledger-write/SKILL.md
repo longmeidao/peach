@@ -18,6 +18,9 @@ description: 在用户说迁移、migrate、--apply、合并实体、merge_entit
 3. `PRAGMA integrity_check`。
 4. `peach migrate status` 核对版本。
 5. 应用后重复计数并做服务 smoke test，前后差异逐条解释。
+6. 复核通过后清退旧备份：`scripts/prune_ledger_backups.py --apply`（缺省只列计划）。规则在
+   `peach.ledger_backups`：最近 5 份、24 小时内、比 `ledger.db` 更新的都留，其余连同 `-wal`／`-shm`
+   删；账本 `integrity_check` 不是 ok 一份都不删。Windows 托盘每次启动按同一规则自动跑。
 
 已应用的迁移文件不得修改。`0007` 曾在应用后被改写注释导致校验和漂移，必须用备份重放并逐条
 对比后才校正 `schema_migration`。任何后续变更一律新增版本号。

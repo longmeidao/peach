@@ -18,7 +18,7 @@ import httpx
 import pystray
 from PIL import Image
 
-from . import onboarding, settings_file
+from . import ledger_backups, onboarding, settings_file
 from .appid import MACOS_LAUNCH_AGENT_LABEL
 from .certs import ensure_certificate
 from .distribution import standalone
@@ -1004,6 +1004,12 @@ class PeachTray:
         # 上一次更新留下的备份与暂存构建在这里清退：替换助手结束时托盘已经不在，
         # 只有下一次启动能确认「新托盘已经活下来、旧备份可以少留一份」。
         self.windows_updates.sweep_artifacts()
+        # 账本备份同理：每个 --apply 都留一份整库，复核过后就没人再读。规则与拒绝条件在
+        # `peach.ledger_backups`；这里失败只记日志，不能因为清退不了而不起托盘。
+        try:
+            ledger_backups.prune(DATABASE_PATH, apply=True)
+        except Exception:
+            logging.getLogger(__name__).warning("账本备份清退失败", exc_info=True)
         self._startup_warning = None
         if self.gate.waiting:
             if self.manager.wait_until_ready():
