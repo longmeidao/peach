@@ -9,7 +9,7 @@
    各 16px 内边距是 140px。四格因此到 645px 视口仍是一整条，再窄由下面的手机
    规则接手改成露边滚动。写 190px 时窗口一收窄就先滚起来，横向滚动条压在一条
    本来能压扁的带子下面。 */
-.metricstrip,.tastesummaries{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(140px,1fr);overflow-x:auto;overscroll-behavior-x:contain;border:1px solid var(--line-soft);border-radius:var(--floating-radius);background:var(--surface);scrollbar-width:thin}
+.metricstrip,.tastesummaries{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(140px,1fr);overflow-x:auto;overscroll-behavior-x:contain;border:1px solid var(--line-soft);border-radius:var(--floating-radius);background:var(--surface)}
 .metricstrip button,.tastesummary{position:relative;box-sizing:border-box;min-height:96px;min-width:0;display:grid;align-content:center;gap:4px;padding:14px 16px;border:0;border-right:1px solid var(--line-soft);border-radius:0;background:transparent;color:var(--ink);text-align:left}.metricstrip button{cursor:pointer}.metricstrip button:last-child,.tastesummary:last-child{border-right:0}.metricstrip button:hover{background:var(--overlay-5)}.metricstrip button[aria-selected="true"]{background:var(--ground)}.metricstrip button[aria-selected="true"]:after{content:"";position:absolute;left:0;right:0;bottom:0;height:2px;background:var(--ink)}
 .metricstrip span,.tastesummary>span{color:var(--muted);font-size:var(--fs-xs)}.metricstrip b,.tastesummary>b{font-size:var(--fs-2xl);line-height:1.15;font-variant-numeric:tabular-nums}.metricstrip small,.tastesummary>small{color:var(--ink-2);font-size:var(--fs-xs);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .tastestate{min-height:20px;color:var(--meter);font-size:var(--fs-xs);margin:8px 0}.tastesummaries{margin-bottom:16px}

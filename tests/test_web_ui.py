@@ -454,12 +454,21 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn("html{color-scheme:light;scroll-padding-top:calc(var(--topH) + 8px);"
                       "scrollbar-width:none}", rules)
         self.assertNotIn("scrollbar-color", rules, "原生滑块已经不画了，没有配色可调")
-        self.assertIn(".ovtrack{position:absolute;right:0;top:8px;bottom:8px;width:12px;"
-                      "z-index:2;pointer-events:none}", rules)
-        self.assertIn(".ovthumb{position:absolute;right:0;top:0;width:3px;"
-                      "border-radius:var(--pill-radius);background:var(--field-ring-hover);", rules)
-        self.assertIn("transition:width .15s cubic-bezier(.4,0,.2,1)}", rules)
-        self.assertIn(".ovtrack:hover .ovthumb,.ovtrack.dragging .ovthumb{width:6px}", rules)
+        self.assertIn(".ovtrack{position:absolute;z-index:2;pointer-events:none}", rules)
+        self.assertIn(".ovtrack.ov-y{right:0;top:8px;bottom:8px;width:12px}", rules)
+        self.assertIn(".ovtrack.ov-x{left:8px;right:8px;bottom:0;height:12px}", rules)
+        self.assertIn(".ovthumb{position:absolute;border-radius:var(--pill-radius);"
+                      "background:var(--field-ring-hover);", rules)
+        self.assertIn(".ov-y .ovthumb{right:0;top:0;width:3px}", rules)
+        self.assertIn(".ov-x .ovthumb{left:0;bottom:0;height:3px}", rules)
+        self.assertIn("transition:width .15s cubic-bezier(.4,0,.2,1),height .15s cubic-bezier(.4,0,.2,1)}",
+                      rules)
+        self.assertIn(".ov-y:hover .ovthumb,.ov-y.dragging .ovthumb{width:6px}", rules)
+        self.assertIn(".ov-x:hover .ovthumb,.ov-x.dragging .ovthumb{height:6px}", rules)
+        # 原生那条只在覆盖式接上之后才藏：脚本没跑到的容器留着系统滚动条兜底。
+        self.assertIn("[data-overlay-scrollbar]{scrollbar-width:none}", rules)
+        self.assertIn("[data-overlay-scrollbar]::-webkit-scrollbar{display:none}", rules)
+        self.assertNotIn("scrollbar-width:thin", rules, "细滚动条也是原生那条，统一交给覆盖式")
         # 粗指针没有悬停也没有可指的滑块，但滑块照画：原生的已经关掉，跟着一起收
         # 就等于触屏上读不出这一列有多长、自己在哪儿。
         self.assertIn("@media (pointer:fine){.ovtrack{pointer-events:auto}}", rules)
@@ -474,7 +483,7 @@ class WebUiSourceTests(unittest.TestCase):
         """
         css = stylesheet_source()
         rules = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
-        self.assertIn(".ovtrack.page{position:fixed;top:0;bottom:0;z-index:91;"
+        self.assertIn(".ovtrack.page{position:fixed;top:0;bottom:0;right:0;z-index:91;"
                       "pointer-events:none}", rules)
         self.assertIn("@media (pointer:fine){.ovtrack.page .ovthumb{pointer-events:auto}}", rules)
         self.assertIn(".ovtrack.page:hover .ovthumb{width:3px}", rules)
@@ -489,10 +498,11 @@ class WebUiSourceTests(unittest.TestCase):
         另一半是自锁陷阱：藏起来的轨道 `clientHeight` 是 0，拿它当「量不到」就再也
         显不回来，所以顺序必须是先显再量。
         """
-        self.assertPageContains("const thumbH=Math.max(24,Math.min(trackH,"
-                                "container.clientHeight/container.scrollHeight*trackH));")
-        self.assertPageContains("thumb.style.transform=`translateY(${travel>0?"
-                                "container.scrollTop/range*travel:0}px)`;")
+        self.assertPageContains("const thumbSize=Math.max(24,Math.min(trackSize,"
+                                "size/content*trackSize));")
+        self.assertPageContains("const offset=travel>0?at/range*travel:0;")
+        self.assertPageContains("thumb.style[vertical?'height':'width']=`${thumbSize}px`;")
+        self.assertPageContains("thumb.style.transform=`translate${vertical?'Y':'X'}(${offset}px)`;")
         self.assertPageContains("if(range<=1){track.hidden=true;return}")
         self.assertPageContains("track.hidden=false;")
         # 抽屉重建后内容长短变了，容器盒子没变；整页那条改看 body 的高度，避免在
@@ -992,9 +1002,9 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_settings_titlebar_owns_the_full_width_above_its_scroll_container(self):
         self.assertPageContains(".settingsscroll{flex:1;min-height:0;overflow-y:auto;padding:0 20px 20px")
-        self.assertPageContains("scrollbar-gutter:stable both-edges;overscroll-behavior:contain")
+        self.assertPageContains("padding:0 20px 20px;overscroll-behavior:contain}")
         self.assertPageContains(".settingshead{z-index:2;display:flex")
-        self.assertPageContains("border-bottom:1px solid var(--line-soft);background:var(--ground)")
+        self.assertPageContains("border-bottom:1px solid var(--field-ring);background:var(--ground)")
         self.assertCode('<div class="settingscard">\n    <div class="settingshead">')
         self.assertCode('</div>\n    <div class="settingsscroll">')
         self.assertPageContains("@media(max-width:600px){.settingsscroll{padding:0 17px 17px}")
@@ -5133,9 +5143,12 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("if(e.key==='Escape'){e.preventDefault();closeAddMenu();addTrigger.focus();return}")
         # 设置分组用框体隔开（用户回执）：每组建卡，分隔线顶格到卡边，
         # 标题字号与行内边距对齐 Vercel 后台设置卡。
-        self.assertPageContains(".settinggroup{margin:16px 0 0;border:1px solid var(--line-soft);border-radius:var(--floating-radius);")
-        # 组卡面与全站卡片同源（--surface 实底），不用白色透明叠加。
-        self.assertPageContains("background:var(--surface);padding:0 16px 12px}")
+        self.assertPageContains(".settinggroup{margin:16px 0 0;border:1px solid var(--field-ring);border-radius:var(--floating-radius);")
+        # 层级和首页一致：壳是退到后面的 --page，分组才是浮起来的 --ground 加一条发丝线。
+        # 反过来写（白壳嵌灰块）会让同一套控件在设置里和在首页上读出相反的层级。
+        self.assertPageContains("background:var(--ground);padding:0 16px 12px}")
+        self.assertPageContains("border:1px solid var(--field-ring);border-radius:var(--floating-radius);background:var(--page)}")
+        self.assertNotIn("box-shadow:0 8px 32px -12px", self.css, "浮层靠发丝线不靠投影")
         # 布尔开关是 Geist 中号 Toggle（36×20 轨道 + 17px 圆点），不是原生复选框；
         # Geist 的 Switch 是分段选择器，别用错控件。
         self.assertPageContains("#censorSetting{appearance:none;-webkit-appearance:none;width:36px;height:20px;flex:none;")

@@ -247,18 +247,28 @@ export function wireScrollers(root=document){
   });
 }
 
+/** 挂覆盖式滚动条的滚动容器。列表只写在这一处，样式那边认的是挂上之后的属性。 */
+const OVERLAY_SCROLLERS=[
+  '.settingsscroll','.sidecontent','.tagpickbody','.mixlist','.playlistpicklist','.playerstats',
+  '.vjs-peach-settings-menu','.geist-scroller-container','.metricstrip','.tastesummaries',
+  '.insighttabs','.insightstorage','.skeletondashstrip','.followpagination','.linktablewrap',
+].join(',');
+
 /**
  * 覆盖式滚动条：滑块浮在内容上，一列宽度都不占。
  *
  * 已有的 `.geist-scroller` 解决的是另一半问题——它用两端渐隐说明「还能往下」，
  * 但没有滑块，读不出这一列有多长、自己停在哪儿，而且要求内容套进它自己的包装层。
- * 这里只往既有滚动容器的父元素上挂一条轨道，不动内容结构，两者可以叠加使用。
+ * 这里只往既有滚动容器的父元素上挂轨道，不动内容结构，两者可以叠加使用。
  *
- * 容器负责关掉原生滚动条并保证父元素是定位祖先；轨道必须是容器的兄弟，
- * 跟着内容一起滚的轨道等于没有轨道。整页那一条是唯一的例外：`html` 没有元素父级，
- * 轨道挂进 body 并由 `.page` 改成 fixed，位置照样只认视口右边。
+ * 轨道必须是容器的兄弟：跟着内容一起滚的轨道等于没有轨道。宿主因此得是定位祖先，
+ * 而且不一定和容器一样大（`.settingscard` 还含着标题栏），所以轨道的位置每次都按
+ * 两个 rect 量出来，不假设它们同框。两条轴各一条轨道，谁溢出谁显示——同一个容器
+ * 可能在不同版式下换轴（`.mixlist` 在 mixgrid 里就是横滚）。
+ * 整页那一条是唯一的例外：`html` 没有元素父级，轨道挂进 body 并由 `.page` 改成
+ * fixed，位置只认视口，不用量。
  * 几何按 2026-09-05 实测 vercel.com 侧栏：
- * 滑块高 = 可视高 / 内容高 × 轨道高，位移 = 滚动进度 × (轨道高 − 滑块高)。
+ * 滑块长 = 可视长 / 内容长 × 轨道长，位移 = 滚动进度 × (轨道长 − 滑块长)。
  * 返回一个手动重算函数，给那些既不改容器尺寸也不改子树的情形（例如换字体后重排）。
  */
 export function attachOverlayScrollbar(container,{variant=''}={}){
@@ -267,25 +277,53 @@ export function attachOverlayScrollbar(container,{variant=''}={}){
   const host=root?document.body:container.parentElement;
   if(!host)return null;
   container.dataset.overlayScrollbar='true';
-  const track=document.createElement('div');
-  track.className=`ovtrack${variant?` ${variant}`:''}`;
-  const thumb=document.createElement('div');
-  thumb.className='ovthumb';
-  track.append(thumb);
-  host.append(track);
+  // 轨道按宿主的内边距框定位，static 的宿主会把它甩到更外层某个祖先上去。
+  if(!root&&getComputedStyle(host).position==='static')host.style.position='relative';
+  const lanes=(root?['y']:['y','x']).map(axis=>{
+    const track=document.createElement('div');
+    // 两个类名写全，别拼 `ov-${axis}`：样式表的选择器要能在源码里查到消费者。
+    track.className=`ovtrack ${axis==='y'?'ov-y':'ov-x'}${variant?` ${variant}`:''}`;
+    const thumb=document.createElement('div');
+    thumb.className='ovthumb';
+    track.append(thumb);
+    host.append(track);
+    return {axis,track,thumb};
+  });
+  const place=({axis,track})=>{
+    if(root)return;
+    const hostRect=host.getBoundingClientRect(),rect=container.getBoundingClientRect();
+    const left=rect.left-hostRect.left-host.clientLeft,top=rect.top-hostRect.top-host.clientTop;
+    if(axis==='y'){
+      track.style.top=`${top+8}px`;
+      track.style.height=`${Math.max(0,container.clientHeight-16)}px`;
+      track.style.right=`${host.clientWidth-left-container.clientWidth}px`;
+    }else{
+      track.style.left=`${left+8}px`;
+      track.style.width=`${Math.max(0,container.clientWidth-16)}px`;
+      track.style.bottom=`${host.clientHeight-top-container.clientHeight}px`;
+    }
+  };
   const sync=()=>{
-    const range=container.scrollHeight-container.clientHeight;
-    if(range<=1){track.hidden=true;return}
-    // 先显再量：藏起来的轨道高度是 0，拿它当「量不到」会把自己永久锁在隐藏态。
-    track.hidden=false;
-    const trackH=track.clientHeight;
-    if(!trackH)return;
-    // 短到抓不住的滑块等于没有滑块：内容特别长时给它一个下限，代价是滑块位置与
-    // 滚动进度不再严格线性，但可拖动比可换算重要。
-    const thumbH=Math.max(24,Math.min(trackH,container.clientHeight/container.scrollHeight*trackH));
-    const travel=trackH-thumbH;
-    thumb.style.height=`${thumbH}px`;
-    thumb.style.transform=`translateY(${travel>0?container.scrollTop/range*travel:0}px)`;
+    lanes.forEach(lane=>{
+      const {axis,track,thumb}=lane,vertical=axis==='y';
+      const size=vertical?container.clientHeight:container.clientWidth;
+      const content=vertical?container.scrollHeight:container.scrollWidth;
+      const range=content-size;
+      if(range<=1){track.hidden=true;return}
+      // 先显再量：藏起来的轨道长度是 0，拿它当「量不到」会把自己永久锁在隐藏态。
+      track.hidden=false;
+      place(lane);
+      const trackSize=vertical?track.clientHeight:track.clientWidth;
+      if(!trackSize)return;
+      // 短到抓不住的滑块等于没有滑块：内容特别长时给它一个下限，代价是滑块位置与
+      // 滚动进度不再严格线性，但可拖动比可换算重要。
+      const thumbSize=Math.max(24,Math.min(trackSize,size/content*trackSize));
+      const travel=trackSize-thumbSize;
+      const at=vertical?container.scrollTop:container.scrollLeft;
+      const offset=travel>0?at/range*travel:0;
+      thumb.style[vertical?'height':'width']=`${thumbSize}px`;
+      thumb.style.transform=`translate${vertical?'Y':'X'}(${offset}px)`;
+    });
   };
   (root?document:container).addEventListener('scroll',sync,{passive:true});
   new ResizeObserver(sync).observe(container);
@@ -294,29 +332,39 @@ export function attachOverlayScrollbar(container,{variant=''}={}){
   // MutationObserver 等于每渲染一张卡都强制一次重排。
   if(root)new ResizeObserver(sync).observe(document.body);
   else new MutationObserver(sync).observe(container,{childList:true,subtree:true});
-  track.addEventListener('pointerdown',event=>{
+  lanes.forEach(({axis,track,thumb})=>track.addEventListener('pointerdown',event=>{
+    const vertical=axis==='y';
     const trackRect=track.getBoundingClientRect(),thumbRect=thumb.getBoundingClientRect();
-    const travel=trackRect.height-thumbRect.height,range=container.scrollHeight-container.clientHeight;
+    const travel=(vertical?trackRect.height-thumbRect.height:trackRect.width-thumbRect.width);
+    const range=vertical?container.scrollHeight-container.clientHeight
+      :container.scrollWidth-container.clientWidth;
     if(travel<=0||range<=0)return;
+    const point=moved=>vertical?moved.clientY:moved.clientX;
+    const head=vertical?thumbRect.top:thumbRect.left,tail=vertical?thumbRect.bottom:thumbRect.right;
     // 按在滑块上就保持按住的那一点，按在轨道空白处则把滑块中心挪过来。
-    const grab=event.clientY>=thumbRect.top&&event.clientY<=thumbRect.bottom
-      ?event.clientY-thumbRect.top:thumbRect.height/2;
-    const to=clientY=>{container.scrollTop=Math.max(0,Math.min(range,
-      (clientY-trackRect.top-grab)/travel*range))};
+    const grab=point(event)>=head&&point(event)<=tail?point(event)-head
+      :(vertical?thumbRect.height:thumbRect.width)/2;
+    const origin=vertical?trackRect.top:trackRect.left;
+    const to=moved=>{const at=Math.max(0,Math.min(range,(point(moved)-origin-grab)/travel*range));
+      if(vertical)container.scrollTop=at;else container.scrollLeft=at};
     const stop=()=>{track.classList.remove('dragging');
-      track.removeEventListener('pointermove',move);track.removeEventListener('pointerup',stop);
+      track.removeEventListener('pointermove',to);track.removeEventListener('pointerup',stop);
       track.removeEventListener('pointercancel',stop)};
-    const move=moved=>to(moved.clientY);
     track.classList.add('dragging');
     track.setPointerCapture(event.pointerId);
-    track.addEventListener('pointermove',move);
+    track.addEventListener('pointermove',to);
     track.addEventListener('pointerup',stop);
     track.addEventListener('pointercancel',stop);
-    to(event.clientY);
+    to(event);
     event.preventDefault();
-  });
+  }));
   sync();
   return sync;
+}
+
+/** 把这一批 DOM 里所有该有覆盖式滚动条的容器接上；重复调用只接新出现的那些。 */
+export function wireOverlayScrollbars(root=document){
+  root.querySelectorAll(OVERLAY_SCROLLERS).forEach(el=>attachOverlayScrollbar(el));
 }
 
 /**

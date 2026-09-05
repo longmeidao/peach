@@ -33,7 +33,11 @@
    缩放根本轮不到发生。基准 0 让它先占 0 再吃剩下的宽度，末尾省略。 */
 .fsechead .fmeta{flex:1 1 0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .fsechead .fbtn,.fsechead .fmanagesort{flex:none}
-.fmanagedir{width:32px;padding:0}
+/* 升降序键是这一行里唯一的纯图标键：正方形、边长取 --control-h，和同排的下拉、
+   版式开关一样高，图标 16px 与排序框左侧那枚同尺寸。写成两级选择器是因为 .fbtn 的
+   `padding:0 12px` 排在本文件后面——单类名压不过它，内容宽只剩 8px，图标会被压成一条。 */
+.fsechead .fmanagedir{width:var(--control-h);padding:0}
+.fsechead .fmanagedir svg{width:16px;height:16px}
 /* 排序框照 Geist Select 的 prefix 做法：图标压在框内左侧，不在框外挂一个文字标签。
    Geist 的文字 Label 是块级、排在控件上方（block ... mb-2），行内并排那种写法它没有；
    而工具行里既没有上方空间，图标又足够把下拉框和普通按钮区分开。 */
@@ -177,8 +181,7 @@
 .fauthorhead .fmeta{margin-left:auto;flex:0 1 auto;min-width:0;white-space:nowrap}
 .fauthorhead .fmeta.warn{margin-left:0}
 .fauthorsources{min-height:0}
-.fauthorsources .geist-scroller-container{padding-right:12px;scrollbar-width:thin}
-.fauthorsources .geist-scroller-container::-webkit-scrollbar{display:block}
+.fauthorsources .geist-scroller-container{padding-right:12px}
 .fauthorsources .fsource:last-child{border-bottom:0}
 .fauthor .fsource.frow{padding-left:0px;display:grid;
   grid-template-columns:22px minmax(0,1fr) auto auto auto auto;gap:10px;flex-wrap:nowrap}
@@ -359,7 +362,7 @@ details.fcred{display:block}
 /* 关注页底部：两个翻页动作同属列表末尾，放在一条底栏；
    按钮仍保留各自的本地加载 / 站点抓取语义。 */
 .followpagination{display:flex;align-items:center;gap:14px 24px;min-width:0;margin:18px 0 0;
-  padding-top:14px;border-top:1px solid var(--line-soft);white-space:nowrap;overflow-x:auto;scrollbar-width:thin}
+  padding-top:14px;border-top:1px solid var(--line-soft);white-space:nowrap;overflow-x:auto}
 .followpageaction{display:inline-flex;align-items:center;gap:12px;min-width:0;flex:none}
 .followpageaction .fmeta{min-width:0;overflow:hidden;text-overflow:ellipsis}
 @media(max-width:640px){.followpagination{align-items:flex-start;flex-wrap:wrap;white-space:normal}.followpageaction{width:100%}}
@@ -380,7 +383,7 @@ details.fcred{display:block}
 .linkgroup h4{margin:0 0 4px;font-size:var(--fs-md);font-weight:600}
 .linkgroup h4 b{margin-left:6px;color:var(--muted);font-weight:inherit;font-variant-numeric:tabular-nums}
 .linkgroup>p{margin:0 0 12px;color:var(--muted);font-size:var(--fs-xs);line-height:1.5}
-.linktablewrap{overflow-x:auto;scrollbar-width:thin}
+.linktablewrap{overflow-x:auto}
 .linktable{width:100%;border-collapse:collapse;font-size:var(--fs-xs);white-space:nowrap}
 .linktable th{padding:6px 10px;border-bottom:1px solid var(--line-soft);color:var(--muted);font-weight:600;text-align:left}
 .linktable td{padding:6px 10px;border-bottom:1px solid var(--line-soft);color:var(--ink-2)}

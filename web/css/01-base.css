@@ -205,16 +205,25 @@ button[aria-busy="true"],[role="button"][aria-busy="true"]{
    有意差异二：Vercel 只在内部滚动区这么做，根滚动条留给浏览器；Peach 整页也换掉，见上面
    `html` 那条。整页那一条的命中区必须收到滑块本身：轨道横跨整个窗口右边，12px 宽的透明
    条会把右边缘所有点击吃掉——设置面板就贴在那儿。 */
-.ovtrack{position:absolute;right:0;top:8px;bottom:8px;width:12px;z-index:2;pointer-events:none}
+.ovtrack{position:absolute;z-index:2;pointer-events:none}
 .ovtrack[hidden]{display:none}
 @media (pointer:fine){.ovtrack{pointer-events:auto}}
-.ovthumb{position:absolute;right:0;top:0;width:3px;border-radius:var(--pill-radius);background:var(--field-ring-hover);
-  cursor:default;transition:width .15s cubic-bezier(.4,0,.2,1)}
-.ovtrack:hover .ovthumb,.ovtrack.dragging .ovthumb{width:6px}
-.ovtrack.page{position:fixed;top:0;bottom:0;z-index:91;pointer-events:none}
+.ovtrack.ov-y{right:0;top:8px;bottom:8px;width:12px}
+.ovtrack.ov-x{left:8px;right:8px;bottom:0;height:12px}
+.ovthumb{position:absolute;border-radius:var(--pill-radius);background:var(--field-ring-hover);
+  cursor:default;transition:width .15s cubic-bezier(.4,0,.2,1),height .15s cubic-bezier(.4,0,.2,1)}
+.ov-y .ovthumb{right:0;top:0;width:3px}
+.ov-x .ovthumb{left:0;bottom:0;height:3px}
+.ov-y:hover .ovthumb,.ov-y.dragging .ovthumb{width:6px}
+.ov-x:hover .ovthumb,.ov-x.dragging .ovthumb{height:6px}
+.ovtrack.page{position:fixed;top:0;bottom:0;right:0;z-index:91;pointer-events:none}
 @media (pointer:fine){.ovtrack.page .ovthumb{pointer-events:auto}}
 .ovtrack.page:hover .ovthumb{width:3px}
 .ovtrack.page .ovthumb:hover,.ovtrack.page.dragging .ovthumb{width:6px}
+/* 原生滚动条在挂上覆盖式那条之后才藏：属性是 attachOverlayScrollbar() 挂上去的，
+   脚本没跑到的容器就还留着系统滚动条，不会变成一个既没有滑块也拖不动的死框。 */
+[data-overlay-scrollbar]{scrollbar-width:none}
+[data-overlay-scrollbar]::-webkit-scrollbar{display:none}
 /* 横向行不显示滚动条（本来就能拖动/滚轮横滚） */
 .tier,.tagbar,.srow,.nrow{scrollbar-width:none}
 .tier::-webkit-scrollbar,.tagbar::-webkit-scrollbar,

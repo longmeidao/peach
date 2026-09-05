@@ -9,13 +9,24 @@ import {
   fillSkeletonTier, fitSkeleton, iconSwitchHtml, loadingDotsHtml,
   mediaViewButtonsHtml, noteHtml, progressHtml, scrollerHtml, searchInputHtml, selectFieldHtml,
   setActionBusy, skeletonHtml, spinnerHtml, wireAnchoredMenu, wireBusyActions, wireCollapse,
-  wireIconSwitch, wireScrollers, wireSelectField,
+  wireIconSwitch, wireOverlayScrollbars, wireScrollers, wireSelectField,
 } from './js/ui-components.js';
 
 initMiddleTruncate(document);
 wireBusyActions(document);
 attachOverlayScrollbar(document.documentElement,{variant:'page'});
 attachOverlayScrollbar($('#drawerScroll'));
+// 滚动容器是各处 innerHTML 现画出来的，没有一个统一的渲染出口可以挂。与其在几十个
+// 渲染点各补一行（漏一个就是那一处又冒出系统滚动条），不如认 DOM 变动本身：一批变动
+// 只扫一次，attachOverlayScrollbar() 自带幂等，已经接过的容器直接跳过。
+// 合批用 setTimeout 不用 requestAnimationFrame：页面在后台标签页里时 rAF 整个停摆，
+// 那期间画出来的容器会一直等到重新可见才接上滚动条。
+let overlayScan=0;
+new MutationObserver(()=>{
+  if(overlayScan)return;
+  overlayScan=setTimeout(()=>{overlayScan=0;wireOverlayScrollbars()});
+}).observe(document.body,{childList:true,subtree:true});
+wireOverlayScrollbars();
 /* 图片回退链全站只有这一条监听。`error` 不冒泡，但捕获阶段照样经过祖先，所以
    挂在 body 上就能接住任何后代 <img>——模板里不再有内联 `onerror`。 */
 wireImageFallbacks(document.body);
@@ -35,7 +46,7 @@ wireImageFallbacks(document.body);
 let state;
 let barsRequestSeq=0,barsDataCache=null,barsDataAt=0,barsDataPromise=null;
 let adsBatch=null,loadRequestSeq=0,listLoading=false;
-let followData=null,followRuntime=null,followFilter='',followBusy=false,
+let followData=null,followRuntime=null,followCredentials=null,followFilter='',followBusy=false,
   followManageSort='checked',followManageDir='desc';
 /* 关注列表四列各自的方向词与默认方向。作者名称是文本列，「从多到少」在它身上
    不成立，只说正倒。 */
@@ -4739,7 +4750,10 @@ function routeFollowManageSort(){
   if(followManageDir!==(FOLLOW_SORT_DEFAULT_DIR[followManageSort]||'desc'))params.set('dir',followManageDir);
   const query=params.toString();
   route('/follow-manage'+(query?'?'+query:''));
-  openFollowManage(false);
+  // 排序是拿手里这份 followData 重排，不是换一批数据，所以不走整页那条路径：那条会先把
+  // 整页换成骨架、再把三个接口重取一遍、最后滚回顶部，而屏幕上真正变的只有下面那份
+  // 关注列表。直接重画，页面不闪、位置不动。
+  renderFollowManage(followCredentials||{});
 }
 async function openFollowManage(push=true){
   releaseHoverPreviews();disposeStage(false);enterManagementSurface();
@@ -4757,7 +4771,7 @@ async function openFollowManage(push=true){
     surfaceApi(surface,'/api/follow?limit=1'),surfaceApi(surface,'/api/follow/credentials'),
     surfaceApi(surface,'/healthz')]);
   if(!surfaceCurrent(surface))return;
-  followData=data;followRuntime=runtime;
+  followData=data;followRuntime=runtime;followCredentials=credentials;
   renderFollowManage(credentials);
   window.scrollTo({top:0,behavior:'smooth'});
 }

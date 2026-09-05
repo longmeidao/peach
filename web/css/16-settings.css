@@ -14,22 +14,25 @@ body.settings-open{overflow:hidden}
 @keyframes settings-backdrop-out{from{opacity:1}to{opacity:0}}
 @keyframes settings-dialog-in{from{transform:translate3d(0,-40px,0);opacity:0}to{transform:translate3d(0,0,0);opacity:1}}
 @keyframes settings-dialog-out{from{transform:translate3d(0,0,0);opacity:1}to{transform:translate3d(0,-40px,0);opacity:0}}
+/* 面板照首页那两张面来：卡片壳是退到后面的 --page，标题栏和里面每个分组是浮起来的
+   --ground——和首页一样，顶栏与卡片同为亮面，页面底在它们之间露出来。
+   靠一档亮度差加一条 --field-ring 发丝线浮起，不加投影。原来正好反着——白壳里嵌灰块，
+   同一套控件在设置里和在首页上读出的层级相反。投影一并去掉：全站只有两张面这条规则
+   不因为它是弹层就不算，压暗的遮罩已经把它和底下的内容分开了。 */
 .settingscard{display:flex;flex-direction:column;width:min(520px,100%);max-height:min(720px,90vh);max-height:min(720px,90dvh);overflow:hidden;animation:settings-dialog-in .35s cubic-bezier(.4,0,.2,1) both;
-  border:1px solid var(--border-10);border-radius:var(--floating-radius);background:var(--ground);
-  box-shadow:0 8px 32px -12px rgba(0,0,0,.08),0 8px 24px -12px rgba(0,0,0,.12)}.settingsscroll{flex:1;min-height:0;overflow-y:auto;padding:0 20px 20px;scrollbar-gutter:stable both-edges;overscroll-behavior:contain}.settingshead{z-index:2;display:flex;align-items:center;justify-content:space-between;flex:none;padding:20px 20px 16px;border-bottom:1px solid var(--line-soft);background:var(--ground)}
-/* 暗色命中要跟随主题机制：app 不写 data-theme，暗色来自 prefers-color-scheme；
-   data-theme="dark" 分支给将来手动切主题留位，两条保持同值。
-   主题覆盖放在基础规则后面——`.settingscard{` 的子串查找以首条为准。 */
-@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .settingspanel{background:rgba(0,0,0,.8)}
-  :root:not([data-theme="light"]) .settingscard{box-shadow:0 24px 64px rgba(0,0,0,.55),0 0 0 1px rgba(255,255,255,.07)}}
+  border:1px solid var(--field-ring);border-radius:var(--floating-radius);background:var(--page)}.settingsscroll{flex:1;min-height:0;overflow-y:auto;padding:0 20px 20px;overscroll-behavior:contain}.settingshead{z-index:2;display:flex;align-items:center;justify-content:space-between;flex:none;padding:20px 20px 16px;border-bottom:1px solid var(--field-ring);background:var(--ground)}
+/* 遮罩是唯一还要分主题写的一处：它是写死的实色而不是 token。卡片与分组走 --page、
+   --ground 和 --field-ring，两档主题由 token 自己换，不再需要各写一条。
+   暗色命中跟随主题机制：app 不写 data-theme，暗色来自 prefers-color-scheme；
+   data-theme="dark" 分支给将来手动切主题留位，两条保持同值。 */
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .settingspanel{background:rgba(0,0,0,.8)}}
 :root[data-theme="dark"] .settingspanel{background:rgba(0,0,0,.8)}
-:root[data-theme="dark"] .settingscard{box-shadow:0 24px 64px rgba(0,0,0,.55),0 0 0 1px rgba(255,255,255,.07)}
 .settingshead h2{margin:0;font-size:var(--fs-xl)}.settingshead button{border:0;background:transparent;color:var(--muted);width:34px;height:34px;border-radius:var(--control-radius);cursor:pointer;display:grid;place-items:center;transition:background-color .12s ease,color .12s ease}.settingshead button:hover{background:var(--hover);color:var(--ink)}
 .settingshead svg{width:20px;height:20px;stroke:currentColor;fill:none}.settingrow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:18px;align-items:center;padding:14px 0 14px;border-top:1px solid var(--line-soft)}
 .settingrow:first-of-type{border-top:0}.settingrow b{display:block;font-size:var(--fs-md)}.settingrow small{display:block;color:var(--muted);margin-top:3px;line-height:1.45}
 .settingrow .gselect{min-width:148px}
-.settinggroup{margin:16px 0 0;border:1px solid var(--line-soft);border-radius:var(--floating-radius);
-  background:var(--surface);padding:0 16px 12px}
+.settinggroup{margin:16px 0 0;border:1px solid var(--field-ring);border-radius:var(--floating-radius);
+  background:var(--ground);padding:0 16px 12px}
 .settinggroup>h3{margin:0;padding:14px 0 10px;font-size:var(--fs-lg);font-weight:600;color:var(--ink)}
 .settinggroup .settingrow{margin:0 -16px;padding-left:16px;padding-right:16px}
 /* 布尔开关用 Geist Toggle 而不是原生复选框（取证 vercel-geist-semantics-measured.md）：
