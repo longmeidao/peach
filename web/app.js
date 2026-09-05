@@ -6214,28 +6214,32 @@ async function openEntity(kind,name,push=true){
 }
 
 let drawerSuppressUntil=0;
+/* 抽屉里所有重画都只写 #drawerScroll：#drawer 本身是定位宿主，覆盖式滚动条的轨道和
+   这层滚动容器都挂在它身上，整块 innerHTML 一换就把 buildBars() 要写的容器连轨道一起
+   抹掉，首页从此停在骨架态。 */
 function buildDrawerNavigation(){
-  const drawer=$('#drawer'),key=surfacePath()+location.search;
+  const drawer=$('#drawer'),scroll=$('#drawerScroll'),key=surfacePath()+location.search;
   if(!syncSidebarSurface(drawer,key)){
-    drawer.querySelectorAll('[data-nav]').forEach(button=>
+    scroll.querySelectorAll('[data-nav]').forEach(button=>
       button.setAttribute('aria-pressed',String(navOn(button.dataset.nav))));
     return;
   }
-  drawer.innerHTML=`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+  scroll.innerHTML=`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
     <b class="disp" style="font-size:15px;letter-spacing:.1em">导航与筛选</b>
     <button id="drawerClose" class="ib" title="收起" aria-label="收起导航">${icon('x')}</button></div>
     <div class="dnav">${orderedEdgeIcons().map(([k,label,ic])=>
       `<button data-nav="${k}" draggable="true" aria-pressed="${navOn(k)}">${icon(ic)}<span>${label}</span></button>`).join('')}</div>`;
   $('#drawerClose').onclick=()=>openDrawer(false);
-  $('#drawer').querySelectorAll('[data-nav]').forEach(b=>b.onclick=()=>navTo(b.dataset.nav));
-  wireNavigationDrag(drawer.querySelector('.dnav'));
+  scroll.querySelectorAll('[data-nav]').forEach(b=>b.onclick=()=>navTo(b.dataset.nav));
+  wireNavigationDrag(scroll.querySelector('.dnav'));
 }
 function renderFollowDrawer(items){
   buildDrawerNavigation();
-  $('#drawer').querySelectorAll('.sec').forEach(section=>section.remove());
+  const scroll=$('#drawerScroll');
+  scroll.querySelectorAll('.sec').forEach(section=>section.remove());
   const counts=sidebarTagCounts(items.map(item=>({tags:followCardTags(item)})));
   if(!counts.length)return;
-  $('#drawer').insertAdjacentHTML('beforeend',`<div class="sec cat-online"><h3>内容标签</h3><div class="chips">${
+  scroll.insertAdjacentHTML('beforeend',`<div class="sec cat-online"><h3>内容标签</h3><div class="chips">${
     counts.map(([tag,n])=>
       `<button class="chip online" data-follow-drawer-tag="${esc(tag)}" aria-pressed="${followTags.has(tag)}">${esc(tagLabel(tag))}<span class="n">${n}</span></button>`).join('')}</div></div>`);
   $('#drawer').querySelectorAll('[data-follow-drawer-tag]').forEach(b=>b.onclick=()=>{

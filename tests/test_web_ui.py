@@ -523,6 +523,19 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("attachOverlayScrollbar(document.documentElement,{variant:'page'});")
         self.assertPageContains("attachOverlayScrollbar($('#drawerScroll'));")
 
+    def test_every_drawer_repaint_writes_into_the_scroll_layer_not_the_host(self):
+        """#drawer 是滚动容器和轨道的宿主：谁把它整块 innerHTML 换掉，buildBars() 要写的
+        容器就没了，首页停在「正在读取作品」。所有重画只能落在 #drawerScroll 里。"""
+        source = self.page
+        self.assertNotIn("drawer.innerHTML=", source)
+        self.assertNotIn("$('#drawer').innerHTML=", source)
+        self.assertNotIn("$('#drawer').insertAdjacentHTML(", source)
+        self.assertPageContains("const drawer=$('#drawer'),scroll=$('#drawerScroll'),key=surfacePath()+location.search;")
+        self.assertPageContains("scroll.innerHTML=`<div style=\"display:flex;align-items:center;justify-content:space-between;margin-bottom:10px\">")
+        self.assertPageContains("scroll.insertAdjacentHTML('beforeend',`<div class=\"sec cat-online\">")
+        # 换页面的判据仍挂在宿主上：它是同一个元素贯穿始终，滚动层的内容会被换掉。
+        self.assertPageContains("syncSidebarSurface(drawer,key)")
+
     def test_anchored_menus_open_in_the_top_layer_so_animated_ancestors_cannot_clip_them(self):
         """自绘下拉的面板进顶层，祖先上的 transform 与 overflow 都够不着它。
 
