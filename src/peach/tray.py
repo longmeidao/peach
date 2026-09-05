@@ -18,7 +18,7 @@ import httpx
 import pystray
 from PIL import Image
 
-from . import ledger_backups, onboarding, settings_file
+from . import ledger_backups, log_retention, onboarding, settings_file
 from .appid import MACOS_LAUNCH_AGENT_LABEL
 from .certs import ensure_certificate
 from .distribution import standalone
@@ -34,6 +34,7 @@ from .sync import COPY_ACTIONS, SyncPlan, device_id, resolve
 from .versioning import VersionManager, VersionSnapshot
 from .windows_update import (
     PendingWindowsUpdate, WindowsUpdateInstaller, windows_tray_rebuild_required,
+    sweep_onefile_extractions,
 )
 
 
@@ -659,7 +660,7 @@ def configured_service_specs(config) -> tuple[ServiceSpec, ...]:
         return build_service_specs(tls_dir=config.directory("secrets") / "tls",
                                    mdns_hostname=normal_hostname(config))
     if config.server.host != "127.0.0.1":
-        raise ValueError("独立测试包仅支持本机访问，请在配置中选择仅本机")
+        raise ValueError("独立测试包只支持本机访问，请在配置中选择「只有这台电脑」")
     return (ServiceSpec("http", setup_url(config) + "healthz",
                         (str(_peach_executable()), "serve", "--host", "127.0.0.1",
                          "--port", str(config.server.port), "--no-mdns", "--no-ledger-sync"),
@@ -1068,6 +1069,7 @@ class PeachTray:
         # 上一次更新留下的备份与暂存构建在这里清退：替换助手结束时托盘已经不在，
         # 只有下一次启动能确认「新托盘已经活下来、旧备份可以少留一份」。
         self.windows_updates.sweep_artifacts()
+        sweep_onefile_extractions()
         # 账本备份同理：每个 --apply 都留一份整库，复核过后就没人再读。规则与拒绝条件在
         # `peach.ledger_backups`；这里失败只记日志，不能因为清退不了而不起托盘。
         try:
@@ -1355,6 +1357,13 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     try:
         specs = build_setup_service_specs(config) if waiting else configured_service_specs(config)
+        # 日志按半年保留、按月切段，必须排在任何子进程打开日志之前：Windows 上被占着的
+        # 文件改不了名也删不掉。整理不了只记日志，不能因此不起托盘。
+        try:
+            for action in log_retention.sweep(config.directory("logs")):
+                logging.getLogger(__name__).info("日志整理：%s", action)
+        except Exception:
+            logging.getLogger(__name__).warning("日志整理失败", exc_info=True)
         manager = ServiceManager(specs, log_dir=config.directory("logs"))
         gate = SetupGate(manager, config, waiting=waiting)
         if sys.platform == "darwin":

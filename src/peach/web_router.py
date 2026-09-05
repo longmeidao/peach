@@ -32,6 +32,7 @@ from .web_catalog import (
 from .web_entity import q_entity, q_entity_photos, q_index, q_photo_set, w_entity_name
 from .web_follow import (
     q_follow,
+    q_follow_check,
     q_follow_credentials,
     q_follow_schedule,
     q_follow_tags,
@@ -51,6 +52,7 @@ from .web_playlists import q_playlist, q_playlists, w_playlist
 from .web_resource_sync import w_purge_missing, w_resource_sync_apply, w_resource_sync_scan
 from .web_review import q_review, w_review_auto_apply, w_review_decision
 from .web_settings import q_settings, w_settings
+from .web_scraping import q_scraping, w_scraping_settings, w_scraping_check, w_scraping_cover
 from .web_state import WebContract
 from .web_stats import (
     q_quality_goals,
@@ -128,12 +130,17 @@ def _get_facets(contract, args):
     asset_id = int(args["id"]) if args.get("id") else None
     state = str(args.get("state", ""))
     scope_key = f"{scope_kind}:{scope_name}:{asset_id or ''}:{state}"
+    filters = {key: args[key] for key in (
+        'loc', 'creator', 'performer', 'studio', 'series', 'agency', 'tag', 'tag_match',
+        'len', 'dur_min', 'dur_max', 'orient', 'exclude_vertical', 'q', 'thumb',
+    ) if args.get(key)}
+    scope_key += repr(sorted(filters.items()))
     return contract.cached(
         f"facets{'-jav' if jav else ''}:{scope_key}",
         lambda: q_facets(
             contract,
             jav=jav, scope_kind=scope_kind, scope_name=scope_name, asset_id=asset_id,
-            state=state,
+            state=state, filters=filters or None,
         ),
     )
 
@@ -166,11 +173,18 @@ def _post_empty_trash(contract, _body):
 
 
 GET_HANDLERS = {
+    "/api/scraping": q_scraping,
+    "/api/scraping/cover": lambda contract, args: contract.scraping_cover_job.snapshot() or {"status": "idle"},
     "/api/settings": q_settings,
     "/api/follow": q_follow,
     "/api/follow/credentials": q_follow_credentials,
     "/api/follow/tags": q_follow_tags,
     "/api/follow/schedule": q_follow_schedule,
+    "/api/follow/check": q_follow_check,
+    "/api/follow/resolve": lambda contract, args: contract.follow_resolve_job.snapshot() or {"status": "idle"},
+    "/api/taste/refresh": lambda contract, args: contract.taste_refresh_job.snapshot() or {"status": "idle"},
+    "/api/links/prune": lambda contract, args: contract.link_prune_job.snapshot() or {"status": "idle"},
+    "/api/resource-sync/apply": lambda contract, args: contract.resource_apply_job.snapshot() or {"status": "idle"},
     "/api/items": q_items,
     "/api/item": _get_item,
     "/api/parts": q_parts,
@@ -195,6 +209,9 @@ GET_HANDLERS = {
 }
 
 POST_HANDLERS = {
+    "/api/scraping/settings": w_scraping_settings,
+    "/api/scraping/cover": w_scraping_cover,
+    "/api/scraping/check": w_scraping_check,
     "/api/follow/check": w_follow_check,
     "/api/follow/schedule": w_follow_schedule,
     "/api/follow/source": w_follow_source,
@@ -235,6 +252,7 @@ POST_HANDLERS = {
 #: 不该拦它们——「查找」只联网、「存凭据」只写本机 secrets 文件，都不碰账本。
 #: 追更的「查找」在只读端被拦成 409 是实测踩到的。
 READ_ONLY_POST_ROUTES = frozenset({
+    "/api/scraping/settings", "/api/scraping/check",
     "/api/follow/resolve", "/api/follow/credential",
     "/api/taste/refresh", "/api/taste/source", "/api/resource-sync/scan",
     "/api/links/check", "/api/data-cleanup/empty-folders",

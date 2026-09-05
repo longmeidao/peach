@@ -9,12 +9,13 @@ import re
 import sqlite3
 import stat
 import tempfile
+import threading
 import unittest
 from datetime import datetime, timezone
 from pathlib import Path
 from unittest import mock
 
-from peach import follow_store, web_follow
+from peach import follow_store, web_follow, web_stats
 from peach.follow import FollowHistoryEnd
 from peach.follow import FollowSourceError
 from peach.follow_discovery import Discovery, ExternalSearch
@@ -31,10 +32,108 @@ MOMENT = datetime(2026, 8, 25, 9, 0, tzinfo=timezone.utc)
 
 
 class FollowContractTests(unittest.TestCase):
+    def test_background_check_exposes_progress_and_deduplicates(self):
+        self._seed()
+        entered, release = threading.Event(), threading.Event()
+        original = web_follow.run_check
+        def slow(*args, **kwargs):
+            entered.set()
+            release.wait(5)
+            return original(*args, **kwargs)
+        with mock.patch.object(web_follow, 'run_check', side_effect=slow), \
+             mock.patch.object(web_follow, 'build_connector') as factory:
+            factory.return_value.fetch.side_effect = FollowSourceError('offline')
+            started = self._post('/api/follow/check', {'background': True})
+            try:
+                self.assertTrue(entered.wait(2))
+                snapshot = web_follow.q_follow_check(self.contract, {})
+                self.assertEqual(snapshot['job_id'], started['job_id'])
+                self.assertEqual(snapshot['total'], 1)
+                self.assertEqual(snapshot['checked'], 0)
+                duplicate = self._post('/api/follow/check', {'background': True, 'older': True})
+                self.assertEqual(duplicate['job_id'], started['job_id'])
+            finally:
+                release.set()
+                self.contract.follow_job.thread.join(5)
+        final = web_follow.q_follow_check(self.contract, {})
+        self.assertEqual(final['status'], 'complete')
+        self.assertEqual(final['checked'], 1)
+        self.assertFalse(final['results'][0]['ok'])
+        self.assertEqual(factory.call_count, 1)
+
+    def test_discovery_result_can_be_read_after_request_returns(self):
+        started = self._post('/api/follow/resolve', {'background': True,
+            'lines': ['https://rule34video.com/models/sample/']})
+        self.contract.follow_resolve_job.thread.join(5)
+        final = dispatch_api_get(self.contract, '/api/follow/resolve', {})
+        self.assertEqual(final['job_id'], started['job_id'])
+        self.assertEqual(final['status'], 'complete')
+        self.assertEqual(len(final['results']), 1)
+
+    def test_background_check_records_unexpected_failure(self):
+        self._seed()
+        with mock.patch.object(web_follow, 'run_check', side_effect=RuntimeError('test failure')):
+            self._post('/api/follow/check', {'background': True})
+            self.contract.follow_job.thread.join(5)
+        state = web_follow.q_follow_check(self.contract, {})
+        self.assertEqual(state['status'], 'failed')
+        self.assertIn('test failure', state['error'])
+        self.assertFalse(self.contract.follow_check_lock.locked())
+
+    def test_background_taste_refresh_has_a_readable_result(self):
+        self.contract.taste_history_store = self.root / 'missing-history.sqlite'
+        with mock.patch.object(web_stats, 'discover_history_sources', return_value=[]), \
+             mock.patch.object(web_stats, 'q_taste', return_value={'demo': True}):
+            started = self._post('/api/taste/refresh', {'background': True})
+            self.contract.taste_refresh_job.thread.join(5)
+        final = dispatch_api_get(self.contract, '/api/taste/refresh', {})
+        self.assertEqual(final['job_id'], started['job_id'])
+        self.assertEqual(final['status'], 'complete')
+        self.assertEqual(final['dashboard'], {'demo': True})
+
+    def test_selected_sources_do_not_expand_to_the_whole_follow_list(self):
+        selected = self._seed(ref='selected')
+        self._seed(ref='unrelated')
+        with mock.patch.object(web_follow, 'build_connector') as factory:
+            factory.return_value.fetch.side_effect = FollowSourceError('offline')
+            result = self._post('/api/follow/check', {'sources': [selected]})
+        self.assertEqual([row['source'] for row in result['results']], [selected])
+        self.assertEqual(factory.call_count, 1)
+
+    def test_failed_numeric_source_has_a_readable_author(self):
+        source = self._seed(ref='patreon/12387984', label='Pantsushi · patreon')
+        with mock.patch.object(web_follow, 'build_connector') as factory:
+            factory.return_value.fetch.side_effect = FollowSourceError('offline')
+            result = self._post('/api/follow/check', {'sources': [source]})
+        self.assertEqual(result['results'][0]['author'], 'Pantsushi')
+
+    def test_background_prune_keeps_the_confirmation_and_expiry_gate(self):
+        refused = self._post('/api/links/prune', {'background': True})
+        self.assertFalse(refused['ok'])
+        self.assertIsNone(self.contract.link_prune_job.snapshot())
+        self._post('/api/links/prune', {'background': True, 'confirm': True, 'check_id': 'expired'})
+        self.contract.link_prune_job.thread.join(5)
+        final = dispatch_api_get(self.contract, '/api/links/prune', {})
+        self.assertEqual(final['status'], 'failed')
+        self.assertFalse(final['ok'])
+
+    def test_background_resource_apply_has_a_queryable_receipt(self):
+        from peach import web_resource_sync
+        with mock.patch.object(web_resource_sync, '_scan_missing_resources',
+                               return_value={'sources': [], 'missing_ids': []}), \
+             mock.patch.object(web_resource_sync, 'clean_resource_orphans',
+                               return_value={'cache_removed': 0, 'bytes_reclaimed': 0}):
+            started = self._post('/api/resource-sync/apply', {'background': True, 'confirm': True})
+            self.contract.resource_apply_job.thread.join(5)
+        final = dispatch_api_get(self.contract, '/api/resource-sync/apply', {})
+        self.assertEqual(final['job_id'], started['job_id'])
+        self.assertEqual(final['status'], 'complete')
+        self.assertEqual(final['moved_to_trash'], 0)
+
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
-        self.root = Path(self.temporary.name)
+        self.root = Path(self.temporary.name).resolve()
         self.db = self.root / "ledger.db"
         connection = sqlite3.connect(self.db)
         for migration in discover(ROOT / "migrations"):
@@ -76,6 +175,41 @@ class FollowContractTests(unittest.TestCase):
 
     def _post(self, path, body):
         return dispatch_api_post(self.contract, path, body)
+
+    def test_saved_catalog_media_uses_the_follow_cover_and_content_tags(self):
+        self._seed(candidates=(FollowCandidate(
+            provider='rule34video', external_id='saved-media', title='Demo video',
+            url='https://example.test/post', media_url='https://example.test/movie.mp4',
+            thumb_url='https://example.test/cover.jpg', duration=20,
+            extra={'tags': ['animation', 'artist_name'],
+                   'tag_types': {'animation': 'general', 'artist_name': 'artist'}},
+        ),))
+        with self.contract.database.write_transaction() as connection:
+            store = FollowStore(lambda: connection)
+            item = store.items()[0]
+            asset_id = store.save_asset(item.id, confirm=True)
+        follow = self._get(item=str(item.id))['groups'][0]['primary']
+        catalog = self._get('/api/items', loc='online')['items'][0]
+        self.assertEqual(catalog['id'], asset_id)
+        self.assertEqual(catalog['follow_item_id'], item.id)
+        self.assertEqual(catalog['follow_thumb_url'], follow['thumb_url'])
+        self.assertEqual(catalog['follow_tags'], follow['tags'])
+        self.assertNotIn('artist_name', catalog['follow_tags'])
+        detail = self._get('/api/item', id=str(asset_id))
+        self.assertEqual(detail['follow_item_id'], item.id)
+        online = self._get('/api/facets', loc='online')
+        self.assertEqual([row['k'] for row in online['follow_tags']], follow['tags'])
+        self.assertEqual(self._get('/api/facets', loc='local')['follow_tags'], [])
+
+    def test_unsaved_follow_tags_do_not_enter_catalog_facets(self):
+        self._seed(candidates=(FollowCandidate(
+            provider='rule34video', external_id='unsaved', title='Demo video',
+            url='https://example.test/unsaved', duration=20,
+            extra={'tags': ['animation'], 'tag_types': {'animation': 'general'}},
+        ),))
+        self.assertTrue(self._get('/api/follow/tags')['items'])
+        self.assertEqual(self._get('/api/facets')['tags'], [])
+        self.assertEqual(self._get('/api/facets')['follow_tags'], [])
 
     def test_paging_back_advances_the_cursor_without_touching_the_etag(self):
         """往回抓推进游标，但**绝不覆盖 etag**。
@@ -1390,6 +1524,19 @@ class FollowWebSourceTests(unittest.TestCase):
         if needle not in self.page:
             self.fail(f"Web 表面缺少：{needle!r}" + (f"（{message}）" if message else ""))
 
+    def test_follow_task_controls_keep_content_and_name_the_author(self):
+        self.assertPageContains('data-follow-sources=')
+        self.assertPageContains('group.filter(s=>s.enabled).map(s=>s.id)')
+        self.assertPageContains('aria-label="检查 ${esc(name)} 的全部来源"')
+        self.assertPageContains('row.author||row.label||row.ref')
+        self.assertPageLacks('个来源上次检查失败，原因见对应那一行。')
+        refresh = self.page.split('async function refreshFollowSurface(surface){', 1)[1].split('async function wireOperationProgress', 1)[0]
+        self.assertNotIn('showManagementBody', refresh)
+        self.assertNotIn('scrollTo', refresh)
+        click = self.page.split("root.querySelectorAll('[data-follow-check]').forEach", 1)[1].split('const saveAuthorAlias', 1)[0]
+        self.assertNotIn('openFollowManage', click)
+        self.assertIn('wireFollowProgress()', click)
+
     def assertPageLacks(self, needle, message=""):
         if needle in self.page:
             self.fail(f"Web 表面不应出现：{needle!r}" + (f"（{message}）" if message else ""))
@@ -1534,8 +1681,8 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertIn("grid-template-rows:auto minmax(0,1fr)", author_rule)
         self.assertPageContains("scrollerHtml(group.map(followSourceRow).join(''),{")
         self.assertPageContains("className:'fauthorsources',label:`${name} 的关注来源`")
-        self.assertPageContains(".fauthorsources .geist-scroller-container{padding-right:12px;scrollbar-width:thin}")
-        self.assertPageContains(".fauthorsources .geist-scroller-container::-webkit-scrollbar{display:block}")
+        # 滚动条由 attachOverlayScrollbar() 统一自绘，这里只留出滑块那一档的右内边距。
+        self.assertPageContains(".fauthorsources .geist-scroller-container{padding-right:12px}")
         self.assertPageContains("wireScrollers(root)")
 
     def test_source_actions_are_icon_only_and_stay_on_one_row(self):
@@ -1696,7 +1843,7 @@ class FollowWebSourceTests(unittest.TestCase):
         section = section[:section.index("}")]
         self.assertIn("border:1px solid", section)
         self.assertIn("border-radius", section)
-        self.assertIn("background:var(--surface)", section)
+        self.assertIn("background:var(--ground)", section)
 
         self.assertNotIn(".fcard{", page)
         self.assertNotIn(".fsource{", page,
@@ -1960,7 +2107,20 @@ class FollowWebSourceTests(unittest.TestCase):
         rule = rule[:rule.index("}")]
         self.assertIn("flex:none", rule)
         self.assertIn("padding:2px", rule)
-        self.assertPageContains(".fsechead .iconswitch label{width:32px;height:26px}")
+        # 2px 内边距上下各一份，再加外框自己的 1px 边，正好凑齐同排控件的 --control-h。
+        self.assertPageContains(".fsechead .iconswitch label{width:34px;height:32px}")
+        self.assertPageContains(".fsechead .fbtn,.fsecfoot .fbtn{height:var(--control-h)}")
+        self.assertPageContains(".fmanagesort .gselectfield{height:var(--control-h);")
+
+    def test_the_sort_direction_key_is_a_square_icon_button(self):
+        """纯图标键是正方形，边长与同排控件同高，图标不被内边距压扁。
+
+        `.fbtn` 自带 `padding:0 12px` 且排在样式表更后面，单类名的 `.fmanagedir`
+        压不过它：32px 宽减掉 24px 内边距只剩 8px 内容宽，14px 的箭头会被挤成一条
+        6px 的竖线——按钮不方，图标也不成比例。
+        """
+        self.assertPageContains(".fsechead .fmanagedir{width:var(--control-h);padding:0}")
+        self.assertPageContains(".fsechead .fmanagedir svg{width:16px;height:16px}")
 
     def test_alias_count_badge_is_neutral_metadata(self):
         """「3 组」只是计数，不是待处理提醒：徽章走 Geist gray badge 的中性灰。
@@ -2367,7 +2527,7 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("function followCheckToast(report)")
         self.assertPageContains("function followCheckFailNote(report)")
         # 重画会把结果冲掉，所以先存再画。
-        self.assertPageContains("followCheckReport=result;")
+        self.assertPageContains("followCheckReport=report.status==='failed'")
         self.assertPageContains("${followCheckReport?followCheckFailNote(followCheckReport):''}")
         for needle in ("新增 <b>", "更新 <b>", "个来源没有更新", "没有任何更新",
                        "个失败", "fcheckfail", "没有更多历史内容",
@@ -2574,12 +2734,10 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("spinnerHtml('抓取中')")
 
     def test_follow_management_list_has_routed_sorting(self):
-        self.assertPageContains('data-follow-sort aria-label="关注列表排序"')
-        self.assertPageContains('<option value="checked"')
-        self.assertPageContains(">检查时间</option>")
-        self.assertPageContains('<option value="added"')
-        self.assertPageContains('<option value="name"')
-        self.assertPageContains('<option value="sources"')
+        self.assertPageContains("{label:'关注列表排序',attr:'data-follow-sort'}")
+        self.assertPageContains(
+            "const FOLLOW_SORT_OPTIONS=[['checked','检查时间'],['added','添加时间'],"
+            "['name','作者名称'],['sources','来源数量']]")
         self.assertPageContains("followManageSort=['checked','added','name','sources'].includes(requested)?requested:'checked'")
         self.assertPageContains("const added=group=>Math.max(...group.map(source=>Date.parse(source.created_at||'')||0))")
         self.assertPageContains("if(followManageSort==='added')return flip*(added(b)-added(a))||byName(a,b);")
@@ -2591,11 +2749,18 @@ class FollowWebSourceTests(unittest.TestCase):
         # 方向键与排序下拉并排，名称播报点下去会得到什么。
         self.assertPageContains("<button class=\"fbtn fmanagedir\" type=\"button\" data-follow-dir aria-label=\"${")
         self.assertPageContains("icon(followManageDir==='asc'?'arrow-up':'arrow-down')")
-        self.assertPageContains(".fmanagedir{width:32px;padding:0}")
+        self.assertPageContains(".fsechead .fmanagedir{width:var(--control-h);padding:0}")
         # 方向等于该列默认值时不写进地址，免得挂一个和默认完全一样的参数。
         self.assertPageContains(
             "if(followManageDir!==(FOLLOW_SORT_DEFAULT_DIR[followManageSort]||'desc'))params.set('dir',followManageDir);")
         self.assertPageContains("followManageDir=requestedDir==='asc'||requestedDir==='desc'?requestedDir")
+        # 换排序只是把手里这份 followData 重排一次：整页换骨架、三个接口重取、滚回顶部，
+        # 换来的是同一批数据的另一个顺序，而屏幕上真正变的只有下面那份关注列表。
+        route = self.page[self.page.index("function routeFollowManageSort()"):]
+        route = route[:route.index(chr(10) + "}")]
+        self.assertIn("renderFollowManage(followCredentials||{});", route)
+        self.assertNotIn("openFollowManage", route)
+        self.assertPageContains("followData=data;followRuntime=runtime;followCredentials=credentials;")
         backend = (ROOT / "src" / "peach" / "web_follow.py").read_text(encoding="utf-8")
         self.assertIn('"created_at": row["created_at"]', backend)
         self.assertPageContains("return groups.sort((a,b)=>{")

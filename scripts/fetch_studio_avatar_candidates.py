@@ -35,7 +35,7 @@ from peach.logo_provider import (  # noqa: E402
 from peach.config import GENERATED_DIR  # noqa: E402
 from peach.social_links import twimg_tiers  # noqa: E402
 from peach.review_csv import read_rows, write_rows
-from peach.scripting import USER_AGENT
+from peach.scripting import USER_AGENT, RateLimiter
 
 RESOLVER = "https://unavatar.io/{platform}/{handle}?json"
 FIELDS = (
@@ -150,7 +150,7 @@ def main(argv: list[str] | None = None, *, transport=None) -> int:
     batch_hashes: dict[str, str] = {}
     owned_http = transport is None
     http = transport or HttpxTransport()
-    last = 0.0
+    limiter = RateLimiter(args.interval)
     try:
         for studio in studios:
             health["attempted"] += 1
@@ -168,10 +168,7 @@ def main(argv: list[str] | None = None, *, transport=None) -> int:
                              "reason": "未取得该厂牌的社交 handle"})
                 health["no_handle"] += 1
                 continue
-            wait = args.interval - (time.monotonic() - last)
-            if wait > 0:
-                time.sleep(wait)
-            last = time.monotonic()
+            limiter.wait()
             resolver_url = RESOLVER.format(platform=args.platform, handle=handle)
             record = {"studio": studio, "handle": handle, "platform": args.platform,
                       "resolver_url": resolver_url, "resolved_url": "", "width": "",

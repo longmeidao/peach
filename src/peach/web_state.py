@@ -130,6 +130,12 @@ class WebContract:
         #: 每次 cache_bust 递增。在途计算据此判断自己出发后缓存是否失效过。
         self.cache_generation = 0
         self.follow_check_lock = threading.Lock()
+        self.follow_job = BackgroundJob("PeachFollowCheckJob")
+        self.follow_resolve_job = BackgroundJob("PeachFollowResolveJob")
+        self.taste_refresh_job = BackgroundJob("PeachTasteRefreshJob")
+        self.link_prune_job = BackgroundJob("PeachLinkPruneJob")
+        self.scraping_cover_job = BackgroundJob("PeachScrapingCoverJob")
+        self.resource_apply_job = BackgroundJob("PeachResourceApplyJob")
         self.follow_scheduler = None
         # 两块后台任务的锁、状态和线程都归 BackgroundJob 管，契约上只留这两个字段。
         # 任务 id 的键名沿用各自原有的名字：它随公开投影下发，是前端契约。
@@ -195,6 +201,12 @@ class WebContract:
         谁在跑归契约自己知道，`api` 的 lifespan 不该再列一遍任务清单。
         """
         self.resource_scan.stop()
+        self.follow_job.stop()
+        self.scraping_cover_job.stop()
+        self.follow_resolve_job.stop()
+        self.taste_refresh_job.stop()
+        self.link_prune_job.stop()
+        self.resource_apply_job.stop()
         self.link_check.stop()
 
     def cache_bust(self):

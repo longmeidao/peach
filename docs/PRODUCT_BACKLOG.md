@@ -9,6 +9,10 @@
 - 运行与一致性：HTTP 只跳转 HTTPS；业务与调度由单一应用拥有；成功提交后失效缓存；缓存有界；可更新图片可复验；列表参数有上下界。
 - 数据与查询：标签、实体筛选从关系索引驱动；随机排序有唯一次序；重复索引与外键启用先做副本验证；补固定规模基准。
 - 安装与诊断：下面第 12、13、21、22、23 项按依赖实施，覆盖最小源码安装、wheel 资源、仓库外启动、就绪检查。独立桌面制品及操作系统 VM 验收仍按第 15、21 项推进。
+- 抓取可复现性：按 [ADR-0024](adr/0024-mark-manifest-not-bundled-bytes.md) 落地来源配置与清单。
+  `/scraping` 已有定点高清封面、FC2 Cookie 粘贴／文件导入和封面来源网络配置；剩余来源还需接入
+  统一配置、会话有效性验证与完整批量 GUI。清单导入导出、标准模式与 Javinizer-Go 工具配置待实施。
+  Instagram 成熟解析器须有独立用户会话 POC；Windows/macOS 干净安装和二次运行缓存命中是交付条件。
 - 后续结构：显式 API 模型、前端构建与高频页面迁移、候选分页、任务持久化按垂直功能实施；不为 AppContext 或文件尺寸单独做全仓搬迁。
   当前已实现运行缓存、关系筛选、wheel 资源、仓库外冒烟和分级健康检查；Windows 基础依赖安装通过。真实库只读对照七轮中位数：标签 195.5→25.5 ms、创作者 148.8→45.6 ms、女优 162.7→15.7 ms、厂牌 162.0→19.6 ms，返回 ID 与总数一致；这不是浏览器端延迟。
 - Linux 首版候选为 headless、预挂载媒体与独立 wheel。外部容器用了替身依赖，其结果不构成锁定依赖和 Linux 的正式支持证据，优先级低于 Windows/macOS。
@@ -48,7 +52,8 @@
 22. `peach doctor` 与分级 `/healthz`：`doctor`（另带 `--json`）逐项报版本、数据根可写性、配置文件合法性、数据库能否打开、schema 版本与待执行迁移、FFmpeg／ffprobe／OpenSSL 路径、挂载点可达性、端口占用、是否处在「局域网暴露但无口令」状态、后台任务最近一次失败；输出脱敏，不带口令、cookie、站点凭据和完整媒体路径。`/healthz` 相应从布尔改成分项状态（`database`／`schema`／`configured`／`ffmpeg`／`media_mounts`／`security`），与第 13 条一起做。
 23. 性能基准：用 SFW 合成数据生成 1k／10k／100k／500k 四档库，nightly 测冷启动到 `/healthz`、目录页与详情页 p95、两字以上搜索 p95、本地 SSD 与网盘挂载的 Range 首字节、空闲 RSS、后台扫描时前台退化倍数、备份期间读请求不失败。门槛用「相对上一次基线下降超过 20%」，不给绝对毫秒数——不同机器不可比。数据集与第 16 条的演示数据集共用。
 24. CI 的 Windows job 太慢，一次 push 的墙钟由它决定。同一批 2786 个用例在 `macos-latest`（arm64）上 57 秒，在 `windows-latest` 上 1475 秒，本机 Windows 是 324 秒——runner 比开发机还慢 4.6 倍。按时间戳差算，250 个用例（9%）吃掉 1119 秒，每个稳定在 4.5 秒上下，形状像每建一个临时文件被 Defender 扫一遍。两条路各自独立：一是在 Windows job 里对 runner 的临时目录加 `Add-MpPreference -ExclusionPath`，先量一轮确认是不是 Defender；二是把 `scripts/test_runner.py` 的域拆成矩阵分片并行跑，代价是每个分片重付一次装依赖的 37 秒。不要为了缩短墙钟把 Windows job 从矩阵里去掉：它是生产平台，也是唯一能拦住 Windows 独有回归的地方。
-25. 托盘子服务的日志不轮转：`ServiceManager` 以追加模式打开 `logs/tray-<服务>.out.log` 与 `.err.log`，本机一周就长到 28 MB，`tray-scan.out.log` 与 `windows-source-sync.log` 同样只增不减。在起服务前按大小轮转，超过阈值改名保留一代即可；写文件的是子进程的 stdout，不经 `logging`，所以 `RotatingFileHandler` 用不上。
+25. 借鉴 vercel.com/<team>/~/deployments 的令牌式筛选与排序。那一行不是一排互斥药丸，而是「Add Filter + 若干条已添加的维度令牌（Author／Environment／Status）」，每个令牌自带下拉，维度可叠加、可逐个摘掉，另有独立的日期区间与状态汇总（`6/7`）。2026-09-05 实测它的三态：未生效 `1px dashed rgba(0,0,0,.21)` 透明底，悬停／聚焦换成 `#FFFFFF` 实底加 `1px solid rgba(0,0,0,.08)`，下拉展开时 `gray-200` 底配实线——虚线读作「建议但没应用」，实心读作「已生效」。
+    首页大概率不合适：`.tagbar` 那一排是单选（`全部`／`没看过`／`稍后看` 恒有一个生效），把没选中的三个画成虚线会读成「三个待处理的筛选」；而且这套「填亮 = 生效」要成立，页面底色得比控件低一档——Vercel 的仪表盘底是 `#FAFAFA`，Peach 的 `--ground` 是纯白，没有可填的更亮档。真正对得上的是多维叠加的场景：`/follow-manage` 的来源／状态／WIP 组合筛选，和 `/review` 的候选筛选。先在这两处试，别动首页。
 
 合计：**31 项开放需求**，其中 6 项已有骨架，25 项尚未实现。已完成的需求不在这里留痕，去 Git 历史查。
 
@@ -86,6 +91,6 @@
 28. macOS 标识 `io.github.longmeidao.peach.*` 在 Mac 上生效：代码已在 master（`src/peach/appid.py` 是唯一来源，`install_macos_agent.py` 与 `setup_macos_port80.sh` 会自己清掉遗留标签），命令与四项核对见 `docs/OPERATIONS.md`「桌面入口与发布」。放进第 30 条的维护窗口一起做；两台机器都跑过之后删掉 `peach.appid` 里的遗留标签表和用到它的分支。这是换生产入口，执行前要在同一轮拿到用户确认。
 29. `peach-data/review/composite-names-20260904.csv` 里还剩 28 条 creator 规范名带括号，括号里是读音或罗马音（`Egami(えがみ)`、`永地(eichi)`、`猫屋(NEKOYA)`），用户定了不拆——它们不像艺名那样各自独立，是同一个名字的注音。同一份 CSV 里 575 条 tag 是角色的作品出处消歧，10 条 series 括号里是厂牌或载体消歧（拆了会把三个 `AV DEBUT` 撞成一个），都不要动。剩下真正待判的只有 performer 规范名 `Mana(23)` 一条：数字是去重后缀还是名字的一部分要看源站。
 30. Mac 追上 master 的一组操作，按顺序做完再重启菜单栏——做完之前不要重启：master 上的 `peach serve --host 0.0.0.0` 没有口令会拒绝启动，reader 会直接消失。① `git pull` 到 master；② `pip uninstall -y peach-app && pip install -e ".[macos]"`；③ 先把 Windows 的 `peach-data/secrets/auth-token` 复制到 Mac 数据根的同一路径——reader 取 writer 复核结果发的是自己的口令，两边必须是同一份，而 `--from-existing` 找不到文件会自己生成一份不同的；④ `peach init --from-existing --mount local=<落点>`；⑤ 重启菜单栏，核对 `/healthz`、`/review` 能读到 writer，手机与 Mac 浏览器各登录一次。第 28 条的标签改名可以放进同一个维护窗口。
-31. 给事务所补一个 `/agencies` 索引页。现在进事务所页的入口只有女优页上的那个名字，55 家里没有关系的那几十家等于只能靠猜地址。`q_index` 的 `performers` 分支按作品数排、带头像，事务所要的是按成员数排；`openIndex` 里 `people`、`entityKind`、加载文案三处是按 kind 写死的，加一种就要各动一处。
-32. 把当前版本换上生产：Windows 独立测试包已构建，线上跑的还是 `docs/STATUS.md` 记的那一版。这里不写具体版本号——`integrate --bump` 会在本地推进 `src/peach/__init__.py`，写死的号第二天就是错的。换生产入口要在同一轮拿到用户确认。
-33. `install_entity_links.py` 的可达性门槛按「非 200 就跳过」执行，而同文件的 `is_gone()` 明确写着 403／5xx／连接错误不能当「页面没了」。首批 703 条里 137 条因此没装，其中 31 条 twitter.com、23 条 t-powers.co.jp。把跳过分成「确证没了」和「这次没取到」两档：后者留进待复查队列，配合 `rediscover_entity_links.py` 对 t-powers／nax-pro／mines-pro 这些已经搬家的域名上溯找新锚，再装一次。
+31. 给事务所补一个 `/agencies` 索引页。现在进事务所页的入口只有女优页上的那个名字，57 家里没有关系的那几十家等于只能靠猜地址。`q_index` 的 `performers` 分支按作品数排、带头像，事务所要的是按成员数排；`openIndex` 里 `people`、`entityKind`、加载文案三处是按 kind 写死的，加一种就要各动一处。
+32. `install_entity_links.py` 的可达性门槛按「非 200 就跳过」执行，而同文件的 `is_gone()` 明确写着 403／5xx／连接错误不能当「页面没了」。首批 703 条里 137 条因此没装，其中 31 条 twitter.com、23 条 t-powers.co.jp。把跳过分成「确证没了」和「这次没取到」两档：后者留进待复查队列，配合 `rediscover_entity_links.py` 对 t-powers／nax-pro／mines-pro 这些已经搬家的域名上溯找新锚，再装一次。
+33. 托盘自重建被测试记录门槛卡住：2026-09-05 22:54 托盘为 0.8.5 起的那次「同步开发进度」全量 3181 个用例全绿，`scripts/test_runner.py` 却因验证前后主检出的内容或依赖快照不一致判本次记录无效、退出码 1，托盘按测试失败处理，没有打包也没有换 EXE，并且同一 HEAD 不再重试；同一时段两次 `auto` 记录也是空的 `validated`。第二次（23:14 起，HEAD 5a4b37f8）跑到一半，协调者于 23:17:42 把 0.8.6 合进了同一个主检出，全量因此 6 个用例失败、记录再次无效；失败用例名未取得，第三次尝试一开始就把日志覆盖了。机制已确认：托盘在主检出跑全量，`integrate` 的 `integration.lock` 与全量的 `full-suite.lock` 互不排斥，任何一次集成都会改掉正在验证的树。要做三件事：集成前等主检出里正在跑的全量结束（或让两把锁互斥），并把「记录无效」和「用例失败」在退出码或输出上分开，让托盘对前者重试而不是放弃；托盘的日志只写 stderr，没有落盘，22:43 那次托盘连同两个服务一起消失的原因也因此未取得，给托盘补一份 `logs/tray.log`。现场：线上服务 0.8.5 正常，托盘 EXE 仍是 21:08 打的 0.8.1，`pyproject.toml` 与 `windows_update.py` 的改动没进 EXE。

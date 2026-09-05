@@ -59,7 +59,7 @@ from peach.avatar_provider import (   # noqa: E402
     provenance_now,
 )
 from peach.config import (   # noqa: E402
-    DATABASE_PATH, GENERATED_DIR, REVIEW_DIR, STATE_DIR,
+    DATABASE_PATH, GENERATED_DIR, REVIEW_DIR, STATE_DIR, COVER_DIR,
 )
 from peach.http import HttpRequest, HttpTransport, HttpxTransport   # noqa: E402
 from peach.review_csv import read_rows, write_rows   # noqa: E402
@@ -73,7 +73,7 @@ X_HOSTS = ("x.com", "twitter.com", "mobile.twitter.com")
 AGGREGATOR_HOSTS = ("lit.link", "linktr.ee", "allmylinks.com", "twpf.jp")
 BLOG_HOSTS = ("ameblo.jp", "lineblog.me", "note.com", "livedoor.jp", "hatenablog.com")
 #: 候选的 provider 归到哪个内容寻址缓存。
-PROVIDER_CACHES = {"social-web": "social", "babepedia": "babepedia", "jae": "jae"}
+PROVIDER_CACHES = {"social-web": "social", "babepedia": "babepedia", "jae": "jae", "cover-fallback": "cover"}
 SOCIAL_LABELS = {
     ("instagram.com",): "Instagram",
     ("threads.net", "threads.com"): "Threads",
@@ -340,7 +340,7 @@ def load_jae_rows(path: Path) -> dict[int, list[dict]]:
 
 
 def load_targets(connection: sqlite3.Connection, avatar_dir: Path,
-                 entities: list[int], force: bool) -> list[dict]:
+                 entities: list[int], force: bool, *, include_cover_targets: bool = False) -> list[dict]:
     """本轮要跑的人：缺头像、且至少有一条可扩张的路径。
 
     performer 走社媒路线（账本里有 X 链接）与 jae 名录路线（jae 人像候选表的命中行）；
@@ -377,7 +377,7 @@ def load_targets(connection: sqlite3.Connection, avatar_dir: Path,
             routes["babepedia"] = babe[entity_id]
         if entity_id in jae:
             routes["jae"] = jae[entity_id]
-        if not routes:
+        if not routes and not (include_cover_targets and kind == "performer"):
             continue
         targets.append({**info, "routes": routes})
     return targets
@@ -553,6 +553,38 @@ def harvest_entity(record: dict, http: HttpTransport, limiter: HostLimiter,
     return {"links": links, "candidates": candidates, "notes": notes}
 
 
+def cover_fallback(connection, record: dict, cache: AvatarCandidateCache,
+                   cover_root: Path = COVER_DIR) -> dict | None:
+    """仅使用已关联的单人作品封面，保留完整大图和来源。"""
+    if record["kind"] != "performer":
+        return None
+    candidates = []
+    for (code,) in connection.execute(
+            "SELECT DISTINCT a.code FROM asset a JOIN asset_entity ae ON ae.asset_id=a.id "
+            "WHERE ae.entity_id=? AND ae.role='performer' AND coalesce(a.code,'')<>'' "
+            "AND (a.disposal IS NULL OR a.disposal<>'trash') "
+            "AND NOT EXISTS(SELECT 1 FROM asset_entity other WHERE other.asset_id=a.id "
+            "AND other.role='performer' AND other.entity_id<>ae.entity_id)", (record["entity_id"],)):
+        if not re.fullmatch(r'[A-Za-z0-9-]+', code):
+            continue
+        path = cover_root / f'{code}.jpg'
+        if not path.is_file():
+            continue
+        data = path.read_bytes()
+        inspected = inspect_avatar(data)
+        if inspected is None or not passes_auto_bar(inspected.width, inspected.height):
+            continue
+        source = path.resolve().as_uri()
+        stored = cache.store(source, data, inspected)
+        candidates.append(dict(provider='cover-fallback', source_kind='single_performer_cover',
+                               source_url=source, external_id=code, width=inspected.width,
+                               height=inspected.height, mime_type=inspected.mime_type,
+                               sha256=inspected.sha256, object_path=stored,
+                               matched=record['canonical'], name_source='ledger-performer',
+                               evidence=f'单人作品 {code} 完整封面'))
+    return max(candidates, key=lambda r: r['width'] * r['height']) if candidates else None
+
+
 def select_winner(candidates: list[dict]) -> tuple[dict | None, list[dict]]:
     """同图去重（SHA-256 相同 = 同一张图的不同档位/不同平台），取最大的最清晰的。
 
@@ -686,6 +718,7 @@ def run(args) -> int:
         "social": AvatarCandidateCache(args.cache_root / "social"),
         "babepedia": AvatarCandidateCache(args.cache_root / "babepedia"),
         "jae": AvatarCandidateCache(args.cache_root / "jae"),
+        "cover": AvatarCandidateCache(args.cache_root / "cover"),
     }
     candidate_rows: list[dict] = []
     install_rows: list[dict] = []
@@ -693,7 +726,7 @@ def run(args) -> int:
     installed = 0
     try:
         entities = [int(v) for v in str(args.entities).split(",") if v.strip().isdigit()]
-        targets = load_targets(connection, args.avatars, entities, args.force)
+        targets = load_targets(connection, args.avatars, entities, args.force, include_cover_targets=True)
         if args.limit:
             targets = targets[:args.limit]
         print(f"待跑 {len(targets)} 人："
@@ -728,6 +761,13 @@ def run(args) -> int:
                     review_rows.append(row)
 
             winner, runners_up = select_winner(result["candidates"])
+            if (winner is None or not winner.get('matched')
+                    or not passes_auto_bar(winner['width'], winner['height'])):
+                fallback = cover_fallback(connection, record, caches['cover'])
+                if fallback:
+                    if winner:
+                        runners_up.append(winner)
+                    winner = fallback
             for candidate in ([winner] if winner else []) + runners_up:
                 cache = caches[PROVIDER_CACHES[candidate["provider"]]]
                 provenance_path = cache.store_provenance(

@@ -37,6 +37,7 @@ class ResourceSyncContract(Protocol):
     transcode_root: Path
     resource_cleanup_enabled: bool
     resource_scan: BackgroundJob
+    resource_apply_job: BackgroundJob
 
     def cache_bust(self) -> None: ...
     def read_connection(self): ...
@@ -48,8 +49,12 @@ def source_is_online(location: str) -> bool:
     declared = LOCATION_ROOT_DECLARATIONS.get(location)
     if not declared:
         return False
-    resolved = translate_ledger_path(declared)
-    return not is_unmapped(resolved) and root_online(resolved)
+    # 几个根都在才算在线：少一块盘就对账，那块盘上的文件会被整批判成丢失。
+    for root in declared:
+        resolved = translate_ledger_path(root)
+        if is_unmapped(resolved) or not root_online(resolved):
+            return False
+    return True
 
 
 RESOURCE_SCAN_WORKERS = 8
@@ -386,6 +391,9 @@ def _recheck_resource_scan_ids(contract: ResourceSyncContract, asset_ids: Sequen
 def w_resource_sync_apply(contract: ResourceSyncContract, body):
     if body.get("confirm") is not True:
         raise ValueError("resource sync requires confirmation")
+    if body.get("background"):
+        return contract.resource_apply_job.start_result(
+            lambda: w_resource_sync_apply(contract, {**body, "background": False}))
     scan_id = str(body.get("scan_id") or "")
     if scan_id:
         state = contract.resource_scan.snapshot()

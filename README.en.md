@@ -105,11 +105,11 @@ Run without arguments, `peach init` asks five questions in the terminal; pressin
 
 | Question | Default |
 | --- | --- |
-| Data root (ledger, caches and the settings file live here) | `peach-data/` next to the repository |
-| Local media directory (source `local`, must already exist) | `~\Videos` (`~/Movies` on macOS); required when that folder is missing |
-| Listen scope: 1 = this machine only (127.0.0.1), 2 = LAN (0.0.0.0) | `1` |
-| Service port | `8900` |
-| LAN name (`<name>.local`, published only when listening on the LAN) | `peach` |
+| Data directory (the Peach database, caches and the settings file live here) | `peach-data/` next to the repository |
+| Media folder (must already exist, may live on an external drive; used as source `local`). Afterwards it keeps asking for one more folder until you press Enter on an empty answer; every folder belongs to `local` | `~\Videos` (`~/Movies` on macOS); required when that folder is missing |
+| Who can access: 1 = only this computer, 2 = devices on the same LAN | `2` |
+| Port | `8900` |
+| LAN address (`<name>.local`, published only when LAN access is allowed) | `peach` |
 
 It then creates the data root, migrates the ledger to the latest schema, generates the local CA, writes
 `<data root>/config.toml`, asks "scan <directory> now?" (default yes) to register that directory's files
@@ -137,7 +137,7 @@ Five facts:
 - Listening on `127.0.0.1` needs no token. Reaching the service from a phone or any other device on the LAN (`--host 0.0.0.0`, and everything the tray starts) does: `peach init` has already written one to `<data root>/secrets/auth-token`, `peach token` prints it, and each device pastes it into the login page once. `peach serve` refuses to start when it binds a non-loopback address without a token, because that puts the whole collection and the write endpoints on the local network.
 - Use `-e` for source development. Regular installations and wheels include pages and migrations and support running from any working directory.
 - When the data root is not next to the repository, `peach serve` looks for it only via `PEACH_DATA_ROOT` and the `peach-data/` directories a few levels above the repository, so set `PEACH_DATA_ROOT` as well; the default data root needs no such step.
-- Ledger paths are always in the Windows shape. On Windows the media directory goes straight into `[media.locations]`; on macOS the declared root is `R:\media` and the directory goes into `[media.mounts]`, where the local mount point does the translation. CloudDrive is not required — any cloud drive that mounts as a local path works; 115 and PikPak are recommendations, not requirements.
+- Ledger paths are always in the Windows shape. On Windows the media directories (one or several) go straight into `[media.locations]`; on macOS the declared roots are `R:\media`, `R:\media2`, … and the directories go into `[media.mounts]` in the same order, where the local mount points do the translation. CloudDrive is not required — any cloud drive that mounts as a local path works; 115 and PikPak are recommendations, not requirements.
 - The interface is currently available in Chinese only.
 
 The service also starts without a settings file: `/healthz` reports `configured=false`, and the home page is the first-run form described above.
@@ -149,12 +149,13 @@ Each platform has exactly one official test entry point. The script locates the 
 
 During development, run the tests for the affected functional domain, for example
 `& .\scripts\test.ps1 -Scope follow` on Windows and `./scripts/test.sh follow` on macOS/Linux.
-The available domains are `follow`, `catalog`, `media`, `sync`, `metadata`, `tooling` and `web`; with
-no argument the default `full` scope runs. `auto` picks domains from the changed files and falls back
-to `full` when a file maps to none or touches migrations, shared test infrastructure or a dependency
-manifest. Changes that span several domains, touch migrations, shared
-test infrastructure or dependencies, prepare a release or have a large footprint must run the full
-scope; a single local change does not need to rerun unrelated tests over and over.
+The domains are `follow`, `catalog`, `media`, `sync`, `metadata`, `tooling`, `web` and `checks`.
+The default `auto` selects the union of affected domains. Shared test infrastructure, dependencies,
+build inputs, migrations and unknown paths select `full`; CI and releases explicitly run `full`.
+Local results are reusable for 24 hours when code, environment and scope match. Use `-Fresh` on
+Windows or a second `--fresh` argument on macOS/Linux to rerun; explicit `full` always runs.
+With a valid full baseline in the same environment, `auto` tests affected domains for the new
+differences. Unknown differences still require a full run.
 
 ## Dependency maintenance
 

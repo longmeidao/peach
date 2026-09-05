@@ -5,6 +5,8 @@
 
 ## 界面、媒体与复核的既定判据
 
+- 后台任务、进度容器与断线恢复见 `docs/REUSE.md`。
+
 页面密度、控件、提示与响应式的实现门槛见 `.claude/skills/peach-web-ui/SKILL.md`，这里只留代码看不出来的判据。
 
 - 截图与视觉验收的画面保护：审查遮挡（设置面板「安全」组，`#censorSetting`，localStorage `peach-censor`）默认关闭、不在导航栏。只有当本轮截图会交给会审查内容的模型（自动视觉审查或外发工具）时才开启，开完记得关；普通个人浏览一律不遮挡。
@@ -34,7 +36,7 @@
 ## 无摩擦接手
 
 - Codex 自动读取项目层级中的 `AGENTS.md`；Claude Code 通过 `CLAUDE.md` 导入同一文件。技能只有 Claude 侧封装（`.claude/skills/`），Codex 不自动加载，只能靠 `AGENTS.md` 索引表主动读同一份文件。
-- 正式测试入口只有 Windows `& .\scripts\test.ps1` 和 macOS/Linux `./scripts/test.sh`，不要另拼测试命令。日常用 `-Scope <域>` / `<域>` 只跑当前功能与公共门槛；跨域、迁移、共享测试设施、依赖、构建/发布或大面积改动跑默认 `full`。
+- 正式测试入口为 Windows `& .\scripts\test.ps1`、macOS/Linux `./scripts/test.sh`。默认 `auto` 按影响域取并集，共享设施和未知影响面选全量；CI 与发布显式 `full`。测试证据复用、集成互斥和工作树锁定见 `peach-worktree` 技能。
 - 两个智能体使用同一入口，按任务读取相关文档；交接更新长期文件。
 - 新任务以当前机器真实的 `peach-app` 为工作目录，并说：「接手 Peach，按项目入口文件继续 STATUS 中的下一任务。」
 - 改变运行事实的任务同时更新 `docs/STATUS.md`；长期规则更新本文件、`docs/REUSE.md` 或 ADR；可执行流程写成 `.claude/skills/<name>/SKILL.md`。分层判据见 ADR-0015，步骤见 `peach-context-rules`。
@@ -70,6 +72,8 @@
 
 ## 参考产品证据登记
 
+- 图 3、JavDB：`docs/REUSE.md`。
+
 快照、URL、版本、SHA、未取得面与 Peach 的有意差异统一登记在 `docs/reference-sources.json` 和
 `docs/reference-snapshots/`，每份快照自带「Peach 采用与差异」一节；获取、失效复核与接受更新的流程见
 `.claude/skills/peach-reference-evidence/SKILL.md`。本文件不复制会随上游变化的测量值，只登记哪件事看哪份快照。
@@ -77,7 +81,7 @@ React 渲染的规格页、用户截图这类给不出可重抓字节的实测�
 
 - 相关推荐算法：`openaver-related-ranking`，固定 revision，只参考 Tag IDF 与结构化共同点，MMR 和稳定破同分是 Peach 自加，不复制上游界面或源码。
 - 网格、控件半径、语义 token 与中间省略：`vercel-geist-grid`、`vercel-geist-controls-measured`、`vercel-geist-middle-truncate`；中间省略只用于路径、URL、ID、SHA 这类首尾都有信息的值，必须显式 `data-middle-truncate`，标题、说明、人名和标签保留末尾省略。
-- 统计与口味两页的层级，Note／Progress／Switch／Fieldset／Scroller／Empty State 的语义，按钮的尺寸档与三态：`vercel-geist-semantics-measured`、`vercel-geist-note-progress-switch-analytics`、`vercel-geist-fieldset-scroller-empty-state`。
+- 统计与口味层级，Note／Progress／Switch／Fieldset／Scroller／Empty State 语义与控件：`vercel-geist-semantics-measured`、`vercel-geist-note-progress-switch-analytics`、`vercel-geist-fieldset-scroller-empty-state`；配置页截图补证：`vercel-geist-controls-measured`。
 - 分类切换条属于 Tabs 的 secondary 变体而不是分段器：`vercel-geist-tabs-secondary-measured`。
 - 表格、排行与面包屑：`vercel-geist-table-ranking`、`vercel-geist-breadcrumbs`；同形可比较数据才用语义 `table` 并保持 tabular numerals，内容标签是固定 Top 排行和直接筛选，不伪装成可排序数据表。
 - 设置 Dialog 动效、搜索期 Spinner、后台 Loading Dots 与 busy 按钮：`vercel-geist-command-search-loading`；中性说明 Note：`vercel-notifications-note`；具名动作 Toast：`vercel-geist-toast`；写操作前的确认弹层：`vercel-geist-modal-measured`。
@@ -113,7 +117,9 @@ React 渲染的规格页、用户截图这类给不出可重抓字节的实测�
 
 ## 流量与代理诊断工具
 
-- Windows 代理与流量诊断统一用 FlowLens（面板 `http://127.0.0.1:9091/`，API `/api/v1/connections`、`/summary`、`/status`）：只观测经过 Mihomo 的连接，`DIRECT` 也算被观测，绕过 Mihomo 的连接标「未观测」，不能推断为零。
+- 抓取与 Cookie GUI 见 [审计](SCRAPING_AUDIT.md)。
+
+- Windows 用 FlowLens（`http://127.0.0.1:9091/`；API `/api/v1/connections`、`/summary`、`/status`）查流量。经 Mihomo 的 `DIRECT` 可观测；绕过它的记「未观测」，不推断为零。
 - macOS 的流量诊断统一使用 Stash Dashboard。
 
 ## 数据安全
@@ -127,7 +133,7 @@ React 渲染的规格页、用户截图这类给不出可重抓字节的实测�
 
 ## 运行与部署
 
-命令、顺序、失败表现和踩过的坑见 `docs/OPERATIONS.md`，这里只留边界。
+CloudDrive 配置与本地免登录测试步骤见 `docs/OPERATIONS.md`。
 
 - 源码部署由项目 venv 持有服务，刷新入口为 `scripts/restart_windows_tray.py`。独立测试包自带运行环境，数据在用户目录；配置更改由托盘消费标记并重启子服务。
 - 「同步开发进度」（GitHub）和「同步 Ledger」（SMB 共享）是两条独立通道，任一方不可达都不该拖住另一方；服务只观察角色不自动复制。

@@ -21,9 +21,18 @@ Vite + TypeScript + Preact。迁移方式是 strangler：**遗留路由继续拥
 | `web/dist/peach-ui.js` | 构建产物，**进 Git**，由 `/dist/{name}` 提供 |
 
 首次运行页（未配置时的 `GET /` 与 `POST /setup`）不在这张表里：它是 SPA 外壳之外的一张
-独立页面，HTML 与样式都自包含在 `src/peach/routes_pages.py`，不引 `web/` 的任何资产，也不是
+独立页面，HTML 与样式都自包含在 `src/peach/routes_pages.py`，只借 `/js/ui-components.js` 的 `attachOverlayScrollbar` 与 `wireCollapse` 画整页滚动条和「高级设置」的折叠，此外不引 `web/` 的资产，也不是
 island。原因是那一套一上来就打 `/api/items`，而未配置的机器还没有数据库；它也没有客户端
-状态，原生 `<form method="post">` 不写一行 JS 就能工作。本机 `/configuration` 复用同一套服务端表单和主题 token，设置成功以浏览器 cookie 登录并跳入馆藏。
+状态，原生 `<form method="post">` 不写一行 JS 就能工作。设置成功以浏览器 cookie 登录并跳入馆藏。
+它的配色 token 从 `web/css/01-base.css` 的 `:root` 两段抽出来，跟随系统深浅色。
+
+配置好之后改文件夹与端口走 `/configuration`：那是主站里的一屏（管理菜单 → 配置），
+由 `frontend/src/islands/configuration.tsx` 渲染，数据契约是 `/api/configuration`
+（`src/peach/routes_configuration.py`）。服务端按两道门放行——只有独立包、只有回环地址——
+并在 `/healthz` 里按调用方回 `configurable`，遗留层据此决定菜单里列不列这一项。
+表单校验的原因由服务端按字段给（400 的 `errors`），island 写回原位，不在前端复制判定。
+浏览器直接导航撞上 `HTTPException` 时，`api.py` 的处理器按 `Accept` 回一张 HTML 错误页
+（`routes_pages.error_page`），`/api/` 下和非导航请求仍回 JSON。
 
 产物名字不带内容哈希：引用它的 `web/app.js` 不经过构建，构建时改不了那里的路径。
 缓存由服务端兜住：`/dist/` 与 `/app.js`、`/app.css`、`/js/` 同一档，回

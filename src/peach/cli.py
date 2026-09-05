@@ -108,7 +108,17 @@ def _serve_token(args: argparse.Namespace) -> str:
 
     拒绝而不是告警：托盘在后台起服务，告警不会有人看见，服务却已经把整个馆藏和写接口
     摆在同网段上了。回环地址不拦——那时只有本机进程够得着，与文件系统同级。
+
+    `--no-auth` 让本机开发跳过登录页，同一条回环判据照样拦：它只影响这次启动，
+    不读也不改口令文件，所以托盘起的那份服务仍然要口令。
     """
+    if getattr(args, "no_auth", False):
+        if not _is_loopback(args.host):
+            raise SystemExit(
+                f"拒绝启动：--no-auth 只对回环地址成立，而 --host {args.host} 不是。\n"
+                f"在局域网地址上关掉登录，等于把整个馆藏和写接口交给同网段的任何设备。"
+            )
+        return ""
     secrets_dir = settings_file.active().directory("secrets")
     token = auth.resolve_token(args.token, secrets_dir)
     if token or _is_loopback(args.host):
@@ -263,15 +273,16 @@ def _ledger_sync(args: argparse.Namespace) -> int:
 
 
 def _parse_mounts(
-    raw: list[str] | None, locations: dict[str, str] | None = None,
-) -> dict[str, str]:
-    """`--mount local=/Volumes/RESOURCES/media` 形式的挂载点。
+    raw: list[str] | None, locations: dict[str, tuple[str, ...]] | None = None,
+) -> dict[str, tuple[str, ...]]:
+    """`--mount local=/Volumes/RESOURCES/media` 形式的挂载点；同一来源重复给就按顺序
+    对应它的几个声明根。
 
     键是 `asset.location`（`[media.locations]` 里声明过的来源 ID），不是盘符：
     打错一个 ID 如果静默收下，那个来源就会安静地进脱盘模式，所以这里直接拒绝。
     """
     known = dict(locations or {})
-    mounts: dict[str, str] = {}
+    mounts: dict[str, list[str]] = {}
     for chunk in raw or ():
         key, separator, value = chunk.partition("=")
         key = key.strip()
@@ -282,8 +293,8 @@ def _parse_mounts(
                 f"--mount 的来源 ID 未在 [media.locations] 声明：{key}"
                 f"（已知：{'、'.join(sorted(known))}）"
             )
-        mounts[key] = value.strip()
-    return mounts
+        mounts.setdefault(key, []).append(value.strip())
+    return {key: tuple(item for item in values if item) for key, values in mounts.items()}
 
 
 def _resolved_config(
@@ -372,11 +383,11 @@ def _init_interactive(
     windows = os.name == "nt" if windows is None else windows
     config, _broken = _resolved_config(None)
     print("首次运行问答：每一题直接回车就接受方括号里的默认值。")
-    asked = onboarding.questions(config, windows=windows, home=home)
     collected: dict[str, object] = {}
     try:
-        for index, question in enumerate(asked):
-            collected[question.key] = onboarding.ask_until_valid(question, ask)
+        for index, (key, value) in enumerate(
+                onboarding.collect(config, ask, windows=windows, home=home)):
+            collected[key] = value
             if index == 0:
                 # 数据根定了，设置文件在哪也就定了。这一题之后就判，别让人把剩下四题
                 # 答完才听到「文件已存在」——那四个答案会被整份丢掉。
@@ -394,48 +405,61 @@ def _init_interactive(
     _report_data_tree(applied.tree)
     print(f"设置文件：{applied.settings_path}")
     if not windows:
-        print(onboarding.mounts_explanation(answers.media_dir))
+        print(onboarding.mounts_explanation(answers.media_dirs))
 
-    summary = None
+    summaries: list[str] = []
     try:
-        scan_now = onboarding.ask_until_valid(onboarding.scan_question(answers.media_dir), ask)
+        scan_now = onboarding.ask_until_valid(onboarding.scan_question(answers.media_dirs), ask)
     except onboarding.OnboardingAborted as exc:
         print(f"{exc}跳过扫描，之后可以跑 `peach scan local`。")
         scan_now = False
     if scan_now:
-        result = scan.scan_location(
-            prepared.directory("database") / "ledger.db", onboarding.LOCAL_LOCATION,
-            onboarding.scan_root(prepared), declared_roots=prepared.locations,
-            mounts=prepared.mounts, report=print, windows=windows,
-        )
-        summary = result.summary()
+        for root in onboarding.scan_roots(prepared):
+            result = scan.scan_location(
+                prepared.directory("database") / "ledger.db", onboarding.LOCAL_LOCATION,
+                root, declared_roots=prepared.locations,
+                mounts=prepared.mounts, report=print, windows=windows,
+            )
+            summaries.append(result.summary())
     _print_next_steps(prepared, from_existing=False)
-    if summary:
+    for summary in summaries:
         print(f"  扫描结果：{summary}")
     return 0
 
 
 def _scan(args: argparse.Namespace) -> int:
-    """`peach scan <来源ID> [根目录]`：根目录省略时取该来源的声明根（本机目录按挂载表取）。"""
+    """`peach scan <来源ID> [根目录]`：根目录省略时逐个扫该来源的全部声明根（本机目录按挂载表取）。"""
     _require_readable_settings()
     if not args.db.is_file():
         print(f"账本不存在：{args.db}")
         print("这台机器还没初始化过，先跑 `peach init`。")
         return 4
     config = settings_file.active()
-    mounts = {location: str(mount) for location, mount in location_mounts().items()}
+    mounts = {location: tuple(str(mount) for mount in points)
+              for location, points in location_mounts().items()}
     try:
+        if args.location == "configured" and args.root is None:
+            from .platform import root_online, translate_ledger_path
+            for location, declared in config.locations.items():
+                for root in declared:
+                    if not root_online(translate_ledger_path(root)):
+                        print(f"{location}：挂载点离线，未扫描", flush=True)
+                        continue
+                    scan.scan_location(args.db, location, root, declared_roots=config.locations,
+                                       mounts=mounts, report=lambda line: print(line, flush=True))
+            return 0
         if args.root is None:
             if args.location not in config.locations:
                 known = "、".join(sorted(config.locations)) or "（设置文件里一个都没有）"
                 raise scan.ScanTargetError(
                     f"✗ 未声明的来源 {args.location!r}；[media.locations] 里已知：{known}")
-            root = config.locations[args.location]
+            roots = tuple(config.locations[args.location])
         else:
-            root = scan.ledger_root_for(
-                args.location, args.root, declared_roots=config.locations, mounts=mounts)
-        scan.scan_location(args.db, args.location, root, declared_roots=config.locations,
-                           mounts=mounts, report=lambda line: print(line, flush=True))
+            roots = (scan.ledger_root_for(
+                args.location, args.root, declared_roots=config.locations, mounts=mounts),)
+        for root in roots:
+            scan.scan_location(args.db, args.location, root, declared_roots=config.locations,
+                               mounts=mounts, report=lambda line: print(line, flush=True))
     except scan.ScanTargetError as exc:
         raise SystemExit(str(exc)) from None
     return 0
@@ -579,6 +603,8 @@ def build_parser() -> argparse.ArgumentParser:
     serve.add_argument("--docs", action="store_true")
     serve.add_argument("--setup", action="store_true",
                        help="只提供首次运行表单：忽略发现到的数据根，也不要口令")
+    serve.add_argument("--no-auth", action="store_true",
+                       help="跳过登录页；只对回环地址成立，不读也不改口令文件")
     serve.add_argument("--no-mdns", action="store_true")
     serve.add_argument("--shared-db", type=Path, default=SHARED_DATABASE_PATH)
     serve.add_argument("--no-ledger-sync", action="store_true")

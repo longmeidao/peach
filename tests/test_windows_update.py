@@ -1,9 +1,13 @@
 import importlib.util
+import os
 import subprocess
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest.mock import Mock
+
+from peach.windows_update import sweep_onefile_extractions
 
 from peach.windows_update import (
     WindowsUpdateInstaller,
@@ -74,6 +78,7 @@ class WindowsUpdateInstallerTests(unittest.TestCase):
             self.assertEqual(result.state, "services")
             self.assertEqual(runner.call_count, 1)
             self.assertIn("test.ps1", " ".join(runner.call_args.args[0]))
+            self.assertEqual(runner.call_args.args[0][-3:], ["-Scope", "full", "-Fresh"])
 
     def test_tray_update_builds_validates_backs_up_and_launches_helper(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -171,6 +176,34 @@ class WindowsUpdateInstallerTests(unittest.TestCase):
             )
             self.assertEqual(installer.sweep_artifacts(), ())
             self.assertFalse(state.exists(), "清退不创建目录")
+
+
+class OnefileExtractionSweepTests(unittest.TestCase):
+    def test_removes_stale_sibling_extractions_only(self):
+        with tempfile.TemporaryDirectory() as raw:
+            temp = Path(raw).resolve()
+            own = temp / "_MEI000001"
+            stale = temp / "_MEI000002"
+            fresh = temp / "_MEI000003"
+            unrelated = temp / "tmpabc123"
+            for directory in (own, stale, fresh, unrelated):
+                directory.mkdir()
+            (stale / "python314.dll").write_bytes(b"x")
+            old = time.time() - 3 * 86400
+            os.utime(own, (old, old))
+            os.utime(stale, (old, old))
+            os.utime(unrelated, (old, old))
+
+            removed = sweep_onefile_extractions(str(own))
+
+            self.assertEqual(removed, (stale,))
+            # 自己的、刚起来的、以及别的程序的临时目录一律不碰。
+            self.assertTrue(own.is_dir())
+            self.assertTrue(fresh.is_dir())
+            self.assertTrue(unrelated.is_dir())
+
+    def test_source_tree_run_has_nothing_to_sweep(self):
+        self.assertEqual(sweep_onefile_extractions(None), ())
 
 
 class WindowsBuildScriptTests(unittest.TestCase):

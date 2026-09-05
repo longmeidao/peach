@@ -8,10 +8,10 @@
 数据根的发现刻意**不**依赖设置文件内容——设置文件本身就住在数据根里面：
 
 1. `PEACH_DATA_ROOT` 环境变量；
-2. 从项目根逐级向上，第一个存在的 `<上级目录>/peach-data`。ADR-0017 的顶层布局把
-   `peach-app` 与 `peach-data` 并列，向上找因此同时覆盖三种检出形态：主检出、
-   `peach-worktrees/<task>` 里的隔离工作树，以及打包后落在 `dist/Peach/_internal`
-   的 `_MEIPASS`；
+2. 从起点逐级向上，第一个存在的 `<上级目录>/peach-data`。起点在源码树里是项目根，
+   打包后是 EXE 所在目录——单文件包的 `_MEIPASS` 是 `%TEMP%` 下的临时目录，它上面
+   没有任何东西。ADR-0017 的顶层布局把 `peach-app` 与 `peach-data` 并列，向上找因此
+   覆盖主检出、`peach-worktrees/<task>` 里的隔离工作树和 `dist/Peach` 里的托盘；
 3. 都没有 → 未配置。此时仍然给出一个落点（`peach init` 会去建它），但 `configured`
    为 False：服务照常启动，`/healthz` 报 `configured=false`，页面提示去跑 `peach init`。
 
@@ -44,11 +44,12 @@ DIRECTORY_KEYS = (
 
 #: `asset.location` -> 账本口径的声明根。键是 ledger 里的 `asset.location` 值，它本来
 #: 就是挂载点 ID；值仍是 Windows 盘符形态，因为账本路径的形状是不变量（AGENTS.md）。
+#: 一个来源可以有多个声明根（两块硬盘都算 `local`），文件里写一个字符串或一个数组。
 #: 本机落点由 `[media.mounts]` 按同一批 ID 给出，翻译在 `peach.platform`（ADR-0023 勘误）。
-DEFAULT_LOCATION_ROOTS: dict[str, str] = {
-    "local": r"R:\media",
-    "115": "B:/",
-    "pikpak": "A:/",
+DEFAULT_LOCATION_ROOTS: dict[str, tuple[str, ...]] = {
+    "local": (r"R:\media",),
+    "115": ("B:/",),
+    "pikpak": ("A:/",),
 }
 
 #: `[media]` 下只有这两个子表，没有任何标量键。第一阶段的 `[media] R = '...'` 是盘符键，
@@ -78,16 +79,36 @@ def _project_root(module_file: str = __file__, bundle_root: str | None = None) -
 PROJECT_ROOT = _project_root(bundle_root=getattr(sys, "_MEIPASS", None))
 
 
-#: 向上找几层。四层刚好覆盖最深的那种形态（`peach-app/dist/Peach/_internal` 里的
-#: `_MEIPASS` 要走四层才回到 `peach/`）。不做无界搜索：一路走到磁盘根会撞上碰巧同名的
+def _search_anchor(
+    project_root: Path = PROJECT_ROOT, *,
+    frozen: bool = bool(getattr(sys, "frozen", False)), executable: str = sys.executable,
+) -> Path:
+    """向上找数据根的起点：源码树用项目根，打包产物用 EXE 所在目录。
+
+    资源根和发现起点是两回事。PyInstaller 的资源在 `_MEIPASS`，单文件包把它解到
+    `%TEMP%/_MEIxxxx`，从那里向上只会走到用户目录，托盘于是把一台配置好的机器判成
+    首次运行并起 `serve --setup`。`sys.executable` 在两种打包形态里都是 EXE 本身。
+    """
+    if frozen:
+        return Path(executable).resolve().parent
+    return project_root
+
+
+SEARCH_ANCHOR = _search_anchor()
+
+#: 向上找几层。四层刚好覆盖最深的那种形态（`peach-app/dist/Peach` 里的 EXE 走三层
+#: 回到 `peach/`，再留一层给更深的检出）。不做无界搜索：一路走到磁盘根会撞上碰巧同名的
 #: 目录，而那种「找错数据根」的故障看起来完全像是数据丢了。
 _SEARCH_DEPTH = 4
 
 
 def discover_data_root(
-    project_root: Path = PROJECT_ROOT, environ: dict[str, str] | None = None,
+    project_root: Path = SEARCH_ANCHOR, environ: dict[str, str] | None = None,
 ) -> tuple[Path, bool]:
-    """返回 (数据根, 是否真的找到了)。找不到时第一项是 `peach init` 的默认落点。"""
+    """返回 (数据根, 是否真的找到了)。找不到时第一项是 `peach init` 的默认落点。
+
+    `project_root` 是向上找的起点，默认取 `SEARCH_ANCHOR`。
+    """
     environ = os.environ if environ is None else environ
     explicit = (environ.get(DATA_ROOT_ENV) or "").strip()
     if explicit:
@@ -145,10 +166,11 @@ class PeachConfig:
     #: 数据根是被找到的，还是只是一个建议落点。
     data_root_found: bool = False
     directories: dict[str, str] = field(default_factory=dict)
-    #: `asset.location` -> 本机挂载点，即该来源的声明根落在本机哪个目录。
-    #: Windows 上通常为空：盘符本身就是挂载点，路径不需要翻译。
-    mounts: dict[str, str] = field(default_factory=dict)
-    locations: dict[str, str] = field(
+    #: `asset.location` -> 本机挂载点，即该来源的每个声明根落在本机哪个目录，按顺序
+    #: 与 `locations` 里的声明根一一对应。Windows 上通常为空：盘符本身就是挂载点。
+    mounts: dict[str, tuple[str, ...]] = field(default_factory=dict)
+    #: `asset.location` -> 账本口径的声明根，至少一个。
+    locations: dict[str, tuple[str, ...]] = field(
         default_factory=lambda: dict(DEFAULT_LOCATION_ROOTS))
     server: ServerSettings = ServerSettings()
     replication: ReplicationSettings = ReplicationSettings()
@@ -240,6 +262,27 @@ def _string_map(table: dict, path: Path, prefix: str) -> dict[str, str]:
     return result
 
 
+def _root_map(table: dict, path: Path, prefix: str) -> dict[str, tuple[str, ...]]:
+    """`[media.locations]` / `[media.mounts]` 的值：一个字符串，或一个字符串数组。
+
+    单个来源常常只有一个目录，写成字符串最好读；第二块硬盘加进来时改成数组即可。
+    两张表的解析口径一致，数组里不能有空串、不能重复——那两种写法都说不清用户想要什么。
+    """
+    result: dict[str, tuple[str, ...]] = {}
+    for key, value in table.items():
+        if isinstance(value, str):
+            result[key] = (value,) if value else ()
+            continue
+        if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+            raise _fail(path, f"`{prefix}{key}` 必须是字符串，或者字符串数组")
+        if any(not item for item in value):
+            raise _fail(path, f"`{prefix}{key}` 的数组里不能有空串")
+        if len(set(value)) != len(value):
+            raise _fail(path, f"`{prefix}{key}` 的数组里有重复的路径")
+        result[key] = tuple(value)
+    return result
+
+
 def _merge(
     data_root: Path, path: Path, present: bool, found: bool,
     document: dict, environ: dict[str, str],
@@ -266,10 +309,13 @@ def _merge(
     # 来源，内建默认那三个示例盘符不能从旁边混进来，否则陌生人的机器上会多出两个
     # 永远脱盘的来源。没写这张表才退回内建默认。
     if _LOCATIONS_KEY in media:
-        locations = _string_map(_table(media, _LOCATIONS_KEY, path), path, "media.locations.")
+        locations = _root_map(_table(media, _LOCATIONS_KEY, path), path, "media.locations.")
+        empty = sorted(key for key, roots in locations.items() if not roots)
+        if empty:
+            raise _fail(path, "`[media.locations]` 里这些来源没有声明根：" + "、".join(empty))
     else:
         locations = dict(DEFAULT_LOCATION_ROOTS)
-    mounts = _string_map(_table(media, _MOUNTS_KEY, path), path, "media.mounts.")
+    mounts = _root_map(_table(media, _MOUNTS_KEY, path), path, "media.mounts.")
     unknown_mounts = sorted(set(mounts) - set(locations))
     if unknown_mounts:
         # 打错一个 ID 却静默忽略，同样是安静地脱盘。
@@ -277,6 +323,14 @@ def _merge(
             "`[media.mounts]` 里有没在 `[media.locations]` 声明过的来源："
             + "、".join(unknown_mounts)
         ))
+    for key, points in mounts.items():
+        # 落点按顺序对应声明根：数目不齐时无法判断哪个目录漏了，与其猜不如拒绝。
+        if points and len(points) != len(locations[key]):
+            raise _fail(path, (
+                f"`[media.mounts] {key}` 给了 {len(points)} 个落点，"
+                f"但 `[media.locations] {key}` 声明了 {len(locations[key])} 个根；"
+                "两边按顺序一一对应，要么数目相同，要么整项留空"
+            ))
 
     server_table = _table(document, "server", path)
     fallback = ServerSettings()
@@ -350,7 +404,7 @@ def _apply_environment(config: PeachConfig, environ: dict[str, str]) -> PeachCon
 
 
 def load_config(
-    project_root: Path = PROJECT_ROOT, environ: dict[str, str] | None = None,
+    project_root: Path = SEARCH_ANCHOR, environ: dict[str, str] | None = None,
     *, strict: bool = True,
 ) -> PeachConfig:
     """读一次设置文件并合并三层。
@@ -423,6 +477,20 @@ def _render_value(value: object) -> str:
     return f'"{escaped}"'
 
 
+def _render_roots(pairs: dict[str, tuple[str, ...]]) -> list[str]:
+    """声明根与落点：只有一个就写成字符串，多个才写数组，文件保持最好读的形状。"""
+    rendered: dict[str, object] = {}
+    for key, roots in pairs.items():
+        if len(roots) == 1:
+            rendered[key] = roots[0]
+        elif not roots:
+            rendered[key] = ""
+        else:
+            rendered[key] = "[" + ", ".join(_render_value(root) for root in roots) + "]"
+    return [f"{_render_key(key)} = {value if isinstance(value, str) and value.startswith('[') else _render_value(value)}"
+            for key, value in rendered.items()]
+
+
 def _render_key(key: str) -> str:
     allowed = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-")
     return key if key and set(key) <= allowed else _render_value(key)
@@ -448,17 +516,19 @@ def render(config: PeachConfig) -> str:
         "",
         "[media.locations]",
         "# asset.location -> 账本口径的声明根。改这里等于改账本口径，通常不要动。",
+        "# 一个来源有几个目录就写几个：local = ['D:\\Videos', 'E:\\Movies']。",
     ]
-    lines += _render_pairs(dict(config.locations))
+    lines += _render_roots(dict(config.locations))
     lines += [
         "",
         "[media.mounts]",
         "# asset.location -> 本机挂载点：上面那个声明根落在本机的哪个目录。",
         "# 例如 local = '/mnt/media' 时，R:\\media\\a.mp4 读作 /mnt/media/a.mp4。",
+        "# 声明了多个根就按同样的顺序给同样多个落点。",
         "# 不写或留空表示本机没有这个来源，对应资产按「脱盘」处理，不报错。",
         "# Windows 上整表为空：盘符本身就是挂载点，路径不需要翻译。",
     ]
-    lines += _render_pairs(dict(config.mounts))
+    lines += _render_roots(dict(config.mounts))
     lines += [
         "",
         "[server]",
@@ -501,7 +571,8 @@ def write(config: PeachConfig, *, force: bool = False) -> Path:
 
 def capture_existing(
     config: PeachConfig, *, replication_enabled: bool = True,
-    overrides: dict[str, object] | None = None, mounts: dict[str, str] | None = None,
+    overrides: dict[str, object] | None = None,
+    mounts: dict[str, tuple[str, ...]] | None = None,
 ) -> PeachConfig:
     """把当前生效的配置整理成一份可写回的设置。
 

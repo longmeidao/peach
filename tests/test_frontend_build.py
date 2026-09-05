@@ -174,6 +174,48 @@ class IslandSourceContractTests(unittest.TestCase):
         self.assertEqual(len(routed), 1, f"quality-goals 声明在 {routed}")
 
 
+class ConfigurationIslandContractTests(unittest.TestCase):
+    """配置页搬进 island 之后仍要守住的几条：控件复用、忙态、端点唯一、主动作唯一。"""
+
+    def setUp(self):
+        self.source = (FRONTEND / "src" / "islands" / "configuration.tsx").read_text(
+            encoding="utf-8")
+
+    def test_feedback_and_titles_reuse_the_shared_components(self):
+        """Note、Fieldset 标题与忙态都走 `/js/ui-components.js`，island 里不另画一份。"""
+        self.assertIn("from '@peach/legacy/ui'", self.source)
+        for helper in ("noteHtml(", "fieldsetTitle(", "setActionBusy("):
+            self.assertIn(helper, self.source)
+        self.assertNotIn("disabled=", self.source, "请求等待期用 aria-busy，不用原生 disabled")
+
+    def test_there_is_one_primary_action_and_the_add_row_button_is_not_it(self):
+        """每屏只有一个 `--ink` 底的主动作，是「保存配置」；「添加文件夹」是次级。"""
+        self.assertEqual(self.source.count('class="geist-button primary"'), 1)
+        self.assertIn('class="geist-button configadd"', self.source)
+        self.assertIn('aria-label="移除这个文件夹"', self.source)
+
+    def test_each_row_can_ask_this_machine_for_the_system_folder_dialog(self):
+        """选择键夹在输入框和移除键中间；对话框由服务端弹，页面只等 `path` 回来。"""
+        self.assertIn('class="geist-button configpick" aria-label="选择文件夹"', self.source)
+        self.assertIn('href="#i-folder-search"', self.source)
+        self.assertIn("PICK_FOLDER_URL = '/api/pick-folder'", self.source)
+        pick = self.source.index('class="geist-button configpick"')
+        self.assertLess(self.source.index('class="geist-input"'), pick)
+        self.assertLess(pick, self.source.index('class="geist-button configrm"'))
+
+    def test_validation_reasons_come_from_the_server(self):
+        """字段级原因读 400 的 `errors`，前端不复制一份路径与端口的判定。"""
+        self.assertIn("cause.status !== 400", self.source)
+        self.assertIn("fields.media_dirs", self.source)
+        self.assertIn("fields.port", self.source)
+
+    def test_the_endpoint_is_declared_once(self):
+        sources = sorted(path for path in (FRONTEND / "src").rglob("*.ts*"))
+        declared = [path.name for path in sources
+                    if "'/api/configuration'" in path.read_text(encoding="utf-8")]
+        self.assertEqual(declared, ["configuration.tsx"], f"端点声明在 {declared}")
+
+
 class SharedStateContractTests(unittest.TestCase):
     """跨岛共享状态只有一个家（ADR-0022）。
 

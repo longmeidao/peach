@@ -35,6 +35,11 @@ Peach 在一台机器上就能完整运行，目前处于 pre-1.0 阶段。Windo
 
 ## 数据边界
 
+CloudDrive 在首次设置页与配置页按文件夹选择「CloudDrive · 115」或「CloudDrive · PikPak」。
+先在 CloudDrive 登录对应网盘并完成挂载，再把本机文件夹填入 Peach；Windows 使用盘符路径，
+macOS 在「本机文件夹」填挂载点，在「Windows 中的对应路径」填馆藏已有的盘符路径。配置页的「挂载状态」可刷新检查各来源。
+离线来源可保存，恢复挂载后再扫描。详细步骤见 [CloudDrive 配置](docs/OPERATIONS.md#clouddrive-配置)。
+
 Ledger 是资产、身份、行为和复核决定的真相源。CloudDrive、在线站点和 AI 都是适配器或候选来源，不能直接改写真相字段。
 
 | 内容 | 位置或规则 |
@@ -101,11 +106,11 @@ Windows 调试用户下载 [GitHub Releases](https://github.com/longmeidao/peach
 
 | 问题 | 默认值 |
 | --- | --- |
-| 数据根（账本、缓存与设置文件都放这里） | 仓库同级的 `peach-data/` |
-| 本地媒体目录（来源 `local`，必须已存在） | `~\Videos`（macOS 为 `~/Movies`），不存在则必填 |
-| 监听范围：1 = 仅本机（127.0.0.1），2 = 局域网（0.0.0.0） | `1` |
-| 服务端口 | `8900` |
-| 局域网名字（`<名字>.local`，只在监听局域网时发布） | `peach` |
+| 数据目录（Peach 数据库、缓存和设置文件都放在这里） | 仓库同级的 `peach-data/` |
+| 媒体文件夹（必须已经存在，可以在外置硬盘上；作为来源 `local`）。答完接着问「再加一个媒体文件夹」，回车结束，几个文件夹都归 `local` | `~\Videos`（macOS 为 `~/Movies`），不存在则必填 |
+| 谁可以访问：1 = 只有这台电脑，2 = 同一局域网的设备 | `2` |
+| 端口 | `8900` |
+| 局域网访问地址（`<名字>.local`，只在允许局域网访问时发布） | `peach` |
 
 回答完它建数据根、把账本迁到最新 schema、生成本机 CA、写出 `<数据根>/config.toml`，然后问
 「现在扫描 <目录>？」（默认是）把那个目录的文件登记进账本，最后打印下一步。设置文件里只有你
@@ -129,7 +134,7 @@ Windows 调试用户下载 [GitHub Releases](https://github.com/longmeidao/peach
 - 只监听 `127.0.0.1` 不需要口令。要让手机或局域网里别的设备访问（`--host 0.0.0.0`、托盘起的服务都算），就必须有访问口令：`peach init` 已经在 `<数据根>/secrets/auth-token` 生成一份，`peach token` 打印出来，设备第一次访问时贴进登录页。绑非回环地址却读不到口令时 `peach serve` 拒绝启动，因为那等于把整个馆藏和写接口摆在同网段上。
 - 源码开发使用 `-e`；普通安装与 wheel 自带页面和迁移文件，可从任意工作目录运行。
 - 数据根不在仓库同级时，`peach serve` 只按 `PEACH_DATA_ROOT` 和仓库上方几层的 `peach-data/` 找数据根，所以要同时设 `PEACH_DATA_ROOT`；用默认数据根没有这一步。
-- 账本里的路径一律是 Windows 形态。Windows 上媒体目录直接写进 `[media.locations]`；macOS 上声明根写 `R:\media`、目录写进 `[media.mounts]`，由本机挂载点负责翻译。CloudDrive 不是必需，任何能挂成本地路径的网盘都行；115 与 PikPak 是推荐项，不是要求。
+- 账本里的路径一律是 Windows 形态。Windows 上媒体目录（一个或几个）直接写进 `[media.locations]`；macOS 上声明根写 `R:\media`（第二个目录起是 `R:\media2`……）、目录按同样顺序写进 `[media.mounts]`，由本机挂载点负责翻译。CloudDrive 不是必需，任何能挂成本地路径的网盘都行；115 与 PikPak 是推荐项，不是要求。
 - 界面目前只有中文。
 
 没有设置文件也能启动：`/healthz` 报 `configured=false`，首页是上面那张首次运行表单。
@@ -141,9 +146,10 @@ Windows 调试用户下载 [GitHub Releases](https://github.com/longmeidao/peach
 
 开发时按功能域运行必要测试，例如 Windows 用 `& .\scripts\test.ps1 -Scope follow`，
 macOS/Linux 用 `./scripts/test.sh follow`。可选域为 `follow`、`catalog`、`media`、`sync`、
-`metadata`、`tooling`、`web`；不传参数仍跑 `full`。`auto` 按改动文件选域，映射不到或触及迁移、
-共享测试设施、依赖清单时退化为 `full`。跨多个域、修改迁移/共享测试设施/依赖、准备发布或
-改动影响面较大时必须跑全量，单一局部功能不再反复跑无关测试。
+`metadata`、`tooling`、`web`、`checks`；默认 `auto` 按改动文件取影响域并集。迁移、共享测试设施、
+依赖、构建和未知影响面选 `full`；CI 与发布显式跑全量。相同代码与环境可复用 24 小时内的记录，
+Windows `-Fresh`、POSIX 第二参数 `--fresh` 强制重跑；显式 `full` 总是实际执行。
+同环境有有效全量基线时，`auto` 只补测新增差异的影响域；未知差异仍做全量验证。
 
 ## 依赖维护
 

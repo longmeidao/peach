@@ -4,16 +4,30 @@ import { javDisplayName, javTitleHtml } from './js/jav-title.js';
 import { matchRoute, routeLabel } from './js/routes.js';
 import { initMiddleTruncate } from './js/middle-truncate.js';
 import { tagLabel } from './js/tags.js';
+import { syncSidebarSurface, sidebarTagCounts, sidebarHasCatalogContent } from './dist/peach-ui.js';
 import {
-  breadcrumbHtml, checkboxHtml, closeAnchoredMenu, confirmModal, emptyStateHtml, fieldsetTitle,
-  fillSkeletonTier, fitSkeleton, iconSwitchHtml, loadingDotsHtml,
-  mediaViewButtonsHtml, noteHtml, progressHtml, scrollerHtml, searchInputHtml, setActionBusy,
-  skeletonHtml, spinnerHtml, wireAnchoredMenu, wireBusyActions, wireCollapse, wireIconSwitch,
-  wireScrollers,
+  attachOverlayScrollbar, breadcrumbHtml, checkboxHtml, closeAnchoredMenu, confirmModal, emptyStateHtml, fieldsetTitle,
+  fillSkeletonTier, fitSkeleton, iconSwitchHtml, indexSkeletonHtml, loadingDotsHtml,
+  mediaViewButtonsHtml, noteHtml, progressHtml, scrollerHtml, searchInputHtml, selectFieldHtml,
+  setActionBusy, skeletonHtml, spinnerHtml, wireAnchoredMenu, wireBusyActions, wireCollapse,
+  wireIconSwitch, wireOverlayScrollbars, wireScrollers, wireSelectField,
 } from './js/ui-components.js';
 
 initMiddleTruncate(document);
 wireBusyActions(document);
+attachOverlayScrollbar(document.documentElement,{variant:'page'});
+attachOverlayScrollbar($('#drawerScroll'));
+// 滚动容器是各处 innerHTML 现画出来的，没有一个统一的渲染出口可以挂。与其在几十个
+// 渲染点各补一行（漏一个就是那一处又冒出系统滚动条），不如认 DOM 变动本身：一批变动
+// 只扫一次，attachOverlayScrollbar() 自带幂等，已经接过的容器直接跳过。
+// 合批用 setTimeout 不用 requestAnimationFrame：页面在后台标签页里时 rAF 整个停摆，
+// 那期间画出来的容器会一直等到重新可见才接上滚动条。
+let overlayScan=0;
+new MutationObserver(()=>{
+  if(overlayScan)return;
+  overlayScan=setTimeout(()=>{overlayScan=0;wireOverlayScrollbars()});
+}).observe(document.body,{childList:true,subtree:true});
+wireOverlayScrollbars();
 /* 图片回退链全站只有这一条监听。`error` 不冒泡，但捕获阶段照样经过祖先，所以
    挂在 body 上就能接住任何后代 <img>——模板里不再有内联 `onerror`。 */
 wireImageFallbacks(document.body);
@@ -33,7 +47,7 @@ wireImageFallbacks(document.body);
 let state;
 let barsRequestSeq=0,barsDataCache=null,barsDataAt=0,barsDataPromise=null;
 let adsBatch=null,loadRequestSeq=0,listLoading=false;
-let followData=null,followRuntime=null,followFilter='',followBusy=false,
+let followData=null,followRuntime=null,followCredentials=null,followFilter='',followBusy=false,
   followManageSort='checked',followManageDir='desc';
 /* 关注列表四列各自的方向词与默认方向。作者名称是文本列，「从多到少」在它身上
    不成立，只说正倒。 */
@@ -41,6 +55,7 @@ const FOLLOW_SORT_LABELS={checked:'检查时间',added:'添加时间',name:'作�
 const FOLLOW_SORT_DIR_WORDS={checked:['从近到远','从远到近'],added:['从近到远','从远到近'],
   name:['倒序','正序'],sources:['从多到少','从少到多']};
 const FOLLOW_SORT_DEFAULT_DIR={checked:'desc',added:'desc',name:'asc',sources:'desc'};
+const FOLLOW_SORT_OPTIONS=[['checked','检查时间'],['added','添加时间'],['name','作者名称'],['sources','来源数量']];
 /* 同 `sortButtonHtml`：这枚键的无障碍名称说的是点下去会得到什么，所以取反方向的词。 */
 const followSortLabel=()=>`按${FOLLOW_SORT_LABELS[followManageSort]||'关注列表'}${
   (FOLLOW_SORT_DIR_WORDS[followManageSort]||[])[followManageDir==='asc'?0:1]||''}排序`;
@@ -132,10 +147,15 @@ const ROUTES=[
   {match:'/resource-sync',title:'数据管理',open:(params,push)=>openResourceSync(push)},
   {match:'/quality-goals',section:'quality',title:'高清版',refresh:'reopen',
     open:(params,push)=>openQualityGoals(push)},
+  {match:'/scraping',section:'cleanup',title:'采集来源',refresh:'reopen',
+    open:(params,push)=>openScraping(push)},
   {match:'/follow',nav:'follow',title:'关注',refresh:'skip',
     open:(params,push)=>openFollow(push),reload:()=>openFollow(false)},
   {match:'/follow-manage',section:'follow',title:'关注管理',refresh:'skip',
     open:(params,push)=>openFollowManage(push)},
+  // 这台电脑的媒体文件夹与端口。页面是 island，数据走 /api/configuration。
+  {match:'/configuration',section:'configuration',title:'配置',refresh:'reopen',
+    open:(params,push)=>openConfiguration(push)},
   {match:'/immerse',nav:'immerse',title:'沉浸模式',
     open:(params,push)=>openTok(immerseStartId(),push)},
 ];
@@ -185,6 +205,16 @@ function wireCountRow(){
    `.count:empty` 还会让整行折叠，网格跟着往上跳一截。计数骨架宽高固定、行本身有
    `min-height:var(--sortH)` 兜底，所以数字回来时不发生位移。上方的标签条和已选条件
    同理不动——它们本来就不随这次请求变。 */
+/* 目录列表是一叠 `.grid`，不是一个：竖屏带把当前这段从行边界剪开后，上下两半各自
+   是一段。所有「本页有哪些卡」的判断都按 `#grid > .grid > .card` 走，跨过分段这一层，
+   同时把竖屏带里的 `.scard` 排除在外——它们在 `.srow` 里，不属于任何一段。 */
+const lastGridSection=()=>{
+  const grid=$('#grid'),last=grid.lastElementChild;
+  if(last&&last.classList.contains('grid'))return last;
+  const section=document.createElement('div');section.className='grid';grid.append(section);return section};
+const setGridCards=html=>{$('#grid').innerHTML=`<div class="grid">${html}</div>`};
+const appendGridCards=html=>lastGridSection().insertAdjacentHTML('beforeend',html);
+const gridCards=()=>document.querySelectorAll('#grid > .grid > .card[data-id]');
 function renderCatalogLoading(label='正在读取作品'){
   const count=$('#count');
   count.setAttribute('aria-busy','true');
@@ -198,8 +228,8 @@ function renderCatalogLoading(label='正在读取作品'){
      铺着两种等待动画，而实际只有一次请求在跑。哨兵的可见性由数据落地后的
      `has_more` 重新决定，所以这里只管收，不必记住原值。 */
   $('#loadSentinel').hidden=true;
-  $('#grid').innerHTML=pageSkeletonHtml(label,
-    {cards:true,className:'catalog-skeleton postercard-skeleton'});
+  setGridCards(pageSkeletonHtml(label,
+    {cards:true,className:'catalog-skeleton postercard-skeleton'}));
   fitSkeleton($('#grid'));
 }
 /* 每个管理表面的加载态只有一份定义，深链启动和路由到位后都从这里取。
@@ -223,6 +253,9 @@ const MANAGEMENT_PLACEHOLDERS={
   // 骨架照 .fsec 的轮廓画三块，六张 16:9 占位说的是另一个页面的结构。
   '/follow-manage':()=>`<div class="follow">${pageSkeletonHtml('正在读取关注管理',
     {cards:true,count:3,fill:false,className:'followmanage-skeleton'})}</div>`,
+  // 配置页是两块同宽的卡（表单、运行信息），骨架照数据管理那套单列卡片的轮廓画两块。
+  '/configuration':()=>`<div class="configpage">${pageSkeletonHtml('正在读取配置',
+    {cards:true,count:2,fill:false,className:'cleanup-skeleton'})}</div>`,
 };
 const managementPlaceholder=path=>
   (MANAGEMENT_PLACEHOLDERS[path]||(()=>pageSkeletonHtml('正在读取页面')))();
@@ -240,8 +273,8 @@ function renderInitialSurfaceLoading(){
     renderCatalogLoading('正在读取垃圾文件');
     return;
   }
-  const management=new Set(['/stats','/taste','/review','/data-cleanup','/duplicates','/quality-goals',
-    '/playlists','/resource-sync','/follow','/follow-manage']);
+  const management=new Set(['/stats','/taste','/review','/data-cleanup','/duplicates','/quality-goals','/scraping',
+    '/playlists','/resource-sync','/follow','/follow-manage','/configuration']);
   if(management.has(path)||path.startsWith('/follow/item/')){
     hideDiscoveryBars();
     const stats=$('#stats');stats.hidden=false;$('#grid').innerHTML='';
@@ -251,8 +284,13 @@ function renderInitialSurfaceLoading(){
     fitSkeleton(stats);
     return;
   }
-  if(path==='/performers'||path==='/creators'||path==='/tags'||
-      /^\/(?:performers|creators|studios|agencies)\//.test(path)){
+  if(/^\/(performers|creators|studios|agencies|tags)$/.test(path)){
+    hideDiscoveryBars();
+    if(path==='/tags')readTagIndexRoute(new URLSearchParams(location.search));
+    showIndexLoading('正在读取索引',path.slice(1),new URLSearchParams(location.search).get('q')||'');
+    return;
+  }
+  if(/^\/(?:performers|creators|studios|agencies)\//.test(path)){
     hideDiscoveryBars();
     $('#index').hidden=false;$('#grid').innerHTML='';
     $('#index').innerHTML=pageSkeletonHtml('正在读取页面',{cards:true});
@@ -261,7 +299,6 @@ function renderInitialSurfaceLoading(){
   }
   renderCatalogLoading();
 }
-renderInitialSurfaceLoading();
 
 /* 路由同时把页面表面写进 body[data-surface]：限宽等按表面生效的版式
    （管理页不全宽）靠它切换，不用每个渲染函数自己记得加类。
@@ -302,9 +339,10 @@ const surfaceApi=(token,path,options)=>api(path,{...options,signal:token.signal}
   .catch(error=>{if(isAbort(error))return null;throw error});
 const route=(path,replace=false)=>{
   surfaceEpoch++;
+  barsRequestSeq++;
   history[replace?'replaceState':'pushState']({},'',path);syncPageTitle(path);
   lastRoutePath=decodeURIComponent(new URL(path,location.href).pathname);
-  queueMicrotask(()=>{syncHeaderActions();paintListTitle()});
+  queueMicrotask(()=>{syncHeaderActions();paintListTitle();buildDrawerNavigation()});
 };
 
 /* ── 脱盘模式 ─────────────────────────────────────────────────────────────────
@@ -348,7 +386,15 @@ const SORT_DIR_WORDS={rating:['从高到低','从低到高'],o:['从多到少','
 const SORT_ALIASES={big:['size','desc'],short:['dur','asc'],long:['dur','desc']};
 const sortDirWord=(key,dir)=>(SORT_DIR_WORDS[key]||[])[dir==='asc'?1:0]||'';
 const defaultSortDir=key=>SORT_DIR_WORDS[key]?'desc':'';
-const DEFAULT_SETTINGS={batchSize:60,defaultSort:'seed',sortDefaultsVersion:3,hoverDelaySeconds:5,seekSeconds:10,searchHistoryLimit:10,relatedLimit:20,javLayout:'big',followLayout:'cozy',peopleLayout:'big',ambientMode:true,theaterMode:false,groupCollapse:true,sidebarOrder:DEFAULT_SIDEBAR_ORDER};
+/* 主题三档，键名与 <html> 上的 data-theme 同一套写法：web/css/01-base.css 的色板
+   已经按 `prefers-color-scheme` 和 `[data-theme]` 两条路径写好，这里只负责选哪一条。
+   跟随系统是默认档，选它等于不写属性。 */
+const THEME_CHOICES=['system','light','dark'];
+/* 跟随系统那一档跟 vercel.com 后台一样用显示器：这一档说的是「照这台设备的设定走」，
+   讲的是设备而不是明暗，日月合体的那枚反而在说明暗。`monitor` 因此归给它，详情页的
+   画面尺寸改用 `ratio`——那里量的是画幅本身，不是放画幅的那台机器。 */
+const THEME_OPTIONS=[['system','跟随系统','monitor'],['light','浅色','sun'],['dark','深色','moon']];
+const DEFAULT_SETTINGS={batchSize:60,defaultSort:'seed',sortDefaultsVersion:3,hoverDelaySeconds:5,seekSeconds:10,searchHistoryLimit:10,relatedLimit:20,javLayout:'big',followLayout:'cozy',peopleLayout:'big',ambientMode:true,theaterMode:false,theme:'system',groupCollapse:true,sidebarOrder:DEFAULT_SIDEBAR_ORDER};
 let appSettings={...DEFAULT_SETTINGS};
 try{appSettings={...DEFAULT_SETTINGS,...JSON.parse(localStorage.getItem(SETTINGS_KEY)||'{}')}}catch(_e){}
 const allowedSetting=(value,allowed,fallback)=>allowed.includes(value)?value:fallback;
@@ -372,20 +418,77 @@ appSettings.theaterMode=appSettings.theaterMode===true;
 appSettings.groupCollapse=appSettings.groupCollapse!==false;
 appSettings.searchHistoryLimit=allowedSetting(+appSettings.searchHistoryLimit,[5,10,20],10);
 appSettings.relatedLimit=allowedSetting(+appSettings.relatedLimit,[12,20,30],20);
+appSettings.theme=allowedSetting(appSettings.theme,THEME_CHOICES,'system');
 const sidebarKeyAlias=key=>key==='ads'||key==='dupes'?'data-cleanup':key;
 appSettings.sidebarOrder=[...new Set((Array.isArray(appSettings.sidebarOrder)?appSettings.sidebarOrder:DEFAULT_SIDEBAR_ORDER).map(sidebarKeyAlias))].filter(key=>ALL_SIDEBAR_KEYS.includes(key));
 if(!appSettings.sidebarOrder.length)appSettings.sidebarOrder=[...DEFAULT_SIDEBAR_ORDER];
 document.documentElement.style.setProperty('--hover-delay',`${appSettings.hoverDelaySeconds}s`);
 const saveSettings=()=>localStorage.setItem(SETTINGS_KEY,JSON.stringify(appSettings));
 if(sortDefaultsMigrated)saveSettings();
+/* 主题只写属性，不写颜色：两套色板都在 web/css/01-base.css，选跟随系统就把属性摘掉，
+   交还给 `prefers-color-scheme`。地址栏色块跟着同一次调用走——两枚 meta 各代表一档，
+   选中的那枚开到 `all`、另一枚关成 `not all`，否则手机上的地址栏还留在系统那一档。
+   `index.html` 的首屏内联脚本做的是同两件事，它只负责第一帧，之后都从这里出。 */
+const prefersDark=matchMedia('(prefers-color-scheme: dark)');
+function applyTheme(choice=appSettings.theme){
+  const root=document.documentElement;
+  if(choice==='system')delete root.dataset.theme;else root.dataset.theme=choice;
+  const dark=choice==='dark'||(choice==='system'&&prefersDark.matches);
+  document.querySelectorAll('meta[data-theme-color]').forEach(meta=>{
+    meta.media=(meta.dataset.themeColor==='dark')===dark?'all':'not all';
+  });
+}
+applyTheme();
+prefersDark.addEventListener('change',()=>{if(appSettings.theme==='system')applyTheme()});
+/* 三档互斥视图是 Geist Switch（一组共享 name 的 radio），与卡片版式切换共用同一份模板；
+   形状按 vercel.com 的主题选择器单独给，见 web/css/16-settings.css。 */
+function renderThemeSetting(){
+  const mount=$('#themeSetting');
+  mount.innerHTML=iconSwitchHtml('theme','主题',THEME_OPTIONS,appSettings.theme,{attr:'data-theme-choice',className:'themeswitch'});
+  wireIconSwitch(mount,'data-theme-choice',choice=>{appSettings.theme=choice;saveSettings();applyTheme()});
+}
+/* 设置面板里的每个下拉：选项、当前值和应用方式写在一起。它们此前是 index.html 里的
+   浏览器自带的 select，弹出层由系统画、跟不上站内色板；换成 Geist Select 之后这里是唯一
+   一处写它们的地方，面板每次打开重画一遍。关注自动更新那一档也在表里，它的应用是
+   一次网络写入，所以额外报告状态并在往返期间禁用自己。 */
+const SETTING_SELECTS=[
+  ['batchSizeSetting','每批作品',[['30','30 个'],['60','60 个'],['90','90 个']],
+    ()=>appSettings.batchSize,
+    value=>{appSettings.batchSize=+value||60;saveSettings();if(location.pathname==='/')load(true)}],
+  ['defaultSortSetting','默认排序',[['seed','随机'],['rating','评分'],['o','高潮计数'],['plays','观看次数'],
+    ['dur','时长'],['size','体积'],['new','入库时间'],['played','观看时间']],
+    ()=>appSettings.defaultSort,
+    value=>{appSettings.defaultSort=value;saveSettings();state.sort=appSettings.defaultSort;
+      state.dir=defaultSortDir(state.sort);if(location.pathname==='/')load(true)}],
+  ['hoverDelaySetting','悬停放大',[['3','3 秒'],['5','5 秒'],['8','8 秒']],
+    ()=>appSettings.hoverDelaySeconds,
+    value=>{appSettings.hoverDelaySeconds=+value||5;
+      document.documentElement.style.setProperty('--hover-delay',`${appSettings.hoverDelaySeconds}s`);saveSettings()}],
+  ['seekSecondsSetting','快进 / 快退',[['5','5 秒'],['10','10 秒'],['30','30 秒']],
+    ()=>appSettings.seekSeconds,
+    value=>{appSettings.seekSeconds=+value||10;saveSettings()}],
+  ['relatedLimitSetting','相关推荐',[['12','12 个'],['20','20 个'],['30','30 个']],
+    ()=>appSettings.relatedLimit,
+    value=>{appSettings.relatedLimit=+value||20;saveSettings()}],
+  ['searchHistoryLimitSetting','搜索记录',[['5','最近 5 条'],['10','最近 10 条'],['20','最近 20 条']],
+    ()=>appSettings.searchHistoryLimit,
+    value=>{appSettings.searchHistoryLimit=+value||10;saveSettings();writeSearchHistory(readSearchHistory())}],
+  ['followScheduleSetting','关注自动更新',[['0','关闭'],['15','每 15 分钟'],['30','每 30 分钟'],['60','每小时'],
+    ['180','每 3 小时'],['360','每 6 小时'],['720','每 12 小时'],['1440','每天']],
+    ()=>'0',value=>saveFollowSchedule(+value)],
+];
+function renderSettingSelects(){
+  for(const [id,label,options,read,apply] of SETTING_SELECTS){
+    const mount=$(`#${id}`);if(!mount)continue;
+    mount.innerHTML=selectFieldHtml(options,read(),{label});
+    const field=wireSelectField(mount.firstElementChild);
+    field.addEventListener('change',()=>apply(field.value));
+  }
+}
 function syncSettingsPanel(){
-  $('#batchSizeSetting').value=String(appSettings.batchSize);
-  $('#defaultSortSetting').value=appSettings.defaultSort;
-  $('#hoverDelaySetting').value=String(appSettings.hoverDelaySeconds);
   $('#groupCollapseSetting').checked=appSettings.groupCollapse;
-  $('#seekSecondsSetting').value=String(appSettings.seekSeconds);
-  $('#searchHistoryLimitSetting').value=String(appSettings.searchHistoryLimit);
-  $('#relatedLimitSetting').value=String(appSettings.relatedLimit);
+  renderSettingSelects();
+  renderThemeSetting();
   renderSidebarOrderSetting();
   loadFollowScheduleSetting();
 }
@@ -415,21 +518,15 @@ $('#settingsBtn').onclick=()=>openSettings(true);$('#settingsClose').onclick=()=
 $('#settingsPanel').onclick=e=>{if(e.target===$('#settingsPanel'))openSettings(false)};
 $('#settingsPanel').onkeydown=e=>{
   if(e.key!=='Tab')return;
-  const focusable=[...e.currentTarget.querySelectorAll('button:not([disabled]),select:not([disabled]),input:not([disabled]),textarea:not([disabled]),a[href]')];
+  const focusable=[...e.currentTarget.querySelectorAll('button:not([disabled]),input:not([disabled]),textarea:not([disabled]),a[href]')];
   if(!focusable.length)return;
   const first=focusable[0],last=focusable.at(-1);
   if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus()}
   else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus()}
 };
-$('#batchSizeSetting').onchange=e=>{appSettings.batchSize=+e.target.value||60;saveSettings();if(location.pathname==='/')load(true)};
-$('#defaultSortSetting').onchange=e=>{appSettings.defaultSort=e.target.value;saveSettings();state.sort=appSettings.defaultSort;state.dir=defaultSortDir(state.sort);if(location.pathname==='/')load(true)};
-$('#hoverDelaySetting').onchange=e=>{appSettings.hoverDelaySeconds=+e.target.value||5;document.documentElement.style.setProperty('--hover-delay',`${appSettings.hoverDelaySeconds}s`);saveSettings()};
 /* 关掉后同一番号的每个分卷／版次各占一张卡。改完要重取当前列表：折叠是在渲染
    时做的，不重画的话已经被跳过的那些卡不会自己冒出来。 */
 $('#groupCollapseSetting').onchange=e=>{appSettings.groupCollapse=!!e.target.checked;saveSettings();reloadCurrentSurface()};
-$('#seekSecondsSetting').onchange=e=>{appSettings.seekSeconds=+e.target.value||10;saveSettings()};
-$('#searchHistoryLimitSetting').onchange=e=>{appSettings.searchHistoryLimit=+e.target.value||10;saveSettings();writeSearchHistory(readSearchHistory())};
-$('#relatedLimitSetting').onchange=e=>{appSettings.relatedLimit=+e.target.value||20;saveSettings()};
 let followScheduleRequest=0;
 const followScheduleCopy=status=>{
   if(!status.available)return '只在账本写入端运行';
@@ -439,24 +536,25 @@ const followScheduleCopy=status=>{
   if(status.next_run_at)return `下次 ${localTime(status.next_run_at)}`;
   return status.enabled?'等待首次运行':'已关闭';
 };
+const followScheduleField=()=>$('#followScheduleSetting .gselect');
 async function loadFollowScheduleSetting(){
-  const select=$('#followScheduleSetting'),state=$('#followScheduleState'),request=++followScheduleRequest;
-  select.disabled=true;state.innerHTML=loadingDotsHtml('正在读取状态');
+  const field=followScheduleField(),state=$('#followScheduleState'),request=++followScheduleRequest;
+  field.disabled=true;state.innerHTML=loadingDotsHtml('正在读取状态');
   try{
     const status=await api('/api/follow/schedule');if(request!==followScheduleRequest)return;
-    select.value=status.enabled?String(status.interval_minutes):'0';
-    select.disabled=!status.available;state.textContent=followScheduleCopy(status);
+    field.value=status.enabled?String(status.interval_minutes):'0';
+    field.disabled=!status.available;state.textContent=followScheduleCopy(status);
   }catch(error){if(request===followScheduleRequest)state.textContent=`状态未取得：${error.message||error}`}
 }
-$('#followScheduleSetting').onchange=async e=>{
-  const minutes=+e.target.value,state=$('#followScheduleState');e.target.disabled=true;
+async function saveFollowSchedule(minutes){
+  const field=followScheduleField(),state=$('#followScheduleState');field.disabled=true;
   state.innerHTML=`${spinnerHtml('保存中')}<span>正在保存…</span>`;
   try{
     const status=await api('/api/follow/schedule',{method:'POST',body:JSON.stringify({enabled:minutes>0,interval_minutes:minutes||60})});
     state.textContent=followScheduleCopy(status);
   }catch(error){state.textContent=error.message||'保存失败'}
-  finally{e.target.disabled=false}
-};
+  finally{field.disabled=false}
+}
 /* 来源图标：品牌使用已缓存的官方资产；通用操作图标统一使用本地 Lucide 子集。 */
 const SRCICON={
   local:icon('hard-drive'),
@@ -613,13 +711,21 @@ function homePath(filters=state){
   if(!STATE_ROUTES[filters.state]&&filters.state)params.set('state',filters.state);
   return path+(params.size?'?'+params:'');
 }
+/* 顶部三层与筛选条画的是哪一套筛选，由它说了算。声明必须排在 resetHomeState 之前：
+   那个函数会把它拨回 home，而它是 let，用在声明之前就是 TDZ。 */
+let barsContext={type:'home',filters:state},detailReturnBarsContext=null;
 /* 所有明确的「回首页」动作必须得到同一个干净状态。只改地址为 `/` 不够：state.jav
    等内存筛选还会继续进入 /api/items，让页面看似首页却只剩 JAV。来源选择是用户的
-   浏览范围，继续保留；其余分类、搜索和排序恢复首页默认值。 */
+   浏览范围，继续保留；其余分类、搜索和排序恢复首页默认值。
+   barsContext 也在这里回到 home：从资料页点侧栏或左上角标志回首页时，load(true)
+   确实会把它拨回来，但 openHome 是先 buildBars() 后 load(true)，buildBars 开头就把
+   activeFilterState() 取走了——取到的是资料页那份筛选，它没有 state 这个键，
+   于是四枚视图胶囊一枚都不亮，首页看上去像谁都没选中。 */
 function resetHomeState(){
   state={loc:state.loc,creator:'',studio:'',tag:'',tag_match:'all',len:'',dur_min:'',dur_max:'',
     orient:'',state:'',sort:appSettings.defaultSort,dir:defaultSortDir(appSettings.defaultSort),
     seed:rollSeed(),q:'',jav:'',thumb:'1'};
+  barsContext={type:'home',filters:state};detailReturnBarsContext=null;
   barsDataCache=null;barsDataPromise=null;
 }
 function openHome(scroll=false){
@@ -637,7 +743,6 @@ const entityFilterSearch=filters=>{const params=new URLSearchParams();
   ENTITY_FILTER_KEYS.forEach(key=>{if(filters[key]&&!(key==='sort'&&filters[key]==='new')
     &&!(key==='dir'&&filters[key]===defaultSortDir(filters.sort)))params.set(key,filters[key])});
   return params.toString()};
-let barsContext={type:'home',filters:state},detailReturnBarsContext=null;
 const cloneBarsContext=context=>context&&context.type==='entity'
   ? {...context,filters:{...context.filters}}:context;
 const activeFilterState=()=>barsContext.type==='home'?state:barsContext.filters;
@@ -669,7 +774,6 @@ async function detailStreamSource(it){
   const proxied=followStreamSource(it);
   if(proxied)return proxied;
   const direct=directDetailSource(it);
-  if(!['115','pikpak'].includes(it.location))return direct;
   try{
     const plan=await api(`/api/stream-plan?id=${it.id}&session=${encodeURIComponent(detailStreamSession)}`);
     if(plan.protocol==='hls'&&plan.src)return {src:plan.src,type:plan.mime_type||'application/vnd.apple.mpegurl'};
@@ -1499,7 +1603,7 @@ function setSelectMode(on,clear=false){
   if(selectMode)releaseHoverPreviews();
   $('#selectMode').setAttribute('aria-pressed',selectMode);if(clear){selected.clear();followSelected.clear();selectedIndexTags.clear();lastSelectedId=null;followLastSelectedId=null}paintSelection()}
 /* 只取网格直属卡片：竖屏条是嵌在网格里的横向滚动条，不该被 Shift 范围选中顺带框进来。 */
-function visibleCardIds(){return [...document.querySelectorAll('#grid > .card[data-id]')].map(card=>+card.dataset.id)}
+function visibleCardIds(){return [...gridCards()].map(card=>+card.dataset.id)}
 function toggleSelection(id,range=false){
   if(range&&lastSelectedId!=null){const ids=visibleCardIds(),a=ids.indexOf(lastSelectedId),b=ids.indexOf(id);
     if(a>=0&&b>=0){for(let i=Math.min(a,b);i<=Math.max(a,b);i++)selected.add(ids[i])}
@@ -1798,8 +1902,7 @@ function cardIdentity(it,linked=true){
   const primaryCreator=it.is_jav&&performer?'':it.creator;
   const identity=primaryCreator?{kind:'creator',name:primaryCreator}
     :(performer?{kind:'performer',name:performer}
-      :(it.code?{kind:'',name:it.code}
-        :(it.studio?{kind:'studio',name:it.studio}:{kind:'',name:'未归属'})));
+      :{kind:'',name:'未归属'});
   const who=identity.name,whoKind=identity.kind;
   // 共演作品用头像提示多人，但文字只保留第一位，再给总人数。两个长名字加元数据
   // 会在普通卡片里折成三行；「第一位 + 等 N 人」仍能说明身份与规模。
@@ -1812,9 +1915,10 @@ function cardIdentity(it,linked=true){
         /* 头像和名字必须落到同一个身份。各自挑 kind（头像先看 performer、名字先看
            creator）时，同名的 creator/performer 重复实体（账本里有 35 组）会一个跳
            `/performers/x`、另一个跳 `/creators/x`，同一张卡上两个入口去两个地方。 */
-        const avatarKind=identity.kind||(performer?'performer':(primaryCreator?'creator':(it.studio?'studio':'')));
-        const avatarName=identity.kind?identity.name:(performer||primaryCreator||it.studio||who);
-        const inner=avatarInner(avatarName,performerRef,REP[avatarName]||REP[it.creator]||REP[it.studio]);
+        const avatarKind=identity.kind;
+        const avatarName=identity.name;
+        const inner=avatarInner(avatarName,avatarKind==='performer'?performerRef:null,
+          avatarKind?REP[avatarName]:null,avatarKind||'performer');
         return avatarKind
           ? link('mav',`data-entity-kind="${avatarKind}" data-entity-name="${esc(avatarName)}" title="打开${avatarKind==='performer'?esc(performerLabel(it)):'资料'}页"`,inner)
           : `<span class="mav">${inner}</span>`;
@@ -1848,6 +1952,8 @@ function cardHtml(it,cls){
 
   const thumb=useCover
     ? coverImage(it,layout)
+    : it.follow_thumb_url
+      ? `<img class="poster" src="${esc(it.follow_thumb_url)}" alt="" loading="lazy" referrerpolicy="no-referrer">`
     : (it.has_thumb
       ? `<img class="poster" src="/poster?id=${it.id}&c=4" alt="" loading="lazy">`
       : `<span class="nopic">无预览</span>`);
@@ -1866,7 +1972,7 @@ function cardHtml(it,cls){
     ? `<div class="watchprogress" role="progressbar" aria-label="观看进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(watchedRatio*100)}"><i style="width:${(watchedRatio*100).toFixed(1)}%"></i></div>`
     : (it.leave_ratio!=null?`<div class="scrub"><i style="width:${Math.round(it.leave_ratio*100)}%"></i></div>`:'');
   const sizeText=Number(shownSize)>0?fmtSize(Number(shownSize)):'大小未知';
-  const tgs=(it.tags||[]).slice(0,3).map(x=>`<span class="tg general" data-tag="${esc(x)}">${esc(tagLabel(x))}</span>`).join('');
+  const tgs=(it.follow_tags||it.tags||[]).slice(0,3).map(x=>`<span class="tg general"${it.follow_item_id?'':` data-tag="${esc(x)}"`}>${esc(tagLabel(x))}</span>`).join('');
   const laterTool=`<div class="hovertools later-tools"><button class="laterbtn" data-later aria-pressed="${!!it.watch_later}" title="稍后看" aria-label="稍后看">
       ${it.watch_later?icon('check'):icon('bookmark-plus')}</button></div>`;
   /* 分卷卡悬浮翻的是各卷首帧，没有可控的视频：倒计时环和快退／快进那三颗留着的话，
@@ -2274,6 +2380,17 @@ function wireCards(root,onClick){
 }
 
 /* ── 顶部标签条 + 抽屉 ── */
+/* 状态页把顶部三层收窄到本页口径，为的是不列出「在这一页一个作品都没有」的人和厂牌。
+   但集合窄到聚合结果为空时（「已标记」常年只有几条），收窄就把整排一并收走了：
+   同一条筛选条上换一格，页面顶上凭空少两层，读起来是跳去了另一个页面而不是换了筛选。
+   空了就退回全库口径。这一排点开的是实体页，本来就要离开当前状态，
+   它回答的从来不是「这一页里有谁」，而是「接下来去看谁」。 */
+async function loadTops(params){
+  const scoped=await api('/api/tops?'+params);
+  if(scoped.performers.length||scoped.studios.length||!params.has('state'))return scoped;
+  const wide=new URLSearchParams(params);wide.delete('state');
+  return api('/api/tops?'+wide)
+}
 let barsDataScope='';
 async function getBarsData(context=barsContext){
   // JAV 模式的顶部三层与筛选面板要跟着收窄，否则会列出只出现在创作者作品里的
@@ -2286,6 +2403,12 @@ async function getBarsData(context=barsContext){
   // 已标记/稍后看这类状态页也是一个更窄的集合。不传的话，上面那排头像和
   // 标签条走的是全库口径，列出来的人和标签在本页一个作品都没有。
   if(context.type==='home'&&state.state)facetParams.set('state',state.state);
+  if(context.type!=='item'){
+    const filters=activeFilterState();
+    ['loc','creator','studio','tag','tag_match','len','dur_min','dur_max','orient','q','thumb'].forEach(key=>{
+      if(filters[key])facetParams.set(key,filters[key]);
+    });
+  }
   const scope=facetParams.toString();
   if(scope!==barsDataScope){barsDataCache=null;barsDataPromise=null;barsDataScope=scope}
   if(barsDataCache&&Date.now()-barsDataAt<30000)return barsDataCache;
@@ -2295,7 +2418,7 @@ async function getBarsData(context=barsContext){
   // 顶部三层跟着「换一批」的同一个种子走，刷新后才真的换人。
   if(!barsDataPromise)barsDataPromise=Promise.all([
       api('/api/facets'+(scope?'?'+scope:'')),
-      api('/api/tops?'+topsParams)])
+      loadTops(topsParams)])
     .then(data=>{barsDataCache=data;barsDataAt=Date.now();return data})
     .finally(()=>{barsDataPromise=null});
   return barsDataPromise
@@ -2318,18 +2441,6 @@ function commitContextFilter(mutate){
   }
   mutate(state);route(homePath());buildBars();load(true)
 }
-/* 关注标签和目录标签是两套词表：一个来自关注库的在线更新，一个来自 ledger 里已入库
-   的作品，连计数的含义都不同，所以单独取一份。缓存窗口与 getBarsData 对齐——抽屉每
-   次导航都重建，不该每次都问一遍。取不到就当没有，抽屉少一节，不挡其余筛选。 */
-let followTagCache=null,followTagCacheAt=0;
-const followTagFacet=async()=>{
-  if(followTagCache&&Date.now()-followTagCacheAt<30000)return followTagCache;
-  try{
-    const data=await api('/api/follow/tags?limit=30');
-    followTagCache=data.items||[];followTagCacheAt=Date.now();
-  }catch(_e){followTagCache=followTagCache||[]}
-  return followTagCache;
-};
 /* 首屏时顶部三层和标签条还是两个空 div，而这一次请求要花约一秒。Geist 的判据是
    骨架宽高必须等于最终内容——「200×20 的块变成 80×16 的字读起来像故障」——所以
    这里直接套真实类名，让几何自己对上。只在还空着时画：导航到已经有内容的页面
@@ -2362,13 +2473,15 @@ function renderBarsLoading(filterState){
 }
 async function buildBars(){
   const requestSeq=++barsRequestSeq;
+  buildDrawerNavigation();
+  if(!sidebarHasCatalogContent(location.pathname))return;
   const context=barsContext,filterState=activeFilterState();
   renderBarsLoading(filterState);
   // 两个聚合查询互不依赖。冷启动各需约 1 秒，串行会让手机首屏白等；
   // 并行取回后再一次性绘制顶部与抽屉。
-  const [[facetData,tops],followTagRows]=await Promise.all([
-    getBarsData(context),followTagFacet()]);
+  const [facetData,tops]=await getBarsData(context);
   if(requestSeq!==barsRequestSeq)return;
+  const followTagRows=facetData.follow_tags||[];
   if(context.type==='home')facets=facetData;
   // 详情抽屉继续只展示当前作品的真实标签；作品没有内容标签时，顶部发现栏
   // 回退到返回首页的推荐口径，避免把全库标签伪装成作品元数据。
@@ -2407,8 +2520,8 @@ async function buildBars(){
     return `<button class="brandpill" data-entity-kind="studio" data-entity-name="${esc(x.k)}">
       <span class="mk" data-fallback="${fallback}">${mark}</span>${esc(x.k)}</button>`;
   };
-  // 空的一排仍占 28px，在「已标记」这种窄集合上就是两条什么都没有的空带。
-  // 没人就不画那一排，两排都没人就整块收起。
+  // 空的一排仍占 28px，画出来就是一条什么都没有的空带，所以没人就不画那一排。
+  // 「两排都空」现在只剩全库真的一个人都没有这一种：窄集合已经由 loadTops 退回全库口径。
   const perfRow=tops.performers.map(avHtml).join('');
   const studioRow=tops.studios.map(bpHtml).join('');
   const tier=html=>html?`<div class="tier">${html}</div>`:'';
@@ -2450,7 +2563,7 @@ async function buildBars(){
   // 与窄栏共用 EDGE_ICONS —— 两边条目必须一致，抽屉不另写一份硬编码
   const navBtn=(k,label,ic)=>`<button data-nav="${k}" draggable="true" aria-pressed="${navOn(k)}">
     ${icon(ic)}<span>${label}</span></button>`;
-  $('#drawer').innerHTML=
+  $('#drawerScroll').innerHTML=
     `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
       <b class="disp" style="font-size:15px;letter-spacing:.1em">导航与筛选</b>
       <button id="drawerClose" class="ib" title="收起">${icon('x')}</button></div>`+
@@ -2465,18 +2578,15 @@ async function buildBars(){
     +sec('创作者',chips(scopedCreators,'creator',false,26),scopedCreators.length>26?'<button data-more="creator">更多</button>':'','artist')
     +sec('内容标签',chips(facetData.tags,'tag',false,30),facetData.tags.length>30?'<button data-more="tag">更多</button>':'','general')
     +sec('影片属性',chips(facetData.tech,'tag',false,16),'','meta')
-    /* 单独一节而不是并进「内容标签」：这些标签指向还没入库的在线更新，混在一起
-       点下去会得到一屏空结果。它们也不能走 chips——那套拼的是目录筛选。 */
     +sec('关注标签',followTagRows.length?`<div class="chips">`+followTagRows.map(row=>
-      `<button class="chip online" data-follow-drawer-tag="${esc(row.k)}">${esc(row.k)}<span class="n">${row.n.toLocaleString()}</span></button>`
+      `<button class="chip online" data-follow-drawer-tag="${esc(row.k)}">${esc(tagLabel(row.k))}<span class="n">${row.n.toLocaleString()}</span></button>`
       ).join('')+`</div>`:'','','online');
   const dc=$('#drawerClose'); if(dc)dc.onclick=()=>openDrawer(false);
   $('#drawer').querySelectorAll('[data-page]').forEach(b=>b.onclick=()=>{
     openIndex(b.dataset.page); closeDrawerAfterNav()});
   $('#drawer').querySelectorAll('[data-nav]').forEach(b=>b.onclick=()=>navTo(b.dataset.nav));
   $('#drawer').querySelectorAll('[data-follow-drawer-tag]').forEach(b=>b.onclick=()=>{
-    // 关注标签只在关注页成立，直接过去；它不是目录筛选，不能走 commitContextFilter。
-    followAuthor='';followProvider='';followMediaView='videos';followFilter='';
+    followAuthor='';followProvider='';followMediaView='videos';followFilter='saved';
     followTags=new Set([b.dataset.followDrawerTag]);
     openDrawer(false);route(followViewPath());openFollow(false)});
   wireNavigationDrag($('#drawer').querySelector('.dnav'));
@@ -2516,7 +2626,7 @@ async function buildBars(){
 }
 /* 排序和换批都属于当前列表，放在计数行，不占用全局导航。 */
 function renderCount(){
-  const n=$('#grid').querySelectorAll(':scope > .card[data-id]').length;   // 竖屏条不计入「显示 N」
+  const n=gridCards().length;   // 竖屏带里的 .scard 不计入「显示 N」
   const trash=state.state==='trash';
   /* 「清空回收站」和左边的计数说的是同一批文件，挂在说明行右端。它自己占一行时，
      标题和网格之间会空出一条只放一个按钮的带子。 */
@@ -2608,7 +2718,7 @@ function wireLoadMore(button, load){
 const skeletonKeyOf=html=>String(html).match(/data-skeleton="([^"]*)"/)?.[1]||'';
 function showManagementBody({manage=true,placeholder=''}={}){
   $('#stats').hidden=false;$('#index').hidden=true;$('#grid').innerHTML='';
-  $('#count').textContent='';$('#loadSentinel').hidden=true;$('#shortsSec').hidden=true;
+  $('#count').textContent='';$('#loadSentinel').hidden=true;
   if(manage)buildManageBar();
   else{$('#managebar').hidden=true;$('#manageTitle').hidden=true;buildEdge()}
   if(!placeholder)return;
@@ -2622,12 +2732,6 @@ function showManagementBody({manage=true,placeholder=''}={}){
    `enterManagementSurface()` 对称：索引页此后不再重画芯片，画上去的那条会一直留着。
    `renderCombo()` 自己也拦得住（它先问过屏幕），两侧都要有——一个负责当场擦掉，
    一个负责之后谁都别再画上去。 */
-function showIndexLoading(label){
-  $('#stats').hidden=true;$('#index').hidden=false;$('#grid').innerHTML='';$('#combo').innerHTML='';
-  $('#count').textContent='';$('#loadSentinel').hidden=true;$('#shortsSec').hidden=true;
-  $('#index').innerHTML=pageSkeletonHtml(label,{cards:true});
-  fitSkeleton($('#index'));
-}
 function enterManagementSurface(){
   // A catalog request started before browser Back must not repaint filters over
   // the management page after it resolves.
@@ -2792,7 +2896,8 @@ async function wireLinkManager(){
     setActionBusy(button,running);
     if(payload.status==='idle'){result.innerHTML='';return}
     if(payload.status==='failed'){result.innerHTML=noteHtml(payload.error||'检查失败',{variant:'error',label:'检查失败'});return}
-    const progress=running?`<p class="resourcescanning">已检查 ${payload.checked.toLocaleString()} / ${(payload.total||0).toLocaleString()} 条…</p>`:'';
+    const progress=running?loadingDotsHtml(`已检查 ${payload.checked.toLocaleString()} / ${(payload.total||0).toLocaleString()} 条`)
+      +(payload.total?progressHtml('已检查链接',payload.checked,payload.total):''):'';
     /* gone 和 unclear 必须分开摆：`linktr.ee` 回 403 是挡爬虫、`x.com` 回 500 是临时错误，
        链接本身好好的。混成一张表会让人顺手把好链接一起删掉。 */
     const gone=table('已失效',payload.gone||[],'上游明确回 404／410，页面确实没了。');
@@ -2807,24 +2912,33 @@ async function wireLinkManager(){
       setActionBusy(control);
       control.innerHTML=`${spinnerHtml('正在重验')}<span>正在重验并删除…</span>`;
       try{
-        const out=await api('/api/links/prune',{method:'POST',body:JSON.stringify({confirm:true,check_id:payload.check_id})});
-        result.innerHTML=noteHtml(`已删除 ${out.removed} 条；重验时又能打开的 ${out.recovered} 条已保留。`,{label:'完成'});
-        await wireLinkManager();
-      }catch(error){result.insertAdjacentHTML('beforeend',noteHtml(error.message,{variant:'error',label:'删除失败'}))}
+        const out=await api('/api/links/prune',{method:'POST',body:JSON.stringify({confirm:true,check_id:payload.check_id,background:true})});
+        sessionStorage.setItem('peach-link-prune-job',out.job_id);
+        if(active())void wirePruneProgress();
+      }catch(error){if(active()){result.insertAdjacentHTML('beforeend',noteHtml(error.message,{variant:'error',label:'删除失败'}));void wirePruneProgress()}}
     });
   };
 
-  const poll=async()=>{
-    if(!active())return;
-    const payload=await api('/api/links/check',{method:'POST',body:JSON.stringify({status_only:true})});
-    render(payload);
-    if(payload.status==='running')setTimeout(poll,2000);
-  };
+  const ui=await import('/dist/peach-ui.js');
+  let watching=0;
+  const poll=()=>{const generation=++watching;return ui.watchJob({
+    active:()=>active()&&watching===generation,
+    read:signal=>api('/api/links/check',{signal,method:'POST',body:JSON.stringify({status_only:true})}),
+    render,disconnected:()=>{result.innerHTML=noteHtml('暂时无法读取进度，正在重新连接…',{label:'任务状态'})}})};
   button.onclick=async()=>{
-    render(await api('/api/links/check',{method:'POST',body:JSON.stringify({restart:true})}));
-    setTimeout(poll,1200);
+    if(button.getAttribute('aria-busy')==='true')return;
+    setActionBusy(button);
+    try{const payload=await api('/api/links/check',{method:'POST',body:JSON.stringify({restart:true})});
+      if(!active())return;render(payload);void poll();
+    }catch(error){if(active()){result.innerHTML=noteHtml('暂时无法确认启动结果，正在读取任务状态…',{label:'任务状态'});void poll()}}
   };
-  await poll();
+  void poll();
+  void wirePruneProgress();
+}
+function wirePruneProgress(){
+  return wireOperationProgress({host:$('#link-manager'),path:'/api/links/prune',key:'peach-link-prune-job',title:'正在重验并删除失效链接…',
+    busy:running=>{const button=$('#linkPrune');if(button){setActionBusy(button,running);if(!running)button.textContent='重试删除失效链接'}},
+    complete:out=>{$('#linkCheckResult').innerHTML=noteHtml(`已删除 ${out.removed} 条；保留 ${out.recovered} 条恢复的链接。`,{label:'完成'})}});
 }
 function resourceSyncMarkup(){
   return `<section class="resourcesync" id="resource-sync" aria-labelledby="resourceSyncTitle">
@@ -2862,39 +2976,47 @@ async function wireResourceSync(){
       setActionBusy(button);
       button.innerHTML=`${spinnerHtml('正在应用')}<span>正在重新核对并应用…</span>`;
       try{
-        const applied=await api('/api/resource-sync/apply',{method:'POST',body:JSON.stringify({confirm:true,clean_cache:true,scan_id:payload.scan_id||''})});
-        result.innerHTML=`<p class="resourcesyncok">已把 ${applied.moved_to_trash.toLocaleString()} 项移入回收站，清理 ${applied.cache_removed.toLocaleString()} 个缓存，释放 ${fmtSize(applied.bytes_reclaimed||0)}。</p>`;
+        const applied=await api('/api/resource-sync/apply',{method:'POST',body:JSON.stringify({confirm:true,clean_cache:true,scan_id:payload.scan_id||'',background:true})});
+        sessionStorage.setItem('peach-resource-apply-job',applied.job_id);
+        if(active())void wireResourceApplyProgress();
       }catch(error){
         setActionBusy(button,false);
         button.innerHTML=`${icon('refresh-cw')}<span>重试同步</span>`;
-        result.insertAdjacentHTML('beforeend',noteHtml(error.message,{variant:'error',label:'同步失败'}))}
+        result.insertAdjacentHTML('beforeend',noteHtml(error.message,{variant:'error',label:'同步失败'}));if(active())void wireResourceApplyProgress()}
     });
   };
   const followScan=async payload=>{
     setBusy(true);result.innerHTML=`<p class="resourcescanning">${loadingDotsHtml('正在后台核对网盘元数据，不会读取视频内容。')}</p>`;
     try{
-      if(!payload)payload=await api('/api/resource-sync/scan',{method:'POST',body:JSON.stringify({background:true,restart:true})});
-      while(payload.status==='running'){
-        const done=payload.sources||[];
-        result.innerHTML=`<p class="resourcescanning">${loadingDotsHtml(`后台扫描中：已完成 ${payload.completed_sources||0} / ${payload.total_sources||3} 个来源${done.length?`（${done.map(source=>LOC[source.location]||source.location).join('、')}）`:''}。离开本页不会中断。`)}</p>`;
-        await new Promise(resolve=>setTimeout(resolve,2000));
-        if(!active())return;
-        payload=await api('/api/resource-sync/scan',{method:'POST',body:JSON.stringify({background:true})});
-      }
+      if(!payload){try{payload=await api('/api/resource-sync/scan',{method:'POST',body:JSON.stringify({background:true,restart:true})})}
+        catch(error){if(active())result.innerHTML=noteHtml('暂时无法确认启动结果，正在读取任务状态…',{label:'任务状态'})}}
+      const ui=await import('/dist/peach-ui.js');
+      await ui.watchJob({active,
+        read:signal=>api('/api/resource-sync/scan',{signal,method:'POST',body:JSON.stringify({background:true,status_only:true})}),
+        render:state=>{payload=state;if(state.status==='running'){
+          result.innerHTML=loadingDotsHtml(`后台扫描中：已完成 ${state.completed_sources||0}/${state.total_sources||0} 个来源`)
+            +(state.total_sources?progressHtml('已扫描来源',state.completed_sources||0,state.total_sources):'')}},
+        disconnected:()=>{result.innerHTML=noteHtml('暂时无法读取进度，正在重新连接…',{label:'任务状态'})}});
       if(payload.status==='failed')throw new Error(payload.error||'后台扫描失败');
+      if(payload.status==='idle')throw new Error('任务尚未启动，请重试扫描');
       if(!active())return;
       render(payload);
     }
     catch(error){result.innerHTML=noteHtml(error.message,{variant:'error',label:'扫描失败'})}
     finally{setBusy(false,true)}
   };
-  scan.onclick=()=>followScan(null);
-  try{
-    const existing=await api('/api/resource-sync/scan',{method:'POST',body:JSON.stringify({background:true,status_only:true})});
-    /* 只跟进还在跑的那次。上一轮的完成结果是那一刻的快照，进页面就铺开会被当成
-       现在的账本状态——数字早就不准了，而页面上没有任何东西说它是旧的。 */
-    if(existing.status==='running')void followScan(existing);
-  }catch(_error){}
+  scan.onclick=()=>{if(scan.getAttribute('aria-busy')!=='true')void followScan(null)};
+  const ui=await import('/dist/peach-ui.js');
+  void ui.watchJob({active,once:true,
+    read:signal=>api('/api/resource-sync/scan',{signal,method:'POST',body:JSON.stringify({background:true,status_only:true})}),
+    render:existing=>{if(existing.status==='running')void followScan(existing)},
+    disconnected:()=>{result.innerHTML=noteHtml('暂时无法读取进度，正在重新连接…',{label:'任务状态'})}});
+  void wireResourceApplyProgress();
+}
+function wireResourceApplyProgress(){
+  return wireOperationProgress({host:$('#resource-sync'),path:'/api/resource-sync/apply',key:'peach-resource-apply-job',title:'正在核对来源、同步并清理缓存…',
+    busy:running=>{const button=$('#resourceApply');if(button){setActionBusy(button,running);if(!running)button.textContent='同步并清理'}},
+    complete:out=>{$('#resourceSyncResult').innerHTML=noteHtml(`已把 ${out.moved_to_trash} 项移入回收站，清理 ${out.cache_removed} 个缓存，释放 ${fmtSize(out.bytes_reclaimed||0)}。`,{label:'完成'})}});
 }
 /* 旧直达 URL 仍然可用，落点跟着面板一起搬到数据管理。 */
 async function openResourceSync(push=true){
@@ -2916,6 +3038,7 @@ function readTasteCache(){
       entry.dashboard&&typeof entry.dashboard==='object'))
   }catch(_error){return new Map()}
 }
+const TASTE_WINDOWS=[['all','全部时间'],['365d','最近一年'],['90d','最近 90 天']];
 let tasteWindow='all',tasteEvidence='browser',tasteDimension={browser:'tags',peach:'tags'};
 let tasteCache=readTasteCache(),tasteRequest=0;
 function tasteCacheSet(window,dashboard){
@@ -3003,8 +3126,7 @@ function renderTaste(d){
     <header class="tastehead"><div class="insightswitch" role="radiogroup" aria-label="口味证据来源">
         <label><input type="radio" name="taste-evidence" value="browser"${tasteEvidence==='browser'?' checked':''}><span>浏览器记录</span></label>
         <label><input type="radio" name="taste-evidence" value="peach"${tasteEvidence==='peach'?' checked':''}><span>Peach 内部</span></label></div>
-      <div class="tasteactions"><select data-taste-window aria-label="分析范围">
-        <option value="all">全部时间</option><option value="365d">最近一年</option><option value="90d">最近 90 天</option></select>
+      <div class="tasteactions">${selectFieldHtml(TASTE_WINDOWS,d.window||tasteWindow,{label:'分析范围',attr:'data-taste-window'})}
         <button data-taste-refresh>${icon('refresh-cw')}读取 Peach 主机</button>
         <button data-taste-import>${icon('upload')}导入历史</button><input data-taste-file type="file" hidden></div></header>
     <div class="tastestate" data-taste-state role="status" aria-live="polite"></div>
@@ -3049,7 +3171,6 @@ function renderTaste(d){
       <div class="insightpanelbody"><div>${sourceRows||emptyStateHtml('database','还没有数据源','导入或读取浏览记录后，这里会列出已采集设备。')}</div></div></section>
   </div>`;
   const root=$('#stats'),stateEl=root.querySelector('[data-taste-state]'),file=root.querySelector('[data-taste-file]');
-  root.querySelector('[data-taste-window]').value=d.window||tasteWindow;
   root.querySelectorAll('input[name="taste-evidence"]').forEach(input=>input.onchange=()=>{
     tasteEvidence=input.value;
     root.querySelectorAll('[data-taste-summary]').forEach(panel=>panel.hidden=panel.dataset.tasteSummary!==tasteEvidence);
@@ -3061,7 +3182,8 @@ function renderTaste(d){
       const selected=tab===button;tab.setAttribute('aria-selected',String(selected));tab.tabIndex=selected?0:-1});
     root.querySelectorAll(`[data-taste-dimension-panel^="${source}:"]`).forEach(panel=>panel.hidden=panel.dataset.tasteDimensionPanel!==button.dataset.tasteDimension)
   });
-  root.querySelector('[data-taste-window]').onchange=e=>{tasteWindow=e.target.value;openTaste(false)};
+  const tasteWindowField=wireSelectField(root.querySelector('[data-taste-window]'));
+  tasteWindowField.addEventListener('change',()=>{tasteWindow=tasteWindowField.value;openTaste(false)});
   /* 总结里的下一步动作按路径走，派发仍旧交给 ROUTES：在这里比对一遍路径字符串，
      就又多出一处会和那张表不一致的知识。 */
   root.querySelectorAll('[data-taste-route]').forEach(button=>button.onclick=()=>{
@@ -3071,10 +3193,12 @@ function renderTaste(d){
     setActionBusy(button);
     button.innerHTML=`${spinnerHtml('正在读取')}<span>读取中…</span>`;
     stateEl.textContent='';
-    try{const result=await api('/api/taste/refresh',{method:'POST',body:JSON.stringify({window:tasteWindow})});
-      tasteCacheSet(tasteWindow,result.dashboard);renderTaste(result.dashboard);actionReceipt('已更新口味分析')}
+    try{const result=await api('/api/taste/refresh',{method:'POST',body:JSON.stringify({window:tasteWindow,background:true})});
+      sessionStorage.setItem('peach-taste-job',result.job_id);
+      if(button.isConnected)void wireTasteProgress()}
     catch(error){stateEl.textContent=error.message||'读取失败';setActionBusy(button,false);
-      button.innerHTML=oldButton}};
+      button.innerHTML=oldButton;if(button.isConnected)void wireTasteProgress()}};
+  void wireTasteProgress();
   root.querySelector('[data-taste-import]').onclick=()=>file.click();
   file.onchange=async()=>{const selected=file.files[0];if(!selected)return;stateEl.textContent=`正在导入 ${selected.name}…`;
     try{const response=await fetch('/api/taste/import',{method:'POST',headers:{'Content-Type':'application/octet-stream','X-Peach-Filename':encodeURIComponent(selected.name)},body:selected});
@@ -3229,6 +3353,11 @@ async function openDataCleanup(push=true){
     .map(([key,label])=>`${esc(label)} ${Number(junkCounts[key]).toLocaleString()}`),
     ...(Number(junk.dismissed_total)>0?[`已忽略 ${Number(junk.dismissed_total).toLocaleString()}`]:[])].join(' · ');
   $('#stats').innerHTML=`<div class="cleanuppage"><div class="cleanupgrid">
+    <section class="cleanupfieldset" data-geist-fieldset aria-labelledby="cleanupScrapingTitle">
+      <div class="geist-fieldset-content">${fieldsetTitle('cleanupScrapingTitle','采集来源')}
+        <p>下载高清封面，设置代理和 Cookie。</p></div>
+      <footer class="geist-fieldset-footer" data-geist-fieldset-footer><button type="button" data-cleanup-open="scraping">设置采集来源</button></footer>
+    </section>
     <section class="cleanupfieldset" data-geist-fieldset aria-labelledby="cleanupJunkTitle">
       <div class="geist-fieldset-content">${fieldsetTitle('cleanupJunkTitle','垃圾文件')}
         <strong>${Number(junk.pending_total||0).toLocaleString()} 个待判断</strong>
@@ -3260,6 +3389,7 @@ async function openDataCleanup(push=true){
   ${linkManagerMarkup()}
   ${resourceSyncMarkup()}</div>`;
   $('#stats').querySelector('[data-cleanup-open="junk"]').onclick=()=>openManage('ads');
+  $('#stats').querySelector('[data-cleanup-open="scraping"]').onclick=()=>openScraping();
   $('#stats').querySelector('[data-cleanup-open="duplicates"]').onclick=()=>openDuplicates();
   $('#stats').querySelectorAll('[data-cleanup-go]').forEach(button=>
     button.onclick=()=>openManage(button.dataset.cleanupGo));
@@ -3572,6 +3702,29 @@ async function openQualityGoals(push=true){
   await ui.mountIsland('quality-goals',$('#stats'),props,{isCurrent:()=>surfaceCurrent(surface)});
   if(surfaceCurrent(surface))window.scrollTo({top:0,behavior:'smooth'});
 }
+/* 配置页（这台电脑的媒体文件夹与端口）同样是 island。它只在运行 Peach 的这台电脑上
+   有意义：服务端按回环地址与独立包两道门放行，手机上的管理菜单也不列它
+   （见 runtimeConfigurable）。保存成功的回执由遗留层的 Toast 发，island 只管表单。 */
+async function openConfiguration(push=true){
+  releaseHoverPreviews();disposeStage(false);enterManagementSurface();
+  if(push)route('/configuration');
+  const surface=claimSurface('/configuration');
+  showManagementBody({placeholder:managementPlaceholder('/configuration')});
+  const ui=await import('/dist/peach-ui.js');
+  const props={receipt:message=>actionReceipt(message)};
+  await ui.mountIsland('configuration',$('#stats'),props,{isCurrent:()=>surfaceCurrent(surface)});
+  if(surfaceCurrent(surface))window.scrollTo({top:0,behavior:'smooth'});
+}
+
+async function openScraping(push=true){
+  releaseHoverPreviews();disposeStage(false);enterManagementSurface();
+  if(push)route('/scraping');
+  const surface=claimSurface('/scraping');
+  showManagementBody({placeholder:pageSkeletonHtml('正在读取采集来源',{cards:true})});
+  $('#manageTitle').textContent='采集来源';
+  const ui=await import('/dist/peach-ui.js');
+  await ui.mountIsland('scraping',$('#stats'),{toast},{isCurrent:()=>surfaceCurrent(surface)});
+}
 
 /* ── 在线追更 ──
    两个页面，因为是两件事：
@@ -3854,9 +4007,10 @@ async function followItemById(id){
 async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=false){
   releaseHoverPreviews();
   const entering=!location.pathname.startsWith('/follow/item/');
-  if(push&&entering)followDetailReturnPath=location.pathname+location.search;
+  if(push&&entering&&!preserveReturn)followDetailReturnPath=location.pathname+location.search;
   if(!push&&!preserveReturn)followDetailReturnPath='/follow';
-  const item=await followItemById(+id);if(!item)return;
+  const surface=surfaceToken(surfacePath());
+  const item=await followItemById(+id);if(!item||!surfaceCurrent(surface))return;
   const group=followGroupByItemId.get(item.id);
   const embedded=item.media_items||[];
   const preferredKind=followMediaView==='images'?'image':'video';
@@ -3871,6 +4025,7 @@ async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=fals
   const collection=!embedded.length&&group&&followVideoItems(group).length>1?group:null;
   disposeStage(false);
   if(push)route(`/follow/item/${item.id}`);
+  renderFollowDrawer([item]);
   const source=(followData?.sources||[]).find(row=>row.id===item.source_id);
   const authorSources=(followData?.sources||[]).filter(row=>
     source?.author_key&&row.author_key===source.author_key);
@@ -3878,7 +4033,7 @@ async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=fals
   const src=item.playable?`/follow-stream?id=${item.id}${selectedMedia?`&media=${selectedMedia.index}`:''}`:'';
   const selectedKind=selectedMedia?.media_kind||item.media_kind;
   const media=item.playable&&selectedKind==='video'
-    ?`<video class="video-js vjs-big-play-centered" controls playsinline preload="metadata"></video>`
+    ?`<video class="video-js vjs-big-play-centered" controls playsinline preload="metadata"${item.thumb_url?` poster="${esc(item.thumb_url)}"`:''}></video>`
     :item.playable&&selectedKind==='image'
       ?`<img class="followdetailposter" src="${src}" alt="${esc(item.title)}">`
       :item.thumb_url
@@ -3915,6 +4070,8 @@ async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=fals
     last.after($('#stage'));
   }else if(followList){
     followList.before($('#stage'));
+  }else{
+    placeItemDetail(detailOriginAnchor,detailOriginAbove);
   }
   $('#stage').hidden=false;document.body.classList.add('detail-open');
   $('#stage').innerHTML=`<div class="sgrid followdetailgrid${collection||embeddedQueue?' mixgrid':''}">
@@ -3946,12 +4103,13 @@ async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=fals
   const closeDetail=async()=>{
     disposeStage(false);
     route(followDetailReturnPath||'/follow');
+    if(location.pathname!=='/follow'){await restoreRoute();return}
     if(followData)renderFollow();else await openFollow(false);
   };
   $('#closeStage').onclick=closeDetail;
   $('#stage').querySelectorAll('[data-follow-queue-close]').forEach(button=>button.onclick=closeDetail);
   $('#stage').querySelectorAll('[data-follow-queue-item]').forEach(button=>button.onclick=()=>
-    openFollowDetail(+button.dataset.followQueueItem,true));
+    openFollowDetail(+button.dataset.followQueueItem,true,null,true));
   $('#stage').querySelectorAll('[data-follow-media-item]').forEach(button=>button.onclick=()=>
     openFollowDetail(+(button.dataset.followMediaOwner||item.id),false,
       +button.dataset.followMediaItem,true));
@@ -4162,8 +4320,8 @@ function followCheckFailNote(report){
       .filter(Boolean).join(' '))}：没有更多历史内容</p>`).join('')}</div>${dismiss}</div>`:'';
   const errors=failed.length||evidence.length?`<div class="geist-note geist-note-error fcheckreport" role="alert">${icon('alert')}<div>
     ${failed.length?`<p><b>${failed.length} 个来源检查失败</b></p>`:''}
-    ${failed.map(row=>`<p class="fcheckfail">${esc([row.provider_label||row.provider,row.ref]
-      .filter(Boolean).join(' '))}${row.provider?'：':''}${esc(row.error||'未说明原因')}</p>`).join('')}
+    ${failed.map(row=>`<p class="fcheckfail"><strong>${esc(row.provider_label||row.provider||'')}</strong>
+      <strong>${esc(row.author||row.label||row.ref||'')}</strong>${row.provider?'：':''}${esc(row.error||'未说明原因')}</p>`).join('')}
     ${evidence.length?`<p class="fchecknote">候选已入库，但这一次的原始响应没有留档：${
       esc(evidence[0].evidence_error)}</p>`:''}
   </div>${dismiss}</div>`:'';
@@ -4249,6 +4407,7 @@ function renderFollow(){
     mediaCounts[kind==='image'?'images':'videos']++));
   const wantedKind=followMediaView==='images'?'image':'video';
   const visible=groups.filter(group=>followMediaKinds(group).has(wantedKind));
+  renderFollowDrawer(visible.flatMap(group=>followCollectionItems(group)));
   const providerPills=[...providers].map(([key,label])=>
     `<button class="pill sourcepill" data-follow-provider="${esc(key)}" aria-pressed="${key===followProvider}"
       title="${esc(label)}" aria-label="来源：${esc(label)}">${sourceIcon(key)}</button>`).join('');
@@ -4285,6 +4444,7 @@ function renderFollow(){
   wireLoadMore(more,()=>loadMoreFollow(more));
   wireFollowItems();
   wireFollowOlder();
+  void wireFollowProgress();
   wireDrag($('#stats').querySelector('.followauthors'));
   wireDrag($('#stats').querySelector('.followfilters'));
   paintSelection();
@@ -4329,6 +4489,62 @@ function followBackfillState(sources){
 /* 一次只往回一页。追更的常规检查永远只看第一页——每次都从头翻一遍站点既慢又没必要；
    但那也意味着每个来源只有第一页那点内容，用户问「怎么这么少」就是这个原因。
    所以往回抓是一个独立的、显式的动作，点一次走一页，不自动、不连翻。 */
+async function wireFollowProgress(){
+  const host=$('#stats').querySelector('.followmanage')||$('#stats'),surface=surfaceToken(surfacePath());
+  host.querySelector('[data-follow-progress]')?.remove();
+  const marker=document.createElement('div');marker.dataset.followProgress='';host.prepend(marker);
+  const ui=await import('/dist/peach-ui.js');
+  if(!surfaceCurrent(surface)||!marker.isConnected)return;
+  ui.followJobProgress({host:marker,active:()=>surfaceCurrent(surface),
+    read:signal=>api('/api/follow/check',{signal}),
+    busy:running=>{followBusy=running;
+      host.querySelectorAll('[data-follow-check],[data-follow-older]').forEach(button=>setActionBusy(button,running))},
+    complete:report=>{followCheckReport=report.status==='failed'
+      ?{results:[{ok:false,error:report.error}]}:report;
+      followCheckToast(followCheckReport);
+      if(surfaceCurrent(surface))void refreshFollowSurface(surface)},
+    note:text=>noteHtml(text,{label:'任务状态'}),loading:text=>loadingDotsHtml(text),
+    container:content=>`<section class="followtask" data-geist-fieldset aria-label="检查更新进度"><div class="geist-fieldset-content">${content}</div></section>`,
+    progress:(value,max)=>progressHtml(`已完成 ${value}/${max} 个来源`,value,max)});
+}
+async function refreshFollowSurface(surface){
+  try{
+    const [data,credentials]=await Promise.all([
+      surfaceApi(surface,surface.path==='/follow-manage'?'/api/follow?limit=1':followPageUrl(0)),
+      surfaceApi(surface,'/api/follow/credentials')]);
+    if(!surfaceCurrent(surface))return;
+    followData=data;
+    if(surface.path==='/follow-manage')renderFollowManage(credentials);
+    else renderFollow();
+  }catch(error){if(surfaceCurrent(surface))toast(error.message,{warn:true})}
+}
+async function wireOperationProgress({host,path,key,title,busy,complete}){
+  if(!host)return;
+  host.querySelector('[data-operation-progress]')?.remove();
+  const marker=document.createElement('div');marker.dataset.operationProgress='';host.append(marker);
+  const surface=surfaceToken(surfacePath()),ui=await import('/dist/peach-ui.js');
+  if(!surfaceCurrent(surface)||!marker.isConnected)return;
+  ui.followJobProgress({host:marker,active:()=>surfaceCurrent(surface),read:signal=>api(path,{signal}),
+    storageKey:key,title,busy,watchIdle:false,complete:report=>{
+      if(report.status==='failed'){marker.innerHTML=noteHtml(report.error||'任务失败',{variant:'error',label:'任务失败'});return}
+      complete(report)},note:text=>noteHtml(text,{label:'任务状态'}),
+    loading:text=>loadingDotsHtml(text),progress:()=>''});
+}
+function wireTasteProgress(){
+  const button=$('#stats').querySelector('[data-taste-refresh]');
+  if(!button)return;
+  return wireOperationProgress({host:$('#stats').querySelector('[data-taste-state]'),
+    path:'/api/taste/refresh',key:'peach-taste-job',title:'正在读取浏览记录并更新口味分析…',
+    busy:running=>{setActionBusy(button,running);button.innerHTML=`${icon('refresh-cw')}读取 Peach 主机`},
+    complete:()=>{tasteCache.clear();void openTaste(false);actionReceipt('已更新口味分析')}});
+}
+function wireResolveProgress(){
+  return wireOperationProgress({host:$('#stats').querySelector('[data-follow-add-state]'),
+    path:'/api/follow/resolve',key:'peach-resolve-job',title:'正在查找关注来源…',
+    busy:running=>{const form=$('#followAdd');
+      if(form){form.dataset.busy=String(running);form.setAttribute('aria-busy',String(running))}},
+    complete:report=>renderFollowPicks(report.results||[])});
+}
 function wireFollowOlder(){
   const button=$('#stats').querySelector('[data-follow-older]');
   if(!button)return;
@@ -4337,15 +4553,15 @@ function wireFollowOlder(){
     followBusy=true;setActionBusy(button);
     button.innerHTML=`${spinnerHtml('抓取中')}<span>抓取中…</span>`;
     try{
-      followCheckReport=await api('/api/follow/check',
-        {method:'POST',body:JSON.stringify({older:true})});
-      followCheckToast(followCheckReport);
-      await openFollow(false);
+      const started=await api('/api/follow/check',
+        {method:'POST',body:JSON.stringify({older:true,background:true})});
+      sessionStorage.setItem('peach-follow-job',started.job_id);
+      if(button.isConnected)void wireFollowProgress();
     }catch(error){
       followCheckReport={results:[{ok:false,error:error.message}]};
       followCheckToast(followCheckReport);
       await openFollow(false);
-    }finally{followBusy=false;setActionBusy(button,false)}
+    }finally{if(button.isConnected){followBusy=false;setActionBusy(button,false)}}
   };
 }
 
@@ -4482,6 +4698,8 @@ function followAuthorBlock(group){
   return `<div class="fauthor${bad?' bad':''}">
     <div class="fauthorhead">${followAuthorAvatar(group)}
       <b>${esc(name)}</b>
+      <button type="button" class="frowicon" data-follow-check="" data-follow-sources="${group.filter(s=>s.enabled).map(s=>s.id).join(',')}"
+        ${group.some(s=>s.enabled)?'':'disabled'} title="检查此作者" aria-label="检查 ${esc(name)} 的全部来源">${icon('refresh-cw')}</button>
       <span class="fmeta"${group.length>1?` title="${group.length} 个来源"`:''}>${group.length>1
         ? group.map(source=>sourceIcon(source.provider)).join('')
         : sourceIcon(group[0].provider)+esc(group[0].provider_label)}</span>
@@ -4648,12 +4866,8 @@ function renderFollowManage(credentials){
         <div class="fsechead"><h3>关注列表</h3>
           <span class="fmeta">${sources.length} 个来源${
             counts.new?` · <b>${counts.new}</b> 条未看`:''}</span>
-          <label class="fmanagesort">${icon('sort')}<select data-follow-sort aria-label="关注列表排序">
-            <option value="checked"${followManageSort==='checked'?' selected':''}>检查时间</option>
-            <option value="added"${followManageSort==='added'?' selected':''}>添加时间</option>
-            <option value="name"${followManageSort==='name'?' selected':''}>作者名称</option>
-            <option value="sources"${followManageSort==='sources'?' selected':''}>来源数量</option>
-          </select></label>
+          <span class="fmanagesort">${icon('sort')}${selectFieldHtml(FOLLOW_SORT_OPTIONS,followManageSort,
+            {label:'关注列表排序',attr:'data-follow-sort'})}</span>
           <button class="fbtn fmanagedir" type="button" data-follow-dir aria-label="${
             followSortLabel()}">${icon(followManageDir==='asc'?'arrow-up':'arrow-down')}</button>
           ${followLayoutButtons()}
@@ -4661,7 +4875,6 @@ function renderFollowManage(credentials){
             icon('refresh-cw')}检查全部</button>
           <button class="fbtn" data-follow-view>${icon('rss')}去看更新</button></div>
         ${followCheckReport?followCheckFailNote(followCheckReport):''}
-        ${broken.length?noteHtml(`${broken.length} 个来源上次检查失败，原因见对应那一行。`,{variant:'error'}):''}
         ${sources.length?`<div class="frows fsources" data-layout="${followListLayout()}">${
           followAuthorGroups(sources).map(followAuthorBlock).join('')}</div>
           ${counts.new?`<div class="fsecfoot"><p class="fnote fbulkrow"><span class="fbulkcounts">未看 ${counts.new} · 已看 ${counts.seen||0}
@@ -4682,6 +4895,7 @@ function renderFollowManage(credentials){
       </section>
     </div></div>`;
   wireFollowManage();
+  void wireFollowProgress();
   if(locked)$('#stats').querySelectorAll(
     '#followAdd input,#followAdd button,[data-follow-remove],[data-follow-check],'+
     '[data-follow-enabled],'+
@@ -4700,7 +4914,10 @@ function routeFollowManageSort(){
   if(followManageDir!==(FOLLOW_SORT_DEFAULT_DIR[followManageSort]||'desc'))params.set('dir',followManageDir);
   const query=params.toString();
   route('/follow-manage'+(query?'?'+query:''));
-  openFollowManage(false);
+  // 排序是拿手里这份 followData 重排，不是换一批数据，所以不走整页那条路径：那条会先把
+  // 整页换成骨架、再把三个接口重取一遍、最后滚回顶部，而屏幕上真正变的只有下面那份
+  // 关注列表。直接重画，页面不闪、位置不动。
+  renderFollowManage(followCredentials||{});
 }
 async function openFollowManage(push=true){
   releaseHoverPreviews();disposeStage(false);enterManagementSurface();
@@ -4718,7 +4935,7 @@ async function openFollowManage(push=true){
     surfaceApi(surface,'/api/follow?limit=1'),surfaceApi(surface,'/api/follow/credentials'),
     surfaceApi(surface,'/healthz')]);
   if(!surfaceCurrent(surface))return;
-  followData=data;followRuntime=runtime;
+  followData=data;followRuntime=runtime;followCredentials=credentials;
   renderFollowManage(credentials);
   window.scrollTo({top:0,behavior:'smooth'});
 }
@@ -4755,14 +4972,15 @@ function wireFollowItems(){
 }
 
 function wireFollowManage(){
+  void wireResolveProgress();
   const root=$('#stats'),form=root.querySelector('#followAdd');
   wireScrollers(root);
-  const sort=root.querySelector('[data-follow-sort]');
-  if(sort)sort.onchange=()=>{
-    followManageSort=sort.value;
+  const sortField=root.querySelector('[data-follow-sort]');
+  if(sortField)wireSelectField(sortField).addEventListener('change',()=>{
+    followManageSort=sortField.value;
     followManageDir=FOLLOW_SORT_DEFAULT_DIR[followManageSort]||'desc';
     routeFollowManageSort();
-  };
+  });
   const dir=root.querySelector('[data-follow-dir]');
   if(dir)dir.onclick=()=>{
     followManageDir=followManageDir==='asc'?'desc':'asc';
@@ -4827,10 +5045,11 @@ function wireFollowManage(){
     state.textContent=byName?'查找中…（首次按名字查要下载创作者索引，可能几十秒）':'识别中…';
     try{
       const result=await api('/api/follow/resolve',{method:'POST',
-        body:JSON.stringify({lines})});
+        body:JSON.stringify({lines,background:true})});
+      sessionStorage.setItem('peach-resolve-job',result.job_id);
       state.textContent='';if(box)box.value='';
-      renderFollowPicks(result.results||[]);
-    }catch(error){state.textContent=error.message||'查找失败'}
+      if(form.isConnected)void wireResolveProgress();
+    }catch(error){state.textContent=error.message||'查找失败';if(form.isConnected)void wireResolveProgress()}
     finally{form.dataset.busy='false';form.removeAttribute('aria-busy');
       if(prefix)prefix.innerHTML=icon('search')}
   };
@@ -4857,7 +5076,7 @@ function wireFollowManage(){
   });
   root.querySelectorAll('[data-follow-check]').forEach(button=>button.onclick=async()=>{
     if(followBusy)return;
-    followBusy=true;const oldTitle=button.title;
+    followBusy=true;let startedJob=false;const oldTitle=button.title;
     const oldAria=button.getAttribute('aria-label');
     const oldButton=button.innerHTML;
     setActionBusy(button);button.title='检查中…';
@@ -4865,14 +5084,13 @@ function wireFollowManage(){
     button.innerHTML=`${spinnerHtml('检查中')}${button.matches('.frowicon')?'':'<span>检查中…</span>'}`;
     try{
       const id=button.dataset.followCheck;
-      const result=await api('/api/follow/check',{method:'POST',
-        body:JSON.stringify(id?{source:+id}:{})});
-      // 一个来源失败不该让其余来源的更新一起消失，所以逐条报，不整体报错。
-      /* 结果先留下再重画，否则整页重绘会把它冲掉，用户只看到一次闪烁。
-         逐条报而不是整体报错：一个来源缺凭据，不该让其余来源的更新一起消失。 */
-      followCheckReport=result;
-      followCheckToast(result);
-      await openFollowManage(false);
+      const sources=button.dataset.followSources?.split(',').filter(Boolean).map(Number);
+      const started=await api('/api/follow/check',{method:'POST',
+        body:JSON.stringify({...(sources?{sources}:id?{source:+id}:{}),background:true})});
+      sessionStorage.setItem('peach-follow-job',started.job_id);
+      followCheckReport=null;root.querySelector('.fcheckreports')?.remove();
+      startedJob=true;
+      if(button.isConnected)void wireFollowProgress();
     }catch(e){
       // 整个请求就失败了（断网、写入端不可达）：同样走那块报告，不弹 alert。
       followCheckReport={results:[{ok:false,error:e.message}]};
@@ -4882,7 +5100,7 @@ function wireFollowManage(){
        if(box)box.outerHTML=note;
       else $('#stats').querySelector('.fsec')?.insertAdjacentHTML('afterbegin',note);
     }
-    finally{followBusy=false;setActionBusy(button,false);button.innerHTML=oldButton;
+    finally{if(button.isConnected)followBusy=startedJob;setActionBusy(button,startedJob);button.innerHTML=oldButton;
       button.title=oldTitle;if(oldAria===null)button.removeAttribute('aria-label');
       else button.setAttribute('aria-label',oldAria)}
   });
@@ -5059,18 +5277,23 @@ function renderFollowPicks(results){
     const state=box.querySelector('[data-pick-state]');
     if(addButton.getAttribute('aria-busy')==='true')return;
     setActionBusy(addButton);
-    let done=0;const failures=[];
+    let done=0;const failures=[],sources=[];
     for(const input of picked){
       state.innerHTML=`${spinnerHtml('添加中')}<span>添加中… ${++done}/${picked.length}</span>`;
       try{
-        await api('/api/follow/source',{method:'POST',body:JSON.stringify(
+        const registered=await api('/api/follow/source',{method:'POST',body:JSON.stringify(
           {action:'add',url:input.value,label:input.dataset.label,
-           author:input.dataset.author})});
+           author:input.dataset.author,defer_check:true})});
+        sources.push(registered.source);
       }catch(error){
         // 一条失败不该把其余的一起丢掉，逐条报。
         failures.push(`${input.dataset.label}：${error.message}`);
       }
     }
+    if(sources.length){try{
+      const started=await api('/api/follow/check',{method:'POST',body:JSON.stringify({sources,background:true})});
+      sessionStorage.setItem('peach-follow-job',started.job_id);
+    }catch(error){failures.push(error.message)}}
     if(failures.length){
       state.textContent=failures.join('；');
       setActionBusy(addButton,false);
@@ -5167,6 +5390,7 @@ function setPeopleIndexLayout(value){
   appSettings.peopleLayout=value;
   saveSettings();
   document.querySelectorAll('.igrid').forEach(grid=>{grid.dataset.layout=peopleIndexLayout()});
+  fitSkeleton($('#index'));
 }
 /* 一格人：圆框或竖幅头像、名字、一个读数。索引页和事务所名册摆的是同一样东西，
    区别只在读数的口径，所以模板只有这一份，版式也由同一个 `.igrid[data-layout]` 管。
@@ -5195,85 +5419,10 @@ function makerModeHtml(kind){
     `<button data-index-kind="${key}" aria-pressed="${kind===key}">${icon(symbol)}${label}</button>`
     ).join('')+`</div>`;
 }
-/* refine=true 表示这一次是筛选框自己重跑，不是一次页面进入：既不铺骨架，也不重画表头。 */
-async function openIndex(kind,q,push=true,refine=false){
-  releaseHoverPreviews();
-  const requestSeq=++indexRequestSeq;
-  document.body.classList.remove('entity-open');
-  delete $('#index').dataset.entityKind;delete $('#index').dataset.entityName;
-  /* 圆头像那一档索引：四种实体同一套版式、同一条取图链，区别只在 kind。 */
-  const people=Object.prototype.hasOwnProperty.call(ROUTE_ENTITIES,kind);
-  const entityKind=ROUTE_ENTITIES[kind]||'performer';
-  const indexLimit=people?120:180;
-  const indexQuery=new URLSearchParams();if(q)indexQuery.set('q',q);
-  const onlineTags=kind==='tags'&&tagIndexScope==='online';
-  if(kind==='tags'){
-    indexQuery.set('view',tagIndexMode);
-    if(onlineTags)indexQuery.set('scope','online');
-    if(tagIndexCategory!=='all')indexQuery.set('category',tagIndexCategory)}
-  if(push)route('/'+kind+(indexQuery.size?'?'+indexQuery:''),!!q);
-  showHomeSurfaces();
-  // 必须在 showHomeSurfaces 之后加：它会清掉这两个类并恢复顶部横条，
-  // 写在前面等于自己加完自己删。
-  document.body.classList.add('index-open');
-  disposeStage(false);
-  /* 骨架只盖真正在等的内容区。筛选重跑时页面已经在这儿了，把骨架铺上去会连筛选框
-     一起吃掉——同步就能给出的控件不进骨架，正在打字的那个更不能。 */
-  if(!refine)showIndexLoading('正在读取'+(INDEX_TITLES[kind]||'标签'));
-  /* 在线标签走关注页那套统计，形状与 /api/index 一致，所以分页、搜索和「载入更多」
-     这三处现成的机制换个地址就能用。 */
-  const indexApi=offset=>onlineTags
-    ?'/api/follow/tags?types=all&limit='+indexLimit+'&offset='+offset+
-      (tagIndexCategory!=='all'?'&type='+encodeURIComponent(tagIndexCategory):'')+
-      (q?'&q='+encodeURIComponent(q):'')
-    :'/api/index?kind='+kind+'&limit='+indexLimit+'&offset='+offset+
-      (q?'&q='+encodeURIComponent(q):'')+
-      (kind==='tags'&&tagIndexCategory!=='all'?'&category='+encodeURIComponent(tagIndexCategory):'');
-  const d=await api(indexApi(0));
-  if(requestSeq!==indexRequestSeq||location.pathname!=='/'+kind)return;
-  $('#index').hidden=false;buildEdge(); $('#grid').innerHTML=''; $('#count').textContent='';
-  $('#loadSentinel').hidden=true; $('#shortsSec').hidden=true;
-  const title=INDEX_TITLES[kind]||'标签';
-  const tagItems=[...d.items];
-  const tagGroups=items=>{
-    const groups={};[...items].sort((a,b)=>a.k.localeCompare(b.k,'zh-CN',{numeric:true,sensitivity:'base'})).forEach(x=>{
-      const ch=tagLabel(x.k).normalize('NFKC').trim().charAt(0).toUpperCase();
-      const key=/[A-Z]/.test(ch)?ch:(/[0-9]/.test(ch)?'#':(/[\u3400-\u9fff]/.test(ch)?'中文':'其他'));
-      (groups[key]||(groups[key]=[])).push(x)});
-    return Object.entries(groups).sort(([a],[b])=>a.localeCompare(b,'zh-CN')).map(([letter,items])=>
-      `<section class="alphagroup"><h3>${letter}</h3><div class="alphalist">${items.map(x=>
-        `<button class="alphatag ${onlineTags?'r34-'+(x.cat||'unknown'):(x.cat||'general')}" data-k="${esc(x.k)}" aria-pressed="${selectedIndexTags.has(x.k)}"><span>${esc(tagLabel(x.k))}</span><span class="n">${x.n.toLocaleString()}</span></button>`).join('')}</div></section>`).join('')};
-  const peopleHtml=items=>items.map(x=>
-    /* 事务所数的是人：它名下那 N 个视频是成员拍的，只报视频数会让「这家有几个人」
-       这个它唯一独有的读数消失。数字带单位，否则 411 读不出是人还是片。 */
-    personCellHtml(x,entityKind,entityKind==='agency'
-      ?`${(x.members||0).toLocaleString()} 人`:x.n.toLocaleString())).join('');
-  const tagHtml=items=>tagIndexMode==='alphabet'?`<div class="alphabet">${tagGroups(items)}</div>`:`<div class="tagwall index-tags">`+items.map(x=>`<button class="tg ${onlineTags?'r34-'+(x.cat||'unknown'):(x.cat||'general')}" data-k="${esc(x.k)}" aria-pressed="${selectedIndexTags.has(x.k)}"
-        >${esc(tagLabel(x.k))}
-        <span class="n">${x.n.toLocaleString()}</span></button>`).join('')+`</div>`;
-  const body=people?`<div class="igrid" data-layout="${peopleIndexLayout()}">${peopleHtml(d.items)}</div>`:tagHtml(tagItems);
-  const categoryOptions=onlineTags?ONLINE_TAG_CATEGORIES:TAG_CATEGORIES;
-  const visibleTagCategories=categoryOptions.filter(([key])=>key==='all'||Number(d.categories?.[key]||0)>0);
-  const categoryFilters=kind==='tags'?`<div class="tagfilters" aria-label="标签类型">${visibleTagCategories.map(([key,label])=>
-    `<button class="${key}" data-tag-category="${key}" aria-pressed="${tagIndexCategory===key}">${label}</button>`).join('')}</div>
-    `:'';
-  /* 多选面板拼的是目录筛选，只在本地范围出现；在线分类来自上游 booru tag_type。 */
-  const filters=categoryFilters+(kind==='tags'&&!onlineTags?`
-    <div class="tagselection" data-tag-selection hidden>
-      <label>${checkboxHtml(`data-tag-match-any ${tagIndexMatch==='any'?'checked':''}`)}<span><b>广泛匹配</b><small>开启后匹配任一所选标签；关闭后必须同时包含全部标签。</small></span></label>
-      <span class="mono" data-tag-selected>已选 0 个标签</span>
-      <button type="button" data-tag-clear>清空</button>
-      <button type="button" class="primary" data-tag-apply disabled>显示结果</button>
-    </div>`:'');
-  const countText=`${tagItems.length}${d.has_more?'+':''} 项`;
-  /* 筛选重跑不重画表头：输入框是同一个节点，焦点、光标位置和中文输入法正在组的字
-     才不会在 300 ms 后被换掉。表头里随查询变的只有计数一处，单独改它。 */
-  if(refine&&$('#iq')){
-    $('#indexCount').textContent=countText;
-    $('#indexFilters').innerHTML=filters;
-    $('#indexBody').innerHTML=body;
-    $('#indexMore').hidden=!d.has_more;
-  }else $('#index').innerHTML=`<div class="ihead">
+function indexHeaderHtml(kind,q,countText){
+  const title=INDEX_TITLES[kind]||'标签',people=kind!=='tags';
+  const onlineTags=tagIndexScope==='online';
+  return `<div class="ihead">
       <h2 class="disp indexheading">${kind==='tags'?icon('tags'):''}${title}</h2>
       <span class="mono" id="indexCount">${countText}</span>
       ${kind==='tags'?`<div class="viewmodes"><button data-tag-scope="local" aria-pressed="${!onlineTags}">${icon('hard-drive')}本地</button><button data-tag-scope="online" aria-pressed="${onlineTags}">${icon('rss')}在线</button></div>
@@ -5281,7 +5430,9 @@ async function openIndex(kind,q,push=true,refine=false){
       ${MAKER_INDEX_KINDS.some(([key])=>key===kind)?makerModeHtml(kind):''}
       ${people?peopleLayoutButtons():''}
       ${searchInputHtml({id:'iq',label:'过滤'+title,value:q||''})}
-    </div><div id="indexFilters">${filters}</div><div id="indexBody">${body}</div><button class="indexmore" id="indexMore" type="button" ${d.has_more?'':'hidden'}>载入更多</button>`;
+    </div>`;
+}
+function wireIndexControls(kind){
   const iq=$('#iq');let it2;
   const refineIndex=()=>{clearTimeout(it2);
     it2=setTimeout(()=>openIndex(kind,iq.value.trim(),true,true),300)};
@@ -5311,6 +5462,103 @@ async function openIndex(kind,q,push=true,refine=false){
     tagIndexMode=b.dataset.tagView;openIndex('tags',$('#iq').value.trim(),true)});
   $('#index').querySelectorAll('[data-tag-category]').forEach(b=>b.onclick=()=>{
     tagIndexCategory=b.dataset.tagCategory;openIndex('tags',$('#iq').value.trim(),true)});
+}
+function showIndexLoading(label,kind='',q=''){
+  $('#stats').hidden=true;$('#index').hidden=false;$('#grid').innerHTML='';$('#combo').innerHTML='';
+  $('#count').textContent='';$('#loadSentinel').hidden=true;
+  const placeholder=kind?indexHeaderHtml(kind,q,'<span class="countskeleton"></span>')+
+    `<div id="indexFilters"></div><div id="indexBody">${indexSkeletonHtml({kind,layout:peopleIndexLayout(),mode:tagIndexMode})}</div><button class="indexmore" id="indexMore" type="button" hidden>载入更多</button>`
+    :pageSkeletonHtml(label,{cards:true});
+  const next=skeletonKeyOf(placeholder);
+  if($('#index').querySelector('[data-skeleton]')?.dataset.skeleton!==next){
+    $('#index').innerHTML=placeholder;fitSkeleton($('#index'));
+  }
+  if(kind)wireIndexControls(kind);
+}
+/* refine=true 表示这一次是筛选框自己重跑，不是一次页面进入：既不铺骨架，也不重画表头。 */
+async function openIndex(kind,q,push=true,refine=false){
+  releaseHoverPreviews();
+  const requestSeq=++indexRequestSeq;
+  document.body.classList.remove('entity-open');
+  delete $('#index').dataset.entityKind;delete $('#index').dataset.entityName;
+  /* 圆头像那一档索引：四种实体同一套版式、同一条取图链，区别只在 kind。 */
+  const people=Object.prototype.hasOwnProperty.call(ROUTE_ENTITIES,kind);
+  const entityKind=ROUTE_ENTITIES[kind]||'performer';
+  const indexLimit=people?120:180;
+  const indexQuery=new URLSearchParams();if(q)indexQuery.set('q',q);
+  const onlineTags=kind==='tags'&&tagIndexScope==='online';
+  if(kind==='tags'){
+    indexQuery.set('view',tagIndexMode);
+    if(onlineTags)indexQuery.set('scope','online');
+    if(tagIndexCategory!=='all')indexQuery.set('category',tagIndexCategory)}
+  if(push)route('/'+kind+(indexQuery.size?'?'+indexQuery:''),!!q);
+  showHomeSurfaces();
+  // 必须在 showHomeSurfaces 之后加：它会清掉这两个类并恢复顶部横条，
+  // 写在前面等于自己加完自己删。
+  document.body.classList.add('index-open');
+  disposeStage(false);
+  /* 骨架只盖真正在等的内容区。筛选重跑时页面已经在这儿了，把骨架铺上去会连筛选框
+     一起吃掉——同步就能给出的控件不进骨架，正在打字的那个更不能。 */
+  if(!refine)showIndexLoading('正在读取'+(INDEX_TITLES[kind]||'标签'),kind,q);
+  /* 在线标签走关注页那套统计，形状与 /api/index 一致，所以分页、搜索和「载入更多」
+     这三处现成的机制换个地址就能用。 */
+  const indexApi=offset=>onlineTags
+    ?'/api/follow/tags?types=all&limit='+indexLimit+'&offset='+offset+
+      (tagIndexCategory!=='all'?'&type='+encodeURIComponent(tagIndexCategory):'')+
+      (q?'&q='+encodeURIComponent(q):'')
+    :'/api/index?kind='+kind+'&limit='+indexLimit+'&offset='+offset+
+      (q?'&q='+encodeURIComponent(q):'')+
+      (kind==='tags'&&tagIndexCategory!=='all'?'&category='+encodeURIComponent(tagIndexCategory):'');
+  const d=await api(indexApi(0));
+  if(requestSeq!==indexRequestSeq||location.pathname!=='/'+kind)return;
+  $('#index').hidden=false;buildEdge(); $('#grid').innerHTML=''; $('#count').textContent='';
+  $('#loadSentinel').hidden=true;
+  const title=INDEX_TITLES[kind]||'标签';
+  const tagItems=[...d.items];
+  const tagGroups=items=>{
+    const groups={};[...items].sort((a,b)=>a.k.localeCompare(b.k,'zh-CN',{numeric:true,sensitivity:'base'})).forEach(x=>{
+      const ch=tagLabel(x.k).normalize('NFKC').trim().charAt(0).toUpperCase();
+      const key=/[A-Z]/.test(ch)?ch:(/[0-9]/.test(ch)?'#':(/[\u3400-\u9fff]/.test(ch)?'中文':'其他'));
+      (groups[key]||(groups[key]=[])).push(x)});
+    return Object.entries(groups).sort(([a],[b])=>a.localeCompare(b,'zh-CN')).map(([letter,items])=>
+      `<section class="alphagroup"><h3>${letter}</h3><div class="alphalist">${items.map(x=>
+        `<button class="alphatag ${onlineTags?'r34-'+(x.cat||'unknown'):(x.cat||'general')}" data-k="${esc(x.k)}" aria-pressed="${selectedIndexTags.has(x.k)}"><span>${esc(tagLabel(x.k))}</span><span class="n">${x.n.toLocaleString()}</span></button>`).join('')}</div></section>`).join('')};
+  const peopleHtml=items=>items.map(x=>
+    /* 事务所数的是人：它名下那 N 个视频是成员拍的，只报视频数会让「这家有几个人」
+       这个它唯一独有的读数消失。数字带单位，否则 411 读不出是人还是片。 */
+    personCellHtml(x,entityKind,entityKind==='agency'
+      ?`${(x.members||0).toLocaleString()} 人`:x.n.toLocaleString())).join('');
+  const tagHtml=items=>tagIndexMode==='alphabet'?`<div class="alphabet">${tagGroups(items)}</div>`:`<div class="tagwall index-tags">`+items.map(x=>`<button class="tg ${onlineTags?'r34-'+(x.cat||'unknown'):(x.cat||'general')}" data-k="${esc(x.k)}" aria-pressed="${selectedIndexTags.has(x.k)}"
+        >${esc(tagLabel(x.k))}
+        <span class="n">${x.n.toLocaleString()}</span></button>`).join('')+`</div>`;
+  /* 公司格和人格在大图版式下要的形状不一样：竖幅是给脸留的，方标进去左右各被裁掉
+     一截。这一格里装的是什么，只有这里知道，所以在这里写进 DOM。 */
+  const cells=entityKind==='studio'||entityKind==='agency'?'company':'people';
+  const body=people?`<div class="igrid" data-cells="${cells}" data-layout="${
+    peopleIndexLayout()}">${peopleHtml(d.items)}</div>`:tagHtml(tagItems);
+  const categoryOptions=onlineTags?ONLINE_TAG_CATEGORIES:TAG_CATEGORIES;
+  const visibleTagCategories=categoryOptions.filter(([key])=>key==='all'||Number(d.categories?.[key]||0)>0);
+  const categoryFilters=kind==='tags'?`<div class="tagfilters" aria-label="标签类型">${visibleTagCategories.map(([key,label])=>
+    `<button class="${key}" data-tag-category="${key}" aria-pressed="${tagIndexCategory===key}">${label}</button>`).join('')}</div>
+    `:'';
+  /* 多选面板拼的是目录筛选，只在本地范围出现；在线分类来自上游 booru tag_type。 */
+  const filters=categoryFilters+(kind==='tags'&&!onlineTags?`
+    <div class="tagselection" data-tag-selection hidden>
+      <label>${checkboxHtml(`data-tag-match-any ${tagIndexMatch==='any'?'checked':''}`)}<span><b>广泛匹配</b><small>开启后匹配任一所选标签；关闭后必须同时包含全部标签。</small></span></label>
+      <span class="mono" data-tag-selected>已选 0 个标签</span>
+      <button type="button" data-tag-clear>清空</button>
+      <button type="button" class="primary" data-tag-apply disabled>显示结果</button>
+    </div>`:'');
+  const countText=`${tagItems.length}${d.has_more?'+':''} 项`;
+  /* 筛选重跑不重画表头：输入框是同一个节点，焦点、光标位置和中文输入法正在组的字
+     才不会在 300 ms 后被换掉。表头里随查询变的只有计数一处，单独改它。 */
+  if($('#indexFilters')){
+    $('#indexCount').textContent=countText;
+    $('#indexFilters').innerHTML=filters;
+    $('#indexBody').innerHTML=body;
+    $('#indexMore').hidden=!d.has_more;
+  }else $('#index').innerHTML=indexHeaderHtml(kind,q,countText)+`<div id="indexFilters">${filters}</div><div id="indexBody">${body}</div><button class="indexmore" id="indexMore" type="button" ${d.has_more?'':'hidden'}>载入更多</button>`;
+  wireIndexControls(kind);
   const wireIndexEntries=root=>root.querySelectorAll('[data-k]').forEach(b=>b.onclick=()=>{
     if(people){openEntity(b.dataset.kind,b.dataset.k);return}
     /* 在线标签只在关注页有意义——它标注的是还没入库的在线更新，拿去筛目录必然
@@ -5874,7 +6122,7 @@ async function openEntity(kind,name,push=true){
     (state.jav==='1'||(items.items||[]).some(item=>item.is_jav));
   document.body.classList.add('entity-open');
   $('#index').hidden=false;$('#grid').innerHTML='';$('#count').textContent='';
-  $('#loadSentinel').hidden=true;$('#shortsSec').hidden=true;
+  $('#loadSentinel').hidden=true;
   /* 大位这条链每一环都先问过再出图：公司取自己的标识（厂牌是 `/logo`，事务所是官网
      圆标），人是实体图→代表作头像，一环都取不到就一个 `<img>` 都不出，首字母垫底直接
      露出来。四个标志（`has_logo`／`has_image`／`has_avatar`／`mark_link_id`）都由
@@ -6002,6 +6250,39 @@ async function openEntity(kind,name,push=true){
 }
 
 let drawerSuppressUntil=0;
+/* 抽屉里所有重画都只写 #drawerScroll：#drawer 本身是定位宿主，覆盖式滚动条的轨道和
+   这层滚动容器都挂在它身上，整块 innerHTML 一换就把 buildBars() 要写的容器连轨道一起
+   抹掉，首页从此停在骨架态。换页面的判据 data-surface 也记在滚动层上：
+   syncSidebarSurface() 认定换了页面就 replaceChildren()，传宿主进去等于把滚动层删掉。 */
+function buildDrawerNavigation(){
+  const scroll=$('#drawerScroll'),key=surfacePath()+location.search;
+  if(!syncSidebarSurface(scroll,key)){
+    scroll.querySelectorAll('[data-nav]').forEach(button=>
+      button.setAttribute('aria-pressed',String(navOn(button.dataset.nav))));
+    return;
+  }
+  scroll.innerHTML=`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+    <b class="disp" style="font-size:15px;letter-spacing:.1em">导航与筛选</b>
+    <button id="drawerClose" class="ib" title="收起" aria-label="收起导航">${icon('x')}</button></div>
+    <div class="dnav">${orderedEdgeIcons().map(([k,label,ic])=>
+      `<button data-nav="${k}" draggable="true" aria-pressed="${navOn(k)}">${icon(ic)}<span>${label}</span></button>`).join('')}</div>`;
+  $('#drawerClose').onclick=()=>openDrawer(false);
+  scroll.querySelectorAll('[data-nav]').forEach(b=>b.onclick=()=>navTo(b.dataset.nav));
+  wireNavigationDrag(scroll.querySelector('.dnav'));
+}
+function renderFollowDrawer(items){
+  buildDrawerNavigation();
+  const scroll=$('#drawerScroll');
+  scroll.querySelectorAll('.sec').forEach(section=>section.remove());
+  const counts=sidebarTagCounts(items.map(item=>({tags:followCardTags(item)})));
+  if(!counts.length)return;
+  scroll.insertAdjacentHTML('beforeend',`<div class="sec cat-online"><h3>内容标签</h3><div class="chips">${
+    counts.map(([tag,n])=>
+      `<button class="chip online" data-follow-drawer-tag="${esc(tag)}" aria-pressed="${followTags.has(tag)}">${esc(tagLabel(tag))}<span class="n">${n}</span></button>`).join('')}</div></div>`);
+  $('#drawer').querySelectorAll('[data-follow-drawer-tag]').forEach(b=>b.onclick=()=>{
+    followTags=new Set([b.dataset.followDrawerTag]);
+    openDrawer(false);route(followViewPath());openFollow(false)});
+}
 function openDrawer(v){$('#drawer').classList.toggle('open',v);$('#scrim').classList.toggle('on',v);
   document.body.classList.toggle('drawer-open',!!v)}
 function closeDrawerAfterNav(){drawerSuppressUntil=Date.now()+650;openDrawer(false)}
@@ -6031,13 +6312,29 @@ const MANAGE_SECTIONS=[
   // `/follow`。两处都叫「关注」时，管理菜单和页标题都在说一个它去不到的地方。
   ['follow','关注管理','rss'],
   ['quality','高清版','sparkles'],
+  // 这台电脑的媒体文件夹与端口，字形是一台电脑；`settings` 归右上角的设置弹层。
+  ['configuration','配置','computer'],
 ];
-/* 管理菜单只留四项。人工复核、回收站、高清版都是「收拾库里已有的东西」，
+/* 管理菜单只留五项。人工复核、回收站、高清版都是「收拾库里已有的东西」，
    和垃圾文件、重复文件、空文件夹是同一件事的不同步骤，统一从数据管理进；
    统计页也因此不再挂链接管理和资源同步这两块跟统计无关的面板。 */
-const MANAGE_MENU_SECTIONS=['stats','taste','cleanup','follow'];
-const manageMenuSections=()=>MANAGE_SECTIONS.filter(([key])=>MANAGE_MENU_SECTIONS.includes(key));
-const OPTIONAL_EDGE_ICONS=MANAGE_SECTIONS.map(([key,label,ic])=>
+const MANAGE_MENU_SECTIONS=['stats','taste','cleanup','follow','configuration'];
+/* 「配置」只对运行 Peach 的这台电脑有意义：服务端按调用方回 `/healthz` 的 `configurable`，
+   手机和另一台电脑的菜单里不列它。第一次画管理条时问一次，答复回来后重画。 */
+let runtimeConfigurable=null;
+function probeConfigurable(){
+  if(runtimeConfigurable!==null)return;
+  runtimeConfigurable=false;
+  api('/healthz').then(runtime=>{
+    runtimeConfigurable=!!runtime.configurable;
+    if(runtimeConfigurable&&manageSection())buildManageBar();
+  }).catch(()=>{});
+}
+const manageMenuSections=()=>MANAGE_SECTIONS.filter(([key])=>MANAGE_MENU_SECTIONS.includes(key)
+  &&(key!=='configuration'||runtimeConfigurable===true));
+/* 配置页绑定这台机器，不进跨机同步的侧栏顺序：钉到手机的侧栏上只会得到一句「请在运行
+   Peach 的电脑上打开」。 */
+const OPTIONAL_EDGE_ICONS=MANAGE_SECTIONS.filter(([key])=>key!=='configuration').map(([key,label,ic])=>
   key==='follow'?['follow-manage',label,ic]
     :key==='cleanup'?['data-cleanup',label,ic]:[key,label,ic]);
 const NAV_CATALOG=[...EDGE_ICONS,...OPTIONAL_EDGE_ICONS];
@@ -6197,6 +6494,7 @@ function manageSection(){
 function buildManageBar(){
   const current=manageSection(),bar=$('#managebar');
   bar.hidden=!current;
+  probeConfigurable();
   // 管理区是行政界面，不该顶着首页的人物/厂牌横条和标签筛选。
   // 隐藏 tagbar 的同时同步 count 栏的吸顶偏移：它默认按「顶栏+筛选条」留位，
   // 筛选条不在时那个偏移会留出一条 58px 的缝，滚动内容从缝里穿出来。
@@ -6228,6 +6526,7 @@ const MANAGE_CRUMB_PAGES={
   '/review':'人工复核',
   '/trash':'回收站',
   '/quality-goals':'高清版',
+  '/scraping':'采集来源',
 };
 function paintManageTitle(){
   const current=manageSection(),el=$('#manageTitle');
@@ -6237,6 +6536,7 @@ function paintManageTitle(){
      重复文件正文都是全宽网格，跟着居中就是标题在宽屏上凭空左缩一截、跟内容对不齐。 */
   document.body.classList.toggle('cleanup-layout',current==='cleanup'&&decodeURIComponent(location.pathname)==='/data-cleanup');
   document.body.classList.toggle('follow-manage-layout',decodeURIComponent(location.pathname)==='/follow-manage');
+  document.body.classList.toggle('configuration-layout',current==='configuration');
   const entry=MANAGE_SECTIONS.find(([k])=>k===current);
   el.hidden=!entry;
   // 数据管理之下按路径再分一层（MANAGE_CRUMB_PAGES）：垃圾文件/重复文件的
@@ -6433,6 +6733,7 @@ function syncHeaderActions(){
   if(!canSelect&&selectMode)setSelectMode(false,true);
 }
 function buildEdge(){
+  buildDrawerNavigation();
   $('#edge').innerHTML=orderedEdgeIcons().map(([k,t,ic])=>
     `<button data-nav="${k}" draggable="true" title="${t}" aria-pressed="${navOn(k)}">
       ${icon(ic)}</button>`).join('')
@@ -6511,10 +6812,10 @@ async function load(reset){
     const html=batch.map(junkCardHtml).join('');
     if(reset)releaseHoverPreviews($('#grid'));
     if(reset&&!batch.length)$('#grid').innerHTML=emptyState('check',junkView==='dismissed'?'没有已排除的文件':'没有待判断的垃圾文件',junkView==='dismissed'?'点“不是垃圾”的资源会保留在这里，可随时重新判断。':'当前分类没有候选文件。');
-    else if(reset)$('#grid').innerHTML=html;else $('#grid').insertAdjacentHTML('beforeend',html);
+    else if(reset)setGridCards(html);else appendGridCards(html);
     renderJunkNavigation(adsBatch);
-    $('#loadSentinel').hidden=$('#grid').children.length>=adsBatch.items.length;
-    $('#shortsSec').hidden=true;wireJunkCards($('#grid'));paintSelection();return;
+    $('#loadSentinel').hidden=$('#grid').querySelectorAll('.junkcard').length>=adsBatch.items.length;
+    wireJunkCards($('#grid'));paintSelection();return;
   }
   adsBatch=null;
   const p=new URLSearchParams(Object.entries(state).filter(([,v])=>v));
@@ -6537,15 +6838,18 @@ async function load(reset){
     $('#grid').innerHTML=emptyState('trash','回收站是空的','删掉的内容会先到这里；确认不再需要后再清空。');
   else if(reset&&!d.items.length)
     $('#grid').innerHTML=emptyState('search','没有符合条件的作品','调整筛选或搜索条件后再试。');
-  else if(reset)$('#grid').innerHTML=html;
-  else $('#grid').insertAdjacentHTML('beforeend',html);
+  /* 接下来这一页新增在当前这段里的起点：竖屏带的落点要落在新增的那几行之间，
+     不能又插回已经看过的上半屏。 */
+  const addedFrom=reset?0:[...lastGridSection().children].filter(x=>x.matches('.card[data-id]')).length;
+  if(reset)setGridCards(html);
+  else appendGridCards(html);
   renderCount();
   $('#loadSentinel').hidden=reset?d.items.length>=total:!d.has_more;
   wireCards($('#grid'),state.state==='trash'?openResourceCard:undefined);
   if(state.state==='trash')wireResourceCardActions($('#grid'));
   wireMixCards($('#grid'));
   paintSelection();
-  if(reset)loadShorts(requestSeq,surface);
+  loadShorts(requestSeq,surface,{reset,addedFrom});
   }finally{if(!reset&&requestSeq===loadRequestSeq)listLoading=false}
 }
 const loadObserver=new IntersectionObserver(entries=>{
@@ -6652,33 +6956,51 @@ $('#q').onkeydown=e=>{
 };
 $('#q').addEventListener('focus',()=>{Promise.all([loadSearchHistory(),loadSearchPool()]).then(renderSearchMenu)});
 
-const SHORTS_ROW_OFFSET=2;   // 竖屏条插在第几行之后，0 表示置顶
-async function loadShorts(requestSeq=loadRequestSeq,surface=surfaceToken(surfacePath())){
-  // JAV 模式不插竖屏条：番号发行物本身是横版，竖屏是另一类内容。
+/* 竖屏带每接一页出现一条，位置在这一页新增的那几行里随机取一个行边界。
+   固定第几行的写法从第二屏起就成了可预期的栏目，而这条带子的作用正是打断节奏——
+   位置可预期，节奏就不再被打断。每条带子取不同的一批竖屏，翻下去不会反复看到同 18 个。 */
+const SHORTS_BATCH=18;
+let shortsOffset=0;
+async function loadShorts(requestSeq,surface,{reset=false,addedFrom=0}={}){
+  // JAV 模式不插竖屏带：番号发行物本身是横版，竖屏是另一类内容。
   // 主列表的 exclude_vertical 管不到这条——它是独立请求、独立插入的。
   if(!isCatalogPath(decodeURIComponent(location.pathname))||javActive()||state.orient==='竖屏'
-     ||state.state==='ads'||state.state==='trash'){
-    $('#shortsSec').hidden=true;$('#grid').querySelector('#shortsInline')?.remove();return}
+     ||state.state==='ads'||state.state==='trash')return;
+  if(reset)shortsOffset=0;
   const p=new URLSearchParams(Object.entries(state).filter(([,v])=>v));
-  /* 排序跟着主列表走，不再写死 sort=new；换一批时竖屏条也要一起换。 */
-  p.set('orient','竖屏');p.set('limit',18);p.set('offset',0);
+  /* 排序跟着主列表走，不再写死 sort=new；换一批时竖屏带也要一起换。 */
+  p.set('orient','竖屏');p.set('limit',SHORTS_BATCH);p.set('offset',shortsOffset);
   const d=await surfaceApi(surface,'/api/items?'+p);
   if(requestSeq!==loadRequestSeq||!surfaceCurrent(surface))return;
-  if(!d.items.length){$('#shortsSec').hidden=true;return}
+  if(!d.items.length){shortsOffset=0;return}
   cache(d.items);
-  releaseHoverPreviews($('#srow'));
-  const grid=$('#grid');grid.querySelector('#shortsInline')?.remove();
-  /* 竖屏条整行占位（grid-column:1/-1），插在行边界上才不会把上一行截断留空。
-     余位不另拉一批横屏视频来补：那批 id 不在分页序列里，翻下一页必然重复，
-     而且被当成 scard 渲染会把横屏压成竖框。 */
-  const columns=Math.max(1,getComputedStyle(grid).gridTemplateColumns.split(' ').length);
-  const cards=[...grid.children].filter(x=>x.matches('.card[data-id]'));
-  const anchor=cards[Math.min(cards.length,columns*SHORTS_ROW_OFFSET)]||null;
-   const inline=`<section class="shorts-inline" id="shortsInline"><h2 class="disp">竖屏 <span class="mono shortscount">${d.total.toLocaleString()} 个</span><button class="shorts-enter" type="button">${icon('play')}<span>进入沉浸模式</span></button></h2><div class="srow">${d.items.map(it=>cardHtml(it,'scard')).join('')}</div></section>`;
-  if(anchor)anchor.insertAdjacentHTML('beforebegin',inline); else grid.insertAdjacentHTML('beforeend',inline);
-  const section=grid.querySelector('#shortsInline');
-  section.querySelector('.shorts-enter').onclick=()=>openTok();
-  wireCards(section.querySelector('.srow'),openTok); wireDrag(section.querySelector('.srow'));
+  const html=`<section class="shorts-inline"><h2 class="disp">竖屏 <span class="mono shortscount">${
+    d.total.toLocaleString()} 个</span><button class="shorts-enter" type="button">${
+    icon('play')}<span>进入沉浸模式</span></button></h2><div class="srow">${
+    d.items.map(it=>cardHtml(it,'scard')).join('')}</div></section>`;
+  const strip=splitGridForShorts(html,addedFrom);
+  if(!strip)return;
+  shortsOffset=d.has_more===false?0:shortsOffset+SHORTS_BATCH;
+  strip.querySelector('.shorts-enter').onclick=()=>openTok();
+  wireCards(strip.querySelector('.srow'),openTok); wireDrag(strip.querySelector('.srow'));
+}
+/* 从行边界剪开当前这段视频：剪点之后的卡整段搬进新的 `.grid`，竖屏带插在两段之间。
+   只在行边界上剪，否则上一行会被截断留下一段空白；两端各留至少一行，
+   剪在头尾就成了「置顶」或「垫底」，不是穿插。 */
+function splitGridForShorts(html,addedFrom){
+  const section=lastGridSection();
+  const cards=[...section.children].filter(x=>x.matches('.card[data-id]'));
+  const columns=Math.max(1,getComputedStyle(section).gridTemplateColumns.split(' ').length);
+  const boundaries=[];
+  for(let i=Math.max(columns,Math.ceil(Math.max(0,addedFrom)/columns)*columns);i<cards.length;i+=columns)
+    boundaries.push(i);
+  if(!boundaries.length)return null;
+  const at=cards[boundaries[Math.floor(Math.random()*boundaries.length)]];
+  const tail=document.createElement('div');tail.className='grid';
+  for(let node=at;node;){const move=node;node=node.nextElementSibling;tail.append(move)}
+  section.after(tail);
+  tail.insertAdjacentHTML('beforebegin',html);
+  return tail.previousElementSibling;
 }
 
 /* ── 就地展开播放 ── */
@@ -6802,6 +7124,11 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
   const it=await surfaceApi(detailSurface,'/api/item?id='+id);
   if(!surfaceCurrent(detailSurface))return;
   if(it.error)return;
+  if(it.location==='online'&&it.follow_item_id){
+    followDetailReturnPath=detailReturnPath||'/';
+    await openFollowDetail(it.follow_item_id,false,null,true);
+    return;
+  }
   /* 卷标只有分卷队列知道：`/api/item` 是单条口径，它答不出「这是第几卷」。不补的话
      标题栏里的卷号在深链进来和点开队列另一条时都不出现。 */
   if(queueContext?.kind==='parts')
@@ -6809,12 +7136,12 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
   current=it; CACHE[it.id]=it;
   barsContext={type:'item',id:it.id,filters:returnBars?.type==='entity'
     ? {...returnBars.filters}:emptyEntityFilters()};
-  const gated=it.cost==='metered';
+  const gated=it.cost==='metered'&&it.location!=='online';
   const offline=sourceOffline(it.location);
   const online=it.location==='online';
   /* 保存过的在线资产照常播；只有反查不到关注条目时才拦下来说明原因。 */
   const onlineGated=online&&!it.follow_item_id;
-  const who=it.creator||it.code||it.studio||'未归属';
+  const who=(it.performers||[])[0]||it.creator||'未归属';
   const refs=it.entity_refs||{},studioRef=(refs.studio||[])[0];
   // 共演作品的女优逐行列出，每行带自己的头像；标签只写在第一行，其余留空保持对齐。
   const performerRefs=(refs.performer||[]).length
@@ -6902,7 +7229,7 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
         <div class="stitle">${javTitleHtml(it)}${partLabelBadge(it,queueContext)}${it.location==='online'?'':`<span class="srctools detailtitletools">${sourceToolButtons(it.id)}</span>`}</div></div>
       ${it.location==='online'?'':`<span class="srcstate detailtitlestate" aria-live="polite"></span>`}
       <div class="smeta mono">
-        <span class="detailmetaitem">${icon('monitor')}<span>${it.width||'?'}×${it.height||'?'}</span></span>
+        <span class="detailmetaitem">${icon('ratio')}<span>${it.width||'?'}×${it.height||'?'}</span></span>
         <span class="detailmetaitem">${icon('hard-drive')}<span>${fmtSize(it.size||0)}</span></span>
         ${it.release_date?`<span class="detailmetaitem">${icon('calendar')}<span>${esc(it.release_date)}</span></span>`:''}</div>
       <div class="detailidentity">${identityRows||`<div class="identityrow"><span></span><span class="ilabel">归属</span><span>${esc(who)}</span></div>`}</div>
@@ -7358,9 +7685,9 @@ async function tokShow(dir){
     const cast=full.performers||[];
     const who=cast.length
       ? cast.slice(0,3).join('、')+(cast.length>3?` 等 ${cast.length} 人`:'')
-      : (full.creator||it.code||'未归属');
+      : (full.creator||'未归属');
     const ownerKind=cast.length?'performer':(full.creator?'creator':'');
-    const ownerName=cast.length?cast[0]:(full.creator||it.code||'未归属');
+    const ownerName=cast.length?cast[0]:(full.creator||'未归属');
     const ownerRef=ownerKind?(full.entity_refs?.[ownerKind]?.[0]||null):null;
     $('#tokAvatar').innerHTML=avatarInner(ownerName,ownerRef,REP[ownerName],ownerKind||'performer');
     $('#tokWho').textContent=who;
@@ -7431,7 +7758,6 @@ async function tokNext(d){
   if(tokIdx<0)tokIdx=tokList.length-1;
   await tokShow(d);
 }
-$('#tokBtn').onclick=()=>openTok();
 $('#immerseBtn').onclick=()=>openTok();
 
 $('#searchBtn').onclick=()=>{const s=$('.search');s.classList.toggle('open');
@@ -7697,7 +8023,7 @@ function wireDrag(el){
 }
 /* `#count` 一起登记：窄屏下排序筛选整行由 `.count` 自己横向滚动，而它没有滚动条，
    不接拖动和滚轮就只剩看得见够不着的半个按钮。 */
-function wireAllDrag(){['#tagbar','#srow','#nrow','#count'].forEach(s=>wireDrag($(s)));
+function wireAllDrag(){['#tagbar','#nrow','#count'].forEach(s=>wireDrag($(s)));
   document.querySelectorAll('.tier').forEach(wireDrag)}
 
 /* 目录页（首页 + 四个筛选态）：筛选全部从 URL 读，路径只决定初始筛选态。
@@ -7733,14 +8059,15 @@ function indexQuery(){return $('#iq')?.value.trim()||''}
 function openIndexRoute(kind,push,q=null){
   if(push){setSelectMode(false,true);return openIndex(kind)}
   const params=new URLSearchParams(location.search);
-  if(kind==='tags'){
+  if(kind==='tags')readTagIndexRoute(params);
+  return openIndex(kind,q??(params.get('q')||''),false);
+}
+function readTagIndexRoute(params){
     tagIndexScope=params.get('scope')==='online'?'online':'local';
     tagIndexMode=params.get('view')==='cloud'?'cloud':'alphabet';
     const category=params.get('category')||'all';
     const categories=tagIndexScope==='online'?ONLINE_TAG_CATEGORIES:TAG_CATEGORIES;
     tagIndexCategory=categories.some(([key])=>key===category)?category:'all';
-  }
-  return openIndex(kind,q??(params.get('q')||''),false);
 }
 /* 沉浸模式当前这一条写在 `?id=`（见 tokShow），刷新和后退都该回到同一条片子。 */
 function immerseStartId(){
@@ -7750,7 +8077,9 @@ function immerseStartId(){
 
 async function restoreRoute(){
   surfaceEpoch++;
+  barsRequestSeq++;
   syncPageTitle(location.href);
+  buildDrawerNavigation();
   const path=decodeURIComponent(location.pathname);
   if(path==='/'&&new URLSearchParams(location.search).get('state')==='ads'){
     route(junkPath(),true);await restoreRoute();return;
@@ -7769,6 +8098,7 @@ window.addEventListener('popstate',restoreRoute);
    挂在下面那条链上时它们排在 /api/sources 和 /api/facets 后面，实测让骨架先顶着
    一个没有标题的空壳站了约半秒。buildManageBar() 内部会一并建好左侧导航，
    所以这里不再单独调 buildEdge()。 */
+renderInitialSurfaceLoading();
 buildManageBar();
 /* 那两个聚合查询喂的是首页顶部三条横条。深链进管理页或索引页时横条一开始就收着，
    结果没人看，却排在这一页自己的数据前面。 */

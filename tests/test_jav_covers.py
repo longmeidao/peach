@@ -12,7 +12,7 @@ from unittest.mock import call, patch
 from PIL import Image
 
 
-SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "fetch_jav_covers.py"
+SCRIPT = Path(__file__).resolve().parents[1] / "src" / "peach" / "jav_cover_fetch.py"
 _spec = importlib.util.spec_from_file_location("fetch_jav_covers", SCRIPT)
 covers = importlib.util.module_from_spec(_spec)
 sys.modules["fetch_jav_covers"] = covers
@@ -32,6 +32,15 @@ class _Response:
 
 
 class FetchRetryTests(unittest.TestCase):
+    def test_full_download_dimensions_must_match_probe_and_exceed_existing_image(self):
+        candidate = covers.Candidate("test", "https://example.test/large.jpg")
+        with patch.object(covers, "cached_metadata", return_value=covers.MetadataEvidence()), \
+                patch.object(covers, "probe_size", return_value=(1600, 1000)), \
+                patch.object(covers, "_fetch", return_value=jpeg(800, 500)):
+            with self.assertRaises(covers.Unavailable):
+                covers.best_cover(lambda *args: None, "FC2-PPV-123456", 0,
+                                  prior_candidates=(candidate,), minimum_pixels=1000 * 700)
+
     def test_transient_transport_errors_use_the_project_backoff_window(self):
         attempts = 0
 
@@ -257,15 +266,15 @@ class OfficialSourceTests(unittest.TestCase):
         }), "ABW-232")
         self.assertEqual([candidate.url for candidate in candidates], [image])
 
-    def test_prestige_hit_skips_the_smaller_mgstage_fallback(self):
+    def test_prestige_and_mgstage_both_participate_in_quality_comparison(self):
         official = [covers.candidate_for(
             "https://www.prestige-av.com/api/media/a/package.jpg"
         )]
         with patch.object(covers, "prestige_images", return_value=official), \
-                patch.object(covers, "mgstage_images") as mgstage:
+                patch.object(covers, "mgstage_images", return_value=[]) as mgstage:
             actual = covers.prestige_group_images(object(), "ABW-232")
         self.assertEqual(actual, official)
-        mgstage.assert_not_called()
+        mgstage.assert_called_once_with(unittest.mock.ANY, "ABW-232")
 
     def test_prestige_miss_uses_mgstage_as_the_fallback(self):
         fallback = [covers.candidate_for(
@@ -384,6 +393,18 @@ class CrossProductCoverTests(unittest.TestCase):
 
 
 class BestCoverTests(unittest.TestCase):
+    def test_cold_cache_uses_live_maker_evidence_to_find_hd_sources(self):
+        large = "https://www.prestige-av.com/api/media/fixture.jpg"
+        pages = {covers.R18_DETAIL.format(code="ABW-232"): (200, json.dumps({
+            "content_id": "118abw232", "maker": {"name": "Prestige"},
+        }).encode()), large: (200, jpeg(1024, 690))}
+        with patch.object(covers, "prestige_group_images", return_value=[covers.candidate_for(large)]) as group:
+            candidate, size, data = covers.best_cover(transport_for(pages), "ABW-232", 0)
+        group.assert_called_once()
+        self.assertEqual(size, (1024, 690))
+        self.assertEqual(candidate.url, large)
+        self.assertEqual(data, pages[large][1])
+
     def test_known_same_size_url_is_not_probed_during_upgrade(self):
         known = "https://pics.dmm.co.jp/mono/movie/adult/118abw232/118abw232pl.jpg"
         larger = "https://awsimgsrc.dmm.com/dig/mono/movie/118abw232/118abw232pl.jpg"

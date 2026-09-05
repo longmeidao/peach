@@ -6,19 +6,61 @@
 
 ## 首次运行与设置文件
 
+本地测试服务使用独立测试数据根，以 `peach serve --host 127.0.0.1 --port 18977 --no-mdns --no-auth`
+启动；浏览器打开 `http://127.0.0.1:18977`。`--no-auth` 只影响这次进程，不读取或改写口令文件；
+生产主机名仍指向托盘管理的认证服务。浏览器工具对私有地址的操作授权与 Peach 登录是两套机制，
+`--no-auth` 不控制工具授权。实测两次启动均可不带认证读取 `/app.js`，测试口令保持不变。
+
+### CloudDrive 配置
+
+1. 在 CloudDrive 中登录网盘并建立挂载点，打开「启动时自动挂载」。步骤见
+   [CloudDrive 官方帮助](https://www.clouddrive2.com/help.html)。
+2. 在 Peach 首次设置页或独立包的「管理 → 配置」中添加文件夹，选择对应来源。
+   115 使用来源 ID `115`，PikPak 使用 `pikpak`，本地磁盘使用 `local`；每个来源可有多个互不重叠的根。
+3. Windows 填本机盘符路径。macOS 的「本机文件夹」填本机挂载点，「Windows 中的对应路径」填该来源原有的
+   Windows 盘符根，例如 `B:\` 对应 `/Volumes/CloudDrive/115`、`A:\` 对应
+   `/Volumes/CloudDrive/PikPak`。已有馆藏必须沿用原盘符路径。
+4. 保存配置，由托盘重新载入。配置页「挂载状态」逐根显示在线或离线；刷新状态保留尚未保存的输入。
+   Windows 的 Peach 与 CloudDrive 应在同一普通用户会话下运行；提升权限的进程可能看不到挂载盘。
+5. 勾选扫描时，托盘顺序扫描配置内的在线来源，离线根跳过。恢复挂载后可再次勾选扫描并保存。
+
+离线来源允许保留配置，重叠盘符根或本机挂载点会在对应行报错。来源判定沿用 `asset.location`，
+115/PikPak 进入既有网盘流量策略。保存配置不修改已有资产的来源归属和账本路径。
+源码部署使用配置文件管理；首次网页引导支持相同来源，终端 `peach init` 的目录问答用于本地来源。
+
+对应 macOS 配置示例：
+
+```toml
+[media.locations]
+"115" = ['B:\']
+pikpak = ['A:\']
+
+[media.mounts]
+"115" = ['/Volumes/CloudDrive/115']
+pikpak = ['/Volumes/CloudDrive/PikPak']
+```
+
+### 初始化与托盘
+
 - 配置完成之后，Windows 和有 TLS 的 macOS 托盘由 HTTP 导航进程与 HTTPS 业务进程组成；HTTP 的 `/healthz` 仅证明导航进程存活。业务入口 `/healthz?ready=1` 检查配置、页面、数据库查询和迁移校验和，不就绪返回 503；不带参数仍只探活。还没配置的机器上托盘只起一条引导服务，见下面的首次设置几条。
 - wheel 将 `web`、`migrations`、`resources` 装入 `peach/_resources`。`scripts/smoke_wheel.py` 在仓库外使用安装 wheel 的解释器运行；CI 消费任务只下载制品，不检出源码。测试只使用临时数据根。
 - 设置文件固定是 `<数据根>/config.toml`。数据根按三步找：环境变量 `PEACH_DATA_ROOT`、
-  项目根同级（含上溯四层，覆盖主检出、`peach-worktrees/<任务>` 和打包后的 `dist/Peach/_internal`）
+  项目根同级（含上溯四层，覆盖主检出、`peach-worktrees/<任务>` 和打包后 EXE 所在的 `dist/Peach`）
   的 `peach-data/`、都没有就是「未配置」。优先级是环境变量 > 设置文件 > 内建默认。
 - 全新机器只跑 `peach init`。不带参数且 stdin 是终端时进问答（题目、默认值与落盘逻辑在
-  `src/peach/onboarding.py`，托盘设置页复用同一组函数）：问数据根、一个已存在的本地媒体
-  目录、监听范围（仅本机／局域网）、端口、局域网名字，每题回车取默认，连续三次无效即退出且
+  `src/peach/onboarding.py`，托盘设置页复用同一组函数）：问数据根、一个或几个已存在的本地媒体
+  目录（问完第一个接着问「再加一个」，回车结束；互相重复或嵌套的目录会被退回）、谁可以访问
+  （只有这台电脑／同一局域网的设备）、端口、局域网访问地址，每题回车取默认，连续三次无效即退出且
   不写任何文件。然后建齐 `database`／`generated`／`sources`／`state`／`secrets`／`logs`／
   `tools`／`review` 八个目录、把账本迁到最新 schema、生成本机 CA 与访问口令、写出设置文件，问一句
   「现在扫描 <目录>？」（默认是）调 `peach.scan.scan_location` 登记文件，最后打印下一步与
-  扫描摘要。写出的 `[media.locations]` 只有 `local`：Windows 上直接是那个目录、
-  `[media.mounts]` 为空；macOS 上声明根是 `R:\media`、目录写进 `[media.mounts] local`。
+  扫描摘要。写出的 `[media.locations]` 只有 `local`，几个目录就几个声明根：Windows 上直接是
+  那些目录、`[media.mounts]` 为空；macOS 上声明根是 `R:\media`（第二个起 `R:\media2`……）、
+  目录按同样顺序写进 `[media.mounts] local`。页面上的媒体文件夹是可加减的列表，配置页同样。
+  配置页在主站里：管理菜单 → 配置（`/configuration`），只在运行 Peach 的这台电脑上、
+  且只有独立包才出现；数据走 `/api/configuration`，保存后写重启标记由托盘接手。
+  每行文件夹旁的「选择文件夹」让运行 Peach 的这台电脑弹系统对话框（Windows 资源管理器、
+  macOS Finder），走 `/api/pick-folder`，同样只对本机开放；首启页也有这颗键。
   复制、writer 镜像、SMB 一律不问，保持关闭或留空。建目录、迁库、生成 CA 与口令、写设置文件
   这一整段在 `onboarding.apply()`，CLI 与设置页调的是同一个函数，只在打印方式上不同。
 - 不进终端的那条路是托盘首启的引导服务。`peach-tray` 启动时新鲜读一次设置文件，判据在
@@ -45,8 +87,8 @@
   写出的文件带 `local`／`115`／`pikpak` 三个示例声明根。已有账本不会被重建，它会提示改用
   `--from-existing`。
 - `peach scan <来源ID> [根目录]` 把一个目录的文件元数据 upsert 进账本，只新增行与刷新
-  `size`／`mtime`／`last_seen`，不改真相字段、不删行。根目录省略时取该来源在
-  `[media.locations]` 的声明根，本机目录按 `[media.mounts]` 取；给了目录则必须落在声明根
+  `size`／`mtime`／`last_seen`，不改真相字段、不删行。根目录省略时逐个扫该来源在
+  `[media.locations]` 的全部声明根，本机目录按 `[media.mounts]` 取；给了目录则必须落在某个声明根
   （macOS 上是挂载点）之内，否则拒绝——写进去的行否则翻译不回本机路径。
   `scripts/ledger.py scan` 是同一实现的薄委托。
 - 已经在跑的机器用 `peach init --from-existing`：只写设置文件，不建库、不动 `peach-data/`
@@ -62,6 +104,7 @@
 - `[media.mounts]` 的键是 `asset.location`（`[media.locations]` 声明过的来源 ID），
   值是该来源的**声明根在本机的落点**：声明 `local = 'R:\media'` 而挂载 `local =
   '/Volumes/RESOURCES/media'` 时，账本里的 `R:\media\x` 读作 `/Volumes/RESOURCES/media/x`。
+  声明了几个根就按同样的顺序给几个落点（两边都写数组），数目不齐会被拒绝。
   Windows 上整表为空是正常的，盘符本身就是挂载点。没挂的来源整体按脱盘处理，不报错；
   打错来源 ID 或写成盘符键都会被设置层直接拒绝，不会静悄悄变成「全部脱盘」。
   临时诊断用 `PEACH_MEDIA_MOUNTS=local=/mnt/res,115=/mnt/115` 覆盖（旧的
@@ -136,10 +179,11 @@ curl -s --noproxy '*' -o /dev/null -w '%{http_code}\n' https://peach.local/healt
 - 对外测试包由 `.github/workflows/release.yml` 承担：`build_windows.ps1 -Standalone` 用 PyInstaller onedir 生成完整 Windows 程序目录，压缩后由不检出源码的消费任务运行 `scripts/smoke_desktop.py`。`v<__version__>` tag 与版本不一致会失败，通过制品验收才创建 GitHub 预发布并附 SHA256；`workflow_dispatch` 只生成和验收 artifact。macOS 独立包另列待办，源码菜单栏构建入口仍为 `build_macos_app.py`。
 - 刷新源码运行态不要用 Computer Use 点托盘：`python scripts/restart_windows_tray.py` 按精确 EXE 路径找到 pystray 隐藏窗口、发送正常停止消息、等托盘自行关闭子服务，再静默启动并核对新托盘重新拥有两个服务；找不到唯一窗口或退出超时就拒绝，绝不强杀后另启。
 - `dist/Peach/Peach.exe` 是本机打包入口而不是可移动的独立发行版：托盘只打包了自己，服务进程仍由项目 venv 的 `peach.exe` 承担，`_peach_executable()` 从 exe 位置逐级向上找 `.venv\Scripts\peach.exe`，所以不要按「单文件绿色版」对外描述。
-- 更新与打包的产物自带清退：托盘每次启动只保留最近 2 份 `dist/Peach/Peach.pre-source-sync-*.exe` 备份，并删掉 `<数据根>/state/source-sync-build/` 里不属于待应用记录的暂存构建（`WindowsUpdateInstaller.sweep_artifacts`）；`build_windows.ps1` 成功后删掉 PyInstaller 工作目录 `build/windows/app`。自动边界只认这两个命名：`Peach.exe` 本体、手工放进 `dist/` 的目录、`build/release-*`、`attic/` 都不碰，手工构建的残留自己删。
+- `<数据根>/logs` 里的 `*.log` 统一保留半年、大小不设限（`peach.log_retention.sweep`，托盘在起任何子进程之前跑）：半年没再写过的文件整份删掉；还在写的文件按自然月切段，上次写入落在更早月份就改名成 `<名字>.until-<最后写入日期>.log`，段再等半年被删。子进程是直接追加 stdout，不经 `logging`，所以按文件而不是按行处理。
+- 更新与打包的产物自带清退：托盘每次启动只保留最近 2 份 `dist/Peach/Peach.pre-source-sync-*.exe` 备份，并删掉 `<数据根>/state/source-sync-build/` 里不属于待应用记录的暂存构建（`WindowsUpdateInstaller.sweep_artifacts`）；`build_windows.ps1` 成功后删掉 PyInstaller 工作目录 `build/windows/app`；单文件托盘每次启动还会删掉 `%TEMP%` 里超过一天、不属于自己的 `_MEI*` 解压残留（`sweep_onefile_extractions`，托盘被结束进程时 PyInstaller 不会自清，每份 40–80 MB）。自动边界只认这几个命名：`Peach.exe` 本体、手工放进 `dist/` 的目录、`build/release-*`、`attic/` 都不碰，手工构建的残留自己删。
 - 每个包都带构建身份：`build_windows.ps1` 在调用 PyInstaller 前把 `{commit, version, built_at}` 写进 `build/windows/build-info.json`，再用 `--add-data` 放到包根，本机托盘与独立测试包两种模式共用这一行。构建机没有 git 或源码不是检出时 `commit` 写 `null`，构建照常。`peach.buildinfo.frozen_build()` 只在 `sys.frozen` 时读它；文件缺失或格式坏一律返回 `None`，托盘照常启动，只是把自己当作身份未取得。
 - 本机托盘自己发现「我比检出旧」并重建：判据是构建提交与检出的差，不是与 GitHub 的差——这台机器提交先落本地再推远端，「落后远端」永远不成立。`VersionManager.build_age()` 用 `rev-list --count <构建提交>..HEAD` 数出落后多少，版本菜单显示成 `master@<HEAD> · 托盘构建 <构建提交>，落后 N 个提交`；数不出来（身份未取得、提交不在本检出历史里）按陈旧处理，重建范围退化为 `src/peach/`。「同步开发进度」在 `ahead`／`current`／`error`／`unconfigured` 下改走本地重建，健康轮询另按 5 分钟一轮读本地 HEAD 自动触发，同一个 HEAD 只自动试一次，首次设置未完成时不触发。重建走的仍是既有流程：完整测试 → 暂存构建 → 打包迁移资源检查 → 备份 → 替换助手，任一步失败都只发通知，旧托盘和服务保持运行。失败表现是托盘停在旧版本、通知里写明卡在哪一步，日志见 `<数据根>/logs/windows-source-sync.log`。独立测试包与源码运行的托盘不进这条路径，前者提示下载新版完整替换程序目录，后者提示源码已是最新。
-- 版本号在本地集成时就动：`scripts/agent_worktree.py integrate` 合并后按 `runtime_inputs_changed()` 判断这次改动有没有碰到 `src/peach/`、`web/`、`frontend/`、`migrations/`、`resources/`、`scripts/build_app_entry.py`、`scripts/build_windows.ps1`、`pyproject.toml`，碰到就把 `__version__` 的 patch 位加一，在 master 上单独提交 `chore(release): 版本 <新版本>`。`--bump {patch,minor,major,none}` 默认 `patch`，纯文档、技能与测试改动传 `none`；输出的 `version`／`bumped` 说明这次集成后的版本号。集成不打标签：发布点仍然是 `scripts/release_tag.py --apply` 推上去的 `vX.Y.Z`，它读的正是这里推进后的 `__version__`，并且遇到同名本地标签会直接拒绝——两处都造标签只会把唯一的发布入口挡在门外。
+- 版本号在本地集成时就动：`scripts/agent_worktree.py integrate` 合并后按 `runtime_inputs_changed()` 判断这次改动有没有碰到 `src/peach/`、`web/`、`frontend/`、`migrations/`、`resources/`、`scripts/build_app_entry.py`、`scripts/build_windows.ps1`、`pyproject.toml`，碰到就推 `__version__` 并在 master 上单独提交 `chore(release): 版本 <新版本>`。推哪一位由 `bump_part_for()` 按这批提交定：主题以 `feat` 开头或带破坏性标记 `!`、或 `migrations/` 有新增文件就推 minor，其余推 patch；1.0 手工 `--bump major` 并另立 ADR（ADR-0012 修订）。`--bump {auto,patch,minor,major,none}` 默认 `auto`，显式档位是覆盖，没碰运行时输入时哪一档都不动；输出的 `version`／`bumped` 说明这次集成后的版本号。集成不打标签：发布点仍然是 `scripts/release_tag.py --apply` 推上去的 `vX.Y.Z`，它读的正是这里推进后的 `__version__`，并且遇到同名本地标签会直接拒绝——两处都造标签只会把唯一的发布入口挡在门外。
 - PyInstaller 的资源直接位于 `sys._MEIPASS`，没有源码树的 `src/` 层；打包后的 `migrate`、Web 与品牌资源必须从这里解析，不能对 `config.py` 固定取 `parents[2]`。
 - 创建 Win32 窗口前必须启用 Per-Monitor V2 DPI；正常动作不弹模态 MessageBox，更新检查在后台线程执行并用 pystray 原生非模态通知反馈。
 - 菜单栏与托盘状态行逐个点名每个服务，例如 `HTTP 正常 · HTTPS 异常（状态码 503）`，异常附最近一次失败原因，不要改回只报「未运行」。

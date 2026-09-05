@@ -240,6 +240,9 @@ class OperationalScriptTests(unittest.TestCase):
         windows = (ROOT / "scripts" / "test.ps1").read_text(encoding="utf-8")
         self.assertIn("rev-parse --git-common-dir", windows)
         self.assertIn("$env:PYTHONPATH = $SourceRoot", windows)
+        self.assertIn("$env:PYTHONIOENCODING = 'utf-8'", windows)
+        self.assertIn("$env:PYTHONIOENCODING = $PreviousPythonIoEncoding", windows)
+        self.assertIn("-not $PSBoundParameters.ContainsKey('Scope') -and $WorktreeRoot -eq $MainRoot", windows)
         self.assertIn("peach.__file__", windows)
         self.assertIn("scripts\\test_runner.py --scope $Scope", windows)
         self.assertIn("ValidateSet('full', 'auto', 'follow'", windows)
@@ -248,10 +251,12 @@ class OperationalScriptTests(unittest.TestCase):
         posix = (ROOT / "scripts" / "test.sh").read_text(encoding="utf-8")
         self.assertIn("rev-parse --git-common-dir", posix)
         self.assertIn('export PYTHONPATH="$SOURCE_ROOT"', posix)
+        self.assertIn("export PYTHONIOENCODING=utf-8", posix)
+        self.assertIn('[[ $# -eq 0 && "$WORKTREE_ROOT" = "$(dirname "$GIT_COMMON")" ]]', posix)
         self.assertIn("peach.__file__", posix)
         self.assertIn('scripts/test_runner.py --scope "$SCOPE"', posix)
-        self.assertIn('SCOPE="${1:-full}"', posix)
-        self.assertIn("full|auto|follow|catalog|media|sync|metadata|tooling|web)", posix)
+        self.assertIn('SCOPE="${1:-auto}"', posix)
+        self.assertIn("full|auto|follow|catalog|media|sync|metadata|tooling|web|checks)", posix)
         self.assertNotIn("pytest", posix.lower())
         # 文档里可以「提到」裸命令来说明它为什么不可信，但绝不能让它单独出现成为一条可照抄的指令。
         # 判据因此不是黑名单，而是：凡出现该命令的行，必须在同一行指向某个正式入口。
@@ -283,7 +288,7 @@ class OperationalScriptTests(unittest.TestCase):
         self.assertIn(f"Python {floor} 或更高", (ROOT / "README.md").read_text(encoding="utf-8"))
         self.assertIn(f"Python {floor} or newer", (ROOT / "README.en.md").read_text(encoding="utf-8"))
 
-    def test_functional_test_scopes_are_explicit_and_full_remains_the_default(self):
+    def test_functional_test_scopes_are_explicit(self):
         runner = load_script("test_runner")
         follow = {path.name for path in runner.selected_files("follow")}
         full = {path.name for path in runner.selected_files("full")}
@@ -317,11 +322,11 @@ class OperationalScriptTests(unittest.TestCase):
         self.assertEqual(pick(["src/peach/follow_store.py", "web/app.js"])[0], ("follow", "web"))
         self.assertEqual(pick(["src\\peach\\tray.py"])[0], ("sync",))
         self.assertEqual(pick(["scripts/probe.py", "pyproject.toml", ".github/workflows/test.yml"])[0],
-                         ("tooling",))
+                         ("full",))
         self.assertEqual(pick(["README.md", "docs/STATUS.md", ".claude/skills/x/SKILL.md"])[0],
-                         ("tooling",))
+                         ("checks",))
         self.assertEqual(pick(["src/peach/web_entity.py", "src/peach/routes_pages.py"])[0],
-                         ("catalog",))
+                         ("catalog", "tooling", "web"))
         self.assertEqual(pick(["src/peach/web_follow.py"])[0], ("follow",))
         # 模块名 ↔ 测试文件名推断，登记在几个域就跑几个域。
         self.assertEqual(pick(["src/peach/media.py"])[0], ("media",))
@@ -333,15 +338,15 @@ class OperationalScriptTests(unittest.TestCase):
         scopes, why = pick(["src/peach/follow.py", "web/app.js"])
         self.assertTrue(why.startswith("Peach auto scope: follow, web <- "), why)
         self.assertIn("web: web/app.js", why)
-        # 退化为 full：必须 full 的面、映射不到的文件、没有改动。
+        self.assertEqual(pick([])[0], ("checks",))
+        # full 覆盖公共设施和未知影响面。
         for paths, fragment in ((["migrations/0099_next.sql"], "必须 full"),
                                 (["tests/support/ledger.py"], "必须 full"),
                                 (["tests/conftest.py"], "必须 full"),
                                 (["package-lock.json"], "必须 full"),
                                 (["frontend/package.json"], "必须 full"),
                                 (["LICENSE"], "映射不到"),
-                                (["src/peach/kanji.py", "web/app.js"], "映射不到"),
-                                ([], "没有改动文件")):
+                                (["src/peach/kanji.py", "web/app.js"], "映射不到")):
             scopes, why = pick(paths)
             self.assertEqual(scopes, ("full",), paths)
             self.assertTrue(why.startswith("Peach auto scope: full <- "), why)

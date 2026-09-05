@@ -521,7 +521,7 @@ class ProbeRetryTests(unittest.TestCase):
         results = list(outcomes)
 
         class Fake:
-            def __init__(self, client):
+            def __init__(self, client, *, owns_client=False):
                 pass
 
             def __call__(self, request, timeout, limit):

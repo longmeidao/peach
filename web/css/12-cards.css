@@ -2,7 +2,7 @@
 main{position:relative;z-index:1;padding:14px 16px 90px}
 /* 管理区二级导航：统计 / 垃圾文件 / 回收站 / 人工复核 共用一条 */
 .managebar{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:0 0 16px;
-  padding:6px;border:1px solid var(--line-soft);border-radius:var(--floating-radius);background:var(--surface);width:max-content;max-width:100%}
+  padding:6px;border:1px solid var(--line-soft);border-radius:var(--floating-radius);background:var(--ground);width:max-content;max-width:100%}
 .managebar[hidden]{display:none}
 .managebar .managebar-toggle{display:none}
 .managebar-menu{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
@@ -40,11 +40,13 @@ main{position:relative;z-index:1;padding:14px 16px 90px}
 .count.count-actions-only{position:relative;top:auto;min-height:0;margin:0 0 16px;padding:0;justify-content:flex-end}
 .count.count-actions-only:empty{display:none}
 .resourcesync{scroll-margin-top:calc(var(--topH) + 18px);display:grid;gap:16px}.resourcesync>h2{margin:0;font-size:var(--fs-xl)}
-.resourcesyncbox,.resourcepanel{overflow:clip;border:1px solid var(--line-soft);border-radius:var(--floating-radius);background:var(--surface)}.resourcesyncbody{padding:20px}.resourcesyncbody p{max-width:760px;margin:0;color:var(--muted);font-size:var(--fs-sm);line-height:1.55}.resourcesyncfooter,.resourceapplyrow{box-sizing:border-box;min-height:var(--fieldset-bar-h);display:flex;align-items:center;justify-content:flex-end;gap:16px;padding:8px 20px;border-top:1px solid var(--line-soft);background:var(--overlay-5)}.resourcesyncfooter p,.resourceapplyrow>p{margin:0;color:var(--muted);font-size:var(--fs-xs);line-height:1.5}.resourceaction{box-sizing:border-box;height:36px;padding:0 12px;border:1px solid var(--border-15);border-radius:var(--control-radius);background:var(--surface);color:var(--ink-2);display:inline-flex;align-items:center;justify-content:center;gap:8px;flex:none;font:inherit;font-size:var(--fs-sm);font-weight:500;cursor:pointer;transition:background-color .12s,border-color .12s,color .12s}.resourceaction:hover:not(:disabled){background:var(--hover);color:var(--ink)}.resourceaction:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}.resourceaction:disabled{background:var(--surface);border-color:var(--border-15);color:var(--muted);cursor:default}.resourceaction svg{width:16px;height:16px;stroke:currentColor;fill:none}#resourceSyncResult:empty{display:none}.resourcescanning{margin:0;padding:14px 16px;border:1px solid var(--line-soft);border-radius:var(--control-radius);color:var(--muted)}.resourcesources{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}.resourcesources article{display:grid;gap:4px;min-width:0;padding:16px}.resourcesources article+article{border-left:1px solid var(--line-soft)}.resourcesourcetitle{display:flex;align-items:center;justify-content:space-between;gap:12px}.resourcesourcetitle span{font-size:var(--fs-xs)}.resourcesources .online{color:var(--success)}.resourcesources .offline{color:var(--drop)}.resourcesources strong{margin-top:10px;font-size:var(--fs-2xl);font-variant-numeric:tabular-nums}.resourcesources small,.resourcecache small{color:var(--muted)}/* 这里是一排读数，不是又一个盒子。原先它自带填色和分格线，和下面的操作条同色，
+.resourcesyncbox,.resourcepanel{overflow:clip;border:1px solid var(--field-ring);border-radius:var(--floating-radius);background:var(--ground)}.resourcesyncbody{padding:20px}.resourcesyncbody p{max-width:760px;margin:0;color:var(--muted);font-size:var(--fs-sm);line-height:1.55}.resourcesyncfooter,.resourceapplyrow{box-sizing:border-box;min-height:var(--fieldset-bar-h);display:flex;align-items:center;justify-content:flex-end;gap:16px;padding:8px 20px;border-top:1px solid var(--line-soft);background:var(--overlay-5)}.resourcesyncfooter p,.resourceapplyrow>p{margin:0;color:var(--muted);font-size:var(--fs-xs);line-height:1.5}.resourceaction{box-sizing:border-box;height:36px;padding:0 12px;border:1px solid var(--line-soft);border-radius:var(--control-radius);background:var(--ground);color:var(--ink-2);display:inline-flex;align-items:center;justify-content:center;gap:8px;flex:none;font:inherit;font-size:var(--fs-sm);font-weight:500;cursor:pointer;transition:background-color .12s,border-color .12s,color .12s}.resourceaction:hover:not(:disabled){background:var(--surface);color:var(--ink)}.resourceaction:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}.resourceaction:disabled{background:var(--sunk);border-color:var(--line-soft);color:var(--muted);cursor:default}.resourceaction svg{width:16px;height:16px;stroke:currentColor;fill:none}#resourceSyncResult:empty{display:none}.resourcescanning{margin:0;padding:14px 16px;border:1px solid var(--line-soft);border-radius:var(--control-radius);color:var(--muted)}.resourcesources{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}.resourcesources article{display:grid;gap:4px;min-width:0;padding:16px}.resourcesources article+article{border-left:1px solid var(--line-soft)}.resourcesourcetitle{display:flex;align-items:center;justify-content:space-between;gap:12px}.resourcesourcetitle span{font-size:var(--fs-xs)}.resourcesources .online{color:var(--success)}.resourcesources .offline{color:var(--drop)}.resourcesources strong{margin-top:10px;font-size:var(--fs-2xl);font-variant-numeric:tabular-nums}.resourcesources small,.resourcecache small{color:var(--muted)}/* 这里是一排读数，不是又一个盒子。原先它自带填色和分格线，和下面的操作条同色，
    两条带子连在一起看不出边界；框里再套框也是多余的一层。 */
 .resourcecache{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 32px;border-top:1px solid var(--line-soft);padding:16px 20px}.resourcecache>div{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:baseline;gap:4px 16px}.resourcecache b{font-size:var(--fs-2xl);font-variant-numeric:tabular-nums}.resourcecache span{font-weight:600}.resourcecache small{grid-column:1/-1}.resourceapplyrow .resourcesyncok{color:var(--success)}.resourcedanger{color:var(--drop)}.resourcedanger:hover:not(:disabled){background:var(--drop);border-color:var(--drop);color:#fff}.resourcesyncok{margin:0;color:var(--success)}
 .tagbar,.count,.entitytagbar,.entitycollectionhead{transition:background-color .16s ease,border-color .16s ease}
-.tagbar.is-stuck,.count.is-stuck,.entitytagbar.is-stuck,.entitycollectionhead.is-stuck{background:color-mix(in srgb,#080A0D 84%,transparent);
+/* 吸顶那条是底色的半透明版，配方跟着 --ground 走：写死深色底会在浅色主题下
+   变成一条黑带压在白底内容上。 */
+.tagbar.is-stuck,.count.is-stuck,.entitytagbar.is-stuck,.entitycollectionhead.is-stuck{background:color-mix(in srgb,var(--ground) 84%,transparent);
   border-bottom-color:var(--line-soft);backdrop-filter:saturate(1.35) blur(16px);
   -webkit-backdrop-filter:saturate(1.35) blur(16px)}
 .count:empty{display:none}
@@ -73,12 +75,16 @@ body.refreshing #batchAction svg,
 .count .sorts #batchAction,.entitycollectionhead .sorts .entitybatch{width:36px;padding:0;display:inline-grid;place-items:center}
 .count .sorts #batchAction svg,.entitycollectionhead .sorts .entitybatch svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2}
 .count .sorts .batchaction:hover,.entitycollectionhead .sorts .batchaction:hover{background:color-mix(in srgb,var(--ink) 88%,var(--ground));border-color:color-mix(in srgb,var(--ink) 88%,var(--ground));color:var(--ground)}
+/* 目录列表是一叠卡：连续的一段视频合成一个 `.grid`，竖屏带插进来时把那一段从行边界
+   剪开，上下两半于是各自成为一张独立的卡。`#grid` 本身只是这叠卡的容器，不再是网格。 */
+.gridstack{display:flex;flex-direction:column;gap:16px}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--tile),1fr));gap:16px 8px}
-.shorts-inline{grid-column:1/-1;margin:28px 0 8px;padding-top:0}
-.shorts-inline h2{margin:0 0 10px;font-size:var(--fs-lg);display:flex;align-items:center;gap:10px}
-.shorts-inline h2 button{margin-left:auto;font-size:var(--fs-xs);background:none;border:1px solid var(--line);border-radius:var(--pill-radius);padding:5px 14px;cursor:pointer}
-.shorts-inline .srow{display:flex;gap:13px;overflow-x:auto;padding-bottom:7px}
-.shorts-inline .scard .pic{aspect-ratio:var(--card-ratio,9/16)}
+/* 视频区是一整块面，框画在网格上，卡片本身不填色也不描边——一张卡一个框会在一屏里
+   画出几十条互相平行的细线，读起来是表格不是图墙。垃圾复核用的是同一个 #grid，
+   但它那张卡自己就是一块 --ground 的面，外面再套一层同色的框只会把卡吃掉，
+   所以按内容认，不按页面认。 */
+.grid:has(>.card:not(.junkcard)),.grid:has(>.catalog-skeleton){
+  padding:16px;border:1px solid var(--field-ring);border-radius:var(--floating-radius);background:var(--ground)}
 .card{cursor:pointer;display:flex;flex-direction:column;gap:8px;min-width:0;
   position:relative;transition:transform .18s ease,filter .18s ease;transform-origin:center}
 /* 叠层往上溢出到行间距里，卡片本体不为它留白。留白的写法（padding-top:7px）会把
@@ -222,7 +228,7 @@ img.hvframes{position:absolute;inset:0;width:100%;height:100%;object-fit:contain
 .junkfilters i{width:1px;height:20px;background:var(--line-soft);flex:none;margin:0 6px}
 .junkfilters a>svg{width:16px;height:16px;flex:none;stroke:currentColor;fill:none;stroke-width:1.8;
   stroke-linecap:round;stroke-linejoin:round}
-.junkcard{cursor:default;gap:0;overflow:hidden;border:1px solid var(--line-soft);border-radius:var(--floating-radius);background:var(--surface);
+.junkcard{cursor:default;gap:0;overflow:hidden;border:1px solid var(--line-soft);border-radius:var(--floating-radius);background:var(--ground);
   content-visibility:auto;contain-intrinsic-size:auto 360px}
 .junkcard .pic{border:0;border-radius:0}.junkcard:hover .pic{box-shadow:none}
 .junkcard:hover .pic::after{content:none}
@@ -317,15 +323,22 @@ body[data-density="dense"] .junkcard .junkactions button{justify-content:center}
 .flags i.dispose{background:var(--meter)}
 .flags i.later{background:var(--ink)}
 /* 标签语义分级 */
-.ctags{display:flex;flex-wrap:nowrap;gap:5px;min-width:0;overflow:hidden}
+/* 卡片上宁可少放几个标签，也要把名字写全：截成「主…」「背…」之后，那既不是标签，
+   也认不出原来是哪一个。所以这一行改成可换行、只有一颗标签那么高——放不下的整颗
+   落到第二行，被容器整颗切掉，切掉的是标签本身，不是它的名字。行高按 .tg 的三个
+   token 算出来，改字号或内边距时不用回来对第二个数。
+   .tg 只留 max-width:100% 这一层兜底：一颗标签自己就比整张卡还宽时，横着溢出会
+   压到卡片外面，这时候省略号是唯一的出路。 */
+.ctags{display:flex;flex-wrap:wrap;align-content:flex-start;gap:5px;min-width:0;overflow:hidden;
+  height:calc(var(--fs-xs)*1.45 + var(--tag-pad-y)*2 + 2px)}
 .tg{padding:var(--tag-pad-y) var(--tag-pad-x);border-radius:var(--tag-radius);font-size:var(--fs-xs);border:1px solid var(--line);
-  line-height:1.45;white-space:nowrap;cursor:pointer;color:var(--ink-2);overflow:hidden;text-overflow:ellipsis;max-width:32%;
+  line-height:1.45;white-space:nowrap;cursor:pointer;color:var(--ink-2);overflow:hidden;text-overflow:ellipsis;max-width:100%;
   background:color-mix(in srgb,var(--surface) 82%,var(--ground))}
 .tg.general,.tg.artist,.tg.meta,.tg.relationship,.tg.role,.tg.appearance,.tg.scene,.tg.story,.tg.position{color:var(--ink-2);border-color:var(--line)}
 .tg.artist{font-weight:600}
 .tg:hover{color:var(--ink);background:var(--hover)}
 body[data-density="dense"] .card .ctags .tg:nth-child(n+2){display:none}
-body[data-density="dense"] .card .ctags .tg{max-width:132px;overflow:hidden;text-overflow:ellipsis}
+body[data-density="dense"] .card .ctags .tg{max-width:100%;overflow:hidden;text-overflow:ellipsis}
 /* 顶栏的密集模式固定为标题、身份、标签三行。缺少标签时第三行仍保留，
    同一网格不会再被大小、观看次数或长身份撑成四行。分卷卡已有 7px 叠层空间，
    密集网格的普通卡也保留同一高度，避免每行是否出现分卷卡决定整行高度。 */
@@ -342,17 +355,21 @@ body[data-density="dense"] .card .ctags{height:30px;align-items:flex-start;flex-
 body[data-density="dense"] .card .meta .why,
 body[data-density="dense"] .card .meta .watchcount{display:none}
 
-/* 短片带 */
-.shorts{margin:30px 0 8px;border-top:1px solid var(--line-soft);padding-top:16px}
-.shorts h2{margin:0 0 11px;font-size:var(--fs-lg);display:flex;align-items:center;gap:10px}
+/* 短片带是这一叠卡里的一张，和上下两段视频平级：同一张 --ground 面、同一圈发丝边、
+   同一个圆角，只有内容不同。它不套在视频框里，也不是把一个框从中间划开——划开的是
+   一张卡，两张卡之间那 16px 页面底才是分隔。 */
+.shorts-inline{padding:16px;background:var(--ground);
+  border:1px solid var(--field-ring);border-radius:var(--floating-radius)}
+.shorts-inline h2{margin:0 0 11px;font-size:var(--fs-lg);display:flex;align-items:center;gap:10px}
+.shorts-inline .scard .pic{aspect-ratio:var(--card-ratio,9/16)}
 /* 竖屏计数的灰字。index.html 和 openItem 的内联片段原先各写一份，一模一样。 */
 .shortscount{color:var(--muted);font-size:var(--fs-xs)}
-.shorts h2 button,.shorts-enter{margin-left:auto;min-height:48px;display:inline-flex;align-items:center;gap:7px;
+.shorts-inline h2 button{margin-left:auto;min-height:48px;display:inline-flex;align-items:center;gap:7px;
   font-size:var(--fs-xs);background:var(--overlay-5);border:0;border-radius:var(--pill-radius);padding:0 16px;cursor:pointer;
   color:var(--ink);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);transition:background .14s,transform .14s}
-.shorts h2 button:hover,.shorts-enter:hover{background:color-mix(in srgb,var(--ink) 16%,transparent);transform:translateY(-1px)}
-.shorts h2 button:active,.shorts-enter:active{transform:scale(.97)}
-.shorts h2 button svg,.shorts-enter svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2}
+.shorts-inline h2 button:hover{background:color-mix(in srgb,var(--ink) 16%,transparent);transform:translateY(-1px)}
+.shorts-inline h2 button:active{transform:scale(.97)}
+.shorts-inline h2 button svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2}
 .srow{display:flex;gap:13px;overflow-x:auto;padding-bottom:7px}
 .srow .scard{flex:none;width:214px;cursor:pointer}
-
+body[data-density="dense"] .shorts-inline .scard{width:calc(214px * 168 / 336)}

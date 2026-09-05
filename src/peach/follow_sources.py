@@ -410,6 +410,7 @@ class _BaseConnector:
         #: 退避时怎么等。默认真的睡；测试注入一个记账用的假实现，好让退避节奏
         #: 可断言又不真的把测试拖成几十秒。
         self.sleeper = sleeper
+        self.progress = None
 
     def _headers(self) -> dict[str, str]:
         return {"User-Agent": USER_AGENT}
@@ -427,12 +428,27 @@ class _BaseConnector:
             raise FollowSourceError(self.blocked_reason)
         merged = dict(base)
         merged.update(headers)
-        try:
-            response = self.transport(HttpRequest(method, url, merged, body),
-                                      self.timeout, self.max_bytes)
-        except (OSError, httpx.HTTPError) as exc:
-            raise FollowSourceError(
-                f"{self.provider} 请求失败：{_exc_summary(exc)}") from exc
+        delays = (0, 1, 2, 4, 8) if method == "GET" else (0,)
+        for attempt, delay in enumerate(delays, 1):
+            if self.progress:
+                self.progress(attempt=attempt, max_attempts=len(delays), retry_in=delay)
+            if delay:
+                self.sleeper(delay)
+                if self.progress:
+                    self.progress(attempt=attempt, max_attempts=len(delays), retry_in=0)
+            try:
+                response = self.transport(HttpRequest(method, url, merged, body),
+                                          self.timeout, self.max_bytes)
+            except (OSError, httpx.TransportError) as exc:
+                if attempt < len(delays):
+                    continue
+                raise FollowSourceError(
+                    f"{self.provider} 请求失败（已尝试 {attempt} 次）：{_exc_summary(exc)}") from exc
+            except httpx.HTTPError as exc:
+                raise FollowSourceError(
+                    f"{self.provider} 请求失败：{_exc_summary(exc)}") from exc
+            if response.status not in {408, 500, 502, 503, 504} or attempt == len(delays):
+                break
         if len(response.body) > self.max_bytes:
             raise FollowSourceError(f"{self.provider} 响应超出大小上限")
         return response
@@ -1303,8 +1319,8 @@ class Rule34XxxConnector(_BaseConnector):
                 response = self._get(url, headers={"Accept": "text/html"})
             except FollowSourceError:
                 response = None
-                continue
-            if response.status == 200:
+                break
+            if response.status not in {425, 429}:
                 break
         if response is None or response.status != 200:
             return {}
@@ -1510,7 +1526,7 @@ class Rule34PahealConnector(_BaseConnector):
     #: 详情页取不到就重试的状态码。列表页一页 24 条，每条都要单独打一次详情页，
     #: 上游按频率挡回来是常态；一次挡回来就当「这条没有上传时间」，得到的是一条
     #: 看似完整、时间却是抓取时刻的记录——比报错更难发现。
-    _DETAIL_RETRY_STATUSES = frozenset({408, 425, 429, 500, 502, 503, 504})
+    _DETAIL_RETRY_STATUSES = frozenset({425, 429})
     #: 与外网退避规则同一套节奏。
     _DETAIL_RETRY_DELAYS = (1.0, 2.0, 4.0)
 

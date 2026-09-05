@@ -20,11 +20,11 @@ from __future__ import annotations
 import os
 import sqlite3
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path, PureWindowsPath
 
-from .platform import is_windows_path, resolve_location
+from .platform import is_windows_path, resolve_location, resolve_root
 
 VIDEO = {".mp4", ".m4v", ".mkv", ".avi", ".wmv", ".mov", ".ts", ".flv", ".rmvb", ".mpg",
          ".m2ts"}
@@ -59,9 +59,9 @@ def medium_of(name: str) -> str:
 
 
 def check_scan_target(
-    location: str, root: str, *, declared_roots: Mapping[str, str],
+    location: str, root: str, *, declared_roots: Mapping[str, Sequence[str]],
 ) -> None:
-    """扫描根必须落在这个来源的声明根内，否则拒绝（ADR-0023 第 2 阶段的写入侧门槛）。"""
+    """扫描根必须落在这个来源的某个声明根内，否则拒绝（ADR-0023 第 2 阶段的写入侧门槛）。"""
     declared = declared_roots.get(location)
     if declared is None:
         known = "、".join(sorted(declared_roots)) or "（设置文件里一个都没有）"
@@ -69,7 +69,7 @@ def check_scan_target(
     actual = resolve_location(root, declared_roots)[0]
     if actual != location:
         raise ScanTargetError(
-            f"✗ 扫描根与来源对不上：{location} 的声明根是 {declared}，"
+            f"✗ 扫描根与来源对不上：{location} 的声明根是 {'、'.join(declared)}，"
             f"但要扫的是 {root}"
             + (f"（那是 {actual} 的地盘）" if actual else "（不在任何声明根下）")
         )
@@ -77,50 +77,52 @@ def check_scan_target(
 
 def ledger_root_for(
     location: str, root: str | os.PathLike[str], *,
-    declared_roots: Mapping[str, str], mounts: Mapping[str, str | Path],
-    windows: bool | None = None,
+    declared_roots: Mapping[str, Sequence[str]],
+    mounts: Mapping[str, Sequence[str | Path]], windows: bool | None = None,
 ) -> str:
     """把用户给的目录换成账本口径的扫描根。
 
     Windows 上任何绝对路径本来就是账本形态，相对路径先按当前目录补全。其他平台上
-    给的是本机目录（挂载点下的某一层），换成 `声明根\\相对路径`；没有挂载点或不在
-    挂载点下都拒绝——那种目录扫出来的行谁也翻译不回去。
+    给的是本机目录（某个挂载点下的某一层），换成对应那个 `声明根\\相对路径`；没有
+    挂载点或不在任何挂载点下都拒绝——那种目录扫出来的行谁也翻译不回去。
     """
     windows = os.name == "nt" if windows is None else windows
     text = os.fspath(root)
     if windows:
         return text if is_windows_path(text) else str(Path(text).resolve())
-    declared = declared_roots.get(location)
-    mount = mounts.get(location)
-    if mount and declared is not None:
+    declared = declared_roots.get(location, ())
+    location_mounts = tuple(mounts.get(location, ()))
+    for declared_root, mount in zip(declared, location_mounts):
         try:
             tail = Path(text).resolve().relative_to(Path(mount).resolve()).parts
         except ValueError:
-            pass
-        else:
-            return str(PureWindowsPath(declared, *tail))
+            continue
+        return str(PureWindowsPath(declared_root, *tail))
     if is_windows_path(text):
         return text
-    if not mount:
+    if not location_mounts:
         raise ScanTargetError(
             f"✗ 来源 {location!r} 在本机没有挂载点，无法把 {text} 换成账本路径；"
             f"先在 [media.mounts] 里声明它的落点")
-    raise ScanTargetError(f"✗ {text} 不在来源 {location!r} 的挂载点 {mount} 之下")
+    shown = "、".join(os.fspath(mount) for mount in location_mounts)
+    raise ScanTargetError(f"✗ {text} 不在来源 {location!r} 的挂载点 {shown} 之下")
 
 
 def walk_root_for(
-    location: str, root: str, *, declared_roots: Mapping[str, str],
-    mounts: Mapping[str, str | Path], windows: bool | None = None,
+    location: str, root: str, *, declared_roots: Mapping[str, Sequence[str]],
+    mounts: Mapping[str, Sequence[str | Path]], windows: bool | None = None,
 ) -> Path:
     """账本口径的扫描根在本机要遍历哪个目录。调用前先过 `check_scan_target`。"""
     windows = os.name == "nt" if windows is None else windows
     if windows:
         return Path(root)
-    mount = mounts.get(location)
-    if not mount:
+    _location, index, tail = resolve_root(root, declared_roots)
+    location_mounts = tuple(mounts.get(location, ()))
+    if index >= len(location_mounts):
         raise ScanTargetError(
-            f"✗ 来源 {location!r} 在本机没有挂载点；先在 [media.mounts] 里声明它的落点")
-    return Path(mount).joinpath(*resolve_location(root, declared_roots)[1])
+            f"✗ 来源 {location!r} 的第 {index + 1} 个声明根在本机没有挂载点；"
+            f"先在 [media.mounts] 里按顺序声明它的落点")
+    return Path(location_mounts[index]).joinpath(*tail)
 
 
 @dataclass(frozen=True)
