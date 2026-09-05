@@ -175,6 +175,8 @@ GET_HANDLERS = {
     "/api/follow/check": q_follow_check,
     "/api/follow/resolve": lambda contract, args: contract.follow_resolve_job.snapshot() or {"status": "idle"},
     "/api/taste/refresh": lambda contract, args: contract.taste_refresh_job.snapshot() or {"status": "idle"},
+    "/api/links/prune": lambda contract, args: contract.link_prune_job.snapshot() or {"status": "idle"},
+    "/api/resource-sync/apply": lambda contract, args: contract.resource_apply_job.snapshot() or {"status": "idle"},
     "/api/items": q_items,
     "/api/item": _get_item,
     "/api/parts": q_parts,

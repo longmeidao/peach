@@ -2808,10 +2808,10 @@ async function wireLinkManager(){
       setActionBusy(control);
       control.innerHTML=`${spinnerHtml('正在重验')}<span>正在重验并删除…</span>`;
       try{
-        const out=await api('/api/links/prune',{method:'POST',body:JSON.stringify({confirm:true,check_id:payload.check_id})});
-        result.innerHTML=noteHtml(`已删除 ${out.removed} 条；重验时又能打开的 ${out.recovered} 条已保留。`,{label:'完成'});
-        await wireLinkManager();
-      }catch(error){result.insertAdjacentHTML('beforeend',noteHtml(error.message,{variant:'error',label:'删除失败'}))}
+        const out=await api('/api/links/prune',{method:'POST',body:JSON.stringify({confirm:true,check_id:payload.check_id,background:true})});
+        sessionStorage.setItem('peach-link-prune-job',out.job_id);
+        if(active())void wirePruneProgress();
+      }catch(error){if(active()){result.insertAdjacentHTML('beforeend',noteHtml(error.message,{variant:'error',label:'删除失败'}));void wirePruneProgress()}}
     });
   };
 
@@ -2829,6 +2829,12 @@ async function wireLinkManager(){
     }catch(error){if(active()){result.innerHTML=noteHtml('暂时无法确认启动结果，正在读取任务状态…',{label:'任务状态'});void poll()}}
   };
   void poll();
+  void wirePruneProgress();
+}
+function wirePruneProgress(){
+  return wireOperationProgress({host:$('#link-manager'),path:'/api/links/prune',key:'peach-link-prune-job',title:'正在重验并删除失效链接…',
+    busy:running=>{const button=$('#linkPrune');if(button){setActionBusy(button,running);if(!running)button.textContent='重试删除失效链接'}},
+    complete:out=>{$('#linkCheckResult').innerHTML=noteHtml(`已删除 ${out.removed} 条；保留 ${out.recovered} 条恢复的链接。`,{label:'完成'})}});
 }
 function resourceSyncMarkup(){
   return `<section class="resourcesync" id="resource-sync" aria-labelledby="resourceSyncTitle">
@@ -2866,12 +2872,13 @@ async function wireResourceSync(){
       setActionBusy(button);
       button.innerHTML=`${spinnerHtml('正在应用')}<span>正在重新核对并应用…</span>`;
       try{
-        const applied=await api('/api/resource-sync/apply',{method:'POST',body:JSON.stringify({confirm:true,clean_cache:true,scan_id:payload.scan_id||''})});
-        result.innerHTML=`<p class="resourcesyncok">已把 ${applied.moved_to_trash.toLocaleString()} 项移入回收站，清理 ${applied.cache_removed.toLocaleString()} 个缓存，释放 ${fmtSize(applied.bytes_reclaimed||0)}。</p>`;
+        const applied=await api('/api/resource-sync/apply',{method:'POST',body:JSON.stringify({confirm:true,clean_cache:true,scan_id:payload.scan_id||'',background:true})});
+        sessionStorage.setItem('peach-resource-apply-job',applied.job_id);
+        if(active())void wireResourceApplyProgress();
       }catch(error){
         setActionBusy(button,false);
         button.innerHTML=`${icon('refresh-cw')}<span>重试同步</span>`;
-        result.insertAdjacentHTML('beforeend',noteHtml(error.message,{variant:'error',label:'同步失败'}))}
+        result.insertAdjacentHTML('beforeend',noteHtml(error.message,{variant:'error',label:'同步失败'}));if(active())void wireResourceApplyProgress()}
     });
   };
   const followScan=async payload=>{
@@ -2900,6 +2907,12 @@ async function wireResourceSync(){
     read:signal=>api('/api/resource-sync/scan',{signal,method:'POST',body:JSON.stringify({background:true,status_only:true})}),
     render:existing=>{if(existing.status==='running')void followScan(existing)},
     disconnected:()=>{result.innerHTML=noteHtml('暂时无法读取进度，正在重新连接…',{label:'任务状态'})}});
+  void wireResourceApplyProgress();
+}
+function wireResourceApplyProgress(){
+  return wireOperationProgress({host:$('#resource-sync'),path:'/api/resource-sync/apply',key:'peach-resource-apply-job',title:'正在核对来源、同步并清理缓存…',
+    busy:running=>{const button=$('#resourceApply');if(button){setActionBusy(button,running);if(!running)button.textContent='同步并清理'}},
+    complete:out=>{$('#resourceSyncResult').innerHTML=noteHtml(`已把 ${out.moved_to_trash} 项移入回收站，清理 ${out.cache_removed} 个缓存，释放 ${fmtSize(out.bytes_reclaimed||0)}。`,{label:'完成'})}});
 }
 /* 旧直达 URL 仍然可用，落点跟着面板一起搬到数据管理。 */
 async function openResourceSync(push=true){

@@ -759,6 +759,7 @@ class WebDataTests(unittest.TestCase):
             "/api/search-history", "/api/review", "/api/playlists", "/api/playlist",
             "/api/follow", "/api/follow/credentials", "/api/follow/schedule",
             "/api/follow/check", "/api/follow/resolve", "/api/taste/refresh",
+            "/api/links/prune", "/api/resource-sync/apply",
             "/api/follow/tags",
             "/api/taste", "/api/settings", "/api/links",
         })

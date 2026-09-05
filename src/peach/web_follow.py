@@ -1042,10 +1042,8 @@ def w_follow_resolve(contract, body) -> dict:
     自动登记等于替用户做决定。
     """
     if body.get("background"):
-        def work(job_id):
-            result = w_follow_resolve(contract, {**body, "background": False})
-            contract.follow_resolve_job.update(job_id, status="complete", **result)
-        return contract.follow_resolve_job.start(work, restart=True)
+        return contract.follow_resolve_job.start_result(
+            lambda: w_follow_resolve(contract, {**body, "background": False}))
     raw = body.get("lines")
     if isinstance(raw, str):
         raw = raw.splitlines()

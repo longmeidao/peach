@@ -100,6 +100,29 @@ class FollowContractTests(unittest.TestCase):
         self.assertEqual([row['source'] for row in result['results']], [selected])
         self.assertEqual(factory.call_count, 1)
 
+    def test_background_prune_keeps_the_confirmation_and_expiry_gate(self):
+        refused = self._post('/api/links/prune', {'background': True})
+        self.assertFalse(refused['ok'])
+        self.assertIsNone(self.contract.link_prune_job.snapshot())
+        self._post('/api/links/prune', {'background': True, 'confirm': True, 'check_id': 'expired'})
+        self.contract.link_prune_job.thread.join(5)
+        final = dispatch_api_get(self.contract, '/api/links/prune', {})
+        self.assertEqual(final['status'], 'failed')
+        self.assertFalse(final['ok'])
+
+    def test_background_resource_apply_has_a_queryable_receipt(self):
+        from peach import web_resource_sync
+        with mock.patch.object(web_resource_sync, '_scan_missing_resources',
+                               return_value={'sources': [], 'missing_ids': []}), \
+             mock.patch.object(web_resource_sync, 'clean_resource_orphans',
+                               return_value={'cache_removed': 0, 'bytes_reclaimed': 0}):
+            started = self._post('/api/resource-sync/apply', {'background': True, 'confirm': True})
+            self.contract.resource_apply_job.thread.join(5)
+        final = dispatch_api_get(self.contract, '/api/resource-sync/apply', {})
+        self.assertEqual(final['job_id'], started['job_id'])
+        self.assertEqual(final['status'], 'complete')
+        self.assertEqual(final['moved_to_trash'], 0)
+
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
