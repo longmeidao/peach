@@ -3,10 +3,14 @@
 /* 深色只保留轻微层级，不让输入框、关注管理和数据详情陷进近乎纯黑的第三档。
    2026-08-30 按实际画面回执，把 ground 从 #020408 抬到 #080A0D；所有使用
    token 的页面、侧栏、输入与选中面同步生效。 */
+/* 浅色一档不带色相。2026-09-04 实测 vercel.com 后台：白底那套中性色从 #FFFFFF 一路到
+   #171717 全部落在 hsl(0,0%,·) 上，悬停与选中是纯黑透明度（5%）而不是调过色的实色灰。
+   带蓝的浅灰在白底上读成脏，实色中间态又比它所在的面板还重，合起来就是「太暗、太脏」。
+   数值与来源见 docs/reference-snapshots/vercel-geist-semantics-measured.md。 */
 :root{
-  --ground:#FFFFFF; --surface:#F7F8FA; --sunk:#ECEEF2; --hover:#EEF1F5; --skeleton-sheen:#E1E6EC;
-  --line:#D9DDE4; --line-soft:#E8EBF0;
-  --ink:#14161A; --ink-2:#454B55; --muted:#767C87;
+  --ground:#FFFFFF; --surface:#FAFAFA; --sunk:#F2F2F2; --hover:rgba(0,0,0,.05); --skeleton-sheen:#EBEBEB;
+  --line:#E5E5E5; --line-soft:#EBEBEB;
+  --ink:#171717; --ink-2:#4D4D4D; --muted:#666666;
   /* 蓝只给焦点环、链接、进度／数据和 Toggle 开态；按下／选中态与主动作走 --ink／--ink-2 反相，
      其它选择器引用 --tungsten 由 tests/test_web_ui.py 拒绝。 */
   --tungsten:#0095F6;
@@ -30,15 +34,30 @@
   /* 框体上下两条横条的统一高度。写成变量是因为它同时管数据管理的卡片、链接管理
      和资源同步：这三处任何一处单独调，页面上就会出现两种「同一种条」。 */
   --fieldset-bar-h:52px;
+  /* 全站只有两张面。--page 是退到后面的那张：页面底、框体里的操作条。
+     --ground 是浮在它上面的那张：顶栏、窄栏、卡片、面板、菜单、按钮和输入框，
+     靠这一档差加一条发丝线浮起来，不靠投影。
+     2026-09-05 实测 vercel.com 后台：页面底与左栏都是 --ds-background-200 #FAFAFA，
+     部署行、设置 fieldset 的正文和次级按钮是 --ds-background-100 #FFFFFF 配 1px 的 8% 黑，
+     不带投影；fieldset 的操作条落回 #FAFAFA，与页面底是同一个 token。
+     暗色那档 Vercel 是纯黑页面配 #0A0A0A 的面——方向不变，仍是面比底亮。
+     Peach 的暗色底带蓝，所以按同一方向在 --ground 之下取一档，不跳到纯黑。
+     顶栏与窄栏是与 Vercel 有意分开的一处：Vercel 的页头和页面底同色、不浮，
+     Peach 有一条从上贯到底的窄栏，两条一起留在 --ground 才不会在左上角撞出两种白。 */
+  --page:#FAFAFA;
   --layer-dialog:1000; --layer-popover:1100; --layer-tooltip:1200;
-  --frost-panel:rgba(247,248,250,.92); --frost-light:rgba(255,255,255,.86);
-  --overlay-5:rgba(20,22,26,.05);--border-10:rgba(20,22,26,.10);--border-15:rgba(20,22,26,.15);
+  --frost-panel:rgba(250,250,250,.92); --frost-light:rgba(255,255,255,.86);
+  --overlay-5:rgba(0,0,0,.05);--border-10:rgba(0,0,0,.10);--border-15:rgba(0,0,0,.15);
+  /* 输入框那一组边与环。2026-09-05 实测 vercel.com 的输入框：静止 1px 的
+     gray-alpha-400、悬停 alpha-500、聚焦 1px alpha-600 外加 4px 的 16% 黑，
+     暗色那档换成 24% 白。焦点不是蓝的——蓝在这套里只给链接和数据。 */
+  --field-ring:rgba(0,0,0,.08);--field-ring-hover:rgba(0,0,0,.21);
+  --field-ring-focus:rgba(0,0,0,.34);--field-glow:rgba(0,0,0,.16);
   /* 字号只有这一套刻度。之前站内散着 22 种字号（9…48px），相邻两档差半像素，
      既排不出层级也没法复核。收敛成 8 档，下限 12px：更小的灰字在 Vercel 的
      design.md 里被明确列为要拒绝的生成式设计反射。新增字号前先证明现有 8 档都不合适。 */
   --fs-xs:12px; --fs-sm:13px; --fs-md:14px; --fs-lg:16px;
   --fs-xl:20px; --fs-2xl:24px; --fs-3xl:32px; --fs-4xl:48px;
-  --sb:#3A3A40; --sb-hover:#55555E;   /* 336 = 168×2，与目标站的模块单位一致 */
 }
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
   --ground:#080A0D; --surface:#0C0F14; --sunk:#0B0D11; --hover:rgba(255,255,255,.07); --skeleton-sheen:rgba(255,255,255,.12);
@@ -47,6 +66,9 @@
   --tungsten:#0095F6;
   --frost-panel:rgba(6,9,14,.94); --frost-light:rgba(14,18,24,.90);
   --overlay-5:rgba(245,250,255,.05);--border-10:rgba(245,250,255,.10);--border-15:rgba(245,250,255,.15);
+  --field-ring:rgba(255,255,255,.14);--field-ring-hover:rgba(255,255,255,.24);
+  --field-ring-focus:rgba(255,255,255,.51);--field-glow:rgba(255,255,255,.24);
+  --page:#04060A;
   --loupe:#6FD0C8; --keep:#5FB95F; --meter:#E0912F; --drop:#FF5252; --success:#5FB95F; --ambient-opacity:1;}}
 :root[data-theme="dark"]{
   --ground:#080A0D; --surface:#0C0F14; --sunk:#0B0D11; --hover:rgba(255,255,255,.07); --skeleton-sheen:rgba(255,255,255,.12);
@@ -55,17 +77,24 @@
   --tungsten:#0095F6;
   --frost-panel:rgba(6,9,14,.94); --frost-light:rgba(14,18,24,.90);
   --overlay-5:rgba(245,250,255,.05);--border-10:rgba(245,250,255,.10);--border-15:rgba(245,250,255,.15);
+  --field-ring:rgba(255,255,255,.14);--field-ring-hover:rgba(255,255,255,.24);
+  --field-ring-focus:rgba(255,255,255,.51);--field-glow:rgba(255,255,255,.24);
+  --page:#04060A;
   --loupe:#6FD0C8; --keep:#5FB95F; --meter:#E0912F; --drop:#FF5252; --success:#5FB95F; --ambient-opacity:1;}
 
 *,*::before,*::after{box-sizing:border-box}
 .sr-only{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
-/* 滚动条槽位一直留着。设置面板、灯箱和播放器都会给 body 加 overflow:hidden，
-   槽位不预留时滚动条一消失，整页就横向跳一次；关掉再跳回来。 */
-html{color-scheme:light;scroll-padding-top:calc(var(--topH) + 8px);scrollbar-gutter:stable}
+/* 整页也不给滚动条留那一列。原生滚动条自己占 15px 实宽，浅色一档的槽还是块比 --page
+   更亮的死白，窗口右边于是常年挂着一条从头贯到底的白带；要它不跳版又得 scrollbar-gutter
+   把这 15px 永久扣下来，等于为一条装饰付一整列。改成 .ovtrack 那套覆盖式滑块之后，
+   宽度归零，跳版的前提也一并消失——设置面板、灯箱和播放器给 body 加 overflow:hidden 时，
+   本来就没有东西会消失。 */
+html{color-scheme:light;scroll-padding-top:calc(var(--topH) + 8px);scrollbar-width:none}
+html::-webkit-scrollbar{display:none}
 @media (prefers-color-scheme:dark){html:not([data-theme="light"]){color-scheme:dark}}
 html[data-theme="dark"]{color-scheme:dark}
 html,body{margin:0;padding:0}
-body{background:var(--ground);color:var(--ink);
+body{background:var(--page);color:var(--ink);
   font-family:Roboto,"Segoe UI Variable Text","Segoe UI","Microsoft YaHei UI","PingFang SC",sans-serif;
   font-size:var(--fs-md);line-height:1.45;-webkit-font-smoothing:antialiased;
   font-variant-numeric:tabular-nums}
@@ -73,7 +102,7 @@ body{background:var(--ground);color:var(--ink);
    许可不明的位图，依据留存像素重建一张确定性的 CSS 光晕。 */
 body::before{content:"";position:absolute;z-index:0;pointer-events:none;top:var(--topH);left:0;right:0;height:49vh;
   opacity:var(--ambient-opacity);background:
-    linear-gradient(to bottom,rgba(0,0,0,.6),var(--ground)),
+    linear-gradient(to bottom,rgba(0,0,0,.6),var(--page)),
     radial-gradient(ellipse 43% 78% at 42% 34%,rgba(25,169,187,.72),transparent 68%),
     radial-gradient(ellipse 36% 72% at 30% 6%,rgba(178,125,141,.58),transparent 72%),
     radial-gradient(ellipse 38% 70% at 76% 18%,rgba(84,66,87,.58),transparent 72%),
@@ -107,15 +136,15 @@ button,a,input,textarea,select,summary{touch-action:manipulation}
   display:grid;place-items:center;width:16px;height:16px;color:var(--muted);pointer-events:none}
 .geist-search-prefix>svg{width:16px;height:16px;stroke:currentColor;fill:none}
 .geist-search input[type="search"]{width:100%;min-width:0;height:38px;
-  box-sizing:border-box;border:1px solid var(--border-15);border-radius:var(--control-radius);
+  box-sizing:border-box;border:1px solid var(--field-ring);border-radius:var(--control-radius);
   background:var(--ground);color:var(--ink);padding:0 12px 0 38px;font-size:var(--fs-md);font-family:inherit;
   line-height:20px;transition:border-color .12s ease}
 .geist-search input[type="search"]::-webkit-search-cancel-button{-webkit-appearance:none;appearance:none}
 .geist-search input[type="search"]::placeholder{color:var(--muted)}
-/* 点进去要立刻看得出焦点在这儿，配方与顶部搜索框的 `.search:focus-within` 同一条。 */
+/* 点进去要立刻看得出焦点在这儿：1px 的边提到 alpha-600，外面再套一圈 4px 的中性辉光。 */
+.geist-search input[type="search"]:hover{border-color:var(--field-ring-hover)}
 .geist-search input[type="search"]:focus{outline:0;
-  border-color:color-mix(in srgb,var(--tungsten) 72%,transparent);
-  box-shadow:0 0 0 3px color-mix(in srgb,var(--tungsten) 26%,transparent)}
+  border-color:var(--field-ring-focus);box-shadow:0 0 0 4px var(--field-glow)}
 .geist-search:focus-within .geist-search-prefix{color:var(--ink)}
 /* 纯文本输入框：全站唯一一份。此前每处自己拼内边距，控件高度散在 34/40/43 三档，
    而 <=760px 那条把输入框字号顶到 16 像素的防放大规则只抬没写死高度的那几个，
@@ -124,21 +153,25 @@ button,a,input,textarea,select,summary{touch-action:manipulation}
    要换档只改 :root 那一处。Geist 自己的实测值是 32px，见
    docs/reference-snapshots/vercel-geist-controls-measured.md。 */
 .geist-input{box-sizing:border-box;width:100%;min-width:0;height:var(--control-h);
-  border:1px solid var(--border-15);border-radius:var(--control-radius);
+  border:1px solid var(--field-ring);border-radius:var(--control-radius);
   background:var(--ground);color:var(--ink);padding:0 12px;
   font:inherit;font-size:var(--fs-md);line-height:20px;transition:border-color .12s ease}
 .geist-input::placeholder{color:var(--muted)}
+.geist-input:hover{border-color:var(--field-ring-hover)}
 .geist-input:focus{outline:0;
-  border-color:color-mix(in srgb,var(--tungsten) 72%,transparent);
-  box-shadow:0 0 0 3px color-mix(in srgb,var(--tungsten) 26%,transparent)}
-.geist-button{box-sizing:border-box;height:32px;padding:0 6px;border:1px solid var(--border-15);
-  border-radius:var(--control-radius);background:transparent;color:var(--ink);display:inline-flex;
+  border-color:var(--field-ring-focus);box-shadow:0 0 0 4px var(--field-glow)}
+/* 按钮只有两档，2026-09-05 实测 vercel.com 的仪表盘工具行同时摆着它们：
+   次级是 --ds-background-100 的白面加一圈 1px #EBEBEB，主动作是 #171717 实底白字、
+   不带描边，禁用态落到 #F2F2F2 底 #8F8F8F 字。所以次级不是透明的——它自己是一块面，
+   压在 fieldset 的操作条上时要比条子亮，不能透出条子的底。 */
+.geist-button{box-sizing:border-box;height:32px;padding:0 14px;border:1px solid var(--line-soft);
+  border-radius:var(--control-radius);background:var(--ground);color:var(--ink);display:inline-flex;
   align-items:center;justify-content:center;gap:6px;font:inherit;font-size:var(--fs-md);font-weight:500;
   line-height:1;white-space:nowrap;cursor:pointer;
   transition:background-color .15s ease-in-out,border-color .15s ease-in-out,color .15s ease-in-out}
-.geist-button:hover:not(:disabled){background:var(--hover)}
+.geist-button:hover:not(:disabled){background:var(--surface)}
 .geist-button:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}
-.geist-button:disabled{background:var(--surface);border-color:var(--border-15);color:var(--muted);cursor:default}
+.geist-button:disabled{background:var(--sunk);border-color:var(--line-soft);color:var(--muted);cursor:default}
 /* Vercel/Geist loading actions look unavailable and reject repeat activation,
    but remain focusable; JS pairs this with aria-disabled instead of disabled. */
 button[aria-busy="true"],[role="button"][aria-busy="true"]{
@@ -149,20 +182,48 @@ button[aria-busy="true"],[role="button"][aria-busy="true"]{
   background:color-mix(in srgb,var(--ink) 88%,var(--ground));color:var(--ground)}
 /* 实心档的禁用态要自己写：.geist-button:disabled 排在 .primary 前面，同权重下后者赢，
    不补这条的话禁用的主动作还是满格实底，看着可点。 */
-.geist-button.primary:disabled{border-color:var(--border-15);background:var(--surface);color:var(--muted)}
+.geist-button.primary:disabled{border-color:var(--line-soft);background:var(--sunk);color:var(--muted)}
 .skiplink{position:fixed;z-index:1000;left:12px;top:8px;transform:translateY(-150%);
   padding:9px 13px;border-radius:var(--control-radius);background:var(--ink);color:var(--ground);text-decoration:none;
   transition:transform .12s ease}
 .skiplink:focus-visible{transform:translateY(0)}
-/* 滚动条：全站统一，不用浏览器默认。细、无箭头、无轨道底色，悬停才提亮。 */
-*{scrollbar-width:thin;scrollbar-color:var(--sb) transparent}
-::-webkit-scrollbar{width:8px;height:8px}
-::-webkit-scrollbar-track{background:transparent;border:0}
-::-webkit-scrollbar-thumb{background:var(--sb);border-radius:var(--pill-radius);
-  border:2px solid transparent;background-clip:content-box}
-::-webkit-scrollbar-thumb:hover{background:var(--sb-hover);background-clip:content-box}
-::-webkit-scrollbar-corner{background:transparent}
-::-webkit-scrollbar-button{display:none;width:0;height:0}
+/* 覆盖式滚动条：原生的藏掉，滑块浮在内容上，一列宽度都不占。
+   2026-09-05 实测 vercel.com 侧栏（`nav.overflow-y-auto` + 它的兄弟 `div.group/track`）：
+   容器 `scrollbar-width:none`、`padding-right:0`，轨道 `absolute right-0 top-2 bottom-2`
+   宽 12px、底透明；滑块 `absolute right-0` 宽 3px、`border-radius` 实测 9999px（Peach 走
+   --pill-radius 的 999px，整圆只留一个来源）、
+   `background:var(--ds-gray-500)`（浅色一档实测 rgb(201,201,201)，暗色一档 rgb(69,69,69)），
+   轨道悬停时宽到 6px，`transition:width .15s cubic-bezier(.4,0,.2,1)`；高度和位移写在滑块的
+   行内样式上，按可视高/内容高的比例算。
+   Peach 的 --field-ring-hover 是 rgba(0,0,0,.21)，压在白面上正好是 rgb(201,201,201)，
+   同一个数还自带暗色一档，所以直接用它，不再为滑块单开一个颜色 token。
+   轨道 12px 只是好瞄的命中区，看得见的永远只有那 3px。
+   有意差异一：Vercel 的轨道是 `hidden pointer-fine:block`，粗指针一档整条不画。Peach 让滑块
+   照画，只把「能拖」收给细指针。原生滚动条已被容器关掉，跟着 Vercel 收掉整条就等于触屏上
+   既没有滑块也没有系统指示器，读不出这一列有多长、自己在哪儿；而滑块本身不占宽度，
+   留着不挡任何东西。拖不动的东西不该吃走触摸事件，所以命中区由 pointer-events 分档。
+   有意差异二：Vercel 只在内部滚动区这么做，根滚动条留给浏览器；Peach 整页也换掉，见上面
+   `html` 那条。整页那一条的命中区必须收到滑块本身：轨道横跨整个窗口右边，12px 宽的透明
+   条会把右边缘所有点击吃掉——设置面板就贴在那儿。 */
+.ovtrack{position:absolute;z-index:2;pointer-events:none}
+.ovtrack[hidden]{display:none}
+@media (pointer:fine){.ovtrack{pointer-events:auto}}
+.ovtrack.ov-y{right:0;top:8px;bottom:8px;width:12px}
+.ovtrack.ov-x{left:8px;right:8px;bottom:0;height:12px}
+.ovthumb{position:absolute;border-radius:var(--pill-radius);background:var(--field-ring-hover);
+  cursor:default;transition:width .15s cubic-bezier(.4,0,.2,1),height .15s cubic-bezier(.4,0,.2,1)}
+.ov-y .ovthumb{right:0;top:0;width:3px}
+.ov-x .ovthumb{left:0;bottom:0;height:3px}
+.ov-y:hover .ovthumb,.ov-y.dragging .ovthumb{width:6px}
+.ov-x:hover .ovthumb,.ov-x.dragging .ovthumb{height:6px}
+.ovtrack.page{position:fixed;top:0;bottom:0;right:0;z-index:91;pointer-events:none}
+@media (pointer:fine){.ovtrack.page .ovthumb{pointer-events:auto}}
+.ovtrack.page:hover .ovthumb{width:3px}
+.ovtrack.page .ovthumb:hover,.ovtrack.page.dragging .ovthumb{width:6px}
+/* 原生滚动条在挂上覆盖式那条之后才藏：属性是 attachOverlayScrollbar() 挂上去的，
+   脚本没跑到的容器就还留着系统滚动条，不会变成一个既没有滑块也拖不动的死框。 */
+[data-overlay-scrollbar]{scrollbar-width:none}
+[data-overlay-scrollbar]::-webkit-scrollbar{display:none}
 /* 横向行不显示滚动条（本来就能拖动/滚轮横滚） */
 .tier,.tagbar,.srow,.nrow{scrollbar-width:none}
 .tier::-webkit-scrollbar,.tagbar::-webkit-scrollbar,
@@ -175,12 +236,45 @@ button[aria-busy="true"],[role="button"][aria-busy="true"]{
 
 
 /* 锚定菜单：无展开动画，固定在视口内，内容在菜单内滚动而不是把页面撑出滚动条。
-   Vercel 项目页的 Filter and Sort 菜单就是这个形状。 */
+   2026-09-04 实测 vercel.com 后台的 Filter and Sort 菜单：底色是页面底色本身（浅色下
+   纯白），不是下一档面板灰；6px 内边距、12px 圆角、行高 36px；阴影是四层叠出来的
+   薄影加一圈 1px 描边，不是一大团黑。这里的描边由 border 给。 */
 .popmenu{position:fixed;z-index:var(--layer-popover);max-height:calc(100dvh - 16px);
   padding:6px;border:1px solid var(--border-15);border-radius:var(--floating-radius);
-  background:var(--surface);box-shadow:0 12px 40px #0006;display:grid;gap:2px;
+  background:var(--ground);display:grid;gap:2px;
+  box-shadow:0 1px 1px rgba(0,0,0,.02),0 4px 8px -4px rgba(0,0,0,.04),0 16px 24px -8px rgba(0,0,0,.06);
   overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain}
 .popmenu[hidden]{display:none}
+/* 进顶层的那几个要把 popover 的默认盒子拆掉：浏览器给 `[popover]` 的是 inset:0 加
+   margin:auto 的居中盒，菜单会被拉宽并落在屏幕正中，而定位算的是 left/top。 */
+.popmenu[popover]{inset:auto;margin:0}
+
+/* Geist Select：触发器穿输入框那身盒子，面板就是上面那个锚定菜单。为什么不用原生
+   下拉、几何取自哪里，见 web/js/ui-components.js 里这个组件的注释。 */
+.gselect{position:relative;display:inline-flex;min-width:0}
+.gselectfield{box-sizing:border-box;display:inline-flex;align-items:center;justify-content:space-between;
+  gap:8px;width:100%;min-width:0;height:var(--control-h);padding:0 10px 0 12px;
+  border:1px solid var(--field-ring);border-radius:var(--control-radius);
+  background:var(--ground);color:var(--ink);font:inherit;font-size:var(--fs-md);line-height:20px;
+  text-align:left;cursor:pointer;transition:border-color .12s ease,background-color .12s ease}
+.gselectfield>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gselectmenu [data-select-content]{display:flex;align-items:center;gap:8px;min-width:0}
+.gselectfield .gselectmark{vertical-align:-3px;margin-inline-end:8px}
+.gselectmark{width:16px;height:16px;flex:none;object-fit:contain;stroke:currentColor;fill:none}
+.gselectfield>svg{width:16px;height:16px;flex:none;stroke:currentColor;fill:none;color:var(--muted)}
+.gselectfield:hover:not(:disabled){border-color:var(--field-ring-hover)}
+/* 展开时按住焦点态：菜单开着而触发器看起来没被点中，读起来像两个控件。 */
+.gselectfield[aria-expanded="true"]{border-color:var(--field-ring-focus);
+  box-shadow:0 0 0 4px var(--field-glow)}
+.gselectfield:disabled{background:var(--surface);color:var(--muted);cursor:default}
+.gselectfield:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}
+.gselectmenu button{display:flex;align-items:center;gap:8px;width:100%;min-height:var(--control-h);
+  padding:0 8px;border:0;border-radius:var(--control-radius);background:transparent;color:var(--ink-2);
+  font:inherit;font-size:var(--fs-md);text-align:left;cursor:pointer}
+.gselectmenu button:hover{background:var(--hover);color:var(--ink)}
+.gselectmenu button>svg{width:16px;height:16px;flex:none;visibility:hidden;stroke:currentColor;fill:none}
+.gselectmenu button[aria-selected="true"]{background:var(--hover);color:var(--ink)}
+.gselectmenu button[aria-selected="true"]>svg{visibility:visible}
 
 /* Geist Modal：确认一次写操作。实测 https://vercel.com/geist/modal（2026-09-04）：
    540px 宽、12px 圆角、窄屏两侧各留 10px，正文 20px 内边距，操作条粘在底、12px 内边距、

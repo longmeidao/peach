@@ -230,6 +230,14 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
             taste_history_manifest=self.taste_manifest,
         )
         self.app = create_app(self.settings)
+        # 字节与时间表夹具不含可解码画面；编码判定由媒体域的真实样本覆盖。
+        from peach.transcodes import _MediaProfile
+        self.profile_patch = patch.object(
+            self.app.state.transcode_service, "_probe",
+            return_value=_MediaProfile("h264", "yuv420p", "aac"),
+        )
+        self.profile_patch.start()
+        self.addCleanup(self.profile_patch.stop)
         self.assertIs(
             self.app.state.web_contract.database,
             self.app.state.repository.database,
@@ -645,6 +653,22 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         ])
         connection.close()
 
+    async def test_catalog_keeps_missing_performers_separate_from_release_code(self):
+        with closing(sqlite3.connect(self.db)) as con:
+            con.execute(
+                "INSERT INTO asset(id,location,path,name,medium,size,code,studio,first_seen) "
+                "VALUES(29999,'local',?,'JBS-023.mp4','video',10,'JBS-023','Prestige','2026-09-05')",
+                (str((self.media_root / 'JBS-023.mp4').resolve()),),
+            )
+            con.commit()
+        response = await self.client.get('/api/items?t=secret&loc=local')
+        self.assertEqual(response.status_code, 200)
+        item = next(row for row in response.json()['items'] if row['id'] == 29999)
+        self.assertEqual(item['code'], 'JBS-023')
+        self.assertFalse(item.get('creator'))
+        self.assertEqual(item['performers'], [])
+        self.assertEqual(item['performer_entities'], [])
+
     async def test_auth_and_items_contract(self):
         denied = await self.client.get("/api/items")
         self.assertEqual(denied.status_code, 401)
@@ -851,6 +875,22 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(accepted.headers["location"], "/stats")
         self.assertNotIn("secret", accepted.headers["location"])
 
+    async def test_the_login_page_follows_the_chosen_theme(self):
+        """登录页在拿到 cookie 之前出图，所以它自带一份最小色板，跟着同一个选择走。
+
+        它取不到 `/app.css`，颜色只能写在页面里。写死一档的话，固定浅色的人从地址栏
+        直接进来先看见一整屏黑，登录完才跳回浅色——同一次打开出现两套配色。
+        """
+        page = await self.client.get("/login?next=/")
+        self.assertEqual(page.status_code, 200)
+        self.assertIn('<meta name="color-scheme" content="light dark">', page.text)
+        self.assertIn(":root{color-scheme:light;--bg:#FFFFFF;", page.text)
+        self.assertIn('@media (prefers-color-scheme:dark){html:not([data-theme="light"])', page.text)
+        self.assertIn('html[data-theme="dark"]{color-scheme:dark;', page.text)
+        self.assertIn("background:var(--bg);color:var(--ink)", page.text)
+        # 手动选的那一档存在页面自己的 localStorage 里，首帧之前就要读出来。
+        self.assertIn('localStorage.getItem("peach.settings.v1")', page.text)
+
     async def test_client_routes_serve_the_single_page_surface(self):
         await self.client.post(
             "/login", content="token=secret&next=%2F",
@@ -961,6 +1001,10 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
                 "</script>").encode("utf-8")
 
         def upstream(request):
+            # 正片的字节数只有上游知道，端点解析完地址后顺手 HEAD 一次拿回来。
+            if request.method == "HEAD":
+                return httpx.Response(200, request=request, headers={
+                    "content-type": "video/mp4", "content-length": "11458972"})
             return httpx.Response(200, stream=httpx.ByteStream(page), request=request,
                                   headers={"content-type": "text/html"})
 
@@ -980,6 +1024,52 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
             {"height": 480, "label": "480p"},
             {"height": 360, "label": "360p"},
         ])
+        self.assertEqual(response.json()["size"], 11458972)
+
+    async def test_follow_qualities_reports_no_size_when_upstream_refuses_the_head(self):
+        """字节数取不到不是错误：清晰度照给，`size` 给 None。
+
+        浏览器量不到渐进下载的字节速率，播放器要靠文件大小和时长换出平均码率才能报
+        MB/s。取不到时它退回按秒的读数——所以这里绝不能让一次 HEAD 失败把整张档位表
+        也带走，也不能编一个字节数出来。
+        """
+        connection = sqlite3.connect(self.db)
+        connection.executescript((ROOT / "migrations" / "0018_online_follow.sql").read_text(
+            encoding="utf-8"))
+        connection.execute(
+            "INSERT INTO follow_source(id,provider,ref,label,url,semantics,created_at,updated_at)"
+            " VALUES(2,'rule34video','r34/1','Creator','https://rule34video.com/u','work','x','x')"
+        )
+        connection.execute(
+            "INSERT INTO follow_item(id,source_id,external_id,title,url,media_url,release_key,"
+            "first_seen_at,last_seen_at) VALUES(9,2,'9','Remote',"
+            "'https://rule34video.com/video/9/x/','https://rule34video.com/get_file/9.mp4/',"
+            "'remote','x','x')"
+        )
+        connection.commit()
+        connection.close()
+
+        page = ("<script>"
+                "video_url: 'https://rule34video.com/get_file/9_720p.mp4/?v=t0';"
+                "</script>").encode("utf-8")
+
+        def upstream(request):
+            if request.method == "HEAD":
+                return httpx.Response(403, request=request)
+            return httpx.Response(200, stream=httpx.ByteStream(page), request=request,
+                                  headers={"content-type": "text/html"})
+
+        original = self.app.state.http_transport.client
+        fake = httpx.Client(transport=httpx.MockTransport(upstream), follow_redirects=True)
+        self.app.state.http_transport.client = fake
+        try:
+            response = await self.client.get("/follow-qualities?id=9&t=secret")
+        finally:
+            self.app.state.http_transport.client = original
+            fake.close()
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["qualities"], [{"height": 720, "label": "720p"}])
+        self.assertIsNone(response.json()["size"])
 
     async def test_follow_stream_proxies_range_without_exposing_the_upstream_url(self):
         connection = sqlite3.connect(self.db)
@@ -1173,6 +1263,20 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(playlist.status_code, 200)
         self.assertEqual(playlist.headers["content-type"], "application/vnd.apple.mpegurl")
         self.assertEqual(playlist.text.count("#EXTINF:"), 3)
+
+    async def test_incompatible_video_uses_time_slices_without_whole_movie_conversion(self):
+        con = sqlite3.connect(self.db)
+        con.execute("UPDATE asset SET duration=7632.28 WHERE id=1")
+        con.commit()
+        con.close()
+        with patch.object(self.app.state.transcode_service, 'requires_conversion', return_value=True), \
+                patch.object(self.app.state.transcode_service, 'browser_path',
+                             side_effect=AssertionError('whole movie conversion')):
+            response = await self.client.get('/api/stream-plan?id=1&session=s&t=secret')
+            self.assertEqual(response.json()['protocol'], 'hls')
+            playlist = await self.client.get('/stream/hls/1/index.m3u8?session=s&t=secret')
+            self.assertEqual(playlist.status_code, 200)
+            self.assertIn('#EXTINF:0.280', playlist.text)
 
     async def test_hls_segment_is_generated_for_one_requested_time_slice(self):
         con = sqlite3.connect(self.db)

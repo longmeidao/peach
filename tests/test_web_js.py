@@ -387,6 +387,69 @@ class WebJsBehaviourTests(unittest.TestCase):
             ("core.js", "fmtSize", [2 * 1024 ** 4], "2.00 TB"),
         ])
 
+    # ── 头像的人脸放大 ──────────────────────────────────────────────────────
+
+    #: 全库最小的那张脸：`performer-8711` 是 640×960 的全身站姿照，脸框只有 67 px 宽。
+    #: 拿它当基准，因为「放大多少」只在这一档上才会同时撞到三条上限。
+    SMALL_FACE = {"cx": 0.439, "cy": 0.224, "faceW": 67, "imgW": 640, "imgH": 960}
+    #: 539 张里四分之三长这样：脸框已占框宽四成以上，一放大就切头顶。
+    CLOSE_UP = {"cx": 0.5, "cy": 0.42, "faceW": 280, "imgW": 640, "imgH": 896}
+
+    def test_zoom_is_capped_by_whichever_limit_binds_first(self):
+        small, close = self.SMALL_FACE, self.CLOSE_UP
+        self.assertJsResults([
+            # 资料页 160 px 圆框、2 倍屏：无损上限先到。脸有 67 px，这个框要 33.5 个
+            # 设备像素，正好还得起 2 倍；再往上就是拿插值出来的像素冒充清晰度。
+            ("face-frame.js", "faceZoom", [small, {"w": 160, "h": 160}, 2], 2),
+            # 同一张图、同一块屏，换到顶栏 64 px 圆框：无损上限升到 5 倍，于是改由
+            # 构图上限说话。判据没变，结论差一倍多——所以倍数只能在页面这一侧算。
+            ("face-frame.js", "faceZoom", [small, {"w": 64, "h": 64}, 2], 3),
+            # 1 倍屏要的设备像素少一半，无损上限跟着翻倍到 4，仍由构图上限压住。
+            ("face-frame.js", "faceZoom", [small, {"w": 160, "h": 160}, 1], 3),
+            # 已经是特写的那些一个像素都不动：目标占比先到，算出来不足 1 倍。
+            ("face-frame.js", "faceZoom", [close, {"w": 160, "h": 160}, 2], 1),
+            ("face-frame.js", "faceFrame", [close, {"w": 160, "h": 160}, 2], None),
+        ])
+
+    def test_a_zoomed_avatar_covers_the_frame_and_centres_the_face(self):
+        square = {"cx": 0.5, "cy": 0.3, "faceW": 150, "imgW": 1000, "imgH": 1000}
+        self.assertJsResults([
+            # 图撑到 200%×300%，负偏移把脸心拉向框心。宽高都不小于 100%，圆框里
+            # 一丝白边都不会露——那是「放大」和「换一张构图」的分界。
+            ("face-frame.js", "faceFrame", [self.SMALL_FACE, {"w": 160, "h": 160}, 2],
+             {"zoom": 2, "width": 200, "height": 300, "left": -37.8, "top": -17.2}),
+            # 方图过去拿不到任何取景：`object-position` 在没被裁的方向上无效。放大之后
+            # 图比框大，纵向终于挪得动，脸不再被按在几何中心。
+            ("face-frame.js", "faceFrame", [square, {"w": 160, "h": 160}, 2],
+             {"zoom": 2.133, "width": 213.33, "height": 213.33,
+              "left": -56.67, "top": -14}),
+            # 索引页大图版式的框是 3:4：cover 的基础缩放按更紧的那一边算，两个轴各自
+            # 夹持。按正方形写死会让竖幅框里的图横向露白。
+            ("face-frame.js", "faceFrame", [self.SMALL_FACE, {"w": 150, "h": 200}, 2],
+             {"zoom": 2.133, "width": 213.33, "height": 240,
+              "left": -43.65, "top": -3.76}),
+        ])
+
+    def test_incomplete_face_data_falls_back_instead_of_guessing(self):
+        # 补 `px` 字段之前写下的 sidecar 只有脸心，没有脸框像素。少了它答不了
+        # 「放大到几倍开始糊」，这时必须退回纯平移，而不是按 1 倍猜一个。
+        no_pixels = {"cx": 0.4, "cy": 0.2}
+        zero_width = {"cx": 0.4, "cy": 0.2, "faceW": 0, "imgW": 640, "imgH": 960}
+        frame = {"w": 160, "h": 160}
+        self.assertJsResults([
+            ("face-frame.js", "hasFaceBox", [self.SMALL_FACE], True),
+            ("face-frame.js", "hasFaceBox", [no_pixels], False),
+            ("face-frame.js", "hasFaceBox", [zero_width], False),
+            ("face-frame.js", "hasFaceBox", [None], False),
+            # 脸贴着左上角是真实构图，不是缺数据：0 必须算有效。
+            ("face-frame.js", "hasFaceBox",
+             [{"cx": 0, "cy": 0, "faceW": 67, "imgW": 640, "imgH": 960}], True),
+            ("face-frame.js", "faceZoom", [no_pixels, frame, 2], 1),
+            ("face-frame.js", "faceFrame", [no_pixels, frame, 2], None),
+            # 框还没布局（骨架屏、display:none）时宽高是 0，照样算不出倍数来。
+            ("face-frame.js", "faceZoom", [self.SMALL_FACE, {"w": 0, "h": 0}, 2], 1),
+        ])
+
 
 if __name__ == "__main__":
     unittest.main()

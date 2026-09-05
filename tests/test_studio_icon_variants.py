@@ -12,6 +12,7 @@ import json
 import sqlite3
 import tempfile
 import unittest
+import httpx
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -1666,10 +1667,17 @@ class FetcherCacheTests(unittest.TestCase):
             self.status = status
             self.calls: list[str] = []
 
-        def get(self, url, **kwargs):
-            self.calls.append(url)
-            return SimpleNamespace(status_code=self.status, content=b"<html></html>",
-                                   headers={"content-type": "text/html"})
+        def stream(self, method, url, **kwargs):
+            from contextlib import contextmanager
+            @contextmanager
+            def response():
+                self.calls.append(url)
+                result = httpx.Response(self.status, content=b"<html></html>",
+                                        headers={"content-type": "text/html"},
+                                        request=httpx.Request(method, url))
+                yield result
+                result.close()
+            return response()
 
     def test_the_same_page_is_only_fetched_once(self):
         client = self.Client()

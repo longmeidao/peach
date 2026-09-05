@@ -52,6 +52,44 @@ class AvatarRootIndex(NamedTuple):
 
 
 
+def _avatar_focus_axis(focus: object) -> dict:
+    """人脸 sidecar 的 `focus` 那一半：换算好的单轴 object-position。
+
+    坏值一律当没有，不当成 0：把 `pct` 写成 `"high"` 的 sidecar 按 0 处理会把
+    脸顶到框边上，静静地比几何居中还糟。
+    """
+    if not isinstance(focus, dict):
+        return {}
+    axis = focus.get("axis")
+    pct = focus.get("pct")
+    if (axis not in {"x", "y"} or isinstance(pct, bool)
+            or not isinstance(pct, (int, float)) or not 0 <= pct <= 100):
+        return {}
+    return {"axis": axis, "pct": int(pct)}
+
+
+def _avatar_face_box(face: object, px: object) -> dict | None:
+    """人脸 sidecar 的 `face` 那一半，换算成绝对像素交给页面。
+
+    脸心归一化、脸框归一化、源图像素三样缺一不可：少了源图像素就只剩比例，
+    答不了「放大到几倍开始糊」。页面按 `web/js/face-frame.js` 的字段名取用。
+    """
+    if not isinstance(face, dict) or not isinstance(px, (list, tuple)) or len(px) != 2:
+        return None
+    width, height = px
+    values = (face.get("cx"), face.get("cy"), face.get("w"))
+    if any(isinstance(v, bool) or not isinstance(v, (int, float)) for v in values):
+        return None
+    if any(isinstance(v, bool) or not isinstance(v, int) or v <= 0
+           for v in (width, height)):
+        return None
+    cx, cy, face_w = values
+    if not (0 <= cx <= 1 and 0 <= cy <= 1 and 0 < face_w <= 1):
+        return None
+    return {"cx": round(float(cx), 3), "cy": round(float(cy), 3),
+            "faceW": round(face_w * width), "imgW": width, "imgH": height}
+
+
 FAVICON = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="7" fill="#0B0B0D"/><defs><linearGradient id="pg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FF9A76"/><stop offset="1" stop-color="#F2557B"/></linearGradient></defs><path d="M16 28c-5.7 0-9.7-3.6-9.7-8.6 0-4.3 2.8-7.6 6.5-7.6 1.4 0 2.4.5 3.2 1.1.8-.6 1.8-1.1 3.2-1.1 3.7 0 6.5 3.3 6.5 7.6C25.7 24.4 21.7 28 16 28z" fill="url(#pg)"/><path d="M16 13.4V27" stroke="#0B0B0D" stroke-width="1.1" opacity=".3" stroke-linecap="round"/><path d="M17.1 11.7c.6-2.8 2.8-4.6 5.6-4.8-.2 2.8-2.2 4.7-5.6 4.8z" fill="#5FB95F"/><path d="M16 11.9c0-1.9.5-3.4 1.5-4.5" stroke="#8A5A3B" stroke-width="1.5" stroke-linecap="round" fill="none"/></svg>')
 
 CACHE_TTL = 90
@@ -134,6 +172,7 @@ class WebContract:
         self.follow_resolve_job = BackgroundJob("PeachFollowResolveJob")
         self.taste_refresh_job = BackgroundJob("PeachTasteRefreshJob")
         self.link_prune_job = BackgroundJob("PeachLinkPruneJob")
+        self.scraping_cover_job = BackgroundJob("PeachScrapingCoverJob")
         self.resource_apply_job = BackgroundJob("PeachResourceApplyJob")
         self.follow_scheduler = None
         # 两块后台任务的锁、状态和线程都归 BackgroundJob 管，契约上只留这两个字段。
@@ -201,6 +240,7 @@ class WebContract:
         """
         self.resource_scan.stop()
         self.follow_job.stop()
+        self.scraping_cover_job.stop()
         self.follow_resolve_job.stop()
         self.taste_refresh_job.stop()
         self.link_prune_job.stop()
@@ -418,10 +458,16 @@ class WebContract:
         return self.cover_index().get(key.casefold()) if key else None
 
     def avatar_focus(self, kind: str, entity_id: int) -> dict | None:
-        """实体图的取景提示：人脸中心换算成的 object-position。
+        """实体图的取景提示：人脸中心换算成的 object-position，加上脸框的像素尺寸。
 
         sidecar 由 `scripts/detect_avatar_faces.py` 离线写入，与封面取景同一
         约定；没算过、读不出或没检出都返回 None，页面维持几何居中。
+
+        两半各自校验、各自缺失。方图算不出 object-position——没有可裁的方向——但
+        脸小一样该放大；补 `px` 字段之前写下的 sidecar 只有脸心，那些图照旧只挪。
+        `box` 给的是绝对像素：放大到几倍还清楚，问的是「这张脸有多少像素」，
+        归一化值答不了。倍数由页面按框的实际尺寸和设备像素比算，判据在
+        `web/js/face-frame.js`。
         """
         path = self.avatar_root / f"{kind}-{int(entity_id)}.face.json"
         if not path.is_file():
@@ -430,15 +476,13 @@ class WebContract:
             data = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             return None
-        focus = data.get("focus") if isinstance(data, dict) else None
-        if not isinstance(focus, dict):
+        if not isinstance(data, dict):
             return None
-        axis = focus.get("axis")
-        pct = focus.get("pct")
-        if (axis not in {"x", "y"} or isinstance(pct, bool)
-                or not isinstance(pct, (int, float)) or not 0 <= pct <= 100):
-            return None
-        return {"axis": axis, "pct": int(pct)}
+        out = _avatar_focus_axis(data.get("focus"))
+        box = _avatar_face_box(data.get("face"), data.get("px"))
+        if box:
+            out["box"] = box
+        return out or None
 
     def has_fts(self) -> bool:
         if self._fts_available is None:

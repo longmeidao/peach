@@ -6,7 +6,7 @@ from unittest import mock
 
 from scripts import agent_worktree
 from scripts.agent_worktree import (
-    WorkspaceError, _git, _lines, bump_version, create, integrate, prune, read_version,
+    WorkspaceError, _git, _lines, bump_part_for, bump_version, create, integrate, prune, read_version,
     ready, runtime_inputs_changed,
 )
 
@@ -47,6 +47,9 @@ def commit(repo: Path, message: str) -> None:
 
 class AgentWorktreeTests(unittest.TestCase):
     def setUp(self):
+        self.verification = mock.patch.object(agent_worktree, "require_verified")
+        self.verification.start()
+        self.addCleanup(self.verification.stop)
         self.tmp = tempfile.TemporaryDirectory()
         # 先 resolve：prune 报告的是 git worktree list 给出的真实路径，而 CI runner 的
         # 临时目录是别名（macOS /var 软链到 /private/var，Windows 的 RUNNER~1 短名展开
@@ -58,6 +61,8 @@ class AgentWorktreeTests(unittest.TestCase):
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         _git(self.repo, "config", "user.email", "test@example.invalid")
         _git(self.repo, "config", "user.name", "Peach Test")
+        (self.repo / ".gitignore").write_text("build/\n", encoding="utf-8")
+        _git(self.repo, "add", ".gitignore")
         (self.repo / "tracked.txt").write_text("base\n", encoding="utf-8")
         (self.repo / "worker.txt").write_text("base\n", encoding="utf-8")
         (self.repo / "src" / "peach").mkdir(parents=True)
@@ -271,15 +276,47 @@ class VersionBumpTests(AgentWorktreeTests):
     GitHub Release 全都指着一个说明不了任何事的数字。
     """
 
-    def worker_touching(self, name: str, path: str, text: str = "改了\n") -> str:
+    def worker_touching(self, name: str, path: str, text: str = "改了\n", *,
+                        subject: str | None = None) -> str:
         result = create(self.repo, "Claude", name, self.root / "worktrees")
         worker = Path(result["path"])
         target = worker / path
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(text, encoding="utf-8")
         _git(worker, "add", path)
-        _git(worker, "commit", "-m", f"feat: {name}")
+        _git(worker, "commit", "-m", subject or f"fix: {name}")
         return str(result["branch"])
+
+    def test_the_bump_part_follows_commit_types_and_new_migrations(self):
+        """feat 与破坏性标记推 minor，新迁移文件推 minor，其余都是 patch；major 不自动判。"""
+        self.assertEqual(bump_part_for(["fix: 抽屉重画只写滚动层"], []), "patch")
+        self.assertEqual(bump_part_for(["docs: 记录运行状态", "chore(release): 版本 0.7.27"], []), "patch")
+        self.assertEqual(bump_part_for(["refactor(follow): 来源登记表变成唯一真相"], []), "patch")
+        self.assertEqual(bump_part_for(["feat: 配置页并入主站管理菜单"], []), "minor")
+        self.assertEqual(bump_part_for(["feat(web): 滚动条改成自绘覆盖式"], []), "minor")
+        self.assertEqual(bump_part_for(["fix!: 账本路径改成 location 键"], []), "minor")
+        self.assertEqual(bump_part_for(["refactor(config)!: 删掉盘符键"], []), "minor")
+        self.assertEqual(bump_part_for(["fix: 补迁移"], ["migrations/0027_thing.sql"]), "minor")
+        self.assertEqual(bump_part_for(["fix: 补迁移"], [r"migrations\0027_thing.sql"]), "minor")
+        self.assertEqual(bump_part_for(["fix: 改了旧迁移的注释"], ["src/peach/tray.py"]), "patch")
+        self.assertEqual(bump_part_for(["Merge branch 'master' into agent/claude/x", "feature: 新东西"], []), "minor")
+        self.assertEqual(bump_part_for([], []), "patch")
+
+    def test_a_feature_commit_publishes_the_next_minor_version_by_default(self):
+        branch = self.worker_touching("feature-work", "src/peach/module.py", subject="feat: 新功能")
+        report = integrate(self.repo, branch)
+        self.assertEqual((report["bumped"], report["bump"], report["version"]), (True, "minor", "0.8.0"))
+        self.assertEqual(read_version(self.repo), "0.8.0")
+
+    def test_a_new_migration_publishes_the_next_minor_version_even_under_a_fix_subject(self):
+        branch = self.worker_touching("schema", "migrations/0099_new.sql", subject="fix: 补一列")
+        report = integrate(self.repo, branch)
+        self.assertEqual((report["bump"], report["version"]), ("minor", "0.8.0"))
+
+    def test_a_feature_that_never_reaches_the_runtime_leaves_the_version_alone(self):
+        branch = self.worker_touching("skill-feature", ".claude/skills/x/SKILL.md", subject="feat: 新技能")
+        report = integrate(self.repo, branch)
+        self.assertEqual((report["bumped"], report["bump"], report["version"]), (False, "none", "0.7.14"))
 
     def test_runtime_inputs_are_told_apart_from_development_only_paths(self):
         self.assertTrue(runtime_inputs_changed(["src/peach/tray.py"]))
@@ -311,10 +348,11 @@ class VersionBumpTests(AgentWorktreeTests):
         with self.assertRaisesRegex(WorkspaceError, "__version__"):
             bump_version("nothing here\n", "patch")
 
-    def test_integrating_a_runtime_change_publishes_the_next_patch_version(self):
+    def test_integrating_a_runtime_fix_publishes_the_next_patch_version(self):
         branch = self.worker_touching("runtime-change", "src/peach/module.py")
         report = integrate(self.repo, branch)
         self.assertTrue(report["bumped"])
+        self.assertEqual(report["bump"], "patch")
         self.assertEqual(report["version"], "0.7.15")
         self.assertEqual(read_version(self.repo), "0.7.15")
         subject = _git(self.repo, "log", "-1", "--format=%s").stdout.strip()
@@ -337,11 +375,11 @@ class VersionBumpTests(AgentWorktreeTests):
         self.assertFalse(report["bumped"])
         self.assertEqual(read_version(self.repo), "0.7.14")
 
-    def test_a_minor_bump_is_available_for_larger_work(self):
-        branch = self.worker_touching("feature-set", "src/peach/module.py")
-        report = integrate(self.repo, branch, bump="minor")
-        self.assertEqual(report["version"], "0.8.0")
-        self.assertEqual(read_version(self.repo), "0.8.0")
+    def test_an_explicit_part_overrides_the_commit_type(self):
+        branch = self.worker_touching("feature-set", "src/peach/module.py", subject="feat: 大功能")
+        report = integrate(self.repo, branch, bump="patch")
+        self.assertEqual((report["bump"], report["version"]), ("patch", "0.7.15"))
+        self.assertEqual(read_version(self.repo), "0.7.15")
 
     def test_integration_never_creates_a_version_tag_itself(self):
         """打标签只有 `scripts/release_tag.py` 一个入口，它遇到同名本地标签就拒绝。

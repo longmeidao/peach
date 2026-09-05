@@ -36,10 +36,12 @@ SOURCE_SPECS = {
         "dlgetchu": "official", "fc2": "official",
         "javlibrary": "community", "javdb": "community", "javbus": "community",
         "jav321": "community", "javstash": "community",
+        "sougouwiki": "community",
     }.items()
 }
 
 PROFILE_SOURCES = {
+    "seesaa": ("sougouwiki",),
     "baseline": ("r18dev",),
     "censored": (
         "dmm", "libredmm", "r18dev", "mgstage", "aventertainment",
@@ -78,7 +80,7 @@ ROUTED_PROFILE_SOURCES = {
         # Cloudflare 与 403 挡住（不绕机器人检测），javbus 是唯一问得到的一家；
         # 它是 community，取值只能进人工复核，不进免复核写入。
         "uncensored": ("caribbeancom", "tokyohot", "javbus"),
-        "censored": ("mgstage", "dmm", "libredmm", "aventertainment"),
+        "censored": ("mgstage", "dmm", "libredmm", "aventertainment", "javdb"),
     },
 }
 for _name, _routes in ROUTED_PROFILE_SOURCES.items():

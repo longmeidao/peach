@@ -1,5 +1,63 @@
 # 身份、来源与标识采集
 
+## Seesaa Wiki 作品证据
+
+`scripts/scrape_codes.py --profile seesaa` 使用素人系総合 Wiki 的公开搜索与作品表格，产出既有
+`metadata-field-candidates` CSV。可通过 `--wiki-pages-file` 预取目录页；页内全部作品复用同一次请求，
+`--wiki-max-requests` 默认 80，每次最多 4 MiB、请求间隔至少 2 秒。成功页缓存可续跑，
+`--refresh` 重取页面；403、429 与机器人验证停止本批联网，未取得不冻结成永久无结果。
+
+番号通过作品表的 `NO` 列精确回配，支持既有数字前缀／补零规范化。`ACTRESS` 的链接显示名是
+出演候选，链接目标只保留为身份核验线索；EUC-JP 页面按来源编码解码。含未知出演者的名单仅留
+原文证据；冲突行报告错误。`TITLE`、`RELEASE` 可出标题／日期候选；`SUBTITLE` 不冒充完整标题。
+封面 URL、人物页链接、备注和跨平台编号保留在原始快照及候选证据中，不下载图片、不自动合并人物或作品。
+
+Seesaa 是托管平台，以下 Wiki 由各自维护者编辑，不能按平台名当成互相独立的印证：
+
+| 来源 | 已核验的用途 |
+| --- | --- |
+| [素人系総合 Wiki](https://seesaawiki.jp/w/sougouwiki/) | 厂牌作品表、合集名单、名义与人物页链接、日期、图片及跨平台线索；已接入脚本 |
+| [このAV女優の名前教えてwiki](https://seesaawiki.jp/av_neme/) | DMM、MGS、S-Cute、舞ワイフ出演名义核验 |
+| [AV女優大辞典wiki](https://av-help.memo.wiki/) | 女优与出演作品索引 |
+| [AV女優の名前特定wiki](https://seesaawiki.jp/av_name/) | FANZA 素人作品番号与出演者对应 |
+| [AV女優パーフェクトWiki](https://seesaawiki.jp/av_video/) | 作品、厂牌、系列索引及出演者线索 |
+| [シロウトTV・ナンパTV](https://seesaawiki.jp/pre_shiro/) | MGS 相关作品的出演名义核验 |
+| [人妻系まとめ](https://hitoduma-matome.memo.wiki/)／[素人AV女優名鑑](https://shiroutoav.memo.wiki/) | 特定类别人物与作品线索 |
+| [VR作品](https://seesaawiki.jp/vr_video/)／[成人映画](https://seesaawiki.jp/nikkatsu/)／[NHpedia](https://seesaawiki.jp/nhpedia/) | VR、成人电影、跨性别演员等分领域索引 |
+
+以上入口已于 2026-09-06 取页。除素人系総合外仅完成来源调查，详情解析尚未接入；平台首页的
+游戏、小说、生成模型教程和场所服务 Wiki 不适用于现有视频作品元数据补全。
+
+## 本机采集入口
+
+「数据管理」→「设置采集来源」（`/scraping`）提供官方高清封面定点抓取和来源连接设置。
+界面与 `scripts/fetch_jav_covers.py` 共用 `peach.jav_cover_fetch`；不需要把开发者的映射文件或
+Cookie 复制到新用户电脑。已有成功元数据快照优先，缺快照的公开来源可联网查询。
+
+- R18、DMM、Prestige、MGStage 的封面 HTTP 路径使用按来源的系统代理／应用直连／自定义代理配置。
+  DMM 连接检查分别报告页面与高清 CDN；HTTPX 环境代理不等于系统 PAC，应用直连也不能排除 TUN。
+- FC2 的 Cookie 粘贴与 Netscape 文件导入复用 CredentialStore；仅保存当前来源域内未过期项目。
+  `fetch_fc2_metadata.py` 默认读取这份配置，`--cookies` 可显式指定文件。保存不代表登录会话有效。
+- GUI 封面任务每次只接受馆藏命中的一个番号，复用 BackgroundJob；最多 80 个请求、32 MiB，
+  请求发出前检查 180 秒截止时间。只在完整图与探测尺寸相同、可完整解码且面积更大时原子替换。
+  原始字节不降采样；成功边车记录原图与安装摘要，24 小时内摘要匹配则不重复下载。
+- 429 的 Retry-After 冷却落本机文件，新 transport 也遵守；失败不删除已有封面。
+  程序重启不自动重放写入任务，未完成任务由用户重新发起。
+
+该配置目前覆盖封面 HTTP 与 FC2 CLI。Javinizer-Go 子进程、其它采集脚本与 curl_cffi 连接器
+仍使用各自配置；来源清单导出／首次同步、标准模式、浏览器会话导入和完整批量 GUI 尚待实施。
+Instagram 的 Instaloader 4.15.3 匿名 POC 对 Bambi、LINX 返回 ConnectionException；独立用户
+登录会话未取得，不能承诺自动发现全部高清头像。自动适配器不进入正式依赖。
+
+Windows 空数据预览的项目 CA HTTPS、合成 Cookie 保存／撤销、DMM 2184×1464 CDN 与界面产物
+摘要验证通过；这不是第二名真实用户、macOS 或全部地区网络的验收。测试步骤见
+[Windows 测试版](TESTING_DESKTOP.md)，架构完整要求见 [ADR-0024](adr/0024-mark-manifest-not-bundled-bytes.md)。
+
+无元数据缓存的 ABW-232 POC 取得 1024×690，16 次请求、775899 字节。即时 r18 厂牌证据与
+本机快照使用同一来源路由，Prestige 与 MGS 都参加候选比较；原始图片没有派生降采样。
+
+## 采集判据
+
 本文件保存「从外部站点取得身份与标识」这件事的判据细节：脚本分工、实测反例、判词含义和不能走的路。
 `docs/HANDOFF.md` 只留一句话的边界并指到这里；采集本身的限流、续跑与流量预算见
 `.claude/skills/peach-batch-jobs/SKILL.md`，参考产品证据的登记方式见 `.claude/skills/peach-reference-evidence/SKILL.md`。
@@ -56,12 +114,14 @@
 - 来源返回的番号必须和查询的番号比对过才算命中。javbus 一侧是拿番号做关键词搜索取首个结果，搜不到就
   返回近似的别人（`SA-104 → AVSA-104`、`CHU-101 → CHUC-101`、`AR-301 → STAR-3016`），2026-09-02 实测
   68 次匹配 58 次番号根本不对，整个 `B:\MVP\MIB\`（韩国内容）因此被写上日本厂牌、系列和标题，还靠这些
-  假证据升级成 JAV。判据是 `catalog_rules.same_release_code()`，它容忍片商数字前缀、DMM 的 `h_` 标记、
+  假证据升级成 JAV。判据是 `catalog_rules.same_release_code()`，它只归一已核验的前缀别名、DMM 的 `h_` 标记、
   补零和重制尾字母这些良性差异；来源没给 id 的不拦（缺证据不是反证）。
-- 同一部作品有两种番号写法，账本存哪种不代表来源索引哪种。`259LUXU-1642` 的三位数字前缀标的是 DMM 上的
-  发行方，不属于作品身份，来源站各只收其中一种写法；`catalog_rules.code_query_variants()` 在两种写法间
-  回退，评审键始终用账本的规范写法。去前缀总是安全的（只是丢掉本来就有的一段），补前缀要凭空填三位数字，
-  只对 `MAKER_NUMBER_PREFIX` 登记过的字母段做，新增一行之前先在账本里确认该字母段只属于一个发行方。
+- `catalog_rules.code_query_variants()` 仅扩展搜索词；每次返回都以账本原始编号校验，缓存和网络结果同样受检。
+  前缀等价表与查询表分开：已核验的 LUXU、BAZX、HA 写法可归一，其他数字前缀保留。
+  MGStage 官方商品详情路径中的完整编号可佐证其省略前缀的展示 id；封面、标题和搜索 URL 不作身份依据。
+  DMM／r18dev 只给 `content_id` 时，其编码内的厂牌段可用于核对裸番号，不能抹掉查询中的 MGStage 前缀。
+  `390JAC-040` 是 MGStage 配信，`JAC-040`／DMM `118jac040` 是另一部 DVD 合集，JNT 同样不得按裸编号合并。
+  无法证实的变体返回 `identity_mismatch`，保留原始快照但不生成字段候选。
 - 创作者是频道主而不是出镜者：文件名里可建创作者的只有 `RT_@X - 正文…`、明确标注的 `女主@X` 和正文里的
   中文名；末尾成串裸 `@A @B @C` 是互推，`📷：@X` 是摄影师，都不建。
 - 发行平台既不是厂牌也不是创作者。FC2、myfans 这类是卖东西的地方，站上有实际卖主（出品者）的那个账号才是
@@ -218,8 +278,9 @@
   换一条线路重新计配额，没有伪装、也没有声称自己是别人。所以换出口可用，配额本身照守：5.0 秒的
   来源下限不许压，撞 403 仍然整个来源收工，不在封禁期里换着节点连打——那是拿多个出口凑一个超速
   批次，等于用另一种方式压掉下限。本机在 Clash 留了 `🎬 JavDB` 策略组，`javdb.com`、`jdbstatic.com`、
-  `jdbimgs.com` 三条 `DOMAIN-SUFFIX` 指向它，换出口不动脚本；脚本经系统代理出网
-  （`Site` 的 `via_proxy` 走 `httpx(trust_env=True)`），策略组一切换下一轮就生效。
+  `jdbimgs.com` 三条 `DOMAIN-SUFFIX` 指向它，换出口不动脚本；脚本允许经环境代理出网
+  （`Site` 的 `via_proxy` 允许 HTTPX 读取环境代理，不保证读取系统代理或 PAC）；应用路由与实际出口
+  分开验证，新用户配置边界见 ADR-0024。
 - **javdb 的限额规律与自己的速度上限。** 那一轮的时间线（缓存 mtime）：03:22:01 起 8 分钟取到
   124 页，中位间隔 1.23 秒、最快 0.76 秒，逐分钟成功数 44 / 15 / 6 / 0 / 0 / 0 / 7 / 50 / 2，
   第 124 页之后整站每条路径都回 403。可读出三件事：额度按出口 IP 累计而不是按路径；封之前
@@ -288,6 +349,13 @@
   `_200x200`（8068 B vs 12302 B）。所以一律从无后缀原图起、按 `peach.social_links.twimg_tiers` 的档位往下
   退（旧头像有过只剩缩略图的），`resolved_url` 记实际取到的那一档，全档缺失才算取图失败。厂牌 Logo
   （`fetch_studio_avatar_candidates.py`）与演员社媒头像（`harvest_social_avatars.py`）共用这一份判据。
+- **头像候选按脸的像素宽挑，画布只是它没得比时的退路。** 头像最终落在 64–160 px 的圆框里，认不认得出
+  是谁取决于那张脸有多少像素，与这张图多大无关。`performer-8711` 是实测反例：装着的 640×960 全身站姿
+  照脸只有 67 px 宽，同一个人另有一张 540×810 半身照、画布小 15% 而脸有 160 px 上下——按画布挑，赢的
+  是唯一看不清脸的那张。判据在 `harvest_social_avatars.rank_key`，脸宽由 `peach.face_detect` 的 YuNet 量
+  （同 SHA 只量一次），并写进候选 CSV 的 `face_width` 列供复核的人直接看。检不出脸记 0，排在任何量得
+  到的候选之后；整批都是 0（模型缺席、清一色侧脸）时排序原样落回画布口径，并在运行统计里说明本轮是
+  按画布挑的。单人作品封面这条退路走同一把尺：JAV 双联封面右半幅剧照里的脸常常只有几十像素。
 - 能解析不等于是对的品牌：`@bazooka` 确实存在且能取到 400×400 头像，但那是 2007 年注册的通用账号，
   不是这个 AV 厂牌。所以 handle 必须逐个取证确认，脚本默认不猜，`--guess-handles` 的产出一律标
   `needs_confirmation` 且不自动采纳，查不到就留空。
@@ -516,13 +584,12 @@
   eltra.jp 2026-09-05 连着两趟被记成「打不开，不写入」，而每次重试一下就 200——一条复核过的官网因此
   差点进不了账本。同一条规矩下 `site_logos.logo_images` 丢掉 `data:` 占位图：懒加载占位顶着标识那张
   `<img>` 的 class，词形闸门拦不住，取字节又打不开，白等两轮重试再记一次「取不回来」。
-- **Instagram 头像要人来解，而且往往不值得**。登出页不给头像，登录态下 `web_profile_info` 回 429、
-  `/<handle>/embed/` 里的 `profile_pic_url_hd` 是**观看者自己**的头像（三个 handle 取回同一份，
-  2026-09-05 实测），只有渲染出来的资料页 `<img alt="<handle>的头像">` 是这个账号的，而它统一带
-  `stp=dst-jpg_s150x150_tt6`——150×150，改写或去掉 `stp` 一律 403，签名覆盖了它。所以脚本拿不到，
-  地址由人在登录浏览器里解出来写进 `peach-data/state/agency-avatars.json`（键用账本规范名，不用 handle：
-  `krone_official__` 是公司号、`miyu_krone` 是艺人号），`--avatars` 指向它。上限 150 低于够用线，
-  实测两家都被 X 头像和站点自己的字标压过，这条来源至今没有装成过一枚标。
+- **Instagram 头像分开验证地址发现与字节下载**。资料页可能提供多个尺寸；小图 URL 改参失败
+  不能证明高清版本不存在。嵌入页和资料页都可能混有观看者或推荐账号，必须按目标账号关联字段。
+  现有 `--avatars` 读取本机 `peach-data/state/agency-avatars.json`，是人工地址输入，并非通用解析器。
+  成熟解析器、Cookie GUI 与签名地址刷新按 [ADR-0024](adr/0024-mark-manifest-not-bundled-bytes.md)
+  实施；1000×1000 原图实测及当前验证边界见 [抓取审计](SCRAPING_AUDIT.md)。未完成跨账号 POC
+  时只记「地址发现未取得」，不得写成平台像素上限；账号归属仍需区分公司号与艺人号。
 - **字标补白**（用户 2026-09-03 定的口径：不是 icon 也可以装 icon，尽量不要落入无图）：方标一个都没做成、
   却取回过短边 ≥ `MIN_SHORT_EDGE` 的宽扁字标时，用 `peach.images.bake_square` 烤成方图装上，判词
   `字标补白`，`content_aspect` 照记（那个数就是「这枚其实是字标」的提示）。同一份方图再出一行

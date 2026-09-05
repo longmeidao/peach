@@ -6,6 +6,7 @@ import sqlite3
 import sys
 import tempfile
 import unittest
+import unittest.mock
 from pathlib import Path
 
 from PIL import Image
@@ -26,6 +27,55 @@ def jpeg(width=400, height=400, color=(200, 30, 30)):
     buffer = io.BytesIO()
     Image.new("RGB", (width, height), color).save(buffer, "JPEG")
     return buffer.getvalue()
+
+
+class CoverFallbackTests(unittest.TestCase):
+    def test_single_performer_cover_is_used_and_multi_performer_cover_is_excluded(self):
+        module = load_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp).resolve()
+            (root / 'JBS-023.jpg').write_bytes(jpeg(1000, 700))
+            con = sqlite3.connect(':memory:')
+            con.executescript("CREATE TABLE asset(id,code,disposal);"
+                              "CREATE TABLE asset_entity(asset_id,entity_id,role);"
+                              "INSERT INTO asset VALUES(1,'JBS-023',NULL);"
+                              "INSERT INTO asset_entity VALUES(1,5,'performer');")
+            record = dict(kind='performer',entity_id=5,canonical='风见步')
+            cache = module.AvatarCandidateCache(root/'cache')
+            result = module.cover_fallback(con, record, cache, root)
+            self.assertEqual(result['source_kind'], 'single_performer_cover')
+            self.assertEqual((result['width'], result['height']), (1000,700))
+            con.execute("INSERT INTO asset_entity VALUES(1,6,'performer')")
+            self.assertIsNone(module.cover_fallback(con, record, cache, root))
+            con.close()
+
+    def test_the_cover_with_the_bigger_face_wins_over_the_bigger_canvas(self):
+        """JAV 封面普遍是双联版式，右半幅剧照里那张脸常常只有几十像素。挑封面
+        和挑社媒头像用同一把尺：先看脸有多少像素。"""
+        module = load_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp).resolve()
+            big = jpeg(1600, 1076, (10, 20, 30))
+            small = jpeg(800, 538, (30, 20, 10))
+            (root / 'AAA-001.jpg').write_bytes(big)
+            (root / 'BBB-002.jpg').write_bytes(small)
+            con = sqlite3.connect(':memory:')
+            con.executescript("CREATE TABLE asset(id,code,disposal);"
+                              "CREATE TABLE asset_entity(asset_id,entity_id,role);"
+                              "INSERT INTO asset VALUES(1,'AAA-001',NULL);"
+                              "INSERT INTO asset VALUES(2,'BBB-002',NULL);"
+                              "INSERT INTO asset_entity VALUES(1,5,'performer');"
+                              "INSERT INTO asset_entity VALUES(2,5,'performer');")
+            record = dict(kind='performer', entity_id=5, canonical='风见步')
+            cache = module.AvatarCandidateCache(root / 'cache')
+            faces = {hashlib.sha256(big).hexdigest(): 40,
+                     hashlib.sha256(small).hexdigest(): 220}
+            result = module.cover_fallback(
+                con, record, cache, root,
+                face_width=lambda path: faces[
+                    hashlib.sha256(Path(path).read_bytes()).hexdigest()])
+            self.assertEqual(result['external_id'], 'BBB-002')
+            con.close()
 
 
 X_BASE = "https://pbs.twimg.com/profile_images/2033362507679850496/4wvXoOFw"
@@ -165,12 +215,69 @@ class SelectionTests(unittest.TestCase):
         self.module = load_module()
 
     @staticmethod
-    def candidate(width, height, sha, evidence="图"):
-        return {"provider": "social-web", "source_kind": "official_profile",
-                "source_url": "https://example.invalid/a.jpg", "external_id": "x",
-                "width": width, "height": height, "mime_type": "image/jpeg",
-                "sha256": sha, "object_path": Path("/tmp/x"), "matched": "釈アリス",
-                "name_source": "social_identity_gate", "evidence": evidence}
+    def candidate(width, height, sha, evidence="图", face_width=None):
+        row = {"provider": "social-web", "source_kind": "official_profile",
+               "source_url": "https://example.invalid/a.jpg", "external_id": "x",
+               "width": width, "height": height, "mime_type": "image/jpeg",
+               "sha256": sha, "object_path": Path("/tmp/x"), "matched": "釈アリス",
+               "name_source": "social_identity_gate", "evidence": evidence}
+        if face_width is not None:
+            row["face_width"] = face_width
+        return row
+
+    def test_the_bigger_canvas_loses_to_the_bigger_face(self):
+        """`performer-8711` 的真实两张：640×960 的全身照画布更大，脸只有 67 px；
+        540×810 的半身照画布小 15%，脸有 160 px。头像圆框里认不认得出人，看的是
+        后者。"""
+        standing = self.candidate(640, 960, hashlib.sha256(b"stand").hexdigest(),
+                                  face_width=67)
+        bust = self.candidate(540, 810, hashlib.sha256(b"bust").hexdigest(),
+                              face_width=160)
+        winner, runners_up = self.module.select_winner([standing, bust])
+        self.assertEqual((winner["width"], winner["height"]), (540, 810))
+        self.assertEqual([r["width"] for r in runners_up], [640])
+
+    def test_a_face_that_was_not_detected_ranks_below_any_detected_face(self):
+        """侧脸、低头、戴口罩都会检不出。检不出的记 0，让位给量得到的那张。"""
+        huge = self.candidate(1500, 1500, hashlib.sha256(b"huge").hexdigest(),
+                              face_width=0)
+        small = self.candidate(400, 400, hashlib.sha256(b"small").hexdigest(),
+                               face_width=90)
+        winner, _ = self.module.select_winner([huge, small])
+        self.assertEqual(winner["width"], 400)
+
+    def test_a_batch_with_no_measurable_face_ranks_by_canvas(self):
+        """模型缺席或整批都检不出脸时，脸宽全是 0，判据原样落回画布口径。"""
+        rows = [self.candidate(500, 1500, hashlib.sha256(b"t").hexdigest(), face_width=0),
+                self.candidate(600, 600, hashlib.sha256(b"s").hexdigest(), face_width=0)]
+        winner, _ = self.module.select_winner(rows)
+        self.assertEqual((winner["width"], winner["height"]), (600, 600))
+
+    def test_the_same_image_is_measured_once_and_lands_in_the_review_csv(self):
+        """脸宽是 CSV 的一列：复核的人据此判断这张脸够不够大。同图只量一次——
+        一个人的 X、lit.link、Instagram 三处常常挂着同一张图。"""
+        self.assertIn("face_width", self.module.CANDIDATE_FIELDS)
+        sha = hashlib.sha256(b"one").hexdigest()
+        rows = [self.candidate(400, 400, sha), self.candidate(400, 400, sha),
+                self.candidate(400, 400, hashlib.sha256(b"two").hexdigest())]
+        calls = []
+
+        def fake(path):
+            calls.append(path)
+            return 88
+
+        self.module.measure_faces(rows, fake)
+        self.assertEqual(len(calls), 2)
+        self.assertEqual([row["face_width"] for row in rows], [88, 88, 88])
+
+    def test_a_missing_face_model_records_the_reason_instead_of_raising(self):
+        """下不到 ONNX 不该把「今天没网」变成「所有人都没有头像」。"""
+        measure = self.module.FaceWidth()
+        measure._detector = None
+        with unittest.mock.patch.dict(
+                sys.modules, {"peach.face_detect": None}):
+            self.assertEqual(measure(Path("/tmp/nope.jpg")), 0)
+        self.assertTrue(measure.unavailable)
 
     def test_same_image_on_two_platforms_collapses_and_merges_evidence(self):
         sha = hashlib.sha256(b"same").hexdigest()

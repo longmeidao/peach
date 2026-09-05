@@ -108,7 +108,17 @@ def _serve_token(args: argparse.Namespace) -> str:
 
     拒绝而不是告警：托盘在后台起服务，告警不会有人看见，服务却已经把整个馆藏和写接口
     摆在同网段上了。回环地址不拦——那时只有本机进程够得着，与文件系统同级。
+
+    `--no-auth` 让本机开发跳过登录页，同一条回环判据照样拦：它只影响这次启动，
+    不读也不改口令文件，所以托盘起的那份服务仍然要口令。
     """
+    if getattr(args, "no_auth", False):
+        if not _is_loopback(args.host):
+            raise SystemExit(
+                f"拒绝启动：--no-auth 只对回环地址成立，而 --host {args.host} 不是。\n"
+                f"在局域网地址上关掉登录，等于把整个馆藏和写接口交给同网段的任何设备。"
+            )
+        return ""
     secrets_dir = settings_file.active().directory("secrets")
     token = auth.resolve_token(args.token, secrets_dir)
     if token or _is_loopback(args.host):
@@ -428,6 +438,16 @@ def _scan(args: argparse.Namespace) -> int:
     mounts = {location: tuple(str(mount) for mount in points)
               for location, points in location_mounts().items()}
     try:
+        if args.location == "configured" and args.root is None:
+            from .platform import root_online, translate_ledger_path
+            for location, declared in config.locations.items():
+                for root in declared:
+                    if not root_online(translate_ledger_path(root)):
+                        print(f"{location}：挂载点离线，未扫描", flush=True)
+                        continue
+                    scan.scan_location(args.db, location, root, declared_roots=config.locations,
+                                       mounts=mounts, report=lambda line: print(line, flush=True))
+            return 0
         if args.root is None:
             if args.location not in config.locations:
                 known = "、".join(sorted(config.locations)) or "（设置文件里一个都没有）"
@@ -583,6 +603,8 @@ def build_parser() -> argparse.ArgumentParser:
     serve.add_argument("--docs", action="store_true")
     serve.add_argument("--setup", action="store_true",
                        help="只提供首次运行表单：忽略发现到的数据根，也不要口令")
+    serve.add_argument("--no-auth", action="store_true",
+                       help="跳过登录页；只对回环地址成立，不读也不改口令文件")
     serve.add_argument("--no-mdns", action="store_true")
     serve.add_argument("--shared-db", type=Path, default=SHARED_DATABASE_PATH)
     serve.add_argument("--no-ledger-sync", action="store_true")

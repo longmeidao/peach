@@ -5,7 +5,6 @@ import argparse
 import json
 import http.cookiejar
 import os
-import re
 from pathlib import Path
 import socket
 import subprocess
@@ -53,7 +52,7 @@ def main() -> int:
                         time.sleep(.25)
                 with opener.open(base + "/", timeout=5) as response:
                     assert 'action="/setup"' in response.read().decode("utf-8")
-                form = {"media_dir": str(media), "port": str(port)}
+                form = {"media_dir": str(media), "media_location": "115", "port": str(port)}
                 request = urllib.request.Request(base + "/setup",
                     data=urllib.parse.urlencode(form).encode(), headers={"Origin": base})
                 with opener.open(request, timeout=60) as response:
@@ -75,17 +74,25 @@ def main() -> int:
                 for path in ("/", "/app.css", "/app.js", "/dist/peach-ui.js", "/api/items"):
                     with opener.open(base + path, timeout=10) as response:
                         assert response.status == 200, path
-                with opener.open(base + "/configuration", timeout=5) as response:
-                    page = response.read().decode("utf-8")
-                revision = re.search(r'name="revision" value="([a-f0-9]+)"', page).group(1)
-                request = urllib.request.Request(base + "/configuration",
-                    data=urllib.parse.urlencode({**form, "revision": revision}).encode(), headers={"Origin": base})
+                with opener.open(base + "/api/configuration", timeout=5) as response:
+                    configuration = json.load(response)
+                assert configuration['media_sources'][0]['location'] == '115'
+                second = root / 'pikpak'
+                second.mkdir()
+                sources = configuration['media_sources'] + [{'location': 'pikpak', 'path': str(second)}]
+                request = urllib.request.Request(base + "/api/configuration",
+                    data=json.dumps({'media_sources': sources, 'port': port,
+                                     'revision': configuration['revision']}).encode(),
+                    headers={"Origin": base, 'Content-Type': 'application/json'})
                 with opener.open(request, timeout=10) as response:
-                    assert "配置已保存" in response.read().decode("utf-8")
+                    assert json.load(response)['saved']
+                with opener.open(base + '/api/configuration', timeout=5) as response:
+                    saved = json.load(response)
+                assert [row['location'] for row in saved['media_sources']] == ['115', 'pikpak']
                 assert (data / "config.previous.toml").is_file()
                 assert (data / "state" / "configuration-reload.request").is_file()
                 print(json.dumps({"ok": True, "version": health.get("version"),
-                                  "checks": ["oobe", "migrations", "serve", "automatic-login", "pages", "island", "items", "configuration"]}))
+                                  "checks": ["oobe", "migrations", "serve", "automatic-login", "pages", "island", "items", "clouddrive-configuration"]}))
             finally:
                 process.terminate()
                 process.wait(timeout=15)

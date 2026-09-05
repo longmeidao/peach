@@ -1,12 +1,12 @@
 /* 内边距吃掉刘海和底部横条：iOS 上 `inset:0` 会一直铺到状态栏和 Home 指示条底下。 */
 body.settings-open{overflow:hidden}
-.settingspanel{position:fixed;z-index:var(--layer-dialog);inset:0;isolation:isolate;display:grid;place-items:center;background:rgba(0,0,0,.42);padding:18px;padding-top:max(18px,env(safe-area-inset-top));padding-bottom:max(18px,env(safe-area-inset-bottom));overscroll-behavior:contain}
+.settingspanel{position:fixed;z-index:var(--layer-dialog);inset:0;isolation:isolate;display:grid;place-items:center;background:rgba(242,242,242,.8);padding:18px;padding-top:max(18px,env(safe-area-inset-top));padding-bottom:max(18px,env(safe-area-inset-bottom));overscroll-behavior:contain}
 .settingspanel[hidden]{display:none}/* 高度用 dvh 不用 vh。iOS 上 `vh` 算的是「大视口」——不减地址栏，所以按 90vh 撑出来的
    面板会顶到地址栏和状态栏底下，上半截被遮住。`dvh` 跟着当前可见高度走。
    vh 那行留作旧浏览器兜底，后一行覆盖前一行。 */
-/* 模态层次对齐 Geist dialog：scrim 压暗 + 轻毛玻璃。42% 黑在暗色主题下几乎
-   看不出遮挡关系，暗色下加深到 62%。 */
-.settingspanel{backdrop-filter:blur(5px)}
+/* 遮罩按 2026-09-05 实测 vercel.com 的 Modal：浅色是 `#F2F2F2` 压到 80% 不透明度、
+   不带模糊，暗色换成纯黑同样 80%。压暗的黑在浅色主题下会把整页拉成一片脏灰，
+   而这一档只是把底下的内容退到同一片浅灰里，卡片仍然是全站最白的那一块。 */
 .settingspanel:not([hidden]){animation:settings-backdrop-in .35s cubic-bezier(.4,0,.2,1) both}
 .settingspanel.closing{animation-name:settings-backdrop-out}
 .settingspanel.closing :where(.settingscard){animation-name:settings-dialog-out}
@@ -14,22 +14,25 @@ body.settings-open{overflow:hidden}
 @keyframes settings-backdrop-out{from{opacity:1}to{opacity:0}}
 @keyframes settings-dialog-in{from{transform:translate3d(0,-40px,0);opacity:0}to{transform:translate3d(0,0,0);opacity:1}}
 @keyframes settings-dialog-out{from{transform:translate3d(0,0,0);opacity:1}to{transform:translate3d(0,-40px,0);opacity:0}}
+/* 面板照首页那两张面来：卡片壳是退到后面的 --page，标题栏和里面每个分组是浮起来的
+   --ground——和首页一样，顶栏与卡片同为亮面，页面底在它们之间露出来。
+   靠一档亮度差加一条 --field-ring 发丝线浮起，不加投影。原来正好反着——白壳里嵌灰块，
+   同一套控件在设置里和在首页上读出的层级相反。投影一并去掉：全站只有两张面这条规则
+   不因为它是弹层就不算，压暗的遮罩已经把它和底下的内容分开了。 */
 .settingscard{display:flex;flex-direction:column;width:min(520px,100%);max-height:min(720px,90vh);max-height:min(720px,90dvh);overflow:hidden;animation:settings-dialog-in .35s cubic-bezier(.4,0,.2,1) both;
-  border:1px solid var(--border-15);border-radius:var(--floating-radius);background:var(--frost-panel);box-shadow:0 2px 4px #0004,0 30px 90px -30px #000;
-  backdrop-filter:saturate(1.7) blur(24px)}.settingsscroll{flex:1;min-height:0;overflow-y:auto;padding:0 20px 20px;scrollbar-gutter:stable both-edges;overscroll-behavior:contain}.settingshead{z-index:2;display:flex;align-items:center;justify-content:space-between;flex:none;padding:20px 20px 16px;border-bottom:1px solid var(--line-soft);background:var(--frost-panel);backdrop-filter:saturate(1.7) blur(24px)}
-/* 暗色命中要跟随主题机制：app 不写 data-theme，暗色来自 prefers-color-scheme；
-   data-theme="dark" 分支给将来手动切主题留位，两条保持同值。
-   主题覆盖放在基础规则后面——`.settingscard{` 的子串查找以首条为准。 */
-@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .settingspanel{background:rgba(2,4,8,.62)}
-  :root:not([data-theme="light"]) .settingscard{box-shadow:0 24px 64px rgba(0,0,0,.55),0 0 0 1px rgba(255,255,255,.07)}}
-:root[data-theme="dark"] .settingspanel{background:rgba(2,4,8,.62)}
-:root[data-theme="dark"] .settingscard{box-shadow:0 24px 64px rgba(0,0,0,.55),0 0 0 1px rgba(255,255,255,.07)}
+  border:1px solid var(--field-ring);border-radius:var(--floating-radius);background:var(--page)}.settingsscroll{flex:1;min-height:0;overflow-y:auto;padding:0 20px 20px;overscroll-behavior:contain}.settingshead{z-index:2;display:flex;align-items:center;justify-content:space-between;flex:none;padding:20px 20px 16px;border-bottom:1px solid var(--field-ring);background:var(--ground)}
+/* 遮罩是唯一还要分主题写的一处：它是写死的实色而不是 token。卡片与分组走 --page、
+   --ground 和 --field-ring，两档主题由 token 自己换，不再需要各写一条。
+   暗色命中跟随主题机制：app 不写 data-theme，暗色来自 prefers-color-scheme；
+   data-theme="dark" 分支给将来手动切主题留位，两条保持同值。 */
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .settingspanel{background:rgba(0,0,0,.8)}}
+:root[data-theme="dark"] .settingspanel{background:rgba(0,0,0,.8)}
 .settingshead h2{margin:0;font-size:var(--fs-xl)}.settingshead button{border:0;background:transparent;color:var(--muted);width:34px;height:34px;border-radius:var(--control-radius);cursor:pointer;display:grid;place-items:center;transition:background-color .12s ease,color .12s ease}.settingshead button:hover{background:var(--hover);color:var(--ink)}
 .settingshead svg{width:20px;height:20px;stroke:currentColor;fill:none}.settingrow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:18px;align-items:center;padding:14px 0 14px;border-top:1px solid var(--line-soft)}
 .settingrow:first-of-type{border-top:0}.settingrow b{display:block;font-size:var(--fs-md)}.settingrow small{display:block;color:var(--muted);margin-top:3px;line-height:1.45}
-.settingrow select{min-width:148px;border:1px solid var(--line);border-radius:var(--control-radius);background:#181a1d;color:#f5f7fa;color-scheme:dark;padding:9px 11px;font:inherit;font-size:var(--fs-md)}.settingrow select:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}.settingrow select option{background:#181a1d;color:#f5f7fa}
-.settinggroup{margin:16px 0 0;border:1px solid var(--line-soft);border-radius:var(--floating-radius);
-  background:var(--surface);padding:0 16px 12px}
+.settingrow .gselect{min-width:148px}
+.settinggroup{margin:16px 0 0;border:1px solid var(--field-ring);border-radius:var(--floating-radius);
+  background:var(--ground);padding:0 16px 12px}
 .settinggroup>h3{margin:0;padding:14px 0 10px;font-size:var(--fs-lg);font-weight:600;color:var(--ink)}
 .settinggroup .settingrow{margin:0 -16px;padding-left:16px;padding-right:16px}
 /* 布尔开关用 Geist Toggle 而不是原生复选框（取证 vercel-geist-semantics-measured.md）：
@@ -43,14 +46,33 @@ body.settings-open{overflow:hidden}
 #censorSetting:checked{background:var(--tungsten)}
 #censorSetting:checked::after{left:17px}
 #censorSetting:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}
-.sidebarsetting{display:grid;gap:12px;padding:0}.sidebarsetting>span b,.sidebarsetting>span small{display:block}.sidebarsetting>span small{margin-top:3px;color:var(--muted);line-height:1.45}.sidebarorder{display:grid;gap:6px}.sidebarorderrow{position:relative;display:flex;align-items:center;justify-content:space-between;min-height:48px;padding:5px 6px;border:1px solid var(--line-soft);border-radius:var(--surface-radius);background:var(--overlay-3);cursor:grab}.sidebarorderrow:active{cursor:grabbing}.sidebarorderrow.dragging{opacity:.42}.sidebarorderrow.drop-before::before,.sidebarorderrow.drop-after::after{content:'';position:absolute;z-index:2;left:7px;right:7px;height:2px;border-radius:var(--pill-radius);background:var(--ink)}.sidebarorderrow.drop-before::before{top:-5px}.sidebarorderrow.drop-after::after{bottom:-5px}.sidebarorderrow>span{display:flex;align-items:center;gap:8px}.sidebarorderrow svg{width:18px;height:18px;stroke:currentColor;fill:none}.sidebarorderlabel{min-width:0}.sidebarorderlabel>b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.sidebardrag{display:grid;place-items:center;width:24px;color:var(--muted)}.sidebardrag svg{width:20px;height:20px}.sidebarorderactions{flex:none}.sidebarorderrow button,.sidebaraddmenu button{display:grid;place-items:center;min-width:34px;height:34px;border:0;border-radius:var(--control-radius);background:transparent;color:var(--muted);cursor:pointer}.sidebarorderrow button:hover:not(:disabled),.sidebaraddmenu button:hover:not(:disabled){background:var(--hover);color:var(--ink)}.sidebarorderrow button:disabled,.sidebaraddmenu button:disabled{opacity:.25;cursor:default}.sidebaradd{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;margin-top:5px}
-.sidebaraddpicker{position:relative;min-width:0}/* 它是 listbox 触发器，不是按钮：穿输入框那身盒子，右边的实心档才是这一屏的主动作。 */.sidebaradd .sidebaraddfield{display:grid;grid-template-columns:auto minmax(0,1fr) auto;width:100%;height:var(--control-h);box-sizing:border-box;align-items:center;justify-items:start;gap:9px;padding:0 11px;border:1px solid var(--border-15);border-radius:var(--control-radius);background:var(--ground);color:var(--ink);text-align:left;font:inherit;cursor:pointer}.sidebaradd .sidebaraddfield:hover:not(:disabled){border-color:var(--line)}.sidebaradd .sidebaraddfield:disabled{color:var(--muted);cursor:default}.sidebaraddfield svg:last-child{justify-self:end;color:var(--muted)}/* 盒子、2px 行距和投影都来自共用的 .popmenu，这里只接管定位：它贴着触发器往上开，不是 fixed。
+/* 主题选择器是 Geist 里唯一给选中项加环的控件：三档的底色和它坐着的面板同色，
+   光靠填充分不出当前是哪一档。几何按 2026-09-04 实测 vercel.com 的 system／light／dark
+   三枚圆形按钮：外框是 32px 高、无填充的胶囊加一圈 1px 环，每档 32×32 正圆、图标 16px，
+   未选中 --muted、悬停只提文字色（这条由 .iconswitch 本体给），选中填 --ground 再加环。
+   两个类名叠着写是为了压过 19-immersive.css 里的 .iconswitch 本体——那份排在后面。 */
+.iconswitch.themeswitch{display:inline-flex;flex:none;padding:0;border:0;background:transparent;
+  border-radius:var(--pill-radius);box-shadow:0 0 0 1px var(--border-15)}
+.iconswitch.themeswitch label{width:32px;height:32px;border-radius:50%}
+.iconswitch.themeswitch label:has(input:checked){background:var(--ground);
+  box-shadow:0 0 0 1px var(--line),0 1px 2px var(--overlay-5)}
+.iconswitch.themeswitch svg{width:16px;height:16px}
+/* 手机上三枚圆各自撑到 44px 命中区，圆心间距跟着长，指头点得中。 */
+@media (max-width:760px){.iconswitch.themeswitch label{width:44px;height:44px}}
+/* 同一组里排在设置行后面的分区自带分隔线。线属于整块卡片，所以和 .settingrow 一样
+   用负边距铺到框边，不在正文宽度里断一截。 */
+.settinggroup .settingrow+.sidebarsetting{margin:0 -16px;padding:14px 16px 0;
+  border-top:1px solid var(--line-soft)}
+.sidebarsetting{display:grid;gap:12px;padding:0}.sidebarsetting>span b,.sidebarsetting>span small{display:block}.sidebarsetting>span small{margin-top:3px;color:var(--muted);line-height:1.45}.sidebarorder{display:grid;gap:6px}/* 这一列的行、下面那个下拉和「添加」按钮同高：它们是同一张清单的三段，差几像素就
+   看得出是两拨控件。34px 的图标钮加上下 1px 内边距和 1px 边框正好是 --control-h。 */
+.sidebarorderrow{position:relative;display:flex;align-items:center;justify-content:space-between;min-height:var(--control-h);padding:1px 5px;border:1px solid var(--line-soft);border-radius:var(--surface-radius);background:var(--surface);cursor:grab}.sidebarorderrow:active{cursor:grabbing}.sidebarorderrow.dragging{opacity:.42}.sidebarorderrow.drop-before::before,.sidebarorderrow.drop-after::after{content:'';position:absolute;z-index:2;left:7px;right:7px;height:2px;border-radius:var(--pill-radius);background:var(--ink)}.sidebarorderrow.drop-before::before{top:-5px}.sidebarorderrow.drop-after::after{bottom:-5px}.sidebarorderrow>span{display:flex;align-items:center;gap:8px}.sidebarorderrow svg{width:18px;height:18px;stroke:currentColor;fill:none}.sidebarorderlabel{min-width:0}.sidebarorderlabel>b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.sidebardrag{display:grid;place-items:center;width:24px;color:var(--muted)}.sidebardrag svg{width:20px;height:20px}.sidebarorderactions{flex:none}.sidebarorderrow button,.sidebaraddmenu button{display:grid;place-items:center;min-width:34px;height:34px;border:0;border-radius:var(--control-radius);background:transparent;color:var(--muted);cursor:pointer}.sidebarorderrow button:hover:not(:disabled),.sidebaraddmenu button:hover:not(:disabled){background:var(--hover);color:var(--ink)}.sidebarorderrow button:disabled,.sidebaraddmenu button:disabled{opacity:.25;cursor:default}.sidebaradd{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;margin-top:5px}
+.sidebaraddpicker{position:relative;min-width:0}/* 它是 listbox 触发器，不是按钮：穿输入框那身盒子，右边的实心档才是这一屏的主动作。 */.sidebaradd .sidebaraddfield{display:grid;grid-template-columns:auto minmax(0,1fr) auto;width:100%;height:var(--control-h);box-sizing:border-box;align-items:center;justify-items:start;gap:9px;padding:0 11px;border:1px solid var(--field-ring);border-radius:var(--control-radius);background:var(--ground);color:var(--ink);text-align:left;font:inherit;cursor:pointer}.sidebaradd .sidebaraddfield:hover:not(:disabled){border-color:var(--field-ring-hover)}.sidebaradd .sidebaraddfield:disabled{color:var(--muted);cursor:default}.sidebaraddfield svg:last-child{justify-self:end;color:var(--muted)}/* 盒子、2px 行距和投影都来自共用的 .popmenu，这里只接管定位：它贴着触发器往上开，不是 fixed。
    行距不能省——相邻两项一个悬停一个选中时，两块填充会连成一整条，看不出是两行。 */
 .sidebaraddmenu{position:absolute;z-index:4;left:0;right:0;bottom:calc(100% + 6px);max-height:min(312px,48vh)}.sidebaradd .sidebaraddmenu button{grid-template-columns:auto minmax(0,1fr);width:100%;height:var(--control-h);justify-content:start;gap:9px;padding:0 8px;border:0;text-align:left}.sidebaraddmenu button[aria-selected="true"]{background:var(--hover);color:var(--ink)}.sidebaradd svg{width:17px;height:17px;stroke:currentColor;fill:none}
 .sidebaradd .geist-button{height:var(--control-h);padding:0 14px}@media(max-width:600px){.settingsscroll{padding:0 17px 17px}.settingshead{padding:17px 17px 14px}.settingrow{grid-template-columns:1fr;gap:9px}
-  /* 单列是给 select 留的：148px 的下拉配上标题和说明在窄屏挤不下。开关只有 36px，
+  /* 单列是给下拉留的：148px 的下拉配上标题和说明在窄屏挤不下。开关只有 36px，
      跟标题同一行绰绰有余，跟着换行只是白占一行高度。 */
   .settingrow:has(input[type="checkbox"]){grid-template-columns:minmax(0,1fr) auto;gap:12px}
-  .settingrow select{width:100%;min-width:0}.settingrow .pcheck{justify-self:start}}
+  .settingrow .gselect{width:100%;min-width:0}.settingrow .pcheck{justify-self:start}}
 .sidebaradd .sidebaraddmenu button{justify-items:start}
 

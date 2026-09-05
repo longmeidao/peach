@@ -15,6 +15,7 @@ from typing import Callable
 from urllib.parse import urlsplit
 
 from .config import STATE_DIR, TOOLS_DIR
+from .catalog_rules import same_release_code, code_query_variants, normalise_code_key
 from .genre_taxonomy import map_genres
 from .entities import (
     canonicalize_entity_name,
@@ -102,6 +103,16 @@ def identifies_code(code: str, payload: dict) -> bool:
     `h_086iqqq00026` 对 `IQQQ-026` 多补了零，`259LUXU-1475` 只在 URL 里出现。
     实测 800 条成功快照里，除 dl.getchu 的 3 条错配外全部命中。
     """
+    if re.match(r"^\d{3}[A-Z]", str(code or "").upper()):
+        url = urlsplit(str(payload.get("source_url") or ""))
+        product = re.fullmatch(r"/product/product_detail/([^/]+)/?", url.path)
+        returned = str(payload.get("id") or payload.get("content_id") or "")
+        if url.hostname in {"mgstage.com", "www.mgstage.com"} and product:
+            product_code = product.group(1)
+            return same_release_code(code, product_code) and (
+                not returned or same_release_code(product_code, returned)
+                or normalise_code_key(returned) in code_query_variants(product_code))
+        return any(same_release_code(code, payload.get(field)) for field in ("id", "content_id"))
     blob = "|".join(_compact(payload.get(field)) for field in IDENTITY_FIELDS)
     if not blob.strip("|"):
         return False
@@ -109,7 +120,9 @@ def identifies_code(code: str, payload: dict) -> bool:
     matched = re.fullmatch(r"(?:\d{3,6})?([A-Z]{2,8})-?(\d{2,5})", value)
     if matched:
         letters, digits = matched.group(1).lower(), matched.group(2).lstrip("0") or "0"
-        return re.search(rf"{letters}0*{digits}(?!\d)", blob) is not None
+        return any(re.search(rf"(?<![a-z]){letters}[-_]?0*{digits}(?!\d)",
+                             str(payload.get(field) or "").lower()) is not None
+                   for field in IDENTITY_FIELDS)
     return _compact(value) in blob
 
 

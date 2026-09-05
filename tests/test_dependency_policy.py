@@ -30,6 +30,7 @@ class DependencyPolicyTests(unittest.TestCase):
 
     def test_every_imported_external_module_has_a_declared_owner(self):
         owners = {
+            "tldextract": "tldextract",
             "AppKit": "pyobjc-framework-Cocoa",
             "PIL": "pillow",
             "PyObjCTools": "pyobjc-framework-Cocoa",
@@ -39,6 +40,7 @@ class DependencyPolicyTests(unittest.TestCase):
             "curl_cffi": "curl_cffi",
             "cv2": "opencv-python-headless",
             "fastapi": "fastapi",
+            "filelock": "filelock",
             "httpx": "httpx",
             "numpy": "numpy",
             "objc": "pyobjc-framework-Cocoa",

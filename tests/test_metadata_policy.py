@@ -123,11 +123,11 @@ class MetadataPolicyTests(unittest.TestCase):
         self.assertEqual(policy.sources_for_code("HEYZO-1380"),
                          ("caribbeancom", "tokyohot", "javbus"))
         self.assertEqual(policy.sources_for_code("ABW-220"),
-                         ("mgstage", "dmm", "libredmm", "aventertainment"))
+                         ("mgstage", "dmm", "libredmm", "aventertainment", "javdb"))
         # 来源健康表要覆盖两边，所以 sources 是并集。
         self.assertEqual(set(policy.sources), {
             "caribbeancom", "tokyohot", "javbus",
-            "mgstage", "dmm", "libredmm", "aventertainment"})
+            "mgstage", "dmm", "libredmm", "aventertainment", "javdb"})
 
     def test_unrouted_profiles_keep_asking_every_source(self):
         for profile in ("baseline", "censored", "uncensored", "fc2", "official-backfill"):

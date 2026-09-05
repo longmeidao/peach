@@ -11,51 +11,47 @@
 .followmanage>.runtimegate{margin-bottom:0}
 .fmain{display:grid;gap:16px;min-width:0}
 /* 容器：发丝边 + 比页面亮一档的表面。内部的行不再各自套框。 */
-.fsec{min-width:0;border:1px solid var(--border-10);border-radius:var(--surface-radius);
-  background:var(--surface);padding:14px 16px 16px}
+.fsec{min-width:0;border:1px solid var(--field-ring);border-radius:var(--surface-radius);
+  background:var(--ground);padding:14px 16px 16px}
 /* 面板上中下异色：头部条与页脚条通到卡边（负边距抵消内边距），
-   头 = 微亮面、主体 = 卡面、页 = hover 底 + 上发丝线；圆角随卡收口。 */
+   正文是全站最亮的 --ground，两条横条落到 --page 并各带一条发丝线；圆角随卡收口。 */
 .fsechead{display:flex;align-items:center;gap:12px;flex-wrap:wrap;box-sizing:border-box;min-height:56px;
   margin:-14px -16px 12px;padding:11px 16px;background:var(--overlay-5);
-  border-bottom:1px solid var(--border-10);border-radius:calc(var(--surface-radius) - 1px) calc(var(--surface-radius) - 1px) 0 0}
-.fsecfoot{margin:14px -16px -16px;padding:12px 16px;background:var(--hover);
-  border-top:1px solid var(--border-10);border-radius:0 0 calc(var(--surface-radius) - 1px) calc(var(--surface-radius) - 1px)}
+  border-bottom:1px solid var(--line-soft);border-radius:calc(var(--surface-radius) - 1px) calc(var(--surface-radius) - 1px) 0 0}
+.fsecfoot{margin:14px -16px -16px;padding:12px 16px;background:var(--overlay-5);
+  border-top:1px solid var(--line-soft);border-radius:0 0 calc(var(--surface-radius) - 1px) calc(var(--surface-radius) - 1px)}
 .fsecfoot .fnote{margin:0}
-.fsecfoot .fbtn,.fsechead .fbtn{background:var(--surface)}
 /* 重复页的「操作」条独立于 .fsec 容器：自带卡面与边框，不用负边距。 */
-.dupactions.fsechead{margin:0 0 14px;padding:10px 14px;background:var(--surface);
-  border:1px solid var(--border-10);border-radius:var(--surface-radius)}
-.dupactions.fsechead button{min-height:32px;padding:0 12px;border:1px solid var(--border-15);
-  border-radius:var(--control-radius);background:var(--surface);color:var(--ink-2);cursor:pointer;font-size:var(--fs-sm)}
-.dupactions.fsechead button:hover{background:var(--hover);color:var(--ink)}
+.dupactions.fsechead{margin:0 0 14px;padding:10px 14px;background:var(--overlay-5);
+  border:1px solid var(--field-ring);border-radius:var(--surface-radius)}
+.dupactions.fsechead button{min-height:32px;padding:0 12px;border:1px solid var(--line-soft);
+  border-radius:var(--control-radius);background:var(--ground);color:var(--ink-2);cursor:pointer;font-size:var(--fs-sm)}
+.dupactions.fsechead button:hover{background:var(--surface);color:var(--ink)}
 .fsechead h3{margin:0;font-size:var(--fs-md);font-weight:600;letter-spacing:.01em}
 /* 说明文字是这一行里唯一可以缩的东西：标题、排序框和动作键都要完整读出来。
    基准取 0 而不是 auto：这一行允许换行，按内容宽度参与排线的话它会先把整行挤断，
    缩放根本轮不到发生。基准 0 让它先占 0 再吃剩下的宽度，末尾省略。 */
 .fsechead .fmeta{flex:1 1 0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .fsechead .fbtn,.fsechead .fmanagesort{flex:none}
-.fmanagedir{width:32px;padding:0}
+/* 升降序键是这一行里唯一的纯图标键：正方形、边长取 --control-h，和同排的下拉、
+   版式开关一样高，图标 16px 与排序框左侧那枚同尺寸。写成两级选择器是因为 .fbtn 的
+   `padding:0 12px` 排在本文件后面——单类名压不过它，内容宽只剩 8px，图标会被压成一条。 */
+.fsechead .fmanagedir{width:var(--control-h);padding:0}
+.fsechead .fmanagedir svg{width:16px;height:16px}
 /* 排序框照 Geist Select 的 prefix 做法：图标压在框内左侧，不在框外挂一个文字标签。
    Geist 的文字 Label 是块级、排在控件上方（block ... mb-2），行内并排那种写法它没有；
    而工具行里既没有上方空间，图标又足够把下拉框和普通按钮区分开。 */
 .fmanagesort{position:relative;display:inline-flex;align-items:center;color:var(--muted);font-size:var(--fs-xs)}
 .fmanagesort>svg{position:absolute;z-index:1;left:9px;width:16px;height:16px;stroke:currentColor;fill:none;pointer-events:none}
 .fmanagesort:hover>svg{color:var(--ink-2)}
-/* 版式开关和排序框、按钮同处分区标题行，收到同一个 32px 高度上（fieldset 自带 1px 边框）。 */
+/* 版式开关和排序框、按钮同处分区标题行，一起收到 --control-h 上（内边距 2px + 1px 边框
+   凑齐同一个外高）。这一行不给自己开小一号的档：同排三个控件里只有下拉缩了尺寸和字号，
+   读起来就是一个点不动的说明标签，而它恰恰是这行里唯一能改变列表内容的控件。 */
 .fsechead .iconswitch{display:inline-flex;gap:2px;flex:none;padding:2px}
-.fsechead .iconswitch label{width:32px;height:26px}
-/* 原生弹出的选项列表由 color-scheme 决定，而 color-scheme 是继承属性：01-base.css 把
-   prefers-color-scheme 和 `[data-theme]` 两条选择路径都映射到 `html`，控件这里只声明颜色。
-   在控件上单独写一档，浅色主题下闭合的框是浅底，展开的选项列表是深底浅字。 */
-.fmanagesort select{height:32px;padding:0 10px;border:1px solid var(--border-15);border-radius:var(--control-radius);
-  background:var(--surface);color:var(--ink-2);font:inherit;font-size:var(--fs-sm);cursor:pointer}
-.fmanagesort select:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}
-/* 全站原生下拉共用同一个自绘箭头。SVG 笔画自身有 4px 透明边，背景右移 6px 后，
-   可见笔画到右边框正好与文字到左边框同为 10px。 */
-.fmanagesort select{padding-left:31px}
-.settingrow select,.tasteactions select,.fmanagesort select{padding-left:10px;padding-right:32px;appearance:none;-webkit-appearance:none;
-  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238e949e' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
-  background-repeat:no-repeat;background-position:right 6px center;background-size:16px 16px}
+.fsechead .iconswitch label{width:34px;height:32px}
+.fsechead .fbtn,.fsecfoot .fbtn{height:var(--control-h)}
+/* 排序图标压在触发器左侧，所以左内边距要给它让出位置。 */
+.fmanagesort .gselectfield{height:var(--control-h);padding:0 12px 0 33px;color:var(--ink-2)}
 .fmeta{font-size:var(--fs-xs);color:var(--muted)}
 .fmeta b{color:var(--ink);font-variant-numeric:tabular-nums}
 .fmeta.warn{color:var(--drop)}
@@ -129,11 +125,11 @@
 .fcstate.none,.fcstate.blocked{color:var(--muted)}
 
 .fbtn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:32px;
-  box-sizing:border-box;padding:0 12px;border:1px solid var(--border-15);border-radius:var(--control-radius);
-  background:transparent;color:var(--ink);font-size:var(--fs-md);font-weight:500;font-family:inherit;cursor:pointer;
+  box-sizing:border-box;padding:0 12px;border:1px solid var(--line-soft);border-radius:var(--control-radius);
+  background:var(--ground);color:var(--ink);font-size:var(--fs-md);font-weight:500;font-family:inherit;cursor:pointer;
   white-space:nowrap;transition:border-color .15s ease-in-out,color .15s ease-in-out,background-color .15s ease-in-out}
-.fbtn:hover:not(:disabled){background:var(--hover)}
-.fbtn:disabled{background:var(--surface);border-color:var(--border-15);color:var(--muted);cursor:default}
+.fbtn:hover:not(:disabled){background:var(--surface)}
+.fbtn:disabled{background:var(--sunk);border-color:var(--line-soft);color:var(--muted);cursor:default}
 .fbtn.primary{background:var(--ink);border-color:var(--ink);color:var(--ground);font-weight:500}
 .fbtn.primary:hover:not(:disabled){background:color-mix(in srgb,var(--ink) 88%,var(--ground));border-color:color-mix(in srgb,var(--ink) 88%,var(--ground));color:var(--ground)}
 .fbtn.small{height:26px;padding:0 10px;font-size:var(--fs-sm)}
@@ -179,7 +175,10 @@
    放前面的话选择器里的同名片段会被先匹配到，取回来的是这里的规则。 */
 .fauthor{box-sizing:border-box;height:280px;padding:8px 12px;border:1px solid var(--border-10);
   border-radius:var(--control-radius);background:var(--surface);display:grid;grid-template-rows:auto minmax(0,1fr)}
-.followtask{border:1px solid var(--border-10);border-radius:var(--surface-radius);background:var(--surface);margin-bottom:16px}
+/* 进度面板与它上下的分区是同一档容器：发丝边 --field-ring 加 --ground 的面。
+   `--border-10` 配 `--surface` 会让它在同一列里比 `.fsec` 亮一档、边又淡一档，
+   读起来像另一种东西浮在页面上。 */
+.followtask{border:1px solid var(--field-ring);border-radius:var(--surface-radius);background:var(--ground);margin-bottom:16px}
 .followtask>.geist-fieldset-content{padding:20px;min-width:0;overflow-wrap:anywhere}
 .followmanage .followtask{margin-bottom:0}
 .fcheckfail strong{font-weight:600}
@@ -190,8 +189,7 @@
 .fauthorhead .fmeta{margin-left:auto;flex:0 1 auto;min-width:0;white-space:nowrap}
 .fauthorhead .fmeta.warn{margin-left:0}
 .fauthorsources{min-height:0}
-.fauthorsources .geist-scroller-container{padding-right:12px;scrollbar-width:thin}
-.fauthorsources .geist-scroller-container::-webkit-scrollbar{display:block}
+.fauthorsources .geist-scroller-container{padding-right:12px}
 .fauthorsources .fsource:last-child{border-bottom:0}
 .fauthor .fsource.frow{padding-left:0px;display:grid;
   grid-template-columns:22px minmax(0,1fr) auto auto auto auto;gap:10px;flex-wrap:nowrap}
@@ -204,7 +202,7 @@
 .frowicon{width:32px;height:32px;padding:0;display:grid;place-items:center;flex:none;
   border:1px solid var(--border-15);border-radius:var(--control-radius);background:transparent;color:var(--muted);cursor:pointer}
 .frowicon:hover{background:var(--hover);color:var(--ink)}
-.frowicon:disabled{background:var(--surface);border-color:var(--border-15);color:var(--muted);cursor:default}
+.frowicon:disabled{background:var(--sunk);border-color:var(--line-soft);color:var(--muted);cursor:default}
 .frowicon.danger:hover{color:var(--drop);border-color:var(--drop)}
 .frowicon svg{width:16px;height:16px;stroke:currentColor;fill:none}
 .fsource.frow>.frowerr{grid-column:1/-1}
@@ -293,7 +291,7 @@ details.fcred{display:block}
   transition:background-color .15s ease-in-out,border-color .15s ease-in-out,color .15s ease-in-out}
 .fcredactions button:hover:not(:disabled){background:color-mix(in srgb,var(--ink) 88%,var(--ground));
   border-color:color-mix(in srgb,var(--ink) 88%,var(--ground));color:var(--ground)}
-.fcredactions button:disabled{background:var(--surface);border-color:var(--border-15);color:var(--muted);cursor:default}
+.fcredactions button:disabled{background:var(--sunk);border-color:var(--line-soft);color:var(--muted);cursor:default}
 .fcredactions button.fquiet{background:transparent;border-color:var(--border-15);
   color:var(--muted)}
 .fcredactions button.fquiet:hover{background:var(--drop);border-color:var(--drop);color:#fff}
@@ -366,14 +364,14 @@ details.fcred{display:block}
    实底上就落成白字白底。Geist Button 的 primary 悬停只把 #EDEDED 掉一档到 #ccc，
    文字色不动。 */
 .fpickactions [data-pick-add]:hover:not(:disabled){background:color-mix(in srgb,var(--ink) 88%,var(--ground));border-color:color-mix(in srgb,var(--ink) 88%,var(--ground));color:var(--ground)}
-.fpickactions button:disabled{background:var(--surface);border-color:var(--border-15);color:var(--muted);cursor:default}
+.fpickactions button:disabled{background:var(--sunk);border-color:var(--line-soft);color:var(--muted);cursor:default}
 .fpickactions [data-pick-state]{display:flex;align-items:center;min-width:0;overflow:hidden;
   white-space:nowrap;text-overflow:ellipsis;font-size:var(--fs-xs);color:var(--muted)}
 
 /* 关注页底部：两个翻页动作同属列表末尾，放在一条底栏；
    按钮仍保留各自的本地加载 / 站点抓取语义。 */
 .followpagination{display:flex;align-items:center;gap:14px 24px;min-width:0;margin:18px 0 0;
-  padding-top:14px;border-top:1px solid var(--line-soft);white-space:nowrap;overflow-x:auto;scrollbar-width:thin}
+  padding-top:14px;border-top:1px solid var(--line-soft);white-space:nowrap;overflow-x:auto}
 .followpageaction{display:inline-flex;align-items:center;gap:12px;min-width:0;flex:none}
 .followpageaction .fmeta{min-width:0;overflow:hidden;text-overflow:ellipsis}
 @media(max-width:640px){.followpagination{align-items:flex-start;flex-wrap:wrap;white-space:normal}.followpageaction{width:100%}}
@@ -394,7 +392,7 @@ details.fcred{display:block}
 .linkgroup h4{margin:0 0 4px;font-size:var(--fs-md);font-weight:600}
 .linkgroup h4 b{margin-left:6px;color:var(--muted);font-weight:inherit;font-variant-numeric:tabular-nums}
 .linkgroup>p{margin:0 0 12px;color:var(--muted);font-size:var(--fs-xs);line-height:1.5}
-.linktablewrap{overflow-x:auto;scrollbar-width:thin}
+.linktablewrap{overflow-x:auto}
 .linktable{width:100%;border-collapse:collapse;font-size:var(--fs-xs);white-space:nowrap}
 .linktable th{padding:6px 10px;border-bottom:1px solid var(--line-soft);color:var(--muted);font-weight:600;text-align:left}
 .linktable td{padding:6px 10px;border-bottom:1px solid var(--line-soft);color:var(--ink-2)}

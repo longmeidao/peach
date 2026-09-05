@@ -1681,8 +1681,8 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertIn("grid-template-rows:auto minmax(0,1fr)", author_rule)
         self.assertPageContains("scrollerHtml(group.map(followSourceRow).join(''),{")
         self.assertPageContains("className:'fauthorsources',label:`${name} 的关注来源`")
-        self.assertPageContains(".fauthorsources .geist-scroller-container{padding-right:12px;scrollbar-width:thin}")
-        self.assertPageContains(".fauthorsources .geist-scroller-container::-webkit-scrollbar{display:block}")
+        # 滚动条由 attachOverlayScrollbar() 统一自绘，这里只留出滑块那一档的右内边距。
+        self.assertPageContains(".fauthorsources .geist-scroller-container{padding-right:12px}")
         self.assertPageContains("wireScrollers(root)")
 
     def test_source_actions_are_icon_only_and_stay_on_one_row(self):
@@ -1843,7 +1843,7 @@ class FollowWebSourceTests(unittest.TestCase):
         section = section[:section.index("}")]
         self.assertIn("border:1px solid", section)
         self.assertIn("border-radius", section)
-        self.assertIn("background:var(--surface)", section)
+        self.assertIn("background:var(--ground)", section)
 
         self.assertNotIn(".fcard{", page)
         self.assertNotIn(".fsource{", page,
@@ -2107,7 +2107,20 @@ class FollowWebSourceTests(unittest.TestCase):
         rule = rule[:rule.index("}")]
         self.assertIn("flex:none", rule)
         self.assertIn("padding:2px", rule)
-        self.assertPageContains(".fsechead .iconswitch label{width:32px;height:26px}")
+        # 2px 内边距上下各一份，再加外框自己的 1px 边，正好凑齐同排控件的 --control-h。
+        self.assertPageContains(".fsechead .iconswitch label{width:34px;height:32px}")
+        self.assertPageContains(".fsechead .fbtn,.fsecfoot .fbtn{height:var(--control-h)}")
+        self.assertPageContains(".fmanagesort .gselectfield{height:var(--control-h);")
+
+    def test_the_sort_direction_key_is_a_square_icon_button(self):
+        """纯图标键是正方形，边长与同排控件同高，图标不被内边距压扁。
+
+        `.fbtn` 自带 `padding:0 12px` 且排在样式表更后面，单类名的 `.fmanagedir`
+        压不过它：32px 宽减掉 24px 内边距只剩 8px 内容宽，14px 的箭头会被挤成一条
+        6px 的竖线——按钮不方，图标也不成比例。
+        """
+        self.assertPageContains(".fsechead .fmanagedir{width:var(--control-h);padding:0}")
+        self.assertPageContains(".fsechead .fmanagedir svg{width:16px;height:16px}")
 
     def test_alias_count_badge_is_neutral_metadata(self):
         """「3 组」只是计数，不是待处理提醒：徽章走 Geist gray badge 的中性灰。
@@ -2213,9 +2226,13 @@ class FollowWebSourceTests(unittest.TestCase):
         # videojs 的 qualityLevels 只认 HLS/DASH 的自适应轨道，看不到它们。
         self.assertPageContains(
             "function mountPlayerQualityControl(player,video,fallbackHeight=0,initialSourceQualities=null)")
-        self.assertPageContains("const qualitiesPromise=api(`/follow-qualities?id=${encodeURIComponent(item.id)}`)")
-        self.assertPageContains("qualitiesPromise",
-                                "关注详情要异步补上来源档位")
+        self.assertPageContains(
+            "const mediaPromise=api(`/follow-qualities?id=${encodeURIComponent(item.id)}`).catch(()=>null);")
+        self.assertPageContains("mediaPromise",
+                                "关注详情要异步补上来源档位和字节数")
+        # 档位和字节数是同一趟回源的产物，播放器两样都从这个应答里取。
+        self.assertPageContains("updateQualities?.(next?.qualities?.length?next.qualities:null);")
+        self.assertPageContains("const size=Number(next?.size)||0;")
         detail = self.page.split("async function openFollowDetail", 1)[1].split(
             "function renderFollow", 1)[0]
         self.assertNotIn("await api(`/follow-qualities", detail,
@@ -2721,12 +2738,10 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("spinnerHtml('抓取中')")
 
     def test_follow_management_list_has_routed_sorting(self):
-        self.assertPageContains('data-follow-sort aria-label="关注列表排序"')
-        self.assertPageContains('<option value="checked"')
-        self.assertPageContains(">检查时间</option>")
-        self.assertPageContains('<option value="added"')
-        self.assertPageContains('<option value="name"')
-        self.assertPageContains('<option value="sources"')
+        self.assertPageContains("{label:'关注列表排序',attr:'data-follow-sort'}")
+        self.assertPageContains(
+            "const FOLLOW_SORT_OPTIONS=[['checked','检查时间'],['added','添加时间'],"
+            "['name','作者名称'],['sources','来源数量']]")
         self.assertPageContains("followManageSort=['checked','added','name','sources'].includes(requested)?requested:'checked'")
         self.assertPageContains("const added=group=>Math.max(...group.map(source=>Date.parse(source.created_at||'')||0))")
         self.assertPageContains("if(followManageSort==='added')return flip*(added(b)-added(a))||byName(a,b);")
@@ -2738,11 +2753,18 @@ class FollowWebSourceTests(unittest.TestCase):
         # 方向键与排序下拉并排，名称播报点下去会得到什么。
         self.assertPageContains("<button class=\"fbtn fmanagedir\" type=\"button\" data-follow-dir aria-label=\"${")
         self.assertPageContains("icon(followManageDir==='asc'?'arrow-up':'arrow-down')")
-        self.assertPageContains(".fmanagedir{width:32px;padding:0}")
+        self.assertPageContains(".fsechead .fmanagedir{width:var(--control-h);padding:0}")
         # 方向等于该列默认值时不写进地址，免得挂一个和默认完全一样的参数。
         self.assertPageContains(
             "if(followManageDir!==(FOLLOW_SORT_DEFAULT_DIR[followManageSort]||'desc'))params.set('dir',followManageDir);")
         self.assertPageContains("followManageDir=requestedDir==='asc'||requestedDir==='desc'?requestedDir")
+        # 换排序只是把手里这份 followData 重排一次：整页换骨架、三个接口重取、滚回顶部，
+        # 换来的是同一批数据的另一个顺序，而屏幕上真正变的只有下面那份关注列表。
+        route = self.page[self.page.index("function routeFollowManageSort()"):]
+        route = route[:route.index(chr(10) + "}")]
+        self.assertIn("renderFollowManage(followCredentials||{});", route)
+        self.assertNotIn("openFollowManage", route)
+        self.assertPageContains("followData=data;followRuntime=runtime;followCredentials=credentials;")
         backend = (ROOT / "src" / "peach" / "web_follow.py").read_text(encoding="utf-8")
         self.assertIn('"created_at": row["created_at"]', backend)
         self.assertPageContains("return groups.sort((a,b)=>{")
@@ -2763,7 +2785,12 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains('.sgrid.mixgrid>.mixqueue .mixqueueactions{grid-column:2;grid-row:1;align-self:center}')
         self.assertPageContains("wireDrag($('#stage').querySelector('.mixlist'))")
         self.assertPageContains("followdetailmedia${selectedKind==='image'?' image':''}")
-        self.assertPageContains('.followdetailmedia.image{min-height:0;background:')
+        self.assertPageContains('.followdetailmedia.image{background:')
+        # 媒体框不给视口高度的地板：里面的播放器高度由 16:9 和自己的宽度推出来，地板挂在
+        # vh 上时两个量在窄屏上朝相反方向走，框比画面高出一大截，上下各空一片。
+        self.assertPageContains('.followdetailmedia{--follow-image-arrow-inset:16px}')
+        self.assertPageLacks('min-height:min(62vh,640px)')
+        self.assertPageContains('.followdetailplaceholder{aspect-ratio:16/9;display:grid;place-items:center;')
 
     def test_follow_uses_the_global_multi_select_mode(self):
         self.assertPageContains("const selected=new Set(),followSelected=new Set();")

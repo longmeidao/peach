@@ -16,6 +16,7 @@ from pathlib import Path
 import httpx
 
 from .http import HttpRequest, HttpxTransport
+from .scripting import RateLimiter
 
 
 USER_AGENT = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -41,19 +42,17 @@ class Site:
                  backoff: float = 2.0):
         self.cache_dir, self.interval, self.timeout, self.refresh = cache_dir, interval, timeout, refresh
         self.transport = transport or HttpxTransport(
-            httpx.Client(trust_env=via_proxy, follow_redirects=True, cookies=cookies or {}))
+            httpx.Client(trust_env=via_proxy, follow_redirects=True, cookies=cookies or {}),
+            owns_client=True)
         self.retries, self.backoff = max(0, retries), backoff
-        self._last = 0.0
+        self._limiter = RateLimiter(interval)
         self.fetched = self.cached = self.retried = 0
 
     def request(self, method: str, url: str, body: bytes | None = None,
                 headers: dict[str, str] | None = None) -> str:
         response = None
         for attempt in range(self.retries + 1):
-            wait = self.interval - (time.monotonic() - self._last)
-            if wait > 0:
-                time.sleep(wait)
-            self._last = time.monotonic()
+            self._limiter.wait()
             try:
                 response = self.transport(
                     HttpRequest(method, url, {"User-Agent": USER_AGENT, **(headers or {})},

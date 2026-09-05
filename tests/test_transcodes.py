@@ -55,6 +55,40 @@ def _media_process(commands, profile, fail=None):
 
 
 class TranscodeServiceTests(unittest.TestCase):
+    def test_native_containers_are_checked_against_their_streams(self):
+        cases = (
+            (".mp4", "mpeg4", "yuv420p", "aac", True),
+            (".mp4", "hevc", "yuv420p10le", "aac", True),
+            (".mp4", "h264", "yuv420p10le", "aac", True),
+            (".mp4", "h264", "yuv420p", "ac3", True),
+            (".mp4", "h264", "yuv420p", "aac", False),
+            (".webm", "vp9", "yuv420p", "opus", False),
+        )
+        for suffix, codec, pixel_format, audio, expected in cases:
+            with self.subTest(codec=codec, pixel_format=pixel_format, audio=audio):
+                with tempfile.TemporaryDirectory() as tmp:
+                    root = Path(tmp).resolve()
+                    source = root / ("movie" + suffix)
+                    source.write_bytes(b"source")
+                    service = TranscodeService(
+                        _Resolver(root / "ffmpeg.exe", root / "ffprobe.exe"),
+                        root / "cache", prefer_hardware=False,
+                    )
+                    commands = []
+                    streams = [
+                        {"codec_type": "video", "codec_name": codec, "pix_fmt": pixel_format},
+                        {"codec_type": "audio", "codec_name": audio},
+                    ]
+                    with patch("peach.transcodes.subprocess.Popen",
+                               side_effect=_media_process(commands, streams)):
+                        result = service.browser_path(29999, source)
+                        self.assertEqual(service.browser_path(29999, source), result)
+                    self.assertEqual(result[1], expected)
+                    self.assertEqual(source.read_bytes(), b"source")
+                    self.assertEqual(sum("ffprobe" in c[0] for c in commands), 1)
+                    if expected:
+                        self.assertEqual(result[0].read_bytes(), b"mp4")
+
     def test_native_mp4_is_returned_without_ffmpeg(self):
         source = Path("movie.mp4")
         service = TranscodeService(_Resolver(None), Path("cache"))

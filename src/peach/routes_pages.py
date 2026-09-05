@@ -51,11 +51,16 @@ _SETUP_STYLE = """<style>
 body{margin:0;padding:48px 24px;background:var(--ground);color:var(--ink);
 font:var(--fs-md)/1.6 system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif}
 main{max-width:560px;margin:0 auto}
+body:has(.error-page){min-height:100svh;display:grid;align-items:center}
+body:has(.error-page)>main{width:min(560px,100%)}
+.error-page{display:grid;justify-items:start;gap:32px}
+.error-page>h1,.error-page>p{margin:0}
 .mark{display:block;width:40px;height:40px;border-radius:50%}
 h1{font-size:var(--fs-3xl);font-weight:600;line-height:1.25;margin:16px 0 0}
 .lede{margin:6px 0 0;color:var(--muted)}
 h2{font-size:var(--fs-lg);font-weight:600;margin-top:32px;padding-top:24px;border-top:1px solid var(--line)}
-p{color:var(--ink-2)}a{color:var(--tungsten);text-underline-offset:3px}
+p{color:var(--ink-2)}a{color:var(--tungsten);text-decoration:none}
+a:hover{text-decoration:none}
 code{font:var(--fs-xs)/1.5 ui-monospace,Consolas,"Cascadia Mono",monospace;
 background:var(--surface);border:1px solid var(--line-soft);border-radius:var(--badge-radius);
 padding:2px 6px;overflow-wrap:anywhere}
@@ -88,7 +93,22 @@ border-radius:var(--control-radius);color:var(--ink-2);cursor:pointer}
 .switch label:has(input:focus-visible){outline:2px solid var(--tungsten);outline-offset:2px}
 :focus-visible{outline:2px solid var(--tungsten);outline-offset:3px}
 .help{margin:6px 0 0;color:var(--muted);font-size:var(--fs-sm)}
-details{margin-top:24px}summary{cursor:pointer;min-height:44px;display:list-item}
+/* 高级设置是 Geist Collapse：summary 是触发器，chevron 紧跟标题，与高度一样 200ms ease-in-out；
+   折叠体由 /js/ui-components.js 的 wireCollapse 接管。 */
+details{margin-top:24px}
+summary{display:flex;align-items:center;gap:8px;min-height:44px;
+cursor:pointer;list-style:none;font-weight:500;color:var(--ink)}
+summary::-webkit-details-marker{display:none}
+summary svg{width:16px;height:16px;flex:none;stroke:currentColor;fill:none;stroke-width:2;
+stroke-linecap:round;stroke-linejoin:round;color:var(--muted);transition:transform .2s ease-in-out}
+details[open] summary svg{transform:rotate(180deg)}
+/* 折叠体裁切溢出，输入框的焦点环（2px 环加 3px 间距）会被切掉：把裁切框往外放 6px，
+   横向靠 .fcollapse 的负外边距，纵向靠 .fcollapsebody 的内边距——内边距不能落在
+   .fcollapse 自己身上，否则高度收不到 0。 */
+.fcollapse{overflow:hidden;transition:height .2s ease-in-out;margin:0 -6px;padding:0 6px}
+.fcollapsebody{padding:6px 0}
+details .field{margin-top:0}
+details .field+.field{margin-top:24px}
 .bad{margin:6px 0 0;color:var(--drop);font-size:var(--fs-sm)}
 .check{display:flex;align-items:center;gap:12px;min-height:44px;margin:24px 0 0;cursor:pointer}
 .pcheck{position:relative;display:grid;place-items:center;width:20px;height:20px;flex:none}
@@ -103,23 +123,41 @@ button[type=submit]{margin-top:32px;width:100%;height:var(--control-h);border:1p
 border-radius:var(--control-radius);cursor:pointer;background:var(--ink);color:var(--ground);
 font:500 var(--fs-md) system-ui,sans-serif}
 button[type=submit]:hover{background:color-mix(in srgb,var(--ink) 88%,var(--ground));color:var(--ground)}
-.dir{display:grid;grid-template-columns:1fr auto;gap:8px;margin-top:8px}
-.dir:first-child{margin-top:0}.dir .bad{grid-column:1/-1;margin:0}
-.dir input[type=text]{min-width:0}
-.rm,.add{height:var(--control-h);border:1px solid var(--line);border-radius:var(--control-radius);
+/* 一行：输入框、选择文件夹、移除。flex 而不是 grid：只剩一行时移除键隐藏，
+   grid 的空轨道会留下一段 gap。 */
+.dir{display:flex;flex-wrap:wrap;gap:10px;padding:16px;border:1px solid var(--line-soft);border-radius:var(--control-radius);margin-top:16px}
+.dir:first-child{margin-top:0}.dir .bad{flex-basis:100%;margin:0}
+.dir input[type=text]{flex:1 1 auto;width:auto;min-width:0}
+.dir > input[type=text]{flex:1 1 0;width:0}
+.sourcefields{flex-basis:100%;display:grid;gap:8px;min-width:0}
+.sourcefields select{width:100%;height:var(--control-h);border:1px solid var(--line-soft);border-radius:var(--control-radius);background:var(--surface);color:var(--ink);padding:0 12px;font:inherit}
+.sourcefields select:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}
+.sourcefields select{appearance:none;padding-right:42px;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='m4 6 4 4 4-4' fill='none' stroke='%23888' stroke-width='1.5'/%3E%3C/svg%3E");background-repeat:no-repeat;background-size:16px;background-position:right 14px center}
+.sourcefields label{display:grid;gap:6px;color:var(--muted);font-size:var(--fs-sm)}
+.sourcefields input[type=text]{width:100%;box-sizing:border-box}
+.help a{text-decoration:none}.help a:hover{text-decoration:underline;text-underline-offset:3px}
+.help a svg{width:14px;height:14px;margin-inline-start:4px;vertical-align:-2px;stroke:currentColor;fill:none;stroke-width:2}
+.sourcefields .gselect{display:flex;width:100%}.sourcefields .gselectfield{padding-inline:14px}
+.sourcefields select[hidden]{display:none}
+.rm,.pick,.add{height:var(--control-h);border:1px solid var(--line);border-radius:var(--control-radius);
 background:var(--ground);color:var(--ink);cursor:pointer;font:500 var(--fs-sm) system-ui,sans-serif}
-.rm{width:var(--control-h);display:grid;place-items:center;color:var(--muted)}
-.rm svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round}
-.add{margin-top:8px;padding:0 12px}
-.rm:hover,.add:hover{background:var(--hover);color:var(--ink)}
-.rm[hidden],.add[hidden]{display:none}
+.rm,.pick{width:var(--control-h);flex:none;display:grid;place-items:center;color:var(--muted)}
+.rm svg,.pick svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;
+stroke-linejoin:round}
+.pick[aria-busy=true]{color:var(--muted);cursor:progress}
+.add{margin-top:8px;padding:0 14px}
+.rm:hover,.pick:hover,.add:hover{background:var(--hover);color:var(--ink)}
+.rm{color:var(--drop)}.rm:hover{background:var(--drop);border-color:var(--drop);color:white}
+.rm[hidden],.pick[hidden],.add[hidden]{display:none}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 @media(max-width:760px){input[type=text],input[type=number]{font-size:16px}}
+@media(max-width:560px){body{--control-h:44px}.sourcefields select{font-size:var(--fs-lg)}}
 @media(max-width:440px){body{padding:24px 20px}h1{font-size:var(--fs-2xl)}}
 </style>"""
 
 _SETUP_HEAD = ('<!doctype html>\n<html lang="zh-CN"><head><meta charset="utf-8">'
                '<meta name="viewport" content="width=device-width,initial-scale=1">'
-               '<meta name="color-scheme" content="light">'
+               '<meta name="color-scheme" content="light dark">'
                '<link rel="icon" href="/peach-logo.png" type="image/png">')
 
 #: 键 -> 页面上的题目与一句说明。顺序、默认值与校验仍然来自 `onboarding.questions()`，
@@ -131,8 +169,6 @@ _SETUP_COPY = {
     "port": ("端口", "浏览器地址里冒号后面的数字，一般不用改。"),
     "mdns_name": ("局域网访问地址", "选了「同一局域网的设备」之后，其他设备在浏览器里输入这个地址就能打开 Peach。"),
 }
-_STANDALONE_COPY = {"port": ("本机访问端口", "浏览器地址里冒号后面的数字，一般不用改。")}
-
 #: 「谁可以访问」在页面上的顺序：局域网在左边，也是默认选项——Peach 的本意就是给
 #: 同一局域网里的设备看。命令行问答按 `HOST_OPTIONS` 的编号顺序念，两边取值一致。
 _HOST_ORDER = ("2", "1")
@@ -160,9 +196,43 @@ _SETUP_SCRIPT = """<script>
   var rows=function(){return list.querySelectorAll('.dir');};
   var refresh=function(){
     var all=rows();
-    all.forEach(function(row){row.querySelector('.rm').hidden=all.length<2;});
+    all.forEach(function(row){
+      row.querySelector('.rm').hidden=all.length<2;
+      row.querySelector('.pick').hidden=false;
+    });
+    var cloudHelp=document.getElementById('cloudHelp');
+    if(cloudHelp){cloudHelp.hidden=!Array.from(list.querySelectorAll('select[name="media_location"]')).some(function(select){return select.value!=='local';});}
+  };
+  list.addEventListener('change',refresh);
+  /* 「选择文件夹」让运行 Peach 的这台电脑弹系统对话框，把选中的绝对路径填回这一行：
+     浏览器自己拿不到本机绝对路径。等待期间按钮置忙，再点不发第二个请求。 */
+  var pickFolder=function(row,button){
+    if(button.getAttribute('aria-busy')==='true'){return;}
+    var input=row.querySelector('input');
+    var bad=row.querySelector('.bad');
+    button.setAttribute('aria-busy','true');button.setAttribute('aria-disabled','true');
+    fetch('/api/pick-folder',{method:'POST',credentials:'same-origin',
+      headers:{'Accept':'application/json','Content-Type':'application/json'},
+      body:JSON.stringify({initial:input.value})})
+      .then(function(response){return response.json().then(function(data){return {ok:response.ok,data:data};});})
+      .then(function(result){
+        if(!result.ok){throw new Error((result.data&&result.data.error)||'没能打开文件夹对话框');}
+        if(result.data.path){
+          input.value=result.data.path;input.setAttribute('aria-invalid','false');
+          if(bad){bad.remove();}
+        }
+        input.focus();
+      })
+      .catch(function(error){
+        var note=bad||document.createElement('p');
+        note.className='bad';note.setAttribute('role','alert');note.textContent=error.message;
+        row.appendChild(note);
+      })
+      .then(function(){button.removeAttribute('aria-busy');button.removeAttribute('aria-disabled');});
   };
   list.addEventListener('click',function(event){
+    var pick=event.target.closest('.pick');
+    if(pick){pickFolder(pick.closest('.dir'),pick);return;}
     var remove=event.target.closest('.rm');
     if(!remove||rows().length<2){return;}
     remove.closest('.dir').remove();
@@ -185,14 +255,74 @@ _CHECK_SVG = ('<svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="
               '<path d="M20 6 9 17l-5-5"/></svg>')
 #: 移除一行媒体文件夹的字形（lucide `x`）。
 _X_SVG = '<svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg>'
+#: 「选择文件夹」（lucide `folder-search`）：弹系统对话框去挑一个文件夹。`folder-open` 归
+#: 站内的「打开位置」，不兼任。
+_FOLDER_SVG = ('<svg viewBox="0 0 24 24"><path d="M10.7 20H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 '
+               '1.69.9l.81 1.2a2 2 0 0 0 1.67.9H20a2 2 0 0 1 2 2v4.1"/><path d="m21 21-1.9-1.9"/>'
+               '<circle cx="17" cy="17" r="3"/></svg>')
+#: 折叠触发器右侧的 chevron（lucide `chevron-down`），展开时转 180 度。
+_CHEVRON_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>'
+#: 两样东西借自站内共用控件：整页的覆盖式滚动条（原生那条藏掉，滑块浮在内容上），
+#: 以及高级设置的折叠（原生 <details> 不过渡高度）。页面里没有 <details> 时 wireCollapse
+#: 什么也不做，所以每张页面都挂同一段脚本。
+_SHARED_SCRIPT = ('<script type="module">import{attachOverlayScrollbar,wireCollapse,selectFieldHtml,wireSelectField,MEDIA_SOURCE_ICONS}from"/js/ui-components.js";'
+                  'attachOverlayScrollbar(document.documentElement,{variant:"page"});'
+                  'wireCollapse(document,"details","setup-collapse");'
+                  'const enhance=()=>document.querySelectorAll("select[name=media_location]:not([hidden])").forEach(select=>{'
+                  'const holder=document.createElement("div");'
+                  'holder.innerHTML=selectFieldHtml(Array.from(select.options,o=>[o.value,o.text,MEDIA_SOURCE_ICONS[o.value]]),select.value,{label:select.getAttribute("aria-label")||"媒体来源"});'
+                  'select.after(holder);const field=wireSelectField(holder.firstElementChild);'
+                  'field.addEventListener("change",()=>{select.value=field.value;select.dispatchEvent(new Event("change",{bubbles:true}));});'
+                  'select.hidden=true;});enhance();'
+                  'const dirs=document.getElementById("dirs");if(dirs)new MutationObserver(enhance).observe(dirs,{childList:true});'
+                  '</script>')
+
+
+def _theme_tokens() -> str:
+    """主站 `01-base.css` 里的两套色板：浅色的 `:root` 和跟随系统的深色覆盖。
+
+    首启页在 SPA 外壳之外，但它必须和主站同一副面孔：系统是深色时主站是深色，这一页
+    也得是，否则设置完一跳进馆藏就像换了个产品。
+    """
+    base = (PROJECT_ROOT / "web" / "css" / "01-base.css").read_text(encoding="utf-8")
+    light = re.search(r":root\s*\{[^}]+\}", base).group(0)
+    dark = re.search(r"@media \(prefers-color-scheme:dark\)\{:root:not\(\[data-theme=\"light\"\]\)\{[^}]+\}\}",
+                     base).group(0)
+    return light + dark
+
+
+def _scrollbar_rules() -> str:
+    """主站的覆盖式滚动条：轨道、滑块与「挂上之后才藏原生那条」三组规则，原样借用。
+
+    首启页装不下时滚起来也得是同一条；只取 .ovtrack 到 [data-overlay-scrollbar] 那一段，
+    不带 html 上无条件藏滚动条的那句——脚本没跑到时首启页要还有系统滚动条可用。
+    """
+    base = (PROJECT_ROOT / "web" / "css" / "01-base.css").read_text(encoding="utf-8")
+    rules = re.search(r"\.ovtrack\{.*?\[data-overlay-scrollbar\]::-webkit-scrollbar\{[^}]*\}", base, re.S).group(0)
+    return re.sub(r"/\*.*?\*/\n?", "", rules, flags=re.S)
+
+
+def error_page(status: int, message: str) -> str:
+    """浏览器导航撞上 403／404／409 时给人看的那一页，不是一行 JSON。"""
+    title = {403: "这里不能打开", 404: "四〇四", 409: "现在不能这样做"}.get(status, "出了点问题")
+    description = '' if status == 404 else f'<p class="lede">{escape(message)}</p>'
+    body = (f'<section class="error-page"><img class="mark" src="/peach-logo.png" alt=""><h1>{title}</h1>'
+            f'{description}<p><a class="geist-button primary" href="/">返回首页</a></p></section>')
+    return _document(f"Peach · {title}", body)
+
+
+def _button_rules() -> str:
+    """独立页面直接使用主站的 Geist Button 规则。"""
+    base = (PROJECT_ROOT / "web/css/01-base.css").read_text(encoding="utf-8")
+    return '\n'.join(re.findall(r'^\.(?:geist-button|gselect|popmenu)[^{}]*\{[^}]*\}', base, re.M))
 
 
 def _document(title: str, body: str) -> str:
-    base = (PROJECT_ROOT / "web" / "css" / "01-base.css").read_text(encoding="utf-8")
-    tokens = re.search(r":root\s*\{[^}]+\}", base).group(0)
     # 页内脚本对两张页面都生效：找不到对应控件时它什么也不做。
-    return (f"{_SETUP_HEAD}<title>{title}</title><style>{tokens}</style>{_SETUP_STYLE}"
-            f"</head><body><main>{body}</main>{_SETUP_SCRIPT}</body></html>\n")
+    index = (PROJECT_ROOT / "web/index.html").read_text(encoding="utf-8")
+    symbols = ''.join(re.findall(r'<symbol id="i-(?:check|chevron-down|hard-drive)"[^>]*>.*?</symbol>', index))
+    return (f"{_SETUP_HEAD}<title>{title}</title><style>{_theme_tokens()}{_scrollbar_rules()}</style>"
+            f'{_SETUP_STYLE}<style>{_button_rules()}</style></head><body><svg width="0" height="0" aria-hidden="true" style="position:absolute">{symbols}</svg><main>{body}</main>{_SETUP_SCRIPT}{_SHARED_SCRIPT}</body></html>\n')
 
 
 def _check_html(name: str, text_html: str, *, checked: bool) -> str:
@@ -202,42 +332,53 @@ def _check_html(name: str, text_html: str, *, checked: bool) -> str:
             + f'><span aria-hidden="true">{_CHECK_SVG}</span></span><span>{text_html}</span></label>')
 
 
-def runtime_facts_html(config) -> str:
-    """这台机器上 Peach 的位置与版本：设置完成页和配置页共用同一份。"""
+def runtime_facts(config) -> tuple[tuple[str, str], ...]:
+    """这台机器上 Peach 的位置与版本：设置完成页和 `/api/configuration` 共用同一份。"""
     from . import __version__
+    import platform as system_platform
     from .ffmpeg import FFmpegResolver
 
     available = FFmpegResolver(config.directory("tools") / "ffmpeg").ffmpeg() is not None
     ffmpeg = "可用" if available else "未安装；MP4 可直接播放，转码和缩略图需要安装 FFmpeg。"
-    rows = (
+    return (
         ("版本", __version__),
+        ("操作系统", system_platform.system()),
         ("数据目录", str(config.data_root)),
         ("设置文件", str(config.path)),
         ("日志目录", str(config.directory("logs"))),
         ("FFmpeg", ffmpeg),
     )
+
+
+def runtime_facts_html(config) -> str:
     return ("<h2>运行信息</h2><dl>"
-            + "".join(f"<dt>{escape(term)}</dt><dd>{escape(value)}</dd>" for term, value in rows)
+            + "".join(f"<dt>{escape(term)}</dt><dd>{escape(value)}</dd>"
+                      for term, value in runtime_facts(config))
             + "</dl>")
 
 
 def _copy_for(key: str, fallback: str) -> tuple[str, str]:
-    if distribution.standalone() and key in _STANDALONE_COPY:
-        return _STANDALONE_COPY[key]
     return _SETUP_COPY.get(key, (fallback, ""))
 
 
-def _media_dir_row(value: str, error: str, *, first: bool) -> str:
+def _media_dir_row(value: str, error: str, *, first: bool, location: str = "local", root: str = "", windows: bool = True) -> str:
+    from .media_configuration import SOURCE_OPTIONS
+    source = '<select name="media_location" aria-label="媒体来源">' + ''.join(
+        f'<option value="{key}"{" selected" if key == location else ""}>{label}</option>'
+        for key, label in SOURCE_OPTIONS) + '</select>'
+    mapping = (f'<label>Windows 中的对应路径<input name="media_root" type="text" aria-label="Windows 中的对应路径" '
+               f'placeholder="例如 B:\\" value="{escape(root, quote=True)}"></label>') if not windows else ''
     attrs = ' id="f-media_dir" required' if first else ' aria-label="媒体文件夹"'
     return (f'<div class="dir"><input name="media_dir" type="text"{attrs} autocomplete="off" '
             f'spellcheck="false" aria-invalid="{"true" if error else "false"}" '
             f'value="{escape(value, quote=True)}">'
+            f'<button type="button" class="pick" aria-label="选择文件夹" hidden>{_FOLDER_SVG}</button>'
             f'<button type="button" class="rm" aria-label="移除这个文件夹" hidden>{_X_SVG}</button>'
             + (f'<p class="bad" role="alert">{escape(error)}</p>' if error else "")
-            + "</div>")
+            + f'<div class="sourcefields"><label>媒体来源{source}</label>{mapping}</div></div>')
 
 
-def _media_dirs_html(values: Sequence[str], errors: Sequence[str], note: str) -> str:
+def _media_dirs_html(values: Sequence[str], errors: Sequence[str], note: str, *, locations=(), roots=(), windows=True) -> str:
     """媒体文件夹列表：每行一个输入框，行尾是移除键，列表下是「添加文件夹」。
 
     移除键和添加键都带 `hidden`，由页面脚本亮出来：没有脚本时它们什么都做不了，与其留
@@ -247,14 +388,19 @@ def _media_dirs_html(values: Sequence[str], errors: Sequence[str], note: str) ->
     title, help_text = _copy_for("media_dir", "媒体文件夹")
     rows = list(values) or [""]
     body = "".join(
-        _media_dir_row(value, errors[index] if index < len(errors) else "", first=index == 0)
+        _media_dir_row(value, errors[index] if index < len(errors) else "", first=index == 0,
+                       location=locations[index] if index < len(locations) else "local",
+                       root=roots[index] if index < len(roots) else "", windows=windows)
         for index, value in enumerate(rows))
     return (
         '<div class="field">'
         f'<label for="f-media_dir"><span class="req" aria-hidden="true">*</span>{escape(title)}</label>'
         f'<div class="dirs" id="dirs">{body}</div>'
         '<button type="button" class="add" id="add-dir" hidden>添加文件夹</button>'
-        f'<template id="dir-row">{_media_dir_row("", "", first=False)}</template>'
+        f'<template id="dir-row">{_media_dir_row("", "", first=False, windows=windows)}</template>'
+        '<p class="help" id="cloudHelp" hidden>先在 CloudDrive 登录网盘并完成挂载。'
+        '<a href="https://www.clouddrive2.com/help.html" target="_blank" rel="noreferrer">挂载帮助'
+        '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg></a></p>'
         + "".join(f'<p class="help">{escape(line)}</p>' for line in (help_text, note) if line)
         + "</div>"
     )
@@ -312,27 +458,26 @@ def setup_page(
     if errors.get("data_root"):
         fields.append(f'<p class="bad" role="alert">{escape(errors["data_root"])}</p>')
     media_dirs: list[str] = []
+    # 只有媒体文件夹是非填不可的。数据目录、谁可以访问、端口、局域网地址都有能直接用的
+    # 默认值，一律折进「高级设置」：不分独立包还是源码部署，同一张表单。
+    advanced: list[str] = []
     for question in asked:
-        if distribution.standalone() and question.key in {"data_root", "host", "mdns_name"}:
-            value = {"data_root": str(config.data_root), "host": "1",
-                     "mdns_name": config.server.mdns_name}[question.key]
-            fields.append(f'<input type="hidden" name="{question.key}" value="{escape(value, quote=True)}">')
-            continue
         if question.key == "media_dir":
             media_dirs = _media_dir_values(values, question.default)
             row_errors = errors.get("media_dir", [])
             note = "" if windows else onboarding.mounts_explanation(
                 [path for path in media_dirs if path] or ["你在上面填的目录"])
-            fields.append(_media_dirs_html(media_dirs, list(row_errors), note))
+            fields.append(_media_dirs_html(media_dirs, list(row_errors), "" if windows else
+                "本机文件夹是这台电脑读取媒体的位置；Windows 中的对应路径用于匹配馆藏中已有的路径。",
+                locations=values.get("media_location", ()), roots=values.get("media_root", ()), windows=windows))
             continue
         value = str(values.get(question.key, question.default))
-        field = _field_html(question, value, str(errors.get(question.key, "")), "")
-        if distribution.standalone() and question.key == "port":
-            opened = " open" if errors.get("port") else ""
-            field = f'<details{opened}><summary>高级设置</summary>{field}</details>'
-        fields.append(field)
+        advanced.append(_field_html(question, value, str(errors.get(question.key, "")), ""))
+    opened = " open" if any(errors.get(key) for key in ("data_root", "host", "port", "mdns_name")) else ""
+    fields.append(f'<details{opened}><summary><span>高级设置</span>{_CHEVRON_SVG}</summary>'
+                  + "".join(advanced) + "</details>")
     filled = [path for path in media_dirs if path]
-    if distribution.standalone() or not filled:
+    if not filled:
         scan_text = "完成设置后扫描媒体文件夹"
     elif len(filled) == 1:
         scan_text = f"完成设置后扫描 <code>{escape(filled[0])}</code>"
@@ -370,9 +515,11 @@ def setup_done_page(applied, *, windows: bool, scan_requested: bool) -> str:
                "<code>peach init --force</code> 补上。局域网设备要装这份 CA 才不报证书错。")
     scan = ("<li>首次扫描已排队，托盘会在服务起来之后在后台跑，期间页面照常能用。</li>"
             if scan_requested else
-            "<li>没有请求首次扫描；要扫就跑 <code>peach scan local</code>。</li>")
-    mounts = ("" if windows else
-              f"<p>{escape(onboarding.mounts_explanation(config.mounts.get('local', ())))}</p>")
+            "<li>没有请求首次扫描；要扫就跑 <code>peach scan configured</code>。</li>")
+    from .media_configuration import rows
+    mounts = ("" if windows else '<dl class="facts">' + ''.join(
+        f'<dt>{escape(row["location"])} · {escape(row["root"])}</dt><dd>{escape(row["path"])}</dd>'
+        for row in rows(config, windows=False)) + '</dl>')
     body = (
         "<h1>设置完成</h1>"
         "<p>托盘正在停掉这条引导服务，改用正常的 Peach 服务；这个页面几秒后就会连不上，"
@@ -506,12 +653,12 @@ async def setup_submit(request: Request):
     submitted: dict[str, object] = {key: (value or [""])[0] for key, value in form.items()}
     # 媒体文件夹是一个列表：几行输入框同名提交，回显时也要原样给回几行。
     submitted["media_dir"] = list(form.get("media_dir", []))
+    for key in ("media_location", "media_root"):
+        if key in form:
+            submitted[key] = list(form[key])
     scan_now = "scan_now" in form
 
     config = settings_file.active()
-    if distribution.standalone():
-        submitted.update(data_root=str(config.data_root), host="1",
-                         mdns_name=config.server.mdns_name)
     answers, errors = _read_answers(config, submitted, windows=windows)
     if distribution.standalone() and answers is not None:
         try:
@@ -535,7 +682,7 @@ async def setup_submit(request: Request):
         return HTMLResponse(setup_page(config, windows=windows, values=submitted,
                                       errors={"data_root": str(exc)}, scan_now=scan_now), status_code=400)
     if scan_now:
-        onboarding.request_first_scan(applied.config)
+        onboarding.request_first_scan(applied.config, "configured" if answers.media_sources is not None else "local")
     response = HTMLResponse(setup_done_page(applied, windows=windows, scan_requested=scan_now))
     if distribution.standalone():
         response.set_cookie("tok", auth.read_token(applied.config.directory("secrets")),
@@ -555,6 +702,18 @@ def _read_answers(
     errors: dict[str, object] = {}
     for question in onboarding.questions(config, windows=windows):
         if question.key == "media_dir":
+            if "media_location" in submitted:
+                from . import media_configuration
+                dirs = _media_dir_values(submitted, question.default)
+                kinds = submitted["media_location"]
+                roots = submitted.get("media_root", [])
+                sources = [{"location": kinds[i] if i < len(kinds) else "local", "path": path,
+                            "root": roots[i] if i < len(roots) else ""} for i, path in enumerate(dirs)]
+                _, _, problems = media_configuration.validate(sources, windows=windows)
+                if problems:
+                    errors["media_dir"] = problems
+                values.update(media_dirs=tuple(Path(path) for path in dirs), media_sources=sources)
+                continue
             paths, problems = onboarding.read_media_dirs(
                 _media_dir_values(submitted, ""), validate=question.validate,
                 default=question.default)
@@ -669,10 +828,14 @@ def peach_logo():
 @router.api_route("/data-cleanup", methods=["GET", "HEAD"])
 @router.api_route("/duplicates", methods=["GET", "HEAD"])
 @router.api_route("/quality-goals", methods=["GET", "HEAD"])
+@router.api_route("/scraping", methods=["GET", "HEAD"])
 @router.api_route("/resource-sync", methods=["GET", "HEAD"])
 @router.api_route("/follow", methods=["GET", "HEAD"])
 @router.api_route("/follow-manage", methods=["GET", "HEAD"])
 @router.api_route("/follow/item/{item_id}", methods=["GET", "HEAD"])
+# 配置页是主站里的一屏（island），数据走 `/api/configuration`。未配置时 `index()` 给的是
+# 首次运行表单，正好就是「请先完成首次设置」该长的样子。
+@router.api_route("/configuration", methods=["GET", "HEAD"])
 def client_route(request: Request, item_id: int | None = None,
                  seed_id: int | None = None, mix_item_id: int | None = None,
                  part_seed_id: int | None = None, part_item_id: int | None = None,

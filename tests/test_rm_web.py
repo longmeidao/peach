@@ -90,6 +90,23 @@ class WebDataTests(unittest.TestCase):
         con.close()
         return row
 
+    def test_creator_card_and_detail_share_available_entity_image(self):
+        (self.avatars / f"{entity_image_key('creator', 12)}.img").write_bytes(b"image")
+        row = rm_web.q_items(self.contract, {"limit": "10"})["items"][0]
+        ref = {"id": 12, "name": "Canonical Creator", "has_image": True}
+        self.assertEqual(row["creator_entity"], ref)
+        self.assertEqual(row["creator"], ref["name"])
+        self.assertEqual(rm_web.q_item(self.contract, row["id"])["entity_refs"]["creator"][0], ref)
+        cards = [{"id": 2, "creator": "Bob"}, {"id": 3, "creator": "Alice"}]
+        rm_web.attach_card_performers(self.contract, cards)
+        self.assertEqual(cards[0]["creator_entity"], ref)
+        self.assertIsNone(cards[1]["creator_entity"])
+        self.assertEqual(cards[1]["creator"], "Alice")
+        (self.avatars / f"{entity_image_key('creator', 12)}.img").unlink()
+        fresh = rm_web.WebContract(Path(self.db_path), avatar_root=self.avatars, logo_root=self.logos)
+        rm_web.attach_card_performers(fresh, cards)
+        self.assertFalse(cards[0]["creator_entity"]["has_image"])
+
     def test_default_database_connection_is_readonly(self):
         con = self.contract.db()
         with self.assertRaises(sqlite3.OperationalError):
@@ -764,6 +781,7 @@ class WebDataTests(unittest.TestCase):
 
     def test_contract_handler_registries_are_complete_and_unknown_routes_fail(self):
         self.assertEqual(set(rm_web.GET_HANDLERS), {
+            "/api/scraping", "/api/scraping/cover",
             "/api/items", "/api/item", "/api/entity", "/api/photos", "/api/photo-set",
             "/api/index", "/api/parts", "/api/editions", "/api/duplicates", "/api/quality-goals",
             "/api/stats", "/api/tops", "/api/ads", "/api/related", "/api/facets",
@@ -775,6 +793,7 @@ class WebDataTests(unittest.TestCase):
             "/api/taste", "/api/settings", "/api/links",
         })
         self.assertEqual(set(rm_web.POST_HANDLERS), {
+            "/api/scraping/settings", "/api/scraping/check", "/api/scraping/cover",
             "/api/activity", "/api/play", "/api/feedback", "/api/watch-later",
             "/api/playlist",
             "/api/preference", "/api/quality-goal", "/api/item-tag", "/api/batch",
@@ -1872,6 +1891,9 @@ class JavModeAndCoverTests(unittest.TestCase):
         for left, right in (
             ("SA-104", "AVSA-104"), ("CHU-101", "CHUC-101"), ("AR-301", "STAR-3016"),
             ("SR-101", "SSR-101"), ("259LUXU-164", "259LUXU-1642"),
+            ("390JAC-040", "JAC-040"), ("390JNT-002", "JNT-002"),
+            ("390JNT-006", "JNT-006"), ("390JNT-015", "JNT-015"),
+            ("123ABC-007", "ABC-007"), ("123ABC-007", "456ABC-007"),
             ("ABW-232", ""), ("", "ABW-232"), ("ABW-232", None),
         ):
             self.assertFalse(catalog_rules.same_release_code(left, right), f"{left} vs {right}")
@@ -2011,6 +2033,60 @@ class AvatarFocusTests(unittest.TestCase):
         self.assertIsNone(self.contract.avatar_focus("studio", 12))
         self.assertIsNone(self.contract.avatar_focus("creator", 13))
         self.assertIsNone(self.contract.avatar_focus("series", 14))
+
+    def test_the_face_box_is_handed_over_in_source_pixels(self):
+        # 放大到几倍还清楚，问的是「这张脸有多少像素」；归一化值答不了，所以脸框
+        # 在这里就换算成源图像素。`performer-8711` 的真实数据：640×960 的全身照，
+        # 脸框归一化 0.105 宽，还原成 67 px。
+        (self.avatars / "performer-7900.face.json").write_text(
+            '{"ratio":0.667,"px":[640,960],'
+            '"face":{"cx":0.439,"cy":0.224,"w":0.105,"h":0.095,"score":0.934},'
+            '"focus":{"axis":"y","pct":0}}', encoding="utf-8")
+        self.assertEqual(
+            self.contract.avatar_focus("performer", 7900),
+            {"axis": "y", "pct": 0,
+             "box": {"cx": 0.439, "cy": 0.224, "faceW": 67,
+                     "imgW": 640, "imgH": 960}})
+
+    def test_a_square_image_gets_a_box_even_without_an_axis(self):
+        # 方图算不出 object-position——没有被裁的方向可挪——但脸小一样该放大。
+        # 两半各自缺失：只有 focus 那一半的旧 sidecar 也不能因此丢掉。
+        (self.avatars / "performer-7900.face.json").write_text(
+            '{"ratio":1.0,"px":[1000,1000],'
+            '"face":{"cx":0.5,"cy":0.3,"w":0.15,"h":0.15,"score":0.9}}',
+            encoding="utf-8")
+        self.assertEqual(
+            self.contract.avatar_focus("performer", 7900),
+            {"box": {"cx": 0.5, "cy": 0.3, "faceW": 150,
+                     "imgW": 1000, "imgH": 1000}})
+
+    def test_a_sidecar_written_before_the_pixels_existed_still_pans(self):
+        # 补字段之前算的 512 张只有脸心。那些照旧只挪不放大，不是整条取景一起作废。
+        (self.avatars / "performer-7900.face.json").write_text(
+            '{"ratio":0.667,"face":{"cx":0.5,"cy":0.45},'
+            '"focus":{"axis":"y","pct":35}}', encoding="utf-8")
+        self.assertEqual(self.contract.avatar_focus("performer", 7900),
+                         {"axis": "y", "pct": 35})
+
+    def test_a_malformed_box_is_rejected_without_taking_the_axis_down(self):
+        # 坏的那一半丢掉，好的那一半留着。源图像素是 0 或负数时脸框像素还原不出来，
+        # 按 0 处理会让页面算出一个无穷大的倍数。
+        bad = [
+            '{"px":[0,960],"face":{"cx":0.4,"cy":0.2,"w":0.1}}',
+            '{"px":[640],"face":{"cx":0.4,"cy":0.2,"w":0.1}}',
+            '{"px":[640,960],"face":{"cx":0.4,"cy":0.2,"w":0}}',
+            '{"px":[640,960],"face":{"cx":1.4,"cy":0.2,"w":0.1}}',
+            '{"px":[640,960],"face":{"cx":0.4,"cy":0.2,"w":"wide"}}',
+            '{"px":[640,960],"face":{"cx":true,"cy":0.2,"w":0.1}}',
+            '{"px":"640x960","face":{"cx":0.4,"cy":0.2,"w":0.1}}',
+        ]
+        for index, payload in enumerate(bad):
+            with self.subTest(payload=payload):
+                path = self.avatars / f"performer-{8000 + index}.face.json"
+                path.write_text(payload[:-1] + ',"focus":{"axis":"y","pct":30}}',
+                                encoding="utf-8")
+                self.assertEqual(self.contract.avatar_focus("performer", 8000 + index),
+                                 {"axis": "y", "pct": 30})
 
 
 class PeopleIndexFocusTests(unittest.TestCase):

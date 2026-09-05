@@ -78,6 +78,7 @@ class WindowsUpdateInstallerTests(unittest.TestCase):
             self.assertEqual(result.state, "services")
             self.assertEqual(runner.call_count, 1)
             self.assertIn("test.ps1", " ".join(runner.call_args.args[0]))
+            self.assertEqual(runner.call_args.args[0][-3:], ["-Scope", "full", "-Fresh"])
 
     def test_tray_update_builds_validates_backs_up_and_launches_helper(self):
         with tempfile.TemporaryDirectory() as directory:

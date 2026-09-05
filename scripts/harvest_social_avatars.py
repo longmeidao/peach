@@ -59,7 +59,7 @@ from peach.avatar_provider import (   # noqa: E402
     provenance_now,
 )
 from peach.config import (   # noqa: E402
-    DATABASE_PATH, GENERATED_DIR, REVIEW_DIR, STATE_DIR,
+    DATABASE_PATH, GENERATED_DIR, REVIEW_DIR, STATE_DIR, COVER_DIR,
 )
 from peach.http import HttpRequest, HttpTransport, HttpxTransport   # noqa: E402
 from peach.review_csv import read_rows, write_rows   # noqa: E402
@@ -73,7 +73,7 @@ X_HOSTS = ("x.com", "twitter.com", "mobile.twitter.com")
 AGGREGATOR_HOSTS = ("lit.link", "linktr.ee", "allmylinks.com", "twpf.jp")
 BLOG_HOSTS = ("ameblo.jp", "lineblog.me", "note.com", "livedoor.jp", "hatenablog.com")
 #: 候选的 provider 归到哪个内容寻址缓存。
-PROVIDER_CACHES = {"social-web": "social", "babepedia": "babepedia", "jae": "jae"}
+PROVIDER_CACHES = {"social-web": "social", "babepedia": "babepedia", "jae": "jae", "cover-fallback": "cover"}
 SOCIAL_LABELS = {
     ("instagram.com",): "Instagram",
     ("threads.net", "threads.com"): "Threads",
@@ -134,7 +134,7 @@ LINK_FIELDS = ("entity_id", "kind", "name", "link_kind", "label", "url", "eviden
 CANDIDATE_FIELDS = (
     "entity_id", "current_name", "matched_name", "name_source", "provider",
     "source_kind", "source_url", "external_id", "gfriends_category",
-    "gfriends_file", "width", "height", "mime_type", "sha256", "cache_path",
+    "gfriends_file", "width", "height", "face_width", "mime_type", "sha256", "cache_path",
     "provenance_path", "policy_version", "verdict", "avatar_url", "evidence",
 )
 
@@ -340,7 +340,7 @@ def load_jae_rows(path: Path) -> dict[int, list[dict]]:
 
 
 def load_targets(connection: sqlite3.Connection, avatar_dir: Path,
-                 entities: list[int], force: bool) -> list[dict]:
+                 entities: list[int], force: bool, *, include_cover_targets: bool = False) -> list[dict]:
     """本轮要跑的人：缺头像、且至少有一条可扩张的路径。
 
     performer 走社媒路线（账本里有 X 链接）与 jae 名录路线（jae 人像候选表的命中行）；
@@ -377,7 +377,7 @@ def load_targets(connection: sqlite3.Connection, avatar_dir: Path,
             routes["babepedia"] = babe[entity_id]
         if entity_id in jae:
             routes["jae"] = jae[entity_id]
-        if not routes:
+        if not routes and not (include_cover_targets and kind == "performer"):
             continue
         targets.append({**info, "routes": routes})
     return targets
@@ -553,10 +553,122 @@ def harvest_entity(record: dict, http: HttpTransport, limiter: HostLimiter,
     return {"links": links, "candidates": candidates, "notes": notes}
 
 
-def select_winner(candidates: list[dict]) -> tuple[dict | None, list[dict]]:
-    """同图去重（SHA-256 相同 = 同一张图的不同档位/不同平台），取最大的最清晰的。
+def cover_fallback(connection, record: dict, cache: AvatarCandidateCache,
+                   cover_root: Path = COVER_DIR, face_width=None) -> dict | None:
+    """仅使用已关联的单人作品封面，保留完整大图和来源。
 
-    「大」的口径：先比短边再比长边——竖构图人像与方图头像用同一把尺会偏袒长边。
+    封面是这条链路上脸最容易被画布口径坑到的一档：JAV 封面普遍是 800×538 的双联版式，
+    右半幅整幅剧照里那张脸常常只有几十像素，而左半幅的文字块一个像素也不给脸。挑封面
+    和挑社媒头像用同一把尺——先看脸有多少像素。
+    """
+    if record["kind"] != "performer":
+        return None
+    candidates = []
+    for (code,) in connection.execute(
+            "SELECT DISTINCT a.code FROM asset a JOIN asset_entity ae ON ae.asset_id=a.id "
+            "WHERE ae.entity_id=? AND ae.role='performer' AND coalesce(a.code,'')<>'' "
+            "AND (a.disposal IS NULL OR a.disposal<>'trash') "
+            "AND NOT EXISTS(SELECT 1 FROM asset_entity other WHERE other.asset_id=a.id "
+            "AND other.role='performer' AND other.entity_id<>ae.entity_id)", (record["entity_id"],)):
+        if not re.fullmatch(r'[A-Za-z0-9-]+', code):
+            continue
+        path = cover_root / f'{code}.jpg'
+        if not path.is_file():
+            continue
+        data = path.read_bytes()
+        inspected = inspect_avatar(data)
+        if inspected is None or not passes_auto_bar(inspected.width, inspected.height):
+            continue
+        source = path.resolve().as_uri()
+        stored = cache.store(source, data, inspected)
+        candidates.append(dict(provider='cover-fallback', source_kind='single_performer_cover',
+                               source_url=source, external_id=code, width=inspected.width,
+                               height=inspected.height, mime_type=inspected.mime_type,
+                               sha256=inspected.sha256, object_path=stored,
+                               matched=record['canonical'], name_source='ledger-performer',
+                               evidence=f'单人作品 {code} 完整封面'))
+    if not candidates:
+        return None
+    if face_width is not None:
+        measure_faces(candidates, face_width)
+    return max(candidates, key=rank_key)
+
+
+class FaceWidth:
+    """一枚候选里那张脸有多少像素宽。检不出脸就是 0。
+
+    模型按需构造，与 `harvest_studio_icons.FaceGate` 同一条理由：一趟里一个候选都
+    没走到就不必去下 232 KB 的 ONNX，而取不到模型也不能让整轮停下——那会把「今天
+    没网」变成「所有人都没有头像」。取不到就退回画布口径，并把原因记进统计。
+    """
+
+    def __init__(self):
+        self._detector = None
+        self._unavailable = ""
+
+    @property
+    def unavailable(self) -> str:
+        return self._unavailable
+
+    def __call__(self, path: Path) -> int:
+        if self._unavailable:
+            return 0
+        if self._detector is None:
+            try:
+                from peach.face_detect import FaceDetector
+                self._detector = FaceDetector()
+            except Exception as error:            # 缺模型、缺 OpenCV、下载失败
+                self._unavailable = str(error)
+                return 0
+        try:
+            import cv2
+            from peach.face_detect import main_face
+            image = cv2.imread(str(path))
+            if image is None:
+                return 0
+            face = main_face(self._detector.detect(image))
+            return round(face.width * image.shape[1]) if face else 0
+        except Exception:                          # 单张图解不开不该拖垮整轮
+            return 0
+
+
+def measure_faces(candidates: list[dict], face_width) -> None:
+    """就地给每枚候选量一次脸宽。同一张图（SHA 相同）只量一次。
+
+    量的是像素不是比例：`select_winner` 要回答的是「装进圆框后看不看得清这张脸」，
+    而那取决于脸有多少像素可用，与画布多大无关。
+    """
+    seen: dict[str, int] = {}
+    for candidate in candidates:
+        digest = candidate.get("sha256", "")
+        if digest not in seen:
+            path = candidate.get("object_path")
+            seen[digest] = face_width(path) if path else 0
+        candidate["face_width"] = seen[digest]
+
+
+def rank_key(row: dict) -> tuple[int, int, int, int]:
+    """挑图的唯一判据：脸的像素宽先说话，画布只是它没得比时的退路。
+
+    检不出脸的候选脸宽是 0，自然排到有脸的后面；全都检不出（侧脸、低头、模型缺席）
+    时整批都是 0，排序原样落回画布口径：先比短边再比长边——竖构图人像与方图头像
+    用同一把尺会偏袒长边。
+    """
+    return (row.get("face_width") or 0,
+            min(row["width"], row["height"]),
+            max(row["width"], row["height"]),
+            row["width"] * row["height"])
+
+
+def select_winner(candidates: list[dict]) -> tuple[dict | None, list[dict]]:
+    """同图去重（SHA-256 相同 = 同一张图的不同档位/不同平台），取脸最清楚的那一张。
+
+    **脸的像素数先说话，画布只是它没得比时的退路。** 头像最终显示在一个 64–160 px
+    的圆框里，能不能认出是谁，取决于那张脸有多少像素，不取决于这张图有多大。
+    实测 `performer-8711`：装着的是 640×960 的全身站姿照，脸只有 67 px 宽，在资料页
+    圆框里放到源图 1:1 也只占两成；同一个人另有一张 540×810 的半身照，画布小了 15%，
+    脸却有 160 px 上下——按画布挑，赢的是前者，而它是两张里唯一看不清脸的。
+    判据本身见 `rank_key`。
     """
     by_sha: dict[str, dict] = {}
     for candidate in candidates:
@@ -571,10 +683,7 @@ def select_winner(candidates: list[dict]) -> tuple[dict | None, list[dict]]:
         by_sha[candidate["sha256"]] = larger
     if not by_sha:
         return None, []
-    ranked = sorted(by_sha.values(),
-                    key=lambda row: (min(row["width"], row["height"]),
-                                     max(row["width"], row["height"]),
-                                     row["width"] * row["height"]))
+    ranked = sorted(by_sha.values(), key=rank_key)
     return ranked[-1], ranked[:-1]
 
 
@@ -686,14 +795,16 @@ def run(args) -> int:
         "social": AvatarCandidateCache(args.cache_root / "social"),
         "babepedia": AvatarCandidateCache(args.cache_root / "babepedia"),
         "jae": AvatarCandidateCache(args.cache_root / "jae"),
+        "cover": AvatarCandidateCache(args.cache_root / "cover"),
     }
     candidate_rows: list[dict] = []
     install_rows: list[dict] = []
     review_rows: list[dict] = []
     installed = 0
+    face_width = FaceWidth()
     try:
         entities = [int(v) for v in str(args.entities).split(",") if v.strip().isdigit()]
-        targets = load_targets(connection, args.avatars, entities, args.force)
+        targets = load_targets(connection, args.avatars, entities, args.force, include_cover_targets=True)
         if args.limit:
             targets = targets[:args.limit]
         print(f"待跑 {len(targets)} 人："
@@ -727,7 +838,17 @@ def run(args) -> int:
                     row.update(verdict="需人工确认", reason="名字闸门未过")
                     review_rows.append(row)
 
+            # 先量脸再挑：赢家由脸的像素数定，画布只是没得比时的退路。
+            measure_faces(result["candidates"], face_width)
             winner, runners_up = select_winner(result["candidates"])
+            if (winner is None or not winner.get('matched')
+                    or not passes_auto_bar(winner['width'], winner['height'])):
+                fallback = cover_fallback(connection, record, caches['cover'],
+                                          face_width=face_width)
+                if fallback:
+                    if winner:
+                        runners_up.append(winner)
+                    winner = fallback
             for candidate in ([winner] if winner else []) + runners_up:
                 cache = caches[PROVIDER_CACHES[candidate["provider"]]]
                 provenance_path = cache.store_provenance(
@@ -752,7 +873,7 @@ def run(args) -> int:
                 elif is_winner:
                     note = "竞选赢家但身份未核实；先核链接再装"
                 else:
-                    note = "竞选落选（同图或更小）；留档备查"
+                    note = "竞选落选（同图或脸更小）；留档备查"
                 candidate_rows.append({
                     "entity_id": entity_id, "current_name": record["canonical"],
                     "matched_name": candidate.get("matched") or "",
@@ -763,6 +884,8 @@ def run(args) -> int:
                     "external_id": candidate["external_id"],
                     "gfriends_category": "", "gfriends_file": "",
                     "width": candidate["width"], "height": candidate["height"],
+                    # 复核的人据此一眼看出「这张脸够不够大」，比画布尺寸有用得多。
+                    "face_width": candidate.get("face_width") or 0,
                     "mime_type": candidate["mime_type"],
                     "sha256": candidate["sha256"],
                     "cache_path": candidate["object_path"].name,
@@ -785,9 +908,15 @@ def run(args) -> int:
     write_rows(args.candidates, CANDIDATE_FIELDS, candidate_rows, atomic=True)
     write_rows(args.out_links, LINK_FIELDS, install_rows, atomic=True)
     write_rows(args.review_links, LINK_FIELDS, review_rows, atomic=True)
+    if face_width.unavailable:
+        # 说清这一轮是按什么挑的。不说的话，一次「今天没网下不到 ONNX」会静悄悄地
+        # 把整批退回画布口径，产出看着完全正常，脸却全挑小了。
+        print(f"人脸检测未取得（{face_width.unavailable}）：本轮按画布尺寸挑图，"
+              "face_width 一列全是 0；模型可用后加 --force 重跑该批。")
     if not args.apply:
         print("空跑：以上一张头像都没落盘；确认候选无误后加 --apply 重跑。")
     print({"候选": len(candidate_rows), "自动安装": installed,
+           "带脸候选": sum(1 for r in candidate_rows if int(r.get("face_width") or 0) > 0),
            "链接待装": len(install_rows), "链接待复核": len(review_rows),
            "候选 CSV": str(args.candidates), "链接 CSV": str(args.out_links),
            "复核链接 CSV": str(args.review_links)})

@@ -1,4 +1,5 @@
 import {$, ENTITY_ROUTES, LOC, ROUTE_ENTITIES, ROUTE_STATES, SITE_FAVICONS, STATE_LABELS, STATE_ROUTES, api, isAbort, mapLimit, brandIcon, entityPath, esc, faviconFallbackUrl, faviconUrl, linkHost, linkMarkUrl, fmtClock, fmtDur, fmtSize, foldName, icon, isCatalogPath, realDuration} from './js/core.js';
+import { faceFrame } from './js/face-frame.js';
 import { imageFallbackAttrs, wireImageFallbacks } from './js/image-fallback.js';
 import { javDisplayName, javTitleHtml } from './js/jav-title.js';
 import { matchRoute, routeLabel } from './js/routes.js';
@@ -6,15 +7,28 @@ import { initMiddleTruncate } from './js/middle-truncate.js';
 import { tagLabel } from './js/tags.js';
 import { syncSidebarSurface, sidebarTagCounts, sidebarHasCatalogContent } from './dist/peach-ui.js';
 import {
-  breadcrumbHtml, checkboxHtml, closeAnchoredMenu, confirmModal, emptyStateHtml, fieldsetTitle,
-  fillSkeletonTier, fitSkeleton, iconSwitchHtml, loadingDotsHtml,
-  mediaViewButtonsHtml, noteHtml, progressHtml, scrollerHtml, searchInputHtml, setActionBusy,
-  skeletonHtml, spinnerHtml, wireAnchoredMenu, wireBusyActions, wireCollapse, wireIconSwitch,
-  wireScrollers,
+  attachOverlayScrollbar, breadcrumbHtml, checkboxHtml, closeAnchoredMenu, confirmModal, emptyStateHtml, fieldsetTitle,
+  fillSkeletonTier, fitSkeleton, iconSwitchHtml, indexSkeletonHtml, loadingDotsHtml,
+  mediaViewButtonsHtml, noteHtml, progressHtml, scrollerHtml, searchInputHtml, selectFieldHtml,
+  setActionBusy, skeletonHtml, spinnerHtml, wireAnchoredMenu, wireBusyActions, wireCollapse,
+  wireIconSwitch, wireOverlayScrollbars, wireScrollers, wireSelectField,
 } from './js/ui-components.js';
 
 initMiddleTruncate(document);
 wireBusyActions(document);
+attachOverlayScrollbar(document.documentElement,{variant:'page'});
+attachOverlayScrollbar($('#drawerScroll'));
+// 滚动容器是各处 innerHTML 现画出来的，没有一个统一的渲染出口可以挂。与其在几十个
+// 渲染点各补一行（漏一个就是那一处又冒出系统滚动条），不如认 DOM 变动本身：一批变动
+// 只扫一次，attachOverlayScrollbar() 自带幂等，已经接过的容器直接跳过。
+// 合批用 setTimeout 不用 requestAnimationFrame：页面在后台标签页里时 rAF 整个停摆，
+// 那期间画出来的容器会一直等到重新可见才接上滚动条。
+let overlayScan=0;
+new MutationObserver(()=>{
+  if(overlayScan)return;
+  overlayScan=setTimeout(()=>{overlayScan=0;wireOverlayScrollbars()});
+}).observe(document.body,{childList:true,subtree:true});
+wireOverlayScrollbars();
 /* 图片回退链全站只有这一条监听。`error` 不冒泡，但捕获阶段照样经过祖先，所以
    挂在 body 上就能接住任何后代 <img>——模板里不再有内联 `onerror`。 */
 wireImageFallbacks(document.body);
@@ -34,7 +48,7 @@ wireImageFallbacks(document.body);
 let state;
 let barsRequestSeq=0,barsDataCache=null,barsDataAt=0,barsDataPromise=null;
 let adsBatch=null,loadRequestSeq=0,listLoading=false;
-let followData=null,followRuntime=null,followFilter='',followBusy=false,
+let followData=null,followRuntime=null,followCredentials=null,followFilter='',followBusy=false,
   followManageSort='checked',followManageDir='desc';
 /* 关注列表四列各自的方向词与默认方向。作者名称是文本列，「从多到少」在它身上
    不成立，只说正倒。 */
@@ -42,6 +56,7 @@ const FOLLOW_SORT_LABELS={checked:'检查时间',added:'添加时间',name:'作�
 const FOLLOW_SORT_DIR_WORDS={checked:['从近到远','从远到近'],added:['从近到远','从远到近'],
   name:['倒序','正序'],sources:['从多到少','从少到多']};
 const FOLLOW_SORT_DEFAULT_DIR={checked:'desc',added:'desc',name:'asc',sources:'desc'};
+const FOLLOW_SORT_OPTIONS=[['checked','检查时间'],['added','添加时间'],['name','作者名称'],['sources','来源数量']];
 /* 同 `sortButtonHtml`：这枚键的无障碍名称说的是点下去会得到什么，所以取反方向的词。 */
 const followSortLabel=()=>`按${FOLLOW_SORT_LABELS[followManageSort]||'关注列表'}${
   (FOLLOW_SORT_DIR_WORDS[followManageSort]||[])[followManageDir==='asc'?0:1]||''}排序`;
@@ -133,10 +148,15 @@ const ROUTES=[
   {match:'/resource-sync',title:'数据管理',open:(params,push)=>openResourceSync(push)},
   {match:'/quality-goals',section:'quality',title:'高清版',refresh:'reopen',
     open:(params,push)=>openQualityGoals(push)},
+  {match:'/scraping',section:'cleanup',title:'采集来源',refresh:'reopen',
+    open:(params,push)=>openScraping(push)},
   {match:'/follow',nav:'follow',title:'关注',refresh:'skip',
     open:(params,push)=>openFollow(push),reload:()=>openFollow(false)},
   {match:'/follow-manage',section:'follow',title:'关注管理',refresh:'skip',
     open:(params,push)=>openFollowManage(push)},
+  // 这台电脑的媒体文件夹与端口。页面是 island，数据走 /api/configuration。
+  {match:'/configuration',section:'configuration',title:'配置',refresh:'reopen',
+    open:(params,push)=>openConfiguration(push)},
   {match:'/immerse',nav:'immerse',title:'沉浸模式',
     open:(params,push)=>openTok(immerseStartId(),push)},
 ];
@@ -186,6 +206,16 @@ function wireCountRow(){
    `.count:empty` 还会让整行折叠，网格跟着往上跳一截。计数骨架宽高固定、行本身有
    `min-height:var(--sortH)` 兜底，所以数字回来时不发生位移。上方的标签条和已选条件
    同理不动——它们本来就不随这次请求变。 */
+/* 目录列表是一叠 `.grid`，不是一个：竖屏带把当前这段从行边界剪开后，上下两半各自
+   是一段。所有「本页有哪些卡」的判断都按 `#grid > .grid > .card` 走，跨过分段这一层，
+   同时把竖屏带里的 `.scard` 排除在外——它们在 `.srow` 里，不属于任何一段。 */
+const lastGridSection=()=>{
+  const grid=$('#grid'),last=grid.lastElementChild;
+  if(last&&last.classList.contains('grid'))return last;
+  const section=document.createElement('div');section.className='grid';grid.append(section);return section};
+const setGridCards=html=>{$('#grid').innerHTML=`<div class="grid">${html}</div>`};
+const appendGridCards=html=>lastGridSection().insertAdjacentHTML('beforeend',html);
+const gridCards=()=>document.querySelectorAll('#grid > .grid > .card[data-id]');
 function renderCatalogLoading(label='正在读取作品'){
   const count=$('#count');
   count.setAttribute('aria-busy','true');
@@ -199,8 +229,8 @@ function renderCatalogLoading(label='正在读取作品'){
      铺着两种等待动画，而实际只有一次请求在跑。哨兵的可见性由数据落地后的
      `has_more` 重新决定，所以这里只管收，不必记住原值。 */
   $('#loadSentinel').hidden=true;
-  $('#grid').innerHTML=pageSkeletonHtml(label,
-    {cards:true,className:'catalog-skeleton postercard-skeleton'});
+  setGridCards(pageSkeletonHtml(label,
+    {cards:true,className:'catalog-skeleton postercard-skeleton'}));
   fitSkeleton($('#grid'));
 }
 /* 每个管理表面的加载态只有一份定义，深链启动和路由到位后都从这里取。
@@ -224,6 +254,9 @@ const MANAGEMENT_PLACEHOLDERS={
   // 骨架照 .fsec 的轮廓画三块，六张 16:9 占位说的是另一个页面的结构。
   '/follow-manage':()=>`<div class="follow">${pageSkeletonHtml('正在读取关注管理',
     {cards:true,count:3,fill:false,className:'followmanage-skeleton'})}</div>`,
+  // 配置页是两块同宽的卡（表单、运行信息），骨架照数据管理那套单列卡片的轮廓画两块。
+  '/configuration':()=>`<div class="configpage">${pageSkeletonHtml('正在读取配置',
+    {cards:true,count:2,fill:false,className:'cleanup-skeleton'})}</div>`,
 };
 const managementPlaceholder=path=>
   (MANAGEMENT_PLACEHOLDERS[path]||(()=>pageSkeletonHtml('正在读取页面')))();
@@ -241,8 +274,8 @@ function renderInitialSurfaceLoading(){
     renderCatalogLoading('正在读取垃圾文件');
     return;
   }
-  const management=new Set(['/stats','/taste','/review','/data-cleanup','/duplicates','/quality-goals',
-    '/playlists','/resource-sync','/follow','/follow-manage']);
+  const management=new Set(['/stats','/taste','/review','/data-cleanup','/duplicates','/quality-goals','/scraping',
+    '/playlists','/resource-sync','/follow','/follow-manage','/configuration']);
   if(management.has(path)||path.startsWith('/follow/item/')){
     hideDiscoveryBars();
     const stats=$('#stats');stats.hidden=false;$('#grid').innerHTML='';
@@ -252,8 +285,13 @@ function renderInitialSurfaceLoading(){
     fitSkeleton(stats);
     return;
   }
-  if(path==='/performers'||path==='/creators'||path==='/tags'||
-      /^\/(?:performers|creators|studios|agencies)\//.test(path)){
+  if(/^\/(performers|creators|studios|agencies|tags)$/.test(path)){
+    hideDiscoveryBars();
+    if(path==='/tags')readTagIndexRoute(new URLSearchParams(location.search));
+    showIndexLoading('正在读取索引',path.slice(1),new URLSearchParams(location.search).get('q')||'');
+    return;
+  }
+  if(/^\/(?:performers|creators|studios|agencies)\//.test(path)){
     hideDiscoveryBars();
     $('#index').hidden=false;$('#grid').innerHTML='';
     $('#index').innerHTML=pageSkeletonHtml('正在读取页面',{cards:true});
@@ -262,7 +300,6 @@ function renderInitialSurfaceLoading(){
   }
   renderCatalogLoading();
 }
-renderInitialSurfaceLoading();
 
 /* 路由同时把页面表面写进 body[data-surface]：限宽等按表面生效的版式
    （管理页不全宽）靠它切换，不用每个渲染函数自己记得加类。
@@ -350,7 +387,15 @@ const SORT_DIR_WORDS={rating:['从高到低','从低到高'],o:['从多到少','
 const SORT_ALIASES={big:['size','desc'],short:['dur','asc'],long:['dur','desc']};
 const sortDirWord=(key,dir)=>(SORT_DIR_WORDS[key]||[])[dir==='asc'?1:0]||'';
 const defaultSortDir=key=>SORT_DIR_WORDS[key]?'desc':'';
-const DEFAULT_SETTINGS={batchSize:60,defaultSort:'seed',sortDefaultsVersion:3,hoverDelaySeconds:5,seekSeconds:10,searchHistoryLimit:10,relatedLimit:20,javLayout:'big',followLayout:'cozy',peopleLayout:'big',ambientMode:true,theaterMode:false,groupCollapse:true,sidebarOrder:DEFAULT_SIDEBAR_ORDER};
+/* 主题三档，键名与 <html> 上的 data-theme 同一套写法：web/css/01-base.css 的色板
+   已经按 `prefers-color-scheme` 和 `[data-theme]` 两条路径写好，这里只负责选哪一条。
+   跟随系统是默认档，选它等于不写属性。 */
+const THEME_CHOICES=['system','light','dark'];
+/* 跟随系统那一档跟 vercel.com 后台一样用显示器：这一档说的是「照这台设备的设定走」，
+   讲的是设备而不是明暗，日月合体的那枚反而在说明暗。`monitor` 因此归给它，详情页的
+   画面尺寸改用 `ratio`——那里量的是画幅本身，不是放画幅的那台机器。 */
+const THEME_OPTIONS=[['system','跟随系统','monitor'],['light','浅色','sun'],['dark','深色','moon']];
+const DEFAULT_SETTINGS={batchSize:60,defaultSort:'seed',sortDefaultsVersion:3,hoverDelaySeconds:5,seekSeconds:10,searchHistoryLimit:10,relatedLimit:20,javLayout:'big',followLayout:'cozy',peopleLayout:'big',ambientMode:true,theaterMode:false,theme:'system',groupCollapse:true,sidebarOrder:DEFAULT_SIDEBAR_ORDER};
 let appSettings={...DEFAULT_SETTINGS};
 try{appSettings={...DEFAULT_SETTINGS,...JSON.parse(localStorage.getItem(SETTINGS_KEY)||'{}')}}catch(_e){}
 const allowedSetting=(value,allowed,fallback)=>allowed.includes(value)?value:fallback;
@@ -374,20 +419,77 @@ appSettings.theaterMode=appSettings.theaterMode===true;
 appSettings.groupCollapse=appSettings.groupCollapse!==false;
 appSettings.searchHistoryLimit=allowedSetting(+appSettings.searchHistoryLimit,[5,10,20],10);
 appSettings.relatedLimit=allowedSetting(+appSettings.relatedLimit,[12,20,30],20);
+appSettings.theme=allowedSetting(appSettings.theme,THEME_CHOICES,'system');
 const sidebarKeyAlias=key=>key==='ads'||key==='dupes'?'data-cleanup':key;
 appSettings.sidebarOrder=[...new Set((Array.isArray(appSettings.sidebarOrder)?appSettings.sidebarOrder:DEFAULT_SIDEBAR_ORDER).map(sidebarKeyAlias))].filter(key=>ALL_SIDEBAR_KEYS.includes(key));
 if(!appSettings.sidebarOrder.length)appSettings.sidebarOrder=[...DEFAULT_SIDEBAR_ORDER];
 document.documentElement.style.setProperty('--hover-delay',`${appSettings.hoverDelaySeconds}s`);
 const saveSettings=()=>localStorage.setItem(SETTINGS_KEY,JSON.stringify(appSettings));
 if(sortDefaultsMigrated)saveSettings();
+/* 主题只写属性，不写颜色：两套色板都在 web/css/01-base.css，选跟随系统就把属性摘掉，
+   交还给 `prefers-color-scheme`。地址栏色块跟着同一次调用走——两枚 meta 各代表一档，
+   选中的那枚开到 `all`、另一枚关成 `not all`，否则手机上的地址栏还留在系统那一档。
+   `index.html` 的首屏内联脚本做的是同两件事，它只负责第一帧，之后都从这里出。 */
+const prefersDark=matchMedia('(prefers-color-scheme: dark)');
+function applyTheme(choice=appSettings.theme){
+  const root=document.documentElement;
+  if(choice==='system')delete root.dataset.theme;else root.dataset.theme=choice;
+  const dark=choice==='dark'||(choice==='system'&&prefersDark.matches);
+  document.querySelectorAll('meta[data-theme-color]').forEach(meta=>{
+    meta.media=(meta.dataset.themeColor==='dark')===dark?'all':'not all';
+  });
+}
+applyTheme();
+prefersDark.addEventListener('change',()=>{if(appSettings.theme==='system')applyTheme()});
+/* 三档互斥视图是 Geist Switch（一组共享 name 的 radio），与卡片版式切换共用同一份模板；
+   形状按 vercel.com 的主题选择器单独给，见 web/css/16-settings.css。 */
+function renderThemeSetting(){
+  const mount=$('#themeSetting');
+  mount.innerHTML=iconSwitchHtml('theme','主题',THEME_OPTIONS,appSettings.theme,{attr:'data-theme-choice',className:'themeswitch'});
+  wireIconSwitch(mount,'data-theme-choice',choice=>{appSettings.theme=choice;saveSettings();applyTheme()});
+}
+/* 设置面板里的每个下拉：选项、当前值和应用方式写在一起。它们此前是 index.html 里的
+   浏览器自带的 select，弹出层由系统画、跟不上站内色板；换成 Geist Select 之后这里是唯一
+   一处写它们的地方，面板每次打开重画一遍。关注自动更新那一档也在表里，它的应用是
+   一次网络写入，所以额外报告状态并在往返期间禁用自己。 */
+const SETTING_SELECTS=[
+  ['batchSizeSetting','每批作品',[['30','30 个'],['60','60 个'],['90','90 个']],
+    ()=>appSettings.batchSize,
+    value=>{appSettings.batchSize=+value||60;saveSettings();if(location.pathname==='/')load(true)}],
+  ['defaultSortSetting','默认排序',[['seed','随机'],['rating','评分'],['o','高潮计数'],['plays','观看次数'],
+    ['dur','时长'],['size','体积'],['new','入库时间'],['played','观看时间']],
+    ()=>appSettings.defaultSort,
+    value=>{appSettings.defaultSort=value;saveSettings();state.sort=appSettings.defaultSort;
+      state.dir=defaultSortDir(state.sort);if(location.pathname==='/')load(true)}],
+  ['hoverDelaySetting','悬停放大',[['3','3 秒'],['5','5 秒'],['8','8 秒']],
+    ()=>appSettings.hoverDelaySeconds,
+    value=>{appSettings.hoverDelaySeconds=+value||5;
+      document.documentElement.style.setProperty('--hover-delay',`${appSettings.hoverDelaySeconds}s`);saveSettings()}],
+  ['seekSecondsSetting','快进 / 快退',[['5','5 秒'],['10','10 秒'],['30','30 秒']],
+    ()=>appSettings.seekSeconds,
+    value=>{appSettings.seekSeconds=+value||10;saveSettings()}],
+  ['relatedLimitSetting','相关推荐',[['12','12 个'],['20','20 个'],['30','30 个']],
+    ()=>appSettings.relatedLimit,
+    value=>{appSettings.relatedLimit=+value||20;saveSettings()}],
+  ['searchHistoryLimitSetting','搜索记录',[['5','最近 5 条'],['10','最近 10 条'],['20','最近 20 条']],
+    ()=>appSettings.searchHistoryLimit,
+    value=>{appSettings.searchHistoryLimit=+value||10;saveSettings();writeSearchHistory(readSearchHistory())}],
+  ['followScheduleSetting','关注自动更新',[['0','关闭'],['15','每 15 分钟'],['30','每 30 分钟'],['60','每小时'],
+    ['180','每 3 小时'],['360','每 6 小时'],['720','每 12 小时'],['1440','每天']],
+    ()=>'0',value=>saveFollowSchedule(+value)],
+];
+function renderSettingSelects(){
+  for(const [id,label,options,read,apply] of SETTING_SELECTS){
+    const mount=$(`#${id}`);if(!mount)continue;
+    mount.innerHTML=selectFieldHtml(options,read(),{label});
+    const field=wireSelectField(mount.firstElementChild);
+    field.addEventListener('change',()=>apply(field.value));
+  }
+}
 function syncSettingsPanel(){
-  $('#batchSizeSetting').value=String(appSettings.batchSize);
-  $('#defaultSortSetting').value=appSettings.defaultSort;
-  $('#hoverDelaySetting').value=String(appSettings.hoverDelaySeconds);
   $('#groupCollapseSetting').checked=appSettings.groupCollapse;
-  $('#seekSecondsSetting').value=String(appSettings.seekSeconds);
-  $('#searchHistoryLimitSetting').value=String(appSettings.searchHistoryLimit);
-  $('#relatedLimitSetting').value=String(appSettings.relatedLimit);
+  renderSettingSelects();
+  renderThemeSetting();
   renderSidebarOrderSetting();
   loadFollowScheduleSetting();
 }
@@ -417,21 +519,15 @@ $('#settingsBtn').onclick=()=>openSettings(true);$('#settingsClose').onclick=()=
 $('#settingsPanel').onclick=e=>{if(e.target===$('#settingsPanel'))openSettings(false)};
 $('#settingsPanel').onkeydown=e=>{
   if(e.key!=='Tab')return;
-  const focusable=[...e.currentTarget.querySelectorAll('button:not([disabled]),select:not([disabled]),input:not([disabled]),textarea:not([disabled]),a[href]')];
+  const focusable=[...e.currentTarget.querySelectorAll('button:not([disabled]),input:not([disabled]),textarea:not([disabled]),a[href]')];
   if(!focusable.length)return;
   const first=focusable[0],last=focusable.at(-1);
   if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus()}
   else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus()}
 };
-$('#batchSizeSetting').onchange=e=>{appSettings.batchSize=+e.target.value||60;saveSettings();if(location.pathname==='/')load(true)};
-$('#defaultSortSetting').onchange=e=>{appSettings.defaultSort=e.target.value;saveSettings();state.sort=appSettings.defaultSort;state.dir=defaultSortDir(state.sort);if(location.pathname==='/')load(true)};
-$('#hoverDelaySetting').onchange=e=>{appSettings.hoverDelaySeconds=+e.target.value||5;document.documentElement.style.setProperty('--hover-delay',`${appSettings.hoverDelaySeconds}s`);saveSettings()};
 /* 关掉后同一番号的每个分卷／版次各占一张卡。改完要重取当前列表：折叠是在渲染
    时做的，不重画的话已经被跳过的那些卡不会自己冒出来。 */
 $('#groupCollapseSetting').onchange=e=>{appSettings.groupCollapse=!!e.target.checked;saveSettings();reloadCurrentSurface()};
-$('#seekSecondsSetting').onchange=e=>{appSettings.seekSeconds=+e.target.value||10;saveSettings()};
-$('#searchHistoryLimitSetting').onchange=e=>{appSettings.searchHistoryLimit=+e.target.value||10;saveSettings();writeSearchHistory(readSearchHistory())};
-$('#relatedLimitSetting').onchange=e=>{appSettings.relatedLimit=+e.target.value||20;saveSettings()};
 let followScheduleRequest=0;
 const followScheduleCopy=status=>{
   if(!status.available)return '只在账本写入端运行';
@@ -441,24 +537,25 @@ const followScheduleCopy=status=>{
   if(status.next_run_at)return `下次 ${localTime(status.next_run_at)}`;
   return status.enabled?'等待首次运行':'已关闭';
 };
+const followScheduleField=()=>$('#followScheduleSetting .gselect');
 async function loadFollowScheduleSetting(){
-  const select=$('#followScheduleSetting'),state=$('#followScheduleState'),request=++followScheduleRequest;
-  select.disabled=true;state.innerHTML=loadingDotsHtml('正在读取状态');
+  const field=followScheduleField(),state=$('#followScheduleState'),request=++followScheduleRequest;
+  field.disabled=true;state.innerHTML=loadingDotsHtml('正在读取状态');
   try{
     const status=await api('/api/follow/schedule');if(request!==followScheduleRequest)return;
-    select.value=status.enabled?String(status.interval_minutes):'0';
-    select.disabled=!status.available;state.textContent=followScheduleCopy(status);
+    field.value=status.enabled?String(status.interval_minutes):'0';
+    field.disabled=!status.available;state.textContent=followScheduleCopy(status);
   }catch(error){if(request===followScheduleRequest)state.textContent=`状态未取得：${error.message||error}`}
 }
-$('#followScheduleSetting').onchange=async e=>{
-  const minutes=+e.target.value,state=$('#followScheduleState');e.target.disabled=true;
+async function saveFollowSchedule(minutes){
+  const field=followScheduleField(),state=$('#followScheduleState');field.disabled=true;
   state.innerHTML=`${spinnerHtml('保存中')}<span>正在保存…</span>`;
   try{
     const status=await api('/api/follow/schedule',{method:'POST',body:JSON.stringify({enabled:minutes>0,interval_minutes:minutes||60})});
     state.textContent=followScheduleCopy(status);
   }catch(error){state.textContent=error.message||'保存失败'}
-  finally{e.target.disabled=false}
-};
+  finally{field.disabled=false}
+}
 /* 来源图标：品牌使用已缓存的官方资产；通用操作图标统一使用本地 Lucide 子集。 */
 const SRCICON={
   local:icon('hard-drive'),
@@ -615,13 +712,21 @@ function homePath(filters=state){
   if(!STATE_ROUTES[filters.state]&&filters.state)params.set('state',filters.state);
   return path+(params.size?'?'+params:'');
 }
+/* 顶部三层与筛选条画的是哪一套筛选，由它说了算。声明必须排在 resetHomeState 之前：
+   那个函数会把它拨回 home，而它是 let，用在声明之前就是 TDZ。 */
+let barsContext={type:'home',filters:state},detailReturnBarsContext=null;
 /* 所有明确的「回首页」动作必须得到同一个干净状态。只改地址为 `/` 不够：state.jav
    等内存筛选还会继续进入 /api/items，让页面看似首页却只剩 JAV。来源选择是用户的
-   浏览范围，继续保留；其余分类、搜索和排序恢复首页默认值。 */
+   浏览范围，继续保留；其余分类、搜索和排序恢复首页默认值。
+   barsContext 也在这里回到 home：从资料页点侧栏或左上角标志回首页时，load(true)
+   确实会把它拨回来，但 openHome 是先 buildBars() 后 load(true)，buildBars 开头就把
+   activeFilterState() 取走了——取到的是资料页那份筛选，它没有 state 这个键，
+   于是四枚视图胶囊一枚都不亮，首页看上去像谁都没选中。 */
 function resetHomeState(){
   state={loc:state.loc,creator:'',studio:'',tag:'',tag_match:'all',len:'',dur_min:'',dur_max:'',
     orient:'',state:'',sort:appSettings.defaultSort,dir:defaultSortDir(appSettings.defaultSort),
     seed:rollSeed(),q:'',jav:'',thumb:'1'};
+  barsContext={type:'home',filters:state};detailReturnBarsContext=null;
   barsDataCache=null;barsDataPromise=null;
 }
 function openHome(scroll=false){
@@ -639,7 +744,6 @@ const entityFilterSearch=filters=>{const params=new URLSearchParams();
   ENTITY_FILTER_KEYS.forEach(key=>{if(filters[key]&&!(key==='sort'&&filters[key]==='new')
     &&!(key==='dir'&&filters[key]===defaultSortDir(filters.sort)))params.set(key,filters[key])});
   return params.toString()};
-let barsContext={type:'home',filters:state},detailReturnBarsContext=null;
 const cloneBarsContext=context=>context&&context.type==='entity'
   ? {...context,filters:{...context.filters}}:context;
 const activeFilterState=()=>barsContext.type==='home'?state:barsContext.filters;
@@ -671,7 +775,6 @@ async function detailStreamSource(it){
   const proxied=followStreamSource(it);
   if(proxied)return proxied;
   const direct=directDetailSource(it);
-  if(!['115','pikpak'].includes(it.location))return direct;
   try{
     const plan=await api(`/api/stream-plan?id=${it.id}&session=${encodeURIComponent(detailStreamSession)}`);
     if(plan.protocol==='hls'&&plan.src)return {src:plan.src,type:plan.mime_type||'application/vnd.apple.mpegurl'};
@@ -796,20 +899,20 @@ function bufferedFrontier(video){
    resource timing 里就一直不出现新条目。实测本地 MP4 播到 37 秒时仍只有挂载那两条、字节数
    停在 862 KB，面板于是显示「— · 0 请求」。HLS 是另一回事，每个分片都是一次独立完成的请求，
    VHS 自己也报 bandwidth，resource timing 那套口径只对它成立。
-   渐进源改看缓冲前沿的推进：每秒新推进的秒数 × 平均码率就是字节速率；码率未知（在线关注
-   条目没有 size）就只报推进倍速。缓冲吃满后浏览器停拉，增量归零，此时保留上一次读数而不是
-   跳回 0——那不是速度掉了，是没有在下载。 */
+   渐进源改看缓冲前沿的推进：每秒新推进的秒数 × 平均码率就是字节速率。码率要有文件大小才算
+   得出来，关注条目的大小由 `/follow-qualities` 回源 HEAD 带回；连上游都不给 content-length 时
+   没有任何办法把秒换成字节，角标改报还能往前放多久。缓冲吃满后浏览器停拉，增量归零，此时
+   保留上一次读数而不是跳回 0——那不是速度掉了，是没有在下载。 */
 const BUFFER_METER_WINDOW_MS=3000;
 function averageBitrate(size,duration){
   const bytes=Number(size)||0,seconds=realDuration(duration)||0;
   return bytes>0&&seconds>0?bytes*8/seconds:0;
 }
 function createBufferMeter(bitrate){
-  const samples=[];let last=null,advanced=0,bits=0,ratio=0;
+  const samples=[];let last=null,advanced=0,bits=0;
   return {
     bitrate:Number(bitrate)||0,
     get bits(){return bits},
-    get ratio(){return ratio},
     get seconds(){return advanced},
     bytes(){return this.bitrate>0?advanced*this.bitrate/8:0},
     sample(video){
@@ -828,7 +931,7 @@ function createBufferMeter(bitrate){
       samples.push({at,advanced});
       while(samples.length>2&&at-samples[0].at>BUFFER_METER_WINDOW_MS)samples.shift();
       const span=(at-samples[0].at)/1000,gained=advanced-samples[0].advanced;
-      if(span>=.5&&gained>0){ratio=gained/span;bits=this.bitrate>0?gained*this.bitrate/span:0}
+      if(span>=.5&&gained>0&&this.bitrate>0)bits=gained*this.bitrate/span;
       return bits;
     }
   };
@@ -883,10 +986,11 @@ function fmtSpeed(bits){
   const bytes=bits/8;
   return bytes>=1048576?`${(bytes/1048576).toFixed(1)} MB/s`:`${Math.max(1,Math.round(bytes/1024))} KB/s`;
 }
-/* 码率未知时字节速率无从换算，退回缓冲推进倍速：3 秒里多缓冲了 36 秒就是 12× 实时。 */
-function fmtLoadRate(bits,ratio){
+/* 码率未知时字节速率无从换算，退回已经缓冲的秒数：那是这种情况下唯一还能直接用的读数
+   ——现在断网还能往前放多久。 */
+function fmtLoadRate(bits,ahead){
   if(bits>0)return fmtSpeed(bits);
-  return ratio>0?`${ratio.toFixed(1)}× 实时`:fmtSpeed(0);
+  return ahead>0?`已缓冲 ${Math.round(ahead)} 秒`:fmtSpeed(0);
 }
 function applyAmbientMode(enabled,save=true){
   appSettings.ambientMode=!!enabled;if(save)saveSettings();
@@ -930,23 +1034,34 @@ function applyTheaterMode(enabled,save=true){
   syncPlayerTheaterButton(stage?.querySelector('[data-player-theater]'));
   if(detailPlayer&&!detailPlayer.isDisposed())requestAnimationFrame(()=>detailPlayer.trigger('resize'));
 }
+/* 取样有两条入口：播放中跟着帧回调走，`start` 则立刻取一帧。暂停的画面同样是一帧可画的图，
+   只跟着帧回调走的话，暂停时关掉氛围模式就再也开不回来——关掉抹掉了光，而帧回调只在有新
+   画面时才来。每条采样链带一个 run 号：暂停或页面隐藏时排队的那个回调可能永远不来，用一个
+   「已排队」布尔判重会被它永久锁死；换成 run 号后旧回调醒来直接退出，链上永远只有一条在跑。 */
 function mountPlayerAmbient(video){
   const stage=$('#stage'),canvas=stage?.querySelector('.ambientcanvas');if(!canvas)return()=>{};
-  const ctx=canvas.getContext('2d',{alpha:false});let stopped=false,last=0,scheduled=false;
+  const ctx=canvas.getContext('2d',{alpha:false});let stopped=false,last=0,run=0;
   const clear=()=>{ctx.clearRect(0,0,canvas.width,canvas.height);stage.style.removeProperty('--video-glow')};
-  const schedule=()=>{if(stopped||scheduled||video.paused||!appSettings.ambientMode)return;scheduled=true;
-    if(video.requestVideoFrameCallback)video.requestVideoFrameCallback(t=>paint(t));else requestAnimationFrame(paint)};
-  const paint=now=>{scheduled=false;if(stopped||!appSettings.ambientMode){if(!stopped)clear();return}
-    if(!document.hidden&&!video.paused&&now-last>480){last=now;
-      try{ctx.drawImage(video,0,0,canvas.width,canvas.height);
-        const px=ctx.getImageData(0,0,canvas.width,canvas.height).data;let r=0,g=0,b=0,n=0;
-        for(let i=0;i<px.length;i+=16){r+=px[i];g+=px[i+1];b+=px[i+2];n++}
-        if(n)stage.style.setProperty('--video-glow',`rgb(${Math.round(r/n)} ${Math.round(g/n)} ${Math.round(b/n)})`)
-      }catch(_e){}}
-    schedule()};
-  const onChange=event=>{stage.classList.toggle('ambient-on',event.detail.enabled);if(event.detail.enabled)schedule();else clear()};
-  document.addEventListener('peachambientchange',onChange);video.addEventListener('play',schedule);schedule();
-  return()=>{stopped=true;document.removeEventListener('peachambientchange',onChange);video.removeEventListener('play',schedule);clear()};
+  const sample=()=>{if(video.readyState<2)return;
+    try{ctx.drawImage(video,0,0,canvas.width,canvas.height);
+      const px=ctx.getImageData(0,0,canvas.width,canvas.height).data;let r=0,g=0,b=0,n=0;
+      for(let i=0;i<px.length;i+=16){r+=px[i];g+=px[i+1];b+=px[i+2];n++}
+      if(n)stage.style.setProperty('--video-glow',`rgb(${Math.round(r/n)} ${Math.round(g/n)} ${Math.round(b/n)})`)
+    }catch(_e){}};
+  const queue=id=>{if(video.requestVideoFrameCallback)video.requestVideoFrameCallback(now=>paint(id,now));
+    else requestAnimationFrame(now=>paint(id,now))};
+  const paint=(id,now)=>{if(stopped||id!==run)return;
+    if(!appSettings.ambientMode){clear();return}
+    if(video.paused)return;
+    if(!document.hidden&&now-last>480){last=now;sample()}
+    queue(id)};
+  const start=()=>{if(stopped||!appSettings.ambientMode)return;sample();if(!video.paused)queue(++run)};
+  const onChange=event=>{stage.classList.toggle('ambient-on',event.detail.enabled);
+    if(event.detail.enabled)start();else{run++;clear()}};
+  document.addEventListener('peachambientchange',onChange);
+  video.addEventListener('play',start);video.addEventListener('loadeddata',start);start();
+  return()=>{stopped=true;run++;document.removeEventListener('peachambientchange',onChange);
+    video.removeEventListener('play',start);video.removeEventListener('loadeddata',start);clear()};
 }
 /* `sourceQualities` 是来源自己给的清晰度表（[{height,label}]，从高到低）。
    rule34video 把每档写成独立字段，videojs 的 qualityLevels 看不到它们——那套只认
@@ -1047,9 +1162,9 @@ function mountPlayerQualityControl(player,video,fallbackHeight=0,initialSourceQu
     const clampSpeed=value=>Math.min(max,Math.max(min,Number(value.toFixed(2))));
     const panel=renderPanel(`<div class="vjs-peach-panel-header"><button type="button" class="vjs-peach-menu-back" data-player-menu-back aria-label="返回上一个菜单">${icon('player-menu-back')}</button><strong>播放速度</strong></div>
       <div class="vjs-peach-speed-panel"><div class="vjs-peach-speed-display"><output data-player-speed-display></output></div>
-      <div class="vjs-peach-speed-slider"><button type="button" class="vjs-peach-speed-button" data-player-speed-step="-1" aria-label="播放速度减 0.05">−</button>
+      <div class="vjs-peach-speed-slider"><button type="button" class="vjs-peach-speed-button" data-player-speed-step="-1" aria-label="播放速度减 0.05">${icon('minus')}</button>
       <input type="range" class="vjs-peach-speed-range" data-player-speed-range min="${min}" max="${max}" step="${SPEED_STEP}" aria-label="播放速度">
-      <button type="button" class="vjs-peach-speed-button" data-player-speed-step="1" aria-label="播放速度加 0.05">+</button></div>
+      <button type="button" class="vjs-peach-speed-button" data-player-speed-step="1" aria-label="播放速度加 0.05">${icon('plus')}</button></div>
       <div class="vjs-peach-speed-chips">${SPEED_PRESETS.map(speed=>
         `<span class="vjs-peach-speed-preset"><button type="button" class="vjs-peach-speed-button" data-player-speed-option="${speed}" aria-pressed="false">${speedLabel(speed)}</button>${speed===1?'<span class="vjs-peach-speed-preset-label">正常</span>':''}</span>`).join('')}</div></div>`,direction);
     const display=panel.querySelector('[data-player-speed-display]'),range=panel.querySelector('[data-player-speed-range]');
@@ -1164,7 +1279,11 @@ function mountPlayerChromeLayout(player){
   /* 中心提示照 YouTube delhi-modern（player 9470c977 的 www-player.css 与 base.js）：一块
      78px 的毛玻璃圆闪一下当前动作的图标，1s 走完 0→1.33→1 的缩放淡出。捕获阶段读的是
      切换之前的状态，闪出来的正好是这一次做的事：暂停中点播放键闪播放。键盘快捷键走的
-     也是同一个按钮的点击路径，所以只挂控制条这一处。 */
+     也是同一个按钮的点击路径，所以键盘不用另挂一处。
+     画面中心只允许有这一块提示圆：整个播放器里凡是能切换播放的入口——控制条的播放键、
+     静音键、点画面本身——都汇到这个 flashBezel 上。同一块画面上再挂第二个 78px 圆，
+     两边各按自己的时机取状态，点一下就会一个闪播放一个闪暂停，叠在一起看不清哪个才是
+     刚做的事。 */
   const bezel=document.createElement('div');
   bezel.className='vjs-peach-bezel';bezel.setAttribute('role','status');bezel.hidden=true;
   bezel.innerHTML=`<span class="vjs-peach-bezel-icon">${icon('player-play')}</span>`;
@@ -1177,13 +1296,13 @@ function mountPlayerChromeLayout(player){
     bezelTimer=setTimeout(()=>{bezel.hidden=true;bezel.classList.remove('vjs-peach-bezel-run')},1000);
   };
   player.el().insertBefore(bezel,controlBar);
-  controlBar.addEventListener('click',event=>{
-    if(event.target.closest('.vjs-play-control')){
-      const paused=player.paused()||player.ended();
-      flashBezel(paused?'player-play':'player-pause',paused?'播放':'暂停');
-    }else if(event.target.closest('.vjs-mute-control')){
+  player.el().addEventListener('click',event=>{
+    if(event.target.closest('.vjs-mute-control')){
       const silent=player.muted()||player.volume()===0;
       flashBezel(silent?'player-volume':'player-volume-muted',silent?'取消静音':'静音');
+    }else if(event.target.closest('.vjs-play-control,.vjs-tech,.vjs-poster')){
+      const paused=player.paused()||player.ended();
+      flashBezel(paused?'player-play':'player-pause',paused?'播放':'暂停');
     }
   },true);
   player.on('dispose',()=>{if(bezelTimer)clearTimeout(bezelTimer)});
@@ -1292,25 +1411,12 @@ function mountPlayerSeekPreview(player,it,options={}){
   progress.addEventListener('pointermove',move);progress.addEventListener('pointerleave',hide);
   player.on('dispose',()=>{progress.removeEventListener('pointermove',move);progress.removeEventListener('pointerleave',hide)});
 }
-function mountPlayerCenterControls(player){
-  if(player.el().querySelector('[data-player-center-controls]'))return;
-  const root=document.createElement('div');
-  root.className='vjs-peach-center-controls';root.dataset.playerCenterControls='';
-  root.setAttribute('aria-hidden','true');
-  root.innerHTML=`<span class="vjs-peach-center-bezel"><svg class="vjs-peach-center-play" aria-hidden="true"><use href="#i-player-bezel-play"></use></svg><svg class="vjs-peach-center-pause" aria-hidden="true"><use href="#i-player-bezel-pause"></use></svg></span>`;
-  const playerRoot=player.el();playerRoot.append(root);
-  const spinner=playerRoot.querySelector('.vjs-loading-spinner');
-  if(spinner)spinner.innerHTML='<span class="vjs-peach-spinner-container"><span class="vjs-peach-spinner-rotator"><span class="vjs-peach-spinner-left"><span class="vjs-peach-spinner-circle"></span></span><span class="vjs-peach-spinner-right"><span class="vjs-peach-spinner-circle"></span></span></span></span>';
-  let gesture=false,gestureTimer=0;
-  const sync=()=>{const playing=!player.paused()&&!player.ended();root.dataset.state=playing?'pause':'play'};
-  const feedback=()=>{root.classList.remove('is-feedback');void root.offsetWidth;root.classList.add('is-feedback')};
-  const arm=()=>{gesture=true;clearTimeout(gestureTimer);gestureTimer=setTimeout(()=>{gesture=false},600)};
-  const onKey=event=>{if(event.key===' '||event.key.toLowerCase()==='k')arm()};
-  const onState=()=>{sync();if(gesture){gesture=false;clearTimeout(gestureTimer);feedback()}};
-  const hideFeedback=()=>root.classList.remove('is-feedback');
-  playerRoot.addEventListener('pointerdown',arm,true);playerRoot.addEventListener('keydown',onKey,true);
-  root.addEventListener('animationend',hideFeedback);
-  player.on(['play','pause','ended'],onState);player.on(['waiting','seeking'],hideFeedback);player.on('dispose',()=>{clearTimeout(gestureTimer);playerRoot.removeEventListener('pointerdown',arm,true);playerRoot.removeEventListener('keydown',onKey,true)});sync();
+/* Video.js 自带的转圈是 `:before`／`:after` 画的两条弧，换不掉曲线；YouTube e937390a
+   的 `FsY` 是四段嵌套元素配四段动画。转圈的 DOM 只能整块替换，样式表接不上手。 */
+function mountPlayerSpinner(player){
+  const spinner=player.el().querySelector('.vjs-loading-spinner');
+  if(!spinner||spinner.querySelector('.vjs-peach-spinner-container'))return;
+  spinner.innerHTML='<span class="vjs-peach-spinner-container"><span class="vjs-peach-spinner-rotator"><span class="vjs-peach-spinner-left"><span class="vjs-peach-spinner-circle"></span></span><span class="vjs-peach-spinner-right"><span class="vjs-peach-spinner-circle"></span></span></span></span>';
 }
 /* 播放器按需加载，和灯箱的 Swiper 同一个理由：video.js 676KB，只有真的开始看片才
    用得上，进首屏就是每次开页都白下一遍。灯箱那边还要等一张样式表，所以它保留自己的
@@ -1351,7 +1457,10 @@ async function mountDetailPlayer(it,video,autoplay,options={}){
   // 非正时长一律当未知：强行 player.duration(-1) 会被 Video.js 转成 Infinity 并标成直播。
   const expected=realDuration(it.duration);
   const statsHistory={speed:[],activity:[],buffer:[]};
-  const meter=createBufferMeter(averageBitrate(options.size??it.size,it.duration));
+  /* 关注条目的字节数要回源 HEAD 才知道，跟清晰度表同一趟回来，比挂载晚。码率是速度读数的
+     换算系数，所以留一个可以后填的口子，别把它固定在挂载那一刻。 */
+  let mediaSize=Number(options.size??it.size)||0;
+  const meter=createBufferMeter(averageBitrate(mediaSize,it.duration));
   let statsLoaded=0;
   let correcting=false;
   const enforceDuration=()=>{
@@ -1383,13 +1492,12 @@ async function mountDetailPlayer(it,video,autoplay,options={}){
      const named=String(it.name||'');
      const container=(named.includes('.')?named.split('.').pop()
        :segmented?'':String(detailPlayer.currentSource()?.type||'').split('/').pop()).toUpperCase()||'—';
-     const speedText=speed?`${(speed/1e6).toFixed(1)} Mbps`
-       :(!segmented&&meter.ratio>0?`${meter.ratio.toFixed(1)}× 实时`:'—');
+     const speedText=speed?`${(speed/1e6).toFixed(1)} Mbps`:'—';
      const byteScale=segmented||meter.bitrate>0;
      const loadedRow=segmented
        ?['网络活动',`${bytes?fmtSize(bytes):'—'} · ${resources.length} 请求`,
          `最近一秒网络活动 ${activity?fmtSize(activity):'0 B'}`]
-       :['已下载',byteScale?`${fmtSize(loaded)}${Number(it.size)>0?` / ${fmtSize(Number(it.size))}`:''}`
+       :['已下载',byteScale?`${fmtSize(loaded)}${mediaSize>0?` / ${fmtSize(mediaSize)}`:''}`
            :`${loaded.toFixed(0)} 秒`,
          byteScale?`最近一秒下载 ${activity?fmtSize(activity):'0 B'}`
            :`最近一秒下载 ${activity.toFixed(1)} 秒`];
@@ -1417,7 +1525,7 @@ async function mountDetailPlayer(it,video,autoplay,options={}){
     const segmented=String(player.currentSource()?.type||'').includes('mpegurl');
     if(!segmented)meter.sample(video);
     const bits=playerSpeedBits(player,it.id,detailStreamSession,segmented?null:meter);
-    const rate=segmented?fmtSpeed(bits):fmtLoadRate(bits,meter.ratio);
+    const rate=segmented?fmtSpeed(bits):fmtLoadRate(bits,bufferedAhead(video));
     netBadge.innerHTML=`${icon('gauge')}<span class="sr-only">加载速度</span><span>${esc(rate)}</span>`};
   const showNet=()=>{if(!netBadge)return;netBadge.hidden=false;updateNet();
     if(detailNetTimer)clearInterval(detailNetTimer);detailNetTimer=setInterval(updateNet,500)};
@@ -1442,11 +1550,14 @@ async function mountDetailPlayer(it,video,autoplay,options={}){
   detailPlayer.ready(()=>{
     enforceDuration();
     const updateQualities=mountPlayerQualityControl(detailPlayer,video,it.height,options.qualities);
-    options.qualitiesPromise?.then(next=>{
-      if(detailPlayer===player&&!player.isDisposed())updateQualities?.(next)
+    options.mediaPromise?.then(next=>{
+      if(detailPlayer!==player||player.isDisposed())return;
+      updateQualities?.(next?.qualities?.length?next.qualities:null);
+      const size=Number(next?.size)||0;
+      if(size>0&&!mediaSize){mediaSize=size;meter.bitrate=averageBitrate(size,it.duration)}
     }).catch(()=>{});
     mountPlayerSeekPreview(detailPlayer,it,{thumbnail:!options.source});
-    mountPlayerCenterControls(detailPlayer);
+    mountPlayerSpinner(detailPlayer);
     if(statsButton)statsButton.hidden=false
   });
   if(statsButton&&statsPanel){
@@ -1501,7 +1612,7 @@ function setSelectMode(on,clear=false){
   if(selectMode)releaseHoverPreviews();
   $('#selectMode').setAttribute('aria-pressed',selectMode);if(clear){selected.clear();followSelected.clear();selectedIndexTags.clear();lastSelectedId=null;followLastSelectedId=null}paintSelection()}
 /* 只取网格直属卡片：竖屏条是嵌在网格里的横向滚动条，不该被 Shift 范围选中顺带框进来。 */
-function visibleCardIds(){return [...document.querySelectorAll('#grid > .card[data-id]')].map(card=>+card.dataset.id)}
+function visibleCardIds(){return [...gridCards()].map(card=>+card.dataset.id)}
 function toggleSelection(id,range=false){
   if(range&&lastSelectedId!=null){const ids=visibleCardIds(),a=ids.indexOf(lastSelectedId),b=ids.indexOf(id);
     if(a>=0&&b>=0){for(let i=Math.min(a,b);i<=Math.max(a,b);i++)selected.add(ids[i])}
@@ -1672,7 +1783,8 @@ document.addEventListener('visibilitychange',()=>{if(document.hidden)releaseHove
    兜底链最后一环必须真的把 `<img>` 拿掉（`data-drop="self"`）：留着取不到图的
    `<img>`，`:has(img)` 仍然匹配，首字母垫底回不来，浏览器还会把 alt 画出来。 */
 function entityFaceImg({kind='performer',id=null,hasImage=false,rep=null,mark=null,logo='',
-                        logoVariant='logo',alt='',lazy=true,style='',dropStyle=false}={}){
+                        logoVariant='logo',alt='',lazy=true,style='',dropStyle=false,
+                        focus=null}={}){
   const useEntity=!!(id&&hasImage);
   const entitySrc=useEntity?`/entity-image?kind=${kind}&id=${id}`:'';
   // `rep` 由服务端的 has_avatar 决定有没有值，没有就不出这一环。
@@ -1688,19 +1800,23 @@ function entityFaceImg({kind='performer',id=null,hasImage=false,rep=null,mark=nu
     :(useEntity&&avatarSrc?[avatarSrc]:[]);
   // 人脸取景是按实体图算出来的，回落图是另一张照片，脸不在同一位置：只贴给第一环。
   const framed=useEntity&&!useLogo;
+  const faceBox=framed?faceBoxAttrs(focus):'';
+  /* 贴了脸框就一定要能撤 style：放大是 avatarFrame 写进 img 内联 style 的，回落时
+     不撤，那几个百分比会按上一张图的尺寸套在这一张上。调用点不必记得开这个开关——
+     忘了开的代价是页面上一张明显错位的图，而它只在回落发生时才现形。 */
   return `<img src="${src}" alt="${alt}"${lazy?' loading="lazy"':''}${framed?style:''} `+
-    `${imageFallbackAttrs({dropStyle:dropStyle&&framed,fallbacks})}>`;
+    `${faceBox}${imageFallbackAttrs({dropStyle:(dropStyle||!!faceBox)&&framed,fallbacks})}>`;
 }
 /* 头像内层：先垫首字母，再叠真实图。
 
    `has_image` 缺席按「没图」处理，和 entityFaceImg 的默认值一致：每一个调用点的
    ref 都由服务端带着标志下发（卡片署名、索引页、口味榜、复核卡片、沉浸模式），
    宽容缺席只会让下一个忘了挂标志的端点悄悄退回「无条件出图、等 404 再摘」。 */
-function avatarInner(name,ref,repId,kind='performer',markId=null,logoName=''){
+function avatarInner(name,ref,repId,kind='performer',markId=null,logoName='',focus=null){
   // 这一层全是小圆框和窄格子，厂牌标识在这里要方形图标而不是横着的字标。
   return `<span class="ini">${esc((name||'?').slice(0,1))}</span>`+
     entityFaceImg({kind,id:ref&&ref.id,hasImage:!!(ref&&ref.has_image),rep:repId,mark:markId,
-                   logo:logoName,logoVariant:'icon'});
+                   logo:logoName,logoVariant:'icon',focus});
 }
 /* 人脸取景：资料页圆框按检出的人脸中心取景（/api/entity 的 avatar_focus）。
    没检出或没算过返回空串维持几何居中；换回落图时必须撤掉——那是另一张照片，
@@ -1715,6 +1831,58 @@ function faceOrigin(f){
 function facePos(f){
   const origin=faceOrigin(f);
   return origin?` style="object-position:${origin}"`:'';
+}
+/* 人脸放大：把脸框的像素尺寸交给页面，倍数在图加载后按框的真实尺寸算。
+
+   只挪解决不了「脸太小」——cover 的缩放由框和图的比例定死，脸在图里占多少，在框里
+   就占多少。539 张里有 29 张是全身站姿照，脸落在画面上半截的一小块里，挪到正中依旧
+   是一颗认不出是谁的头。放大倍数由 `web/js/face-frame.js` 夹在「够看清」「不上采样」
+   「不切头」三条之间，服务端算不了：它不知道这个框有多大、这块屏幕几倍像素。
+
+   属性而不是 style：倍数得等图和框都落地才算得出来，和封面的 `data-cx`／`coverAnchor`
+   同一条路。缺 `box` 的 sidecar（补字段之前算的）不贴属性，那些图照旧只挪不放大。
+
+   五个数挤在一个属性里，是为了让回落只需要摘一样东西：脸框只描述第一环那张实体图，
+   换到 `/avatar` 那张就整个作废，见 image-fallback.js 的 advanceImageFallback。 */
+function faceBoxAttrs(f){
+  const b=f&&f.box;
+  if(!b)return '';
+  return ` data-facebox="${[b.cx,b.cy,b.faceW,b.imgW,b.imgH].map(Number).join(' ')}"`;
+}
+/* 圆框里那张图按人脸取景。放大靠改 img 自己的尺寸和偏移，不用 transform：
+   `object-position` 只能在 cover 裁掉的那部分里挪，方图根本没得挪，而 transform
+   缩放会连圆框的描边一起放大。元素撑到「图按 cover 缩放再乘倍数」那么大，再用负偏移
+   把脸心拉到框心，圆框的 `overflow:hidden` 负责裁——和不放大时是同一套几何。 */
+function avatarFrame(img){
+  const ring=img.parentElement;
+  if(!ring)return;
+  const rect=ring.getBoundingClientRect();
+  /* 图加载完时框还没布局，是真会发生的一整类情况：面板隐藏、`display:none` 的页签、
+     缓存直出。那一刻框是 0×0，算出来的倍数只能是 1，而 `load` 不会再来第二次——
+     放大于是静默地永不生效，页面上看不出和「这张图不需要放大」有任何区别。
+     实测在资料页复现过：框已经 160×160、图也 complete，style 里却只有平移。
+     等到框拿到尺寸再算一次，等不到就维持不放大。 */
+  if(!(rect.width>0&&rect.height>0)){
+    if(typeof ResizeObserver!=='function')return;
+    const watch=new ResizeObserver(()=>{
+      const now=ring.getBoundingClientRect();
+      if(!(now.width>0&&now.height>0))return;
+      watch.disconnect();
+      avatarFrame(img);
+    });
+    watch.observe(ring);
+    return;
+  }
+  const [cx,cy,faceW,imgW,imgH]=String(img.dataset.facebox).split(' ').map(Number);
+  const frame=faceFrame({cx,cy,faceW,imgW,imgH},
+    {w:rect.width,h:rect.height},window.devicePixelRatio||1);
+  // 放不大就一个字都不写：留下的是 CSS 里那份几何，`object-position` 照旧生效。
+  if(!frame)return;
+  const s=img.style;
+  // `inset:0` 定了 right/bottom，和这里的 left+width 过约束；显式撤掉，不靠浏览器取舍。
+  s.position='absolute';s.right='auto';s.bottom='auto';
+  s.left=`${frame.left}%`;s.top=`${frame.top}%`;
+  s.width=`${frame.width}%`;s.height=`${frame.height}%`;
 }
 /* 官方封面有三种形态，实测过：整张封套约 1.48（左侧是剧照拼贴，右侧才是正封），
    竖版正封约 0.70（本身就是正封，没有左半边可裁），16:9 官方剧照约 1.78（整幅
@@ -1759,7 +1927,10 @@ function coverFace(img,axis){
    ReferenceError，封面全部按回落取景。`load` 不冒泡，但捕获阶段照样收得到。 */
 document.addEventListener('load',event=>{
   const img=event.target;
-  if(img instanceof HTMLImageElement&&img.classList.contains('cover'))coverAnchor(img);
+  if(!(img instanceof HTMLImageElement))return;
+  if(img.classList.contains('cover'))coverAnchor(img);
+  // 头像走同一条路，理由也同一个：倍数要等图和框都落地才算得出来。
+  else if(img.dataset.facebox)avatarFrame(img);
 },true);
 /* 整张封套里右侧正封占的宽高比。裁切靠的是容器比例而不是 CSS 裁剪：`object-fit:cover`
    只在容器比图片更「竖」时才会横向裁；容器一旦宽过 1.48 就变成纵向裁、整张封套原样
@@ -1800,8 +1971,7 @@ function cardIdentity(it,linked=true){
   const primaryCreator=it.is_jav&&performer?'':it.creator;
   const identity=primaryCreator?{kind:'creator',name:primaryCreator}
     :(performer?{kind:'performer',name:performer}
-      :(it.code?{kind:'',name:it.code}
-        :(it.studio?{kind:'studio',name:it.studio}:{kind:'',name:'未归属'})));
+      :{kind:'',name:'未归属'});
   const who=identity.name,whoKind=identity.kind;
   // 共演作品用头像提示多人，但文字只保留第一位，再给总人数。两个长名字加元数据
   // 会在普通卡片里折成三行；「第一位 + 等 N 人」仍能说明身份与规模。
@@ -1814,9 +1984,11 @@ function cardIdentity(it,linked=true){
         /* 头像和名字必须落到同一个身份。各自挑 kind（头像先看 performer、名字先看
            creator）时，同名的 creator/performer 重复实体（账本里有 35 组）会一个跳
            `/performers/x`、另一个跳 `/creators/x`，同一张卡上两个入口去两个地方。 */
-        const avatarKind=identity.kind||(performer?'performer':(primaryCreator?'creator':(it.studio?'studio':'')));
-        const avatarName=identity.kind?identity.name:(performer||primaryCreator||it.studio||who);
-        const inner=avatarInner(avatarName,performerRef,REP[avatarName]||REP[it.creator]||REP[it.studio]);
+        const avatarKind=identity.kind;
+        const avatarName=identity.name;
+        const avatarRef=avatarKind==='performer'?performerRef:it.creator_entity;
+        const inner=avatarInner(avatarName,avatarRef,
+          avatarKind?REP[avatarName]:null,avatarKind||'performer');
         return avatarKind
           ? link('mav',`data-entity-kind="${avatarKind}" data-entity-name="${esc(avatarName)}" title="打开${avatarKind==='performer'?esc(performerLabel(it)):'资料'}页"`,inner)
           : `<span class="mav">${inner}</span>`;
@@ -2278,6 +2450,17 @@ function wireCards(root,onClick){
 }
 
 /* ── 顶部标签条 + 抽屉 ── */
+/* 状态页把顶部三层收窄到本页口径，为的是不列出「在这一页一个作品都没有」的人和厂牌。
+   但集合窄到聚合结果为空时（「已标记」常年只有几条），收窄就把整排一并收走了：
+   同一条筛选条上换一格，页面顶上凭空少两层，读起来是跳去了另一个页面而不是换了筛选。
+   空了就退回全库口径。这一排点开的是实体页，本来就要离开当前状态，
+   它回答的从来不是「这一页里有谁」，而是「接下来去看谁」。 */
+async function loadTops(params){
+  const scoped=await api('/api/tops?'+params);
+  if(scoped.performers.length||scoped.studios.length||!params.has('state'))return scoped;
+  const wide=new URLSearchParams(params);wide.delete('state');
+  return api('/api/tops?'+wide)
+}
 let barsDataScope='';
 async function getBarsData(context=barsContext){
   // JAV 模式的顶部三层与筛选面板要跟着收窄，否则会列出只出现在创作者作品里的
@@ -2305,7 +2488,7 @@ async function getBarsData(context=barsContext){
   // 顶部三层跟着「换一批」的同一个种子走，刷新后才真的换人。
   if(!barsDataPromise)barsDataPromise=Promise.all([
       api('/api/facets'+(scope?'?'+scope:'')),
-      api('/api/tops?'+topsParams)])
+      loadTops(topsParams)])
     .then(data=>{barsDataCache=data;barsDataAt=Date.now();return data})
     .finally(()=>{barsDataPromise=null});
   return barsDataPromise
@@ -2390,9 +2573,13 @@ async function buildBars(){
      「目录里有没有那张 jpg」——`/avatar` 按需生成，还没抓过的那条路留着。 */
   tops.performers.forEach(x=>{if(x.rep&&x.has_avatar)REP[x.k]=x.rep});
   tops.studios.forEach(x=>{if(x.rep&&x.has_avatar)REP[x.k]=x.rep});
+  /* 这排圆框只有 64 px，脸在里面本来就小。框越小，同一张图能无损放大的余量越大：
+     `performer-8711` 那种全身站姿照在资料页只放得到 2 倍，在这里放到 3 倍还没碰到
+     源图 1:1。取景与索引页同一份 sidecar、同一个换算。 */
   const avHtml=x=>`<button class="av" data-entity-kind="performer" data-entity-name="${esc(x.k)}">
     <span class="ring"><span class="ini">${esc(x.k.slice(0,1))}</span>${entityFaceImg(
-      {id:x.id,hasImage:x.has_image,rep:x.has_avatar?x.rep:null})}</span>
+      {id:x.id,hasImage:x.has_image,rep:x.has_avatar?x.rep:null,
+       style:facePos(x.avatar_focus),focus:x.avatar_focus})}</span>
     <span class="nm">${esc(x.k)}</span></button>`;
   /* 正规厂牌用官网 logo；缺失时只显示首字母，绝不把作品截图冒充厂牌图标。
 
@@ -2407,8 +2594,8 @@ async function buildBars(){
     return `<button class="brandpill" data-entity-kind="studio" data-entity-name="${esc(x.k)}">
       <span class="mk" data-fallback="${fallback}">${mark}</span>${esc(x.k)}</button>`;
   };
-  // 空的一排仍占 28px，在「已标记」这种窄集合上就是两条什么都没有的空带。
-  // 没人就不画那一排，两排都没人就整块收起。
+  // 空的一排仍占 28px，画出来就是一条什么都没有的空带，所以没人就不画那一排。
+  // 「两排都空」现在只剩全库真的一个人都没有这一种：窄集合已经由 loadTops 退回全库口径。
   const perfRow=tops.performers.map(avHtml).join('');
   const studioRow=tops.studios.map(bpHtml).join('');
   const tier=html=>html?`<div class="tier">${html}</div>`:'';
@@ -2450,7 +2637,7 @@ async function buildBars(){
   // 与窄栏共用 EDGE_ICONS —— 两边条目必须一致，抽屉不另写一份硬编码
   const navBtn=(k,label,ic)=>`<button data-nav="${k}" draggable="true" aria-pressed="${navOn(k)}">
     ${icon(ic)}<span>${label}</span></button>`;
-  $('#drawer').innerHTML=
+  $('#drawerScroll').innerHTML=
     `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
       <b class="disp" style="font-size:15px;letter-spacing:.1em">导航与筛选</b>
       <button id="drawerClose" class="ib" title="收起">${icon('x')}</button></div>`+
@@ -2513,7 +2700,7 @@ async function buildBars(){
 }
 /* 排序和换批都属于当前列表，放在计数行，不占用全局导航。 */
 function renderCount(){
-  const n=$('#grid').querySelectorAll(':scope > .card[data-id]').length;   // 竖屏条不计入「显示 N」
+  const n=gridCards().length;   // 竖屏带里的 .scard 不计入「显示 N」
   const trash=state.state==='trash';
   /* 「清空回收站」和左边的计数说的是同一批文件，挂在说明行右端。它自己占一行时，
      标题和网格之间会空出一条只放一个按钮的带子。 */
@@ -2605,7 +2792,7 @@ function wireLoadMore(button, load){
 const skeletonKeyOf=html=>String(html).match(/data-skeleton="([^"]*)"/)?.[1]||'';
 function showManagementBody({manage=true,placeholder=''}={}){
   $('#stats').hidden=false;$('#index').hidden=true;$('#grid').innerHTML='';
-  $('#count').textContent='';$('#loadSentinel').hidden=true;$('#shortsSec').hidden=true;
+  $('#count').textContent='';$('#loadSentinel').hidden=true;
   if(manage)buildManageBar();
   else{$('#managebar').hidden=true;$('#manageTitle').hidden=true;buildEdge()}
   if(!placeholder)return;
@@ -2619,12 +2806,6 @@ function showManagementBody({manage=true,placeholder=''}={}){
    `enterManagementSurface()` 对称：索引页此后不再重画芯片，画上去的那条会一直留着。
    `renderCombo()` 自己也拦得住（它先问过屏幕），两侧都要有——一个负责当场擦掉，
    一个负责之后谁都别再画上去。 */
-function showIndexLoading(label){
-  $('#stats').hidden=true;$('#index').hidden=false;$('#grid').innerHTML='';$('#combo').innerHTML='';
-  $('#count').textContent='';$('#loadSentinel').hidden=true;$('#shortsSec').hidden=true;
-  $('#index').innerHTML=pageSkeletonHtml(label,{cards:true});
-  fitSkeleton($('#index'));
-}
 function enterManagementSurface(){
   // A catalog request started before browser Back must not repaint filters over
   // the management page after it resolves.
@@ -2931,6 +3112,7 @@ function readTasteCache(){
       entry.dashboard&&typeof entry.dashboard==='object'))
   }catch(_error){return new Map()}
 }
+const TASTE_WINDOWS=[['all','全部时间'],['365d','最近一年'],['90d','最近 90 天']];
 let tasteWindow='all',tasteEvidence='browser',tasteDimension={browser:'tags',peach:'tags'};
 let tasteCache=readTasteCache(),tasteRequest=0;
 function tasteCacheSet(window,dashboard){
@@ -3018,8 +3200,7 @@ function renderTaste(d){
     <header class="tastehead"><div class="insightswitch" role="radiogroup" aria-label="口味证据来源">
         <label><input type="radio" name="taste-evidence" value="browser"${tasteEvidence==='browser'?' checked':''}><span>浏览器记录</span></label>
         <label><input type="radio" name="taste-evidence" value="peach"${tasteEvidence==='peach'?' checked':''}><span>Peach 内部</span></label></div>
-      <div class="tasteactions"><select data-taste-window aria-label="分析范围">
-        <option value="all">全部时间</option><option value="365d">最近一年</option><option value="90d">最近 90 天</option></select>
+      <div class="tasteactions">${selectFieldHtml(TASTE_WINDOWS,d.window||tasteWindow,{label:'分析范围',attr:'data-taste-window'})}
         <button data-taste-refresh>${icon('refresh-cw')}读取 Peach 主机</button>
         <button data-taste-import>${icon('upload')}导入历史</button><input data-taste-file type="file" hidden></div></header>
     <div class="tastestate" data-taste-state role="status" aria-live="polite"></div>
@@ -3064,7 +3245,6 @@ function renderTaste(d){
       <div class="insightpanelbody"><div>${sourceRows||emptyStateHtml('database','还没有数据源','导入或读取浏览记录后，这里会列出已采集设备。')}</div></div></section>
   </div>`;
   const root=$('#stats'),stateEl=root.querySelector('[data-taste-state]'),file=root.querySelector('[data-taste-file]');
-  root.querySelector('[data-taste-window]').value=d.window||tasteWindow;
   root.querySelectorAll('input[name="taste-evidence"]').forEach(input=>input.onchange=()=>{
     tasteEvidence=input.value;
     root.querySelectorAll('[data-taste-summary]').forEach(panel=>panel.hidden=panel.dataset.tasteSummary!==tasteEvidence);
@@ -3076,7 +3256,8 @@ function renderTaste(d){
       const selected=tab===button;tab.setAttribute('aria-selected',String(selected));tab.tabIndex=selected?0:-1});
     root.querySelectorAll(`[data-taste-dimension-panel^="${source}:"]`).forEach(panel=>panel.hidden=panel.dataset.tasteDimensionPanel!==button.dataset.tasteDimension)
   });
-  root.querySelector('[data-taste-window]').onchange=e=>{tasteWindow=e.target.value;openTaste(false)};
+  const tasteWindowField=wireSelectField(root.querySelector('[data-taste-window]'));
+  tasteWindowField.addEventListener('change',()=>{tasteWindow=tasteWindowField.value;openTaste(false)});
   /* 总结里的下一步动作按路径走，派发仍旧交给 ROUTES：在这里比对一遍路径字符串，
      就又多出一处会和那张表不一致的知识。 */
   root.querySelectorAll('[data-taste-route]').forEach(button=>button.onclick=()=>{
@@ -3246,6 +3427,11 @@ async function openDataCleanup(push=true){
     .map(([key,label])=>`${esc(label)} ${Number(junkCounts[key]).toLocaleString()}`),
     ...(Number(junk.dismissed_total)>0?[`已忽略 ${Number(junk.dismissed_total).toLocaleString()}`]:[])].join(' · ');
   $('#stats').innerHTML=`<div class="cleanuppage"><div class="cleanupgrid">
+    <section class="cleanupfieldset" data-geist-fieldset aria-labelledby="cleanupScrapingTitle">
+      <div class="geist-fieldset-content">${fieldsetTitle('cleanupScrapingTitle','采集来源')}
+        <p>下载高清封面，设置代理和 Cookie。</p></div>
+      <footer class="geist-fieldset-footer" data-geist-fieldset-footer><button type="button" data-cleanup-open="scraping">设置采集来源</button></footer>
+    </section>
     <section class="cleanupfieldset" data-geist-fieldset aria-labelledby="cleanupJunkTitle">
       <div class="geist-fieldset-content">${fieldsetTitle('cleanupJunkTitle','垃圾文件')}
         <strong>${Number(junk.pending_total||0).toLocaleString()} 个待判断</strong>
@@ -3277,6 +3463,7 @@ async function openDataCleanup(push=true){
   ${linkManagerMarkup()}
   ${resourceSyncMarkup()}</div>`;
   $('#stats').querySelector('[data-cleanup-open="junk"]').onclick=()=>openManage('ads');
+  $('#stats').querySelector('[data-cleanup-open="scraping"]').onclick=()=>openScraping();
   $('#stats').querySelector('[data-cleanup-open="duplicates"]').onclick=()=>openDuplicates();
   $('#stats').querySelectorAll('[data-cleanup-go]').forEach(button=>
     button.onclick=()=>openManage(button.dataset.cleanupGo));
@@ -3588,6 +3775,29 @@ async function openQualityGoals(push=true){
   const props={openItem,javTitleHtml,javDisplayName,srcBadge};
   await ui.mountIsland('quality-goals',$('#stats'),props,{isCurrent:()=>surfaceCurrent(surface)});
   if(surfaceCurrent(surface))window.scrollTo({top:0,behavior:'smooth'});
+}
+/* 配置页（这台电脑的媒体文件夹与端口）同样是 island。它只在运行 Peach 的这台电脑上
+   有意义：服务端按回环地址与独立包两道门放行，手机上的管理菜单也不列它
+   （见 runtimeConfigurable）。保存成功的回执由遗留层的 Toast 发，island 只管表单。 */
+async function openConfiguration(push=true){
+  releaseHoverPreviews();disposeStage(false);enterManagementSurface();
+  if(push)route('/configuration');
+  const surface=claimSurface('/configuration');
+  showManagementBody({placeholder:managementPlaceholder('/configuration')});
+  const ui=await import('/dist/peach-ui.js');
+  const props={receipt:message=>actionReceipt(message)};
+  await ui.mountIsland('configuration',$('#stats'),props,{isCurrent:()=>surfaceCurrent(surface)});
+  if(surfaceCurrent(surface))window.scrollTo({top:0,behavior:'smooth'});
+}
+
+async function openScraping(push=true){
+  releaseHoverPreviews();disposeStage(false);enterManagementSurface();
+  if(push)route('/scraping');
+  const surface=claimSurface('/scraping');
+  showManagementBody({placeholder:pageSkeletonHtml('正在读取采集来源',{cards:true})});
+  $('#manageTitle').textContent='采集来源';
+  const ui=await import('/dist/peach-ui.js');
+  await ui.mountIsland('scraping',$('#stats'),{toast},{isCurrent:()=>surfaceCurrent(surface)});
 }
 
 /* ── 在线追更 ──
@@ -4005,15 +4215,14 @@ async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=fals
   }
   const followVideo=$('#stage').querySelector('.followdetailmedia>video');
   if(followVideo){
-    /* 清晰度解析与默认片源并行。它需要回源抓详情，不能挡住播放器挂载；否则来源慢
-       一点，详情里就会先留下一个没有 src 的空视频框。 */
-    const qualitiesPromise=api(`/follow-qualities?id=${encodeURIComponent(item.id)}`)
-      .then(answer=>answer?.qualities?.length?answer.qualities:null).catch(()=>null);
+    /* 清晰度与字节数的解析跟默认片源并行。它需要回源抓详情、再 HEAD 一次正片，不能挡住
+       播放器挂载；否则来源慢一点，详情里就会先留下一个没有 src 的空视频框。 */
+    const mediaPromise=api(`/follow-qualities?id=${encodeURIComponent(item.id)}`).catch(()=>null);
     const followPlayer=await mountDetailPlayer(item,followVideo,false,{
       source:{src,type:selectedMedia?.media_type||item.media_type||'video/mp4'},
       checkSourceStatus:false,
       size:selectedMedia?.size,
-      qualitiesPromise
+      mediaPromise
     });
     const stopFollowAmbient=mountPlayerAmbient(followVideo);
     followPlayer?.one?.('dispose',stopFollowAmbient);
@@ -4730,12 +4939,8 @@ function renderFollowManage(credentials){
         <div class="fsechead"><h3>关注列表</h3>
           <span class="fmeta">${sources.length} 个来源${
             counts.new?` · <b>${counts.new}</b> 条未看`:''}</span>
-          <label class="fmanagesort">${icon('sort')}<select data-follow-sort aria-label="关注列表排序">
-            <option value="checked"${followManageSort==='checked'?' selected':''}>检查时间</option>
-            <option value="added"${followManageSort==='added'?' selected':''}>添加时间</option>
-            <option value="name"${followManageSort==='name'?' selected':''}>作者名称</option>
-            <option value="sources"${followManageSort==='sources'?' selected':''}>来源数量</option>
-          </select></label>
+          <span class="fmanagesort">${icon('sort')}${selectFieldHtml(FOLLOW_SORT_OPTIONS,followManageSort,
+            {label:'关注列表排序',attr:'data-follow-sort'})}</span>
           <button class="fbtn fmanagedir" type="button" data-follow-dir aria-label="${
             followSortLabel()}">${icon(followManageDir==='asc'?'arrow-up':'arrow-down')}</button>
           ${followLayoutButtons()}
@@ -4782,7 +4987,10 @@ function routeFollowManageSort(){
   if(followManageDir!==(FOLLOW_SORT_DEFAULT_DIR[followManageSort]||'desc'))params.set('dir',followManageDir);
   const query=params.toString();
   route('/follow-manage'+(query?'?'+query:''));
-  openFollowManage(false);
+  // 排序是拿手里这份 followData 重排，不是换一批数据，所以不走整页那条路径：那条会先把
+  // 整页换成骨架、再把三个接口重取一遍、最后滚回顶部，而屏幕上真正变的只有下面那份
+  // 关注列表。直接重画，页面不闪、位置不动。
+  renderFollowManage(followCredentials||{});
 }
 async function openFollowManage(push=true){
   releaseHoverPreviews();disposeStage(false);enterManagementSurface();
@@ -4800,7 +5008,7 @@ async function openFollowManage(push=true){
     surfaceApi(surface,'/api/follow?limit=1'),surfaceApi(surface,'/api/follow/credentials'),
     surfaceApi(surface,'/healthz')]);
   if(!surfaceCurrent(surface))return;
-  followData=data;followRuntime=runtime;
+  followData=data;followRuntime=runtime;followCredentials=credentials;
   renderFollowManage(credentials);
   window.scrollTo({top:0,behavior:'smooth'});
 }
@@ -4840,12 +5048,12 @@ function wireFollowManage(){
   void wireResolveProgress();
   const root=$('#stats'),form=root.querySelector('#followAdd');
   wireScrollers(root);
-  const sort=root.querySelector('[data-follow-sort]');
-  if(sort)sort.onchange=()=>{
-    followManageSort=sort.value;
+  const sortField=root.querySelector('[data-follow-sort]');
+  if(sortField)wireSelectField(sortField).addEventListener('change',()=>{
+    followManageSort=sortField.value;
     followManageDir=FOLLOW_SORT_DEFAULT_DIR[followManageSort]||'desc';
     routeFollowManageSort();
-  };
+  });
   const dir=root.querySelector('[data-follow-dir]');
   if(dir)dir.onclick=()=>{
     followManageDir=followManageDir==='asc'?'desc':'asc';
@@ -5255,12 +5463,14 @@ function setPeopleIndexLayout(value){
   appSettings.peopleLayout=value;
   saveSettings();
   document.querySelectorAll('.igrid').forEach(grid=>{grid.dataset.layout=peopleIndexLayout()});
+  fitSkeleton($('#index'));
 }
 /* 一格人：圆框或竖幅头像、名字、一个读数。索引页和事务所名册摆的是同一样东西，
    区别只在读数的口径，所以模板只有这一份，版式也由同一个 `.igrid[data-layout]` 管。
 
-   取景挂在圆框上而不是 img 上：竖幅裁到 3:4 时几何居中会切掉脸，而 img 由八处共用的
-   avatarInner 拼，两个版式都只能从容器这一侧改。 */
+   平移挂在圆框上而不是 img 上：竖幅裁到 3:4 时几何居中会切掉脸，而 img 由八处共用的
+   avatarInner 拼，两个版式都只能从容器这一侧改。放大反过来只能挂在 img 上——那改的
+   是图自己的尺寸和偏移——所以脸框穿过 avatarInner 贴到 img 上，两件事各走各的。 */
 function personCellHtml(x,kind,countText){
   const face=faceOrigin(x.avatar_focus);
   const ref=x.entity_id||x.id;
@@ -5270,7 +5480,8 @@ function personCellHtml(x,kind,countText){
   return `<button class="icell" data-k="${esc(x.k)}" data-kind="${kind}">
       <span class="ring"${face?` style="--face:${face}"`:''}>${avatarInner(x.k,
         ref?{id:ref,has_image:x.has_image}:null,
-        x.has_avatar&&!company?x.rep:null, kind, x.mark, x.has_logo?x.k:'')}</span>
+        x.has_avatar&&!company?x.rep:null, kind, x.mark, x.has_logo?x.k:'',
+        company?null:x.avatar_focus)}</span>
       <span class="nm">${esc(x.k)}</span><span class="n">${countText}</span></button>`;
 }
 const INDEX_TITLES={performers:'艺人',creators:'创作者',studios:'厂牌',
@@ -5282,6 +5493,62 @@ function makerModeHtml(kind){
   return `<div class="viewmodes">`+MAKER_INDEX_KINDS.map(([key,label,symbol])=>
     `<button data-index-kind="${key}" aria-pressed="${kind===key}">${icon(symbol)}${label}</button>`
     ).join('')+`</div>`;
+}
+function indexHeaderHtml(kind,q,countText){
+  const title=INDEX_TITLES[kind]||'标签',people=kind!=='tags';
+  const onlineTags=tagIndexScope==='online';
+  return `<div class="ihead">
+      <h2 class="disp indexheading">${kind==='tags'?icon('tags'):''}${title}</h2>
+      <span class="mono" id="indexCount">${countText}</span>
+      ${kind==='tags'?`<div class="viewmodes"><button data-tag-scope="local" aria-pressed="${!onlineTags}">${icon('hard-drive')}本地</button><button data-tag-scope="online" aria-pressed="${onlineTags}">${icon('rss')}在线</button></div>
+      <div class="viewmodes"><button data-tag-view="cloud" aria-pressed="${tagIndexMode==='cloud'}">${icon('tags')}标签云</button><button data-tag-view="alphabet" aria-pressed="${tagIndexMode==='alphabet'}">${icon('text-aa')}字母表</button></div>`:''}
+      ${MAKER_INDEX_KINDS.some(([key])=>key===kind)?makerModeHtml(kind):''}
+      ${people?peopleLayoutButtons():''}
+      ${searchInputHtml({id:'iq',label:'过滤'+title,value:q||''})}
+    </div>`;
+}
+function wireIndexControls(kind){
+  const iq=$('#iq');let it2;
+  const refineIndex=()=>{clearTimeout(it2);
+    it2=setTimeout(()=>openIndex(kind,iq.value.trim(),true,true),300)};
+  /* 中文输入法在选字过程中一样发 input，事件上的 isComposing 是唯一可靠的判据：
+     拿还没定型的拼音去筛选，筛的是「zhon」这种半截输入。组完字由 compositionend 接手。 */
+  iq.oninput=e=>{if(e.isComposing)return;refineIndex()};
+  iq.oncompositionend=refineIndex;
+  /* 只读筛选不配提交按钮，回车就是「别等那 300 ms，现在就查」。组字过程中的回车
+     是在定字，放过去会拿半截拼音发请求。 */
+  iq.onkeydown=e=>{if(e.isComposing||e.key!=='Enter')return;
+    e.preventDefault();clearTimeout(it2);openIndex(kind,iq.value.trim(),true,true)};
+  wireIconSwitch($('#index'),'data-people-layout',setPeopleIndexLayout);
+  /* 厂牌与事务所各有自己的地址，所以这个开关走的是 openIndex 的另一条 kind，
+     不是在同一批数据上再筛一次。过滤词跟着走：它问的是同一个问题。 */
+  $('#index').querySelectorAll('[data-index-kind]').forEach(b=>b.onclick=()=>{
+    if(kind===b.dataset.indexKind)return;
+    openIndex(b.dataset.indexKind,$('#iq').value.trim(),true)});
+  $('#index').querySelectorAll('[data-tag-scope]').forEach(b=>b.onclick=()=>{
+    if(tagIndexScope===b.dataset.tagScope)return;
+    tagIndexScope=b.dataset.tagScope;
+    // 在线标签全是英文，字母表才是它的形态；切过去时顺手换上，不必用户再点一次。
+    if(tagIndexScope==='online')tagIndexMode='alphabet';
+    tagIndexCategory='all';
+    selectedIndexTags.clear();
+    openIndex('tags',$('#iq').value.trim(),true)});
+  $('#index').querySelectorAll('[data-tag-view]').forEach(b=>b.onclick=()=>{
+    tagIndexMode=b.dataset.tagView;openIndex('tags',$('#iq').value.trim(),true)});
+  $('#index').querySelectorAll('[data-tag-category]').forEach(b=>b.onclick=()=>{
+    tagIndexCategory=b.dataset.tagCategory;openIndex('tags',$('#iq').value.trim(),true)});
+}
+function showIndexLoading(label,kind='',q=''){
+  $('#stats').hidden=true;$('#index').hidden=false;$('#grid').innerHTML='';$('#combo').innerHTML='';
+  $('#count').textContent='';$('#loadSentinel').hidden=true;
+  const placeholder=kind?indexHeaderHtml(kind,q,'<span class="countskeleton"></span>')+
+    `<div id="indexFilters"></div><div id="indexBody">${indexSkeletonHtml({kind,layout:peopleIndexLayout(),mode:tagIndexMode})}</div><button class="indexmore" id="indexMore" type="button" hidden>载入更多</button>`
+    :pageSkeletonHtml(label,{cards:true});
+  const next=skeletonKeyOf(placeholder);
+  if($('#index').querySelector('[data-skeleton]')?.dataset.skeleton!==next){
+    $('#index').innerHTML=placeholder;fitSkeleton($('#index'));
+  }
+  if(kind)wireIndexControls(kind);
 }
 /* refine=true 表示这一次是筛选框自己重跑，不是一次页面进入：既不铺骨架，也不重画表头。 */
 async function openIndex(kind,q,push=true,refine=false){
@@ -5307,7 +5574,7 @@ async function openIndex(kind,q,push=true,refine=false){
   disposeStage(false);
   /* 骨架只盖真正在等的内容区。筛选重跑时页面已经在这儿了，把骨架铺上去会连筛选框
      一起吃掉——同步就能给出的控件不进骨架，正在打字的那个更不能。 */
-  if(!refine)showIndexLoading('正在读取'+(INDEX_TITLES[kind]||'标签'));
+  if(!refine)showIndexLoading('正在读取'+(INDEX_TITLES[kind]||'标签'),kind,q);
   /* 在线标签走关注页那套统计，形状与 /api/index 一致，所以分页、搜索和「载入更多」
      这三处现成的机制换个地址就能用。 */
   const indexApi=offset=>onlineTags
@@ -5320,7 +5587,7 @@ async function openIndex(kind,q,push=true,refine=false){
   const d=await api(indexApi(0));
   if(requestSeq!==indexRequestSeq||location.pathname!=='/'+kind)return;
   $('#index').hidden=false;buildEdge(); $('#grid').innerHTML=''; $('#count').textContent='';
-  $('#loadSentinel').hidden=true; $('#shortsSec').hidden=true;
+  $('#loadSentinel').hidden=true;
   const title=INDEX_TITLES[kind]||'标签';
   const tagItems=[...d.items];
   const tagGroups=items=>{
@@ -5360,49 +5627,13 @@ async function openIndex(kind,q,push=true,refine=false){
   const countText=`${tagItems.length}${d.has_more?'+':''} 项`;
   /* 筛选重跑不重画表头：输入框是同一个节点，焦点、光标位置和中文输入法正在组的字
      才不会在 300 ms 后被换掉。表头里随查询变的只有计数一处，单独改它。 */
-  if(refine&&$('#iq')){
+  if($('#indexFilters')){
     $('#indexCount').textContent=countText;
     $('#indexFilters').innerHTML=filters;
     $('#indexBody').innerHTML=body;
     $('#indexMore').hidden=!d.has_more;
-  }else $('#index').innerHTML=`<div class="ihead">
-      <h2 class="disp indexheading">${kind==='tags'?icon('tags'):''}${title}</h2>
-      <span class="mono" id="indexCount">${countText}</span>
-      ${kind==='tags'?`<div class="viewmodes"><button data-tag-scope="local" aria-pressed="${!onlineTags}">${icon('hard-drive')}本地</button><button data-tag-scope="online" aria-pressed="${onlineTags}">${icon('rss')}在线</button></div>
-      <div class="viewmodes"><button data-tag-view="cloud" aria-pressed="${tagIndexMode==='cloud'}">${icon('tags')}标签云</button><button data-tag-view="alphabet" aria-pressed="${tagIndexMode==='alphabet'}">${icon('text-aa')}字母表</button></div>`:''}
-      ${MAKER_INDEX_KINDS.some(([key])=>key===kind)?makerModeHtml(kind):''}
-      ${people?peopleLayoutButtons():''}
-      ${searchInputHtml({id:'iq',label:'过滤'+title,value:q||''})}
-    </div><div id="indexFilters">${filters}</div><div id="indexBody">${body}</div><button class="indexmore" id="indexMore" type="button" ${d.has_more?'':'hidden'}>载入更多</button>`;
-  const iq=$('#iq');let it2;
-  const refineIndex=()=>{clearTimeout(it2);
-    it2=setTimeout(()=>openIndex(kind,iq.value.trim(),true,true),300)};
-  /* 中文输入法在选字过程中一样发 input，事件上的 isComposing 是唯一可靠的判据：
-     拿还没定型的拼音去筛选，筛的是「zhon」这种半截输入。组完字由 compositionend 接手。 */
-  iq.oninput=e=>{if(e.isComposing)return;refineIndex()};
-  iq.oncompositionend=refineIndex;
-  /* 只读筛选不配提交按钮，回车就是「别等那 300 ms，现在就查」。组字过程中的回车
-     是在定字，放过去会拿半截拼音发请求。 */
-  iq.onkeydown=e=>{if(e.isComposing||e.key!=='Enter')return;
-    e.preventDefault();clearTimeout(it2);openIndex(kind,iq.value.trim(),true,true)};
-  wireIconSwitch($('#index'),'data-people-layout',setPeopleIndexLayout);
-  /* 厂牌与事务所各有自己的地址，所以这个开关走的是 openIndex 的另一条 kind，
-     不是在同一批数据上再筛一次。过滤词跟着走：它问的是同一个问题。 */
-  $('#index').querySelectorAll('[data-index-kind]').forEach(b=>b.onclick=()=>{
-    if(kind===b.dataset.indexKind)return;
-    openIndex(b.dataset.indexKind,$('#iq').value.trim(),true)});
-  $('#index').querySelectorAll('[data-tag-scope]').forEach(b=>b.onclick=()=>{
-    if(tagIndexScope===b.dataset.tagScope)return;
-    tagIndexScope=b.dataset.tagScope;
-    // 在线标签全是英文，字母表才是它的形态；切过去时顺手换上，不必用户再点一次。
-    if(tagIndexScope==='online')tagIndexMode='alphabet';
-    tagIndexCategory='all';
-    selectedIndexTags.clear();
-    openIndex('tags',$('#iq').value.trim(),true)});
-  $('#index').querySelectorAll('[data-tag-view]').forEach(b=>b.onclick=()=>{
-    tagIndexMode=b.dataset.tagView;openIndex('tags',$('#iq').value.trim(),true)});
-  $('#index').querySelectorAll('[data-tag-category]').forEach(b=>b.onclick=()=>{
-    tagIndexCategory=b.dataset.tagCategory;openIndex('tags',$('#iq').value.trim(),true)});
+  }else $('#index').innerHTML=indexHeaderHtml(kind,q,countText)+`<div id="indexFilters">${filters}</div><div id="indexBody">${body}</div><button class="indexmore" id="indexMore" type="button" ${d.has_more?'':'hidden'}>载入更多</button>`;
+  wireIndexControls(kind);
   const wireIndexEntries=root=>root.querySelectorAll('[data-k]').forEach(b=>b.onclick=()=>{
     if(people){openEntity(b.dataset.kind,b.dataset.k);return}
     /* 在线标签只在关注页有意义——它标注的是还没入库的在线更新，拿去筛目录必然
@@ -5966,7 +6197,7 @@ async function openEntity(kind,name,push=true){
     (state.jav==='1'||(items.items||[]).some(item=>item.is_jav));
   document.body.classList.add('entity-open');
   $('#index').hidden=false;$('#grid').innerHTML='';$('#count').textContent='';
-  $('#loadSentinel').hidden=true;$('#shortsSec').hidden=true;
+  $('#loadSentinel').hidden=true;
   /* 大位这条链每一环都先问过再出图：公司取自己的标识（厂牌是 `/logo`，事务所是官网
      圆标），人是实体图→代表作头像，一环都取不到就一个 `<img>` 都不出，首字母垫底直接
      露出来。四个标志（`has_logo`／`has_image`／`has_avatar`／`mark_link_id`）都由
@@ -5980,7 +6211,8 @@ async function openEntity(kind,name,push=true){
     mark:kind==='agency'?d.mark_link_id:null,
     logo:company&&d.has_logo?d.canonical_name:'',
     alt:esc(d.canonical_name),lazy:false,
-    style:company?'':facePos(d.avatar_focus),dropStyle:true}):'';
+    style:company?'':facePos(d.avatar_focus),focus:company?null:d.avatar_focus,
+    dropStyle:true}):'';
   /* 链接按 beeg 的资料页形态：社媒收成纯图标，官网／事务所保留名字。
 
      社媒的 handle 是网址的一部分，写出来只是把 URL 抄一遍——`X @remu19971203` 里
@@ -6094,28 +6326,33 @@ async function openEntity(kind,name,push=true){
 }
 
 let drawerSuppressUntil=0;
+/* 抽屉里所有重画都只写 #drawerScroll：#drawer 本身是定位宿主，覆盖式滚动条的轨道和
+   这层滚动容器都挂在它身上，整块 innerHTML 一换就把 buildBars() 要写的容器连轨道一起
+   抹掉，首页从此停在骨架态。换页面的判据 data-surface 也记在滚动层上：
+   syncSidebarSurface() 认定换了页面就 replaceChildren()，传宿主进去等于把滚动层删掉。 */
 function buildDrawerNavigation(){
-  const drawer=$('#drawer'),key=surfacePath()+location.search;
-  if(!syncSidebarSurface(drawer,key)){
-    drawer.querySelectorAll('[data-nav]').forEach(button=>
+  const scroll=$('#drawerScroll'),key=surfacePath()+location.search;
+  if(!syncSidebarSurface(scroll,key)){
+    scroll.querySelectorAll('[data-nav]').forEach(button=>
       button.setAttribute('aria-pressed',String(navOn(button.dataset.nav))));
     return;
   }
-  drawer.innerHTML=`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+  scroll.innerHTML=`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
     <b class="disp" style="font-size:15px;letter-spacing:.1em">导航与筛选</b>
     <button id="drawerClose" class="ib" title="收起" aria-label="收起导航">${icon('x')}</button></div>
     <div class="dnav">${orderedEdgeIcons().map(([k,label,ic])=>
       `<button data-nav="${k}" draggable="true" aria-pressed="${navOn(k)}">${icon(ic)}<span>${label}</span></button>`).join('')}</div>`;
   $('#drawerClose').onclick=()=>openDrawer(false);
-  $('#drawer').querySelectorAll('[data-nav]').forEach(b=>b.onclick=()=>navTo(b.dataset.nav));
-  wireNavigationDrag(drawer.querySelector('.dnav'));
+  scroll.querySelectorAll('[data-nav]').forEach(b=>b.onclick=()=>navTo(b.dataset.nav));
+  wireNavigationDrag(scroll.querySelector('.dnav'));
 }
 function renderFollowDrawer(items){
   buildDrawerNavigation();
-  $('#drawer').querySelectorAll('.sec').forEach(section=>section.remove());
+  const scroll=$('#drawerScroll');
+  scroll.querySelectorAll('.sec').forEach(section=>section.remove());
   const counts=sidebarTagCounts(items.map(item=>({tags:followCardTags(item)})));
   if(!counts.length)return;
-  $('#drawer').insertAdjacentHTML('beforeend',`<div class="sec cat-online"><h3>内容标签</h3><div class="chips">${
+  scroll.insertAdjacentHTML('beforeend',`<div class="sec cat-online"><h3>内容标签</h3><div class="chips">${
     counts.map(([tag,n])=>
       `<button class="chip online" data-follow-drawer-tag="${esc(tag)}" aria-pressed="${followTags.has(tag)}">${esc(tagLabel(tag))}<span class="n">${n}</span></button>`).join('')}</div></div>`);
   $('#drawer').querySelectorAll('[data-follow-drawer-tag]').forEach(b=>b.onclick=()=>{
@@ -6151,13 +6388,29 @@ const MANAGE_SECTIONS=[
   // `/follow`。两处都叫「关注」时，管理菜单和页标题都在说一个它去不到的地方。
   ['follow','关注管理','rss'],
   ['quality','高清版','sparkles'],
+  // 这台电脑的媒体文件夹与端口，字形是一台电脑；`settings` 归右上角的设置弹层。
+  ['configuration','配置','computer'],
 ];
-/* 管理菜单只留四项。人工复核、回收站、高清版都是「收拾库里已有的东西」，
+/* 管理菜单只留五项。人工复核、回收站、高清版都是「收拾库里已有的东西」，
    和垃圾文件、重复文件、空文件夹是同一件事的不同步骤，统一从数据管理进；
    统计页也因此不再挂链接管理和资源同步这两块跟统计无关的面板。 */
-const MANAGE_MENU_SECTIONS=['stats','taste','cleanup','follow'];
-const manageMenuSections=()=>MANAGE_SECTIONS.filter(([key])=>MANAGE_MENU_SECTIONS.includes(key));
-const OPTIONAL_EDGE_ICONS=MANAGE_SECTIONS.map(([key,label,ic])=>
+const MANAGE_MENU_SECTIONS=['stats','taste','cleanup','follow','configuration'];
+/* 「配置」只对运行 Peach 的这台电脑有意义：服务端按调用方回 `/healthz` 的 `configurable`，
+   手机和另一台电脑的菜单里不列它。第一次画管理条时问一次，答复回来后重画。 */
+let runtimeConfigurable=null;
+function probeConfigurable(){
+  if(runtimeConfigurable!==null)return;
+  runtimeConfigurable=false;
+  api('/healthz').then(runtime=>{
+    runtimeConfigurable=!!runtime.configurable;
+    if(runtimeConfigurable&&manageSection())buildManageBar();
+  }).catch(()=>{});
+}
+const manageMenuSections=()=>MANAGE_SECTIONS.filter(([key])=>MANAGE_MENU_SECTIONS.includes(key)
+  &&(key!=='configuration'||runtimeConfigurable===true));
+/* 配置页绑定这台机器，不进跨机同步的侧栏顺序：钉到手机的侧栏上只会得到一句「请在运行
+   Peach 的电脑上打开」。 */
+const OPTIONAL_EDGE_ICONS=MANAGE_SECTIONS.filter(([key])=>key!=='configuration').map(([key,label,ic])=>
   key==='follow'?['follow-manage',label,ic]
     :key==='cleanup'?['data-cleanup',label,ic]:[key,label,ic]);
 const NAV_CATALOG=[...EDGE_ICONS,...OPTIONAL_EDGE_ICONS];
@@ -6317,6 +6570,7 @@ function manageSection(){
 function buildManageBar(){
   const current=manageSection(),bar=$('#managebar');
   bar.hidden=!current;
+  probeConfigurable();
   // 管理区是行政界面，不该顶着首页的人物/厂牌横条和标签筛选。
   // 隐藏 tagbar 的同时同步 count 栏的吸顶偏移：它默认按「顶栏+筛选条」留位，
   // 筛选条不在时那个偏移会留出一条 58px 的缝，滚动内容从缝里穿出来。
@@ -6348,6 +6602,7 @@ const MANAGE_CRUMB_PAGES={
   '/review':'人工复核',
   '/trash':'回收站',
   '/quality-goals':'高清版',
+  '/scraping':'采集来源',
 };
 function paintManageTitle(){
   const current=manageSection(),el=$('#manageTitle');
@@ -6357,6 +6612,7 @@ function paintManageTitle(){
      重复文件正文都是全宽网格，跟着居中就是标题在宽屏上凭空左缩一截、跟内容对不齐。 */
   document.body.classList.toggle('cleanup-layout',current==='cleanup'&&decodeURIComponent(location.pathname)==='/data-cleanup');
   document.body.classList.toggle('follow-manage-layout',decodeURIComponent(location.pathname)==='/follow-manage');
+  document.body.classList.toggle('configuration-layout',current==='configuration');
   const entry=MANAGE_SECTIONS.find(([k])=>k===current);
   el.hidden=!entry;
   // 数据管理之下按路径再分一层（MANAGE_CRUMB_PAGES）：垃圾文件/重复文件的
@@ -6632,10 +6888,10 @@ async function load(reset){
     const html=batch.map(junkCardHtml).join('');
     if(reset)releaseHoverPreviews($('#grid'));
     if(reset&&!batch.length)$('#grid').innerHTML=emptyState('check',junkView==='dismissed'?'没有已排除的文件':'没有待判断的垃圾文件',junkView==='dismissed'?'点“不是垃圾”的资源会保留在这里，可随时重新判断。':'当前分类没有候选文件。');
-    else if(reset)$('#grid').innerHTML=html;else $('#grid').insertAdjacentHTML('beforeend',html);
+    else if(reset)setGridCards(html);else appendGridCards(html);
     renderJunkNavigation(adsBatch);
-    $('#loadSentinel').hidden=$('#grid').children.length>=adsBatch.items.length;
-    $('#shortsSec').hidden=true;wireJunkCards($('#grid'));paintSelection();return;
+    $('#loadSentinel').hidden=$('#grid').querySelectorAll('.junkcard').length>=adsBatch.items.length;
+    wireJunkCards($('#grid'));paintSelection();return;
   }
   adsBatch=null;
   const p=new URLSearchParams(Object.entries(state).filter(([,v])=>v));
@@ -6658,15 +6914,18 @@ async function load(reset){
     $('#grid').innerHTML=emptyState('trash','回收站是空的','删掉的内容会先到这里；确认不再需要后再清空。');
   else if(reset&&!d.items.length)
     $('#grid').innerHTML=emptyState('search','没有符合条件的作品','调整筛选或搜索条件后再试。');
-  else if(reset)$('#grid').innerHTML=html;
-  else $('#grid').insertAdjacentHTML('beforeend',html);
+  /* 接下来这一页新增在当前这段里的起点：竖屏带的落点要落在新增的那几行之间，
+     不能又插回已经看过的上半屏。 */
+  const addedFrom=reset?0:[...lastGridSection().children].filter(x=>x.matches('.card[data-id]')).length;
+  if(reset)setGridCards(html);
+  else appendGridCards(html);
   renderCount();
   $('#loadSentinel').hidden=reset?d.items.length>=total:!d.has_more;
   wireCards($('#grid'),state.state==='trash'?openResourceCard:undefined);
   if(state.state==='trash')wireResourceCardActions($('#grid'));
   wireMixCards($('#grid'));
   paintSelection();
-  if(reset)loadShorts(requestSeq,surface);
+  loadShorts(requestSeq,surface,{reset,addedFrom});
   }finally{if(!reset&&requestSeq===loadRequestSeq)listLoading=false}
 }
 const loadObserver=new IntersectionObserver(entries=>{
@@ -6773,33 +7032,51 @@ $('#q').onkeydown=e=>{
 };
 $('#q').addEventListener('focus',()=>{Promise.all([loadSearchHistory(),loadSearchPool()]).then(renderSearchMenu)});
 
-const SHORTS_ROW_OFFSET=2;   // 竖屏条插在第几行之后，0 表示置顶
-async function loadShorts(requestSeq=loadRequestSeq,surface=surfaceToken(surfacePath())){
-  // JAV 模式不插竖屏条：番号发行物本身是横版，竖屏是另一类内容。
+/* 竖屏带每接一页出现一条，位置在这一页新增的那几行里随机取一个行边界。
+   固定第几行的写法从第二屏起就成了可预期的栏目，而这条带子的作用正是打断节奏——
+   位置可预期，节奏就不再被打断。每条带子取不同的一批竖屏，翻下去不会反复看到同 18 个。 */
+const SHORTS_BATCH=18;
+let shortsOffset=0;
+async function loadShorts(requestSeq,surface,{reset=false,addedFrom=0}={}){
+  // JAV 模式不插竖屏带：番号发行物本身是横版，竖屏是另一类内容。
   // 主列表的 exclude_vertical 管不到这条——它是独立请求、独立插入的。
   if(!isCatalogPath(decodeURIComponent(location.pathname))||javActive()||state.orient==='竖屏'
-     ||state.state==='ads'||state.state==='trash'){
-    $('#shortsSec').hidden=true;$('#grid').querySelector('#shortsInline')?.remove();return}
+     ||state.state==='ads'||state.state==='trash')return;
+  if(reset)shortsOffset=0;
   const p=new URLSearchParams(Object.entries(state).filter(([,v])=>v));
-  /* 排序跟着主列表走，不再写死 sort=new；换一批时竖屏条也要一起换。 */
-  p.set('orient','竖屏');p.set('limit',18);p.set('offset',0);
+  /* 排序跟着主列表走，不再写死 sort=new；换一批时竖屏带也要一起换。 */
+  p.set('orient','竖屏');p.set('limit',SHORTS_BATCH);p.set('offset',shortsOffset);
   const d=await surfaceApi(surface,'/api/items?'+p);
   if(requestSeq!==loadRequestSeq||!surfaceCurrent(surface))return;
-  if(!d.items.length){$('#shortsSec').hidden=true;return}
+  if(!d.items.length){shortsOffset=0;return}
   cache(d.items);
-  releaseHoverPreviews($('#srow'));
-  const grid=$('#grid');grid.querySelector('#shortsInline')?.remove();
-  /* 竖屏条整行占位（grid-column:1/-1），插在行边界上才不会把上一行截断留空。
-     余位不另拉一批横屏视频来补：那批 id 不在分页序列里，翻下一页必然重复，
-     而且被当成 scard 渲染会把横屏压成竖框。 */
-  const columns=Math.max(1,getComputedStyle(grid).gridTemplateColumns.split(' ').length);
-  const cards=[...grid.children].filter(x=>x.matches('.card[data-id]'));
-  const anchor=cards[Math.min(cards.length,columns*SHORTS_ROW_OFFSET)]||null;
-   const inline=`<section class="shorts-inline" id="shortsInline"><h2 class="disp">竖屏 <span class="mono shortscount">${d.total.toLocaleString()} 个</span><button class="shorts-enter" type="button">${icon('play')}<span>进入沉浸模式</span></button></h2><div class="srow">${d.items.map(it=>cardHtml(it,'scard')).join('')}</div></section>`;
-  if(anchor)anchor.insertAdjacentHTML('beforebegin',inline); else grid.insertAdjacentHTML('beforeend',inline);
-  const section=grid.querySelector('#shortsInline');
-  section.querySelector('.shorts-enter').onclick=()=>openTok();
-  wireCards(section.querySelector('.srow'),openTok); wireDrag(section.querySelector('.srow'));
+  const html=`<section class="shorts-inline"><h2 class="disp">竖屏 <span class="mono shortscount">${
+    d.total.toLocaleString()} 个</span><button class="shorts-enter" type="button">${
+    icon('play')}<span>进入沉浸模式</span></button></h2><div class="srow">${
+    d.items.map(it=>cardHtml(it,'scard')).join('')}</div></section>`;
+  const strip=splitGridForShorts(html,addedFrom);
+  if(!strip)return;
+  shortsOffset=d.has_more===false?0:shortsOffset+SHORTS_BATCH;
+  strip.querySelector('.shorts-enter').onclick=()=>openTok();
+  wireCards(strip.querySelector('.srow'),openTok); wireDrag(strip.querySelector('.srow'));
+}
+/* 从行边界剪开当前这段视频：剪点之后的卡整段搬进新的 `.grid`，竖屏带插在两段之间。
+   只在行边界上剪，否则上一行会被截断留下一段空白；两端各留至少一行，
+   剪在头尾就成了「置顶」或「垫底」，不是穿插。 */
+function splitGridForShorts(html,addedFrom){
+  const section=lastGridSection();
+  const cards=[...section.children].filter(x=>x.matches('.card[data-id]'));
+  const columns=Math.max(1,getComputedStyle(section).gridTemplateColumns.split(' ').length);
+  const boundaries=[];
+  for(let i=Math.max(columns,Math.ceil(Math.max(0,addedFrom)/columns)*columns);i<cards.length;i+=columns)
+    boundaries.push(i);
+  if(!boundaries.length)return null;
+  const at=cards[boundaries[Math.floor(Math.random()*boundaries.length)]];
+  const tail=document.createElement('div');tail.className='grid';
+  for(let node=at;node;){const move=node;node=node.nextElementSibling;tail.append(move)}
+  section.after(tail);
+  tail.insertAdjacentHTML('beforebegin',html);
+  return tail.previousElementSibling;
 }
 
 /* ── 就地展开播放 ── */
@@ -6940,7 +7217,7 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
   const online=it.location==='online';
   /* 保存过的在线资产照常播；只有反查不到关注条目时才拦下来说明原因。 */
   const onlineGated=online&&!it.follow_item_id;
-  const who=it.creator||it.code||it.studio||'未归属';
+  const who=(it.performers||[])[0]||it.creator||'未归属';
   const refs=it.entity_refs||{},studioRef=(refs.studio||[])[0];
   // 共演作品的女优逐行列出，每行带自己的头像；标签只写在第一行，其余留空保持对齐。
   const performerRefs=(refs.performer||[]).length
@@ -7028,7 +7305,7 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
         <div class="stitle">${javTitleHtml(it)}${partLabelBadge(it,queueContext)}${it.location==='online'?'':`<span class="srctools detailtitletools">${sourceToolButtons(it.id)}</span>`}</div></div>
       ${it.location==='online'?'':`<span class="srcstate detailtitlestate" aria-live="polite"></span>`}
       <div class="smeta mono">
-        <span class="detailmetaitem">${icon('monitor')}<span>${it.width||'?'}×${it.height||'?'}</span></span>
+        <span class="detailmetaitem">${icon('ratio')}<span>${it.width||'?'}×${it.height||'?'}</span></span>
         <span class="detailmetaitem">${icon('hard-drive')}<span>${fmtSize(it.size||0)}</span></span>
         ${it.release_date?`<span class="detailmetaitem">${icon('calendar')}<span>${esc(it.release_date)}</span></span>`:''}</div>
       <div class="detailidentity">${identityRows||`<div class="identityrow"><span></span><span class="ilabel">归属</span><span>${esc(who)}</span></div>`}</div>
@@ -7484,9 +7761,9 @@ async function tokShow(dir){
     const cast=full.performers||[];
     const who=cast.length
       ? cast.slice(0,3).join('、')+(cast.length>3?` 等 ${cast.length} 人`:'')
-      : (full.creator||it.code||'未归属');
+      : (full.creator||'未归属');
     const ownerKind=cast.length?'performer':(full.creator?'creator':'');
-    const ownerName=cast.length?cast[0]:(full.creator||it.code||'未归属');
+    const ownerName=cast.length?cast[0]:(full.creator||'未归属');
     const ownerRef=ownerKind?(full.entity_refs?.[ownerKind]?.[0]||null):null;
     $('#tokAvatar').innerHTML=avatarInner(ownerName,ownerRef,REP[ownerName],ownerKind||'performer');
     $('#tokWho').textContent=who;
@@ -7557,7 +7834,6 @@ async function tokNext(d){
   if(tokIdx<0)tokIdx=tokList.length-1;
   await tokShow(d);
 }
-$('#tokBtn').onclick=()=>openTok();
 $('#immerseBtn').onclick=()=>openTok();
 
 $('#searchBtn').onclick=()=>{const s=$('.search');s.classList.toggle('open');
@@ -7823,7 +8099,7 @@ function wireDrag(el){
 }
 /* `#count` 一起登记：窄屏下排序筛选整行由 `.count` 自己横向滚动，而它没有滚动条，
    不接拖动和滚轮就只剩看得见够不着的半个按钮。 */
-function wireAllDrag(){['#tagbar','#srow','#nrow','#count'].forEach(s=>wireDrag($(s)));
+function wireAllDrag(){['#tagbar','#nrow','#count'].forEach(s=>wireDrag($(s)));
   document.querySelectorAll('.tier').forEach(wireDrag)}
 
 /* 目录页（首页 + 四个筛选态）：筛选全部从 URL 读，路径只决定初始筛选态。
@@ -7859,14 +8135,15 @@ function indexQuery(){return $('#iq')?.value.trim()||''}
 function openIndexRoute(kind,push,q=null){
   if(push){setSelectMode(false,true);return openIndex(kind)}
   const params=new URLSearchParams(location.search);
-  if(kind==='tags'){
+  if(kind==='tags')readTagIndexRoute(params);
+  return openIndex(kind,q??(params.get('q')||''),false);
+}
+function readTagIndexRoute(params){
     tagIndexScope=params.get('scope')==='online'?'online':'local';
     tagIndexMode=params.get('view')==='cloud'?'cloud':'alphabet';
     const category=params.get('category')||'all';
     const categories=tagIndexScope==='online'?ONLINE_TAG_CATEGORIES:TAG_CATEGORIES;
     tagIndexCategory=categories.some(([key])=>key===category)?category:'all';
-  }
-  return openIndex(kind,q??(params.get('q')||''),false);
 }
 /* 沉浸模式当前这一条写在 `?id=`（见 tokShow），刷新和后退都该回到同一条片子。 */
 function immerseStartId(){
@@ -7897,6 +8174,7 @@ window.addEventListener('popstate',restoreRoute);
    挂在下面那条链上时它们排在 /api/sources 和 /api/facets 后面，实测让骨架先顶着
    一个没有标题的空壳站了约半秒。buildManageBar() 内部会一并建好左侧导航，
    所以这里不再单独调 buildEdge()。 */
+renderInitialSurfaceLoading();
 buildManageBar();
 /* 那两个聚合查询喂的是首页顶部三条横条。深链进管理页或索引页时横条一开始就收着，
    结果没人看，却排在这一页自己的数据前面。 */
