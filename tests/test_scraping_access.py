@@ -26,6 +26,7 @@ class ScrapingAccessTests(unittest.TestCase):
         save(self.root, "fc2cmadb", {"cookie": "session=private-cookie", "network": "proxy",
                                   "proxy": "http://user:private-proxy@127.0.0.1:7890"})
         public = q_scraping(SimpleNamespace(follow_secrets_root=self.root), {})
+        self.assertEqual(next(item['label'] for item in public['sources'] if item['source'] == 'fc2cmadb'), 'FC2CMADB')
         self.assertNotIn("private-cookie", json.dumps(public))
         self.assertNotIn("private-proxy", json.dumps(public))
         self.assertFalse(describe(self.root / "other-user", "fc2cmadb")["cookie_saved"])

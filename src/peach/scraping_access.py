@@ -25,7 +25,7 @@ SOURCES = {
     "dmm": {"label": "DMM / FANZA", "domains": ("dmm.co.jp", "dmm.com"), "login": "https://www.dmm.co.jp/"},
     "prestige": {"label": "Prestige", "domains": ("prestige-av.com",), "login": "https://www.prestige-av.com/"},
     "mgstage": {"label": "MGStage", "domains": ("mgstage.com",), "login": "https://www.mgstage.com/"},
-    "fc2cmadb": {"label": "FC2 CMADB", "domains": ("fc2cmadb.com",), "login": "https://fc2cmadb.com/", "cookie": True},
+    "fc2cmadb": {"label": "FC2CMADB", "domains": ("fc2cmadb.com",), "login": "https://fc2cmadb.com/", "cookie": True},
     "instagram": {"label": "Instagram", "domains": ("instagram.com", "cdninstagram.com"), "login": "https://www.instagram.com/accounts/login/", "cookie": True},
 }
 _LOCK = threading.RLock()

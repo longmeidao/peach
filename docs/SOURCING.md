@@ -2,11 +2,11 @@
 
 ## 本机采集入口
 
-「数据管理」→「采集来源与 Cookie 设置」（`/scraping`）提供官方高清封面定点抓取和来源连接设置。
+「数据管理」→「设置采集来源」（`/scraping`）提供官方高清封面定点抓取和来源连接设置。
 界面与 `scripts/fetch_jav_covers.py` 共用 `peach.jav_cover_fetch`；不需要把开发者的映射文件或
 Cookie 复制到新用户电脑。已有成功元数据快照优先，缺快照的公开来源可联网查询。
 
-- R18、DMM、Prestige、MGStage 的封面 HTTP 路径使用按来源的环境／应用直连／指定代理配置。
+- R18、DMM、Prestige、MGStage 的封面 HTTP 路径使用按来源的系统代理／应用直连／自定义代理配置。
   DMM 连接检查分别报告页面与高清 CDN；HTTPX 环境代理不等于系统 PAC，应用直连也不能排除 TUN。
 - FC2 的 Cookie 粘贴与 Netscape 文件导入复用 CredentialStore；仅保存当前来源域内未过期项目。
   `fetch_fc2_metadata.py` 默认读取这份配置，`--cookies` 可显式指定文件。保存不代表登录会话有效。

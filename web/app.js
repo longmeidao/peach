@@ -3355,7 +3355,12 @@ async function openDataCleanup(push=true){
   const junkBreakdown=[...JUNK_KIND_OPTIONS.filter(([key])=>key&&Number(junkCounts[key])>0)
     .map(([key,label])=>`${esc(label)} ${Number(junkCounts[key]).toLocaleString()}`),
     ...(Number(junk.dismissed_total)>0?[`已忽略 ${Number(junk.dismissed_total).toLocaleString()}`]:[])].join(' · ');
-  $('#stats').innerHTML=`<div class="cleanuppage"><p><a href="/scraping">采集来源与 Cookie 设置</a></p><div class="cleanupgrid">
+  $('#stats').innerHTML=`<div class="cleanuppage"><div class="cleanupgrid">
+    <section class="cleanupfieldset" data-geist-fieldset aria-labelledby="cleanupScrapingTitle">
+      <div class="geist-fieldset-content">${fieldsetTitle('cleanupScrapingTitle','采集来源')}
+        <p>下载高清封面，设置代理和 Cookie。</p></div>
+      <footer class="geist-fieldset-footer" data-geist-fieldset-footer><button type="button" data-cleanup-open="scraping">设置采集来源</button></footer>
+    </section>
     <section class="cleanupfieldset" data-geist-fieldset aria-labelledby="cleanupJunkTitle">
       <div class="geist-fieldset-content">${fieldsetTitle('cleanupJunkTitle','垃圾文件')}
         <strong>${Number(junk.pending_total||0).toLocaleString()} 个待判断</strong>
@@ -3387,6 +3392,7 @@ async function openDataCleanup(push=true){
   ${linkManagerMarkup()}
   ${resourceSyncMarkup()}</div>`;
   $('#stats').querySelector('[data-cleanup-open="junk"]').onclick=()=>openManage('ads');
+  $('#stats').querySelector('[data-cleanup-open="scraping"]').onclick=()=>openScraping();
   $('#stats').querySelector('[data-cleanup-open="duplicates"]').onclick=()=>openDuplicates();
   $('#stats').querySelectorAll('[data-cleanup-go]').forEach(button=>
     button.onclick=()=>openManage(button.dataset.cleanupGo));
@@ -6497,6 +6503,7 @@ const MANAGE_CRUMB_PAGES={
   '/review':'人工复核',
   '/trash':'回收站',
   '/quality-goals':'高清版',
+  '/scraping':'采集来源',
 };
 function paintManageTitle(){
   const current=manageSection(),el=$('#manageTitle');
