@@ -188,11 +188,11 @@ class InterviewTests(_Case):
             data_root=self.root / "peach-data", media_dir=self.media, host="0.0.0.0",
             port=8900, mdns_name="peach-two"))
         self.assertEqual([prompt for prompt, _ in ask.seen], [
-            "数据根（账本、缓存与设置文件都放这里）",
-            "本地媒体目录（来源 local，必须已存在）",
-            "监听范围：1 = 仅本机（127.0.0.1），2 = 局域网（0.0.0.0）",
-            "服务端口",
-            "局域网名字（<名字>.local，只在监听局域网时发布）",
+            "数据目录（账本、缓存和设置文件都放在这里）",
+            "媒体文件夹（必须已经存在）",
+            "谁可以访问：1 = 只有这台电脑，2 = 同一局域网的设备",
+            "端口",
+            "局域网访问地址（<名字>.local，只在允许局域网访问时发布）",
         ])
 
     def test_console_ask_shows_the_default_and_treats_eof_as_abort(self):
@@ -367,14 +367,27 @@ class SetupPageTests(_Case):
         self.assertIn('<form method="post" action="/setup">', body)
         for question in onboarding.questions(self.config, windows=NATIVE_WINDOWS):
             self.assertIn(f'name="{question.key}"', body)
-            # `<名字>.local` 那一题的题面带尖括号，页面里是转义过的。
-            self.assertIn(escape(question.prompt), body)
-        self.assertIn('name="scan_now"', body)
-        self.assertIn("checked", body)
-        # 监听范围是下拉，两个选项由 `HOST_OPTIONS` 给出，不在页面里另写一遍。
+        # 页面用自己的题面：短名词加一句说明，不把命令行那份带可选值的题面搬上来。
+        for title in ("数据目录", "媒体文件夹", "谁可以访问", "端口", "局域网访问地址"):
+            self.assertIn(f">{title}</", body)
+        self.assertIn("账本、缓存和设置文件都放在这里。", body)
+        # 品牌标记在标题上方，说明文字在标题下方。
+        self.assertIn('<img class="mark" src="/peach-logo.png"', body)
+        self.assertLess(body.index("<h1>"), body.index('class="lede"'))
+        # 四个要手填的字段前面标红星；「谁可以访问」总有一个选中项，不标。
+        self.assertEqual(body.count('<span class="req"'), 4)
+        # 「谁可以访问」是两段式单选，不用原生下拉；两个选项由 `HOST_OPTIONS` 给出。
+        self.assertNotIn("<select", body)
+        self.assertIn('class="switch" role="radiogroup"', body)
         for value, label in onboarding.HOST_OPTIONS:
-            self.assertIn(f'value="{value}"', body)
-            self.assertIn(label, body)
+            self.assertIn(f'<input type="radio" name="host" value="{value}"', body)
+            self.assertIn(f"<span>{label}</span>", body)
+        # 局域网访问地址只填名字，`.local` 是框内后缀。
+        self.assertIn('<div class="affix">', body)
+        self.assertIn("<span>.local</span>", body)
+        # 勾选框用站内共用的自绘结构，路径在等宽框里。
+        self.assertIn('<span class="pcheck"><input type="checkbox" name="scan_now" value="y" checked>', body)
+        self.assertIn("完成设置后扫描 <code>", body)
 
     @unittest.skipIf(NATIVE_WINDOWS, "盘符本身就是挂载点，Windows 上没有这句话")
     def test_the_mounts_explanation_sits_under_the_media_field_on_posix(self):

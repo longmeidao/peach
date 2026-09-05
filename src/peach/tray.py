@@ -660,7 +660,7 @@ def configured_service_specs(config) -> tuple[ServiceSpec, ...]:
         return build_service_specs(tls_dir=config.directory("secrets") / "tls",
                                    mdns_hostname=normal_hostname(config))
     if config.server.host != "127.0.0.1":
-        raise ValueError("独立测试包仅支持本机访问，请在配置中选择仅本机")
+        raise ValueError("独立测试包只支持本机访问，请在配置中选择「只有这台电脑」")
     return (ServiceSpec("http", setup_url(config) + "healthz",
                         (str(_peach_executable()), "serve", "--host", "127.0.0.1",
                          "--port", str(config.server.port), "--no-mdns", "--no-ledger-sync"),

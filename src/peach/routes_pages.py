@@ -39,7 +39,7 @@ from .web_state import FAVICON
 
 router = APIRouter()
 
-#: 回环地址的三种写法。既用来判提交端点的调用方，也用来判「仅本机」那个监听选择。
+#: 回环地址的三种写法。既用来判提交端点的调用方，也用来判「只有这台电脑」那个监听选择。
 _LOOPBACK = frozenset({"127.0.0.1", "::1", "localhost"})
 
 #: 首次运行页的样式。刻意不引用 `web/` 里的任何资产：那一套一上来就会去打
@@ -48,36 +48,79 @@ _LOOPBACK = frozenset({"127.0.0.1", "::1", "localhost"})
 _SETUP_STYLE = """<style>
 *{box-sizing:border-box}
 body{margin:0;padding:48px 24px;background:var(--ground);color:var(--ink);
-font:16px/1.6 system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif}
-main{max-width:560px;margin:0 auto}h1{font-size:28px;font-weight:600;margin:24px 0 8px}
-h2{font-size:18px;font-weight:600;margin-top:32px;padding-top:24px;border-top:1px solid var(--line)}
+font:var(--fs-md)/1.6 system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif}
+main{max-width:560px;margin:0 auto}
+.mark{display:block;width:40px;height:40px;border-radius:50%}
+h1{font-size:var(--fs-3xl);font-weight:600;line-height:1.25;margin:16px 0 0}
+.lede{margin:6px 0 0;color:var(--muted)}
+h2{font-size:var(--fs-lg);font-weight:600;margin-top:32px;padding-top:24px;border-top:1px solid var(--line)}
 p{color:var(--ink-2)}a{color:var(--tungsten);text-underline-offset:3px}
-code{background:var(--surface);border-radius:var(--badge-radius);padding:2px 6px}
-dt{color:var(--muted);font-size:14px}dd{margin:0 0 12px;overflow-wrap:anywhere}
-label{display:block;margin:24px 0 8px;color:var(--ink)}
-input[type=text],input[type=number],select{width:100%;height:44px;
-padding:0 12px;border:1px solid var(--line);border-radius:var(--control-radius);
-background:var(--ground);color:var(--ink);font:inherit}
+code{font:var(--fs-xs)/1.5 ui-monospace,Consolas,"Cascadia Mono",monospace;
+background:var(--surface);border:1px solid var(--line-soft);border-radius:var(--badge-radius);
+padding:2px 6px;overflow-wrap:anywhere}
+dt{color:var(--muted);font-size:var(--fs-sm)}dd{margin:0 0 12px;overflow-wrap:anywhere}
+form{margin-top:32px}
+.field{margin-top:24px}
+.field>label,.field>.legend{display:block;margin:0 0 8px;font-weight:500;color:var(--ink)}
+.req{color:var(--drop);margin-right:4px}
+input[type=text],input[type=number]{width:100%;height:var(--control-h);padding:0 12px;
+border:1px solid var(--line);border-radius:var(--control-radius);background:var(--ground);
+color:var(--ink);font:inherit}
+.affix{display:flex;align-items:center;height:var(--control-h);border:1px solid var(--line);
+border-radius:var(--control-radius);background:var(--ground)}
+.affix input[type=text]{flex:1 1 auto;min-width:0;height:100%;border:0;border-radius:0;background:transparent}
+.affix input[type=text]:focus-visible{outline:0}
+.affix:focus-within{outline:2px solid var(--tungsten);outline-offset:3px}
+.affix>span{flex:none;padding:0 12px;height:100%;display:grid;place-items:center;
+color:var(--muted);border-left:1px solid var(--line-soft)}
+.switch{display:grid;grid-template-columns:1fr 1fr;padding:3px;border:1px solid var(--line-soft);
+border-radius:var(--surface-radius);background:var(--surface)}
+.switch label{position:relative;display:grid;place-items:center;height:calc(var(--control-h) - 8px);padding:0 14px;
+border-radius:var(--control-radius);color:var(--ink-2);cursor:pointer}
+.switch input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+.switch label:hover{color:var(--ink)}
+.switch label:has(input:checked){background:var(--hover);color:var(--ink)}
+.switch label:has(input:focus-visible){outline:2px solid var(--tungsten);outline-offset:2px}
 :focus-visible{outline:2px solid var(--tungsten);outline-offset:3px}
-.note{margin:8px 0 0;color:var(--ink-2);font-size:14px}
+.help{margin:6px 0 0;color:var(--muted);font-size:var(--fs-sm)}
 details{margin-top:24px}summary{cursor:pointer;min-height:44px;display:list-item}
-.bad{margin:8px 0 0;color:var(--drop);font-size:14px}
-.check{display:flex;align-items:center;gap:12px;min-height:44px;margin:24px 0 0}
-.check input{width:18px;height:18px;margin:0}
-button{margin-top:24px;width:100%;min-height:44px;border:1px solid var(--ink);
+.bad{margin:6px 0 0;color:var(--drop);font-size:var(--fs-sm)}
+.check{display:flex;align-items:center;gap:12px;min-height:44px;margin:24px 0 0;cursor:pointer}
+.pcheck{position:relative;display:grid;place-items:center;width:20px;height:20px;flex:none}
+.pcheck input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+.pcheck>span{width:18px;height:18px;border:1px solid var(--border-15);border-radius:var(--badge-radius);
+display:grid;place-items:center;background:var(--ground);color:transparent}
+.pcheck>span svg{display:block;width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2.5}
+.check:hover .pcheck>span{background:var(--hover)}
+.pcheck input:checked+span{border-color:var(--ink-2);color:var(--ink)}
+.pcheck input:focus-visible+span{outline:2px solid var(--tungsten);outline-offset:2px}
+button{margin-top:32px;width:100%;height:var(--control-h);border:1px solid var(--ink);
 border-radius:var(--control-radius);cursor:pointer;background:var(--ink);color:var(--ground);
-font:500 16px system-ui,sans-serif}
+font:500 var(--fs-md) system-ui,sans-serif}
 button:hover{background:color-mix(in srgb,var(--ink) 88%,var(--ground));color:var(--ground)}
-@media(max-width:440px){body{padding:24px 20px}h1{font-size:24px}}
+@media(max-width:760px){input[type=text],input[type=number]{font-size:16px}}
+@media(max-width:440px){body{padding:24px 20px}h1{font-size:var(--fs-2xl)}}
 </style>"""
 
 _SETUP_HEAD = ('<!doctype html>\n<html lang="zh-CN"><head><meta charset="utf-8">'
                '<meta name="viewport" content="width=device-width,initial-scale=1">'
-               '<meta name="color-scheme" content="light">')
+               '<meta name="color-scheme" content="light">'
+               '<link rel="icon" href="/peach-logo.png" type="image/png">')
 
-#: 键 -> 输入控件类型。题目、默认值与顺序全部来自 `onboarding.questions()`，
-#: 这里只决定同一道题在浏览器里长什么样，不另抄一份字段清单。
-_SETUP_WIDGETS = {"host": "select", "port": "number"}
+#: 键 -> 页面上的题目与一句说明。顺序、默认值与校验仍然来自 `onboarding.questions()`，
+#: 这里只决定同一道题在浏览器里怎么称呼：命令行那份题面要把可选值写进去，页面用控件表达。
+_SETUP_COPY = {
+    "data_root": ("数据目录", "账本、缓存和设置文件都放在这里。"),
+    "media_dir": ("媒体文件夹", "Peach 从这个文件夹读取视频和图片，文件夹必须已经存在。"),
+    "host": ("谁可以访问", ""),
+    "port": ("端口", "浏览器地址里冒号后面的数字，一般不用改。"),
+    "mdns_name": ("局域网访问地址", "其他设备在浏览器里输入这个地址就能打开 Peach，只在允许局域网访问时生效。"),
+}
+_STANDALONE_COPY = {"port": ("本机访问端口", "浏览器地址里冒号后面的数字，一般不用改。")}
+
+#: 与站内共用勾选框相同的字形（lucide `check`）。这一页不加载站内脚本，所以内联一份。
+_CHECK_SVG = ('<svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round">'
+              '<path d="M20 6 9 17l-5-5"/></svg>')
 
 
 def _document(title: str, body: str) -> str:
@@ -87,36 +130,44 @@ def _document(title: str, body: str) -> str:
             f"</head><body><main>{body}</main></body></html>\n")
 
 
-def _field_html(
-    question, value: str, error: str, note: str,
-) -> str:
+def _copy_for(key: str, fallback: str) -> tuple[str, str]:
+    if distribution.standalone() and key in _STANDALONE_COPY:
+        return _STANDALONE_COPY[key]
+    return _SETUP_COPY.get(key, (fallback, ""))
+
+
+def _field_html(question, value: str, error: str, note: str) -> str:
     key = escape(question.key, quote=True)
-    prompt = question.prompt
-    if distribution.standalone():
-        prompt = {"media_dir": "媒体文件夹", "port": "本机访问端口"}.get(question.key, prompt)
-    label = f'<label for="f-{key}">{escape(prompt)}</label>'
-    if _SETUP_WIDGETS.get(question.key) == "select":
+    title, help_text = _copy_for(question.key, question.prompt)
+    star = '<span class="req" aria-hidden="true">*</span>'
+    if question.key == "host":
         options = "".join(
-            f'<option value="{escape(choice, quote=True)}"'
-            f'{" selected" if choice == value else ""}>{escape(text)}</option>'
+            f'<label><input type="radio" name="{key}" value="{escape(choice, quote=True)}"'
+            f'{" checked" if choice == value else ""}><span>{escape(text)}</span></label>'
             for choice, text in onboarding.HOST_OPTIONS
         )
-        control = f'<select id="f-{key}" name="{key}">{options}</select>'
+        control = (f'<div class="switch" role="radiogroup" aria-labelledby="l-{key}">'
+                   f'{options}</div>')
+        label = f'<span class="legend" id="l-{key}">{escape(title)}</span>'
     else:
-        kind = _SETUP_WIDGETS.get(question.key, "text")
+        kind = "number" if question.key == "port" else "text"
         control = (f'<input id="f-{key}" name="{key}" type="{kind}" required autocomplete="off" '
-                   f'aria-invalid="{"true" if error else "false"}" '
+                   f'spellcheck="false" aria-invalid="{"true" if error else "false"}" '
                    f'value="{escape(value, quote=True)}">')
-    tail = f'<p class="note">{escape(note)}</p>' if note else ""
+        if question.key == "mdns_name":
+            control = f'<div class="affix">{control}<span>.local</span></div>'
+        label = f'<label for="f-{key}">{star}{escape(title)}</label>'
+    tail = "".join(
+        f'<p class="help">{escape(line)}</p>' for line in (help_text, note) if line)
     tail += f'<p class="bad" role="alert">{escape(error)}</p>' if error else ""
-    return label + control + tail
+    return f'<div class="field">{label}{control}{tail}</div>'
 
 
 def setup_page(
     config, *, windows: bool, values: dict[str, str] | None = None,
     errors: dict[str, str] | None = None, scan_now: bool = True,
 ) -> str:
-    """首次运行表单。题目、默认值与顺序全部来自 `onboarding.questions()`。
+    """首次运行表单。题目顺序、默认值与校验全部来自 `onboarding.questions()`。
 
     校验失败时带着 `values` 和 `errors` 重新渲染：已经填对的几项不能让人再填一遍，
     错在哪一项也要写在那一项底下，而不是页首一句「有字段不合法」。
@@ -143,19 +194,22 @@ def setup_page(
             field = f'<details{opened}><summary>高级设置</summary>{field}</details>'
         fields.append(field)
     media_value = values.get("media_dir") or next(
-        (q.default for q in asked if q.key == "media_dir"), "") or "这个目录"
-    scan_label = onboarding.SCAN_PROMPT.format(target=media_value)
-    if distribution.standalone():
-        scan_label = "完成设置后扫描媒体文件夹"
+        (q.default for q in asked if q.key == "media_dir"), "")
+    if distribution.standalone() or not media_value:
+        scan_text = "完成设置后扫描媒体文件夹"
+    else:
+        scan_text = f"完成设置后扫描 <code>{escape(media_value)}</code>"
     body = (
+        '<header><img class="mark" src="/peach-logo.png" alt="" width="40" height="40">'
         "<h1>欢迎使用 Peach</h1>"
-        "<p>选择一个媒体文件夹，开始整理你的馆藏。</p>"
+        '<p class="lede">选一个媒体文件夹，开始整理你的馆藏。</p></header>'
         '<form method="post" action="/setup">'
         + "".join(fields)
-        + f'<label class="check"><input type="checkbox" name="scan_now" value="y"'
+        + '<label class="check"><span class="pcheck">'
+        '<input type="checkbox" name="scan_now" value="y"'
         + (" checked" if scan_now else "")
-        + f'>{escape(scan_label)}</label>'
-        '<p class="note">扫描只读取文件名、大小和修改时间，不改动任何媒体文件。</p>'
+        + f'><span aria-hidden="true">{_CHECK_SVG}</span></span><span>{scan_text}</span></label>'
+        '<p class="help">扫描只读取文件名、大小和修改时间，不改动任何媒体文件。</p>'
         '<button type="submit">完成设置</button></form>'
     )
     return _document("Peach · 首次运行", body)
@@ -203,7 +257,7 @@ def setup_done_page(applied, *, windows: bool, scan_requested: bool) -> str:
 
 
 def _normal_url(config) -> str:
-    """设置完成之后正常服务的地址。仅本机就给回环，局域网给 `<名字>.local`。"""
+    """设置完成之后正常服务的地址。只有这台电脑就给回环，局域网给 `<名字>.local`。"""
     if config.server.host in _LOOPBACK:
         return f"http://127.0.0.1:{config.server.port}/"
     return f"https://{config.server.mdns_name}.local/"
