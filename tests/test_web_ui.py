@@ -1233,10 +1233,10 @@ class WebUiSourceTests(unittest.TestCase):
         # 一环都取不到就一个 `<img>` 都不出，首字母垫底直接露出来。
         self.assertPageContains("if(!src)return '';")
         # kind 参数化后，创作者复核卡片也能走同一条链；默认仍是 performer，
-        # 既有调用点不受影响。
+        # 既有调用点不受影响。标识变体同理默认 icon：小圆框和窄格子是多数。
         self.assertPageContains(
             "function avatarInner(name,ref,repId,kind='performer',markId=null,logoName='',"
-            "focus=null)")
+            "logoVariant='icon',focus=null)")
         # 兜底链声明在模板里，行为归 image-fallback 那条委托监听。
         self.assertCode("const fallbacks=useLogo?[entitySrc,avatarSrc].filter(Boolean)\n"
                         "    :(useEntity&&avatarSrc?[avatarSrc]:[]);")
@@ -1361,8 +1361,8 @@ class WebUiSourceTests(unittest.TestCase):
         # 脸框得穿过它才到得了 img——平移挂容器、放大挂图，两件事各走各的。
         self.assertPageContains("focus:company?null:d.avatar_focus,")
         self.assertPageContains("style:facePos(x.avatar_focus),focus:x.avatar_focus}")
-        self.assertPageContains("company?null:x.avatar_focus)")
-        self.assertPageContains("logo:logoName,logoVariant:'icon',focus}")
+        self.assertPageContains("bigMark?'large':'icon', company?null:x.avatar_focus)")
+        self.assertPageContains("logo:logoName,logoVariant,focus}")
         # 五个数挤一个属性，回落时只要摘一样东西。
         self.assertPageContains(
             "data-facebox=\"${[b.cx,b.cy,b.faceW,b.imgW,b.imgH].map(Number).join(' ')}\"")
@@ -1803,6 +1803,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("document.addEventListener('load',event=>{")
         self.assertPageContains(
             "if(img.classList.contains('cover'))coverAnchor(img);")
+        self.assertPageContains("else if(img.dataset.facebox)avatarFrame(img);")
+        self.assertPageContains("  fitNativeImage(img);")
         self.assertPageLacks('onload="', "模块作用域的函数在内联属性里取不到")
 
     def test_card_avatar_and_name_open_the_same_entity(self):
@@ -4489,8 +4491,9 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("const useLogo=!!logo;")
         self.assertPageContains(
             "const src=useLogo?`/logo?studio=${encodeURIComponent(logo)}&variant=${logoVariant}`")
-        # 索引页那格是小位，要方形图标而不是横着的字标。
-        self.assertPageContains("logo:logoName,logoVariant:'icon'")
+        # 变体由调用点决定：小圆框和窄格子要方形图标，索引页那格要 large。
+        self.assertPageContains("logo:logoName,logoVariant,focus}")
+        self.assertPageContains("bigMark?'large':'icon', company?null:x.avatar_focus)")
         # 取不到标识就退回实体图、再退到头像，和资料页大位同一条链。
         self.assertPageContains("const fallbacks=useLogo?[entitySrc,avatarSrc].filter(Boolean)")
         # 公司这一格不退到代表作截图，和它自己的资料页同一条判据。
@@ -4500,6 +4503,86 @@ class WebUiSourceTests(unittest.TestCase):
             "x.has_avatar&&!company?x.rep:null, kind, x.mark, x.has_logo?x.k:'',")
         # 标识不是人脸，取景和摘取景那套只贴给实体图。
         self.assertPageContains("const framed=useEntity&&!useLogo;")
+
+    def test_the_big_studio_slots_ask_for_the_sharpest_file_on_disk(self):
+        """索引页的厂牌大格和资料页大位都要 `large`。
+
+        后缀说明不了清晰度：Prestige 的 `icon` 只有 42 px、MOODYZ 的只有 64 px，
+        摆进 180 px 的大格就是一团糊，而它们的裸文件分别有 632 px 和 403 px。
+        """
+        self.assertPageContains("bigMark?'large':'icon', company?null:x.avatar_focus)")
+        self.assertPageContains(
+            "logo:company&&d.has_logo?d.canonical_name:'',logoVariant:'large',")
+        # 小位仍要方形小标：卡片角标和顶栏那排只有二十来像素，取原图只是白下载。
+        self.assertPageContains('variant=icon"')
+
+    def test_the_compact_studio_ring_keeps_the_square_mark(self):
+        """圆框里摆完整字标，看得清的部分比方标还少。
+
+        两个版式于是各取各的一档，换版式时原地把地址里的变体换掉：重拼列表会丢掉
+        滚动位置和已经取回的图，而多取一次标识在本机服务端上不值钱。
+        """
+        self.assertPageContains("const bigMark=company&&peopleIndexLayout()==='big';")
+        self.assertPageContains("function retargetCompanyMarks(root){")
+        self.assertPageContains(
+            "const next=src.replace(/([?&]variant=)[^&]*/,`$1${big?'large':'icon'}`);")
+        # 已经回落到实体图的格子不在 `/logo` 这条链上，改它的地址只会指向不存在的东西。
+        self.assertPageContains("if(!src.startsWith('/logo?'))return;")
+        # 圆框不按原尺寸摆，上一档留在容器上的三个度量要跟着撤，否则字标的尺寸会
+        # 继续压着方标。
+        self.assertPageContains("ring.removeAttribute('data-fit-native');")
+        self.assertPageContains(
+            "['--markw','--markh','--markbg'].forEach(name=>ring.style.removeProperty(name));")
+
+    def test_a_mark_smaller_than_its_frame_is_not_blown_up(self):
+        """图比框还小就不拉伸：原尺寸居中，空出来的一圈用同一张图放大模糊补底。
+
+        `large` 已经先挑过最清晰的一份，剩下的是本来就没有大图的厂牌——Ienergy 只有
+        112 px。把它拉满 180 px 的格子只是把糊放大给人看。
+        """
+        self.assertPageContains("function fitNativeImage(img){")
+        self.assertPageContains("const box=img.closest('[data-fit-native]');")
+        self.assertPageContains("if(!box||!img.naturalWidth)return;")
+        self.assertPageContains(
+            "box.style.setProperty('--markw',small?img.naturalWidth+'px':'100%');")
+        # 只比框小一点点的照旧铺满：按原尺寸摆只会在四周留一圈七八像素的生硬窄边。
+        self.assertPageContains("const NATIVE_FIT_FLOOR=0.8;")
+        self.assertPageContains("const small=img.naturalWidth<box.clientWidth*NATIVE_FIT_FLOOR")
+        self.assertPageContains("||img.naturalHeight<box.clientHeight*NATIVE_FIT_FLOOR;")
+        self.assertPageContains(
+            "box.style.setProperty('--markbg',small?`url(\"${src}\")`:'none');")
+        # 用到它的两个容器自己声明意图，JS 只负责量。
+        self.assertPageContains("${bigMark?' data-fit-native':''}")
+        self.assertPageContains('"entityportrait ${kind===\'performer\'||kind===\'creator\'?'
+                                '\'\':\'square\'}"${company?\' data-fit-native\':\'\'}')
+        # 两处容器各自写着 width:100% 和 object-fit:cover，选择器压不过它们就白改。
+        # 尺寸不写 auto：还没度量过的图按 auto 是 0×0，`loading="lazy"` 见到 0×0 就
+        # 认定它不在视口里、永远不去取，图不来就没有 load，两边互相等着。缺省铺满。
+        self.assertCode(
+            ".icell .ring[data-fit-native] img,.entityportrait[data-fit-native] img{\n"
+            "  width:var(--markw,100%);height:var(--markh,100%);margin:auto;object-fit:contain;\n"
+            "  max-width:100%;max-height:100%;z-index:1}")
+        self.assertPageContains('[data-fit-native]::before{content:"";position:absolute;'
+                                'inset:-14%;z-index:0;')
+        # 图不再铺满框，首字母垫底会从旁边露出来。
+        self.assertPageContains(".icell .ring[data-fit-native]:has(img) .ini{display:none}")
+
+    def test_the_company_index_layout_control_says_what_it_shows(self):
+        """厂牌那一格摆的是方形标识，提示不能照艺人页写「竖幅头像」。"""
+        self.assertPageContains(
+            "const COMPANY_LAYOUTS=[['big','大图 · 完整标识','maximize'],"
+            "['compact','紧凑 · 圆形标识','layout-grid']];")
+        self.assertCode(
+            "function indexLayoutOptions(kind){\n"
+            "  return kind==='studios'||kind==='agencies'?COMPANY_LAYOUTS:PEOPLE_LAYOUTS;\n"
+            "}")
+        # 档位仍是同一个设置值，分开的只有说法。
+        self.assertPageContains(
+            "allowedSetting(appSettings.peopleLayout,PEOPLE_LAYOUTS.map(([k])=>k),'big')")
+
+    def test_the_index_count_skeleton_is_no_wider_than_its_answer(self):
+        """索引页这一枚等的是「118 项」。150px 那条灰条长过答案，读着像还没回完。"""
+        self.assertPageContains(".index .ihead .countskeleton{width:54px}")
 
     def test_the_maker_index_switch_shares_the_view_mode_control(self):
         """标签页那两组开关和这一组是同一个控件，类名跟着语义走。"""
@@ -6835,10 +6918,11 @@ class WebUiSourceTests(unittest.TestCase):
             "const PEOPLE_LAYOUTS=[['big','大图 · 竖幅头像','maximize'],"
             "['compact','紧凑 · 圆形头像','layout-grid']];")
         self.assertPageContains(
-            "iconSwitchHtml('people-layout','艺人索引版式',PEOPLE_LAYOUTS,peopleIndexLayout(),")
-        self.assertPageContains("{attr:'data-people-layout'}")
+            "iconSwitchHtml('people-layout',(INDEX_TITLES[kind]||'艺人')+'索引版式',")
+        self.assertPageContains("indexLayoutOptions(kind),peopleIndexLayout(),"
+                                "{attr:'data-people-layout'});")
         # 只有艺人和创作者是头像网格；标签页那一屏没有图可放大。
-        self.assertPageContains("${people?peopleLayoutButtons():''}")
+        self.assertPageContains("${people?peopleLayoutButtons(kind):''}")
         self.assertPageContains(
             "wireIconSwitch($('#index'),'data-people-layout',setPeopleIndexLayout);")
         self.assertCode('`<div class="igrid" data-cells="${cells}" data-layout="${\n'
@@ -6855,14 +6939,20 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks('.igrid[data-layout="compact"]',
                              "紧凑就是基础样式那一屏，不该再写一份")
 
-    def test_switching_the_people_layout_neither_repaints_the_grid_nor_refetches(self):
-        # 版式是纯展示层的事：改容器上的一个属性就够，和关注列表版式同一个做法。
+    def test_switching_the_people_layout_swaps_the_marks_without_repainting(self):
+        # 版式基本是展示层的事：改容器上的一个属性就够，和关注列表版式同一个做法。
+        # 例外只有厂牌标识——两个版式要的是不同的一档，那一批得原地换地址。
         self.assertCode(
             "function setPeopleIndexLayout(value){\n"
             "  appSettings.peopleLayout=value;\n"
             "  saveSettings();\n"
             "  document.querySelectorAll('.igrid')"
             ".forEach(grid=>{grid.dataset.layout=peopleIndexLayout()});\n"
+            "  // 大格与圆框要的标识不是同一档，换版式就得把已经在页面上的那批换过来。\n"
+            "  retargetCompanyMarks($('#index'));\n"
+            "  // 框换了大小，「这张图要不要补底」得重算：图早加载完了，"
+            "不会再自己发一次 load。\n"
+            "  refitNativeImages($('#index'));\n"
             "  fitSkeleton($('#index'));\n"
             "}")
 
@@ -6873,7 +6963,9 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertCode("  const origin=faceOrigin(f);\n"
                         "  return origin?` style=\"object-position:${origin}\"`:'';")
         self.assertPageContains("const face=faceOrigin(x.avatar_focus);")
-        self.assertPageContains('<span class="ring"${face?` style="--face:${face}"`:\'\'}>')
+        self.assertPageContains(
+            '<span class="ring"${bigMark?\' data-fit-native\':\'\'}'
+            '${face?` style="--face:${face}"`:\'\'}>')
         self.assertPageContains("object-position:var(--face,50% 50%)}")
 
     def test_photo_lightbox_loads_swiper_lazily_with_thumbs_and_keyboard(self):

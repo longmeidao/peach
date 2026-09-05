@@ -22,6 +22,13 @@ class PreviewUnavailable(RuntimeError):
 #: 「只装了 `<key>.icon.img` 却被判成没有图」这种两边打架的结果。
 LOGO_VARIANTS = ("icon", "logo")
 
+#: 大位要的不是某个后缀，而是「这个厂牌手上最清晰的那份」，所以 `large` 是语义变体，
+#: 不落盘。本库实测：`icon` 与 `logo` 只差分辨率不差形状（宽高相等，唯一的横向字标是
+#: 几张 SVG），而 Prestige 的 `icon` 只有 42 px、MOODYZ 与 Wanz Factory 的只有 64 px，
+#: 摆进 180 px 的索引大格就是一团糊；同时它们的裸文件分别有 632 / 403 / 238 px。
+#: 按后缀选等于按名字猜清晰度，所以这里按文件本身的像素量选。
+LOGO_LARGEST = "large"
+
 
 def logo_key(studio: str) -> str:
     r"""厂牌标识的落盘名。
@@ -87,6 +94,9 @@ class PreviewService:
         self.avatar_root = avatar_root.resolve()
         self.logo_root = logo_root.resolve()
         self.legacy_snapshot_roots = tuple(path.resolve() for path in legacy_snapshot_roots)
+        #: 标识清晰度按 (路径, mtime, 字节数) 记住，换了文件自然算新键。大位每格一次
+        #: 请求，不缓存就是一屏一百多次开图读头。
+        self._logo_sharpness: dict[tuple[str, int, int], tuple[int, int]] = {}
 
     def poster(self, asset_id: int, cell: int = 4) -> Path:
         cell = max(0, min(8, cell))
@@ -155,32 +165,84 @@ class PreviewService:
     def logo(self, studio: str, variant: str = "") -> tuple[Path, str]:
         """厂牌标识；`variant` 只在这个厂牌真的存了两份时才分岔。
 
-        小地方（筛选片、卡片、来源角标）要的是方形小标 `icon`，厂牌页那个 160px
-        大位要的是完整字标 `logo`——和社媒头像同一条判断。但绝大多数厂牌只有一份图：
-        两个变体都回落到 `<safe>.img`，任何位置都照旧显示它。变体文件是新增的
-        `<safe>.icon.img` / `<safe>.logo.img`，没有它们时行为和加这个参数之前一模一样。
+        小地方（筛选片、卡片、来源角标）要的是方形小标 `icon`。大位（索引页的厂牌大格、
+        厂牌资料页那个 160px 的位置）要 `large`：按文件的像素量在这个厂牌的所有份里挑
+        最清晰的一张，见 `LOGO_LARGEST`。但绝大多数厂牌只有一份图：任何变体都回落到
+        `<safe>.img`，任何位置都照旧显示它。变体文件是 `<safe>.icon.img` /
+        `<safe>.logo.img`，没有它们时行为和加这个参数之前一模一样。
         """
         safe = logo_key(studio)
         if not safe:
             raise PreviewUnavailable("empty studio")
+        listing = list(self.logo_root.iterdir()) if self.logo_root.is_dir() else []
+        if variant == LOGO_LARGEST:
+            #: 顺序即同分时的偏好：字标、方标、裸文件。`max` 取第一个最大值，所以
+            #: 三份一样清晰时拿到的仍是最贴合大位的那份。
+            found = []
+            for name in (f"{safe}.logo.img", f"{safe}.icon.img", f"{safe}.img"):
+                path = self._logo_file(listing, name)
+                if path is not None:
+                    found.append(path)
+            if not found:
+                raise PreviewUnavailable("logo unavailable")
+            best = max(found, key=self._logo_clarity)
+            return best, self._logo_content_type(best)
         names = [f"{safe}.img"]
         if variant in LOGO_VARIANTS:
             # 认不出的 variant 不报错，按没传处理：页面可能是缓存下来的旧版本，
             # 为一个拼错的参数把图变成 404 只会让厂牌页平白缺图。
             names.insert(0, f"{safe}.{variant}.img")
-        listing = list(self.logo_root.iterdir()) if self.logo_root.is_dir() else []
         for name in names:
-            candidates = [self.logo_root / name]
-            candidates.extend(path for path in listing if path.name.lower() == name.lower())
-            for path in candidates:
-                if path.is_file():
-                    content_type = "image/x-icon"
-                    sidecar = Path(str(path) + ".ct")
-                    if sidecar.is_file():
-                        detected = sidecar.read_text(encoding="utf-8").strip().split(";")[0]
-                        content_type = detected or content_type
-                    return path, content_type
+            path = self._logo_file(listing, name)
+            if path is not None:
+                return path, self._logo_content_type(path)
         raise PreviewUnavailable("logo unavailable")
+
+    def _logo_file(self, listing: list[Path], name: str) -> Path | None:
+        """标识目录里叫这个名字的文件；大小写不敏感，取不到返回 None。"""
+        candidates = [self.logo_root / name]
+        candidates.extend(path for path in listing if path.name.lower() == name.lower())
+        for path in candidates:
+            if path.is_file():
+                return path
+        return None
+
+    def _logo_content_type(self, path: Path) -> str:
+        """落盘时记在 `.ct` 边车里的类型；没有边车按 ico 处理，和加边车之前一致。"""
+        sidecar = Path(str(path) + ".ct")
+        if sidecar.is_file():
+            detected = sidecar.read_text(encoding="utf-8").strip().split(";")[0]
+            if detected:
+                return detected
+        return "image/x-icon"
+
+    def _logo_clarity(self, path: Path) -> tuple[int, int]:
+        """(是否矢量, 像素量)。矢量放多大都清晰，排在所有位图前面。
+
+        读不出尺寸的位图记 0：那是 Pillow 不认的格式或坏文件，不能因为「面积未知」
+        就把它排到真能量出 600 px 的那张前面。全都读不出时仍会出图——浏览器认得的
+        格式比 Pillow 多，这一步只排序，不做可用性判定。
+        """
+        try:
+            stat = path.stat()
+        except OSError:
+            return (0, 0)
+        key = (str(path).casefold(), stat.st_mtime_ns, stat.st_size)
+        measured = self._logo_sharpness.get(key)
+        if measured is None:
+            measured = self._measure_logo(path)
+            self._logo_sharpness[key] = measured
+        return measured
+
+    def _measure_logo(self, path: Path) -> tuple[int, int]:
+        if self._logo_content_type(path).startswith("image/svg"):
+            return (1, 0)
+        try:
+            with Image.open(path) as image:
+                width, height = image.size
+        except Exception:
+            return (0, 0)
+        return (0, width * height)
 
     def entity_image(self, kind: str, entity_id: int) -> tuple[Path, str]:
         """返回已缓存的高清实体图；抓取与版权溯源由离线导入任务负责。"""
