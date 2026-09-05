@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import re
 import sys
 import time
 from pathlib import Path
@@ -28,7 +27,10 @@ SRC_DIR = PROJECT_ROOT / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from peach.entities import normalize_entity_name   # noqa: E402
+# 括号写法的拆分是实体名字的规则，不是本脚本的：名册采集器按同一条核对站上写的名字。
+from peach.entities import (   # noqa: E402,F401
+    FORMER_PREFIX, normalize_entity_name, split_name,
+)
 from peach.review_csv import write_rows   # noqa: E402
 from peach.scripting import (   # noqa: E402
     add_ledger_write_args,
@@ -51,30 +53,6 @@ EXTRA_COUNTS = {
     "agency_link": ("SELECT count(*) FROM entity_link l JOIN entity e ON e.id=l.entity_id"
                     " WHERE e.kind='agency'"),
 }
-
-#: 旧称写法的前缀。`旧・GRANZPRO` 与 `元・VERGER` 都是这一类，名字本体在前缀后面。
-FORMER_PREFIX = re.compile(r"^\s*[旧元]\s*[・·]?\s*")
-
-
-def split_name(raw: str) -> tuple[str, list[str]]:
-    """(现用名, 别名列表)。括号外是现用名，括号里和括号后的都是别名。
-
-    实测的三种形态都由这一条覆盖：`ACT(アクト)` 是读音，`Wish(元・GIRFY)` 是旧名，
-    `SO MODEL AGENT(ソウ モデルエージェント)旧・Eightman Production` 两样都有，
-    而旧名跟在右括号后面。
-    """
-    raw = raw.strip()
-    parts = [part for part in re.split(r"[（(]([^）)]*)[）)]", raw) if part is not None]
-    if len(parts) == 1:
-        return raw, []
-    canonical = parts[0].strip()
-    aliases = []
-    for part in parts[1:]:
-        name = FORMER_PREFIX.sub("", part).strip()
-        if name and name != canonical:
-            aliases.append(name)
-    return (canonical or raw), aliases
-
 
 def agency_sites(connection) -> dict[str, str]:
     """事务所名 → 它的官网。

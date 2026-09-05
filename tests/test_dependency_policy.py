@@ -40,6 +40,7 @@ class DependencyPolicyTests(unittest.TestCase):
             "cv2": "opencv-python-headless",
             "fastapi": "fastapi",
             "httpx": "httpx",
+            "numpy": "numpy",
             "objc": "pyobjc-framework-Cocoa",
             "opencc": "opencc",
             "p115client": "p115client",
