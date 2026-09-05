@@ -28,17 +28,17 @@ class BackupPlan:
     keep: tuple[Path, ...]
     remove: tuple[Path, ...]
     refused: str | None = None   # 不为 None 时一份都不删，这里写原因
+    removable_bytes: int = 0     # 算计划时量好，删完文件就量不到了
 
-    @property
-    def removable_bytes(self) -> int:
-        total = 0
-        for path in self.remove:
-            for candidate in (path, *(path.with_name(path.name + s) for s in SIDECAR_SUFFIXES)):
-                try:
-                    total += candidate.stat().st_size
-                except OSError:
-                    continue
-        return total
+
+def _size_with_sidecars(path: Path) -> int:
+    total = 0
+    for candidate in (path, *(path.with_name(path.name + s) for s in SIDECAR_SUFFIXES)):
+        try:
+            total += candidate.stat().st_size
+        except OSError:
+            continue
+    return total
 
 
 def list_backups(live: Path) -> list[Path]:
@@ -101,7 +101,8 @@ def plan(
             keep.append(backup)
         else:
             remove.append(backup)
-    return BackupPlan(tuple(keep), tuple(remove))
+    return BackupPlan(tuple(keep), tuple(remove),
+                      removable_bytes=sum(_size_with_sidecars(path) for path in remove))
 
 
 def prune(

@@ -80,6 +80,8 @@ class LedgerBackupRetentionTests(unittest.TestCase):
             applied = ledger_backups.prune(live, apply=True, keep_recent=5, now=NOW)
 
             self.assertEqual(set(applied.remove), set(old))
+            self.assertEqual(applied.removable_bytes, 4 * len(b"backup"),
+                             "字节数在删除前量好，报告里才不会写成 0")
             for path in old:
                 self.assertFalse(path.exists())
             self.assertFalse((root / "ledger.pre-old-0.db-wal").exists(), "副文件一起删")
@@ -141,6 +143,7 @@ class LedgerBackupRetentionTests(unittest.TestCase):
             report = json.loads(buffer.getvalue())
             self.assertFalse(report["applied"])
             self.assertEqual(report["remove"], ["ledger.pre-old.db"])
+            self.assertEqual(report["removable_bytes"], len(b"backup"))
             self.assertTrue(old.exists(), "缺省是 dry-run")
 
             buffer = io.StringIO()
