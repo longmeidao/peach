@@ -52,9 +52,10 @@
 22. `peach doctor` 与分级 `/healthz`：`doctor`（另带 `--json`）逐项报版本、数据根可写性、配置文件合法性、数据库能否打开、schema 版本与待执行迁移、FFmpeg／ffprobe／OpenSSL 路径、挂载点可达性、端口占用、是否处在「局域网暴露但无口令」状态、后台任务最近一次失败；输出脱敏，不带口令、cookie、站点凭据和完整媒体路径。`/healthz` 相应从布尔改成分项状态（`database`／`schema`／`configured`／`ffmpeg`／`media_mounts`／`security`），与第 13 条一起做。
 23. 性能基准：用 SFW 合成数据生成 1k／10k／100k／500k 四档库，nightly 测冷启动到 `/healthz`、目录页与详情页 p95、两字以上搜索 p95、本地 SSD 与网盘挂载的 Range 首字节、空闲 RSS、后台扫描时前台退化倍数、备份期间读请求不失败。门槛用「相对上一次基线下降超过 20%」，不给绝对毫秒数——不同机器不可比。数据集与第 16 条的演示数据集共用。
 24. CI 的 Windows job 太慢，一次 push 的墙钟由它决定。同一批 2786 个用例在 `macos-latest`（arm64）上 57 秒，在 `windows-latest` 上 1475 秒，本机 Windows 是 324 秒——runner 比开发机还慢 4.6 倍。按时间戳差算，250 个用例（9%）吃掉 1119 秒，每个稳定在 4.5 秒上下，形状像每建一个临时文件被 Defender 扫一遍。两条路各自独立：一是在 Windows job 里对 runner 的临时目录加 `Add-MpPreference -ExclusionPath`，先量一轮确认是不是 Defender；二是把 `scripts/test_runner.py` 的域拆成矩阵分片并行跑，代价是每个分片重付一次装依赖的 37 秒。不要为了缩短墙钟把 Windows job 从矩阵里去掉：它是生产平台，也是唯一能拦住 Windows 独有回归的地方。
-25. 托盘子服务的日志不轮转：`ServiceManager` 以追加模式打开 `logs/tray-<服务>.out.log` 与 `.err.log`，本机一周就长到 28 MB，`tray-scan.out.log` 与 `windows-source-sync.log` 同样只增不减。在起服务前按大小轮转，超过阈值改名保留一代即可；写文件的是子进程的 stdout，不经 `logging`，所以 `RotatingFileHandler` 用不上。
-26. 借鉴 vercel.com/<team>/~/deployments 的令牌式筛选与排序。那一行不是一排互斥药丸，而是「Add Filter + 若干条已添加的维度令牌（Author／Environment／Status）」，每个令牌自带下拉，维度可叠加、可逐个摘掉，另有独立的日期区间与状态汇总（`6/7`）。2026-09-05 实测它的三态：未生效 `1px dashed rgba(0,0,0,.21)` 透明底，悬停／聚焦换成 `#FFFFFF` 实底加 `1px solid rgba(0,0,0,.08)`，下拉展开时 `gray-200` 底配实线——虚线读作「建议但没应用」，实心读作「已生效」。
+25. 借鉴 vercel.com/<team>/~/deployments 的令牌式筛选与排序。那一行不是一排互斥药丸，而是「Add Filter + 若干条已添加的维度令牌（Author／Environment／Status）」，每个令牌自带下拉，维度可叠加、可逐个摘掉，另有独立的日期区间与状态汇总（`6/7`）。2026-09-05 实测它的三态：未生效 `1px dashed rgba(0,0,0,.21)` 透明底，悬停／聚焦换成 `#FFFFFF` 实底加 `1px solid rgba(0,0,0,.08)`，下拉展开时 `gray-200` 底配实线——虚线读作「建议但没应用」，实心读作「已生效」。
     首页大概率不合适：`.tagbar` 那一排是单选（`全部`／`没看过`／`稍后看` 恒有一个生效），把没选中的三个画成虚线会读成「三个待处理的筛选」；而且这套「填亮 = 生效」要成立，页面底色得比控件低一档——Vercel 的仪表盘底是 `#FAFAFA`，Peach 的 `--ground` 是纯白，没有可填的更亮档。真正对得上的是多维叠加的场景：`/follow-manage` 的来源／状态／WIP 组合筛选，和 `/review` 的候选筛选。先在这两处试，别动首页。
+
+26. 配置与引导缺 CloudDrive 那一块：`[media.locations]`／`[media.mounts]` 的模型能表达网盘来源，`platform.py` 也知道 CloudDrive 掉线后目录仍在但读不了，但首启页与配置页只问「媒体文件夹」并全部写成 `local`。缺三件事：声明一个来源是 CloudDrive 网盘（115、PikPak）而不是本地盘，让脱盘判定和流量策略按网盘处理；macOS 上把 `A:\`、`B:\` 这类账本路径映射到本机挂载点的界面；看到哪个盘符现在在线。涉及数据层（location 类型）、配置页、脱盘判定与文档四个表面，用户 2026-09-05 定为交给另一位智能体做。
 
 合计：**32 项开放需求**，其中 6 项已有骨架，26 项尚未实现。已完成的需求不在这里留痕，去 Git 历史查。
 
