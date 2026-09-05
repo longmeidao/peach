@@ -52,7 +52,7 @@ RELOAD_NAME = "configuration-reload.request"
 
 #: 监听范围的两个选项：(提交值, 说明)。题目文本和设置页的下拉都由它生成，
 #: 所以两处永远是同一批选项，改一个不会漏掉另一个。
-HOST_OPTIONS = (("1", "仅本机（127.0.0.1）"), ("2", "局域网（0.0.0.0）"))
+HOST_OPTIONS = (("1", "只有这台电脑"), ("2", "同一局域网的设备"))
 #: 首扫题的题面。CLI 在后面接 `(Y/n)`，设置页把它当勾选框的标签。
 SCAN_PROMPT = "现在扫描 {target}？"
 
@@ -119,7 +119,7 @@ def validate_host(raw: str) -> str:
     try:
         return _HOST_CHOICES[key]
     except KeyError:
-        raise ValueError("填 1（仅本机）或 2（局域网）") from None
+        raise ValueError("填 1（只有这台电脑）或 2（同一局域网的设备）") from None
 
 
 def validate_port(raw: str) -> int:
@@ -170,16 +170,16 @@ def questions(
     home = Path.home() if home is None else home
     media_default = default_media_dir(home, windows=windows)
     return (
-        Question("data_root", "数据根（账本、缓存与设置文件都放这里）",
+        Question("data_root", "数据目录（账本、缓存和设置文件都放在这里）",
                  str(config.data_root), validate_data_root),
-        Question("media_dir", "本地媒体目录（来源 local，必须已存在）",
+        Question("media_dir", "媒体文件夹（必须已经存在）",
                  str(media_default) if media_default else "",
                  media_dir_validator(windows=windows)),
         Question("host",
-                 "监听范围：" + "，".join(f"{value} = {label}" for value, label in HOST_OPTIONS),
+                 "谁可以访问：" + "，".join(f"{value} = {label}" for value, label in HOST_OPTIONS),
                  "1", validate_host),
-        Question("port", "服务端口", str(config.server.port), validate_port),
-        Question("mdns_name", "局域网名字（<名字>.local，只在监听局域网时发布）",
+        Question("port", "端口", str(config.server.port), validate_port),
+        Question("mdns_name", "局域网访问地址（<名字>.local，只在允许局域网访问时发布）",
                  config.server.mdns_name, validate_mdns_name),
     )
 

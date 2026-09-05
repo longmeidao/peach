@@ -317,7 +317,7 @@ class InteractiveInitTests(unittest.TestCase):
         code, output, prompts = self._run(
             ["", str(missing), str(self.media), "", "", "", "n"], windows=NATIVE_WINDOWS)
         self.assertEqual(code, 0)
-        self.assertEqual(prompts.count("本地媒体目录（来源 local，必须已存在）"), 2)
+        self.assertEqual(prompts.count("媒体文件夹（必须已经存在）"), 2)
         self.assertIn("目录不存在", output)
         self.assertFalse(missing.exists(), "问答不替人建媒体目录")
 

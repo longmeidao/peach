@@ -105,11 +105,11 @@ Run without arguments, `peach init` asks five questions in the terminal; pressin
 
 | Question | Default |
 | --- | --- |
-| Data root (ledger, caches and the settings file live here) | `peach-data/` next to the repository |
-| Local media directory (source `local`, must already exist) | `~\Videos` (`~/Movies` on macOS); required when that folder is missing |
-| Listen scope: 1 = this machine only (127.0.0.1), 2 = LAN (0.0.0.0) | `1` |
-| Service port | `8900` |
-| LAN name (`<name>.local`, published only when listening on the LAN) | `peach` |
+| Data directory (ledger, caches and the settings file live here) | `peach-data/` next to the repository |
+| Media folder (must already exist; used as source `local`) | `~\Videos` (`~/Movies` on macOS); required when that folder is missing |
+| Who can access: 1 = only this computer, 2 = devices on the same LAN | `1` |
+| Port | `8900` |
+| LAN address (`<name>.local`, published only when LAN access is allowed) | `peach` |
 
 It then creates the data root, migrates the ledger to the latest schema, generates the local CA, writes
 `<data root>/config.toml`, asks "scan <directory> now?" (default yes) to register that directory's files
