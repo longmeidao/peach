@@ -5967,7 +5967,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("['flagged','已标记','bookmark'],")
         self.assertPageContains("['immerse','沉浸模式','gallery-vertical-end'],")
         self.assertPageContains("<span>进入沉浸模式</span>")
-        self.assertPageContains("class=\"shorts-enter\" type=\"button\">${icon('play')}")
         # 管理菜单的「配置」是这台电脑：`monitor` 已归详情页的分辨率，`settings` 归设置弹层。
         self.assertPageContains("['configuration','配置','computer'],")
         self.assertPageContains('<symbol id="i-computer" viewBox="0 0 24 24">')

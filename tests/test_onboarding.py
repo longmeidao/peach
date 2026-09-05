@@ -591,20 +591,25 @@ class SetupPageTests(_Case):
         with mock.patch("peach.distribution.standalone", return_value=True):
             body = self._get("/").text
         self.assertIn('<summary><span>高级设置</span><svg viewBox="0 0 24 24" aria-hidden="true">', body)
-        self.assertIn('import{wireCollapse}from"/js/ui-components.js";'
+        self.assertIn('import{attachOverlayScrollbar,wireCollapse}from"/js/ui-components.js";'
+                      'attachOverlayScrollbar(document.documentElement,{variant:"page"});'
                       'wireCollapse(document,"details","setup-collapse");', body)
         self.assertIn('.fcollapse{overflow:hidden;transition:height .2s ease-in-out;margin:0 -6px;padding:0 6px}', body)
         self.assertIn('.fcollapsebody{padding:6px 0}', body, "焦点环要留 6px，不能被折叠体的裁切切掉")
         self.assertIn('transition:transform .2s ease-in-out}', body)
         self.assertIn('details .field{margin-top:0}', body, "折叠体里的字段不再叠一层 24px 上边距")
         self.assertIn('@media (prefers-reduced-motion:reduce)', body)
-        self.assertIn('::-webkit-scrollbar-thumb{background:var(--sb)', body)
-        self.assertIn('*{scrollbar-width:thin;scrollbar-color:var(--sb) transparent}', body)
+        self.assertIn('.ovtrack.page{position:fixed;top:0;bottom:0;right:0;z-index:91;pointer-events:none}', body)
+        self.assertIn('.ovthumb{position:absolute;border-radius:var(--pill-radius);background:var(--field-ring-hover);', body)
+        self.assertIn('[data-overlay-scrollbar]{scrollbar-width:none}', body, "原生滚动条只在脚本挂上覆盖式那条之后才藏")
+        self.assertNotIn('html{color-scheme:light;scroll-padding-top', body, "主站 html 上无条件藏滚动条的那句不借")
+        self.assertNotIn('原生滚动条在挂上覆盖式那条之后才藏', body, "借来的规则不带主站的注释")
         script = self._get("/js/ui-components.js")
         self.assertEqual(script.status_code, 200, "首启服务没有令牌，共享控件脚本得放行")
         self.assertIn("export function wireCollapse", script.text)
+        self.assertIn("export function attachOverlayScrollbar", script.text)
         plain = self._get("/").text
-        self.assertNotIn('<script type="module">', plain, "没有高级设置的页面不加载折叠脚本")
+        self.assertEqual(plain.count('<script type="module">'), 1, "没有高级设置的页面也挂同一段脚本：滚动条要它")
 
     def test_a_second_submission_refuses_to_overwrite_the_settings_file(self):
         self.assertEqual(self._post("/setup", self._form()).status_code, 200)

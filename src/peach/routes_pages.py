@@ -242,10 +242,12 @@ _FOLDER_SVG = ('<svg viewBox="0 0 24 24"><path d="M10.7 20H4a2 2 0 0 1-2-2V5a2 2
                '<circle cx="17" cy="17" r="3"/></svg>')
 #: 折叠触发器右侧的 chevron（lucide `chevron-down`），展开时转 180 度。
 _CHEVRON_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>'
-#: 高级设置的折叠由站内共用的 wireCollapse 接管：原生 <details> 不过渡高度。
-#: 只在页面里真有 <details> 时才挂，错误页与不带高级设置的首启页不加载这两个模块。
-_COLLAPSE_SCRIPT = ('<script type="module">import{wireCollapse}from"/js/ui-components.js";'
-                    'wireCollapse(document,"details","setup-collapse");</script>')
+#: 两样东西借自站内共用控件：整页的覆盖式滚动条（原生那条藏掉，滑块浮在内容上），
+#: 以及高级设置的折叠（原生 <details> 不过渡高度）。页面里没有 <details> 时 wireCollapse
+#: 什么也不做，所以每张页面都挂同一段脚本。
+_SHARED_SCRIPT = ('<script type="module">import{attachOverlayScrollbar,wireCollapse}from"/js/ui-components.js";'
+                  'attachOverlayScrollbar(document.documentElement,{variant:"page"});'
+                  'wireCollapse(document,"details","setup-collapse");</script>')
 
 
 def _theme_tokens() -> str:
@@ -262,9 +264,14 @@ def _theme_tokens() -> str:
 
 
 def _scrollbar_rules() -> str:
-    """主站的滚动条：细、无箭头、无轨道底色。首启页装不下时滚起来也得是同一条。"""
+    """主站的覆盖式滚动条：轨道、滑块与「挂上之后才藏原生那条」三组规则，原样借用。
+
+    首启页装不下时滚起来也得是同一条；只取 .ovtrack 到 [data-overlay-scrollbar] 那一段，
+    不带 html 上无条件藏滚动条的那句——脚本没跑到时首启页要还有系统滚动条可用。
+    """
     base = (PROJECT_ROOT / "web" / "css" / "01-base.css").read_text(encoding="utf-8")
-    return re.search(r"\*\{scrollbar-width:thin.*?::-webkit-scrollbar-button\{[^}]*\}", base, re.S).group(0)
+    rules = re.search(r"\.ovtrack\{.*?\[data-overlay-scrollbar\]::-webkit-scrollbar\{[^}]*\}", base, re.S).group(0)
+    return re.sub(r"/\*.*?\*/\n?", "", rules, flags=re.S)
 
 
 def error_page(status: int, message: str) -> str:
@@ -277,9 +284,8 @@ def error_page(status: int, message: str) -> str:
 
 def _document(title: str, body: str) -> str:
     # 页内脚本对两张页面都生效：找不到对应控件时它什么也不做。
-    collapse = _COLLAPSE_SCRIPT if "<details" in body else ""
     return (f"{_SETUP_HEAD}<title>{title}</title><style>{_theme_tokens()}{_scrollbar_rules()}</style>"
-            f"{_SETUP_STYLE}</head><body><main>{body}</main>{_SETUP_SCRIPT}{collapse}</body></html>\n")
+            f"{_SETUP_STYLE}</head><body><main>{body}</main>{_SETUP_SCRIPT}{_SHARED_SCRIPT}</body></html>\n")
 
 
 def _check_html(name: str, text_html: str, *, checked: bool) -> str:
