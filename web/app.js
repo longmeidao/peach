@@ -6310,7 +6310,8 @@ async function openEntity(kind,name,push=true){
   agencyRoster=roster;
   const related=roster.length?'':(d.related_performers||[]).map(x=>`<button class="relatedperson" data-related-performer="${esc(x.k)}">
       <span class="ring"><span>${esc(x.k.slice(0,1))}</span>${entityFaceImg(
-        {id:x.id,hasImage:x.has_image,rep:x.has_avatar?x.rep:null})}</span>
+        {id:x.id,hasImage:x.has_image,rep:x.has_avatar?x.rep:null,
+         style:facePos(x.avatar_focus),focus:x.avatar_focus})}</span>
       <span class="nm">${esc(x.k)}</span></button>`).join('');
   const photoCount=photos&&!photos.error?(photos.total||0):0;
   /* 艺人名册和视频、照片是这一页的三个互斥视图，共用一组按钮：它们回答的是同一个

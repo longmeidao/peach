@@ -192,15 +192,15 @@ def q_entity(contract: WebContract, args):
     # 都取不到就一个 `<img>` 都不出。判定在库连接之外做，它读的是目录索引。
     d["has_image"] = contract.has_entity_image(kind, d["id"])
     attach_avatar_availability(contract, [d], key="representative_asset_id")
-    # 页脚那排共演者是同一个圆头像，用的也是同一条两级链。
+    # 页脚那排共演者是同一个圆头像，用的也是同一条两级链，取景也是同一份 sidecar。
+    # 圆框越小越需要取景：一张 3762×2535 的封面塞进 44 px 的圆里，几何居中给出的是
+    # 封面正中那块版式，脸在不在里面全看运气。事务所页的艺人大图与这排小圆头像用
+    # 同一条链，差别只在框多大，所以判据不该按页面分岔。
     for person in d["related_performers"]:
         person["has_image"] = contract.has_entity_image("performer", person["id"])
+        person["avatar_focus"] = contract.avatar_focus("performer", person["id"])
     attach_avatar_availability(contract, d["related_performers"])
     if kind == "agency":
-        # 事务所页默认摆的是艺人大图，那个版式把头像裁成竖幅，几何居中会切掉脸。
-        # 取景与索引页大图同一份 sidecar、同一个换算，别的页面那排小圆头像用不上。
-        for person in d["related_performers"]:
-            person["avatar_focus"] = contract.avatar_focus("performer", person["id"])
         # 事务所的门面是它自己的标识。没装实体图时给出官网那条链接的 id，页面拿它去
         # `/link-mark` 取站点圆标；两样都没有就只剩首字母。作品截图不参加——那是
         # 某位成员某部片的画面，和这家公司没有关系。

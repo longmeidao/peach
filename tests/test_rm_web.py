@@ -1305,6 +1305,9 @@ class WebDataTests(unittest.TestCase):
         self.assertEqual(page["tags"], [{"id": 10, "k": "足交", "n": 1}])
         self.assertEqual(page["related_performers"][0]["k"], "Related Bob")
         self.assertEqual(page["related_performers"][0]["n"], 1)
+        # 那排共演者是同一条两级取图链，取景也走同一份 sidecar。键必须在：没算过时
+        # 是 None，页面据此维持几何居中，而键缺席会让页面读到 undefined。
+        self.assertIn("avatar_focus", page["related_performers"][0])
         self.assertTrue(page["links"][0]["clickable"])
         self.assertFalse(page["links"][1]["clickable"])
         self.assertIsNone(page["links"][1]["url"])
