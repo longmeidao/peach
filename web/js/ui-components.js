@@ -1,4 +1,5 @@
 import { esc, icon } from './core.js';
+export { MEDIA_SOURCE_ICONS } from './media-source-icons.js';
 
 const NOTE_VARIANTS=new Set(['secondary','warning','error','success']);
 
@@ -546,14 +547,19 @@ export function wireAnchoredMenu(mount,toggle,menu){
 
    `value`、`disabled` 和 `change` 三样按原生 select 的写法留在根元素上：调用方读写它跟
    读写原生下拉一样，换掉的只是画法。 */
+export function selectOptionIconHtml(mark){
+  return !mark?'':mark.startsWith('data:image/png;base64,')
+    ?`<img class="gselectmark" src="${esc(mark)}" alt="" width="16" height="16">`:icon(mark,'gselectmark');
+}
 export function selectFieldHtml(options,current,{label='',attr='',className=''}={}){
   const chosen=options.find(([value])=>String(value)===String(current))||options[0]||['',''];
-  const rows=options.map(([value,text])=>
+  const content=([,text,mark])=>`${selectOptionIconHtml(mark)}${esc(text)}`;
+  const rows=options.map(([value,text,mark])=>
     `<button type="button" role="option" data-select-option="${esc(value)}"
-      aria-selected="${String(value)===String(chosen[0])}" tabindex="-1">${icon('check')}<span>${esc(text)}</span></button>`).join('');
+      aria-selected="${String(value)===String(chosen[0])}" tabindex="-1">${icon('check')}<span data-select-content>${content([value,text,mark])}</span></button>`).join('');
   return `<div class="gselect${className?` ${esc(className)}`:''}" ${attr}>
     <button type="button" class="gselectfield" data-select-trigger aria-haspopup="listbox"
-      aria-expanded="false" aria-label="${esc(label)}"><span data-select-label>${esc(chosen[1])}</span>${icon('chevron-down')}</button>
+      aria-expanded="false" aria-label="${esc(label)}"><span data-select-label>${content(chosen)}</span>${icon('chevron-down')}</button>
     <div class="popmenu gselectmenu" role="listbox" aria-label="${esc(label)}" popover="manual" data-select-menu hidden>${rows}</div></div>`;
 }
 
@@ -573,7 +579,7 @@ export function wireSelectField(root){
     if(!picked)return;
     options().forEach(option=>{
       option.setAttribute('aria-selected',String(option===picked));option.tabIndex=option===picked?0:-1});
-    label.textContent=picked.querySelector('span').textContent;
+    label.innerHTML=picked.querySelector('[data-select-content]').innerHTML;
   };
   options().forEach(option=>{
     option.onclick=()=>{

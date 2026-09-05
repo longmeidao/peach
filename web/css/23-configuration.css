@@ -42,5 +42,6 @@
 .configcheck{display:flex;align-items:center;gap:12px;min-height:32px;cursor:pointer;color:var(--ink)}
 .configfacts{margin:0;display:grid;grid-template-columns:max-content minmax(0,1fr);gap:10px 24px;align-items:baseline}
 .configfacts dt{color:var(--muted);font-size:var(--fs-sm)}.configfacts dd{margin:0;overflow-wrap:anywhere}
+.configfacts dt .gselectmark{vertical-align:-3px;margin-inline-end:8px}
 @media(max-width:560px){.configfacts{grid-template-columns:minmax(0,1fr)}.configfacts dd{margin-top:-6px}}
 @media(max-width:560px){.configpage{--control-h:44px}.configfieldset>.geist-fieldset-footer{flex-wrap:wrap}.configsource .geist-input{font-size:var(--fs-lg)}}

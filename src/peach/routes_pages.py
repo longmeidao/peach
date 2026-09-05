@@ -265,12 +265,12 @@ _CHEVRON_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-
 #: 两样东西借自站内共用控件：整页的覆盖式滚动条（原生那条藏掉，滑块浮在内容上），
 #: 以及高级设置的折叠（原生 <details> 不过渡高度）。页面里没有 <details> 时 wireCollapse
 #: 什么也不做，所以每张页面都挂同一段脚本。
-_SHARED_SCRIPT = ('<script type="module">import{attachOverlayScrollbar,wireCollapse,selectFieldHtml,wireSelectField}from"/js/ui-components.js";'
+_SHARED_SCRIPT = ('<script type="module">import{attachOverlayScrollbar,wireCollapse,selectFieldHtml,wireSelectField,MEDIA_SOURCE_ICONS}from"/js/ui-components.js";'
                   'attachOverlayScrollbar(document.documentElement,{variant:"page"});'
                   'wireCollapse(document,"details","setup-collapse");'
                   'const enhance=()=>document.querySelectorAll("select[name=media_location]:not([hidden])").forEach(select=>{'
                   'const holder=document.createElement("div");'
-                  'holder.innerHTML=selectFieldHtml(Array.from(select.options,o=>[o.value,o.text]),select.value,{label:select.getAttribute("aria-label")||"媒体来源"});'
+                  'holder.innerHTML=selectFieldHtml(Array.from(select.options,o=>[o.value,o.text,MEDIA_SOURCE_ICONS[o.value]]),select.value,{label:select.getAttribute("aria-label")||"媒体来源"});'
                   'select.after(holder);const field=wireSelectField(holder.firstElementChild);'
                   'field.addEventListener("change",()=>{select.value=field.value;select.dispatchEvent(new Event("change",{bubbles:true}));});'
                   'select.hidden=true;});enhance();'
@@ -320,7 +320,7 @@ def _button_rules() -> str:
 def _document(title: str, body: str) -> str:
     # 页内脚本对两张页面都生效：找不到对应控件时它什么也不做。
     index = (PROJECT_ROOT / "web/index.html").read_text(encoding="utf-8")
-    symbols = ''.join(re.findall(r'<symbol id="i-(?:check|chevron-down)"[^>]*>.*?</symbol>', index))
+    symbols = ''.join(re.findall(r'<symbol id="i-(?:check|chevron-down|hard-drive)"[^>]*>.*?</symbol>', index))
     return (f"{_SETUP_HEAD}<title>{title}</title><style>{_theme_tokens()}{_scrollbar_rules()}</style>"
             f'{_SETUP_STYLE}<style>{_button_rules()}</style></head><body><svg width="0" height="0" aria-hidden="true" style="position:absolute">{symbols}</svg><main>{body}</main>{_SETUP_SCRIPT}{_SHARED_SCRIPT}</body></html>\n')
 

@@ -18,6 +18,8 @@ export declare function fieldsetTitle(id: string, title: string): string;
 export declare function selectFieldHtml(items: string[][], current: string,
   options?: { label?: string; attr?: string; className?: string }): string;
 export declare function wireSelectField(root: Element): HTMLElement & { value: string; disabled: boolean };
+export declare const MEDIA_SOURCE_ICONS: Record<string, string>;
+export declare function selectOptionIconHtml(mark?: string): string;
 
 /** 用户触发的动作等待结果时的忙态：`aria-busy` 与 `aria-disabled` 一起写，控件仍可聚焦，
  *  重复触发由遗留层的 `wireBusyActions` 拦住。请求等待期不许改用原生 `disabled`。 */
