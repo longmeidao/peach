@@ -1368,6 +1368,18 @@ class WebUiSourceTests(unittest.TestCase):
             "data-facebox=\"${[b.cx,b.cy,b.faceW,b.imgW,b.imgH].map(Number).join(' ')}\"")
         self.assertPageContains("else if(img.dataset.facebox)avatarFrame(img);")
 
+    def test_an_unlaid_out_frame_is_waited_for_instead_of_measured_as_zero(self):
+        """图加载完时框还没布局，`load` 不会再来第二次。
+
+        面板隐藏、`display:none` 的页签、缓存直出都会撞上这一刻：框是 0×0，算出来
+        的倍数只能是 1，放大于是静默地永不生效。资料页实测复现过——框已经 160×160、
+        图也 complete，style 里却只有平移。这类失效在页面上和「这张图不需要放大」
+        长得一模一样，所以必须由代码等，不能指望肉眼发现。
+        """
+        self.assertPageContains("if(!(rect.width>0&&rect.height>0)){")
+        self.assertPageContains("const watch=new ResizeObserver(()=>{")
+        self.assertPageContains("watch.disconnect();")
+
     def test_a_fallback_image_never_inherits_the_previous_faces_box(self):
         # 回落图是另一张照片，脸不在同一位置、尺寸也不是那个尺寸。留着脸框，下一次
         # load 就会拿上一张的脸给这一张算放大倍数，页面上是一张明显错位的图。
@@ -2660,28 +2672,35 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("mountPlayerSeekPreview(detailPlayer,it,{thumbnail:!options.source})")
         self.assertPageContains(".vjs-peach-seek-preview img{width:240px;aspect-ratio:16/9")
 
-    def test_center_player_feedback_waits_for_a_user_gesture_and_never_overlaps_loading(self):
-        self.assertPageContains("function mountPlayerCenterControls(player)")
-        self.assertPageContains("root.className='vjs-peach-center-controls';root.dataset.playerCenterControls=''")
+    def test_the_player_has_exactly_one_center_feedback_circle(self):
+        """画面中心只有 `.vjs-peach-bezel` 这一块 78px 提示圆。
+
+        两块同尺寸的提示圆各按自己的时机读播放状态时，点一下控制条的播放键，一块闪
+        播放、另一块闪暂停，两个图标叠在同一个圆里。所以这里既钉住那一块圆的三个触发面
+        （播放键、静音键、画面本身），也钉住第二块不再存在。
+        """
+        self.assertPageContains("player.el().addEventListener('click',event=>{")
+        self.assertPageContains("event.target.closest('.vjs-play-control,.vjs-tech,.vjs-poster')")
+        self.assertPageContains("event.target.closest('.vjs-mute-control')")
         self.assertPageLacks('data-center-seek=')
         self.assertPageLacks('data-center-toggle')
-        self.assertPageContains("let gesture=false,gestureTimer=0")
-        self.assertPageContains("playerRoot.addEventListener('pointerdown',arm,true)")
-        self.assertPageContains("if(gesture){gesture=false;clearTimeout(gestureTimer);feedback()}")
-        self.assertPageContains("root.classList.add('is-feedback')")
-        self.assertPageContains(".vjs-peach-center-controls.is-feedback{visibility:visible;animation:peach-player-bezel-fadeout 1s cubic-bezier(.05,0,0,1) both}")
-        self.assertPageContains("25%,75%{opacity:1;transform:translate(-50%,-50%) scale(1.33)}")
-        self.assertPageContains(".vjs-peach-center-bezel{width:78px;height:78px;border-radius:50%;display:grid;place-items:center;background:rgba(0,0,0,.6)")
-        self.assertPageContains('.vjs-peach-center-controls[data-state="pause"] .vjs-peach-center-pause{display:block}')
-        self.assertPageContains(".video-js.vjs-waiting .vjs-peach-center-controls,.video-js.vjs-seeking .vjs-peach-center-controls{visibility:hidden!important}")
+        self.assertPageLacks("vjs-peach-center-controls")
+        self.assertPageLacks("vjs-peach-center-bezel")
+        self.assertPageLacks("peach-player-bezel-fadeout")
+        self.assertPageLacks("i-player-bezel-play")
+        self.assertPageLacks("i-player-bezel-pause")
+        self.assertPageContains(".vwrap .video-js:has(.vjs-peach-bezel) .vjs-big-play-button{display:none}")
+        self.assertPageContains(".video-js.vjs-waiting .vjs-peach-bezel,.video-js.vjs-seeking .vjs-peach-bezel,")
+        self.assertPageContains(".video-js.vjs-error .vjs-peach-bezel{display:none}")
+
+    def test_player_spinner_replaces_the_videojs_arcs_with_the_four_part_dom(self):
+        self.assertPageContains("function mountPlayerSpinner(player)")
+        self.assertPageContains("mountPlayerSpinner(detailPlayer)")
         self.assertPageContains("vjs-peach-spinner-container")
         self.assertPageContains("animation:peach-spinner-linspin 1.5682352941176s linear infinite")
         self.assertPageContains("animation:peach-spinner-easespin 5332ms cubic-bezier(.4,0,.2,1) infinite both")
         self.assertPageContains("animation:peach-spinner-left-spin 1333ms cubic-bezier(.4,0,.2,1) infinite both")
         self.assertPageContains("animation:peach-spinner-right-spin 1333ms cubic-bezier(.4,0,.2,1) infinite both")
-        self.assertPageContains('id="i-player-bezel-play"')
-        self.assertPageContains('id="i-player-bezel-pause"')
-        self.assertPageContains("mountPlayerCenterControls(detailPlayer)")
 
     def test_cards_show_blue_watched_progress_from_play_seconds(self):
         self.assertPageContains("const watchedRatio=!parts&&Number(it.play_seconds)>0&&Number(it.duration)>0")
@@ -2793,7 +2812,15 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("display:block!important;align-self:center;flex:0 0 52px;width:52px!important")
         self.assertPageContains("top:50%!important;width:52px!important;height:2px!important;margin:0!important")
         self.assertPageContains(".vjs-control-bar>.vjs-volume-panel{box-sizing:border-box;z-index:3;position:relative")
-        self.assertPageContains(".vjs-volume-panel .vjs-volume-tooltip{z-index:5!important;left:50%;right:auto;top:auto")
+        # 音量胶囊和右边那枚胶囊同一排、同一档底色，毛玻璃也必须同一档：只有一边磨砂，
+        # 展开之后它就比邻居更透，画面颜色直接透上来。
+        self.assertPageContains(
+            "border-radius:var(--pill-radius);background:rgba(0,0,0,.6);box-shadow:none;\n"
+            "  backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);")
+        # Video.js 每 30ms 往音量提示上写一句行内 `style.right=-Npx`。行内声明压过样式表里
+        # 同名的普通声明，`left:50%` 和它同时成立时宽度改由两边反推，底色摊成一块比数字大
+        # 得多的方块，而且它下一帧按新宽度重算 N，尺寸一直在飘。
+        self.assertPageContains(".vjs-volume-panel .vjs-volume-tooltip{z-index:5!important;left:50%;right:auto!important;top:auto")
 
     def test_theater_mode_has_button_tooltip_keyboard_and_responsive_layout(self):
         self.assertPageContains("function mountPlayerTheaterControl(player,settingsRoot)")
@@ -2838,7 +2865,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".vjs-peach-tooltip kbd{display:flex;justify-content:center;align-items:center;min-width:11px")
         self.assertPageContains(".vjs-peach-tooltip kbd[hidden]{display:none}")
         self.assertPageContains(".vwrap .video-js .vjs-control-bar button:hover>.vjs-peach-tooltip")
-        self.assertPageContains(".vjs-volume-tooltip{z-index:5!important;left:50%;right:auto;top:auto;bottom:calc(100% + 32px)")
+        self.assertPageContains(".vjs-volume-tooltip{z-index:5!important;left:50%;right:auto!important;top:auto;bottom:calc(100% + 32px)")
         # 提示要露出控制条，播放键和时间钮不能再靠 overflow 裁。
         self.assertPageLacks("background:rgba(0,0,0,.6);box-shadow:none;overflow:hidden}")
 
@@ -2928,16 +2955,17 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("if(panelTimer)clearTimeout(panelTimer)")
 
     def test_narrow_player_keeps_both_overlays_inside_the_frame(self):
-        """390 宽的视口上 16:9 的播放器只有 200 出头的高，设置面板要 212、统计面板要 256。
+        """播放器的高度只由 16:9 和宽度决定，两个浮层各自按播放器高度收顶。
 
-        所以先给播放器一个 320px 的最低高度，窄屏改成上下留黑边；再让两个浮层各自
-        按播放器高度收顶，谁都不可能超过播放器本身。窄屏的设置面板还要撤掉
-        `right:-100px`——那个偏移是给设置键右边还有影院键和全屏键时留的位。
+        390 宽的视口上 16:9 只有 200 出头的高，比两个浮层都矮。解法是让浮层收顶并内部
+        滚动，不是给播放器垫一个像素高度——垫出来的那截在窄屏上是画面上下各一条黑边，
+        比它保护的东西还显眼。窄屏的设置面板另外要撤掉 `right:-100px`：那个偏移是给
+        设置键右边还有影院键和全屏键时留的位。
         """
         self.assertPageContains(
-            ".vwrap>.video-js{width:100%;height:auto;min-height:320px;max-height:76vh;"
+            ".vwrap>.video-js{width:100%;height:auto;max-height:76vh;"
             "aspect-ratio:16/9;background:#000}")
-        self.assertPageContains(".gate{aspect-ratio:16/9;width:100%;min-height:320px")
+        self.assertPageContains(".gate{aspect-ratio:16/9;width:100%;background:var(--sunk)")
         self.assertPageContains(
             "max-height:calc(100% - 114px);overflow-y:auto;overscroll-behavior:contain;")
         self.assertPageContains(
@@ -3005,8 +3033,16 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(
             "height:32px;min-height:32px;padding:0;border:0;border-radius:var(--pill-radius);"
             "background:rgba(255,255,255,.1);")
+        # 加减键画图标不写字形：`−`／`+` 的墨迹绕数学轴排布，行盒居中后实测偏下 3.0px、
+        # 偏左 1.8px，而减号墨迹只有 2px 高，这点位移在 32px 圆里一眼看得见。
         self.assertPageContains(
-            ".vjs-peach-speed-slider .vjs-peach-speed-button{flex:none;width:32px;font-size:var(--fs-2xl)}")
+            ".vjs-peach-speed-slider .vjs-peach-speed-button{flex:none;width:32px}")
+        self.assertPageContains(
+            ".vjs-peach-speed-slider .vjs-peach-speed-button>svg{width:24px;height:24px;display:block;")
+        self.assertPageContains(
+            'data-player-speed-step="-1" aria-label="播放速度减 0.05">${icon(\'minus\')}</button>')
+        self.assertPageContains(
+            'data-player-speed-step="1" aria-label="播放速度加 0.05">${icon(\'plus\')}</button>')
         self.assertPageContains(
             ".vjs-peach-speed-chips .vjs-peach-speed-button{width:100%;gap:4px;font-size:var(--fs-xs)}")
         # 设置面板里的按钮统一是 100% 宽、48px 高、`:before` 铺满的高亮层，胶囊得单独退出这套。
@@ -3191,26 +3227,34 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("const seeked=Math.abs(ct-last.ct)>gap*4+1")
         self.assertPageContains("function createBufferMeter(bitrate)")
         self.assertPageContains("function averageBitrate(size,duration)")
-        self.assertPageContains("const meter=createBufferMeter(averageBitrate(options.size??it.size,it.duration))")
+        self.assertPageContains("let mediaSize=Number(options.size??it.size)||0;")
+        self.assertPageContains("const meter=createBufferMeter(averageBitrate(mediaSize,it.duration))")
+        # 关注条目的字节数比挂载晚一趟回来，码率要能后填，否则速度永远换不出来。
+        self.assertPageContains("if(size>0&&!mediaSize){mediaSize=size;meter.bitrate=averageBitrate(size,it.duration)}")
         # 分片流才有可用的已完成请求；渐进源查了只会把别的会话的条目算进来。
         self.assertPageContains("const resources=segmented?streamEntries(it.id,detailStreamSession):[]")
         self.assertPageContains("playerSpeedBits(detailPlayer,it.id,detailStreamSession,segmented?null:meter)")
         self.assertPageContains("return meter?Number(meter.bits)||0:streamSpeedBits(id,session)")
         # 缓冲吃满后浏览器停拉，增量归零，读数保留上一次而不是跳回 0。
-        self.assertPageContains("if(span>=.5&&gained>0){ratio=gained/span;")
+        self.assertPageContains("if(span>=.5&&gained>0&&this.bitrate>0)bits=gained*this.bitrate/span;")
         # 面板和角标都关着时没人采样，重开时的大跨度样本要丢掉。
         self.assertPageContains("if(gap*1000>BUFFER_METER_WINDOW_MS*2)samples.length=0")
 
     def test_progressive_stats_swap_the_request_counter_for_downloaded_bytes(self):
-        """请求数对渐进源恒为 0，换成已下载量；码率未知的在线条目退到秒和推进倍速。"""
+        """请求数对渐进源恒为 0，换成已下载量；码率未知的条目退到秒和已缓冲时长。
+
+        「× 实时」这种口径不出现在界面上：它要用户先知道倍速是拿什么除什么才读得懂，
+        而同一份数据里能直接用的读数是「现在断网还能往前放多久」。
+        """
         self.assertPageContains("const loaded=segmented?bytes:(meter.bitrate>0?meter.bytes():meter.seconds)")
         self.assertPageContains("const byteScale=segmented||meter.bitrate>0")
         self.assertPageContains("请求`,")
         self.assertPageContains(":['已下载',byteScale?")
         self.assertPageContains("`${loaded.toFixed(0)} 秒`")
-        self.assertPageContains("function fmtLoadRate(bits,ratio)")
-        self.assertPageContains("`${ratio.toFixed(1)}× 实时`")
-        self.assertPageContains(":(!segmented&&meter.ratio>0?`${meter.ratio.toFixed(1)}× 实时`:'—')")
+        self.assertPageContains("function fmtLoadRate(bits,ahead)")
+        self.assertPageContains("return ahead>0?`已缓冲 ${Math.round(ahead)} 秒`:fmtSpeed(0);")
+        self.assertPageContains("const speedText=speed?`${(speed/1e6).toFixed(1)} Mbps`:'—';")
+        self.assertPageLacks("× 实时")
 
     def test_follow_detail_gets_the_same_player_stats_overlay(self):
         """作品详情与关注详情共用同一段统计模板，关注详情里的在线视频同样有统计入口。"""
@@ -3256,7 +3300,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('id="playerNet"')
         self.assertPageContains("function streamSpeedBits(id,session='')")
         self.assertPageContains("function fmtSpeed(bits)")
-        self.assertPageContains("const rate=segmented?fmtSpeed(bits):fmtLoadRate(bits,meter.ratio);")
+        self.assertPageContains("const rate=segmented?fmtSpeed(bits):fmtLoadRate(bits,bufferedAhead(video));")
         self.assertPageContains(
             """netBadge.innerHTML=`${icon('gauge')}<span class="sr-only">加载速度</span><span>${esc(rate)}</span>`""")
 
@@ -5646,6 +5690,17 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks("prompt('要找哪种更好版本？")
         self.assertPageContains("body:JSON.stringify({id:it.id,wanted})")
         self.assertPageLacks('id="closeStage">收起')
+
+    def test_ambient_mode_repaints_from_a_paused_frame_when_switched_back_on(self):
+        """暂停时打开氛围模式要立刻取一帧：帧回调只在有新画面时才来，链上用 run 号判重。"""
+        self.assertPageContains("const sample=()=>{if(video.readyState<2)return;")
+        self.assertPageContains("const start=()=>{if(stopped||!appSettings.ambientMode)return;"
+                                "sample();if(!video.paused)queue(++run)}")
+        self.assertPageContains("if(event.detail.enabled)start();else{run++;clear()}")
+        self.assertPageContains("video.addEventListener('play',start);"
+                                "video.addEventListener('loadeddata',start);start();")
+        self.assertPageContains("const paint=(id,now)=>{if(stopped||id!==run)return;")
+        self.assertPageLacks("scheduled=false")
 
     def test_better_version_targets_have_a_management_page(self):
         self.assertPageContains("['quality','高清版','sparkles']")
