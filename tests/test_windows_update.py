@@ -4,13 +4,16 @@ import subprocess
 import tempfile
 import time
 import unittest
+import unittest.mock
 from pathlib import Path
 from unittest.mock import Mock
 
 from peach.windows_update import sweep_onefile_extractions
 
 from peach.windows_update import (
+    BACKUP_GLOB,
     WindowsUpdateInstaller,
+    swap_tray_binary,
     windows_tray_rebuild_required,
 )
 
@@ -263,3 +266,45 @@ class WindowsTrayReplacerTests(unittest.TestCase):
             self.assertEqual(paths[0].read_bytes(), b"old")
             self.assertTrue(paths[3].exists())
             self.assertEqual(start.call_count, 2)
+
+
+class SwapTrayBinaryTests(unittest.TestCase):
+    def paths(self, root: Path) -> tuple[Path, Path]:
+        target = root / "Peach.exe"
+        staged = root / "staged" / "Peach.exe"
+        staged.parent.mkdir()
+        target.write_bytes(b"old")
+        staged.write_bytes(b"new")
+        return staged, target
+
+    def test_the_old_binary_is_kept_under_the_name_the_sweeper_recognises(self):
+        with tempfile.TemporaryDirectory() as directory:
+            staged, target = self.paths(Path(directory).resolve())
+            backup = swap_tray_binary(staged, target, sleep=lambda _delay: None)
+            self.assertEqual(target.read_bytes(), b"new")
+            self.assertEqual(backup.read_bytes(), b"old")
+            self.assertEqual([backup], list(target.parent.glob(BACKUP_GLOB)))
+            self.assertFalse(staged.exists(), "暂存包被原子移到生产入口")
+
+    def test_a_target_that_is_not_the_production_entry_is_refused(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            staged, target = self.paths(root)
+            with self.assertRaises(ValueError):
+                swap_tray_binary(staged, root / "Other.exe")
+            with self.assertRaises(FileNotFoundError):
+                swap_tray_binary(root / "missing.exe", target)
+            self.assertEqual(target.read_bytes(), b"old")
+            self.assertEqual(list(target.parent.glob(BACKUP_GLOB)), [])
+
+    def test_a_replacement_that_never_lands_leaves_no_orphan_backup(self):
+        with tempfile.TemporaryDirectory() as directory:
+            staged, target = self.paths(Path(directory).resolve())
+            with unittest.mock.patch("peach.windows_update.os.replace",
+                                     side_effect=PermissionError("held")):
+                with self.assertRaises(PermissionError):
+                    swap_tray_binary(staged, target, timeout=0.0,
+                                     sleep=lambda _delay: None)
+            self.assertEqual(target.read_bytes(), b"old")
+            self.assertEqual(list(target.parent.glob(BACKUP_GLOB)), [],
+                             "换不上就没有可回滚的东西，备份留着只会被当成一次成功的更新")

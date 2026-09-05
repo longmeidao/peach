@@ -66,7 +66,7 @@ SCOPES: dict[str, tuple[str, ...]] = {
     "tooling": ("test_scripts.py", "test_auth.py", "test_cli.py", "test_script_policy.py",
                 "test_scan.py", "test_onboarding.py", "test_configuration_sources.py", "test_folder_picker.py", "test_ledger_backups.py",
                 "test_agent_worktree.py", "test_test_evidence.py", "test_dependency_policy.py",
-                "test_restart_windows_tray.py",
+                "test_restart_windows_tray.py", "test_deploy_windows_tray.py",
                 "test_buildinfo.py", "test_versioning.py",
                 "test_windows_update.py", "test_certs.py", "test_config.py",
                 "test_fsutil.py",
