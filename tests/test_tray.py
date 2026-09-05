@@ -602,6 +602,16 @@ class SetupGateTests(unittest.TestCase):
         popen.assert_not_called()
 
 
+class LogRetentionAtStartupTests(unittest.TestCase):
+    def test_the_log_sweep_runs_before_any_child_process_can_open_a_log(self):
+        """子进程以追加方式握着 `tray-*.log` 的句柄；先起服务再改名，Windows 上改名会失败，
+        POSIX 上则是段文件继续被写。所以整理必须排在 ServiceManager 之前，且失败只记警告。"""
+        source = inspect.getsource(tray_main)
+        sweep = source.index("log_retention.sweep(config.directory(\"logs\"))")
+        self.assertLess(sweep, source.index("ServiceManager(specs, log_dir="))
+        self.assertIn('warning("日志整理失败", exc_info=True)', source)
+
+
 class SourceSyncTests(unittest.TestCase):
     """「同步开发进度」这条路径：拉到的代码要真的跑起来，托盘不能自己骗自己。"""
 

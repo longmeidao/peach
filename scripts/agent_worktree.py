@@ -45,6 +45,24 @@ def runtime_inputs_changed(paths: Iterable[str]) -> bool:
                for path in normalized for prefix in RUNTIME_INPUTS)
 
 
+#: Conventional Commits 的功能类型；`!` 是破坏性标记。pre-1.0 阶段两者都只推 minor（ADR-0012）。
+FEATURE_SUBJECT = re.compile(r"^(feat|feature)(\(.*\))?!?:|^\w+(\(.*\))?!:")
+
+
+def bump_part_for(subjects: Iterable[str], added_paths: Iterable[str]) -> str:
+    """这批提交该推版本号的哪一位。
+
+    有功能提交（`feat:`）或破坏性标记（`type!:`），或者新增了迁移文件，就是 minor；
+    其余（修复、重构、文案、构建）是 patch。major 只在 1.0 那一次手工给，这里不判。
+    """
+    if any(FEATURE_SUBJECT.match(subject.strip()) for subject in subjects):
+        return "minor"
+    normalized = [str(path).replace("\\", "/").strip("/") for path in added_paths]
+    if any(path.startswith("migrations/") for path in normalized):
+        return "minor"
+    return "patch"
+
+
 def bump_version(text: str, part: str) -> tuple[str, str]:
     """把 `__version__` 那一行往前推一格，返回新正文与新版本号。
 
@@ -165,12 +183,15 @@ def ready(repo: Path, target_branch: str = "master") -> dict[str, object]:
 
 
 def integrate(repo: Path, worker_branch: str, target_branch: str = "master", *,
-              bump: str = "patch") -> dict[str, object]:
+              bump: str = "auto") -> dict[str, object]:
     """把工作者分支并进 target，并让本地版本号跟着这次集成走。
 
     这台机器既是开发机又是生产机：提交先落本地再推 GitHub，本地永远领先。版本号因此
     必须在集成时就动，不能等发布——发布点仍然是 `RELEASE_TAG_ENTRY` 推上去的那个
     `v<版本>` tag，它读的正是这里推进后的 `__version__`。
+
+    `bump="auto"` 由 `bump_part_for()` 按这批提交的类型定档；显式传 patch／minor／major
+    是覆盖，`none` 表示不动版本号。
     """
     main = _main_worktree(repo)
     if repo.resolve() != main.resolve():
@@ -186,12 +207,15 @@ def integrate(repo: Path, worker_branch: str, target_branch: str = "master", *,
     if overlap:
         raise WorkspaceError("same-file review required: " + ", ".join(overlap))
     before = _git(main, "rev-parse", "HEAD").stdout.strip()
+    subjects = _lines(_git(main, "log", "--no-merges", "--format=%s", f"{base}..{worker_branch}"))
     _git(main, "merge", "--no-ff", "--no-edit", worker_branch)
     merged_files = set(_lines(_git(main, "diff", "--name-only", f"{base}..HEAD")))
+    added_files = _lines(_git(main, "diff", "--name-only", "--diff-filter=A", f"{base}..HEAD"))
+    part = bump_part_for(subjects, added_files) if bump == "auto" else bump
     version = read_version(main)
-    bumped = bump != "none" and runtime_inputs_changed(merged_files)
+    bumped = part != "none" and runtime_inputs_changed(merged_files)
     if bumped:
-        version = _commit_version_bump(main, bump)
+        version = _commit_version_bump(main, part)
     return {
         "ok": True,
         "action": "integrate",
@@ -201,6 +225,7 @@ def integrate(repo: Path, worker_branch: str, target_branch: str = "master", *,
         "files": sorted(worker_files),
         "version": version,
         "bumped": bumped,
+        "bump": part if bumped else "none",
         "release_tag_entry": RELEASE_TAG_ENTRY,
     }
 
@@ -382,9 +407,10 @@ def main() -> int:
     merge = sub.add_parser("integrate")
     merge.add_argument("--branch", required=True)
     merge.add_argument("--target", default="master")
-    merge.add_argument("--bump", choices=("patch", "minor", "major", "none"),
-                       default="patch",
-                       help="改动进到运行时产物时把版本号推一格；纯文档改动传 none")
+    merge.add_argument("--bump", choices=("auto", "patch", "minor", "major", "none"),
+                       default="auto",
+                       help="auto 按提交类型定档：feat 或新迁移推 minor，其余推 patch；"
+                            "改动没进运行时产物时不动。显式档位是覆盖，none 表示不动")
     sweep = sub.add_parser("prune")
     sweep.add_argument("--target", default="master")
     sweep.add_argument("--apply", action="store_true",

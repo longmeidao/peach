@@ -16,7 +16,7 @@ from html import escape
 from pathlib import Path
 from unittest import mock
 
-from peach import onboarding, settings_file
+from peach import onboarding, routes_pages, settings_file
 
 NATIVE_WINDOWS = os.name == "nt"
 HAS_HTTP_DEPS = all(importlib.util.find_spec(name) for name in ("fastapi", "httpx"))
@@ -435,6 +435,15 @@ class SetupPageTests(_Case):
         # 页面用自己的题面：短名词加一句说明，不把命令行那份带可选值的题面搬上来。
         for title in ("数据目录", "媒体文件夹", "谁可以访问", "端口", "局域网访问地址"):
             self.assertIn(f">{title}</", body)
+        # 只有媒体文件夹非填不可。其余四项都有能直接用的默认值，折进「高级设置」，
+        # 独立包与源码部署是同一张表单；有一项报错时折叠展开着。
+        details = body.index("<details><summary><span>高级设置</span>")
+        self.assertLess(body.index('id="add-dir"'), details)
+        for key in ("data_root", "host", "port", "mdns_name"):
+            self.assertLess(details, body.index(f'name="{key}"'), key)
+        self.assertLess(body.index('name="mdns_name"'), body.index("</details>"))
+        self.assertNotIn('type="hidden"', body)
+        self.assertIn("details .field+.field{margin-top:24px}", body)
         self.assertIn("Peach 数据库、缓存和设置文件都放在这里。", body)
         self.assertIn("可以是外置硬盘上的文件夹", body)
         # 媒体文件夹是一个可加减的列表：默认一行，「添加文件夹」和移除键由页内脚本亮出来，
@@ -589,8 +598,7 @@ class SetupPageTests(_Case):
 
     def test_advanced_settings_fold_with_the_shared_collapse_and_the_site_scrollbar(self):
         """高级设置是 Geist Collapse：借主站的 wireCollapse，chevron 与高度都 200ms；滚动条也是主站那条。"""
-        with mock.patch("peach.distribution.standalone", return_value=True):
-            body = self._get("/").text
+        body = self._get("/").text
         self.assertIn('<summary><span>高级设置</span><svg viewBox="0 0 24 24" aria-hidden="true">', body)
         self.assertIn('import{attachOverlayScrollbar,wireCollapse}from"/js/ui-components.js";'
                       'attachOverlayScrollbar(document.documentElement,{variant:"page"});'
@@ -609,8 +617,16 @@ class SetupPageTests(_Case):
         self.assertEqual(script.status_code, 200, "首启服务没有令牌，共享控件脚本得放行")
         self.assertIn("export function wireCollapse", script.text)
         self.assertIn("export function attachOverlayScrollbar", script.text)
-        plain = self._get("/").text
+        plain = routes_pages.error_page(404, "没有这一页")
+        self.assertNotIn("<details", plain)
         self.assertEqual(plain.count('<script type="module">'), 1, "没有高级设置的页面也挂同一段脚本：滚动条要它")
+
+    def test_a_wrong_advanced_value_reopens_the_fold_with_the_message_in_place(self):
+        response = self._post("/setup", self._form(port="99999"))
+        self.assertEqual(response.status_code, 400)
+        body = response.text
+        self.assertIn("<details open><summary><span>高级设置</span>", body)
+        self.assertLess(body.index('name="port"'), body.index('<p class="bad" role="alert">'))
 
     def test_a_second_submission_refuses_to_overwrite_the_settings_file(self):
         self.assertEqual(self._post("/setup", self._form()).status_code, 200)

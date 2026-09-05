@@ -33,7 +33,7 @@ SCOPES: dict[str, tuple[str, ...]] = {
               "test_interaction.py", "test_media.py", "test_previews.py",
               "test_providers.py", "test_segments.py", "test_streaming.py",
               "test_transcodes.py"),
-    "sync": ("test_sync*.py", "test_platform.py", "test_mount.py", "test_tray.py",
+    "sync": ("test_sync*.py", "test_platform.py", "test_mount.py", "test_tray.py", "test_log_retention.py",
              "test_mdns.py", "test_netwatch.py", "test_certs.py",
              "test_review_mirror.py"),
     "metadata": ("test_scraping_access.py", "test_metadata*.py", "test_genre_taxonomy.py", "test_fc2*.py",

@@ -108,6 +108,7 @@ details[open] summary svg{transform:rotate(180deg)}
 .fcollapse{overflow:hidden;transition:height .2s ease-in-out;margin:0 -6px;padding:0 6px}
 .fcollapsebody{padding:6px 0}
 details .field{margin-top:0}
+details .field+.field{margin-top:24px}
 .bad{margin:6px 0 0;color:var(--drop);font-size:var(--fs-sm)}
 .check{display:flex;align-items:center;gap:12px;min-height:44px;margin:24px 0 0;cursor:pointer}
 .pcheck{position:relative;display:grid;place-items:center;width:20px;height:20px;flex:none}
@@ -160,8 +161,6 @@ _SETUP_COPY = {
     "port": ("端口", "浏览器地址里冒号后面的数字，一般不用改。"),
     "mdns_name": ("局域网访问地址", "选了「同一局域网的设备」之后，其他设备在浏览器里输入这个地址就能打开 Peach。"),
 }
-_STANDALONE_COPY = {"port": ("本机访问端口", "浏览器地址里冒号后面的数字，一般不用改。")}
-
 #: 「谁可以访问」在页面上的顺序：局域网在左边，也是默认选项——Peach 的本意就是给
 #: 同一局域网里的设备看。命令行问答按 `HOST_OPTIONS` 的编号顺序念，两边取值一致。
 _HOST_ORDER = ("2", "1")
@@ -336,8 +335,6 @@ def runtime_facts_html(config) -> str:
 
 
 def _copy_for(key: str, fallback: str) -> tuple[str, str]:
-    if distribution.standalone() and key in _STANDALONE_COPY:
-        return _STANDALONE_COPY[key]
     return _SETUP_COPY.get(key, (fallback, ""))
 
 
@@ -437,12 +434,10 @@ def setup_page(
     if errors.get("data_root"):
         fields.append(f'<p class="bad" role="alert">{escape(errors["data_root"])}</p>')
     media_dirs: list[str] = []
+    # 只有媒体文件夹是非填不可的。数据目录、谁可以访问、端口、局域网地址都有能直接用的
+    # 默认值，一律折进「高级设置」：不分独立包还是源码部署，同一张表单。
+    advanced: list[str] = []
     for question in asked:
-        if distribution.standalone() and question.key in {"data_root", "host", "mdns_name"}:
-            value = {"data_root": str(config.data_root), "host": "1",
-                     "mdns_name": config.server.mdns_name}[question.key]
-            fields.append(f'<input type="hidden" name="{question.key}" value="{escape(value, quote=True)}">')
-            continue
         if question.key == "media_dir":
             media_dirs = _media_dir_values(values, question.default)
             row_errors = errors.get("media_dir", [])
@@ -453,13 +448,12 @@ def setup_page(
                 locations=values.get("media_location", ()), roots=values.get("media_root", ()), windows=windows))
             continue
         value = str(values.get(question.key, question.default))
-        field = _field_html(question, value, str(errors.get(question.key, "")), "")
-        if distribution.standalone() and question.key == "port":
-            opened = " open" if errors.get("port") else ""
-            field = f'<details{opened}><summary><span>高级设置</span>{_CHEVRON_SVG}</summary>{field}</details>'
-        fields.append(field)
+        advanced.append(_field_html(question, value, str(errors.get(question.key, "")), ""))
+    opened = " open" if any(errors.get(key) for key in ("data_root", "host", "port", "mdns_name")) else ""
+    fields.append(f'<details{opened}><summary><span>高级设置</span>{_CHEVRON_SVG}</summary>'
+                  + "".join(advanced) + "</details>")
     filled = [path for path in media_dirs if path]
-    if distribution.standalone() or not filled:
+    if not filled:
         scan_text = "完成设置后扫描媒体文件夹"
     elif len(filled) == 1:
         scan_text = f"完成设置后扫描 <code>{escape(filled[0])}</code>"
@@ -641,9 +635,6 @@ async def setup_submit(request: Request):
     scan_now = "scan_now" in form
 
     config = settings_file.active()
-    if distribution.standalone():
-        submitted.update(data_root=str(config.data_root), host="1",
-                         mdns_name=config.server.mdns_name)
     answers, errors = _read_answers(config, submitted, windows=windows)
     if distribution.standalone() and answers is not None:
         try:
