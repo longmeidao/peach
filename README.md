@@ -112,6 +112,12 @@ peach-app/
 端口、来源与复制开关都在那个设置文件里改，逐项说明见 [`docs/OPERATIONS.md`](docs/OPERATIONS.md)。
 托盘由 `peach-tray` 启动，不带参数。
 
+不想在终端里回答也行：跳过第三步，直接跑 `peach-tray`（或双击 `Peach.exe` / `Peach.app`）。
+托盘看到这台机器还没配置，就起一条只监听 `127.0.0.1` 的引导服务并把浏览器打开到它，页面
+是同样五个问题的一张表单，外加一个默认勾上的「现在扫描」。提交之后托盘自动停掉引导服务、
+换成正常的 Peach 服务，勾了扫描就在后台跑一遍。这条路和 `peach init` 调的是同一组逻辑，
+落盘结果完全一样。托盘菜单在等待期间显示「等待完成首次设置」，第一项变成「重新打开设置页」。
+
 不想问答就给参数：`peach init --no-input`（或任何一个参数，例如 `--data-root`、`--port`、
 `--mount local=/mnt/media`）按内建默认与参数直接生成；stdin 不是终端时也走这条路。这条路写出的
 设置文件带三个示例来源 `local = R:\media`、`115 = B:/`、`pikpak = A:/`，必须在 `[media.locations]`
@@ -125,7 +131,7 @@ peach-app/
 - 账本里的路径一律是 Windows 形态。Windows 上媒体目录直接写进 `[media.locations]`；macOS 上声明根写 `R:\media`、目录写进 `[media.mounts]`，由本机挂载点负责翻译。CloudDrive 不是必需，任何能挂成本地路径的网盘都行；115 与 PikPak 是推荐项，不是要求。
 - 界面目前只有中文。
 
-没有设置文件也能启动：`/healthz` 报 `configured=false`，页面提示先跑 `peach init`。
+没有设置文件也能启动：`/healthz` 报 `configured=false`，首页是上面那张首次运行表单。
 
 ## 开发
 

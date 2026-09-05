@@ -6,9 +6,10 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-from . import auth, certs, onboarding, scan, settings_file
+from . import auth, onboarding, scan, settings_file
 from .api import create_app
 from .config import (
+    CONFIGURED,
     DATABASE_PATH,
     MDNS_NAME,
     MIGRATIONS_DIR,
@@ -78,9 +79,14 @@ def _serve(args: argparse.Namespace) -> int:
             f"发布 peach.local 会指向一个连不上的地址。"
             f"需要局域网访问就用 --host 0.0.0.0。"
         )
+    # `--setup` 是托盘首启拉起的引导服务：只提供首次运行表单，不认发现到的数据根，
+    # 也不要口令。口令刻意置空而不是读文件——表单一提交就会生成一份口令，那之后要是
+    # 有人重启这条引导服务，读到新口令的它会把还没看到口令的用户关在门外。
+    # 安全边界由绑定地址给：这条服务只监听回环（`build_setup_service_specs`）。
     settings = PeachSettings(
         db_path=args.db,
-        token=_serve_token(args),
+        token="" if args.setup else _serve_token(args),
+        configured=CONFIGURED and not args.setup,
         docs_enabled=args.docs,
         mdns_enabled=publish_mdns,
         mdns_name=args.mdns_name,
@@ -289,13 +295,7 @@ def _resolved_config(
     （`init --force` 是坏文件的唯一自救入口），但错误必须留下来：静默退回内建默认
     再写回去，等于把旧文件里的坐标悄悄抹平。
     """
-    environ = None if data_root is None else dict(
-        os.environ, PEACH_DATA_ROOT=str(data_root))
-    kwargs = {} if environ is None else {"environ": environ}
-    try:
-        return settings_file.load_config(**kwargs), None
-    except settings_file.SettingsFileError as exc:
-        return settings_file.load_config(**kwargs, strict=False), exc
+    return onboarding.resolve_config(data_root)
 
 
 def _init(args: argparse.Namespace) -> int:
@@ -342,8 +342,6 @@ def _init(args: argparse.Namespace) -> int:
     if not args.from_existing:
         _create_data_tree(prepared)
     else:
-        # `--from-existing` 不建目录也不迁库，但口令要补：现有部署正是靠托盘绑局域网
-        # 起服务的，没有这个文件下一次重启就会被 `_serve_token` 拒掉。
         _announce_token(prepared)
     path = settings_file.write(prepared, force=args.force)
     print(f"设置文件：{path}")
@@ -374,19 +372,27 @@ def _init_interactive(
     windows = os.name == "nt" if windows is None else windows
     config, _broken = _resolved_config(None)
     print("首次运行问答：每一题直接回车就接受方括号里的默认值。")
+    asked = onboarding.questions(config, windows=windows, home=home)
+    collected: dict[str, object] = {}
     try:
-        answers = onboarding.interview(config, ask, windows=windows, home=home)
+        for index, question in enumerate(asked):
+            collected[question.key] = onboarding.ask_until_valid(question, ask)
+            if index == 0:
+                # 数据根定了，设置文件在哪也就定了。这一题之后就判，别让人把剩下四题
+                # 答完才听到「文件已存在」——那四个答案会被整份丢掉。
+                config, _broken = _resolved_config(collected["data_root"])
+                if config.path.exists():
+                    print(f"设置文件已存在：{config.path}")
+                    print("要重新生成就跑 `peach init --force`；它会覆盖这个文件，不动数据。")
+                    return 3
     except onboarding.OnboardingAborted as exc:
         raise SystemExit(f"{exc}已退出，没有写任何文件。") from None
-    config, _broken = _resolved_config(answers.data_root)
-    if config.path.exists():
-        print(f"设置文件已存在：{config.path}")
-        print("要重新生成就跑 `peach init --force`；它会覆盖这个文件，不动数据。")
-        return 3
-    prepared = onboarding.configure(config, answers, windows=windows)
-    _create_data_tree(prepared)
-    path = settings_file.write(prepared)
-    print(f"设置文件：{path}")
+    answers = onboarding.Answers(**collected)  # type: ignore[arg-type]
+    applied = onboarding.apply(config, answers, windows=windows)
+    prepared = applied.config
+    print(f"数据根：{prepared.data_root}")
+    _report_data_tree(applied.tree)
+    print(f"设置文件：{applied.settings_path}")
     if not windows:
         print(onboarding.mounts_explanation(answers.media_dir))
 
@@ -436,43 +442,43 @@ def _scan(args: argparse.Namespace) -> int:
 
 
 def _create_data_tree(config: settings_file.PeachConfig) -> None:
-    """建目录、把库迁到最新、生成本机 CA。已经有账本就不碰它。"""
-    for key in settings_file.DIRECTORY_KEYS:
-        config.directory(key).mkdir(parents=True, exist_ok=True)
-    tls_dir = config.directory("secrets") / "tls"
-    tls_dir.mkdir(parents=True, exist_ok=True)
+    """建目录、把库迁到最新、生成本机 CA。事情由 `onboarding.create_data_tree` 做，
+    这里只把它做过的事说出来——托盘的设置页调同一个函数，两条前端不会各做一套。
+    """
     print(f"数据根：{config.data_root}")
+    _report_data_tree(onboarding.create_data_tree(config))
 
-    database = config.directory("database") / "ledger.db"
-    if database.is_file():
-        # 已有账本却在跑全新 init：不迁移、不备份、不覆盖，让人自己决定。
-        print(f"账本已存在，跳过建库：{database}")
+
+def _report_data_tree(tree: onboarding.DataTree) -> None:
+    if tree.ledger_existed:
+        print(f"账本已存在，跳过建库：{tree.database}")
         print("要为现有部署生成设置文件，用 `peach init --from-existing`。")
     else:
-        done = upgrade(database, MIGRATIONS_DIR)
-        print(f"账本：{database}（已应用 {len(done)} 个迁移）")
-
-    try:
-        files = certs.bootstrap_certificates(tls_dir, config.server.mdns_name + ".local")
-        print(f"本机 CA：{files.ca_cert}")
-    except (RuntimeError, OSError) as exc:
-        # 没有 openssl 不该挡住初始化：HTTP 本地访问照样能用，装 openssl 后重跑即可。
-        print(f"未生成本机 CA（{exc}）。装好 openssl 后重跑 `peach init --force` 补上。")
-
-    _announce_token(config)
+        print(f"账本：{tree.database}（已应用 {tree.migrations} 个迁移）")
+    if tree.ca_cert is not None:
+        print(f"本机 CA：{tree.ca_cert}")
+    else:
+        print(f"未生成本机 CA（{tree.ca_error}）。装好 openssl 后重跑 `peach init --force` 补上。")
+    _report_token(tree)
 
 
-def _announce_token(config: settings_file.PeachConfig) -> str:
-    """确保口令文件存在，并把路径报出来。口令本身不打印，用 `peach token` 单独看。
+def _report_token(tree: onboarding.DataTree) -> None:
+    """口令文件的路径。口令本身不打印，用 `peach token` 单独看。
 
     终端输出会进日志、截图和 issue，口令不该顺着这条路走出去。
     """
-    secrets_dir = config.directory("secrets")
-    token, created = auth.ensure_token(secrets_dir)
-    path = auth.token_path(secrets_dir)
-    print(f"访问口令：{path}" + ("" if created else "（沿用已有的那份）"))
+    print(f"访问口令：{tree.token_path}" + ("" if tree.token_created else "（沿用已有的那份）"))
     print("绑局域网地址的服务必须读得到它，`peach token` 看内容。")
-    return token
+
+
+def _announce_token(config: settings_file.PeachConfig) -> None:
+    """`--from-existing` 不建目录也不迁库，但口令要补：现有部署正是靠托盘绑局域网
+    起服务的，没有这个文件下一次重启就会被 `_serve_token` 拒掉。
+    """
+    secrets_dir = config.directory("secrets")
+    _token, created = auth.ensure_token(secrets_dir)
+    print(f"访问口令：{auth.token_path(secrets_dir)}" + ("" if created else "（沿用已有的那份）"))
+    print("绑局域网地址的服务必须读得到它，`peach token` 看内容。")
 
 
 def _token(args: argparse.Namespace) -> int:
@@ -571,6 +577,8 @@ def build_parser() -> argparse.ArgumentParser:
     serve.add_argument("--db", type=Path, default=DEFAULT_DB)
     serve.add_argument("--token", default="")
     serve.add_argument("--docs", action="store_true")
+    serve.add_argument("--setup", action="store_true",
+                       help="只提供首次运行表单：忽略发现到的数据根，也不要口令")
     serve.add_argument("--no-mdns", action="store_true")
     serve.add_argument("--shared-db", type=Path, default=SHARED_DATABASE_PATH)
     serve.add_argument("--no-ledger-sync", action="store_true")

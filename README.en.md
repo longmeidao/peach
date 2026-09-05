@@ -117,6 +117,14 @@ that `peach serve` starts the service and `peach scan local` rescans at any time
 sources and replication switches are all edited in that settings file, explained item by item in
 [`docs/OPERATIONS.md`](docs/OPERATIONS.md). The tray is started with `peach-tray`, without arguments.
 
+You can answer in a browser instead of the terminal: skip step three and run `peach-tray` (or
+double-click `Peach.exe` / `Peach.app`). Seeing that the machine is not configured yet, the tray starts a
+setup service bound to `127.0.0.1` only and opens a browser on it. The page is the same five questions as a
+form, plus a "scan now" checkbox that is ticked by default. On submit the tray stops the setup service,
+switches to the normal Peach services, and runs the scan in the background if you asked for it. This path
+calls the same logic as `peach init` and writes exactly the same files. While it waits, the tray menu reads
+"等待完成首次设置" and its first item becomes "重新打开设置页".
+
 To skip the questions, pass arguments: `peach init --no-input` (or any single option such as `--data-root`,
 `--port` or `--mount local=/mnt/media`) generates the file from the built-in defaults plus your arguments;
 the same path is taken when stdin is not a terminal. A file written this way carries three example sources,
@@ -131,7 +139,7 @@ Five facts:
 - Ledger paths are always in the Windows shape. On Windows the media directory goes straight into `[media.locations]`; on macOS the declared root is `R:\media` and the directory goes into `[media.mounts]`, where the local mount point does the translation. CloudDrive is not required — any cloud drive that mounts as a local path works; 115 and PikPak are recommendations, not requirements.
 - The interface is currently available in Chinese only.
 
-The service also starts without a settings file: `/healthz` reports `configured=false`, and the pages prompt you to run `peach init` first.
+The service also starts without a settings file: `/healthz` reports `configured=false`, and the home page is the first-run form described above.
 
 ## Development
 
