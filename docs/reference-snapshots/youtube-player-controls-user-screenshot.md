@@ -449,3 +449,25 @@ SHA-256 `f75ee405ab74138520caa120ba03e1e0ba5c98e416ac1bd6bf37087dcb351be8`，以
 `M2e` 里 case 4 的停止键，画出来是圆角方块，也就是用户截图里那个白方块。暂停是 case 2 的
 `JBx`。三条路径记号结构相同，看数字长度分辨不出来，得读 `M2e` 的 case 与 `showPlaybackIcon`
 传的标签。
+
+## 中心提示圆、音量读数与 ± 键取证（2026-09-04，第二十轮）
+
+用户第二十轮指出三处：点左下角播放键时中心圆里两个图标叠着、音量提示的背景不对、± 键
+没居中。前两项的判据是 player `9470c977` 的 `player_ias.vflset/en_US/base.js` 与同版
+`www-player.css`，与前几节同一份文件；第三项是本机测量。
+
+| 项 | 上游原文 | Peach 实现 |
+| --- | --- | --- |
+| 中心提示圆 | `.ytp-bezel` 整个播放器只有一个，`showBezel` 每次改写同一个节点的图标 | 只有 `.vjs-peach-bezel` 一个 78px 圆，触发挂在 `player.el()` 上，控制条、画面与静音键都喂它 |
+| 音量读数定位 | 数字块由 `.ytp-volume-slider` 的 `left` 定位，`right` 不参与 | `.vjs-volume-tooltip{right:auto!important}` 盖掉 Video.js 每帧写的行内 `style.right`，宽度只由内容决定 |
+| 音量条底衬 | 与右侧控件同一层玻璃 | `background:rgba(0,0,0,.6)` 配 `blur(16px)`，与右侧控件药丸同值 |
+| 速度加减键 | 24px 文字字形 `−` / `+` | sprite `#i-minus`／`#i-plus`，24px（见下） |
+
+### Peach 主动保留的差异
+
+- 加减键不用文字字形：24px Roboto 的 `−`／`+` 在 32px 按钮里按行盒居中，墨迹相对按钮中心
+  实测偏移 dx −1.84px、dy +3.00px，看上去就是没居中。sprite 的路径本身对称，几何居中即墨迹
+  居中，也不必为一个符号引入字体度量。
+- 中心圆只允许一个：播放态提示、静音提示和缓冲态共用它，缓冲与报错时由 CSS 让它退场，
+  由 `.vjs-loading-spinner` 顶上。同时存在第二个提示圆，两处各自读播放态，就会在同一格里
+  叠出方向相反的两个图标。

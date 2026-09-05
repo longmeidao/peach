@@ -35,7 +35,8 @@ from .follow_covers import (
 )
 from .follow_store import FollowStore
 from .follow_stream import (
-    FollowMediaUnavailable, FollowProxyError, open_upstream, proxy_response_headers,
+    FollowMediaUnavailable, FollowProxyError, ResolvedFollowMedia, open_upstream,
+    proxy_response_headers,
 )
 from .media import MediaUnavailable
 from .previews import PreviewUnavailable
@@ -340,9 +341,33 @@ def follow_avatar(request: Request, service: str, id: str, args: dict[str, str] 
     return response
 
 
+def _follow_media_size(state, item_id: int, target: ResolvedFollowMedia) -> int | None:
+    """正片的字节数，取不到就是 None。
+
+    只能问上游：来源列表里没有这一项，账本里也只有落盘资源才有 size。一次 HEAD 就够，
+    正文一个字节都不取，而且走的是播放同一条 `open_upstream`——逐跳白名单和非 2xx 拒收
+    都在那里，这里不另开一条出网路径。
+
+    上游不给 content-length（分块传输、签名 URL 过期、限流挡住）时返回 None，
+    播放器那边退回按秒的读数；不拿估算的字节数冒充实测。
+    """
+    try:
+        response = open_upstream(state.http_transport.client, "HEAD", target, incoming={})
+    except (FollowProxyError, OSError, httpx.HTTPError) as error:
+        LOGGER.warning("follow media size unavailable for item %s: %s", item_id, error)
+        return None
+    try:
+        size = int(response.headers.get("content-length") or 0)
+    except ValueError:
+        size = 0
+    finally:
+        response.close()
+    return size or None
+
+
 @router.api_route("/follow-qualities", methods=["GET"])
 def follow_qualities(request: Request, id: int, args: dict[str, str] = Depends(require_auth)):
-    """这条关注视频有哪些清晰度可选。
+    """这条关注视频有哪些清晰度可选，以及默认档有多少字节。
 
     单独一个端点而不是塞进 /api/follow：解析要抓一次来源详情页，列表一次几百条，
     逐条解析等于几百个外部请求。这里只在用户展开某个条目、播放器要画菜单时问一次，
@@ -351,6 +376,10 @@ def follow_qualities(request: Request, id: int, args: dict[str, str] = Depends(r
     只有 rule34video 给多档（video_url 加 video_alt_url{,2,3}）；其余来源返回空表，
     播放器据此只显示「原画」。取不到不是错误——签名 URL 会过期、来源也可能改版，
     那时照常播默认档就行。
+
+    `size` 跟着一起回：渐进下载在浏览器里量不到字节速率（media 请求的
+    `encodedBodySize` 是 0），只有拿文件大小和时长换出平均码率，才能把缓冲前沿推进的
+    秒数折成 MB/s。这里已经解析完媒体地址，多一次 HEAD 就能拿到，比让浏览器再发一趟便宜。
     """
     state = request.app.state
     with state.database.read_connection() as connection:
@@ -360,14 +389,14 @@ def follow_qualities(request: Request, id: int, args: dict[str, str] = Depends(r
     try:
         resolved = state.follow_media_resolver.resolve(item)
     except FollowMediaUnavailable:
-        return {"qualities": []}
+        return {"qualities": [], "size": None}
     # 档位数量不写死：正则匹配 video_url 与任意编号的 video_alt_urlN，
     # 站点给几档就是几档（实测同一作者下有 4 档也有 5 档的条目）。
     # 2160 按站点自己的写法叫 4K，不叫 2160p。
     return {"qualities": [
         {"height": height, "label": "4K" if height >= 2160 else f"{height}p"}
         for height, _ in resolved.qualities if height
-    ]}
+    ], "size": _follow_media_size(state, id, resolved)}
 
 
 @router.api_route("/follow-stream", methods=["GET", "HEAD"])
