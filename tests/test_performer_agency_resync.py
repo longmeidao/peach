@@ -145,7 +145,7 @@ class TargetTests(LedgerFixture):
         self.assertEqual(found[0]["current_agency"], "LIGHT")
 
     def test_a_named_outsider_joins_the_batch(self):
-        """移籍时人已经不在原来那一家名下，两个条件是并集才问得到她。"""
+        """移籍走了的人不在这一家名下，两个条件是并集才问得到她。"""
         found = targets(self.con, ["LIGHT"], ["北野未奈"])
         self.assertEqual(len(found), 4)
         self.assertEqual(found[-1]["current_agency"], "")
