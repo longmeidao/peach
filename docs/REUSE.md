@@ -5,6 +5,15 @@
 
 ## 复用决策门槛
 
+- README 交付检查复用系统 Git 的 `diff --no-renames -z` 和 `interpret-trailers --parse`，
+  挂到既有 `agent_worktree.py ready/integrate`；Peach 只定义影响文件与双语声明 policy。
+  本机 Git 2.55.0.windows.3（GPL-2.0，持续维护）与 Python 3.12+ 标准库，无新增依赖或运行时体积。
+  已检索当前树与 Git 历史：已有 Python 下限文档测试及工作树门槛，没有 README 影响声明。
+  官方依据为 https://git-scm.com/docs/git-interpret-trailers 和 https://git-scm.com/docs/githooks 。
+  原生 hook 不会随 clone 自动安装，且无法判断文案语义，因此选项目共有交付入口，不加账户专属 hook。
+  真实 Git 临时仓库回归覆盖缺声明、双语缺一、虚假 updated、暂存但未提交、重命名与无影响原因；
+  不写真实 ledger，不改生产。维护流程见 HANDOFF「README 维护」。
+
 - 发行身份继续复用 Javinizer-Go v1.5.1 与 Seesaa 原始 DTO；数字前缀等价属于 Peach 领域 policy，不新增依赖。
   真实 r18dev 快照中请求 `390JAC-040` 却返回 `JAC-040`／`118jac040`；Jackson 表中两者是不同商品行。
   查询回退不能承担身份确认；所有响应按原始查询检查，MGStage 官方详情路径可佐证展示编号别名。

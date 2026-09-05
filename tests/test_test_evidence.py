@@ -40,8 +40,10 @@ class VerificationTests(unittest.TestCase):
         item = coordinator.create(self.repo, "codex", "verification", self.root / "worktrees")
         worker = Path(item["path"])
         (worker / "README.md").write_text("测试内容\n", encoding="utf-8")
-        evidence.git(worker, "add", "README.md")
-        evidence.git(worker, "commit", "-m", "docs: test")
+        (worker / "README.en.md").write_text("Test content\n", encoding="utf-8")
+        evidence.git(worker, "add", "README.md", "README.en.md")
+        evidence.git(worker, "commit", "-m", "docs: test",
+                     "-m", "README-Impact: updated; 测试文档")
         return worker, item["branch"]
 
     def certify(self, worker, scopes=("checks",), success=True):

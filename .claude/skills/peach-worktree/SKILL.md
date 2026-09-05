@@ -5,7 +5,7 @@ description: 在用户说并行、工作树、暂存、提交、ready、集成�
 
 # 并行 worktree 与提交边界
 
-最后复核：2026-09-05
+最后复核：2026-09-06
 证据来源：`docs/HANDOFF.md`「并行智能体与 Git 工作树」、`README.md`、ADR-0015、ADR-0017。
 
 ## 何时使用
@@ -36,6 +36,9 @@ description: 在用户说并行、工作树、暂存、提交、ready、集成�
    记录和锁约束统一入口，不是权限隔离；直接 Git 或篡改记录仍可绕过，不能宣称绝对防绕过。
 
 ## 暂存与提交
+
+- 提交前核对 README 影响；交付分支最后提交加 `README-Impact: updated; 说明` 或 `README-Impact: none; 原因`。
+  触发面、中英文同批与例外见 `docs/HANDOFF.md`「README 维护」；`ready/integrate` 拒收缺失或矛盾声明。
 
 - 禁止 `git add .`、`git add -A`、目录路径或 glob。只暂存任务明确拥有的文件。
 - 提交前用 `git diff --cached --name-status` 与任务边界逐条对照。干净的 `git status`
