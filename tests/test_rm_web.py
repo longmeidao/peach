@@ -1891,6 +1891,9 @@ class JavModeAndCoverTests(unittest.TestCase):
         for left, right in (
             ("SA-104", "AVSA-104"), ("CHU-101", "CHUC-101"), ("AR-301", "STAR-3016"),
             ("SR-101", "SSR-101"), ("259LUXU-164", "259LUXU-1642"),
+            ("390JAC-040", "JAC-040"), ("390JNT-002", "JNT-002"),
+            ("390JNT-006", "JNT-006"), ("390JNT-015", "JNT-015"),
+            ("123ABC-007", "ABC-007"), ("123ABC-007", "456ABC-007"),
             ("ABW-232", ""), ("", "ABW-232"), ("ABW-232", None),
         ):
             self.assertFalse(catalog_rules.same_release_code(left, right), f"{left} vs {right}")
