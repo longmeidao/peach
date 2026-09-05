@@ -14,7 +14,7 @@ from fastapi.responses import HTMLResponse
 
 from . import distribution, onboarding, settings_file
 from .routes_auth import require_page_auth
-from .routes_pages import _check_html, _document, _field_html, runtime_facts_html
+from .routes_pages import _check_html, _document, _field_html, _media_dirs_html, runtime_facts_html
 
 router = APIRouter()
 _SAVE_LOCK = threading.Lock()
@@ -27,7 +27,7 @@ def revision(config) -> str:
 
 def page(config, *, values=None, errors=None, saved=False) -> str:
     values, errors = values or {}, errors or {}
-    media = config.mounts.get("local") or config.locations.get("local", "")
+    media = list(config.mounts.get("local") or config.locations.get("local", ()))
     body = '<a href="/">返回馆藏</a><h1>配置 Peach</h1>'
     if saved:
         url = f"http://127.0.0.1:{config.server.port}/"
@@ -40,11 +40,12 @@ def page(config, *, values=None, errors=None, saved=False) -> str:
         body += '<form method="post" action="/configuration">'
         body += f'<input type="hidden" name="revision" value="{revision(config)}">'
         for question in onboarding.questions(config, windows=os.name == "nt"):
-            if question.key not in {"media_dir", "port"}:
-                continue
-            default = media if question.key == "media_dir" else str(config.server.port)
-            body += _field_html(question, values.get(question.key, default),
-                                errors.get(question.key, ""), "")
+            if question.key == "media_dir":
+                body += _media_dirs_html(values.get("media_dir", media),
+                                         errors.get("media_dir", []), "")
+            elif question.key == "port":
+                body += _field_html(question, values.get("port", str(config.server.port)),
+                                    errors.get("port", ""), "")
         body += (_check_html("scan_now", "保存后扫描媒体文件夹", checked=False)
                  + '<button type="submit">保存配置</button></form>')
     elif not distribution.standalone():
@@ -78,19 +79,22 @@ async def save_configuration(request: Request, _args=Depends(require_page_auth))
     if origin and origin.rstrip("/") != str(request.base_url).rstrip("/"):
         raise HTTPException(403, "请从 Peach 配置页提交")
     form = parse_qs((await request.body()).decode("utf-8", "replace"), keep_blank_values=True)
-    values = {key: value[0] for key, value in form.items()}
+    values: dict[str, object] = {key: value[0] for key, value in form.items()}
+    values["media_dir"] = list(form.get("media_dir", []))
     with _SAVE_LOCK:
         config = settings_file.load_config()
         if values.get("revision") != revision(config):
             raise HTTPException(409, "配置已变更，请刷新后再保存")
-        errors, validated = {}, {}
-        validators = {"media_dir": onboarding.media_dir_validator(windows=os.name == "nt"),
-                      "port": onboarding.validate_port}
-        for key, validator in validators.items():
-            try:
-                validated[key] = validator(values.get(key, ""))
-            except ValueError as exc:
-                errors[key] = str(exc)
+        errors: dict[str, object] = {}
+        validated: dict[str, object] = {}
+        paths, problems = onboarding.read_media_dirs(
+            values["media_dir"], validate=onboarding.media_dir_validator(windows=os.name == "nt"))
+        if problems:
+            errors["media_dir"] = problems
+        try:
+            validated["port"] = onboarding.validate_port(str(values.get("port", "")))
+        except ValueError as exc:
+            errors["port"] = str(exc)
         if errors:
             return HTMLResponse(page(config, values=values, errors=errors), status_code=400)
         try:
@@ -99,10 +103,10 @@ async def save_configuration(request: Request, _args=Depends(require_page_auth))
             return HTMLResponse(page(config, values=values, errors={"port": str(exc)}), status_code=400)
         locations, mounts = dict(config.locations), dict(config.mounts)
         if os.name == "nt":
-            locations["local"] = str(validated["media_dir"])
+            locations["local"] = tuple(str(path) for path in paths)
         else:
-            locations["local"] = onboarding.POSIX_LOCAL_DECLARED_ROOT
-            mounts["local"] = str(validated["media_dir"])
+            locations["local"] = onboarding.posix_declared_roots(len(paths))
+            mounts["local"] = tuple(str(path) for path in paths)
         prepared = replace(config, locations=locations, mounts=mounts,
                            server=replace(config.server, port=validated["port"]))
         temporary = config.path.with_suffix(".pending.toml")

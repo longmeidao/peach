@@ -242,22 +242,55 @@ class BadFileTests(unittest.TestCase):
         with TempTree() as tree:
             tree.write("[media.mounts]\nlocal = '/mnt/res/media'\n")
             loaded = tree.load()
-        self.assertEqual(loaded.mounts, {"local": "/mnt/res/media"})
+        self.assertEqual(loaded.mounts, {"local": ("/mnt/res/media",)})
 
     def test_a_newly_declared_location_can_be_mounted(self):
         with TempTree() as tree:
             tree.write(
                 "[media.locations]\nnas = 'N:/'\n[media.mounts]\nnas = '/mnt/nas'\n")
             loaded = tree.load()
-        self.assertEqual(loaded.locations["nas"], "N:/")
-        self.assertEqual(loaded.mounts, {"nas": "/mnt/nas"})
+        self.assertEqual(loaded.locations["nas"], ("N:/",))
+        self.assertEqual(loaded.mounts, {"nas": ("/mnt/nas",)})
 
     def test_a_declared_locations_table_is_authoritative(self):
         """`peach init` 的问答只声明 local；内建默认的示例盘符不得从旁边混进来。"""
         with TempTree() as tree:
             tree.write("[media.locations]\nlocal = 'D:\\Videos'\n")
             loaded = tree.load()
-        self.assertEqual(loaded.locations, {"local": r"D:\Videos"})
+        self.assertEqual(loaded.locations, {"local": (r"D:\Videos",)})
+
+    def test_a_location_may_declare_several_roots_with_matching_mounts(self):
+        """两块硬盘都是 `local`：声明根写数组，落点按同样的顺序写数组，写回时形状不变。"""
+        with TempTree() as tree:
+            tree.write("[media.locations]\nlocal = ['D:\\Videos', 'E:\\Movies']\n"
+                       "[media.mounts]\nlocal = ['/mnt/a', '/mnt/b']\n")
+            loaded = tree.load()
+            self.assertEqual(loaded.locations, {"local": (r"D:\Videos", r"E:\Movies")})
+            self.assertEqual(loaded.mounts, {"local": ("/mnt/a", "/mnt/b")})
+            rendered = settings_file.render(loaded)
+            self.assertIn("local = ['D:\\Videos', 'E:\\Movies']", rendered)
+            self.assertIn("local = ['/mnt/a', '/mnt/b']", rendered)
+            tree.write(rendered)
+            self.assertEqual(tree.load().locations, loaded.locations)
+
+    def test_mount_count_must_match_the_declared_roots(self):
+        # 落点按顺序对应声明根：数目不齐时猜不出哪个目录漏了，直接拒绝。
+        with TempTree() as tree:
+            tree.write("[media.locations]\nlocal = ['D:\\Videos', 'E:\\Movies']\n"
+                       "[media.mounts]\nlocal = '/mnt/a'\n")
+            with self.assertRaises(SettingsFileError) as caught:
+                tree.load()
+        self.assertIn("2 个根", str(caught.exception))
+        with TempTree() as tree:
+            tree.write("[media.locations]\nlocal = ['D:\\Videos', 'D:\\Videos']\n")
+            with self.assertRaises(SettingsFileError) as caught:
+                tree.load()
+        self.assertIn("重复", str(caught.exception))
+        with TempTree() as tree:
+            tree.write("[media.locations]\nlocal = []\n")
+            with self.assertRaises(SettingsFileError) as caught:
+                tree.load()
+        self.assertIn("没有声明根", str(caught.exception))
 
     def test_without_a_locations_table_the_builtin_defaults_apply(self):
         with TempTree() as tree:
@@ -323,13 +356,13 @@ class SerialisationTests(unittest.TestCase):
                 },
                 # 反斜杠和 Windows 盘符必须原样活过一次往返：序列化器要是把 `\m`
                 # 当转义处理，挂载点就会变成另一个目录。
-                mounts={"local": r"D:\media", "115": "/mnt/115"},
+                mounts={"local": (r"D:\media",), "115": ("/mnt/115",)},
             )
             settings_file.write(captured)
             reloaded = tree.load()
         self.assertEqual(reloaded.server, captured.server)
         self.assertEqual(reloaded.replication, captured.replication)
-        self.assertEqual(reloaded.mounts, {"local": r"D:\media", "115": "/mnt/115"})
+        self.assertEqual(reloaded.mounts, {"local": (r"D:\media",), "115": ("/mnt/115",)})
         self.assertEqual(reloaded.locations, captured.locations)
         self.assertEqual(reloaded.directories, captured.directories)
         self.assertTrue(reloaded.present)
@@ -388,7 +421,7 @@ class ModuleConstantTests(unittest.TestCase):
         # 账本里的 `asset.path` 是 Windows 形态，声明根必须同口径，否则授权全落空。
         self.assertEqual(set(config.LOCATION_ROOT_DECLARATIONS), {"local", "115", "pikpak"})
         self.assertEqual(
-            tuple(config.LOCATION_ROOT_DECLARATIONS.values()),
+            tuple(root for roots in config.LOCATION_ROOT_DECLARATIONS.values() for root in roots),
             config.MEDIA_ROOT_DECLARATIONS,
         )
 

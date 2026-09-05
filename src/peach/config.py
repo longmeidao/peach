@@ -62,8 +62,10 @@ SHARED_CREDENTIAL_ROOT: Path | None = SHARED_DATA_ROOT if REPLICATION_ENABLED el
 
 # 媒体来源只用账本口径（Windows 盘符）声明一次，本机挂载点由 platform 层翻译。
 # 键是 ledger 的 `asset.location`，脱盘模式按来源逐个判定，不是全局开关。
-LOCATION_ROOT_DECLARATIONS: dict[str, str] = dict(_SETTINGS.locations)
-MEDIA_ROOT_DECLARATIONS: tuple[str, ...] = tuple(LOCATION_ROOT_DECLARATIONS.values())
+LOCATION_ROOT_DECLARATIONS: dict[str, tuple[str, ...]] = {
+    location: tuple(roots) for location, roots in _SETTINGS.locations.items()}
+MEDIA_ROOT_DECLARATIONS: tuple[str, ...] = tuple(
+    root for roots in LOCATION_ROOT_DECLARATIONS.values() for root in roots)
 
 # 同时运行的两台机器必须用不同的 mDNS 名，否则互相抢占同一个 `.local`。
 MDNS_NAME: str = _SETTINGS.server.mdns_name

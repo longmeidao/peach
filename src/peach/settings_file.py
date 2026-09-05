@@ -44,11 +44,12 @@ DIRECTORY_KEYS = (
 
 #: `asset.location` -> 账本口径的声明根。键是 ledger 里的 `asset.location` 值，它本来
 #: 就是挂载点 ID；值仍是 Windows 盘符形态，因为账本路径的形状是不变量（AGENTS.md）。
+#: 一个来源可以有多个声明根（两块硬盘都算 `local`），文件里写一个字符串或一个数组。
 #: 本机落点由 `[media.mounts]` 按同一批 ID 给出，翻译在 `peach.platform`（ADR-0023 勘误）。
-DEFAULT_LOCATION_ROOTS: dict[str, str] = {
-    "local": r"R:\media",
-    "115": "B:/",
-    "pikpak": "A:/",
+DEFAULT_LOCATION_ROOTS: dict[str, tuple[str, ...]] = {
+    "local": (r"R:\media",),
+    "115": ("B:/",),
+    "pikpak": ("A:/",),
 }
 
 #: `[media]` 下只有这两个子表，没有任何标量键。第一阶段的 `[media] R = '...'` 是盘符键，
@@ -165,10 +166,11 @@ class PeachConfig:
     #: 数据根是被找到的，还是只是一个建议落点。
     data_root_found: bool = False
     directories: dict[str, str] = field(default_factory=dict)
-    #: `asset.location` -> 本机挂载点，即该来源的声明根落在本机哪个目录。
-    #: Windows 上通常为空：盘符本身就是挂载点，路径不需要翻译。
-    mounts: dict[str, str] = field(default_factory=dict)
-    locations: dict[str, str] = field(
+    #: `asset.location` -> 本机挂载点，即该来源的每个声明根落在本机哪个目录，按顺序
+    #: 与 `locations` 里的声明根一一对应。Windows 上通常为空：盘符本身就是挂载点。
+    mounts: dict[str, tuple[str, ...]] = field(default_factory=dict)
+    #: `asset.location` -> 账本口径的声明根，至少一个。
+    locations: dict[str, tuple[str, ...]] = field(
         default_factory=lambda: dict(DEFAULT_LOCATION_ROOTS))
     server: ServerSettings = ServerSettings()
     replication: ReplicationSettings = ReplicationSettings()
@@ -260,6 +262,27 @@ def _string_map(table: dict, path: Path, prefix: str) -> dict[str, str]:
     return result
 
 
+def _root_map(table: dict, path: Path, prefix: str) -> dict[str, tuple[str, ...]]:
+    """`[media.locations]` / `[media.mounts]` 的值：一个字符串，或一个字符串数组。
+
+    单个来源常常只有一个目录，写成字符串最好读；第二块硬盘加进来时改成数组即可。
+    两张表的解析口径一致，数组里不能有空串、不能重复——那两种写法都说不清用户想要什么。
+    """
+    result: dict[str, tuple[str, ...]] = {}
+    for key, value in table.items():
+        if isinstance(value, str):
+            result[key] = (value,) if value else ()
+            continue
+        if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+            raise _fail(path, f"`{prefix}{key}` 必须是字符串，或者字符串数组")
+        if any(not item for item in value):
+            raise _fail(path, f"`{prefix}{key}` 的数组里不能有空串")
+        if len(set(value)) != len(value):
+            raise _fail(path, f"`{prefix}{key}` 的数组里有重复的路径")
+        result[key] = tuple(value)
+    return result
+
+
 def _merge(
     data_root: Path, path: Path, present: bool, found: bool,
     document: dict, environ: dict[str, str],
@@ -286,10 +309,13 @@ def _merge(
     # 来源，内建默认那三个示例盘符不能从旁边混进来，否则陌生人的机器上会多出两个
     # 永远脱盘的来源。没写这张表才退回内建默认。
     if _LOCATIONS_KEY in media:
-        locations = _string_map(_table(media, _LOCATIONS_KEY, path), path, "media.locations.")
+        locations = _root_map(_table(media, _LOCATIONS_KEY, path), path, "media.locations.")
+        empty = sorted(key for key, roots in locations.items() if not roots)
+        if empty:
+            raise _fail(path, "`[media.locations]` 里这些来源没有声明根：" + "、".join(empty))
     else:
         locations = dict(DEFAULT_LOCATION_ROOTS)
-    mounts = _string_map(_table(media, _MOUNTS_KEY, path), path, "media.mounts.")
+    mounts = _root_map(_table(media, _MOUNTS_KEY, path), path, "media.mounts.")
     unknown_mounts = sorted(set(mounts) - set(locations))
     if unknown_mounts:
         # 打错一个 ID 却静默忽略，同样是安静地脱盘。
@@ -297,6 +323,14 @@ def _merge(
             "`[media.mounts]` 里有没在 `[media.locations]` 声明过的来源："
             + "、".join(unknown_mounts)
         ))
+    for key, points in mounts.items():
+        # 落点按顺序对应声明根：数目不齐时无法判断哪个目录漏了，与其猜不如拒绝。
+        if points and len(points) != len(locations[key]):
+            raise _fail(path, (
+                f"`[media.mounts] {key}` 给了 {len(points)} 个落点，"
+                f"但 `[media.locations] {key}` 声明了 {len(locations[key])} 个根；"
+                "两边按顺序一一对应，要么数目相同，要么整项留空"
+            ))
 
     server_table = _table(document, "server", path)
     fallback = ServerSettings()
@@ -443,6 +477,20 @@ def _render_value(value: object) -> str:
     return f'"{escaped}"'
 
 
+def _render_roots(pairs: dict[str, tuple[str, ...]]) -> list[str]:
+    """声明根与落点：只有一个就写成字符串，多个才写数组，文件保持最好读的形状。"""
+    rendered: dict[str, object] = {}
+    for key, roots in pairs.items():
+        if len(roots) == 1:
+            rendered[key] = roots[0]
+        elif not roots:
+            rendered[key] = ""
+        else:
+            rendered[key] = "[" + ", ".join(_render_value(root) for root in roots) + "]"
+    return [f"{_render_key(key)} = {value if isinstance(value, str) and value.startswith('[') else _render_value(value)}"
+            for key, value in rendered.items()]
+
+
 def _render_key(key: str) -> str:
     allowed = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-")
     return key if key and set(key) <= allowed else _render_value(key)
@@ -468,17 +516,19 @@ def render(config: PeachConfig) -> str:
         "",
         "[media.locations]",
         "# asset.location -> 账本口径的声明根。改这里等于改账本口径，通常不要动。",
+        "# 一个来源有几个目录就写几个：local = ['D:\\Videos', 'E:\\Movies']。",
     ]
-    lines += _render_pairs(dict(config.locations))
+    lines += _render_roots(dict(config.locations))
     lines += [
         "",
         "[media.mounts]",
         "# asset.location -> 本机挂载点：上面那个声明根落在本机的哪个目录。",
         "# 例如 local = '/mnt/media' 时，R:\\media\\a.mp4 读作 /mnt/media/a.mp4。",
+        "# 声明了多个根就按同样的顺序给同样多个落点。",
         "# 不写或留空表示本机没有这个来源，对应资产按「脱盘」处理，不报错。",
         "# Windows 上整表为空：盘符本身就是挂载点，路径不需要翻译。",
     ]
-    lines += _render_pairs(dict(config.mounts))
+    lines += _render_roots(dict(config.mounts))
     lines += [
         "",
         "[server]",
@@ -521,7 +571,8 @@ def write(config: PeachConfig, *, force: bool = False) -> Path:
 
 def capture_existing(
     config: PeachConfig, *, replication_enabled: bool = True,
-    overrides: dict[str, object] | None = None, mounts: dict[str, str] | None = None,
+    overrides: dict[str, object] | None = None,
+    mounts: dict[str, tuple[str, ...]] | None = None,
 ) -> PeachConfig:
     """把当前生效的配置整理成一份可写回的设置。
 

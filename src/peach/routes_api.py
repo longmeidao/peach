@@ -44,15 +44,23 @@ def _source_status() -> list[dict[str, Any]]:
     脱盘是来源级的：本地硬盘拔掉时 115/PikPak 照常可播，反过来也一样。
     """
     rows: list[dict[str, Any]] = []
-    for location, declared in LOCATION_ROOT_DECLARATIONS.items():
-        resolved = translate_ledger_path(declared)
-        mapped = not is_unmapped(resolved)
+    for location, declared_roots in LOCATION_ROOT_DECLARATIONS.items():
+        roots: list[dict[str, Any]] = []
+        for declared in declared_roots:
+            resolved = translate_ledger_path(declared)
+            mapped = not is_unmapped(resolved)
+            roots.append({
+                "declared": declared,
+                "resolved": str(resolved) if mapped else None,
+                "mapped": mapped,
+                "online": bool(mapped and root_online(resolved)),
+            })
+        # 一个来源可以有几个根；只要有一个不在，整个来源就按脱盘处理，宁可少播不可误判。
         rows.append({
             "location": location,
-            "declared": declared,
-            "resolved": str(resolved) if mapped else None,
-            "mapped": mapped,
-            "online": bool(mapped and root_online(resolved)),
+            "roots": roots,
+            "mapped": all(root["mapped"] for root in roots),
+            "online": all(root["online"] for root in roots),
         })
     # 在线资源是 URL，不依赖任何挂载点。
     rows.append({

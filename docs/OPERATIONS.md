@@ -12,13 +12,15 @@
   项目根同级（含上溯四层，覆盖主检出、`peach-worktrees/<任务>` 和打包后 EXE 所在的 `dist/Peach`）
   的 `peach-data/`、都没有就是「未配置」。优先级是环境变量 > 设置文件 > 内建默认。
 - 全新机器只跑 `peach init`。不带参数且 stdin 是终端时进问答（题目、默认值与落盘逻辑在
-  `src/peach/onboarding.py`，托盘设置页复用同一组函数）：问数据根、一个已存在的本地媒体
-  目录、谁可以访问（只有这台电脑／同一局域网的设备）、端口、局域网访问地址，每题回车取默认，连续三次无效即退出且
+  `src/peach/onboarding.py`，托盘设置页复用同一组函数）：问数据根、一个或几个已存在的本地媒体
+  目录（问完第一个接着问「再加一个」，回车结束；互相重复或嵌套的目录会被退回）、谁可以访问
+  （只有这台电脑／同一局域网的设备）、端口、局域网访问地址，每题回车取默认，连续三次无效即退出且
   不写任何文件。然后建齐 `database`／`generated`／`sources`／`state`／`secrets`／`logs`／
   `tools`／`review` 八个目录、把账本迁到最新 schema、生成本机 CA 与访问口令、写出设置文件，问一句
   「现在扫描 <目录>？」（默认是）调 `peach.scan.scan_location` 登记文件，最后打印下一步与
-  扫描摘要。写出的 `[media.locations]` 只有 `local`：Windows 上直接是那个目录、
-  `[media.mounts]` 为空；macOS 上声明根是 `R:\media`、目录写进 `[media.mounts] local`。
+  扫描摘要。写出的 `[media.locations]` 只有 `local`，几个目录就几个声明根：Windows 上直接是
+  那些目录、`[media.mounts]` 为空；macOS 上声明根是 `R:\media`（第二个起 `R:\media2`……）、
+  目录按同样顺序写进 `[media.mounts] local`。页面上的媒体文件夹是可加减的列表，配置页同样。
   复制、writer 镜像、SMB 一律不问，保持关闭或留空。建目录、迁库、生成 CA 与口令、写设置文件
   这一整段在 `onboarding.apply()`，CLI 与设置页调的是同一个函数，只在打印方式上不同。
 - 不进终端的那条路是托盘首启的引导服务。`peach-tray` 启动时新鲜读一次设置文件，判据在
@@ -45,8 +47,8 @@
   写出的文件带 `local`／`115`／`pikpak` 三个示例声明根。已有账本不会被重建，它会提示改用
   `--from-existing`。
 - `peach scan <来源ID> [根目录]` 把一个目录的文件元数据 upsert 进账本，只新增行与刷新
-  `size`／`mtime`／`last_seen`，不改真相字段、不删行。根目录省略时取该来源在
-  `[media.locations]` 的声明根，本机目录按 `[media.mounts]` 取；给了目录则必须落在声明根
+  `size`／`mtime`／`last_seen`，不改真相字段、不删行。根目录省略时逐个扫该来源在
+  `[media.locations]` 的全部声明根，本机目录按 `[media.mounts]` 取；给了目录则必须落在某个声明根
   （macOS 上是挂载点）之内，否则拒绝——写进去的行否则翻译不回本机路径。
   `scripts/ledger.py scan` 是同一实现的薄委托。
 - 已经在跑的机器用 `peach init --from-existing`：只写设置文件，不建库、不动 `peach-data/`
@@ -62,6 +64,7 @@
 - `[media.mounts]` 的键是 `asset.location`（`[media.locations]` 声明过的来源 ID），
   值是该来源的**声明根在本机的落点**：声明 `local = 'R:\media'` 而挂载 `local =
   '/Volumes/RESOURCES/media'` 时，账本里的 `R:\media\x` 读作 `/Volumes/RESOURCES/media/x`。
+  声明了几个根就按同样的顺序给几个落点（两边都写数组），数目不齐会被拒绝。
   Windows 上整表为空是正常的，盘符本身就是挂载点。没挂的来源整体按脱盘处理，不报错；
   打错来源 ID 或写成盘符键都会被设置层直接拒绝，不会静悄悄变成「全部脱盘」。
   临时诊断用 `PEACH_MEDIA_MOUNTS=local=/mnt/res,115=/mnt/115` 覆盖（旧的

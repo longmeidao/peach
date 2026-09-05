@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+from collections.abc import Mapping, Sequence
 import re
 
 from html import escape
@@ -98,10 +99,20 @@ display:grid;place-items:center;background:var(--ground);color:transparent}
 .check:hover .pcheck>span{background:var(--hover)}
 .pcheck input:checked+span{border-color:var(--ink-2);color:var(--ink)}
 .pcheck input:focus-visible+span{outline:2px solid var(--tungsten);outline-offset:2px}
-button{margin-top:32px;width:100%;height:var(--control-h);border:1px solid var(--ink);
+button[type=submit]{margin-top:32px;width:100%;height:var(--control-h);border:1px solid var(--ink);
 border-radius:var(--control-radius);cursor:pointer;background:var(--ink);color:var(--ground);
 font:500 var(--fs-md) system-ui,sans-serif}
-button:hover{background:color-mix(in srgb,var(--ink) 88%,var(--ground));color:var(--ground)}
+button[type=submit]:hover{background:color-mix(in srgb,var(--ink) 88%,var(--ground));color:var(--ground)}
+.dir{display:grid;grid-template-columns:1fr auto;gap:8px;margin-top:8px}
+.dir:first-child{margin-top:0}.dir .bad{grid-column:1/-1;margin:0}
+.dir input[type=text]{min-width:0}
+.rm,.add{height:var(--control-h);border:1px solid var(--line);border-radius:var(--control-radius);
+background:var(--ground);color:var(--ink);cursor:pointer;font:500 var(--fs-sm) system-ui,sans-serif}
+.rm{width:var(--control-h);display:grid;place-items:center;color:var(--muted)}
+.rm svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round}
+.add{margin-top:8px;padding:0 12px}
+.rm:hover,.add:hover{background:var(--hover);color:var(--ink)}
+.rm[hidden],.add[hidden]{display:none}
 @media(max-width:760px){input[type=text],input[type=number]{font-size:16px}}
 @media(max-width:440px){body{padding:24px 20px}h1{font-size:var(--fs-2xl)}}
 </style>"""
@@ -115,7 +126,7 @@ _SETUP_HEAD = ('<!doctype html>\n<html lang="zh-CN"><head><meta charset="utf-8">
 #: 这里只决定同一道题在浏览器里怎么称呼：命令行那份题面要把可选值写进去，页面用控件表达。
 _SETUP_COPY = {
     "data_root": ("数据目录", "Peach 数据库、缓存和设置文件都放在这里。"),
-    "media_dir": ("媒体文件夹", "Peach 从这个文件夹读取视频和图片，可以是外置硬盘上的文件夹，但必须已经存在。"),
+    "media_dir": ("媒体文件夹", "Peach 从这些文件夹读取视频和图片。可以是外置硬盘上的文件夹，但必须已经存在。"),
     "host": ("谁可以访问", ""),
     "port": ("端口", "浏览器地址里冒号后面的数字，一般不用改。"),
     "mdns_name": ("局域网访问地址", "选了「同一局域网的设备」之后，其他设备在浏览器里输入这个地址就能打开 Peach。"),
@@ -128,31 +139,60 @@ _HOST_ORDER = ("2", "1")
 
 #: 选「只有这台电脑」时局域网地址没有意义，输入框跟着禁用；禁用的字段不随表单提交，
 #: 服务端按题目默认值补上。没有脚本时两个字段都可编辑，提交照样成立。
+#: 媒体文件夹列表的「添加文件夹」与每行的移除键也在这里亮出来：只剩一行时移除键隐藏。
 _SETUP_SCRIPT = """<script>
 (function(){
   var radios=document.querySelectorAll('input[name="host"]');
   var field=document.getElementById('f-mdns_name');
-  if(!radios.length||!field){return;}
-  function sync(){
-    var lan=false;
-    radios.forEach(function(radio){if(radio.checked&&radio.value==="2"){lan=true;}});
-    field.disabled=!lan;
+  if(radios.length&&field){
+    var sync=function(){
+      var lan=false;
+      radios.forEach(function(radio){if(radio.checked&&radio.value==="2"){lan=true;}});
+      field.disabled=!lan;
+    };
+    radios.forEach(function(radio){radio.addEventListener('change',sync);});
+    sync();
   }
-  radios.forEach(function(radio){radio.addEventListener('change',sync);});
-  sync();
+  var list=document.getElementById('dirs');
+  var add=document.getElementById('add-dir');
+  var template=document.getElementById('dir-row');
+  if(!list||!add||!template){return;}
+  var rows=function(){return list.querySelectorAll('.dir');};
+  var refresh=function(){
+    var all=rows();
+    all.forEach(function(row){row.querySelector('.rm').hidden=all.length<2;});
+  };
+  list.addEventListener('click',function(event){
+    var remove=event.target.closest('.rm');
+    if(!remove||rows().length<2){return;}
+    remove.closest('.dir').remove();
+    refresh();
+    add.focus();
+  });
+  add.addEventListener('click',function(){
+    var row=template.content.firstElementChild.cloneNode(true);
+    list.appendChild(row);
+    refresh();
+    row.querySelector('input').focus();
+  });
+  add.hidden=false;
+  refresh();
 })();
 </script>"""
 
 #: 与站内共用勾选框相同的字形（lucide `check`）。这一页不加载站内脚本，所以内联一份。
 _CHECK_SVG = ('<svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round">'
               '<path d="M20 6 9 17l-5-5"/></svg>')
+#: 移除一行媒体文件夹的字形（lucide `x`）。
+_X_SVG = '<svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg>'
 
 
 def _document(title: str, body: str) -> str:
     base = (PROJECT_ROOT / "web" / "css" / "01-base.css").read_text(encoding="utf-8")
     tokens = re.search(r":root\s*\{[^}]+\}", base).group(0)
+    # 页内脚本对两张页面都生效：找不到对应控件时它什么也不做。
     return (f"{_SETUP_HEAD}<title>{title}</title><style>{tokens}</style>{_SETUP_STYLE}"
-            f"</head><body><main>{body}</main></body></html>\n")
+            f"</head><body><main>{body}</main>{_SETUP_SCRIPT}</body></html>\n")
 
 
 def _check_html(name: str, text_html: str, *, checked: bool) -> str:
@@ -187,6 +227,47 @@ def _copy_for(key: str, fallback: str) -> tuple[str, str]:
     return _SETUP_COPY.get(key, (fallback, ""))
 
 
+def _media_dir_row(value: str, error: str, *, first: bool) -> str:
+    attrs = ' id="f-media_dir" required' if first else ' aria-label="媒体文件夹"'
+    return (f'<div class="dir"><input name="media_dir" type="text"{attrs} autocomplete="off" '
+            f'spellcheck="false" aria-invalid="{"true" if error else "false"}" '
+            f'value="{escape(value, quote=True)}">'
+            f'<button type="button" class="rm" aria-label="移除这个文件夹" hidden>{_X_SVG}</button>'
+            + (f'<p class="bad" role="alert">{escape(error)}</p>' if error else "")
+            + "</div>")
+
+
+def _media_dirs_html(values: Sequence[str], errors: Sequence[str], note: str) -> str:
+    """媒体文件夹列表：每行一个输入框，行尾是移除键，列表下是「添加文件夹」。
+
+    移除键和添加键都带 `hidden`，由页面脚本亮出来：没有脚本时它们什么都做不了，与其留
+    两个按不动的键，不如只给一个输入框。第一行必填，后面的行留空就当没填；错误写在
+    出错的那一行底下。首次运行页与配置页共用这一段。
+    """
+    title, help_text = _copy_for("media_dir", "媒体文件夹")
+    rows = list(values) or [""]
+    body = "".join(
+        _media_dir_row(value, errors[index] if index < len(errors) else "", first=index == 0)
+        for index, value in enumerate(rows))
+    return (
+        '<div class="field">'
+        f'<label for="f-media_dir"><span class="req" aria-hidden="true">*</span>{escape(title)}</label>'
+        f'<div class="dirs" id="dirs">{body}</div>'
+        '<button type="button" class="add" id="add-dir" hidden>添加文件夹</button>'
+        f'<template id="dir-row">{_media_dir_row("", "", first=False)}</template>'
+        + "".join(f'<p class="help">{escape(line)}</p>' for line in (help_text, note) if line)
+        + "</div>"
+    )
+
+
+def _media_dir_values(values: Mapping[str, object], default: str) -> list[str]:
+    """表单回显里的媒体文件夹：提交的是几行就几行，没提交过就一行默认值。"""
+    raw = values.get("media_dir")
+    if isinstance(raw, (list, tuple)):
+        return [str(item) for item in raw] or [default]
+    return [str(raw) if raw else default]
+
+
 def _field_html(question, value: str, error: str, note: str) -> str:
     key = escape(question.key, quote=True)
     title, help_text = _copy_for(question.key, question.prompt)
@@ -216,8 +297,8 @@ def _field_html(question, value: str, error: str, note: str) -> str:
 
 
 def setup_page(
-    config, *, windows: bool, values: dict[str, str] | None = None,
-    errors: dict[str, str] | None = None, scan_now: bool = True,
+    config, *, windows: bool, values: Mapping[str, object] | None = None,
+    errors: Mapping[str, object] | None = None, scan_now: bool = True,
 ) -> str:
     """首次运行表单。题目顺序、默认值与校验全部来自 `onboarding.questions()`。
 
@@ -230,27 +311,33 @@ def setup_page(
     fields = []
     if errors.get("data_root"):
         fields.append(f'<p class="bad" role="alert">{escape(errors["data_root"])}</p>')
+    media_dirs: list[str] = []
     for question in asked:
-        value = values.get(question.key, question.default)
         if distribution.standalone() and question.key in {"data_root", "host", "mdns_name"}:
             value = {"data_root": str(config.data_root), "host": "1",
                      "mdns_name": config.server.mdns_name}[question.key]
             fields.append(f'<input type="hidden" name="{question.key}" value="{escape(value, quote=True)}">')
             continue
-        note = ""
-        if question.key == "media_dir" and not windows:
-            note = onboarding.mounts_explanation(value or "你在上面填的目录")
-        field = _field_html(question, value, errors.get(question.key, ""), note)
+        if question.key == "media_dir":
+            media_dirs = _media_dir_values(values, question.default)
+            row_errors = errors.get("media_dir", [])
+            note = "" if windows else onboarding.mounts_explanation(
+                [path for path in media_dirs if path] or ["你在上面填的目录"])
+            fields.append(_media_dirs_html(media_dirs, list(row_errors), note))
+            continue
+        value = str(values.get(question.key, question.default))
+        field = _field_html(question, value, str(errors.get(question.key, "")), "")
         if distribution.standalone() and question.key == "port":
             opened = " open" if errors.get("port") else ""
             field = f'<details{opened}><summary>高级设置</summary>{field}</details>'
         fields.append(field)
-    media_value = values.get("media_dir") or next(
-        (q.default for q in asked if q.key == "media_dir"), "")
-    if distribution.standalone() or not media_value:
+    filled = [path for path in media_dirs if path]
+    if distribution.standalone() or not filled:
         scan_text = "完成设置后扫描媒体文件夹"
+    elif len(filled) == 1:
+        scan_text = f"完成设置后扫描 <code>{escape(filled[0])}</code>"
     else:
-        scan_text = f"完成设置后扫描 <code>{escape(media_value)}</code>"
+        scan_text = f"完成设置后扫描这 {len(filled)} 个文件夹"
     body = (
         '<header><img class="mark" src="/peach-logo.png" alt="" width="40" height="40">'
         "<h1>欢迎使用 Peach</h1>"
@@ -260,7 +347,6 @@ def setup_page(
         + _check_html("scan_now", scan_text, checked=scan_now)
         + '<p class="help">扫描只读取文件名、大小和修改时间，不改动任何媒体文件。</p>'
         '<button type="submit">完成设置</button></form>'
-        + _SETUP_SCRIPT
     )
     return _document("Peach · 首次运行", body)
 
@@ -286,7 +372,7 @@ def setup_done_page(applied, *, windows: bool, scan_requested: bool) -> str:
             if scan_requested else
             "<li>没有请求首次扫描；要扫就跑 <code>peach scan local</code>。</li>")
     mounts = ("" if windows else
-              f"<p>{escape(onboarding.mounts_explanation(config.mounts.get('local', '')))}</p>")
+              f"<p>{escape(onboarding.mounts_explanation(config.mounts.get('local', ())))}</p>")
     body = (
         "<h1>设置完成</h1>"
         "<p>托盘正在停掉这条引导服务，改用正常的 Peach 服务；这个页面几秒后就会连不上，"
@@ -417,7 +503,9 @@ async def setup_submit(request: Request):
 
     windows = os.name == "nt"
     form = parse_qs((await request.body()).decode("utf-8", "replace"), keep_blank_values=True)
-    submitted = {key: (value or [""])[0] for key, value in form.items()}
+    submitted: dict[str, object] = {key: (value or [""])[0] for key, value in form.items()}
+    # 媒体文件夹是一个列表：几行输入框同名提交，回显时也要原样给回几行。
+    submitted["media_dir"] = list(form.get("media_dir", []))
     scan_now = "scan_now" in form
 
     config = settings_file.active()
@@ -457,13 +545,25 @@ async def setup_submit(request: Request):
 
 
 def _read_answers(
-    config, submitted: dict[str, str], *, windows: bool,
-) -> tuple[object, dict[str, str]]:
-    """逐字段校验，错误按字段收集。校验器和 CLI 问答用的是同一批。"""
+    config, submitted: Mapping[str, object], *, windows: bool,
+) -> tuple[object, dict[str, object]]:
+    """逐字段校验，错误按字段收集。校验器和 CLI 问答用的是同一批。
+
+    媒体文件夹那一项是多行：错误是与行对应的列表，其余字段的错误是一句话。
+    """
     values: dict[str, object] = {}
-    errors: dict[str, str] = {}
+    errors: dict[str, object] = {}
     for question in onboarding.questions(config, windows=windows):
-        raw = submitted.get(question.key, "")
+        if question.key == "media_dir":
+            paths, problems = onboarding.read_media_dirs(
+                _media_dir_values(submitted, ""), validate=question.validate,
+                default=question.default)
+            if problems:
+                errors["media_dir"] = problems
+            else:
+                values["media_dirs"] = tuple(paths)
+            continue
+        raw = str(submitted.get(question.key, "") or "")
         try:
             values[question.key] = question.validate(raw if raw.strip() else question.default)
         except ValueError as exc:

@@ -57,7 +57,7 @@ class WindowsShapeTests(_ScanCase):
     """Windows：声明根就是真实目录，路径原样进账本。"""
 
     def test_rows_are_written_under_the_declared_root(self):
-        declared = {"local": str(self.media)}
+        declared = {"local": (str(self.media),)}
         result, output = self._scan(str(self.media), declared_roots=declared, windows=True)
         self.assertEqual(result.files, 3)
         self.assertEqual(result.total_bytes, 14)
@@ -72,12 +72,12 @@ class WindowsShapeTests(_ScanCase):
             self.assertTrue(Path(path).is_file(), path)
 
     def test_a_subdirectory_of_the_declared_root_is_accepted(self):
-        declared = {"local": str(self.media)}
+        declared = {"local": (str(self.media),)}
         result, _ = self._scan(str(self.media / "创作者"), declared_roots=declared, windows=True)
         self.assertEqual(result.files, 1)
 
     def test_rescanning_refreshes_instead_of_duplicating_and_counts_the_gone(self):
-        declared = {"local": str(self.media)}
+        declared = {"local": (str(self.media),)}
         self._scan(str(self.media), declared_roots=declared, windows=True)
         (self.media / "notes.txt").unlink()
         (self.media / "cover.jpg").write_bytes(b"1" * 8)
@@ -94,10 +94,10 @@ class WindowsShapeTests(_ScanCase):
 class PosixShapeTests(_ScanCase):
     """macOS：账本里写 `R:\\media\\...`，遍历的是挂载点，读取侧按挂载表翻回去。"""
 
-    DECLARED = {"local": r"R:\media"}
+    DECLARED = {"local": (r"R:\media",)}
 
     def test_rows_keep_the_ledger_shape_and_translate_back_to_real_files(self):
-        mounts = {"local": self.media}
+        mounts = {"local": (self.media,)}
         result, _ = self._scan(r"R:\media", declared_roots=self.DECLARED, mounts=mounts,
                                windows=False)
         self.assertEqual(result.files, 3)
@@ -110,7 +110,7 @@ class PosixShapeTests(_ScanCase):
             self.assertTrue(self.media.joinpath(*tail).is_file(), path)
 
     def test_a_local_directory_is_converted_to_the_ledger_shape(self):
-        mounts = {"local": str(self.media)}
+        mounts = {"local": (str(self.media),)}
         root = scan.ledger_root_for("local", self.media / "创作者",
                                     declared_roots=self.DECLARED, mounts=mounts, windows=False)
         self.assertEqual(root, r"R:\media\创作者")
@@ -123,17 +123,36 @@ class PosixShapeTests(_ScanCase):
         self.assertIn("media.mounts", str(caught.exception))
         self.assertEqual(self._paths(), {})
 
+    def test_a_second_root_maps_to_its_own_mount(self):
+        """两个目录都是 `local`：第二个挂载点对应第二个声明根，账本路径带序号前缀。"""
+        second = self.root / "more"
+        (second / "deep").mkdir(parents=True)
+        (second / "deep" / "c.mp4").write_bytes(b"2")
+        declared = {"local": (r"R:\media", r"R:\media2")}
+        mounts = {"local": (str(self.media), str(second))}
+        root = scan.ledger_root_for("local", second / "deep", declared_roots=declared,
+                                    mounts=mounts, windows=False)
+        self.assertEqual(root, r"R:\media2\deep")
+        result, _ = self._scan(root, declared_roots=declared, mounts=mounts, windows=False)
+        self.assertEqual(result.files, 1)
+        self.assertEqual(set(self._paths()), {r"R:\media2\deep\c.mp4"})
+        # 挂载表比声明根短：第二个根没有落点，扫描它必须拒绝而不是落到第一个目录。
+        with self.assertRaises(scan.ScanTargetError) as caught:
+            scan.walk_root_for("local", r"R:\media2", declared_roots=declared,
+                               mounts={"local": (str(self.media),)}, windows=False)
+        self.assertIn("第 2 个声明根", str(caught.exception))
+
     def test_a_directory_outside_the_mount_is_refused(self):
         with self.assertRaises(scan.ScanTargetError) as caught:
             scan.ledger_root_for("local", "/somewhere/else", declared_roots=self.DECLARED,
-                                 mounts={"local": str(self.media)}, windows=False)
+                                 mounts={"local": (str(self.media),)}, windows=False)
         self.assertIn("挂载点", str(caught.exception))
 
 
 class ScanTargetTests(unittest.TestCase):
     """写入侧门槛：`location` 与扫描根必须对得上（ADR-0023 第 2 阶段），口径与脚本时期一致。"""
 
-    DECLARED = {"local": r"R:\media", "115": "B:/"}
+    DECLARED = {"local": (r"R:\media",), "115": ("B:/",)}
 
     def test_the_declared_root_and_its_subdirectories_are_accepted(self):
         for location, root in (("local", r"R:\media"), ("local", r"R:\media\创作者"),
