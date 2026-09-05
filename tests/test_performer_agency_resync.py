@@ -11,7 +11,7 @@ from pathlib import Path
 from peach.entities import normalize_entity_name
 from peach.migrations import upgrade
 from scripts.resync_performer_agency import (
-    GONE, MISSING, MOVED, SAME, apply_rows, ask, plan, targets,
+    GONE, MISSING, MOVED, SAME, apply_rows, ask, plan, search_url, targets,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -52,7 +52,6 @@ class AskTests(unittest.TestCase):
     """站点那一问只有三种结果：命中、没这一格、取不到。"""
 
     def page(self, shown: str) -> Http:
-        from scripts.resync_performer_agency import search_url
         return Http({search_url("松本一香"): Response(
             200, "https://www.minnano-av.com/actress21661.html", profile_html(shown))})
 
@@ -74,9 +73,34 @@ class AskTests(unittest.TestCase):
             def __call__(self, *args):
                 raise TimeoutError("connect")
 
-        shown, _, note = ask(Broken(), "松本一香", 1.0)
+        shown, _, note = ask(Broken(), "松本一香", 1.0, tries=1)
         self.assertEqual(shown, "")
         self.assertIn("未取得", note)
+
+    def test_a_blip_on_the_first_try_does_not_become_a_verdict(self):
+        """一次 SSL EOF 写出来的行，和「站点查不到这个人」长得一模一样。"""
+        page = self.page("EST(エスト)旧・LIGHT")
+
+        class Flaky:
+            def __init__(self):
+                self.calls = 0
+
+            def __call__(self, request, timeout, limit):
+                self.calls += 1
+                if self.calls == 1:
+                    raise ConnectionError("SSL: UNEXPECTED_EOF_WHILE_READING")
+                return page(request, timeout, limit)
+
+        flaky = Flaky()
+        shown, _, note = ask(flaky, "松本一香", 1.0, pause=0.0)
+        self.assertEqual(shown, "EST(エスト)旧・LIGHT")
+        self.assertEqual(flaky.calls, 2)
+
+    def test_a_search_page_that_never_redirects_is_not_retried(self):
+        """再问一遍还是同一个答案，重试只是多敲别人的门。"""
+        http = self.page("EST")
+        ask(http, "查无此人", 1.0, pause=0.0)
+        self.assertEqual(len(http.asked), 1)
 
 
 class LedgerFixture(unittest.TestCase):
@@ -129,6 +153,14 @@ class TargetTests(LedgerFixture):
     def test_the_same_person_named_twice_is_asked_once(self):
         self.assertEqual(len(targets(self.con, ["LIGHT"], ["松本一香"])), 3)
 
+    def test_the_japanese_alias_leads_the_search_chain(self):
+        """站点只认日文写法，规范名是简体中文；不带别名去问就查不到这个人。"""
+        self.con.execute(
+            "INSERT INTO entity_alias(entity_id,alias,normalized_alias,source)"
+            " VALUES(11,'松本いちか',?,'test')", (normalize_entity_name("松本いちか"),))
+        found = targets(self.con, [], ["松本一香"])
+        self.assertEqual(found[0]["chain"], ["松本いちか", "松本一香"])
+
 
 class PlanTests(LedgerFixture):
 
@@ -137,7 +169,6 @@ class PlanTests(LedgerFixture):
         return types.SimpleNamespace(**{**base, **overrides})
 
     def http(self, answers: dict[str, str]) -> Http:
-        from scripts.resync_performer_agency import search_url
         return Http({search_url(name): Response(
             200, f"https://www.minnano-av.com/actress{2000 + index}.html",
             profile_html(shown))
@@ -158,6 +189,28 @@ class PlanTests(LedgerFixture):
         """取不到和「这一格是空的」必须分得开，否则重跑一次就把人清空了。"""
         rows = self.run_plan({})
         self.assertEqual({str(row["verdict"]) for row in rows}, {MISSING})
+
+    def with_alias(self):
+        self.con.execute(
+            "INSERT INTO entity_alias(entity_id,alias,normalized_alias,source)"
+            " VALUES(11,'松本いちか',?,'test')", (normalize_entity_name("松本いちか"),))
+
+    def test_the_chain_stops_at_the_first_name_that_lands(self):
+        """日文名排在链首，它命中了就不该再为简体名多敲一次门。"""
+        self.with_alias()
+        http = self.http({"松本いちか": "EST(エスト)旧・LIGHT"})
+        with contextlib.redirect_stdout(io.StringIO()):
+            rows = plan(self.con, http, self.args(agency=[], only=["松本一香"]))
+        self.assertEqual(str(rows[0]["verdict"]), MOVED)
+        self.assertEqual(http.asked, [search_url("松本いちか")])
+
+    def test_a_miss_on_the_first_name_tries_the_next(self):
+        self.with_alias()
+        http = self.http({"松本一香": "EST(エスト)旧・LIGHT"})
+        with contextlib.redirect_stdout(io.StringIO()):
+            rows = plan(self.con, http, self.args(agency=[], only=["松本一香"]))
+        self.assertEqual(str(rows[0]["verdict"]), MOVED)
+        self.assertEqual(len(http.asked), 2)
 
 
 class ApplyTests(LedgerFixture):

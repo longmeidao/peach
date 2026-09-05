@@ -26,6 +26,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from peach.config import REVIEW_DIR, STATE_DIR   # noqa: E402
+from peach.entities import name_chain   # noqa: E402
 from peach.http import HttpRequest, HttpxTransport   # noqa: E402
 from peach.jobs import job_main   # noqa: E402
 from peach.minnano_av import actress_id, profile_text, search_url   # noqa: E402
@@ -50,12 +51,25 @@ EXTRA_COUNTS = {
 
 
 def targets(connection, agencies: list[str], only: list[str]) -> list[dict[str, object]]:
-    """要问的人：(entity_id, 规范名, 账本里现在写着的事务所)。
+    """要问的人：id、规范名、账本里现在写着的事务所，以及可以拿去检索的名字链。
 
     两个条件是并集而不是交集：`--agency LIGHT --only 北野未奈` 要问的是这一家加上
     这个人，而不是「这一家里叫这个名字的」——移籍时人已经不在原来那一家名下了。
+
+    检索必须带上别名。账本里 performer 的规范名是简体中文（`宫西光`），minnano-av
+    只认日文写法（`宮西ひかる`），只拿规范名去问，14 位里 11 位落在「未取得」，
+    看起来像是站点查不到这些人，实际上是我们从没用她的日文名查过。
     """
     found: dict[int, dict[str, object]] = {}
+
+    def take(row) -> None:
+        aliases = [item["alias"] for item in connection.execute(
+            "SELECT alias FROM entity_alias WHERE entity_id=?"
+            " ORDER BY confidence DESC, alias", (row["id"],))]
+        found[row["id"]] = {"entity_id": row["id"], "performer": row["canonical_name"],
+                            "current_agency": row["agency"] or "",
+                            "chain": name_chain(row["canonical_name"], aliases)}
+
     for name in agencies:
         for row in connection.execute(
                 "SELECT e.id, e.canonical_name,"
@@ -63,37 +77,46 @@ def targets(connection, agencies: list[str], only: list[str]) -> list[dict[str, 
                 " FROM entity e JOIN entity_membership m ON m.member_id=e.id"
                 " JOIN entity a ON a.id=m.agency_id"
                 " WHERE a.kind='agency' AND a.canonical_name=?", (name,)):
-            found[row["id"]] = {"entity_id": row["id"], "performer": row["canonical_name"],
-                                "current_agency": row["agency"] or ""}
+            take(row)
     for name in only:
         for row in connection.execute(
                 "SELECT id, canonical_name,"
                 " json_extract(metadata_json,'$.agency.name') AS agency"
                 " FROM entity WHERE kind='performer' AND canonical_name=?", (name,)):
-            found[row["id"]] = {"entity_id": row["id"], "performer": row["canonical_name"],
-                                "current_agency": row["agency"] or ""}
+            take(row)
     return [found[key] for key in sorted(found)]
 
 
-def ask(http, name: str, timeout: float) -> tuple[str, str, str]:
+def ask(http, name: str, timeout: float,
+        tries: int = 3, pause: float = 3.0) -> tuple[str, str, str]:
     """问站点：这个人现在的「所属事務所」写的是什么。返回（事务所, actress_id, 说明）。
 
     只采信重定向。检索页正文里那一堆 `actressNNN.html` 是「相关女优」，按正文解析
     会把别人的事务所安到这个人头上。
+
+    连接层抖一下要重试。2026-09-05 这一趟 14 位里有一位撞上 `SSL: UNEXPECTED_EOF`，
+    写出来的那一行和「站点查不到这个人」长得一模一样，而它只是这一秒没连上。回了
+    HTTP 状态或者检索页没重定向则不重试：那两种再问一遍还是同一个答案。
     """
-    try:
-        response = http(HttpRequest("GET", search_url(name), {"User-Agent": USER_AGENT}),
-                        timeout, 4 << 20)
-    except Exception as error:   # noqa: BLE001  取不到就是取不到，写进复核件等重跑
-        return "", "", f"未取得：{type(error).__name__}"
-    if response.status != 200:
-        return "", "", f"未取得：HTTP {response.status}"
-    found_id = actress_id(response.url or "")
-    if not found_id:
-        return "", "", "未取得：检索页未唯一命中，需人工消歧"
-    html = response.body.decode("utf-8", "replace")
-    return (profile_text(html, "所属事務所"), found_id,
-            f"minnano-av actress{found_id} 资料表「所属事務所」")
+    note = "未取得：一次都没问出去"
+    for attempt in range(max(1, tries)):
+        try:
+            response = http(HttpRequest("GET", search_url(name), {"User-Agent": USER_AGENT}),
+                            timeout, 4 << 20)
+        except Exception as error:   # noqa: BLE001  传输层什么都可能抛，一律当抖动
+            note = f"未取得：{type(error).__name__}"
+            if attempt + 1 < max(1, tries):
+                time.sleep(pause)
+            continue
+        if response.status != 200:
+            return "", "", f"未取得：HTTP {response.status}"
+        found_id = actress_id(response.url or "")
+        if not found_id:
+            return "", "", "未取得：检索页未唯一命中，需人工消歧"
+        html = response.body.decode("utf-8", "replace")
+        return (profile_text(html, "所属事務所"), found_id,
+                f"minnano-av actress{found_id} 资料表「所属事務所」")
+    return "", "", note
 
 
 def plan(connection, http, args) -> list[dict[str, object]]:
@@ -101,12 +124,22 @@ def plan(connection, http, args) -> list[dict[str, object]]:
     people = targets(connection, args.agency, args.only)
     print(f"待问 {len(people)} 位 performer")
     last = 0.0
-    for person in people:
+
+    def paced(name: str) -> tuple[str, str, str]:
+        """间隔按请求算，不按人算：一个人有两个名字就是两次往返。"""
+        nonlocal last
         wait = args.interval - (time.monotonic() - last)
         if wait > 0:
             time.sleep(wait)
         last = time.monotonic()
-        shown, _, note = ask(http, str(person["performer"]), args.timeout)
+        return ask(http, name, args.timeout)
+
+    for person in people:
+        shown, note = "", "未取得：没有可检索的名字"
+        for candidate in person["chain"]:
+            shown, _, note = paced(candidate)
+            if note.startswith("minnano-av"):
+                break
         if not note.startswith("minnano-av"):
             verdict = MISSING
         elif not shown:
@@ -115,7 +148,8 @@ def plan(connection, http, args) -> list[dict[str, object]]:
             verdict = SAME
         else:
             verdict = MOVED
-        rows.append({**person, "site_agency": shown, "verdict": verdict, "evidence": note})
+        rows.append({**{key: value for key, value in person.items() if key != "chain"},
+                     "site_agency": shown, "verdict": verdict, "evidence": note})
         print(f"{str(person['performer'])[:12]:<12} {verdict} {shown}")
     return rows
 
