@@ -77,4 +77,29 @@
 .cleanupfieldset .cleanupstate:empty{display:none}
 .stats h2{margin:0 0 4px;font-size:var(--fs-2xl)}
 .stats .sub{color:var(--muted);margin:0}
-
+/* 采集来源表单复用管理页 Fieldset。 */
+.scraping-page{width:min(812px,100%);margin:0 auto;display:grid;gap:16px}
+.scraping-page>h1,.scraping-page p{margin:0}
+.scraping-fields .scraping-cover-form{display:flex;align-items:center;gap:8px;min-width:0}
+.scraping-cover-form>input{flex:1}
+.scraping-cover-form>button{height:var(--control-h);white-space:nowrap}
+.scraping-fields{padding:20px;display:grid;gap:16px;min-width:0}
+.scraping-fields label,.scraping-label{display:grid;gap:8px;min-width:0}
+.scraping-fields input:not([type=radio]):not([type=file]){width:100%;min-width:0;min-height:var(--control-h);box-sizing:border-box}
+.scraping-fields .scraping-url{text-decoration:none;color:var(--muted);overflow-wrap:anywhere;margin-top:-12px;font-size:var(--fs-md)}
+.scraping-fields .scraping-url:hover{color:var(--ink);text-decoration:none}
+.scraping-network,.scraping-network .gselect{width:100%;min-width:0}
+.scraping-fields .gselectfield{justify-content:space-between;padding-right:16px;border-color:var(--field-ring)}
+.scraping-fields .gselectmenu button{border:0;justify-content:flex-start;padding:0 8px;background:transparent}
+.scraping-fields .gselectmenu button:hover,.scraping-fields .gselectmenu button[aria-selected=true]{background:var(--hover)}
+.scraping-cookie-method{justify-self:start}
+.scraping-cookie-method label{display:block}
+.scraping-cookie-method input:checked+span{font-weight:400}
+.scraping-file-control{position:relative;display:flex;align-items:center;gap:12px;min-width:0;min-height:var(--control-h)}
+.scraping-file-control>.geist-button{flex:none;height:var(--control-h)}
+.scraping-file-name{min-width:0;overflow-wrap:anywhere;color:var(--muted)}
+.scraping-file-control>input{position:absolute;inset:0;opacity:0;width:100%;height:100%;cursor:pointer}
+.scraping-file-control:focus-within{outline:2px solid var(--tungsten);outline-offset:2px;border-radius:var(--control-radius)}
+.scraping-source{min-width:0}
+.scraping-source .geist-fieldset-footer{flex-wrap:wrap}
+@media(max-width:600px){.scraping-page{--control-h:44px}.scraping-source button{min-height:44px}.scraping-cookie-method span{height:44px}}

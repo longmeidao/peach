@@ -767,6 +767,7 @@ def peach_logo():
 @router.api_route("/data-cleanup", methods=["GET", "HEAD"])
 @router.api_route("/duplicates", methods=["GET", "HEAD"])
 @router.api_route("/quality-goals", methods=["GET", "HEAD"])
+@router.api_route("/scraping", methods=["GET", "HEAD"])
 @router.api_route("/resource-sync", methods=["GET", "HEAD"])
 @router.api_route("/follow", methods=["GET", "HEAD"])
 @router.api_route("/follow-manage", methods=["GET", "HEAD"])

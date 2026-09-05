@@ -47,7 +47,7 @@ from peach.minnano_av import (   # noqa: E402
 )
 from peach.review_csv import write_rows   # noqa: E402
 from peach.scripting import (   # noqa: E402
-    USER_AGENT, add_ledger_write_args, counts_of, open_for_write, verify_after_write,
+    USER_AGENT, RateLimiter, add_ledger_write_args, counts_of, open_for_write, verify_after_write,
 )
 
 FIELDS = ("agency", "agency_id", "production", "roster_name", "actress_id",
@@ -148,13 +148,10 @@ class Site:
         self.timeout = timeout
         self.interval = interval
         self.fetched = 0
-        self._last = 0.0
+        self._limiter = RateLimiter(interval)
 
     def __call__(self, url: str) -> tuple[str, str]:
-        wait = self.interval - (time.monotonic() - self._last)
-        if wait > 0:
-            time.sleep(wait)
-        self._last = time.monotonic()
+        self._limiter.wait()
         try:
             response = self.http(HttpRequest("GET", url, {"User-Agent": USER_AGENT}),
                                  self.timeout, 4 << 20)

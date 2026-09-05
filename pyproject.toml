@@ -27,6 +27,7 @@ classifiers = [
   "Topic :: Multimedia :: Video",
 ]
 dependencies = [
+  "tldextract==5.3.2",
   "APScheduler==3.11.3",
   "beautifulsoup4==4.15.0",
   "browserexport==0.4.4",

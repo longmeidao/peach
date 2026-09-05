@@ -14,6 +14,13 @@ export const emptyStateHtml = (
 export const fieldsetTitle = (id: string, title: string): string =>
   `<h3 class="geist-fieldset-title" id="${id}">${title}</h3>`;
 
+export const selectFieldHtml = (items: string[][], value: string, options: { label?: string } = {}): string =>
+  `<div class="gselect" data-value="${value}"><button type="button" aria-haspopup="listbox" aria-label="${options.label}">${items.find(item => item[0] === value)?.[1]}</button></div>`;
+export const wireSelectField = (root: HTMLElement) => {
+  Object.defineProperty(root, 'value', { get: () => root.dataset.value });
+  return root as HTMLElement & { value: string; disabled: boolean };
+};
+
 export const setActionBusy = (control: Element | null, busy = true): void => {
   if (!control) return;
   if (busy) {

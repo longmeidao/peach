@@ -1,8 +1,19 @@
 # 抓取复用与复现审计
 
-核验日期：2026-09-05；代码基线：`349048f`。架构方案见 [ADR-0024](adr/0024-mark-manifest-not-bundled-bytes.md)，逐入口结论见 [审计 CSV](scraping-audit.csv)。本次交付是文档与只读取证，不表示抓取服务、GUI 或依赖已升级。
+核验日期：2026-09-05；审计基线：`349048f`。架构方案见 [ADR-0024](adr/0024-mark-manifest-not-bundled-bytes.md)，逐入口基线结论见 [审计 CSV](scraping-audit.csv)。下方问题列表是基线发现，实施状态以下节为准。
 
-## 范围与结论
+## 实施状态
+
+- 5 个内部重复入口已复用 RateLimiter／HostLimiter；图标下载使用共享 16 MiB 有界 transport，
+  保留首页单次请求缓存和图像策略。官网探测及 page_cache 显式持有自建 client 的关闭所有权。
+- 私有后缀采用离线 tldextract 5.3.2，GitHub Pages／Blogspot 独立租户与日本域名 POC 通过。
+- `/scraping` 接入定点高清封面、来源网络和 FC2 Cookie 配置；完整下载重新核对实际尺寸，
+  保留原图字节并拒绝低清覆盖。接口、凭据隔离与实际消费范围见 [来源采集](SOURCING.md)。
+- Instaloader 4.15.3 的 Bambi／LINX 匿名 POC 均为 ConnectionException；未取得独立登录会话，
+  不将匿名失败解释为所有登录用户都失败，也不把库的接口存在解释为稳定成功。
+- 整体 ADR 仍有来源清单、完整批量 GUI、标准模式、子进程网络统一及跨用户／平台验收缺口。
+
+## 审计基线范围与结论
 
 扫描 `scripts/harvest_*.py`、`fetch_*.py`、`scrape_*.py`，加上有来源请求的头像审计、厂牌本地化、Babepedia 匹配与链接重发现，共 **17 个业务入口**。同时核对共享 HTTP、页面缓存、图像候选缓存、Javinizer-Go 适配、关注连接器和凭据 GUI。发布检查、连通性验收、纯离线导入／安装脚本不计入业务抓取入口；这个分母不代表 Git 历史中的全部脚本或所有 provider 类。
 
