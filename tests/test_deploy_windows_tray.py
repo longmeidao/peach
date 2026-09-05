@@ -108,7 +108,7 @@ class ServingVersionTests(unittest.TestCase):
     def test_the_verdict_comes_from_the_https_port_checked_against_the_project_ca(self):
         specs = (
             mock.Mock(name="http", health_url="http://127.0.0.1/healthz", verify=True),
-            mock.Mock(health_url="https://192.168.0.2/healthz", verify="/ca/peach.crt"),
+            mock.Mock(health_url="https://192.0.2.10/healthz", verify="/ca/peach.crt"),
         )
         specs[0].name = "http"
         specs[1].name = "https"
@@ -121,7 +121,7 @@ class ServingVersionTests(unittest.TestCase):
                               return_value=response) as get,
         ):
             self.assertEqual(deploy_windows_tray.serving_version(), "9.9.9")
-        self.assertEqual(get.call_args.args[0], "https://192.168.0.2/healthz")
+        self.assertEqual(get.call_args.args[0], "https://192.0.2.10/healthz")
         self.assertEqual(get.call_args.kwargs["verify"], "/ca/peach.crt")
         self.assertFalse(get.call_args.kwargs["trust_env"],
                          "系统代理会替生产口回话，探测必须直连")
