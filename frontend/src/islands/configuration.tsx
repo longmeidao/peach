@@ -30,6 +30,8 @@ export interface ConfigurationData {
   /** 设置文件的指纹，保存时带回去，服务端据此拒绝盖掉别处的改动。 */
   revision: string;
   media_dirs: string[];
+  media_sources?: { location: string; root: string; path: string; online?: boolean }[];
+  windows?: boolean;
   port: number;
   facts: ConfigurationFact[];
 }
@@ -87,8 +89,36 @@ function Facts({ facts }: { facts: ConfigurationFact[] }) {
   );
 }
 
+function MountStatus({ data }: { data: ConfigurationData }) {
+  const [sources, setSources] = useState(data.media_sources);
+  const [error, setError] = useState('');
+  const controller = useRef<AbortController | null>(null);
+  useEffect(() => () => controller.current?.abort(), []);
+  const refresh = async (button: HTMLButtonElement) => {
+    if (controller.current) return;
+    const request = new AbortController(); controller.current = request;
+    setActionBusy(button, true); setError('');
+    try {
+      const result = await apiGet<ConfigurationData>(CONFIGURATION_URL, request.signal);
+      if (!request.signal.aborted) setSources(result.media_sources);
+    } catch (cause) {
+      if (!request.signal.aborted) setError(errorMessage(cause));
+    } finally { controller.current = null; setActionBusy(button, false); }
+  };
+  if (!sources) return null;
+  return <section class="configfieldset" aria-labelledby="configMountsTitle"><div class="geist-fieldset-content">
+    <Html html={fieldsetTitle('configMountsTitle', '挂载状态')} />
+    <dl class="configfacts">{sources.map((row) => <><dt>{row.location} · {row.root}</dt><dd>{row.path || '未配置挂载点'} · {row.online ? '在线' : '离线'}</dd></>)}</dl>
+    {error ? <p class="configbad" role="alert">{error}</p> : null}
+    <button type="button" class="geist-button" onClick={(event) => refresh(event.currentTarget)}>刷新挂载状态</button>
+  </div></section>;
+}
+
 function ConfigurationForm({ data, receipt }: { data: ConfigurationData; receipt: ConfigurationProps['receipt'] }) {
-  const [dirs, setDirs] = useState<string[]>(data.media_dirs.length ? data.media_dirs : ['']);
+  const initial = data.media_sources?.filter((row) => ['local', '115', 'pikpak'].includes(row.location));
+  const [dirs, setDirs] = useState<string[]>(initial?.length ? initial.map((row) => row.path) : data.media_dirs.length ? data.media_dirs : ['']);
+  const [kinds, setKinds] = useState<string[]>(initial?.map((row) => row.location) ?? []);
+  const [roots, setRoots] = useState<string[]>(initial?.map((row) => row.root) ?? []);
   const [port, setPort] = useState(String(data.port));
   const [scanNow, setScanNow] = useState(false);
   const [rowErrors, setRowErrors] = useState<string[]>([]);
@@ -122,6 +152,8 @@ function ConfigurationForm({ data, receipt }: { data: ConfigurationData; receipt
     setDirs((list) => [...list, '']);
   };
   const remove = (index: number) => {
+    setKinds((list) => list.filter((_, i) => i !== index));
+    setRoots((list) => list.filter((_, i) => i !== index));
     setDirs((list) => list.filter((_, i) => i !== index));
     setRowErrors((errors) => errors.filter((_, i) => i !== index));
   };
@@ -160,6 +192,7 @@ function ConfigurationForm({ data, receipt }: { data: ConfigurationData; receipt
       const result = await apiSend<SaveResult>(CONFIGURATION_URL, {
         revision: revision.current,
         media_dirs: dirs,
+        ...(data.media_sources ? { media_sources: dirs.map((path, i) => ({ path, location: kinds[i] || 'local', root: roots[i] || '' })) } : {}),
         port,
         scan_now: scanNow,
       });
@@ -221,12 +254,24 @@ function ConfigurationForm({ data, receipt }: { data: ConfigurationData; receipt
                     <svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-x" /></svg>
                   </button>
                 ) : null}
+                <div class="configsource">
+                  <label>媒体来源
+                    <select class="geist-input" aria-label={`媒体来源 ${index + 1}`} value={kinds[index] || 'local'}
+                      onChange={(event) => { const next = [...kinds]; next[index] = event.currentTarget.value; setKinds(next); }}>
+                      <option value="local">本地磁盘</option><option value="115">CloudDrive · 115</option><option value="pikpak">CloudDrive · PikPak</option>
+                    </select>
+                  </label>
+                  {data.windows === false ? <label>账本根目录
+                    <input class="geist-input" aria-label={`账本根目录 ${index + 1}`} value={roots[index] || ''} placeholder="例如 B:\\"
+                      onInput={(event) => { const next = [...roots]; next[index] = event.currentTarget.value; setRoots(next); }} />
+                  </label> : null}
+                </div>
                 {rowErrors[index] ? <p class="configbad" role="alert">{rowErrors[index]}</p> : null}
               </div>
             ))}
           </div>
           <button type="button" class="geist-button configadd" onClick={add}>添加文件夹</button>
-          <p class="confighelp">Peach 从这些文件夹读取视频和图片。可以是外置硬盘上的文件夹，但必须已经存在。</p>
+          <p class="confighelp">CloudDrive：先登录网盘并挂载，再选择对应的 115 或 PikPak 来源。macOS 填本机挂载点与对应的账本盘符根。<a href="https://www.clouddrive2.com/help.html" target="_blank" rel="noreferrer">挂载帮助</a></p>
         </div>
         <div class="configfield">
           <label for="configPort">本机访问端口</label>
@@ -269,6 +314,7 @@ export function Configuration({ receipt, data, error }: ConfigurationProps & Sta
         ? <ConfigurationForm data={data} receipt={receipt} />
         : <Html html={noteHtml(data.notice, { variant: 'secondary', label: '只读' })} />}
       <Facts facts={data.facts} />
+      <MountStatus data={data} />
     </div>
   );
 }

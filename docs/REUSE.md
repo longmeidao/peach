@@ -5,6 +5,14 @@
 
 ## 复用决策门槛
 
+CloudDrive 引导复用现有 `settings_file`、`platform.root_online`、`scan_location` 和 Preact
+配置 island；来源仍为 `local`、`115`、`pikpak`。外部挂载由已安装的 CloudDrive 负责，
+[官方帮助](https://www.clouddrive2.com/help.html) 规定 Windows 使用盘符、macOS 使用目录挂载点。
+CloudDrive 为外部应用，本项目不捆绑其二进制或依赖其管理 API，也不保存网盘凭据；因此不引入
+非官方 CloudDrive SDK。路径处理复用 Python 标准库 `pathlib`、`os.scandir`、`tomllib`，
+不新增依赖。最小实证使用盘符 `A:/`、`B:/` 与 macOS 挂载形状，验证配置往返、重叠拒绝和
+读取目录失败的离线结果；Peach 保留表单、来源归属及扫描选择。
+
 - 抓取入口的复用缺口与证据统一见 [抓取复用审计](SCRAPING_AUDIT.md) 和 [逐脚本 CSV](scraping-audit.csv)；
   跨用户安装、来源网络、Cookie GUI、最高可得画质与图像清单按 [ADR-0024](adr/0024-mark-manifest-not-bundled-bytes.md)。
   私有后缀判断采用 tldextract 5.3.2（BSD-3-Clause、Python ≥3.10、平台无关），使用随包 PSL、

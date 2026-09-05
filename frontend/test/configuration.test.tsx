@@ -23,7 +23,7 @@ const mount = (props: Partial<ConfigurationData> = {}, receipt = vi.fn()) => {
   return { el, receipt };
 };
 
-const inputs = (el: Element) => [...el.querySelectorAll<HTMLInputElement>('.configdir .geist-input')];
+const inputs = (el: Element) => [...el.querySelectorAll<HTMLInputElement>('.configdir > input')];
 const submit = (el: Element) => {
   el.querySelector('form')?.dispatchEvent(new Event('submit', { cancelable: true }));
 };
@@ -55,6 +55,34 @@ describe('配置页取数', () => {
 });
 
 describe('媒体文件夹列表', () => {
+  it('刷新挂载状态保留未保存的路径', async () => {
+    const media_sources = [{ location: '115', path: 'B:/', root: 'B:/', online: false }];
+    vi.stubGlobal('fetch', fetchMock(200, data({media_sources: [{ ...media_sources[0]!, online: true }]})));
+    const { el } = mount({ windows: true, media_sources });
+    const input = inputs(el)[0]!;
+    input.value = 'B:/Movies'; input.dispatchEvent(new Event('input')); await settle();
+    [...el.querySelectorAll<HTMLButtonElement>('button')].find((button) => button.textContent === '刷新挂载状态')?.click();
+    await settle();
+    expect(inputs(el)[0]?.value).toBe('B:/Movies');
+    expect(el.textContent).toContain('在线');
+  });
+  it('按来源回填所有挂载点，提交时保留 macOS 盘符映射', async () => {
+    const fetch = fetchMock(200, { saved: true, url: '/', revision: 'rev-2' });
+    vi.stubGlobal('fetch', fetch);
+    const { el } = mount({ windows: false, media_sources: [
+      { location: '115', root: 'B:\\', path: '/Volumes/115', online: false },
+      { location: 'pikpak', root: 'A:\\', path: '/Volumes/PikPak', online: true },
+    ] });
+    expect(inputs(el).map((input) => input.value)).toEqual(['/Volumes/115', '/Volumes/PikPak']);
+    expect(el.textContent).toContain('离线');
+    expect(el.textContent).toContain('在线');
+    submit(el); await settle();
+    const body = JSON.parse(String(fetch.mock.calls[0]?.[1].body));
+    expect(body.media_sources).toEqual([
+      { location: '115', root: 'B:\\', path: '/Volumes/115' },
+      { location: 'pikpak', root: 'A:\\', path: '/Volumes/PikPak' },
+    ]);
+  });
   it('一行一个文件夹，只有一行时没有移除键', () => {
     const { el } = mount();
     expect(inputs(el).map((input) => input.value)).toEqual(['D:\\Media']);
