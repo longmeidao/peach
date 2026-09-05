@@ -65,8 +65,9 @@ def environment(root: Path) -> str:
             executable = str(bundled) if bundled.is_file() else None
         tools[name] = None if not executable else (
             str(Path(executable).resolve()), hashlib.sha256(Path(executable).read_bytes()).hexdigest())
-    installed = sorted((d.metadata.get("Name", ""), d.version)
-                       for d in importlib.metadata.distributions())
+    # 同一个目录可在 sys.path 中出现多次；依赖身份取集合，版本变化仍改变指纹。
+    installed = sorted({(d.metadata.get("Name", ""), d.version)
+                        for d in importlib.metadata.distributions()})
     node_lock = root / "frontend/node_modules/.package-lock.json"
     return digest({
         "schema": 1, "python": sys.version, "executable": sys.executable,

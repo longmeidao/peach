@@ -480,7 +480,9 @@ class SetupPageTests(_Case):
 
     @unittest.skipIf(NATIVE_WINDOWS, "盘符本身就是挂载点，Windows 上没有这句话")
     def test_the_mounts_explanation_sits_under_the_media_field_on_posix(self):
-        self.assertIn("本机挂载点", self._get("/").text)
+        body = self._get("/").text
+        self.assertIn("本机文件夹是这台电脑读取媒体的位置", body)
+        self.assertIn("Windows 中的对应路径用于匹配馆藏中已有的路径", body)
 
     def test_invalid_values_come_back_as_a_form_with_per_field_messages(self):
         missing = self.root / "nope"
