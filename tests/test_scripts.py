@@ -2135,5 +2135,62 @@ class ScriptingConventionTests(unittest.TestCase):
         self.assertFalse(scripting.host_under("", ("x.com",)))
 
 
+class ReleaseTagTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.release = load_script("release_tag")
+
+    def test_latest_matching_master_run_must_finish_successfully(self):
+        success = dict(id=1, head_sha="abc", head_branch="master", event="push",
+                       status="completed", conclusion="success", html_url="test-url")
+        self.assertEqual(self.release.require_success([success], "abc"), success)
+        for changes in ({"head_sha": "other"}, {"head_branch": "feature"},
+                        {"event": "pull_request"}, {"status": "in_progress"},
+                        {"conclusion": "failure"}, {"conclusion": "cancelled"}):
+            with self.subTest(changes=changes), self.assertRaises(ValueError):
+                self.release.require_success([{**success, **changes}], "abc")
+        with self.assertRaises(ValueError):
+            self.release.require_success([success, {**success, "id": 2, "conclusion": "failure"}], "abc")
+
+    def test_default_is_read_only_and_apply_stops_if_master_moves(self):
+        planned = dict(sha="abc", tag="v1.2.3", repo="owner/repo")
+        with mock.patch.object(self.release, "plan", return_value=planned), \
+                mock.patch.object(self.release, "command") as command, redirect_stdout(io.StringIO()):
+            self.assertEqual(self.release.main([]), 0)
+            command.assert_not_called()
+            with mock.patch.object(self.release, "api", return_value={"object": {"sha": "other"}}):
+                self.assertEqual(self.release.main(["--apply"]), 1)
+            command.assert_not_called()
+
+    def test_apply_pushes_only_the_validated_tag(self):
+        planned = dict(sha="abc", tag="v1.2.3", repo="owner/repo")
+        with mock.patch.object(self.release, "plan", return_value=planned), \
+                mock.patch.object(self.release, "api", return_value={"object": {"sha": "abc"}}), \
+                mock.patch.object(self.release, "command") as command, redirect_stdout(io.StringIO()):
+            self.assertEqual(self.release.main(["--repo", "owner/repo", "--apply"]), 0)
+            self.assertEqual(command.call_args_list[-1], mock.call(
+                "git", "push", "https://github.com/owner/repo.git", "refs/tags/v1.2.3"))
+            self.assertNotIn("--force", str(command.call_args_list))
+
+    def test_unmerged_commit_cannot_pass_release_verification(self):
+        with mock.patch.object(self.release, "api", return_value={"status": "ahead"}), \
+                self.assertRaises(ValueError):
+            self.release.verify("owner/repo", "abc")
+
+    def test_plan_refuses_dirty_checkout_wrong_branch_and_existing_tags(self):
+        base = {("git", "status", "--porcelain"): "",
+                ("git", "branch", "--show-current"): "master",
+                ("git", "rev-parse", "HEAD"): "abc"}
+        for changes, refs in (({("git", "status", "--porcelain"): " M file"}, []),
+                              ({("git", "branch", "--show-current"): "feature"}, []),
+                              ({}, [{"ref": "refs/tags/v0.7.14"}])):
+            with self.subTest(changes=changes, refs=refs), \
+                    mock.patch.object(self.release, "command", side_effect=lambda *args: {**base, **changes}.get(args, "")), \
+                    mock.patch.object(self.release, "api", side_effect=lambda repo, path: {"object": {"sha": "abc"}} if path == "git/ref/heads/master" else refs), \
+                    mock.patch.object(Path, "read_text", return_value='__version__ = "0.7.14"\n'), \
+                    self.assertRaises(ValueError):
+                self.release.plan("owner/repo")
+
+
 if __name__ == "__main__":
     unittest.main()
