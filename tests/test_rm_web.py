@@ -2031,6 +2031,60 @@ class AvatarFocusTests(unittest.TestCase):
         self.assertIsNone(self.contract.avatar_focus("creator", 13))
         self.assertIsNone(self.contract.avatar_focus("series", 14))
 
+    def test_the_face_box_is_handed_over_in_source_pixels(self):
+        # 放大到几倍还清楚，问的是「这张脸有多少像素」；归一化值答不了，所以脸框
+        # 在这里就换算成源图像素。`performer-8711` 的真实数据：640×960 的全身照，
+        # 脸框归一化 0.105 宽，还原成 67 px。
+        (self.avatars / "performer-7900.face.json").write_text(
+            '{"ratio":0.667,"px":[640,960],'
+            '"face":{"cx":0.439,"cy":0.224,"w":0.105,"h":0.095,"score":0.934},'
+            '"focus":{"axis":"y","pct":0}}', encoding="utf-8")
+        self.assertEqual(
+            self.contract.avatar_focus("performer", 7900),
+            {"axis": "y", "pct": 0,
+             "box": {"cx": 0.439, "cy": 0.224, "faceW": 67,
+                     "imgW": 640, "imgH": 960}})
+
+    def test_a_square_image_gets_a_box_even_without_an_axis(self):
+        # 方图算不出 object-position——没有被裁的方向可挪——但脸小一样该放大。
+        # 两半各自缺失：只有 focus 那一半的旧 sidecar 也不能因此丢掉。
+        (self.avatars / "performer-7900.face.json").write_text(
+            '{"ratio":1.0,"px":[1000,1000],'
+            '"face":{"cx":0.5,"cy":0.3,"w":0.15,"h":0.15,"score":0.9}}',
+            encoding="utf-8")
+        self.assertEqual(
+            self.contract.avatar_focus("performer", 7900),
+            {"box": {"cx": 0.5, "cy": 0.3, "faceW": 150,
+                     "imgW": 1000, "imgH": 1000}})
+
+    def test_a_sidecar_written_before_the_pixels_existed_still_pans(self):
+        # 补字段之前算的 512 张只有脸心。那些照旧只挪不放大，不是整条取景一起作废。
+        (self.avatars / "performer-7900.face.json").write_text(
+            '{"ratio":0.667,"face":{"cx":0.5,"cy":0.45},'
+            '"focus":{"axis":"y","pct":35}}', encoding="utf-8")
+        self.assertEqual(self.contract.avatar_focus("performer", 7900),
+                         {"axis": "y", "pct": 35})
+
+    def test_a_malformed_box_is_rejected_without_taking_the_axis_down(self):
+        # 坏的那一半丢掉，好的那一半留着。源图像素是 0 或负数时脸框像素还原不出来，
+        # 按 0 处理会让页面算出一个无穷大的倍数。
+        bad = [
+            '{"px":[0,960],"face":{"cx":0.4,"cy":0.2,"w":0.1}}',
+            '{"px":[640],"face":{"cx":0.4,"cy":0.2,"w":0.1}}',
+            '{"px":[640,960],"face":{"cx":0.4,"cy":0.2,"w":0}}',
+            '{"px":[640,960],"face":{"cx":1.4,"cy":0.2,"w":0.1}}',
+            '{"px":[640,960],"face":{"cx":0.4,"cy":0.2,"w":"wide"}}',
+            '{"px":[640,960],"face":{"cx":true,"cy":0.2,"w":0.1}}',
+            '{"px":"640x960","face":{"cx":0.4,"cy":0.2,"w":0.1}}',
+        ]
+        for index, payload in enumerate(bad):
+            with self.subTest(payload=payload):
+                path = self.avatars / f"performer-{8000 + index}.face.json"
+                path.write_text(payload[:-1] + ',"focus":{"axis":"y","pct":30}}',
+                                encoding="utf-8")
+                self.assertEqual(self.contract.avatar_focus("performer", 8000 + index),
+                                 {"axis": "y", "pct": 30})
+
 
 class PeopleIndexFocusTests(unittest.TestCase):
     """索引页大图版式的取景：与资料页大图同一份 sidecar，只是按行取。"""

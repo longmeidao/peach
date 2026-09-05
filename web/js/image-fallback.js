@@ -56,6 +56,11 @@ export function advanceImageFallback(image) {
   if (chain.length) {
     const [next, ...rest] = chain;
     if ('dropStyle' in image.dataset) image.removeAttribute('style');
+    /* 脸框只描述第一环那张实体图。回落图是另一张照片，脸不在同一位置，尺寸也不是
+       那个尺寸——留着它，下一次 load 就会拿上一张的脸去给这一张算放大倍数。
+       这一条不受 `dropStyle` 开关管：脸框本来就只对第一环成立，没有「留着也对」
+       的位置，而 style 那边有（`--face` 那类由容器给的取景要留）。 */
+    delete image.dataset.facebox;
     if (rest.length) image.dataset.fallbacks = rest.join(FALLBACK_SEPARATOR);
     else delete image.dataset.fallbacks;
     image.src = next;
