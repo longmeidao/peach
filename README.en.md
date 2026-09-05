@@ -105,9 +105,9 @@ Run without arguments, `peach init` asks five questions in the terminal; pressin
 
 | Question | Default |
 | --- | --- |
-| Data directory (ledger, caches and the settings file live here) | `peach-data/` next to the repository |
-| Media folder (must already exist; used as source `local`) | `~\Videos` (`~/Movies` on macOS); required when that folder is missing |
-| Who can access: 1 = only this computer, 2 = devices on the same LAN | `1` |
+| Data directory (the Peach database, caches and the settings file live here) | `peach-data/` next to the repository |
+| Media folder (must already exist, may live on an external drive; used as source `local`) | `~\Videos` (`~/Movies` on macOS); required when that folder is missing |
+| Who can access: 1 = only this computer, 2 = devices on the same LAN | `2` |
 | Port | `8900` |
 | LAN address (`<name>.local`, published only when LAN access is allowed) | `peach` |
 

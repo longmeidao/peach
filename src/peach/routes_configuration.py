@@ -12,10 +12,9 @@ from urllib.parse import parse_qs
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse
 
-from . import __version__, distribution, onboarding, settings_file
+from . import distribution, onboarding, settings_file
 from .routes_auth import require_page_auth
-from .routes_pages import _document, _field_html
-from .ffmpeg import FFmpegResolver
+from .routes_pages import _check_html, _document, _field_html, runtime_facts_html
 
 router = APIRouter()
 _SAVE_LOCK = threading.Lock()
@@ -36,7 +35,7 @@ def page(config, *, values=None, errors=None, saved=False) -> str:
                  f'<p><a href="{url}">进入馆藏</a></p>'
                  f'<meta http-equiv="refresh" content="8;url={url}">')
     else:
-        body += '<p>管理这台电脑的媒体文件夹和访问端口。</p>'
+        body += '<p class="lede">管理这台电脑的媒体文件夹和访问端口。</p>'
     if distribution.standalone() and not saved:
         body += '<form method="post" action="/configuration">'
         body += f'<input type="hidden" name="revision" value="{revision(config)}">'
@@ -46,17 +45,11 @@ def page(config, *, values=None, errors=None, saved=False) -> str:
             default = media if question.key == "media_dir" else str(config.server.port)
             body += _field_html(question, values.get(question.key, default),
                                 errors.get(question.key, ""), "")
-        body += ('<label class="check"><input type="checkbox" name="scan_now" value="y">'
-                 '保存后扫描媒体文件夹</label><button type="submit">保存配置</button></form>')
+        body += (_check_html("scan_now", "保存后扫描媒体文件夹", checked=False)
+                 + '<button type="submit">保存配置</button></form>')
     elif not distribution.standalone():
         body += '<p>此部署通过配置文件管理服务，请在本机编辑下方文件。</p>'
-    available = FFmpegResolver(config.directory("tools") / "ffmpeg").ffmpeg() is not None
-    body += ('<h2>运行信息</h2><dl>'
-             f'<dt>版本</dt><dd>{escape(__version__)}</dd>'
-             f'<dt>数据目录</dt><dd>{escape(str(config.data_root))}</dd>'
-             f'<dt>配置文件</dt><dd>{escape(str(config.path))}</dd>'
-             f'<dt>日志目录</dt><dd>{escape(str(config.directory("logs")))}</dd>'
-             f'<dt>FFmpeg</dt><dd>{"可用" if available else "未安装；MP4 可直接播放，转码和缩略图需要安装 FFmpeg。"}</dd></dl>')
+    body += runtime_facts_html(config)
     return _document("Peach · 配置", body)
 
 

@@ -73,6 +73,10 @@ border-radius:var(--control-radius);background:var(--ground)}
 .affix:focus-within{outline:2px solid var(--tungsten);outline-offset:3px}
 .affix>span{flex:none;padding:0 12px;height:100%;display:grid;place-items:center;
 color:var(--muted);border-left:1px solid var(--line-soft)}
+.affix>span:first-child{border-left:0;border-right:1px solid var(--line-soft)}
+.affix:has(input:disabled){background:var(--surface);border-color:var(--border-15)}
+.affix input:disabled{color:var(--muted);cursor:not-allowed}
+.field:has(input:disabled) .req{visibility:hidden}
 .switch{display:grid;grid-template-columns:1fr 1fr;padding:3px;border:1px solid var(--line-soft);
 border-radius:var(--surface-radius);background:var(--surface)}
 .switch label{position:relative;display:grid;place-items:center;height:calc(var(--control-h) - 8px);padding:0 14px;
@@ -110,13 +114,34 @@ _SETUP_HEAD = ('<!doctype html>\n<html lang="zh-CN"><head><meta charset="utf-8">
 #: 键 -> 页面上的题目与一句说明。顺序、默认值与校验仍然来自 `onboarding.questions()`，
 #: 这里只决定同一道题在浏览器里怎么称呼：命令行那份题面要把可选值写进去，页面用控件表达。
 _SETUP_COPY = {
-    "data_root": ("数据目录", "账本、缓存和设置文件都放在这里。"),
-    "media_dir": ("媒体文件夹", "Peach 从这个文件夹读取视频和图片，文件夹必须已经存在。"),
+    "data_root": ("数据目录", "Peach 数据库、缓存和设置文件都放在这里。"),
+    "media_dir": ("媒体文件夹", "Peach 从这个文件夹读取视频和图片，可以是外置硬盘上的文件夹，但必须已经存在。"),
     "host": ("谁可以访问", ""),
     "port": ("端口", "浏览器地址里冒号后面的数字，一般不用改。"),
-    "mdns_name": ("局域网访问地址", "其他设备在浏览器里输入这个地址就能打开 Peach，只在允许局域网访问时生效。"),
+    "mdns_name": ("局域网访问地址", "选了「同一局域网的设备」之后，其他设备在浏览器里输入这个地址就能打开 Peach。"),
 }
 _STANDALONE_COPY = {"port": ("本机访问端口", "浏览器地址里冒号后面的数字，一般不用改。")}
+
+#: 「谁可以访问」在页面上的顺序：局域网在左边，也是默认选项——Peach 的本意就是给
+#: 同一局域网里的设备看。命令行问答按 `HOST_OPTIONS` 的编号顺序念，两边取值一致。
+_HOST_ORDER = ("2", "1")
+
+#: 选「只有这台电脑」时局域网地址没有意义，输入框跟着禁用；禁用的字段不随表单提交，
+#: 服务端按题目默认值补上。没有脚本时两个字段都可编辑，提交照样成立。
+_SETUP_SCRIPT = """<script>
+(function(){
+  var radios=document.querySelectorAll('input[name="host"]');
+  var field=document.getElementById('f-mdns_name');
+  if(!radios.length||!field){return;}
+  function sync(){
+    var lan=false;
+    radios.forEach(function(radio){if(radio.checked&&radio.value==="2"){lan=true;}});
+    field.disabled=!lan;
+  }
+  radios.forEach(function(radio){radio.addEventListener('change',sync);});
+  sync();
+})();
+</script>"""
 
 #: 与站内共用勾选框相同的字形（lucide `check`）。这一页不加载站内脚本，所以内联一份。
 _CHECK_SVG = ('<svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round">'
@@ -130,6 +155,32 @@ def _document(title: str, body: str) -> str:
             f"</head><body><main>{body}</main></body></html>\n")
 
 
+def _check_html(name: str, text_html: str, *, checked: bool) -> str:
+    """站内共用的自绘勾选框：文字与框同属一个 label，没有点不到的缝。"""
+    return (f'<label class="check"><span class="pcheck"><input type="checkbox" name="{name}" value="y"'
+            + (" checked" if checked else "")
+            + f'><span aria-hidden="true">{_CHECK_SVG}</span></span><span>{text_html}</span></label>')
+
+
+def runtime_facts_html(config) -> str:
+    """这台机器上 Peach 的位置与版本：设置完成页和配置页共用同一份。"""
+    from . import __version__
+    from .ffmpeg import FFmpegResolver
+
+    available = FFmpegResolver(config.directory("tools") / "ffmpeg").ffmpeg() is not None
+    ffmpeg = "可用" if available else "未安装；MP4 可直接播放，转码和缩略图需要安装 FFmpeg。"
+    rows = (
+        ("版本", __version__),
+        ("数据目录", str(config.data_root)),
+        ("设置文件", str(config.path)),
+        ("日志目录", str(config.directory("logs"))),
+        ("FFmpeg", ffmpeg),
+    )
+    return ("<h2>运行信息</h2><dl>"
+            + "".join(f"<dt>{escape(term)}</dt><dd>{escape(value)}</dd>" for term, value in rows)
+            + "</dl>")
+
+
 def _copy_for(key: str, fallback: str) -> tuple[str, str]:
     if distribution.standalone() and key in _STANDALONE_COPY:
         return _STANDALONE_COPY[key]
@@ -141,10 +192,11 @@ def _field_html(question, value: str, error: str, note: str) -> str:
     title, help_text = _copy_for(question.key, question.prompt)
     star = '<span class="req" aria-hidden="true">*</span>'
     if question.key == "host":
+        labels = dict(onboarding.HOST_OPTIONS)
         options = "".join(
             f'<label><input type="radio" name="{key}" value="{escape(choice, quote=True)}"'
-            f'{" checked" if choice == value else ""}><span>{escape(text)}</span></label>'
-            for choice, text in onboarding.HOST_OPTIONS
+            f'{" checked" if choice == value else ""}><span>{escape(labels[choice])}</span></label>'
+            for choice in _HOST_ORDER
         )
         control = (f'<div class="switch" role="radiogroup" aria-labelledby="l-{key}">'
                    f'{options}</div>')
@@ -155,7 +207,7 @@ def _field_html(question, value: str, error: str, note: str) -> str:
                    f'spellcheck="false" aria-invalid="{"true" if error else "false"}" '
                    f'value="{escape(value, quote=True)}">')
         if question.key == "mdns_name":
-            control = f'<div class="affix">{control}<span>.local</span></div>'
+            control = f'<div class="affix"><span>https://</span>{control}<span>.local</span></div>'
         label = f'<label for="f-{key}">{star}{escape(title)}</label>'
     tail = "".join(
         f'<p class="help">{escape(line)}</p>' for line in (help_text, note) if line)
@@ -205,12 +257,10 @@ def setup_page(
         '<p class="lede">选一个媒体文件夹，开始整理你的馆藏。</p></header>'
         '<form method="post" action="/setup">'
         + "".join(fields)
-        + '<label class="check"><span class="pcheck">'
-        '<input type="checkbox" name="scan_now" value="y"'
-        + (" checked" if scan_now else "")
-        + f'><span aria-hidden="true">{_CHECK_SVG}</span></span><span>{scan_text}</span></label>'
-        '<p class="help">扫描只读取文件名、大小和修改时间，不改动任何媒体文件。</p>'
+        + _check_html("scan_now", scan_text, checked=scan_now)
+        + '<p class="help">扫描只读取文件名、大小和修改时间，不改动任何媒体文件。</p>'
         '<button type="submit">完成设置</button></form>'
+        + _SETUP_SCRIPT
     )
     return _document("Peach · 首次运行", body)
 
@@ -223,11 +273,12 @@ def setup_done_page(applied, *, windows: bool, scan_requested: bool) -> str:
         destination = escape(_normal_url(config), quote=True)
         scan = "首次扫描已排队。" if scan_requested else "你可以稍后在配置界面开始扫描。"
         return _document("Peach · 设置完成",
-                         '<h1>设置完成</h1><p>正在启动你的馆藏。' + scan + '</p>'
+                         '<h1>设置完成</h1><p class="lede">正在启动你的馆藏。' + scan + '</p>'
                          f'<p><a href="{destination}">进入 Peach</a></p>'
-                         f'<meta http-equiv="refresh" content="8;url={destination}">')
-    ledger = (f"账本已存在，没有动它：{tree.database}" if tree.ledger_existed
-              else f"账本：{tree.database}（已应用 {tree.migrations} 个迁移）")
+                         f'<meta http-equiv="refresh" content="8;url={destination}">'
+                         + runtime_facts_html(config))
+    ledger = (f"Peach 数据库已存在，没有动它：{tree.database}" if tree.ledger_existed
+              else f"Peach 数据库：{tree.database}（已应用 {tree.migrations} 个迁移）")
     ca = (f"本机 CA：{tree.ca_cert}" if tree.ca_cert is not None
           else f"未生成本机 CA（{tree.ca_error}）；装好 openssl 后跑 "
                "<code>peach init --force</code> 补上。局域网设备要装这份 CA 才不报证书错。")
@@ -248,10 +299,7 @@ def setup_done_page(applied, *, windows: bool, scan_requested: bool) -> str:
         f"{scan}"
         "</ul>"
         f"{mounts}"
-        "<dl>"
-        f"<dt>数据根</dt><dd>{escape(str(config.data_root))}</dd>"
-        f"<dt>设置文件</dt><dd>{escape(str(applied.settings_path))}</dd>"
-        "</dl>"
+        + runtime_facts_html(config)
     )
     return _document("Peach · 设置完成", body)
 

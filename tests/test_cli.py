@@ -282,7 +282,7 @@ class InteractiveInitTests(unittest.TestCase):
         self.assertEqual(loaded.locations, {"local": str(self.media)})
         self.assertEqual(loaded.mounts, {})
         self.assertEqual((loaded.server.host, loaded.server.port, loaded.server.mdns_name),
-                         ("127.0.0.1", 8900, "peach"))
+                         ("0.0.0.0", 8900, "peach"))
         self.assertFalse(loaded.replication.enabled)
         for key in settings_file.DIRECTORY_KEYS:
             self.assertTrue((self.data_root / key).is_dir(), key)
@@ -317,7 +317,7 @@ class InteractiveInitTests(unittest.TestCase):
         code, output, prompts = self._run(
             ["", str(missing), str(self.media), "", "", "", "n"], windows=NATIVE_WINDOWS)
         self.assertEqual(code, 0)
-        self.assertEqual(prompts.count("媒体文件夹（必须已经存在）"), 2)
+        self.assertEqual(prompts.count("媒体文件夹（必须已经存在，可以在外置硬盘上）"), 2)
         self.assertIn("目录不存在", output)
         self.assertFalse(missing.exists(), "问答不替人建媒体目录")
 
