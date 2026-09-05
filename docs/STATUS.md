@@ -2,10 +2,11 @@
 
 最后核验：2026-09-04
 
-本文件写「现在是什么样」，不按批次累积：待办去 `docs/PRODUCT_BACKLOG.md`，长期规则去
-`docs/HANDOFF.md` 与 `docs/REUSE.md`，已完成批次与事故由 Git 历史保存。
+本文件记录当前状态；待办见 `docs/PRODUCT_BACKLOG.md`，长期知识见 `docs/HANDOFF.md`。
 
 ## 运行态
+
+- Windows 测试包 `0.7.14` 待发布，生产未替换。
 
 - Windows 是当前 ledger writer，入口 `dist\Peach\Peach.exe`；代码、`peach-data`、worktree 和共享传输点同在一个顶层目录，外置盘只提供 `R:\media`。
 - 托盘必须以普通权限启动：提升权限后的令牌看不到 CloudDrive 的 `A:` / `B:`，会把 PikPak 和 115 误报为脱盘。

@@ -31,7 +31,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.gzip import DEFAULT_EXCLUDED_CONTENT_TYPES, GZipMiddleware
 
 from . import __version__, web_contract, web_follow
-from . import routes_api, routes_auth, routes_media, routes_pages
+from . import routes_api, routes_auth, routes_configuration, routes_media, routes_pages
 from .config import PeachSettings
 from .ffmpeg import FFmpegResolver
 from .follow_scheduler import FollowUpdateScheduler
@@ -292,6 +292,7 @@ def create_app(
     # `/api/stream-cancel` 两条具名 API，所以它也要排在 `routes_api` 之前。
     app.include_router(routes_auth.router)
     app.include_router(routes_pages.router)
+    app.include_router(routes_configuration.router)
     app.include_router(routes_media.router)
     app.include_router(routes_api.router)
     return app

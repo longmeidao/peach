@@ -22,7 +22,7 @@ DEFAULT_PROFILE_ID = "local-default"
 
 #: 默认就在侧栏里的入口，顺序即默认顺序。
 DEFAULT_SIDEBAR_ORDER = (
-    "", "performers", "tags", "jav", "flagged", "playlists", "follow", "immerse", "manage",
+    "", "performers", "studios", "tags", "jav", "flagged", "playlists", "follow", "immerse", "manage",
 )
 #: 可以加进侧栏、但默认不在的入口。
 OPTIONAL_SIDEBAR_KEYS = (

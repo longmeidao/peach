@@ -642,7 +642,8 @@ class SourceSyncTests(unittest.TestCase):
 
     def test_windows_tray_lists_source_sync_next_to_ledger(self):
         source = inspect.getsource(PeachTray.__init__)
-        self.assertIn('MenuItem("同步开发进度", self.sync_source)', source)
+        self.assertIn('MenuItem("同步开发进度", self.sync_source,', source)
+        self.assertIn('visible=lambda _: not standalone()', source)
         self.assertLess(source.index("同步开发进度"), source.index("ledger_menu_items"))
         self.assertLess(source.index("ledger_menu_items"), source.index("重启服务"))
 

@@ -21,6 +21,7 @@ from PIL import Image
 from . import onboarding, settings_file
 from .appid import MACOS_LAUNCH_AGENT_LABEL
 from .certs import ensure_certificate
+from .distribution import standalone
 from .config import (
     DATABASE_PATH, LOG_DIR, MDNS_HOSTNAME, PROJECT_ROOT, REPLICATION_ENABLED,
     SECRETS_DIR, SHARED_DATABASE_PATH, SHARED_SMB_HOST, SHARED_SMB_SHARE,
@@ -53,7 +54,7 @@ def ledger_menu_items(make_item, sync_ledger, take_ownership) -> list:
     然后回一句「盘不可达」——那不是状态，是这台机器根本不做复制（ADR-0023 第 3 阶段）。
     标签在两个平台上共用这一处定义，`make_item` 负责套上各自的菜单项类型。
     """
-    if not REPLICATION_ENABLED:
+    if not REPLICATION_ENABLED or standalone():
         return []
     return [
         make_item("同步 Ledger", sync_ledger),
@@ -451,6 +452,9 @@ _EXECUTABLE = "peach.exe" if os.name == "nt" else "peach"
 
 
 def _peach_executable() -> Path:
+    from .distribution import standalone
+    if standalone():
+        return Path(sys.executable).resolve()
     if getattr(sys, "frozen", False):
         # 打包出来的托盘不是可移动的独立发行版：它仍然把服务进程的所有权交给项目 venv，
         # 因为 one-file bootloader 在本 Python 构建上再拉起一个 one-file 进程并不安全。
@@ -585,6 +589,8 @@ def needs_setup(config) -> bool:
     认为这台机器已经配置好，然后照旧倒在缺 TLS 材料上。反过来，还没生成过
     `config.toml` 的老部署账本是在的，不能被拖进首次设置。
     """
+    if standalone():
+        return not config.present
     if config.present:
         return False
     return not (config.directory("database") / "ledger.db").is_file()
@@ -629,7 +635,24 @@ def normal_url(config) -> str:
     """正常服务的固定地址。macOS 上 80/443 由 pf 转到高位端口
     （scripts/setup_macos_port80.sh）。
     """
+    from .distribution import standalone
+    if standalone():
+        return setup_url(config)
     return f"https://{normal_hostname(config)}/"
+
+
+def configured_service_specs(config) -> tuple[ServiceSpec, ...]:
+    """独立测试包按设置文件启动本机服务；源码入口沿用其生命周期。"""
+    from .distribution import standalone
+    if not standalone():
+        return build_service_specs(tls_dir=config.directory("secrets") / "tls",
+                                   mdns_hostname=normal_hostname(config))
+    if config.server.host != "127.0.0.1":
+        raise ValueError("独立测试包仅支持本机访问，请在配置中选择仅本机")
+    return (ServiceSpec("http", setup_url(config) + "healthz",
+                        (str(_peach_executable()), "serve", "--host", "127.0.0.1",
+                         "--port", str(config.server.port), "--no-mdns", "--no-ledger-sync"),
+                        True),)
 
 
 class SetupGate:
@@ -686,16 +709,15 @@ class SetupGate:
         还没齐就原地等下一轮，而不是拿一组缺文件的规格去启动。mDNS 名同理由这里传进
         规格：明文口的跳转目标必须是人刚填的那个名字。
         """
-        if not self._waiting:
+        from .distribution import standalone
+        reload_path = self.config.directory("state") / onboarding.RELOAD_NAME
+        if not self._waiting and not (standalone() and reload_path.is_file()):
             return False
         config = self._load()
         if needs_setup(config):
             return False
         try:
-            specs = build_service_specs(
-                tls_dir=config.directory("secrets") / "tls",
-                mdns_hostname=normal_hostname(config),
-            )
+            specs = configured_service_specs(config)
         except FileNotFoundError:
             return False        # CA 还没生成完（或没有 openssl），下一轮再看
         self._waiting = False
@@ -705,6 +727,7 @@ class SetupGate:
             extra_env={"PEACH_DATA_ROOT": str(config.data_root)},
         )
         self.manager.start_missing()
+        reload_path.unlink(missing_ok=True)
         self.notify(f"首次设置完成，正在启动服务：{normal_url(config)}", "Peach")
         self.start_first_scan(config)
         return True
@@ -821,9 +844,11 @@ class PeachTray:
             "Peach · 蜜桃",
             pystray.Menu(
                 pystray.MenuItem(lambda _item: self.gate.open_label(), self.open, default=True),
+                pystray.MenuItem("配置 Peach", lambda *_: webbrowser.open(self.gate.open_url() + "configuration")),
                 pystray.MenuItem(lambda _item: f"状态：{self.gate.status_line()}", None, enabled=False),
                 pystray.Menu.SEPARATOR,
-                pystray.MenuItem("同步开发进度", self.sync_source),
+                pystray.MenuItem("同步开发进度", self.sync_source,
+                                 visible=lambda _: not standalone()),
                 *ledger_menu_items(
                     pystray.MenuItem, self.sync_ledger, self.take_ownership),
                 pystray.MenuItem("重启服务", self.restart),
@@ -959,7 +984,7 @@ class PeachTray:
         (icon or self.icon).stop()
 
     def _monitor(self) -> None:
-        while not self._stop_event.wait(10):
+        while not self._stop_event.wait(2 if standalone() else 10):
             # 先看首次设置有没有完成：切换会换掉 `manager.specs`，采样必须落在换完之后。
             self.gate.poll()
             for spec in self.manager.specs:
@@ -1259,7 +1284,7 @@ def main(argv: list[str] | None = None) -> int:
         webbrowser.open(setup_url(config) if waiting else normal_url(config))
         return 0
     try:
-        specs = build_setup_service_specs(config) if waiting else build_service_specs()
+        specs = build_setup_service_specs(config) if waiting else configured_service_specs(config)
         manager = ServiceManager(specs, log_dir=config.directory("logs"))
         gate = SetupGate(manager, config, waiting=waiting)
         if sys.platform == "darwin":
