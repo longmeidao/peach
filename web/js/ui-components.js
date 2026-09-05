@@ -366,13 +366,19 @@ export function wireAnchoredMenu(mount,toggle,menu){
      根本够不着。捕获阶段连菜单内部的滚动一并收得到，所以这里必须自己分开。 */
   const closeFromViewport=event=>{
     if(!(event.target instanceof Node&&menu.contains(event.target)))setOpen(false)};
+  /* 带 popover 的菜单进顶层。`position:fixed` 只在没有被祖先接管时才相对视口：祖先上
+     一个 transform、filter 或 backdrop-filter 就会成为它的包含块，算好的视口坐标于是
+     整体偏移，还要被那个祖先的 overflow 裁掉。设置面板的卡片正是这种祖先——入场动画的
+     fill-mode 让 transform 一直挂在上面——菜单于是开在看不见的地方，读起来就是「点不开」。 */
+  const inTopLayer=menu.hasAttribute('popover');
   const setOpen=open=>{
     if(open){
-      menu.hidden=false;position();
+      menu.hidden=false;if(inTopLayer)menu.showPopover();position();
       window.addEventListener('resize',position);
       window.addEventListener('scroll',closeFromViewport,{capture:true,passive:true});
     }else{
       menu.hidden=true;menu.style.left='';menu.style.top='';menu.style.maxHeight='';
+      if(inTopLayer&&menu.matches(':popover-open'))menu.hidePopover();
       window.removeEventListener('resize',position);
       window.removeEventListener('scroll',closeFromViewport,true);
     }
@@ -403,7 +409,7 @@ export function selectFieldHtml(options,current,{label='',attr='',className=''}=
   return `<div class="gselect${className?` ${esc(className)}`:''}" ${attr}>
     <button type="button" class="gselectfield" data-select-trigger aria-haspopup="listbox"
       aria-expanded="false" aria-label="${esc(label)}"><span data-select-label>${esc(chosen[1])}</span>${icon('chevron-down')}</button>
-    <div class="popmenu gselectmenu" role="listbox" aria-label="${esc(label)}" data-select-menu hidden>${rows}</div></div>`;
+    <div class="popmenu gselectmenu" role="listbox" aria-label="${esc(label)}" popover="manual" data-select-menu hidden>${rows}</div></div>`;
 }
 
 /** 接上 selectFieldHtml 画出来的一个下拉；返回的就是根元素，带 value / disabled。 */

@@ -1696,7 +1696,7 @@ class FollowWebSourceTests(unittest.TestCase):
         section = section[:section.index("}")]
         self.assertIn("border:1px solid", section)
         self.assertIn("border-radius", section)
-        self.assertIn("background:var(--surface)", section)
+        self.assertIn("background:var(--ground)", section)
 
         self.assertNotIn(".fcard{", page)
         self.assertNotIn(".fsource{", page,
@@ -1960,7 +1960,10 @@ class FollowWebSourceTests(unittest.TestCase):
         rule = rule[:rule.index("}")]
         self.assertIn("flex:none", rule)
         self.assertIn("padding:2px", rule)
-        self.assertPageContains(".fsechead .iconswitch label{width:32px;height:26px}")
+        # 2px 内边距上下各一份，再加外框自己的 1px 边，正好凑齐同排控件的 --control-h。
+        self.assertPageContains(".fsechead .iconswitch label{width:34px;height:32px}")
+        self.assertPageContains(".fsechead .fbtn,.fsecfoot .fbtn{height:var(--control-h)}")
+        self.assertPageContains(".fmanagesort .gselectfield{height:var(--control-h);")
 
     def test_alias_count_badge_is_neutral_metadata(self):
         """「3 组」只是计数，不是待处理提醒：徽章走 Geist gray badge 的中性灰。

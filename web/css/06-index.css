@@ -50,7 +50,7 @@ body.entity-open .index{overflow-x:visible}
 .tagselection button:hover:not(:disabled){background:var(--hover);color:var(--ink)}
 .tagselection button.primary{background:var(--ink);border-color:var(--ink);color:var(--ground);font-weight:600}
 .tagselection button.primary:hover:not(:disabled){background:color-mix(in srgb,var(--ink) 88%,var(--ground));border-color:color-mix(in srgb,var(--ink) 88%,var(--ground));color:var(--ground)}
-.tagselection button:disabled{background:var(--surface);border-color:var(--border-15);color:var(--muted);cursor:default}
+.tagselection button:disabled{background:var(--sunk);border-color:var(--line-soft);color:var(--muted);cursor:default}
 .tagfilters .all::before{background:linear-gradient(135deg,#55A7FF,#D783FF)}
 .index-tags .tg,.alphatag{--tag-color:#7A91A8}
 .index-tags .tg.r34-general,.alphatag.r34-general,.tagfilters .general{--tag-color:#55A7FF;--r34-tag:#55A7FF}

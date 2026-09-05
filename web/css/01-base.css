@@ -34,15 +34,25 @@
   /* 框体上下两条横条的统一高度。写成变量是因为它同时管数据管理的卡片、链接管理
      和资源同步：这三处任何一处单独调，页面上就会出现两种「同一种条」。 */
   --fieldset-bar-h:52px;
+  /* 框体的两种面：正文是全站最亮的 --ground，操作条比它深一档。2026-09-05 实测
+     vercel.com 的团队设置 fieldset：正文 --ds-background-100 #FFFFFF，操作条
+     --ds-background-200 #FAFAFA 加一条 1px #EBEBEB 的上边线，外圈是 1px 的 8% 黑。
+     暗色那档 Vercel 是 #0A0A0A 正文配纯黑操作条——同样是操作条更深，
+     Peach 的暗色底带蓝，所以按同一方向在 --ground 之下取一档，不跳到纯黑。 */
+  --fieldset-bar:#FAFAFA;
   --layer-dialog:1000; --layer-popover:1100; --layer-tooltip:1200;
   --frost-panel:rgba(250,250,250,.92); --frost-light:rgba(255,255,255,.86);
   --overlay-5:rgba(0,0,0,.05);--border-10:rgba(0,0,0,.10);--border-15:rgba(0,0,0,.15);
+  /* 输入框那一组边与环。2026-09-05 实测 vercel.com 的输入框：静止 1px 的
+     gray-alpha-400、悬停 alpha-500、聚焦 1px alpha-600 外加 4px 的 16% 黑，
+     暗色那档换成 24% 白。焦点不是蓝的——蓝在这套里只给链接和数据。 */
+  --field-ring:rgba(0,0,0,.08);--field-ring-hover:rgba(0,0,0,.21);
+  --field-ring-focus:rgba(0,0,0,.34);--field-glow:rgba(0,0,0,.16);
   /* 字号只有这一套刻度。之前站内散着 22 种字号（9…48px），相邻两档差半像素，
      既排不出层级也没法复核。收敛成 8 档，下限 12px：更小的灰字在 Vercel 的
      design.md 里被明确列为要拒绝的生成式设计反射。新增字号前先证明现有 8 档都不合适。 */
   --fs-xs:12px; --fs-sm:13px; --fs-md:14px; --fs-lg:16px;
   --fs-xl:20px; --fs-2xl:24px; --fs-3xl:32px; --fs-4xl:48px;
-  --sb:#3A3A40; --sb-hover:#55555E;   /* 336 = 168×2，与目标站的模块单位一致 */
 }
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
   --ground:#080A0D; --surface:#0C0F14; --sunk:#0B0D11; --hover:rgba(255,255,255,.07); --skeleton-sheen:rgba(255,255,255,.12);
@@ -51,6 +61,9 @@
   --tungsten:#0095F6;
   --frost-panel:rgba(6,9,14,.94); --frost-light:rgba(14,18,24,.90);
   --overlay-5:rgba(245,250,255,.05);--border-10:rgba(245,250,255,.10);--border-15:rgba(245,250,255,.15);
+  --field-ring:rgba(255,255,255,.14);--field-ring-hover:rgba(255,255,255,.24);
+  --field-ring-focus:rgba(255,255,255,.51);--field-glow:rgba(255,255,255,.24);
+  --fieldset-bar:#04060A;
   --loupe:#6FD0C8; --keep:#5FB95F; --meter:#E0912F; --drop:#FF5252; --success:#5FB95F; --ambient-opacity:1;}}
 :root[data-theme="dark"]{
   --ground:#080A0D; --surface:#0C0F14; --sunk:#0B0D11; --hover:rgba(255,255,255,.07); --skeleton-sheen:rgba(255,255,255,.12);
@@ -59,6 +72,9 @@
   --tungsten:#0095F6;
   --frost-panel:rgba(6,9,14,.94); --frost-light:rgba(14,18,24,.90);
   --overlay-5:rgba(245,250,255,.05);--border-10:rgba(245,250,255,.10);--border-15:rgba(245,250,255,.15);
+  --field-ring:rgba(255,255,255,.14);--field-ring-hover:rgba(255,255,255,.24);
+  --field-ring-focus:rgba(255,255,255,.51);--field-glow:rgba(255,255,255,.24);
+  --fieldset-bar:#04060A;
   --loupe:#6FD0C8; --keep:#5FB95F; --meter:#E0912F; --drop:#FF5252; --success:#5FB95F; --ambient-opacity:1;}
 
 *,*::before,*::after{box-sizing:border-box}
@@ -111,15 +127,15 @@ button,a,input,textarea,select,summary{touch-action:manipulation}
   display:grid;place-items:center;width:16px;height:16px;color:var(--muted);pointer-events:none}
 .geist-search-prefix>svg{width:16px;height:16px;stroke:currentColor;fill:none}
 .geist-search input[type="search"]{width:100%;min-width:0;height:38px;
-  box-sizing:border-box;border:1px solid var(--border-15);border-radius:var(--control-radius);
+  box-sizing:border-box;border:1px solid var(--field-ring);border-radius:var(--control-radius);
   background:var(--ground);color:var(--ink);padding:0 12px 0 38px;font-size:var(--fs-md);font-family:inherit;
   line-height:20px;transition:border-color .12s ease}
 .geist-search input[type="search"]::-webkit-search-cancel-button{-webkit-appearance:none;appearance:none}
 .geist-search input[type="search"]::placeholder{color:var(--muted)}
-/* 点进去要立刻看得出焦点在这儿，配方与顶部搜索框的 `.search:focus-within` 同一条。 */
+/* 点进去要立刻看得出焦点在这儿：1px 的边提到 alpha-600，外面再套一圈 4px 的中性辉光。 */
+.geist-search input[type="search"]:hover{border-color:var(--field-ring-hover)}
 .geist-search input[type="search"]:focus{outline:0;
-  border-color:color-mix(in srgb,var(--tungsten) 72%,transparent);
-  box-shadow:0 0 0 3px color-mix(in srgb,var(--tungsten) 26%,transparent)}
+  border-color:var(--field-ring-focus);box-shadow:0 0 0 4px var(--field-glow)}
 .geist-search:focus-within .geist-search-prefix{color:var(--ink)}
 /* 纯文本输入框：全站唯一一份。此前每处自己拼内边距，控件高度散在 34/40/43 三档，
    而 <=760px 那条把输入框字号顶到 16 像素的防放大规则只抬没写死高度的那几个，
@@ -128,21 +144,25 @@ button,a,input,textarea,select,summary{touch-action:manipulation}
    要换档只改 :root 那一处。Geist 自己的实测值是 32px，见
    docs/reference-snapshots/vercel-geist-controls-measured.md。 */
 .geist-input{box-sizing:border-box;width:100%;min-width:0;height:var(--control-h);
-  border:1px solid var(--border-15);border-radius:var(--control-radius);
+  border:1px solid var(--field-ring);border-radius:var(--control-radius);
   background:var(--ground);color:var(--ink);padding:0 12px;
   font:inherit;font-size:var(--fs-md);line-height:20px;transition:border-color .12s ease}
 .geist-input::placeholder{color:var(--muted)}
+.geist-input:hover{border-color:var(--field-ring-hover)}
 .geist-input:focus{outline:0;
-  border-color:color-mix(in srgb,var(--tungsten) 72%,transparent);
-  box-shadow:0 0 0 3px color-mix(in srgb,var(--tungsten) 26%,transparent)}
-.geist-button{box-sizing:border-box;height:32px;padding:0 6px;border:1px solid var(--border-15);
-  border-radius:var(--control-radius);background:transparent;color:var(--ink);display:inline-flex;
+  border-color:var(--field-ring-focus);box-shadow:0 0 0 4px var(--field-glow)}
+/* 按钮只有两档，2026-09-05 实测 vercel.com 的仪表盘工具行同时摆着它们：
+   次级是 --ds-background-100 的白面加一圈 1px #EBEBEB，主动作是 #171717 实底白字、
+   不带描边，禁用态落到 #F2F2F2 底 #8F8F8F 字。所以次级不是透明的——它自己是一块面，
+   压在 fieldset 的操作条上时要比条子亮，不能透出条子的底。 */
+.geist-button{box-sizing:border-box;height:32px;padding:0 6px;border:1px solid var(--line-soft);
+  border-radius:var(--control-radius);background:var(--ground);color:var(--ink);display:inline-flex;
   align-items:center;justify-content:center;gap:6px;font:inherit;font-size:var(--fs-md);font-weight:500;
   line-height:1;white-space:nowrap;cursor:pointer;
   transition:background-color .15s ease-in-out,border-color .15s ease-in-out,color .15s ease-in-out}
-.geist-button:hover:not(:disabled){background:var(--hover)}
+.geist-button:hover:not(:disabled){background:var(--surface)}
 .geist-button:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}
-.geist-button:disabled{background:var(--surface);border-color:var(--border-15);color:var(--muted);cursor:default}
+.geist-button:disabled{background:var(--sunk);border-color:var(--line-soft);color:var(--muted);cursor:default}
 /* Vercel/Geist loading actions look unavailable and reject repeat activation,
    but remain focusable; JS pairs this with aria-disabled instead of disabled. */
 button[aria-busy="true"],[role="button"][aria-busy="true"]{
@@ -153,20 +173,16 @@ button[aria-busy="true"],[role="button"][aria-busy="true"]{
   background:color-mix(in srgb,var(--ink) 88%,var(--ground));color:var(--ground)}
 /* 实心档的禁用态要自己写：.geist-button:disabled 排在 .primary 前面，同权重下后者赢，
    不补这条的话禁用的主动作还是满格实底，看着可点。 */
-.geist-button.primary:disabled{border-color:var(--border-15);background:var(--surface);color:var(--muted)}
+.geist-button.primary:disabled{border-color:var(--line-soft);background:var(--sunk);color:var(--muted)}
 .skiplink{position:fixed;z-index:1000;left:12px;top:8px;transform:translateY(-150%);
   padding:9px 13px;border-radius:var(--control-radius);background:var(--ink);color:var(--ground);text-decoration:none;
   transition:transform .12s ease}
 .skiplink:focus-visible{transform:translateY(0)}
-/* 滚动条：全站统一，不用浏览器默认。细、无箭头、无轨道底色，悬停才提亮。 */
-*{scrollbar-width:thin;scrollbar-color:var(--sb) transparent}
-::-webkit-scrollbar{width:8px;height:8px}
-::-webkit-scrollbar-track{background:transparent;border:0}
-::-webkit-scrollbar-thumb{background:var(--sb);border-radius:var(--pill-radius);
-  border:2px solid transparent;background-clip:content-box}
-::-webkit-scrollbar-thumb:hover{background:var(--sb-hover);background-clip:content-box}
-::-webkit-scrollbar-corner{background:transparent}
-::-webkit-scrollbar-button{display:none;width:0;height:0}
+/* 滚动条交给浏览器：`html` 上的 color-scheme 已经把明暗两档告诉了它，浅色出浅条、
+   深色出深条，跟着系统的滚动条设置走。2026-09-05 实测 vercel.com：整站的
+   scrollbar-width 与 scrollbar-color 都是 auto，没有一条 ::-webkit-scrollbar 规则，
+   只在个别内部滚动区把滚动条整个藏掉。自己画一档的代价是它只在一种主题下成立——
+   写死的深灰滑块落在浅色底上就是一条突兀的粗杠。 */
 /* 横向行不显示滚动条（本来就能拖动/滚轮横滚） */
 .tier,.tagbar,.srow,.nrow{scrollbar-width:none}
 .tier::-webkit-scrollbar,.tagbar::-webkit-scrollbar,
@@ -188,18 +204,24 @@ button[aria-busy="true"],[role="button"][aria-busy="true"]{
   box-shadow:0 1px 1px rgba(0,0,0,.02),0 4px 8px -4px rgba(0,0,0,.04),0 16px 24px -8px rgba(0,0,0,.06);
   overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain}
 .popmenu[hidden]{display:none}
+/* 进顶层的那几个要把 popover 的默认盒子拆掉：浏览器给 `[popover]` 的是 inset:0 加
+   margin:auto 的居中盒，菜单会被拉宽并落在屏幕正中，而定位算的是 left/top。 */
+.popmenu[popover]{inset:auto;margin:0}
 
 /* Geist Select：触发器穿输入框那身盒子，面板就是上面那个锚定菜单。为什么不用原生
    下拉、几何取自哪里，见 web/js/ui-components.js 里这个组件的注释。 */
 .gselect{position:relative;display:inline-flex;min-width:0}
 .gselectfield{box-sizing:border-box;display:inline-flex;align-items:center;justify-content:space-between;
   gap:8px;width:100%;min-width:0;height:var(--control-h);padding:0 10px 0 12px;
-  border:1px solid var(--border-15);border-radius:var(--control-radius);
+  border:1px solid var(--field-ring);border-radius:var(--control-radius);
   background:var(--ground);color:var(--ink);font:inherit;font-size:var(--fs-md);line-height:20px;
   text-align:left;cursor:pointer;transition:border-color .12s ease,background-color .12s ease}
 .gselectfield>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .gselectfield>svg{width:16px;height:16px;flex:none;stroke:currentColor;fill:none;color:var(--muted)}
-.gselectfield:hover:not(:disabled){border-color:var(--line)}
+.gselectfield:hover:not(:disabled){border-color:var(--field-ring-hover)}
+/* 展开时按住焦点态：菜单开着而触发器看起来没被点中，读起来像两个控件。 */
+.gselectfield[aria-expanded="true"]{border-color:var(--field-ring-focus);
+  box-shadow:0 0 0 4px var(--field-glow)}
 .gselectfield:disabled{background:var(--surface);color:var(--muted);cursor:default}
 .gselectfield:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}
 .gselectmenu button{display:flex;align-items:center;gap:8px;width:100%;min-height:var(--control-h);

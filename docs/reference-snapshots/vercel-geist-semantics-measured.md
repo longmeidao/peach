@@ -307,7 +307,7 @@ Peach 的两列侧栏导航按上表对齐：`.edge button` 与 `.dnav button` �
 - 按钮（无选中态）悬停只抬填充到 `--hover`，边框与文字色不动——同样推翻此前的
   「悬停边提亮到墨色 28%」，那一档在 Peach 是全站最亮的边，实际效果比 Vercel 重得多。
   墨色 28% 的边现在只剩输入框 `.fpicksearch:hover` 一处。
-- 禁用统一 `--surface` 底、`--border-15` 边、`--muted` 字，不用 `opacity`；
+- 禁用统一 `--sunk` 底、`--line-soft` 边、`--muted` 字，不用 `opacity`；
   按下不加 `scale`。Peach 保留 `cursor:default` 而不是 Geist 的 `not-allowed`，
   与本仓库其余禁用态写法一致。
 - 计数徽章（如作者别名「3 组」）走 gray badge：`--overlay-5` 底、`--border-15` 细边、`--muted` 字、`--control-radius`。
@@ -326,3 +326,60 @@ Peach 的两列侧栏导航按上表对齐：`.edge button` 与 `.dnav button` �
   关注）保持全宽。
 - 正文字体栈补 CJK sans：`"Microsoft YaHei UI","Microsoft YaHei","PingFang SC",
   "Hiragino Sans GB","Noto Sans CJK SC"` 置于 sans-serif 前。
+
+## 2026-09-05 实测 vercel.com 后台（浅色档，另加暗色 token 对照）
+
+- 取证方式：内置浏览器登录态下打开 `vercel.com/<team>/~/settings` 与 `vercel.com/<team>`，
+  读 `getComputedStyle`；暗色一档把 `<html>` 的 `light-theme` 换成 `dark-theme` 后重读 token。
+- 这一轮回答的是四个问题：输入框聚焦是什么色、fieldset 两块面各是什么色、
+  按钮是不是「无脑全黑」、滚动条有没有被改写。
+
+### 中性刻度（同一组 token 的明暗两档）
+
+| token | 浅色 | 暗色 |
+| --- | --- | --- |
+| `--ds-background-100`（正文面） | `#FFFFFF` | `hsl(0,0%,4%)` |
+| `--ds-background-200`（操作条） | `#FAFAFA` | `#000000` |
+| `--ds-gray-200`（分隔线） | `#EBEBEB` | `hsl(0,0%,12%)` |
+| `--ds-gray-alpha-400`（静止边） | `#00000014` | `#ffffff24` |
+| `--ds-gray-alpha-500`（悬停边） | `#00000036` | `#ffffff3d` |
+| `--ds-gray-alpha-600`（聚焦边） | `#00000057` | `#ffffff82` |
+| `--geist-radius` | 6px | 6px |
+
+两档的方向是一致的：操作条永远比正文面深一档，边永远是当前主题的中性透明色，
+没有一处焦点或选中用到蓝。
+
+### Fieldset
+
+- 外框：`background:#FFFFFF`、`border-radius:6px`、`overflow:hidden`，边不是 border 而是
+  `box-shadow:rgba(0,0,0,.08) 0 0 0 1px, #FAFAFA 0 0 0 1px`。
+- 正文区：`#FFFFFF`、`padding:20px`；标题 20px/600，说明 14px、`padding:8px 0 20px`。
+- 操作条：`#FAFAFA`、`border-top:1px #EBEBEB`、`min-height:56px`、
+  `padding:12px 12px 12px 20px`，说明推到最左、按钮靠右。
+
+### Button（同一屏上同时出现的两档）
+
+| 档 | 背景 | 文字 | 边 | 几何 |
+| --- | --- | --- | --- | --- |
+| primary（Save／Add New／Import） | `#171717` | `#FFFFFF` | 无 | 32–36px 高、6px 圆角、14px/500 |
+| secondary（Filter and Sort Projects） | `#FFFFFF` | `#171717` | `0 0 0 1px #EBEBEB` | 同上 |
+| disabled（Delete Team／Add more） | `#F2F2F2` | `#8F8F8F` | `0 0 0 1px #EBEBEB` | 同上 |
+
+次级档不是透明的：它自己是一块比所在容器亮的面，所以压在 `#FAFAFA` 的操作条上仍读得出边界。
+仪表盘工具行里两档并排出现，「主动作实底、其余白面」就是这套的全部规则。
+
+### 滚动条
+
+整站 `scrollbar-width` 与 `scrollbar-color` 都是 `auto`，没有一条 `::-webkit-scrollbar` 规则；
+只在个别内部滚动区把滚动条整个藏掉。明暗两档的滚动条外观由 `color-scheme` 交给浏览器。
+
+## Peach 对应（2026-09-05）
+
+- 输入框一组边与环收进 `--field-ring`／`--field-ring-hover`／`--field-ring-focus`／`--field-glow`，
+  聚焦是 1px 中性边加 4px 辉光，不再是蓝。顶部搜索、`.geist-search`、`.geist-input`、
+  `.gselectfield`、`.sidebaraddfield`、偏好文本域共用这一份。
+- 框体两块面收进 `--fieldset-bar`：正文一律 `--ground`，操作条 `--fieldset-bar`，
+  外框 1px `--field-ring`、内部分隔线 `--line-soft`。暗色一档 Peach 的底带蓝，
+  所以取 `#04060A` 而不是纯黑，方向与 Vercel 一致（操作条比正文更深）。
+- 按钮次级档填 `--ground` 而不是透明，悬停抬到 `--surface`；禁用落到 `--sunk`。
+- 滚动条不写任何自定义样式，交给 `html` 上的 `color-scheme`。
