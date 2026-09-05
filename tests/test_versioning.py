@@ -6,7 +6,12 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from peach.versioning import VersionManager, discover_repository_root
+from peach import buildinfo
+from peach.buildinfo import BuildInfo
+from peach.versioning import (
+    UNKNOWN_BUILD_AGE, VersionManager, VersionSnapshot, discover_repository_root,
+)
+from peach.windows_update import windows_tray_rebuild_required
 
 
 def git(path: Path, *args: str) -> subprocess.CompletedProcess[str]:
@@ -199,6 +204,133 @@ class VersionManagerTests(unittest.TestCase):
                 self.assertEqual(result.state, "diverged")
                 self.assertEqual(git(repo, "rev-parse", "HEAD").stdout.strip(), before)
                 self.assertFalse((repo / "feature.txt").exists())
+
+
+class PackagedBuildAgeTests(unittest.TestCase):
+    """打包托盘跑的是构建那一刻的代码副本；检出往前走了，它不会跟着变。
+
+    这台机器既是开发机又是生产机，提交先落本地再推 GitHub，所以「落后远端」永远不成立，
+    而托盘停在两周前的代码上却完全可能——判据必须是构建提交与检出的差，不是远端。
+    """
+
+    @contextlib.contextmanager
+    def packaged(self, commit: str | None):
+        info = None if commit is None else BuildInfo(commit, "0.7.14", "2026-09-05T10:00:00+08:00")
+        with mock.patch.object(buildinfo.sys, "frozen", True, create=True), \
+                mock.patch.object(buildinfo, "frozen_build", return_value=info):
+            yield
+
+    def repo_with_two_commits(self, root: Path) -> tuple[Path, str]:
+        repo = root / "repo"
+        initialize_repo(repo)
+        built_at = git(repo, "rev-parse", "HEAD").stdout.strip()
+        (repo / "src" / "peach").mkdir(parents=True)
+        (repo / "src" / "peach" / "tray.py").write_text("tray\n", encoding="utf-8")
+        git(repo, "add", "src/peach/tray.py")
+        git(repo, "commit", "-m", "tray change")
+        return repo, built_at
+
+    def test_a_packaged_tray_measures_itself_against_the_checkout(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repo, built_at = self.repo_with_two_commits(Path(directory).resolve())
+            with self.packaged(built_at):
+                snapshot = VersionManager(repo).inspect()
+            self.assertEqual(snapshot.build_commit, built_at)
+            self.assertEqual(snapshot.build_behind, 1)
+            self.assertTrue(snapshot.build_stale)
+            self.assertIn(f"托盘构建 {built_at[:8]}，落后 1 个提交", snapshot.build_label)
+
+    def test_a_tray_built_from_the_current_head_is_not_stale(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repo, _built_at = self.repo_with_two_commits(Path(directory).resolve())
+            head = git(repo, "rev-parse", "HEAD").stdout.strip()
+            with self.packaged(head):
+                snapshot = VersionManager(repo).inspect()
+            self.assertEqual(snapshot.build_behind, 0)
+            self.assertFalse(snapshot.build_stale)
+            self.assertEqual(snapshot.build_label, f"master@{snapshot.commit}")
+
+    def test_a_source_checkout_has_no_second_version_to_lag_behind(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repo, _built_at = self.repo_with_two_commits(Path(directory).resolve())
+            snapshot = VersionManager(repo).inspect()
+            self.assertIsNone(snapshot.build_commit)
+            self.assertIsNone(snapshot.build_behind)
+            self.assertFalse(snapshot.build_stale)
+
+    def test_a_build_identity_nobody_can_read_counts_as_stale(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repo, _built_at = self.repo_with_two_commits(Path(directory).resolve())
+            with self.packaged(None):
+                snapshot = VersionManager(repo).inspect()
+            self.assertIsNone(snapshot.build_commit)
+            self.assertEqual(snapshot.build_behind, UNKNOWN_BUILD_AGE)
+            self.assertTrue(snapshot.build_stale)
+            self.assertIn("托盘构建身份未取得", snapshot.build_label)
+
+    def test_a_build_commit_outside_this_repository_counts_as_stale(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repo, _built_at = self.repo_with_two_commits(Path(directory).resolve())
+            stranger = "0" * 40
+            with self.packaged(stranger):
+                snapshot = VersionManager(repo).inspect()
+            self.assertEqual(snapshot.build_behind, UNKNOWN_BUILD_AGE)
+            self.assertIn("不在本检出历史里", snapshot.build_label)
+
+    def test_stale_paths_name_what_changed_since_the_build(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repo, built_at = self.repo_with_two_commits(Path(directory).resolve())
+            paths = VersionManager(repo).stale_build_paths(built_at)
+            self.assertEqual(paths, ("src/peach/tray.py",))
+            self.assertTrue(windows_tray_rebuild_required(paths))
+
+    def test_an_unmeasurable_build_falls_back_to_a_value_that_forces_a_rebuild(self):
+        """数不出来不等于没落后：托盘旧着不动才是真正会骗人的那个结果。"""
+        with tempfile.TemporaryDirectory() as directory:
+            repo, _built_at = self.repo_with_two_commits(Path(directory).resolve())
+            manager = VersionManager(repo)
+            for unmeasurable in (None, "", "0" * 40):
+                paths = manager.stale_build_paths(unmeasurable)
+                self.assertEqual(paths, ("src/peach/",))
+                self.assertTrue(windows_tray_rebuild_required(paths))
+
+    def test_a_standalone_package_never_reports_a_stale_build(self):
+        """独立测试包没有源码检出可比，更新方式是下载新版完整替换程序目录。"""
+        with tempfile.TemporaryDirectory() as directory:
+            repo, built_at = self.repo_with_two_commits(Path(directory).resolve())
+            with self.packaged(built_at), \
+                    mock.patch("peach.distribution.standalone", return_value=True):
+                snapshot = VersionManager(repo).inspect()
+            self.assertIsNone(snapshot.build_behind)
+            self.assertFalse(snapshot.build_stale)
+
+    def test_the_head_probe_reads_the_checkout_without_touching_the_network(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repo, _built_at = self.repo_with_two_commits(Path(directory).resolve())
+            calls = []
+            manager = VersionManager(repo)
+            real = manager._execute
+
+            def record(command, **kwargs):
+                calls.append(command)
+                return real(command, **kwargs)
+
+            manager._execute = record
+            self.assertEqual(manager.head_commit(),
+                             git(repo, "rev-parse", "HEAD").stdout.strip())
+            self.assertNotIn("fetch", [argument for call in calls for argument in call])
+
+
+class BuildLabelTests(unittest.TestCase):
+    def test_uncommitted_changes_and_a_stale_build_are_both_named(self):
+        snapshot = VersionSnapshot(
+            "0.7.14", "master", "1a2b3c4d", True, True, "origin/master",
+            build_commit="9f8e7d6c5b4a39281706f5e4d3c2b1a098765432", build_behind=4,
+        )
+        self.assertEqual(
+            snapshot.build_label,
+            "master@1a2b3c4d · 有未提交修改 · 托盘构建 9f8e7d6c，落后 4 个提交",
+        )
 
 
 if __name__ == "__main__":
