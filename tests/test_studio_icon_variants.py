@@ -1105,7 +1105,7 @@ class RunTests(unittest.TestCase):
                 database=self.database, output=self.root / "studio-icons.csv",
                 logo_root=self.logos, candidate_dir=self.root / "candidates",
                 only=[], kind="studio", interval=0.0, timeout=1.0, install=install,
-                no_face_gate=True))
+                no_face_gate=True, avatars=self.root / "avatars.json"))
         finally:
             MODULE.site_icons.best_mark = original
 
@@ -1123,7 +1123,7 @@ class RunTests(unittest.TestCase):
                 database=self.database, output=self.root / "agency-icons.csv",
                 logo_root=self.logos, candidate_dir=self.root / "candidates",
                 only=[], kind="agency", interval=0.0, timeout=1.0, install=False,
-                no_face_gate=True))
+                no_face_gate=True, avatars=self.root / "avatars.json"))
         finally:
             MODULE.site_icons.best_mark = original
         from peach.review_csv import read_rows
@@ -1141,7 +1141,7 @@ class RunTests(unittest.TestCase):
                 database=self.database, output=self.root / "agency-icons.csv",
                 logo_root=self.logos, candidate_dir=self.root / "candidates",
                 only=[], kind="agency", interval=0.0, timeout=1.0, install=False,
-                no_face_gate=True))
+                no_face_gate=True, avatars=self.root / "avatars.json"))
         finally:
             MODULE.site_icons.best_mark = original
         from peach.review_csv import read_rows
@@ -1183,7 +1183,7 @@ class RunTests(unittest.TestCase):
                 database=self.database, output=self.root / "studio-icons.csv",
                 logo_root=self.logos, candidate_dir=self.root / "candidates",
                 only=["HEYZO"], kind="studio", interval=0.0, timeout=1.0, install=False,
-                no_face_gate=True))
+                no_face_gate=True, avatars=self.root / "avatars.json"))
         finally:
             MODULE.site_icons.best_mark = original
         self.assertEqual(stats["复核行"], 1)
@@ -1372,7 +1372,7 @@ class SiteOwnAssetTests(unittest.TestCase):
         pages.update(overrides)
         return Fetch(pages)
 
-    def harvest(self, fetch=None, faces=None, declared=None, targets=None):
+    def harvest(self, fetch=None, faces=None, declared=None, targets=None, avatars=None):
         original = MODULE.site_icons.best_mark
 
         def stub(url, fetcher, policy, fallback=None, accept=None):
@@ -1386,7 +1386,7 @@ class SiteOwnAssetTests(unittest.TestCase):
         try:
             return MODULE.harvest(self.targets if targets is None else targets,
                                   self.links, fetch or self.fetch(),
-                                  self.candidates, faces)
+                                  self.candidates, faces, avatars)
         finally:
             MODULE.site_icons.best_mark = original
 
@@ -1432,6 +1432,47 @@ class SiteOwnAssetTests(unittest.TestCase):
         with Image.open(io.BytesIO(Path(str(logo["candidate"])).read_bytes())) as image:
             self.assertEqual(image.size[0], image.size[1], "装盘的一律是方图")
 
+    def test_a_much_bigger_avatar_beats_the_declared_icon(self):
+        """bambi 声明的是 119×119，它 Instagram 的头像是 1000×1000。
+
+        「第一枚合格的就用」会把那张糊的装上去，而公司格是 180 px 宽、2 倍屏 360 实像素，
+        119 缩放上去一眼就看得出。
+        """
+        icon = self.harvest(
+            fetch=self.fetch(**{self.AVATAR: block_png((1000, 1000))}),
+            declared=block_png((119, 119)))[0]
+        self.assertEqual(icon["mark_size"], "1000x1000")
+        self.assertIn("的头像", icon["evidence"])
+
+    def test_a_marginally_bigger_avatar_does_not_displace_the_declared_icon(self):
+        """119 和 114 谁大不该决定用谁的标：那点差别在页面上看不出来。"""
+        icon = self.harvest(declared=block_png((114, 114)))[0]
+        self.assertEqual((icon["evidence"], icon["mark_size"]),
+                         ("官网声明的图标", "114x114"))
+
+    def test_a_big_enough_declared_icon_stops_the_walk(self):
+        """够大就不再敲别人的门。多问一个来源就多一次请求，而结果不会更好。"""
+        fetch = self.fetch()
+        self.harvest(fetch=fetch, declared=block_png((512, 512)),
+                     targets={"Bambi_Promotion": {"original_size": "187x57",
+                                                  "installed": "Bambi_Promotion.img"}})
+        self.assertNotIn(self.PROFILE, fetch.asked)
+        self.assertNotIn(self.AVATAR, fetch.asked)
+
+    def test_a_named_avatar_is_tried_before_the_x_account(self):
+        """人指定的那一个是判断过的：`krone_official__` 是公司号，`miyu_krone` 是艺人号，
+        形状上分不开，所以这一步不交给脚本猜。"""
+        named = "https://scontent.cdninstagram.com/v/t51/bambi_1000.jpg"
+        fetch = self.fetch(**{named: block_png((1000, 1000))})
+        icon = self.harvest(fetch=fetch, avatars={"Bambi Promotion": named})[0]
+        self.assertEqual(icon["url"], named)
+        self.assertIn("人指定的社媒头像", icon["evidence"])
+
+    def test_a_named_avatar_that_cannot_be_fetched_falls_back(self):
+        """签名地址会过期。过期就是取不回来，不能拿别的图冒充它。"""
+        icon = self.harvest(avatars={"Bambi Promotion": "https://scontent/expired.jpg"})[0]
+        self.assertEqual(icon["url"], self.AVATAR)
+
     def test_an_installed_image_keeps_the_hero_slot(self):
         """`<safe>.img` 多半正是这家的完整字标，而 `.logo.img` 排在它前面。
         出这一行等于拿一枚 28 px 用的方标把大位上本来对的那张顶掉。"""
@@ -1471,6 +1512,40 @@ class SiteOwnAssetTests(unittest.TestCase):
         fetch = self.fetch(**{self.HOME: page.encode()})
         self.harvest(fetch=fetch)
         self.assertNotIn("intent/tweet", " ".join(fetch.asked))
+
+
+class NamedAvatarTests(unittest.TestCase):
+    """人在登录态解出来的头像地址，按账本名读进来。"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.path = Path(self.tmp.name).resolve() / "agency-avatars.json"
+
+    def write(self, text):
+        self.path.write_text(text, encoding="utf-8")
+        return MODULE.named_avatars(self.path)
+
+    def test_a_missing_file_is_simply_empty(self):
+        """这一份是可选的补充。没有它整轮照跑，不该报错也不该停。"""
+        self.assertEqual(MODULE.named_avatars(self.path), {})
+
+    def test_the_url_may_carry_a_note_beside_it(self):
+        """地址是签名过的一长串，边上要能写清它是谁的号、什么时候解的。"""
+        found = self.write('{"Bambi Promotion": {"url": "https://cdn/x.jpg",'
+                           ' "note": "instagram @bambi.hajimero 1000x1000"}}')
+        self.assertEqual(found, {"Bambi Promotion": "https://cdn/x.jpg"})
+
+    def test_a_bare_string_is_accepted_too(self):
+        self.assertEqual(self.write('{"LINX": "https://cdn/linx.jpg"}'),
+                         {"LINX": "https://cdn/linx.jpg"})
+
+    def test_junk_entries_are_dropped_instead_of_failing_the_run(self):
+        found = self.write('{"A": {"note": "还没解"}, "B": "", "C": "https://cdn/c.jpg"}')
+        self.assertEqual(found, {"C": "https://cdn/c.jpg"})
+
+    def test_a_broken_file_does_not_take_the_harvest_down_with_it(self):
+        self.assertEqual(self.write("{不是 JSON"), {})
 
 
 class FetcherCacheTests(unittest.TestCase):

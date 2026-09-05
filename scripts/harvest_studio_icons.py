@@ -23,13 +23,16 @@ favicon 一律退回。实测七个 JAV 厂牌站，六个的 favicon 内容比�
 `人像不是标识`。用户指定的来源不过这道闸——指定就是结论。模型取不到时整轮不设这道闸，
 统计里说明，不静默当成「都没有脸」。
 
-**声明之外还有两个来源，按这个顺序。** 站点自己 header 里那张 `<img>`
-（`site_logos.logo_images`），再是它挂在页面上的 X 账号头像
-（`site_logos.x_profiles` + `avatar_tiers`）。bambi.ne.jp 是这条链的实测样本：它只声明
-一枚 16×16 的 `favicon.ico`，按声明走只能得出「只有小图标」；header 那张
-`header_logo.png` 是 187×57 的字标；而它 X 账号的头像是 119×119 的方标——三样里最能顶
-小位的是最后那个。用户 2026-09-05 的口径：站点自己那几张都不清楚、头像反而清楚时，
-头像既做 icon 也做 logo。
+**声明之外还有三个来源，按这个顺序。** 站点自己 header 里那张 `<img>`
+（`site_logos.logo_images`）、人在登录态解出来的社媒头像（`named_avatars`）、
+它挂在页面上的 X 账号头像（`site_logos.x_profiles` + `avatar_tiers`）。bambi.ne.jp 是
+这条链的实测样本：它只声明一枚 16×16 的 `favicon.ico`；header 那张 `header_logo.png`
+是 187×57 的字标；X 头像 119×119；而它 Instagram 的头像是 1000×1000。用户 2026-09-05
+的口径：站点自己那几张都不清楚、头像反而清楚时，头像既做 icon 也做 logo。
+
+**够用就停，不够用就比大小。** 排在前面的来源更正式，但正式不等于清楚。取到的短边够
+`GOOD_ENOUGH_SHORT_EDGE` 就不再敲别人的门；到不了就把这条链接的其余来源问完，取明显
+更大的那枚（`BETTER_BY` 倍以上才算「明显」——114 和 119 谁大不该决定用谁的标）。
 
 两条实测逼出来的规矩：
 
@@ -72,7 +75,7 @@ import httpx
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from peach import face_detect, images, link_marks, site_icons, site_logos  # noqa: E402
-from peach.config import GENERATED_DIR, REVIEW_DIR
+from peach.config import GENERATED_DIR, REVIEW_DIR, STATE_DIR
 from peach.review_csv import write_rows
 
 
@@ -103,6 +106,13 @@ MIN_SHORT_EDGE = 32
 #: `logo` 位是厂牌页那个 160 px 大位，2x 屏要 320 px；96 是「还能看」的下限，
 #: 低于它说明取到的是缩略图不是标识资产。
 MIN_LOGO_SHORT_EDGE = 96
+#: 够用就停的线：公司格最宽 180 CSS px，2 倍屏要 360 实像素，再大在页面上没有分别。
+#: 到不了这条线才把这条链接的其余来源问完——每多问一个来源就多敲一次别人的门。
+GOOD_ENOUGH_SHORT_EDGE = 360
+#: 后面的来源要大出这个倍数才顶掉前面的。声明的 114 对上头像的 119 谁大不该决定用谁的
+#: 标：那点差别在页面上看不出来，而来源的正式程度有差。bambi 声明的 16×16 对上
+#: 1000×1000 的头像才是该换的那种差距。
+BETTER_BY = 1.5
 
 #: `logo` 位的指定来源，按 canonical_name。`icon` 位的覆盖在
 #: `site_icons.HOST_OVERRIDES`，两张表不能合并：那一张是「按主机发现图标」的例外，
@@ -482,6 +492,41 @@ def first_mark(urls: list[str], fetch, policy: "SquareMark") -> tuple[bytes, str
     return None
 
 
+def named_avatars(path: Path) -> dict[str, str]:
+    """`{账本名: 头像地址}`；文件不在就是空的。
+
+    Instagram 的头像地址只有登录态才拿得到：登出页的 `og:image` 是空的，
+    `web_profile_info` 接口回 429（2026-09-05 实测）。所以这一份由人在登录的浏览器里
+    解出来写进文件，脚本只管取字节、过闸、和别的来源比大小。地址带签名会过期，
+    隔一段时间要重解一次；过期了就是取不回来，不会拿别的图顶替。
+
+    键用账本里的规范名而不是 handle：判断「这个账号是不是这家公司的」需要人看一眼，
+    krone 官号叫 `krone_official__`，而 `miyu_krone` 是艺人的号，形状上分不开。
+    """
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    found: dict[str, str] = {}
+    for name, item in (data or {}).items():
+        url = item.get("url") if isinstance(item, dict) else item
+        if isinstance(url, str) and url.startswith("http"):
+            found[str(name)] = url
+    return found
+
+
+def _enough(found: list[tuple[bytes, str, str, str, str]]) -> bool:
+    return any(_short_edge(item[3]) >= GOOD_ENOUGH_SHORT_EDGE for item in found)
+
+
+def _best(found: list[tuple[bytes, str, str, str, str]]
+          ) -> tuple[bytes, str, str, str, str]:
+    """这一趟收到的候选里用哪一枚：来源优先，除非后面有明显更大的。"""
+    ranked = max(found, key=lambda item: _short_edge(item[3]))
+    first = max(1, _short_edge(found[0][3]))
+    return ranked if _short_edge(ranked[3]) >= first * BETTER_BY else found[0]
+
+
 def _short_edge(size: str) -> int:
     """`"187x57"` → 57；量不到就是 0。"""
     parts = str(size).split("x")
@@ -606,13 +651,18 @@ def hunt_logo_row(safe: str, target: dict[str, str], entry: dict[str, str],
 
 
 def icon_row(safe: str, target: dict[str, str], entries: list[dict[str, str]],
-             fetch, candidate_dir: Path, faces=None
+             fetch, candidate_dir: Path, faces=None, avatar: str = ""
              ) -> tuple[dict[str, object], dict[str, object] | None]:
     """`icon` 位一行。一个厂牌可能挂多条链接，第一条做成就停。
 
-    每条链接依次问三个来源：站点声明的图标、站点 header 里那张 `<img>`、站点挂着的
-    X 账号头像。三样都过同一道闸（方、够大、不是人像），所以先问哪一个不影响合不合格，
-    只决定同样合格时用谁的——站点自己声明的最正式，排前面。
+    每条链接依次问四个来源：站点声明的图标、站点 header 里那张 `<img>`、人在登录态
+    解出来的社媒头像（`named_avatars`）、站点挂着的 X 账号头像。四样都过同一道闸
+    （方、够大、不是人像），排序即正式程度。
+
+    **够用就停，不够用就比大小。** 声明那一枚够 `GOOD_ENOUGH_SHORT_EDGE` 就不再敲别人
+    的门；到不了就把这条链接的其余来源问完，取明显更大的那枚（`_best`）。bambi 声明的
+    是 119×119，而它 Instagram 的头像是 1000×1000——按「第一枚合格的就用」会把那张
+    糊的装上去，页面上一眼就看得出来。
 
     第二个返回值是同一趟带出来的 `logo` 行：走字标补白时是那张补白图，做成方标时由
     `hunt_logo_row` 决定，都没有就是 None。
@@ -626,31 +676,34 @@ def icon_row(safe: str, target: dict[str, str], entries: list[dict[str, str]],
     scope = EntityScope()
     for entry in entries:
         before = getattr(fetch, "fetched", 0)
+        found: list[tuple[bytes, str, str, str, str]] = []
         made = site_icons.best_mark(
             entry["url"], fetch, policy,
             accept=scope if shares_its_host(entry["url"]) else None)
-        found = ((made, entry["url"], "官网声明的图标", policy.size, policy.aspect)
-                 if made else None)
-        # 声明那一枚做成了、大位还空着时也要翻一遍首页：SO MODEL AGENT 声明的
+        if made:
+            found.append((made, entry["url"], "官网声明的图标", policy.size, policy.aspect))
+        # 声明那一枚够大、大位又已经有图时才免掉首页那一趟：SO MODEL AGENT 声明的
         # favicon 只有 114×114，而 header 里挂着 600×150 的完整字标，那才是大位要的。
-        marks, profiles = (site_assets(entry["url"], fetch)
-                           if found is None or not target["installed"] else ([], []))
-        if found is None:
+        if not _enough(found) or not target["installed"]:
+            marks, profiles = site_assets(entry["url"], fetch)
             own = first_mark(marks, fetch, policy)
             if own:
-                found = (own[0], own[1], "站点 header 里的 <img>",
-                         policy.size, policy.aspect)
-        elif marks:
-            first_mark(marks, fetch, policy)
-        if found is None:
+                found.append((own[0], own[1], "站点 header 里的 <img>",
+                              policy.size, policy.aspect))
+            if avatar and not _enough(found):
+                got = first_mark([avatar], fetch, policy)
+                if got:
+                    found.append((got[0], got[1], "人指定的社媒头像",
+                                  policy.size, policy.aspect))
             for profile in profiles:
-                avatar = first_mark(avatar_urls(profile, fetch), fetch, policy)
-                if avatar:
-                    found = (avatar[0], avatar[1], f"{profile} 的头像",
-                             policy.size, policy.aspect)
+                if _enough(found):
                     break
+                got = first_mark(avatar_urls(profile, fetch), fetch, policy)
+                if got:
+                    found.append((got[0], got[1], f"{profile} 的头像",
+                                  policy.size, policy.aspect))
         if found:
-            return _made_rows(safe, target, entry, policy, found, candidate_dir)
+            return _made_rows(safe, target, entry, policy, _best(found), candidate_dir)
         reachable = reachable or getattr(fetch, "fetched", 0) > before
         attempts.append(entry["url"])
 
@@ -807,7 +860,8 @@ def wordmark_source_rows(safe: str, target: dict[str, str], fetch, candidate_dir
 
 def harvest(targets: dict[str, dict[str, str]],
             links: dict[str, list[dict[str, str]]],
-            fetch, candidate_dir: Path, faces=None) -> list[dict[str, object]]:
+            fetch, candidate_dir: Path, faces=None,
+            avatars: dict[str, str] | None = None) -> list[dict[str, object]]:
     """每个目标厂牌出一行 `icon`；有指定 logo 来源或走了字标补白的再出 `logo` 行。
 
     有指定字标来源的厂牌只走那一条，两行都从同一张方图出（`wordmark_source_rows`）。
@@ -830,7 +884,10 @@ def harvest(targets: dict[str, dict[str, str]],
             if marked_logo is not None:
                 rows.append(marked_logo)
             continue
-        icon, wordmark_logo = icon_row(safe, target, entries, fetch, candidate_dir, faces)
+        name = (entries[0]["studio"] if entries
+                else LOGO_SOURCE_NAMES.get(safe, safe.replace("_", " ")))
+        icon, wordmark_logo = icon_row(safe, target, entries, fetch, candidate_dir, faces,
+                                       (avatars or {}).get(name, ""))
         logo = logo_row(safe, target, entries, fetch, candidate_dir)
         if (logo is not None and logo["verdict"] == OK
                 and icon["verdict"] not in INSTALLABLE):
@@ -914,7 +971,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     client = httpx.Client(trust_env=True, follow_redirects=True)
     try:
         rows = harvest(targets, links, Fetcher(client, args.timeout, args.interval),
-                       args.candidate_dir.resolve(), faces)
+                       args.candidate_dir.resolve(), faces, named_avatars(args.avatars))
     finally:
         client.close()
 
@@ -943,6 +1000,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--output", type=Path,
                         default=REVIEW_DIR / "studio-icons.csv")
     parser.add_argument("--logo-root", type=Path, default=GENERATED_DIR / "logos")
+    parser.add_argument("--avatars", type=Path, default=STATE_DIR / "agency-avatars.json",
+                        help="人在登录态解出来的社媒头像地址，按账本名")
     parser.add_argument("--candidate-dir", type=Path,
                         default=REVIEW_DIR / "studio-icons")
     parser.add_argument("--only", nargs="*", default=[],
