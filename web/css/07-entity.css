@@ -41,7 +41,9 @@
   background:var(--overlay-5);display:inline-flex;align-items:center;gap:8px;overflow:hidden}
 .entitylinks a:hover{border-color:var(--border-15);background:var(--hover)}
 .entitylinks .private{color:var(--muted);border-style:dashed}
-.entitylinkicon{width:32px;height:32px;border-radius:50%;background:var(--sunk);display:grid;place-items:center;
+/* 圆盘本身不垫底色。X 这类内联品牌标记直接画在药丸上，垫一层 `--sunk` 只会让它比
+   周围暗一档，看着像这条链接被禁用了——而图标要说的是「去哪」，不是「能不能点」。 */
+.entitylinkicon{width:32px;height:32px;border-radius:50%;background:transparent;display:grid;place-items:center;
   overflow:hidden;position:relative;flex:none}.entitylinkicon svg{width:16px;height:16px;stroke:currentColor;fill:none;
   stroke-width:1.8}
 /* favicon 是别人服务器上的位图，取不到时 `onerror` 会把 img 摘掉、露出下面的地球。

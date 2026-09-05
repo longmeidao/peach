@@ -1441,6 +1441,13 @@ class WebUiSourceTests(unittest.TestCase):
         # 填充字形不吃通用的 stroke:currentColor;fill:none。
         self.assertPageContains('.entitylinkicon.brand svg{width:15px;height:15px;fill:currentColor;stroke:none}')
 
+    def test_the_link_icon_disc_carries_no_plate_of_its_own(self):
+        """内联品牌标记直接画在药丸上。垫一层 `--sunk` 会让它比周围暗一档，看着像
+        这条链接被禁用了——而图标要说的是「去哪」，不是「能不能点」。"""
+        self.assertPageContains(
+            ".entitylinkicon{width:32px;height:32px;border-radius:50%;"
+            "background:transparent;")
+
     def test_the_entity_hero_is_a_centred_single_column_on_phones(self):
         # 左像右文那套是给宽屏的：手机上 92px 头像旁边只剩两百多像素，别名和链接被挤成
         # 两三行，头像下面又空着一大片。按 beeg 的资料页改成单列居中。
@@ -4440,6 +4447,12 @@ class WebUiSourceTests(unittest.TestCase):
         # 名册占的是正文那一整块，所以这批人不再挤进「同台艺人」那排小圆头像。
         self.assertCode("const roster=kind==='agency'?(d.related_performers||[]):[];")
         self.assertCode("const related=roster.length?'':(d.related_performers||[]).map(")
+        # 圆框越小越需要取景：一张 3762×2535 的封面塞进 44px 的圆里，几何居中给出的是
+        # 封面正中那块版式，脸在不在里面全看运气。
+        self.assertPageContains(
+            "{id:x.id,hasImage:x.has_image,rep:x.has_avatar?x.rep:null,")
+        self.assertPageContains(
+            "         style:facePos(x.avatar_focus),focus:x.avatar_focus})}</span>")
 
     def test_a_company_cell_is_square_because_it_holds_a_mark_not_a_face(self):
         """3:4 是给脸留的形状，方标铺进去左右各被 `object-fit:cover` 裁掉四分之一。"""
