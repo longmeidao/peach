@@ -35,6 +35,11 @@ from peach.windows_restart import restart_tray
 from peach.windows_update import WindowsUpdateInstaller
 
 
+#: 换过二进制的那次启动比平常慢：单文件包要先把四十多 MB 解到 `%TEMP%` 才画得出托盘
+#: 图标，再由它拉起两个服务。这里超时就会把一份好的二进制回滚掉，所以给足。
+SWAP_RESTART_TIMEOUT = 90.0
+
+
 def serving_version(*, timeout: float = 60.0, sleep: Callable[[float], None] = time.sleep) -> str | None:
     """轮询生产 HTTPS 口的 `/healthz`，返回它报的版本号；期限内没回话返回 None。
 
@@ -116,7 +121,7 @@ def deploy(
                         f"暂存包没通过打包迁移资源检查，生产入口未动；日志见 {installer.log_path}。",
                         **fields)
 
-    result = restart(target, swap_from=staged)
+    result = restart(target, swap_from=staged, timeout=SWAP_RESTART_TIMEOUT)
     fields.update({
         "old_tray_pid": result.old_tray_pid, "new_tray_pid": result.new_tray_pid,
         "service_pids": list(result.service_pids), "backup": result.backup,
