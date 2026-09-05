@@ -6,6 +6,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -89,6 +90,61 @@ def sweep_onefile_extractions(
             continue
         removed.append(entry)
     return tuple(removed)
+
+
+def replace_with_retry(
+    source: Path,
+    destination: Path,
+    *,
+    timeout: float = 45.0,
+    sleep: Callable[[float], None] = time.sleep,
+) -> None:
+    """把 `source` 原子换到 `destination`，直到目标不再被占用。
+
+    Windows 上刚退出的进程仍会短暂持有自己的映像文件，`os.replace` 因此抛
+    `PermissionError`。重试到期限为止；期限内换不上就把原始异常抛给调用方，
+    由它决定是回滚还是原样报出来，这里不吞。
+    """
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            os.replace(source, destination)
+            return
+        except OSError:
+            if time.monotonic() >= deadline:
+                raise
+            sleep(0.25)
+
+
+def swap_tray_binary(
+    staged: Path,
+    target: Path,
+    *,
+    timeout: float = 45.0,
+    now: Callable[[], datetime] = datetime.now,
+    sleep: Callable[[float], None] = time.sleep,
+) -> Path:
+    """换掉生产托盘 EXE，先在原地留一份可回滚的备份，返回备份路径。
+
+    调用方必须先让旧托盘正常退出：这个函数不发停止消息，也不判断谁还活着。
+    备份名沿用 `BACKUP_GLOB`，托盘下次启动的 `sweep_artifacts` 才认得出它、
+    才会按 `KEEP_BACKUPS` 收口；换个名字就会在 `dist/Peach/` 里越堆越多。
+    """
+    if not staged.is_file():
+        raise FileNotFoundError(f"暂存包不存在：{staged}")
+    if target.name.lower() != "peach.exe" or not target.is_file():
+        raise ValueError(f"生产入口不存在或不是 Peach.exe：{target}")
+    if os.path.normcase(os.path.abspath(staged)) == os.path.normcase(os.path.abspath(target)):
+        raise ValueError("暂存包与生产入口是同一个文件")
+
+    backup = target.with_name(f"Peach.pre-source-sync-{now().strftime('%Y%m%d-%H%M%S')}.exe")
+    shutil.copy2(target, backup)
+    try:
+        replace_with_retry(staged, target, timeout=timeout, sleep=sleep)
+    except OSError:
+        backup.unlink(missing_ok=True)
+        raise
+    return backup
 
 
 class WindowsUpdateInstaller:
@@ -204,6 +260,47 @@ class WindowsUpdateInstaller:
             )
         return result.returncode
 
+    def build_staged_tray(self, commit: str, *, shell: str | None = None) -> Path | None:
+        """把当前检出打成一份托盘 EXE，暂存到 `state/source-sync-build/<commit>/`。
+
+        不能就地构建 `dist/Peach/`：那份 `Peach.exe` 正被运行中的托盘持有，PyInstaller
+        清理输出目录时会撞上 `WinError 5`。暂存目录的命名是 `sweep_artifacts` 认得的
+        那一种，换名字它就清不掉。构建失败返回 None，原因在 `log_path` 里。
+        """
+        shell = shell or self._powershell_executable()
+        if shell is None:
+            return None
+        staging_dir = self.state_dir / STAGING_DIRNAME / commit
+        staging_dir.mkdir(parents=True, exist_ok=True)
+        staged = staging_dir / "Peach.exe"
+        staged.unlink(missing_ok=True)
+        build_script = self.root / "scripts" / "build_windows.ps1"
+        build_exit = self._run_logged([
+            shell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(build_script),
+            "-OutputDirectory", str(staging_dir),
+        ])
+        if build_exit != 0 or not staged.is_file():
+            return None
+        return staged
+
+    def packaged_migrations_pass(self, staged: Path) -> bool:
+        """在换上生产入口之前，先让暂存包自己跑一次 `migrate status`。
+
+        PyInstaller 漏掉 `migrations/` 的话包能构建、能启动，直到第一次开库才炸；
+        那时旧二进制已经被换走了。这一步用真实的包在真实数据根上验证一遍。
+        """
+        reset_environment = os.environ.copy()
+        reset_environment["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
+        self.log_path.parent.mkdir(parents=True, exist_ok=True)
+        with self.log_path.open("a", encoding="utf-8", errors="replace") as log:
+            validation = self._run(
+                [str(staged), "migrate", "status"],
+                cwd=str(self.root), stdin=subprocess.DEVNULL, stdout=log,
+                stderr=subprocess.STDOUT, check=False, env=reset_environment,
+                creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+            )
+        return validation.returncode == 0
+
     def prepare(
         self, commit: str, changed_paths: tuple[str, ...],
     ) -> WindowsUpdatePreparation:
@@ -238,30 +335,12 @@ class WindowsUpdateInstaller:
                 "failed", "代码与测试已通过，但找不到当前托盘 EXE，未执行替换。",
             )
 
-        staging_dir = self.state_dir / "source-sync-build" / commit
-        staging_dir.mkdir(parents=True, exist_ok=True)
-        staged = staging_dir / "Peach.exe"
-        staged.unlink(missing_ok=True)
-        build_script = self.root / "scripts" / "build_windows.ps1"
-        build_exit = self._run_logged([
-            shell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(build_script),
-            "-OutputDirectory", str(staging_dir),
-        ])
-        if build_exit != 0 or not staged.is_file():
+        staged = self.build_staged_tray(commit, shell=shell)
+        if staged is None:
             return WindowsUpdatePreparation(
                 "failed", "代码与测试已通过，但新托盘构建失败；旧托盘和服务保持运行。",
             )
-
-        reset_environment = os.environ.copy()
-        reset_environment["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
-        with self.log_path.open("a", encoding="utf-8", errors="replace") as log:
-            validation = self._run(
-                [str(staged), "migrate", "status"],
-                cwd=str(self.root), stdin=subprocess.DEVNULL, stdout=log,
-                stderr=subprocess.STDOUT, check=False, env=reset_environment,
-                creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
-            )
-        if validation.returncode != 0:
+        if not self.packaged_migrations_pass(staged):
             return WindowsUpdatePreparation(
                 "failed", "新托盘未通过打包迁移资源检查；旧托盘和服务保持运行。",
             )

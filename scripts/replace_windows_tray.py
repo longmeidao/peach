@@ -4,10 +4,18 @@ import argparse
 import os
 import shutil
 import subprocess
+import sys
 import time
 from datetime import datetime
 from pathlib import Path
 from typing import Callable
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+SRC_DIR = PROJECT_ROOT / "src"
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
+
+from peach.windows_update import replace_with_retry
 
 
 def process_alive(process_id: int) -> bool:
@@ -16,24 +24,6 @@ def process_alive(process_id: int) -> bool:
     except OSError:
         return False
     return True
-
-
-def replace_with_retry(
-    source: Path,
-    destination: Path,
-    *,
-    timeout: float = 45.0,
-    sleep: Callable[[float], None] = time.sleep,
-) -> None:
-    deadline = time.monotonic() + timeout
-    while True:
-        try:
-            os.replace(source, destination)
-            return
-        except OSError:
-            if time.monotonic() >= deadline:
-                raise
-            sleep(0.25)
 
 
 def append_log(path: Path, message: str) -> None:
