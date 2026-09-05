@@ -1351,6 +1351,18 @@ class WebUiSourceTests(unittest.TestCase):
             "data-facebox=\"${[b.cx,b.cy,b.faceW,b.imgW,b.imgH].map(Number).join(' ')}\"")
         self.assertPageContains("else if(img.dataset.facebox)avatarFrame(img);")
 
+    def test_an_unlaid_out_frame_is_waited_for_instead_of_measured_as_zero(self):
+        """图加载完时框还没布局，`load` 不会再来第二次。
+
+        面板隐藏、`display:none` 的页签、缓存直出都会撞上这一刻：框是 0×0，算出来
+        的倍数只能是 1，放大于是静默地永不生效。资料页实测复现过——框已经 160×160、
+        图也 complete，style 里却只有平移。这类失效在页面上和「这张图不需要放大」
+        长得一模一样，所以必须由代码等，不能指望肉眼发现。
+        """
+        self.assertPageContains("if(!(rect.width>0&&rect.height>0)){")
+        self.assertPageContains("const watch=new ResizeObserver(()=>{")
+        self.assertPageContains("watch.disconnect();")
+
     def test_a_fallback_image_never_inherits_the_previous_faces_box(self):
         # 回落图是另一张照片，脸不在同一位置、尺寸也不是那个尺寸。留着脸框，下一次
         # load 就会拿上一张的脸给这一张算放大倍数，页面上是一张明显错位的图。
