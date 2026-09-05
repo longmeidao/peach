@@ -3,12 +3,26 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#FFFFFF" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#080A0D" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#FFFFFF" media="(prefers-color-scheme: light)" data-theme-color="light">
+<meta name="theme-color" content="#080A0D" media="(prefers-color-scheme: dark)" data-theme-color="dark">
 <link rel="icon" href="/peach-logo.png" type="image/png">
 <link rel="stylesheet" href="/vendor/videojs/8.24.0/video-js.min.css">
 <title>Peach · 蜜桃</title>
 <link rel="stylesheet" href="/app.css">
+<!-- 主题必须在第一次绘制之前定下来。app.js 是 module，等同 defer：轮到它跑的时候
+     浏览器已经按系统色画过一帧，手动选了浅色的人每次进页面都要先看一下深色。
+     这段只做两件事——把选择写到 <html> 的 data-theme、把地址栏色块切到同一档；
+     色板只在 web/css/01-base.css 一份，切换逻辑只在 app.js 的 applyTheme() 一份。 -->
+<script>
+(()=>{try{
+  const choice=JSON.parse(localStorage.getItem('peach.settings.v1')||'{}').theme;
+  if(choice!=='light'&&choice!=='dark')return;
+  document.documentElement.dataset.theme=choice;
+  document.querySelectorAll('meta[data-theme-color]').forEach(meta=>{
+    meta.media=meta.dataset.themeColor===choice?'all':'not all';
+  });
+}catch(_e){}})();
+</script>
 </head>
 <body>
 <a class="skiplink" href="#main">跳到正文</a>
@@ -37,6 +51,9 @@
   <symbol id="i-chart" viewBox="0 0 24 24"><path d="M5 21v-6" /><path d="M12 21V3" /><path d="M19 21V9" /></symbol>
   <symbol id="i-settings" viewBox="0 0 24 24"><path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915" /><circle cx="12" cy="12" r="3" /></symbol>
   <symbol id="i-monitor" viewBox="0 0 24 24"><rect width="20" height="14" x="2" y="3" rx="2" /><line x1="8" x2="16" y1="21" y2="21" /><line x1="12" x2="12" y1="17" y2="21" /></symbol>
+  <symbol id="i-ratio" viewBox="0 0 24 24"><rect width="12" height="20" x="6" y="2" rx="2" /><rect width="20" height="12" x="2" y="6" rx="2" /></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4" /><path d="M12 2v2" /><path d="M12 20v2" /><path d="m4.93 4.93 1.41 1.41" /><path d="m17.66 17.66 1.41 1.41" /><path d="M2 12h2" /><path d="M20 12h2" /><path d="m6.34 17.66-1.41 1.41" /><path d="m19.07 4.93-1.41 1.41" /></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20.985 12.486a9 9 0 1 1-9.473-9.472c.405-.022.617.46.402.803a6 6 0 0 0 8.268 8.268c.344-.215.825-.004.803.401" /></symbol>
   <symbol id="i-gauge" viewBox="0 0 24 24"><path d="m12 14 4-4" /><path d="M3.34 19a10 10 0 1 1 17.32 0" /></symbol>
   <symbol id="i-theater-enter" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="18" rx="1.5"/><path d="M2 16h20M8.5 7 5.5 10l3 3M15.5 7l3 3-3 3"/></symbol>
   <symbol id="i-theater-exit" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="18" rx="1.5"/><path d="M2 16h20M5.5 7l3 3-3 3M18.5 7l-3 3 3 3"/></symbol>
@@ -145,17 +162,12 @@
   <p class="pagelede mono" id="manageLede" hidden></p>
   <section class="stats" id="stats" hidden></section>
   <div class="count mono" id="count" role="status" aria-live="polite" aria-atomic="true"></div>
-  <div class="grid" id="grid"></div>
-  <section class="shorts" id="shortsSec" hidden>
-    <h2 class="disp">竖屏 <span class="mono shortscount" id="shortsN"></span>
-      <button id="tokBtn"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-play"/></svg><span>进入沉浸模式</span></button></h2>
-    <div class="srow" id="srow"></div>
-  </section>
+  <div class="gridstack" id="grid"></div>
   <div class="loadmore mono" id="loadSentinel" hidden></div>
 </main>
 
 <div class="scrim" id="scrim"></div>
-<aside class="drawer" id="drawer"></aside>
+<aside class="drawer" id="drawer"><div class="drawerscroll" id="drawerScroll"></div></aside>
 <div class="batchbar" id="batchbar" hidden><span id="batchCount">已选 0 项</span>
   <button data-batch="like"><svg viewBox="0 0 24 24"><use href="#i-thumbs-up"/></svg>喜欢</button><button data-batch="seen"><svg viewBox="0 0 24 24"><use href="#i-eye"/></svg>看过</button><button data-batch="later"><svg viewBox="0 0 24 24"><use href="#i-bookmark-plus"/></svg>稍后看</button>
   <button class="danger" data-batch="dispose"><svg viewBox="0 0 24 24"><use href="#i-trash"/></svg>加入回收站</button><button data-trash-only data-batch="restore"><svg viewBox="0 0 24 24"><use href="#i-rotate-ccw"/></svg>还原</button><button class="danger" data-trash-only data-batch="delete"><svg viewBox="0 0 24 24"><use href="#i-trash"/></svg>彻底删除</button>
@@ -188,22 +200,23 @@
     <div class="settingsscroll">
       <section class="settinggroup"><h3>这台电脑</h3><a class="settingrow" href="/configuration">媒体文件夹与服务配置</a></section>
       <section class="settinggroup"><h3>浏览</h3>
-      <label class="settingrow"><span><b>每批作品</b><small>首页每次加载的作品数量。</small></span><select id="batchSizeSetting"><option value="30">30 个</option><option value="60">60 个</option><option value="90">90 个</option></select></label>
-      <label class="settingrow"><span><b>默认排序</b><small>打开首页时使用的排序。</small></span><select id="defaultSortSetting"><option value="seed">随机</option><option value="rating">评分</option><option value="o">高潮计数</option><option value="plays">观看次数</option><option value="dur">时长</option><option value="size">体积</option><option value="new">入库时间</option><option value="played">观看时间</option></select></label>
-      <label class="settingrow"><span><b>悬停放大</b><small>转圈完成后进入放大预览。</small></span><select id="hoverDelaySetting"><option value="3">3 秒</option><option value="5">5 秒</option><option value="8">8 秒</option></select></label>
+      <div class="settingrow"><span><b>每批作品</b><small>首页每次加载的作品数量。</small></span><div id="batchSizeSetting"></div></div>
+      <div class="settingrow"><span><b>默认排序</b><small>打开首页时使用的排序。</small></span><div id="defaultSortSetting"></div></div>
+      <div class="settingrow"><span><b>悬停放大</b><small>转圈完成后进入放大预览。</small></span><div id="hoverDelaySetting"></div></div>
       <label class="settingrow"><span><b>合并分卷与版本</b><small>同一番号的多个分卷或版次只占一张卡，展示第一个。</small></span><span class="pcheck"><input type="checkbox" id="groupCollapseSetting"><span aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-check"/></svg></span></span></label>
       </section>
       <section class="settinggroup"><h3>播放</h3>
-      <label class="settingrow"><span><b>快进 / 快退</b><small>卡片预览和详情播放器共用。</small></span><select id="seekSecondsSetting"><option value="5">5 秒</option><option value="10">10 秒</option><option value="30">30 秒</option></select></label>
-      <label class="settingrow"><span><b>相关推荐</b><small>详情下方一次显示的相似作品数量。</small></span><select id="relatedLimitSetting"><option value="12">12 个</option><option value="20">20 个</option><option value="30">30 个</option></select></label>
+      <div class="settingrow"><span><b>快进 / 快退</b><small>卡片预览和详情播放器共用。</small></span><div id="seekSecondsSetting"></div></div>
+      <div class="settingrow"><span><b>相关推荐</b><small>详情下方一次显示的相似作品数量。</small></span><div id="relatedLimitSetting"></div></div>
       </section>
       <section class="settinggroup"><h3>搜索</h3>
-      <label class="settingrow"><span><b>搜索记录</b><small>保存在 Peach 账本，所有访问端同步。</small></span><select id="searchHistoryLimitSetting"><option value="5">最近 5 条</option><option value="10">最近 10 条</option><option value="20">最近 20 条</option></select></label>
+      <div class="settingrow"><span><b>搜索记录</b><small>保存在 Peach 账本，所有访问端同步。</small></span><div id="searchHistoryLimitSetting"></div></div>
       </section>
       <section class="settinggroup"><h3>关注</h3>
-      <label class="settingrow"><span><b>关注自动更新</b><small id="followScheduleState" aria-live="polite">读取运行状态…</small></span><select id="followScheduleSetting"><option value="0">关闭</option><option value="15">每 15 分钟</option><option value="30">每 30 分钟</option><option value="60">每小时</option><option value="180">每 3 小时</option><option value="360">每 6 小时</option><option value="720">每 12 小时</option><option value="1440">每天</option></select></label>
+      <div class="settingrow"><span><b>关注自动更新</b><small id="followScheduleState" aria-live="polite">读取运行状态…</small></span><div id="followScheduleSetting"></div></div>
       </section>
       <section class="settinggroup"><h3>界面</h3>
+      <div class="settingrow"><span><b>主题</b><small>跟随系统，或固定用浅色、深色。</small></span><div id="themeSetting"></div></div>
       <section class="sidebarsetting" aria-labelledby="sidebarOrderTitle"><span><b id="sidebarOrderTitle">左侧导航</b><small>直接拖动排序；可隐藏入口，也可从具体页面列表重新添加。窄栏和筛选抽屉会保持一致。</small></span><div class="sidebarorder" id="sidebarOrderSetting"></div></section>
       </section>
       <section class="settinggroup"><h3>安全</h3>

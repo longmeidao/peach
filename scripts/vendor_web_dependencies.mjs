@@ -85,6 +85,7 @@ const lucideIcons = new Map([
   // 名字和上游对不上的只有排序键：Peach 叫 `sort`，Lucide 叫 `sort-desc`。
   ["sort", "sort-desc"], ["arrow-up", "arrow-up"], ["arrow-down", "arrow-down"],
   ["calendar", "calendar"], ["download", "download"], ["monitor", "monitor"],
+  ["ratio", "ratio"], ["sun", "sun"], ["moon", "moon"],
 ]);
 
 // 自绘 symbol：没有上游可对，所以在这里逐个点名。下面那道分区检查要求雪碧图里

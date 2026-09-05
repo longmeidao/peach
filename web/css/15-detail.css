@@ -19,7 +19,7 @@
   padding:0;cursor:pointer}
 .srctools button svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2}
 .srctools button:hover{background:var(--hover);color:var(--ink)}
-.srctools button:disabled{background:var(--surface);border-color:var(--border-15);color:var(--muted);cursor:default}
+.srctools button:disabled{background:var(--sunk);border-color:var(--line-soft);color:var(--muted);cursor:default}
 .srcstate{font-size:var(--fs-xs);color:var(--muted);min-width:0;flex:1 1 100%}
 .detailtitletools{display:inline-flex;vertical-align:middle;margin:3px 0 3px 8px;flex-wrap:nowrap}.detailtitlestate{display:block;margin:-4px 0 10px}
 .detailtitlestate:empty{display:none}
@@ -87,7 +87,8 @@
 .preference textarea{display:block;width:100%;min-height:62px;resize:vertical;padding:8px 9px;
   color:var(--ink);background:var(--ground);border:1px solid var(--line);border-radius:var(--control-radius);
   line-height:1.5;font-size:var(--fs-md)}
-.preference textarea:focus{border-color:var(--tungsten);outline:0}
+.preference textarea:hover{border-color:var(--field-ring-hover)}
+.preference textarea:focus{border-color:var(--field-ring-focus);box-shadow:0 0 0 4px var(--field-glow);outline:0}
 .preference-foot{display:flex;align-items:center;justify-content:flex-end;gap:8px;margin-top:7px}
 .preference-foot>span{margin-right:auto;color:var(--muted);font-size:var(--fs-xs)}.preference-foot>span:empty{display:none}
 .savepreference{min-width:58px;padding-inline:12px}
