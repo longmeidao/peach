@@ -17,6 +17,9 @@ it('自启保存实际选项，卸载默认保留数据',async()=>{
   await act(async()=>render(<><StartupSettings startup={{available:true,enabled:false,silent:true,message:''}} receipt={()=>{}} />
     <UninstallSettings uninstall={{available:true,full_available:true,message:'',data_root:'fixture',directories:[]}} /></>,host));
   const boxes=host.querySelectorAll<HTMLInputElement>('input');
+  expect(host.querySelectorAll('[role="switch"]')).toHaveLength(2);
+  expect(host.querySelector('form button')?.textContent).toBe('保存配置');
+  expect(fetch).not.toHaveBeenCalled();
   expect(boxes[2]!.checked).toBe(false);
   expect(host.querySelector('[data-fieldset-type=error]')).not.toBeNull();
   const summary=host.querySelector('summary')!;

@@ -292,9 +292,9 @@ details.fcred{display:block;min-width:0}
 .fcredactions button:hover:not(:disabled){background:color-mix(in srgb,var(--ink) 88%,var(--ground));
   border-color:color-mix(in srgb,var(--ink) 88%,var(--ground));color:var(--ground)}
 .fcredactions button:disabled{background:var(--sunk);border-color:var(--line-soft);color:var(--muted);cursor:default}
-.fcredactions button.fquiet{background:transparent;border-color:var(--border-15);
-  color:var(--muted)}
+.fcredactions button.fquiet{background:var(--drop);border-color:var(--drop);color:#fff}
 .fcredactions button.fquiet:hover{background:var(--drop);border-color:var(--drop);color:#fff}
+.fcredactions button.fquiet:disabled{background:var(--surface);border-color:var(--line);color:var(--muted)}
 .fcredactions [data-cred-state]{font-size:var(--fs-xs);color:var(--muted)}
 
 @media (max-width:640px){

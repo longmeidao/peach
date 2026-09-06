@@ -11,6 +11,10 @@ function SettingCheck({ label, checked, disabled, change }: { label:string; chec
     <span aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#i-check" /></svg></span></span><span>{label}</span></label>;
 }
 
+function SettingToggle({ label, checked, disabled, change }: { label:string; checked:boolean; disabled:boolean; change(value:boolean):void }) {
+  return <label class="configtoggle"><span>{label}</span><input class="ptoggle" type="checkbox" role="switch" checked={checked} disabled={disabled} onChange={event=>change(event.currentTarget.checked)} /></label>;
+}
+
 export function StartupSettings({ startup, receipt }: { startup: StartupState; receipt(message: string): void }) {
   const [enabled,setEnabled] = useState(startup.enabled);
   const [silent,setSilent] = useState(startup.silent);
@@ -28,13 +32,15 @@ export function StartupSettings({ startup, receipt }: { startup: StartupState; r
     <form class="configfieldset" data-geist-fieldset onSubmit={event=>{event.preventDefault();void save();}}>
       <div class="geist-fieldset-content">
         <div dangerouslySetInnerHTML={{__html:fieldsetTitle('startupTitle','开机自启')}} />
-        <SettingCheck label="开机后启动 Peach" checked={enabled} disabled={!startup.available} change={setEnabled} />
-        <SettingCheck label="静默启动" checked={silent} disabled={!startup.available} change={setSilent} />
-        <p class="confighelp">静默启动仅显示托盘；关闭后自动打开浏览器。</p>
+        <div class="configoptions" role="group" aria-labelledby="startupTitle">
+          <SettingToggle label="开机后启动 Peach" checked={enabled} disabled={!startup.available} change={setEnabled} />
+          <div class="configoption"><SettingToggle label="静默启动" checked={silent} disabled={!startup.available} change={setSilent} />
+            <p class="confighelp">静默启动仅显示托盘。</p></div>
+        </div>
         {startup.message && <p class="confighelp">{startup.message}</p>}
         {error && <p class="configbad" role="alert">{error}</p>}
       </div>
-      <footer class="geist-fieldset-footer" data-geist-fieldset-footer><button ref={button} type="submit" class="geist-button primary" disabled={!startup.available}>保存自启</button></footer>
+      <footer class="geist-fieldset-footer" data-geist-fieldset-footer><button ref={button} type="submit" class="geist-button primary" disabled={!startup.available}>保存配置</button></footer>
     </form>
   );
 }

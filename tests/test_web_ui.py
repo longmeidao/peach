@@ -351,7 +351,7 @@ class WebUiSourceTests(unittest.TestCase):
         ":focus",              # 焦点环：:focus / :focus-visible / :focus-within
         ".geist-progress", ".watchprogress", ".vjs-play-progress", ".vjs-progress-holder",
         ".trace .bar", ".tokbar",  # 进度与数据
-        ":is(#censorSetting,#detailAutoplaySetting):checked",  # Toggle 开态：Geist Toggle 实测轨道 rgb(0,112,243)
+        ":is(#censorSetting,#detailAutoplaySetting,.ptoggle):checked",  # Toggle 开态：Geist Toggle 实测轨道 rgb(0,112,243)
         ".entitylink", ".flink", ".fsourcelink", ".fcred a", ".tokauthor>a", ".confighelp a", ".taste-history-guide-content a",  # 真正的链接
     )
 
@@ -5784,8 +5784,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertNotIn("box-shadow:0 8px 32px -12px", self.css, "浮层靠发丝线不靠投影")
         # 布尔开关是 Geist 中号 Toggle（36×20 轨道 + 17px 圆点），不是原生复选框；
         # Geist 的 Switch 是分段选择器，别用错控件。
-        self.assertPageContains(":is(#censorSetting,#detailAutoplaySetting){appearance:none;-webkit-appearance:none;width:36px;height:20px;flex:none;")
-        self.assertPageContains(":is(#censorSetting,#detailAutoplaySetting):checked{background:var(--tungsten)}")
+        self.assertPageContains(":is(#censorSetting,#detailAutoplaySetting,.ptoggle){appearance:none;-webkit-appearance:none;width:36px;height:20px;flex:none;")
+        self.assertPageContains(":is(#censorSetting,#detailAutoplaySetting,.ptoggle):checked{background:var(--tungsten)}")
         # 没有直接证据的 command-menu 入场动画与无有效高度约束的复核卡
         # Scroller 不应继续作为「Vercel 对齐」进入产品。
         self.assertPageLacks("animation:panel-in")

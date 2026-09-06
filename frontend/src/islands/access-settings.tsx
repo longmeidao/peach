@@ -1,7 +1,7 @@
 /** 本机访问密码；表单值只留在提交期间的组件内存中。 */
 import { useRef, useState } from 'preact/hooks';
 import type { JSX } from 'preact';
-import { fieldsetTitle, setActionBusy } from '@peach/legacy/ui';
+import { fieldsetTitle, setActionBusy, noteHtml } from '@peach/legacy/ui';
 import { ApiError, apiSend, errorMessage } from '../api';
 
 export interface AccessState { mode: 'open' | 'password' | 'legacy' | 'locked'; revision: string }
@@ -60,7 +60,7 @@ export function AccessSettings({ initial, receipt }: { initial: AccessState; rec
     }
     finally { busy.current = false; setActionBusy(button.current, false); }
   };
-  return <form class="configfieldset" onSubmit={submit} aria-labelledby="accessTitle" noValidate ref={form}>
+  return <form class="configfieldset" data-fieldset-type={disable ? 'warning' : undefined} onSubmit={submit} aria-labelledby="accessTitle" noValidate ref={form}>
     <div class="geist-fieldset-content">
       <div class="configfieldset-heading">
       <div dangerouslySetInnerHTML={{ __html: fieldsetTitle('accessTitle', '访问密码') }} />
@@ -72,6 +72,7 @@ export function AccessSettings({ initial, receipt }: { initial: AccessState; rec
         <PasswordField id="access-confirm" label="确认访问密码" value={confirmation} onInput={setConfirmation} error={fields.confirmation} />
       </> : null}
       {state.mode === 'password' || state.mode === 'legacy' ? <label class="configcheck"><span class="pcheck"><input type="checkbox" checked={disable} onChange={(event) => setDisable(event.currentTarget.checked)} /><span aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#i-check" /></svg></span></span><span>关闭访问密码，允许能连接到 Peach 的设备直接访问</span></label> : null}
+      {disable && <div dangerouslySetInnerHTML={{__html:noteHtml('保存后，能连接到 Peach 的设备将直接访问馆藏。',{variant:'warning',label:'访问范围'})}} />}
       {error ? <p class="configbad" role="alert">{error}</p> : null}
     </div>
     {state.mode !== 'locked' ? <div class="geist-fieldset-footer"><p>保存后立即生效。</p><button class="geist-button primary" type="submit" ref={button}>保存配置</button></div> : null}

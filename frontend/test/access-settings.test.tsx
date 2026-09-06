@@ -16,6 +16,8 @@ it('系统口令可直接转为可选密码且关闭需要明确提交', async (
   const toggle = host.querySelector<HTMLInputElement>('[type="checkbox"]')!;
   toggle.checked = true; toggle.dispatchEvent(new Event('change', { bubbles: true })); await settle();
   expect(host.querySelector('[autocomplete="new-password"]')).toBeNull();
+  expect(host.querySelector('form')?.getAttribute('data-fieldset-type')).toBe('warning');
+  expect(host.querySelector('.geist-note-warning')?.textContent).toContain('直接访问馆藏');
   expect(fetcher).not.toHaveBeenCalled();
   host.querySelector('form')!.dispatchEvent(new Event('submit', { cancelable: true })); await settle();
   expect(JSON.parse((fetcher.mock.calls[0] as unknown as [string, RequestInit])[1].body as string)).toMatchObject({ action: 'disable', confirm_disable: true });
