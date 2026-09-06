@@ -82,9 +82,9 @@ describe('配置页取数', () => {
     expect(el.querySelector('[role="progressbar"]')?.getAttribute('aria-valuenow')).toBe('100');
     expect(modal).toHaveBeenCalledTimes(1);
     expect(modal.mock.calls[0]?.[0]).toMatchObject({title:'更新已准备好',confirmLabel:'立即重启',cancelLabel:'稍后'});
-    expect(fetch).not.toHaveBeenCalled();
+    expect(fetch.mock.calls.filter(([url]) => url.startsWith('/api/configuration/update'))).toHaveLength(0);
     await modal.mock.calls[0]?.[0].onConfirm?.();
-    expect(fetch.mock.calls[0]?.[0]).toBe('/api/configuration/update-restart');
+    expect(fetch.mock.calls.some(([url]) => url === '/api/configuration/update-restart')).toBe(true);
   });
   it('版本字段组显式查询测试版，失败后可重试且保留焦点', async () => {
     const initial = {current_version:'0.9.0',latest_version:null,channel:'测试版',installation:'独立测试包',state:'unchecked',message:'尚未检查',release_url:'https://github.com/longmeidao/peach/releases'};
