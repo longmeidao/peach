@@ -278,3 +278,5 @@ Python、npm 与 GitHub Actions 的版本由 `.github/dependabot.yml` 每周检�
 - 作品封面只进入头像候选，单人作品关联不证明画面中的人物身份；`cover_fallback` 显式标记身份未核实，安装闸门独立拒绝这类来源。
 - 复核页面上下文复用原生 CSS sticky 与主导航 `--topH`，分类及筛选栏合为同一吸附区。卡片以 flex 分开标题、既有 Scroller、当前信息和操作；只有资料滚动，当前信息过长时可聚焦滚动阅读。多选计数共用 `selectiondockcount`，保留首页的文字口径；不新增依赖，不改变候选与提交协议。
 - 复核分类复用 `selectFieldHtml`、`wireSelectField` 和现有 `list-filter` 图标；图标只在筛选入口显示，选项保留文字与选中标记。按当前候选数据提供字段及来源选项，批量决定复用既有协议。字段次级分类采用具名 Listbox 分区，依据见 `reference-snapshots/vercel-review-actions.md`。人工复核与馆藏、关注、标签、垃圾文件和回收站共用 `selectiondock` 浮窗布局，保留各自操作与提交协议；复核卡片内作品样本选择仍属于单条候选，不混入页面级多选。没有新增依赖。Shift 连选使用原生 `mousedown.preventDefault()` 防止文字选区；实际浏览器验证覆盖亮暗主题、宽屏和 390px。
+
+反馈控件复用：`noteHtml`、`progressHtml`、`gaugeHtml`、`projectBannerHtml` 与 `wireContextCard` 集中在共享 UI 模块；信息卡片复用原生 Popover 和现有锚定菜单定位，不添加浮层依赖。`BackgroundJob.update(job_id)` 报告浏览记录、口味分析和逐行来源解析的阶段与计数，`followJobProgress` 统一读取文字和总量，查询不重新执行任务。浏览记录解析继续使用 browserexport；本地临时浏览器数据库验证计数及隐私字段。证据见 `reference-snapshots/vercel-geist-note-progress-switch-analytics.md`。

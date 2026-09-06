@@ -86,3 +86,5 @@
 .configfacts dt .gselectmark{vertical-align:-3px;margin-inline-end:8px}
 @media(max-width:560px){.configfacts{grid-template-columns:minmax(0,1fr)}.configfacts dd{margin-top:-6px}}
 @media(max-width:560px){.configpage{--control-h:44px}.configfieldset>.geist-fieldset-footer{flex-wrap:wrap}.configsource .geist-input{font-size:var(--fs-lg)}}
+
+.configrm.geist-button:not(:disabled){color:#fff;background:var(--drop);border-color:var(--drop)}

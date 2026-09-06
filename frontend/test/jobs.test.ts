@@ -4,6 +4,19 @@ import { watchJob, followJobProgress } from '../src/jobs';
 afterEach(() => { vi.useRealTimers(); sessionStorage.clear(); document.body.innerHTML = ''; });
 
 describe('后台任务状态恢复', () => {
+  it('后台阶段说明随轮询更新并保留真实计数', async () => {
+    vi.useFakeTimers();
+    const host=document.createElement('div');document.body.append(host);
+    let state={status:'running',job_id:'taste',checked:0,total:3,message:'分析浏览记录：已处理 0 / 3 条'};
+    followJobProgress({host,active:()=>true,read:async()=>state,busy:()=>{},complete:()=>{},
+      title:'读取浏览记录',note:text=>text,loading:text=>text,progress:(value,max)=>`${value}/${max}`});
+    await vi.advanceTimersByTimeAsync(0);
+    expect(host.textContent).toContain(state.message);
+    state={...state,checked:2,message:'分析浏览记录：已处理 2 / 3 条'};
+    await vi.advanceTimersByTimeAsync(4000);
+    expect(host.textContent).toContain(state.message);
+    expect(host.textContent).toContain('2/3');
+  });
   it('页面重建后恢复来源进度并只接收一次完成回执', async () => {
     vi.useFakeTimers();
     const host = document.createElement('div'); document.body.append(host);

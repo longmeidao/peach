@@ -63,13 +63,6 @@
 .fdescinfo:hover{color:var(--ink)}.fdescinfo:focus-visible{color:var(--ink);outline:none;box-shadow:0 0 0 2px var(--tungsten)}
 .fdescinfo svg{width:13px;height:13px;stroke:currentColor;fill:none;
   stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-.fdescpop{position:fixed;z-index:var(--layer-tooltip);width:max-content;
-  max-width:min(250px,calc(100vw - 16px));padding:6px 8px;border-radius:var(--surface-radius);
-  background:var(--surface);color:var(--ink);border:1px solid var(--border-15);
-  font-size:var(--fs-sm);line-height:1.3;overflow-wrap:anywhere;pointer-events:none;
-  box-shadow:0 12px 40px #0007;text-align:left}
-.fdescpop[hidden]{display:none}
-.fdescpop code{font-family:"Cascadia Mono",Consolas,ui-monospace,"Microsoft YaHei UI","PingFang SC",monospace}
 .fnote{margin:8px 0 0;font-size:var(--fs-sm);line-height:1.7;color:var(--muted)}
 .fnote:empty{display:none}
 .fnote b{color:var(--ink-2);font-weight:600}
@@ -79,14 +72,31 @@
 /* Geist Note：字段、卡片、分区旁的持久上下文，以及需要用户处理的失败，全部走这里。
    瞬时回执用 toast，销毁确认用 dialog/confirm。整页范围的失败也是这个盒子，只是多
    一个关闭键（见下面的 .fwarn／.fcheckreport），不另立一套横幅。 */
-.geist-note{display:grid;grid-template-columns:16px minmax(0,1fr);align-items:start;gap:9px;margin:10px 0;padding:11px 12px;border:1px solid var(--line-soft);border-radius:var(--surface-radius);background:var(--overlay-5);color:var(--ink-2);font-size:var(--fs-sm);line-height:1.55}.geist-note>svg{width:16px;height:16px;margin-top:2px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}.geist-note>p{margin:0}.geist-note>p b{margin-right:7px;color:var(--ink)}.geist-note-secondary{color:var(--muted)}.geist-note-warning{border-color:color-mix(in srgb,var(--meter) 32%,transparent);background:color-mix(in srgb,var(--meter) 7%,transparent)}.geist-note-error{border-color:color-mix(in srgb,var(--drop) 30%,transparent);background:color-mix(in srgb,var(--drop) 7%,transparent)}.geist-note-error>svg{color:var(--drop)}.geist-note-success{border-color:color-mix(in srgb,var(--success) 30%,transparent);background:color-mix(in srgb,var(--success) 7%,transparent)}.geist-note-success>svg{color:var(--success)}
+/* Note 默认无填充，filled 使用不透明浅色面；状态含义由文字和图标共同表达。 */
+:root{--feedback-success:oklch(53.18% .2399 256.99)}
+:root[data-theme="dark"]{--feedback-success:oklch(71.7% .1648 250.794)}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--feedback-success:oklch(71.7% .1648 250.794)}}
+.geist-note{--feedback-color:var(--muted);display:grid;grid-template-columns:16px minmax(0,1fr);align-items:start;gap:12px;margin:0;padding:6px 12px;min-height:40px;box-sizing:border-box;border:1px solid var(--line);border-radius:var(--control-radius);background:transparent;color:var(--feedback-color);font-size:var(--fs-md);line-height:24px;overflow-wrap:anywhere}
+.geist-note>svg{width:16px;height:24px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.geist-note>p{margin:0}.geist-note>p b{margin-right:8px;color:inherit}
+.geist-note-warning{--feedback-color:var(--meter);border-color:color-mix(in srgb,var(--meter) 32%,var(--ground))}
+.geist-note-error{--feedback-color:var(--drop);border-color:color-mix(in srgb,var(--drop) 30%,var(--ground))}
+.geist-note-success{--feedback-color:var(--feedback-success);border-color:color-mix(in srgb,var(--feedback-success) 30%,var(--ground))}
+.geist-note-filled{background:color-mix(in srgb,var(--feedback-color) 8%,var(--ground))}
+.geist-note-small{min-height:32px;padding:4px 8px;font-size:var(--fs-xs);line-height:22px}
+.geist-note-small>svg{height:22px}
+.project-banner{--feedback-color:var(--muted);display:flex;align-items:center;justify-content:center;gap:8px 16px;flex-wrap:wrap;padding:8px 24px;min-height:40px;border-block:1px solid color-mix(in srgb,var(--feedback-color) 30%,var(--ground));background:color-mix(in srgb,var(--feedback-color) 5%,var(--ground));color:var(--feedback-color);font-size:var(--fs-md);line-height:20px}
+.project-banner>div{display:flex;align-items:center;gap:8px;min-width:0}.project-banner p{margin:0;overflow-wrap:anywhere}
+.project-banner svg{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:2}
+.project-banner>a{color:inherit;text-decoration:underline;text-underline-offset:5px;font-weight:500;flex:none}
+.project-banner-error{--feedback-color:var(--drop)}.project-banner-warning{--feedback-color:var(--meter)}.project-banner-success{--feedback-color:var(--feedback-success)}
+.context-card{position:fixed;inset:auto;margin:0;width:320px;max-width:calc(100vw - 16px);box-sizing:border-box;overflow:auto;overscroll-behavior:contain;padding:16px;border:1px solid var(--line);border-radius:var(--floating-radius);background:var(--ground);color:var(--ink);box-shadow:0 8px 24px rgba(0,0,0,.16);font-size:var(--fs-md);line-height:1.5;overflow-wrap:anywhere;z-index:var(--layer-popover);pointer-events:auto}
+.context-card[hidden]{display:none}.context-card h3{margin:0 0 8px;font-size:var(--fs-md)}.context-card dl{display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px 12px;margin:0}.context-card dt{color:var(--muted)}.context-card dd{margin:0}
+@media(max-width:600px){.project-banner{justify-content:flex-start}.project-banner>a{margin-left:24px}}
 
-/* 检查结果的页内持久行（.fwarn 是上次检查的存量失败，.fcheckreport 是这次
-   检查的失败明细）。失败不能只发 toast——那是转身就丢的通知；原因和恢复入口
-   必须留在页面上，所以它们是 Geist Note 的可关闭变体：盒子、发丝边、图标尺寸
-   和 error／secondary 两套配色全部来自 `.geist-note`，这里只补关闭键那一列。
-   自带一份边框和内距的话，同一条失败在关注页和管理页会长成两个样子。 */
-.fcheckreport,.fwarn{grid-template-columns:16px minmax(0,1fr) 24px;margin:10px 0 14px}
+
+/* 检查失败明细持续保留到状态解决，复用 Note 的边界、图标和语义色。 */
+.fcheckreport,.fwarn{grid-template-columns:16px minmax(0,1fr);margin:10px 0 14px}
 .fcheckreport>div,.fwarn>span{min-width:0}
 .fcheckreport p,.fwarn p{margin:0}
 .fcheckreport b{color:var(--ink);font-variant-numeric:tabular-nums}
@@ -98,11 +108,6 @@
 .sbadge i{width:6px;height:6px;border-radius:50%;background:var(--muted);flex:none}
 .sbadge.ok i{background:var(--success)}
 .sbadge.error i{background:var(--drop)}
-.fwarn .wclose,.fcheckreport .wclose{width:24px;height:24px;padding:0;border:0;
-  border-radius:var(--control-radius);background:transparent;color:var(--muted);
-  display:grid;place-items:center;cursor:pointer}
-.fwarn .wclose:hover,.fcheckreport .wclose:hover{background:var(--hover);color:var(--ink)}
-.fwarn .wclose svg,.fcheckreport .wclose svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round}
 /* 批量动作是 2292 条级别的操作，不是行内文字链接：按钮的边界让「这会改状态」
    在点击前就看得见，也和本页其他 .fbtn（检查全部／去看更新）同一套语言。 */
 .fbulk{display:inline-flex;gap:8px;margin-left:auto;flex:none}
@@ -405,3 +410,13 @@ details.fcred{display:block;min-width:0}
    但那条规则量不出行内元素的可用宽度。 */
 .linktable .linkurl a{display:block;color:var(--muted);text-decoration:none}
 .linktable .linkurl a:hover{color:var(--ink)}
+.photolight.has-strip .photodetail.context-card,.photodetail.context-card{position:fixed;inset:auto;width:320px;max-width:calc(100vw - 16px);background:var(--ground);color:var(--ink);backdrop-filter:none}.photodetail.context-card .photodetailmeta,.photodetail.context-card .srcstate{color:var(--muted)}.photodetail.context-card>button{color:var(--ink);border-color:var(--line)}
+
+.geist-gauge{display:inline-flex;width:32px;height:32px;flex:none;vertical-align:middle;margin-inline-end:8px}.geist-gauge svg{width:100%;height:100%;fill:none;stroke-width:3}.geist-gauge circle:first-child{stroke:var(--line-soft)}.geist-gauge circle:last-child{stroke:var(--feedback-success);transform:rotate(-90deg);transform-origin:center}.geist-progress{position:relative}.geist-progress i{background:var(--progress-color,var(--feedback-success))}.geist-progress-stop{position:absolute;top:0;bottom:0;width:2px;background:var(--ground);transform:translateX(-50%)}
+.geist-note:has(>[data-note-action]){grid-template-columns:16px minmax(0,1fr) auto;align-items:center}
+.geist-note>[data-note-action]{margin:0;white-space:nowrap}
+.geist-gauge[data-level="warning"] circle:last-child{stroke:var(--meter)}
+.geist-gauge[data-level="error"] circle:last-child{stroke:var(--drop)}
+.gauge-status{margin-inline-end:8px;font-size:var(--fs-xs)}
+@media(prefers-reduced-motion:no-preference){.geist-progress i{transition:width .2s ease-out,background-color .2s ease-out}.geist-gauge circle:last-child{transition:stroke-dasharray .2s ease-out,stroke .2s ease-out}}
+@media(max-width:600px){.geist-note:has(>[data-note-action]){grid-template-columns:16px minmax(0,1fr)}.geist-note>[data-note-action]{grid-column:2;justify-self:start}}
