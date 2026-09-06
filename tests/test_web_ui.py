@@ -2101,7 +2101,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(
             "if((+appSettings.sortDefaultsVersion||0)<3&&SORT_ALIASES[appSettings.defaultSort]){")
         # 设置里的默认排序与排序条同源：列名中性，方向由列自己的默认值决定。
-        self.assertPageContains("['dur','时长'],['size','体积'],['new','入库时间'],['played','观看时间']")
+        self.assertPageContains("['dur','时长','clock'],['size','体积','hard-drive'],['new','入库时间','calendar'],['played','观看时间','history']")
         for legacy in ("['long','", "['short','"):
             self.assertPageLacks(legacy, "默认排序只列中性列名，不列把方向写进键名的值")
 
@@ -6825,6 +6825,10 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("if(!returnSurfaceReady)clearIdleCatalogLoading();")
 
     def test_settings_sort_pair_and_hover_off(self):
+        self.assertPageContains('class="settingrow settingrelated"')
+        self.assertPageContains('.settingrow.settingrelated{border-top:0}')
+        self.assertPageContains("['rating','评分','star']")
+        self.assertPageContains("icon(ascending?'arrow-up':'arrow-down','gselectmark')")
         self.assertPageContains('class="settingsortcontrols"')
         self.assertPageContains("field.disabled=appSettings.defaultSort==='seed'")
         self.assertPageContains("['hoverDelaySetting','悬停放大',[['0','关闭']")

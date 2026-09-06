@@ -477,14 +477,14 @@ const SETTING_SELECTS=[
   ['batchSizeSetting','每批作品',[['30','30 个'],['60','60 个'],['90','90 个']],
     ()=>appSettings.batchSize,
     value=>{appSettings.batchSize=+value||60;saveSettings();if(location.pathname==='/')load(true)}],
-  ['defaultSortSetting','默认排序',[['seed','随机'],['rating','评分'],['o','高潮计数'],['plays','观看次数'],
-    ['dur','时长'],['size','体积'],['new','入库时间'],['played','观看时间']],
+  ['defaultSortSetting','默认排序',[['seed','随机','refresh-cw'],['rating','评分','star'],['o','高潮计数','heart'],['plays','观看次数','play'],
+    ['dur','时长','clock'],['size','体积','hard-drive'],['new','入库时间','calendar'],['played','观看时间','history']],
     ()=>appSettings.defaultSort,
     value=>{appSettings.defaultSort=value;syncSortDirectionSetting();saveSettings();state.sort=appSettings.defaultSort;
       state.dir=preferredDirection(state.sort,appSettings.defaultSort,appSettings.defaultSortDirection);if(location.pathname==='/')load(true)}],
   ['defaultSortDirectionSetting','默认排序方向',[['desc','降序'],['asc','升序']],
     ()=>appSettings.defaultSortDirection==='asc'?'asc':'desc',
-    value=>{appSettings.defaultSortDirection=value;saveSettings();state.dir=preferredDirection(state.sort,appSettings.defaultSort,appSettings.defaultSortDirection);if(location.pathname==='/')load(true)}],
+    value=>{appSettings.defaultSortDirection=value;syncSortDirectionSetting();saveSettings();state.dir=preferredDirection(state.sort,appSettings.defaultSort,appSettings.defaultSortDirection);if(location.pathname==='/')load(true)}],
   ['hoverDelaySetting','悬停放大',[['0','关闭'],['3','3 秒'],['5','5 秒'],['8','8 秒']],
     ()=>appSettings.hoverDelaySeconds,
     value=>{appSettings.hoverDelaySeconds=allowedSetting(+value,[0,3,5,8],5);
@@ -505,7 +505,11 @@ const SETTING_SELECTS=[
 ];
 function syncSortDirectionSetting(){
   const field=$('#defaultSortDirectionSetting .gselect');
-  if(field)field.disabled=appSettings.defaultSort==='seed';
+  if(field){
+    field.disabled=appSettings.defaultSort==='seed';
+    const ascending=appSettings.defaultSortDirection==='asc';
+    field.querySelector('[data-select-label]').innerHTML=`${icon(ascending?'arrow-up':'arrow-down','gselectmark')}${ascending?'升序':'降序'}`;
+  }
   const help=$('#sortDirectionHelp');
   if(help)help.textContent=appSettings.defaultSort==='seed'?'随机排序不使用方向。':'打开首页时使用的排序与方向。';
 }

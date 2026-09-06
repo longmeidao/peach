@@ -33,6 +33,7 @@ body.settings-open{overflow:hidden}
 .settingshead svg{width:20px;height:20px;stroke:currentColor;fill:none}.settingrow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:18px;align-items:center;padding:14px 0 14px;border-top:1px solid var(--line-soft)}
 .settinggroup>h3+.settingrow{border-top:0}.settingrow b{display:block;font-size:var(--fs-md)}.settingrow small{display:block;color:var(--muted);margin-top:8px;line-height:1.45}
 .settingrow .gselect{min-width:148px}
+.settingrow.settingrelated{border-top:0}
 .settingsortrow{grid-template-columns:minmax(0,1fr)}
 .settingsortcontrols{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px}
 .settingsortcontrols .gselect{min-width:0;width:100%}
