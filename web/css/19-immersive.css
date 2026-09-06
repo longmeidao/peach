@@ -95,10 +95,9 @@ body:has(#batchbar:not([hidden])) #stage{padding-bottom:180px}
 .reviewdock .reviewbulkdecisions{flex-wrap:wrap;justify-content:center;gap:7px}
 .reviewdock .reviewbulksource{max-width:min(280px,calc(100vw - 48px))}
 .reviewdock .geist-button,.reviewdock .gselectfield{height:var(--control-h)}
-.batchbar span{padding:0 8px;color:var(--ink-2);white-space:nowrap}.batchbar button{border:1px solid var(--line);border-radius:var(--floating-radius);
-  background:var(--surface);color:var(--ink);padding:9px 12px;cursor:pointer}.batchbar button:hover{background:var(--hover);color:var(--ink)}
+.batchbar span{padding:0 8px;color:var(--ink-2);white-space:nowrap}.batchbar button{border:0;border-radius:var(--floating-radius);
+  background:var(--ground);color:var(--ink);padding:9px 12px;cursor:pointer}.batchbar button:hover{background:var(--hover);color:var(--ink)}
 .batchbar button svg{width:17px;height:17px;margin-right:6px;vertical-align:-4px;stroke:currentColor;fill:none;stroke-width:2}
-.batchbar .danger{color:var(--drop)}
 
 @media (max-width:1080px){.sgrid,.sgrid.mixgrid{grid-template-columns:minmax(0,1fr)}
   .sgrid.mixgrid{grid-template-areas:"media" "side" "queue"}
@@ -148,7 +147,7 @@ body:has(#batchbar:not([hidden])) #stage{padding-bottom:180px}
   .entitycollectionhead{align-items:flex-start;flex-direction:column}
   .entitycollectionhead .sorts{width:100%;margin-left:0;padding-bottom:2px}
   .entitycollectionhead .sorts button{min-height:36px}
-  .playlistpage>header{align-items:stretch;flex-direction:column}.playlistcreate label{max-width:none}.playlistcreate input{min-width:0}.playlistcard{grid-template-columns:92px minmax(0,1fr)}.playlistactions{justify-content:flex-start;overflow-x:auto}.playlistactions button{white-space:nowrap}
+  .playlistpage>header{align-items:stretch;flex-direction:column}.playlistcreate label{max-width:none}.playlistcreate input{min-width:0}
   .fb{width:100%}.fb button{flex:1 1 0;min-width:38px}
   /* 关注详情只有三四个动作键，撑满一行就是四个大得离谱的方块。 */
   .fb.followdetailactions{width:max-content;max-width:100%}
@@ -199,7 +198,7 @@ body:has(#batchbar:not([hidden])) #stage{padding-bottom:180px}
   .npbtn{position:relative}
   .npbtn::after{content:"";position:absolute;top:50%;left:50%;width:44px;height:44px;
     transform:translate(-50%,-50%)}
-  .npmenu button,.gselectmenu button{min-height:44px}
+  .npmenu button,.popmenu.gselectmenu button{min-height:44px}
   .entityhero .alias{margin-bottom:10px}
   .entityhero .entitylinks{justify-content:center;margin-top:13px}
   .stats h2{font-size:var(--fs-xl)}.stats .insightcopy h2{font-size:var(--fs-3xl)}

@@ -30,4 +30,10 @@ export const fmtSize = (bytes: number | null | undefined): string => {
   return `${Math.floor(value / 1048576)} MB`;
 };
 
+/* 只复制行为，不复制 `SITE_FAVICONS` 那张表：island 用到的站点都不在表里，
+   抄一份过来只会在遗留层加条目时变成两份各自漂移的清单。 */
+export const faviconUrl = (url: string): string => {
+  try { return new URL('/favicon.ico', url).href; } catch { return ''; }
+};
+
 export const esc = (value: string): string => value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");

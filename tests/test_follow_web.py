@@ -1666,7 +1666,7 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("followAuthorGroups(sources).map(followAuthorBlock).join('')")
         self.assertNotIn(".fsources>.fauthor{display:grid", self.page,
                          "多栏单位是作者组，不能拆开作者下面的来源行")
-        self.assertPageContains('class="fsourcelink" href="${esc(source.url)}"')
+        self.assertPageContains('class="fsourcelink externallink" href="${esc(source.url)}"')
         self.assertPageContains('title="打开原来源"')
         self.assertPageContains('rel="noreferrer noopener"')
         author = self.page[self.page.index(".fauthor{"):]
@@ -2174,7 +2174,7 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains('data-follow-detail="${item.id}"')
         self.assertPageContains("route(`/follow/item/${item.id}`)")
         self.assertPageContains('class="sgrid followdetailgrid${collection||embeddedQueue?\' mixgrid\':\'\'}"')
-        self.assertPageContains('class="followorigin" href="${esc(item.url)}" target="_blank"')
+        self.assertPageContains('class="followorigin externallink" href="${esc(item.url)}" target="_blank"')
         self.assertPageContains('title="打开来源页面" aria-label="打开来源页面"')
         self.assertNotIn('打开来源页面</a>', self.page)
         self.assertPageContains(".followdetailtitle{display:flex;gap:5px")
@@ -2643,7 +2643,7 @@ class FollowWebSourceTests(unittest.TestCase):
 
     def test_follow_external_links_have_a_real_icon_and_no_underlines(self):
         self.assertPageContains('<symbol id="i-external-link"')
-        self.assertPageContains("icon('external-link')")
+        self.assertPageContains("icon('external-link','externalmark')")
         self.assertPageContains(".followresources a:hover")
         self.assertPageContains("text-decoration:none")
 

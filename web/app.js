@@ -11,9 +11,9 @@ import { catalogSuggestions, catalogEmptyHtml, emptyCatalogLayout, syncSidebarSu
 import { javImageKind, normalizeJavImage, normalizeJavLayout, normalizeJavPreferences, syncJavImages, nativeImageFit, matchesFaceSource, entitySkeletonHtml } from './dist/peach-ui.js';
 import {
   attachOverlayScrollbar, breadcrumbHtml, checkboxHtml, closeAnchoredMenu, confirmModal, emptyStateHtml, fieldsetTitle,
-  fillSkeletonTier, fitSkeleton, iconSwitchHtml, indexSkeletonHtml, loadingDotsHtml,
+  fillSkeletonTier, fitSkeleton, formModal, iconSwitchHtml, indexSkeletonHtml, loadingDotsHtml,
   mediaViewButtonsHtml, noteHtml, progressHtml, gaugeHtml, scrollerHtml, searchInputHtml, selectFieldHtml,
-  setActionBusy, skeletonHtml, spinnerHtml, wireAnchoredMenu, wireBusyActions, wireCollapse,
+  setActionBusy, skeletonHtml, spinnerHtml, wireAnchoredMenu, wireBusyActions, wireCollapse, wireDragReorder,
   wireIconSwitch, wireOverlayScrollbars, wireScrollers, wireSelectField, wireContextCard, configurationSkeletonHtml,
 } from './js/ui-components.js';
 
@@ -186,7 +186,7 @@ $('#tokLoader').insertAdjacentHTML('afterbegin',spinnerHtml('媒体加载中'));
 /* 筛选条只由当前 state 决定，这次加载不会改变它，所以它现在就能画成最终样子。
    `state` 在启动 URL 解析之后才赋值，冷启动第一张骨架比它早，那一次只画计数骨架。 */
 const countSortsHtml=()=>!state?'':`<span class="sorts"><button class="batchaction" id="batchAction" type="button"
-    title="换一批" aria-label="换一批">${icon('refresh-cw')}</button>`
+    title="换一批" aria-label="换一批">${icon('shuffle')}</button>`
   // JAV 版式紧跟换批动作，和排序连成一条。
   +(javActive()?javLayoutButtons():'')
   +sortOptions().map(([k,l])=>sortButtonHtml(k,l,state.sort,state.dir,'data-sort')).join('')+`</span>`;
@@ -248,7 +248,10 @@ const MANAGEMENT_PLACEHOLDERS={
   // /resource-sync 只是数据管理页上的一个锚点，启动时占位也该是数据管理那张。
   '/resource-sync':()=>MANAGEMENT_PLACEHOLDERS['/data-cleanup'](),
   '/duplicates':()=>pageSkeletonHtml('正在比对重复内容',{cards:true}),
-  '/review':()=>pageSkeletonHtml('正在读取复核队列',{cards:true}),
+  /* 复核是一排分类 tab 加一格一格 440px 高的 Fieldset，不是海报网格：骨架照
+     .reviewlist 的列宽和 .reviewitem 的轮廓画，顶上留出 tab 那一条。 */
+  '/review':()=>`<div class="review">${pageSkeletonHtml('正在读取复核队列',
+    {cards:true,count:6,fill:false,className:'review-skeleton'})}</div>`,
   '/quality-goals':()=>pageSkeletonHtml('正在读取高清版目标',{cards:true}),
   '/playlists':()=>pageSkeletonHtml('正在读取播放列表',{cards:true}),
   // 关注管理是三个大区（添加关注、关注列表、凭据），不是一屏同质卡片：
@@ -256,6 +259,10 @@ const MANAGEMENT_PLACEHOLDERS={
   '/follow-manage':()=>`<div class="follow">${pageSkeletonHtml('正在读取关注管理',
     {cards:true,count:3,fill:false,className:'followmanage-skeleton'})}</div>`,
   '/configuration':()=>configurationSkeletonHtml(),
+  /* 采集来源是 812px 窄列里一叠同宽的 Fieldset：一块高清封面加六个来源。骨架画四块，
+     那是首屏装得下的张数；说明那一句是静态文案，与数据无关，立刻显示。 */
+  '/scraping':()=>`<div class="scraping-page"><p>高清图片可能需要代理才能下载，请先检查连接。</p>
+    ${pageSkeletonHtml('正在读取采集来源',{cards:true,count:4,fill:false,className:'cleanup-skeleton'})}</div>`,
 };
 const managementPlaceholder=path=>
   (MANAGEMENT_PLACEHOLDERS[path]||(()=>pageSkeletonHtml('正在读取页面')))();
@@ -880,7 +887,7 @@ function disposeStage(push=false,preserveInlineOrigin=false,{miniplayer=true}={}
   if(detailNetTimer){clearInterval(detailNetTimer);detailNetTimer=null}
   if(detailNetHideTimer){clearTimeout(detailNetHideTimer);detailNetHideTimer=null}
   /* 离开详情时正在放的视频不销毁：整个播放器搬进小窗接着放，流会话跟着它走。
-     显式关闭（叉、Escape）、换另一条详情和删掉当前条目都传 miniplayer:false；右键菜单
+     显式关闭（叉、Escape）、换成别的详情和删掉当前条目都传 miniplayer:false；右键菜单
      与 i 键的「迷你播放器」则用 miniplayerRequested 越过播放态判定。小窗自己的播放器
      （detailPlayer 已归它）在别的表面切换时原样留着。 */
   const meta=stageMiniplayerMeta;stageMiniplayerMeta=null;
@@ -1772,6 +1779,47 @@ function mountPlayerSeekPreview(player,it,options={}){
 }
 /* Video.js 自带的转圈是 `:before`／`:after` 画的两条弧，换不掉曲线；YouTube e937390a
    的 `FsY` 是四段嵌套元素配四段动画。转圈的 DOM 只能整块替换，样式表接不上手。 */
+/* 小窗（画中画）里只剩浏览器给的那几颗键，站内控制条一颗都递不进去。Media Session
+   的动作处理器是唯一的入口：登记 `seekbackward` 和 `seekforward` 之后，Chrome 会在小窗
+   里画出快退和快进两颗，步长用设置里那个秒数；`setPositionState` 让小窗自己那条进度条
+   知道现在放到哪，`seekto` 让拖它真的生效。不登记时小窗只有播放、暂停和关闭三颗。
+   YouTube 的小窗没有这两颗，这里是本站自己要的。 */
+function mountPlayerMediaSession(player,it){
+  const session=navigator.mediaSession;
+  if(!session||typeof session.setActionHandler!=='function')return;
+  const total=()=>realDuration(player.duration())||realDuration(it.duration)||0;
+  const seekTo=seconds=>{const duration=total();
+    player.currentTime(Math.max(0,duration?Math.min(duration,seconds):seconds))};
+  const step=()=>Math.max(1,Number(appSettings.seekSeconds)||10);
+  const handlers={
+    play:()=>{void player.play()},
+    pause:()=>player.pause(),
+    seekbackward:details=>seekTo(player.currentTime()-(details?.seekOffset||step())),
+    seekforward:details=>seekTo(player.currentTime()+(details?.seekOffset||step())),
+    seekto:details=>{if(typeof details?.seekTime==='number')seekTo(details.seekTime)},
+  };
+  const registered=[];
+  for(const [action,handler] of Object.entries(handlers)){
+    /* 浏览器不认的动作会抛，认得的照常登记：整块 try 会让一个不认识的动作带走后面
+       全部处理器，小窗于是又回到只有播放暂停。 */
+    try{session.setActionHandler(action,handler);registered.push(action)}catch(_e){}
+  }
+  const syncPosition=()=>{
+    const duration=total(),position=Math.max(0,Number(player.currentTime())||0);
+    if(typeof session.setPositionState!=='function')return;
+    /* 时长不可用或者进度跑在时长前面时不报：`setPositionState` 对这两种入参直接抛，
+       而 `timeupdate` 每秒都来，抛一次就是每秒一条错误。 */
+    if(!duration||position>duration)return;
+    try{session.setPositionState({duration,position,
+      playbackRate:Math.max(.001,Number(player.playbackRate())||1)})}catch(_e){}
+  };
+  player.on(['timeupdate','durationchange','ratechange','seeked','loadedmetadata'],syncPosition);
+  syncPosition();
+  player.on('dispose',()=>{
+    registered.forEach(action=>{try{session.setActionHandler(action,null)}catch(_e){}});
+    try{session.setPositionState?.()}catch(_e){}
+  });
+}
 function mountPlayerSpinner(player){
   const spinner=player.el().querySelector('.vjs-loading-spinner');
   if(!spinner||spinner.querySelector('.vjs-peach-spinner-container'))return;
@@ -1921,6 +1969,7 @@ async function mountDetailPlayer(it,video,autoplay,options={}){
       if(size>0&&!mediaSize){mediaSize=size;meter.bitrate=averageBitrate(size,it.duration)}
     }).catch(()=>{});
     mountPlayerSeekPreview(detailPlayer,it,{thumbnail:!options.source});
+    mountPlayerMediaSession(detailPlayer,it);
     mountPlayerSpinner(detailPlayer);
     if(statsButton)statsButton.hidden=false
   });
@@ -2470,7 +2519,7 @@ function cardHtml(it,cls){
     <div class="hovertools seektools">
       <button data-seek="-${appSettings.seekSeconds}" title="后退 ${appSettings.seekSeconds} 秒" aria-label="后退 ${appSettings.seekSeconds} 秒">${icon('rotate-ccw')}</button>
       <button data-seek="${appSettings.seekSeconds}" title="前进 ${appSettings.seekSeconds} 秒" aria-label="前进 ${appSettings.seekSeconds} 秒">${icon('rotate-cw')}</button>
-      <button data-open title="打开详情" aria-label="打开详情">${icon('maximize')}</button></div>`;
+      <button data-open title="打开详情" aria-label="打开详情">${icon('expand')}</button></div>`;
   /* 小图与预览图都是 16:9 横图，只更换图片来源；元数据 DOM 和高度必须完全相同。 */
   /* 叠层纸边是「这张卡代表不止一条」的视觉说法，分卷和版次都成立。只给分卷的话，
      同样被折叠过的版次卡长得和普通卡一模一样，只有角标能看出来。 */
@@ -3355,7 +3404,7 @@ function linkManagerMarkup(){
       <div class="resourcesyncbody geist-fieldset-content">${fieldsetTitle('linkBoxTitle','外链与实体')}
       <div id="linkSummary" class="linksummary"></div></div>
       <div class="resourcesyncfooter geist-fieldset-footer" data-geist-fieldset-footer>
-      <button class="resourceaction" type="button" id="linkCheck">${icon('refresh-cw')}<span>检查死链</span></button></div></div>
+      <button class="resourceaction" type="button" id="linkCheck">${icon('unlink')}<span>检查死链</span></button></div></div>
     <div id="linkCheckResult" aria-live="polite"></div></section>`;
 }
 async function wireLinkManager(){
@@ -3381,14 +3430,14 @@ async function wireLinkManager(){
 
   const row=item=>`<tr><td>${esc(item.entity)}</td><td>${esc(KINDS[item.link_kind]||item.link_kind)}</td>
     <td>${esc(item.label||'')}</td><td class="linknote">${esc(item.note)}</td>
-    <td class="linkurl"><a href="${esc(item.url)}" target="_blank" rel="noreferrer" data-middle-truncate>${esc(item.url)}</a></td></tr>`;
+    <td class="linkurl"><a class="externallink" href="${esc(item.url)}" target="_blank" rel="noreferrer"><span data-middle-truncate>${esc(item.url)}</span>${icon('external-link','externalmark')}</a></td></tr>`;
   const table=(title,items,hint)=>items.length?`<div class="linkgroup"><h4>${esc(title)} <b>${items.length}</b></h4>
     <p>${esc(hint)}</p><div class="linktablewrap"><table class="linktable"><thead><tr><th>实体</th><th>类型</th><th>标签</th><th>结果</th><th>地址</th></tr></thead><tbody>${items.map(row).join('')}</tbody></table></div></div>`:'';
 
   const render=payload=>{
     const running=payload.status==='running';
     const done=payload.status==='complete';
-    button.innerHTML=`${icon('refresh-cw')}<span>${running?'检查中':done?'重新检查':'检查死链'}</span>`;
+    button.innerHTML=`${icon('unlink')}<span>${running?'检查中':done?'重新检查':'检查死链'}</span>`;
     setActionBusy(button,running);
     if(payload.status==='idle'){result.innerHTML='';return}
     if(payload.status==='failed'){result.innerHTML=noteHtml(payload.error||'检查失败',{variant:'error',label:'检查失败'});return}
@@ -3444,7 +3493,7 @@ function resourceSyncMarkup(){
       <div class="resourcesyncbody geist-fieldset-content">${fieldsetTitle('resourceBoxTitle','检查文件与馆藏记录')}
       <p>检查本地磁盘和网盘，找出失效的馆藏记录与闲置缓存。</p></div>
       <div class="resourcesyncfooter geist-fieldset-footer" data-geist-fieldset-footer>
-      <button class="resourceaction" type="button" id="resourceScan">${icon('refresh-cw')}<span>检查文件</span></button></div></div>
+      <button class="resourceaction" type="button" id="resourceScan">${icon('git-compare')}<span>检查文件</span></button></div></div>
     <div id="resourceSyncResult" aria-live="polite"></div></section>`;
 }
 async function wireResourceSync(){
@@ -3453,7 +3502,7 @@ async function wireResourceSync(){
   const active=()=>location.pathname==='/data-cleanup'&&!$('#stats').hidden&&document.body.contains(result);
   const setBusy=(busy,done=false)=>{
     setActionBusy(scan,busy);
-    scan.innerHTML=`${icon('refresh-cw')}<span>${busy?'扫描中':done?'重新扫描':'检查文件'}</span>`;
+    scan.innerHTML=`${icon(done?'rotate-cw':'git-compare')}<span>${busy?'扫描中':done?'重新扫描':'检查文件'}</span>`;
   };
   const render=payload=>{
     const cache=payload.cache||{files:0,bytes:0};
@@ -3585,8 +3634,9 @@ function tasteAnalysisSection(analysis){
     .map(lead=>`<button type="button" class="tastelead" ${lead.attrs}>
       <span><b>${esc(lead.title)}</b><small>${esc(lead.detail)}</small></span>${icon('chevron-right')}</button>`).join('');
   return `<section class="insightpanel tasteleads">
-      <header><div><h3>口味总结</h3><p>${esc(analysis.headline)}</p></div>
-        <span class="tasteconfidence ${esc(confidence.level||'early')}">${esc(confidence.label||'仍在学习')}</span></header>
+      <header><div><h3>口味总结</h3>
+        <div class="tastelede"><span class="tasteconfidence ${esc(confidence.level||'early')}"><i aria-hidden="true"></i>${esc(confidence.label||'仍在学习')}</span>
+          <p>${esc(analysis.headline)}</p></div></div></header>
       <div class="insightpanelbody">
         ${points?`<div class="tasteinsights">${points}</div>`:''}
         <div class="tasteleadlist">${leads||emptyStateHtml('search','还没有可探索的入口','馆藏里暂时没有对得上浏览信号的标签。')}</div>
@@ -3618,8 +3668,15 @@ function renderTaste(d){
         <label><input type="radio" name="taste-evidence" value="browser"${tasteEvidence==='browser'?' checked':''}><span>浏览器记录</span></label>
         <label><input type="radio" name="taste-evidence" value="peach"${tasteEvidence==='peach'?' checked':''}><span>Peach 内部</span></label></div>
       <div class="tasteactions">${selectFieldHtml(TASTE_WINDOWS,d.window||tasteWindow,{label:'分析范围',attr:'data-taste-window'})}
-        <button data-taste-refresh title="读取运行 Peach 的这台电脑上的浏览记录">${icon('refresh-cw')}读取浏览器历史</button>
-        <button data-taste-import>${icon('upload')}导入历史文件</button><input data-taste-file type="file" hidden></div></header>
+        <div class="splitbutton" data-taste-history-menu>
+          <button class="splitmain" data-taste-refresh title="读取运行 Peach 的这台电脑上的浏览记录">${icon('compass')}读取浏览器历史</button>
+          <button type="button" class="splittoggle" data-taste-history-toggle aria-haspopup="menu"
+            aria-expanded="false" aria-controls="tasteHistoryMenu"
+            aria-label="更多取得浏览记录的方式">${icon('chevron-down')}</button>
+          <div class="popmenu cardmenupanel" id="tasteHistoryMenu" role="menu" hidden>
+            <button type="button" role="menuitem" data-taste-history-primary>${icon('compass')}<span>读取浏览器历史</span></button>
+            <button type="button" role="menuitem" data-taste-import>${icon('upload')}<span>导入历史文件</span></button>
+          </div></div><input data-taste-file type="file" hidden></div></header>
     ${tasteHistoryGuideHtml(new URLSearchParams(location.search).get('onboarding')==='1',Boolean(s.history_sources||d.updated_at),localStorage.getItem(TASTE_GUIDE_KEY)==='1')}
     <div class="tastestate" data-taste-state role="status" aria-live="polite"></div>
     <div class="tastesummaries" data-taste-summary="browser"${tasteEvidence==='browser'?'':' hidden'}>
@@ -3692,7 +3749,14 @@ function renderTaste(d){
     catch(error){stateEl.textContent=error.message||'读取失败';setActionBusy(button,false);
       button.innerHTML=oldButton;if(button.isConnected)void wireTasteProgress()}};
   void wireTasteProgress();
-  root.querySelector('[data-taste-import]').onclick=()=>file.click();
+  const historyMenu=root.querySelector('[data-taste-history-menu]');
+  wireAnchoredMenu(historyMenu,historyMenu.querySelector('[data-taste-history-toggle]'),
+    historyMenu.querySelector('.cardmenupanel'));
+  /* 菜单第一项和左边那颗是同一件事：键盘和读屏用户只走菜单这一条路，少列一项就是少一个
+     动作。这里点回主动作那颗，读取流程只留一份。 */
+  root.querySelector('[data-taste-history-primary]').onclick=()=>{
+    closeAnchoredMenu();root.querySelector('[data-taste-refresh]').click()};
+  root.querySelector('[data-taste-import]').onclick=()=>{closeAnchoredMenu();file.click()};
   file.onchange=async()=>{const selected=file.files[0];if(!selected)return;stateEl.textContent=`正在导入 ${selected.name}…`;
     try{const response=await fetch('/api/taste/import',{method:'POST',headers:{'Content-Type':'application/octet-stream','X-Peach-Filename':encodeURIComponent(selected.name)},body:selected});
       const payload=await response.json().catch(()=>null);if(!response.ok)throw new Error(payload?.error||`导入失败（${response.status}）`);
@@ -3732,53 +3796,115 @@ async function openTaste(push=true){
   window.scrollTo({top:0,behavior:'smooth'});
 }
 
-function playlistDialog(content){
-  document.querySelector('#playlistDialog')?.remove();
-  const dialog=document.createElement('dialog');dialog.id='playlistDialog';dialog.className='playlistdialog';
-  dialog.innerHTML=`<div class="playlistdialoghead"><h2></h2><button type="button" data-dialog-close aria-label="关闭">${icon('x')}</button></div><div class="playlistdialogbody"></div>`;
-  dialog.querySelector('h2').textContent=content.title;
-  dialog.querySelector('.playlistdialogbody').innerHTML=content.body;
-  dialog.querySelector('[data-dialog-close]').onclick=()=>dialog.close();
-  dialog.addEventListener('close',()=>dialog.remove(),{once:true});
-  document.body.append(dialog);dialog.showModal();return dialog;
+const playlistWrite=body=>api('/api/playlist',{method:'POST',body:JSON.stringify(body)});
+/* 播放列表的三个弹层都是「填一份表交上去」，所以穿的是 Geist Modal 那身：标题是
+   20px/26px 的 h3，正文一律 20px 内边距，操作条粘在底、两端对齐，保存在右下角。
+   壳只有 formModal 这一份，上下不会各有一套内边距。 */
+function playlistNameField(value=''){
+  return `<label class="modalfield"><span>名称</span><input class="geist-input" name="name"
+    maxlength="80" placeholder="输入名称" value="${esc(value)}"></label>`;
 }
 async function saveMixAsPlaylist(mix){
   if(mix?.kind!=='mix')return;
-  const dialog=playlistDialog({title:'保存 Mix',body:`<form class="playlistcreate" data-save-mix-form>
-    <label>名称<input class="geist-input" name="name" maxlength="80" value="${esc(mix.title)}" required></label>
-    <button class="geist-button primary" type="submit">保存 ${mix.items.length} 个视频</button><span data-playlist-state></span></form>`});
-  dialog.querySelector('form').onsubmit=async event=>{event.preventDefault();
-    const form=event.currentTarget,stateEl=form.querySelector('[data-playlist-state]');
-    try{const result=await api('/api/playlist',{method:'POST',body:JSON.stringify({action:'create',name:new FormData(form).get('name'),asset_ids:mix.items.map(item=>item.id),source_kind:'mix',source_seed_asset_id:mix.seedId})});
-      dialog.close();actionReceipt('已保存为播放列表');await openPlaylist(result.playlist.id,result.playlist.current_asset_id,true)
-    }catch(error){stateEl.textContent=error.message||'保存失败'}
-  };
-  dialog.querySelector('input').select();
+  const modal=formModal({
+    title:'保存为播放列表',
+    description:`这个 Mix 的 ${mix.items.length} 个视频会存成一份可以继续播放的列表。`,
+    body:playlistNameField(mix.title),
+    confirmLabel:'保存为播放列表',
+    onConfirm:()=>{
+      const name=modal.dialog.querySelector('[name="name"]').value.trim();
+      if(!name)throw new Error('播放列表名称不能为空');
+      return playlistWrite({action:'create',name,asset_ids:mix.items.map(item=>item.id),
+        source_kind:'mix',source_seed_asset_id:mix.seedId});
+    }});
+  modal.dialog.querySelector('[name="name"]').select();
+  const {confirmed,result}=await modal.done;
+  if(!confirmed)return;
+  await openPlaylist(result.playlist.id,result.playlist.current_asset_id,true);
+  actionReceipt('已保存为播放列表',{undo:async()=>{
+    await playlistWrite({action:'delete',id:result.playlist.id});await openPlaylists(true);
+  }});
 }
+/* 一次能勾好几份列表：此前一行就是一个按钮，点下去当场写库、弹层立刻关掉，
+   想加进两份就得把整个流程再走一遍。行前的勾选框是选择，右下角的保存才是提交。 */
 async function openAddToPlaylist(item){
   const lists=(await api('/api/playlists')).items||[];
-  const rows=lists.map(list=>`<button type="button" class="playlistpickrow" data-add-playlist="${list.id}"><span>${esc(list.name)}</span><small>${list.item_count} 个视频</small></button>`).join('');
-  const dialog=playlistDialog({title:'加入播放列表',body:`<form class="playlistcreate" data-create-playlist>
-      <label>新播放列表<input class="geist-input" name="name" maxlength="80" placeholder="输入名称" required></label><button class="geist-button primary" type="submit">新建并加入</button><span data-playlist-state></span></form>
-    <div class="playlistpicklist">${rows||'<p class="empty">还没有播放列表</p>'}</div>`});
-  const finish=async body=>{const stateEl=dialog.querySelector('[data-playlist-state]');
-    try{await api('/api/playlist',{method:'POST',body:JSON.stringify(body)});dialog.close();actionReceipt('已加入播放列表')}
-    catch(error){stateEl.textContent=error.message||'加入失败'}};
-  dialog.querySelector('form').onsubmit=event=>{event.preventDefault();finish({action:'create',name:new FormData(event.currentTarget).get('name'),asset_ids:[item.id]})};
-  dialog.querySelectorAll('[data-add-playlist]').forEach(button=>button.onclick=()=>finish({action:'add',id:+button.dataset.addPlaylist,asset_ids:[item.id]}));
+  const rows=lists.map(list=>`<label class="pickrow">${checkboxHtml(`data-pick-playlist="${list.id}"`)}
+    <span class="pickrowtext"><b>${esc(list.name)}</b><small>${list.item_count} 个视频</small></span></label>`).join('');
+  const modal=formModal({
+    title:'加入播放列表',
+    description:'勾选要加入的列表，或者填个名称新建一份。',
+    body:playlistNameField()+(rows
+      ?`<div class="picklist" role="group" aria-label="已有播放列表">${rows}</div>`
+      :noteHtml('还没有播放列表，填个名称就能新建一份。',{size:'small'})),
+    confirmLabel:'保存',
+    confirmDisabled:true,
+    onConfirm:async()=>{
+      const name=modal.dialog.querySelector('[name="name"]').value.trim();
+      const chosen=[...modal.dialog.querySelectorAll('[data-pick-playlist]:checked')]
+        .map(box=>+box.dataset.pickPlaylist);
+      const created=name
+        ?(await playlistWrite({action:'create',name,asset_ids:[item.id]})).playlist:null;
+      for(const id of chosen)await playlistWrite({action:'add',id,asset_ids:[item.id]});
+      return {created,added:chosen};
+    }});
+  const sync=()=>{
+    const name=modal.dialog.querySelector('[name="name"]').value.trim();
+    modal.confirmButton.disabled=!name&&!modal.dialog.querySelector('[data-pick-playlist]:checked');
+  };
+  modal.dialog.addEventListener('input',sync);
+  modal.dialog.addEventListener('change',sync);
+  const {confirmed,result}=await modal.done;
+  if(!confirmed)return;
+  const total=(result.created?1:0)+result.added.length;
+  actionReceipt(`已加入 ${total} 个播放列表`,{undo:async()=>{
+    for(const id of result.added)await playlistWrite({action:'remove',id,asset_id:item.id});
+    if(result.created)await playlistWrite({action:'delete',id:result.created.id});
+  }});
 }
-async function movePlaylistItem(queue,index,delta,currentId){
+async function renamePlaylist(list){
+  const modal=formModal({
+    title:'编辑名称',
+    body:playlistNameField(list.name),
+    confirmLabel:'保存名称',
+    onConfirm:()=>{
+      const name=modal.dialog.querySelector('[name="name"]').value.trim();
+      if(!name)throw new Error('播放列表名称不能为空');
+      return playlistWrite({action:'rename',id:list.id,name});
+    }});
+  modal.dialog.querySelector('[name="name"]').select();
+  const {confirmed}=await modal.done;
+  if(!confirmed)return;
+  await openPlaylists(false);
+  actionReceipt('已重命名播放列表',{undo:async()=>{
+    await playlistWrite({action:'rename',id:list.id,name:list.name});await openPlaylists(false);
+  }});
+}
+/* 顺序由拖动定：一列十几条视频，靠上移下移一格一格挪到第九位要按八次。撤销拿的是
+   拖动之前那一份完整顺序，所以一次拖动无论跨多少行都只需按一次撤销。 */
+async function reorderPlaylistItems(queue,ids,currentId){
   if(queue?.kind!=='playlist')return;
-  const target=index+delta;if(target<0||target>=queue.items.length)return;
-  const ids=queue.items.map(item=>item.id);[ids[index],ids[target]]=[ids[target],ids[index]];
-  await api('/api/playlist',{method:'POST',body:JSON.stringify({action:'reorder',id:queue.playlistId,asset_ids:ids})});
-  await openPlaylist(queue.playlistId,currentId,false);actionReceipt('已调整播放顺序');
+  const before=queue.items.map(item=>item.id);
+  if(ids.length!==before.length||ids.every((id,index)=>id===before[index]))return;
+  await playlistWrite({action:'reorder',id:queue.playlistId,asset_ids:ids});
+  await openPlaylist(queue.playlistId,currentId,false);
+  actionReceipt('已调整播放顺序',{undo:async()=>{
+    await playlistWrite({action:'reorder',id:queue.playlistId,asset_ids:before});
+    await openPlaylist(queue.playlistId,currentId,false);
+  }});
 }
 async function removePlaylistItem(queue,assetId,currentId){
   if(queue?.kind!=='playlist')return;
+  const before=queue.items.map(item=>item.id);
   return confirmModal({title:'移出播放列表',body:'这个视频将从播放列表移除，视频文件保留。',confirmLabel:'移出播放列表',onConfirm:async()=>{
-    const result=await api('/api/playlist',{method:'POST',body:JSON.stringify({action:'remove',id:queue.playlistId,asset_id:assetId})});
-    actionReceipt('已移出播放列表');
+    const result=await playlistWrite({action:'remove',id:queue.playlistId,asset_id:assetId});
+    /* 撤销要把它放回它那一位：`add` 只会补在末尾，所以补完再按拖动前那份顺序排一次。
+       列表被这一下清空时它已经不在页面上，撤销后带回列表页而不是空队列。 */
+    actionReceipt('已移出播放列表',{undo:async()=>{
+      await playlistWrite({action:'add',id:queue.playlistId,asset_ids:[assetId]});
+      await playlistWrite({action:'reorder',id:queue.playlistId,asset_ids:before});
+      await openPlaylist(queue.playlistId,currentId,false);
+    }});
     if(!result.playlist.items.length){await openPlaylists(true);return}
     const next=result.playlist.items.some(item=>item.id===currentId)?currentId:result.playlist.current_asset_id;
     await openPlaylist(queue.playlistId,next,false);
@@ -3793,25 +3919,80 @@ async function openPlaylists(push=true){
   const data=await surfaceApi(surface,'/api/playlists');
   if(!surfaceCurrent(surface))return;
   showManagementBody({manage:false});
-  const cards=(data.items||[]).map(list=>{const resume=list.current_asset_id||list.preview_asset_id;
-    const poster=list.preview_asset_id?`<img src="/poster?id=${list.preview_asset_id}&c=4" alt="" loading="lazy" data-drop="self">`:'';
-    return `<article class="playlistcard" data-playlist-card="${list.id}"><button class="playlistcover" data-open-playlist="${list.id}" ${resume?'':'disabled'}>${poster}<span>${list.item_count} 个视频</span></button>
-      <div class="playlistmeta"><input class="geist-input" data-playlist-name maxlength="80" value="${esc(list.name)}" aria-label="播放列表名称"><small>${list.source_kind==='mix'?'由 Mix 保存':'手动播放列表'}</small></div>
-      <div class="playlistactions"><button data-rename-playlist="${list.id}">保存名称</button><button data-open-playlist="${list.id}" ${resume?'':'disabled'}>继续播放</button><button class="danger" data-delete-playlist="${list.id}">删除</button></div></article>`}).join('');
+  /* 一份播放列表就是一叠视频，和首页那张 Mix 卡是同一件东西，所以穿同一身：封面悬浮
+     时逐张翻过列表里的画面，下面一行是列表里出镜最多的那几位的头像，标题就是列表名。
+     改名和删除收进名字右边那个点点点菜单——它们是这张卡的次要动作，不该和「打开」
+     并排占着一整行。 */
+  const cards=(data.items||[]).map(list=>{
+    const resume=list.current_asset_id||list.preview_asset_id;
+    const poster=list.preview_asset_id
+      ?`<img class="poster" src="/poster?id=${list.preview_asset_id}&c=4" alt="" loading="lazy" data-drop="self">`
+      :'<span class="nopic">无预览</span>';
+    const faces=(list.faces||[]).length
+      ? `<div class="mavstack">${list.faces.map(face=>`<button class="mav entitylink"
+          data-entity-kind="${esc(face.kind)}" data-entity-name="${esc(face.name)}"
+          title="打开资料页：${esc(face.name)}">${avatarInner(face.name,face,REP[face.name],face.kind)}</button>`).join('')}</div>`
+      : `<span class="mav"><span class="ini">${esc(list.name.slice(0,1))}</span></span>`;
+    return `<article class="card playlistcard" data-playlist-card="${list.id}"
+      data-playlist-previews="${esc(JSON.stringify(list.preview_ids||[]))}">
+      <div class="mixstack"><div class="pic" style="--card-ratio:${16/9}">${poster}
+        <div class="mixfaces" data-mix-faces hidden></div>
+        <button class="cardopenhit" data-open-playlist="${list.id}"${resume?'':' disabled'}
+          aria-label="打开播放列表 ${esc(list.name)}"></button>
+        <span class="mixbadge">${icon('play')}${list.item_count} 个视频</span></div></div>
+      <div class="mixmeta">${faces}<div class="mixcopy"><b>${esc(list.name)}</b>
+        <span>${list.source_kind==='mix'?'由 Mix 保存':'手动播放列表'}</span></div>
+        <div class="cardmenu" data-playlist-menu>
+          <button type="button" class="cardmenubtn" data-playlist-menu-toggle aria-haspopup="menu"
+            aria-expanded="false" aria-controls="playlist-menu-${list.id}"
+            title="更多操作" aria-label="播放列表操作：${esc(list.name)}">${icon('ellipsis')}</button>
+          <div class="popmenu cardmenupanel" id="playlist-menu-${list.id}" role="menu" hidden>
+            <button type="button" role="menuitem" data-rename-playlist="${list.id}">${icon('pencil')}<span>编辑名称</span></button>
+            <button type="button" role="menuitem" class="destructive" data-delete-playlist="${list.id}">${icon('trash')}<span>删除播放列表</span></button>
+          </div></div></div></article>`}).join('');
   $('#stats').innerHTML=`<section class="playlistpage"><header><div><h2>播放列表</h2><p>保存 Mix，按自己的顺序继续播放。</p></div><form class="playlistcreate" id="newPlaylist"><label>新播放列表<input class="geist-input" name="name" maxlength="80" placeholder="输入名称" required></label><button class="geist-button primary" type="submit">新建</button><span data-playlist-state></span></form></header><div class="playlistcards">${cards||emptyState('playlist','还没有播放列表','保存 Mix 或新建列表后，会在这里按自己的顺序继续播放。')}</div></section>`;
   $('#newPlaylist').onsubmit=async event=>{event.preventDefault();const form=event.currentTarget;
-    try{await api('/api/playlist',{method:'POST',body:JSON.stringify({action:'create',name:new FormData(form).get('name'),asset_ids:[]})});await openPlaylists(false);actionReceipt('已新建播放列表')}
+    try{const result=await playlistWrite({action:'create',name:new FormData(form).get('name'),asset_ids:[]});await openPlaylists(false);
+      actionReceipt('已新建播放列表',{undo:async()=>{
+        await playlistWrite({action:'delete',id:result.playlist.id});await openPlaylists(false)}})}
     catch(error){form.querySelector('[data-playlist-state]').textContent=error.message||'新建失败'}};
   $('#stats').querySelectorAll('[data-open-playlist]').forEach(button=>button.onclick=()=>{
     const list=data.items.find(item=>item.id===+button.dataset.openPlaylist),resume=list?.current_asset_id||list?.preview_asset_id;
     if(resume)openPlaylist(list.id,resume,true)});
-  $('#stats').querySelectorAll('[data-rename-playlist]').forEach(button=>button.onclick=async()=>{const card=button.closest('[data-playlist-card]'),input=card.querySelector('[data-playlist-name]');
-    try{await api('/api/playlist',{method:'POST',body:JSON.stringify({action:'rename',id:+button.dataset.renamePlaylist,name:input.value})});await openPlaylists(false);actionReceipt('已重命名播放列表')}
-    catch(error){actionFailure('重命名播放列表',error)}});
-  $('#stats').querySelectorAll('[data-delete-playlist]').forEach(button=>button.onclick=async()=>{return confirmModal({title:'删除播放列表',body:'这个播放列表将被删除，视频文件保留。',confirmLabel:'删除播放列表',danger:true,onConfirm:async()=>{
-    try{await api('/api/playlist',{method:'POST',body:JSON.stringify({action:'delete',id:+button.dataset.deletePlaylist})});await openPlaylists(false);actionReceipt('已删除播放列表')}
-    catch(error){setActionBusy(button,false);throw error}
-  }});});
+  $('#stats').querySelectorAll('[data-playlist-card]').forEach(card=>{
+    let ids=[];try{ids=JSON.parse(card.dataset.playlistPreviews||'[]')}catch(_e){ids=[]}
+    // 翻的是这份列表自己的封面，用的是首页 Mix 卡那一套时序与门槛，不另写一份动效。
+    wireStackFlip(card,async()=>ids.map(id=>
+      `<img class="poster" src="/poster?id=${id}&c=4" alt="" loading="eager">`));
+    const menu=card.querySelector('[data-playlist-menu]');
+    if(menu)wireAnchoredMenu(menu,menu.querySelector('[data-playlist-menu-toggle]'),
+      menu.querySelector('.cardmenupanel'));
+  });
+  $('#stats').querySelectorAll('[data-entity-kind]').forEach(button=>button.onclick=()=>
+    openEntity(button.dataset.entityKind,button.dataset.entityName));
+  $('#stats').querySelectorAll('[data-rename-playlist]').forEach(button=>button.onclick=()=>{
+    closeAnchoredMenu();
+    const list=data.items.find(item=>item.id===+button.dataset.renamePlaylist);
+    if(list)renamePlaylist(list);
+  });
+  $('#stats').querySelectorAll('[data-delete-playlist]').forEach(button=>button.onclick=async()=>{
+    closeAnchoredMenu();
+    return confirmModal({title:'删除播放列表',body:'这个播放列表将被删除，视频文件保留。',confirmLabel:'删除播放列表',danger:true,onConfirm:async()=>{
+      const id=+button.dataset.deletePlaylist;
+      /* 删之前先把内容取回来：`delete` 连 playlist_item 一起清，删完就没有地方能问出
+         这份列表装着哪些视频。重建出来的是一份新记录，装的是同一批视频。 */
+      const kept=await api('/api/playlist?id='+id).catch(()=>null);
+      try{await playlistWrite({action:'delete',id});await openPlaylists(false);
+        actionReceipt('已删除播放列表',{undo:!kept?null:async()=>{
+          const ids=(kept.items||[]).map(entry=>entry.id);
+          const seed=kept.source_seed_asset_id;
+          await playlistWrite({action:'create',name:kept.name,asset_ids:ids,
+            source_kind:kept.source_kind,
+            source_seed_asset_id:ids.includes(seed)?seed:null});
+          await openPlaylists(false);
+        }})}
+      catch(error){setActionBusy(button,false);throw error}
+    }});});
   window.scrollTo({top:0,behavior:'smooth'});
 }
 
@@ -3828,6 +4009,10 @@ const DATA_MANAGEMENT_ENTRIES=[
   ['trash','回收站','查看回收站'],
   ['quality','高清版','查看高清版'],
 ];
+/* 这一页按一条内容在库里的经过排：先进来（扫描与采集），再把它说清楚（人工复核、
+   高清版），然后把不该留的挑出去（重复文件、垃圾文件、空文件夹），最后是删掉的东西
+   还在哪儿（回收站）。复核紧跟采集，因为它是采集的下一步，不是清理的收尾。 */
+const DATA_MANAGEMENT_ORDER=['scraping','review','quality','duplicates','junk','empty','trash'];
 
 async function openDataCleanup(push=true){
   releaseHoverPreviews();disposeStage(false);enterManagementSurface();
@@ -3851,39 +4036,45 @@ async function openDataCleanup(push=true){
   const junkBreakdown=[...JUNK_KIND_OPTIONS.filter(([key])=>key&&Number(junkCounts[key])>0)
     .map(([key,label])=>`${esc(label)} ${Number(junkCounts[key]).toLocaleString()}`),
     ...(Number(junk.dismissed_total)>0?[`已忽略 ${Number(junk.dismissed_total).toLocaleString()}`]:[])].join(' · ');
-  $('#stats').innerHTML=`<div class="cleanuppage"><div class="cleanupgrid">
-    <section class="cleanupfieldset" id="libraryProcessing" data-geist-fieldset aria-labelledby="cleanupScrapingTitle">
+  const entryCard=section=>{
+    const [,title,label]=DATA_MANAGEMENT_ENTRIES.find(([key])=>key===section);
+    return `<section class="cleanupfieldset" data-geist-fieldset aria-labelledby="cleanup-${section}-title">
+      <div class="geist-fieldset-content">${fieldsetTitle(`cleanup-${section}-title`,title)}
+        <strong data-cleanup-count="${section}">—</strong>
+        <p class="cleanupmeta" data-cleanup-meta="${section}"></p></div>
+      <footer class="geist-fieldset-footer" data-geist-fieldset-footer><button type="button" data-cleanup-go="${section}">${esc(label)}</button></footer>
+    </section>`;
+  };
+  const cleanupCards={
+    scraping:`<section class="cleanupfieldset" id="libraryProcessing" data-geist-fieldset aria-labelledby="cleanupScrapingTitle">
       <div class="geist-fieldset-content">${fieldsetTitle('cleanupScrapingTitle','扫描与采集')}
         <p>扫描媒体文件夹，导入已有资料，采集缺失信息。</p></div>
       <footer class="geist-fieldset-footer" data-geist-fieldset-footer><button type="button" disabled>扫描并补全资料</button></footer>
-    </section>
-    <section class="cleanupfieldset" data-geist-fieldset aria-labelledby="cleanupJunkTitle">
+    </section>`,
+    junk:`<section class="cleanupfieldset" data-geist-fieldset aria-labelledby="cleanupJunkTitle">
       <div class="geist-fieldset-content">${fieldsetTitle('cleanupJunkTitle','垃圾文件')}
         <strong>${Number(junk.pending_total||0).toLocaleString()} 个待判断</strong>
         <p class="cleanupmeta">${junkBreakdown}</p></div>
       <footer class="geist-fieldset-footer" data-geist-fieldset-footer><button type="button" data-cleanup-open="junk">查看垃圾文件</button></footer>
-    </section>
-    <section class="cleanupfieldset" data-geist-fieldset aria-labelledby="cleanupDupTitle">
+    </section>`,
+    duplicates:`<section class="cleanupfieldset" data-geist-fieldset aria-labelledby="cleanupDupTitle">
       <div class="geist-fieldset-content">${fieldsetTitle('cleanupDupTitle','重复文件')}
         <strong>${Number(duplicates.total||0)
           ?`${Number(duplicates.total).toLocaleString()} 组 · ${Number(duplicates.files||0).toLocaleString()} 个文件`
           :'没有重复内容'}</strong>
         <p class="cleanupmeta">${Number(duplicates.total||0)?`可回收 ${fmtSize(duplicates.reclaimable||0)}`:''}</p></div>
       <footer class="geist-fieldset-footer" data-geist-fieldset-footer><button type="button" data-cleanup-open="duplicates">查看重复文件</button></footer>
-    </section>
-    <section class="cleanupfieldset cleanupemptyfolders" data-geist-fieldset data-fieldset-type="error" aria-labelledby="cleanupEmptyTitle">
+    </section>`,
+    empty:`<section class="cleanupfieldset cleanupemptyfolders" data-geist-fieldset data-fieldset-type="error" aria-labelledby="cleanupEmptyTitle">
       <div class="geist-fieldset-content">${fieldsetTitle('cleanupEmptyTitle','空文件夹')}
         <strong>${online.length.toLocaleString()} 个来源可扫描</strong>
         <p class="cleanupmeta">${sourceLine}</p><p class="cleanupstate" aria-live="polite"></p></div>
       <footer class="geist-fieldset-footer" data-geist-fieldset-footer><button type="button" class="danger" data-cleanup-empty>${icon('trash')}<span>删除空文件夹</span></button></footer>
-    </section>
-    ${DATA_MANAGEMENT_ENTRIES.map(([section,title,label])=>`
-    <section class="cleanupfieldset" data-geist-fieldset aria-labelledby="cleanup-${section}-title">
-      <div class="geist-fieldset-content">${fieldsetTitle(`cleanup-${section}-title`,title)}
-        <strong data-cleanup-count="${section}">—</strong>
-        <p class="cleanupmeta" data-cleanup-meta="${section}"></p></div>
-      <footer class="geist-fieldset-footer" data-geist-fieldset-footer><button type="button" data-cleanup-go="${section}">${esc(label)}</button></footer>
-    </section>`).join('')}
+    </section>`,
+    review:entryCard('review'),quality:entryCard('quality'),trash:entryCard('trash'),
+  };
+  $('#stats').innerHTML=`<div class="cleanuppage"><div class="cleanupgrid">
+    ${DATA_MANAGEMENT_ORDER.map(section=>cleanupCards[section]).join('')}
   </div>
   ${linkManagerMarkup()}
   ${(sources.sources||[]).some(source=>['local','115','pikpak'].includes(source.location)&&source.roots?.length)?resourceSyncMarkup():''}</div>`;
@@ -4029,7 +4220,12 @@ async function disposeDuplicates(groups,keep,button){
         body:JSON.stringify({ids:ids.slice(i,i+200),operation:'dispose'})});
     }
     await openDuplicates(false);
-    actionReceipt(`已把 ${ids.length} 项移入回收站`);
+    actionReceipt(`已把 ${ids.length} 项移入回收站`,{undo:async()=>{
+      for(let i=0;i<ids.length;i+=200)
+        await api('/api/batch',{method:'POST',
+          body:JSON.stringify({ids:ids.slice(i,i+200),operation:'restore'})});
+      await openDuplicates(false);
+    }});
   }finally{setActionBusy(button,false)}
   }});
 }
@@ -4127,18 +4323,33 @@ async function openReview(push=true){
            ? (assets.length?`<div class="reviewpick"><div class="reviewpickhead"><span class="mono" data-picked-count></span>
                <button type="button" data-pick-all>全选</button><button type="button" data-pick-none>清空</button></div>
                <div class="reviewasset-grid">${assets.map(asset=>`<button type="button" class="reviewasset picked" data-review-asset="${asset.id}" aria-pressed="true" title="${esc(asset.name)}"><img src="/poster?id=${asset.id}&c=4" alt="" loading="lazy"><span class="pickmark">${icon('check')}</span></button>`).join('')}</div></div>`
-              // 空白一片会被当成界面坏了。真实原因是这些作品还没抽帧，说清楚比留白好。
-              : `<p class="empty">这 ${esc(row.video_count||'')} 条作品尚未抽帧，暂无预览；批准后仍会按候选写入标签</p>`)
+              /* 空白一片会被当成界面坏了。真实原因是这些作品还没抽帧，说清楚比留白好；
+                 空状态铺满卡片中段，卡高不随「有没有预览」上下跳。 */
+              : emptyStateHtml('pics','这批作品尚未抽帧',
+                  `${row.video_count||''} 条作品还没有可用预览；批准后仍会按候选写入标签。`,
+                  {className:'reviewempty'}))
            : reviewCategory==='fc2_similarity'?''
            : reviewCategory==='western_identity'?identityEvidenceHtml(row):reviewImageHtml(row.preview_url);
+         /* 预览和判断依据是同一件事的两半：看这几帧，然后读这一句。它们合成卡片中段
+            那一个框，框铺满剩下的高度，依据贴在框底。依据掉在框外时一张卡上就有两块
+            留白——框里空半屏、框外一行字，读起来像两件不相干的事。
+            候选表单和身份证据那两类不进框：它们每一项自己就是一个框，再套一层就是框中框。
+            候选表单的当前信息另有去处——它贴在卡底不跟着滚，那一句读的是「现在是什么」，
+            不是这一屏证据的一部分。 */
          const heading=subjectKind&&subjectName?origin:`<h4>${esc(titleText)}</h4>`;
          const currentInfo=metadata?`<div class="reviewcurrentinfo" role="region" aria-label="当前信息" tabindex="0"><p>${esc(evidence)}</p></div>`:'';
+         const framed=!metadata&&reviewCategory!=='western_identity';
+         const stage=`<div class="reviewstage"${framed?' data-framed=""':''}>${preview}${
+           !metadata&&evidence?`<p class="reviewevidence">${esc(evidence)}</p>`:''}</div>`;
          const body=`${
            // 账本规范名当标题，抓取来源给的写法（多为罗马音）留作副标题。
            row.source_name?`<p class="reviewalias">来源写法：${esc(row.source_name)}</p>`:''}${
            // 实体类卡片的作品数已经写在创作者入口里，这里再写一遍就是同一个数字两处。
-           subjectKind&&subjectName?'':`<p>${esc(row.board||row.assets?`样本/资产：${row.video_count||row.assets||''}`:'')}</p>`}${subjectKind&&subjectName?'':origin}${tags?`<div class="reviewtags">${tags}</div>`:''}${preview}${metadata?'':`<p>${esc(evidence)}</p>`}`;
-         const actions=`<button class="geist-button primary" data-review-status="approved"${canApprove&&!locked?'':' disabled'}>${approveLabel}</button><button class="geist-button warning" data-review-status="skipped"${locked?' disabled':''}>跳过</button><button class="geist-button error" data-review-status="rejected"${locked?' disabled':''}>拒绝</button><span class="reviewstate" aria-live="polite"></span>`;
+           subjectKind&&subjectName?'':`<p>${esc(row.board||row.assets?`样本/资产：${row.video_count||row.assets||''}`:'')}</p>`}${subjectKind&&subjectName?'':origin}${tags?`<div class="reviewtags">${tags}</div>`:''}${stage}`;
+         /* 主体动作在最右：一行里从左到右是「拒绝、跳过、通过」，读到最后一枚才是这张卡
+            真正要人做的判断。Geist 的弹层与 Fieldset 操作条都是这个方向——取消在左，
+            主动作靠 margin-left:auto 推到最右（vercel-geist-fieldset-scroller-empty-state.md）。 */
+         const actions=`<button class="geist-button error" data-review-status="rejected"${locked?' disabled':''}>拒绝</button><button class="geist-button warning" data-review-status="skipped"${locked?' disabled':''}>跳过</button><button class="geist-button primary" data-review-status="approved"${canApprove&&!locked?'':' disabled'}>${approveLabel}</button><span class="reviewstate" aria-live="polite"></span>`;
          return `<fieldset class="reviewitem" data-geist-fieldset data-review-key="${esc(key)}" data-decision="${esc(decision)}"><legend class="sr-only">${esc(titleText)}</legend><header class="reviewitemheader">${heading}</header><div class="geist-fieldset-content">${scrollerHtml(body,{className:'reviewcontent',label:`复核：${titleText}`})}</div>${currentInfo}<footer class="reviewactions geist-fieldset-footer" data-geist-fieldset-footer>${actions}</footer></fieldset>`}).join(''):emptyState('square-check-big','暂无候选','该分类当前没有待人工复核的项目。')}</div></section></div>`;
      wireReviewAssets($('#stats'));
     wireScrollers($('#stats'));wireReviewPictures($('#stats'));
@@ -4245,8 +4456,10 @@ async function openScraping(push=true){
   releaseHoverPreviews();disposeStage(false);enterManagementSurface();
   if(push)route('/scraping');
   const surface=claimSurface('/scraping');
-  showManagementBody({placeholder:pageSkeletonHtml('正在读取采集来源',{cards:true})});
-  $('#manageTitle').textContent='采集来源';
+  /* 占位取共用那一份：这里另写一张时，整页刷新会先画深链启动那张、再画这一张，
+     同一段 shimmer 连放两遍。标题由 paintManageTitle 按 MANAGE_CRUMB_PAGES 认，
+     不在这里再赋一次值。 */
+  showManagementBody({placeholder:managementPlaceholder('/scraping')});
   const ui=await import('/dist/peach-ui.js');
   await ui.mountIsland('scraping',$('#stats'),{toast},{isCurrent:()=>surfaceCurrent(surface)});
 }
@@ -4457,7 +4670,7 @@ function followResourceLinks(item){
   const links=item.resource_urls||[];
   if(!links.length)return '';
   return `<div class="followresources">${links.map(url=>
-    `<a href="${esc(url)}" target="_blank" rel="noreferrer noopener">${esc(followResourceLabel(url))}${icon('external-link')}</a>`
+    `<a class="externallink" href="${esc(url)}" target="_blank" rel="noreferrer noopener">${esc(followResourceLabel(url))}${icon('external-link','externalmark')}</a>`
   ).join('')}</div>`;
 }
 
@@ -4607,7 +4820,7 @@ async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=fals
     <div class="vwrap followdetailmedia${selectedKind==='image'?' image':''}">${selectedKind==='video'?'<canvas class="ambientcanvas" width="32" height="18"></canvas>':''}<button class="closestage" id="closeStage" title="关闭" aria-label="关闭">${icon('x')}</button>${selectedKind==='video'?playerStatsOverlayHtml():''}${media}${imageControls}</div>
     ${embeddedQueue?followEmbeddedQueueHtml(item,selectedMedia.index):(collection?followQueueHtml(collection,item.id):'')}
     <div class="side followdetailside"><div class="sidecontent">
-      <div class="followdetailtitle"><div class="stitle">${esc(item.title)}</div>${item.url?`<a class="followorigin" href="${esc(item.url)}" target="_blank" rel="noreferrer noopener" title="打开来源页面" aria-label="打开来源页面">${icon('external-link')}</a>`:''}</div>
+      <div class="followdetailtitle"><div class="stitle">${esc(item.title)}</div>${item.url?`<a class="followorigin externallink" href="${esc(item.url)}" target="_blank" rel="noreferrer noopener" title="打开来源页面" aria-label="打开来源页面">${icon('external-link','externalmark')}</a>`:''}</div>
       <div class="followdetailidentity"><span class="mav fsourceavatar">${followAuthorAvatar(authorSources)}</span>
         <div><b>${esc(author)}</b>${postedBy?`<span>发布者 ${esc(postedBy)}</span>`:''}</div></div>
       <div class="smeta mono"><span>${followWhen(item)}</span>${realDuration(item.duration)?`<span>${fmtDur(item.duration)}</span>`:''}${badges?`<span class="fbadges">${badges}</span>`:''}</div>
@@ -5062,7 +5275,7 @@ function wireTasteProgress(){
   if(!button)return;
   return wireOperationProgress({host:$('#stats').querySelector('[data-taste-state]'),
     path:'/api/taste/refresh',key:'peach-taste-job',title:'正在读取浏览记录并更新口味分析…',
-    busy:running=>{setActionBusy(button,running);button.innerHTML=`${icon('refresh-cw')}读取浏览器历史`},
+    busy:running=>{setActionBusy(button,running);button.innerHTML=`${icon('compass')}读取浏览器历史`},
     complete:()=>{tasteCache.clear();void openTaste(false);actionReceipt('已更新口味分析')}});
 }
 function wireResolveProgress(){
@@ -5246,8 +5459,8 @@ function followSourceRow(source){
     <label class="fchannelcheck" title="${source.enabled?'参与检查更新':'暂停检查更新'}">${checkboxHtml(
       `data-follow-enabled="${source.id}" ${source.enabled?'checked':''}`
       +` aria-label="${source.enabled?'暂停':'启用'} ${esc(source.label)} 的更新检查"`)}</label>
-    <b><a class="fsourcelink" href="${esc(source.url)}" target="_blank"
-      rel="noreferrer noopener" title="打开原来源">${esc(source.label)}</a></b>
+    <b><a class="fsourcelink externallink" href="${esc(source.url)}" target="_blank"
+      rel="noreferrer noopener" title="打开原来源">${esc(source.label)}${icon('external-link','externalmark')}</a></b>
     <span class="fmeta fprovider" title="${esc(source.provider_label)}">${sourceIcon(source.provider)
       }<span>${esc(source.provider_label)}</span></span>
     <span class="fmeta fchecked">${source.last_checked_at?localTimeHtml(source.last_checked_at):'未检查'}</span>
@@ -5274,6 +5487,7 @@ function followAliasManager(groups,suggestions){
   const saved=groups.map(group=>`<div class="faliasrow"><b>${esc(group.canonical_name)}</b>
     <span>${group.aliases.map(alias=>`<span class="faliaschip">${esc(alias.name)}
       <button type="button" data-follow-alias-remove="${esc(alias.name)}"
+        data-canonical="${esc(group.canonical_name)}"
         title="移除别名" aria-label="移除别名 ${esc(alias.name)}">${icon('x')}</button></span>`).join('')}</span>
   </div>`).join('');
   return `<details class="faliasmanager"${suggestions.length?' open':''}>
@@ -5317,7 +5531,7 @@ function followCredentialRow(row){
         :row.fields.includes(name)?'已保存，留空表示不改':'未填写'}"></label>`).join('');
   const body=row.requirement==='none'?''
     :row.requirement==='blocked'?`<p>${esc(row.why)}</p>`
-    :`<p>${esc(row.why)}${row.where?` <a href="${esc(row.where)}" target="_blank" rel="noreferrer noopener">去取</a>`:''}</p>
+    :`<p>${esc(row.why)}${row.where?` <a class="fcredget externallink" href="${esc(row.where)}" target="_blank" rel="noreferrer noopener">去取${icon('external-link','externalmark')}</a>`:''}</p>
       ${row.howto?`<p>${esc(row.howto)}</p>`:''}
       <form class="fcredform" data-cred-form="${esc(row.provider)}">${fields}
         <div class="fcredactions"><button type="submit">保存</button>
@@ -5635,7 +5849,11 @@ function wireFollowManage(creds=[]){
     try{
       await api('/api/follow/author-alias',{method:'POST',body:JSON.stringify(
         {action:'remove',alias})});
-      await openFollowManage(false);actionReceipt('已移除作者别名');
+      await openFollowManage(false);actionReceipt('已移除作者别名',{undo:async()=>{
+        await api('/api/follow/author-alias',{method:'POST',body:JSON.stringify(
+          {action:'add',canonical:button.dataset.canonical,alias})});
+        await openFollowManage(false);
+      }});
     }catch(error){setActionBusy(button,false);throw error}
   }});
   });
@@ -5768,7 +5986,7 @@ function renderFollowPicks(results){
         <i>${esc(c.known?'已经关注':c.evidence)}</i></span></label>`).join('');
     const searches=(row.external_searches||[]).map(search=>
       `<a class="fpicksearch" href="${esc(search.url)}" target="_blank" rel="noreferrer noopener">
-        <b>${esc(search.label)}</b><span>${esc(search.query)}</span>
+        <b class="externallink">${esc(search.label)}${icon('external-link','externalmark')}</b><span>${esc(search.query)}</span>
         <i>${esc(search.evidence)}</i></a>`).join('');
     return `<div class="fpick"><b>${esc(row.line)}</b>
       ${items||'<p class="fpickempty">站内没有查到来源</p>'}
@@ -6165,7 +6383,7 @@ async function fetchEntityItems(kind,name,filters,offset=0){
 let entityCollectionPage={items:[],total:0,has_more:false};
 /* 资料页作品集的表头与首页计数行同源：排序条由 filters 决定，`视频 · N` 由响应决定。 */
 const entityCollectionSortsHtml=filters=>`<span class="sorts">
-      <button class="batchaction entitybatch" type="button" title="换一批" aria-label="换一批">${icon('refresh-cw')}</button>
+      <button class="batchaction entitybatch" type="button" title="换一批" aria-label="换一批">${icon('shuffle')}</button>
       ${javActive()?javLayoutButtons():''}
       ${sortOptions().map(([key,label])=>sortButtonHtml(
         key,label,filters.sort||'new',filters.dir,'data-entity-sort')).join('')}</span>`;
@@ -6413,7 +6631,7 @@ const sourceToolButtons=id=>`
     <button type="button" data-reveal="${id}" title="在文件管理器里打开源文件所在目录"
       aria-label="定位源文件">${icon('folder-open')}</button>
     <button type="button" data-sync="${id}" title="核对该目录：磁盘上已删除的，移入 Peach 回收站"
-      aria-label="同步删除">${icon('refresh-cw')}</button>`;
+      aria-label="同步删除">${icon('folder-sync')}</button>`;
 function sourceTools(id){return `<div class="srctools">${sourceToolButtons(id)}
     <span class="srcstate" aria-live="polite"></span></div>`}
 
@@ -6566,9 +6784,9 @@ async function openPhotoLightbox(index,source=null){
         aria-label="图片详情" title="图片详情">${icon('info')}</button>
       <div class="photocount mono" aria-live="polite">${index+1} / ${items.length}</div>
       <div class="photozoom">
-        <button type="button" data-zoom-step="-1" aria-label="缩小">${icon('minus')}</button>
+        <button type="button" data-zoom-step="-1" aria-label="缩小">${icon('zoom-out')}</button>
         <input type="range" min="${PHOTO_ZOOM_MIN}" max="${PHOTO_ZOOM_MAX}" step="1" value="100" aria-label="缩放">
-        <button type="button" data-zoom-step="1" aria-label="放大">${icon('plus')}</button>
+        <button type="button" data-zoom-step="1" aria-label="放大">${icon('zoom-in')}</button>
         <b class="mono">100%</b>
         <button class="photoscale" type="button" data-photo-scale="fit" aria-label="适应窗口" title="适应窗口">${icon('maximize')}</button>
         <button class="photoscale photooriginal mono" type="button" data-photo-scale="original" aria-label="原大小" title="原大小">1:1</button>
@@ -6718,12 +6936,11 @@ async function openEntity(kind,name,push=true){
       // 纯图标的链接自己不带可读文字，得把标签留给辅助技术。
       return `<a class="iconlink" href="${esc(x.url)}" target="_blank" rel="noreferrer" title="${esc(x.label)}">${mark}<span class="sr-only">${esc(x.label)}</span></a>`;
     }
-    /* 公司页的头像就是这家公司的标识、标题就是它的名字，官网链接再摆一遍同一个
-       圆标、同一个名字，等于把一件事说三遍。这一格因此只给域名，前面的地球说明
-       这是条外链。人物页反过来：头像是这个人，事务所的圆标和名字在那里是新东西。 */
-    if(company)
-      return `<a class="urllink" href="${esc(x.url)}" target="_blank" rel="noreferrer" title="${esc(x.label)}"><span class="entitylinkicon">${icon('globe')}</span><span class="entitylinklabel">${esc(linkHost(x.url)||x.label)}</span></a>`;
-    return `<a href="${esc(x.url)}" target="_blank" rel="noreferrer" title="${esc(x.label)}"><span class="entitylinkicon">${icon('globe')}<img class="entityfavicon" src="${esc(linkMarkUrl(x))}" alt="" loading="lazy" referrerpolicy="no-referrer" data-drop="self"></span><span class="entitylinklabel">${esc(x.label)}</span></a>`;
+    /* 官网这一格只给域名。域名是这条链接里唯一确定的东西：谁的站、点过去到哪，都在
+       它里面；前面的地球说明这是条外链。站点自己声明的图标不一定是标识——事务所
+       ACT 的站标是旗下一位艺人的照片，摆在人物页上就是一张认错人的脸。事务所的名字
+       另有去处，在上面那行别名里，点进去是它的资料页。 */
+    return `<a class="urllink" href="${esc(x.url)}" target="_blank" rel="noreferrer" title="${esc(x.label)}"><span class="entitylinkicon">${icon('globe')}</span><span class="entitylinklabel">${esc(linkHost(x.url)||x.label)}</span></a>`;
   }).join('');
   const tags=(d.tags||[]).map(x=>`<button class="pill" data-entity-tag="${esc(x.k)}" aria-pressed="${tagPressed(filters.tag,x.k)}">${esc(tagLabel(x.k))}<small>${x.n.toLocaleString()}</small></button>`).join('');
   /* 事务所名下的这批人不摆在这排小圆头像里：那是「同台艺人」，一条附注；名册是这一页
@@ -7027,27 +7244,8 @@ function renderSidebarOrderSetting(){
     if(key===undefined||appSettings.sidebarOrder.includes(key)||!ALL_SIDEBAR_KEYS.includes(key))return;
     appSettings.sidebarOrder=[...appSettings.sidebarOrder,key];saveSidebarSetting();
   });
-  root.querySelectorAll('[data-sidebar-row]').forEach(row=>{
-    row.ondragstart=e=>{
-      sidebarDragKey=row.dataset.sidebarRow;row.classList.add('dragging');
-      e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain',sidebarDragKey||'__home__');
-    };
-    row.ondragover=e=>{
-      if(sidebarDragKey===null||sidebarDragKey===row.dataset.sidebarRow)return;
-      e.preventDefault();e.dataTransfer.dropEffect='move';
-      const after=e.clientY>row.getBoundingClientRect().top+row.offsetHeight/2;
-      root.querySelectorAll('[data-sidebar-row]').forEach(item=>item.classList.remove('drop-before','drop-after'));
-      row.classList.add(after?'drop-after':'drop-before');
-    };
-    row.ondrop=e=>{
-      e.preventDefault();
-      const after=row.classList.contains('drop-after'),target=row.dataset.sidebarRow,key=sidebarDragKey;
-      sidebarDragKey=null;moveSidebarItem(key,target,after);
-    };
-    row.ondragend=()=>{
-      sidebarDragKey=null;root.querySelectorAll('[data-sidebar-row]').forEach(item=>item.classList.remove('dragging','drop-before','drop-after'));
-    };
-  });
+  wireDragReorder(root,{selector:'[data-sidebar-row]',attribute:'data-sidebar-row',
+    onMove:moveSidebarItem});
 }
 /* 当前在哪个管理区。路由表里的 `section` 是唯一判据；垃圾文件那一屏没有自己的
    身份，它是数据管理的一部分，`state.state` 才是判据（`/junk-files` 从启动那一刻
@@ -7093,13 +7291,17 @@ const MANAGE_CRUMB_PAGES={
   '/quality-goals':'高清版',
   '/scraping':'采集来源',
 };
+//: 数据管理这一支里正文是 812px 窄列的页面，标题与面包屑要跟着居中。
+const CENTERED_CLEANUP_PAGES=new Set(['/data-cleanup','/scraping']);
 function paintManageTitle(){
   const current=manageSection(),el=$('#manageTitle');
   if(!el)return;
   document.body.classList.toggle('insight-layout',current==='stats'||current==='taste');
-  /* 812px 居中是数据管理 hub 自己的窄列宽度（.cleanuppage）。它下面的垃圾文件、
-     重复文件正文都是全宽网格，跟着居中就是标题在宽屏上凭空左缩一截、跟内容对不齐。 */
-  document.body.classList.toggle('cleanup-layout',current==='cleanup'&&decodeURIComponent(location.pathname)==='/data-cleanup');
+  /* 812px 居中跟着正文走，不跟着 section 走。数据管理 hub（.cleanuppage）和采集来源
+     （.scraping-page）的正文都是这个宽度的窄列，标题不居中就比正文左出去一截；同一个
+     section 下的垃圾文件、重复文件正文是全宽网格，跟着居中反而对不齐。所以判据是
+     「这条路径的正文是不是窄列」，列在下面这张表里。 */
+  document.body.classList.toggle('cleanup-layout',CENTERED_CLEANUP_PAGES.has(decodeURIComponent(location.pathname)));
   document.body.classList.toggle('follow-manage-layout',decodeURIComponent(location.pathname)==='/follow-manage');
   document.body.classList.toggle('configuration-layout',current==='configuration');
   const entry=MANAGE_SECTIONS.find(([k])=>k===current);
@@ -7544,7 +7746,7 @@ async function loadShorts(requestSeq,surface,{reset=false,addedFrom=0}={}){
   cache(d.items);
   const html=`<section class="shorts-inline"><h2 class="disp">竖屏 <span class="mono shortscount">${
     d.total.toLocaleString()} 个</span><button class="shorts-enter" type="button">${
-    icon('play')}<span>进入沉浸模式</span></button></h2><div class="srow">${
+    icon('gallery-vertical-end')}<span>进入沉浸模式</span></button></h2><div class="srow">${
     d.items.map(it=>cardHtml(it,'scard')).join('')}</div></section>`;
   const strip=splitGridForShorts(html,addedFrom);
   if(!strip)return;
@@ -7581,7 +7783,7 @@ const partLabelBadge=(it,queue)=>queue?.kind==='parts'&&it.part_label
   ? `<small class="javedition partlabel">第 ${esc(it.part_label)} 卷</small>`:'';
 function queueHtml(queue,itemId){
   const action=queue.kind==='mix'
-    ? `<button data-save-mix title="保存为播放列表" aria-label="保存为播放列表">${icon('bookmark-plus')}</button>`
+    ? `<button data-save-mix title="保存为播放列表" aria-label="保存为播放列表">${icon('playlist')}</button>`
     : queue.kind==='playlist'?`<button data-edit-playlist title="编辑播放列表" aria-label="编辑播放列表">${icon('playlist')}</button>`:'';
   const countLabel=queue.kind==='parts'?`${queue.items.length} 卷`
     :queue.kind==='editions'?`${queue.items.length} 个版本`:`${queue.items.length} 个视频`;
@@ -7595,8 +7797,10 @@ function queueHtml(queue,itemId){
       const thumb=mixFacePoster(x,'small');
       const edition=queue.kind==='editions'&&x.edition_label
         ?`<i class="qedition javedition ${EDITION_TONE[x.edition_label]||'censored'}">${esc(x.edition_label)}</i>`:'';
-      const edit=queue.kind==='playlist'?`<span class="queueedit"><button data-queue-up="${index}" aria-label="上移" ${index===0?'disabled':''}>↑</button><button data-queue-down="${index}" aria-label="下移" ${index===queue.items.length-1?'disabled':''}>↓</button><button data-queue-remove="${x.id}" aria-label="移出播放列表">${icon('x')}</button></span>`:'';
-      return `<div class="mixrow"><button class="mixitem ${x.id===itemId?'current':''}" data-queue-item="${x.id}" aria-current="${x.id===itemId?'true':'false'}">
+      /* 顺序直接拖：一列十几条，靠上移下移把最后一条挪到第二位要按十几次，而每一次
+         都是一趟写库加一次重绘。剩下的只有移出，它不是排序动作，留在行尾。 */
+      const edit=queue.kind==='playlist'?`<span class="queueedit"><i class="queuegrip" aria-hidden="true">${icon('grip-vertical')}</i><button data-queue-remove="${x.id}" title="移出播放列表" aria-label="移出播放列表">${icon('x')}</button></span>`:'';
+      return `<div class="mixrow" data-queue-row="${x.id}"><button class="mixitem ${x.id===itemId?'current':''}" data-queue-item="${x.id}" aria-current="${x.id===itemId?'true':'false'}">
         <span class="mixitempic">${thumb}<i class="dur mono">${fmtDur(x.duration)}</i></span><span class="mixitemmeta">${cardIdentity(x,false).avatar}<span class="mixitemtext"><span class="mixitemhead">${edition}<b data-middle-truncate>${esc(javDisplayName(x))}</b></span><span data-truncate-end>${queue.kind==='parts'?`第 ${esc(x.part_label)} 卷`:esc(mixLabel(x))}</span></span></span></button>${edit}</div>`;
     }).join('')}</div></aside>`;
 }
@@ -7661,13 +7865,18 @@ function hasReturnSurface(){
     ||!$('#index').hidden||!$('#stats').hidden;
 }
 /* 同一张骨架的另一半问题：深链冷启动时列表一次请求都没发过，`renderInitialSurfaceLoading`
-   占位的那张「正在读取作品」就永远停在详情下方——写着在读，其实没有任何请求在跑。
-   关掉详情时 `detailReturnNeedsRestore` 会补装列表，所以这里直接清掉即可。 */
-function clearIdleCatalogLoading(){
+   占位的那张「正在读取作品」就停在详情下方，写着在读，其实没有任何请求在跑。这里把那
+   一次请求补发出去：从列表里点进详情时下面就是那份列表，直接刷新详情页的地址也该有
+   同样的东西，否则排序条底下是一整屏空白。
+   走的是 `load(false)`「接着往下取一页」那条路——`reset` 那条开头就 `disposeStage()`，
+   会把刚打开的这一屏详情一起收掉。 */
+function fillIdleCatalog(){
   const grid=$('#grid');
   if(!grid.querySelector('.catalog-skeleton'))return;
   grid.innerHTML='';
   const count=$('#count');count.removeAttribute('aria-busy');count.removeAttribute('aria-label');
+  offset=0;
+  void load(false);
 }
 /* 评分落在 `asset.rating`，量纲是 0–100：这一列是 Stash 的 rating100 直接导进来的，
    taste_history 也按 rating/20 折算成 0–5 分。所以第 n 颗星送出的是 n*20，不是 n。
@@ -7692,7 +7901,7 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
     : detailOriginAbove;
   const returnSurfaceReady=hasReturnSurface();
   const needsReturnRestore=detailReturnNeedsRestore||(!push&&!returnSurfaceReady);
-  if(!returnSurfaceReady)clearIdleCatalogLoading();
+  if(!returnSurfaceReady)fillIdleCatalog();
   const returnBars=barsContext.type==='item'?detailReturnBarsContext:cloneBarsContext(barsContext);
   if(push)detailReturnPath=location.pathname+location.search;
   // 换详情不进小窗；小窗里正放着的那条也让位，两个播放器不同时出声。
@@ -7867,8 +8076,17 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
     :openPlaylist(queueContext.playlistId,+b.dataset.queueItem,true));
   $('#stage').querySelectorAll('[data-save-mix]').forEach(b=>b.onclick=()=>saveMixAsPlaylist(queueContext));
   $('#stage').querySelectorAll('[data-edit-playlist]').forEach(b=>b.onclick=()=>openPlaylists(true));
-  $('#stage').querySelectorAll('[data-queue-up],[data-queue-down]').forEach(b=>b.onclick=()=>movePlaylistItem(queueContext,+b.dataset[b.hasAttribute('data-queue-up')?'queueUp':'queueDown'],b.hasAttribute('data-queue-up')?-1:1,it.id));
   $('#stage').querySelectorAll('[data-queue-remove]').forEach(b=>b.onclick=()=>removePlaylistItem(queueContext,+b.dataset.queueRemove,it.id));
+  if(queueContext?.kind==='playlist'){
+    const list=$('#stage').querySelector('.mixlist');
+    if(list)wireDragReorder(list,{selector:'[data-queue-row]',attribute:'data-queue-row',
+      onMove:(from,target,after)=>{
+        const ids=queueContext.items.map(item=>item.id).filter(id=>id!==+from);
+        const at=ids.indexOf(+target);
+        ids.splice(at+(after?1:0),0,+from);
+        return reorderPlaylistItems(queueContext,ids,it.id);
+      }});
+  }
   wireDrag($('#stage').querySelector('.mixlist'));
   const g=$('#gate');
   const onlineGate=$('#onlineGate');
