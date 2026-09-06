@@ -98,6 +98,10 @@ const lucideIcons = new Map([
   // 配置页每行文件夹的「选择文件夹」：弹系统对话框去挑。`folder-open` 归「打开位置」，不兼任。
   ["folder-search", "folder-search"],
   ["sun", "sun"], ["moon", "moon"],
+  // 小窗播放：右键菜单里「迷你播放器」是缩进角落的小屏，小窗上的「展开」是对角撑开；
+  // `maximize` 归 JAV 大图版式，不兼任。「循环播放」与「复制视频网址」照 Lucide 本名。
+  ["picture-in-picture-2", "picture-in-picture-2"], ["maximize-2", "maximize-2"],
+  ["repeat", "repeat"], ["link", "link"],
 ]);
 
 // 自绘 symbol：没有上游可对，所以在这里逐个点名。下面那道分区检查要求雪碧图里

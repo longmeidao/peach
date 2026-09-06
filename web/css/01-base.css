@@ -64,7 +64,9 @@
      站在白卡上，往亮里填等于白叠白，一排 tab 里哪一枚被选中读不出来。Geist 的取法是往下
      压一档到 gray-200。深色一档叠白后本来就比面亮，同一个 token 两边都成立。 */
   --picked:var(--inset);
-  --layer-dialog:1000; --layer-popover:1100; --layer-tooltip:1200;
+  /* 小窗播放浮在整页内容、吸顶条、抽屉（97）和沉浸层（200）之上，却要让设置面板、
+     菜单与 Toast 盖住它：dialog 以上三档都不是这个位置。 */
+  --layer-miniplayer:900; --layer-dialog:1000; --layer-popover:1100; --layer-tooltip:1200;
   --frost-panel:rgba(250,250,250,.92); --frost-light:rgba(255,255,255,.86);
   --overlay-5:rgba(0,0,0,.05);--border-10:rgba(0,0,0,.10);--border-15:rgba(0,0,0,.15);
   /* 输入框那一组边与环。2026-09-05 实测 vercel.com 的输入框：静止 1px 的
