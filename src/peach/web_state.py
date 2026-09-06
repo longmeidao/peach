@@ -173,6 +173,7 @@ class WebContract:
         self.taste_refresh_job = BackgroundJob("PeachTasteRefreshJob")
         self.link_prune_job = BackgroundJob("PeachLinkPruneJob")
         self.scraping_cover_job = BackgroundJob("PeachScrapingCoverJob")
+        self.library_processing_job = BackgroundJob("PeachLibraryProcessingJob")
         self.resource_apply_job = BackgroundJob("PeachResourceApplyJob")
         self.follow_scheduler = None
         # 两块后台任务的锁、状态和线程都归 BackgroundJob 管，契约上只留这两个字段。
@@ -241,6 +242,7 @@ class WebContract:
         self.resource_scan.stop()
         self.follow_job.stop()
         self.scraping_cover_job.stop()
+        self.library_processing_job.stop()
         self.follow_resolve_job.stop()
         self.taste_refresh_job.stop()
         self.link_prune_job.stop()

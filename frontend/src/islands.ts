@@ -23,6 +23,8 @@ import type { QualityGoalsProps } from './islands/quality-goals';
 import type { QualityGoalsData } from './state/quality-goals';
 import { Scraping, loadScraping } from './islands/scraping';
 import type { ScrapingData, ScrapingProps } from './islands/scraping';
+import { LibraryProcessing, loadLibraryProcessing } from './islands/library-processing';
+import type { LibraryProcessingData, LibraryProcessingProps } from './islands/library-processing';
 
 /* 跨岛共享状态的入口一起从这里出去。遗留层拿到的是一个 bundle，它有两种用法：
  * `mountIsland` 挂一屏，`refreshStore` 告诉已经挂着的那屏「数据变了」。
@@ -44,6 +46,7 @@ export interface IslandState<D> {
 
 /** 每个 island 的 props 与首屏数据类型。新增 island 时在这里登记，注册表随之要求实现。 */
 export interface IslandContracts {
+  'library-processing': { props: LibraryProcessingProps; data: LibraryProcessingData };
   'scraping': { props: ScrapingProps; data: ScrapingData };
   'quality-goals': { props: QualityGoalsProps; data: QualityGoalsData };
   configuration: { props: ConfigurationProps; data: ConfigurationData };
@@ -60,6 +63,7 @@ interface IslandDefinition<N extends IslandName> {
 }
 
 const REGISTRY: { [N in IslandName]: IslandDefinition<N> } = {
+  'library-processing': { load: loadLibraryProcessing, component: LibraryProcessing },
   'scraping': { load: loadScraping, component: Scraping },
   'quality-goals': { load: loadQualityGoals, component: QualityGoals },
   configuration: { load: loadConfiguration, component: Configuration },

@@ -41,6 +41,8 @@ First-run setup offers an optional browser-history import guide. Completed impor
 
 Tray-managed services let you adjust media sources under Manage → Configuration on the host computer, including through its LAN hostname. Setup and configuration provide download links when dependencies are not detected, with mount drivers shown for the host operating system.
 
+In Data Management, Scan and enrich scans folders, detects existing NFO files and local posters, and fetches missing metadata. Same-name NFO files, `movie.nfo` in single-movie folders, and episode NFO files are supported. Metadata retains its original source and enters the review queue before updating the catalog. Local custom tags are preserved; folders containing multiple videos do not share `movie.nfo`.
+
 Follow sources include FANBOX, Patreon, SubscribeStar, Kemono, Pawchive, Coomer, the Rule34 family and F95zone. Availability depends on the site and your access rights. See [source collection](docs/SOURCING.md) for supported workflows and boundaries.
 
 ## Quick start

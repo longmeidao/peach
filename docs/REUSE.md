@@ -235,6 +235,8 @@ Python、npm 与 GitHub Actions 的版本由 `.github/dependabot.yml` 每周检�
 
 ## 当前替换队列
 
+本地库导入复用 Kodi/Jellyfin NFO 协议（2026-09-06 核对 [Kodi](https://kodi.wiki/view/NFO_files/Movies)、[Jellyfin](https://jellyfin.org/docs/general/server/metadata/nfo/)），XML 解析复用 Python 3.12+ 标准库 ElementTree（PSF，无新增依赖），图片复用项目固定版 Pillow。只适配影片、单集与音乐视频的字段；整剧、音乐专辑、播放记录及远端图片引用保留在原文件，不作为影片资料套用。拒绝 DTD、超大输入与越目录图片引用。同名边车优先，`movie.nfo` 和通用海报只用于单影片目录。真实 JavBoss NFO 与同番号 R18 JSON 的只读 POC 已取得：本地保留原标题、演员和自定义标签，远端能补厂牌、导演、发行商、时长和图片出处。网络复用现有 R18 JSON 入口、SourceTransport 与封面解析器；独立包无需另装 Go。Javinizer-Go 仍服务多来源离线查询，本适配不新增站点 HTML 解析器。候选按资产 ID 与路径定位，批准时复核目标；时长证据不覆盖媒体探测时长。
+
 已完成：共享 Media/Job/HTTP 边界、feedparser、Pillow、Beautiful Soup、FTS5、可安全导入的批处理脚本和按任务范围终止进程。
 
 1. Video.js 已接管详情播放；`MediaEngine.stream_plan` 已让 115/PikPak 原生 MP4 使用 HLS 临时短片段，仍需补自适应码率、多路清单和生产验收。CloudDrive 的虚拟盘固定块预取仍属于来源层成本。

@@ -72,7 +72,7 @@ CANDIDATE_PREFIX = {
 ADDITIONAL_CANDIDATE_FILES = {
     # 分区文件先于通用批次读取；同一个 item_key 出现时，窄范围的刷新证据应覆盖
     # 通用批次里的旧候选，而不是被 seen 去重静默吞掉。
-    "metadata_fields": ("japanese-title-candidates.csv", "fc2-metadata-field-candidates.csv"),
+    "metadata_fields": ("library-metadata-field-candidates.csv", "japanese-title-candidates.csv", "fc2-metadata-field-candidates.csv"),
 }
 # 每类候选的稳定主键列。缺这一列的行直接跳过并计数，绝不退化成行号——
 # 行号会在 CSV 重排后把历史决定悄悄挪到别的条目上。
@@ -270,7 +270,8 @@ def _attach_review_asset_context(connection, rows: list[dict]) -> None:
 
     for row in rows:
         code = str(row.get("code") or row.get("query") or "").strip()
-        asset = assets_by_code.get(normalise_code_key(code)) if code else None
+        asset = (comparison_assets.get(int(row['asset_id'])) if row.get('asset_path') and str(row.get('asset_id', '')).isdigit()
+                 else assets_by_code.get(normalise_code_key(code)) if code else None)
         entity_id = str(row.get("entity_id") or "")
         if asset is None and entity_id.isdigit():
             asset = assets_by_entity.get(int(entity_id))
@@ -636,7 +637,8 @@ def _review_evidence(category: str, row: dict) -> str:
     """给本身没有 reason 列的候选拼一句可判断的证据，别让复核页只剩一个名字。"""
     if category == "metadata_fields":
         current = str(row.get("current_value") or "").strip() or "尚无"
-        return (f"当前值：{current}；{row.get('videos') or 0} 个同番号资产；"
+        target = '匹配资产' if row.get('asset_path') else '同番号资产'
+        return (f"当前值：{current}；{row.get('videos') or 0} 个{target}；"
                 f"{len(row.get('candidates') or [])} 个来源候选")
     if category == "western_identity":
         overlap = row.get("token_overlap") or "0"
@@ -748,14 +750,21 @@ def _apply_metadata_candidate(connection, group: dict, candidate: dict, now: str
         raise ValueError("该元数据字段没有 Peach 写入映射")
     code = str(group.get("code") or "").strip()
     query = str(group.get("query") or code).strip()
-    assets = connection.execute(
-        "SELECT id FROM asset WHERE medium='video' AND (upper(trim(code))=upper(?) "
-        "OR upper(trim(code))=upper(?)) AND (disposal IS NULL OR disposal<>'trash')",
-        (code, query),
-    ).fetchall()
+    if group.get('asset_path'):
+        assets = connection.execute(
+            "SELECT id FROM asset WHERE id=? AND path=? AND medium='video' "
+            "AND (disposal IS NULL OR disposal<>'trash')",
+            (group.get('asset_id'), group['asset_path']),
+        ).fetchall()
+    else:
+        assets = connection.execute(
+            "SELECT id FROM asset WHERE medium='video' AND (upper(trim(code))=upper(?) "
+            "OR upper(trim(code))=upper(?)) AND (disposal IS NULL OR disposal<>'trash')",
+            (code, query),
+        ).fetchall()
     asset_ids = sorted({int(row["id"]) for row in assets})
     if not asset_ids:
-        raise ValueError("当前 ledger 已没有这个番号的可用资产")
+        raise ValueError("当前 ledger 已没有匹配的可用资产")
     if len(asset_ids) > REVIEW_APPLY_LIMIT:
         raise ValueError(f"同番号资产 {len(asset_ids)} 条，超过单次批准上限 {REVIEW_APPLY_LIMIT}")
     source = str(candidate.get("source") or "").strip()

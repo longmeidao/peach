@@ -2309,9 +2309,9 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("form.reset();await openFollowManage(false)")
         self.assertPageContains("data-cred-clear")
 
-    def test_only_a_missing_required_credential_demands_attention(self):
-        # 可选的、不需要的、站点接不进来的都收起来；永远展开就是永久噪音。
-        self.assertPageContains("row.requirement==='required'&&!configured")
+    def test_required_credentials_expand_and_the_source_menu_offers_configuration(self):
+        self.assertPageContains("row?.requirement==='required'")
+        self.assertPageContains('data-srcfilter-config=')
         self.assertPageContains("${needsAttention?' open':''}")
 
     def test_the_watch_page_does_not_carry_source_management(self):

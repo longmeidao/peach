@@ -26,7 +26,7 @@ describe('数据管理首屏', () => {
       expect(card.querySelector('.geist-fieldset-content > .geist-fieldset-title')).not.toBeNull();
       expect(card.querySelector('.geist-fieldset-footer > button')?.textContent).not.toBe('');
     }
-    expect(cards[0]?.querySelector('p')?.textContent).toBe('下载高清封面，设置代理和 Cookie。');
+    expect(cards[0]?.querySelector('p')?.textContent).toBe('扫描媒体文件夹，导入已有资料，采集缺失信息。');
     expect(cards[0]?.querySelector('.skeleton')).toBeNull();
     expect(root.querySelectorAll('.cleanup-count-skeleton')).toHaveLength(7);
     expect(root.querySelector('#resource-sync')).toBeNull();
@@ -39,6 +39,8 @@ describe('浏览器历史引导', () => {
     root.innerHTML = tasteHistoryGuideHtml(true);
     expect(root.querySelector('details')?.open).toBe(true);
     expect(root.querySelector('.taste-guide-skip')?.textContent).toBe('跳过');
+    expect(root.querySelector('.taste-guide-skip')?.classList.contains('geist-button')).toBe(true);
+    expect(root.querySelector('.taste-guide-skip')?.hasAttribute('disabled')).toBe(false);
     root.innerHTML = tasteHistoryGuideHtml(false);
     expect(root.querySelector('details')?.open).toBe(false);
     expect(root.querySelector('.taste-guide-skip')).not.toBeNull();

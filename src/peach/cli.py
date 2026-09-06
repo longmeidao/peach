@@ -466,6 +466,16 @@ def _scan(args: argparse.Namespace) -> int:
     return 0
 
 
+def _process_library(args: argparse.Namespace) -> int:
+    from .library_processing import process_library
+    _require_readable_settings()
+    config = settings_file.active()
+    result = process_library(config, args.db, config.directory('generated'),
+                             config.directory('generated') / 'covers', location=args.location,
+                             report=lambda state: print(f"{state['stage']}：{state['checked']}/{state['total']}", flush=True))
+    return 0 if result['status'] == 'complete' else 1
+
+
 def _create_data_tree(config: settings_file.PeachConfig) -> None:
     """建目录、把库迁到最新、生成本机 CA。事情由 `onboarding.create_data_tree` 做，
     这里只把它做过的事说出来——托盘的设置页调同一个函数，两条前端不会各做一套。
@@ -623,6 +633,10 @@ def build_parser() -> argparse.ArgumentParser:
                              help="要扫的目录；省略时取该来源的声明根（本机目录按 [media.mounts] 取）")
     scan_parser.add_argument("--db", type=Path, default=DEFAULT_DB)
     scan_parser.set_defaults(handler=_scan)
+    process_parser = commands.add_parser('process', help='扫描文件并补全馆藏资料')
+    process_parser.add_argument('location', nargs='?', default='configured')
+    process_parser.add_argument('--db', type=Path, default=DEFAULT_DB)
+    process_parser.set_defaults(handler=_process_library)
 
     token = commands.add_parser("token", help="查看局域网访问口令，没有就生成一份")
     token.add_argument("--rotate", action="store_true",

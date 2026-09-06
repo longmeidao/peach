@@ -14,6 +14,9 @@ export const emptyStateHtml = (
 
 export const fieldsetTitle = (id: string, title: string): string =>
   `<h3 class="geist-fieldset-title" id="${id}">${title}</h3>`;
+export const loadingDotsHtml = (label: string): string => `<span>${label}</span>`;
+export const progressHtml = (label: string, value: number, max: number): string =>
+  `<progress aria-label="${label}" value="${value}" max="${max}"></progress>`;
 
 export const MEDIA_SOURCE_ICONS: Record<string,string> = {local:'hard-drive','115':'fixture-115',pikpak:'fixture-pikpak'};
 export const selectOptionIconHtml = (mark?: string): string => mark ? `<i data-source-icon="${mark}"></i>` : '';

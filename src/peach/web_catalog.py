@@ -313,6 +313,7 @@ def q_items(contract: WebContract, args):
     for r in rows:
         r["cost"] = COST.get(r["location"], "metered")
         r["has_thumb"] = contract.has_snapshot(r["snapshot_path"])
+        r['has_local_poster'] = (contract.poster_root / f"{r['id']}_4.jpg").is_file()
         r["has_cover"] = contract.has_cover(r.get("code"))
         # 卡片上的出镜者称谓、规范番号、版本徽章与详情页使用同一份投影。
         attach_jav_display_fields(r, r.get("tags", ()), r.pop("_entity_kinds", ()))
@@ -713,6 +714,7 @@ def q_item(contract: WebContract, aid):
         d["studio"] = d["entities"]["studio"][0]
     d["cost"] = COST.get(d["location"], "metered")
     d["has_thumb"] = contract.has_snapshot(d["snapshot_path"])
+    d['has_local_poster'] = (contract.poster_root / f"{d['id']}_4.jpg").is_file()
     # 身份格的厂牌位和顶栏小圆片同一条判据：没装标识就不输出 `<img>`。规范厂牌走
     # `entity_refs`，非规范的那条只有扁平 `studio` 字段，两边都要有标志，否则
     # 后者会从「本来能取到图」退化成永远首字母。
@@ -793,6 +795,7 @@ def q_related(contract: WebContract, aid, limit=24):
     for d in picked:
         d["cost"] = COST.get(d["location"], "metered")
         d["has_thumb"] = contract.has_snapshot(d["snapshot_path"])
+        d['has_local_poster'] = (contract.poster_root / f"{d['id']}_4.jpg").is_file()
         d["has_cover"] = contract.has_cover(d.get("code"))
         attach_jav_display_fields(
             d, related_tags.get(d["id"], ()), d.pop("_entity_kinds", ()),

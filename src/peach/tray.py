@@ -745,7 +745,7 @@ class SetupGate:
         return True
 
     def start_first_scan(self, config) -> subprocess.Popen | None:
-        """消费首扫标记，用子进程跑一遍 `peach scan <来源>`。
+        """消费首扫标记，用子进程跑一遍 `peach process <来源>`。
 
         扫描不能跑在引导服务里——那个进程刚被上面停掉；也不能跑在托盘线程里——
         几万个文件要走十几分钟，会把健康轮询和菜单一起卡住。
@@ -765,7 +765,7 @@ class SetupGate:
             # 否则 Windows 上这个文件会被托盘一直占着，谁也删不掉它。
             with (log_dir / "tray-scan.out.log").open("ab") as handle:
                 process = self._popen(
-                    [str(_peach_executable()), "scan", location],
+                    [str(_peach_executable()), "process", location],
                     cwd=str(PROJECT_ROOT), stdin=subprocess.DEVNULL,
                     stdout=handle, stderr=subprocess.STDOUT, shell=False,
                     creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,

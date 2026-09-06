@@ -819,6 +819,7 @@ class WebDataTests(unittest.TestCase):
 
     def test_contract_handler_registries_are_complete_and_unknown_routes_fail(self):
         self.assertEqual(set(rm_web.GET_HANDLERS), {
+            "/api/library-processing",
             "/api/scraping", "/api/scraping/cover",
             "/api/items", "/api/item", "/api/entity", "/api/photos", "/api/photo-set",
             "/api/index", "/api/parts", "/api/editions", "/api/duplicates", "/api/quality-goals",
@@ -831,6 +832,7 @@ class WebDataTests(unittest.TestCase):
             "/api/taste", "/api/settings", "/api/links",
         })
         self.assertEqual(set(rm_web.POST_HANDLERS), {
+            "/api/library-processing",
             "/api/scraping/settings", "/api/scraping/check", "/api/scraping/cover",
             "/api/activity", "/api/play", "/api/feedback", "/api/watch-later",
             "/api/playlist",

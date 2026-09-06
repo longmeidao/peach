@@ -13,7 +13,7 @@ export function cloudPreferenceLocations(files: readonly { location: string }[],
 /** 首屏复用最终 Fieldset 的排版，静态标题、说明和按钮无需等待接口。 */
 export function cleanupSkeletonHtml(): string {
   const cards = [
-    ['采集来源', '设置采集来源', '下载高清封面，设置代理和 Cookie。'],
+    ['扫描与采集', '扫描并补全资料', '扫描媒体文件夹，导入已有资料，采集缺失信息。'],
     ['垃圾文件', '查看垃圾文件', ''], ['重复文件', '查看重复文件', ''],
     ['空文件夹', '删除空文件夹', ''], ['人工复核', '查看候选', ''],
     ['回收站', '查看回收站', ''], ['高清版', '查看高清版', ''],
@@ -40,7 +40,7 @@ export function tasteHistoryGuideHtml(onboarding: boolean, completed = false, sk
       <ul><li>Chrome：在 <a href="https://takeout.google.com/" target="_blank" rel="noreferrer">Google Takeout${external}</a> 选择 Chrome 历史记录，下载 ZIP 后直接导入。</li>
       <li>其他浏览器：使用 <a href="https://github.com/purarue/browserexport" target="_blank" rel="noreferrer">browserexport${external}</a> 导出历史记录，再导入导出文件。</li></ul>
       <p>需要刷新时再次读取或导入；数据源可在页面底部移除。</p>
-      <button type="button" class="taste-guide-skip">跳过</button>
+      <button type="button" class="geist-button taste-guide-skip">跳过</button>
     </div></details>`;
 }
 
