@@ -29,9 +29,9 @@
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink-2)}
 .idgroup-performer .idcell{align-items:center}
 .idgroup-performer .idname{text-align:center}
-.idcell:not(.entitylink){cursor:default}
-.idcell.entitylink:hover .idface{box-shadow:0 0 0 2px var(--ink-2)}
-.idcell.entitylink:hover .idname{color:var(--ink)}
+.idcell:not(.entitylink):not(.unownedlink){cursor:default}
+.idcell.entitylink:hover .idface,.idcell.unownedlink:hover .idface{box-shadow:0 0 0 2px var(--ink-2)}
+.idcell.entitylink:hover .idname,.idcell.unownedlink:hover .idname{color:var(--ink)}
 .castmore{align-self:center;height:46px;padding:0 12px;border:1px dashed var(--overlay-10);
   border-radius:var(--floating-radius);background:transparent;color:var(--ink-2);font-size:var(--fs-xs);cursor:pointer}
 .castmore:hover{background:var(--hover)}
@@ -58,7 +58,6 @@ button.serieslink.entitylink:hover{color:var(--tungsten);text-decoration:none}
   border:1px solid var(--border-15);background:var(--surface);color:var(--ink);
   cursor:pointer;font-size:var(--fs-sm);line-height:1}
 .dupactions button:hover,.dupbtns button:hover{background:var(--hover);color:var(--ink)}
-.dupbtns button.danger{color:var(--drop)}.dupbtns button.danger:hover{background:var(--drop);border-color:var(--drop);color:#fff}
 .dupactions button:disabled,.dupbtns button:disabled{opacity:.5;cursor:wait}
 .dupgroup{border:1px solid var(--overlay-10);border-radius:var(--surface-radius);margin-bottom:12px;overflow:hidden}
 .duphead{display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--overlay-5);flex-wrap:wrap}
@@ -118,14 +117,15 @@ button.serieslink.entitylink:hover{color:var(--tungsten);text-decoration:none}
 .revieworigin>div button{display:inline-flex;align-items:center;gap:6px;border:0;border-radius:var(--control-radius);background:var(--hover);padding:6px 9px;color:var(--ink-2);cursor:pointer}
 .revieworigin>div button:hover{color:var(--ink)}.revieworigin>div button svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2}
 @media(max-width:640px){.qualitylist{grid-template-columns:1fr}.qualityitem{grid-template-columns:110px minmax(0,1fr)}.qualitycover{width:110px}.reviewcompare{grid-template-columns:1fr}.revieworigin{grid-template-columns:110px minmax(0,1fr)}.revieworigincover{width:110px}}
-@media(max-width:640px){.resourcesync .resourcesources{grid-template-columns:1fr}.resourcesync .resourcesources article+article{border-left:0;border-top:1px solid var(--line-soft)}.resourcesync .resourcecache{grid-template-columns:1fr}.resourcesync .resourcecache>div+div{border-left:0;border-top:1px solid var(--line-soft)}}
+@media(max-width:640px){.resourcesync .resourcesources{grid-auto-flow:row;grid-template-columns:1fr}.resourcesync .resourcesources article+article{border-left:0;border-top:1px solid var(--line-soft)}.resourcesync .resourcecache{grid-template-columns:1fr}.resourcesync .resourcecache>div+div{border-left:0;border-top:1px solid var(--line-soft)}}
 
 .indexmore[hidden],.entitymore[hidden]{display:none}
 .indexmore,.entitymore{display:flex;align-items:center;justify-content:center;margin:20px auto 0;min-width:124px;
   min-height:40px;padding:8px 16px;border:1px solid var(--border-15);border-radius:var(--control-radius);background:transparent;
   color:var(--ink-2);cursor:pointer}.indexmore:hover,.entitymore:hover{background:var(--hover);color:var(--ink)}
 .indexmore:disabled,.entitymore:disabled{opacity:.5;cursor:wait}
-.entitylink{border:0;background:none;padding:0;color:var(--tungsten);cursor:pointer;text-decoration:none}
-.entitylink:hover{color:var(--ink);text-decoration:none}
+/* 「未归属」和实体名一样是个入口，只是它指向一个集合而不是一个人，样式同源。 */
+.entitylink,.unownedlink{border:0;background:none;padding:0;color:var(--tungsten);cursor:pointer;text-decoration:none}
+.entitylink:hover,.unownedlink:hover{color:var(--ink);text-decoration:none}
 /* Peach 的可点击身份只用颜色、头像描边和背景反馈，不使用链接下划线。 */
-.idcell.entitylink:hover,.mav.entitylink:hover{text-decoration:none}
+.idcell.entitylink:hover,.idcell.unownedlink:hover,.mav.entitylink:hover{text-decoration:none}

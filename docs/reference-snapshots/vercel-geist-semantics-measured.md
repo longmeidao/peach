@@ -381,11 +381,62 @@ Peach 的两列侧栏导航按上表对齐：`.edge button` 与 `.dnav button` �
 - 全站收成两张面。`--page` 是退到后面那张：`body`、框体里的操作条。`--ground` 是浮在它
   上面那张：顶栏、窄栏、卡片、面板、按钮和输入框，外框 1px `--field-ring`、内部分隔线
   `--line-soft`，不靠投影。暗色一档 Peach 的底带蓝，所以 `--page` 取 `#04060A` 而不是纯黑，
-  方向与 Vercel 一致（面比底亮）。`--surface` 不再当面用，只剩悬停与内嵌那一档。
+  方向与 Vercel 一致（面比底亮）。`--surface` 不再当面用，只剩内嵌与控件禁用那一档。
 - 顶栏与窄栏是有意与 Vercel 分开的一处：Vercel 的页头和页面底同色、不浮起，Peach 有一条
   从上贯到底的窄栏，两条一起留在 `--ground` 才不会在左上角撞出两种白。
-- 按钮次级档填 `--ground` 而不是透明，悬停抬到 `--surface`；禁用落到 `--sunk`。
+- 按钮次级档填 `--ground` 而不是透明，悬停抬到 Geist 的 gray-200 那一档，写作
+  `color-mix(in srgb,var(--ink) 8%,var(--ground))`：浅色落在 `#EBEBEB`、深色往亮处抬，
+  两个主题共用一条规则；禁用落到 `--sunk`。
+- 动作按钮一律 `border:0`，两档只靠填充分：主动作 `--ink` 实底、次级 `--ground` 一块亮面。
+  描边留给输入类控件和「点开会出一张面板」的触发器：`.gselectfield`、来源筛选的
+  `[data-srcfilter-toggle]`、排序方向的 `.fmanagedir` 保留 1px `--field-ring`，
+  悬停走 `--field-ring-hover`、展开走 `--field-ring-focus` 加 4px 辉光。
+- 危险档静止态就是实底红 `--drop` 加白字，悬停把同一块红压深 18%：与 Geist 的 error
+  变体（`rgb(217,48,54)` 实底白字）同构，站内只有 01-base 那一份定义。
+- 选中面 `--picked` 取 `--inset`：浅色 `#EBEBEB`（Geist 的 gray-200）、深色 9% 白。
+  判据是「比脚下那张面往下压一档」，与实测 Tabs 的 `bg-gray-200` 一致；站在 `--ground`
+  上的那一类控件（顶栏、窄栏、抽屉、浮层菜单）例外，选中走 `--hover` 加 `--ink` 字色。
 - 滚动条不写任何自定义样式，交给 `html` 上的 `color-scheme`。
+
+## 2026-09-06 实测 vercel.com/<team> 的图标用法
+
+取证方式：内置浏览器登录态下打开团队 dashboard，遍历所有可见 `button` 与 `a`，
+统计每个控件里的 `svg` 数量、图标落在文字的哪一侧。
+
+### 按钮
+
+| 控件 | 文字 | 图标 | 位置 |
+| --- | --- | --- | --- |
+| All Projects | 有 | 1 | 后置 chevron（点开是菜单） |
+| Add New | 有 | 1 | 后置 chevron（点开是菜单） |
+| Upgrade | 有 | 0 | 纯文字 |
+| Upgrade to Pro | 有 | 0 | 纯文字 |
+| 其余 12 枚 | 无 | 1 | icon-only，24／32／36px 见方 |
+
+一屏 16 枚可见按钮里，**带文字的没有一枚挂前置图标**。
+
+### 链接
+
+站内链接（PR `#7`、部署 ID、项目名、用量项）不带图标；离站的部署域名
+`lmd-gg.vercel.app` 带一枚 14×14 的 Geist external-link（`viewBox="0 0 16 16"`、
+`fill:currentColor`）。列表行左端出现的图标是身份标记（用量项的 provider 标、
+提交行的 git 标），不是动作图标。
+
+### 判据
+
+图标只出现在三个位置：纯图标控件、菜单触发器的后置 chevron、以及「这一跳会离开当前
+应用」的外链标。带文字的动作按钮不加前置图标——文字已经说清动作，再加一个图标是把
+同一件事说两遍，一排按钮的左边缘还会被大小不一的图形推得参差。
+
+### Peach 对应
+
+- 保留：`chevron-down` 这类触发器标、`check` 这类选中标、`external-link`、侧栏与抽屉的
+  导航标（那一层是 icon-only 加标签的列表，对应 Vercel 的左栏）、状态语义色块。
+- 去掉：带文字的动作按钮上的前置图标（`refresh-cw` + 检查死链／扫描差异／重试同步、
+  `upload` + 导入历史、`trash` + 删除空文件夹／移入回收站、`plus` + 新建播放列表、
+  `play` + 进入沉浸模式）。
+- 补上：任何跳出 Peach 的链接都要 external-link 标，站标（favicon）只在来源行这种
+  「哪个站」本身是信息的位置用。
 
 ## 2026-09-05 实测 vercel.com/<team>/~/deployments 的筛选行
 

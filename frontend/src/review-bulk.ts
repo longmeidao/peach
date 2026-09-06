@@ -1,18 +1,38 @@
-import { badgeHtml, checkboxHtml, setActionBusy, selectFieldHtml, wireSelectField } from '@peach/legacy/ui';
+import { checkboxHtml, setActionBusy, selectFieldHtml, wireSelectField } from '@peach/legacy/ui';
 import { errorMessage } from './api';
 
 export interface ReviewRow { item_key: string; field?: string; field_label?: string; source?: string; candidates?: { candidate_key: string; source?: string }[] }
 export type ReviewGrouping = 'candidates' | 'source' | 'field';
-export const createReviewSelection = () => ({ busy: false, groupBy: 'candidates' as ReviewGrouping, anchor: null as string | null, selected: new Set<string>(), choices: new Map<string, string>(), assets: new Map<string, number[]>(), errors: new Map<string, string>() });
+export const createReviewSelection = () => ({ busy: false, category: '', filter: '', groupBy: 'candidates' as ReviewGrouping, anchor: null as string | null, selected: new Set<string>(), choices: new Map<string, string>(), assets: new Map<string, number[]>(), errors: new Map<string, string>() });
 type Selection = ReturnType<typeof createReviewSelection>;
 type Payload = Record<string, unknown>;
+
+export function updateReviewSticky(root: HTMLElement | null) {
+  const controls = root?.querySelector<HTMLElement>('.reviewcontrols');
+  if (!root || !controls || controls.offsetParent === null) return;
+  const main = root.closest('main');
+  if (main) root.style.setProperty('--review-edge', getComputedStyle(main).paddingLeft);
+  root.style.setProperty('--review-controls-height', `${controls.getBoundingClientRect().height}px`);
+  for (const bar of [controls, ...root.querySelectorAll<HTMLElement>('.reviewgroupbar')]) {
+    const top = parseFloat(getComputedStyle(bar).top);
+    bar.classList.toggle('is-stuck', bar.offsetParent !== null && window.scrollY > 0 &&
+      Number.isFinite(top) && Math.abs(bar.getBoundingClientRect().top - top) <= 1);
+  }
+}
+
+export function reviewGroupingOptions(rows: ReviewRow[], metadata: boolean): string[][] {
+  const options = [['candidates', metadata ? '按候选数量' : '全部待复核', 'list-filter']];
+  if (rows.some(row => row.source || row.candidates?.some(candidate => candidate.source))) options.push(['source', '按来源', 'list-filter']);
+  if (rows.some(row => row.field)) options.push(['field', '按字段', 'list-filter']);
+  return options;
+}
 
 /** 按来源组合分组，每个作品字段只出现一次。 */
 export function groupReviewRows(rows: ReviewRow[], by: ReviewGrouping) {
   const groups = new Map<string, { key: string; title: string; rows: ReviewRow[] }>();
   for (const row of rows) {
     let key: string, title: string;
-    if (by === 'field') { key = row.field || ''; title = row.field_label || row.field || '未标注字段'; }
+    if (by === 'field') { key = row.field || '__unspecified_field'; title = row.field_label || row.field || '未标注字段'; }
     else if (by === 'source') {
       const sources = [...new Set((row.candidates?.map(candidate => candidate.source || '') || [row.source || '']).filter(Boolean))].sort();
       key = JSON.stringify(sources); title = sources.join(' / ') || '未标注来源';
@@ -55,37 +75,63 @@ export function commonReviewSources(rows: ReviewRow[]): string[] {
 }
 
 export function wireReviewSelection(root: HTMLElement, options: {
-  rows: ReviewRow[]; metadata: boolean; locked: boolean; state: Selection;
+  rows: ReviewRow[]; metadata: boolean; category?: string; locked: boolean; state: Selection;
   payload(item: HTMLElement): Payload; submit(payload: Payload): Promise<{ ok: boolean; error?: string }>;
   applied(key: string): void; active(): boolean; refresh(): void; notify(message: string): void;
 }) {
   const list = root.querySelector<HTMLElement>('.reviewlist');
   if (!list || !options.rows.length || options.locked) return;
   const state = options.state, cards = [...list.querySelectorAll<HTMLElement>('[data-review-key]')];
-  const visible = () => [...list.querySelectorAll<HTMLElement>('[data-review-key]')];
+  if (options.category !== undefined && state.category !== options.category) {
+    state.category = options.category; state.filter = ''; state.groupBy = 'candidates'; state.anchor = null;
+  }
+  const groupOptions = reviewGroupingOptions(options.rows, options.metadata);
+  if (!groupOptions.some(option => option[0] === state.groupBy)) { state.groupBy = 'candidates'; state.filter = ''; }
+  const groups = groupReviewRows(options.rows, state.groupBy);
+  if (!groups.some(group => group.key === state.filter)) state.filter = '';
+  const visible = () => [...list.querySelectorAll<HTMLElement>('[data-review-key]')].filter(card => !card.closest('[hidden]'));
   const selected = () => visible().filter(card => state.selected.has(card.dataset.reviewKey!));
-  const selectedRows = () => options.rows.filter(row => state.selected.has(row.item_key));
+  const selectedRows = () => options.rows.filter(row => selected().some(card => card.dataset.reviewKey === row.item_key));
   const eligible = (card: HTMLElement) => !card.querySelector<HTMLButtonElement>('[data-review-status="approved"]')?.disabled;
   const button = (text: string, variant = '') => { const control = document.createElement('button'); control.type = 'button'; control.className = `geist-button ${variant}`.trim(); control.textContent = text; return control; };
   const toolbar = document.createElement('div'); toolbar.className = 'reviewbulkbar reviewbulktoolbar'; toolbar.setAttribute('role', 'group'); toolbar.setAttribute('aria-label', '复核批量操作');
   const grouping = document.createElement('div'); grouping.className = 'reviewgroupby';
-  grouping.innerHTML = selectFieldHtml([['candidates', '按候选数量'], ['source', '按来源'], ['field', '按字段']], state.groupBy, { label: '分组方式' });
+  grouping.innerHTML = selectFieldHtml(groupOptions, state.groupBy, { label: '筛选分组方式' });
   const groupField = wireSelectField(grouping.firstElementChild!);
-  groupField.addEventListener('change', () => { if (state.busy || !['candidates', 'source', 'field'].includes(groupField.value)) return; state.groupBy = groupField.value as ReviewGrouping; state.anchor = null; const host = root.parentElement; options.refresh(); host?.querySelector<HTMLButtonElement>('.reviewgroupby button')?.focus({ preventScroll: true }); });
+  grouping.querySelectorAll('[data-select-option] .gselectmark').forEach(mark => mark.remove());
+  groupField.addEventListener('change', () => { if (state.busy || !groupOptions.some(option => option[0] === groupField.value)) return; state.groupBy = groupField.value as ReviewGrouping; state.filter = ''; state.anchor = null; const host = root.parentElement; options.refresh(); host?.querySelector<HTMLButtonElement>('.reviewgroupby button')?.focus({ preventScroll: true }); });
+  const filter = document.createElement('div'); filter.className = 'reviewcategoryfilter'; filter.hidden = groups.length < 2;
+  filter.innerHTML = selectFieldHtml([['', '全部分类', 'list-filter'], ...groups.map(group => [group.key, `${group.title} · ${group.rows.length}`, 'list-filter'])], state.filter, { label: state.groupBy === 'field' ? '筛选字段分类' : '筛选当前分类' });
+  const filterMenu = filter.querySelector('[data-select-menu]');
+  if (filterMenu) {
+    const section = document.createElement('div'); section.setAttribute('role', 'group'); section.setAttribute('aria-label', state.groupBy === 'field' ? '字段分类' : '当前分类');
+    const title = document.createElement('div'); title.className = 'reviewfilterheading'; title.textContent = section.getAttribute('aria-label'); title.setAttribute('aria-hidden', 'true');
+    section.append(title, ...Array.from(filterMenu.children).slice(1)); filterMenu.append(section);
+  }
+  const filterField = wireSelectField(filter.firstElementChild!);
+  filter.querySelectorAll('[data-select-option] .gselectmark').forEach(mark => mark.remove());
+  filterField.addEventListener('change', () => { if (state.busy || (filterField.value && !groups.some(group => group.key === filterField.value))) return; state.filter = filterField.value; state.anchor = null; const host = root.parentElement; options.refresh(); host?.querySelector<HTMLButtonElement>('.reviewcategoryfilter button')?.focus({ preventScroll: true }); });
   const all = button('全选本页'), approve = button('通过所选', 'primary'), reject = button('拒绝所选', 'error');
-  const count = document.createElement('span'); count.className = 'reviewselectedcount'; count.setAttribute('role', 'status');
+  const count = document.createElement('span'); count.className = 'reviewselectedcount selectiondockcount'; count.setAttribute('role', 'status');
   const source = document.createElement('div'); source.className = 'reviewbulksource'; source.hidden = !options.metadata;
   const feedback = document.createElement('p'); feedback.className = 'reviewstate reviewbulkfeedback'; feedback.setAttribute('role', 'status');
   const decisions = document.createElement('div'); decisions.className = 'reviewbulkdecisions'; decisions.append(approve, reject);
-  toolbar.append(grouping, all, count, source, decisions); list.before(toolbar, feedback); list.classList.add('reviewgroups');
+  const dock = document.createElement('div'); dock.className = 'selectiondock reviewdock'; dock.setAttribute('role', 'group'); dock.setAttribute('aria-label', '复核所选项目');
+  const cancel = button('取消选择'); dock.append(count, source, decisions, cancel, feedback);
+  toolbar.append(grouping, filter, all);
+  const context = root.querySelector('.reviewcontrols');
+  if (context) context.append(toolbar); else list.before(toolbar);
+  root.append(dock); list.classList.add('reviewgroups');
   const clear = () => { state.selected.clear(); state.anchor = null; update(); };
-  all.onclick = () => { if (state.busy) return; if (selected().length === cards.length) clear(); else { cards.forEach(card => state.selected.add(card.dataset.reviewKey!)); update(); } };
+  cancel.onclick = () => { if (!state.busy) { clear(); all.focus({preventScroll:true}); } };
+  all.onclick = () => { if (state.busy) return; const shown = visible(), checked = selected().length === shown.length; shown.forEach(card => checked ? state.selected.delete(card.dataset.reviewKey!) : state.selected.add(card.dataset.reviewKey!)); update(); };
   approve.onclick = () => run('approved', approve); reject.onclick = () => run('rejected', reject);
   const controls: (() => void)[] = [];
-  for (const group of groupReviewRows(options.rows, state.groupBy)) {
+  for (const group of groups) {
     const groupCards = group.rows.map(row => cards.find(card => card.dataset.reviewKey === row.item_key)).filter((card): card is HTMLElement => !!card);
     const section = document.createElement('section'); section.className = 'reviewgroup';
-    const bar = document.createElement('div'); bar.className = 'reviewbulkbar';
+    section.hidden = !!state.filter && group.key !== state.filter;
+    const bar = document.createElement('div'); bar.className = 'reviewbulkbar reviewgroupbar';
     const title = document.createElement('h3'); title.textContent = `${group.title} · ${groupCards.length}`;
     const select = button('全选本组'), grid = document.createElement('div'); grid.className = 'reviewlist';
     bar.append(title, select); section.append(bar, grid); list.append(section);
@@ -102,6 +148,7 @@ export function wireReviewSelection(root: HTMLElement, options: {
         const name = document.createElement('span'); name.className = 'reviewpickname'; name.append(...heading.childNodes); heading.classList.add('reviewpickheading'); heading.append(label, name);
       } else card.prepend(label);
       const pick = (range: boolean, checked: boolean) => { selectReviewRange(state, visible().map(card => card.dataset.reviewKey!), key, range, checked); update(); };
+      label.addEventListener('mousedown', event => { if (event.shiftKey) event.preventDefault(); });
       label.addEventListener('click', event => { if (event.target === input) return; event.preventDefault(); if (!state.busy) { input.focus(); pick(event.shiftKey, !input.checked); } });
       input.addEventListener('click', event => { if (state.busy) return; pick(event.shiftKey, input.checked); });
       input.addEventListener('keydown', event => {
@@ -126,16 +173,18 @@ export function wireReviewSelection(root: HTMLElement, options: {
     }
   }
   root.addEventListener('keydown', event => {
-    if (state.busy) return;
+    if (state.busy || !root.contains(list)) return;
     if (event.key === 'Escape' && state.selected.size) { event.preventDefault(); event.stopPropagation(); clear(); }
-    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a' && !(event.target as Element).matches('textarea,input:not([type="checkbox"]):not([type="radio"])')) { event.preventDefault(); event.stopPropagation(); cards.forEach(card => state.selected.add(card.dataset.reviewKey!)); update(); }
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a' && !(event.target as Element).matches('textarea,input:not([type="checkbox"]):not([type="radio"])')) { event.preventDefault(); event.stopPropagation(); visible().forEach(card => state.selected.add(card.dataset.reviewKey!)); update(); }
   });
   let sourceSignature = '';
   function update() {
-    const chosen = selected(); all.textContent = chosen.length === cards.length ? '清空选择' : '全选本页';
-    count.innerHTML = badgeHtml(`已选 ${chosen.length} 项`);
+    const chosen = selected(); all.textContent = chosen.length === visible().length ? '清空当前选择' : state.filter ? '全选当前分类' : '全选本页';
+    dock.hidden = !chosen.length;
+    count.textContent = `已选 ${chosen.length} 项`;
     approve.disabled = !chosen.length || chosen.some(card => !eligible(card)); reject.disabled = !chosen.length;
     const sources = commonReviewSources(selectedRows());
+    source.hidden = !options.metadata || !selectedRows().some(row => (row.candidates?.length || 0) > 1);
     const label = chosen.length && !sources.length ? '所选项目无共同来源' : '统一选择来源';
     const signature = JSON.stringify([label, sources]);
     if (signature !== sourceSignature) {
@@ -172,4 +221,5 @@ export function wireReviewSelection(root: HTMLElement, options: {
     result.failures.forEach(item => state.errors.set(item.key, item.message)); const host = root.parentElement; options.refresh(); host?.querySelector<HTMLButtonElement>('.reviewbulktoolbar button')?.focus({ preventScroll: true });
   }
   update();
+  updateReviewSticky(root);
 }

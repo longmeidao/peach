@@ -12,6 +12,8 @@ export const emptyStateHtml = (
   + `<div class="es-icon" data-icon="${iconName}"></div>`
   + `<div class="es-copy"><h3>${title}</h3><p>${description}</p></div>${options.actions || ''}</div>`;
 
+// @ts-expect-error 横幅复用正式模板。
+export {projectBannerHtml} from '../../../web/js/ui-components.js';
 export const fieldsetTitle = (id: string, title: string): string =>
   `<h3 class="geist-fieldset-title" id="${id}">${title}</h3>`;
 export const loadingDotsHtml = (label: string): string => `<span>${label}</span>`;
@@ -42,10 +44,7 @@ export const setActionBusy = (control: Element | null, busy = true): void => {
   }
 };
 
-export const noteHtml = (
-  message: string,
-  options: { variant?: string; label?: string } = {},
-): string => `<div class="geist-note geist-note-${options.variant ?? 'secondary'}" role="note">`
-  + `<b>${options.label ?? ''}</b><span>${message}</span></div>`;
+// @ts-expect-error 使用正式 Note 验证内部操作。
+export {noteHtml} from '../../../web/js/ui-components.js';
 
 export const badgeHtml = (text: string): string => `<span class="geist-badge">${text}</span>`;

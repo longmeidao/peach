@@ -55,7 +55,21 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
 .mixitemmeta .mavstack .mav{box-shadow:0 0 0 2px var(--ground)}
 .mixitemtext{min-width:0}.mixitemtext b,.mixitemtext span{display:block;overflow:hidden;white-space:nowrap}.mixitemtext [data-truncate-end]{text-overflow:ellipsis}
 .mixitemtext b{font-size:var(--fs-xs);line-height:1.4}.mixitemtext span{font-size:var(--fs-xs);color:var(--muted);margin-top:3px}
-.queueedit{display:grid;grid-template-columns:repeat(3,24px);gap:2px;padding-right:5px}.queueedit button{width:24px;height:24px;border:0;border-radius:var(--control-radius);background:transparent;color:var(--muted);padding:0;display:grid;place-items:center;cursor:pointer}.queueedit button:hover:not(:disabled){background:var(--hover);color:var(--ink)}.queueedit button:disabled{opacity:.25;cursor:default}.queueedit svg{width:14px;height:14px;stroke:currentColor;fill:none}
+/* 顺序靠拖，行尾只剩抓手和移出。取色用 --ink-2 而不是 --muted：这两枚是这一行仅有的
+   两个动作，压到副文字那一档在深色底上几乎读不出来，选中行的底色又更深一层。 */
+.queueedit{display:grid;grid-auto-flow:column;align-items:center;gap:2px;padding-right:5px}
+.queuegrip{display:grid;place-items:center;width:20px;color:var(--muted);cursor:grab}
+.queuegrip svg{width:16px;height:16px;stroke:currentColor;fill:none}
+.queueedit button{width:26px;height:26px;border:0;border-radius:var(--control-radius);background:transparent;color:var(--ink-2);padding:0;display:grid;place-items:center;cursor:pointer}
+.queueedit button:hover{background:var(--hover);color:var(--ink)}
+.queueedit svg{width:15px;height:15px;stroke:currentColor;fill:none}
+/* 拖动中的行减淡，落点画一条线——和侧栏顺序那一列同一套表现，类名由共用的
+   wireDragReorder 挂上。 */
+.mixrow[data-queue-row]{position:relative;cursor:grab}
+.mixrow[data-queue-row]:active{cursor:grabbing}
+.mixrow.dragging{opacity:.42}
+.mixrow.drop-before::before,.mixrow.drop-after::after{content:'';position:absolute;z-index:4;left:6px;right:6px;height:2px;border-radius:var(--pill-radius);background:var(--ink)}
+.mixrow.drop-before::before{top:-3px}.mixrow.drop-after::after{bottom:-3px}
 /* 详情下方的集合不是侧栏列表，而是与「接着看」同语义的横向切换带。
    Mix、分卷、播放列表、视频合集与多媒体只改变标题和标识，共用同一套卡片尺寸。 */
 .sgrid.mixgrid>.mixqueue{padding:14px 14px 16px;overflow:hidden}
@@ -74,7 +88,8 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
 .sgrid.mixgrid>.mixqueue .mixitemtext{flex:1;min-width:0}
 .sgrid.mixgrid>.mixqueue .mixitemtext b{font-size:var(--fs-sm)}
 .sgrid.mixgrid>.mixqueue .mixitem[data-media-kind="image"] .mixitempic img{object-fit:cover}
-.sgrid.mixgrid>.mixqueue .queueedit{position:absolute;z-index:3;right:5px;top:5px;padding:3px;border-radius:var(--control-radius);background:rgba(0,0,0,.62)}
+.sgrid.mixgrid>.mixqueue .queueedit{position:absolute;z-index:3;right:5px;top:5px;padding:3px;border-radius:var(--control-radius);background:rgba(0,0,0,.62);color:#fff}
+.sgrid.mixgrid>.mixqueue .queueedit button{color:#fff}
 /* 宽屏时详情栏决定首行高度，脱盘／错误占位也要铺满同一行，不能留下半块空背景。 */
 @media (min-width:1081px){
   .sgrid.mixgrid>.vwrap{align-self:stretch}

@@ -97,13 +97,14 @@ export function ReleaseUpdates({ initial, initialJob }: { initial: ReleaseState;
       {job.state !== 'idle' ? <div aria-live="polite">
         <p class={job.state === 'error' ? 'configbad' : 'confighelp'}>{job.message}</p>
         {job.state !== 'error' ? <>
-          <div dangerouslySetInnerHTML={{__html:progressHtml(job.state === 'downloading' ? '下载进度' : '安装进度',job.state === 'downloading' ? job.downloaded || 0 : job.progress,job.state === 'downloading' ? job.total || 1 : 100)}} />
+          <div dangerouslySetInnerHTML={{__html:progressHtml('更新准备进度：下载、校验、解压、准备安装',job.progress,100,{stops:[{value:65,label:'下载结束'},{value:67,label:'校验结束'},{value:90,label:'准备安装'}]})}} />
+          <p class="confighelp">下载 → 校验 → 解压 → 准备安装 · {job.message}</p>
           <p class="confighelp">{job.state === 'downloading' && job.total ? `${((job.downloaded || 0)/1048576).toFixed(1)} / ${(job.total/1048576).toFixed(1)} MB` : `${job.progress}%`}</p>
         </> : null}
       </div> : null}
     </div>
     <div class="geist-fieldset-footer" data-geist-fieldset-footer>
-      <a class="geist-button" href={data.release_url} target="_blank" rel="noreferrer">查看发布页</a>
+      <a class="geist-button externallink" href={data.release_url} target="_blank" rel="noreferrer">查看发布页<svg class="externalmark" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-external-link" /></svg></a>
       {job.state === 'ready' ? <button type="button" class="geist-button primary" onClick={() => { void confirmModal({title:'更新已准备好',body:`Peach ${job.version || ''} 将在重启后安装。`,confirmLabel:'立即重启',cancelLabel:'稍后',onConfirm:restart}); }}>重启安装</button> : null}
       {data.state === 'available' && data.installation === '独立测试包' && job.state !== 'ready' ? <button ref={downloadButton} type="button" class="geist-button primary" onClick={(event) => download(event.currentTarget)}>下载并安装</button> : null}
       <button type="button" class="geist-button" disabled={active.has(job.state)} onClick={(event) => check(event.currentTarget)}>检查更新</button>

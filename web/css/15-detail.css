@@ -126,10 +126,10 @@
   color:#FF669D;border-radius:var(--control-radius);cursor:pointer;margin-bottom:10px;font-size:var(--fs-md);font-weight:600;
   display:flex;align-items:center;justify-content:center;gap:9px;transition:background-color .14s ease}
 .obtn svg{width:22px;height:22px;fill:currentColor}.obtn:hover{background:color-mix(in srgb,#FF4D8D 16%,transparent)}
-/* 半透明的 8% 会让氛围色落在 `.stage` 那圈只铺到 58% 的径向渐变外面，于是这一条
-   比上面的详情栏浅一档，一条横贯整幅的界线就出来了。取同一档不透明底色，
-   描边也就不需要了。 */
-.next{padding:11px 15px 12px;background:var(--detail-surface)}
+/* 底色和上面的详情栏同源：半透明的氛围色落在 `.stage` 那圈只铺到 58% 的径向渐变
+   外面，会让这一条浅一档，整幅宽度上于是有一道深浅不匀的色差。分界靠 `--line-soft`
+   那条明确的线画出来——「接着看」是另一件事，同色的两块之间只留白读不出边界。 */
+.next{border-top:1px solid var(--line-soft);padding:11px 15px 12px;background:var(--detail-surface)}
 .next h3{margin:0 0 8px;font-size:var(--fs-xs);letter-spacing:.1em;color:var(--muted);text-transform:uppercase}
 .nrow{display:flex;gap:11px;overflow-x:auto;padding-bottom:6px}
 .ncard{flex:none;width:216px;cursor:pointer}

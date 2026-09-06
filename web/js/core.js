@@ -14,16 +14,27 @@ const icon=(name,cls='')=>{
   return `<svg${classes?` class="${classes}"`:''} viewBox="${box}" aria-hidden="true"><use href="#i-${name}"/></svg>`};
 /* `signal` 写成显式的一项，不靠 Object.assign 顺带透传：表面切换要能作废上一屏
    还没读完的请求，「这个请求可被取消」得在签名上看得见。 */
+export function requestErrorMessage(cause,status=0){
+  const text=String(cause?.message??cause??'');
+  const code=Number(status||cause?.status||text.match(/\b(400|401|403|404|408|409|413|429|500|502|503|504)\b/)?.[1]);
+  const messages={400:'提交内容有误，请检查输入后重试。',401:'登录已失效，请刷新页面重新登录。',403:'当前设备没有执行此操作的权限，请在运行 Peach 的电脑上操作。',404:'请求的内容已不存在，请刷新列表。',408:'请求超时，请稍后重试。',409:'当前状态不允许此操作，请刷新后重试。',413:'提交内容过大，请减少数量后重试。',429:'请求过于频繁，请稍后重试。',500:'Peach 服务处理失败，请重试；持续失败时查看托盘日志。',502:'连接上游服务失败，请检查代理或来源服务。',503:'Peach 服务暂时不可用，请稍后重试。',504:'等待服务响应超时，请稍后重试。'};
+  if(/Failed to fetch|fetch failed|NetworkError|Load failed|network request failed|ERR_CONNECTION/i.test(text))return '无法连接到 Peach 服务，请确认网络连接和托盘服务已启动。';
+  if(cause?.name==='TimeoutError'||/timed? ?out|timeout/i.test(text))return '等待服务响应超时，请检查连接后重试。';
+  if(/[\u3400-\u9fff]/.test(text)&&!/^请求失败[（(]/.test(text))return text;
+  if(messages[code])return messages[code];
+  return '操作未完成，请重试；持续失败时查看托盘日志。';
+}
 const api=async(p,o)=>{
   const {signal=null,...rest}=o||{};
   const init={headers:{'Content-Type':'application/json'},...rest};
   if(signal)init.signal=signal;
-  const response=await fetch(p,init);
+  let response;
+  try{response=await fetch(p,init)}catch(error){if(error?.name==='AbortError')throw error;throw new Error(requestErrorMessage(error),{cause:error})}
   let payload=null;
   try{payload=await response.json()}catch(_e){}
   if(!response.ok){
     const detail=payload&&(payload.message||payload.detail||payload.error);
-    throw new Error(detail||`请求失败（${response.status}）`);
+    throw new Error(requestErrorMessage(detail,response.status));
   }
   return payload;
 };

@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import { applyReviewSelection, groupReviewRows, selectReviewRange, commonReviewSources, createReviewSelection, wireReviewSelection } from '../src/review-bulk';
+import { applyReviewSelection, groupReviewRows, selectReviewRange, commonReviewSources, createReviewSelection, wireReviewSelection, reviewGroupingOptions } from '../src/review-bulk';
 
 afterEach(() => { document.body.innerHTML = ''; });
 it('逐项采用保留失败项，重试仅提交失败项', async () => {
@@ -30,7 +30,7 @@ function fixture(locked = false) {
   const submit = vi.fn(async (_payload: Record<string, unknown>) => ({ ok: true }));
   const notify = vi.fn();
   const render = () => {
-    root.innerHTML = `<div class="reviewlist">${rows.map(row => `<fieldset data-review-key="${row.item_key}"><h4>${row.item_key}</h4>${row.candidates.map(candidate => `<input type="radio" name="metadata-${row.item_key}" value="${candidate.candidate_key}" ${row.candidates.length === 1 ? 'checked' : ''}>`).join('')}<button data-review-status="approved">通过</button><span class="reviewstate"></span></fieldset>`).join('')}</div>`;
+    root.innerHTML = `<div class="reviewcontrols"></div><div class="reviewlist">${rows.map(row => `<fieldset data-review-key="${row.item_key}"><h4>${row.item_key}</h4>${row.candidates.map(candidate => `<input type="radio" name="metadata-${row.item_key}" value="${candidate.candidate_key}" ${row.candidates.length === 1 ? 'checked' : ''}>`).join('')}<button data-review-status="approved">通过</button><span class="reviewstate"></span></fieldset>`).join('')}</div>`;
     wireReviewSelection(root, { rows, metadata: true, locked, state, payload: card => ({ item_key: card.dataset.reviewKey, candidate_key: card.querySelector<HTMLInputElement>('input[type="radio"]:checked')?.value || '' }), submit, applied: key => { rows.splice(rows.findIndex(row => row.item_key === key), 1); }, active: () => root.isConnected, refresh: render, notify });
   };
   render();
@@ -93,7 +93,7 @@ it('共同来源排除缺失与同来源多候选的歧义', () => {
   expect(commonReviewSources([{item_key:'a', candidates:[{candidate_key:'1',source:'nfo'}]}, {item_key:'b',candidates:[]}])).toEqual([]);
 });
 
-it('默认勾选框位于名称前，数量使用独立徽章，Shift 按显示顺序连选', () => {
+it('默认勾选框位于名称前，数量使用共用文字样式，Shift 按显示顺序连选', () => {
   const f = fixture();
   expect(f.root.textContent).not.toContain('选择此项');
   expect(f.button('多选')).toBeUndefined();
@@ -102,7 +102,9 @@ it('默认勾选框位于名称前，数量使用独立徽章，Shift 按显示�
   inputs[0]!.click();
   inputs[1]!.closest('label')!.dispatchEvent(new MouseEvent('click', {bubbles:true, cancelable:true, shiftKey:true}));
   expect([...f.state.selected]).toEqual(['one','two']);
-  expect(f.root.querySelector('.geist-badge')?.textContent).toBe('已选 2 项');
+  expect(f.root.querySelector('.selectiondockcount')?.textContent).toBe('已选 2 项');
+  expect(f.root.querySelector('.selectiondockcount .geist-badge')).toBeNull();
+  expect(f.root.querySelector('.reviewcontrols .reviewbulktoolbar')).not.toBeNull();
   expect(f.button('通过所选').textContent).toBe('通过所选');
   f.root.dispatchEvent(new KeyboardEvent('keydown', {key:'Escape', bubbles:true}));
   inputs[0]!.dispatchEvent(new KeyboardEvent('keydown', {key:'ArrowDown', shiftKey:true, bubbles:true}));
@@ -135,4 +137,49 @@ it('Shift 范围使用分组后的显示顺序，普通取消只影响单项', (
   expect([...state.selected]).toEqual(['c','b','d']);
   selectReviewRange(state,keys,'b',false,false);
   expect([...state.selected]).toEqual(['c','d']);
+});
+
+it('Shift 鼠标按下阻止文字选择且普通点击不受影响', () => {
+  const f = fixture(), label = f.root.querySelector('.reviewpickitem')!;
+  expect(label.dispatchEvent(new MouseEvent('mousedown', {bubbles:true,cancelable:true,shiftKey:true}))).toBe(false);
+  expect(label.dispatchEvent(new MouseEvent('mousedown', {bubbles:true,cancelable:true}))).toBe(true);
+});
+
+it('选中项目时显示共用底部浮窗，取消后关闭且保留分类入口', () => {
+  const f = fixture(), dock = f.root.querySelector<HTMLElement>('.selectiondock')!;
+  expect(dock.hidden).toBe(true);
+  f.button('全选本页').click();
+  expect(dock.hidden).toBe(false);
+  expect(dock.contains(f.button('通过所选'))).toBe(true);
+  expect(dock.contains(f.button('拒绝所选'))).toBe(true);
+  expect(dock.querySelector('.reviewbulksource')).not.toBeNull();
+  expect(f.root.querySelector('.reviewbulktoolbar .reviewbulkdecisions')).toBeNull();
+  f.button('取消选择').click();
+  expect(f.state.selected.size).toBe(0); expect(dock.hidden).toBe(true);
+  expect(document.activeElement).toBe(f.button('全选本页'));
+  expect(f.root.querySelector('.reviewgroupby')).not.toBeNull();
+});
+
+it('分类筛选后全选和快捷键仅操作当前分类，清除筛选可恢复全部', () => {
+  const f = fixture();
+  const filter = f.root.querySelector('.reviewcategoryfilter .gselect') as HTMLElement & {value:string};
+  filter.value = 'multiple'; filter.dispatchEvent(new Event('change'));
+  f.button('全选当前分类').click();
+  expect([...f.state.selected]).toEqual(['two']);
+  f.button('清空当前选择').click();
+  f.root.dispatchEvent(new KeyboardEvent('keydown', {key:'a',ctrlKey:true,bubbles:true}));
+  expect([...f.state.selected]).toEqual(['two']);
+  expect(f.root.querySelectorAll('.reviewgroup:not([hidden])')).toHaveLength(1);
+  f.state.filter = ''; f.render();
+  expect(f.root.querySelectorAll('.reviewgroup:not([hidden])')).toHaveLength(2);
+});
+
+it('分组菜单只提供当前类别的数据维度，失效字段筛选自动重置', () => {
+  expect(reviewGroupingOptions([{item_key:'identity'}],false)).toEqual([['candidates','全部待复核','list-filter']]);
+  expect(reviewGroupingOptions([{item_key:'field',field:'performers',source:'nfo'}],true).map(item=>item[0])).toEqual(['candidates','source','field']);
+  const f = fixture(); f.state.groupBy = 'field'; f.state.filter = 'performers'; f.render();
+  expect(f.state.groupBy).toBe('candidates'); expect(f.state.filter).toBe('');
+  expect((f.root.querySelector('.reviewbulksource') as HTMLElement).hidden).toBe(true);
+  f.button('全选本页').click();
+  expect((f.root.querySelector('.reviewbulksource') as HTMLElement).hidden).toBe(false);
 });

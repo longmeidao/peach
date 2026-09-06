@@ -209,6 +209,7 @@ CloudDrive 为外部应用，本项目不捆绑其二进制或依赖其管理 AP
 | 分卷文件命名 | [Plex 官方命名](https://support.plex.tv/articles/naming-and-organizing-your-movie-media-files/)的 `cd/disc/disk/dvd/part/pt + 数字` 与 [Kodi 官方 File Stacking](https://kodi.wiki/view/File_stacking)只作行为证据；运行时复用当前树的 `part_marker`，不新增扫描器依赖 | 兼容馆藏已有的裸数字和 A–H 后缀；仅连续、唯一标记自动合卡，保留每个 asset 和播放会话，不拼接或改写媒体 |
 | 照片灯箱轮播 | Swiper 14.2.0（MIT，本地固定版本，按需加载 CSS／JS）的 Thumbs / Keyboard / Zoom 模块 | 构造轮播前必须同时等到样式与脚本就绪，并保留 scoped 的单 slide 结构样式防止首载竞态重叠；Swiper 管轮播、键盘、缩放变换与缩略图，Peach 管图集来源与顺序、当前缩略图居中、相对原图百分比、适应窗口／原大小语义、缩略图缓存与计费口径。瀑布流本身继续用 CSS `column-count`，不经过 Swiper。 |
 | 导航排序 | 浏览器原生 HTML Drag and Drop | 桌面鼠标直接拖动、落点提示、上下移动按钮作为键盘与触屏回退、`localStorage` 持久化；不为单列排序引入额外运行时依赖 |
+| 单列拖动排序 | `web/js/ui-components.js` 的 `wireDragReorder()` | 侧栏顺序与播放列表队列共用这一份：`dragstart` 标记被拖行，`dragover` 按指针落在行的上半还是下半给出落点线，`drop` 把整份新顺序交给调用方落库。落点线、抓手和键盘焦点样式都在共用件里，每加一处可拖列表不再各写一份 |
 | 图标 | 固定版本的本地 Lucide 子集；Health Icons 24 px outline（CC0）用于领域图标；Phosphor regular 填充字形（MIT）只用在描边说不清的地方（字母表 Aa、播放列表） | 标签、状态和交互设计 |
 | 资源文本中间省略 | Vercel Geist `MiddleTruncate` 行为契约 + 浏览器原生 `ResizeObserver`、`Intl.Segmenter`、Canvas 测量 | 文件名、路径、URL、ID 等资源标识用 `data-middle-truncate`；标题、说明、人名、标签等语义文本保留末尾省略；页面源测试登记全部末尾省略选择器，新增截断未先分类会失败 |
 | 定时轮询 | APScheduler 3.11.3（MIT，固定稳定版；3.x `BackgroundScheduler` / interval trigger） | 只在 ledger writer 启动、持久频率、首次延迟、单实例、手动/自动互斥、运行状态与来源错误汇总 |
@@ -276,3 +277,14 @@ Python、npm 与 GitHub Actions 的版本由 `.github/dependabot.yml` 每周检�
 
 - 对外请求的 UA 统一取 `peach.user_agent.USER_AGENT`（标准桌面 Chrome）；HTTPX、来源连接器、FFmpeg 抽帧与脚本共用。复用现有 transport、限速和证书校验，无新增依赖；标准 UA 不保证站点放行。FANBOX 浏览器传输使用已安装 curl_cffi 的 Chrome 150 配置。
 - 作品封面只进入头像候选，单人作品关联不证明画面中的人物身份；`cover_fallback` 显式标记身份未核实，安装闸门独立拒绝这类来源。
+- 复核页面上下文复用原生 CSS sticky、主导航 `--topH` 与既有滚动/尺寸调度，分类及筛选栏合为同一吸附区，分组标题按实测栏高接续吸附。仅吸附时显示通栏背景，全选本组紧邻标题；桌面、手机、换组、尺寸变化及返回顶部均用隔离候选验证。卡片以 flex 分开标题、既有 Scroller、当前信息和操作；只有资料滚动，当前信息过长时可聚焦滚动阅读。多选计数共用 `selectiondockcount`，保留首页的文字口径；不新增依赖，不改变候选与提交协议。
+- 复核分类复用 `selectFieldHtml`、`wireSelectField` 和现有 `list-filter` 图标；图标只在筛选入口显示，选项保留文字与选中标记。按当前候选数据提供字段及来源选项，批量决定复用既有协议。字段次级分类采用具名 Listbox 分区，依据见 `reference-snapshots/vercel-review-actions.md`。人工复核与馆藏、关注、标签、垃圾文件和回收站共用 `selectiondock` 浮窗布局，保留各自操作与提交协议；复核卡片内作品样本选择仍属于单条候选，不混入页面级多选。没有新增依赖。Shift 连选使用原生 `mousedown.preventDefault()` 防止文字选区；实际浏览器验证覆盖亮暗主题、宽屏和 390px。
+
+反馈控件复用：`noteHtml`、`progressHtml`、`gaugeHtml`、`projectBannerHtml` 与 `wireContextCard` 集中在共享 UI 模块；信息卡片复用原生 Popover 和现有锚定菜单定位，不添加浮层依赖。`BackgroundJob.update(job_id)` 报告浏览记录、口味分析和逐行来源解析的阶段与计数，`followJobProgress` 统一读取文字和总量，查询不重新执行任务。浏览记录解析继续使用 browserexport；本地临时浏览器数据库验证计数及隐私字段。证据见 `reference-snapshots/vercel-geist-note-progress-switch-analytics.md`。
+
+### 文件检查与确认反馈
+
+资源核对复用 `web_resource_sync` 的目录枚举、离线跳过、写前复验与 BackgroundJob，涵盖 local、
+115、PikPak。展示复用 Preact 构建链、Fieldset、Note、Toast 与 confirmModal；确认失败留在弹层，
+危险动作初始聚焦取消，忙态阻止重入与关闭。无新增依赖，不引入另一套对话框库。
+真实截图的 487 项／643 个缓存作为无写入渲染样本；配置历史及性能建议依据在 OPERATIONS。

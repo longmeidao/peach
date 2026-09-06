@@ -86,7 +86,7 @@ describe('高清版目标列表', () => {
   it('读取失败时把原因留在原位，用 error Note', async () => {
     await seedGoalsError('请求失败（500）');
     const { el } = show();
-    expect(el.querySelector('.geist-note-error')?.textContent).toContain('请求失败（500）');
+    expect(el.querySelector('.geist-note-error')?.textContent).toContain('Peach 服务处理失败');
     expect(el.querySelector('[data-geist-empty-state]')).toBeNull();
   });
 

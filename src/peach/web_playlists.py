@@ -4,10 +4,16 @@ from __future__ import annotations
 from typing import Protocol
 
 from .web_activity import DEFAULT_PROFILE_ID
+from .web_catalog import con_entities, entity_ref
 
 
 MAX_PLAYLIST_ITEMS = 200
 SOURCE_COST = {"local": "free", "115": "free", "pikpak": "metered", "online": "metered"}
+#: 卡片上摆几张脸、封面翻几张。两个都是卡片的容量，不是数据上限。
+PLAYLIST_FACES = 3
+PLAYLIST_PREVIEWS = 5
+#: 一张卡只按前这么多个视频统计署名。列表最多 200 个，全查一遍只为排三张头像。
+PLAYLIST_FACE_SCAN = 40
 
 
 class PlaylistContract(Protocol):
@@ -87,6 +93,52 @@ def _replace_order(connection, playlist_id: int, ids: list[int]) -> None:
     )
 
 
+def _ordered_members(connection, playlist_ids: list[int]):
+    """每个播放列表按位置排好的成员，带「封面在不在盘上」要用的路径。"""
+    if not playlist_ids:
+        return {}
+    marks = ",".join("?" * len(playlist_ids))
+    members: dict[int, list[tuple[int, str | None]]] = {}
+    for playlist_id, asset_id, snapshot in connection.execute(
+        f"SELECT pi.playlist_id,pi.asset_id,a.snapshot_path FROM playlist_item pi "
+        f"JOIN asset a ON a.id=pi.asset_id WHERE pi.playlist_id IN ({marks}) "
+        "ORDER BY pi.playlist_id,pi.position", playlist_ids,
+    ):
+        members.setdefault(int(playlist_id), []).append((int(asset_id), snapshot))
+    return members
+
+
+def _playlist_faces(contract: PlaylistContract, members):
+    """列表里出镜最多的几位，卡片拿它当署名。
+
+    首页 feed 的卡片署名的是这一个视频的人；一张播放列表卡署名的是整份列表，所以
+    按出现次数排，同次数按先出现的排——同一份列表两次打开不该换一批脸。
+    """
+    scanned = {playlist_id: [asset_id for asset_id, _ in items[:PLAYLIST_FACE_SCAN]]
+               for playlist_id, items in members.items()}
+    ids = sorted({asset_id for batch in scanned.values() for asset_id in batch})
+    if not ids:
+        return {playlist_id: [] for playlist_id in members}
+    marks = ",".join("?" * len(ids))
+    owners: dict[int, list[tuple[str, int, str]]] = {}
+    for asset_id, entity_id, kind, name in con_entities(contract, ids, marks):
+        if kind in ("performer", "creator"):
+            owners.setdefault(int(asset_id), []).append((kind, int(entity_id), name))
+    faces = {}
+    for playlist_id, batch in scanned.items():
+        seen: dict[int, dict] = {}
+        for asset_id in batch:
+            for kind, entity_id, name in owners.get(asset_id, ()):
+                entry = seen.setdefault(entity_id, {"kind": kind, "id": entity_id,
+                                                    "name": name, "n": 0})
+                entry["n"] += 1
+        ranked = sorted(seen.values(), key=lambda entry: -entry["n"])[:PLAYLIST_FACES]
+        faces[playlist_id] = [
+            dict(entity_ref(contract, entry["kind"], entry["id"], entry["name"]),
+                 kind=entry["kind"]) for entry in ranked]
+    return faces
+
+
 def q_playlists(contract: PlaylistContract, _args=None):
     with contract.read_connection() as connection:
         rows = [dict(row) for row in connection.execute(
@@ -98,6 +150,17 @@ def q_playlists(contract: PlaylistContract, _args=None):
             "WHERE p.profile_id=? GROUP BY p.id ORDER BY p.updated_at DESC,p.id DESC",
             (DEFAULT_PROFILE_ID,),
         )]
+        members = _ordered_members(connection, [int(row["id"]) for row in rows])
+    faces = _playlist_faces(contract, members)
+    for row in rows:
+        items = members.get(int(row["id"]), [])
+        # 轮播的第一张就是点「继续播放」会看到的那一个：翻起来不会先给一张别的。
+        current = row["current_asset_id"]
+        ordered = ([asset for asset in items if asset[0] == current]
+                   + [asset for asset in items if asset[0] != current])
+        row["preview_ids"] = [asset_id for asset_id, snapshot in ordered
+                              if contract.has_snapshot(snapshot)][:PLAYLIST_PREVIEWS]
+        row["faces"] = faces.get(int(row["id"]), [])
     return {"items": rows}
 
 

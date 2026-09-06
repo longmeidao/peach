@@ -161,7 +161,7 @@ def _iso_from_unix_microseconds(value: int | float) -> str:
     return datetime.fromtimestamp(float(value) / 1_000_000, UTC).isoformat()
 
 
-def _read_visits(snapshot: Path, _browser: str | None = None) -> list[HistoryVisit]:
+def _read_visits(snapshot: Path, _browser: str | None = None, *, progress=None) -> list[HistoryVisit]:
     """Use browserexport's maintained schema adapters and keep Peach's private DTO.
 
     The source database is already a consistent SQLite backup when this is called for a
@@ -189,6 +189,8 @@ def _read_visits(snapshot: Path, _browser: str | None = None) -> list[HistoryVis
             if visit.metadata is not None:
                 title = str(visit.metadata.title or "")
             visits.append(HistoryVisit(visit_key, visited_at, url, title))
+            if progress and len(visits) % 1000 == 0:
+                progress(len(visits))
 
     try:
         with snapshot.open("rb") as handle:
@@ -258,14 +260,24 @@ def refresh_history(
     store_path: Path,
     *,
     host: str | None = None,
+    progress=None,
 ) -> list[dict[str, object]]:
     results: list[dict[str, object]] = []
     with _open_history_store(store_path, host) as (store, host, now):
-        for source in sources:
+        for index, source in enumerate(sources):
+            def report(count=0):
+                if progress:
+                    progress(stage="reading", checked=count, total=None,
+                             message=f"读取浏览记录：第 {index + 1} / {len(sources)} 个浏览器资料，已读取 {count:,} 条")
             with tempfile.TemporaryDirectory(prefix="peach-history-") as temp_dir:
                 snapshot = Path(temp_dir) / "history.sqlite"
+                if progress:
+                    progress(stage="snapshot", checked=0, total=None,
+                             message=f"准备浏览器快照：第 {index + 1} / {len(sources)} 个资料")
                 _consistent_copy(source.path, snapshot)
-                visits = _read_visits(snapshot, source.browser)
+                report()
+                visits = _read_visits(snapshot, source.browser, progress=report)
+                report(len(visits))
             source_key = _source_key(source, host)
             path_hash = hashlib.sha256(str(source.path.resolve()).encode("utf-8")).hexdigest()
             store.execute(
@@ -1104,7 +1116,7 @@ def _url_candidates(url: str) -> tuple[str | None, set[str], set[str]]:
     return domain or None, tags, creators
 
 
-def analyze_history(store_path: Path, output_dir: Path, *, since: str | None = None) -> dict[str, object]:
+def analyze_history(store_path: Path, output_dir: Path, *, since: str | None = None, progress=None) -> dict[str, object]:
     output_dir.mkdir(parents=True, exist_ok=True)
     query = (
         "SELECT v.source_key, v.visited_at, v.url, s.browser, s.profile "
@@ -1127,6 +1139,12 @@ def analyze_history(store_path: Path, output_dir: Path, *, since: str | None = N
     total = 0
     with closing(sqlite3.connect(store_path)) as db:
         source_count = db.execute("SELECT COUNT(*) FROM history_source").fetchone()[0]
+        ceiling = db.execute("SELECT COUNT(*) FROM (" + query + ")", params).fetchone()[0]
+        def report_analysis():
+            if progress:
+                progress(stage="analyzing", checked=total, total=ceiling,
+                         message=f"分析浏览记录：已处理 {total:,} / {ceiling:,} 条")
+        report_analysis()
         for source_key, visited_at, url, browser, profile in db.execute(query, params):
             total += 1
             min_time = visited_at if min_time is None or visited_at < min_time else min_time
@@ -1148,6 +1166,12 @@ def analyze_history(store_path: Path, output_dir: Path, *, since: str | None = N
                 creator_visits[creator] += 1
                 creator_urls[creator].add(url_hash)
                 creator_sources[creator].add(source_label)
+            if total % 1000 == 0:
+                report_analysis()
+        report_analysis()
+
+    if progress:
+        progress(stage="reporting", checked=0, total=None, message="正在生成口味分析报告与候选清单")
 
     stamp = datetime.now().astimezone().strftime("%Y%m%d-%H%M%S")
     tag_path = output_dir / f"taste-tag-candidates-{stamp}.csv"
