@@ -1,5 +1,6 @@
 """Kodi/Jellyfin 影片及单集 NFO 的本地边车适配。"""
 from pathlib import Path
+import re
 import xml.etree.ElementTree as ET
 
 from .catalog_rules import release_code_from_text
@@ -38,6 +39,10 @@ def read_nfo(path: Path):
     identifiers = [node.text for node in root.findall('uniqueid')
                    if node.get('type', '').lower() in {'javboss', 'jav', 'javid', 'dvdid', 'num'}]
     identifiers.extend([text('num'), text('sorttitle')])
+    # 通用 id 常是 IMDb/TMDb；仅明确的番号形状参与 JAV 身份识别。
+    for value in [text('id'), *(node.text or '' for node in root.findall('uniqueid'))]:
+        if re.fullmatch(r'(?:[A-Za-z]{2,12}[-_]\d{2,8}|FC2[-_](?:PPV[-_])?\d+)', value.strip(), re.I):
+            identifiers.append(value)
     codes = {code for value in identifiers if (code := release_code_from_text(value or ''))}
     if len(codes) > 1:
         raise ValueError('NFO 包含多个不同番号')

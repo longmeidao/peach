@@ -3608,7 +3608,9 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_scraping_uses_shared_controls_and_source_links(self):
         self.assertPageContains("'/scraping':'采集来源'")
-        self.assertPageContains('data-cleanup-open="scraping"')
+        self.assertPageContains('id="libraryProcessing"')
+        processing = (Path(__file__).resolve().parents[1] / 'frontend/src/islands/library-processing.tsx').read_text(encoding='utf-8')
+        self.assertIn('href="/scraping"', processing)
         self.assertPageContains('.scraping-fields .gselectfield{justify-content:space-between;padding-right:16px;')
         self.assertPageContains('.scraping-fields .scraping-url{text-decoration:none;')
         self.assertPageContains('.scraping-fields .scraping-url:hover{color:var(--ink);text-decoration:none}')

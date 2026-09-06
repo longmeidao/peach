@@ -56,6 +56,13 @@ class LibraryNfoTests(unittest.TestCase):
         self.assertEqual(payload['series'], 'Collection')
         self.assertEqual(payload['release_date'], '2024-01-02')
 
+    def test_jav_id_and_imdb_id_have_distinct_meanings(self):
+        path = self.root / 'movie.nfo'
+        path.write_text('<movie><id>ABW-358</id></movie>', encoding='utf-8')
+        self.assertEqual(read_nfo(path)[0]['id'], 'ABW-358')
+        path.write_text('<movie><id>tt1234567</id></movie>', encoding='utf-8')
+        self.assertEqual(read_nfo(path)[0]['id'], '')
+
     def test_entity_declarations_rejected_in_utf16(self):
         path = self.root / 'unsafe.nfo'
         path.write_bytes('<!DOCTYPE movie [<!ENTITY x "test">]><movie><title>&x;</title></movie>'.encode('utf-16'))
