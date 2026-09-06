@@ -814,10 +814,12 @@ function nt({ initial: e, receipt: t }) {
 		children: [/* @__PURE__ */ K("div", {
 			class: "geist-fieldset-content",
 			children: [
-				/* @__PURE__ */ K("div", { dangerouslySetInnerHTML: { __html: a("peachProxyTitle", "Peach 代理") } }),
-				/* @__PURE__ */ K("p", {
-					class: "confighelp",
-					children: "采集来源选择“Peach 代理”时共用此设置。"
+				/* @__PURE__ */ K("div", {
+					class: "configfieldset-heading",
+					children: [/* @__PURE__ */ K("div", { dangerouslySetInnerHTML: { __html: a("peachProxyTitle", "Peach 代理") } }), /* @__PURE__ */ K("p", {
+						class: "confighelp",
+						children: "采集来源选择“Peach 代理”时共用此设置。"
+					})]
 				}),
 				/* @__PURE__ */ K("div", { ref: h }),
 				i === "proxy" && /* @__PURE__ */ K("div", {
@@ -1003,10 +1005,12 @@ function st({ uninstall: e }) {
 		children: [/* @__PURE__ */ K("div", {
 			class: "geist-fieldset-content",
 			children: [
-				/* @__PURE__ */ K("div", { dangerouslySetInnerHTML: { __html: a("uninstallTitle", "卸载 Peach") } }),
-				e.available && /* @__PURE__ */ K("p", {
-					class: "confighelp",
-					children: "卸载会退出 Peach、移除程序和开机自启。原始媒体文件保留。"
+				/* @__PURE__ */ K("div", {
+					class: "configfieldset-heading",
+					children: [/* @__PURE__ */ K("div", { dangerouslySetInnerHTML: { __html: a("uninstallTitle", "卸载 Peach") } }), e.available && /* @__PURE__ */ K("p", {
+						class: "confighelp",
+						children: "卸载会退出 Peach、移除程序和开机自启。原始媒体文件保留。"
+					})]
 				}),
 				/* @__PURE__ */ K(rt, {
 					label: "完全卸载：同时删除设置、本地数据库、观看记录、凭据和缓存",
@@ -2100,13 +2104,15 @@ function dn({ source: e, toast: t }) {
 			children: [/* @__PURE__ */ K("div", {
 				class: "geist-fieldset-content scraping-fields",
 				children: [
-					/* @__PURE__ */ K("div", { dangerouslySetInnerHTML: { __html: a(`scraping-${e.source}`, e.label) } }),
-					/* @__PURE__ */ K("a", {
-						class: "scraping-url",
-						href: e.login,
-						target: "_blank",
-						rel: "noopener noreferrer",
-						children: e.login
+					/* @__PURE__ */ K("div", {
+						class: "geist-fieldset-heading",
+						children: [/* @__PURE__ */ K("div", { dangerouslySetInnerHTML: { __html: a(`scraping-${e.source}`, e.label) } }), /* @__PURE__ */ K("a", {
+							class: "scraping-url",
+							href: e.login,
+							target: "_blank",
+							rel: "noopener noreferrer",
+							children: e.login
+						})]
 					}),
 					/* @__PURE__ */ K("div", {
 						class: "scraping-label",

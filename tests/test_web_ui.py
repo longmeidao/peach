@@ -6120,7 +6120,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".cleanupfieldset>.geist-fieldset-content{flex:1;min-height:0;padding:20px}")
         # Geist 的 Fieldset 全框只有一条线，在底部操作条上方；标题底下不划线。
         self.assertPageContains("--fieldset-bar-h:52px;")
-        self.assertPageContains(".geist-fieldset-title{margin:0 0 10px;")
+        self.assertPageContains(".geist-fieldset-title{margin:0 0 8px;")
         self.assertPageLacks(".geist-fieldset-header")
         self.assertPageContains(".cleanupfieldset>.geist-fieldset-footer{box-sizing:border-box;"
                                 "min-height:var(--fieldset-bar-h);")
@@ -6143,7 +6143,7 @@ class WebUiSourceTests(unittest.TestCase):
         """
         self.assertPageContains(".cleanupfieldset>.geist-fieldset-footer{box-sizing:border-box;"
                                 "min-height:var(--fieldset-bar-h);")
-        self.assertPageContains("padding:8px 16px 8px 20px;")
+        self.assertPageContains("padding:12px 12px 12px 20px;")
         self.assertPageContains(".resourcesyncfooter,.resourceapplyrow{box-sizing:border-box;"
                                 "min-height:var(--fieldset-bar-h);")
         # 说明能被压窄并换行，按钮不参与压缩。
@@ -6529,7 +6529,7 @@ class WebUiSourceTests(unittest.TestCase):
                 f'<button class="geist-button primary" type="submit">{label}</button>')
         self.assertPageLacks(".playlistcreate button,.playlistactions button{")
         self.assertPageContains(".faliasform .fbtn{height:38px;min-height:38px}")
-        self.assertPageContains(".playlistcreate label{display:grid;gap:5px;color:var(--muted);"
+        self.assertPageContains(".playlistcreate label{display:grid;gap:8px;color:var(--muted);"
                                 "font-size:var(--fs-xs);flex:1 1 200px;max-width:320px}")
         self.assertPageLacks(".playlistcreate label{flex:1 1 100%}")
         # 自己拼内边距的那几处已经并入 token，别再冒出第二份。

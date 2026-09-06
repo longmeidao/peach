@@ -73,8 +73,10 @@ function SourceForm({ source, toast }: { source: Source } & ScrapingProps) {
   return <section class="scraping-source">
     <form ref={form} class="cleanupfieldset" data-geist-fieldset onSubmit={event => { event.preventDefault(); void action('save'); }}>
       <div class="geist-fieldset-content scraping-fields">
+        <div class="geist-fieldset-heading">
         <div dangerouslySetInnerHTML={{ __html: fieldsetTitle(`scraping-${source.source}`, source.label) }} />
         <a class="scraping-url" href={source.login} target="_blank" rel="noopener noreferrer">{source.login}</a>
+        </div>
         <div class="scraping-label">连接方式<NetworkSelect value={network} onChange={setNetwork} /></div>
         {network === 'peach' && <a href="/configuration#peachProxy">配置 Peach 代理</a>}
         {source.accepts_cookie && <>

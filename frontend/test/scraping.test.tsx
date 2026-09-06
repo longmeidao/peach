@@ -20,6 +20,9 @@ it('保存后清空秘密输入，状态只表示保存且撤销可操作', asyn
   host = document.createElement('div'); document.body.append(host);
   const toast = vi.fn();
   await act(async () => render(h(Scraping, { data: { sources: [source] }, error: '', toast }), host));
+  const heading = host.querySelector('.geist-fieldset-heading')!;
+  expect(heading.querySelector('.geist-fieldset-title')?.textContent).toBe(source.label);
+  expect(heading.querySelector('a')?.href).toBe(source.login);
   const input = host.querySelector<HTMLInputElement>('input[type=password]')!;
   await act(async () => { input.value = 'session=fixture'; input.dispatchEvent(new Event('input', { bubbles: true })); });
   await act(async () => {

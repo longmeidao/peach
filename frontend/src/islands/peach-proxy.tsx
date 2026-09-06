@@ -32,8 +32,10 @@ export function PeachProxy({ initial, receipt }: { initial: PeachProxyState; rec
   }
   return <form id="peachProxy" class="configfieldset" data-geist-fieldset onSubmit={event => {event.preventDefault();void save();}}>
     <div class="geist-fieldset-content">
+      <div class="configfieldset-heading">
       <div dangerouslySetInnerHTML={{__html:fieldsetTitle('peachProxyTitle','Peach 代理')}} />
       <p class="confighelp">采集来源选择“Peach 代理”时共用此设置。</p>
+      </div>
       <div ref={mount} />
       {mode === 'proxy' && <div class="configfield"><label htmlFor="peachProxyAddress">代理地址</label><input id="peachProxyAddress" class="geist-input" type="password" autoComplete="off" value={address}
         placeholder={saved.proxy_saved ? '已保存，留空保留' : 'http://127.0.0.1:7890'} onInput={event => setAddress(event.currentTarget.value)} /></div>}

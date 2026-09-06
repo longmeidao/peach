@@ -75,8 +75,10 @@ export function UninstallSettings({ uninstall }: { uninstall: UninstallState }) 
   }
   return <section id="uninstallPeach" class="configfieldset configdanger" data-geist-fieldset data-fieldset-type="error">
       <div class="geist-fieldset-content">
+        <div class="configfieldset-heading">
         <div dangerouslySetInnerHTML={{__html:fieldsetTitle('uninstallTitle','卸载 Peach')}} />
         {uninstall.available && <p class="confighelp">卸载会退出 Peach、移除程序和开机自启。原始媒体文件保留。</p>}
+        </div>
         <SettingCheck label="完全卸载：同时删除设置、本地数据库、观看记录、凭据和缓存" checked={removeData} disabled={!uninstall.full_available || !!accepted} change={setRemoveData} />
         <DataDirectories data={uninstall} />
         {uninstall.message && <p class="confighelp">{uninstall.message}</p>}
