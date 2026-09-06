@@ -6,7 +6,7 @@ import { matchRoute, routeLabel } from './js/routes.js';
 import { initMiddleTruncate } from './js/middle-truncate.js';
 import { tagLabel } from './js/tags.js';
 import { syncSidebarSurface, sidebarTagCounts, sidebarHasCatalogContent, cleanupSkeletonHtml, cloudLocations, cloudPreferenceLocations, tasteHistoryGuideHtml, wireTasteHistoryGuide, TASTE_GUIDE_KEY } from './dist/peach-ui.js';
-import { javImageKind, normalizeJavImage, syncJavImages, nativeImageFit, matchesFaceSource, entitySkeletonHtml } from './dist/peach-ui.js';
+import { javImageKind, normalizeJavImage, normalizeJavLayout, normalizeJavPreferences, syncJavImages, nativeImageFit, matchesFaceSource, entitySkeletonHtml } from './dist/peach-ui.js';
 import {
   attachOverlayScrollbar, breadcrumbHtml, checkboxHtml, closeAnchoredMenu, confirmModal, emptyStateHtml, fieldsetTitle,
   fillSkeletonTier, fitSkeleton, iconSwitchHtml, indexSkeletonHtml, loadingDotsHtml,
@@ -424,7 +424,7 @@ appSettings.groupCollapse=appSettings.groupCollapse!==false;
 appSettings.detailAutoplay=appSettings.detailAutoplay!==false;
 appSettings.searchHistoryLimit=allowedSetting(+appSettings.searchHistoryLimit,[5,10,20],10);
 appSettings.relatedLimit=allowedSetting(+appSettings.relatedLimit,[12,20,30],20);
-appSettings.javImage=normalizeJavImage(appSettings.javLayout==='preview'?'thumbnail':appSettings.javImage);
+Object.assign(appSettings,normalizeJavPreferences(appSettings));
 appSettings.theme=allowedSetting(appSettings.theme,THEME_CHOICES,'system');
 const sidebarKeyAlias=key=>key==='ads'||key==='dupes'?'data-cleanup':key;
 appSettings.sidebarOrder=[...new Set((Array.isArray(appSettings.sidebarOrder)?appSettings.sidebarOrder:DEFAULT_SIDEBAR_ORDER).map(sidebarKeyAlias))].filter(key=>ALL_SIDEBAR_KEYS.includes(key));
@@ -451,11 +451,17 @@ prefersDark.addEventListener('change',()=>{if(appSettings.theme==='system')apply
    形状按 vercel.com 的主题选择器单独给，见 web/css/16-settings.css。 */
 function renderJavImageSetting(){
   const mount=$('#javImageSetting');
-  mount.innerHTML=iconSwitchHtml('jav-image','JAV 默认图片',
-    [['cover','封面',''],['thumbnail','缩略图','']],appSettings.javImage,{attr:'data-jav-image-choice',className:'javimageswitch',text:true});
+  mount.innerHTML=iconSwitchHtml('jav-image','JAV 默认封面',
+    [['cover','官方封面',''],['thumbnail','预览图','']],appSettings.javImage,{attr:'data-jav-image-choice',className:'javimageswitch',text:true});
   wireIconSwitch(mount,'data-jav-image-choice',choice=>{
-    setJavLayout(choice==='thumbnail'?'preview':javLayout()==='preview'?'small':javLayout());
+    appSettings.javImage=normalizeJavImage(choice);saveSettings();
+    syncJavImages(document,appSettings.javImage);
+    document.querySelectorAll('img[data-jav-image].cover').forEach(coverAnchor);
   });
+  const size=$('#javSizeSetting');
+  size.innerHTML=iconSwitchHtml('jav-size','JAV 默认大小',
+    [['big','大图',''],['small','小图','']],javLayout(),{attr:'data-jav-layout',className:'javimageswitch',text:true});
+  wireJavLayoutButtons(size);
 }
 function renderThemeSetting(){
   const mount=$('#themeSetting');
@@ -6769,10 +6775,7 @@ function openManage(section='stats'){
 /* JAV 模式。只有带番号的作品才有官方封套，所以版式切换只在这个语境里出现——
    首页混着创作者作品和素人流出，给它们切「封面」没有意义。
    资料页（女优/厂牌）进入时继承这个开关，因为那里同样是按番号浏览。 */
-const JAV_LAYOUTS=[['big','大图 · 只看正封','maximize'],['small','小图 · 整张封套','layout-grid'],
-  ['preview','预览图','eye']];
-/* 旧键沿用：设置存在浏览器里，改名不能让用户的选择静默回落到默认值。 */
-const JAV_LAYOUT_ALIASES={cover:'big',sleeve:'small'};
+const JAV_LAYOUTS=[['big','大图','maximize'],['small','小图','layout-grid']];
 function javActive(){
   const path=decodeURIComponent(location.pathname);
   if(path==='/')return state.jav==='1';
@@ -6803,8 +6806,7 @@ function nextSortState(key,current,dir){
   return{sort:key,dir:dir==='asc'?'desc':'asc'};
 }
 function javLayout(){
-  const raw=JAV_LAYOUT_ALIASES[appSettings.javLayout]||appSettings.javLayout;
-  return allowedSetting(raw,JAV_LAYOUTS.map(([k])=>k),'big');
+  return normalizeJavLayout(appSettings.javLayout);
 }
 function javLayoutButtons(){
   return iconSwitchHtml('jav-layout','JAV 卡片版式',JAV_LAYOUTS,javLayout(),
@@ -6830,12 +6832,9 @@ function repaintCatalogCards(){
   wireCards(grid);wireMixCards(grid);paintSelection();
 }
 function setJavLayout(value){
-  appSettings.javLayout=value;
-  appSettings.javImage=value==='preview'?'thumbnail':'cover';
+  appSettings.javLayout=normalizeJavLayout(value);
   saveSettings();
-  syncJavImages(document,appSettings.javImage);
-  document.querySelectorAll('img[data-jav-image].cover').forEach(coverAnchor);
-  document.querySelectorAll('[data-jav-layout]').forEach(input=>{input.checked=input.value===value});
+  document.querySelectorAll('[data-jav-layout]').forEach(input=>{input.checked=input.value===appSettings.javLayout});
   // 只重画卡片，不重新请求：版式是纯展示层的事。资料页保留已经载入的分页。
   const index=$('#index'),kind=index?.dataset.entityKind,name=index?.dataset.entityName;
   if(kind&&name&&!index.hidden&&entityMediaView.media!=='photos'){

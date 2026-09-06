@@ -1892,7 +1892,7 @@ class WebUiSourceTests(unittest.TestCase):
         # 否则一行里高矮混排会把网格撕成锯齿状。
         self.assertPageLacks("useCover&&layout==='big'")
         # 旧键要继续认，设置存在浏览器里，改名不能让用户的选择静默回落。
-        self.assertPageContains("const JAV_LAYOUT_ALIASES={cover:'big',sleeve:'small'};")
+        self.assertPageContains("return normalizeJavLayout(appSettings.javLayout);")
 
     def test_wide_stills_frame_on_the_detected_face_instead_of_dead_centre(self):
         """16:9 官方剧照在大图容器里只会横向裁，横向锚点必须跟着人走。
@@ -6630,10 +6630,23 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_jav_image_preference_reaches_cards_mix_and_settings(self):
         self.assertPageContains('id="javImageSetting"')
-        self.assertPageContains("appSettings.javImage=normalizeJavImage(appSettings.javLayout==='preview'?'thumbnail':appSettings.javImage);")
+        self.assertPageContains("Object.assign(appSettings,normalizeJavPreferences(appSettings));")
         self.assertPageContains("syncJavImages(document,appSettings.javImage);")
         self.assertPageContains("syncJavImages(box,appSettings.javImage);")
         self.assertPageContains("? javArtwork(it,jav?layout:'small',eager)")
+
+    def test_jav_cover_source_and_size_are_independent_settings(self):
+        self.assertPageContains('JAV 默认封面')
+        self.assertPageContains('JAV 默认大小')
+        self.assertPageContains("[['cover','官方封面',''],['thumbnail','预览图','']]")
+        self.assertPageContains("[['big','大图',''],['small','小图','']]")
+        self.assertPageContains('id="javSizeSetting"')
+        self.assertPageContains("wireJavLayoutButtons(size)")
+        size_body = self.app_js.split('function setJavLayout(value){', 1)[1].split('\n}', 1)[0]
+        self.assertNotIn('appSettings.javImage=', size_body)
+        cover_body = self.app_js.split("wireIconSwitch(mount,'data-jav-image-choice',choice=>{", 1)[1].split('});', 1)[0]
+        self.assertNotIn('setJavLayout(', cover_body)
+        self.assertNotIn('appSettings.javLayout=', cover_body)
 
     def test_the_detail_title_names_which_volume_is_playing(self):
         """分卷队列里换一卷，右侧标题栏必须跟着变。

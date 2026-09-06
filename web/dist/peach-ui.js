@@ -1838,20 +1838,33 @@ function un(e, t) {
 //#endregion
 //#region src/jav-artwork.ts
 function dn(e) {
+	return [
+		"small",
+		"sleeve",
+		"preview"
+	].includes(String(e)) ? "small" : "big";
+}
+function fn(e) {
+	return {
+		javLayout: dn(e.javLayout),
+		javImage: pn(e.javLayout === "preview" ? "thumbnail" : e.javImage)
+	};
+}
+function pn(e) {
 	return e === "thumbnail" ? "thumbnail" : "cover";
 }
-function fn(e, t) {
-	return e.is_jav && e.code && e.has_cover && (dn(t) === "cover" || !e.has_thumb) ? "cover" : e.has_thumb ? "thumbnail" : "";
+function mn(e, t) {
+	return e.is_jav && e.code && e.has_cover && (pn(t) === "cover" || !e.has_thumb) ? "cover" : e.has_thumb ? "thumbnail" : "";
 }
-function pn(e, t) {
+function hn(e, t) {
 	e.querySelectorAll("img[data-jav-image]").forEach((e) => {
-		let n = e.dataset.javCover || "", r = e.dataset.javThumb || "", i = !!(n && (dn(t) === "cover" || !r)), a = i ? n : r;
+		let n = e.dataset.javCover || "", r = e.dataset.javThumb || "", i = !!(n && (pn(t) === "cover" || !r)), a = i ? n : r;
 		e.classList.toggle("cover", i), e.classList.toggle("whole", i && e.dataset.javImageLayout !== "big"), e.classList.toggle("front", i && e.dataset.javImageLayout === "big"), e.removeAttribute("style"), a && e.getAttribute("src") !== a && (e.src = a);
 	});
 }
 //#endregion
 //#region src/islands.ts
-var mn = {
+var gn = {
 	scraping: {
 		load: Gt,
 		component: Jt
@@ -1864,11 +1877,11 @@ var mn = {
 		load: Xe,
 		component: nt
 	}
-}, hn = () => Object.keys(mn), $ = /* @__PURE__ */ new Map();
-async function gn(e, t, n, r = {}) {
-	let i = mn[e];
+}, _n = () => Object.keys(gn), $ = /* @__PURE__ */ new Map();
+async function vn(e, t, n, r = {}) {
+	let i = gn[e];
 	if (!i) throw Error(`未注册的 island：${String(e)}`);
-	_n(t);
+	yn(t);
 	let a = {
 		controller: new AbortController(),
 		painted: !1
@@ -1899,9 +1912,9 @@ async function gn(e, t, n, r = {}) {
 	};
 	xe(te(i.component, s), t);
 }
-function _n(e) {
+function yn(e) {
 	let t = $.get(e);
 	t && (t.controller.abort(), $.delete(e), t.painted && xe(null, e));
 }
 //#endregion
-export { ln as TASTE_GUIDE_KEY, sn as cleanupSkeletonHtml, an as cloudLocations, on as cloudPreferenceLocations, en as entitySkeletonHtml, Wt as followJobProgress, hn as islandNames, fn as javImageKind, Qt as matchesFaceSource, gn as mountIsland, $t as nativeImageFit, dn as normalizeJavImage, Zt as refreshStore, tn as sidebarHasCatalogContent, rn as sidebarTagCounts, Xt as storeNames, pn as syncJavImages, nn as syncSidebarSurface, cn as tasteHistoryGuideHtml, _n as unmountIsland, Ut as watchJob, un as wireTasteHistoryGuide };
+export { ln as TASTE_GUIDE_KEY, sn as cleanupSkeletonHtml, an as cloudLocations, on as cloudPreferenceLocations, en as entitySkeletonHtml, Wt as followJobProgress, _n as islandNames, mn as javImageKind, Qt as matchesFaceSource, vn as mountIsland, $t as nativeImageFit, pn as normalizeJavImage, dn as normalizeJavLayout, fn as normalizeJavPreferences, Zt as refreshStore, tn as sidebarHasCatalogContent, rn as sidebarTagCounts, Xt as storeNames, hn as syncJavImages, nn as syncSidebarSurface, cn as tasteHistoryGuideHtml, yn as unmountIsland, Ut as watchJob, un as wireTasteHistoryGuide };
