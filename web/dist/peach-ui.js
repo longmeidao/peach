@@ -753,20 +753,22 @@ function nt({ data: e, receipt: t }) {
 	return S ? /* @__PURE__ */ W("div", {
 		class: "configsaved",
 		role: "status",
-		children: [/* @__PURE__ */ W(G, { html: r("配置已保存，Peach 正在重新启动。", {
-			variant: "success",
-			label: "已保存"
-		}) }), /* @__PURE__ */ W("p", {
-			class: "confighelp",
-			children: [
-				"几秒后自动打开新地址；没跳转就点 ",
+		children: /* @__PURE__ */ W("div", {
+			class: "geist-note geist-note-success",
+			role: "note",
+			children: [/* @__PURE__ */ W("svg", {
+				"aria-hidden": "true",
+				viewBox: "0 0 24 24",
+				children: /* @__PURE__ */ W("use", { href: "#i-check" })
+			}), /* @__PURE__ */ W("p", { children: /* @__PURE__ */ W("span", { children: [
+				"配置已保存，Peach 正在重新启动。稍后自动跳转，或点击",
 				/* @__PURE__ */ W("a", {
 					href: S.url,
 					children: "进入馆藏"
 				}),
 				"。"
-			]
-		})]
+			] }) })]
+		})
 	}) : /* @__PURE__ */ W("form", {
 		class: "configfieldset",
 		"data-geist-fieldset": !0,
@@ -1878,8 +1880,62 @@ function nn(e, t) {
     <div class="entitysection">${t}</div></div></section>`;
 }
 //#endregion
+//#region src/catalog-onboarding.ts
+var rn = [
+	"loc",
+	"creator",
+	"performer",
+	"studio",
+	"series",
+	"agency",
+	"tag",
+	"tag_match",
+	"len",
+	"dur_min",
+	"dur_max",
+	"orient",
+	"state",
+	"jav",
+	"thumb"
+];
+function an() {
+	let e = (e) => [
+		,
+		,
+		,
+	].fill(e).join("");
+	return {
+		tiers: "<div class=\"tier catalog-placeholder\" aria-hidden=\"true\">" + e("<span class=\"av\"><span class=\"ring\"></span><span class=\"nm\">&nbsp;</span></span>") + "</div><div class=\"tier catalog-placeholder\" aria-hidden=\"true\">" + e("<span class=\"brandpill\"><span class=\"mk\"></span><span class=\"placeholder-name\">&nbsp;</span></span>") + "</div>",
+		tags: "<span class=\"catalog-placeholder placeholder-tags\" aria-hidden=\"true\">" + e("<span class=\"pill\">&nbsp;</span>") + "</span>"
+	};
+}
+async function on(e, t) {
+	let n = new URLSearchParams();
+	for (let t of rn) e[t] && n.set(t, e[t]);
+	let [r, i] = await Promise.all([t("/api/facets?" + n), t("/api/items?" + n + "&limit=5")]), a = [...new Set([
+		...r.creators || [],
+		...r.tagperformers || [],
+		...r.tags || []
+	].map((e) => String(e.k || "")).concat((i.items || []).map((e) => e.code || e.name || "")))].filter((e) => e.length > 1).slice(0, 10);
+	return (await Promise.all(a.map(async (e) => {
+		let r = new URLSearchParams(n);
+		return r.set("q", e), r.set("limit", "1"), (await t("/api/items?" + r)).total > 0 ? e : "";
+	}))).filter(Boolean);
+}
+function sn({ kind: e = "catalog", filtered: n = !1, jav: r = !1, configurable: i = !1, online: a = !1 } = {}) {
+	let o = i ? "<a class=\"geist-button primary\" href=\"/configuration\">添加内容</a>" : "", s = "<a class=\"geist-button\" href=\"/follow-manage\">添加来源</a>";
+	return n || r ? t("search", r ? "还没有符合条件的 JAV 作品" : "没有符合条件的内容", r ? "已扫描但尚未补充发行资料的视频可在全部内容中查看。" : "清除筛选或搜索条件后查看全部内容。", { actions: "<a class=\"geist-button primary\" href=\"/?loc=&thumb=0\">查看全部内容</a>" }) : e === "catalog" ? t("play", "还没有视频", "添加媒体文件夹或关注来源，开始建立你的馆藏。", { actions: o + s }) : t(e === "tags" ? "tags" : "user-round", "还没有" + ({
+		tags: "标签",
+		performers: "艺人",
+		creators: "创作者",
+		studios: "厂牌",
+		agencies: "事务所",
+		series: "系列"
+	}[e] || "资料"), a ? "添加关注来源并获取内容后，这里会显示对应标签。" : "添加内容并补充资料后，这里会显示对应信息。", { actions: a ? s : o + s });
+}
+//#endregion
 //#region src/sidebar.ts
-function rn(e) {
+function cn(e) {
 	return [
 		"/",
 		"/unseen",
@@ -1889,23 +1945,23 @@ function rn(e) {
 		"/junk-files"
 	].includes(e) || /^\/(item|mix|parts|editions)\//.test(e) || /^\/playlists\/\d+\/\d+$/.test(e) || /^\/(performers|studios|creators|series|agencies)\/.+/.test(e);
 }
-function an(e, t) {
+function ln(e, t) {
 	return e.dataset.surface === t && e.querySelector(".dnav") ? !1 : (e.dataset.surface = t, e.replaceChildren(), !0);
 }
-function on(e) {
+function un(e) {
 	let t = /* @__PURE__ */ new Map();
 	for (let n of e) for (let e of new Set(n.tags || [])) t.set(e, (t.get(e) || 0) + 1);
 	return [...t].sort((e, t) => t[1] - e[1]).slice(0, 30);
 }
 //#endregion
 //#region src/management.ts
-function sn(e) {
+function dn(e) {
 	return e.filter((e) => ["115", "pikpak"].includes(e.location) && (e.roots === void 0 || e.roots.length > 0)).map((e) => e.location);
 }
-function cn(e, t) {
+function fn(e, t) {
 	return t.filter((t) => e.some((e) => e.location === t));
 }
-function ln() {
+function pn() {
 	return `<div class="cleanuppage" data-skeleton="cleanup" aria-busy="true" aria-label="正在读取数据管理状态">
     <div class="cleanupgrid">${[
 		[
@@ -1951,7 +2007,7 @@ function ln() {
         <footer class="geist-fieldset-footer" data-geist-fieldset-footer><button type="button"${r === 3 ? " class=\"danger\"" : ""} disabled>${r === 3 ? "<svg aria-hidden=\"true\"><use href=\"#i-trash\"></use></svg><span>" + t + "</span>" : t}</button></footer>
       </section>`).join("")}</div></div>`;
 }
-function un(e, t = !1, n = !1) {
+function mn(e, t = !1, n = !1) {
 	if (t || n) return "";
 	let r = "<svg aria-hidden=\"true\"><use href=\"#i-external-link\"></use></svg>";
 	return `<details class="taste-history-guide"${e ? " open" : ""}>
@@ -1965,43 +2021,43 @@ function un(e, t = !1, n = !1) {
       <button type="button" class="taste-guide-skip">跳过</button>
     </div></details>`;
 }
-var dn = "peach-taste-guide-dismissed";
-function fn(e, t) {
+var hn = "peach-taste-guide-dismissed";
+function gn(e, t) {
 	let n = e.querySelector(".taste-history-guide");
 	n?.querySelector(".taste-guide-skip")?.addEventListener("click", () => {
-		t.setItem(dn, "1"), n.remove();
+		t.setItem(hn, "1"), n.remove();
 	});
 }
 //#endregion
 //#region src/jav-artwork.ts
-function pn(e) {
+function _n(e) {
 	return [
 		"small",
 		"sleeve",
 		"preview"
 	].includes(String(e)) ? "small" : "big";
 }
-function mn(e) {
+function vn(e) {
 	return {
-		javLayout: pn(e.javLayout),
-		javImage: hn(e.javLayout === "preview" ? "thumbnail" : e.javImage)
+		javLayout: _n(e.javLayout),
+		javImage: yn(e.javLayout === "preview" ? "thumbnail" : e.javImage)
 	};
 }
-function hn(e) {
+function yn(e) {
 	return e === "thumbnail" ? "thumbnail" : "cover";
 }
-function gn(e, t) {
-	return e.is_jav && e.code && e.has_cover && (hn(t) === "cover" || !e.has_thumb) ? "cover" : e.has_thumb ? "thumbnail" : "";
+function bn(e, t) {
+	return e.is_jav && e.code && e.has_cover && (yn(t) === "cover" || !e.has_thumb) ? "cover" : e.has_thumb ? "thumbnail" : "";
 }
-function _n(e, t) {
+function xn(e, t) {
 	e.querySelectorAll("img[data-jav-image]").forEach((e) => {
-		let n = e.dataset.javCover || "", r = e.dataset.javThumb || "", i = !!(n && (hn(t) === "cover" || !r)), a = i ? n : r;
+		let n = e.dataset.javCover || "", r = e.dataset.javThumb || "", i = !!(n && (yn(t) === "cover" || !r)), a = i ? n : r;
 		e.classList.toggle("cover", i), e.classList.toggle("whole", i && e.dataset.javImageLayout !== "big"), e.classList.toggle("front", i && e.dataset.javImageLayout === "big"), e.removeAttribute("style"), a && e.getAttribute("src") !== a && (e.src = a);
 	});
 }
 //#endregion
 //#region src/islands.ts
-var vn = {
+var Sn = {
 	scraping: {
 		load: qt,
 		component: Xt
@@ -2014,11 +2070,11 @@ var vn = {
 		load: Ze,
 		component: rt
 	}
-}, yn = () => Object.keys(vn), $ = /* @__PURE__ */ new Map();
-async function bn(e, t, n, r = {}) {
-	let i = vn[e];
+}, Cn = () => Object.keys(Sn), $ = /* @__PURE__ */ new Map();
+async function wn(e, t, n, r = {}) {
+	let i = Sn[e];
 	if (!i) throw Error(`未注册的 island：${String(e)}`);
-	xn(t);
+	Tn(t);
 	let a = {
 		controller: new AbortController(),
 		painted: !1
@@ -2049,9 +2105,9 @@ async function bn(e, t, n, r = {}) {
 	};
 	xe(te(i.component, s), t);
 }
-function xn(e) {
+function Tn(e) {
 	let t = $.get(e);
 	t && (t.controller.abort(), $.delete(e), t.painted && xe(null, e));
 }
 //#endregion
-export { dn as TASTE_GUIDE_KEY, ln as cleanupSkeletonHtml, sn as cloudLocations, cn as cloudPreferenceLocations, nn as entitySkeletonHtml, Kt as followJobProgress, yn as islandNames, gn as javImageKind, en as matchesFaceSource, bn as mountIsland, tn as nativeImageFit, hn as normalizeJavImage, pn as normalizeJavLayout, mn as normalizeJavPreferences, $t as refreshStore, rn as sidebarHasCatalogContent, on as sidebarTagCounts, Qt as storeNames, _n as syncJavImages, an as syncSidebarSurface, un as tasteHistoryGuideHtml, xn as unmountIsland, Gt as watchJob, fn as wireTasteHistoryGuide };
+export { hn as TASTE_GUIDE_KEY, sn as catalogEmptyHtml, on as catalogSuggestions, pn as cleanupSkeletonHtml, dn as cloudLocations, fn as cloudPreferenceLocations, an as emptyCatalogLayout, nn as entitySkeletonHtml, Kt as followJobProgress, Cn as islandNames, bn as javImageKind, en as matchesFaceSource, wn as mountIsland, tn as nativeImageFit, yn as normalizeJavImage, _n as normalizeJavLayout, vn as normalizeJavPreferences, $t as refreshStore, cn as sidebarHasCatalogContent, un as sidebarTagCounts, Qt as storeNames, xn as syncJavImages, ln as syncSidebarSurface, mn as tasteHistoryGuideHtml, Tn as unmountIsland, Gt as watchJob, gn as wireTasteHistoryGuide };

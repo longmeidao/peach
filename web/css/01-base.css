@@ -185,6 +185,7 @@ button,a,input,textarea,select,summary{touch-action:manipulation}
   line-height:1;white-space:nowrap;cursor:pointer;
   transition:background-color .15s ease-in-out,border-color .15s ease-in-out,color .15s ease-in-out}
 .geist-button:hover:not(:disabled){background:var(--surface)}
+.geist-button:is(a),.geist-button:is(a):hover{text-decoration:none}
 .geist-button:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}
 .geist-button:disabled{background:var(--sunk);border-color:var(--line-soft);color:var(--muted);cursor:default}
 /* Vercel/Geist loading actions look unavailable and reject repeat activation,

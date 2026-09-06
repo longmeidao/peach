@@ -5,7 +5,7 @@ import { javDisplayName, javTitleHtml } from './js/jav-title.js';
 import { matchRoute, routeLabel } from './js/routes.js';
 import { initMiddleTruncate } from './js/middle-truncate.js';
 import { tagLabel } from './js/tags.js';
-import { syncSidebarSurface, sidebarTagCounts, sidebarHasCatalogContent, cleanupSkeletonHtml, cloudLocations, cloudPreferenceLocations, tasteHistoryGuideHtml, wireTasteHistoryGuide, TASTE_GUIDE_KEY } from './dist/peach-ui.js';
+import { catalogSuggestions, catalogEmptyHtml, emptyCatalogLayout, syncSidebarSurface, sidebarTagCounts, sidebarHasCatalogContent, cleanupSkeletonHtml, cloudLocations, cloudPreferenceLocations, tasteHistoryGuideHtml, wireTasteHistoryGuide, TASTE_GUIDE_KEY } from './dist/peach-ui.js';
 import { javImageKind, normalizeJavImage, normalizeJavLayout, normalizeJavPreferences, syncJavImages, nativeImageFit, matchesFaceSource, entitySkeletonHtml } from './dist/peach-ui.js';
 import {
   attachOverlayScrollbar, breadcrumbHtml, checkboxHtml, closeAnchoredMenu, confirmModal, emptyStateHtml, fieldsetTitle,
@@ -594,6 +594,7 @@ const srcBadge=(loc,cost,cls)=>{const label=`${LOC[loc]||loc}${cost==='metered'?
 /* 空态用 Vercel 的「icon tile + 标题 + 一句解释」结构。不放假动作按钮：
    能执行的操作仍然留在各页自己的工具栏里，空态只负责解释为什么是空的。 */
 const emptyState=emptyStateHtml;
+let runtimeConfigurable=null;
 
 /* Toast：挂在 #toasts（body 直下）而不是 #stats 里——检查完会整页重画，
    页内浮层会被冲掉，这里不会。对齐 Geist 的处方（取证见
@@ -712,12 +713,12 @@ function resolveSort(rawSort,rawDir,fallback=appSettings.defaultSort){
 const initialCatalogUrl=(path=>isCatalogPath(path)||path==='/trash')(
   decodeURIComponent(location.pathname));
 const initialParam=key=>initialCatalogUrl?initialParams.get(key):null;
-state={loc:initialParams.get('loc')||'local,115',creator:initialParam('creator')||'',studio:initialParam('studio')||'',
+state={loc:initialParams.get('loc')??'local,115',creator:initialParam('creator')||'',studio:initialParam('studio')||'',
   tag:cleanTagFilter(initialParam('tag')),len:initialParam('len')||'',dur_min:initialParam('dur_min')||'',dur_max:initialParam('dur_max')||'',
   tag_match:initialParam('tag_match')==='any'?'any':'all',orient:initialParam('orient')||'',
   state:ROUTE_STATES[decodeURIComponent(location.pathname)]||initialParam('state')||'',
   ...resolveSort(initialParam('sort'),initialParam('dir')),
-  seed:initialParam('seed')||rollSeed(),q:initialParam('q')||'',jav:initialParam('jav')||'',thumb:'1'};
+  seed:initialParam('seed')||rollSeed(),q:initialParam('q')||'',jav:initialParam('jav')||'',thumb:initialParam('thumb')||'0'};
 /* 脱盘的来源要从默认筛选里摘掉，否则首页照样按它筛，出来一屏点开就报脱盘的卡片。
    只动默认值：地址栏里显式写了 `loc=` 就是用户自己选的，不替他改。
    全部来源都脱盘时保持原样——清空筛选会变成「什么都不筛」，那比原状更糟。
@@ -749,7 +750,7 @@ let barsContext={type:'home',filters:state},detailReturnBarsContext=null;
 function resetHomeState(){
   state={loc:state.loc,creator:'',studio:'',tag:'',tag_match:'all',len:'',dur_min:'',dur_max:'',
     orient:'',state:'',sort:appSettings.defaultSort,dir:defaultSortDir(appSettings.defaultSort),
-    seed:rollSeed(),q:'',jav:'',thumb:'1'};
+    seed:rollSeed(),q:'',jav:'',thumb:'0'};
   barsContext={type:'home',filters:state};detailReturnBarsContext=null;
   barsDataCache=null;barsDataPromise=null;
 }
@@ -2669,8 +2670,10 @@ async function buildBars(){
   const perfRow=tops.performers.map(avHtml).join('');
   const studioRow=tops.studios.map(bpHtml).join('');
   const tier=html=>html?`<div class="tier">${html}</div>`:'';
-  $('#tiers').innerHTML=tier(perfRow)+tier(studioRow);
-  $('#tiers').hidden=!(perfRow||studioRow);
+  const emptyHome=context.type==='home'&&!javActive()&&!state.state&&!state.q&&!facetData.locations.some(row=>row.n>0);
+  const emptyLayout=emptyHome?emptyCatalogLayout():null;
+  $('#tiers').innerHTML=emptyLayout?emptyLayout.tiers+tier(emptyLayout.tags):tier(perfRow)+tier(studioRow);
+  $('#tiers').hidden=!(emptyLayout||perfRow||studioRow);
   $('#tiers').removeAttribute('aria-busy');
   $('#tiers').querySelectorAll('[data-entity-kind]').forEach(b=>b.onclick=()=>
     openEntity(b.dataset.entityKind,b.dataset.entityName));
@@ -5712,7 +5715,8 @@ async function openIndex(kind,q,push=true,refine=false){
   /* 公司格和人格在大图版式下要的形状不一样：竖幅是给脸留的，方标进去左右各被裁掉
      一截。这一格里装的是什么，只有这里知道，所以在这里写进 DOM。 */
   const cells=entityKind==='studio'||entityKind==='agency'?'company':'people';
-  const body=people?`<div class="igrid" data-cells="${cells}" data-layout="${
+  const body=!d.items.length?catalogEmptyHtml({kind,filtered:!!q||(kind==='tags'&&tagIndexCategory!=='all'),configurable:runtimeConfigurable,online:onlineTags})
+    :people?`<div class="igrid" data-cells="${cells}" data-layout="${
     peopleIndexLayout()}">${peopleHtml(d.items)}</div>`:tagHtml(tagItems);
   const categoryOptions=onlineTags?ONLINE_TAG_CATEGORIES:TAG_CATEGORIES;
   const visibleTagCategories=categoryOptions.filter(([key])=>key==='all'||Number(d.categories?.[key]||0)>0);
@@ -6511,7 +6515,6 @@ const MANAGE_SECTIONS=[
 const MANAGE_MENU_SECTIONS=['stats','taste','cleanup','follow','configuration'];
 /* 「配置」只对运行 Peach 的这台电脑有意义：服务端按调用方回 `/healthz` 的 `configurable`，
    手机和另一台电脑的菜单里不列它。第一次画管理条时问一次，答复回来后重画。 */
-let runtimeConfigurable=null;
 function probeConfigurable(){
   if(runtimeConfigurable!==null)return;
   runtimeConfigurable=false;
@@ -7020,15 +7023,22 @@ async function load(reset){
   const html=state.state==='trash'?d.items.map(resourceCardHtml).join('')
     :batchWithMix(d.items,isCatalogPath(decodeURIComponent(location.pathname))&&state.state!=='trash');
   if(reset)releaseHoverPreviews($('#grid'));
+  let libraryEmpty=false;
+  if(reset&&!d.items.length&&state.state!=='trash'){
+    const library=await surfaceApi(surface,'/api/items?limit=1&thumb=0');
+    if(requestSeq!==loadRequestSeq||!surfaceCurrent(surface))return;
+    libraryEmpty=library.total===0;
+  }
   if(reset&&state.state==='trash'&&!d.items.length)
     $('#grid').innerHTML=emptyState('trash','回收站是空的','删掉的内容会先到这里；确认不再需要后再清空。');
   else if(reset&&!d.items.length)
-    $('#grid').innerHTML=emptyState('search','没有符合条件的作品','调整筛选或搜索条件后再试。');
+    $('#grid').innerHTML=catalogEmptyHtml({jav:javActive()&&!libraryEmpty,configurable:runtimeConfigurable,
+      filtered:!libraryEmpty});
   /* 接下来这一页新增在当前这段里的起点：竖屏带的落点要落在新增的那几行之间，
      不能又插回已经看过的上半屏。 */
   const addedFrom=reset?0:[...lastGridSection().children].filter(x=>x.matches('.card[data-id]')).length;
-  if(reset)setGridCards(html);
-  else appendGridCards(html);
+  if(reset&&d.items.length)setGridCards(html);
+  else if(!reset)appendGridCards(html);
   renderCount();
   $('#loadSentinel').hidden=reset?d.items.length>=total:!d.has_more;
   wireCards($('#grid'),state.state==='trash'?openResourceCard:undefined);
@@ -7043,33 +7053,23 @@ const loadObserver=new IntersectionObserver(entries=>{
     offset+=appSettings.batchSize;load(false)}
 },{rootMargin:'320px'});
 loadObserver.observe($('#loadSentinel'));
-const SEARCH_HINTS=['Prestige','FC2','Sakura Misaki','丝袜','足交','ABW'];
-/* 推荐词取自真实数据，所以每一条都保证能搜到东西；写死的常量池只有 6 个词，
-   翻两次就重复。顶部聚合只给几十条，不够；索引接口一次能给近千条名字。 */
-let searchPoolCache=null;
-function searchPool(){
-  if(searchPoolCache&&searchPoolCache.length)return searchPoolCache;
-  const pool=[];
-  const take=list=>(list||[]).forEach(x=>{const v=x&&x.k;if(v)pool.push(String(v))});
-  if(typeof facets==='object'&&facets){take(facets.creators);take(facets.tagperformers);take(facets.tags)}
-  const seen=new Set();
-  const unique=pool.filter(v=>v.length>1&&!seen.has(v)&&seen.add(v));
-  return unique.length>=8?unique:SEARCH_HINTS;
-}
+let searchPoolCache=[];
+let searchPoolRequest=0;
+function searchPool(){return searchPoolCache}
 async function loadSearchPool(){
-  if(searchPoolCache)return searchPoolCache;
+  const request=++searchPoolRequest;
+  searchPoolCache=[];
+  $('#q').dataset.suggestion='';$('#q').placeholder='搜索馆藏';
   try{
-    const lists=await Promise.all(['performers','creators','tags'].map(
-      kind=>api(`/api/index?kind=${kind}&limit=400`)));
-    const seen=new Set();
-    const names=lists.flatMap(d=>(d.items||[]).map(x=>String(x.k||'')))
-      .filter(v=>v.length>1&&!seen.has(v)&&seen.add(v));
-    if(names.length>=50)searchPoolCache=names;
-  }catch(e){/* 取不到就退回聚合结果，不影响搜索本身 */}
+    const names=await catalogSuggestions(state,api);
+    if(request!==searchPoolRequest)return searchPool();
+    searchPoolCache=names;
+    const searchSuggestion=names[Math.floor(Math.random()*names.length)]||'';
+    $('#q').dataset.suggestion=searchSuggestion;$('#q').placeholder=searchSuggestion||'搜索馆藏';
+  }catch(e){/* 推荐不可用时仍可直接输入搜索。 */}
   return searchPool();
 }
-const searchSuggestion=SEARCH_HINTS[Math.floor(Math.random()*SEARCH_HINTS.length)];
-$('#q').dataset.suggestion=searchSuggestion;$('#q').placeholder=searchSuggestion;
+$('#q').dataset.suggestion='';$('#q').placeholder='搜索馆藏';
 let searchHistory=[];
 function readSearchHistory(){return searchHistory.slice(0,appSettings.searchHistoryLimit)}
 const loadSearchHistory=()=>api('/api/search-history?limit='+appSettings.searchHistoryLimit).then(d=>{searchHistory=Array.isArray(d.items)?d.items:[];return searchHistory}).catch(()=>searchHistory);
@@ -7083,8 +7083,8 @@ function renderSearchMenu(){const menu=$('#searchMenu'),history=readSearchHistor
   const recommendations=[...searchPool()].sort(()=>Math.random()-.5).filter(x=>!history.some(h=>foldName(h)===foldName(x))).slice(0,5);
   const row=(value,type)=>`<div class="searchoption" data-search-value="${esc(value)}">${icon(type==='history'?'history':'sparkles')}<span>${esc(value)}</span>${type==='history'?`<button class="removehistory" data-remove-history="${esc(value)}" aria-label="删除历史 ${esc(value)}">${icon('x')}</button>`:''}</div>`;
   menu.innerHTML=(history.length?`<section class="searchgroup"><h3>搜索记录</h3>${history.map(x=>row(x,'history')).join('')}</section>`:'')+
-    `<section class="searchgroup"><h3>推荐</h3>${recommendations.map(x=>row(x,'recommend')).join('')}</section>`;
-  menu.hidden=false;searchActive=-1;
+    (recommendations.length?`<section class="searchgroup"><h3>推荐</h3>${recommendations.map(x=>row(x,'recommend')).join('')}</section>`:'');
+  menu.hidden=!menu.innerHTML;searchActive=-1;
   menu.querySelectorAll('[data-search-value]').forEach(x=>x.onclick=e=>{if(e.target.closest('[data-remove-history]'))return;
     $('#q').value=x.dataset.searchValue;runSearch(false,true);menu.hidden=true});
   menu.querySelectorAll('[data-remove-history]').forEach(b=>{
@@ -8271,7 +8271,7 @@ function openCatalog(path){
     junkKind=cleanJunkKind(params.get('type')||'');
     junkView=params.get('view')==='dismissed'?'dismissed':'pending';
   }
-  state={...state,loc:params.get('loc')||'local,115',creator:params.get('creator')||'',studio:params.get('studio')||'',
+  state={...state,loc:params.get('loc')??'local,115',creator:params.get('creator')||'',studio:params.get('studio')||'',
     tag:cleanTagFilter(params.get('tag')),tag_match:params.get('tag_match')==='any'?'any':'all',len:params.get('len')||'',
     dur_min:params.get('dur_min')||'',dur_max:params.get('dur_max')||'',orient:params.get('orient')||'',
     state:ROUTE_STATES[path]||params.get('state')||'',...resolveSort(params.get('sort'),params.get('dir')),

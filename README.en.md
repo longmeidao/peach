@@ -6,6 +6,8 @@
 
 <p align="center">A personal library for media across your disks, mounted drives and followed sources.</p>
 
+The home page includes videos without thumbnails. Search suggestions come from the current library. An empty library keeps the people, studio and tag layout and offers actions to add content or sources.
+
 <p align="center">
   <a href="https://github.com/longmeidao/peach/releases">Download for Windows</a> ·
   <a href="#quick-start">Quick start</a> ·

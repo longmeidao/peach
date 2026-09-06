@@ -1,6 +1,6 @@
 # Peach 交接与长期工作约定
 
-本文件保存长期事实与规则；细节见技能、参考快照、专题文档与测试。
+长期约定；细节见技能与专题文档。
 
 ## 界面、媒体与复核的既定判据
 
@@ -73,7 +73,7 @@
 
 ## 参考产品证据登记
 
-- README 提交检查与参考取舍：[维护流程](README_MAINTENANCE.md)。
+- [Geist 控件](reference-snapshots/vercel-geist-controls-measured.md)；[README 维护](README_MAINTENANCE.md)。
 
 - 图 3、JavDB：`docs/REUSE.md`。
 

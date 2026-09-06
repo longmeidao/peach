@@ -70,7 +70,7 @@ form{margin-top:32px}
 .field{margin-top:24px}
 .field>label,.field>.legend{display:block;margin:0 0 8px;font-weight:500;color:var(--ink)}
 .req{color:var(--drop);margin-right:4px}
-input[type=text],input[type=number]{width:100%;height:var(--control-h);padding:0 12px;
+input[type=text],input[type=number],input[type=password]{width:100%;height:var(--control-h);padding:0 12px;
 border:1px solid var(--line);border-radius:var(--control-radius);background:var(--ground);
 color:var(--ink);font:inherit}
 .affix{display:flex;align-items:center;height:var(--control-h);border:1px solid var(--line);
@@ -94,6 +94,8 @@ border-radius:var(--control-radius);color:var(--ink-2);cursor:pointer}
 .switch label:has(input:focus-visible){outline:2px solid var(--tungsten);outline-offset:2px}
 :focus-visible{outline:2px solid var(--tungsten);outline-offset:3px}
 .help{margin:6px 0 0;color:var(--muted);font-size:var(--fs-sm)}
+.optional{margin-inline-start:8px;color:var(--muted);font-size:var(--fs-sm);font-weight:400}
+.field>label:not(:first-child){margin-top:24px}
 /* 高级设置是 Geist Collapse：summary 是触发器，chevron 紧跟标题，与高度一样 200ms ease-in-out；
    折叠体由 /js/ui-components.js 的 wireCollapse 接管。 */
 details{margin-top:24px}
@@ -508,7 +510,7 @@ def setup_page(
     fields.append(f'<details{opened}><summary><span>高级设置</span>{_CHEVRON_SVG}</summary>'
                   + "".join(advanced) + "</details>")
     access_error = str(errors.get("access_password", ""))
-    fields.insert(1, '<div class="field"><label for="access-password">访问密码（可选）</label>'
+    fields.insert(1, '<div class="field"><label for="access-password">访问密码<span class="optional">可选</span></label>'
                   '<input id="access-password" name="access_password" type="password" maxlength="256" '
                   f'aria-invalid="{"true" if access_error else "false"}" '
                   'autocomplete="new-password" aria-describedby="access-help">'
@@ -533,7 +535,7 @@ def setup_page(
         + "".join(fields)
         + _check_html("scan_now", scan_text, checked=scan_now)
         + '<p class="help">扫描只读取文件名、大小和修改时间，不改动任何媒体文件。</p>'
-        + '<section class="history-guide-choice"><h2>浏览器历史记录 <small>可选</small></h2>'
+        + '<section class="history-guide-choice"><h2>浏览器历史记录<span class="optional">可选</span></h2>'
         + _check_html("history_guide", "接下来导入浏览器历史记录", checked=values.get("history_guide") == "y")
         + '<p class="help">用于生成口味分析。完成设置后选择读取这台电脑，或导入其他设备的记录；也可稍后从「口味」进入。</p></section>'
         + '<button type="submit">完成设置</button></form>'
@@ -551,7 +553,7 @@ def setup_done_page(applied, *, windows: bool, scan_requested: bool, history_gui
         scan = "首次扫描已排队。" if scan_requested else "你可以稍后在配置界面开始扫描。"
         return _document("Peach · 设置完成",
                          '<h1>设置完成</h1><p class="lede">正在启动你的馆藏。' + scan + '</p>'
-                         f'<p><a href="{destination}">{destination_label}</a></p>'
+                         f'<p><a class="geist-button primary" href="{destination}">{destination_label}</a></p>'
                          f'<meta http-equiv="refresh" content="8;url={destination}">'
                          + runtime_facts_html(config))
     ledger = (f"Peach 数据库已存在，没有动它：{tree.database}" if tree.ledger_existed
@@ -579,7 +581,7 @@ def setup_done_page(applied, *, windows: bool, scan_requested: bool, history_gui
         f"{scan}"
         "</ul>"
         f"{mounts}"
-        + f'<p><a href="{destination}">{destination_label}</a></p>'
+        + f'<p><a class="geist-button primary" href="{destination}">{destination_label}</a></p>'
         + runtime_facts_html(config)
     )
     return _document("Peach · 设置完成", body)

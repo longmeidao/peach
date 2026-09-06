@@ -33,6 +33,9 @@ class CommandTests(unittest.TestCase):
         self.assertIn("-STA", argv, "COM 对话框要求单线程套间")
         self.assertEqual(argv[-2], "-EncodedCommand")
         script = base64.b64decode(argv[-1]).decode("utf-16-le")
+        self.assertLess(script.index('SetThreadDpiAwarenessContext(new IntPtr(-4))'),
+                        script.index('new FileOpenDialogRCW()'))
+        self.assertIn('SetThreadDpiAwarenessContext(previousDpi)', script)
         self.assertIn('Guid("42f85136-db7e-439c-85f1-e4075d135fc8")', script, "IFileOpenDialog 的接口 ID")
         self.assertIn("dialog.SetOptions(0x8 | 0x20 | 0x40)", script, "FOS_NOCHANGEDIR、FOS_PICKFOLDERS、FOS_FORCEFILESYSTEM")
         self.assertNotIn("FolderBrowserDialog", script)

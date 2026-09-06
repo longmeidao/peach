@@ -3,6 +3,7 @@ import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from unittest import mock
 
 from peach.certs import (
     CERT_DAYS,
@@ -27,6 +28,18 @@ def make_ca(tls_dir: Path) -> CertificateFiles:
 
 
 class CertificateTests(unittest.TestCase):
+    def test_openssl_hides_its_windows_console_and_preserves_output(self):
+        from peach import certs
+        result = subprocess.CompletedProcess(['openssl'], 0, 'certificate output', '')
+        with mock.patch.object(certs.subprocess, 'run', return_value=result) as run:
+            self.assertEqual(certs._openssl('version'), 'certificate output')
+        expected = subprocess.CREATE_NO_WINDOW if certs.os.name == 'nt' else 0
+        self.assertEqual(run.call_args.kwargs['creationflags'], expected)
+        result.returncode, result.stderr = 1, 'test failure'
+        with mock.patch.object(certs.subprocess, 'run', return_value=result):
+            with self.assertRaisesRegex(RuntimeError, 'test failure'):
+                certs._openssl('version')
+
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
         self.tls = Path(self._tmp.name) / "tls"

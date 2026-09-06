@@ -33,6 +33,8 @@ Peach 配置页的产品取值（根据用户于 2026-09-05 提出的间距要�
 
 ## Peach 复用了什么
 
+2026-09-06 复核：官方 `https://vercel.com/geist/button` 明确导航使用 ButtonLink；首次设置完成页复用主站 `.geist-button.primary`，保持链接语义。`https://vercel.com/geist/label` 未给出「可选」专用颜色；Peach 自行采用已有 `--muted`、`--fs-sm` 与 400 字重，不宣称这是上游专用组件。密码输入与其他文本字段共用首启样式。官方正文可读取；IAB 与 Chrome 控制均返回 `js execution timed out`，本轮上游浏览器视觉实测未取得。
+
 关注管理页（`web/css/22-followmanage.css`）据此：控件统一 32 px 高、14 px 字；
 圆角取根变量的 **6 px** 而不是按钮的 4 px；默认按钮描边透明，只有主操作填色。
 

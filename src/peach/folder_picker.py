@@ -89,6 +89,8 @@ namespace PeachPick {
   [ComImport, Guid("DC1C5A9C-E88A-4dde-A5A1-60F82A20AEF7")]
   public class FileOpenDialogRCW { }
   public static class Picker {
+    [DllImport("user32.dll")]
+    static extern IntPtr SetThreadDpiAwarenessContext(IntPtr context);
     [DllImport("shell32.dll", CharSet = CharSet.Unicode, PreserveSig = false)]
     static extern IShellItem SHCreateItemFromParsingName(string path, IntPtr bindContext, ref Guid interfaceId);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
@@ -111,6 +113,8 @@ namespace PeachPick {
       }
     }
     public static string Pick(string title, string initial) {
+      var previousDpi = SetThreadDpiAwarenessContext(new IntPtr(-4));
+      try {
       var dialog = (IFileOpenDialog)new FileOpenDialogRCW();
       new System.Threading.Thread(() => Raise(title)).Start();
       dialog.SetOptions(0x8 | 0x20 | 0x40);
@@ -126,6 +130,9 @@ namespace PeachPick {
       string path;
       picked.GetDisplayName(0x80058000, out path);
       return path;
+      } finally {
+        if (previousDpi != IntPtr.Zero) SetThreadDpiAwarenessContext(previousDpi);
+      }
     }
   }
 }

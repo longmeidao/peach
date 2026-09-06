@@ -98,3 +98,9 @@ class MediaConfigurationTests(unittest.TestCase):
             self.assertIn('/Volumes/115', html)
             self.assertIn('peach scan configured', html)
             self.assertNotIn('peach scan local', html)
+            self.assertIn('<a class="geist-button primary" href=', html)
+            with patch('peach.distribution.standalone', return_value=True):
+                packaged = setup_done_page(SimpleNamespace(config=config, tree=tree), windows=True,
+                                           scan_requested=False, history_guide=True)
+            self.assertIn('<a class="geist-button primary" href=', packaged)
+            self.assertIn('>导入浏览器历史记录</a>', packaged)

@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import ipaddress
 import logging
+import os
 import re
 import shutil
 import subprocess
@@ -63,6 +64,7 @@ def _openssl(*args: str, stdin: bytes | None = None) -> str:
         # 显式给 encoding：text=True 会用平台默认编码，中文输出会静默丢成空 stdout。
         text=stdin is None, encoding=None if stdin is not None else "utf-8",
         errors=None if stdin is not None else "replace",
+        creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
     )
     if result.returncode != 0:
         detail = result.stderr if isinstance(result.stderr, str) else result.stderr.decode(
