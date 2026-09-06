@@ -80,11 +80,11 @@ function SourceForm({ source, toast }: { source: Source } & ScrapingProps) {
             `vercel-geist-button-icons.md` 的「加图标」那一侧，中间的地址不重复说这两件事。
             图标直接取对方站点的 `/favicon.ico`：这一页配置的就是与这些站的连接，
             浏览器本来就要连它们，不必绕服务端。取不到时把 `<img>` 摘掉，不留破图。 */}
-        <a class="scraping-url" href={source.login} target="_blank" rel="noopener noreferrer">
+        <a class="scraping-url externallink" href={source.login} target="_blank" rel="noopener noreferrer">
           <img src={faviconUrl(source.login)} alt="" width="16" height="16" loading="lazy"
             onError={event => event.currentTarget.remove()} />
           <span>{source.login}</span>
-          <svg aria-hidden="true"><use href="#i-external-link" /></svg>
+          <svg class="externalmark" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-external-link" /></svg>
         </a>
         </div>
         <div class="scraping-label">连接方式<NetworkSelect value={network} onChange={setNetwork} /></div>

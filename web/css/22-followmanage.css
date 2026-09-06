@@ -171,8 +171,7 @@
 .frowerr{flex:1 1 100%;margin:2px 0 0;font-size:var(--fs-sm);line-height:1.6;color:var(--drop)}
 .fsource.bad>b{color:var(--drop)}
 /* 旁边那格的站标说的是「哪个平台」，这一枚说的是「点下去会离开 Peach」。 */
-.fsourcelink{display:inline-flex;align-items:baseline;gap:5px;min-width:0;color:inherit;text-decoration:none}
-.fsourcelink svg{align-self:center;width:13px;height:13px;flex:none;stroke:currentColor;fill:none;stroke-width:2}
+.fsourcelink{color:inherit;text-decoration:none}
 .fsourcelink:hover{text-decoration:none;color:var(--tungsten)}
 
 /* 作者分组。同一个人在几个站上是几条来源、一个人，所以头像和名字只出现一次，
@@ -293,8 +292,6 @@ details.fcred{display:block;min-width:0}
 .fcredfield input:focus-visible{outline:2px solid var(--tungsten);outline-offset:1px;
   border-color:var(--tungsten)}
 /* 「去取」指向站外的凭据页，后缀那枚外链箭头说明这一下会离开 Peach。 */
-.fcredget{display:inline-flex;align-items:baseline;gap:4px}
-.fcredget svg{align-self:center;width:13px;height:13px;flex:none;stroke:currentColor;fill:none;stroke-width:2}
 .fcredactions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:0}
 .fcredactions button{height:32px;box-sizing:border-box;padding:0 14px;border-radius:var(--control-radius);
   border:0;background:var(--ink);color:var(--ground);font-size:var(--fs-md);font-weight:500;
@@ -362,8 +359,6 @@ details.fcred{display:block;min-width:0}
   align-items:baseline;margin:6px 0;padding:8px 10px;border:1px dashed var(--border-15);
   border-radius:var(--control-radius);color:var(--ink-2);text-decoration:none;font-size:var(--fs-xs)}
 .fpicksearch:hover{border-color:color-mix(in srgb,var(--ink) 28%,transparent);color:var(--ink)}
-.fpicksearch b{display:inline-flex;align-items:baseline;gap:5px}
-.fpicksearch b svg{align-self:center;width:12px;height:12px;flex:none;stroke:currentColor;fill:none;stroke-width:2}
 .fpicksearch span{min-width:0;overflow-wrap:anywhere;color:var(--ink)}
 .fpicksearch i{grid-column:1/-1;font-style:normal;color:var(--muted)}
 .fpickfail{color:var(--drop)!important}
@@ -415,7 +410,5 @@ details.fcred{display:block;min-width:0}
 .linktable .linkurl{max-width:360px;overflow:hidden}
 /* 中缩要量可用宽度，量不出行内元素的：地址自己占一个 minmax(0,1fr) 的格子，
    外链标固定宽度排在它后面。 */
-.linktable .linkurl a{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;
-  gap:6px;color:var(--muted);text-decoration:none}
+.linktable .linkurl a{display:grid;grid-template-columns:minmax(0,1fr) auto;color:var(--muted)}
 .linktable .linkurl a:hover{color:var(--ink)}
-.linktable .linkurl svg{width:13px;height:13px;flex:none;stroke:currentColor;fill:none;stroke-width:2}

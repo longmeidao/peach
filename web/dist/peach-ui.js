@@ -730,13 +730,14 @@ function et({ initial: e, initialJob: t }) {
 			"data-geist-fieldset-footer": !0,
 			children: [
 				/* @__PURE__ */ J("a", {
-					class: "geist-button",
+					class: "geist-button externallink",
 					href: r.release_url,
 					target: "_blank",
 					rel: "noreferrer",
 					children: ["查看发布页", /* @__PURE__ */ J("svg", {
-						"aria-hidden": "true",
+						class: "externalmark",
 						viewBox: "0 0 24 24",
+						"aria-hidden": "true",
 						children: /* @__PURE__ */ J("use", { href: "#i-external-link" })
 					})]
 				}),
@@ -1064,12 +1065,14 @@ function ft({ facts: e }) {
 				children: e.map((e) => /* @__PURE__ */ J(I, { children: [/* @__PURE__ */ J("dt", { children: e.term }), /* @__PURE__ */ J("dd", { children: [e.value, e.download_url ? /* @__PURE__ */ J("span", {
 					class: "confighelp",
 					children: [" ", /* @__PURE__ */ J("a", {
+						class: "externallink",
 						href: e.download_url,
 						target: "_blank",
 						rel: "noreferrer",
 						children: [e.download_label, /* @__PURE__ */ J("svg", {
-							"aria-hidden": "true",
+							class: "externalmark",
 							viewBox: "0 0 24 24",
+							"aria-hidden": "true",
 							children: /* @__PURE__ */ J("use", { href: "#i-external-link" })
 						})]
 					})]
@@ -1345,12 +1348,14 @@ function ht({ data: e, receipt: t }) {
 						s.some((e) => e === "115" || e === "pikpak") ? /* @__PURE__ */ J("p", {
 							class: "confighelp",
 							children: ["先在 CloudDrive 登录网盘并完成挂载。", /* @__PURE__ */ J("a", {
+								class: "externallink",
 								href: "https://www.clouddrive2.com/help.html",
 								target: "_blank",
 								rel: "noreferrer",
 								children: ["挂载帮助", /* @__PURE__ */ J("svg", {
-									"aria-hidden": "true",
+									class: "externalmark",
 									viewBox: "0 0 24 24",
+									"aria-hidden": "true",
 									children: /* @__PURE__ */ J("use", { href: "#i-external-link" })
 								})]
 							})]
@@ -1362,6 +1367,7 @@ function ht({ data: e, receipt: t }) {
 								e.name,
 								"。",
 								/* @__PURE__ */ J("a", {
+									class: "externallink",
 									href: e.download_url,
 									target: "_blank",
 									rel: "noreferrer",
@@ -1369,8 +1375,9 @@ function ht({ data: e, receipt: t }) {
 										"下载 ",
 										e.name,
 										/* @__PURE__ */ J("svg", {
-											"aria-hidden": "true",
+											class: "externalmark",
 											viewBox: "0 0 24 24",
+											"aria-hidden": "true",
 											children: /* @__PURE__ */ J("use", { href: "#i-external-link" })
 										})
 									]
@@ -2111,7 +2118,7 @@ function fn({ source: e, toast: t }) {
 					/* @__PURE__ */ J("div", {
 						class: "geist-fieldset-heading",
 						children: [/* @__PURE__ */ J("div", { dangerouslySetInnerHTML: { __html: i(`scraping-${e.source}`, e.label) } }), /* @__PURE__ */ J("a", {
-							class: "scraping-url",
+							class: "scraping-url externallink",
 							href: e.login,
 							target: "_blank",
 							rel: "noopener noreferrer",
@@ -2126,6 +2133,8 @@ function fn({ source: e, toast: t }) {
 								}),
 								/* @__PURE__ */ J("span", { children: e.login }),
 								/* @__PURE__ */ J("svg", {
+									class: "externalmark",
+									viewBox: "0 0 24 24",
 									"aria-hidden": "true",
 									children: /* @__PURE__ */ J("use", { href: "#i-external-link" })
 								})
@@ -2438,7 +2447,7 @@ function bn(e = "") {
 function xn(e) {
 	let t = yn(e.profile_url), n = (e.preview_assets || []).slice(0, 6), r = Math.max(0, Number(e.video_count || e.videos || 0));
 	return `<section class="reviewidentityevidence"><h5>候选身份：${m(e.babepedia_name || "未标注")}</h5>
-    <div class="reviewevidenceactions">${t ? `<a class="geist-button" href="${m(t)}" target="_blank" rel="noopener noreferrer">来源资料 ↗</a>` : ""}
+    <div class="reviewevidenceactions">${t ? `<a class="geist-button externallink" href="${m(t)}" target="_blank" rel="noopener noreferrer">来源资料<svg class="externalmark" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-external-link" /></svg></a>` : ""}
     <button type="button" class="geist-button" data-entity-kind="creator" data-entity-name="${m(e.creator || "")}">查看全部 ${r.toLocaleString()} 部作品</button></div>
     ${bn(e.preview_url)}
     <p>通过后记录身份判断。</p>
@@ -2889,14 +2898,14 @@ function Hn() {
 }
 function Un(e, t = !1, n = !1) {
 	if (t || n) return "";
-	let r = "<svg aria-hidden=\"true\"><use href=\"#i-external-link\"></use></svg>";
+	let r = "<svg class=\"externalmark\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><use href=\"#i-external-link\"></use></svg>";
 	return `<details class="taste-history-guide"${e ? " open" : ""}>
     <summary>浏览器历史记录导入指南</summary>
     <div class="taste-history-guide-content">
       <p>在运行 Peach 的电脑上使用浏览器：点击上方「读取 Peach 主机」。</p>
       <p>记录在其他设备上：导出文件后，点击上方「导入历史」。多台设备的文件分别导入。</p>
-      <ul><li>Chrome：在 <a href="https://takeout.google.com/" target="_blank" rel="noreferrer">Google Takeout${r}</a> 选择 Chrome 历史记录，下载 ZIP 后直接导入。</li>
-      <li>其他浏览器：使用 <a href="https://github.com/purarue/browserexport" target="_blank" rel="noreferrer">browserexport${r}</a> 导出历史记录，再导入导出文件。</li></ul>
+      <ul><li>Chrome：在 <a class="externallink" href="https://takeout.google.com/" target="_blank" rel="noreferrer">Google Takeout${r}</a> 选择 Chrome 历史记录，下载 ZIP 后直接导入。</li>
+      <li>其他浏览器：使用 <a class="externallink" href="https://github.com/purarue/browserexport" target="_blank" rel="noreferrer">browserexport${r}</a> 导出历史记录，再导入导出文件。</li></ul>
       <p>需要刷新时再次读取或导入；数据源可在页面底部移除。</p>
       <button type="button" class="geist-button taste-guide-skip">跳过</button>
     </div></details>`;

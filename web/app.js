@@ -3044,7 +3044,7 @@ async function wireLinkManager(){
 
   const row=item=>`<tr><td>${esc(item.entity)}</td><td>${esc(KINDS[item.link_kind]||item.link_kind)}</td>
     <td>${esc(item.label||'')}</td><td class="linknote">${esc(item.note)}</td>
-    <td class="linkurl"><a href="${esc(item.url)}" target="_blank" rel="noreferrer"><span data-middle-truncate>${esc(item.url)}</span>${icon('external-link')}</a></td></tr>`;
+    <td class="linkurl"><a class="externallink" href="${esc(item.url)}" target="_blank" rel="noreferrer"><span data-middle-truncate>${esc(item.url)}</span>${icon('external-link','externalmark')}</a></td></tr>`;
   const table=(title,items,hint)=>items.length?`<div class="linkgroup"><h4>${esc(title)} <b>${items.length}</b></h4>
     <p>${esc(hint)}</p><div class="linktablewrap"><table class="linktable"><thead><tr><th>实体</th><th>类型</th><th>标签</th><th>结果</th><th>地址</th></tr></thead><tbody>${items.map(row).join('')}</tbody></table></div></div>`:'';
 
@@ -4147,7 +4147,7 @@ function followResourceLinks(item){
   const links=item.resource_urls||[];
   if(!links.length)return '';
   return `<div class="followresources">${links.map(url=>
-    `<a href="${esc(url)}" target="_blank" rel="noreferrer noopener">${esc(followResourceLabel(url))}${icon('external-link')}</a>`
+    `<a class="externallink" href="${esc(url)}" target="_blank" rel="noreferrer noopener">${esc(followResourceLabel(url))}${icon('external-link','externalmark')}</a>`
   ).join('')}</div>`;
 }
 
@@ -4293,7 +4293,7 @@ async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=fals
     <div class="vwrap followdetailmedia${selectedKind==='image'?' image':''}">${selectedKind==='video'?'<canvas class="ambientcanvas" width="32" height="18"></canvas>':''}<button class="closestage" id="closeStage" title="关闭" aria-label="关闭">${icon('x')}</button>${selectedKind==='video'?playerStatsOverlayHtml():''}${media}${imageControls}</div>
     ${embeddedQueue?followEmbeddedQueueHtml(item,selectedMedia.index):(collection?followQueueHtml(collection,item.id):'')}
     <div class="side followdetailside"><div class="sidecontent">
-      <div class="followdetailtitle"><div class="stitle">${esc(item.title)}</div>${item.url?`<a class="followorigin" href="${esc(item.url)}" target="_blank" rel="noreferrer noopener" title="打开来源页面" aria-label="打开来源页面">${icon('external-link')}</a>`:''}</div>
+      <div class="followdetailtitle"><div class="stitle">${esc(item.title)}</div>${item.url?`<a class="followorigin externallink" href="${esc(item.url)}" target="_blank" rel="noreferrer noopener" title="打开来源页面" aria-label="打开来源页面">${icon('external-link','externalmark')}</a>`:''}</div>
       <div class="followdetailidentity"><span class="mav fsourceavatar">${followAuthorAvatar(authorSources)}</span>
         <div><b>${esc(author)}</b>${postedBy?`<span>发布者 ${esc(postedBy)}</span>`:''}</div></div>
       <div class="smeta mono"><span>${followWhen(item)}</span>${realDuration(item.duration)?`<span>${fmtDur(item.duration)}</span>`:''}${badges?`<span class="fbadges">${badges}</span>`:''}</div>
@@ -4933,8 +4933,8 @@ function followSourceRow(source){
     <label class="fchannelcheck" title="${source.enabled?'参与检查更新':'暂停检查更新'}">${checkboxHtml(
       `data-follow-enabled="${source.id}" ${source.enabled?'checked':''}`
       +` aria-label="${source.enabled?'暂停':'启用'} ${esc(source.label)} 的更新检查"`)}</label>
-    <b><a class="fsourcelink" href="${esc(source.url)}" target="_blank"
-      rel="noreferrer noopener" title="打开原来源">${esc(source.label)}${icon('external-link')}</a></b>
+    <b><a class="fsourcelink externallink" href="${esc(source.url)}" target="_blank"
+      rel="noreferrer noopener" title="打开原来源">${esc(source.label)}${icon('external-link','externalmark')}</a></b>
     <span class="fmeta fprovider" title="${esc(source.provider_label)}">${sourceIcon(source.provider)
       }<span>${esc(source.provider_label)}</span></span>
     <span class="fmeta fchecked">${source.last_checked_at?localTimeHtml(source.last_checked_at):'未检查'}</span>
@@ -5004,7 +5004,7 @@ function followCredentialRow(row){
         :row.fields.includes(name)?'已保存，留空表示不改':'未填写'}"></label>`).join('');
   const body=row.requirement==='none'?''
     :row.requirement==='blocked'?`<p>${esc(row.why)}</p>`
-    :`<p>${esc(row.why)}${row.where?` <a class="fcredget" href="${esc(row.where)}" target="_blank" rel="noreferrer noopener">去取${icon('external-link')}</a>`:''}</p>
+    :`<p>${esc(row.why)}${row.where?` <a class="fcredget externallink" href="${esc(row.where)}" target="_blank" rel="noreferrer noopener">去取${icon('external-link','externalmark')}</a>`:''}</p>
       ${row.howto?`<p>${esc(row.howto)}</p>`:''}
       <form class="fcredform" data-cred-form="${esc(row.provider)}">${fields}
         <div class="fcredactions"><button type="submit">保存</button>
@@ -5474,7 +5474,7 @@ function renderFollowPicks(results){
         <i>${esc(c.known?'已经关注':c.evidence)}</i></span></label>`).join('');
     const searches=(row.external_searches||[]).map(search=>
       `<a class="fpicksearch" href="${esc(search.url)}" target="_blank" rel="noreferrer noopener">
-        <b>${esc(search.label)}${icon('external-link')}</b><span>${esc(search.query)}</span>
+        <b class="externallink">${esc(search.label)}${icon('external-link','externalmark')}</b><span>${esc(search.query)}</span>
         <i>${esc(search.evidence)}</i></a>`).join('');
     return `<div class="fpick"><b>${esc(row.line)}</b>
       ${items||'<p class="fpickempty">站内没有查到来源</p>'}

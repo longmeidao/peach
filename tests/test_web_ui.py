@@ -1610,19 +1610,30 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks(".reviewcontent .geist-scroller-container:has(>.reviewempty)")
 
     def test_links_that_leave_peach_carry_the_external_mark(self):
-        """走出 Peach 的链接带一枚外链标，站内跳转不带。
+        """走出 Peach 的链接带一枚外链标，站内跳转不带，长相全站只有一个。
 
         2026-09-06 实测 vercel.com 团队页：站内链接（PR 号、部署 ID、项目名）一律裸
-        文字，只有离站的部署域名挂一枚 14×14 的 external-link。标记的是「这一跳会
-        离开当前应用」，不是「这是个链接」——每个链接都挂就等于谁都没标。
+        文字，只有离站的部署域名挂一枚 external-link。标记的是「这一跳会离开当前
+        应用」，不是「这是个链接」——每个链接都挂就等于谁都没标。
+        尺寸和间距按同日实测的 vercel.com/geist/colors 的 `Learn More`：14px/20px 文字
+        配 16×16 图标（16/14≈1.15em）、紧跟文字 2px、与文字行居中、吃链接自己的
+        currentColor（docs/reference-snapshots/vercel-geist-external-link-mark.md）。
+        尺寸写成 em 而不是常数：它每次说的是同一件事，跟着所在文字走比例才不变。
         """
-        island = (Path(__file__).resolve().parents[1]
-                  / 'frontend/src/islands/release-updates.tsx').read_text(encoding='utf-8')
-        self.assertIn('查看发布页<svg aria-hidden="true" viewBox="0 0 24 24">'
-                      '<use href="#i-external-link" /></svg>', island)
-        self.assertPageContains('.geist-button svg{width:14px;height:14px;flex:none;'
-                                'stroke:currentColor;fill:none;stroke-width:2}')
+        css = stylesheet_source()
         self.assertPageContains('<symbol id="i-external-link"')
+        self.assertPageContains(".externallink{display:inline-flex;align-items:center;"
+                                "gap:2px;min-width:0}")
+        self.assertPageContains("svg.externalmark{width:1.15em;height:1.15em;flex:none;"
+                                "align-self:center;")
+        self.assertPageContains("stroke:currentColor;fill:none;stroke-width:2.25;"
+                                "stroke-linecap:round;stroke-linejoin:round}")
+        # 尺寸和间距不许再按页面分档：差的不是 1px，是同一个意思有八个长相。
+        for stale in (".fsourcelink svg{", ".fcredget svg{", ".fpicksearch b svg{",
+                      ".linktable .linkurl svg{", ".followorigin svg{",
+                      ".scraping-fields .scraping-url svg{",
+                      ".taste-history-guide-content a svg{", ".confighelp a svg{"):
+            self.assertNotIn(stale, css, f"{stale} 已由 .externalmark 接管")
 
     def test_the_x_mark_is_a_full_disc_that_takes_the_current_ink(self):
         """圆盘吃 currentColor，字形从圆里挖掉，两个主题下分量一样重。
@@ -3674,17 +3685,18 @@ class WebUiSourceTests(unittest.TestCase):
         processing = (Path(__file__).resolve().parents[1] / 'frontend/src/islands/library-processing.tsx').read_text(encoding='utf-8')
         self.assertIn('href="/scraping"', processing)
         self.assertPageContains('.scraping-fields .gselectfield{justify-content:space-between;padding-right:16px;')
-        # 来源链接是站外地址：站标加箭头，读者不点也知道这一跳会离开 Peach。
-        self.assertPageContains('.scraping-fields .scraping-url{display:inline-flex;align-items:center;gap:6px;')
+        # 来源链接是站外地址：站标加外链标，读者不点也知道这一跳会离开 Peach。
+        # 站标和地址之间那 4px 挂在站标身上，行内的 gap 只管地址与外链标之间的 2px。
+        self.assertPageContains('.scraping-fields .scraping-url{display:inline-flex;align-items:center;gap:2px;')
+        self.assertPageContains('.scraping-fields .scraping-url img{flex:none;margin-inline-end:4px;')
         # 悬停只升亮，不划线：这一行本身就在标题下方单占一行，划线会和上面的标题挤在一起。
         self.assertPageContains('.scraping-fields .scraping-url:hover{color:var(--ink);text-decoration:none}')
-        self.assertPageContains('.scraping-fields .scraping-url svg{flex:none;width:14px;height:14px;')
         self.assertPageContains('.scraping-fields .scraping-cover-form{display:flex;align-items:center;')
         source = (Path(__file__).resolve().parents[1] / 'frontend/src/islands/scraping.tsx').read_text(encoding='utf-8')
         self.assertIn('wireSelectField(root.firstElementChild!)', source)
         self.assertNotIn('<select', source)
         self.assertIn('提供 Cookie 的方式（二选一）', source)
-        self.assertIn('class="scraping-url" href={source.login}', source)
+        self.assertIn('class="scraping-url externallink" href={source.login}', source)
 
     def test_data_management_subpages_carry_geist_breadcrumbs(self):
         """数据管理五张卡进的是它的子页，得有回去的路和自己的名字。
@@ -7175,14 +7187,34 @@ class WebUiSourceTests(unittest.TestCase):
         2026-09-06 实测 vercel.com 团队页：站内链接（PR 号、部署 ID、项目名）一律裸文字，
         离站的部署域名带一枚 external-link；列表行左端的 provider 标是身份标记，不是动作
         图标。所以带了站标或品牌标的那一类（实体页的社媒、来源行）算已经有标，不再叠一枚。
+        每一枚都走同一对类名，包括 `来源资料` 那一处：箭头字符说的是同一件事，
+        但它不是那枚标，全站没有第二种写法。
         """
-        self.assertPageContains("<span data-middle-truncate>${esc(item.url)}</span>"
-                                "${icon('external-link')}", "死链表那一格整格就是外部地址")
+        self.assertPageContains('<a class="externallink" href="${esc(item.url)}"',
+                                "死链表那一格整格就是外部地址")
         # 中缩靠改写 textContent 实现，图标留在被省略的节点外面才不会被抹掉。
+        self.assertPageContains("<span data-middle-truncate>${esc(item.url)}</span>"
+                                "${icon('external-link','externalmark')}")
         self.assertPageContains(".linktable .linkurl a{display:grid;"
                                 "grid-template-columns:minmax(0,1fr) auto;")
-        self.assertPageContains("title=\"打开原来源\">${esc(source.label)}${icon('external-link')}")
-        self.assertPageContains("<b>${esc(search.label)}${icon('external-link')}</b>")
+        self.assertPageContains("title=\"打开原来源\">${esc(source.label)}"
+                                "${icon('external-link','externalmark')}")
+        self.assertPageContains('<b class="externallink">${esc(search.label)}'
+                                "${icon('external-link','externalmark')}</b>")
+        # 一处漏掉类名就又变成八档里的第九档，所以按调用点数，不按人工清单。
+        self.assertEqual(self.app_js.count("icon('external-link'"),
+                         self.app_js.count("icon('external-link','externalmark')"),
+                         "web/app.js 里每一枚外链标都带 externalmark")
+        root = Path(__file__).resolve().parents[1]
+        for name in ('islands/scraping.tsx', 'islands/configuration.tsx',
+                     'islands/release-updates.tsx', 'management.ts',
+                     'review-evidence.ts'):
+            source = (root / 'frontend/src' / name).read_text(encoding='utf-8')
+            self.assertEqual(source.count('#i-external-link'),
+                             source.count('class="externalmark" viewBox="0 0 24 24"'),
+                             f"{name} 里每一枚外链标都带 externalmark")
+        self.assertNotIn('↗', (root / 'frontend/src/review-evidence.ts').read_text(
+            encoding='utf-8'), "外链标只有图标一种写法")
 
     def test_action_keys_in_every_bar_are_flat_fills_not_outlines(self):
         """动作键一律不描边，自己是一块与条子／卡面不同的面。

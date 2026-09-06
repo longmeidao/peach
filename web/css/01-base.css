@@ -196,9 +196,19 @@ button,a,input,textarea,select,summary{touch-action:manipulation}
   transition:background-color .15s ease-in-out,color .15s ease-in-out}
 .geist-button:hover:not(:disabled){background:var(--surface)}
 .geist-button,.geist-button:hover{text-decoration:none}
-/* 按钮里唯一还挂图标的一类是走出 Peach 的链接：实测 Geist 的外链标是 14px，
-   跟着文字的 currentColor 走，落在文字后面。 */
+/* 按钮里唯一还挂图标的一类是走出 Peach 的链接，那一枚的长相由下面两条说。 */
 .geist-button svg{width:14px;height:14px;flex:none;stroke:currentColor;fill:none;stroke-width:2}
+/* 走出 Peach 的那一枚标，全站一个写法。
+   2026-09-06 实测 vercel.com/geist/colors 的 `Learn More`：14px/20px 的文字配 16×16 图标、
+   紧跟文字 2px、与文字行居中、颜色就是链接自己的 currentColor
+   （docs/reference-snapshots/vercel-geist-external-link-mark.md）。尺寸不是全站一个常数，
+   而是相对所在文字抬一档，16/14≈1.15em，所以 12px 小字旁边它也跟着小、比例不变。
+   全站只有这两条，页面各自不再调档：这一枚每次说的都是同一件事，尺寸和间距按页面
+   分档的话，同一个意思就有八个长相，并排放着像是八种不同的标。
+   间距只由 .externallink 的 gap 说：挂在标自己身上会和容器的 gap 叠起来。 */
+.externallink{display:inline-flex;align-items:center;gap:2px;min-width:0}
+svg.externalmark{width:1.15em;height:1.15em;flex:none;align-self:center;
+  stroke:currentColor;fill:none;stroke-width:2.25;stroke-linecap:round;stroke-linejoin:round}
 .geist-button:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}
 .geist-button:disabled{background:var(--sunk);color:var(--muted);cursor:default}
 /* Vercel/Geist loading actions look unavailable and reject repeat activation,
