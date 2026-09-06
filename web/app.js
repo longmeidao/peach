@@ -395,6 +395,7 @@ const defaultSortDir=key=>SORT_DIR_WORDS[key]?'desc':'';
    已经按 `prefers-color-scheme` 和 `[data-theme]` 两条路径写好，这里只负责选哪一条。
    跟随系统是默认档，选它等于不写属性。 */
 const THEME_CHOICES=['system','light','dark'];
+const JAV_LAYOUTS=[['big','大图','maximize'],['small','小图','layout-grid']];
 /* 跟随系统那一档跟 vercel.com 后台一样用显示器：这一档说的是「照这台设备的设定走」，
    讲的是设备而不是明暗，日月合体的那枚反而在说明暗。`monitor` 因此归给它，详情页的
    画面尺寸改用 `ratio`——那里量的是画幅本身，不是放画幅的那台机器。 */
@@ -459,8 +460,8 @@ function renderJavImageSetting(){
     document.querySelectorAll('img[data-jav-image].cover').forEach(coverAnchor);
   });
   const size=$('#javSizeSetting');
-  size.innerHTML=iconSwitchHtml('jav-size','JAV 默认大小',
-    [['big','大图',''],['small','小图','']],javLayout(),{attr:'data-jav-layout',className:'javimageswitch',text:true});
+  size.innerHTML=iconSwitchHtml('jav-size','JAV 封面默认大小',
+    JAV_LAYOUTS,javLayout(),{attr:'data-jav-layout',className:'javimageswitch',text:true});
   wireJavLayoutButtons(size);
 }
 function renderThemeSetting(){
@@ -6775,7 +6776,6 @@ function openManage(section='stats'){
 /* JAV 模式。只有带番号的作品才有官方封套，所以版式切换只在这个语境里出现——
    首页混着创作者作品和素人流出，给它们切「封面」没有意义。
    资料页（女优/厂牌）进入时继承这个开关，因为那里同样是按番号浏览。 */
-const JAV_LAYOUTS=[['big','大图','maximize'],['small','小图','layout-grid']];
 function javActive(){
   const path=decodeURIComponent(location.pathname);
   if(path==='/')return state.jav==='1';

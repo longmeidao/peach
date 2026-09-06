@@ -1,6 +1,7 @@
 /* 内边距吃掉刘海和底部横条：iOS 上 `inset:0` 会一直铺到状态栏和 Home 指示条底下。 */
 body.settings-open{overflow:hidden}
 .iconswitch.javimageswitch label{width:auto;min-width:52px;padding-inline:10px}
+.javimageswitch label>span[aria-hidden]{display:inline-flex;align-items:center;gap:6px}
 .settingspanel{position:fixed;z-index:var(--layer-dialog);inset:0;isolation:isolate;display:grid;place-items:center;background:rgba(242,242,242,.8);padding:18px;padding-top:max(18px,env(safe-area-inset-top));padding-bottom:max(18px,env(safe-area-inset-bottom));overscroll-behavior:contain}
 .settingspanel[hidden]{display:none}/* 高度用 dvh 不用 vh。iOS 上 `vh` 算的是「大视口」——不减地址栏，所以按 90vh 撑出来的
    面板会顶到地址栏和状态栏底下，上半截被遮住。`dvh` 跟着当前可见高度走。
