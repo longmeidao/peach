@@ -1,15 +1,13 @@
 # Peach 交接与长期工作约定
 
-本机设置见 `REUSE.md`。
+设置见 `OPERATIONS.md`。
 
 ## 界面、媒体与复核的既定判据
 
+界面门槛见 `.claude/skills/peach-web-ui/SKILL.md`，这里只留代码外的判据。
+
 - NFO 见 `docs/REUSE.md`；[Banner](https://vercel.com/geist/banner) 取证见 `vercel-geist-library-banner.md`。
 - 凭据焦点外扩 3px，正文左右留 4px；输入框可收缩，验收所有裁切祖先。
-
-
-界面门槛见 `.claude/skills/peach-web-ui/SKILL.md`，保留代码外的判据。
-
 - 截图与视觉验收的画面保护：SFW 模式（设置面板「安全」组，`#censorSetting`，localStorage `peach-censor`）默认关闭、不在导航栏。只有当本轮截图会交给会审查内容的模型（自动视觉审查或外发工具）时才开启，开完记得关；普通个人浏览一律不遮挡。
 - 卡片实体链接必须由同一个 `{kind,name}` 结构生成，不许先独立选显示名、再按别的字段推断类型；账本 `size` 为空或 0 时显示「大小未知」，不伪装成 `0 MB`。
 - 排除竖屏是首页取景而不是全局过滤器：`exclude_vertical` 进搜索或实体列表会让按名字搜竖屏视频返回 0 结果，`test_only_the_default_home_list_drops_portrait_videos` 守这条线。
@@ -86,12 +84,12 @@ React 渲染的规格页、用户截图这类给不出可重抓字节的实测�
 
 - 相关推荐算法：`openaver-related-ranking`，固定 revision，只参考 Tag IDF 与结构化共同点，MMR 和稳定破同分是 Peach 自加，不复制上游界面或源码。
 - 网格、控件半径、语义 token 与中间省略：`vercel-geist-grid`、`vercel-geist-controls-measured`、`vercel-geist-middle-truncate`；中间省略只用于路径、URL、ID、SHA 这类首尾都有信息的值，必须显式 `data-middle-truncate`，标题、说明、人名和标签保留末尾省略。
-- 统计与口味层级，Note／Progress／Switch／Fieldset／Scroller／Empty State 语义与控件：`vercel-geist-semantics-measured`、`vercel-geist-note-progress-switch-analytics`、`vercel-geist-fieldset-scroller-empty-state`；配置页截图补证：`vercel-geist-controls-measured`。
+- 统计与口味层级，Note／Progress／Gauge／Context Card 等控件：`vercel-geist-semantics-measured`、`vercel-geist-note-progress-switch-analytics`、`vercel-geist-fieldset-scroller-empty-state`；配置页截图补证：`vercel-geist-controls-measured`。
 - 分类切换条属于 Tabs 的 secondary 变体而不是分段器：`vercel-geist-tabs-secondary-measured`。
 - 表格、排行与面包屑：`vercel-geist-table-ranking`、`vercel-geist-breadcrumbs`；同形可比较数据才用语义 `table` 并保持 tabular numerals，内容标签是固定 Top 排行和直接筛选，不伪装成可排序数据表。
-- 设置 Dialog 动效、搜索期 Spinner、后台 Loading Dots 与 busy 按钮：`vercel-geist-command-search-loading`；中性说明 Note：`vercel-notifications-note`；具名动作 Toast：`vercel-geist-toast`；写操作前的确认弹层：`vercel-geist-modal-measured`。
+- 设置 Dialog 动效、搜索期 Spinner、后台 Loading Dots 与 busy 按钮：`vercel-geist-command-search-loading`；中性说明 Note：`vercel-notifications-note`；具名动作 Toast：`vercel-geist-toast`；确认弹层（2026-09-06）：`vercel-geist-modal-measured`。
 - 资料页阅读顺序与照片入口：`beeg-profile-layout`；JAV 标题显示语义：`jav-title-user-screenshot`；卡片悬停的快退／快进控件：`hover-seek-controls-user-screenshot`（beeg 现网没有这个控件，只依据用户截图）。
-- 播放器控制栏、设置浮层、影院与全屏几何：`youtube-player-controls-user-screenshot`；沉浸页版式：`youtube-shorts-immersive-user-screenshot`；播放统计滚动历史：`youtube-stats-buffer-measured`。Peach 不复制没有实际能力的字幕、睡眠定时或自动播放按钮。
+- 播放器控制栏、设置浮层、影院与全屏几何：`youtube-player-controls-user-screenshot`；沉浸页版式：`youtube-shorts-immersive-user-screenshot`；播放统计历史：`youtube-stats-buffer-measured`；小窗与右键菜单：`youtube-miniplayer-measured`。Peach 不复制字幕、睡眠定时或自动播放按钮。
 - 追更与文件站的凭据与解析边界：`f95-masked-gofile-media`、`follow-fanbox-gofile-paheal`、`fanbox-browser-transport`、`rule34-follow-tags-and-collections`；厂牌 Logo 候选发现：`fiu758-studio-logo-discovery`，只作发现来源不作真相源。
 - 通用评审清单与报告型页面版式：`vercel-web-interface-guidelines`、`vercel-report-design`（`vercel.com/design.md`）。
 - 默认 Note、只读提示和 info 入口统一复用本地 Lucide 圆圈 `i`，显式使用 2px 描边与圆端点保证圆点可见，不复制未开放许可的 Geist 私有 SVG。

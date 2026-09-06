@@ -1,5 +1,14 @@
 # Geist Modal 实测记录
 
+## 2026-09-06 使用核对
+
+当前 <https://vercel.com/geist/modal> 文字规范已读取：标题说明动作，按钮使用明确动词与对象；
+失败时让用户重试。Chrome 打开参考页返回 `js execution timed out; kernel reset`，当前渲染几何
+未取得；使用下方已有实测值及 Peach 共享组件，不声称重新测量整套动效。
+数据管理等入口共用确认弹层，危险操作默认聚焦取消，提交期间阻止重复执行，失败留在弹层。
+Peach 的手机按钮保持 44px；可还原的记录清理采用中性主按钮，永久删除使用危险样式。
+这是人工使用记录，沿用下方不登记上游快照表的理由。
+
 - 取证日期：2026-09-04
 - URL：<https://vercel.com/geist/modal>
 - 取证方式：在浏览器里打开 Default 示例的 Modal，对 `[data-geist-modal]` 及其子节点读

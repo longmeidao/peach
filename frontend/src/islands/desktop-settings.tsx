@@ -34,8 +34,8 @@ export function StartupSettings({ startup, receipt }: { startup: StartupState; r
         <div dangerouslySetInnerHTML={{__html:fieldsetTitle('startupTitle','开机自启')}} />
         <div class="configoptions" role="group" aria-labelledby="startupTitle">
           <SettingToggle label="开机后启动 Peach" checked={enabled} disabled={!startup.available} change={setEnabled} />
-          <div class="configoption"><SettingToggle label="静默启动" checked={silent} disabled={!startup.available} change={setSilent} />
-            <p class="confighelp">静默启动仅显示托盘。</p></div>
+          <div class="configoption"><SettingToggle label="静默启动" checked={silent} disabled={!startup.available || !enabled} change={setSilent} />
+            <p class="confighelp">静默启动仅显示托盘，开机后启动 Peach 打开时生效。</p></div>
         </div>
         {startup.message && <p class="confighelp">{startup.message}</p>}
         {error && <p class="configbad" role="alert">{error}</p>}

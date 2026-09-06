@@ -3,6 +3,8 @@
  * 真实实现由 Peach 在浏览器里提供，node 里不存在。这里照抄它的**行为**而不是引用它：
  * 断言要能说明「island 用的是遗留层的格式化口径」，所以哨兵值（时长 0／负数 → `—`）
  * 必须一起复制过来，否则测试会放过一个把 `-1` 画成 `0:-1` 的回归。 */
+// @ts-expect-error 测试直接复用正式错误映射。
+export {requestErrorMessage} from '../../../web/js/core.js';
 export const LOC: Record<string, string> = {
   local: '本地',
   '115': '115',
@@ -26,6 +28,12 @@ export const fmtSize = (bytes: number | null | undefined): string => {
   if (value >= 1099511627776) return `${(value / 1099511627776).toFixed(2)} TB`;
   if (value >= 1073741824) return `${(value / 1073741824).toFixed(1)} GB`;
   return `${Math.floor(value / 1048576)} MB`;
+};
+
+/* 只复制行为，不复制 `SITE_FAVICONS` 那张表：island 用到的站点都不在表里，
+   抄一份过来只会在遗留层加条目时变成两份各自漂移的清单。 */
+export const faviconUrl = (url: string): string => {
+  try { return new URL('/favicon.ico', url).href; } catch { return ''; }
 };
 
 export const esc = (value: string): string => value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");

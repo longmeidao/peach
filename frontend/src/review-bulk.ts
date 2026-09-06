@@ -1,4 +1,4 @@
-import { badgeHtml, checkboxHtml, setActionBusy, selectFieldHtml, wireSelectField } from '@peach/legacy/ui';
+import { checkboxHtml, setActionBusy, selectFieldHtml, wireSelectField } from '@peach/legacy/ui';
 import { errorMessage } from './api';
 
 export interface ReviewRow { item_key: string; field?: string; field_label?: string; source?: string; candidates?: { candidate_key: string; source?: string }[] }
@@ -6,6 +6,19 @@ export type ReviewGrouping = 'candidates' | 'source' | 'field';
 export const createReviewSelection = () => ({ busy: false, category: '', filter: '', groupBy: 'candidates' as ReviewGrouping, anchor: null as string | null, selected: new Set<string>(), choices: new Map<string, string>(), assets: new Map<string, number[]>(), errors: new Map<string, string>() });
 type Selection = ReturnType<typeof createReviewSelection>;
 type Payload = Record<string, unknown>;
+
+export function updateReviewSticky(root: HTMLElement | null) {
+  const controls = root?.querySelector<HTMLElement>('.reviewcontrols');
+  if (!root || !controls || controls.offsetParent === null) return;
+  const main = root.closest('main');
+  if (main) root.style.setProperty('--review-edge', getComputedStyle(main).paddingLeft);
+  root.style.setProperty('--review-controls-height', `${controls.getBoundingClientRect().height}px`);
+  for (const bar of [controls, ...root.querySelectorAll<HTMLElement>('.reviewgroupbar')]) {
+    const top = parseFloat(getComputedStyle(bar).top);
+    bar.classList.toggle('is-stuck', bar.offsetParent !== null && window.scrollY > 0 &&
+      Number.isFinite(top) && Math.abs(bar.getBoundingClientRect().top - top) <= 1);
+  }
+}
 
 export function reviewGroupingOptions(rows: ReviewRow[], metadata: boolean): string[][] {
   const options = [['candidates', metadata ? '按候选数量' : '全部待复核', 'list-filter']];
@@ -85,6 +98,7 @@ export function wireReviewSelection(root: HTMLElement, options: {
   const grouping = document.createElement('div'); grouping.className = 'reviewgroupby';
   grouping.innerHTML = selectFieldHtml(groupOptions, state.groupBy, { label: '筛选分组方式' });
   const groupField = wireSelectField(grouping.firstElementChild!);
+  grouping.querySelectorAll('[data-select-option] .gselectmark').forEach(mark => mark.remove());
   groupField.addEventListener('change', () => { if (state.busy || !groupOptions.some(option => option[0] === groupField.value)) return; state.groupBy = groupField.value as ReviewGrouping; state.filter = ''; state.anchor = null; const host = root.parentElement; options.refresh(); host?.querySelector<HTMLButtonElement>('.reviewgroupby button')?.focus({ preventScroll: true }); });
   const filter = document.createElement('div'); filter.className = 'reviewcategoryfilter'; filter.hidden = groups.length < 2;
   filter.innerHTML = selectFieldHtml([['', '全部分类', 'list-filter'], ...groups.map(group => [group.key, `${group.title} · ${group.rows.length}`, 'list-filter'])], state.filter, { label: state.groupBy === 'field' ? '筛选字段分类' : '筛选当前分类' });
@@ -95,14 +109,21 @@ export function wireReviewSelection(root: HTMLElement, options: {
     section.append(title, ...Array.from(filterMenu.children).slice(1)); filterMenu.append(section);
   }
   const filterField = wireSelectField(filter.firstElementChild!);
+  filter.querySelectorAll('[data-select-option] .gselectmark').forEach(mark => mark.remove());
   filterField.addEventListener('change', () => { if (state.busy || (filterField.value && !groups.some(group => group.key === filterField.value))) return; state.filter = filterField.value; state.anchor = null; const host = root.parentElement; options.refresh(); host?.querySelector<HTMLButtonElement>('.reviewcategoryfilter button')?.focus({ preventScroll: true }); });
   const all = button('全选本页'), approve = button('通过所选', 'primary'), reject = button('拒绝所选', 'error');
-  const count = document.createElement('span'); count.className = 'reviewselectedcount'; count.setAttribute('role', 'status');
+  const count = document.createElement('span'); count.className = 'reviewselectedcount selectiondockcount'; count.setAttribute('role', 'status');
   const source = document.createElement('div'); source.className = 'reviewbulksource'; source.hidden = !options.metadata;
   const feedback = document.createElement('p'); feedback.className = 'reviewstate reviewbulkfeedback'; feedback.setAttribute('role', 'status');
   const decisions = document.createElement('div'); decisions.className = 'reviewbulkdecisions'; decisions.append(approve, reject);
-  toolbar.append(grouping, filter, all, count, source, decisions); list.before(toolbar, feedback); list.classList.add('reviewgroups');
+  const dock = document.createElement('div'); dock.className = 'selectiondock reviewdock'; dock.setAttribute('role', 'group'); dock.setAttribute('aria-label', '复核所选项目');
+  const cancel = button('取消选择'); dock.append(count, source, decisions, cancel, feedback);
+  toolbar.append(grouping, filter, all);
+  const context = root.querySelector('.reviewcontrols');
+  if (context) context.append(toolbar); else list.before(toolbar);
+  root.append(dock); list.classList.add('reviewgroups');
   const clear = () => { state.selected.clear(); state.anchor = null; update(); };
+  cancel.onclick = () => { if (!state.busy) { clear(); all.focus({preventScroll:true}); } };
   all.onclick = () => { if (state.busy) return; const shown = visible(), checked = selected().length === shown.length; shown.forEach(card => checked ? state.selected.delete(card.dataset.reviewKey!) : state.selected.add(card.dataset.reviewKey!)); update(); };
   approve.onclick = () => run('approved', approve); reject.onclick = () => run('rejected', reject);
   const controls: (() => void)[] = [];
@@ -110,7 +131,7 @@ export function wireReviewSelection(root: HTMLElement, options: {
     const groupCards = group.rows.map(row => cards.find(card => card.dataset.reviewKey === row.item_key)).filter((card): card is HTMLElement => !!card);
     const section = document.createElement('section'); section.className = 'reviewgroup';
     section.hidden = !!state.filter && group.key !== state.filter;
-    const bar = document.createElement('div'); bar.className = 'reviewbulkbar';
+    const bar = document.createElement('div'); bar.className = 'reviewbulkbar reviewgroupbar';
     const title = document.createElement('h3'); title.textContent = `${group.title} · ${groupCards.length}`;
     const select = button('全选本组'), grid = document.createElement('div'); grid.className = 'reviewlist';
     bar.append(title, select); section.append(bar, grid); list.append(section);
@@ -159,7 +180,8 @@ export function wireReviewSelection(root: HTMLElement, options: {
   let sourceSignature = '';
   function update() {
     const chosen = selected(); all.textContent = chosen.length === visible().length ? '清空当前选择' : state.filter ? '全选当前分类' : '全选本页';
-    count.innerHTML = badgeHtml(`已选 ${chosen.length} 项`);
+    dock.hidden = !chosen.length;
+    count.textContent = `已选 ${chosen.length} 项`;
     approve.disabled = !chosen.length || chosen.some(card => !eligible(card)); reject.disabled = !chosen.length;
     const sources = commonReviewSources(selectedRows());
     source.hidden = !options.metadata || !selectedRows().some(row => (row.candidates?.length || 0) > 1);
@@ -199,4 +221,5 @@ export function wireReviewSelection(root: HTMLElement, options: {
     result.failures.forEach(item => state.errors.set(item.key, item.message)); const host = root.parentElement; options.refresh(); host?.querySelector<HTMLButtonElement>('.reviewbulktoolbar button')?.focus({ preventScroll: true });
   }
   update();
+  updateReviewSticky(root);
 }

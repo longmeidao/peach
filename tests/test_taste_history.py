@@ -150,13 +150,22 @@ class TasteHistoryTests(unittest.TestCase):
             HistorySource("safari", "iCloud", safari),
         ]
         store = self.root / "sources" / "history.sqlite"
-        first = refresh_history(sources, store, host="test-host")
+        updates = []
+        first = refresh_history(sources, store, host="test-host", progress=lambda **state: updates.append(state))
+        self.assertEqual(updates[-1]["checked"], first[-1]["visits"])
+        self.assertIsNone(updates[-1]["total"])
+        self.assertNotIn("secret", str(updates))
         second = refresh_history(sources, store, host="test-host")
         self.assertEqual(sum(item["added"] for item in first), 3)
         self.assertEqual(sum(item["added"] for item in second), 0)
 
         output = self.root / "review"
-        result = analyze_history(store, output)
+        result = analyze_history(store, output, progress=lambda **state: updates.append(state))
+        measured = [state for state in updates if state["stage"] == "analyzing"]
+        self.assertEqual(measured[0]["checked"], 0)
+        self.assertEqual(measured[-1]["checked"], result["visits"])
+        self.assertEqual(measured[-1]["total"], result["visits"])
+        self.assertEqual(updates[-1]["stage"], "reporting")
         report = Path(result["report"]).read_text(encoding="utf-8")
         self.assertIn("足系", report)
         self.assertIn("cosplay", report)

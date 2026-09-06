@@ -32,10 +32,11 @@ class DesktopSettingsTests(unittest.TestCase):
         links = app[app.index('function linkManagerMarkup'):app.index('function resourceSyncMarkup')]
         sync = app[app.index('function resourceSyncMarkup'):app.index('async function openTaste')]
         self.assertIn('data-fieldset-type="error"', links)
-        self.assertIn('data-fieldset-type="warning"', sync)
-        self.assertIn("variant:'warning',label:'同步影响'", sync)
-        self.assertIn('class="resourceaction warning" type="button" id="resourceApply"', sync)
-        self.assertNotIn('class="resourceaction resourcedanger" type="button" id="resourceApply"', sync)
+        renderer = (root / 'frontend/src/resource-sync.ts').read_text(encoding='utf-8')
+        self.assertIn('resourceScanHtml(payload,fmtSize)', sync)
+        self.assertIn("{label: '清理内容'}", renderer)
+        self.assertIn('class="geist-button primary" type="button" id="resourceApply"', renderer)
+        self.assertIn("danger:false,onConfirm", sync)
         self.assertIn('cleanupemptyfolders" data-geist-fieldset data-fieldset-type="error"', app)
 
     def setUp(self):

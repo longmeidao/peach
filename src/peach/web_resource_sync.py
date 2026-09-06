@@ -60,10 +60,10 @@ def source_is_online(location: str) -> bool:
 RESOURCE_SCAN_WORKERS = 8
 
 
-def configured_cloud_locations() -> tuple[str, ...]:
-    """资源同步只处理已声明媒体根目录的网盘，离线状态由扫描阶段报告。"""
+def configured_resource_locations() -> tuple[str, ...]:
+    """核对已声明的媒体来源，离线状态由扫描阶段报告。"""
     return tuple(location for location, roots in LOCATION_ROOT_DECLARATIONS.items()
-                 if location in ("115", "pikpak") and roots)
+                 if location in ("local", "115", "pikpak") and roots)
 
 
 def _scan_resource_directory(
@@ -131,19 +131,19 @@ def _scan_missing_resources(
     contract: ResourceSyncContract,
     progress: Callable[[dict], None] | None = None,
 ) -> dict:
-    """只读核对已配置网盘中的文件。"""
+    """只读核对已配置磁盘与网盘中的文件。"""
     with contract.read_connection() as connection:
         rows = connection.execute(
             "SELECT id,location,path FROM asset "
             "WHERE path IS NOT NULL AND COALESCE(disposal,'')!='trash' "
-            "AND location IN ('115','pikpak') ORDER BY location,id",
+            "AND location IN ('local','115','pikpak') ORDER BY location,id",
         ).fetchall()
     grouped: dict[str, list] = {}
     for row in rows:
         grouped.setdefault(row["location"], []).append(row)
     missing_ids: list[int] = []
     sources = []
-    for location in configured_cloud_locations():
+    for location in configured_resource_locations():
         items = grouped.get(location, [])
         online = source_is_online(location)
         missing = []
@@ -276,12 +276,16 @@ def _resource_orphan_plan(contract: ResourceSyncContract, excluded_ids: Sequence
     }
 
 
-def clean_resource_orphans(contract: ResourceSyncContract) -> dict:
+def clean_resource_orphans(contract: ResourceSyncContract, *, progress=None) -> dict:
+    if progress:
+        progress(checked=0, total=None, message="正在核对可重建缓存清单")
     plan = _resource_orphan_plan(contract)
     removed = 0
     reclaimed = 0
     blocked = []
-    for kind, path, size in plan["files"]:
+    for index, (kind, path, size) in enumerate(plan["files"]):
+        if progress:
+            progress(checked=index, total=len(plan["files"]), message=f"清理缓存：已处理 {index} / {len(plan['files'])} 个")
         try:
             path.unlink(missing_ok=True)
             removed += 1
@@ -289,6 +293,8 @@ def clean_resource_orphans(contract: ResourceSyncContract) -> dict:
         except OSError as error:
             blocked.append({"kind": kind, "name": path.name,
                             "reason": error.strerror or str(error)})
+    if progress:
+        progress(checked=0, total=None, message="正在整理缓存目录并汇总释放空间")
     for directory in sorted(plan["dirs"], key=lambda item: len(item.parts), reverse=True):
         try:
             shutil.rmtree(directory)
@@ -311,7 +317,7 @@ def _resource_scan_public(state: dict) -> dict:
         "scan_id": state["scan_id"],
         "sources": [dict(source) for source in state["sources"]],
         "completed_sources": len(state["sources"]),
-        "total_sources": len(configured_cloud_locations()),
+        "total_sources": len(configured_resource_locations()),
         **({"error": state["error"]} if state["status"] == "failed" else {}),
     }
 
@@ -354,14 +360,14 @@ def w_resource_sync_scan(contract: ResourceSyncContract, body=None):
                 return {
                     "ok": True, "status": "idle", "scan_id": "", "sources": [],
                     "completed_sources": 0,
-                    "total_sources": len(configured_cloud_locations()),
+                    "total_sources": len(configured_resource_locations()),
                 }
             return _resource_scan_public(state)
-        if not configured_cloud_locations():
-            raise ValueError("请先在配置页添加网盘来源")
+        if not configured_resource_locations():
+            raise ValueError("请先在配置页添加媒体文件夹")
         return _background_resource_scan(contract, restart=body.get("restart") is True)
-    if not configured_cloud_locations():
-        raise ValueError("请先在配置页添加网盘来源")
+    if not configured_resource_locations():
+        raise ValueError("请先在配置页添加媒体文件夹")
     scan = _scan_missing_resources(contract)
     caches = _resource_orphan_plan(contract, scan["missing_ids"])
     return {
@@ -391,21 +397,25 @@ def _recheck_resource_scan_ids(contract: ResourceSyncContract, asset_ids: Sequen
         grouped.setdefault(row["location"], []).append(row)
     missing = []
     for location, items in grouped.items():
-        if location not in configured_cloud_locations() or not source_is_online(location):
+        if location not in configured_resource_locations() or not source_is_online(location):
             continue
         source_missing, _unreadable = _missing_resource_ids(items)
         missing.extend(source_missing)
     return missing
 
 
-def w_resource_sync_apply(contract: ResourceSyncContract, body):
-    if not configured_cloud_locations():
-        raise ValueError("请先在配置页添加网盘来源")
+def w_resource_sync_apply(contract: ResourceSyncContract, body, *, progress=None):
+    if not configured_resource_locations():
+        raise ValueError("请先在配置页添加媒体文件夹")
     if body.get("confirm") is not True:
         raise ValueError("resource sync requires confirmation")
     if body.get("background"):
-        return contract.resource_apply_job.start_result(
-            lambda: w_resource_sync_apply(contract, {**body, "background": False}))
+        job = contract.resource_apply_job
+        def work(job_id):
+            result = w_resource_sync_apply(contract, {**body, "background": False},
+                progress=lambda **fields: job.update(job_id, **fields))
+            job.update(job_id, **result, status="complete", completed_at=time.time())
+        return job.start(work, restart=True, initial={"message": "正在重新核对来源挂载与缺失文件"})
     scan_id = str(body.get("scan_id") or "")
     if scan_id:
         state = contract.resource_scan.snapshot()
@@ -423,6 +433,8 @@ def w_resource_sync_apply(contract: ResourceSyncContract, body):
         scan = _scan_missing_resources(contract)
         missing_ids = scan["missing_ids"]
     if missing_ids:
+        if progress:
+            progress(checked=0, total=None, message=f"正在把 {len(missing_ids)} 个确认缺失的条目移入回收站")
         with contract.write_transaction() as connection:
             stamp = time.time()
             connection.executemany(
@@ -430,7 +442,7 @@ def w_resource_sync_apply(contract: ResourceSyncContract, body):
                 [(stamp, asset_id) for asset_id in missing_ids],
             )
     contract.cache_bust()
-    cleanup = clean_resource_orphans(contract) if body.get("clean_cache", True) else {
+    cleanup = clean_resource_orphans(contract, progress=progress) if body.get("clean_cache", True) else {
         "cache_removed": 0, "bytes_reclaimed": 0, "cache_blocked": [],
     }
     return {"ok": True, "moved_to_trash": len(missing_ids),

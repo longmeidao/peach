@@ -41,19 +41,23 @@ Management → Configuration → Check for updates shows the current version and
 
 CloudDrive · 115 and CloudDrive · PikPak connect through mounted local folders. Sign in and mount them in CloudDrive first, then add the folders to Peach. Local disks alone also work.
 
-First-run setup offers an optional browser-history import guide. Completed imports hide the guide; Skip remembers dismissal in the current browser, while collapsing keeps it available. The Taste page retains its read and import buttons. SFW mode blurs, desaturates and dims images and videos and stops hover previews; text remains visible. Cloud reconciliation appears only when a cloud source is configured; empty-folder cleanup also supports local disks.
+CloudDrive setup includes suggested cache and read settings for HDD, SATA SSD and NVMe systems. File checks cover configured local and cloud sources and skip offline drives.
+
+Review categories and filters stick below the main navigation after scrolling, with the active group heading below them and its select-all button beside the title. These bars show an edge-to-edge background only while stuck. Card headings and current information stay visible while the evidence scrolls. Selection docks use the same plain text count style.
+
+First-run setup offers an optional browser-history import guide. Completed imports hide the guide; Skip remembers dismissal in the current browser, while collapsing keeps it available. The Taste page retains its read and import buttons. SFW mode blurs, desaturates and dims images and videos and stops hover previews; text remains visible. File reconciliation and empty-folder cleanup support configured local disks and cloud sources.
 
 Tray-managed services let you adjust media sources under Manage → Configuration on the host computer, including through its LAN hostname. Setup and configuration provide download links when dependencies are not detected, with mount drivers shown for the host operating system.
 
 In Configuration or Data Management, Scan and enrich scans folders, detects existing NFO files and local posters, and fetches missing metadata. While processing, the home page links to progress in Configuration. Same-name NFO files, `movie.nfo` in single-movie folders, and episode NFO files are supported. Metadata retains its original source and enters the review queue before updating the catalog. Local custom tags are preserved; folders containing multiple videos do not share `movie.nfo`.
 
-Review items have checkboxes beside their names and support Shift range selection. Available filters follow the review category. Group by candidate count, source or field, filter a specific group and select all its items. Bulk decisions affect only visible selected items. A shared source selector is available for selected items with multiple candidates; choosing it does not submit a decision. Failed items retain their selection and error message for retry. Identity candidates link to source profiles, local samples and file locations, with access to all associated works. Approval records the identity assessment.
+Review items have checkboxes beside their names and support Shift range selection. Available filters follow the review category. Group by candidate count, source or field, filter a specific group and select all its items. Bulk decisions affect only visible selected items. A bottom selection dock shares its layout with the catalog, follows, tags and trash, providing the selected count, shared source choice, approve, reject and clear actions. Choosing a source does not submit a decision. Failed items retain their selection and error message for retry. Identity candidates link to source profiles, local samples and file locations, with access to all associated works. Approval records the identity assessment.
 
 Follow sources include FANBOX, Patreon, SubscribeStar, Kemono, Pawchive, Coomer, the Rule34 family and F95zone. Availability depends on the site and your access rights. See [source collection](docs/SOURCING.md) for supported workflows and boundaries.
 
 ## Quick start
 
-Settings control whether local and followed videos play automatically when their details open.
+Settings control whether local and followed videos play automatically when their details open, and whether a video that is still playing keeps going in a corner miniplayer when you leave its details. While the miniplayer is open, clicking another video plays it there; it can be dragged to any of the four corners and expanded back to the details from its title, and the play button is flanked by seek keys that jump by the configured number of seconds. The player context menu offers loop, miniplayer, picture-in-picture, copy video URL (optionally at the current time) and playback stats.
 
 Portraits and brand marks allow moderate enlargement in large and compact views. Very small images use their native size with a blurred background. Display areas below 64 px retain the regular icon treatment.
 

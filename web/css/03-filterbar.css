@@ -43,7 +43,4 @@
 .pagelede-actions .batchaction{box-sizing:border-box;min-height:32px;padding:0 14px;flex:none;
   display:inline-flex;align-items:center;border:1px solid transparent;border-radius:var(--control-radius);
   background:var(--ink);color:var(--ground);font:inherit;font-size:var(--fs-xs);font-weight:500;cursor:pointer}
-.pagelede-actions .batchaction.danger{background:var(--drop);border-color:var(--drop);color:#fff}
-.pagelede-actions .batchaction.danger:hover{background:color-mix(in srgb,var(--drop) 82%,#000);
-  border-color:color-mix(in srgb,var(--drop) 82%,#000);color:#fff}
 .pagelede-actions .batchaction:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}
