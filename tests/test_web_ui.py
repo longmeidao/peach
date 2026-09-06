@@ -1586,12 +1586,14 @@ class WebUiSourceTests(unittest.TestCase):
 
         依据掉在框外时，一张卡上会出现两块留白——框里空半屏、框外一行字，读起来
         像两件不相干的事。没抽帧、取不到图的那两种同样在这个框里铺满，卡高因此不随
-        「有没有预览」上下跳。候选表单和身份证据那两类不进框：它们每一项自己就是一个框。
+        「有没有预览」上下跳。候选表单和身份证据那两类不进框：它们每一项自己就是一个框；
+        候选表单的当前信息另有去处，它贴在卡底不跟着滚。
         """
         self.assertPageContains("const framed=!metadata&&reviewCategory!=='western_identity';")
         self.assertPageContains('const stage=`<div class="reviewstage"'
                                 "${framed?' data-framed=\"\"':''}>${preview}${")
-        self.assertPageContains("evidence?`<p class=\"reviewevidence\">${esc(evidence)}</p>`:''}</div>`;")
+        self.assertPageContains("!metadata&&evidence?`<p class=\"reviewevidence\">"
+                                "${esc(evidence)}</p>`:''}</div>`;")
         self.assertPageContains('${tags?`<div class="reviewtags">${tags}</div>`:\'\'}${stage}`;')
         # 高度从卡身一路传到框：滚动壳不给 height，中间就断在内容高度上，框只到
         # 内容为止，卡的下半截空着。框只长不缩，内容超出时由滚动壳接手。
@@ -4088,7 +4090,11 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".reviewpickitem{display:inline-flex;align-items:center;flex:none;margin:0;user-select:none}")
         self.assertNotIn("reviewSelectionController", self.page)
         self.assertNotIn("selection.active=selectMode", self.page)
-        self.assertPageContains(".reviewbulktoolbar{width:100%;padding-block:16px}")
+        self.assertPageContains(".reviewbulktoolbar{width:100%;padding-block:0;margin-bottom:0}")
+        self.assertPageContains('class="reviewcontrols"')
+        self.assertPageContains('class="reviewitemheader">${heading}</header>')
+        self.assertPageContains('aria-label="当前信息"')
+        self.assertPageContains('</div>${currentInfo}<footer')
         self.assertPageContains(".taste-guide-skip{width:100%;height:var(--control-h);color:var(--meter)}")
 
     def test_collapsed_rail_is_divided_from_the_content_beside_it(self):
@@ -4216,7 +4222,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('class="reviewactions geist-fieldset-footer" data-geist-fieldset-footer')
         self.assertPageContains('.review{--review-fieldset-height:440px')
         self.assertPageContains('height:var(--review-fieldset-height);margin:0;padding:0')
-        self.assertPageContains('.reviewitem>.geist-fieldset-content{flex:1;min-height:0;padding:20px}')
+        self.assertPageContains('.reviewitem>.geist-fieldset-content{flex:1;min-height:0;padding:0 20px 12px}')
         self.assertPageContains('min-height:56px;margin:0;padding:12px 12px 12px 20px')
         self.assertPageContains('.geist-button{box-sizing:border-box;height:32px')
         self.assertPageContains('.reviewstate:empty{display:none}')
@@ -7584,7 +7590,7 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_entity_cards_do_not_print_the_name_twice(self):
         """创作者入口里已经写了名字，卡片顶上再来一个 h4 就是同一行字上下两遍。"""
-        self.assertPageContains("subjectKind&&subjectName?'':`<h4>${esc(titleText)}</h4>`")
+        self.assertPageContains("subjectKind&&subjectName?origin:`<h4>${esc(titleText)}</h4>`")
         # 作品数同理：创作者入口里已经写了「115 部作品」，上面不该再来一行「样本/资产：115」。
         self.assertPageContains("subjectKind&&subjectName?'':`<p>${esc(row.board||row.assets")
         # 卡片里只有这一个主体，衬底和居中只会把它推离左边缘，和下面的样本网格对不齐。

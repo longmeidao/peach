@@ -12,7 +12,12 @@
 .review{--review-fieldset-height:440px;padding:0 0 42px}.reviewsection{margin-bottom:20px}.reviewsection h3{margin:0 0 9px;font-size:var(--fs-lg)}.reviewlist{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:14px;align-items:start}
 /* 判定状态用左侧色条表达：整卡描边在一列里扫过去时反而认不出来 */
 .reviewitem{position:relative;display:flex;flex-direction:column;box-sizing:border-box;height:var(--review-fieldset-height);margin:0;padding:0;min-width:0;overflow:hidden;background:var(--ground);border:1px solid var(--field-ring);border-radius:var(--floating-radius)}.reviewitem::before{content:'';position:absolute;z-index:3;left:0;top:0;bottom:0;width:3px;background:transparent}.reviewitem[data-decision="approved"]::before{background:var(--keep)}.reviewitem[data-decision="rejected"]::before{background:var(--drop)}.reviewitem[data-decision="skipped"]::before{background:var(--muted)}.reviewitem[data-decision="rejected"],.reviewitem[data-decision="skipped"]{opacity:.6}.reviewitem h4{margin:0 0 6px;font-size:var(--fs-lg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.reviewitem p{margin:4px 0;color:var(--muted);font-size:var(--fs-xs);line-height:1.55;overflow-wrap:anywhere}
-.reviewitem>.geist-fieldset-content{flex:1;min-height:0;padding:20px}.reviewitem .reviewcontent{height:100%;overflow:visible}
+.reviewitem>.geist-fieldset-content{flex:1;min-height:0;padding:0 20px 12px}.reviewitem .reviewcontent{height:100%;overflow:visible}
+.reviewitemheader{flex:none;padding:16px 20px 12px;background:var(--ground)}
+.reviewitemheader h4{margin:0}
+.reviewitemheader .reviewentity{margin:0;padding:0;border:0}
+.reviewcurrentinfo{flex:none;padding:10px 20px;border-top:1px solid var(--line-soft);background:var(--ground);max-height:88px;overflow-y:auto;overscroll-behavior:contain}
+.reviewcurrentinfo p{margin:0;color:var(--ink-2)}
 .reviewcontent .geist-scroller-container{padding-right:0}
 .reviewcontent .ovtrack.ov-y{transform:translateX(12px)}
 .reviewlist.reviewgroups{display:block}.reviewgroup{margin-bottom:24px}
@@ -172,7 +177,9 @@
 .library-processing-banner .geist-button{border-radius:var(--pill-radius);font-size:var(--fs-md)}
 #libraryProcessing{scroll-margin-top:80px}
 
-.reviewbulktoolbar{width:100%;padding-block:16px}
+.reviewbulktoolbar{width:100%;padding-block:0;margin-bottom:0}
+.reviewcontrols{position:sticky;top:var(--topH);z-index:60;display:grid;gap:12px;padding-block:12px;margin-bottom:16px;background:var(--ground);border-bottom:1px solid var(--line-soft)}
+.reviewcontrols .reviewtabs{margin-bottom:0}
 .reviewbulkfeedback{color:var(--muted)}
 .reviewbulksource{min-width:0;max-width:100%}
 .reviewbulkdecisions{display:flex;align-items:center;gap:12px}

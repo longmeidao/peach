@@ -41,6 +41,8 @@ Management → Configuration → Check for updates shows the current version and
 
 CloudDrive · 115 and CloudDrive · PikPak connect through mounted local folders. Sign in and mount them in CloudDrive first, then add the folders to Peach. Local disks alone also work.
 
+Review categories and filters stick below the main navigation after scrolling. Card headings and current information stay visible while the evidence scrolls. Selection docks use the same plain text count style.
+
 First-run setup offers an optional browser-history import guide. Completed imports hide the guide; Skip remembers dismissal in the current browser, while collapsing keeps it available. The Taste page retains its read and import buttons. SFW mode blurs, desaturates and dims images and videos and stops hover previews; text remains visible. Cloud reconciliation appears only when a cloud source is configured; empty-folder cleanup also supports local disks.
 
 Tray-managed services let you adjust media sources under Manage → Configuration on the host computer, including through its LAN hostname. Setup and configuration provide download links when dependencies are not detected, with mount drivers shown for the host operating system.
