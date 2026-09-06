@@ -276,4 +276,4 @@ Python、npm 与 GitHub Actions 的版本由 `.github/dependabot.yml` 每周检�
 
 - 对外请求的 UA 统一取 `peach.user_agent.USER_AGENT`（标准桌面 Chrome）；HTTPX、来源连接器、FFmpeg 抽帧与脚本共用。复用现有 transport、限速和证书校验，无新增依赖；标准 UA 不保证站点放行。FANBOX 浏览器传输使用已安装 curl_cffi 的 Chrome 150 配置。
 - 作品封面只进入头像候选，单人作品关联不证明画面中的人物身份；`cover_fallback` 显式标记身份未核实，安装闸门独立拒绝这类来源。
-- 复核分类复用 `selectFieldHtml`、`wireSelectField` 和现有 `list-filter` 图标；按当前候选数据提供字段及来源选项，批量决定复用既有协议。字段次级分类采用具名 Listbox 分区，依据见 `reference-snapshots/vercel-review-actions.md`；Peach 保留自己的分类语义，不新增依赖。Shift 连选使用原生 `mousedown.preventDefault()` 防止文字选区；实际浏览器验证覆盖亮暗主题、宽屏和 390px。
+- 复核分类复用 `selectFieldHtml`、`wireSelectField` 和现有 `list-filter` 图标；图标只在筛选入口显示，选项保留文字与选中标记。按当前候选数据提供字段及来源选项，批量决定复用既有协议。字段次级分类采用具名 Listbox 分区，依据见 `reference-snapshots/vercel-review-actions.md`。人工复核与馆藏、关注、标签、垃圾文件和回收站共用 `selectiondock` 浮窗布局，保留各自操作与提交协议；复核卡片内作品样本选择仍属于单条候选，不混入页面级多选。没有新增依赖。Shift 连选使用原生 `mousedown.preventDefault()` 防止文字选区；实际浏览器验证覆盖亮暗主题、宽屏和 390px。
