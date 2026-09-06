@@ -950,6 +950,11 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn("color:var(--rating)", self.page[start:self.page.index("}", start)])
         self.assertPageLacks('.ratingstars .star[data-on="true"]{color:')
         self.assertPageLacks(".ratingstars:hover .star{color:")
+        # 对齐按印出来的星形算：26px 的命中区里是 19px 的星，星形在 24 格视区里从第 2 格
+        # 起笔，第一颗星的墨因此比标题的左边线右了约 4px；上边同样多出标题末行的行距。
+        self.assertPageContains(".rating{display:flex;align-items:center;gap:8px;margin:-6px 0 10px}")
+        self.assertPageContains(
+            ".ratingstars{display:inline-flex;align-items:center;gap:2px;margin-left:-4px}")
         # 这个 token 两档各写各的值：借 --line 只在深色底上成立。
         self.assertIn("--rating:#B8860B;", self.css, "浅色一档的琥珀要压得住 #FAFAFA 的页面底")
         self.assertEqual(
