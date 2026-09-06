@@ -6297,8 +6297,9 @@ class WebUiSourceTests(unittest.TestCase):
                 'class="t junkcardtitle" type="button" data-junk-open data-middle-truncate',
                 'class="t junkcardtitle" data-middle-truncate',
                 # 死链表里的地址：`/official/talent/X` 与 `/talent/X` 的差别就在尾部，
-                # 尾部省略会把这张表要回答的东西切掉。
-                'rel="noreferrer" data-middle-truncate>${esc(item.url)}</a>'):
+                # 尾部省略会把这张表要回答的东西切掉。省略挂在里面那个 span 上，
+                # 外链标才留得住：中缩靠改写 textContent 实现，同一节点里的图标会被抹掉。
+                '<span data-middle-truncate>${esc(item.url)}</span>'):
             self.assertPageContains(consumer)
         # 11 而不是 12：高清版目标页的标题按钮搬进了 island，那一处由
         # tests/test_frontend_build.py 断言。
