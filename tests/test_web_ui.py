@@ -1042,11 +1042,11 @@ class WebUiSourceTests(unittest.TestCase):
         ringed = ("{background:var(--sunk);border-color:var(--line-soft);"
                   "color:var(--muted);cursor:default}")
         flat = "{background:var(--sunk);color:var(--muted);cursor:default}"
-        for selector in (".tagselection button:disabled", ".fpickactions button:disabled",
-                         ".srctools button:disabled", ".frowicon:disabled"):
+        for selector in (".srctools button:disabled", ".frowicon:disabled"):
             self.assertPageContains(selector + ringed)
         for selector in (".geist-button:disabled", ".fbtn:disabled",
-                         ".fcredactions button:disabled", ".resourceaction:disabled"):
+                         ".fcredactions button:disabled", ".resourceaction:disabled",
+                         ".tagselection button:disabled", ".fpickactions button:disabled"):
             self.assertPageContains(selector + flat)
 
     def test_font_weights_stay_on_the_three_geist_steps(self):
@@ -3673,7 +3673,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('.scraping-fields .gselectfield{justify-content:space-between;padding-right:16px;')
         # 来源链接是站外地址：站标加箭头，读者不点也知道这一跳会离开 Peach。
         self.assertPageContains('.scraping-fields .scraping-url{display:inline-flex;align-items:center;gap:6px;')
-        self.assertPageContains('.scraping-fields .scraping-url:hover{color:var(--ink);text-decoration:underline;')
+        # 悬停只升亮，不划线：这一行本身就在标题下方单占一行，划线会和上面的标题挤在一起。
+        self.assertPageContains('.scraping-fields .scraping-url:hover{color:var(--ink);text-decoration:none}')
         self.assertPageContains('.scraping-fields .scraping-url svg{flex:none;width:14px;height:14px;')
         self.assertPageContains('.scraping-fields .scraping-cover-form{display:flex;align-items:center;')
         source = (Path(__file__).resolve().parents[1] / 'frontend/src/islands/scraping.tsx').read_text(encoding='utf-8')
@@ -4191,7 +4192,7 @@ class WebUiSourceTests(unittest.TestCase):
     def test_review_asset_picker_wraps_instead_of_scrolling_sideways(self):
         """一个创作者可能有几十条候选，横向滚动条要一直拉才能看完。"""
         self.assertPageContains(".reviewasset-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr))")
-        self.assertPageContains(".reviewasset.picked{opacity:1;outline:2px solid var(--ink)")
+        self.assertPageContains(".reviewasset.picked{opacity:1;outline:2px solid var(--on-media)")
         self.assertPageContains('.reviewitem[data-decision="approved"]::before{background:var(--keep)}')
 
     def test_review_cards_use_equal_height_fieldsets_and_one_shared_scroller(self):
@@ -7120,6 +7121,69 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn("height:var(--control-h)", rule, ".fmanagesort 的触发器与标题行同高")
         self.assertPageContains(".fsechead .iconswitch label{width:34px;height:32px}")
         self.assertPageContains(".fsechead .fbtn,.fsecfoot .fbtn{height:var(--control-h)}")
+
+    def test_the_selection_mark_is_one_shape_that_does_not_flip_with_the_theme(self):
+        """选中标记全站一个长相：正圆、一对固定的浅片深勾，尺寸按容器分两档。
+
+        它压在缩略图上，底下是媒体不是页面。取 --ink／--ground 的话，同一张照片上浅色
+        一档是深片白勾、暗色一档是浅片深勾，同一个东西两副长相；卡面那圈选中环同理。
+        未选态两处仍旧不同，那是两回事：卡片列表默认一张没选，空框在说「这里可以点」；
+        复核卡默认全选，靠整图变暗读出被取消的那几张，再画空框会像还没开始选。
+        """
+        css = stylesheet_source()
+        self.assertIn("--on-media:#F5F7FA; --on-media-ink:#090B0F;", css)
+        # 两档同值，所以只在 :root 里声明一次，暗色那两块不重写。
+        self.assertEqual(css.count("--on-media:"), 1, "这一对不跟主题分档")
+        self.assertPageContains(".selectionMark{display:none;position:absolute;top:10px;right:10px;"
+                                "z-index:8;width:26px;height:26px;border-radius:50%;")
+        self.assertPageContains(".card.selected .selectionMark{background:var(--on-media);"
+                                "color:var(--on-media-ink);")
+        self.assertPageContains(".card.selected .pic,.card.selected:hover .pic"
+                                "{box-shadow:inset 0 0 0 2px var(--on-media)}")
+        self.assertPageContains(".reviewasset .pickmark{position:absolute;top:4px;right:4px;"
+                                "width:19px;height:19px;border-radius:50%;")
+        self.assertPageContains("background:var(--on-media);color:var(--on-media-ink);"
+                                "box-shadow:0 2px 8px #0008}")
+        for stale in ("background:#F5F7FA;color:#090B0F", "inset 0 0 0 2px rgba(245,247,250,.9)"):
+            self.assertPageLacks(stale, "这一对只有 --on-media 一个来源")
+
+    def test_links_that_leave_peach_all_carry_a_mark(self):
+        """跳出 Peach 的链接都带标：外链标说「会离开」，站标说「哪个站」。
+
+        2026-09-06 实测 vercel.com 团队页：站内链接（PR 号、部署 ID、项目名）一律裸文字，
+        离站的部署域名带一枚 external-link；列表行左端的 provider 标是身份标记，不是动作
+        图标。所以带了站标或品牌标的那一类（实体页的社媒、来源行）算已经有标，不再叠一枚。
+        """
+        self.assertPageContains("<span data-middle-truncate>${esc(item.url)}</span>"
+                                "${icon('external-link')}", "死链表那一格整格就是外部地址")
+        # 中缩靠改写 textContent 实现，图标留在被省略的节点外面才不会被抹掉。
+        self.assertPageContains(".linktable .linkurl a{display:grid;"
+                                "grid-template-columns:minmax(0,1fr) auto;")
+        self.assertPageContains("title=\"打开原来源\">${esc(source.label)}${icon('external-link')}")
+        self.assertPageContains("<b>${esc(search.label)}${icon('external-link')}</b>")
+
+    def test_action_keys_in_every_bar_are_flat_fills_not_outlines(self):
+        """动作键一律不描边，自己是一块与条子／卡面不同的面。
+
+        描边档与实心档并排时看着一大一小，差的不是那 1px，是「一个是块面、一个是个框」。
+        筛选不在此列：`#tagbar` 那一排与标签分类靠边的虚实说「这条筛选生效没生效」，
+        浮在缩略图上的纯图标键也不在此列，那圈半透明白边是它与照片之间唯一的分界。
+        """
+        css = stylesheet_source()
+        for name in (".playlistactions button{", ".reviewpickhead button{",
+                     ".tagselection button{", ".batchbar button{",
+                     ".fpickactions button{", ".dupactions.fsechead button{"):
+            found = re.search(r"(?:^|[}\n])" + re.escape(name), css)
+            self.assertIsNotNone(found, f"{name} 找不到基样式")
+            start = found.end() - len(name)
+            rule = css[start:css.index("}", start)]
+            self.assertIn("border:0", rule, f"{name} 不描边")
+            self.assertIn("background:var(--ground)", rule, f"{name} 自己是一块面")
+        # 筛选那一排保留边的虚实：它说的是「这条筛选加上去了没有」。
+        self.assertPageContains(".tagfilters button{height:34px;padding:0 13px;"
+                                "border-radius:var(--pill-radius);border:1px solid var(--line-soft);")
+        self.assertPageContains(".factions button{width:36px;height:36px;"
+                                "border:1px solid rgba(255,255,255,.16);")
 
     def test_destructive_buttons_are_solid_red_at_rest(self):
         """危险动作静止态就是 --drop 实底加白字，全站一个写法。

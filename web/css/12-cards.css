@@ -116,12 +116,14 @@ body.refreshing #batchAction svg,
 .mixglyph svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2}
 .mixcopy{min-width:0}.mixcopy b,.mixcopy span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .mixcopy b{font-size:var(--fs-md);line-height:1.45}.mixcopy span{font-size:var(--fs-xs);color:var(--muted);margin-top:2px}
-.selectionMark{display:none;position:absolute;top:10px;right:10px;z-index:8;width:30px;height:30px;border-radius:var(--surface-radius);
+/* 标记是正圆，全站一个形状——复核缩略图那一枚已经是圆的，两处只差尺寸档。 */
+.selectionMark{display:none;position:absolute;top:10px;right:10px;z-index:8;width:26px;height:26px;border-radius:50%;
   place-items:center;color:rgba(255,255,255,.72);background:rgba(0,0,0,.34);border:1px solid rgba(255,255,255,.28);
   backdrop-filter:saturate(1.8) blur(12px);-webkit-backdrop-filter:saturate(1.8) blur(12px)}
-.selectionMark svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.selectionMark svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 body.select-mode .selectionMark,.card.selected .selectionMark{display:grid}
-.card.selected .selectionMark{background:#F5F7FA;color:#090B0F;border-color:#F5F7FA;box-shadow:0 3px 12px #0008}
+.card.selected .selectionMark{background:var(--on-media);color:var(--on-media-ink);
+  border-color:var(--on-media);box-shadow:0 3px 12px #0008}
 .deleteMark{position:absolute;z-index:7;left:10px;bottom:10px;display:none;align-items:center;gap:5px;height:28px;padding:0 9px;
   border-radius:var(--badge-radius);background:rgba(0,0,0,.58);color:#FFB14A;border:1px solid rgba(255,177,74,.4);
   backdrop-filter:saturate(1.8) blur(12px);-webkit-backdrop-filter:saturate(1.8) blur(12px);font-size:var(--fs-xs);font-weight:600}
@@ -155,7 +157,7 @@ img.hvframes{position:absolute;inset:0;width:100%;height:100%;object-fit:contain
   border:1px solid color-mix(in srgb,var(--ink) 48%,transparent);border-radius:inherit}
 .select-mode .card{cursor:default}
 .select-mode .cardopenhit,.select-mode .hovertools,.select-mode .previewcounter{pointer-events:none!important}
-.card.selected .pic,.card.selected:hover .pic{box-shadow:inset 0 0 0 2px rgba(245,247,250,.9)}
+.card.selected .pic,.card.selected:hover .pic{box-shadow:inset 0 0 0 2px var(--on-media)}
 @media (hover:hover) and (pointer:fine){
   .card.longhover{transform:translateY(-7px) scale(1.065);z-index:8;filter:brightness(1.04)}
 }

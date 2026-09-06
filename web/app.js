@@ -3044,7 +3044,7 @@ async function wireLinkManager(){
 
   const row=item=>`<tr><td>${esc(item.entity)}</td><td>${esc(KINDS[item.link_kind]||item.link_kind)}</td>
     <td>${esc(item.label||'')}</td><td class="linknote">${esc(item.note)}</td>
-    <td class="linkurl"><a href="${esc(item.url)}" target="_blank" rel="noreferrer" data-middle-truncate>${esc(item.url)}</a></td></tr>`;
+    <td class="linkurl"><a href="${esc(item.url)}" target="_blank" rel="noreferrer"><span data-middle-truncate>${esc(item.url)}</span>${icon('external-link')}</a></td></tr>`;
   const table=(title,items,hint)=>items.length?`<div class="linkgroup"><h4>${esc(title)} <b>${items.length}</b></h4>
     <p>${esc(hint)}</p><div class="linktablewrap"><table class="linktable"><thead><tr><th>实体</th><th>类型</th><th>标签</th><th>结果</th><th>地址</th></tr></thead><tbody>${items.map(row).join('')}</tbody></table></div></div>`:'';
 
@@ -4931,7 +4931,7 @@ function followSourceRow(source){
       `data-follow-enabled="${source.id}" ${source.enabled?'checked':''}`
       +` aria-label="${source.enabled?'暂停':'启用'} ${esc(source.label)} 的更新检查"`)}</label>
     <b><a class="fsourcelink" href="${esc(source.url)}" target="_blank"
-      rel="noreferrer noopener" title="打开原来源">${esc(source.label)}</a></b>
+      rel="noreferrer noopener" title="打开原来源">${esc(source.label)}${icon('external-link')}</a></b>
     <span class="fmeta fprovider" title="${esc(source.provider_label)}">${sourceIcon(source.provider)
       }<span>${esc(source.provider_label)}</span></span>
     <span class="fmeta fchecked">${source.last_checked_at?localTimeHtml(source.last_checked_at):'未检查'}</span>
@@ -5471,7 +5471,7 @@ function renderFollowPicks(results){
         <i>${esc(c.known?'已经关注':c.evidence)}</i></span></label>`).join('');
     const searches=(row.external_searches||[]).map(search=>
       `<a class="fpicksearch" href="${esc(search.url)}" target="_blank" rel="noreferrer noopener">
-        <b>${esc(search.label)}</b><span>${esc(search.query)}</span>
+        <b>${esc(search.label)}${icon('external-link')}</b><span>${esc(search.query)}</span>
         <i>${esc(search.evidence)}</i></a>`).join('');
     return `<div class="fpick"><b>${esc(row.line)}</b>
       ${items||'<p class="fpickempty">站内没有查到来源</p>'}

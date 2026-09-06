@@ -84,8 +84,8 @@
 .batchbar{position:fixed;left:50%;bottom:22px;z-index:180;transform:translateX(-50%);display:flex;align-items:center;gap:7px;
   padding:9px 11px;border:1px solid var(--line);border-radius:var(--floating-radius);background:var(--surface);
   box-shadow:0 8px 24px #0005}.batchbar[hidden]{display:none}
-.batchbar span{padding:0 8px;color:var(--ink-2);white-space:nowrap}.batchbar button{border:1px solid var(--line);border-radius:var(--floating-radius);
-  background:var(--surface);color:var(--ink);padding:9px 12px;cursor:pointer}.batchbar button:hover{background:var(--hover);color:var(--ink)}
+.batchbar span{padding:0 8px;color:var(--ink-2);white-space:nowrap}.batchbar button{border:0;border-radius:var(--floating-radius);
+  background:var(--ground);color:var(--ink);padding:9px 12px;cursor:pointer}.batchbar button:hover{background:var(--hover);color:var(--ink)}
 .batchbar button svg{width:17px;height:17px;margin-right:6px;vertical-align:-4px;stroke:currentColor;fill:none;stroke-width:2}
 
 @media (max-width:1080px){.sgrid,.sgrid.mixgrid{grid-template-columns:minmax(0,1fr)}
