@@ -3828,7 +3828,7 @@ async function openReview(push=true){
       selection.selected.delete(key);selection.choices.delete(key);selection.assets.delete(key);selection.errors.delete(key);
     };
     const current=()=>surfaceCurrent(surface)&&category===reviewCategory;
-    wireReviewSelection($('#stats').querySelector('.review'),{rows,metadata:category==='metadata_fields',locked,state:selection,
+    wireReviewSelection($('#stats').querySelector('.review'),{rows,category,metadata:category==='metadata_fields',locked,state:selection,
       payload:decisionPayload,submit:payload=>api('/api/review/decision',{method:'POST',body:JSON.stringify(payload)}),
       applied:removeReviewed,active:current,refresh:render,notify:actionReceipt});
     syncHeaderActions();
