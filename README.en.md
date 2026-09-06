@@ -57,7 +57,7 @@ Follow sources include FANBOX, Patreon, SubscribeStar, Kemono, Pawchive, Coomer,
 
 ## Quick start
 
-Settings control whether local and followed videos play automatically when their details open, and whether a video that is still playing keeps going in a corner miniplayer when you leave its details. While the miniplayer is open, clicking another video plays it there; it can be dragged to any of the four corners and expanded back to the details from its title. The player context menu offers loop, miniplayer, picture-in-picture, copy video URL (optionally at the current time) and playback stats.
+Settings control whether local and followed videos play automatically when their details open, and whether a video that is still playing keeps going in a corner miniplayer when you leave its details. While the miniplayer is open, clicking another video plays it there; it can be dragged to any of the four corners and expanded back to the details from its title, and the play button is flanked by seek keys that jump by the configured number of seconds. The player context menu offers loop, miniplayer, picture-in-picture, copy video URL (optionally at the current time) and playback stats.
 
 Portraits and brand marks allow moderate enlargement in large and compact views. Very small images use their native size with a blurred background. Display areas below 64 px retain the regular icon treatment.
 

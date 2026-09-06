@@ -1226,13 +1226,14 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".vjs-layout-x-small .vjs-progress-control"
                                 "{left:0;right:0;top:-12px;height:18px;display:flex}")
 
-    def test_the_small_window_gets_its_own_seek_keys(self):
-        """小窗（画中画）里只剩浏览器给的那几颗键，站内控制条一颗都递不进去。
+    def test_picture_in_picture_gets_its_own_seek_keys(self):
+        """画中画那个窗口由浏览器画，站内控制条一颗键都递不进去。
 
         Media Session 的动作处理器是唯一的入口：登记 `seekbackward` 和 `seekforward`
-        之后小窗才画得出快退快进，步长取设置里那个秒数；`setPositionState` 让小窗自己
+        之后那个窗口才画得出快退快进，步长取设置里那个秒数；`setPositionState` 让它自己
         那条进度条知道放到哪，`seekto` 让拖它生效。逐个动作单独 try——整块 try 会让一个
-        浏览器不认识的动作带走后面全部处理器。
+        浏览器不认识的动作带走后面全部处理器。站内的小窗是另一件事，见
+        `test_the_small_window_gets_its_own_seek_keys`。
         """
         self.assertPageContains("function mountPlayerMediaSession(player,it){")
         self.assertPageContains("mountPlayerMediaSession(detailPlayer,it);")
@@ -1246,7 +1247,7 @@ class WebUiSourceTests(unittest.TestCase):
                        "try{session.setActionHandler(action,handler);registered.push(action)}catch(_e){}",
                        "if(!duration||position>duration)return;"):
             self.assertPageContains(needle)
-        # 换一条视频就换一份处理器：不摘掉的话小窗还按着上一条的进度条走。
+        # 换一条视频就换一份处理器：不摘掉的话那个窗口还按着上一条的进度条走。
         self.assertPageContains("registered.forEach(action=>{try{session.setActionHandler(action,null)}catch(_e){}});")
 
     def test_settings_overlay_owns_the_top_fixed_layer(self):
@@ -3235,6 +3236,33 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("const corner=(rect.top+rect.height/2<innerHeight/2?'t':'b')+(rect.left+rect.width/2<innerWidth/2?'l':'r');")
         self.assertPageContains("if((!stage||stage.hidden)&&miniplayerActive())return miniplayerVideo();")
         self.assertPageContains("function toggleMiniplayerShortcut()")
+
+    def test_the_small_window_gets_its_own_seek_keys(self):
+        """小窗里播放键两侧各一颗快退快进，步长跟设置里那个秒数走。
+
+        上游 YouTube 的小窗没有这两颗。Peach 自己要：小窗一开就离开了详情，站内那条控制条
+        一颗键都递不进来，只剩底下那条 5px 的进度条能拖，想跳十秒得先回详情。标签里带着
+        秒数，读屏用户按之前听得到自己会跳多远；接手播放器时重写一遍，设置改完开的下一个
+        小窗就是新的秒数。时长取不到时不封顶——直播和还没读到元数据的片子 `duration()` 是
+        NaN，拿它去 `Math.min` 会把进度扔成 NaN，视频停在原地不动。
+        """
+        self.assertPageContains('<button type="button" class="miniplayerseek" id="miniplayerBack">'
+                                '<svg viewBox="0 0 24 24" aria-hidden="true">'
+                                '<use href="#i-rotate-ccw"/></svg></button>')
+        self.assertPageContains('<button type="button" class="miniplayerseek" id="miniplayerAhead">'
+                                '<svg viewBox="0 0 24 24" aria-hidden="true">'
+                                '<use href="#i-rotate-cw"/></svg></button>')
+        self.assertPageContains("function syncMiniplayerSeekLabels()")
+        self.assertPageContains("[['#miniplayerBack',`后退 ${step} 秒`],"
+                                "['#miniplayerAhead',`前进 ${step} 秒`]]")
+        self.assertPageContains("const at=Math.max(0,(Number(player.currentTime())||0)+step*side);")
+        self.assertPageContains("player.currentTime(total?Math.min(total,at):at);")
+        self.assertPageContains("$('#miniplayerBack').onclick=seekBy(-1);")
+        self.assertPageContains("$('#miniplayerAhead').onclick=seekBy(1);")
+        # 按在这两颗上不能起手拖窗，否则一次点击变成一次挪位。
+        self.assertPageContains("event.target.closest('.miniplayerbtn,.miniplayerplay,"
+                                ".miniplayerseek,.vjs-control-bar')")
+        self.assertPageContains(".miniplayerseek{width:36px;height:36px}")
 
     def test_player_context_menu_lists_only_the_actions_peach_can_do(self):
         """播放器右键菜单照 YouTube f572e43c 的 .ytp-contextmenu 取舍，只留 Peach 有能力的项。

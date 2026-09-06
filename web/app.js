@@ -961,12 +961,21 @@ function syncMiniplayerTime(){
   const total=realDuration(miniplayerState.item?.duration)||realDuration(player.duration());
   out.textContent=`${fmtClock(player.currentTime())} / ${total?fmtClock(total):'0:00'}`;
 }
+/* 步长跟设置走，标签里带着这个数：读屏用户按之前听得到自己会跳多远。每次接手播放器
+   时重写一遍，设置改完开的下一个小窗就是新的秒数。 */
+function syncMiniplayerSeekLabels(){
+  const step=Math.max(1,Number(appSettings.seekSeconds)||10);
+  for(const [id,text] of [['#miniplayerBack',`后退 ${step} 秒`],['#miniplayerAhead',`前进 ${step} 秒`]]){
+    const button=$(id);if(!button)continue;
+    button.setAttribute('aria-label',text);button.title=text;
+  }
+}
 function bindMiniplayerPlayer(player){
   const on=(events,handler)=>{player.on(events,handler);miniplayerState.off.push(()=>{try{player.off(events,handler)}catch(_e){}})};
   on(['play','pause','ended'],syncMiniplayerPlayState);
   on(['timeupdate','durationchange','loadedmetadata'],syncMiniplayerTime);
   on('loadedmetadata',syncMiniplayerAspect);
-  syncMiniplayerPlayState();syncMiniplayerTime();syncMiniplayerAspect();
+  syncMiniplayerPlayState();syncMiniplayerTime();syncMiniplayerAspect();syncMiniplayerSeekLabels();
 }
 function unbindMiniplayerPlayer(){miniplayerState.off.forEach(off=>off());miniplayerState.off=[]}
 function enterMiniplayer(player,meta){
@@ -1092,9 +1101,22 @@ function wireMiniplayer(){
     if(!player||player.isDisposed())return;
     if(player.paused())player.play().catch(()=>{});else player.pause();
   };
+  /* 时长取不到时不封顶：直播和还没读到元数据的片子 `duration()` 是 NaN，拿它去
+     `Math.min` 会把进度直接扔成 NaN，视频停在原地不动。 */
+  const seekBy=side=>event=>{
+    event.stopPropagation();const player=miniplayerState.player;
+    if(!player||player.isDisposed())return;
+    const step=Math.max(1,Number(appSettings.seekSeconds)||10);
+    const total=realDuration(player.duration())||realDuration(miniplayerState.item?.duration)||0;
+    const at=Math.max(0,(Number(player.currentTime())||0)+step*side);
+    player.currentTime(total?Math.min(total,at):at);
+  };
+  $('#miniplayerBack').onclick=seekBy(-1);
+  $('#miniplayerAhead').onclick=seekBy(1);
+  syncMiniplayerSeekLabels();
   let drag=null;
   card.addEventListener('pointerdown',event=>{
-    if(event.button!==0||event.target.closest('.miniplayerbtn,.miniplayerplay,.vjs-control-bar'))return;
+    if(event.button!==0||event.target.closest('.miniplayerbtn,.miniplayerplay,.miniplayerseek,.vjs-control-bar'))return;
     drag={id:event.pointerId,x:event.clientX,y:event.clientY,dx:0,dy:0,moved:false};
     try{card.setPointerCapture(event.pointerId)}catch(_e){}
   });
@@ -1779,11 +1801,11 @@ function mountPlayerSeekPreview(player,it,options={}){
 }
 /* Video.js 自带的转圈是 `:before`／`:after` 画的两条弧，换不掉曲线；YouTube e937390a
    的 `FsY` 是四段嵌套元素配四段动画。转圈的 DOM 只能整块替换，样式表接不上手。 */
-/* 小窗（画中画）里只剩浏览器给的那几颗键，站内控制条一颗都递不进去。Media Session
-   的动作处理器是唯一的入口：登记 `seekbackward` 和 `seekforward` 之后，Chrome 会在小窗
-   里画出快退和快进两颗，步长用设置里那个秒数；`setPositionState` 让小窗自己那条进度条
-   知道现在放到哪，`seekto` 让拖它真的生效。不登记时小窗只有播放、暂停和关闭三颗。
-   YouTube 的小窗没有这两颗，这里是本站自己要的。 */
+/* 画中画那个窗口由浏览器画，站内控制条一颗键都递不进去。Media Session 的动作处理器
+   是唯一的入口：登记 `seekbackward` 和 `seekforward` 之后，Chrome 才在那个窗口里画出
+   快退和快进两颗，步长用设置里那个秒数；`setPositionState` 让它自己那条进度条知道现在
+   放到哪，`seekto` 让拖它真的生效。不登记时那里只有播放、暂停和关闭三颗。
+   站内的小窗是另一件事，那三颗键在 `wireMiniplayer()` 里。 */
 function mountPlayerMediaSession(player,it){
   const session=navigator.mediaSession;
   if(!session||typeof session.setActionHandler!=='function')return;
