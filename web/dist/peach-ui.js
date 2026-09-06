@@ -1709,8 +1709,25 @@ async function Zt(e) {
 	}
 }
 //#endregion
+//#region src/native-image.ts
+function Qt(e, t, n, r, i = 1) {
+	let a = Number.isFinite(i) && i > 0 ? i : 1;
+	e /= a, t /= a;
+	let o = [
+		e,
+		t,
+		n,
+		r
+	].every((e) => Number.isFinite(e) && e > 0), s = o && Math.min(n, r) >= 64 && (e < n * .8 || t < r * .8), c = o ? Math.min(1, n / e, r / t) : 1;
+	return {
+		small: s,
+		width: e * c,
+		height: t * c
+	};
+}
+//#endregion
 //#region src/sidebar.ts
-function Qt(e) {
+function $t(e) {
 	return [
 		"/",
 		"/unseen",
@@ -1720,23 +1737,23 @@ function Qt(e) {
 		"/junk-files"
 	].includes(e) || /^\/(item|mix|parts|editions)\//.test(e) || /^\/playlists\/\d+\/\d+$/.test(e) || /^\/(performers|studios|creators|series|agencies)\/.+/.test(e);
 }
-function $t(e, t) {
+function en(e, t) {
 	return e.dataset.surface === t && e.querySelector(".dnav") ? !1 : (e.dataset.surface = t, e.replaceChildren(), !0);
 }
-function en(e) {
+function tn(e) {
 	let t = /* @__PURE__ */ new Map();
 	for (let n of e) for (let e of new Set(n.tags || [])) t.set(e, (t.get(e) || 0) + 1);
 	return [...t].sort((e, t) => t[1] - e[1]).slice(0, 30);
 }
 //#endregion
 //#region src/management.ts
-function tn(e) {
+function nn(e) {
 	return e.filter((e) => ["115", "pikpak"].includes(e.location) && (e.roots === void 0 || e.roots.length > 0)).map((e) => e.location);
 }
-function nn(e, t) {
+function rn(e, t) {
 	return t.filter((t) => e.some((e) => e.location === t));
 }
-function rn() {
+function an() {
 	return `<div class="cleanuppage" data-skeleton="cleanup" aria-busy="true" aria-label="正在读取数据管理状态">
     <div class="cleanupgrid">${[
 		[
@@ -1782,7 +1799,7 @@ function rn() {
         <footer class="geist-fieldset-footer" data-geist-fieldset-footer><button type="button"${r === 3 ? " class=\"danger\"" : ""} disabled>${r === 3 ? "<svg aria-hidden=\"true\"><use href=\"#i-trash\"></use></svg><span>" + t + "</span>" : t}</button></footer>
       </section>`).join("")}</div></div>`;
 }
-function an(e, t = !1, n = !1) {
+function on(e, t = !1, n = !1) {
 	if (t || n) return "";
 	let r = "<svg aria-hidden=\"true\"><use href=\"#i-external-link\"></use></svg>";
 	return `<details class="taste-history-guide"${e ? " open" : ""}>
@@ -1796,16 +1813,16 @@ function an(e, t = !1, n = !1) {
       <button type="button" class="taste-guide-skip">跳过</button>
     </div></details>`;
 }
-var on = "peach-taste-guide-dismissed";
-function sn(e, t) {
+var sn = "peach-taste-guide-dismissed";
+function cn(e, t) {
 	let n = e.querySelector(".taste-history-guide");
 	n?.querySelector(".taste-guide-skip")?.addEventListener("click", () => {
-		t.setItem(on, "1"), n.remove();
+		t.setItem(sn, "1"), n.remove();
 	});
 }
 //#endregion
 //#region src/islands.ts
-var cn = {
+var ln = {
 	scraping: {
 		load: Gt,
 		component: Jt
@@ -1818,11 +1835,11 @@ var cn = {
 		load: Xe,
 		component: nt
 	}
-}, ln = () => Object.keys(cn), $ = /* @__PURE__ */ new Map();
-async function un(e, t, n, r = {}) {
-	let i = cn[e];
+}, un = () => Object.keys(ln), $ = /* @__PURE__ */ new Map();
+async function dn(e, t, n, r = {}) {
+	let i = ln[e];
 	if (!i) throw Error(`未注册的 island：${String(e)}`);
-	dn(t);
+	fn(t);
 	let a = {
 		controller: new AbortController(),
 		painted: !1
@@ -1853,9 +1870,9 @@ async function un(e, t, n, r = {}) {
 	};
 	xe(te(i.component, s), t);
 }
-function dn(e) {
+function fn(e) {
 	let t = $.get(e);
 	t && (t.controller.abort(), $.delete(e), t.painted && xe(null, e));
 }
 //#endregion
-export { on as TASTE_GUIDE_KEY, rn as cleanupSkeletonHtml, tn as cloudLocations, nn as cloudPreferenceLocations, Wt as followJobProgress, ln as islandNames, un as mountIsland, Zt as refreshStore, Qt as sidebarHasCatalogContent, en as sidebarTagCounts, Xt as storeNames, $t as syncSidebarSurface, an as tasteHistoryGuideHtml, dn as unmountIsland, Ut as watchJob, sn as wireTasteHistoryGuide };
+export { sn as TASTE_GUIDE_KEY, an as cleanupSkeletonHtml, nn as cloudLocations, rn as cloudPreferenceLocations, Wt as followJobProgress, un as islandNames, dn as mountIsland, Qt as nativeImageFit, Zt as refreshStore, $t as sidebarHasCatalogContent, tn as sidebarTagCounts, Xt as storeNames, en as syncSidebarSurface, on as tasteHistoryGuideHtml, fn as unmountIsland, Ut as watchJob, cn as wireTasteHistoryGuide };

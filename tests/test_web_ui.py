@@ -4665,9 +4665,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("if(!src.startsWith('/logo?'))return;")
         # 圆框不按原尺寸摆，上一档留在容器上的三个度量要跟着撤，否则字标的尺寸会
         # 继续压着方标。
-        self.assertPageContains("ring.removeAttribute('data-fit-native');")
-        self.assertPageContains(
-            "['--markw','--markh','--markbg'].forEach(name=>ring.style.removeProperty(name));")
+        self.assertPageContains("ring.setAttribute('data-fit-native','mark');")
 
     def test_a_mark_smaller_than_its_frame_is_not_blown_up(self):
         """图比框还小就不拉伸：原尺寸居中，空出来的一圈用同一张图放大模糊补底。
@@ -4679,22 +4677,22 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("const box=img.closest('[data-fit-native]');")
         self.assertPageContains("if(!box||!img.naturalWidth)return;")
         self.assertPageContains(
-            "box.style.setProperty('--markw',small?img.naturalWidth+'px':'100%');")
+            "box.style.setProperty('--markw',small?width+'px':'100%');")
         # 只比框小一点点的照旧铺满：按原尺寸摆只会在四周留一圈七八像素的生硬窄边。
-        self.assertPageContains("const NATIVE_FIT_FLOOR=0.8;")
-        self.assertPageContains("const small=img.naturalWidth<box.clientWidth*NATIVE_FIT_FLOOR")
-        self.assertPageContains("||img.naturalHeight<box.clientHeight*NATIVE_FIT_FLOOR;")
+        self.assertPageContains("nativeImageFit(img.naturalWidth,img.naturalHeight,box.clientWidth,box.clientHeight,window.devicePixelRatio||1)")
+        self.assertPageContains("box.dataset.nativeSmall=String(small);")
+        self.assertPageContains("if(ring.dataset.nativeSmall==='true')return;")
         self.assertPageContains(
             "box.style.setProperty('--markbg',small?`url(\"${src}\")`:'none');")
         # 用到它的两个容器自己声明意图，JS 只负责量。
-        self.assertPageContains("${bigMark?' data-fit-native':''}")
+        self.assertPageContains("data-fit-native=\"${company?'mark':'portrait'}\"")
         self.assertPageContains('"entityportrait ${kind===\'performer\'||kind===\'creator\'?'
-                                '\'\':\'square\'}"${company?\' data-fit-native\':\'\'}')
+                                '\'\':\'square\'}" data-fit-native="${company?\'mark\':\'portrait\'}"')
         # 两处容器各自写着 width:100% 和 object-fit:cover，选择器压不过它们就白改。
         # 尺寸不写 auto：还没度量过的图按 auto 是 0×0，`loading="lazy"` 见到 0×0 就
         # 认定它不在视口里、永远不去取，图不来就没有 load，两边互相等着。缺省铺满。
         self.assertCode(
-            ".icell .ring[data-fit-native] img,.entityportrait[data-fit-native] img{\n"
+            '.icell .ring[data-native-small="true"] img,.entityportrait[data-native-small="true"] img{\n'
             "  width:var(--markw,100%);height:var(--markh,100%);margin:auto;object-fit:contain;\n"
             "  max-width:100%;max-height:100%;z-index:1}")
         self.assertPageContains('[data-fit-native]::before{content:"";position:absolute;'
@@ -7112,7 +7110,7 @@ class WebUiSourceTests(unittest.TestCase):
                         "  return origin?` style=\"object-position:${origin}\"`:'';")
         self.assertPageContains("const face=faceOrigin(x.avatar_focus);")
         self.assertPageContains(
-            '<span class="ring"${bigMark?\' data-fit-native\':\'\'}'
+            '<span class="ring" data-fit-native="${company?\'mark\':\'portrait\'}"'
             '${face?` style="--face:${face}"`:\'\'}>')
         self.assertPageContains("object-position:var(--face,50% 50%)}")
 

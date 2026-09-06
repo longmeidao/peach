@@ -6,6 +6,7 @@ import { matchRoute, routeLabel } from './js/routes.js';
 import { initMiddleTruncate } from './js/middle-truncate.js';
 import { tagLabel } from './js/tags.js';
 import { syncSidebarSurface, sidebarTagCounts, sidebarHasCatalogContent, cleanupSkeletonHtml, cloudLocations, cloudPreferenceLocations, tasteHistoryGuideHtml, wireTasteHistoryGuide, TASTE_GUIDE_KEY } from './dist/peach-ui.js';
+import { nativeImageFit } from './dist/peach-ui.js';
 import {
   attachOverlayScrollbar, breadcrumbHtml, checkboxHtml, closeAnchoredMenu, confirmModal, emptyStateHtml, fieldsetTitle,
   fillSkeletonTier, fitSkeleton, iconSwitchHtml, indexSkeletonHtml, loadingDotsHtml,
@@ -1860,6 +1861,8 @@ function faceBoxAttrs(f){
 function avatarFrame(img){
   const ring=img.parentElement;
   if(!ring)return;
+  ['position','right','bottom','left','top','width','height'].forEach(name=>img.style.removeProperty(name));
+  if(ring.dataset.nativeSmall==='true')return;
   const rect=ring.getBoundingClientRect();
   /* 图加载完时框还没布局，是真会发生的一整类情况：面板隐藏、`display:none` 的页签、
      缓存直出。那一刻框是 0×0，算出来的倍数只能是 1，而 `load` 不会再来第二次——
@@ -1932,10 +1935,10 @@ function coverFace(img,axis){
 document.addEventListener('load',event=>{
   const img=event.target;
   if(!(img instanceof HTMLImageElement))return;
+  fitNativeImage(img);
   if(img.classList.contains('cover'))coverAnchor(img);
   // 头像走同一条路，理由也同一个：倍数要等图和框都落地才算得出来。
   else if(img.dataset.facebox)avatarFrame(img);
-  fitNativeImage(img);
 },true);
 /* 图比框还小时不再拉伸：原尺寸居中摆，空出来的一圈拿同一张图放大模糊补底。
 
@@ -1946,24 +1949,27 @@ document.addEventListener('load',event=>{
    度量只能在 `load` 之后做：图没加载完时 `naturalWidth` 读到的是 0。换过回落图后
    `load` 会再来一次，这里读的 `currentSrc` 也就跟着是当前真正显示的那张。 */
 //: 图至少要占到框的这一成才算「够大，铺满就行」。0.8 等于最多放大 1.25 倍。
-const NATIVE_FIT_FLOOR=0.8;
 function fitNativeImage(img){
   const box=img.closest('[data-fit-native]');
   if(!box||!img.naturalWidth)return;
   /* 只比框小一点点的照旧铺满：放大一成多看不出糊，而按原尺寸摆只会在四周留一圈
      七八像素的窄边，模糊补底铺在那么窄的地方就是一道生硬的灰线。
      版式一换框就换了大小，所以这个判断要能重算，见 setPeopleIndexLayout。 */
-  const small=img.naturalWidth<box.clientWidth*NATIVE_FIT_FLOOR
-    ||img.naturalHeight<box.clientHeight*NATIVE_FIT_FLOOR;
-  box.style.setProperty('--markw',small?img.naturalWidth+'px':'100%');
-  box.style.setProperty('--markh',small?img.naturalHeight+'px':'100%');
+  const {small,width,height}=nativeImageFit(img.naturalWidth,img.naturalHeight,box.clientWidth,box.clientHeight,window.devicePixelRatio||1);
+  box.dataset.nativeSmall=String(small);
+  box.style.setProperty('--markw',small?width+'px':'100%');
+  box.style.setProperty('--markh',small?height+'px':'100%');
   const src=(img.currentSrc||img.src).replace(/"/g,'%22');
   box.style.setProperty('--markbg',small?`url("${src}")`:'none');
 }
 /* 已经加载完的图不会再发 `load`，容器换了尺寸就得自己重量一遍。 */
 function refitNativeImages(root){
-  (root||document).querySelectorAll('[data-fit-native] img').forEach(fitNativeImage);
+  (root||document).querySelectorAll('[data-fit-native] img').forEach(img=>{
+    fitNativeImage(img);
+    if(img.dataset.facebox)avatarFrame(img);
+  });
 }
+window.addEventListener('resize',()=>refitNativeImages($('#index')),{passive:true});
 /* 整张封套里右侧正封占的宽高比。裁切靠的是容器比例而不是 CSS 裁剪：`object-fit:cover`
    只在容器比图片更「竖」时才会横向裁；容器一旦宽过 1.48 就变成纵向裁、整张封套原样
    铺满，「大图」于是只撑满画布而取不到右侧。 */
@@ -5508,11 +5514,7 @@ function retargetCompanyMarks(root){
   const rings=(root||document).querySelectorAll(
     '.icell[data-kind="studio"] .ring,.icell[data-kind="agency"] .ring');
   rings.forEach(ring=>{
-    if(big)ring.setAttribute('data-fit-native','');
-    else{
-      ring.removeAttribute('data-fit-native');
-      ['--markw','--markh','--markbg'].forEach(name=>ring.style.removeProperty(name));
-    }
+    ring.setAttribute('data-fit-native','mark');
     const img=ring.querySelector('img'),src=(img&&img.getAttribute('src'))||'';
     if(!src.startsWith('/logo?'))return;
     const next=src.replace(/([?&]variant=)[^&]*/,`$1${big?'large':'icon'}`);
@@ -5547,7 +5549,7 @@ function personCellHtml(x,kind,countText){
      本机，为省一次取图让圆框挂上字标不划算。度量在 fitNativeImage 里。 */
   const bigMark=company&&peopleIndexLayout()==='big';
   return `<button class="icell" data-k="${esc(x.k)}" data-kind="${kind}">
-      <span class="ring"${bigMark?' data-fit-native':''}${face?` style="--face:${face}"`:''}>${avatarInner(x.k,
+      <span class="ring" data-fit-native="${company?'mark':'portrait'}"${face?` style="--face:${face}"`:''}>${avatarInner(x.k,
         ref?{id:ref,has_image:x.has_image}:null,
         x.has_avatar&&!company?x.rep:null, kind, x.mark, x.has_logo?x.k:'',
         bigMark?'large':'icon', company?null:x.avatar_focus)}</span>
@@ -6363,7 +6365,7 @@ async function openEntity(kind,name,push=true){
           data-namepick-name="${esc(option)}" aria-checked="${option===d.canonical_name}"
           >${icon('check')}<span>${esc(option)}</span></button>`).join('')}</div></div>`:'';
   $('#index').dataset.entityKind=kind;$('#index').dataset.entityName=name;
-  $('#index').innerHTML=`<div class="entityhero"><div class="entityportrait ${kind==='performer'||kind==='creator'?'':'square'}"${company?' data-fit-native':''}>${image}<span>${esc(name.slice(0,1))}</span></div>
+  $('#index').innerHTML=`<div class="entityhero"><div class="entityportrait ${kind==='performer'||kind==='creator'?'':'square'}" data-fit-native="${company?'mark':'portrait'}">${image}<span>${esc(name.slice(0,1))}</span></div>
       <div><div class="entitytitle"><h2>${esc(d.canonical_name)}</h2>${namePick}</div>
         <div class="alias">${(d.display_aliases||[]).length?`${d.display_aliases.map(esc).join(' / ')} · `:''}<b>${d.asset_count.toLocaleString()}</b> 个视频${memberHtml}${agencyHtml}</div>
         ${links?`<div class="entitylinks">${links}</div>`:''}</div></div>
