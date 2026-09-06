@@ -85,6 +85,7 @@ export function wireReviewSelection(root: HTMLElement, options: {
   const grouping = document.createElement('div'); grouping.className = 'reviewgroupby';
   grouping.innerHTML = selectFieldHtml(groupOptions, state.groupBy, { label: '筛选分组方式' });
   const groupField = wireSelectField(grouping.firstElementChild!);
+  grouping.querySelectorAll('[data-select-option] .gselectmark').forEach(mark => mark.remove());
   groupField.addEventListener('change', () => { if (state.busy || !groupOptions.some(option => option[0] === groupField.value)) return; state.groupBy = groupField.value as ReviewGrouping; state.filter = ''; state.anchor = null; const host = root.parentElement; options.refresh(); host?.querySelector<HTMLButtonElement>('.reviewgroupby button')?.focus({ preventScroll: true }); });
   const filter = document.createElement('div'); filter.className = 'reviewcategoryfilter'; filter.hidden = groups.length < 2;
   filter.innerHTML = selectFieldHtml([['', '全部分类', 'list-filter'], ...groups.map(group => [group.key, `${group.title} · ${group.rows.length}`, 'list-filter'])], state.filter, { label: state.groupBy === 'field' ? '筛选字段分类' : '筛选当前分类' });
@@ -95,14 +96,18 @@ export function wireReviewSelection(root: HTMLElement, options: {
     section.append(title, ...Array.from(filterMenu.children).slice(1)); filterMenu.append(section);
   }
   const filterField = wireSelectField(filter.firstElementChild!);
+  filter.querySelectorAll('[data-select-option] .gselectmark').forEach(mark => mark.remove());
   filterField.addEventListener('change', () => { if (state.busy || (filterField.value && !groups.some(group => group.key === filterField.value))) return; state.filter = filterField.value; state.anchor = null; const host = root.parentElement; options.refresh(); host?.querySelector<HTMLButtonElement>('.reviewcategoryfilter button')?.focus({ preventScroll: true }); });
   const all = button('全选本页'), approve = button('通过所选', 'primary'), reject = button('拒绝所选', 'error');
   const count = document.createElement('span'); count.className = 'reviewselectedcount'; count.setAttribute('role', 'status');
   const source = document.createElement('div'); source.className = 'reviewbulksource'; source.hidden = !options.metadata;
   const feedback = document.createElement('p'); feedback.className = 'reviewstate reviewbulkfeedback'; feedback.setAttribute('role', 'status');
   const decisions = document.createElement('div'); decisions.className = 'reviewbulkdecisions'; decisions.append(approve, reject);
-  toolbar.append(grouping, filter, all, count, source, decisions); list.before(toolbar, feedback); list.classList.add('reviewgroups');
+  const dock = document.createElement('div'); dock.className = 'selectiondock reviewdock'; dock.setAttribute('role', 'group'); dock.setAttribute('aria-label', '复核所选项目');
+  const cancel = button('取消选择'); dock.append(count, source, decisions, cancel, feedback);
+  toolbar.append(grouping, filter, all); list.before(toolbar); root.append(dock); list.classList.add('reviewgroups');
   const clear = () => { state.selected.clear(); state.anchor = null; update(); };
+  cancel.onclick = () => { if (!state.busy) { clear(); all.focus({preventScroll:true}); } };
   all.onclick = () => { if (state.busy) return; const shown = visible(), checked = selected().length === shown.length; shown.forEach(card => checked ? state.selected.delete(card.dataset.reviewKey!) : state.selected.add(card.dataset.reviewKey!)); update(); };
   approve.onclick = () => run('approved', approve); reject.onclick = () => run('rejected', reject);
   const controls: (() => void)[] = [];
@@ -159,6 +164,7 @@ export function wireReviewSelection(root: HTMLElement, options: {
   let sourceSignature = '';
   function update() {
     const chosen = selected(); all.textContent = chosen.length === visible().length ? '清空当前选择' : state.filter ? '全选当前分类' : '全选本页';
+    dock.hidden = !chosen.length;
     count.innerHTML = badgeHtml(`已选 ${chosen.length} 项`);
     approve.disabled = !chosen.length || chosen.some(card => !eligible(card)); reject.disabled = !chosen.length;
     const sources = commonReviewSources(selectedRows());

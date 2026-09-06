@@ -4079,6 +4079,11 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("flex:1 0 240px;min-width:240px;overflow:hidden")
 
     def test_review_selection_uses_default_checkboxes_and_a_separate_toolbar(self):
+        self.assertPageContains('class="batchbar selectiondock"')
+        self.assertPageContains('class="tagselection selectiondock"')
+        self.assertPageContains('panel.hidden=!selectMode||!selectedIndexTags.size;')
+        self.assertPageContains('.selectiondock[hidden]{display:none}')
+        self.assertPageContains('.review:has(.reviewdock:not([hidden])){padding-bottom:220px}')
         self.assertPageContains("{rows,category,metadata:category==='metadata_fields'")
         self.assertPageContains(".reviewpickitem{display:inline-flex;align-items:center;flex:none;margin:0;user-select:none}")
         self.assertNotIn("reviewSelectionController", self.page)

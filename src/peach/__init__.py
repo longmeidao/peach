@@ -1,3 +1,3 @@
 """Peach application package."""
 
-__version__ = "0.22.4"
+__version__ = "0.22.5"

@@ -143,6 +143,21 @@ it('Shift 鼠标按下阻止文字选择且普通点击不受影响', () => {
   expect(label.dispatchEvent(new MouseEvent('mousedown', {bubbles:true,cancelable:true}))).toBe(true);
 });
 
+it('选中项目时显示共用底部浮窗，取消后关闭且保留分类入口', () => {
+  const f = fixture(), dock = f.root.querySelector<HTMLElement>('.selectiondock')!;
+  expect(dock.hidden).toBe(true);
+  f.button('全选本页').click();
+  expect(dock.hidden).toBe(false);
+  expect(dock.contains(f.button('通过所选'))).toBe(true);
+  expect(dock.contains(f.button('拒绝所选'))).toBe(true);
+  expect(dock.querySelector('.reviewbulksource')).not.toBeNull();
+  expect(f.root.querySelector('.reviewbulktoolbar .reviewbulkdecisions')).toBeNull();
+  f.button('取消选择').click();
+  expect(f.state.selected.size).toBe(0); expect(dock.hidden).toBe(true);
+  expect(document.activeElement).toBe(f.button('全选本页'));
+  expect(f.root.querySelector('.reviewgroupby')).not.toBeNull();
+});
+
 it('分类筛选后全选和快捷键仅操作当前分类，清除筛选可恢复全部', () => {
   const f = fixture();
   const filter = f.root.querySelector('.reviewcategoryfilter .gselect') as HTMLElement & {value:string};

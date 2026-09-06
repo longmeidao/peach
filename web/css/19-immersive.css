@@ -81,9 +81,19 @@
 .emptystate h3{margin:0;font-size:var(--fs-md);font-weight:600;color:var(--ink)}
 .emptystate p{margin:0;max-width:340px;font-size:var(--fs-sm);line-height:1.55;color:var(--muted)}
 .emptystate .es-actions{display:flex;justify-content:center;gap:8px;margin-top:8px}
-.batchbar{position:fixed;left:50%;bottom:22px;z-index:180;transform:translateX(-50%);display:flex;align-items:center;gap:7px;
+.selectiondock{position:fixed;left:50%;bottom:max(22px,env(safe-area-inset-bottom));z-index:180;transform:translateX(-50%);display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:7px;width:max-content;max-width:calc(100vw - 24px);box-sizing:border-box;
   padding:9px 11px;border:1px solid var(--line);border-radius:var(--floating-radius);background:var(--surface);
-  box-shadow:0 8px 24px #0005}.batchbar[hidden]{display:none}
+  box-shadow:0 8px 24px #0005}.selectiondock[hidden]{display:none}
+.selectiondock>button{white-space:nowrap}
+.tagselection.selectiondock{margin:0}
+.selectiondock [hidden]{display:none}
+body:has(#batchbar:not([hidden])) #stage{padding-bottom:180px}
+#index:has(.tagselection:not([hidden])){padding-bottom:220px}
+.review:has(.reviewdock:not([hidden])){padding-bottom:220px}
+.reviewdock .reviewbulkfeedback{flex-basis:100%;margin:0;text-align:center}
+.reviewdock .reviewbulkdecisions{flex-wrap:wrap;justify-content:center;gap:7px}
+.reviewdock .reviewbulksource{max-width:min(280px,calc(100vw - 48px))}
+.reviewdock .geist-button,.reviewdock .gselectfield{height:var(--control-h)}
 .batchbar span{padding:0 8px;color:var(--ink-2);white-space:nowrap}.batchbar button{border:0;border-radius:var(--floating-radius);
   background:var(--ground);color:var(--ink);padding:9px 12px;cursor:pointer}.batchbar button:hover{background:var(--hover);color:var(--ink)}
 .batchbar button svg{width:17px;height:17px;margin-right:6px;vertical-align:-4px;stroke:currentColor;fill:none;stroke-width:2}
@@ -274,4 +284,3 @@
 
 
 .review:has(.reviewidentityevidence){--review-fieldset-height:560px}
-
