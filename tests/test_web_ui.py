@@ -443,23 +443,30 @@ class WebUiSourceTests(unittest.TestCase):
                                 'aria-label="检查更新进度">')
 
     def test_buttons_keep_two_tiers_a_solid_primary_and_a_bright_secondary(self):
-        """按钮只有两档：主动作实底墨色，次级是比容器亮一档的面加一圈发丝边。
+        """按钮只有两档：主动作实底墨色，次级是比容器亮一档的实面；两档都不描边。
 
         2026-09-05 实测 vercel.com 的仪表盘工具行，两档同屏并排：主动作 `#171717` 底
-        白字不带描边，次级 `#FFFFFF` 底 `#171717` 字加 `0 0 0 1px #EBEBEB`。次级不是透明的
-        ——压在 `#FAFAFA` 的操作条上时，透明会让按钮和条子连成一片，只剩一条边框在飘。
+        白字，次级 `#FFFFFF` 底 `#171717` 字。次级不是透明的——压在 `#FAFAFA` 的操作条上，
+        透明会让按钮和条子连成一片。Geist 给次级另挂的那圈 `box-shadow:0 0 0 1px` 这里
+        不画：描边档与实心档并排看着一大一小，差的是「一个是块面、一个是个框」，
+        而次级只出现在操作条上，比条子亮一档本身就是边界。
         """
         self.assertCode(".geist-button{box-sizing:border-box;height:32px;padding:0 14px;"
-                        "border:1px solid var(--line-soft);border-radius:var(--control-radius);"
+                        "border:0;border-radius:var(--control-radius);"
                         "background:var(--ground);color:var(--ink);display:inline-flex;")
         self.assertPageContains(".geist-button:hover:not(:disabled){background:var(--surface)}")
-        self.assertPageContains(".geist-button.primary{border-color:var(--ink);background:var(--ink);color:var(--ground)}")
+        self.assertPageContains(".geist-button.primary{background:var(--ink);color:var(--ground)}")
         css = stylesheet_source()
-        for name in (".cleanupfieldset button{", "\n.fbtn{", ".resourceaction{"):
-            start = css.index(name)
+        # 找的是这三条基样式本身，不是别处以同名结尾的派生规则（`.fsecfoot .fbtn{`
+        # 也以 `.fbtn{` 收尾），所以选择器前面必须是上一条规则的边界。
+        for name in (".cleanupfieldset button:where(:not(.gselectfield)){",
+                     ".fbtn{", ".resourceaction{"):
+            found = re.search(r"(?:^|[}\n])" + re.escape(name), css)
+            self.assertIsNotNone(found, f"{name} 找不到基样式")
+            start = found.end() - len(name)
             rule = css[start:css.index("}", start)]
             self.assertIn("background:var(--ground)", rule, f"{name} 是次级档，自己是一块亮面")
-            self.assertIn("border:1px solid var(--line-soft)", rule, f"{name} 的边与次级档一致")
+            self.assertIn("border:0", rule, f"{name} 跟次级档一样不描边")
 
     def test_the_scrollbar_thumb_floats_over_the_content_and_takes_no_width(self):
         """滑块自绘、浮在内容上，一列宽度都不占；颜色取主题变量。
@@ -779,7 +786,7 @@ class WebUiSourceTests(unittest.TestCase):
         ".playerstatsbtn",  # 播放器覆盖层，悬停走 ::after 另一层
         ".fb .like",        # 这一排彩色反馈按钮的既有约定就是悬停预览按下后的颜色
         ".tagpickitem",     # 选中由图标换成对勾表达，填充留给悬停与键盘游标
-        ".gselectmenu button",  # 同上；2026-09-04 实测 vercel.com 后台的菜单行，悬停与选中共用同一枚 5% 填充
+        ".popmenu.gselectmenu button",  # 同上；2026-09-04 实测 vercel.com 后台的菜单行，悬停与选中共用同一枚 5% 填充
         ".edge button",     # 窄栏，实测 vercel.com/geist 左栏就是悬停抬填充
         ".dnav button",     # 抽屉是窄栏的展开态，同一条例外
     )
@@ -864,7 +871,7 @@ class WebUiSourceTests(unittest.TestCase):
         '.chip[aria-pressed="true"]',                     # 抽屉是一整张磨砂近白面
         '.dnav button[aria-pressed="true"]',              # 同上，窄栏的展开态
         '.edge button[aria-pressed="true"]',              # 窄栏填 --ground
-        '.gselectmenu button[aria-selected="true"]',      # 浮层菜单填 --ground
+        '.popmenu.gselectmenu button[aria-selected="true"]',  # 浮层菜单填 --ground
         '.ib[aria-pressed="true"]',                       # 顶栏填 --ground
         '.managebar button[aria-pressed="true"]',         # 管理导航容器填 --ground
         '.playerstatsbtn[aria-pressed="true"]',           # 播放器蒙层恒为深色
@@ -874,23 +881,23 @@ class WebUiSourceTests(unittest.TestCase):
     )
 
     def test_the_selected_face_is_one_token_that_flips_with_the_theme(self):
-        """选中填 --picked，它在两个主题里各取各的值，两边都比脚下那张面更亮一档。
+        """选中填 --picked，它就是 --inset 那一档中间色，两个主题各取各的值。
 
-        浅色一档页面底是 #FAFAFA，比它亮的只有纯白；深色一档底近黑，比它亮的是叠一层
-        7% 白。这两件事没有共同的字面值，所以选中面只能是个随主题翻面的 token：写死
-        --hover，浅色下 5% 黑比页面底还深，选中读成「被按凹进去」；写死 --ground，
-        深色下它比 --surface 还暗，选中等于没有高亮。站内两种写法各被推翻过一次，
-        `04b2438b` 与 `e5962ec7` 是同一个控件上的两次相反修改。
+        判据是「跟脚下那张面不同」，不是「更亮」：选中格多半站在白卡上，往亮里填等于
+        白叠白，一排 tab 里哪一枚被选中读不出来。2026-09-04 实测 vercel.com/geist 的
+        Tabs：选中态只有一件事，`bg-gray-200`（#EBEBEB），比容器往下压一档。深色一档
+        叠 9% 白后本来就比面亮，同一个 token 两边都成立，三处声明写法完全一致。
 
         例外只有一类：控件自己就站在 --ground 上（顶栏、窄栏、抽屉、浮层菜单）。那里
-        没有比脚下更亮的面可填，选中靠 --hover 那一档暗加上 --ink 的字色，与 2026-09-04
-        实测 vercel.com/geist 左栏一致。这一类逐个登记在 SELECTED_ON_GROUND。
+        选中靠 --hover 那一档暗加上 --ink 的字色，与实测的 Geist 左栏一致。这一类逐个
+        登记在 SELECTED_ON_GROUND。
         """
         css = stylesheet_source()
-        self.assertIn("--picked:var(--ground);", css, "浅色一档取纯白")
-        self.assertEqual(css.count("--picked:var(--hover);"), 2,
-                         "深色两处声明（prefers-color-scheme 与 data-theme）各写一份")
-        self.assertNotIn("--picked:#", css, "选中面不写字面色，只引用已有的两张面")
+        self.assertEqual(css.count("--picked:var(--inset);"), 3,
+                         "浅色一处、深色两处（prefers-color-scheme 与 data-theme）各写一份")
+        self.assertIn("--inset:#EBEBEB;", css, "浅色一档就是 Geist 的 gray-200")
+        self.assertIn("--inset:rgba(255,255,255,.09);", css, "深色一档在面上叠一层白")
+        self.assertNotIn("--picked:#", css, "选中面不写字面色，只引用已有的那张中间面")
         on_ground = sorted(" ".join(leaf.split()) for leaf, body in self._leaf_rules()
                            if any(state in leaf for state in self.STATE_TOKENS)
                            and "background:var(--hover)" in body)
@@ -1023,13 +1030,16 @@ class WebUiSourceTests(unittest.TestCase):
         css = re.sub(r"/\*.*?\*/", "", stylesheet_source(),
                      flags=re.S)
         self.assertNotIn("scale:.96", css, "Geist 按下没有缩放，别再加回来")
-        disabled = ("{background:var(--sunk);border-color:var(--line-soft);"
-                    "color:var(--muted);cursor:default}")
+        # 描边那一档连边一起变灰；不描边的动作按钮只换填充和字色。
+        ringed = ("{background:var(--sunk);border-color:var(--line-soft);"
+                  "color:var(--muted);cursor:default}")
+        flat = "{background:var(--sunk);color:var(--muted);cursor:default}"
+        for selector in (".tagselection button:disabled", ".fpickactions button:disabled",
+                         ".srctools button:disabled", ".frowicon:disabled"):
+            self.assertPageContains(selector + ringed)
         for selector in (".geist-button:disabled", ".fbtn:disabled",
-                         ".tagselection button:disabled", ".fpickactions button:disabled",
-                         ".fcredactions button:disabled", ".srctools button:disabled",
-                         ".frowicon:disabled", ".resourceaction:disabled"):
-            self.assertPageContains(selector + disabled)
+                         ".fcredactions button:disabled", ".resourceaction:disabled"):
+            self.assertPageContains(selector + flat)
 
     def test_font_weights_stay_on_the_three_geist_steps(self):
         """字重只有 400／500／600 三档。
@@ -1824,7 +1834,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("setActionBusy(btn)")
         self.assertPageContains("spinnerHtml('正在提交喜爱理由')")
         self.assertPageContains("setActionBusy(btn,false);btn.innerHTML='<span>提交</span>'")
-        self.assertPageContains('.geist-button.primary{border-color:var(--ink);background:var(--ink);color:var(--ground)}')
+        self.assertPageContains('.geist-button.primary{background:var(--ink);color:var(--ground)}')
         self.assertPageContains('.preference-foot>span{margin-right:auto')
         self.assertPageLacks('aria-label="保存喜爱理由">${icon(\'check\')}</button>')
         self.assertPageLacks("仅保存在本机")
@@ -2204,6 +2214,7 @@ class WebUiSourceTests(unittest.TestCase):
         # 框体（数据管理的操作条、关注管理的头部条）不是待填内容，不参与微光。
         self.assertPageContains(
             ".cleanup-skeleton .skeletoncard em::after,\n"
+            ".review-skeleton .skeletoncard em::after,\n"
             ".followmanage-skeleton .skeletoncard i::after{content:none}")
 
     def test_index_skeletons_share_final_geometry_and_keep_the_header(self):
@@ -3612,8 +3623,10 @@ class WebUiSourceTests(unittest.TestCase):
         processing = (Path(__file__).resolve().parents[1] / 'frontend/src/islands/library-processing.tsx').read_text(encoding='utf-8')
         self.assertIn('href="/scraping"', processing)
         self.assertPageContains('.scraping-fields .gselectfield{justify-content:space-between;padding-right:16px;')
-        self.assertPageContains('.scraping-fields .scraping-url{text-decoration:none;')
-        self.assertPageContains('.scraping-fields .scraping-url:hover{color:var(--ink);text-decoration:none}')
+        # 来源链接是站外地址：站标加箭头，读者不点也知道这一跳会离开 Peach。
+        self.assertPageContains('.scraping-fields .scraping-url{display:inline-flex;align-items:center;gap:6px;')
+        self.assertPageContains('.scraping-fields .scraping-url:hover{color:var(--ink);text-decoration:underline;')
+        self.assertPageContains('.scraping-fields .scraping-url svg{flex:none;width:14px;height:14px;')
         self.assertPageContains('.scraping-fields .scraping-cover-form{display:flex;align-items:center;')
         source = (Path(__file__).resolve().parents[1] / 'frontend/src/islands/scraping.tsx').read_text(encoding='utf-8')
         self.assertIn('wireSelectField(root.firstElementChild!)', source)
@@ -3754,7 +3767,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('data-taste-route="${esc(item.route)}"')
         self.assertPageContains("route(button.dataset.tasteRoute);restoreRoute()")
         self.assertPageContains(".tasteinsights{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px")
-        self.assertPageContains(".tastelead:hover{border-color:var(--border-15);background:var(--hover)}")
+        self.assertPageContains(".tastelead:hover{background:color-mix(in srgb,var(--inset) 94%,var(--ink))}")
         self.assertPageLacks(".tasteanalysisbody")
 
     def test_stats_use_analytics_panels_and_real_determinate_progress(self):
@@ -3877,8 +3890,7 @@ class WebUiSourceTests(unittest.TestCase):
         # 这一行的浮层与控件底色只走 token。
         self.assertPageLacks("background:#181a1d;box-shadow:0 16px 44px -20px #000}")
         self.assertPageContains(
-            ".geist-button.primary:disabled{border-color:var(--line-soft);"
-            "background:var(--sunk);color:var(--muted)}")
+            ".geist-button.primary:disabled{background:var(--sunk);color:var(--muted)}")
 
     def test_edge_and_drawer_share_one_navigation_dispatch(self):
         """窄栏和抽屉各写一份分支时，抽屉那份漏了追更和播放列表。
@@ -4210,24 +4222,26 @@ class WebUiSourceTests(unittest.TestCase):
         分段器（Switch）只承担 2–3 项互斥视图，标签超过两三个字就要换 Tabs；复核分类 10 项、
         垃圾文件分类 7 项都在界外，所以这两条是 Tabs 不是分段器。几何取 secondary 变体：
         高 32px、左右 12px、6px 圆角、13px/400，hover 只换文字色，选中只抬底不动边框。
-        描边是记录在案的有意偏离：上游 secondary 不描边，但它没有「必须放在容器内」这类
-        条款（未取得），而 Peach 这两条直接坐在页面顶部、四周没有容器边线，不描边时只有
-        选中那一枚有底色。描边一旦被后来的「对齐规范」顺手删掉，这个判据就没人记得了。
-        描边之后相邻两枚不能再紧贴，否则两条 1px 边粘成一条 2px 的，所以 gap 从 0 抬到 5px。
+        两态都不描边，跟上游 secondary 一致：给每一枚都画一圈线之后，一排读起来是七个
+        一模一样的框，选中那一枚只能靠填充说话，而线比填充响得多，浅色一档上「哪一枚被
+        选中」根本读不出来。选中填 `--picked`，也就是 Geist 的 gray-200 那一档中间色。
+        gap 留 5px：两枚填充块紧贴会连成一条，读成一个控件。
         """
         self.assertPageContains(
             ".reviewtabs,.junkfilters{display:flex;align-items:center;gap:5px;min-width:0;"
             "overflow-x:auto;scrollbar-width:none}")
         self.assertCode(
             ".reviewtabs button,.junkfilters a{box-sizing:border-box;height:32px;padding:0 12px;flex:none;"
-            "display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border-15);"
+            "display:inline-flex;align-items:center;gap:6px;border:0;"
             "border-radius:var(--control-radius);background:transparent;color:var(--muted);"
             "text-decoration:none;font:inherit;font-size:var(--fs-sm);font-weight:400;"
             "white-space:nowrap;cursor:pointer}")
+        # 装不下时要能滚：这两条都靠覆盖式滑块给出可拖的抓手，系统滚动条已经关掉了。
+        self.assertPageContains("'.reviewtabs','.junkfilters',")
         self.assertPageContains(
             '.reviewtabs button[aria-selected="true"],.junkfilters a[aria-current="page"]'
             '{background:var(--picked);color:var(--ink)}')
-        # 反相底色不能回来；描边只到 --border-15 那一档，不跟着选中态提亮。
+        # 反相底色不能回来。
         self.assertPageLacks('.reviewtabs button[aria-pressed="true"]{background:var(--ink-2)')
         self.assertPageLacks('.junkfilters a[aria-current="page"]{border-color:var(--ink-2)')
         # 外观一样不代表语义一样。复核那条切的是 10 个互不相同的候选数据集，每个分类换掉
@@ -4282,13 +4296,10 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("['dismiss-junk','不是垃圾','check']")
         self.assertPageContains("<span>移入回收站</span>")
         self.assertPageContains('body[data-density="dense"] .junkcard .junkactions button span{display:none}')
-        # 三个按钮等宽，各自居中就让图标横向参差；靠左起排它们才落在一条竖线上。
-        # 紧凑密度隐掉标签后只剩图标，那时才回到居中。
+        # 三个按钮等宽，图标加标签在各自那一格里居中。
         junk_button = self.css.split(".junkactions button{", 1)[1].split("}", 1)[0]
-        self.assertIn("justify-content:flex-start", junk_button)
-        self.assertNotIn("justify-content:center", junk_button)
-        self.assertPageContains(
-            'body[data-density="dense"] .junkcard .junkactions button{justify-content:center}')
+        self.assertIn("justify-content:center", junk_button)
+        self.assertNotIn("justify-content:flex-start", junk_button)
         self.assertPageContains("function renderJunkNavigation(data)")
         self.assertPageContains("['video','视频','play'],['image','图片','pics']")
         self.assertPageContains("['archive','压缩包','file-archive'],['audio','音频','file-audio']")
@@ -4371,8 +4382,9 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertNotIn('id="emptyTrash"', sorts)
         self.assertPageContains(
             ".pagelede-actions{display:flex;align-items:center;justify-content:space-between;gap:16px}")
-        self.assertPageContains(
-            ".pagelede-actions .batchaction.danger{background:var(--drop);border-color:var(--drop);color:#fff}")
+        # 危险档只有 01-base 那一份，页面各自的 .danger 覆盖已经收掉了。
+        self.assertPageContains("button.danger:not(.frowicon),.resourcedanger{")
+        self.assertPageLacks(".pagelede-actions .batchaction.danger{")
         self.assertPageLacks(".count .sorts .batchaction.danger{")
         # 桌面 32px 是 Geist 的控件高度，手机要回到本项目的 44px 命中区。
         self.assertPageContains(".pagelede-actions .batchaction{height:44px;padding-inline:16px}")
@@ -4382,10 +4394,12 @@ class WebUiSourceTests(unittest.TestCase):
 
         `.cleanuppage` 把 hub 那一页收进 812px，标题和面包屑跟着收才对得齐。但同一个
         section 底下的垃圾文件、重复文件正文都是全宽网格：跟着收就是宽屏上标题凭空左缩
-        一截，标题左边缘和第一张卡的左边缘对不上。判据必须是路径，不是 section。
+        一截，标题左边缘和第一张卡的左边缘对不上。判据是「这条路径的正文是不是窄列」，
+        不是 section——采集来源也是 812px 的窄列，它和 hub 归在同一个 section 下。
         """
+        self.assertPageContains("const CENTERED_CLEANUP_PAGES=new Set(['/data-cleanup','/scraping']);")
         self.assertCode("document.body.classList.toggle('cleanup-layout',"
-                        "current==='cleanup'&&decodeURIComponent(location.pathname)==='/data-cleanup')")
+                        "CENTERED_CLEANUP_PAGES.has(decodeURIComponent(location.pathname)));")
         self.assertPageLacks("document.body.classList.toggle('cleanup-layout',current==='cleanup')")
         # 窄列本体仍在 hub 上，这两条规则本身不动。
         self.assertPageContains(".cleanuppage{width:min(812px,100%);margin:0 auto}")
@@ -4825,7 +4839,9 @@ class WebUiSourceTests(unittest.TestCase):
             "width:44px;height:44px;")
         self.assertPageContains("transform:translate(-50%,-50%)}")
         self.assertPageLacks(".npbtn{width:44px;height:44px}")
-        self.assertPageContains(".npmenu button,.gselectmenu button{min-height:44px}")
+        # 两个类一起写：任何一条 `.某工具条 button` 都比单类祖先更具体，会把菜单里的
+        # 每一行也画成工具条按钮，连这条 44px 命中区一起压掉。
+        self.assertPageContains(".npmenu button,.popmenu.gselectmenu button{min-height:44px}")
 
     def test_entity_name_picker_writes_through_the_server_before_repainting(self):
         self.assertCode("const rename=(from,to)=>api('/api/entity-name',")
@@ -5744,7 +5760,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".sbadge.error i{background:var(--drop)}")
         # 清空回收站：danger 语义色。
         self.assertPageContains('class="batchaction danger" id="emptyTrash"')
-        self.assertPageContains(".pagelede-actions .batchaction.danger{background:var(--drop);border-color:var(--drop);color:#fff}")
+        self.assertPageContains("button.danger:not(.frowicon),.resourcedanger{")
         # Geist 菜单：触发器和每个选项都有入口图标，菜单内部滚动且不加猜测动画。
         self.assertPageContains('data-sidebar-add-trigger aria-haspopup="listbox" aria-expanded="false"')
         self.assertPageContains('role="option" data-sidebar-add-option=')
@@ -6128,10 +6144,13 @@ class WebUiSourceTests(unittest.TestCase):
                                 "min-height:var(--fieldset-bar-h);")
         # 说明能被压窄并换行，按钮不参与压缩。
         self.assertPageContains(".resourcesyncfooter>p,.resourceapplyrow>p{min-width:0;margin-right:auto}")
-        self.assertPageContains(".cleanupfieldset button{box-sizing:border-box;flex:none;min-height:32px;")
+        # 排除下拉触发器：它是 .cleanupfieldset 里的一个 button，但形状属于输入控件，
+        # 那圈线要留着。零权重的 :where() 才不会反过来压过 .geist-button.primary。
+        self.assertPageContains(".cleanupfieldset button:where(:not(.gselectfield)){"
+                                "box-sizing:border-box;flex:none;min-height:32px;")
         self.assertPageContains("background:var(--ground);color:var(--ink-2);display:inline-flex;")
-        self.assertPageContains(".cleanupfieldset button:hover{background:var(--surface);"
-                                "color:var(--ink)}")
+        self.assertPageContains(".cleanupfieldset button:where(:not(.gselectfield)):hover{"
+                                "background:var(--surface);color:var(--ink)}")
         self.assertPageLacks(".resourcesyncfooter button{width:100%;justify-content:center}")
         self.assertPageLacks(".resourcesync .resourcesyncfooter{align-items:stretch;flex-direction:column}")
         self.assertPageLacks(".resourcesync .resourceapplyrow{align-items:stretch;flex-direction:column}")
@@ -7039,21 +7058,27 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".fsechead .iconswitch label{width:34px;height:32px}")
         self.assertPageContains(".fsechead .fbtn,.fsecfoot .fbtn{height:var(--control-h)}")
 
-    def test_destructive_buttons_fill_red_on_hover(self):
-        """危险动作的悬停态一律是 --drop 实底加白字，全站一个写法。
+    def test_destructive_buttons_are_solid_red_at_rest(self):
+        """危险动作静止态就是 --drop 实底加白字，全站一个写法。
 
         只描红边、红字的话，静止态和悬停态在暗色底上几乎一样亮，按下去之前看不出这是
-        不可逆动作。Geist 的 error Button 同样是实心红填充（oklch(.5801 .227 25.12) 底、
-        白字），只是它静止态就红，Peach 把红留到悬停。
+        不可逆动作。Geist 的 error Button 就是实心红填充（实测 `rgb(217,48,54)` 底、白字），
+        静止态即红；Peach 按用户 2026-09-06 的取舍跟它走，悬停只把同一块红压深一档。
+        纯图标删除键不在此列——它们靠图标本身说明动作，实底红会在一行图标里炸出一块。
         """
-        fill = "background:var(--drop);border-color:var(--drop);color:#fff}"
-        for selector in (".fbtn.fquiet:hover{", ".fcredactions button.fquiet:hover{",
-                         ".cleanupfieldset button.danger:hover{",
-                         ".dupbtns button.danger:hover{", ".resourcedanger:hover:not(:disabled){",
-                         ".junkactions .junktrash:hover:not(:disabled){",
-                         ".playlistactions .danger:hover{",
-                         ".reviewactions .reject:hover{"):
-            self.assertPageContains(selector + fill, f"{selector} 的悬停态要填 --drop")
+        self.assertPageContains("button.danger:not(.frowicon),.resourcedanger{")
+        self.assertPageContains("background:var(--drop);border-color:var(--drop);color:#fff}")
+        for selector in (".reviewactions .reject{background:var(--drop);color:#fff}",
+                         ".junkactions .junktrash{background:var(--drop);color:#fff}"):
+            self.assertPageContains(selector, "判定与销毁键静止态就是实底红")
+        darker = "{background:color-mix(in srgb,var(--drop) 82%,#000);color:#fff}"
+        for selector in (".reviewactions .reject:hover:not(:disabled)",
+                         ".junkactions .junktrash:hover:not(:disabled)"):
+            self.assertPageContains(selector + darker, f"{selector} 悬停把同一块红压深")
+        # 每个页面各写一份 .danger 的时代结束了：站里只留 01-base 那一条。
+        for stale in (".pagelede-actions .batchaction.danger{", ".cleanupfieldset button.danger{",
+                      ".playlistactions .danger{", ".dupbtns button.danger{", ".batchbar .danger{"):
+            self.assertPageLacks(stale, "危险档只有 01-base 里那一份")
 
     def test_bulk_footer_keeps_one_line_and_ellipsises_its_counts(self):
         """底部批量条保持一行，宽度不够时省略说明文字，而不是把动作键甩到第二行。

@@ -87,7 +87,6 @@
 .batchbar span{padding:0 8px;color:var(--ink-2);white-space:nowrap}.batchbar button{border:1px solid var(--line);border-radius:var(--floating-radius);
   background:var(--surface);color:var(--ink);padding:9px 12px;cursor:pointer}.batchbar button:hover{background:var(--hover);color:var(--ink)}
 .batchbar button svg{width:17px;height:17px;margin-right:6px;vertical-align:-4px;stroke:currentColor;fill:none;stroke-width:2}
-.batchbar .danger{color:var(--drop)}
 
 @media (max-width:1080px){.sgrid,.sgrid.mixgrid{grid-template-columns:minmax(0,1fr)}
   .sgrid.mixgrid{grid-template-areas:"media" "side" "queue"}
@@ -188,7 +187,7 @@
   .npbtn{position:relative}
   .npbtn::after{content:"";position:absolute;top:50%;left:50%;width:44px;height:44px;
     transform:translate(-50%,-50%)}
-  .npmenu button,.gselectmenu button{min-height:44px}
+  .npmenu button,.popmenu.gselectmenu button{min-height:44px}
   .entityhero .alias{margin-bottom:10px}
   .entityhero .entitylinks{justify-content:center;margin-top:13px}
   .stats h2{font-size:var(--fs-xl)}.stats .insightcopy h2{font-size:var(--fs-3xl)}

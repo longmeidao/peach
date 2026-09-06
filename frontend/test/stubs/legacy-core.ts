@@ -27,3 +27,9 @@ export const fmtSize = (bytes: number | null | undefined): string => {
   if (value >= 1073741824) return `${(value / 1073741824).toFixed(1)} GB`;
   return `${Math.floor(value / 1048576)} MB`;
 };
+
+/* 只复制行为，不复制 `SITE_FAVICONS` 那张表：island 用到的站点都不在表里，
+   抄一份过来只会在遗留层加条目时变成两份各自漂移的清单。 */
+export const faviconUrl = (url: string): string => {
+  try { return new URL('/favicon.ico', url).href; } catch { return ''; }
+};

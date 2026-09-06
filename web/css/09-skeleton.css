@@ -63,6 +63,20 @@
 .cleanup-skeleton .skeletoncard b{width:26%;height:16px;margin:12px 20px 20px}
 .cleanup-skeleton .skeletoncard em{width:100%;height:var(--fieldset-bar-h);margin:0;
   border-radius:0;border-top:1px solid var(--border-10);background:var(--overlay-5)}
+/* 人工复核是一排分类 tab 加一格一格等高的 Fieldset：列宽取 .reviewlist 的
+   minmax(360px,1fr)，卡高取 .reviewitem 的 --review-fieldset-height，底部那条是
+   判定操作条的位置。tab 那一条画在网格前面，宽度按七枚分类估。
+   框体（操作条）不参与微光，它不是待填的内容。 */
+.review-skeleton>div{grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:14px;align-items:start}
+.review-skeleton>div::before{content:'';grid-column:1/-1;width:min(100%,760px);height:32px;
+  border-radius:var(--control-radius);background:var(--hover)}
+.review-skeleton .skeletoncard{gap:0;box-sizing:border-box;height:var(--review-fieldset-height);
+  grid-template-rows:auto minmax(0,1fr) auto;overflow:hidden;border:1px solid var(--field-ring);
+  border-radius:var(--floating-radius);background:var(--ground)}
+.review-skeleton .skeletoncard i{aspect-ratio:auto;width:56%;height:22px;margin:20px 20px 0}
+.review-skeleton .skeletoncard b{width:auto;height:auto;margin:16px 20px 20px}
+.review-skeleton .skeletoncard em{width:100%;height:56px;margin:0;border-radius:0;
+  border-top:1px solid var(--line-soft);background:var(--overlay-5)}
 /* 关注管理是一列三块（添加关注、关注列表、凭据）的行政界面：骨架照 .fsec 的轮廓画，
    一块对一块、宽度跟着 .followmanage 一起限到 812px。头部条是框体不是待填内容，
    跟 .fsechead 同高同底色，不参与微光。 */
@@ -134,6 +148,7 @@ body.refreshing #tiers .brandpill::after{content:'';position:absolute;inset:0;ri
   animation:skeleton-sweep 1.5s ease-in-out infinite reverse}
 /* 框体不是待填的内容，本来就不参与呼吸，也不参与微光。 */
 .cleanup-skeleton .skeletoncard em::after,
+.review-skeleton .skeletoncard em::after,
 .followmanage-skeleton .skeletoncard i::after{content:none}
 
 /* 计数骨架的宽高定死：跟着真实文本走的话，数字回来那一刻整行会横向弹一下。

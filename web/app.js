@@ -247,7 +247,10 @@ const MANAGEMENT_PLACEHOLDERS={
   // /resource-sync 只是数据管理页上的一个锚点，启动时占位也该是数据管理那张。
   '/resource-sync':()=>MANAGEMENT_PLACEHOLDERS['/data-cleanup'](),
   '/duplicates':()=>pageSkeletonHtml('正在比对重复内容',{cards:true}),
-  '/review':()=>pageSkeletonHtml('正在读取复核队列',{cards:true}),
+  /* 复核是一排分类 tab 加一格一格 440px 高的 Fieldset，不是海报网格：骨架照
+     .reviewlist 的列宽和 .reviewitem 的轮廓画，顶上留出 tab 那一条。 */
+  '/review':()=>`<div class="review">${pageSkeletonHtml('正在读取复核队列',
+    {cards:true,count:6,fill:false,className:'review-skeleton'})}</div>`,
   '/quality-goals':()=>pageSkeletonHtml('正在读取高清版目标',{cards:true}),
   '/playlists':()=>pageSkeletonHtml('正在读取播放列表',{cards:true}),
   // 关注管理是三个大区（添加关注、关注列表、凭据），不是一屏同质卡片：
@@ -257,6 +260,10 @@ const MANAGEMENT_PLACEHOLDERS={
   // 配置页是两块同宽的卡（表单、运行信息），骨架照数据管理那套单列卡片的轮廓画两块。
   '/configuration':()=>`<div class="configpage">${pageSkeletonHtml('正在读取配置',
     {cards:true,count:2,fill:false,className:'cleanup-skeleton'})}</div>`,
+  /* 采集来源是 812px 窄列里一叠同宽的 Fieldset：一块高清封面加六个来源。骨架画四块，
+     那是首屏装得下的张数；说明那一句是静态文案，与数据无关，立刻显示。 */
+  '/scraping':()=>`<div class="scraping-page"><p>高清图片可能需要代理才能下载，请先检查连接。</p>
+    ${pageSkeletonHtml('正在读取采集来源',{cards:true,count:4,fill:false,className:'cleanup-skeleton'})}</div>`,
 };
 const managementPlaceholder=path=>
   (MANAGEMENT_PLACEHOLDERS[path]||(()=>pageSkeletonHtml('正在读取页面')))();
@@ -3245,8 +3252,8 @@ function tasteAnalysisSection(analysis){
     .map(lead=>`<button type="button" class="tastelead" ${lead.attrs}>
       <span><b>${esc(lead.title)}</b><small>${esc(lead.detail)}</small></span>${icon('chevron-right')}</button>`).join('');
   return `<section class="insightpanel tasteleads">
-      <header><div><h3>口味总结</h3><p>${esc(analysis.headline)}</p></div>
-        <span class="tasteconfidence ${esc(confidence.level||'early')}">${esc(confidence.label||'仍在学习')}</span></header>
+      <header><div><h3>口味总结</h3><p>${esc(analysis.headline)}</p>
+        <span class="tasteconfidence ${esc(confidence.level||'early')}"><i aria-hidden="true"></i>${esc(confidence.label||'仍在学习')}</span></div></header>
       <div class="insightpanelbody">
         ${points?`<div class="tasteinsights">${points}</div>`:''}
         <div class="tasteleadlist">${leads||emptyStateHtml('search','还没有可探索的入口','馆藏里暂时没有对得上浏览信号的标签。')}</div>
@@ -3482,6 +3489,10 @@ const DATA_MANAGEMENT_ENTRIES=[
   ['trash','回收站','查看回收站'],
   ['quality','高清版','查看高清版'],
 ];
+/* 这一页按一条内容在库里的经过排：先进来（扫描与采集），再把它说清楚（人工复核、
+   高清版），然后把不该留的挑出去（重复文件、垃圾文件、空文件夹），最后是删掉的东西
+   还在哪儿（回收站）。复核紧跟采集，因为它是采集的下一步，不是清理的收尾。 */
+const DATA_MANAGEMENT_ORDER=['scraping','review','quality','duplicates','junk','empty','trash'];
 
 async function openDataCleanup(push=true){
   releaseHoverPreviews();disposeStage(false);enterManagementSurface();
@@ -3505,39 +3516,45 @@ async function openDataCleanup(push=true){
   const junkBreakdown=[...JUNK_KIND_OPTIONS.filter(([key])=>key&&Number(junkCounts[key])>0)
     .map(([key,label])=>`${esc(label)} ${Number(junkCounts[key]).toLocaleString()}`),
     ...(Number(junk.dismissed_total)>0?[`已忽略 ${Number(junk.dismissed_total).toLocaleString()}`]:[])].join(' · ');
-  $('#stats').innerHTML=`<div class="cleanuppage"><div class="cleanupgrid">
-    <section class="cleanupfieldset" id="libraryProcessing" data-geist-fieldset aria-labelledby="cleanupScrapingTitle">
+  const entryCard=section=>{
+    const [,title,label]=DATA_MANAGEMENT_ENTRIES.find(([key])=>key===section);
+    return `<section class="cleanupfieldset" data-geist-fieldset aria-labelledby="cleanup-${section}-title">
+      <div class="geist-fieldset-content">${fieldsetTitle(`cleanup-${section}-title`,title)}
+        <strong data-cleanup-count="${section}">—</strong>
+        <p class="cleanupmeta" data-cleanup-meta="${section}"></p></div>
+      <footer class="geist-fieldset-footer" data-geist-fieldset-footer><button type="button" data-cleanup-go="${section}">${esc(label)}</button></footer>
+    </section>`;
+  };
+  const cleanupCards={
+    scraping:`<section class="cleanupfieldset" id="libraryProcessing" data-geist-fieldset aria-labelledby="cleanupScrapingTitle">
       <div class="geist-fieldset-content">${fieldsetTitle('cleanupScrapingTitle','扫描与采集')}
         <p>扫描媒体文件夹，导入已有资料，采集缺失信息。</p></div>
       <footer class="geist-fieldset-footer" data-geist-fieldset-footer><button type="button" disabled>扫描并补全资料</button></footer>
-    </section>
-    <section class="cleanupfieldset" data-geist-fieldset aria-labelledby="cleanupJunkTitle">
+    </section>`,
+    junk:`<section class="cleanupfieldset" data-geist-fieldset aria-labelledby="cleanupJunkTitle">
       <div class="geist-fieldset-content">${fieldsetTitle('cleanupJunkTitle','垃圾文件')}
         <strong>${Number(junk.pending_total||0).toLocaleString()} 个待判断</strong>
         <p class="cleanupmeta">${junkBreakdown}</p></div>
       <footer class="geist-fieldset-footer" data-geist-fieldset-footer><button type="button" data-cleanup-open="junk">查看垃圾文件</button></footer>
-    </section>
-    <section class="cleanupfieldset" data-geist-fieldset aria-labelledby="cleanupDupTitle">
+    </section>`,
+    duplicates:`<section class="cleanupfieldset" data-geist-fieldset aria-labelledby="cleanupDupTitle">
       <div class="geist-fieldset-content">${fieldsetTitle('cleanupDupTitle','重复文件')}
         <strong>${Number(duplicates.total||0)
           ?`${Number(duplicates.total).toLocaleString()} 组 · ${Number(duplicates.files||0).toLocaleString()} 个文件`
           :'没有重复内容'}</strong>
         <p class="cleanupmeta">${Number(duplicates.total||0)?`可回收 ${fmtSize(duplicates.reclaimable||0)}`:''}</p></div>
       <footer class="geist-fieldset-footer" data-geist-fieldset-footer><button type="button" data-cleanup-open="duplicates">查看重复文件</button></footer>
-    </section>
-    <section class="cleanupfieldset cleanupemptyfolders" data-geist-fieldset aria-labelledby="cleanupEmptyTitle">
+    </section>`,
+    empty:`<section class="cleanupfieldset cleanupemptyfolders" data-geist-fieldset aria-labelledby="cleanupEmptyTitle">
       <div class="geist-fieldset-content">${fieldsetTitle('cleanupEmptyTitle','空文件夹')}
         <strong>${online.length.toLocaleString()} 个来源可扫描</strong>
         <p class="cleanupmeta">${sourceLine}</p><p class="cleanupstate" aria-live="polite"></p></div>
       <footer class="geist-fieldset-footer" data-geist-fieldset-footer><button type="button" class="danger" data-cleanup-empty>${icon('trash')}<span>删除空文件夹</span></button></footer>
-    </section>
-    ${DATA_MANAGEMENT_ENTRIES.map(([section,title,label])=>`
-    <section class="cleanupfieldset" data-geist-fieldset aria-labelledby="cleanup-${section}-title">
-      <div class="geist-fieldset-content">${fieldsetTitle(`cleanup-${section}-title`,title)}
-        <strong data-cleanup-count="${section}">—</strong>
-        <p class="cleanupmeta" data-cleanup-meta="${section}"></p></div>
-      <footer class="geist-fieldset-footer" data-geist-fieldset-footer><button type="button" data-cleanup-go="${section}">${esc(label)}</button></footer>
-    </section>`).join('')}
+    </section>`,
+    review:entryCard('review'),quality:entryCard('quality'),trash:entryCard('trash'),
+  };
+  $('#stats').innerHTML=`<div class="cleanuppage"><div class="cleanupgrid">
+    ${DATA_MANAGEMENT_ORDER.map(section=>cleanupCards[section]).join('')}
   </div>
   ${linkManagerMarkup()}
   ${cloudLocations(sources.sources||[]).length?resourceSyncMarkup():''}</div>`;
@@ -3777,10 +3794,14 @@ async function openReview(push=true){
            ? (assets.length?`<div class="reviewpick"><div class="reviewpickhead"><span class="mono" data-picked-count></span>
                <button type="button" data-pick-all>全选</button><button type="button" data-pick-none>清空</button></div>
                <div class="reviewasset-grid">${assets.map(asset=>`<button type="button" class="reviewasset picked" data-review-asset="${asset.id}" aria-pressed="true" title="${esc(asset.name)}"><img src="/poster?id=${asset.id}&c=4" alt="" loading="lazy"><span class="pickmark">${icon('check')}</span></button>`).join('')}</div></div>`
-              // 空白一片会被当成界面坏了。真实原因是这些作品还没抽帧，说清楚比留白好。
-              : `<p class="empty">这 ${esc(row.video_count||'')} 条作品尚未抽帧，暂无预览；批准后仍会按候选写入标签</p>`)
+              /* 空白一片会被当成界面坏了。真实原因是这些作品还没抽帧，说清楚比留白好；
+                 空状态铺满卡片中段，卡高不随「有没有预览」上下跳。 */
+              : emptyStateHtml('pics','这批作品尚未抽帧',
+                  `${row.video_count||''} 条作品还没有可用预览；批准后仍会按候选写入标签。`,
+                  {className:'reviewempty'}))
            : reviewCategory==='fc2_similarity'?''
-           : (row.preview_url?`<div class="reviewimage"><img src="${esc(row.preview_url)}" alt="" loading="lazy" data-drop="closest:.reviewimage"></div>`:'<p class="empty">未取得图片预览</p>');
+           : (row.preview_url?`<div class="reviewimage"><img src="${esc(row.preview_url)}" alt="" loading="lazy" data-drop="closest:.reviewimage"></div>`
+             :emptyStateHtml('eye-off','未取得图片预览','这条候选没有可展示的图片，判断请依据下面的证据。',{className:'reviewempty'}));
          const body=`${
            // 实体类卡片的名字已经写在创作者入口里，再画一个 h4 就是同一行字上下两遍。
            subjectKind&&subjectName?'':`<h4>${esc(titleText)}</h4>`}${
@@ -3788,7 +3809,10 @@ async function openReview(push=true){
            row.source_name?`<p class="reviewalias">来源写法：${esc(row.source_name)}</p>`:''}${
            // 实体类卡片的作品数已经写在创作者入口里，这里再写一遍就是同一个数字两处。
            subjectKind&&subjectName?'':`<p>${esc(row.board||row.assets?`样本/资产：${row.video_count||row.assets||''}`:'')}</p>`}${origin}${tags?`<div class="reviewtags">${tags}</div>`:''}${preview}<p>${esc(evidence)}</p>`;
-         const actions=`<button class="approve" data-review-status="approved"${canApprove&&!locked?'':' disabled'}>${approveLabel}</button><button class="skip" data-review-status="skipped"${locked?' disabled':''}>跳过</button><button class="reject" data-review-status="rejected"${locked?' disabled':''}>拒绝</button><span class="reviewstate" aria-live="polite"></span>`;
+         /* 主体动作在最右：一行里从左到右是「拒绝、跳过、通过」，读到最后一枚才是这张卡
+            真正要人做的判断。Geist 的弹层与 Fieldset 操作条都是这个方向——取消在左，
+            主动作靠 margin-left:auto 推到最右（vercel-geist-fieldset-scroller-empty-state.md）。 */
+         const actions=`<button class="reject" data-review-status="rejected"${locked?' disabled':''}>拒绝</button><button class="skip" data-review-status="skipped"${locked?' disabled':''}>跳过</button><button class="approve" data-review-status="approved"${canApprove&&!locked?'':' disabled'}>${approveLabel}</button><span class="reviewstate" aria-live="polite"></span>`;
          return `<fieldset class="reviewitem" data-geist-fieldset data-review-key="${esc(key)}" data-decision="${esc(decision)}"><legend class="sr-only">${esc(titleText)}</legend><div class="geist-fieldset-content">${scrollerHtml(body,{className:'reviewcontent',label:`复核：${titleText}`})}</div><footer class="reviewactions geist-fieldset-footer" data-geist-fieldset-footer>${actions}</footer></fieldset>`}).join(''):emptyState('square-check-big','暂无候选','该分类当前没有待人工复核的项目。')}</div></section></div>`;
      wireReviewAssets($('#stats'));
     wireScrollers($('#stats'));
@@ -3877,8 +3901,10 @@ async function openScraping(push=true){
   releaseHoverPreviews();disposeStage(false);enterManagementSurface();
   if(push)route('/scraping');
   const surface=claimSurface('/scraping');
-  showManagementBody({placeholder:pageSkeletonHtml('正在读取采集来源',{cards:true})});
-  $('#manageTitle').textContent='采集来源';
+  /* 占位取共用那一份：这里另写一张时，整页刷新会先画深链启动那张、再画这一张，
+     同一段 shimmer 连放两遍。标题由 paintManageTitle 按 MANAGE_CRUMB_PAGES 认，
+     不在这里再赋一次值。 */
+  showManagementBody({placeholder:managementPlaceholder('/scraping')});
   const ui=await import('/dist/peach-ui.js');
   await ui.mountIsland('scraping',$('#stats'),{toast},{isCurrent:()=>surfaceCurrent(surface)});
 }
@@ -4946,7 +4972,7 @@ function followCredentialRow(row){
         :row.fields.includes(name)?'已保存，留空表示不改':'未填写'}"></label>`).join('');
   const body=row.requirement==='none'?''
     :row.requirement==='blocked'?`<p>${esc(row.why)}</p>`
-    :`<p>${esc(row.why)}${row.where?` <a href="${esc(row.where)}" target="_blank" rel="noreferrer noopener">去取</a>`:''}</p>
+    :`<p>${esc(row.why)}${row.where?` <a class="fcredget" href="${esc(row.where)}" target="_blank" rel="noreferrer noopener">去取${icon('external-link')}</a>`:''}</p>
       ${row.howto?`<p>${esc(row.howto)}</p>`:''}
       <form class="fcredform" data-cred-form="${esc(row.provider)}">${fields}
         <div class="fcredactions"><button type="submit">保存</button>
@@ -6742,13 +6768,17 @@ const MANAGE_CRUMB_PAGES={
   '/quality-goals':'高清版',
   '/scraping':'采集来源',
 };
+//: 数据管理这一支里正文是 812px 窄列的页面，标题与面包屑要跟着居中。
+const CENTERED_CLEANUP_PAGES=new Set(['/data-cleanup','/scraping']);
 function paintManageTitle(){
   const current=manageSection(),el=$('#manageTitle');
   if(!el)return;
   document.body.classList.toggle('insight-layout',current==='stats'||current==='taste');
-  /* 812px 居中是数据管理 hub 自己的窄列宽度（.cleanuppage）。它下面的垃圾文件、
-     重复文件正文都是全宽网格，跟着居中就是标题在宽屏上凭空左缩一截、跟内容对不齐。 */
-  document.body.classList.toggle('cleanup-layout',current==='cleanup'&&decodeURIComponent(location.pathname)==='/data-cleanup');
+  /* 812px 居中跟着正文走，不跟着 section 走。数据管理 hub（.cleanuppage）和采集来源
+     （.scraping-page）的正文都是这个宽度的窄列，标题不居中就比正文左出去一截；同一个
+     section 下的垃圾文件、重复文件正文是全宽网格，跟着居中反而对不齐。所以判据是
+     「这条路径的正文是不是窄列」，列在下面这张表里。 */
+  document.body.classList.toggle('cleanup-layout',CENTERED_CLEANUP_PAGES.has(decodeURIComponent(location.pathname)));
   document.body.classList.toggle('follow-manage-layout',decodeURIComponent(location.pathname)==='/follow-manage');
   document.body.classList.toggle('configuration-layout',current==='configuration');
   const entry=MANAGE_SECTIONS.find(([k])=>k===current);

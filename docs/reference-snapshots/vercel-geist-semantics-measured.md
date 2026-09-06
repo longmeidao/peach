@@ -385,6 +385,15 @@ Peach 的两列侧栏导航按上表对齐：`.edge button` 与 `.dnav button` �
 - 顶栏与窄栏是有意与 Vercel 分开的一处：Vercel 的页头和页面底同色、不浮起，Peach 有一条
   从上贯到底的窄栏，两条一起留在 `--ground` 才不会在左上角撞出两种白。
 - 按钮次级档填 `--ground` 而不是透明，悬停抬到 `--surface`；禁用落到 `--sunk`。
+- 动作按钮一律 `border:0`，两档只靠填充分：主动作 `--ink` 实底、次级 `--ground` 一块亮面。
+  描边留给输入类控件和「点开会出一张面板」的触发器：`.gselectfield`、来源筛选的
+  `[data-srcfilter-toggle]`、排序方向的 `.fmanagedir` 保留 1px `--field-ring`，
+  悬停走 `--field-ring-hover`、展开走 `--field-ring-focus` 加 4px 辉光。
+- 危险档静止态就是实底红 `--drop` 加白字，悬停把同一块红压深 18%：与 Geist 的 error
+  变体（`rgb(217,48,54)` 实底白字）同构，站内只有 01-base 那一份定义。
+- 选中面 `--picked` 取 `--inset`：浅色 `#EBEBEB`（Geist 的 gray-200）、深色 9% 白。
+  判据是「比脚下那张面往下压一档」，与实测 Tabs 的 `bg-gray-200` 一致；站在 `--ground`
+  上的那一类控件（顶栏、窄栏、抽屉、浮层菜单）例外，选中走 `--hover` 加 `--ink` 字色。
 - 滚动条不写任何自定义样式，交给 `html` 上的 `color-scheme`。
 
 ## 2026-09-05 实测 vercel.com/<team>/~/deployments 的筛选行

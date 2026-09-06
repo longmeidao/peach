@@ -277,6 +277,7 @@ const OVERLAY_SCROLLERS=[
   '.settingsscroll','.sidecontent','.tagpickbody','.mixlist','.playlistpicklist','.playerstats',
   '.vjs-peach-settings-menu','.geist-scroller-container','.metricstrip','.tastesummaries',
   '.insighttabs','.insightstorage','.skeletondashstrip','.followpagination','.linktablewrap',
+  '.reviewtabs','.junkfilters',
 ].join(',');
 
 /**
