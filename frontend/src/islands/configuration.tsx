@@ -344,13 +344,17 @@ export function Configuration({ receipt, data, error }: ConfigurationProps & Sta
   }
   return (
     <div class="configpage">
+      {data.startup ? <h2 class="configgroup">通用</h2> : null}
       {data.startup ? <StartupSettings startup={data.startup} receipt={receipt} /> : null}
+      <h2 class="configgroup">媒体</h2>
       {data.editable
         ? <ConfigurationForm data={data} receipt={receipt} />
         : <Html html={noteHtml(data.notice, { variant: 'secondary', label: '只读' })} />}
       <MountStatus data={data} />
+      {data.peach_proxy || data.access ? <h2 class="configgroup">网络与访问</h2> : null}
       {data.peach_proxy ? <PeachProxy initial={data.peach_proxy} receipt={receipt} /> : null}
       {data.access ? <AccessSettings initial={data.access} receipt={receipt} /> : null}
+      <h2 class="configgroup">更新与维护</h2>
       {data.updates ? <ReleaseUpdates initial={data.updates} initialJob={data.update_job} /> : null}
       <Facts facts={data.facts} />
       {data.uninstall ? <UninstallSettings uninstall={data.uninstall} /> : null}

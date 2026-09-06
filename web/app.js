@@ -3090,7 +3090,7 @@ async function wireLinkManager(){
 function wirePruneProgress(){
   return wireOperationProgress({host:$('#link-manager'),path:'/api/links/prune',key:'peach-link-prune-job',title:'正在重验并删除失效链接…',
     busy:running=>{const button=$('#linkPrune');if(button){setActionBusy(button,running);if(!running)button.textContent='重试删除失效链接'}},
-    complete:out=>{$('#linkCheckResult').innerHTML=noteHtml(`已删除 ${out.removed} 条；保留 ${out.recovered} 条恢复的链接。`,{label:'完成'})}});
+    complete:out=>{$('#linkCheckResult').innerHTML=noteHtml(`已删除 ${out.removed} 条；保留 ${out.recovered} 条未确认失效的链接。`,{label:'完成'})}});
 }
 function resourceSyncMarkup(){
   return `<section class="resourcesync" id="resource-sync" aria-labelledby="resourceSyncTitle">
@@ -3121,7 +3121,7 @@ async function wireResourceSync(){
       <div class="resourcecache"><div><span>孤立缓存</span><b>${cache.files.toLocaleString()}</b><small>${fmtSize(cache.bytes||0)}</small></div>
       <div><span>待同步</span><b>${Number(payload.missing||0).toLocaleString()} 项</b></div></div>
       ${hasChanges?noteHtml(`将把 ${payload.missing||0} 项移入回收站，并删除 ${cache.files||0} 个可重建缓存。`,{variant:'warning',label:'同步影响'}):''}
-      <div class="resourceapplyrow">${hasChanges?`<button class="resourceaction" type="button" id="resourceApply">同步并清理</button>`:
+      <div class="resourceapplyrow">${hasChanges?`<button class="resourceaction warning" type="button" id="resourceApply">同步并清理</button>`:
         '<p class="resourcesyncok">本地数据库与已挂载网盘一致，没有孤立缓存。</p>'}</div></div>`;
     $('#resourceApply')?.addEventListener('click',async event=>{
       const button=event.currentTarget;

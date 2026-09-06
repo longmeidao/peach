@@ -34,7 +34,7 @@ class DesktopSettingsTests(unittest.TestCase):
         self.assertIn('data-fieldset-type="error"', links)
         self.assertIn('data-fieldset-type="warning"', sync)
         self.assertIn("variant:'warning',label:'同步影响'", sync)
-        self.assertIn('class="resourceaction" type="button" id="resourceApply"', sync)
+        self.assertIn('class="resourceaction warning" type="button" id="resourceApply"', sync)
         self.assertNotIn('class="resourceaction resourcedanger" type="button" id="resourceApply"', sync)
         self.assertIn('cleanupemptyfolders" data-geist-fieldset data-fieldset-type="error"', app)
 

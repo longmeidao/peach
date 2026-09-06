@@ -3,6 +3,12 @@
    底部操作条 --fieldset-bar-h、左说明右动作。 */
 .configuration-layout .managetitle,.configuration-layout .pagelede{width:min(812px,100%);margin-left:auto;margin-right:auto}
 .configpage{width:min(812px,100%);margin:0 auto;display:grid;gap:20px}
+.configgroup{margin:16px 0 0;font-size:var(--fs-lg);font-weight:600}
+.configgroup:first-child{margin-top:0}
+.resourceapplyrow>p{margin-right:auto;text-align:left}
+.resourceaction.warning{background:var(--meter);border-color:var(--meter);color:light-dark(var(--ink),var(--ground))}
+.resourceaction.warning:hover:not(:disabled){background:color-mix(in srgb,var(--meter) 88%,#fff);border-color:var(--meter);color:light-dark(var(--ink),var(--ground))}
+.resourceaction.warning:disabled{background:var(--surface);border-color:var(--line);color:var(--muted)}
 .configpage .geist-button{min-height:var(--control-h)}
 .configfieldset{display:flex;flex-direction:column;min-width:0;margin:0;padding:0;overflow:hidden;
   border:1px solid var(--line);border-radius:var(--control-radius);background:var(--ground)}

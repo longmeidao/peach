@@ -13,7 +13,7 @@
 - Error Fieldset 根带 `data-fieldset-type="error"`、红色 400 边框；正文使用背景 100；footer 使用红色 100 底、红色 400 顶边、红色 900 文字。危险按钮为实底，整卡并非全铺深红。
 - Select 标签在上方，`mb-2` 对应 8px；原生选择器 `w-full` 跟随容器，文字截断、右侧留箭头位置。规范没有要求统一的固定像素宽度。
 - Collapse 文档明确要求开合过渡。Peach 复用 `wireCollapse` 的高度与箭头 200ms `ease-in-out`、`aria-expanded`、`aria-controls` 和关闭时 `inert`。
-- [Vercel General settings](https://vercel.com/docs/project-configuration/general-settings) 将通用设置作为独立类别。分类适合大量设置；Peach 当前采用按用途排列的 Fieldset，不再在同页叠加重复分类标题。
+- [Vercel General settings](https://vercel.com/docs/project-configuration/general-settings) 将通用设置作为独立类别。Peach 使用通用、媒体、网络与访问、更新与维护四组标题，组内使用 Fieldset，卸载区放在末尾。
 
 ## Peach 采用与差异
 
@@ -33,10 +33,12 @@
 | --- | --- | --- |
 | 卸载、删除空文件夹、删除已失效链接 | 红色区域及按钮 | 删除程序、目录或记录，应用内无完整恢复入口 |
 | 永久删除、清空回收站 | 保持已有红色按钮 | 永久删除媒体与账本记录 |
-| 网盘差异同步、清理孤立缓存 | 黄色区域与后果 Note，动作按钮中性 | 缺失条目进入回收站；缓存可重建 |
+| 网盘差异同步、清理孤立缓存 | 黄色区域、后果 Note 与警告按钮 | 缺失条目进入回收站；缓存可重建 |
 | 关闭访问密码 | 选中后黄色区域与访问范围 Note | 改变访问条件，保存前说明后果 |
 | 扫描、检查、挂载、浏览、恢复、选择媒体路径 | 中性 | 读取、导航、恢复或可撤销配置 |
 | 垃圾与重复文件移入回收站 | 保持可恢复操作及确认 | 不等同永久删除 |
 | 删除播放列表、取消关注、清除来源凭据 | 保持既有危险按钮和作用范围确认 | 删除所选集合、订阅或凭据，不按存储来源着色 |
 
 危险区域共用 `data-fieldset-type` 选择器，置于基础 Fieldset 规则之后；浏览器验收须检查实际底栏颜色，源代码包含红色声明不能证明层叠结果。
+
+警告按钮复用 Geist Warning 的琥珀底、深色字（`vercel-geist-semantics-measured.md`）；底栏说明左对齐、动作靠右。风险预览须加载正式 SVG 图标集，Note 图标引用必须能解析。失效链接重验的结果在链接管理原位置显示，保留计数包含恢复和暂时无法确认失效的链接。

@@ -1443,10 +1443,18 @@ function _t({ receipt: e, data: t, error: n }) {
 	}) : /* @__PURE__ */ K("div", {
 		class: "configpage",
 		children: [
+			t.startup ? /* @__PURE__ */ K("h2", {
+				class: "configgroup",
+				children: "通用"
+			}) : null,
 			t.startup ? /* @__PURE__ */ K(at, {
 				startup: t.startup,
 				receipt: e
 			}) : null,
+			/* @__PURE__ */ K("h2", {
+				class: "configgroup",
+				children: "媒体"
+			}),
 			t.editable ? /* @__PURE__ */ K(gt, {
 				data: t,
 				receipt: e
@@ -1455,6 +1463,10 @@ function _t({ receipt: e, data: t, error: n }) {
 				label: "只读"
 			}) }),
 			/* @__PURE__ */ K(mt, { data: t }),
+			t.peach_proxy || t.access ? /* @__PURE__ */ K("h2", {
+				class: "configgroup",
+				children: "网络与访问"
+			}) : null,
 			t.peach_proxy ? /* @__PURE__ */ K(nt, {
 				initial: t.peach_proxy,
 				receipt: e
@@ -1463,6 +1475,10 @@ function _t({ receipt: e, data: t, error: n }) {
 				initial: t.access,
 				receipt: e
 			}) : null,
+			/* @__PURE__ */ K("h2", {
+				class: "configgroup",
+				children: "更新与维护"
+			}),
 			t.updates ? /* @__PURE__ */ K(tt, {
 				initial: t.updates,
 				initialJob: t.update_job
