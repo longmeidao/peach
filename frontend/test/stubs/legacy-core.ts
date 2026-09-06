@@ -3,6 +3,8 @@
  * 真实实现由 Peach 在浏览器里提供，node 里不存在。这里照抄它的**行为**而不是引用它：
  * 断言要能说明「island 用的是遗留层的格式化口径」，所以哨兵值（时长 0／负数 → `—`）
  * 必须一起复制过来，否则测试会放过一个把 `-1` 画成 `0:-1` 的回归。 */
+// @ts-expect-error 测试直接复用正式错误映射。
+export {requestErrorMessage} from '../../../web/js/core.js';
 export const LOC: Record<string, string> = {
   local: '本地',
   '115': '115',

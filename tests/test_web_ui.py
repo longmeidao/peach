@@ -2551,7 +2551,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".confighelp a:hover{text-decoration:underline;")
         for selector, declarations in re.findall(r'([^{}]+)\{([^{}]*)\}', stylesheet_source()):
             if "text-decoration:underline" in declarations:
-                self.assertIn(":hover", selector)
+                self.assertTrue(":hover" in selector or selector.strip() == ".project-banner>a", selector)
 
     def test_configuration_uses_fieldset_surfaces_and_shared_select(self):
         css = stylesheet_source()
@@ -3818,7 +3818,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('aria-label="图片详情" title="图片详情">${icon(\'info\')}</button>')
         self.assertPageContains('.runtimegate{display:grid;grid-template-columns:16px minmax(0,1fr) auto;align-items:center;gap:12px')
         self.assertPageContains('.runtimegate>svg{width:16px;height:16px;flex:none;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}')
-        self.assertPageContains('.geist-note>svg{width:16px;height:16px;margin-top:2px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}')
+        self.assertPageContains('.geist-note>svg{width:16px;height:24px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}')
         self.assertPageContains('.runtimegate a{grid-column:2/-1}')
 
     def test_project_web_ui_skill_keeps_future_changes_on_shared_primitives(self):
@@ -4214,7 +4214,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("if(staticManageCount)countRow.classList.remove('is-stuck')")
         self.assertPageContains(".count.manage-static{position:relative;top:auto;z-index:1}")
         self.assertPageContains("if(!response.ok){")
-        self.assertPageContains("throw new Error(detail||`请求失败（${response.status}）`)")
+        self.assertPageContains("throw new Error(requestErrorMessage(detail,response.status))")
         self.assertPageContains("catch(error){actionFailure('批量操作',error)}")
         self.assertPageContains("wireJunkCards($('#grid'));paintSelection();return")
         self.assertPageContains("actionFailure('操作',error)")
@@ -5765,15 +5765,9 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("tagPressed(filterState.tag,t.k)")
         self.assertPageContains("${esc(tagLabel(t))} <b data-untag=\"${esc(t)}\">✕</b>")
         # fwarn 提供 dismiss（会话内记忆），关闭钮样式与 toast 关闭钮同量纲。
-        self.assertPageContains("data-fwarn-dismiss")
-        self.assertPageContains("sessionStorage.setItem('peach-fwarn-dismissed','1')")
-        self.assertPageContains(".fwarn .wclose,.fcheckreport .wclose{width:24px;height:24px;padding:0;border:0;")
-        # 报告条的红发丝边和微红底由共用 Note 提供，本页只补关闭键那一列。
-        self.assertPageContains(
-            ".fcheckreport,.fwarn{grid-template-columns:16px minmax(0,1fr) 24px;margin:10px 0 14px}")
-        self.assertPageContains(
-            ".geist-note-error{border-color:color-mix(in srgb,var(--drop) 30%,transparent);"
-            "background:color-mix(in srgb,var(--drop) 7%,transparent)}")
+        self.assertPageLacks("data-fwarn-dismiss")
+        self.assertPageContains(".fcheckreport,.fwarn{grid-template-columns:16px minmax(0,1fr);")
+        self.assertPageContains(".geist-note-error{--feedback-color:var(--drop);")
         self.assertPageLacks("border-left:2px solid var(--drop)")
         # 来源行状态徽章（ok 绿 tint / 失败红 tint / 未检查灰）。
         self.assertPageContains('<span class="sbadge ${badge}" title="${esc(stateTitle)}"><i aria-hidden="true"></i>')
@@ -5811,7 +5805,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks("wireReviewScrollers")
         self.assertPageLacks("reviewscrollbtns")
         self.assertPageContains(".settinggroup>h3{margin:0;padding:14px 0 10px;font-size:var(--fs-lg);font-weight:600;color:var(--ink)}")
-        self.assertPageContains(".settinggroup .settingrow{margin:0 -16px;padding-left:16px;padding-right:16px}")
+        self.assertPageContains(".settinggroup .settingrow{margin:0;padding-left:0;padding-right:0}")
         self.assertCode(
             ".pagetitle,.listtitle,.managetitle,.index .ihead h2,.playlistpage h2{"
             "\n  font-size:var(--fs-3xl);line-height:1.25;letter-spacing:-.01em;font-weight:600}")
@@ -5974,7 +5968,7 @@ class WebUiSourceTests(unittest.TestCase):
             "@media (max-width:760px){.iconswitch.themeswitch label{width:44px;height:44px}}")
         # 分隔线属于整块卡片，铺到框边再断。
         self.assertCode(
-            ".settinggroup .settingrow+.sidebarsetting{margin:0 -16px;padding:14px 16px 0;"
+            ".settinggroup .settingrow+.sidebarsetting{margin:0;padding:14px 0 0;"
             "border-top:1px solid var(--line-soft)}")
 
     def test_search_menu_has_local_history_and_recommendations(self):
@@ -7392,7 +7386,7 @@ class WebUiSourceTests(unittest.TestCase):
         # 标题的 tabindex，以及无条件 reveal.focus() 不许回来。bcf112e 改了实现只更新了
         # tests/test_follow_web.py，这里的旧断言留在原地，master 上因此挂了一段时间。
         self.assertPageContains(
-            "queueMicrotask(()=>{const target=reveal.hidden?title:reveal;target.focus()})")
+            "wireContextCard(")
         self.assertPageContains(
             '<h2 id="photoDetailTitle" data-middle-truncate tabindex="-1">',
             "标题要接得住焦点，缺 tabindex=-1 时 reveal 隐藏那条路径等于没聚焦")

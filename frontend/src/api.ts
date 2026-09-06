@@ -6,13 +6,15 @@
  * 迟到的响应不能再往新页面上写东西。 */
 
 /** 服务端明确回了非 2xx。`status` 留给调用方区分 401／409／404 这类需要不同处置的情况。 */
+import {requestErrorMessage} from '@peach/legacy/core';
+
 export class ApiError extends Error {
   readonly status: number;
   /** 响应体原样。表单校验那种 400 会在 `errors` 里按字段给原因，页面要把它们写回原位。 */
   readonly body: unknown;
 
   constructor(message: string, status: number, body: unknown = null) {
-    super(message);
+    super(requestErrorMessage(message,status));
     this.name = 'ApiError';
     this.status = status;
     this.body = body;
@@ -33,8 +35,7 @@ const reasonOf = (payload: unknown): string => {
  *
  * 一次取数失败会同时落到两处——`mountIsland` 的首屏状态和共享 store 的错误态——
  * 两边显示的必须是同一句话，否则同一个失败会因为落在哪儿而说法不同。 */
-export const errorMessage = (cause: unknown): string =>
-  cause instanceof Error ? cause.message : String(cause);
+export const errorMessage = (cause: unknown): string => requestErrorMessage(cause);
 
 /** GET 一个 `/api/...` 契约端点。`signal` 中止时抛出 `AbortError`，调用方据此放弃写 DOM。 */
 export async function apiGet<T>(path: string, signal?: AbortSignal): Promise<T> {

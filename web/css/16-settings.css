@@ -40,7 +40,7 @@ body.settings-open{overflow:hidden}
 .settinggroup{margin:16px 0 0;border:1px solid var(--field-ring);border-radius:var(--floating-radius);
   background:var(--ground);padding:0 16px 12px}
 .settinggroup>h3{margin:0;padding:14px 0 10px;font-size:var(--fs-lg);font-weight:600;color:var(--ink)}
-.settinggroup .settingrow{margin:0 -16px;padding-left:16px;padding-right:16px}
+.settinggroup .settingrow{margin:0;padding-left:0;padding-right:0}
 /* 布尔开关用 Geist Toggle 而不是原生复选框（取证 vercel-geist-semantics-measured.md）：
    中号 36×20 轨道 + 17px 圆点，关 = 灰轨道圆点靠左，开 = 主题蓝圆点靠右；
    Geist 的「Switch」是分段选择器（radio 语义），布尔开关的正确控件叫 Toggle。 */
@@ -67,7 +67,7 @@ body.settings-open{overflow:hidden}
 @media (max-width:760px){.iconswitch.themeswitch label{width:44px;height:44px}}
 /* 同一组里排在设置行后面的分区自带分隔线。线属于整块卡片，所以和 .settingrow 一样
    用负边距铺到框边，不在正文宽度里断一截。 */
-.settinggroup .settingrow+.sidebarsetting{margin:0 -16px;padding:14px 16px 0;
+.settinggroup .settingrow+.sidebarsetting{margin:0;padding:14px 0 0;
   border-top:1px solid var(--line-soft)}
 .sidebarsetting{display:grid;gap:12px;padding:0}.sidebarsetting>span b,.sidebarsetting>span small{display:block}.sidebarsetting>span small{margin-top:3px;color:var(--muted);line-height:1.45}.sidebarorder{display:grid;gap:6px}/* 这一列的行、下面那个下拉和「添加」按钮同高：它们是同一张清单的三段，差几像素就
    看得出是两拨控件。34px 的图标钮加上下 1px 内边距和 1px 边框正好是 --control-h。 */

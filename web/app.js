@@ -11,9 +11,9 @@ import { javImageKind, normalizeJavImage, normalizeJavLayout, normalizeJavPrefer
 import {
   attachOverlayScrollbar, breadcrumbHtml, checkboxHtml, closeAnchoredMenu, confirmModal, emptyStateHtml, fieldsetTitle,
   fillSkeletonTier, fitSkeleton, iconSwitchHtml, indexSkeletonHtml, loadingDotsHtml,
-  mediaViewButtonsHtml, noteHtml, progressHtml, scrollerHtml, searchInputHtml, selectFieldHtml,
+  mediaViewButtonsHtml, noteHtml, progressHtml, gaugeHtml, scrollerHtml, searchInputHtml, selectFieldHtml,
   setActionBusy, skeletonHtml, spinnerHtml, wireAnchoredMenu, wireBusyActions, wireCollapse,
-  wireIconSwitch, wireOverlayScrollbars, wireScrollers, wireSelectField,
+  wireIconSwitch, wireOverlayScrollbars, wireScrollers, wireSelectField, wireContextCard,
 } from './js/ui-components.js';
 
 initMiddleTruncate(document);
@@ -2945,7 +2945,7 @@ async function openStats(push=true){
     `<div class="insightempty">${emptyStateHtml('tags','还没有标签来源','刮削或手动打标之后，这里会显示每个来源覆盖了多少视频。')}</div>`);
   const storageTable=(d.storage_volumes||[]).length?`<table class="insightdatatable"><thead><tr><th>位置</th><th>已用</th><th>可用</th><th>使用率</th></tr></thead><tbody>${(d.storage_volumes||[]).map(row=>{
     const measured=row.total!=null, usedPct=measured?pct(row.used,row.total):0;
-    return `<tr><th scope="row"><span>${esc(row.label)}</span><small>${row.root?esc(row.root):'未映射'}</small></th><td>${measured?gb(row.used):'—'}</td><td>${measured?gb(row.free):'—'}</td><td>${measured?usedPct+'%':(row.online?'容量未取得':'离线')}</td></tr>`}).join('')}</tbody></table>`
+    return `<tr><th scope="row"><span>${esc(row.label)}</span><small>${row.root?esc(row.root):'未映射'}</small></th><td>${measured?gb(row.used):'—'}</td><td>${measured?gb(row.free):'—'}</td><td>${measured?gaugeHtml(`${row.label}空间使用率`,row.used,row.total)+usedPct+'%':(row.online?'容量未取得':'离线')}</td></tr>`}).join('')}</tbody></table>`
     :emptyStateHtml('hard-drive','还没有存储来源','添加媒体文件夹后，这里会显示存储空间。');
   $('#stats').innerHTML=`
     <div class="insightpage statsdashboard" data-stats-dashboard>
@@ -3102,7 +3102,7 @@ async function wireLinkManager(){
 function wirePruneProgress(){
   return wireOperationProgress({host:$('#link-manager'),path:'/api/links/prune',key:'peach-link-prune-job',title:'正在重验并删除失效链接…',
     busy:running=>{const button=$('#linkPrune');if(button){setActionBusy(button,running);if(!running)button.textContent='重试删除失效链接'}},
-    complete:out=>{$('#linkCheckResult').innerHTML=noteHtml(`已删除 ${out.removed} 条；保留 ${out.recovered} 条未确认失效的链接。`,{label:'完成'})}});
+    complete:out=>{$('#linkCheckResult').innerHTML=noteHtml(`已删除 ${out.removed} 条；保留 ${out.recovered} 条未确认失效的链接。`,{variant:'success',label:'完成'})}});
 }
 function resourceSyncMarkup(){
   return `<section class="resourcesync" id="resource-sync" aria-labelledby="resourceSyncTitle">
@@ -3181,7 +3181,7 @@ async function wireResourceSync(){
 function wireResourceApplyProgress(){
   return wireOperationProgress({host:$('#resource-sync'),path:'/api/resource-sync/apply',key:'peach-resource-apply-job',title:'正在核对来源、同步并清理缓存…',
     busy:running=>{const button=$('#resourceApply');if(button){setActionBusy(button,running);if(!running)button.textContent='同步并清理'}},
-    complete:out=>{$('#resourceSyncResult').innerHTML=noteHtml(`已把 ${out.moved_to_trash} 项移入回收站，清理 ${out.cache_removed} 个缓存，释放 ${fmtSize(out.bytes_reclaimed||0)}。`,{label:'完成'})}});
+    complete:out=>{$('#resourceSyncResult').innerHTML=noteHtml(`已把 ${out.moved_to_trash} 项移入回收站，清理 ${out.cache_removed} 个缓存，释放 ${fmtSize(out.bytes_reclaimed||0)}。`,{variant:'success',label:'完成'})}});
 }
 /* 旧直达 URL 仍然可用，落点跟着面板一起搬到数据管理。 */
 async function openResourceSync(push=true){
@@ -4503,19 +4503,17 @@ function followCheckFailNote(report){
   const exhausted=rows.filter(r=>r.exhausted);
   const evidence=rows.filter(r=>r.evidence_error);
   if(!failed.length&&!evidence.length&&!exhausted.length)return '';
-  const dismiss=`<button type="button" class="wclose" data-follow-report-dismiss
-    aria-label="关闭检查结果">${icon('x')}</button>`;
   const ended=exhausted.length?`<div class="geist-note geist-note-secondary fcheckreport" role="note">
     ${icon('info')}<div><p><b>${exhausted.length} 个来源没有更多内容</b></p>
     ${exhausted.map(row=>`<p class="fchecknote">${esc([row.provider_label||row.provider,row.ref]
-      .filter(Boolean).join(' '))}：没有更多历史内容</p>`).join('')}</div>${dismiss}</div>`:'';
+      .filter(Boolean).join(' '))}：没有更多历史内容</p>`).join('')}</div></div>`:'';
   const errors=failed.length||evidence.length?`<div class="geist-note geist-note-error fcheckreport" role="alert">${icon('alert')}<div>
     ${failed.length?`<p><b>${failed.length} 个来源检查失败</b></p>`:''}
     ${failed.map(row=>`<p class="fcheckfail"><strong>${esc(row.provider_label||row.provider||'')}</strong>
       <strong>${esc(row.author||row.label||row.ref||'')}</strong>${row.provider?'：':''}${esc(row.error||'未说明原因')}</p>`).join('')}
     ${evidence.length?`<p class="fchecknote">候选已入库，但这一次的原始响应没有留档：${
       esc(evidence[0].evidence_error)}</p>`:''}
-  </div>${dismiss}</div>`:'';
+  </div></div>`:'';
   return `<div class="fcheckreports">${ended}${errors}</div>`;
 }
 
@@ -4617,8 +4615,8 @@ function renderFollow(){
         topTags.map(([key,label,n])=>
           `<button class="pill r34-${esc(groupTagType(groups,key))}" data-follow-tag="${esc(key)}" aria-pressed="${followTags.has(key)}">${
             esc(label)}${n?` <span class="n mono">${n}</span>`:''}</button>`).join(''):''}</div>
-    ${broken.length&&!sessionStorage.getItem('peach-fwarn-dismissed')
-      ?`<div class="geist-note geist-note-error fwarn" role="alert">${icon('alert')}<span>${broken.length} 个来源上次检查失败，去<button class="flink" data-follow-manage>管理关注</button>看原因。</span><button class="wclose" data-fwarn-dismiss title="本次会话不再显示" aria-label="关闭提醒">${icon('x')}</button></div>`:''}
+    ${broken.length
+      ?`<div class="geist-note geist-note-error fwarn" role="alert">${icon('alert')}<span>${broken.length} 个来源上次检查失败，去<button class="flink" data-follow-manage>管理关注</button>看原因。</span></div>`:''}
     <div class="followlist${followMediaView==='images'?' followphotowall':''}">${visible.length?visible.map(group=>{
       const source=sourceOf(group),siblings=source&&authorSources.get(source.author_key)||[];
       return followCard(group,siblings)}).join('')
@@ -4660,8 +4658,7 @@ function renderFollow(){
     applyFollowView()});
   $('#stats').querySelectorAll('[data-follow-manage]').forEach(button=>
     button.onclick=()=>openFollowManage());
-  $('#stats').querySelectorAll('[data-fwarn-dismiss]').forEach(button=>button.onclick=()=>{
-    sessionStorage.setItem('peach-fwarn-dismissed','1');renderFollow()});
+
 }
 
 /* 往回抓到哪儿了。不说的话，用户点一次只看到列表变长一点，不知道自己走到第几页，
@@ -4719,7 +4716,9 @@ async function wireOperationProgress({host,path,key,title,busy,complete}){
     storageKey:key,title,busy,watchIdle:false,complete:report=>{
       if(report.status==='failed'){marker.innerHTML=noteHtml(report.error||'任务失败',{variant:'error',label:'任务失败'});return}
       complete(report)},note:text=>noteHtml(text,{label:'任务状态'}),
-    loading:text=>loadingDotsHtml(text),progress:()=>''});
+    loading:text=>loadingDotsHtml(text),
+    container:content=>`<section class="followtask" data-geist-fieldset aria-label="任务进度"><div class="geist-fieldset-content">${content}</div></section>`,
+    progress:(value,max)=>progressHtml(`已处理 ${value} / ${max}`,value,max)});
 }
 function wireTasteProgress(){
   const button=$('#stats').querySelector('[data-taste-refresh]');
@@ -5078,11 +5077,11 @@ function renderFollowManage(credentials){
         <div class="fsechead"><h3>凭据</h3>
           ${needCred.length?`<span class="fmeta warn">${needCred.length} 个待配置</span>`:''}</div>
         <div class="frows">${creds.map(followCredentialRow).join('')}</div>
-        <p class="fdesc"><b>存放位置与权限
+        <div class="fdesc"><b>存放位置与权限
             <button type="button" class="fdescinfo" data-fdesc-tooltip
               aria-label="凭据存放位置说明">${icon('info')}</button></b>
           <span>Windows 上不收紧文件权限</span>
-          <span class="fdescpop" id="follow-credential-tooltip" role="tooltip" hidden>存放在<b>运行 Peach 的那台机器</b>上，不是浏览器所在机器；不进 Git、URL、日志或 ledger。NTFS 的访问控制走 ACL，<code>chmod</code> 在那里没有效果；POSIX 上建成 0600。</span></p>
+          <div class="context-card" id="follow-credential-tooltip" role="dialog" aria-label="凭据存放信息" hidden><h3>凭据存放信息</h3><dl><dt>所在设备</dt><dd>运行 Peach 的电脑</dd><dt>访问权限</dt><dd>由该电脑的文件访问权限控制</dd><dt>其他设备</dt><dd>浏览器不会保存这份凭据文件</dd></dl></div></div>
       </section>
     </div></div>`;
   wireFollowManage(creds);
@@ -5181,30 +5180,7 @@ function wireFollowManage(creds=[]){
   renderFollowSrcFilter(root.querySelector('#followSrcFilter'),creds);
   const tooltipTrigger=root.querySelector('[data-fdesc-tooltip]');
   const tooltip=root.querySelector('#follow-credential-tooltip');
-  if(tooltipTrigger&&tooltip){
-    let tooltipHovered=false,tooltipFocused=false;
-    const hideTooltip=()=>{
-      tooltip.hidden=true;tooltipTrigger.removeAttribute('aria-describedby');
-      window.removeEventListener('resize',hideTooltip);
-      window.removeEventListener('scroll',hideTooltip,true)};
-    const hideTooltipIfIdle=()=>{if(!tooltipHovered&&!tooltipFocused)hideTooltip()};
-    const showTooltip=()=>{
-      tooltip.hidden=false;tooltipTrigger.setAttribute('aria-describedby',tooltip.id);
-      tooltip.style.left='0px';tooltip.style.top='0px';
-      const anchor=tooltipTrigger.getBoundingClientRect(),box=tooltip.getBoundingClientRect();
-      const left=Math.max(8,Math.min(anchor.left+(anchor.width-box.width)/2,innerWidth-box.width-8));
-      let top=anchor.top-box.height-10;
-      if(top<8)top=Math.min(innerHeight-box.height-8,anchor.bottom+10);
-      tooltip.style.left=left+'px';tooltip.style.top=Math.max(8,top)+'px';
-      window.addEventListener('resize',hideTooltip);
-      window.addEventListener('scroll',hideTooltip,{capture:true,passive:true})};
-    tooltipTrigger.addEventListener('pointerenter',()=>{tooltipHovered=true;showTooltip()});
-    tooltipTrigger.addEventListener('pointerleave',()=>{tooltipHovered=false;hideTooltipIfIdle()});
-    tooltipTrigger.addEventListener('focus',()=>{tooltipFocused=true;showTooltip()});
-    tooltipTrigger.addEventListener('blur',()=>{tooltipFocused=false;hideTooltipIfIdle()});
-    tooltipTrigger.addEventListener('keydown',event=>{
-      if(event.key==='Escape'){tooltipHovered=false;tooltipFocused=false;hideTooltip();tooltipTrigger.blur()}});
-  }
+  if(tooltipTrigger&&tooltip)wireContextCard(tooltipTrigger.closest('.fdesc'),tooltipTrigger,tooltip);
   /* 作者别名和凭据行都走 Geist Collapse，两处同一份实现。凭据行的 `details.fcred`
      必须是 block：flex 行布局接不上 Collapse 的高度过渡。 */
   wireCollapse(root,'details.faliasmanager','follow-alias-collapse');
@@ -5378,8 +5354,8 @@ function wireFollowManage(creds=[]){
   });
   root.querySelectorAll('[data-follow-view]').forEach(button=>
     button.onclick=()=>openFollow());
-  root.querySelectorAll('[data-follow-report-dismiss]').forEach(button=>button.onclick=()=>{
-    followCheckReport=null;root.querySelector('.fcheckreports')?.remove()});
+
+
 }
 
 /* 查找结果先摆出来由人勾选，不自动登记：发现要联网，结果也可能不止一个，
@@ -6209,13 +6185,11 @@ function wirePhotoDetail(box,items,index){
     if(!asset&&image&&!image.complete)image.addEventListener('load',()=>{
       if(painted===at)paint(at)},{once:true});
   };
-  const dismiss=returnFocus=>{panel.hidden=true;toggle.setAttribute('aria-expanded','false');
+  const context=wireContextCard(box,toggle,panel);
+  const dismiss=returnFocus=>{context.hide();toggle.setAttribute('aria-expanded','false');
     if(returnFocus&&document.contains(toggle))toggle.focus()};
   const dismissOutside=target=>{if(panel.hidden||toggle.contains(target)||panel.contains(target))return false;
     dismiss();return true};
-  toggle.onclick=()=>{if(panel.hidden){panel.hidden=false;toggle.setAttribute('aria-expanded','true');
-      queueMicrotask(()=>{const target=reveal.hidden?title:reveal;target.focus()})}
-    else dismiss()};
   reveal.onclick=()=>{if(reveal.dataset.photoReveal)
     revealSource(Number(reveal.dataset.photoReveal),status,{button:reveal})};
   paint(index);return {paint,dismiss,dismissOutside,isOpen:()=>!panel.hidden};
@@ -6224,6 +6198,7 @@ function wirePhotoDetail(box,items,index){
 function closePhotoLightbox(){
   if(!activeLightbox)return;
   document.removeEventListener('keydown',photoLightKeys,true);
+  activeLightbox.detail?.dismiss();
   activeLightbox.resize?.disconnect();
   activeLightbox.main.destroy(true,true);activeLightbox.strip.destroy(true,true);
   activeLightbox.box.remove();activeLightbox=null;

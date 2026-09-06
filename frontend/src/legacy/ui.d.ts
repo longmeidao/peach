@@ -17,7 +17,7 @@ export declare function fieldsetTitle(id: string, title: string): string;
 export declare function badgeHtml(text: string): string;
 export declare function checkboxHtml(inputAttrs?: string): string;
 export declare function loadingDotsHtml(label?: string, options?: { className?: string }): string;
-export declare function progressHtml(label: string, value: number, max?: number): string;
+export declare function progressHtml(label: string, value: number, max?: number, options?:{variant?:'active'|'warning'|'error';stops?:{value:number;label:string}[]}): string;
 export declare function confirmModal(options: {title: string; body: string; confirmLabel: string; cancelLabel?: string; danger?: boolean; onConfirm?: () => Promise<unknown>}): Promise<{confirmed: boolean; result?: unknown}>;
 
 export declare function selectFieldHtml(items: string[][], current: string,
@@ -38,5 +38,8 @@ export declare function noteHtml(
     variant?: 'secondary' | 'warning' | 'error' | 'success';
     label?: string;
     className?: string;
+    size?: 'small' | 'medium';
+    filled?: boolean;
   },
 ): string;
+export declare function projectBannerHtml(message:string,options:{variant?:'gray'|'success'|'warning'|'error';href:string;label:string;value?:number;max?:number}):string;

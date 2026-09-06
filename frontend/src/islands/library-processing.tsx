@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { apiGet, apiSend, errorMessage } from '../api';
-import { fieldsetTitle, loadingDotsHtml, noteHtml, progressHtml, setActionBusy } from '@peach/legacy/ui';
+import { fieldsetTitle, loadingDotsHtml, noteHtml, progressHtml, projectBannerHtml, setActionBusy } from '@peach/legacy/ui';
 import { watchJob } from '../jobs';
 import type { JobState } from '../jobs';
 import type { IslandState } from '../islands';
@@ -57,10 +57,12 @@ export function LibraryProcessing({ data, error, toast, onComplete, mode, monito
   }
   if (mode === 'notice') {
     if (!problem && state.status !== 'running' && state.status !== 'failed') return null;
-    return <div class="library-processing-banner" role="status">
-      <span>{problem || (state.status === 'failed' ? '扫描与资料采集未完成' : `${state.stage || '正在整理馆藏'}${state.total ? ` · ${state.checked || 0} / ${state.total}` : ''}`)}</span>
-      <a class="geist-button" href="/data-cleanup#libraryProcessing">{problem || state.status === 'failed' ? '查看并处理' : '查看进度'}</a>
-    </div>;
+    const message=problem || (state.status === 'failed' ? '扫描与资料采集未完成' : `${state.stage || '正在整理馆藏'}${state.total ? ` · ${state.checked || 0} / ${state.total}` : ''}`);
+    return <div dangerouslySetInnerHTML={{__html:projectBannerHtml(message,{
+      variant:problem || state.status === 'failed' ? 'warning' : 'gray',
+      href:'/data-cleanup#libraryProcessing',label:problem || state.status === 'failed' ? '查看并处理' : '查看进度',
+      value:state.checked || 0,max:state.status === 'running' ? state.total : undefined,
+    })}} />;
   }
   return <>
     <div class="geist-fieldset-content library-processing">

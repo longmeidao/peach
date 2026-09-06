@@ -97,7 +97,8 @@ export function ReleaseUpdates({ initial, initialJob }: { initial: ReleaseState;
       {job.state !== 'idle' ? <div aria-live="polite">
         <p class={job.state === 'error' ? 'configbad' : 'confighelp'}>{job.message}</p>
         {job.state !== 'error' ? <>
-          <div dangerouslySetInnerHTML={{__html:progressHtml(job.state === 'downloading' ? '下载进度' : '安装进度',job.state === 'downloading' ? job.downloaded || 0 : job.progress,job.state === 'downloading' ? job.total || 1 : 100)}} />
+          <div dangerouslySetInnerHTML={{__html:progressHtml('更新准备进度：下载、校验、解压、准备安装',job.progress,100,{stops:[{value:65,label:'下载结束'},{value:67,label:'校验结束'},{value:90,label:'准备安装'}]})}} />
+          <p class="confighelp">下载 → 校验 → 解压 → 准备安装 · {job.message}</p>
           <p class="confighelp">{job.state === 'downloading' && job.total ? `${((job.downloaded || 0)/1048576).toFixed(1)} / ${(job.total/1048576).toFixed(1)} MB` : `${job.progress}%`}</p>
         </> : null}
       </div> : null}
