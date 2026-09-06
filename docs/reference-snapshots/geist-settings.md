@@ -42,3 +42,5 @@
 危险区域共用 `data-fieldset-type` 选择器，置于基础 Fieldset 规则之后；浏览器验收须检查实际底栏颜色，源代码包含红色声明不能证明层叠结果。
 
 警告按钮复用 Geist Warning 的琥珀底、深色字（`vercel-geist-semantics-measured.md`）；底栏说明左对齐、动作靠右。风险预览须加载正式 SVG 图标集，Note 图标引用必须能解析。失效链接重验的结果在链接管理原位置显示，保留计数包含恢复和暂时无法确认失效的链接。
+
+2026-09-06 复核 Button 当前源码：HTML SHA-256 `3a4f9729c54e104507b032eaa14ef94cfb757b05c7420749f66811c6bc41d409`。CSS `328y7_b581oob.css` SHA-256 `3034e6739ae0e19814df6e53ba7febefe56cf986ed0f1c3534df9aee1f751b87`，`.geist-new-warning-fill` 明确为 `--themed-fg:#0a0a0a`，黄色按钮保留深色字。Peach 分组标题采用已有 24px 档、Fieldset 标题 20px 档；危险底栏说明使用危险色，正文仍保持正常阅读色。

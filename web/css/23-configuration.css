@@ -3,7 +3,7 @@
    底部操作条 --fieldset-bar-h、左说明右动作。 */
 .configuration-layout .managetitle,.configuration-layout .pagelede{width:min(812px,100%);margin-left:auto;margin-right:auto}
 .configpage{width:min(812px,100%);margin:0 auto;display:grid;gap:20px}
-.configgroup{margin:16px 0 0;font-size:var(--fs-lg);font-weight:600}
+.configgroup{margin:16px 0 0;font-size:var(--fs-2xl);line-height:1.3;font-weight:600}
 .configgroup:first-child{margin-top:0}
 .resourceapplyrow>p{margin-right:auto;text-align:left}
 .resourceaction.warning{background:var(--meter);border-color:var(--meter);color:light-dark(var(--ink),var(--ground))}
@@ -72,6 +72,7 @@
 [data-fieldset-type="warning"]{border-color:var(--meter)}
 .resourcepanel>.geist-note{margin:16px 20px}
 [data-fieldset-type="error"]>:is(.geist-fieldset-footer,.resourceapplyrow){border-top-color:var(--drop);background:color-mix(in srgb,var(--drop) 7%,var(--ground))}
+[data-fieldset-type="error"]>:is(.geist-fieldset-footer,.resourceapplyrow)>p{color:var(--drop)}
 [data-fieldset-type="warning"]>:is(.geist-fieldset-footer,.resourceapplyrow){border-top-color:var(--meter);background:color-mix(in srgb,var(--meter) 7%,var(--ground))}
 [data-fieldset-type="error"] button:is(.danger,.resourcedanger){background:var(--drop);border-color:var(--drop);color:#fff}
 [data-fieldset-type="error"] button:is(.danger,.resourcedanger):hover:not(:disabled){background:color-mix(in srgb,var(--drop) 88%,#000);border-color:var(--drop);color:#fff}
