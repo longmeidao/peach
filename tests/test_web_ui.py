@@ -1670,7 +1670,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("if(!item.id)return `<span class=\"idcell")
         self.assertPageContains("const creatorList=(refs.creator||[])")
         self.assertPageContains("const seriesList=(refs.series||[])")
-        self.assertPageContains(".idcell:not(.entitylink){cursor:default}")
+        self.assertPageContains(".idcell:not(.entitylink):not(.unownedlink){cursor:default}")
         self.assertPageContains(".idcell.entitylink:hover .idface")
 
     def test_detail_series_is_a_plain_icon_link_not_a_tag_pill(self):
@@ -1992,10 +1992,44 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_missing_person_identity_uses_unassigned_on_cards_and_players(self):
         self.assertPageContains(":{kind:'',name:'未归属'});")
-        self.assertPageContains("const who=(it.performers||[])[0]||it.creator||'未归属';")
         self.assertPageContains("const ownerName=cast.length?cast[0]:(full.creator||'未归属');")
         self.assertPageLacks("it.creator||it.code")
         self.assertPageLacks("full.creator||it.code")
+
+    def test_unassigned_is_a_collection_you_can_open(self):
+        """「未归属」是馆藏里的一类，不是详情页上的一句说明文字。
+
+        4566 部作品没有任何署名人。写成一行「归属　未归属」，标签和值念的是同一个
+        词，读完就没有下一步；写成入口，它和女优、厂牌一样点得开、筛得出、清得掉。
+        """
+        # 详情页：和女优组同一个槽位、同一种版式，不是另起一行说明。
+        self.assertPageContains('<section class="idgroup idgroup-unowned">'
+                                '<h5 class="idlabel">归属</h5>')
+        self.assertPageContains('<button class="idcell unownedlink" type="button" data-open-unowned')
+        self.assertPageContains("const unowned=!castList.length&&!creatorList.length"
+                                "&&!(it.creator||'').trim();")
+        self.assertPageContains("(unowned?unownedGroup")
+        self.assertPageContains('<div class="detailidentity">${identityRows}</div>')
+        # 卡片：署名位上的「未归属」也点得开。
+        self.assertPageContains(':linked?`<button class="who unownedlink" type="button" data-open-unowned>'
+                                '${esc(who)}</button>`')
+        # 三个表面共用一个落点，筛选写在 state.owner 上。
+        self.assertPageContains("function openUnowned(){")
+        self.assertPageContains("resetHomeState();state.owner='none';")
+        self.assertPageContains("const unownedLink=e.target.closest('[data-open-unowned]');")
+        self.assertPageContains("$('#stage').querySelectorAll('[data-open-unowned]')"
+                                ".forEach(b=>b.onclick=()=>openUnowned());")
+        self.assertPageContains("else openUnowned()};")
+        self.assertPageLacks("else if(it.code){state.q=it.code",
+                             "拿番号去搜只能搜回这一条自己，那不是「同类」")
+
+    def test_unassigned_travels_through_url_chip_and_clear_like_any_filter(self):
+        """归类要能被地址栏记住、在筛选条上出现、被「全部清除」清掉。"""
+        self.assertPageContains("const HOME_QUERY_KEYS=['loc','creator','studio','owner',")
+        self.assertPageContains("owner:initialParam('owner')==='none'?'none':'',")
+        self.assertPageContains("if(state.owner==='none')extra.push(['owner','未归属']);")
+        self.assertPageContains("const comboLabel={creator:'创作者',studio:'厂牌',owner:'归属'};")
+        self.assertPageContains("filters.tag='';filters.creator='';filters.studio='';filters.owner=''")
 
     def test_narrow_search_has_a_way_out(self):
         """窄屏展开搜索后必须有退出入口。
@@ -2014,12 +2048,16 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".searchback{display:inline-flex;position:absolute;left:8px;top:8px")
 
     def test_unlinked_identity_does_not_look_clickable(self):
-        """没有实体链接的归属不能长得像链接。
+        """渲染成 `<span>` 的归属不能长得像链接。
 
-        番号、「未归属」这类值没有资料页可去，渲染成 `<span>`；但它和按钮共用
+        队列行整行本身就是 `<button>`，里面嵌不了按钮，署名只能出文字；它和按钮共用
         `.who` 的强调色，看着能点，点下去落到卡片本身、打开的是视频详情。
+        「未归属」不在此列——它有自己的集合可去，出的是 `.who.unownedlink` 按钮。
         """
         self.assertPageContains(".meta span.who{color:var(--ink-2);cursor:default}")
+        self.assertPageContains(".idcell:not(.entitylink):not(.unownedlink){cursor:default}")
+        self.assertPageContains(".entitylink,.unownedlink{border:0;background:none;padding:0;"
+                                "color:var(--tungsten);cursor:pointer;text-decoration:none}")
 
     def test_random_is_the_default_and_each_home_visit_gets_a_fresh_batch(self):
         """每次进入首页换种子，同一次访问的分页继续稳定。"""
@@ -2546,8 +2584,8 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_links_only_use_underlines_on_hover(self):
         """文字链接允许悬停下划线，默认状态保持清爽。"""
-        self.assertPageContains(".entitylink:hover{color:var(--ink);text-decoration:none}")
-        self.assertPageContains(".idcell.entitylink:hover,.mav.entitylink:hover{text-decoration:none}")
+        self.assertPageContains(".entitylink:hover,.unownedlink:hover{color:var(--ink);text-decoration:none}")
+        self.assertPageContains(".idcell.entitylink:hover,.idcell.unownedlink:hover,.mav.entitylink:hover{text-decoration:none}")
         self.assertPageContains(".confighelp a:hover{text-decoration:underline;")
         for selector, declarations in re.findall(r'([^{}]+)\{([^{}]*)\}', stylesheet_source()):
             if "text-decoration:underline" in declarations:
@@ -6955,7 +6993,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("$('#combo').querySelectorAll('[data-untag]')"
                                 ".forEach(b=>b.onclick=()=>toggleTag(b.dataset.untag));")
         self.assertCode("$('#clrAll').onclick=()=>commitContextFilter(filters=>{\n"
-                        "    filters.tag='';filters.creator='';filters.studio=''});")
+                        "    filters.tag='';filters.creator='';filters.studio='';filters.owner=''});")
         # 按下态与表头也读同一份判据，资料页的标签因此和目录一样能叠加。
         self.assertPageContains("tagPressed(filterState.tag,t.k)")
         self.assertPageContains("aria-pressed=\"${tagPressed(filters.tag,x.k)}\"")

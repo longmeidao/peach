@@ -314,8 +314,9 @@ body[data-density="dense"] .junkcard .junkactions button{justify-content:center}
 .javedition.partlabel{color:var(--muted);margin-left:6px}
 .meta .s{display:flex;gap:8px;color:var(--muted);align-items:center;flex-wrap:wrap}
 .meta .who{color:var(--ink-2);min-width:0;max-width:100%;display:inline-block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom}
-/* 没有实体链接的归属只是一段文字：番号、「未归属」这类值没有资料页可去。
-   染成强调色会让人以为能点，点下去却落到卡片本身、打开的是视频详情。 */
+/* 归属渲染成 `<span>` 就是不可点的那一种（队列行整行本身是按钮，里面嵌不了按钮）。
+   染成强调色会让人以为能点，点下去却落到卡片本身、打开的是视频详情。
+   「未归属」不在此列：它有自己的集合可去，出的是 `.who.unownedlink` 按钮。 */
 .meta span.who{color:var(--ink-2);cursor:default}
 .flags{display:flex;gap:3px;margin-left:auto}
 .flags i{width:6px;height:6px;border-radius:0;display:block}

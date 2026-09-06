@@ -717,6 +717,7 @@ const initialCatalogUrl=(path=>isCatalogPath(path)||path==='/trash')(
   decodeURIComponent(location.pathname));
 const initialParam=key=>initialCatalogUrl?initialParams.get(key):null;
 state={loc:initialParams.get('loc')??'local,115',creator:initialParam('creator')||'',studio:initialParam('studio')||'',
+  owner:initialParam('owner')==='none'?'none':'',
   tag:cleanTagFilter(initialParam('tag')),len:initialParam('len')||'',dur_min:initialParam('dur_min')||'',dur_max:initialParam('dur_max')||'',
   tag_match:initialParam('tag_match')==='any'?'any':'all',orient:initialParam('orient')||'',
   state:ROUTE_STATES[decodeURIComponent(location.pathname)]||initialParam('state')||'',
@@ -731,7 +732,7 @@ function dropOfflineFromDefaultLoc(){
   const kept=state.loc.split(',').filter(Boolean).filter(k=>sourceOnline[k]!==false);
   if(kept.length&&kept.length!==state.loc.split(',').filter(Boolean).length)state.loc=kept.join(',');
 }
-const HOME_QUERY_KEYS=['loc','creator','studio','tag','tag_match','len','dur_min','dur_max','orient','sort','dir','q','jav'];
+const HOME_QUERY_KEYS=['loc','creator','studio','owner','tag','tag_match','len','dur_min','dur_max','orient','sort','dir','q','jav'];
 function homePath(filters=state){
   const path=STATE_ROUTES[filters.state]||'/';
   const params=new URLSearchParams();
@@ -751,11 +752,20 @@ let barsContext={type:'home',filters:state},detailReturnBarsContext=null;
    activeFilterState() 取走了——取到的是资料页那份筛选，它没有 state 这个键，
    于是四枚视图胶囊一枚都不亮，首页看上去像谁都没选中。 */
 function resetHomeState(){
-  state={loc:state.loc,creator:'',studio:'',tag:'',tag_match:'all',len:'',dur_min:'',dur_max:'',
+  state={loc:state.loc,creator:'',studio:'',owner:'',tag:'',tag_match:'all',len:'',dur_min:'',dur_max:'',
     orient:'',state:'',sort:appSettings.defaultSort,dir:preferredDirection(appSettings.defaultSort,appSettings.defaultSort,appSettings.defaultSortDirection),
     seed:rollSeed(),q:'',jav:'',thumb:'0'};
   barsContext={type:'home',filters:state};detailReturnBarsContext=null;
   barsDataCache=null;barsDataPromise=null;
+}
+/* 「未归属」是全库那一类，不是当前这一页里的子筛选：在某位女优的资料页上再筛「没有
+   署名人」永远是空的。所以它和打开资料页一样离开当前语境，回目录只留这一条筛选，
+   顶栏芯片指的就是同一份列表。 */
+function openUnowned(){
+  resetHomeState();state.owner='none';
+  $('#q').value='';disposeStage(false);showHomeSurfaces();
+  route(homePath());buildEdge();buildBars();load(true);
+  window.scrollTo({top:0,behavior:'smooth'});
 }
 function openHome(scroll=false){
   resetHomeState();route('/');$('#q').value='';disposeStage(false);showHomeSurfaces();
@@ -2071,7 +2081,11 @@ function cardIdentity(it,linked=true){
   const whoHtml=coStarred
     ? link('who',`data-entity-kind="performer" data-entity-name="${esc(performer)}"`,esc(performer))
       +`<span class="whomore">等 ${performerTotal} 人</span>`
-    : (whoKind?link('who',`data-entity-kind="${whoKind}" data-entity-name="${esc(who)}"`,esc(who)):`<span class="who">${esc(who)}</span>`);
+    : (whoKind?link('who',`data-entity-kind="${whoKind}" data-entity-name="${esc(who)}"`,esc(who))
+      /* 没有署名人的那批是馆藏里的一类，不是一句读完就没用的说明：这里点得开，
+         和女优名、厂牌名一样。队列行整行本身是 <button>，嵌不了按钮，仍出文字。 */
+      :linked?`<button class="who unownedlink" type="button" data-open-unowned>${esc(who)}</button>`
+        :`<span class="who">${esc(who)}</span>`);
   return {avatar,whoHtml};
 }
 function cardHtml(it,cls){
@@ -2504,6 +2518,8 @@ function wireCards(root,onClick){
          底下的标签和播放分支一个都轮不到。 */
       const ent=e.target.closest('[data-entity-kind]');
       if(ent&&el.contains(ent)){e.stopPropagation();openEntity(ent.dataset.entityKind,ent.dataset.entityName);return}
+      const unownedLink=e.target.closest('[data-open-unowned]');
+      if(unownedLink&&el.contains(unownedLink)){e.stopPropagation();openUnowned();return}
       /* 卡片上的标签是「只看这个标签」，已经在筛它就取消。在哪一屏点就在哪一屏
          生效：目录上换成这个标签，资料页上是在这个人／厂牌内部换。 */
       const tg=e.target.closest('.tg');
@@ -2820,9 +2836,11 @@ function renderCombo(){
   const cur=tagList(); const extra=[];
   if(state.creator)extra.push(['creator',state.creator]);
   if(state.studio)extra.push(['studio',state.studio]);
+  if(state.owner==='none')extra.push(['owner','未归属']);
   if(!cur.length&&!extra.length){$('#combo').innerHTML='';return}
+  const comboLabel={creator:'创作者',studio:'厂牌',owner:'归属'};
   $('#combo').innerHTML=
-    extra.map(([k,v])=>`<span class="cb">${k==='creator'?'创作者':'厂牌'} ${esc(v)}
+    extra.map(([k,v])=>`<span class="cb">${comboLabel[k]} ${esc(v)}
       <b data-clear="${k}">✕</b></span>`).join('')
     +cur.map(t=>`<span class="cb">${esc(tagLabel(t))} <b data-untag="${esc(t)}">✕</b></span>`).join('')
     +`<button class="clr" id="clrAll">全部清除</button>`;
@@ -2830,7 +2848,7 @@ function renderCombo(){
   $('#combo').querySelectorAll('[data-clear]').forEach(b=>b.onclick=()=>
     commitContextFilter(filters=>{filters[b.dataset.clear]=''}));
   $('#clrAll').onclick=()=>commitContextFilter(filters=>{
-    filters.tag='';filters.creator='';filters.studio=''});
+    filters.tag='';filters.creator='';filters.studio='';filters.owner=''});
 }
 
 /* ── 统计与管理 ── */
@@ -7392,7 +7410,6 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
   const online=it.location==='online';
   /* 保存过的在线资产照常播；只有反查不到关注条目时才拦下来说明原因。 */
   const onlineGated=online&&!it.follow_item_id;
-  const who=(it.performers||[])[0]||it.creator||'未归属';
   const refs=it.entity_refs||{},studioRef=(refs.studio||[])[0];
   // 共演作品的女优逐行列出，每行带自己的头像；标签只写在第一行，其余留空保持对齐。
   const performerRefs=(refs.performer||[]).length
@@ -7444,9 +7461,21 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
     ? `<section class="idgroup idseries"><h5 class="idlabel">系列</h5>
         <div class="seriesrows">${list.map(seriesCell).join('')}</div></section>`
     : '';
+  /* 一个都没有时，「未归属」就是这条作品所属的那一类，和女优、厂牌并列：馆藏里
+     4566 条同类，点进去看得到全部。写成一行「归属　未归属」的说明文字，是把一个
+     能筛的集合降级成读完就没用的字——标签和值还念的是同一个词。 */
+  const unownedGroup=`<section class="idgroup idgroup-unowned"><h5 class="idlabel">归属</h5>
+      <div class="idrow"><button class="idcell unownedlink" type="button" data-open-unowned
+        title="打开未归属：馆藏里没有署名人的作品">
+        <span class="idface">${icon('user-round')}</span><span class="idname">未归属</span></button></div></section>`;
+  /* 判据和 `owner=none` 那条 SQL 一样：没有出镜者、没有创作者实体、扁平 creator 也空。
+     厂牌和系列不算归属，有厂牌照样是未归属——两边说的必须是同一批作品，否则卡片上
+     写着「未归属」的这条点进集合会不在里面。 */
+  const unowned=!castList.length&&!creatorList.length&&!(it.creator||'').trim();
   const primaryIdentity=
-    idGroup(performerLabel(it),'performer',castList,
-      castOverflow?`<button class="castmore" id="castMore">还有 ${castOverflow} 位</button>`:'')
+    (unowned?unownedGroup
+      :idGroup(performerLabel(it),'performer',castList,
+        castOverflow?`<button class="castmore" id="castMore">还有 ${castOverflow} 位</button>`:''))
     +idGroup('厂牌','studio',studioList);
   const identityRows=
     (primaryIdentity?`<div class="identityprimary">${primaryIdentity}</div>`:'')
@@ -7484,7 +7513,7 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
         <span class="detailmetaitem">${icon('monitor')}<span>${it.width||'?'}×${it.height||'?'}</span></span>
         <span class="detailmetaitem">${icon('hard-drive')}<span>${fmtSize(it.size||0)}</span></span>
         ${it.release_date?`<span class="detailmetaitem">${icon('calendar')}<span>${esc(it.release_date)}</span></span>`:''}</div>
-      <div class="detailidentity">${identityRows||`<div class="identityrow"><span></span><span class="ilabel">归属</span><span>${esc(who)}</span></div>`}</div>
+      <div class="detailidentity">${identityRows}</div>
       <div class="stags" id="detailTags"></div>
       <div class="trace"><div class="lab mono"><span>离开位置</span><span id="ratioTxt">0%</span></div>
         <div class="bar"><u id="watched"></u><b id="mark"></b></div>
@@ -7671,6 +7700,7 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
   renderDetailTags();
   $('#stage').querySelectorAll('[data-entity-kind]').forEach(b=>b.onclick=()=>
     openEntity(b.dataset.entityKind,b.dataset.entityName));
+  $('#stage').querySelectorAll('[data-open-unowned]').forEach(b=>b.onclick=()=>openUnowned());
   const paintLater=value=>{it.watch_later=value;const button=$('#stageLater');if(!button)return;
     button.setAttribute('aria-pressed',value);button.innerHTML=value?icon('check'):icon('bookmark-plus')};
   $('#stageLater').onclick=async()=>{const button=$('#stageLater');setActionBusy(button);
@@ -7966,7 +7996,7 @@ async function tokShow(dir){
       $('#tokClose').click();
       if(full.performers&&full.performers[0])openEntity('performer',full.performers[0]);
       else if(full.creator)openEntity('creator',full.creator);
-      else if(it.code){state.q=it.code;buildEdge();buildBars();load(true)}};
+      else openUnowned()};
     $('#tokWho').onclick=openTokOwner;
     $('#tokAvatar').onclick=openTokOwner;
     $('#tokMeta').textContent=`· ${fmtDur(it.duration)} · ${it.ctx_orient||''} · ${tokIdx+1}/${tokList.length}`;

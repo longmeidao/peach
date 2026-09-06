@@ -29,9 +29,9 @@
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink-2)}
 .idgroup-performer .idcell{align-items:center}
 .idgroup-performer .idname{text-align:center}
-.idcell:not(.entitylink){cursor:default}
-.idcell.entitylink:hover .idface{box-shadow:0 0 0 2px var(--ink-2)}
-.idcell.entitylink:hover .idname{color:var(--ink)}
+.idcell:not(.entitylink):not(.unownedlink){cursor:default}
+.idcell.entitylink:hover .idface,.idcell.unownedlink:hover .idface{box-shadow:0 0 0 2px var(--ink-2)}
+.idcell.entitylink:hover .idname,.idcell.unownedlink:hover .idname{color:var(--ink)}
 .castmore{align-self:center;height:46px;padding:0 12px;border:1px dashed var(--overlay-10);
   border-radius:var(--floating-radius);background:transparent;color:var(--ink-2);font-size:var(--fs-xs);cursor:pointer}
 .castmore:hover{background:var(--hover)}
@@ -125,7 +125,8 @@ button.serieslink.entitylink:hover{color:var(--tungsten);text-decoration:none}
   min-height:40px;padding:8px 16px;border:1px solid var(--border-15);border-radius:var(--control-radius);background:transparent;
   color:var(--ink-2);cursor:pointer}.indexmore:hover,.entitymore:hover{background:var(--hover);color:var(--ink)}
 .indexmore:disabled,.entitymore:disabled{opacity:.5;cursor:wait}
-.entitylink{border:0;background:none;padding:0;color:var(--tungsten);cursor:pointer;text-decoration:none}
-.entitylink:hover{color:var(--ink);text-decoration:none}
+/* 「未归属」和实体名一样是个入口，只是它指向一个集合而不是一个人，样式同源。 */
+.entitylink,.unownedlink{border:0;background:none;padding:0;color:var(--tungsten);cursor:pointer;text-decoration:none}
+.entitylink:hover,.unownedlink:hover{color:var(--ink);text-decoration:none}
 /* Peach 的可点击身份只用颜色、头像描边和背景反馈，不使用链接下划线。 */
-.idcell.entitylink:hover,.mav.entitylink:hover{text-decoration:none}
+.idcell.entitylink:hover,.idcell.unownedlink:hover,.mav.entitylink:hover{text-decoration:none}

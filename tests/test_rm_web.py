@@ -1284,6 +1284,52 @@ class WebDataTests(unittest.TestCase):
         row = related["items"][0]
         self.assertEqual(row["performer_total"], len(row["performer_entities"]))
 
+    def _add_unowned_and_performer_only_assets(self):
+        con = sqlite3.connect(self.db_path)
+        con.executemany(
+            """INSERT INTO asset(
+                 id,location,path,name,medium,size,creator,studio,code,duration,
+                 width,height,ctx_length,ctx_orient,ctx_quality,first_seen)
+               VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            [
+                (4, "local", r"R:\Media\four.mp4", "four.mp4", "video", 400,
+                 None, "ラグジュTV", "259LUXU-1509", 400, 1280, 720, "速食", "横屏", "720P", "2026-08-11"),
+                (5, "local", r"R:\Media\five.mp4", "five.mp4", "video", 500,
+                 None, None, None, 500, 1920, 1080, "速食", "横屏", "2K", "2026-08-10"),
+            ],
+        )
+        con.execute("INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence) "
+                    "VALUES(5,11,'performer','test',1.0)")
+        con.commit()
+        con.close()
+
+    def test_unowned_is_a_collection_not_a_line_of_text_on_the_detail_panel(self):
+        """卡片上写着「未归属」的每一条，点进这个集合都必须在里面。
+
+        判据和 `cardIdentity` 同源：没有出镜者、没有创作者。4 号有厂牌也有番号，
+        却一个人都没署名，它正是这一类；5 号有出镜者，不是。
+        """
+        self._add_unowned_and_performer_only_assets()
+        listed = rm_web.q_items(self.contract, {"owner": "none", "limit": "10"})
+        self.assertEqual([item["id"] for item in listed["items"]], [4])
+        self.assertEqual(listed["total"], 1)
+
+    def test_a_studio_is_not_ownership(self):
+        """「ラグジュTV 出品」不回答「这是谁」。把有厂牌的排除掉，会正好漏掉最该补人的那批。"""
+        self._add_unowned_and_performer_only_assets()
+        row = next(item for item in rm_web.q_items(
+            self.contract, {"owner": "none", "limit": "10"})["items"] if item["id"] == 4)
+        self.assertEqual(row["studio"], "ラグジュTV")
+
+    def test_an_unknown_owner_value_does_not_filter_anything(self):
+        """筛选只认 `none` 这一个取值，别的写法不能悄悄变成一条空条件。"""
+        self._add_unowned_and_performer_only_assets()
+        everything = rm_web.q_items(self.contract, {"limit": "10"})["total"]
+        self.assertEqual(rm_web.q_items(
+            self.contract, {"owner": "", "limit": "10"})["total"], everything)
+        self.assertEqual(rm_web.q_items(
+            self.contract, {"owner": "someone", "limit": "10"})["total"], everything)
+
     def test_creator_filters_indexes_and_stats_use_canonical_entities(self):
         by_creator = rm_web.q_items(self.contract, {
             "creator": "Canonical Creator", "limit": "10",
