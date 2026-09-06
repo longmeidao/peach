@@ -8,7 +8,7 @@
 - 凭据焦点外扩 3px，正文左右留 4px；输入框可收缩，验收所有裁切祖先。
 
 
-页面密度、控件、提示与响应式的实现门槛见 `.claude/skills/peach-web-ui/SKILL.md`，这里只留代码看不出来的判据。
+界面门槛见 `.claude/skills/peach-web-ui/SKILL.md`，保留代码外的判据。
 
 - 截图与视觉验收的画面保护：SFW 模式（设置面板「安全」组，`#censorSetting`，localStorage `peach-censor`）默认关闭、不在导航栏。只有当本轮截图会交给会审查内容的模型（自动视觉审查或外发工具）时才开启，开完记得关；普通个人浏览一律不遮挡。
 - 卡片实体链接必须由同一个 `{kind,name}` 结构生成，不许先独立选显示名、再按别的字段推断类型；账本 `size` 为空或 0 时显示「大小未知」，不伪装成 `0 MB`。
@@ -75,7 +75,7 @@
 
 ## 参考产品证据登记
 
-- [Geist 控件](reference-snapshots/vercel-geist-controls-measured.md)；[README 维护](README_MAINTENANCE.md)。
+- [Geist 控件](reference-snapshots/vercel-geist-controls-measured.md)；[复核操作](reference-snapshots/vercel-review-actions.md)；[README 维护](README_MAINTENANCE.md)。
 
 - 设置：`reference-snapshots/geist-settings.md`。
 

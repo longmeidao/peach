@@ -1,3 +1,5 @@
+import { wireCollapse } from '@peach/legacy/ui';
+
 /** 管理页按已配置的来源显示能力；离线来源仍然属于已配置来源。 */
 export interface MediaSource { location: string; roots?: unknown[]; online?: boolean }
 
@@ -47,6 +49,7 @@ export function tasteHistoryGuideHtml(onboarding: boolean, completed = false, sk
 /** 跳过是当前浏览器的持久偏好；折叠只改变 details 的展开状态。 */
 export const TASTE_GUIDE_KEY = 'peach-taste-guide-dismissed';
 export function wireTasteHistoryGuide(root: ParentNode, storage: Storage): void {
+  wireCollapse(root, '.taste-history-guide', 'taste-guide-collapse');
   const guide = root.querySelector<HTMLDetailsElement>('.taste-history-guide');
   guide?.querySelector<HTMLButtonElement>('.taste-guide-skip')?.addEventListener('click', () => {
     storage.setItem(TASTE_GUIDE_KEY, '1');

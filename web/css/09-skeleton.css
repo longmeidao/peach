@@ -38,7 +38,8 @@
 .catalog-placeholder .ring,.catalog-placeholder .nm,.catalog-placeholder .mk,.catalog-placeholder .placeholder-name,.catalog-placeholder .pill{background:var(--hover)}
 .catalog-placeholder .nm{width:60%;margin-inline:auto;border-radius:var(--badge-radius)}
 .catalog-placeholder .placeholder-name{width:48px;border-radius:var(--badge-radius)}
-.placeholder-tags{display:inline-flex;gap:8px}
+.tier.catalog-placeholder{overflow:hidden}
+.placeholder-tags{display:inline-flex;gap:8px;flex:1 0 240px;min-width:240px;overflow:hidden}
 .placeholder-tags .pill{width:64px;border-color:transparent}
 .postercard-skeleton .skeletoncard b,
 .postercard-skeleton .skeletoncard em,

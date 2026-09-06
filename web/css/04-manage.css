@@ -115,7 +115,7 @@
 .taste-history-guide-content{display:grid;gap:12px;padding-top:16px;color:var(--muted);font-size:var(--fs-md);line-height:1.5}
 .taste-history-guide-content p,.taste-history-guide-content ul{margin:0}
 .taste-history-guide-content ul{padding-left:20px}
-.taste-history-guide-content .taste-guide-skip{width:100%;height:var(--control-h);color:var(--ink)}
+.taste-history-guide-content .taste-guide-skip{width:100%;height:var(--control-h);color:var(--meter)}
 .fsrcoption{display:flex;align-items:center;gap:8px;justify-content:space-between}
 .fsrcoption label{flex:1;min-width:0}
 .fsrcoption .geist-button{font-size:var(--fs-sm);white-space:nowrap}
@@ -162,3 +162,10 @@
 .library-processing-banner{--control-h:32px;display:flex;align-items:center;justify-content:center;gap:12px;padding:16px;margin-bottom:16px;background:var(--hover);color:var(--ink);font-size:var(--fs-lg);flex-wrap:wrap}
 .library-processing-banner .geist-button{border-radius:var(--pill-radius);font-size:var(--fs-md)}
 #libraryProcessing{scroll-margin-top:80px}
+
+.reviewbulktoolbar{width:100%;padding-block:16px}
+.reviewbulkfeedback{color:var(--muted)}
+.reviewbulksource{min-width:180px;max-width:100%}
+.reviewbulkreject{color:var(--drop)}
+.reviewbulkreject:hover{background:var(--drop);color:#fff}
+.taste-history-guide-content .taste-guide-skip:hover{color:var(--meter)}
