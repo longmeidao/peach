@@ -350,7 +350,7 @@ class WebUiSourceTests(unittest.TestCase):
     TUNGSTEN_ALLOWED_SELECTORS = (
         ":focus",              # 焦点环：:focus / :focus-visible / :focus-within
         ".geist-progress", ".watchprogress", ".vjs-play-progress", ".vjs-progress-holder",
-        ".range-fill", "slider-thumb", "range-thumb", ".trace .bar", ".tokbar",  # 进度与数据
+        ".trace .bar", ".tokbar",  # 进度与数据
         "#censorSetting:checked",  # Toggle 开态：Geist Toggle 实测轨道 rgb(0,112,243)
         ".entitylink", ".flink", ".fsourcelink", ".fcred a", ".tokauthor>a", ".confighelp a",  # 真正的链接
     )
@@ -613,7 +613,7 @@ class WebUiSourceTests(unittest.TestCase):
             self.assertIn("var(--ground)", rule, f"{name} 是页面上的一个面")
 
     def test_only_the_home_filter_bar_draws_the_dashed_unapplied_edge(self):
-        """虚线只在 `#tagbar` 那一排，别处的药丸一律实线；选中一律填 --hover。
+        """虚线只在 `#tagbar` 那一排，别处的药丸一律实线；选中一律填 --picked。
 
         2026-09-05 实测 vercel.com/<team>/~/deployments 的筛选令牌：未生效
         `rgba(0,0,0,0)` 配 `1px dashed rgba(0,0,0,.21)`，已生效 `#FFFFFF` 配
@@ -632,7 +632,7 @@ class WebUiSourceTests(unittest.TestCase):
             self.assertNotIn("dashed", rule, f"{base} 的默认态不画虚线")
             self.assertPageContains(base + ":hover{border-color:var(--field-ring-hover);color:var(--ink)}")
             self.assertPageContains(base + '[aria-pressed="true"]{border-color:var(--field-ring);'
-                                           "background:var(--hover);color:var(--ink)}")
+                                           "background:var(--picked);color:var(--ink)}")
         self.assertPageContains('#tagbar .pill[data-tag]:not([aria-pressed="true"])'
                                 "{border-style:dashed;border-color:var(--field-ring-hover)}")
         self.assertPageContains(
@@ -646,7 +646,7 @@ class WebUiSourceTests(unittest.TestCase):
         # 已经生效的交集筛选和选中的药丸是同一件事，穿同一身。
         start = css.index(".combo .cb{")
         applied = css[start:css.index("}", start)]
-        self.assertIn("background:var(--hover)", applied)
+        self.assertIn("background:var(--picked)", applied)
         self.assertIn("1px solid var(--field-ring)", applied)
         # 没有 JS 会挂 .act，留着只会让人以为选中态有两套写法。
         self.assertPageLacks(".pill.act{")
@@ -819,7 +819,7 @@ class WebUiSourceTests(unittest.TestCase):
             if "font-weight" in body:
                 offenders.append((leaf, "字重加档"))
         self.assertEqual(offenders, [],
-                         f"选中态只留 --hover 底 --ink 字：{offenders}")
+                         f"选中态只留 --picked 底 --ink 字：{offenders}")
 
     def test_hover_yields_the_fill_to_selection_inside_a_group(self):
         """一组互斥选项里，填充专属选中，未选中项悬停只提文字色。
@@ -835,7 +835,8 @@ class WebUiSourceTests(unittest.TestCase):
         """
         selected_bases = set()
         for leaf, body in self._leaf_rules():
-            if "background:var(--hover)" not in body:
+            if not any(fill in body for fill in
+                       ("background:var(--hover)", "background:var(--picked)")):
                 continue
             for part in leaf.split(","):
                 part = part.strip()
@@ -843,6 +844,7 @@ class WebUiSourceTests(unittest.TestCase):
                     if part.endswith(state):
                         selected_bases.add(part[: -len(state)].strip())
         self.assertIn(".chip", selected_bases, "基线选择器没被认出来，测试本身失效了")
+        self.assertIn(".pill", selected_bases, "换成 --picked 的那一批也要留在基线里")
         offenders = []
         for leaf, body in self._leaf_rules():
             if ":hover" not in leaf or "background:var(--hover)" not in body:
@@ -856,6 +858,80 @@ class WebUiSourceTests(unittest.TestCase):
                     offenders.append(part)
         self.assertEqual(sorted(offenders), [],
                          f"这些控件有选中态，悬停请只提文字色到 --ink：{offenders}")
+
+    #: 选中仍旧填 --hover 的全部去处：它们自己就站在 --ground 上，白面上再叠白等于没填。
+    SELECTED_ON_GROUND = (
+        '.chip[aria-pressed="true"]',                     # 抽屉是一整张磨砂近白面
+        '.dnav button[aria-pressed="true"]',              # 同上，窄栏的展开态
+        '.edge button[aria-pressed="true"]',              # 窄栏填 --ground
+        '.gselectmenu button[aria-selected="true"]',      # 浮层菜单填 --ground
+        '.ib[aria-pressed="true"]',                       # 顶栏填 --ground
+        '.playerstatsbtn[aria-pressed="true"]',           # 播放器蒙层恒为深色
+        '.sec.cat-meta .chip[aria-pressed="true"]',       # 抽屉中性类，跟基础 .chip 同一档
+        '.sidebaraddmenu button[aria-selected="true"]',   # 浮层菜单
+        ".tagpickitem.selected",                          # 选中由对勾表达，填充只是陪衬
+    )
+
+    def test_the_selected_face_is_one_token_that_flips_with_the_theme(self):
+        """选中填 --picked，它在两个主题里各取各的值，两边都比脚下那张面更亮一档。
+
+        浅色一档页面底是 #FAFAFA，比它亮的只有纯白；深色一档底近黑，比它亮的是叠一层
+        7% 白。这两件事没有共同的字面值，所以选中面只能是个随主题翻面的 token：写死
+        --hover，浅色下 5% 黑比页面底还深，选中读成「被按凹进去」；写死 --ground，
+        深色下它比 --surface 还暗，选中等于没有高亮。站内两种写法各被推翻过一次，
+        `04b2438b` 与 `e5962ec7` 是同一个控件上的两次相反修改。
+
+        例外只有一类：控件自己就站在 --ground 上（顶栏、窄栏、抽屉、浮层菜单）。那里
+        没有比脚下更亮的面可填，选中靠 --hover 那一档暗加上 --ink 的字色，与 2026-09-04
+        实测 vercel.com/geist 左栏一致。这一类逐个登记在 SELECTED_ON_GROUND。
+        """
+        css = stylesheet_source()
+        self.assertIn("--picked:var(--ground);", css, "浅色一档取纯白")
+        self.assertEqual(css.count("--picked:var(--hover);"), 2,
+                         "深色两处声明（prefers-color-scheme 与 data-theme）各写一份")
+        self.assertNotIn("--picked:#", css, "选中面不写字面色，只引用已有的两张面")
+        on_ground = sorted(" ".join(leaf.split()) for leaf, body in self._leaf_rules()
+                           if any(state in leaf for state in self.STATE_TOKENS)
+                           and "background:var(--hover)" in body)
+        self.assertEqual(on_ground, sorted(self.SELECTED_ON_GROUND),
+                         "站在 --page 或凹槽上的选中态一律填 --picked；"
+                         "要留 --hover 的先登记进 SELECTED_ON_GROUND 并说明它脚下是哪张面")
+
+    def test_the_duration_slider_is_a_control_in_ink_not_a_blue_progress_bar(self):
+        """时长拉条走墨色：已选段 --ink，抓手填 --ground、描 --ink，蓝只剩焦点环。
+
+        抓手必须填 --ground 而不是 --ink：--ink 自己也随主题翻面，深色下是白点、浅色下
+        就成了压在轨道上的黑疙瘩，同一个控件读出两种东西。填 --ground 则两档同义——
+        抓手永远和它坐落的那张面同色，读作从轨道上抠下来的一段。
+        """
+        self.assertPageContains(
+            ".range-fill{left:var(--lo);right:calc(100% - var(--hi));background:var(--ink)}")
+        for thumb in ("::-webkit-slider-thumb", "::-moz-range-thumb"):
+            start = self.page.index(".dual-range input" + thumb + "{")
+            rule = self.page[start:self.page.index("}", start)]
+            self.assertIn("background:var(--ground)", rule, thumb + " 抓手跟着主题翻面")
+            self.assertIn("border:2px solid var(--ink)", rule, thumb + " 描边是墨色")
+        self.assertPageContains(
+            ".dual-range input:focus-visible::-webkit-slider-thumb"
+            "{outline:2px solid var(--tungsten);outline-offset:2px}")
+
+    def test_every_button_in_the_feedback_bar_owns_a_hover_color(self):
+        """详情页反馈条上每一枚都有自己的悬停配色，兜底填充用 token 不写死白。
+
+        写死的 rgba(255,255,255,.12) 只在深色底上成立，浅色一档压在白面上什么都不发生；
+        漏写配色的那一枚还会全程停在 --muted，看着像它不能点。加入播放列表开的是弹层、
+        没有按下态，所以只有悬停这一档，和喜欢同走中性墨色——这一排的色相各自指向一种
+        判断（红=不合口味、绿=看过、橙=回收），整理动作不占色相。
+        """
+        self.assertPageContains(".fb button:hover{transform:none;background:var(--hover)}")
+        self.assertPageContains(".fb .fdownload:hover{background:var(--hover);color:var(--ink)}")
+        self.assertPageContains(".fb .playlistadd:hover{color:var(--ink);background:var(--hover)}")
+        for leaf, body in self._leaf_rules():
+            if leaf.startswith(".fb"):
+                self.assertNotIn("rgba(255,255,255", body, leaf + " 的填充写死了白，浅色一档不成立")
+        buttons = {"like", "reason", "dislike", "seen", "dispose", "later", "upgrade", "playlistadd"}
+        missing = {name for name in buttons if ".fb ." + name + ":hover" not in self.page}
+        self.assertEqual(missing, set(), f"这几枚只能吃兜底填充，图标不换色：{missing}")
 
     def test_sidebar_nav_keeps_the_hover_fill_and_leaves_state_to_the_color(self):
         """侧栏窄栏与抽屉的悬停必须抬填充，当前项靠图标色区分。
@@ -4066,7 +4142,7 @@ class WebUiSourceTests(unittest.TestCase):
             "white-space:nowrap;cursor:pointer}")
         self.assertPageContains(
             '.reviewtabs button[aria-selected="true"],.junkfilters a[aria-current="page"]'
-            '{background:var(--hover);color:var(--ink)}')
+            '{background:var(--picked);color:var(--ink)}')
         # 反相底色不能回来；描边只到 --border-15 那一档，不跟着选中态提亮。
         self.assertPageLacks('.reviewtabs button[aria-pressed="true"]{background:var(--ink-2)')
         self.assertPageLacks('.junkfilters a[aria-current="page"]{border-color:var(--ink-2)')

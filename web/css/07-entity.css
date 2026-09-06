@@ -74,7 +74,7 @@
 .mediaviewbuttons .mediaviewbutton svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2}
 .mediaviewbuttons .mediaviewbutton[data-media-icon="image"] svg{fill:currentColor;stroke:none}
 .mediaviewbuttons .mediaviewbutton:hover{color:var(--ink)}
-.mediaviewbuttons .mediaviewbutton[aria-pressed="true"]{background:var(--hover);color:var(--ink)}
+.mediaviewbuttons .mediaviewbutton[aria-pressed="true"]{background:var(--picked);color:var(--ink)}
 .relatedpeople{display:flex;gap:14px;overflow-x:auto;padding-bottom:4px;scrollbar-width:none}
 .relatedpeople::-webkit-scrollbar{display:none}.relatedperson{flex:0 0 78px;border:0;background:transparent;color:inherit;
   padding:0;cursor:pointer;text-align:center}.relatedperson .ring{display:grid;place-items:center;width:64px;height:64px;
