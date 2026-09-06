@@ -164,5 +164,7 @@ body.refreshing #tiers .av .nm{width:52px;margin:0 auto;border-radius:var(--cont
 body.refreshing #tiers .brandpill{border-color:transparent}
 
 .stats-lede-skeleton{display:block;width:min(380px,75%);height:22px;margin-bottom:16px}
-.config-skeleton-card{border:1px solid var(--line);border-radius:var(--surface-radius);margin-bottom:16px;overflow:hidden}
-.config-skeleton-card>div{padding:24px;display:grid;gap:16px}.config-skeleton-card .skeleton{display:block;height:20px;width:60%}.config-skeleton-card .skeleton:first-child{height:24px;width:35%}.config-skeleton-card .skeleton:last-child{height:38px;width:100%}.config-skeleton-card footer{border-top:1px solid var(--line);padding:12px 24px;display:flex;justify-content:flex-end}.config-skeleton-card footer .skeleton:last-child{width:100px;height:38px}
+.config-skeleton-card .skeleton{display:block;height:20px;width:60%}
+.config-skeleton-card .geist-fieldset-content>.skeleton:first-child{height:24px;width:35%}
+.config-skeleton-card .geist-fieldset-content>.skeleton:last-child{height:var(--control-h);width:100%}
+.config-skeleton-card .geist-fieldset-footer>.skeleton{width:100px;height:var(--control-h)}
