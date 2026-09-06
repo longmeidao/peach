@@ -352,7 +352,7 @@ class WebUiSourceTests(unittest.TestCase):
         ".geist-progress", ".watchprogress", ".vjs-play-progress", ".vjs-progress-holder",
         ".trace .bar", ".tokbar",  # 进度与数据
         ":is(#censorSetting,#detailAutoplaySetting,.ptoggle):checked",  # Toggle 开态：Geist Toggle 实测轨道 rgb(0,112,243)
-        ".entitylink", ".flink", ".fsourcelink", ".fcred a", ".tokauthor>a", ".confighelp a", ".taste-history-guide-content a",  # 真正的链接
+        ".entitylink", ".flink", ".fsourcelink", ".fcred a", ".tokauthor>a", ".confighelp a", ".taste-history-guide-content a", ".geist-text-link",  # 真正的链接
     )
 
     def test_tungsten_is_reserved_for_focus_links_progress_and_toggle(self):

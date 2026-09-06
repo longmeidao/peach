@@ -106,6 +106,9 @@
 .stats h2{margin:0 0 4px;font-size:var(--fs-2xl)}
 .stats .sub{color:var(--muted);margin:0}
 /* 采集来源表单复用管理页 Fieldset。 */
+.geist-text-link{color:var(--tungsten);text-decoration:none;justify-self:start}
+.geist-text-link:hover{text-decoration:underline;text-underline-offset:3px}
+.geist-text-link:focus-visible{outline:2px solid var(--tungsten);outline-offset:4px}
 .scraping-page{width:min(812px,100%);margin:0 auto;display:grid;gap:20px}
 .scraping-page>h1,.scraping-page p{margin:0}
 .scraping-fields .scraping-cover-form{display:flex;align-items:center;gap:8px;min-width:0}

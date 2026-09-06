@@ -2122,6 +2122,7 @@ function dn({ source: e, toast: t }) {
 						})]
 					}),
 					i === "peach" && /* @__PURE__ */ K("a", {
+						class: "geist-text-link",
 						href: "/configuration#peachProxy",
 						children: "配置 Peach 代理"
 					}),
