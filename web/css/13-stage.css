@@ -1,5 +1,9 @@
 /* ── 放大播放（就地展开） ── */
-.stage{margin:0 0 22px;border-radius:var(--floating-radius);
+/* 氛围色定义在这里，右侧详情栏、切换队列和「接着看」共用同一档。三块同属
+   一格详情，底色差 4% 就会在整幅宽度上留下一条界线，看着像两块面板拼起来；
+   分块靠留白和小标题，不靠色差。 */
+.stage{--detail-surface:color-mix(in srgb,var(--video-glow,#15202a) 12%,var(--surface) 88%);
+  margin:0 0 22px;border-radius:var(--floating-radius);
   background:radial-gradient(circle at 28% 24%,color-mix(in srgb,var(--video-glow,#15202a) 40%,transparent),transparent 58%),
     color-mix(in srgb,var(--surface) 88%,transparent);scroll-margin-top:calc(var(--topH) + 8px);
   border:1px solid var(--line);overflow:hidden}
@@ -13,8 +17,7 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
 /* Mix、分卷、播放列表和关注合集都保留普通详情的主结构：媒体在左、信息在右；
    切换队列作为完整的第二行，避免详情栏跨到队列旁边并制造背景断层。 */
 .sgrid.mixgrid{grid-template-columns:minmax(0,1fr) minmax(350px,390px);
-  grid-template-areas:"media side" "queue queue";align-items:start;
-  --detail-surface:color-mix(in srgb,var(--video-glow,#15202a) 12%,var(--surface) 88%)}
+  grid-template-areas:"media side" "queue queue";align-items:start}
 .sgrid.mixgrid>.vwrap{grid-area:media}
 .sgrid.mixgrid>.side{grid-area:side;background:var(--detail-surface)}
 .sgrid.mixgrid>.mixqueue{grid-area:queue;max-height:360px;border-left:0;border-top:1px solid var(--line-soft);
