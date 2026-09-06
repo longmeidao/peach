@@ -71,7 +71,7 @@ The package is unsigned; see [Windows testing](docs/TESTING_DESKTOP.md) for down
 
 ### Run from source
 
-Requires Git and **Python 3.12 or newer**. These examples use 3.14; CI covers 3.12 and 3.14.
+Requires Git, [uv](https://docs.astral.sh/uv/getting-started/installation/) **0.12.10** and **Python 3.12 or newer**. These examples use 3.14; uv can download a missing Python interpreter. CI covers 3.12 and 3.14.
 Node is unnecessary at runtime; frontend development needs Node 24 or newer.
 
 Clone the repository:
@@ -84,16 +84,16 @@ cd peach-app
 Windows: create the environment, install and launch setup in PowerShell:
 
 ```powershell
-& py -3.14 -m venv .venv
-& .\.venv\Scripts\python.exe -m pip install -e .
+uv venv --python 3.14 .venv
+uv pip install --python .venv/Scripts/python.exe -e .
 & .\.venv\Scripts\peach-tray.exe
 ```
 
 macOS: create the environment, install menu-bar support and launch setup:
 
 ```shell
-python3.14 -m venv .venv
-./.venv/bin/python -m pip install -e ".[macos]"
+uv venv --python 3.14 .venv
+uv pip install --python .venv/bin/python -e ".[macos]"
 ./.venv/bin/peach-tray
 ```
 

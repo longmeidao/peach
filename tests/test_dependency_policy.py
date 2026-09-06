@@ -136,6 +136,21 @@ class DependencyPolicyTests(unittest.TestCase):
         self.assertIn("& .\\scripts\\test.ps1", workflow)
         self.assertIn("./scripts/test.sh", workflow)
 
+    def test_uv_installation_preserves_interpreter_and_wheel_contracts(self):
+        self.assertRegex(self.pyproject["tool"]["uv"]["required-version"],
+                         r"^==\d+\.\d+\.\d+$")
+        workflow = (ROOT / ".github/workflows/test.yml").read_text(encoding="utf-8")
+        release = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+        for source in (workflow, release):
+            self.assertIn("astral-sh/setup-uv@", source)
+            self.assertIn("cache-dependency-glob: pyproject.toml", source)
+            self.assertIn("uv venv --python python .venv", source)
+            self.assertIn("uv pip check --python .venv/Scripts/python.exe", source)
+            self.assertIn("if ($LASTEXITCODE -ne 0)", source)
+        self.assertIn("uv pip check --python .venv/bin/python", workflow)
+        self.assertIn("uv build --wheel --out-dir wheelhouse", workflow)
+        self.assertIn("python -m pip install --no-cache-dir wheelhouse/*.whl", workflow)
+
 
 if __name__ == "__main__":
     unittest.main()
