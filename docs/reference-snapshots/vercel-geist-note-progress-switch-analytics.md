@@ -88,9 +88,10 @@ HTTPX 取得 `https://vercel.com/geist/fieldset` 当前 HTML，SHA-256 为
 
 HTML SHA-256：Note `f3471155164c8e0085419ce04e15928463cb526b4a52b51483c214fd84b645dc`；Project Banner `9bcc6478e468ecb48d146b774c36ceed62439ee78cc51e5ecf691c2c728204c8`；Context Card `ab1891a9600b3f019ffc3540ad2ca340b569b4261ced74babe0996f08c5e3210`；Gauge `a7303d848ea4dca4f865d5f7bbff467080015e6a771f4c900eaa7b91b0c3b4ab`。
 
+- NoteAction 在提示内部放置一个操作按钮；需要处理的失败使用 filled 浅色背景。进度仅在数值变化时平滑过渡 200ms，减少动态效果偏好下关闭过渡。
 - Note 使用语义色、12px 图文间距、14px 正文，成功为蓝色。默认无填充，filled 用低饱和色底；small 用于紧凑说明。Note 持续到状态解决，不额外加关闭键；短成功回执仍用 Toast。
 - 页面后台任务使用 Project Banner：正文 14px，最小高度 40px，上下 8px、横向 24px；处理链接持续带下划线。按用户要求在横幅内用 32px Gauge 表示任务完成比例，这是 Peach 的用途差异；详情仍用 Progress。
-- Gauge 用于实际已用／总容量，无有效总量时显示未取得。没有统一容量告警门槛时不单独创造阈值；文字保留百分比与字节数。
+- Gauge 用于实际已用／总容量，无有效总量时显示未取得。容量统一采用 80% 警告、95% 危险阈值，颜色与文字同档；任务完成率不使用容量阈值。
 - Progress 按状态使用蓝、黄、红，而非把接近完成误判为危险；stops 仅用于真实阶段并带标签。更新准备使用后端的 65、67、90 阶段边界；浏览记录分阶段计数，不把不同单位拼成虚假的总体百分比。
 - 局部未知总量任务使用带边界的 Fieldset 内容区与 Loading Dots，已知计数时添加文字与 Progress；不重复嵌套已有任务容器。
 - Separator 用于同一容器内不同内容组时留缩进；卡片正文与页脚之间保持完整边界。相关设置共享一组时不强加分隔线。

@@ -59,7 +59,7 @@ export function LibraryProcessing({ data, error, toast, onComplete, mode, monito
     if (!problem && state.status !== 'running' && state.status !== 'failed') return null;
     const message=problem || (state.status === 'failed' ? '扫描与资料采集未完成' : `${state.stage || '正在整理馆藏'}${state.total ? ` · ${state.checked || 0} / ${state.total}` : ''}`);
     return <div dangerouslySetInnerHTML={{__html:projectBannerHtml(message,{
-      variant:problem || state.status === 'failed' ? 'warning' : 'gray',
+      variant:state.status === 'failed' ? 'error' : problem ? 'warning' : 'gray',
       href:'/data-cleanup#libraryProcessing',label:problem || state.status === 'failed' ? '查看并处理' : '查看进度',
       value:state.checked || 0,max:state.status === 'running' ? state.total : undefined,
     })}} />;
@@ -73,7 +73,7 @@ export function LibraryProcessing({ data, error, toast, onComplete, mode, monito
           <div dangerouslySetInnerHTML={{ __html: loadingDotsHtml(`${state.stage || '正在处理'}${state.total ? ` · ${state.checked || 0} / ${state.total}` : ''}`) }} />
           {!!state.total && <div dangerouslySetInnerHTML={{ __html: progressHtml(`已处理 ${state.checked || 0} / ${state.total} 个视频`, state.checked || 0, state.total) }} />}
         </>}
-        {(problem || state.status === 'failed') && <div role="alert" dangerouslySetInnerHTML={{ __html: noteHtml(problem || state.error || '处理未完成，请重试', { variant: 'error' }) }} />}
+        {(problem || state.status === 'failed') && <div role="alert" onClick={event=>{if((event.target as HTMLElement).closest('[data-note-action]'))void start();}} dangerouslySetInnerHTML={{ __html: noteHtml(problem || state.error || '处理未完成，请重试', { variant: 'error',filled:true,actionLabel:state.status==='failed'?'重试未完成项':'' }) }} />}
         {state.status === 'failed' && !!state.issues?.length && <ul>{state.issues.slice(0, 20).map(issue =>
           <li>{issue.asset_id ? <a href={`/item/${issue.asset_id}`}>查看视频</a> : null}{issue.asset_id ? '：' : ''}{issue.message}</li>)}</ul>}
         {receipt && <div class="library-processing-result" dangerouslySetInnerHTML={{ __html: noteHtml(`已扫描 ${state.scanned || 0} 个文件，识别 ${state.identified || 0} 个番号，整理 ${state.candidates || 0} 组资料候选。`, { variant: 'success', label: '处理完成' }) }} />}
@@ -82,7 +82,7 @@ export function LibraryProcessing({ data, error, toast, onComplete, mode, monito
     <footer class="geist-fieldset-footer" data-geist-fieldset-footer>
       <a class="geist-button" href="/scraping">采集来源</a>
       {!!state.candidates && <a class="geist-button" href="/review">复核资料</a>}
-      <button ref={button} type="button" class="geist-button primary" onClick={() => void start()}>{state.status === 'failed' ? '重试未完成项' : '扫描并补全资料'}</button>
+      {state.status !== 'failed' && <button ref={button} type="button" class="geist-button primary" onClick={() => void start()}>扫描并补全资料</button>}
     </footer>
   </>;
 }

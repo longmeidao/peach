@@ -16,6 +16,15 @@ describe('中文错误反馈',()=>{
   });
 });
 describe('持久提示控件',()=>{
+  it.each([[79,'normal'],[80,'warning'],[94,'warning'],[95,'error']])('容量 %s 使用一致阈值', (value,level)=>{
+    const host=document.createElement('div');host.innerHTML=gaugeHtml('空间使用率',value,100,{usage:true});
+    expect(host.querySelector('.geist-gauge')?.getAttribute('data-level')).toBe(level);
+    expect(gaugeHtml('完成率',value,100)).toContain('data-level="normal"');
+  });
+  it('失败提示包含一个内部操作按钮',()=>{
+    const host=document.createElement('div');host.innerHTML=noteHtml('来源离线',{variant:'error',filled:true,actionLabel:'重试'});
+    expect(host.querySelectorAll('[role=alert] button')).toHaveLength(1);
+  });
   it('容量比例和任务计数使用真实上限，未知容量不显示零',()=>{
     const host=document.createElement('div');host.innerHTML=gaugeHtml('使用率',25,50);
     expect(host.querySelector('[role=progressbar]')?.getAttribute('aria-valuenow')).toBe('50');

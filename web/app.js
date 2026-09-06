@@ -2945,7 +2945,7 @@ async function openStats(push=true){
     `<div class="insightempty">${emptyStateHtml('tags','还没有标签来源','刮削或手动打标之后，这里会显示每个来源覆盖了多少视频。')}</div>`);
   const storageTable=(d.storage_volumes||[]).length?`<table class="insightdatatable"><thead><tr><th>位置</th><th>已用</th><th>可用</th><th>使用率</th></tr></thead><tbody>${(d.storage_volumes||[]).map(row=>{
     const measured=row.total!=null, usedPct=measured?pct(row.used,row.total):0;
-    return `<tr><th scope="row"><span>${esc(row.label)}</span><small>${row.root?esc(row.root):'未映射'}</small></th><td>${measured?gb(row.used):'—'}</td><td>${measured?gb(row.free):'—'}</td><td>${measured?gaugeHtml(`${row.label}空间使用率`,row.used,row.total)+usedPct+'%':(row.online?'容量未取得':'离线')}</td></tr>`}).join('')}</tbody></table>`
+    return `<tr><th scope="row"><span>${esc(row.label)}</span><small>${row.root?esc(row.root):'未映射'}</small></th><td>${measured?gb(row.used):'—'}</td><td>${measured?gb(row.free):'—'}</td><td>${measured?gaugeHtml(`${row.label}空间使用率`,row.used,row.total,{usage:true})+usedPct+'%':(row.online?'容量未取得':'离线')}</td></tr>`}).join('')}</tbody></table>`
     :emptyStateHtml('hard-drive','还没有存储来源','添加媒体文件夹后，这里会显示存储空间。');
   $('#stats').innerHTML=`
     <div class="insightpage statsdashboard" data-stats-dashboard>

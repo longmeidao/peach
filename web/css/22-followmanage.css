@@ -413,3 +413,10 @@ details.fcred{display:block;min-width:0}
 .photolight.has-strip .photodetail.context-card,.photodetail.context-card{position:fixed;inset:auto;width:320px;max-width:calc(100vw - 16px);background:var(--ground);color:var(--ink);backdrop-filter:none}.photodetail.context-card .photodetailmeta,.photodetail.context-card .srcstate{color:var(--muted)}.photodetail.context-card>button{color:var(--ink);border-color:var(--line)}
 
 .geist-gauge{display:inline-flex;width:32px;height:32px;flex:none;vertical-align:middle;margin-inline-end:8px}.geist-gauge svg{width:100%;height:100%;fill:none;stroke-width:3}.geist-gauge circle:first-child{stroke:var(--line-soft)}.geist-gauge circle:last-child{stroke:var(--feedback-success);transform:rotate(-90deg);transform-origin:center}.geist-progress{position:relative}.geist-progress i{background:var(--progress-color,var(--feedback-success))}.geist-progress-stop{position:absolute;top:0;bottom:0;width:2px;background:var(--ground);transform:translateX(-50%)}
+.geist-note:has(>[data-note-action]){grid-template-columns:16px minmax(0,1fr) auto;align-items:center}
+.geist-note>[data-note-action]{margin:0;white-space:nowrap}
+.geist-gauge[data-level="warning"] circle:last-child{stroke:var(--meter)}
+.geist-gauge[data-level="error"] circle:last-child{stroke:var(--drop)}
+.gauge-status{margin-inline-end:8px;font-size:var(--fs-xs)}
+@media(prefers-reduced-motion:no-preference){.geist-progress i{transition:width .2s ease-out,background-color .2s ease-out}.geist-gauge circle:last-child{transition:stroke-dasharray .2s ease-out,stroke .2s ease-out}}
+@media(max-width:600px){.geist-note:has(>[data-note-action]){grid-template-columns:16px minmax(0,1fr)}.geist-note>[data-note-action]{grid-column:2;justify-self:start}}

@@ -4,12 +4,12 @@ export { MEDIA_SOURCE_ICONS } from './media-source-icons.js';
 const NOTE_VARIANTS=new Set(['secondary','warning','error','success']);
 
 /** Inline, persistent context beside the field/card/section it describes. */
-export function noteHtml(message,{variant='secondary',label='',className='',size='medium',filled=false}={}){
+export function noteHtml(message,{variant='secondary',label='',className='',size='medium',filled=false,actionLabel=''}={}){
   const kind=NOTE_VARIANTS.has(variant)?variant:'secondary';
   const symbol=kind==='secondary'?'info':kind==='success'?'check':'alert';
   const role=kind==='error'?' role="alert"':' role="note"';
   return `<div class="geist-note geist-note-${kind}${className?` ${esc(className)}`:''}${size==='small'?' geist-note-small':''}${filled?' geist-note-filled':''}"${role}>
-    ${icon(symbol)}<p>${label?`<b>${esc(label)}</b>`:''}<span>${esc(kind==='error'?requestErrorMessage(message):message)}</span></p></div>`;
+    ${icon(symbol)}<p>${label?`<b>${esc(label)}</b>`:''}<span>${esc(kind==='error'?requestErrorMessage(message):message)}</span></p>${actionLabel?`<button type="button" class="geist-button primary" data-note-action>${esc(actionLabel)}</button>`:''}</div>`;
 }
 
 const PROJECT_BANNER_CLASSES={gray:'project-banner-gray',success:'project-banner-success',warning:'project-banner-warning',error:'project-banner-error'};
@@ -18,11 +18,13 @@ export function projectBannerHtml(message,{variant='gray',href,label,value,max}=
   return `<aside class="project-banner ${PROJECT_BANNER_CLASSES[kind]}" role="${kind==='error'?'alert':'status'}"><div>${Number(max)>0?gaugeHtml('任务完成率',value,max):icon(kind==='error'||kind==='warning'?'alert':'info')}<p>${esc(message)}</p></div><a href="${esc(href)}">${esc(label)}</a></aside>`;
 }
 
-export function gaugeHtml(label,value,max=100){
+export function gaugeHtml(label,value,max=100,{usage=false}={}){
   const ceiling=Number(max), current=Number(value);
   if(!Number.isFinite(ceiling)||ceiling<=0||!Number.isFinite(current))return `<span>${esc(label)}：未取得</span>`;
   const percent=Math.max(0,Math.min(100,current/ceiling*100));
-  return `<span class="geist-gauge" role="progressbar" aria-label="${esc(label)}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percent}"><svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="13"/><circle cx="16" cy="16" r="13" pathLength="100" stroke-dasharray="${percent} 100"/></svg></span>`;
+  const level=usage?(percent>=95?'error':percent>=80?'warning':'normal'):'normal';
+  const status=usage?(level==='error'?'空间即将用满':level==='warning'?'空间使用偏高':'空间充足'):'';
+  return `<span class="geist-gauge" data-level="${level}" role="progressbar" aria-label="${esc(label+(status?'：'+status:''))}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percent}"><svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="13"/><circle cx="16" cy="16" r="13" pathLength="100" stroke-dasharray="${percent} 100"/></svg></span>${status?`<span class="gauge-status">${status}</span>`:''}`;
 }
 
 /**

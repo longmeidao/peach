@@ -39,7 +39,7 @@ export declare function noteHtml(
     label?: string;
     className?: string;
     size?: 'small' | 'medium';
-    filled?: boolean;
+    actionLabel?:string; filled?: boolean;
   },
 ): string;
 export declare function projectBannerHtml(message:string,options:{variant?:'gray'|'success'|'warning'|'error';href:string;label:string;value?:number;max?:number}):string;
