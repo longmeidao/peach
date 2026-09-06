@@ -6637,9 +6637,9 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_jav_cover_source_and_size_are_independent_settings(self):
         self.assertPageContains('JAV 默认封面')
-        self.assertPageContains('JAV 默认大小')
+        self.assertPageContains('JAV 封面默认大小')
         self.assertPageContains("[['cover','官方封面',''],['thumbnail','预览图','']]")
-        self.assertPageContains("[['big','大图',''],['small','小图','']]")
+        self.assertPageContains("JAV_LAYOUTS,javLayout(),{attr:'data-jav-layout',className:'javimageswitch',text:true}")
         self.assertPageContains('id="javSizeSetting"')
         self.assertPageContains("wireJavLayoutButtons(size)")
         size_body = self.app_js.split('function setJavLayout(value){', 1)[1].split('\n}', 1)[0]

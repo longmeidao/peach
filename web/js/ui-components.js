@@ -401,7 +401,7 @@ export function wireOverlayScrollbars(root=document){
 export function iconSwitchHtml(name,legend,options,current,{attr='',className='',text=false}={}){
   const items=options.map(([value,label,symbol])=>
     `<label title="${esc(label)}"><input type="radio" name="${esc(name)}" value="${esc(value)}" ${attr}
-      ${value===current?'checked':''}><span aria-hidden="true">${text?esc(label):icon(symbol)}</span><span class="sr-only">${esc(label)}</span></label>`).join('');
+      ${value===current?'checked':''}><span aria-hidden="true">${text?(symbol?icon(symbol):'')+esc(label):icon(symbol)}</span><span class="sr-only">${esc(label)}</span></label>`).join('');
   return `<fieldset class="iconswitch${className?` ${esc(className)}`:''}"><legend class="sr-only">${esc(legend)}</legend>${items}</fieldset>`;
 }
 
