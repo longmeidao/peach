@@ -62,8 +62,10 @@ export function AccessSettings({ initial, receipt }: { initial: AccessState; rec
   };
   return <form class="configfieldset" onSubmit={submit} aria-labelledby="accessTitle" noValidate ref={form}>
     <div class="geist-fieldset-content">
+      <div class="configfieldset-heading">
       <div dangerouslySetInnerHTML={{ __html: fieldsetTitle('accessTitle', '访问密码') }} />
       <p class="confighelp">{state.mode === 'open' ? '未设置密码，能连接到 Peach 的设备可直接访问。' : state.mode === 'legacy' ? '当前使用系统生成的访问口令。你可以设置自己的密码，或关闭登录要求。' : state.mode === 'locked' ? '访问设置无法读取，请在本机检查配置文件。' : '已设置密码。新设备需要登录，保持登录时间在登录页选择。'}</p>
+      </div>
       {state.mode === 'password' ? <PasswordField id="access-current" label="当前访问密码" value={current} onInput={setCurrent} error={fields.current_password} current /> : null}
       {!disable && state.mode !== 'locked' ? <>
         <PasswordField id="access-password" label={state.mode === 'password' ? '新访问密码' : '设置访问密码'} value={password} onInput={setPassword} error={fields.password} help="至少 8 个字符。保存后其他设备需要重新登录。" />

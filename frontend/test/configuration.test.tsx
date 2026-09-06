@@ -64,6 +64,7 @@ it('缺失依赖提供带图标的新窗口下载链接且已安装依赖不提�
     expect(link?.querySelector('use')?.getAttribute('href')).toBe('#i-external-link');
   }
   expect(el.textContent).not.toContain('下载 WinFsp');
+  expect(el.querySelector('[aria-labelledby="configMountsTitle"] > .geist-fieldset-footer button')?.textContent).toBe('刷新挂载状态');
 });
 
 describe('配置页取数', () => {

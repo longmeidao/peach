@@ -532,10 +532,12 @@ function qe({ initial: e, receipt: t }) {
 		children: [/* @__PURE__ */ W("div", {
 			class: "geist-fieldset-content",
 			children: [
-				/* @__PURE__ */ W("div", { dangerouslySetInnerHTML: { __html: n("accessTitle", "访问密码") } }),
-				/* @__PURE__ */ W("p", {
-					class: "confighelp",
-					children: r.mode === "open" ? "未设置密码，能连接到 Peach 的设备可直接访问。" : r.mode === "legacy" ? "当前使用系统生成的访问口令。你可以设置自己的密码，或关闭登录要求。" : r.mode === "locked" ? "访问设置无法读取，请在本机检查配置文件。" : "已设置密码。新设备需要登录，保持登录时间在登录页选择。"
+				/* @__PURE__ */ W("div", {
+					class: "configfieldset-heading",
+					children: [/* @__PURE__ */ W("div", { dangerouslySetInnerHTML: { __html: n("accessTitle", "访问密码") } }), /* @__PURE__ */ W("p", {
+						class: "confighelp",
+						children: r.mode === "open" ? "未设置密码，能连接到 Peach 的设备可直接访问。" : r.mode === "legacy" ? "当前使用系统生成的访问口令。你可以设置自己的密码，或关闭登录要求。" : r.mode === "locked" ? "访问设置无法读取，请在本机检查配置文件。" : "已设置密码。新设备需要登录，保持登录时间在登录页选择。"
+					})]
 				}),
 				r.mode === "password" ? /* @__PURE__ */ W(Ke, {
 					id: "access-current",
@@ -644,7 +646,7 @@ function et({ data: t }) {
 	return r ? /* @__PURE__ */ W("section", {
 		class: "configfieldset",
 		"aria-labelledby": "configMountsTitle",
-		children: /* @__PURE__ */ W("div", {
+		children: [/* @__PURE__ */ W("div", {
 			class: "geist-fieldset-content",
 			children: [
 				/* @__PURE__ */ W(G, { html: n("configMountsTitle", "挂载状态") }),
@@ -670,15 +672,18 @@ function et({ data: t }) {
 					class: "configbad",
 					role: "alert",
 					children: s
-				}) : null,
-				/* @__PURE__ */ W("button", {
-					type: "button",
-					class: "geist-button",
-					onClick: (e) => u(e.currentTarget),
-					children: "刷新挂载状态"
-				})
+				}) : null
 			]
-		})
+		}), /* @__PURE__ */ W("div", {
+			class: "geist-fieldset-footer",
+			"data-geist-fieldset-footer": !0,
+			children: /* @__PURE__ */ W("button", {
+				type: "button",
+				class: "geist-button",
+				onClick: (e) => u(e.currentTarget),
+				children: "刷新挂载状态"
+			})
+		})]
 	}) : null;
 }
 function tt({ value: t, label: n, onChange: r }) {

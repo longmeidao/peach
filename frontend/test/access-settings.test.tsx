@@ -40,6 +40,8 @@ it('长度提示紧贴字段且提交不合法内容时变为字段错误', asyn
   const host = document.createElement('div'); document.body.append(host);
   const fetcher = vi.fn(); vi.stubGlobal('fetch', fetcher);
   render(<AccessSettings initial={{ mode: 'open', revision: 'one' }} receipt={vi.fn()} />, host);
+  expect(host.querySelector('.configfieldset-heading #accessTitle')).not.toBeNull();
+  expect(host.querySelector('.configfieldset-heading > .confighelp')?.textContent).toContain('未设置密码');
   const field = host.querySelector<HTMLInputElement>('#access-password')!;
   expect(field.nextElementSibling?.textContent).toContain('至少 8 个字符');
   host.querySelector('form')!.dispatchEvent(new Event('submit', { cancelable: true })); await settle();
