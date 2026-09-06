@@ -32,6 +32,7 @@ import type { LibraryProcessingData, LibraryProcessingProps } from './islands/li
  * 怎么写一个 store 见 `./state/index.ts` 和 `docs/FRONTEND.md`。 */
 export { refreshStore, storeNames } from './state';
 export { watchJob, followJobProgress } from './jobs';
+export { identityEvidenceHtml, reviewImageHtml, wireReviewPictures } from './review-evidence';
 export { createReviewSelection, wireReviewSelection } from './review-bulk';
 export { nativeImageFit, matchesFaceSource } from './native-image';
 export { entitySkeletonHtml } from './entity-skeleton';

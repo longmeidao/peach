@@ -27,3 +27,5 @@ export const fmtSize = (bytes: number | null | undefined): string => {
   if (value >= 1073741824) return `${(value / 1073741824).toFixed(1)} GB`;
   return `${Math.floor(value / 1048576)} MB`;
 };
+
+export const esc = (value: string): string => value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");

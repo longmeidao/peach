@@ -822,6 +822,21 @@ class ReviewQueueTests(unittest.TestCase):
             writer.writeheader(); writer.writerows(rows)
         return path
 
+    def test_identity_samples_include_unpictured_files_and_exclude_trash(self):
+        with sqlite3.connect(self.db_path) as connection:
+            connection.execute("UPDATE asset SET snapshot_path=NULL WHERE id=2")
+            connection.execute("UPDATE asset SET disposal='trash' WHERE id=3")
+        connection.close()
+        self._csv("babepedia-candidates.csv", ["entity_id", "creator", "videos", "verdict"],
+                  [{"entity_id": "1", "creator": "ukiru", "videos": "2", "verdict": "命中"}])
+        row = rm_review.q_review(self.contract)["sections"]["western_identity"][0]
+        self.assertEqual([asset["id"] for asset in row["preview_assets"]], [1, 2])
+        with sqlite3.connect(self.db_path) as connection:
+            connection.row_factory = sqlite3.Row
+            pictured = rm_review._creator_previews(connection, ["ukiru"])
+        connection.close()
+        self.assertEqual([asset["id"] for asset in pictured["ukiru"]], [1])
+
     def test_settled_western_identity_rows_stay_out_of_the_queue(self):
         # 168 条里 143 条是「确认无档案」，站上确实没有这个人，没有可判断的东西。
         fields = ["entity_id", "creator", "videos", "verdict", "matched_variant",

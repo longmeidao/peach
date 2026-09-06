@@ -13,3 +13,5 @@ export declare function fmtDur(seconds: number | null | undefined): string;
 
 /** 字节格式化成 TB／GB／MB。 */
 export declare function fmtSize(bytes: number | null | undefined): string;
+
+export declare function esc(value: string): string;
