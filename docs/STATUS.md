@@ -2,7 +2,9 @@
 
 最后核验：2026-09-06
 
-待办见 `PRODUCT_BACKLOG.md`，行为见 `REUSE.md`，长期知识见 `HANDOFF.md`。
+索引：`PRODUCT_BACKLOG.md`、`REUSE.md`、`HANDOFF.md`。
+
+- uv：`TESTING.md`。
 
 ## 运行态
 

@@ -12,6 +12,7 @@ import stat
 import subprocess
 import sys
 import time
+from functools import lru_cache
 from pathlib import Path
 
 from filelock import FileLock, Timeout
@@ -56,6 +57,23 @@ def snapshot(root: Path) -> str:
     return digest(manifest(root))
 
 
+def interpreter(root: Path) -> Path:
+    suffix = Path("Scripts/python.exe" if sys.platform == "win32" else "bin/python")
+    local = root / ".venv" / suffix
+    if local.is_file():
+        return local.absolute()
+    common = Path(git(root, "rev-parse", "--path-format=absolute", "--git-common-dir"))
+    shared = common.parent / ".venv" / suffix
+    return shared.absolute() if shared.is_file() else Path(sys.executable).absolute()
+
+
+@lru_cache(maxsize=16)
+def python_identity(executable: str, stamp: int) -> dict:
+    return json.loads(subprocess.run(
+        [executable, "-c", "import json,sys,site; print(json.dumps({'version':sys.version,'sites':site.getsitepackages()}))"],
+        check=True, capture_output=True, text=True, encoding="utf-8").stdout)
+
+
 def environment(root: Path) -> str:
     tools = {}
     for name in ("node", "npm", "git", "ffmpeg", "ffprobe", "openssl"):
@@ -66,11 +84,14 @@ def environment(root: Path) -> str:
         tools[name] = None if not executable else (
             str(Path(executable).resolve()), hashlib.sha256(Path(executable).read_bytes()).hexdigest())
     # 同一个目录可在 sys.path 中出现多次；依赖身份取集合，版本变化仍改变指纹。
+    python = interpreter(root)
+    identity = python_identity(str(python), python.stat().st_mtime_ns)
     installed = sorted({(d.metadata.get("Name", ""), d.version)
-                        for d in importlib.metadata.distributions()})
+                        for d in importlib.metadata.distributions(path=identity["sites"])
+                        if d.metadata.get("Name", "").casefold() != "peach"})
     node_lock = root / "frontend/node_modules/.package-lock.json"
     return digest({
-        "schema": 1, "python": sys.version, "executable": sys.executable,
+        "schema": 3, "python": identity["version"], "executable": str(python),
         "platform": platform.platform(), "packages": installed, "tools": tools,
         "node_modules": hashlib.sha256(node_lock.read_bytes()).hexdigest() if node_lock.exists() else None,
         "flags": {k: v for k, v in os.environ.items()

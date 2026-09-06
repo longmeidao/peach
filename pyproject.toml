@@ -71,6 +71,7 @@ package-dir = {"" = "src"}
 
 [tool.uv]
 required-version = "==0.12.10"
+cache-keys = [{file = "pyproject.toml"}, {file = "setup.py"}, {file = "src/peach/__init__.py"}, {file = "README.md"}]
 
 [tool.setuptools.dynamic]
 version = {attr = "peach.__version__"}

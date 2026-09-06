@@ -107,9 +107,11 @@ class SharedRequestSkeletonTests(unittest.TestCase):
         self.assertNotIn("secret", str(common["request_url"]))
 
     def test_non_200_raises_before_the_caller_parses_anything(self):
-        connector = _Probe(transport=_transport(status=500))
+        waits = []
+        connector = _Probe(transport=_transport(status=500), sleeper=waits.append)
         with self.assertRaises(FollowSourceError):
             connector._request("https://example.test/a", ref="r")
+        self.assertEqual(waits, [1, 2, 4, 8])
 
 
 class SharedSendContractTests(unittest.TestCase):
@@ -296,9 +298,11 @@ class PublicProbeApiTests(unittest.TestCase):
     def test_fetch_json_parses_and_rejects_non_200(self):
         connector = _Probe(transport=_transport(body=b'{"name": "x"}'))
         self.assertEqual(connector.fetch_json("https://example.test/a"), {"name": "x"})
-        failing = _Probe(transport=_transport(status=503, body=b"{}"))
+        waits = []
+        failing = _Probe(transport=_transport(status=503, body=b"{}"), sleeper=waits.append)
         with self.assertRaises(FollowSourceError):
             failing.fetch_json("https://example.test/a")
+        self.assertEqual(waits, [1, 2, 4, 8])
 
     def test_parse_json_rejects_a_non_json_body(self):
         connector = _Probe(transport=_transport(body=b"<html/>"))

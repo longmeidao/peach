@@ -200,7 +200,7 @@ def require_verified(worker: Path, target_branch: str, paths: Iterable[str]) -> 
     problems = check_readme_impact.check(worker, target_branch)
     if problems:
         raise WorkspaceError("; ".join(problems))
-    scopes, _ = test_runner.scopes_for_changes(paths)
+    scopes, _ = test_runner.scopes_for_changes(paths, contents=test_runner.changed_contents(worker, target_branch, paths))
     state = test_evidence.key(worker)
     if not test_evidence.covers(test_evidence.read(worker, state), scopes):
         raise WorkspaceError("缺少有效测试记录；请在工作树运行统一测试入口 auto")

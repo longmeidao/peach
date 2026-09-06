@@ -7,6 +7,7 @@ import importlib
 import subprocess
 import sys
 import time
+import tomllib
 import unittest
 from collections.abc import Iterable
 from contextlib import nullcontext
@@ -23,7 +24,7 @@ from . import test_evidence
 
 COMMON_PATTERNS = ("test_context_budget.py", "test_test_collection.py")
 SCOPES: dict[str, tuple[str, ...]] = {
-    "checks": ("test_copy_final_state.py", "test_dependency_policy.py", "test_repo_hygiene.py"),
+    "checks": ("test_copy_final_state.py", "test_dependency_policy.py", "test_repo_hygiene.py", "test_test_planning.py"),
     "follow": ("test_follow*.py", "test_http.py", "test_migrations.py"),
     "catalog": ("test_ad_judgement.py", "test_composite_name_split.py",
                 "test_duplicate_identity_merge.py",
@@ -83,6 +84,12 @@ SCOPES: dict[str, tuple[str, ...]] = {
     # 一面，改 `web/` 的人必须在本域就撞上它。
     "web": ("test_frontend_build.py", "test_web_ui.py", "test_web_js.py",
             "test_web_perf.py", "test_copy_final_state.py"),
+    "core": ("test_access.py", "test_auth.py", "test_config.py", "test_migrations.py",
+             "test_platform.py", "test_mount.py", "test_tray.py", "test_certs.py",
+             "test_folder_picker.py", "test_fsutil.py", "test_runtime_consistency.py",
+             "test_subprocess_encoding.py", "test_windows_update.py", "test_buildinfo.py"),
+    "packaging": ("test_dependency_policy.py", "test_buildinfo.py", "test_onboarding.py",
+                  "test_cli.py", "test_versioning.py", "test_frontend_build.py"),
 }
 
 SCOPE_TEST_IDS: dict[str, tuple[str, ...]] = {
@@ -98,6 +105,8 @@ SCOPE_TEST_IDS: dict[str, tuple[str, ...]] = {
 # 其余模块按「模块名 ↔ 测试文件名」推断（`media.py` → `test_media.py` → media）。
 # 仓库根的 Markdown 归 tooling：入口文件、README 与待办的门槛都在那个域里。
 AUTO_SCOPE_PREFIXES: tuple[tuple[str, str], ...] = (
+    ("scripts/localize_performer_names.py", "metadata"),
+    ("scripts/localize_series_names.py", "metadata"),
     ("src/peach/follow", "follow"),
     ("src/peach/fanbox.py", "follow"),
     ("src/peach/web_follow.py", "follow"),
@@ -123,7 +132,7 @@ AUTO_SCOPE_PREFIXES: tuple[tuple[str, str], ...] = (
 FULL_ONLY_PREFIXES: tuple[str, ...] = (
     "pyproject.toml",
     "scripts/test_runner.py", "scripts/test_evidence.py", "scripts/test.ps1", "scripts/test.sh",
-    "scripts/build_", "scripts/release_", ".github/workflows/",
+    "scripts/ci_plan.py", "uv.lock",
     "migrations/",
     "tests/support/",
     "package.json",
@@ -144,7 +153,7 @@ def selected_files(scope: str) -> tuple[Path, ...]:
 
 def scopes_of_test_file(name: str) -> tuple[str, ...]:
     """一个 `tests/test_*.py` 文件名登记在哪些域里；公共门槛文件归 tooling。"""
-    scopes = tuple(scope for scope, patterns in SCOPES.items()
+    scopes = tuple(scope for scope, patterns in SCOPES.items() if scope not in {"core", "packaging"}
                    if any(fnmatch.fnmatch(name, pattern) for pattern in patterns))
     if not scopes and any(fnmatch.fnmatch(name, pattern) for pattern in COMMON_PATTERNS):
         return ("tooling",)
@@ -154,7 +163,7 @@ def scopes_of_test_file(name: str) -> tuple[str, ...]:
 def scopes_of_module(stem: str) -> tuple[str, ...]:
     """`src/peach/<stem>.py` 按测试文件名推断域：`test_<stem>.py` 或 `test_<stem>_*.py`。"""
     exact, prefix = f"test_{stem}.py", f"test_{stem}_"
-    return tuple(scope for scope, patterns in SCOPES.items()
+    return tuple(scope for scope, patterns in SCOPES.items() if scope not in {"core", "packaging"}
                  if any(fnmatch.fnmatch(exact, pattern) or pattern.startswith(prefix)
                         for pattern in patterns))
 
@@ -166,7 +175,29 @@ def unclassified_files() -> tuple[Path, ...]:
     return tuple(sorted(set(TESTS.glob("test_*.py")) - classified))
 
 
-def scopes_for_changes(paths: Iterable[str]) -> tuple[tuple[str, ...], str]:
+def dependency_inputs(source: str) -> dict:
+    """只忽略不改变依赖图的 uv 工具版本和项目展示字段。"""
+    data = tomllib.loads(source)
+    project = data.get("project", {})
+    uv = dict(data.get("tool", {}).get("uv", {}))
+    uv.pop("required-version", None)
+    return {"build": data.get("build-system"), "requires-python": project.get("requires-python"),
+            "dependencies": project.get("dependencies"), "extras": project.get("optional-dependencies"),
+            "groups": data.get("dependency-groups"), "uv": uv}
+
+
+def changed_contents(root: Path, base: str, paths: Iterable[str]) -> dict:
+    result = {}
+    if "pyproject.toml" in paths:
+        try:
+            result["pyproject.toml"] = (test_evidence.git(root, "show", f"{base}:pyproject.toml"),
+                                        (root / "pyproject.toml").read_text(encoding="utf-8"))
+        except (OSError, subprocess.CalledProcessError):
+            pass
+    return result
+
+
+def scopes_for_changes(paths: Iterable[str], *, contents: dict | None = None) -> tuple[tuple[str, ...], str]:
     """纯函数：改动文件清单 → (要跑的域, 一行说明)。
 
     退化为 `full` 的条件只有两个：某个文件映射不到任何域，或改动触及必须 full 的面。
@@ -178,6 +209,18 @@ def scopes_for_changes(paths: Iterable[str]) -> tuple[tuple[str, ...], str]:
         if not path:
             continue
         name = path.rsplit("/", 1)[-1]
+        if path == "pyproject.toml" and contents and path in contents:
+            try:
+                before, after = contents[path]
+                if dependency_inputs(before) == dependency_inputs(after):
+                    picked.setdefault("packaging", []).append(path)
+                    continue
+            except (ValueError, TypeError):
+                pass
+        if path.startswith(("scripts/build_", "scripts/release_", ".github/workflows/")):
+            picked.setdefault("packaging", []).append(path)
+            picked.setdefault("tooling", []).append(path)
+            continue
         if name == "conftest.py" or any(path.startswith(p) for p in FULL_ONLY_PREFIXES):
             full_reasons.append(f"{path} 属于必须 full 的面")
             continue
@@ -230,20 +273,24 @@ def resolve_auto_scope() -> tuple[tuple[str, ...], str]:
         paths = changed_files()
     except (OSError, subprocess.CalledProcessError) as error:
         return ("full",), f"Peach auto scope: full <- git 不可用（{error}）"
-    return scopes_for_changes(paths)
+    return scopes_for_changes(paths, contents=changed_contents(ROOT, "master", paths))
 
 
-def build_suite(*scopes: str) -> unittest.TestSuite:
+def build_suite(*scopes: str, shard_index: int = 0, shard_count: int = 1) -> unittest.TestSuite:
     loader = unittest.defaultTestLoader
     suite = unittest.TestSuite()
     files = sorted({path for scope in scopes for path in selected_files(scope)})
+    assigned = set(files[shard_index::shard_count])
     sys.path[:0] = [str(ROOT), str(TESTS)]
     try:
-        for path in files:
+        for path in sorted(assigned):
             suite.addTests(loader.loadTestsFromModule(importlib.import_module(path.stem)))
         for scope in scopes:
             for test_id in SCOPE_TEST_IDS.get(scope, ()):
-                suite.addTests(loader.loadTestsFromName(test_id))
+                # 补充用例以模块名稳定分配；每个 shard 只运行自己的一份。
+                module = TESTS / (test_id.split(".", 1)[0] + ".py")
+                if module not in files and sum(test_id.split(".", 1)[0].encode()) % shard_count == shard_index:
+                    suite.addTests(loader.loadTestsFromName(test_id))
     finally:
         del sys.path[:2]
     return suite
@@ -267,17 +314,31 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--scope", choices=("full", "auto", *SCOPES), default="auto")
     parser.add_argument("--fresh", action="store_true", help="实际重跑，不复用本机记录")
+    parser.add_argument("--base", default="master", help="CI 选测的已验证 Git 基线")
+    parser.add_argument("--shard-index", type=int, default=0)
+    parser.add_argument("--shard-count", type=int, default=1)
     parser.add_argument("--list-scopes", action="store_true")
     args = parser.parse_args(argv)
+    if not 1 <= args.shard_count <= 4 or not 0 <= args.shard_index < args.shard_count:
+        parser.error("分片总数为 1～4，编号从 0 开始且小于总数")
     if args.list_scopes:
         print("\n".join(("full", "auto", *SCOPES)))
         return 0
     scopes: tuple[str, ...] = (args.scope,)
     if args.scope == "auto":
-        scopes, explanation = resolve_auto_scope()
+        if args.base == "master":
+            scopes, explanation = resolve_auto_scope()
+        else:
+            paths = changed_files(ROOT, args.base)
+            scopes, explanation = scopes_for_changes(paths, contents=changed_contents(ROOT, args.base, paths))
         print(explanation, flush=True)
     files = {path for scope in scopes for path in selected_files(scope)}
     print(f"Peach test scope: {' '.join(scopes)} ({len(files)} files)", flush=True)
+    if args.shard_count > 1:
+        # CI 的每片独立 runner；局部分片绝不签发本机全量证明。
+        result = unittest.TextTestRunner(verbosity=2, resultclass=TimedResult).run(
+            build_suite(*scopes, shard_index=args.shard_index, shard_count=args.shard_count))
+        return 0 if result.wasSuccessful() and result.testsRun > 0 else 1
     context = test_evidence.inputs(ROOT)
     state = context["state"]
     try:

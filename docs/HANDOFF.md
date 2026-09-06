@@ -37,7 +37,7 @@
 - uv 安装见 README；复用决策见 REUSE。
 
 - Codex 自动读取项目层级中的 `AGENTS.md`；Claude Code 通过 `CLAUDE.md` 导入同一文件。技能只有 Claude 侧封装（`.claude/skills/`），Codex 不自动加载，只能靠 `AGENTS.md` 索引表主动读同一份文件。
-- 正式测试入口为 Windows `& .\scripts\test.ps1`、macOS/Linux `./scripts/test.sh`。默认 `auto` 按影响域取并集，共享设施和未知影响面选全量；CI 与发布显式 `full`。测试证据复用、集成互斥和工作树锁定见 `peach-worktree` 技能。
+- 测试入口为 Windows `& .\scripts\test.ps1`、macOS/Linux `./scripts/test.sh`。选测与 CI 见 `TESTING.md`；证据、集成互斥和锁定见 `peach-worktree`。
 - 两个智能体使用同一入口，按任务读取相关文档；交接更新长期文件。
 - 新任务以当前机器真实的 `peach-app` 为工作目录，并说：「接手 Peach，按项目入口文件继续 STATUS 中的下一任务。」
 - 改变运行事实的任务同时更新 `docs/STATUS.md`；长期规则更新本文件、`docs/REUSE.md` 或 ADR；可执行流程写成 `.claude/skills/<name>/SKILL.md`。分层判据见 ADR-0015，步骤见 `peach-context-rules`。
@@ -57,7 +57,7 @@
 - 直接证据：视觉逐条任务在聊天里说「已保存」但 `asset_tag` 的 `source='vision'` 为 0，根本没有写入步骤；`disposal-candidates.csv` 在 `BNST033` 修正后未重建，把真实 3.2 GB 正片列为待删。
 - 解析用的固定件必须是抓回来的那份 HTML，不能照记忆重画：那样只能证明代码和记忆一致，会出现测试全绿而线上一个字段都没采到（实例见 `docs/SOURCING.md`）。
 - Claude 的 `.claude/settings.json` 配了 Stop、StopFailure、SessionEnd hook，用 `${CLAUDE_PROJECT_DIR}/.venv/Scripts/python.exe` 调 `scripts/job_status.py --write --hook-event`：只记脱敏生命周期摘要，重新从 ledger 与产物算数字，原子写入 `peach-data/state/job-status.md`，不复制 prompt、response 或凭据。
-- 那份产物不进 Git，`docs/STATUS.md` 只留一行指针；隔离工作树没有 `.venv`，工作者会话不写这份状态，机器级进度只由主检出的会话记录。强制杀进程或断电时 hook 不运行，下次调用会补上。
+- 那份产物不进 Git，`docs/STATUS.md` 只留一行指针；工作者会话不写这份状态，机器级进度只由主检出的会话记录。强制杀进程或断电时 hook 不运行，下次调用会补上。
 
 ## 中文文档写作规范
 

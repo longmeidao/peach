@@ -11,7 +11,7 @@ from peach.follow_sources import FollowCandidate, SourceFetch
 from peach.follow_store import (
     FollowStore, ReleaseGroup, author_display_text, normalized_author_name,
 )
-from peach.migrations import discover
+from support.ledger import fresh_ledger
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -35,12 +35,10 @@ class _StoreCase(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
-        self.root = Path(self.temporary.name)
-        self.connection = sqlite3.connect(self.root / "ledger.db")
+        self.root = Path(self.temporary.name).resolve()
+        self.connection = sqlite3.connect(fresh_ledger(self.root))
         self.connection.row_factory = sqlite3.Row
         self.addCleanup(self.connection.close)
-        for migration in discover(ROOT / "migrations"):
-            self.connection.executescript(migration.sql)
         self.store = FollowStore(lambda: self.connection,
                                  sources_root=self.root / "sources")
 

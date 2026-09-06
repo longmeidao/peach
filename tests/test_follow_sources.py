@@ -630,8 +630,10 @@ class KemonoConnectorTests(unittest.TestCase):
                 return HttpResponse(503, {}, b"")
             return HttpResponse(200, {}, json.dumps(posts).encode())
 
-        result = KemonoConnector(transport=_routed(route)).fetch("fanbox/1")
+        waits = []
+        result = KemonoConnector(transport=_routed(route), sleeper=waits.append).fetch("fanbox/1")
         self.assertIn("555", [c.external_id for c in result.candidates])
+        self.assertEqual(waits, [1, 2, 4, 8])
 
         # 额度为 0 时不联网，也不删。
         offline = KemonoConnector(max_probes=0,

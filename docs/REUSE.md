@@ -8,9 +8,11 @@ JAV 默认封面（官方封面／预览图）与默认大小（大图／小图�
 ## 复用决策门槛
 
 - Python 安装与构建复用 [uv 0.12.10](https://github.com/astral-sh/uv/releases/tag/0.12.10) 和官方 setup-uv 10.0.1，Astral 持续维护，许可证分别为 MIT/Apache-2.0 与 MIT。
-  uv 支持 Windows/macOS，本机 Windows wheel 18.1 MB，不进入 Peach 运行包。当前树、历史与本文已有 venv、pip 和 setuptools 入口；uv pip/venv/build 直接复用这些契约，不新增安装器。
-  隔离 Python 3.14 环境实装 105 个包、uv pip check 与 wheel 构建通过。CI 保留 Python 3.12/3.14 矩阵和普通 pip 安装 wheel 的验证。
-  采用 uv 的 pip 接口，保留主目录共享 venv；uv sync 的精确同步会移除未选 extras，不适用于正在提供服务的共享环境。pyproject 固定直接依赖，不新增传递锁文件；生产环境与 ledger 未改动。
+  使用 uv 项目接口、`uv.lock` 和 `uv sync --locked`；Dependabot 使用官方 `uv` 生态维护锁文件。
+  开发与构建在隔离工作树创建环境，生产 venv 不参与精确同步。直接依赖精确固定，传递依赖由锁文件复现；动态项目版本无需修改锁文件。
+  测试数据库复用当前树与 Git 历史中的 `tests/support/ledger.py`，迁移生成模板后复制独立临时库；真实迁移测试仍执行迁移。重试测试复用已有 sleeper 注入点。
+  Windows 临时库 POC：五次迁移 1.552 秒，五次模板复制 0.006 秒，完整 schema 一致。
+  CI 复用 GitHub Actions 独立 runner 分片与现有 unittest 入口；Peach 仅维护影响域策略，不引入并发测试框架。验证记录与最小安装规则见 `TESTING.md`。
 
 - 访问密码复用 Python 3.14 的 [hashlib.scrypt](https://docs.python.org/3.14/library/hashlib.html) 与 OpenSSL，浏览器会话复用 [ItsDangerous 2.2.0](https://itsdangerous.palletsprojects.com/en/stable/)（Pallets 维护、BSD-3-Clause、Python 3.8+、纯 Python、wheel 16 KB、无传递依赖）；本机原子配置写入复用 tempfile/os.replace，并将已有 filelock 3.32.4 纳入运行依赖。当前树和 Git 的认证入口已有内部口令、三种拒绝响应和本机配置守卫，继续复用。Starlette SessionMiddleware 采用统一时长并随响应更新会话，不满足每台设备选择固定截止时间的要求；直接使用同源签名库，由 Peach 维护可选密码、截止时间与撤销策略。临时文件 POC 的密码验证、签名验证和篡改拒绝通过，耗时 0.153 秒；真实凭据未读取。新增依赖不包含账户体系或数据库迁移。
 

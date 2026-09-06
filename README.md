@@ -86,16 +86,14 @@ cd peach-app
 Windows：在 PowerShell 创建环境、安装并启动首次设置：
 
 ```powershell
-uv venv --python 3.14 .venv
-uv pip install --python .venv/Scripts/python.exe -e .
+uv sync --locked --python 3.14
 & .\.venv\Scripts\peach-tray.exe
 ```
 
 macOS：在终端创建环境、安装菜单栏依赖并启动首次设置：
 
 ```shell
-uv venv --python 3.14 .venv
-uv pip install --python .venv/bin/python -e ".[macos]"
+uv sync --locked --python 3.14 --extra macos
 ./.venv/bin/peach-tray
 ```
 
@@ -143,7 +141,7 @@ macOS：运行与当前改动对应的检查：
 ./scripts/test.sh
 ```
 
-默认 `auto` 按影响域选测；CI 与发布使用 `full`。前端安装、构建、类型检查与产物提交见
+默认 `auto` 按影响域选测；CI 分层与依赖维护见 [测试与依赖](docs/TESTING.md)。前端安装、构建、类型检查与产物提交见
 [前端开发](docs/FRONTEND.md)。依赖以项目清单和锁文件为准，Dependabot 每周检查 Python、npm 与 GitHub Actions。
 
 提交问题请附版本、操作步骤、预期与实际结果；不要附带真实账本、媒体、Cookie 或私钥。

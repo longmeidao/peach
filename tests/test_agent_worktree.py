@@ -45,7 +45,7 @@ def commit(repo: Path, message: str) -> None:
     _git(repo, "commit", "-m", message)
 
 
-class AgentWorktreeTests(unittest.TestCase):
+class _WorktreeCase(unittest.TestCase):
     def setUp(self):
         self.verification = mock.patch.object(agent_worktree, "require_verified")
         self.verification.start()
@@ -73,6 +73,7 @@ class AgentWorktreeTests(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
+class AgentWorktreeTests(_WorktreeCase):
     def test_create_ready_and_integrate_non_overlapping_branch(self):
         result = create(self.repo, "Claude", "metadata batch", self.root / "worktrees")
         worker = Path(result["path"])
@@ -106,7 +107,7 @@ if __name__ == "__main__":
     unittest.main()
 
 
-class PruneTests(AgentWorktreeTests):
+class PruneTests(_WorktreeCase):
     """回收已经并入 master 的隔离工作树。
 
     `create` 一直有人用，回收却从来没有入口——2026-08-29 清到 3 个，两天后长回 74 个、
@@ -221,7 +222,7 @@ class PruneTests(AgentWorktreeTests):
                       "注册还在就是没回收成，分支不能删")
 
 
-class BuiltinLeftoverTests(AgentWorktreeTests):
+class BuiltinLeftoverTests(_WorktreeCase):
     """清掉 `.claude/worktrees/` 里已经不登记的残留目录。
 
     Claude Code 内置的工作树机制建在主检出里，分支集成后目录不会自己收。它不在
@@ -268,7 +269,7 @@ class BuiltinLeftoverTests(AgentWorktreeTests):
         self.assertEqual([row["branch"] for row in report["kept"]], ["agent/claude/in-place"])
 
 
-class VersionBumpTests(AgentWorktreeTests):
+class VersionBumpTests(_WorktreeCase):
     """集成时本地版本号跟着走一格。
 
     这台机器既是开发机又是生产机：提交先落本地再推 GitHub，本地永远领先，所以版本号

@@ -1,8 +1,11 @@
 ﻿[CmdletBinding()]
 param(
-    [ValidateSet('full', 'auto', 'follow', 'catalog', 'media', 'sync', 'metadata', 'tooling', 'web', 'checks')]
+    [ValidateSet('full', 'auto', 'follow', 'catalog', 'media', 'sync', 'metadata', 'tooling', 'web', 'checks', 'core', 'packaging')]
     [string]$Scope = 'auto',
-    [switch]$Fresh
+    [switch]$Fresh,
+    [string]$Base = 'master',
+    [int]$ShardIndex = 0,
+    [int]$ShardCount = 1
 )
 
 $ErrorActionPreference = 'Stop'
@@ -19,10 +22,9 @@ if ([IO.Path]::IsPathRooted($GitCommonRaw)) {
 }
 
 $MainRoot = Split-Path -Parent $GitCommon
-if (-not $PSBoundParameters.ContainsKey('Scope') -and $WorktreeRoot -eq $MainRoot) {
-    $Scope = 'full'
-}
 $Python = Join-Path $MainRoot '.venv\Scripts\python.exe'
+$LocalPython = Join-Path $WorktreeRoot '.venv\Scripts\python.exe'
+if (Test-Path -LiteralPath $LocalPython -PathType Leaf) { $Python = $LocalPython }
 if (-not (Test-Path -LiteralPath $Python -PathType Leaf)) {
     throw "Peach 主项目 venv 不存在：$Python"
 }
@@ -58,7 +60,7 @@ try {
     Write-Host "Peach source: $LoadedPath"
     $PeachTestExtra = @()
     if ($Fresh) { $PeachTestExtra += '--fresh' }
-    & $Python scripts\test_runner.py --scope $Scope @PeachTestExtra
+    & $Python scripts\test_runner.py --scope $Scope --base $Base --shard-index $ShardIndex --shard-count $ShardCount @PeachTestExtra
     exit $LASTEXITCODE
 } finally {
     Pop-Location
