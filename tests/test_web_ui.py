@@ -4139,6 +4139,13 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".reviewasset.picked{opacity:1;outline:2px solid var(--ink)")
         self.assertPageContains('.reviewitem[data-decision="approved"]::before{background:var(--keep)}')
 
+    def test_identity_review_keeps_picture_geometry_and_checkbox_spacing(self):
+        self.assertPageContains('.reviewentity .reviewpickheading{display:flex;align-items:center;gap:8px}')
+        self.assertPageContains('.reviewimage{width:100%;height:220px')
+        self.assertPageContains('justify-content:flex-end}')
+        self.assertPageContains("reviewCategory==='western_identity'?identityEvidenceHtml(row)")
+        self.assertPageContains('revealSource(+button.dataset.reviewReveal')
+
     def test_review_cards_use_equal_height_fieldsets_and_one_shared_scroller(self):
         self.assertPageContains('class="reviewitem" data-geist-fieldset')
         self.assertPageContains('class="geist-fieldset-content">${scrollerHtml(body')
