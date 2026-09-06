@@ -15,7 +15,7 @@ from pathlib import Path
 if not __package__:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     __package__ = "scripts"
-from . import test_evidence, test_runner
+from . import check_readme_impact, test_evidence, test_runner
 
 #: Claude Code 内置工作树的落点。分支集成后它自己不收：目录留在主检出里，成了一份看不出
 #: 区别的旧副本（见 CLAUDE.md）。`tests/test_repo_hygiene.py` 拦得住，但拦住之后没有任何
@@ -197,6 +197,9 @@ def require_verified(worker: Path, target_branch: str, paths: Iterable[str]) -> 
         raise WorkspaceError("验证工作树必须干净")
     if _git(worker, "merge-base", "--is-ancestor", target_branch, "HEAD", check=False).returncode:
         raise WorkspaceError("目标分支已前进；请在工作树 rebase 后运行 auto 验证")
+    problems = check_readme_impact.check(worker, target_branch)
+    if problems:
+        raise WorkspaceError("; ".join(problems))
     scopes, _ = test_runner.scopes_for_changes(paths)
     state = test_evidence.key(worker)
     if not test_evidence.covers(test_evidence.read(worker, state), scopes):

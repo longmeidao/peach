@@ -392,3 +392,86 @@ class VersionBumpTests(AgentWorktreeTests):
         self.assertEqual(report["version"], "0.7.15")
         self.assertEqual(report["release_tag_entry"], "scripts/release_tag.py")
         self.assertEqual(_lines(_git(self.repo, "tag", "--list")), [])
+
+
+from scripts.check_readme_impact import check, git
+
+
+class ReadmeImpactTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.repo = Path(self.temp.name).resolve()
+        git(self.repo, "init", "-b", "master")
+        git(self.repo, "config", "user.name", "Test")
+        git(self.repo, "config", "user.email", "test@example.invalid")
+        self.save("README.md", "中文")
+        self.save("README.en.md", "English")
+        git(self.repo, "commit", "-m", "base")
+        self.base = git(self.repo, "rev-parse", "HEAD").strip()
+        git(self.repo, "checkout", "-b", "worker")
+
+    def save(self, name, content):
+        path = self.repo / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8")
+        git(self.repo, "add", "--", name)
+
+    def commit(self, trailer=""):
+        git(self.repo, "commit", "-m", "测试", "-m", trailer)
+        return check(self.repo, self.base)
+
+    def test_runtime_change_requires_review(self):
+        self.save("src/peach/example.py", "x = 1")
+        self.assertTrue(self.commit())
+
+    def test_internal_change_accepts_explained_none(self):
+        self.save("src/peach/example.py", "x = 1")
+        self.assertEqual(self.commit("README-Impact: none; 内部缓存实现，使用方式不变"), [])
+
+    def test_updated_requires_both_languages(self):
+        self.save("README.md", "新内容")
+        self.assertTrue(self.commit("README-Impact: updated; 功能说明"))
+
+    def test_bilingual_update_accepts_review(self):
+        self.save("README.md", "新内容")
+        self.save("README.en.md", "New content")
+        self.assertEqual(self.commit("README-Impact: updated; 功能说明"), [])
+
+    def test_none_cannot_describe_document_changes(self):
+        self.save("README.md", "新内容")
+        self.save("README.en.md", "New content")
+        self.assertTrue(self.commit("README-Impact: none; 内部改动"))
+
+    def test_test_only_change_needs_no_declaration(self):
+        self.save("tests/example.py", "x = 1")
+        self.assertEqual(self.commit(), [])
+
+    def test_uncommitted_readme_does_not_satisfy_review(self):
+        self.save("frontend/package.json", "{}")
+        self.commit("README-Impact: updated; 工具要求")
+        self.save("README.md", "新内容")
+        self.save("README.en.md", "New content")
+        self.assertTrue(check(self.repo, self.base))
+
+    def test_missing_reason_and_duplicate_trailers_are_rejected(self):
+        self.save("web/app.js", "x = 1")
+        for trailer in ("README-Impact: none;",
+                        "README-Impact: none; 原因\nREADME-Impact: updated; 原因"):
+            git(self.repo, "commit", "--allow-empty", "-m", "测试", "-m", trailer)
+            self.assertTrue(check(self.repo, self.base))
+
+    def test_deletion_and_rename_trigger_review(self):
+        self.save("src/peach/example.py", "x = 1")
+        self.commit("README-Impact: none; 内部实现")
+        self.base = git(self.repo, "rev-parse", "HEAD").strip()
+        git(self.repo, "mv", "src/peach/example.py", "example.txt")
+        self.assertTrue(self.commit())
+
+    def test_gate_rejects_before_accepting_verification(self):
+        self.save("web/app.js", "x = 1")
+        self.commit()
+        with mock.patch.object(agent_worktree.test_evidence, "key") as key:
+            with self.assertRaisesRegex(agent_worktree.WorkspaceError, "README"):
+                agent_worktree.require_verified(self.repo, "master", {"web/app.js"})
+            key.assert_not_called()

@@ -273,6 +273,45 @@
         "web/app.js",
         "tests/test_web_ui.py"
       ]
+    },
+    {
+      "id": "readme-immich",
+      "name": "immich README",
+      "url": "https://raw.githubusercontent.com/immich-app/immich/main/README.md",
+      "snapshot": "docs/reference-snapshots/upstream/readme-immich.md",
+      "checked_on": "2026-09-06",
+      "sha256": "27b511ae6ee3be2295c4c1e0674dd0ac5b0c6023d9fdd9187869b1605ff56fad",
+      "role": "短定位、下载与文档入口、精简功能层级；Peach 仅借鉴信息结构。",
+      "consumers": [
+        "README.md",
+        "README.en.md"
+      ]
+    },
+    {
+      "id": "readme-bruno",
+      "name": "bruno README",
+      "url": "https://raw.githubusercontent.com/usebruno/bruno/main/readme.md",
+      "snapshot": "docs/reference-snapshots/upstream/readme-bruno.md",
+      "checked_on": "2026-09-06",
+      "sha256": "9c58f675282a73a8c7f2a0a740799743b50a654d60dafc114fdd11060ed8a039",
+      "role": "小尺寸具象 Logo 配短介绍；Peach 使用自己的桃形 Logo，不复制上游品牌素材。",
+      "consumers": [
+        "README.md",
+        "README.en.md"
+      ]
+    },
+    {
+      "id": "readme-hoppscotch",
+      "name": "hoppscotch README",
+      "url": "https://raw.githubusercontent.com/hoppscotch/hoppscotch/main/README.md",
+      "snapshot": "docs/reference-snapshots/upstream/readme-hoppscotch.md",
+      "checked_on": "2026-09-06",
+      "sha256": "f943825e526b79841882127fbf6a3c043359efd1ca6f47794c851f827a6373b4",
+      "role": "集中导航与图片替代文本；Peach 统一三枚 flat 徽章，不复制长功能清单。",
+      "consumers": [
+        "README.md",
+        "README.en.md"
+      ]
     }
   ]
 }
