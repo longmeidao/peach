@@ -1128,6 +1128,26 @@ class PerformerAvatarApplyTests(ReviewQueueTests):
         self.assertTrue((self.avatar_root / "creator-2.img").is_file())
         self.assertFalse((self.avatar_root / "performer-2.img").exists())
 
+    def test_the_face_sidecar_follows_the_image_it_describes(self):
+        """装上新图之后，边上不能还留着别的图的脸框。
+
+        圆头像按 `<kind>-<id>.face.json` 里那张脸摆位，没有 sidecar 就几何居中。
+        顶掉一张旧头像时若把旧 sidecar 留在原地，页面会拿上一张图的脸框给这一张取景、
+        放大到一个空位置上——而这在界面上与「这张图本来就该这么显示」看不出区别。
+
+        这里的候选是几个字节的假 JPEG，检出器解不开，所以正确结果是没有 sidecar；
+        真图检出人脸时写进去的形状由 `peach.avatar_face` 自己的用例锁住。
+        """
+        target = self.avatar_root / "performer-9.img"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        stale = target.with_suffix(".face.json")
+        stale.write_text('{"ratio": 0.8, "px": [100, 125], '
+                         '"face": {"cx": 0.5, "cy": 0.2, "w": 0.4, "h": 0.4, "score": 0.9}, '
+                         '"focus": {"axis": "y", "pct": 0}}', encoding="utf-8")
+        self._seed(body=b"\xff\xd8\xff\xdb-replacement")
+        self.assertEqual(self._decide()["applied_assets"], 1)
+        self.assertFalse(stale.exists(), "检不出脸就该没有 sidecar，不能留着上一张图的脸框")
+
     def test_a_candidate_that_did_not_pass_quality_is_refused(self):
         self._seed(verdict="rejected")
         with self.assertRaisesRegex(ValueError, "ok"):
