@@ -12,6 +12,7 @@ it('系统口令可直接转为可选密码且关闭需要明确提交', async (
   vi.stubGlobal('fetch', fetcher);
   render(<AccessSettings initial={{ mode: 'legacy', revision: 'legacy' }} receipt={receipt} />, host);
   expect(host.querySelector('[autocomplete="current-password"]')).toBeNull();
+  expect(host.querySelector('.geist-fieldset-footer .primary')?.textContent).toBe('保存配置');
   const toggle = host.querySelector<HTMLInputElement>('[type="checkbox"]')!;
   toggle.checked = true; toggle.dispatchEvent(new Event('change', { bubbles: true })); await settle();
   expect(host.querySelector('[autocomplete="new-password"]')).toBeNull();

@@ -587,10 +587,10 @@ function qe({ initial: e, receipt: t }) {
 		}), r.mode === "locked" ? null : /* @__PURE__ */ W("div", {
 			class: "geist-fieldset-footer",
 			children: [/* @__PURE__ */ W("p", { children: "保存后立即生效。" }), /* @__PURE__ */ W("button", {
-				class: "geist-button",
+				class: "geist-button primary",
 				type: "submit",
 				ref: b,
-				children: f ? "关闭访问密码" : "保存访问密码"
+				children: "保存配置"
 			})]
 		})]
 	});

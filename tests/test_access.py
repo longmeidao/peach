@@ -86,7 +86,7 @@ class AccessTests(unittest.IsolatedAsyncioTestCase):
         policy = access.save(self.path, "")
         body = {"revision": policy["revision"], "action": "set", "password": "correct-password", "confirmation": "correct-password"}
         self.assertEqual((await self.client.post("/api/configuration/access", json=body, headers={"Origin": "https://evil.example"})).status_code, 403)
-        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=self.app, client=("192.168.1.2", 1)), base_url="http://localhost") as remote:
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=self.app, client=("192.0.2.2", 1)), base_url="http://localhost") as remote:
             self.assertEqual((await remote.post("/api/configuration/access", json=body)).status_code, 403)
         body["revision"] = "stale"
         self.assertEqual((await self.client.post("/api/configuration/access", json=body)).status_code, 409)

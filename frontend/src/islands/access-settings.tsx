@@ -74,6 +74,6 @@ export function AccessSettings({ initial, receipt }: { initial: AccessState; rec
       {state.mode === 'password' || state.mode === 'legacy' ? <label class="configcheck"><span class="pcheck"><input type="checkbox" checked={disable} onChange={(event) => setDisable(event.currentTarget.checked)} /><span aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#i-check" /></svg></span></span><span>关闭访问密码，允许能连接到 Peach 的设备直接访问</span></label> : null}
       {error ? <p class="configbad" role="alert">{error}</p> : null}
     </div>
-    {state.mode !== 'locked' ? <div class="geist-fieldset-footer"><p>保存后立即生效。</p><button class="geist-button" type="submit" ref={button}>{disable ? '关闭访问密码' : '保存访问密码'}</button></div> : null}
+    {state.mode !== 'locked' ? <div class="geist-fieldset-footer"><p>保存后立即生效。</p><button class="geist-button primary" type="submit" ref={button}>保存配置</button></div> : null}
   </form>;
 }
