@@ -1615,8 +1615,7 @@ async function mountDetailPlayer(it,video,autoplay,options={}){
 }
 const selected=new Set(),followSelected=new Set();
 let selectMode=false,lastSelectedId=null,followLastSelectedId=null,selectSurface='';
-let reviewSelectionController=null;
-const currentSelectSurface=()=>location.pathname==='/review'?'review':location.pathname==='/follow'?'follow':location.pathname==='/junk-files'?'junk':'catalog';
+const currentSelectSurface=()=>location.pathname==='/follow'?'follow':location.pathname==='/junk-files'?'junk':'catalog';
 function paintSelection(){
   document.querySelectorAll('.card[data-id]').forEach(card=>card.classList.toggle('selected',selected.has(+card.dataset.id)));
   document.querySelectorAll('.followitem[data-follow-item]').forEach(card=>
@@ -1636,11 +1635,9 @@ function paintSelection(){
   paintTagIndexSelection();
 }
 function setSelectMode(on,clear=false){
-  if(location.pathname==='/review'&&reviewSelectionController?.busy)return;
   if(on&&!selectMode)selectSurface=currentSelectSurface();
   selectMode=!!on;if(!selectMode)selectSurface='';document.body.classList.toggle('select-mode',selectMode);
   if(selectMode)releaseHoverPreviews();
-  if(location.pathname==='/review')reviewSelectionController?.setMode(selectMode);
   $('#selectMode').setAttribute('aria-pressed',selectMode);if(clear){selected.clear();followSelected.clear();selectedIndexTags.clear();lastSelectedId=null;followLastSelectedId=null}paintSelection()}
 /* 只取网格直属卡片：竖屏条是嵌在网格里的横向滚动条，不该被 Shift 范围选中顺带框进来。 */
 function visibleCardIds(){return [...gridCards()].map(card=>+card.dataset.id)}
@@ -3707,7 +3704,7 @@ async function openReview(push=true){
   const next=await surfaceApi(surface,'/api/review');
   if(!surfaceCurrent(surface))return;
   reviewRuntime=runtime;reviewData=next;
-  const selection=createReviewSelection(); selection.active=selectMode; reviewSelectionController=null;
+  const selection=createReviewSelection();
   const render=()=>{
     const category=reviewCategory;
     const rows=reviewData.sections[reviewCategory]||[];
@@ -3751,7 +3748,7 @@ async function openReview(push=true){
              <button class="revieworigincover" data-review-open-item="${asset.id}" aria-label="打开原视频 ${esc(asset.name||'')}">
                ${asset.preview_url?`<img src="${esc(asset.preview_url)}" alt="" loading="lazy" data-drop="self">`:'<span>无封面</span>'}</button>
              <div><b data-middle-truncate title="${esc(asset.name||'')}">${esc(asset.code||asset.name||'原视频')}</b>
-               <button type="button" data-review-open-item="${asset.id}">${icon('play')}打开原视频</button></div></div>`).join('')}</div>`:'';
+               <button type="button" class="geist-button" data-review-open-item="${asset.id}">${icon('play')}打开原视频</button></div></div>`).join('')}</div>`:'';
          const origin=comparisonOrigin||subjectKind&&subjectName?comparisonOrigin||`<div class="reviewentity">
              <button class="reviewentityface" data-entity-kind="${subjectKind}" data-entity-name="${esc(subjectName)}"
                aria-label="打开创作者页：${esc(subjectName)}">${avatarInner(subjectName,
@@ -3762,7 +3759,7 @@ async function openReview(push=true){
              <button class="revieworigincover" data-review-open-item="${row.asset_id}" aria-label="打开原视频 ${esc(row.asset_name||'')}">
                ${row.asset_preview_url?`<img src="${esc(row.asset_preview_url)}" alt="" loading="lazy" data-drop="self">`:'<span>无封面</span>'}</button>
              <div><b data-middle-truncate title="${esc(row.asset_name||'')}">${esc(row.asset_name||'原视频')}</b>
-               <button type="button" data-review-open-item="${row.asset_id}">${icon('play')}打开原视频</button></div></div>`:'';
+               <button type="button" class="geist-button" data-review-open-item="${row.asset_id}">${icon('play')}打开原视频</button></div></div>`:'';
          /* 只有一个候选时没什么可选的，单选圈只是让人以为还有别的选项。
             改成纯展示，几何对齐上面的「打开原视频」块。
             radio 保留但不可见：提交路径读的就是 `[name^="metadata-"]:checked`，
@@ -3795,7 +3792,7 @@ async function openReview(push=true){
            row.source_name?`<p class="reviewalias">来源写法：${esc(row.source_name)}</p>`:''}${
            // 实体类卡片的作品数已经写在创作者入口里，这里再写一遍就是同一个数字两处。
            subjectKind&&subjectName?'':`<p>${esc(row.board||row.assets?`样本/资产：${row.video_count||row.assets||''}`:'')}</p>`}${origin}${tags?`<div class="reviewtags">${tags}</div>`:''}${preview}<p>${esc(evidence)}</p>`;
-         const actions=`<button class="approve" data-review-status="approved"${canApprove&&!locked?'':' disabled'}>${approveLabel}</button><button class="skip" data-review-status="skipped"${locked?' disabled':''}>跳过</button><button class="reject" data-review-status="rejected"${locked?' disabled':''}>拒绝</button><span class="reviewstate" aria-live="polite"></span>`;
+         const actions=`<button class="geist-button primary" data-review-status="approved"${canApprove&&!locked?'':' disabled'}>${approveLabel}</button><button class="geist-button warning" data-review-status="skipped"${locked?' disabled':''}>跳过</button><button class="geist-button error" data-review-status="rejected"${locked?' disabled':''}>拒绝</button><span class="reviewstate" aria-live="polite"></span>`;
          return `<fieldset class="reviewitem" data-geist-fieldset data-review-key="${esc(key)}" data-decision="${esc(decision)}"><legend class="sr-only">${esc(titleText)}</legend><div class="geist-fieldset-content">${scrollerHtml(body,{className:'reviewcontent',label:`复核：${titleText}`})}</div><footer class="reviewactions geist-fieldset-footer" data-geist-fieldset-footer>${actions}</footer></fieldset>`}).join(''):emptyState('square-check-big','暂无候选','该分类当前没有待人工复核的项目。')}</div></section></div>`;
      wireReviewAssets($('#stats'));
     wireScrollers($('#stats'));
@@ -3807,7 +3804,7 @@ async function openReview(push=true){
        激活仍交给 button 自己的 Enter/Space，不另设快捷键。 */
     const reviewTabs=[...$('#stats').querySelectorAll('[data-review-tab]')];
     reviewTabs.forEach((button,index)=>{
-      button.onclick=()=>{if(selection.busy)return;selection.selected.clear();selection.choices.clear();selection.assets.clear();selection.errors.clear();reviewCategory=button.dataset.reviewTab;render()};
+      button.onclick=()=>{if(selection.busy)return;selection.selected.clear();selection.anchor=null;selection.choices.clear();selection.assets.clear();selection.errors.clear();reviewCategory=button.dataset.reviewTab;render()};
       button.onkeydown=event=>{
         const step=event.key==='ArrowRight'?1:event.key==='ArrowLeft'?-1:0;
         const target=step?reviewTabs[(index+step+reviewTabs.length)%reviewTabs.length]
@@ -3829,8 +3826,7 @@ async function openReview(push=true){
       selection.selected.delete(key);selection.choices.delete(key);selection.assets.delete(key);selection.errors.delete(key);
     };
     const current=()=>surfaceCurrent(surface)&&category===reviewCategory;
-    reviewSelectionController=wireReviewSelection($('#stats').querySelector('.review'),{rows,metadata:category==='metadata_fields',locked,state:selection,
-      modeChanged:active=>{if(selectMode!==active)setSelectMode(active)},
+    wireReviewSelection($('#stats').querySelector('.review'),{rows,metadata:category==='metadata_fields',locked,state:selection,
       payload:decisionPayload,submit:payload=>api('/api/review/decision',{method:'POST',body:JSON.stringify(payload)}),
       applied:removeReviewed,active:current,refresh:render,notify:actionReceipt});
     syncHeaderActions();
@@ -6962,7 +6958,7 @@ function syncHeaderActions(){
     setSelectMode(false,true);
   const entity=parts.length>1&&Object.prototype.hasOwnProperty.call(ROUTE_ENTITIES,parts[0]);
   const catalog=isCatalogPath(path)||path==='/trash';
-  const canSelect=catalog||entity||path==='/tags'||path==='/follow'||(path==='/review'&&reviewRuntime&&!reviewRuntime.ledger_read_only);
+  const canSelect=catalog||entity||path==='/tags'||path==='/follow';
   const canDensity=catalog||entity||path==='/follow';
   $('#selectMode').hidden=!canSelect;$('#density').hidden=!canDensity;
   if(!canSelect&&selectMode)setSelectMode(false,true);

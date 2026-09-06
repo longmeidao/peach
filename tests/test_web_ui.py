@@ -4021,9 +4021,9 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".tier.catalog-placeholder{overflow:hidden}")
         self.assertPageContains("flex:1 0 240px;min-width:240px;overflow:hidden")
 
-    def test_review_selection_shares_header_and_has_a_separate_toolbar(self):
-        self.assertPageContains("reviewSelectionController?.setMode(selectMode)")
-        self.assertPageContains("path==='/review'&&reviewRuntime&&!reviewRuntime.ledger_read_only")
+    def test_review_selection_uses_default_checkboxes_and_a_separate_toolbar(self):
+        self.assertNotIn("reviewSelectionController", self.page)
+        self.assertNotIn("selection.active=selectMode", self.page)
         self.assertPageContains(".reviewbulktoolbar{width:100%;padding-block:16px}")
         self.assertPageContains(".taste-guide-skip{width:100%;height:var(--control-h);color:var(--meter)}")
 
@@ -4147,7 +4147,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('height:var(--review-fieldset-height);margin:0;padding:0')
         self.assertPageContains('.reviewitem>.geist-fieldset-content{flex:1;min-height:0;padding:20px}')
         self.assertPageContains('min-height:56px;margin:0;padding:12px 12px 12px 20px')
-        self.assertPageContains('.reviewactions button{box-sizing:border-box;height:32px')
+        self.assertPageContains('.geist-button{box-sizing:border-box;height:32px')
         self.assertPageContains('.reviewstate:empty{display:none}')
         self.assertPageContains('export function scrollerHtml(content')
         self.assertPageContains("wireScrollers($('#stats'))")
@@ -6259,7 +6259,7 @@ class WebUiSourceTests(unittest.TestCase):
             ".ncard .meta .why",
             ".playerstats dd", ".playerstatsmetric>span",
             ".relatedperson .nm", ".reviewentity b",
-            ".reviewitem h4", ".searchoption span",
+            ".reviewitem h4", ".reviewpickname", ".searchoption span",
             ".sgrid.mixgrid>.mixqueue .mixqueuehead span", ".sidebarorderlabel>b",
             ".insightrankrow>span:nth-child(2)", ".insighttablerow span", ".metricstrip small,.tastesummary>small",
             ".gselectfield>span",
@@ -7071,8 +7071,7 @@ class WebUiSourceTests(unittest.TestCase):
                          ".cleanupfieldset button.danger:hover{",
                          ".dupbtns button.danger:hover{", ".resourcedanger:hover:not(:disabled){",
                          ".junkactions .junktrash:hover:not(:disabled){",
-                         ".playlistactions .danger:hover{",
-                         ".reviewactions .reject:hover{"):
+                         ".playlistactions .danger:hover{"):
             self.assertPageContains(selector + fill, f"{selector} 的悬停态要填 --drop")
 
     def test_bulk_footer_keeps_one_line_and_ellipsises_its_counts(self):
@@ -7460,7 +7459,12 @@ class WebUiSourceTests(unittest.TestCase):
     def test_review_bulk_reuses_explicit_decisions_and_insets_scrolling_content(self):
         self.assertPageContains("wireReviewSelection($('#stats').querySelector('.review')")
         self.assertPageContains("payload:decisionPayload,submit:payload=>api('/api/review/decision'")
-        self.assertPageContains('.reviewcontent .geist-scroller-container{padding-right:12px}')
+        self.assertPageContains('.reviewcontent .geist-scroller-container{padding-right:0}')
+        self.assertPageContains('.reviewcontent .ovtrack.ov-y{transform:translateX(12px)}')
+        self.assertPageContains('class="geist-button error" data-review-status="rejected"')
+        self.assertPageContains('.geist-button.error{background:#da2f35;border-color:#da2f35;color:#fff}')
+        self.assertPageContains('.geist-button.warning{background:#ff990a;border-color:#ff990a;color:#000}')
+        self.assertPageContains('.geist-button:is(.error,.warning):disabled{background:var(--sunk);border-color:var(--line-soft);color:var(--muted)}')
         self.assertPageLacks("${index===0?' checked':''}")
 
     def test_immersive_fit_compares_source_against_the_viewport(self):
