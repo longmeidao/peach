@@ -22,6 +22,10 @@ README 迭代绑定 Codex 与 Claude 共用的工作树交付流程。每次提�
 | 已更新两份 README | `README-Impact: updated; 同步了哪些用户说明` |
 | 不影响 README | `README-Impact: none; 具体原因` |
 
+声明与 `Co-Authored-By` 等其它 trailer 连续写在提交消息末尾的同一块里，彼此之间不留空行。
+`git interpret-trailers --parse` 只解析末尾那一块，被空行隔开的 `README-Impact` 属于正文段落，
+`ready` 报「交付提交须有唯一 README-Impact」，而提交消息本身看不出哪一行不合格。
+
 `scripts/check_readme_impact.py` 读取目标分支到交付 HEAD 的实际差异，并使用
 `git interpret-trailers --parse` 读取最后提交的声明。涉及运行时代码、前端、迁移、资源、
 依赖或安装说明时必须声明；纯测试和其他内部文档不触发。触发清单由脚本统一维护。
