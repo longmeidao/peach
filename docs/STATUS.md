@@ -4,7 +4,7 @@
 
 索引：`PRODUCT_BACKLOG.md`、`REUSE.md`、`HANDOFF.md`。
 
-- 自启、代理、卸载设置已上线；桌面与手机预览通过，生产浏览器取证超时。见 `REUSE.md`。
+- 自启、代理、卸载设置已上线，见 `REUSE.md`。
 
 ## 运行态
 

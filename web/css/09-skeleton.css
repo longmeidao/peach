@@ -167,4 +167,4 @@ body.refreshing #tiers .brandpill{border-color:transparent}
 .config-skeleton-card .skeleton{display:block;height:20px;width:60%}
 .config-skeleton-card .geist-fieldset-content>.skeleton:first-child{height:24px;width:35%}
 .config-skeleton-card .geist-fieldset-content>.skeleton:last-child{height:var(--control-h);width:100%}
-.config-skeleton-card .geist-fieldset-footer>.skeleton{width:100px;height:var(--control-h)}
+.config-skeleton-card .geist-fieldset-footer>.skeleton{width:100px;height:var(--control-h);margin:0}
