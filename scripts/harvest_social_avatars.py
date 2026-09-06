@@ -398,6 +398,20 @@ def passes_auto_bar(width: int, height: int) -> bool:
             or (max(width, height) >= 500 and min(width, height) >= 300))
 
 
+def shows_a_real_face(candidate: dict) -> bool:
+    """这张图里有没有一张真人的脸。检不出就当没有。
+
+    官方社媒头像也可能是一张画：本人挂动漫头像的不在少数。而头像这一格要
+    回答的是「这是谁」，画出来的那张脸回答不了，来源档再高也一样。
+
+    判据借 YuNet，它只认真人脸。这把尺会把真人的侧脸、低头一并判成 False——
+    那不是误伤，检不出脸的图放进 112px 的圆框里本来也认不出人，退回复核
+    队列由人看一眼正是它存在的理由。全批检不出（模型没下到）时整批退回复核，
+    比按画布尺寸盲装安全。
+    """
+    return bool(candidate.get("face_width"))
+
+
 def fetch_image(http: HttpTransport, url: str, timeout: float, limiter: HostLimiter):
     """取一张并完整解码校验；失败返回 None。"""
     response = fetch(http, url, timeout, limiter, accept="image/*")
@@ -935,7 +949,9 @@ def run(args) -> int:
                     candidate.get("matched"))
                 is_winner = candidate is winner
                 note = ""
-                if is_winner and identity_ok:
+                if is_winner and identity_ok and not shows_a_real_face(candidate):
+                    note = "竞选赢家但检不出真人脸（多半是动漫头像），不自动安装，待复核"
+                elif is_winner and identity_ok:
                     note = "竞选赢家；质量与身份过关"
                     # 「没过线」和「空跑」是两件事，别都写成待复核：前者要人去看，
                     # 后者只差一个 --apply。
@@ -973,7 +989,9 @@ def run(args) -> int:
                     "cache_path": candidate["object_path"].name,
                     "provenance_path": provenance_path.name,
                     "policy_version": POLICY_VERSION,
-                    "verdict": "ok" if identity_ok else "identity_unverified",
+                    "verdict": ("ok" if identity_ok and shows_a_real_face(candidate)
+                                else "no_real_face" if identity_ok
+                                else "identity_unverified"),
                     "avatar_url": candidate["source_url"],
                     "evidence": candidate["evidence"] + "；" + note,
                 })
