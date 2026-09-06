@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import re
 import shutil
+import time
 
 from datetime import UTC, datetime, timedelta
 
@@ -112,17 +113,24 @@ def q_taste(contract: WebContract, args=None):
     return payload
 
 
-def w_taste_refresh(contract: WebContract, body):
+def w_taste_refresh(contract: WebContract, body, *, progress=None):
     if body.get("background"):
-        return contract.taste_refresh_job.start_result(
-            lambda: w_taste_refresh(contract, {**body, "background": False}))
+        job = contract.taste_refresh_job
+        def work(job_id):
+            result = w_taste_refresh(contract, {**body, "background": False},
+                progress=lambda **fields: job.update(job_id, **fields))
+            job.update(job_id, **result, status="complete", message="口味分析已更新", completed_at=time.time())
+        return job.start(work, restart=True, initial={
+            "stage": "discovering", "message": "正在查找 Peach 主机上的浏览器资料"})
     window = str(body.get("window") or "all")
     sources = discover_history_sources()
-    results = refresh_history(sources, contract.taste_history_store) if sources else []
+    results = refresh_history(sources, contract.taste_history_store, progress=progress) if sources else []
     if contract.taste_history_store.is_file():
-        analysis = analyze_history(contract.taste_history_store, contract.taste_history_root)
+        analysis = analyze_history(contract.taste_history_store, contract.taste_history_root, progress=progress)
         write_manifest(contract.taste_history_manifest, results, analysis)
     contract.cache_bust()
+    if progress:
+        progress(stage="dashboard", checked=0, total=None, message="正在汇总口味分布、标签与创作者排名")
     return {"refresh": results, "dashboard": q_taste(contract, {"window": window})}
 
 

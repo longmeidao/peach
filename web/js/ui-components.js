@@ -1,15 +1,35 @@
-import { esc, icon } from './core.js';
+import { esc, icon, requestErrorMessage } from './core.js';
 export { MEDIA_SOURCE_ICONS } from './media-source-icons.js';
 
 const NOTE_VARIANTS=new Set(['secondary','warning','error','success']);
 
 /** Inline, persistent context beside the field/card/section it describes. */
-export function noteHtml(message,{variant='secondary',label='',className=''}={}){
+export function noteHtml(message,{variant='secondary',label='',className='',size='medium',filled=false,actionLabel=''}={}){
   const kind=NOTE_VARIANTS.has(variant)?variant:'secondary';
   const symbol=kind==='secondary'?'info':kind==='success'?'check':'alert';
   const role=kind==='error'?' role="alert"':' role="note"';
-  return `<div class="geist-note geist-note-${kind}${className?` ${esc(className)}`:''}"${role}>
-    ${icon(symbol)}<p>${label?`<b>${esc(label)}</b>`:''}<span>${esc(message)}</span></p></div>`;
+  return `<div class="geist-note geist-note-${kind}${className?` ${esc(className)}`:''}${size==='small'?' geist-note-small':''}${filled?' geist-note-filled':''}"${role}>
+    ${icon(symbol)}<p>${label?`<b>${esc(label)}</b>`:''}<span>${esc(kind==='error'?requestErrorMessage(message):message)}</span></p>${actionLabel?`<button type="button" class="geist-button primary" data-note-action>${esc(actionLabel)}</button>`:''}</div>`;
+}
+
+const PROJECT_BANNER_CLASSES={gray:'project-banner-gray',success:'project-banner-success',warning:'project-banner-warning',error:'project-banner-error'};
+export function projectBannerHtml(message,{variant='gray',href,label,value,max}={}){
+  const kind=['gray','success','warning','error'].includes(variant)?variant:'gray';
+  return `<aside class="project-banner ${PROJECT_BANNER_CLASSES[kind]}" role="${kind==='error'?'alert':'status'}"><div>${Number(max)>0?gaugeHtml('任务完成率',value,max):icon(kind==='error'||kind==='warning'?'alert':'info')}<p>${esc(message)}</p></div><a href="${esc(href)}">${esc(label)}</a></aside>`;
+}
+
+export function gaugeHtml(label,value,max=100,{usage=false,compact=false}={}){
+  const ceiling=Number(max), current=Number(value);
+  if(!Number.isFinite(ceiling)||ceiling<=0||!Number.isFinite(current))return `<span>${esc(label)}：未取得</span>`;
+  const percent=Math.max(0,Math.min(100,current/ceiling*100));
+  const level=usage?(percent>=95?'error':percent>=80?'warning':'normal'):'normal';
+  const status=usage?(level==='error'?'空间即将用满':level==='warning'?'空间使用偏高':'空间充足'):'';
+  return `<span class="geist-gauge" data-level="${level}" role="progressbar" aria-label="${esc(label+(status?'：'+status:''))}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percent}"><svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="13"/><circle cx="16" cy="16" r="13" pathLength="100" stroke-dasharray="${percent} 100"/></svg></span>${status&&!compact?`<span class="gauge-status">${status}</span>`:''}`;
+}
+
+export function configurationSkeletonHtml(){
+  const groups=[['通用',1],['媒体',2],['网络与访问',2],['更新与维护',3]];
+  return `<div class="configpage" data-skeleton="configuration" role="status" aria-label="正在读取配置">${groups.map(([label,count])=>`<h2 class="configgroup" aria-hidden="true">${label}</h2>${Array.from({length:count},()=>`<div class="configfieldset config-skeleton-card" aria-hidden="true"><div class="geist-fieldset-content"><span class="skeleton"></span><span class="skeleton"></span><span class="skeleton"></span></div><footer class="geist-fieldset-footer"><span class="skeleton"></span></footer></div>`).join('')}`).join('')}</div>`;
 }
 
 /**
@@ -41,13 +61,13 @@ export function breadcrumbHtml(items){
 }
 
 /** Determinate progress only. Callers supply real units instead of a decorative width. */
-export function progressHtml(label,value,max=100){
+export function progressHtml(label,value,max=100,{variant='active',stops=[]}={}){
   const ceiling=Math.max(0,Number(max)||0);
   const current=Math.max(0,Math.min(Number(value)||0,ceiling));
   const percent=ceiling?current/ceiling*100:0;
   return `<div class="geist-progress" role="progressbar" aria-label="${esc(label)}"
     aria-valuemin="0" aria-valuemax="${ceiling}" aria-valuenow="${current}"
-    style="--progress-value:${percent}%"><i></i></div>`;
+    style="--progress-value:${percent}%;--progress-color:var(${variant==='error'?'--drop':variant==='warning'?'--meter':'--feedback-success'})"><i></i>${stops.filter(stop=>Number(stop.value)>0&&Number(stop.value)<ceiling&&stop.label).map(stop=>`<span class="geist-progress-stop" style="left:${Number(stop.value)/ceiling*100}%" role="img" aria-label="${esc(stop.label)}"></span>`).join('')}</div>`;
 }
 
 /** Geist Spinner: immediate feedback for a user-triggered action. */
@@ -277,6 +297,7 @@ const OVERLAY_SCROLLERS=[
   '.settingsscroll','.sidecontent','.tagpickbody','.mixlist','.playlistpicklist','.playerstats',
   '.vjs-peach-settings-menu','.geist-scroller-container','.metricstrip','.tastesummaries',
   '.insighttabs','.insightstorage','.skeletondashstrip','.followpagination','.linktablewrap',
+  '.reviewtabs','.junkfilters',
 ].join(',');
 
 /**
@@ -507,7 +528,8 @@ export function wireAnchoredMenu(mount,toggle,menu){
     const downward=under>=naturalHeight||under>=over;
     const height=Math.min(naturalHeight,Math.max(downward?under:over,0));
     menu.style.maxHeight=height+'px';
-    menu.style.left=Math.max(8,Math.min(anchor.right-width,innerWidth-width-8))+'px';
+    const preferredLeft=menu.classList.contains('context-card')?anchor.left:anchor.right-width;
+    menu.style.left=Math.max(8,Math.min(preferredLeft,innerWidth-width-8))+'px';
     menu.style.top=(downward?anchor.bottom+8:anchor.top-8-height)+'px'};
   /* 页面滚走了就关掉：菜单固定在视口里，锚点跟着内容跑，留着就悬在半空。
      菜单自己的滚动不算——它装不下时本来就要在内部滚，滚一下就关等于底下那几项
@@ -521,6 +543,7 @@ export function wireAnchoredMenu(mount,toggle,menu){
   const inTopLayer=menu.hasAttribute('popover');
   const setOpen=open=>{
     if(open){
+      if(openedMenu&&openedMenu.mount!==mount)openedMenu.setOpen(false);
       menu.hidden=false;if(inTopLayer)menu.showPopover();position();
       window.addEventListener('resize',position);
       window.addEventListener('scroll',closeFromViewport,{capture:true,passive:true});
@@ -536,6 +559,26 @@ export function wireAnchoredMenu(mount,toggle,menu){
   mount.addEventListener('keydown',event=>{
     if(event.key==='Escape'&&!menu.hidden){setOpen(false);toggle.focus()}});
   return {setOpen,isOpen:()=>!menu.hidden};
+}
+
+/** 复杂补充信息复用顶层浮层和视口避让，正文可聚焦并独立滚动。 */
+export function wireContextCard(mount,trigger,panel){
+  panel.classList.add('context-card');panel.setAttribute('popover','manual');
+  panel.setAttribute('role','dialog');panel.tabIndex=-1;
+  trigger.setAttribute('aria-haspopup','dialog');trigger.setAttribute('aria-controls',panel.id);
+  const floating=wireAnchoredMenu(mount,trigger,panel);
+  let timer;
+  const hide=()=>{clearTimeout(timer);floating.setOpen(false)};
+  const enter=()=>{clearTimeout(timer);timer=setTimeout(()=>{if(trigger.isConnected)floating.setOpen(true)},150)};
+  const leave=()=>{clearTimeout(timer);timer=setTimeout(()=>{if(!panel.matches(':hover')&&!trigger.matches(':hover')&&!panel.contains(document.activeElement)&&document.activeElement!==trigger)hide()},150)};
+  trigger.addEventListener('pointerenter',enter);trigger.addEventListener('pointerleave',leave);
+  panel.addEventListener('pointerenter',()=>clearTimeout(timer));panel.addEventListener('pointerleave',leave);
+  trigger.addEventListener('focus',enter);trigger.addEventListener('blur',leave);
+  trigger.addEventListener('click',()=>clearTimeout(timer));
+  mount.addEventListener('keydown',event=>{if(event.key==='Escape')hide()});
+  panel.addEventListener('focusout',leave);
+  trigger.addEventListener('keydown',event=>{if(event.key==='ArrowDown'&&!panel.hidden){event.preventDefault();(panel.querySelector('a,button,[tabindex="0"]')||panel).focus()}});
+  return {...floating,hide};
 }
 
 /* Geist Select：站内每一个下拉都是它，没有一个走浏览器自带的 select 控件。
@@ -608,6 +651,104 @@ export function wireSelectField(root){
   return root;
 }
 
+/* 拖动排序：一列带 key 的行，拖到哪一行的上半截或下半截就插到那里。
+
+   站内此前有两份几乎一样的实现（侧栏顺序、导航按钮），第三处再抄一遍，落点判据、
+   拖动中的减淡和那条插入线就会各演化一份。这里只收「一列行」这一种：拖动中的行加
+   `dragging`，落点行加 `drop-before` / `drop-after`，样式由调用方那一侧的类名给。
+
+   `onMove(key,target,after)` 拿到的是两个 key 和一个方位，重排由调用方自己做——
+   顺序存在哪、存完刷什么，各处本来就不一样。 */
+export function wireDragReorder(root,{selector,attribute,onMove}={}){
+  const rows=()=>[...root.querySelectorAll(selector)];
+  const clear=()=>rows().forEach(row=>row.classList.remove('dragging','drop-before','drop-after'));
+  let dragging=null;
+  rows().forEach(row=>{
+    const key=row.getAttribute(attribute);
+    row.draggable=true;
+    row.addEventListener('dragstart',event=>{
+      dragging=key;row.classList.add('dragging');
+      event.dataTransfer.effectAllowed='move';
+      // 不写 dataTransfer 的话 Firefox 根本不认这是一次拖动；首页那一项的 key 是空串，
+      // 空串等于没写，所以给它一个占位。落点判据只看 key 本身，不看这里写的字。
+      event.dataTransfer.setData('text/plain',key||'peach-row');
+    });
+    row.addEventListener('dragover',event=>{
+      if(dragging===null||dragging===key)return;
+      event.preventDefault();event.dataTransfer.dropEffect='move';
+      const after=event.clientY>row.getBoundingClientRect().top+row.offsetHeight/2;
+      rows().forEach(item=>item.classList.remove('drop-before','drop-after'));
+      row.classList.add(after?'drop-after':'drop-before');
+    });
+    row.addEventListener('drop',event=>{
+      event.preventDefault();
+      const after=row.classList.contains('drop-after'),from=dragging;
+      dragging=null;clear();
+      if(from!==null&&from!==key)onMove(from,key,after);
+    });
+    row.addEventListener('dragend',()=>{dragging=null;clear()});
+  });
+}
+
+/* Geist Modal 的另一种正文：要填的一份表单，而不是一句待确认的话。
+
+   壳、遮罩、焦点陷阱、Escape 和关掉后把焦点还给触发钮全部来自 confirmModal 用的那身
+   `.geist-modal`，两者的差别只有正文和主按钮做什么。所以弹层的几何只有一处：标题
+   20px/26px 的 h3、正文 20px 内边距、操作条粘在底两端对齐、主按钮在右下角。
+
+   返回值里的 `dialog` 交给调用方接自己的行事件，`done` 在弹层关掉时兑现。 */
+let formModalSeq=0;
+export function formModal({title,description='',body='',confirmLabel,cancelLabel='取消',
+                           onConfirm=null,confirmDisabled=false}={}){
+  const trigger=document.activeElement;
+  const dialog=document.createElement('dialog');
+  dialog.className='geist-modal';
+  const titleId=`geist-form-title-${++formModalSeq}`;
+  dialog.setAttribute('aria-labelledby',titleId);
+  dialog.innerHTML=`<form class="geist-modal-form" novalidate>
+      <div class="geist-modal-body"><h3 id="${titleId}"></h3>${description?'<p></p>':''}
+        <div class="geist-modal-fields">${body}</div><div data-modal-error></div></div>
+      <footer class="geist-modal-footer">
+        <div><button type="button" class="geist-button" data-modal-cancel></button></div>
+        <div><button type="submit" class="geist-button primary" data-modal-confirm></button></div>
+      </footer></form>`;
+  dialog.querySelector('h3').textContent=title;
+  if(description)dialog.querySelector('.geist-modal-body p').textContent=description;
+  const cancel=dialog.querySelector('[data-modal-cancel]');
+  const accept=dialog.querySelector('[data-modal-confirm]');
+  const failure=dialog.querySelector('[data-modal-error]');
+  cancel.textContent=cancelLabel;
+  accept.textContent=confirmLabel;
+  accept.disabled=!!confirmDisabled;
+  document.body.append(dialog);
+  let settled=null,busy=false;
+  const done=new Promise(resolve=>dialog.addEventListener('close',()=>{
+    dialog.remove();
+    if(trigger instanceof HTMLElement&&trigger.isConnected)trigger.focus();
+    resolve(settled||{confirmed:false});
+  },{once:true}));
+  cancel.onclick=()=>{if(!busy)dialog.close()};
+  dialog.addEventListener('cancel',event=>{if(busy)event.preventDefault()});
+  // 遮罩上的点击落在 <dialog> 自己身上；这里没有不可逆的动作，允许点外面关掉。
+  dialog.addEventListener('click',event=>{if(event.target===dialog&&!busy)dialog.close()});
+  dialog.querySelector('form').onsubmit=async event=>{
+    event.preventDefault();
+    if(busy||accept.disabled)return;
+    if(!onConfirm){settled={confirmed:true};dialog.close();return}
+    failure.innerHTML='';busy=true;setActionBusy(accept);
+    try{
+      settled={confirmed:true,result:await onConfirm()};
+      dialog.close();
+    }catch(error){
+      failure.innerHTML=noteHtml(error.message||'操作未完成',{variant:'error'});
+      setActionBusy(accept,false);
+    }finally{busy=false}
+  };
+  dialog.showModal();
+  (dialog.querySelector('.geist-modal-fields input:not([type="checkbox"])')||accept).focus();
+  return {dialog,confirmButton:accept,done,close:()=>dialog.close()};
+}
+
 /* Geist Modal：一次写操作落库前的确认。
 
    实测 https://vercel.com/geist/modal（2026-09-04）：卡片 540px 宽、12px 圆角、窄屏两侧
@@ -642,18 +783,22 @@ export function confirmModal({title,body,confirmLabel,cancelLabel='取消',onCon
   document.body.append(dialog);
   return new Promise(resolve=>{
     let settled=null;
+    let busy=false;
     dialog.addEventListener('close',()=>{
       dialog.remove();
       if(trigger instanceof HTMLElement&&trigger.isConnected)trigger.focus();
       resolve(settled||{confirmed:false});
     },{once:true});
-    cancel.onclick=()=>dialog.close();
+    cancel.onclick=()=>{if(!busy)dialog.close()};
+    dialog.addEventListener('cancel',event=>{if(busy)event.preventDefault()});
     /* 遮罩上的点击落在 <dialog> 自己身上，卡片里的落在子元素上。这个动作可撤销，
        按 Geist 的判据允许点外面关掉。 */
-    dialog.addEventListener('click',event=>{if(event.target===dialog)dialog.close()});
+    dialog.addEventListener('click',event=>{if(event.target===dialog&&!busy&&!danger)dialog.close()});
     accept.onclick=async()=>{
+      if(busy)return;
       if(!onConfirm){settled={confirmed:true};dialog.close();return}
       failure.innerHTML='';
+      busy=true;
       setActionBusy(accept);
       try{
         settled={confirmed:true,result:await onConfirm()};
@@ -661,9 +806,9 @@ export function confirmModal({title,body,confirmLabel,cancelLabel='取消',onCon
       }catch(error){
         failure.innerHTML=noteHtml(error.message||'操作未完成',{variant:'error'});
         setActionBusy(accept,false);
-      }
+      }finally{busy=false}
     };
     dialog.showModal();
-    accept.focus();
+    (danger?cancel:accept).focus();
   });
 }

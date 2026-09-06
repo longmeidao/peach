@@ -9,3 +9,7 @@
 .gate.offline span{max-width:34ch;text-align:center;line-height:1.6}
 .gate.offline .chip{cursor:pointer;margin-top:4px}
 
+
+.gate.offline{box-sizing:border-box;min-height:220px;padding:24px;background:var(--ground);color:var(--ink)}
+.gate.offline>svg{width:32px;height:32px;flex:none;fill:none;stroke:currentColor;stroke-width:2}
+.gate.offline span{color:var(--ink-2)}

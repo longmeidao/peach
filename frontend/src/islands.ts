@@ -33,12 +33,13 @@ import type { LibraryProcessingData, LibraryProcessingProps } from './islands/li
 export { refreshStore, storeNames } from './state';
 export { watchJob, followJobProgress } from './jobs';
 export { identityEvidenceHtml, reviewImageHtml, wireReviewPictures } from './review-evidence';
-export { createReviewSelection, wireReviewSelection } from './review-bulk';
+export { createReviewSelection, wireReviewSelection, updateReviewSticky } from './review-bulk';
 export { nativeImageFit, matchesFaceSource } from './native-image';
 export { entitySkeletonHtml } from './entity-skeleton';
 export { catalogSuggestions, catalogEmptyHtml, emptyCatalogLayout } from './catalog-onboarding';
 export { syncSidebarSurface, sidebarTagCounts, sidebarHasCatalogContent } from './sidebar';
 export { cleanupSkeletonHtml, cloudLocations, cloudPreferenceLocations, tasteHistoryGuideHtml, wireTasteHistoryGuide, TASTE_GUIDE_KEY } from './management';
+export { resourceScanHtml } from './resource-sync';
 export type { StoreName } from './state';
 
 /** 首屏取数的结果。`data` 与 `error` 恰有一个成立。 */

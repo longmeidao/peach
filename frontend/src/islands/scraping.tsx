@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { apiGet, apiSend, errorMessage } from '../api';
 import { noteHtml, fieldsetTitle, setActionBusy, selectFieldHtml, wireSelectField } from '@peach/legacy/ui';
+import { faviconUrl } from '@peach/legacy/core';
 import type { IslandState } from '../islands';
 import { watchJob } from '../jobs';
 import type { JobState } from '../jobs';
@@ -75,7 +76,16 @@ function SourceForm({ source, toast }: { source: Source } & ScrapingProps) {
       <div class="geist-fieldset-content scraping-fields">
         <div class="geist-fieldset-heading">
         <div dangerouslySetInnerHTML={{ __html: fieldsetTitle(`scraping-${source.source}`, source.label) }} />
-        <a class="scraping-url" href={source.login} target="_blank" rel="noopener noreferrer">{source.login}</a>
+        {/* 前面是站点自己的图标（指对象），后面是外链箭头（指形态）——两枚都在
+            `vercel-geist-button-icons.md` 的「加图标」那一侧，中间的地址不重复说这两件事。
+            图标直接取对方站点的 `/favicon.ico`：这一页配置的就是与这些站的连接，
+            浏览器本来就要连它们，不必绕服务端。取不到时把 `<img>` 摘掉，不留破图。 */}
+        <a class="scraping-url externallink" href={source.login} target="_blank" rel="noopener noreferrer">
+          <img src={faviconUrl(source.login)} alt="" width="16" height="16" loading="lazy"
+            onError={event => event.currentTarget.remove()} />
+          <span>{source.login}</span>
+          <svg class="externalmark" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-external-link" /></svg>
+        </a>
         </div>
         <div class="scraping-label">连接方式<NetworkSelect value={network} onChange={setNetwork} /></div>
         {network === 'peach' && <a class="geist-text-link" href="/configuration#peachProxy">配置 Peach 代理</a>}
@@ -111,10 +121,12 @@ function SourceForm({ source, toast }: { source: Source } & ScrapingProps) {
           + (check.message ? `。${check.message}` : ''), { variant: check.ok ? 'success' : 'error' },
         ) }} />)}
       </div>
+      {/* 主体动作在最右。次级动作先出现，`保存` 是这张卡唯一的写入，放在一行的末尾。
+          表单里只有它一个 `type=submit`，所以挪位置不影响回车提交。 */}
       <footer class="geist-fieldset-footer" data-geist-fieldset-footer>
-        <button class="geist-button primary" type="submit">保存</button>
-        <button class="geist-button" type="button" onClick={() => void action('check')}>检查连接</button>
         {source.accepts_cookie && saved.cookie_saved && <button class="geist-button" type="button" onClick={() => void action('revoke')}>撤销 Cookie</button>}
+        <button class="geist-button" type="button" onClick={() => void action('check')}>检查连接</button>
+        <button class="geist-button primary" type="submit">保存</button>
       </footer>
     </form>
   </section>;
