@@ -20,12 +20,15 @@ from typing import Protocol
 
 DEFAULT_PROFILE_ID = "local-default"
 
-#: 默认就在侧栏里的入口，顺序即默认顺序。
+#: 默认就在侧栏里的入口，顺序即默认顺序。首页之后是关注（每天有新东西的那一屏），
+#: 再是主库最常用的浏览模式 JAV，然后三个索引，回头找的已标记，管理垫底。
 DEFAULT_SIDEBAR_ORDER = (
-    "", "performers", "studios", "tags", "jav", "flagged", "playlists", "follow", "immerse", "manage",
+    "", "follow", "jav", "performers", "tags", "studios", "flagged", "manage",
 )
-#: 可以加进侧栏、但默认不在的入口。
+#: 可以加进侧栏、但默认不在的入口。播放列表和沉浸模式都是从一条作品或一个索引里
+#: 发起的动作，常驻一格换来的是每次都要跳过它，所以归到这里等人自己加。
 OPTIONAL_SIDEBAR_KEYS = (
+    "playlists", "immerse",
     "stats", "review", "data-cleanup", "trash", "follow-manage", "quality",
 )
 ALL_SIDEBAR_KEYS = frozenset(DEFAULT_SIDEBAR_ORDER) | frozenset(OPTIONAL_SIDEBAR_KEYS)
