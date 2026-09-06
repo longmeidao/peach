@@ -7127,6 +7127,9 @@ $('#q').oncompositionend=refreshSearchMenu;
 $('#q').onkeydown=e=>{
   /* 组字过程中的方向键在挑候选字、回车在定字，都不是给这个菜单的。 */
   if(e.isComposing)return;
+  if(e.key==='Escape'&&!$('#searchMenu').hidden){
+    $('#searchMenu').hidden=true;searchActive=-1;e.preventDefault();return;
+  }
   if(e.key==='ArrowDown'||e.key==='ArrowUp'){
     if(moveSearchActive(e.key==='ArrowDown'?1:-1))e.preventDefault();
     return;
@@ -7140,7 +7143,12 @@ $('#q').onkeydown=e=>{
   runSearch(!picked,true);
   $('#searchMenu').hidden=true;$('#q').blur();
 };
-$('#q').addEventListener('focus',()=>{Promise.all([loadSearchHistory(),loadSearchPool()]).then(renderSearchMenu)});
+/* 两个请求回来时，焦点可能已经不在输入框上了：用户敲完就点走，失焦那条 140ms
+   的兜底先把下拉栏收了，晚到的 then 再把它掀开——而这一刻没有焦点，也就再不会
+   有第二次失焦来收场。点哪儿都关不掉的下拉栏就是这么来的。所以回调先确认焦点
+   还在自己身上。 */
+$('#q').addEventListener('focus',()=>{Promise.all([loadSearchHistory(),loadSearchPool()])
+  .then(()=>{if(document.activeElement===$('#q'))renderSearchMenu()})});
 
 /* 竖屏带每接一页出现一条，位置在这一页新增的那几行里随机取一个行边界。
    固定第几行的写法从第二屏起就成了可预期的栏目，而这条带子的作用正是打断节奏——
@@ -7988,6 +7996,13 @@ $('#searchBack').onclick=()=>{
   $('#q').blur();
 };
 $('#q').addEventListener('blur',()=>setTimeout(()=>{if(!$('#q').value&&!$('#searchMenu').matches(':hover'))$('.search').classList.remove('open');$('#searchMenu').hidden=true},140));
+/* 收起下拉栏不能只有失焦这一条路：焦点未必在输入框上，而下拉栏照样开着。
+   落在 `.search` 之外的第一下按压一律收起，这条判据不问焦点在哪儿。走捕获期
+   的 pointerdown，是因为被点的那个东西自己可能吃掉事件或立刻把自己从页面里
+   摘掉，冒泡到 document 时已经没有可供判断的祖先了。 */
+document.addEventListener('pointerdown',event=>{
+  if(!event.target.closest('.search'))$('#searchMenu').hidden=true;
+},true);
 $('#brandHome').onclick=e=>{e.preventDefault();openHome(true)};
 $('#tokClose').onclick=()=>{setTokLoading(false);clearTokTap();$('#tok').hidden=true;$('#tokTrack').querySelectorAll('video').forEach(v=>{
   disposeTokVideo(v,v.id!=='tokVid')});
