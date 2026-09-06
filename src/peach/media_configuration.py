@@ -2,12 +2,54 @@
 from __future__ import annotations
 
 from pathlib import Path, PurePath, PureWindowsPath, PurePosixPath
+import shutil
+import sys
 from typing import Any
 
 from . import platform
 
 SOURCE_OPTIONS = (("local", "本地磁盘"), ("115", "CloudDrive · 115"),
                   ("pikpak", "CloudDrive · PikPak"))
+
+
+def _windows_installed_names() -> list[str]:
+    """从 Windows 安装清单读取软件名称，不读取命令、账户或凭据。"""
+    if sys.platform != "win32":
+        return []
+    import winreg
+    names = []
+    for hive in (winreg.HKEY_LOCAL_MACHINE, winreg.HKEY_CURRENT_USER):
+        for view in (winreg.KEY_WOW64_64KEY, winreg.KEY_WOW64_32KEY):
+            try:
+                with winreg.OpenKey(hive, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
+                                    0, winreg.KEY_READ | view) as key:
+                    for index in range(winreg.QueryInfoKey(key)[0]):
+                        try:
+                            with winreg.OpenKey(key, winreg.EnumKey(key, index)) as child:
+                                names.append(str(winreg.QueryValueEx(child, "DisplayName")[0]).lower())
+                        except OSError:
+                            continue
+            except OSError:
+                continue
+    return names
+
+
+def mount_dependencies(*, system: str | None = None) -> list[dict[str, Any]]:
+    """安装证据与挂载在线状态分别检测；只返回当前操作系统需要的依赖。"""
+    system = system or sys.platform
+    if system == "win32":
+        names = _windows_installed_names()
+        cloud = any(name.startswith("clouddrive") for name in names)
+        driver, installed, url = "WinFsp", any(name.startswith("winfsp") for name in names), "https://winfsp.dev/rel/"
+    elif system == "darwin":
+        cloud = any((base / app).is_dir() for base in (Path("/Applications"), Path.home() / "Applications")
+                    for app in ("CloudDrive.app", "CloudDrive2.app"))
+        driver, installed, url = "macFUSE", Path("/Library/Filesystems/macfuse.fs").is_dir(), "https://macfuse.github.io/"
+    else:
+        return []
+    cloud = cloud or any(shutil.which(name) for name in ("clouddrive", "clouddrive2", "CloudDrive"))
+    return [{"name": "CloudDrive", "available": bool(cloud), "download_url": "https://www.clouddrive2.com/download.html"},
+            {"name": driver, "available": installed, "download_url": url}]
 
 
 def rows(config, *, windows: bool, probe: bool = False) -> list[dict[str, Any]]:

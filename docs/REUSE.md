@@ -14,6 +14,13 @@
   真实 Git 临时仓库回归覆盖缺声明、双语缺一、虚假 updated、暂存但未提交、重命名与无影响原因；
   不写真实 ledger，不改生产。维护流程见 HANDOFF「README 维护」。
 
+- 配置访问判定复用 ASGI 连接的 `client` / `server` 地址与 Python 标准库 `ipaddress`，不新增依赖。
+  本机连接匹配回环地址或服务端 IP；Host 只校验托盘配置的域名或绑定地址，不能用来证明调用方在本机。
+  配置保存复用修订号校验、原子替换与 `SetupGate` 重载标记；托盘子服务通过 `PEACH_TRAY_MANAGED` 声明重载能力。
+  安装检测复用标准库 `winreg`、`shutil.which` 和安装目录，媒体工具复用 `FFmpegResolver`；不把脱盘判为未安装。
+  下载入口核验于 2026-09-06：[CloudDrive](https://www.clouddrive2.com/download.html)、[WinFsp](https://winfsp.dev/rel/)、
+  [macFUSE](https://macfuse.github.io/)、[FFmpeg](https://ffmpeg.org/download.html)、[OpenSSL](https://openssl-library.org/source/)。
+
 - 发行身份继续复用 Javinizer-Go v1.5.1 与 Seesaa 原始 DTO；数字前缀等价属于 Peach 领域 policy，不新增依赖。
   真实 r18dev 快照中请求 `390JAC-040` 却返回 `JAC-040`／`118jac040`；Jackson 表中两者是不同商品行。
   查询回退不能承担身份确认；所有响应按原始查询检查，MGStage 官方详情路径可佐证展示编号别名。

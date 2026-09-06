@@ -515,6 +515,25 @@ class SetupGateTests(unittest.TestCase):
         self.assertFalse(gate.poll(), "设置还没做完，轮询不动任何东西")
         self.assertEqual([spec.name for spec in manager.specs], ["setup"])
 
+    def test_configured_source_tray_consumes_reload_once_and_marks_its_services(self):
+        config = self._config()
+        settings_file.write(config)
+        config = self._config()
+        self._tls(config)
+        config.directory("state").mkdir(parents=True, exist_ok=True)
+        reload_path = config.directory("state") / onboarding.RELOAD_NAME
+        reload_path.write_text("reload", encoding="utf-8")
+        manager = ServiceManager((), log_dir=config.directory("logs"),
+                                 popen=Mock(), health_get=lambda *a, **k: Response())
+        gate = SetupGate(manager, config, waiting=False, load=self._config)
+        with patch("peach.tray.lan_ipv4", return_value="192.0.2.10"), patch(
+                "peach.distribution.standalone", return_value=False):
+            self.assertTrue(gate.poll())
+            self.assertFalse(gate.poll())
+        self.assertFalse(reload_path.exists())
+        self.assertEqual(manager.child_environment()["PEACH_TRAY_MANAGED"], "1")
+        self.assertTrue(manager.specs)
+
     def test_a_finished_setup_switches_to_the_normal_services_and_runs_the_first_scan(self):
         config = self._config()
         manager = ServiceManager(build_setup_service_specs(config),

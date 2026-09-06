@@ -480,7 +480,19 @@ function Qe({ facts: e }) {
 			class: "geist-fieldset-content",
 			children: [/* @__PURE__ */ U(W, { html: n("configFactsTitle", "运行信息") }), /* @__PURE__ */ U("dl", {
 				class: "configfacts",
-				children: e.map((e) => /* @__PURE__ */ U(M, { children: [/* @__PURE__ */ U("dt", { children: e.term }), /* @__PURE__ */ U("dd", { children: e.value })] }))
+				children: e.map((e) => /* @__PURE__ */ U(M, { children: [/* @__PURE__ */ U("dt", { children: e.term }), /* @__PURE__ */ U("dd", { children: [e.value, e.download_url ? /* @__PURE__ */ U("span", {
+					class: "confighelp",
+					children: [" ", /* @__PURE__ */ U("a", {
+						href: e.download_url,
+						target: "_blank",
+						rel: "noreferrer",
+						children: [e.download_label, /* @__PURE__ */ U("svg", {
+							"aria-hidden": "true",
+							viewBox: "0 0 24 24",
+							children: /* @__PURE__ */ U("use", { href: "#i-external-link" })
+						})]
+					})]
+				}) : null] })] }))
 			})]
 		})
 	});
@@ -757,13 +769,35 @@ function tt({ data: e, receipt: t }) {
 								})]
 							})]
 						}) : null,
+						c.some((e) => e === "115" || e === "pikpak") ? e.mount_dependencies?.filter((e) => !e.available).map((e) => /* @__PURE__ */ U("p", {
+							class: "confighelp",
+							children: [
+								"未检测到 ",
+								e.name,
+								"。",
+								/* @__PURE__ */ U("a", {
+									href: e.download_url,
+									target: "_blank",
+									rel: "noreferrer",
+									children: [
+										"下载 ",
+										e.name,
+										/* @__PURE__ */ U("svg", {
+											"aria-hidden": "true",
+											viewBox: "0 0 24 24",
+											children: /* @__PURE__ */ U("use", { href: "#i-external-link" })
+										})
+									]
+								})
+							]
+						})) : null,
 						e.windows === !1 ? /* @__PURE__ */ U("p", {
 							class: "confighelp",
 							children: "本机文件夹是这台电脑读取媒体的位置。Windows 中的对应路径用于匹配馆藏中已有的路径，例如 B:\\ 对应本机挂载文件夹。"
 						}) : null
 					]
 				}),
-				/* @__PURE__ */ U("div", {
+				e.port_editable === !1 ? null : /* @__PURE__ */ U("div", {
 					class: "configfield",
 					children: [
 						/* @__PURE__ */ U("label", {
@@ -815,7 +849,7 @@ function tt({ data: e, receipt: t }) {
 		}), /* @__PURE__ */ U("div", {
 			class: "geist-fieldset-footer",
 			"data-geist-fieldset-footer": !0,
-			children: [/* @__PURE__ */ U("p", { children: "保存后 Peach 会重新启动，端口改了就用新地址打开。" }), /* @__PURE__ */ U("button", {
+			children: [/* @__PURE__ */ U("p", { children: e.port_editable === !1 ? "保存后 Peach 会重新载入配置。" : "保存后 Peach 会重新启动，端口改了就用新地址打开。" }), /* @__PURE__ */ U("button", {
 				type: "submit",
 				class: "geist-button primary",
 				ref: k,

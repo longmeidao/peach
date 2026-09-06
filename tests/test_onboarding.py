@@ -638,6 +638,39 @@ class SetupPageTests(_Case):
 
 
 class StandaloneConfigurationTests(_Case):
+    def test_missing_media_tools_have_download_links_in_json_and_setup_facts(self):
+        from peach.routes_pages import runtime_fact_entries, runtime_facts_html
+        for missing_ffmpeg, missing_probe in ((True, True), (False, True), (False, False)):
+            with self.subTest(ffmpeg=missing_ffmpeg, probe=missing_probe), mock.patch(
+                    "peach.ffmpeg.FFmpegResolver.ffmpeg", return_value=None if missing_ffmpeg else object()), mock.patch(
+                    "peach.ffmpeg.FFmpegResolver.ffprobe", return_value=None if missing_probe else object()):
+                fact = next(row for row in runtime_fact_entries(self.config) if row['term'] == 'FFmpeg')
+                html = runtime_facts_html(self.config)
+                self.assertEqual('download_url' in fact, missing_ffmpeg or missing_probe)
+                self.assertEqual('https://ffmpeg.org/download.html' in html, missing_ffmpeg or missing_probe)
+                if missing_ffmpeg or missing_probe:
+                    self.assertIn('target="_blank"', html)
+                    self.assertIn('<svg aria-hidden="true"', html)
+
+    def test_mount_downloads_follow_os_and_detected_installation(self):
+        from peach.media_configuration import mount_dependencies
+        from peach.routes_pages import mount_dependencies_html
+        with mock.patch("peach.media_configuration._windows_installed_names", return_value=[]), mock.patch(
+                "peach.media_configuration.shutil.which", return_value=None):
+            windows = mount_dependencies(system='win32')
+            self.assertEqual([row['name'] for row in windows], ['CloudDrive', 'WinFsp'])
+            self.assertTrue(all(not row['available'] for row in windows))
+            self.assertIn('下载 WinFsp', mount_dependencies_html(windows=True))
+            self.assertNotIn('macFUSE', mount_dependencies_html(windows=True))
+        with mock.patch("peach.media_configuration._windows_installed_names", return_value=['clouddrive', 'winfsp 2026']):
+            self.assertTrue(all(row['available'] for row in mount_dependencies(system='win32')))
+            self.assertEqual(mount_dependencies_html(windows=True), '')
+        with mock.patch("peach.media_configuration.Path.is_dir", return_value=False), mock.patch(
+                "peach.media_configuration.shutil.which", return_value=None):
+            self.assertEqual([row['name'] for row in mount_dependencies(system='darwin')], ['CloudDrive', 'macFUSE'])
+            self.assertIn('下载 macFUSE', mount_dependencies_html(windows=False))
+            self.assertNotIn('WinFsp', mount_dependencies_html(windows=False))
+
     def setUp(self):
         super().setUp()
         from dataclasses import replace
@@ -651,13 +684,77 @@ class StandaloneConfigurationTests(_Case):
             self.config.data_root, self.config.path, True, True,
             settings_file._read_document(self.config.path), {})).start()
 
-    def client(self, *, token="test-token", address="127.0.0.1"):
+    def client(self, *, token="test-token", address="127.0.0.1", base_url="http://localhost", server=None):
         from fastapi.testclient import TestClient
         from peach.api import create_app
         from peach.config import PeachSettings
-        return TestClient(create_app(PeachSettings(configured=True, token=token,
-                          db_path=self.config.data_root / "database" / "ledger.db")),
-                          client=(address, 12345), base_url="http://localhost")
+        app = create_app(PeachSettings(configured=True, token=token, mdns_name="peach-writer",
+                         db_path=self.config.data_root / "database" / "ledger.db"))
+        if server:
+            @app.middleware("http")
+            async def connection_address(request, call_next):
+                request.scope["server"] = (server, 443)
+                return await call_next(request)
+        return TestClient(app, client=(address, 12345), base_url=base_url)
+
+    def test_local_mdns_connection_shares_configuration_access_for_read_save_and_picker(self):
+        headers = {"X-Token": "test-token"}
+        with self.client(address="192.0.2.10", server="192.0.2.10",
+                         base_url="https://peach-writer.local") as client:
+            self.assertTrue(client.get("/healthz").json()["configurable"])
+            self.assertEqual(client.get("/api/configuration").status_code, 401)
+            response = client.get("/api/configuration", headers=headers)
+            self.assertEqual(response.status_code, 200)
+            with mock.patch("peach.folder_picker.pick_folder", return_value=str(self.media)):
+                picked = client.post("/api/pick-folder", headers=headers, json={})
+            self.assertEqual(picked.status_code, 200, picked.text)
+            saved = client.post("/api/configuration", headers=headers, json={
+                "revision": response.json()["revision"], "media_dirs": [str(self.media)], "port": "9123"})
+            self.assertEqual(saved.status_code, 200, saved.text)
+
+    def test_configuration_connection_gate_rejects_remote_and_untrusted_hosts(self):
+        cases = [
+            ("192.0.2.11", "192.0.2.10", "peach-writer.local", False),
+            ("192.0.2.10", "192.0.2.10", "example.org", False),
+            ("192.0.2.10", "192.0.2.10", "192.0.2.10", True),
+            ("127.0.0.1", "127.0.0.1", "peach-writer.local", True),
+            ("::1", "::1", "localhost", True),
+            ("0.0.0.0", "0.0.0.0", "peach-writer.local", False),
+        ]
+        for peer, server, host, allowed in cases:
+            with self.subTest(peer=peer, host=host), self.client(
+                    address=peer, server=server, base_url=f"https://{host}") as client:
+                headers = {"X-Token": "test-token", "X-Forwarded-For": server}
+                self.assertEqual(client.get("/healthz", headers=headers).json()["configurable"], allowed)
+                self.assertEqual(client.get("/api/configuration", headers=headers).status_code,
+                                 200 if allowed else 403)
+                if not allowed:
+                    for path in ("/api/configuration", "/api/pick-folder"):
+                        self.assertEqual(client.post(path, headers=headers, json={}).status_code, 403)
+
+    def test_tray_managed_source_configuration_keeps_the_https_origin_and_managed_port(self):
+        from peach.routes_configuration import RELOAD_NAME
+        with mock.patch("peach.distribution.standalone", return_value=False), mock.patch.dict(
+                os.environ, {"PEACH_TRAY_MANAGED": "1"}), self.client(
+                address="192.0.2.10", server="192.0.2.10", base_url="https://peach-writer.local") as client:
+            headers = {"X-Token": "test-token"}
+            self.assertTrue(client.get("/healthz").json()["configurable"])
+            snapshot = client.get("/api/configuration", headers=headers).json()
+            self.assertTrue(snapshot["editable"])
+            self.assertFalse(snapshot["port_editable"])
+            body = {"revision": snapshot["revision"], "media_dirs": [str(self.media)], "port": "9124"}
+            self.assertEqual(client.post("/api/configuration", headers=headers, json=body).status_code, 400)
+            with mock.patch("peach.onboarding.check_available_port") as check:
+                saved = client.post("/api/configuration", headers=headers, json={**body, "port": "9123"})
+            check.assert_not_called()
+            self.assertEqual(saved.status_code, 200, saved.text)
+            self.assertEqual(saved.json()["url"], "https://peach-writer.local/")
+            self.assertTrue((self.config.directory("state") / RELOAD_NAME).is_file())
+        with mock.patch("peach.distribution.standalone", return_value=False), mock.patch.dict(
+                os.environ, {"PEACH_TRAY_MANAGED": ""}), self.client() as client:
+            self.assertFalse(client.get("/healthz").json()["configurable"])
+            self.assertFalse(client.get("/api/configuration", headers=headers).json()["editable"])
+            self.assertEqual(client.post("/api/configuration", headers=headers, json=body).status_code, 409)
 
     def test_the_configuration_page_is_a_screen_of_the_app_and_its_data_a_json_contract(self):
         """`/configuration` 是主站外壳里的一屏，表单由 island 画；真相只在 `/api/configuration`。"""

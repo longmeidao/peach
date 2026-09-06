@@ -1,7 +1,7 @@
 """本机配置的 JSON 契约：读取、校验、原子保存与托盘重启请求。
 
 页面本体是 `frontend/src/islands/configuration.tsx`，挂在主站的 `/configuration` 路由里
-（ADR-0022）；这里只回数据。两道门都在服务端：只放行回环地址，只在独立包里可写。
+（ADR-0022）；这里只回数据。两道门都在服务端：只放行本机连接，只在托盘管理的服务里可写。
 手机上的管理菜单不列这一页，靠的是 `/healthz` 的 `configurable`，但那只是入口的显隐，
 拒绝写入的判定在这里。
 """
@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 import hashlib
+import ipaddress
 import os
 import shutil
 import threading
@@ -18,44 +19,65 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Request
 
 from . import distribution, folder_picker, onboarding, settings_file, media_configuration
 from .routes_auth import require_auth
-from .routes_pages import runtime_facts
+from .routes_pages import runtime_fact_entries
 
 router = APIRouter()
 _SAVE_LOCK = threading.Lock()
 RELOAD_NAME = onboarding.RELOAD_NAME
-#: 不在独立包里时页面上代替表单的那句话。
+#: 直接由 CLI 管理的服务使用设置文件。
 FILE_MANAGED_NOTICE = "此部署通过配置文件管理服务，请在本机编辑下方的设置文件。"
+
+
+def managed_configuration() -> bool:
+    """托盘负责消费配置保存后的重载标记。"""
+    return distribution.standalone() or os.environ.get("PEACH_TRAY_MANAGED") == "1"
 
 
 def revision(config) -> str:
     return hashlib.sha256(config.path.read_bytes()).hexdigest()
 
 
-def loopback_client(request: Request) -> bool:
-    """请求来自运行 Peach 的这台电脑。`/healthz` 与两个端点共用同一判据。"""
-    if not request.client or request.client.host not in {"127.0.0.1", "::1"}:
+def local_client(request: Request) -> bool:
+    """按连接两端的 IP 识别本机；Host 只用于校验允许的入口名称。"""
+    if not request.client:
         return False
-    if distribution.standalone() and request.url.hostname not in {"127.0.0.1", "localhost", "::1"}:
+    server = request.scope.get("server")
+    try:
+        peer = ipaddress.ip_address(request.client.host)
+        bound = ipaddress.ip_address(server[0]) if server else None
+    except ValueError:
+        # ASGI 测试或非 IP 绑定没有可比较的服务端 IP；回环客户端仍可识别。
+        bound = None
+        try:
+            peer = ipaddress.ip_address(request.client.host)
+        except ValueError:
+            return False
+    if not peer.is_loopback and (peer != bound or peer.is_unspecified):
         return False
+    if managed_configuration():
+        name = request.app.state.settings.mdns_name.lower().removesuffix(".local")
+        hosts = {"127.0.0.1", "localhost", "::1", f"{name}.local"}
+        if bound and not bound.is_unspecified:
+            hosts.add(str(bound))
+        if (request.url.hostname or "").lower().rstrip(".") not in hosts:
+            return False
     return True
 
 
 def local_only(request: Request) -> None:
-    if not request.client or request.client.host not in {"127.0.0.1", "::1"}:
+    if not local_client(request):
         raise HTTPException(403, "请在运行 Peach 的电脑上打开配置")
-    if distribution.standalone() and request.url.hostname not in {"127.0.0.1", "localhost", "::1"}:
-        raise HTTPException(403, "请使用本机地址打开配置")
 
 
 def configurable(request: Request) -> bool:
-    """这次请求的发起方能不能改这台机器的配置：独立包、已配置、且来自回环地址。"""
-    return (distribution.standalone() and bool(request.app.state.settings.configured)
-            and loopback_client(request))
+    """配置只向已配置的托盘服务的本机调用方开放。"""
+    return (managed_configuration() and bool(request.app.state.settings.configured)
+            and local_client(request))
 
 
 def snapshot(config) -> dict[str, Any]:
     """配置页首屏要的一切：当前值、修订号、可写与否，以及这台机器的运行信息。"""
-    editable = distribution.standalone()
+    editable = managed_configuration()
     media = config.mounts.get("local") or config.locations.get("local", ())
     return {
         "editable": editable,
@@ -63,9 +85,11 @@ def snapshot(config) -> dict[str, Any]:
         "revision": revision(config),
         "media_dirs": list(media),
         "media_sources": media_configuration.rows(config, windows=os.name == "nt", probe=True),
+        "mount_dependencies": media_configuration.mount_dependencies(),
         "windows": os.name == "nt",
         "port": config.server.port,
-        "facts": [{"term": term, "value": value} for term, value in runtime_facts(config)],
+        "port_editable": distribution.standalone(),
+        "facts": runtime_fact_entries(config),
     }
 
 
@@ -96,8 +120,11 @@ def _validate(body: dict[str, Any], config) -> tuple[dict[str, Any], dict[str, A
     else:
         validated["media_dirs"] = paths
     try:
-        port = onboarding.validate_port(str(body.get("port", "")))
-        onboarding.check_available_port(port, config.server.port)
+        port = onboarding.validate_port(str(body.get("port", config.server.port)))
+        if distribution.standalone():
+            onboarding.check_available_port(port, config.server.port)
+        elif port != config.server.port:
+            raise ValueError("访问端口由托盘管理")
         validated["port"] = port
     except ValueError as exc:
         errors["port"] = str(exc)
@@ -116,7 +143,7 @@ def pick_folder(request: Request, body: dict[str, Any] = Body(default_factory=di
                 _args=Depends(require_auth)):
     """让运行 Peach 的这台电脑弹系统文件夹对话框，选中的绝对路径交回页面。
 
-    只对回环地址开放：否则局域网里任何人都能让这台电脑弹窗。首启页和配置页共用这一条，
+    只对本机连接开放：系统对话框显示在运行 Peach 的电脑上。首启页和配置页共用这一条，
     所以不要求独立包。对话框是模态的，一次只开一个；用户取消时 `path` 为 None。
     """
     local_only(request)
@@ -135,7 +162,7 @@ def pick_folder(request: Request, body: dict[str, Any] = Body(default_factory=di
 def save_configuration(request: Request, body: dict[str, Any] = Body(default_factory=dict),
                        _args=Depends(require_auth)):
     local_only(request)
-    if not distribution.standalone():
+    if not managed_configuration():
         raise HTTPException(409, "此部署通过配置文件管理服务")
     same_origin(request)
     with _SAVE_LOCK:
@@ -174,5 +201,6 @@ def save_configuration(request: Request, body: dict[str, Any] = Body(default_fac
             (config.directory("state") / RELOAD_NAME).write_text("reload", encoding="utf-8")
         except OSError as exc:
             raise HTTPException(500, f"配置保存失败：{exc}") from exc
-    return {"saved": True, "url": f"http://127.0.0.1:{prepared.server.port}/",
+    url = f"http://127.0.0.1:{prepared.server.port}/" if distribution.standalone() else str(request.base_url)
+    return {"saved": True, "url": url,
             "revision": revision(prepared)}

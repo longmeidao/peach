@@ -28,7 +28,7 @@ island。原因是那一套一上来就打 `/api/items`，而未配置的机器�
 
 配置好之后改文件夹与端口走 `/configuration`：那是主站里的一屏（管理菜单 → 配置），
 由 `frontend/src/islands/configuration.tsx` 渲染，数据契约是 `/api/configuration`
-（`src/peach/routes_configuration.py`）。服务端按两道门放行——只有独立包、只有回环地址——
+（`src/peach/routes_configuration.py`）。服务端按两道门放行：托盘管理的服务、发起连接的是本机。
 并在 `/healthz` 里按调用方回 `configurable`，遗留层据此决定菜单里列不列这一项。
 表单校验的原因由服务端按字段给（400 的 `errors`），island 写回原位，不在前端复制判定。
 浏览器直接导航撞上 `HTTPException` 时，`api.py` 的处理器按 `Accept` 回一张 HTML 错误页
