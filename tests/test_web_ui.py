@@ -866,6 +866,7 @@ class WebUiSourceTests(unittest.TestCase):
         '.edge button[aria-pressed="true"]',              # 窄栏填 --ground
         '.gselectmenu button[aria-selected="true"]',      # 浮层菜单填 --ground
         '.ib[aria-pressed="true"]',                       # 顶栏填 --ground
+        '.managebar button[aria-pressed="true"]',         # 管理导航容器填 --ground
         '.playerstatsbtn[aria-pressed="true"]',           # 播放器蒙层恒为深色
         '.sec.cat-meta .chip[aria-pressed="true"]',       # 抽屉中性类，跟基础 .chip 同一档
         '.sidebaraddmenu button[aria-selected="true"]',   # 浮层菜单
@@ -5630,8 +5631,9 @@ class WebUiSourceTests(unittest.TestCase):
         """
         # 顶栏不出现独立开关，开关在设置面板「安全」组。
         self.assertPageLacks('id="censorBtn"')
-        self.assertPageContains('<input type="checkbox" id="censorSetting">')
-        self.assertPageContains('<span><b>审查遮挡</b></span><input type="checkbox" id="censorSetting">')
+        self.assertPageContains('id="censorSetting" aria-describedby="sfwDescription"')
+        self.assertPageContains('<b>SFW 模式</b><small id="sfwDescription">')
+        self.assertPageContains('模糊、降低饱和度并压暗全站图片和视频，包括封面、头像与详情预览；停止悬停预览。文字、品牌标识和来源图标保持可见。')
         self.assertPageLacks('共享屏幕或截图前开启，遮住全站封面与预览图。')
         # 默认关闭：localStorage 记 '1' 才开，没动过的会话一律不遮。
         self.assertPageContains("applyCensor(localStorage.getItem(CENSOR_KEY)==='1')")
@@ -6007,7 +6009,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("fieldsetTitle('resourceBoxTitle','网盘与本地数据库')")
         self.assertPageLacks("fieldsetTitle('resourceBoxTitle','网盘与账本')")
         self.assertPageContains("cloudPreferenceLocations(g.files,d.cloudLocations||[])")
-        self.assertPageContains("tasteHistoryGuideHtml(new URLSearchParams(location.search).get('onboarding')==='1')")
+        self.assertPageContains("Boolean(s.history_sources||d.updated_at),localStorage.getItem(TASTE_GUIDE_KEY)==='1')")
+        self.assertPageContains('wireTasteHistoryGuide(root,localStorage);')
         for path in ("'/api/ads?limit=1'", "'/api/duplicates?limit=1'", "'/api/sources'"):
             self.assertPageContains(path)
         # 标题是正文区的第一行，不用原生 legend——legend 会在上边框上开个缺口，

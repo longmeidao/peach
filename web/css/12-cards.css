@@ -11,7 +11,7 @@ main{position:relative;z-index:1;padding:14px 16px 90px}
 .managebar button svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2;
   stroke-linecap:round;stroke-linejoin:round}
 .managebar button:hover{color:var(--ink)}
-.managebar button[aria-pressed="true"]{background:var(--picked);color:var(--ink)}
+.managebar button[aria-pressed="true"]{background:var(--hover);color:var(--ink)}
 .managebar{margin-left:auto;margin-right:auto}
 .insight-layout .managetitle,.insight-layout .pagelede{width:min(1100px,100%);margin-left:auto;margin-right:auto}
 .cleanup-layout .geist-breadcrumb,.cleanup-layout .managetitle,.cleanup-layout .pagelede,

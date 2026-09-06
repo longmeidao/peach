@@ -1782,22 +1782,30 @@ function rn() {
         <footer class="geist-fieldset-footer" data-geist-fieldset-footer><button type="button"${r === 3 ? " class=\"danger\"" : ""} disabled>${r === 3 ? "<svg aria-hidden=\"true\"><use href=\"#i-trash\"></use></svg><span>" + t + "</span>" : t}</button></footer>
       </section>`).join("")}</div></div>`;
 }
-function an(e) {
-	let t = "<svg aria-hidden=\"true\"><use href=\"#i-external-link\"></use></svg>";
+function an(e, t = !1, n = !1) {
+	if (t || n) return "";
+	let r = "<svg aria-hidden=\"true\"><use href=\"#i-external-link\"></use></svg>";
 	return `<details class="taste-history-guide"${e ? " open" : ""}>
     <summary>浏览器历史记录导入指南</summary>
     <div class="taste-history-guide-content">
       <p>在运行 Peach 的电脑上使用浏览器：点击上方「读取 Peach 主机」。</p>
       <p>记录在其他设备上：导出文件后，点击上方「导入历史」。多台设备的文件分别导入。</p>
-      <ul><li>Chrome：在 <a href="https://takeout.google.com/" target="_blank" rel="noreferrer">Google Takeout${t}</a> 选择 Chrome 历史记录，下载 ZIP 后直接导入。</li>
-      <li>其他浏览器：使用 <a href="https://github.com/purarue/browserexport" target="_blank" rel="noreferrer">browserexport${t}</a> 导出历史记录，再导入导出文件。</li></ul>
+      <ul><li>Chrome：在 <a href="https://takeout.google.com/" target="_blank" rel="noreferrer">Google Takeout${r}</a> 选择 Chrome 历史记录，下载 ZIP 后直接导入。</li>
+      <li>其他浏览器：使用 <a href="https://github.com/purarue/browserexport" target="_blank" rel="noreferrer">browserexport${r}</a> 导出历史记录，再导入导出文件。</li></ul>
       <p>需要刷新时再次读取或导入；数据源可在页面底部移除。</p>
-      ${e ? "<a class=\"taste-guide-skip\" href=\"/\">跳过，浏览馆藏</a>" : ""}
+      <button type="button" class="taste-guide-skip">跳过</button>
     </div></details>`;
+}
+var on = "peach-taste-guide-dismissed";
+function sn(e, t) {
+	let n = e.querySelector(".taste-history-guide");
+	n?.querySelector(".taste-guide-skip")?.addEventListener("click", () => {
+		t.setItem(on, "1"), n.remove();
+	});
 }
 //#endregion
 //#region src/islands.ts
-var on = {
+var cn = {
 	scraping: {
 		load: Gt,
 		component: Jt
@@ -1810,11 +1818,11 @@ var on = {
 		load: Xe,
 		component: nt
 	}
-}, sn = () => Object.keys(on), $ = /* @__PURE__ */ new Map();
-async function cn(e, t, n, r = {}) {
-	let i = on[e];
+}, ln = () => Object.keys(cn), $ = /* @__PURE__ */ new Map();
+async function un(e, t, n, r = {}) {
+	let i = cn[e];
 	if (!i) throw Error(`未注册的 island：${String(e)}`);
-	ln(t);
+	dn(t);
 	let a = {
 		controller: new AbortController(),
 		painted: !1
@@ -1845,9 +1853,9 @@ async function cn(e, t, n, r = {}) {
 	};
 	xe(te(i.component, s), t);
 }
-function ln(e) {
+function dn(e) {
 	let t = $.get(e);
 	t && (t.controller.abort(), $.delete(e), t.painted && xe(null, e));
 }
 //#endregion
-export { rn as cleanupSkeletonHtml, tn as cloudLocations, nn as cloudPreferenceLocations, Wt as followJobProgress, sn as islandNames, cn as mountIsland, Zt as refreshStore, Qt as sidebarHasCatalogContent, en as sidebarTagCounts, Xt as storeNames, $t as syncSidebarSurface, an as tasteHistoryGuideHtml, ln as unmountIsland, Ut as watchJob };
+export { on as TASTE_GUIDE_KEY, rn as cleanupSkeletonHtml, tn as cloudLocations, nn as cloudPreferenceLocations, Wt as followJobProgress, ln as islandNames, un as mountIsland, Zt as refreshStore, Qt as sidebarHasCatalogContent, en as sidebarTagCounts, Xt as storeNames, $t as syncSidebarSurface, an as tasteHistoryGuideHtml, dn as unmountIsland, Ut as watchJob, sn as wireTasteHistoryGuide };

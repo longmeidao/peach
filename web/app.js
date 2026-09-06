@@ -5,7 +5,7 @@ import { javDisplayName, javTitleHtml } from './js/jav-title.js';
 import { matchRoute, routeLabel } from './js/routes.js';
 import { initMiddleTruncate } from './js/middle-truncate.js';
 import { tagLabel } from './js/tags.js';
-import { syncSidebarSurface, sidebarTagCounts, sidebarHasCatalogContent, cleanupSkeletonHtml, cloudLocations, cloudPreferenceLocations, tasteHistoryGuideHtml } from './dist/peach-ui.js';
+import { syncSidebarSurface, sidebarTagCounts, sidebarHasCatalogContent, cleanupSkeletonHtml, cloudLocations, cloudPreferenceLocations, tasteHistoryGuideHtml, wireTasteHistoryGuide, TASTE_GUIDE_KEY } from './dist/peach-ui.js';
 import {
   attachOverlayScrollbar, breadcrumbHtml, checkboxHtml, closeAnchoredMenu, confirmModal, emptyStateHtml, fieldsetTitle,
   fillSkeletonTier, fitSkeleton, iconSwitchHtml, indexSkeletonHtml, loadingDotsHtml,
@@ -3230,7 +3230,7 @@ function renderTaste(d){
       <div class="tasteactions">${selectFieldHtml(TASTE_WINDOWS,d.window||tasteWindow,{label:'分析范围',attr:'data-taste-window'})}
         <button data-taste-refresh>${icon('refresh-cw')}读取 Peach 主机</button>
         <button data-taste-import>${icon('upload')}导入历史</button><input data-taste-file type="file" hidden></div></header>
-    ${tasteHistoryGuideHtml(new URLSearchParams(location.search).get('onboarding')==='1')}
+    ${tasteHistoryGuideHtml(new URLSearchParams(location.search).get('onboarding')==='1',Boolean(s.history_sources||d.updated_at),localStorage.getItem(TASTE_GUIDE_KEY)==='1')}
     <div class="tastestate" data-taste-state role="status" aria-live="polite"></div>
     <div class="tastesummaries" data-taste-summary="browser"${tasteEvidence==='browser'?'':' hidden'}>
       ${summary('浏览记录',Number(s.history_visits||0).toLocaleString(),`${s.history_sources||0} 个数据源 · ${tasteDate(s.range_start)}—${tasteDate(s.range_end)}`)}
@@ -3273,6 +3273,7 @@ function renderTaste(d){
       <div class="insightpanelbody"><div>${sourceRows||emptyStateHtml('database','还没有数据源','导入或读取浏览记录后，这里会列出已采集设备。')}</div></div></section>
   </div>`;
   const root=$('#stats'),stateEl=root.querySelector('[data-taste-state]'),file=root.querySelector('[data-taste-file]');
+  wireTasteHistoryGuide(root,localStorage);
   root.querySelectorAll('input[name="taste-evidence"]').forEach(input=>input.onchange=()=>{
     tasteEvidence=input.value;
     root.querySelectorAll('[data-taste-summary]').forEach(panel=>panel.hidden=panel.dataset.tasteSummary!==tasteEvidence);

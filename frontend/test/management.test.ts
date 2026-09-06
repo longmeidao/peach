@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cleanupSkeletonHtml, cloudLocations, cloudPreferenceLocations, tasteHistoryGuideHtml } from '../src/management';
+import { cleanupSkeletonHtml, cloudLocations, cloudPreferenceLocations, tasteHistoryGuideHtml, wireTasteHistoryGuide, TASTE_GUIDE_KEY } from '../src/management';
 
 describe('网盘功能范围', () => {
   it('本地与在线关注来源不显示网盘入口', () => {
@@ -38,10 +38,30 @@ describe('浏览器历史引导', () => {
     const root = document.createElement('div');
     root.innerHTML = tasteHistoryGuideHtml(true);
     expect(root.querySelector('details')?.open).toBe(true);
-    expect(root.querySelector('.taste-guide-skip')?.getAttribute('href')).toBe('/');
+    expect(root.querySelector('.taste-guide-skip')?.textContent).toBe('跳过');
     root.innerHTML = tasteHistoryGuideHtml(false);
     expect(root.querySelector('details')?.open).toBe(false);
-    expect(root.querySelector('.taste-guide-skip')).toBeNull();
+    expect(root.querySelector('.taste-guide-skip')).not.toBeNull();
+  });
+  it('完成导入或跳过后即使进入首次引导地址也不显示', () => {
+    for (const onboarding of [true, false]) {
+      expect(tasteHistoryGuideHtml(onboarding, true, false)).toBe('');
+      expect(tasteHistoryGuideHtml(onboarding, false, true)).toBe('');
+    }
+  });
+  it('折叠保留指南，跳过在刷新后仍生效且保留导入入口', () => {
+    localStorage.removeItem(TASTE_GUIDE_KEY);
+    const root = document.createElement('div');
+    root.innerHTML = '<button data-taste-import>导入历史</button>' + tasteHistoryGuideHtml(true);
+    wireTasteHistoryGuide(root, localStorage);
+    root.querySelector('details')!.open = false;
+    expect(localStorage.getItem(TASTE_GUIDE_KEY)).toBeNull();
+    expect(root.querySelector('details')).not.toBeNull();
+    root.querySelector<HTMLButtonElement>('.taste-guide-skip')!.click();
+    expect(root.querySelector('details')).toBeNull();
+    expect(root.querySelector('[data-taste-import]')).not.toBeNull();
+    expect(tasteHistoryGuideHtml(true, false, localStorage.getItem(TASTE_GUIDE_KEY) === '1')).toBe('');
+    localStorage.removeItem(TASTE_GUIDE_KEY);
   });
   it('下载入口有外链图标，指南复用现有操作且没有自动读取', () => {
     const root = document.createElement('div');

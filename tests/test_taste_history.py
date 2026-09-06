@@ -246,8 +246,12 @@ class TasteHistoryTests(unittest.TestCase):
             db.execute("INSERT INTO asset_entity VALUES(3,6)")
             db.commit()
             dashboard = build_taste_dashboard(store, db)
+            future = build_taste_dashboard(store, db, since="2099-01-01T00:00:00+00:00")
 
         self.assertEqual(dashboard["summary"]["history_visits"], 2)
+        self.assertGreater(dashboard["summary"]["history_sources"], 0)
+        self.assertEqual(future["summary"]["history_visits"], 0)
+        self.assertEqual(future["summary"]["history_sources"], dashboard["summary"]["history_sources"])
         self.assertEqual(dashboard["summary"]["peach_items"], 1)
         feet = dashboard["rankings"]["tags"][0]
         self.assertEqual(feet["name"], "feet")

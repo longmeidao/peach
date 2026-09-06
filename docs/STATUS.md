@@ -6,6 +6,8 @@
 
 ## 运行态
 
+- 待验收：导入或跳过后隐藏指南；浅色管理导航选中填灰；SFW 模式附遮挡说明。
+
 - HTTPS 就绪；未打标签。开发验证默认 `auto`。
 
 - Windows 是当前 ledger writer，入口 `dist\Peach\Peach.exe`；代码、`peach-data`、worktree 和共享传输点同在一个顶层目录，外置盘只提供 `R:\media`。
