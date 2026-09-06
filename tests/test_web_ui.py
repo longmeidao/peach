@@ -1863,6 +1863,23 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("b.onmousedown=e=>e.preventDefault();")
         self.assertPageContains("if(group&&!group.querySelector('[data-search-value]'))group.remove();")
 
+    def test_search_menu_closes_without_relying_on_the_input_keeping_focus(self):
+        """下拉栏的收起不能只挂在输入框失焦上。
+
+        它由 `#q` 的 focus 打开，而里面要等两个请求回来才渲染。请求在飞的时候用户
+        点走，失焦那条 140ms 的兜底先把它收了，晚到的 then 再把它掀开——这一刻焦点
+        已经不在输入框上，第二次失焦永远不会来，下拉栏就此钉在页面上。所以回调先
+        确认焦点还在，另外补一条不问焦点的出口：`.search` 之外的按压一律收起。
+        捕获期是必须的，被点的元素可能吃掉事件或当场把自己摘掉。
+        """
+        self.assertPageContains(
+            "  .then(()=>{if(document.activeElement===$('#q'))renderSearchMenu()})});")
+        self.assertPageContains("document.addEventListener('pointerdown',event=>{\n"
+                                "  if(!event.target.closest('.search'))"
+                                "$('#searchMenu').hidden=true;\n},true);")
+        self.assertPageContains("if(e.key==='Escape'&&!$('#searchMenu').hidden){")
+        self.assertPageLacks("]).then(renderSearchMenu)});")
+
     def test_card_aspect_ratio_actually_reaches_the_element(self):
         """算出来的卡片比例必须写进 DOM。
 
