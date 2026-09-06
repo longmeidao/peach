@@ -1,6 +1,7 @@
 """独立 Windows 包的持久更新事务：下载准备、用户重启、目录切换与回滚。"""
 from __future__ import annotations
 
+from contextlib import closing
 import hashlib
 import json
 import os
@@ -199,7 +200,7 @@ def restore_database(data: dict) -> None:
     backup = STATE_DIR / "update-backups" / data["id"] / "ledger.db"
     if not backup.is_file():
         return
-    with sqlite3.connect(backup.as_uri() + "?mode=ro", uri=True) as source, sqlite3.connect(DATABASE_PATH) as destination:
+    with closing(sqlite3.connect(backup.as_uri() + "?mode=ro", uri=True)) as source, closing(sqlite3.connect(DATABASE_PATH)) as destination:
         source.backup(destination)
         if destination.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
             raise RuntimeError("数据库恢复检查失败")

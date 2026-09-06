@@ -69,7 +69,12 @@ def main(argv: list[str] | None = None) -> int:
         return apply(Path(argv[2]), int(argv[3]))
     if wants_cli(argv):
         _prepare_console()
-        return cli_main(argv[1:])
+        try:
+            return cli_main(argv[1:])
+        except Exception:
+            import traceback
+            traceback.print_exc()
+            return 1
     return tray_main()
 
 

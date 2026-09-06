@@ -114,12 +114,12 @@ class StandaloneUpdateTests(unittest.TestCase):
         self.assertTrue(self.state.is_dir())
 
     def test_migration_failure_can_restore_the_sqlite_backup(self):
-        with sqlite3.connect(update.DATABASE_PATH) as connection:
+        with update.closing(sqlite3.connect(update.DATABASE_PATH)) as connection, connection:
             connection.execute("CREATE TABLE fixture(value TEXT)")
             connection.execute("INSERT INTO fixture VALUES ('original')")
         data = {"id":"migration-fixture"}
         def failed_migration(*args, **kwargs):
-            with sqlite3.connect(update.DATABASE_PATH) as connection:
+            with update.closing(sqlite3.connect(update.DATABASE_PATH)) as connection, connection:
                 connection.execute("UPDATE fixture SET value='changed'")
             return Mock(returncode=1)
         with patch("peach.migrations.plan",return_value=([],[object()])), patch.object(
@@ -127,5 +127,5 @@ class StandaloneUpdateTests(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 update.migrate_database(self.root,data)
         update.restore_database(data)
-        with sqlite3.connect(update.DATABASE_PATH) as connection:
+        with update.closing(sqlite3.connect(update.DATABASE_PATH)) as connection:
             self.assertEqual(connection.execute("SELECT value FROM fixture").fetchone()[0],"original")
