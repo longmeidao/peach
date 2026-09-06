@@ -67,6 +67,26 @@
    内联 style，等于把一条配色写在 JS 里。 */
 #realBar{background:color-mix(in srgb,var(--keep) 40%,transparent)}
 .trace-real{margin-top:10px}
+/* 五颗星站在标题和那行规格之间：评分是对这一条作品的判断，属于身份的一部分，
+   不是反馈条里那些「怎么处置它」的动作。空心是未评，实心是已评，只有明暗两档，
+   不借色相——这一排本来就没有第二种含义要分。 */
+.rating{display:flex;align-items:center;gap:8px;margin:0 0 10px}
+.ratingstars{display:inline-flex;align-items:center;gap:2px}
+.ratingstars .star{width:26px;height:26px;padding:0;border:0;border-radius:var(--control-radius);
+  background:transparent;color:var(--line);display:grid;place-items:center;cursor:pointer}
+.ratingstars .star svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:2;
+  stroke-linecap:round;stroke-linejoin:round}
+.ratingstars .star[data-on="true"]{color:var(--ink)}
+.ratingstars .star[data-on="true"] svg{fill:currentColor}
+/* 悬停要预演的是「点下去会变成几星」，所以整排先退回未评，再把指针那一颗和它左边的点亮。
+   `:has(~ .star:hover)` 是这里唯一需要的「前一个兄弟」——把 DOM 倒过来写也能做到，
+   代价是读屏和 Tab 顺序跟着倒过来，五颗星会从「评为 5 星」开始念。 */
+.ratingstars:hover .star{color:var(--line)}
+.ratingstars:hover .star svg{fill:none}
+.ratingstars:hover .star:hover,.ratingstars:hover .star:has(~ .star:hover){color:var(--ink)}
+.ratingstars:hover .star:hover svg,.ratingstars:hover .star:has(~ .star:hover) svg{fill:currentColor}
+.ratingstars .star:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}
+.ratingvalue{color:var(--muted);font-size:var(--fs-xs);font-variant-numeric:tabular-nums}
 .fb{display:flex;align-items:center;gap:0;margin:0 0 12px;padding:0;border:1px solid var(--border-10);border-radius:var(--control-radius);background:var(--overlay-5);width:max-content;overflow:hidden;flex:none}
 .fb button{width:44px;height:42px;padding:0;border:0;border-right:1px solid var(--border-10);background:transparent;border-radius:0;
   cursor:pointer;display:grid;place-items:center;color:var(--muted);transition:transform .14s ease,color .14s ease,background .14s ease}
