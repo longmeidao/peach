@@ -127,4 +127,4 @@ export function unmountIsland(el: Element): void {
   if (mount.painted) render(null, el);
 }
 
-export { javImageKind, normalizeJavImage, syncJavImages } from './jav-artwork';
+export { javImageKind, normalizeJavImage, normalizeJavLayout, normalizeJavPreferences, syncJavImages } from './jav-artwork';

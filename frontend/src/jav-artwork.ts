@@ -1,4 +1,16 @@
 export type JavImagePreference = 'cover' | 'thumbnail';
+export type JavLayout = 'big' | 'small';
+
+export function normalizeJavLayout(value: unknown): JavLayout {
+  return ['small', 'sleeve', 'preview'].includes(String(value)) ? 'small' : 'big';
+}
+
+export function normalizeJavPreferences(settings: { javLayout?: unknown; javImage?: unknown }) {
+  return {
+    javLayout: normalizeJavLayout(settings.javLayout),
+    javImage: normalizeJavImage(settings.javLayout === 'preview' ? 'thumbnail' : settings.javImage),
+  };
+}
 
 export function normalizeJavImage(value: unknown): JavImagePreference {
   return value === 'thumbnail' ? 'thumbnail' : 'cover';

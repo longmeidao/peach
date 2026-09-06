@@ -1,6 +1,6 @@
 # 复用清单
 
-JAV 图片偏好复用浏览器 localStorage、共享 Switch 和既有 `/cover`、`/poster` 图片接口，不新增依赖。`frontend/src/jav-artwork.ts` 负责作品身份、两档偏好与缺图回退；首页、接着看、实体作品、详情推荐、Mix 静止与翻图、播放队列共用选择结果。设置原地换图，保留播放和滚动位置。
+JAV 默认封面（官方封面／预览图）与默认大小（大图／小图）独立保存，复用 localStorage、共享 Switch 和既有 `/cover`、`/poster` 接口，不新增依赖。`frontend/src/jav-artwork.ts` 负责作品身份、偏好恢复与缺图回退；首页、接着看、实体作品、详情推荐、Mix 静止与翻图、播放队列共用封面选择。小图保留所选来源，设置换图保留播放和滚动位置。
 
 这是 Codex 与 Claude 共用的实现查找表。新增、恢复或重写代码前必须按
 `.claude/skills/peach-reuse-first/SKILL.md` 先查本文件、当前树、Git 历史和成熟外部实现。
