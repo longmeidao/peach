@@ -331,6 +331,26 @@ button.danger:not(.frowicon):disabled,.resourcedanger:disabled{
 .popmenu.gselectmenu button[aria-selected="true"]{background:var(--hover);color:var(--ink)}
 .popmenu.gselectmenu button[aria-selected="true"]>svg{visibility:visible}
 
+/* Geist Split Button：一个明确的主动作，右边一档收起同一类的做法。实测
+   https://vercel.com/geist/split-button（2026-09-07）：两颗按钮拼成一个盒子，主动作占左半、
+   右侧两角不倒角，触发档占右半、左侧两角不倒角，中间靠一条 1px 竖线分开，触发档里只有一枚
+   箭头、读屏名由 aria-label 给。菜单第一项必须与主动作同名同事，1 到 4 个近亲动作为宜；
+   不相干的动作归普通菜单，破坏性动作不当主动作。高度取所在动作条的 36px。 */
+.splitbutton{position:relative;display:inline-flex;flex:none}
+.splitbutton>button{display:inline-flex;align-items:center;justify-content:center;gap:7px;
+  height:36px;border:0;background:var(--ground);color:var(--ink);font:inherit;
+  font-size:var(--fs-sm);cursor:pointer}
+.splitbutton>button:hover:not(:disabled){background:var(--inset)}
+.splitbutton>button:disabled{opacity:.5;cursor:wait}
+.splitbutton>button svg{width:16px;height:16px;flex:none;stroke:currentColor;fill:none}
+.splitbutton>.splitmain{padding:0 11px;border-radius:var(--control-radius) 0 0 var(--control-radius)}
+.splitbutton>.splittoggle{position:relative;width:32px;padding:0;
+  border-radius:0 var(--control-radius) var(--control-radius) 0}
+.splitbutton>.splittoggle[aria-expanded="true"]{background:var(--inset)}
+/* 竖线只画在两半交界处，上下各收 6px：拉满高度会读成两个控件贴在一起。 */
+.splitbutton>.splittoggle::before{content:"";position:absolute;left:0;top:6px;bottom:6px;
+  width:1px;background:var(--border-15)}
+
 /* Geist Modal：确认一次写操作。实测 https://vercel.com/geist/modal（2026-09-04）：
    540px 宽、12px 圆角、窄屏两侧各留 10px，正文 20px 内边距，操作条粘在底、12px 内边距、
    两端对齐，遮罩纯黑不带模糊。淡入用它给出的 .3s cubic-bezier(.175,.885,.32,1.1)；
@@ -356,6 +376,39 @@ button.danger:not(.frowicon):disabled,.resourcedanger:disabled{
 .geist-modal-footer{position:sticky;bottom:0;display:flex;justify-content:space-between;gap:16px;
   padding:12px;background:var(--surface)}
 .geist-modal-footer>div{display:flex;gap:16px}
+/* 表单正文：字段和列表都在这 20px 内边距里，和标题、操作条对着同一条边。 */
+.geist-modal-form{display:contents}
+.geist-modal-fields{display:grid;gap:14px;margin-top:16px}
+.geist-modal-fields:empty{display:none}
+.modalfield{display:grid;gap:8px}
+.modalfield>span{color:var(--muted);font-size:var(--fs-xs)}
+/* 勾选一行等于选中它，所以整行都是命中区，勾选框在行首。 */
+.picklist{display:grid;gap:6px;max-height:280px;overflow-y:auto;overscroll-behavior:contain}
+.pickrow{display:flex;align-items:center;gap:11px;min-height:44px;padding:0 12px;
+  border:1px solid var(--border-10);border-radius:var(--control-radius);
+  background:var(--overlay-5);color:var(--ink);cursor:pointer}
+.pickrow:hover{background:var(--hover)}
+.pickrow:has(input:checked){border-color:var(--field-ring-focus)}
+.pickrowtext{display:flex;align-items:baseline;justify-content:space-between;gap:10px;
+  min-width:0;flex:1}
+.pickrowtext b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500}
+.pickrowtext small{flex:none;color:var(--muted)}
+/* 卡片上的次要动作收进这一枚点点点：它们不该和「打开」并排占一整行。 */
+.cardmenu{flex:none;margin-left:auto;position:relative}
+.cardmenubtn{display:grid;place-items:center;width:30px;height:30px;padding:0;border:0;
+  border-radius:var(--control-radius);background:transparent;color:var(--muted);cursor:pointer}
+.cardmenubtn:hover,.cardmenubtn[aria-expanded="true"]{background:var(--hover);color:var(--ink)}
+.cardmenubtn svg{width:18px;height:18px;stroke:currentColor;fill:none}
+.cardmenupanel{min-width:172px}
+.cardmenupanel button{display:flex;align-items:center;gap:9px;width:100%;min-height:34px;
+  padding:0 9px;border:0;border-radius:var(--control-radius);background:transparent;
+  color:var(--ink-2);font:inherit;font-size:var(--fs-md);text-align:left;cursor:pointer}
+.cardmenupanel button:hover{background:var(--hover);color:var(--ink)}
+/* 菜单里的销毁项是红字，不是那块实底红：实底是主操作条上的按钮档，摆进一列菜单
+   行里会变成整条红块，读起来像这一项被选中了。所以不走 .danger 那个类。 */
+.cardmenupanel button.destructive{color:var(--drop)}
+.cardmenupanel button.destructive:hover{background:color-mix(in srgb,var(--drop) 12%,transparent);color:var(--drop)}
+.cardmenupanel svg{width:16px;height:16px;flex:none;stroke:currentColor;fill:none}
 
 /* 「图比框小就别放大」的共用摆法。索引页的厂牌大格和厂牌资料页的大位共用它：那两处
    摆的都是标识，而标识的原始尺寸差得很远，实测 42 px 到 1378 px 都有。

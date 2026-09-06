@@ -110,7 +110,8 @@ body.refreshing #batchAction svg,
 .partbadge{position:absolute;right:9px;top:9px;z-index:6;min-height:27px;padding:5px 9px;border-radius:var(--control-radius);
   background:rgba(12,8,8,.72);color:#fff;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
   font-size:var(--fs-xs);font-weight:600}
-.mixcard .mixmeta{display:flex;min-width:0;gap:9px;align-items:flex-start}
+.mixcard .mixmeta,.playlistcard .mixmeta{display:flex;min-width:0;gap:9px;align-items:flex-start}
+.playlistcard .mixcopy{flex:1}
 .mixglyph{width:40px;height:40px;flex:none;border-radius:50%;display:grid;place-items:center;
   color:var(--ink);background:var(--overlay-5);border:1px solid var(--border-10)}
 .mixglyph svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2}

@@ -1134,9 +1134,9 @@ class WebUiSourceTests(unittest.TestCase):
                 (".geist-button{", "var(--control-radius)"),
                 (".searchmenu{", "var(--floating-radius)"),
                 (".searchoption{", "var(--control-radius)"),
-                (".playlistactions button{", "var(--control-radius)"),
-                (".playlistdialog{", "var(--floating-radius)"),
-                (".playlistpickrow{", "var(--control-radius)"),
+                (".cardmenupanel button{", "var(--control-radius)"),
+                (".geist-modal{", "var(--floating-radius)"),
+                (".pickrow{", "var(--control-radius)"),
                 (".settingscard{", "var(--floating-radius)"),
                 (".gselectfield{", "var(--control-radius)"),
         ):
@@ -1147,8 +1147,9 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_close_actions_share_geist_control_geometry(self):
         css = stylesheet_source()
-        for selector in (".playlistdialoghead button{",
-                         ".mixqueuehead button{", ".settingshead button{"):
+        # 播放列表那几个弹层没有自己的关闭键：它们穿 Geist Modal，退出走操作条左端的
+        # 取消、Escape 和点遮罩，右上角不再另摆一个叉。
+        for selector in (".mixqueuehead button{", ".settingshead button{"):
             start = css.index(selector)
             rule = css[start:css.index("}", start)]
             self.assertIn("var(--control-radius)", rule,
@@ -1163,6 +1164,35 @@ class WebUiSourceTests(unittest.TestCase):
                       "全屏媒体关闭钮属于圆形媒体操作，不沿用普通 Dialog 关闭钮")
         self.assertIn(".settingshead button:hover{background:var(--hover);color:var(--ink)}",
                       css)
+
+    def test_history_actions_are_one_split_button_with_the_primary_mirrored(self):
+        """读取本机浏览记录和导入历史文件是同一件事的两种做法，合成一个 Split Button。
+
+        实测记在 `docs/reference-snapshots/vercel-geist-split-button.md`：主动作占左半、
+        触发档占右半，两半拼成一个盒子，交界处一条 1px 竖线；触发档里只有一枚箭头，读屏名
+        由 aria-label 给。菜单第一项必须与主动作同名同事——键盘和读屏用户只走菜单这一条路，
+        少列一项就是少一个动作。
+        """
+        self.assertPageContains('<div class="splitbutton" data-taste-history-menu>')
+        self.assertPageContains('<button class="splitmain" data-taste-refresh')
+        self.assertPageContains('aria-label="更多取得浏览记录的方式">${icon(\'chevron-down\')}')
+        menu = self.page.split('id="tasteHistoryMenu"')[1]
+        primary = menu.index("data-taste-history-primary")
+        self.assertLess(primary, menu.index("data-taste-import"),
+                        "主动作要排在菜单第一项")
+        self.assertIn("<span>读取浏览器历史</span>", menu[primary:primary + 140],
+                      "菜单第一项的文字要和左半那颗一字不差")
+        # 两处不各写一份读取流程：菜单第一项点回主动作那颗。
+        self.assertPageContains("closeAnchoredMenu();root.querySelector('[data-taste-refresh]').click()")
+        css = stylesheet_source()
+        main_rule = css[css.index(".splitbutton>.splitmain{"):]
+        self.assertIn("border-radius:var(--control-radius) 0 0 var(--control-radius)",
+                      main_rule[:main_rule.index("}")])
+        toggle_rule = css[css.index(".splitbutton>.splittoggle{"):]
+        self.assertIn("border-radius:0 var(--control-radius) var(--control-radius) 0",
+                      toggle_rule[:toggle_rule.index("}")])
+        divider = css[css.index(".splitbutton>.splittoggle::before{"):]
+        self.assertIn("width:1px", divider[:divider.index("}")])
 
     def test_settings_overlay_owns_the_top_fixed_layer(self):
         self.assertPageContains("--layer-dialog:1000")
@@ -1557,15 +1587,18 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('<span class="sr-only">${esc(x.label)}</span></a>')
         self.assertPageContains('.entitylinks a.iconlink{padding:4px;gap:0;border-radius:50%}')
 
-    def test_a_company_official_link_shows_its_url_and_globe(self):
-        # 厂牌页和事务所页的头像都是这家公司自己的圆标，标题都是它的名字：官网那一格
-        # 再摆一遍圆标和名字，同一件事就说了三遍。人物页的头像是人，事务所的圆标和
-        # 名字在那里才是新信息，所以只有公司这两类收成域名。
-        self.assertPageContains("const company=kind==='studio'||kind==='agency';")
-        self.assertPageContains("    if(company)\n")
+    def test_an_official_link_shows_its_domain_and_globe_on_every_profile(self):
+        # 域名是这条链接里唯一确定的东西，前面的地球说明它通向站外。站点自己声明的
+        # 图标不是可信的标识：事务所 ACT 的站标是旗下一位艺人的照片，摆在人物页的
+        # 官网那一格就成了一张认错人的脸。名字也不必在这里重复——公司页的标题就是
+        # 它，人物页的事务所名在别名行里，还带着通往那张资料页的链接。
         self.assertPageContains('<a class="urllink" href="${esc(x.url)}"')
         self.assertPageContains("${esc(linkHost(x.url)||x.label)}")
         self.assertPageContains(".entitylinks a.urllink{padding:4px 12px 4px 4px")
+        links = self.app_js[self.app_js.index("const links=(d.links||[]).map"):]
+        links = links[:links.index(".join('');")]
+        self.assertNotIn("entityfavicon", links.split('class="iconlink"')[-1],
+                         "非社媒的外链不得再取对方站点自己声明的图标")
 
     def test_entity_loading_and_detail_autoplay_share_their_entry_contracts(self):
         self.assertPageContains("showEntityLoading(ROUTE_ENTITIES[path.split('/')[1]])")
@@ -5281,7 +5314,10 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("data-save-mix")
         self.assertPageContains("source_kind:'mix'")
         self.assertPageContains('id="addPlaylist"')
-        self.assertPageContains("data-add-playlist")
+        # 一次能勾好几份列表：行前是勾选框，右下角那个保存才写库。
+        self.assertPageContains("data-pick-playlist")
+        self.assertPageContains("formModal({")
+        self.assertPageLacks("class=\"playlistpickrow\"")
         self.assertPageContains("batchWithMix(d.items,isCatalogPath(decodeURIComponent(location.pathname))&&state.state!=='trash')")
         # 竖屏条只在首页出现。JAV 模式也排除：番号发行物是横版，竖屏是另一类内容，
         # 而主列表的 exclude_vertical 管不到这条——它是独立请求、独立插入的。
@@ -5952,9 +5988,11 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("if(!appSettings.sidebarOrder.length)appSettings.sidebarOrder=[...DEFAULT_SIDEBAR_ORDER]")
         self.assertPageContains("orderedEdgeIcons()")
         self.assertPageContains('draggable="true" data-sidebar-row=')
-        self.assertPageContains("row.ondragstart=e=>")
-        self.assertPageContains("row.ondragover=e=>")
-        self.assertPageContains("row.ondrop=e=>")
+        # 拖动排序全站一份：侧栏这一列和播放队列都调它，落点判据、减淡和那条插入线
+        # 不各留一套。
+        self.assertPageContains("export function wireDragReorder(root,{selector,attribute,onMove}={})")
+        self.assertPageContains("wireDragReorder(root,{selector:'[data-sidebar-row]',attribute:'data-sidebar-row',")
+        self.assertPageContains("wireDragReorder(list,{selector:'[data-queue-row]',attribute:'data-queue-row',")
         self.assertPageContains("function wireNavigationDrag(root){")
         self.assertPageContains("clearTimeout(edgeT);edgeT=null;drawerSuppressUntil=Date.now()+900")
         self.assertPageContains("wireNavigationDrag($('#edge'))")
@@ -6349,6 +6387,7 @@ class WebUiSourceTests(unittest.TestCase):
             ".meta .t", ".meta .who", ".mixcopy b,.mixcopy span",
             ".mixitemtext [data-truncate-end]", ".mixqueuehead h2",
             ".ncard .meta .why",
+            ".pickrowtext b",
             ".playerstats dd", ".playerstatsmetric>span",
             ".relatedperson .nm", ".reviewentity b",
             ".reviewitem h4", ".reviewpickname", ".searchoption span",
@@ -6515,8 +6554,9 @@ class WebUiSourceTests(unittest.TestCase):
         """一枚字形只代表一个意思，同一个意思也只有一枚字形。
 
         一枚字形背两个意思时，用户在一处学会的含义会在另一处骗他，所以各归各的：
-        `refresh-cw` 只归原地换一批，`database` 只归管理入口，`folder-open` 只归
-        打开位置，`play` 只归真的起播，音量键不去标音频文件。这条逐枚钉住归属。
+        `refresh-cw` 只归「去问一遍来源有没有更新」，`database` 只归管理入口，
+        `folder-open` 只归打开位置，`play` 只归真的起播，音量键不去标音频文件。
+        这条逐枚钉住归属。
 
         `i-clock` 没有使用者，是用户点名留的备用件，不要当死代码清掉。
         """
@@ -6524,9 +6564,33 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("['archive','压缩包','file-archive'],['audio','音频','file-audio']")
         self.assertPageContains("archive:['压缩包','file-archive'],")
         self.assertPageContains("audio:['音频','file-audio'],")
-        # 「加载更多」往下接一页，方向由字形给出；`refresh-cw` 是原地换一批。
+        # 「加载更多」往下接一页，方向由字形给出。
         self.assertPageContains("data-follow-more>${icon('chevron-down')}加载更多</button>")
-        self.assertPageContains('title="换一批" aria-label="换一批">${icon(\'refresh-cw\')}')
+        # 转圈只剩「去问来源有没有更新」这一个意思。此前九处动作共用它，读下来全是
+        # 「刷新」，可它们分别是洗牌、查链接、比差异、读历史和同步删除。
+        for needle in (
+                # 换一批洗的是这一批的成员，不是把同一批重新取一遍。
+                'title="换一批" aria-label="换一批">${icon(\'shuffle\')}',
+                # 检查死链找的是断掉的那条链。
+                'id="linkCheck">${icon(\'unlink\')}<span>检查死链</span>',
+                # 资源同步比的是盘上和账本的差异；跑过一轮之后那一枚才是「再跑一遍」。
+                'id="resourceScan">${icon(\'git-compare\')}<span>检查文件</span>',
+                "scan.innerHTML=`${icon(done?'rotate-cw':'git-compare')}",
+                # 读浏览器历史是去别处把足迹找回来。
+                "${icon('compass')}读取浏览器历史",
+                # 同步删除把这个目录在盘上和账本里对齐。
+                'aria-label="同步删除">${icon(\'folder-sync\')}',
+                # 沉浸模式是一叠竖着翻的卡，保存为播放列表存的是一份列表。
+                "icon('gallery-vertical-end')}<span>进入沉浸模式</span>",
+                'aria-label="保存为播放列表">${icon(\'playlist\')}',
+                # 打开详情把这一张摊开，不是把窗口最大化。
+                'title="打开详情" aria-label="打开详情">${icon(\'expand\')}',
+                # 缩放条两端步进的是倍数，加减号没说清加减的是什么。
+                'data-zoom-step="-1" aria-label="缩小">${icon(\'zoom-out\')}',
+                'data-zoom-step="1" aria-label="放大">${icon(\'zoom-in\')}'):
+            self.assertPageContains(needle)
+        # 关注来源那三处问的就是「有没有更新」，转圈归它们。
+        self.assertPageContains('aria-label="检查 ${esc(name)} 的全部来源">${icon(\'refresh-cw\')}')
         # 两个空态各说自己那件事：筛不出结果，和一次比对没有发现。
         self.assertPageContains("emptyState('search-x','当前筛选下没有更新'")
         self.assertPageContains("emptyState('file-stack','没有找到重复文件'")
@@ -6616,9 +6680,10 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".geist-input{box-sizing:border-box;width:100%;min-width:0;height:var(--control-h);")
         self.assertPageContains(".playlistcreate .geist-button{height:38px;padding:0 13px}")
         # 提交键是主动作，实心档由共用的 .geist-button.primary 给，不再本地拼一套描边。
-        for label in ("保存 ${mix.items.length} 个视频", "新建并加入", "新建"):
-            self.assertPageContains(
-                f'<button class="geist-button primary" type="submit">{label}</button>')
+        # 弹层里的提交键由 Geist Modal 的操作条给，页面上自己拼的只剩这一枚。
+        self.assertPageContains(
+            '<button class="geist-button primary" type="submit">新建</button>')
+        self.assertPageContains('<button type="submit" class="geist-button primary" data-modal-confirm>')
         self.assertPageLacks(".playlistcreate button,.playlistactions button{")
         self.assertPageContains(".faliasform .fbtn{height:38px;min-height:38px}")
         self.assertPageContains(".playlistcreate label{display:grid;gap:8px;color:var(--muted);"
@@ -6628,9 +6693,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks(".playlistcreate input,.playlistmeta input{min-width:220px;")
         self.assertPageLacks(".faliasform input{min-width:0;height:34px;")
         for needle in (
-                '<label>名称<input class="geist-input" name="name"',
+                '<label class="modalfield"><span>名称</span><input class="geist-input" name="name"',
                 '<label>新播放列表<input class="geist-input" name="name"',
-                '<input class="geist-input" data-playlist-name',
                 '<input class="geist-input" name="canonical"',
                 '<input class="geist-input" name="alias"'):
             self.assertPageContains(needle)
@@ -7231,7 +7295,7 @@ class WebUiSourceTests(unittest.TestCase):
         浮在缩略图上的纯图标键也不在此列，那圈半透明白边是它与照片之间唯一的分界。
         """
         css = stylesheet_source()
-        for name in (".playlistactions button{", ".reviewpickhead button{",
+        for name in (".reviewpickhead button{",
                      ".tagselection button{", ".batchbar button{",
                      ".fpickactions button{", ".dupactions.fsechead button{"):
             found = re.search(r"(?:^|[}\n])" + re.escape(name), css)
@@ -7508,8 +7572,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('data-photo-scale="fit" aria-label="适应窗口"')
         self.assertPageContains('data-photo-scale="original" aria-label="原大小"')
         # 文本字形受字体基线影响，会让圆按钮里的 +/- 肉眼偏上或偏下；SVG 几何才稳定居中。
-        self.assertPageContains('data-zoom-step="-1" aria-label="缩小">${icon(\'minus\')}')
-        self.assertPageContains('data-zoom-step="1" aria-label="放大">${icon(\'plus\')}')
+        self.assertPageContains('data-zoom-step="-1" aria-label="缩小">${icon(\'zoom-out\')}')
+        self.assertPageContains('data-zoom-step="1" aria-label="放大">${icon(\'zoom-in\')}')
         self.assertPageContains(".photozoom button svg{width:15px;height:15px;display:block;")
         self.assertPageContains(".photobar{position:absolute;z-index:4;bottom:14px;")
         self.assertPageContains(".photolight.has-strip .photobar{bottom:98px}")

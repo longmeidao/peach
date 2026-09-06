@@ -209,6 +209,7 @@ CloudDrive 为外部应用，本项目不捆绑其二进制或依赖其管理 AP
 | 分卷文件命名 | [Plex 官方命名](https://support.plex.tv/articles/naming-and-organizing-your-movie-media-files/)的 `cd/disc/disk/dvd/part/pt + 数字` 与 [Kodi 官方 File Stacking](https://kodi.wiki/view/File_stacking)只作行为证据；运行时复用当前树的 `part_marker`，不新增扫描器依赖 | 兼容馆藏已有的裸数字和 A–H 后缀；仅连续、唯一标记自动合卡，保留每个 asset 和播放会话，不拼接或改写媒体 |
 | 照片灯箱轮播 | Swiper 14.2.0（MIT，本地固定版本，按需加载 CSS／JS）的 Thumbs / Keyboard / Zoom 模块 | 构造轮播前必须同时等到样式与脚本就绪，并保留 scoped 的单 slide 结构样式防止首载竞态重叠；Swiper 管轮播、键盘、缩放变换与缩略图，Peach 管图集来源与顺序、当前缩略图居中、相对原图百分比、适应窗口／原大小语义、缩略图缓存与计费口径。瀑布流本身继续用 CSS `column-count`，不经过 Swiper。 |
 | 导航排序 | 浏览器原生 HTML Drag and Drop | 桌面鼠标直接拖动、落点提示、上下移动按钮作为键盘与触屏回退、`localStorage` 持久化；不为单列排序引入额外运行时依赖 |
+| 单列拖动排序 | `web/js/ui-components.js` 的 `wireDragReorder()` | 侧栏顺序与播放列表队列共用这一份：`dragstart` 标记被拖行，`dragover` 按指针落在行的上半还是下半给出落点线，`drop` 把整份新顺序交给调用方落库。落点线、抓手和键盘焦点样式都在共用件里，每加一处可拖列表不再各写一份 |
 | 图标 | 固定版本的本地 Lucide 子集；Health Icons 24 px outline（CC0）用于领域图标；Phosphor regular 填充字形（MIT）只用在描边说不清的地方（字母表 Aa、播放列表） | 标签、状态和交互设计 |
 | 资源文本中间省略 | Vercel Geist `MiddleTruncate` 行为契约 + 浏览器原生 `ResizeObserver`、`Intl.Segmenter`、Canvas 测量 | 文件名、路径、URL、ID 等资源标识用 `data-middle-truncate`；标题、说明、人名、标签等语义文本保留末尾省略；页面源测试登记全部末尾省略选择器，新增截断未先分类会失败 |
 | 定时轮询 | APScheduler 3.11.3（MIT，固定稳定版；3.x `BackgroundScheduler` / interval trigger） | 只在 ledger writer 启动、持久频率、首次延迟、单实例、手动/自动互斥、运行状态与来源错误汇总 |

@@ -5,14 +5,14 @@ description: 在新增、修改或复核 Peach 页面、控件、提示、错误
 
 # Peach Web UI 复用门槛
 
-最后复核：2026-09-04
+最后复核：2026-09-07
 
 ## 开工顺序
 
 1. 读取相关页面、`web/js/ui-components.js`、`web/css/` 与 `tests/test_web_ui.py`，先找现成控件、token 和行为。
 2. 外部产品被称为参考时同时执行 `peach-reference-evidence`；没有当前可复现证据就写 `未取得`，不补动画、间距或交互猜测。
 3. 视觉与交互先过 `docs/reference-snapshots/vercel-web-interface-guidelines.md` 的 Focus States、Forms、Animation、Content 四节，以及 `vercel-report-design.md`（即 `vercel.com/design.md`）的「Reject generated-design reflexes」；第三方逆向测量的 DESIGN.md（如 design-bites）不作证据。
-4. 新控件先检查 `docs/reference-snapshots/vercel-geist-controls-measured.md`、`vercel-geist-semantics-measured.md`、`vercel-geist-note-progress-switch-analytics.md`、`vercel-geist-command-search-loading.md` 与 `vercel-geist-button-icons.md`。
+4. 新控件先检查 `docs/reference-snapshots/vercel-geist-controls-measured.md`、`vercel-geist-semantics-measured.md`、`vercel-geist-note-progress-switch-analytics.md`、`vercel-geist-command-search-loading.md`、`vercel-geist-button-icons.md` 与 `vercel-geist-split-button.md`。
 
 ## 组件选择
 
@@ -22,6 +22,8 @@ description: 在新增、修改或复核 Peach 页面、控件、提示、错误
 | 页面／系统级问题与恢复动作 | Banner | Note |
 | 短暂操作回执 | Toast | 持久 Note |
 | 写操作前的确认 | `confirmModal()` | 原生 `confirm()`、Toast |
+| 一个主动作加 1–4 个近亲做法 | Split Button（主动作在左，第一项菜单项与它同名同事） | 把变体摊平成并排按钮、把破坏性动作当主动作 |
+| 一行内的重排 | `wireDragReorder()` 拖动 | 上下移动按钮 |
 | 已知总量的进行状态 | Progress | 装饰性蓝条 |
 | 用户触发动作等待结果 | Spinner | 旋转原操作图标、Loading Dots |
 | 后台任务仍在推进 | Loading Dots | Spinner、假百分比 |
@@ -63,7 +65,7 @@ description: 在新增、修改或复核 Peach 页面、控件、提示、错误
 - 下拉框的用途用框内左侧 16px 前缀图标标明，不在同一行挂一个文字标签：Geist 的文字 Label 是块级、排在控件上方，行内并排那种写法它没有，而工具行没有上方空间。无障碍名称改由 `aria-label` 承担。
 - 按钮的前置图标只在图标指向对象（来源站点、当前选中项、平台）或形态方向（触发器右侧的 `chevron-down`）时出现；文字已经把动词说完的不加，`+ 添加`、`↻ 刷新`、`✓ 保存` 这枚多余字形会把同一行主次动作的视觉重量拉平。图标键必须给 `aria-label`，名称点出动作和对象、不描述图标形状。判据与 Geist Button 文档正文见 `docs/reference-snapshots/vercel-geist-button-icons.md`；官方 Geist 图标 SVG 没有可直取的入口，同一份快照记了原因。
 - 同一行里的输入框和按钮共用 `--control-h`，不各写一个像素数：两个控件差 3px 就不是一行了，而差值往往来自窄屏那条防放大规则只抬其中一个。
-- 一枚字形只代表一个意思，同一个意思也只有一枚字形。取字形先问它指的是哪个名词或哪个方向：文件类型取 `file-*`，本地取 `hard-drive`、订阅源取 `rss`，往下接一页取 `chevron-down`，原地换一批才是 `refresh-cw`；筛不出结果和一次比对没有发现是两个空态，不能共用一枚。归属由 `tests/test_web_ui.py` 的 `test_each_glyph_names_the_thing_it_sits_next_to` 逐枚钉住，换掉哪一处就在那里同步。没有使用者的 symbol 一律从 `scripts/vendor_web_dependencies.mjs` 的名单和雪碧图里一起删，用户点名留的备用件在同一个测试里写明。
+- 一枚字形只代表一个意思，同一个意思也只有一枚字形。取字形先问它指的是哪个名词或哪个方向：文件类型取 `file-*`，本地取 `hard-drive`、订阅源取 `rss`，往下接一页取 `chevron-down`，原地换一批取 `shuffle`，`refresh-cw` 只归「去问一遍来源有没有更新」；筛不出结果和一次比对没有发现是两个空态，不能共用一枚。归属由 `tests/test_web_ui.py` 的 `test_each_glyph_names_the_thing_it_sits_next_to` 逐枚钉住，换掉哪一处就在那里同步。没有使用者的 symbol 一律从 `scripts/vendor_web_dependencies.mjs` 的名单和雪碧图里一起删，用户点名留的备用件在同一个测试里写明。
 - 播放器控制条的窄屏折叠按播放器自身宽度判定（`ResizeObserver` 观察 `player.el()`），不用媒体查询：同一个视口下影院模式和普通视图的播放器宽度差一大截，用视口判据会在影院模式下白折叠、在普通视图下继续超框。门槛与提示外观见 `youtube-player-controls-user-screenshot.md`。
 - 分页末尾、空页和“没有更多内容”是中性终止状态，用可关闭 Note；只有需要恢复或处理的故障才能进入红色 error Note。
 - 弹层标题栏与滚动正文分层：标题分隔线属于卡片全宽，滚动条只属于正文。
