@@ -15,7 +15,7 @@ import { ApiError, apiGet, apiSend, errorMessage } from '../api';
 import { AccessSettings, type AccessState } from './access-settings';
 import { ReleaseUpdates, type ReleaseState, type UpdateJob } from './release-updates';
 import { PeachProxy, type PeachProxyState } from './peach-proxy';
-import { DesktopSettings, type StartupState, type UninstallState } from './desktop-settings';
+import { StartupSettings, UninstallSettings, type StartupState, type UninstallState } from './desktop-settings';
 
 export interface ConfigurationProps {
   /** 保存成功后的过去时回执（遗留层的 Toast）。 */
@@ -344,15 +344,16 @@ export function Configuration({ receipt, data, error }: ConfigurationProps & Sta
   }
   return (
     <div class="configpage">
+      {data.startup ? <StartupSettings startup={data.startup} receipt={receipt} /> : null}
       {data.editable
         ? <ConfigurationForm data={data} receipt={receipt} />
         : <Html html={noteHtml(data.notice, { variant: 'secondary', label: '只读' })} />}
-      {data.access ? <AccessSettings initial={data.access} receipt={receipt} /> : null}
+      <MountStatus data={data} />
       {data.peach_proxy ? <PeachProxy initial={data.peach_proxy} receipt={receipt} /> : null}
-      {data.startup && data.uninstall ? <DesktopSettings startup={data.startup} uninstall={data.uninstall} receipt={receipt} /> : null}
+      {data.access ? <AccessSettings initial={data.access} receipt={receipt} /> : null}
       {data.updates ? <ReleaseUpdates initial={data.updates} initialJob={data.update_job} /> : null}
       <Facts facts={data.facts} />
-      <MountStatus data={data} />
+      {data.uninstall ? <UninstallSettings uninstall={data.uninstall} /> : null}
     </div>
   );
 }

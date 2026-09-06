@@ -13,6 +13,19 @@ from peach import desktop_startup, desktop_uninstall, peach_proxy, scraping_acce
 
 
 class DesktopSettingsTests(unittest.TestCase):
+    def test_configuration_order_and_danger_area_share_the_ui_contract(self):
+        root = Path(__file__).resolve().parents[1]
+        configuration = (root / 'frontend/src/islands/configuration.tsx').read_text(encoding='utf-8')
+        names = ['<StartupSettings', '<ConfigurationForm', '<MountStatus', '<PeachProxy', '<AccessSettings', '<ReleaseUpdates', '<Facts', '<UninstallSettings']
+        # 定位配置主页面，排除同文件中组件定义的内部 JSX。
+        page = configuration[configuration.index('export function Configuration('):]
+        self.assertEqual(sorted(names, key=page.index), names)
+        css = (root / 'web/css/23-configuration.css').read_text(encoding='utf-8')
+        self.assertIn('.configdanger{border-color:var(--drop)}', css)
+        self.assertIn('.configdanger>.geist-fieldset-footer', css)
+        self.assertIn('.configselect{width:min(320px,100%)}', css)
+        self.assertIn('.configdirectories .fcollapsebody{padding:12px 4px 4px}', css)
+
     def setUp(self):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)

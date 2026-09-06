@@ -77,7 +77,7 @@
 
 - [Geist 控件](reference-snapshots/vercel-geist-controls-measured.md)；[README 维护](README_MAINTENANCE.md)。
 
-- 图 3、JavDB：`docs/REUSE.md`。
+- 设置：`reference-snapshots/geist-settings.md`。
 
 快照、URL、版本、SHA、未取得面与 Peach 的有意差异统一登记在 `docs/reference-sources.json` 和
 `docs/reference-snapshots/`，每份快照自带「Peach 采用与差异」一节；获取、失效复核与接受更新的流程见

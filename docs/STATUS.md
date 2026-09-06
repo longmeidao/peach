@@ -4,7 +4,7 @@
 
 索引：`PRODUCT_BACKLOG.md`、`REUSE.md`、`HANDOFF.md`。
 
-- 本机设置见 `REUSE.md`。
+- 设置见 `REUSE.md`。
 
 ## 运行态
 

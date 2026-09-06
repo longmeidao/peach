@@ -15,7 +15,7 @@ export function PeachProxy({ initial, receipt }: { initial: PeachProxyState; rec
   useEffect(() => () => lifetime.current.abort(), []);
   useLayoutEffect(() => {
     const root = mount.current!;
-    root.innerHTML = selectFieldHtml([['environment','系统代理'],['direct','直连'],['proxy','自定义']],initial.mode,{label:'Peach 代理'});
+    root.innerHTML = selectFieldHtml([['environment','系统代理'],['direct','直连'],['proxy','自定义']],initial.mode,{label:'Peach 代理',className:'configselect',attr:'data-fixed-width'});
     const field = wireSelectField(root.firstElementChild!);
     const change = () => setMode(field.value);
     field.addEventListener('change', change);
@@ -35,8 +35,8 @@ export function PeachProxy({ initial, receipt }: { initial: PeachProxyState; rec
       <div dangerouslySetInnerHTML={{__html:fieldsetTitle('peachProxyTitle','Peach 代理')}} />
       <p class="confighelp">采集来源选择“Peach 代理”时共用此设置。</p>
       <div ref={mount} />
-      {mode === 'proxy' && <label class="configfield">代理地址<input class="geist-input" type="password" autoComplete="off" value={address}
-        placeholder={saved.proxy_saved ? '已保存，留空保留' : 'http://127.0.0.1:7890'} onInput={event => setAddress(event.currentTarget.value)} /></label>}
+      {mode === 'proxy' && <div class="configfield"><label htmlFor="peachProxyAddress">代理地址</label><input id="peachProxyAddress" class="geist-input" type="password" autoComplete="off" value={address}
+        placeholder={saved.proxy_saved ? '已保存，留空保留' : 'http://127.0.0.1:7890'} onInput={event => setAddress(event.currentTarget.value)} /></div>}
       {saved.needs_selection && <p class="configbad">已有来源的代理地址不同，请选择公共连接方式。</p>}
       {error && <p class="configbad" role="alert">{error}</p>}
     </div>
