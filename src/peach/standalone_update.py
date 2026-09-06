@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path, PurePosixPath
 import shutil
+import sqlite3
 import subprocess
 import sys
 import threading
@@ -17,7 +18,7 @@ import httpx
 from filelock import FileLock, Timeout
 
 from . import distribution, release_updates
-from .config import STATE_DIR
+from .config import STATE_DIR, DATABASE_PATH
 from .fsutil import atomic_write_text
 from .windows_update import replace_with_retry
 
@@ -174,6 +175,36 @@ def poll(tray) -> None:
         tray._action_lock.release()
 
 
+def migrate_database(stage: Path, data: dict) -> Path | None:
+    from .migrations import plan, sqlite_backup
+    if not DATABASE_PATH.is_file():
+        return None
+    _, pending = plan(DATABASE_PATH, stage / "_internal" / "migrations")
+    if not pending:
+        return None
+    backup = STATE_DIR / "update-backups" / data["id"] / "ledger.db"
+    sqlite_backup(DATABASE_PATH, backup)
+    write(data, database_backup=str(backup), state="installing", progress=10, message="正在更新本地数据库")
+    environment = dict(os.environ, PYINSTALLER_RESET_ENVIRONMENT="1")
+    with (backup.parent / "migration.log").open("wb") as log:
+        result = subprocess.run([str(stage / "Peach.exe"), "migrate", "upgrade", "--yes", "--db", str(DATABASE_PATH)],
+                                cwd=str(stage), env=environment, stdout=log, stderr=log, stdin=subprocess.DEVNULL,
+                                timeout=180, check=False, creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
+    if result.returncode:
+        raise RuntimeError("数据库更新失败")
+    return backup
+
+
+def restore_database(data: dict) -> None:
+    backup = STATE_DIR / "update-backups" / data["id"] / "ledger.db"
+    if not backup.is_file():
+        return
+    with sqlite3.connect(backup.as_uri() + "?mode=ro", uri=True) as source, sqlite3.connect(DATABASE_PATH) as destination:
+        source.backup(destination)
+        if destination.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
+            raise RuntimeError("数据库恢复检查失败")
+
+
 def apply(manifest: Path, wait_pid: int) -> int:
     """复制出来的助手等待原托盘正常退出，再在同一卷上切换两个目录。"""
     from .windows_restart import process_alive, start_tray, find_tray_windows, post_stop
@@ -198,6 +229,7 @@ def apply(manifest: Path, wait_pid: int) -> int:
             if time.monotonic() > deadline:
                 raise TimeoutError("托盘尚未退出，安装已取消")
             time.sleep(.25)
+        migrate_database(stage, data)
         write(data, state="installing", progress=20, message="正在保留旧版本")
         replace_with_retry(target, backup)
         moved = True
@@ -229,13 +261,18 @@ def apply(manifest: Path, wait_pid: int) -> int:
                         post_stop(window.handle)
                     replace_with_retry(target, transaction / "failed")
                 replace_with_retry(backup, target)
+                restore_database(data)
                 start_tray(target / "Peach.exe")
                 message = f"更新失败，已恢复旧版本：{exc}"
             except Exception as rollback:
                 message = f"更新失败，回滚未完成：{rollback}"
         else:
             message = f"更新未安装：{exc}"
-            if not process_alive(wait_pid):
-                start_tray(target / "Peach.exe")
+            try:
+                restore_database(data)
+                if not process_alive(wait_pid):
+                    start_tray(target / "Peach.exe")
+            except Exception as rollback:
+                message = f"更新失败，数据库恢复未完成：{rollback}"
         write(data, state="error", progress=0, message=message)
         return 1

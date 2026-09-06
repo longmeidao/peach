@@ -4,6 +4,7 @@ import hashlib
 from contextlib import nullcontext
 from pathlib import Path
 import tempfile
+import sqlite3
 import unittest
 from unittest.mock import Mock, patch
 import zipfile
@@ -19,6 +20,8 @@ class StandaloneUpdateTests(unittest.TestCase):
         self.state = self.root / "state"
         self.state.mkdir()
         patcher = patch.object(update, "STATE_DIR", self.state)
+        patcher.start(); self.addCleanup(patcher.stop)
+        patcher = patch.object(update, "DATABASE_PATH", self.root / "ledger.db")
         patcher.start(); self.addCleanup(patcher.stop)
 
     def archive(self, names):
@@ -109,3 +112,20 @@ class StandaloneUpdateTests(unittest.TestCase):
         self.assertEqual(update.public()["state"], "error")
         start.assert_called_once_with(target / "Peach.exe")
         self.assertTrue(self.state.is_dir())
+
+    def test_migration_failure_can_restore_the_sqlite_backup(self):
+        with sqlite3.connect(update.DATABASE_PATH) as connection:
+            connection.execute("CREATE TABLE fixture(value TEXT)")
+            connection.execute("INSERT INTO fixture VALUES ('original')")
+        data = {"id":"migration-fixture"}
+        def failed_migration(*args, **kwargs):
+            with sqlite3.connect(update.DATABASE_PATH) as connection:
+                connection.execute("UPDATE fixture SET value='changed'")
+            return Mock(returncode=1)
+        with patch("peach.migrations.plan",return_value=([],[object()])), patch.object(
+                update.subprocess,"run",side_effect=failed_migration):
+            with self.assertRaises(RuntimeError):
+                update.migrate_database(self.root,data)
+        update.restore_database(data)
+        with sqlite3.connect(update.DATABASE_PATH) as connection:
+            self.assertEqual(connection.execute("SELECT value FROM fixture").fetchone()[0],"original")
