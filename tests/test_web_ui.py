@@ -456,18 +456,28 @@ class WebUiSourceTests(unittest.TestCase):
         2026-09-05 实测 vercel.com 的仪表盘工具行，两档同屏并排：主动作 `#171717` 底
         白字不带描边，次级 `#FFFFFF` 底 `#171717` 字加 `0 0 0 1px #EBEBEB`。次级不是透明的
         ——压在 `#FAFAFA` 的操作条上时，透明会让按钮和条子连成一片，只剩一条边框在飘。
+
+        悬停按 Geist Button 源规则抬一档：secondary 走 gray-200（浅色 `#EBEBEB`、深色
+        `#1F1F1F`），即自己那块面上压 8% 墨。每一颗次级按钮都用同一个值，白底上才看得出
+        鼠标停在哪一颗。
         """
+        css = stylesheet_source()
+        secondary_hover = "background:color-mix(in srgb,var(--ink) 8%,var(--ground))"
         self.assertCode(".geist-button{box-sizing:border-box;height:32px;padding:0 14px;"
                         "border:1px solid var(--line-soft);border-radius:var(--control-radius);"
                         "background:var(--ground);color:var(--ink);display:inline-flex;")
-        self.assertPageContains(".geist-button:hover:not(:disabled){background:var(--surface)}")
+        self.assertPageContains(f".geist-button:hover:not(:disabled){{{secondary_hover}}}")
         self.assertPageContains(".geist-button.primary{border-color:var(--ink);background:var(--ink);color:var(--ground)}")
-        css = stylesheet_source()
         for name in (".cleanupfieldset button{", "\n.fbtn{", ".resourceaction{"):
             start = css.index(name)
             rule = css[start:css.index("}", start)]
             self.assertIn("background:var(--ground)", rule, f"{name} 是次级档，自己是一块亮面")
             self.assertIn("border:1px solid var(--line-soft)", rule, f"{name} 的边与次级档一致")
+        for name in (".cleanupfieldset button:hover{", ".fbtn:hover:not(:disabled){",
+                     ".resourceaction:hover:not(:disabled){", ".dupactions.fsechead button:hover{"):
+            start = css.index(name)
+            rule = css[start:css.index("}", start)]
+            self.assertIn(secondary_hover, rule, f"{name} 的悬停与次级档同抬一档")
 
     def test_the_scrollbar_thumb_floats_over_the_content_and_takes_no_width(self):
         """滑块自绘、浮在内容上，一列宽度都不占；颜色取主题变量。
@@ -6162,7 +6172,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".resourcesyncfooter>p,.resourceapplyrow>p{min-width:0;margin-right:auto}")
         self.assertPageContains(".cleanupfieldset button{box-sizing:border-box;flex:none;min-height:32px;")
         self.assertPageContains("background:var(--ground);color:var(--ink-2);display:inline-flex;")
-        self.assertPageContains(".cleanupfieldset button:hover{background:var(--surface);"
+        self.assertPageContains(".cleanupfieldset button:hover{"
+                                "background:color-mix(in srgb,var(--ink) 8%,var(--ground));"
                                 "color:var(--ink)}")
         self.assertPageLacks(".resourcesyncfooter button{width:100%;justify-content:center}")
         self.assertPageLacks(".resourcesync .resourcesyncfooter{align-items:stretch;flex-direction:column}")

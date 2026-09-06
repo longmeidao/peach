@@ -91,7 +91,7 @@
 .cleanupfieldset button{box-sizing:border-box;flex:none;min-height:32px;padding:0 12px;border:1px solid var(--line-soft);border-radius:var(--control-radius);
   background:var(--ground);color:var(--ink-2);display:inline-flex;align-items:center;justify-content:center;gap:6px;cursor:pointer;
   transition:border-color .15s ease-in-out,color .15s ease-in-out,background-color .15s ease-in-out}
-.cleanupfieldset button:hover{background:var(--surface);color:var(--ink)}
+.cleanupfieldset button:hover{background:color-mix(in srgb,var(--ink) 8%,var(--ground));color:var(--ink)}
 .cleanupfieldset button.danger{color:var(--drop)}
 .cleanupfieldset button.danger:hover{background:var(--drop);border-color:var(--drop);color:#fff}
 .cleanupfieldset button svg{width:16px;height:16px;stroke:currentColor;fill:none}
