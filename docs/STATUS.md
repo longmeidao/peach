@@ -6,14 +6,14 @@
 
 ## 运行态
 
-- 待验收：导入或跳过后隐藏指南；浅色管理导航选中填灰；SFW 模式附遮挡说明。
+- 导入或跳过后隐藏指南，折叠保留；浅色导航选中填灰；SFW 模式附说明。测试 1304 项、前端 69 项通过；桌面与手机预览通过。
 
 - HTTPS 就绪；未打标签。开发验证默认 `auto`。
 
 - Windows 是当前 ledger writer，入口 `dist\Peach\Peach.exe`；代码、`peach-data`、worktree 和共享传输点同在一个顶层目录，外置盘只提供 `R:\media`。
 - 托盘必须以普通权限启动：提升权限后的令牌看不到 CloudDrive 的 `A:` / `B:`，会把 PikPak 和 115 误报为脱盘。
-- Windows HTTP 为 `0.0.0.0:80`，HTTPS 为当前 LAN IPv4 的 443，mDNS 名见 `[server].mdns_name`；线上版本 `0.12.1`、`ledger_sync=writer`，项目 CA 严格校验的健康与就绪检查通过。
-- 2026-09-06 从 `34341c78` 载入源码运行态，通过 `scripts/restart_windows_tray.py` 正常重启现有托盘并重新取得 HTTP/HTTPS 子服务所有权；本次未替换 EXE。换二进制走 `scripts/deploy_windows_tray.py`，且要单独授权。
+- Windows HTTP 为 `0.0.0.0:80`，HTTPS 为当前 LAN IPv4 的 443，mDNS 名见 `[server].mdns_name`；线上版本 `0.12.3`、`ledger_sync=writer`，项目 CA 严格校验的健康与就绪检查通过。
+- 2026-09-06 从 `2d7d8e6c` 载入源码运行态，正常重启托盘并取得 HTTP/HTTPS 子服务所有权，未替换 EXE。换二进制走 `scripts/deploy_windows_tray.py`，且要单独授权。
 - 本机经正式域名访问时 `/healthz` 返回 `configurable=true`；配置读取、保存与选文件夹共用本机连接判据。托盘负责配置重载，正式 HTTPS 地址与端口保持托盘管理。
 - 缺失依赖下载提示已接入首启和配置页：CloudDrive、当前系统挂载驱动、FFmpeg/ffprobe，以及首次设置缺少 OpenSSL 的提示。Windows 实测安装检测识别到 CloudDrive 与 WinFsp；桌面及 390×844 预览通过，生产浏览器导航取证超时。全量 3278 项通过、17 项跳过，集成补测 1754 项通过、2 项跳过，前端 16 项通过。
 - 首次设置提供可跳过的历史记录导入指南；数据管理首屏与实际卡片共用 Fieldset 排版，网盘同步与重复文件网盘保留操作按来源显隐，界面使用「本地数据库」。影响域 1762 项通过、2 项跳过，前端 67 项通过；桌面深浅色与 390×844 预览通过，正式页面浏览器读取超时。未执行真实资源同步、清理或浏览器历史采集。
