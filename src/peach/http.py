@@ -1,5 +1,6 @@
 """共享 HTTP transport：连接池、超时、有界读取与可注入测试边界。"""
 from __future__ import annotations
+from .user_agent import USER_AGENT
 
 from dataclasses import dataclass
 from typing import Mapping, Protocol
@@ -44,7 +45,7 @@ class HttpxTransport:
         self.client = client or httpx.Client(
             follow_redirects=True,
             limits=httpx.Limits(max_connections=32, max_keepalive_connections=16),
-            headers={"User-Agent": "Peach/0.2"},
+            headers={"User-Agent": USER_AGENT},
         )
         self._owns_client = client is None or owns_client
 

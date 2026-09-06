@@ -28,7 +28,7 @@ from .http import HttpRequest, HttpResponse, HttpTransport
 
 #: 请求 Gofile 用的固定 UA。刻意不复用连接器的 `_headers()`——那里面可能有来源站
 #: 的 Cookie，而这里是另一个主机。
-USER_AGENT = "Peach/0.2 (+local self-hosted follow reader)"
+from .user_agent import USER_AGENT
 
 _FOLDER_PATH = re.compile(r"/d/([A-Za-z0-9_-]+)")
 _LABELED_FOLDER = re.compile(

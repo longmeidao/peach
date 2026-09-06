@@ -231,7 +231,7 @@ class OfficialConnectorTests(unittest.TestCase):
         self.assertTrue(all("post.listCreator" in request.url for request in list_seen))
         self.assertEqual(len(detail_seen), 1)
         self.assertIn("post.info", detail_seen[0].url)
-        self.assertIn("Firefox/147.0", detail_seen[0].headers["User-Agent"])
+        self.assertEqual(USER_AGENT, detail_seen[0].headers["User-Agent"])
         self.assertEqual(
             detail_seen[0].headers["Referer"],
             "https://www.fanbox.cc/@ffxivinitiala/posts/12489354",

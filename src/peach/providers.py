@@ -1,5 +1,6 @@
 """AI Provider capability registry; health discovery never sends model requests."""
 from __future__ import annotations
+from .user_agent import USER_AGENT
 
 import shutil
 import json
@@ -45,7 +46,7 @@ class OpenCodeGoClient:
         with self._lock:
             if self._cache and now - self._cache[0] < self.cache_ttl:
                 return [dict(item) for item in self._cache[1]]
-        headers = {"Accept": "application/json", "User-Agent": "Peach/0.2"}
+        headers = {"Accept": "application/json", "User-Agent": USER_AGENT}
         if self._api_key:
             headers["Authorization"] = "Bearer " + self._api_key
         request = HttpRequest("GET", self.base_url + "/models", headers)

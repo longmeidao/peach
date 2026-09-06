@@ -31,7 +31,7 @@ from .http import CurlCffiTransport, HttpRequest, HttpResponse, HttpTransport, H
 
 
 #: 默认连接器共用的 UA。只有 ADR-0019 明确登记的 FANBOX 详情传输例外。
-USER_AGENT = "Peach/0.2 (+local self-hosted follow reader)"
+from .user_agent import USER_AGENT
 
 #: 单次抓取的条目上限。追更只关心增量，不做全站归档。
 DEFAULT_MAX_ITEMS = 100
@@ -1902,7 +1902,7 @@ class FanboxConnector(_BaseConnector):
     def profile_handle(cls, ref: str) -> str:
         return str(ref or "").strip()
 
-    _IMPERSONATION = "firefox147"
+    _IMPERSONATION = "chrome150"
 
     def __init__(self, *, detail_transport: HttpTransport | None = None, **kwargs):
         injected_transport = kwargs.get("transport")
@@ -1920,10 +1920,7 @@ class FanboxConnector(_BaseConnector):
             "Accept": "application/json",
             "Origin": "https://www.fanbox.cc",
             "Referer": "https://www.fanbox.cc/",
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:147.0) "
-                "Gecko/20100101 Firefox/147.0"
-            ),
+            "User-Agent": USER_AGENT,
         })
         if self.credential and self.credential.values.get("cookie"):
             headers["Cookie"] = self.credential.values["cookie"]

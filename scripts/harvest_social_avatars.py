@@ -592,6 +592,7 @@ def cover_fallback(connection, record: dict, cache: AvatarCandidateCache,
                                height=inspected.height, mime_type=inspected.mime_type,
                                sha256=inspected.sha256, object_path=stored,
                                matched=record['canonical'], name_source='ledger-performer',
+                               identity_verified=False,
                                evidence=f'单人作品 {code} 完整封面'))
     if not candidates:
         return None
@@ -754,6 +755,8 @@ def outranks_incumbent(winner: dict, incumbent: dict | None) -> bool:
 
 def install_avatar(avatar_dir: Path, kind: str, entity_id: int, winner: dict) -> Path:
     """赢家直接落盘到 /entity-image 真正读的目录，带 .ct、provenance 与取景 sidecar。"""
+    if source_tier(winner) == COVER_TIER:
+        raise ValueError("作品封面只作为候选留档，不安装为人物头像")
     destination = avatar_dir / f"{kind}-{entity_id}.img"
     avatar_dir.mkdir(parents=True, exist_ok=True)
     data = winner["object_path"].read_bytes()
@@ -928,7 +931,7 @@ def run(args) -> int:
                 cache = caches[PROVIDER_CACHES[candidate["provider"]]]
                 provenance_path = cache.store_provenance(
                     provenance_for(cache, entity_id, candidate))
-                identity_ok = candidate.get("identity_verified", True) and bool(
+                identity_ok = candidate.get("source_kind") != 'single_performer_cover' and candidate.get("identity_verified", True) and bool(
                     candidate.get("matched"))
                 is_winner = candidate is winner
                 note = ""

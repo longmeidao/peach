@@ -19,8 +19,7 @@ from .http import HttpRequest, HttpxTransport
 from .scripting import RateLimiter
 
 
-USER_AGENT = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-              "(KHTML, like Gecko) Chrome/128.0 Safari/537.36")
+from .user_agent import USER_AGENT
 
 
 class HttpStatusError(RuntimeError):

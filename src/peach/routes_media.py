@@ -57,8 +57,7 @@ AVATAR_CACHE_SECONDS = 30 * 24 * 3600
 
 #: 取图标时报浏览器 UA。CDN 上的图标资产（p-smith、static.cdninstagram）对
 #: 机器人 UA 会直接 403，而这只是一次公开静态文件请求，没有伪装成用户的意思。
-ICON_USER_AGENT = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                   "(KHTML, like Gecko) Chrome/128.0 Safari/537.36")
+from .user_agent import USER_AGENT
 
 #: 文件名里不能出现的字符，按 Windows 的最严口径取——落盘的那台多半是它。
 _UNSAFE_FILENAME = re.compile('[\\/:*?"<>|]+|[\x00-\x1f]+')
@@ -505,7 +504,7 @@ def link_mark(request: Request, id: int = 0, args: dict[str, str] = Depends(requ
         def fetch(target: str):
             try:
                 upstream = state.http_transport.client.get(
-                    target, headers={"User-Agent": ICON_USER_AGENT},
+                    target, headers={"User-Agent": USER_AGENT},
                     timeout=8, follow_redirects=True)
             except (OSError, httpx.HTTPError):
                 return None

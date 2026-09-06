@@ -351,7 +351,7 @@ class WebUiSourceTests(unittest.TestCase):
         ":focus",              # 焦点环：:focus / :focus-visible / :focus-within
         ".geist-progress", ".watchprogress", ".vjs-play-progress", ".vjs-progress-holder",
         ".trace .bar", ".tokbar",  # 进度与数据
-        "#censorSetting:checked",  # Toggle 开态：Geist Toggle 实测轨道 rgb(0,112,243)
+        ":is(#censorSetting,#detailAutoplaySetting):checked",  # Toggle 开态：Geist Toggle 实测轨道 rgb(0,112,243)
         ".entitylink", ".flink", ".fsourcelink", ".fcred a", ".tokauthor>a", ".confighelp a", ".taste-history-guide-content a",  # 真正的链接
     )
 
@@ -1539,14 +1539,20 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('<span class="sr-only">${esc(x.label)}</span></a>')
         self.assertPageContains('.entitylinks a.iconlink{padding:4px;gap:0;border-radius:50%}')
 
-    def test_a_studio_official_link_shows_its_url_and_no_icon(self):
-        # 厂牌页的头像就是厂牌 logo，旁边再放一枚同品牌的小图标只是把同一个东西说两遍；
-        # 域名本身就是名字，比图标说得清楚。女优页不一样：那里的头像是人，事务所图标
-        # 不构成重复，标签也是事务所名而非域名。
+    def test_a_studio_official_link_shows_its_url_and_globe(self):
         self.assertPageContains("if(kind==='studio')")
         self.assertPageContains('<a class="urllink" href="${esc(x.url)}"')
         self.assertPageContains("${esc(linkHost(x.url)||x.label)}")
-        self.assertPageContains(".entitylinks a.urllink{padding:4px 14px")
+        self.assertPageContains(".entitylinks a.urllink{padding:4px 12px 4px 4px")
+
+    def test_entity_loading_and_detail_autoplay_share_their_entry_contracts(self):
+        self.assertPageContains("showEntityLoading(ROUTE_ENTITIES[path.split('/')[1]])")
+        self.assertPageContains('showEntityLoading(kind);')
+        self.assertPageContains('appSettings.detailAutoplay=appSettings.detailAutoplay!==false;')
+        self.assertPageContains('mountDetailPlayer(it,vv,appSettings.detailAutoplay)')
+        self.assertPageContains('mountDetailPlayer(item,followVideo,appSettings.detailAutoplay,{')
+        self.assertPageContains('id="detailAutoplaySetting"')
+        self.assertPageContains('fill="#000" stroke="none"/><path fill="#fff"')
 
     def test_entity_links_have_no_external_arrow(self):
         # `target="_blank"` 已经是外链，箭头只是重复；一排链接里它还会挤掉本就不多的
@@ -1554,15 +1560,10 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks('entitylinkarrow', "外链箭头应当已删除")
         self.assertPageLacks('↗', "外链箭头字符应当已删除")
 
-    def test_x_links_use_an_inline_brand_mark_instead_of_a_fetched_favicon(self):
-        # favicon 是别人服务器上的一张小位图：X 直接挡掉爬取（资料页上那个空白白圆就是
-        # 它），取到的也多是 16×16，放进 32px 的圆里必然糊。416 条社媒链接里 372 条是
-        # x.com／twitter.com，只给它一个内联标记就覆盖了 89%，还省一次跨站请求。
-        # 哪些主机走内联标记（含子域、且只认后缀边界）由
-        # test_web_js.test_brand_marks_cover_the_host_and_its_subdomains_only 验收。
+    def test_x_links_preserve_the_black_plate_and_white_mark(self):
         self.assertPageContains('<symbol id="i-brand-x"')
         # 填充字形不吃通用的 stroke:currentColor;fill:none。
-        self.assertPageContains('.entitylinkicon.brand svg{width:15px;height:15px;fill:currentColor;stroke:none}')
+        self.assertPageContains('.entitylinkicon.brand svg{width:20px;height:20px;stroke:none;filter:none}')
 
     def test_the_link_icon_disc_carries_no_plate_of_its_own(self):
         """内联品牌标记直接画在药丸上。垫一层 `--sunk` 会让它比周围暗一档，看着像
@@ -4531,12 +4532,17 @@ class WebUiSourceTests(unittest.TestCase):
         # 公司名自己说明了它是什么，这一行只出名字，不加类别名占横向空间。
         self.assertPageLacks("· 事务所 ${esc(agencyName)}")
         # 链接标签写的是域名归谁，不是事务所名。
-        self.assertPageContains("标签写的是这个域名归谁")
+        self.assertPageContains("linkHost(x.url)||x.label")
 
     def test_the_agency_page_reuses_the_entity_route_table(self):
         """实体本来就只有 kind 不同，事务所加进同一张表就有了 `/agencies/<名字>`。"""
         self.assertPageContains("agency:'agencies'")
         self.assertPageContains("agencies:'agency'")
+
+    def test_portrait_pixels_do_not_size_the_face_frame(self):
+        self.assertPageContains(".entityportrait img{position:absolute;inset:0;grid-area:auto;")
+        self.assertPageContains("if(!matchesFaceSource(img.naturalWidth,img.naturalHeight,imgW,imgH)){")
+        self.assertPageContains("img.style.objectPosition='50% 50%';")
 
     def test_the_agency_page_gets_the_same_loading_skeleton(self):
         self.assertPageContains("performers|creators|studios|agencies")
@@ -5427,7 +5433,7 @@ class WebUiSourceTests(unittest.TestCase):
             ".idface img{position:absolute;inset:0;width:100%;height:100%;"
             "object-fit:cover;display:block}")
         self.assertPageContains(
-            ".entityportrait img{width:100%;height:100%;object-fit:cover;display:block")
+            ".entityportrait img{position:absolute;inset:0;grid-area:auto;width:100%;height:100%;object-fit:cover;display:block")
         self.assertPageLacks(".idcell.logo .idface img{")
         self.assertPageLacks('style="width:100%;height:100%;object-fit:contain"')
 
@@ -5711,8 +5717,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertNotIn("box-shadow:0 8px 32px -12px", self.css, "浮层靠发丝线不靠投影")
         # 布尔开关是 Geist 中号 Toggle（36×20 轨道 + 17px 圆点），不是原生复选框；
         # Geist 的 Switch 是分段选择器，别用错控件。
-        self.assertPageContains("#censorSetting{appearance:none;-webkit-appearance:none;width:36px;height:20px;flex:none;")
-        self.assertPageContains("#censorSetting:checked{background:var(--tungsten)}")
+        self.assertPageContains(":is(#censorSetting,#detailAutoplaySetting){appearance:none;-webkit-appearance:none;width:36px;height:20px;flex:none;")
+        self.assertPageContains(":is(#censorSetting,#detailAutoplaySetting):checked{background:var(--tungsten)}")
         # 没有直接证据的 command-menu 入场动画与无有效高度约束的复核卡
         # Scroller 不应继续作为「Vercel 对齐」进入产品。
         self.assertPageLacks("animation:panel-in")
@@ -6798,8 +6804,8 @@ class WebUiSourceTests(unittest.TestCase):
             "$('#stats').hidden=true;$('#index').hidden=false;$('#grid').innerHTML='';"
             "$('#combo').innerHTML='';",
             "索引页与资料页的共用铺开函数必须收掉目录的筛选芯片")
-        for name in ("openIndex", "openEntity"):
-            self.assertIn("showIndexLoading(", self._js_function(name),
+        for name, loader in (("openIndex", "showIndexLoading("), ("openEntity", "showEntityLoading(")):
+            self.assertIn(loader, self._js_function(name),
                           name + " 自己铺索引页主体，多半又抄漏了一行")
         # 详情页内联在目录里，两个容器都还藏着：芯片在那里继续成立，不能被一起收掉。
         self.assertPageContains("if(push&&!queueContext)route('/item/'+id);")

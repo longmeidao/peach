@@ -45,6 +45,7 @@ class CoverFallbackTests(unittest.TestCase):
             cache = module.AvatarCandidateCache(root/'cache')
             result = module.cover_fallback(con, record, cache, root)
             self.assertEqual(result['source_kind'], 'single_performer_cover')
+            self.assertFalse(result['identity_verified'])
             self.assertEqual((result['width'], result['height']), (1000,700))
             con.execute("INSERT INTO asset_entity VALUES(1,6,'performer')")
             self.assertIsNone(module.cover_fallback(con, record, cache, root))
@@ -469,6 +470,18 @@ class InstallGateTests(unittest.TestCase):
             self.module.install_avatar(root, "performer", 1, self.winner(
                 root, jpeg(400, 400, (9, 9, 9)), None))
             self.assertFalse((root / "performer-1.face.json").exists())
+
+    def test_cover_candidates_cannot_overwrite_an_installed_portrait(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp).resolve()
+            original = jpeg(544, 724)
+            self.install(root, "performer-1.img", original, self.record(544, 724, 234))
+            candidate = self.winner(root, jpeg(2184, 1468), self.record(2184, 1468, 234))
+            candidate["provider"] = "cover-fallback"
+            with self.assertRaisesRegex(ValueError, "作品封面"):
+                self.module.install_avatar(root, "performer", 1, candidate)
+            self.assertEqual((root / "performer-1.img").read_bytes(), original)
+            self.assertEqual(json.loads((root / "performer-1.face.json").read_text())["px"], [544, 724])
 
     def test_a_missing_face_model_records_the_reason_instead_of_raising(self):
         """下不到 ONNX 不该把「今天没网」变成「所有人都没有头像」。"""

@@ -1710,7 +1710,10 @@ async function Zt(e) {
 }
 //#endregion
 //#region src/native-image.ts
-function Qt(e, t, n, r, i = 1) {
+function Qt(e, t, n, r) {
+	return e > 0 && t > 0 && e === n && t === r;
+}
+function $t(e, t, n, r, i = 1) {
 	let a = Number.isFinite(i) && i > 0 ? i : 1;
 	e /= a, t /= a;
 	let o = [
@@ -1718,7 +1721,7 @@ function Qt(e, t, n, r, i = 1) {
 		t,
 		n,
 		r
-	].every((e) => Number.isFinite(e) && e > 0), s = o && Math.min(n, r) >= 64 && (e < n * .8 || t < r * .8), c = o ? Math.min(1, n / e, r / t) : 1;
+	].every((e) => Number.isFinite(e) && e > 0), s = o && Math.min(n, r) >= 64 && (e < n * .4 || t < r * .4), c = o ? Math.min(1, n / e, r / t) : 1;
 	return {
 		small: s,
 		width: e * c,
@@ -1726,8 +1729,20 @@ function Qt(e, t, n, r, i = 1) {
 	};
 }
 //#endregion
+//#region src/entity-skeleton.ts
+function en(e, t) {
+	return `<section data-skeleton="entity/${e}" role="status" aria-label="正在读取资料">
+    <span class="sr-only">正在读取资料</span><div aria-hidden="true">
+    <div class="entityhero"><div class="entityportrait ${e === "studio" || e === "agency" ? "square " : ""}skeleton"></div>
+      <div class="entityskeletontext"><div class="entitytitle"><h2 class="skeleton">&nbsp;</h2></div>
+      <div class="alias"><span class="skeleton"></span></div>
+      <div class="entitylinks"><span class="skeleton"></span></div></div></div>
+    <section class="entitytagbar"><div class="entitytags"><span class="skeleton entitymediaskeleton"></span><span class="skeleton entitymediaskeleton"></span></div></section>
+    <div class="entitysection">${t}</div></div></section>`;
+}
+//#endregion
 //#region src/sidebar.ts
-function $t(e) {
+function tn(e) {
 	return [
 		"/",
 		"/unseen",
@@ -1737,23 +1752,23 @@ function $t(e) {
 		"/junk-files"
 	].includes(e) || /^\/(item|mix|parts|editions)\//.test(e) || /^\/playlists\/\d+\/\d+$/.test(e) || /^\/(performers|studios|creators|series|agencies)\/.+/.test(e);
 }
-function en(e, t) {
+function nn(e, t) {
 	return e.dataset.surface === t && e.querySelector(".dnav") ? !1 : (e.dataset.surface = t, e.replaceChildren(), !0);
 }
-function tn(e) {
+function rn(e) {
 	let t = /* @__PURE__ */ new Map();
 	for (let n of e) for (let e of new Set(n.tags || [])) t.set(e, (t.get(e) || 0) + 1);
 	return [...t].sort((e, t) => t[1] - e[1]).slice(0, 30);
 }
 //#endregion
 //#region src/management.ts
-function nn(e) {
+function an(e) {
 	return e.filter((e) => ["115", "pikpak"].includes(e.location) && (e.roots === void 0 || e.roots.length > 0)).map((e) => e.location);
 }
-function rn(e, t) {
+function on(e, t) {
 	return t.filter((t) => e.some((e) => e.location === t));
 }
-function an() {
+function sn() {
 	return `<div class="cleanuppage" data-skeleton="cleanup" aria-busy="true" aria-label="正在读取数据管理状态">
     <div class="cleanupgrid">${[
 		[
@@ -1799,7 +1814,7 @@ function an() {
         <footer class="geist-fieldset-footer" data-geist-fieldset-footer><button type="button"${r === 3 ? " class=\"danger\"" : ""} disabled>${r === 3 ? "<svg aria-hidden=\"true\"><use href=\"#i-trash\"></use></svg><span>" + t + "</span>" : t}</button></footer>
       </section>`).join("")}</div></div>`;
 }
-function on(e, t = !1, n = !1) {
+function cn(e, t = !1, n = !1) {
 	if (t || n) return "";
 	let r = "<svg aria-hidden=\"true\"><use href=\"#i-external-link\"></use></svg>";
 	return `<details class="taste-history-guide"${e ? " open" : ""}>
@@ -1813,16 +1828,16 @@ function on(e, t = !1, n = !1) {
       <button type="button" class="taste-guide-skip">跳过</button>
     </div></details>`;
 }
-var sn = "peach-taste-guide-dismissed";
-function cn(e, t) {
+var ln = "peach-taste-guide-dismissed";
+function un(e, t) {
 	let n = e.querySelector(".taste-history-guide");
 	n?.querySelector(".taste-guide-skip")?.addEventListener("click", () => {
-		t.setItem(sn, "1"), n.remove();
+		t.setItem(ln, "1"), n.remove();
 	});
 }
 //#endregion
 //#region src/islands.ts
-var ln = {
+var dn = {
 	scraping: {
 		load: Gt,
 		component: Jt
@@ -1835,11 +1850,11 @@ var ln = {
 		load: Xe,
 		component: nt
 	}
-}, un = () => Object.keys(ln), $ = /* @__PURE__ */ new Map();
-async function dn(e, t, n, r = {}) {
-	let i = ln[e];
+}, fn = () => Object.keys(dn), $ = /* @__PURE__ */ new Map();
+async function pn(e, t, n, r = {}) {
+	let i = dn[e];
 	if (!i) throw Error(`未注册的 island：${String(e)}`);
-	fn(t);
+	mn(t);
 	let a = {
 		controller: new AbortController(),
 		painted: !1
@@ -1870,9 +1885,9 @@ async function dn(e, t, n, r = {}) {
 	};
 	xe(te(i.component, s), t);
 }
-function fn(e) {
+function mn(e) {
 	let t = $.get(e);
 	t && (t.controller.abort(), $.delete(e), t.painted && xe(null, e));
 }
 //#endregion
-export { sn as TASTE_GUIDE_KEY, an as cleanupSkeletonHtml, nn as cloudLocations, rn as cloudPreferenceLocations, Wt as followJobProgress, un as islandNames, dn as mountIsland, Qt as nativeImageFit, Zt as refreshStore, $t as sidebarHasCatalogContent, tn as sidebarTagCounts, Xt as storeNames, en as syncSidebarSurface, on as tasteHistoryGuideHtml, fn as unmountIsland, Ut as watchJob, cn as wireTasteHistoryGuide };
+export { ln as TASTE_GUIDE_KEY, sn as cleanupSkeletonHtml, an as cloudLocations, on as cloudPreferenceLocations, en as entitySkeletonHtml, Wt as followJobProgress, fn as islandNames, Qt as matchesFaceSource, pn as mountIsland, $t as nativeImageFit, Zt as refreshStore, tn as sidebarHasCatalogContent, rn as sidebarTagCounts, Xt as storeNames, nn as syncSidebarSurface, cn as tasteHistoryGuideHtml, mn as unmountIsland, Ut as watchJob, un as wireTasteHistoryGuide };
