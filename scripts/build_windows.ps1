@@ -22,7 +22,7 @@ if (-not (Test-Path -LiteralPath $Python -PathType Leaf)) {
 
 & $Python -m PyInstaller --version *> $null
 if ($LASTEXITCODE -ne 0) {
-    throw 'PyInstaller is not installed in the project venv. Install it with: python -m pip install pyinstaller'
+    throw 'PyInstaller is not installed in the project venv. Install it with: uv pip install --python .venv/Scripts/python.exe -e ".[build]"'
 }
 
 if (-not (Test-Path -LiteralPath (Join-Path $ProjectRoot 'resources\peach.ico') -PathType Leaf)) {

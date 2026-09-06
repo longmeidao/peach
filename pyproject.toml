@@ -69,6 +69,9 @@ naming = ["opencc==1.4.2"]
 [tool.setuptools]
 package-dir = {"" = "src"}
 
+[tool.uv]
+required-version = "==0.12.10"
+
 [tool.setuptools.dynamic]
 version = {attr = "peach.__version__"}
 

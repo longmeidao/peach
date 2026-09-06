@@ -34,6 +34,8 @@
 
 ## 无摩擦接手
 
+- uv 安装见 README；复用决策见 REUSE。
+
 - Codex 自动读取项目层级中的 `AGENTS.md`；Claude Code 通过 `CLAUDE.md` 导入同一文件。技能只有 Claude 侧封装（`.claude/skills/`），Codex 不自动加载，只能靠 `AGENTS.md` 索引表主动读同一份文件。
 - 正式测试入口为 Windows `& .\scripts\test.ps1`、macOS/Linux `./scripts/test.sh`。默认 `auto` 按影响域取并集，共享设施和未知影响面选全量；CI 与发布显式 `full`。测试证据复用、集成互斥和工作树锁定见 `peach-worktree` 技能。
 - 两个智能体使用同一入口，按任务读取相关文档；交接更新长期文件。

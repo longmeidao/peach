@@ -28,7 +28,11 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: '3.14'
-      - run: python -m pip wheel . --no-deps --no-cache-dir -w wheelhouse
+      - uses: astral-sh/setup-uv@v10.0.1
+        with:
+          enable-cache: true
+          cache-dependency-glob: pyproject.toml
+      - run: uv build --wheel --out-dir wheelhouse
       - uses: actions/upload-artifact@v7
         with:
           name: wheel-smoke
@@ -76,17 +80,22 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python }}
-          cache: pip
           check-latest: true
+      - uses: astral-sh/setup-uv@v10.0.1
+        with:
+          enable-cache: true
+          cache-dependency-glob: pyproject.toml
 
       - name: 安装 Windows 依赖
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          python -m venv .venv
-          & .\.venv\Scripts\python.exe -m pip install --upgrade pip
-          & .\.venv\Scripts\python.exe -m pip install -e ".[dev,build,vision,maintenance-115,naming]"
-          & .\.venv\Scripts\python.exe -m pip check
+          uv venv --python python .venv
+          if ($LASTEXITCODE -ne 0) { throw 'uv venv 失败' }
+          uv pip install --python .venv/Scripts/python.exe -e ".[dev,build,vision,maintenance-115,naming]"
+          if ($LASTEXITCODE -ne 0) { throw 'uv 安装依赖失败' }
+          uv pip check --python .venv/Scripts/python.exe
+          if ($LASTEXITCODE -ne 0) { throw 'uv 依赖检查失败' }
 
       - name: 运行 Windows 正式测试
         if: runner.os == 'Windows'
@@ -97,10 +106,9 @@ jobs:
         if: runner.os == 'macOS'
         shell: bash
         run: |
-          python -m venv .venv
-          ./.venv/bin/python -m pip install --upgrade pip
-          ./.venv/bin/python -m pip install -e ".[dev,build,macos,vision,maintenance-115,naming]"
-          ./.venv/bin/python -m pip check
+          uv venv --python python .venv
+          uv pip install --python .venv/bin/python -e ".[dev,build,macos,vision,maintenance-115,naming]"
+          uv pip check --python .venv/bin/python
 
       - name: 运行 macOS 正式测试
         if: runner.os == 'macOS'

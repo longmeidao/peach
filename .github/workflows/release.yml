@@ -44,11 +44,19 @@ jobs:
           if ($env:GITHUB_REF_TYPE -eq 'tag' -and $env:GITHUB_REF_NAME -ne "v${ReleaseVersion}") { throw 'Tag 与版本不一致' }
           "version=${ReleaseVersion}" >> $env:GITHUB_OUTPUT
       - name: 安装构建依赖
+        uses: astral-sh/setup-uv@v10.0.1
+        with:
+          enable-cache: true
+          cache-dependency-glob: pyproject.toml
+      - name: 创建构建环境
         shell: pwsh
         run: |
-          python -m venv .venv
-          & ./.venv/Scripts/python.exe -m pip install --no-cache-dir -e '.[build]'
-          & ./.venv/Scripts/python.exe -m pip check
+          uv venv --python python .venv
+          if ($LASTEXITCODE -ne 0) { throw 'uv venv 失败' }
+          uv pip install --python .venv/Scripts/python.exe -e '.[build]'
+          if ($LASTEXITCODE -ne 0) { throw 'uv 安装依赖失败' }
+          uv pip check --python .venv/Scripts/python.exe
+          if ($LASTEXITCODE -ne 0) { throw 'uv 依赖检查失败' }
       - name: 构建独立目录包
         shell: pwsh
         run: '& ./scripts/build_windows.ps1 -Standalone'

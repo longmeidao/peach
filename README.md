@@ -71,7 +71,7 @@ FFmpeg 与 ffprobe 需另装；缺少它们时可浏览和播放浏览器兼容�
 
 ### 源码运行
 
-需要 Git、**Python 3.12 或更高**。下面示例使用 3.14，CI 覆盖 3.12 与 3.14。
+需要 Git、[uv](https://docs.astral.sh/uv/getting-started/installation/) **0.12.10** 和 **Python 3.12 或更高**。下面示例使用 3.14，uv 可自动下载缺失的 Python；CI 覆盖 3.12 与 3.14。
 普通运行不需要 Node；修改前端需要 Node 24 或更高。
 
 先克隆仓库并进入目录：
@@ -84,16 +84,16 @@ cd peach-app
 Windows：在 PowerShell 创建环境、安装并启动首次设置：
 
 ```powershell
-& py -3.14 -m venv .venv
-& .\.venv\Scripts\python.exe -m pip install -e .
+uv venv --python 3.14 .venv
+uv pip install --python .venv/Scripts/python.exe -e .
 & .\.venv\Scripts\peach-tray.exe
 ```
 
 macOS：在终端创建环境、安装菜单栏依赖并启动首次设置：
 
 ```shell
-python3.14 -m venv .venv
-./.venv/bin/python -m pip install -e ".[macos]"
+uv venv --python 3.14 .venv
+uv pip install --python .venv/bin/python -e ".[macos]"
 ./.venv/bin/peach-tray
 ```
 

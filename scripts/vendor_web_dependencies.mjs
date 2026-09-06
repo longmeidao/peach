@@ -97,7 +97,7 @@ const lucideIcons = new Map([
 // 自绘 symbol：没有上游可对，所以在这里逐个点名。下面那道分区检查要求雪碧图里
 // 每一枚要么由某一套生成、要么写在这张名单上——漏一枚就会被当成忘了纳管。
 const handDrawnIcons = new Set([
-  "alert", "pics", "jav", "theater-enter", "theater-exit", "brand-x",
+  "alert", "pics", "jav", "theater-enter", "theater-exit", "brand-x", "brand-x-cut",
 ]);
 
 const svgInner = source => {
