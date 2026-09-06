@@ -916,7 +916,7 @@ class WebUiSourceTests(unittest.TestCase):
             "{outline:2px solid var(--tungsten);outline-offset:2px}")
 
     def test_the_star_rating_sits_between_the_title_and_the_spec_line(self):
-        """五颗星在标题和那行规格之间，送出的是 20 的倍数，空实两档不借色相。
+        """五颗星在标题和那行规格之间，送出的是 20 的倍数，空实两档随主题各写各的琥珀。
 
         位置不是随手挑的：评分是对这一条作品的判断，和番号、标题一样属于它的身份，
         而反馈条那一排说的是「怎么处置它」（不合口味、看过、回收站）。两者混在一起，
@@ -942,11 +942,18 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('<symbol id="i-star" viewBox="0 0 24 24">')
         self.assertPageContains('.ratingstars .star[data-on="true"] svg{fill:currentColor}')
         self.assertPageContains(
-            ".ratingstars:hover .star:hover,.ratingstars:hover .star:has(~ .star:hover)"
-            "{color:var(--ink)}")
-        # 空心那一档用的是 --line，不是 --muted：它是一枚没填的形状，不是一行次要文字。
+            ".ratingstars:hover .star:hover svg,"
+            ".ratingstars:hover .star:has(~ .star:hover) svg{fill:currentColor}")
+        # 整排一种颜色，评没评只看填不填；换色那一档在浅色主题下凑不出两级都成立的灰。
         start = self.page.index(".ratingstars .star{")
-        self.assertIn("color:var(--line)", self.page[start:self.page.index("}", start)])
+        self.assertIn("color:var(--rating)", self.page[start:self.page.index("}", start)])
+        self.assertPageLacks('.ratingstars .star[data-on="true"]{color:')
+        self.assertPageLacks(".ratingstars:hover .star{color:")
+        # 这个 token 两档各写各的值：借 --line 只在深色底上成立。
+        self.assertIn("--rating:#B8860B;", self.css, "浅色一档的琥珀要压得住 #FAFAFA 的页面底")
+        self.assertEqual(
+            self.css.count("--rating:#E5B34A;"), 2,
+            "深色两处声明（prefers-color-scheme 与 data-theme）各写一份")
 
     def test_every_button_in_the_feedback_bar_owns_a_hover_color(self):
         """详情页反馈条上每一枚都有自己的悬停配色，兜底填充用 token 不写死白。
