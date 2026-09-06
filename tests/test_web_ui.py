@@ -5971,6 +5971,22 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("const paint=(id,now)=>{if(stopped||id!==run)return;")
         self.assertPageLacks("scheduled=false")
 
+    def test_the_whole_detail_box_takes_one_ambient_tone(self):
+        """右侧详情栏和「接着看」是同一格详情的两块，底色必须同源。
+
+        半透明的氛围色叠在透明底上时，底下是 `.stage` 那圈只铺到 58% 的径向渐变，
+        而它铺不到「接着看」这一条：那一块于是比上面的详情栏浅一档，一条横贯整幅
+        宽度的界线就出来了，看着像两块面板拼起来的。氛围色定义在 `.stage` 上，两块
+        引同一个值；同色之后描边也不需要，分块交给留白和小标题。
+        """
+        self.assertPageContains(
+            ".stage{--detail-surface:color-mix(in srgb,var(--video-glow,#15202a) 12%,"
+            "var(--surface) 88%);")
+        self.assertPageContains("  background:var(--detail-surface);backdrop-filter:blur(18px)}")
+        self.assertPageContains(".next{padding:11px 15px 12px;background:var(--detail-surface)}")
+        self.assertPageLacks(
+            ".next{border-top:1px solid var(--line-soft);padding:11px 15px 12px;")
+
     def test_better_version_targets_have_a_management_page(self):
         self.assertPageContains("['quality','高清版','sparkles']")
         self.assertRoute('/quality-goals', "section:'quality'", "openQualityGoals(push)")
