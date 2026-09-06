@@ -21,10 +21,22 @@ class DesktopSettingsTests(unittest.TestCase):
         page = configuration[configuration.index('export function Configuration('):]
         self.assertEqual(sorted(names, key=page.index), names)
         css = (root / 'web/css/23-configuration.css').read_text(encoding='utf-8')
-        self.assertIn('.configdanger{border-color:var(--drop)}', css)
-        self.assertIn('.configdanger>.geist-fieldset-footer', css)
+        self.assertIn('[data-fieldset-type="error"]{border-color:var(--drop)}', css)
+        self.assertGreater(css.index('[data-fieldset-type="error"]>:is('), css.index('.configfieldset>.geist-fieldset-footer{'))
         self.assertIn('.configselect{width:min(320px,100%)}', css)
         self.assertIn('.configdirectories .fcollapsebody{padding:12px 4px 4px}', css)
+
+    def test_cleanup_risk_colors_follow_the_operation_effect(self):
+        root = Path(__file__).resolve().parents[1]
+        app = (root / 'web/app.js').read_text(encoding='utf-8')
+        links = app[app.index('function linkManagerMarkup'):app.index('function resourceSyncMarkup')]
+        sync = app[app.index('function resourceSyncMarkup'):app.index('async function openTaste')]
+        self.assertIn('data-fieldset-type="error"', links)
+        self.assertIn('data-fieldset-type="warning"', sync)
+        self.assertIn("variant:'warning',label:'同步影响'", sync)
+        self.assertIn('class="resourceaction warning" type="button" id="resourceApply"', sync)
+        self.assertNotIn('class="resourceaction resourcedanger" type="button" id="resourceApply"', sync)
+        self.assertIn('cleanupemptyfolders" data-geist-fieldset data-fieldset-type="error"', app)
 
     def setUp(self):
         temporary = tempfile.TemporaryDirectory()

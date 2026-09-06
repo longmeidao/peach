@@ -3,13 +3,18 @@
    底部操作条 --fieldset-bar-h、左说明右动作。 */
 .configuration-layout .managetitle,.configuration-layout .pagelede{width:min(812px,100%);margin-left:auto;margin-right:auto}
 .configpage{width:min(812px,100%);margin:0 auto;display:grid;gap:20px}
+.configgroup{margin:16px 0 0;font-size:var(--fs-2xl);line-height:1.3;font-weight:600}
+.configgroup:first-child{margin-top:0}
+.resourceapplyrow>p{margin-right:auto;text-align:left}
+.resourcesyncfooter>p{margin:0 auto 0 0;text-align:left}
+.resourceaction.warning{background:var(--meter);border-color:var(--meter);color:light-dark(var(--ink),var(--ground))}
+.resourceaction.warning:hover:not(:disabled){background:color-mix(in srgb,var(--meter) 88%,#fff);border-color:var(--meter);color:light-dark(var(--ink),var(--ground))}
+.resourceaction.warning:disabled{background:var(--surface);border-color:var(--line);color:var(--muted)}
 .configpage .geist-button{min-height:var(--control-h)}
 .configfieldset{display:flex;flex-direction:column;min-width:0;margin:0;padding:0;overflow:hidden;
   border:1px solid var(--line);border-radius:var(--control-radius);background:var(--ground)}
 .configfieldset>.geist-fieldset-content{flex:1;min-height:0;padding:20px;display:grid;gap:20px}
 .configfieldset .geist-fieldset-title{margin:0}
-.configdanger{border-color:var(--drop)}
-.configdanger>.geist-fieldset-footer{border-top-color:var(--drop);background:color-mix(in srgb,var(--drop) 7%,var(--ground))}
 .configfieldset button.danger,.geist-modal button.danger{background:var(--drop);border-color:var(--drop);color:#fff}
 .configfieldset button.danger:hover:not(:disabled),.geist-modal button.danger:hover:not(:disabled){background:color-mix(in srgb,var(--drop) 88%,#000);border-color:var(--drop);color:#fff}
 .configfieldset button.danger:disabled{background:var(--surface);border-color:var(--line);color:var(--muted)}
@@ -24,21 +29,24 @@
 .configdirectories .confighelp:first-child{margin-top:0}
 .configfieldset-heading{display:grid;gap:8px}
 .configfieldset-heading>.confighelp{margin:0}
+.configfieldset>.geist-fieldset-content>:is(.confighelp,.configbad){margin:0}
 .configfieldset>.geist-fieldset-footer{box-sizing:border-box;min-height:var(--fieldset-bar-h);
-  margin:0;padding:8px 16px 8px 20px;display:flex;align-items:center;justify-content:flex-end;gap:8px;
+  margin:0;padding:12px 12px 12px 20px;display:flex;align-items:center;justify-content:flex-end;gap:8px;
   border-top:1px solid var(--line);background:var(--surface)}
 .configfieldset>.geist-fieldset-footer>p{min-width:0;margin:0 auto 0 0;color:var(--muted);font-size:var(--fs-sm)}
 .configfield>label,.configfield>.configlabel{display:block;margin:0 0 8px;font-weight:500;color:var(--ink)}
+.configfield:has(>.geist-input:disabled)>label{color:var(--muted)}
+.configpage .geist-input:disabled{background:var(--surface);border-color:var(--line);color:var(--muted);cursor:not-allowed}
 .configpage .geist-input[aria-invalid="true"]{border-color:var(--drop)}
 .configpage .geist-input[aria-invalid="true"]:focus{box-shadow:0 0 0 4px color-mix(in srgb,var(--drop) 24%,transparent)}
 .confighelp{margin:8px 0 0;color:var(--muted);font-size:var(--fs-sm);line-height:1.5}
 .confighelp a{color:var(--tungsten);text-decoration:none;margin-inline-start:6px}
 .confighelp a:hover{text-decoration:underline;text-underline-offset:3px}
 .confighelp a svg{display:inline-block;width:14px;height:14px;margin-inline-start:4px;vertical-align:-2px;stroke:currentColor;fill:none;stroke-width:2}
-.configbad{margin:6px 0 0;color:var(--drop);font-size:var(--fs-sm)}
+.configbad{margin:8px 0 0;color:var(--drop);font-size:var(--fs-sm)}
 /* 一行一个文件夹：输入框、选择文件夹、移除，三者共用 --control-h，差 3px 就不是一行了。
    flex 而不是 grid：只剩一行时移除键不画，grid 的空轨道会留下一段 gap。 */
-.configdir{display:flex;flex-wrap:wrap;gap:10px;padding:16px;border:1px solid var(--line-soft);border-radius:var(--control-radius);margin-top:16px}
+.configdir{display:flex;flex-wrap:wrap;gap:8px;padding:16px;border:1px solid var(--line-soft);border-radius:var(--control-radius);margin-top:16px}
 .configpathlabel{flex-basis:100%;font-weight:500}
 .configdir .geist-input{flex:1 1 auto;width:auto;min-width:0}
 .configdir > input.geist-input{flex:1 1 0;width:0}
@@ -52,12 +60,27 @@
 .configrm svg,.configpick svg{width:16px;height:16px;stroke:currentColor;fill:none}
 .configadd{margin-top:8px}
 .configsource{flex-basis:100%;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(220px,100%),1fr));gap:8px}
-.configsource label,.configsourcelabel{min-width:0;display:grid;gap:6px;font-size:var(--fs-sm);color:var(--muted)}
+.configsource label,.configsourcelabel{min-width:0;display:grid;gap:8px;font-size:var(--fs-sm);color:var(--muted)}
 .configsourcecontrol .gselect{display:flex;width:100%}
 .configsourcecontrol .gselectfield{padding-inline:14px}
 .configsource .geist-input{width:100%;box-sizing:border-box}
 .configsource select.geist-input{appearance:none;padding-right:42px;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='m4 6 4 4 4-4' fill='none' stroke='%23888' stroke-width='1.5'/%3E%3C/svg%3E");background-repeat:no-repeat;background-size:16px;background-position:right 14px center}
-.configcheck{display:flex;align-items:center;gap:12px;min-height:32px;cursor:pointer;color:var(--ink)}
+.configcheck{display:flex;align-items:flex-start;gap:8px;min-height:32px;cursor:pointer;color:var(--ink);font-size:var(--fs-sm);line-height:20px}
+.configoptions{display:grid;gap:16px}
+.configoption{display:grid;gap:8px}
+.configoption>.confighelp{margin:0}
+.configtoggle{display:flex;align-items:center;justify-content:space-between;gap:16px;min-height:32px;font-size:var(--fs-sm);cursor:pointer}
+.configtoggle:has(:disabled),.configcheck:has(:disabled){cursor:not-allowed;color:var(--muted)}
+.configtoggle>span{min-width:0}
+[data-fieldset-type="error"]{border-color:var(--drop)}
+[data-fieldset-type="warning"]{border-color:var(--meter)}
+.resourcepanel>.geist-note{margin:16px 20px}
+[data-fieldset-type="error"]>:is(.geist-fieldset-footer,.resourceapplyrow){border-top-color:var(--drop);background:color-mix(in srgb,var(--drop) 7%,var(--ground))}
+[data-fieldset-type="error"]>:is(.geist-fieldset-footer,.resourceapplyrow)>p{color:var(--drop)}
+[data-fieldset-type="warning"]>:is(.geist-fieldset-footer,.resourceapplyrow){border-top-color:var(--meter);background:color-mix(in srgb,var(--meter) 7%,var(--ground))}
+[data-fieldset-type="error"] button:is(.danger,.resourcedanger){background:var(--drop);border-color:var(--drop);color:#fff}
+[data-fieldset-type="error"] button:is(.danger,.resourcedanger):hover:not(:disabled){background:color-mix(in srgb,var(--drop) 88%,#000);border-color:var(--drop);color:#fff}
+[data-fieldset-type="error"] button:is(.danger,.resourcedanger):disabled{background:var(--surface);border-color:var(--line);color:var(--muted)}
 .configfacts{margin:0;display:grid;grid-template-columns:max-content minmax(0,1fr);gap:10px 24px;align-items:baseline}
 .configfacts dt{color:var(--muted);font-size:var(--fs-sm)}.configfacts dd{margin:0;overflow-wrap:anywhere}
 .configfacts dt .gselectmark{vertical-align:-3px;margin-inline-end:8px}

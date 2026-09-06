@@ -49,6 +49,7 @@ button.serieslink.entitylink:hover{color:var(--tungsten);text-decoration:none}
 .pagetitle,.listtitle,.managetitle,.index .ihead h2,.playlistpage h2{
   font-size:var(--fs-3xl);line-height:1.25;letter-spacing:-.01em;font-weight:600}
 .listtitle,.managetitle,.follow>.pagetitle{margin:0 0 20px}
+.managetitle:has(+.pagelede:not([hidden])){margin-bottom:8px}
 .listtitle[hidden],.managetitle[hidden]{display:none}
 .dupactions{display:flex;gap:8px;margin-bottom:16px}
 /* 这两个是会动数据的批量操作（每组只留一个，其余进回收站），必须看着像按钮，
@@ -126,4 +127,3 @@ button.serieslink.entitylink:hover{color:var(--tungsten);text-decoration:none}
 .entitylink:hover{color:var(--ink);text-decoration:none}
 /* Peach 的可点击身份只用颜色、头像描边和背景反馈，不使用链接下划线。 */
 .idcell.entitylink:hover,.mav.entitylink:hover{text-decoration:none}
-

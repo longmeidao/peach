@@ -6,10 +6,10 @@
    1px `rgb(41,41,41)` 发丝边 + `rgb(10,10,10)` 比页面亮一档的表面，没有阴影。
    所以容器要有框；不要的是**框里再套框**——卡片内部的行只用分隔线。
    控件仍按实测 Geist：32px 高、14px 字、6px 圆角。 */
-.followmanage{padding:2px 0 48px;display:grid;gap:16px;width:min(812px,100%);
+.followmanage{padding:2px 0 48px;display:grid;gap:20px;width:min(812px,100%);
   margin-left:auto;margin-right:auto;align-items:start;font-size:var(--fs-md)}
 .followmanage>.runtimegate{margin-bottom:0}
-.fmain{display:grid;gap:16px;min-width:0}
+.fmain{display:grid;gap:20px;min-width:0}
 /* 容器：发丝边 + 比页面亮一档的表面。内部的行不再各自套框。 */
 .fsec{min-width:0;border:1px solid var(--field-ring);border-radius:var(--surface-radius);
   background:var(--ground);padding:14px 16px 16px}
@@ -70,7 +70,7 @@
   box-shadow:0 12px 40px #0007;text-align:left}
 .fdescpop[hidden]{display:none}
 .fdescpop code{font-family:"Cascadia Mono",Consolas,ui-monospace,"Microsoft YaHei UI","PingFang SC",monospace}
-.fnote{margin:12px 0 0;font-size:var(--fs-sm);line-height:1.7;color:var(--muted)}
+.fnote{margin:8px 0 0;font-size:var(--fs-sm);line-height:1.7;color:var(--muted)}
 .fnote:empty{display:none}
 .fnote b{color:var(--ink-2);font-weight:600}
 .fnote code{font-size:var(--fs-xs)}
@@ -282,8 +282,8 @@ details.fcred{display:block;min-width:0}
 .fcred p{margin:8px 0 0;font-size:var(--fs-sm);line-height:1.7;color:var(--muted);
   overflow-wrap:anywhere}
 .fcred a{color:var(--tungsten)}
-.fcredform{display:grid;gap:8px;margin-top:10px;min-width:0}
-.fcredfield{display:grid;gap:4px;min-width:0}
+.fcredform{display:grid;gap:16px;margin-top:16px;min-width:0}
+.fcredfield{display:grid;gap:8px;min-width:0}
 .fcredfield span{font-size:var(--fs-xs);color:var(--muted)}
 .fcredfield input{height:32px;width:100%;min-width:0;box-sizing:border-box;border:1px solid var(--border-15);
   border-radius:var(--control-radius);background:var(--ground);color:var(--ink);padding:0 12px;font-size:var(--fs-md);
@@ -293,15 +293,16 @@ details.fcred{display:block;min-width:0}
 /* 「去取」指向站外的凭据页，后缀那枚外链箭头说明这一下会离开 Peach。 */
 .fcredget{display:inline-flex;align-items:baseline;gap:4px}
 .fcredget svg{align-self:center;width:13px;height:13px;flex:none;stroke:currentColor;fill:none;stroke-width:2}
-.fcredactions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:2px}
+.fcredactions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:0}
 .fcredactions button{height:32px;box-sizing:border-box;padding:0 14px;border-radius:var(--control-radius);
   border:0;background:var(--ink);color:var(--ground);font-size:var(--fs-md);font-weight:500;
   font-family:inherit;cursor:pointer;
   transition:background-color .15s ease-in-out,color .15s ease-in-out}
 .fcredactions button:hover:not(:disabled){background:color-mix(in srgb,var(--ink) 88%,var(--ground));color:var(--ground)}
 .fcredactions button:disabled{background:var(--sunk);color:var(--muted);cursor:default}
-.fcredactions button.fquiet{background:var(--inset);color:var(--ink-2)}
-.fcredactions button.fquiet:hover{background:var(--drop);color:#fff}
+.fcredactions button.fquiet{background:var(--drop);color:#fff}
+.fcredactions button.fquiet:hover{background:color-mix(in srgb,var(--drop) 82%,#000);color:#fff}
+.fcredactions button.fquiet:disabled{background:var(--surface);color:var(--muted)}
 .fcredactions [data-cred-state]{font-size:var(--fs-xs);color:var(--muted)}
 
 @media (max-width:640px){

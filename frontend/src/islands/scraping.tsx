@@ -74,6 +74,7 @@ function SourceForm({ source, toast }: { source: Source } & ScrapingProps) {
   return <section class="scraping-source">
     <form ref={form} class="cleanupfieldset" data-geist-fieldset onSubmit={event => { event.preventDefault(); void action('save'); }}>
       <div class="geist-fieldset-content scraping-fields">
+        <div class="geist-fieldset-heading">
         <div dangerouslySetInnerHTML={{ __html: fieldsetTitle(`scraping-${source.source}`, source.label) }} />
         {/* 前面是站点自己的图标（指对象），后面是外链箭头（指形态）——两枚都在
             `vercel-geist-button-icons.md` 的「加图标」那一侧，中间的地址不重复说这两件事。
@@ -85,8 +86,9 @@ function SourceForm({ source, toast }: { source: Source } & ScrapingProps) {
           <span>{source.login}</span>
           <svg aria-hidden="true"><use href="#i-external-link" /></svg>
         </a>
+        </div>
         <div class="scraping-label">连接方式<NetworkSelect value={network} onChange={setNetwork} /></div>
-        {network === 'peach' && <a href="/configuration#peachProxy">配置 Peach 代理</a>}
+        {network === 'peach' && <a class="geist-text-link" href="/configuration#peachProxy">配置 Peach 代理</a>}
         {source.accepts_cookie && <>
           <p>{saved.cookie_saved ? 'Cookie 已保存，登录是否有效请在抓取时确认。' : '需要登录时，任选一种方式提供 Cookie。'}</p>
           <div class="insightswitch scraping-cookie-method" role="radiogroup" aria-label="提供 Cookie 的方式（二选一）">

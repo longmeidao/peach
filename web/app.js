@@ -1622,8 +1622,7 @@ async function mountDetailPlayer(it,video,autoplay,options={}){
 }
 const selected=new Set(),followSelected=new Set();
 let selectMode=false,lastSelectedId=null,followLastSelectedId=null,selectSurface='';
-let reviewSelectionController=null;
-const currentSelectSurface=()=>location.pathname==='/review'?'review':location.pathname==='/follow'?'follow':location.pathname==='/junk-files'?'junk':'catalog';
+const currentSelectSurface=()=>location.pathname==='/follow'?'follow':location.pathname==='/junk-files'?'junk':'catalog';
 function paintSelection(){
   document.querySelectorAll('.card[data-id]').forEach(card=>card.classList.toggle('selected',selected.has(+card.dataset.id)));
   document.querySelectorAll('.followitem[data-follow-item]').forEach(card=>
@@ -1643,11 +1642,9 @@ function paintSelection(){
   paintTagIndexSelection();
 }
 function setSelectMode(on,clear=false){
-  if(location.pathname==='/review'&&reviewSelectionController?.busy)return;
   if(on&&!selectMode)selectSurface=currentSelectSurface();
   selectMode=!!on;if(!selectMode)selectSurface='';document.body.classList.toggle('select-mode',selectMode);
   if(selectMode)releaseHoverPreviews();
-  if(location.pathname==='/review')reviewSelectionController?.setMode(selectMode);
   $('#selectMode').setAttribute('aria-pressed',selectMode);if(clear){selected.clear();followSelected.clear();selectedIndexTags.clear();lastSelectedId=null;followLastSelectedId=null}paintSelection()}
 /* 只取网格直属卡片：竖屏条是嵌在网格里的横向滚动条，不该被 Shift 范围选中顺带框进来。 */
 function visibleCardIds(){return [...gridCards()].map(card=>+card.dataset.id)}
@@ -3067,7 +3064,7 @@ async function wireLinkManager(){
     const apply=(done&&(payload.gone||[]).length)?`<div class="resourceapplyrow"><p>删除前会逐条重验一次；此操作不可撤销。</p>
       <button class="resourceaction resourcedanger" type="button" id="linkPrune">删除 ${payload.gone.length} 条失效链接</button></div>`:'';
     const clean=(done&&!(payload.gone||[]).length&&!(payload.unclear||[]).length)?'<p class="resourcesyncok">全部链接都能打开。</p>':'';
-    result.innerHTML=`<div class="resourcepanel">${progress}${gone}${unclear}${apply}${clean}</div>`;
+    result.innerHTML=`<div class="resourcepanel"${apply?' data-fieldset-type="error"':''}>${progress}${gone}${unclear}${apply}${clean}</div>`;
     $('#linkPrune')?.addEventListener('click',async event=>{
       const control=event.currentTarget;
       if(!confirm(`删除 ${payload.gone.length} 条已失效链接？删除前会逐条重验，但删除本身不可撤销。`))return;
@@ -3100,7 +3097,7 @@ async function wireLinkManager(){
 function wirePruneProgress(){
   return wireOperationProgress({host:$('#link-manager'),path:'/api/links/prune',key:'peach-link-prune-job',title:'正在重验并删除失效链接…',
     busy:running=>{const button=$('#linkPrune');if(button){setActionBusy(button,running);if(!running)button.textContent='重试删除失效链接'}},
-    complete:out=>{$('#linkCheckResult').innerHTML=noteHtml(`已删除 ${out.removed} 条；保留 ${out.recovered} 条恢复的链接。`,{label:'完成'})}});
+    complete:out=>{$('#linkCheckResult').innerHTML=noteHtml(`已删除 ${out.removed} 条；保留 ${out.recovered} 条未确认失效的链接。`,{label:'完成'})}});
 }
 function resourceSyncMarkup(){
   return `<section class="resourcesync" id="resource-sync" aria-labelledby="resourceSyncTitle">
@@ -3124,13 +3121,14 @@ async function wireResourceSync(){
     const sources=payload.sources||[];
     const cache=payload.cache||{files:0,bytes:0};
     const hasChanges=Boolean(payload.missing||cache.files);
-    result.innerHTML=`<div class="resourcepanel"><div class="resourcesources">${sources.map(source=>`<article>
+    result.innerHTML=`<div class="resourcepanel"${hasChanges?' data-fieldset-type="warning"':''}><div class="resourcesources">${sources.map(source=>`<article>
       <div class="resourcesourcetitle"><b>${esc(LOC[source.location]||source.location)}</b><span class="${source.online?'online':'offline'}">${source.online?'已挂载':'离线，已跳过'}</span></div>
       <strong>${source.online?source.missing.toLocaleString():'—'}</strong>
       <small>${source.online?`项已从网盘删除 · 已核对 ${source.checked.toLocaleString()} 项${source.unreadable?` · ${source.unreadable.toLocaleString()} 项暂时无法读取`:''}`:`本地数据库有 ${source.total.toLocaleString()} 项`}</small></article>`).join('')}</div>
       <div class="resourcecache"><div><span>孤立缓存</span><b>${cache.files.toLocaleString()}</b><small>${fmtSize(cache.bytes||0)}</small></div>
       <div><span>待同步</span><b>${Number(payload.missing||0).toLocaleString()} 项</b></div></div>
-      <div class="resourceapplyrow">${hasChanges?`<button class="resourceaction resourcedanger" type="button" id="resourceApply">同步并清理</button>`:
+      ${hasChanges?noteHtml(`将把 ${payload.missing||0} 项移入回收站，并删除 ${cache.files||0} 个可重建缓存。`,{variant:'warning',label:'同步影响'}):''}
+      <div class="resourceapplyrow">${hasChanges?`<button class="resourceaction warning" type="button" id="resourceApply">同步并清理</button>`:
         '<p class="resourcesyncok">本地数据库与已挂载网盘一致，没有孤立缓存。</p>'}</div></div>`;
     $('#resourceApply')?.addEventListener('click',async event=>{
       const button=event.currentTarget;
@@ -3550,7 +3548,7 @@ async function openDataCleanup(push=true){
         <p class="cleanupmeta">${Number(duplicates.total||0)?`可回收 ${fmtSize(duplicates.reclaimable||0)}`:''}</p></div>
       <footer class="geist-fieldset-footer" data-geist-fieldset-footer><button type="button" data-cleanup-open="duplicates">查看重复文件</button></footer>
     </section>`,
-    empty:`<section class="cleanupfieldset cleanupemptyfolders" data-geist-fieldset aria-labelledby="cleanupEmptyTitle">
+    empty:`<section class="cleanupfieldset cleanupemptyfolders" data-geist-fieldset data-fieldset-type="error" aria-labelledby="cleanupEmptyTitle">
       <div class="geist-fieldset-content">${fieldsetTitle('cleanupEmptyTitle','空文件夹')}
         <strong>${online.length.toLocaleString()} 个来源可扫描</strong>
         <p class="cleanupmeta">${sourceLine}</p><p class="cleanupstate" aria-live="polite"></p></div>
@@ -3725,7 +3723,7 @@ async function openReview(push=true){
   const next=await surfaceApi(surface,'/api/review');
   if(!surfaceCurrent(surface))return;
   reviewRuntime=runtime;reviewData=next;
-  const selection=createReviewSelection(); selection.active=selectMode; reviewSelectionController=null;
+  const selection=createReviewSelection();
   const render=()=>{
     const category=reviewCategory;
     const rows=reviewData.sections[reviewCategory]||[];
@@ -3769,7 +3767,7 @@ async function openReview(push=true){
              <button class="revieworigincover" data-review-open-item="${asset.id}" aria-label="打开原视频 ${esc(asset.name||'')}">
                ${asset.preview_url?`<img src="${esc(asset.preview_url)}" alt="" loading="lazy" data-drop="self">`:'<span>无封面</span>'}</button>
              <div><b data-middle-truncate title="${esc(asset.name||'')}">${esc(asset.code||asset.name||'原视频')}</b>
-               <button type="button" data-review-open-item="${asset.id}">${icon('play')}打开原视频</button></div></div>`).join('')}</div>`:'';
+               <button type="button" class="geist-button" data-review-open-item="${asset.id}">${icon('play')}打开原视频</button></div></div>`).join('')}</div>`:'';
          const origin=comparisonOrigin||subjectKind&&subjectName?comparisonOrigin||`<div class="reviewentity">
              <button class="reviewentityface" data-entity-kind="${subjectKind}" data-entity-name="${esc(subjectName)}"
                aria-label="打开创作者页：${esc(subjectName)}">${avatarInner(subjectName,
@@ -3780,7 +3778,7 @@ async function openReview(push=true){
              <button class="revieworigincover" data-review-open-item="${row.asset_id}" aria-label="打开原视频 ${esc(row.asset_name||'')}">
                ${row.asset_preview_url?`<img src="${esc(row.asset_preview_url)}" alt="" loading="lazy" data-drop="self">`:'<span>无封面</span>'}</button>
              <div><b data-middle-truncate title="${esc(row.asset_name||'')}">${esc(row.asset_name||'原视频')}</b>
-               <button type="button" data-review-open-item="${row.asset_id}">${icon('play')}打开原视频</button></div></div>`:'';
+               <button type="button" class="geist-button" data-review-open-item="${row.asset_id}">${icon('play')}打开原视频</button></div></div>`:'';
          /* 只有一个候选时没什么可选的，单选圈只是让人以为还有别的选项。
             改成纯展示，几何对齐上面的「打开原视频」块。
             radio 保留但不可见：提交路径读的就是 `[name^="metadata-"]:checked`，
@@ -3826,7 +3824,7 @@ async function openReview(push=true){
          /* 主体动作在最右：一行里从左到右是「拒绝、跳过、通过」，读到最后一枚才是这张卡
             真正要人做的判断。Geist 的弹层与 Fieldset 操作条都是这个方向——取消在左，
             主动作靠 margin-left:auto 推到最右（vercel-geist-fieldset-scroller-empty-state.md）。 */
-         const actions=`<button class="reject" data-review-status="rejected"${locked?' disabled':''}>拒绝</button><button class="skip" data-review-status="skipped"${locked?' disabled':''}>跳过</button><button class="approve" data-review-status="approved"${canApprove&&!locked?'':' disabled'}>${approveLabel}</button><span class="reviewstate" aria-live="polite"></span>`;
+         const actions=`<button class="geist-button error" data-review-status="rejected"${locked?' disabled':''}>拒绝</button><button class="geist-button warning" data-review-status="skipped"${locked?' disabled':''}>跳过</button><button class="geist-button primary" data-review-status="approved"${canApprove&&!locked?'':' disabled'}>${approveLabel}</button><span class="reviewstate" aria-live="polite"></span>`;
          return `<fieldset class="reviewitem" data-geist-fieldset data-review-key="${esc(key)}" data-decision="${esc(decision)}"><legend class="sr-only">${esc(titleText)}</legend><div class="geist-fieldset-content">${scrollerHtml(body,{className:'reviewcontent',label:`复核：${titleText}`})}</div><footer class="reviewactions geist-fieldset-footer" data-geist-fieldset-footer>${actions}</footer></fieldset>`}).join(''):emptyState('square-check-big','暂无候选','该分类当前没有待人工复核的项目。')}</div></section></div>`;
      wireReviewAssets($('#stats'));
     wireScrollers($('#stats'));
@@ -3838,7 +3836,7 @@ async function openReview(push=true){
        激活仍交给 button 自己的 Enter/Space，不另设快捷键。 */
     const reviewTabs=[...$('#stats').querySelectorAll('[data-review-tab]')];
     reviewTabs.forEach((button,index)=>{
-      button.onclick=()=>{if(selection.busy)return;selection.selected.clear();selection.choices.clear();selection.assets.clear();selection.errors.clear();reviewCategory=button.dataset.reviewTab;render()};
+      button.onclick=()=>{if(selection.busy)return;selection.selected.clear();selection.anchor=null;selection.choices.clear();selection.assets.clear();selection.errors.clear();reviewCategory=button.dataset.reviewTab;render()};
       button.onkeydown=event=>{
         const step=event.key==='ArrowRight'?1:event.key==='ArrowLeft'?-1:0;
         const target=step?reviewTabs[(index+step+reviewTabs.length)%reviewTabs.length]
@@ -3860,8 +3858,7 @@ async function openReview(push=true){
       selection.selected.delete(key);selection.choices.delete(key);selection.assets.delete(key);selection.errors.delete(key);
     };
     const current=()=>surfaceCurrent(surface)&&category===reviewCategory;
-    reviewSelectionController=wireReviewSelection($('#stats').querySelector('.review'),{rows,metadata:category==='metadata_fields',locked,state:selection,
-      modeChanged:active=>{if(selectMode!==active)setSelectMode(active)},
+    wireReviewSelection($('#stats').querySelector('.review'),{rows,metadata:category==='metadata_fields',locked,state:selection,
       payload:decisionPayload,submit:payload=>api('/api/review/decision',{method:'POST',body:JSON.stringify(payload)}),
       applied:removeReviewed,active:current,refresh:render,notify:actionReceipt});
     syncHeaderActions();
@@ -6999,7 +6996,7 @@ function syncHeaderActions(){
     setSelectMode(false,true);
   const entity=parts.length>1&&Object.prototype.hasOwnProperty.call(ROUTE_ENTITIES,parts[0]);
   const catalog=isCatalogPath(path)||path==='/trash';
-  const canSelect=catalog||entity||path==='/tags'||path==='/follow'||(path==='/review'&&reviewRuntime&&!reviewRuntime.ledger_read_only);
+  const canSelect=catalog||entity||path==='/tags'||path==='/follow';
   const canDensity=catalog||entity||path==='/follow';
   $('#selectMode').hidden=!canSelect;$('#density').hidden=!canDensity;
   if(!canSelect&&selectMode)setSelectMode(false,true);

@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import { applyReviewSelection, commonReviewSources, createReviewSelection, wireReviewSelection } from '../src/review-bulk';
+import { applyReviewSelection, groupReviewRows, selectReviewRange, commonReviewSources, createReviewSelection, wireReviewSelection } from '../src/review-bulk';
 
 afterEach(() => { document.body.innerHTML = ''; });
 it('逐项采用保留失败项，重试仅提交失败项', async () => {
@@ -30,7 +30,7 @@ function fixture(locked = false) {
   const submit = vi.fn(async (_payload: Record<string, unknown>) => ({ ok: true }));
   const notify = vi.fn();
   const render = () => {
-    root.innerHTML = `<div class="reviewlist">${rows.map(row => `<fieldset data-review-key="${row.item_key}">${row.candidates.map(candidate => `<input type="radio" name="metadata-${row.item_key}" value="${candidate.candidate_key}" ${row.candidates.length === 1 ? 'checked' : ''}>`).join('')}<button data-review-status="approved">通过</button><span class="reviewstate"></span></fieldset>`).join('')}</div>`;
+    root.innerHTML = `<div class="reviewlist">${rows.map(row => `<fieldset data-review-key="${row.item_key}"><h4>${row.item_key}</h4>${row.candidates.map(candidate => `<input type="radio" name="metadata-${row.item_key}" value="${candidate.candidate_key}" ${row.candidates.length === 1 ? 'checked' : ''}>`).join('')}<button data-review-status="approved">通过</button><span class="reviewstate"></span></fieldset>`).join('')}</div>`;
     wireReviewSelection(root, { rows, metadata: true, locked, state, payload: card => ({ item_key: card.dataset.reviewKey, candidate_key: card.querySelector<HTMLInputElement>('input[type="radio"]:checked')?.value || '' }), submit, applied: key => { rows.splice(rows.findIndex(row => row.item_key === key), 1); }, active: () => root.isConnected, refresh: render, notify });
   };
   render();
@@ -40,33 +40,30 @@ function fixture(locked = false) {
 
 it('多来源先明确选择，失败后保持选择与错误，再次采用成功后移出队列', async () => {
   const f = fixture();
-  f.button('多选').click();
   const group = [...f.root.querySelectorAll('.reviewgroup')].find(item => item.textContent?.includes('需选择来源'))!;
   f.button('全选本组', group).click();
-  f.button('采用所选', group).click();
+  f.button('通过所选').click();
   expect(f.submit).not.toHaveBeenCalled();
-  expect(group.textContent).toContain('请先为所选的多来源候选选择来源');
+  expect(f.root.textContent).toContain('请先为所选的多来源候选选择来源');
   const radio = group.querySelector<HTMLInputElement>('input[value="two-api"]')!;
   radio.click();
   f.submit.mockResolvedValueOnce({ ok: false });
-  f.button('采用所选', group).click();
+  f.button('通过所选').click();
   await vi.waitFor(() => expect(f.notify).toHaveBeenCalledTimes(1));
   expect(f.state.selected.has('two')).toBe(true);
   expect(f.root.querySelector<HTMLInputElement>('input[value="two-api"]')?.checked).toBe(true);
   expect(f.root.textContent).toContain('服务端未采用该项');
-  f.button('采用所选（1）').click();
+  f.button('通过所选').click();
   await vi.waitFor(() => expect(f.rows.map(row => row.item_key)).toEqual(['one']));
   expect(f.submit.mock.calls.map(call => call[0])).toEqual(Array(2).fill({ item_key: 'two', candidate_key: 'two-api', status: 'approved' }));
-  f.button('退出多选').click();
-  expect(f.state.active).toBe(false);
+  f.root.dispatchEvent(new KeyboardEvent('keydown', {key:'Escape',bubbles:true}));
   expect(f.state.selected.size).toBe(0);
 });
 
 it('单一候选可整组采用，只读端不提供批量操作', async () => {
   const f = fixture();
-  f.button('多选').click();
   const group = f.root.querySelector('.reviewgroup')!;
-  f.button('全选本组', group).click(); f.button('采用所选', group).click();
+  f.button('全选本组', group).click(); f.button('通过所选').click();
   await vi.waitFor(() => expect(f.rows).toHaveLength(1));
   expect(f.submit).toHaveBeenCalledExactlyOnceWith({ item_key: 'one', candidate_key: 'one-nfo', status: 'approved' });
   const reader = fixture(true);
@@ -74,7 +71,7 @@ it('单一候选可整组采用，只读端不提供批量操作', async () => {
 });
 
 it('跨组统一来源只选择对应候选，统一通过才提交', async () => {
-  const f = fixture(); f.button('多选').click(); f.button('全选本页').click();
+  const f = fixture(); f.button('全选本页').click();
   const source = f.root.querySelector('.reviewbulksource .gselect') as HTMLElement & {value: string};
   source.value = 'local_nfo'; source.dispatchEvent(new Event('change'));
   expect(f.submit).not.toHaveBeenCalled();
@@ -85,7 +82,7 @@ it('跨组统一来源只选择对应候选，统一通过才提交', async () =
 });
 
 it('统一拒绝不需要选择来源', async () => {
-  const f = fixture(); f.button('多选').click(); f.button('全选本页').click(); f.button('拒绝所选').click();
+  const f = fixture(); f.button('全选本页').click(); f.button('拒绝所选').click();
   await vi.waitFor(() => expect(f.rows).toHaveLength(0));
   expect(f.submit.mock.calls.map(call => call[0].status)).toEqual(['rejected', 'rejected']);
 });
@@ -94,4 +91,48 @@ it('共同来源排除缺失与同来源多候选的歧义', () => {
   expect(commonReviewSources([])).toEqual([]);
   expect(commonReviewSources([{item_key:'a', candidates:[{candidate_key:'1',source:'nfo'}, {candidate_key:'2',source:'nfo'}]}])).toEqual([]);
   expect(commonReviewSources([{item_key:'a', candidates:[{candidate_key:'1',source:'nfo'}]}, {item_key:'b',candidates:[]}])).toEqual([]);
+});
+
+it('默认勾选框位于名称前，数量使用独立徽章，Shift 按显示顺序连选', () => {
+  const f = fixture();
+  expect(f.root.textContent).not.toContain('选择此项');
+  expect(f.button('多选')).toBeUndefined();
+  const inputs = [...f.root.querySelectorAll<HTMLInputElement>('.reviewpickitem input')];
+  expect(inputs[0]!.closest('h4')?.firstElementChild?.className).toBe('reviewpickitem');
+  inputs[0]!.click();
+  inputs[1]!.closest('label')!.dispatchEvent(new MouseEvent('click', {bubbles:true, cancelable:true, shiftKey:true}));
+  expect([...f.state.selected]).toEqual(['one','two']);
+  expect(f.root.querySelector('.geist-badge')?.textContent).toBe('已选 2 项');
+  expect(f.button('通过所选').textContent).toBe('通过所选');
+  f.root.dispatchEvent(new KeyboardEvent('keydown', {key:'Escape', bubbles:true}));
+  inputs[0]!.dispatchEvent(new KeyboardEvent('keydown', {key:'ArrowDown', shiftKey:true, bubbles:true}));
+  expect([...f.state.selected]).toEqual(['one','two']);
+  expect(document.activeElement).toBe(inputs[1]);
+});
+
+it('来源和字段分组保留每一项且没有重复，切换分组保持勾选与候选', () => {
+  const rows = [
+    {item_key:'a',field:'title',field_label:'标题',candidates:[{candidate_key:'a',source:'nfo'}]},
+    {item_key:'b',field:'performers',field_label:'演员',candidates:[{candidate_key:'b',source:'nfo'},{candidate_key:'b2',source:'api'}]},
+    {item_key:'c',field:'title',field_label:'标题',candidates:[{candidate_key:'c',source:'api'},{candidate_key:'c2',source:'nfo'}]},
+  ];
+  expect(groupReviewRows(rows,'source').map(group=>[group.title,group.rows.map(row=>row.item_key)])).toEqual([['nfo',['a']],['api / nfo',['b','c']]]);
+  expect(groupReviewRows(rows,'field').map(group=>[group.title,group.rows.map(row=>row.item_key)])).toEqual([['标题',['a','c']],['演员',['b']]]);
+  const f = fixture(); f.button('全选本页').click();
+  f.root.querySelector<HTMLInputElement>('input[value="two-api"]')!.click();
+  const field = f.root.querySelector('.reviewgroupby .gselect') as HTMLElement & {value:string};
+  field.value='source';field.dispatchEvent(new Event('change'));
+  expect(f.state.groupBy).toBe('source');
+  expect(f.root.querySelectorAll('.reviewpickitem input:checked')).toHaveLength(2);
+  expect(f.root.querySelector<HTMLInputElement>('input[value="two-api"]')!.checked).toBe(true);
+  expect(f.submit).not.toHaveBeenCalled();
+});
+
+it('Shift 范围使用分组后的显示顺序，普通取消只影响单项', () => {
+  const state=createReviewSelection(),keys=['a','c','b','d'];
+  selectReviewRange(state,keys,'c',false,true);
+  selectReviewRange(state,keys,'d',true,true);
+  expect([...state.selected]).toEqual(['c','b','d']);
+  selectReviewRange(state,keys,'b',false,false);
+  expect([...state.selected]).toEqual(['c','d']);
 });

@@ -14,6 +14,7 @@ export declare function emptyStateHtml(
 
 /** Geist Fieldset 的标题：放在框体里的 h3，不用原生 legend。 */
 export declare function fieldsetTitle(id: string, title: string): string;
+export declare function badgeHtml(text: string): string;
 export declare function checkboxHtml(inputAttrs?: string): string;
 export declare function loadingDotsHtml(label?: string, options?: { className?: string }): string;
 export declare function progressHtml(label: string, value: number, max?: number): string;

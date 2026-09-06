@@ -191,7 +191,7 @@ button,a,input,textarea,select,summary{touch-action:manipulation}
   line-height:1;white-space:nowrap;cursor:pointer;
   transition:background-color .15s ease-in-out,color .15s ease-in-out}
 .geist-button:hover:not(:disabled){background:var(--surface)}
-.geist-button:is(a),.geist-button:is(a):hover{text-decoration:none}
+.geist-button,.geist-button:hover{text-decoration:none}
 /* 按钮里唯一还挂图标的一类是走出 Peach 的链接：实测 Geist 的外链标是 14px，
    跟着文字的 currentColor 走，落在文字后面。 */
 .geist-button svg{width:14px;height:14px;flex:none;stroke:currentColor;fill:none;stroke-width:2}
@@ -218,6 +218,12 @@ button.danger:not(.frowicon):hover:not(:disabled),.resourcedanger:hover:not(:dis
   background:color-mix(in srgb,var(--drop) 82%,#000);border-color:transparent;color:#fff}
 button.danger:not(.frowicon):disabled,.resourcedanger:disabled{
   background:var(--sunk);border-color:var(--line-soft);color:var(--muted)}
+.geist-button.error{background:#da2f35;border-color:#da2f35;color:#fff}
+.geist-button.warning{background:#ff990a;border-color:#ff990a;color:#000}
+.geist-button.error:hover:not(:disabled){background:color-mix(in srgb,#da2f35 85%,#000);border-color:color-mix(in srgb,#da2f35 85%,#000);color:#fff}
+.geist-button.warning:hover:not(:disabled){background:color-mix(in srgb,#ff990a 85%,#000);border-color:color-mix(in srgb,#ff990a 85%,#000);color:#000}
+.geist-button:is(.error,.warning):disabled{background:var(--sunk);border-color:var(--line-soft);color:var(--muted)}
+.geist-badge{display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;height:20px;padding:0 6px;border-radius:var(--badge-radius);background:var(--hover);color:var(--ink-2);font-size:var(--fs-xs);font-weight:500;line-height:1;white-space:nowrap}
 .skiplink{position:fixed;z-index:1000;left:12px;top:8px;transform:translateY(-150%);
   padding:9px 13px;border-radius:var(--control-radius);background:var(--ink);color:var(--ground);text-decoration:none;
   transition:transform .12s ease}

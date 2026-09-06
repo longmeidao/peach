@@ -231,13 +231,14 @@
    悬停只抬填充不提边，与按钮同口径。 */
 .pcheck{position:relative;display:grid;place-items:center;width:20px;height:20px;flex:none;cursor:pointer}
 .pcheck input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
-.pcheck>span{width:18px;height:18px;border:1px solid var(--border-15);border-radius:var(--badge-radius);
+.pcheck>span{box-sizing:border-box;width:16px;height:16px;border:1px solid var(--border-15);border-radius:var(--badge-radius);
   display:grid;place-items:center;background:var(--ground);color:transparent;transition:.14s ease}
 .pcheck>span svg{display:block;width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2.5}
 .pcheck:hover>span,label:hover>.pcheck>span{background:var(--hover)}
 .pcheck input:checked+span{border-color:var(--ink-2);color:var(--ink)}
 .pcheck input:focus-visible+span{outline:2px solid var(--tungsten);outline-offset:2px}
-.pcheck input:disabled+span{cursor:not-allowed;opacity:.55}
+.pcheck input:disabled+span{cursor:not-allowed;border-color:var(--line)}
+.pcheck input:disabled:checked+span{color:var(--muted)}
 .pcheck:has(input:disabled){cursor:not-allowed}
 .pcheck:has(input:disabled)>span{background:var(--ground)}
 /* 取景：正封模式下，整张封套要把镜头推到右半边；本身就是竖版正封的则整张用；
@@ -263,4 +264,3 @@
    还压住旁边的「发行时间」。`.sorts button` 早就有 `flex:0 0 auto`，但 fieldset 不是
    button，那条规则选不到它。 */
 .sorts .javlayout{display:inline-flex;gap:2px;margin:0 6px;flex:none}
-

@@ -351,8 +351,8 @@ class WebUiSourceTests(unittest.TestCase):
         ":focus",              # 焦点环：:focus / :focus-visible / :focus-within
         ".geist-progress", ".watchprogress", ".vjs-play-progress", ".vjs-progress-holder",
         ".trace .bar", ".tokbar",  # 进度与数据
-        ":is(#censorSetting,#detailAutoplaySetting):checked",  # Toggle 开态：Geist Toggle 实测轨道 rgb(0,112,243)
-        ".entitylink", ".flink", ".fsourcelink", ".fcred a", ".tokauthor>a", ".confighelp a", ".taste-history-guide-content a",  # 真正的链接
+        ":is(#censorSetting,#detailAutoplaySetting,.ptoggle):checked",  # Toggle 开态：Geist Toggle 实测轨道 rgb(0,112,243)
+        ".entitylink", ".flink", ".fsourcelink", ".fcred a", ".tokauthor>a", ".confighelp a", ".taste-history-guide-content a", ".geist-text-link",  # 真正的链接
     )
 
     def test_tungsten_is_reserved_for_focus_links_progress_and_toggle(self):
@@ -4076,9 +4076,9 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".tier.catalog-placeholder{overflow:hidden}")
         self.assertPageContains("flex:1 0 240px;min-width:240px;overflow:hidden")
 
-    def test_review_selection_shares_header_and_has_a_separate_toolbar(self):
-        self.assertPageContains("reviewSelectionController?.setMode(selectMode)")
-        self.assertPageContains("path==='/review'&&reviewRuntime&&!reviewRuntime.ledger_read_only")
+    def test_review_selection_uses_default_checkboxes_and_a_separate_toolbar(self):
+        self.assertNotIn("reviewSelectionController", self.page)
+        self.assertNotIn("selection.active=selectMode", self.page)
         self.assertPageContains(".reviewbulktoolbar{width:100%;padding-block:16px}")
         self.assertPageContains(".taste-guide-skip{width:100%;height:var(--control-h);color:var(--meter)}")
 
@@ -4202,7 +4202,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('height:var(--review-fieldset-height);margin:0;padding:0')
         self.assertPageContains('.reviewitem>.geist-fieldset-content{flex:1;min-height:0;padding:20px}')
         self.assertPageContains('min-height:56px;margin:0;padding:12px 12px 12px 20px')
-        self.assertPageContains('.reviewactions button{box-sizing:border-box;height:32px')
+        self.assertPageContains('.geist-button{box-sizing:border-box;height:32px')
         self.assertPageContains('.reviewstate:empty{display:none}')
         self.assertPageContains('export function scrollerHtml(content')
         self.assertPageContains("wireScrollers($('#stats'))")
@@ -5843,8 +5843,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertNotIn("box-shadow:0 8px 32px -12px", self.css, "浮层靠发丝线不靠投影")
         # 布尔开关是 Geist 中号 Toggle（36×20 轨道 + 17px 圆点），不是原生复选框；
         # Geist 的 Switch 是分段选择器，别用错控件。
-        self.assertPageContains(":is(#censorSetting,#detailAutoplaySetting){appearance:none;-webkit-appearance:none;width:36px;height:20px;flex:none;")
-        self.assertPageContains(":is(#censorSetting,#detailAutoplaySetting):checked{background:var(--tungsten)}")
+        self.assertPageContains(":is(#censorSetting,#detailAutoplaySetting,.ptoggle){appearance:none;-webkit-appearance:none;width:36px;height:20px;flex:none;")
+        self.assertPageContains(":is(#censorSetting,#detailAutoplaySetting,.ptoggle):checked{background:var(--tungsten)}")
         # 没有直接证据的 command-menu 入场动画与无有效高度约束的复核卡
         # Scroller 不应继续作为「Vercel 对齐」进入产品。
         self.assertPageLacks("animation:panel-in")
@@ -6179,7 +6179,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".cleanupfieldset>.geist-fieldset-content{flex:1;min-height:0;padding:20px}")
         # Geist 的 Fieldset 全框只有一条线，在底部操作条上方；标题底下不划线。
         self.assertPageContains("--fieldset-bar-h:52px;")
-        self.assertPageContains(".geist-fieldset-title{margin:0 0 10px;")
+        self.assertPageContains(".geist-fieldset-title{margin:0 0 8px;")
         self.assertPageLacks(".geist-fieldset-header")
         self.assertPageContains(".cleanupfieldset>.geist-fieldset-footer{box-sizing:border-box;"
                                 "min-height:var(--fieldset-bar-h);")
@@ -6202,7 +6202,7 @@ class WebUiSourceTests(unittest.TestCase):
         """
         self.assertPageContains(".cleanupfieldset>.geist-fieldset-footer{box-sizing:border-box;"
                                 "min-height:var(--fieldset-bar-h);")
-        self.assertPageContains("padding:8px 16px 8px 20px;")
+        self.assertPageContains("padding:12px 12px 12px 20px;")
         self.assertPageContains(".resourcesyncfooter,.resourceapplyrow{box-sizing:border-box;"
                                 "min-height:var(--fieldset-bar-h);")
         # 说明能被压窄并换行，按钮不参与压缩。
@@ -6321,7 +6321,7 @@ class WebUiSourceTests(unittest.TestCase):
             ".ncard .meta .why",
             ".playerstats dd", ".playerstatsmetric>span",
             ".relatedperson .nm", ".reviewentity b",
-            ".reviewitem h4", ".searchoption span",
+            ".reviewitem h4", ".reviewpickname", ".searchoption span",
             ".sgrid.mixgrid>.mixqueue .mixqueuehead span", ".sidebarorderlabel>b",
             ".insightrankrow>span:nth-child(2)", ".insighttablerow span", ".metricstrip small,.tastesummary>small",
             ".gselectfield>span",
@@ -6591,7 +6591,7 @@ class WebUiSourceTests(unittest.TestCase):
                 f'<button class="geist-button primary" type="submit">{label}</button>')
         self.assertPageLacks(".playlistcreate button,.playlistactions button{")
         self.assertPageContains(".faliasform .fbtn{height:38px;min-height:38px}")
-        self.assertPageContains(".playlistcreate label{display:grid;gap:5px;color:var(--muted);"
+        self.assertPageContains(".playlistcreate label{display:grid;gap:8px;color:var(--muted);"
                                 "font-size:var(--fs-xs);flex:1 1 200px;max-width:320px}")
         self.assertPageLacks(".playlistcreate label{flex:1 1 100%}")
         # 自己拼内边距的那几处已经并入 token，别再冒出第二份。
@@ -7131,11 +7131,13 @@ class WebUiSourceTests(unittest.TestCase):
         """
         self.assertPageContains("button.danger:not(.frowicon),.resourcedanger{")
         self.assertPageContains("background:var(--drop);border-color:var(--drop);color:#fff}")
-        for selector in (".reviewactions .reject{background:var(--drop);color:#fff}",
+        # 复核卡的拒绝键走 Geist 的 error 变体，那是同一块红的另一个入口。
+        for selector in (".geist-button.error{background:#da2f35;",
+                         ".fcredactions button.fquiet{background:var(--drop);color:#fff}",
                          ".junkactions .junktrash{background:var(--drop);color:#fff}"):
-            self.assertPageContains(selector, "判定与销毁键静止态就是实底红")
+            self.assertPageContains(selector, "销毁键静止态就是实底红")
         darker = "{background:color-mix(in srgb,var(--drop) 82%,#000);color:#fff}"
-        for selector in (".reviewactions .reject:hover:not(:disabled)",
+        for selector in (".fcredactions button.fquiet:hover",
                          ".junkactions .junktrash:hover:not(:disabled)"):
             self.assertPageContains(selector + darker, f"{selector} 悬停把同一块红压深")
         # 每个页面各写一份 .danger 的时代结束了：站里只留 01-base 那一条。
@@ -7528,7 +7530,12 @@ class WebUiSourceTests(unittest.TestCase):
     def test_review_bulk_reuses_explicit_decisions_and_insets_scrolling_content(self):
         self.assertPageContains("wireReviewSelection($('#stats').querySelector('.review')")
         self.assertPageContains("payload:decisionPayload,submit:payload=>api('/api/review/decision'")
-        self.assertPageContains('.reviewcontent .geist-scroller-container{padding-right:12px}')
+        self.assertPageContains('.reviewcontent .geist-scroller-container{padding-right:0}')
+        self.assertPageContains('.reviewcontent .ovtrack.ov-y{transform:translateX(12px)}')
+        self.assertPageContains('class="geist-button error" data-review-status="rejected"')
+        self.assertPageContains('.geist-button.error{background:#da2f35;border-color:#da2f35;color:#fff}')
+        self.assertPageContains('.geist-button.warning{background:#ff990a;border-color:#ff990a;color:#000}')
+        self.assertPageContains('.geist-button:is(.error,.warning):disabled{background:var(--sunk);border-color:var(--line-soft);color:var(--muted)}')
         self.assertPageLacks("${index===0?' checked':''}")
 
     def test_immersive_fit_compares_source_against_the_viewport(self):
