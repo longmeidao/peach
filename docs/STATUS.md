@@ -4,9 +4,7 @@
 
 索引：`PRODUCT_BACKLOG.md`、`REUSE.md`、`HANDOFF.md`。
 
-- uv：`TESTING.md`。
-
-- 配置页提供 GitHub 测试版查询；独立 Windows 包支持应用内下载、校验、进度恢复和重启确认，替换失败可回滚。源码部署保留源码更新入口。凭据输入框保留完整焦点圈并适配窄屏。
+- 更新：`REUSE.md`。
 
 ## 运行态
 

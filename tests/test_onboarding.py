@@ -955,7 +955,10 @@ class StandaloneConfigurationTests(_Case):
         execute = mock.Mock(side_effect=AssertionError("Git must not run"))
         manager = VersionManager(execute=execute)
         self.assertEqual(manager.inspect().branch, "测试包")
-        self.assertEqual(manager.check().state, "manual")
+        with mock.patch("peach.release_updates.check", return_value={"state":"available", "latest_version":"1.0.0", "message":"有新版本可下载。"}):
+            self.assertEqual(manager.check().state, "available")
+            self.assertEqual(manager.update().state, "available")
+        self.assertIn("GitHub", manager.inspect().channel_label)
         execute.assert_not_called()
 
 

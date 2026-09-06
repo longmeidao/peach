@@ -1,5 +1,7 @@
 """独立包更新使用临时目录验证路径、进度、重启确认及回滚。"""
 import json
+import hashlib
+from contextlib import nullcontext
 from pathlib import Path
 import tempfile
 import unittest
@@ -59,6 +61,32 @@ class StandaloneUpdateTests(unittest.TestCase):
         with patch.object(update.distribution, "standalone", return_value=False):
             with self.assertRaises(ValueError):
                 update.start()
+
+    def test_download_prepares_verified_package_without_stopping_the_app(self):
+        target = self.root / "installed"; target.mkdir()
+        (target / "Peach.exe").write_text("old")
+        archive = self.archive(["Peach/Peach.exe", "Peach/_internal/standalone.txt"])
+        with zipfile.ZipFile(archive, "a") as package:
+            package.writestr("Peach/_internal/build-info.json", json.dumps({"version":"1.0.0","commit":None,"built_at":"fixture"}))
+        content = archive.read_bytes()
+        response = Mock()
+        response.iter_bytes.return_value = [content[:10],content[10:]]
+        client = Mock()
+        client.stream.return_value = nullcontext(response)
+        release = dict(state="available", latest_version="1.0.0", asset_size=len(content),
+                       asset_digest="sha256:" + hashlib.sha256(content).hexdigest(), asset_url="https://github.com/fixture")
+        lock = Mock()
+        with patch.object(update.sys,"executable",str(target/"Peach.exe")), patch.object(
+                update.release_updates,"check",return_value=release), patch.object(
+                update.httpx,"Client",return_value=nullcontext(client)), patch.object(update.subprocess,"Popen") as launch:
+            update.prepare({"id":"download-fixture"},lock)
+        state = update.read()
+        self.assertEqual(state["state"],"ready",state)
+        self.assertEqual(state["downloaded"],len(content))
+        self.assertTrue((Path(state["helper"])/"Peach.exe").is_file())
+        self.assertEqual((target/"Peach.exe").read_text(),"old")
+        launch.assert_not_called()
+        lock.release.assert_called_once()
 
     def test_install_failure_restores_program_directory_and_preserves_data(self):
         target = self.root / "app"; target.mkdir()

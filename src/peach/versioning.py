@@ -67,6 +67,8 @@ class VersionSnapshot:
 
     @property
     def channel_label(self) -> str:
+        if self.commit == "release":
+            return "更新通道 · GitHub 测试版"
         if not self.remote_configured:
             return "本地开发版 · 未配置更新源"
         if not self.upstream:
@@ -226,6 +228,9 @@ class VersionManager:
         调用方不需要再分一次类。
         """
         checked = self.check()
+        from .distribution import standalone
+        if standalone():
+            return checked
         if checked.state != "available":
             return checked
         snapshot = checked.snapshot
