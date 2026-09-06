@@ -958,11 +958,11 @@ function at({ startup: e, receipt: t }) {
 						children: [/* @__PURE__ */ J(it, {
 							label: "静默启动",
 							checked: i,
-							disabled: !e.available,
+							disabled: !e.available || !n,
 							change: a
 						}), /* @__PURE__ */ J("p", {
 							class: "confighelp",
-							children: "静默启动仅显示托盘。"
+							children: "静默启动仅显示托盘，开机后启动 Peach 打开时生效。"
 						})]
 					})]
 				}),
@@ -1069,25 +1069,22 @@ function st({ uninstall: e }) {
 //#region src/islands/clouddrive-guide.tsx
 var ct = [
 	{
-		name: "机械硬盘或内存不超过 8 GB",
+		name: "机械硬盘，或内存 8 GB 以内",
 		cache: "10–20 GiB",
 		read: "256 / 128 KB",
-		task: "同时处理 1 个视频",
-		advice: "缓存优先放内置 SSD。只有机械硬盘时，先用按需读取；反复观看同一批文件才开启文件夹缓存。"
+		task: "1 个"
 	},
 	{
-		name: "SATA SSD，8–16 GB 内存",
+		name: "SATA SSD，内存 8–16 GB",
 		cache: "20–50 GiB",
 		read: "256 / 128 KB",
-		task: "同时处理 1–2 个视频",
-		advice: "扫描、抽帧用小读块。观看高码率视频若仍缓冲，再试 512 / 256 KB。"
+		task: "1–2 个"
 	},
 	{
-		name: "NVMe SSD，16 GB 以上内存",
+		name: "NVMe SSD，内存 16 GB 以上",
 		cache: "50–100 GiB",
 		read: "256 / 128 KB",
-		task: "同时处理 2 个视频起步",
-		advice: "以扫描和拖动播放为主时保留小读块。连续看高码率视频可试 512 / 256 KB，速度不升就调回。"
+		task: "2 个起步"
 	}
 ];
 function lt() {
@@ -1113,42 +1110,55 @@ function lt() {
 			/* @__PURE__ */ J("summary", { children: "CloudDrive 速度与缓存建议" }),
 			/* @__PURE__ */ J("p", {
 				class: "confighelp",
-				children: "按缓存所在的硬盘选起步配置。优先保证播放流畅，再用同一视频比较冷启动、拖动和流量；参数越大不一定越快。"
+				children: "看缓存放在哪块硬盘上，照那一行填。先保证播放不卡，再拿同一个视频比较打开速度、拖动和流量；数值填得越大不一定越快。"
 			}),
 			/* @__PURE__ */ J("div", {
-				class: "cloudguide-profiles",
-				children: ct.map((e) => /* @__PURE__ */ J("section", {
-					"aria-label": e.name,
-					children: [
-						/* @__PURE__ */ J("h4", { children: e.name }),
-						/* @__PURE__ */ J("dl", { children: [
-							/* @__PURE__ */ J("dt", { children: "磁盘缓存上限" }),
-							/* @__PURE__ */ J("dd", { children: e.cache }),
-							/* @__PURE__ */ J("dt", { children: "默认 / 最小读取长度" }),
-							/* @__PURE__ */ J("dd", { children: e.read }),
-							/* @__PURE__ */ J("dt", { children: "Peach 并行任务" }),
-							/* @__PURE__ */ J("dd", { children: e.task })
-						] }),
-						/* @__PURE__ */ J("p", {
-							class: "confighelp",
-							children: e.advice
+				class: "cloudguide-tablewrap",
+				children: /* @__PURE__ */ J("table", {
+					class: "cloudguide-table",
+					children: [/* @__PURE__ */ J("thead", { children: /* @__PURE__ */ J("tr", { children: [
+						/* @__PURE__ */ J("th", {
+							scope: "col",
+							children: "缓存所在硬盘"
+						}),
+						/* @__PURE__ */ J("th", {
+							scope: "col",
+							children: "缓存上限"
+						}),
+						/* @__PURE__ */ J("th", {
+							scope: "col",
+							children: "读取长度（默认 / 最小）"
+						}),
+						/* @__PURE__ */ J("th", {
+							scope: "col",
+							children: "同时处理视频"
 						})
-					]
-				}, e.name))
+					] }) }), /* @__PURE__ */ J("tbody", { children: ct.map((e) => /* @__PURE__ */ J("tr", { children: [
+						/* @__PURE__ */ J("th", {
+							scope: "row",
+							children: e.name
+						}),
+						/* @__PURE__ */ J("td", { children: e.cache }),
+						/* @__PURE__ */ J("td", { children: e.read }),
+						/* @__PURE__ */ J("td", { children: e.task })
+					] }, e.name)) })]
+				})
 			}),
 			/* @__PURE__ */ J("ul", {
 				class: "cloudguide-notes",
 				children: [
-					/* @__PURE__ */ J("li", { children: "在 CloudDrive「设置」中设置磁盘缓存上限和 LRU（优先清理最久没用的缓存）。系统盘至少留 40 GiB；上限不要填 0。设置后重新打开确认，并观察实际占盘。" }),
-					/* @__PURE__ */ J("li", { children: "在各网盘的下载设置中调整读取长度和下载线程。115 从 2 线程开始，遵守当前客户端上限；PikPak / WebDAV 从 2 线程开始，带宽充足且速度确实提升时再试 4。开启支持的直链选项，确认播放可用。" }),
-					/* @__PURE__ */ J("li", { children: "PikPak 按当前 CloudDrive 提供的接入方式配置；使用 WebDAV 时，先确认服务端允许直链。不能直接套用 115 的连接方式。" }),
-					/* @__PURE__ */ J("li", { children: "看视频时暂停批量抽帧，关闭不用的播放页。下载速度应高于视频码率除以 8，并留出余量：80 Mbps 视频约需 10 MB/s，建议稳定达到 15 MB/s。" }),
-					/* @__PURE__ */ J("li", { children: "Buffer Cache 的内存占用、磁盘缓存和文件夹缓存是不同设置。磁盘显示的逻辑大小也不等于实际占盘；只改一个上限不能限制所有缓存。" })
+					/* @__PURE__ */ J("li", { children: "缓存尽量放在内置固态盘上。只有机械硬盘时先用按需读取，反复看同一批文件才打开文件夹缓存。" }),
+					/* @__PURE__ */ J("li", { children: "256 / 128 KB 适合扫描、抽帧和拖动播放。看高码率视频还是缓冲，就试 512 / 256 KB；速度没提上来就调回去。" }),
+					/* @__PURE__ */ J("li", { children: "缓存上限和清理方式在 CloudDrive「设置」里填。清理方式选 LRU，也就是空间不够时先删最久没用过的缓存。上限不要填 0，系统盘至少留 40 GiB。填完重新打开这一页确认存住了，再看硬盘实际少了多少。" }),
+					/* @__PURE__ */ J("li", { children: "读取长度和下载线程在每个网盘各自的下载设置里改，线程都从 2 开始。115 不要超过客户端标出的上限；PikPak 和 WebDAV 在带宽有余、加到 4 确实更快时才留 4。能开直链就开，开完放个视频确认还能播。" }),
+					/* @__PURE__ */ J("li", { children: "PikPak 按 CloudDrive 当前提供的接入方式配置。走 WebDAV 时先确认服务端允许直链；115 的连接方式不能照搬过来。" }),
+					/* @__PURE__ */ J("li", { children: "看视频时先暂停批量抽帧，关掉不用的播放页。码率按 Mbps 算，下载速度按 MB/s 算，除以 8 才能对上：80 Mbps 的视频要 10 MB/s 才够，留出余量建议稳定在 15 MB/s。" }),
+					/* @__PURE__ */ J("li", { children: "Buffer Cache 占内存，磁盘缓存和文件夹缓存占硬盘，三处是分开的设置，改一个管不住另外两个。文件显示的大小是逻辑大小，也不等于真正占掉的盘。" })
 				]
 			}),
 			/* @__PURE__ */ J("p", {
 				class: "confighelp",
-				children: ["上表容量和并发是起步建议，按实际占盘与播放结果调整。直链和代理是不同设置；连接慢时分别比较，不能只看开关是否开启。", /* @__PURE__ */ J("a", {
+				children: ["表里的容量和并发是起步值，按实际占盘和播放效果再调。直链和代理是两个开关，连接慢时分别试一次比较，不能只看开关有没有打开。", /* @__PURE__ */ J("a", {
 					href: "https://www.clouddrive2.com/features.html",
 					target: "_blank",
 					rel: "noreferrer",
