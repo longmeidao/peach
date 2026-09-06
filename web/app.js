@@ -6342,8 +6342,10 @@ async function openEntity(kind,name,push=true){
       // 纯图标的链接自己不带可读文字，得把标签留给辅助技术。
       return `<a class="iconlink" href="${esc(x.url)}" target="_blank" rel="noreferrer" title="${esc(x.label)}">${mark}<span class="sr-only">${esc(x.label)}</span></a>`;
     }
-    // 官网用地球图标标明链接类型。
-    if(kind==='studio')
+    /* 公司页的头像就是这家公司的标识、标题就是它的名字，官网链接再摆一遍同一个
+       圆标、同一个名字，等于把一件事说三遍。这一格因此只给域名，前面的地球说明
+       这是条外链。人物页反过来：头像是这个人，事务所的圆标和名字在那里是新东西。 */
+    if(company)
       return `<a class="urllink" href="${esc(x.url)}" target="_blank" rel="noreferrer" title="${esc(x.label)}"><span class="entitylinkicon">${icon('globe')}</span><span class="entitylinklabel">${esc(linkHost(x.url)||x.label)}</span></a>`;
     return `<a href="${esc(x.url)}" target="_blank" rel="noreferrer" title="${esc(x.label)}"><span class="entitylinkicon">${icon('globe')}<img class="entityfavicon" src="${esc(linkMarkUrl(x))}" alt="" loading="lazy" referrerpolicy="no-referrer" data-drop="self"></span><span class="entitylinklabel">${esc(x.label)}</span></a>`;
   }).join('');

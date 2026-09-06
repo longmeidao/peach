@@ -50,8 +50,9 @@
    但白底会让「取到了一张空图」看起来和「圆盘坏了」一模一样——X 的 favicon 正是这种。
    现在 X 走内联品牌标记不再发请求，其余主机也不再垫白底。 */
 .entitylinkicon img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:var(--sunk)}
-/* 品牌标记是填充字形，不吃上面那套描边。 */
-.entitylinkicon.brand svg{width:20px;height:20px;stroke:none;filter:none}
+/* 品牌标记是填充字形，不吃上面那套描边；它自己画满整个圆盘，所以外面那圈
+   `overflow:hidden` 落不到它身上——圆内切在方框里，一个角都碰不到。 */
+.entitylinkicon.brand svg{width:100%;height:100%;stroke:none;filter:none}
 /* 纯图标的社媒链接：收成圆形，没有文字就不给文字留位置。 */
 .entitylinks a.iconlink{padding:4px;gap:0;border-radius:50%}
 /* 官网域名前显示地球图标，与带名称的链接共用间距。 */
