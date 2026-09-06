@@ -522,21 +522,25 @@ def setup_page(
         + "".join(fields)
         + _check_html("scan_now", scan_text, checked=scan_now)
         + '<p class="help">扫描只读取文件名、大小和修改时间，不改动任何媒体文件。</p>'
-        '<button type="submit">完成设置</button></form>'
+        + '<section class="history-guide-choice"><h2>浏览器历史记录 <small>可选</small></h2>'
+        + _check_html("history_guide", "接下来导入浏览器历史记录", checked=values.get("history_guide") == "y")
+        + '<p class="help">用于生成口味分析。完成设置后选择读取这台电脑，或导入其他设备的记录；也可稍后从「口味」进入。</p></section>'
+        + '<button type="submit">完成设置</button></form>'
     )
     return _document("Peach · 首次运行", body)
 
 
-def setup_done_page(applied, *, windows: bool, scan_requested: bool) -> str:
+def setup_done_page(applied, *, windows: bool, scan_requested: bool, history_guide: bool = False) -> str:
     """成功页：接下来会自动发生什么，以及口令在哪。口令本身不显示在页面上。"""
     tree = applied.tree
     config = applied.config
+    destination = escape(_normal_url(config) + ('taste?onboarding=1' if history_guide else ''), quote=True)
+    destination_label = '导入浏览器历史记录' if history_guide else '进入 Peach'
     if distribution.standalone():
-        destination = escape(_normal_url(config), quote=True)
         scan = "首次扫描已排队。" if scan_requested else "你可以稍后在配置界面开始扫描。"
         return _document("Peach · 设置完成",
                          '<h1>设置完成</h1><p class="lede">正在启动你的馆藏。' + scan + '</p>'
-                         f'<p><a href="{destination}">进入 Peach</a></p>'
+                         f'<p><a href="{destination}">{destination_label}</a></p>'
                          f'<meta http-equiv="refresh" content="8;url={destination}">'
                          + runtime_facts_html(config))
     ledger = (f"Peach 数据库已存在，没有动它：{tree.database}" if tree.ledger_existed
@@ -565,6 +569,7 @@ def setup_done_page(applied, *, windows: bool, scan_requested: bool) -> str:
         f"{scan}"
         "</ul>"
         f"{mounts}"
+        + f'<p><a href="{destination}">{destination_label}</a></p>'
         + runtime_facts_html(config)
     )
     return _document("Peach · 设置完成", body)
@@ -716,7 +721,8 @@ async def setup_submit(request: Request):
                                       errors={"data_root": str(exc)}, scan_now=scan_now), status_code=400)
     if scan_now:
         onboarding.request_first_scan(applied.config, "configured" if answers.media_sources is not None else "local")
-    response = HTMLResponse(setup_done_page(applied, windows=windows, scan_requested=scan_now))
+    response = HTMLResponse(setup_done_page(applied, windows=windows, scan_requested=scan_now,
+                                          history_guide=submitted.get("history_guide") == "y"))
     if distribution.standalone():
         response.set_cookie("tok", auth.read_token(applied.config.directory("secrets")),
                             httponly=True, samesite="strict", max_age=31536000)

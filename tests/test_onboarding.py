@@ -560,6 +560,21 @@ class SetupPageTests(_Case):
         self._post("/setup", self._form(scan_now=None))
         self.assertFalse((self.data_root / "state" / onboarding.SCAN_REQUEST_NAME).exists())
 
+    def test_history_guide_is_optional_and_preserves_validation_selection(self):
+        page = self._get('/').text
+        self.assertIn('name="history_guide" value="y">', page)
+        response = self._post('/setup', self._form(port='not-a-port', history_guide='y'))
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('name="history_guide" value="y" checked>', response.text)
+
+    def test_history_guide_submission_links_to_explicit_import_without_reading_history(self):
+        with mock.patch('peach.web_stats.w_taste_refresh') as refresh:
+            response = self._post('/setup', self._form(history_guide='y', scan_now=None))
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('/taste?onboarding=1', response.text)
+        self.assertIn('导入浏览器历史记录</a>', response.text)
+        refresh.assert_not_called()
+
     def test_a_configured_machine_does_not_have_this_endpoint(self):
         response = self._post("/setup", self._form(), configured=True)
         self.assertEqual(response.status_code, 404)

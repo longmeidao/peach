@@ -30,6 +30,7 @@ import type { ScrapingData, ScrapingProps } from './islands/scraping';
 export { refreshStore, storeNames } from './state';
 export { watchJob, followJobProgress } from './jobs';
 export { syncSidebarSurface, sidebarTagCounts, sidebarHasCatalogContent } from './sidebar';
+export { cleanupSkeletonHtml, cloudLocations, cloudPreferenceLocations, tasteHistoryGuideHtml } from './management';
 export type { StoreName } from './state';
 
 /** 首屏取数的结果。`data` 与 `error` 恰有一个成立。 */

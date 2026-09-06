@@ -177,6 +177,33 @@ class PurgeMissingTests(unittest.TestCase):
         self.assertEqual(source["checked"], 4)
         self.assertEqual(source["unreadable"], 0)
 
+    def test_cloud_sync_preserves_missing_local_files_in_mixed_library(self):
+        with self.contract.write_transaction() as connection:
+            connection.execute("INSERT INTO asset(id,location,path,name,medium,size) "
+                               "VALUES(5,'local','R:\\missing.mp4','missing.mp4','video',10)")
+        with mock.patch.object(rm_sync, 'LOCATION_ROOT_DECLARATIONS',
+                               {'local': ('R:\\',), '115': ('B:\\',)}), \
+             mock.patch.object(rm_sync, 'translate_ledger_path', self._translate), \
+             mock.patch.object(rm_sync, 'source_is_online', return_value=True):
+            preview = rm_sync.w_resource_sync_scan(self.contract)
+            result = rm_sync.w_resource_sync_apply(self.contract, {'confirm': True, 'clean_cache': False})
+            self.assertEqual([source['location'] for source in preview['sources']], ['115'])
+            self.assertEqual(result['moved_to_trash'], 2)
+            self.assertNotIn(5, rm_sync._recheck_resource_scan_ids(self.contract, [5]))
+        with self.contract.read_connection() as connection:
+            self.assertNotEqual(connection.execute('SELECT disposal FROM asset WHERE id=5').fetchone()[0], 'trash')
+
+    def test_local_only_configuration_has_no_cloud_sync_action(self):
+        with mock.patch.object(rm_sync, 'LOCATION_ROOT_DECLARATIONS', {'local': ('R:\\',)}):
+            self.assertEqual(rm_sync.configured_cloud_locations(), ())
+            state = rm_sync.w_resource_sync_scan(self.contract, {'background': True, 'status_only': True})
+            self.assertEqual(state['total_sources'], 0)
+            for body in ({}, {'background': True}):
+                with self.assertRaisesRegex(ValueError, '添加网盘来源'):
+                    rm_sync.w_resource_sync_scan(self.contract, body)
+            with self.assertRaisesRegex(ValueError, '添加网盘来源'):
+                rm_sync.w_resource_sync_apply(self.contract, {'confirm': True})
+
     def test_full_sync_skips_an_unreadable_directory_instead_of_trashing_it(self):
         with mock.patch.object(rm_sync, "translate_ledger_path", self._translate), \
              mock.patch.object(rm_sync, "source_is_online", lambda loc: loc == "115"), \

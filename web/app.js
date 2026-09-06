@@ -5,7 +5,7 @@ import { javDisplayName, javTitleHtml } from './js/jav-title.js';
 import { matchRoute, routeLabel } from './js/routes.js';
 import { initMiddleTruncate } from './js/middle-truncate.js';
 import { tagLabel } from './js/tags.js';
-import { syncSidebarSurface, sidebarTagCounts, sidebarHasCatalogContent } from './dist/peach-ui.js';
+import { syncSidebarSurface, sidebarTagCounts, sidebarHasCatalogContent, cleanupSkeletonHtml, cloudLocations, cloudPreferenceLocations, tasteHistoryGuideHtml } from './dist/peach-ui.js';
 import {
   attachOverlayScrollbar, breadcrumbHtml, checkboxHtml, closeAnchoredMenu, confirmModal, emptyStateHtml, fieldsetTitle,
   fillSkeletonTier, fitSkeleton, iconSwitchHtml, indexSkeletonHtml, loadingDotsHtml,
@@ -241,9 +241,7 @@ const MANAGEMENT_PLACEHOLDERS={
   '/stats':()=>`<div class="insightpage">${pageSkeletonHtml('正在读取统计',{variant:'dashboard'})}</div>`,
   // 口味页与统计页同一套版式：指标带、一块主详情、下面同层的数据面板。
   '/taste':()=>`<div class="tastepage">${pageSkeletonHtml('正在读取口味分析',{variant:'dashboard'})}</div>`,
-  '/data-cleanup':()=>`<div class="cleanuppage">${
-    pageSkeletonHtml('正在读取数据管理状态',
-      {cards:true,fill:false,className:'cleanup-skeleton'})}</div>`,
+  '/data-cleanup':()=>cleanupSkeletonHtml(),
   // /resource-sync 只是数据管理页上的一个锚点，启动时占位也该是数据管理那张。
   '/resource-sync':()=>MANAGEMENT_PLACEHOLDERS['/data-cleanup'](),
   '/duplicates':()=>pageSkeletonHtml('正在比对重复内容',{cards:true}),
@@ -3047,7 +3045,7 @@ function resourceSyncMarkup(){
   return `<section class="resourcesync" id="resource-sync" aria-labelledby="resourceSyncTitle">
     <h2 id="resourceSyncTitle">资源同步</h2>
     <div class="resourcesyncbox" data-geist-fieldset>
-      <div class="resourcesyncbody geist-fieldset-content">${fieldsetTitle('resourceBoxTitle','网盘与账本')}
+      <div class="resourcesyncbody geist-fieldset-content">${fieldsetTitle('resourceBoxTitle','网盘与本地数据库')}
       <p>网盘上已删除的条目进入回收站；只清理没有在用的预览与播放缓存。</p></div>
       <div class="resourcesyncfooter geist-fieldset-footer" data-geist-fieldset-footer>
       <button class="resourceaction" type="button" id="resourceScan">${icon('refresh-cw')}<span>扫描差异</span></button></div></div>
@@ -3068,11 +3066,11 @@ async function wireResourceSync(){
     result.innerHTML=`<div class="resourcepanel"><div class="resourcesources">${sources.map(source=>`<article>
       <div class="resourcesourcetitle"><b>${esc(LOC[source.location]||source.location)}</b><span class="${source.online?'online':'offline'}">${source.online?'已挂载':'离线，已跳过'}</span></div>
       <strong>${source.online?source.missing.toLocaleString():'—'}</strong>
-      <small>${source.online?`项已从网盘删除 · 已核对 ${source.checked.toLocaleString()} 项${source.unreadable?` · ${source.unreadable.toLocaleString()} 项暂时无法读取`:''}`:`账本有 ${source.total.toLocaleString()} 项`}</small></article>`).join('')}</div>
+      <small>${source.online?`项已从网盘删除 · 已核对 ${source.checked.toLocaleString()} 项${source.unreadable?` · ${source.unreadable.toLocaleString()} 项暂时无法读取`:''}`:`本地数据库有 ${source.total.toLocaleString()} 项`}</small></article>`).join('')}</div>
       <div class="resourcecache"><div><span>孤立缓存</span><b>${cache.files.toLocaleString()}</b><small>${fmtSize(cache.bytes||0)}</small></div>
       <div><span>待同步</span><b>${Number(payload.missing||0).toLocaleString()} 项</b></div></div>
       <div class="resourceapplyrow">${hasChanges?`<button class="resourceaction resourcedanger" type="button" id="resourceApply">同步并清理</button>`:
-        '<p class="resourcesyncok">账本与已挂载来源一致，没有孤立缓存。</p>'}</div></div>`;
+        '<p class="resourcesyncok">本地数据库与已挂载网盘一致，没有孤立缓存。</p>'}</div></div>`;
     $('#resourceApply')?.addEventListener('click',async event=>{
       const button=event.currentTarget;
       if(!confirm(`把 ${payload.missing||0} 项移入回收站，并清理 ${cache.files||0} 个可重建缓存？`))return;
@@ -3232,6 +3230,7 @@ function renderTaste(d){
       <div class="tasteactions">${selectFieldHtml(TASTE_WINDOWS,d.window||tasteWindow,{label:'分析范围',attr:'data-taste-window'})}
         <button data-taste-refresh>${icon('refresh-cw')}读取 Peach 主机</button>
         <button data-taste-import>${icon('upload')}导入历史</button><input data-taste-file type="file" hidden></div></header>
+    ${tasteHistoryGuideHtml(new URLSearchParams(location.search).get('onboarding')==='1')}
     <div class="tastestate" data-taste-state role="status" aria-live="polite"></div>
     <div class="tastesummaries" data-taste-summary="browser"${tasteEvidence==='browser'?'':' hidden'}>
       ${summary('浏览记录',Number(s.history_visits||0).toLocaleString(),`${s.history_sources||0} 个数据源 · ${tasteDate(s.range_start)}—${tasteDate(s.range_end)}`)}
@@ -3490,7 +3489,7 @@ async function openDataCleanup(push=true){
     </section>`).join('')}
   </div>
   ${linkManagerMarkup()}
-  ${resourceSyncMarkup()}</div>`;
+  ${cloudLocations(sources.sources||[]).length?resourceSyncMarkup():''}</div>`;
   $('#stats').querySelector('[data-cleanup-open="junk"]').onclick=()=>openManage('ads');
   $('#stats').querySelector('[data-cleanup-open="scraping"]').onclick=()=>openScraping();
   $('#stats').querySelector('[data-cleanup-open="duplicates"]').onclick=()=>openDuplicates();
@@ -3561,9 +3560,9 @@ async function openDuplicates(push=true){
   if(push)route('/duplicates');
   const surface=claimSurface('/duplicates');
   showManagementBody({placeholder:managementPlaceholder('/duplicates')});
-  const next=await surfaceApi(surface,'/api/duplicates?limit=120');
+  const [next,sources]=await Promise.all([surfaceApi(surface,'/api/duplicates?limit=120'),surfaceApi(surface,'/api/sources')]);
   if(!surfaceCurrent(surface))return;
-  dupData=next;
+  dupData={...next,cloudLocations:cloudLocations(sources.sources||[])};
   renderDuplicates();
 }
 function renderDuplicates(){
@@ -3574,8 +3573,7 @@ function renderDuplicates(){
     ${groups.length?`<div class="fsechead dupactions"><h3>操作</h3>
       <button data-dup-all="largest">全部保留最大</button>
       <button data-dup-all="longest">全部保留最长</button>
-      <button data-dup-all="115">全部优先 115</button>
-      <button data-dup-all="pikpak">全部优先 PikPak</button></div>`:''}
+      ${cloudPreferenceLocations(groups.flatMap(g=>g.files),d.cloudLocations||[]).map(loc=>`<button data-dup-all="${loc}">全部优先 ${esc(LOC[loc])}</button>`).join('')}</div>`:''}
     ${groups.length?groups.map((g,gi)=>`<section class="dupgroup" data-dup-group="${gi}">
       <div class="duphead"><b class="mono">${esc(g.code)}</b>
         <span class="mono">${g.count} 个 · 可回收 ${fmtSize(g.reclaimable)}</span>
@@ -3583,8 +3581,7 @@ function renderDuplicates(){
         ${g.cross_drive?`<span class="dupflag">跨盘 ${esc(g.drives.join(' '))}</span>`:''}
         <span class="dupbtns"><button data-dup-keep="largest" data-dup-i="${gi}">留最大</button>
           <button data-dup-keep="longest" data-dup-i="${gi}">留最长</button>
-          <button data-dup-keep="115" data-dup-i="${gi}">留 115</button>
-          <button data-dup-keep="pikpak" data-dup-i="${gi}">留 PikPak</button>
+          ${cloudPreferenceLocations(g.files,d.cloudLocations||[]).map(loc=>`<button data-dup-keep="${loc}" data-dup-i="${gi}">留 ${esc(LOC[loc])}</button>`).join('')}
           <button class="danger" data-dup-keep="all" data-dup-i="${gi}">整组回收</button></span></div>
       <div class="duplist">${g.files.map(f=>`<div class="duprow">
         <span class="dupmarks">${f.is_largest?'<i class="big">最大</i>':''}${f.is_longest?'<i class="long">最长</i>':''}</span>
