@@ -6,7 +6,9 @@ import { Configuration } from '../src/islands/configuration';
 it('配置与首次设置共用按硬盘分档的建议，并链接官方说明', () => {
   const host=document.createElement('div');document.body.append(host);
   render(<CloudDriveGuide />,host);
-  expect(host.querySelectorAll('.cloudguide-profiles section')).toHaveLength(3);
+  expect(host.querySelectorAll('.cloudguide-table tbody tr')).toHaveLength(3);
+  expect([...host.querySelectorAll('.cloudguide-table thead th')].map(th=>th.textContent)).toEqual(['缓存所在硬盘','缓存上限','读取长度（默认 / 最小）','同时处理视频']);
+  expect([...host.querySelectorAll('.cloudguide-table tbody th')].every(th=>th.getAttribute('scope')==='row')).toBe(true);
   expect(host.textContent).toContain('256 / 128 KB');
   expect(host.textContent).toContain('上限不要填 0');
   expect(host.querySelector('details')?.open).toBe(false);

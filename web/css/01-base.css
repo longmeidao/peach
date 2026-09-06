@@ -184,7 +184,10 @@ button,a,input,textarea,select,summary{touch-action:manipulation}
   align-items:center;justify-content:center;gap:6px;font:inherit;font-size:var(--fs-md);font-weight:500;
   line-height:1;white-space:nowrap;cursor:pointer;
   transition:background-color .15s ease-in-out,border-color .15s ease-in-out,color .15s ease-in-out}
-.geist-button:hover:not(:disabled){background:var(--surface)}
+/* 次级的悬停抬到 Geist 实测的 gray-200 那一档（浅色 #EBEBEB、深色 #1F1F1F），墨色 8% 压在
+   自己那块面上即是这个值。比它淡的一档在白底上与静止态只差两三个色阶，鼠标压在哪颗按钮
+   上看不出来；用墨色混合而不是某个固定 token，是因为浅色要往下压、深色要往上抬。 */
+.geist-button:hover:not(:disabled){background:color-mix(in srgb,var(--ink) 8%,var(--ground))}
 .geist-button,.geist-button:hover{text-decoration:none}
 .geist-button:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}
 .geist-button:disabled{background:var(--sunk);border-color:var(--line-soft);color:var(--muted);cursor:default}
