@@ -26,6 +26,7 @@ import httpx
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from peach.review_csv import read_rows   # noqa: E402
+from peach.social_links import canonical_url   # noqa: E402
 from peach.scripting import (   # noqa: E402
     BACKUP_REQUIRED,
     USER_AGENT,
@@ -39,17 +40,22 @@ FIELDS = ("entity_id", "kind", "name", "link_kind", "label", "url", "evidence")
 
 
 def normalise_url(url: str) -> str:
-    """补上 scheme 并去掉空白。
+    """补上 scheme、去掉空白，改过名的站点收成现主机。
 
     复核表是人和脚本混写的，`moodyz.com` 和 `https://moodyz.com/` 都会出现。不统一的话
     同一个站会因为写法不同绕过 `UNIQUE(entity_id,url)` 建出两行。
+
+    主机别名要在这里收，不能只靠采集器各自记得。`UNIQUE(entity_id,url)` 和下面那句
+    「已存在，跳过」都只认字面，`twitter.com/kouzaisaki` 和 `x.com/kouzaisaki` 在它们眼里
+    是两条不同的链接——目录型来源抄的是 2023 年改名前的写法，一批就能建出几百条重复。
+    `normalize_link_hosts.py` 正是为清这个而写的；写入端不收，清完下一批又长回来。
     """
     url = url.strip()
     if not url:
         return ""
     if not urlsplit(url).scheme:
         url = "https://" + url
-    return url
+    return canonical_url(url)
 
 
 def resolve_entity(connection: sqlite3.Connection, row: dict) -> tuple[int | None, str]:

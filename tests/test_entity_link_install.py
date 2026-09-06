@@ -96,6 +96,34 @@ class InstallTests(unittest.TestCase):
         planned = self.module.plan(self.connection, [self.row(url="moodyz.com/")])
         self.assertEqual(planned[0]["action"], "skip")
 
+    def test_the_old_host_of_a_renamed_site_does_not_become_a_second_row(self):
+        """目录型来源抄的是 2023 年改名前的写法，写入端要把它收成现主机。
+
+        `UNIQUE(entity_id,url)` 和「已存在，跳过」都只认字面，
+        `twitter.com/<handle>` 与 `x.com/<handle>` 在它们眼里是两条链接。minnano-av
+        一批 710 条里就有 170 条是这个形态，全写进去等于把 `normalize_link_hosts.py`
+        清掉的那 295 条重新长回来，而资料页会并排显示两枚一样的 X 图标。
+        """
+        self.module.install(
+            self.connection,
+            self.module.plan(self.connection, [self.row(url="https://x.com/kouzaisaki")]),
+            "review.csv")
+        planned = self.module.plan(
+            self.connection, [self.row(url="https://twitter.com/kouzaisaki")])
+        self.assertEqual(planned[0]["action"], "skip")
+        self.assertIn("已存在", planned[0]["reason"])
+        self.assertEqual(
+            self.connection.execute("SELECT count(*) FROM entity_link").fetchone()[0], 1)
+
+    def test_a_renamed_host_is_stored_in_its_current_form(self):
+        """收成现主机是写进库里，不只是拿来比对——否则库里仍是旧写法。"""
+        self.module.install(
+            self.connection,
+            self.module.plan(self.connection, [self.row(url="https://twitter.com/kouzaisaki")]),
+            "review.csv")
+        stored = self.connection.execute("SELECT url FROM entity_link").fetchone()[0]
+        self.assertEqual(stored, "https://x.com/kouzaisaki")
+
     def test_an_entity_can_be_matched_by_alias(self):
         planned = self.module.plan(self.connection, [self.row(name="プレステージ")])
         self.assertEqual(planned[0]["entity_id"], 2)
