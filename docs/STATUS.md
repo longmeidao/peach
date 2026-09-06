@@ -10,10 +10,11 @@
 
 - Windows 是当前 ledger writer，入口 `dist\Peach\Peach.exe`；代码、`peach-data`、worktree 和共享传输点同在一个顶层目录，外置盘只提供 `R:\media`。
 - 托盘必须以普通权限启动：提升权限后的令牌看不到 CloudDrive 的 `A:` / `B:`，会把 PikPak 和 115 误报为脱盘。
-- Windows HTTP 为 `0.0.0.0:80`，HTTPS 为当前 LAN IPv4 的 443，mDNS 名见 `[server].mdns_name`；线上版本 `0.11.5`、`ledger_sync=writer`，项目 CA 严格校验的健康与就绪检查通过。
-- 托盘 EXE 与检出同步：2026-09-06 08:22 由 `scripts/deploy_windows_tray.py` 从 `98664f6e` 打出并原地换上；旧托盘备份由部署脚本保留。换二进制走这条入口，且要单独授权。
+- Windows HTTP 为 `0.0.0.0:80`，HTTPS 为当前 LAN IPv4 的 443，mDNS 名见 `[server].mdns_name`；线上版本 `0.12.1`、`ledger_sync=writer`，项目 CA 严格校验的健康与就绪检查通过。
+- 2026-09-06 从 `34341c78` 载入源码运行态，通过 `scripts/restart_windows_tray.py` 正常重启现有托盘并重新取得 HTTP/HTTPS 子服务所有权；本次未替换 EXE。换二进制走 `scripts/deploy_windows_tray.py`，且要单独授权。
 - 本机经正式域名访问时 `/healthz` 返回 `configurable=true`；配置读取、保存与选文件夹共用本机连接判据。托盘负责配置重载，正式 HTTPS 地址与端口保持托盘管理。
 - 缺失依赖下载提示已接入首启和配置页：CloudDrive、当前系统挂载驱动、FFmpeg/ffprobe，以及首次设置缺少 OpenSSL 的提示。Windows 实测安装检测识别到 CloudDrive 与 WinFsp；桌面及 390×844 预览通过，生产浏览器导航取证超时。全量 3278 项通过、17 项跳过，集成补测 1754 项通过、2 项跳过，前端 16 项通过。
+- 首次设置提供可跳过的历史记录导入指南；数据管理首屏与实际卡片共用 Fieldset 排版，网盘同步与重复文件网盘保留操作按来源显隐，界面使用「本地数据库」。影响域 1762 项通过、2 项跳过，前端 67 项通过；桌面深浅色与 390×844 预览通过，正式页面浏览器读取超时。未执行真实资源同步、清理或浏览器历史采集。
 - 口令闸门在 Windows 已生效：不带口令的请求回 401（`/healthz` 除外），设备用 `peach token` 登录一次。
 - macOS 是 reader，代码与 `peach-data` 都在内置盘；`peach.local` 经 8900/8443 和 pf 提供 80/443，GET 正常、写入端点返回 409。
 - 两端各用本机 CA，私钥与凭据不跨机同步；代码走 Git、账本走单写者复制、图片产物走 Syncthing，三条链路互不兜底。本机坐标在 `<数据根>/config.toml`；ADR-0023 第 1～3 阶段已合入并在 Windows 生效。
