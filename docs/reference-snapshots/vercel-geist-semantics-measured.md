@@ -381,10 +381,12 @@ Peach 的两列侧栏导航按上表对齐：`.edge button` 与 `.dnav button` �
 - 全站收成两张面。`--page` 是退到后面那张：`body`、框体里的操作条。`--ground` 是浮在它
   上面那张：顶栏、窄栏、卡片、面板、按钮和输入框，外框 1px `--field-ring`、内部分隔线
   `--line-soft`，不靠投影。暗色一档 Peach 的底带蓝，所以 `--page` 取 `#04060A` 而不是纯黑，
-  方向与 Vercel 一致（面比底亮）。`--surface` 不再当面用，只剩悬停与内嵌那一档。
+  方向与 Vercel 一致（面比底亮）。`--surface` 不再当面用，只剩内嵌与控件禁用那一档。
 - 顶栏与窄栏是有意与 Vercel 分开的一处：Vercel 的页头和页面底同色、不浮起，Peach 有一条
   从上贯到底的窄栏，两条一起留在 `--ground` 才不会在左上角撞出两种白。
-- 按钮次级档填 `--ground` 而不是透明，悬停抬到 `--surface`；禁用落到 `--sunk`。
+- 按钮次级档填 `--ground` 而不是透明，悬停抬到 Geist 的 gray-200 那一档，写作
+  `color-mix(in srgb,var(--ink) 8%,var(--ground))`：浅色落在 `#EBEBEB`、深色往亮处抬，
+  两个主题共用一条规则；禁用落到 `--sunk`。
 - 动作按钮一律 `border:0`，两档只靠填充分：主动作 `--ink` 实底、次级 `--ground` 一块亮面。
   描边留给输入类控件和「点开会出一张面板」的触发器：`.gselectfield`、来源筛选的
   `[data-srcfilter-toggle]`、排序方向的 `.fmanagedir` 保留 1px `--field-ring`，

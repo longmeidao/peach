@@ -117,7 +117,9 @@
 .cleanupfieldset button:where(:not(.gselectfield)){box-sizing:border-box;flex:none;min-height:32px;padding:0 12px;border:0;border-radius:var(--control-radius);
   background:var(--ground);color:var(--ink-2);display:inline-flex;align-items:center;justify-content:center;gap:6px;cursor:pointer;
   transition:color .15s ease-in-out,background-color .15s ease-in-out}
-.cleanupfieldset button:where(:not(.gselectfield)):hover{background:var(--surface);color:var(--ink)}
+.cleanupfieldset button:where(:not(.gselectfield)):hover{background:color-mix(in srgb,var(--ink) 8%,var(--ground));color:var(--ink)}
+.cleanupfieldset button.danger{color:var(--drop)}
+.cleanupfieldset button.danger:hover{background:var(--drop);color:#fff}
 .cleanupfieldset button:where(:not(.gselectfield)) svg{width:16px;height:16px;stroke:currentColor;fill:none}
 .cleanupfieldset .cleanupstate{margin-top:8px;font-size:var(--fs-sm);color:var(--ink-2)}
 .cleanupfieldset .cleanupstate:empty{display:none}

@@ -458,13 +458,18 @@ class WebUiSourceTests(unittest.TestCase):
         透明会让按钮和条子连成一片。Geist 给次级另挂的那圈 `box-shadow:0 0 0 1px` 这里
         不画：描边档与实心档并排看着一大一小，差的是「一个是块面、一个是个框」，
         而次级只出现在操作条上，比条子亮一档本身就是边界。
+
+        悬停按 Geist Button 源规则抬一档：secondary 走 gray-200（浅色 `#EBEBEB`、深色
+        `#1F1F1F`），即自己那块面上压 8% 墨。每一颗次级按钮都用同一个值，白底上才看得出
+        鼠标停在哪一颗。
         """
+        css = stylesheet_source()
+        secondary_hover = "background:color-mix(in srgb,var(--ink) 8%,var(--ground))"
         self.assertCode(".geist-button{box-sizing:border-box;height:32px;padding:0 14px;"
                         "border:0;border-radius:var(--control-radius);"
                         "background:var(--ground);color:var(--ink);display:inline-flex;")
-        self.assertPageContains(".geist-button:hover:not(:disabled){background:var(--surface)}")
+        self.assertPageContains(f".geist-button:hover:not(:disabled){{{secondary_hover}}}")
         self.assertPageContains(".geist-button.primary{background:var(--ink);color:var(--ground)}")
-        css = stylesheet_source()
         # 找的是这三条基样式本身，不是别处以同名结尾的派生规则（`.fsecfoot .fbtn{`
         # 也以 `.fbtn{` 收尾），所以选择器前面必须是上一条规则的边界。
         for name in (".cleanupfieldset button:where(:not(.gselectfield)){",
@@ -475,6 +480,13 @@ class WebUiSourceTests(unittest.TestCase):
             rule = css[start:css.index("}", start)]
             self.assertIn("background:var(--ground)", rule, f"{name} 是次级档，自己是一块亮面")
             self.assertIn("border:0", rule, f"{name} 跟次级档一样不描边")
+        for name in (".cleanupfieldset button:where(:not(.gselectfield)):hover{",
+                     ".fbtn:hover:not(:disabled){",
+                     ".resourceaction:hover:not(:disabled){",
+                     ".dupactions.fsechead button:hover{"):
+            start = css.index(name)
+            rule = css[start:css.index("}", start)]
+            self.assertIn(secondary_hover, rule, f"{name} 的悬停与次级档同抬一档")
 
     def test_the_scrollbar_thumb_floats_over_the_content_and_takes_no_width(self):
         """滑块自绘、浮在内容上，一列宽度都不占；颜色取主题变量。
@@ -6322,7 +6334,8 @@ class WebUiSourceTests(unittest.TestCase):
                                 "box-sizing:border-box;flex:none;min-height:32px;")
         self.assertPageContains("background:var(--ground);color:var(--ink-2);display:inline-flex;")
         self.assertPageContains(".cleanupfieldset button:where(:not(.gselectfield)):hover{"
-                                "background:var(--surface);color:var(--ink)}")
+                                "background:color-mix(in srgb,var(--ink) 8%,var(--ground));"
+                                "color:var(--ink)}")
         self.assertPageLacks(".resourcesyncfooter button{width:100%;justify-content:center}")
         self.assertPageLacks(".resourcesync .resourcesyncfooter{align-items:stretch;flex-direction:column}")
         self.assertPageLacks(".resourcesync .resourceapplyrow{align-items:stretch;flex-direction:column}")

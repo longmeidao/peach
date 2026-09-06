@@ -62,8 +62,11 @@
 - 使用空间的四个位置属于同形可比较数据，使用原生 `table`（`.insightdatatable`），列为位置、
   已用、可用与使用率；数字列 tabular numerals。容量拿不到时单元格写 `未取得`／`离线` 而不是
   `—`：Peach 的取证规则要求区分「不适用」与「取证失败」，这一处主动偏离 Geist。
-- 三张表（`.insightdatatable`、`.insighttable`、`.linktable`）都采用分隔线变体，不叠加隔栏异色：
-  Geist 的这两个变体互斥，叠起来等于同时用两套分行手段。
+- 四张表（`.insightdatatable`、`.insighttable`、`.linktable`、`.cloudguide-table`）都采用分隔线变体，
+  不叠加隔栏异色：Geist 的这两个变体互斥，叠起来等于同时用两套分行手段。
+- 配置页的 CloudDrive 起步配置是三行同形、四列跨行比较的数据，用原生 `table`（`.cloudguide-table`），
+  首列是硬盘档位、其余三列右对齐并走 tabular numerals。表格保留 520px 最小宽度，窄屏由
+  `.cloudguide-tablewrap` 自己横向滚动，页面本身不出现横向滚动条。
 - 悬停填充只给可点的行（`.insighttablerow:is(button)`、`.insightrankrow`）。不可点的行不加悬停，
   那等于给一个不存在的动作画反馈。
 - 内容标签是固定 Top 30 排行并可直接筛选，不提供虚假的列排序；桌面以两栏有序列表提高扫描
