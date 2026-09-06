@@ -64,6 +64,9 @@ def wants_cli(argv: list[str]) -> bool:
 
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv if argv is None else argv)
+    if len(argv) == 4 and argv[1] == "--apply-standalone-update":
+        from peach.standalone_update import apply
+        return apply(Path(argv[2]), int(argv[3]))
     if wants_cli(argv):
         _prepare_console()
         return cli_main(argv[1:])

@@ -22,6 +22,7 @@ from filelock import FileLock, Timeout
 from . import access, distribution, folder_picker, onboarding, settings_file, media_configuration
 from .routes_auth import require_auth
 from .routes_pages import runtime_fact_entries
+from . import release_updates, standalone_update
 
 router = APIRouter()
 _SAVE_LOCK = threading.Lock()
@@ -82,6 +83,8 @@ def snapshot(config) -> dict[str, Any]:
     editable = managed_configuration()
     media = config.mounts.get("local") or config.locations.get("local", ())
     return {
+        "updates": release_updates.snapshot(),
+        "update_job": standalone_update.public(),
         "access": access.public(access.load(config.directory("secrets") / "access.json")),
         "editable": editable,
         "notice": "" if editable else FILE_MANAGED_NOTICE,
@@ -103,6 +106,41 @@ def read_configuration(request: Request, _args=Depends(require_auth)):
     if not config.present:
         raise HTTPException(409, "请先完成首次设置")
     return snapshot(config)
+
+
+@router.get("/api/configuration/updates")
+def check_updates(request: Request, _args=Depends(require_auth)):
+    local_only(request)
+    return release_updates.check()
+
+
+@router.get("/api/configuration/update-status")
+def update_status(request: Request, _args=Depends(require_auth)):
+    local_only(request)
+    return standalone_update.public()
+
+
+@router.post("/api/configuration/update")
+def download_update(request: Request, _args=Depends(require_auth)):
+    local_only(request)
+    try:
+        return standalone_update.start()
+    except (ValueError, Timeout) as exc:
+        raise HTTPException(409, str(exc)) from exc
+
+
+@router.post("/api/configuration/update-restart")
+def restart_update(request: Request, _args=Depends(require_auth)):
+    local_only(request)
+    contract = request.app.state.web_contract
+    from .jobs import BackgroundJob
+    if any(isinstance(job, BackgroundJob) and (job.snapshot() or {}).get("status") == "running"
+           for job in vars(contract).values()):
+        raise HTTPException(409, "后台任务正在运行，请完成后重启安装。")
+    try:
+        return standalone_update.request_restart()
+    except (ValueError, Timeout) as exc:
+        raise HTTPException(409, str(exc)) from exc
 
 
 def _validate(body: dict[str, Any], config) -> tuple[dict[str, Any], dict[str, Any]]:

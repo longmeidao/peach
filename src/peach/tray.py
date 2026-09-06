@@ -1049,6 +1049,10 @@ class PeachTray:
 
     def _monitor(self) -> None:
         while not self._stop_event.wait(2 if standalone() else 10):
+            from .standalone_update import poll
+            poll(self)
+            if self._stop_event.is_set():
+                return
             # 先看首次设置有没有完成：切换会换掉 `manager.specs`，采样必须落在换完之后。
             self.gate.poll()
             for spec in self.manager.specs:

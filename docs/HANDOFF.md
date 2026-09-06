@@ -5,6 +5,9 @@
 ## 界面、媒体与复核的既定判据
 
 - 统一处理、NFO 兼容见 `docs/REUSE.md`；[Banner](https://vercel.com/geist/banner) 2026-09-06 实测与 hash 见 `vercel-geist-library-banner.md`。
+- 凭据输入框的焦点圈在控件外延伸 3px；`.fcollapse` 裁切高度动画，内层左右各留 4px。输入框与网格项同时允许收缩，否则手机上输入框的固有宽度会撑出卡片，再被外层裁切。验收需检查全部裁切祖先；桌面和 390px 视口都要覆盖。
+- 独立包更新的暂存、重启确认和回滚入口是 `standalone_update.py`。用户数据目录必须在程序目录外；助手从自己的副本运行，避免自身 DLL 占用被替换目录。Windows 进程探测复用 `PidFileLock._running`。
+
 
 页面密度、控件、提示与响应式的实现门槛见 `.claude/skills/peach-web-ui/SKILL.md`，这里只留代码看不出来的判据。
 

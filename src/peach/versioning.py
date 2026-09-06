@@ -176,7 +176,10 @@ class VersionManager:
         before = self.inspect()
         from .distribution import standalone
         if standalone():
-            return UpdateResult("manual", "测试包请从 GitHub Releases 下载新版并完整解压替换程序目录；数据保存在用户目录。", before)
+            from .release_updates import check
+            release = check()
+            latest = f"最新测试版：{release['latest_version']}。" if release['latest_version'] else ""
+            return UpdateResult(release["state"], f"当前版本：{before.package_version}。{latest}{release['message']}", before)
         if not before.remote_configured:
             return UpdateResult(
                 "unconfigured",

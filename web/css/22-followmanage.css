@@ -265,21 +265,21 @@
 .fcred.none{color:var(--muted);gap:8px}
 /* 折叠时 .frow 让它是 flex、展开时又变 block，两种几何下 summary 的可用宽度差一个 gap，
    状态列就差 12px 对不齐。统一成 block：summary 自己是 flex 容器，宽度始终是整行。 */
-details.fcred{display:block}
+details.fcred{display:block;min-width:0}
 /* 展开体的内边距归 .fcollapsebody：留在 .fcred[open] 上的话，收起那一帧高度已经
    归零、内边距还在，行尾会跳一下。首段自己的上边距换成容器内边距，免得它跟容器
    外边距合并，量出来的 scrollHeight 比实际矮一截。 */
-.fcred .fcollapsebody{padding:8px 0 12px}
+.fcred .fcollapsebody{padding:8px 4px 12px}
 .fcred .fcollapsebody>p:first-child{margin-top:0}
 .fcred .ficonslot{flex:none;display:block;width:14px;height:14px}
 .fcred .ficon{margin-right:0}
 .fcred p{margin:8px 0 0;font-size:var(--fs-sm);line-height:1.7;color:var(--muted);
   overflow-wrap:anywhere}
 .fcred a{color:var(--tungsten)}
-.fcredform{display:grid;gap:8px;margin-top:10px}
-.fcredfield{display:grid;gap:4px}
+.fcredform{display:grid;gap:8px;margin-top:10px;min-width:0}
+.fcredfield{display:grid;gap:4px;min-width:0}
 .fcredfield span{font-size:var(--fs-xs);color:var(--muted)}
-.fcredfield input{height:32px;box-sizing:border-box;border:1px solid var(--border-15);
+.fcredfield input{height:32px;width:100%;min-width:0;box-sizing:border-box;border:1px solid var(--border-15);
   border-radius:var(--control-radius);background:var(--ground);color:var(--ink);padding:0 12px;font-size:var(--fs-md);
   font-family:inherit;transition:border-color .12s ease}
 .fcredfield input:focus-visible{outline:2px solid var(--tungsten);outline-offset:1px;

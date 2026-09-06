@@ -69,7 +69,7 @@ SCOPES: dict[str, tuple[str, ...]] = {
                 "test_agent_worktree.py", "test_test_evidence.py", "test_dependency_policy.py",
                 "test_restart_windows_tray.py", "test_deploy_windows_tray.py",
                 "test_buildinfo.py", "test_versioning.py",
-                "test_windows_update.py", "test_certs.py", "test_config.py",
+                "test_windows_update.py", "test_release_updates.py", "test_standalone_update.py", "test_certs.py", "test_config.py",
                 "test_fsutil.py",
                 "test_job_status.py", "test_jobs.py", "test_reference_updates.py",
                 "test_repo_hygiene.py",

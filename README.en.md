@@ -27,6 +27,8 @@ Peach is a single-user, local-first media system. Search, play and organize medi
 
 ## Features
 
+Management → Configuration → Check for updates shows the current version and the latest GitHub prerelease. Windows standalone packages download and prepare updates in the app with live progress. Choose Restart now or Later when ready; the app installs the update and restores the previous version if installation fails.
+
 | Capability | What it does |
 | --- | --- |
 | Browse and search | Find videos and photo collections by work, performer, studio, creator, series or tag |

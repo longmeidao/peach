@@ -14,6 +14,7 @@ import { fieldsetTitle, noteHtml, setActionBusy, selectFieldHtml, wireSelectFiel
 import { ApiError, apiGet, apiSend, errorMessage } from '../api';
 import { AccessSettings, type AccessState } from './access-settings';
 import { LibraryProcessing, type LibraryProcessingData } from './library-processing';
+import { ReleaseUpdates, type ReleaseState, type UpdateJob } from './release-updates';
 
 export interface ConfigurationProps {
   /** 保存成功后的过去时回执（遗留层的 Toast）。 */
@@ -29,6 +30,8 @@ export interface ConfigurationFact {
 
 export interface ConfigurationData {
   processing?: LibraryProcessingData;
+  updates?: ReleaseState;
+  update_job?: UpdateJob;
   access?: AccessState;
   editable: boolean;
   /** 不能编辑时给用户看的原因，可编辑时为空。 */
@@ -348,6 +351,7 @@ export function Configuration({ receipt, data, error }: ConfigurationProps & Sta
       <section id="libraryProcessing" class="configfieldset" data-geist-fieldset aria-labelledby="cleanupScrapingTitle">
         <LibraryProcessing data={data.processing || { status: 'idle' }} error="" toast={receipt} monitor />
       </section>
+      {data.updates ? <ReleaseUpdates initial={data.updates} initialJob={data.update_job} /> : null}
       <Facts facts={data.facts} />
       <MountStatus data={data} />
     </div>

@@ -27,6 +27,12 @@ def load_entry():
 
 
 class RestartWindowsTrayTests(unittest.TestCase):
+    def test_process_probe_reuses_read_only_pid_check(self):
+        with mock.patch("peach.jobs.PidFileLock._running", return_value=True) as running, mock.patch("os.kill") as kill:
+            self.assertTrue(windows_restart.process_alive(123))
+            running.assert_called_once_with(123)
+            kill.assert_not_called()
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         # restart_tray 第一件事就是 target.resolve()，并由它推出 .venv 里的服务入口。
