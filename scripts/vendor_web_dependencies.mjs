@@ -67,7 +67,7 @@ const lucideIcons = new Map([
   ["refresh-cw", "refresh-cw"], ["user-round", "user-round"], ["tags", "tags"],
   ["list-filter", "list-filter"], ["chart", "chart-no-axes-column"],
   ["settings", "settings"], ["gauge", "gauge"],
-  ["history", "history"], ["sparkles", "sparkles"],
+  ["history", "history"], ["sparkles", "sparkles"], ["star", "star"],
   ["x", "x"], ["folder-open", "folder-open"], ["info", "info"],
   ["hard-drive", "hard-drive"], ["globe", "globe"], ["rss", "rss"],
   ["thumbs-up", "thumbs-up"], ["thumbs-down", "thumbs-down"], ["eye", "eye"],
