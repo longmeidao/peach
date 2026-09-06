@@ -33,7 +33,7 @@ Management → Configuration → Check for updates shows the current version and
 
 | Capability | What it does |
 | --- | --- |
-| Browse and search | Find videos and photo collections by work, performer, studio, creator, series or tag |
+| Browse and search | Find videos and photo collections by work, performer, studio, creator, series or tag; works with nobody credited form an Unassigned group you can open from a card or the detail panel |
 | Play and save | Play local and mounted media; keep watch-later items, viewing state, Mixes and playlists |
 | Follow updates | Register official or archive sources, explicitly check updates, view and save content inside Peach |
 | Review and organize | Review external candidates; manage duplicates, junk, unavailable files and trash |

@@ -103,6 +103,17 @@ AGENCY_ASSET_CLAUSE = (
     "WHERE ae.asset_id=a.id AND agency.kind='agency' AND agency.canonical_name=?)"
 )
 
+#: 「未归属」是一个真实的集合，不是详情页上的一句说明文字：22509 部视频里 4566 部
+#: 没有任何署名人。判据和卡片署名同源（`cardIdentity` 取 creator 或 performer），
+#: 所以卡片上写着「未归属」的每一条，点进这个集合都必须在里面。厂牌和系列不算归属：
+#: 「ラグジュTV 出品」不回答「这是谁」，把有厂牌的排除掉会让集合小掉 631 条，而那批
+#: 恰恰是最该被找出来补人的。
+UNOWNED_ASSET_CLAUSE = (
+    "NOT EXISTS(SELECT 1 FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
+    "WHERE ae.asset_id=a.id AND e.kind IN ('performer','creator')) "
+    "AND COALESCE(trim(a.creator),'')=''"
+)
+
 #: 搜索里的同一条关系，但按名字模糊比，并且认别名——事务所改名比女优改艺名还常见，
 #: 「GRANZPRO」和「LiStarPRO」是同一批人。
 AGENCY_SEARCH_CLAUSE = (
@@ -151,6 +162,9 @@ def catalog_filter(contract: WebContract, args):
     # 事务所隔一层：作品是它的成员拍的，`asset_entity` 里没有事务所的行。
     if args.get("agency"):
         where.append(AGENCY_ASSET_CLAUSE); par.append(args["agency"])
+    # 没有署名人的那批也是一类，和「某某的作品」并列，不是一句写在详情页上的说明。
+    if args.get("owner") == "none":
+        where.append(UNOWNED_ASSET_CLAUSE)
     if args.get("tag"):
         tags = [x for x in args["tag"].split(",") if x]
         tag_clause = (
