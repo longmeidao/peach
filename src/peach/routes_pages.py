@@ -522,11 +522,11 @@ def setup_page(
                   'name="access_confirm" type="password" maxlength="256" autocomplete="new-password"></div>')
     filled = [path for path in media_dirs if path]
     if not filled:
-        scan_text = "完成设置后扫描媒体文件夹"
+        scan_text = "完成设置后扫描并补全资料"
     elif len(filled) == 1:
-        scan_text = f"完成设置后扫描 <code>{escape(filled[0])}</code>"
+        scan_text = f"完成设置后扫描并补全资料：<code>{escape(filled[0])}</code>"
     else:
-        scan_text = f"完成设置后扫描这 {len(filled)} 个文件夹"
+        scan_text = f"完成设置后扫描这 {len(filled)} 个文件夹并补全资料"
     body = (
         '<header><img class="mark" src="/peach-logo.png" alt="" width="40" height="40">'
         "<h1>欢迎使用 Peach</h1>"
@@ -534,7 +534,7 @@ def setup_page(
         '<form method="post" action="/setup">'
         + "".join(fields)
         + _check_html("scan_now", scan_text, checked=scan_now)
-        + '<p class="help">扫描只读取文件名、大小和修改时间，不改动任何媒体文件。</p>'
+        + '<p class="help">读取已有 NFO 和封面，采集缺失资料。进度可在设置中查看，资料候选在复核后应用。</p>'
         + '<section class="history-guide-choice"><h2>浏览器历史记录<span class="optional">可选</span></h2>'
         + _check_html("history_guide", "接下来导入浏览器历史记录", checked=values.get("history_guide") == "y")
         + '<p class="help">用于生成口味分析。完成设置后选择读取这台电脑，或导入其他设备的记录；也可稍后从「口味」进入。</p></section>'

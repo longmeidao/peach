@@ -476,7 +476,7 @@ class SetupPageTests(_Case):
         self.assertIn("<span>.local</span>", body)
         # 勾选框用站内共用的自绘结构，路径在等宽框里。
         self.assertIn('<span class="pcheck"><input type="checkbox" name="scan_now" value="y" checked>', body)
-        self.assertIn("完成设置后扫描 <code>", body)
+        self.assertIn("完成设置后扫描并补全资料：<code>", body)
 
     @unittest.skipIf(NATIVE_WINDOWS, "盘符本身就是挂载点，Windows 上没有这句话")
     def test_the_mounts_explanation_sits_under_the_media_field_on_posix(self):

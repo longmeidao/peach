@@ -4,7 +4,7 @@
 
 ## 界面、媒体与复核的既定判据
 
-- 后台任务、断线恢复与 NFO 边车兼容范围见 `docs/REUSE.md`。
+- 统一处理、NFO 兼容见 `docs/REUSE.md`；[Banner](https://vercel.com/geist/banner) 2026-09-06 实测与 hash 见 `vercel-geist-library-banner.md`。
 
 页面密度、控件、提示与响应式的实现门槛见 `.claude/skills/peach-web-ui/SKILL.md`，这里只留代码看不出来的判据。
 

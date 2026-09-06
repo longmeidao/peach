@@ -5,6 +5,7 @@ import { javDisplayName, javTitleHtml } from './js/jav-title.js';
 import { matchRoute, routeLabel } from './js/routes.js';
 import { initMiddleTruncate } from './js/middle-truncate.js';
 import { tagLabel } from './js/tags.js';
+import { mountIsland, unmountIsland } from './dist/peach-ui.js';
 import { catalogSuggestions, catalogEmptyHtml, emptyCatalogLayout, syncSidebarSurface, sidebarTagCounts, sidebarHasCatalogContent, cleanupSkeletonHtml, cloudLocations, cloudPreferenceLocations, tasteHistoryGuideHtml, wireTasteHistoryGuide, TASTE_GUIDE_KEY } from './dist/peach-ui.js';
 import { javImageKind, normalizeJavImage, normalizeJavLayout, normalizeJavPreferences, syncJavImages, nativeImageFit, matchesFaceSource, entitySkeletonHtml } from './dist/peach-ui.js';
 import {
@@ -328,6 +329,7 @@ let surfaceRequests=null;
 const surfaceToken=path=>({epoch:surfaceEpoch,path,signal:surfaceRequests?.signal});
 const surfaceCurrent=token=>token.epoch===surfaceEpoch&&surfacePath()===token.path;
 const claimSurface=path=>{
+  unmountIsland($('#libraryProcessingNotice'));
   surfaceRequests?.abort();
   surfaceRequests=new AbortController();
   surfaceEpoch++;return surfaceToken(path)};
@@ -3865,7 +3867,10 @@ async function openConfiguration(push=true){
   const ui=await import('/dist/peach-ui.js');
   const props={receipt:message=>actionReceipt(message)};
   await ui.mountIsland('configuration',$('#stats'),props,{isCurrent:()=>surfaceCurrent(surface)});
-  if(surfaceCurrent(surface))window.scrollTo({top:0,behavior:'smooth'});
+  if(surfaceCurrent(surface)){
+    if(location.hash==='#libraryProcessing')$('#libraryProcessing').scrollIntoView({block:'start'});
+    else window.scrollTo({top:0,behavior:'smooth'});
+  }
 }
 
 async function openScraping(push=true){
@@ -6993,6 +6998,7 @@ $('#scrim').onclick=()=>openDrawer(false);
 async function load(reset){
   const requestSeq=reset?++loadRequestSeq:loadRequestSeq;
   const surface=reset?claimSurface(surfacePath()):surfaceToken(surfacePath());
+  if(reset&&isCatalogPath(location.pathname))void mountIsland('library-processing',$('#libraryProcessingNotice'),{toast,mode:'notice'},{isCurrent:()=>surfaceCurrent(surface)});
   if(!reset&&listLoading)return;
   if(!reset)listLoading=true;
   try{
