@@ -619,14 +619,59 @@ def measure_faces(candidates: list[dict], probe) -> None:
         candidate["face_width"] = face_px_width(record)
 
 
-def rank_key(row: dict) -> tuple[int, int, int, int]:
-    """挑图的唯一判据：脸的像素宽先说话，画布只是它没得比时的退路。
+#: 挑图的第一层判据：这张图是拍来做人像的，还是拍来卖片的。脸有多少像素是第二层。
+#:
+#: 作品封面是这里唯一被单独压一档的来源。它不是拍来做人像的：JAV 封面普遍是双联版式，
+#: 左半幅整块留给标题和宣传文字，右半幅那张脸还常被角标和腰封压住。把它放大成一个
+#: 64–160 px 的圆头像，圆框里出现的往往是半行日文标题，而不是这个人。像素再多也换不来
+#: 一张能认人的脸——这一档差的是构图，不是清晰度，所以必须在比脸宽之前就分开。
+#: 缩略图在它下面：那是同一张图被裁小的一份，除了没有别的可用之外没有任何理由选它。
+PORTRAIT_TIER = 2
+COVER_TIER = 1
+THUMBNAIL_TIER = 0
+SOURCE_TIERS = {
+    # 候选行用的是 source_kind
+    "official_profile": PORTRAIT_TIER,        # 本人社媒头像，脸是自己挑的
+    "official_directory": PORTRAIT_TIER,      # 事务所与名录的宣材人像
+    "official_mirror": PORTRAIT_TIER,
+    "external_media_library": PORTRAIT_TIER,  # 媒体库整版人像
+    "single_performer_cover": COVER_TIER,
+    "thumbnail": THUMBNAIL_TIER,
+    # 盘上那张只留下 provenance 里的 provider，两套词汇在这里并成一张表
+    "social-web": PORTRAIT_TIER,
+    "jae": PORTRAIT_TIER,
+    "babepedia": PORTRAIT_TIER,
+    "verified-photo-page": PORTRAIT_TIER,
+    "cover-fallback": COVER_TIER,
+}
+
+
+def source_tier(row: dict) -> int:
+    """认不出来源就当人像档。
+
+    这个默认方向是有意的：认不出来的多半是别的管线装的整版人像（gfriends 那 434 张、
+    Stash 那 14 张的 provenance 里根本没有 provider 字段），把它们当封面会让本脚本那些
+    400×400 的社媒头像一路把它们顶掉——正是 2026-09-06 那趟 `--force` 的教训。
+    """
+    for key in (row.get("source_kind"), row.get("provider")):
+        if key in SOURCE_TIERS:
+            return SOURCE_TIERS[key]
+    return PORTRAIT_TIER
+
+
+def rank_key(row: dict) -> tuple[int, int, int, int, int]:
+    """先看这张图是不是拍来做人像的，再看脸的像素宽，画布只是它们都没得比时的退路。
+
+    来源档在最前面，所以一张 400×400 社媒头像胜过 800×538 的作品封面，哪怕封面上
+    那张脸更大：封面上和脸抢地方的是标题文字，那不是清晰度问题。同一档之内才轮到
+    脸宽说话。
 
     检不出脸的候选脸宽是 0，自然排到有脸的后面；全都检不出（侧脸、低头、模型缺席）
     时整批都是 0，排序原样落回画布口径：先比短边再比长边——竖构图人像与方图头像
     用同一把尺会偏袒长边。
     """
-    return (row.get("face_width") or 0,
+    return (source_tier(row),
+            row.get("face_width") or 0,
             min(row["width"], row["height"]),
             max(row["width"], row["height"]),
             row["width"] * row["height"])
@@ -659,6 +704,19 @@ def select_winner(candidates: list[dict]) -> tuple[dict | None, list[dict]]:
     return ranked[-1], ranked[:-1]
 
 
+def incumbent_provider(destination: Path) -> str:
+    """盘上那张是谁装的。只有 provenance 记得住这件事，图本身不带来源。
+
+    没有 provenance 的按认不出处理，`source_tier` 会把它当人像档——434 张 gfriends
+    和 14 张 Stash 头像的 provenance 里就没有 provider 这个字段。
+    """
+    try:
+        record = json.loads(Path(f"{destination}.provenance.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return ""
+    return str(record.get("provider") or "")
+
+
 def incumbent_row(destination: Path, probe) -> dict | None:
     """盘上那张的选图口径，用来和赢家比。没有图、读不出都返回 None。
 
@@ -676,7 +734,8 @@ def incumbent_row(destination: Path, probe) -> dict | None:
     if not (width > 0 and height > 0):
         return None
     return {"width": width, "height": height,
-            "face_width": face_px_width(record), "face_record": record}
+            "face_width": face_px_width(record), "face_record": record,
+            "provider": incumbent_provider(destination)}
 
 
 def outranks_incumbent(winner: dict, incumbent: dict | None) -> bool:

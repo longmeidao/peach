@@ -222,8 +222,9 @@ class SelectionTests(unittest.TestCase):
         self.module = load_module()
 
     @staticmethod
-    def candidate(width, height, sha, evidence="图", face_width=None):
-        row = {"provider": "social-web", "source_kind": "official_profile",
+    def candidate(width, height, sha, evidence="图", face_width=None,
+                  source_kind="official_profile", provider="social-web"):
+        row = {"provider": provider, "source_kind": source_kind,
                "source_url": "https://example.invalid/a.jpg", "external_id": "x",
                "width": width, "height": height, "mime_type": "image/jpeg",
                "sha256": sha, "object_path": Path("/tmp/x"), "matched": "釈アリス",
@@ -231,6 +232,50 @@ class SelectionTests(unittest.TestCase):
         if face_width is not None:
             row["face_width"] = face_width
         return row
+
+    def test_a_cover_loses_to_any_portrait_however_big_its_face_is(self):
+        """作品封面差的是构图，不是清晰度，所以在比脸宽之前就先输一档。
+
+        JAV 封面普遍是双联版式：左半幅整块留给标题和宣传文字，右半幅那张脸还常被
+        角标和腰封压住。放进 64–160 px 的圆头像里，圆框中央经常是半行日文标题而不是
+        这个人。像素再多也换不来一张能认人的脸。
+        """
+        cover = self.candidate(800, 538, hashlib.sha256(b"cover").hexdigest(),
+                               face_width=240, source_kind="single_performer_cover",
+                               provider="cover-fallback")
+        portrait = self.candidate(400, 400, hashlib.sha256(b"x").hexdigest(),
+                                  face_width=120)
+        winner, runners_up = self.module.select_winner([cover, portrait])
+        self.assertEqual(winner["width"], 400)
+        self.assertEqual([row["width"] for row in runners_up], [800])
+
+    def test_a_cover_still_beats_a_thumbnail(self):
+        """封面只压一档：它上面是人像，下面是缩略图——同一张图被裁小的那一份，
+        除了没有别的可用之外没有任何选它的理由。"""
+        cover = self.candidate(800, 538, hashlib.sha256(b"c").hexdigest(),
+                               face_width=40, source_kind="single_performer_cover")
+        thumb = self.candidate(1200, 1200, hashlib.sha256(b"t").hexdigest(),
+                               face_width=300, source_kind="thumbnail")
+        winner, _ = self.module.select_winner([cover, thumb])
+        self.assertEqual(winner["width"], 800)
+
+    def test_covers_still_rank_against_each_other_by_face_width(self):
+        """同一档之内，判据原样是脸的像素宽。"""
+        small = self.candidate(1600, 1076, hashlib.sha256(b"a").hexdigest(),
+                               face_width=60, source_kind="single_performer_cover")
+        big = self.candidate(800, 538, hashlib.sha256(b"b").hexdigest(),
+                             face_width=210, source_kind="single_performer_cover")
+        winner, _ = self.module.select_winner([small, big])
+        self.assertEqual(winner["width"], 800)
+
+    def test_an_unknown_source_counts_as_a_portrait(self):
+        """认不出来源就当人像档：434 张 gfriends 和 14 张 Stash 头像的 provenance
+        里根本没有 provider 字段，把它们当封面会让 400×400 的社媒头像一路顶掉。"""
+        self.assertEqual(self.module.source_tier({}), self.module.PORTRAIT_TIER)
+        self.assertEqual(self.module.source_tier({"provider": "gfriends"}),
+                         self.module.PORTRAIT_TIER)
+        self.assertEqual(self.module.source_tier({"provider": "cover-fallback"}),
+                         self.module.COVER_TIER)
 
     def test_the_bigger_canvas_loses_to_the_bigger_face(self):
         """`performer-8711` 的真实两张：640×960 的全身照画布更大，脸只有 67 px；
@@ -341,6 +386,38 @@ class InstallGateTests(unittest.TestCase):
             self.assertIsNone(self.module.incumbent_row(missing, lambda p: None))
         self.assertTrue(self.module.outranks_incumbent(
             {"width": 400, "height": 400, "face_width": 10}, None))
+
+    def test_a_portrait_replaces_an_installed_cover_even_with_a_smaller_face(self):
+        """盘上那张的来源从 provenance 读回来，所以闸门也认得出它是张封面。
+
+        闸门比的仍是同一把尺 `rank_key`，只是尺的第一格现在是来源档：装着的封面
+        脸再大也在下一档，任何人像都能顶掉它。
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp).resolve()
+            destination = directory / "performer-1.img"
+            self.install(directory, "performer-1.img", b"cover",
+                         self.record(800, 538, 240))
+            Path(f"{destination}.provenance.json").write_text(
+                json.dumps({"provider": "cover-fallback"}), encoding="utf-8")
+            incumbent = self.module.incumbent_row(destination, lambda p: None)
+        self.assertEqual(incumbent["provider"], "cover-fallback")
+        portrait = {"width": 400, "height": 400, "face_width": 120,
+                    "source_kind": "official_profile"}
+        self.assertTrue(self.module.outranks_incumbent(portrait, incumbent))
+
+    def test_an_installed_portrait_without_provenance_is_not_treated_as_a_cover(self):
+        """没有 provenance 的按认不出处理，仍是人像档，脸更小的候选顶不掉它。"""
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp).resolve()
+            destination = directory / "performer-1.img"
+            self.install(directory, "performer-1.img", b"portrait",
+                         self.record(1000, 1500, 400))
+            incumbent = self.module.incumbent_row(destination, lambda p: None)
+        self.assertEqual(incumbent["provider"], "")
+        self.assertFalse(self.module.outranks_incumbent(
+            {"width": 400, "height": 400, "face_width": 120,
+             "source_kind": "official_profile"}, incumbent))
 
     def test_a_smaller_face_never_overwrites_the_installed_one(self):
         """2026-09-06 实测：一趟 --force 换掉 350 张，282 张脸更小。本脚本的候选池
