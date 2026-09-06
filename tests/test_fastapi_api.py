@@ -852,7 +852,8 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(legacy.status_code, 303)
         self.assertEqual(legacy.headers["location"], "/")
         cookie = legacy.headers["set-cookie"]
-        self.assertIn("tok=secret", cookie)
+        self.assertIn("peach_session=", cookie)
+        self.assertNotIn("tok=secret", cookie)
         self.assertIn("HttpOnly", cookie)
         response = await self.client.get("/")
         self.assertEqual(response.status_code, 200)

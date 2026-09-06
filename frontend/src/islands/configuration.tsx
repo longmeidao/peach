@@ -12,6 +12,7 @@ import type { JSX } from 'preact';
 
 import { fieldsetTitle, noteHtml, setActionBusy, selectFieldHtml, wireSelectField, MEDIA_SOURCE_ICONS, selectOptionIconHtml } from '@peach/legacy/ui';
 import { ApiError, apiGet, apiSend, errorMessage } from '../api';
+import { AccessSettings, type AccessState } from './access-settings';
 
 export interface ConfigurationProps {
   /** 保存成功后的过去时回执（遗留层的 Toast）。 */
@@ -26,6 +27,7 @@ export interface ConfigurationFact {
 }
 
 export interface ConfigurationData {
+  access?: AccessState;
   editable: boolean;
   /** 不能编辑时给用户看的原因，可编辑时为空。 */
   notice: string;
@@ -336,6 +338,7 @@ export function Configuration({ receipt, data, error }: ConfigurationProps & Sta
       {data.editable
         ? <ConfigurationForm data={data} receipt={receipt} />
         : <Html html={noteHtml(data.notice, { variant: 'secondary', label: '只读' })} />}
+      {data.access ? <AccessSettings initial={data.access} receipt={receipt} /> : null}
       <Facts facts={data.facts} />
       <MountStatus data={data} />
     </div>

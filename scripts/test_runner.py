@@ -63,7 +63,7 @@ SCOPES: dict[str, tuple[str, ...]] = {
                  "test_javdb_cn_names.py",
                  "test_link_rediscovery.py", "test_link_label_owner.py",
                  "test_agency_entity.py"),
-    "tooling": ("test_scripts.py", "test_auth.py", "test_cli.py", "test_script_policy.py",
+    "tooling": ("test_scripts.py", "test_auth.py", "test_access.py", "test_cli.py", "test_script_policy.py",
                 "test_scan.py", "test_onboarding.py", "test_configuration_sources.py", "test_folder_picker.py", "test_ledger_backups.py",
                 "test_agent_worktree.py", "test_test_evidence.py", "test_dependency_policy.py",
                 "test_restart_windows_tray.py", "test_deploy_windows_tray.py",

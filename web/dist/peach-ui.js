@@ -284,7 +284,7 @@ async function I(e, t) {
 	if (!n.ok) throw new Se(Ce(r) || `请求失败（${n.status}）`, n.status);
 	return r;
 }
-async function we(e, t, n = "POST", r) {
+async function L(e, t, n = "POST", r) {
 	let i = await fetch(e, {
 		method: n,
 		...r ? { signal: r } : {},
@@ -303,24 +303,24 @@ async function we(e, t, n = "POST", r) {
 }
 //#endregion
 //#region node_modules/preact/hooks/dist/hooks.module.js
-var L, R, Te, Ee, De = 0, Oe = [], z = f, ke = z.__b, Ae = z.__r, je = z.diffed, Me = z.__c, Ne = z.unmount, Pe = z.__;
-function Fe(e, t) {
-	z.__h && z.__h(R, e, De || t), De = 0;
-	var n = R.__H || (R.__H = {
+var R, z, we, Te, Ee = 0, De = [], B = f, Oe = B.__b, ke = B.__r, Ae = B.diffed, je = B.__c, Me = B.unmount, Ne = B.__;
+function Pe(e, t) {
+	B.__h && B.__h(z, e, Ee || t), Ee = 0;
+	var n = z.__H || (z.__H = {
 		__: [],
 		__h: []
 	});
 	return e >= n.__.length && n.__.push({}), n.__[e];
 }
-function B(e) {
-	return De = 1, Ie(Ge, e);
+function V(e) {
+	return Ee = 1, Fe(We, e);
 }
-function Ie(e, t, n) {
-	var r = Fe(L++, 2);
-	if (r.t = e, !r.__c && (r.__ = [n ? n(t) : Ge(void 0, t), function(e) {
+function Fe(e, t, n) {
+	var r = Pe(R++, 2);
+	if (r.t = e, !r.__c && (r.__ = [n ? n(t) : We(void 0, t), function(e) {
 		var t = r.__N ? r.__N[0] : r.__[0], n = r.t(t, e);
 		t !== n && (r.__N = [n, r.__[1]], r.__c.setState({}));
-	}], r.__c = R, !R.__f)) {
+	}], r.__c = z, !z.__f)) {
 		var i = function(e, t, n) {
 			if (!r.__c.__H) return !0;
 			var i = !1, o = r.__c.props !== e;
@@ -336,112 +336,112 @@ function Ie(e, t, n) {
 			}
 			return !i || o;
 		};
-		R.__f = !0;
-		var a = R.shouldComponentUpdate, o = R.componentWillUpdate;
-		R.componentWillUpdate = function(e, t, n) {
+		z.__f = !0;
+		var a = z.shouldComponentUpdate, o = z.componentWillUpdate;
+		z.componentWillUpdate = function(e, t, n) {
 			if (this.__e) {
 				var r = a;
 				a = void 0, i(e, t, n), a = r;
 			}
 			o && o.call(this, e, t, n);
-		}, R.shouldComponentUpdate = i;
+		}, z.shouldComponentUpdate = i;
 	}
 	return r.__N || r.__;
 }
-function Le(e, t) {
-	var n = Fe(L++, 3);
-	!z.__s && We(n.__H, t) && (n.__ = e, n.u = t, R.__H.__h.push(n));
+function Ie(e, t) {
+	var n = Pe(R++, 3);
+	!B.__s && Ue(n.__H, t) && (n.__ = e, n.u = t, z.__H.__h.push(n));
 }
-function V(e, t) {
-	var n = Fe(L++, 4);
-	!z.__s && We(n.__H, t) && (n.__ = e, n.u = t, R.__h.push(n));
+function H(e, t) {
+	var n = Pe(R++, 4);
+	!B.__s && Ue(n.__H, t) && (n.__ = e, n.u = t, z.__h.push(n));
 }
-function H(e) {
-	return De = 5, Re(function() {
+function U(e) {
+	return Ee = 5, Le(function() {
 		return { current: e };
 	}, []);
 }
-function Re(e, t) {
-	var n = Fe(L++, 7);
-	return We(n.__H, t) && (n.__ = e(), n.__H = t, n.__h = e), n.__;
+function Le(e, t) {
+	var n = Pe(R++, 7);
+	return Ue(n.__H, t) && (n.__ = e(), n.__H = t, n.__h = e), n.__;
 }
-function ze() {
-	for (var e; e = Oe.shift();) {
+function Re() {
+	for (var e; e = De.shift();) {
 		var t = e.__H;
 		if (e.__P && t) try {
-			t.__h.some(He), t.__h.some(Ue), t.__h = [];
+			t.__h.some(Ve), t.__h.some(He), t.__h = [];
 		} catch (n) {
-			t.__h = [], z.__e(n, e.__v);
+			t.__h = [], B.__e(n, e.__v);
 		}
 	}
 }
-z.__b = function(e) {
-	R = null, ke && ke(e);
-}, z.__ = function(e, t) {
-	e && t.__k && t.__k.__m && (e.__m = t.__k.__m), Pe && Pe(e, t);
-}, z.__r = function(e) {
-	Ae && Ae(e), L = 0;
-	var t = (R = e.__c).__H;
-	t && (Te === R ? (t.__h = [], R.__h = [], t.__.some(function(e) {
+B.__b = function(e) {
+	z = null, Oe && Oe(e);
+}, B.__ = function(e, t) {
+	e && t.__k && t.__k.__m && (e.__m = t.__k.__m), Ne && Ne(e, t);
+}, B.__r = function(e) {
+	ke && ke(e), R = 0;
+	var t = (z = e.__c).__H;
+	t && (we === z ? (t.__h = [], z.__h = [], t.__.some(function(e) {
 		e.__N && (e.__ = e.__N), e.u = e.__N = void 0;
-	})) : (t.__h.some(He), t.__h.some(Ue), t.__h = [], L = 0)), Te = R;
-}, z.diffed = function(e) {
-	je && je(e);
+	})) : (t.__h.some(Ve), t.__h.some(He), t.__h = [], R = 0)), we = z;
+}, B.diffed = function(e) {
+	Ae && Ae(e);
 	var t = e.__c;
-	t && t.__H && (t.__H.__h.length && (Oe.push(t) !== 1 && Ee === z.requestAnimationFrame || ((Ee = z.requestAnimationFrame) || Ve)(ze)), t.__H.__.some(function(e) {
+	t && t.__H && (t.__H.__h.length && (De.push(t) !== 1 && Te === B.requestAnimationFrame || ((Te = B.requestAnimationFrame) || Be)(Re)), t.__H.__.some(function(e) {
 		e.u &&= (e.__H = e.u, void 0);
-	})), Te = R = null;
-}, z.__c = function(e, t) {
+	})), we = z = null;
+}, B.__c = function(e, t) {
 	t.some(function(e) {
 		try {
-			e.__h.some(He), e.__h = e.__h.filter(function(e) {
-				return !e.__ || Ue(e);
+			e.__h.some(Ve), e.__h = e.__h.filter(function(e) {
+				return !e.__ || He(e);
 			});
 		} catch (n) {
 			t.some(function(e) {
 				e.__h &&= [];
-			}), t = [], z.__e(n, e.__v);
+			}), t = [], B.__e(n, e.__v);
 		}
-	}), Me && Me(e, t);
-}, z.unmount = function(e) {
-	Ne && Ne(e);
+	}), je && je(e, t);
+}, B.unmount = function(e) {
+	Me && Me(e);
 	var t, n = e.__c;
 	n && n.__H && (n.__H.__.some(function(e) {
 		try {
-			He(e);
+			Ve(e);
 		} catch (e) {
 			t = e;
 		}
-	}), n.__H = void 0, t && z.__e(t, n.__v));
+	}), n.__H = void 0, t && B.__e(t, n.__v));
 };
-var Be = typeof requestAnimationFrame == "function";
-function Ve(e) {
+var ze = typeof requestAnimationFrame == "function";
+function Be(e) {
 	var t, n = function() {
-		clearTimeout(r), Be && cancelAnimationFrame(t), setTimeout(e);
+		clearTimeout(r), ze && cancelAnimationFrame(t), setTimeout(e);
 	}, r = setTimeout(n, 35);
-	Be && (t = requestAnimationFrame(n));
+	ze && (t = requestAnimationFrame(n));
+}
+function Ve(e) {
+	var t = z, n = e.__c;
+	typeof n == "function" && (e.__c = void 0, n()), z = t;
 }
 function He(e) {
-	var t = R, n = e.__c;
-	typeof n == "function" && (e.__c = void 0, n()), R = t;
+	var t = z;
+	e.__c = e.__(), z = t;
 }
-function Ue(e) {
-	var t = R;
-	e.__c = e.__(), R = t;
-}
-function We(e, t) {
+function Ue(e, t) {
 	return !e || e.length !== t.length || t.some(function(t, n) {
 		return t !== e[n];
 	});
 }
-function Ge(e, t) {
+function We(e, t) {
 	return typeof t == "function" ? t(e) : t;
 }
 //#endregion
 //#region node_modules/preact/jsx-runtime/dist/jsxRuntime.module.js
-var Ke = 0;
+var Ge = 0;
 Array.isArray;
-function U(e, t, n, r, i, a) {
+function W(e, t, n, r, i, a) {
 	t ||= {};
 	var o, s, c = t;
 	if ("ref" in c) for (s in c = {}, t) s == "ref" ? o = t[s] : c[s] = t[s];
@@ -456,7 +456,7 @@ function U(e, t, n, r, i, a) {
 		__e: null,
 		__c: null,
 		constructor: void 0,
-		__v: --Ke,
+		__v: --Ge,
 		__i: -1,
 		__u: 0,
 		__source: i,
@@ -466,30 +466,158 @@ function U(e, t, n, r, i, a) {
 	return f.vnode && f.vnode(l), l;
 }
 //#endregion
+//#region src/islands/access-settings.tsx
+function Ke({ id: e, label: t, value: n, onInput: r, error: i, help: a, current: o = !1 }) {
+	return /* @__PURE__ */ W("div", {
+		class: "configfield",
+		children: [
+			/* @__PURE__ */ W("label", {
+				for: e,
+				children: t
+			}),
+			/* @__PURE__ */ W("input", {
+				id: e,
+				class: "geist-input",
+				type: "password",
+				autoComplete: o ? "current-password" : "new-password",
+				maxLength: 256,
+				value: n,
+				onInput: (e) => r(e.currentTarget.value),
+				required: !0,
+				"aria-invalid": !!i,
+				"aria-describedby": i || a ? `${e}-hint` : void 0
+			}),
+			i || a ? /* @__PURE__ */ W("p", {
+				id: `${e}-hint`,
+				class: i ? "configbad" : "confighelp",
+				role: i ? "alert" : void 0,
+				children: i || a
+			}) : null
+		]
+	});
+}
+function qe({ initial: e, receipt: t }) {
+	let [r, i] = V(e), [a, s] = V(""), [c, l] = V(""), [u, d] = V(""), [f, p] = V(!1), [m, h] = V(""), [g, _] = V({}), v = U(null), y = U(!1), b = U(null);
+	return /* @__PURE__ */ W("form", {
+		class: "configfieldset",
+		onSubmit: async (e) => {
+			if (e.preventDefault(), y.current) return;
+			h("");
+			let n = {};
+			if (r.mode === "password" && !a && (n.current_password = "请输入当前访问密码"), f || ((c.length < 8 || c.length > 256) && (n.password = "访问密码需为 8–256 个字符"), c !== u && (n.confirmation = "两次输入的密码不一致")), _(n), Object.keys(n).length) {
+				requestAnimationFrame(() => v.current?.querySelector("[aria-invalid=\"true\"]")?.focus());
+				return;
+			}
+			y.current = !0, o(b.current, !0);
+			try {
+				let e = await L("/api/configuration/access", {
+					revision: r.revision,
+					action: f ? "disable" : "set",
+					confirm_disable: f,
+					current_password: a,
+					password: f ? "" : c,
+					confirmation: f ? "" : u
+				});
+				i(e), s(""), l(""), d(""), p(!1), _({}), t(e.mode === "open" ? "已关闭访问密码" : "已保存访问密码");
+			} catch (e) {
+				let t = e instanceof Se ? e.body : null, n = t?.errors || t?.detail?.errors;
+				n ? _(n) : h(F(e));
+			} finally {
+				y.current = !1, o(b.current, !1);
+			}
+		},
+		"aria-labelledby": "accessTitle",
+		noValidate: !0,
+		ref: v,
+		children: [/* @__PURE__ */ W("div", {
+			class: "geist-fieldset-content",
+			children: [
+				/* @__PURE__ */ W("div", { dangerouslySetInnerHTML: { __html: n("accessTitle", "访问密码") } }),
+				/* @__PURE__ */ W("p", {
+					class: "confighelp",
+					children: r.mode === "open" ? "未设置密码，能连接到 Peach 的设备可直接访问。" : r.mode === "legacy" ? "当前使用系统生成的访问口令。你可以设置自己的密码，或关闭登录要求。" : r.mode === "locked" ? "访问设置无法读取，请在本机检查配置文件。" : "已设置密码。新设备需要登录，保持登录时间在登录页选择。"
+				}),
+				r.mode === "password" ? /* @__PURE__ */ W(Ke, {
+					id: "access-current",
+					label: "当前访问密码",
+					value: a,
+					onInput: s,
+					error: g.current_password,
+					current: !0
+				}) : null,
+				!f && r.mode !== "locked" ? /* @__PURE__ */ W(M, { children: [/* @__PURE__ */ W(Ke, {
+					id: "access-password",
+					label: r.mode === "password" ? "新访问密码" : "设置访问密码",
+					value: c,
+					onInput: l,
+					error: g.password,
+					help: "至少 8 个字符。保存后其他设备需要重新登录。"
+				}), /* @__PURE__ */ W(Ke, {
+					id: "access-confirm",
+					label: "确认访问密码",
+					value: u,
+					onInput: d,
+					error: g.confirmation
+				})] }) : null,
+				r.mode === "password" || r.mode === "legacy" ? /* @__PURE__ */ W("label", {
+					class: "configcheck",
+					children: [/* @__PURE__ */ W("span", {
+						class: "pcheck",
+						children: [/* @__PURE__ */ W("input", {
+							type: "checkbox",
+							checked: f,
+							onChange: (e) => p(e.currentTarget.checked)
+						}), /* @__PURE__ */ W("span", {
+							"aria-hidden": "true",
+							children: /* @__PURE__ */ W("svg", {
+								viewBox: "0 0 24 24",
+								children: /* @__PURE__ */ W("use", { href: "#i-check" })
+							})
+						})]
+					}), /* @__PURE__ */ W("span", { children: "关闭访问密码，允许能连接到 Peach 的设备直接访问" })]
+				}) : null,
+				m ? /* @__PURE__ */ W("p", {
+					class: "configbad",
+					role: "alert",
+					children: m
+				}) : null
+			]
+		}), r.mode === "locked" ? null : /* @__PURE__ */ W("div", {
+			class: "geist-fieldset-footer",
+			children: [/* @__PURE__ */ W("p", { children: "保存后立即生效。" }), /* @__PURE__ */ W("button", {
+				class: "geist-button",
+				type: "submit",
+				ref: b,
+				children: f ? "关闭访问密码" : "保存访问密码"
+			})]
+		})]
+	});
+}
+//#endregion
 //#region src/islands/configuration.tsx
-var qe = "/api/configuration", Je = "/api/pick-folder", Ye = 8e3, Xe = (e, t) => I(qe, t), W = ({ html: e, class: t }) => /* @__PURE__ */ U("div", {
+var Je = "/api/configuration", Ye = "/api/pick-folder", Xe = 8e3, Ze = (e, t) => I(Je, t), G = ({ html: e, class: t }) => /* @__PURE__ */ W("div", {
 	class: t,
 	dangerouslySetInnerHTML: { __html: e }
-}), Ze = (e) => !(e instanceof Se) || e.status !== 400 ? null : e.body?.errors ?? null;
-function Qe({ facts: e }) {
-	return /* @__PURE__ */ U("section", {
+}), Qe = (e) => !(e instanceof Se) || e.status !== 400 ? null : e.body?.errors ?? null;
+function $e({ facts: e }) {
+	return /* @__PURE__ */ W("section", {
 		class: "configfieldset",
 		"data-geist-fieldset": !0,
 		"aria-labelledby": "configFactsTitle",
-		children: /* @__PURE__ */ U("div", {
+		children: /* @__PURE__ */ W("div", {
 			class: "geist-fieldset-content",
-			children: [/* @__PURE__ */ U(W, { html: n("configFactsTitle", "运行信息") }), /* @__PURE__ */ U("dl", {
+			children: [/* @__PURE__ */ W(G, { html: n("configFactsTitle", "运行信息") }), /* @__PURE__ */ W("dl", {
 				class: "configfacts",
-				children: e.map((e) => /* @__PURE__ */ U(M, { children: [/* @__PURE__ */ U("dt", { children: e.term }), /* @__PURE__ */ U("dd", { children: [e.value, e.download_url ? /* @__PURE__ */ U("span", {
+				children: e.map((e) => /* @__PURE__ */ W(M, { children: [/* @__PURE__ */ W("dt", { children: e.term }), /* @__PURE__ */ W("dd", { children: [e.value, e.download_url ? /* @__PURE__ */ W("span", {
 					class: "confighelp",
-					children: [" ", /* @__PURE__ */ U("a", {
+					children: [" ", /* @__PURE__ */ W("a", {
 						href: e.download_url,
 						target: "_blank",
 						rel: "noreferrer",
-						children: [e.download_label, /* @__PURE__ */ U("svg", {
+						children: [e.download_label, /* @__PURE__ */ W("svg", {
 							"aria-hidden": "true",
 							viewBox: "0 0 24 24",
-							children: /* @__PURE__ */ U("use", { href: "#i-external-link" })
+							children: /* @__PURE__ */ W("use", { href: "#i-external-link" })
 						})]
 					})]
 				}) : null] })] }))
@@ -497,15 +625,15 @@ function Qe({ facts: e }) {
 		})
 	});
 }
-function $e({ data: t }) {
-	let [r, i] = B(t.media_sources), [s, c] = B(""), l = H(null);
-	Le(() => () => l.current?.abort(), []);
+function et({ data: t }) {
+	let [r, i] = V(t.media_sources), [s, c] = V(""), l = U(null);
+	Ie(() => () => l.current?.abort(), []);
 	let u = async (e) => {
 		if (l.current) return;
 		let t = new AbortController();
 		l.current = t, o(e, !0), c("");
 		try {
-			let e = await I(qe, t.signal);
+			let e = await I(Je, t.signal);
 			t.signal.aborted || i(e.media_sources);
 		} catch (e) {
 			t.signal.aborted || c(F(e));
@@ -513,37 +641,37 @@ function $e({ data: t }) {
 			l.current = null, o(e, !1);
 		}
 	};
-	return r ? /* @__PURE__ */ U("section", {
+	return r ? /* @__PURE__ */ W("section", {
 		class: "configfieldset",
 		"aria-labelledby": "configMountsTitle",
-		children: /* @__PURE__ */ U("div", {
+		children: /* @__PURE__ */ W("div", {
 			class: "geist-fieldset-content",
 			children: [
-				/* @__PURE__ */ U(W, { html: n("configMountsTitle", "挂载状态") }),
-				/* @__PURE__ */ U("dl", {
+				/* @__PURE__ */ W(G, { html: n("configMountsTitle", "挂载状态") }),
+				/* @__PURE__ */ W("dl", {
 					class: "configfacts",
-					children: r.map((t) => /* @__PURE__ */ U(M, { children: [/* @__PURE__ */ U("dt", { children: [/* @__PURE__ */ U("span", {
+					children: r.map((t) => /* @__PURE__ */ W(M, { children: [/* @__PURE__ */ W("dt", { children: [/* @__PURE__ */ W("span", {
 						"aria-hidden": "true",
 						dangerouslySetInnerHTML: { __html: a(e[t.location]) }
 					}), {
 						local: "本地磁盘",
 						115: "CloudDrive · 115",
 						pikpak: "CloudDrive · PikPak"
-					}[t.location] || t.location] }), /* @__PURE__ */ U("dd", { children: [
+					}[t.location] || t.location] }), /* @__PURE__ */ W("dd", { children: [
 						t.path || "未配置挂载点",
 						" ",
-						/* @__PURE__ */ U("span", {
+						/* @__PURE__ */ W("span", {
 							class: `configstatus ${t.online === !0 ? "online" : t.online === !1 ? "offline" : "unknown"}`,
 							children: t.online === !0 ? "在线" : t.online === !1 ? "离线" : "未检测"
 						})
 					] })] }))
 				}),
-				s ? /* @__PURE__ */ U("p", {
+				s ? /* @__PURE__ */ W("p", {
 					class: "configbad",
 					role: "alert",
 					children: s
 				}) : null,
-				/* @__PURE__ */ U("button", {
+				/* @__PURE__ */ W("button", {
 					type: "button",
 					class: "geist-button",
 					onClick: (e) => u(e.currentTarget),
@@ -553,9 +681,9 @@ function $e({ data: t }) {
 		})
 	}) : null;
 }
-function et({ value: t, label: n, onChange: r }) {
-	let a = H(null), o = H(null), c = H(r);
-	return c.current = r, V(() => {
+function tt({ value: t, label: n, onChange: r }) {
+	let a = U(null), o = U(null), c = U(r);
+	return c.current = r, H(() => {
 		let r = a.current;
 		r.innerHTML = i([
 			["local", "本地磁盘"],
@@ -572,24 +700,24 @@ function et({ value: t, label: n, onChange: r }) {
 		return l.addEventListener("change", u), () => {
 			o.current = null, l.disabled = !0, l.removeEventListener("change", u), r.replaceChildren();
 		};
-	}, [n]), V(() => {
+	}, [n]), H(() => {
 		o.current && (o.current.value = t);
-	}, [t]), /* @__PURE__ */ U("div", {
+	}, [t]), /* @__PURE__ */ W("div", {
 		ref: a,
 		class: "configsourcecontrol"
 	});
 }
-function tt({ data: e, receipt: t }) {
+function nt({ data: e, receipt: t }) {
 	let i = e.media_sources?.filter((e) => [
 		"local",
 		"115",
 		"pikpak"
-	].includes(e.location)), [a, s] = B(i?.length ? i.map((e) => e.path) : e.media_dirs.length ? e.media_dirs : [""]), [c, l] = B(i?.map((e) => e.location) ?? []), [u, d] = B(i?.map((e) => e.root) ?? []), [f, p] = B(String(e.port)), [m, h] = B(!1), [g, _] = B([]), [v, y] = B(""), [b, x] = B(""), [S, C] = B(null), [w, T] = B(null), E = H(!1), D = H(e.revision), O = H([]), k = H(null);
-	V(() => {
+	].includes(e.location)), [a, s] = V(i?.length ? i.map((e) => e.path) : e.media_dirs.length ? e.media_dirs : [""]), [c, l] = V(i?.map((e) => e.location) ?? []), [u, d] = V(i?.map((e) => e.root) ?? []), [f, p] = V(String(e.port)), [m, h] = V(!1), [g, _] = V([]), [v, y] = V(""), [b, x] = V(""), [S, C] = V(null), [w, T] = V(null), E = U(!1), D = U(e.revision), O = U([]), k = U(null);
+	H(() => {
 		w !== null && (O.current[w]?.focus(), T(null));
-	}, [w]), Le(() => {
+	}, [w]), Ie(() => {
 		if (!S) return;
-		let e = setTimeout(() => location.assign(S.url), Ye);
+		let e = setTimeout(() => location.assign(S.url), Xe);
 		return () => clearTimeout(e);
 	}, [S]);
 	let A = (e, t) => {
@@ -608,7 +736,7 @@ function tt({ data: e, receipt: t }) {
 		if (t.getAttribute("aria-busy") !== "true") {
 			o(t, !0);
 			try {
-				let { path: t } = await we(Je, { initial: a[e] ?? "" });
+				let { path: t } = await L(Ye, { initial: a[e] ?? "" });
 				t && (A(e, t), j(e, ""));
 			} catch (t) {
 				j(e, F(t));
@@ -617,24 +745,24 @@ function tt({ data: e, receipt: t }) {
 			}
 		}
 	};
-	return S ? /* @__PURE__ */ U("div", {
+	return S ? /* @__PURE__ */ W("div", {
 		class: "configsaved",
 		role: "status",
-		children: [/* @__PURE__ */ U(W, { html: r("配置已保存，Peach 正在重新启动。", {
+		children: [/* @__PURE__ */ W(G, { html: r("配置已保存，Peach 正在重新启动。", {
 			variant: "success",
 			label: "已保存"
-		}) }), /* @__PURE__ */ U("p", {
+		}) }), /* @__PURE__ */ W("p", {
 			class: "confighelp",
 			children: [
 				"几秒后自动打开新地址；没跳转就点 ",
-				/* @__PURE__ */ U("a", {
+				/* @__PURE__ */ W("a", {
 					href: S.url,
 					children: "进入馆藏"
 				}),
 				"。"
 			]
 		})]
-	}) : /* @__PURE__ */ U("form", {
+	}) : /* @__PURE__ */ W("form", {
 		class: "configfieldset",
 		"data-geist-fieldset": !0,
 		"aria-labelledby": "configTitle",
@@ -642,7 +770,7 @@ function tt({ data: e, receipt: t }) {
 			if (n.preventDefault(), !E.current) {
 				E.current = !0, o(k.current, !0), x("");
 				try {
-					let n = await we(qe, {
+					let n = await L(Je, {
 						revision: D.current,
 						media_dirs: a,
 						...e.media_sources ? { media_sources: a.map((e, t) => ({
@@ -655,7 +783,7 @@ function tt({ data: e, receipt: t }) {
 					});
 					D.current = n.revision, _([]), y(""), t("已保存配置"), C(n);
 				} catch (e) {
-					let t = Ze(e);
+					let t = Qe(e);
 					t ? (_(t.media_dirs ?? []), y(t.port ?? "")) : (_([]), y(""), x(F(e)));
 				} finally {
 					E.current = !1, o(k.current, !1);
@@ -663,30 +791,30 @@ function tt({ data: e, receipt: t }) {
 			}
 		},
 		noValidate: !0,
-		children: [/* @__PURE__ */ U("div", {
+		children: [/* @__PURE__ */ W("div", {
 			class: "geist-fieldset-content",
 			children: [
-				/* @__PURE__ */ U(W, { html: n("configTitle", "这台电脑") }),
-				/* @__PURE__ */ U("div", {
+				/* @__PURE__ */ W(G, { html: n("configTitle", "这台电脑") }),
+				/* @__PURE__ */ W("div", {
 					class: "configfield",
 					children: [
-						/* @__PURE__ */ U("span", {
+						/* @__PURE__ */ W("span", {
 							class: "configlabel",
 							id: "configDirsLabel",
 							children: "媒体文件夹"
 						}),
-						/* @__PURE__ */ U("div", {
+						/* @__PURE__ */ W("div", {
 							class: "configdirs",
 							role: "group",
 							"aria-labelledby": "configDirsLabel",
-							children: a.map((t, n) => /* @__PURE__ */ U("div", {
+							children: a.map((t, n) => /* @__PURE__ */ W("div", {
 								class: "configdir",
 								children: [
-									/* @__PURE__ */ U("span", {
+									/* @__PURE__ */ W("span", {
 										class: "configpathlabel",
 										children: ["本机文件夹 ", n + 1]
 									}),
-									/* @__PURE__ */ U("input", {
+									/* @__PURE__ */ W("input", {
 										class: "geist-input",
 										type: "text",
 										value: t,
@@ -697,33 +825,33 @@ function tt({ data: e, receipt: t }) {
 											O.current[n] = e;
 										}
 									}),
-									/* @__PURE__ */ U("button", {
+									/* @__PURE__ */ W("button", {
 										type: "button",
 										class: "geist-button configpick",
 										"aria-label": "选择文件夹",
 										onClick: (e) => M(n, e.currentTarget),
-										children: /* @__PURE__ */ U("svg", {
+										children: /* @__PURE__ */ W("svg", {
 											viewBox: "0 0 24 24",
 											"aria-hidden": "true",
-											children: /* @__PURE__ */ U("use", { href: "#i-folder-search" })
+											children: /* @__PURE__ */ W("use", { href: "#i-folder-search" })
 										})
 									}),
-									a.length > 1 ? /* @__PURE__ */ U("button", {
+									a.length > 1 ? /* @__PURE__ */ W("button", {
 										type: "button",
 										class: "geist-button configrm",
 										"aria-label": "移除这个文件夹",
 										onClick: () => te(n),
-										children: /* @__PURE__ */ U("svg", {
+										children: /* @__PURE__ */ W("svg", {
 											viewBox: "0 0 24 24",
 											"aria-hidden": "true",
-											children: /* @__PURE__ */ U("use", { href: "#i-x" })
+											children: /* @__PURE__ */ W("use", { href: "#i-x" })
 										})
 									}) : null,
-									/* @__PURE__ */ U("div", {
+									/* @__PURE__ */ W("div", {
 										class: "configsource",
-										children: [/* @__PURE__ */ U("div", {
+										children: [/* @__PURE__ */ W("div", {
 											class: "configsourcelabel",
-											children: ["媒体来源", /* @__PURE__ */ U(et, {
+											children: ["媒体来源", /* @__PURE__ */ W(tt, {
 												label: `媒体来源 ${n + 1}`,
 												value: c[n] || "local",
 												onChange: (e) => {
@@ -731,7 +859,7 @@ function tt({ data: e, receipt: t }) {
 													t[n] = e, l(t);
 												}
 											})]
-										}), e.windows === !1 ? /* @__PURE__ */ U("label", { children: ["Windows 中的对应路径", /* @__PURE__ */ U("input", {
+										}), e.windows === !1 ? /* @__PURE__ */ W("label", { children: ["Windows 中的对应路径", /* @__PURE__ */ W("input", {
 											class: "geist-input",
 											"aria-label": `Windows 中的对应路径 ${n + 1}`,
 											value: u[n] || "",
@@ -742,7 +870,7 @@ function tt({ data: e, receipt: t }) {
 											}
 										})] }) : null]
 									}),
-									g[n] ? /* @__PURE__ */ U("p", {
+									g[n] ? /* @__PURE__ */ W("p", {
 										class: "configbad",
 										role: "alert",
 										children: g[n]
@@ -750,61 +878,61 @@ function tt({ data: e, receipt: t }) {
 								]
 							}, n))
 						}),
-						/* @__PURE__ */ U("button", {
+						/* @__PURE__ */ W("button", {
 							type: "button",
 							class: "geist-button configadd",
 							onClick: ee,
 							children: "添加文件夹"
 						}),
-						c.some((e) => e === "115" || e === "pikpak") ? /* @__PURE__ */ U("p", {
+						c.some((e) => e === "115" || e === "pikpak") ? /* @__PURE__ */ W("p", {
 							class: "confighelp",
-							children: ["先在 CloudDrive 登录网盘并完成挂载。", /* @__PURE__ */ U("a", {
+							children: ["先在 CloudDrive 登录网盘并完成挂载。", /* @__PURE__ */ W("a", {
 								href: "https://www.clouddrive2.com/help.html",
 								target: "_blank",
 								rel: "noreferrer",
-								children: ["挂载帮助", /* @__PURE__ */ U("svg", {
+								children: ["挂载帮助", /* @__PURE__ */ W("svg", {
 									"aria-hidden": "true",
 									viewBox: "0 0 24 24",
-									children: /* @__PURE__ */ U("use", { href: "#i-external-link" })
+									children: /* @__PURE__ */ W("use", { href: "#i-external-link" })
 								})]
 							})]
 						}) : null,
-						c.some((e) => e === "115" || e === "pikpak") ? e.mount_dependencies?.filter((e) => !e.available).map((e) => /* @__PURE__ */ U("p", {
+						c.some((e) => e === "115" || e === "pikpak") ? e.mount_dependencies?.filter((e) => !e.available).map((e) => /* @__PURE__ */ W("p", {
 							class: "confighelp",
 							children: [
 								"未检测到 ",
 								e.name,
 								"。",
-								/* @__PURE__ */ U("a", {
+								/* @__PURE__ */ W("a", {
 									href: e.download_url,
 									target: "_blank",
 									rel: "noreferrer",
 									children: [
 										"下载 ",
 										e.name,
-										/* @__PURE__ */ U("svg", {
+										/* @__PURE__ */ W("svg", {
 											"aria-hidden": "true",
 											viewBox: "0 0 24 24",
-											children: /* @__PURE__ */ U("use", { href: "#i-external-link" })
+											children: /* @__PURE__ */ W("use", { href: "#i-external-link" })
 										})
 									]
 								})
 							]
 						})) : null,
-						e.windows === !1 ? /* @__PURE__ */ U("p", {
+						e.windows === !1 ? /* @__PURE__ */ W("p", {
 							class: "confighelp",
 							children: "本机文件夹是这台电脑读取媒体的位置。Windows 中的对应路径用于匹配馆藏中已有的路径，例如 B:\\ 对应本机挂载文件夹。"
 						}) : null
 					]
 				}),
-				e.port_editable === !1 ? null : /* @__PURE__ */ U("div", {
+				e.port_editable === !1 ? null : /* @__PURE__ */ W("div", {
 					class: "configfield",
 					children: [
-						/* @__PURE__ */ U("label", {
+						/* @__PURE__ */ W("label", {
 							for: "configPort",
 							children: "本机访问端口"
 						}),
-						/* @__PURE__ */ U("input", {
+						/* @__PURE__ */ W("input", {
 							id: "configPort",
 							class: "geist-input",
 							type: "text",
@@ -813,43 +941,43 @@ function tt({ data: e, receipt: t }) {
 							"aria-invalid": v ? "true" : void 0,
 							onInput: (e) => p(e.currentTarget.value)
 						}),
-						v ? /* @__PURE__ */ U("p", {
+						v ? /* @__PURE__ */ W("p", {
 							class: "configbad",
 							role: "alert",
 							children: v
 						}) : null,
-						/* @__PURE__ */ U("p", {
+						/* @__PURE__ */ W("p", {
 							class: "confighelp",
 							children: "浏览器地址里冒号后面的数字，一般不用改。"
 						})
 					]
 				}),
-				/* @__PURE__ */ U("label", {
+				/* @__PURE__ */ W("label", {
 					class: "configcheck",
-					children: [/* @__PURE__ */ U("span", {
+					children: [/* @__PURE__ */ W("span", {
 						class: "pcheck",
-						children: [/* @__PURE__ */ U("input", {
+						children: [/* @__PURE__ */ W("input", {
 							type: "checkbox",
 							checked: m,
 							onChange: (e) => h(e.currentTarget.checked)
-						}), /* @__PURE__ */ U("span", {
+						}), /* @__PURE__ */ W("span", {
 							"aria-hidden": "true",
-							children: /* @__PURE__ */ U("svg", {
+							children: /* @__PURE__ */ W("svg", {
 								viewBox: "0 0 24 24",
-								children: /* @__PURE__ */ U("use", { href: "#i-check" })
+								children: /* @__PURE__ */ W("use", { href: "#i-check" })
 							})
 						})]
-					}), /* @__PURE__ */ U("span", { children: "保存后扫描媒体文件夹" })]
+					}), /* @__PURE__ */ W("span", { children: "保存后扫描媒体文件夹" })]
 				}),
-				b ? /* @__PURE__ */ U(W, { html: r(b, {
+				b ? /* @__PURE__ */ W(G, { html: r(b, {
 					variant: "error",
 					label: "没有保存"
 				}) }) : null
 			]
-		}), /* @__PURE__ */ U("div", {
+		}), /* @__PURE__ */ W("div", {
 			class: "geist-fieldset-footer",
 			"data-geist-fieldset-footer": !0,
-			children: [/* @__PURE__ */ U("p", { children: e.port_editable === !1 ? "保存后 Peach 会重新载入配置。" : "保存后 Peach 会重新启动，端口改了就用新地址打开。" }), /* @__PURE__ */ U("button", {
+			children: [/* @__PURE__ */ W("p", { children: e.port_editable === !1 ? "保存后 Peach 会重新载入配置。" : "保存后 Peach 会重新启动，端口改了就用新地址打开。" }), /* @__PURE__ */ W("button", {
 				type: "submit",
 				class: "geist-button primary",
 				ref: k,
@@ -858,47 +986,51 @@ function tt({ data: e, receipt: t }) {
 		})]
 	});
 }
-function nt({ receipt: e, data: t, error: n }) {
-	return n || !t ? /* @__PURE__ */ U(W, {
+function rt({ receipt: e, data: t, error: n }) {
+	return n || !t ? /* @__PURE__ */ W(G, {
 		class: "configpage",
 		html: r(n || "没有读到配置", {
 			variant: "error",
 			label: "打不开配置"
 		})
-	}) : /* @__PURE__ */ U("div", {
+	}) : /* @__PURE__ */ W("div", {
 		class: "configpage",
 		children: [
-			t.editable ? /* @__PURE__ */ U(tt, {
+			t.editable ? /* @__PURE__ */ W(nt, {
 				data: t,
 				receipt: e
-			}) : /* @__PURE__ */ U(W, { html: r(t.notice, {
+			}) : /* @__PURE__ */ W(G, { html: r(t.notice, {
 				variant: "secondary",
 				label: "只读"
 			}) }),
-			/* @__PURE__ */ U(Qe, { facts: t.facts }),
-			/* @__PURE__ */ U($e, { data: t })
+			t.access ? /* @__PURE__ */ W(qe, {
+				initial: t.access,
+				receipt: e
+			}) : null,
+			/* @__PURE__ */ W($e, { facts: t.facts }),
+			/* @__PURE__ */ W(et, { data: t })
 		]
 	});
 }
 //#endregion
 //#region node_modules/@preact/signals-core/dist/signals-core.module.js
-var rt = Symbol.for("preact-signals");
-function it() {
-	if (J > 1) J--;
+var it = Symbol.for("preact-signals");
+function at() {
+	if (q > 1) q--;
 	else {
 		var e, t = !1;
 		for ((function() {
-			var e = ut;
-			for (ut = void 0; e !== void 0;) {
+			var e = pt;
+			for (pt = void 0; e !== void 0;) {
 				var t = e.S;
 				if (t.v === e.v) for (var n = t.t; n !== void 0; n = n.x) n.i === e.i && (n.i = t.i);
 				e = e.o;
 			}
-		})(); q !== void 0;) {
-			var n = q;
-			for (q = void 0, st++; n !== void 0;) {
+		})(); lt !== void 0;) {
+			var n = lt;
+			for (lt = void 0, ut++; n !== void 0;) {
 				var r = n.u;
-				if (n.u = void 0, n.f &= -3, !(8 & n.f) && mt(n)) try {
+				if (n.u = void 0, n.f &= -3, !(8 & n.f) && _t(n)) try {
 					n.c();
 				} catch (n) {
 					t ||= (e = n, !0);
@@ -906,30 +1038,30 @@ function it() {
 				n = r;
 			}
 		}
-		if (st = 0, J--, t) throw e;
+		if (ut = 0, q--, t) throw e;
 	}
 }
-function at(e) {
-	if (J > 0) return e();
-	lt = ++ct, J++;
-	try {
-		return e();
-	} finally {
-		it();
-	}
-}
-var G, K = void 0;
 function ot(e) {
-	var t = K, n = G;
-	K = void 0, G = void 0;
+	if (q > 0) return e();
+	ft = ++dt, q++;
 	try {
 		return e();
 	} finally {
-		K = t, G = n;
+		at();
 	}
 }
-var q = void 0, J = 0, st = 0, ct = 0, lt = 0, ut = void 0, dt = 0;
-function ft(e) {
+var st, K = void 0;
+function ct(e) {
+	var t = K, n = st;
+	K = void 0, st = void 0;
+	try {
+		return e();
+	} finally {
+		K = t, st = n;
+	}
+}
+var lt = void 0, q = 0, ut = 0, dt = 0, ft = 0, pt = void 0, mt = 0;
+function ht(e) {
 	if (K !== void 0) {
 		var t = e.n;
 		if (t === void 0 || t.t !== K) return t = {
@@ -945,77 +1077,77 @@ function ft(e) {
 		if (t.i === -1) return t.i = 0, t.n !== void 0 && (t.n.p = t.p, t.p !== void 0 && (t.p.n = t.n), t.p = K.s, t.n = void 0, K.s.n = t, K.s = t), t;
 	}
 }
-function Y(e, t) {
+function J(e, t) {
 	this.v = e, this.i = 0, this.n = void 0, this.t = void 0, this.l = 0, this.W = t?.watched, this.Z = t?.unwatched, this.name = t?.name;
 }
-Y.prototype.brand = rt, Y.prototype.h = function() {
+J.prototype.brand = it, J.prototype.h = function() {
 	return !0;
-}, Y.prototype.S = function(e) {
+}, J.prototype.S = function(e) {
 	var t = this, n = this.t;
-	n !== e && e.e === void 0 && (e.x = n, this.t = e, n === void 0 ? ot(function() {
+	n !== e && e.e === void 0 && (e.x = n, this.t = e, n === void 0 ? ct(function() {
 		var e;
 		(e = t.W) == null || e.call(t);
 	}) : n.e = e);
-}, Y.prototype.U = function(e) {
+}, J.prototype.U = function(e) {
 	var t = this;
 	if (this.t !== void 0) {
 		var n = e.e, r = e.x;
-		n !== void 0 && (n.x = r, e.e = void 0), r !== void 0 && (r.e = n, e.x = void 0), e === this.t && (this.t = r, r === void 0 && ot(function() {
+		n !== void 0 && (n.x = r, e.e = void 0), r !== void 0 && (r.e = n, e.x = void 0), e === this.t && (this.t = r, r === void 0 && ct(function() {
 			var e;
 			(e = t.Z) == null || e.call(t);
 		}));
 	}
-}, Y.prototype.subscribe = function(e) {
+}, J.prototype.subscribe = function(e) {
 	var t = this;
-	return xt(function() {
+	return Z(function() {
 		var n = t.value;
-		ot(function() {
+		ct(function() {
 			return e(n);
 		});
 	}, { name: "sub" });
-}, Y.prototype.valueOf = function() {
+}, J.prototype.valueOf = function() {
 	return this.value;
-}, Y.prototype.toString = function() {
+}, J.prototype.toString = function() {
 	return this.value + "";
-}, Y.prototype.toJSON = function() {
+}, J.prototype.toJSON = function() {
 	return this.value;
-}, Y.prototype.peek = function() {
+}, J.prototype.peek = function() {
 	var e = this;
-	return ot(function() {
+	return ct(function() {
 		return e.value;
 	});
-}, Object.defineProperty(Y.prototype, "value", {
+}, Object.defineProperty(J.prototype, "value", {
 	get: function() {
-		var e = ft(this);
+		var e = ht(this);
 		return e !== void 0 && (e.i = this.i), this.v;
 	},
 	set: function(e) {
 		if (e !== this.v) {
-			if (st > 100) throw Error("Cycle detected");
+			if (ut > 100) throw Error("Cycle detected");
 			(function(e) {
-				J !== 0 && st === 0 && e.l !== lt && (e.l = lt, ut = {
+				q !== 0 && ut === 0 && e.l !== ft && (e.l = ft, pt = {
 					S: e,
 					v: e.v,
 					i: e.i,
-					o: ut
+					o: pt
 				});
-			})(this), this.v = e, this.i++, dt++, J++;
+			})(this), this.v = e, this.i++, mt++, q++;
 			try {
 				for (var t = this.t; t !== void 0; t = t.x) t.t.N();
 			} finally {
-				it();
+				at();
 			}
 		}
 	}
 });
-function pt(e, t) {
-	return new Y(e, t);
+function gt(e, t) {
+	return new J(e, t);
 }
-function mt(e) {
+function _t(e) {
 	for (var t = e.s; t !== void 0; t = t.n) if (t.S.i !== t.i || !t.S.h() || t.S.i !== t.i) return !0;
 	return !1;
 }
-function ht(e) {
+function vt(e) {
 	for (var t = e.s; t !== void 0; t = t.n) {
 		var n = t.S.n;
 		if (n !== void 0 && (t.r = n), t.S.n = t, t.i = -1, t.n === void 0) {
@@ -1024,81 +1156,81 @@ function ht(e) {
 		}
 	}
 }
-function gt(e) {
+function yt(e) {
 	for (var t = e.s, n = void 0; t !== void 0;) {
 		var r = t.p;
 		t.i === -1 ? (t.S.U(t), r !== void 0 && (r.n = t.n), t.n !== void 0 && (t.n.p = r)) : n = t, t.S.n = t.r, t.r !== void 0 && (t.r = void 0), t = r;
 	}
 	e.s = n;
 }
-function X(e, t) {
-	Y.call(this, void 0, t), this.x = e, this.s = void 0, this.g = dt - 1, this.f = 4;
+function Y(e, t) {
+	J.call(this, void 0, t), this.x = e, this.s = void 0, this.g = mt - 1, this.f = 4;
 }
-X.prototype = new Y(), X.prototype.h = function() {
+Y.prototype = new J(), Y.prototype.h = function() {
 	if (this.f &= -3, 1 & this.f) return !1;
-	if ((36 & this.f) == 32 || (this.f &= -5, this.g === dt)) return !0;
-	if (this.g = dt, this.f |= 1, this.i > 0 && !mt(this)) return this.f &= -2, !0;
+	if ((36 & this.f) == 32 || (this.f &= -5, this.g === mt)) return !0;
+	if (this.g = mt, this.f |= 1, this.i > 0 && !_t(this)) return this.f &= -2, !0;
 	var e = K;
 	try {
-		ht(this), K = this;
+		vt(this), K = this;
 		var t = this.x();
 		(16 & this.f || this.v !== t || this.i === 0) && (this.v = t, this.f &= -17, this.i++);
 	} catch (e) {
 		this.v = e, this.f |= 16, this.i++;
 	}
-	return K = e, gt(this), this.f &= -2, !0;
-}, X.prototype.S = function(e) {
+	return K = e, yt(this), this.f &= -2, !0;
+}, Y.prototype.S = function(e) {
 	if (this.t === void 0) {
 		this.f |= 36;
 		for (var t = this.s; t !== void 0; t = t.n) t.S.S(t);
 	}
-	Y.prototype.S.call(this, e);
-}, X.prototype.U = function(e) {
-	if (this.t !== void 0 && (Y.prototype.U.call(this, e), this.t === void 0)) {
+	J.prototype.S.call(this, e);
+}, Y.prototype.U = function(e) {
+	if (this.t !== void 0 && (J.prototype.U.call(this, e), this.t === void 0)) {
 		this.f &= -33;
 		for (var t = this.s; t !== void 0; t = t.n) t.S.U(t);
 	}
-}, X.prototype.N = function() {
+}, Y.prototype.N = function() {
 	if (!(2 & this.f)) {
 		this.f |= 6;
 		for (var e = this.t; e !== void 0; e = e.x) e.t.N();
 	}
-}, Object.defineProperty(X.prototype, "value", { get: function() {
+}, Object.defineProperty(Y.prototype, "value", { get: function() {
 	if (1 & this.f) throw Error("Cycle detected");
-	var e = ft(this);
+	var e = ht(this);
 	if (this.h(), e !== void 0 && (e.i = this.i), 16 & this.f) throw this.v;
 	return this.v;
 } });
-function _t(e, t) {
-	return new X(e, t);
+function bt(e, t) {
+	return new Y(e, t);
 }
-function vt(e) {
+function xt(e) {
 	var t = e.m;
 	if (e.m = void 0, typeof t == "function") {
-		J++;
+		q++;
 		var n = K;
 		K = void 0;
 		try {
 			t();
 		} catch (t) {
-			throw e.f &= -2, e.f |= 8, yt(e), t;
+			throw e.f &= -2, e.f |= 8, St(e), t;
 		} finally {
-			K = n, it();
+			K = n, at();
 		}
 	}
 }
-function yt(e) {
+function St(e) {
 	for (var t = e.s; t !== void 0; t = t.n) t.S.U(t);
-	e.x = void 0, e.s = void 0, vt(e);
+	e.x = void 0, e.s = void 0, xt(e);
 }
-function bt(e) {
+function Ct(e) {
 	if (K !== this) throw Error("Out-of-order effect");
-	gt(this), K = e, this.f &= -2, 8 & this.f && yt(this), it();
+	yt(this), K = e, this.f &= -2, 8 & this.f && St(this), at();
 }
-function Z(e, t) {
-	this.x = e, this.m = void 0, this.s = void 0, this.u = void 0, this.f = 32, this.name = t?.name, G && G.push(this);
+function X(e, t) {
+	this.x = e, this.m = void 0, this.s = void 0, this.u = void 0, this.f = 32, this.name = t?.name, st && st.push(this);
 }
-Z.prototype.c = function() {
+X.prototype.c = function() {
 	var e = this.S();
 	try {
 		if (8 & this.f || this.x === void 0) return;
@@ -1107,20 +1239,20 @@ Z.prototype.c = function() {
 	} finally {
 		e();
 	}
-}, Z.prototype.S = function() {
+}, X.prototype.S = function() {
 	if (1 & this.f) throw Error("Cycle detected");
-	this.f |= 1, this.f &= -9, vt(this), ht(this), J++;
+	this.f |= 1, this.f &= -9, xt(this), vt(this), q++;
 	var e = K;
-	return K = this, bt.bind(this, e);
-}, Z.prototype.N = function() {
-	2 & this.f || (this.f |= 2, this.u = q, q = this);
-}, Z.prototype.d = function() {
-	this.f |= 8, 1 & this.f || yt(this);
-}, Z.prototype.dispose = function() {
+	return K = this, Ct.bind(this, e);
+}, X.prototype.N = function() {
+	2 & this.f || (this.f |= 2, this.u = lt, lt = this);
+}, X.prototype.d = function() {
+	this.f |= 8, 1 & this.f || St(this);
+}, X.prototype.dispose = function() {
 	this.d();
 };
-function xt(e, t) {
-	var n = new Z(e, t);
+function Z(e, t) {
+	var n = new X(e, t);
 	try {
 		n.c();
 	} catch (e) {
@@ -1131,35 +1263,35 @@ function xt(e, t) {
 }
 //#endregion
 //#region node_modules/@preact/signals/dist/signals.module.js
-var St, Ct, wt = typeof window < "u" && !!window.__PREACT_SIGNALS_DEVTOOLS__, Tt = [];
-xt(function() {
-	St = this.N;
+var wt, Tt, Et = typeof window < "u" && !!window.__PREACT_SIGNALS_DEVTOOLS__, Dt = [];
+Z(function() {
+	wt = this.N;
 })();
 function Q(e, t) {
 	f[e] = t.bind(null, f[e] || function() {});
 }
-function Et(e) {
-	if (Ct) {
-		var t = Ct;
-		Ct = void 0, t();
+function Ot(e) {
+	if (Tt) {
+		var t = Tt;
+		Tt = void 0, t();
 	}
-	Ct = e && e.S();
+	Tt = e && e.S();
 }
-function Dt(e) {
-	var t = this, n = e.data, r = kt(n);
+function kt(e) {
+	var t = this, n = e.data, r = jt(n);
 	r.name = "ReactiveDom", r.value = n;
-	var i = Re(function() {
+	var i = Le(function() {
 		for (var e = t, n = t.__v; n = n.__;) if (n.__c) {
 			n.__c.__$f |= 4;
 			break;
 		}
-		var i = _t(function() {
+		var i = bt(function() {
 			var e = r.value.value;
 			return e === 0 ? 0 : !0 === e ? "" : e || "";
-		}), a = _t(function() {
+		}), a = bt(function() {
 			return !Array.isArray(i.value) && !m(i.value);
-		}), o = xt(function() {
-			if (this.N = Mt, a.value) {
+		}), o = Z(function() {
+			if (this.N = Pt, a.value) {
 				var t = i.value;
 				e.__v && e.__v.__e && e.__v.__e.nodeType === 3 && (e.__v.__e.data = t);
 			}
@@ -1170,14 +1302,14 @@ function Dt(e) {
 	}, []), a = i[0], o = i[1];
 	return a.value ? o.peek() : o.value;
 }
-Dt.displayName = "ReactiveTextNode", Object.defineProperties(Y.prototype, {
+kt.displayName = "ReactiveTextNode", Object.defineProperties(J.prototype, {
 	constructor: {
 		configurable: !0,
 		value: void 0
 	},
 	type: {
 		configurable: !0,
-		value: Dt
+		value: kt
 	},
 	props: {
 		configurable: !0,
@@ -1197,30 +1329,30 @@ Dt.displayName = "ReactiveTextNode", Object.defineProperties(Y.prototype, {
 		var n, r = t.props;
 		for (var i in r) if (i !== "children") {
 			var a = r[i];
-			a instanceof Y && (n || (t.__np = n = {}), n[i] = a, r[i] = a.peek());
+			a instanceof J && (n || (t.__np = n = {}), n[i] = a, r[i] = a.peek());
 		}
 	}
 	e(t);
 }), Q("__r", function(e, t) {
 	if (e(t), t.type !== M) {
-		Et();
+		Ot();
 		var n, r = t.__c;
 		r && (r.__$f &= -2, (n = r.__$u) === void 0 && (r.__$u = n = function(e, t) {
 			var n;
-			return xt(function() {
+			return Z(function() {
 				n = this;
 			}, { name: t }), n.c = e, n;
 		}(function(e) {
 			return function() {
 				var t;
-				wt && ((t = this.y) == null || t.call(this)), e.__$f |= 1, e.setState({});
+				Et && ((t = this.y) == null || t.call(this)), e.__$f |= 1, e.setState({});
 			};
-		}(r), typeof t.type == "function" ? t.type.displayName || t.type.name : ""))), Et(n);
+		}(r), typeof t.type == "function" ? t.type.displayName || t.type.name : ""))), Ot(n);
 	}
 }), Q("__e", function(e, t, n, r) {
-	Et(), e(t, n, r);
+	Ot(), e(t, n, r);
 }), Q("diffed", function(e, t) {
-	Et();
+	Ot();
 	var n;
 	if (typeof t.type == "string" && (n = t.__e)) {
 		var r = t.__np, i = t.props, a = n.U;
@@ -1230,19 +1362,19 @@ Dt.displayName = "ReactiveTextNode", Object.defineProperties(Y.prototype, {
 		}
 		if (r) for (var c in a || (a = {}, n.U = a), r) {
 			var l = a[c], u = r[c];
-			l === void 0 ? (l = Ot(n, c, u, i), a[c] = l) : l.o(u, i);
+			l === void 0 ? (l = At(n, c, u, i), a[c] = l) : l.o(u, i);
 		}
 	}
 	e(t);
 });
-function Ot(e, t, n, r) {
-	var i = t in e && e.ownerSVGElement === void 0, a = pt(n);
+function At(e, t, n, r) {
+	var i = t in e && e.ownerSVGElement === void 0, a = gt(n);
 	return {
 		o: function(e, t) {
 			a.value = e, r = t;
 		},
-		d: xt(function() {
-			this.N = Mt;
+		d: Z(function() {
+			this.N = Pt;
 			var n = a.value.value;
 			r[t] !== n && (r[t] = n, i ? e[t] = n : n != null && (!1 !== n || t[4] === "-") ? e.setAttribute(t, n) : e.removeAttribute(t));
 		})
@@ -1286,44 +1418,44 @@ Q("unmount", function(e, t) {
 	for (var s in this.props) if (!(s in e)) return !0;
 	return !1;
 };
-function kt(e, t) {
-	return Re(function() {
-		return pt(e, t);
+function jt(e, t) {
+	return Le(function() {
+		return gt(e, t);
 	}, []);
 }
-var At = function(e) {
+var Mt = function(e) {
 	queueMicrotask(function() {
 		queueMicrotask(e);
 	});
 };
-function jt() {
-	at(function() {
-		for (var e; e = Tt.shift();) St.call(e);
+function Nt() {
+	ot(function() {
+		for (var e; e = Dt.shift();) wt.call(e);
 	});
 }
-function Mt() {
-	Tt.push(this) === 1 && (f.requestAnimationFrame || At)(jt);
+function Pt() {
+	Dt.push(this) === 1 && (f.requestAnimationFrame || Mt)(Nt);
 }
 //#endregion
 //#region src/state/quality-goals.ts
-var Nt = "/api/quality-goals?limit=200", Pt = {
+var Ft = "/api/quality-goals?limit=200", It = {
 	data: null,
 	error: ""
-}, Ft = pt(Pt), It = 0, Lt = _t(() => Ft.value);
-_t(() => Ft.value.data?.total ?? null);
-function Rt() {
-	It += 1, Ft.value = Pt;
+}, Lt = gt(It), Rt = 0, zt = bt(() => Lt.value);
+bt(() => Lt.value.data?.total ?? null);
+function Bt() {
+	Rt += 1, Lt.value = It;
 }
-async function zt(e) {
-	let t = It += 1;
+async function Vt(e) {
+	let t = Rt += 1;
 	try {
-		let n = await I(Nt, e);
-		return t === It && (Ft.value = {
+		let n = await I(Ft, e);
+		return t === Rt && (Lt.value = {
 			data: n,
 			error: ""
 		}), n;
 	} catch (n) {
-		throw !e?.aborted && t === It && (Ft.value = {
+		throw !e?.aborted && t === Rt && (Lt.value = {
 			data: null,
 			error: F(n)
 		}), n;
@@ -1331,10 +1463,10 @@ async function zt(e) {
 }
 //#endregion
 //#region src/islands/quality-goals.tsx
-var Bt = (e, t) => zt(t), Vt = (e) => e.has_cover ? `/cover?code=${encodeURIComponent(e.code ?? "")}` : `/poster?id=${e.id}&c=4`;
-function Ht({ openItem: e, javTitleHtml: n, javDisplayName: i, srcBadge: a }) {
-	let { data: o, error: s } = Lt.value;
-	if (s) return /* @__PURE__ */ U("div", {
+var Ht = (e, t) => Vt(t), Ut = (e) => e.has_cover ? `/cover?code=${encodeURIComponent(e.code ?? "")}` : `/poster?id=${e.id}&c=4`;
+function Wt({ openItem: e, javTitleHtml: n, javDisplayName: i, srcBadge: a }) {
+	let { data: o, error: s } = zt.value;
+	if (s) return /* @__PURE__ */ W("div", {
 		class: "qualitylist",
 		dangerouslySetInnerHTML: { __html: r(s, {
 			variant: "error",
@@ -1342,51 +1474,51 @@ function Ht({ openItem: e, javTitleHtml: n, javDisplayName: i, srcBadge: a }) {
 		}) }
 	});
 	let d = o?.items ?? [];
-	return d.length ? /* @__PURE__ */ U("div", {
+	return d.length ? /* @__PURE__ */ W("div", {
 		class: "qualitylist",
-		children: d.map((t) => /* @__PURE__ */ U("article", {
+		children: d.map((t) => /* @__PURE__ */ W("article", {
 			class: "qualityitem",
-			children: [/* @__PURE__ */ U("button", {
+			children: [/* @__PURE__ */ W("button", {
 				class: "qualitycover",
 				type: "button",
 				"aria-label": `打开 ${i(t)}`,
 				onClick: () => e(t.id),
-				children: /* @__PURE__ */ U("img", {
-					src: Vt(t),
+				children: /* @__PURE__ */ W("img", {
+					src: Ut(t),
 					alt: "",
 					loading: "lazy",
 					onError: (e) => e.currentTarget.remove()
 				})
-			}), /* @__PURE__ */ U("div", { children: [
-				/* @__PURE__ */ U("h3", { children: /* @__PURE__ */ U("button", {
+			}), /* @__PURE__ */ W("div", { children: [
+				/* @__PURE__ */ W("h3", { children: /* @__PURE__ */ W("button", {
 					type: "button",
 					"data-middle-truncate": !0,
 					onClick: () => e(t.id),
 					dangerouslySetInnerHTML: { __html: n(t) }
 				}) }),
-				/* @__PURE__ */ U("p", {
+				/* @__PURE__ */ W("p", {
 					class: "mono",
 					children: [
-						/* @__PURE__ */ U("span", {
+						/* @__PURE__ */ W("span", {
 							style: "display:contents",
 							dangerouslySetInnerHTML: { __html: a(t.location, t.cost) }
 						}),
-						/* @__PURE__ */ U("span", { children: c[t.location] ?? t.location }),
-						/* @__PURE__ */ U("span", { children: l(t.duration) }),
-						/* @__PURE__ */ U("span", { children: u(t.size ?? 0) })
+						/* @__PURE__ */ W("span", { children: c[t.location] ?? t.location }),
+						/* @__PURE__ */ W("span", { children: l(t.duration) }),
+						/* @__PURE__ */ W("span", { children: u(t.size ?? 0) })
 					]
 				}),
-				t.reason ? /* @__PURE__ */ U("p", { children: t.reason }) : null
+				t.reason ? /* @__PURE__ */ W("p", { children: t.reason }) : null
 			] })]
 		}, t.id))
-	}) : /* @__PURE__ */ U("div", {
+	}) : /* @__PURE__ */ W("div", {
 		class: "qualitylist",
 		dangerouslySetInnerHTML: { __html: t("sparkles", "没有标记中的高清版目标", "现有版本都已满足条件，或还没有加入追踪。") }
 	});
 }
 //#endregion
 //#region src/jobs.ts
-async function Ut(e) {
+async function Gt(e) {
 	let t = e.pause || ((e) => new Promise((t) => setTimeout(t, e))), n = 0;
 	for (; e.active();) {
 		let r;
@@ -1401,11 +1533,11 @@ async function Ut(e) {
 		await t(2e3);
 	}
 }
-function Wt(e) {
+function Kt(e) {
 	let t = document.createElement("div");
 	e.host.hidden = !0, t.dataset.followJob = "", t.setAttribute("aria-live", "polite"), e.host.prepend(t);
 	let n = e.storageKey || "peach-follow-job", r = sessionStorage.getItem(n) || void 0, i = !1;
-	Ut({
+	Gt({
 		read: e.read,
 		active: () => !i && e.active() && t.isConnected,
 		keepWatching: e.watchIdle !== !1,
@@ -1431,10 +1563,10 @@ function Wt(e) {
 }
 //#endregion
 //#region src/islands/scraping.tsx
-var Gt = (e, t) => I("/api/scraping", t);
-function Kt({ value: e, onChange: t }) {
-	let n = H(null), r = H(t);
-	return r.current = t, V(() => {
+var qt = (e, t) => I("/api/scraping", t);
+function Jt({ value: e, onChange: t }) {
+	let n = U(null), r = U(t);
+	return r.current = t, H(() => {
 		let t = n.current;
 		t.innerHTML = i([
 			["environment", "系统代理"],
@@ -1445,27 +1577,27 @@ function Kt({ value: e, onChange: t }) {
 		return a.addEventListener("change", o), () => {
 			a.disabled = !0, a.removeEventListener("change", o), t.replaceChildren();
 		};
-	}, []), /* @__PURE__ */ U("div", {
+	}, []), /* @__PURE__ */ W("div", {
 		ref: n,
 		class: "scraping-network"
 	});
 }
-function qt({ source: e, toast: t }) {
-	let [i, a] = B(e), [s, c] = B(e.network), [l, u] = B(""), [d, f] = B(""), [p, m] = B(""), [h, g] = B("paste"), [_, v] = B(""), [y, b] = B(!1), [x, S] = B(""), [C, w] = B([]), T = H(null), E = H(null);
-	V(() => {
+function Yt({ source: e, toast: t }) {
+	let [i, a] = V(e), [s, c] = V(e.network), [l, u] = V(""), [d, f] = V(""), [p, m] = V(""), [h, g] = V("paste"), [_, v] = V(""), [y, b] = V(!1), [x, S] = V(""), [C, w] = V([]), T = U(null), E = U(null);
+	H(() => {
 		E.current?.querySelectorAll("footer button").forEach((e) => o(e, y));
 	}, [y]);
-	let D = H(new AbortController());
-	Le(() => () => D.current.abort(), []);
+	let D = U(new AbortController());
+	Ie(() => () => D.current.abort(), []);
 	async function O(n) {
 		if (!y) {
 			b(!0), S(""), w([]);
 			try {
 				if (n === "check") {
-					let t = await we("/api/scraping/check", { source: e.source }, "POST", D.current.signal);
+					let t = await L("/api/scraping/check", { source: e.source }, "POST", D.current.signal);
 					D.current.signal.aborted || w(t.results);
 				} else {
-					let r = await we("/api/scraping/settings", {
+					let r = await L("/api/scraping/settings", {
 						source: e.source,
 						network: s,
 						proxy: l,
@@ -1482,34 +1614,34 @@ function qt({ source: e, toast: t }) {
 			}
 		}
 	}
-	return /* @__PURE__ */ U("section", {
+	return /* @__PURE__ */ W("section", {
 		class: "scraping-source",
-		children: /* @__PURE__ */ U("form", {
+		children: /* @__PURE__ */ W("form", {
 			ref: E,
 			class: "cleanupfieldset",
 			"data-geist-fieldset": !0,
 			onSubmit: (e) => {
 				e.preventDefault(), O("save");
 			},
-			children: [/* @__PURE__ */ U("div", {
+			children: [/* @__PURE__ */ W("div", {
 				class: "geist-fieldset-content scraping-fields",
 				children: [
-					/* @__PURE__ */ U("div", { dangerouslySetInnerHTML: { __html: n(`scraping-${e.source}`, e.label) } }),
-					/* @__PURE__ */ U("a", {
+					/* @__PURE__ */ W("div", { dangerouslySetInnerHTML: { __html: n(`scraping-${e.source}`, e.label) } }),
+					/* @__PURE__ */ W("a", {
 						class: "scraping-url",
 						href: e.login,
 						target: "_blank",
 						rel: "noopener noreferrer",
 						children: e.login
 					}),
-					/* @__PURE__ */ U("div", {
+					/* @__PURE__ */ W("div", {
 						class: "scraping-label",
-						children: ["连接方式", /* @__PURE__ */ U(Kt, {
+						children: ["连接方式", /* @__PURE__ */ W(Jt, {
 							value: s,
 							onChange: c
 						})]
 					}),
-					s === "proxy" && /* @__PURE__ */ U("label", { children: ["代理地址", /* @__PURE__ */ U("input", {
+					s === "proxy" && /* @__PURE__ */ W("label", { children: ["代理地址", /* @__PURE__ */ W("input", {
 						class: "geist-input",
 						type: "password",
 						autoComplete: "off",
@@ -1518,13 +1650,13 @@ function qt({ source: e, toast: t }) {
 						disabled: y,
 						onInput: (e) => u(e.currentTarget.value)
 					})] }),
-					e.accepts_cookie && /* @__PURE__ */ U(M, { children: [
-						/* @__PURE__ */ U("p", { children: i.cookie_saved ? "Cookie 已保存，登录是否有效请在抓取时确认。" : "需要登录时，任选一种方式提供 Cookie。" }),
-						/* @__PURE__ */ U("div", {
+					e.accepts_cookie && /* @__PURE__ */ W(M, { children: [
+						/* @__PURE__ */ W("p", { children: i.cookie_saved ? "Cookie 已保存，登录是否有效请在抓取时确认。" : "需要登录时，任选一种方式提供 Cookie。" }),
+						/* @__PURE__ */ W("div", {
 							class: "insightswitch scraping-cookie-method",
 							role: "radiogroup",
 							"aria-label": "提供 Cookie 的方式（二选一）",
-							children: [["paste", "粘贴 Cookie"], ["file", "导入文件"]].map(([t, n]) => /* @__PURE__ */ U("label", { children: [/* @__PURE__ */ U("input", {
+							children: [["paste", "粘贴 Cookie"], ["file", "导入文件"]].map(([t, n]) => /* @__PURE__ */ W("label", { children: [/* @__PURE__ */ W("input", {
 								type: "radio",
 								name: `cookie-method-${e.source}`,
 								value: t,
@@ -1532,29 +1664,29 @@ function qt({ source: e, toast: t }) {
 								onChange: () => {
 									g(t), f(""), m(""), v("");
 								}
-							}), /* @__PURE__ */ U("span", { children: n })] }, t))
+							}), /* @__PURE__ */ W("span", { children: n })] }, t))
 						}),
-						h === "paste" ? /* @__PURE__ */ U("label", { children: ["Cookie", /* @__PURE__ */ U("input", {
+						h === "paste" ? /* @__PURE__ */ W("label", { children: ["Cookie", /* @__PURE__ */ W("input", {
 							class: "geist-input",
 							type: "password",
 							autoComplete: "off",
 							value: d,
 							disabled: y,
 							onInput: (e) => f(e.currentTarget.value)
-						})] }) : /* @__PURE__ */ U("label", {
+						})] }) : /* @__PURE__ */ W("label", {
 							class: "scraping-file",
-							children: ["Netscape Cookie 文件（.txt）", /* @__PURE__ */ U("span", {
+							children: ["Netscape Cookie 文件（.txt）", /* @__PURE__ */ W("span", {
 								class: "scraping-file-control",
 								children: [
-									/* @__PURE__ */ U("span", {
+									/* @__PURE__ */ W("span", {
 										class: "geist-button",
 										children: "选择文件"
 									}),
-									/* @__PURE__ */ U("span", {
+									/* @__PURE__ */ W("span", {
 										class: "scraping-file-name",
 										children: _ || "未选择文件"
 									}),
-									/* @__PURE__ */ U("input", {
+									/* @__PURE__ */ W("input", {
 										ref: T,
 										type: "file",
 										accept: ".txt",
@@ -1584,31 +1716,31 @@ function qt({ source: e, toast: t }) {
 							})]
 						})
 					] }),
-					x && /* @__PURE__ */ U("div", {
+					x && /* @__PURE__ */ W("div", {
 						role: "alert",
 						dangerouslySetInnerHTML: { __html: r(x, { variant: "error" }) }
 					}),
-					C.map((t) => /* @__PURE__ */ U("div", {
+					C.map((t) => /* @__PURE__ */ W("div", {
 						role: "status",
 						dangerouslySetInnerHTML: { __html: r(`${e.label}${t.label === "来源页面" ? "" : " 高清图片"}：${t.ok ? "可连接" : "不能连接"}` + (t.width ? ` · ${t.width} × ${t.height}` : "") + (t.message ? `。${t.message}` : ""), { variant: t.ok ? "success" : "error" }) }
 					}, t.label))
 				]
-			}), /* @__PURE__ */ U("footer", {
+			}), /* @__PURE__ */ W("footer", {
 				class: "geist-fieldset-footer",
 				"data-geist-fieldset-footer": !0,
 				children: [
-					/* @__PURE__ */ U("button", {
+					/* @__PURE__ */ W("button", {
 						class: "geist-button primary",
 						type: "submit",
 						children: "保存"
 					}),
-					/* @__PURE__ */ U("button", {
+					/* @__PURE__ */ W("button", {
 						class: "geist-button",
 						type: "button",
 						onClick: () => void O("check"),
 						children: "检查连接"
 					}),
-					e.accepts_cookie && i.cookie_saved && /* @__PURE__ */ U("button", {
+					e.accepts_cookie && i.cookie_saved && /* @__PURE__ */ W("button", {
 						class: "geist-button",
 						type: "button",
 						onClick: () => void O("revoke"),
@@ -1619,13 +1751,13 @@ function qt({ source: e, toast: t }) {
 		})
 	});
 }
-function Jt({ data: e, error: t, toast: i }) {
-	let [a, s] = B(""), [c, l] = B(!1), [u, d] = B(""), f = H(null);
-	V(() => o(f.current, c), [c]);
-	let p = H(new AbortController()), m = H(0);
+function Xt({ data: e, error: t, toast: i }) {
+	let [a, s] = V(""), [c, l] = V(!1), [u, d] = V(""), f = U(null);
+	H(() => o(f.current, c), [c]);
+	let p = U(new AbortController()), m = U(0);
 	async function h(e = !1) {
 		let t = ++m.current;
-		await Ut({
+		await Gt({
 			read: (e) => I("/api/scraping/cover", e),
 			active: () => !p.current.signal.aborted && t === m.current,
 			render: (t) => {
@@ -1634,37 +1766,37 @@ function Jt({ data: e, error: t, toast: i }) {
 			disconnected: () => d("连接中断，正在重新读取后台进度")
 		});
 	}
-	Le(() => (h(!0), () => p.current.abort()), []);
+	Ie(() => (h(!0), () => p.current.abort()), []);
 	async function g() {
 		if (!c) {
 			m.current++, l(!0), d("");
 			try {
-				await we("/api/scraping/cover", { code: a }, "POST", p.current.signal), await h();
+				await L("/api/scraping/cover", { code: a }, "POST", p.current.signal), await h();
 			} catch (e) {
 				p.current.signal.aborted || (l(!1), d(F(e)));
 			}
 		}
 	}
-	return t ? /* @__PURE__ */ U("div", {
+	return t ? /* @__PURE__ */ W("div", {
 		role: "alert",
 		dangerouslySetInnerHTML: { __html: r(t, { variant: "error" }) }
-	}) : /* @__PURE__ */ U("div", {
+	}) : /* @__PURE__ */ W("div", {
 		class: "scraping-page",
 		children: [
-			/* @__PURE__ */ U("p", { children: "高清图片可能需要代理才能下载，请先检查连接。" }),
-			/* @__PURE__ */ U("section", {
+			/* @__PURE__ */ W("p", { children: "高清图片可能需要代理才能下载，请先检查连接。" }),
+			/* @__PURE__ */ W("section", {
 				class: "cleanupfieldset scraping-source",
 				"data-geist-fieldset": !0,
-				children: /* @__PURE__ */ U("div", {
+				children: /* @__PURE__ */ W("div", {
 					class: "geist-fieldset-content scraping-fields",
 					children: [
-						/* @__PURE__ */ U("div", { dangerouslySetInnerHTML: { __html: n("scraping-cover", "高清封面") } }),
-						/* @__PURE__ */ U("form", {
+						/* @__PURE__ */ W("div", { dangerouslySetInnerHTML: { __html: n("scraping-cover", "高清封面") } }),
+						/* @__PURE__ */ W("form", {
 							class: "scraping-cover-form",
 							onSubmit: (e) => {
 								e.preventDefault(), g();
 							},
-							children: [/* @__PURE__ */ U("input", {
+							children: [/* @__PURE__ */ W("input", {
 								class: "geist-input",
 								"aria-label": "馆藏番号",
 								required: !0,
@@ -1672,21 +1804,21 @@ function Jt({ data: e, error: t, toast: i }) {
 								disabled: c,
 								placeholder: "输入馆藏番号，如 ABW-232",
 								onInput: (e) => s(e.currentTarget.value)
-							}), /* @__PURE__ */ U("button", {
+							}), /* @__PURE__ */ W("button", {
 								ref: f,
 								class: "geist-button primary",
 								type: "submit",
 								children: "抓取封面"
 							})]
 						}),
-						u && /* @__PURE__ */ U("div", {
+						u && /* @__PURE__ */ W("div", {
 							role: "alert",
 							dangerouslySetInnerHTML: { __html: r(u, { variant: "error" }) }
 						})
 					]
 				})
 			}),
-			e?.sources.map((e) => /* @__PURE__ */ U(qt, {
+			e?.sources.map((e) => /* @__PURE__ */ W(Yt, {
 				source: e,
 				toast: i
 			}, e.source))
@@ -1695,12 +1827,12 @@ function Jt({ data: e, error: t, toast: i }) {
 }
 //#endregion
 //#region src/state/index.ts
-var Yt = { "quality-goals": {
-	refresh: zt,
-	reset: Rt
-} }, Xt = () => Object.keys(Yt);
-async function Zt(e) {
-	let t = Yt[e];
+var Zt = { "quality-goals": {
+	refresh: Vt,
+	reset: Bt
+} }, Qt = () => Object.keys(Zt);
+async function $t(e) {
+	let t = Zt[e];
 	if (!t) throw Error(`未登记的共享 store：${String(e)}`);
 	try {
 		return await t.refresh(), !0;
@@ -1710,10 +1842,10 @@ async function Zt(e) {
 }
 //#endregion
 //#region src/native-image.ts
-function Qt(e, t, n, r) {
+function en(e, t, n, r) {
 	return e > 0 && t > 0 && e === n && t === r;
 }
-function $t(e, t, n, r, i = 1) {
+function tn(e, t, n, r, i = 1) {
 	let a = Number.isFinite(i) && i > 0 ? i : 1;
 	e /= a, t /= a;
 	let o = [
@@ -1730,7 +1862,7 @@ function $t(e, t, n, r, i = 1) {
 }
 //#endregion
 //#region src/entity-skeleton.ts
-function en(e, t) {
+function nn(e, t) {
 	return `<section data-skeleton="entity/${e}" role="status" aria-label="正在读取资料">
     <span class="sr-only">正在读取资料</span><div aria-hidden="true">
     <div class="entityhero"><div class="entityportrait ${e === "studio" || e === "agency" ? "square " : ""}skeleton"></div>
@@ -1742,7 +1874,7 @@ function en(e, t) {
 }
 //#endregion
 //#region src/sidebar.ts
-function tn(e) {
+function rn(e) {
 	return [
 		"/",
 		"/unseen",
@@ -1752,23 +1884,23 @@ function tn(e) {
 		"/junk-files"
 	].includes(e) || /^\/(item|mix|parts|editions)\//.test(e) || /^\/playlists\/\d+\/\d+$/.test(e) || /^\/(performers|studios|creators|series|agencies)\/.+/.test(e);
 }
-function nn(e, t) {
+function an(e, t) {
 	return e.dataset.surface === t && e.querySelector(".dnav") ? !1 : (e.dataset.surface = t, e.replaceChildren(), !0);
 }
-function rn(e) {
+function on(e) {
 	let t = /* @__PURE__ */ new Map();
 	for (let n of e) for (let e of new Set(n.tags || [])) t.set(e, (t.get(e) || 0) + 1);
 	return [...t].sort((e, t) => t[1] - e[1]).slice(0, 30);
 }
 //#endregion
 //#region src/management.ts
-function an(e) {
+function sn(e) {
 	return e.filter((e) => ["115", "pikpak"].includes(e.location) && (e.roots === void 0 || e.roots.length > 0)).map((e) => e.location);
 }
-function on(e, t) {
+function cn(e, t) {
 	return t.filter((t) => e.some((e) => e.location === t));
 }
-function sn() {
+function ln() {
 	return `<div class="cleanuppage" data-skeleton="cleanup" aria-busy="true" aria-label="正在读取数据管理状态">
     <div class="cleanupgrid">${[
 		[
@@ -1814,7 +1946,7 @@ function sn() {
         <footer class="geist-fieldset-footer" data-geist-fieldset-footer><button type="button"${r === 3 ? " class=\"danger\"" : ""} disabled>${r === 3 ? "<svg aria-hidden=\"true\"><use href=\"#i-trash\"></use></svg><span>" + t + "</span>" : t}</button></footer>
       </section>`).join("")}</div></div>`;
 }
-function cn(e, t = !1, n = !1) {
+function un(e, t = !1, n = !1) {
 	if (t || n) return "";
 	let r = "<svg aria-hidden=\"true\"><use href=\"#i-external-link\"></use></svg>";
 	return `<details class="taste-history-guide"${e ? " open" : ""}>
@@ -1828,60 +1960,60 @@ function cn(e, t = !1, n = !1) {
       <button type="button" class="taste-guide-skip">跳过</button>
     </div></details>`;
 }
-var ln = "peach-taste-guide-dismissed";
-function un(e, t) {
+var dn = "peach-taste-guide-dismissed";
+function fn(e, t) {
 	let n = e.querySelector(".taste-history-guide");
 	n?.querySelector(".taste-guide-skip")?.addEventListener("click", () => {
-		t.setItem(ln, "1"), n.remove();
+		t.setItem(dn, "1"), n.remove();
 	});
 }
 //#endregion
 //#region src/jav-artwork.ts
-function dn(e) {
+function pn(e) {
 	return [
 		"small",
 		"sleeve",
 		"preview"
 	].includes(String(e)) ? "small" : "big";
 }
-function fn(e) {
+function mn(e) {
 	return {
-		javLayout: dn(e.javLayout),
-		javImage: pn(e.javLayout === "preview" ? "thumbnail" : e.javImage)
+		javLayout: pn(e.javLayout),
+		javImage: hn(e.javLayout === "preview" ? "thumbnail" : e.javImage)
 	};
 }
-function pn(e) {
+function hn(e) {
 	return e === "thumbnail" ? "thumbnail" : "cover";
 }
-function mn(e, t) {
-	return e.is_jav && e.code && e.has_cover && (pn(t) === "cover" || !e.has_thumb) ? "cover" : e.has_thumb ? "thumbnail" : "";
+function gn(e, t) {
+	return e.is_jav && e.code && e.has_cover && (hn(t) === "cover" || !e.has_thumb) ? "cover" : e.has_thumb ? "thumbnail" : "";
 }
-function hn(e, t) {
+function _n(e, t) {
 	e.querySelectorAll("img[data-jav-image]").forEach((e) => {
-		let n = e.dataset.javCover || "", r = e.dataset.javThumb || "", i = !!(n && (pn(t) === "cover" || !r)), a = i ? n : r;
+		let n = e.dataset.javCover || "", r = e.dataset.javThumb || "", i = !!(n && (hn(t) === "cover" || !r)), a = i ? n : r;
 		e.classList.toggle("cover", i), e.classList.toggle("whole", i && e.dataset.javImageLayout !== "big"), e.classList.toggle("front", i && e.dataset.javImageLayout === "big"), e.removeAttribute("style"), a && e.getAttribute("src") !== a && (e.src = a);
 	});
 }
 //#endregion
 //#region src/islands.ts
-var gn = {
+var vn = {
 	scraping: {
-		load: Gt,
-		component: Jt
+		load: qt,
+		component: Xt
 	},
 	"quality-goals": {
-		load: Bt,
-		component: Ht
+		load: Ht,
+		component: Wt
 	},
 	configuration: {
-		load: Xe,
-		component: nt
+		load: Ze,
+		component: rt
 	}
-}, _n = () => Object.keys(gn), $ = /* @__PURE__ */ new Map();
-async function vn(e, t, n, r = {}) {
-	let i = gn[e];
+}, yn = () => Object.keys(vn), $ = /* @__PURE__ */ new Map();
+async function bn(e, t, n, r = {}) {
+	let i = vn[e];
 	if (!i) throw Error(`未注册的 island：${String(e)}`);
-	yn(t);
+	xn(t);
 	let a = {
 		controller: new AbortController(),
 		painted: !1
@@ -1912,9 +2044,9 @@ async function vn(e, t, n, r = {}) {
 	};
 	xe(te(i.component, s), t);
 }
-function yn(e) {
+function xn(e) {
 	let t = $.get(e);
 	t && (t.controller.abort(), $.delete(e), t.painted && xe(null, e));
 }
 //#endregion
-export { ln as TASTE_GUIDE_KEY, sn as cleanupSkeletonHtml, an as cloudLocations, on as cloudPreferenceLocations, en as entitySkeletonHtml, Wt as followJobProgress, _n as islandNames, mn as javImageKind, Qt as matchesFaceSource, vn as mountIsland, $t as nativeImageFit, pn as normalizeJavImage, dn as normalizeJavLayout, fn as normalizeJavPreferences, Zt as refreshStore, tn as sidebarHasCatalogContent, rn as sidebarTagCounts, Xt as storeNames, hn as syncJavImages, nn as syncSidebarSurface, cn as tasteHistoryGuideHtml, yn as unmountIsland, Ut as watchJob, un as wireTasteHistoryGuide };
+export { dn as TASTE_GUIDE_KEY, ln as cleanupSkeletonHtml, sn as cloudLocations, cn as cloudPreferenceLocations, nn as entitySkeletonHtml, Kt as followJobProgress, yn as islandNames, gn as javImageKind, en as matchesFaceSource, bn as mountIsland, tn as nativeImageFit, hn as normalizeJavImage, pn as normalizeJavLayout, mn as normalizeJavPreferences, $t as refreshStore, rn as sidebarHasCatalogContent, on as sidebarTagCounts, Qt as storeNames, _n as syncJavImages, an as syncSidebarSurface, un as tasteHistoryGuideHtml, xn as unmountIsland, Gt as watchJob, fn as wireTasteHistoryGuide };

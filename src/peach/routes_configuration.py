@@ -16,8 +16,10 @@ import threading
 from typing import Any
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Request
+from fastapi.responses import JSONResponse
+from filelock import FileLock, Timeout
 
-from . import distribution, folder_picker, onboarding, settings_file, media_configuration
+from . import access, distribution, folder_picker, onboarding, settings_file, media_configuration
 from .routes_auth import require_auth
 from .routes_pages import runtime_fact_entries
 
@@ -80,6 +82,7 @@ def snapshot(config) -> dict[str, Any]:
     editable = managed_configuration()
     media = config.mounts.get("local") or config.locations.get("local", ())
     return {
+        "access": access.public(access.load(config.directory("secrets") / "access.json")),
         "editable": editable,
         "notice": "" if editable else FILE_MANAGED_NOTICE,
         "revision": revision(config),
@@ -134,8 +137,54 @@ def _validate(body: dict[str, Any], config) -> tuple[dict[str, Any], dict[str, A
 def same_origin(request: Request) -> None:
     """浏览器发来的写请求必须来自 Peach 自己的页面：带了别处的 Origin 就拒。"""
     origin = request.headers.get("origin")
-    if origin and origin.rstrip("/") != str(request.base_url).rstrip("/"):
+    if request.headers.get("sec-fetch-site") == "cross-site" or (origin and origin.rstrip("/") != str(request.base_url).rstrip("/")):
         raise HTTPException(403, "请从 Peach 配置页提交")
+
+
+@router.post("/api/configuration/access")
+def save_access(request: Request, body: dict[str, Any] = Body(default_factory=dict),
+                _args=Depends(require_auth)):
+    local_only(request)
+    same_origin(request)
+    path = request.app.state.settings.access_path
+    if not request.app.state.settings.configured or path is None:
+        raise HTTPException(409, "请先完成首次设置")
+    if any(not isinstance(body.get(key, ""), str) for key in ("password", "confirmation", "current_password")):
+        raise HTTPException(400, "密码需要是文字")
+    password = body.get("password", "")
+    if body.get("action") not in {"set", "disable"}:
+        raise HTTPException(400, "请选择设置或关闭密码")
+    if body["action"] == "set" and not password:
+        raise HTTPException(400, {"message": "请输入访问密码", "errors": {"password": "请输入访问密码"}})
+    if body["action"] == "disable" and body.get("confirm_disable") is not True:
+        raise HTTPException(400, "请确认允许能连接到 Peach 的设备直接访问")
+    try:
+        try:
+            access.validate_password(password, body.get("confirmation", ""))
+        except ValueError as exc:
+            field = "confirmation" if password != body.get("confirmation", "") else "password"
+            raise HTTPException(400, {"message": str(exc), "errors": {field: str(exc)}}) from exc
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with FileLock(str(path.with_suffix(".lock")), timeout=0):
+            policy = access.load(path)
+            if body.get("revision") != policy["revision"]:
+                raise HTTPException(409, "访问设置已变更，请刷新后再保存")
+            if policy["mode"] == "locked":
+                raise HTTPException(409, "访问设置无法读取，请在本机检查配置文件")
+            if policy["mode"] == "password" and not access.verify(policy, body.get("current_password", "")):
+                raise HTTPException(400, {"message": "当前访问密码不正确", "errors": {"current_password": "当前访问密码不正确"}})
+            policy = access.save(path, password if body["action"] == "set" else "")
+    except Timeout:
+        raise HTTPException(409, "访问设置正在保存，请稍后重试") from None
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    response = JSONResponse(access.public(policy), headers={"Cache-Control": "no-store"})
+    response.delete_cookie("tok", path="/")
+    response.delete_cookie(access.COOKIE, path="/")
+    if policy["mode"] == "password":
+        from .routes_auth import set_auth_cookie
+        set_auth_cookie(response, request, login=True)
+    return response
 
 
 @router.post("/api/pick-folder")

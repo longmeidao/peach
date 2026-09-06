@@ -547,7 +547,8 @@ class SetupPageTests(_Case):
         self.assertTrue((self.data_root / "state" / onboarding.SCAN_REQUEST_NAME).is_file())
         body = response.text
         self.assertIn("设置完成", body)
-        self.assertIn("peach token", body)
+        self.assertIn("访问密码可在配置页设置、修改或关闭", body)
+        self.assertNotIn("peach token", body)
         self.assertIn("Peach 数据库：", body)
         self.assertNotIn("账本", body)
         # 完成页尾部是与配置页共用的运行信息：版本、位置和 FFmpeg 一眼可查。
