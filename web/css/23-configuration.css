@@ -7,9 +7,9 @@
 .configgroup:first-child{margin-top:0}
 .resourceapplyrow>p{margin-right:auto;text-align:left}
 .resourcesyncfooter>p{margin:0 auto 0 0;text-align:left}
-.resourceaction.warning{background:var(--meter);border-color:var(--meter);color:light-dark(var(--ink),var(--ground))}
-.resourceaction.warning:hover:not(:disabled){background:color-mix(in srgb,var(--meter) 88%,#fff);border-color:var(--meter);color:light-dark(var(--ink),var(--ground))}
-.resourceaction.warning:disabled{background:var(--surface);border-color:var(--line);color:var(--muted)}
+.resourceaction.warning{background:var(--meter);color:light-dark(var(--ink),var(--ground))}
+.resourceaction.warning:hover:not(:disabled){background:color-mix(in srgb,var(--meter) 88%,#fff);color:light-dark(var(--ink),var(--ground))}
+.resourceaction.warning:disabled{background:var(--surface);color:var(--muted)}
 .configpage .geist-button{min-height:var(--control-h)}
 .configfieldset{display:flex;flex-direction:column;min-width:0;margin:0;padding:0;overflow:hidden;
   border:1px solid var(--line);border-radius:var(--control-radius);background:var(--ground)}

@@ -1194,6 +1194,48 @@ class WebUiSourceTests(unittest.TestCase):
         divider = css[css.index(".splitbutton>.splittoggle::before{"):]
         self.assertIn("width:1px", divider[:divider.index("}")])
 
+    def test_the_progress_bar_can_be_grabbed_well_above_the_coloured_line(self):
+        """彩条 6px，命中区 18px，多出来的 12px 全在条上方。
+
+        往下扩会盖住按钮那一排的顶边，读起来就是按钮时灵时不灵。彩条自己贴在命中区
+        底边，所以加高不会把它挪走；缩略图浮层贴的是命中区上沿，得把这 12px 减回去。
+        """
+        css = stylesheet_source()
+        rule = css[css.index(".vwrap .video-js .vjs-progress-control{"):]
+        rule = rule[:rule.index("}")]
+        self.assertIn("top:-12px", rule)
+        self.assertIn("height:18px", rule)
+        self.assertIn("align-items:flex-end", rule)
+        holder = css[css.index(".vwrap .video-js .vjs-progress-control .vjs-progress-holder{"):]
+        self.assertIn("height:6px", holder[:holder.index("}")], "彩条本身不变粗")
+        self.assertPageContains(".vjs-peach-seek-preview{position:absolute;z-index:4;"
+                                "bottom:calc(100% - 2px);")
+        self.assertPageContains(".vjs-layout-x-small .vjs-progress-control"
+                                "{left:0;right:0;top:-12px;height:18px;display:flex}")
+
+    def test_the_small_window_gets_its_own_seek_keys(self):
+        """小窗（画中画）里只剩浏览器给的那几颗键，站内控制条一颗都递不进去。
+
+        Media Session 的动作处理器是唯一的入口：登记 `seekbackward` 和 `seekforward`
+        之后小窗才画得出快退快进，步长取设置里那个秒数；`setPositionState` 让小窗自己
+        那条进度条知道放到哪，`seekto` 让拖它生效。逐个动作单独 try——整块 try 会让一个
+        浏览器不认识的动作带走后面全部处理器。
+        """
+        self.assertPageContains("function mountPlayerMediaSession(player,it){")
+        self.assertPageContains("mountPlayerMediaSession(detailPlayer,it);")
+        for needle in ("seekbackward:details=>seekTo(player.currentTime()-"
+                       "(details?.seekOffset||step()))",
+                       "seekforward:details=>seekTo(player.currentTime()+"
+                       "(details?.seekOffset||step()))",
+                       "seekto:details=>{if(typeof details?.seekTime==='number')"
+                       "seekTo(details.seekTime)}",
+                       "Math.max(1,Number(appSettings.seekSeconds)||10)",
+                       "try{session.setActionHandler(action,handler);registered.push(action)}catch(_e){}",
+                       "if(!duration||position>duration)return;"):
+            self.assertPageContains(needle)
+        # 换一条视频就换一份处理器：不摘掉的话小窗还按着上一条的进度条走。
+        self.assertPageContains("registered.forEach(action=>{try{session.setActionHandler(action,null)}catch(_e){}});")
+
     def test_settings_overlay_owns_the_top_fixed_layer(self):
         self.assertPageContains("--layer-dialog:1000")
         self.assertPageContains(".settingspanel{position:fixed;z-index:var(--layer-dialog);inset:0;isolation:isolate")
@@ -2890,7 +2932,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("group.className='vjs-peach-right-controls'")
         self.assertPageContains("controlBar.querySelector(':scope>.vjs-picture-in-picture-control')")
         self.assertPageContains("controlBar.querySelector(':scope>.vjs-fullscreen-control')")
-        self.assertPageContains(".vwrap .video-js .vjs-progress-control{z-index:2;position:absolute;left:0;right:0;top:0;width:auto;height:6px")
+        self.assertPageContains(".vwrap .video-js .vjs-progress-control{z-index:2;position:absolute;left:0;right:0;top:-12px;width:auto;height:18px")
         self.assertPageContains(".vwrap .video-js .vjs-play-progress{background:var(--tungsten)}")
         self.assertPageContains(".vwrap .video-js .vjs-play-progress:before{content:\"\"")
         self.assertPageContains("width:100%;height:6px;margin:0;border-radius:0")
@@ -6124,17 +6166,17 @@ class WebUiSourceTests(unittest.TestCase):
         """右侧详情栏和「接着看」是同一格详情的两块，底色必须同源。
 
         半透明的氛围色叠在透明底上时，底下是 `.stage` 那圈只铺到 58% 的径向渐变，
-        而它铺不到「接着看」这一条：那一块于是比上面的详情栏浅一档，一条横贯整幅
-        宽度的界线就出来了，看着像两块面板拼起来的。氛围色定义在 `.stage` 上，两块
-        引同一个值；同色之后描边也不需要，分块交给留白和小标题。
+        而它铺不到「接着看」这一条：那一块于是浅一档，整幅宽度上留下一道深浅不匀
+        的色差，看着像两块面板拼起来的。氛围色定义在 `.stage` 上，两块引同一个值。
+        两块之间的分界由 `--line-soft` 那条线负责：同色之后光留白读不出边界，
+        「接着看」是和详情信息不同的一件事，得有一条线说清它从哪里开始。
         """
         self.assertPageContains(
             ".stage{--detail-surface:color-mix(in srgb,var(--video-glow,#15202a) 12%,"
             "var(--surface) 88%);")
         self.assertPageContains("  background:var(--detail-surface);backdrop-filter:blur(18px)}")
-        self.assertPageContains(".next{padding:11px 15px 12px;background:var(--detail-surface)}")
-        self.assertPageLacks(
-            ".next{border-top:1px solid var(--line-soft);padding:11px 15px 12px;")
+        self.assertPageContains(".next{border-top:1px solid var(--line-soft);"
+                                "padding:11px 15px 12px;background:var(--detail-surface)}")
 
     def test_better_version_targets_have_a_management_page(self):
         self.assertPageContains("['quality','高清版','sparkles']")
@@ -6952,15 +6994,19 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".ncard .meta .size,.ncard .meta .watchcount{display:none}")
         self.assertPageLacks(".ncard .meta .s{line-height:1.45;height:")
 
-    def test_a_cold_deep_link_clears_the_catalog_skeleton(self):
-        """深链冷启动时列表一次请求都没发过，那张「正在读取作品」会永远停在详情下方。
+    def test_a_cold_deep_link_fills_the_catalog_below_the_detail(self):
+        """深链冷启动时列表一次请求都没发过，排序条底下于是是一整屏空白。
 
-        它和 `hasReturnSurface` 是同一张骨架的两半：那边负责关掉详情后补装列表，
-        这边负责在详情打开期间不谎报「正在读取」。
+        从列表里点进详情时下面就是那份列表，直接刷新详情页的地址也该有同样的东西。
+        补的那一次请求必须走 `load(false)`：`reset` 那条开头就 `disposeStage()`，
+        会把刚打开的这一屏详情一起收掉。
         """
-        self.assertPageContains("function clearIdleCatalogLoading()")
+        self.assertPageContains("function fillIdleCatalog()")
         self.assertPageContains("if(!grid.querySelector('.catalog-skeleton'))return;")
-        self.assertPageContains("if(!returnSurfaceReady)clearIdleCatalogLoading();")
+        self.assertPageContains("void load(false);")
+        self.assertPageContains("if(!returnSurfaceReady)fillIdleCatalog();")
+        self.assertPageContains("if(reset){barsContext={type:'home',filters:state};"
+                                "detailReturnBarsContext=null;disposeStage(false);")
 
     def test_settings_sort_pair_and_hover_off(self):
         self.assertPageContains('class="settingrow settingrelated"')
@@ -7309,6 +7355,10 @@ class WebUiSourceTests(unittest.TestCase):
                                 "border-radius:var(--pill-radius);border:1px solid var(--line-soft);")
         self.assertPageContains(".factions button{width:36px;height:36px;"
                                 "border:1px solid rgba(255,255,255,.16);")
+        # 资源同步那一族按钮的底色自己就画出了按钮，`border-color` 落在 `border:0` 上
+        # 是空转的声明：读起来像还有一圈边，实际一像素都不画。
+        for rule in re.findall(r"\.resourceaction[^{]*\{[^}]*\}", css):
+            self.assertNotIn("border-color", rule, "动作键不描边")
 
     def test_destructive_buttons_are_solid_red_at_rest(self):
         """危险动作静止态就是 --drop 实底加白字，全站一个写法。

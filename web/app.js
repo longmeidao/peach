@@ -1459,6 +1459,47 @@ function mountPlayerSeekPreview(player,it,options={}){
 }
 /* Video.js 自带的转圈是 `:before`／`:after` 画的两条弧，换不掉曲线；YouTube e937390a
    的 `FsY` 是四段嵌套元素配四段动画。转圈的 DOM 只能整块替换，样式表接不上手。 */
+/* 小窗（画中画）里只剩浏览器给的那几颗键，站内控制条一颗都递不进去。Media Session
+   的动作处理器是唯一的入口：登记 `seekbackward` 和 `seekforward` 之后，Chrome 会在小窗
+   里画出快退和快进两颗，步长用设置里那个秒数；`setPositionState` 让小窗自己那条进度条
+   知道现在放到哪，`seekto` 让拖它真的生效。不登记时小窗只有播放、暂停和关闭三颗。
+   YouTube 的小窗没有这两颗，这里是本站自己要的。 */
+function mountPlayerMediaSession(player,it){
+  const session=navigator.mediaSession;
+  if(!session||typeof session.setActionHandler!=='function')return;
+  const total=()=>realDuration(player.duration())||realDuration(it.duration)||0;
+  const seekTo=seconds=>{const duration=total();
+    player.currentTime(Math.max(0,duration?Math.min(duration,seconds):seconds))};
+  const step=()=>Math.max(1,Number(appSettings.seekSeconds)||10);
+  const handlers={
+    play:()=>{void player.play()},
+    pause:()=>player.pause(),
+    seekbackward:details=>seekTo(player.currentTime()-(details?.seekOffset||step())),
+    seekforward:details=>seekTo(player.currentTime()+(details?.seekOffset||step())),
+    seekto:details=>{if(typeof details?.seekTime==='number')seekTo(details.seekTime)},
+  };
+  const registered=[];
+  for(const [action,handler] of Object.entries(handlers)){
+    /* 浏览器不认的动作会抛，认得的照常登记：整块 try 会让一个不认识的动作带走后面
+       全部处理器，小窗于是又回到只有播放暂停。 */
+    try{session.setActionHandler(action,handler);registered.push(action)}catch(_e){}
+  }
+  const syncPosition=()=>{
+    const duration=total(),position=Math.max(0,Number(player.currentTime())||0);
+    if(typeof session.setPositionState!=='function')return;
+    /* 时长不可用或者进度跑在时长前面时不报：`setPositionState` 对这两种入参直接抛，
+       而 `timeupdate` 每秒都来，抛一次就是每秒一条错误。 */
+    if(!duration||position>duration)return;
+    try{session.setPositionState({duration,position,
+      playbackRate:Math.max(.001,Number(player.playbackRate())||1)})}catch(_e){}
+  };
+  player.on(['timeupdate','durationchange','ratechange','seeked','loadedmetadata'],syncPosition);
+  syncPosition();
+  player.on('dispose',()=>{
+    registered.forEach(action=>{try{session.setActionHandler(action,null)}catch(_e){}});
+    try{session.setPositionState?.()}catch(_e){}
+  });
+}
 function mountPlayerSpinner(player){
   const spinner=player.el().querySelector('.vjs-loading-spinner');
   if(!spinner||spinner.querySelector('.vjs-peach-spinner-container'))return;
@@ -1603,6 +1644,7 @@ async function mountDetailPlayer(it,video,autoplay,options={}){
       if(size>0&&!mediaSize){mediaSize=size;meter.bitrate=averageBitrate(size,it.duration)}
     }).catch(()=>{});
     mountPlayerSeekPreview(detailPlayer,it,{thumbnail:!options.source});
+    mountPlayerMediaSession(detailPlayer,it);
     mountPlayerSpinner(detailPlayer);
     if(statsButton)statsButton.hidden=false
   });
@@ -7492,13 +7534,18 @@ function hasReturnSurface(){
     ||!$('#index').hidden||!$('#stats').hidden;
 }
 /* 同一张骨架的另一半问题：深链冷启动时列表一次请求都没发过，`renderInitialSurfaceLoading`
-   占位的那张「正在读取作品」就永远停在详情下方——写着在读，其实没有任何请求在跑。
-   关掉详情时 `detailReturnNeedsRestore` 会补装列表，所以这里直接清掉即可。 */
-function clearIdleCatalogLoading(){
+   占位的那张「正在读取作品」就停在详情下方，写着在读，其实没有任何请求在跑。这里把那
+   一次请求补发出去：从列表里点进详情时下面就是那份列表，直接刷新详情页的地址也该有
+   同样的东西，否则排序条底下是一整屏空白。
+   走的是 `load(false)`「接着往下取一页」那条路——`reset` 那条开头就 `disposeStage()`，
+   会把刚打开的这一屏详情一起收掉。 */
+function fillIdleCatalog(){
   const grid=$('#grid');
   if(!grid.querySelector('.catalog-skeleton'))return;
   grid.innerHTML='';
   const count=$('#count');count.removeAttribute('aria-busy');count.removeAttribute('aria-label');
+  offset=0;
+  void load(false);
 }
 /* 评分落在 `asset.rating`，量纲是 0–100：这一列是 Stash 的 rating100 直接导进来的，
    taste_history 也按 rating/20 折算成 0–5 分。所以第 n 颗星送出的是 n*20，不是 n。
@@ -7523,7 +7570,7 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
     : detailOriginAbove;
   const returnSurfaceReady=hasReturnSurface();
   const needsReturnRestore=detailReturnNeedsRestore||(!push&&!returnSurfaceReady);
-  if(!returnSurfaceReady)clearIdleCatalogLoading();
+  if(!returnSurfaceReady)fillIdleCatalog();
   const returnBars=barsContext.type==='item'?detailReturnBarsContext:cloneBarsContext(barsContext);
   if(push)detailReturnPath=location.pathname+location.search;
   disposeStage(false,true);
