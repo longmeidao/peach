@@ -121,8 +121,11 @@
        挖出来的字形按 .5 缩在圆内，边角不碰圆周：社媒标记是拿来认牌子的，
        缺一角就不是那个牌子。别的主机走 favicon，那些是方图，裁成圆无妨。
        只做 X 一个：416 条社媒链接里 372 条（89%）是 x.com／twitter.com，而 X 恰好
-       会挡掉 favicon 请求。 -->
-  <symbol id="i-brand-x" viewBox="0 0 24 24"><mask id="i-brand-x-cut"><rect width="24" height="24" fill="#fff"/><path fill="#000" transform="translate(12 12) scale(.5) translate(-12 -12)" d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></mask><circle cx="12" cy="12" r="12" fill="currentColor" stroke="none" mask="url(#i-brand-x-cut)"/></symbol>
+       会挡掉 favicon 请求。
+       遮罩的 id 不带 `i-` 前缀：那个前缀专属雪碧图里可被 `<use>` 引用的图标，
+       `test_every_sprite_symbol_has_a_declared_owner` 按它清点每一枚的归属，
+       借来命名一个内部遮罩会被当成一枚没人认领的图标。 -->
+  <symbol id="i-brand-x" viewBox="0 0 24 24"><mask id="brand-x-knockout"><rect width="24" height="24" fill="#fff"/><path fill="#000" transform="translate(12 12) scale(.5) translate(-12 -12)" d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></mask><circle cx="12" cy="12" r="12" fill="currentColor" stroke="none" mask="url(#brand-x-knockout)"/></symbol>
   <symbol id="i-bookmark-plus" viewBox="0 0 24 24"><path d="M12 7v6" /><path d="M15 10H9" /><path d="M17 3a2 2 0 0 1 2 2v15a1 1 0 0 1-1.496.868l-4.512-2.578a2 2 0 0 0-1.984 0l-4.512 2.578A1 1 0 0 1 5 20V5a2 2 0 0 1 2-2z" /></symbol>
   <symbol id="i-bookmark" viewBox="0 0 24 24"><path d="M17 3a2 2 0 0 1 2 2v15a1 1 0 0 1-1.496.868l-4.512-2.578a2 2 0 0 0-1.984 0l-4.512 2.578A1 1 0 0 1 5 20V5a2 2 0 0 1 2-2z" /></symbol>
   <symbol id="i-gallery-vertical-end" viewBox="0 0 24 24"><path d="M7 2h10" /><path d="M5 6h14" /><rect width="18" height="12" x="3" y="10" rx="2" /></symbol>
