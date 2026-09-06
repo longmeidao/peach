@@ -206,15 +206,20 @@
     <div class="settingshead"><h2 id="settingsTitle">设置</h2><button id="settingsClose" aria-label="关闭设置"><svg viewBox="0 0 24 24"><use href="#i-x"/></svg></button></div>
     <div class="settingsscroll">
       
+      <section class="settinggroup"><h3>界面</h3>
+      <div class="settingrow"><span><b>主题</b><small>跟随系统，或固定用浅色、深色。</small></span><div id="themeSetting"></div></div>
+      <section class="sidebarsetting" aria-labelledby="sidebarOrderTitle"><span><b id="sidebarOrderTitle">左侧导航</b><small>直接拖动排序；可隐藏入口，也可从具体页面列表重新添加。窄栏和筛选抽屉会保持一致。</small></span><div class="sidebarorder" id="sidebarOrderSetting"></div></section>
+      </section>
       <section class="settinggroup"><h3>浏览</h3>
       <div class="settingrow"><span><b>每批作品</b><small>首页每次加载的作品数量。</small></span><div id="batchSizeSetting"></div></div>
-      <div class="settingrow"><span><b>默认排序</b><small>打开首页时使用的排序。</small></span><div id="defaultSortSetting"></div></div>
-      <div class="settingrow"><span><b>默认排序方向</b><small>随机排序不使用方向。</small></span><div id="defaultSortDirectionSetting"></div></div>
-      <div class="settingrow"><span><b>悬停放大</b><small>转圈完成后进入放大预览。</small></span><div id="hoverDelaySetting"></div></div>
-      <label class="settingrow"><span><b>合并分卷与版本</b><small>同一番号的多个分卷或版次只占一张卡，展示第一个。</small></span><span class="pcheck"><input type="checkbox" id="groupCollapseSetting"><span aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-check"/></svg></span></span></label>
+      <div class="settingrow settingsortrow"><span><b>默认排序</b><small id="sortDirectionHelp">随机排序不使用方向。</small></span><div class="settingsortcontrols"><div id="defaultSortSetting"></div><div id="defaultSortDirectionSetting" aria-describedby="sortDirectionHelp"></div></div></div>
+      <label class="settingrow"><span><b>合并分卷与版本</b><small>同一番号的多个分卷或版次只占一张卡，展示第一个。</small></span><input type="checkbox" id="groupCollapseSetting" class="ptoggle" role="switch"></label>
+      <div class="settingrow"><span><b>JAV 默认封面</b><small>首页、接着看和 Mix 等位置共用；缺图时使用另一种封面。</small></span><div id="javImageSetting"></div></div>
+      <div class="settingrow"><span><b>JAV 封面默认大小</b><small>JAV 作品列表的默认版式；小图使用所选封面。</small></span><div id="javSizeSetting"></div></div>
       </section>
       <section class="settinggroup"><h3>播放</h3>
-      <label class="settingrow"><span><b>打开详情自动播放</b><small id="detailAutoplayDescription">打开本地作品或关注视频详情时开始播放；关闭后点击播放按钮开始。</small></span><input type="checkbox" id="detailAutoplaySetting" aria-describedby="detailAutoplayDescription"></label>
+      <div class="settingrow"><span><b>悬停放大</b><small>转圈完成后进入放大预览。</small></span><div id="hoverDelaySetting"></div></div>
+      <label class="settingrow"><span><b>打开详情自动播放</b><small id="detailAutoplayDescription">打开本地作品或关注视频详情时开始播放；关闭后点击播放按钮开始。</small></span><input type="checkbox" id="detailAutoplaySetting" role="switch" aria-describedby="detailAutoplayDescription"></label>
       <div class="settingrow"><span><b>快进 / 快退</b><small>卡片预览和详情播放器共用。</small></span><div id="seekSecondsSetting"></div></div>
       <div class="settingrow"><span><b>相关推荐</b><small>详情下方一次显示的相似作品数量。</small></span><div id="relatedLimitSetting"></div></div>
       </section>
@@ -224,14 +229,8 @@
       <section class="settinggroup"><h3>关注</h3>
       <div class="settingrow"><span><b>关注自动更新</b><small id="followScheduleState" aria-live="polite">读取运行状态…</small></span><div id="followScheduleSetting"></div></div>
       </section>
-      <section class="settinggroup"><h3>界面</h3>
-      <div class="settingrow"><span><b>JAV 默认封面</b><small>首页、接着看和 Mix 等位置共用；缺图时使用另一种封面。</small></span><div id="javImageSetting"></div></div>
-      <div class="settingrow"><span><b>JAV 封面默认大小</b><small>JAV 作品列表的默认版式；小图使用所选封面。</small></span><div id="javSizeSetting"></div></div>
-      <div class="settingrow"><span><b>主题</b><small>跟随系统，或固定用浅色、深色。</small></span><div id="themeSetting"></div></div>
-      <section class="sidebarsetting" aria-labelledby="sidebarOrderTitle"><span><b id="sidebarOrderTitle">左侧导航</b><small>直接拖动排序；可隐藏入口，也可从具体页面列表重新添加。窄栏和筛选抽屉会保持一致。</small></span><div class="sidebarorder" id="sidebarOrderSetting"></div></section>
-      </section>
       <section class="settinggroup"><h3>安全</h3>
-    <label class="settingrow"><span><b>SFW 模式</b><small id="sfwDescription">模糊、降低饱和度并压暗全站图片和视频，包括封面、头像与详情预览；停止悬停预览。文字、品牌标识和来源图标保持可见。</small></span><input type="checkbox" id="censorSetting" aria-describedby="sfwDescription"></label>
+    <label class="settingrow"><span><b>SFW 模式</b><small id="sfwDescription">模糊、降低饱和度并压暗全站图片和视频，包括封面、头像与详情预览；停止悬停预览。文字、品牌标识和来源图标保持可见。</small></span><input type="checkbox" id="censorSetting" role="switch" aria-describedby="sfwDescription"></label>
       </section>
     </div>
   </div>

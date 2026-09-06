@@ -417,7 +417,7 @@ if((+appSettings.sortDefaultsVersion||0)<3&&SORT_ALIASES[appSettings.defaultSort
 appSettings.sortDefaultsVersion=3;
 appSettings.batchSize=allowedSetting(+appSettings.batchSize,[30,60,90],60);
 appSettings.defaultSort=allowedSetting(appSettings.defaultSort,SORT_KEYS,'seed');
-appSettings.hoverDelaySeconds=allowedSetting(+appSettings.hoverDelaySeconds,[3,5,8],5);
+appSettings.hoverDelaySeconds=allowedSetting(+appSettings.hoverDelaySeconds,[0,3,5,8],5);
 appSettings.seekSeconds=allowedSetting(+appSettings.seekSeconds,[5,10,30],10);
 appSettings.ambientMode=appSettings.ambientMode!==false;
 appSettings.theaterMode=appSettings.theaterMode===true;
@@ -480,14 +480,15 @@ const SETTING_SELECTS=[
   ['defaultSortSetting','默认排序',[['seed','随机'],['rating','评分'],['o','高潮计数'],['plays','观看次数'],
     ['dur','时长'],['size','体积'],['new','入库时间'],['played','观看时间']],
     ()=>appSettings.defaultSort,
-    value=>{appSettings.defaultSort=value;saveSettings();state.sort=appSettings.defaultSort;
+    value=>{appSettings.defaultSort=value;syncSortDirectionSetting();saveSettings();state.sort=appSettings.defaultSort;
       state.dir=preferredDirection(state.sort,appSettings.defaultSort,appSettings.defaultSortDirection);if(location.pathname==='/')load(true)}],
   ['defaultSortDirectionSetting','默认排序方向',[['desc','降序'],['asc','升序']],
     ()=>appSettings.defaultSortDirection==='asc'?'asc':'desc',
     value=>{appSettings.defaultSortDirection=value;saveSettings();state.dir=preferredDirection(state.sort,appSettings.defaultSort,appSettings.defaultSortDirection);if(location.pathname==='/')load(true)}],
-  ['hoverDelaySetting','悬停放大',[['3','3 秒'],['5','5 秒'],['8','8 秒']],
+  ['hoverDelaySetting','悬停放大',[['0','关闭'],['3','3 秒'],['5','5 秒'],['8','8 秒']],
     ()=>appSettings.hoverDelaySeconds,
-    value=>{appSettings.hoverDelaySeconds=+value||5;
+    value=>{appSettings.hoverDelaySeconds=allowedSetting(+value,[0,3,5,8],5);
+      if(!appSettings.hoverDelaySeconds)document.querySelectorAll('.previewing,.longhover').forEach(el=>el.classList.remove('previewing','longhover'));
       document.documentElement.style.setProperty('--hover-delay',`${appSettings.hoverDelaySeconds}s`);saveSettings()}],
   ['seekSecondsSetting','快进 / 快退',[['5','5 秒'],['10','10 秒'],['30','30 秒']],
     ()=>appSettings.seekSeconds,
@@ -502,6 +503,12 @@ const SETTING_SELECTS=[
     ['180','每 3 小时'],['360','每 6 小时'],['720','每 12 小时'],['1440','每天']],
     ()=>'0',value=>saveFollowSchedule(+value)],
 ];
+function syncSortDirectionSetting(){
+  const field=$('#defaultSortDirectionSetting .gselect');
+  if(field)field.disabled=appSettings.defaultSort==='seed';
+  const help=$('#sortDirectionHelp');
+  if(help)help.textContent=appSettings.defaultSort==='seed'?'随机排序不使用方向。':'打开首页时使用的排序与方向。';
+}
 function renderSettingSelects(){
   for(const [id,label,options,read,apply] of SETTING_SELECTS){
     const mount=$(`#${id}`);if(!mount)continue;
@@ -509,6 +516,7 @@ function renderSettingSelects(){
     const field=wireSelectField(mount.firstElementChild);
     field.addEventListener('change',()=>apply(field.value));
   }
+  syncSortDirectionSetting();
 }
 function syncSettingsPanel(){
   $('#groupCollapseSetting').checked=appSettings.groupCollapse;
@@ -1739,7 +1747,7 @@ function wireHover(el,it){
   const pic=el.querySelector('.pic'); if(!pic)return;
   el.dataset.hoverMode=it.location==='local'?'video':'frames';
   let longTimer=null;
-  const armLong=()=>{clearTimeout(longTimer);el.classList.add('previewing');longTimer=setTimeout(()=>el.classList.add('longhover'),Math.max(1,appSettings.hoverDelaySeconds)*1000)};
+  const armLong=()=>{clearTimeout(longTimer);if(!appSettings.hoverDelaySeconds)return;el.classList.add('previewing');longTimer=setTimeout(()=>{if(appSettings.hoverDelaySeconds)el.classList.add('longhover')},appSettings.hoverDelaySeconds*1000)};
   const clearLong=()=>{clearTimeout(longTimer);el.classList.remove('previewing','longhover')};
   if(it.location!=='local'){        // 远端源：只在接触印相的格子间扫视，零网络流量
     /* 扫视图是叠在画面之上新建的一层，不改任何已有 `<img>` 的 src。JAV 大图和小图

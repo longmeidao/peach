@@ -5726,7 +5726,7 @@ class WebUiSourceTests(unittest.TestCase):
         """
         # 顶栏不出现独立开关，开关在设置面板「安全」组。
         self.assertPageLacks('id="censorBtn"')
-        self.assertPageContains('id="censorSetting" aria-describedby="sfwDescription"')
+        self.assertPageContains('id="censorSetting" role="switch" aria-describedby="sfwDescription"')
         self.assertPageContains('<b>SFW 模式</b><small id="sfwDescription">')
         self.assertPageContains('模糊、降低饱和度并压暗全站图片和视频，包括封面、头像与详情预览；停止悬停预览。文字、品牌标识和来源图标保持可见。')
         self.assertPageLacks('共享屏幕或截图前开启，遮住全站封面与预览图。')
@@ -5894,7 +5894,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks("data-sidebar-add-select")
         self.assertPageContains("const OPTIONAL_SIDEBAR_KEYS=['playlists','immerse','stats','review','data-cleanup','trash','follow-manage','quality']")
         self.assertPageContains("if(DIRECT_MANAGE_NAV[k]){openManage(DIRECT_MANAGE_NAV[k]);return}")
-        self.assertPageContains(".settingscard{display:flex;flex-direction:column;width:min(520px,100%);max-height:min(720px,90vh);max-height:min(720px,90dvh);overflow:hidden")
+        self.assertPageContains(".settingscard{display:flex;flex-direction:column;width:min(520px,100%);max-height:min(720px,90vh);max-height:min(720px,90dvh);overflow:clip")
         self.assertPageContains(".settingsscroll{flex:1;min-height:0;overflow-y:auto")
         self.assertPageContains("document.dispatchEvent(new CustomEvent('peachambientchange'")
         self.assertPageContains(".settingrow .gselect{min-width:148px}")
@@ -6824,6 +6824,14 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("if(!grid.querySelector('.catalog-skeleton'))return;")
         self.assertPageContains("if(!returnSurfaceReady)clearIdleCatalogLoading();")
 
+    def test_settings_sort_pair_and_hover_off(self):
+        self.assertPageContains('class="settingsortcontrols"')
+        self.assertPageContains("field.disabled=appSettings.defaultSort==='seed'")
+        self.assertPageContains("['hoverDelaySetting','悬停放大',[['0','关闭']")
+        self.assertPageContains('allowedSetting(+appSettings.hoverDelaySeconds,[0,3,5,8],5)')
+        self.assertPageContains('if(!appSettings.hoverDelaySeconds)return;')
+        self.assertPageContains("if(appSettings.hoverDelaySeconds)el.classList.add('longhover')")
+
     def test_group_collapse_is_a_setting_and_defaults_to_on(self):
         """合并分卷与版本可以关掉，关掉后同番号的每一卷／每一版各占一张卡。
 
@@ -6832,7 +6840,7 @@ class WebUiSourceTests(unittest.TestCase):
         """
         self.assertPageContains("groupCollapse:true,sidebarOrder:DEFAULT_SIDEBAR_ORDER};")
         self.assertPageContains("appSettings.groupCollapse=appSettings.groupCollapse!==false;")
-        self.assertPageContains('<input type="checkbox" id="groupCollapseSetting">')
+        self.assertPageContains('<input type="checkbox" id="groupCollapseSetting" class="ptoggle" role="switch">')
         self.assertPageContains("$('#groupCollapseSetting').checked=appSettings.groupCollapse;")
         self.assertPageContains(
             "$('#groupCollapseSetting').onchange=e=>{appSettings.groupCollapse=!!e.target.checked;"
