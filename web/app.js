@@ -5,7 +5,7 @@ import { javDisplayName, javTitleHtml } from './js/jav-title.js';
 import { matchRoute, routeLabel } from './js/routes.js';
 import { initMiddleTruncate } from './js/middle-truncate.js';
 import { tagLabel } from './js/tags.js';
-import { mountIsland, unmountIsland, createReviewSelection, wireReviewSelection, preferredDirection } from './dist/peach-ui.js';
+import { mountIsland, unmountIsland, createReviewSelection, wireReviewSelection, identityEvidenceHtml, reviewImageHtml, wireReviewPictures, preferredDirection } from './dist/peach-ui.js';
 import { catalogSuggestions, catalogEmptyHtml, emptyCatalogLayout, syncSidebarSurface, sidebarTagCounts, sidebarHasCatalogContent, cleanupSkeletonHtml, cloudLocations, cloudPreferenceLocations, tasteHistoryGuideHtml, wireTasteHistoryGuide, TASTE_GUIDE_KEY } from './dist/peach-ui.js';
 import { javImageKind, normalizeJavImage, normalizeJavLayout, normalizeJavPreferences, syncJavImages, nativeImageFit, matchesFaceSource, entitySkeletonHtml } from './dist/peach-ui.js';
 import {
@@ -3806,13 +3806,13 @@ async function openReview(push=true){
                   `${row.video_count||''} 条作品还没有可用预览；批准后仍会按候选写入标签。`,
                   {className:'reviewempty'}))
            : reviewCategory==='fc2_similarity'?''
-           : (row.preview_url?`<div class="reviewimage"><img src="${esc(row.preview_url)}" alt="" loading="lazy" data-drop="closest:.reviewimage"></div>`
-             :emptyStateHtml('eye-off','未取得图片预览','这条候选没有可展示的图片，判断请依据下面的证据。',{className:'reviewempty'}));
+           : reviewCategory==='western_identity'?identityEvidenceHtml(row):reviewImageHtml(row.preview_url);
          /* 预览和判断依据是同一件事的两半：看这几帧，然后读这一句。它们合成卡片中段
             那一个框，框铺满剩下的高度，依据贴在框底。依据掉在框外时一张卡上就有两块
             留白——框里空半屏、框外一行字，读起来像两件不相干的事。
-            候选表单那一类不进框：它自己每一项就是一个框，再套一层就是框中框。 */
-         const stage=`<div class="reviewstage"${metadata?'':' data-framed=""'}>${preview}${
+            候选表单和身份证据那两类不进框：它们每一项自己就是一个框，再套一层就是框中框。 */
+         const framed=!metadata&&reviewCategory!=='western_identity';
+         const stage=`<div class="reviewstage"${framed?' data-framed=""':''}>${preview}${
            evidence?`<p class="reviewevidence">${esc(evidence)}</p>`:''}</div>`;
          const body=`${
            // 实体类卡片的名字已经写在创作者入口里，再画一个 h4 就是同一行字上下两遍。
@@ -3827,7 +3827,8 @@ async function openReview(push=true){
          const actions=`<button class="geist-button error" data-review-status="rejected"${locked?' disabled':''}>拒绝</button><button class="geist-button warning" data-review-status="skipped"${locked?' disabled':''}>跳过</button><button class="geist-button primary" data-review-status="approved"${canApprove&&!locked?'':' disabled'}>${approveLabel}</button><span class="reviewstate" aria-live="polite"></span>`;
          return `<fieldset class="reviewitem" data-geist-fieldset data-review-key="${esc(key)}" data-decision="${esc(decision)}"><legend class="sr-only">${esc(titleText)}</legend><div class="geist-fieldset-content">${scrollerHtml(body,{className:'reviewcontent',label:`复核：${titleText}`})}</div><footer class="reviewactions geist-fieldset-footer" data-geist-fieldset-footer>${actions}</footer></fieldset>`}).join(''):emptyState('square-check-big','暂无候选','该分类当前没有待人工复核的项目。')}</div></section></div>`;
      wireReviewAssets($('#stats'));
-    wireScrollers($('#stats'));
+    wireScrollers($('#stats'));wireReviewPictures($('#stats'));
+    $('#stats').querySelectorAll('[data-review-reveal]').forEach(button=>button.onclick=()=>revealSource(+button.dataset.reviewReveal,button.closest('[data-review-key]').querySelector('.reviewstate'),{button}));
     $('#stats').querySelectorAll('[data-review-open-item]').forEach(button=>button.onclick=()=>openItem(+button.dataset.reviewOpenItem));
     // 没有全局委托，每个界面各自接线（见 #stage 的同类处理）。
     $('#stats').querySelectorAll('[data-entity-kind]').forEach(button=>button.onclick=()=>
@@ -3858,7 +3859,7 @@ async function openReview(push=true){
       selection.selected.delete(key);selection.choices.delete(key);selection.assets.delete(key);selection.errors.delete(key);
     };
     const current=()=>surfaceCurrent(surface)&&category===reviewCategory;
-    wireReviewSelection($('#stats').querySelector('.review'),{rows,metadata:category==='metadata_fields',locked,state:selection,
+    wireReviewSelection($('#stats').querySelector('.review'),{rows,category,metadata:category==='metadata_fields',locked,state:selection,
       payload:decisionPayload,submit:payload=>api('/api/review/decision',{method:'POST',body:JSON.stringify(payload)}),
       applied:removeReviewed,active:current,refresh:render,notify:actionReceipt});
     syncHeaderActions();

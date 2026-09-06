@@ -33,3 +33,5 @@ export const fmtSize = (bytes: number | null | undefined): string => {
 export const faviconUrl = (url: string): string => {
   try { return new URL('/favicon.ico', url).href; } catch { return ''; }
 };
+
+export const esc = (value: string): string => value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");

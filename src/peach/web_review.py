@@ -185,7 +185,7 @@ def _creator_entity_ids(connection, creators: list[str]) -> dict[str, int]:
     return found
 
 
-def _creator_previews(connection, creators: list[str]) -> dict[str, list[dict]]:
+def _creator_previews(connection, creators: list[str], *, include_unpictured: bool = False) -> dict[str, list[dict]]:
     """一次查完所有候选创作者的预览作品；按候选逐个查是 N+1。"""
     wanted = [name for name in dict.fromkeys(creators) if name]
     if not wanted:
@@ -197,8 +197,8 @@ def _creator_previews(connection, creators: list[str]) -> dict[str, list[dict]]:
         "LEFT JOIN entity e ON e.id=ae.entity_id AND e.kind='creator' "
         "LEFT JOIN entity_alias alias ON alias.entity_id=e.id "
         "WHERE a.medium='video' AND (a.disposal IS NULL OR a.disposal<>'trash') "
-        "AND a.snapshot_path IS NOT NULL "
-        f"AND (e.canonical_name IN ({marks}) OR alias.alias IN ({marks}) OR a.creator IN ({marks})) "
+        + ("" if include_unpictured else "AND a.snapshot_path IS NOT NULL ")
+        + f"AND (e.canonical_name IN ({marks}) OR alias.alias IN ({marks}) OR a.creator IN ({marks})) "
         "ORDER BY a.id",
         [*wanted, *wanted, *wanted],
     ).fetchall()
@@ -332,16 +332,16 @@ def _review_rows(contract: ReviewContract, category: str) -> tuple[list[dict], s
                 (category,),
             )
         }
-        if category == "creator_tags":
+        if category in {"creator_tags", "western_identity"}:
             names = [str(row.get("creator") or "").strip() for row in rows]
-            previews = _creator_previews(connection, names)
+            previews = _creator_previews(connection, names, include_unpictured=category == "western_identity")
             # 这批候选判的是「这位创作者的作品该打什么标签」，主体是创作者本人。
             # 页面要给出创作者入口（头像 + 作品数），所以这里得把规范实体解析出来。
             entities = _creator_entity_ids(connection, names)
             for row in rows:
                 name = str(row.get("creator") or "").strip()
                 row["preview_assets"] = previews.get(name, [])
-                row["entity_id"] = entities.get(name, "")
+                row["entity_id"] = entities.get(name, row.get("entity_id", ""))
         elif category == "metadata_fields":
             for row in rows:
                 try:

@@ -1586,10 +1586,11 @@ class WebUiSourceTests(unittest.TestCase):
 
         依据掉在框外时，一张卡上会出现两块留白——框里空半屏、框外一行字，读起来
         像两件不相干的事。没抽帧、取不到图的那两种同样在这个框里铺满，卡高因此不随
-        「有没有预览」上下跳。候选表单那一类不进框：它每一项自己就是一个框。
+        「有没有预览」上下跳。候选表单和身份证据那两类不进框：它们每一项自己就是一个框。
         """
+        self.assertPageContains("const framed=!metadata&&reviewCategory!=='western_identity';")
         self.assertPageContains('const stage=`<div class="reviewstage"'
-                                "${metadata?'':' data-framed=\"\"'}>${preview}${")
+                                "${framed?' data-framed=\"\"':''}>${preview}${")
         self.assertPageContains("evidence?`<p class=\"reviewevidence\">${esc(evidence)}</p>`:''}</div>`;")
         self.assertPageContains('${tags?`<div class="reviewtags">${tags}</div>`:\'\'}${stage}`;')
         # 高度从卡身一路传到框：滚动壳不给 height，中间就断在内容高度上，框只到
@@ -4078,6 +4079,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("flex:1 0 240px;min-width:240px;overflow:hidden")
 
     def test_review_selection_uses_default_checkboxes_and_a_separate_toolbar(self):
+        self.assertPageContains("{rows,category,metadata:category==='metadata_fields'")
+        self.assertPageContains(".reviewpickitem{display:inline-flex;align-items:center;flex:none;margin:0;user-select:none}")
         self.assertNotIn("reviewSelectionController", self.page)
         self.assertNotIn("selection.active=selectMode", self.page)
         self.assertPageContains(".reviewbulktoolbar{width:100%;padding-block:16px}")
@@ -4194,6 +4197,13 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".reviewasset-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr))")
         self.assertPageContains(".reviewasset.picked{opacity:1;outline:2px solid var(--on-media)")
         self.assertPageContains('.reviewitem[data-decision="approved"]::before{background:var(--keep)}')
+
+    def test_identity_review_keeps_picture_geometry_and_checkbox_spacing(self):
+        self.assertPageContains('.reviewentity .reviewpickheading{display:flex;align-items:center;gap:8px}')
+        self.assertPageContains('.reviewimage{width:100%;height:220px')
+        self.assertPageContains('justify-content:flex-end}')
+        self.assertPageContains("reviewCategory==='western_identity'?identityEvidenceHtml(row)")
+        self.assertPageContains('revealSource(+button.dataset.reviewReveal')
 
     def test_review_cards_use_equal_height_fieldsets_and_one_shared_scroller(self):
         self.assertPageContains('class="reviewitem" data-geist-fieldset')

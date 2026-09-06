@@ -217,7 +217,14 @@
 }
 #searchBtn{display:none}
 .searchback{display:none}
-.reviewimage{width:160px;height:112px;border-radius:var(--surface-radius);overflow:hidden;background:#000;margin:8px 0}.reviewimage img{width:100%;height:100%;object-fit:contain;display:block}
+.reviewimage{width:100%;height:220px;border-radius:var(--surface-radius);overflow:hidden;background:var(--sunk);margin:8px 0;display:flex;align-items:center;justify-content:center}.reviewimage img{width:100%;height:100%;object-fit:contain;display:block}.reviewimage img[hidden],.reviewimageempty[hidden]{display:none}
+.reviewimageempty{padding:20px;text-align:center;color:var(--muted);font-size:var(--fs-sm)}
+.reviewidentityevidence h5{margin:12px 0 8px;font-size:var(--fs-sm)}
+.reviewevidenceactions{display:flex;flex-wrap:wrap;gap:8px}
+.reviewevidencesamples{display:grid;gap:8px}
+.reviewevidencesample{display:flex;gap:8px;min-width:0}
+.reviewevidencesample>button:first-child{flex:1;min-width:0;justify-content:flex-start}
+.reviewevidencesample>button:last-child{flex:none}
 
 /* JAV 版式条。只在 JAV 语境出现——首页混着创作者作品与素人流出，
    给它们切「封面」没有意义。 */
@@ -264,3 +271,7 @@
    还压住旁边的「发行时间」。`.sorts button` 早就有 `flex:0 0 auto`，但 fieldset 不是
    button，那条规则选不到它。 */
 .sorts .javlayout{display:inline-flex;gap:2px;margin:0 6px;flex:none}
+
+
+.review:has(.reviewidentityevidence){--review-fieldset-height:560px}
+
