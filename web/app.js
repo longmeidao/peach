@@ -13,7 +13,7 @@ import {
   fillSkeletonTier, fitSkeleton, iconSwitchHtml, indexSkeletonHtml, loadingDotsHtml,
   mediaViewButtonsHtml, noteHtml, progressHtml, gaugeHtml, scrollerHtml, searchInputHtml, selectFieldHtml,
   setActionBusy, skeletonHtml, spinnerHtml, wireAnchoredMenu, wireBusyActions, wireCollapse,
-  wireIconSwitch, wireOverlayScrollbars, wireScrollers, wireSelectField, wireContextCard,
+  wireIconSwitch, wireOverlayScrollbars, wireScrollers, wireSelectField, wireContextCard, configurationSkeletonHtml,
 } from './js/ui-components.js';
 
 initMiddleTruncate(document);
@@ -240,7 +240,7 @@ function renderCatalogLoading(label='正在读取作品'){
    加载态（数据管理那张还是 Loading Dots）。取同一份，键就相同，
    showManagementBody 认出是同一张后不再重画。 */
 const MANAGEMENT_PLACEHOLDERS={
-  '/stats':()=>`<div class="insightpage">${pageSkeletonHtml('正在读取统计',{variant:'dashboard'})}</div>`,
+  '/stats':()=>`<div class="insightpage"><div class="insighttoolbar" aria-hidden="true"><span class="skeleton stats-lede-skeleton"></span></div>${pageSkeletonHtml('正在读取统计',{variant:'dashboard'})}</div>`,
   // 口味页与统计页同一套版式：指标带、一块主详情、下面同层的数据面板。
   '/taste':()=>`<div class="tastepage">${pageSkeletonHtml('正在读取口味分析',{variant:'dashboard'})}</div>`,
   '/data-cleanup':()=>cleanupSkeletonHtml(),
@@ -254,9 +254,7 @@ const MANAGEMENT_PLACEHOLDERS={
   // 骨架照 .fsec 的轮廓画三块，六张 16:9 占位说的是另一个页面的结构。
   '/follow-manage':()=>`<div class="follow">${pageSkeletonHtml('正在读取关注管理',
     {cards:true,count:3,fill:false,className:'followmanage-skeleton'})}</div>`,
-  // 配置页是两块同宽的卡（表单、运行信息），骨架照数据管理那套单列卡片的轮廓画两块。
-  '/configuration':()=>`<div class="configpage">${pageSkeletonHtml('正在读取配置',
-    {cards:true,count:2,fill:false,className:'cleanup-skeleton'})}</div>`,
+  '/configuration':()=>configurationSkeletonHtml(),
 };
 const managementPlaceholder=path=>
   (MANAGEMENT_PLACEHOLDERS[path]||(()=>pageSkeletonHtml('正在读取页面')))();
@@ -2945,7 +2943,7 @@ async function openStats(push=true){
     `<div class="insightempty">${emptyStateHtml('tags','还没有标签来源','刮削或手动打标之后，这里会显示每个来源覆盖了多少视频。')}</div>`);
   const storageTable=(d.storage_volumes||[]).length?`<table class="insightdatatable"><thead><tr><th>位置</th><th>已用</th><th>可用</th><th>使用率</th></tr></thead><tbody>${(d.storage_volumes||[]).map(row=>{
     const measured=row.total!=null, usedPct=measured?pct(row.used,row.total):0;
-    return `<tr><th scope="row"><span>${esc(row.label)}</span><small>${row.root?esc(row.root):'未映射'}</small></th><td>${measured?gb(row.used):'—'}</td><td>${measured?gb(row.free):'—'}</td><td>${measured?gaugeHtml(`${row.label}空间使用率`,row.used,row.total,{usage:true})+usedPct+'%':(row.online?'容量未取得':'离线')}</td></tr>`}).join('')}</tbody></table>`
+    return `<tr><th scope="row"><span>${esc(row.label)}</span><small>${row.root?esc(row.root):'未映射'}</small></th><td>${measured?gb(row.used):'—'}</td><td>${measured?gb(row.free):'—'}</td><td>${measured?gaugeHtml(`${row.label}空间使用率`,row.used,row.total,{usage:true,compact:true})+usedPct+'%':(row.online?'容量未取得':'离线')}</td></tr>`}).join('')}</tbody></table>`
     :emptyStateHtml('hard-drive','还没有存储来源','添加媒体文件夹后，这里会显示存储空间。');
   $('#stats').innerHTML=`
     <div class="insightpage statsdashboard" data-stats-dashboard>
@@ -3292,8 +3290,8 @@ function renderTaste(d){
         <label><input type="radio" name="taste-evidence" value="browser"${tasteEvidence==='browser'?' checked':''}><span>浏览器记录</span></label>
         <label><input type="radio" name="taste-evidence" value="peach"${tasteEvidence==='peach'?' checked':''}><span>Peach 内部</span></label></div>
       <div class="tasteactions">${selectFieldHtml(TASTE_WINDOWS,d.window||tasteWindow,{label:'分析范围',attr:'data-taste-window'})}
-        <button data-taste-refresh>${icon('refresh-cw')}读取 Peach 主机</button>
-        <button data-taste-import>${icon('upload')}导入历史</button><input data-taste-file type="file" hidden></div></header>
+        <button data-taste-refresh title="读取运行 Peach 的这台电脑上的浏览记录">${icon('refresh-cw')}读取浏览器历史</button>
+        <button data-taste-import>${icon('upload')}导入历史文件</button><input data-taste-file type="file" hidden></div></header>
     ${tasteHistoryGuideHtml(new URLSearchParams(location.search).get('onboarding')==='1',Boolean(s.history_sources||d.updated_at),localStorage.getItem(TASTE_GUIDE_KEY)==='1')}
     <div class="tastestate" data-taste-state role="status" aria-live="polite"></div>
     <div class="tastesummaries" data-taste-summary="browser"${tasteEvidence==='browser'?'':' hidden'}>
@@ -4725,7 +4723,7 @@ function wireTasteProgress(){
   if(!button)return;
   return wireOperationProgress({host:$('#stats').querySelector('[data-taste-state]'),
     path:'/api/taste/refresh',key:'peach-taste-job',title:'正在读取浏览记录并更新口味分析…',
-    busy:running=>{setActionBusy(button,running);button.innerHTML=`${icon('refresh-cw')}读取 Peach 主机`},
+    busy:running=>{setActionBusy(button,running);button.innerHTML=`${icon('refresh-cw')}读取浏览器历史`},
     complete:()=>{tasteCache.clear();void openTaste(false);actionReceipt('已更新口味分析')}});
 }
 function wireResolveProgress(){

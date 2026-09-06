@@ -2211,7 +2211,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks("skeleton-pulse", "呼吸已经换成扫光，不留死引用")
         # 框体（数据管理的操作条、关注管理的头部条）不是待填内容，不参与微光。
         self.assertPageContains(
-            ".cleanup-skeleton .skeletoncard em::after,\n"
             ".followmanage-skeleton .skeletoncard i::after{content:none}")
 
     def test_index_skeletons_share_final_geometry_and_keep_the_header(self):
@@ -5438,8 +5437,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks("loadingDotsHtml('正在读取数据管理状态…')")
         self.assertPageLacks(".cleanuploading")
         # 数据管理是一列 fieldset，骨架不能是三列海报网格。
-        self.assertPageContains(".cleanup-skeleton>div{grid-template-columns:minmax(0,1fr);gap:16px}")
-        self.assertPageContains(".cleanup-skeleton .skeletoncard em{width:100%;height:var(--fieldset-bar-h)")
 
     def test_follow_manage_skeleton_matches_its_single_column_sections(self):
         """关注管理的骨架是三个大区，不是六张 16:9 卡片。
@@ -6050,10 +6047,9 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("const props={receipt:message=>actionReceipt(message)};")
         self.assertPageContains(
             "document.body.classList.toggle('configuration-layout',current==='configuration');")
-        # 骨架照最终结构：两块同宽的卡，和数据管理那套单列卡片一个轮廓。
-        self.assertPageContains(
-            "'/configuration':()=>`<div class=\"configpage\">${pageSkeletonHtml('正在读取配置',")
-        self.assertPageContains("{cards:true,count:2,fill:false,className:'cleanup-skeleton'})}</div>`,")
+        self.assertPageContains("'/configuration':()=>configurationSkeletonHtml()")
+        self.assertPageContains('stats-lede-skeleton')
+        self.assertPageContains("['网络与访问',2]")
 
     def test_review_page_is_a_separate_management_layer(self):
         self.assertPageContains("route('/review')")

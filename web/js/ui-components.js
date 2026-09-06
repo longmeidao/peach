@@ -18,13 +18,18 @@ export function projectBannerHtml(message,{variant='gray',href,label,value,max}=
   return `<aside class="project-banner ${PROJECT_BANNER_CLASSES[kind]}" role="${kind==='error'?'alert':'status'}"><div>${Number(max)>0?gaugeHtml('任务完成率',value,max):icon(kind==='error'||kind==='warning'?'alert':'info')}<p>${esc(message)}</p></div><a href="${esc(href)}">${esc(label)}</a></aside>`;
 }
 
-export function gaugeHtml(label,value,max=100,{usage=false}={}){
+export function gaugeHtml(label,value,max=100,{usage=false,compact=false}={}){
   const ceiling=Number(max), current=Number(value);
   if(!Number.isFinite(ceiling)||ceiling<=0||!Number.isFinite(current))return `<span>${esc(label)}：未取得</span>`;
   const percent=Math.max(0,Math.min(100,current/ceiling*100));
   const level=usage?(percent>=95?'error':percent>=80?'warning':'normal'):'normal';
   const status=usage?(level==='error'?'空间即将用满':level==='warning'?'空间使用偏高':'空间充足'):'';
-  return `<span class="geist-gauge" data-level="${level}" role="progressbar" aria-label="${esc(label+(status?'：'+status:''))}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percent}"><svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="13"/><circle cx="16" cy="16" r="13" pathLength="100" stroke-dasharray="${percent} 100"/></svg></span>${status?`<span class="gauge-status">${status}</span>`:''}`;
+  return `<span class="geist-gauge" data-level="${level}" role="progressbar" aria-label="${esc(label+(status?'：'+status:''))}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percent}"><svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="13"/><circle cx="16" cy="16" r="13" pathLength="100" stroke-dasharray="${percent} 100"/></svg></span>${status&&!compact?`<span class="gauge-status">${status}</span>`:''}`;
+}
+
+export function configurationSkeletonHtml(){
+  const groups=[['通用',1],['媒体',2],['网络与访问',2],['更新与维护',3]];
+  return `<div class="configpage" data-skeleton="configuration" role="status" aria-label="正在读取配置"><span class="sr-only">正在读取配置</span><div aria-hidden="true">${groups.map(([label,count])=>`<h2 class="configgroup">${label}</h2>${Array.from({length:count},()=>`<div class="config-skeleton-card"><div><span class="skeleton"></span><span class="skeleton"></span><span class="skeleton"></span></div><footer><span class="skeleton"></span></footer></div>`).join('')}`).join('')}</div></div>`;
 }
 
 /**
