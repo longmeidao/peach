@@ -47,6 +47,8 @@
 
 ## 管理页面间距审查
 
+更新可用提示复用中性 Note、信息图标与“有可用更新”标签；普通更新不是错误或有风险的后果。2026-09-06 复核 `https://vercel.com/geist/note` 的 Best Practices：Note 用于局部持续信息，secondary 用于中性信息；Status Dot 文档限定部署状态。Note HTML 版本沿用本页登记的 `f3471155…`。检查为最新后恢复普通状态文字，更新按钮仍放在原操作栏，不重复增加 CTA。
+
 站内文字链接参考本页 Fieldset 的 `View documentation` 示例：`text-[var(--geist-link-color)]`、`hover:underline`、`focus-visible:outline-2` 与 `outline-offset-4`。Peach 使用主题链接色、悬停下划线及 2px 焦点轮廓，访问后颜色保持一致；“配置 Peach 代理”跳转 `/configuration#peachProxy`，不附外链箭头。独立 `/geist/link` 页面未取得，证据来自官方 Fieldset 示例及本页已登记 HTML。
 
 2026-09-06 再次通过 HTTPX 获取官方 Fieldset、Input、Description、Note 的 HTML/CSS。Fieldset 与共同 CSS 的 SHA-256 与本页首表一致；Input 为 `df3a8b7ba933798842915d06056ef079878faa091af6b8d67e61d69cc0a08962`，Description 为 `7a16d502b3fdba316ef740057b275d2acdeb85f79d4944201331af906d9b497f`。浏览器参考页返回 `js execution timed out`，实时参考布局未取得。

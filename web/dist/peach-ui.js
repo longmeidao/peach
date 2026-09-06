@@ -619,40 +619,40 @@ var rt = /* @__PURE__ */ new Set([
 	"installing"
 ]);
 function it({ initial: e, initialJob: t }) {
-	let [n, i] = B(e), [o, s] = B(t || {
+	let [n, i] = B(e), [o, l] = B(t || {
 		state: "idle",
 		progress: 0
-	}), [l, u] = B(""), f = U(null), p = U(!0), m = U(!1), h = U(null);
+	}), [u, f] = B(""), p = U(null), m = U(!0), h = U(!1), g = U(null);
 	V(() => {
-		d(h.current, rt.has(o.state));
+		d(g.current, rt.has(o.state));
 	}, [o.state]), V(() => () => {
-		p.current = !1, f.current?.abort();
+		m.current = !1, p.current?.abort();
 	}, []);
-	let g = async () => {
+	let _ = async () => {
 		let e = await I("/api/configuration/update-restart", {});
-		p.current && s(e);
+		m.current && l(e);
 	};
 	V(() => {
-		o.state !== "ready" || m.current || (m.current = !0, r({
+		o.state !== "ready" || h.current || (h.current = !0, r({
 			title: "更新已准备好",
 			body: `Peach ${o.version || ""} 将在重启后安装。`,
 			confirmLabel: "立即重启",
 			cancelLabel: "稍后",
-			onConfirm: g
+			onConfirm: _
 		}));
 	}, [o.state]), V(() => {
 		if (!rt.has(o.state)) return;
 		let e = new AbortController(), t, n = 0, r = async () => {
 			try {
 				let t = await F("/api/configuration/update-status", e.signal);
-				e.signal.aborted || (s(t), n = 0, t.state === "complete" && i((e) => ({
+				e.signal.aborted || (l(t), n = 0, t.state === "complete" && i((e) => ({
 					...e,
 					current_version: t.version || e.current_version,
 					state: "current",
 					message: "已是最新测试版。"
 				})));
 			} catch {
-				++n >= 120 && !e.signal.aborted && u("尚未连接到 Peach，请检查托盘后刷新页面。");
+				++n >= 120 && !e.signal.aborted && f("尚未连接到 Peach，请检查托盘后刷新页面。");
 			}
 			!e.signal.aborted && n < 120 && (t = setTimeout(r, 1e3));
 		};
@@ -660,22 +660,22 @@ function it({ initial: e, initialJob: t }) {
 			e.abort(), clearTimeout(t);
 		};
 	}, [o.state]);
-	let _ = async (e) => {
-		if (f.current || rt.has(o.state)) return;
+	let v = async (e) => {
+		if (p.current || rt.has(o.state)) return;
 		let t = new AbortController();
-		f.current = t, m.current = !1, u(""), d(e, !0);
+		p.current = t, h.current = !1, f(""), d(e, !0);
 		try {
 			let e = await I("/api/configuration/update", {}, "POST", t.signal);
-			t.signal.aborted || s(e);
+			t.signal.aborted || l(e);
 		} catch (e) {
-			t.signal.aborted || u(P(e));
+			t.signal.aborted || f(P(e));
 		} finally {
-			f.current = null, d(e, !1);
+			p.current = null, d(e, !1);
 		}
-	}, v = async (t) => {
-		if (f.current) return;
+	}, y = async (t) => {
+		if (p.current) return;
 		let n = new AbortController();
-		f.current = n, d(t, !0), u("");
+		p.current = n, d(t, !0), f("");
 		try {
 			let e = await F("/api/configuration/updates", n.signal);
 			n.signal.aborted || i(e);
@@ -683,9 +683,9 @@ function it({ initial: e, initialJob: t }) {
 			n.signal.aborted || (i({
 				...e,
 				state: "error"
-			}), u(P(t)));
+			}), f(P(t)));
 		} finally {
-			f.current = null, d(t, !1);
+			p.current = null, d(t, !1);
 		}
 	};
 	return /* @__PURE__ */ W("section", {
@@ -709,10 +709,13 @@ function it({ initial: e, initialJob: t }) {
 						/* @__PURE__ */ W("dd", { children: n.latest_version || (n.state === "unchecked" ? "尚未检查" : "未取得") })
 					]
 				}),
-				/* @__PURE__ */ W("p", {
-					class: l || n.state === "error" ? "configbad" : "confighelp",
-					role: l || n.state === "error" ? "alert" : "status",
-					children: l || n.message
+				n.state === "available" && !u ? /* @__PURE__ */ W("div", {
+					role: "status",
+					dangerouslySetInnerHTML: { __html: s(n.message, { label: "有可用更新" }) }
+				}) : /* @__PURE__ */ W("p", {
+					class: u || n.state === "error" ? "configbad" : "confighelp",
+					role: u || n.state === "error" ? "alert" : "status",
+					children: u || n.message
 				}),
 				o.state === "idle" ? null : /* @__PURE__ */ W("div", {
 					"aria-live": "polite",
@@ -745,23 +748,23 @@ function it({ initial: e, initialJob: t }) {
 							body: `Peach ${o.version || ""} 将在重启后安装。`,
 							confirmLabel: "立即重启",
 							cancelLabel: "稍后",
-							onConfirm: g
+							onConfirm: _
 						});
 					},
 					children: "重启安装"
 				}) : null,
 				n.state === "available" && n.installation === "独立测试包" && o.state !== "ready" ? /* @__PURE__ */ W("button", {
-					ref: h,
+					ref: g,
 					type: "button",
 					class: "geist-button primary",
-					onClick: (e) => _(e.currentTarget),
+					onClick: (e) => v(e.currentTarget),
 					children: "下载并安装"
 				}) : null,
 				/* @__PURE__ */ W("button", {
 					type: "button",
 					class: "geist-button",
 					disabled: rt.has(o.state),
-					onClick: (e) => v(e.currentTarget),
+					onClick: (e) => y(e.currentTarget),
 					children: "检查更新"
 				})
 			]

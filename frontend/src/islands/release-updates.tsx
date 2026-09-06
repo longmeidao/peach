@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { fieldsetTitle, setActionBusy, progressHtml, confirmModal } from '@peach/legacy/ui';
+import { fieldsetTitle, setActionBusy, progressHtml, confirmModal, noteHtml } from '@peach/legacy/ui';
 import { apiGet, apiSend, errorMessage } from '../api';
 
 export interface ReleaseState {
@@ -91,9 +91,9 @@ export function ReleaseUpdates({ initial, initialJob }: { initial: ReleaseState;
         <dt>更新通道</dt><dd>{data.channel}</dd>
         <dt>最新版本</dt><dd>{data.latest_version || (data.state === 'unchecked' ? '尚未检查' : '未取得')}</dd>
       </dl>
-      <p class={error || data.state === 'error' ? 'configbad' : 'confighelp'} role={error || data.state === 'error' ? 'alert' : 'status'}>
+      {data.state === 'available' && !error ? <div role="status" dangerouslySetInnerHTML={{__html:noteHtml(data.message,{label:'有可用更新'})}} /> : <p class={error || data.state === 'error' ? 'configbad' : 'confighelp'} role={error || data.state === 'error' ? 'alert' : 'status'}>
         {error || data.message}
-      </p>
+      </p>}
       {job.state !== 'idle' ? <div aria-live="polite">
         <p class={job.state === 'error' ? 'configbad' : 'confighelp'}>{job.message}</p>
         {job.state !== 'error' ? <>
