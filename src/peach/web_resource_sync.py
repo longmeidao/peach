@@ -60,6 +60,12 @@ def source_is_online(location: str) -> bool:
 RESOURCE_SCAN_WORKERS = 8
 
 
+def configured_cloud_locations() -> tuple[str, ...]:
+    """资源同步只处理已声明媒体根目录的网盘，离线状态由扫描阶段报告。"""
+    return tuple(location for location, roots in LOCATION_ROOT_DECLARATIONS.items()
+                 if location in ("115", "pikpak") and roots)
+
+
 def _scan_resource_directory(
     item: tuple[Path, dict[str, list[int]]],
 ) -> tuple[list[int], int]:
@@ -125,19 +131,19 @@ def _scan_missing_resources(
     contract: ResourceSyncContract,
     progress: Callable[[dict], None] | None = None,
 ) -> dict:
-    """Read-only reconciliation against every mounted filesystem source."""
+    """只读核对已配置网盘中的文件。"""
     with contract.read_connection() as connection:
         rows = connection.execute(
             "SELECT id,location,path FROM asset "
             "WHERE path IS NOT NULL AND COALESCE(disposal,'')!='trash' "
-            "AND location IN ('local','115','pikpak') ORDER BY location,id",
+            "AND location IN ('115','pikpak') ORDER BY location,id",
         ).fetchall()
     grouped: dict[str, list] = {}
     for row in rows:
         grouped.setdefault(row["location"], []).append(row)
     missing_ids: list[int] = []
     sources = []
-    for location in LOCATION_ROOT_DECLARATIONS:
+    for location in configured_cloud_locations():
         items = grouped.get(location, [])
         online = source_is_online(location)
         missing = []
@@ -305,7 +311,7 @@ def _resource_scan_public(state: dict) -> dict:
         "scan_id": state["scan_id"],
         "sources": [dict(source) for source in state["sources"]],
         "completed_sources": len(state["sources"]),
-        "total_sources": len(LOCATION_ROOT_DECLARATIONS),
+        "total_sources": len(configured_cloud_locations()),
         **({"error": state["error"]} if state["status"] == "failed" else {}),
     }
 
@@ -348,10 +354,14 @@ def w_resource_sync_scan(contract: ResourceSyncContract, body=None):
                 return {
                     "ok": True, "status": "idle", "scan_id": "", "sources": [],
                     "completed_sources": 0,
-                    "total_sources": len(LOCATION_ROOT_DECLARATIONS),
+                    "total_sources": len(configured_cloud_locations()),
                 }
             return _resource_scan_public(state)
+        if not configured_cloud_locations():
+            raise ValueError("请先在配置页添加网盘来源")
         return _background_resource_scan(contract, restart=body.get("restart") is True)
+    if not configured_cloud_locations():
+        raise ValueError("请先在配置页添加网盘来源")
     scan = _scan_missing_resources(contract)
     caches = _resource_orphan_plan(contract, scan["missing_ids"])
     return {
@@ -381,7 +391,7 @@ def _recheck_resource_scan_ids(contract: ResourceSyncContract, asset_ids: Sequen
         grouped.setdefault(row["location"], []).append(row)
     missing = []
     for location, items in grouped.items():
-        if not source_is_online(location):
+        if location not in configured_cloud_locations() or not source_is_online(location):
             continue
         source_missing, _unreadable = _missing_resource_ids(items)
         missing.extend(source_missing)
@@ -389,6 +399,8 @@ def _recheck_resource_scan_ids(contract: ResourceSyncContract, asset_ids: Sequen
 
 
 def w_resource_sync_apply(contract: ResourceSyncContract, body):
+    if not configured_cloud_locations():
+        raise ValueError("请先在配置页添加网盘来源")
     if body.get("confirm") is not True:
         raise ValueError("resource sync requires confirmation")
     if body.get("background"):

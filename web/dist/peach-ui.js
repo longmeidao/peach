@@ -1729,8 +1729,75 @@ function en(e) {
 	return [...t].sort((e, t) => t[1] - e[1]).slice(0, 30);
 }
 //#endregion
+//#region src/management.ts
+function tn(e) {
+	return e.filter((e) => ["115", "pikpak"].includes(e.location) && (e.roots === void 0 || e.roots.length > 0)).map((e) => e.location);
+}
+function nn(e, t) {
+	return t.filter((t) => e.some((e) => e.location === t));
+}
+function rn() {
+	return `<div class="cleanuppage" data-skeleton="cleanup" aria-busy="true" aria-label="正在读取数据管理状态">
+    <div class="cleanupgrid">${[
+		[
+			"采集来源",
+			"设置采集来源",
+			"下载高清封面，设置代理和 Cookie。"
+		],
+		[
+			"垃圾文件",
+			"查看垃圾文件",
+			""
+		],
+		[
+			"重复文件",
+			"查看重复文件",
+			""
+		],
+		[
+			"空文件夹",
+			"删除空文件夹",
+			""
+		],
+		[
+			"人工复核",
+			"查看候选",
+			""
+		],
+		[
+			"回收站",
+			"查看回收站",
+			""
+		],
+		[
+			"高清版",
+			"查看高清版",
+			""
+		]
+	].map(([e, t, n], r) => `
+      <section class="cleanupfieldset" data-geist-fieldset aria-labelledby="cleanup-loading-${r}">
+        <div class="geist-fieldset-content"><h3 class="geist-fieldset-title" id="cleanup-loading-${r}">${e}</h3>
+          ${n ? `<p>${n}</p>` : "<strong><span class=\"skeleton cleanup-count-skeleton\" aria-hidden=\"true\"></span></strong>"}
+          ${r === 3 ? "<p class=\"cleanupmeta\"><span class=\"skeleton cleanup-count-skeleton\" aria-hidden=\"true\"></span></p>" : ""}</div>
+        <footer class="geist-fieldset-footer" data-geist-fieldset-footer><button type="button"${r === 3 ? " class=\"danger\"" : ""} disabled>${r === 3 ? "<svg aria-hidden=\"true\"><use href=\"#i-trash\"></use></svg><span>" + t + "</span>" : t}</button></footer>
+      </section>`).join("")}</div></div>`;
+}
+function an(e) {
+	let t = "<svg aria-hidden=\"true\"><use href=\"#i-external-link\"></use></svg>";
+	return `<details class="taste-history-guide"${e ? " open" : ""}>
+    <summary>浏览器历史记录导入指南</summary>
+    <div class="taste-history-guide-content">
+      <p>在运行 Peach 的电脑上使用浏览器：点击上方「读取 Peach 主机」。</p>
+      <p>记录在其他设备上：导出文件后，点击上方「导入历史」。多台设备的文件分别导入。</p>
+      <ul><li>Chrome：在 <a href="https://takeout.google.com/" target="_blank" rel="noreferrer">Google Takeout${t}</a> 选择 Chrome 历史记录，下载 ZIP 后直接导入。</li>
+      <li>其他浏览器：使用 <a href="https://github.com/purarue/browserexport" target="_blank" rel="noreferrer">browserexport${t}</a> 导出历史记录，再导入导出文件。</li></ul>
+      <p>需要刷新时再次读取或导入；数据源可在页面底部移除。</p>
+      ${e ? "<a class=\"taste-guide-skip\" href=\"/\">跳过，浏览馆藏</a>" : ""}
+    </div></details>`;
+}
+//#endregion
 //#region src/islands.ts
-var tn = {
+var on = {
 	scraping: {
 		load: Gt,
 		component: Jt
@@ -1743,11 +1810,11 @@ var tn = {
 		load: Xe,
 		component: nt
 	}
-}, nn = () => Object.keys(tn), $ = /* @__PURE__ */ new Map();
-async function rn(e, t, n, r = {}) {
-	let i = tn[e];
+}, sn = () => Object.keys(on), $ = /* @__PURE__ */ new Map();
+async function cn(e, t, n, r = {}) {
+	let i = on[e];
 	if (!i) throw Error(`未注册的 island：${String(e)}`);
-	an(t);
+	ln(t);
 	let a = {
 		controller: new AbortController(),
 		painted: !1
@@ -1778,9 +1845,9 @@ async function rn(e, t, n, r = {}) {
 	};
 	xe(te(i.component, s), t);
 }
-function an(e) {
+function ln(e) {
 	let t = $.get(e);
 	t && (t.controller.abort(), $.delete(e), t.painted && xe(null, e));
 }
 //#endregion
-export { Wt as followJobProgress, nn as islandNames, rn as mountIsland, Zt as refreshStore, Qt as sidebarHasCatalogContent, en as sidebarTagCounts, Xt as storeNames, $t as syncSidebarSurface, an as unmountIsland, Ut as watchJob };
+export { rn as cleanupSkeletonHtml, tn as cloudLocations, nn as cloudPreferenceLocations, Wt as followJobProgress, sn as islandNames, cn as mountIsland, Zt as refreshStore, Qt as sidebarHasCatalogContent, en as sidebarTagCounts, Xt as storeNames, $t as syncSidebarSurface, an as tasteHistoryGuideHtml, ln as unmountIsland, Ut as watchJob };

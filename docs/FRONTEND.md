@@ -16,6 +16,7 @@ Vite + TypeScript + Preact。迁移方式是 strangler：**遗留路由继续拥
 | `frontend/src/islands/*.tsx` | 每个 island 一个文件 |
 | `frontend/src/state/*.ts` | 跨岛共享状态，一份数据一个文件；`index.ts` 是登记处 |
 | `frontend/src/api.ts` | 带 `AbortController` 的取数封装 |
+| `frontend/src/management.ts` | 数据管理首屏 Fieldset、网盘能力显隐与浏览历史导入指南 |
 | `frontend/src/legacy/*.d.ts` | `/js/core.js`、`/js/ui-components.js` 的手写类型 |
 | `frontend/test/` | vitest 用例与遗留模块的桩 |
 | `web/dist/peach-ui.js` | 构建产物，**进 Git**，由 `/dist/{name}` 提供 |

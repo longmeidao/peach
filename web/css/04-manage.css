@@ -75,6 +75,14 @@
 .cleanupfieldset button svg{width:16px;height:16px;stroke:currentColor;fill:none}
 .cleanupfieldset .cleanupstate{margin-top:8px;font-size:var(--fs-sm);color:var(--ink-2)}
 .cleanupfieldset .cleanupstate:empty{display:none}
+.taste-history-guide{margin-top:16px;border:1px solid var(--field-ring);border-radius:var(--floating-radius);background:var(--ground);padding:20px}
+.taste-history-guide summary{cursor:pointer;color:var(--ink);font-weight:500}
+.taste-history-guide-content{display:grid;gap:12px;padding-top:16px;color:var(--muted);font-size:var(--fs-md);line-height:1.5}
+.taste-history-guide-content p,.taste-history-guide-content ul{margin:0}
+.taste-history-guide-content ul{padding-left:20px}
+.taste-history-guide-content a{color:var(--tungsten);text-decoration:none}
+.taste-history-guide-content a:hover{text-decoration:underline;text-underline-offset:3px}
+.taste-history-guide-content a svg{width:14px;height:14px;margin-left:4px;vertical-align:-2px;fill:none;stroke:currentColor}
 .stats h2{margin:0 0 4px;font-size:var(--fs-2xl)}
 .stats .sub{color:var(--muted);margin:0}
 /* 采集来源表单复用管理页 Fieldset。 */
