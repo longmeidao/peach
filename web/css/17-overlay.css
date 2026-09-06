@@ -35,15 +35,9 @@
 .mixgrouplabel:first-child{margin-top:4px}
 .mixgrouplabel span{color:var(--muted);font-variant-numeric:tabular-nums;font-weight:400}
 
-/* ── 审查遮挡 ──
-   共享屏幕 / 录屏 / 截图时的全站内容遮蔽，设置项（#censorSetting）+ body.censor，
-   默认开启，localStorage 只记用户显式关闭。所有内容图与视频统一重糊 + 重度
-   去饱和 + 压暗——只留深灰块，截图管道的审查没有可识别的画面就不会拦整张图；
-   不挑页面：卡片、悬停预览、灯箱、沉浸模式、关注流（封面、详情海报、图片墙）
-   全在内；videojs 的海报层是 background-image 的 div，单独列出来。只豁免与
-   内容无关的界面小图（品牌标、来源 favicon）。悬停预览由 JS 拦下不再启动
-   ——动起来的画面比静帧更漏。 */
+/* SFW 模式默认关闭，浏览器保存显式选择。全站图片、视频及 videojs 海报层
+   使用模糊、降低饱和度与压暗处理；品牌标识、来源图标保持可见。
+   悬停预览由 JS 停止启动，文字不受图片滤镜影响。 */
 body.censor img,body.censor video,body.censor .vjs-poster{
   filter:blur(30px) saturate(.3) brightness(.6)}
 body.censor .brand .mark,body.censor .src img,body.censor .ficon{filter:none}
-
