@@ -5,7 +5,7 @@ import { javDisplayName, javTitleHtml } from './js/jav-title.js';
 import { matchRoute, routeLabel } from './js/routes.js';
 import { initMiddleTruncate } from './js/middle-truncate.js';
 import { tagLabel } from './js/tags.js';
-import { mountIsland, unmountIsland, createReviewSelection, wireReviewSelection, identityEvidenceHtml, reviewImageHtml, wireReviewPictures, preferredDirection } from './dist/peach-ui.js';
+import { mountIsland, unmountIsland, createReviewSelection, wireReviewSelection, updateReviewSticky, identityEvidenceHtml, reviewImageHtml, wireReviewPictures, preferredDirection } from './dist/peach-ui.js';
 import { catalogSuggestions, catalogEmptyHtml, emptyCatalogLayout, syncSidebarSurface, sidebarTagCounts, sidebarHasCatalogContent, cleanupSkeletonHtml, cloudLocations, cloudPreferenceLocations, tasteHistoryGuideHtml, wireTasteHistoryGuide, TASTE_GUIDE_KEY } from './dist/peach-ui.js';
 import { javImageKind, normalizeJavImage, normalizeJavLayout, normalizeJavPreferences, syncJavImages, nativeImageFit, matchesFaceSource, entitySkeletonHtml } from './dist/peach-ui.js';
 import {
@@ -6975,6 +6975,7 @@ $('#edge').addEventListener('mouseenter',()=>{if(Date.now()<drawerSuppressUntil)
 window.__scrolling=false; let scrollT=null;
 let stickyFrame=0;
 function updateStickySurfaces(){
+  updateReviewSticky($('.review'));
   ['#tagbar','#count','.entitytagbar','.entitycollectionhead'].forEach(selector=>{
     const el=$(selector),css=el&&getComputedStyle(el),top=css?parseFloat(css.top):NaN;
     const stuck=!!el&&css.position==='sticky'&&el.offsetParent!==null&&window.scrollY>0&&
