@@ -434,7 +434,7 @@ class SetupPageTests(_Case):
             self.assertIn(f'name="{question.key}"', body)
         # 页面用自己的题面：短名词加一句说明，不把命令行那份带可选值的题面搬上来。
         for title in ("数据目录", "媒体文件夹", "谁可以访问", "端口", "局域网访问地址"):
-            self.assertIn(f">{title}</", body)
+            self.assertIn(f">{title}<", body)
         # 只有媒体文件夹非填不可。其余四项都有能直接用的默认值，折进「高级设置」，
         # 独立包与源码部署是同一张表单；有一项报错时折叠展开着。
         details = body.index("<details><summary><span>高级设置</span>")
@@ -457,7 +457,7 @@ class SetupPageTests(_Case):
         # 品牌标记在标题上方，说明文字在标题下方。
         self.assertIn('<img class="mark" src="/peach-logo.png"', body)
         self.assertLess(body.index("<h1>"), body.index('class="lede"'))
-        # 四个要手填的字段前面标红星；「谁可以访问」总有一个选中项，不标。
+        # 四个手填字段的标签末尾标红星；「谁可以访问」总有一个选中项，不标。
         self.assertEqual(body.count('<span class="req"'), 4)
         # 「谁可以访问」是两段式单选，不用原生下拉；两个选项由 `HOST_OPTIONS` 给出，
         # 局域网在左边并且默认选中。
@@ -474,9 +474,14 @@ class SetupPageTests(_Case):
         # 局域网访问地址只填名字，框内前缀 `https://`、后缀 `.local` 拼成完整网址。
         self.assertIn('<div class="affix"><span>https://</span><input', body)
         self.assertIn("<span>.local</span>", body)
-        # 勾选框用站内共用的自绘结构，路径在等宽框里。
+        # 勾选框用站内共用的自绘结构，路径使用普通文字。
         self.assertIn('<span class="pcheck"><input type="checkbox" name="scan_now" value="y" checked>', body)
-        self.assertIn("完成设置后扫描 <code>", body)
+        self.assertIn("完成设置后扫描并补全资料：", body)
+        self.assertNotIn("完成设置后扫描并补全资料：<code>", body)
+        self.assertIn('媒体文件夹<span class="req"', body)
+        self.assertIn('数据目录<span class="req"', body)
+        self.assertIn('端口<span class="req"', body)
+        self.assertIn('局域网访问地址<span class="req"', body)
 
     @unittest.skipIf(NATIVE_WINDOWS, "盘符本身就是挂载点，Windows 上没有这句话")
     def test_the_mounts_explanation_sits_under_the_media_field_on_posix(self):

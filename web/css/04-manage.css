@@ -117,3 +117,6 @@
 .scraping-source{min-width:0}
 .scraping-source .geist-fieldset-footer{flex-wrap:wrap}
 @media(max-width:600px){.scraping-page{--control-h:44px}.scraping-source button{min-height:44px}.scraping-cookie-method span{height:44px}}
+.library-processing-banner{--control-h:32px;display:flex;align-items:center;justify-content:center;gap:12px;padding:16px;margin-bottom:16px;background:var(--hover);color:var(--ink);font-size:var(--fs-lg);flex-wrap:wrap}
+.library-processing-banner .geist-button{border-radius:var(--pill-radius);font-size:var(--fs-md)}
+#libraryProcessing{scroll-margin-top:80px}

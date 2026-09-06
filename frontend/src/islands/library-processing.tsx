@@ -9,17 +9,18 @@ export interface LibraryProcessingData extends JobState {
   stage?: string; scanned?: number; identified?: number; candidates?: number; covers?: number;
   issues?: { asset_id: number | null; message: string }[];
 }
-export interface LibraryProcessingProps { toast(message: string): void; onComplete?(): void }
+export interface LibraryProcessingProps { toast(message: string): void; onComplete?(): void; mode?: 'notice'; monitor?: boolean }
 export const loadLibraryProcessing = (_props: LibraryProcessingProps, signal: AbortSignal) =>
   apiGet<LibraryProcessingData>('/api/library-processing', signal);
 
-export function LibraryProcessing({ data, error, toast, onComplete }: LibraryProcessingProps & IslandState<LibraryProcessingData>) {
+export function LibraryProcessing({ data, error, toast, onComplete, mode, monitor }: LibraryProcessingProps & IslandState<LibraryProcessingData>) {
   const [state, setState] = useState<LibraryProcessingData>(data || { status: 'idle' });
   const [problem, setProblem] = useState(error);
   const [submitting, setSubmitting] = useState(false);
   const [receipt, setReceipt] = useState(false);
   const lifetime = useRef(new AbortController());
   const generation = useRef(0);
+  const previousStatus = useRef(state.status);
   const button = useRef<HTMLButtonElement>(null);
   const busy = submitting || state.status === 'running';
   useLayoutEffect(() => setActionBusy(button.current, busy), [busy]);
@@ -28,16 +29,18 @@ export function LibraryProcessing({ data, error, toast, onComplete }: LibraryPro
     await watchJob<LibraryProcessingData>({
       read: signal => apiGet('/api/library-processing', signal),
       active: () => !lifetime.current.signal.aborted && generation.current === epoch,
+      keepWatching: mode === 'notice' || !!monitor,
       render: next => {
         setState(next); setProblem('');
-        if (next.status === 'complete') { setReceipt(true); toast('已完成扫描与资料采集'); }
-        if (next.status === 'complete' || next.status === 'failed') onComplete?.();
+        if (next.status === 'complete' && previousStatus.current === 'running' && mode !== 'notice') { setReceipt(true); toast('已完成扫描与资料采集'); }
+        if (previousStatus.current === 'running' && (next.status === 'complete' || next.status === 'failed')) onComplete?.();
+        previousStatus.current = next.status;
       },
       disconnected: () => setProblem('连接中断，正在重新读取处理进度'),
     });
   }
   useEffect(() => {
-    if (state.status === 'running') void follow();
+    if (state.status === 'running' || mode === 'notice' || monitor) void follow();
     return () => lifetime.current.abort();
   }, []);
   async function start() {
@@ -46,10 +49,18 @@ export function LibraryProcessing({ data, error, toast, onComplete }: LibraryPro
     try {
       const next = await apiSend<LibraryProcessingData>('/api/library-processing', {}, 'POST', lifetime.current.signal);
       if (lifetime.current.signal.aborted) return;
+      previousStatus.current = next.status;
       setState(next); setSubmitting(false); await follow();
     } catch (cause) {
       if (!lifetime.current.signal.aborted) { setProblem(errorMessage(cause)); setSubmitting(false); }
     }
+  }
+  if (mode === 'notice') {
+    if (!problem && state.status !== 'running' && state.status !== 'failed') return null;
+    return <div class="library-processing-banner" role="status">
+      <span>{problem || (state.status === 'failed' ? '扫描与资料采集未完成' : `${state.stage || '正在整理馆藏'}${state.total ? ` · ${state.checked || 0} / ${state.total}` : ''}`)}</span>
+      <a class="geist-button" href="/configuration#libraryProcessing">{problem || state.status === 'failed' ? '查看并处理' : '查看进度'}</a>
+    </div>;
   }
   return <>
     <div class="geist-fieldset-content library-processing">
@@ -57,7 +68,7 @@ export function LibraryProcessing({ data, error, toast, onComplete }: LibraryPro
       <p>扫描媒体文件夹，导入已有资料，采集缺失信息。</p>
       <div aria-live="polite">
         {state.status === 'running' && <>
-          <div dangerouslySetInnerHTML={{ __html: loadingDotsHtml(state.stage || '正在处理') }} />
+          <div dangerouslySetInnerHTML={{ __html: loadingDotsHtml(`${state.stage || '正在处理'}${state.total ? ` · ${state.checked || 0} / ${state.total}` : ''}`) }} />
           {!!state.total && <div dangerouslySetInnerHTML={{ __html: progressHtml(`已处理 ${state.checked || 0} / ${state.total} 个视频`, state.checked || 0, state.total) }} />}
         </>}
         {(problem || state.status === 'failed') && <div role="alert" dangerouslySetInnerHTML={{ __html: noteHtml(problem || state.error || '处理未完成，请重试', { variant: 'error' }) }} />}

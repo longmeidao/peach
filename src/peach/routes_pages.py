@@ -69,7 +69,7 @@ dt{color:var(--muted);font-size:var(--fs-sm)}dd{margin:0 0 12px;overflow-wrap:an
 form{margin-top:32px}
 .field{margin-top:24px}
 .field>label,.field>.legend{display:block;margin:0 0 8px;font-weight:500;color:var(--ink)}
-.req{color:var(--drop);margin-right:4px}
+.req{color:var(--drop);margin-left:4px}
 input[type=text],input[type=number],input[type=password]{width:100%;height:var(--control-h);padding:0 12px;
 border:1px solid var(--line);border-radius:var(--control-radius);background:var(--ground);
 color:var(--ink);font:inherit}
@@ -419,7 +419,7 @@ def _media_dirs_html(values: Sequence[str], errors: Sequence[str], note: str, *,
         for index, value in enumerate(rows))
     return (
         '<div class="field">'
-        f'<label for="f-media_dir"><span class="req" aria-hidden="true">*</span>{escape(title)}</label>'
+        f'<label for="f-media_dir">{escape(title)}<span class="req" aria-hidden="true">*</span></label>'
         f'<div class="dirs" id="dirs">{body}</div>'
         '<button type="button" class="add" id="add-dir" hidden>添加文件夹</button>'
         f'<template id="dir-row">{_media_dir_row("", "", first=False, windows=windows)}</template>'
@@ -468,7 +468,7 @@ def _field_html(question, value: str, error: str, note: str) -> str:
                    f'value="{escape(value, quote=True)}">')
         if question.key == "mdns_name":
             control = f'<div class="affix"><span>https://</span>{control}<span>.local</span></div>'
-        label = f'<label for="f-{key}">{star}{escape(title)}</label>'
+        label = f'<label for="f-{key}">{escape(title)}{star}</label>'
     tail = "".join(
         f'<p class="help">{escape(line)}</p>' for line in (help_text, note) if line)
     tail += f'<p class="bad" role="alert">{escape(error)}</p>' if error else ""
@@ -522,11 +522,11 @@ def setup_page(
                   'name="access_confirm" type="password" maxlength="256" autocomplete="new-password"></div>')
     filled = [path for path in media_dirs if path]
     if not filled:
-        scan_text = "完成设置后扫描媒体文件夹"
+        scan_text = "完成设置后扫描并补全资料"
     elif len(filled) == 1:
-        scan_text = f"完成设置后扫描 <code>{escape(filled[0])}</code>"
+        scan_text = f"完成设置后扫描并补全资料：{escape(filled[0])}"
     else:
-        scan_text = f"完成设置后扫描这 {len(filled)} 个文件夹"
+        scan_text = f"完成设置后扫描这 {len(filled)} 个文件夹并补全资料"
     body = (
         '<header><img class="mark" src="/peach-logo.png" alt="" width="40" height="40">'
         "<h1>欢迎使用 Peach</h1>"
@@ -534,7 +534,7 @@ def setup_page(
         '<form method="post" action="/setup">'
         + "".join(fields)
         + _check_html("scan_now", scan_text, checked=scan_now)
-        + '<p class="help">扫描只读取文件名、大小和修改时间，不改动任何媒体文件。</p>'
+        + '<p class="help">读取已有 NFO 和封面，采集缺失资料。进度可在设置中查看，资料候选在复核后应用。</p>'
         + '<section class="history-guide-choice"><h2>浏览器历史记录<span class="optional">可选</span></h2>'
         + _check_html("history_guide", "接下来导入浏览器历史记录", checked=values.get("history_guide") == "y")
         + '<p class="help">用于生成口味分析。完成设置后选择读取这台电脑，或导入其他设备的记录；也可稍后从「口味」进入。</p></section>'

@@ -1,5 +1,7 @@
 # 复用清单
 
+首页进度 Banner 与配置页复用 `LibraryProcessing`、`watchJob` 和 `/api/library-processing`，启动只提交一次，状态查询接续托盘首次处理。首页在完成后收起，失败提供设置跳转；配置页持续读取阶段与真实计数。Geist Banner 官方 DOM/CSS 已于 2026-09-06 取得，取证与 Peach 差异见 `docs/reference-snapshots/vercel-geist-library-banner.md`。
+
 JAV 默认封面（官方封面／预览图）与默认大小（大图／小图）独立保存，复用 localStorage、共享 Switch 和既有 `/cover`、`/poster` 接口，不新增依赖。`frontend/src/jav-artwork.ts` 负责作品身份、偏好恢复与缺图回退；首页、接着看、实体作品、详情推荐、Mix 静止与翻图、播放队列共用封面选择。小图保留所选来源，设置换图保留播放和滚动位置。
 
 这是 Codex 与 Claude 共用的实现查找表。新增、恢复或重写代码前必须按
