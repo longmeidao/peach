@@ -192,6 +192,9 @@ button,a,input,textarea,select,summary{touch-action:manipulation}
   transition:background-color .15s ease-in-out,color .15s ease-in-out}
 .geist-button:hover:not(:disabled){background:var(--surface)}
 .geist-button:is(a),.geist-button:is(a):hover{text-decoration:none}
+/* 按钮里唯一还挂图标的一类是走出 Peach 的链接：实测 Geist 的外链标是 14px，
+   跟着文字的 currentColor 走，落在文字后面。 */
+.geist-button svg{width:14px;height:14px;flex:none;stroke:currentColor;fill:none;stroke-width:2}
 .geist-button:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}
 .geist-button:disabled{background:var(--sunk);color:var(--muted);cursor:default}
 /* Vercel/Geist loading actions look unavailable and reject repeat activation,

@@ -1581,6 +1581,21 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks('entitylinkarrow', "外链箭头应当已删除")
         self.assertPageLacks('↗', "外链箭头字符应当已删除")
 
+    def test_links_that_leave_peach_carry_the_external_mark(self):
+        """走出 Peach 的链接带一枚外链标，站内跳转不带。
+
+        2026-09-06 实测 vercel.com 团队页：站内链接（PR 号、部署 ID、项目名）一律裸
+        文字，只有离站的部署域名挂一枚 14×14 的 external-link。标记的是「这一跳会
+        离开当前应用」，不是「这是个链接」——每个链接都挂就等于谁都没标。
+        """
+        island = (Path(__file__).resolve().parents[1]
+                  / 'frontend/src/islands/release-updates.tsx').read_text(encoding='utf-8')
+        self.assertIn('查看发布页<svg aria-hidden="true" viewBox="0 0 24 24">'
+                      '<use href="#i-external-link" /></svg>', island)
+        self.assertPageContains('.geist-button svg{width:14px;height:14px;flex:none;'
+                                'stroke:currentColor;fill:none;stroke-width:2}')
+        self.assertPageContains('<symbol id="i-external-link"')
+
     def test_the_x_mark_is_a_full_disc_that_takes_the_current_ink(self):
         """圆盘吃 currentColor，字形从圆里挖掉，两个主题下分量一样重。
 

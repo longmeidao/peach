@@ -726,7 +726,11 @@ function tt({ initial: e, initialJob: t }) {
 					href: r.release_url,
 					target: "_blank",
 					rel: "noreferrer",
-					children: "查看发布页"
+					children: ["查看发布页", /* @__PURE__ */ K("svg", {
+						"aria-hidden": "true",
+						viewBox: "0 0 24 24",
+						children: /* @__PURE__ */ K("use", { href: "#i-external-link" })
+					})]
 				}),
 				o.state === "ready" ? /* @__PURE__ */ K("button", {
 					type: "button",
