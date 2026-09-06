@@ -71,8 +71,15 @@
    不是反馈条里那些「怎么处置它」的动作。整排是同一种琥珀 --rating，空心是未评、
    实心是已评，两态的差别只有填不填。星形自带这个不靠亮度的区分，所以不再拿墨色深浅
    兼职表示评没评——那一档在浅色主题下要同时比页面底重、又比实心轻，凑不出两级都成立的灰。 */
-.rating{display:flex;align-items:center;gap:8px;margin:0 0 10px}
-.ratingstars{display:inline-flex;align-items:center;gap:2px}
+/* 这一排要跟标题、规格行印在同一条左边线上，而对齐的依据是印出来的星形，不是按钮的
+   命中区：26px 的方块里画 19px 的星，星形自己在 24 格视区里又从第 2 格才起笔，两层加起来
+   把第一颗星的墨往右推了约 4px。命中区仍旧保持 26px——缩到贴着星形，指针就得瞄得很准。
+   上下同理。标题那行的 line-height 是 28px、字号 16px，末行下面自带约 8px 的行距；
+   星形在自己的方块里上下也各空掉约 5px。两侧都算进去，10px 的上外边距印出来是 22px、
+   下边却只有 16px，看着像这一排贴着规格行、离标题很远。上边距回收掉那 6px 的行距，
+   两边印出来才是同一个数。 */
+.rating{display:flex;align-items:center;gap:8px;margin:-6px 0 10px}
+.ratingstars{display:inline-flex;align-items:center;gap:2px;margin-left:-4px}
 .ratingstars .star{width:26px;height:26px;padding:0;border:0;border-radius:var(--control-radius);
   background:transparent;color:var(--rating);display:grid;place-items:center;cursor:pointer}
 .ratingstars .star svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:2;
