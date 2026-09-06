@@ -14,6 +14,10 @@
   /* 蓝只给焦点环、链接、进度／数据和 Toggle 开态；按下／选中态与主动作走 --ink／--ink-2 反相，
      其它选择器引用 --tungsten 由 tests/test_web_ui.py 拒绝。 */
   --tungsten:#0095F6;
+  /* 评分那一排的琥珀，空心实心都用它，两态的差别只有填不填。它和上面那几个语义色一样
+     两档各写各的值：借 --line 画空心星在深色底上站得住（#3A3A3D 压在近黑上），
+     换到浅色一档就是 #E5E5E5 压在 #FAFAFA 上，同一份写法在两个主题下不是同一件事。 */
+  --rating:#B8860B;
   --loupe:#127A72; --keep:#2E7D32; --meter:#B26A10; --drop:#C0392B; --success:#2E7D32;
   --tile:336px; --topH:56px; --filterH:58px; --filterItemH:40px; --sortH:53px; --railW:72px;
   /* 圆角也是有词汇的，不是随手挑一个数。
@@ -77,6 +81,7 @@
   --field-ring-focus:rgba(255,255,255,.51);--field-glow:rgba(255,255,255,.24);
   --page:#04060A;
   --picked:var(--hover);
+  --rating:#E5B34A;
   --loupe:#6FD0C8; --keep:#5FB95F; --meter:#E0912F; --drop:#FF5252; --success:#5FB95F; --ambient-opacity:1;}}
 :root[data-theme="dark"]{
   --ground:#080A0D; --surface:#0C0F14; --sunk:#0B0D11; --hover:rgba(255,255,255,.07); --skeleton-sheen:rgba(255,255,255,.12);
@@ -89,6 +94,7 @@
   --field-ring-focus:rgba(255,255,255,.51);--field-glow:rgba(255,255,255,.24);
   --page:#04060A;
   --picked:var(--hover);
+  --rating:#E5B34A;
   --loupe:#6FD0C8; --keep:#5FB95F; --meter:#E0912F; --drop:#FF5252; --success:#5FB95F; --ambient-opacity:1;}
 
 *,*::before,*::after{box-sizing:border-box}
