@@ -29,6 +29,7 @@ export const wireSelectField = (root: HTMLElement) => {
   Object.defineProperty(root, 'value', { get: () => root.dataset.value, set: (value: string) => { root.dataset.value = value; } });
   return root as HTMLElement & { value: string; disabled: boolean };
 };
+export const wireCollapse = (_root: ParentNode, _selector: string, _idPrefix: string): void => {};
 
 export const setActionBusy = (control: Element | null, busy = true): void => {
   if (!control) return;
