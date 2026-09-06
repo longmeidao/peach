@@ -85,6 +85,7 @@
   padding:9px 11px;border:1px solid var(--line);border-radius:var(--floating-radius);background:var(--surface);
   box-shadow:0 8px 24px #0005}.selectiondock[hidden]{display:none}
 .selectiondock>button{white-space:nowrap}
+.selectiondockcount{padding:0 8px;color:var(--ink-2);white-space:nowrap}
 .tagselection.selectiondock{margin:0}
 .selectiondock [hidden]{display:none}
 body:has(#batchbar:not([hidden])) #stage{padding-bottom:180px}
