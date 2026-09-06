@@ -34,6 +34,12 @@
 .postercard-skeleton .skeletoncard i{grid-column:1/-1}
 .postercard-skeleton .skeletoncard s{display:block;grid-column:1;grid-row:2/span 3;align-self:start;
   width:38px;height:38px;margin-top:5px;border-radius:50%;background:var(--hover)}
+.catalog-placeholder{pointer-events:none}
+.catalog-placeholder .ring,.catalog-placeholder .nm,.catalog-placeholder .mk,.catalog-placeholder .placeholder-name,.catalog-placeholder .pill{background:var(--hover)}
+.catalog-placeholder .nm{width:60%;margin-inline:auto;border-radius:var(--badge-radius)}
+.catalog-placeholder .placeholder-name{width:48px;border-radius:var(--badge-radius)}
+.placeholder-tags{display:inline-flex;gap:8px}
+.placeholder-tags .pill{width:64px;border-color:transparent}
 .postercard-skeleton .skeletoncard b,
 .postercard-skeleton .skeletoncard em,
 .postercard-skeleton .skeletoncard u{grid-column:2}

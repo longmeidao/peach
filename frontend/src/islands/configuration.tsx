@@ -245,10 +245,10 @@ function ConfigurationForm({ data, receipt }: { data: ConfigurationData; receipt
   if (saved) {
     return (
       <div class="configsaved" role="status">
-        <Html html={noteHtml('配置已保存，Peach 正在重新启动。', { variant: 'success', label: '已保存' })} />
-        <p class="confighelp">
-          几秒后自动打开新地址；没跳转就点 <a href={saved.url}>进入馆藏</a>。
-        </p>
+        <div class="geist-note geist-note-success" role="note">
+          <svg aria-hidden="true" viewBox="0 0 24 24"><use href="#i-check" /></svg>
+          <p><span>配置已保存，Peach 正在重新启动。稍后自动跳转，或点击<a href={saved.url}>进入馆藏</a>。</span></p>
+        </div>
       </div>
     );
   }

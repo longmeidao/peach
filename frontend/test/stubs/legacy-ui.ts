@@ -7,9 +7,10 @@ export const emptyStateHtml = (
   iconName: string,
   title: string,
   description: string,
+  options: { actions?: string } = {},
 ): string => `<div class="emptystate" data-geist-empty-state role="status">`
   + `<div class="es-icon" data-icon="${iconName}"></div>`
-  + `<div class="es-copy"><h3>${title}</h3><p>${description}</p></div></div>`;
+  + `<div class="es-copy"><h3>${title}</h3><p>${description}</p></div>${options.actions || ''}</div>`;
 
 export const fieldsetTitle = (id: string, title: string): string =>
   `<h3 class="geist-fieldset-title" id="${id}">${title}</h3>`;

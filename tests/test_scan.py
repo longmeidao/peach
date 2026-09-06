@@ -71,6 +71,16 @@ class WindowsShapeTests(_ScanCase):
         for path in rows:
             self.assertTrue(Path(path).is_file(), path)
 
+    def test_scanned_video_is_visible_without_a_thumbnail_filter(self):
+        from fastapi.testclient import TestClient
+        from peach.api import create_app
+        from peach.config import PeachSettings
+        self._scan(str(self.media), declared_roots={"local": (str(self.media),)}, windows=True)
+        with TestClient(create_app(PeachSettings(db_path=self.db, configured=True, token=""))) as client:
+            self.assertEqual(client.get('/api/items').json()['total'], 1)
+            self.assertEqual(client.get('/api/items?thumb=0').json()['total'], 1)
+            self.assertEqual(client.get('/api/items?thumb=1').json()['total'], 0)
+
     def test_a_subdirectory_of_the_declared_root_is_accepted(self):
         declared = {"local": (str(self.media),)}
         result, _ = self._scan(str(self.media / "创作者"), declared_roots=declared, windows=True)

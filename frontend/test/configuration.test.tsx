@@ -205,7 +205,9 @@ describe('保存', () => {
       revision: 'rev-1', media_dirs: ['D:\\Media'], port: '9124', scan_now: false,
     });
     expect(receipt).toHaveBeenCalledWith('已保存配置');
-    expect(el.querySelector('.geist-note-success')?.textContent).toContain('正在重新启动');
+      expect(el.querySelector('.geist-note-success')?.textContent).toContain('正在重新启动');
+      expect(el.querySelector('.geist-note-success a')?.previousSibling?.textContent).toMatch(/点击$/);
+      expect(el.querySelector('.configsaved > .confighelp')).toBeNull();
     expect(el.querySelector<HTMLAnchorElement>('.configsaved a')?.getAttribute('href'))
       .toBe('http://127.0.0.1:9124/');
     expect(el.querySelector('form'), '保存后表单不再留在页面上').toBeNull();

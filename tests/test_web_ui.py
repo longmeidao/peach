@@ -2620,7 +2620,7 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_search_active_index_resets_when_the_list_is_rebuilt(self):
         # 列表重建后旧索引会指向不存在的行；输入和重新渲染都必须归零。
-        self.assertPageContains("menu.hidden=false;searchActive=-1;")
+        self.assertPageContains("menu.hidden=!menu.innerHTML;searchActive=-1;")
         self.assertPageContains("const refreshSearchMenu=()=>{searchActive=-1;")
 
     def test_enter_uses_the_highlighted_option_before_the_suggestion(self):
@@ -4002,7 +4002,7 @@ class WebUiSourceTests(unittest.TestCase):
         scope = self.page.split("const scope=facetParams.toString();", 1)[0]
         self.assertIn("facetParams.set('state'", scope)
         # 收窄到空时不能留下空带：实测已标记页上两排都没人，#tiers 仍占 28px。
-        self.assertPageContains("$('#tiers').hidden=!(perfRow||studioRow);")
+        self.assertPageContains("$('#tiers').hidden=!(emptyLayout||perfRow||studioRow);")
         self.assertPageContains(".tiers[hidden]{display:none}")
 
     def test_collapsed_rail_is_divided_from_the_content_beside_it(self):
@@ -4140,7 +4140,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('.playlistpage>header{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;margin-bottom:16px}')
         self.assertPageContains('.followfilters{position:relative;top:auto;z-index:1;height:auto;min-height:58px;margin:0 0 16px')
         self.assertPageContains("emptyState('trash','回收站是空的','删掉的内容会先到这里；确认不再需要后再清空。')")
-        self.assertPageContains("emptyState('search','没有符合条件的作品','调整筛选或搜索条件后再试。')")
+        self.assertPageContains("$('#grid').innerHTML=catalogEmptyHtml(")
+        self.assertPageContains("if(reset&&d.items.length)setGridCards(html)")
         self.assertPageLacks('class="trashempty"')
 
     def test_follow_fieldset_headers_share_one_control_height(self):
@@ -4315,10 +4316,10 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".resourcecardaction{position:absolute")
 
     def test_search_suggestions_come_from_real_data_in_bulk(self):
-        """写死的 6 个词翻两次就重复。顶部聚合只有几十条，也不够；索引接口一次给近千条。"""
+        """推荐取当前馆藏，并核对实际搜索命中。"""
         self.assertPageContains("async function loadSearchPool()")
-        self.assertPageContains("['performers','creators','tags'].map(")
-        self.assertPageContains("`/api/index?kind=${kind}&limit=400`")
+        self.assertPageContains("await catalogSuggestions(state,api)")
+        self.assertPageContains("searchPoolCache=[]")
         self.assertPageContains("Promise.all([loadSearchHistory(),loadSearchPool()])")
         self.assertPageContains("[...searchPool()]")
 
@@ -4392,7 +4393,7 @@ class WebUiSourceTests(unittest.TestCase):
     def test_returning_home_from_any_surface_moves_the_highlight(self):
         """Logo、侧栏和沉浸关闭都必须清掉隐藏筛选，不能让 `/` 继续请求 JAV。"""
         self.assertPageContains("function resetHomeState(){")
-        self.assertPageContains("q:'',jav:'',thumb:'1'};")
+        self.assertPageContains("q:'',jav:'',thumb:'0'};")
         self.assertPageContains("function openHome(scroll=false){")
         self.assertPageContains("resetHomeState();route('/');$('#q').value='';disposeStage(false);showHomeSurfaces();")
         self.assertPageContains("buildEdge();buildBars();load(true);")
@@ -5524,7 +5525,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks("{k:'ads',label:'垃圾复核'}")
 
     def test_search_placeholder_is_an_actionable_recommendation(self):
-        self.assertPageContains("const SEARCH_HINTS=['Prestige','FC2','Sakura Misaki','丝袜','足交','ABW']")
+        self.assertPageLacks("const SEARCH_HINTS=")
+        self.assertPageContains("await catalogSuggestions(state,api)")
         self.assertPageContains("$('#q').dataset.suggestion=searchSuggestion")
         # 契约是「没有选中下拉项时，Enter 用当前推荐词」。下拉加了键盘导航后，
         # 这个条件由 `!picked` 表达：没有高亮项时它就是 true，与旧的字面 true 等价。

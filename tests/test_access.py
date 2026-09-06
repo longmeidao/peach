@@ -118,7 +118,9 @@ class AccessTests(unittest.IsolatedAsyncioTestCase):
         from peach import routes_pages, settings_file
         config = settings_file.load_config(environ={"PEACH_DATA_ROOT": str(self.path.parent)})
         html = routes_pages.setup_page(config, windows=True, values={"access_password": "sensitive-password"})
-        self.assertIn("访问密码（可选）", html)
+        self.assertIn('访问密码<span class="optional">可选</span>', html)
+        self.assertIn('input[type=password]{width:100%;height:var(--control-h)', html)
+        self.assertIn('.optional{margin-inline-start:8px;color:var(--muted)', html)
         form = html.split('<form method="post" action="/setup">', 1)[1]
         self.assertLess(form.index('name="access_password"'), form.index("高级设置"))
         self.assertNotIn("sensitive-password", html)
