@@ -1539,8 +1539,12 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('<span class="sr-only">${esc(x.label)}</span></a>')
         self.assertPageContains('.entitylinks a.iconlink{padding:4px;gap:0;border-radius:50%}')
 
-    def test_a_studio_official_link_shows_its_url_and_globe(self):
-        self.assertPageContains("if(kind==='studio')")
+    def test_a_company_official_link_shows_its_url_and_globe(self):
+        # 厂牌页和事务所页的头像都是这家公司自己的圆标，标题都是它的名字：官网那一格
+        # 再摆一遍圆标和名字，同一件事就说了三遍。人物页的头像是人，事务所的圆标和
+        # 名字在那里才是新信息，所以只有公司这两类收成域名。
+        self.assertPageContains("const company=kind==='studio'||kind==='agency';")
+        self.assertPageContains("    if(company)\n")
         self.assertPageContains('<a class="urllink" href="${esc(x.url)}"')
         self.assertPageContains("${esc(linkHost(x.url)||x.label)}")
         self.assertPageContains(".entitylinks a.urllink{padding:4px 12px 4px 4px")
@@ -1552,7 +1556,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('mountDetailPlayer(it,vv,appSettings.detailAutoplay)')
         self.assertPageContains('mountDetailPlayer(item,followVideo,appSettings.detailAutoplay,{')
         self.assertPageContains('id="detailAutoplaySetting"')
-        self.assertPageContains('fill="#000" stroke="none"/><path fill="#fff"')
 
     def test_entity_links_have_no_external_arrow(self):
         # `target="_blank"` 已经是外链，箭头只是重复；一排链接里它还会挤掉本就不多的
@@ -1560,10 +1563,23 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks('entitylinkarrow', "外链箭头应当已删除")
         self.assertPageLacks('↗', "外链箭头字符应当已删除")
 
-    def test_x_links_preserve_the_black_plate_and_white_mark(self):
-        self.assertPageContains('<symbol id="i-brand-x"')
-        # 填充字形不吃通用的 stroke:currentColor;fill:none。
-        self.assertPageContains('.entitylinkicon.brand svg{width:20px;height:20px;stroke:none;filter:none}')
+    def test_the_x_mark_is_a_full_disc_that_takes_the_current_ink(self):
+        """圆盘吃 currentColor，字形从圆里挖掉，两个主题下分量一样重。
+
+        固定色的板子在其中一档上必然失手：同一块黑在浅色页面上压过周围，在深色页面
+        上糊进底色，只剩一个悬空的字形。圆盘取墨色就没有这一档差别。
+        字形按 .5 缩在圆内，靠的是缩放而不是外圈的 `overflow:hidden`——社媒标记是
+        拿来认牌子的，裁掉一角就不是那个牌子了。网站 favicon 不在此列，那些是方图。
+        """
+        self.assertPageContains('<symbol id="i-brand-x" viewBox="0 0 24 24">')
+        self.assertPageContains(
+            '<circle cx="12" cy="12" r="12" fill="currentColor" stroke="none" '
+            'mask="url(#i-brand-x-cut)"/>')
+        self.assertPageContains(
+            'transform="translate(12 12) scale(.5) translate(-12 -12)"')
+        self.assertPageLacks('fill="#000" stroke="none"', "品牌标记不写死板子的颜色")
+        self.assertPageContains(
+            '.entitylinkicon.brand svg{width:100%;height:100%;stroke:none;filter:none}')
 
     def test_the_link_icon_disc_carries_no_plate_of_its_own(self):
         """内联品牌标记直接画在药丸上。垫一层 `--sunk` 会让它比周围暗一档，看着像
@@ -6409,8 +6425,7 @@ class WebUiSourceTests(unittest.TestCase):
                 ("pics", "-1.6 -1.6 19.2 19.2"),
                 ("text-aa", "-7.3 32.8 262.5 182.9"),
                 ("playlist", "10.4 10.5 259.2 259.2"),
-                ("sperm", "1.5 1.2 21.2 21.2"),
-                ("brand-x", "-0.9 -0.9 25.9 25.9")):
+                ("sperm", "1.5 1.2 21.2 21.2")):
             self.assertPageContains(f'<symbol id="i-{symbol}" viewBox="{box}"')
         # 框由生成脚本负责重放：`npm run vendor:web` 每次都写出同一份。
         generator = (Path(__file__).resolve().parents[1]
