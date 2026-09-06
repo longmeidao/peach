@@ -35,6 +35,8 @@ Peach is a single-user, local-first media system. Search, play and organize medi
 
 CloudDrive · 115 and CloudDrive · PikPak connect through mounted local folders. Sign in and mount them in CloudDrive first, then add the folders to Peach. Local disks alone also work.
 
+First-run setup offers an optional browser-history import guide, also available on the Taste page. Cloud reconciliation appears only when a cloud source is configured; empty-folder cleanup also supports local disks.
+
 Tray-managed services let you adjust media sources under Manage → Configuration on the host computer, including through its LAN hostname. Setup and configuration provide download links when dependencies are not detected, with mount drivers shown for the host operating system.
 
 Follow sources include FANBOX, Patreon, SubscribeStar, Kemono, Pawchive, Coomer, the Rule34 family and F95zone. Availability depends on the site and your access rights. See [source collection](docs/SOURCING.md) for supported workflows and boundaries.

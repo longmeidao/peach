@@ -149,6 +149,8 @@ CloudDrive 为外部应用，本项目不捆绑其二进制或依赖其管理 AP
 - reader 的 `/review` 通过严格 Peach CA HTTPS 读取 writer 的归一化 JSON 并原子缓存；决定按钮和所有关注写操作仍锁定。
 - macOS Ledger 同步在共享根判为 `offline` 时先经 NetFS 挂载 `peach-sync` 再重判，挂载失败才保留离线结果，不弹阻塞认证框。
 - 浏览历史增量采集使用 SQLite backup API 与 `browserexport`，也接受 Google Takeout ZIP；原始 URL 与标题只留本机私有目录，聚合候选不写 ledger。
+- 首次设置的可选历史引导转到 `/taste?onboarding=1`，继续使用现有读取与导入入口。指南链接按 [Google 导出说明](https://support.google.com/accounts/answer/3024190?hl=zh-Hans) 和 [browserexport](https://github.com/purarue/browserexport) 官方说明核验（2026-09-06）；沿用 `browserexport==0.4.4`，未新增依赖或解析器。
+- 数据管理首屏直接复用实际 `cleanupfieldset` 正文和操作条，只有计数等待取数；资源同步与重复文件网盘操作根据 `/api/sources` 已配置来源显示，离线来源保留入口。资源同步的扫描和执行复核均限于已配置 115／PikPak，空文件夹和按目录清理仍支持本地磁盘。
 
 ## 必须复用的成熟实现
 

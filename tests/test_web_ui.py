@@ -352,7 +352,7 @@ class WebUiSourceTests(unittest.TestCase):
         ".geist-progress", ".watchprogress", ".vjs-play-progress", ".vjs-progress-holder",
         ".trace .bar", ".tokbar",  # 进度与数据
         "#censorSetting:checked",  # Toggle 开态：Geist Toggle 实测轨道 rgb(0,112,243)
-        ".entitylink", ".flink", ".fsourcelink", ".fcred a", ".tokauthor>a", ".confighelp a",  # 真正的链接
+        ".entitylink", ".flink", ".fsourcelink", ".fcred a", ".tokauthor>a", ".confighelp a", ".taste-history-guide-content a",  # 真正的链接
     )
 
     def test_tungsten_is_reserved_for_focus_links_progress_and_toggle(self):
@@ -2242,7 +2242,7 @@ class WebUiSourceTests(unittest.TestCase):
             self.assertPageContains("  " + call)
         self.assertPageContains("    fillSkeletonTier(tagbar,'pill');")
         # 一列 fieldset 的两张骨架照自己的轮廓排，补整行会把它们撑成海报网格。
-        self.assertPageContains("{cards:true,fill:false,className:'cleanup-skeleton'})}</div>`,")
+        self.assertPageContains("'/data-cleanup':()=>cleanupSkeletonHtml()")
         self.assertPageContains("{cards:true,count:3,fill:false,className:'followmanage-skeleton'})}</div>`,")
         self.assertPageContains("""${kind==='cards'&&fill?' data-fill=""':''}""")
         self.assertPageContains(".skeletonpanel[data-fill]>div")
@@ -3552,7 +3552,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("catch(_error){write(section,'读取失败')}")
         cleanup = self.page.split("async function openDataCleanup(", 1)[1].split("let dupData=null;", 1)[0]
         self.assertIn("${linkManagerMarkup()}", cleanup)
-        self.assertIn("${resourceSyncMarkup()}", cleanup)
+        self.assertIn("${cloudLocations(sources.sources||[]).length?resourceSyncMarkup():''}", cleanup)
         stats = self.page.split("async function openStats(", 1)[1].split("function showHomeSurfaces(", 1)[0]
         self.assertNotIn("linkManagerMarkup()", stats,
                          "统计页只讲库里现在有多少，不该再挂对齐外部现实的面板")
@@ -5996,6 +5996,11 @@ class WebUiSourceTests(unittest.TestCase):
     def test_data_cleanup_groups_junk_duplicates_and_empty_folders_in_fieldsets(self):
         self.assertPageContains("async function openDataCleanup(push=true)")
         self.assertPageContains("route('/data-cleanup')")
+        self.assertPageContains("${cloudLocations(sources.sources||[]).length?resourceSyncMarkup():''}")
+        self.assertPageContains("fieldsetTitle('resourceBoxTitle','网盘与本地数据库')")
+        self.assertPageLacks("fieldsetTitle('resourceBoxTitle','网盘与账本')")
+        self.assertPageContains("cloudPreferenceLocations(g.files,d.cloudLocations||[])")
+        self.assertPageContains("tasteHistoryGuideHtml(new URLSearchParams(location.search).get('onboarding')==='1')")
         for path in ("'/api/ads?limit=1'", "'/api/duplicates?limit=1'", "'/api/sources'"):
             self.assertPageContains(path)
         # 标题是正文区的第一行，不用原生 legend——legend 会在上边框上开个缺口，
@@ -6087,8 +6092,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("const flag=keep==='longest'?'is_longest':'is_largest'")
         self.assertPageContains("for(const f of g.files)if(f.id!==keeper.id)ids.push(f.id)")
         self.assertPageContains("g.files.filter(f=>f.location===keep)")
-        self.assertPageContains('data-dup-all="115"')
-        self.assertPageContains('data-dup-all="pikpak"')
+        self.assertPageContains('data-dup-all="${loc}"')
+        self.assertPageContains('cloudPreferenceLocations(groups.flatMap(g=>g.files),d.cloudLocations||[])')
 
     def test_duplicate_group_can_be_entirely_recycled_when_every_file_is_an_ad(self):
         self.assertPageContains("if(keep==='all'){for(const f of g.files)ids.push(f.id);continue}")
@@ -7368,7 +7373,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("it.location==='online'?'':`<span class=\"srctools detailtitletools\">${sourceToolButtons(it.id)}</span>`")
 
     def test_resource_sync_lives_in_data_management_and_keeps_offline_sources_safe(self):
-        self.assertPageContains("${resourceSyncMarkup()}")
+        self.assertPageContains("${cloudLocations(sources.sources||[]).length?resourceSyncMarkup():''}")
         self.assertRoute('/resource-sync', "openResourceSync(push)")
         self.assertPageContains("route('/data-cleanup#resource-sync',!push)")
         self.assertPageContains("api('/api/resource-sync/scan',{method:'POST'")
