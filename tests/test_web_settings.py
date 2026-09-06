@@ -172,6 +172,14 @@ class ContractRegistrationTests(unittest.TestCase):
             return tuple(item.strip().strip("'") for item in raw.split(","))
 
         self.assertEqual(js_list("DEFAULT_SIDEBAR_ORDER"), DEFAULT_SIDEBAR_ORDER)
+        # 默认那一份是首页、关注、JAV、三个索引、已标记、管理；播放列表和沉浸模式
+        # 是从别处发起的动作，只在可加清单里。
+        self.assertEqual(
+            DEFAULT_SIDEBAR_ORDER,
+            ("", "follow", "jav", "performers", "tags", "studios", "flagged", "manage"))
+        self.assertNotIn("playlists", DEFAULT_SIDEBAR_ORDER)
+        self.assertIn("playlists", web_settings.OPTIONAL_SIDEBAR_KEYS)
+        self.assertIn("immerse", web_settings.OPTIONAL_SIDEBAR_KEYS)
         self.assertEqual(js_list("OPTIONAL_SIDEBAR_KEYS"),
                          web_settings.OPTIONAL_SIDEBAR_KEYS)
 

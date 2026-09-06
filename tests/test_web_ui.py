@@ -4610,7 +4610,7 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_the_maker_index_switch_moves_between_two_routes(self):
         """厂牌出片、事务所出人，是两种实体：开关切的是路径，不是同一批数据再筛一次。"""
-        self.assertCode("const MAKER_INDEX_KINDS=[['studios','厂牌','building'],"
+        self.assertCode("const MAKER_INDEX_KINDS=[['studios','厂牌','clapperboard'],"
                         "['agencies','事务所','briefcase']];")
         self.assertPageContains("function makerModeHtml(kind){")
         self.assertCode("$('#index').querySelectorAll('[data-index-kind]').forEach(b=>b.onclick=()=>{")
@@ -4619,7 +4619,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("{match:'/studios',nav:'studios',title:'厂牌',")
         self.assertPageContains("{match:'/agencies',title:'事务所',")
         # 侧栏那一项进的是厂牌索引。
-        self.assertPageContains("['studios','厂商','building'],")
+        self.assertPageContains("['studios','厂商','clapperboard'],")
 
     def test_the_studio_index_wears_the_same_logo_the_profile_does(self):
         """538 个标识在盘上，索引页却格格首字母的话，这一屏读不出是哪些牌子。"""
@@ -5802,7 +5802,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("data-sidebar-hide")
         self.assertPageContains("data-sidebar-add-option")
         self.assertPageLacks("data-sidebar-add-select")
-        self.assertPageContains("const OPTIONAL_SIDEBAR_KEYS=['stats','review','data-cleanup','trash','follow-manage','quality']")
+        self.assertPageContains("const OPTIONAL_SIDEBAR_KEYS=['playlists','immerse','stats','review','data-cleanup','trash','follow-manage','quality']")
         self.assertPageContains("if(DIRECT_MANAGE_NAV[k]){openManage(DIRECT_MANAGE_NAV[k]);return}")
         self.assertPageContains(".settingscard{display:flex;flex-direction:column;width:min(520px,100%);max-height:min(720px,90vh);max-height:min(720px,90dvh);overflow:hidden")
         self.assertPageContains(".settingsscroll{flex:1;min-height:0;overflow-y:auto")
@@ -6375,7 +6375,11 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("${icon('ratio')}<span>${it.width||'?'}×${it.height||'?'}</span>")
         # 换下来的这几枚没有别的使用者，雪碧图里也不留。星是有使用者的那一枚：
         # 详情页的五星评分，写进 `asset.rating`，不与任何别的意思共用。
-        for gone in ("i-monitor-cog", "i-volume-2", "i-sun-moon"):
+        # 厂商索引进去是出片的那些牌子，字形因此说「拍片」而不是说「一栋楼」；
+        # 名下带人的事务所在同一个开关的另一半，走公文包。
+        self.assertPageContains("['studios','厂商','clapperboard'],")
+        self.assertPageContains('<symbol id="i-clapperboard" viewBox="0 0 24 24">')
+        for gone in ("i-monitor-cog", "i-volume-2", "i-sun-moon", "i-building"):
             self.assertPageLacks(f'<symbol id="{gone}"')
         self.assertPageContains("${icon('star')}</button>")
         self.assertPageContains('<symbol id="i-clock" viewBox="0 0 24 24">')

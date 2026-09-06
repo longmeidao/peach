@@ -368,8 +368,13 @@ async function loadSourceStatus(){
    所以上面这一行调用照样成立。 */
 const DURATION_TAGS=new Set(['短片-2分内','中片-10分内','长片-30分内','超长片-30分上']);
 const SETTINGS_KEY='peach.settings.v1';
-const DEFAULT_SIDEBAR_ORDER=['','performers','studios','tags','jav','flagged','playlists','follow','immerse','manage'];
-const OPTIONAL_SIDEBAR_KEYS=['stats','review','data-cleanup','trash','follow-manage','quality'];
+/* 侧栏默认给的那八个入口和它们的次序。首页之后先是关注——它是每天有新东西的那一屏；
+   JAV 是主库最常用的浏览模式，排在三个索引（艺人、标签、厂商）前面；已标记是回头找，
+   管理垫底。播放列表和沉浸模式默认不在：两者都是从一条作品或一个索引里发起的动作，
+   常驻一格换来的是每次都要跳过它。要它们的人在设置里加回来，键仍在 NAV_CATALOG 里。
+   这份清单与 `src/peach/web_settings.py` 的同名常量逐字比对（test_web_settings.py）。 */
+const DEFAULT_SIDEBAR_ORDER=['','follow','jav','performers','tags','studios','flagged','manage'];
+const OPTIONAL_SIDEBAR_KEYS=['playlists','immerse','stats','review','data-cleanup','trash','follow-manage','quality'];
 const ALL_SIDEBAR_KEYS=[...DEFAULT_SIDEBAR_ORDER,...OPTIONAL_SIDEBAR_KEYS];
 const SORTS=[['seed','随机'],['rating','评分'],['o','高潮计数'],['plays','观看次数'],['dur','时长'],
              ['size','体积'],['new','入库时间'],['played','观看时间']];
@@ -5550,7 +5555,9 @@ function personCellHtml(x,kind,countText){
 }
 /* 厂牌与事务所是两种实体，不是同一份数据的两种筛选：厂牌出片，事务所出人，一位女优
    可以同一年给多个厂牌拍片而只属于一家事务所。所以这个开关切的是路径，不是筛选。 */
-const MAKER_INDEX_KINDS=[['studios','厂牌','building'],['agencies','事务所','briefcase']];
+/* 场记板归厂牌，公文包归事务所：一个出片、一个带人，字形各说各的那一件事。
+   办公楼那类字形两边都对得上，也就等于两边都没说清是哪一种公司。 */
+const MAKER_INDEX_KINDS=[['studios','厂牌','clapperboard'],['agencies','事务所','briefcase']];
 function makerModeHtml(kind){
   return `<div class="viewmodes">`+MAKER_INDEX_KINDS.map(([key,label,symbol])=>
     `<button data-index-kind="${key}" aria-pressed="${kind===key}">${icon(symbol)}${label}</button>`
@@ -6430,7 +6437,7 @@ $('#filterBtn').onclick=()=>openDrawer(!$('#drawer').classList.contains('open'))
 const EDGE_ICONS=[
   ['','首页','home'],
   ['performers','艺人','user-round'],
-  ['studios','厂商','building'],
+  ['studios','厂商','clapperboard'],
   ['tags','标签','tags'],
   ['jav','JAV','jav'],
   ['flagged','已标记','bookmark'],
