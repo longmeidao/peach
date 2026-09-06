@@ -45,6 +45,13 @@
      顶栏与窄栏是与 Vercel 有意分开的一处：Vercel 的页头和页面底同色、不浮，
      Peach 有一条从上贯到底的窄栏，两条一起留在 --ground 才不会在左上角撞出两种白。 */
   --page:#FAFAFA;
+  /* 选中填的那张面。两个主题读出来是同一句「比脚下这张更亮一档」，取法却相反：
+     浅色一档的底是 #FAFAFA，往上一档是纯白；深色一档的底近黑，往上一档是叠 7% 白。
+     写死成其中任何一个，另一档就会反过来——填 --hover 在浅色是 5% 黑，比页面底还深，
+     选中于是读成「被按凹进去」；填 --ground 在深色比 --surface 还暗，选中等于没高亮。
+     只给站在 --page 或凹槽上的控件。顶栏图标键、窄栏、抽屉和浮层菜单本身就站在
+     --ground 上，白面上再叠一张白等于没填，那几处的选中仍旧是 --hover 的那一档。 */
+  --picked:var(--ground);
   --layer-dialog:1000; --layer-popover:1100; --layer-tooltip:1200;
   --frost-panel:rgba(250,250,250,.92); --frost-light:rgba(255,255,255,.86);
   --overlay-5:rgba(0,0,0,.05);--border-10:rgba(0,0,0,.10);--border-15:rgba(0,0,0,.15);
@@ -69,6 +76,7 @@
   --field-ring:rgba(255,255,255,.14);--field-ring-hover:rgba(255,255,255,.24);
   --field-ring-focus:rgba(255,255,255,.51);--field-glow:rgba(255,255,255,.24);
   --page:#04060A;
+  --picked:var(--hover);
   --loupe:#6FD0C8; --keep:#5FB95F; --meter:#E0912F; --drop:#FF5252; --success:#5FB95F; --ambient-opacity:1;}}
 :root[data-theme="dark"]{
   --ground:#080A0D; --surface:#0C0F14; --sunk:#0B0D11; --hover:rgba(255,255,255,.07); --skeleton-sheen:rgba(255,255,255,.12);
@@ -80,6 +88,7 @@
   --field-ring:rgba(255,255,255,.14);--field-ring-hover:rgba(255,255,255,.24);
   --field-ring-focus:rgba(255,255,255,.51);--field-glow:rgba(255,255,255,.24);
   --page:#04060A;
+  --picked:var(--hover);
   --loupe:#6FD0C8; --keep:#5FB95F; --meter:#E0912F; --drop:#FF5252; --success:#5FB95F; --ambient-opacity:1;}
 
 *,*::before,*::after{box-sizing:border-box}

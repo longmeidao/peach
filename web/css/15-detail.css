@@ -71,12 +71,16 @@
 .fb button{width:44px;height:42px;padding:0;border:0;border-right:1px solid var(--border-10);background:transparent;border-radius:0;
   cursor:pointer;display:grid;place-items:center;color:var(--muted);transition:transform .14s ease,color .14s ease,background .14s ease}
 .fb button svg{width:21px;height:21px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-.fb button:last-child,.fb .fdownload:last-child{border-right:0}.fb button:hover{transform:none;background:rgba(255,255,255,.12)}
+.fb button:last-child,.fb .fdownload:last-child{border-right:0}.fb button:hover{transform:none;background:var(--hover)}
 /* 下载是 `<a download>`，不是按钮：让浏览器自己落盘，不经过 JS。几何与同排按钮一致。 */
 .fb .fdownload{box-sizing:border-box;width:44px;height:42px;display:grid;place-items:center;border-right:1px solid var(--border-10);color:var(--ink-2)}
-.fb .fdownload:hover{background:rgba(255,255,255,.12);color:var(--ink)}
+.fb .fdownload:hover{background:var(--hover);color:var(--ink)}
 .fb .fdownload svg{width:21px;height:21px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-.fb .like:hover,.fb .like[aria-pressed="true"]{color:var(--ink);background:var(--hover)}
+.fb .like:hover{color:var(--ink);background:var(--hover)}
+.fb .like[aria-pressed="true"]{color:var(--ink);background:var(--picked)}
+/* 加入播放列表开的是弹层，没有按下态，所以只有悬停这一档，和喜欢同走中性墨色：
+   这一排里的色相各自指向一种判断（红=不合口味、绿=看过、橙=回收），整理动作不占色相。 */
+.fb .playlistadd:hover{color:var(--ink);background:var(--hover)}
 .fb .reason:hover,.fb .reason[aria-expanded="true"],.fb .reason[data-has-reason="true"]{color:#FF669D;background:color-mix(in srgb,#FF669D 12%,transparent)}
 .fb .dislike:hover,.fb .dislike[aria-pressed="true"]{color:var(--drop);background:color-mix(in srgb,var(--drop) 12%,transparent)}
 .fb .seen:hover,.fb .seen[aria-pressed="true"]{color:var(--keep);background:color-mix(in srgb,var(--keep) 12%,transparent)}
