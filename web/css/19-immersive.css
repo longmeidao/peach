@@ -180,10 +180,14 @@
   .entityhero{grid-template-columns:minmax(0,1fr);gap:12px;padding:8px 0 18px;justify-items:center;text-align:center}
   .entityportrait{width:112px}.entityhero h2{font-size:var(--fs-xl)}
   .entityhero>div:last-child{width:100%}
-  /* 标题行是 flex，`text-align:center` 管不到它，得自己居中。
-     统称的开关和菜单项按本项目的 44px 命中区放大，桌面的 32px 是 Geist 控件高度。 */
+  /* 标题行是 flex，`text-align:center` 管不到它，得自己居中。 */
   .entitytitle{justify-content:center}
-  .npbtn{width:44px;height:44px}
+  /* 这枚开关紧挨着名字，画成 44px 的方块就比名字本身还重一档，一屏里最先看见的
+     成了它。所以画的仍是 32px，命中区由一层伸出去、不着墨的方块补到 44px——
+     指头点的是那一层。菜单项没有这个顾虑，行本来就该有 44px 高。 */
+  .npbtn{position:relative}
+  .npbtn::after{content:"";position:absolute;top:50%;left:50%;width:44px;height:44px;
+    transform:translate(-50%,-50%)}
   .npmenu button,.gselectmenu button{min-height:44px}
   .entityhero .alias{margin-bottom:10px}
   .entityhero .entitylinks{justify-content:center;margin-top:13px}
