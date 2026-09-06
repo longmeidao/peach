@@ -4933,6 +4933,7 @@ function followSuggestionChips(list){
 function followCredentialRow(row){
   const [label,kind]=CRED_STATE[row.requirement]||CRED_STATE.none;
   const configured=row.present&&!row.missing.length;
+  const needsAttention=row.requirement==='required'&&!configured;
   const fields=(row.needs||[]).map(name=>`<label class="fcredfield">
     <span>${esc(name)}</span>
     <input type="password" name="${esc(name)}" autocomplete="off" spellcheck="false"
@@ -4957,7 +4958,7 @@ function followCredentialRow(row){
   const mark=`<span class="ficonslot" aria-hidden="true">${sourceIcon(row.provider)}</span>`;
   if(!body)return `<div class="frow fcred none">${mark}<b>${esc(row.provider_label)}</b>
     <span class="fcstate none">${esc(label)}</span></div>`;
-  return `<details class="frow fcred ${esc(kind)}${configured?' ok':''}">
+  return `<details class="frow fcred ${esc(kind)}${configured?' ok':''}"${needsAttention?' open':''}>
     <summary>${mark}<b>${esc(row.provider_label)}</b>
       <span class="fcstate ${configured?'done':esc(kind)}">${esc(configured?'已配置':label)}</span>
       ${row.missing.length?`<span class="fcstate missing">缺 ${esc(row.missing.join('、'))}</span>`:''}

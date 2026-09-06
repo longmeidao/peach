@@ -2309,10 +2309,10 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("form.reset();await openFollowManage(false)")
         self.assertPageContains("data-cred-clear")
 
-    def test_credentials_are_collapsed_and_the_source_menu_offers_configuration(self):
+    def test_required_credentials_expand_and_the_source_menu_offers_configuration(self):
         self.assertPageContains("row?.requirement==='required'")
         self.assertPageContains('data-srcfilter-config=')
-        self.assertNotIn("${needsAttention?' open':''}", self.page)
+        self.assertPageContains("${needsAttention?' open':''}")
 
     def test_the_watch_page_does_not_carry_source_management(self):
         # 输入框、移除、凭据都只属于管理页；看的那页保持干净。

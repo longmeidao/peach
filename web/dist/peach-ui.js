@@ -1888,9 +1888,9 @@ function en({ data: e, error: t, toast: o, onComplete: s }) {
 						l.scanned || 0,
 						" 个文件，识别 ",
 						l.identified || 0,
-						" 个番号，生成 ",
+						" 个番号，整理 ",
 						l.candidates || 0,
-						" 组待复核资料。"
+						" 组资料候选。"
 					] })
 				]
 			})

@@ -63,7 +63,7 @@ export function LibraryProcessing({ data, error, toast, onComplete }: LibraryPro
         {(problem || state.status === 'failed') && <div role="alert" dangerouslySetInnerHTML={{ __html: noteHtml(problem || state.error || '处理未完成，请重试', { variant: 'error' }) }} />}
         {state.status === 'failed' && !!state.issues?.length && <ul>{state.issues.slice(0, 20).map(issue =>
           <li>{issue.asset_id ? <a href={`/item/${issue.asset_id}`}>查看视频</a> : null}{issue.asset_id ? '：' : ''}{issue.message}</li>)}</ul>}
-        {receipt && <p>已扫描 {state.scanned || 0} 个文件，识别 {state.identified || 0} 个番号，生成 {state.candidates || 0} 组待复核资料。</p>}
+        {receipt && <p>已扫描 {state.scanned || 0} 个文件，识别 {state.identified || 0} 个番号，整理 {state.candidates || 0} 组资料候选。</p>}
       </div>
     </div>
     <footer class="geist-fieldset-footer" data-geist-fieldset-footer>

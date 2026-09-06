@@ -155,7 +155,7 @@ class LibraryNfoTests(unittest.TestCase):
         self.assertIn('const sources=[...credentials,...(followData?.sources||[])];', source)
         self.assertIn('data-srcfilter-config=', source)
         self.assertNotIn("if(!providers.length){mount.innerHTML='';return}", source)
-        self.assertNotIn("needsAttention?' open':''", source)
+        self.assertIn("needsAttention?' open':''", source)
         self.assertIn('还没有内容标签', source)
         self.assertIn('还没有存储来源', source)
         self.assertIn("totalVideos?locationRows:catalogEmptyHtml", source)
