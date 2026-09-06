@@ -3256,8 +3256,9 @@ function tasteAnalysisSection(analysis){
     .map(lead=>`<button type="button" class="tastelead" ${lead.attrs}>
       <span><b>${esc(lead.title)}</b><small>${esc(lead.detail)}</small></span>${icon('chevron-right')}</button>`).join('');
   return `<section class="insightpanel tasteleads">
-      <header><div><h3>口味总结</h3><p>${esc(analysis.headline)}</p>
-        <span class="tasteconfidence ${esc(confidence.level||'early')}"><i aria-hidden="true"></i>${esc(confidence.label||'仍在学习')}</span></div></header>
+      <header><div><h3>口味总结</h3>
+        <div class="tastelede"><span class="tasteconfidence ${esc(confidence.level||'early')}"><i aria-hidden="true"></i>${esc(confidence.label||'仍在学习')}</span>
+          <p>${esc(analysis.headline)}</p></div></div></header>
       <div class="insightpanelbody">
         ${points?`<div class="tasteinsights">${points}</div>`:''}
         <div class="tasteleadlist">${leads||emptyStateHtml('search','还没有可探索的入口','馆藏里暂时没有对得上浏览信号的标签。')}</div>
@@ -3809,13 +3810,19 @@ async function openReview(push=true){
            : reviewCategory==='fc2_similarity'?''
            : (row.preview_url?`<div class="reviewimage"><img src="${esc(row.preview_url)}" alt="" loading="lazy" data-drop="closest:.reviewimage"></div>`
              :emptyStateHtml('eye-off','未取得图片预览','这条候选没有可展示的图片，判断请依据下面的证据。',{className:'reviewempty'}));
+         /* 预览和判断依据是同一件事的两半：看这几帧，然后读这一句。它们合成卡片中段
+            那一个框，框铺满剩下的高度，依据贴在框底。依据掉在框外时一张卡上就有两块
+            留白——框里空半屏、框外一行字，读起来像两件不相干的事。
+            候选表单那一类不进框：它自己每一项就是一个框，再套一层就是框中框。 */
+         const stage=`<div class="reviewstage"${metadata?'':' data-framed=""'}>${preview}${
+           evidence?`<p class="reviewevidence">${esc(evidence)}</p>`:''}</div>`;
          const body=`${
            // 实体类卡片的名字已经写在创作者入口里，再画一个 h4 就是同一行字上下两遍。
            subjectKind&&subjectName?'':`<h4>${esc(titleText)}</h4>`}${
            // 账本规范名当标题，抓取来源给的写法（多为罗马音）留作副标题。
            row.source_name?`<p class="reviewalias">来源写法：${esc(row.source_name)}</p>`:''}${
            // 实体类卡片的作品数已经写在创作者入口里，这里再写一遍就是同一个数字两处。
-           subjectKind&&subjectName?'':`<p>${esc(row.board||row.assets?`样本/资产：${row.video_count||row.assets||''}`:'')}</p>`}${origin}${tags?`<div class="reviewtags">${tags}</div>`:''}${preview}<p>${esc(evidence)}</p>`;
+           subjectKind&&subjectName?'':`<p>${esc(row.board||row.assets?`样本/资产：${row.video_count||row.assets||''}`:'')}</p>`}${origin}${tags?`<div class="reviewtags">${tags}</div>`:''}${stage}`;
          /* 主体动作在最右：一行里从左到右是「拒绝、跳过、通过」，读到最后一枚才是这张卡
             真正要人做的判断。Geist 的弹层与 Fieldset 操作条都是这个方向——取消在左，
             主动作靠 margin-left:auto 推到最右（vercel-geist-fieldset-scroller-empty-state.md）。 */

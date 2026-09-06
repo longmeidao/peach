@@ -39,7 +39,10 @@
    是对上面那句话的限定。前面那颗点按档次上色，字本身留在 --muted。 */
 .tasteleads>header{display:block;padding-top:14px;padding-bottom:14px}
 .tasteleads>header>div{min-width:0;display:grid;gap:6px}
-.tasteconfidence{display:inline-flex;align-items:center;gap:7px;color:var(--muted);font-size:var(--fs-xs)}
+/* 可信度读在说明之前：先知道这句话有几分把握，再读它说了什么。 */
+.tastelede{display:flex;align-items:baseline;gap:10px;min-width:0}
+.tastelede>p{margin:0;min-width:0}
+.tasteconfidence{flex:none;display:inline-flex;align-items:center;gap:7px;color:var(--muted);font-size:var(--fs-xs)}
 .tasteconfidence>i{flex:none;width:8px;height:8px;border-radius:50%;background:var(--muted)}
 .tasteconfidence.medium>i{background:var(--meter)}
 .tasteconfidence.high>i{background:var(--keep)}.tasteinsights{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-bottom:10px}.tasteinsight{min-width:0;display:grid;gap:3px;padding:10px 12px;border:0;border-radius:var(--control-radius);background:var(--inset)}.tasteinsight>span{color:var(--muted);font-size:var(--fs-xs)}.tasteinsight>b{font-size:var(--fs-sm);font-weight:500;overflow-wrap:anywhere}.tasteleadlist{display:grid;gap:8px}.tastelead{width:100%;min-width:0;box-sizing:border-box;min-height:58px;display:grid;grid-template-columns:minmax(0,1fr) 18px;align-items:center;gap:10px;padding:9px 12px;border:0;border-radius:var(--control-radius);background:var(--inset);color:var(--ink);text-align:left;cursor:pointer}.tastelead:hover{background:color-mix(in srgb,var(--inset) 94%,var(--ink))}.tastelead:focus-visible{position:relative;z-index:1;outline:2px solid var(--tungsten);outline-offset:-2px}.tastelead>span{min-width:0}.tastelead b,.tastelead small{display:block}.tastelead b{font-weight:500}.tastelead small{margin-top:3px;color:var(--muted);font-size:var(--fs-xs);line-height:1.4}.tastelead>svg{justify-self:end;width:16px;height:16px;stroke:currentColor;fill:none}

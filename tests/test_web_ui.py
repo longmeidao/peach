@@ -1581,6 +1581,31 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks('entitylinkarrow', "外链箭头应当已删除")
         self.assertPageLacks('↗', "外链箭头字符应当已删除")
 
+    def test_review_cards_put_the_evidence_at_the_bottom_of_one_stage(self):
+        """复核卡中段是一个框：预览铺满它，判断依据贴在框底。
+
+        依据掉在框外时，一张卡上会出现两块留白——框里空半屏、框外一行字，读起来
+        像两件不相干的事。没抽帧、取不到图的那两种同样在这个框里铺满，卡高因此不随
+        「有没有预览」上下跳。候选表单那一类不进框：它每一项自己就是一个框。
+        """
+        self.assertPageContains('const stage=`<div class="reviewstage"'
+                                "${metadata?'':' data-framed=\"\"'}>${preview}${")
+        self.assertPageContains("evidence?`<p class=\"reviewevidence\">${esc(evidence)}</p>`:''}</div>`;")
+        self.assertPageContains('${tags?`<div class="reviewtags">${tags}</div>`:\'\'}${stage}`;')
+        # 高度从卡身一路传到框：滚动壳不给 height，中间就断在内容高度上，框只到
+        # 内容为止，卡的下半截空着。框只长不缩，内容超出时由滚动壳接手。
+        self.assertPageContains(".reviewcontent .geist-scroller{height:100%}")
+        self.assertPageContains(".reviewcontent .geist-scroller-container{display:flex;"
+                                "flex-direction:column}")
+        self.assertPageContains(".reviewstage{flex:1 0 auto;display:flex;"
+                                "flex-direction:column;margin:10px 0 0}")
+        self.assertPageContains(".reviewstage>:first-child{flex:1 1 auto;min-height:0}")
+        self.assertPageContains(".reviewevidence{flex:none;margin:8px 0 0;padding-top:8px;")
+        # 空状态自己不再填色，填色是外面那个框的事，否则框里还有一个框。
+        empty = self.css.split(".emptystate.reviewempty{", 1)[1].split("}", 1)[0]
+        self.assertNotIn("background:", empty)
+        self.assertPageLacks(".reviewcontent .geist-scroller-container:has(>.reviewempty)")
+
     def test_links_that_leave_peach_carry_the_external_mark(self):
         """走出 Peach 的链接带一枚外链标，站内跳转不带。
 
@@ -3786,7 +3811,10 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("tasteAnalysisSection(d.analysis)")
         self.assertPageContains('<section class="insightpanel tasteleads">')
         self.assertPageContains("<h3>口味总结</h3>")
-        self.assertPageContains('class="tasteconfidence ${esc(confidence.level')
+        # 可信度读在说明之前，同一行里它排头一位。
+        self.assertPageContains('<div class="tastelede"><span class="tasteconfidence '
+                                '${esc(confidence.level')
+        self.assertPageContains('.tastelede{display:flex;align-items:baseline;gap:10px;min-width:0}')
         self.assertPageContains('data-taste-route="${esc(item.route)}"')
         self.assertPageContains("route(button.dataset.tasteRoute);restoreRoute()")
         self.assertPageContains(".tasteinsights{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px")
