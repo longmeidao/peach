@@ -5560,7 +5560,7 @@ function paintTagIndexSelection(){
     const on=selectedIndexTags.has(button.dataset.k);
     button.setAttribute('aria-pressed',String(on));button.classList.toggle('selected',on)});
   const panel=root.querySelector('[data-tag-selection]');if(!panel)return;
-  panel.hidden=!selectMode;
+  panel.hidden=!selectMode||!selectedIndexTags.size;
   const count=panel.querySelector('[data-tag-selected]');if(count)count.textContent=`已选 ${selectedIndexTags.size} 个标签`;
   const apply=panel.querySelector('[data-tag-apply]');if(apply)apply.disabled=!selectedIndexTags.size;
 }
@@ -5769,7 +5769,7 @@ async function openIndex(kind,q,push=true,refine=false){
     `:'';
   /* 多选面板拼的是目录筛选，只在本地范围出现；在线分类来自上游 booru tag_type。 */
   const filters=categoryFilters+(kind==='tags'&&!onlineTags?`
-    <div class="tagselection" data-tag-selection hidden>
+    <div class="tagselection selectiondock" data-tag-selection role="group" aria-label="所选标签操作" hidden>
       <label>${checkboxHtml(`data-tag-match-any ${tagIndexMatch==='any'?'checked':''}`)}<span><b>广泛匹配</b><small>开启后匹配任一所选标签；关闭后必须同时包含全部标签。</small></span></label>
       <span class="mono" data-tag-selected>已选 0 个标签</span>
       <button type="button" data-tag-clear>清空</button>
