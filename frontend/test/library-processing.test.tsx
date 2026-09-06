@@ -18,6 +18,7 @@ it('启动只提交一次，进度用 GET 读取并提供复核入口', async ()
   expect(requests).toEqual(['POST','GET']);
   expect(host.querySelector('a[href="/review"]')).not.toBeNull();
   expect(toast).toHaveBeenCalledTimes(1);
+  expect(host.querySelector('.library-processing-result .geist-note-success')?.textContent).toContain('处理完成');
 });
 it('刷新接续已有任务时只查询，旧完成结果不冒充当前回执', async () => {
   const fetch=vi.fn(async()=>({ok:true,json:async()=>({status:'failed',error:'来源离线'})}));
@@ -41,7 +42,7 @@ it('首页从空闲发现后台任务，完成后收起并在卸载后停止查�
   await act(async()=>render(h(LibraryProcessing,{data:{status:'idle'},error:'',toast,mode:'notice'}),host));
   await act(async()=>{await vi.advanceTimersByTimeAsync(1);});
   expect(host.textContent).toContain('采集缺失资料');
-  expect(host.querySelector('a')?.getAttribute('href')).toBe('/configuration#libraryProcessing');
+  expect(host.querySelector('a')?.getAttribute('href')).toBe('/data-cleanup#libraryProcessing');
   status='complete';
   await act(async()=>{await vi.advanceTimersByTimeAsync(2000);});
   expect(host.textContent).toBe('');

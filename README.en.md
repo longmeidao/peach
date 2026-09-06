@@ -27,6 +27,10 @@ Peach is a single-user, local-first media system. Search, play and organize medi
 
 ## Features
 
+Local Configuration offers Peach proxy, startup and silent launch settings. Scraping sources use Peach proxy or a direct connection. Scanning and collection live in Data management. Settings → Browse selects the default sort and direction. Windows standalone packages offer uninstall with optional Peach data removal; original media is preserved. Source installations show manual removal instructions.
+
+Management → Configuration → Check for updates shows the current version and the latest GitHub prerelease. Windows standalone packages download and prepare updates in the app with live progress. Choose Restart now or Later when ready; the app installs the update and restores the previous version if installation fails.
+
 | Capability | What it does |
 | --- | --- |
 | Browse and search | Find videos and photo collections by work, performer, studio, creator, series or tag |
@@ -42,6 +46,8 @@ First-run setup offers an optional browser-history import guide. Completed impor
 Tray-managed services let you adjust media sources under Manage → Configuration on the host computer, including through its LAN hostname. Setup and configuration provide download links when dependencies are not detected, with mount drivers shown for the host operating system.
 
 In Configuration or Data Management, Scan and enrich scans folders, detects existing NFO files and local posters, and fetches missing metadata. While processing, the home page links to progress in Configuration. Same-name NFO files, `movie.nfo` in single-movie folders, and episode NFO files are supported. Metadata retains its original source and enters the review queue before updating the catalog. Local custom tags are preserved; folders containing multiple videos do not share `movie.nfo`.
+
+Review supports selecting and adopting items by group. Metadata groups separate single candidates from items requiring a source choice. Choose a source for each multi-source item before adopting the selection. Failed items retain their selection and error message for retry.
 
 Follow sources include FANBOX, Patreon, SubscribeStar, Kemono, Pawchive, Coomer, the Rule34 family and F95zone. Availability depends on the site and your access rights. See [source collection](docs/SOURCING.md) for supported workflows and boundaries.
 

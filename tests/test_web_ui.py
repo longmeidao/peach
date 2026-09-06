@@ -386,6 +386,13 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertEqual(offenders, [],
                          f"这些规则的 --tungsten 不在允许的焦点／链接／进度／Toggle 之列：{offenders}")
 
+    def test_credential_collapse_reserves_space_for_outside_focus_ring(self):
+        css = (Path(__file__).resolve().parents[1] / "web/css/22-followmanage.css").read_text(encoding="utf-8")
+        match = re.search(r"\.fcred \.fcollapsebody\{padding:(\d+)px (\d+)px (\d+)px", css)
+        self.assertIsNotNone(match)
+        self.assertGreaterEqual(int(match[2]), 3)
+        self.assertIn('.fcredfield input{height:32px;width:100%;min-width:0;', css)
+
     def test_field_focus_rings_are_neutral_and_theme_aware(self):
         """输入框的静止边、悬停边与聚焦环都是当前主题的中性透明色，不是蓝的。
 
@@ -399,6 +406,7 @@ class WebUiSourceTests(unittest.TestCase):
             self.assertPageContains(palette)
         self.assertPageContains("--field-ring:rgba(0,0,0,.08);--field-ring-hover:rgba(0,0,0,.21);")
         self.assertPageContains("--field-ring-focus:rgba(0,0,0,.34);--field-glow:rgba(0,0,0,.16);")
+
         self.assertPageContains("--field-ring:rgba(255,255,255,.14);--field-ring-hover:rgba(255,255,255,.24);")
         self.assertPageContains("--field-ring-focus:rgba(255,255,255,.51);--field-glow:rgba(255,255,255,.24);")
         for selector in ('.geist-search input[type="search"]', ".geist-input", ".preference textarea"):
@@ -2028,7 +2036,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks("const SEED_KEY='peach.seed.v2';")
         self.assertPageLacks("localStorage.getItem(SEED_KEY)")
         self.assertPageContains("seed:initialParam('seed')||rollSeed()")
-        self.assertPageContains("sort:appSettings.defaultSort,dir:defaultSortDir(appSettings.defaultSort)")
+        self.assertPageContains("sort:appSettings.defaultSort,dir:preferredDirection(appSettings.defaultSort,appSettings.defaultSort,appSettings.defaultSortDirection)")
         # 「从别处回到首页」才换种子，判据是上一屏的路径，所以 lastRoutePath
         # 必须等这一屏打开之后再更新。
         self.assertPageContains("const enteringHome=path==='/'&&lastRoutePath!=='/';")
@@ -7461,6 +7469,12 @@ class WebUiSourceTests(unittest.TestCase):
         # 提交路径没变，仍然只认 :checked。
         self.assertPageContains(
             "item.querySelector('[name^=\"metadata-\"]:checked')?.value")
+
+    def test_review_bulk_reuses_explicit_decisions_and_insets_scrolling_content(self):
+        self.assertPageContains("wireReviewSelection($('#stats').querySelector('.review')")
+        self.assertPageContains("payload:decisionPayload,submit:payload=>api('/api/review/decision'")
+        self.assertPageContains('.reviewcontent .geist-scroller-container{padding-right:12px}')
+        self.assertPageLacks("${index===0?' checked':''}")
 
     def test_immersive_fit_compares_source_against_the_viewport(self):
         """竖屏沉浸模式看横屏视频必须完整显示。

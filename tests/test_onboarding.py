@@ -659,6 +659,17 @@ class SetupPageTests(_Case):
 
 
 class StandaloneConfigurationTests(_Case):
+    def test_release_update_endpoints_require_local_authenticated_access(self):
+        with self.client() as client, mock.patch("peach.release_updates.check", return_value={"state": "current"}) as check:
+            self.assertEqual(client.get("/api/configuration/updates").status_code, 401)
+            response = client.get("/api/configuration/updates", headers={"X-Token": "test-token"})
+            self.assertEqual(response.json(), {"state": "current"})
+            check.assert_called_once()
+            self.assertEqual(client.post("/api/configuration/update", headers={"X-Token":"test-token", "Origin":"https://evil.example"}).status_code,403)
+        with self.client(address="192.0.2.9") as client:
+            for path in ("updates", "update-status"):
+                self.assertEqual(client.get(f"/api/configuration/{path}",headers={"X-Token":"test-token"}).status_code,403)
+
     def test_missing_media_tools_have_download_links_in_json_and_setup_facts(self):
         from peach.routes_pages import runtime_fact_entries, runtime_facts_html
         for missing_ffmpeg, missing_probe in ((True, True), (False, True), (False, False)):
@@ -944,7 +955,10 @@ class StandaloneConfigurationTests(_Case):
         execute = mock.Mock(side_effect=AssertionError("Git must not run"))
         manager = VersionManager(execute=execute)
         self.assertEqual(manager.inspect().branch, "测试包")
-        self.assertEqual(manager.check().state, "manual")
+        with mock.patch("peach.release_updates.check", return_value={"state":"available", "latest_version":"1.0.0", "message":"有新版本可下载。"}):
+            self.assertEqual(manager.check().state, "available")
+            self.assertEqual(manager.update().state, "available")
+        self.assertIn("GitHub", manager.inspect().channel_label)
         execute.assert_not_called()
 
 

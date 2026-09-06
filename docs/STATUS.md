@@ -4,11 +4,13 @@
 
 索引：`PRODUCT_BACKLOG.md`、`REUSE.md`、`HANDOFF.md`。
 
-- uv：`TESTING.md`。
+- 设置见 `REUSE.md`。
 
 ## 运行态
 
 - 测试包本机可访问；mDNS 待办。
+
+- 复核多选已验收。
 
 - JAV 封面、大小独立设置。
 

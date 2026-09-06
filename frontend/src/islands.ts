@@ -13,6 +13,7 @@
  * 容器由遗留层拥有：它会在别的页面进入时直接 `innerHTML=`。因此 `mountIsland` 每次
  * 都先自我卸载，`unmountIsland` 也不假设 DOM 还在原处。 */
 import { h, render } from 'preact';
+export { preferredDirection } from './sort-preferences';
 import type { Attributes, ComponentType } from 'preact';
 
 import { errorMessage } from './api';
@@ -31,6 +32,7 @@ import type { LibraryProcessingData, LibraryProcessingProps } from './islands/li
  * 怎么写一个 store 见 `./state/index.ts` 和 `docs/FRONTEND.md`。 */
 export { refreshStore, storeNames } from './state';
 export { watchJob, followJobProgress } from './jobs';
+export { createReviewSelection, wireReviewSelection } from './review-bulk';
 export { nativeImageFit, matchesFaceSource } from './native-image';
 export { entitySkeletonHtml } from './entity-skeleton';
 export { catalogSuggestions, catalogEmptyHtml, emptyCatalogLayout } from './catalog-onboarding';

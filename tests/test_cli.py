@@ -598,6 +598,14 @@ class PackagedEntryTests(unittest.TestCase):
         self.assertTrue(self.entry.wants_cli(["peach.exe", "status"]))
         self.assertTrue(self.entry.wants_cli(["peach.exe", "ledger-sync"]))
 
+    def test_packaged_command_failure_returns_without_a_native_error_dialog(self):
+        output = io.StringIO()
+        with mock.patch.object(self.entry, "cli_main", side_effect=RuntimeError("migration failed")), mock.patch.object(
+            self.entry, "_prepare_console"
+        ), mock.patch.object(self.entry.sys, "stderr", output):
+            self.assertEqual(self.entry.main(["peach.exe", "migrate", "upgrade", "--yes"]), 1)
+        self.assertIn("migration failed", output.getvalue())
+
 
 if __name__ == "__main__":
     unittest.main()

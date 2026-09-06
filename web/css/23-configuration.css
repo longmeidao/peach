@@ -8,6 +8,20 @@
   border:1px solid var(--line);border-radius:var(--control-radius);background:var(--ground)}
 .configfieldset>.geist-fieldset-content{flex:1;min-height:0;padding:20px;display:grid;gap:20px}
 .configfieldset .geist-fieldset-title{margin:0}
+.configdanger{border-color:var(--drop)}
+.configdanger>.geist-fieldset-footer{border-top-color:var(--drop);background:color-mix(in srgb,var(--drop) 7%,var(--ground))}
+.configfieldset button.danger,.geist-modal button.danger{background:var(--drop);border-color:var(--drop);color:#fff}
+.configfieldset button.danger:hover:not(:disabled),.geist-modal button.danger:hover:not(:disabled){background:color-mix(in srgb,var(--drop) 88%,#000);border-color:var(--drop);color:#fff}
+.configfieldset button.danger:disabled{background:var(--surface);border-color:var(--line);color:var(--muted)}
+.configselect{width:min(320px,100%)}
+.configselect>.gselectfield{width:100%}
+.configdirectories>summary{display:flex;align-items:center;gap:8px;list-style:none;cursor:pointer;font-weight:500}
+.configdirectories>summary::-webkit-details-marker{display:none}
+.configdirectories>summary>svg{width:16px;height:16px;flex:none;stroke:currentColor;fill:none;transition:transform .2s ease-in-out}
+.configdirectories>summary[aria-expanded="true"]>svg{transform:rotate(90deg)}
+.configdirectories .fcollapsebody{padding:12px 4px 4px}
+.configdirectories .confighelp{overflow-wrap:anywhere}
+.configdirectories .confighelp:first-child{margin-top:0}
 .configfieldset-heading{display:grid;gap:8px}
 .configfieldset-heading>.confighelp{margin:0}
 .configfieldset>.geist-fieldset-footer{box-sizing:border-box;min-height:var(--fieldset-bar-h);

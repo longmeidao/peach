@@ -162,5 +162,5 @@ class LibraryNfoTests(unittest.TestCase):
         self.assertIn("unmountIsland($('#libraryProcessingNotice'))", source)
         self.assertIn("mode:'notice'", source)
         configuration = (root / 'frontend/src/islands/configuration.tsx').read_text(encoding='utf-8')
-        self.assertIn("'/api/library-processing'", configuration)
-        self.assertIn('toast={receipt} monitor', configuration)
+        self.assertNotIn("'/api/library-processing'", configuration)
+        self.assertIn('toast,monitor:true,onComplete:', source)

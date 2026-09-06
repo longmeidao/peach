@@ -572,7 +572,11 @@ export function wireSelectField(root){
   const current=()=>menu.querySelector('[aria-selected="true"]');
   /* 面板至少和触发器一样宽。菜单是 fixed 的，宽度不会自己跟着触发器走，而一个比触发器
      还窄的面板看着不像同一个控件。这条要接在 wireAnchoredMenu 之前：它按当前宽度定位。 */
-  trigger.addEventListener('click',()=>{menu.style.minWidth=`${trigger.getBoundingClientRect().width}px`});
+  trigger.addEventListener('click',()=>{
+    const width=`${trigger.getBoundingClientRect().width}px`;
+    menu.style.minWidth=width;
+    if(root.hasAttribute('data-fixed-width'))menu.style.width=width;
+  });
   const anchored=wireAnchoredMenu(root,trigger,menu);
   trigger.addEventListener('click',()=>{if(!menu.hidden)current()?.focus()});
   const choose=value=>{
@@ -614,7 +618,7 @@ export function wireSelectField(root){
    用原生 <dialog> 承载：焦点陷阱、Escape、背景 inert 和关掉后把焦点还给触发钮都由它给，
    自己搭一遍只会少掉其中一两样。onConfirm 失败时弹层不关，原因留在原位等重试。 */
 let modalSeq=0;
-export function confirmModal({title,body,confirmLabel,cancelLabel='取消',onConfirm=null}={}){
+export function confirmModal({title,body,confirmLabel,cancelLabel='取消',onConfirm=null,danger=false}={}){
   const trigger=document.activeElement;
   const dialog=document.createElement('dialog');
   dialog.className='geist-modal';
@@ -630,6 +634,7 @@ export function confirmModal({title,body,confirmLabel,cancelLabel='取消',onCon
   dialog.querySelector('.geist-modal-body p').textContent=body;
   const cancel=dialog.querySelector('[data-modal-cancel]');
   const accept=dialog.querySelector('[data-modal-confirm]');
+  if(danger){accept.classList.remove('primary');accept.classList.add('danger')}
   const failure=dialog.querySelector('[data-modal-error]');
   cancel.textContent=cancelLabel;
   accept.textContent=confirmLabel;

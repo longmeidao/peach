@@ -14,6 +14,14 @@ SRC_DIR = PROJECT_ROOT / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
+# 数据根必须在 Peach 模块读取配置之前确定。
+if "--data-root" in sys.argv:
+    _root_index = sys.argv.index("--data-root")
+    if _root_index + 1 >= len(sys.argv):
+        raise SystemExit(2)
+    os.environ["PEACH_DATA_ROOT"] = sys.argv[_root_index + 1]
+    del sys.argv[_root_index:_root_index + 2]
+
 from peach.cli import main as cli_main
 from peach.cli import subcommands
 from peach.tray import main as tray_main
@@ -64,9 +72,17 @@ def wants_cli(argv: list[str]) -> bool:
 
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv if argv is None else argv)
+    if len(argv) == 4 and argv[1] == "--apply-standalone-update":
+        from peach.standalone_update import apply
+        return apply(Path(argv[2]), int(argv[3]))
     if wants_cli(argv):
         _prepare_console()
-        return cli_main(argv[1:])
+        try:
+            return cli_main(argv[1:])
+        except Exception:
+            import traceback
+            traceback.print_exc()
+            return 1
     return tray_main()
 
 

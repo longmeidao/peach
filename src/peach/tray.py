@@ -830,8 +830,12 @@ class PeachTray:
         versions: VersionManager | None = None,
         windows_updates: WindowsUpdateInstaller | None = None,
         gate: "SetupGate | None" = None,
+        silent: bool = False,
+        show_browser: bool = False,
     ) -> None:
         self.manager = manager
+        self.silent = silent
+        self.show_browser = show_browser
         self.gate = gate or SetupGate(manager, settings_file.active(), waiting=False)
         self.versions = versions or VersionManager()
         self.windows_updates = windows_updates or WindowsUpdateInstaller(
@@ -1049,6 +1053,12 @@ class PeachTray:
 
     def _monitor(self) -> None:
         while not self._stop_event.wait(2 if standalone() else 10):
+            from .standalone_update import poll
+            poll(self)
+            from .desktop_uninstall import poll as poll_uninstall
+            poll_uninstall(self)
+            if self._stop_event.is_set():
+                return
             # 先看首次设置有没有完成：切换会换掉 `manager.specs`，采样必须落在换完之后。
             self.gate.poll()
             for spec in self.manager.specs:
@@ -1079,11 +1089,14 @@ class PeachTray:
         self._startup_warning = None
         if self.gate.waiting:
             if self.manager.wait_until_ready():
-                self.gate.open()
+                if not self.silent:
+                    self.gate.open()
             else:
                 self._startup_warning = "首次设置服务没能启动，请查看日志。"
         elif not self.manager.wait_until_ready():
             self._startup_warning = "Peach 只启动了部分服务，请查看托盘状态和日志。"
+        elif self.show_browser:
+            self.gate.open()
         threading.Thread(target=self._monitor, name="PeachHealth", daemon=True).start()
         try:
             self.icon.run(setup=self._setup)
@@ -1137,7 +1150,7 @@ def restart_tray_process(
     )
 
 
-def run_macos_menu_bar(manager: "ServiceManager", gate: "SetupGate | None" = None) -> None:
+def run_macos_menu_bar(manager: "ServiceManager", gate: "SetupGate | None" = None, *, silent: bool = False, show_browser: bool = False) -> None:
     """macOS 走原生菜单栏项。
 
     pystray 的 darwin 后端漏了 activation policy 和图标尺寸两件必需的事，补齐等于
@@ -1255,7 +1268,7 @@ def run_macos_menu_bar(manager: "ServiceManager", gate: "SetupGate | None" = Non
     )
     app["app"] = menu
     gate.notify = lambda message, title: notify(message, title)
-    if gate.waiting:
+    if (gate.waiting and not silent) or show_browser:
         gate.open()
 
     # `manager.status()` 读的是 `healthy()` 写下的缓存。pystray 那条路径有 `_monitor`
@@ -1330,18 +1343,22 @@ def run_macos_menu_bar(manager: "ServiceManager", gate: "SetupGate | None" = Non
 
 
 def build_parser() -> argparse.ArgumentParser:
-    """`peach-tray` 的命令行。它没有子命令和选项，正常使用不带任何参数。"""
-    return argparse.ArgumentParser(
+    """托盘启动与浏览器显示选项。"""
+    parser = argparse.ArgumentParser(
         prog="peach-tray",
         description="启动 Peach 托盘（macOS 上是菜单栏项）并接管本机服务；通常不带参数直接运行。",
     )
+    visibility = parser.add_mutually_exclusive_group()
+    visibility.add_argument("--silent", action="store_true", help="启动后仅显示托盘")
+    visibility.add_argument("--show", action="store_true", help="启动后打开浏览器")
+    return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     # 参数解析必须排在任何进程级副作用之前：`--help` 和拼错的参数都要在 HiDPI 设置、
     # 单实例锁和目录创建之前退出，否则一条试探命令就会在磁盘上凭空造出一个数据根，
     # 让之后的安装探测把这台机器误判成已配置。
-    build_parser().parse_args(argv)
+    args = build_parser().parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     enable_hidpi()
     # 设置文件新鲜读一次。`config.py` 的常量是 import 期算的，而首次设置正要改变它们
@@ -1353,7 +1370,8 @@ def main(argv: list[str] | None = None) -> int:
     try:
         instance.acquire()
     except AlreadyRunning:
-        webbrowser.open(setup_url(config) if waiting else normal_url(config))
+        if not args.silent:
+            webbrowser.open(setup_url(config) if waiting else normal_url(config))
         return 0
     try:
         specs = build_setup_service_specs(config) if waiting else configured_service_specs(config)
@@ -1368,9 +1386,9 @@ def main(argv: list[str] | None = None) -> int:
         gate = SetupGate(manager, config, waiting=waiting)
         if sys.platform == "darwin":
             manager.start_missing()
-            run_macos_menu_bar(manager, gate)
+            run_macos_menu_bar(manager, gate, silent=args.silent, show_browser=args.show)
         else:
-            PeachTray(manager, gate=gate).run()
+            PeachTray(manager, gate=gate, silent=args.silent, show_browser=args.show).run()
     except Exception as exc:
         show_message("Peach 启动失败", str(exc), error=True)
         return 1

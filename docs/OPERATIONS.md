@@ -6,6 +6,10 @@
 
 ## 首次运行与设置文件
 
+本机配置页提供开机自启、静默启动和 Peach 代理。代理选择系统代理、直连或自定义；采集来源选择“Peach 代理”或“直接连接”，新采集使用保存的策略。
+
+独立 Windows 包的“卸载 Peach”先确认范围，再退出托盘、关闭其服务、移除自启和程序。默认保留数据；完全卸载删除配置及列出的数据库、缓存、凭据等直属目录，保留原始媒体和未列入的文件。外部数据目录、目录链接或媒体重叠须人工检查。源码安装先关闭自启并退出托盘，再按页面列出的路径手动移除；Git 工作区不自动删除。
+
 本地测试服务使用独立测试数据根，以 `peach serve --host 127.0.0.1 --port 18977 --no-mdns --no-auth`
 启动；浏览器打开 `http://127.0.0.1:18977`。`--no-auth` 只影响这次进程，不读取或改写口令文件；
 生产主机名仍指向托盘管理的认证服务。浏览器工具对私有地址的操作授权与 Peach 登录是两套机制，
@@ -189,7 +193,7 @@ curl -s --noproxy '*' -o /dev/null -w '%{http_code}\n' https://peach.local/healt
 - `<数据根>/logs` 里的 `*.log` 统一保留半年、大小不设限（`peach.log_retention.sweep`，托盘在起任何子进程之前跑）：半年没再写过的文件整份删掉；还在写的文件按自然月切段，上次写入落在更早月份就改名成 `<名字>.until-<最后写入日期>.log`，段再等半年被删。子进程是直接追加 stdout，不经 `logging`，所以按文件而不是按行处理。
 - 更新与打包的产物自带清退：托盘每次启动只保留最近 2 份 `dist/Peach/Peach.pre-source-sync-*.exe` 备份，并删掉 `<数据根>/state/source-sync-build/` 里不属于待应用记录的暂存构建（`WindowsUpdateInstaller.sweep_artifacts`）；`build_windows.ps1` 成功后删掉 PyInstaller 工作目录 `build/windows/app`；单文件托盘每次启动还会删掉 `%TEMP%` 里超过一天、不属于自己的 `_MEI*` 解压残留（`sweep_onefile_extractions`，托盘被结束进程时 PyInstaller 不会自清，每份 40–80 MB）。自动边界只认这几个命名：`Peach.exe` 本体、手工放进 `dist/` 的目录、`build/release-*`、`attic/` 都不碰，手工构建的残留自己删。
 - 每个包都带构建身份：`build_windows.ps1` 在调用 PyInstaller 前把 `{commit, version, built_at}` 写进 `build/windows/build-info.json`，再用 `--add-data` 放到包根，本机托盘与独立测试包两种模式共用这一行。构建机没有 git 或源码不是检出时 `commit` 写 `null`，构建照常。`peach.buildinfo.frozen_build()` 只在 `sys.frozen` 时读它；文件缺失或格式坏一律返回 `None`，托盘照常启动，只是把自己当作身份未取得。
-- 本机托盘自己发现「我比检出旧」并重建：判据是构建提交与检出的差，不是与 GitHub 的差——这台机器提交先落本地再推远端，「落后远端」永远不成立。`VersionManager.build_age()` 用 `rev-list --count <构建提交>..HEAD` 数出落后多少，版本菜单显示成 `master@<HEAD> · 托盘构建 <构建提交>，落后 N 个提交`；数不出来（身份未取得、提交不在本检出历史里）按陈旧处理，重建范围退化为 `src/peach/`。「同步开发进度」在 `ahead`／`current`／`error`／`unconfigured` 下改走本地重建，健康轮询另按 5 分钟一轮读本地 HEAD 自动触发，同一个 HEAD 只自动试一次，首次设置未完成时不触发。重建走的仍是既有流程：完整测试 → 暂存构建 → 打包迁移资源检查 → 备份 → 替换助手，任一步失败都只发通知，旧托盘和服务保持运行。失败表现是托盘停在旧版本、通知里写明卡在哪一步，日志见 `<数据根>/logs/windows-source-sync.log`。独立测试包与源码运行的托盘不进这条路径，前者提示下载新版完整替换程序目录，后者提示源码已是最新。
+- 本机托盘自己发现「我比检出旧」并重建：判据是构建提交与检出的差，不是与 GitHub 的差——这台机器提交先落本地再推远端，「落后远端」永远不成立。`VersionManager.build_age()` 用 `rev-list --count <构建提交>..HEAD` 数出落后多少，版本菜单显示成 `master@<HEAD> · 托盘构建 <构建提交>，落后 N 个提交`；数不出来（身份未取得、提交不在本检出历史里）按陈旧处理，重建范围退化为 `src/peach/`。「同步开发进度」在 `ahead`／`current`／`error`／`unconfigured` 下改走本地重建，健康轮询另按 5 分钟一轮读本地 HEAD 自动触发，同一个 HEAD 只自动试一次，首次设置未完成时不触发。重建走的仍是既有流程：完整测试 → 暂存构建 → 打包迁移资源检查 → 备份 → 替换助手，任一步失败都只发通知，旧托盘和服务保持运行。失败表现是托盘停在旧版本、通知里写明卡在哪一步，日志见 `<数据根>/logs/windows-source-sync.log`。独立测试包与源码运行的托盘不进这条路径，独立测试包使用配置页的在线更新流程，源码入口提示源码已是最新。
 - 版本号在本地集成时就动：`scripts/agent_worktree.py integrate` 合并后按 `runtime_inputs_changed()` 判断这次改动有没有碰到 `src/peach/`、`web/`、`frontend/`、`migrations/`、`resources/`、`scripts/build_app_entry.py`、`scripts/build_windows.ps1`、`pyproject.toml`，碰到就推 `__version__` 并在 master 上单独提交 `chore(release): 版本 <新版本>`。推哪一位由 `bump_part_for()` 按这批提交定：主题以 `feat` 开头或带破坏性标记 `!`、或 `migrations/` 有新增文件就推 minor，其余推 patch；1.0 手工 `--bump major` 并另立 ADR（ADR-0012 修订）。`--bump {auto,patch,minor,major,none}` 默认 `auto`，显式档位是覆盖，没碰运行时输入时哪一档都不动；输出的 `version`／`bumped` 说明这次集成后的版本号。集成不打标签：发布点仍然是 `scripts/release_tag.py --apply` 推上去的 `vX.Y.Z`，它读的正是这里推进后的 `__version__`，并且遇到同名本地标签会直接拒绝——两处都造标签只会把唯一的发布入口挡在门外。
 - PyInstaller 的资源直接位于 `sys._MEIPASS`，没有源码树的 `src/` 层；打包后的 `migrate`、Web 与品牌资源必须从这里解析，不能对 `config.py` 固定取 `parents[2]`。
 - 创建 Win32 窗口前必须启用 Per-Monitor V2 DPI；正常动作不弹模态 MessageBox，更新检查在后台线程执行并用 pystray 原生非模态通知反馈。

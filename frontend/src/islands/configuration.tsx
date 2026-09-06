@@ -13,7 +13,9 @@ import type { JSX } from 'preact';
 import { fieldsetTitle, noteHtml, setActionBusy, selectFieldHtml, wireSelectField, MEDIA_SOURCE_ICONS, selectOptionIconHtml } from '@peach/legacy/ui';
 import { ApiError, apiGet, apiSend, errorMessage } from '../api';
 import { AccessSettings, type AccessState } from './access-settings';
-import { LibraryProcessing, type LibraryProcessingData } from './library-processing';
+import { ReleaseUpdates, type ReleaseState, type UpdateJob } from './release-updates';
+import { PeachProxy, type PeachProxyState } from './peach-proxy';
+import { StartupSettings, UninstallSettings, type StartupState, type UninstallState } from './desktop-settings';
 
 export interface ConfigurationProps {
   /** 保存成功后的过去时回执（遗留层的 Toast）。 */
@@ -28,7 +30,11 @@ export interface ConfigurationFact {
 }
 
 export interface ConfigurationData {
-  processing?: LibraryProcessingData;
+  startup?: StartupState;
+  uninstall?: UninstallState;
+  peach_proxy?: PeachProxyState;
+  updates?: ReleaseState;
+  update_job?: UpdateJob;
   access?: AccessState;
   editable: boolean;
   /** 不能编辑时给用户看的原因，可编辑时为空。 */
@@ -65,10 +71,7 @@ export const RESTART_REDIRECT_MS = 8000;
 export const loadConfiguration = (
   _props: ConfigurationProps,
   signal: AbortSignal,
-): Promise<ConfigurationData> => Promise.all([
-  apiGet<ConfigurationData>(CONFIGURATION_URL, signal),
-  apiGet<LibraryProcessingData>('/api/library-processing', signal).catch(cause => ({ status: 'failed', error: errorMessage(cause) })),
-]).then(([configuration, processing]) => ({ ...configuration, processing }));
+): Promise<ConfigurationData> => apiGet<ConfigurationData>(CONFIGURATION_URL, signal);
 
 type State = { data: ConfigurationData | null; error: string };
 
@@ -341,15 +344,16 @@ export function Configuration({ receipt, data, error }: ConfigurationProps & Sta
   }
   return (
     <div class="configpage">
+      {data.startup ? <StartupSettings startup={data.startup} receipt={receipt} /> : null}
       {data.editable
         ? <ConfigurationForm data={data} receipt={receipt} />
         : <Html html={noteHtml(data.notice, { variant: 'secondary', label: '只读' })} />}
-      {data.access ? <AccessSettings initial={data.access} receipt={receipt} /> : null}
-      <section id="libraryProcessing" class="configfieldset" data-geist-fieldset aria-labelledby="cleanupScrapingTitle">
-        <LibraryProcessing data={data.processing || { status: 'idle' }} error="" toast={receipt} monitor />
-      </section>
-      <Facts facts={data.facts} />
       <MountStatus data={data} />
+      {data.peach_proxy ? <PeachProxy initial={data.peach_proxy} receipt={receipt} /> : null}
+      {data.access ? <AccessSettings initial={data.access} receipt={receipt} /> : null}
+      {data.updates ? <ReleaseUpdates initial={data.updates} initialJob={data.update_job} /> : null}
+      <Facts facts={data.facts} />
+      {data.uninstall ? <UninstallSettings uninstall={data.uninstall} /> : null}
     </div>
   );
 }

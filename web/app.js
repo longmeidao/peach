@@ -5,7 +5,7 @@ import { javDisplayName, javTitleHtml } from './js/jav-title.js';
 import { matchRoute, routeLabel } from './js/routes.js';
 import { initMiddleTruncate } from './js/middle-truncate.js';
 import { tagLabel } from './js/tags.js';
-import { mountIsland, unmountIsland } from './dist/peach-ui.js';
+import { mountIsland, unmountIsland, createReviewSelection, wireReviewSelection, preferredDirection } from './dist/peach-ui.js';
 import { catalogSuggestions, catalogEmptyHtml, emptyCatalogLayout, syncSidebarSurface, sidebarTagCounts, sidebarHasCatalogContent, cleanupSkeletonHtml, cloudLocations, cloudPreferenceLocations, tasteHistoryGuideHtml, wireTasteHistoryGuide, TASTE_GUIDE_KEY } from './dist/peach-ui.js';
 import { javImageKind, normalizeJavImage, normalizeJavLayout, normalizeJavPreferences, syncJavImages, nativeImageFit, matchesFaceSource, entitySkeletonHtml } from './dist/peach-ui.js';
 import {
@@ -490,7 +490,10 @@ const SETTING_SELECTS=[
     ['dur','时长'],['size','体积'],['new','入库时间'],['played','观看时间']],
     ()=>appSettings.defaultSort,
     value=>{appSettings.defaultSort=value;saveSettings();state.sort=appSettings.defaultSort;
-      state.dir=defaultSortDir(state.sort);if(location.pathname==='/')load(true)}],
+      state.dir=preferredDirection(state.sort,appSettings.defaultSort,appSettings.defaultSortDirection);if(location.pathname==='/')load(true)}],
+  ['defaultSortDirectionSetting','默认排序方向',[['desc','降序'],['asc','升序']],
+    ()=>appSettings.defaultSortDirection==='asc'?'asc':'desc',
+    value=>{appSettings.defaultSortDirection=value;saveSettings();state.dir=preferredDirection(state.sort,appSettings.defaultSort,appSettings.defaultSortDirection);if(location.pathname==='/')load(true)}],
   ['hoverDelaySetting','悬停放大',[['3','3 秒'],['5','5 秒'],['8','8 秒']],
     ()=>appSettings.hoverDelaySeconds,
     value=>{appSettings.hoverDelaySeconds=+value||5;
@@ -711,7 +714,7 @@ function resolveSort(rawSort,rawDir,fallback=appSettings.defaultSort){
   const alias=SORT_ALIASES[rawSort];
   const sort=cleanSort(alias?alias[0]:rawSort,fallback);
   if(!SORT_DIR_WORDS[sort])return{sort,dir:''};
-  return{sort,dir:rawDir==='asc'||rawDir==='desc'?rawDir:(alias?alias[1]:'desc')};
+  return{sort,dir:rawDir==='asc'||rawDir==='desc'?rawDir:(alias?alias[1]:rawSort?'desc':preferredDirection(sort,appSettings.defaultSort,appSettings.defaultSortDirection))};
 }
 /* 查询参数属于它所在的路由，所以目录的筛选只从目录 URL 里读。
 
@@ -758,7 +761,7 @@ let barsContext={type:'home',filters:state},detailReturnBarsContext=null;
    于是四枚视图胶囊一枚都不亮，首页看上去像谁都没选中。 */
 function resetHomeState(){
   state={loc:state.loc,creator:'',studio:'',tag:'',tag_match:'all',len:'',dur_min:'',dur_max:'',
-    orient:'',state:'',sort:appSettings.defaultSort,dir:defaultSortDir(appSettings.defaultSort),
+    orient:'',state:'',sort:appSettings.defaultSort,dir:preferredDirection(appSettings.defaultSort,appSettings.defaultSort,appSettings.defaultSortDirection),
     seed:rollSeed(),q:'',jav:'',thumb:'0'};
   barsContext={type:'home',filters:state};detailReturnBarsContext=null;
   barsDataCache=null;barsDataPromise=null;
@@ -3561,7 +3564,8 @@ async function openDataCleanup(push=true){
   $('#stats').querySelector('[data-cleanup-open="junk"]').onclick=()=>openManage('ads');
   const processingUi=await import('/dist/peach-ui.js');
   if(!surfaceCurrent(surface))return;
-  await processingUi.mountIsland('library-processing',$('#libraryProcessing'),{toast,onComplete:()=>{if(surfaceCurrent(surface))void paintDataManagementCounts()}},{isCurrent:()=>surfaceCurrent(surface)});
+  await processingUi.mountIsland('library-processing',$('#libraryProcessing'),{toast,monitor:true,onComplete:()=>{if(surfaceCurrent(surface))void paintDataManagementCounts()}},{isCurrent:()=>surfaceCurrent(surface)});
+  if(surfaceCurrent(surface)&&location.hash==='#libraryProcessing')$('#libraryProcessing')?.scrollIntoView({block:'start'});
   if(!surfaceCurrent(surface))return;
   $('#stats').querySelector('[data-cleanup-open="duplicates"]').onclick=()=>openDuplicates();
   $('#stats').querySelectorAll('[data-cleanup-go]').forEach(button=>
@@ -3719,7 +3723,9 @@ async function openReview(push=true){
   const next=await surfaceApi(surface,'/api/review');
   if(!surfaceCurrent(surface))return;
   reviewRuntime=runtime;reviewData=next;
+  const selection=createReviewSelection();
   const render=()=>{
+    const category=reviewCategory;
     const rows=reviewData.sections[reviewCategory]||[];
     const title=REVIEW_LABELS[reviewCategory];
     const mirror=reviewData.mirror||null,locked=!!reviewRuntime.ledger_read_only;
@@ -3789,7 +3795,7 @@ async function openReview(push=true){
            ? (candidates.length===1
              ? `<div class="metadatasole"><input type="radio" name="metadata-${esc(key)}" value="${esc(candidates[0].candidate_key)}" checked>
                  <span>${candidateBody(candidates[0])}</span></div>`
-             : `<div class="metadatacandidates">${candidates.map((candidate,index)=>`<label class="metadatacandidate"><input type="radio" name="metadata-${esc(key)}" value="${esc(candidate.candidate_key)}"${index===0?' checked':''}><span>${candidateBody(candidate)}</span></label>`).join('')}</div>`)
+             : `<div class="metadatacandidates">${candidates.map(candidate=>`<label class="metadatacandidate"><input type="radio" name="metadata-${esc(key)}" value="${esc(candidate.candidate_key)}"><span>${candidateBody(candidate)}</span></label>`).join('')}</div>`)
            : reviewCategory==='creator_tags'
            ? (assets.length?`<div class="reviewpick"><div class="reviewpickhead"><span class="mono" data-picked-count></span>
                <button type="button" data-pick-all>全选</button><button type="button" data-pick-none>清空</button></div>
@@ -3824,7 +3830,7 @@ async function openReview(push=true){
        激活仍交给 button 自己的 Enter/Space，不另设快捷键。 */
     const reviewTabs=[...$('#stats').querySelectorAll('[data-review-tab]')];
     reviewTabs.forEach((button,index)=>{
-      button.onclick=()=>{reviewCategory=button.dataset.reviewTab;render()};
+      button.onclick=()=>{if(selection.busy)return;selection.selected.clear();selection.choices.clear();selection.assets.clear();selection.errors.clear();reviewCategory=button.dataset.reviewTab;render()};
       button.onkeydown=event=>{
         const step=event.key==='ArrowRight'?1:event.key==='ArrowLeft'?-1:0;
         const target=step?reviewTabs[(index+step+reviewTabs.length)%reviewTabs.length]
@@ -3833,10 +3839,25 @@ async function openReview(push=true){
         event.preventDefault();target.focus();
       };
     });
-    $('#stats').querySelectorAll('[data-review-status]').forEach(button=>button.onclick=async()=>{
-      const item=button.closest('[data-review-key]'),row=rows.find(x=>String(x.item_key)===item.dataset.reviewKey);button.disabled=true;
+    const decisionPayload=(item,status='approved')=>{
+       const row=rows.find(x=>String(x.item_key)===item.dataset.reviewKey);
        const selectedIds=[...item.querySelectorAll('[data-review-asset][aria-pressed="true"]')].map(cell=>+cell.dataset.reviewAsset);
        const candidateKey=item.querySelector('[name^="metadata-"]:checked')?.value||'';
+       return {category,item_key:item.dataset.reviewKey,status,candidate_key:candidateKey,creator:row.creator,tags:row.tags,studio:row.studio,entity_id:row.entity_id,avatar_url:row.avatar_url,selected_ids:selectedIds};
+    };
+    const removeReviewed=key=>{
+      if(!current())return;
+      const index=rows.findIndex(row=>String(row.item_key)===key);
+      if(index>=0){rows.splice(index,1);reviewData.counts[category]=Math.max(0,(reviewData.counts[category]||1)-1)}
+      selection.selected.delete(key);selection.choices.delete(key);selection.assets.delete(key);selection.errors.delete(key);
+    };
+    const current=()=>surfaceCurrent(surface)&&category===reviewCategory;
+    wireReviewSelection($('#stats').querySelector('.review'),{rows,metadata:category==='metadata_fields',locked,state:selection,
+      payload:decisionPayload,submit:payload=>api('/api/review/decision',{method:'POST',body:JSON.stringify(payload)}),
+      applied:removeReviewed,active:current,refresh:render,notify:actionReceipt});
+    $('#stats').querySelectorAll('[data-review-status]').forEach(button=>button.onclick=async()=>{
+      if(selection.busy)return;
+      const item=button.closest('[data-review-key]');button.disabled=true;selection.busy=true;
        /* api() 在任何非 2xx 都 throw，这个 onclick 必须自己 catch：漏掉就吞成 unhandled
          rejection，下面的 button.disabled=false 永远到不了，于是按钮永久禁用、
          界面一句话都不给——用户看到的就是「点了没反应」。
@@ -3844,13 +3865,12 @@ async function openReview(push=true){
       const state=item.querySelector('.reviewstate');
       if(state)state.textContent='';
       try{
-        const result=await api('/api/review/decision',{method:'POST',body:JSON.stringify({category:reviewCategory,item_key:item.dataset.reviewKey,status:button.dataset.reviewStatus,candidate_key:candidateKey,creator:row.creator,tags:row.tags,studio:row.studio,entity_id:row.entity_id,avatar_url:row.avatar_url,selected_ids:selectedIds})});
+        const result=await api('/api/review/decision',{method:'POST',body:JSON.stringify(decisionPayload(item,button.dataset.reviewStatus))});
         if(result.ok){
           // 只改 data 属性的话，条目还杵在队列里，看起来就像没生效。
           // 判过的直接移出本批并同步计数，下一条立刻顶上来。
-          const index=rows.indexOf(row);
-          if(index>=0)rows.splice(index,1);
-          reviewData.counts[reviewCategory]=Math.max(0,(reviewData.counts[reviewCategory]||1)-1);
+          removeReviewed(item.dataset.reviewKey);selection.busy=false;
+          if(!current())return;
           render();
           actionReceipt(button.dataset.reviewStatus==='approved'?'已通过候选':
             button.dataset.reviewStatus==='rejected'?'已拒绝候选':'已跳过候选');
@@ -3860,6 +3880,7 @@ async function openReview(push=true){
       }catch(e){
         if(state)state.textContent=e.message||'判定失败，请重试';
       }
+      selection.busy=false;
       button.disabled=false;
     });
   };
@@ -3892,7 +3913,8 @@ async function openConfiguration(push=true){
   const props={receipt:message=>actionReceipt(message)};
   await ui.mountIsland('configuration',$('#stats'),props,{isCurrent:()=>surfaceCurrent(surface)});
   if(surfaceCurrent(surface)){
-    if(location.hash==='#libraryProcessing')$('#libraryProcessing').scrollIntoView({block:'start'});
+    if(location.hash==='#libraryProcessing'){history.replaceState(null,'','/data-cleanup#libraryProcessing');await openDataCleanup(false);return}
+    if(location.hash==='#peachProxy')$('#peachProxy')?.scrollIntoView({block:'start'});
     else window.scrollTo({top:0,behavior:'smooth'});
   }
 }

@@ -69,8 +69,8 @@ SCOPES: dict[str, tuple[str, ...]] = {
                 "test_agent_worktree.py", "test_test_evidence.py", "test_dependency_policy.py",
                 "test_restart_windows_tray.py", "test_deploy_windows_tray.py",
                 "test_buildinfo.py", "test_versioning.py",
-                "test_windows_update.py", "test_certs.py", "test_config.py",
-                "test_fsutil.py",
+                "test_windows_update.py", "test_release_updates.py", "test_standalone_update.py", "test_certs.py", "test_config.py",
+                "test_fsutil.py", "test_desktop_settings.py",
                 "test_job_status.py", "test_jobs.py", "test_reference_updates.py",
                 "test_repo_hygiene.py",
                 "test_review_csv.py", "test_jav_code_domain.py",
@@ -105,6 +105,9 @@ SCOPE_TEST_IDS: dict[str, tuple[str, ...]] = {
 # 其余模块按「模块名 ↔ 测试文件名」推断（`media.py` → `test_media.py` → media）。
 # 仓库根的 Markdown 归 tooling：入口文件、README 与待办的门槛都在那个域里。
 AUTO_SCOPE_PREFIXES: tuple[tuple[str, str], ...] = (
+    ("src/peach/desktop_startup.py", "tooling"),
+    ("src/peach/desktop_uninstall.py", "tooling"),
+    ("src/peach/peach_proxy.py", "tooling"),
     ("scripts/localize_performer_names.py", "metadata"),
     ("scripts/localize_series_names.py", "metadata"),
     ("src/peach/follow", "follow"),
