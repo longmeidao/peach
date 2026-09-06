@@ -43,6 +43,8 @@ Follow sources include FANBOX, Patreon, SubscribeStar, Kemono, Pawchive, Coomer,
 
 ## Quick start
 
+Portraits and brand marks use their native size with a blurred background when too small for large or compact views. Display areas below 64 px retain the regular icon treatment.
+
 Peach is **pre-1.0**. The application interface is currently Chinese only.
 
 | Platform | Available today |

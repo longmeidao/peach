@@ -41,6 +41,8 @@ CloudDrive · 115 与 CloudDrive · PikPak 按本机文件夹接入；先在 Clo
 
 关注来源包括 FANBOX、Patreon、SubscribeStar，以及 Kemono、Pawchive、Coomer、Rule34 系列与 F95zone。来源可用性受站点和使用者权限限制；采集边界与支持情况见 [来源采集](docs/SOURCING.md)。
 
+人物头像和厂牌标识在大图、紧凑模式中按清晰度显示；小图居中，周围用同图模糊补底。小于 64 px 的展示区域保持普通图标样式。
+
 ## 快速开始
 
 Peach 处于 **pre-1.0** 阶段，界面目前只有中文。
