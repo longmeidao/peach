@@ -24,6 +24,8 @@ uv sync --locked --extra build
 
 提交 `pyproject.toml` 与 `uv.lock`。CI 使用 `--locked` 拒绝过期锁文件；Dependabot 的 `uv` 生态负责更新。`uv pip install` 用于临时环境或安装产物，不用于维护项目依赖。普通 pip 安装 wheel 的冒烟仍独立验证打包声明。
 
+版本来自 `src/peach/__init__.py`，已纳入 uv 缓存键；源码版本更新后再次同步会刷新安装元数据。缓存规则采用 [uv 官方动态元数据机制](https://docs.astral.sh/uv/concepts/cache/#dynamic-metadata)。
+
 ## 验证频率
 
 | 场景 | 验证 |

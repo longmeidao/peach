@@ -139,6 +139,10 @@ class DependencyPolicyTests(unittest.TestCase):
     def test_uv_installation_preserves_interpreter_and_wheel_contracts(self):
         self.assertRegex(self.pyproject["tool"]["uv"]["required-version"],
                          r"^==\d+\.\d+\.\d+$")
+        module = self.pyproject['tool']['setuptools']['dynamic']['version']['attr'].rsplit('.', 1)[0]
+        version_file = f"src/{module.replace('.', '/')}/__init__.py"
+        keys = {entry.get('file') for entry in self.pyproject['tool']['uv']['cache-keys']}
+        self.assertTrue({'pyproject.toml', 'setup.py', version_file} <= keys)
         workflow = (ROOT / ".github/workflows/test.yml").read_text(encoding="utf-8")
         release = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
         for source in (workflow, release):
