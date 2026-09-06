@@ -16,12 +16,12 @@
 
 - Windows 是 ledger writer，入口 `dist\Peach\Peach.exe`；代码与数据在内置盘，外置盘只提供 `R:\media`。
 - 托盘必须以普通权限启动：提升权限后的令牌看不到 CloudDrive 的 `A:` / `B:`，会把 PikPak 和 115 误报为脱盘。
-- Windows HTTP 为 `0.0.0.0:80`，HTTPS 为当前 LAN IPv4 的 443，mDNS 名见 `[server].mdns_name`；线上版本 `0.15.2`、`ledger_sync=writer`，项目 CA 严格校验的健康与就绪检查通过。
-- 2026-09-06 从 `6e99e863` 载入源码，托盘已重启并拥有 HTTP/HTTPS 子服务，未替换 EXE。
+- Windows HTTP 为 `0.0.0.0:80`，HTTPS 为当前 LAN IPv4 的 443，mDNS 名见 `[server].mdns_name`；线上版本 `0.16.0`、`ledger_sync=writer`，项目 CA 严格校验的健康与就绪检查通过。
+- 2026-09-06 从 `6eff7c3a` 载入源码，托盘已重启并拥有 HTTP/HTTPS 子服务，EXE 仍为 0.12.4。
 - 本机经正式域名访问时 `/healthz` 返回 `configurable=true`；配置读取、保存与选文件夹共用本机连接判据。托盘负责配置重载，正式 HTTPS 地址与端口保持托盘管理。
 - 首启和配置页按系统显示缺失依赖下载：CloudDrive、挂载驱动、FFmpeg/ffprobe、OpenSSL。Windows 已识别 CloudDrive 与 WinFsp；全量及桌面、手机预览通过，生产浏览器取证超时。
 - 首次设置提供可跳过的历史导入指南；数据管理首屏共用 Fieldset，网盘专属操作按来源显隐，界面使用「本地数据库」。影响域及深浅色、手机预览通过；未执行真实同步、清理或历史采集。
-- 可选密码待上线：首启可跳过；配置页可修改、关闭；登录可记住设备。旧安装保留口令。
+- 可选密码已上线：首启可跳过；配置页可修改、关闭；登录可记住设备。旧安装保留口令。
 - macOS 是 reader，代码与 `peach-data` 都在内置盘；`peach.local` 经 8900/8443 和 pf 提供 80/443，GET 正常、写入端点返回 409。
 - 两端各用本机 CA，私钥与凭据不跨机同步；代码走 Git、账本走单写者复制、图片产物走 Syncthing，三条链路互不兜底。本机坐标在 `<数据根>/config.toml`；ADR-0023 第 1～3 阶段已合入并在 Windows 生效。
 - Windows 真实 ledger 为 `peach-data/database/ledger.db`，已应用到 `0024`（外键 ON DELETE 与索引），0 待处理。
