@@ -345,6 +345,18 @@ class SelectionTests(unittest.TestCase):
         winner, _ = self.module.select_winner([tall, square])
         self.assertEqual((winner["width"], winner["height"]), (600, 600))
 
+    def test_an_avatar_without_a_detected_face_is_not_installed_automatically(self):
+        """检不出真人脸的一律退回复核，官方社媒头像也不例外。
+
+        本人挂动漫头像的不在少数，而头像这一格要回答「这是谁」，画出来的脸回答
+        不了。YuNet 只认真人脸，检不出就当不是真人；真人的侧脸、低头一起落到
+        复核队列，那正是它存在的理由。
+        """
+        module = self.module
+        self.assertTrue(module.shows_a_real_face({"face_width": 126}))
+        self.assertFalse(module.shows_a_real_face({"face_width": 0}))
+        self.assertFalse(module.shows_a_real_face({}))
+
     def test_the_auto_bar_needs_original_size_squares_or_portrait_baselines(self):
         module = self.module
         self.assertTrue(module.passes_auto_bar(400, 400))

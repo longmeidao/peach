@@ -1574,7 +1574,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('<symbol id="i-brand-x" viewBox="0 0 24 24">')
         self.assertPageContains(
             '<circle cx="12" cy="12" r="12" fill="currentColor" stroke="none" '
-            'mask="url(#i-brand-x-cut)"/>')
+            'mask="url(#brand-x-knockout)"/>')
         self.assertPageContains(
             'transform="translate(12 12) scale(.5) translate(-12 -12)"')
         self.assertPageLacks('fill="#000" stroke="none"', "品牌标记不写死板子的颜色")
