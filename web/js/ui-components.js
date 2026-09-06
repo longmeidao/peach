@@ -398,10 +398,10 @@ export function wireOverlayScrollbars(root=document){
  * JAV 卡片版式和关注列表版式是同一个控件——只有 name、选项和当前值不同，所以模板
  * 与 `.iconswitch` 样式共用一份；调用方各自的摆放位置仍由自己的类负责。
  */
-export function iconSwitchHtml(name,legend,options,current,{attr='',className=''}={}){
+export function iconSwitchHtml(name,legend,options,current,{attr='',className='',text=false}={}){
   const items=options.map(([value,label,symbol])=>
     `<label title="${esc(label)}"><input type="radio" name="${esc(name)}" value="${esc(value)}" ${attr}
-      ${value===current?'checked':''}><span aria-hidden="true">${icon(symbol)}</span><span class="sr-only">${esc(label)}</span></label>`).join('');
+      ${value===current?'checked':''}><span aria-hidden="true">${text?esc(label):icon(symbol)}</span><span class="sr-only">${esc(label)}</span></label>`).join('');
   return `<fieldset class="iconswitch${className?` ${esc(className)}`:''}"><legend class="sr-only">${esc(legend)}</legend>${items}</fieldset>`;
 }
 

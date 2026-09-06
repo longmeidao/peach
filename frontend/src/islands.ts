@@ -126,3 +126,5 @@ export function unmountIsland(el: Element): void {
   // 只清自己画过的东西。还在取数时容器里是遗留骨架，那不属于 island。
   if (mount.painted) render(null, el);
 }
+
+export { javImageKind, normalizeJavImage, syncJavImages } from './jav-artwork';

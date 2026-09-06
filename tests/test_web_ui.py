@@ -5096,10 +5096,10 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".mixstack::before,.mixstack::after")
         # Mix 是同一网格里的同级卡片，JAV 大图不能让它单独掉回 16:9；有封面时
         # 也应和普通作品卡共用同一张官方封套，而不是永远显示视频接触表。
-        self.assertPageContains("const useCover=jav&&layout!=='preview'&&it.has_cover;")
+        self.assertPageContains("? javArtwork(it,jav?layout:'small')")
         self.assertPageContains("const ar=jav&&layout==='big'?COVER_FRONT_RATIO:16/9;")
         self.assertPageContains('<div class="mixstack"><div class="pic" style="--card-ratio:${ar}">')
-        self.assertPageContains("? coverImage(it,layout)")
+        self.assertPageContains("? javArtwork(it,jav?layout:'small')")
         self.assertPageContains("const thumb=mixFacePoster(it,layout);")
         self.assertPageContains('<span class="mixbadge">${icon(\'play\')}Mix</span>')
         self.assertPageContains("async function openMix(seedId,itemId=seedId,push=true,anchor=null)")
@@ -6626,7 +6626,14 @@ class WebUiSourceTests(unittest.TestCase):
     def test_queue_thumbnails_fall_back_to_the_jav_cover(self):
         """没抽过帧的条目在队列里退回番号封套，而不是一个纯黑块。"""
         self.assertPageContains(
-            ':(x.is_jav&&x.code?`<img src="/cover?code=${encodeURIComponent(x.code)}"')
+            "const thumb=mixFacePoster(x,'small');")
+
+    def test_jav_image_preference_reaches_cards_mix_and_settings(self):
+        self.assertPageContains('id="javImageSetting"')
+        self.assertPageContains("appSettings.javImage=normalizeJavImage(appSettings.javLayout==='preview'?'thumbnail':appSettings.javImage);")
+        self.assertPageContains("syncJavImages(document,appSettings.javImage);")
+        self.assertPageContains("syncJavImages(box,appSettings.javImage);")
+        self.assertPageContains("? javArtwork(it,jav?layout:'small',eager)")
 
     def test_the_detail_title_names_which_volume_is_playing(self):
         """分卷队列里换一卷，右侧标题栏必须跟着变。
