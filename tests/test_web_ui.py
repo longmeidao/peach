@@ -4794,7 +4794,17 @@ class WebUiSourceTests(unittest.TestCase):
             "if(!(event.target instanceof Node&&menu.contains(event.target)))setOpen(false)")
 
     def test_entity_name_picker_keeps_a_touch_target_on_phones(self):
-        self.assertPageContains(".npbtn{width:44px;height:44px}")
+        """命中区 44px，画出来仍是 32px：那一层伸出去的方块不着墨。
+
+        这枚开关紧挨着名字。把画出来的方块也撑到 44px，一屏里最先看见的就成了它，
+        而它说的只是「这个人还有别的名字」。菜单项不在此列，行本来就该有 44px 高。
+        """
+        self.assertPageContains(".npbtn{position:relative}")
+        self.assertPageContains(
+            '.npbtn::after{content:"";position:absolute;top:50%;left:50%;'
+            "width:44px;height:44px;")
+        self.assertPageContains("transform:translate(-50%,-50%)}")
+        self.assertPageLacks(".npbtn{width:44px;height:44px}")
         self.assertPageContains(".npmenu button,.gselectmenu button{min-height:44px}")
 
     def test_entity_name_picker_writes_through_the_server_before_repainting(self):
