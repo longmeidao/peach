@@ -12,7 +12,7 @@ from peach.cli import build_parser
 from peach.follow import FollowSourceError
 from peach.follow_secrets import CredentialError
 from peach.follow_sources import FollowCandidate, SourceFetch
-from peach.migrations import discover
+from support.ledger import fresh_ledger
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -30,13 +30,8 @@ class FollowCliTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
-        self.root = Path(self.temporary.name)
-        self.db = self.root / "ledger.db"
-        connection = sqlite3.connect(self.db)
-        for migration in discover(ROOT / "migrations"):
-            connection.executescript(migration.sql)
-        connection.commit()
-        connection.close()
+        self.root = Path(self.temporary.name).resolve()
+        self.db = fresh_ledger(self.root)
         self.parser = build_parser()
 
     def _run(self, *argv):

@@ -242,7 +242,7 @@ class OperationalScriptTests(unittest.TestCase):
         self.assertIn("$env:PYTHONPATH = $SourceRoot", windows)
         self.assertIn("$env:PYTHONIOENCODING = 'utf-8'", windows)
         self.assertIn("$env:PYTHONIOENCODING = $PreviousPythonIoEncoding", windows)
-        self.assertIn("-not $PSBoundParameters.ContainsKey('Scope') -and $WorktreeRoot -eq $MainRoot", windows)
+        self.assertIn("$LocalPython = Join-Path $WorktreeRoot", windows)
         self.assertIn("peach.__file__", windows)
         self.assertIn("scripts\\test_runner.py --scope $Scope", windows)
         self.assertIn("ValidateSet('full', 'auto', 'follow'", windows)
@@ -252,11 +252,11 @@ class OperationalScriptTests(unittest.TestCase):
         self.assertIn("rev-parse --git-common-dir", posix)
         self.assertIn('export PYTHONPATH="$SOURCE_ROOT"', posix)
         self.assertIn("export PYTHONIOENCODING=utf-8", posix)
-        self.assertIn('[[ $# -eq 0 && "$WORKTREE_ROOT" = "$(dirname "$GIT_COMMON")" ]]', posix)
+        self.assertNotIn("    SCOPE=full", posix)
         self.assertIn("peach.__file__", posix)
         self.assertIn('scripts/test_runner.py --scope "$SCOPE"', posix)
         self.assertIn('SCOPE="${1:-auto}"', posix)
-        self.assertIn("full|auto|follow|catalog|media|sync|metadata|tooling|web|checks)", posix)
+        self.assertIn("full|auto|follow|catalog|media|sync|metadata|tooling|web|checks|core|packaging)", posix)
         self.assertNotIn("pytest", posix.lower())
         # 文档里可以「提到」裸命令来说明它为什么不可信，但绝不能让它单独出现成为一条可照抄的指令。
         # 判据因此不是黑名单，而是：凡出现该命令的行，必须在同一行指向某个正式入口。
@@ -284,7 +284,9 @@ class OperationalScriptTests(unittest.TestCase):
         for version in (floor, "3.14"):
             self.assertIn(f"Programming Language :: Python :: {version}", project["classifiers"])
         workflow = (ROOT / ".github" / "workflows" / "test.yml").read_text(encoding="utf-8")
-        self.assertIn(f'python: ["{floor}", "3.14"]', workflow)
+        self.assertIn("fromJSON(needs.plan.outputs.matrix)", workflow)
+        from scripts.ci_plan import plan
+        self.assertEqual({row["python"] for row in plan("workflow_dispatch", [])["matrix"]["include"]}, {floor, "3.14"})
         self.assertIn(f"Python {floor} 或更高", (ROOT / "README.md").read_text(encoding="utf-8"))
         self.assertIn(f"Python {floor} or newer", (ROOT / "README.en.md").read_text(encoding="utf-8"))
 

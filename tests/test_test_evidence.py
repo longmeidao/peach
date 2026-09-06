@@ -117,10 +117,11 @@ class VerificationTests(unittest.TestCase):
         metadata = site / "peach_evidence_probe-1.0.dist-info" / "METADATA"
         metadata.parent.mkdir(parents=True)
         metadata.write_text("Metadata-Version: 2.1\nName: peach-evidence-probe\nVersion: 1.0\n")
-        with mock.patch.object(sys, "path", [str(site), *sys.path]):
+        with mock.patch.object(evidence, "python_identity", return_value={
+                "version": sys.version, "sites": [str(site), str(site)]}):
             baseline = evidence.environment(self.repo)
-            sys.path.insert(0, str(site))
-            self.assertEqual(evidence.environment(self.repo), baseline)
+            with mock.patch.object(sys, "path", [str(site), *sys.path]):
+                self.assertEqual(evidence.environment(self.repo), baseline)
             metadata.write_text("Metadata-Version: 2.1\nName: peach-evidence-probe\nVersion: 2.0\n")
             self.assertNotEqual(evidence.environment(self.repo), baseline)
 
@@ -169,7 +170,7 @@ class VerificationTests(unittest.TestCase):
         self.assertEqual(runner.scopes_for_changes(["web/app.js", "src/peach/follow.py"])[0],
                          ("follow", "web"))
         for path in ("pyproject.toml", "scripts/test_runner.py", "scripts/test_evidence.py",
-                     "scripts/build_windows.ps1", "src/peach/unknown.py"):
+                     "uv.lock", "src/peach/unknown.py"):
             self.assertEqual(runner.scopes_for_changes([path])[0], ("full",))
 
     def test_runner_reuses_success_and_fresh_failure_invalidates_it(self):

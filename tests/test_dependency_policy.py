@@ -128,7 +128,7 @@ class DependencyPolicyTests(unittest.TestCase):
 
     def test_automation_monitors_all_dependency_manifests(self):
         dependabot = (ROOT / ".github" / "dependabot.yml").read_text(encoding="utf-8")
-        for ecosystem in ("pip", "npm", "github-actions"):
+        for ecosystem in ("uv", "npm", "github-actions"):
             self.assertIn(f"package-ecosystem: {ecosystem}", dependabot)
         workflow = (ROOT / ".github" / "workflows" / "test.yml").read_text(
             encoding="utf-8")
@@ -143,8 +143,8 @@ class DependencyPolicyTests(unittest.TestCase):
         release = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
         for source in (workflow, release):
             self.assertIn("astral-sh/setup-uv@", source)
-            self.assertIn("cache-dependency-glob: pyproject.toml", source)
-            self.assertIn("uv venv --python python .venv", source)
+            self.assertIn("cache-dependency-glob: uv.lock", source)
+            self.assertIn("uv sync --locked", source)
             self.assertIn("uv pip check --python .venv/Scripts/python.exe", source)
             self.assertIn("if ($LASTEXITCODE -ne 0)", source)
         self.assertIn("uv pip check --python .venv/bin/python", workflow)

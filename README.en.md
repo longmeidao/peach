@@ -86,16 +86,14 @@ cd peach-app
 Windows: create the environment, install and launch setup in PowerShell:
 
 ```powershell
-uv venv --python 3.14 .venv
-uv pip install --python .venv/Scripts/python.exe -e .
+uv sync --locked --python 3.14
 & .\.venv\Scripts\peach-tray.exe
 ```
 
 macOS: create the environment, install menu-bar support and launch setup:
 
 ```shell
-uv venv --python 3.14 .venv
-uv pip install --python .venv/bin/python -e ".[macos]"
+uv sync --locked --python 3.14 --extra macos
 ./.venv/bin/peach-tray
 ```
 
@@ -143,7 +141,7 @@ macOS: run checks for the current changes:
 ./scripts/test.sh
 ```
 
-The default `auto` scope selects affected domains; CI and releases use `full`.
+The default `auto` scope selects affected domains. See [testing and dependencies](docs/TESTING.md) for the CI policy.
 See [frontend development](docs/FRONTEND.md) for installation, builds, type checking and committed output.
 Dependency manifests and lockfiles define versions; Dependabot checks Python, npm and GitHub Actions weekly.
 

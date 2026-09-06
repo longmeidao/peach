@@ -21,6 +21,26 @@ env:
   PYTHONIOENCODING: "utf-8"
 
 jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      wheel_matrix: ${{ steps.plan.outputs.wheel_matrix }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v10.0.1
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: 生成验证矩阵
+        id: plan
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before || github.sha }}
+        run: uv run --locked --python 3.14 scripts/ci_plan.py --event "$EVENT_NAME" --base "$BASE_SHA"
+
   wheel-build:
     runs-on: ubuntu-latest
     steps:
@@ -31,7 +51,8 @@ jobs:
       - uses: astral-sh/setup-uv@v10.0.1
         with:
           enable-cache: true
-          cache-dependency-glob: pyproject.toml
+          cache-dependency-glob: uv.lock
+      - run: uv lock --check
       - run: uv build --wheel --out-dir wheelhouse
       - uses: actions/upload-artifact@v7
         with:
@@ -41,11 +62,9 @@ jobs:
             scripts/smoke_wheel.py
   wheel-smoke:
     name: wheel 最小安装 / ${{ matrix.os }} / ${{ matrix.python }}
-    needs: wheel-build
+    needs: [plan, wheel-build]
     strategy:
-      matrix:
-        os: [windows-latest, macos-latest]
-        python: ['3.12', '3.14']
+      matrix: ${{ fromJSON(needs.plan.outputs.wheel_matrix) }}
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/download-artifact@v8
@@ -65,18 +84,18 @@ jobs:
           cd "$RUNNER_TEMP"
           python "$GITHUB_WORKSPACE/scripts/smoke_wheel.py"
   python:
-    name: ${{ matrix.os }} / Python ${{ matrix.python }}
+    name: ${{ matrix.os }} / Python ${{ matrix.python }} / ${{ matrix.scope }} / ${{ matrix.shard_index }}
+    needs: plan
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
-      matrix:
-        os: [windows-latest, macos-latest]
-        # 只测两端：3.12 是 `requires-python` 对外声明的下限，陌生用户按它装；
-        # 3.14 是维护者两台机器实际运行的版本。中间的 3.13 不测——源码没有用到
-        # 3.13 独有的特性，两端都绿时它红的概率不值一个 job。
-        python: ["3.12", "3.14"]
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    env:
+      BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before || github.sha }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python }}
@@ -84,36 +103,29 @@ jobs:
       - uses: astral-sh/setup-uv@v10.0.1
         with:
           enable-cache: true
-          cache-dependency-glob: pyproject.toml
-
+          cache-dependency-glob: uv.lock
       - name: 安装 Windows 依赖
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          uv venv --python python .venv
-          if ($LASTEXITCODE -ne 0) { throw 'uv venv 失败' }
-          uv pip install --python .venv/Scripts/python.exe -e ".[dev,build,vision,maintenance-115,naming]"
-          if ($LASTEXITCODE -ne 0) { throw 'uv 安装依赖失败' }
+          uv sync --locked --all-extras --python python
+          if ($LASTEXITCODE -ne 0) { throw 'uv 锁定安装失败' }
           uv pip check --python .venv/Scripts/python.exe
           if ($LASTEXITCODE -ne 0) { throw 'uv 依赖检查失败' }
-
       - name: 运行 Windows 正式测试
         if: runner.os == 'Windows'
         shell: pwsh
-        run: '& .\scripts\test.ps1 -Scope full -Fresh'
-
+        run: '& .\scripts\test.ps1 -Scope ${{ matrix.scope }} -Fresh -Base $env:BASE_SHA -ShardIndex ${{ matrix.shard_index }} -ShardCount ${{ matrix.shard_count }}'
       - name: 安装 macOS 依赖
         if: runner.os == 'macOS'
         shell: bash
         run: |
-          uv venv --python python .venv
-          uv pip install --python .venv/bin/python -e ".[dev,build,macos,vision,maintenance-115,naming]"
+          uv sync --locked --all-extras --python python
           uv pip check --python .venv/bin/python
-
       - name: 运行 macOS 正式测试
         if: runner.os == 'macOS'
         shell: bash
-        run: ./scripts/test.sh full --fresh
+        run: ./scripts/test.sh ${{ matrix.scope }} --fresh --base "$BASE_SHA" --shard-index ${{ matrix.shard_index }} --shard-count ${{ matrix.shard_count }}
 
   web-bundle:
     name: island 产物与前端测试
@@ -172,3 +184,15 @@ jobs:
             sleep 60
           done
           exit 1
+
+  verified:
+    name: 完整验证结果
+    if: always()
+    needs: [plan, python, wheel-smoke, web-bundle, web-vendor]
+    runs-on: ubuntu-latest
+    steps:
+      - name: 所有必需任务均成功
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          python -c 'import json, os; results=json.loads(os.environ["RESULTS"]); assert all(job["result"] == "success" for job in results.values()), results'

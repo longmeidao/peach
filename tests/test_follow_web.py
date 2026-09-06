@@ -22,7 +22,7 @@ from peach.follow_discovery import Discovery, ExternalSearch
 from peach.follow_secrets import CredentialError
 from peach.follow_sources import FollowCandidate, SourceFetch
 from peach.follow_store import FollowStore
-from peach.migrations import discover
+from support.ledger import fresh_ledger
 from peach.web_contract import WebContract, dispatch_api_get, dispatch_api_post
 from peach.web_follow import _credential_store
 
@@ -134,12 +134,7 @@ class FollowContractTests(unittest.TestCase):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name).resolve()
-        self.db = self.root / "ledger.db"
-        connection = sqlite3.connect(self.db)
-        for migration in discover(ROOT / "migrations"):
-            connection.executescript(migration.sql)
-        connection.commit()
-        connection.close()
+        self.db = fresh_ledger(self.root)
         self.contract = WebContract(
             self.db, follow_sources_root=self.root / "sources",
             follow_secrets_root=self.root / "secrets",

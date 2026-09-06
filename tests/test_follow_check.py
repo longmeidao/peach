@@ -15,7 +15,7 @@ from peach.follow_check import plan_check, run_check
 from peach.follow_secrets import CredentialError
 from peach.follow_sources import FollowCandidate, SourceFetch
 from peach.follow_store import FollowStore
-from peach.migrations import discover
+from support.ledger import fresh_ledger
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -57,11 +57,8 @@ class _CheckCase(unittest.TestCase):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         self.root = Path(temporary.name).resolve()
-        self.connection = sqlite3.connect(self.root / "ledger.db")
+        self.connection = sqlite3.connect(fresh_ledger(self.root))
         self.connection.row_factory = sqlite3.Row
-        for migration in discover(ROOT / "migrations"):
-            self.connection.executescript(migration.sql)
-        self.connection.commit()
         self.addCleanup(self.connection.close)
         self.store = FollowStore(lambda: self.connection,
                                  sources_root=self.root / "sources")

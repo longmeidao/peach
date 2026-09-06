@@ -17,12 +17,12 @@ description: 在用户说并行、工作树、暂存、提交、ready、集成�
 
 1. 协调者在主目录创建隔离工作树：`& .\.venv\Scripts\python.exe -X utf8 scripts\agent_worktree.py create --agent claude --task <task>`。它建在 `peach-worktrees/`，Codex 和 Claude 共用这一个目录。**不要用 Claude Code 内置的工作树机制（`.claude/worktrees/`）**：它在分支被集成后会被回收，目录却留在原地。
 
-2. 工作者只在自己的工作树内编辑。`create` 自动锁定工作树，成功集成后解锁；不复制 `.venv`。
-3. 测试在当前工作树根目录运行：Windows `& .\scripts\test.ps1`，macOS/Linux `./scripts/test.sh`。默认 `auto` 按改动文件取影响域并集；文档及无改动检查 `checks`，未知影响面、共享测试设施、依赖、构建选 `full`。域清单唯一真相在 `scripts/test_runner.py`；局部调试可显式选域。
-   两者契约相同：从 Git common directory 定位主项目 venv，强制 `PYTHONPATH=<当前工作树>/src`，
+2. 工作者只在自己的工作树内编辑。`create` 自动锁定工作树，成功集成后解锁；不复制 `.venv`；用 `uv sync --locked --all-extras` 创建自己的测试环境。
+3. 测试在当前工作树根目录运行：Windows `& .\scripts\test.ps1`，macOS/Linux `./scripts/test.sh`。默认 `auto` 按改动文件取影响域并集；文档及无改动检查 `checks`，未知影响面、共享测试设施和实际依赖选 `full`。域清单唯一真相在 `scripts/test_runner.py`；局部调试可显式选域。
+   两者契约相同：优先当前树 venv，缺失时从 Git common directory 定位主项目 venv，强制 `PYTHONPATH=<当前工作树>/src`，
    核对 `peach.__file__` 后运行标准库 `unittest`。禁止手工拼接 venv 路径或调用 pytest。
    测试入口固定 `PYTHONIOENCODING=utf-8`，覆盖标准输出、错误输出及子进程；其他 Python CLI 使用 `-X utf8`。
-   主检出无参调用保留全量门槛，覆盖托盘部署调用；开发任务在隔离工作树使用自动选测。
+   安装依赖和构建完成后再验证；测试期间不改变环境。主检出与隔离工作树均默认自动选测。
    PowerShell 读 UTF-8 日志显式加 `-Encoding utf8`；编码在输出端固定，不能只给读取端指定编码。
    记录绑定完整代码内容、依赖环境和范围，24 小时有效；失败、验证期间改动使记录无效。
    有同环境全量基线时，`auto` 对比文件清单，只补跑新增差异的影响域；共享设施或未知文件仍跑全量。
@@ -32,7 +32,7 @@ description: 在用户说并行、工作树、暂存、提交、ready、集成�
 5. 协调者统一运行 `integrate`：锁内复查、合并固定提交、推进版本。锁忙就等待后重试，禁止直接 merge。同一批任务由协调者整理 `STATUS` 和版本，工作者按文件分工；共享文件安排顺序。版本号默认 `--bump auto`：改动碰到
    运行时输入才动，`feat`／破坏性标记／新迁移推 minor，其余推 patch（ADR-0012 修订）。
    它不打标签：发布走 `scripts/release_tag.py`，那是唯一入口。
-   CI 与发布显式跑 `full`；合并完成不机械追加全量。耗时和慢测试记录在主目录 `build/agent-verification/`。
+   CI 分片、系统覆盖与发布复用见 `docs/TESTING.md`；合并完成不机械追加全量。耗时和慢测试记录在主目录 `build/agent-verification/`。
    记录和锁约束统一入口，不是权限隔离；直接 Git 或篡改记录仍可绕过，不能宣称绝对防绕过。
 
 ## 暂存与提交

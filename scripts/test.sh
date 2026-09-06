@@ -1,24 +1,18 @@
 #!/usr/bin/env bash
 # macOS/Linux 的唯一测试入口，与 Windows 的 scripts/test.ps1 同一套契约：
-# 从 Git common directory 定位主目录的 .venv，强制加载当前 worktree 的 src，
+# 优先当前 worktree 的 .venv，缺失时定位主目录环境；强制加载当前树的 src，
 # 并核对 peach.__file__ 确实来自这个 worktree。worktree 不复制 .venv。
 set -euo pipefail
 
 SCOPE="${1:-auto}"
 case "$SCOPE" in
-    full|auto|follow|catalog|media|sync|metadata|tooling|web|checks) ;;
+    full|auto|follow|catalog|media|sync|metadata|tooling|web|checks|core|packaging) ;;
     *)
         echo "未知测试域：$SCOPE（可选 full、auto、follow、catalog、media、sync、metadata、tooling、web）" >&2
         exit 2
         ;;
 esac
-EXTRA=()
-if [[ "${2:-}" = "--fresh" ]]; then
-    EXTRA+=(--fresh)
-elif [[ $# -gt 1 ]]; then
-    echo '第二个参数只接受 --fresh' >&2
-    exit 2
-fi
+EXTRA=("${@:2}")
 
 WORKTREE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
@@ -36,8 +30,11 @@ GIT_COMMON="$(cd "$GIT_COMMON" && pwd)"
 MAIN_ROOT="$(dirname "$GIT_COMMON")"
 
 PYTHON="$MAIN_ROOT/.venv/bin/python"
+if [[ -x "$WORKTREE_ROOT/.venv/bin/python" ]]; then
+    PYTHON="$WORKTREE_ROOT/.venv/bin/python"
+fi
 if [[ ! -x "$PYTHON" ]]; then
-    echo "Peach 主项目 venv 不存在：$PYTHON" >&2
+    echo "Peach 测试 venv 不存在：$PYTHON" >&2
     exit 1
 fi
 
@@ -53,7 +50,4 @@ if [[ "$LOADED_MODULE" != "$SOURCE_ROOT/"* ]]; then
 fi
 
 echo "Peach source: $LOADED_MODULE"
-if [[ $# -eq 0 && "$WORKTREE_ROOT" = "$(dirname "$GIT_COMMON")" ]]; then
-    SCOPE=full
-fi
 exec "$PYTHON" scripts/test_runner.py --scope "$SCOPE" "${EXTRA[@]}"

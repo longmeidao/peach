@@ -47,13 +47,11 @@ jobs:
         uses: astral-sh/setup-uv@v10.0.1
         with:
           enable-cache: true
-          cache-dependency-glob: pyproject.toml
+          cache-dependency-glob: uv.lock
       - name: 创建构建环境
         shell: pwsh
         run: |
-          uv venv --python python .venv
-          if ($LASTEXITCODE -ne 0) { throw 'uv venv 失败' }
-          uv pip install --python .venv/Scripts/python.exe -e '.[build]'
+          uv sync --locked --extra build --python python
           if ($LASTEXITCODE -ne 0) { throw 'uv 安装依赖失败' }
           uv pip check --python .venv/Scripts/python.exe
           if ($LASTEXITCODE -ne 0) { throw 'uv 依赖检查失败' }
