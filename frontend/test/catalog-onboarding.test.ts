@@ -18,11 +18,11 @@ describe('当前馆藏推荐', () => {
 });
 
 describe('馆藏与资料空状态', () => {
-  it('空首页保留三个头像、厂商和标签的静止布局', () => {
+  it('空首页保留横向头像、厂牌和标签的静止布局', () => {
     const layout = emptyCatalogLayout();
-    expect(layout.tiers.match(/class="av"/g)).toHaveLength(3);
-    expect(layout.tiers.match(/class="brandpill"/g)).toHaveLength(3);
-    expect(layout.tags.match(/class="pill"/g)).toHaveLength(3);
+    expect(layout.tiers.match(/class="av"/g)).toHaveLength(64);
+    expect(layout.tiers.match(/class="brandpill"/g)).toHaveLength(64);
+    expect(layout.tags.match(/class="pill"/g)).toHaveLength(64);
     expect(layout.tiers).not.toContain('aria-busy');
     expect(layout.tiers).toContain('aria-hidden="true"');
   });

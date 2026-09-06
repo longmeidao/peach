@@ -3,13 +3,13 @@ import { emptyStateHtml } from '@peach/legacy/ui';
 type Request = (url: string) => Promise<any>;
 const FILTERS = ['loc', 'creator', 'performer', 'studio', 'series', 'agency', 'tag', 'tag_match', 'len', 'dur_min', 'dur_max', 'orient', 'state', 'jav', 'thumb'];
 
-/** 空馆藏保留三个静止的身份、厂牌和标签占位，不宣称正在加载。 */
+/** 空馆藏占位沿横向内容轨道铺开，由容器裁切到可用宽度。 */
 export function emptyCatalogLayout(): { tiers: string; tags: string } {
-  const three = (html: string) => Array(3).fill(html).join('');
+  const fill = (html: string) => Array(64).fill(html).join('');
   return {
-    tiers: '<div class="tier catalog-placeholder" aria-hidden="true">' + three('<span class="av"><span class="ring"></span><span class="nm">&nbsp;</span></span>')
-      + '</div><div class="tier catalog-placeholder" aria-hidden="true">' + three('<span class="brandpill"><span class="mk"></span><span class="placeholder-name">&nbsp;</span></span>') + '</div>',
-    tags: '<span class="catalog-placeholder placeholder-tags" aria-hidden="true">' + three('<span class="pill">&nbsp;</span>') + '</span>',
+    tiers: '<div class="tier catalog-placeholder" aria-hidden="true">' + fill('<span class="av"><span class="ring"></span><span class="nm">&nbsp;</span></span>')
+      + '</div><div class="tier catalog-placeholder" aria-hidden="true">' + fill('<span class="brandpill"><span class="mk"></span><span class="placeholder-name">&nbsp;</span></span>') + '</div>',
+    tags: '<span class="catalog-placeholder placeholder-tags" aria-hidden="true">' + fill('<span class="pill">&nbsp;</span>') + '</span>',
   };
 }
 

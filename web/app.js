@@ -124,7 +124,7 @@ const ROUTES=[
   {match:'/creators',title:'创作者',
     open:(params,push)=>openIndexRoute('creators',push),
     reload:()=>openIndexRoute('creators',false,indexQuery())},
-  /* 厂商索引的两半。厂牌出片、事务所出人，是两种实体，所以是两条路径；页内那个
+  /* 厂牌出片、事务所出人，是两种实体，所以是两条路径；页内那个
      开关只是在两条路径之间走，不是同一份数据的两种筛选。 */
   {match:'/studios',nav:'studios',title:'厂牌',
     open:(params,push)=>openIndexRoute('studios',push),
@@ -372,7 +372,7 @@ async function loadSourceStatus(){
 const DURATION_TAGS=new Set(['短片-2分内','中片-10分内','长片-30分内','超长片-30分上']);
 const SETTINGS_KEY='peach.settings.v1';
 /* 侧栏默认给的那八个入口和它们的次序。首页之后先是关注——它是每天有新东西的那一屏；
-   JAV 是主库最常用的浏览模式，排在三个索引（艺人、标签、厂商）前面；已标记是回头找，
+   JAV 是主库最常用的浏览模式，排在三个索引（艺人、标签、厂牌）前面；已标记是回头找，
    管理垫底。播放列表和沉浸模式默认不在：两者都是从一条作品或一个索引里发起的动作，
    常驻一格换来的是每次都要跳过它。要它们的人在设置里加回来，键仍在 NAV_CATALOG 里。
    这份清单与 `src/peach/web_settings.py` 的同名常量逐字比对（test_web_settings.py）。 */
@@ -398,9 +398,7 @@ const defaultSortDir=key=>SORT_DIR_WORDS[key]?'desc':'';
    跟随系统是默认档，选它等于不写属性。 */
 const THEME_CHOICES=['system','light','dark'];
 const JAV_LAYOUTS=[['big','大图','maximize'],['small','小图','layout-grid']];
-/* 跟随系统那一档跟 vercel.com 后台一样用显示器：这一档说的是「照这台设备的设定走」，
-   讲的是设备而不是明暗，日月合体的那枚反而在说明暗。`monitor` 因此归给它，详情页的
-   画面尺寸改用 `ratio`——那里量的是画幅本身，不是放画幅的那台机器。 */
+/* 显示器用于跟随系统主题和详情页的画面分辨率。 */
 const THEME_OPTIONS=[['system','跟随系统','monitor'],['light','浅色','sun'],['dark','深色','moon']];
 const DEFAULT_SETTINGS={batchSize:60,defaultSort:'seed',sortDefaultsVersion:3,hoverDelaySeconds:5,seekSeconds:10,searchHistoryLimit:10,relatedLimit:20,javLayout:'big',javImage:'cover',followLayout:'cozy',peopleLayout:'big',ambientMode:true,theaterMode:false,theme:'system',groupCollapse:true,sidebarOrder:DEFAULT_SIDEBAR_ORDER};
 let appSettings={...DEFAULT_SETTINGS};
@@ -1617,7 +1615,8 @@ async function mountDetailPlayer(it,video,autoplay,options={}){
 }
 const selected=new Set(),followSelected=new Set();
 let selectMode=false,lastSelectedId=null,followLastSelectedId=null,selectSurface='';
-const currentSelectSurface=()=>location.pathname==='/follow'?'follow':location.pathname==='/junk-files'?'junk':'catalog';
+let reviewSelectionController=null;
+const currentSelectSurface=()=>location.pathname==='/review'?'review':location.pathname==='/follow'?'follow':location.pathname==='/junk-files'?'junk':'catalog';
 function paintSelection(){
   document.querySelectorAll('.card[data-id]').forEach(card=>card.classList.toggle('selected',selected.has(+card.dataset.id)));
   document.querySelectorAll('.followitem[data-follow-item]').forEach(card=>
@@ -1637,9 +1636,11 @@ function paintSelection(){
   paintTagIndexSelection();
 }
 function setSelectMode(on,clear=false){
+  if(location.pathname==='/review'&&reviewSelectionController?.busy)return;
   if(on&&!selectMode)selectSurface=currentSelectSurface();
   selectMode=!!on;if(!selectMode)selectSurface='';document.body.classList.toggle('select-mode',selectMode);
   if(selectMode)releaseHoverPreviews();
+  if(location.pathname==='/review')reviewSelectionController?.setMode(selectMode);
   $('#selectMode').setAttribute('aria-pressed',selectMode);if(clear){selected.clear();followSelected.clear();selectedIndexTags.clear();lastSelectedId=null;followLastSelectedId=null}paintSelection()}
 /* 只取网格直属卡片：竖屏条是嵌在网格里的横向滚动条，不该被 Shift 范围选中顺带框进来。 */
 function visibleCardIds(){return [...gridCards()].map(card=>+card.dataset.id)}
@@ -2677,7 +2678,7 @@ async function buildBars(){
   const tier=html=>html?`<div class="tier">${html}</div>`:'';
   const emptyHome=context.type==='home'&&!javActive()&&!state.state&&!state.q&&!facetData.locations.some(row=>row.n>0);
   const emptyLayout=emptyHome?emptyCatalogLayout():null;
-  $('#tiers').innerHTML=emptyLayout?emptyLayout.tiers+tier(emptyLayout.tags):tier(perfRow)+tier(studioRow);
+  $('#tiers').innerHTML=emptyLayout?emptyLayout.tiers:tier(perfRow)+tier(studioRow);
   $('#tiers').hidden=!(emptyLayout||perfRow||studioRow);
   $('#tiers').removeAttribute('aria-busy');
   $('#tiers').querySelectorAll('[data-entity-kind]').forEach(b=>b.onclick=()=>
@@ -2691,7 +2692,7 @@ async function buildBars(){
   });
 
   $('#tagbar').removeAttribute('aria-busy');
-  $('#tagbar').innerHTML=viewPillsHtml(filterState)
+  $('#tagbar').innerHTML=viewPillsHtml(filterState)+(emptyLayout?.tags||'')
     +seededSample(topTags,26,`tags:${state.seed||''}`).map(t=>
       `<button class="pill" data-tag="${esc(t.k)}" aria-pressed="${
         tagPressed(filterState.tag,t.k)}">${esc(tagLabel(t.k))}</button>`).join('');
@@ -3706,7 +3707,7 @@ async function openReview(push=true){
   const next=await surfaceApi(surface,'/api/review');
   if(!surfaceCurrent(surface))return;
   reviewRuntime=runtime;reviewData=next;
-  const selection=createReviewSelection();
+  const selection=createReviewSelection(); selection.active=selectMode; reviewSelectionController=null;
   const render=()=>{
     const category=reviewCategory;
     const rows=reviewData.sections[reviewCategory]||[];
@@ -3828,9 +3829,11 @@ async function openReview(push=true){
       selection.selected.delete(key);selection.choices.delete(key);selection.assets.delete(key);selection.errors.delete(key);
     };
     const current=()=>surfaceCurrent(surface)&&category===reviewCategory;
-    wireReviewSelection($('#stats').querySelector('.review'),{rows,metadata:category==='metadata_fields',locked,state:selection,
+    reviewSelectionController=wireReviewSelection($('#stats').querySelector('.review'),{rows,metadata:category==='metadata_fields',locked,state:selection,
+      modeChanged:active=>{if(selectMode!==active)setSelectMode(active)},
       payload:decisionPayload,submit:payload=>api('/api/review/decision',{method:'POST',body:JSON.stringify(payload)}),
       applied:removeReviewed,active:current,refresh:render,notify:actionReceipt});
+    syncHeaderActions();
     $('#stats').querySelectorAll('[data-review-status]').forEach(button=>button.onclick=async()=>{
       if(selection.busy)return;
       const item=button.closest('[data-review-key]');button.disabled=true;selection.busy=true;
@@ -6525,7 +6528,7 @@ $('#filterBtn').onclick=()=>openDrawer(!$('#drawer').classList.contains('open'))
 const EDGE_ICONS=[
   ['','首页','home'],
   ['performers','艺人','user-round'],
-  ['studios','厂商','clapperboard'],
+  ['studios','厂牌','clapperboard'],
   ['tags','标签','tags'],
   ['jav','JAV','jav'],
   ['flagged','已标记','bookmark'],
@@ -6959,7 +6962,7 @@ function syncHeaderActions(){
     setSelectMode(false,true);
   const entity=parts.length>1&&Object.prototype.hasOwnProperty.call(ROUTE_ENTITIES,parts[0]);
   const catalog=isCatalogPath(path)||path==='/trash';
-  const canSelect=catalog||entity||path==='/tags'||path==='/follow';
+  const canSelect=catalog||entity||path==='/tags'||path==='/follow'||(path==='/review'&&reviewRuntime&&!reviewRuntime.ledger_read_only);
   const canDensity=catalog||entity||path==='/follow';
   $('#selectMode').hidden=!canSelect;$('#density').hidden=!canDensity;
   if(!canSelect&&selectMode)setSelectMode(false,true);
@@ -7480,7 +7483,7 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
       ${it.location==='online'?'':`<span class="srcstate detailtitlestate" aria-live="polite"></span>`}
       ${ratingHtml(it.rating)}
       <div class="smeta mono">
-        <span class="detailmetaitem">${icon('ratio')}<span>${it.width||'?'}×${it.height||'?'}</span></span>
+        <span class="detailmetaitem">${icon('monitor')}<span>${it.width||'?'}×${it.height||'?'}</span></span>
         <span class="detailmetaitem">${icon('hard-drive')}<span>${fmtSize(it.size||0)}</span></span>
         ${it.release_date?`<span class="detailmetaitem">${icon('calendar')}<span>${esc(it.release_date)}</span></span>`:''}</div>
       <div class="detailidentity">${identityRows||`<div class="identityrow"><span></span><span class="ilabel">归属</span><span>${esc(who)}</span></div>`}</div>

@@ -4015,6 +4015,18 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("$('#tiers').hidden=!(emptyLayout||perfRow||studioRow);")
         self.assertPageContains(".tiers[hidden]{display:none}")
 
+    def test_empty_home_places_tags_after_view_filters_and_clips_identity_tracks(self):
+        self.assertPageContains("$('#tiers').innerHTML=emptyLayout?emptyLayout.tiers:tier(perfRow)+tier(studioRow);")
+        self.assertPageContains("viewPillsHtml(filterState)+(emptyLayout?.tags||'')")
+        self.assertPageContains(".tier.catalog-placeholder{overflow:hidden}")
+        self.assertPageContains("flex:1 0 240px;min-width:240px;overflow:hidden")
+
+    def test_review_selection_shares_header_and_has_a_separate_toolbar(self):
+        self.assertPageContains("reviewSelectionController?.setMode(selectMode)")
+        self.assertPageContains("path==='/review'&&reviewRuntime&&!reviewRuntime.ledger_read_only")
+        self.assertPageContains(".reviewbulktoolbar{width:100%;padding-block:16px}")
+        self.assertPageContains(".taste-guide-skip{width:100%;height:var(--control-h);color:var(--meter)}")
+
     def test_collapsed_rail_is_divided_from_the_content_beside_it(self):
         """窄栏和内容区背景接近，没有分割线就看不出左边那一条到哪里为止。
 
@@ -4670,7 +4682,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("{match:'/studios',nav:'studios',title:'厂牌',")
         self.assertPageContains("{match:'/agencies',title:'事务所',")
         # 侧栏那一项进的是厂牌索引。
-        self.assertPageContains("['studios','厂商','clapperboard'],")
+        self.assertPageContains("['studios','厂牌','clapperboard'],")
 
     def test_the_studio_index_wears_the_same_logo_the_profile_does(self):
         """538 个标识在盘上，索引页却格格首字母的话，这一屏读不出是哪些牌子。"""
@@ -6066,10 +6078,10 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".detailtitle .stitle{min-width:0;margin:0;line-height:1.75}")
 
     def test_detail_metadata_uses_icons_instead_of_release_copy(self):
-        self.assertPageContains('<span class="detailmetaitem">${icon(\'ratio\')}')
+        self.assertPageContains('<span class="detailmetaitem">${icon(\'monitor\')}')
         self.assertPageContains('<span class="detailmetaitem">${icon(\'hard-drive\')}')
         self.assertPageContains('<span class="detailmetaitem">${icon(\'calendar\')}')
-        self.assertPageContains('id="i-ratio"')
+        self.assertPageContains('id="i-monitor"')
         self.assertPageContains('id="i-calendar"')
         self.assertPageLacks("发行 ${esc(it.release_date)}")
 
@@ -6453,15 +6465,15 @@ class WebUiSourceTests(unittest.TestCase):
                       .read_text(encoding="utf-8"))
         # 主题三档各归各的：太阳是浅色、月亮是深色；跟随系统那档说的是「照这台设备走」，
         # 讲的是设备不是明暗，所以跟 vercel.com 后台一样用显示器。画面尺寸量的是画幅本身，
-        # 归 `ratio`。
+        # 分辨率同样使用显示器。
         self.assertPageContains(
             "[['system','跟随系统','monitor'],['light','浅色','sun'],['dark','深色','moon']]")
-        self.assertPageContains("${icon('ratio')}<span>${it.width||'?'}×${it.height||'?'}</span>")
+        self.assertPageContains("${icon('monitor')}<span>${it.width||'?'}×${it.height||'?'}</span>")
         # 换下来的这几枚没有别的使用者，雪碧图里也不留。星是有使用者的那一枚：
         # 详情页的五星评分，写进 `asset.rating`，不与任何别的意思共用。
-        # 厂商索引进去是出片的那些牌子，字形因此说「拍片」而不是说「一栋楼」；
+        # 厂牌索引进去是出片的那些牌子，字形因此说「拍片」而不是说「一栋楼」；
         # 名下带人的事务所在同一个开关的另一半，走公文包。
-        self.assertPageContains("['studios','厂商','clapperboard'],")
+        self.assertPageContains("['studios','厂牌','clapperboard'],")
         self.assertPageContains('<symbol id="i-clapperboard" viewBox="0 0 24 24">')
         for gone in ("i-monitor-cog", "i-volume-2", "i-sun-moon", "i-building",
                      "i-sliders-horizontal", "i-computer"):
