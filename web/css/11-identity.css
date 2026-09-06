@@ -118,7 +118,7 @@ button.serieslink.entitylink:hover{color:var(--tungsten);text-decoration:none}
 .revieworigin>div button{display:inline-flex;align-items:center;gap:6px;border:0;border-radius:var(--control-radius);background:var(--hover);padding:6px 9px;color:var(--ink-2);cursor:pointer}
 .revieworigin>div button:hover{color:var(--ink)}.revieworigin>div button svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2}
 @media(max-width:640px){.qualitylist{grid-template-columns:1fr}.qualityitem{grid-template-columns:110px minmax(0,1fr)}.qualitycover{width:110px}.reviewcompare{grid-template-columns:1fr}.revieworigin{grid-template-columns:110px minmax(0,1fr)}.revieworigincover{width:110px}}
-@media(max-width:640px){.resourcesync .resourcesources{grid-template-columns:1fr}.resourcesync .resourcesources article+article{border-left:0;border-top:1px solid var(--line-soft)}.resourcesync .resourcecache{grid-template-columns:1fr}.resourcesync .resourcecache>div+div{border-left:0;border-top:1px solid var(--line-soft)}}
+@media(max-width:640px){.resourcesync .resourcesources{grid-auto-flow:row;grid-template-columns:1fr}.resourcesync .resourcesources article+article{border-left:0;border-top:1px solid var(--line-soft)}.resourcesync .resourcecache{grid-template-columns:1fr}.resourcesync .resourcecache>div+div{border-left:0;border-top:1px solid var(--line-soft)}}
 
 .indexmore[hidden],.entitymore[hidden]{display:none}
 .indexmore,.entitymore{display:flex;align-items:center;justify-content:center;margin:20px auto 0;min-width:124px;

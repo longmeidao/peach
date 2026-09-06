@@ -280,3 +280,10 @@ Python、npm 与 GitHub Actions 的版本由 `.github/dependabot.yml` 每周检�
 - 复核分类复用 `selectFieldHtml`、`wireSelectField` 和现有 `list-filter` 图标；图标只在筛选入口显示，选项保留文字与选中标记。按当前候选数据提供字段及来源选项，批量决定复用既有协议。字段次级分类采用具名 Listbox 分区，依据见 `reference-snapshots/vercel-review-actions.md`。人工复核与馆藏、关注、标签、垃圾文件和回收站共用 `selectiondock` 浮窗布局，保留各自操作与提交协议；复核卡片内作品样本选择仍属于单条候选，不混入页面级多选。没有新增依赖。Shift 连选使用原生 `mousedown.preventDefault()` 防止文字选区；实际浏览器验证覆盖亮暗主题、宽屏和 390px。
 
 反馈控件复用：`noteHtml`、`progressHtml`、`gaugeHtml`、`projectBannerHtml` 与 `wireContextCard` 集中在共享 UI 模块；信息卡片复用原生 Popover 和现有锚定菜单定位，不添加浮层依赖。`BackgroundJob.update(job_id)` 报告浏览记录、口味分析和逐行来源解析的阶段与计数，`followJobProgress` 统一读取文字和总量，查询不重新执行任务。浏览记录解析继续使用 browserexport；本地临时浏览器数据库验证计数及隐私字段。证据见 `reference-snapshots/vercel-geist-note-progress-switch-analytics.md`。
+
+### 文件检查与确认反馈
+
+资源核对复用 `web_resource_sync` 的目录枚举、离线跳过、写前复验与 BackgroundJob，涵盖 local、
+115、PikPak。展示复用 Preact 构建链、Fieldset、Note、Toast 与 confirmModal；确认失败留在弹层，
+危险动作初始聚焦取消，忙态阻止重入与关闭。无新增依赖，不引入另一套对话框库。
+真实截图的 487 项／643 个缓存作为无写入渲染样本；配置历史及性能建议依据在 OPERATIONS。

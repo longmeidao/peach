@@ -3607,7 +3607,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("catch(_error){write(section,'读取失败')}")
         cleanup = self.page.split("async function openDataCleanup(", 1)[1].split("let dupData=null;", 1)[0]
         self.assertIn("${linkManagerMarkup()}", cleanup)
-        self.assertIn("${cloudLocations(sources.sources||[]).length?resourceSyncMarkup():''}", cleanup)
+        self.assertIn("${(sources.sources||[]).some(source=>['local','115','pikpak'].includes(source.location)&&source.roots?.length)?resourceSyncMarkup():''}", cleanup)
         stats = self.page.split("async function openStats(", 1)[1].split("function showHomeSurfaces(", 1)[0]
         self.assertNotIn("linkManagerMarkup()", stats,
                          "统计页只讲库里现在有多少，不该再挂对齐外部现实的面板")
@@ -3793,7 +3793,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("const NOTE_VARIANTS=new Set(['secondary','warning','error','success'])")
         self.assertPageContains("const symbol=kind==='secondary'?'info':kind==='success'?'check':'alert'")
         self.assertPageContains("const role=kind==='error'?' role=\"alert\"':' role=\"note\"'")
-        self.assertPageContains("noteHtml(error.message,{variant:'error',label:'同步失败'})")
+        self.assertPageContains("failure.innerHTML=noteHtml(error.message||'操作未完成',{variant:'error'})")
         self.assertPageContains("noteHtml(error.message,{variant:'error',label:'扫描失败'})")
         self.assertPageContains("noteHtml(error.message||'分析未取得',{variant:'error',label:'分析未取得'})")
         self.assertPageContains('class="geist-note geist-note-error fcheckreport" role="alert"')
@@ -4218,7 +4218,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".count.manage-static{position:relative;top:auto;z-index:1}")
         self.assertPageContains("if(!response.ok){")
         self.assertPageContains("throw new Error(requestErrorMessage(detail,response.status))")
-        self.assertPageContains("catch(error){actionFailure('批量操作',error)}")
+        self.assertPageContains("catch(error){setActionBusy(button,false);throw error}")
         self.assertPageContains("wireJunkCards($('#grid'));paintSelection();return")
         self.assertPageContains("actionFailure('操作',error)")
         self.assertPageContains("kind==='dispose'&&r.disposal==='trash'&&state.state==='ads'")
@@ -4902,7 +4902,7 @@ class WebUiSourceTests(unittest.TestCase):
             "dialog.querySelector('.geist-modal-body p').textContent=body;")
         # 遮罩上的点击落在 <dialog> 自己身上；这个动作可撤销，允许点外面关掉。
         self.assertCode(
-            "dialog.addEventListener('click',event=>{if(event.target===dialog)dialog.close()});")
+            "dialog.addEventListener('click',event=>{if(event.target===dialog&&!busy&&!danger)dialog.close()});")
 
     def test_confirm_modal_keeps_a_failed_write_in_place_with_its_reason(self):
         # 忙态落在主按钮上，不落在已经收起来的菜单项上。
@@ -6110,8 +6110,8 @@ class WebUiSourceTests(unittest.TestCase):
     def test_data_cleanup_groups_junk_duplicates_and_empty_folders_in_fieldsets(self):
         self.assertPageContains("async function openDataCleanup(push=true)")
         self.assertPageContains("route('/data-cleanup')")
-        self.assertPageContains("${cloudLocations(sources.sources||[]).length?resourceSyncMarkup():''}")
-        self.assertPageContains("fieldsetTitle('resourceBoxTitle','网盘与本地数据库')")
+        self.assertPageContains("${(sources.sources||[]).some(source=>['local','115','pikpak'].includes(source.location)&&source.roots?.length)?resourceSyncMarkup():''}")
+        self.assertPageContains("fieldsetTitle('resourceBoxTitle','检查文件与馆藏记录')")
         self.assertPageLacks("fieldsetTitle('resourceBoxTitle','网盘与账本')")
         self.assertPageContains("cloudPreferenceLocations(g.files,d.cloudLocations||[])")
         self.assertPageContains("Boolean(s.history_sources||d.updated_at),localStorage.getItem(TASTE_GUIDE_KEY)==='1')")
@@ -6128,7 +6128,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('class="cleanupfieldset" data-geist-fieldset aria-labelledby=')
         self.assertPageContains('class="cleanupfieldset cleanupemptyfolders" data-geist-fieldset')
         self.assertPageContains("api('/api/data-cleanup/empty-folders',{method:'POST',body:'{}'})")
-        self.assertPageContains("来源根目录不会删除")
+        self.assertPageContains("保留来源根目录")
         self.assertPageContains(".cleanupfieldset>.geist-fieldset-content{flex:1;min-height:0;padding:20px}")
         # Geist 的 Fieldset 全框只有一条线，在底部操作条上方；标题底下不划线。
         self.assertPageContains("--fieldset-bar-h:52px;")
@@ -6295,7 +6295,7 @@ class WebUiSourceTests(unittest.TestCase):
         # 只能进回收站；永久删除仍得从回收站单独执行。
         self.assertPageContains("operation:'dispose'")
         self.assertPageLacks("operation:'delete'},{method:'POST'}")
-        self.assertPageContains("文件仍在回收站里，可以还原")
+        self.assertPageContains("记录可从回收站还原")
 
     def test_duplicate_batches_respect_the_two_hundred_id_cap(self):
         self.assertPageContains("for(let i=0;i<ids.length;i+=200)")
@@ -7542,12 +7542,12 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("it.location==='online'?'':`<span class=\"srctools detailtitletools\">${sourceToolButtons(it.id)}</span>`")
 
     def test_resource_sync_lives_in_data_management_and_keeps_offline_sources_safe(self):
-        self.assertPageContains("${cloudLocations(sources.sources||[]).length?resourceSyncMarkup():''}")
+        self.assertPageContains("${(sources.sources||[]).some(source=>['local','115','pikpak'].includes(source.location)&&source.roots?.length)?resourceSyncMarkup():''}")
         self.assertRoute('/resource-sync', "openResourceSync(push)")
         self.assertPageContains("route('/data-cleanup#resource-sync',!push)")
         self.assertPageContains("api('/api/resource-sync/scan',{method:'POST'")
         self.assertPageContains("api('/api/resource-sync/apply',{method:'POST'")
-        self.assertPageContains("source.unreadable")
+        self.assertPageContains("resourceScanHtml(payload,fmtSize)")
         self.assertPageContains("background:true,restart:true")
         self.assertPageContains("payload.status==='running'")
         self.assertPageContains("location.pathname==='/data-cleanup'")
@@ -7555,12 +7555,12 @@ class WebUiSourceTests(unittest.TestCase):
         # 上一轮跑完的结果是那一刻的快照。进页面就铺开会被读成现在的账本状态，
         # 而页面上没有任何东西说它是旧的。
         self.assertPageContains("if(existing.status==='running')void followScan(existing)")
-        self.assertPageContains("同步并清理")
+        self.assertPageContains("清理失效记录与缓存")
         self.assertPageContains('class="resourcesyncfooter geist-fieldset-footer"')
         self.assertPageContains('class="resourcepanel"')
         self.assertPageContains('class="resourceapplyrow"')
         self.assertPageContains(".resourceaction{box-sizing:border-box;height:36px")
-        self.assertPageContains("@media(max-width:640px){.resourcesync .resourcesources{grid-template-columns:1fr}")
+        self.assertPageContains("@media(max-width:640px){.resourcesync .resourcesources{grid-auto-flow:row;grid-template-columns:1fr}")
         self.assertPageContains(".resourcesyncbox,.resourcepanel{overflow:clip;border:1px solid var(--field-ring);border-radius:var(--floating-radius)")
         self.assertPageContains(".resourcesources article+article{border-left:1px solid var(--line-soft)}")
         self.assertPageContains(".resourceapplyrow .resourcesyncok{color:var(--success)}")

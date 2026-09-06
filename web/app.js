@@ -1,3 +1,4 @@
+import { resourceScanHtml } from './dist/peach-ui.js';
 import {$, ENTITY_ROUTES, LOC, ROUTE_ENTITIES, ROUTE_STATES, SITE_FAVICONS, STATE_LABELS, STATE_ROUTES, api, isAbort, mapLimit, brandIcon, entityPath, esc, faviconFallbackUrl, faviconUrl, linkHost, linkMarkUrl, fmtClock, fmtDur, fmtSize, foldName, icon, isCatalogPath, realDuration} from './js/core.js';
 import { faceFrame } from './js/face-frame.js';
 import { imageFallbackAttrs, wireImageFallbacks } from './js/image-fallback.js';
@@ -1672,11 +1673,12 @@ $('#batchClear').onclick=()=>setSelectMode(false,true);
 $('#followBatchAll').onclick=()=>{visibleFollowIds().forEach(id=>followSelected.add(id));setSelectMode(true);paintSelection()};
 $('#batchbar').querySelectorAll('[data-batch]').forEach(button=>button.onclick=async()=>{
   const labels={like:'喜欢',seen:'标为看过',later:'加入稍后看',dispose:'加入回收站',restore:'还原',delete:'彻底删除'};
+  const titles={like:'喜欢所选项目',seen:'标记为已看',later:'加入稍后看',dispose:'移入回收站',restore:'还原所选项目',delete:'永久删除所选项目'};
   const operation=button.dataset.batch,ids=[...selected];if(!ids.length)return;
-  if(!confirm(`确认对 ${ids.length} 个资源执行“${labels[operation]}”？\n${operation==='delete'?'此操作会永久删除文件和账本记录，不可恢复。':'回收站中的文件仍保留，可从回收站入口永久清除。'}`))return;
-  button.disabled=true;
+  return confirmModal({title:titles[operation],body:`将处理选中的 ${ids.length} 项。${operation==='delete'?'文件和馆藏记录会永久删除，无法恢复。':operation==='dispose'?'馆藏记录可在回收站还原。':''}`,confirmLabel:titles[operation],danger:operation==='delete',onConfirm:async()=>{
+  setActionBusy(button);
   try{const r=await api('/api/batch',{method:'POST',body:JSON.stringify({ids,operation})});
-    if(r.blocked&&r.blocked.length)alert(`已永久删除 ${r.purged} 个；${r.blocked.length} 个删不掉，仍留在回收站：\n`
+    if(r.blocked&&r.blocked.length)throw new Error(`已永久删除 ${r.purged} 项；${r.blocked.length} 项未能删除，仍在回收站：\n`
       +r.blocked.slice(0,5).map(x=>`${x.path}（${x.reason}）`).join('\n'));
     setSelectMode(false,true);await reloadCurrentSurface();
     const inverse=operation==='dispose'?'restore':operation==='restore'?'dispose':null;
@@ -1684,27 +1686,31 @@ $('#batchbar').querySelectorAll('[data-batch]').forEach(button=>button.onclick=a
       await api('/api/batch',{method:'POST',body:JSON.stringify({ids,operation:inverse})});
       await reloadCurrentSurface();
     }:null})}
-  catch(error){actionFailure('批量操作',error)}
-  finally{button.disabled=false;paintSelection()}
+  catch(error){setActionBusy(button,false);throw error}
+  finally{setActionBusy(button,false);paintSelection()}
+  }});
 });
 $('#batchbar').querySelectorAll('[data-follow-batch]').forEach(button=>button.onclick=async()=>{
   const action=button.dataset.followBatch,items=[...followSelected];if(!items.length)return;
   const labels={save:'保存到账本',seen:'标记已看',ignored:'忽略'};
-  if(!confirm(`确认对 ${items.length} 个关注作品执行“${labels[action]}”？`))return;
-  button.disabled=true;
+  const titles={save:'保存所选作品',seen:'标记为已看',ignored:'忽略所选作品'};
+  return confirmModal({title:titles[action],body:`将处理选中的 ${items.length} 项关注作品。`,confirmLabel:titles[action],danger:false,onConfirm:async()=>{
+  setActionBusy(button);
   try{
     const path=action==='save'?'/api/follow/save':'/api/follow/status';
     const body=action==='save'?{items}:{items,to:action};
     await api(path,{method:'POST',body:JSON.stringify(body)});
     setSelectMode(false,true);await openFollow(false);actionReceipt(`已${labels[action]} ${items.length} 项`);
-  }catch(error){actionFailure('批量操作',error)}
-  finally{button.disabled=false;paintSelection()}
+  }catch(error){setActionBusy(button,false);throw error}
+  finally{setActionBusy(button,false);paintSelection()}
+  }});
 });
 $('#batchbar').querySelectorAll('[data-junk-batch]').forEach(button=>button.onclick=async()=>{
   const operation=button.dataset.junkBatch,ids=[...selected];if(!ids.length)return;
   const labels={'dismiss-junk':'不是垃圾','reconsider-junk':'重新判断',dispose:'移入回收站'};
-  if(!confirm(`确认把 ${ids.length} 个垃圾文件候选“${labels[operation]}”？`))return;
-  button.disabled=true;
+  const titles={'dismiss-junk':'标记为非垃圾','reconsider-junk':'重新检查文件',dispose:'移入回收站'};
+  return confirmModal({title:titles[operation],body:`将处理选中的 ${ids.length} 个文件。`,confirmLabel:titles[operation],danger:false,onConfirm:async()=>{
+  setActionBusy(button);
   try{
     await api('/api/batch',{method:'POST',body:JSON.stringify({ids,operation})});
     setSelectMode(false,true);adsBatch=null;await load(true);
@@ -1714,8 +1720,9 @@ $('#batchbar').querySelectorAll('[data-junk-batch]').forEach(button=>button.oncl
       await api('/api/batch',{method:'POST',body:JSON.stringify({ids,operation:inverse})});
       await load(true);
     }:null});
-  }catch(error){actionFailure('批量操作',error)}
-  finally{button.disabled=false;paintSelection()}
+  }catch(error){setActionBusy(button,false);throw error}
+  finally{setActionBusy(button,false);paintSelection()}
+  }});
 });
 
 /* 密度：大图为主，密集为辅 */
@@ -2801,17 +2808,17 @@ function renderCount(){
   wireCountRow();
   const emptyTrash=$('#emptyTrash');
   if(emptyTrash)emptyTrash.onclick=async(e)=>{
-    if(!confirm('永久删除回收站中的全部文件和账本记录？此操作不可恢复。'))return;
-    e.currentTarget.disabled=true;
+    return confirmModal({title:'清空回收站',body:'回收站中的全部文件和馆藏记录将永久删除，无法恢复。',confirmLabel:'清空回收站',danger:true,onConfirm:async()=>{
+
     try{
       const r=await api('/api/trash/empty',{method:'POST'});
       /* 删不掉的文件（占用中、网盘离线）会连同账本行一起留在回收站，必须说出来，
          否则用户看到条目还在会以为清空又没生效。 */
-      if(r.blocked&&r.blocked.length)alert(`已永久删除 ${r.purged} 个；${r.blocked.length} 个删不掉，仍留在回收站：\n`
+      if(r.blocked&&r.blocked.length)throw new Error(`已永久删除 ${r.purged} 项；${r.blocked.length} 项未能删除，仍在回收站：\n`
         +r.blocked.slice(0,5).map(x=>`${x.path}（${x.reason}）`).join('\n'));
       actionReceipt(`已永久删除 ${r.purged} 项`);
-    }catch(error){actionFailure('清空回收站',error);
     }finally{await load(true)}
+  }});
   };
 }
 
@@ -3070,14 +3077,15 @@ async function wireLinkManager(){
     result.innerHTML=`<div class="resourcepanel"${apply?' data-fieldset-type="error"':''}>${progress}${gone}${unclear}${apply}${clean}</div>`;
     $('#linkPrune')?.addEventListener('click',async event=>{
       const control=event.currentTarget;
-      if(!confirm(`删除 ${payload.gone.length} 条已失效链接？删除前会逐条重验，但删除本身不可撤销。`))return;
+      return confirmModal({title:'删除失效链接',body:`将删除 ${payload.gone.length} 条失效链接。删除前会再次检查，删除后无法恢复。`,confirmLabel:'删除失效链接',danger:true,onConfirm:async()=>{
       setActionBusy(control);
       control.innerHTML=`${spinnerHtml('正在重验')}<span>正在重验并删除…</span>`;
       try{
         const out=await api('/api/links/prune',{method:'POST',body:JSON.stringify({confirm:true,check_id:payload.check_id,background:true})});
         sessionStorage.setItem('peach-link-prune-job',out.job_id);
         if(active())void wirePruneProgress();
-      }catch(error){if(active()){result.insertAdjacentHTML('beforeend',noteHtml(error.message,{variant:'error',label:'删除失败'}));void wirePruneProgress()}}
+      }catch(error){setActionBusy(control,false);if(active())void wirePruneProgress();throw error}
+  }});
     });
   };
 
@@ -3106,10 +3114,10 @@ function resourceSyncMarkup(){
   return `<section class="resourcesync" id="resource-sync" aria-labelledby="resourceSyncTitle">
     <h2 id="resourceSyncTitle">资源同步</h2>
     <div class="resourcesyncbox" data-geist-fieldset>
-      <div class="resourcesyncbody geist-fieldset-content">${fieldsetTitle('resourceBoxTitle','网盘与本地数据库')}
-      <p>网盘上已删除的条目进入回收站；只清理没有在用的预览与播放缓存。</p></div>
+      <div class="resourcesyncbody geist-fieldset-content">${fieldsetTitle('resourceBoxTitle','检查文件与馆藏记录')}
+      <p>检查本地磁盘和网盘，找出失效的馆藏记录与闲置缓存。</p></div>
       <div class="resourcesyncfooter geist-fieldset-footer" data-geist-fieldset-footer>
-      <button class="resourceaction" type="button" id="resourceScan">${icon('refresh-cw')}<span>扫描差异</span></button></div></div>
+      <button class="resourceaction" type="button" id="resourceScan">${icon('refresh-cw')}<span>检查文件</span></button></div></div>
     <div id="resourceSyncResult" aria-live="polite"></div></section>`;
 }
 async function wireResourceSync(){
@@ -3118,38 +3126,29 @@ async function wireResourceSync(){
   const active=()=>location.pathname==='/data-cleanup'&&!$('#stats').hidden&&document.body.contains(result);
   const setBusy=(busy,done=false)=>{
     setActionBusy(scan,busy);
-    scan.innerHTML=`${icon('refresh-cw')}<span>${busy?'扫描中':done?'重新扫描':'扫描差异'}</span>`;
+    scan.innerHTML=`${icon('refresh-cw')}<span>${busy?'扫描中':done?'重新扫描':'检查文件'}</span>`;
   };
   const render=payload=>{
-    const sources=payload.sources||[];
     const cache=payload.cache||{files:0,bytes:0};
-    const hasChanges=Boolean(payload.missing||cache.files);
-    result.innerHTML=`<div class="resourcepanel"${hasChanges?' data-fieldset-type="warning"':''}><div class="resourcesources">${sources.map(source=>`<article>
-      <div class="resourcesourcetitle"><b>${esc(LOC[source.location]||source.location)}</b><span class="${source.online?'online':'offline'}">${source.online?'已挂载':'离线，已跳过'}</span></div>
-      <strong>${source.online?source.missing.toLocaleString():'—'}</strong>
-      <small>${source.online?`项已从网盘删除 · 已核对 ${source.checked.toLocaleString()} 项${source.unreadable?` · ${source.unreadable.toLocaleString()} 项暂时无法读取`:''}`:`本地数据库有 ${source.total.toLocaleString()} 项`}</small></article>`).join('')}</div>
-      <div class="resourcecache"><div><span>孤立缓存</span><b>${cache.files.toLocaleString()}</b><small>${fmtSize(cache.bytes||0)}</small></div>
-      <div><span>待同步</span><b>${Number(payload.missing||0).toLocaleString()} 项</b></div></div>
-      ${hasChanges?noteHtml(`将把 ${payload.missing||0} 项移入回收站，并删除 ${cache.files||0} 个可重建缓存。`,{variant:'warning',label:'同步影响'}):''}
-      <div class="resourceapplyrow">${hasChanges?`<button class="resourceaction warning" type="button" id="resourceApply">同步并清理</button>`:
-        '<p class="resourcesyncok">本地数据库与已挂载网盘一致，没有孤立缓存。</p>'}</div></div>`;
+    result.innerHTML=resourceScanHtml(payload,fmtSize);
     $('#resourceApply')?.addEventListener('click',async event=>{
       const button=event.currentTarget;
-      if(!confirm(`把 ${payload.missing||0} 项移入回收站，并清理 ${cache.files||0} 个可重建缓存？`))return;
+      return confirmModal({title:'清理失效记录与缓存',body:`将把找不到文件的 ${payload.missing||0} 项馆藏记录移入回收站，并清理 ${cache.files||0} 个闲置缓存。记录可从回收站还原。`,confirmLabel:'清理失效记录与缓存',danger:false,onConfirm:async()=>{
       setActionBusy(button);
-      button.innerHTML=`${spinnerHtml('正在应用')}<span>正在重新核对并应用…</span>`;
+      button.innerHTML=`${spinnerHtml('正在清理')}<span>正在检查并清理…</span>`;
       try{
         const applied=await api('/api/resource-sync/apply',{method:'POST',body:JSON.stringify({confirm:true,clean_cache:true,scan_id:payload.scan_id||'',background:true})});
         sessionStorage.setItem('peach-resource-apply-job',applied.job_id);
         if(active())void wireResourceApplyProgress();
       }catch(error){
         setActionBusy(button,false);
-        button.innerHTML=`${icon('refresh-cw')}<span>重试同步</span>`;
-        result.insertAdjacentHTML('beforeend',noteHtml(error.message,{variant:'error',label:'同步失败'}));if(active())void wireResourceApplyProgress()}
+        button.textContent='清理失效记录与缓存';
+        if(active())void wireResourceApplyProgress();throw error}
+  }});
     });
   };
   const followScan=async payload=>{
-    setBusy(true);result.innerHTML=`<p class="resourcescanning">${loadingDotsHtml('正在后台核对网盘元数据，不会读取视频内容。')}</p>`;
+    setBusy(true);result.innerHTML=`<p class="resourcescanning">${loadingDotsHtml('正在检查本地磁盘和网盘…')}</p>`;
     try{
       if(!payload){try{payload=await api('/api/resource-sync/scan',{method:'POST',body:JSON.stringify({background:true,restart:true})})}
         catch(error){if(active())result.innerHTML=noteHtml('暂时无法确认启动结果，正在读取任务状态…',{label:'任务状态'})}}
@@ -3177,9 +3176,11 @@ async function wireResourceSync(){
   void wireResourceApplyProgress();
 }
 function wireResourceApplyProgress(){
-  return wireOperationProgress({host:$('#resource-sync'),path:'/api/resource-sync/apply',key:'peach-resource-apply-job',title:'正在核对来源、同步并清理缓存…',
-    busy:running=>{const button=$('#resourceApply');if(button){setActionBusy(button,running);if(!running)button.textContent='同步并清理'}},
-    complete:out=>{$('#resourceSyncResult').innerHTML=noteHtml(`已把 ${out.moved_to_trash} 项移入回收站，清理 ${out.cache_removed} 个缓存，释放 ${fmtSize(out.bytes_reclaimed||0)}。`,{variant:'success',label:'完成'})}});
+  return wireOperationProgress({host:$('#resource-sync'),path:'/api/resource-sync/apply',key:'peach-resource-apply-job',title:'正在检查文件并清理…',
+    busy:running=>{const button=$('#resourceApply');if(button){setActionBusy(button,running);if(!running)button.textContent='清理失效记录与缓存'}},
+    complete:out=>{const failed=out.cache_blocked||[];
+      $('#resourceSyncResult').innerHTML=noteHtml(`已把 ${out.moved_to_trash} 项记录移入回收站，清理 ${out.cache_removed} 个缓存，释放 ${fmtSize(out.bytes_reclaimed||0)}。${failed.length?`${failed.length} 个缓存未能清理，请重新检查后重试。`:''}`,{label:failed.length?'部分完成':'清理结果',variant:failed.length?'warning':'default'});
+      if(!failed.length)actionReceipt('已清理失效记录与缓存')}});
 }
 /* 旧直达 URL 仍然可用，落点跟着面板一起搬到数据管理。 */
 async function openResourceSync(push=true){
@@ -3372,11 +3373,12 @@ function renderTaste(d){
     catch(error){stateEl.textContent=error.message||'导入失败';actionFailure('导入口味数据',error)}};
   root.querySelectorAll('[data-taste-kind]').forEach(button=>button.onclick=()=>openTasteSignal(button.dataset.tasteKind,button.dataset.tasteName));
   root.querySelectorAll('[data-taste-remove]').forEach(button=>button.onclick=async()=>{
-    if(!confirm('从口味分析中移除这个数据源？原始导出文件会保留。'))return;
-    button.disabled=true;stateEl.textContent='正在移除…';
+    return confirmModal({title:'移除口味数据源',body:'这个数据源将不再用于口味分析。原始导出文件保留。',confirmLabel:'移除口味数据源',danger:false,onConfirm:async()=>{
+    setActionBusy(button);stateEl.textContent='正在移除…';
     try{const result=await api('/api/taste/source',{method:'POST',body:JSON.stringify({operation:'remove',source_key:button.dataset.tasteRemove,window:tasteWindow})});
       tasteCacheSet(tasteWindow,result.dashboard);renderTaste(result.dashboard);actionReceipt('已移除口味数据源')}
-    catch(error){stateEl.textContent=error.message||'移除失败';button.disabled=false}});
+    catch(error){setActionBusy(button,false);throw error}
+  }});});
 }
 async function openTaste(push=true){
   releaseHoverPreviews();disposeStage(false);enterManagementSurface();
@@ -3446,12 +3448,16 @@ async function movePlaylistItem(queue,index,delta,currentId){
   await openPlaylist(queue.playlistId,currentId,false);actionReceipt('已调整播放顺序');
 }
 async function removePlaylistItem(queue,assetId,currentId){
-  if(queue?.kind!=='playlist'||!confirm('从播放列表移出这个视频？'))return;
-  const result=await api('/api/playlist',{method:'POST',body:JSON.stringify({action:'remove',id:queue.playlistId,asset_id:assetId})});
-  if(!result.playlist.items.length){await openPlaylists(true);return}
-  const next=result.playlist.items.some(item=>item.id===currentId)?currentId:result.playlist.current_asset_id;
-  await openPlaylist(queue.playlistId,next,false);actionReceipt('已移出播放列表');
+  if(queue?.kind!=='playlist')return;
+  return confirmModal({title:'移出播放列表',body:'这个视频将从播放列表移除，视频文件保留。',confirmLabel:'移出播放列表',onConfirm:async()=>{
+    const result=await api('/api/playlist',{method:'POST',body:JSON.stringify({action:'remove',id:queue.playlistId,asset_id:assetId})});
+    actionReceipt('已移出播放列表');
+    if(!result.playlist.items.length){await openPlaylists(true);return}
+    const next=result.playlist.items.some(item=>item.id===currentId)?currentId:result.playlist.current_asset_id;
+    await openPlaylist(queue.playlistId,next,false);
+  }});
 }
+
 async function openPlaylists(push=true){
   releaseHoverPreviews();disposeStage(false);enterManagementSurface();
   if(push)route('/playlists');
@@ -3475,9 +3481,10 @@ async function openPlaylists(push=true){
   $('#stats').querySelectorAll('[data-rename-playlist]').forEach(button=>button.onclick=async()=>{const card=button.closest('[data-playlist-card]'),input=card.querySelector('[data-playlist-name]');
     try{await api('/api/playlist',{method:'POST',body:JSON.stringify({action:'rename',id:+button.dataset.renamePlaylist,name:input.value})});await openPlaylists(false);actionReceipt('已重命名播放列表')}
     catch(error){actionFailure('重命名播放列表',error)}});
-  $('#stats').querySelectorAll('[data-delete-playlist]').forEach(button=>button.onclick=async()=>{if(!confirm('删除这个播放列表？视频本身不会删除。'))return;
+  $('#stats').querySelectorAll('[data-delete-playlist]').forEach(button=>button.onclick=async()=>{return confirmModal({title:'删除播放列表',body:'这个播放列表将被删除，视频文件保留。',confirmLabel:'删除播放列表',danger:true,onConfirm:async()=>{
     try{await api('/api/playlist',{method:'POST',body:JSON.stringify({action:'delete',id:+button.dataset.deletePlaylist})});await openPlaylists(false);actionReceipt('已删除播放列表')}
-    catch(error){actionFailure('删除播放列表',error)}});
+    catch(error){setActionBusy(button,false);throw error}
+  }});});
   window.scrollTo({top:0,behavior:'smooth'});
 }
 
@@ -3552,7 +3559,7 @@ async function openDataCleanup(push=true){
     </section>`).join('')}
   </div>
   ${linkManagerMarkup()}
-  ${cloudLocations(sources.sources||[]).length?resourceSyncMarkup():''}</div>`;
+  ${(sources.sources||[]).some(source=>['local','115','pikpak'].includes(source.location)&&source.roots?.length)?resourceSyncMarkup():''}</div>`;
   $('#stats').querySelector('[data-cleanup-open="junk"]').onclick=()=>openManage('ads');
   const processingUi=await import('/dist/peach-ui.js');
   if(!surfaceCurrent(surface))return;
@@ -3565,7 +3572,7 @@ async function openDataCleanup(push=true){
   paintDataManagementCounts();
   const emptyButton=$('#stats').querySelector('[data-cleanup-empty]');
   emptyButton.onclick=async()=>{
-    if(!confirm('删除所有已挂载资源来源中的空文件夹？来源根目录不会删除。'))return;
+    return confirmModal({title:'删除空文件夹',body:'将删除已连接磁盘和网盘中的空文件夹，保留来源根目录。',confirmLabel:'删除空文件夹',danger:true,onConfirm:async()=>{
     const status=$('#stats').querySelector('.cleanupstate'),original=emptyButton.innerHTML;
     setActionBusy(emptyButton);emptyButton.innerHTML=`${spinnerHtml('正在删除空文件夹')}<span>正在清理</span>`;
     status.textContent='正在自底向上检查已挂载来源…';
@@ -3574,8 +3581,8 @@ async function openDataCleanup(push=true){
       status.textContent=`已检查 ${Number(result.scanned||0).toLocaleString()} 个目录，删除 ${Number(result.removed||0).toLocaleString()} 个${result.errors?`，${Number(result.errors).toLocaleString()} 个读取或删除失败`:''}。`;
       if(result.errors)actionFailure('空文件夹清理',new Error(`${result.errors} 个目录处理失败`));
       else actionReceipt(`已删除 ${Number(result.removed||0).toLocaleString()} 个空文件夹`);
-    }catch(error){status.textContent=error.message||'空文件夹清理失败';actionFailure('空文件夹清理',error)}
-    finally{setActionBusy(emptyButton,false);emptyButton.innerHTML=original}
+    }finally{setActionBusy(emptyButton,false);emptyButton.innerHTML=original}
+  }});
   };
   await wireLinkManager();
   await wireResourceSync();
@@ -3686,9 +3693,8 @@ async function disposeDuplicates(groups,keep,button){
   const victims=new Set(ids);
   const bytes=groups.reduce((n,g)=>n+g.files.reduce((m,f)=>m+(victims.has(f.id)?f.size||0:0),0),0);
   const label={largest:'最大的一个',longest:'最长的一个','115':'115（没有则留最大）',pikpak:'PikPak（没有则留最大）',all:'零个文件'}[keep];
-  if(!confirm(`把 ${ids.length} 个文件移入回收站，每组保留${label}？\n`
-    +`预计回收 ${fmtSize(bytes)}。文件仍在回收站里，可以还原。`))return;
-  button.disabled=true;
+  return confirmModal({title:'移入回收站',body:`将把 ${ids.length} 个重复文件的馆藏记录移入回收站，每组保留${label}。文件共 ${fmtSize(bytes)}，记录可从回收站还原。`,confirmLabel:'移入回收站',danger:false,onConfirm:async()=>{
+  setActionBusy(button);
   try{
     // /api/batch 单次上限 200，分批发。
     for(let i=0;i<ids.length;i+=200){
@@ -3696,7 +3702,9 @@ async function disposeDuplicates(groups,keep,button){
         body:JSON.stringify({ids:ids.slice(i,i+200),operation:'dispose'})});
     }
     await openDuplicates(false);
-  }finally{button.disabled=false}
+    actionReceipt(`已把 ${ids.length} 项移入回收站`);
+  }finally{setActionBusy(button,false)}
+  }});
 }
 async function openReview(push=true){
   releaseHoverPreviews();disposeStage(false);enterManagementSurface();
@@ -5219,13 +5227,14 @@ function wireFollowManage(creds=[]){
       if(prefix)prefix.innerHTML=icon('search')}
   };
   root.querySelectorAll('[data-follow-remove]').forEach(button=>button.onclick=async()=>{
-    if(!confirm('不再追这个来源？已经抓到的条目会一并移除，媒体本身不受影响。'))return;
-    button.disabled=true;
+    return confirmModal({title:'取消关注来源',body:'将移除这个来源及已抓取的条目，媒体文件保留。',confirmLabel:'取消关注来源',danger:true,onConfirm:async()=>{
+    setActionBusy(button);
     try{
       await api('/api/follow/source',{method:'POST',
         body:JSON.stringify({action:'remove',id:+button.dataset.followRemove})});
       await openFollowManage(false);actionReceipt('已取消关注来源');
-    }catch(error){button.disabled=false;actionFailure('取消关注来源',error)}
+    }catch(error){setActionBusy(button,false);throw error}
+  }});
   });
   root.querySelectorAll('[data-follow-enabled]').forEach(control=>control.onchange=async()=>{
     const enabled=control.checked;control.disabled=true;
@@ -5290,13 +5299,14 @@ function wireFollowManage(creds=[]){
   };
   root.querySelectorAll('[data-follow-alias-remove]').forEach(button=>button.onclick=async()=>{
     const alias=button.dataset.followAliasRemove;
-    if(!confirm(`移除作者别名「${alias}」？对应来源会恢复成独立作者组。`))return;
-    button.disabled=true;
+    return confirmModal({title:'移除作者别名',body:`将移除别名「${alias}」，对应来源恢复为独立作者组。`,confirmLabel:'移除作者别名',danger:false,onConfirm:async()=>{
+    setActionBusy(button);
     try{
       await api('/api/follow/author-alias',{method:'POST',body:JSON.stringify(
         {action:'remove',alias})});
       await openFollowManage(false);actionReceipt('已移除作者别名');
-    }catch(error){button.disabled=false;actionFailure('移除作者别名',error)}
+    }catch(error){setActionBusy(button,false);throw error}
+  }});
   });
   root.querySelectorAll('[data-follow-guess]').forEach(chip=>chip.onclick=()=>{
     if(!form)return;
@@ -5321,21 +5331,22 @@ function wireFollowManage(creds=[]){
     }catch(error){state.textContent=error.message||'保存失败';button.disabled=false}
   });
   root.querySelectorAll('[data-cred-clear]').forEach(button=>button.onclick=async()=>{
-    if(!confirm('清除这个来源的凭据？本机和共享副本都会被删除。'))return;
-    button.disabled=true;
+    return confirmModal({title:'清除来源凭据',body:'将清除这个来源在本机和共享副本中的登录凭据。',confirmLabel:'清除来源凭据',danger:true,onConfirm:async()=>{
+    setActionBusy(button);
     try{
       // 共享盘不在时后端只撤掉了本机那份，必须让用户看见——否则他以为撤干净了，
       // 等盘回来 key 又被同步回来。
       const done=await api('/api/follow/credential',{method:'POST',body:JSON.stringify(
         {provider:button.dataset.credClear,values:{}})});
-      if(done.note)alert(done.note);
+      if(done.note)throw new Error(done.note);
       await openFollowManage(false);actionReceipt('已清除来源凭据');
-    }catch(error){button.disabled=false;actionFailure('清除来源凭据',error)}
+    }catch(error){setActionBusy(button,false);throw error}
+  }});
   });
   root.querySelectorAll('[data-follow-bulk]').forEach(button=>button.onclick=async()=>{
     const to=button.dataset.followBulk;
-    if(!confirm(`把当前全部「未看」标记为${to==='seen'?'已看':'已忽略'}？`))return;
-    button.disabled=true;
+    return confirmModal({title:to==='seen'?'标记已看':'标记已忽略',body:`将把当前未看作品标记为${to==='seen'?'已看':'已忽略'}。`,confirmLabel:to==='seen'?'标记已看':'标记已忽略',danger:false,onConfirm:async()=>{
+    setActionBusy(button);
     try{
       const pending=await api('/api/follow?status=new&limit=1000');
       const ids=(pending.groups||[]).flatMap(g=>[g.primary,...g.variants,...g.duplicates])
@@ -5348,7 +5359,8 @@ function wireFollowManage(creds=[]){
       await openFollowManage(false);
       if(failed.length)actionFailure(`批量更新 ${failed.length}/${ids.length} 项`,failed[0].error);
       else actionReceipt(`已批量标记 ${ids.length} 项`);
-    }catch(error){button.disabled=false;actionFailure('批量更新关注状态',error)}
+    }catch(error){setActionBusy(button,false);throw error}
+  }});
   });
   root.querySelectorAll('[data-follow-view]').forEach(button=>
     button.onclick=()=>openFollow());
@@ -7900,7 +7912,7 @@ async function openTok(startId,push=true){
       const selectedItem=await api('/api/item?id='+startId);
       if(selectedItem.id)tokList=[selectedItem,...tokList.filter(x=>x.id!==startId)];
     }
-    if(!tokList.length){alert('当前筛选下没有可直接播放的内容（计费源不进沉浸模式）');$('#tokClose').click();return}
+    if(!tokList.length){$('#tokClose').click();toast({text:'当前筛选下没有可直接播放的内容'});return}
     tokIdx=Math.max(0,tokList.findIndex(x=>x.id===startId));
     await tokShow();
   }catch(_e){setTokLoading(false);$('#tokClose').click()}

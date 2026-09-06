@@ -684,18 +684,22 @@ export function confirmModal({title,body,confirmLabel,cancelLabel='取消',onCon
   document.body.append(dialog);
   return new Promise(resolve=>{
     let settled=null;
+    let busy=false;
     dialog.addEventListener('close',()=>{
       dialog.remove();
       if(trigger instanceof HTMLElement&&trigger.isConnected)trigger.focus();
       resolve(settled||{confirmed:false});
     },{once:true});
-    cancel.onclick=()=>dialog.close();
+    cancel.onclick=()=>{if(!busy)dialog.close()};
+    dialog.addEventListener('cancel',event=>{if(busy)event.preventDefault()});
     /* 遮罩上的点击落在 <dialog> 自己身上，卡片里的落在子元素上。这个动作可撤销，
        按 Geist 的判据允许点外面关掉。 */
-    dialog.addEventListener('click',event=>{if(event.target===dialog)dialog.close()});
+    dialog.addEventListener('click',event=>{if(event.target===dialog&&!busy&&!danger)dialog.close()});
     accept.onclick=async()=>{
+      if(busy)return;
       if(!onConfirm){settled={confirmed:true};dialog.close();return}
       failure.innerHTML='';
+      busy=true;
       setActionBusy(accept);
       try{
         settled={confirmed:true,result:await onConfirm()};
@@ -703,9 +707,9 @@ export function confirmModal({title,body,confirmLabel,cancelLabel='取消',onCon
       }catch(error){
         failure.innerHTML=noteHtml(error.message||'操作未完成',{variant:'error'});
         setActionBusy(accept,false);
-      }
+      }finally{busy=false}
     };
     dialog.showModal();
-    accept.focus();
+    (danger?cancel:accept).focus();
   });
 }
