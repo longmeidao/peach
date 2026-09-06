@@ -1836,8 +1836,22 @@ function un(e, t) {
 	});
 }
 //#endregion
+//#region src/jav-artwork.ts
+function dn(e) {
+	return e === "thumbnail" ? "thumbnail" : "cover";
+}
+function fn(e, t) {
+	return e.is_jav && e.code && e.has_cover && (dn(t) === "cover" || !e.has_thumb) ? "cover" : e.has_thumb ? "thumbnail" : "";
+}
+function pn(e, t) {
+	e.querySelectorAll("img[data-jav-image]").forEach((e) => {
+		let n = e.dataset.javCover || "", r = e.dataset.javThumb || "", i = !!(n && (dn(t) === "cover" || !r)), a = i ? n : r;
+		e.classList.toggle("cover", i), e.classList.toggle("whole", i && e.dataset.javImageLayout !== "big"), e.classList.toggle("front", i && e.dataset.javImageLayout === "big"), e.removeAttribute("style"), a && e.getAttribute("src") !== a && (e.src = a);
+	});
+}
+//#endregion
 //#region src/islands.ts
-var dn = {
+var mn = {
 	scraping: {
 		load: Gt,
 		component: Jt
@@ -1850,11 +1864,11 @@ var dn = {
 		load: Xe,
 		component: nt
 	}
-}, fn = () => Object.keys(dn), $ = /* @__PURE__ */ new Map();
-async function pn(e, t, n, r = {}) {
-	let i = dn[e];
+}, hn = () => Object.keys(mn), $ = /* @__PURE__ */ new Map();
+async function gn(e, t, n, r = {}) {
+	let i = mn[e];
 	if (!i) throw Error(`未注册的 island：${String(e)}`);
-	mn(t);
+	_n(t);
 	let a = {
 		controller: new AbortController(),
 		painted: !1
@@ -1885,9 +1899,9 @@ async function pn(e, t, n, r = {}) {
 	};
 	xe(te(i.component, s), t);
 }
-function mn(e) {
+function _n(e) {
 	let t = $.get(e);
 	t && (t.controller.abort(), $.delete(e), t.painted && xe(null, e));
 }
 //#endregion
-export { ln as TASTE_GUIDE_KEY, sn as cleanupSkeletonHtml, an as cloudLocations, on as cloudPreferenceLocations, en as entitySkeletonHtml, Wt as followJobProgress, fn as islandNames, Qt as matchesFaceSource, pn as mountIsland, $t as nativeImageFit, Zt as refreshStore, tn as sidebarHasCatalogContent, rn as sidebarTagCounts, Xt as storeNames, nn as syncSidebarSurface, cn as tasteHistoryGuideHtml, mn as unmountIsland, Ut as watchJob, un as wireTasteHistoryGuide };
+export { ln as TASTE_GUIDE_KEY, sn as cleanupSkeletonHtml, an as cloudLocations, on as cloudPreferenceLocations, en as entitySkeletonHtml, Wt as followJobProgress, hn as islandNames, fn as javImageKind, Qt as matchesFaceSource, gn as mountIsland, $t as nativeImageFit, dn as normalizeJavImage, Zt as refreshStore, tn as sidebarHasCatalogContent, rn as sidebarTagCounts, Xt as storeNames, pn as syncJavImages, nn as syncSidebarSurface, cn as tasteHistoryGuideHtml, _n as unmountIsland, Ut as watchJob, un as wireTasteHistoryGuide };

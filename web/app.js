@@ -6,7 +6,7 @@ import { matchRoute, routeLabel } from './js/routes.js';
 import { initMiddleTruncate } from './js/middle-truncate.js';
 import { tagLabel } from './js/tags.js';
 import { syncSidebarSurface, sidebarTagCounts, sidebarHasCatalogContent, cleanupSkeletonHtml, cloudLocations, cloudPreferenceLocations, tasteHistoryGuideHtml, wireTasteHistoryGuide, TASTE_GUIDE_KEY } from './dist/peach-ui.js';
-import { nativeImageFit, matchesFaceSource, entitySkeletonHtml } from './dist/peach-ui.js';
+import { javImageKind, normalizeJavImage, syncJavImages, nativeImageFit, matchesFaceSource, entitySkeletonHtml } from './dist/peach-ui.js';
 import {
   attachOverlayScrollbar, breadcrumbHtml, checkboxHtml, closeAnchoredMenu, confirmModal, emptyStateHtml, fieldsetTitle,
   fillSkeletonTier, fitSkeleton, iconSwitchHtml, indexSkeletonHtml, loadingDotsHtml,
@@ -399,7 +399,7 @@ const THEME_CHOICES=['system','light','dark'];
    讲的是设备而不是明暗，日月合体的那枚反而在说明暗。`monitor` 因此归给它，详情页的
    画面尺寸改用 `ratio`——那里量的是画幅本身，不是放画幅的那台机器。 */
 const THEME_OPTIONS=[['system','跟随系统','monitor'],['light','浅色','sun'],['dark','深色','moon']];
-const DEFAULT_SETTINGS={batchSize:60,defaultSort:'seed',sortDefaultsVersion:3,hoverDelaySeconds:5,seekSeconds:10,searchHistoryLimit:10,relatedLimit:20,javLayout:'big',followLayout:'cozy',peopleLayout:'big',ambientMode:true,theaterMode:false,theme:'system',groupCollapse:true,sidebarOrder:DEFAULT_SIDEBAR_ORDER};
+const DEFAULT_SETTINGS={batchSize:60,defaultSort:'seed',sortDefaultsVersion:3,hoverDelaySeconds:5,seekSeconds:10,searchHistoryLimit:10,relatedLimit:20,javLayout:'big',javImage:'cover',followLayout:'cozy',peopleLayout:'big',ambientMode:true,theaterMode:false,theme:'system',groupCollapse:true,sidebarOrder:DEFAULT_SIDEBAR_ORDER};
 let appSettings={...DEFAULT_SETTINGS};
 try{appSettings={...DEFAULT_SETTINGS,...JSON.parse(localStorage.getItem(SETTINGS_KEY)||'{}')}}catch(_e){}
 const allowedSetting=(value,allowed,fallback)=>allowed.includes(value)?value:fallback;
@@ -424,6 +424,7 @@ appSettings.groupCollapse=appSettings.groupCollapse!==false;
 appSettings.detailAutoplay=appSettings.detailAutoplay!==false;
 appSettings.searchHistoryLimit=allowedSetting(+appSettings.searchHistoryLimit,[5,10,20],10);
 appSettings.relatedLimit=allowedSetting(+appSettings.relatedLimit,[12,20,30],20);
+appSettings.javImage=normalizeJavImage(appSettings.javLayout==='preview'?'thumbnail':appSettings.javImage);
 appSettings.theme=allowedSetting(appSettings.theme,THEME_CHOICES,'system');
 const sidebarKeyAlias=key=>key==='ads'||key==='dupes'?'data-cleanup':key;
 appSettings.sidebarOrder=[...new Set((Array.isArray(appSettings.sidebarOrder)?appSettings.sidebarOrder:DEFAULT_SIDEBAR_ORDER).map(sidebarKeyAlias))].filter(key=>ALL_SIDEBAR_KEYS.includes(key));
@@ -448,6 +449,14 @@ applyTheme();
 prefersDark.addEventListener('change',()=>{if(appSettings.theme==='system')applyTheme()});
 /* 三档互斥视图是 Geist Switch（一组共享 name 的 radio），与卡片版式切换共用同一份模板；
    形状按 vercel.com 的主题选择器单独给，见 web/css/16-settings.css。 */
+function renderJavImageSetting(){
+  const mount=$('#javImageSetting');
+  mount.innerHTML=iconSwitchHtml('jav-image','JAV 默认图片',
+    [['cover','封面',''],['thumbnail','缩略图','']],appSettings.javImage,{attr:'data-jav-image-choice',className:'javimageswitch',text:true});
+  wireIconSwitch(mount,'data-jav-image-choice',choice=>{
+    setJavLayout(choice==='thumbnail'?'preview':javLayout()==='preview'?'small':javLayout());
+  });
+}
 function renderThemeSetting(){
   const mount=$('#themeSetting');
   mount.innerHTML=iconSwitchHtml('theme','主题',THEME_OPTIONS,appSettings.theme,{attr:'data-theme-choice',className:'themeswitch'});
@@ -496,6 +505,7 @@ function syncSettingsPanel(){
   $('#detailAutoplaySetting').checked=appSettings.detailAutoplay;
   renderSettingSelects();
   renderThemeSetting();
+  renderJavImageSetting();
   renderSidebarOrderSetting();
   loadFollowScheduleSetting();
 }
@@ -1996,6 +2006,17 @@ function coverImage(it,layout,eager){
   return `<img class="poster cover ${layout==='small'?'whole':'front'}" src="${src}"
     alt="" loading="${eager?'eager':'lazy'}"${face} data-drop="self">`;
 }
+function javArtwork(it,layout,eager=false){
+  const kind=javImageKind(it,appSettings.javImage);
+  if(!kind)return '<span class="nopic">无预览</span>';
+  const cover=it.has_cover&&it.code?`/cover?code=${encodeURIComponent(it.code)}`:'';
+  const thumb=it.has_thumb?`/poster?id=${it.id}&c=4`:'';
+  const coverHtml=coverImage(it,layout==='big'?'big':'small',eager);
+  const frame=(coverHtml.match(/ data-c[xy]="[^"]*"/g)||[]).join('');
+  const image=kind==='cover'?coverHtml
+    :`<img class="poster" src="${thumb}" alt="" loading="${eager?'eager':'lazy'}"${frame}>`;
+  return image.replace('<img ',`<img data-jav-image="${it.id}" data-jav-cover="${esc(cover)}" data-jav-thumb="${esc(thumb)}" data-jav-image-layout="${layout}" `);
+}
 /* 卡片署名。版次队列要和「接着看」长得一样，就必须用同一份身份推导——各算各的
    迟早会在同名 creator/performer 那 35 组上分叉，同一条作品在两处指向两个实体。
    `linked=false` 给队列用：整行本身就是一个 <button>，里面再嵌 <button> 会被
@@ -2048,7 +2069,6 @@ function cardHtml(it,cls){
   const jav=javActive()&&!!it.is_jav,layout=javLayout();
   const parts=it.part_group||null;
   const editions=it.edition_group||null;
-  const useCover=jav&&layout!=='preview'&&it.has_cover;
   /* 卡片比例，写进 `--card-ratio` 交给 CSS 消费。`.pic` 写死 16/9 的话，JAV 的两种
      版式看起来一模一样。 */
   /* 一个列表里所有卡片必须同高，比例只能由**列表的语境**决定，不能由单条媒体决定。
@@ -2063,8 +2083,8 @@ function cardHtml(it,cls){
        缺封面的用 16:9 预览图上下留黑边即可（`.poster` 本来就是 contain + 黑底）。 */
     : (jav&&layout==='big'?COVER_FRONT_RATIO:16/9);
 
-  const thumb=useCover
-    ? coverImage(it,layout)
+  const thumb=it.is_jav
+    ? javArtwork(it,jav?layout:'small')
     : it.follow_thumb_url
       ? `<img class="poster" src="${esc(it.follow_thumb_url)}" alt="" loading="lazy" referrerpolicy="no-referrer">`
     : (it.has_thumb
@@ -2269,18 +2289,17 @@ function mixLabel(it){
 /* 这一条真能画出图吗。必须和下面 mixFacePoster 的分支一致：只看 has_cover 会把
    非 JAV 模式下只有官方封套的条目当成有图，选它做 seed 或翻到它都是一张「无预览」。 */
 function mixHasPicture(it,layout){
-  return !!it&&((javActive()&&!!it.is_jav&&layout!=='preview'&&!!it.has_cover)||!!it.has_thumb);
+  return !!it&&Boolean(javImageKind(it,appSettings.javImage));
 }
 /* Mix 卡片的静止封面和悬浮翻动的每一张都走这里：翻进来的那张必须和静止的
    那张长得一样，否则一翻就露出比例和取景的差别。 */
 function mixFacePoster(it,layout,eager){
   const jav=javActive()&&!!it.is_jav;
-  const useCover=jav&&layout!=='preview'&&it.has_cover;
   /* 翻动的那几张必须 eager：它们是悬浮时才插进一个 hidden 容器的，
      lazy 图在没有布局盒时根本不会发请求，一翻就是黑屏。 */
   const load=eager?'eager':'lazy';
-  return useCover
-    ? coverImage(it,layout,eager)
+  return it.is_jav
+    ? javArtwork(it,jav?layout:'small',eager)
     : (it.has_thumb
       ? `<img class="poster" src="/poster?id=${it.id}&c=4" alt="" loading="${load}">`
       : `<span class="nopic">无预览</span>`);
@@ -2382,6 +2401,7 @@ function wireStackFlip(el,loadFaces){
     if(!live||selectMode||censorOn())return;
     if(pool.length<2)return;
     box.innerHTML=pool.map((face,i)=>`<div class="mixface${i?'':' on'}">${face}</div>`).join('');
+    syncJavImages(box,appSettings.javImage);
     faces=[...box.children];index=0;box.hidden=false;
     lead=setTimeout(()=>{step();cycle=setInterval(step,MIX_FLIP_MS)},MIX_FLIP_LEAD_MS);
   };
@@ -6811,7 +6831,11 @@ function repaintCatalogCards(){
 }
 function setJavLayout(value){
   appSettings.javLayout=value;
+  appSettings.javImage=value==='preview'?'thumbnail':'cover';
   saveSettings();
+  syncJavImages(document,appSettings.javImage);
+  document.querySelectorAll('img[data-jav-image].cover').forEach(coverAnchor);
+  document.querySelectorAll('[data-jav-layout]').forEach(input=>{input.checked=input.value===value});
   // 只重画卡片，不重新请求：版式是纯展示层的事。资料页保留已经载入的分页。
   const index=$('#index'),kind=index?.dataset.entityKind,name=index?.dataset.entityName;
   if(kind&&name&&!index.hidden&&entityMediaView.media!=='photos'){
@@ -7185,10 +7209,7 @@ function queueHtml(queue,itemId){
   const summary=queue.kind==='editions'?countLabel:`${esc(queue.title)} · ${countLabel}`;
   return `<aside class="mixqueue" data-queue-kind="${esc(queue.kind)}"><div class="mixqueuehead"><div><h2>${kindLabel}</h2><span>${summary}</span></div><div class="mixqueueactions">${action}
     <button data-queue-close title="关闭" aria-label="关闭">${icon('x')}</button></div></div><div class="mixlist">${queue.items.map((x,index)=>{
-      /* 没抽过帧就退回番号封套。版次组里常有一份刚入库、还没抽帧的无码，
-         只认 `has_thumb` 会让它在队列里是个纯黑块，而同一条在列表卡上是有封面的。 */
-      const thumb=x.has_thumb?`<img src="/poster?id=${x.id}&c=4" alt="" loading="lazy">`
-        :(x.is_jav&&x.code?`<img src="/cover?code=${encodeURIComponent(x.code)}" alt="" loading="lazy" data-drop="self">`:'');
+      const thumb=mixFacePoster(x,'small');
       const edition=queue.kind==='editions'&&x.edition_label
         ?`<i class="qedition javedition ${EDITION_TONE[x.edition_label]||'censored'}">${esc(x.edition_label)}</i>`:'';
       const edit=queue.kind==='playlist'?`<span class="queueedit"><button data-queue-up="${index}" aria-label="上移" ${index===0?'disabled':''}>↑</button><button data-queue-down="${index}" aria-label="下移" ${index===queue.items.length-1?'disabled':''}>↓</button><button data-queue-remove="${x.id}" aria-label="移出播放列表">${icon('x')}</button></span>`:'';

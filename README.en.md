@@ -47,6 +47,8 @@ Settings control whether local and followed videos play automatically when their
 
 Portraits and brand marks allow moderate enlargement in large and compact views. Very small images use their native size with a blurred background. Display areas below 64 px retain the regular icon treatment.
 
+Settings includes a JAV image preference: covers or thumbnails across the home feed, continue watching, Mix, video cards and playback queues. Missing images fall back to the other type. The preference is saved in the current browser.
+
 Peach is **pre-1.0**. The application interface is currently Chinese only.
 
 | Platform | Available today |
