@@ -477,8 +477,8 @@ const SETTING_SELECTS=[
   ['batchSizeSetting','每批作品',[['30','30 个'],['60','60 个'],['90','90 个']],
     ()=>appSettings.batchSize,
     value=>{appSettings.batchSize=+value||60;saveSettings();if(location.pathname==='/')load(true)}],
-  ['defaultSortSetting','默认排序',[['seed','随机','refresh-cw'],['rating','评分','star'],['o','高潮计数','heart'],['plays','观看次数','play'],
-    ['dur','时长','clock'],['size','体积','hard-drive'],['new','入库时间','calendar'],['played','观看时间','history']],
+  ['defaultSortSetting','默认排序',[['seed','随机'],['rating','评分'],['o','高潮计数'],['plays','观看次数'],
+    ['dur','时长'],['size','体积'],['new','入库时间'],['played','观看时间']],
     ()=>appSettings.defaultSort,
     value=>{appSettings.defaultSort=value;syncSortDirectionSetting();saveSettings();state.sort=appSettings.defaultSort;
       state.dir=preferredDirection(state.sort,appSettings.defaultSort,appSettings.defaultSortDirection);if(location.pathname==='/')load(true)}],
