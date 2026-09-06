@@ -417,6 +417,8 @@ export function wireIconSwitch(root,attr,apply){
  * `accent-color` 也只能改选中色，未选中态连悬停反馈都给不了。所以自绘一份，关注
  * 列表、来源筛选、候选清单、标签匹配和设置项共用它。
  */
+export function badgeHtml(text){return `<span class="geist-badge">${esc(text)}</span>`}
+
 export function checkboxHtml(inputAttrs=''){
   return `<span class="pcheck"><input type="checkbox" ${inputAttrs}><span aria-hidden="true">${icon('check')}</span></span>`;
 }

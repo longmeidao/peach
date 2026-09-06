@@ -47,7 +47,7 @@ Tray-managed services let you adjust media sources under Manage → Configuratio
 
 In Configuration or Data Management, Scan and enrich scans folders, detects existing NFO files and local posters, and fetches missing metadata. While processing, the home page links to progress in Configuration. Same-name NFO files, `movie.nfo` in single-movie folders, and episode NFO files are supported. Metadata retains its original source and enters the review queue before updating the catalog. Local custom tags are preserved; folders containing multiple videos do not share `movie.nfo`.
 
-Enter selection mode from the top-right toolbar to approve or reject items across groups, or choose a shared source. Metadata groups separate single candidates from items requiring a source choice. Choosing a source does not submit a decision; approve the selection to adopt it. Failed items retain their selection and error message for retry.
+Review items have checkboxes beside their names and support Shift range selection. Group by candidate count, source or field, then approve or reject selected items across groups. Choosing a shared source does not submit a decision; approve the selection to adopt it. Failed items retain their selection and error message for retry.
 
 Follow sources include FANBOX, Patreon, SubscribeStar, Kemono, Pawchive, Coomer, the Rule34 family and F95zone. Availability depends on the site and your access rights. See [source collection](docs/SOURCING.md) for supported workflows and boundaries.
 

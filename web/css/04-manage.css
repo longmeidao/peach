@@ -12,12 +12,15 @@
 .review{--review-fieldset-height:440px;padding:0 0 42px}.reviewsection{margin-bottom:20px}.reviewsection h3{margin:0 0 9px;font-size:var(--fs-lg)}.reviewlist{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:14px;align-items:start}
 /* 判定状态用左侧色条表达：整卡描边在一列里扫过去时反而认不出来 */
 .reviewitem{position:relative;display:flex;flex-direction:column;box-sizing:border-box;height:var(--review-fieldset-height);margin:0;padding:0;min-width:0;overflow:hidden;background:var(--ground);border:1px solid var(--field-ring);border-radius:var(--floating-radius)}.reviewitem::before{content:'';position:absolute;z-index:3;left:0;top:0;bottom:0;width:3px;background:transparent}.reviewitem[data-decision="approved"]::before{background:var(--keep)}.reviewitem[data-decision="rejected"]::before{background:var(--drop)}.reviewitem[data-decision="skipped"]::before{background:var(--muted)}.reviewitem[data-decision="rejected"],.reviewitem[data-decision="skipped"]{opacity:.6}.reviewitem h4{margin:0 0 6px;font-size:var(--fs-lg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.reviewitem p{margin:4px 0;color:var(--muted);font-size:var(--fs-xs);line-height:1.55;overflow-wrap:anywhere}
-.reviewitem>.geist-fieldset-content{flex:1;min-height:0;padding:20px}.reviewcontent{height:100%}
-.reviewcontent .geist-scroller-container{padding-right:12px}
+.reviewitem>.geist-fieldset-content{flex:1;min-height:0;padding:20px}.reviewitem .reviewcontent{height:100%;overflow:visible}
+.reviewcontent .geist-scroller-container{padding-right:0}
+.reviewcontent .ovtrack.ov-y{transform:translateX(12px)}
 .reviewlist.reviewgroups{display:block}.reviewgroup{margin-bottom:24px}
 .reviewbulkbar{display:flex;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:16px}
 .reviewbulkbar h3{margin:0 auto 0 0;font-size:var(--fs-lg)}
-.reviewpickitem{display:flex;align-items:center;gap:8px;margin:16px 20px 0;font-size:var(--fs-md)}
+.reviewpickitem{display:inline-flex;align-items:center;flex:none;margin:0}
+.reviewpickheading{display:flex;align-items:center;gap:8px}
+.reviewpickname{min-width:0;overflow:hidden;text-overflow:ellipsis}
 .reviewpickitem[hidden],.reviewbulkbar [hidden]{display:none}
 .reviewgroup>.reviewstate:empty{display:none}
 .library-processing-result{margin-top:16px}
@@ -40,7 +43,6 @@
 .reviewstate{font-size:var(--fs-xs);color:var(--drop);min-width:0;flex:1 1 100%}
 .reviewstate:empty{display:none}
 .reviewalias{margin:2px 0 0;font-size:var(--fs-xs);color:var(--muted)}
-.reviewactions button{box-sizing:border-box;height:32px;border:1px solid var(--border-15);border-radius:var(--control-radius);background:transparent;color:var(--ink-2);padding:0 12px;font-size:var(--fs-sm);cursor:pointer}.reviewactions button:hover{background:var(--hover);color:var(--ink)}.reviewactions .approve{background:var(--ink);border-color:var(--ink);color:var(--ground);font-weight:600}.reviewactions .approve:hover{background:color-mix(in srgb,var(--ink) 88%,var(--ground));border-color:color-mix(in srgb,var(--ink) 88%,var(--ground));color:var(--ground)}.reviewactions .skip{color:var(--meter)}.reviewactions .skip:hover{background:var(--meter);border-color:var(--meter);color:#fff}.reviewactions .reject{color:var(--drop)}.reviewactions .reject:hover{background:var(--drop);border-color:var(--drop);color:#fff}
 /* 数据管理整页收进一条窄列（vercel.com/geist/fieldset 实测示例块宽 812px），
    fieldset 一行一个，不再拼三列。 */
 .cleanuppage{width:min(812px,100%);margin:0 auto}
@@ -131,7 +133,9 @@
 
 .reviewbulktoolbar{width:100%;padding-block:16px}
 .reviewbulkfeedback{color:var(--muted)}
-.reviewbulksource{min-width:180px;max-width:100%}
-.reviewbulkreject{color:var(--drop)}
-.reviewbulkreject:hover{background:var(--drop);color:#fff}
+.reviewbulksource{min-width:0;max-width:100%}
+.reviewbulkdecisions{display:flex;align-items:center;gap:12px}
+.reviewselectedcount{display:inline-flex;align-items:center}
+.reviewbulktoolbar .gselect>button{height:32px}
+.reviewbulktoolbar .geist-button{flex:none}
 .taste-history-guide-content .taste-guide-skip:hover{color:var(--meter)}

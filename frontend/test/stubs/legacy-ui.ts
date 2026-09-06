@@ -47,3 +47,5 @@ export const noteHtml = (
   options: { variant?: string; label?: string } = {},
 ): string => `<div class="geist-note geist-note-${options.variant ?? 'secondary'}" role="note">`
   + `<b>${options.label ?? ''}</b><span>${message}</span></div>`;
+
+export const badgeHtml = (text: string): string => `<span class="geist-badge">${text}</span>`;
