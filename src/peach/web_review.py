@@ -17,6 +17,7 @@ from pathlib import Path, PurePosixPath
 from typing import Protocol
 from urllib.parse import quote
 
+from .avatar_face import FaceProbe, drop_sidecar, write_sidecar
 from .catalog_rules import (
     collapse_superseded_taste_tags,
     is_korean_mib_code,
@@ -984,6 +985,16 @@ def _install_performer_avatar(contract: ReviewContract, entity_id: str) -> int:
     # 原子替换：中途失败不会留下半张图被 `/entity-image` 读到。
     atomic_write_bytes(destination, body)
     Path(f"{destination}.ct").write_text(content_type, encoding="utf-8")
+    # 取景 sidecar 必须跟着图一起换，判据与 `harvest_social_avatars.install_avatar`
+    # 同一条：112px 的圆框按 sidecar 里那张脸摆位，没有 sidecar 就几何居中，而半身
+    # 竖构图的几何中心通常落在脖子以下。检不出脸时把 sidecar 删掉——留着上一张图的
+    # 脸框最糟，页面会拿它给这一张取景、放大到一个空位置上，界面上与「这张图本来就
+    # 该这么显示」看不出区别。
+    face = FaceProbe()(destination)
+    if face:
+        write_sidecar(destination, face)
+    else:
+        drop_sidecar(destination)
     Path(f"{destination}.provenance.json").write_text(json.dumps({
         "source": "performer avatar review",
         "provider": candidate.get("provider") or "",
