@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import { applyReviewSelection, groupReviewRows, selectReviewRange, commonReviewSources, createReviewSelection, wireReviewSelection } from '../src/review-bulk';
+import { applyReviewSelection, groupReviewRows, selectReviewRange, commonReviewSources, createReviewSelection, wireReviewSelection, reviewGroupingOptions } from '../src/review-bulk';
 
 afterEach(() => { document.body.innerHTML = ''; });
 it('逐项采用保留失败项，重试仅提交失败项', async () => {
@@ -135,4 +135,34 @@ it('Shift 范围使用分组后的显示顺序，普通取消只影响单项', (
   expect([...state.selected]).toEqual(['c','b','d']);
   selectReviewRange(state,keys,'b',false,false);
   expect([...state.selected]).toEqual(['c','d']);
+});
+
+it('Shift 鼠标按下阻止文字选择且普通点击不受影响', () => {
+  const f = fixture(), label = f.root.querySelector('.reviewpickitem')!;
+  expect(label.dispatchEvent(new MouseEvent('mousedown', {bubbles:true,cancelable:true,shiftKey:true}))).toBe(false);
+  expect(label.dispatchEvent(new MouseEvent('mousedown', {bubbles:true,cancelable:true}))).toBe(true);
+});
+
+it('分类筛选后全选和快捷键仅操作当前分类，清除筛选可恢复全部', () => {
+  const f = fixture();
+  const filter = f.root.querySelector('.reviewcategoryfilter .gselect') as HTMLElement & {value:string};
+  filter.value = 'multiple'; filter.dispatchEvent(new Event('change'));
+  f.button('全选当前分类').click();
+  expect([...f.state.selected]).toEqual(['two']);
+  f.button('清空当前选择').click();
+  f.root.dispatchEvent(new KeyboardEvent('keydown', {key:'a',ctrlKey:true,bubbles:true}));
+  expect([...f.state.selected]).toEqual(['two']);
+  expect(f.root.querySelectorAll('.reviewgroup:not([hidden])')).toHaveLength(1);
+  f.state.filter = ''; f.render();
+  expect(f.root.querySelectorAll('.reviewgroup:not([hidden])')).toHaveLength(2);
+});
+
+it('分组菜单只提供当前类别的数据维度，失效字段筛选自动重置', () => {
+  expect(reviewGroupingOptions([{item_key:'identity'}],false)).toEqual([['candidates','全部待复核','list-filter']]);
+  expect(reviewGroupingOptions([{item_key:'field',field:'performers',source:'nfo'}],true).map(item=>item[0])).toEqual(['candidates','source','field']);
+  const f = fixture(); f.state.groupBy = 'field'; f.state.filter = 'performers'; f.render();
+  expect(f.state.groupBy).toBe('candidates'); expect(f.state.filter).toBe('');
+  expect((f.root.querySelector('.reviewbulksource') as HTMLElement).hidden).toBe(true);
+  f.button('全选本页').click();
+  expect((f.root.querySelector('.reviewbulksource') as HTMLElement).hidden).toBe(false);
 });
