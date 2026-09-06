@@ -297,6 +297,7 @@ const OVERLAY_SCROLLERS=[
   '.settingsscroll','.sidecontent','.tagpickbody','.mixlist','.playlistpicklist','.playerstats',
   '.vjs-peach-settings-menu','.geist-scroller-container','.metricstrip','.tastesummaries',
   '.insighttabs','.insightstorage','.skeletondashstrip','.followpagination','.linktablewrap',
+  '.reviewtabs','.junkfilters',
 ].join(',');
 
 /**
@@ -648,6 +649,104 @@ export function wireSelectField(root){
   Object.defineProperty(root,'disabled',{configurable:true,
     get:()=>trigger.disabled,set:value=>{trigger.disabled=!!value;if(value)anchored.setOpen(false)}});
   return root;
+}
+
+/* 拖动排序：一列带 key 的行，拖到哪一行的上半截或下半截就插到那里。
+
+   站内此前有两份几乎一样的实现（侧栏顺序、导航按钮），第三处再抄一遍，落点判据、
+   拖动中的减淡和那条插入线就会各演化一份。这里只收「一列行」这一种：拖动中的行加
+   `dragging`，落点行加 `drop-before` / `drop-after`，样式由调用方那一侧的类名给。
+
+   `onMove(key,target,after)` 拿到的是两个 key 和一个方位，重排由调用方自己做——
+   顺序存在哪、存完刷什么，各处本来就不一样。 */
+export function wireDragReorder(root,{selector,attribute,onMove}={}){
+  const rows=()=>[...root.querySelectorAll(selector)];
+  const clear=()=>rows().forEach(row=>row.classList.remove('dragging','drop-before','drop-after'));
+  let dragging=null;
+  rows().forEach(row=>{
+    const key=row.getAttribute(attribute);
+    row.draggable=true;
+    row.addEventListener('dragstart',event=>{
+      dragging=key;row.classList.add('dragging');
+      event.dataTransfer.effectAllowed='move';
+      // 不写 dataTransfer 的话 Firefox 根本不认这是一次拖动；首页那一项的 key 是空串，
+      // 空串等于没写，所以给它一个占位。落点判据只看 key 本身，不看这里写的字。
+      event.dataTransfer.setData('text/plain',key||'peach-row');
+    });
+    row.addEventListener('dragover',event=>{
+      if(dragging===null||dragging===key)return;
+      event.preventDefault();event.dataTransfer.dropEffect='move';
+      const after=event.clientY>row.getBoundingClientRect().top+row.offsetHeight/2;
+      rows().forEach(item=>item.classList.remove('drop-before','drop-after'));
+      row.classList.add(after?'drop-after':'drop-before');
+    });
+    row.addEventListener('drop',event=>{
+      event.preventDefault();
+      const after=row.classList.contains('drop-after'),from=dragging;
+      dragging=null;clear();
+      if(from!==null&&from!==key)onMove(from,key,after);
+    });
+    row.addEventListener('dragend',()=>{dragging=null;clear()});
+  });
+}
+
+/* Geist Modal 的另一种正文：要填的一份表单，而不是一句待确认的话。
+
+   壳、遮罩、焦点陷阱、Escape 和关掉后把焦点还给触发钮全部来自 confirmModal 用的那身
+   `.geist-modal`，两者的差别只有正文和主按钮做什么。所以弹层的几何只有一处：标题
+   20px/26px 的 h3、正文 20px 内边距、操作条粘在底两端对齐、主按钮在右下角。
+
+   返回值里的 `dialog` 交给调用方接自己的行事件，`done` 在弹层关掉时兑现。 */
+let formModalSeq=0;
+export function formModal({title,description='',body='',confirmLabel,cancelLabel='取消',
+                           onConfirm=null,confirmDisabled=false}={}){
+  const trigger=document.activeElement;
+  const dialog=document.createElement('dialog');
+  dialog.className='geist-modal';
+  const titleId=`geist-form-title-${++formModalSeq}`;
+  dialog.setAttribute('aria-labelledby',titleId);
+  dialog.innerHTML=`<form class="geist-modal-form" novalidate>
+      <div class="geist-modal-body"><h3 id="${titleId}"></h3>${description?'<p></p>':''}
+        <div class="geist-modal-fields">${body}</div><div data-modal-error></div></div>
+      <footer class="geist-modal-footer">
+        <div><button type="button" class="geist-button" data-modal-cancel></button></div>
+        <div><button type="submit" class="geist-button primary" data-modal-confirm></button></div>
+      </footer></form>`;
+  dialog.querySelector('h3').textContent=title;
+  if(description)dialog.querySelector('.geist-modal-body p').textContent=description;
+  const cancel=dialog.querySelector('[data-modal-cancel]');
+  const accept=dialog.querySelector('[data-modal-confirm]');
+  const failure=dialog.querySelector('[data-modal-error]');
+  cancel.textContent=cancelLabel;
+  accept.textContent=confirmLabel;
+  accept.disabled=!!confirmDisabled;
+  document.body.append(dialog);
+  let settled=null,busy=false;
+  const done=new Promise(resolve=>dialog.addEventListener('close',()=>{
+    dialog.remove();
+    if(trigger instanceof HTMLElement&&trigger.isConnected)trigger.focus();
+    resolve(settled||{confirmed:false});
+  },{once:true}));
+  cancel.onclick=()=>{if(!busy)dialog.close()};
+  dialog.addEventListener('cancel',event=>{if(busy)event.preventDefault()});
+  // 遮罩上的点击落在 <dialog> 自己身上；这里没有不可逆的动作，允许点外面关掉。
+  dialog.addEventListener('click',event=>{if(event.target===dialog&&!busy)dialog.close()});
+  dialog.querySelector('form').onsubmit=async event=>{
+    event.preventDefault();
+    if(busy||accept.disabled)return;
+    if(!onConfirm){settled={confirmed:true};dialog.close();return}
+    failure.innerHTML='';busy=true;setActionBusy(accept);
+    try{
+      settled={confirmed:true,result:await onConfirm()};
+      dialog.close();
+    }catch(error){
+      failure.innerHTML=noteHtml(error.message||'操作未完成',{variant:'error'});
+      setActionBusy(accept,false);
+    }finally{busy=false}
+  };
+  dialog.showModal();
+  (dialog.querySelector('.geist-modal-fields input:not([type="checkbox"])')||accept).focus();
+  return {dialog,confirmButton:accept,done,close:()=>dialog.close()};
 }
 
 /* Geist Modal：一次写操作落库前的确认。

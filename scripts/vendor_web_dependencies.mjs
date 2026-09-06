@@ -72,6 +72,12 @@ const lucideIcons = new Map([
   ["hard-drive", "hard-drive"], ["globe", "globe"], ["rss", "rss"],
   ["thumbs-up", "thumbs-up"], ["thumbs-down", "thumbs-down"], ["eye", "eye"],
   ["eye-off", "eye-off"], ["grip-vertical", "grip-vertical"], ["trash", "trash-2"],
+  // 卡片右上角那个点点点菜单的触发钮，和菜单里的「编辑名称」。
+  ["ellipsis", "ellipsis"], ["pencil", "pencil"],
+  // 动作图标：一个动作一枚，不共用「转圈」当万能替身。
+  ["shuffle", "shuffle"], ["unlink", "unlink"], ["git-compare", "git-compare"],
+  ["compass", "compass"], ["folder-sync", "folder-sync"], ["expand", "expand"],
+  ["zoom-in", "zoom-in"], ["zoom-out", "zoom-out"],
   ["plus", "plus"], ["minus", "minus"], ["check", "check"],
   ["rotate-ccw", "rotate-ccw"], ["rotate-cw", "rotate-cw"], ["maximize", "maximize"],
   ["chevron-left", "chevron-left"], ["chevron-right", "chevron-right"],

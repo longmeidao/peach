@@ -95,7 +95,7 @@ function Facts({ facts }: { facts: ConfigurationFact[] }) {
           {facts.map((fact) => (
             <>
               <dt>{fact.term}</dt>
-              <dd>{fact.value}{fact.download_url ? <span class="confighelp"> <a href={fact.download_url} target="_blank" rel="noreferrer">{fact.download_label}<svg aria-hidden="true" viewBox="0 0 24 24"><use href="#i-external-link" /></svg></a></span> : null}</dd>
+              <dd>{fact.value}{fact.download_url ? <span class="confighelp"> <a class="externallink" href={fact.download_url} target="_blank" rel="noreferrer">{fact.download_label}<svg class="externalmark" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-external-link" /></svg></a></span> : null}</dd>
             </>
           ))}
         </dl>
@@ -305,7 +305,7 @@ function ConfigurationForm({ data, receipt }: { data: ConfigurationData; receipt
           </div>
           <button type="button" class="geist-button configadd" onClick={add}>添加文件夹</button>
           {kinds.some((kind) => kind === '115' || kind === 'pikpak') ? <CloudDriveGuide /> : null}
-          {kinds.some((kind) => kind === '115' || kind === 'pikpak') ? data.mount_dependencies?.filter((dependency) => !dependency.available).map((dependency) => <p class="confighelp">未检测到 {dependency.name}。<a href={dependency.download_url} target="_blank" rel="noreferrer">下载 {dependency.name}<svg aria-hidden="true" viewBox="0 0 24 24"><use href="#i-external-link" /></svg></a></p>) : null}
+          {kinds.some((kind) => kind === '115' || kind === 'pikpak') ? data.mount_dependencies?.filter((dependency) => !dependency.available).map((dependency) => <p class="confighelp">未检测到 {dependency.name}。<a class="externallink" href={dependency.download_url} target="_blank" rel="noreferrer">下载 {dependency.name}<svg class="externalmark" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-external-link" /></svg></a></p>) : null}
           {data.windows === false ? <p class="confighelp">本机文件夹是这台电脑读取媒体的位置。Windows 中的对应路径用于匹配馆藏中已有的路径，例如 B:\ 对应本机挂载文件夹。</p> : null}
         </div>
           {data.port_editable !== false ? <div class="configfield">

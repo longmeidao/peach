@@ -139,8 +139,13 @@
 .vwrap .video-js .vjs-peach-right-controls>.vjs-control:focus-visible,
 .vwrap .video-js .vjs-peach-right-controls>.vjs-control>button:focus,
 .vwrap .video-js .vjs-peach-right-controls>.vjs-control>button:focus-visible{outline:0;box-shadow:none}
-.vwrap .video-js .vjs-progress-control{z-index:2;position:absolute;left:0;right:0;top:0;width:auto;height:6px;
-  min-width:0;display:flex;align-items:center}
+/* 命中区比看得见的那条粗得多：彩条只有 6px，要在 6px 里对准才能拖动进度。上游
+   YouTube 的 `.ytp-progress-bar-container` 同样把可点高度留得比彩条高，而多出来的那
+   一截全在条上方——往下扩会盖住按钮那一排的顶边，读起来就是按钮时灵时不灵。Video.js
+   的 `ProgressControl` 收到落在自己身上的 mousedown 就转交给 seek bar，横向落点仍按
+   彩条自己的宽度算，所以只加高不会让进度跳到别处。 */
+.vwrap .video-js .vjs-progress-control{z-index:2;position:absolute;left:0;right:0;top:-12px;width:auto;height:18px;
+  min-width:0;display:flex;align-items:flex-end}
 .vwrap .video-js .vjs-progress-control .vjs-progress-holder{width:100%;height:6px;margin:0;border-radius:0;background:rgba(40,40,40,.6);transform:scaleY(.667);transition:transform .2s cubic-bezier(.05,0,0,1)}
 .vwrap .video-js .vjs-progress-control:hover .vjs-progress-holder,.vwrap .video-js .vjs-progress-control:focus-within .vjs-progress-holder{transform:scaleY(1)}
 .vwrap .video-js .vjs-load-progress{background:rgba(255,255,255,.4)}
@@ -155,7 +160,7 @@
 .vwrap .video-js .vjs-progress-control:hover .vjs-play-progress:before,.vwrap .video-js .vjs-progress-control:focus-within .vjs-play-progress:before{transform:translateY(-50%) scale(1.67)}
 .vwrap .video-js .vjs-mouse-display .vjs-time-tooltip,
 .vwrap .video-js .vjs-play-progress .vjs-time-tooltip{display:none!important}
-.vjs-peach-seek-preview{position:absolute;z-index:4;bottom:calc(100% + 10px);transform:translateX(-50%);
+.vjs-peach-seek-preview{position:absolute;z-index:4;bottom:calc(100% - 2px);transform:translateX(-50%);
   display:flex;flex-direction:column;align-items:center;pointer-events:none;color:#fff}
 .vjs-peach-seek-preview[hidden]{display:none}
 .vjs-peach-seek-preview img{width:240px;aspect-ratio:16/9;display:block;object-fit:cover;border:2px solid #fff;
@@ -297,7 +302,7 @@
 @media (max-width:640px){
   .vwrap .video-js .vjs-control-bar{left:8px;right:8px;bottom:6px;height:59px;padding:3px 0 0}
   .vwrap .video-js .vjs-progress-control,.vwrap .video-js.vjs-layout-tiny .vjs-progress-control,
-  .vwrap .video-js.vjs-layout-x-small .vjs-progress-control{left:0;right:0;top:0;height:6px;display:flex}
+  .vwrap .video-js.vjs-layout-x-small .vjs-progress-control{left:0;right:0;top:-12px;height:18px;display:flex}
   .vwrap .video-js.vjs-layout-small .vjs-current-time,.vwrap .video-js.vjs-layout-small .vjs-duration,
   .vwrap .video-js.vjs-layout-small .vjs-time-divider{display:flex}
   .vwrap .video-js .vjs-time-control{font-size:var(--fs-xs)}

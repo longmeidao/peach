@@ -104,7 +104,7 @@ export function ReleaseUpdates({ initial, initialJob }: { initial: ReleaseState;
       </div> : null}
     </div>
     <div class="geist-fieldset-footer" data-geist-fieldset-footer>
-      <a class="geist-button" href={data.release_url} target="_blank" rel="noreferrer">查看发布页</a>
+      <a class="geist-button externallink" href={data.release_url} target="_blank" rel="noreferrer">查看发布页<svg class="externalmark" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-external-link" /></svg></a>
       {job.state === 'ready' ? <button type="button" class="geist-button primary" onClick={() => { void confirmModal({title:'更新已准备好',body:`Peach ${job.version || ''} 将在重启后安装。`,confirmLabel:'立即重启',cancelLabel:'稍后',onConfirm:restart}); }}>重启安装</button> : null}
       {data.state === 'available' && data.installation === '独立测试包' && job.state !== 'ready' ? <button ref={downloadButton} type="button" class="geist-button primary" onClick={(event) => download(event.currentTarget)}>下载并安装</button> : null}
       <button type="button" class="geist-button" disabled={active.has(job.state)} onClick={(event) => check(event.currentTarget)}>检查更新</button>

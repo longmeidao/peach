@@ -16,7 +16,7 @@ export function identityEvidenceHtml(row: IdentityEvidence) {
   const profile = webUrl(row.profile_url), samples = (row.preview_assets || []).slice(0, 6);
   const count = Math.max(0, Number(row.video_count || row.videos || 0));
   return `<section class="reviewidentityevidence"><h5>候选身份：${esc(row.babepedia_name || '未标注')}</h5>
-    <div class="reviewevidenceactions">${profile ? `<a class="geist-button" href="${esc(profile)}" target="_blank" rel="noopener noreferrer">来源资料 ↗</a>` : ''}
+    <div class="reviewevidenceactions">${profile ? `<a class="geist-button externallink" href="${esc(profile)}" target="_blank" rel="noopener noreferrer">来源资料<svg class="externalmark" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-external-link" /></svg></a>` : ''}
     <button type="button" class="geist-button" data-entity-kind="creator" data-entity-name="${esc(row.creator || '')}">查看全部 ${count.toLocaleString()} 部作品</button></div>
     ${reviewImageHtml(row.preview_url)}
     <p>通过后记录身份判断。</p>

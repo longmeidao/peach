@@ -58,7 +58,6 @@ button.serieslink.entitylink:hover{color:var(--tungsten);text-decoration:none}
   border:1px solid var(--border-15);background:var(--surface);color:var(--ink);
   cursor:pointer;font-size:var(--fs-sm);line-height:1}
 .dupactions button:hover,.dupbtns button:hover{background:var(--hover);color:var(--ink)}
-.dupbtns button.danger{color:var(--drop)}.dupbtns button.danger:hover{background:var(--drop);border-color:var(--drop);color:#fff}
 .dupactions button:disabled,.dupbtns button:disabled{opacity:.5;cursor:wait}
 .dupgroup{border:1px solid var(--overlay-10);border-radius:var(--surface-radius);margin-bottom:12px;overflow:hidden}
 .duphead{display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--overlay-5);flex-wrap:wrap}
