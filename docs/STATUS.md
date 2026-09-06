@@ -4,7 +4,7 @@
 
 索引：`PRODUCT_BACKLOG.md`、`REUSE.md`、`HANDOFF.md`。
 
-- uv：`TESTING.md`。
+- 更新：`REUSE.md`。
 
 ## 运行态
 

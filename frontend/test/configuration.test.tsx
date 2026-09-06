@@ -1,5 +1,6 @@
 import { render } from 'preact';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import * as legacyUi from '@peach/legacy/ui';
 
 import {
   CONFIGURATION_URL, Configuration, PICK_FOLDER_URL, loadConfiguration,
@@ -37,6 +38,8 @@ const fetchMock = (status: number, body: unknown) => vi.fn<(...call: FetchCall) 
 );
 
 afterEach(() => {
+  vi.restoreAllMocks();
+  vi.useRealTimers();
   for (const el of [...document.body.children]) render(null, el);
   document.body.innerHTML = '';
   vi.unstubAllGlobals();
@@ -68,6 +71,42 @@ it('缺失依赖提供带图标的新窗口下载链接且已安装依赖不提�
 });
 
 describe('配置页取数', () => {
+  it('刷新恢复已准备的更新并弹出重启选择，确认前不发送重启', async () => {
+    vi.useFakeTimers();
+    const modal = vi.spyOn(legacyUi,'confirmModal');
+    const fetch = fetchMock(200,{state:'restarting',progress:0});
+    vi.stubGlobal('fetch',fetch);
+    const initial = {current_version:'0.9.0',latest_version:null,channel:'测试版',installation:'独立测试包',state:'unchecked',message:'尚未检查',release_url:'https://github.com/longmeidao/peach/releases'};
+    const {el} = mount({updates:initial,update_job:{state:'ready',progress:100,version:'0.10.0'}});
+    await vi.advanceTimersByTimeAsync(100);
+    expect(el.querySelector('[role="progressbar"]')?.getAttribute('aria-valuenow')).toBe('100');
+    expect(modal).toHaveBeenCalledTimes(1);
+    expect(modal.mock.calls[0]?.[0]).toMatchObject({title:'更新已准备好',confirmLabel:'立即重启',cancelLabel:'稍后'});
+    expect(fetch.mock.calls.filter(([url]) => url.startsWith('/api/configuration/update'))).toHaveLength(0);
+    await modal.mock.calls[0]?.[0].onConfirm?.();
+    expect(fetch.mock.calls.some(([url]) => url === '/api/configuration/update-restart')).toBe(true);
+  });
+  it('版本字段组显式查询测试版，失败后可重试且保留焦点', async () => {
+    const initial = {current_version:'0.9.0',latest_version:null,channel:'测试版',installation:'独立测试包',state:'unchecked',message:'尚未检查',release_url:'https://github.com/longmeidao/peach/releases'};
+    const {el} = mount({updates:initial});
+    const section = el.querySelector('[aria-labelledby="configUpdatesTitle"]')!;
+    const button = section.querySelector('button')!;
+    expect(section.textContent).toContain('当前版本0.9.0');
+    const fetch = fetchMock(200, {...initial,latest_version:'0.10.0',state:'available',message:'有新版本可下载。'});
+    vi.stubGlobal('fetch',fetch);
+    button.focus(); button.click(); button.click();
+    expect(fetch).toHaveBeenCalledTimes(1);
+    await settle();
+    expect(fetch.mock.calls[0]?.[0]).toBe('/api/configuration/updates');
+    expect(section.textContent).toContain('最新版本0.10.0');
+    expect(section.textContent).toContain('下载并安装');
+    expect(document.activeElement).toBe(button);
+    vi.stubGlobal('fetch',fetchMock(503,{detail:'连接失败'}));
+    button.click(); await settle();
+    expect(section.querySelector('[role="alert"]')?.textContent).toBe('连接失败');
+    expect(section.textContent).not.toContain('0.10.0');
+    expect(button.disabled).toBe(false);
+  });
   it('首屏走 /api/configuration 并带上中止信号', async () => {
     const fetch = fetchMock(200, data());
     vi.stubGlobal('fetch', fetch);

@@ -1913,7 +1913,7 @@ class FollowWebSourceTests(unittest.TestCase):
         state = page[page.index(".fcstate{"):]
         self.assertIn("margin-left:auto", state[:state.index("}")])
         # 折叠/展开两种几何下 summary 的可用宽度必须一致，否则状态列差一个 gap。
-        self.assertPageContains("details.fcred{display:block}")
+        self.assertPageContains("details.fcred{display:block;min-width:0}")
 
     def test_the_add_box_carries_no_standing_how_to_prose(self):
         # 空态保留状态和结果去向；操作说明常驻就是噪音。
@@ -2012,7 +2012,7 @@ class FollowWebSourceTests(unittest.TestCase):
                          "开合逻辑只该有一份")
         # 内边距归 .fcollapsebody：留在 .fcred[open] 上的话，收起那一帧高度已经归零、
         # 内边距还在，行尾会跳一下。
-        self.assertPageContains(".fcred .fcollapsebody{padding:8px 0 12px}")
+        self.assertPageContains(".fcred .fcollapsebody{padding:8px 4px 12px}")
         self.assertPageLacks(".fcred[open]{padding-bottom")
         # 首段自己的上边距换成容器内边距，否则它跟容器外边距合并，scrollHeight 量矮一截。
         self.assertPageContains(".fcred .fcollapsebody>p:first-child{margin-top:0}")

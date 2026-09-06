@@ -45,11 +45,8 @@ def _normal_path(path: str | Path) -> str:
 
 
 def process_alive(process_id: int) -> bool:
-    try:
-        os.kill(process_id, 0)
-    except OSError:
-        return False
-    return True
+    from .jobs import PidFileLock
+    return PidFileLock._running(process_id)
 
 
 def _process_paths_and_parents() -> tuple[dict[int, str], dict[int, int]]:

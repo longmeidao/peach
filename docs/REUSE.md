@@ -1,6 +1,14 @@
 # 复用清单
 
 首页进度 Banner 与配置页复用 `LibraryProcessing`、`watchJob` 和 `/api/library-processing`，启动只提交一次，状态查询接续托盘首次处理。首页在完成后收起，失败提供设置跳转；配置页持续读取阶段与真实计数。Geist Banner 官方 DOM/CSS 已于 2026-09-06 取得，取证与 Peach 差异见 `docs/reference-snapshots/vercel-geist-library-banner.md`。
+## 独立测试包在线更新
+
+- 版本与资产信息复用 GitHub Releases REST API，测试通道包含预发布版本；查询复用项目 HTTPX 0.28.1，下载用其流式读取，ZIP 解压使用 Python 3.12+ 标准库，互斥复用 FileLock。没有新增依赖。
+- 2026-09-06 真实只读 POC：GitHub 返回 v0.16.0、Windows ZIP 35,489,963 字节和 SHA-256 digest；仅发布记录中已上传的完整独立包可进入更新。
+- Peach 维护安装策略与进度：下载校验后在程序同卷暂存，用户确认重启，复制出来的包内助手等待原托盘退出，再切换完整目录；失败保留或恢复旧目录。配置、数据库与媒体不作为更新包内容写入。
+- 已核对 [Velopack Windows 文档](https://docs.velopack.io/packaging/operating-systems/windows) 和 [WinSparkle 文档](https://winsparkle.org/)：前者要求其安装目录与包格式，后者要求 appcast 并使用原生更新界面；现有 GitHub 产物为 PyInstaller ZIP，进度在 Web 显示，因此复用现有托盘进程与目录替换协议，未引入额外安装框架。
+- Web 复用 Fieldset、Progress、confirmModal；状态由 `standalone-update.json` 保存。下载按字节计量，解压按文件数计量，替换使用阶段进度；服务重启期间保留等待状态，恢复连接后核对版本。
+- 新版有待应用迁移时，重启安装复用 `migrate upgrade --yes`，先保存 SQLite 备份；迁移或启动失败时恢复数据库与程序。数据库备份位于用户数据根的 `state/update-backups/`。
 
 JAV 默认封面（官方封面／预览图）与默认大小（大图／小图）独立保存，复用 localStorage、共享 Switch 和既有 `/cover`、`/poster` 接口，不新增依赖。`frontend/src/jav-artwork.ts` 负责作品身份、偏好恢复与缺图回退；首页、接着看、实体作品、详情推荐、Mix 静止与翻图、播放队列共用封面选择。小图保留所选来源，设置换图保留播放和滚动位置。
 

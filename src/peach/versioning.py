@@ -67,6 +67,8 @@ class VersionSnapshot:
 
     @property
     def channel_label(self) -> str:
+        if self.commit == "release":
+            return "更新通道 · GitHub 测试版"
         if not self.remote_configured:
             return "本地开发版 · 未配置更新源"
         if not self.upstream:
@@ -176,7 +178,10 @@ class VersionManager:
         before = self.inspect()
         from .distribution import standalone
         if standalone():
-            return UpdateResult("manual", "测试包请从 GitHub Releases 下载新版并完整解压替换程序目录；数据保存在用户目录。", before)
+            from .release_updates import check
+            release = check()
+            latest = f"最新测试版：{release['latest_version']}。" if release['latest_version'] else ""
+            return UpdateResult(release["state"], f"当前版本：{before.package_version}。{latest}{release['message']}", before)
         if not before.remote_configured:
             return UpdateResult(
                 "unconfigured",
@@ -223,6 +228,9 @@ class VersionManager:
         调用方不需要再分一次类。
         """
         checked = self.check()
+        from .distribution import standalone
+        if standalone():
+            return checked
         if checked.state != "available":
             return checked
         snapshot = checked.snapshot

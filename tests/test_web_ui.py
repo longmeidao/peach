@@ -386,6 +386,13 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertEqual(offenders, [],
                          f"这些规则的 --tungsten 不在允许的焦点／链接／进度／Toggle 之列：{offenders}")
 
+    def test_credential_collapse_reserves_space_for_outside_focus_ring(self):
+        css = (Path(__file__).resolve().parents[1] / "web/css/22-followmanage.css").read_text(encoding="utf-8")
+        match = re.search(r"\.fcred \.fcollapsebody\{padding:(\d+)px (\d+)px (\d+)px", css)
+        self.assertIsNotNone(match)
+        self.assertGreaterEqual(int(match[2]), 3)
+        self.assertIn('.fcredfield input{height:32px;width:100%;min-width:0;', css)
+
     def test_field_focus_rings_are_neutral_and_theme_aware(self):
         """输入框的静止边、悬停边与聚焦环都是当前主题的中性透明色，不是蓝的。
 
@@ -399,6 +406,7 @@ class WebUiSourceTests(unittest.TestCase):
             self.assertPageContains(palette)
         self.assertPageContains("--field-ring:rgba(0,0,0,.08);--field-ring-hover:rgba(0,0,0,.21);")
         self.assertPageContains("--field-ring-focus:rgba(0,0,0,.34);--field-glow:rgba(0,0,0,.16);")
+
         self.assertPageContains("--field-ring:rgba(255,255,255,.14);--field-ring-hover:rgba(255,255,255,.24);")
         self.assertPageContains("--field-ring-focus:rgba(255,255,255,.51);--field-glow:rgba(255,255,255,.24);")
         for selector in ('.geist-search input[type="search"]', ".geist-input", ".preference textarea"):
