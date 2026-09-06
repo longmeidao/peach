@@ -399,7 +399,7 @@ const THEME_CHOICES=['system','light','dark'];
 const JAV_LAYOUTS=[['big','大图','maximize'],['small','小图','layout-grid']];
 /* 显示器用于跟随系统主题和详情页的画面分辨率。 */
 const THEME_OPTIONS=[['system','跟随系统','monitor'],['light','浅色','sun'],['dark','深色','moon']];
-const DEFAULT_SETTINGS={batchSize:60,defaultSort:'seed',sortDefaultsVersion:3,hoverDelaySeconds:5,seekSeconds:10,searchHistoryLimit:10,relatedLimit:20,javLayout:'big',javImage:'cover',followLayout:'cozy',peopleLayout:'big',ambientMode:true,theaterMode:false,theme:'system',groupCollapse:true,sidebarOrder:DEFAULT_SIDEBAR_ORDER};
+const DEFAULT_SETTINGS={batchSize:60,defaultSort:'seed',sortDefaultsVersion:3,hoverDelaySeconds:5,seekSeconds:10,searchHistoryLimit:10,relatedLimit:20,javLayout:'big',javImage:'cover',followLayout:'cozy',peopleLayout:'big',ambientMode:true,miniplayer:true,theaterMode:false,theme:'system',groupCollapse:true,sidebarOrder:DEFAULT_SIDEBAR_ORDER};
 let appSettings={...DEFAULT_SETTINGS};
 try{appSettings={...DEFAULT_SETTINGS,...JSON.parse(localStorage.getItem(SETTINGS_KEY)||'{}')}}catch(_e){}
 const allowedSetting=(value,allowed,fallback)=>allowed.includes(value)?value:fallback;
@@ -422,6 +422,7 @@ appSettings.ambientMode=appSettings.ambientMode!==false;
 appSettings.theaterMode=appSettings.theaterMode===true;
 appSettings.groupCollapse=appSettings.groupCollapse!==false;
 appSettings.detailAutoplay=appSettings.detailAutoplay!==false;
+appSettings.miniplayer=appSettings.miniplayer!==false;
 appSettings.searchHistoryLimit=allowedSetting(+appSettings.searchHistoryLimit,[5,10,20],10);
 appSettings.relatedLimit=allowedSetting(+appSettings.relatedLimit,[12,20,30],20);
 Object.assign(appSettings,normalizeJavPreferences(appSettings));
@@ -524,6 +525,7 @@ function renderSettingSelects(){
 function syncSettingsPanel(){
   $('#groupCollapseSetting').checked=appSettings.groupCollapse;
   $('#detailAutoplaySetting').checked=appSettings.detailAutoplay;
+  $('#miniplayerSetting').checked=appSettings.miniplayer;
   renderSettingSelects();
   renderThemeSetting();
   renderJavImageSetting();
@@ -566,6 +568,9 @@ $('#settingsPanel').onkeydown=e=>{
    时做的，不重画的话已经被跳过的那些卡不会自己冒出来。 */
 $('#groupCollapseSetting').onchange=e=>{appSettings.groupCollapse=!!e.target.checked;saveSettings();reloadCurrentSurface()};
 $('#detailAutoplaySetting').onchange=e=>{appSettings.detailAutoplay=e.target.checked;saveSettings()};
+/* 关掉小窗播放时正开着的那个小窗也一起收：设置说的是「离开详情不再进小窗」，留着一个
+   已经进去的反而像没生效。 */
+$('#miniplayerSetting').onchange=e=>{appSettings.miniplayer=e.target.checked;saveSettings();if(!appSettings.miniplayer)closeMiniplayer()};
 let followScheduleRequest=0;
 const followScheduleCopy=status=>{
   if(!status.available)return '只在账本写入端运行';
@@ -841,6 +846,11 @@ function cancelStreamSession(session){
    所以凡是在舞台上开了「舞台之外」的东西，就在这里登记一条撤销。返回值是注销
    函数：浮层自己先关掉时用它把登记摘掉，别让集合无界地长。 */
 let stageDisposers=new Set();
+/* 小窗播放的状态（实现在 disposeStage 之后的「小窗播放」一节）：stageMiniplayerMeta 是当前
+   详情登记的标题与来源，miniplayerRequested 让右键菜单和 i 键越过播放态判定，detailResume 是
+   展开或深链带回来的续播时刻。 */
+let stageMiniplayerMeta=null,miniplayerRequested=false,detailResume=null;
+const miniplayerState={player:null,item:null,kind:'item',token:0,off:[]};
 function onStageDispose(dispose){stageDisposers.add(dispose);return ()=>stageDisposers.delete(dispose)}
 function runStageDisposers(){
   const pending=[...stageDisposers];stageDisposers.clear();
@@ -860,7 +870,7 @@ function bindOutsideClose(anchor,inside,close){
   unregister=onStageDispose(detach);
   return detach;
 }
-function disposeStage(push=false,preserveInlineOrigin=false){
+function disposeStage(push=false,preserveInlineOrigin=false,{miniplayer=true}={}){
   const stage=$('#stage');
   // 关注详情会把舞台插到头像和筛选条之后。离开详情前先放回 main 的固定槽位，
   // 否则下一次重绘 #stats 会连同 #stage 一起删掉，后续所有详情都打不开。
@@ -869,11 +879,20 @@ function disposeStage(push=false,preserveInlineOrigin=false){
   if(detailStatsTimer){clearInterval(detailStatsTimer);detailStatsTimer=null}
   if(detailNetTimer){clearInterval(detailNetTimer);detailNetTimer=null}
   if(detailNetHideTimer){clearTimeout(detailNetHideTimer);detailNetHideTimer=null}
-  if(detailPlayer){try{detailPlayer.pause();detailPlayer.dispose()}catch(_e){}detailPlayer=null}
+  /* 离开详情时正在放的视频不销毁：整个播放器搬进小窗接着放，流会话跟着它走。
+     显式关闭（叉、Escape）、换另一条详情和删掉当前条目都传 miniplayer:false；右键菜单
+     与 i 键的「迷你播放器」则用 miniplayerRequested 越过播放态判定。小窗自己的播放器
+     （detailPlayer 已归它）在别的表面切换时原样留着。 */
+  const meta=stageMiniplayerMeta;stageMiniplayerMeta=null;
+  const owned=!!detailPlayer&&miniplayerState.player===detailPlayer;
+  const toMini=!!detailPlayer&&!owned&&!!meta&&(miniplayer||miniplayerRequested)&&miniplayerEligible(detailPlayer);
+  miniplayerRequested=false;
+  if(toMini)enterMiniplayer(detailPlayer,meta);
+  else if(detailPlayer&&!owned){try{detailPlayer.pause();detailPlayer.dispose()}catch(_e){}detailPlayer=null}
   stage.querySelectorAll('video').forEach(video=>{
     if(video._hop)clearInterval(video._hop);
     video.pause();video.removeAttribute('src');video.load();video.remove()});
-  cancelDetailStream();
+  if(!toMini&&!owned)cancelDetailStream();
   runStageDisposers();
   stage.innerHTML='';stage.hidden=true;document.body.classList.remove('detail-open');current=null;activeQueue=null;
   if(!preserveInlineOrigin){
@@ -881,6 +900,304 @@ function disposeStage(push=false,preserveInlineOrigin=false){
   }
   scheduleStickySurfaces();
   if(push)route(detailReturnPath||'/');
+}
+
+/* ── 小窗播放 ─────────────────────────────────────────────────────────────────
+   照 YouTube 桌面版的 miniplayer（docs/reference-snapshots/youtube-miniplayer-measured.md）：
+   离开详情时正在放的视频不销毁，Video.js 的壳整块搬进 body 级的固定容器继续放；小窗开着
+   时点别的卡片就在小窗里换片；点标题或「展开」回到详情并从同一时刻接着放；拖到哪个
+   象限就吸附到哪个角。上游 YouTube 只把播放列表内的切换留在小窗里，Peach 按用户要求
+   把卡片点击也收进来。 */
+function miniplayerActive(){return !!miniplayerState.player&&!miniplayerState.player.isDisposed()}
+function miniplayerVideo(){return miniplayerActive()?$('#miniplayerFrame')?.querySelector('video')||null:null}
+/* 「接着放」只有一次性的口子：展开时记下时刻，下一次挂载同一条时取走；深链 `?t=` 走同一条。 */
+function queueDetailResume(kind,id,time,autoplay){
+  detailResume={key:`${kind}:${id}`,time:Math.max(0,Number(time)||0),autoplay:!!autoplay};
+}
+function queueDetailResumeFromUrl(kind,id){
+  if(detailResume)return;
+  const seconds=Number(new URLSearchParams(location.search).get('t'));
+  if(Number.isFinite(seconds)&&seconds>0)queueDetailResume(kind,id,seconds,false);
+}
+function takeDetailResume(kind,id){
+  const hit=detailResume&&detailResume.key===`${kind}:${id}`?detailResume:null;
+  detailResume=null;return hit;
+}
+function miniplayerEligible(player){
+  if(!player||player.isDisposed())return false;
+  if(miniplayerRequested)return true;
+  return appSettings.miniplayer&&!player.paused()&&!player.ended()&&!player.error();
+}
+function paintMiniplayerMeta(meta){
+  $('#miniplayerTitle').textContent=meta.title||'';
+  $('#miniplayerSub').textContent=meta.sub||'';
+  $('#miniplayerInfo').setAttribute('aria-label',meta.title?`展开到详情：${meta.title}`:'展开到详情');
+}
+/* 画面区按视频比例给高：上游 4:3 的片子小窗就是 400×300。竖片压到 1:1 以内，400 宽的
+   9:16 会高过视口。 */
+function syncMiniplayerAspect(){
+  const frame=$('#miniplayerFrame'),video=miniplayerVideo();if(!frame)return;
+  const width=video?.videoWidth||Number(miniplayerState.item?.width)||16;
+  const height=video?.videoHeight||Number(miniplayerState.item?.height)||9;
+  frame.style.setProperty('--miniplayer-aspect',`${Math.max(width,height)}/${height}`);
+}
+function syncMiniplayerPlayState(){
+  const player=miniplayerState.player,button=$('#miniplayerPlay');
+  if(!player||player.isDisposed()||!button)return;
+  const paused=player.paused();
+  button.setAttribute('aria-label',paused?'播放':'暂停');
+  button.querySelector('use')?.setAttribute('href',paused?'#i-player-play':'#i-player-pause');
+}
+function syncMiniplayerTime(){
+  const player=miniplayerState.player,out=$('#miniplayerTime');
+  if(!player||player.isDisposed()||!out)return;
+  const total=realDuration(miniplayerState.item?.duration)||realDuration(player.duration());
+  out.textContent=`${fmtClock(player.currentTime())} / ${total?fmtClock(total):'0:00'}`;
+}
+function bindMiniplayerPlayer(player){
+  const on=(events,handler)=>{player.on(events,handler);miniplayerState.off.push(()=>{try{player.off(events,handler)}catch(_e){}})};
+  on(['play','pause','ended'],syncMiniplayerPlayState);
+  on(['timeupdate','durationchange','loadedmetadata'],syncMiniplayerTime);
+  on('loadedmetadata',syncMiniplayerAspect);
+  syncMiniplayerPlayState();syncMiniplayerTime();syncMiniplayerAspect();
+}
+function unbindMiniplayerPlayer(){miniplayerState.off.forEach(off=>off());miniplayerState.off=[]}
+function enterMiniplayer(player,meta){
+  const root=$('#miniplayer'),frame=$('#miniplayerFrame');if(!root||!frame)return;
+  miniplayerState.player=player;miniplayerState.item=meta.item;miniplayerState.kind=meta.kind;miniplayerState.token++;
+  player.el().classList.add('vjs-peach-mini');
+  frame.prepend(player.el());
+  paintMiniplayerMeta(meta);
+  bindMiniplayerPlayer(player);
+  /* 详情的十秒观看上报随舞台收尾停了表；同一条片子还在放，重新起表。 */
+  const video=frame.querySelector('video');
+  if(video&&!player.paused()&&typeof video.onplay==='function')video.onplay();
+  const entering=root.hidden;root.hidden=false;
+  if(entering){
+    root.classList.add('miniplayer-entering');
+    const settle=()=>root.classList.remove('miniplayer-entering');
+    root.addEventListener('animationend',settle,{once:true});setTimeout(settle,500);
+  }
+  requestAnimationFrame(()=>{if(!player.isDisposed())player.trigger('resize')});
+}
+function disposeMiniplayerPlayer(player){
+  if(!player||player.isDisposed())return;
+  const video=player.el()?.querySelector('video');
+  // 先 pause 让观看上报把最后一段冲出去，再摘掉上报句柄，销毁时不会再替这条片子记账。
+  try{player.pause()}catch(_e){}
+  if(video){video.onplay=null;video.ontimeupdate=null;video.onpause=null;video.onended=null}
+  try{player.dispose()}catch(_e){}
+}
+function closeMiniplayer(){
+  const root=$('#miniplayer'),player=miniplayerState.player;
+  unbindMiniplayerPlayer();
+  miniplayerState.player=null;miniplayerState.item=null;miniplayerState.token++;
+  disposeMiniplayerPlayer(player);
+  if(player&&detailPlayer===player)detailPlayer=null;
+  if(player)cancelDetailStream();
+  $('#miniplayerFrame')?.querySelectorAll('.video-js,video').forEach(el=>el.remove());
+  closePlayerMenu();
+  if(root){root.hidden=true;root.classList.remove('miniplayer-dragging','miniplayer-snapping','miniplayer-entering');root.style.transform=''}
+}
+function expandMiniplayer(){
+  if(!miniplayerActive())return;
+  const {player,item,kind}=miniplayerState;
+  queueDetailResume(kind,item.id,player.currentTime(),!player.paused());
+  closeMiniplayer();
+  if(kind==='follow')openFollowDetail(item.id,true);else openItem(item.id,true);
+}
+/* 小窗里能直接换的只有普通视频卡：分卷／版次组要先选卷，计费、脱盘和反查不到关注条目
+   的在线资产都要先过详情里那道门。 */
+function miniplayerTakesCard(it){
+  if(!miniplayerActive()||!it)return false;
+  if(it.part_group||it.edition_group)return false;
+  if(it.medium&&it.medium!=='video')return false;
+  if(it.cost==='metered'&&it.location!=='online')return false;
+  if(it.location==='online'&&!it.follow_item_id)return false;
+  if(sourceOffline(it.location))return false;
+  return true;
+}
+async function miniplayerPlay(id){
+  if(!miniplayerActive())return;
+  const token=++miniplayerState.token;
+  const it=await api('/api/item?id='+id).catch(()=>null);
+  if(token!==miniplayerState.token||!miniplayerActive())return;
+  if(!it||it.error)return;
+  if(!miniplayerTakesCard(it)){openItem(id);return}
+  CACHE[it.id]=it;
+  const previous=miniplayerState.player,frame=$('#miniplayerFrame');
+  unbindMiniplayerPlayer();
+  disposeMiniplayerPlayer(previous);
+  if(detailPlayer===previous)detailPlayer=null;
+  cancelDetailStream();
+  frame.querySelectorAll('.video-js,video').forEach(el=>el.remove());
+  /* 换片就是一条新视频，重新挂一个播放器最干净：上一条的错误兜底、观看上报和清晰度表
+     都绑在旧实例的闭包里，复用它只会把新片的行为记到旧片头上。 */
+  const video=document.createElement('video');
+  video.className='video-js';video.setAttribute('playsinline','');video.preload='metadata';
+  frame.prepend(video);
+  miniplayerState.item=it;miniplayerState.kind='item';
+  paintMiniplayerMeta({title:it.title||it.name||'',sub:(it.performers||[])[0]||it.creator||'未归属'});
+  syncMiniplayerAspect();
+  wireTelemetry(it,video,{});
+  video.addEventListener('play',()=>{api('/api/play',{method:'POST',body:JSON.stringify({id:it.id})})},{once:true});
+  const player=await mountDetailPlayer(it,video,true);
+  if(token!==miniplayerState.token){if(player&&!player.isDisposed()){try{player.dispose()}catch(_e){}}return}
+  if(!player){closeMiniplayer();openItem(id);return}
+  miniplayerState.player=player;player.el().classList.add('vjs-peach-mini');
+  bindMiniplayerPlayer(player);
+}
+/* i 键与 YouTube 同义：详情里进小窗，小窗里展开回详情。 */
+function toggleMiniplayerShortcut(){
+  const stage=$('#stage');
+  if(miniplayerActive()&&(!stage||stage.hidden)){expandMiniplayer();return}
+  if(stage&&!stage.hidden&&detailPlayer&&$('#closeStage')){miniplayerRequested=true;$('#closeStage').click();miniplayerRequested=false}
+}
+/* 拖动只改 transform，松手按小窗中心落在哪个象限选角，再用 .5s 的 transform 过渡吸过去，
+   过渡完把 data-corner 换成新角、清掉 transform——上游 AnimatingSnap 就是这么落回锚点的。 */
+function snapMiniplayer(dx,dy){
+  const root=$('#miniplayer');if(!root)return;
+  const rect=root.getBoundingClientRect();
+  const corner=(rect.top+rect.height/2<innerHeight/2?'t':'b')+(rect.left+rect.width/2<innerWidth/2?'l':'r');
+  const topInset=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--topH'))||56;
+  const base={left:rect.left-dx,top:rect.top-dy};
+  const target={left:corner.endsWith('l')?16:innerWidth-16-rect.width,top:corner.startsWith('t')?topInset+16:innerHeight-16-rect.height};
+  root.classList.remove('miniplayer-dragging');
+  const finish=()=>{
+    root.classList.remove('miniplayer-snapping');
+    root.style.transition='none';root.dataset.corner=corner;root.style.transform='';
+    root.getBoundingClientRect();root.style.transition='';
+  };
+  if(matchMedia('(prefers-reduced-motion: reduce)').matches){finish();return}
+  root.classList.add('miniplayer-snapping');
+  root.style.transform=`translate(${target.left-base.left}px,${target.top-base.top}px)`;
+  let done=false;
+  const once=()=>{if(done)return;done=true;root.removeEventListener('transitionend',once);finish()};
+  root.addEventListener('transitionend',once);setTimeout(once,600);
+}
+function wireMiniplayer(){
+  const root=$('#miniplayer'),card=$('#miniplayerCard');if(!root||!card)return;
+  $('#miniplayerClose').onclick=event=>{event.stopPropagation();closeMiniplayer()};
+  $('#miniplayerExpand').onclick=event=>{event.stopPropagation();expandMiniplayer()};
+  $('#miniplayerInfo').onclick=()=>expandMiniplayer();
+  $('#miniplayerPlay').onclick=event=>{
+    event.stopPropagation();const player=miniplayerState.player;
+    if(!player||player.isDisposed())return;
+    if(player.paused())player.play().catch(()=>{});else player.pause();
+  };
+  let drag=null;
+  card.addEventListener('pointerdown',event=>{
+    if(event.button!==0||event.target.closest('.miniplayerbtn,.miniplayerplay,.vjs-control-bar'))return;
+    drag={id:event.pointerId,x:event.clientX,y:event.clientY,dx:0,dy:0,moved:false};
+    try{card.setPointerCapture(event.pointerId)}catch(_e){}
+  });
+  card.addEventListener('pointermove',event=>{
+    if(!drag||event.pointerId!==drag.id)return;
+    drag.dx=event.clientX-drag.x;drag.dy=event.clientY-drag.y;
+    if(!drag.moved&&Math.hypot(drag.dx,drag.dy)<4)return;
+    if(!drag.moved){drag.moved=true;root.classList.add('miniplayer-dragging');root.classList.remove('miniplayer-snapping')}
+    root.style.transform=`translate(${drag.dx}px,${drag.dy}px)`;
+  });
+  const release=event=>{
+    if(!drag||event.pointerId!==drag.id)return;
+    const done=drag;drag=null;
+    try{card.releasePointerCapture(event.pointerId)}catch(_e){}
+    if(!done.moved)return;
+    // 拖完松手会紧跟一个 click，落在信息栏上就是「展开」；这一下不算点。
+    root.dataset.dragged='1';setTimeout(()=>{delete root.dataset.dragged},0);
+    snapMiniplayer(done.dx,done.dy);
+  };
+  card.addEventListener('pointerup',release);card.addEventListener('pointercancel',release);
+  card.addEventListener('click',event=>{if(root.dataset.dragged){event.stopPropagation();event.preventDefault()}},true);
+}
+wireMiniplayer();
+
+/* ── 播放器右键菜单 ───────────────────────────────────────────────────────────
+   项目照 YouTube 播放器 f572e43c 的 .ytp-contextmenu 取舍：循环播放、迷你播放器（小窗里是
+   展开）、画中画、复制视频网址、复制当前时间的视频网址、播放统计；嵌入代码、调试信息和
+   排查播放问题 Peach 没有对应能力，不列。 */
+let playerMenuCleanup=null;
+function closePlayerMenu(){
+  const menu=$('#playerMenu');
+  if(menu){menu.hidden=true;menu.innerHTML=''}
+  if(playerMenuCleanup){playerMenuCleanup();playerMenuCleanup=null}
+}
+async function copyTextToClipboard(text){
+  try{await navigator.clipboard.writeText(text);return true}
+  catch(_e){
+    const area=document.createElement('textarea');
+    area.value=text;area.setAttribute('readonly','');area.style.position='fixed';area.style.opacity='0';
+    document.body.append(area);area.select();
+    let ok=false;try{ok=document.execCommand('copy')}catch(_e2){}
+    area.remove();return ok;
+  }
+}
+function playerMenuItems(player){
+  const mini=miniplayerActive()&&miniplayerState.player===player;
+  const it=player.peachItem||{};
+  const kind=mini?miniplayerState.kind:(stageMiniplayerMeta?.kind||'item');
+  const url=withTime=>{
+    const link=new URL(kind==='follow'?`/follow/item/${it.id}`:`/item/${it.id}`,location.origin);
+    if(withTime)link.searchParams.set('t',String(Math.floor(player.currentTime()||0)));
+    return link.href;
+  };
+  const copy=(withTime,receipt)=>copyTextToClipboard(url(withTime)).then(ok=>toast({text:ok?receipt:'复制失败，请手动复制地址栏'},{timeout:4000,warn:!ok}));
+  const items=[
+    {icon:'repeat',label:'循环播放',checked:!!player.loop(),run:()=>player.loop(!player.loop())},
+    mini?{icon:'maximize-2',label:'展开',run:expandMiniplayer}
+      :{icon:'picture-in-picture-2',label:'迷你播放器',run:toggleMiniplayerShortcut},
+  ];
+  if(document.pictureInPictureEnabled)items.push({icon:'player-pip',fill:true,label:'画中画',run:()=>player.el().querySelector('.vjs-picture-in-picture-control')?.click()});
+  items.push({icon:'link',label:'复制视频网址',run:()=>copy(false,'已复制视频网址')});
+  items.push({icon:'link',label:'复制当前时间的视频网址',run:()=>copy(true,'已复制当前时间的视频网址')});
+  const stats=$('#playerStatsBtn');
+  if(!mini&&stats&&!stats.hidden)items.push({icon:'chart',label:'播放统计',run:()=>stats.click()});
+  return items;
+}
+function openPlayerMenu(player,x,y){
+  const menu=$('#playerMenu');if(!menu)return;
+  closePlayerMenu();
+  const items=playerMenuItems(player);
+  menu.innerHTML=items.map((item,index)=>{
+    const checkable='checked' in item;
+    return `<button type="button" class="playermenuitem" role="${checkable?'menuitemcheckbox':'menuitem'}"${checkable?` aria-checked="${item.checked}"`:''} data-player-menu="${index}">${
+      icon(item.icon,item.fill?'playermenufill':'')}<span>${esc(item.label)}</span>${checkable?icon('check','playermenucheck'):''}</button>`;
+  }).join('');
+  menu.hidden=false;
+  const box=menu.getBoundingClientRect();
+  menu.style.left=`${Math.max(8,Math.min(x,innerWidth-box.width-8))}px`;
+  menu.style.top=`${Math.max(8,Math.min(y,innerHeight-box.height-8))}px`;
+  const buttons=[...menu.querySelectorAll('[data-player-menu]')];
+  buttons.forEach(button=>button.onclick=event=>{
+    event.stopPropagation();const item=items[+button.dataset.playerMenu];closePlayerMenu();item.run();
+  });
+  const onDown=event=>{if(!menu.contains(event.target))closePlayerMenu()};
+  const onKey=event=>{
+    if(event.key==='Escape'){event.stopPropagation();closePlayerMenu();return}
+    if(event.key!=='ArrowDown'&&event.key!=='ArrowUp')return;
+    event.preventDefault();
+    const current=buttons.indexOf(document.activeElement);
+    buttons[(current+(event.key==='ArrowDown'?1:-1)+buttons.length)%buttons.length]?.focus();
+  };
+  const onScroll=()=>closePlayerMenu();
+  setTimeout(()=>{
+    document.addEventListener('pointerdown',onDown,true);
+    document.addEventListener('keydown',onKey,true);
+    window.addEventListener('scroll',onScroll,{capture:true,once:true});
+  },0);
+  playerMenuCleanup=()=>{
+    document.removeEventListener('pointerdown',onDown,true);
+    document.removeEventListener('keydown',onKey,true);
+    window.removeEventListener('scroll',onScroll,true);
+  };
+  buttons[0]?.focus();
+}
+function wirePlayerContextMenu(player){
+  player.el().addEventListener('contextmenu',event=>{
+    if(event.target.closest('.vjs-peach-settings-menu'))return;
+    event.preventDefault();openPlayerMenu(player,event.clientX,event.clientY);
+  });
+  player.on('dispose',closePlayerMenu);
 }
 
 function placeItemDetail(anchor,above=false){
@@ -1058,7 +1375,8 @@ function playerControlTooltip(button,label,shortcut=''){
 /* 快捷键复用按钮自己的点击路径：全屏、画中画、静音各有兜底逻辑挂在按钮上，
    在键盘分支里再实现一遍就会和按钮走岔。 */
 function clickPlayerControl(video,selector){
-  video?.closest('.vwrap')?.querySelector('.vjs-control-bar '+selector)?.click();
+  // 小窗里的播放器不在 .vwrap 里，按 Video.js 自己的壳找控件条，两处都对得上。
+  video?.closest('.video-js,.vwrap')?.querySelector('.vjs-control-bar '+selector)?.click();
 }
 function syncPlayerTheaterButton(button){
   if(!button)return;
@@ -1362,7 +1680,8 @@ function mountPlayerChromeLayout(player){
   if(volume)volume.insertAdjacentElement('afterend',time);else controlBar.append(time);
   const pip=controlBar.querySelector(':scope>.vjs-picture-in-picture-control');
   explicitIcon(pip,'player-pip');
-  const syncPipTooltip=playerControlTooltip(pip,'画中画','I');
+  // i 键归迷你播放器（YouTube 的 aria-keyshortcuts="i"），画中画只留按钮。
+  const syncPipTooltip=playerControlTooltip(pip,'画中画');
   player.on(['enterpictureinpicture','leavepictureinpicture'],()=>syncPipTooltip(document.pictureInPictureElement?'退出画中画':'画中画'));
   const fullscreen=controlBar.querySelector(':scope>.vjs-fullscreen-control');
   const fullscreenUse=explicitIcon(fullscreen,'player-fullscreen-enter');
@@ -1375,7 +1694,8 @@ function mountPlayerChromeLayout(player){
     player.el().toggleAttribute('data-peach-fullscreen',active);
     fullscreenUse?.setAttribute('href',active?'#i-player-fullscreen-exit':'#i-player-fullscreen-enter');
     syncFullscreenTooltip(active?'退出全屏':'全屏');
-    requestAnimationFrame(()=>player.trigger('resize'));
+    // 下一帧之前播放器可能已经被换片或关小窗销毁；对着空壳 trigger 会抛「Invalid target」。
+    requestAnimationFrame(()=>{if(!player.isDisposed())player.trigger('resize')});
   };
   player.on(['fullscreenchange','enterFullWindow','exitFullWindow'],syncFullscreenState);
   syncFullscreenState();
@@ -1477,6 +1797,9 @@ const ensureVideojs=()=>{
 };
 async function mountDetailPlayer(it,video,autoplay,options={}){
   if(detailPlayer)return detailPlayer;
+  /* 从小窗展开回来或带 `?t=` 深链进来时从记下的时刻接着放；展开时如果正在放，回来也接着放。 */
+  const resume=takeDetailResume(options.source?'follow':'item',it.id);
+  if(resume?.autoplay)autoplay=true;
   const statsButton=$('#playerStatsBtn'),statsPanel=$('#playerStats');
   const source=()=>options.source?Promise.resolve(options.source):detailStreamSource(it);
   /* 拉不到就退回原生 video，和「页面里没有 videojs」是同一个兜底出口。 */
@@ -1493,6 +1816,8 @@ async function mountDetailPlayer(it,video,autoplay,options={}){
       durationDisplay:true,remainingTimeDisplay:false
     }
   });
+  detailPlayer.peachItem=it;
+  wirePlayerContextMenu(detailPlayer);
   // 非正时长一律当未知：强行 player.duration(-1) 会被 Video.js 转成 Infinity 并标成直播。
   const expected=realDuration(it.duration);
   const statsHistory={speed:[],activity:[],buffer:[]};
@@ -1620,6 +1945,7 @@ async function mountDetailPlayer(it,video,autoplay,options={}){
     segmentedSource=String(source.type||'').includes('mpegurl');
     player.src(source);
     enforceDuration();setTimeout(enforceDuration,0);setTimeout(enforceDuration,250);
+    if(resume?.time>0)player.one('loadedmetadata',()=>{if(!player.isDisposed())player.currentTime(resume.time)});
     if(autoplay)player.play().catch(()=>{});
   }).catch(()=>{});
   return detailPlayer;
@@ -2494,7 +2820,8 @@ function wireCards(root,onClick){
   root.querySelectorAll('[data-id]').forEach(el=>{
     if(el.dataset.wired)return; el.dataset.wired='1';
     const it=CACHE[el.dataset.id];
-    const openCard=(id,anchor=el)=>onClick?onClick(id,anchor):(it?.part_group
+    // 小窗开着时普通视频卡直接在小窗里换片；分卷／版次组和要先过门的条目照旧走详情。
+    const openCard=(id,anchor=el)=>miniplayerTakesCard(it)?miniplayerPlay(id):onClick?onClick(id,anchor):(it?.part_group
       ?openParts(it.part_group.seed_id,id,true,anchor)
       :it?.edition_group
         ?openEditions(it.edition_group.seed_id,id,true,anchor)
@@ -4221,10 +4548,14 @@ async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=fals
   const imageCarousel=imageMedia.length>1&&imagePosition>=0;
   const embeddedQueue=embedded.length>1&&!imageCarousel;
   const collection=!embedded.length&&group&&followVideoItems(group).length>1?group:null;
-  disposeStage(false);
+  // 换详情不进小窗；小窗里正放着的那条也让位，两个播放器不同时出声。
+  closeMiniplayer();
+  if(!push)queueDetailResumeFromUrl('follow',item.id);
+  disposeStage(false,false,{miniplayer:false});
   if(push)route(`/follow/item/${item.id}`);
   renderFollowDrawer([item]);
   const source=(followData?.sources||[]).find(row=>row.id===item.source_id);
+  stageMiniplayerMeta={kind:'follow',item,title:item.title||'',sub:item.author||item.source_label||''};
   const authorSources=(followData?.sources||[]).filter(row=>
     source?.author_key&&row.author_key===source.author_key);
   if(!authorSources.length&&source)authorSources.push(source);
@@ -4299,7 +4630,7 @@ async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=fals
      取回第一页——「加载更多」出来的条目会连同索引一起消失，那些卡片的详情随后
      就打不开了。列表数据还在 followData 里，直接重画。 */
   const closeDetail=async()=>{
-    disposeStage(false);
+    disposeStage(false,false,{miniplayer:false});
     route(followDetailReturnPath||'/follow');
     if(location.pathname!=='/follow'){await restoreRoute();return}
     if(followData)renderFollow();else await openFollow(false);
@@ -7364,7 +7695,10 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
   if(!returnSurfaceReady)clearIdleCatalogLoading();
   const returnBars=barsContext.type==='item'?detailReturnBarsContext:cloneBarsContext(barsContext);
   if(push)detailReturnPath=location.pathname+location.search;
-  disposeStage(false,true);
+  // 换详情不进小窗；小窗里正放着的那条也让位，两个播放器不同时出声。
+  closeMiniplayer();
+  if(!push)queueDetailResumeFromUrl('item',id);
+  disposeStage(false,true,{miniplayer:false});
   detailOriginAnchor=origin;detailOriginAbove=above;detailReturnNeedsRestore=needsReturnRestore;
   detailReturnBarsContext=returnBars;
   activeQueue=queueContext;
@@ -7391,6 +7725,7 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
   /* 保存过的在线资产照常播；只有反查不到关注条目时才拦下来说明原因。 */
   const onlineGated=online&&!it.follow_item_id;
   const who=(it.performers||[])[0]||it.creator||'未归属';
+  stageMiniplayerMeta={kind:'item',item:it,title:it.title||it.name||'',sub:who};
   const refs=it.entity_refs||{},studioRef=(refs.studio||[])[0];
   // 共演作品的女优逐行列出，每行带自己的头像；标签只写在第一行，其余留空保持对齐。
   const performerRefs=(refs.performer||[]).length
@@ -7512,7 +7847,7 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
 
   const closeDetail=async()=>{const restore=cloneBarsContext(detailReturnBarsContext);
     const returnPath=detailReturnPath||'/',restoreSurface=detailReturnNeedsRestore;
-    disposeStage(false);detailReturnBarsContext=null;
+    disposeStage(false,false,{miniplayer:false});detailReturnBarsContext=null;
     barsContext=restore||{type:'home',filters:state};
     route(returnPath);
     if(restoreSurface)await restoreRoute();
@@ -7588,7 +7923,7 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
         if(state.state==='ads')await load(true);
       }});
       if(kind==='dispose'&&r.disposal==='trash'&&state.state==='ads'){
-        disposeStage(true);await load(true);
+        disposeStage(true,false,{miniplayer:false});await load(true);
       }
     }catch(error){actionFailure('操作',error)}finally{setActionBusy(b,false)}
   });
@@ -7725,6 +8060,8 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
   }
   wireTelemetry(it,vv,{watched:'#watched',mark:'#mark',ratio:'#ratioTxt'});
   let stopAmbient=()=>{};
+  // 进小窗时播放器不销毁，氛围采样要在这里跟着舞台一起停，别对着已经拆掉的画布继续画。
+  onStageDispose(()=>stopAmbient());
   const offlineGate=$('#offlineGate');
   if(offlineGate){
     const retry=$('#offlineRetry');
@@ -7905,6 +8242,7 @@ addEventListener('resize',()=>{
 });
 async function openTok(startId,push=true){
   if(push)route('/immerse');
+  closeMiniplayer();
   $('#tok').hidden=false;document.body.style.overflow='hidden';setTokLoading(true,'加载内容…');
   try{
     tokList=await fetchTok();
@@ -8160,6 +8498,7 @@ $('#tok').addEventListener('touchcancel',()=>{
 function activeVideo(){
   if(!$('#tok').hidden)return $('#tokVid');
   const stage=$('#stage');
+  if((!stage||stage.hidden)&&miniplayerActive())return miniplayerVideo();
   // 不能按 #vid 取：Video.js 挂载后会把 <video id="vid"> 换成同 id 的
   // <div class="video-js">，真正的媒体元素变成 #vid_html5_api。给那个 div 写
   // currentTime 只是挂了个同名属性——读得回来、播放却毫无变化，失败得毫无声息。
@@ -8196,7 +8535,8 @@ document.addEventListener('keydown',e=>{
   const video=activeVideo();
   if(video){
     if(e.key==='t'||e.key==='T'){
-      e.preventDefault();applyTheaterMode(!appSettings.theaterMode);return;
+      // 影院模式是详情舞台的版式，小窗里没有这个东西可切。
+      e.preventDefault();if(!$('#stage').hidden)applyTheaterMode(!appSettings.theaterMode);return;
     }
     if(e.key==='ArrowLeft'||e.key==='ArrowRight'){
       e.preventDefault();
@@ -8210,7 +8550,7 @@ document.addEventListener('keydown',e=>{
     }
     if(e.key==='m'||e.key==='M'){e.preventDefault();clickPlayerControl(video,'.vjs-mute-control');return}
     if(e.key==='f'||e.key==='F'){e.preventDefault();clickPlayerControl(video,'.vjs-fullscreen-control');return}
-    if(e.key==='i'||e.key==='I'){e.preventDefault();clickPlayerControl(video,'.vjs-picture-in-picture-control');return}
+    if(e.key==='i'||e.key==='I'){e.preventDefault();toggleMiniplayerShortcut();return}
   }
   // 沉浸模式：纵向切片、横向快进退，和竖屏短视频的手势方向保持一致。
   if(!$('#tok').hidden){if(e.key==='ArrowDown')tokNext(1);if(e.key==='ArrowUp')tokNext(-1)}

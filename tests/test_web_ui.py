@@ -83,6 +83,7 @@ class StylesheetPartitionTests(unittest.TestCase):
         "13-stage.css", "14-player.css", "15-detail.css", "16-settings.css",
         "17-overlay.css", "18-drawer.css", "19-immersive.css", "20-offdisk.css",
         "21-online.css", "22-followmanage.css", "23-configuration.css",
+        "24-miniplayer.css",
     )
 
     @classmethod
@@ -3023,7 +3024,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("playerControlTooltip(play,'播放','K')")
         self.assertPageContains("playerControlTooltip(mute,'静音','M')")
         self.assertPageContains("playerControlTooltip(time,'显示剩余时间')")
-        self.assertPageContains("playerControlTooltip(pip,'画中画','I')")
+        # i 键归迷你播放器（YouTube 的 aria-keyshortcuts="i"），画中画只留按钮不带徽标。
+        self.assertPageContains("playerControlTooltip(pip,'画中画')")
         self.assertPageContains("playerControlTooltip(fullscreen,'全屏','F')")
         self.assertPageContains("playerControlTooltip(toggle,'设置')")
         # 快捷键走按钮自己的点击路径，全屏和画中画的兜底逻辑只写一份。
@@ -3031,7 +3033,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("if(e.key===' '||e.key==='k'||e.key==='K')")
         self.assertPageContains("if(e.key==='m'||e.key==='M'){e.preventDefault();clickPlayerControl(video,'.vjs-mute-control')")
         self.assertPageContains("if(e.key==='f'||e.key==='F'){e.preventDefault();clickPlayerControl(video,'.vjs-fullscreen-control')")
-        self.assertPageContains("if(e.key==='i'||e.key==='I'){e.preventDefault();clickPlayerControl(video,'.vjs-picture-in-picture-control')")
+        self.assertPageContains("if(e.key==='i'||e.key==='I'){e.preventDefault();toggleMiniplayerShortcut();return}")
         # 提示外观与音量百分比共用一套毛玻璃，音量提示抬到控制条上方。
         self.assertPageContains(".vjs-peach-tooltip{position:absolute;z-index:5;right:50%;bottom:calc(100% + 12px)")
         self.assertPageContains("backdrop-filter:blur(16px)")
@@ -3041,6 +3043,68 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".vjs-volume-tooltip{z-index:5!important;left:50%;right:auto!important;top:auto;bottom:calc(100% + 32px)")
         # 提示要露出控制条，播放键和时间钮不能再靠 overflow 裁。
         self.assertPageLacks("background:rgba(0,0,0,.6);box-shadow:none;overflow:hidden}")
+
+    def test_miniplayer_keeps_the_playing_video_when_leaving_the_detail(self):
+        """离开详情时正在放的视频缩到角落继续放，几何照 YouTube 桌面版 ytd-miniplayer 实测。
+
+        证据在 `docs/reference-snapshots/youtube-miniplayer-measured.md`：fixed、离边 16px、宽 400、
+        信息栏 76px、12px 圆角、双层阴影，吸附回角是 transform .5s cubic-bezier(.05,0,0,1)。播放器
+        不销毁而是整块搬走，流会话跟着它；显式关闭、换详情和删条目才真的销毁。
+        """
+        self.assertPageContains('id="miniplayerSetting"')
+        self.assertPageContains("appSettings.miniplayer=appSettings.miniplayer!==false;")
+        self.assertPageContains("$('#miniplayerSetting').checked=appSettings.miniplayer;")
+        self.assertPageContains('<aside class="miniplayer" id="miniplayer" data-corner="br" aria-label="小窗播放" hidden>')
+        self.assertPageContains('id="miniplayerExpand" aria-label="展开到详情" aria-keyshortcuts="i"')
+        self.assertPageContains('id="miniplayerClose" aria-label="关闭小窗"')
+        self.assertPageContains('id="miniplayerPlay" aria-label="暂停" aria-keyshortcuts="k"')
+        self.assertPageContains('<button type="button" class="miniplayerinfo" id="miniplayerInfo" aria-label="展开到详情">')
+        self.assertPageContains("--layer-miniplayer:900; --layer-dialog:1000;")
+        self.assertPageContains(".miniplayer{position:fixed;z-index:var(--layer-miniplayer);width:min(400px,calc(100vw - 32px))")
+        self.assertPageContains('.miniplayer[data-corner="tr"]{right:16px;top:calc(var(--topH) + 16px)}')
+        self.assertPageContains(".miniplayer.miniplayer-snapping{transition:transform .5s cubic-bezier(.05,0,0,1)}")
+        self.assertPageContains("box-shadow:0 2px 5px rgba(0,0,0,.16),0 3px 6px rgba(0,0,0,.2)")
+        self.assertPageContains("min-height:76px")
+        # 播放器搬家而不是销毁：只有显式关闭、换详情和删条目传 miniplayer:false。
+        self.assertPageContains("function disposeStage(push=false,preserveInlineOrigin=false,{miniplayer=true}={})")
+        self.assertPageContains("if(toMini)enterMiniplayer(detailPlayer,meta);")
+        self.assertPageContains("if(!toMini&&!owned)cancelDetailStream();")
+        self.assertPageContains("disposeStage(false,true,{miniplayer:false});")
+        self.assertPageContains("disposeStage(false,false,{miniplayer:false});")
+        self.assertPageContains("disposeStage(true,false,{miniplayer:false});")
+        # 小窗开着时普通视频卡直接换片；展开回详情从同一时刻接着放，深链 `?t=` 走同一口子。
+        self.assertPageContains("function miniplayerTakesCard(it)")
+        self.assertPageContains("miniplayerTakesCard(it)?miniplayerPlay(id):onClick?onClick(id,anchor)")
+        self.assertPageContains("queueDetailResume(kind,item.id,player.currentTime(),!player.paused());")
+        self.assertPageContains("const resume=takeDetailResume(options.source?'follow':'item',it.id);")
+        self.assertPageContains("if(resume?.time>0)player.one('loadedmetadata'")
+        # 拖到哪个象限就吸到哪个角；键盘 k / i 在小窗里同样有效。
+        self.assertPageContains("const corner=(rect.top+rect.height/2<innerHeight/2?'t':'b')+(rect.left+rect.width/2<innerWidth/2?'l':'r');")
+        self.assertPageContains("if((!stage||stage.hidden)&&miniplayerActive())return miniplayerVideo();")
+        self.assertPageContains("function toggleMiniplayerShortcut()")
+
+    def test_player_context_menu_lists_only_the_actions_peach_can_do(self):
+        """播放器右键菜单照 YouTube f572e43c 的 .ytp-contextmenu 取舍，只留 Peach 有能力的项。
+
+        循环播放、迷你播放器／展开、画中画、复制视频网址、复制当前时间的视频网址、播放统计。
+        嵌入代码、调试信息和排查播放问题没有对应能力，不列。外观：12px 圆角、rgba(0,0,0,.6) 加
+        blur(16px)、无阴影、每项 40px、图标格 44px、悬停 rgba(255,255,255,.1)。
+        """
+        self.assertPageContains('<div class="popmenu playermenu" id="playerMenu" role="menu" aria-label="播放器菜单" hidden></div>')
+        self.assertPageContains("wirePlayerContextMenu(detailPlayer);")
+        self.assertPageContains("event.preventDefault();openPlayerMenu(player,event.clientX,event.clientY);")
+        for label in ("循环播放", "迷你播放器", "展开", "画中画", "复制视频网址", "复制当前时间的视频网址", "播放统计"):
+            with self.subTest(label=label):
+                self.assertPageContains(f"label:'{label}'")
+        for absent in ("复制嵌入代码", "复制调试信息", "排查播放问题"):
+            with self.subTest(label=absent):
+                self.assertPageLacks(f"label:'{absent}'")
+        self.assertPageContains("role=\"${checkable?'menuitemcheckbox':'menuitem'}\"")
+        self.assertPageContains("link.searchParams.set('t',String(Math.floor(player.currentTime()||0)));")
+        self.assertPageContains(".popmenu.playermenu{padding:8px 0;border:0;gap:0;background:rgba(0,0,0,.6);backdrop-filter:blur(16px)")
+        self.assertPageContains("grid-template-columns:44px minmax(0,1fr) 44px;align-items:center;width:100%;height:40px;")
+        self.assertPageContains(".playermenuitem:hover,.playermenuitem:focus-visible{background:rgba(255,255,255,.1);outline:0}")
+        self.assertPageContains('.playermenuitem[aria-checked="true"]>.playermenucheck{visibility:visible}')
 
     def test_narrow_player_collapses_the_right_controls_instead_of_overflowing(self):
         """播放器窄到 528 以下时右侧只留设置与展开键，点开才铺开其余按钮。
@@ -5266,7 +5330,7 @@ class WebUiSourceTests(unittest.TestCase):
     def test_entity_collection_posters_and_titles_open_item_details(self):
         self.assertPageContains('class="cardopenhit" data-open')
         self.assertPageContains('<button class="t cardtitle" data-open>')
-        self.assertPageContains("const openCard=(id,anchor=el)=>onClick?onClick(id,anchor):(it?.part_group")
+        self.assertPageContains("const openCard=(id,anchor=el)=>miniplayerTakesCard(it)?miniplayerPlay(id):onClick?onClick(id,anchor):(it?.part_group")
         self.assertPageContains("if(e.target.closest('[data-open]')){e.stopPropagation();openCard(+el.dataset.id,el)")
         self.assertPageContains(".cardopenhit{position:absolute;inset:0;z-index:3")
         self.assertPageContains("el.querySelectorAll('[data-open]').forEach(opener=>")
@@ -6267,6 +6331,8 @@ class WebUiSourceTests(unittest.TestCase):
             ".fsechead .fmeta",
             ".frow>b", ".fvkind", ".idname", ".kv>span:first-child",
             ".meta .t", ".meta .who", ".mixcopy b,.mixcopy span",
+            # 小窗信息栏与播放器右键菜单：标题、来源和菜单标签都是语义文本，尾部省略。
+            ".miniplayertitle", ".miniplayersub", ".playermenuitem>span",
             ".mixitemtext [data-truncate-end]", ".mixqueuehead h2",
             ".ncard .meta .why",
             ".playerstats dd", ".playerstatsmetric>span",

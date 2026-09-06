@@ -91,7 +91,7 @@ React 渲染的规格页、用户截图这类给不出可重抓字节的实测�
 - 表格、排行与面包屑：`vercel-geist-table-ranking`、`vercel-geist-breadcrumbs`；同形可比较数据才用语义 `table` 并保持 tabular numerals，内容标签是固定 Top 排行和直接筛选，不伪装成可排序数据表。
 - 设置 Dialog 动效、搜索期 Spinner、后台 Loading Dots 与 busy 按钮：`vercel-geist-command-search-loading`；中性说明 Note：`vercel-notifications-note`；具名动作 Toast：`vercel-geist-toast`；确认弹层（2026-09-06）：`vercel-geist-modal-measured`。
 - 资料页阅读顺序与照片入口：`beeg-profile-layout`；JAV 标题显示语义：`jav-title-user-screenshot`；卡片悬停的快退／快进控件：`hover-seek-controls-user-screenshot`（beeg 现网没有这个控件，只依据用户截图）。
-- 播放器控制栏、设置浮层、影院与全屏几何：`youtube-player-controls-user-screenshot`；沉浸页版式：`youtube-shorts-immersive-user-screenshot`；播放统计滚动历史：`youtube-stats-buffer-measured`。Peach 不复制没有实际能力的字幕、睡眠定时或自动播放按钮。
+- 播放器控制栏、设置浮层、影院与全屏几何：`youtube-player-controls-user-screenshot`；沉浸页版式：`youtube-shorts-immersive-user-screenshot`；播放统计历史：`youtube-stats-buffer-measured`；小窗与右键菜单：`youtube-miniplayer-measured`。Peach 不复制字幕、睡眠定时或自动播放按钮。
 - 追更与文件站的凭据与解析边界：`f95-masked-gofile-media`、`follow-fanbox-gofile-paheal`、`fanbox-browser-transport`、`rule34-follow-tags-and-collections`；厂牌 Logo 候选发现：`fiu758-studio-logo-discovery`，只作发现来源不作真相源。
 - 通用评审清单与报告型页面版式：`vercel-web-interface-guidelines`、`vercel-report-design`（`vercel.com/design.md`）。
 - 默认 Note、只读提示和 info 入口统一复用本地 Lucide 圆圈 `i`，显式使用 2px 描边与圆端点保证圆点可见，不复制未开放许可的 Geist 私有 SVG。
