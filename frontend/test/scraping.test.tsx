@@ -21,7 +21,7 @@ it('保存后清空秘密输入，状态只表示保存且撤销可操作', asyn
   const toast = vi.fn();
   await act(async () => render(h(Scraping, { data: { sources: [source] }, error: '', toast }), host));
   const heading = host.querySelector('.geist-fieldset-heading')!;
-  expect(heading.querySelector('.geist-fieldset-title')?.textContent).toBe(source.label);
+  expect(heading.querySelector('.geist-fieldset-title')?.textContent?.trim()).toBe(source.label);
   expect(heading.querySelector('a')?.href).toBe(source.login);
   const proxyLink = host.querySelector<HTMLAnchorElement>('.geist-text-link')!;
   expect(proxyLink.getAttribute('href')).toBe('/configuration#peachProxy');
@@ -61,10 +61,10 @@ it('连接结果用站点名称与共享状态组件呈现', async () => {
   await act(async () => render(h(Scraping, { data: { sources: [source] }, error: '', toast: vi.fn() }), host));
   const check = [...host.querySelectorAll('button')].find(button => button.textContent === '检查连接')!;
   await act(async () => { check.click(); await new Promise(resolve => setTimeout(resolve, 0)); });
-  expect(host.querySelector('.geist-note-success')?.textContent).toBe('FC2CMADB：可连接');
+  expect(host.querySelector('.geist-note-success')?.textContent?.trim()).toBe('FC2CMADB：可连接');
   connected = false;
   await act(async () => { check.click(); await new Promise(resolve => setTimeout(resolve, 0)); });
-  expect(host.querySelector('.geist-note-error')?.textContent).toBe('FC2CMADB：不能连接');
+  expect(host.querySelector('.geist-note-error')?.textContent?.trim()).toBe('FC2CMADB：不能连接');
 });
 
 it('代理复用重绘下拉，Cookie 二选一且切换后不携带隐藏输入', async () => {
@@ -72,8 +72,8 @@ it('代理复用重绘下拉，Cookie 二选一且切换后不携带隐藏输入
   host = document.createElement('div'); document.body.append(host);
   await act(async () => render(h(Scraping, { data: { sources: [source] }, error: '', toast: vi.fn() }), host));
   expect(host.querySelector('select')).toBeNull();
-  expect(host.querySelector('.gselect [aria-haspopup=listbox]')?.textContent).toBe('Peach 代理');
-  expect(host.querySelector('.scraping-url')?.textContent).toBe(source.login);
+  expect(host.querySelector('.gselect [aria-haspopup=listbox]')?.textContent?.trim()).toBe('Peach 代理');
+  expect(host.querySelector('.scraping-url')?.textContent?.trim()).toBe(source.login);
   expect(host.querySelector('input[type=file]')).toBeNull();
   const input = host.querySelector<HTMLInputElement>('input[type=password]')!;
   await act(async () => { input.value = 'private'; input.dispatchEvent(new Event('input', { bubbles: true })); });

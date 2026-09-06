@@ -1,15 +1,35 @@
-import { esc, icon } from './core.js';
+import { esc, icon, requestErrorMessage } from './core.js';
 export { MEDIA_SOURCE_ICONS } from './media-source-icons.js';
 
 const NOTE_VARIANTS=new Set(['secondary','warning','error','success']);
 
 /** Inline, persistent context beside the field/card/section it describes. */
-export function noteHtml(message,{variant='secondary',label='',className=''}={}){
+export function noteHtml(message,{variant='secondary',label='',className='',size='medium',filled=false,actionLabel=''}={}){
   const kind=NOTE_VARIANTS.has(variant)?variant:'secondary';
   const symbol=kind==='secondary'?'info':kind==='success'?'check':'alert';
   const role=kind==='error'?' role="alert"':' role="note"';
-  return `<div class="geist-note geist-note-${kind}${className?` ${esc(className)}`:''}"${role}>
-    ${icon(symbol)}<p>${label?`<b>${esc(label)}</b>`:''}<span>${esc(message)}</span></p></div>`;
+  return `<div class="geist-note geist-note-${kind}${className?` ${esc(className)}`:''}${size==='small'?' geist-note-small':''}${filled?' geist-note-filled':''}"${role}>
+    ${icon(symbol)}<p>${label?`<b>${esc(label)}</b>`:''}<span>${esc(kind==='error'?requestErrorMessage(message):message)}</span></p>${actionLabel?`<button type="button" class="geist-button primary" data-note-action>${esc(actionLabel)}</button>`:''}</div>`;
+}
+
+const PROJECT_BANNER_CLASSES={gray:'project-banner-gray',success:'project-banner-success',warning:'project-banner-warning',error:'project-banner-error'};
+export function projectBannerHtml(message,{variant='gray',href,label,value,max}={}){
+  const kind=['gray','success','warning','error'].includes(variant)?variant:'gray';
+  return `<aside class="project-banner ${PROJECT_BANNER_CLASSES[kind]}" role="${kind==='error'?'alert':'status'}"><div>${Number(max)>0?gaugeHtml('任务完成率',value,max):icon(kind==='error'||kind==='warning'?'alert':'info')}<p>${esc(message)}</p></div><a href="${esc(href)}">${esc(label)}</a></aside>`;
+}
+
+export function gaugeHtml(label,value,max=100,{usage=false,compact=false}={}){
+  const ceiling=Number(max), current=Number(value);
+  if(!Number.isFinite(ceiling)||ceiling<=0||!Number.isFinite(current))return `<span>${esc(label)}：未取得</span>`;
+  const percent=Math.max(0,Math.min(100,current/ceiling*100));
+  const level=usage?(percent>=95?'error':percent>=80?'warning':'normal'):'normal';
+  const status=usage?(level==='error'?'空间即将用满':level==='warning'?'空间使用偏高':'空间充足'):'';
+  return `<span class="geist-gauge" data-level="${level}" role="progressbar" aria-label="${esc(label+(status?'：'+status:''))}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percent}"><svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="13"/><circle cx="16" cy="16" r="13" pathLength="100" stroke-dasharray="${percent} 100"/></svg></span>${status&&!compact?`<span class="gauge-status">${status}</span>`:''}`;
+}
+
+export function configurationSkeletonHtml(){
+  const groups=[['通用',1],['媒体',2],['网络与访问',2],['更新与维护',3]];
+  return `<div class="configpage" data-skeleton="configuration" role="status" aria-label="正在读取配置">${groups.map(([label,count])=>`<h2 class="configgroup" aria-hidden="true">${label}</h2>${Array.from({length:count},()=>`<div class="configfieldset config-skeleton-card" aria-hidden="true"><div class="geist-fieldset-content"><span class="skeleton"></span><span class="skeleton"></span><span class="skeleton"></span></div><footer class="geist-fieldset-footer"><span class="skeleton"></span></footer></div>`).join('')}`).join('')}</div>`;
 }
 
 /**
@@ -41,13 +61,13 @@ export function breadcrumbHtml(items){
 }
 
 /** Determinate progress only. Callers supply real units instead of a decorative width. */
-export function progressHtml(label,value,max=100){
+export function progressHtml(label,value,max=100,{variant='active',stops=[]}={}){
   const ceiling=Math.max(0,Number(max)||0);
   const current=Math.max(0,Math.min(Number(value)||0,ceiling));
   const percent=ceiling?current/ceiling*100:0;
   return `<div class="geist-progress" role="progressbar" aria-label="${esc(label)}"
     aria-valuemin="0" aria-valuemax="${ceiling}" aria-valuenow="${current}"
-    style="--progress-value:${percent}%"><i></i></div>`;
+    style="--progress-value:${percent}%;--progress-color:var(${variant==='error'?'--drop':variant==='warning'?'--meter':'--feedback-success'})"><i></i>${stops.filter(stop=>Number(stop.value)>0&&Number(stop.value)<ceiling&&stop.label).map(stop=>`<span class="geist-progress-stop" style="left:${Number(stop.value)/ceiling*100}%" role="img" aria-label="${esc(stop.label)}"></span>`).join('')}</div>`;
 }
 
 /** Geist Spinner: immediate feedback for a user-triggered action. */
@@ -508,7 +528,8 @@ export function wireAnchoredMenu(mount,toggle,menu){
     const downward=under>=naturalHeight||under>=over;
     const height=Math.min(naturalHeight,Math.max(downward?under:over,0));
     menu.style.maxHeight=height+'px';
-    menu.style.left=Math.max(8,Math.min(anchor.right-width,innerWidth-width-8))+'px';
+    const preferredLeft=menu.classList.contains('context-card')?anchor.left:anchor.right-width;
+    menu.style.left=Math.max(8,Math.min(preferredLeft,innerWidth-width-8))+'px';
     menu.style.top=(downward?anchor.bottom+8:anchor.top-8-height)+'px'};
   /* 页面滚走了就关掉：菜单固定在视口里，锚点跟着内容跑，留着就悬在半空。
      菜单自己的滚动不算——它装不下时本来就要在内部滚，滚一下就关等于底下那几项
@@ -522,6 +543,7 @@ export function wireAnchoredMenu(mount,toggle,menu){
   const inTopLayer=menu.hasAttribute('popover');
   const setOpen=open=>{
     if(open){
+      if(openedMenu&&openedMenu.mount!==mount)openedMenu.setOpen(false);
       menu.hidden=false;if(inTopLayer)menu.showPopover();position();
       window.addEventListener('resize',position);
       window.addEventListener('scroll',closeFromViewport,{capture:true,passive:true});
@@ -537,6 +559,26 @@ export function wireAnchoredMenu(mount,toggle,menu){
   mount.addEventListener('keydown',event=>{
     if(event.key==='Escape'&&!menu.hidden){setOpen(false);toggle.focus()}});
   return {setOpen,isOpen:()=>!menu.hidden};
+}
+
+/** 复杂补充信息复用顶层浮层和视口避让，正文可聚焦并独立滚动。 */
+export function wireContextCard(mount,trigger,panel){
+  panel.classList.add('context-card');panel.setAttribute('popover','manual');
+  panel.setAttribute('role','dialog');panel.tabIndex=-1;
+  trigger.setAttribute('aria-haspopup','dialog');trigger.setAttribute('aria-controls',panel.id);
+  const floating=wireAnchoredMenu(mount,trigger,panel);
+  let timer;
+  const hide=()=>{clearTimeout(timer);floating.setOpen(false)};
+  const enter=()=>{clearTimeout(timer);timer=setTimeout(()=>{if(trigger.isConnected)floating.setOpen(true)},150)};
+  const leave=()=>{clearTimeout(timer);timer=setTimeout(()=>{if(!panel.matches(':hover')&&!trigger.matches(':hover')&&!panel.contains(document.activeElement)&&document.activeElement!==trigger)hide()},150)};
+  trigger.addEventListener('pointerenter',enter);trigger.addEventListener('pointerleave',leave);
+  panel.addEventListener('pointerenter',()=>clearTimeout(timer));panel.addEventListener('pointerleave',leave);
+  trigger.addEventListener('focus',enter);trigger.addEventListener('blur',leave);
+  trigger.addEventListener('click',()=>clearTimeout(timer));
+  mount.addEventListener('keydown',event=>{if(event.key==='Escape')hide()});
+  panel.addEventListener('focusout',leave);
+  trigger.addEventListener('keydown',event=>{if(event.key==='ArrowDown'&&!panel.hidden){event.preventDefault();(panel.querySelector('a,button,[tabindex="0"]')||panel).focus()}});
+  return {...floating,hide};
 }
 
 /* Geist Select：站内每一个下拉都是它，没有一个走浏览器自带的 select 控件。
@@ -643,18 +685,22 @@ export function confirmModal({title,body,confirmLabel,cancelLabel='取消',onCon
   document.body.append(dialog);
   return new Promise(resolve=>{
     let settled=null;
+    let busy=false;
     dialog.addEventListener('close',()=>{
       dialog.remove();
       if(trigger instanceof HTMLElement&&trigger.isConnected)trigger.focus();
       resolve(settled||{confirmed:false});
     },{once:true});
-    cancel.onclick=()=>dialog.close();
+    cancel.onclick=()=>{if(!busy)dialog.close()};
+    dialog.addEventListener('cancel',event=>{if(busy)event.preventDefault()});
     /* 遮罩上的点击落在 <dialog> 自己身上，卡片里的落在子元素上。这个动作可撤销，
        按 Geist 的判据允许点外面关掉。 */
-    dialog.addEventListener('click',event=>{if(event.target===dialog)dialog.close()});
+    dialog.addEventListener('click',event=>{if(event.target===dialog&&!busy&&!danger)dialog.close()});
     accept.onclick=async()=>{
+      if(busy)return;
       if(!onConfirm){settled={confirmed:true};dialog.close();return}
       failure.innerHTML='';
+      busy=true;
       setActionBusy(accept);
       try{
         settled={confirmed:true,result:await onConfirm()};
@@ -662,9 +708,9 @@ export function confirmModal({title,body,confirmLabel,cancelLabel='取消',onCon
       }catch(error){
         failure.innerHTML=noteHtml(error.message||'操作未完成',{variant:'error'});
         setActionBusy(accept,false);
-      }
+      }finally{busy=false}
     };
     dialog.showModal();
-    accept.focus();
+    (danger?cancel:accept).focus();
   });
 }

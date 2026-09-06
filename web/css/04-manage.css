@@ -171,12 +171,14 @@
 .scraping-source{min-width:0}
 .scraping-source .geist-fieldset-footer{flex-wrap:wrap}
 @media(max-width:600px){.scraping-page{--control-h:44px}.scraping-source button{min-height:44px}.scraping-cookie-method span{height:44px}}
-.library-processing-banner{--control-h:32px;display:flex;align-items:center;justify-content:center;gap:12px;padding:16px;margin-bottom:16px;background:var(--hover);color:var(--ink);font-size:var(--fs-lg);flex-wrap:wrap}
-.library-processing-banner .geist-button{border-radius:var(--pill-radius);font-size:var(--fs-md)}
 #libraryProcessing{scroll-margin-top:80px}
 
 .reviewbulktoolbar{width:100%;padding-block:0;margin-bottom:0}
-.reviewcontrols{position:sticky;top:var(--topH);z-index:60;display:grid;gap:12px;padding-block:12px;margin-bottom:16px;background:var(--ground);border-bottom:1px solid var(--line-soft)}
+.reviewcontrols{position:sticky;top:var(--topH);z-index:60;display:grid;gap:12px;padding-block:12px;margin-bottom:16px}
+.reviewcontrols,.reviewgroupbar{margin-inline:calc(-1 * var(--review-edge,16px));padding-inline:var(--review-edge,16px);background:transparent;border-bottom:1px solid transparent}
+.reviewcontrols.is-stuck,.reviewgroupbar.is-stuck{background:var(--ground);border-bottom-color:var(--line-soft)}
+.reviewgroupbar{position:sticky;top:calc(var(--topH) + var(--review-controls-height,0px));z-index:59;padding-block:8px}
+.reviewgroupbar.is-stuck h3{margin-right:0}
 .reviewcontrols .reviewtabs{margin-bottom:0}
 .reviewbulkfeedback{color:var(--muted)}
 .reviewbulksource{min-width:0;max-width:100%}

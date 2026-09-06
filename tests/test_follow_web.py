@@ -1956,25 +1956,20 @@ class FollowWebSourceTests(unittest.TestCase):
 
     def test_the_page_says_where_the_credential_actually_lands(self):
         # 从 Mac 浏览 Windows 实例时，凭据落在 Windows 上——不能写成「本机」。
-        self.assertPageContains("运行 Peach 的那台机器")
+        self.assertPageContains("运行 Peach 的电脑")
         self.assertPageContains("Windows 上不收紧文件权限")
         self.assertPageContains("row.path")
         self.assertPageContains("row.world_readable")
 
-    def test_credential_explanation_uses_an_accessible_viewport_clamped_tooltip(self):
+    def test_credential_information_card_stays_inside_the_viewport(self):
         self.assertPageContains('class="fdescinfo" data-fdesc-tooltip')
         self.assertPageContains('aria-label="凭据存放位置说明"')
-        self.assertPageContains('id="follow-credential-tooltip" role="tooltip" hidden')
-        self.assertPageContains("tooltipTrigger.setAttribute('aria-describedby',tooltip.id)")
-        self.assertPageContains("tooltipTrigger.removeAttribute('aria-describedby')")
+        self.assertPageContains('id="follow-credential-tooltip" role="dialog"')
+        self.assertPageContains("trigger.setAttribute('aria-controls',panel.id)")
+        self.assertPageContains("panel.setAttribute('popover','manual')")
         self.assertPageContains("event.key==='Escape'")
-        tooltip = self.page[self.page.index(".fdescpop{"):]
-        tooltip = tooltip[:tooltip.index("}")]
-        self.assertIn("position:fixed", tooltip)
-        self.assertIn("max-width:min(250px,calc(100vw - 16px))", tooltip)
-        self.assertIn("pointer-events:none", tooltip)
-        self.assertNotIn("340px", tooltip)
-        self.assertPageContains("innerWidth-box.width-8")
+        self.assertPageContains("max-width:calc(100vw - 16px)")
+        self.assertPageContains("innerWidth-width-8")
 
     def test_author_aliases_use_the_real_geist_collapse_motion(self):
         self.assertPageContains(".fcollapse{overflow:hidden;transition:height .2s ease-in-out}")
@@ -2530,7 +2525,7 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("${followCheckReport?followCheckFailNote(followCheckReport):''}")
         for needle in ("新增 <b>", "更新 <b>", "个来源没有更新", "没有任何更新",
                        "个失败", "fcheckfail", "没有更多历史内容",
-                       "data-follow-report-dismiss"):
+                       "geist-note"):
             self.assertPageContains(needle)
         # 失败要说清是哪个站，不能让用户去猜 `rule34xxx` 是什么。
         self.assertPageContains("row.provider_label||row.provider")
@@ -2837,7 +2832,7 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("source:followMediaSourceLabel(image,item)")
         self.assertPageContains("const resolution=image?.naturalWidth&&image?.naturalHeight")
         self.assertPageContains("reveal.hidden=!asset")
-        self.assertPageContains("const target=reveal.hidden?title:reveal;target.focus()")
+        self.assertPageContains("wireContextCard(")
         self.assertPageContains(".photodetail>button[hidden]{display:none}")
         self.assertPageLacks("if(!asset){toggle.hidden=true;dismiss();return}",
                              "在线图片的整个信息入口仍被隐藏")

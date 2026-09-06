@@ -1,6 +1,6 @@
 # Peach 交接与长期工作约定
 
-本机设置见 `REUSE.md`。
+设置见 `OPERATIONS.md`。
 
 ## 界面、媒体与复核的既定判据
 
@@ -86,10 +86,10 @@ React 渲染的规格页、用户截图这类给不出可重抓字节的实测�
 
 - 相关推荐算法：`openaver-related-ranking`，固定 revision，只参考 Tag IDF 与结构化共同点，MMR 和稳定破同分是 Peach 自加，不复制上游界面或源码。
 - 网格、控件半径、语义 token 与中间省略：`vercel-geist-grid`、`vercel-geist-controls-measured`、`vercel-geist-middle-truncate`；中间省略只用于路径、URL、ID、SHA 这类首尾都有信息的值，必须显式 `data-middle-truncate`，标题、说明、人名和标签保留末尾省略。
-- 统计与口味层级，Note／Progress／Switch／Fieldset／Scroller／Empty State 语义与控件：`vercel-geist-semantics-measured`、`vercel-geist-note-progress-switch-analytics`、`vercel-geist-fieldset-scroller-empty-state`；配置页截图补证：`vercel-geist-controls-measured`。
+- 统计与口味层级，Note／Progress／Gauge／Context Card 等控件：`vercel-geist-semantics-measured`、`vercel-geist-note-progress-switch-analytics`、`vercel-geist-fieldset-scroller-empty-state`；配置页截图补证：`vercel-geist-controls-measured`。
 - 分类切换条属于 Tabs 的 secondary 变体而不是分段器：`vercel-geist-tabs-secondary-measured`。
 - 表格、排行与面包屑：`vercel-geist-table-ranking`、`vercel-geist-breadcrumbs`；同形可比较数据才用语义 `table` 并保持 tabular numerals，内容标签是固定 Top 排行和直接筛选，不伪装成可排序数据表。
-- 设置 Dialog 动效、搜索期 Spinner、后台 Loading Dots 与 busy 按钮：`vercel-geist-command-search-loading`；中性说明 Note：`vercel-notifications-note`；具名动作 Toast：`vercel-geist-toast`；写操作前的确认弹层：`vercel-geist-modal-measured`。
+- 设置 Dialog 动效、搜索期 Spinner、后台 Loading Dots 与 busy 按钮：`vercel-geist-command-search-loading`；中性说明 Note：`vercel-notifications-note`；具名动作 Toast：`vercel-geist-toast`；确认弹层（2026-09-06）：`vercel-geist-modal-measured`。
 - 资料页阅读顺序与照片入口：`beeg-profile-layout`；JAV 标题显示语义：`jav-title-user-screenshot`；卡片悬停的快退／快进控件：`hover-seek-controls-user-screenshot`（beeg 现网没有这个控件，只依据用户截图）。
 - 播放器控制栏、设置浮层、影院与全屏几何：`youtube-player-controls-user-screenshot`；沉浸页版式：`youtube-shorts-immersive-user-screenshot`；播放统计滚动历史：`youtube-stats-buffer-measured`。Peach 不复制没有实际能力的字幕、睡眠定时或自动播放按钮。
 - 追更与文件站的凭据与解析边界：`f95-masked-gofile-media`、`follow-fanbox-gofile-paheal`、`fanbox-browser-transport`、`rule34-follow-tags-and-collections`；厂牌 Logo 候选发现：`fiu758-studio-logo-discovery`，只作发现来源不作真相源。

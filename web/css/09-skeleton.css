@@ -152,6 +152,7 @@ body.refreshing #tiers .brandpill::after{content:'';position:absolute;inset:0;ri
 .review-skeleton .skeletoncard em::after,
 .followmanage-skeleton .skeletoncard i::after{content:none}
 
+
 /* 计数骨架的宽高定死：跟着真实文本走的话，数字回来那一刻整行会横向弹一下。
    14px 远低于筛选条按钮的 32px，而 `.count` 有 min-height 兜底，所以换成真数字
    不改变行高。`视频 · N` 用的是同一枚。 */
@@ -187,3 +188,9 @@ body.refreshing #tiers .av .ring,body.refreshing #tiers .av .nm,
 body.refreshing #tiers .brandpill{visibility:hidden;background:var(--hover)}
 body.refreshing #tiers .av .nm{width:52px;margin:0 auto;border-radius:var(--control-radius)}
 body.refreshing #tiers .brandpill{border-color:transparent}
+
+.stats-lede-skeleton{display:block;width:min(380px,75%);height:22px;margin-bottom:16px}
+.config-skeleton-card .skeleton{display:block;height:20px;width:60%}
+.config-skeleton-card .geist-fieldset-content>.skeleton:first-child{height:24px;width:35%}
+.config-skeleton-card .geist-fieldset-content>.skeleton:last-child{height:var(--control-h);width:100%}
+.config-skeleton-card .geist-fieldset-footer>.skeleton{width:100px;height:var(--control-h);margin:0}

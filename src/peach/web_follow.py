@@ -1036,7 +1036,7 @@ def _external_search_payload(search) -> dict:
             "url": search.url, "evidence": search.evidence}
 
 
-def w_follow_resolve(contract, body) -> dict:
+def w_follow_resolve(contract, body, *, progress=None) -> dict:
     """把粘进来的每一行解析成「可以添加什么」，但**不添加**。
 
     一行是链接就直接认；不是链接就当成名字或 id 拿去各来源查一遍。两种都只返回结果，
@@ -1044,8 +1044,12 @@ def w_follow_resolve(contract, body) -> dict:
     自动登记等于替用户做决定。
     """
     if body.get("background"):
-        return contract.follow_resolve_job.start_result(
-            lambda: w_follow_resolve(contract, {**body, "background": False}))
+        job = contract.follow_resolve_job
+        def work(job_id):
+            result = w_follow_resolve(contract, {**body, "background": False},
+                progress=lambda **fields: job.update(job_id, **fields))
+            job.update(job_id, **result, status="complete", completed_at=time.time())
+        return job.start(work, restart=True, initial={"message": "正在准备查找关注来源"})
     raw = body.get("lines")
     if isinstance(raw, str):
         raw = raw.splitlines()
@@ -1060,7 +1064,10 @@ def w_follow_resolve(contract, body) -> dict:
     known = {(row["provider"], canonical_source_ref(row["provider"], row["ref"])) for row in
              (_source_payload(r) for r in _existing_sources(contract))}
     results = []
-    for line in lines:
+    for index, line in enumerate(lines):
+        if progress:
+            progress(checked=index, total=len(lines),
+                     message=f"查找关注来源：已完成 {index} / {len(lines)} 行，正在解析第 {index + 1} 行")
         try:
             parsed = parse_source_url(line)
         except FollowSourceError as url_error:

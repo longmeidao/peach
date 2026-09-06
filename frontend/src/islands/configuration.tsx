@@ -16,6 +16,7 @@ import { AccessSettings, type AccessState } from './access-settings';
 import { ReleaseUpdates, type ReleaseState, type UpdateJob } from './release-updates';
 import { PeachProxy, type PeachProxyState } from './peach-proxy';
 import { StartupSettings, UninstallSettings, type StartupState, type UninstallState } from './desktop-settings';
+import { CloudDriveGuide } from './clouddrive-guide';
 
 export interface ConfigurationProps {
   /** 保存成功后的过去时回执（遗留层的 Toast）。 */
@@ -303,7 +304,7 @@ function ConfigurationForm({ data, receipt }: { data: ConfigurationData; receipt
             ))}
           </div>
           <button type="button" class="geist-button configadd" onClick={add}>添加文件夹</button>
-          {kinds.some((kind) => kind === '115' || kind === 'pikpak') ? <p class="confighelp">先在 CloudDrive 登录网盘并完成挂载。<a class="externallink" href="https://www.clouddrive2.com/help.html" target="_blank" rel="noreferrer">挂载帮助<svg class="externalmark" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-external-link" /></svg></a></p> : null}
+          {kinds.some((kind) => kind === '115' || kind === 'pikpak') ? <CloudDriveGuide /> : null}
           {kinds.some((kind) => kind === '115' || kind === 'pikpak') ? data.mount_dependencies?.filter((dependency) => !dependency.available).map((dependency) => <p class="confighelp">未检测到 {dependency.name}。<a class="externallink" href={dependency.download_url} target="_blank" rel="noreferrer">下载 {dependency.name}<svg class="externalmark" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-external-link" /></svg></a></p>) : null}
           {data.windows === false ? <p class="confighelp">本机文件夹是这台电脑读取媒体的位置。Windows 中的对应路径用于匹配馆藏中已有的路径，例如 B:\ 对应本机挂载文件夹。</p> : null}
         </div>

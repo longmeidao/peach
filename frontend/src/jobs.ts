@@ -6,6 +6,7 @@ export interface JobState {
   total?: number;
   older?: boolean;
   error?: string;
+  message?: string;
   current?: { label?: string; provider?: string; attempt?: number;
     max_attempts?: number; retry_in?: number };
 }
@@ -77,7 +78,7 @@ export function followJobProgress(options: {
         const current = state.current;
         const attempt = (current?.attempt || 1) > 1
           ? ` · 第 ${current?.attempt}/${current?.max_attempts} 次尝试${current?.retry_in ? `，${current.retry_in} 秒后重试` : ''}` : '';
-        const text = (options.title || (state.total
+        const text = (state.message || (options.title ? options.title + (state.total ? `：已完成 ${state.checked || 0}/${state.total}` : '') : '') || (state.total
           ? `${state.older ? '抓取历史' : '检查更新'}：已完成 ${state.checked || 0}/${state.total} 个来源`
           : '正在准备检查任务…'))
           + (current ? ` · ${current.label || current.provider || ''}${attempt}` : '');

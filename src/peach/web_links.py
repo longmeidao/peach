@@ -160,7 +160,7 @@ def w_links_check(contract: LinkContract, body=None):
     ))
 
 
-def w_links_prune(contract: LinkContract, body):
+def w_links_prune(contract: LinkContract, body, *, progress=None):
     """删掉上一次检查判定为 gone 的链接。
 
     只接受**刚跑完的那一次**检查的 `check_id`：拿一份放了半天的清单去删，删的可能是
@@ -170,8 +170,12 @@ def w_links_prune(contract: LinkContract, body):
     if body.get("confirm") is not True:
         return {"ok": False, "error": "需要 confirm"}
     if body.get("background"):
-        return contract.link_prune_job.start_result(
-            lambda: w_links_prune(contract, {**body, "background": False}))
+        job = contract.link_prune_job
+        def work(job_id):
+            result = w_links_prune(contract, {**body, "background": False},
+                progress=lambda **fields: job.update(job_id, **fields))
+            job.update(job_id, **result, status="complete" if result.get("ok") else "failed", completed_at=time.time())
+        return job.start(work, restart=True, initial={"message": "正在核对失效链接清单"})
     state = contract.link_check.snapshot()
     if state is None or state["status"] != "complete":
         return {"ok": False, "error": "没有已完成的检查结果"}
@@ -180,11 +184,15 @@ def w_links_prune(contract: LinkContract, body):
     planned = [dict(item) for item in state["gone"]]
 
     confirmed, recovered = [], []
-    for item in planned:
+    for index, item in enumerate(planned):
+        if progress:
+            progress(checked=index, total=len(planned), message=f"重验失效链接：已检查 {index} / {len(planned)} 条")
         status, note = _probe(item["url"])
         (confirmed if link_verdict(status, note) == "gone" else recovered).append(item)
 
     removed = 0
+    if progress:
+        progress(checked=len(planned), total=len(planned), message=f"重验结束：准备删除 {len(confirmed)} 条，保留 {len(recovered)} 条")
     if confirmed:
         # 整批删除走同一个写事务：要么这一次判定的 gone 全部落库，要么一条都不落。
         with contract.write_transaction() as connection:

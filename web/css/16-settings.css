@@ -21,7 +21,7 @@ body.settings-open{overflow:hidden}
    靠一档亮度差加一条 --field-ring 发丝线浮起，不加投影。原来正好反着——白壳里嵌灰块，
    同一套控件在设置里和在首页上读出的层级相反。投影一并去掉：全站只有两张面这条规则
    不因为它是弹层就不算，压暗的遮罩已经把它和底下的内容分开了。 */
-.settingscard{display:flex;flex-direction:column;width:min(520px,100%);max-height:min(720px,90vh);max-height:min(720px,90dvh);overflow:hidden;animation:settings-dialog-in .35s cubic-bezier(.4,0,.2,1) both;
+.settingscard{display:flex;flex-direction:column;width:min(520px,100%);max-height:min(720px,90vh);max-height:min(720px,90dvh);overflow:clip;animation:settings-dialog-in .35s cubic-bezier(.4,0,.2,1) both;
   border:1px solid var(--field-ring);border-radius:var(--floating-radius);background:var(--page)}.settingsscroll{flex:1;min-height:0;overflow-y:auto;padding:0 20px 20px;overscroll-behavior:contain}.settingshead{z-index:2;display:flex;align-items:center;justify-content:space-between;flex:none;padding:20px 20px 16px;border-bottom:1px solid var(--field-ring);background:var(--ground)}
 /* 遮罩是唯一还要分主题写的一处：它是写死的实色而不是 token。卡片与分组走 --page、
    --ground 和 --field-ring，两档主题由 token 自己换，不再需要各写一条。
@@ -31,20 +31,24 @@ body.settings-open{overflow:hidden}
 :root[data-theme="dark"] .settingspanel{background:rgba(0,0,0,.8)}
 .settingshead h2{margin:0;font-size:var(--fs-xl)}.settingshead button{border:0;background:transparent;color:var(--muted);width:34px;height:34px;border-radius:var(--control-radius);cursor:pointer;display:grid;place-items:center;transition:background-color .12s ease,color .12s ease}.settingshead button:hover{background:var(--hover);color:var(--ink)}
 .settingshead svg{width:20px;height:20px;stroke:currentColor;fill:none}.settingrow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:18px;align-items:center;padding:14px 0 14px;border-top:1px solid var(--line-soft)}
-.settingrow:first-of-type{border-top:0}.settingrow b{display:block;font-size:var(--fs-md)}.settingrow small{display:block;color:var(--muted);margin-top:3px;line-height:1.45}
+.settinggroup>h3+.settingrow{border-top:0}.settingrow b{display:block;font-size:var(--fs-md)}.settingrow small{display:block;color:var(--muted);margin-top:8px;line-height:1.45}
 .settingrow .gselect{min-width:148px}
+.settingrow.settingrelated{border-top:0}
+.settingsortrow{grid-template-columns:minmax(0,1fr)}
+.settingsortcontrols{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px}
+.settingsortcontrols .gselect{min-width:0;width:100%}
 .settinggroup{margin:16px 0 0;border:1px solid var(--field-ring);border-radius:var(--floating-radius);
   background:var(--ground);padding:0 16px 12px}
 .settinggroup>h3{margin:0;padding:14px 0 10px;font-size:var(--fs-lg);font-weight:600;color:var(--ink)}
-.settinggroup .settingrow{margin:0 -16px;padding-left:16px;padding-right:16px}
+.settinggroup .settingrow{margin:0;padding-left:0;padding-right:0}
 /* 布尔开关用 Geist Toggle 而不是原生复选框（取证 vercel-geist-semantics-measured.md）：
    中号 36×20 轨道 + 17px 圆点，关 = 灰轨道圆点靠左，开 = 主题蓝圆点靠右；
    Geist 的「Switch」是分段选择器（radio 语义），布尔开关的正确控件叫 Toggle。 */
 :is(#censorSetting,#detailAutoplaySetting,.ptoggle){appearance:none;-webkit-appearance:none;width:36px;height:20px;flex:none;
-  border-radius:var(--pill-radius);background:var(--line);position:relative;cursor:pointer;margin:0;
+  border:0;box-sizing:border-box;padding:0;border-radius:var(--pill-radius);background:var(--line);position:relative;cursor:pointer;margin:0;
   transition:background-color .15s ease}
 :is(#censorSetting,#detailAutoplaySetting,.ptoggle)::after{content:'';position:absolute;top:1.5px;left:2px;width:17px;height:17px;
-  border-radius:50%;background:rgba(237,237,237,.84);transition:left .15s ease}
+  border-radius:50%;background:#fff;transition:left .15s ease}
 :is(#censorSetting,#detailAutoplaySetting,.ptoggle):checked{background:var(--tungsten)}
 :is(#censorSetting,#detailAutoplaySetting,.ptoggle):checked::after{left:17px}
 :is(#censorSetting,#detailAutoplaySetting,.ptoggle):focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}
@@ -63,7 +67,7 @@ body.settings-open{overflow:hidden}
 @media (max-width:760px){.iconswitch.themeswitch label{width:44px;height:44px}}
 /* 同一组里排在设置行后面的分区自带分隔线。线属于整块卡片，所以和 .settingrow 一样
    用负边距铺到框边，不在正文宽度里断一截。 */
-.settinggroup .settingrow+.sidebarsetting{margin:0 -16px;padding:14px 16px 0;
+.settinggroup .settingrow+.sidebarsetting{margin:0;padding:14px 0 0;
   border-top:1px solid var(--line-soft)}
 .sidebarsetting{display:grid;gap:12px;padding:0}.sidebarsetting>span b,.sidebarsetting>span small{display:block}.sidebarsetting>span small{margin-top:3px;color:var(--muted);line-height:1.45}.sidebarorder{display:grid;gap:6px}/* 这一列的行、下面那个下拉和「添加」按钮同高：它们是同一张清单的三段，差几像素就
    看得出是两拨控件。34px 的图标钮加上下 1px 内边距和 1px 边框正好是 --control-h。 */

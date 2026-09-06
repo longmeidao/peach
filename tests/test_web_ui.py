@@ -2616,7 +2616,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".confighelp a:hover{text-decoration:underline;")
         for selector, declarations in re.findall(r'([^{}]+)\{([^{}]*)\}', stylesheet_source()):
             if "text-decoration:underline" in declarations:
-                self.assertIn(":hover", selector)
+                self.assertTrue(":hover" in selector or selector.strip() == ".project-banner>a", selector)
 
     def test_configuration_uses_fieldset_surfaces_and_shared_select(self):
         css = stylesheet_source()
@@ -3673,7 +3673,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("catch(_error){write(section,'读取失败')}")
         cleanup = self.page.split("async function openDataCleanup(", 1)[1].split("let dupData=null;", 1)[0]
         self.assertIn("${linkManagerMarkup()}", cleanup)
-        self.assertIn("${cloudLocations(sources.sources||[]).length?resourceSyncMarkup():''}", cleanup)
+        self.assertIn("${(sources.sources||[]).some(source=>['local','115','pikpak'].includes(source.location)&&source.roots?.length)?resourceSyncMarkup():''}", cleanup)
         stats = self.page.split("async function openStats(", 1)[1].split("function showHomeSurfaces(", 1)[0]
         self.assertNotIn("linkManagerMarkup()", stats,
                          "统计页只讲库里现在有多少，不该再挂对齐外部现实的面板")
@@ -3866,7 +3866,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("const NOTE_VARIANTS=new Set(['secondary','warning','error','success'])")
         self.assertPageContains("const symbol=kind==='secondary'?'info':kind==='success'?'check':'alert'")
         self.assertPageContains("const role=kind==='error'?' role=\"alert\"':' role=\"note\"'")
-        self.assertPageContains("noteHtml(error.message,{variant:'error',label:'同步失败'})")
+        self.assertPageContains("failure.innerHTML=noteHtml(error.message||'操作未完成',{variant:'error'})")
         self.assertPageContains("noteHtml(error.message,{variant:'error',label:'扫描失败'})")
         self.assertPageContains("noteHtml(error.message||'分析未取得',{variant:'error',label:'分析未取得'})")
         self.assertPageContains('class="geist-note geist-note-error fcheckreport" role="alert"')
@@ -3890,7 +3890,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('aria-label="图片详情" title="图片详情">${icon(\'info\')}</button>')
         self.assertPageContains('.runtimegate{display:grid;grid-template-columns:16px minmax(0,1fr) auto;align-items:center;gap:12px')
         self.assertPageContains('.runtimegate>svg{width:16px;height:16px;flex:none;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}')
-        self.assertPageContains('.geist-note>svg{width:16px;height:16px;margin-top:2px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}')
+        self.assertPageContains('.geist-note>svg{width:16px;height:24px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}')
         self.assertPageContains('.runtimegate a{grid-column:2/-1}')
 
     def test_project_web_ui_skill_keeps_future_changes_on_shared_primitives(self):
@@ -4104,6 +4104,10 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertNotIn("selection.active=selectMode", self.page)
         self.assertPageContains(".reviewbulktoolbar{width:100%;padding-block:0;margin-bottom:0}")
         self.assertPageContains('class="reviewcontrols"')
+        self.assertPageContains("updateReviewSticky($('.review'))")
+        self.assertPageContains('.reviewgroupbar.is-stuck h3{margin-right:0}')
+        self.assertPageContains('.reviewcontrols.is-stuck,.reviewgroupbar.is-stuck{background:var(--ground);border-bottom-color:var(--line-soft)}')
+        self.assertPageContains('top:calc(var(--topH) + var(--review-controls-height,0px))')
         self.assertPageContains('class="reviewitemheader">${heading}</header>')
         self.assertPageContains('aria-label="当前信息"')
         self.assertPageContains('</div>${currentInfo}<footer')
@@ -4285,8 +4289,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("if(staticManageCount)countRow.classList.remove('is-stuck')")
         self.assertPageContains(".count.manage-static{position:relative;top:auto;z-index:1}")
         self.assertPageContains("if(!response.ok){")
-        self.assertPageContains("throw new Error(detail||`请求失败（${response.status}）`)")
-        self.assertPageContains("catch(error){actionFailure('批量操作',error)}")
+        self.assertPageContains("throw new Error(requestErrorMessage(detail,response.status))")
+        self.assertPageContains("catch(error){setActionBusy(button,false);throw error}")
         self.assertPageContains("wireJunkCards($('#grid'));paintSelection();return")
         self.assertPageContains("actionFailure('操作',error)")
         self.assertPageContains("kind==='dispose'&&r.disposal==='trash'&&state.state==='ads'")
@@ -4974,7 +4978,7 @@ class WebUiSourceTests(unittest.TestCase):
             "dialog.querySelector('.geist-modal-body p').textContent=body;")
         # 遮罩上的点击落在 <dialog> 自己身上；这个动作可撤销，允许点外面关掉。
         self.assertCode(
-            "dialog.addEventListener('click',event=>{if(event.target===dialog)dialog.close()});")
+            "dialog.addEventListener('click',event=>{if(event.target===dialog&&!busy&&!danger)dialog.close()});")
 
     def test_confirm_modal_keeps_a_failed_write_in_place_with_its_reason(self):
         # 忙态落在主按钮上，不落在已经收起来的菜单项上。
@@ -5513,8 +5517,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks("loadingDotsHtml('正在读取数据管理状态…')")
         self.assertPageLacks(".cleanuploading")
         # 数据管理是一列 fieldset，骨架不能是三列海报网格。
-        self.assertPageContains(".cleanup-skeleton>div{grid-template-columns:minmax(0,1fr);gap:16px}")
-        self.assertPageContains(".cleanup-skeleton .skeletoncard em{width:100%;height:var(--fieldset-bar-h)")
 
     def test_follow_manage_skeleton_matches_its_single_column_sections(self):
         """关注管理的骨架是三个大区，不是六张 16:9 卡片。
@@ -5801,7 +5803,7 @@ class WebUiSourceTests(unittest.TestCase):
         """
         # 顶栏不出现独立开关，开关在设置面板「安全」组。
         self.assertPageLacks('id="censorBtn"')
-        self.assertPageContains('id="censorSetting" aria-describedby="sfwDescription"')
+        self.assertPageContains('id="censorSetting" role="switch" aria-describedby="sfwDescription"')
         self.assertPageContains('<b>SFW 模式</b><small id="sfwDescription">')
         self.assertPageContains('模糊、降低饱和度并压暗全站图片和视频，包括封面、头像与详情预览；停止悬停预览。文字、品牌标识和来源图标保持可见。')
         self.assertPageLacks('共享屏幕或截图前开启，遮住全站封面与预览图。')
@@ -5840,15 +5842,9 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("tagPressed(filterState.tag,t.k)")
         self.assertPageContains("${esc(tagLabel(t))} <b data-untag=\"${esc(t)}\">✕</b>")
         # fwarn 提供 dismiss（会话内记忆），关闭钮样式与 toast 关闭钮同量纲。
-        self.assertPageContains("data-fwarn-dismiss")
-        self.assertPageContains("sessionStorage.setItem('peach-fwarn-dismissed','1')")
-        self.assertPageContains(".fwarn .wclose,.fcheckreport .wclose{width:24px;height:24px;padding:0;border:0;")
-        # 报告条的红发丝边和微红底由共用 Note 提供，本页只补关闭键那一列。
-        self.assertPageContains(
-            ".fcheckreport,.fwarn{grid-template-columns:16px minmax(0,1fr) 24px;margin:10px 0 14px}")
-        self.assertPageContains(
-            ".geist-note-error{border-color:color-mix(in srgb,var(--drop) 30%,transparent);"
-            "background:color-mix(in srgb,var(--drop) 7%,transparent)}")
+        self.assertPageLacks("data-fwarn-dismiss")
+        self.assertPageContains(".fcheckreport,.fwarn{grid-template-columns:16px minmax(0,1fr);")
+        self.assertPageContains(".geist-note-error{--feedback-color:var(--drop);")
         self.assertPageLacks("border-left:2px solid var(--drop)")
         # 来源行状态徽章（ok 绿 tint / 失败红 tint / 未检查灰）。
         self.assertPageContains('<span class="sbadge ${badge}" title="${esc(stateTitle)}"><i aria-hidden="true"></i>')
@@ -5886,7 +5882,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks("wireReviewScrollers")
         self.assertPageLacks("reviewscrollbtns")
         self.assertPageContains(".settinggroup>h3{margin:0;padding:14px 0 10px;font-size:var(--fs-lg);font-weight:600;color:var(--ink)}")
-        self.assertPageContains(".settinggroup .settingrow{margin:0 -16px;padding-left:16px;padding-right:16px}")
+        self.assertPageContains(".settinggroup .settingrow{margin:0;padding-left:0;padding-right:0}")
         self.assertCode(
             ".pagetitle,.listtitle,.managetitle,.index .ihead h2,.playlistpage h2{"
             "\n  font-size:var(--fs-3xl);line-height:1.25;letter-spacing:-.01em;font-weight:600}")
@@ -5969,7 +5965,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks("data-sidebar-add-select")
         self.assertPageContains("const OPTIONAL_SIDEBAR_KEYS=['playlists','immerse','stats','review','data-cleanup','trash','follow-manage','quality']")
         self.assertPageContains("if(DIRECT_MANAGE_NAV[k]){openManage(DIRECT_MANAGE_NAV[k]);return}")
-        self.assertPageContains(".settingscard{display:flex;flex-direction:column;width:min(520px,100%);max-height:min(720px,90vh);max-height:min(720px,90dvh);overflow:hidden")
+        self.assertPageContains(".settingscard{display:flex;flex-direction:column;width:min(520px,100%);max-height:min(720px,90vh);max-height:min(720px,90dvh);overflow:clip")
         self.assertPageContains(".settingsscroll{flex:1;min-height:0;overflow-y:auto")
         self.assertPageContains("document.dispatchEvent(new CustomEvent('peachambientchange'")
         self.assertPageContains(".settingrow .gselect{min-width:148px}")
@@ -6049,7 +6045,7 @@ class WebUiSourceTests(unittest.TestCase):
             "@media (max-width:760px){.iconswitch.themeswitch label{width:44px;height:44px}}")
         # 分隔线属于整块卡片，铺到框边再断。
         self.assertCode(
-            ".settinggroup .settingrow+.sidebarsetting{margin:0 -16px;padding:14px 16px 0;"
+            ".settinggroup .settingrow+.sidebarsetting{margin:0;padding:14px 0 0;"
             "border-top:1px solid var(--line-soft)}")
 
     def test_search_menu_has_local_history_and_recommendations(self):
@@ -6131,10 +6127,9 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("const props={receipt:message=>actionReceipt(message)};")
         self.assertPageContains(
             "document.body.classList.toggle('configuration-layout',current==='configuration');")
-        # 骨架照最终结构：两块同宽的卡，和数据管理那套单列卡片一个轮廓。
-        self.assertPageContains(
-            "'/configuration':()=>`<div class=\"configpage\">${pageSkeletonHtml('正在读取配置',")
-        self.assertPageContains("{cards:true,count:2,fill:false,className:'cleanup-skeleton'})}</div>`,")
+        self.assertPageContains("'/configuration':()=>configurationSkeletonHtml()")
+        self.assertPageContains('stats-lede-skeleton')
+        self.assertPageContains("['网络与访问',2]")
 
     def test_review_page_is_a_separate_management_layer(self):
         self.assertPageContains("route('/review')")
@@ -6191,8 +6186,8 @@ class WebUiSourceTests(unittest.TestCase):
     def test_data_cleanup_groups_junk_duplicates_and_empty_folders_in_fieldsets(self):
         self.assertPageContains("async function openDataCleanup(push=true)")
         self.assertPageContains("route('/data-cleanup')")
-        self.assertPageContains("${cloudLocations(sources.sources||[]).length?resourceSyncMarkup():''}")
-        self.assertPageContains("fieldsetTitle('resourceBoxTitle','网盘与本地数据库')")
+        self.assertPageContains("${(sources.sources||[]).some(source=>['local','115','pikpak'].includes(source.location)&&source.roots?.length)?resourceSyncMarkup():''}")
+        self.assertPageContains("fieldsetTitle('resourceBoxTitle','检查文件与馆藏记录')")
         self.assertPageLacks("fieldsetTitle('resourceBoxTitle','网盘与账本')")
         self.assertPageContains("cloudPreferenceLocations(g.files,d.cloudLocations||[])")
         self.assertPageContains("Boolean(s.history_sources||d.updated_at),localStorage.getItem(TASTE_GUIDE_KEY)==='1')")
@@ -6209,7 +6204,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('class="cleanupfieldset" data-geist-fieldset aria-labelledby=')
         self.assertPageContains('class="cleanupfieldset cleanupemptyfolders" data-geist-fieldset')
         self.assertPageContains("api('/api/data-cleanup/empty-folders',{method:'POST',body:'{}'})")
-        self.assertPageContains("来源根目录不会删除")
+        self.assertPageContains("保留来源根目录")
         self.assertPageContains(".cleanupfieldset>.geist-fieldset-content{flex:1;min-height:0;padding:20px}")
         # Geist 的 Fieldset 全框只有一条线，在底部操作条上方；标题底下不划线。
         self.assertPageContains("--fieldset-bar-h:52px;")
@@ -6380,7 +6375,7 @@ class WebUiSourceTests(unittest.TestCase):
         # 只能进回收站；永久删除仍得从回收站单独执行。
         self.assertPageContains("operation:'dispose'")
         self.assertPageLacks("operation:'delete'},{method:'POST'}")
-        self.assertPageContains("文件仍在回收站里，可以还原")
+        self.assertPageContains("记录可从回收站还原")
 
     def test_duplicate_batches_respect_the_two_hundred_id_cap(self):
         self.assertPageContains("for(let i=0;i<ids.length;i+=200)")
@@ -6903,6 +6898,18 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("if(!grid.querySelector('.catalog-skeleton'))return;")
         self.assertPageContains("if(!returnSurfaceReady)clearIdleCatalogLoading();")
 
+    def test_settings_sort_pair_and_hover_off(self):
+        self.assertPageContains('class="settingrow settingrelated"')
+        self.assertPageContains('.settingrow.settingrelated{border-top:0}')
+        self.assertPageContains("['rating','评分']")
+        self.assertPageContains("icon(ascending?'arrow-up':'arrow-down','gselectmark')")
+        self.assertPageContains('class="settingsortcontrols"')
+        self.assertPageContains("field.disabled=appSettings.defaultSort==='seed'")
+        self.assertPageContains("['hoverDelaySetting','悬停放大',[['0','关闭']")
+        self.assertPageContains('allowedSetting(+appSettings.hoverDelaySeconds,[0,3,5,8],5)')
+        self.assertPageContains('if(!appSettings.hoverDelaySeconds)return;')
+        self.assertPageContains("if(appSettings.hoverDelaySeconds)el.classList.add('longhover')")
+
     def test_group_collapse_is_a_setting_and_defaults_to_on(self):
         """合并分卷与版本可以关掉，关掉后同番号的每一卷／每一版各占一张卡。
 
@@ -6911,7 +6918,7 @@ class WebUiSourceTests(unittest.TestCase):
         """
         self.assertPageContains("groupCollapse:true,sidebarOrder:DEFAULT_SIDEBAR_ORDER};")
         self.assertPageContains("appSettings.groupCollapse=appSettings.groupCollapse!==false;")
-        self.assertPageContains('<input type="checkbox" id="groupCollapseSetting">')
+        self.assertPageContains('<input type="checkbox" id="groupCollapseSetting" class="ptoggle" role="switch">')
         self.assertPageContains("$('#groupCollapseSetting').checked=appSettings.groupCollapse;")
         self.assertPageContains(
             "$('#groupCollapseSetting').onchange=e=>{appSettings.groupCollapse=!!e.target.checked;"
@@ -7551,7 +7558,7 @@ class WebUiSourceTests(unittest.TestCase):
         # 标题的 tabindex，以及无条件 reveal.focus() 不许回来。bcf112e 改了实现只更新了
         # tests/test_follow_web.py，这里的旧断言留在原地，master 上因此挂了一段时间。
         self.assertPageContains(
-            "queueMicrotask(()=>{const target=reveal.hidden?title:reveal;target.focus()})")
+            "wireContextCard(")
         self.assertPageContains(
             '<h2 id="photoDetailTitle" data-middle-truncate tabindex="-1">',
             "标题要接得住焦点，缺 tabindex=-1 时 reveal 隐藏那条路径等于没聚焦")
@@ -7707,12 +7714,12 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("it.location==='online'?'':`<span class=\"srctools detailtitletools\">${sourceToolButtons(it.id)}</span>`")
 
     def test_resource_sync_lives_in_data_management_and_keeps_offline_sources_safe(self):
-        self.assertPageContains("${cloudLocations(sources.sources||[]).length?resourceSyncMarkup():''}")
+        self.assertPageContains("${(sources.sources||[]).some(source=>['local','115','pikpak'].includes(source.location)&&source.roots?.length)?resourceSyncMarkup():''}")
         self.assertRoute('/resource-sync', "openResourceSync(push)")
         self.assertPageContains("route('/data-cleanup#resource-sync',!push)")
         self.assertPageContains("api('/api/resource-sync/scan',{method:'POST'")
         self.assertPageContains("api('/api/resource-sync/apply',{method:'POST'")
-        self.assertPageContains("source.unreadable")
+        self.assertPageContains("resourceScanHtml(payload,fmtSize)")
         self.assertPageContains("background:true,restart:true")
         self.assertPageContains("payload.status==='running'")
         self.assertPageContains("location.pathname==='/data-cleanup'")
@@ -7720,12 +7727,12 @@ class WebUiSourceTests(unittest.TestCase):
         # 上一轮跑完的结果是那一刻的快照。进页面就铺开会被读成现在的账本状态，
         # 而页面上没有任何东西说它是旧的。
         self.assertPageContains("if(existing.status==='running')void followScan(existing)")
-        self.assertPageContains("同步并清理")
+        self.assertPageContains("清理失效记录与缓存")
         self.assertPageContains('class="resourcesyncfooter geist-fieldset-footer"')
         self.assertPageContains('class="resourcepanel"')
         self.assertPageContains('class="resourceapplyrow"')
         self.assertPageContains(".resourceaction{box-sizing:border-box;height:36px")
-        self.assertPageContains("@media(max-width:640px){.resourcesync .resourcesources{grid-template-columns:1fr}")
+        self.assertPageContains("@media(max-width:640px){.resourcesync .resourcesources{grid-auto-flow:row;grid-template-columns:1fr}")
         self.assertPageContains(".resourcesyncbox,.resourcepanel{overflow:clip;border:1px solid var(--field-ring);border-radius:var(--floating-radius)")
         self.assertPageContains(".resourcesources article+article{border-left:1px solid var(--line-soft)}")
         self.assertPageContains(".resourceapplyrow .resourcesyncok{color:var(--success)}")

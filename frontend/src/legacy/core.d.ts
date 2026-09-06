@@ -7,6 +7,7 @@
 /** 来源代号到界面名称：`local`→`本地`、`115`→`115`、`pikpak`→`PikPak`、`online`→`在线`。 */
 export declare const LOC: Record<string, string>;
 export declare function icon(name: string): string;
+export declare function requestErrorMessage(cause: unknown, status?: number): string;
 
 /** 秒数格式化成 `h:mm:ss`／`m:ss`；`0`、负数与非有限值都是 `—`（probe 的硬失败哨兵）。 */
 export declare function fmtDur(seconds: number | null | undefined): string;
