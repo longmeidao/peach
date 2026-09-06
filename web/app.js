@@ -6,7 +6,7 @@ import { matchRoute, routeLabel } from './js/routes.js';
 import { initMiddleTruncate } from './js/middle-truncate.js';
 import { tagLabel } from './js/tags.js';
 import { syncSidebarSurface, sidebarTagCounts, sidebarHasCatalogContent, cleanupSkeletonHtml, cloudLocations, cloudPreferenceLocations, tasteHistoryGuideHtml, wireTasteHistoryGuide, TASTE_GUIDE_KEY } from './dist/peach-ui.js';
-import { nativeImageFit, entitySkeletonHtml } from './dist/peach-ui.js';
+import { nativeImageFit, matchesFaceSource, entitySkeletonHtml } from './dist/peach-ui.js';
 import {
   attachOverlayScrollbar, breadcrumbHtml, checkboxHtml, closeAnchoredMenu, confirmModal, emptyStateHtml, fieldsetTitle,
   fillSkeletonTier, fitSkeleton, iconSwitchHtml, indexSkeletonHtml, loadingDotsHtml,
@@ -1884,6 +1884,10 @@ function avatarFrame(img){
     return;
   }
   const [cx,cy,faceW,imgW,imgH]=String(img.dataset.facebox).split(' ').map(Number);
+  if(!matchesFaceSource(img.naturalWidth,img.naturalHeight,imgW,imgH)){
+    img.style.objectPosition='50% 50%';
+    return;
+  }
   const frame=faceFrame({cx,cy,faceW,imgW,imgH},
     {w:rect.width,h:rect.height},window.devicePixelRatio||1);
   // 放不大就一个字都不写：留下的是 CSS 里那份几何，`object-position` 照旧生效。

@@ -755,6 +755,8 @@ def outranks_incumbent(winner: dict, incumbent: dict | None) -> bool:
 
 def install_avatar(avatar_dir: Path, kind: str, entity_id: int, winner: dict) -> Path:
     """赢家直接落盘到 /entity-image 真正读的目录，带 .ct、provenance 与取景 sidecar。"""
+    if source_tier(winner) == COVER_TIER:
+        raise ValueError("作品封面只作为候选留档，不安装为人物头像")
     destination = avatar_dir / f"{kind}-{entity_id}.img"
     avatar_dir.mkdir(parents=True, exist_ok=True)
     data = winner["object_path"].read_bytes()

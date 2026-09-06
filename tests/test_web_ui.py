@@ -4541,6 +4541,8 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_portrait_pixels_do_not_size_the_face_frame(self):
         self.assertPageContains(".entityportrait img{position:absolute;inset:0;grid-area:auto;")
+        self.assertPageContains("if(!matchesFaceSource(img.naturalWidth,img.naturalHeight,imgW,imgH)){")
+        self.assertPageContains("img.style.objectPosition='50% 50%';")
 
     def test_the_agency_page_gets_the_same_loading_skeleton(self):
         self.assertPageContains("performers|creators|studios|agencies")
