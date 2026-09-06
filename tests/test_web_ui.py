@@ -5431,7 +5431,7 @@ class WebUiSourceTests(unittest.TestCase):
             ".idface img{position:absolute;inset:0;width:100%;height:100%;"
             "object-fit:cover;display:block}")
         self.assertPageContains(
-            ".entityportrait img{width:100%;height:100%;object-fit:cover;display:block")
+            ".entityportrait img{position:absolute;inset:0;grid-area:auto;width:100%;height:100%;object-fit:cover;display:block")
         self.assertPageLacks(".idcell.logo .idface img{")
         self.assertPageLacks('style="width:100%;height:100%;object-fit:contain"')
 
