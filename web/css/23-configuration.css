@@ -33,6 +33,8 @@
   border-top:1px solid var(--line);background:var(--surface)}
 .configfieldset>.geist-fieldset-footer>p{min-width:0;margin:0 auto 0 0;color:var(--muted);font-size:var(--fs-sm)}
 .configfield>label,.configfield>.configlabel{display:block;margin:0 0 8px;font-weight:500;color:var(--ink)}
+.configfield:has(>.geist-input:disabled)>label{color:var(--muted)}
+.configpage .geist-input:disabled{background:var(--surface);border-color:var(--line);color:var(--muted);cursor:not-allowed}
 .configpage .geist-input[aria-invalid="true"]{border-color:var(--drop)}
 .configpage .geist-input[aria-invalid="true"]:focus{box-shadow:0 0 0 4px color-mix(in srgb,var(--drop) 24%,transparent)}
 .confighelp{margin:8px 0 0;color:var(--muted);font-size:var(--fs-sm);line-height:1.5}

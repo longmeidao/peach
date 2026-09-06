@@ -472,7 +472,7 @@ function K(e, t, n, r, i, a) {
 }
 //#endregion
 //#region src/islands/access-settings.tsx
-function Qe({ id: e, label: t, value: n, onInput: r, error: i, help: a, current: o = !1 }) {
+function Qe({ id: e, label: t, value: n, onInput: r, error: i, help: a, current: o = !1, disabled: s = !1 }) {
 	return /* @__PURE__ */ K("div", {
 		class: "configfield",
 		children: [
@@ -488,7 +488,8 @@ function Qe({ id: e, label: t, value: n, onInput: r, error: i, help: a, current:
 				maxLength: 256,
 				value: n,
 				onInput: (e) => r(e.currentTarget.value),
-				required: !0,
+				required: !s,
+				disabled: s,
 				"aria-invalid": !!i,
 				"aria-describedby": i || a ? `${e}-hint` : void 0
 			}),
@@ -545,28 +546,6 @@ function $e({ initial: e, receipt: t }) {
 						children: n.mode === "open" ? "未设置密码，能连接到 Peach 的设备可直接访问。" : n.mode === "legacy" ? "当前使用系统生成的访问口令。你可以设置自己的密码，或关闭登录要求。" : n.mode === "locked" ? "访问设置无法读取，请在本机检查配置文件。" : "已设置密码。新设备需要登录，保持登录时间在登录页选择。"
 					})]
 				}),
-				n.mode === "password" ? /* @__PURE__ */ K(Qe, {
-					id: "access-current",
-					label: "当前访问密码",
-					value: i,
-					onInput: o,
-					error: _.current_password,
-					current: !0
-				}) : null,
-				!p && n.mode !== "locked" ? /* @__PURE__ */ K(P, { children: [/* @__PURE__ */ K(Qe, {
-					id: "access-password",
-					label: n.mode === "password" ? "新访问密码" : "设置访问密码",
-					value: c,
-					onInput: l,
-					error: _.password,
-					help: "至少 8 个字符。保存后其他设备需要重新登录。"
-				}), /* @__PURE__ */ K(Qe, {
-					id: "access-confirm",
-					label: "确认访问密码",
-					value: u,
-					onInput: f,
-					error: _.confirmation
-				})] }) : null,
 				n.mode === "password" || n.mode === "legacy" ? /* @__PURE__ */ K("label", {
 					class: "configcheck",
 					children: [/* @__PURE__ */ K("span", {
@@ -584,6 +563,30 @@ function $e({ initial: e, receipt: t }) {
 						})]
 					}), /* @__PURE__ */ K("span", { children: "关闭访问密码，允许能连接到 Peach 的设备直接访问" })]
 				}) : null,
+				n.mode === "password" ? /* @__PURE__ */ K(Qe, {
+					id: "access-current",
+					label: "当前访问密码",
+					value: i,
+					onInput: o,
+					error: _.current_password,
+					current: !0
+				}) : null,
+				n.mode === "locked" ? null : /* @__PURE__ */ K(P, { children: [/* @__PURE__ */ K(Qe, {
+					id: "access-password",
+					label: n.mode === "password" ? "新访问密码" : "设置访问密码",
+					value: c,
+					onInput: l,
+					disabled: p,
+					error: p ? void 0 : _.password,
+					help: p ? "关闭访问密码时无需填写。" : "至少 8 个字符。保存后其他设备需要重新登录。"
+				}), /* @__PURE__ */ K(Qe, {
+					id: "access-confirm",
+					label: "确认访问密码",
+					value: u,
+					onInput: f,
+					disabled: p,
+					error: p ? void 0 : _.confirmation
+				})] }),
 				p && /* @__PURE__ */ K("div", { dangerouslySetInnerHTML: { __html: s("保存后，能连接到 Peach 的设备将直接访问馆藏。", {
 					variant: "warning",
 					label: "访问范围"
