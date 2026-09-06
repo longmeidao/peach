@@ -7,7 +7,7 @@ import type { JobState } from '../jobs';
 
 interface Source {
   source: string; label: string; login: string; accepts_cookie: boolean;
-  network: string; proxy_saved: boolean; cookie_saved: boolean;
+  network: string; cookie_saved: boolean;
 }
 export interface ScrapingData { sources: Source[] }
 export interface ScrapingProps { toast(message: string): void }
@@ -20,7 +20,7 @@ function NetworkSelect({ value, onChange }: { value: string; onChange(value: str
   callback.current = onChange;
   useLayoutEffect(() => {
     const root = mount.current!;
-    root.innerHTML = selectFieldHtml([['environment', '系统代理'], ['direct', '应用直连'], ['proxy', '自定义代理']],
+    root.innerHTML = selectFieldHtml([['peach', 'Peach 代理'], ['direct', '直接连接']],
       value, { label: '连接方式' });
     const field = wireSelectField(root.firstElementChild!);
     const change = () => callback.current(field.value);
@@ -33,7 +33,6 @@ function NetworkSelect({ value, onChange }: { value: string; onChange(value: str
 function SourceForm({ source, toast }: { source: Source } & ScrapingProps) {
   const [saved, setSaved] = useState(source);
   const [network, setNetwork] = useState(source.network);
-  const [proxy, setProxy] = useState('');
   const [cookie, setCookie] = useState('');
   const [cookieText, setCookieText] = useState('');
   const [cookieMethod, setCookieMethod] = useState('paste');
@@ -57,10 +56,10 @@ function SourceForm({ source, toast }: { source: Source } & ScrapingProps) {
         if (!lifetime.current.signal.aborted) setChecks(result.results);
       } else {
         const result = await apiSend<{ saved: Source }>('/api/scraping/settings', {
-          source: source.source, network, proxy, cookie, cookies_text: cookieText, revoke: kind === 'revoke',
+          source: source.source, network, cookie, cookies_text: cookieText, revoke: kind === 'revoke',
         }, 'POST', lifetime.current.signal);
         if (!lifetime.current.signal.aborted) {
-          setSaved(result.saved); setProxy(''); setCookie(''); setCookieText(''); setFileName('');
+          setSaved(result.saved); setCookie(''); setCookieText(''); setFileName('');
           if (file.current) file.current.value = '';
           toast(kind === 'revoke' ? 'Cookie 已撤销' : '来源设置已保存');
         }
@@ -77,9 +76,7 @@ function SourceForm({ source, toast }: { source: Source } & ScrapingProps) {
         <div dangerouslySetInnerHTML={{ __html: fieldsetTitle(`scraping-${source.source}`, source.label) }} />
         <a class="scraping-url" href={source.login} target="_blank" rel="noopener noreferrer">{source.login}</a>
         <div class="scraping-label">连接方式<NetworkSelect value={network} onChange={setNetwork} /></div>
-        {network === 'proxy' && <label>代理地址<input class="geist-input" type="password" autoComplete="off" value={proxy}
-          placeholder={saved.proxy_saved ? '已保存，留空保留' : 'http://127.0.0.1:7890'} disabled={busy}
-          onInput={event => setProxy(event.currentTarget.value)} /></label>}
+        {network === 'peach' && <a href="/configuration#peachProxy">配置 Peach 代理</a>}
         {source.accepts_cookie && <>
           <p>{saved.cookie_saved ? 'Cookie 已保存，登录是否有效请在抓取时确认。' : '需要登录时，任选一种方式提供 Cookie。'}</p>
           <div class="insightswitch scraping-cookie-method" role="radiogroup" aria-label="提供 Cookie 的方式（二选一）">

@@ -8,6 +8,8 @@
   border:1px solid var(--line);border-radius:var(--control-radius);background:var(--ground)}
 .configfieldset>.geist-fieldset-content{flex:1;min-height:0;padding:20px;display:grid;gap:20px}
 .configfieldset .geist-fieldset-title{margin:0}
+.configfieldset button.danger{color:var(--drop)}
+.configfieldset button.danger:hover:not(:disabled){background:var(--drop);border-color:var(--drop);color:#fff}
 .configfieldset-heading{display:grid;gap:8px}
 .configfieldset-heading>.confighelp{margin:0}
 .configfieldset>.geist-fieldset-footer{box-sizing:border-box;min-height:var(--fieldset-bar-h);

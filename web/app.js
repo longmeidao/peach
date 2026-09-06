@@ -5,7 +5,7 @@ import { javDisplayName, javTitleHtml } from './js/jav-title.js';
 import { matchRoute, routeLabel } from './js/routes.js';
 import { initMiddleTruncate } from './js/middle-truncate.js';
 import { tagLabel } from './js/tags.js';
-import { mountIsland, unmountIsland, createReviewSelection, wireReviewSelection } from './dist/peach-ui.js';
+import { mountIsland, unmountIsland, createReviewSelection, wireReviewSelection, preferredDirection } from './dist/peach-ui.js';
 import { catalogSuggestions, catalogEmptyHtml, emptyCatalogLayout, syncSidebarSurface, sidebarTagCounts, sidebarHasCatalogContent, cleanupSkeletonHtml, cloudLocations, cloudPreferenceLocations, tasteHistoryGuideHtml, wireTasteHistoryGuide, TASTE_GUIDE_KEY } from './dist/peach-ui.js';
 import { javImageKind, normalizeJavImage, normalizeJavLayout, normalizeJavPreferences, syncJavImages, nativeImageFit, matchesFaceSource, entitySkeletonHtml } from './dist/peach-ui.js';
 import {
@@ -483,7 +483,10 @@ const SETTING_SELECTS=[
     ['dur','时长'],['size','体积'],['new','入库时间'],['played','观看时间']],
     ()=>appSettings.defaultSort,
     value=>{appSettings.defaultSort=value;saveSettings();state.sort=appSettings.defaultSort;
-      state.dir=defaultSortDir(state.sort);if(location.pathname==='/')load(true)}],
+      state.dir=preferredDirection(state.sort,appSettings.defaultSort,appSettings.defaultSortDirection);if(location.pathname==='/')load(true)}],
+  ['defaultSortDirectionSetting','默认排序方向',[['desc','降序'],['asc','升序']],
+    ()=>appSettings.defaultSortDirection==='asc'?'asc':'desc',
+    value=>{appSettings.defaultSortDirection=value;saveSettings();state.dir=preferredDirection(state.sort,appSettings.defaultSort,appSettings.defaultSortDirection);if(location.pathname==='/')load(true)}],
   ['hoverDelaySetting','悬停放大',[['3','3 秒'],['5','5 秒'],['8','8 秒']],
     ()=>appSettings.hoverDelaySeconds,
     value=>{appSettings.hoverDelaySeconds=+value||5;
@@ -704,7 +707,7 @@ function resolveSort(rawSort,rawDir,fallback=appSettings.defaultSort){
   const alias=SORT_ALIASES[rawSort];
   const sort=cleanSort(alias?alias[0]:rawSort,fallback);
   if(!SORT_DIR_WORDS[sort])return{sort,dir:''};
-  return{sort,dir:rawDir==='asc'||rawDir==='desc'?rawDir:(alias?alias[1]:'desc')};
+  return{sort,dir:rawDir==='asc'||rawDir==='desc'?rawDir:(alias?alias[1]:rawSort?'desc':preferredDirection(sort,appSettings.defaultSort,appSettings.defaultSortDirection))};
 }
 /* 查询参数属于它所在的路由，所以目录的筛选只从目录 URL 里读。
 
@@ -751,7 +754,7 @@ let barsContext={type:'home',filters:state},detailReturnBarsContext=null;
    于是四枚视图胶囊一枚都不亮，首页看上去像谁都没选中。 */
 function resetHomeState(){
   state={loc:state.loc,creator:'',studio:'',tag:'',tag_match:'all',len:'',dur_min:'',dur_max:'',
-    orient:'',state:'',sort:appSettings.defaultSort,dir:defaultSortDir(appSettings.defaultSort),
+    orient:'',state:'',sort:appSettings.defaultSort,dir:preferredDirection(appSettings.defaultSort,appSettings.defaultSort,appSettings.defaultSortDirection),
     seed:rollSeed(),q:'',jav:'',thumb:'0'};
   barsContext={type:'home',filters:state};detailReturnBarsContext=null;
   barsDataCache=null;barsDataPromise=null;
@@ -3544,7 +3547,8 @@ async function openDataCleanup(push=true){
   $('#stats').querySelector('[data-cleanup-open="junk"]').onclick=()=>openManage('ads');
   const processingUi=await import('/dist/peach-ui.js');
   if(!surfaceCurrent(surface))return;
-  await processingUi.mountIsland('library-processing',$('#libraryProcessing'),{toast,onComplete:()=>{if(surfaceCurrent(surface))void paintDataManagementCounts()}},{isCurrent:()=>surfaceCurrent(surface)});
+  await processingUi.mountIsland('library-processing',$('#libraryProcessing'),{toast,monitor:true,onComplete:()=>{if(surfaceCurrent(surface))void paintDataManagementCounts()}},{isCurrent:()=>surfaceCurrent(surface)});
+  if(surfaceCurrent(surface)&&location.hash==='#libraryProcessing')$('#libraryProcessing')?.scrollIntoView({block:'start'});
   if(!surfaceCurrent(surface))return;
   $('#stats').querySelector('[data-cleanup-open="duplicates"]').onclick=()=>openDuplicates();
   $('#stats').querySelectorAll('[data-cleanup-go]').forEach(button=>
@@ -3885,7 +3889,8 @@ async function openConfiguration(push=true){
   const props={receipt:message=>actionReceipt(message)};
   await ui.mountIsland('configuration',$('#stats'),props,{isCurrent:()=>surfaceCurrent(surface)});
   if(surfaceCurrent(surface)){
-    if(location.hash==='#libraryProcessing')$('#libraryProcessing').scrollIntoView({block:'start'});
+    if(location.hash==='#libraryProcessing'){history.replaceState(null,'','/data-cleanup#libraryProcessing');await openDataCleanup(false);return}
+    if(location.hash==='#peachProxy')$('#peachProxy')?.scrollIntoView({block:'start'});
     else window.scrollTo({top:0,behavior:'smooth'});
   }
 }

@@ -1,6 +1,12 @@
 # 复用清单
 
 复核多选复用 `/api/review/decision`，按作品／字段显式选择候选，再逐项采用；成功移出、失败保留选择，页面离开后停止后续提交。分组只区分单一候选与需选择来源，不把来源数量等同于内容冲突。滚动正文复用 Scroller，完成结果复用成功 Note。
+## 本机设置与卸载
+
+- Peach 代理复用 HTTPX 的 `trust_env`、`proxy` 与本机 CredentialStore；来源只选择公共策略或直接连接，地址不回传。单一旧代理可继承，多个地址需明确选择。
+- 自启复用项目 Windows WScript.Shell 快捷方式和 macOS LaunchAgent；[微软原生文档](https://learn.microsoft.com/en-us/troubleshoot/windows-client/admin-development/create-desktop-shortcut-with-wsh)支持 TargetPath、Arguments 与 Save。Windows 自带 COM，无新增依赖；pylnk3 无需引入。临时中文路径的真实快捷方式读、写、移除通过。
+- 独立包卸载复用正常托盘退出和 Windows PowerShell 助手；计划限制程序标记、数据直属目录、媒体不重叠，助手拒绝目录链接。临时程序、数据、媒体与无关文件组成的真实输入验证只删除计划内容。源码树仅提供手动卸载说明。
+- 扫描与采集统一挂在数据管理；首页进度 Banner 跳转同一入口。默认排序与方向使用浏览偏好，显式 URL 优先。
 
 首页进度 Banner 与配置页复用 `LibraryProcessing`、`watchJob` 和 `/api/library-processing`，启动只提交一次，状态查询接续托盘首次处理。首页在完成后收起，失败提供设置跳转；配置页持续读取阶段与真实计数。Geist Banner 官方 DOM/CSS 已于 2026-09-06 取得，取证与 Peach 差异见 `docs/reference-snapshots/vercel-geist-library-banner.md`。
 ## 独立测试包在线更新

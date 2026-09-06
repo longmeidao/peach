@@ -1,0 +1,140 @@
+"""本机启动、卸载范围与公共代理的隔离回归。"""
+import json
+import base64
+import os
+import subprocess
+from pathlib import Path
+import tempfile
+from types import SimpleNamespace
+import unittest
+from unittest.mock import patch
+
+from peach import desktop_startup, desktop_uninstall, peach_proxy, scraping_access, settings_file
+
+
+class DesktopSettingsTests(unittest.TestCase):
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name).resolve()
+        self.data = self.root / 'data'
+        self.data.mkdir()
+        self.program = self.root / 'Peach'
+        (self.program / '_internal').mkdir(parents=True)
+        (self.program / '_internal/standalone.txt').touch()
+        (self.program / 'Peach.exe').touch()
+        self.config = SimpleNamespace(data_root=self.data, path=self.data / 'config.toml', locations={'local': (str(self.root / 'media'),)}, mounts={},
+                                      directory=lambda key: self.data / key)
+
+    def test_uninstall_plan_keeps_media_and_can_preserve_all_data(self):
+        keep = desktop_uninstall.plan(self.config, delete_data=False, program=self.program)
+        self.assertEqual(keep['directories'], [])
+        full = desktop_uninstall.plan(self.config, delete_data=True, program=self.program)
+        self.assertEqual(len(full['directories']), len(settings_file.DIRECTORY_KEYS))
+        self.assertNotIn(str(self.root / 'media'), full['directories'])
+
+    def test_uninstall_refuses_media_overlap_external_storage_and_source_tree(self):
+        self.config.locations = {'local': (str(self.data / 'sources/media'),)}
+        with self.assertRaisesRegex(ValueError, '媒体'):
+            desktop_uninstall.plan(self.config, delete_data=True, program=self.program)
+        self.config.locations = {}
+        self.config.directory = lambda key: self.root / key
+        with self.assertRaisesRegex(ValueError, '外部'):
+            desktop_uninstall.plan(self.config, delete_data=True, program=self.program)
+        (self.program / '.git').mkdir()
+        with self.assertRaisesRegex(ValueError, '程序目录'):
+            desktop_uninstall.plan(self.config, delete_data=False, program=self.program)
+
+    def test_proxy_private_address_is_shared_but_direct_source_bypasses_it(self):
+        peach_proxy.save(self.root, {'mode': 'proxy', 'proxy': 'http://user:password@127.0.0.1:7890'})
+        self.assertNotIn('password', json.dumps(peach_proxy.describe(self.root)))
+        peach_proxy.save(self.root, {'mode': 'proxy', 'proxy': ''})
+        with patch('peach.scraping_access.httpx.Client') as factory:
+            scraping_access.client_for(self.root, 'dmm')
+            self.assertIn('proxy', factory.call_args.kwargs)
+            scraping_access.save(self.root, 'dmm', {'network': 'direct'})
+            scraping_access.client_for(self.root, 'dmm')
+            self.assertNotIn('proxy', factory.call_args.kwargs)
+            self.assertFalse(factory.call_args.kwargs['trust_env'])
+
+    def test_legacy_proxy_conflict_requires_selection_without_writing_secrets(self):
+        from peach.follow_secrets import CredentialStore
+        store = CredentialStore(self.root)
+        for source, port in [('dmm',7890),('mgstage',7891)]:
+            path = store.path_for('scraping-' + source)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps({'network':'proxy','proxy':f'http://127.0.0.1:{port}'}))
+        self.assertTrue(peach_proxy.describe(self.root)['needs_selection'])
+        with self.assertRaisesRegex(ValueError, '来源代理'):
+            peach_proxy.client_options(self.root)
+        peach_proxy.save(self.root, {'mode':'direct'})
+        self.assertEqual(peach_proxy.client_options(self.root), {'trust_env':False})
+
+    def test_startup_preserves_explicit_data_root_and_validates_booleans(self):
+        program, args, _ = desktop_startup.target(self.config, executable=self.program / 'Peach.exe')
+        self.assertEqual(args, ['--data-root', str(self.data)])
+        self.assertEqual(program.parent, self.program)
+        with self.assertRaises(ValueError):
+            desktop_startup.save(self.config, enabled='false', silent=True)
+
+    def test_configuration_actions_require_local_origin_and_uninstall_confirmation(self):
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+        from peach import routes_configuration
+        from peach.routes_auth import require_auth
+        app = FastAPI()
+        app.include_router(routes_configuration.router)
+        app.dependency_overrides[require_auth] = lambda: None
+        app.state.web_contract = SimpleNamespace()
+        with TestClient(app, base_url='http://127.0.0.1', client=('127.0.0.1',123)) as client, \
+                patch.object(routes_configuration, 'managed_configuration', return_value=False), \
+                patch.object(settings_file, 'load_config', return_value=self.config), \
+                patch.object(desktop_uninstall, 'request', return_value={'accepted':True}) as remove:
+            self.assertEqual(client.post('/api/configuration/uninstall',json={'delete_data':True}).status_code,400)
+            self.assertEqual(client.post('/api/configuration/uninstall',json={'delete_data':True,'confirmation':'卸载 Peach'},
+                                         headers={'origin':'https://other.invalid'}).status_code,403)
+            remove.assert_not_called()
+            self.assertEqual(client.post('/api/configuration/uninstall',json={'delete_data':False,'confirmation':'卸载 Peach'}).status_code,200)
+            remove.assert_called_once_with(self.config,False)
+            self.assertEqual(client.post('/api/configuration/startup',json={'enabled':'false','silent':True}).status_code,400)
+            self.assertEqual(client.post('/api/configuration/peach-proxy',json={'mode':'proxy','proxy':'invalid'}).status_code,400)
+
+    def test_startup_does_not_overwrite_another_installation(self):
+        with patch.object(desktop_startup, 'startup_directory', return_value=self.root), patch.object(desktop_startup, 'shortcut', side_effect=[
+            {'enabled':False}, {'enabled':True,'target':str(self.root / 'Other.exe')}]), self.assertRaisesRegex(ValueError, '另一份'):
+            desktop_startup.windows_entry(self.config, self.program / 'Peach.exe')
+
+    @unittest.skipUnless(os.name == 'nt', 'Windows 原生快捷方式')
+    def test_native_shortcut_round_trip_in_temporary_directory(self):
+        path = self.root / '启动 fixture.lnk'
+        program = str(self.program / 'Peach.exe')
+        desktop_startup.shortcut('write', path, target=program, arguments='--silent', directory=str(self.program))
+        result = desktop_startup.shortcut('read', path)
+        self.assertEqual(Path(result['target']).resolve(), Path(program))
+        self.assertEqual(result['arguments'], '--silent')
+        desktop_startup.shortcut('remove', path, expected=result['target'])
+        self.assertFalse(path.exists())
+
+    @unittest.skipUnless(os.name == 'nt', 'Windows 系统卸载助手')
+    def test_native_uninstall_removes_only_temporary_owned_program_and_data(self):
+        for key in settings_file.DIRECTORY_KEYS:
+            path = self.config.directory(key)
+            path.mkdir()
+            (path / 'fixture.txt').write_text('fixture')
+        self.config.path.write_text('fixture')
+        unrelated = self.data / 'personal.txt'
+        unrelated.write_text('preserve')
+        media = self.root / 'media'
+        media.mkdir()
+        (media / 'video.mp4').write_text('preserve')
+        job = desktop_uninstall.plan(self.config, delete_data=True, program=self.program)
+        shell = Path(os.environ.get('SystemRoot', r'C:\Windows')) / 'System32/WindowsPowerShell/v1.0/powershell.exe'
+        result = subprocess.run([str(shell), '-NoProfile', '-NonInteractive', '-EncodedCommand',
+                                 base64.b64encode(desktop_uninstall._SCRIPT.encode('utf-16-le')).decode('ascii')],
+                                input=json.dumps(dict(job, pid=2147483647)).encode('utf-8'), capture_output=True, timeout=25,
+                                creationflags=subprocess.CREATE_NO_WINDOW)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(self.program.exists())
+        self.assertFalse(self.config.path.exists())
+        self.assertTrue(unrelated.is_file())
+        self.assertTrue((media / 'video.mp4').is_file())

@@ -42,7 +42,7 @@ it('首页从空闲发现后台任务，完成后收起并在卸载后停止查�
   await act(async()=>render(h(LibraryProcessing,{data:{status:'idle'},error:'',toast,mode:'notice'}),host));
   await act(async()=>{await vi.advanceTimersByTimeAsync(1);});
   expect(host.textContent).toContain('采集缺失资料');
-  expect(host.querySelector('a')?.getAttribute('href')).toBe('/configuration#libraryProcessing');
+  expect(host.querySelector('a')?.getAttribute('href')).toBe('/data-cleanup#libraryProcessing');
   status='complete';
   await act(async()=>{await vi.advanceTimersByTimeAsync(2000);});
   expect(host.textContent).toBe('');

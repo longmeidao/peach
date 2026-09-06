@@ -59,7 +59,7 @@ export function LibraryProcessing({ data, error, toast, onComplete, mode, monito
     if (!problem && state.status !== 'running' && state.status !== 'failed') return null;
     return <div class="library-processing-banner" role="status">
       <span>{problem || (state.status === 'failed' ? '扫描与资料采集未完成' : `${state.stage || '正在整理馆藏'}${state.total ? ` · ${state.checked || 0} / ${state.total}` : ''}`)}</span>
-      <a class="geist-button" href="/configuration#libraryProcessing">{problem || state.status === 'failed' ? '查看并处理' : '查看进度'}</a>
+      <a class="geist-button" href="/data-cleanup#libraryProcessing">{problem || state.status === 'failed' ? '查看并处理' : '查看进度'}</a>
     </div>;
   }
   return <>

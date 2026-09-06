@@ -2026,7 +2026,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks("const SEED_KEY='peach.seed.v2';")
         self.assertPageLacks("localStorage.getItem(SEED_KEY)")
         self.assertPageContains("seed:initialParam('seed')||rollSeed()")
-        self.assertPageContains("sort:appSettings.defaultSort,dir:defaultSortDir(appSettings.defaultSort)")
+        self.assertPageContains("sort:appSettings.defaultSort,dir:preferredDirection(appSettings.defaultSort,appSettings.defaultSort,appSettings.defaultSortDirection)")
         # 「从别处回到首页」才换种子，判据是上一屏的路径，所以 lastRoutePath
         # 必须等这一屏打开之后再更新。
         self.assertPageContains("const enteringHome=path==='/'&&lastRoutePath!=='/';")
