@@ -30,7 +30,7 @@ function fixture(locked = false) {
   const submit = vi.fn(async (_payload: Record<string, unknown>) => ({ ok: true }));
   const notify = vi.fn();
   const render = () => {
-    root.innerHTML = `<div class="reviewlist">${rows.map(row => `<fieldset data-review-key="${row.item_key}"><h4>${row.item_key}</h4>${row.candidates.map(candidate => `<input type="radio" name="metadata-${row.item_key}" value="${candidate.candidate_key}" ${row.candidates.length === 1 ? 'checked' : ''}>`).join('')}<button data-review-status="approved">通过</button><span class="reviewstate"></span></fieldset>`).join('')}</div>`;
+    root.innerHTML = `<div class="reviewcontrols"></div><div class="reviewlist">${rows.map(row => `<fieldset data-review-key="${row.item_key}"><h4>${row.item_key}</h4>${row.candidates.map(candidate => `<input type="radio" name="metadata-${row.item_key}" value="${candidate.candidate_key}" ${row.candidates.length === 1 ? 'checked' : ''}>`).join('')}<button data-review-status="approved">通过</button><span class="reviewstate"></span></fieldset>`).join('')}</div>`;
     wireReviewSelection(root, { rows, metadata: true, locked, state, payload: card => ({ item_key: card.dataset.reviewKey, candidate_key: card.querySelector<HTMLInputElement>('input[type="radio"]:checked')?.value || '' }), submit, applied: key => { rows.splice(rows.findIndex(row => row.item_key === key), 1); }, active: () => root.isConnected, refresh: render, notify });
   };
   render();
@@ -93,7 +93,7 @@ it('共同来源排除缺失与同来源多候选的歧义', () => {
   expect(commonReviewSources([{item_key:'a', candidates:[{candidate_key:'1',source:'nfo'}]}, {item_key:'b',candidates:[]}])).toEqual([]);
 });
 
-it('默认勾选框位于名称前，数量使用独立徽章，Shift 按显示顺序连选', () => {
+it('默认勾选框位于名称前，数量使用共用文字样式，Shift 按显示顺序连选', () => {
   const f = fixture();
   expect(f.root.textContent).not.toContain('选择此项');
   expect(f.button('多选')).toBeUndefined();
@@ -102,7 +102,9 @@ it('默认勾选框位于名称前，数量使用独立徽章，Shift 按显示�
   inputs[0]!.click();
   inputs[1]!.closest('label')!.dispatchEvent(new MouseEvent('click', {bubbles:true, cancelable:true, shiftKey:true}));
   expect([...f.state.selected]).toEqual(['one','two']);
-  expect(f.root.querySelector('.geist-badge')?.textContent).toBe('已选 2 项');
+  expect(f.root.querySelector('.selectiondockcount')?.textContent).toBe('已选 2 项');
+  expect(f.root.querySelector('.selectiondockcount .geist-badge')).toBeNull();
+  expect(f.root.querySelector('.reviewcontrols .reviewbulktoolbar')).not.toBeNull();
   expect(f.button('通过所选').textContent).toBe('通过所选');
   f.root.dispatchEvent(new KeyboardEvent('keydown', {key:'Escape', bubbles:true}));
   inputs[0]!.dispatchEvent(new KeyboardEvent('keydown', {key:'ArrowDown', shiftKey:true, bubbles:true}));
