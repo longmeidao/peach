@@ -1,5 +1,7 @@
 # 复用清单
 
+复核多选复用 `/api/review/decision`，按作品／字段显式选择候选，再逐项采用；成功移出、失败保留选择，页面离开后停止后续提交。分组只区分单一候选与需选择来源，不把来源数量等同于内容冲突。滚动正文复用 Scroller，完成结果复用成功 Note。
+
 首页进度 Banner 与配置页复用 `LibraryProcessing`、`watchJob` 和 `/api/library-processing`，启动只提交一次，状态查询接续托盘首次处理。首页在完成后收起，失败提供设置跳转；配置页持续读取阶段与真实计数。Geist Banner 官方 DOM/CSS 已于 2026-09-06 取得，取证与 Peach 差异见 `docs/reference-snapshots/vercel-geist-library-banner.md`。
 ## 独立测试包在线更新
 

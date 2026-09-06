@@ -7445,6 +7445,12 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(
             "item.querySelector('[name^=\"metadata-\"]:checked')?.value")
 
+    def test_review_bulk_reuses_explicit_decisions_and_insets_scrolling_content(self):
+        self.assertPageContains("wireReviewSelection($('#stats').querySelector('.review')")
+        self.assertPageContains("payload:decisionPayload,submit:payload=>api('/api/review/decision'")
+        self.assertPageContains('.reviewcontent .geist-scroller-container{padding-right:12px}')
+        self.assertPageLacks("${index===0?' checked':''}")
+
     def test_immersive_fit_compares_source_against_the_viewport(self):
         """竖屏沉浸模式看横屏视频必须完整显示。
 

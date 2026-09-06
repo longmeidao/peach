@@ -18,6 +18,7 @@ it('启动只提交一次，进度用 GET 读取并提供复核入口', async ()
   expect(requests).toEqual(['POST','GET']);
   expect(host.querySelector('a[href="/review"]')).not.toBeNull();
   expect(toast).toHaveBeenCalledTimes(1);
+  expect(host.querySelector('.library-processing-result .geist-note-success')?.textContent).toContain('处理完成');
 });
 it('刷新接续已有任务时只查询，旧完成结果不冒充当前回执', async () => {
   const fetch=vi.fn(async()=>({ok:true,json:async()=>({status:'failed',error:'来源离线'})}));
