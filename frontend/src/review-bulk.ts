@@ -7,6 +7,19 @@ export const createReviewSelection = () => ({ busy: false, category: '', filter:
 type Selection = ReturnType<typeof createReviewSelection>;
 type Payload = Record<string, unknown>;
 
+export function updateReviewSticky(root: HTMLElement | null) {
+  const controls = root?.querySelector<HTMLElement>('.reviewcontrols');
+  if (!root || !controls || controls.offsetParent === null) return;
+  const main = root.closest('main');
+  if (main) root.style.setProperty('--review-edge', getComputedStyle(main).paddingLeft);
+  root.style.setProperty('--review-controls-height', `${controls.getBoundingClientRect().height}px`);
+  for (const bar of [controls, ...root.querySelectorAll<HTMLElement>('.reviewgroupbar')]) {
+    const top = parseFloat(getComputedStyle(bar).top);
+    bar.classList.toggle('is-stuck', bar.offsetParent !== null && window.scrollY > 0 &&
+      Number.isFinite(top) && Math.abs(bar.getBoundingClientRect().top - top) <= 1);
+  }
+}
+
 export function reviewGroupingOptions(rows: ReviewRow[], metadata: boolean): string[][] {
   const options = [['candidates', metadata ? '按候选数量' : '全部待复核', 'list-filter']];
   if (rows.some(row => row.source || row.candidates?.some(candidate => candidate.source))) options.push(['source', '按来源', 'list-filter']);
@@ -118,7 +131,7 @@ export function wireReviewSelection(root: HTMLElement, options: {
     const groupCards = group.rows.map(row => cards.find(card => card.dataset.reviewKey === row.item_key)).filter((card): card is HTMLElement => !!card);
     const section = document.createElement('section'); section.className = 'reviewgroup';
     section.hidden = !!state.filter && group.key !== state.filter;
-    const bar = document.createElement('div'); bar.className = 'reviewbulkbar';
+    const bar = document.createElement('div'); bar.className = 'reviewbulkbar reviewgroupbar';
     const title = document.createElement('h3'); title.textContent = `${group.title} · ${groupCards.length}`;
     const select = button('全选本组'), grid = document.createElement('div'); grid.className = 'reviewlist';
     bar.append(title, select); section.append(bar, grid); list.append(section);
@@ -208,4 +221,5 @@ export function wireReviewSelection(root: HTMLElement, options: {
     result.failures.forEach(item => state.errors.set(item.key, item.message)); const host = root.parentElement; options.refresh(); host?.querySelector<HTMLButtonElement>('.reviewbulktoolbar button')?.focus({ preventScroll: true });
   }
   update();
+  updateReviewSticky(root);
 }

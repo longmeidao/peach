@@ -61,7 +61,7 @@ export function LibraryProcessing({ data, error, toast, onComplete, mode, monito
     return <div dangerouslySetInnerHTML={{__html:projectBannerHtml(message,{
       variant:state.status === 'failed' ? 'error' : problem ? 'warning' : 'gray',
       href:'/data-cleanup#libraryProcessing',label:problem || state.status === 'failed' ? '查看并处理' : '查看进度',
-      value:state.checked || 0,max:state.status === 'running' ? state.total : undefined,
+      value:state.checked || 0,...(state.status === 'running' && state.total !== undefined ? {max:state.total} : {}),
     })}} />;
   }
   return <>
