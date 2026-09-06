@@ -6,7 +6,7 @@ import { matchRoute, routeLabel } from './js/routes.js';
 import { initMiddleTruncate } from './js/middle-truncate.js';
 import { tagLabel } from './js/tags.js';
 import { syncSidebarSurface, sidebarTagCounts, sidebarHasCatalogContent, cleanupSkeletonHtml, cloudLocations, cloudPreferenceLocations, tasteHistoryGuideHtml, wireTasteHistoryGuide, TASTE_GUIDE_KEY } from './dist/peach-ui.js';
-import { nativeImageFit } from './dist/peach-ui.js';
+import { nativeImageFit, entitySkeletonHtml } from './dist/peach-ui.js';
 import {
   attachOverlayScrollbar, breadcrumbHtml, checkboxHtml, closeAnchoredMenu, confirmModal, emptyStateHtml, fieldsetTitle,
   fillSkeletonTier, fitSkeleton, iconSwitchHtml, indexSkeletonHtml, loadingDotsHtml,
@@ -293,7 +293,7 @@ function renderInitialSurfaceLoading(){
   if(/^\/(?:performers|creators|studios|agencies)\//.test(path)){
     hideDiscoveryBars();
     $('#index').hidden=false;$('#grid').innerHTML='';
-    $('#index').innerHTML=pageSkeletonHtml('正在读取页面',{cards:true});
+    showEntityLoading(ROUTE_ENTITIES[path.split('/')[1]]);
     fitSkeleton($('#index'));
     return;
   }
@@ -421,6 +421,7 @@ appSettings.seekSeconds=allowedSetting(+appSettings.seekSeconds,[5,10,30],10);
 appSettings.ambientMode=appSettings.ambientMode!==false;
 appSettings.theaterMode=appSettings.theaterMode===true;
 appSettings.groupCollapse=appSettings.groupCollapse!==false;
+appSettings.detailAutoplay=appSettings.detailAutoplay!==false;
 appSettings.searchHistoryLimit=allowedSetting(+appSettings.searchHistoryLimit,[5,10,20],10);
 appSettings.relatedLimit=allowedSetting(+appSettings.relatedLimit,[12,20,30],20);
 appSettings.theme=allowedSetting(appSettings.theme,THEME_CHOICES,'system');
@@ -492,6 +493,7 @@ function renderSettingSelects(){
 }
 function syncSettingsPanel(){
   $('#groupCollapseSetting').checked=appSettings.groupCollapse;
+  $('#detailAutoplaySetting').checked=appSettings.detailAutoplay;
   renderSettingSelects();
   renderThemeSetting();
   renderSidebarOrderSetting();
@@ -532,6 +534,7 @@ $('#settingsPanel').onkeydown=e=>{
 /* 关掉后同一番号的每个分卷／版次各占一张卡。改完要重取当前列表：折叠是在渲染
    时做的，不重画的话已经被跳过的那些卡不会自己冒出来。 */
 $('#groupCollapseSetting').onchange=e=>{appSettings.groupCollapse=!!e.target.checked;saveSettings();reloadCurrentSurface()};
+$('#detailAutoplaySetting').onchange=e=>{appSettings.detailAutoplay=e.target.checked;saveSettings()};
 let followScheduleRequest=0;
 const followScheduleCopy=status=>{
   if(!status.available)return '只在账本写入端运行';
@@ -1948,13 +1951,11 @@ document.addEventListener('load',event=>{
 
    度量只能在 `load` 之后做：图没加载完时 `naturalWidth` 读到的是 0。换过回落图后
    `load` 会再来一次，这里读的 `currentSrc` 也就跟着是当前真正显示的那张。 */
-//: 图至少要占到框的这一成才算「够大，铺满就行」。0.8 等于最多放大 1.25 倍。
+// 允许适度放大；明显过小的图片才按源尺寸补底。
 function fitNativeImage(img){
   const box=img.closest('[data-fit-native]');
   if(!box||!img.naturalWidth)return;
-  /* 只比框小一点点的照旧铺满：放大一成多看不出糊，而按原尺寸摆只会在四周留一圈
-     七八像素的窄边，模糊补底铺在那么窄的地方就是一道生硬的灰线。
-     版式一换框就换了大小，所以这个判断要能重算，见 setPeopleIndexLayout。 */
+  // 版式切换会改变框的大小，每次按屏幕像素密度重新判断。
   const {small,width,height}=nativeImageFit(img.naturalWidth,img.naturalHeight,box.clientWidth,box.clientHeight,window.devicePixelRatio||1);
   box.dataset.nativeSmall=String(small);
   box.style.setProperty('--markw',small?width+'px':'100%');
@@ -4256,7 +4257,7 @@ async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=fals
     /* 清晰度与字节数的解析跟默认片源并行。它需要回源抓详情、再 HEAD 一次正片，不能挡住
        播放器挂载；否则来源慢一点，详情里就会先留下一个没有 src 的空视频框。 */
     const mediaPromise=api(`/follow-qualities?id=${encodeURIComponent(item.id)}`).catch(()=>null);
-    const followPlayer=await mountDetailPlayer(item,followVideo,false,{
+    const followPlayer=await mountDetailPlayer(item,followVideo,appSettings.detailAutoplay,{
       source:{src,type:selectedMedia?.media_type||item.media_type||'video/mp4'},
       checkSourceStatus:false,
       size:selectedMedia?.size,
@@ -6238,6 +6239,13 @@ function wireNamePicker(kind,current){
   });
 }
 
+function showEntityLoading(kind){
+  const body=kind==='agency'?'<div class="entitycollectionhead"><h3 class="skeleton">&nbsp;</h3></div>'+indexSkeletonHtml({kind:'performers',layout:peopleIndexLayout()}):pageSkeletonHtml('正在读取作品',{cards:true});
+  const placeholder=entitySkeletonHtml(kind,body);
+  if($('#index').firstElementChild?.dataset.skeleton!==`entity/${kind}`){
+    $('#index').innerHTML=placeholder;fitSkeleton($('#index'));
+  }
+}
 async function openEntity(kind,name,push=true){
   releaseHoverPreviews();
   const filters=push?emptyEntityFilters():parseEntityFilters(location.search);
@@ -6251,7 +6259,9 @@ async function openEntity(kind,name,push=true){
   showHomeSurfaces();
   disposeStage(false);
   document.body.classList.add('entity-open');
-  showIndexLoading('正在读取资料');
+  $('#stats').hidden=true;$('#index').hidden=false;$('#grid').innerHTML='';$('#combo').innerHTML='';
+  $('#count').textContent='';$('#loadSentinel').hidden=true;
+  showEntityLoading(kind);
   detailReturnBarsContext=null;
   entityJavLayout=false;
   agencyRosterView='people';
@@ -6301,13 +6311,9 @@ async function openEntity(kind,name,push=true){
       // 纯图标的链接自己不带可读文字，得把标签留给辅助技术。
       return `<a class="iconlink" href="${esc(x.url)}" target="_blank" rel="noreferrer" title="${esc(x.label)}">${mark}<span class="sr-only">${esc(x.label)}</span></a>`;
     }
-    /* 厂牌页的官网链接不放图标，直接给网址。
-
-       这一页的头像就是厂牌 logo，旁边再放一枚同品牌的小图标只是把同一个东西说两遍；
-       而域名本身就是名字，比图标说得更清楚。女优页不一样：那里的头像是人，站点图标
-       不构成重复，标签写的是这个域名归谁——图标、文字和落点因此说的是同一件事。 */
+    // 官网用地球图标标明链接类型。
     if(kind==='studio')
-      return `<a class="urllink" href="${esc(x.url)}" target="_blank" rel="noreferrer" title="${esc(x.label)}"><span class="entitylinklabel">${esc(linkHost(x.url)||x.label)}</span></a>`;
+      return `<a class="urllink" href="${esc(x.url)}" target="_blank" rel="noreferrer" title="${esc(x.label)}"><span class="entitylinkicon">${icon('globe')}</span><span class="entitylinklabel">${esc(linkHost(x.url)||x.label)}</span></a>`;
     return `<a href="${esc(x.url)}" target="_blank" rel="noreferrer" title="${esc(x.label)}"><span class="entitylinkicon">${icon('globe')}<img class="entityfavicon" src="${esc(linkMarkUrl(x))}" alt="" loading="lazy" referrerpolicy="no-referrer" data-drop="self"></span><span class="entitylinklabel">${esc(x.label)}</span></a>`;
   }).join('');
   const tags=(d.tags||[]).map(x=>`<button class="pill" data-entity-tag="${esc(x.k)}" aria-pressed="${tagPressed(filters.tag,x.k)}">${esc(tagLabel(x.k))}<small>${x.n.toLocaleString()}</small></button>`).join('');
@@ -7661,7 +7667,7 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
       followFilter='saved';route(followViewPath());openFollow(false)};
   }
   else if(g)g.onclick=async()=>{vv.hidden=false;g.remove();const mounted=await mountDetailPlayer(it,vv,true);stopAmbient=mountPlayerAmbient(vv);mounted?.one?.('dispose',stopAmbient)};
-  else{const mounted=await mountDetailPlayer(it,vv,true);stopAmbient=mountPlayerAmbient(vv);mounted?.one?.('dispose',stopAmbient)}
+  else{const mounted=await mountDetailPlayer(it,vv,appSettings.detailAutoplay);stopAmbient=mountPlayerAmbient(vv);mounted?.one?.('dispose',stopAmbient)}
   vv.addEventListener('emptied',()=>stopAmbient(),{once:true});
   buildBars();
   scrollItemDetailIntoView();

@@ -238,7 +238,7 @@ def proxy_request_headers(target: ResolvedFollowMedia,
                           incoming: Mapping[str, str]) -> dict[str, str]:
     """代理请求要带的头。只透传范围请求相关的那两个，别的一律由这里决定。"""
     headers = {
-        "User-Agent": "Peach/0.2",
+        "User-Agent": USER_AGENT,
         "Accept": incoming.get("accept") or "*/*",
         "Accept-Encoding": "identity",
     }

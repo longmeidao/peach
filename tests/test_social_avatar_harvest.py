@@ -45,6 +45,7 @@ class CoverFallbackTests(unittest.TestCase):
             cache = module.AvatarCandidateCache(root/'cache')
             result = module.cover_fallback(con, record, cache, root)
             self.assertEqual(result['source_kind'], 'single_performer_cover')
+            self.assertFalse(result['identity_verified'])
             self.assertEqual((result['width'], result['height']), (1000,700))
             con.execute("INSERT INTO asset_entity VALUES(1,6,'performer')")
             self.assertIsNone(module.cover_fallback(con, record, cache, root))

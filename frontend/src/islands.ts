@@ -30,6 +30,7 @@ import type { ScrapingData, ScrapingProps } from './islands/scraping';
 export { refreshStore, storeNames } from './state';
 export { watchJob, followJobProgress } from './jobs';
 export { nativeImageFit } from './native-image';
+export { entitySkeletonHtml } from './entity-skeleton';
 export { syncSidebarSurface, sidebarTagCounts, sidebarHasCatalogContent } from './sidebar';
 export { cleanupSkeletonHtml, cloudLocations, cloudPreferenceLocations, tasteHistoryGuideHtml, wireTasteHistoryGuide, TASTE_GUIDE_KEY } from './management';
 export type { StoreName } from './state';

@@ -89,8 +89,7 @@ FIELDS = ("entity_id", "studio", "safe", "variant", "installed", "original_size"
           "candidate", "evidence")
 
 #: 和 `/link-mark` 用同一个 UA：站点按它决定给不给图标，两处不一致会取到不同的东西。
-USER_AGENT = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-              " (KHTML, like Gecko) Chrome/126.0 Safari/537.36")
+from peach.user_agent import USER_AGENT
 
 OK, WORDMARK, TOOSMALL = "ok", "仍是字标", "只有小图标"
 MISSING, SKIP = "未取得", "无官网链接"

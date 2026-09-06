@@ -5,7 +5,7 @@ export function nativeImageFit(width: number, height: number, frameWidth: number
   height /= density;
   const valid = [width, height, frameWidth, frameHeight].every(value => Number.isFinite(value) && value > 0);
   const small = valid && Math.min(frameWidth, frameHeight) >= 64
-    && (width < frameWidth * .8 || height < frameHeight * .8);
+    && (width < frameWidth * .4 || height < frameHeight * .4);
   const scale = valid ? Math.min(1, frameWidth / width, frameHeight / height) : 1;
   return { small, width: width * scale, height: height * scale };
 }

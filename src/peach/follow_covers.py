@@ -5,6 +5,7 @@ The card therefore extracts the first non-black decodable frame once and serves 
 cached JPEG.
 """
 from __future__ import annotations
+from .user_agent import USER_AGENT
 
 import hashlib
 import os
@@ -89,7 +90,7 @@ class FollowCoverService:
                 f"{destination.stem}.{os.getpid()}.{threading.get_ident()}.tmp.jpg")
             command = [
                 str(choice.path), "-y", "-v", "error",
-                "-rw_timeout", "15000000", "-user_agent", "Peach follow cover",
+                "-rw_timeout", "15000000", "-user_agent", USER_AGENT,
             ]
             if target.referer:
                 command.extend(("-referer", target.referer))

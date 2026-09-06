@@ -414,6 +414,10 @@ class WebJsBehaviourTests(unittest.TestCase):
     def test_a_zoomed_avatar_covers_the_frame_and_centres_the_face(self):
         square = {"cx": 0.5, "cy": 0.3, "faceW": 150, "imgW": 1000, "imgH": 1000}
         self.assertJsResults([
+            ("face-frame.js", "faceFrame", [{"cx": .736, "cy": .181,
+              "faceW": 234, "imgW": 2184, "imgH": 1468}, {"w": 160, "h": 160}, 2],
+             {"zoom": 2.008, "width": 298.67, "height": 200.75,
+              "left": -169.82, "top": 0}),
             # 图撑到 200%×300%，负偏移把脸心拉向框心。宽高都不小于 100%，圆框里
             # 一丝白边都不会露——那是「放大」和「换一张构图」的分界。
             ("face-frame.js", "faceFrame", [self.SMALL_FACE, {"w": 160, "h": 160}, 2],

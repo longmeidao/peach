@@ -592,6 +592,7 @@ def cover_fallback(connection, record: dict, cache: AvatarCandidateCache,
                                height=inspected.height, mime_type=inspected.mime_type,
                                sha256=inspected.sha256, object_path=stored,
                                matched=record['canonical'], name_source='ledger-performer',
+                               identity_verified=False,
                                evidence=f'单人作品 {code} 完整封面'))
     if not candidates:
         return None
@@ -928,7 +929,7 @@ def run(args) -> int:
                 cache = caches[PROVIDER_CACHES[candidate["provider"]]]
                 provenance_path = cache.store_provenance(
                     provenance_for(cache, entity_id, candidate))
-                identity_ok = candidate.get("identity_verified", True) and bool(
+                identity_ok = candidate.get("source_kind") != 'single_performer_cover' and candidate.get("identity_verified", True) and bool(
                     candidate.get("matched"))
                 is_winner = candidate is winner
                 note = ""

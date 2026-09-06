@@ -1,8 +1,37 @@
 import unittest
+import ast
+from pathlib import Path
 
 import httpx
 
 from peach.http import CurlCffiTransport, HttpRequest, HttpxTransport
+from peach.user_agent import USER_AGENT
+
+
+class UserAgentTests(unittest.TestCase):
+    def test_transport_defaults_to_shared_browser_user_agent(self):
+        transport = HttpxTransport()
+        try:
+            self.assertEqual(transport.client.headers['User-Agent'], USER_AGENT)
+        finally:
+            transport.close()
+        self.assertIn('Chrome/', USER_AGENT)
+
+    def test_browser_user_agent_has_one_definition(self):
+        root = Path(__file__).resolve().parents[1]
+        offenders = []
+        for folder in ('src', 'scripts'):
+            for path in (root / folder).rglob('*.py'):
+                if path.name == 'user_agent.py':
+                    continue
+                for node in ast.walk(ast.parse(path.read_text(encoding='utf-8'))):
+                    if isinstance(node, ast.Constant) and isinstance(node.value, str) and node.value.startswith('Mozilla/5.0'):
+                        offenders.append(str(path.relative_to(root)))
+                    if isinstance(node, ast.Dict):
+                        for key, value in zip(node.keys, node.values):
+                            if isinstance(key, ast.Constant) and str(key.value).lower() == 'user-agent' and isinstance(value, ast.Constant):
+                                offenders.append(str(path.relative_to(root)))
+        self.assertEqual(offenders, [])
 
 
 class _CurlResponse:

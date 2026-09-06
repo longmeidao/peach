@@ -16,6 +16,8 @@ from typing import Callable
 
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / 'src'))
+from peach.user_agent import USER_AGENT
 DEFAULT_REGISTRY = ROOT / "docs" / "reference-sources.json"
 
 
@@ -32,7 +34,7 @@ def fetch_bytes(url: str, *, timeout: float = 20.0) -> bytes:
         url,
         headers={
             "Accept": "text/markdown,text/plain;q=0.9,*/*;q=0.1",
-            "User-Agent": "Peach-reference-update-check/1",
+            "User-Agent": USER_AGENT,
         },
     )
     with urllib.request.urlopen(request, timeout=timeout) as response:

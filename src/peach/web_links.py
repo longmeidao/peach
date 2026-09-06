@@ -22,8 +22,7 @@ import httpx
 
 from .jobs import BackgroundJob
 
-USER_AGENT = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-              "(KHTML, like Gecko) Chrome/128.0 Safari/537.36")
+from .user_agent import USER_AGENT
 #: 「这个页面没了」——只有上游明确这么说，才够格作为删除依据。
 GONE_STATUSES = frozenset({404, 410})
 CHECK_TIMEOUT = 12.0

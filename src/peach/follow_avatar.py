@@ -1,5 +1,6 @@
 """Resolve creator avatars from verified official profile endpoints."""
 from __future__ import annotations
+from .user_agent import USER_AGENT
 
 import json
 import re
@@ -41,7 +42,7 @@ def resolve_official_profile(service: str, user_id: str, *,
     profile_url = f"https://www.pixiv.net/fanbox/creator/{user_id}"
     page = request(
         HttpRequest("GET", profile_url, {
-            "Accept": "text/html", "User-Agent": "Peach/0.2",
+            "Accept": "text/html", "User-Agent": USER_AGENT,
         }),
         15.0,
         MAX_PROFILE_BYTES,
@@ -68,7 +69,7 @@ def resolve_official_profile(service: str, user_id: str, *,
     response = request(
         HttpRequest("GET", api_url, {
             "Accept": "application/json", "Origin": creator_origin,
-            "Referer": creator_origin + "/", "User-Agent": "Peach/0.2",
+            "Referer": creator_origin + "/", "User-Agent": USER_AGENT,
         }),
         15.0,
         MAX_PROFILE_BYTES,

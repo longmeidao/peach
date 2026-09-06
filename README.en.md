@@ -43,7 +43,9 @@ Follow sources include FANBOX, Patreon, SubscribeStar, Kemono, Pawchive, Coomer,
 
 ## Quick start
 
-Portraits and brand marks use their native size with a blurred background when too small for large or compact views. Display areas below 64 px retain the regular icon treatment.
+Settings control whether local and followed videos play automatically when their details open.
+
+Portraits and brand marks allow moderate enlargement in large and compact views. Very small images use their native size with a blurred background. Display areas below 64 px retain the regular icon treatment.
 
 Peach is **pre-1.0**. The application interface is currently Chinese only.
 

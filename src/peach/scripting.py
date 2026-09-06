@@ -24,13 +24,7 @@ from pathlib import Path
 from .config import DATABASE_PATH
 from .migrations import sqlite_backup
 
-#: 对外抓取统一使用的 User-Agent。
-#:
-#: 形态是浏览器而不是老实的机器人标识，这是被上游逼出来的：javbus、babepedia、
-#: linktr.ee 一类站点对陌生 UA 直接回 403，取证会全军覆没。版本取树里出现过的
-#: 最新一个（Chrome/131），因为落后的版本号才是会被挑出来拦掉的那种特征。
-USER_AGENT = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-              "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
+from .user_agent import USER_AGENT
 
 #: `--apply` 缺 `--backup` 时的唯一拒绝话术。
 BACKUP_REQUIRED = "--apply 必须同时给 --backup"

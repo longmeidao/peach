@@ -2220,7 +2220,7 @@ class FollowWebSourceTests(unittest.TestCase):
     def test_follow_video_uses_the_shared_videojs_player_and_quality_control(self):
         self.assertPageContains('class="video-js vjs-big-play-centered" controls playsinline preload="metadata"')
         self.assertPageContains("if(followVideo){")
-        self.assertPageContains("const followPlayer=await mountDetailPlayer(item,followVideo,false,{")
+        self.assertPageContains("const followPlayer=await mountDetailPlayer(item,followVideo,appSettings.detailAutoplay,{")
         self.assertPageContains("source:{src,type:selectedMedia?.media_type||item.media_type||'video/mp4'}")
         # 第四个参数是来源自己给的清晰度表：rule34video 把每档写成独立 mp4 字段，
         # videojs 的 qualityLevels 只认 HLS/DASH 的自适应轨道，看不到它们。
