@@ -27,6 +27,8 @@ Peach is a single-user, local-first media system. Search, play and organize medi
 
 ## Features
 
+Local Configuration offers Peach proxy, startup and silent launch settings. Scraping sources use Peach proxy or a direct connection. Scanning and collection live in Data management. Settings → Browse selects the default sort and direction. Windows standalone packages offer uninstall with optional Peach data removal; original media is preserved. Source installations show manual removal instructions.
+
 Management → Configuration → Check for updates shows the current version and the latest GitHub prerelease. Windows standalone packages download and prepare updates in the app with live progress. Choose Restart now or Later when ready; the app installs the update and restores the previous version if installation fails.
 
 | Capability | What it does |

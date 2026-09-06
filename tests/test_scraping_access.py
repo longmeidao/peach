@@ -14,6 +14,7 @@ from peach.http import HttpRequest, HttpResponse, HttpxTransport
 from peach.scraping_access import (SourceTransport, client_for, cookie_jar, describe,
                                    save, source_for, values_for)
 from peach.web_scraping import q_scraping, w_scraping_check
+from peach import peach_proxy
 
 
 class ScrapingAccessTests(unittest.TestCase):
@@ -23,8 +24,8 @@ class ScrapingAccessTests(unittest.TestCase):
         self.root = Path(self.temporary.name).resolve()
 
     def test_independent_installations_never_share_session_or_proxy(self):
-        save(self.root, "fc2cmadb", {"cookie": "session=private-cookie", "network": "proxy",
-                                  "proxy": "http://user:private-proxy@127.0.0.1:7890"})
+        peach_proxy.save(self.root, {"mode": "proxy", "proxy": "http://user:private-proxy@127.0.0.1:7890"})
+        save(self.root, "fc2cmadb", {"cookie": "session=private-cookie", "network": "peach"})
         public = q_scraping(SimpleNamespace(follow_secrets_root=self.root), {})
         self.assertEqual(next(item['label'] for item in public['sources'] if item['source'] == 'fc2cmadb'), 'FC2CMADB')
         self.assertNotIn("private-cookie", json.dumps(public))
@@ -32,7 +33,7 @@ class ScrapingAccessTests(unittest.TestCase):
         self.assertFalse(describe(self.root / "other-user", "fc2cmadb")["cookie_saved"])
         save(self.root, "fc2cmadb", {"revoke": True})
         self.assertFalse(describe(self.root, "fc2cmadb")["cookie_saved"])
-        self.assertEqual(values_for(self.root, "fc2cmadb")["network"], "proxy")
+        self.assertEqual(values_for(self.root, "fc2cmadb")["network"], "peach")
 
     def test_import_discards_expired_foreign_and_cdn_cookies(self):
         text = ("# Netscape HTTP Cookie File\n"

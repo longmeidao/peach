@@ -17,7 +17,8 @@ export declare function fieldsetTitle(id: string, title: string): string;
 export declare function checkboxHtml(inputAttrs?: string): string;
 export declare function loadingDotsHtml(label?: string, options?: { className?: string }): string;
 export declare function progressHtml(label: string, value: number, max?: number): string;
-export declare function confirmModal(options: {title: string; body: string; confirmLabel: string; cancelLabel?: string; onConfirm?: () => Promise<unknown>}): Promise<{confirmed: boolean; result?: unknown}>;
+export declare function confirmModal(options: {title: string; body: string; confirmLabel: string; cancelLabel?: string; danger?: boolean; onConfirm?: () => Promise<unknown>}): Promise<{confirmed: boolean; result?: unknown}>;
+export declare function wireCollapse(root: Element, selector: string, idPrefix: string): void;
 
 export declare function selectFieldHtml(items: string[][], current: string,
   options?: { label?: string; attr?: string; className?: string }): string;

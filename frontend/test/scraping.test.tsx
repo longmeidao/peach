@@ -4,7 +4,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { Scraping } from '../src/islands/scraping';
 
 const source = { source: 'fc2cmadb', label: 'FC2CMADB', login: 'https://fc2cmadb.com/',
-  accepts_cookie: true, network: 'environment', cookie_saved: false, proxy_saved: false };
+  accepts_cookie: true, network: 'peach', cookie_saved: false };
 let host: HTMLDivElement;
 afterEach(() => { if (host) render(null, host); document.body.innerHTML = ''; vi.unstubAllGlobals(); });
 
@@ -27,7 +27,7 @@ it('保存后清空秘密输入，状态只表示保存且撤销可操作', asyn
     await new Promise(resolve => setTimeout(resolve, 0));
   });
   expect(requests[0]).toEqual({ path: '/api/scraping/settings', body: {
-    source: 'fc2cmadb', network: 'environment', proxy: '', cookie: 'session=fixture', cookies_text: '', revoke: false,
+    source: 'fc2cmadb', network: 'peach', cookie: 'session=fixture', cookies_text: '', revoke: false,
   } });
   expect(host.querySelector<HTMLInputElement>('input[type=password]')!.value).toBe('');
   expect(host.textContent).toContain('登录是否有效请在抓取时确认');
@@ -65,7 +65,7 @@ it('代理复用重绘下拉，Cookie 二选一且切换后不携带隐藏输入
   host = document.createElement('div'); document.body.append(host);
   await act(async () => render(h(Scraping, { data: { sources: [source] }, error: '', toast: vi.fn() }), host));
   expect(host.querySelector('select')).toBeNull();
-  expect(host.querySelector('.gselect [aria-haspopup=listbox]')?.textContent).toBe('系统代理');
+  expect(host.querySelector('.gselect [aria-haspopup=listbox]')?.textContent).toBe('Peach 代理');
   expect(host.querySelector('.scraping-url')?.textContent).toBe(source.login);
   expect(host.querySelector('input[type=file]')).toBeNull();
   const input = host.querySelector<HTMLInputElement>('input[type=password]')!;

@@ -16,6 +16,7 @@ from urllib.parse import urlsplit, urljoin
 import httpx
 
 from .follow_secrets import CredentialStore
+from . import peach_proxy
 from .http import HttpRequest, HttpxTransport
 from .scripting import USER_AGENT, host_under, hostname_of
 
@@ -91,16 +92,15 @@ def cookie_jar(values: dict[str, str], source: str) -> http.cookiejar.CookieJar:
 def save(root: Path, source: str, body: dict) -> dict:
     with _LOCK:
         values = values_for(root, source)
-        mode = body.get("network", values.get("network", "environment"))
-        if mode not in {"direct", "environment", "proxy"}:
+        mode = body.get("network", "direct" if values.get("network") == "direct" else "peach")
+        if mode not in {"direct", "peach"}:
             raise ValueError("请选择来源连接方式")
-        proxy = body.get("proxy") or values.get("proxy", "")
-        if mode == "proxy":
-            parsed = urlsplit(proxy)
-            if parsed.scheme not in {"http", "https", "socks5", "socks5h"} or not parsed.hostname:
-                raise ValueError("请填写有效的 HTTP 或 SOCKS 代理地址")
+        if values.get("network") == "proxy" and mode == "peach":
+            inherited = peach_proxy.values(root)
+            peach_proxy.client_options(root)
+            peach_proxy.save(root, inherited)
         values["network"] = mode
-        values["proxy"] = proxy if mode == "proxy" else ""
+        values.pop("proxy", None)
         if body.get("revoke"):
             values.pop("cookie", None)
             values.pop("cookies_text", None)
@@ -136,18 +136,15 @@ def describe(root: Path, source: str) -> dict:
     values = values_for(root, source)
     return {"source": source, "label": SOURCES[source]["label"],
             "login": SOURCES[source]["login"], "accepts_cookie": bool(SOURCES[source].get("cookie")),
-            "network": values.get("network", "environment"),
-            "proxy_saved": bool(values.get("proxy")),
+            "network": "direct" if values.get("network") == "direct" else "peach",
             "cookie_saved": bool(values.get("cookie") or values.get("cookies_text"))}
 
 
 def client_for(root: Path, source: str, *, session: bool = False, **kwargs) -> httpx.Client:
     values = values_for(root, source)
-    mode = values.get("network", "environment")
-    options = {"trust_env": mode == "environment", "follow_redirects": True,
+    network = {"trust_env": False} if values.get("network") == "direct" else peach_proxy.client_options(root)
+    options = {**network, "follow_redirects": True,
                "headers": {"User-Agent": USER_AGENT}}
-    if mode == "proxy":
-        options["proxy"] = values["proxy"]
     if session:
         options["cookies"] = cookie_jar(values, source)
     options.update(kwargs)
@@ -203,7 +200,7 @@ class SourceTransport:
             raise SourcePaused("来源正在冷却，请稍后重试；已有图片保留")
         if source not in self.transports:
             client = (client_for(self.root, source, follow_redirects=False) if source else
-                      httpx.Client(follow_redirects=False, headers={"User-Agent": USER_AGENT}))
+                      httpx.Client(**peach_proxy.client_options(self.root), follow_redirects=False, headers={"User-Agent": USER_AGENT}))
             self.transports[source] = HttpxTransport(client, owns_client=True)
         self.requests += 1
         try:

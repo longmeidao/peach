@@ -22,7 +22,7 @@ from filelock import FileLock, Timeout
 from . import access, distribution, folder_picker, onboarding, settings_file, media_configuration
 from .routes_auth import require_auth
 from .routes_pages import runtime_fact_entries
-from . import release_updates, standalone_update
+from . import release_updates, standalone_update, peach_proxy, desktop_startup, desktop_uninstall
 
 router = APIRouter()
 _SAVE_LOCK = threading.Lock()
@@ -83,6 +83,9 @@ def snapshot(config) -> dict[str, Any]:
     editable = managed_configuration()
     media = config.mounts.get("local") or config.locations.get("local", ())
     return {
+        "startup": desktop_startup.snapshot(config),
+        "uninstall": desktop_uninstall.snapshot(config),
+        "peach_proxy": peach_proxy.describe(config.directory("secrets")),
         "updates": release_updates.snapshot(),
         "update_job": standalone_update.public(),
         "access": access.public(access.load(config.directory("secrets") / "access.json")),
@@ -106,6 +109,42 @@ def read_configuration(request: Request, _args=Depends(require_auth)):
     if not config.present:
         raise HTTPException(409, "请先完成首次设置")
     return snapshot(config)
+
+
+@router.post("/api/configuration/peach-proxy")
+def save_peach_proxy(request: Request, body: dict = Body(...), _args=Depends(require_auth)):
+    local_only(request)
+    same_origin(request)
+    try:
+        return peach_proxy.save(settings_file.load_config().directory("secrets"), body)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@router.post("/api/configuration/startup")
+def save_startup(request: Request, body: dict = Body(...), _args=Depends(require_auth)):
+    local_only(request)
+    same_origin(request)
+    try:
+        return desktop_startup.save(settings_file.load_config(), enabled=body.get("enabled"), silent=body.get("silent"))
+    except (ValueError, OSError) as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@router.post("/api/configuration/uninstall")
+def uninstall(request: Request, body: dict = Body(...), _args=Depends(require_auth)):
+    local_only(request)
+    same_origin(request)
+    if body.get("confirmation") != "卸载 Peach":
+        raise HTTPException(400, "请确认卸载 Peach")
+    from .jobs import BackgroundJob
+    if any(isinstance(job, BackgroundJob) and (job.snapshot() or {}).get("status") == "running"
+           for job in vars(request.app.state.web_contract).values()):
+        raise HTTPException(409, "后台任务正在运行，请完成后卸载")
+    try:
+        return desktop_uninstall.request(settings_file.load_config(), body.get("delete_data"))
+    except (ValueError, Timeout) as exc:
+        raise HTTPException(409, str(exc)) from exc
 
 
 @router.get("/api/configuration/updates")

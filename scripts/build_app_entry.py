@@ -14,6 +14,14 @@ SRC_DIR = PROJECT_ROOT / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
+# 数据根必须在 Peach 模块读取配置之前确定。
+if "--data-root" in sys.argv:
+    _root_index = sys.argv.index("--data-root")
+    if _root_index + 1 >= len(sys.argv):
+        raise SystemExit(2)
+    os.environ["PEACH_DATA_ROOT"] = sys.argv[_root_index + 1]
+    del sys.argv[_root_index:_root_index + 2]
+
 from peach.cli import main as cli_main
 from peach.cli import subcommands
 from peach.tray import main as tray_main
