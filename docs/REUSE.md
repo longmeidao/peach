@@ -7,6 +7,8 @@ JAV 默认封面（官方封面／预览图）与默认大小（大图／小图�
 
 ## 复用决策门槛
 
+- 访问密码复用 Python 3.14 的 [hashlib.scrypt](https://docs.python.org/3.14/library/hashlib.html) 与 OpenSSL，浏览器会话复用 [ItsDangerous 2.2.0](https://itsdangerous.palletsprojects.com/en/stable/)（Pallets 维护、BSD-3-Clause、Python 3.8+、纯 Python、wheel 16 KB、无传递依赖）；本机原子配置写入复用 tempfile/os.replace，并将已有 filelock 3.32.4 纳入运行依赖。当前树和 Git 的认证入口已有内部口令、三种拒绝响应和本机配置守卫，继续复用。Starlette SessionMiddleware 采用统一时长并随响应更新会话，不满足每台设备选择固定截止时间的要求；直接使用同源签名库，由 Peach 维护可选密码、截止时间与撤销策略。临时文件 POC 的密码验证、签名验证和篡改拒绝通过，耗时 0.153 秒；真实凭据未读取。新增依赖不包含账户体系或数据库迁移。
+
 - README 交付检查复用系统 Git 的 `diff --no-renames -z` 和 `interpret-trailers --parse`，
   挂到既有 `agent_worktree.py ready/integrate`；Peach 只定义影响文件与双语声明 policy。
   本机 Git 2.55.0.windows.3（GPL-2.0，持续维护）与 Python 3.12+ 标准库，无新增依赖或运行时体积。

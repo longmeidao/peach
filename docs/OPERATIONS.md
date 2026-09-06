@@ -215,8 +215,10 @@ curl -s --noproxy '*' -o /dev/null -w '%{http_code}\n' https://peach.local/healt
 ## 网络、证书与 mDNS
 
 - 托盘管理 HTTP `0.0.0.0:80` 和当前路由选出的 LAN IPv4 上的 HTTPS 443，显式参数、`PEACH_LAN_ADDRESS`、`lan_ipv4()` 依次覆盖；服务日志写入本机 `peach-data/logs`。
-- 托盘起的服务全是非回环绑定，所以这台机器必须有访问口令，否则 `peach serve` 直接退出、托盘把那条服务显示成未运行。`peach token` 打印 `<数据根>/secrets/auth-token`（没有就现生成），`peach token --rotate` 换一个。换完要重启服务——进程只在启动时读一次——已登录的设备也要重新登录。
-- 设备第一次访问跳登录页，把口令贴进去换成一年期的 HttpOnly cookie。reader 取 writer 的复核结果时发的是自己的口令，所以两台机器要用同一份 `auth-token`，复制过去即可。
+- 非回环服务启动需要内部令牌，首次初始化自动生成。`peach token` 打印 `<数据根>/secrets/auth-token`，`peach token --rotate` 轮换后需重启服务。轮换会撤销旧机器凭据和旧版口令会话；自设密码的浏览器会话由独立密钥管理。
+- 首次设置直接显示「访问密码（可选）」，留空时能连接到 Peach 的设备可直接进入；终端首次初始化默认不设置密码。已有部署没有访问策略文件时保留系统口令登录，已登录的本机浏览器可在配置页设置自己的密码或明确关闭登录要求。
+- 密码设置位于本机 `secrets/access.json`，不进数据库或同步目录；密码使用 scrypt 哈希保存。修改或关闭立即生效；修改需要当前密码，关闭还需勾选访问范围确认。保存密码后其他浏览器的会话失效，当前设备保持登录 30 天。
+- 登录时可选本次浏览器会话（最长 12 小时）、1 天、7 天、30 天或 1 年；有效期由服务端签名并检查，页面刷新不续期。API 自动化继续使用独立 `X-Token` 凭据，修改访问密码不撤销机器凭据；机器凭据轮换仍走 `peach token --rotate` 并重启服务。
 - `peach serve` 按平台发布固定 mDNS 主机名，不在源码钉家庭 IP，仍保留 `Zeroconf()` 全合格网卡监听；mDNS 验收必须包含单元测试、运行态 health、DNS-SD、主机名解析和真实 LAN 客户端。
 - 双机广播分工固定：macOS 是 `peach.local`，Windows 是 `peach-writer.local`，默认值收敛到 `peach.config.MDNS_NAME`，`PEACH_MDNS_NAME` 只做临时覆盖。服务可以同时跑，但两边同时写入会很快冲突转只读。
 - `.local` 使用本地 CA，不使用 Let's Encrypt。证书与私钥保存在本机 `peach-data/secrets`；TLS 私钥禁用 ACL 继承，只允许实际服务身份、SYSTEM 和 Administrators。macOS/iOS 只安装并信任 `peach-local-ca.crt`，不分发任何私钥。

@@ -100,7 +100,7 @@ python3.14 -m venv .venv
 首次设置页会配置媒体文件夹、访问范围和端口。也可使用 `peach init` 的终端问答，再用 `peach serve` 启动服务；可执行文件位于上述虚拟环境目录。
 
 源码部署默认使用仓库同级的 `peach-data/`；自定义位置需设置 `PEACH_DATA_ROOT`。
-局域网访问需要口令，由 `peach token` 查看，设备首次访问时登录。本机 CA 生成需要 OpenSSL。
+首次设置的访问密码为可选项：留空时，能连接到 Peach 的设备可直接访问。配置页可设置、修改或关闭密码，登录页可选择保持登录时间。已有部署保留当前登录要求。本机 CA 生成需要 OpenSSL。
 配置、HTTPS、CloudDrive 挂载与非交互初始化详见 [运行与配置](docs/OPERATIONS.md)。
 
 ## 数据属于自己

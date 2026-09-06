@@ -12,6 +12,7 @@ import type { JSX } from 'preact';
 
 import { fieldsetTitle, noteHtml, setActionBusy, selectFieldHtml, wireSelectField, MEDIA_SOURCE_ICONS, selectOptionIconHtml } from '@peach/legacy/ui';
 import { ApiError, apiGet, apiSend, errorMessage } from '../api';
+import { AccessSettings, type AccessState } from './access-settings';
 
 export interface ConfigurationProps {
   /** 保存成功后的过去时回执（遗留层的 Toast）。 */
@@ -26,6 +27,7 @@ export interface ConfigurationFact {
 }
 
 export interface ConfigurationData {
+  access?: AccessState;
   editable: boolean;
   /** 不能编辑时给用户看的原因，可编辑时为空。 */
   notice: string;
@@ -114,6 +116,7 @@ function MountStatus({ data }: { data: ConfigurationData }) {
     <Html html={fieldsetTitle('configMountsTitle', '挂载状态')} />
     <dl class="configfacts">{sources.map((row) => <><dt><span aria-hidden="true" dangerouslySetInnerHTML={{__html:selectOptionIconHtml(MEDIA_SOURCE_ICONS[row.location])}} />{({local: '本地磁盘', '115': 'CloudDrive · 115', pikpak: 'CloudDrive · PikPak'} as Record<string, string>)[row.location] || row.location}</dt><dd>{row.path || '未配置挂载点'} <span class={`configstatus ${row.online === true ? 'online' : row.online === false ? 'offline' : 'unknown'}`}>{row.online === true ? '在线' : row.online === false ? '离线' : '未检测'}</span></dd></>)}</dl>
     {error ? <p class="configbad" role="alert">{error}</p> : null}
+  </div><div class="geist-fieldset-footer" data-geist-fieldset-footer>
     <button type="button" class="geist-button" onClick={(event) => refresh(event.currentTarget)}>刷新挂载状态</button>
   </div></section>;
 }
@@ -336,6 +339,7 @@ export function Configuration({ receipt, data, error }: ConfigurationProps & Sta
       {data.editable
         ? <ConfigurationForm data={data} receipt={receipt} />
         : <Html html={noteHtml(data.notice, { variant: 'secondary', label: '只读' })} />}
+      {data.access ? <AccessSettings initial={data.access} receipt={receipt} /> : null}
       <Facts facts={data.facts} />
       <MountStatus data={data} />
     </div>

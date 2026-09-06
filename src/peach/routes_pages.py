@@ -507,6 +507,17 @@ def setup_page(
     opened = " open" if any(errors.get(key) for key in ("data_root", "host", "port", "mdns_name")) else ""
     fields.append(f'<details{opened}><summary><span>高级设置</span>{_CHEVRON_SVG}</summary>'
                   + "".join(advanced) + "</details>")
+    access_error = str(errors.get("access_password", ""))
+    fields.insert(1, '<div class="field"><label for="access-password">访问密码（可选）</label>'
+                  '<input id="access-password" name="access_password" type="password" maxlength="256" '
+                  f'aria-invalid="{"true" if access_error else "false"}" '
+                  'autocomplete="new-password" aria-describedby="access-help">'
+                  + (f'<p class="bad" id="access-help" role="alert">{escape(access_error)}</p>' if access_error
+                     else '<p class="help" id="access-help">留空即可直接访问；设置密码需至少 8 个字符。</p>')
+                  + '<p class="help">未设置密码时，能连接到 Peach 的设备可直接进入。</p>'
+                  '<label for="access-confirm">确认访问密码</label><input id="access-confirm" '
+                  f'aria-invalid="{"true" if access_error else "false"}" '
+                  'name="access_confirm" type="password" maxlength="256" autocomplete="new-password"></div>')
     filled = [path for path in media_dirs if path]
     if not filled:
         scan_text = "完成设置后扫描媒体文件夹"
@@ -564,8 +575,7 @@ def setup_done_page(applied, *, windows: bool, scan_requested: bool, history_gui
         "<ul>"
         f"<li>{escape(ledger)}</li>"
         f"<li>{ca}</li>"
-        f"<li>访问口令文件：<code>{escape(str(tree.token_path))}</code>；"
-        "口令内容用 <code>peach token</code> 看，别的设备第一次访问时贴进登录页。</li>"
+        "<li>访问密码可在配置页设置、修改或关闭。</li>"
         f"{scan}"
         "</ul>"
         f"{mounts}"
@@ -698,6 +708,11 @@ async def setup_submit(request: Request):
 
     config = settings_file.active()
     answers, errors = _read_answers(config, submitted, windows=windows)
+    from . import access
+    try:
+        access.validate_password(str(submitted.get("access_password", "")), str(submitted.get("access_confirm", "")))
+    except ValueError as exc:
+        errors["access_password"] = str(exc)
     if distribution.standalone() and answers is not None:
         try:
             onboarding.check_available_port(answers.port, request.url.port or 80)
@@ -715,7 +730,8 @@ async def setup_submit(request: Request):
     if resolved.path.exists():
         raise HTTPException(status_code=409, detail="settings file already exists")
     try:
-        applied = onboarding.apply(resolved, answers, windows=windows)
+        applied = onboarding.apply(resolved, answers, windows=windows,
+                                   access_password=str(submitted.get("access_password", "")))
     except (OSError, RuntimeError) as exc:
         return HTMLResponse(setup_page(config, windows=windows, values=submitted,
                                       errors={"data_root": str(exc)}, scan_now=scan_now), status_code=400)
@@ -723,10 +739,7 @@ async def setup_submit(request: Request):
         onboarding.request_first_scan(applied.config, "configured" if answers.media_sources is not None else "local")
     response = HTMLResponse(setup_done_page(applied, windows=windows, scan_requested=scan_now,
                                           history_guide=submitted.get("history_guide") == "y"))
-    if distribution.standalone():
-        response.set_cookie("tok", auth.read_token(applied.config.directory("secrets")),
-                            httponly=True, samesite="strict", max_age=31536000)
-        response.headers["Cache-Control"] = "no-store"
+    response.headers["Cache-Control"] = "no-store"
     return response
 
 

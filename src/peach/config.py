@@ -83,6 +83,7 @@ class PeachSettings:
     page_path: Path = PROJECT_ROOT / "web" / "index.html"
     vendor_path: Path = PROJECT_ROOT / "web" / "vendor"
     token: str = ""
+    access_path: Path | None = None
     docs_enabled: bool = False
     mdns_enabled: bool = False
     mdns_name: str = "peach"

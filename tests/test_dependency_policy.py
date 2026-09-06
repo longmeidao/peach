@@ -42,6 +42,7 @@ class DependencyPolicyTests(unittest.TestCase):
             "fastapi": "fastapi",
             "filelock": "filelock",
             "httpx": "httpx",
+            "itsdangerous": "itsdangerous",
             "numpy": "numpy",
             "objc": "pyobjc-framework-Cocoa",
             "opencc": "opencc",

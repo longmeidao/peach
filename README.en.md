@@ -100,7 +100,7 @@ python3.14 -m venv .venv
 Setup configures media folders, access scope and ports. Alternatively, use the `peach init` terminal wizard followed by `peach serve`; executables are in the virtual environment directories above.
 
 Source deployments default to a sibling `peach-data/` directory. Set `PEACH_DATA_ROOT` for a custom location.
-LAN access requires a token: use `peach token` and sign in on each device. Local CA generation requires OpenSSL.
+The access password is optional during setup. Leave it blank to allow devices that can reach Peach to enter directly. Configuration lets you set, change or disable the password; the login page offers session durations. Existing deployments retain their current login requirement. Local CA generation requires OpenSSL.
 See [operations](docs/OPERATIONS.md) for configuration, HTTPS, CloudDrive mounts and non-interactive initialization.
 
 ## Your data

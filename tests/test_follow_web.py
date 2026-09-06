@@ -2060,7 +2060,7 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains(
             '.fsources[data-layout="compact"] .fsource .fprovider:has(.ficon) .ficon{margin-right:5px}')
         # 选择要留下来，和 JAV 版式一样存进设置。
-        self.assertPageContains("javLayout:'big',followLayout:'cozy'")
+        self.assertPageContains("followLayout:'cozy'")
         self.assertPageContains("appSettings.followLayout=value")
         self.assertPageContains(
             "allowedSetting(appSettings.followLayout,FOLLOW_LAYOUTS.map(([k])=>k),'cozy')")

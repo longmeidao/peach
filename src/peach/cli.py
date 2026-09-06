@@ -86,6 +86,7 @@ def _serve(args: argparse.Namespace) -> int:
     settings = PeachSettings(
         db_path=args.db,
         token="" if args.setup else _serve_token(args),
+        access_path=settings_file.active().directory("secrets") / "access.json",
         configured=CONFIGURED and not args.setup,
         docs_enabled=args.docs,
         mdns_enabled=publish_mdns,
@@ -562,11 +563,10 @@ def _print_next_steps(config: settings_file.PeachConfig, *, from_existing: bool)
     print(f"  1. peach serve --host {config.server.host} --port {config.server.port}")
     print("  2. 浏览器打开 http://127.0.0.1:%d/ 确认页面可用。" % config.server.port)
     if _is_loopback(config.server.host):
-        print("  3. 要在局域网访问就改 --host 0.0.0.0：把本机 CA 装进各设备的信任列表，"
-              "再用 `peach token` 取口令，设备第一次访问时贴进登录页。")
+        print("  3. 要在局域网访问就改 --host 0.0.0.0，并把本机 CA 装进各设备的信任列表。"
+              "访问密码为可选项，在配置页设置。")
     else:
-        print("  3. 局域网设备要装本机 CA，并用 `peach token` 取口令，"
-              "第一次访问时贴进登录页。")
+        print("  3. 局域网设备要装本机 CA。访问密码为可选项，在配置页设置。")
 
 
 def build_parser() -> argparse.ArgumentParser:
