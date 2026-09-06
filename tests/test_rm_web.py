@@ -680,6 +680,44 @@ class WebDataTests(unittest.TestCase):
         )["feedback"])
         self.assertEqual(self.row()["disposal"], "trash")
 
+    def test_a_star_writes_twenty_points_and_taking_it_back_writes_null(self):
+        """评分这一列是 0–100，五颗星走 20 的倍数；撤销回 NULL，不是 0。
+
+        量纲不是自选的：`scripts/ledger.py` 把 Stash 的 rating100 原样导进这一列，
+        `taste_history` 也按 rating/20 折算成 0–5 分。撤销必须写 NULL，因为排序是
+        `a.rating {d} NULLS LAST`——写 0 会把「没评过」和「评了一星」并成一档，
+        七万多条没评过的于是排在评了一星的前面。
+        """
+        self.assertEqual(rm_web.w_feedback(
+            self.contract, {"id": 1, "kind": "rate", "value": 60},
+        )["rating"], 60)
+        self.assertEqual(self.row()["rating"], 60)
+        self.assertIsNone(rm_web.w_feedback(
+            self.contract, {"id": 1, "kind": "rate", "value": 0},
+        )["rating"])
+        self.assertIsNone(self.row()["rating"])
+
+    def test_a_rating_outside_the_scale_is_clamped_instead_of_stored(self):
+        """越界的分数夹回 0–100，不落库。前端只送 20 的倍数，接口本身仍是公开的。"""
+        self.assertEqual(rm_web.w_feedback(
+            self.contract, {"id": 1, "kind": "rate", "value": 4000},
+        )["rating"], 100)
+        self.assertIsNone(rm_web.w_feedback(
+            self.contract, {"id": 1, "kind": "rate", "value": -7},
+        )["rating"])
+
+    def test_the_rating_sort_finally_orders_by_something_other_than_o_count(self):
+        """评过分的排在前面，没评过的按 NULLS LAST 留在后面。
+
+        补上写入路径之前，这一列全库为空，`rating` 排序静默退化成第二列
+        `a.o_count`，界面上「评分」和「高潮计数」是同一个排序。
+        """
+        rm_web.w_feedback(self.contract, {"id": 2, "kind": "rate", "value": 100})
+        rm_web.w_feedback(self.contract, {"id": 1, "kind": "rate", "value": 40})
+        ordered = [item["id"] for item in rm_web.q_items(
+            self.contract, {"sort": "rating", "limit": "10"})["items"]]
+        self.assertEqual(ordered[:2], [2, 1])
+
     def test_orgasm_receipt_can_be_undone_without_crossing_zero(self):
         added = rm_web.w_feedback(self.contract, {"id": 1, "kind": "o"})
         self.assertEqual(added["o_count"], 1)

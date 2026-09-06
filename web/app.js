@@ -7245,6 +7245,21 @@ function clearIdleCatalogLoading(){
   grid.innerHTML='';
   const count=$('#count');count.removeAttribute('aria-busy');count.removeAttribute('aria-label');
 }
+/* 评分落在 `asset.rating`，量纲是 0–100：这一列是 Stash 的 rating100 直接导进来的，
+   taste_history 也按 rating/20 折算成 0–5 分。所以第 n 颗星送出的是 n*20，不是 n。
+   再点当前那一颗表示撤销，送 0，后端写回 NULL——「没评过」和「评了一星」在排序上
+   必须是两件事。 */
+const RATING_STEP=20;
+const ratingStarCount=value=>Math.round(Math.min(Math.max(value||0,0),100)/RATING_STEP);
+const ratingText=value=>{const n=ratingStarCount(value);return n?`${n} 星`:'未评分'};
+const ratingStarsHtml=value=>{const on=ratingStarCount(value);
+  return [1,2,3,4,5].map(n=>`<button type="button" class="star" data-rate="${n}" data-on="${n<=on}"
+    title="${n===on?'再点一次取消评分':`${n} 星`}"
+    aria-label="${n===on?`取消评分（当前 ${n} 星）`:`评为 ${n} 星`}">${icon('star')}</button>`).join('')};
+const ratingHtml=value=>`<div class="rating" id="detailRating" role="group" aria-label="评分" data-value="${Math.min(Math.max(value||0,0),100)}">
+  <div class="ratingstars">${ratingStarsHtml(value)}</div>
+  <span class="ratingvalue" aria-live="polite">${ratingText(value)}</span></div>`;
+
 async function openItem(id,push=true,queueContext=null,anchor=null){
   releaseHoverPreviews();
   const origin=anchor?.isConnected?anchor:(detailOriginAnchor?.isConnected?detailOriginAnchor:null);
@@ -7369,6 +7384,7 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
       <div class="detailtitle">${srcBadge(it.location,it.cost,'srcbig')}
         <div class="stitle">${javTitleHtml(it)}${partLabelBadge(it,queueContext)}${it.location==='online'?'':`<span class="srctools detailtitletools">${sourceToolButtons(it.id)}</span>`}</div></div>
       ${it.location==='online'?'':`<span class="srcstate detailtitlestate" aria-live="polite"></span>`}
+      ${ratingHtml(it.rating)}
       <div class="smeta mono">
         <span class="detailmetaitem">${icon('ratio')}<span>${it.width||'?'}×${it.height||'?'}</span></span>
         <span class="detailmetaitem">${icon('hard-drive')}<span>${fmtSize(it.size||0)}</span></span>
@@ -7429,6 +7445,25 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
   const g=$('#gate');
   const onlineGate=$('#onlineGate');
   $('#addPlaylist').onclick=()=>openAddToPlaylist(it);
+  /* 一排星只挂一个监听，重绘时整块换掉 innerHTML——五个按钮各挂一份的话，
+     每次评完都要重新接线，漏接就变成「点第一次有反应，第二次没有」。 */
+  const paintRating=value=>{it.rating=value==null?null:value;
+    const box=$('#detailRating');if(!box)return;
+    box.dataset.value=Math.min(Math.max(value||0,0),100);
+    box.querySelector('.ratingstars').innerHTML=ratingStarsHtml(value);
+    box.querySelector('.ratingvalue').textContent=ratingText(value)};
+  const postRating=async value=>{
+    const r=await api('/api/feedback',{method:'POST',body:JSON.stringify({id:it.id,kind:'rate',value})});
+    paintRating(r.rating);return r};
+  $('#detailRating')?.addEventListener('click',async event=>{
+    const star=event.target.closest('.star');if(!star)return;
+    const before=it.rating||0,picked=+star.dataset.rate*RATING_STEP;
+    const value=picked===before?0:picked;
+    setActionBusy(star);
+    try{await postRating(value);
+      actionReceipt(value?`已评 ${value/RATING_STEP} 星`:'已取消评分',
+        {undo:()=>postRating(before)});
+    }catch(error){actionFailure('评分',error)}finally{setActionBusy(star,false)}});
   const paintDetailFeedback=result=>{
     Object.assign(it,{feedback:result.feedback,disposal:result.disposal,o_count:result.o_count});
     const stage=$('#stage');if(!stage)return;

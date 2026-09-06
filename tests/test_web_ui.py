@@ -915,6 +915,39 @@ class WebUiSourceTests(unittest.TestCase):
             ".dual-range input:focus-visible::-webkit-slider-thumb"
             "{outline:2px solid var(--tungsten);outline-offset:2px}")
 
+    def test_the_star_rating_sits_between_the_title_and_the_spec_line(self):
+        """五颗星在标题和那行规格之间，送出的是 20 的倍数，空实两档不借色相。
+
+        位置不是随手挑的：评分是对这一条作品的判断，和番号、标题一样属于它的身份，
+        而反馈条那一排说的是「怎么处置它」（不合口味、看过、回收站）。两者混在一起，
+        「我给它几分」就会读成又一个处置动作。
+
+        再点当前那一颗是撤销，送 0；后端写回 NULL。悬停预演到指针那一颗，靠
+        `:has(~ .star:hover)` 选中它左边的几颗——把 DOM 倒过来写也能做到同一件事，
+        代价是 Tab 与读屏顺序跟着倒过来，五颗星从「评为 5 星」开始念。
+        """
+        self.assertPageContains("const RATING_STEP=20;")
+        self.assertPageContains(
+            """      ${it.location==='online'?'':`<span class="srcstate detailtitlestate" aria-live="polite"></span>`}
+      ${ratingHtml(it.rating)}
+      <div class="smeta mono">""")
+        self.assertPageContains(
+            "const value=picked===before?0:picked;")
+        self.assertPageContains(
+            "api('/api/feedback',{method:'POST',body:JSON.stringify({id:it.id,kind:'rate',value})})")
+        self.assertPageContains("{undo:()=>postRating(before)}")
+        # 标签是语义契约：撤销那一颗要说清它现在是几星，否则读屏只听到「星」。
+        self.assertPageContains(
+            "aria-label=\"${n===on?`取消评分（当前 ${n} 星）`:`评为 ${n} 星`}\"")
+        self.assertPageContains('<symbol id="i-star" viewBox="0 0 24 24">')
+        self.assertPageContains('.ratingstars .star[data-on="true"] svg{fill:currentColor}')
+        self.assertPageContains(
+            ".ratingstars:hover .star:hover,.ratingstars:hover .star:has(~ .star:hover)"
+            "{color:var(--ink)}")
+        # 空心那一档用的是 --line，不是 --muted：它是一枚没填的形状，不是一行次要文字。
+        start = self.page.index(".ratingstars .star{")
+        self.assertIn("color:var(--line)", self.page[start:self.page.index("}", start)])
+
     def test_every_button_in_the_feedback_bar_owns_a_hover_color(self):
         """详情页反馈条上每一枚都有自己的悬停配色，兜底填充用 token 不写死白。
 
@@ -6320,9 +6353,11 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(
             "[['system','跟随系统','monitor'],['light','浅色','sun'],['dark','深色','moon']]")
         self.assertPageContains("${icon('ratio')}<span>${it.width||'?'}×${it.height||'?'}</span>")
-        # 换下来的三枚没有别的使用者，雪碧图里也不留。
-        for gone in ("i-monitor-cog", "i-star", "i-volume-2", "i-sun-moon"):
+        # 换下来的这几枚没有别的使用者，雪碧图里也不留。星是有使用者的那一枚：
+        # 详情页的五星评分，写进 `asset.rating`，不与任何别的意思共用。
+        for gone in ("i-monitor-cog", "i-volume-2", "i-sun-moon"):
             self.assertPageLacks(f'<symbol id="{gone}"')
+        self.assertPageContains("${icon('star')}</button>")
         self.assertPageContains('<symbol id="i-clock" viewBox="0 0 24 24">')
 
     def test_mixed_icon_sets_land_on_one_optical_grid(self):
