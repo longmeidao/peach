@@ -15,6 +15,7 @@ export const emptyStateHtml = (
 export const fieldsetTitle = (id: string, title: string): string =>
   `<h3 class="geist-fieldset-title" id="${id}">${title}</h3>`;
 export const loadingDotsHtml = (label: string): string => `<span>${label}</span>`;
+export const checkboxHtml = (attrs = ''): string => `<span class="pcheck"><input type="checkbox" ${attrs}></span>`;
 export const progressHtml = (label: string, value: number, max = 100): string =>
   `<progress role="progressbar" aria-label="${label}" value="${value}" max="${max}" aria-valuenow="${value}" aria-valuemax="${max}"></progress>`;
 export const confirmModal = async (_options: unknown) => ({confirmed:false});

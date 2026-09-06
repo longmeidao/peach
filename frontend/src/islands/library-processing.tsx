@@ -74,7 +74,7 @@ export function LibraryProcessing({ data, error, toast, onComplete, mode, monito
         {(problem || state.status === 'failed') && <div role="alert" dangerouslySetInnerHTML={{ __html: noteHtml(problem || state.error || '处理未完成，请重试', { variant: 'error' }) }} />}
         {state.status === 'failed' && !!state.issues?.length && <ul>{state.issues.slice(0, 20).map(issue =>
           <li>{issue.asset_id ? <a href={`/item/${issue.asset_id}`}>查看视频</a> : null}{issue.asset_id ? '：' : ''}{issue.message}</li>)}</ul>}
-        {receipt && <p>已扫描 {state.scanned || 0} 个文件，识别 {state.identified || 0} 个番号，整理 {state.candidates || 0} 组资料候选。</p>}
+        {receipt && <div class="library-processing-result" dangerouslySetInnerHTML={{ __html: noteHtml(`已扫描 ${state.scanned || 0} 个文件，识别 ${state.identified || 0} 个番号，整理 ${state.candidates || 0} 组资料候选。`, { variant: 'success', label: '处理完成' }) }} />}
       </div>
     </div>
     <footer class="geist-fieldset-footer" data-geist-fieldset-footer>
