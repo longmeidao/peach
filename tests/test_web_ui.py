@@ -1180,7 +1180,8 @@ class WebUiSourceTests(unittest.TestCase):
     def test_global_navigation_and_controls_have_accessible_context(self):
         self.assertPageContains('<a class="skiplink" href="#main">跳到正文</a>')
         self.assertPageContains('<main id="main" tabindex="-1">')
-        self.assertPageContains('id="filterBtn" title="筛选" aria-label="筛选"')
+        self.assertPageContains(
+            'id="filterBtn" title="导航与筛选" aria-label="展开导航与筛选"')
         self.assertPageContains('id="settingsBtn" title="设置" aria-label="打开设置"')
         self.assertPageContains('name="q" type="search"')
         self.assertPageContains('aria-label="搜索作品、女优、厂牌或标签"')
@@ -3476,7 +3477,7 @@ class WebUiSourceTests(unittest.TestCase):
 
         它们合并到「管理」下的二级导航；URL 保持原样，只是多了一条共用导航条。
         """
-        self.assertPageContains("['manage','管理','database']")
+        self.assertPageContains("['manage','管理','wrench']")
         self.assertPageContains("const MANAGE_SECTIONS=[")
         for section in ("'stats','统计'", "'cleanup','数据管理'",
                         "'quality','高清版'", "'trash','回收站'", "'review','人工复核'",
@@ -3519,7 +3520,7 @@ class WebUiSourceTests(unittest.TestCase):
         服务端在 `/healthz` 里按调用方回 `configurable`；菜单第一次画时问一次，答复回来
         再补上这一项。它也不进可钉到侧栏的候选：侧栏顺序跨机同步，钉在手机上就是死链接。
         """
-        self.assertPageContains("['configuration','配置','computer'],")
+        self.assertPageContains("['configuration','配置','folder-cog'],")
         self.assertPageContains("let runtimeConfigurable=null;")
         self.assertPageContains("  bar.hidden=!current;\n  probeConfigurable();")
         self.assertPageContains("api('/healthz').then(runtime=>{")
@@ -6358,9 +6359,17 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("['flagged','已标记','bookmark'],")
         self.assertPageContains("['immerse','沉浸模式','gallery-vertical-end'],")
         self.assertPageContains("<span>进入沉浸模式</span>")
-        # 管理菜单的「配置」是这台电脑：`monitor` 已归详情页的分辨率，`settings` 归设置弹层。
-        self.assertPageContains("['configuration','配置','computer'],")
-        self.assertPageContains('<symbol id="i-computer" viewBox="0 0 24 24">')
+        # 三个名字里都带「管」「设」的入口各归各的：左上角那枚开的是左栏，所以是一块
+        # 被划出侧栏的面板；侧栏「管理」是收拾库里的东西，所以是扳手——圆柱只留给口味页
+        # 那几处「数据源」；管理里的「配置」配的是这台电脑的媒体文件夹与端口，所以是
+        # 一个待配置的文件夹。齿轮只剩右上角的界面偏好。
+        self.assertPageContains(
+            'id="filterBtn" title="导航与筛选" aria-label="展开导航与筛选"')
+        self.assertPageContains('<use href="#i-panel-left"/>')
+        self.assertPageContains("['manage','管理','wrench'],")
+        self.assertPageContains('<symbol id="i-wrench" viewBox="0 0 24 24">')
+        self.assertPageContains("['configuration','配置','folder-cog'],")
+        self.assertPageContains('<symbol id="i-folder-cog" viewBox="0 0 24 24">')
         # 配置页每行文件夹的「选择文件夹」弹系统对话框去挑：`folder-search`。`folder-open` 归「打开位置」。
         self.assertPageContains('<symbol id="i-folder-search" viewBox="0 0 24 24">')
         self.assertIn('href="#i-folder-search"', (Path(__file__).resolve().parents[1] / "frontend" / "src" / "islands" / "configuration.tsx")
@@ -6377,7 +6386,8 @@ class WebUiSourceTests(unittest.TestCase):
         # 名下带人的事务所在同一个开关的另一半，走公文包。
         self.assertPageContains("['studios','厂商','clapperboard'],")
         self.assertPageContains('<symbol id="i-clapperboard" viewBox="0 0 24 24">')
-        for gone in ("i-monitor-cog", "i-volume-2", "i-sun-moon", "i-building"):
+        for gone in ("i-monitor-cog", "i-volume-2", "i-sun-moon", "i-building",
+                     "i-sliders-horizontal", "i-computer"):
             self.assertPageLacks(f'<symbol id="{gone}"')
         self.assertPageContains("${icon('star')}</button>")
         self.assertPageContains('<symbol id="i-clock" viewBox="0 0 24 24">')

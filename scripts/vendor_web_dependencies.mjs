@@ -62,7 +62,7 @@ copyPackageFiles({
 
 const lucideIcons = new Map([
   ["clapperboard", "clapperboard"], ["briefcase", "briefcase"],
-  ["home", "home"], ["sliders-horizontal", "sliders-horizontal"], ["search", "search"],
+  ["home", "home"], ["panel-left", "panel-left"], ["search", "search"],
   ["layout-grid", "layout-grid"], ["square-check-big", "square-check-big"],
   ["refresh-cw", "refresh-cw"], ["user-round", "user-round"], ["tags", "tags"],
   ["list-filter", "list-filter"], ["chart", "chart-no-axes-column"],
@@ -85,8 +85,10 @@ const lucideIcons = new Map([
   // 名字和上游对不上的只有排序键：Peach 叫 `sort`，Lucide 叫 `sort-desc`。
   ["sort", "sort-desc"], ["arrow-up", "arrow-up"], ["arrow-down", "arrow-down"],
   ["calendar", "calendar"], ["download", "download"], ["monitor", "monitor"],
-  // 管理菜单里的「配置」：这台电脑。`monitor` 已经归详情页的分辨率，不能兼任。
-  ["computer", "computer"],
+  // 侧栏「管理」那一层：收拾库里的东西。`settings` 只归右上角的界面偏好。
+  ["wrench", "wrench"],
+  // 管理菜单里的「配置」：这台电脑的媒体文件夹与端口。
+  ["folder-cog", "folder-cog"],
   // 配置页每行文件夹的「选择文件夹」：弹系统对话框去挑。`folder-open` 归「打开位置」，不兼任。
   ["folder-search", "folder-search"],
   ["ratio", "ratio"], ["sun", "sun"], ["moon", "moon"],
