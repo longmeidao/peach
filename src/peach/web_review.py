@@ -33,7 +33,7 @@ from .entities import (
     upsert_asset_entity,
 )
 from .fsutil import atomic_write_bytes
-from .metadata_policy import SOURCE_SPECS
+from .metadata_policy import FIELD_SOURCE_ORDER, SOURCE_SPECS
 from .previews import entity_image_key, logo_key
 from .review_csv import read_rows
 
@@ -139,14 +139,53 @@ def latest_candidate_file(category: str, root: Path | None = None) -> Path | Non
     return max(matches, key=lambda path: (path.stat().st_mtime_ns, path.name))
 
 
-def read_candidates(category: str, root: Path | None = None) -> tuple[list[dict], str | None, int]:
-    """读取最新一批候选，返回（有稳定主键的行, 文件名, 被跳过的行数）。"""
-    path = latest_candidate_file(category, root)
+#: 按番号分批跑、每批只覆盖自己那批番号的类别。这些类别读全部批次，别的只读最新一份。
+#: 差别在于批次之间是不是同一批对象：元数据字段候选每批问的是不同的番号，上一批未复核
+#: 的行在下一批里根本不会出现；封面日志、创作者标签那些每批重跑同一批对象，旧批次是
+#: 过时快照，读进来只会把已经作废的证据摆回台面。
+MULTI_BATCH_CATEGORIES = frozenset({"metadata_fields"})
+
+
+def candidate_files(category: str, root: Path | None = None) -> list[Path]:
+    """这一类的候选文件，按证据优先级排列：先读的那份说了算。
+
+    分区文件最优先，批次文件按写入时间从新到旧。分批类别的**旧批次不能因为跑了新批次
+    就消失**：只读最新一份实测让 9 月 1 日那批 128 条可落库的行在复核页上完全不可见
+    ——它们既没被判过，也再没机会被判。
+    """
     base = root or GENERATED_DIR
-    paths = [
+    partitions = [
         base / name for name in ADDITIONAL_CANDIDATE_FILES.get(category, ())
-        if (base / name).is_file() and (path is None or base / name != path)
-    ] + ([path] if path is not None and path.is_file() else [])
+        if (base / name).is_file()
+    ]
+    if category in MULTI_BATCH_CATEGORIES:
+        prefix = CANDIDATE_PREFIX.get(category)
+        batches = sorted(
+            (path for path in base.glob(f"{prefix}*.csv") if path.is_file()),
+            key=lambda path: (path.stat().st_mtime_ns, path.name), reverse=True,
+        ) if prefix else []
+    else:
+        latest = latest_candidate_file(category, root)
+        batches = [latest] if latest is not None and latest.is_file() else []
+    ordered, seen = [], set()
+    for path in partitions + batches:
+        if path not in seen:
+            seen.add(path)
+            ordered.append(path)
+    return ordered
+
+
+def _candidate_source_label(paths: list[Path]) -> str:
+    """复核页要看得出证据来自哪；十几份批次名字全列出来会把那一行撑爆。"""
+    names = [path.name for path in paths]
+    if len(names) <= 3:
+        return "; ".join(names)
+    return "; ".join(names[:3]) + f" 等 {len(names)} 份"
+
+
+def read_candidates(category: str, root: Path | None = None) -> tuple[list[dict], str | None, int]:
+    """读取全部批次的候选，返回（有稳定主键的行, 来源说明, 被跳过的行数）。"""
+    paths = candidate_files(category, root)
     if not paths:
         return [], None, 0
     key_column = CANDIDATE_KEY[category]
@@ -162,7 +201,7 @@ def read_candidates(category: str, root: Path | None = None) -> tuple[list[dict]
             seen.add(key)
             row["item_key"] = key
             rows.append(row)
-    return rows, "; ".join(candidate_path.name for candidate_path in paths), skipped
+    return rows, _candidate_source_label(paths), skipped
 
 
 def _creator_entity_ids(connection, creators: list[str]) -> dict[str, int]:
@@ -553,19 +592,85 @@ def _use_canonical_entity_names(connection, rows: list[dict]) -> None:
             row["current_name"] = name
 
 
-#: 可以不经人判断直接落库的字段。只放「补空且来源唯一」时确实无可判断的那些。
-#: 演员和标签不在其中：那两类来源与账本的分歧是真实的（见 33 条噪音的核对）。
-AUTO_APPLY_FIELDS = frozenset({"release_date"})
+#: 可以不经人判断直接落库的字段（ADR-0025 扩到 P0 全字段）。标签不在其中：它是多值
+#: 集合，「取值一致」对它没有意义，来源之间的分类粒度分歧也确实需要判断。
+AUTO_APPLY_FIELDS = frozenset({
+    "title", "original_title", "performers", "studio", "series", "release_date",
+})
+
+#: 素人系官方页把年龄和职业写进出演者栏（`本庄美奈子 30歳 元カフェ店員`），照抄会把
+#: 整句变成实体名。艺名到年龄标记为止，后面是介绍；`はな/19歳/…` 用斜杠分段，同理。
+_PERFORMER_INTRO = re.compile(r"[\s　]*[（(]?\d+\s*歳.*$")
+_PERFORMER_SEGMENT = re.compile(r"[/／].*$")
+#: 剪完仍带空白、分隔符或敬称的不是艺名，是企划文案（`超バドミントン部あかりちゃん`、
+#: `まゆみさん`）。这类交回人工：剪到哪儿才对，本身就是个判断。
+_NOT_A_STAGE_NAME = re.compile(r"[\s　/／]|ちゃん$|さん$")
 
 
-def _auto_apply_rule(candidate: dict) -> str:
+def _stage_name(name: str) -> str | None:
+    """出演者栏里的艺名；认不出艺名边界时返回 None。"""
+    trimmed = _PERFORMER_INTRO.sub("", _PERFORMER_SEGMENT.sub("", str(name or ""))).strip()
+    if not trimmed or _NOT_A_STAGE_NAME.search(trimmed):
+        return None
+    return trimmed
+
+
+def _stage_names(candidate: dict) -> list[str] | None:
+    """整条出演者候选剪成艺名列表；有一个剪不出来就整条回人工。"""
+    people = candidate.get("value")
+    if not isinstance(people, list) or not people:
+        return None
+    names = []
+    for person in people:
+        if not isinstance(person, dict):
+            return None
+        name = _stage_name(person.get("name"))
+        if name is None:
+            return None
+        names.append(name)
+    return names or None
+
+
+def _candidate_value_key(field: str, candidate: dict) -> str | None:
+    """两个来源说的是不是同一件事；这条候选本身不可用时返回 None。"""
+    if field == "performers":
+        names = _stage_names(candidate)
+        return None if names is None else "、".join(names)
+    value = str(candidate.get("display_value") or "").strip()
+    return value or None
+
+
+def _normalised_candidate(field: str, candidate: dict) -> dict:
+    """落库用的候选。出演者写剪好的艺名，原文留在 `raw_display_value` 里备查。"""
+    if field != "performers":
+        return candidate
+    names = _stage_names(candidate) or []
+    people = [{**person, "name": name}
+              for person, name in zip(candidate.get("value") or [], names)]
+    return {**candidate, "value": people, "display_value": "、".join(names),
+            "raw_display_value": str(candidate.get("display_value") or "").strip()}
+
+
+def _preferred_candidate(field: str, candidates: list[dict]) -> dict:
+    """取值一致时由谁署名。字段来源优先级已经排好，落库记的出处就该是最靠前的那家。"""
+    order = FIELD_SOURCE_ORDER.get(field, ())
+    def rank(candidate: dict) -> tuple[int, str]:
+        source = str(candidate.get("source") or "").strip()
+        return (order.index(source) if source in order else len(order), source)
+    return min(candidates, key=rank)
+
+
+def _auto_apply_rule(candidate: dict, agreed: int) -> str:
     """这条自动落库该记在哪条规则名下。
 
     official 与 community 两类补空在 `review_decision` 里必须分得开：出了问题要回溯的
-    是「哪些值是 community 源补的」，而 note 是唯一留着这个区别的地方。
+    是「哪些值是 community 源补的」，而 note 是唯一留着这个区别的地方。多来源一致
+    （ADR-0025）与单来源（ADR-0018）同样要分得开：前者的证据强度不一样。
     """
     spec = SOURCE_SPECS.get(str(candidate.get("source") or "").strip())
     kind = "official" if spec is not None and spec.official else "community"
+    if agreed > 1:
+        return f"adr-0025-empty-field-{agreed}-agreed-{kind}-sources"
     return f"adr-0018-empty-field-single-{kind}-source"
 
 
@@ -575,7 +680,10 @@ def metadata_auto_apply_candidate(connection, row: dict) -> dict | None:
     三项必须同时成立，缺一项就仍然走人工：
 
     1. 目标字段当前为空——只补空，永不覆盖既有真相字段；
-    2. 只有一个候选——有第二个值就存在取舍，那正是复核要做的事；
+    2. 候选**取值**去重后只剩一个——有第二个取值才存在取舍，而取舍正是复核要做的事。
+       数的是取值不是候选条数（ADR-0025）：两家独立来源给出同一个值是这批候选里最强的
+       证据，按条数算却会被判成「有分歧」。实测 349 条这样被扣住，`259LUXU-1509` 的
+       厂牌、演员和发行日期都是 mgstage 与 libredmm 逐字相同却谁也没写进账本；
     3. 番号在该番号名下**每一条**资产的文件名里逐字出现。
 
     来源是不是 official 不在其中（用户 2026-09-04 决定）。补空不覆盖任何东西，唯一的
@@ -587,19 +695,27 @@ def metadata_auto_apply_candidate(connection, row: dict) -> dict | None:
     逐字出现是本机可核验的证据，而复核界面其实给不了这个保证——它只并排显示
     番号和日期，并不告诉你番号跟这个文件对不对得上。
 
+    出演者多一道形态门槛：官方页把年龄职业写在艺名后面，剪不出艺名的交回人工。
+
+    未登记来源的候选先被剔除再比对取值：没进 `REGISTERED_SOURCES` 的来源不构成证据，
+    留着它只会把「一个有效取值」算成分歧。
+
     来源级别一律按当前 policy 解析，不读候选 CSV 里的同名字段：那是抓取当时的
     快照，实测 r18dev 在 CSV 里写着 False，而现行 policy 认它是 official_mirror。
     """
-    if str(row.get("field") or "").strip() not in AUTO_APPLY_FIELDS:
+    field = str(row.get("field") or "").strip()
+    if field not in AUTO_APPLY_FIELDS:
         return None
     if str(row.get("current_value") or "").strip():
         return None
-    candidates = row.get("candidates") or []
-    if len(candidates) != 1:
+    candidates = [c for c in row.get("candidates") or []
+                  if str(c.get("source") or "").strip() in SOURCE_SPECS]
+    if not candidates:
         return None
-    candidate = candidates[0]
-    if str(candidate.get("source") or "").strip() not in SOURCE_SPECS:
+    values = {_candidate_value_key(field, candidate) for candidate in candidates}
+    if len(values) != 1 or None in values:
         return None
+    candidate = _preferred_candidate(field, candidates)
     code = str(row.get("code") or "").strip()
     query = str(row.get("query") or code).strip()
     if not code:
@@ -613,7 +729,7 @@ def metadata_auto_apply_candidate(connection, row: dict) -> dict | None:
     folded = code.casefold()
     if not all(folded in str(name or "").casefold() for name in names):
         return None
-    return candidate
+    return {**_normalised_candidate(field, candidate), "agreed_sources": len(candidates)}
 
 
 def _pending_first(rows: list[dict]) -> list[dict]:
@@ -1112,10 +1228,16 @@ def w_review_auto_apply(contract: ReviewContract, _body=None):
                     "auto_applied": True,
                     # 规则名记来源的实际级别，不写死 official：补空对 community 源同样
                     # 成立，但两者日后要分开回溯时，note 是唯一还留着这个区别的地方。
-                    "rule": _auto_apply_rule(candidate),
+                    "rule": _auto_apply_rule(candidate, candidate.get("agreed_sources") or 1),
                     "candidate_key": candidate.get("candidate_key"),
                     "source": candidate.get("source"),
                     "value": candidate.get("display_value"),
+                    # 出演者写的是剪过的艺名，原文得留着：事后要答得出账本里这个名字
+                    # 是从哪一句剪出来的。
+                    **({"raw_value": candidate["raw_display_value"]}
+                       if candidate.get("raw_display_value")
+                       and candidate["raw_display_value"] != candidate.get("display_value")
+                       else {}),
                 }, ensure_ascii=False, separators=(",", ":")), now),
             )
             applied.append({"item_key": item_key, "field": row.get("field"),

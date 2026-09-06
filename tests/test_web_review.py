@@ -97,14 +97,25 @@ class ReviewQueueTests(unittest.TestCase):
                 "query": code, "field": item["field"],
                 "field_label": item["field"], "current_value": item["current"],
                 "candidates_json": _json.dumps([
-                    {"candidate_key": f"{item['item_key']}:{i}", "source": source,
-                     "display_value": value, "value": value, "confidence": 0.9,
-                     "source_url": "", "raw_snapshot": ""}
+                    self._candidate(item, i, source, value)
                     for i, value in enumerate(item["candidates"])], ensure_ascii=False),
                 "source_count": "1", "status": "candidate", "size_gb": "",
                 "videos": "1", "fetched_at": "",
             })
         return self.write_metadata_candidates(payload)
+
+    @staticmethod
+    def _candidate(item, index, default_source, value):
+        """一个候选。`value` 给字符串就是单来源的取值；给 dict 可以单独指定来源，
+        并把 `value`（落库用的结构）和 `display`（来源页面的原文）分开。"""
+        source, display = default_source, value
+        if isinstance(value, dict):
+            source = value.get("source", default_source)
+            display = value.get("display", value["value"])
+            value = value["value"]
+        return {"candidate_key": f"{item['item_key']}:{index}", "source": source,
+                "display_value": display, "value": value, "confidence": 0.9,
+                "source_url": "", "raw_snapshot": ""}
 
     def _asset(self, aid, code, name):
         con = sqlite3.connect(self.db_path)
@@ -126,6 +137,45 @@ class ReviewQueueTests(unittest.TestCase):
         self.assertEqual(
             rm_review.latest_candidate_file("metadata_fields", self.candidates), newer,
         )
+
+    def test_older_batches_keep_their_undecided_rows_in_the_queue(self):
+        """跑了新批次不该让上一批未复核的行消失。
+
+        实测：9 月 1 日那批的 128 条可落库行被 9 月 5 日的批次挤出队列，界面上再也
+        看不到——既没被判过，也再没机会被判。每批只覆盖它自己那批番号。
+        """
+        older = self.candidates / "metadata-field-candidates-tagbackfill.csv"
+        newer = self.candidates / "metadata-field-candidates-javdb-20260905.csv"
+        older.write_text("item_key\n259LUXU-1509:studio\n", encoding="utf-8")
+        newer.write_text("item_key\nJBS-023:studio\n", encoding="utf-8")
+        os.utime(older, (1000, 1000))
+        os.utime(newer, (2000, 2000))
+
+        rows, source, _skipped = rm_review.read_candidates("metadata_fields", self.candidates)
+        self.assertEqual({row["item_key"] for row in rows},
+                         {"259LUXU-1509:studio", "JBS-023:studio"})
+        self.assertIn(newer.name, source)
+
+    def test_newer_batch_wins_when_two_batches_carry_the_same_key(self):
+        """同一个 item_key 出现在两批里时，新批次的证据说了算。"""
+        fields = ["item_key", "code", "query", "field", "current_value",
+                  "candidates_json", "source_count", "status", "size_gb", "videos",
+                  "fetched_at"]
+        common = {"code": "ABC-001", "query": "ABC-001", "field": "studio",
+                  "current_value": "", "source_count": "1", "status": "candidate",
+                  "size_gb": "1", "videos": "1", "fetched_at": "now"}
+        older = self._csv("metadata-field-candidates-20260901.csv", fields, [{
+            **common, "item_key": "ABC-001:studio",
+            "candidates_json": '[{"value":"旧批次"}]'}])
+        newer = self._csv("metadata-field-candidates-20260905.csv", fields, [{
+            **common, "item_key": "ABC-001:studio",
+            "candidates_json": '[{"value":"新批次"}]'}])
+        os.utime(older, (1000, 1000))
+        os.utime(newer, (2000, 2000))
+
+        rows, _source, _skipped = rm_review.read_candidates("metadata_fields", self.candidates)
+        self.assertEqual(len(rows), 1)
+        self.assertIn("新批次", rows[0]["candidates_json"])
 
     def test_fc2_metadata_partition_joins_the_latest_jav_queue(self):
         fields = ["item_key", "code", "query", "field", "field_label", "current_value",
@@ -236,9 +286,9 @@ class ReviewQueueTests(unittest.TestCase):
         self.write_metadata_rows([
             {"item_key": "CCC", "field": "release_date", "current": "",
              "candidates": ["2015-02-20"], "code": "CCC-3", "source": "javdb"},
-            # 演员和标签不在白名单：那两类分歧是真实的。
-            {"item_key": "DDD", "field": "performers", "current": "",
-             "candidates": ["某人"], "code": "DDD-4"},
+            # 标签不在白名单：它是多值集合，来源之间的分类粒度分歧是真实的。
+            {"item_key": "DDD", "field": "tags", "current": "",
+             "candidates": ["巨乳"], "code": "DDD-4"},
         ])
         self.assertEqual(self._auto()["applied"], 1)
         con = sqlite3.connect(self.db_path)
@@ -253,6 +303,102 @@ class ReviewQueueTests(unittest.TestCase):
         # 规则名要留下来源级别，否则日后回溯不出哪些值是 community 源补的。
         self.assertEqual(json.loads(note)["rule"],
                          "adr-0018-empty-field-single-community-source")
+
+    def test_two_sources_saying_the_same_thing_land_without_review(self):
+        """数取值，不数候选条数。
+
+        两家独立来源给出同一个值，是这批候选里最强的证据；按条数算却会被判成
+        「有分歧」。实测 349 条这样被扣住，`259LUXU-1509` 的厂牌、演员和发行日期
+        都是 mgstage 与 libredmm 逐字相同，却谁也没写进账本。
+        """
+        self._asset(120, "259LUXU-1509", "259LUXU-1509.mp4")
+        self.write_metadata_rows([{
+            "item_key": "259LUXU-1509:studio", "field": "studio", "current": "",
+            "code": "259LUXU-1509",
+            "candidates": [{"source": "libredmm", "value": "ラグジュTV"},
+                           {"source": "mgstage", "value": "ラグジュTV"}],
+        }])
+        self.assertEqual(self._auto()["applied"], 1)
+        con = sqlite3.connect(self.db_path)
+        try:
+            self.assertEqual(
+                con.execute("SELECT studio FROM asset WHERE id=120").fetchone()[0],
+                "ラグジュTV")
+            note = json.loads(con.execute(
+                "SELECT note FROM review_decision WHERE item_key=?",
+                ("259LUXU-1509:studio",)).fetchone()[0])
+        finally:
+            con.close()
+        # 几家一致要记下来：这类的证据强度和单来源补空不一样。
+        self.assertEqual(note["rule"], "adr-0025-empty-field-2-agreed-official-sources")
+        # 署名给字段来源顺序里最靠前的那家，不是候选数组里排第一的那家。
+        self.assertEqual(note["source"], "libredmm")
+
+    def test_sources_that_disagree_still_go_to_review(self):
+        """取值有第二种写法就是取舍，取舍是复核要做的事。"""
+        self._asset(121, "GGG-7", "GGG-7.mp4")
+        self.write_metadata_rows([{
+            "item_key": "GGG:title", "field": "title", "current": "", "code": "GGG-7",
+            "candidates": [{"source": "mgstage", "value": "ラグジュTV 1492 前半だけ"},
+                           {"source": "libredmm", "value": "ラグジュTV 1492 全文"}],
+        }])
+        self.assertEqual(self._auto()["applied"], 0)
+        self.assertEqual(self.queue_keys("metadata_fields"), ["GGG:title"])
+
+    def test_performer_name_is_cut_at_the_age_the_official_page_appends(self):
+        """素人系官方页把年龄职业写进出演者栏，照抄会把整句变成实体名。"""
+        self._asset(122, "259LUXU-1509", "259LUXU-1509.mp4")
+        self.write_metadata_rows([{
+            "item_key": "259LUXU-1509:performers", "field": "performers", "current": "",
+            "code": "259LUXU-1509",
+            "candidates": [{"source": "mgstage", "display": "本庄美奈子 30歳 元カフェ店員",
+                            "value": [{"name": "本庄美奈子 30歳 元カフェ店員",
+                                       "external_id": "", "thumb_url": ""}]}],
+        }])
+        self.assertEqual(self._auto()["applied"], 1)
+        con = sqlite3.connect(self.db_path)
+        try:
+            self.assertEqual(
+                [row[0] for row in con.execute(
+                    "SELECT canonical_name FROM entity WHERE kind='performer' "
+                    "AND canonical_name LIKE '本庄%'")],
+                ["本庄美奈子"])
+            note = json.loads(con.execute(
+                "SELECT note FROM review_decision WHERE item_key=?",
+                ("259LUXU-1509:performers",)).fetchone()[0])
+        finally:
+            con.close()
+        # 剪过就要留得下原文，否则回溯不出账本里这个名字是从哪一句剪出来的。
+        self.assertEqual(note["value"], "本庄美奈子")
+        self.assertEqual(note["raw_value"], "本庄美奈子 30歳 元カフェ店員")
+
+    def test_performer_names_that_are_promo_copy_stay_in_review(self):
+        """剪完仍带敬称或空白的不是艺名，是企划文案：剪到哪儿才对本身就是个判断。"""
+        self._asset(123, "300MIUM-544", "300MIUM-544.mp4")
+        self._asset(124, "390JAC-076", "390JAC-076.mp4")
+        self.write_metadata_rows([
+            {"item_key": "300MIUM-544:performers", "field": "performers", "current": "",
+             "code": "300MIUM-544",
+             "candidates": [{"source": "mgstage", "display": "りほちゃん 22歳 歯科衛生士",
+                             "value": [{"name": "りほちゃん 22歳 歯科衛生士"}]}]},
+            {"item_key": "390JAC-076:performers", "field": "performers", "current": "",
+             "code": "390JAC-076",
+             "candidates": [{"source": "libredmm",
+                             "display": "超バドミントン部あかりちゃん 23歳 潮吹き部長",
+                             "value": [{"name": "超バドミントン部あかりちゃん 23歳 潮吹き部長"}]}]},
+        ])
+        self.assertEqual(self._auto()["applied"], 0)
+        self.assertEqual(sorted(self.queue_keys("metadata_fields")),
+                         ["300MIUM-544:performers", "390JAC-076:performers"])
+        con = sqlite3.connect(self.db_path)
+        try:
+            self.assertEqual(
+                con.execute("SELECT count(*) FROM entity WHERE kind='performer' "
+                            "AND (canonical_name LIKE '%ちゃん%' "
+                            "OR canonical_name LIKE '%歳%')").fetchone()[0],
+                0)
+        finally:
+            con.close()
 
     def test_community_candidate_never_challenges_an_official_written_value(self):
         """按官方来：community 源推不翻 official 源已确认的值，这种行不进队列。
