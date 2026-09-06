@@ -558,7 +558,7 @@ class SetupGateTests(unittest.TestCase):
         self.assertEqual(gate.open_url(), "https://peach-writer.local/")
 
         scan = scan_popen.call_args
-        self.assertEqual(list(scan.args[0][1:]), ["scan", "local"])
+        self.assertEqual(list(scan.args[0][1:]), ["process", "local"])
         self.assertEqual(scan.kwargs["env"]["PEACH_DATA_ROOT"], str(self.data_root))
         # 标记只消费一次：下一轮轮询已经不在等待状态，也不会再拉起一次扫描。
         self.assertFalse(gate.poll())

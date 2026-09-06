@@ -48,6 +48,7 @@ from .web_follow import (
     w_follow_status,
 )
 from .web_links import w_links, w_links_check, w_links_prune
+from .web_library_processing import q_library_processing, w_library_processing
 from .web_playlists import q_playlist, q_playlists, w_playlist
 from .web_resource_sync import w_purge_missing, w_resource_sync_apply, w_resource_sync_scan
 from .web_review import q_review, w_review_auto_apply, w_review_decision
@@ -173,6 +174,7 @@ def _post_empty_trash(contract, _body):
 
 
 GET_HANDLERS = {
+    "/api/library-processing": q_library_processing,
     "/api/scraping": q_scraping,
     "/api/scraping/cover": lambda contract, args: contract.scraping_cover_job.snapshot() or {"status": "idle"},
     "/api/settings": q_settings,
@@ -209,6 +211,7 @@ GET_HANDLERS = {
 }
 
 POST_HANDLERS = {
+    "/api/library-processing": w_library_processing,
     "/api/scraping/settings": w_scraping_settings,
     "/api/scraping/cover": w_scraping_cover,
     "/api/scraping/check": w_scraping_check,

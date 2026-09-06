@@ -2018,7 +2018,7 @@ function javArtwork(it,layout,eager=false){
   const kind=javImageKind(it,appSettings.javImage);
   if(!kind)return '<span class="nopic">无预览</span>';
   const cover=it.has_cover&&it.code?`/cover?code=${encodeURIComponent(it.code)}`:'';
-  const thumb=it.has_thumb?`/poster?id=${it.id}&c=4`:'';
+  const thumb=(it.has_thumb||it.has_local_poster)?`/poster?id=${it.id}&c=4`:'';
   const coverHtml=coverImage(it,layout==='big'?'big':'small',eager);
   const frame=(coverHtml.match(/ data-c[xy]="[^"]*"/g)||[]).join('');
   const image=kind==='cover'?coverHtml
@@ -2095,7 +2095,7 @@ function cardHtml(it,cls){
     ? javArtwork(it,jav?layout:'small')
     : it.follow_thumb_url
       ? `<img class="poster" src="${esc(it.follow_thumb_url)}" alt="" loading="lazy" referrerpolicy="no-referrer">`
-    : (it.has_thumb
+    : (it.has_thumb||it.has_local_poster
       ? `<img class="poster" src="/poster?id=${it.id}&c=4" alt="" loading="lazy">`
       : `<span class="nopic">无预览</span>`);
   const fl=[it.feedback==='dislike'&&'dislike',it.feedback==='seen'&&'seen',
@@ -2308,7 +2308,7 @@ function mixFacePoster(it,layout,eager){
   const load=eager?'eager':'lazy';
   return it.is_jav
     ? javArtwork(it,jav?layout:'small',eager)
-    : (it.has_thumb
+    : (it.has_thumb||it.has_local_poster
       ? `<img class="poster" src="/poster?id=${it.id}&c=4" alt="" loading="${load}">`
       : `<span class="nopic">无预览</span>`);
 }
@@ -2915,8 +2915,9 @@ async function openStats(push=true){
   /* 一行都没有时整张表不出现，只留 Empty State：Geist Table 的判据是空态渲染在表格
      外面，留一张只有列头的空表等于让人对着两个列名找不存在的行。 */
   const table=(head,rows,empty)=>rows?`<div class="insighttable"><div class="insighttablehead">${head.map(value=>`<span>${value}</span>`).join('')}</div>${rows}</div>`:empty;
-  const tagsTable=`<ol class="insightranking">${d.top_tags.map((t,index)=>`<li><button type="button" class="insightrankrow" data-k="${esc(t.k)}">
-    <span class="insightrankpos">${index+1}</span><span>${esc(tagLabel(t.k))}</span><b>${t.n.toLocaleString()}</b></button></li>`).join('')}</ol>`;
+  const tagsTable=d.top_tags.length?`<ol class="insightranking">${d.top_tags.map((t,index)=>`<li><button type="button" class="insightrankrow" data-k="${esc(t.k)}">
+    <span class="insightrankpos">${index+1}</span><span>${esc(tagLabel(t.k))}</span><b>${t.n.toLocaleString()}</b></button></li>`).join('')}</ol>`
+    :emptyStateHtml('tags','还没有内容标签','补全资料或添加标签后，这里会显示馆藏中的内容标签。');
   const recentTable=table(['作品','观看证据'],d.recent.map(row=>{
     const real=row.duration?Math.min(row.play_seconds/row.duration,1)*100:0;
     const reached=(row.max_reached||0)*100;
@@ -2927,9 +2928,10 @@ async function openStats(push=true){
   const sourceTable=table(['标签来源','覆盖视频'],d.tag_source.map(row=>`<div class="insighttablerow"><span>${esc(row.k)}</span>
     <b>${row.n.toLocaleString()} 条 · ${row.assets.toLocaleString()} 个视频</b></div>`).join(''),
     `<div class="insightempty">${emptyStateHtml('tags','还没有标签来源','刮削或手动打标之后，这里会显示每个来源覆盖了多少视频。')}</div>`);
-  const storageTable=`<table class="insightdatatable"><thead><tr><th>位置</th><th>已用</th><th>可用</th><th>使用率</th></tr></thead><tbody>${(d.storage_volumes||[]).map(row=>{
+  const storageTable=(d.storage_volumes||[]).length?`<table class="insightdatatable"><thead><tr><th>位置</th><th>已用</th><th>可用</th><th>使用率</th></tr></thead><tbody>${(d.storage_volumes||[]).map(row=>{
     const measured=row.total!=null, usedPct=measured?pct(row.used,row.total):0;
-    return `<tr><th scope="row"><span>${esc(row.label)}</span><small>${row.root?esc(row.root):'未映射'}</small></th><td>${measured?gb(row.used):'—'}</td><td>${measured?gb(row.free):'—'}</td><td>${measured?usedPct+'%':(row.online?'容量未取得':'离线')}</td></tr>`}).join('')}</tbody></table>`;
+    return `<tr><th scope="row"><span>${esc(row.label)}</span><small>${row.root?esc(row.root):'未映射'}</small></th><td>${measured?gb(row.used):'—'}</td><td>${measured?gb(row.free):'—'}</td><td>${measured?usedPct+'%':(row.online?'容量未取得':'离线')}</td></tr>`}).join('')}</tbody></table>`
+    :emptyStateHtml('hard-drive','还没有存储来源','添加媒体文件夹后，这里会显示存储空间。');
   $('#stats').innerHTML=`
     <div class="insightpage statsdashboard" data-stats-dashboard>
       <header class="insighttoolbar"><p>账本当前快照 · ${totalVideos.toLocaleString()} 个视频 · ${gb(totalBytes)}</p></header>
@@ -2943,7 +2945,7 @@ async function openStats(push=true){
         <div id="stats-detail-inventory" role="tabpanel" data-stats-detail="inventory" class="insightdetailbody">
           <div class="insightcopy"><span>库存</span><h2>${totalVideos.toLocaleString()}</h2><b>个视频</b>
             </div>
-          <div class="insightvisual">${locationRows}</div></div>
+          <div class="insightvisual">${totalVideos?locationRows:catalogEmptyHtml({configurable:runtimeConfigurable})}</div></div>
         <div id="stats-detail-viewing" role="tabpanel" data-stats-detail="viewing" class="insightdetailbody" hidden>
           <div class="insightcopy"><span>观看</span><h2>${cs.played.toLocaleString()}</h2><b>个作品有播放记录</b>
             <p>累计 ${hrs(cs.play_seconds)}</p></div>
@@ -3502,10 +3504,10 @@ async function openDataCleanup(push=true){
     .map(([key,label])=>`${esc(label)} ${Number(junkCounts[key]).toLocaleString()}`),
     ...(Number(junk.dismissed_total)>0?[`已忽略 ${Number(junk.dismissed_total).toLocaleString()}`]:[])].join(' · ');
   $('#stats').innerHTML=`<div class="cleanuppage"><div class="cleanupgrid">
-    <section class="cleanupfieldset" data-geist-fieldset aria-labelledby="cleanupScrapingTitle">
-      <div class="geist-fieldset-content">${fieldsetTitle('cleanupScrapingTitle','采集来源')}
-        <p>下载高清封面，设置代理和 Cookie。</p></div>
-      <footer class="geist-fieldset-footer" data-geist-fieldset-footer><button type="button" data-cleanup-open="scraping">设置采集来源</button></footer>
+    <section class="cleanupfieldset" id="libraryProcessing" data-geist-fieldset aria-labelledby="cleanupScrapingTitle">
+      <div class="geist-fieldset-content">${fieldsetTitle('cleanupScrapingTitle','扫描与采集')}
+        <p>扫描媒体文件夹，导入已有资料，采集缺失信息。</p></div>
+      <footer class="geist-fieldset-footer" data-geist-fieldset-footer><button type="button" disabled>扫描并补全资料</button></footer>
     </section>
     <section class="cleanupfieldset" data-geist-fieldset aria-labelledby="cleanupJunkTitle">
       <div class="geist-fieldset-content">${fieldsetTitle('cleanupJunkTitle','垃圾文件')}
@@ -3538,7 +3540,10 @@ async function openDataCleanup(push=true){
   ${linkManagerMarkup()}
   ${cloudLocations(sources.sources||[]).length?resourceSyncMarkup():''}</div>`;
   $('#stats').querySelector('[data-cleanup-open="junk"]').onclick=()=>openManage('ads');
-  $('#stats').querySelector('[data-cleanup-open="scraping"]').onclick=()=>openScraping();
+  const processingUi=await import('/dist/peach-ui.js');
+  if(!surfaceCurrent(surface))return;
+  await processingUi.mountIsland('library-processing',$('#libraryProcessing'),{toast,onComplete:()=>{if(surfaceCurrent(surface))void paintDataManagementCounts()}},{isCurrent:()=>surfaceCurrent(surface)});
+  if(!surfaceCurrent(surface))return;
   $('#stats').querySelector('[data-cleanup-open="duplicates"]').onclick=()=>openDuplicates();
   $('#stats').querySelectorAll('[data-cleanup-go]').forEach(button=>
     button.onclick=()=>openManage(button.dataset.cleanupGo));
@@ -4928,7 +4933,6 @@ function followSuggestionChips(list){
 function followCredentialRow(row){
   const [label,kind]=CRED_STATE[row.requirement]||CRED_STATE.none;
   const configured=row.present&&!row.missing.length;
-  const needsAttention=row.requirement==='required'&&!configured;
   const fields=(row.needs||[]).map(name=>`<label class="fcredfield">
     <span>${esc(name)}</span>
     <input type="password" name="${esc(name)}" autocomplete="off" spellcheck="false"
@@ -4953,7 +4957,7 @@ function followCredentialRow(row){
   const mark=`<span class="ficonslot" aria-hidden="true">${sourceIcon(row.provider)}</span>`;
   if(!body)return `<div class="frow fcred none">${mark}<b>${esc(row.provider_label)}</b>
     <span class="fcstate none">${esc(label)}</span></div>`;
-  return `<details class="frow fcred ${esc(kind)}${configured?' ok':''}"${needsAttention?' open':''}>
+  return `<details class="frow fcred ${esc(kind)}${configured?' ok':''}">
     <summary>${mark}<b>${esc(row.provider_label)}</b>
       <span class="fcstate ${configured?'done':esc(kind)}">${esc(configured?'已配置':label)}</span>
       ${row.missing.length?`<span class="fcstate missing">缺 ${esc(row.missing.join('、'))}</span>`:''}
@@ -5040,7 +5044,7 @@ function renderFollowManage(credentials){
           <span class="fdescpop" id="follow-credential-tooltip" role="tooltip" hidden>存放在<b>运行 Peach 的那台机器</b>上，不是浏览器所在机器；不进 Git、URL、日志或 ledger。NTFS 的访问控制走 ACL，<code>chmod</code> 在那里没有效果；POSIX 上建成 0600。</span></p>
       </section>
     </div></div>`;
-  wireFollowManage();
+  wireFollowManage(creds);
   void wireFollowProgress();
   if(locked)$('#stats').querySelectorAll(
     '#followAdd input,#followAdd button,[data-follow-remove],[data-follow-check],'+
@@ -5117,7 +5121,7 @@ function wireFollowItems(){
   });
 }
 
-function wireFollowManage(){
+function wireFollowManage(creds=[]){
   void wireResolveProgress();
   const root=$('#stats'),form=root.querySelector('#followAdd');
   wireScrollers(root);
@@ -5133,7 +5137,7 @@ function wireFollowManage(){
     routeFollowManageSort();
   };
   wireIconSwitch(root,'data-follow-layout',setFollowListLayout);
-  renderFollowSrcFilter(root.querySelector('#followSrcFilter'));
+  renderFollowSrcFilter(root.querySelector('#followSrcFilter'),creds);
   const tooltipTrigger=root.querySelector('[data-fdesc-tooltip]');
   const tooltip=root.querySelector('#follow-credential-tooltip');
   if(tooltipTrigger&&tooltip){
@@ -5341,29 +5345,40 @@ function wireFollowManage(){
    替用户决定「就是这个」是错的。已经关注的项灰掉但仍显示，免得人以为没查到。 */
 /* 来源筛选的常驻控件：挂在「添加关注」面板里，列出全部已关注来源，
    默认全选；取消勾选的来源，其查找结果行隐藏、也不进「添加选中」。 */
-function renderFollowSrcFilter(mount){
+function renderFollowSrcFilter(mount,credentials=[]){
   if(!mount)return;
   closeAnchoredMenu();
-  const providers=[...new Set((followData?.sources||[])
+  const sources=[...credentials,...(followData?.sources||[])];
+  const providers=[...new Set(sources
     .map(source=>source.provider_label).filter(Boolean))];
   /* 下拉里的每一行带上该来源的 favicon：label 只是展示名，图标要靠 provider
      查 SOURCE_ICONS，所以另建一张 label→provider 的映射。 */
-  const providerIcon=new Map((followData?.sources||[]).filter(source=>source.provider&&source.provider_label)
+  const providerIcon=new Map(sources.filter(source=>source.provider&&source.provider_label)
     .map(source=>[source.provider_label,source.provider]));
   providers.forEach(provider=>{if(!fsrcProviders.has(provider))fsrcProviders.add(provider)});
-  if(!providers.length){mount.innerHTML='';return}
+  const requirements=new Map(credentials.map(row=>[row.provider_label,row]));
   const label=()=>{const n=providers.filter(p=>!fsrcUnchecked.has(p)).length;
     return n===providers.length?'全部来源':`${n}/${providers.length} 个来源`};
   mount.innerHTML=`<button type="button" class="fbtn" data-srcfilter-toggle
       aria-expanded="false" aria-haspopup="menu" aria-controls="follow-source-menu"
       aria-label="${esc(label())}" title="${esc(label())}">
       ${icon('list-filter')}<span data-srcfilter-label>${esc(label())}</span></button>
-    <div class="popmenu fsrcmenu" id="follow-source-menu" role="menu" data-srcfilter-menu hidden>${providers.map(provider=>
-      `<label>${checkboxHtml(`data-srcfilter="${esc(provider)}"${fsrcUnchecked.has(provider)?'':' checked'}`)}
-        ${sourceIcon(providerIcon.get(provider)||'')}<span>${esc(provider)}</span></label>`).join('')}</div>`;
+    <div class="popmenu fsrcmenu" id="follow-source-menu" role="menu" data-srcfilter-menu hidden>${providers.map(provider=>{
+      const row=requirements.get(provider);
+      const needsCredentials=row?.requirement==='required'&&(!row.present||(row.missing||[]).length);
+      return `<div class="fsrcoption"><label>${checkboxHtml(`data-srcfilter="${esc(provider)}"${fsrcUnchecked.has(provider)?'':' checked'}`)}
+        ${sourceIcon(providerIcon.get(provider)||'')}<span>${esc(provider)}</span></label>
+        ${needsCredentials?`<button type="button" class="geist-button" data-srcfilter-config="${esc(row.provider)}">需要配置凭据</button>`:''}</div>`;
+    }).join('')||'<p>暂无可用来源</p>'}</div>`;
   const toggle=mount.querySelector('[data-srcfilter-toggle]');
   const menu=mount.querySelector('[data-srcfilter-menu]');
   wireAnchoredMenu(mount,toggle,menu);
+  menu.querySelectorAll('[data-srcfilter-config]').forEach(button=>button.onclick=()=>{
+    closeAnchoredMenu();
+    const form=[...document.querySelectorAll('[data-cred-form]')].find(form=>form.dataset.credForm===button.dataset.srcfilterConfig);
+    const details=form?.closest('details');
+    if(details){details.open=true;details.scrollIntoView({block:'center',behavior:'smooth'});form.querySelector('input')?.focus({preventScroll:true})}
+  });
   menu.querySelectorAll('[data-srcfilter]').forEach(input=>input.onchange=()=>{
     input.checked?fsrcUnchecked.delete(input.dataset.srcfilter)
       :fsrcUnchecked.add(input.dataset.srcfilter);
