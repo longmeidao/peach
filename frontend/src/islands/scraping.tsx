@@ -73,10 +73,12 @@ function SourceForm({ source, toast }: { source: Source } & ScrapingProps) {
   return <section class="scraping-source">
     <form ref={form} class="cleanupfieldset" data-geist-fieldset onSubmit={event => { event.preventDefault(); void action('save'); }}>
       <div class="geist-fieldset-content scraping-fields">
+        <div class="geist-fieldset-heading">
         <div dangerouslySetInnerHTML={{ __html: fieldsetTitle(`scraping-${source.source}`, source.label) }} />
         <a class="scraping-url" href={source.login} target="_blank" rel="noopener noreferrer">{source.login}</a>
+        </div>
         <div class="scraping-label">连接方式<NetworkSelect value={network} onChange={setNetwork} /></div>
-        {network === 'peach' && <a href="/configuration#peachProxy">配置 Peach 代理</a>}
+        {network === 'peach' && <a class="geist-text-link" href="/configuration#peachProxy">配置 Peach 代理</a>}
         {source.accepts_cookie && <>
           <p>{saved.cookie_saved ? 'Cookie 已保存，登录是否有效请在抓取时确认。' : '需要登录时，任选一种方式提供 Cookie。'}</p>
           <div class="insightswitch scraping-cookie-method" role="radiogroup" aria-label="提供 Cookie 的方式（二选一）">

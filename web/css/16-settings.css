@@ -40,14 +40,14 @@ body.settings-open{overflow:hidden}
 /* 布尔开关用 Geist Toggle 而不是原生复选框（取证 vercel-geist-semantics-measured.md）：
    中号 36×20 轨道 + 17px 圆点，关 = 灰轨道圆点靠左，开 = 主题蓝圆点靠右；
    Geist 的「Switch」是分段选择器（radio 语义），布尔开关的正确控件叫 Toggle。 */
-:is(#censorSetting,#detailAutoplaySetting){appearance:none;-webkit-appearance:none;width:36px;height:20px;flex:none;
+:is(#censorSetting,#detailAutoplaySetting,.ptoggle){appearance:none;-webkit-appearance:none;width:36px;height:20px;flex:none;
   border-radius:var(--pill-radius);background:var(--line);position:relative;cursor:pointer;margin:0;
   transition:background-color .15s ease}
-:is(#censorSetting,#detailAutoplaySetting)::after{content:'';position:absolute;top:1.5px;left:2px;width:17px;height:17px;
+:is(#censorSetting,#detailAutoplaySetting,.ptoggle)::after{content:'';position:absolute;top:1.5px;left:2px;width:17px;height:17px;
   border-radius:50%;background:rgba(237,237,237,.84);transition:left .15s ease}
-:is(#censorSetting,#detailAutoplaySetting):checked{background:var(--tungsten)}
-:is(#censorSetting,#detailAutoplaySetting):checked::after{left:17px}
-:is(#censorSetting,#detailAutoplaySetting):focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}
+:is(#censorSetting,#detailAutoplaySetting,.ptoggle):checked{background:var(--tungsten)}
+:is(#censorSetting,#detailAutoplaySetting,.ptoggle):checked::after{left:17px}
+:is(#censorSetting,#detailAutoplaySetting,.ptoggle):focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}
 /* 主题选择器是 Geist 里唯一给选中项加环的控件：三档的底色和它坐着的面板同色，
    光靠填充分不出当前是哪一档。几何按 2026-09-04 实测 vercel.com 的 system／light／dark
    三枚圆形按钮：外框是 32px 高、无填充的胶囊加一圈 1px 环，每档 32×32 正圆、图标 16px，
@@ -77,3 +77,6 @@ body.settings-open{overflow:hidden}
   .settingrow:has(input[type="checkbox"]){grid-template-columns:minmax(0,1fr) auto;gap:12px}
   .settingrow .gselect{width:100%;min-width:0}.settingrow .pcheck{justify-self:start}}
 .sidebaradd .sidebaraddmenu button{justify-items:start}
+
+.ptoggle:disabled{background:var(--surface);cursor:not-allowed}
+.ptoggle:disabled::after{background:var(--muted)}

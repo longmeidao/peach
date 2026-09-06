@@ -351,8 +351,8 @@ class WebUiSourceTests(unittest.TestCase):
         ":focus",              # 焦点环：:focus / :focus-visible / :focus-within
         ".geist-progress", ".watchprogress", ".vjs-play-progress", ".vjs-progress-holder",
         ".trace .bar", ".tokbar",  # 进度与数据
-        ":is(#censorSetting,#detailAutoplaySetting):checked",  # Toggle 开态：Geist Toggle 实测轨道 rgb(0,112,243)
-        ".entitylink", ".flink", ".fsourcelink", ".fcred a", ".tokauthor>a", ".confighelp a", ".taste-history-guide-content a",  # 真正的链接
+        ":is(#censorSetting,#detailAutoplaySetting,.ptoggle):checked",  # Toggle 开态：Geist Toggle 实测轨道 rgb(0,112,243)
+        ".entitylink", ".flink", ".fsourcelink", ".fcred a", ".tokauthor>a", ".confighelp a", ".taste-history-guide-content a", ".geist-text-link",  # 真正的链接
     )
 
     def test_tungsten_is_reserved_for_focus_links_progress_and_toggle(self):
@@ -5784,8 +5784,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertNotIn("box-shadow:0 8px 32px -12px", self.css, "浮层靠发丝线不靠投影")
         # 布尔开关是 Geist 中号 Toggle（36×20 轨道 + 17px 圆点），不是原生复选框；
         # Geist 的 Switch 是分段选择器，别用错控件。
-        self.assertPageContains(":is(#censorSetting,#detailAutoplaySetting){appearance:none;-webkit-appearance:none;width:36px;height:20px;flex:none;")
-        self.assertPageContains(":is(#censorSetting,#detailAutoplaySetting):checked{background:var(--tungsten)}")
+        self.assertPageContains(":is(#censorSetting,#detailAutoplaySetting,.ptoggle){appearance:none;-webkit-appearance:none;width:36px;height:20px;flex:none;")
+        self.assertPageContains(":is(#censorSetting,#detailAutoplaySetting,.ptoggle):checked{background:var(--tungsten)}")
         # 没有直接证据的 command-menu 入场动画与无有效高度约束的复核卡
         # Scroller 不应继续作为「Vercel 对齐」进入产品。
         self.assertPageLacks("animation:panel-in")
@@ -6120,7 +6120,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".cleanupfieldset>.geist-fieldset-content{flex:1;min-height:0;padding:20px}")
         # Geist 的 Fieldset 全框只有一条线，在底部操作条上方；标题底下不划线。
         self.assertPageContains("--fieldset-bar-h:52px;")
-        self.assertPageContains(".geist-fieldset-title{margin:0 0 10px;")
+        self.assertPageContains(".geist-fieldset-title{margin:0 0 8px;")
         self.assertPageLacks(".geist-fieldset-header")
         self.assertPageContains(".cleanupfieldset>.geist-fieldset-footer{box-sizing:border-box;"
                                 "min-height:var(--fieldset-bar-h);")
@@ -6143,7 +6143,7 @@ class WebUiSourceTests(unittest.TestCase):
         """
         self.assertPageContains(".cleanupfieldset>.geist-fieldset-footer{box-sizing:border-box;"
                                 "min-height:var(--fieldset-bar-h);")
-        self.assertPageContains("padding:8px 16px 8px 20px;")
+        self.assertPageContains("padding:12px 12px 12px 20px;")
         self.assertPageContains(".resourcesyncfooter,.resourceapplyrow{box-sizing:border-box;"
                                 "min-height:var(--fieldset-bar-h);")
         # 说明能被压窄并换行，按钮不参与压缩。
@@ -6529,7 +6529,7 @@ class WebUiSourceTests(unittest.TestCase):
                 f'<button class="geist-button primary" type="submit">{label}</button>')
         self.assertPageLacks(".playlistcreate button,.playlistactions button{")
         self.assertPageContains(".faliasform .fbtn{height:38px;min-height:38px}")
-        self.assertPageContains(".playlistcreate label{display:grid;gap:5px;color:var(--muted);"
+        self.assertPageContains(".playlistcreate label{display:grid;gap:8px;color:var(--muted);"
                                 "font-size:var(--fs-xs);flex:1 1 200px;max-width:320px}")
         self.assertPageLacks(".playlistcreate label{flex:1 1 100%}")
         # 自己拼内边距的那几处已经并入 token，别再冒出第二份。

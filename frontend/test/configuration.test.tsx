@@ -32,6 +32,15 @@ const submit = (el: Element) => {
 const settle = async () => {
   for (let i = 0; i < 4; i += 1) await Promise.resolve();
 };
+
+it('配置以通用媒体网络和维护分组，缺少通用选项时省略标题', () => {
+  const {el}=mount({startup:{available:true,enabled:false,silent:true,message:''},peach_proxy:{mode:'direct',proxy_saved:false,needs_selection:false}});
+  expect([...el.querySelectorAll('.configgroup')].map(e=>e.textContent)).toEqual(['通用','媒体','网络与访问','更新与维护']);
+  expect(el.querySelector('#peachProxy .configfieldset-heading #peachProxyTitle')).not.toBeNull();
+  expect(el.querySelector('#peachProxy .configfieldset-heading > .confighelp')?.textContent).toContain('共用此设置');
+  const readonly=mount({editable:false});
+  expect([...readonly.el.querySelectorAll('.configgroup')].map(e=>e.textContent)).toEqual(['媒体','更新与维护']);
+});
 type FetchCall = [string, RequestInit];
 const fetchMock = (status: number, body: unknown) => vi.fn<(...call: FetchCall) => Promise<unknown>>(
   async () => ({ ok: status < 400, status, json: async () => body }),

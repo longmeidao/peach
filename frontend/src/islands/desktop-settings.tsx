@@ -11,6 +11,10 @@ function SettingCheck({ label, checked, disabled, change }: { label:string; chec
     <span aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#i-check" /></svg></span></span><span>{label}</span></label>;
 }
 
+function SettingToggle({ label, checked, disabled, change }: { label:string; checked:boolean; disabled:boolean; change(value:boolean):void }) {
+  return <label class="configtoggle"><span>{label}</span><input class="ptoggle" type="checkbox" role="switch" checked={checked} disabled={disabled} onChange={event=>change(event.currentTarget.checked)} /></label>;
+}
+
 export function StartupSettings({ startup, receipt }: { startup: StartupState; receipt(message: string): void }) {
   const [enabled,setEnabled] = useState(startup.enabled);
   const [silent,setSilent] = useState(startup.silent);
@@ -28,13 +32,15 @@ export function StartupSettings({ startup, receipt }: { startup: StartupState; r
     <form class="configfieldset" data-geist-fieldset onSubmit={event=>{event.preventDefault();void save();}}>
       <div class="geist-fieldset-content">
         <div dangerouslySetInnerHTML={{__html:fieldsetTitle('startupTitle','开机自启')}} />
-        <SettingCheck label="开机后启动 Peach" checked={enabled} disabled={!startup.available} change={setEnabled} />
-        <SettingCheck label="静默启动" checked={silent} disabled={!startup.available} change={setSilent} />
-        <p class="confighelp">静默启动仅显示托盘；关闭后自动打开浏览器。</p>
+        <div class="configoptions" role="group" aria-labelledby="startupTitle">
+          <SettingToggle label="开机后启动 Peach" checked={enabled} disabled={!startup.available} change={setEnabled} />
+          <div class="configoption"><SettingToggle label="静默启动" checked={silent} disabled={!startup.available} change={setSilent} />
+            <p class="confighelp">静默启动仅显示托盘。</p></div>
+        </div>
         {startup.message && <p class="confighelp">{startup.message}</p>}
         {error && <p class="configbad" role="alert">{error}</p>}
       </div>
-      <footer class="geist-fieldset-footer" data-geist-fieldset-footer><button ref={button} type="submit" class="geist-button primary" disabled={!startup.available}>保存自启</button></footer>
+      <footer class="geist-fieldset-footer" data-geist-fieldset-footer><button ref={button} type="submit" class="geist-button primary" disabled={!startup.available}>保存配置</button></footer>
     </form>
   );
 }
@@ -69,8 +75,10 @@ export function UninstallSettings({ uninstall }: { uninstall: UninstallState }) 
   }
   return <section id="uninstallPeach" class="configfieldset configdanger" data-geist-fieldset data-fieldset-type="error">
       <div class="geist-fieldset-content">
+        <div class="configfieldset-heading">
         <div dangerouslySetInnerHTML={{__html:fieldsetTitle('uninstallTitle','卸载 Peach')}} />
         {uninstall.available && <p class="confighelp">卸载会退出 Peach、移除程序和开机自启。原始媒体文件保留。</p>}
+        </div>
         <SettingCheck label="完全卸载：同时删除设置、本地数据库、观看记录、凭据和缓存" checked={removeData} disabled={!uninstall.full_available || !!accepted} change={setRemoveData} />
         <DataDirectories data={uninstall} />
         {uninstall.message && <p class="confighelp">{uninstall.message}</p>}
