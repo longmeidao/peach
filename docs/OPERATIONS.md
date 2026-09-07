@@ -178,7 +178,13 @@ curl -s --noproxy '*' -o /dev/null -w '%{http_code}\n' https://peach.local/healt
 - 每个包都带构建身份：`build_windows.ps1` 在调用 PyInstaller 前把 `{commit, version, built_at}` 写进 `build/windows/build-info.json`，再用 `--add-data` 放到包根，本机托盘与独立测试包两种模式共用这一行。构建机没有 git 或源码不是检出时 `commit` 写 `null`，构建照常。`peach.buildinfo.frozen_build()` 只在 `sys.frozen` 时读它；文件缺失或格式坏一律返回 `None`，托盘照常启动，只是把自己当作身份未取得。
 - 本机托盘自己发现「我比检出旧」并重建：判据是构建提交与检出的差，不是与 GitHub 的差——这台机器提交先落本地再推远端，「落后远端」永远不成立。`VersionManager.build_age()` 用 `rev-list --count <构建提交>..HEAD` 数出落后多少，版本菜单显示成 `master@<HEAD> · 托盘构建 <构建提交>，落后 N 个提交`；数不出来（身份未取得、提交不在本检出历史里）按陈旧处理，重建范围退化为 `src/peach/`。「同步开发进度」在 `ahead`／`current`／`error`／`unconfigured` 下改走本地重建，健康轮询另按 5 分钟一轮读本地 HEAD 自动触发，同一个 HEAD 只自动试一次，首次设置未完成时不触发。重建走的仍是既有流程：完整测试 → 暂存构建 → 打包迁移资源检查 → 备份 → 替换助手，任一步失败都只发通知，旧托盘和服务保持运行。失败表现是托盘停在旧版本、通知里写明卡在哪一步，日志见 `<数据根>/logs/windows-source-sync.log`。独立测试包与源码运行的托盘不进这条路径，独立测试包使用配置页的在线更新流程，源码入口提示源码已是最新。
 - 版本号在发布点动，一次发布一格，所以每个 `X.Y.Z` 都对应一份能下载到的制品。发布准备是 `python scripts/release_tag.py --bump auto --apply`，从干净的 master 主检出跑：按上一个版本标签到 HEAD 这段区间定档（`bump_part_for()`：主题以 `feat` 开头或带破坏性标记 `!`、或 `migrations/` 有新增文件推 minor，其余推 patch；1.0 手工 `--bump major` 并另立 ADR，见 ADR-0012），写 `__version__`，并把 `CHANGELOG.md` 的未发布节定版成这个号。区间只碰了文档、技能与测试时它直接拒绝：那样打出来的包和上一个标签逐字节相同。不带 `--apply` 只打印计划。
-- 它只落盘、不提交：变更日志是使用者唯一读到的说明，措辞要人过一遍。之后自己提交 `src/peach/__init__.py` 与 `CHANGELOG.md`，消息 `chore(release): 版本 <新版本>`，推到 GitHub，等这个提交的 Test 转绿，再回来 `--apply` 打标签。`scripts/agent_worktree.py integrate` 不碰版本号，只在结果里报当前值；主线上跑着的是哪一份由 commit 与 `build-info.json` 认定。
+- 它只落盘、不提交，并把定好版那一节原样带在输出的 `section` 里：变更日志是使用者唯一读到的说明，措辞要人过一遍，而确认的人不该再去翻文件才知道自己在确认什么。这是整条发布链上唯一需要人判断的地方。
+- 确认之后 `python scripts/release_tag.py --ship --apply` 一次做完剩下四步：提交 `src/peach/__init__.py` 与 `CHANGELOG.md`（消息 `chore(release): 版本 <新版本>`）、推送 master、每 30 秒查一次这个提交的 Test 工作流、转绿后创建并推送 annotated tag。默认最多等 30 分钟，`--timeout` 改。不带 `--apply` 只打印它打算做哪几步。
+- `--ship` 的判据都在动手之前：不在 master 上、变更日志缺这一节、标签已被占用、工作区除了那两份定版文件还有别的改动，任何一条成立就拒绝。最后一条是因为标签指向发布提交，夹带什么就等于发出去什么。Test 跑完不是绿的立刻停，不耗到超时——红的等多久都不会变绿，而且这时标签还没打。
+- 中途停下（网络断、CI 还在跑、等超时）就再跑一次同一条命令：每一步都先看当下状态再决定做不做，已提交的不重提，已推送的不重推，Test 没绿绝不打标签。
+- `scripts/agent_worktree.py integrate` 不碰版本号，只在结果里报当前值；主线上跑着的是哪一份由 commit 与 `build-info.json` 认定。
+- 「什么时候该发」也不靠人判断：`integrate` 的输出带一个 `release` 字段（`changelog.due()`），`due` 为真时智能体在收尾照 `why` 提出来。节奏是每周一次、攒够提前、破坏性变化与安全修复不等周期（`DUE_DAYS = 7`、`DUE_ENTRIES = 10`）。判据只数使用者看得见的条目，不数提交：一百个重构提交对使用者是零，那正是这份判据要跟「集成了多少次」分开的地方。
+- 时间那一半有先例可依（Firefox 四周、Ubuntu 与 GNOME 半年都把「要不要发」交给日历）；条数那一半没有可靠样本。已发四版各带 6、8、6、9 条，但那是「每次集成推一格」时期的产物，反映的是那三天写了多少代码，不是多少变化值得让人下载一次。`DUE_ENTRIES` 是没有样本时的保守起点，`due()` 每次都报出实际条目数与分组，积累几次真实发布之后拿那几个数回来校准，别再拿旧机制的数字当依据。
 - PyInstaller 的资源直接位于 `sys._MEIPASS`，没有源码树的 `src/` 层；打包后的 `migrate`、Web 与品牌资源必须从这里解析，不能对 `config.py` 固定取 `parents[2]`。
 - 创建 Win32 窗口前必须启用 Per-Monitor V2 DPI；正常动作不弹模态 MessageBox，更新检查在后台线程执行并用 pystray 原生非模态通知反馈。
 - 菜单栏与托盘状态行逐个点名每个服务，例如 `HTTP 正常 · HTTPS 异常（状态码 503）`，异常附最近一次失败原因，不要改回只报「未运行」。
@@ -196,7 +202,7 @@ curl -s --noproxy '*' -o /dev/null -w '%{http_code}\n' https://peach.local/healt
 ## 版本、更新与自我重启
 
 - `src/peach/__init__.py::__version__` 是版本唯一来源，采用 pre-1.0 SemVer；Git commit 是构建标识，`vX.Y.Z` tag 是发布点，推到 GitHub 即触发 Release 工作流（见「桌面入口与发布」）。
-- 打标签从干净的 master 主检出执行 `python scripts/release_tag.py`：默认只检查本地与 GitHub master 一致、该提交最新 Test 全绿、`CHANGELOG.md` 里有这个版本号的一节、标签不存在；加 `--apply` 创建 annotated tag 并只推送该标签。变更日志那一节是门槛：缺了就等于发一个没有说明的版本，先跑 `--bump` 起草再润色。版本标签不覆盖，下一版先修改 `__version__`。推送失败若留下本地标签，先检查归属再人工恢复，不强推。Release 工作流再次检查标签提交属于 master 历史且同提交 Test 已通过，随后构建、制品验收、创建预发布；手动 `workflow_dispatch` 仍只验收制品。打标签代表公开预发布，不等于替换本机生产入口。
+- 打标签常规走 `--ship`（见「桌面入口与发布」）。单独补打标签用 `python scripts/release_tag.py`：默认只检查本地与 GitHub master 一致、该提交最新 Test 全绿、`CHANGELOG.md` 里有这个版本号的一节、标签不存在；加 `--apply` 创建 annotated tag 并只推送该标签。发布提交已经推上去、只差标签时用它。变更日志那一节是门槛：缺了就等于发一个没有说明的版本，先跑 `--bump` 起草再润色。版本标签不覆盖，下一版先修改 `__version__`。推送失败若留下本地标签，先检查归属再人工恢复，不强推。Release 工作流再次检查标签提交属于 master 历史且同提交 Test 已通过，随后构建、制品验收、创建预发布；手动 `workflow_dispatch` 仍只验收制品。打标签代表公开预发布，不等于替换本机生产入口。
 - 「检查更新」只 fetch 和比较；「同步开发进度」只做 `merge --ff-only`，不 stash、不 rebase、不 `--force`——并行工作树和主检出共用同一个对象库与 reflog，任何改写历史的「顺手解决」都会把别的分支一起拖下去。工作区脏或两边分叉时原样报出来交给人。本地不落后远端、或者根本连不上远端时，它转为按构建身份判断打包托盘要不要重建（见「桌面入口与发布」）；那条路径不拦脏工作区，因为构建跑的就是检出里的这一份代码。
 - 快进动到 `tray.py`／`menubar.py`／`versioning.py`／`certs.py`／`netwatch.py`／`config.py`／`pyproject.toml` 时只重启子服务追不上，托盘要靠 `launchctl kickstart -k` 重启自己，顺序必须先 `stop_owned()` 再 kickstart，且前提是 launchd 报的 pid 等于自己的 pid。
 

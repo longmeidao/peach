@@ -21,6 +21,7 @@ import argparse
 import datetime as dt
 import re
 import sys
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -47,11 +48,29 @@ TYPE_GROUPS = {"feat": "新增", "feature": "新增", "fix": "修复", "perf": "
 #: 这些 scope 下的改动只动开发过程，即使打成 `fix` 也不进面向使用者的日志。
 SILENT_SCOPES = frozenset({"tests", "test", "docs", "doc", "ci", "skills", "agents"})
 
-#: 分组的渲染顺序。空分组不渲染；「弃用」「移除」「安全」由人按需补，脚本不猜。
-GROUP_ORDER = ("破坏性变化", "新增", "变更", "弃用", "移除", "修复", "安全")
+#: 两个分组标题，`due()` 单独看它们：这两类拖着不发，代价落在使用者身上。
+BREAKING = "破坏性变化"
+SECURITY_GROUP = "安全"
 
-#: 安全相关的提交：类型或 scope 点名 security 的一律进「安全」组。
+#: 分组的渲染顺序。空分组不渲染；「弃用」「移除」「安全」由人按需补，脚本不猜。
+GROUP_ORDER = (BREAKING, "新增", "变更", "弃用", "移除", "修复", SECURITY_GROUP)
+
+#: 提交主题里点名 security 的那个词，与上面的分组标题不是一回事：这个是 type/scope。
 SECURITY = "security"
+
+#: 不等周期的两组：破坏性变化让人踩坑，安全问题让人暴露，都是越晚发代价越大。
+URGENT = (BREAKING, SECURITY_GROUP)
+
+#: 发布节奏：每周一次，攒够就提前，`URGENT` 那两组不等周期。
+#:
+#: 时间那一半有先例可依——Firefox 四周、Ubuntu 与 GNOME 半年都是把「要不要发」交给
+#: 日历，到点看有没有面向使用者的变化，有就发。条数那一半没有可靠样本：已发四版各带
+#: 6、8、6、9 条，可那是「每次集成推一格」时期的产物，反映的是那三天写了多少代码，
+#: 不是「多少变化值得让人下载一次」。10 是没有样本时的保守起点，比历史单次量高一档，
+#: 因为周期从一天放宽到了一周。`due()` 每次都报出实际攒了多少，几次真实发布之后拿那
+#: 几个数回来校准这一行，别再拿旧机制的数字当依据。
+DUE_DAYS = 7
+DUE_ENTRIES = 10
 
 #: 条目前缀用的区域标签，说的是使用者在哪儿看到这个变化。分组标题按变化性质
 #: 分（规范这么定），标签按使用者看到的区域分，两维叠起来才既合规范又找得到东西。
@@ -110,9 +129,9 @@ def entry_for(commit: Commit) -> tuple[str, str] | None:
     text = match["text"].strip().rstrip("。")
     footer = BREAKING_FOOTER.search(commit.body or "")
     if match["bang"] or footer:
-        return "破坏性变化", _label(scope, footer["text"].strip() if footer else text)
+        return BREAKING, _label(scope, footer["text"].strip() if footer else text)
     if SECURITY in (kind, scope):
-        return "安全", _label(scope if scope != SECURITY else "", text)
+        return SECURITY_GROUP, _label(scope if scope != SECURITY else "", text)
     group = TYPE_GROUPS.get(kind)
     return (group, _label(scope, text)) if group else None
 
@@ -153,6 +172,35 @@ def draft(root: Path, spec: str) -> str:
     return render_body(group_entries(read_commits(root, spec)))
 
 
+def _waiting_days(root: Path) -> int:
+    """上一个版本标签到现在过了几天；还没有标签时从最早那个提交算。"""
+    tag = version_bump.last_tag(root)
+    ref = tag or version_bump.git(root, "rev-list", "--max-parents=0", "HEAD").split()[-1]
+    stamp = int(version_bump.git(root, "log", "-1", "--format=%ct", ref))
+    return max(0, int((time.time() - stamp) // 86400))
+
+
+def due(root: Path) -> dict:
+    """该不该发下一版，以及为什么。
+
+    只看使用者那一侧：他们看得见几条变化、等了几天、里头有没有等不得的。提交数不作
+    判据——一百个重构提交对使用者是零，那正是这份判据要跟「集成了多少次」分开的地方。
+    """
+    grouped = group_entries(read_commits(root, version_bump.release_range(root)))
+    entries = sum(len(items) for items in grouped.values())
+    days = _waiting_days(root)
+    why = []
+    if entries and days >= DUE_DAYS:
+        why.append(f"距上一版 {days} 天，攒了 {entries} 条面向使用者的变化")
+    if entries >= DUE_ENTRIES:
+        why.append(f"{entries} 条已经超出一周的常量，不必等满周期")
+    urgent = [group for group in URGENT if group in grouped]
+    if urgent:
+        why.append("有" + "、".join(urgent) + "，这类不等周期")
+    return {"entries": entries, "days": days, "due": bool(why), "why": why,
+            "groups": {group: len(items) for group, items in grouped.items()}}
+
+
 def compare_link(repo: str, previous: str | None, tag: str) -> str:
     base = f"https://github.com/{repo}"
     return f"{base}/compare/{previous}...{tag}" if previous else f"{base}/releases/tag/{tag}"
@@ -160,6 +208,16 @@ def compare_link(repo: str, previous: str | None, tag: str) -> str:
 
 def has_section(document: str, version: str) -> bool:
     return re.search(rf"^## \[{re.escape(version)}\]", document, re.M) is not None
+
+
+def section_of(document: str, version: str) -> str:
+    """某个版本那一节的正文，不含标题；没有这一节时是空串。
+
+    发布前要确认的就是这段文字，把它取出来带在命令输出里，确认的人不用再去翻文件。
+    """
+    found = re.search(rf"^## \[{re.escape(version)}\][^\n]*\n(?P<body>.*?)(?=^## \[|^\[|\Z)",
+                      document, re.M | re.S)
+    return found["body"].strip("\n") if found else ""
 
 
 def promote(document: str, version: str, *, date: str, repo: str, previous: str | None,
