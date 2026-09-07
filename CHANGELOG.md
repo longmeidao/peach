@@ -21,16 +21,23 @@ Removed / Fixed / Security。
 
 ## [未发布]
 
+## [0.30.0] - 2026-09-08
+
 ### 新增
 
 - **配置**：新增桌面快捷方式开关，可直接创建或移除桌面图标。
 - **界面**：可折叠的区块标题统一带上展开箭头。
+
+### 移除
+
+- **关注**：命令行的 `peach follow` 子命令删除；登记、检查、复核与保存全部在关注管理页完成。
 
 ### 修复
 
 - **配置**：桌面快捷方式创建或移除失败时报出真实原因，而不是只说失败。
 - **界面**：危险操作（移除媒体文件夹等）统一走同一个二次确认。
 - **界面**：忙态提示会说明正在进行的动作；禁用的开关与按钮给出正确的颜色和光标。
+- **关注**：登记来源时点「猜你喜欢」的推荐芯片能正常填进输入框。
 
 ## [0.27.1] - 2026-09-07
 
@@ -96,7 +103,8 @@ Removed / Fixed / Security。
 - **桌面**：独立包使用 UTF-8 启动日志。
 - **配置**：首次设置后的跳转目标取新鲜读到的 mDNS 名。
 
-[未发布]: https://github.com/longmeidao/peach/compare/v0.27.1...HEAD
+[未发布]: https://github.com/longmeidao/peach/compare/v0.30.0...HEAD
+[0.30.0]: https://github.com/longmeidao/peach/compare/v0.27.1...v0.30.0
 [0.27.1]: https://github.com/longmeidao/peach/compare/v0.16.0...v0.27.1
 [0.16.0]: https://github.com/longmeidao/peach/compare/v0.11.2...v0.16.0
 [0.11.2]: https://github.com/longmeidao/peach/compare/v0.7.14...v0.11.2
