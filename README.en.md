@@ -6,8 +6,6 @@
 
 <p align="center">A personal library for media across your disks, mounted drives and followed sources.</p>
 
-The home page includes videos without thumbnails. Search suggestions come from the current library. An empty library keeps the people, studio and tag layout and offers actions to add content or sources.
-
 <p align="center">
   <a href="https://github.com/longmeidao/peach/releases">Download for Windows</a> ·
   <a href="#quick-start">Quick start</a> ·
@@ -27,41 +25,22 @@ Peach is a single-user, local-first media system. Search, play and organize medi
 
 ## Features
 
-Local Configuration offers Peach proxy, startup and silent launch settings. Scraping sources use Peach proxy or a direct connection. Scanning and collection live in Data management. Settings → Browse selects the default sort and direction. Windows standalone packages offer uninstall with optional Peach data removal; original media is preserved. Source installations show manual removal instructions.
-
-Management → Configuration → Check for updates shows the current version and the latest GitHub prerelease. Windows standalone packages download and prepare updates in the app with live progress. Choose Restart now or Later when ready; the app installs the update and restores the previous version if installation fails.
-
 | Capability | What it does |
 | --- | --- |
-| Browse and search | Find videos and photo collections by work, performer, studio, creator, series or tag; works with nobody credited form an Unassigned group you can open from a card or the detail panel |
-| Play and save | Play local and mounted media; keep watch-later items, viewing state, Mixes and playlists |
+| Browse and search | Find videos and photo collections by work, performer, studio, creator, series or tag; works with nobody credited form an Unassigned group |
+| Play and save | Play local and mounted media; keep watch-later items, viewing state, Mixes and playlists, and let a video keep going in a corner miniplayer after you leave its details |
+| Scan and enrich | Scan folders, detect existing NFO files and local posters, fetch missing metadata and write it to the catalog after review |
 | Follow updates | Register official or archive sources, explicitly check updates, view and save content inside Peach |
-| Review and organize | Review external candidates; manage duplicates, junk, unavailable files and trash |
-| Taste and history | Explore your taste profile and manage browsing records and reasons for liking items |
+| Review and organize | Review external candidates and identity assessments; manage duplicates, junk, unavailable files and trash |
+| Taste and history | Explore your taste profile, import browsing records and manage reasons for liking items |
 
-CloudDrive · 115 and CloudDrive · PikPak connect through mounted local folders. Sign in and mount them in CloudDrive first, then add the folders to Peach. Local disks alone also work.
-
-CloudDrive setup includes suggested cache and read settings for HDD, SATA SSD and NVMe systems. File checks cover configured local and cloud sources and skip offline drives.
-
-Review categories and filters stick below the main navigation after scrolling, with the active group heading below them and its select-all button beside the title. These bars show an edge-to-edge background only while stuck. Card headings and current information stay visible while the evidence scrolls. Selection docks use the same plain text count style.
-
-First-run setup offers an optional browser-history import guide. Completed imports hide the guide; Skip remembers dismissal in the current browser, while collapsing keeps it available. The Taste page retains its read and import buttons. SFW mode blurs, desaturates and dims images and videos and stops hover previews; text remains visible. File reconciliation and empty-folder cleanup support configured local disks and cloud sources.
-
-Tray-managed services let you adjust media sources under Manage → Configuration on the host computer, including through its LAN hostname. Setup and configuration provide download links when dependencies are not detected, with mount drivers shown for the host operating system.
-
-In Configuration or Data Management, Scan and enrich scans folders, detects existing NFO files and local posters, and fetches missing metadata. While processing, the home page links to progress in Configuration. Same-name NFO files, `movie.nfo` in single-movie folders, and episode NFO files are supported. Metadata retains its original source and enters the review queue before updating the catalog. Local custom tags are preserved; folders containing multiple videos do not share `movie.nfo`.
-
-Review items have checkboxes beside their names and support Shift range selection. Available filters follow the review category. Group by candidate count, source or field, filter a specific group and select all its items. Bulk decisions affect only visible selected items. A bottom selection dock shares its layout with the catalog, follows, tags and trash, providing the selected count, shared source choice, approve, reject and clear actions. Choosing a source does not submit a decision. Failed items retain their selection and error message for retry. Identity candidates link to source profiles, local samples and file locations, with access to all associated works. Approval records the identity assessment.
+Local disks alone work. 115 and PikPak arrive as folders mounted by CloudDrive: sign in and mount them there first, then add the folders to Peach. See [CloudDrive tuning](docs/CLOUDDRIVE.md) for cache and read-length settings.
 
 Follow sources include FANBOX, Patreon, SubscribeStar, Kemono, Pawchive, Coomer, the Rule34 family and F95zone. Availability depends on the site and your access rights. See [source collection](docs/SOURCING.md) for supported workflows and boundaries.
 
+Interface preferences are saved in the current browser and live under Settings: default sort, official covers or preview images for JAV works, autoplay when details open, and SFW mode, which blurs, desaturates and dims images and video and stops hover previews.
+
 ## Quick start
-
-Settings control whether local and followed videos play automatically when their details open, and whether a video that is still playing keeps going in a corner miniplayer when you leave its details. While the miniplayer is open, clicking another video plays it there; it can be dragged to any of the four corners and expanded back to the details from its title, and the play button is flanked by seek keys that jump by the configured number of seconds. The player context menu offers loop, miniplayer, picture-in-picture, copy video URL (optionally at the current time) and playback stats.
-
-Portraits and brand marks allow moderate enlargement in large and compact views. Very small images use their native size with a blurred background. Display areas below 64 px retain the regular icon treatment.
-
-Settings offers a default JAV cover choice: official covers or preview images across the home feed, continue watching, Mix, video cards and playback queues. Missing images fall back to the other type. The default JAV cover size can be large or small; both use the selected cover type. Preferences are saved in the current browser.
 
 Peach is **pre-1.0**. The application interface is currently Chinese only.
 
@@ -78,7 +57,12 @@ Peach is **pre-1.0**. The application interface is currently Chinese only.
 3. Browse your library. Media and service configuration are available from page settings or the tray menu.
 
 The test package is accessible only on the same computer and needs no Python, Git, Node or OpenSSL.
-Data lives separately from the program in `%LOCALAPPDATA%\Peach\peach-data`. To update, exit the tray, extract the complete new package and keep the data directory.
+Data lives separately from the program in `%LOCALAPPDATA%\Peach\peach-data`.
+
+Management → Configuration → Check for updates compares the installed version with the latest GitHub prerelease.
+Standalone packages download and install the update in the app and restore the previous version if installation fails;
+you can also exit the tray and extract a complete new package over it, keeping the data directory.
+Configuration also offers uninstall, with optional removal of Peach data; original media is preserved.
 
 Install FFmpeg and ffprobe separately for transcoding, probing and thumbnails. Without them, browsing and playback of browser-compatible formats remain available.
 The package is unsigned; see [Windows testing](docs/TESTING_DESKTOP.md) for download verification, configuration and feedback.
