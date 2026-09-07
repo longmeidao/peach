@@ -63,7 +63,7 @@
 
 合计：**31 项开放需求**，其中 6 项已有骨架，25 项尚未实现。已完成的需求不在这里留痕，去 Git 历史查。
 
-## 待执行的操作（34 项）
+## 待执行的操作（35 项）
 
 需要另行授权、外部条件或人工判断才能做的具体操作与复核批次，比上面的需求细一层；做完就删，不在这里留痕。待办只放这一处：`docs/STATUS.md` 每次会话开头都要读，队列不该常驻在那种入口文件里。
 
@@ -102,3 +102,10 @@
 32. `install_entity_links.py` 的可达性门槛按「非 200 就跳过」执行，而同文件的 `is_gone()` 明确写着 403／5xx／连接错误不能当「页面没了」。首批 703 条里 137 条因此没装，其中 31 条 twitter.com、23 条 t-powers.co.jp。把跳过分成「确证没了」和「这次没取到」两档：后者留进待复查队列，配合 `rediscover_entity_links.py` 对 t-powers／nax-pro／mines-pro 这些已经搬家的域名上溯找新锚，再装一次。
 33. 托盘自重建被测试记录门槛卡住：2026-09-05 22:54 托盘为 0.8.5 起的那次「同步开发进度」全量 3181 个用例全绿，`scripts/test_runner.py` 却因验证前后主检出的内容或依赖快照不一致判本次记录无效、退出码 1，托盘按测试失败处理，没有打包也没有换 EXE，并且同一 HEAD 不再重试；同一时段两次 `auto` 记录也是空的 `validated`。第二次（23:14 起，HEAD 5a4b37f8）跑到一半，协调者于 23:17:42 把 0.8.6 合进了同一个主检出，全量因此 6 个用例失败、记录再次无效；失败用例名未取得，第三次尝试一开始就把日志覆盖了。机制已确认：托盘在主检出跑全量，`integrate` 的 `integration.lock` 与全量的 `full-suite.lock` 互不排斥，任何一次集成都会改掉正在验证的树。要做三件事：集成前等主检出里正在跑的全量结束（或让两把锁互斥），并把「记录无效」和「用例失败」在退出码或输出上分开，让托盘对前者重试而不是放弃；托盘的日志只写 stderr，没有落盘，22:43 那次托盘连同两个服务一起消失的原因也因此未取得，给托盘补一份 `logs/tray.log`。现场：线上服务 0.8.5 正常，托盘 EXE 仍是 21:08 打的 0.8.1，`pyproject.toml` 与 `windows_update.py` 的改动没进 EXE。
 34. 封面来源头像逐条复核：37 张仍来自 `cover-fallback`，完整初始清单位于 `attic/reviews/20260906-portrait-agency/remaining-cover-avatars.csv`。41 张被封面覆盖的 Gfriends 人像已从备份恢复，包括日向真凛，恢复记录见同目录 `cover-restore-result.json`。采集器将封面保留为未验证候选，安装函数拒绝把封面写成人物头像。
+35. 拿到 Astra 访问权限后，对 `peach-app`（或先挑一个模块，如 `src/peach/follow_providers.py`）跑一遍 George Pickett 2026-09-05 分享的首要原则审查 prompt（https://x.com/georgepickett/status/2095979879137460640），看删减与简化建议是否成立；结论回到「尚未实现」第 6、7 条那类清理项，不直接改真相字段。Prompt 原文照抄：
+    > Think from first principles about what we're trying to achieve here. Interrogate what you built before calling it done:
+    > 1. Is anything here unnecessary, overly complicated, or based on weak assumptions? Challenge them.
+    > 2. What can be deleted entirely?
+    > 3. What can be simplified now that unnecessary pieces are gone?
+    > Then make the changes. Prefer deleting over simplifying, simplifying over optimizing, and optimizing over automating.
+    > It might be done too - you don't HAVE to go and make changes. If it's good, leave it alone.
