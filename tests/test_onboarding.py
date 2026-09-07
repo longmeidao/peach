@@ -456,6 +456,8 @@ class SetupPageTests(_Case):
         self.assertLess(body.index('id="dirs"'), body.index('id="add-dir"'))
         # 品牌标记在标题上方，说明文字在标题下方。
         self.assertIn('<img class="mark" src="/peach-logo.png"', body)
+        # 设置页往往是这台机器上第一个被打开、被加书签的地址，图标声明不能少。
+        self.assertIn('<link rel="icon" href="/favicon.ico" type="image/x-icon">', body)
         self.assertLess(body.index("<h1>"), body.index('class="lede"'))
         # 四个手填字段的标签末尾标红星；「谁可以访问」总有一个选中项，不标。
         self.assertEqual(body.count('<span class="req"'), 4)

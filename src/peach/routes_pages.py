@@ -161,7 +161,7 @@ stroke-linejoin:round}
 _SETUP_HEAD = ('<!doctype html>\n<html lang="zh-CN"><head><meta charset="utf-8">'
                '<meta name="viewport" content="width=device-width,initial-scale=1">'
                '<meta name="color-scheme" content="light dark">'
-               '<link rel="icon" href="/peach-logo.png" type="image/png">')
+               '<link rel="icon" href="/favicon.ico" type="image/x-icon">')
 
 #: 键 -> 页面上的题目与一句说明。顺序、默认值与校验仍然来自 `onboarding.questions()`，
 #: 这里只决定同一道题在浏览器里怎么称呼：命令行那份题面要把可选值写进去，页面用控件表达。
@@ -595,7 +595,7 @@ def _normal_url(config) -> str:
 
 
 def asset_response(request: Request, path: Path, media: str) -> Response:
-    """页面资产用 ETag 复验代替 no-store，`/app.js`、`/js/`、`/dist/` 共用。
+    """页面资产与图标用 ETag 复验代替 no-store，`/app.js`、`/js/`、`/dist/`、图标共用。
 
     `/app.css` 拼多份分区，ETag 口径见 `stylesheet_response()`，其余照这里。
 
@@ -611,7 +611,10 @@ def asset_response(request: Request, path: Path, media: str) -> Response:
     if request.headers.get("if-none-match") == etag:
         response: Response = Response(status_code=304)
     else:
-        response = FileResponse(path, media_type=f"{media}; charset=utf-8")
+        # charset 只对文本类型成立。图标是字节流，声明里挂一个字符集，在全站的
+        # `X-Content-Type-Options: nosniff` 之下就是让浏览器照一个自相矛盾的类型解码。
+        media_type = f"{media}; charset=utf-8" if media.startswith("text/") else media
+        response = FileResponse(path, media_type=media_type)
     response.headers["ETag"] = etag
     response.headers["Cache-Control"] = "no-cache"
     return response
@@ -849,9 +852,20 @@ def favicon():
     return response
 
 
+@router.api_route("/favicon.ico", methods=["GET", "HEAD"])
+def favicon_ico(request: Request):
+    """页面没有声明图标时浏览器按这个固定路径取，书签与历史记录也从这里拿。
+
+    发 `resources/peach.ico`：它和 `peach-logo.png` 同出一张原图，里面已经装好
+    16 到 256 七档尺寸，浏览器按需要挑一档，不必为一枚 16px 的角标下载
+    1024×1024 的 PNG。声明写在每个页面的 head 里，这条路径是声明之外的兜底。
+    """
+    return asset_response(request, PROJECT_ROOT / "resources" / "peach.ico", "image/x-icon")
+
+
 @router.api_route("/peach-logo.png", methods=["GET", "HEAD"])
-def peach_logo():
-    return FileResponse(PROJECT_ROOT / "resources" / "peach-logo.png", media_type="image/png")
+def peach_logo(request: Request):
+    return asset_response(request, PROJECT_ROOT / "resources" / "peach-logo.png", "image/png")
 
 
 @router.api_route("/item/{item_id}", methods=["GET", "HEAD"])

@@ -334,8 +334,28 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
     async def test_peach_logo_is_served_as_png(self):
         response = await self.client.get("/peach-logo.png")
         self.assertEqual(response.status_code, 200)
+        # 类型声明逐字相等：图片是字节流，`asset_response` 不许给它挂 charset。
         self.assertEqual(response.headers["content-type"], "image/png")
         self.assertTrue(response.content.startswith(b"\x89PNG\r\n\x1a\n"))
+        self.assertEqual(response.headers["cache-control"], "no-cache")
+
+    async def test_the_favicon_is_served_without_a_session_and_revalidates(self):
+        """浏览器取图标时手里没有会话，这条路径因此不设防，也不跳登录页。
+
+        发的是 `resources/peach.ico`：里面装着 16 到 256 七档尺寸，浏览器挑一档就够，
+        不必为一枚 16px 的角标下载 1024×1024 的 PNG。缓存走 ETag 复验——图标几个版本
+        才动一次，每次开页重下没有道理，而复验又让换了图的那一次立刻生效。
+        """
+        response = await self.client.get("/favicon.ico")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.headers["content-type"], "image/x-icon")
+        # ICO 的固定文件头：保留位 0、类型 1。
+        self.assertTrue(response.content.startswith(b"\x00\x00\x01\x00"))
+        self.assertEqual(response.headers["cache-control"], "no-cache")
+        again = await self.client.get(
+            "/favicon.ico", headers={"If-None-Match": response.headers["etag"]},
+        )
+        self.assertEqual(again.status_code, 304)
 
     async def test_front_end_modules_are_served_and_the_name_cannot_escape(self):
         """ES module 拆分之后新增的静态路由。
@@ -886,6 +906,16 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(accepted.status_code, 303)
         self.assertEqual(accepted.headers["location"], "/stats")
         self.assertNotIn("secret", accepted.headers["location"])
+
+    async def test_the_login_page_declares_the_icon_like_every_other_page(self):
+        """书签地址是 `/`，没有会话时浏览器实际停在这一页，图标要在这里就声明。
+
+        缺声明的后果不止是这一页少个角标：浏览器改去要 `/favicon.ico`，并把那一次的
+        结果当成整个站的图标记进书签。声明和兜底路径都在，才不依赖谁先谁后。
+        """
+        page = await self.client.get("/login?next=/")
+        self.assertEqual(page.status_code, 200)
+        self.assertIn('<link rel="icon" href="/favicon.ico" type="image/x-icon">', page.text)
 
     async def test_the_login_page_follows_the_chosen_theme(self):
         """登录页在拿到 cookie 之前出图，所以它自带一份最小色板，跟着同一个选择走。

@@ -1459,8 +1459,13 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks('onload="if(this.naturalWidth')
         self.assertPageContains("img.addEventListener('error',fallback")
 
-    def test_brand_icon_uses_shared_square_png(self):
-        self.assertPageContains('<link rel="icon" href="/peach-logo.png" type="image/png">')
+    def test_brand_icon_declares_the_multi_size_ico_and_draws_the_square_png(self):
+        """标签页角标和页面里的品牌标记同出一张原图，取的却是两份资源。
+
+        角标最大用到 32px，声明指向 `/favicon.ico`：那一份装着 16 到 256 七档尺寸，
+        浏览器挑一档就够。页面里的标记要按 CSS 尺寸缩放，用 PNG。
+        """
+        self.assertPageContains('<link rel="icon" href="/favicon.ico" type="image/x-icon">')
         self.assertPageContains('<img class="mark" src="/peach-logo.png" alt="">')
 
     def test_global_navigation_and_controls_have_accessible_context(self):
