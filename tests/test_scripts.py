@@ -2207,19 +2207,77 @@ class ReleaseTagTests(unittest.TestCase):
                 self.assertRaises(ValueError):
             self.release.verify("owner/repo", "abc")
 
+    #: 干净的 master 检出，HEAD 与远端一致。
+    CLEAN = {("git", "status", "--porcelain"): "",
+             ("git", "branch", "--show-current"): "master",
+             ("git", "rev-parse", "HEAD"): "abc"}
+
+    def _shell(self, changes=None):
+        answers = {**self.CLEAN, **(changes or {})}
+        return mock.patch.object(self.release, "command",
+                                 side_effect=lambda *args: answers.get(args, ""))
+
     def test_plan_refuses_dirty_checkout_wrong_branch_and_existing_tags(self):
-        base = {("git", "status", "--porcelain"): "",
-                ("git", "branch", "--show-current"): "master",
-                ("git", "rev-parse", "HEAD"): "abc"}
         for changes, refs in (({("git", "status", "--porcelain"): " M file"}, []),
                               ({("git", "branch", "--show-current"): "feature"}, []),
                               ({}, [{"ref": "refs/tags/v0.7.14"}])):
-            with self.subTest(changes=changes, refs=refs), \
-                    mock.patch.object(self.release, "command", side_effect=lambda *args: {**base, **changes}.get(args, "")), \
+            with self.subTest(changes=changes, refs=refs), self._shell(changes), \
                     mock.patch.object(self.release, "api", side_effect=lambda repo, path: {"object": {"sha": "abc"}} if path == "git/ref/heads/master" else refs), \
-                    mock.patch.object(Path, "read_text", return_value='__version__ = "0.7.14"\n'), \
+                    mock.patch.object(self.release.version_bump, "read_version", return_value="0.7.14"), \
+                    mock.patch.object(Path, "read_text", return_value="## [0.7.14] - 2026-09-07\n"), \
                     self.assertRaises(ValueError):
                 self.release.plan("owner/repo")
+
+    def test_a_version_without_its_changelog_section_cannot_be_tagged(self):
+        """使用者读到的说明只有变更日志那一节；缺了就等于发一个没有说明的版本。"""
+        with self._shell(), \
+                mock.patch.object(self.release, "api", return_value={"object": {"sha": "abc"}}), \
+                mock.patch.object(self.release.version_bump, "read_version", return_value="0.7.14"), \
+                mock.patch.object(Path, "read_text", return_value="# 变更日志\n\n## [未发布]\n"), \
+                self.assertRaisesRegex(ValueError, "CHANGELOG.md 缺少 0.7.14"):
+            self.release.plan("owner/repo")
+
+    def _planned_bump(self):
+        return {"range": "v0.7.14..HEAD", "bump": "minor", "current": "0.7.14",
+                "version": "0.8.0", "commits": 3}
+
+    def test_a_bump_plan_writes_nothing_until_apply(self):
+        with self._shell(), mock.patch.object(self.release, "api", return_value=[]), \
+                mock.patch.object(self.release.version_bump, "plan_bump",
+                                  return_value=self._planned_bump()), \
+                mock.patch.object(self.release.version_bump, "write_version") as write, \
+                mock.patch.object(self.release.changelog, "release") as promote:
+            result = self.release.prepare("owner/repo", "auto", apply=False)
+        self.assertEqual((result["tag"], result["version"], result["bump"]),
+                         ("v0.8.0", "0.8.0", "minor"))
+        write.assert_not_called()
+        promote.assert_not_called()
+
+    def test_applying_a_bump_writes_the_version_and_the_changelog_but_commits_nothing(self):
+        """措辞要人过一遍，所以脚本只落盘；提交与标签是后面两步。"""
+        with self._shell() as command, mock.patch.object(self.release, "api", return_value=[]), \
+                mock.patch.object(self.release.version_bump, "plan_bump",
+                                  return_value=self._planned_bump()), \
+                mock.patch.object(self.release.version_bump, "write_version") as write, \
+                mock.patch.object(self.release.changelog, "release") as promote:
+            result = self.release.prepare("owner/repo", "auto", apply=True)
+        write.assert_called_once_with(self.release.ROOT, "minor")
+        self.assertEqual(promote.call_args.args, (self.release.ROOT, "0.8.0"))
+        self.assertEqual(promote.call_args.kwargs["spec"], "v0.7.14..HEAD")
+        self.assertTrue(result["next"], "落盘之后必须告诉人下一步做什么")
+        issued = [args for args, _ in command.call_args_list]
+        self.assertFalse([args for args in issued
+                          if {"commit", "tag", "push"} & set(args)], issued)
+
+    def test_a_bump_stops_when_the_target_tag_already_exists(self):
+        with self._shell(), \
+                mock.patch.object(self.release, "api", return_value=[{"ref": "refs/tags/v0.8.0"}]), \
+                mock.patch.object(self.release.version_bump, "plan_bump",
+                                  return_value=self._planned_bump()), \
+                mock.patch.object(self.release.version_bump, "write_version") as write, \
+                self.assertRaisesRegex(ValueError, "v0.8.0 已存在"):
+            self.release.prepare("owner/repo", "auto", apply=True)
+        write.assert_not_called()
 
 
 if __name__ == "__main__":

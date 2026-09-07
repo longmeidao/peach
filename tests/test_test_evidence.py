@@ -64,7 +64,7 @@ class VerificationTests(unittest.TestCase):
         self.certify(worker)
         coordinator.ready(worker)
         result = coordinator.integrate(self.repo, branch)
-        self.assertFalse(result["bumped"])
+        self.assertTrue(result["ok"])
         entries = coordinator._worktree_entries(self.repo)
         self.assertFalse(next(e for e in entries if e.get("branch") == branch).get("locked"))
 

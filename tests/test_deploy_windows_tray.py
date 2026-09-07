@@ -62,7 +62,8 @@ class DeployWindowsTrayTests(unittest.TestCase):
     def run_deploy(self, **overrides):
         arguments = dict(
             target=self.target, installer=self.installer, restart=self.restarted,
-            run=git_runner(), version=lambda **_kwargs: __version__,
+            run=git_runner(),
+            identity=lambda **_kwargs: {"version": __version__, "build_commit": "abc12345def"},
         )
         arguments.update(overrides)
         return deploy_windows_tray.deploy(self.root, **arguments)
@@ -90,21 +91,31 @@ class DeployWindowsTrayTests(unittest.TestCase):
         self.assertEqual(outcome["commit"], "abc12345def")
         self.assertEqual(outcome["version"], __version__)
 
-    def test_a_tray_that_serves_another_version_is_reported_as_a_failure(self):
-        outcome = self.run_deploy(version=lambda **_kwargs: "0.0.1")
+    def test_a_tray_built_from_another_commit_is_reported_as_a_failure(self):
+        """认的是构建提交：同一个版本号下有很多个构建，只比版本号证明不了二进制换了。"""
+        outcome = self.run_deploy(
+            identity=lambda **_kwargs: {"version": __version__, "build_commit": "0ldc0mm1t"})
         self.assertFalse(outcome["ok"])
         self.assertEqual(outcome["step"], "verify")
+        self.assertEqual(outcome["served_commit"], "0ldc0mm1t")
         self.assertEqual(outcome["expected_version"], __version__)
         self.assertEqual(outcome["backup"], self.restarted.return_value.backup)
 
+    def test_a_package_without_a_build_identity_cannot_pass_verification(self):
+        outcome = self.run_deploy(
+            identity=lambda **_kwargs: {"version": __version__, "build_commit": None})
+        self.assertFalse(outcome["ok"])
+        self.assertEqual(outcome["step"], "verify")
+        self.assertIn("未取得", outcome["message"])
+
     def test_a_silent_health_endpoint_is_reported_as_a_failure(self):
-        outcome = self.run_deploy(version=lambda **_kwargs: None)
+        outcome = self.run_deploy(identity=lambda **_kwargs: None)
         self.assertFalse(outcome["ok"])
         self.assertEqual(outcome["step"], "verify")
         self.assertIn("/healthz", outcome["message"])
 
 
-class ServingVersionTests(unittest.TestCase):
+class ServingIdentityTests(unittest.TestCase):
     def test_the_verdict_comes_from_the_https_port_checked_against_the_project_ca(self):
         specs = (
             mock.Mock(name="http", health_url="http://127.0.0.1/healthz", verify=True),
@@ -113,14 +124,15 @@ class ServingVersionTests(unittest.TestCase):
         specs[0].name = "http"
         specs[1].name = "https"
         response = mock.Mock(status_code=200)
-        response.json.return_value = {"ok": True, "version": "9.9.9"}
+        response.json.return_value = {"ok": True, "version": "9.9.9", "build_commit": "c0ffee"}
         with (
             mock.patch.object(deploy_windows_tray, "build_service_specs",
                               return_value=specs),
             mock.patch.object(deploy_windows_tray.httpx, "get",
                               return_value=response) as get,
         ):
-            self.assertEqual(deploy_windows_tray.serving_version(), "9.9.9")
+            self.assertEqual(deploy_windows_tray.serving_identity(),
+                             {"version": "9.9.9", "build_commit": "c0ffee"})
         self.assertEqual(get.call_args.args[0], "https://192.0.2.10/healthz")
         self.assertEqual(get.call_args.kwargs["verify"], "/ca/peach.crt")
         self.assertFalse(get.call_args.kwargs["trust_env"],

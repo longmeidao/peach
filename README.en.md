@@ -154,6 +154,7 @@ Detailed project documentation is in Chinese.
 | Configure media, LAN, HTTPS and replication | [Operations](docs/OPERATIONS.md) |
 | Understand collection and evidence boundaries | [Sources](docs/SOURCING.md) |
 | Check the installed runtime and verification | [Status](docs/STATUS.md) |
+| See what changed in each release | [Changelog](CHANGELOG.md) |
 | Find open work | [Backlog](docs/PRODUCT_BACKLOG.md) |
 | Change and maintain Peach | [Working agreement](AGENTS.md) · [Frontend](docs/FRONTEND.md) · [Reuse](docs/REUSE.md) |
 | Read durable conventions and architecture | [Handoff](docs/HANDOFF.md) · [Decisions](docs/adr/) |
