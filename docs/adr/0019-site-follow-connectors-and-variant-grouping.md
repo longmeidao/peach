@@ -26,8 +26,10 @@ rule34.xxx 上。不区分这三种关系，界面就只是一堆重复条目。
 - 联网只在显式调用时发生：CLI 的 `peach follow check` 和 Web 的
   `POST /api/follow/check`。服务启动、健康检查、普通浏览和首页「换一批」都不联网。
 - **不求解任何机器人质询。** rule34.xxx 网页版挂着 Cloudflare Turnstile，因此只走官方
-  dapi 并要求账号自己的 API key；simpcity.cr 挂着 DDoS-Guard 浏览器质询，连接器只登记
-  不可用并原样报出原因，不做质询求解。FANBOX 公开 `post.info` 是一个有证据的窄例外：
+  dapi 并要求账号自己的 API key；simpcity.cr 前面是 DDoS-Guard，2026-09-08 实测它对标准
+  桌面 UA 不出质询，帖子页 403 是站点「游客不可读帖」的规则，所以连接器要求用户自己的
+  登录 cookie，cookie 失效就原样报 403，不换指纹、不解质询。FANBOX 公开 `post.info`
+  是一个有证据的窄例外：
   普通 HTTPX 与地址栏会返回 403 或 `general_error`，而同一公开请求携带用户自己的可选
   Cookie 并保留 Firefox TLS/HTTP2 特征可得到原始 JSON。它不执行浏览器脚本、不解质询、
   不登录，也仍只收 `feeRequired=0`、`isRestricted=false` 的免费帖子。
@@ -97,7 +99,7 @@ rule34.xxx 上。不区分这三种关系，界面就只是一堆重复条目。
 | rule34video.com | `/models/{slug}/` | 无 | KVS 引擎无公开 API；`.time` 是时长、`.added` 是相对提交时间、`[data-preview]` 是预览片 |
 | rule34.xxx | `https://api.rule34.xxx/index.php?page=dapi&s=post&q=index` | user_id + api_key | 网页版挂 Turnstile；无 key 时 API 返回 `Missing authentication`。**2026-08-26 用真实 key 复核**（见下） |
 | f95zone.to | `/threads/{id}/latest` + `latest_alpha/latest_data.php` | 发现不需要，取媒体需要 | 主贴版本号滞后于回复；`index.rss` 返回「无法以该格式呈现」；`h1.p-title-value` 去掉 `.label` 才是线程标题 |
-| simpcity.cr | — | — | DDoS-Guard 浏览器质询，**未取得**可用入口 |
+| simpcity.cr | `/threads/{id}/` 取分页导航，再读 `page-N` | 必需登录 cookie | 2026-09-08 实测：无 cookie 时首页、版块、登录页 200，帖子页 403「You don't have access to this page」；带 cookie 帖子页 200 且 `data-logged-in="true"`。`/latest` 与纯数字线程地址都会 30x 到带 slug 的规范地址，HTTPX 跟随重定向会丢显式 `Cookie` 头，所以传输层自己跟同源重定向。图片是 `img.bbImage`（`data-url` 原图、`src` 缩略图），分页在 `.pageNav-page a[href]` |
 | fanbox.cc | `api.fanbox.cc/post.listCreator` + `post.info` | 详情可选用户 Cookie | 2026-08-27 实测列表 JSON 给出 `feeRequired`、`isRestricted`、标题、时间和封面；2026-08-28 复核详情需要 Firefox 传输特征，InitialA 的 10 条列表样本均为免费公开 |
 | subscribestar.adult | `/{creator}` | 无 | 2026-08-27 实测公开 HTML 含 `div.post[data-id]`、帖子链接、标题和时间；InitialA 页面明确声明内容公开免费 |
 | patreon.com | `/cw/{creator}` | 无 | 2026-08-27 实测公开页服务端渲染最新帖子卡片；官方 posts API 需 `campaigns.posts` OAuth scope |
