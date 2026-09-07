@@ -24,6 +24,8 @@ uv sync --locked --extra build
 
 提交 `pyproject.toml` 与 `uv.lock`。CI 使用 `--locked` 拒绝过期锁文件；Dependabot 的 `uv` 生态负责更新。`uv pip install` 用于临时环境或安装产物，不用于维护项目依赖。普通 pip 安装 wheel 的冒烟仍独立验证打包声明。
 
+npm 的两份清单还有一层派生产物：根 `package.json` 对应 `web/vendor/**` 与 `web/index.html` 的版本注释，`frontend/package.json` 对应 `web/dist/peach-ui.js`。Dependabot 只改 manifest 与 lock，算不出这些，它的 PR 上 `npm run check:vendor` 或 island 产物那一关会红——它的 workflow 拿到的 token 是只读的，推不回 `dependabot/**`。在隔离工作树里用 `scripts/adopt_dependency_bump.py --pr <编号>` 接管：签出那份清单、重算派生产物、只暂存这些并提交，`--apply` 前先看它列出的文件清单。uv 与 github-actions 的升级没有派生产物，直接合并即可。
+
 版本来自 `src/peach/__init__.py`，已纳入 uv 缓存键；源码版本更新后再次同步会刷新安装元数据。缓存规则采用 [uv 官方动态元数据机制](https://docs.astral.sh/uv/concepts/cache/#dynamic-metadata)。
 
 ## 验证频率
