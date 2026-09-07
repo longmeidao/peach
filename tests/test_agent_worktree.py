@@ -417,3 +417,59 @@ class ReadmeImpactTests(unittest.TestCase):
             with self.assertRaisesRegex(agent_worktree.WorkspaceError, "README"):
                 agent_worktree.require_verified(self.repo, "master", {"web/app.js"})
             key.assert_not_called()
+
+
+from scripts import co_author
+
+
+class CoAuthorTests(unittest.TestCase):
+    """交付提交的署名。追责要落到具体的模型，所以工具名单独一个词不够。"""
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.repo = Path(self.temp.name).resolve()
+        git(self.repo, "init", "-b", "master")
+        git(self.repo, "config", "user.name", "Test")
+        git(self.repo, "config", "user.email", "test@example.invalid")
+        git(self.repo, "commit", "--allow-empty", "-m", "base")
+        git(self.repo, "checkout", "-b", "worker")
+
+    def signed(self, *trailers):
+        git(self.repo, "commit", "--allow-empty", "-m", "测试", "-m", "\n".join(trailers))
+        return co_author.check(self.repo)
+
+    def test_an_unsigned_commit_cannot_be_traced_back_to_a_model(self):
+        self.assertTrue(self.signed())
+
+    def test_the_tool_alone_does_not_say_which_model_wrote_it(self):
+        self.assertTrue(self.signed("Co-Authored-By: Claude Code <noreply@anthropic.com>"))
+
+    def test_each_registered_tool_passes_with_its_own_vendor(self):
+        self.assertEqual(
+            self.signed("Co-Authored-By: Claude Code (Opus 5) <noreply@anthropic.com>"), [])
+        self.assertEqual(
+            self.signed("Co-Authored-By: Codex (GPT-5.5) <noreply@openai.com>"), [])
+
+    def test_an_address_that_does_not_belong_to_the_tool_is_rejected(self):
+        self.assertTrue(self.signed("Co-Authored-By: Codex (GPT-5.5) <noreply@anthropic.com>"))
+
+    def test_an_unregistered_tool_waits_until_someone_registers_it(self):
+        """名单在 `co_author.VENDORS`：换用别的智能体是要动一行代码的决定，不是随手写。"""
+        self.assertTrue(self.signed("Co-Authored-By: Gemini CLI (3.5) <noreply@google.com>"))
+
+    def test_two_agents_writing_one_commit_may_both_sign(self):
+        self.assertEqual(
+            self.signed("Co-Authored-By: Claude Code (Opus 5) <noreply@anthropic.com>",
+                        "Co-Authored-By: Codex (GPT-5.5) <noreply@openai.com>"), [])
+
+    def test_the_signature_gate_runs_before_the_test_evidence_is_read(self):
+        """署名和 README 影响面在同一处拒收，都不必等到去读测试记录。"""
+        (self.repo / "tests").mkdir()
+        (self.repo / "tests" / "example.py").write_text("x = 1\n", encoding="utf-8")
+        git(self.repo, "add", "--", "tests/example.py")
+        git(self.repo, "commit", "-m", "测试")
+        with mock.patch.object(agent_worktree.test_evidence, "key") as key:
+            with self.assertRaisesRegex(agent_worktree.WorkspaceError, "Co-Authored-By"):
+                agent_worktree.require_verified(self.repo, "master", {"tests/example.py"})
+            key.assert_not_called()

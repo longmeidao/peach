@@ -42,8 +42,9 @@ class VerificationTests(unittest.TestCase):
         (worker / "README.md").write_text("测试内容\n", encoding="utf-8")
         (worker / "README.en.md").write_text("Test content\n", encoding="utf-8")
         evidence.git(worker, "add", "README.md", "README.en.md")
-        evidence.git(worker, "commit", "-m", "docs: test",
-                     "-m", "README-Impact: updated; 测试文档")
+        evidence.git(worker, "commit", "-m", "docs: test", "-m",
+                     "README-Impact: updated; 测试文档\n"
+                     "Co-Authored-By: Codex (GPT-5.5) <noreply@openai.com>")
         return worker, item["branch"]
 
     def certify(self, worker, scopes=("checks",), success=True):

@@ -178,12 +178,18 @@ class DependencyPolicyTests(unittest.TestCase):
         隔一个空行 `git interpret-trailers` 就只认后一个，`ready` 会报「交付提交须有唯一
         README-Impact」——这条我在 0.29.0 那次亲手踩过。
         """
-        message = adopt.commit_message("web", ["lucide-static 1.38.0 → 1.40.0"], "4")
+        signature = "Claude Code (Opus 5) <noreply@anthropic.com>"
+        message = adopt.commit_message("web", ["lucide-static 1.38.0 → 1.40.0"],
+                                       "4", signature)
         self.assertIn("\nREADME-Impact: none; ", message)
         self.assertRegex(message, r"README-Impact: none; [^\n]+\nCo-Authored-By: ")
         self.assertIn("PR #4", message)
         self.assertIn("npm run vendor:web", message)
         self.assertIn("lucide-static 1.38.0 → 1.40.0", message)
+        self.assertIn(f"Co-Authored-By: {signature}", message)
+        # 署名由调用方给：跑接管的可能是任一个智能体，写死一个工具名就是记错人。
+        with self.assertRaisesRegex(ValueError, "--co-author"):
+            adopt.commit_message("web", [], "4", "Claude Code")
 
     def test_the_vendor_check_prints_how_to_fix_itself(self):
         """`check:vendor` 失败时要印出重算命令。
