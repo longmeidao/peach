@@ -194,7 +194,7 @@ function wireCountRow(){
   const batch=$('#batchAction');
   if(batch)batch.onclick=async()=>{
     if(batch.getAttribute('aria-busy')==='true')return;
-    const old=batch.innerHTML;setActionBusy(batch);batch.innerHTML=spinnerHtml('换一批');
+    const old=batch.innerHTML;setActionBusy(batch);batch.innerHTML=spinnerHtml('正在换一批');
     try{await refreshAll()}finally{setActionBusy(batch,false);batch.innerHTML=old}
   };
   wireJavLayoutButtons($('#count'));
@@ -4549,7 +4549,7 @@ async function loadMoreFollow(button){
   if(!followData||followBusy)return;
   followBusy=true;
   const oldButton=button?.innerHTML;
-  if(button){setActionBusy(button);button.innerHTML=`${spinnerHtml('加载更多')}<span>加载中…</span>`}
+  if(button){setActionBusy(button);button.innerHTML=`${spinnerHtml('正在加载更多')}<span>加载中…</span>`}
   try{
     const next=await api(followPageUrl((followData.offset||0)+FOLLOW_PAGE));
     followData={...next,

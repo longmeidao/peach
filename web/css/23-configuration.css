@@ -9,15 +9,12 @@
 .resourcesyncfooter>p{margin:0 auto 0 0;text-align:left}
 .resourceaction.warning{background:var(--meter);color:light-dark(var(--ink),var(--ground))}
 .resourceaction.warning:hover:not(:disabled){background:color-mix(in srgb,var(--meter) 88%,#fff);color:light-dark(var(--ink),var(--ground))}
-.resourceaction.warning:disabled{background:var(--surface);color:var(--muted)}
+.resourceaction.warning:disabled{background:var(--sunk);color:var(--muted);box-shadow:0 0 0 1px var(--line-soft)}
 .configpage .geist-button{min-height:var(--control-h)}
 .configfieldset{display:flex;flex-direction:column;min-width:0;margin:0;padding:0;overflow:hidden;
   border:1px solid var(--line);border-radius:var(--control-radius);background:var(--ground)}
 .configfieldset>.geist-fieldset-content{flex:1;min-height:0;padding:20px;display:grid;gap:20px}
 .configfieldset .geist-fieldset-title{margin:0}
-.configfieldset button.danger,.geist-modal button.danger{background:var(--drop);border-color:var(--drop);color:#fff}
-.configfieldset button.danger:hover:not(:disabled),.geist-modal button.danger:hover:not(:disabled){background:color-mix(in srgb,var(--drop) 88%,#000);border-color:var(--drop);color:#fff}
-.configfieldset button.danger:disabled{background:var(--surface);border-color:var(--line);color:var(--muted)}
 .configselect{width:min(320px,100%)}
 .configselect>.gselectfield{width:100%}
 .configdirectories>summary{display:flex;align-items:center;gap:8px;list-style:none;cursor:pointer;font-weight:500}
@@ -40,7 +37,7 @@
 .configpage .geist-input[aria-invalid="true"]{border-color:var(--drop)}
 .configpage .geist-input[aria-invalid="true"]:focus{box-shadow:0 0 0 4px color-mix(in srgb,var(--drop) 24%,transparent)}
 .confighelp{margin:8px 0 0;color:var(--muted);font-size:var(--fs-sm);line-height:1.5}
-.cloudguide{min-width:0}.cloudguide details{margin-top:16px}.cloudguide summary{cursor:pointer;font-size:var(--fs-sm);min-height:var(--control-h);display:flex;align-items:center;gap:8px}.cloudguide summary:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}.cloudguide-tablewrap{margin-top:16px;overflow-x:auto;overscroll-behavior-x:contain}.cloudguide-table{width:100%;min-width:520px;border-collapse:collapse;font-size:var(--fs-sm)}.cloudguide-table th,.cloudguide-table td{padding:10px 12px;border-bottom:1px solid var(--line-soft);text-align:right;font-weight:400;line-height:1.5}.cloudguide-table thead th{height:36px;padding-top:0;padding-bottom:0;color:var(--muted);font-size:var(--fs-xs)}.cloudguide-table th:first-child,.cloudguide-table td:first-child{text-align:left}.cloudguide-table tbody th{font-weight:600}.cloudguide-table tbody td{font-variant-numeric:tabular-nums;white-space:nowrap}.cloudguide-table tbody tr:last-child>*{border-bottom:0}.cloudguide-notes{padding-left:20px;font-size:var(--fs-sm);line-height:1.6;color:var(--muted)}.cloudguide-notes li+li{margin-top:8px}@media(max-width:640px){.cloudguide summary{min-height:44px}}
+.cloudguide{min-width:0}.cloudguide details{margin-top:16px}.cloudguide summary{cursor:pointer;font-size:var(--fs-sm);min-height:var(--control-h);display:flex;align-items:center;gap:8px;list-style:none}.cloudguide summary::-webkit-details-marker{display:none}.cloudguide summary>svg{width:16px;height:16px;flex:none;stroke:currentColor;fill:none;transition:transform .2s ease-in-out}.cloudguide summary[aria-expanded="true"]>svg{transform:rotate(90deg)}.cloudguide summary:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}.cloudguide-tablewrap{margin-top:16px;overflow-x:auto;overscroll-behavior-x:contain}.cloudguide-table{width:100%;min-width:520px;border-collapse:collapse;font-size:var(--fs-sm)}.cloudguide-table th,.cloudguide-table td{padding:10px 12px;border-bottom:1px solid var(--line-soft);text-align:right;font-weight:400;line-height:1.5}.cloudguide-table thead th{height:36px;padding-top:0;padding-bottom:0;color:var(--muted);font-size:var(--fs-xs)}.cloudguide-table th:first-child,.cloudguide-table td:first-child{text-align:left}.cloudguide-table tbody th{font-weight:600}.cloudguide-table tbody td{font-variant-numeric:tabular-nums;white-space:nowrap}.cloudguide-table tbody tr:last-child>*{border-bottom:0}.cloudguide-notes{padding-left:20px;font-size:var(--fs-sm);line-height:1.6;color:var(--muted)}.cloudguide-notes li+li{margin-top:8px}@media(max-width:640px){.cloudguide summary{min-height:44px}}
 .confighelp a{color:var(--tungsten);text-decoration:none;margin-inline-start:6px}
 .confighelp a:hover{text-decoration:underline;text-underline-offset:3px}
 .configbad{margin:8px 0 0;color:var(--drop);font-size:var(--fs-sm)}
@@ -51,10 +48,13 @@
 .configdir .geist-input{flex:1 1 auto;width:auto;min-width:0}
 .configdir > input.geist-input{flex:1 1 0;width:0}
 .configdir:first-child{margin-top:0}.configdir .configbad{flex-basis:100%;margin:0}
-.configrm.geist-button,.configpick.geist-button{width:var(--control-h);height:var(--control-h);flex:none;padding:0;color:var(--muted)}
+/* 移除是这一行唯一的销毁键，走 01-base 那一份危险档：静止就是实底红，悬停把同一块红
+   压深一档。它和 `.frowicon` 那种挤在一行图标里的删除键不是一件事——那里一块实底红会
+   在图标行里炸出一块，这一行里它旁边只有一颗「选择文件夹」。红由 `.danger` 给，页面
+   不再自己写第二份：此前静止态和悬停态各写一条、值又一样，悬停等于没有反馈。 */
+.configrm.geist-button,.configpick.geist-button{width:var(--control-h);height:var(--control-h);flex:none;padding:0}
+.configpick.geist-button{color:var(--muted)}
 .configpick.geist-button:hover:not(:disabled){color:var(--ink)}
-.configrm.geist-button{color:var(--drop)}
-.configrm.geist-button:hover:not(:disabled){color:white;background:var(--drop);border-color:var(--drop)}
 .configstatus{display:inline-block;margin-inline-start:8px;font-size:var(--fs-sm)}
 .configstatus.online{color:var(--success)}.configstatus.offline{color:var(--drop)}.configstatus.unknown{color:var(--muted)}
 .configrm svg,.configpick svg{width:16px;height:16px;stroke:currentColor;fill:none}
@@ -78,13 +78,8 @@
 [data-fieldset-type="error"]>:is(.geist-fieldset-footer,.resourceapplyrow){border-top-color:var(--drop);background:color-mix(in srgb,var(--drop) 7%,var(--ground))}
 [data-fieldset-type="error"]>:is(.geist-fieldset-footer,.resourceapplyrow)>p{color:var(--drop)}
 [data-fieldset-type="warning"]>:is(.geist-fieldset-footer,.resourceapplyrow){border-top-color:var(--meter);background:color-mix(in srgb,var(--meter) 7%,var(--ground))}
-[data-fieldset-type="error"] button:is(.danger,.resourcedanger){background:var(--drop);border-color:var(--drop);color:#fff}
-[data-fieldset-type="error"] button:is(.danger,.resourcedanger):hover:not(:disabled){background:color-mix(in srgb,var(--drop) 88%,#000);border-color:var(--drop);color:#fff}
-[data-fieldset-type="error"] button:is(.danger,.resourcedanger):disabled{background:var(--surface);border-color:var(--line);color:var(--muted)}
 .configfacts{margin:0;display:grid;grid-template-columns:max-content minmax(0,1fr);gap:10px 24px;align-items:baseline}
 .configfacts dt{color:var(--muted);font-size:var(--fs-sm)}.configfacts dd{margin:0;overflow-wrap:anywhere}
 .configfacts dt .gselectmark{vertical-align:-3px;margin-inline-end:8px}
 @media(max-width:560px){.configfacts{grid-template-columns:minmax(0,1fr)}.configfacts dd{margin-top:-6px}}
 @media(max-width:560px){.configpage{--control-h:44px}.configfieldset>.geist-fieldset-footer{flex-wrap:wrap}.configsource .geist-input{font-size:var(--fs-lg)}}
-
-.configrm.geist-button:not(:disabled){color:#fff;background:var(--drop);border-color:var(--drop)}

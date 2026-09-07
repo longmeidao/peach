@@ -35,7 +35,7 @@ export function tasteHistoryGuideHtml(onboarding: boolean, completed = false, sk
   if (completed || skipped) return '';
   const external = '<svg class="externalmark" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-external-link"></use></svg>';
   return `<details class="taste-history-guide"${onboarding ? ' open' : ''}>
-    <summary>浏览器历史记录导入指南</summary>
+    <summary><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chevron-right"></use></svg>浏览器历史记录导入指南</summary>
     <div class="taste-history-guide-content">
       <p>在运行 Peach 的电脑上使用浏览器：点击上方「读取 Peach 主机」。</p>
       <p>记录在其他设备上：导出文件后，点击上方「导入历史」。多台设备的文件分别导入。</p>

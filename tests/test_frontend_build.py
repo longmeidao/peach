@@ -201,7 +201,7 @@ class ConfigurationIslandContractTests(unittest.TestCase):
         self.assertIn("PICK_FOLDER_URL = '/api/pick-folder'", self.source)
         pick = self.source.index('class="geist-button configpick"')
         self.assertLess(self.source.index('class="geist-input"'), pick)
-        self.assertLess(pick, self.source.index('class="geist-button configrm"'))
+        self.assertLess(pick, self.source.index('class="geist-button configrm danger"'))
 
     def test_validation_reasons_come_from_the_server(self):
         """字段级原因读 400 的 `errors`，前端不复制一份路径与端口的判定。"""
@@ -265,6 +265,45 @@ class VitestTests(unittest.TestCase):
         counted = re.search(r"Tests\s+(\d+) passed", output)
         assert counted is not None
         self.assertGreaterEqual(int(counted.group(1)), 10, output)
+
+
+class CloudDriveGuideScopeTests(unittest.TestCase):
+    """配置页那一版只讲怎么填，原理和取证在 `docs/CLOUDDRIVE.md`，两边不各写一份。
+
+    页内讲原理有两个代价。一是长度：三处缓存的分工、Mbps 与 MB/s 的换算、起步值的
+    取证摊开就是十几行，读的人为了填一个数字得先读完一篇。二是维护：这些话同时写在
+    页面和运维文档里，改一次要改两处，页面那一份必然先过期。
+    判据是「同一句话只在一个地方维护」——页内留填哪里、填多少、怎么确认，其余由外链
+    指向仓库那一份，`docs/OPERATIONS.md` 同样只留指针。
+    """
+
+    def setUp(self):
+        self.source = (FRONTEND / "src" / "islands" / "clouddrive-guide.tsx").read_text(
+            encoding="utf-8")
+        self.doc = (ROOT / "docs" / "CLOUDDRIVE.md").read_text(encoding="utf-8")
+        self.operations = (ROOT / "docs" / "OPERATIONS.md").read_text(encoding="utf-8")
+
+    def test_the_page_says_where_to_fill_and_how_to_confirm(self):
+        for phrase in ("缓存上限和清理方式填在", "读取长度和下载线程填在",
+                       "上限不要填 0", "改一个管不住另外两个", "确认存住了"):
+            self.assertIn(phrase, self.source, "配置页要能独立完成一次填写")
+        for moved in ("Mbps", "MB/s", "911", "客户端标出的上限", "WebDAV"):
+            self.assertNotIn(moved, self.source, f"「{moved}」这一段归 docs/CLOUDDRIVE.md")
+
+    def test_the_page_links_to_the_document_that_holds_the_reasoning(self):
+        self.assertIn("https://github.com/longmeidao/peach/blob/master/docs/CLOUDDRIVE.md",
+                      self.source)
+        self.assertIn('class="externallink"', self.source)
+
+    def test_the_document_holds_the_steps_the_reasoning_and_the_provenance(self):
+        for section in ("## 配置步骤", "## 三处缓存是三处设置", "## 缓存上限与清理",
+                        "## 读取长度与线程", "## 码率与速度不是一个单位",
+                        "## 起步值来自哪里"):
+            self.assertIn(section, self.doc)
+        self.assertIn("[CloudDrive 配置与调优](CLOUDDRIVE.md)", self.operations)
+        for moved in ("911", "LRU", "42169be3", "10\u201320 GiB"):
+            self.assertNotIn(moved, self.operations,
+                             f"「{moved}」这一段归 docs/CLOUDDRIVE.md")
 
 
 if __name__ == "__main__":
