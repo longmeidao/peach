@@ -1,3 +1,4 @@
+import re
 import unittest
 from pathlib import Path
 
@@ -155,6 +156,20 @@ class ShippedChangelogTests(unittest.TestCase):
         for heading in headings:
             with self.subTest(heading=heading):
                 self.assertRegex(heading, r"^## \[\d+\.\d+\.\d+\] - \d{4}-\d{2}-\d{2}$")
+
+    def _released_versions(self):
+        return re.findall(r"(?m)^## \[(\d+\.\d+\.\d+)\]", self.document)
+
+    def test_every_released_section_has_its_compare_link(self):
+        for version in self._released_versions():
+            with self.subTest(version=version):
+                self.assertRegex(self.document,
+                                 rf"(?m)^\[{re.escape(version)}\]: https://github\.com/")
+
+    def test_released_sections_run_newest_first(self):
+        keys = [tuple(int(part) for part in version.split("."))
+                for version in self._released_versions()]
+        self.assertEqual(keys, sorted(keys, reverse=True))
 
 
 if __name__ == "__main__":
