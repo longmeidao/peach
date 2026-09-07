@@ -320,6 +320,21 @@ class IntegrationVersionTests(_WorktreeCase):
         self.assertEqual(report["release_tag_entry"], "scripts/release_tag.py")
         self.assertEqual(_lines(_git(self.repo, "tag", "--list")), [])
 
+    def test_every_integration_reports_whether_a_release_is_due(self):
+        """判断挂在集成的输出里，不靠谁记着去查——「记着」正是它要替掉的东西。"""
+        branch = self.worker_touching("user-visible", "src/peach/module.py",
+                                      subject="fix(web): 修一处使用者看得见的")
+        report = integrate(self.repo, branch)
+        self.assertEqual(report["release"]["entries"], 1)
+        self.assertEqual(report["release"]["groups"], {"修复": 1})
+        self.assertIn("due", report["release"])
+
+    def test_development_only_work_never_asks_for_a_release(self):
+        branch = self.worker_touching("inside-only", "src/peach/module.py",
+                                      subject="refactor(web): 只动开发过程")
+        report = integrate(self.repo, branch)
+        self.assertEqual((report["release"]["entries"], report["release"]["due"]), (0, False))
+
 
 from scripts.check_readme_impact import check, git
 
