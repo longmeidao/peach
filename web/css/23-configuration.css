@@ -9,15 +9,12 @@
 .resourcesyncfooter>p{margin:0 auto 0 0;text-align:left}
 .resourceaction.warning{background:var(--meter);color:light-dark(var(--ink),var(--ground))}
 .resourceaction.warning:hover:not(:disabled){background:color-mix(in srgb,var(--meter) 88%,#fff);color:light-dark(var(--ink),var(--ground))}
-.resourceaction.warning:disabled{background:var(--surface);color:var(--muted)}
+.resourceaction.warning:disabled{background:var(--sunk);color:var(--muted);box-shadow:0 0 0 1px var(--line-soft)}
 .configpage .geist-button{min-height:var(--control-h)}
 .configfieldset{display:flex;flex-direction:column;min-width:0;margin:0;padding:0;overflow:hidden;
   border:1px solid var(--line);border-radius:var(--control-radius);background:var(--ground)}
 .configfieldset>.geist-fieldset-content{flex:1;min-height:0;padding:20px;display:grid;gap:20px}
 .configfieldset .geist-fieldset-title{margin:0}
-.configfieldset button.danger,.geist-modal button.danger{background:var(--drop);border-color:var(--drop);color:#fff}
-.configfieldset button.danger:hover:not(:disabled),.geist-modal button.danger:hover:not(:disabled){background:color-mix(in srgb,var(--drop) 88%,#000);border-color:var(--drop);color:#fff}
-.configfieldset button.danger:disabled{background:var(--surface);border-color:var(--line);color:var(--muted)}
 .configselect{width:min(320px,100%)}
 .configselect>.gselectfield{width:100%}
 .configdirectories>summary{display:flex;align-items:center;gap:8px;list-style:none;cursor:pointer;font-weight:500}
@@ -81,9 +78,6 @@
 [data-fieldset-type="error"]>:is(.geist-fieldset-footer,.resourceapplyrow){border-top-color:var(--drop);background:color-mix(in srgb,var(--drop) 7%,var(--ground))}
 [data-fieldset-type="error"]>:is(.geist-fieldset-footer,.resourceapplyrow)>p{color:var(--drop)}
 [data-fieldset-type="warning"]>:is(.geist-fieldset-footer,.resourceapplyrow){border-top-color:var(--meter);background:color-mix(in srgb,var(--meter) 7%,var(--ground))}
-[data-fieldset-type="error"] button:is(.danger,.resourcedanger){background:var(--drop);border-color:var(--drop);color:#fff}
-[data-fieldset-type="error"] button:is(.danger,.resourcedanger):hover:not(:disabled){background:color-mix(in srgb,var(--drop) 88%,#000);border-color:var(--drop);color:#fff}
-[data-fieldset-type="error"] button:is(.danger,.resourcedanger):disabled{background:var(--surface);border-color:var(--line);color:var(--muted)}
 .configfacts{margin:0;display:grid;grid-template-columns:max-content minmax(0,1fr);gap:10px 24px;align-items:baseline}
 .configfacts dt{color:var(--muted);font-size:var(--fs-sm)}.configfacts dd{margin:0;overflow-wrap:anywhere}
 .configfacts dt .gselectmark{vertical-align:-3px;margin-inline-end:8px}

@@ -1189,6 +1189,36 @@ class WebUiSourceTests(unittest.TestCase):
             self.assertTrue(label.endswith(ongoing) or label.startswith("正在"),
                             f"「{label}」是动作名，不是进行中的说法")
 
+    def test_the_danger_tier_is_defined_once_and_pages_do_not_re_state_it(self):
+        """销毁键的红、悬停深一档和禁用灰只在 01-base 写一次，页面文件不再写第二份。
+
+        写第二份的代价不是重复几行，是两份会悄悄分叉。配置页那一份把悬停压到
+        `88%,#000`（01-base 是 `82%`），禁用填 `--surface`（01-base 是 `--sunk`）且不带
+        环——「卸载 Peach」和弹层里的确认键于是和站内其他销毁键读起来不是一套，而它
+        选择器更长、文件又在后面，永远赢。同一形状在 `.configrm` 上已经出现过一次。
+        """
+        css = stylesheet_source()
+        base = Path(__file__).resolve().parents[1] / "web/css/01-base.css"
+        for declaration in ("background:var(--drop);color:#fff",
+                            "background:color-mix(in srgb,var(--drop) 82%,#000)",
+                            "background:var(--sunk);color:var(--muted)"):
+            self.assertIn(declaration, base.read_text(encoding="utf-8"),
+                          "危险档的定义在 01-base")
+        # 提到 `.danger` 或 `.resourcedanger` 又自己填背景的规则，全站只准有 01-base 那三条。
+        restated = [rule for rule in re.findall(r"[^{}\n]*\{[^}]*\}", css)
+                    if re.search(r"\.danger|\.resourcedanger", rule.split("{")[0])
+                    and "background:" in rule.split("{", 1)[1]]
+        self.assertEqual(len(restated), 3, "危险档又被写了第二份：\n"
+                         + "\n".join(rule.split("{")[0] for rule in restated))
+        for rule in restated:
+            self.assertNotIn("border-color", rule, "危险档不画边，这条 border-color 是死的")
+        # 禁用的键填 `--sunk` 再补一圈环；`--surface` 是输入框和轨道那一档的禁用底，
+        # 两者不通用，所以这里只查危险档自己有没有换掉那块灰。
+        disabled = next(rule for rule in restated
+                        if rule.split("{")[0].rstrip().endswith(":disabled"))
+        self.assertIn("background:var(--sunk)", disabled)
+        self.assertIn("box-shadow:0 0 0 1px var(--line-soft)", disabled)
+
     def test_font_weights_stay_on_the_three_geist_steps(self):
         """字重只有 400／500／600 三档。
 
