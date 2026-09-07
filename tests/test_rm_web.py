@@ -837,6 +837,7 @@ class WebDataTests(unittest.TestCase):
             "/api/items", "/api/item", "/api/entity", "/api/photos", "/api/photo-set",
             "/api/index", "/api/parts", "/api/editions", "/api/duplicates", "/api/quality-goals",
             "/api/stats", "/api/tops", "/api/ads", "/api/related", "/api/facets",
+            "/api/suggest",
             "/api/search-history", "/api/review", "/api/playlists", "/api/playlist",
             "/api/follow", "/api/follow/credentials", "/api/follow/schedule",
             "/api/follow/check", "/api/follow/resolve", "/api/taste/refresh",

@@ -126,20 +126,24 @@ AGENCY_SEARCH_CLAUSE = (
 )
 
 
+#: 「这条资源在普通馆藏里看得见」的判据：是视频，且不在回收站。列表、搜索和补全
+#: 共用这一份。各写各的后果是补全会补出回收站里的作品——那一条点开是已经删掉的片，
+#: 而列表本身从来不显示它，所以只会在补全这一个表面上露出来。
+VISIBLE_CATALOG_ASSET = "a.medium='video' AND (a.disposal IS NULL OR a.disposal <> 'trash')"
+
+
 def catalog_filter(contract: WebContract, args):
     """视频列表与侧栏使用同一组筛选条件。"""
     trash = args.get("state") == "trash"
     # 普通馆藏仍是视频表面；回收站必须展示所有文件类型，否则从垃圾复核移入的
     # 图片、网址快捷方式等会变成不可见、不可恢复，只能被「清空回收站」直接删掉。
-    where, par = ([] if trash else ["a.medium='video'"]), []
+    where, par = ([] if trash else [VISIBLE_CATALOG_ASSET]), []
     if args.get("library"):
         clause, values = media_libraries.predicate(settings_file.active(), args["library"])
         where.append(clause)
         par.extend(values)
     if trash:
         where.append("a.disposal='trash'")
-    else:
-        where.append("(a.disposal IS NULL OR a.disposal <> 'trash')")
     if args.get("loc"):
         locs = [x for x in args["loc"].split(",") if x]
         where.append("a.location IN (%s)" % ",".join("?" * len(locs))); par += locs
@@ -217,11 +221,15 @@ def catalog_filter(contract: WebContract, args):
             # 短查询走 LIKE，必须和 FTS 覆盖同样的身份写法：规范名、别名和检索词。
             # 只比 canonical_name 会让「凉森」搜不到 `涼森れむ`——trigram 要求三字
             # 起步，两字查询永远落在这条分支上，补检索词也救不了。
+            # kind 也必须两条分支一致：FTS 的 entities 字段聚合的是这条作品名下的
+            # 全部实体、不挑 kind，这里少认一种，同一个标签就会写三个字搜得到、
+            # 写两个字搜不到，看着像搜索时灵时不灵。
             where.append(
                 "((a.name LIKE ? OR a.catalog_title LIKE ? OR a.original_title LIKE ? "
                 "OR a.code LIKE ? OR EXISTS("
                 "SELECT 1 FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
-                "WHERE ae.asset_id=a.id AND e.kind IN ('creator','performer','studio') "
+                "WHERE ae.asset_id=a.id AND e.kind IN "
+                "('creator','performer','studio','series','tag') "
                 "AND (e.canonical_name LIKE ? "
                 "OR EXISTS(SELECT 1 FROM entity_alias al WHERE al.entity_id=e.id "
                 "AND al.alias LIKE ?) "

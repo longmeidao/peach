@@ -29,7 +29,15 @@ from .web_catalog import (
     q_tops,
     w_item_tag,
 )
-from .web_entity import q_entity, q_entity_photos, q_index, q_photo_set, w_entity_name
+from .web_entity import (
+    SUGGEST_GROUP_LIMIT,
+    q_entity,
+    q_entity_photos,
+    q_index,
+    q_photo_set,
+    q_suggest,
+    w_entity_name,
+)
 from .web_follow import (
     q_follow,
     q_follow_check,
@@ -146,6 +154,21 @@ def _get_facets(contract, args):
     )
 
 
+def _get_suggest(contract, args):
+    """搜索栏每敲一下就来一次，所以走 LRU：键是用户输入，键空间不封闭。
+
+    键里带上 limit——同一段输入要不同条数就是不同结果。写路径调 `cache_bust()`
+    时它跟着一起作废，补全不会在新片入库后还给出旧的一批。
+    """
+    query = str(args.get("q") or "").strip()[:64]
+    limit = min(max(int(args.get("limit", str(SUGGEST_GROUP_LIMIT))), 1),
+                SUGGEST_GROUP_LIMIT * 4)
+    if not query:
+        return q_suggest(contract, "")
+    return contract.cached_lru(
+        f"suggest:{limit}:{query}", lambda: q_suggest(contract, query, limit))
+
+
 def _get_search_history(contract, args):
     return q_search_history(contract, int(args.get("limit", "10")))
 
@@ -205,6 +228,7 @@ GET_HANDLERS = {
     "/api/playlists": q_playlists,
     "/api/playlist": q_playlist,
     "/api/facets": _get_facets,
+    "/api/suggest": _get_suggest,
     "/api/search-history": _get_search_history,
     "/api/taste": _get_taste,
     "/api/review": _get_review,
