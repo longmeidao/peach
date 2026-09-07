@@ -126,7 +126,8 @@ def save_startup(request: Request, body: dict = Body(...), _args=Depends(require
     local_only(request)
     same_origin(request)
     try:
-        return desktop_startup.save(settings_file.load_config(), enabled=body.get("enabled"), silent=body.get("silent"))
+        return desktop_startup.save(settings_file.load_config(), enabled=body.get("enabled"), silent=body.get("silent"),
+                                    desktop=body.get("desktop"))
     except (ValueError, OSError) as exc:
         raise HTTPException(400, str(exc)) from exc
 

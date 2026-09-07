@@ -129,7 +129,9 @@ def poll(tray) -> None:
         if any(data.get(key) != value for key, value in checked.items()):
             raise ValueError("配置已变更，请重新确认卸载")
         shell = Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32/WindowsPowerShell/v1.0/powershell.exe"
-        desktop_startup.save(config, enabled=False, silent=True)
+        # 桌面图标和启动项都在数据根之外，`_SCRIPT` 的路径校验只认数据根里的东西，
+        # 列进 `files` 会被它 `exit 2`。卸载前先由这一步把两个 `.lnk` 都撤掉。
+        desktop_startup.save(config, enabled=False, silent=True, desktop=False)
         process = subprocess.Popen([str(shell), "-NoProfile", "-NonInteractive", "-EncodedCommand",
                                     base64.b64encode(_SCRIPT.encode("utf-16-le")).decode("ascii")],
                                    stdin=subprocess.PIPE, creationflags=subprocess.CREATE_NO_WINDOW)

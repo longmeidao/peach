@@ -61,6 +61,19 @@ class IslandBundleTests(unittest.TestCase):
             self.assertTrue((ROOT / "web" / name.lstrip("/")).is_file(),
                             f"产物 import 的 {name} 在仓库里不存在")
 
+    def test_the_startup_switches_and_their_payload_are_in_the_shipped_bundle(self):
+        """「开机自启」那三颗开关的标签和它们发出去的键，判据落在产物上。
+
+        `web/dist/peach-ui.js` 是提交进 Git 的产物。改了 `frontend/src` 不重建，浏览器拿到
+        的仍是旧的那一份，而 tsc 和 vitest 都只看源码，谁都不会红——只有扫产物这一条会。
+        """
+        for label in ("开机后启动 Peach", "静默启动", "在桌面创建快捷方式"):
+            self.assertIn(label, self.bundle,
+                          f"产物里没有「{label}」，先跑 npm --prefix frontend run build")
+        payload = self.bundle[self.bundle.index('"/api/configuration/startup"'):][:240]
+        for key in ("enabled:", "silent:", "desktop:"):
+            self.assertIn(key, payload, f"保存开机自启没带上 {key}")
+
     def test_the_route_that_serves_it_is_registered(self):
         # 扫整个包而不是 `api.py` 一个文件：这条路由现在住在 `routes_pages.py`，
         # 而它属于哪个模块是内部事，前端只关心它被注册了。

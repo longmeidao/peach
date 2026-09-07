@@ -116,6 +116,46 @@ def startup_directory() -> Path:
     return Path(os.environ["APPDATA"]) / "Microsoft/Windows/Start Menu/Programs/Startup"
 
 
+#: 桌面的 known folder ID（`FOLDERID_Desktop`）。
+_DESKTOP_FOLDER_ID = "{B4BFCC3A-DB2C-424C-B029-7FE99A87C641}"
+
+
+def desktop_directory() -> Path:
+    """本机桌面目录。Windows 走 known folder，不拼 `%USERPROFILE%\\Desktop`。
+
+    Windows 11 上启用 OneDrive 备份的机器把桌面重定向到
+    `%USERPROFILE%\\OneDrive\\Desktop`，`~/Desktop` 那个目录要么不存在，要么是个
+    没人看的空壳——快捷方式放进去，用户在自己桌面上看不到任何东西。
+    """
+    if sys.platform != "win32":
+        return Path.home() / "Desktop"
+    import ctypes
+    buffer = ctypes.c_wchar_p()
+    guid = ctypes.create_string_buffer(16)
+    if ctypes.windll.ole32.CLSIDFromString(_DESKTOP_FOLDER_ID, guid) == 0 and \
+            ctypes.windll.shell32.SHGetKnownFolderPath(
+                guid, 0, None, ctypes.byref(buffer)) == 0:
+        try:
+            return Path(buffer.value)
+        finally:
+            ctypes.windll.ole32.CoTaskMemFree(buffer)
+    return Path(os.environ.get("USERPROFILE", Path.home())) / "Desktop"
+
+
+def desktop_entry(program: Path) -> tuple[Path, dict]:
+    """桌面快捷方式的路径与当前状态；属于另一份安装时不认领。
+
+    文件名是给人看的 `Peach.lnk`，不带启动项那串安装身份哈希：桌面上并排两个
+    `Peach-3f2a…lnk` 谁也分不清哪个是哪个。代价是同一台机器上的第二份安装认不到这个
+    图标，它会照实报「属于另一份 Peach 安装」，不覆盖。
+    """
+    path = desktop_directory() / "Peach.lnk"
+    current = shortcut("read", path)
+    if current["enabled"] and Path(current["target"]).resolve() != program.resolve():
+        raise ValueError("桌面快捷方式属于另一份 Peach 安装")
+    return path, current
+
+
 def windows_entry(config, program: Path) -> tuple[Path, dict]:
     directory = startup_directory()
     legacy = directory / "Peach.lnk"
@@ -133,10 +173,34 @@ def windows_entry(config, program: Path) -> tuple[Path, dict]:
     return path, current
 
 
+#: 桌面快捷方式只有 Windows 有。macOS 的等价物是 Finder 别名，得靠 osascript 造，
+#: 而 Dock 已经是那个平台放常用程序的地方。
+_NO_DESKTOP = "此系统未提供桌面快捷方式"
+
+
+def desktop_snapshot(config) -> dict:
+    """桌面快捷方式那一格的状态，自己一个 try。
+
+    不跟启动项共用异常出口：桌面上摆着另一份安装的 `Peach.lnk` 只该让这个开关关掉并
+    说出原因，不该把整个「开机自启」面板打成「状态未取得」，把还好着的两个开关一起锁住。
+    """
+    if sys.platform != "win32":
+        return {"desktop": False, "desktop_message": _NO_DESKTOP}
+    try:
+        program, _, _ = target(config)
+        _, entry = desktop_entry(program)
+        return {"desktop": entry["enabled"], "desktop_message": ""}
+    except (OSError, ValueError) as exc:
+        return {"desktop": False, "desktop_message": str(exc)}
+    except (KeyError, subprocess.TimeoutExpired):
+        return {"desktop": False, "desktop_message": "桌面快捷方式状态未取得"}
+
+
 def snapshot(config=None) -> dict:
     config = config or settings_file.load_config()
     if sys.platform not in {"win32", "darwin"}:
-        return {"available": False, "enabled": False, "silent": True, "message": "此系统未提供登录自启入口"}
+        return {"available": False, "enabled": False, "silent": True,
+                "message": "此系统未提供登录自启入口", **desktop_snapshot(config)}
     try:
         preference = json.loads((config.directory("state") / "desktop-startup.json").read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -155,23 +219,41 @@ def snapshot(config=None) -> dict:
             enabled = bool(entry.get("RunAtLoad", False))
             silent = "--show" not in entry.get("ProgramArguments", []) if enabled else bool(preference.get("silent", True))
         return {"available": program.is_file(), "enabled": enabled, "silent": silent,
-                "message": "" if program.is_file() else "未找到本机托盘入口"}
+                "message": "" if program.is_file() else "未找到本机托盘入口", **desktop_snapshot(config)}
     except (OSError, ValueError, KeyError, subprocess.TimeoutExpired):
-        return {"available": False, "enabled": False, "silent": True, "message": "启动项状态未取得"}
+        return {"available": False, "enabled": False, "silent": True,
+                "message": "启动项状态未取得", **desktop_snapshot(config)}
 
 
-def save(config, *, enabled: bool, silent: bool, executable: Path | None = None) -> dict:
-    if type(enabled) is not bool or type(silent) is not bool:
+def save(config, *, enabled: bool, silent: bool, desktop: bool, executable: Path | None = None) -> dict:
+    if type(enabled) is not bool or type(silent) is not bool or type(desktop) is not bool:
         raise ValueError("启动选项必须为开或关")
+    if desktop and sys.platform != "win32":
+        raise ValueError(_NO_DESKTOP)
     program, args, directory = target(config, executable=executable)
-    if enabled and not program.is_file():
+    if (enabled or desktop) and not program.is_file():
         raise ValueError("未找到本机托盘入口")
-    args = [*args, "--silent" if silent else "--show"]
     if sys.platform == "win32":
+        # 桌面图标固定 `--show`，跟登录自启的静默选项无关：用户是特意去点它的。托盘已经
+        # 在跑时 `main()` 拿不到单实例锁，`--show` 那一支正好打开网页，这跟点桌面图标该
+        # 发生的事是同一件。
+        try:
+            icon, existing = desktop_entry(program)
+        except ValueError:
+            # 桌面上的 `Peach.lnk` 是另一份安装的。要求开启就照实拒绝；要求关闭时它本来
+            # 就不是我们放的，跳过——不能因为它挡在那儿连「开机自启」这一格都存不下。
+            if desktop:
+                raise
+        else:
+            shortcut("write" if desktop else "remove", icon, target=str(program),
+                     arguments=subprocess.list2cmdline([*args, "--show"]),
+                     directory=str(directory), expected=existing.get("target", ""))
+        args = [*args, "--silent" if silent else "--show"]
         path, existing = windows_entry(config, program)
         shortcut("write" if enabled else "remove", path, target=str(program), arguments=subprocess.list2cmdline(args),
                  directory=str(directory), expected=existing.get("target", ""))
     elif sys.platform == "darwin":
+        args = [*args, "--silent" if silent else "--show"]
         path = Path.home() / "Library/LaunchAgents" / f"{MACOS_LAUNCH_AGENT_LABEL}.plist"
         entry = plistlib.loads(path.read_bytes()) if path.is_file() else {}
         if entry.get("ProgramArguments") and Path(entry["ProgramArguments"][0]).resolve() != program.resolve():
@@ -184,4 +266,5 @@ def save(config, *, enabled: bool, silent: bool, executable: Path | None = None)
     else:
         raise ValueError("此系统未提供登录自启入口")
     atomic_write_text(config.directory("state") / "desktop-startup.json", json.dumps({"silent": silent}))
-    return {"available": True, "enabled": enabled, "silent": silent, "message": ""}
+    return {"available": True, "enabled": enabled, "silent": silent, "message": "",
+            "desktop": desktop, "desktop_message": "" if sys.platform == "win32" else _NO_DESKTOP}

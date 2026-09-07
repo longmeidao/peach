@@ -102,7 +102,11 @@ class DesktopSettingsTests(unittest.TestCase):
         self.assertEqual(args, ['--data-root', str(self.data)])
         self.assertEqual(program.parent, self.program)
         with self.assertRaises(ValueError):
-            desktop_startup.save(self.config, enabled='false', silent=True)
+            desktop_startup.save(self.config, enabled='false', silent=True, desktop=False)
+        # 三个开关一视同仁。`desktop` 缺省会静默删掉桌面图标，所以它不给默认值，
+        # 路由漏传就在这里变成 400，而不是替用户做决定。
+        with self.assertRaises(ValueError):
+            desktop_startup.save(self.config, enabled=False, silent=True, desktop=None)
 
     def test_configuration_actions_require_local_origin_and_uninstall_confirmation(self):
         from fastapi import FastAPI
@@ -130,6 +134,57 @@ class DesktopSettingsTests(unittest.TestCase):
         with patch.object(desktop_startup, 'startup_directory', return_value=self.root), patch.object(desktop_startup, 'shortcut', side_effect=[
             {'enabled':False}, {'enabled':True,'target':str(self.root / 'Other.exe')}]), self.assertRaisesRegex(ValueError, '另一份'):
             desktop_startup.windows_entry(self.config, self.program / 'Peach.exe')
+
+    @unittest.skipUnless(os.name == 'nt', 'Windows known folder')
+    def test_desktop_directory_comes_from_the_known_folder_not_the_home_path(self):
+        """桌面目录问 shell 要，不拼 `%USERPROFILE%\\Desktop`。
+
+        开了 OneDrive 备份的 Windows 11 把桌面重定向到 `%USERPROFILE%\\OneDrive\\Desktop`，
+        拼出来那个目录用户根本看不到。判据取 shell 自己的答案：`SHGetKnownFolderPath`
+        一旦失败，函数会静默退回拼路径，只断言「返回了个存在的目录」是看不出来的。
+        """
+        shell = Path(os.environ.get('SystemRoot', r'C:\Windows')) / 'System32/WindowsPowerShell/v1.0/powershell.exe'
+        result = subprocess.run(
+            [str(shell), '-NoProfile', '-NonInteractive', '-Command',
+             "[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false);[Environment]::GetFolderPath('Desktop')"],
+            capture_output=True, text=True, encoding='utf-8', timeout=25,
+            creationflags=subprocess.CREATE_NO_WINDOW, check=True)
+        self.assertEqual(desktop_startup.desktop_directory(), Path(result.stdout.strip()))
+
+    @unittest.skipUnless(os.name == 'nt', 'Windows 原生快捷方式')
+    def test_desktop_shortcut_has_its_own_switch_and_yields_to_another_installation(self):
+        """桌面图标由第三个开关单独管，参数固定 `--show`，遇到别人的图标不覆盖。
+
+        `--show` 跟「静默启动」无关：静默只管开机那一次，桌面图标是用户特意去点的。托盘
+        已经在跑时 `tray.main()` 拿不到单实例锁，`--show` 那一支正好打开网页。
+
+        桌面上摆着另一份安装的 `Peach.lnk` 时，要求开启照实拒绝，要求关闭则跳过它——那个
+        图标本来就不是这份安装放的，不能因为它挡在那儿连「开机自启」都存不下。
+        """
+        startup = self.root / 'startup'
+        startup.mkdir()
+        program = self.program / 'Peach.exe'
+        icon = self.root / 'Peach.lnk'
+        with patch.object(desktop_startup, 'desktop_directory', return_value=self.root), \
+                patch.object(desktop_startup, 'startup_directory', return_value=startup), \
+                patch.object(desktop_startup, 'target', return_value=(program, ['--data-root', str(self.data)], self.program)):
+            state = desktop_startup.save(self.config, enabled=False, silent=True, desktop=True)
+            self.assertTrue(state['desktop'])
+            self.assertTrue(icon.is_file(), sorted(item.name for item in self.root.iterdir()))
+            self.assertIn('--show', desktop_startup.shortcut('read', icon)['arguments'])
+            self.assertEqual(sorted(item.name for item in startup.iterdir()), [])
+            self.assertTrue(desktop_startup.desktop_snapshot(self.config)['desktop'])
+
+            other = self.program / 'Other.exe'
+            other.touch()
+            desktop_startup.shortcut('write', icon, target=str(other), directory=str(self.program), expected=str(program))
+            with self.assertRaisesRegex(ValueError, '另一份'):
+                desktop_startup.save(self.config, enabled=False, silent=True, desktop=True)
+            self.assertEqual(desktop_startup.desktop_snapshot(self.config),
+                             {'desktop': False, 'desktop_message': '桌面快捷方式属于另一份 Peach 安装'})
+            desktop_startup.save(self.config, enabled=True, silent=True, desktop=False)
+            self.assertEqual(len(list(startup.iterdir())), 1)
+            self.assertTrue(icon.is_file())
 
     def _shortcut_round_trip(self, name):
         path = self.root / name
