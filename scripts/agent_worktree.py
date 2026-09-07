@@ -15,7 +15,7 @@ from pathlib import Path
 if not __package__:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     __package__ = "scripts"
-from . import check_readme_impact, test_evidence, test_runner, version_bump
+from . import changelog, check_readme_impact, test_evidence, test_runner, version_bump
 
 #: Claude Code 内置工作树的落点。分支集成后它自己不收：目录留在主检出里，成了一份看不出
 #: 区别的旧副本（见 CLAUDE.md）。`tests/test_repo_hygiene.py` 拦得住，但拦住之后没有任何
@@ -181,6 +181,9 @@ def _integrate_locked(repo: Path, worker_branch: str,
         "files": sorted(worker_files),
         "version": version_bump.read_version(main),
         "release_tag_entry": RELEASE_TAG_ENTRY,
+        # 发布提示挂在这里，是因为集成的输出是人和智能体每次都会读的那一份。挂在别处
+        # 就得有谁记着去查，而「记着」正是这条判据要替掉的东西。
+        "release": changelog.due(main),
     }
 
 

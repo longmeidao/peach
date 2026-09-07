@@ -1,6 +1,7 @@
 import re
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from scripts import changelog
 from scripts.changelog import Commit, entry_for, group_entries, has_section, promote, render_body
@@ -149,6 +150,66 @@ class PromoteTests(unittest.TestCase):
             "[未发布]: https://github.com/owner/repo/compare/v0.27.1...HEAD\n", "")
         with self.assertRaisesRegex(VersionError, "链接"):
             self.promoted(without_link)
+
+
+class SectionTests(unittest.TestCase):
+    """取出一节的正文：发布前要人确认的就是这段文字。"""
+
+    def test_a_section_stops_at_the_next_heading(self):
+        self.assertEqual(changelog.section_of(DOCUMENT, changelog.UNRELEASED),
+                         "### 新增\n\n- 配置页新增桌面快捷方式开关。\n"
+                         "\n### 修复\n\n- 忙态提示会说明正在进行的动作。")
+
+    def test_the_last_section_stops_before_the_link_block(self):
+        self.assertEqual(changelog.section_of(DOCUMENT, "0.27.1"), "第四个预发布。")
+
+    def test_a_version_without_a_section_yields_nothing(self):
+        self.assertEqual(changelog.section_of(DOCUMENT, "0.28.0"), "")
+
+
+class DueTests(unittest.TestCase):
+    """该不该发下一版。判据只看使用者那一侧，不看集成了多少次。"""
+
+    def _due(self, subjects, *, days):
+        commits = [Commit(subject, "") for subject in subjects]
+        with mock.patch.object(changelog, "read_commits", return_value=commits), \
+                mock.patch.object(changelog, "_waiting_days", return_value=days), \
+                mock.patch.object(changelog.version_bump, "release_range",
+                                  return_value="v0.1.0..HEAD"):
+            return changelog.due(Path("."))
+
+    def test_a_hundred_refactors_are_zero_changes_to_a_user(self):
+        """这条判据要跟「集成了多少次」分开，不然又变成按工作量发版。"""
+        found = self._due([f"refactor(web): 第 {n} 次收口" for n in range(100)], days=30)
+        self.assertEqual((found["entries"], found["due"], found["why"]), (0, False, []))
+
+    def test_the_weekly_slot_needs_something_to_put_in_it(self):
+        subjects = ["fix(web): 修一处"]
+        self.assertFalse(self._due(subjects, days=changelog.DUE_DAYS - 1)["due"])
+        ripe = self._due(subjects, days=changelog.DUE_DAYS)
+        self.assertTrue(ripe["due"])
+        self.assertIn(f"距上一版 {changelog.DUE_DAYS} 天", ripe["why"][0])
+
+    def test_enough_entries_do_not_wait_for_the_slot(self):
+        subjects = [f"feat(web): 第 {n} 件事" for n in range(changelog.DUE_ENTRIES)]
+        found = self._due(subjects, days=0)
+        self.assertTrue(found["due"])
+        self.assertIn("不必等满周期", found["why"][0])
+
+    def test_breaking_changes_and_security_fixes_never_wait(self):
+        for subject, group in (("feat(config)!: 换掉盘符键", changelog.BREAKING),
+                               ("fix(security): 凭据不再进日志", changelog.SECURITY_GROUP)):
+            with self.subTest(group=group):
+                found = self._due([subject], days=0)
+                self.assertTrue(found["due"])
+                self.assertIn(group, found["why"][-1])
+                self.assertIn("不等周期", found["why"][-1])
+
+    def test_the_counts_it_reports_are_what_calibrates_the_threshold(self):
+        """阈值是没有样本时的起点，所以每次都要把实际值报出来。"""
+        found = self._due(["feat: 甲", "fix: 乙", "fix: 丙"], days=2)
+        self.assertEqual((found["entries"], found["days"]), (3, 2))
+        self.assertEqual(found["groups"], {"新增": 1, "修复": 2})
 
 
 class ShippedChangelogTests(unittest.TestCase):
