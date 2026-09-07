@@ -352,7 +352,7 @@ class WebUiSourceTests(unittest.TestCase):
         ":focus",              # 焦点环：:focus / :focus-visible / :focus-within
         ".geist-progress", ".watchprogress", ".vjs-play-progress", ".vjs-progress-holder",
         ".trace .bar", ".tokbar",  # 进度与数据
-        ":is(#censorSetting,#detailAutoplaySetting,.ptoggle):checked",  # Toggle 开态：Geist Toggle 实测轨道 rgb(0,112,243)
+        ".ptoggle:checked",  # Toggle 开态：Geist Toggle 实测轨道 rgb(0,112,243)
         ".entitylink", ".flink", ".fsourcelink", ".fcred a", ".tokauthor>a", ".confighelp a", ".taste-history-guide-content a", ".geist-text-link",  # 真正的链接
     )
 
@@ -1125,6 +1125,29 @@ class WebUiSourceTests(unittest.TestCase):
             self.assertIn("cursor:not-allowed", css[start:css.index("}", start)],
                           f"{selector} 要给出禁止光标")
 
+    def test_a_disabled_toggle_reads_grey_even_when_it_is_on(self):
+        """开着又被禁的开关必须是灰的，不能还留着那抹蓝。
+
+        「静默启动」只在「开机后启动 Peach」打开时才有意义，所以后者关着时它拿到
+        `disabled`。可轨道此前照旧是蓝的，只有标签变灰：Toggle 的选择器写成
+        `:is(#censorSetting,#detailAutoplaySetting,.ptoggle)`，而 `:is()` 取的是里面
+        最强那一项的权重——混一个 id 进去，整组就是 (1,1,0)，同文件末尾追加的
+        `.ptoggle:disabled` (0,2,0) 再也压不过 `:checked`。选择器里不许再有 id。
+        """
+        css = stylesheet_source()
+        self.assertNotIn("#censorSetting", css, "Toggle 的样式不靠 id 选中")
+        self.assertNotIn("#detailAutoplaySetting", css, "Toggle 的样式不靠 id 选中")
+        self.assertPageContains(".ptoggle:disabled{background:var(--surface);cursor:not-allowed}")
+        self.assertPageContains(".ptoggle:disabled::after{background:var(--muted)}")
+        self.assertPageContains(".ptoggle:disabled:checked{background:var(--surface)}")
+        # 禁用要写在开态之后，同权重下后写的赢。
+        self.assertLess(css.index(".ptoggle:checked{"), css.index(".ptoggle:disabled{"),
+                        "禁用规则排在开态之后才压得住它")
+        # 两颗用 id 接线的开关也得带上这个类，否则它们一条样式都拿不到。
+        for line in ('class="ptoggle" type="checkbox" id="censorSetting"',
+                     'class="ptoggle" type="checkbox" id="detailAutoplaySetting"'):
+            self.assertPageContains(line)
+
     def test_font_weights_stay_on_the_three_geist_steps(self):
         """字重只有 400／500／600 三档。
 
@@ -1725,7 +1748,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('appSettings.detailAutoplay=appSettings.detailAutoplay!==false;')
         self.assertPageContains('mountDetailPlayer(it,vv,appSettings.detailAutoplay)')
         self.assertPageContains('mountDetailPlayer(item,followVideo,appSettings.detailAutoplay,{')
-        self.assertPageContains('id="detailAutoplaySetting"')
+        self.assertPageContains('class="ptoggle" type="checkbox" id="detailAutoplaySetting"')
 
     def test_entity_links_have_no_external_arrow(self):
         # `target="_blank"` 已经是外链，箭头只是重复；一排链接里它还会挤掉本就不多的
@@ -6086,7 +6109,7 @@ class WebUiSourceTests(unittest.TestCase):
         """
         # 顶栏不出现独立开关，开关在设置面板「安全」组。
         self.assertPageLacks('id="censorBtn"')
-        self.assertPageContains('id="censorSetting" role="switch" aria-describedby="sfwDescription"')
+        self.assertPageContains('class="ptoggle" type="checkbox" id="censorSetting" role="switch" aria-describedby="sfwDescription"')
         self.assertPageContains('<b>SFW 模式</b><small id="sfwDescription">')
         self.assertPageContains('模糊、降低饱和度并压暗全站图片和视频，包括封面、头像与详情预览；停止悬停预览。文字、品牌标识和来源图标保持可见。')
         self.assertPageLacks('共享屏幕或截图前开启，遮住全站封面与预览图。')
@@ -6156,8 +6179,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertNotIn("box-shadow:0 8px 32px -12px", self.css, "浮层靠发丝线不靠投影")
         # 布尔开关是 Geist 中号 Toggle（36×20 轨道 + 17px 圆点），不是原生复选框；
         # Geist 的 Switch 是分段选择器，别用错控件。
-        self.assertPageContains(":is(#censorSetting,#detailAutoplaySetting,.ptoggle){appearance:none;-webkit-appearance:none;width:36px;height:20px;flex:none;")
-        self.assertPageContains(":is(#censorSetting,#detailAutoplaySetting,.ptoggle):checked{background:var(--tungsten)}")
+        self.assertPageContains(".ptoggle{appearance:none;-webkit-appearance:none;width:36px;height:20px;flex:none;")
+        self.assertPageContains(".ptoggle:checked{background:var(--tungsten)}")
         # 没有直接证据的 command-menu 入场动画与无有效高度约束的复核卡
         # Scroller 不应继续作为「Vercel 对齐」进入产品。
         self.assertPageLacks("animation:panel-in")
