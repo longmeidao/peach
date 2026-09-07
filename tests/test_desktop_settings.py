@@ -141,6 +141,20 @@ class DesktopSettingsTests(unittest.TestCase):
         desktop_startup.shortcut('remove', path, expected=result['target'])
         self.assertFalse(path.exists())
 
+    @unittest.skipUnless(os.name == 'nt', 'Windows 原生快捷方式')
+    def test_a_failed_shortcut_call_reports_what_powershell_said(self):
+        """失败的消息带上 PowerShell 的第一行原因，不只给一句「请检查权限」。
+
+        权限不足、`WScript.Shell` COM 起不来、路径没落地、扩展名不是 `.lnk`——这几种
+        在只有一句提示的消息里长得一模一样。CI 的 Windows runner 上这一步失败过，日志里
+        除了那句提示什么都没有，无从判断是哪一种。
+        """
+        with self.assertRaises(OSError) as raised:
+            desktop_startup.shortcut('write', self.root / '不是快捷方式.txt',
+                                     target=str(self.program / 'Peach.exe'))
+        self.assertIn('启动项未能保存', str(raised.exception))
+        self.assertIn('PowerShell', str(raised.exception))
+
     @unittest.skipUnless(os.name == 'nt', 'Windows 系统卸载助手')
     def test_native_uninstall_removes_only_temporary_owned_program_and_data(self):
         for key in settings_file.DIRECTORY_KEYS:
