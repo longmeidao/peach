@@ -1121,7 +1121,7 @@ function ut() {
 			}), "CloudDrive 速度与缓存建议"] }),
 			/* @__PURE__ */ J("p", {
 				class: "confighelp",
-				children: "看缓存放在哪块硬盘上，照那一行填。先保证播放不卡，再拿同一个视频比较打开速度、拖动和流量；数值填得越大不一定越快。"
+				children: "看缓存放在哪块硬盘上，照那一行填。表里是起步值，先保证播放不卡，再拿同一个视频比较打开速度、拖动和流量；填得越大不一定越快。"
 			}),
 			/* @__PURE__ */ J("div", {
 				class: "cloudguide-tablewrap",
@@ -1158,29 +1158,30 @@ function ut() {
 			/* @__PURE__ */ J("ul", {
 				class: "cloudguide-notes",
 				children: [
-					/* @__PURE__ */ J("li", { children: "缓存尽量放在内置固态盘上。只有机械硬盘时先用按需读取，反复看同一批文件才打开文件夹缓存。" }),
-					/* @__PURE__ */ J("li", { children: "256 / 128 KB 适合扫描、抽帧和拖动播放。看高码率视频还是缓冲，就试 512 / 256 KB；速度没提上来就调回去。" }),
-					/* @__PURE__ */ J("li", { children: "缓存上限和清理方式在 CloudDrive「设置」里填。清理方式选 LRU，也就是空间不够时先删最久没用过的缓存。上限不要填 0，系统盘至少留 40 GiB。填完重新打开这一页确认存住了，再看硬盘实际少了多少。" }),
-					/* @__PURE__ */ J("li", { children: "读取长度和下载线程在每个网盘各自的下载设置里改，线程都从 2 开始。115 不要超过客户端标出的上限；PikPak 和 WebDAV 在带宽有余、加到 4 确实更快时才留 4。能开直链就开，开完放个视频确认还能播。" }),
-					/* @__PURE__ */ J("li", { children: "PikPak 按 CloudDrive 当前提供的接入方式配置。走 WebDAV 时先确认服务端允许直链；115 的连接方式不能照搬过来。" }),
-					/* @__PURE__ */ J("li", { children: "看视频时先暂停批量抽帧，关掉不用的播放页。码率按 Mbps 算，下载速度按 MB/s 算，除以 8 才能对上：80 Mbps 的视频要 10 MB/s 才够，留出余量建议稳定在 15 MB/s。" }),
-					/* @__PURE__ */ J("li", { children: "Buffer Cache 占内存，磁盘缓存和文件夹缓存占硬盘，三处是分开的设置，改一个管不住另外两个。文件显示的大小是逻辑大小，也不等于真正占掉的盘。" })
+					/* @__PURE__ */ J("li", { children: "缓存上限和清理方式填在 CloudDrive「设置」里，清理方式选 LRU。上限不要填 0，系统盘至少留 40 GiB。" }),
+					/* @__PURE__ */ J("li", { children: "读取长度和下载线程填在每个网盘各自的下载设置里，线程都从 2 开始。看高码率视频还是缓冲就试 512 / 256 KB，打开速度、拖动和流量都没改善就调回去。" }),
+					/* @__PURE__ */ J("li", { children: "Buffer Cache 占内存，磁盘缓存和文件夹缓存占硬盘，三处是分开的设置，改一个管不住另外两个。" }),
+					/* @__PURE__ */ J("li", { children: "填完重新打开 CloudDrive 的设置页确认存住了，再看硬盘实际少了多少。播放期间先暂停批量抽帧、关掉不用的播放页。" })
 				]
 			}),
 			/* @__PURE__ */ J("p", {
 				class: "confighelp",
-				children: ["表里的容量和并发是起步值，按实际占盘和播放效果再调。直链和代理是两个开关，连接慢时分别试一次比较，不能只看开关有没有打开。", /* @__PURE__ */ J("a", {
-					class: "externallink",
-					href: "https://www.clouddrive2.com/features.html",
-					target: "_blank",
-					rel: "noreferrer",
-					children: ["缓存说明", /* @__PURE__ */ J("svg", {
-						class: "externalmark",
-						viewBox: "0 0 24 24",
-						"aria-hidden": "true",
-						children: /* @__PURE__ */ J("use", { href: "#i-external-link" })
-					})]
-				})]
+				children: [
+					"三处缓存分别管什么、码率和速度怎么换算、线程上限与直链代理怎么取舍，以及这些起步值的来源，都在",
+					/* @__PURE__ */ J("a", {
+						class: "externallink",
+						href: "https://github.com/longmeidao/peach/blob/master/docs/CLOUDDRIVE.md",
+						target: "_blank",
+						rel: "noreferrer",
+						children: ["CloudDrive 配置与调优", /* @__PURE__ */ J("svg", {
+							class: "externalmark",
+							viewBox: "0 0 24 24",
+							"aria-hidden": "true",
+							children: /* @__PURE__ */ J("use", { href: "#i-external-link" })
+						})]
+					}),
+					"。"
+				]
 			})
 		] })]
 	});

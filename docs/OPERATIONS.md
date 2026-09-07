@@ -17,61 +17,19 @@
 
 ### CloudDrive 配置
 
-1. 在 CloudDrive 中登录网盘并建立挂载点，打开「启动时自动挂载」。步骤见
-   [CloudDrive 官方帮助](https://www.clouddrive2.com/help.html)。
-2. 在 Peach 首次设置页或托盘管理服务的「管理 → 配置」中添加文件夹，选择对应来源。
-   115 使用来源 ID `115`，PikPak 使用 `pikpak`，本地磁盘使用 `local`；每个来源可有多个互不重叠的根。
-3. Windows 填本机盘符路径。macOS 的「本机文件夹」填本机挂载点，「Windows 中的对应路径」填该来源原有的
-   Windows 盘符根，例如 `B:\` 对应 `/Volumes/CloudDrive/115`、`A:\` 对应
-   `/Volumes/CloudDrive/PikPak`。已有馆藏必须沿用原盘符路径。
-4. 保存配置，由托盘重新载入。配置页「挂载状态」逐根显示在线或离线；刷新状态保留尚未保存的输入。
-   Windows 的 Peach 与 CloudDrive 应在同一普通用户会话下运行；提升权限的进程可能看不到挂载盘。
-5. 勾选扫描时，托盘顺序扫描配置内的在线来源，离线根跳过。恢复挂载后可再次勾选扫描并保存。
+115 与 PikPak 由 CloudDrive 挂成本机盘，Peach 只当普通文件夹读。挂载步骤、来源 ID、
+macOS 的盘符映射、三处缓存的分工、读取长度与线程的起步值及其取证都在
+[CloudDrive 配置与调优](CLOUDDRIVE.md)，只在那一份里维护；配置页的「CloudDrive 速度与
+缓存建议」是它的摘要，链回同一份文档。
 
-选择网盘来源时，首启页与配置页按本机系统检测 CloudDrive 和挂载驱动；未检测到安装会提供带外链图标的下载入口。
-Windows 读取软件安装清单识别 WinFsp，macOS 检查 macFUSE 安装目录；便携版 CloudDrive 可通过 PATH 检测。
-安装证据与挂载在线状态分别显示。运行信息中缺少 FFmpeg 或 ffprobe 时提供 FFmpeg 工具包下载；首次设置缺少 OpenSSL 时提供下载入口。
+Peach 这一侧的行为：首启页与配置页按本机系统检测 CloudDrive 和挂载驱动，未检测到安装会提供
+带外链图标的下载入口；Windows 读取软件安装清单识别 WinFsp，macOS 检查 macFUSE 安装目录，
+便携版 CloudDrive 可通过 PATH 检测；安装证据与挂载在线状态分别显示。运行信息中缺少 FFmpeg
+或 ffprobe 时提供 FFmpeg 工具包下载；首次设置缺少 OpenSSL 时提供下载入口。
 
 离线来源允许保留配置，重叠盘符根或本机挂载点会在对应行报错。来源判定沿用 `asset.location`，
 115/PikPak 进入既有网盘流量策略。保存配置不修改已有资产的来源归属和账本路径。
 直接运行 CLI 的部署使用配置文件管理；首次网页引导支持相同来源，终端 `peach init` 的目录问答用于本地来源。
-
-对应 macOS 配置示例：
-
-```toml
-[media.locations]
-"115" = ['B:\']
-pikpak = ['A:\']
-
-[media.mounts]
-"115" = ['/Volumes/CloudDrive/115']
-pikpak = ['/Volumes/CloudDrive/PikPak']
-```
-
-#### 速度与缓存的起步配置
-
-首启与配置页的「CloudDrive 速度与缓存建议」按缓存所在硬盘选择：机械盘或 ≤8 GB 内存为
-10–20 GiB，SATA SSD / 8–16 GB 为 20–50 GiB，NVMe / ≥16 GB 为 50–100 GiB。
-这些是容量预算建议，不是已测得的速度最优值。优先内置 SSD，系统盘至少保留 40 GiB。
-默认／最小读取长度从 256／128 KB 开始；连续高码率播放可比较 512／256 KB，冷启动、拖动、
-流量与播放都无改善就恢复。115 从 2 下载线程起步且遵守客户端上限；PikPak/WebDAV 从 2 起步，
-只有实测提升才试 4。Peach 同时读取的视频从 1–2 个起步，播放期间暂停批量抽帧。
-
-2026-09-06 核对历史会话与当前本机配置（仅输出性能字段，未读取或复制登录字段）：
-
-- 2026-08-13 Claude 会话 `42169be3-c851-4bef-a71c-727bf7b95220` 记录读取长度 256／128 KB、
-  `support_direct_link=true`、30 GiB 缓存上限；“PikPak 必须改原生 API”在同一会话已纠正，不能继续用作建议。
-- 2026-08-15 Codex 会话 `019ffe93-ba7e-7e43-a1b0-5668d1b513b6` 实测每条 115 下载约 2.02 MB/s，
-  旧播放连接争用带宽；50 GiB 与 LRU 有核验记录。此速度属于当时的 CDN，不能代表今天。
-- 历史曾出现上限 0 导致约 911 GB 实占，也曾设置 30 GiB 后仍超限；“所有块最近都读过所以
-  LRU 无法淘汰”只是当时的推测，没有实证，不能作为根因。保存后须重开设置并观察实际占盘。
-- 当前 `CloudDrive.WinUI` 性能字段为 256／128 KB、直链开启、100 GiB、LRU。
-  本次没有改 CloudDrive、清缓存、重启挂载或进行新的吞吐测试。
-
-[官方帮助](https://www.clouddrive2.com/help.html)、[缓存说明](https://www.clouddrive2.com/features.html)
-与[版本记录](https://www.clouddrive2.com/download.html) 核验于 2026-09-06；缓存分为按需读块、
-文件夹磁盘缓存及内存，逻辑文件大小不等于实际占盘。直链与线程选项以安装版本和服务端能力为准。
-历史建议中“读取块缩小八倍就能减少八倍流量”没有改后冷缓存对照证据，不承诺该收益。
 
 ### 初始化与托盘
 

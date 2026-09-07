@@ -11,7 +11,7 @@ README 面向初次访问项目的人，依次解释定位、核心能力、开�
 | 前端工具与产物 | `frontend/package.json`、`docs/FRONTEND.md` |
 | 桌面包与平台范围 | `docs/TESTING_DESKTOP.md`、`.github/workflows/release.yml` |
 | 当前行为与已部署范围 | 实现与测试、`docs/STATUS.md`、`docs/PRODUCT_BACKLOG.md` |
-| 来源、配置与数据边界 | `docs/SOURCING.md`、`docs/OPERATIONS.md` |
+| 来源、配置与数据边界 | `docs/SOURCING.md`、`docs/OPERATIONS.md`、`docs/CLOUDDRIVE.md` |
 
 README 迭代绑定 Codex 与 Claude 共用的工作树交付流程。每次提交前核对暂存差异，
 涉及用户可见能力、安装、平台或构建要求时，同批更新中英文。只改变内部实现时保留 README，
