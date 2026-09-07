@@ -518,7 +518,7 @@ Windows 空数据预览的项目 CA HTTPS、合成 Cookie 保存／撤销、DMM 
 - **Logo 文件一律是不透明方图。** 小位铺满（cover）；大位按 contain 摆，图不足框的八成时不再放大，
   原尺寸居中、四周用同一张图放大模糊补底（页面侧的 `data-fit-native`）。
   边距和底色烤进文件，页面不再各自补救。
-  唯一入口是 `peach.images.bake_square`，`classify_plate` 给出它据以分流的判定：
+  位图的唯一入口是 `peach.images.bake_square`，`classify_plate` 给出它据以分流的判定：
   - `mark`（有透明像素，如 PREMIUM 的全透明底蓝色字标）——按 alpha 外接框裁掉透明边，居中放到**白色
     不透明**方底上，内容占边长 `PLATE_CONTENT_RATIO`（0.76，四周各留约 12%），像素不缩放，出不透明 PNG。
   - `tile`（完全不透明，如 M's Video Group 400×400 黑底方块、Natural High 红底、Hon Naka 64×64 青底）——
@@ -526,11 +526,21 @@ Windows 空数据预览的项目 CA HTTPS、合成 Cookie 保存／撤销、DMM 
   写入侧只有两条路径，规则同一条：`harvest_studio_icons.py` 的 `install()` 落盘前烤，
   `normalize_studio_logos.py` 对历史文件回溯（目录下所有 `*.img`，含 `.icon.img`／`.logo.img`）。
   两者都幂等——烤出来的产物再跑一次不再有动作。女优头像等照片不走这条路径，不加白边。
-  矢量标识（4 个 `image/svg+xml`：DarkRoomVR、TeamSkeetXReislin、TeenFidelity、VirtualTaboo）不栅格化，
-  复核件上记 `vector` 原样留着——烤底按像素判透明和取外接框，矢量得先定目标尺寸再栅格，那是另一件事。
-  真实目录的 dry-run 实测 27 个待改：26 个 `mark` 待烤白底（Attackers、PREMIUM、MOODYZ、HEYZO、
-  Natural High、BangBus／BangBros18 各三份变体等），`pikpak.img` 116×68 是唯一的不透明长条待补方。
-  已经是不透明方图的（M's Video Group 那类整块 tile）不进复核件。回溯真实目录需另行授权。
+  `install()` 只收位图：矢量烤不出方图，它按「拒绝安装」处理，所以目录里那 4 张 SVG 是更早的遗留，
+  归一由 `normalize_studio_logos.py` 补上。
+  矢量标识（4 个 `image/svg+xml`：DarkRoomVR、TeamSkeetXReislin、TeenFidelity、VirtualTaboo）
+  走 `peach.images.bake_square_vector`：同样的 76% 边距，但方底由外层 SVG 给，原文档整个塞进
+  嵌套 `<svg>`，一个节点都不改写——栅格化会把「放多大都清晰」这个唯一优势丢掉。内容框直接取
+  `viewBox`：4 张渲染后实测，决定方框边长的长边都是 tight 的（横向占满 0.97～1.00），
+  纵向留白只影响居中。**底色不写死白**：栅格化一张 256 px 探针数内容像素，在白底上还看得见的
+  比例低于 `PLATE_VISIBLE_RATIO`（0.7）就配深底 `#111111`。DarkRoomVR 的「DARK ROOM」和
+  TeamSkeetXReislin 的「TEAM」都是白字，白底可见率实测 0.20 与 0.52，配白底等于把半个标识抹掉；
+  TeenFidelity 0.82、VirtualTaboo 1.00 仍走白底。位图那条路目前仍一律白底——已装的 26 张
+  实测没有一张被白底吞掉，不为一个没出现的情况改动既有产物。
+  外层根元素上留 `data-peach-plate="1"`，重跑据此跳过——矢量没有像素可读，不靠这个标记就会越套越多。
+  `viewBox`、`width`／`height` 都没有的空壳量不出比例，仍记 `vector` 原样留着。
+  位图那批已经回溯完（26 个 `mark` 烤白底、5 个长条补方，边车在 `*.img.normalization.json`）；
+  2026-09-07 的 dry-run 只剩 4 个 `would-plate`，都是上面那 4 张矢量。回溯真实目录需另行授权。
   页面三处取图位（品牌小圆片 `.brandpill .mk`、身份格 `.idface`、厂牌页 160 px 大位 `.entityportrait`）
   的 `img` 统一 `object-fit: cover` 铺满方框，不加 inset、不加 padding、不改 contain：文件已经带够边距，
   页面再补一层就在图自带的底之外多围出一圈框，而三处各自补救的结果必然互相不一致。占位底色

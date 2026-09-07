@@ -201,7 +201,7 @@ CloudDrive 为外部应用，本项目不捆绑其二进制或依赖其管理 AP
 | XenForo 论坛解析 | gallery-dl `v1.32.11` / `2adf2a8e`（GPL-2.0）的 `extractor/xenforo.py` 只作协议证据：登录先查 cookie 再走账号密码、`article[data-content]` 楼层、`.pageNav` 分页、`data-s9e-mediaembed` 嵌入；cyberdrop-dl `5.6.21`（GPL-3.0，2024-09 起按站方要求下线 SimpCity）只作历史参照。两者都是完整下载器，不引入运行时 | f95zone 与 simpcity 共用一份 `_xenforo_posts` / `_xenforo_thread_title` / `_xenforo_search_threads`（站内搜索：先取会话绑定的 `_xfToken`，再 POST `/search/search`，按标题命中并带回版块标签）；Peach 自己负责 cookie 只发回来源站、末页由分页导航自算（HTTPX 跟随重定向会丢显式 Cookie）、纯讨论楼层过滤与 release 语义。gallery-dl 把 simpcity 登录 cookie 名写死为 `ogaddgmetaprof_user`，而站点前缀已轮换为 `yMziCv8BrCZz1o7_`，所以 Peach 不认 cookie 名、只透传整条 Cookie 头 |
 | HTML 适配器 | Beautiful Soup 或 selectolax | 来源专用选择器和来源记录 |
 | 位图 | Pillow | 头像/Logo 质量和来源策略 |
-| SVG 光栅化 | `resvg-py==0.5.0`（resvg，MPL-2.0 绑定） | 只用于把站点自己的矢量图标转成位图再交给 Pillow。2026-09-02 实测 threads 的成品 app 图标只以 SVG 形式提供，不光栅化就只能退回位图 favicon。选它而不是 cairosvg：后者在 Windows 上要另装 cairo 原生库，前者是 abi3 轮子，win_amd64 / macosx_11_0_arm64 / macosx_10_12_x86_64 都有官方预编译，两个平台都不必装系统依赖。候选发现、内容比例判定、缓存与失败回退仍在 Peach。 |
+| SVG 光栅化 | `resvg-py==0.5.0`（resvg，MPL-2.0 绑定） | 只用于把站点自己的矢量图标转成位图再交给 Pillow。2026-09-02 实测 threads 的成品 app 图标只以 SVG 形式提供，不光栅化就只能退回位图 favicon。选它而不是 cairosvg：后者在 Windows 上要另装 cairo 原生库，前者是 abi3 轮子，win_amd64 / macosx_11_0_arm64 / macosx_10_12_x86_64 都有官方预编译，两个平台都不必装系统依赖。候选发现、内容比例判定、缓存与失败回退仍在 Peach。厂牌矢量标识的方形归一只在这里借一张探针：`images.bake_square_vector` 用标准库 ElementTree 包一层外层 SVG，产物仍是矢量，栅格化只用来数像素、判该配白底还是深底。 |
 | 搜索 | SQLite FTS5 | 索引字段、排序、profile 感知筛选 |
 | 相关推荐 | OpenAver `dca4c0c368ea0c2db9cf15e48977de2fc75e7077` 的 Tag IDF + 系列／片商／出演者规则只作固定算法参考（MIT） | 独立实现规范实体评分、MMR 多样性、稳定 seed、解释原因与负反馈边界；不复制上游 UI／源码 |
 | 女优姓名对照 | `li-peifeng/Jav-Actors-Mapping` 的固定 revision，仅作私有输入（仓库未声明许可证，不随 Peach 分发） | 精确匹配、冲突复核、别名、来源与真实 ledger 写入 |

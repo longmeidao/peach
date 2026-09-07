@@ -923,6 +923,61 @@ class OperationalScriptTests(unittest.TestCase):
         self.assertIsNone(classify_plate(b"not an image"))
         self.assertIsNone(bake_square(b"not an image"))
 
+    def test_a_vector_mark_gets_the_same_plate_without_rasterising(self):
+        """矢量标识：白底和边距一样烤进文件，但是包一层外层 SVG，原文档不动。
+
+        VirtualTaboo 装的就是一张 207×70 的透明底字标。栅格化会把「放多大都清晰」
+        这个唯一优势丢掉，所以方底由外层 SVG 给，内容整个塞进嵌套 `<svg>`。
+        """
+        import xml.etree.ElementTree as ElementTree
+
+        from peach.images import (PLATE_CONTENT_RATIO, SVG_NS, bake_square_vector,
+                                  vector_image_size)
+
+        def svg(body, box="0 0 207 70"):
+            return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="{box}">'
+                    f'{body}</svg>').encode("utf-8")
+
+        wordmark = ('<svg xmlns="http://www.w3.org/2000/svg" width="207" height="70" '
+                    'viewBox="0 0 207 70"><path fill="#D14747" d="M105 49h9v3z"/>'
+                    '</svg>').encode("utf-8")
+
+        self.assertEqual(vector_image_size(wordmark), (207.0, 70.0))
+        plated = bake_square_vector(wordmark)
+        self.assertIn(b'd="M105 49h9v3z"', plated, "原文档照抄，不栅格化")
+
+        root = ElementTree.fromstring(plated)
+        side = float(root.get("width"))
+        self.assertEqual(root.get("height"), root.get("width"), "包出来必须是方的")
+        self.assertAlmostEqual(207 / side, PLATE_CONTENT_RATIO, places=6,
+                               msg="长边占边长约 76%，四周各留约 12%")
+        plate, inner = list(root)
+        self.assertEqual(plate.tag, f"{{{SVG_NS}}}rect")
+        self.assertEqual(plate.get("fill"), "#ffffff", "底是白的")
+        self.assertEqual(plate.get("width"), root.get("width"), "白底铺满整个方框")
+        self.assertEqual(inner.get("viewBox"), "0 0 207 70", "内容自己的坐标系不变")
+        self.assertAlmostEqual(float(inner.get("x")), (side - 207) / 2, places=6)
+        self.assertAlmostEqual(float(inner.get("y")), (side - 70) / 2, places=6)
+
+        self.assertEqual(bake_square_vector(plated), plated,
+                         "已经包过方底的原样返回，重复跑不会越套越多")
+
+        # 白字标配白底等于把标识抹掉：DarkRoomVR 的「DARK ROOM」和
+        # TeamSkeetXReislin 的「TEAM」都是白的，白底可见率 0.20 与 0.52。
+        pale = bake_square_vector(svg('<rect x="10" y="10" width="187" height="50" '
+                                      'fill="#ffffff"/>'))
+        self.assertEqual(ElementTree.fromstring(pale)[0].get("fill"), "#111111",
+                         "浅色内容改配深底")
+        self.assertEqual(
+            ElementTree.fromstring(bake_square_vector(svg(
+                '<rect x="10" y="10" width="187" height="50" fill="#101820"/>')))[0]
+            .get("fill"), "#ffffff", "深色内容仍是白底，和位图的 mark 一条规则")
+        # 空壳没有 viewBox 也没有 width／height：比例无从算起，方框边长也就无从定。
+        self.assertIsNone(vector_image_size(b'<svg xmlns="http://www.w3.org/2000/svg"/>'))
+        self.assertIsNone(bake_square_vector(b'<svg xmlns="http://www.w3.org/2000/svg"/>'))
+        self.assertIsNone(bake_square_vector(b"not an image"))
+        self.assertIsNone(bake_square_vector(b"<html><body>404</body></html>"))
+
     def test_studio_avatar_candidates_never_guess_a_handle_by_default(self):
         """猜错 handle 会产出一个「看起来很官方」的错误 Logo，和它要取代的搜索猜测同一种失败。"""
         module = load_script("fetch_studio_avatar_candidates")
@@ -946,7 +1001,7 @@ class OperationalScriptTests(unittest.TestCase):
         """整个目录归一成不透明方图；测试只能写临时目录。
 
         `*.img` 全在范围内，`<safe>.icon.img` 与 `<safe>.logo.img` 也算。带透明的
-        烤白底，不透明的长条补方，已经是不透明方图的一个字节都不动。
+        烤白底，不透明的长条补方，矢量包一层白底外层 SVG，已经归一的一个字节都不动。
         """
         from PIL import Image
 
@@ -971,11 +1026,15 @@ class OperationalScriptTests(unittest.TestCase):
                 "flat.icon.img": png(Image.new("RGB", (256, 256), (12, 12, 12))),
                 "sign.logo.img": png(mark),
                 "vector.img": b'<svg xmlns="http://www.w3.org/2000/svg"/>',
+                "sign.icon.img": ('<svg xmlns="http://www.w3.org/2000/svg" '
+                                  'viewBox="0 0 200 60"><path d="M1 1h2v2z"/>'
+                                  '</svg>').encode("utf-8"),
             }
+            vectors = {"vector.img", "sign.icon.img"}
             for name, payload in originals.items():
                 (root / name).write_bytes(payload)
                 Path(f"{root / name}.ct").write_text(
-                    "image/svg+xml" if name == "vector.img" else "image/png",
+                    "image/svg+xml" if name in vectors else "image/png",
                     encoding="utf-8")
 
             dry = {str(row["file"]): row for row in module.normalize(root)}
@@ -983,8 +1042,10 @@ class OperationalScriptTests(unittest.TestCase):
             self.assertEqual(dry["wide.img"]["kind"], "tile")
             self.assertEqual(dry["sign.logo.img"]["action"], "would-bake")
             self.assertEqual(dry["sign.logo.img"]["kind"], "mark")
+            self.assertEqual(dry["sign.icon.img"]["action"], "would-plate")
+            self.assertEqual(dry["sign.icon.img"]["kind"], "vector")
             self.assertEqual(dry["vector.img"]["action"], "vector",
-                             "矢量标识本脚本不栅格化，单列出来而不是记成坏文件")
+                             "连内容框都没声明，方框边长无从算起，单列出来而不是记成坏文件")
             self.assertNotIn("flat.icon.img", dry, "已经是不透明方图，不进复核件")
             for name, payload in originals.items():
                 self.assertEqual((root / name).read_bytes(), payload, "dry-run 不得改图")
@@ -995,6 +1056,13 @@ class OperationalScriptTests(unittest.TestCase):
                        module.normalize(root, apply=True, backup_dir=backup)}
             self.assertEqual(applied["wide.img"]["action"], "padded")
             self.assertEqual(applied["sign.logo.img"]["action"], "baked")
+            self.assertEqual(applied["sign.icon.img"]["action"], "plated")
+            self.assertEqual((backup / "sign.icon.img").read_bytes(),
+                             originals["sign.icon.img"])
+            self.assertIn(b'd="M1 1h2v2z"', (root / "sign.icon.img").read_bytes(),
+                          "矢量原文档照抄进外层 SVG，没有被栅格化")
+            self.assertEqual(Path(f'{root / "sign.icon.img"}.ct').read_text(
+                encoding="utf-8"), "image/svg+xml", "包完还是 SVG，类型不能改成 png")
             self.assertEqual((backup / "wide.img").read_bytes(), originals["wide.img"])
             self.assertFalse((backup / "flat.icon.img").exists(), "没动的文件不备份")
             self.assertEqual((root / "flat.icon.img").read_bytes(),
@@ -1010,7 +1078,8 @@ class OperationalScriptTests(unittest.TestCase):
                 self.assertNotIn("A", plate.getbands(), "烤过的文件必须不透明")
 
             for name, action in (("wide.img", "pad-to-square"),
-                                 ("sign.logo.img", "bake-white-plate")):
+                                 ("sign.logo.img", "bake-white-plate"),
+                                 ("sign.icon.img", "plate-vector")):
                 sidecar = json.loads(
                     Path(f"{root / name}.normalization.json").read_text(encoding="utf-8"))
                 self.assertEqual(sidecar["action"], action)
@@ -1019,11 +1088,12 @@ class OperationalScriptTests(unittest.TestCase):
                 self.assertEqual(sidecar["normalized_sha256"],
                                  hashlib.sha256((root / name).read_bytes()).hexdigest())
                 self.assertEqual(sidecar["backup"], str(backup / name))
-                self.assertEqual(Path(f"{root / name}.ct").read_text(encoding="utf-8"),
-                                 "image/png")
+                if name not in vectors:
+                    self.assertEqual(
+                        Path(f"{root / name}.ct").read_text(encoding="utf-8"), "image/png")
 
-            # 重跑不再有动作：产物已经是不透明方图，归一是幂等的。矢量那一行照旧
-            # 每次都在，它是「还没处理」的记录，不是待办完成。
+            # 重跑不再有动作：位图是不透明方图，矢量已经包过方底，归一是幂等的。
+            # 量不出内容框的那一行照旧每次都在，它是「还没处理」的记录，不是待办完成。
             self.assertEqual([row["action"] for row in module.normalize(root)],
                              ["vector"])
 
