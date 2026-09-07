@@ -4341,6 +4341,16 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('.runtimegate>svg{width:16px;height:16px;flex:none;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}')
         self.assertPageContains('.geist-note>svg{width:16px;height:24px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}')
         self.assertPageContains('.runtimegate a{grid-column:2/-1}')
+        # 横幅是第四个装这两枚字形的容器。圆点是长度 .01 的路径，缺了圆头就渲染成
+        # 看不见的薄片，警告只剩上半截竖杠。选择器认直接子元素：带进度时横幅里那一枚
+        # 圆环归 `.geist-gauge`，它的端点是弧的两头而不是字形笔画。
+        css = stylesheet_source()
+        start = css.index(".project-banner>div>svg{")
+        banner_glyph = css[start:css.index("}", start)]
+        self.assertIn("stroke-linecap:round", banner_glyph)
+        self.assertIn("stroke-linejoin:round", banner_glyph)
+        self.assertPageContains(
+            "icon(kind==='error'||kind==='warning'?'alert':'info')")
 
     def test_taste_drilldown_and_legacy_duration_tags_never_leak_filter_state(self):
         self.assertPageContains("const cleanTagFilter=value=>")
