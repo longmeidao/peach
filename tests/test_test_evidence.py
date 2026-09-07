@@ -64,7 +64,7 @@ class VerificationTests(unittest.TestCase):
         self.certify(worker)
         coordinator.ready(worker)
         result = coordinator.integrate(self.repo, branch)
-        self.assertFalse(result["bumped"])
+        self.assertTrue(result["ok"])
         entries = coordinator._worktree_entries(self.repo)
         self.assertFalse(next(e for e in entries if e.get("branch") == branch).get("locked"))
 
@@ -124,6 +124,45 @@ class VerificationTests(unittest.TestCase):
                 self.assertEqual(evidence.environment(self.repo), baseline)
             metadata.write_text("Metadata-Version: 2.1\nName: peach-evidence-probe\nVersion: 2.0\n")
             self.assertNotEqual(evidence.environment(self.repo), baseline)
+
+    def test_the_same_tool_reached_by_another_path_keeps_one_identity(self):
+        """工具身份是它自报的版本，不是 PATH 解析到的那条路径。
+
+        记录因此不再绑在 shell 上。同一套 Git 安装，PowerShell 解析到 `Git\\cmd\\git.exe`、
+        Git Bash 解析到 `Git\\mingw64\\bin\\git.exe`，两个前端字节不同、`git --version`
+        相同。把路径和字节记进指纹的话，在一个 shell 里跑出的记录到另一个 shell 里就查
+        不到：`integrate` 报「缺少有效测试记录」，回到工作树跑 `auto` 又说「复用记录」，
+        两句查的是两个键，代价是白跑一遍全量。
+        """
+        here = Path(sys.executable)
+        detour = here.parent / ".." / here.parent.name / here.name
+        self.assertNotEqual(str(detour), str(here))
+        probe = ("--version",)
+        self.assertEqual(evidence.tool_identity(str(here), here.stat().st_mtime_ns, probe),
+                         evidence.tool_identity(str(detour), 0, probe))
+        with mock.patch.object(evidence, "tool_identity", return_value="v1") as probed:
+            with mock.patch.object(evidence.shutil, "which", side_effect=lambda name: f"/a/{name}"):
+                baseline = evidence.environment(self.repo)
+            probed.reset_mock()
+            with mock.patch.object(evidence.shutil, "which", side_effect=lambda name: f"/b/{name}"):
+                self.assertEqual(evidence.environment(self.repo), baseline)
+            self.assertEqual({call.args[0] for call in probed.call_args_list},
+                             {f"/b/{name}" for name, _ in evidence.TOOL_PROBES},
+                             "每个探针都要被问到，不能有工具悄悄不进指纹")
+        with mock.patch.object(evidence.shutil, "which", side_effect=lambda name: f"/a/{name}"):
+            with mock.patch.object(evidence, "tool_identity", return_value="v2"):
+                self.assertNotEqual(evidence.environment(self.repo), baseline)
+        with mock.patch.object(evidence.shutil, "which", return_value=None):
+            self.assertNotEqual(evidence.environment(self.repo), baseline)
+
+    def test_an_unspawnable_tool_is_not_the_same_as_a_missing_one(self):
+        """探针跑不起来和工具不在 PATH 上是两种环境，指纹要能分开。"""
+        absent = self.root / "no-such-tool"
+        self.assertEqual(evidence.tool_identity(str(absent), 0, ("--version",)), "unspawnable")
+        with mock.patch.object(evidence.shutil, "which", side_effect=lambda name: str(absent)):
+            broken = evidence.environment(self.repo)
+        with mock.patch.object(evidence.shutil, "which", return_value=None):
+            self.assertNotEqual(evidence.environment(self.repo), broken)
 
     def test_commit_metadata_preserves_content_record(self):
         worker, _ = self.worker()

@@ -124,6 +124,9 @@ def login_html(next_path: str, *, invalid: bool = False) -> str:
         '<!doctype html><html lang="zh-CN"><meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width,initial-scale=1">'
         '<meta name="color-scheme" content="light dark"><title>登录 Peach</title>'
+        # 图标声明和主站同一份。书签地址是 `/`，没有会话时这一页就是它实际停在的地方：
+        # 这里不声明，浏览器只会去要 `/favicon.ico`，把「这个站没有图标」记进书签。
+        '<link rel="icon" href="/favicon.ico" type="image/x-icon">'
         # 这一页在拿到 cookie 之前就要出图，取不到 /app.css，所以色板在这儿留一份最小副本。
         # 三条分支和 web/css/01-base.css 同构：默认浅色、系统深色、手动选的那一档压过系统。
         # 选择由下面这段脚本在第一次绘制前读出来——固定浅色的人不该在登录页先看一眼深色。

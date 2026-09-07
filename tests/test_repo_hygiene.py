@@ -11,16 +11,30 @@ import pathlib
 import re
 import socket
 import subprocess
+import tempfile
 import tomllib
 import unittest
 
 import peach
+from peach import appid
 
 REPO = pathlib.Path(peach.__file__).resolve().parents[2]
 DOCS = REPO / "docs"
 
 #: ADR-0017 定义的四个运行时目录，加一个归置处。顶层只允许这五项。
 TOP_LEVEL_ALLOWED = {"peach-app", "peach-data", "peach-sync", "peach-worktrees", "attic"}
+
+#: 文件管理器自己写的缓存文件，按 casefold 比对（Windows 上大小写会变）。门槛拦的是人
+#: 放上去的散落文档和产物；这几个不是人放的，macOS Finder 只要打开过那个文件夹就会写
+#: `.DS_Store`，Windows 资源管理器写 `desktop.ini` 与 `Thumbs.db`，删掉照样再长出来。
+#: 不豁免它们，这条门槛在任何有图形界面的开发机上都是红的，红得和布局无关。
+TOP_LEVEL_GENERATED_FILES = frozenset({".ds_store", "desktop.ini", "thumbs.db"})
+
+
+def _loose_files(top: pathlib.Path) -> list[str]:
+    """顶层的散落文件名，去掉文件管理器自己写的缓存。"""
+    return sorted(child.name for child in top.iterdir() if child.is_file()
+                  and child.name.casefold() not in TOP_LEVEL_GENERATED_FILES)
 
 
 class TopLevelLayoutTests(unittest.TestCase):
@@ -53,9 +67,23 @@ class TopLevelLayoutTests(unittest.TestCase):
         )
 
     def test_no_loose_files_at_the_top(self):
-        loose = sorted(p.name for p in self.top.iterdir() if p.is_file())
-        self.assertEqual(loose, [],
+        self.assertEqual(_loose_files(self.top), [],
                          "顶层不放散落文件：文档进 attic/reviews/，产物进 attic/evidence/")
+
+
+class LooseFileGuardTests(unittest.TestCase):
+    """散落文件的判据本身。不依赖这台机器的布局，所以在哪儿都跑。"""
+
+    def test_the_guard_exempts_only_the_file_manager_caches(self):
+        """门槛自身也要能被证伪：缓存放行，人放上去的文件照旧算违规。"""
+        with tempfile.TemporaryDirectory() as raw:
+            sample = pathlib.Path(raw).resolve()
+            for name in (".DS_Store", "desktop.ini", "Thumbs.db",
+                         "REVIEW.md", "probe.json", "ds_store.md"):
+                (sample / name).write_bytes(b"x")
+            (sample / "peach-app").mkdir()
+            self.assertEqual(_loose_files(sample),
+                             ["REVIEW.md", "ds_store.md", "probe.json"])
 
 
 class BuiltInWorktreeTests(unittest.TestCase):
@@ -195,11 +223,16 @@ PERSONAL_LITERAL = re.compile("(?i)" + "|".join((
 #: 全树一律不许出现的机器坐标：私网地址的具体一台、任何人的家目录、任何一台机器的 mDNS 名。
 #: 仓库公开后它们既是别人家的坐标又是个人信息（ADR-0023 第四阶段）。判据写成形状而不是
 #: 点名：门槛自己也进 Git，点名等于把要拦的坐标印在公开代码里。当前维护者的账号名与
-#: 主机名由 `MachineCoordinateTests` 运行时取本机的值再扫一遍，对任何维护者都成立。
+#: 主机名由 `MachineCoordinateTests` 运行时取本机的值再扫一遍，对任何维护者都成立；
+#: 那一遍先剔掉仓库自己的公开归属，判据见 `_this_machine_guard`。
 #:
 #: 判据是「只对某一台机器成立」，不是「像个名字」：仓库的 GitHub 归属与 LICENSE 的
 #: 版权人本来就要公开署名，它们不在拦截范围内。
 MACHINE_COORDINATE = re.compile("(?i)" + "|".join((_PRIVATE_IPV4, _HOME_DIRECTORY, _MDNS_HOST)))
+
+#: 从 GitHub 的仓库 URL 里取归属名，`https://github.com/<owner>/<repo>` 与
+#: `git@github.com:<owner>/<repo>` 两种写法都收。
+_GITHUB_OWNER = re.compile(r"github\.com[:/]+([A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)/")
 
 #: 门槛自身要写出它拦的形状，所以只有它自己豁免。
 COORDINATE_EXEMPT_FILES = frozenset({"tests/test_repo_hygiene.py"})
@@ -227,6 +260,47 @@ def _live_strings(path: pathlib.Path) -> list[tuple[int, str]]:
     return [(node.lineno, node.value) for node in ast.walk(tree)
             if isinstance(node, ast.Constant) and isinstance(node.value, str)
             and id(node) not in docstrings]
+
+
+def _repository_identity(repo: pathlib.Path = REPO) -> frozenset[str]:
+    """仓库自己的公开归属名，casefold 过。
+
+    三个来源都取，取不到的静默跳过：`git remote` 的 URL、`pyproject.toml` 的项目 URL、
+    `src/peach/appid.py` 的反向域名前缀。它们指的是同一个归属，多取一处是为了任一处
+    缺失时判据仍然成立，而不是把名字写进这里——门槛自己也进 Git，点名等于把维护者的
+    账号名印进公开代码，和形状判据不点名坐标是同一个理由。
+    """
+    names = set(appid.BUNDLE_PREFIX.split("."))
+    urls: list[str] = []
+    with (repo / "pyproject.toml").open("rb") as handle:
+        urls += tomllib.load(handle)["project"].get("urls", {}).values()
+    done = subprocess.run(["git", "remote", "-v"], cwd=repo, capture_output=True,
+                          text=True, encoding="utf-8", errors="replace", check=False)
+    if done.returncode == 0:
+        urls += done.stdout.split()
+    for url in urls:
+        found = _GITHUB_OWNER.search(url)
+        if found:
+            names.add(found.group(1))
+    return frozenset(name.casefold() for name in names if name)
+
+
+def _this_machine_guard(names, identity) -> re.Pattern[str] | None:
+    """把「只属于这台机器」的名字编成正则，先剔掉仓库自己的归属名。
+
+    剔除是必需的：维护者的账号名可以同时是公开仓库的 owner，那时
+    `github.com/<owner>/…`、`io.github.<owner>.…`、`Copyright (C) <年> <owner>` 和发行名
+    候选都是这个名字正当出现的地方，全树扫名字会把它们一并判成本机坐标，判据也就在
+    维护者自己的机器上永远不成立。剔除不放过真的坐标：`/Users/<owner>/…`、
+    `<owner>.local`、`smb://<owner>@…` 都是形状，`MACHINE_COORDINATE` 那条与名字是谁无关。
+
+    名字全被剔掉时返回 `None`。空的 `(?:)` 会在任何位置匹配成功，那不是更严格，是全错。
+    """
+    remaining = sorted(name for name in names if name and name.casefold() not in identity)
+    if not remaining:
+        return None
+    return re.compile(r"(?<![\w-])(?:" + "|".join(map(re.escape, remaining)) + r")(?![\w-])",
+                      re.IGNORECASE)
 
 
 class PersonalLiteralTests(unittest.TestCase):
@@ -273,6 +347,7 @@ class ReleaseFilesTests(unittest.TestCase):
         "LICENSE",
         "CONTRIBUTING.md",
         "SECURITY.md",
+        "CHANGELOG.md",
         ".github/PULL_REQUEST_TEMPLATE.md",
         ".github/ISSUE_TEMPLATE/config.yml",
     )
@@ -346,15 +421,17 @@ class MachineCoordinateTests(unittest.TestCase):
     def test_no_tracked_file_names_this_machine(self):
         """本机的账号名与主机名对任何维护者都成立，正好不用在正则里点名。
 
-        本文件自己也扫：形状门槛豁免它是因为它要写出形状，可它没有理由写出这台机器。
+        扫的是「剔掉仓库自身归属之后剩下的本机名字」，判据与剔除的理由见
+        `_this_machine_guard`。本文件自己也扫：形状门槛豁免它是因为它要写出形状，
+        可它没有理由写出这台机器。
         """
         if os.environ.get("GITHUB_ACTIONS"):
             self.skipTest("CI 靶机的账号名是 runner，文档里会正当地提到它")
         hostname = socket.gethostname()
-        names = {pathlib.Path.home().name, hostname, hostname.split(".", 1)[0]} - {""}
-        this_machine = re.compile(
-            r"(?<![\w-])(?:" + "|".join(sorted(map(re.escape, names))) + r")(?![\w-])",
-            re.IGNORECASE)
+        names = {pathlib.Path.home().name, hostname, hostname.split(".", 1)[0]}
+        this_machine = _this_machine_guard(names, _repository_identity())
+        if this_machine is None:
+            self.skipTest("本机的账号名与主机名都是仓库自己的公开归属，只剩形状门槛可扫")
         offenders = []
         for name, text in self._tracked_text_files(exempt_files=frozenset()):
             for number, line in enumerate(text.splitlines(), 1):
@@ -384,6 +461,37 @@ class MachineCoordinateTests(unittest.TestCase):
                         "https://github.com/longmeidao/peach",
                         "Copyright (C) 2026 longmeidao"):
             self.assertIsNone(MACHINE_COORDINATE.search(allowed), allowed)
+
+    def test_the_repository_identity_covers_its_own_github_owner(self):
+        """归属名要真的从仓库元数据里解析出来，取不到就等于没剔除。"""
+        with (REPO / "pyproject.toml").open("rb") as handle:
+            urls = tomllib.load(handle)["project"]["urls"]
+        owners = {found.group(1).casefold() for found in
+                  (_GITHUB_OWNER.search(url) for url in urls.values()) if found}
+        self.assertTrue(owners, "pyproject 的项目 URL 里应当写出仓库的 GitHub 归属")
+        self.assertLessEqual(owners, _repository_identity(),
+                             "仓库自己的 GitHub 归属没被认出来")
+
+    def test_the_identity_exemption_does_not_hollow_out_the_this_machine_guard(self):
+        """剔除只放行「光提到归属名」，同一个名字落进坐标形状照旧拦下。
+
+        用合成的名字断言，这样判据本身不写出任何真实归属。
+        """
+        owner, other = "example-owner", "peach-two"
+        guard = _this_machine_guard({owner, other}, frozenset({owner}))
+        for allowed in (f"https://github.com/{owner}/peach",
+                        f"io.github.{owner}.peach.tray",
+                        f"Copyright (C) 2026 {owner}",
+                        f"{owner}-peach", f"{owner}.Peach"):
+            self.assertIsNone(guard.search(allowed), allowed)
+        for blocked in (f"smb://{other}/peach-sync", f"/Volumes/{other}/media"):
+            self.assertIsNotNone(guard.search(blocked), blocked)
+        for blocked in (f"/Users/{owner}/Desktop/peach", f"/home/{owner}/peach",
+                        rf"C:\Users\{owner}\peach-data",
+                        f"smb://{owner}@{owner}-mbp.local/peach-sync"):
+            self.assertIsNotNone(MACHINE_COORDINATE.search(blocked), blocked)
+        self.assertIsNone(_this_machine_guard({owner}, frozenset({owner})),
+                          "名字全被剔掉时不许返回会匹配任何位置的空正则")
 
 
 class ArchitectureDriftTests(unittest.TestCase):

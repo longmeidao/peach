@@ -4,7 +4,9 @@ import hashlib
 import importlib.util
 import io
 import json
+import shutil
 import sqlite3
+import subprocess
 import sys
 import tempfile
 import tomllib
@@ -265,6 +267,64 @@ class OperationalScriptTests(unittest.TestCase):
                     "test.ps1" in line or "test.sh" in line,
                     f"{relative}:{number} 单独出现了裸命令，读者会照抄；必须同时点明正式入口",
                 )
+
+    def test_posix_entrypoint_passes_extra_args_through_on_bash_3_2(self):
+        """不带额外参数直接跑 `./scripts/test.sh` 必须能跑起来，参数要原样透传。
+
+        macOS 自带 bash 3.2.57，`set -u` 下空数组的 `"${EXTRA[@]}"` 被判成未绑定变量
+        （bash 4.4 起才不报），入口于是在最后一行崩掉。CI 每次都附带
+        `--fresh --base <sha> --shard-*`，数组从不为空，这条路径只有本机会走到——而
+        AGENTS.md 规定 macOS 的唯一测试入口就是这个脚本，崩了等于没有测试门槛。
+
+        文本判据钉住修法本身：`set -euo pipefail` 必须还在（把 `set +u` 当解法会让
+        其余变量的拼写错误没人拦），展开必须是 `${EXTRA[@]+...}` 那一种。行为判据从
+        真实脚本里截出参数处理那一段来跑，改回裸展开时这一段会跟着变。
+        """
+        source = (ROOT / "scripts" / "test.sh").read_text(encoding="utf-8")
+        self.assertIn("set -euo pipefail", source)
+        self.assertIn('scripts/test_runner.py --scope "$SCOPE" ${EXTRA[@]+"${EXTRA[@]}"}', source)
+        self.assertNotIn('--scope "$SCOPE" "${EXTRA[@]}"', source)
+
+        # 真实脚本后半段要定位 venv 并跑整个测试套件，直接执行会递归。只取参数处理那一段，
+        # 把 exec 的目标换成一个回显 argv 的桩，其余保持逐字一致。
+        marker = 'EXTRA=("${@:2}")\n'
+        prologue, separator, tail = source.partition(marker)
+        self.assertEqual(separator, marker)
+        exec_line = next(line for line in tail.splitlines() if line.startswith("exec "))
+        stub_line = exec_line.replace('"$PYTHON" scripts/test_runner.py',
+                                      '"$PEACH_PY" "$PEACH_STUB"', 1)
+        self.assertNotEqual(stub_line, exec_line)
+
+        directory = Path(tempfile.mkdtemp()).resolve()
+        self.addCleanup(shutil.rmtree, directory, True)
+        stub = directory / "argv_stub.py"
+        stub.write_text("import json, sys\nprint(json.dumps(sys.argv[1:]))\n", encoding="utf-8")
+        entrypoint = directory / "prologue.sh"
+        # 两个路径都写成正斜杠：Windows 的 `C:\Users\…` 落进 shell 脚本后反斜杠会被当成转义符
+        # 吃掉，exec 拿到的是一个粘在一起的名字。解释器也显式写出来，不靠 `#!`——Git Bash
+        # 不按 shebang 找 Windows 上的 Python。
+        entrypoint.write_text(
+            f'{prologue}{marker}'
+            f'PEACH_PY={Path(sys.executable).as_posix()}\n'
+            f'PEACH_STUB={stub.as_posix()}\n'
+            f'{stub_line}\n', encoding="utf-8")
+
+        # `/bin/bash` 在 macOS 上就是那个 3.2；装了新版 bash 的机器两个都跑。
+        shells = [path for path in ("/bin/bash", shutil.which("bash")) if path and Path(path).exists()]
+        self.assertTrue(shells)
+        for shell in dict.fromkeys(shells):
+            for argv, expected in (
+                    ([], ["--scope", "auto"]),
+                    (["auto"], ["--scope", "auto"]),
+                    (["web", "--fresh", "--base", "a b"],
+                     ["--scope", "web", "--fresh", "--base", "a b"]),
+            ):
+                with self.subTest(shell=shell, argv=argv):
+                    done = subprocess.run(
+                        [shell, str(entrypoint), *argv],
+                        capture_output=True, text=True, encoding="utf-8", check=False)
+                    self.assertEqual(done.returncode, 0, done.stderr)
+                    self.assertEqual(json.loads(done.stdout), expected)
 
     def test_python_floor_is_declared_once_and_ci_tests_both_ends(self):
         """`requires-python` 是唯一真相；CI 矩阵与两份 README 都从它推出来。
@@ -2200,19 +2260,77 @@ class ReleaseTagTests(unittest.TestCase):
                 self.assertRaises(ValueError):
             self.release.verify("owner/repo", "abc")
 
+    #: 干净的 master 检出，HEAD 与远端一致。
+    CLEAN = {("git", "status", "--porcelain"): "",
+             ("git", "branch", "--show-current"): "master",
+             ("git", "rev-parse", "HEAD"): "abc"}
+
+    def _shell(self, changes=None):
+        answers = {**self.CLEAN, **(changes or {})}
+        return mock.patch.object(self.release, "command",
+                                 side_effect=lambda *args: answers.get(args, ""))
+
     def test_plan_refuses_dirty_checkout_wrong_branch_and_existing_tags(self):
-        base = {("git", "status", "--porcelain"): "",
-                ("git", "branch", "--show-current"): "master",
-                ("git", "rev-parse", "HEAD"): "abc"}
         for changes, refs in (({("git", "status", "--porcelain"): " M file"}, []),
                               ({("git", "branch", "--show-current"): "feature"}, []),
                               ({}, [{"ref": "refs/tags/v0.7.14"}])):
-            with self.subTest(changes=changes, refs=refs), \
-                    mock.patch.object(self.release, "command", side_effect=lambda *args: {**base, **changes}.get(args, "")), \
+            with self.subTest(changes=changes, refs=refs), self._shell(changes), \
                     mock.patch.object(self.release, "api", side_effect=lambda repo, path: {"object": {"sha": "abc"}} if path == "git/ref/heads/master" else refs), \
-                    mock.patch.object(Path, "read_text", return_value='__version__ = "0.7.14"\n'), \
+                    mock.patch.object(self.release.version_bump, "read_version", return_value="0.7.14"), \
+                    mock.patch.object(Path, "read_text", return_value="## [0.7.14] - 2026-09-07\n"), \
                     self.assertRaises(ValueError):
                 self.release.plan("owner/repo")
+
+    def test_a_version_without_its_changelog_section_cannot_be_tagged(self):
+        """使用者读到的说明只有变更日志那一节；缺了就等于发一个没有说明的版本。"""
+        with self._shell(), \
+                mock.patch.object(self.release, "api", return_value={"object": {"sha": "abc"}}), \
+                mock.patch.object(self.release.version_bump, "read_version", return_value="0.7.14"), \
+                mock.patch.object(Path, "read_text", return_value="# 变更日志\n\n## [未发布]\n"), \
+                self.assertRaisesRegex(ValueError, "CHANGELOG.md 缺少 0.7.14"):
+            self.release.plan("owner/repo")
+
+    def _planned_bump(self):
+        return {"range": "v0.7.14..HEAD", "bump": "minor", "current": "0.7.14",
+                "version": "0.8.0", "commits": 3}
+
+    def test_a_bump_plan_writes_nothing_until_apply(self):
+        with self._shell(), mock.patch.object(self.release, "api", return_value=[]), \
+                mock.patch.object(self.release.version_bump, "plan_bump",
+                                  return_value=self._planned_bump()), \
+                mock.patch.object(self.release.version_bump, "write_version") as write, \
+                mock.patch.object(self.release.changelog, "release") as promote:
+            result = self.release.prepare("owner/repo", "auto", apply=False)
+        self.assertEqual((result["tag"], result["version"], result["bump"]),
+                         ("v0.8.0", "0.8.0", "minor"))
+        write.assert_not_called()
+        promote.assert_not_called()
+
+    def test_applying_a_bump_writes_the_version_and_the_changelog_but_commits_nothing(self):
+        """措辞要人过一遍，所以脚本只落盘；提交与标签是后面两步。"""
+        with self._shell() as command, mock.patch.object(self.release, "api", return_value=[]), \
+                mock.patch.object(self.release.version_bump, "plan_bump",
+                                  return_value=self._planned_bump()), \
+                mock.patch.object(self.release.version_bump, "write_version") as write, \
+                mock.patch.object(self.release.changelog, "release") as promote:
+            result = self.release.prepare("owner/repo", "auto", apply=True)
+        write.assert_called_once_with(self.release.ROOT, "minor")
+        self.assertEqual(promote.call_args.args, (self.release.ROOT, "0.8.0"))
+        self.assertEqual(promote.call_args.kwargs["spec"], "v0.7.14..HEAD")
+        self.assertTrue(result["next"], "落盘之后必须告诉人下一步做什么")
+        issued = [args for args, _ in command.call_args_list]
+        self.assertFalse([args for args in issued
+                          if {"commit", "tag", "push"} & set(args)], issued)
+
+    def test_a_bump_stops_when_the_target_tag_already_exists(self):
+        with self._shell(), \
+                mock.patch.object(self.release, "api", return_value=[{"ref": "refs/tags/v0.8.0"}]), \
+                mock.patch.object(self.release.version_bump, "plan_bump",
+                                  return_value=self._planned_bump()), \
+                mock.patch.object(self.release.version_bump, "write_version") as write, \
+                self.assertRaisesRegex(ValueError, "v0.8.0 已存在"):
+            self.release.prepare("owner/repo", "auto", apply=True)
+        write.assert_not_called()
 
 
 if __name__ == "__main__":

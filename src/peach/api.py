@@ -33,6 +33,7 @@ from starlette.middleware.gzip import DEFAULT_EXCLUDED_CONTENT_TYPES, GZipMiddle
 
 from . import __version__, web_contract, web_follow
 from . import routes_api, routes_auth, routes_configuration, routes_media, routes_pages
+from .buildinfo import frozen_build
 from .config import PeachSettings
 from .ffmpeg import FFmpegResolver
 from .follow_scheduler import FollowUpdateScheduler
@@ -62,6 +63,11 @@ from .transcodes import TranscodeService
 
 
 LOGGER = logging.getLogger(__name__)
+
+#: 这个进程的构建身份，打包时埋在包根，进程内不变。源码运行时没有第二份代码，是 None。
+#: 换生产托盘的脚本靠它确认跑起来的正是这次打出的包：版本号一次发布只推一格，同一个
+#: 版本号下会有很多个构建，只比版本号证明不了二进制真的换掉了。
+BUILD = frozen_build()
 
 #: gzip 不碰的内容类型。Starlette 的默认名单已经排掉 `video/*`、`audio/*` 和各种
 #: 已压缩的图片，这里再补两个它没排、而 Peach 会真的撞上的：
@@ -296,6 +302,8 @@ def create_app(
         ffmpeg = resolver.ffmpeg()
         read_only = bool(sync is not None and sync.read_only)
         return {"ok": True, "service": "peach-api", "version": __version__,
+                # 打包这份代码的提交。源码运行时是 null：跑的就是检出本身。
+                "build_commit": BUILD.commit if BUILD else None,
                 # 这台机器跑过 `peach init` 没有。未配置时服务照常起，只是没有数据。
                 "configured": settings.configured,
                 # 这次请求的发起方能不能改这台机器的配置（独立包、回环地址）。它随调用方

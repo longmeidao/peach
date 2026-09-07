@@ -149,6 +149,7 @@ macOS：运行与当前改动对应的检查：
 | 配置媒体、局域网、HTTPS 与同步 | [运行与配置](docs/OPERATIONS.md) |
 | 了解采集来源与证据边界 | [来源采集](docs/SOURCING.md) |
 | 确认当前运行状态 | [项目状态](docs/STATUS.md) |
+| 查看每个版本的变化 | [变更日志](CHANGELOG.md) |
 | 查看开放需求 | [产品待办](docs/PRODUCT_BACKLOG.md) |
 | 修改与维护项目 | [工作契约](AGENTS.md) · [前端开发](docs/FRONTEND.md) · [复用清单](docs/REUSE.md) |
 | 了解长期约定与架构 | [交接说明](docs/HANDOFF.md) · [架构决策](docs/adr/) |
