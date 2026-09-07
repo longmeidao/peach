@@ -63,7 +63,7 @@
 
 合计：**31 项开放需求**，其中 6 项已有骨架，25 项尚未实现。已完成的需求不在这里留痕，去 Git 历史查。
 
-## 待执行的操作（35 项）
+## 待执行的操作（36 项）
 
 需要另行授权、外部条件或人工判断才能做的具体操作与复核批次，比上面的需求细一层；做完就删，不在这里留痕。待办只放这一处：`docs/STATUS.md` 每次会话开头都要读，队列不该常驻在那种入口文件里。
 
@@ -109,3 +109,4 @@
     > 3. What can be simplified now that unnecessary pieces are gone?
     > Then make the changes. Prefer deleting over simplifying, simplifying over optimizing, and optimizing over automating.
     > It might be done too - you don't HAVE to go and make changes. If it's good, leave it alone.
+36. `test_desktop_settings.test_native_shortcut_round_trip_in_temporary_directory` 只在 GitHub 的 windows-latest runner 上失败，本机 Windows 每次都过：2026-09-06 10:48、20:14 与 09-07 01:45 的 full/0 分片各红一次，抛的都是 `desktop_startup.shortcut()` 那句 `OSError`。根因未取得——那句消息此前把 PowerShell 的 stderr 一起丢掉了，权限不足、`WScript.Shell` COM 起不来、路径没落地和扩展名校验不通过在日志里长得一模一样。消息已补上 stderr 第一行（`0.28.1`）；下一次 runner 上这一步失败时读 `gh run view --job <id> --log-failed` 就能分辨是哪一种，再按那个原因决定是修实现还是给这个用例加 `skipUnless` 判据。在拿到那行原因之前不要凭猜改 `_SHORTCUT_SCRIPT`：它是写生产启动项的路径。
