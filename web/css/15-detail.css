@@ -19,7 +19,7 @@
   padding:0;cursor:pointer}
 .srctools button svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2}
 .srctools button:hover{background:var(--hover);color:var(--ink)}
-.srctools button:disabled{background:var(--sunk);border-color:var(--line-soft);color:var(--muted);cursor:default}
+.srctools button:disabled{background:var(--sunk);border-color:var(--line-soft);color:var(--muted);cursor:not-allowed}
 .srcstate{font-size:var(--fs-xs);color:var(--muted);min-width:0;flex:1 1 100%}
 .detailtitletools{display:inline-flex;vertical-align:middle;margin:3px 0 3px 8px;flex-wrap:nowrap}.detailtitlestate{display:block;margin:-4px 0 10px}
 .detailtitlestate:empty{display:none}

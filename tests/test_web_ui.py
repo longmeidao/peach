@@ -470,7 +470,7 @@ class WebUiSourceTests(unittest.TestCase):
                         "border:0;border-radius:var(--control-radius);"
                         "background:var(--ground);color:var(--ink);display:inline-flex;")
         self.assertPageContains(f".geist-button:hover:not(:disabled){{{secondary_hover}}}")
-        self.assertPageContains(".geist-button.primary{background:var(--ink);color:var(--ground)}")
+        self.assertPageContains(".geist-button.primary{background:var(--ink);color:var(--ground);box-shadow:none}")
         # 找的是这三条基样式本身，不是别处以同名结尾的派生规则（`.fsecfoot .fbtn{`
         # 也以 `.fbtn{` 收尾），所以选择器前面必须是上一条规则的边界。
         for name in (".cleanupfieldset button:where(:not(.gselectfield)){",
@@ -1047,20 +1047,83 @@ class WebUiSourceTests(unittest.TestCase):
         是 Peach 自己加的。禁用则是 `rgb(26,26,26)` 底、`rgb(143,143,143)` 字、
         1px `rgb(46,46,46)` 环、`opacity:1`；半透明会让按钮连同它下面的底色一起变淡，
         在深色卡片和浅色卡片上淡出的程度还不一样。
+
+        光标是 `not-allowed`（2026-09-07 复测，透明底的 tertiary 那档也是）。`default`
+        说的是「这里没有交互」，禁用要说的是「有交互，现在不给」：移上去有没有那个禁止
+        符号，是用户唯一能在点下去之前分辨这两件事的线索。
         """
         css = re.sub(r"/\*.*?\*/", "", stylesheet_source(),
                      flags=re.S)
         self.assertNotIn("scale:.96", css, "Geist 按下没有缩放，别再加回来")
         # 描边那一档连边一起变灰；不描边的动作按钮只换填充和字色。
         ringed = ("{background:var(--sunk);border-color:var(--line-soft);"
-                  "color:var(--muted);cursor:default}")
-        flat = "{background:var(--sunk);color:var(--muted);cursor:default}"
+                  "color:var(--muted);cursor:not-allowed}")
+        flat = "{background:var(--sunk);color:var(--muted);cursor:not-allowed}"
         for selector in (".srctools button:disabled", ".frowicon:disabled"):
             self.assertPageContains(selector + ringed)
         for selector in (".geist-button:disabled", ".fbtn:disabled",
                          ".fcredactions button:disabled", ".resourceaction:disabled",
                          ".tagselection button:disabled", ".fpickactions button:disabled"):
             self.assertPageContains(selector + flat)
+
+    def test_the_secondary_tier_keeps_a_one_pixel_ring_so_it_reads_on_its_own_ground(self):
+        """次级按钮挂一圈 1px 环，实心的三档不挂。
+
+        2026-09-07 复测 vercel.com/geist/button：次级填 `#FFFFFF`、环
+        `rgb(235,235,235) 0 0 0 1px`，primary（`#171717` 实底）、error、warning 三档
+        `box-shadow:none`，禁用档填 `#F2F2F2`、字 `#8F8F8F`、环仍在。
+        环用 `box-shadow` 而不是 `border`：不占盒子，和并排的实心档外沿仍然齐平。
+
+        这一圈不是装饰。次级填的是 `--ground`，而面板、卡片和框体本身也是 `--ground`，
+        「添加文件夹」「选择文件夹」这类键直接坐在上面，两块同色，没有环就一条边都
+        读不出来——暗色一档 `--ground` 是 `#080A0D`，整颗键化在面里。换成实底亮色能看见，
+        但那会让一颗次要动作抢过主动作的份量，所以照 Geist：填充不动，补一圈线。
+        """
+        ring = "box-shadow:0 0 0 1px var(--line-soft)"
+        css = stylesheet_source()
+        # 同一档的四个写法都得有环，否则一屏里同档按钮一半有边一半没边。
+        for name in (".geist-button{", ".fbtn{", ".resourceaction{",
+                     ".cleanupfieldset button:where(:not(.gselectfield)){"):
+            found = re.search(r"(?:^|[}\n])" + re.escape(name), css)
+            self.assertIsNotNone(found, f"{name} 找不到基样式")
+            start = found.end() - len(name)
+            rule = css[start:css.index("}", start)]
+            self.assertIn(ring, rule, f"{name} 次级档要有那一圈 1px 环")
+        # 实心档自己的填充就是边界，再挂环会在实底外面描出第二道轮廓。
+        for solid in (".geist-button.primary{background:var(--ink);color:var(--ground);"
+                      "box-shadow:none}",
+                      ".geist-button.error{background:#da2f35;color:#fff;box-shadow:none}",
+                      ".geist-button.warning{background:#ff990a;color:#000;box-shadow:none}",
+                      ".fbtn.primary{background:var(--ink);color:var(--ground);font-weight:500;"
+                      "box-shadow:none}"):
+            self.assertPageContains(solid, "实心档不挂环")
+        # 禁用把所有档收成同一块灰面，环要跟回来，否则禁用的主动作连轮廓都没有。
+        for restored in (".geist-button.primary:disabled{background:var(--sunk);"
+                         "color:var(--muted);" + ring + "}",
+                         ".geist-button:is(.error,.warning):disabled{background:var(--sunk);"
+                         "color:var(--muted);" + ring + "}",
+                         "background:var(--sunk);color:var(--muted);" + ring + "}"):
+            self.assertPageContains(restored, "禁用档的环要回来")
+        # 悬停只动填充：Geist 的源规则里没有任何按钮 hover 改 border 或 ring。
+        self.assertNotIn("box-shadow", css[css.index(".geist-button:hover:not(:disabled){"):
+                                           css.index(".geist-button,.geist-button:hover{")],
+                         "悬停不动那圈环")
+
+    def test_disabled_controls_show_the_forbidden_cursor(self):
+        """禁用的控件移上去是禁止符号，不是普通箭头。
+
+        `cursor:default` 说的是「这里没有交互」，禁用态要说的是「有交互，现在不给」。
+        站里曾有 14 处禁用规则写着 `default`：卸载按钮、静默启动那颗联动开关、侧栏
+        排序的上下移动都在其中，看上去和一颗普通的静态方块没有区别。
+        """
+        css = re.sub(r"/\*.*?\*/", "", stylesheet_source(), flags=re.S)
+        stale = re.findall(r"[^{}\n]*:disabled[^{]*\{[^}]*cursor:default[^}]*\}", css)
+        self.assertEqual(stale, [], "禁用规则里不许再写 cursor:default")
+        for selector in (".geist-button:disabled", ".fbtn:disabled", ".resourceaction:disabled",
+                         ".gselectfield:disabled", ".sidebaradd .sidebaraddfield:disabled"):
+            start = css.index(selector + "{")
+            self.assertIn("cursor:not-allowed", css[start:css.index("}", start)],
+                          f"{selector} 要给出禁止光标")
 
     def test_font_weights_stay_on_the_three_geist_steps(self):
         """字重只有 400／500／600 三档。
@@ -1985,7 +2048,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("setActionBusy(btn)")
         self.assertPageContains("spinnerHtml('正在提交喜爱理由')")
         self.assertPageContains("setActionBusy(btn,false);btn.innerHTML='<span>提交</span>'")
-        self.assertPageContains('.geist-button.primary{background:var(--ink);color:var(--ground)}')
+        self.assertPageContains('.geist-button.primary{background:var(--ink);color:var(--ground);box-shadow:none}')
         self.assertPageContains('.preference-foot>span{margin-right:auto')
         self.assertPageLacks('aria-label="保存喜爱理由">${icon(\'check\')}</button>')
         self.assertPageLacks("仅保存在本机")
@@ -4156,7 +4219,7 @@ class WebUiSourceTests(unittest.TestCase):
             "cursor:pointer}")
         self.assertPageContains(
             ".sidebaradd .sidebaraddfield:hover:not(:disabled){border-color:var(--field-ring-hover)}"
-            ".sidebaradd .sidebaraddfield:disabled{color:var(--muted);cursor:default}")
+            ".sidebaradd .sidebaraddfield:disabled{color:var(--muted);cursor:not-allowed}")
         self.assertPageContains(".sidebaradd .geist-button{height:var(--control-h);padding:0 14px}")
         self.assertPageContains(
             ".sidebaradd .sidebaraddmenu button{grid-template-columns:auto minmax(0,1fr);"
@@ -4174,7 +4237,7 @@ class WebUiSourceTests(unittest.TestCase):
         # 这一行的浮层与控件底色只走 token。
         self.assertPageLacks("background:#181a1d;box-shadow:0 16px 44px -20px #000}")
         self.assertPageContains(
-            ".geist-button.primary:disabled{background:var(--sunk);color:var(--muted)}")
+            ".geist-button.primary:disabled{background:var(--sunk);color:var(--muted);box-shadow:0 0 0 1px var(--line-soft)}")
 
     def test_edge_and_drawer_share_one_navigation_dispatch(self):
         """窄栏和抽屉各写一份分支时，抽屉那份漏了追更和播放列表。
@@ -7514,7 +7577,7 @@ class WebUiSourceTests(unittest.TestCase):
         纯图标删除键不在此列——它们靠图标本身说明动作，实底红会在一行图标里炸出一块。
         """
         self.assertPageContains("button.danger:not(.frowicon),.resourcedanger{")
-        self.assertPageContains("background:var(--drop);border-color:var(--drop);color:#fff}")
+        self.assertPageContains("background:var(--drop);color:#fff;box-shadow:none}")
         # 复核卡的拒绝键走 Geist 的 error 变体，那是同一块红的另一个入口。
         for selector in (".geist-button.error{background:#da2f35;",
                          ".fcredactions button.fquiet{background:var(--drop);color:#fff}",
@@ -7917,9 +7980,9 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('.reviewcontent .geist-scroller-container{padding-right:0}')
         self.assertPageContains('.reviewcontent .ovtrack.ov-y{transform:translateX(12px)}')
         self.assertPageContains('class="geist-button error" data-review-status="rejected"')
-        self.assertPageContains('.geist-button.error{background:#da2f35;border-color:#da2f35;color:#fff}')
-        self.assertPageContains('.geist-button.warning{background:#ff990a;border-color:#ff990a;color:#000}')
-        self.assertPageContains('.geist-button:is(.error,.warning):disabled{background:var(--sunk);border-color:var(--line-soft);color:var(--muted)}')
+        self.assertPageContains('.geist-button.error{background:#da2f35;color:#fff;box-shadow:none}')
+        self.assertPageContains('.geist-button.warning{background:#ff990a;color:#000;box-shadow:none}')
+        self.assertPageContains('.geist-button:is(.error,.warning):disabled{background:var(--sunk);color:var(--muted);box-shadow:0 0 0 1px var(--line-soft)}')
         self.assertPageLacks("${index===0?' checked':''}")
 
     def test_immersive_fit_compares_source_against_the_viewport(self):
