@@ -134,7 +134,11 @@ class DesktopSettingsTests(unittest.TestCase):
     def test_native_shortcut_round_trip_in_temporary_directory(self):
         path = self.root / '启动 fixture.lnk'
         program = str(self.program / 'Peach.exe')
-        desktop_startup.shortcut('write', path, target=program, arguments='--silent', directory=str(self.program))
+        written = desktop_startup.shortcut('write', path, target=program, arguments='--silent', directory=str(self.program))
+        # 写完立刻核对文件就在这个路径上。只在 remove 之后断言不存在的话，`Save()` 把
+        # 快捷方式落到别处或压根没落地都照样通过，runner 上红的正是这一段。
+        self.assertTrue(written['enabled'])
+        self.assertTrue(path.is_file(), sorted(item.name for item in self.root.iterdir()))
         result = desktop_startup.shortcut('read', path)
         self.assertEqual(Path(result['target']).resolve(), Path(program))
         self.assertEqual(result['arguments'], '--silent')
@@ -143,17 +147,24 @@ class DesktopSettingsTests(unittest.TestCase):
 
     @unittest.skipUnless(os.name == 'nt', 'Windows 原生快捷方式')
     def test_a_failed_shortcut_call_reports_what_powershell_said(self):
-        """失败的消息带上 PowerShell 的第一行原因，不只给一句「请检查权限」。
+        """失败的消息带上脚本自报的原因、异常类型和行号，不只给一句「请检查权限」。
 
         权限不足、`WScript.Shell` COM 起不来、路径没落地、扩展名不是 `.lnk`——这几种
         在只有一句提示的消息里长得一模一样。CI 的 Windows runner 上这一步失败过，日志里
         除了那句提示什么都没有，无从判断是哪一种。
+
+        判据落在脚本 `catch` 出来的那一行 JSON 上，不看退出码也不看 stderr：Windows
+        PowerShell 5.1 成功那一次也往 stderr 写 `#< CLIXML` 的进度流，照它取原因只会拿到
+        「正在准备首次使用模块。」。
         """
         with self.assertRaises(OSError) as raised:
             desktop_startup.shortcut('write', self.root / '不是快捷方式.txt',
                                      target=str(self.program / 'Peach.exe'))
-        self.assertIn('启动项未能保存', str(raised.exception))
-        self.assertIn('PowerShell', str(raised.exception))
+        message = str(raised.exception)
+        self.assertIn('启动项未能保存', message)
+        self.assertIn('Expected shortcut', message)
+        self.assertRegex(message, r'第 \d+ 行')
+        self.assertNotIn('CLIXML', message)
 
     @unittest.skipUnless(os.name == 'nt', 'Windows 系统卸载助手')
     def test_native_uninstall_removes_only_temporary_owned_program_and_data(self):

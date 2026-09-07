@@ -14,38 +14,51 @@ from . import distribution, settings_file
 from .appid import MACOS_LAUNCH_AGENT_LABEL
 from .fsutil import atomic_write_text
 
+#: 结论只走 stdout 的一行 JSON，`ok` 决定成败。退出码和 stderr 都不作判据：
+#: Windows PowerShell 5.1 把进度流序列化成 `#< CLIXML` 写到 stderr，成功那一次也写，
+#: 于是「取 stderr 第一行当原因」拿到的是「正在准备首次使用模块。」而不是错误。
 _SHORTCUT_SCRIPT = r"""
 $ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
 [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
-$peachInput = [Console]::In.ReadToEnd() | ConvertFrom-Json
-$peachLinkPath = [IO.Path]::GetFullPath($peachInput.path)
-if ([IO.Path]::GetExtension($peachLinkPath) -ne '.lnk') { throw 'Expected shortcut' }
-$peachExists = Test-Path -LiteralPath $peachLinkPath -PathType Leaf
-$peachShell = New-Object -ComObject WScript.Shell
-if ($peachInput.action -eq 'read' -and -not $peachExists) {
-  @{enabled=$false; target=''; arguments=''} | ConvertTo-Json -Compress
-  exit 0
+try {
+  $peachInput = [Console]::In.ReadToEnd() | ConvertFrom-Json
+  $peachLinkPath = [IO.Path]::GetFullPath($peachInput.path)
+  if ([IO.Path]::GetExtension($peachLinkPath) -ne '.lnk') { throw 'Expected shortcut' }
+  $peachExists = Test-Path -LiteralPath $peachLinkPath -PathType Leaf
+  $peachShell = New-Object -ComObject WScript.Shell
+  if ($peachInput.action -eq 'read' -and -not $peachExists) {
+    @{ok=$true; enabled=$false; target=''; arguments=''} | ConvertTo-Json -Compress
+  } else {
+    $peachLink = $peachShell.CreateShortcut($peachLinkPath)
+    if ($peachInput.action -ne 'read' -and $peachExists -and $peachLink.TargetPath -ne $peachInput.expected) {
+      throw 'Startup shortcut belongs to another installation'
+    }
+    if ($peachInput.action -eq 'write') {
+      $peachParent = Split-Path -Parent $peachLinkPath
+      [IO.Directory]::CreateDirectory($peachParent) | Out-Null
+      $peachLink.TargetPath = $peachInput.target
+      $peachLink.Arguments = $peachInput.arguments
+      $peachLink.WorkingDirectory = $peachInput.directory
+      $peachLink.Description = 'Peach'
+      $peachLink.WindowStyle = 7
+      $peachLink.Save()
+      if (-not (Test-Path -LiteralPath $peachLinkPath -PathType Leaf)) {
+        throw "Save reported success but $peachLinkPath is absent"
+      }
+      $peachExists = $true
+    }
+    if ($peachInput.action -eq 'remove' -and $peachExists) {
+      Remove-Item -LiteralPath $peachLinkPath
+      $peachExists = $false
+    }
+    @{ok=$true; enabled=$peachExists; target=$peachLink.TargetPath; arguments=$peachLink.Arguments} |
+      ConvertTo-Json -Compress
+  }
+} catch {
+  @{ok=$false; error=$_.Exception.Message; kind=$_.Exception.GetType().FullName;
+    line=$_.InvocationInfo.ScriptLineNumber} | ConvertTo-Json -Compress
 }
-$peachLink = $peachShell.CreateShortcut($peachLinkPath)
-if ($peachInput.action -ne 'read' -and $peachExists -and $peachLink.TargetPath -ne $peachInput.expected) {
-  throw 'Startup shortcut belongs to another installation'
-}
-if ($peachInput.action -eq 'write') {
-  $peachParent = Split-Path -Parent $peachLinkPath
-  [IO.Directory]::CreateDirectory($peachParent) | Out-Null
-  $peachLink.TargetPath = $peachInput.target
-  $peachLink.Arguments = $peachInput.arguments
-  $peachLink.WorkingDirectory = $peachInput.directory
-  $peachLink.Description = 'Peach'
-  $peachLink.WindowStyle = 7
-  $peachLink.Save()
-  $peachExists = $true
-}
-if ($peachInput.action -eq 'remove' -and $peachExists) {
-  Remove-Item -LiteralPath $peachLinkPath
-  $peachExists = $false
-}
-@{enabled=$peachExists; target=$peachLink.TargetPath; arguments=$peachLink.Arguments} | ConvertTo-Json -Compress
 """
 
 
@@ -58,16 +71,33 @@ def shortcut(action: str, path: Path, *, target: str = "", arguments: str = "", 
                                                   directory=directory, expected=expected)),
                             capture_output=True, text=True, encoding="utf-8", timeout=15,
                             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0), check=False)
-    if result.returncode:
+    try:
+        payload = json.loads(result.stdout.lstrip("﻿"))
+    except ValueError:
+        payload = None
+    if not isinstance(payload, dict) or not payload.get("ok"):
         # PowerShell 说的原因不能吞掉。只留「请检查权限」这一句时，Windows runner 上
         # 这一步失败了三次，而权限、`WScript.Shell` COM 不可用、路径没落地和扩展名
         # 校验不通过在消息里长得一模一样，谁都没法往下查。
-        detail = next((line.strip() for line in
-                       (result.stderr or result.stdout or "").splitlines()
-                       if line.strip()), "")
         raise OSError("启动项未能保存，请检查当前用户的启动文件夹权限"
-                      + (f"（PowerShell：{detail}）" if detail else ""))
-    return json.loads(result.stdout.lstrip("\ufeff"))
+                      f"（PowerShell：{_shortcut_reason(payload, result)}）")
+    return payload
+
+
+def _shortcut_reason(payload, result) -> str:
+    """脚本自报的原因优先；只有 PowerShell 连 JSON 都没吐出来才退回它的输出。
+
+    退回时逐行滤掉 CLIXML：5.1 把进度流序列化成 `#< CLIXML` 加一整段 XML 写进 stderr，
+    成功那一次也写，整段抄进消息只会把真正的原因顶掉。
+    """
+    if isinstance(payload, dict) and payload.get("error"):
+        kind = str(payload.get("kind", "")).rsplit(".", 1)[-1]
+        line = payload.get("line")
+        located = f"{kind} 第 {line} 行" if kind and line else kind
+        return f"{payload['error']}（{located}）" if located else str(payload["error"])
+    noise = next((line.strip() for line in (result.stderr or "").splitlines()
+                  if line.strip() and not line.lstrip().startswith(("#<", "<"))), "")
+    return noise or f"退出码 {result.returncode}，输出为空"
 
 
 def target(config, *, executable: Path | None = None) -> tuple[Path, list[str], Path]:
