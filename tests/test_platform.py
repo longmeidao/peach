@@ -10,11 +10,10 @@ from peach.media import FilesystemBackend, MediaOffline, MediaUnavailable
 from peach.platform import (
     MOUNTS_ENV,
     UNMAPPED_ROOT,
-    declared_roots_of,
     is_unmapped,
     is_windows_path,
     location_mounts,
-    location_of,
+    location_roots,
     resolve_location,
     resolve_root,
     root_online,
@@ -68,7 +67,7 @@ class LocationResolutionTests(unittest.TestCase):
     def test_declared_root_matching_ignores_case(self):
         """账本里写 `R:\\Media`、声明根写 `R:\\media`，是同一处，不能判成未声明。"""
         with with_media({}):
-            self.assertEqual(location_of(r"R:\MEDIA\one.mp4"), "local")
+            self.assertEqual(resolve_location(r"R:\MEDIA\one.mp4")[0], "local")
 
     def test_the_longest_declared_root_wins(self):
         with with_media({}, {"whole": "R:/", "local": r"R:\media"}):
@@ -80,12 +79,12 @@ class LocationResolutionTests(unittest.TestCase):
         with with_media({}):
             self.assertEqual(resolve_location(r"Z:\secret\one.mp4"), (None, ()))
             # 同一个盘但不在声明根下：`R:\Resources` 不是 `R:\media`。
-            self.assertIsNone(location_of(r"R:\Resources\Intake\one.mp4"))
+            self.assertIsNone(resolve_location(r"R:\Resources\Intake\one.mp4")[0])
 
     def test_declared_roots_are_read_from_the_settings_layer(self):
         with with_media({}):
-            self.assertEqual(declared_roots_of("local"), (r"R:\media",))
-            self.assertEqual(declared_roots_of("online"), ())
+            self.assertEqual(location_roots().get("local"), (r"R:\media",))
+            self.assertNotIn("online", location_roots())
 
     def test_a_source_with_two_roots_resolves_each_to_its_own_index(self):
         roots = {"local": (r"R:\media", r"S:\more"), "115": ("B:/",)}

@@ -256,9 +256,6 @@ class WebContract:
             # 在途计算靠这个数认出「我出发之后缓存失效过」，从而放弃写回。
             self.cache_generation += 1
 
-    def db(self, write=False):
-        return self.database.connect(write=write)
-
     def read_connection(self):
         return self.database.read_connection()
 

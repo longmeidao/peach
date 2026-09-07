@@ -68,11 +68,6 @@ def location_roots() -> dict[str, tuple[str, ...]]:
     return dict(settings_file.active().locations)
 
 
-def declared_roots_of(location: str) -> tuple[str, ...]:
-    """某个来源在账本里的全部声明根；未声明的来源是空元组。"""
-    return tuple(location_roots().get(location, ()))
-
-
 def resolve_root(
     raw: str | os.PathLike[str], roots: Roots | None = None,
 ) -> tuple[str | None, int, tuple[str, ...]]:
@@ -111,16 +106,6 @@ def resolve_location(
     """账本路径属于哪个来源，以及它在声明根之后的层级。判定见 `resolve_root`。"""
     location, _index, tail = resolve_root(raw, roots)
     return location, tail
-
-
-def location_of(
-    raw: str | os.PathLike[str], roots: Roots | None = None,
-) -> str | None:
-    """账本路径属于哪个来源；不在任何声明根下则返回 None。
-
-    写入侧用它拦截「location 和 root 对不上」的导入（`peach.scan.check_scan_target`）。
-    """
-    return resolve_location(raw, roots)[0]
 
 
 def root_online(root: Path) -> bool:

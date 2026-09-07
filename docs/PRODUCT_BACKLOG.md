@@ -1,6 +1,6 @@
 # Peach 产品待办
 
-更新时间：2026-09-06。这里只记录尚未完成或只完成一部分的需求；运行数字以 `peach-data/state/job-status.md` 的自动区块为准。
+更新时间：2026-09-07。这里只记录尚未完成或只完成一部分的需求；运行数字以 `peach-data/state/job-status.md` 的自动区块为准。
 
 ## 已有骨架、尚未完成（6 项）
 
@@ -35,7 +35,7 @@
 3. 缺时长资源补 probe 后再生成接触表。
 4. PikPak 计费抽样与下载边缘质量核验。
 5. 复用 CommunityScrapers 一类公开刮削规则做元数据导入：只当只读规则语料，不重新引入 Stash 运行时依赖（ADR-0021）。
-6. 剩余 status / suggest / ledger 逻辑移入应用边界后删除旧 CLI 表面。
+6. 删掉旧 CLI 表面 `scripts/ledger.py` 的 init／scan／follow／stats／dup 五个子命令和它自带的 `SCHEMA` 副本：`stats` 已由 `peach status` 取代，`scan` 只是 `peach scan` 的转发，`follow` 读 `%USERPROFILE%\Downloads` 的一次性导入已由 `peach follow` 取代，`SCHEMA` 与 `migrations/` 是同一套 DDL 的第二份、`test_rm_ledger.test_fresh_schema_matches_current_web_columns` 只为保它同步而存在。只保留 ADR-0021 要求的 `cmd_stash`，建空库改走 `migrations.upgrade`；连带改 `docs/REUSE.md`、`docs/OPERATIONS.md` 与 `tests/test_script_policy.py` 的例外表。
 7. 把常跑批处理折进 `peach` CLI：`probe`、`sheets`、`scrape_codes`、`fetch_jav_covers`、`taste_history`、`traffic_watch` 现在各是一个脚本入口，参数、限流与健康报告口径不统一。
 8. 开源通用化的发布准备（ADR-0023 第 4 阶段）：清扫 `docs/` 与 `.claude/skills/` 里的局域网地址、主机名、账号名、备份文件名与个人目录，把只对一台机器成立的运行态移出仓库，并把 `tests/test_repo_hygiene.py` 的个人字面量门槛从 `src/peach/` 扩到文档与技能。许可证、贡献与安全说明、issue/PR 模板在仓库里；设置层、来源挂载点 ID 与可整体关闭的复制链路在 Windows 生效，macOS 待跑 `peach init --from-existing --mount local=<落点>`。
    - 公开分发：待项目相对稳定，安装、升级、数据迁移及跨平台回归稳定后，同批推进 PyPI 包发布和 WinGet 登记；现阶段仅记录计划，不上传或登记。发布前确认发行名，调整禁止上传标记，完善自动构建、版本发布与两端安装验收。
@@ -102,11 +102,14 @@
 32. `install_entity_links.py` 的可达性门槛按「非 200 就跳过」执行，而同文件的 `is_gone()` 明确写着 403／5xx／连接错误不能当「页面没了」。首批 703 条里 137 条因此没装，其中 31 条 twitter.com、23 条 t-powers.co.jp。把跳过分成「确证没了」和「这次没取到」两档：后者留进待复查队列，配合 `rediscover_entity_links.py` 对 t-powers／nax-pro／mines-pro 这些已经搬家的域名上溯找新锚，再装一次。
 33. 托盘自重建被测试记录门槛卡住：2026-09-05 22:54 托盘为 0.8.5 起的那次「同步开发进度」全量 3181 个用例全绿，`scripts/test_runner.py` 却因验证前后主检出的内容或依赖快照不一致判本次记录无效、退出码 1，托盘按测试失败处理，没有打包也没有换 EXE，并且同一 HEAD 不再重试；同一时段两次 `auto` 记录也是空的 `validated`。第二次（23:14 起，HEAD 5a4b37f8）跑到一半，协调者于 23:17:42 把 0.8.6 合进了同一个主检出，全量因此 6 个用例失败、记录再次无效；失败用例名未取得，第三次尝试一开始就把日志覆盖了。机制已确认：托盘在主检出跑全量，`integrate` 的 `integration.lock` 与全量的 `full-suite.lock` 互不排斥，任何一次集成都会改掉正在验证的树。要做三件事：集成前等主检出里正在跑的全量结束（或让两把锁互斥），并把「记录无效」和「用例失败」在退出码或输出上分开，让托盘对前者重试而不是放弃；托盘的日志只写 stderr，没有落盘，22:43 那次托盘连同两个服务一起消失的原因也因此未取得，给托盘补一份 `logs/tray.log`。现场：线上服务 0.8.5 正常，托盘 EXE 仍是 21:08 打的 0.8.1，`pyproject.toml` 与 `windows_update.py` 的改动没进 EXE。
 34. 封面来源头像逐条复核：37 张仍来自 `cover-fallback`，完整初始清单位于 `attic/reviews/20260906-portrait-agency/remaining-cover-avatars.csv`。41 张被封面覆盖的 Gfriends 人像已从备份恢复，包括日向真凛，恢复记录见同目录 `cover-restore-result.json`。采集器将封面保留为未验证候选，安装函数拒绝把封面写成人物头像。
-35. 拿到 Astra 访问权限后，对 `peach-app`（或先挑一个模块，如 `src/peach/follow_providers.py`）跑一遍 George Pickett 2026-09-05 分享的首要原则审查 prompt（https://x.com/georgepickett/status/2095979879137460640），看删减与简化建议是否成立；结论回到「尚未实现」第 6、7 条那类清理项，不直接改真相字段。Prompt 原文照抄：
-    > Think from first principles about what we're trying to achieve here. Interrogate what you built before calling it done:
-    > 1. Is anything here unnecessary, overly complicated, or based on weak assumptions? Challenge them.
-    > 2. What can be deleted entirely?
-    > 3. What can be simplified now that unnecessary pieces are gone?
-    > Then make the changes. Prefer deleting over simplifying, simplifying over optimizing, and optimizing over automating.
-    > It might be done too - you don't HAVE to go and make changes. If it's good, leave it alone.
+35. 首要原则审查（2026-09-07，George Pickett 的 prompt，覆盖整个 `peach-app`）的剩余清理项。零风险的删除已随分支 `agent/claude/provider-registry-review` 落地，完整报告与判断依据在顶层 `attic/reviews/20260907-first-principles/review.md`；下面每条独立，可单独派工作树：
+    - follow：`connector_headers` 形参、`blocked_reason` 基类钩子、`FollowCandidate.version` 输入字段只有测试在用；`KemonoConnector.HOSTS`／`SubscribeStarConnector.HOSTS` 与登记表 `url_hosts` 是同一份主机表的第二份；Rule34Video 自带的探测循环可并入 `enrich()`；425／429 进 `_send` 的可重试集后两段手写重试可删；`follow_cli._add` 用 URL 模板重造 `parse_source_url`，`--semantics` 能写出与连接器矛盾的行——Web 已覆盖 CLI 全部动作，先确认终端里是否还用 `peach follow`，不用就整删。
+    - follow 弱假设：ETag／304 整条机制（`etag`／`last_modified` 列、`_conditional`、各 `fetch` 的 `not_modified` 分支、`--force`）没有一次实测；先只读查 `follow_source` 里 `etag` 非空与 `last_status='not_modified'` 的计数，全为 0 就整条删。六处「读时修旧行」兼容层（`archive_file_url`、`_legacy_history_end`、`_f95_has_resource`、`split_posts`、`author_display_text` 修正、`f95_attachment_media_items`）换成一次带备份的迁移，需 ledger 写授权。
+    - Web：`serve --no-ledger-sync`／`--ledger-sync-seconds` 处理代码已删、参数还在，托盘五处与 `docs/OPERATIONS.md` 仍在传——必须和托盘重建同批做，旧 EXE 拉起新代码的窗口期会被 argparse 拒收；四个域 Protocol（`LinkContract`、`PlaylistContract`、`ResourceSyncContract`、`ReviewContract`）换成直接用 `WebContract`，`ContractConformanceTests` 随之删；`same_origin`、来源在线判定、回环判定各有三份，各留一份；`_read_answers`／`_validate` 里「只发 media_dirs」的旧表单分支生产不可达，只靠测试活着；access `legacy` 模式的 `tok` cookie 只被接受不被升级，定截止日删接受分支；`legacy_snapshot_roots` 的运行期前缀重映射贯穿五个模块，先只读查 `asset.snapshot_path LIKE 'R:\Resources\Intake\snapshots%'` 的计数，为 0 则整链可删。
+    - 桌面：换 EXE 两条路径（`replace_windows_tray.py` + `windows_update` 内联备份，与 `windows_restart.swap_tray_binary`）留校验更强的后者；`test_runner.py` 把「记录无效」与「用例失败」分成不同退出码（第 33 条的根因）；`sync.py` 的 `PUSH_INTERVAL_SECONDS`／`push_if_needed`／`interval` 生产只传 0；`scripts/manage_tray_startup.ps1` 已由 `desktop_startup.py` 接管（同时改 ADR-0011 与 `docs/OPERATIONS.md`）；三张「哪些路径算运行时」清单合成一处。
+    - 领域层：`catalog_rules` 里站名交替串、TLD 列表、`_CODE_DATE` 各写两份；`transcodes.requires_conversion`／`browser_path` 是同一段缓存逻辑；`code_variants` 在 `jav_cover_fetch` 与 `catalog_rules` 各一份；`library_processing` 是第三条 r18 请求路径且跨模块拿私有 `_fetch`；`metadata_seesaa.RoutedMetadataProvider` 只有 `scrape_codes.py` 用，内联。
+    - scripts：`audit_creator_attributions.py`（查的 `legacy:asset` 已无写入者）、`apply_metadata_tags.py`（绕过 `/review`）、`creator_tags.py --apply-review`（与 `web_review` 判据不同的第二条写路，`--export-review` 要留）建议删；`backfill_rule34_tag_types.py` 先查 `tag_types IS NULL` 计数再定；`import_stash_entities.py` 随 `docs/STASH.md` 第 6 步一起定；7 处绕开 `scripting.open_for_write`、5 处自拼只读 URI、5 处手写线性重试要接上共享实现；`audit_video_endcards.py`、`audit_fc2_similarity.py`、`localize_series_names.py`、`find_ads.py` 还会用但文档没登记，归到 `peach-batch-jobs` 或 `docs/SOURCING.md`。
+    - tests：约 3 700 条源码文本断言集中在 `test_web_ui.py`（近 90 天 20% 的提交都在改它）与 `test_follow_web.py`；页面断言设施两处各写一份；`test_fastapi_api.BASE_SCHEMA` 手写 19 张表已漂移，31 个文件手写 `CREATE TABLE` 而 `tests/support/ledger.py` 只有 14 个在用。方向是触碰时迁到 `test_web_js.py` 与 `fresh_ledger()`，不整体重写；`check_copy_final_state.py` 的词表不拦「过去／此前」。
+    - 前端：9 处 `await import('/dist/peach-ui.js')` 与文件顶部静态 import 并存（`test_frontend_build.py` 与 `test_web_ui.py` 钉住了这种写法，要同改）；`wireNavigationDrag` 与 `ui-components.wireDragReorder` 双实现；`refreshStore` 零消费；`.fnote` 在 21 与 22 号 CSS 互相覆盖。
+    - 文档：同一条规则最多写在 15 处（测试入口）；`CLAUDE.md` 正文与 AGENTS、worktree 技能重复；`peach-ledger-write`、`peach-reference-evidence`、`peach-worktree` 引用的 HANDOFF 节名已不存在；`docs/STATUS.md` 版本行落后；本文件有 7 对重复条目（7↔18、12↔21②、13↔22、9↔34、8↔30、28↔30）与一节评审记录；`docs/PIKPAK.md` 是按日期的 runbook，流程该归 `peach-batch-jobs`。
 36. 域映射门槛只覆盖 `web/` 与 `frontend/`。同一个漏洞在别的前缀上照样成立：`tests/test_babepedia_match.py` 读 `scripts/match_babepedia_creators.py` 却只登记在 metadata 域，改那个脚本时 `auto` 选的是 tooling；`tests/test_frontend_build.py` 读 `docs/CLOUDDRIVE.md`，而 `.md` 一律归 checks。按 `test_runner.repository_paths_read_by` 全树扫一遍，`scripts/`、`docs/`、`.github/`、`resources/` 四类共约三十处。要补的是 `AUTO_SCOPE_PREFIXES` 本身——把逐个脚本映射到它真正的域，像 `scripts/localize_performer_names.py` 那两条那样——补完再把 `tests/test_test_planning.py` 那条门槛的前缀白名单去掉。

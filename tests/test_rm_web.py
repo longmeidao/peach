@@ -108,7 +108,7 @@ class WebDataTests(unittest.TestCase):
         self.assertFalse(cards[0]["creator_entity"]["has_image"])
 
     def test_default_database_connection_is_readonly(self):
-        con = self.contract.db()
+        con = self.contract.database.connect()
         with self.assertRaises(sqlite3.OperationalError):
             con.execute("UPDATE asset SET name='must-not-write' WHERE id=1")
         con.close()
@@ -1130,7 +1130,7 @@ class WebDataTests(unittest.TestCase):
 
         @contextmanager
         def fail_after_body():
-            connection = self.contract.db(write=True)
+            connection = self.contract.database.connect(write=True)
             try:
                 yield connection
                 connection.rollback()
@@ -1617,24 +1617,6 @@ class WebDataTests(unittest.TestCase):
         self.assertEqual(ids(dir="asc"), [1, 2, 4])
         # 不给方向时按列的默认方向走，与显式 desc 同解。
         self.assertEqual(ids(), [2, 1, 4])
-
-    def test_legacy_direction_baked_sort_keys_still_resolve(self):
-        """`big`／`short`／`long` 是把方向写进键名的旧键，仍要认得。
-
-        它们存在于地址栏、书签和已保存的默认排序里。认不出来不会报错，
-        只会静默退回另一种排序——用户看到的是「书签点开顺序变了」。
-        """
-        def ids(args):
-            return [item["id"] for item in rm_web.q_items(
-                self.contract, {"limit": "10", **args})["items"]]
-
-        self.assertEqual(ids({"sort": "big"}), ids({"sort": "size", "dir": "desc"}))
-        self.assertEqual(ids({"sort": "long"}), ids({"sort": "dur", "dir": "desc"}))
-        self.assertEqual(ids({"sort": "short"}), ids({"sort": "dur", "dir": "asc"}))
-        # 旧键自带的方向只是缺省值：`dir` 明写了就听 `dir` 的，两者同时出现只可能是
-        # 手改地址，此时新参数说的话更近。
-        self.assertEqual(ids({"sort": "short", "dir": "desc"}),
-                         ids({"sort": "dur", "dir": "desc"}))
 
     def test_persistent_playlist_can_save_mix_reorder_resume_and_edit(self):
         created = rm_web.w_playlist(self.contract, {

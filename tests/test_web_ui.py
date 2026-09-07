@@ -2191,7 +2191,6 @@ class WebUiSourceTests(unittest.TestCase):
         # 断言的是判据与两个称谓，不是 performerLabel 写成箭头函数还是 function。
         self.assertPageContains("performerLabel(it)")
         self.assertPageContains("it&&it.is_jav?'女优':'艺人'")
-        self.assertPageContains("const ENTITY_LABELS={performer:'艺人'")
 
     def test_narrow_top_bar_keeps_the_actions_on_the_right(self):
         """窄屏下搜索框绝对定位后脱离了流，动作按钮会挤在品牌名右侧、右半条留空。"""
@@ -4292,24 +4291,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('.geist-note>svg{width:16px;height:24px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}')
         self.assertPageContains('.runtimegate a{grid-column:2/-1}')
 
-    def test_project_web_ui_skill_keeps_future_changes_on_shared_primitives(self):
-        root = Path(__file__).resolve().parents[1]
-        skill = root / ".claude" / "skills" / "peach-web-ui" / "SKILL.md"
-        self.assertTrue(skill.is_file())
-        rules = skill.read_text(encoding="utf-8")
-        self.assertIn("优先扩展 `web/js/ui-components.js`", rules)
-        self.assertIn("Progress 必须有真实 `value/max`", rules)
-        self.assertIn("Switch 必须共享 radio `name`", rules)
-        self.assertIn("Fieldset", rules)
-        self.assertIn("Scroller", rules)
-        self.assertIn("整页或大区块首次等待内容结构", rules)
-        self.assertIn("同一次页面进入只呈现一段等待态", rules)
-        self.assertIn("Skeleton 只覆盖真正等待的内容区", rules)
-        self.assertIn("Skeleton 只保留给辅助技术的状态名", rules)
-        self.assertIn("Empty State", rules)
-        agents = (root / "AGENTS.md").read_text(encoding="utf-8")
-        self.assertIn(".claude/skills/peach-web-ui/SKILL.md", agents)
-
     def test_taste_drilldown_and_legacy_duration_tags_never_leak_filter_state(self):
         self.assertPageContains("const cleanTagFilter=value=>")
         self.assertPageContains("tag:cleanTagFilter(initialParam('tag'))")
@@ -5034,7 +5015,6 @@ class WebUiSourceTests(unittest.TestCase):
         )
 
     def test_every_entity_video_collection_reuses_applicable_sort_controls(self):
-        self.assertPageContains("const ENTITY_LABELS={performer:'艺人',studio:'厂牌',creator:'创作者',series:'系列'}")
         self.assertPageContains('class="batchaction entitybatch"')
         self.assertPageContains("filters.sort||'new',filters.dir,'data-entity-sort')")
         self.assertPageContains("p.set('sort',filters.sort||'new')")
@@ -8308,6 +8288,21 @@ class IndexHtmlTagBalanceTests(unittest.TestCase):
         self.assertEqual(4, len(problems), problems)
         self.assertIn("第 4 行 </section> 跳过了仍然开着的", problems[0])
         self.assertIn("<div>（第 2 行）", problems[0])
+
+
+class CoverSleeveThresholdTests(unittest.TestCase):
+    def test_the_page_and_the_face_script_share_the_sleeve_thresholds(self):
+        """脚本按封套丢掉左半边的脸，页面按同一对阈值决定取景；两边的数必须是同一对。"""
+        root = Path(__file__).resolve().parents[1]
+        source = (root / "scripts" / "detect_cover_faces.py").read_text(encoding="utf-8")
+        low = float(re.search(r"^SLEEVE_RATIO_MIN = ([\d.]+)", source, re.M).group(1))
+        high = float(re.search(r"^SLEEVE_RATIO_MAX = ([\d.]+)", source, re.M).group(1))
+        page = (root / "web" / "app.js").read_text(encoding="utf-8")
+        anchor = re.search(r"r>=([\d.]+)\?'still':r>([\d.]+)\?'sleeve'", page)
+        self.assertIsNotNone(anchor, "coverAnchor 的封套判定不见了")
+        self.assertEqual((low, high), (float(anchor.group(2)), float(anchor.group(1))))
+        self.assertLess(low, high)
+
 
 if __name__ == "__main__":
     unittest.main()

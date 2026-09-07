@@ -295,7 +295,7 @@ def create_app(
         # 不探测共享目录或迁移数据库；健康检查必须无副作用。
         ffmpeg = resolver.ffmpeg()
         read_only = bool(sync is not None and sync.read_only)
-        return {"ok": True, "service": "peach-api", "version": __version__, "mode": "fastapi",
+        return {"ok": True, "service": "peach-api", "version": __version__,
                 # 这台机器跑过 `peach init` 没有。未配置时服务照常起，只是没有数据。
                 "configured": settings.configured,
                 # 这次请求的发起方能不能改这台机器的配置（独立包、回环地址）。它随调用方

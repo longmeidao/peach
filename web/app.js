@@ -2145,7 +2145,6 @@ applyDensity();
 
 /* ── 悬停预览：只有本地文件拉真视频。
    115 / PikPak 等远端源只扫本地接触印相，避免页面移除后继续下载或填满缓存。 ── */
-const POS=[[0,0],[50,0],[100,0],[0,50],[50,50],[100,50],[0,100],[50,100],[100,100]];
 function releaseHoverPreviews(root=document,except=null){
   if(!root||!root.querySelectorAll)return;
   root.querySelectorAll('.card').forEach(card=>{
@@ -4998,7 +4997,6 @@ function alignFollowImageControls(){
 function wireFollowDetail(root){
   root.querySelectorAll('[data-follow-detail]').forEach(button=>button.onclick=event=>{
     event.preventDefault();event.stopPropagation();
-    if(root.matches?.('dialog'))root.close();
     openFollowDetail(+button.dataset.followDetail)});
 }
 
@@ -5899,7 +5897,7 @@ function wireFollowManage(creds=[]){
   });
   root.querySelectorAll('[data-follow-guess]').forEach(chip=>chip.onclick=()=>{
     if(!form)return;
-    const box=form.querySelector('textarea');
+    const box=form.querySelector('input[name="line"]');
     box.value=chip.dataset.followGuess;
     box.dispatchEvent(new Event('input'));
     form.requestSubmit();
@@ -6404,7 +6402,6 @@ async function openIndex(kind,q,push=true,refine=false){
     finally{if(requestSeq===indexRequestSeq)more.disabled=false}};
 }
 
-const ENTITY_LABELS={performer:'艺人',studio:'厂牌',creator:'创作者',series:'系列'};
 /* 「女优」只用于番号发行物。素人、创作者自制和网红内容里的出镜者是艺人，
    套上 JAV 的行业称谓既不准确也会和创作者身份混淆。判据由后端 `is_jav` 给。 */
 function performerLabel(it){return it&&it.is_jav?'女优':'艺人'}
