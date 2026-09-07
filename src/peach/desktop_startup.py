@@ -142,6 +142,18 @@ def desktop_directory() -> Path:
     return Path(os.environ.get("USERPROFILE", Path.home())) / "Desktop"
 
 
+def owned_target(target: Path, program: Path) -> bool:
+    """`.lnk` 指向的目标算不算这份安装的入口。
+
+    源码安装的判据放宽到整个项目目录：`dist\\Peach\\Peach.exe` 和
+    `pythonw.exe -c "…runpy.run_module('peach.tray')"` 是同一份 Peach 的两个入口，而
+    `target()` 只会给出后者。按字面比就把自己先前放的图标判成「另一份安装」，配置页里
+    连关掉它都不行——本机的桌面图标正是这么被锁住的。
+    """
+    return target == program.resolve() or (not distribution.standalone()
+                                           and target.is_relative_to(settings_file.PROJECT_ROOT.resolve()))
+
+
 def desktop_entry(program: Path) -> tuple[Path, dict]:
     """桌面快捷方式的路径与当前状态；属于另一份安装时不认领。
 
@@ -151,7 +163,7 @@ def desktop_entry(program: Path) -> tuple[Path, dict]:
     """
     path = desktop_directory() / "Peach.lnk"
     current = shortcut("read", path)
-    if current["enabled"] and Path(current["target"]).resolve() != program.resolve():
+    if current["enabled"] and not owned_target(Path(current["target"]).resolve(), program):
         raise ValueError("桌面快捷方式属于另一份 Peach 安装")
     return path, current
 
@@ -160,11 +172,8 @@ def windows_entry(config, program: Path) -> tuple[Path, dict]:
     directory = startup_directory()
     legacy = directory / "Peach.lnk"
     current = shortcut("read", legacy)
-    if current["enabled"]:
-        path = Path(current["target"]).resolve()
-        owned = path == program.resolve() or (not distribution.standalone() and path.is_relative_to(settings_file.PROJECT_ROOT.resolve()))
-        if owned:
-            return legacy, current
+    if current["enabled"] and owned_target(Path(current["target"]).resolve(), program):
+        return legacy, current
     identity = hashlib.sha256(str(config.data_root.resolve()).casefold().encode()).hexdigest()[:12]
     path = directory / f"Peach-{identity}.lnk"
     current = shortcut("read", path)

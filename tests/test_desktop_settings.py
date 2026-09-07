@@ -4,6 +4,7 @@ import base64
 import ctypes
 import os
 import subprocess
+import sys
 from pathlib import Path
 import tempfile
 from types import SimpleNamespace
@@ -134,6 +135,22 @@ class DesktopSettingsTests(unittest.TestCase):
         with patch.object(desktop_startup, 'startup_directory', return_value=self.root), patch.object(desktop_startup, 'shortcut', side_effect=[
             {'enabled':False}, {'enabled':True,'target':str(self.root / 'Other.exe')}]), self.assertRaisesRegex(ValueError, '另一份'):
             desktop_startup.windows_entry(self.config, self.program / 'Peach.exe')
+
+    def test_a_shortcut_aimed_at_the_packaged_entry_still_counts_as_this_installation(self):
+        """`dist/Peach/Peach.exe` 和 `pythonw.exe -c "…peach.tray…"` 是同一份 Peach 的两个入口。
+
+        源码安装里 `target()` 只给出后者。按字面比目标路径，配置页会把自己先前放在桌面上
+        的图标判成「另一份 Peach 安装」并锁住那颗开关，用户连关掉它都不行；本机的桌面图标
+        就是这么被锁住的（0.29.0 上线后实测）。所以源码安装的归属判到整个项目目录。
+        """
+        program = Path(sys.executable).with_name('pythonw.exe')
+        packaged = (settings_file.PROJECT_ROOT / 'dist/Peach/Peach.exe').resolve()
+        with patch.object(desktop_startup.distribution, 'standalone', return_value=False):
+            self.assertTrue(desktop_startup.owned_target(packaged, program))
+            self.assertFalse(desktop_startup.owned_target((self.program / 'Peach.exe').resolve(), program))
+        # 独立发行版没有项目目录这层放宽：那份包只认自己那个 exe。
+        with patch.object(desktop_startup.distribution, 'standalone', return_value=True):
+            self.assertFalse(desktop_startup.owned_target(packaged, program))
 
     @unittest.skipUnless(os.name == 'nt', 'Windows known folder')
     def test_desktop_directory_comes_from_the_known_folder_not_the_home_path(self):
