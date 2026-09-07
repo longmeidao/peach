@@ -297,19 +297,23 @@ class OperationalScriptTests(unittest.TestCase):
         prologue, separator, tail = source.partition(marker)
         self.assertEqual(separator, marker)
         exec_line = next(line for line in tail.splitlines() if line.startswith("exec "))
-        stub_line = exec_line.replace('"$PYTHON" scripts/test_runner.py', '"$PEACH_ARGV_STUB"', 1)
+        stub_line = exec_line.replace('"$PYTHON" scripts/test_runner.py',
+                                      '"$PEACH_PY" "$PEACH_STUB"', 1)
         self.assertNotEqual(stub_line, exec_line)
 
-        directory = Path(tempfile.mkdtemp())
+        directory = Path(tempfile.mkdtemp()).resolve()
         self.addCleanup(shutil.rmtree, directory, True)
         stub = directory / "argv_stub.py"
-        stub.write_text(
-            f"#!{sys.executable}\nimport json, sys\nprint(json.dumps(sys.argv[1:]))\n",
-            encoding="utf-8")
-        stub.chmod(0o755)
+        stub.write_text("import json, sys\nprint(json.dumps(sys.argv[1:]))\n", encoding="utf-8")
         entrypoint = directory / "prologue.sh"
+        # 两个路径都写成正斜杠：Windows 的 `C:\Users\…` 落进 shell 脚本后反斜杠会被当成转义符
+        # 吃掉，exec 拿到的是一个粘在一起的名字。解释器也显式写出来，不靠 `#!`——Git Bash
+        # 不按 shebang 找 Windows 上的 Python。
         entrypoint.write_text(
-            f'{prologue}{marker}PEACH_ARGV_STUB={stub}\n{stub_line}\n', encoding="utf-8")
+            f'{prologue}{marker}'
+            f'PEACH_PY={Path(sys.executable).as_posix()}\n'
+            f'PEACH_STUB={stub.as_posix()}\n'
+            f'{stub_line}\n', encoding="utf-8")
 
         # `/bin/bash` 在 macOS 上就是那个 3.2；装了新版 bash 的机器两个都跑。
         shells = [path for path in ("/bin/bash", shutil.which("bash")) if path and Path(path).exists()]
