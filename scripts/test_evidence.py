@@ -74,15 +74,51 @@ def python_identity(executable: str, stamp: int) -> dict:
         check=True, capture_output=True, text=True, encoding="utf-8").stdout)
 
 
+#: 外部工具的版本探针。工具身份取它自报的版本，不取 PATH 解析到的路径和文件字节：
+#: 同一套 Git 安装在 PowerShell 里解析到 `Git\cmd\git.exe`、在 Git Bash 里解析到
+#: `Git\mingw64\bin\git.exe`，两个前端字节不同、版本相同、行为也相同。按路径记身份的
+#: 后果是记录绑在 shell 上——在一个 shell 里跑出记录，在另一个 shell 里 `integrate`
+#: 就报「缺少有效测试记录」，而回到工作树跑 `auto` 又说「复用记录」，两句查的是两个键。
+#: 探针只用最短的那条：`openssl version -a` 会连 OPENSSLDIR 一起打出来，那又是路径。
+TOOL_PROBES: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("node", ("--version",)),
+    ("npm", ("--version",)),
+    ("git", ("--version",)),
+    ("ffmpeg", ("-version",)),
+    ("ffprobe", ("-version",)),
+    ("openssl", ("version",)),
+)
+
+
+@lru_cache(maxsize=32)
+def tool_identity(executable: str, stamp: int, probe: tuple[str, ...]) -> str:
+    """工具自报的版本摘要。`stamp` 只用于让缓存跟着文件改动失效。
+
+    非零退出码连着输出一起进摘要：探针不成立的工具彼此仍要能区分开，那本身就是环境差异。
+    """
+    try:
+        done = subprocess.run([executable, *probe], capture_output=True, text=True,
+                              encoding="utf-8", errors="replace", timeout=60)
+    except (OSError, subprocess.SubprocessError):
+        return "unspawnable"
+    return digest([done.returncode, done.stdout.strip(), done.stderr.strip()])
+
+
 def environment(root: Path) -> str:
     tools = {}
-    for name in ("node", "npm", "git", "ffmpeg", "ffprobe", "openssl"):
+    for name, probe in TOOL_PROBES:
         executable = shutil.which(name)
         if not executable and name == "openssl" and sys.platform == "win32":
             bundled = Path("C:/Program Files/Git/usr/bin/openssl.exe")
             executable = str(bundled) if bundled.is_file() else None
-        tools[name] = None if not executable else (
-            str(Path(executable).resolve()), hashlib.sha256(Path(executable).read_bytes()).hexdigest())
+        if not executable:
+            tools[name] = None
+            continue
+        try:
+            stamp = Path(executable).stat().st_mtime_ns
+        except OSError:
+            stamp = 0
+        tools[name] = tool_identity(executable, stamp, probe)
     # 同一个目录可在 sys.path 中出现多次；依赖身份取集合，版本变化仍改变指纹。
     python = interpreter(root)
     identity = python_identity(str(python), python.stat().st_mtime_ns)
@@ -91,7 +127,7 @@ def environment(root: Path) -> str:
                         if d.metadata.get("Name", "").casefold() != "peach"})
     node_lock = root / "frontend/node_modules/.package-lock.json"
     return digest({
-        "schema": 3, "python": identity["version"], "executable": str(python),
+        "schema": 4, "python": identity["version"], "executable": str(python),
         "platform": platform.platform(), "packages": installed, "tools": tools,
         "node_modules": hashlib.sha256(node_lock.read_bytes()).hexdigest() if node_lock.exists() else None,
         "flags": {k: v for k, v in os.environ.items()
