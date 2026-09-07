@@ -63,7 +63,7 @@
 
 合计：**31 项开放需求**，其中 6 项已有骨架，25 项尚未实现。已完成的需求不在这里留痕，去 Git 历史查。
 
-## 待执行的操作（37 项）
+## 待执行的操作（36 项）
 
 需要另行授权、外部条件或人工判断才能做的具体操作与复核批次，比上面的需求细一层；做完就删，不在这里留痕。待办只放这一处：`docs/STATUS.md` 每次会话开头都要读，队列不该常驻在那种入口文件里。
 
@@ -109,5 +109,4 @@
     > 3. What can be simplified now that unnecessary pieces are gone?
     > Then make the changes. Prefer deleting over simplifying, simplifying over optimizing, and optimizing over automating.
     > It might be done too - you don't HAVE to go and make changes. If it's good, leave it alone.
-36. `test_desktop_settings.test_native_shortcut_round_trip_in_temporary_directory` 只在 GitHub 的 windows-latest runner 上失败，本机 Windows 每次都过：2026-09-06 10:48、20:14 与 09-07 01:45、10:20 的 full/0 分片各红一次，抛的都是 `desktop_startup.shortcut()` 那句 `OSError`。根因未取得。`_SHORTCUT_SCRIPT` 现在把结论写成 stdout 上一行 JSON，失败那一支带 `error`、异常类型和行号，`shortcut()` 照这个 payload 判成败；退出码和 stderr 都不作判据。下一次 runner 上这一步失败时读 `gh run view --job <id> --log-failed`，消息里就是脚本自报的那一行原因，再按它决定是修实现还是给这个用例加 `skipUnless` 判据。拿到那行原因之前不要凭猜改脚本本体：它是写生产启动项的路径。
-37. 域映射门槛只覆盖 `web/` 与 `frontend/`。同一个漏洞在别的前缀上照样成立：`tests/test_babepedia_match.py` 读 `scripts/match_babepedia_creators.py` 却只登记在 metadata 域，改那个脚本时 `auto` 选的是 tooling；`tests/test_frontend_build.py` 读 `docs/CLOUDDRIVE.md`，而 `.md` 一律归 checks。按 `test_runner.repository_paths_read_by` 全树扫一遍，`scripts/`、`docs/`、`.github/`、`resources/` 四类共约三十处。要补的是 `AUTO_SCOPE_PREFIXES` 本身——把逐个脚本映射到它真正的域，像 `scripts/localize_performer_names.py` 那两条那样——补完再把 `tests/test_test_planning.py` 那条门槛的前缀白名单去掉。
+36. 域映射门槛只覆盖 `web/` 与 `frontend/`。同一个漏洞在别的前缀上照样成立：`tests/test_babepedia_match.py` 读 `scripts/match_babepedia_creators.py` 却只登记在 metadata 域，改那个脚本时 `auto` 选的是 tooling；`tests/test_frontend_build.py` 读 `docs/CLOUDDRIVE.md`，而 `.md` 一律归 checks。按 `test_runner.repository_paths_read_by` 全树扫一遍，`scripts/`、`docs/`、`.github/`、`resources/` 四类共约三十处。要补的是 `AUTO_SCOPE_PREFIXES` 本身——把逐个脚本映射到它真正的域，像 `scripts/localize_performer_names.py` 那两条那样——补完再把 `tests/test_test_planning.py` 那条门槛的前缀白名单去掉。
