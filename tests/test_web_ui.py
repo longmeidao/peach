@@ -6367,6 +6367,24 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("const paint=(id,now)=>{if(stopped||id!==run)return;")
         self.assertPageLacks("scheduled=false")
 
+    def test_the_folder_row_takes_its_red_from_the_single_danger_tier(self):
+        """「移除这个文件夹」的红只有 01-base 那一份，静止与悬停必须是两个值。
+
+        这颗键曾在页面 CSS 末尾被追加过一条静止态实底红，却没有同步同文件里的悬停规则：
+        两条渲染出来是同一块 `--drop` 加白字，鼠标压上去一点变化都没有。同一颗键的两个
+        状态分写在两处、值又相同，是这类缺陷的固定形状——所以红收回 `.danger`，页面只
+        留几何。`border-color` 在 `border:0` 之后也是死声明，一并收掉。
+        """
+        # 标记本身在 island 包里，由 test_frontend_build 的岛屿产物断言守；这里只管样式。
+        self.assertPageContains(".configrm.geist-button,.configpick.geist-button"
+                                "{width:var(--control-h);height:var(--control-h);flex:none;padding:0}")
+        self.assertPageContains(".configpick.geist-button{color:var(--muted)}")
+        css = stylesheet_source()
+        for stale in (".configrm.geist-button{color:var(--drop)}",
+                      ".configrm.geist-button:hover:not(:disabled){",
+                      ".configrm.geist-button:not(:disabled){"):
+            self.assertNotIn(stale, css, "移除键的红不在页面里自己写第二份")
+
     def test_the_whole_detail_box_takes_one_ambient_tone(self):
         """右侧详情栏和「接着看」是同一格详情的两块，底色必须同源。
 
@@ -7574,7 +7592,9 @@ class WebUiSourceTests(unittest.TestCase):
         只描红边、红字的话，静止态和悬停态在暗色底上几乎一样亮，按下去之前看不出这是
         不可逆动作。Geist 的 error Button 就是实心红填充（实测 `rgb(217,48,54)` 底、白字），
         静止态即红；Peach 按用户 2026-09-06 的取舍跟它走，悬停只把同一块红压深一档。
-        纯图标删除键不在此列——它们靠图标本身说明动作，实底红会在一行图标里炸出一块。
+        挤在一行图标里的删除键（`.frowicon` 那一类）不在此列：一块实底红在图标行里会炸出
+        一块。判据是这一行里还有几颗销毁键，不是键上有没有文字——配置页「移除这个文件夹」
+        同样只有一枚叉，可它旁边只有一颗「选择文件夹」，所以它走实底红。
         """
         self.assertPageContains("button.danger:not(.frowicon),.resourcedanger{")
         self.assertPageContains("background:var(--drop);color:#fff;box-shadow:none}")

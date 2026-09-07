@@ -51,10 +51,13 @@
 .configdir .geist-input{flex:1 1 auto;width:auto;min-width:0}
 .configdir > input.geist-input{flex:1 1 0;width:0}
 .configdir:first-child{margin-top:0}.configdir .configbad{flex-basis:100%;margin:0}
-.configrm.geist-button,.configpick.geist-button{width:var(--control-h);height:var(--control-h);flex:none;padding:0;color:var(--muted)}
+/* 移除是这一行唯一的销毁键，走 01-base 那一份危险档：静止就是实底红，悬停把同一块红
+   压深一档。它和 `.frowicon` 那种挤在一行图标里的删除键不是一件事——那里一块实底红会
+   在图标行里炸出一块，这一行里它旁边只有一颗「选择文件夹」。红由 `.danger` 给，页面
+   不再自己写第二份：此前静止态和悬停态各写一条、值又一样，悬停等于没有反馈。 */
+.configrm.geist-button,.configpick.geist-button{width:var(--control-h);height:var(--control-h);flex:none;padding:0}
+.configpick.geist-button{color:var(--muted)}
 .configpick.geist-button:hover:not(:disabled){color:var(--ink)}
-.configrm.geist-button{color:var(--drop)}
-.configrm.geist-button:hover:not(:disabled){color:white;background:var(--drop);border-color:var(--drop)}
 .configstatus{display:inline-block;margin-inline-start:8px;font-size:var(--fs-sm)}
 .configstatus.online{color:var(--success)}.configstatus.offline{color:var(--drop)}.configstatus.unknown{color:var(--muted)}
 .configrm svg,.configpick svg{width:16px;height:16px;stroke:currentColor;fill:none}
@@ -86,5 +89,3 @@
 .configfacts dt .gselectmark{vertical-align:-3px;margin-inline-end:8px}
 @media(max-width:560px){.configfacts{grid-template-columns:minmax(0,1fr)}.configfacts dd{margin-top:-6px}}
 @media(max-width:560px){.configpage{--control-h:44px}.configfieldset>.geist-fieldset-footer{flex-wrap:wrap}.configsource .geist-input{font-size:var(--fs-lg)}}
-
-.configrm.geist-button:not(:disabled){color:#fff;background:var(--drop);border-color:var(--drop)}

@@ -1433,7 +1433,7 @@ function bt({ data: e, receipt: t }) {
 									}),
 									r.length > 1 ? /* @__PURE__ */ J("button", {
 										type: "button",
-										class: "geist-button configrm",
+										class: "geist-button configrm danger",
 										"aria-label": "移除这个文件夹",
 										onClick: () => ee(n),
 										children: /* @__PURE__ */ J("svg", {

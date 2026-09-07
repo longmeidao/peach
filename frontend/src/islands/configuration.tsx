@@ -285,7 +285,7 @@ function ConfigurationForm({ data, receipt }: { data: ConfigurationData; receipt
                   <svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-folder-search" /></svg>
                 </button>
                 {dirs.length > 1 ? (
-                  <button type="button" class="geist-button configrm" aria-label="移除这个文件夹" onClick={() => remove(index)}>
+                  <button type="button" class="geist-button configrm danger" aria-label="移除这个文件夹" onClick={() => remove(index)}>
                     <svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-x" /></svg>
                   </button>
                 ) : null}

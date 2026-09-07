@@ -201,7 +201,7 @@ class ConfigurationIslandContractTests(unittest.TestCase):
         self.assertIn("PICK_FOLDER_URL = '/api/pick-folder'", self.source)
         pick = self.source.index('class="geist-button configpick"')
         self.assertLess(self.source.index('class="geist-input"'), pick)
-        self.assertLess(pick, self.source.index('class="geist-button configrm"'))
+        self.assertLess(pick, self.source.index('class="geist-button configrm danger"'))
 
     def test_validation_reasons_come_from_the_server(self):
         """字段级原因读 400 的 `errors`，前端不复制一份路径与端口的判定。"""
