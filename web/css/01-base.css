@@ -185,16 +185,20 @@ button,a,input,textarea,select,summary{touch-action:manipulation}
 .geist-input:hover{border-color:var(--field-ring-hover)}
 .geist-input:focus{outline:0;
   border-color:var(--field-ring-focus);box-shadow:0 0 0 4px var(--field-glow)}
-/* 按钮分档只靠填充，一条边框线都不画。Geist 的四个变体全部 `border-width:0`、字重全部 500
-   （实测见 vercel-geist-semantics-measured.md「Button 全变体与状态」）：primary 实底墨色、
-   error 实底红、warning 实底琥珀，次级是与卡面同一档的实面。Geist 给次级另挂了一圈
-   `box-shadow:0 0 0 1px`，那是把白面压在白底上时补的边；Peach 按用户 2026-09-06 的取舍
-   不要这条线——次级只在操作条（--overlay-5／--surface）上出现，比条子亮一档本身就是边界。
-   描边档与实心档并排时看着一大一小，差的从来不是那 1px，是「一个是块面、一个是个框」。 */
+/* 按钮分档只靠填充，边框一条不画：Geist 的四个变体 `border-width` 全是 0、字重全是 500。
+   次级那一档另挂一圈 `box-shadow:0 0 0 1px`（2026-09-07 复测 vercel.com/geist/button：次级
+   填 #FFFFFF、环 rgb(235,235,235)；primary #171717、error、warning 三档 `box-shadow:none`；
+   禁用档填 #F2F2F2、字 #8F8F8F、环仍在、`cursor:not-allowed`）。
+   这圈环不能省。次级填的是 --ground，而面板、卡片和框体本身也是 --ground：按钮落在它们
+   上面时两块同色，一条边都读不出来（暗色一档 --ground 是 #080A0D，整颗键化在面里）。
+   「只在操作条上出现、比条子亮一档就是边界」对配置页的「添加文件夹」「选择文件夹」不成立：
+   它们直接坐在 --ground 上。换成实底亮色会让一颗次要动作抢过主动作的份量，所以照 Geist
+   的做法：填充不动，补一圈 1px。实心的三档不挂环，它们自己的填充就是边界。
+   环用 box-shadow 而不是 border：不占盒子，32px 的行高和并排实心档的外沿仍然齐平。 */
 .geist-button{box-sizing:border-box;height:32px;padding:0 14px;border:0;
   border-radius:var(--control-radius);background:var(--ground);color:var(--ink);display:inline-flex;
   align-items:center;justify-content:center;gap:6px;font:inherit;font-size:var(--fs-md);font-weight:500;
-  line-height:1;white-space:nowrap;cursor:pointer;
+  line-height:1;white-space:nowrap;cursor:pointer;box-shadow:0 0 0 1px var(--line-soft);
   transition:background-color .15s ease-in-out,color .15s ease-in-out}
 /* 次级的悬停抬到 Geist 实测的 gray-200 那一档（浅色 #EBEBEB、深色 #1F1F1F），墨色 8% 压在
    自己那块面上即是这个值。比它淡的一档在白底上与静止态只差两三个色阶，鼠标压在哪颗按钮
@@ -215,33 +219,38 @@ button,a,input,textarea,select,summary{touch-action:manipulation}
 svg.externalmark{width:1.15em;height:1.15em;flex:none;align-self:center;
   stroke:currentColor;fill:none;stroke-width:2.25;stroke-linecap:round;stroke-linejoin:round}
 .geist-button:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}
-.geist-button:disabled{background:var(--sunk);color:var(--muted);cursor:default}
+.geist-button:disabled{background:var(--sunk);color:var(--muted);cursor:not-allowed}
 /* Vercel/Geist loading actions look unavailable and reject repeat activation,
    but remain focusable; JS pairs this with aria-disabled instead of disabled. */
 button[aria-busy="true"],[role="button"][aria-busy="true"]{
   cursor:wait!important;opacity:.55!important;filter:saturate(.35)
 }
-.geist-button.primary{background:var(--ink);color:var(--ground)}
+.geist-button.primary{background:var(--ink);color:var(--ground);box-shadow:none}
 .geist-button.primary:hover:not(:disabled){
   background:color-mix(in srgb,var(--ink) 88%,var(--ground));color:var(--ground)}
 /* 实心档的禁用态要自己写：.geist-button:disabled 排在 .primary 前面，同权重下后者赢，
    不补这条的话禁用的主动作还是满格实底，看着可点。 */
-.geist-button.primary:disabled{background:var(--sunk);color:var(--muted)}
+.geist-button.primary:disabled{background:var(--sunk);color:var(--muted);box-shadow:0 0 0 1px var(--line-soft)}
 /* 危险档静止就是实底红，不是描红边等悬停才填。只换描边和文字色的话，两个状态在暗色底上
    几乎一样亮，按下去之前看不出这是不可逆动作；Geist 的 error 变体也是 `rgb(217,48,54)`
-   实底配纯白字，静止态就红。销毁按钮全站只有这一个写法，`.danger` 与 `.resourcedanger`
-   都并到这里，纯图标删除键不适用——它们靠图标本身说明动作。 */
-button.danger:not(.frowicon),.resourcedanger{
-  background:var(--drop);border-color:var(--drop);color:#fff}
-button.danger:not(.frowicon):hover:not(:disabled),.resourcedanger:hover:not(:disabled){
-  background:color-mix(in srgb,var(--drop) 82%,#000);border-color:transparent;color:#fff}
-button.danger:not(.frowicon):disabled,.resourcedanger:disabled{
-  background:var(--sunk);border-color:var(--line-soft);color:var(--muted)}
-.geist-button.error{background:#da2f35;border-color:#da2f35;color:#fff}
-.geist-button.warning{background:#ff990a;border-color:#ff990a;color:#000}
-.geist-button.error:hover:not(:disabled){background:color-mix(in srgb,#da2f35 85%,#000);border-color:color-mix(in srgb,#da2f35 85%,#000);color:#fff}
-.geist-button.warning:hover:not(:disabled){background:color-mix(in srgb,#ff990a 85%,#000);border-color:color-mix(in srgb,#ff990a 85%,#000);color:#000}
-.geist-button:is(.error,.warning):disabled{background:var(--sunk);border-color:var(--line-soft);color:var(--muted)}
+   实底配纯白字，静止态就红。销毁按钮全站只有这一个写法：标记上写 `.danger`，
+   纯图标删除键不适用——它们靠图标本身说明动作。
+   档位只能挂在 `<button>` 的 `.danger` 上，不要另起一个页面类来承担同一件事。
+   `.junkactions button`、`.fcredactions button` 这类容器规则自己就填底色，权重是一个类
+   加一个类型名；页面单类顶不过它——同权重时按文件顺序决胜，而分区号更大的页面文件总在
+   后面，红会被容器那份底色静静盖掉，选择器和声明单看都没有问题。
+   `button.danger:not(.frowicon)` 算两个类加一个类型名，比容器规则高一档，进哪个容器都赢。 */
+button.danger:not(.frowicon){
+  background:var(--drop);color:#fff;box-shadow:none}
+button.danger:not(.frowicon):hover:not(:disabled){
+  background:color-mix(in srgb,var(--drop) 82%,#000);color:#fff}
+button.danger:not(.frowicon):disabled{
+  background:var(--sunk);color:var(--muted);box-shadow:0 0 0 1px var(--line-soft)}
+.geist-button.error{background:#da2f35;color:#fff;box-shadow:none}
+.geist-button.warning{background:#ff990a;color:#000;box-shadow:none}
+.geist-button.error:hover:not(:disabled){background:color-mix(in srgb,#da2f35 85%,#000);color:#fff}
+.geist-button.warning:hover:not(:disabled){background:color-mix(in srgb,#ff990a 85%,#000);color:#000}
+.geist-button:is(.error,.warning):disabled{background:var(--sunk);color:var(--muted);box-shadow:0 0 0 1px var(--line-soft)}
 .geist-badge{display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;height:20px;padding:0 6px;border-radius:var(--badge-radius);background:var(--hover);color:var(--ink-2);font-size:var(--fs-xs);font-weight:500;line-height:1;white-space:nowrap}
 .skiplink{position:fixed;z-index:1000;left:12px;top:8px;transform:translateY(-150%);
   padding:9px 13px;border-radius:var(--control-radius);background:var(--ink);color:var(--ground);text-decoration:none;
@@ -326,7 +335,7 @@ button.danger:not(.frowicon):disabled,.resourcedanger:disabled{
 /* 展开时按住焦点态：菜单开着而触发器看起来没被点中，读起来像两个控件。 */
 .gselectfield[aria-expanded="true"]{border-color:var(--field-ring-focus);
   box-shadow:0 0 0 4px var(--field-glow)}
-.gselectfield:disabled{background:var(--surface);color:var(--muted);cursor:default}
+.gselectfield:disabled{background:var(--surface);color:var(--muted);cursor:not-allowed}
 .gselectfield:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}
 .popmenu.gselectmenu button{display:flex;align-items:center;gap:8px;width:100%;min-height:var(--control-h);
   padding:0 8px;border:0;border-radius:var(--control-radius);background:transparent;color:var(--ink-2);

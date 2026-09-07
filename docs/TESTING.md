@@ -24,6 +24,8 @@ uv sync --locked --extra build
 
 提交 `pyproject.toml` 与 `uv.lock`。CI 使用 `--locked` 拒绝过期锁文件；Dependabot 的 `uv` 生态负责更新。`uv pip install` 用于临时环境或安装产物，不用于维护项目依赖。普通 pip 安装 wheel 的冒烟仍独立验证打包声明。
 
+npm 的两份清单还有一层派生产物：根 `package.json` 对应 `web/vendor/**` 与 `web/index.html` 的版本注释，`frontend/package.json` 对应 `web/dist/peach-ui.js`。Dependabot 只改 manifest 与 lock，算不出这些，它的 PR 上 `npm run check:vendor` 或 island 产物那一关会红——它的 workflow 拿到的 token 是只读的，推不回 `dependabot/**`。在隔离工作树里用 `scripts/adopt_dependency_bump.py --pr <编号>` 接管：签出那份清单、重算派生产物、只暂存这些并提交，`--apply` 前先看它列出的文件清单。uv 与 github-actions 的升级没有派生产物，直接合并即可。
+
 版本来自 `src/peach/__init__.py`，已纳入 uv 缓存键；源码版本更新后再次同步会刷新安装元数据。缓存规则采用 [uv 官方动态元数据机制](https://docs.astral.sh/uv/concepts/cache/#dynamic-metadata)。
 
 ## 验证频率
@@ -59,3 +61,24 @@ macOS 按影响域验证：
 ```
 
 显式全量用 Windows `-Scope full` 或 macOS 首参数 `full`。入口优先当前工作树环境、核对源码位置，并记录慢测试。依赖、代码在测试中变化会使证据失效；完成安装和编辑后再启动最终验证。
+
+## 记录的环境身份
+
+记录只在「代码、环境、范围」三项都匹配时可复用，环境那一项由 `scripts/test_evidence.py`
+的 `environment()` 算成一个摘要：解释器与已安装包、平台、`PEACH_*` 等环境变量、前端
+`node_modules` 锁，以及 node／npm／git／ffmpeg／ffprobe／openssl 六个外部工具。
+
+工具身份取它**自报的版本**，不取 PATH 解析到的路径与文件字节。同一套 Git 安装在
+PowerShell 里解析到 `Git\cmd\git.exe`、在 Git Bash 里解析到 `Git\mingw64\bin\git.exe`，
+两个前端字节不同而版本和行为相同；按路径记身份会把记录绑在 shell 上——在一个 shell 里
+跑出记录，换另一个 shell 跑 `integrate` 就报「缺少有效测试记录」，回到工作树跑 `auto`
+又说「复用记录」，两句查的是两个键，代价是白跑一遍全量。
+
+改 `environment()` 的算法本身时，主检出那份代码算不出新键，无法验证带着新算法的分支。
+那一次的 `integrate` 用分支自己的脚本跑，并把仓库指到主检出。`--repo` 是顶层参数，
+放在子命令前面，放后面会被 argparse 拒收：
+
+```powershell
+& .\.venv\Scripts\python.exe -X utf8 <工作树>\scripts\agent_worktree.py `
+  --repo <主检出> integrate --branch <分支>
+```

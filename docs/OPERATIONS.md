@@ -17,61 +17,19 @@
 
 ### CloudDrive 配置
 
-1. 在 CloudDrive 中登录网盘并建立挂载点，打开「启动时自动挂载」。步骤见
-   [CloudDrive 官方帮助](https://www.clouddrive2.com/help.html)。
-2. 在 Peach 首次设置页或托盘管理服务的「管理 → 配置」中添加文件夹，选择对应来源。
-   115 使用来源 ID `115`，PikPak 使用 `pikpak`，本地磁盘使用 `local`；每个来源可有多个互不重叠的根。
-3. Windows 填本机盘符路径。macOS 的「本机文件夹」填本机挂载点，「Windows 中的对应路径」填该来源原有的
-   Windows 盘符根，例如 `B:\` 对应 `/Volumes/CloudDrive/115`、`A:\` 对应
-   `/Volumes/CloudDrive/PikPak`。已有馆藏必须沿用原盘符路径。
-4. 保存配置，由托盘重新载入。配置页「挂载状态」逐根显示在线或离线；刷新状态保留尚未保存的输入。
-   Windows 的 Peach 与 CloudDrive 应在同一普通用户会话下运行；提升权限的进程可能看不到挂载盘。
-5. 勾选扫描时，托盘顺序扫描配置内的在线来源，离线根跳过。恢复挂载后可再次勾选扫描并保存。
+115 与 PikPak 由 CloudDrive 挂成本机盘，Peach 只当普通文件夹读。挂载步骤、来源 ID、
+macOS 的盘符映射、三处缓存的分工、读取长度与线程的起步值及其取证都在
+[CloudDrive 配置与调优](CLOUDDRIVE.md)，只在那一份里维护；配置页的「CloudDrive 速度与
+缓存建议」是它的摘要，链回同一份文档。
 
-选择网盘来源时，首启页与配置页按本机系统检测 CloudDrive 和挂载驱动；未检测到安装会提供带外链图标的下载入口。
-Windows 读取软件安装清单识别 WinFsp，macOS 检查 macFUSE 安装目录；便携版 CloudDrive 可通过 PATH 检测。
-安装证据与挂载在线状态分别显示。运行信息中缺少 FFmpeg 或 ffprobe 时提供 FFmpeg 工具包下载；首次设置缺少 OpenSSL 时提供下载入口。
+Peach 这一侧的行为：首启页与配置页按本机系统检测 CloudDrive 和挂载驱动，未检测到安装会提供
+带外链图标的下载入口；Windows 读取软件安装清单识别 WinFsp，macOS 检查 macFUSE 安装目录，
+便携版 CloudDrive 可通过 PATH 检测；安装证据与挂载在线状态分别显示。运行信息中缺少 FFmpeg
+或 ffprobe 时提供 FFmpeg 工具包下载；首次设置缺少 OpenSSL 时提供下载入口。
 
 离线来源允许保留配置，重叠盘符根或本机挂载点会在对应行报错。来源判定沿用 `asset.location`，
 115/PikPak 进入既有网盘流量策略。保存配置不修改已有资产的来源归属和账本路径。
 直接运行 CLI 的部署使用配置文件管理；首次网页引导支持相同来源，终端 `peach init` 的目录问答用于本地来源。
-
-对应 macOS 配置示例：
-
-```toml
-[media.locations]
-"115" = ['B:\']
-pikpak = ['A:\']
-
-[media.mounts]
-"115" = ['/Volumes/CloudDrive/115']
-pikpak = ['/Volumes/CloudDrive/PikPak']
-```
-
-#### 速度与缓存的起步配置
-
-首启与配置页的「CloudDrive 速度与缓存建议」按缓存所在硬盘选择：机械盘或 ≤8 GB 内存为
-10–20 GiB，SATA SSD / 8–16 GB 为 20–50 GiB，NVMe / ≥16 GB 为 50–100 GiB。
-这些是容量预算建议，不是已测得的速度最优值。优先内置 SSD，系统盘至少保留 40 GiB。
-默认／最小读取长度从 256／128 KB 开始；连续高码率播放可比较 512／256 KB，冷启动、拖动、
-流量与播放都无改善就恢复。115 从 2 下载线程起步且遵守客户端上限；PikPak/WebDAV 从 2 起步，
-只有实测提升才试 4。Peach 同时读取的视频从 1–2 个起步，播放期间暂停批量抽帧。
-
-2026-09-06 核对历史会话与当前本机配置（仅输出性能字段，未读取或复制登录字段）：
-
-- 2026-08-13 Claude 会话 `42169be3-c851-4bef-a71c-727bf7b95220` 记录读取长度 256／128 KB、
-  `support_direct_link=true`、30 GiB 缓存上限；“PikPak 必须改原生 API”在同一会话已纠正，不能继续用作建议。
-- 2026-08-15 Codex 会话 `019ffe93-ba7e-7e43-a1b0-5668d1b513b6` 实测每条 115 下载约 2.02 MB/s，
-  旧播放连接争用带宽；50 GiB 与 LRU 有核验记录。此速度属于当时的 CDN，不能代表今天。
-- 历史曾出现上限 0 导致约 911 GB 实占，也曾设置 30 GiB 后仍超限；“所有块最近都读过所以
-  LRU 无法淘汰”只是当时的推测，没有实证，不能作为根因。保存后须重开设置并观察实际占盘。
-- 当前 `CloudDrive.WinUI` 性能字段为 256／128 KB、直链开启、100 GiB、LRU。
-  本次没有改 CloudDrive、清缓存、重启挂载或进行新的吞吐测试。
-
-[官方帮助](https://www.clouddrive2.com/help.html)、[缓存说明](https://www.clouddrive2.com/features.html)
-与[版本记录](https://www.clouddrive2.com/download.html) 核验于 2026-09-06；缓存分为按需读块、
-文件夹磁盘缓存及内存，逻辑文件大小不等于实际占盘。直链与线程选项以安装版本和服务端能力为准。
-历史建议中“读取块缩小八倍就能减少八倍流量”没有改后冷缓存对照证据，不承诺该收益。
 
 ### 初始化与托盘
 
@@ -210,16 +168,17 @@ curl -s --noproxy '*' -o /dev/null -w '%{http_code}\n' https://peach.local/healt
 ```
 
   验收四项：菜单栏只出现一个 Peach 图标且 `status` 报「已加载」；`launchctl print` 的 pid 就是那个菜单栏进程；`pfctl -s nat` 列出 80 → 8900、443 → 8443 两条 rdr；两条 `/healthz` 都回 200。`peach.local` 换成本机 `[server].mdns_name` 的值。
-- 发布入口是 `scripts/build_windows.ps1`：先用 `scripts/generate_brand_assets.py` 生成方形 Logo 与多尺寸 `.ico`，再构建单一 `dist/Peach/Peach.exe`；无参数运行托盘，`serve`／`migrate` 运行 CLI。桌面快捷方式由 `scripts/create_desktop_shortcut.ps1` 创建，自启动只由 `scripts/manage_tray_startup.ps1` 管理。
+- 发布入口是 `scripts/build_windows.ps1`：先用 `scripts/generate_brand_assets.py` 生成方形 Logo 与多尺寸 `.ico`，再构建单一 `dist/Peach/Peach.exe`；无参数运行托盘，`serve`／`migrate` 运行 CLI。桌面快捷方式和开机自启都在配置页的「开机自启」一组里开关，由 `src/peach/desktop_startup.py` 落盘；`scripts/manage_tray_startup.ps1` 只作发布包的排障入口。
 - 对外测试包由 `.github/workflows/release.yml` 承担：`build_windows.ps1 -Standalone` 用 PyInstaller onedir 生成完整 Windows 程序目录，压缩后由不检出源码的消费任务运行 `scripts/smoke_desktop.py`。`v<__version__>` tag 与版本不一致会失败，通过制品验收才创建 GitHub 预发布并附 SHA256；`workflow_dispatch` 只生成和验收 artifact。macOS 独立包另列待办，源码菜单栏构建入口仍为 `build_macos_app.py`。
 - 刷新源码运行态不要用 Computer Use 点托盘：`python scripts/restart_windows_tray.py` 按精确 EXE 路径找到 pystray 隐藏窗口、发送正常停止消息、等托盘自行关闭子服务，再静默启动并核对新托盘重新拥有两个服务；找不到唯一窗口或退出超时就拒绝，绝不强杀后另启。`--swap-from <暂存包>` 让它在旧托盘退出后、新托盘启动前顺手换掉二进制，那是整条链路上唯一一个目标文件没有进程持有的窗口；换生产二进制用下面那条入口，不要单独调它。
-- 换掉生产托盘二进制走 `python scripts/deploy_windows_tray.py`，在主检出里用项目 venv 的 Python 跑：拒绝脏检出 → 按 HEAD 提交号在 `<数据根>/state/source-sync-build/<commit>/` 构建 → 让暂存包自己跑一次 `migrate status` → 停旧托盘、原地换 `dist/Peach/Peach.exe`（旧的留成 `Peach.pre-source-sync-<时间>.exe`）、起新托盘 → 用项目 CA 严格校验读生产 HTTPS 口的 `/healthz` 并核对版本号。结果打印成一份 JSON，`step` 说明停在哪一步。新托盘起不来或拿不到两个子服务时自动换回备份并重开旧托盘；`--staged <路径>` 复用已经打好的包、跳过构建。不要就地构建 `dist/Peach/`：运行中的托盘持有那个文件，PyInstaller 清目录会撞上 WinError 5。换生产入口本身仍要当场授权，脚本不代替那次授权。
+- 换掉生产托盘二进制走 `python scripts/deploy_windows_tray.py`，在主检出里用项目 venv 的 Python 跑：拒绝脏检出 → 按 HEAD 提交号在 `<数据根>/state/source-sync-build/<commit>/` 构建 → 让暂存包自己跑一次 `migrate status` → 停旧托盘、原地换 `dist/Peach/Peach.exe`（旧的留成 `Peach.pre-source-sync-<时间>.exe`）、起新托盘 → 用项目 CA 严格校验读生产 HTTPS 口的 `/healthz`，核对它报的 `build_commit` 等于这次打包的提交。认提交而不是认版本号：版本号一次发布才推一格，同一个号下有很多个构建，只比版本号证明不了二进制换掉了。结果打印成一份 JSON，`step` 说明停在哪一步。新托盘起不来或拿不到两个子服务时自动换回备份并重开旧托盘；`--staged <路径>` 复用已经打好的包、跳过构建。不要就地构建 `dist/Peach/`：运行中的托盘持有那个文件，PyInstaller 清目录会撞上 WinError 5。换生产入口本身仍要当场授权，脚本不代替那次授权。
 - `dist/Peach/Peach.exe` 是本机打包入口而不是可移动的独立发行版：托盘只打包了自己，服务进程仍由项目 venv 的 `peach.exe` 承担，`_peach_executable()` 从 exe 位置逐级向上找 `.venv\Scripts\peach.exe`，所以不要按「单文件绿色版」对外描述。
 - `<数据根>/logs` 里的 `*.log` 统一保留半年、大小不设限（`peach.log_retention.sweep`，托盘在起任何子进程之前跑）：半年没再写过的文件整份删掉；还在写的文件按自然月切段，上次写入落在更早月份就改名成 `<名字>.until-<最后写入日期>.log`，段再等半年被删。子进程是直接追加 stdout，不经 `logging`，所以按文件而不是按行处理。
 - 更新与打包的产物自带清退：托盘每次启动只保留最近 2 份 `dist/Peach/Peach.pre-source-sync-*.exe` 备份，并删掉 `<数据根>/state/source-sync-build/` 里不属于待应用记录的暂存构建（`WindowsUpdateInstaller.sweep_artifacts`）；`build_windows.ps1` 成功后删掉 PyInstaller 工作目录 `build/windows/app`；单文件托盘每次启动还会删掉 `%TEMP%` 里超过一天、不属于自己的 `_MEI*` 解压残留（`sweep_onefile_extractions`，托盘被结束进程时 PyInstaller 不会自清，每份 40–80 MB）。自动边界只认这几个命名：`Peach.exe` 本体、手工放进 `dist/` 的目录、`build/release-*`、`attic/` 都不碰，手工构建的残留自己删。
 - 每个包都带构建身份：`build_windows.ps1` 在调用 PyInstaller 前把 `{commit, version, built_at}` 写进 `build/windows/build-info.json`，再用 `--add-data` 放到包根，本机托盘与独立测试包两种模式共用这一行。构建机没有 git 或源码不是检出时 `commit` 写 `null`，构建照常。`peach.buildinfo.frozen_build()` 只在 `sys.frozen` 时读它；文件缺失或格式坏一律返回 `None`，托盘照常启动，只是把自己当作身份未取得。
 - 本机托盘自己发现「我比检出旧」并重建：判据是构建提交与检出的差，不是与 GitHub 的差——这台机器提交先落本地再推远端，「落后远端」永远不成立。`VersionManager.build_age()` 用 `rev-list --count <构建提交>..HEAD` 数出落后多少，版本菜单显示成 `master@<HEAD> · 托盘构建 <构建提交>，落后 N 个提交`；数不出来（身份未取得、提交不在本检出历史里）按陈旧处理，重建范围退化为 `src/peach/`。「同步开发进度」在 `ahead`／`current`／`error`／`unconfigured` 下改走本地重建，健康轮询另按 5 分钟一轮读本地 HEAD 自动触发，同一个 HEAD 只自动试一次，首次设置未完成时不触发。重建走的仍是既有流程：完整测试 → 暂存构建 → 打包迁移资源检查 → 备份 → 替换助手，任一步失败都只发通知，旧托盘和服务保持运行。失败表现是托盘停在旧版本、通知里写明卡在哪一步，日志见 `<数据根>/logs/windows-source-sync.log`。独立测试包与源码运行的托盘不进这条路径，独立测试包使用配置页的在线更新流程，源码入口提示源码已是最新。
-- 版本号在本地集成时就动：`scripts/agent_worktree.py integrate` 合并后按 `runtime_inputs_changed()` 判断这次改动有没有碰到 `src/peach/`、`web/`、`frontend/`、`migrations/`、`resources/`、`scripts/build_app_entry.py`、`scripts/build_windows.ps1`、`pyproject.toml`，碰到就推 `__version__` 并在 master 上单独提交 `chore(release): 版本 <新版本>`。推哪一位由 `bump_part_for()` 按这批提交定：主题以 `feat` 开头或带破坏性标记 `!`、或 `migrations/` 有新增文件就推 minor，其余推 patch；1.0 手工 `--bump major` 并另立 ADR（ADR-0012 修订）。`--bump {auto,patch,minor,major,none}` 默认 `auto`，显式档位是覆盖，没碰运行时输入时哪一档都不动；输出的 `version`／`bumped` 说明这次集成后的版本号。集成不打标签：发布点仍然是 `scripts/release_tag.py --apply` 推上去的 `vX.Y.Z`，它读的正是这里推进后的 `__version__`，并且遇到同名本地标签会直接拒绝——两处都造标签只会把唯一的发布入口挡在门外。
+- 版本号在发布点动，一次发布一格，所以每个 `X.Y.Z` 都对应一份能下载到的制品。发布准备是 `python scripts/release_tag.py --bump auto --apply`，从干净的 master 主检出跑：按上一个版本标签到 HEAD 这段区间定档（`bump_part_for()`：主题以 `feat` 开头或带破坏性标记 `!`、或 `migrations/` 有新增文件推 minor，其余推 patch；1.0 手工 `--bump major` 并另立 ADR，见 ADR-0012），写 `__version__`，并把 `CHANGELOG.md` 的未发布节定版成这个号。区间只碰了文档、技能与测试时它直接拒绝：那样打出来的包和上一个标签逐字节相同。不带 `--apply` 只打印计划。
+- 它只落盘、不提交：变更日志是使用者唯一读到的说明，措辞要人过一遍。之后自己提交 `src/peach/__init__.py` 与 `CHANGELOG.md`，消息 `chore(release): 版本 <新版本>`，推到 GitHub，等这个提交的 Test 转绿，再回来 `--apply` 打标签。`scripts/agent_worktree.py integrate` 不碰版本号，只在结果里报当前值；主线上跑着的是哪一份由 commit 与 `build-info.json` 认定。
 - PyInstaller 的资源直接位于 `sys._MEIPASS`，没有源码树的 `src/` 层；打包后的 `migrate`、Web 与品牌资源必须从这里解析，不能对 `config.py` 固定取 `parents[2]`。
 - 创建 Win32 窗口前必须启用 Per-Monitor V2 DPI；正常动作不弹模态 MessageBox，更新检查在后台线程执行并用 pystray 原生非模态通知反馈。
 - 菜单栏与托盘状态行逐个点名每个服务，例如 `HTTP 正常 · HTTPS 异常（状态码 503）`，异常附最近一次失败原因，不要改回只报「未运行」。
@@ -237,7 +196,7 @@ curl -s --noproxy '*' -o /dev/null -w '%{http_code}\n' https://peach.local/healt
 ## 版本、更新与自我重启
 
 - `src/peach/__init__.py::__version__` 是版本唯一来源，采用 pre-1.0 SemVer；Git commit 是构建标识，`vX.Y.Z` tag 是发布点，推到 GitHub 即触发 Release 工作流（见「桌面入口与发布」）。
-- 打标签从干净的 master 主检出执行 `python scripts/release_tag.py`：默认只检查本地与 GitHub master 一致、该提交最新 Test 全绿、版本合法且标签不存在；加 `--apply` 创建 annotated tag 并只推送该标签。版本标签不覆盖，下一版先修改 `__version__`。推送失败若留下本地标签，先检查归属再人工恢复，不强推。Release 工作流再次检查标签提交属于 master 历史且同提交 Test 已通过，随后构建、制品验收、创建预发布；手动 `workflow_dispatch` 仍只验收制品。打标签代表公开预发布，不等于替换本机生产入口。
+- 打标签从干净的 master 主检出执行 `python scripts/release_tag.py`：默认只检查本地与 GitHub master 一致、该提交最新 Test 全绿、`CHANGELOG.md` 里有这个版本号的一节、标签不存在；加 `--apply` 创建 annotated tag 并只推送该标签。变更日志那一节是门槛：缺了就等于发一个没有说明的版本，先跑 `--bump` 起草再润色。版本标签不覆盖，下一版先修改 `__version__`。推送失败若留下本地标签，先检查归属再人工恢复，不强推。Release 工作流再次检查标签提交属于 master 历史且同提交 Test 已通过，随后构建、制品验收、创建预发布；手动 `workflow_dispatch` 仍只验收制品。打标签代表公开预发布，不等于替换本机生产入口。
 - 「检查更新」只 fetch 和比较；「同步开发进度」只做 `merge --ff-only`，不 stash、不 rebase、不 `--force`——并行工作树和主检出共用同一个对象库与 reflog，任何改写历史的「顺手解决」都会把别的分支一起拖下去。工作区脏或两边分叉时原样报出来交给人。本地不落后远端、或者根本连不上远端时，它转为按构建身份判断打包托盘要不要重建（见「桌面入口与发布」）；那条路径不拦脏工作区，因为构建跑的就是检出里的这一份代码。
 - 快进动到 `tray.py`／`menubar.py`／`versioning.py`／`certs.py`／`netwatch.py`／`config.py`／`pyproject.toml` 时只重启子服务追不上，托盘要靠 `launchctl kickstart -k` 重启自己，顺序必须先 `stop_owned()` 再 kickstart，且前提是 launchd 报的 pid 等于自己的 pid。
 

@@ -923,19 +923,20 @@ function at({ label: e, checked: t, disabled: n, change: r }) {
 	});
 }
 function ot({ startup: e, receipt: t }) {
-	let [n, r] = W(e.enabled), [i, a] = W(e.silent), [o, s] = W(""), c = q(!1), l = q(null);
-	async function u() {
-		if (!c.current) {
-			c.current = !0, v(l.current, !0), s("");
+	let [n, r] = W(e.enabled), [i, a] = W(e.silent), [o, s] = W(e.desktop), [c, l] = W(""), u = q(!1), f = q(null), p = e.available && !e.desktop_message;
+	async function m() {
+		if (!u.current) {
+			u.current = !0, v(f.current, !0), l("");
 			try {
 				await B("/api/configuration/startup", {
 					enabled: n,
-					silent: i
+					silent: i,
+					desktop: o
 				}), t("已保存开机自启");
 			} catch (e) {
-				s(R(e));
+				l(R(e));
 			} finally {
-				c.current = !1, v(l.current, !1);
+				u.current = !1, v(f.current, !1);
 			}
 		}
 	}
@@ -943,7 +944,7 @@ function ot({ startup: e, receipt: t }) {
 		class: "configfieldset",
 		"data-geist-fieldset": !0,
 		onSubmit: (e) => {
-			e.preventDefault(), u();
+			e.preventDefault(), m();
 		},
 		children: [/* @__PURE__ */ J("div", {
 			class: "geist-fieldset-content",
@@ -953,39 +954,54 @@ function ot({ startup: e, receipt: t }) {
 					class: "configoptions",
 					role: "group",
 					"aria-labelledby": "startupTitle",
-					children: [/* @__PURE__ */ J(at, {
-						label: "开机后启动 Peach",
-						checked: n,
-						disabled: !e.available,
-						change: r
-					}), /* @__PURE__ */ J("div", {
-						class: "configoption",
-						children: [/* @__PURE__ */ J(at, {
-							label: "静默启动",
-							checked: i,
-							disabled: !e.available || !n,
-							change: a
-						}), /* @__PURE__ */ J("p", {
-							class: "confighelp",
-							children: "静默启动仅显示托盘，开机后启动 Peach 打开时生效。"
-						})]
-					})]
+					children: [
+						/* @__PURE__ */ J(at, {
+							label: "开机后启动 Peach",
+							checked: n,
+							disabled: !e.available,
+							change: r
+						}),
+						/* @__PURE__ */ J("div", {
+							class: "configoption",
+							children: [/* @__PURE__ */ J(at, {
+								label: "静默启动",
+								checked: i,
+								disabled: !e.available || !n,
+								change: a
+							}), /* @__PURE__ */ J("p", {
+								class: "confighelp",
+								children: "静默启动仅显示托盘，开机后启动 Peach 打开时生效。"
+							})]
+						}),
+						/* @__PURE__ */ J("div", {
+							class: "configoption",
+							children: [/* @__PURE__ */ J(at, {
+								label: "在桌面创建快捷方式",
+								checked: o,
+								disabled: !p,
+								change: s
+							}), /* @__PURE__ */ J("p", {
+								class: "confighelp",
+								children: e.desktop_message || "双击图标打开 Peach 网页；卸载时一并移除。"
+							})]
+						})
+					]
 				}),
 				e.message && /* @__PURE__ */ J("p", {
 					class: "confighelp",
 					children: e.message
 				}),
-				o && /* @__PURE__ */ J("p", {
+				c && /* @__PURE__ */ J("p", {
 					class: "configbad",
 					role: "alert",
-					children: o
+					children: c
 				})
 			]
 		}), /* @__PURE__ */ J("footer", {
 			class: "geist-fieldset-footer",
 			"data-geist-fieldset-footer": !0,
 			children: /* @__PURE__ */ J("button", {
-				ref: l,
+				ref: f,
 				type: "submit",
 				class: "geist-button primary",
 				disabled: !e.available,
@@ -1014,7 +1030,7 @@ function ct({ uninstall: e }) {
 		await l({
 			title: "卸载 Peach",
 			danger: !0,
-			body: t ? "将退出 Peach，移除程序、开机自启、设置、本地数据库、观看记录、凭据和缓存。原始媒体文件保留。" : "将退出 Peach 并移除程序和开机自启。设置、本地数据库、观看记录与缓存保留。",
+			body: t ? "将退出 Peach，移除程序、开机自启、桌面图标、设置、本地数据库、观看记录、凭据和缓存。原始媒体文件保留。" : "将退出 Peach 并移除程序、开机自启和桌面图标。设置、本地数据库、观看记录与缓存保留。",
 			confirmLabel: "卸载 Peach",
 			onConfirm: async () => {
 				let e = await B("/api/configuration/uninstall", {
@@ -1037,7 +1053,7 @@ function ct({ uninstall: e }) {
 					class: "configfieldset-heading",
 					children: [/* @__PURE__ */ J("div", { dangerouslySetInnerHTML: { __html: d("uninstallTitle", "卸载 Peach") } }), e.available && /* @__PURE__ */ J("p", {
 						class: "confighelp",
-						children: "卸载会退出 Peach、移除程序和开机自启。原始媒体文件保留。"
+						children: "卸载会退出 Peach、移除程序、开机自启和桌面图标。原始媒体文件保留。"
 					})]
 				}),
 				/* @__PURE__ */ J(it, {
@@ -1114,10 +1130,14 @@ function ut() {
 				})]
 			})]
 		}), /* @__PURE__ */ J("details", { children: [
-			/* @__PURE__ */ J("summary", { children: "CloudDrive 速度与缓存建议" }),
+			/* @__PURE__ */ J("summary", { children: [/* @__PURE__ */ J("svg", {
+				viewBox: "0 0 24 24",
+				"aria-hidden": "true",
+				children: /* @__PURE__ */ J("use", { href: "#i-chevron-right" })
+			}), "CloudDrive 速度与缓存建议"] }),
 			/* @__PURE__ */ J("p", {
 				class: "confighelp",
-				children: "看缓存放在哪块硬盘上，照那一行填。先保证播放不卡，再拿同一个视频比较打开速度、拖动和流量；数值填得越大不一定越快。"
+				children: "看缓存放在哪块硬盘上，照那一行填。表里是起步值，先保证播放不卡，再拿同一个视频比较打开速度、拖动和流量；填得越大不一定越快。"
 			}),
 			/* @__PURE__ */ J("div", {
 				class: "cloudguide-tablewrap",
@@ -1154,29 +1174,30 @@ function ut() {
 			/* @__PURE__ */ J("ul", {
 				class: "cloudguide-notes",
 				children: [
-					/* @__PURE__ */ J("li", { children: "缓存尽量放在内置固态盘上。只有机械硬盘时先用按需读取，反复看同一批文件才打开文件夹缓存。" }),
-					/* @__PURE__ */ J("li", { children: "256 / 128 KB 适合扫描、抽帧和拖动播放。看高码率视频还是缓冲，就试 512 / 256 KB；速度没提上来就调回去。" }),
-					/* @__PURE__ */ J("li", { children: "缓存上限和清理方式在 CloudDrive「设置」里填。清理方式选 LRU，也就是空间不够时先删最久没用过的缓存。上限不要填 0，系统盘至少留 40 GiB。填完重新打开这一页确认存住了，再看硬盘实际少了多少。" }),
-					/* @__PURE__ */ J("li", { children: "读取长度和下载线程在每个网盘各自的下载设置里改，线程都从 2 开始。115 不要超过客户端标出的上限；PikPak 和 WebDAV 在带宽有余、加到 4 确实更快时才留 4。能开直链就开，开完放个视频确认还能播。" }),
-					/* @__PURE__ */ J("li", { children: "PikPak 按 CloudDrive 当前提供的接入方式配置。走 WebDAV 时先确认服务端允许直链；115 的连接方式不能照搬过来。" }),
-					/* @__PURE__ */ J("li", { children: "看视频时先暂停批量抽帧，关掉不用的播放页。码率按 Mbps 算，下载速度按 MB/s 算，除以 8 才能对上：80 Mbps 的视频要 10 MB/s 才够，留出余量建议稳定在 15 MB/s。" }),
-					/* @__PURE__ */ J("li", { children: "Buffer Cache 占内存，磁盘缓存和文件夹缓存占硬盘，三处是分开的设置，改一个管不住另外两个。文件显示的大小是逻辑大小，也不等于真正占掉的盘。" })
+					/* @__PURE__ */ J("li", { children: "缓存上限和清理方式填在 CloudDrive「设置」里，清理方式选 LRU。上限不要填 0，系统盘至少留 40 GiB。" }),
+					/* @__PURE__ */ J("li", { children: "读取长度和下载线程填在每个网盘各自的下载设置里，线程都从 2 开始。看高码率视频还是缓冲就试 512 / 256 KB，打开速度、拖动和流量都没改善就调回去。" }),
+					/* @__PURE__ */ J("li", { children: "Buffer Cache 占内存，磁盘缓存和文件夹缓存占硬盘，三处是分开的设置，改一个管不住另外两个。" }),
+					/* @__PURE__ */ J("li", { children: "填完重新打开 CloudDrive 的设置页确认存住了，再看硬盘实际少了多少。播放期间先暂停批量抽帧、关掉不用的播放页。" })
 				]
 			}),
 			/* @__PURE__ */ J("p", {
 				class: "confighelp",
-				children: ["表里的容量和并发是起步值，按实际占盘和播放效果再调。直链和代理是两个开关，连接慢时分别试一次比较，不能只看开关有没有打开。", /* @__PURE__ */ J("a", {
-					class: "externallink",
-					href: "https://www.clouddrive2.com/features.html",
-					target: "_blank",
-					rel: "noreferrer",
-					children: ["缓存说明", /* @__PURE__ */ J("svg", {
-						class: "externalmark",
-						viewBox: "0 0 24 24",
-						"aria-hidden": "true",
-						children: /* @__PURE__ */ J("use", { href: "#i-external-link" })
-					})]
-				})]
+				children: [
+					"三处缓存分别管什么、码率和速度怎么换算、线程上限与直链代理怎么取舍，以及这些起步值的来源，都在",
+					/* @__PURE__ */ J("a", {
+						class: "externallink",
+						href: "https://github.com/longmeidao/peach/blob/master/docs/CLOUDDRIVE.md",
+						target: "_blank",
+						rel: "noreferrer",
+						children: ["CloudDrive 配置与调优", /* @__PURE__ */ J("svg", {
+							class: "externalmark",
+							viewBox: "0 0 24 24",
+							"aria-hidden": "true",
+							children: /* @__PURE__ */ J("use", { href: "#i-external-link" })
+						})]
+					}),
+					"。"
+				]
 			})
 		] })]
 	});
@@ -1433,7 +1454,7 @@ function bt({ data: e, receipt: t }) {
 									}),
 									r.length > 1 ? /* @__PURE__ */ J("button", {
 										type: "button",
-										class: "geist-button configrm",
+										class: "geist-button configrm danger",
 										"aria-label": "移除这个文件夹",
 										onClick: () => ee(n),
 										children: /* @__PURE__ */ J("svg", {
@@ -3040,7 +3061,7 @@ function Yn(e, t = !1, n = !1) {
 	if (t || n) return "";
 	let r = "<svg class=\"externalmark\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><use href=\"#i-external-link\"></use></svg>";
 	return `<details class="taste-history-guide"${e ? " open" : ""}>
-    <summary>浏览器历史记录导入指南</summary>
+    <summary><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chevron-right"></use></svg>浏览器历史记录导入指南</summary>
     <div class="taste-history-guide-content">
       <p>在运行 Peach 的电脑上使用浏览器：点击上方「读取 Peach 主机」。</p>
       <p>记录在其他设备上：导出文件后，点击上方「导入历史」。多台设备的文件分别导入。</p>

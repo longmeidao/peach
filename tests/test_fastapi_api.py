@@ -256,6 +256,17 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.json()["mode"], "fastapi")
         self.assertEqual(response.json()["version"], __version__)
 
+    async def test_health_reports_the_build_commit_the_deploy_check_needs(self):
+        """换生产托盘的脚本按这个字段确认跑起来的正是它刚打出的包。源码运行时是 null。"""
+        payload = (await self.client.get("/healthz")).json()
+        self.assertIn("build_commit", payload)
+        self.assertIsNone(payload["build_commit"])
+        from peach.buildinfo import BuildInfo
+        with patch.object(api_module, "BUILD",
+                          BuildInfo("c0ffee1234", __version__, "2026-09-07T00:00:00")):
+            served = (await self.client.get("/healthz")).json()
+        self.assertEqual(served["build_commit"], "c0ffee1234")
+
     async def test_reader_role_keeps_gets_available_and_rejects_posts(self):
         class ReaderSync:
             status = "reader"

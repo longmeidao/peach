@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import fnmatch
 import importlib
+import re
 import subprocess
 import sys
 import time
@@ -67,6 +68,7 @@ SCOPES: dict[str, tuple[str, ...]] = {
     "tooling": ("test_scripts.py", "test_auth.py", "test_access.py", "test_cli.py", "test_script_policy.py",
                 "test_scan.py", "test_onboarding.py", "test_configuration_sources.py", "test_folder_picker.py", "test_ledger_backups.py",
                 "test_agent_worktree.py", "test_test_evidence.py", "test_dependency_policy.py",
+                "test_version_bump.py", "test_changelog.py",
                 "test_restart_windows_tray.py", "test_deploy_windows_tray.py",
                 "test_buildinfo.py", "test_versioning.py",
                 "test_windows_update.py", "test_release_updates.py", "test_standalone_update.py", "test_certs.py", "test_config.py",
@@ -82,8 +84,14 @@ SCOPES: dict[str, tuple[str, ...]] = {
     # 播放器按需加载的断言读 `web/app.js`（web），改任一侧都该被本域拦住。
     # `test_copy_final_state.py` 两个域都登记：它扫全树，而界面字串是它最常拦到的
     # 一面，改 `web/` 的人必须在本域就撞上它。
+    # 后面七个文件的主体不在这一层，但各有一段断言读 `web/` 或 `frontend/` 的源码，
+    # 所以本域也要登记它们：改了 `web/app.js` 却漏跑读它的测试，`test_test_planning.py`
+    # 的域映射门槛会在本地就红。
     "web": ("test_frontend_build.py", "test_web_ui.py", "test_web_js.py",
-            "test_web_perf.py", "test_copy_final_state.py"),
+            "test_web_perf.py", "test_copy_final_state.py",
+            "test_agency_entity.py", "test_dependency_policy.py", "test_desktop_settings.py",
+            "test_fastapi_api.py", "test_follow_web.py", "test_metadata_library.py",
+            "test_studio_icon_variants.py", "test_web_settings.py"),
     "core": ("test_access.py", "test_auth.py", "test_config.py", "test_migrations.py",
              "test_platform.py", "test_mount.py", "test_tray.py", "test_certs.py",
              "test_folder_picker.py", "test_fsutil.py", "test_runtime_consistency.py",
@@ -169,6 +177,41 @@ def scopes_of_module(stem: str) -> tuple[str, ...]:
     return tuple(scope for scope, patterns in SCOPES.items() if scope not in {"core", "packaging"}
                  if any(fnmatch.fnmatch(exact, pattern) or pattern.startswith(prefix)
                         for pattern in patterns))
+
+
+def scope_of_path(path: str) -> str:
+    """一个非测试源码文件按 `AUTO_SCOPE_PREFIXES` 落在哪个域；映射不到返回空串。"""
+    normalized = path.replace("\\", "/").strip("/")
+    for prefix, scope in AUTO_SCOPE_PREFIXES:
+        if normalized.startswith(prefix):
+            return scope
+    return ""
+
+
+#: `<某个 Path> / "a" / "b/c.js"` 这种拼接。要求左边有个 `/`，是为了把「路径当字符串
+#: 参数传进去」的写法排除掉：`scopes_for_changes(["web/app.js"])` 喂的是假清单，
+#: 不读真文件，不该因为字面量长得像路径就被算成读了它。
+_PATH_CHAIN = re.compile(r"""/\s*((?:["'][^"'\n]+["']\s*/\s*)*["'][^"'\n]+["'])""")
+_SEGMENT = re.compile(r"""["']([^"'\n]+)["']""")
+#: 测试文件顶上的 `FRONTEND = ROOT / "frontend"` 这类别名，用来还原下面链式拼接的前缀。
+_ROOT_ALIAS = re.compile(r"""^\w+\s*=\s*\w+(?:\[\d+\])?\s*/\s*["']([\w./-]+)["']\s*$""", re.M)
+
+
+def repository_paths_read_by(source: str) -> tuple[str, ...]:
+    """一段测试源码实际读到的仓库文件，仓库相对路径。
+
+    只认拼在某个 Path 后面、且在仓库里真的存在的那一档。判据是「文件存在」而不是
+    「长得像路径」：不存在的字面量是别的东西，存在的才是这个测试真正依赖的输入。
+    """
+    prefixes = {"", *(alias.strip("/") for alias in _ROOT_ALIAS.findall(source))}
+    found: set[str] = set()
+    for chain in _PATH_CHAIN.findall(source):
+        joined = "/".join(segment.strip("/") for segment in _SEGMENT.findall(chain))
+        for prefix in prefixes:
+            candidate = f"{prefix}/{joined}".strip("/")
+            if (ROOT / candidate).is_file():
+                found.add(candidate)
+    return tuple(sorted(found))
 
 
 def unclassified_files() -> tuple[Path, ...]:

@@ -58,7 +58,7 @@ body.entity-open .index{overflow-x:visible}
 .tagselection button:hover:not(:disabled){background:var(--hover);color:var(--ink)}
 .tagselection button.primary{background:var(--ink);color:var(--ground)}
 .tagselection button.primary:hover:not(:disabled){background:color-mix(in srgb,var(--ink) 88%,var(--ground));color:var(--ground)}
-.tagselection button:disabled{background:var(--sunk);color:var(--muted);cursor:default}
+.tagselection button:disabled{background:var(--sunk);color:var(--muted);cursor:not-allowed}
 .tagfilters .all::before{background:linear-gradient(135deg,#55A7FF,#D783FF)}
 .index-tags .tg,.alphatag{--tag-color:#7A91A8}
 .index-tags .tg.r34-general,.alphatag.r34-general,.tagfilters .general{--tag-color:#55A7FF;--r34-tag:#55A7FF}

@@ -40,8 +40,9 @@ from peach.windows_update import WindowsUpdateInstaller
 SWAP_RESTART_TIMEOUT = 90.0
 
 
-def serving_version(*, timeout: float = 60.0, sleep: Callable[[float], None] = time.sleep) -> str | None:
-    """轮询生产 HTTPS 口的 `/healthz`，返回它报的版本号；期限内没回话返回 None。
+def serving_identity(*, timeout: float = 60.0,
+                     sleep: Callable[[float], None] = time.sleep) -> dict | None:
+    """轮询生产 HTTPS 口的 `/healthz`，返回它报的版本号与构建提交；没回话返回 None。
 
     地址和 CA 都取自 `build_service_specs()`，跟托盘自己探活用的是同一份规格。
     HTTPS 的结论必须由项目 CA 严格校验得出，明文口的 200 不算数：那条只是跳转进程。
@@ -53,7 +54,9 @@ def serving_version(*, timeout: float = 60.0, sleep: Callable[[float], None] = t
             response = httpx.get(spec.health_url, timeout=5.0, verify=spec.verify,
                                  trust_env=False)
             if response.status_code == 200:
-                return str(response.json().get("version"))
+                payload = response.json()
+                return {"version": str(payload.get("version")),
+                        "build_commit": payload.get("build_commit")}
         except (httpx.HTTPError, OSError, ValueError):
             pass
         if time.monotonic() >= deadline:
@@ -79,7 +82,7 @@ def deploy(
     installer: WindowsUpdateInstaller | None = None,
     restart: Callable[..., object] = restart_tray,
     run: Callable[..., subprocess.CompletedProcess] = subprocess.run,
-    version: Callable[..., str | None] = serving_version,
+    identity: Callable[..., dict | None] = serving_identity,
 ) -> dict:
     """把 `root` 这份检出打成新托盘并换上 `target`，返回可直接打印的结果字典。
 
@@ -129,19 +132,23 @@ def deploy(
     if not result.ok:
         return _outcome(False, "swap", result.message, **fields)
 
-    served = version(timeout=timeout)
+    served = identity(timeout=timeout)
     fields["expected_version"] = __version__
-    fields["version"] = served
     if served is None:
         return _outcome(False, "verify",
                         "新托盘已就位，但生产 HTTPS 口的 /healthz 没在期限内回话。",
                         **fields)
-    if served != __version__:
+    fields["version"] = served["version"]
+    fields["served_commit"] = served["build_commit"]
+    # 认的是构建提交，不是版本号：版本号一次发布才推一格，同一个号下有很多个构建。
+    if served["build_commit"] != commit:
         return _outcome(False, "verify",
-                        f"新托盘已就位，但 /healthz 报的是 {served}，不是这份检出的 {__version__}。",
+                        f"新托盘已就位，但 /healthz 报的构建是 "
+                        f"{served['build_commit'] or '未取得'}，不是这次打的 {commit[:8]}。",
                         **fields)
     return _outcome(True, "verify",
-                    f"生产入口已换成 {commit[:8]} 打出的托盘，/healthz 报 {served}。", **fields)
+                    f"生产入口已换成 {commit[:8]} 打出的托盘，/healthz 报 {served['version']}。",
+                    **fields)
 
 
 def main(argv: list[str] | None = None) -> int:

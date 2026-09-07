@@ -114,7 +114,7 @@
    ——按钮不描边，输入类控件仍旧描边。而裸 `:not()` 会把这条抬到 0,2,1，反过来压过
    `.geist-button.primary`（0,2,0），同一张卡上的主动作于是丢掉实底变成一行字；
    `:where()` 权重恒为零，排除生效、层级不动。 */
-.cleanupfieldset button:where(:not(.gselectfield)){box-sizing:border-box;flex:none;min-height:32px;padding:0 12px;border:0;border-radius:var(--control-radius);
+.cleanupfieldset button:where(:not(.gselectfield)){box-sizing:border-box;flex:none;min-height:32px;padding:0 12px;border:0;border-radius:var(--control-radius);box-shadow:0 0 0 1px var(--line-soft);
   background:var(--ground);color:var(--ink-2);display:inline-flex;align-items:center;justify-content:center;gap:6px;cursor:pointer;
   transition:color .15s ease-in-out,background-color .15s ease-in-out}
 .cleanupfieldset button:where(:not(.gselectfield)):hover{background:color-mix(in srgb,var(--ink) 8%,var(--ground));color:var(--ink)}
@@ -122,7 +122,7 @@
 .cleanupfieldset .cleanupstate{margin-top:8px;font-size:var(--fs-sm);color:var(--ink-2)}
 .cleanupfieldset .cleanupstate:empty{display:none}
 .taste-history-guide{margin-top:16px;border:1px solid var(--field-ring);border-radius:var(--floating-radius);background:var(--ground);padding:20px}
-.taste-history-guide summary{cursor:pointer;color:var(--ink);font-weight:500}
+.taste-history-guide summary{cursor:pointer;color:var(--ink);font-weight:500;display:flex;align-items:center;gap:8px;list-style:none}.taste-history-guide summary::-webkit-details-marker{display:none}.taste-history-guide summary>svg{width:16px;height:16px;flex:none;stroke:currentColor;fill:none;transition:transform .2s ease-in-out}.taste-history-guide summary[aria-expanded="true"]>svg{transform:rotate(90deg)}
 .taste-history-guide-content{display:grid;gap:12px;padding-top:16px;color:var(--muted);font-size:var(--fs-md);line-height:1.5}
 .taste-history-guide-content p,.taste-history-guide-content ul{margin:0}
 .taste-history-guide-content ul{padding-left:20px}

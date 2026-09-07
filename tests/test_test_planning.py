@@ -86,6 +86,27 @@ class TestPlanningTests(unittest.TestCase):
              patch.object(runner.test_evidence, 'inputs', side_effect=AssertionError('分片不能签发证据')):
             self.assertEqual(runner.main(['--scope', 'full', '--shard-count', '2']), 0)
 
+    def test_a_test_reading_a_web_source_runs_when_that_source_changes(self):
+        """断言 `web/`、`frontend/` 文件的测试，必须登记在改那个文件会选到的域里。
+
+        域表是人手维护的，漏登记不会报错，只会在 CI 上红：`tests/test_follow_web.py` 读
+        `web/app.js`，却只登记在 follow 域，于是改了 `web/app.js` 跑 `auto` 时它根本不在
+        选中的文件里。这一条按测试源码里真实存在的路径拼接反查，把漏登记变成本地就红。
+
+        判据只覆盖这两个前缀：域表对它们是按目录映射的，除此以外没有第二条路让测试被选
+        中。`src/peach/` 有按模块名的推断，`scripts/`、`docs/` 那些落在 tooling 与 checks
+        的兜底上，同一个漏洞在那边也成立，但要补的是域表本身，不在本条范围内。
+        """
+        watched = ('web/', 'frontend/')
+        for path in sorted((runner.ROOT / 'tests').glob('test_*.py')):
+            read = [item for item in runner.repository_paths_read_by(path.read_text(encoding='utf-8'))
+                    if item.startswith(watched)
+                    and not any(item.startswith(prefix) for prefix in runner.FULL_ONLY_PREFIXES)]
+            for item in read:
+                scopes, why = runner.scopes_for_changes([item])
+                selected = {chosen.name for scope in scopes for chosen in runner.selected_files(scope)}
+                self.assertIn(path.name, selected, f'{path.name} 读 {item}，但 {why} 选不到它')
+
     def test_template_copies_have_independent_data(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory).resolve()

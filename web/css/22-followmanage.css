@@ -131,11 +131,12 @@
 
 .fbtn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:32px;
   box-sizing:border-box;padding:0 12px;border:0;border-radius:var(--control-radius);
+  box-shadow:0 0 0 1px var(--line-soft);
   background:var(--ground);color:var(--ink);font-size:var(--fs-md);font-weight:500;font-family:inherit;cursor:pointer;
   white-space:nowrap;transition:color .15s ease-in-out,background-color .15s ease-in-out}
 .fbtn:hover:not(:disabled){background:color-mix(in srgb,var(--ink) 8%,var(--ground))}
-.fbtn:disabled{background:var(--sunk);color:var(--muted);cursor:default}
-.fbtn.primary{background:var(--ink);color:var(--ground);font-weight:500}
+.fbtn:disabled{background:var(--sunk);color:var(--muted);cursor:not-allowed}
+.fbtn.primary{background:var(--ink);color:var(--ground);font-weight:500;box-shadow:none}
 .fbtn.primary:hover:not(:disabled){background:color-mix(in srgb,var(--ink) 88%,var(--ground));border-color:color-mix(in srgb,var(--ink) 88%,var(--ground));color:var(--ground)}
 /* 去边框那一条只针对动作按钮。这两枚不是动作：一枚点开是来源筛选菜单，一枚是排序
    方向的开关，它们跟旁边的下拉触发器是同一组控件，共用输入框那圈线。少了线，
@@ -144,8 +145,6 @@
 .fbtn[data-srcfilter-toggle]:hover:not(:disabled),.fbtn.fmanagedir:hover:not(:disabled){border-color:var(--field-ring-hover);background:var(--ground)}
 .fbtn[data-srcfilter-toggle][aria-expanded="true"]{border-color:var(--field-ring-focus);box-shadow:0 0 0 4px var(--field-glow)}
 .fbtn.small{height:26px;padding:0 10px;font-size:var(--fs-sm)}
-.fbtn.fquiet{border-color:transparent;color:var(--muted)}
-.fbtn.fquiet:hover{background:var(--drop);border-color:var(--drop);color:#fff}
 .fbtn svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.8}
 
 .faddform{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:start}
@@ -214,7 +213,7 @@
 .frowicon{width:32px;height:32px;padding:0;display:grid;place-items:center;flex:none;
   border:1px solid var(--border-15);border-radius:var(--control-radius);background:transparent;color:var(--muted);cursor:pointer}
 .frowicon:hover{background:var(--hover);color:var(--ink)}
-.frowicon:disabled{background:var(--sunk);border-color:var(--line-soft);color:var(--muted);cursor:default}
+.frowicon:disabled{background:var(--sunk);border-color:var(--line-soft);color:var(--muted);cursor:not-allowed}
 .frowicon.danger:hover{color:var(--drop);border-color:var(--drop)}
 .frowicon svg{width:16px;height:16px;stroke:currentColor;fill:none}
 .fsource.frow>.frowerr{grid-column:1/-1}
@@ -303,10 +302,9 @@ details.fcred{display:block;min-width:0}
   font-family:inherit;cursor:pointer;
   transition:background-color .15s ease-in-out,color .15s ease-in-out}
 .fcredactions button:hover:not(:disabled){background:color-mix(in srgb,var(--ink) 88%,var(--ground));color:var(--ground)}
-.fcredactions button:disabled{background:var(--sunk);color:var(--muted);cursor:default}
-.fcredactions button.fquiet{background:var(--drop);color:#fff}
-.fcredactions button.fquiet:hover{background:color-mix(in srgb,var(--drop) 82%,#000);color:#fff}
-.fcredactions button.fquiet:disabled{background:var(--surface);color:var(--muted)}
+.fcredactions button:disabled{background:var(--sunk);color:var(--muted);cursor:not-allowed}
+/* 上面三条是「保存」那颗主动作。「清除」会连着共享副本一起删，它走 `.danger`：
+   红、悬停深一档和禁用灰全部来自危险档，这里不给它写第二份。 */
 .fcredactions [data-cred-state]{font-size:var(--fs-xs);color:var(--muted)}
 
 @media (max-width:640px){
@@ -376,7 +374,7 @@ details.fcred{display:block;min-width:0}
    实底上就落成白字白底。Geist Button 的 primary 悬停只把 #EDEDED 掉一档到 #ccc，
    文字色不动。 */
 .fpickactions [data-pick-add]:hover:not(:disabled){background:color-mix(in srgb,var(--ink) 88%,var(--ground));color:var(--ground)}
-.fpickactions button:disabled{background:var(--sunk);color:var(--muted);cursor:default}
+.fpickactions button:disabled{background:var(--sunk);color:var(--muted);cursor:not-allowed}
 .fpickactions [data-pick-state]{display:flex;align-items:center;min-width:0;overflow:hidden;
   white-space:nowrap;text-overflow:ellipsis;font-size:var(--fs-xs);color:var(--muted)}
 

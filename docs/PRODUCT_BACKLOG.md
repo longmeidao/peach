@@ -46,7 +46,7 @@
 12. 非 editable 安装的跨平台验收：wheel 资源与 Windows 基础依赖、仓库外 CLI 冒烟已就绪，仍需取得 macOS、Python 3.12 消费任务结果。
 13. 健康检查生产验收：`db` 区分 missing、empty、available、unavailable，`?ready=1` 检查 schema 校验和；待部署后用项目 CA 验证 HTTPS 与损坏／未初始化状态。
 14. 界面国际化：界面目前只有中文，先补英文。
-15. 制品与更新渠道：Windows 独立测试包、首次引导与本机配置表单已实现，Release 消费任务只下载制品验收。剩余为 macOS 独立包、代码签名、独立测试包的自动更新、局域网配对和更完整的配置管理；本机打包托盘已按构建身份自行重建，版本号由 `integrate` 在本地集成时推进，标签仍由 `release_tag.py` 独家发出。测试包更新采用退出程序后完整解压新版，数据目录保持独立。
+15. 制品与更新渠道：Windows 独立测试包、首次引导与本机配置表单已实现，Release 消费任务只下载制品验收。剩余为 macOS 独立包、代码签名、独立测试包的自动更新、局域网配对和更完整的配置管理；本机打包托盘已按构建身份自行重建，版本号与标签都由 `release_tag.py` 在发布点独家发出，每个版本号对应一份制品并在 `CHANGELOG.md` 有一节。测试包更新采用退出程序后完整解压新版，数据目录保持独立。本条关闭是 ADR-0012「1.0 门槛」第 8 项。
 16. 「第一个小时」教程与故障排查文档：init → 声明来源根 → scan → 打开页面 → 手机信任 CA → 托盘/菜单栏自启动，每一步写清失败表现与对应的排查动作；截图用一套小的 SFW 演示数据集生成，不取自真实馆藏。
 17. 项目网站：一页说明是什么、截图、安装入口与文档链接。
 18. 口味导入引导：`/taste` 上传（Takeout ZIP、browserexport 兼容文件）与 `scripts/taste_history.py` 直读本机浏览器库两条路都能用，但没有面向陌生人的文档。需要一页「各浏览器怎么导出、多台设备怎么各自刷新」教程，把脚本折进 `peach` CLI（见第 7 条），并写明定时刷新的安装方式。
@@ -63,7 +63,7 @@
 
 合计：**31 项开放需求**，其中 6 项已有骨架，25 项尚未实现。已完成的需求不在这里留痕，去 Git 历史查。
 
-## 待执行的操作（34 项）
+## 待执行的操作（36 项）
 
 需要另行授权、外部条件或人工判断才能做的具体操作与复核批次，比上面的需求细一层；做完就删，不在这里留痕。待办只放这一处：`docs/STATUS.md` 每次会话开头都要读，队列不该常驻在那种入口文件里。
 
@@ -102,3 +102,11 @@
 32. `install_entity_links.py` 的可达性门槛按「非 200 就跳过」执行，而同文件的 `is_gone()` 明确写着 403／5xx／连接错误不能当「页面没了」。首批 703 条里 137 条因此没装，其中 31 条 twitter.com、23 条 t-powers.co.jp。把跳过分成「确证没了」和「这次没取到」两档：后者留进待复查队列，配合 `rediscover_entity_links.py` 对 t-powers／nax-pro／mines-pro 这些已经搬家的域名上溯找新锚，再装一次。
 33. 托盘自重建被测试记录门槛卡住：2026-09-05 22:54 托盘为 0.8.5 起的那次「同步开发进度」全量 3181 个用例全绿，`scripts/test_runner.py` 却因验证前后主检出的内容或依赖快照不一致判本次记录无效、退出码 1，托盘按测试失败处理，没有打包也没有换 EXE，并且同一 HEAD 不再重试；同一时段两次 `auto` 记录也是空的 `validated`。第二次（23:14 起，HEAD 5a4b37f8）跑到一半，协调者于 23:17:42 把 0.8.6 合进了同一个主检出，全量因此 6 个用例失败、记录再次无效；失败用例名未取得，第三次尝试一开始就把日志覆盖了。机制已确认：托盘在主检出跑全量，`integrate` 的 `integration.lock` 与全量的 `full-suite.lock` 互不排斥，任何一次集成都会改掉正在验证的树。要做三件事：集成前等主检出里正在跑的全量结束（或让两把锁互斥），并把「记录无效」和「用例失败」在退出码或输出上分开，让托盘对前者重试而不是放弃；托盘的日志只写 stderr，没有落盘，22:43 那次托盘连同两个服务一起消失的原因也因此未取得，给托盘补一份 `logs/tray.log`。现场：线上服务 0.8.5 正常，托盘 EXE 仍是 21:08 打的 0.8.1，`pyproject.toml` 与 `windows_update.py` 的改动没进 EXE。
 34. 封面来源头像逐条复核：37 张仍来自 `cover-fallback`，完整初始清单位于 `attic/reviews/20260906-portrait-agency/remaining-cover-avatars.csv`。41 张被封面覆盖的 Gfriends 人像已从备份恢复，包括日向真凛，恢复记录见同目录 `cover-restore-result.json`。采集器将封面保留为未验证候选，安装函数拒绝把封面写成人物头像。
+35. 拿到 Astra 访问权限后，对 `peach-app`（或先挑一个模块，如 `src/peach/follow_providers.py`）跑一遍 George Pickett 2026-09-05 分享的首要原则审查 prompt（https://x.com/georgepickett/status/2095979879137460640），看删减与简化建议是否成立；结论回到「尚未实现」第 6、7 条那类清理项，不直接改真相字段。Prompt 原文照抄：
+    > Think from first principles about what we're trying to achieve here. Interrogate what you built before calling it done:
+    > 1. Is anything here unnecessary, overly complicated, or based on weak assumptions? Challenge them.
+    > 2. What can be deleted entirely?
+    > 3. What can be simplified now that unnecessary pieces are gone?
+    > Then make the changes. Prefer deleting over simplifying, simplifying over optimizing, and optimizing over automating.
+    > It might be done too - you don't HAVE to go and make changes. If it's good, leave it alone.
+36. 域映射门槛只覆盖 `web/` 与 `frontend/`。同一个漏洞在别的前缀上照样成立：`tests/test_babepedia_match.py` 读 `scripts/match_babepedia_creators.py` 却只登记在 metadata 域，改那个脚本时 `auto` 选的是 tooling；`tests/test_frontend_build.py` 读 `docs/CLOUDDRIVE.md`，而 `.md` 一律归 checks。按 `test_runner.repository_paths_read_by` 全树扫一遍，`scripts/`、`docs/`、`.github/`、`resources/` 四类共约三十处。要补的是 `AUTO_SCOPE_PREFIXES` 本身——把逐个脚本映射到它真正的域，像 `scripts/localize_performer_names.py` 那两条那样——补完再把 `tests/test_test_planning.py` 那条门槛的前缀白名单去掉。

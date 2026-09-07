@@ -194,7 +194,7 @@ function wireCountRow(){
   const batch=$('#batchAction');
   if(batch)batch.onclick=async()=>{
     if(batch.getAttribute('aria-busy')==='true')return;
-    const old=batch.innerHTML;setActionBusy(batch);batch.innerHTML=spinnerHtml('换一批');
+    const old=batch.innerHTML;setActionBusy(batch);batch.innerHTML=spinnerHtml('正在换一批');
     try{await refreshAll()}finally{setActionBusy(batch,false);batch.innerHTML=old}
   };
   wireJavLayoutButtons($('#count'));
@@ -2617,7 +2617,7 @@ function junkCardHtml(it){
     </div><footer class="junkactions">
       <button type="button" data-junk-reveal title="在资源管理器中显示" aria-label="在资源管理器中显示">${icon('folder-open')}<span>打开位置</span></button>
       <button type="button" data-junk-operation="${decision[0]}" title="${esc(decision[1])}" aria-label="${esc(decision[1])}">${icon(decision[2])}<span>${decision[1]}</span></button>
-      <button type="button" class="junktrash" data-junk-operation="dispose" title="移入回收站" aria-label="移入回收站">${icon('trash')}<span>移入回收站</span></button>
+      <button type="button" class="danger" data-junk-operation="dispose" title="移入回收站" aria-label="移入回收站">${icon('trash')}<span>移入回收站</span></button>
       <span class="junkstate" aria-live="polite"></span>
     </footer></div></article>`;
 }
@@ -3488,7 +3488,7 @@ async function wireLinkManager(){
     const gone=table('已失效',payload.gone||[],'上游明确回 404／410，页面确实没了。');
     const unclear=table('取不到',payload.unclear||[],'一次访问没成功，但不等于没了：有的站挡爬虫，有的是临时错误。不会被删除，下次检查会重试。');
     const apply=(done&&(payload.gone||[]).length)?`<div class="resourceapplyrow"><p>删除前会逐条重验一次；此操作不可撤销。</p>
-      <button class="resourceaction resourcedanger" type="button" id="linkPrune">删除 ${payload.gone.length} 条失效链接</button></div>`:'';
+      <button class="resourceaction danger" type="button" id="linkPrune">删除 ${payload.gone.length} 条失效链接</button></div>`:'';
     const clean=(done&&!(payload.gone||[]).length&&!(payload.unclear||[]).length)?'<p class="resourcesyncok">全部链接都能打开。</p>':'';
     result.innerHTML=`<div class="resourcepanel"${apply?' data-fieldset-type="error"':''}>${progress}${gone}${unclear}${apply}${clean}</div>`;
     $('#linkPrune')?.addEventListener('click',async event=>{
@@ -4549,7 +4549,7 @@ async function loadMoreFollow(button){
   if(!followData||followBusy)return;
   followBusy=true;
   const oldButton=button?.innerHTML;
-  if(button){setActionBusy(button);button.innerHTML=`${spinnerHtml('加载更多')}<span>加载中…</span>`}
+  if(button){setActionBusy(button);button.innerHTML=`${spinnerHtml('正在加载更多')}<span>加载中…</span>`}
   try{
     const next=await api(followPageUrl((followData.offset||0)+FOLLOW_PAGE));
     followData={...next,
@@ -5575,7 +5575,7 @@ function followCredentialRow(row){
       ${row.howto?`<p>${esc(row.howto)}</p>`:''}
       <form class="fcredform" data-cred-form="${esc(row.provider)}">${fields}
         <div class="fcredactions"><button type="submit">保存</button>
-          ${configured?`<button type="button" class="fquiet" data-cred-clear="${esc(row.provider)}">清除</button>`:''}
+          ${configured?`<button type="button" class="danger" data-cred-clear="${esc(row.provider)}">清除</button>`:''}
           <span data-cred-state aria-live="polite"></span></div></form>
       ${(row.shared_fields||[]).length?`<p class="fnote">${esc(row.shared_fields.join('、'))} 是从共享副本回填的，本机没有单独存。清除会把两边一起删。</p>`:''}
       <p class="fcredpath mono">${esc(row.path)}</p>
