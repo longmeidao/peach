@@ -856,8 +856,8 @@ def icon_from_logo(safe: str, target: dict[str, str], logo: dict[str, object],
                     url=str(logo["url"]), link_kind="logo-source",
                     evidence="指定的 logo 来源烤不成方图")
     # 判「补没补白」看源图自己的长宽，不看内容比：`images.MAX_ASPECT` 正是 `bake_square`
-    # 「够方就原样返回」的那条线，所以 `ok` 恰好等于这一张一个像素都没动过。名录里的
-    # jpg 是整幅不透明的，内容比对它一律回 0，拿那个数分不出方图和长条。
+    # 把长条补成方图的那条线。方图也可能被重新摆位，但那不是补白。名录里的 jpg 是整幅
+    # 不透明的，内容比对它一律回 0，拿那个数分不出方图和长条。
     width, height = (int(value) for value in str(logo["mark_size"]).split("x"))
     wide = max(width, height) / min(width, height) > images.MAX_ASPECT
     aspect = link_marks.content_aspect(image)

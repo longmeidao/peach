@@ -519,10 +519,19 @@ Windows 空数据预览的项目 CA HTTPS、合成 Cookie 保存／撤销、DMM 
   原尺寸居中、四周用同一张图放大模糊补底（页面侧的 `data-fit-native`）。
   边距和底色烤进文件，页面不再各自补救。
   位图的唯一入口是 `peach.images.bake_square`，`classify_plate` 给出它据以分流的判定：
-  - `mark`（有透明像素，如 PREMIUM 的全透明底蓝色字标）——按 alpha 外接框裁掉透明边，居中放到**白色
-    不透明**方底上，内容占边长 `PLATE_CONTENT_RATIO`（0.76，四周各留约 12%），像素不缩放，出不透明 PNG。
+  - `mark`（有透明像素，如 PREMIUM 的全透明底蓝色字标）——按 alpha 外接框裁掉透明边，居中放到不透明
+    方底上，内容占边长 `PLATE_CONTENT_RATIO`（0.76，四周各留约 12%），像素不缩放，出不透明 PNG。
   - `tile`（完全不透明，如 M's Video Group 400×400 黑底方块、Natural High 红底、Hon Naka 64×64 青底）——
     底色是设计的一部分：接近方形的原字节返回，长条按边缘主色补方（`pad_to_square`）。不刷白。
+  两条路的产物都再过一遍 `refit_plate`，因为方图**摆得不对**和**不是方图**是两件事：小圆片铺满的是
+  整张画布不是内容，源站 favicon 常自带大留白（Flower 的金环占宽 0.24、いんすた 0.30、Planet_Plus 0.31、
+  まんまんランド 0.55、EST 0.56），铺进 32 px 圆片就小得认不出；反过来顶到边的实心方标四角落在圆外，
+  MARRION 的金框和 Tushy 的「T」直接看不见。内容占宽低于 `PLATE_MIN_SPAN`（0.6）裁到内容框、四周留
+  12%；内容落在内切圆之外的比例超过 `PLATE_CIRCLE_LOSS`（0.025）把画布补到内容的外接圆。像素一律
+  不缩放，所以裁出来的更小但更清晰、补出来的更大而清晰度不变。断点都是实测的：占宽下一档 FC2-PPV
+  0.62 起看着正常，圆外损失落在 T-POWERS 0.019 与 TEPPAN 0.034 之间，圆形图标（Wanz Factory 0.008）
+  不受影响。内容框按行列统计，只有零星几个像素的行列不算内容——有损压缩在纯色区留下的淡斑点会把
+  逐像素外接框撑满整张画布（EST 的字样只占纵向 249 行，斑点却让框横跨 685 行）。
   写入侧只有两条路径，规则同一条：`harvest_studio_icons.py` 的 `install()` 落盘前烤，
   `normalize_studio_logos.py` 对历史文件回溯（目录下所有 `*.img`，含 `.icon.img`／`.logo.img`）。
   两者都幂等——烤出来的产物再跑一次不再有动作。女优头像等照片不走这条路径，不加白边。
@@ -532,16 +541,26 @@ Windows 空数据预览的项目 CA HTTPS、合成 Cookie 保存／撤销、DMM 
   走 `peach.images.bake_square_vector`：同样的 76% 边距，但方底由外层 SVG 给，原文档整个塞进
   嵌套 `<svg>`，一个节点都不改写——栅格化会把「放多大都清晰」这个唯一优势丢掉。内容框直接取
   `viewBox`：4 张渲染后实测，决定方框边长的长边都是 tight 的（横向占满 0.97～1.00），
-  纵向留白只影响居中。**底色不写死白**：栅格化一张 256 px 探针数内容像素，在白底上还看得见的
-  比例低于 `PLATE_VISIBLE_RATIO`（0.7）就配深底 `#111111`。DarkRoomVR 的「DARK ROOM」和
-  TeamSkeetXReislin 的「TEAM」都是白字，白底可见率实测 0.20 与 0.52，配白底等于把半个标识抹掉；
-  TeenFidelity 0.82、VirtualTaboo 1.00 仍走白底。位图那条路目前仍一律白底——已装的 26 张
-  实测没有一张被白底吞掉，不为一个没出现的情况改动既有产物。
-  外层根元素上留 `data-peach-plate="1"`，重跑据此跳过——矢量没有像素可读，不靠这个标记就会越套越多。
-  `viewBox`、`width`／`height` 都没有的空壳量不出比例，仍记 `vector` 原样留着。
-  位图那批已经回溯完（26 个 `mark` 烤白底、5 个长条补方，边车在 `*.img.normalization.json`）；
-  2026-09-07 的 dry-run 只剩 4 个 `would-plate`，都是上面那 4 张矢量。回溯真实目录需另行授权。
-  页面三处取图位（品牌小圆片 `.brandpill .mk`、身份格 `.idface`、厂牌页 160 px 大位 `.entityportrait`）
+  纵向留白只影响居中。矢量没有像素可读，外层根元素上留 `data-peach-plate="1"` 让重跑据此跳过，
+  不靠这个标记就会越套越多。`viewBox`、`width`／`height` 都没有的空壳量不出比例，仍记 `vector`
+  原样留着。
+- **底色按内容明暗判，位图和矢量同一条规则**（`images._plate_color`；矢量先栅格化一张 256 px 探针数
+  像素，产物仍是矢量）。只有笔画直接挨着底色的稀疏标识会被底色吞掉：内容框里的不透明覆盖低于
+  `PLATE_SOLID_COVER`（0.9）才判底色，白底上还看得见的比例低于 `PLATE_VISIBLE_RATIO`（0.7）就配深底
+  `#111111`。DarkRoomVR 的「DARK ROOM」、TeamSkeetXReislin 的「TEAM」、HEYZO 的「HEY」都是白笔画，
+  白底可见率实测 0.20、0.52、0.44，配白底等于把半个标识抹掉。自带整块底的另说：Fitch 的白卡片覆盖
+  0.98、Hunter 的迷彩方块 1.00，它们的边界是自己画的，外面那圈只是画框，配深底反而让那块底浮在黑里。
+- **归一从原图开始。** 装上去的文件如果记着备份原图、备份又还在本机，`normalize_studio_logos.py` 拿
+  备份当输入：烤底毁掉的透明通道和配错的底色在产物上判不回来，从原图重来才能让算法的改进落到已经
+  装好的文件上（HEYZO 就是这么修回来的）。边车继续指向原图，别把指针改指到这一轮备份的归一产物。
+  边车的 `action` 是认来路的稳定标识不是描述：`bake-white-plate`、`pad-to-square`、`refit-plate`、
+  `plate-vector`。`harvest_studio_icons.padded_studios` 按 `pad-to-square` 认「这一张的源图是条状字标」，
+  把重新摆位记成补方等于污染那份名单，所以三条位图路径分开记。
+  已装的位图里 26 个 `mark` 烤过底、5 个长条补过方（边车在 `*.img.normalization.json`）；2026-09-08 的
+  dry-run 报 52 个待改：46 个重新摆位、4 个矢量包方底、HEYZO 改配深底、pikpak 重补方。
+  回溯真实目录需另行授权。
+- **页面三处取图位统一铺满，不各自补救。**
+  三处（品牌小圆片 `.brandpill .mk`、身份格 `.idface`、厂牌页 160 px 大位 `.entityportrait`）
   的 `img` 统一 `object-fit: cover` 铺满方框，不加 inset、不加 padding、不改 contain：文件已经带够边距，
   页面再补一层就在图自带的底之外多围出一圈框，而三处各自补救的结果必然互相不一致。占位底色
   （`#CFCFCF`、`#fff`、`--overlay-5`）与首字母回落只在取不到图时露出来。

@@ -8,6 +8,7 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw
 
+from peach.images import bake_square
 from peach.logo_provider import LogoCandidateCache, inspect_logo
 
 
@@ -132,7 +133,10 @@ class StudioLogoScriptTests(unittest.TestCase):
         self.assertEqual(health["errors"], "0")
 
     def test_same_installed_content_is_mechanical_unchanged(self):
-        (self.installed / "Studio_A.img").write_bytes(pattern_png(size=(400, 400)))
+        # 装着的那张也过 `bake_square`：目录里的文件都是这么来的，拿没归一的原图
+        # 当在位图，比的就不是「同一张图换了尺寸」而是归一本身带来的差别。
+        (self.installed / "Studio_A.img").write_bytes(
+            bake_square(pattern_png(size=(400, 400))))
         refreshed = pattern_png(size=(200, 200))
         self.assertEqual(self.module.main(self.args(), transport=FakeTransport([refreshed])), 0)
         row = self.rows()[0]

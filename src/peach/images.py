@@ -6,9 +6,10 @@
 
 厂牌标识另有一层：页面三处取图位（品牌小圆片、身份格、厂牌页大位）都用
 `object-fit: cover` 铺满方框，所以文件本身必须是不透明方图。`bake_square` 是
-位图这条规则的唯一入口，`classify_plate` 给出它据以分流的判定。矢量标识走
-`bake_square_vector`：同样的边距，但方底用外层 SVG 包出来，不栅格化；底色按内容
-明暗判，白字标配深底。
+位图这条规则的唯一入口，`classify_plate` 给出它据以分流的判定，`refit_plate` 再把
+方图摆到圆形图位里看得全的位置。矢量标识走 `bake_square_vector`：同样的边距，但
+方底用外层 SVG 包出来，不栅格化。底色两条路同一条规则（`_plate_color`），按内容
+明暗判，白笔画配深底。
 女优头像等照片不走这条路径，只走 `classify` 与 `pad_to_square`。
 """
 from __future__ import annotations
@@ -17,8 +18,9 @@ import io
 import re
 import xml.etree.ElementTree as ElementTree
 from collections import Counter
+from math import ceil, hypot
 
-from PIL import Image, ImageChops
+from PIL import Image, ImageChops, ImageDraw
 
 # 长边/短边在这个值以内视为「已经够方」，直接用原图。
 MAX_ASPECT = 1.35
@@ -43,10 +45,30 @@ PLATE_DARK_BACKGROUND = (17, 17, 17, 255)
 # DarkRoomVR 0.20、TeamSkeetXReislin 0.52 会被白底吞掉，TeenFidelity 0.82、
 # VirtualTaboo 1.00 不受影响，阈值落在中间两侧都有余量。
 PLATE_VISIBLE_RATIO = 0.7
+# 内容框里的不透明覆盖到这个比例就算自带整块底，底色只当画框，一律白。真实标识
+# 实测：稀疏笔画的 HEYZO 0.52、TeamSkeetXReislin 0.56 要判底色，自带底的 Fitch
+# 0.98、Hunter 1.00 不必判，阈值落在中间。
+PLATE_SOLID_COVER = 0.9
 # 判底色用的探针尺寸。只用来数像素，产物仍是原矢量。
 PLATE_PROBE_SIZE = 256
 # 亮度离白多远才算「在白底上看得见」。
 PLATE_INK_CONTRAST = 40
+# 离底色多远才算内容。方图的底色是设计的一部分，压不到这个差的算同一块底。
+PLATE_GROUND_TOLERANCE = 24
+# 内容外接框长边占方图边长低于这个数，就裁掉多余留白。真实目录实测：
+# Flower 0.24、いんすた 0.30、Planet_Plus 0.31、まんまんランド 0.55、EST 0.56 都是
+# 源站 favicon 自带的大留白，铺进 32 px 圆片后内容小得认不出；下一档 FC2-PPV 0.62
+# 起看着正常，阈值落在这个断点上。
+PLATE_MIN_SPAN = 0.6
+# 内容落在内切圆之外的比例超过这个数，就把方图补大到内容的外接圆。小圆片
+# （`.brandpill .mk`）是圆的，方图四角在圆外，那部分内容直接看不见。实测断点：
+# T-POWERS 0.019 与 TEPPAN 0.034 之间；圆形图标（Wanz Factory 0.008）不受影响。
+PLATE_CIRCLE_LOSS = 0.025
+# 一行（或一列）里的内容像素不多于内容总量这个比例就算杂点。有损压缩会在纯色区
+# 留下极淡的斑点，逐像素的外接框被它们撑满整张画布：EST 的字样只占纵向 249 行，
+# 杂点却让框横跨 685 行。下限挡住内容本来就很少的小图。
+PLATE_NOISE_RATIO = 0.0005
+PLATE_NOISE_FLOOR = 3
 
 SVG_NS = "http://www.w3.org/2000/svg"
 XLINK_NS = "http://www.w3.org/1999/xlink"
@@ -112,9 +134,10 @@ def classify_plate(payload: bytes) -> str | None:
 def bake_square(payload: bytes) -> bytes | None:
     """把厂牌标识烤成不透明方图，返回 PNG 字节；解析失败返回 None。
 
-    独立图标裁掉透明边后居中放到白色方底上，内容占边长
-    `PLATE_CONTENT_RATIO`。整块底图接近方形就原样返回原字节，长条按边缘主色
-    补方。原始像素一律不缩放，方图边长由内容尺寸推出来。
+    独立图标裁掉透明边后居中放到方底上，内容占边长 `PLATE_CONTENT_RATIO`，底色
+    按内容明暗判。整块底图接近方形就沿用它自己的底，长条按边缘主色补方。两条路
+    最后都过一遍 `refit_plate`：内容在画布里的占比也是取图位看得见的东西，
+    只看长宽比会让 0.24 和 0.95 一起原样通过。原始像素一律不缩放。
     """
     image = _open_rgba(payload)
     if image is None:
@@ -124,16 +147,130 @@ def bake_square(payload: bytes) -> bytes | None:
         return None
     if not _has_transparency(image):
         if max(width, height) / min(width, height) <= MAX_ASPECT:
-            return payload
-        return pad_to_square(payload)
+            squared = payload
+        else:
+            squared = pad_to_square(payload)
+        if squared is None:
+            return None
+        return refit_plate(squared) or squared
     box = image.getchannel("A").getbbox()
     if box is None:
         return None
     content = image.crop(box)
     side = max(max(content.size), round(max(content.size) / PLATE_CONTENT_RATIO))
-    canvas = Image.new("RGBA", (side, side), PLATE_BACKGROUND)
+    canvas = Image.new("RGBA", (side, side), _plate_color(image))
     canvas.paste(content, ((side - content.width) // 2, (side - content.height) // 2),
                  content)
+    buffer = io.BytesIO()
+    canvas.convert("RGB").save(buffer, "PNG")
+    baked = buffer.getvalue()
+    return refit_plate(baked) or baked
+
+
+def _ink_mask(image: Image.Image, ground: tuple[int, int, int, int]) -> Image.Image:
+    """离底色够远的那些像素。返回只有 0 / 255 的单通道图。"""
+    plate = Image.new("RGB", image.size, ground[:3])
+    return ImageChops.difference(image.convert("RGB"), plate).convert("L").point(
+        lambda value: 255 if value > PLATE_GROUND_TOLERANCE else 0)
+
+
+def _ink_extent(mask: Image.Image, floor: int) -> tuple[int, int] | None:
+    """内容像素多于 `floor` 的那些行的首末位置，末位是开区间。"""
+    width = mask.width
+    data = mask.tobytes()
+    rows = [index for index in range(mask.height)
+            if data[index * width:(index + 1) * width].count(255) > floor]
+    if not rows:
+        return None
+    return rows[0], rows[-1] + 1
+
+
+def _content_box(mask: Image.Image) -> tuple[int, int, int, int] | None:
+    """内容外接框，只有零星几个像素的行列不算内容。"""
+    total = mask.histogram()[255]
+    if not total:
+        return None
+    floor = max(PLATE_NOISE_FLOOR, round(total * PLATE_NOISE_RATIO))
+    rows = _ink_extent(mask, floor)
+    columns = _ink_extent(mask.transpose(Image.Transpose.TRANSPOSE), floor)
+    if rows is None or columns is None:
+        return None
+    return columns[0], rows[0], columns[1], rows[1]
+
+
+def _content_radius(mask: Image.Image, box: tuple[int, int, int, int]) -> float:
+    """内容相对自己外接框中心的最大距离，也就是它的外接圆半径。
+
+    只看每一行最左、最右那两个内容像素：同一行里离中心最远的必然是这两个之一，
+    所以逐行取一次 `getbbox()` 就够，不必遍历上百万像素。
+    """
+    center_x = (box[0] + box[2] - 1) / 2
+    center_y = (box[1] + box[3] - 1) / 2
+    width = mask.width
+    radius = 0.0
+    for y in range(box[1], box[3]):
+        row = mask.crop((0, y, width, y + 1)).getbbox()
+        if row is None:
+            continue
+        for x in (row[0], row[2] - 1):
+            radius = max(radius, hypot(x - center_x, y - center_y))
+    return radius
+
+
+def refit_plate(payload: bytes) -> bytes | None:
+    """把不透明方图重新摆一遍：内容既不小到发空，也不大到被圆片切掉。
+
+    两件事都是取图位真的看得见的：小圆片（`.brandpill .mk`）是 32 px 圆、`cover`
+    铺满，所以铺满的是整张画布，不是内容——源站 favicon 常自带大留白（Flower 的
+    金环只占 0.24），铺进去就小得认不出；反过来顶到边的实心方标（MARRION 0.95）
+    四角落在圆外，金框和字样直接看不见。
+
+    动手只有两种：内容太小就裁掉多余留白，会被圆切就把画布补到内容的外接圆。
+    像素一律不缩放，所以裁出来的图更小但更清晰，补出来的图更大而清晰度不变。
+    两者都不适用时返回原字节；`None` 只表示解析不了。
+    """
+    image = _open_rgba(payload)
+    if image is None:
+        return None
+    width, height = image.size
+    if not width or not height:
+        return payload
+    if max(width, height) / min(width, height) > MAX_ASPECT:
+        # 横幅字标本来就不是方的，摆进圆片这件事由 `pad_to_square` 负责。
+        return payload
+    if _has_transparency(image):
+        # 带透明的还没配底，`_background_color` 会给回透明，补出来的边会变成黑块。
+        # 这一步只收 `bake_square` 已经配好底的产物和目录里那些不透明方图。
+        return payload
+    ground = _background_color(image)
+    box = _content_box(_ink_mask(image, ground))
+    if box is None:
+        # 整张一个色（占位底板那类），没有内容框可言。
+        return payload
+    # 框外的杂点不参与后面的圆外损失和外接圆，否则一个斑点就能把画布撑到两倍。
+    mask = Image.new("L", image.size, 0)
+    mask.paste(_ink_mask(image.crop(box), ground), box[:2])
+    span = max(box[2] - box[0], box[3] - box[1])
+    # 圆片是 `cover`：长边被切掉，露出来的是居中那个短边见方的区域的内切圆。
+    short = min(width, height)
+    left = (width - short) // 2
+    top = (height - short) // 2
+    circle = Image.new("L", image.size, 0)
+    ImageDraw.Draw(circle).ellipse(
+        (left, top, left + short - 1, top + short - 1), fill=255)
+    total = mask.histogram()[255]
+    inside = ImageChops.multiply(mask, circle).histogram()[255]
+    lost = 1 - inside / total if total else 0.0
+    side = 0
+    if span / short < PLATE_MIN_SPAN:
+        side = round(span / PLATE_CONTENT_RATIO)
+    if lost > PLATE_CIRCLE_LOSS:
+        side = max(side, ceil(_content_radius(mask, box) * 2))
+    if side <= 0 or (side == width and side == height):
+        return payload
+    content = image.crop(box)
+    canvas = Image.new("RGBA", (side, side), ground)
+    canvas.paste(content, ((side - content.width) // 2, (side - content.height) // 2))
     buffer = io.BytesIO()
     canvas.convert("RGB").save(buffer, "PNG")
     return buffer.getvalue()
@@ -144,30 +281,40 @@ def _svg_number(value: float) -> str:
     return f"{value:.10g}"
 
 
-def _vector_plate_color(payload: bytes) -> tuple[int, int, int, int]:
-    """这张矢量标识该配白底还是深底。
+def _plate_color(image: Image.Image) -> tuple[int, int, int, int]:
+    """这张标识该配白底还是深底。
 
-    栅格化只用来数像素，产物仍是矢量：把它渲染一遍，看内容里有多少在白底上还
-    看得见。DarkRoomVR 的「DARK ROOM」和 TeamSkeetXReislin 的「TEAM」都是白字，
-    配白底等于把半个标识抹掉——实测白底可见率 0.20 与 0.52，深底才是它们的本相。
-    渲染不出来（`resvg_py` 缺席或图有问题）按白底走，和位图的 `MARK` 一致。
+    只有笔画直接挨着底色的稀疏标识才会被底色吞掉：HEYZO 的「HEY」、DarkRoomVR 的
+    「DARK ROOM」都是白笔画摆在透明底上，白底可见率 0.44 与 0.20，配白底等于把那
+    部分抹掉，深底才是它们的本相。自带整块底的（Fitch 的白卡片、Hunter 的迷彩方块，
+    内容框里的不透明覆盖 0.98 与 1.00）另说：它们的边界是自己画的，外面那圈底色
+    只是画框，配深底反而让那块卡片浮在黑里。透明像素不算内容。
     """
-    from .link_marks import rasterize_svg
-
-    rendered = rasterize_svg(payload, PLATE_PROBE_SIZE)
-    image = _open_rgba(rendered) if rendered else None
-    if image is None:
-        return PLATE_BACKGROUND
     ink = image.getchannel("A").point(lambda value: 255 if value >= 128 else 0)
     lit = image.convert("L").point(
         lambda value: 255 if value < 255 - PLATE_INK_CONTRAST else 0)
+    box = ink.getbbox()
     total = ink.histogram()[255]
-    if not total:
+    if not total or box is None:
+        return PLATE_BACKGROUND
+    if total / ((box[2] - box[0]) * (box[3] - box[1])) >= PLATE_SOLID_COVER:
         return PLATE_BACKGROUND
     visible = ImageChops.multiply(ink, lit).histogram()[255]
     if visible / total >= PLATE_VISIBLE_RATIO:
         return PLATE_BACKGROUND
     return PLATE_DARK_BACKGROUND
+
+
+def _vector_plate_color(payload: bytes) -> tuple[int, int, int, int]:
+    """矢量标识的底色。栅格化只用来数像素，产物仍是矢量。
+
+    渲染不出来（`resvg_py` 缺席或图有问题）按白底走，和判不出内容时一致。
+    """
+    from .link_marks import rasterize_svg
+
+    rendered = rasterize_svg(payload, PLATE_PROBE_SIZE)
+    image = _open_rgba(rendered) if rendered else None
+    return PLATE_BACKGROUND if image is None else _plate_color(image)
 
 
 def _svg_length(value: str | None) -> float | None:
