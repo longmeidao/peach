@@ -923,19 +923,20 @@ function at({ label: e, checked: t, disabled: n, change: r }) {
 	});
 }
 function ot({ startup: e, receipt: t }) {
-	let [n, r] = W(e.enabled), [i, a] = W(e.silent), [o, s] = W(""), c = q(!1), l = q(null);
-	async function u() {
-		if (!c.current) {
-			c.current = !0, v(l.current, !0), s("");
+	let [n, r] = W(e.enabled), [i, a] = W(e.silent), [o, s] = W(e.desktop), [c, l] = W(""), u = q(!1), f = q(null), p = e.available && !e.desktop_message;
+	async function m() {
+		if (!u.current) {
+			u.current = !0, v(f.current, !0), l("");
 			try {
 				await B("/api/configuration/startup", {
 					enabled: n,
-					silent: i
+					silent: i,
+					desktop: o
 				}), t("已保存开机自启");
 			} catch (e) {
-				s(R(e));
+				l(R(e));
 			} finally {
-				c.current = !1, v(l.current, !1);
+				u.current = !1, v(f.current, !1);
 			}
 		}
 	}
@@ -943,7 +944,7 @@ function ot({ startup: e, receipt: t }) {
 		class: "configfieldset",
 		"data-geist-fieldset": !0,
 		onSubmit: (e) => {
-			e.preventDefault(), u();
+			e.preventDefault(), m();
 		},
 		children: [/* @__PURE__ */ J("div", {
 			class: "geist-fieldset-content",
@@ -953,39 +954,54 @@ function ot({ startup: e, receipt: t }) {
 					class: "configoptions",
 					role: "group",
 					"aria-labelledby": "startupTitle",
-					children: [/* @__PURE__ */ J(at, {
-						label: "开机后启动 Peach",
-						checked: n,
-						disabled: !e.available,
-						change: r
-					}), /* @__PURE__ */ J("div", {
-						class: "configoption",
-						children: [/* @__PURE__ */ J(at, {
-							label: "静默启动",
-							checked: i,
-							disabled: !e.available || !n,
-							change: a
-						}), /* @__PURE__ */ J("p", {
-							class: "confighelp",
-							children: "静默启动仅显示托盘，开机后启动 Peach 打开时生效。"
-						})]
-					})]
+					children: [
+						/* @__PURE__ */ J(at, {
+							label: "开机后启动 Peach",
+							checked: n,
+							disabled: !e.available,
+							change: r
+						}),
+						/* @__PURE__ */ J("div", {
+							class: "configoption",
+							children: [/* @__PURE__ */ J(at, {
+								label: "静默启动",
+								checked: i,
+								disabled: !e.available || !n,
+								change: a
+							}), /* @__PURE__ */ J("p", {
+								class: "confighelp",
+								children: "静默启动仅显示托盘，开机后启动 Peach 打开时生效。"
+							})]
+						}),
+						/* @__PURE__ */ J("div", {
+							class: "configoption",
+							children: [/* @__PURE__ */ J(at, {
+								label: "在桌面创建快捷方式",
+								checked: o,
+								disabled: !p,
+								change: s
+							}), /* @__PURE__ */ J("p", {
+								class: "confighelp",
+								children: e.desktop_message || "双击图标打开 Peach 网页；卸载时一并移除。"
+							})]
+						})
+					]
 				}),
 				e.message && /* @__PURE__ */ J("p", {
 					class: "confighelp",
 					children: e.message
 				}),
-				o && /* @__PURE__ */ J("p", {
+				c && /* @__PURE__ */ J("p", {
 					class: "configbad",
 					role: "alert",
-					children: o
+					children: c
 				})
 			]
 		}), /* @__PURE__ */ J("footer", {
 			class: "geist-fieldset-footer",
 			"data-geist-fieldset-footer": !0,
 			children: /* @__PURE__ */ J("button", {
-				ref: l,
+				ref: f,
 				type: "submit",
 				class: "geist-button primary",
 				disabled: !e.available,
@@ -1014,7 +1030,7 @@ function ct({ uninstall: e }) {
 		await l({
 			title: "卸载 Peach",
 			danger: !0,
-			body: t ? "将退出 Peach，移除程序、开机自启、设置、本地数据库、观看记录、凭据和缓存。原始媒体文件保留。" : "将退出 Peach 并移除程序和开机自启。设置、本地数据库、观看记录与缓存保留。",
+			body: t ? "将退出 Peach，移除程序、开机自启、桌面图标、设置、本地数据库、观看记录、凭据和缓存。原始媒体文件保留。" : "将退出 Peach 并移除程序、开机自启和桌面图标。设置、本地数据库、观看记录与缓存保留。",
 			confirmLabel: "卸载 Peach",
 			onConfirm: async () => {
 				let e = await B("/api/configuration/uninstall", {
@@ -1037,7 +1053,7 @@ function ct({ uninstall: e }) {
 					class: "configfieldset-heading",
 					children: [/* @__PURE__ */ J("div", { dangerouslySetInnerHTML: { __html: d("uninstallTitle", "卸载 Peach") } }), e.available && /* @__PURE__ */ J("p", {
 						class: "confighelp",
-						children: "卸载会退出 Peach、移除程序和开机自启。原始媒体文件保留。"
+						children: "卸载会退出 Peach、移除程序、开机自启和桌面图标。原始媒体文件保留。"
 					})]
 				}),
 				/* @__PURE__ */ J(it, {
