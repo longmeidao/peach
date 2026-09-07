@@ -59,7 +59,14 @@ def shortcut(action: str, path: Path, *, target: str = "", arguments: str = "", 
                             capture_output=True, text=True, encoding="utf-8", timeout=15,
                             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0), check=False)
     if result.returncode:
-        raise OSError("启动项未能保存，请检查当前用户的启动文件夹权限")
+        # PowerShell 说的原因不能吞掉。只留「请检查权限」这一句时，Windows runner 上
+        # 这一步失败了三次，而权限、`WScript.Shell` COM 不可用、路径没落地和扩展名
+        # 校验不通过在消息里长得一模一样，谁都没法往下查。
+        detail = next((line.strip() for line in
+                       (result.stderr or result.stdout or "").splitlines()
+                       if line.strip()), "")
+        raise OSError("启动项未能保存，请检查当前用户的启动文件夹权限"
+                      + (f"（PowerShell：{detail}）" if detail else ""))
     return json.loads(result.stdout.lstrip("\ufeff"))
 
 
