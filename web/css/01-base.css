@@ -233,13 +233,18 @@ button[aria-busy="true"],[role="button"][aria-busy="true"]{
 .geist-button.primary:disabled{background:var(--sunk);color:var(--muted);box-shadow:0 0 0 1px var(--line-soft)}
 /* 危险档静止就是实底红，不是描红边等悬停才填。只换描边和文字色的话，两个状态在暗色底上
    几乎一样亮，按下去之前看不出这是不可逆动作；Geist 的 error 变体也是 `rgb(217,48,54)`
-   实底配纯白字，静止态就红。销毁按钮全站只有这一个写法，`.danger` 与 `.resourcedanger`
-   都并到这里，纯图标删除键不适用——它们靠图标本身说明动作。 */
-button.danger:not(.frowicon),.resourcedanger{
+   实底配纯白字，静止态就红。销毁按钮全站只有这一个写法：标记上写 `.danger`，
+   纯图标删除键不适用——它们靠图标本身说明动作。
+   档位只能挂在 `<button>` 的 `.danger` 上，不要另起一个页面类来承担同一件事。
+   `.junkactions button`、`.fcredactions button` 这类容器规则自己就填底色，权重是一个类
+   加一个类型名；页面单类顶不过它——同权重时按文件顺序决胜，而分区号更大的页面文件总在
+   后面，红会被容器那份底色静静盖掉，选择器和声明单看都没有问题。
+   `button.danger:not(.frowicon)` 算两个类加一个类型名，比容器规则高一档，进哪个容器都赢。 */
+button.danger:not(.frowicon){
   background:var(--drop);color:#fff;box-shadow:none}
-button.danger:not(.frowicon):hover:not(:disabled),.resourcedanger:hover:not(:disabled){
+button.danger:not(.frowicon):hover:not(:disabled){
   background:color-mix(in srgb,var(--drop) 82%,#000);color:#fff}
-button.danger:not(.frowicon):disabled,.resourcedanger:disabled{
+button.danger:not(.frowicon):disabled{
   background:var(--sunk);color:var(--muted);box-shadow:0 0 0 1px var(--line-soft)}
 .geist-button.error{background:#da2f35;color:#fff;box-shadow:none}
 .geist-button.warning{background:#ff990a;color:#000;box-shadow:none}
