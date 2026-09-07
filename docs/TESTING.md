@@ -59,3 +59,24 @@ macOS 按影响域验证：
 ```
 
 显式全量用 Windows `-Scope full` 或 macOS 首参数 `full`。入口优先当前工作树环境、核对源码位置，并记录慢测试。依赖、代码在测试中变化会使证据失效；完成安装和编辑后再启动最终验证。
+
+## 记录的环境身份
+
+记录只在「代码、环境、范围」三项都匹配时可复用，环境那一项由 `scripts/test_evidence.py`
+的 `environment()` 算成一个摘要：解释器与已安装包、平台、`PEACH_*` 等环境变量、前端
+`node_modules` 锁，以及 node／npm／git／ffmpeg／ffprobe／openssl 六个外部工具。
+
+工具身份取它**自报的版本**，不取 PATH 解析到的路径与文件字节。同一套 Git 安装在
+PowerShell 里解析到 `Git\cmd\git.exe`、在 Git Bash 里解析到 `Git\mingw64\bin\git.exe`，
+两个前端字节不同而版本和行为相同；按路径记身份会把记录绑在 shell 上——在一个 shell 里
+跑出记录，换另一个 shell 跑 `integrate` 就报「缺少有效测试记录」，回到工作树跑 `auto`
+又说「复用记录」，两句查的是两个键，代价是白跑一遍全量。
+
+改 `environment()` 的算法本身时，主检出那份代码算不出新键，无法验证带着新算法的分支。
+那一次的 `integrate` 用分支自己的脚本跑，并把仓库指到主检出。`--repo` 是顶层参数，
+放在子命令前面，放后面会被 argparse 拒收：
+
+```powershell
+& .\.venv\Scripts\python.exe -X utf8 <工作树>\scripts\agent_worktree.py `
+  --repo <主检出> integrate --branch <分支>
+```

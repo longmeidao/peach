@@ -145,8 +145,6 @@
 .fbtn[data-srcfilter-toggle]:hover:not(:disabled),.fbtn.fmanagedir:hover:not(:disabled){border-color:var(--field-ring-hover);background:var(--ground)}
 .fbtn[data-srcfilter-toggle][aria-expanded="true"]{border-color:var(--field-ring-focus);box-shadow:0 0 0 4px var(--field-glow)}
 .fbtn.small{height:26px;padding:0 10px;font-size:var(--fs-sm)}
-.fbtn.fquiet{border-color:transparent;color:var(--muted)}
-.fbtn.fquiet:hover{background:var(--drop);border-color:var(--drop);color:#fff}
 .fbtn svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.8}
 
 .faddform{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:start}
@@ -305,9 +303,8 @@ details.fcred{display:block;min-width:0}
   transition:background-color .15s ease-in-out,color .15s ease-in-out}
 .fcredactions button:hover:not(:disabled){background:color-mix(in srgb,var(--ink) 88%,var(--ground));color:var(--ground)}
 .fcredactions button:disabled{background:var(--sunk);color:var(--muted);cursor:not-allowed}
-.fcredactions button.fquiet{background:var(--drop);color:#fff}
-.fcredactions button.fquiet:hover{background:color-mix(in srgb,var(--drop) 82%,#000);color:#fff}
-.fcredactions button.fquiet:disabled{background:var(--surface);color:var(--muted)}
+/* 上面三条是「保存」那颗主动作。「清除」会连着共享副本一起删，它走 `.danger`：
+   红、悬停深一档和禁用灰全部来自危险档，这里不给它写第二份。 */
 .fcredactions [data-cred-state]{font-size:var(--fs-xs);color:var(--muted)}
 
 @media (max-width:640px){
