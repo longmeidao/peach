@@ -1,6 +1,7 @@
 """本机启动、卸载范围与公共代理的隔离回归。"""
 import json
 import base64
+import ctypes
 import os
 import subprocess
 from pathlib import Path
@@ -130,9 +131,8 @@ class DesktopSettingsTests(unittest.TestCase):
             {'enabled':False}, {'enabled':True,'target':str(self.root / 'Other.exe')}]), self.assertRaisesRegex(ValueError, '另一份'):
             desktop_startup.windows_entry(self.config, self.program / 'Peach.exe')
 
-    @unittest.skipUnless(os.name == 'nt', 'Windows 原生快捷方式')
-    def test_native_shortcut_round_trip_in_temporary_directory(self):
-        path = self.root / '启动 fixture.lnk'
+    def _shortcut_round_trip(self, name):
+        path = self.root / name
         program = str(self.program / 'Peach.exe')
         written = desktop_startup.shortcut('write', path, target=program, arguments='--silent', directory=str(self.program))
         # 写完立刻核对文件就在这个路径上。只在 remove 之后断言不存在的话，`Save()` 把
@@ -144,6 +144,31 @@ class DesktopSettingsTests(unittest.TestCase):
         self.assertEqual(result['arguments'], '--silent')
         desktop_startup.shortcut('remove', path, expected=result['target'])
         self.assertFalse(path.exists())
+
+    @unittest.skipUnless(os.name == 'nt', 'Windows 原生快捷方式')
+    def test_native_shortcut_round_trip_in_temporary_directory(self):
+        self._shortcut_round_trip('startup fixture.lnk')
+
+    @unittest.skipUnless(os.name == 'nt', 'Windows 原生快捷方式')
+    def test_native_shortcut_round_trip_survives_a_non_ascii_name(self):
+        """中文名的往返，判据按系统 ANSI 码页给，不按平台给。
+
+        `WScript.Shell` 的 `Save()` 把路径降级到 `GetACP()`，编不出来的字符按字一个换成
+        `?`，而 `?` 是 Windows 的非法文件名字符，于是报 `Unable to save shortcut
+        "...\\?? fixture.lnk"`。本机 ACP 是 936，中文编得出来；GitHub 的 windows-latest
+        是西欧码页，同一个名字在那儿必失败。本机用泰文和希伯来文复现过同一条错误消息
+        （2026-09-07），确认是码页而不是权限、COM 或 stdin 解码。
+
+        生产的启动项文件名是 `Peach-<12 位十六进制>.lnk`，只有用户目录段可能带非 ASCII；
+        中文用户名的机器 ACP 就是 936，编得出来。这里不为 WSH 的这条限制换实现。
+        """
+        name = '启动 fixture.lnk'
+        codepage = ctypes.windll.kernel32.GetACP()
+        try:
+            name.encode(f'cp{codepage}')
+        except (UnicodeEncodeError, LookupError):
+            self.skipTest(f'系统 ANSI 码页 cp{codepage} 表示不了「{name}」，WScript.Shell 存不下')
+        self._shortcut_round_trip(name)
 
     @unittest.skipUnless(os.name == 'nt', 'Windows 原生快捷方式')
     def test_a_failed_shortcut_call_reports_what_powershell_said(self):
