@@ -1172,6 +1172,23 @@ class WebUiSourceTests(unittest.TestCase):
             self.assertPageContains(prefix + "::-webkit-details-marker{display:none}")
             self.assertPageContains(prefix + "{cursor:pointer;", "标题自己是 flex 容器")
 
+    def test_a_spinner_announces_the_work_and_not_the_button_it_sits_in(self):
+        """`spinnerHtml()` 的名字说正在做什么，不复读按钮自己的名字。
+
+        这个 span 是 `role="status"`，装在一颗已经有可访问名的按钮里。传按钮名进去，
+        屏幕阅读器就把同一串词念两遍——「换一批」「换一批」——读的人听不出发生了变化。
+        Geist 的 Spinner 规格把这一条写成「等待超过约 1 秒要配上说明这次在做什么的
+        文案」，所以判据是动词形态：进行中的说法，不是动作的名字。
+        """
+        source = (Path(__file__).resolve().parents[1] / "web/app.js").read_text(
+            encoding="utf-8")
+        labels = re.findall(r"spinnerHtml\('([^']+)'\)", source)
+        self.assertGreaterEqual(len(labels), 10, "调用点少得不像全站都在用")
+        ongoing = ("正在", "中", "…")
+        for label in labels:
+            self.assertTrue(label.endswith(ongoing) or label.startswith("正在"),
+                            f"「{label}」是动作名，不是进行中的说法")
+
     def test_font_weights_stay_on_the_three_geist_steps(self):
         """字重只有 400／500／600 三档。
 
