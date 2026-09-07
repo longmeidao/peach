@@ -243,7 +243,7 @@ Python、npm 与 GitHub Actions 的版本由 `.github/dependabot.yml` 每周检�
 | `rm-javlookup.py` | `scripts/scrape_codes.py` | 扩展来源适配器，不再分叉刮削器 |
 | `rm-probe.py` | `scripts/probe.py` | 可复用策略移入 `src/peach`，保留续跑语义 |
 | `rm-sheets.py` | `scripts/sheets.py` | 共用 FFmpeg/任务原语，不再新建抽帧管线 |
-| `rm-ledger.py` | `scripts/ledger.py`（扫描摄取，兼 ADR-0021 留存的 stash 导入入口） + repository/migrations | 新产品读取进入 repository，不放回旧 CLI |
+| `rm-ledger.py`、`scripts/ledger.py` | `peach init`／`peach scan`（`src/peach/cli.py`、`src/peach/scan.py`）+ repository/migrations | 摄取与建库只有 `peach` 一个入口，不放回旧 CLI；Stash 回灌随 ADR-0021 退役 |
 | `rm-status.py`、`scripts/status.py` | `peach status`（`src/peach/cli.py`） | 状态命令只读，并且只有一个入口：打包入口转发全部子命令，不再单独发一个脚本 |
 | `rm-suggest.py`、`scripts/suggest.py` + `moods.json` | `scripts/taste_history.py` + 馆藏页筛选 | 排序与心情筛选留在应用端口，不放回旧 CLI |
 | 各写库脚本私有的 `--database`／`--backup-dir`、自写 backup 与只读连接 | `src/peach/scripting.py`（`open_readonly`、`add_ledger_write_args`、`open_for_write`、`counts_of`、`verify_after_write`、`USER_AGENT`、`RateLimiter`） | 真实写入的参数只有 `--db`／`--apply`／`--backup` 一套；`--apply` 必须同时给 `--backup`，备份走 `peach.migrations.sqlite_backup`，脚本不再各写一份 |
@@ -261,7 +261,7 @@ Python、npm 与 GitHub Actions 的版本由 `.github/dependabot.yml` 每周检�
 
 1. Video.js 已接管详情播放；`MediaEngine.stream_plan` 已让 115/PikPak 原生 MP4 使用 HLS 临时短片段，仍需补自适应码率、多路清单和生产验收。CloudDrive 的虚拟盘固定块预取仍属于来源层成本。
 2. Javinizer-Go 已接管番号元数据查询适配；来源扩展只加入 Peach policy 白名单/profile 与健康统计，优先启用其现有 scraper，不在 Peach 分叉站点解析器。
-3. `status.py` 已并入 `peach status`，`suggest.py` 已由 `taste_history.py` 与馆藏页取代。剩余的是 `ledger.py`：读取逻辑继续移到 repository/application 端口，摄取入口本身按 ADR-0021 保留。它和 `sync_sha1_115.py` 目前都还没有备份闸门（`tests/test_script_policy.py` 的例外表已记账）。
+3. `status.py` 已并入 `peach status`，`suggest.py` 已由 `taste_history.py` 与馆藏页取代，`ledger.py` 已由 `peach init`／`peach scan` 取代。只剩 `sync_sha1_115.py` 还没有备份闸门（`tests/test_script_policy.py` 的例外表已记账）。
 4. Peach 不做 token/成本日志扫描器，也不绑定 T3 Code 私有 RPC；使用其界面、CodexBar 和官方实时配额入口。
 5. 「模仿/参考/对齐」不等于允许凭记忆近似。先取得并登记可复现证据；否则标记 `未取得`，不得作为忠实复刻发布。2026-08-17 的 YouTube 详情与 Shorts 动作栏参考已登记在 `docs/HANDOFF.md`，Peach 只复用可测量的层级、尺寸和状态语义。
 6. Web UI 组件优先复用 `web/js/ui-components.js` 和 `.claude/skills/peach-web-ui/SKILL.md` 的语义矩阵。Peach 不引入 Geist React 运行时，只复用已锁定证据中的 Note／Progress／Switch／Tooltip／Collapse／Menu／Fieldset／Scroller／覆盖式滚动条（`attachOverlayScrollbar`，滑块不占宽度；`.geist-scroller` 只给两端渐隐，两者可叠加）／Empty State／Search Input／Spinner／Loading Dots 与 Dialog motion 语义、ARIA 和版式层级；整页异步重绘复用导航代际隔离，没有消费者的 Vercel 后台筛选器不照搬。

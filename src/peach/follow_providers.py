@@ -107,11 +107,6 @@ PROVIDERS: dict[str, ProviderSpec] = {
 }
 
 
-def source_urls() -> dict[str, str]:
-    """登记订阅时按 provider 拼作品页 URL；只用于展示与去重，不参与抓取。"""
-    return {key: spec.source_url for key, spec in PROVIDERS.items() if spec.source_url}
-
-
 def labels() -> dict[str, str]:
     """界面上给每个来源的短名。没登记的 provider 直接显示原名。"""
     return {key: spec.label for key, spec in PROVIDERS.items()}

@@ -683,7 +683,7 @@ class WebDataTests(unittest.TestCase):
     def test_a_star_writes_twenty_points_and_taking_it_back_writes_null(self):
         """评分这一列是 0–100，五颗星走 20 的倍数；撤销回 NULL，不是 0。
 
-        量纲不是自选的：`scripts/ledger.py` 把 Stash 的 rating100 原样导进这一列，
+        量纲不是自选的：这一列是 Stash 的 rating100 原样导进来的，
         `taste_history` 也按 rating/20 折算成 0–5 分。撤销必须写 NULL，因为排序是
         `a.rating {d} NULLS LAST`——写 0 会把「没评过」和「评了一星」并成一档，
         七万多条没评过的于是排在评了一星的前面。

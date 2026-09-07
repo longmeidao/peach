@@ -54,7 +54,7 @@ Peach 要发布到 GitHub 供所有人维护与使用。使用形态不变：每
   「声明根前缀 → 本机挂载点」翻译，不再按盘符字母。挂载点的语义是**声明根在本机的落点**，
   所以 `R:\media\x` 在 macOS 上等于 `<mounts.local>/x`。
 - Windows 上盘符本身就是挂载点，`translate_ledger_path` 原样返回，`[media.mounts]` 整表可空。
-- 第 2 阶段同时补上了写入侧的一致性门槛：`scripts/ledger.py scan <location> <root>` 现在拒绝
+- 第 2 阶段同时补上了写入侧的一致性门槛：`peach scan <location> <root>` 现在拒绝
   与 `[media.locations]` 声明根不一致的组合，新导入的行不可能再落到别的来源名下。
 - 诊断用的 `PEACH_DRIVE_MAP` 键空间是盘符，与新方案不兼容，已删除；替代品是同样语法、
   按 ID 键的 `PEACH_MEDIA_MOUNTS`（`local=/mnt/res,115=/mnt/115`）。

@@ -2,8 +2,7 @@ import inspect
 import unittest
 from pathlib import Path
 
-from peach import follow_cli, follow_discovery, follow_providers, web_follow
-from peach.follow_cli import _SOURCE_URL
+from peach import follow_discovery, follow_providers, web_follow
 from peach.follow_sources import CONNECTORS, ParsedSource, _BaseConnector
 from peach.follow_stream import _PROVIDER_HOSTS
 from peach.follow_variants import PROVIDER_PRIORITY
@@ -33,7 +32,6 @@ class ProviderRegistryTests(unittest.TestCase):
         self.assertIn("gofile", PROVIDER_LABELS)
         self.assertNotIn("gofile", CONNECTORS)
         self.assertIsNone(follow_providers.PROVIDERS["gofile"].source_url)
-        self.assertNotIn("gofile", _SOURCE_URL)
 
     def test_semantics_is_declared_only_in_the_registry(self):
         """连接器类与解析结果都从登记表读语义，没有第二份可以改漏的清单。
@@ -87,16 +85,15 @@ class ProviderRegistryTests(unittest.TestCase):
         )
 
     def test_every_layer_builds_its_credential_store_through_one_factory(self):
-        """Web、发现与 CLI 必须拿到同一套共享根与可同步字段声明。
+        """Web 与发现必须拿到同一套共享根与可同步字段声明。
 
         分头 `CredentialStore(...)` 时只有 Web 那份带上了共享回填，同一份凭据
-        在网页里在、在命令行里「未配置」。这里挡住往回退化。
+        在网页里在、在发现那层「未配置」。这里挡住往回退化。
         """
         sources = {
             name: (Path(inspect.getsourcefile(module)).read_text(encoding="utf-8"))
             for name, module in (("web_follow", web_follow),
-                                 ("follow_discovery", follow_discovery),
-                                 ("follow_cli", follow_cli))
+                                 ("follow_discovery", follow_discovery))
         }
         for name, text in sources.items():
             with self.subTest(module=name):

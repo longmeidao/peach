@@ -21,7 +21,6 @@ from .config import (
     STATE_DIR,
     PeachSettings,
 )
-from .follow_cli import register as register_follow
 from .migrations import plan, upgrade
 from .platform import location_mounts
 from .scripting import open_readonly
@@ -661,7 +660,6 @@ def build_parser() -> argparse.ArgumentParser:
                              help="claim the single-writer role after both copies are in sync")
     ledger_sync.set_defaults(handler=_ledger_sync)
 
-    register_follow(commands)
     return parser
 
 
@@ -669,7 +667,7 @@ def subcommands() -> frozenset[str]:
     """`peach` 现有的子命令名。
 
     打包入口靠它决定「第一个参数是子命令还是托盘参数」。这个集合必须从 parser 现算，
-    不能在别处抄一份常量：抄过一次，结果是 `follow` 和 `ledger-sync` 在 EXE 里一直
+    不能在别处抄一份常量：抄过一次，结果是 `ledger-sync` 和 `status` 在 EXE 里一直
     不可达，而且不报错——参数被当成托盘参数吞掉了。
 
     `_subparsers` 是 argparse 私有属性，argparse 没有公开的「列出子命令」接口；私有

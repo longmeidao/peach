@@ -569,7 +569,7 @@ class _BaseConnector:
         只打真正需要的条：库里已经补齐过的跳过（`enrich_skip`），额度用完的也跳过。跳过的
         条目保持 `partial=True`，落库时不会把上一轮取到的细节覆盖成空。
 
-        细节缺失的旧行怎么补回来：显式检查带 `--force` 时调用方给出空 `enrich_skip`，
+        细节缺失的旧行怎么补回来：需要重取媒体时调用方给出空 `enrich_skip`，
         于是整页重新走第二阶段——这是有界的一次性修复，不是每次检查都付的成本。
         """
         limit = self.enrich_budget

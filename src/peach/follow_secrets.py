@@ -231,10 +231,10 @@ def credential_store_for(secrets_root: Path, *,
                          shared_root: Path | None = None) -> CredentialStore:
     """构造凭据仓库的唯一入口。
 
-    `shared_root` 与 `syncable_fields` 必须处处一致。Web、发现与 CLI 各自
+    `shared_root` 与 `syncable_fields` 必须处处一致。Web 与发现各自
     `CredentialStore(...)` 的话，只有其中一份带上共享根和可同步字段声明——表现是
-    在另一台机器上配好的 rule34.xxx key 网页里能用、`peach follow check` 却报
-    缺凭据。哪一层都不该自己决定这件事，所以只留这一个构造函数。
+    在另一台机器上配好的 rule34.xxx key 网页里能用、发现那层却报缺凭据。
+    哪一层都不该自己决定这件事，所以只留这一个构造函数。
     """
     return CredentialStore(secrets_root, shared_root=shared_root,
                            syncable_fields=SYNCABLE_FIELDS)

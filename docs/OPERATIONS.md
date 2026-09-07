@@ -83,7 +83,6 @@ Peach 这一侧的行为：首启页与配置页按本机系统检测 CloudDrive
   `size`／`mtime`／`last_seen`，不改真相字段、不删行。根目录省略时逐个扫该来源在
   `[media.locations]` 的全部声明根，本机目录按 `[media.mounts]` 取；给了目录则必须落在某个声明根
   （macOS 上是挂载点）之内，否则拒绝——写进去的行否则翻译不回本机路径。
-  `scripts/ledger.py scan` 是同一实现的薄委托。
 - 已经在跑的机器用 `peach init --from-existing`：只写设置文件，不建库、不动 `peach-data/`
   下任何现有文件。它把当前实际生效的配置原样落盘，猜不出来的坐标（局域网 writer 地址、
   SMB 主机与账号）留空并逐条打印出来，用 `--writer-origin`／`--smb-host`／`--smb-user`
