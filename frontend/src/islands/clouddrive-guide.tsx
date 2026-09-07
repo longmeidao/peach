@@ -13,7 +13,7 @@ export function CloudDriveGuide() {
   return <div ref={root} class="cloudguide">
     <p class="confighelp">先在 CloudDrive 登录网盘并挂载，开启「启动时自动挂载」。<a class="externallink" href="https://www.clouddrive2.com/help.html" target="_blank" rel="noreferrer">挂载帮助<svg class="externalmark" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-external-link" /></svg></a></p>
     <details>
-      <summary>CloudDrive 速度与缓存建议</summary>
+      <summary><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chevron-right" /></svg>CloudDrive 速度与缓存建议</summary>
       <p class="confighelp">看缓存放在哪块硬盘上，照那一行填。先保证播放不卡，再拿同一个视频比较打开速度、拖动和流量；数值填得越大不一定越快。</p>
       <div class="cloudguide-tablewrap">
         <table class="cloudguide-table">

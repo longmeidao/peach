@@ -122,7 +122,7 @@
 .cleanupfieldset .cleanupstate{margin-top:8px;font-size:var(--fs-sm);color:var(--ink-2)}
 .cleanupfieldset .cleanupstate:empty{display:none}
 .taste-history-guide{margin-top:16px;border:1px solid var(--field-ring);border-radius:var(--floating-radius);background:var(--ground);padding:20px}
-.taste-history-guide summary{cursor:pointer;color:var(--ink);font-weight:500}
+.taste-history-guide summary{cursor:pointer;color:var(--ink);font-weight:500;display:flex;align-items:center;gap:8px;list-style:none}.taste-history-guide summary::-webkit-details-marker{display:none}.taste-history-guide summary>svg{width:16px;height:16px;flex:none;stroke:currentColor;fill:none;transition:transform .2s ease-in-out}.taste-history-guide summary[aria-expanded="true"]>svg{transform:rotate(90deg)}
 .taste-history-guide-content{display:grid;gap:12px;padding-top:16px;color:var(--muted);font-size:var(--fs-md);line-height:1.5}
 .taste-history-guide-content p,.taste-history-guide-content ul{margin:0}
 .taste-history-guide-content ul{padding-left:20px}

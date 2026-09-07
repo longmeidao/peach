@@ -1114,7 +1114,11 @@ function ut() {
 				})]
 			})]
 		}), /* @__PURE__ */ J("details", { children: [
-			/* @__PURE__ */ J("summary", { children: "CloudDrive 速度与缓存建议" }),
+			/* @__PURE__ */ J("summary", { children: [/* @__PURE__ */ J("svg", {
+				viewBox: "0 0 24 24",
+				"aria-hidden": "true",
+				children: /* @__PURE__ */ J("use", { href: "#i-chevron-right" })
+			}), "CloudDrive 速度与缓存建议"] }),
 			/* @__PURE__ */ J("p", {
 				class: "confighelp",
 				children: "看缓存放在哪块硬盘上，照那一行填。先保证播放不卡，再拿同一个视频比较打开速度、拖动和流量；数值填得越大不一定越快。"
@@ -3040,7 +3044,7 @@ function Yn(e, t = !1, n = !1) {
 	if (t || n) return "";
 	let r = "<svg class=\"externalmark\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><use href=\"#i-external-link\"></use></svg>";
 	return `<details class="taste-history-guide"${e ? " open" : ""}>
-    <summary>浏览器历史记录导入指南</summary>
+    <summary><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chevron-right"></use></svg>浏览器历史记录导入指南</summary>
     <div class="taste-history-guide-content">
       <p>在运行 Peach 的电脑上使用浏览器：点击上方「读取 Peach 主机」。</p>
       <p>记录在其他设备上：导出文件后，点击上方「导入历史」。多台设备的文件分别导入。</p>

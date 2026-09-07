@@ -1148,6 +1148,30 @@ class WebUiSourceTests(unittest.TestCase):
                      'class="ptoggle" type="checkbox" id="detailAutoplaySetting"'):
             self.assertPageContains(line)
 
+    def test_every_disclosure_title_carries_the_same_chevron(self):
+        """折叠标题前面都有一枚 16px chevron，展开转 90°，全站一个写法。
+
+        没有它的标题只是一行普通粗体字：`wireCollapse` 把原生 `<details>` 的三角
+        `list-style` 去掉了（不去掉的话它和布局里的 flex 对不齐），于是「点这里会展开」
+        这件事没有任何视觉线索，得靠鼠标移上去变成手型才发现。几何跟作者别名那一处
+        同一份 Vercel 取证：16px SVG、`stroke:currentColor`、展开 `rotate(90deg)`。
+        """
+        css = stylesheet_source()
+        for prefix in (".faliasmanager>summary", ".configdirectories>summary",
+                       ".cloudguide summary", ".taste-history-guide summary"):
+            start = css.index(prefix + ">svg{")
+            rule = css[start:css.index("}", start)]
+            # 描边色不进这份共用契约：作者别名那一枚故意钉在 --muted 上不随当前项提亮。
+            for declaration in ("width:16px", "height:16px", "flex:none", "fill:none",
+                                "transition:transform .2s ease-in-out"):
+                self.assertIn(declaration, rule, f"{prefix} 的 chevron 缺 {declaration}")
+            self.assertPageContains(prefix + '[aria-expanded="true"]>svg'
+                                             "{transform:rotate(90deg)}")
+        # 原生三角要一起去掉，否则同一行会出现两枚指示符。
+        for prefix in (".cloudguide summary", ".taste-history-guide summary"):
+            self.assertPageContains(prefix + "::-webkit-details-marker{display:none}")
+            self.assertPageContains(prefix + "{cursor:pointer;", "标题自己是 flex 容器")
+
     def test_font_weights_stay_on_the_three_geist_steps(self):
         """字重只有 400／500／600 三档。
 
