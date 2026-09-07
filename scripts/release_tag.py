@@ -36,9 +36,12 @@ TEST_TIMEOUT = 1800.0
 TEST_POLL = 30.0
 
 
-def command(*args: str) -> str:
-    return subprocess.run(args, cwd=ROOT, check=True, capture_output=True,
-                          text=True, encoding="utf-8").stdout.strip()
+def command(*args: str, strip: bool = True) -> str:
+    """`strip=False` 给首列本身就是空格的输出用：`git status --porcelain` 的第一行是
+    ` M CHANGELOG.md`，整体 strip 会连状态列的空格一起吃掉，按列取路径就少一个字。"""
+    output = subprocess.run(args, cwd=ROOT, check=True, capture_output=True,
+                            text=True, encoding="utf-8").stdout
+    return output.strip() if strip else output
 
 
 def api(repo: str, endpoint: str):
@@ -142,7 +145,7 @@ def _require_master() -> None:
 def _pending_files() -> list[str]:
     """工作区里有改动的文件名，按 `git status --porcelain` 的第三列取。"""
     return sorted(line[3:].strip().strip('"')
-                  for line in command("git", "status", "--porcelain").splitlines()
+                  for line in command("git", "status", "--porcelain", strip=False).splitlines()
                   if line.strip())
 
 
