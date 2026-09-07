@@ -32,7 +32,7 @@ AI/外部元数据 -> 经复核的候选 -> ledger
 - 抓取或保存 ChatGPT/Claude OAuth token
 - 将 Stash 私有目录或 GPL 构建作为 Peach 的稳定打包依赖
 
-关键取舍见 `docs/adr/`；Stash 现在只剩两个离线导入脚本，边界见 `docs/STASH.md`。
+关键取舍见 `docs/adr/`；Stash 已完全退出代码，遗留的数据缺陷与许可证边界见 `docs/STASH.md`。
 复用/自研边界及旧脚本继任关系见 `docs/REUSE.md`。
 
 ## 运行数据目录

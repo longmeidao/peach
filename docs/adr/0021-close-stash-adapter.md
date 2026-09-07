@@ -2,7 +2,7 @@
 
 - 状态：Accepted
 - 日期：2026-09-01
-- 关系：收束 ADR-0002 的 Stash 部分；`docs/STASH.md` 的第 5 步
+- 关系：收束 ADR-0002 的 Stash 部分；`docs/STASH.md` 的第 5 步；修订完成第 6 步
 
 ## 背景
 
@@ -53,3 +53,10 @@ ADR-0002 把 Stash 定为「可关闭的 adapter」，路线图（`docs/STASH.md
 `scripts/import_stash_entities.py`（身份导入）仍在。它们已经跑完并把结果写进账本，
 现在只在需要重新导入时才有用，而重新导入需要 Stash 进程还活着。真正卸载 Stash 时
 一并退役，对应 `docs/STASH.md` 的第 6 步。
+
+## 修订：两个离线导入脚本已退役（2026-09-08）
+
+用户确认不再保留 Stash 作备胎，`docs/STASH.md` 的第 6 步随之完成：`scripts/ledger.py`、
+`scripts/import_stash_entities.py` 与只为它们存在的 `src/peach/stash.py` 一并删除，
+仓库任何一处都不再连 Stash。「不动数据」那条不变：`media_binding`、`asset.stash_scene_id`
+与 `source='stash:*'` 的断言仍是溯源，不清理。想重新导入只能从 Git 历史取回脚本。

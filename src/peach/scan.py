@@ -12,7 +12,7 @@
   就是要遍历的目录；macOS 上遍历的是挂载点，写进账本的仍是 `声明根\\相对路径`，这样
   读取侧的 `platform.translate_ledger_path` 才翻得回同一个文件。
 
-`peach init` 的首次扫描、`peach scan` 与 `scripts/ledger.py scan` 都调这里，
+`peach init` 的首次扫描与 `peach scan` 都调这里，
 声明根和挂载表由调用方传入而不是读进程缓存：`init` 刚写完设置文件时缓存还是旧的。
 """
 from __future__ import annotations

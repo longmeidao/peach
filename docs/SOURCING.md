@@ -227,8 +227,8 @@ Windows 空数据预览的项目 CA HTTPS、合成 Cookie 保存／撤销、DMM 
   没有任何 og 的 JS 壳，看不出死活。拿不到 og 时再不走缓存地取对照账号 `x.com/X`：对照正常才敢判
   「疑似失效」，对照也空就是限流写「未取得」。Instagram／TikTok／YouTube 登出页什么都不给，只能写「未验」。
 - 判据（平台名单、handle 归一、`twitter.com→x.com` 别名、标签写法、X 死活）集中在 `peach.social_links`，
-  `normalize_link_hosts.py`、`harvest_performer_links.py` 都从它取；`harvest_social_avatars.py` 和
-  `import_stash_entities.py` 还各留着一份旧抄本。装入用 `install_entity_links.py` 吃
+  `normalize_link_hosts.py`、`harvest_performer_links.py` 都从它取；`harvest_social_avatars.py`
+  还留着一份旧抄本。装入用 `install_entity_links.py` 吃
   `directory-links-<日期>.csv`，`-review.csv` 是全部判词供人看，两者都不直接写账本。
 - javmodel.com 不是社媒来源，别再当候选来源试：走代理能取到 200（直连超时），但唯一的 twitter 链接是
   分享按钮，本人账号一个都没有。Instagram↔X 互补要等目录数据装入后从账本自身做，不在采集脚本里。
