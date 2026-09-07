@@ -1196,6 +1196,11 @@ class WebUiSourceTests(unittest.TestCase):
         `88%,#000`（01-base 是 `82%`），禁用填 `--surface`（01-base 是 `--sunk`）且不带
         环——「卸载 Peach」和弹层里的确认键于是和站内其他销毁键读起来不是一套，而它
         选择器更长、文件又在后面，永远赢。同一形状在 `.configrm` 上已经出现过一次。
+
+        所以这里查两遍。只按选择器里有没有 `danger` 查的话，换个类名就绕过去了：
+        `.junktrash`、`.fcredactions button.fquiet` 和 `.fbtn.fquiet` 三颗红底键各自填过
+        同一块 `--drop`，选择器里一个 `danger` 也没有。第二遍改按声明查——实底红配纯白字
+        就是销毁档的样子，无论选择器叫什么。
         """
         css = stylesheet_source()
         base = Path(__file__).resolve().parents[1] / "web/css/01-base.css"
@@ -1204,9 +1209,9 @@ class WebUiSourceTests(unittest.TestCase):
                             "background:var(--sunk);color:var(--muted)"):
             self.assertIn(declaration, base.read_text(encoding="utf-8"),
                           "危险档的定义在 01-base")
-        # 提到 `.danger` 或 `.resourcedanger` 又自己填背景的规则，全站只准有 01-base 那三条。
+        # 提到 `.danger` 又自己填背景的规则，全站只准有 01-base 那三条。
         restated = [rule for rule in re.findall(r"[^{}\n]*\{[^}]*\}", css)
-                    if re.search(r"\.danger|\.resourcedanger", rule.split("{")[0])
+                    if ".danger" in rule.split("{")[0]
                     and "background:" in rule.split("{", 1)[1]]
         self.assertEqual(len(restated), 3, "危险档又被写了第二份：\n"
                          + "\n".join(rule.split("{")[0] for rule in restated))
@@ -1218,6 +1223,26 @@ class WebUiSourceTests(unittest.TestCase):
                         if rule.split("{")[0].rstrip().endswith(":disabled"))
         self.assertIn("background:var(--sunk)", disabled)
         self.assertIn("box-shadow:0 0 0 1px var(--line-soft)", disabled)
+        # 第二遍：实底红配纯白字的规则，只准是危险档和 Geist 的 error 变体，且都在 01-base。
+        # `--drop` 当状态点、复核卡左侧的状态条或低透明度衬底不在此列——那些地方的字色
+        # 不是 `#fff`，它们标注的是状态，不是一颗按下去就不可逆的键。
+        red = re.compile(r"background:(?:color-mix\(in srgb,)?(?:var\(--drop\)|#da2f35)")
+        solid = sorted(rule.split("{")[0].strip()
+                       for rule in re.findall(r"[^{}\n]*\{[^}]*\}", css)
+                       if red.search(rule.split("{", 1)[1])
+                       and re.search(r"color:\s*#fff\b", rule.split("{", 1)[1]))
+        self.assertEqual(solid, [".geist-button.error",
+                                 ".geist-button.error:hover:not(:disabled)",
+                                 "button.danger:not(.frowicon)",
+                                 "button.danger:not(.frowicon):hover:not(:disabled)"],
+                         "实底红配白字就是销毁档，页面不要用别的类名再填一份：\n"
+                         + "\n".join(solid))
+        for selector in solid:
+            self.assertIn(selector + "{", base.read_text(encoding="utf-8"),
+                          f"{selector} 的红要写在 01-base")
+            # 键的 `border-width` 是 0，跟着红一起写的 border-color 一行都渲染不出来。
+            self.assertNotIn("border-color", css.split(selector + "{", 1)[1].split("}")[0],
+                             f"{selector} 里这条 border-color 是死的")
 
     def test_font_weights_stay_on_the_three_geist_steps(self):
         """字重只有 400／500／600 三档。
@@ -4858,7 +4883,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(
             ".pagelede-actions{display:flex;align-items:center;justify-content:space-between;gap:16px}")
         # 危险档只有 01-base 那一份，页面各自的 .danger 覆盖已经收掉了。
-        self.assertPageContains("button.danger:not(.frowicon),.resourcedanger{")
+        self.assertPageContains("button.danger:not(.frowicon){")
         self.assertPageLacks(".pagelede-actions .batchaction.danger{")
         self.assertPageLacks(".count .sorts .batchaction.danger{")
         # 桌面 32px 是 Geist 的控件高度，手机要回到本项目的 44px 命中区。
@@ -6230,7 +6255,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".sbadge.error i{background:var(--drop)}")
         # 清空回收站：danger 语义色。
         self.assertPageContains('class="batchaction danger" id="emptyTrash"')
-        self.assertPageContains("button.danger:not(.frowicon),.resourcedanger{")
+        self.assertPageContains("button.danger:not(.frowicon){")
         # Geist 菜单：触发器和每个选项都有入口图标，菜单内部滚动且不加猜测动画。
         self.assertPageContains('data-sidebar-add-trigger aria-haspopup="listbox" aria-expanded="false"')
         self.assertPageContains('role="option" data-sidebar-add-option=')
@@ -7689,18 +7714,21 @@ class WebUiSourceTests(unittest.TestCase):
         挤在一行图标里的删除键（`.frowicon` 那一类）不在此列：一块实底红在图标行里会炸出
         一块。判据是这一行里还有几颗销毁键，不是键上有没有文字——配置页「移除这个文件夹」
         同样只有一枚叉，可它旁边只有一颗「选择文件夹」，所以它走实底红。
+
+        红只有一个入口，所以这几颗键在标记上带 `.danger`。页面另起一个单类承担不了这一
+        档：`.resourceaction`、`.junkactions button` 这类容器规则自己就填底色，权重不低于
+        页面单类、文件又排在 01-base 后面，红会被容器底色盖掉，两边的 CSS 单看都对。
         """
-        self.assertPageContains("button.danger:not(.frowicon),.resourcedanger{")
+        self.assertPageContains("button.danger:not(.frowicon){")
         self.assertPageContains("background:var(--drop);color:#fff;box-shadow:none}")
         # 复核卡的拒绝键走 Geist 的 error 变体，那是同一块红的另一个入口。
-        for selector in (".geist-button.error{background:#da2f35;",
-                         ".fcredactions button.fquiet{background:var(--drop);color:#fff}",
-                         ".junkactions .junktrash{background:var(--drop);color:#fff}"):
-            self.assertPageContains(selector, "销毁键静止态就是实底红")
-        darker = "{background:color-mix(in srgb,var(--drop) 82%,#000);color:#fff}"
-        for selector in (".fcredactions button.fquiet:hover",
-                         ".junkactions .junktrash:hover:not(:disabled)"):
-            self.assertPageContains(selector + darker, f"{selector} 悬停把同一块红压深")
+        self.assertPageContains(".geist-button.error{background:#da2f35;",
+                                "销毁键静止态就是实底红")
+        # 垃圾复核的「移入回收站」、凭据行的「清除」、失效链接的「删除 N 条」。
+        for markup in ('class="danger" data-junk-operation="dispose"',
+                       'class="danger" data-cred-clear=',
+                       'class="resourceaction danger" type="button" id="linkPrune"'):
+            self.assertPageContains(markup, "销毁键的红挂在 .danger 上")
         # 每个页面各写一份 .danger 的时代结束了：站里只留 01-base 那一条。
         for stale in (".pagelede-actions .batchaction.danger{", ".cleanupfieldset button.danger{",
                       ".playlistactions .danger{", ".dupbtns button.danger{", ".batchbar .danger{"):

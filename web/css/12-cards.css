@@ -257,8 +257,8 @@ button.junkcardtitle:focus-visible{outline:2px solid var(--tungsten);outline-off
 .junkactions button:hover:not(:disabled){background:var(--inset);color:var(--ink)}
 .junkactions button:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}
 .junkactions button:disabled{cursor:wait;opacity:.64}.junkactions button svg{width:15px;height:15px;flex:none;stroke:currentColor;fill:none;stroke-width:2}
-.junkactions .junktrash{background:var(--drop);color:#fff}
-.junkactions .junktrash:hover:not(:disabled){background:color-mix(in srgb,var(--drop) 82%,#000);color:#fff}
+/* 「移入回收站」的红来自 `.danger`，这一格只管几何。请求期间三颗键一起 `cursor:wait`
+   变淡，红那颗的禁用底交给危险档，页面不给它另写一份灰。 */
 .junkstate{grid-column:1/-1;color:var(--drop);font-size:var(--fs-xs)}.junkstate:empty{display:none}
 /* 紧凑密度下只剩图标。 */
 body[data-density="dense"] .junkcard .junkactions button span{display:none}
