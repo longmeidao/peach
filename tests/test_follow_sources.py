@@ -185,6 +185,62 @@ PATREON_HTML = b"""<html><body><div class="card">
 <a href="https://www.patreon.com/sample/posts/new-public-work-167576581">duplicate</a>
 </div></body></html>"""
 
+# 属性名与 DOM 形状取自 2026-09-08 对 simpcity.cr 真实线程页的实测：`img.bbImage` 的
+# `data-url` 是原图、`src` 是缩略图，分页在 `.pageNav-page a[href]`，表情是 `img.smilie`。
+# 内容本身是编的。
+SIMPCITY_FIRST_HTML = b"""<html data-logged-in="true" data-cookie-prefix="yMziCv8BrCZz1o7_">
+<head><title>Sample Creator | SimpCity Forums</title></head><body>
+<h1 class="p-title-value"><span class="label">OnlyFans</span> Sample Creator</h1>
+<nav class="pageNav"><ul class="pageNav-main">
+<li class="pageNav-page pageNav-page--current"><a href="/threads/sample-creator.4242/">1</a></li>
+<li class="pageNav-page"><a href="/threads/sample-creator.4242/page-2">2</a></li>
+<li class="pageNav-page pageNav-page--skipEnd"><a href="/threads/sample-creator.4242/page-7">7</a></li>
+</ul></nav>
+<article data-content="post-100" data-author="opener">
+  <time datetime="2026-01-01T10:00:00+0000">Jan 1, 2026</time>
+  <div class="bbWrapper">First page post
+    <a href="https://imgpage.test/img/first"><img class="bbImage"
+        src="https://cdn.imgpage.test/first.md.jpg" data-url="https://cdn.imgpage.test/first.jpg"></a>
+  </div>
+</article>
+</body></html>"""
+
+SIMPCITY_LAST_HTML = b"""<html data-logged-in="true" data-cookie-prefix="yMziCv8BrCZz1o7_">
+<head><title>Sample Creator | SimpCity Forums</title></head><body>
+<h1 class="p-title-value"><span class="label">OnlyFans</span> Sample Creator</h1>
+<nav class="pageNav"><ul class="pageNav-main">
+<li class="pageNav-page"><a href="/threads/sample-creator.4242/">1</a></li>
+<li class="pageNav-page pageNav-page--current"><a href="/threads/sample-creator.4242/page-7">7</a></li>
+</ul></nav>
+<article data-content="post-700" data-author="uploader1">
+  <time datetime="2026-09-07T10:00:00+0000">Sep 7, 2026</time>
+  <div class="bbWrapper">New set
+    <a href="https://imgpage.test/img/abc"><img class="bbImage"
+        src="https://cdn.imgpage.test/abc.md.jpg" data-url="https://cdn.imgpage.test/abc.jpg"></a>
+    <a href="https://imgpage.test/img/def"><img class="bbImage"
+        src="https://cdn.imgpage.test/def.md.jpg" data-url="https://cdn.imgpage.test/def.jpg"></a>
+    <img class="smilie smilie--emoji" src="https://cdn.jsdelivr.net/emoji.png">
+    <a href="https://gofile.io/d/abc123">Gofile</a>
+  </div>
+</article>
+<article data-content="post-701" data-author="replier">
+  <time datetime="2026-09-07T11:00:00+0000">Sep 7, 2026</time>
+  <div class="bbWrapper"><blockquote class="bbCodeBlock">uploader1 said:
+    <a href="https://gofile.io/d/abc123">Gofile</a> Click to expand...</blockquote>
+  thanks!</div>
+</article>
+<article data-content="post-702" data-author="uploader2">
+  <time datetime="2026-09-07T12:00:00+0000">Sep 7, 2026</time>
+  <div class="bbWrapper">Attachment and player only
+    <a href="/attachments/clip-mp4.9001/">clip.mp4</a>
+    <div class="bbMediaWrapper"><iframe src="https://player.test/e/xyz"></iframe></div>
+  </div>
+</article>
+</body></html>"""
+
+SIMPCITY_GUEST_HTML = b"""<html data-logged-in="false"><body>
+<h1 class="p-title-value">Sample Creator</h1></body></html>"""
+
 
 class OfficialConnectorTests(unittest.TestCase):
     def test_fanbox_keeps_only_public_free_posts(self):
@@ -1249,10 +1305,113 @@ class Rule34XxxConnectorTests(unittest.TestCase):
 
 
 class SimpCityConnectorTests(unittest.TestCase):
-    def test_blocked_source_refuses_instead_of_defeating_the_bot_check(self):
+    COOKIE = Credential("simpcity", {"cookie": "yMziCv8BrCZz1o7_user=u; yMziCv8BrCZz1o7_session=s"})
+
+    @staticmethod
+    def _paged_transport(record, first=SIMPCITY_FIRST_HTML, last=SIMPCITY_LAST_HTML):
+        def call(request, timeout, max_bytes):
+            record.append(request)
+            body = last if "/page-" in request.url else first
+            return HttpResponse(200, {"ETag": '"p7"'}, body)
+        return call
+
+    def test_thread_links_resolve_to_the_thread_id(self):
+        parsed = parse_source_url("https://simpcity.cr/threads/sample-creator.4242/page-3")
+        self.assertEqual((parsed.provider, parsed.ref), ("simpcity", "4242"))
+        self.assertEqual(parsed.url, "https://simpcity.cr/threads/4242/")
+        self.assertEqual(parsed.label, "sample creator")
+        self.assertEqual(parsed.semantics, "release")
+        with self.assertRaises(FollowSourceError):
+            parse_source_url("https://simpcity.cr/forums/onlyfans.12/")
+
+    def test_without_a_cookie_nothing_is_requested(self):
+        # 站点不让游客读帖：缺 cookie 就是「未授权」，不该先打一次 403 再说。
+        seen = []
+        with self.assertRaises(CredentialError) as caught:
+            SimpCityConnector(transport=_transport(record=seen)).fetch("4242")
+        self.assertIn("cookie", str(caught.exception))
+        self.assertEqual(seen, [])
+
+    def test_the_last_page_is_read_after_the_first_page_reveals_it(self):
+        seen = []
+        result = SimpCityConnector(
+            credential=self.COOKIE, transport=self._paged_transport(seen),
+        ).fetch("4242", etag='"old"')
+        self.assertEqual([r.url for r in seen], [
+            "https://simpcity.cr/threads/4242/",
+            "https://simpcity.cr/threads/4242/page-7",
+        ])
+        # 两个请求都带 cookie；条件请求头只在末页上——第一页没变不代表线程没更新。
+        self.assertTrue(all(r.headers["Cookie"] == self.COOKIE.values["cookie"] for r in seen))
+        self.assertNotIn("If-None-Match", seen[0].headers)
+        self.assertEqual(seen[1].headers["If-None-Match"], '"old"')
+        self.assertEqual(result.request_url, "https://simpcity.cr/threads/4242/page-7")
+        self.assertEqual(result.semantics, "release")
+        self.assertEqual(result.etag, '"p7"')
+        self.assertEqual([c.external_id for c in result.candidates], ["700", "702"])
+        self.assertEqual(result.skipped, 1)
+
+    def test_a_single_page_thread_costs_one_request(self):
+        seen = []
+        head, rest = SIMPCITY_LAST_HTML.split(b"<nav", 1)
+        single = head + rest.split(b"</nav>", 1)[1]
+        result = SimpCityConnector(
+            credential=self.COOKIE, transport=_transport(body=single, record=seen),
+        ).fetch("4242")
+        self.assertEqual([r.url for r in seen], ["https://simpcity.cr/threads/4242/"])
+        self.assertEqual(len(result.candidates), 2)
+
+    def test_images_links_and_attachments_are_read_from_the_post_body(self):
+        result = SimpCityConnector(
+            credential=self.COOKIE, transport=self._paged_transport([]),
+        ).fetch("4242")
+        first, second = result.candidates
+        self.assertEqual(first.title, "Sample Creator")
+        self.assertEqual(first.url, "https://simpcity.cr/threads/4242/post-700")
+        self.assertEqual(first.author, "uploader1")
+        self.assertEqual(first.published_at, "2026-09-07T10:00:00Z")
+        self.assertEqual(first.media_url, "https://gofile.io/d/abc123")
+        self.assertEqual(first.thumb_url, "https://cdn.imgpage.test/abc.md.jpg")
+        self.assertEqual(first.extra["images"],
+                         ["https://cdn.imgpage.test/abc.jpg", "https://cdn.imgpage.test/def.jpg"])
+        self.assertEqual((first.extra["image_count"], first.extra["link_count"]), (2, 1))
+        self.assertEqual(first.extra["page"], 7)
+        # 表情图不是内容；被引用的网盘链接属于被引用的楼层，不算 replier 发的。
+        self.assertNotIn("cdn.jsdelivr.net", str(first.extra))
+        self.assertEqual(second.external_id, "702")
+        self.assertIsNone(second.thumb_url)
+        self.assertEqual(second.media_url, None)
+        self.assertEqual(second.extra["attachments"],
+                         ["https://simpcity.cr/attachments/clip-mp4.9001/"])
+        self.assertEqual(second.extra["embed_count"], 1)
+
+    def test_history_pages_count_back_from_the_last_page(self):
+        seen = []
+        connector = SimpCityConnector(credential=self.COOKIE,
+                                      transport=self._paged_transport(seen))
+        connector.fetch("4242", page=1, etag='"old"')
+        self.assertEqual(seen[1].url, "https://simpcity.cr/threads/4242/page-6")
+        self.assertNotIn("If-None-Match", seen[1].headers)
+        seen.clear()
+        # 翻回到第 1 页时复用刚读过的第一页，不再多打一次。
+        result = connector.fetch("4242", page=6)
+        self.assertEqual(len(seen), 1)
+        self.assertEqual([c.external_id for c in result.candidates], ["100"])
+        with self.assertRaises(FollowHistoryEnd):
+            connector.fetch("4242", page=7)
+
+    def test_a_forbidden_page_blames_the_cookie_not_a_bot_check(self):
         with self.assertRaises(FollowSourceError) as caught:
-            SimpCityConnector().fetch("123")
-        self.assertIn("DDoS-Guard", str(caught.exception))
+            SimpCityConnector(credential=self.COOKIE,
+                              transport=_transport(status=403, body=b"Forbidden")).fetch("4242")
+        self.assertIn("cookie", str(caught.exception))
+        self.assertNotIn("机器人", str(caught.exception))
+
+    def test_a_guest_page_means_the_cookie_was_not_recognised(self):
+        with self.assertRaises(FollowSourceError) as caught:
+            SimpCityConnector(credential=self.COOKIE,
+                              transport=_transport(body=SIMPCITY_GUEST_HTML)).fetch("4242")
+        self.assertIn("游客态", str(caught.exception))
 
 
 class OriginGroupKeyTests(unittest.TestCase):
@@ -1405,11 +1564,7 @@ class ParseUrlDelegationTests(unittest.TestCase):
         self.assertEqual(parsed.path, "/models/abc/")
 
     def test_every_registered_connector_can_parse_its_own_links(self):
-        """漏写 `parse_url` 只会让那个站的链接报「暂不支持」，界面上看不出是漏写。
-
-        simpcity 是有意的例外：整站被质询挡着，它覆盖 `parse_url` 只为把原因原样
-        报出来，所以这里断言它也覆盖了，而不是跳过它。
-        """
+        """漏写 `parse_url` 只会让那个站的链接报「暂不支持」，界面上看不出是漏写。"""
         for provider, factory in follow_sources.CONNECTORS.items():
             with self.subTest(provider=provider):
                 self.assertIsNot(factory.parse_url.__func__,
