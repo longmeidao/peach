@@ -1,10 +1,9 @@
 """社媒链接的共用判据：哪些主机算社交平台、链接文字怎么写、两条链接是不是同一个账号、
 X 登出页能不能看出账号还活着、哪些 performer 值得去外站查。
 
-此前 `harvest_performer_links` 和 `import_stash_entities` 各抄了一份 `SOCIAL_HOSTS` 与
-`classify`，平台名单一改就得改两处。目录型采集（laoshi.ink、事务所官网）是第三个使用者，
-再抄一份说不过去。这里只放判据，不放任何来源的解析——来源怎么翻页、怎么过年龄门，
-留在各自的脚本里。
+`harvest_performer_links`、`normalize_link_hosts` 与目录型采集（laoshi.ink、事务所官网）
+都从这里取，平台名单只有这一份，改一处处处生效。这里只放判据，不放任何来源的解析——
+来源怎么翻页、怎么过年龄门，留在各自的脚本里。
 """
 from __future__ import annotations
 

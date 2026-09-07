@@ -194,24 +194,6 @@ class PlanCheckTests(_CheckCase):
         self.assertEqual(plan_check(self.store, _Credentials())[0]["enrich_skip"],
                          frozenset())
 
-    def test_a_forced_check_asks_for_every_detail_again(self):
-        """`--force` 正是把上一轮没取到的细节补回来的时机，不能跳过任何一条。"""
-        source_id = self._register(provider="rule34paheal", ref="initiala",
-                                   url="https://rule34.paheal.net/post/list/initiala/1")
-        self.store.record(source_id, _fetch(
-            provider="rule34paheal", ref="initiala", candidates=(
-                FollowCandidate(provider="rule34paheal", external_id="1", title="a",
-                                published_at="2026-08-26T15:21:00Z"),)),
-            moment=MOMENT)
-        planned = plan_check(self.store, _Credentials(), force=True)
-        self.assertEqual(planned[0]["enrich_skip"], frozenset())
-
-    def test_force_applies_to_every_source(self):
-        """命令行的 `--force` 是无条件的，不依赖任何 needs_credential 痕迹。"""
-        self._register()
-        planned = plan_check(self.store, _Credentials(), force=True)
-        self.assertTrue(planned[0]["force_media_reparse"])
-
 
 class RunCheckTests(_CheckCase):
     def test_a_normal_check_reads_the_first_page_with_the_stored_cursors(self):
@@ -270,8 +252,8 @@ class RunCheckTests(_CheckCase):
     def test_an_official_profile_handle_is_learned_from_one_unambiguous_author(self):
         """fanbox 的 ref 就是作者本人的手柄，可以直接学成别名。
 
-        这一条只在 Web 那份检查里成立的话，`peach follow check` 抓同一条来源不会学，
-        于是同一个人在命令行抓完之后仍然显示成两个作者。
+        这一条要落在共用的 `run_check` 里而不是 Web 那层：别的调用方抓同一条来源
+        就不会学，同一个人会一直显示成两个作者。
         """
         source_id = self._register()
         result = self._run(source_id, _Connector(_fetch(candidates=(

@@ -1,7 +1,7 @@
 """打包 EXE 的入口：第一个参数是 `peach` 子命令就走 CLI，否则起托盘。
 
 判据必须从 `peach.cli.subcommands()` 现算，不硬编码一份子命令集合。写死
-`{"serve", "migrate"}` 的话，`follow`、`ledger-sync` 在 EXE 里完全不可达，而且
+`{"serve", "migrate"}` 的话，`ledger-sync`、`status` 在 EXE 里完全不可达，而且
 不报错——参数被当成托盘参数吞掉，用户看到的是又起了一个托盘，不是「没有这个命令」。
 """
 import ctypes

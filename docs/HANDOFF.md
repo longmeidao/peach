@@ -149,7 +149,7 @@ CloudDrive 见 `docs/CLOUDDRIVE.md`，部署见 `docs/OPERATIONS.md`。
 
 ## 当前架构真相
 
-- Ledger 拥有真相和行为；服务运行期媒体解析只有文件系统一条路径，ADR-0021 已删 Stash 适配层，`src/peach/stash.py` 仅剩两个离线导入脚本使用。
+- Ledger 拥有真相和行为；服务运行期媒体解析只有文件系统一条路径，ADR-0021 已删 Stash 适配层，Stash 客户端与两个离线导入脚本也已退役，Stash 只剩账本里的溯源数据。
 - 规范女优、厂牌、标签、创作者进入 `entity`、`entity_external_ref`、`asset_entity`；扁平 `asset_tag` 和 creator/studio 字段只是兼容投影。
 - FastAPI 与前端保持单体部署，在线来源和 AI 只通过显式适配器进入；AI runtime 与推理 API 的协议边界见 ADR-0003。
 - 前端按 ADR-0022 走 strangler 迁移：新逻辑进 `frontend/` 的 Vite + TypeScript + Preact 岛，按岛替换现有页面，不做整站重写；面向陌生人分发的阶段划分见 ADR-0023。

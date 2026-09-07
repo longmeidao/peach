@@ -44,25 +44,23 @@ class CheckResult:
 
 
 def plan_check(store, credentials, *, source_id: int | None = None,
-               older: bool = False, force: bool = False,
+               older: bool = False,
                backfill_providers: frozenset[str] = frozenset()) -> list[dict]:
     """要检查哪些来源，以及每条要不要绕过条件请求游标。只读，不联网。
 
     `force_media_reparse` 单独在这里算好：凭据已经存在、但旧候选还标着
     `media_needs_credential` 时，条件请求的 304 会让旧解析结果永久不变——显式检查
     得无条件重取一次，凭据才真正生效。往回翻页时不算这个，那一页本来就没游标。
-
-    `force=True` 是命令行 `--force` 那种无条件重取，对每条来源都成立。
     """
     rows = [dict(row) for row in store.sources(enabled_only=True)
             if (source_id is None or row["id"] == source_id)
             and (not older or row["provider"] in backfill_providers)]
     for row in rows:
-        row["force_media_reparse"] = force or (
+        row["force_media_reparse"] = (
             not older and credentials.load(row["provider"]) is not None
             and store.source_needs_media_reparse(row["id"])
         )
-        # 第二阶段跳过谁：细节已经补齐的条目。强制重取时不跳过任何一条——
+        # 第二阶段跳过谁：细节已经补齐的条目。重取媒体时不跳过任何一条——
         # 那正是把上一轮没取到的细节补回来的时机。
         mark = enrichment_mark(row["provider"])
         row["enrich_skip"] = (
