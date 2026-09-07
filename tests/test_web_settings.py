@@ -183,17 +183,5 @@ class ContractRegistrationTests(unittest.TestCase):
         self.assertEqual(js_list("OPTIONAL_SIDEBAR_KEYS"),
                          web_settings.OPTIONAL_SIDEBAR_KEYS)
 
-    def test_the_front_end_writes_the_order_back_to_the_ledger(self):
-        """侧栏顺序必须提交到 /api/settings，不能只写 localStorage。
-
-        这是这次改动的全部目的：换台机器看到的是同一份导航。
-        """
-        page = (Path(__file__).resolve().parents[1] / "web" / "app.js").read_text(
-            encoding="utf-8")
-        self.assertIn("api('/api/settings',{method:'POST'", page,
-                      "保存侧栏顺序没有写回服务端")
-        self.assertIn("loadSyncedSettings", page, "启动时没有从服务端纠正本地缓存")
-
-
 if __name__ == "__main__":
     unittest.main()

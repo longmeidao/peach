@@ -253,7 +253,6 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
     async def test_health_is_side_effect_free(self):
         response = await self.client.get("/healthz")
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["mode"], "fastapi")
         self.assertEqual(response.json()["version"], __version__)
 
     async def test_health_reports_the_build_commit_the_deploy_check_needs(self):

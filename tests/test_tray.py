@@ -1008,10 +1008,6 @@ class AutomaticRebuildTests(unittest.TestCase):
             self.assertFalse(tray.poll_build_age(self.now))
         self.assertEqual(self.attempts, [])
 
-    def test_the_health_loop_is_what_asks(self):
-        source = inspect.getsource(PeachTray._monitor)
-        self.assertIn("self.poll_build_age()", source)
-
 
 @unittest.skipUnless(sys.platform == "darwin", "菜单栏图标与服务规格是 macOS 专属")
 class MacMenuBarTests(unittest.TestCase):

@@ -15,7 +15,7 @@ import time
 import urllib.parse
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta, timezone
-from typing import Callable, Iterable, Mapping, Protocol
+from typing import Callable, Iterable, Mapping
 
 import httpx
 from bs4 import BeautifulSoup
@@ -167,15 +167,6 @@ class SourceFetch:
     raw_body: bytes | None = field(default=None, repr=False, compare=False)
 
 
-class FollowConnector(Protocol):
-    provider: str
-    semantics: str
-
-    def fetch(self, ref: str, *, etag: str | None = None,
-              last_modified: str | None = None,
-              page: int = 0) -> SourceFetch: ...
-
-
 def _iso_utc(value: datetime) -> str:
     if value.tzinfo is None:
         value = value.replace(tzinfo=timezone.utc)
@@ -322,15 +313,16 @@ class ParsedSource:
     ref: str
     url: str
     label: str
-    semantics: str
+
+    @property
+    def semantics(self) -> str:
+        """`work` 是每条一个独立作品，`release` 是同一作品的历次发布；由登记表决定。"""
+        return follow_providers.PROVIDERS[self.provider].semantics
 
     @property
     def evidence(self) -> str:
         return "链接直接指明"
 
-
-#: 每个来源的条目语义：`work` 是每条一个独立作品，`release` 是同一作品的历次发布。
-_SEMANTICS = follow_providers.semantics()
 
 #: 站点主机 → 来源键。粘进来的链接靠它认出属于哪个站，不再是一串 if/elif。
 _URL_HOSTS = follow_providers.url_hosts()
@@ -372,7 +364,12 @@ def _slug_label(slug: str) -> str:
 
 class _BaseConnector:
     provider = ""
-    semantics = "work"
+
+    @property
+    def semantics(self) -> str:
+        """条目语义来自登记表；没登记的（只有测试里的探针）按 work。"""
+        spec = follow_providers.PROVIDERS.get(self.provider)
+        return spec.semantics if spec else "work"
     #: 站点被机器人验证挡住时的说明；非空表示该连接器不可用。
     blocked_reason = ""
     #: 往回翻页时代表「没有更早的了」的上游状态码。声明在类上而不是每次调用
@@ -565,21 +562,18 @@ class _BaseConnector:
         """
         return str(item.thumb_url or "") or None
 
-    def enrich(self, candidates: Iterable[FollowCandidate], *,
-               budget: int | None = None,
-               skip: Iterable[str] | None = None) -> tuple[
-                   tuple[FollowCandidate, ...], int]:
+    def enrich(self, candidates: Iterable[FollowCandidate]) -> tuple[
+            tuple[FollowCandidate, ...], int]:
         """第二阶段：为列表页给不出的细节逐条打详情页。返回补全后的候选和打了几次。
 
-        只打真正需要的条：库里已经补齐过的跳过（`skip`），额度用完的也跳过。跳过的
+        只打真正需要的条：库里已经补齐过的跳过（`enrich_skip`），额度用完的也跳过。跳过的
         条目保持 `partial=True`，落库时不会把上一轮取到的细节覆盖成空。
 
-        细节缺失的旧行怎么补回来：显式检查带 `--force` 时调用方给出空 `skip`，
+        细节缺失的旧行怎么补回来：显式检查带 `--force` 时调用方给出空 `enrich_skip`，
         于是整页重新走第二阶段——这是有界的一次性修复，不是每次检查都付的成本。
         """
-        limit = self.enrich_budget if budget is None else max(0, int(budget))
-        skipped = self.enrich_skip if skip is None else frozenset(
-            str(value) for value in skip)
+        limit = self.enrich_budget
+        skipped = self.enrich_skip
         if not limit:
             return tuple(candidates), 0
         spent = 0
@@ -675,7 +669,6 @@ class KemonoConnector(_BaseConnector):
     `ref` 形如 `fanbox/30917150`：服务名 + 站内创作者 id。
     """
 
-    semantics = "work"
     HOSTS = {"kemono": "kemono.cr", "coomer": "coomer.st", "pawchive": "pawchive.pw"}
     #: 往回翻页翻到尽头时，kemono 系回 400（越界偏移）或 404（创作者没有更多帖子）。
     HISTORY_END_STATUSES = (400, 404)
@@ -713,7 +706,7 @@ class KemonoConnector(_BaseConnector):
         service, user = matched.group(1), matched.group(2)
         return ParsedSource(provider, f"{service}/{user}",
                             f"https://{host}/{service}/user/{user}",
-                            f"{user} · {service}", "work")
+                            f"{user} · {service}")
 
     def __init__(self, provider: str = "kemono", *,
                  max_probes: int = DEFAULT_MAX_PROBES, **kwargs):
@@ -961,7 +954,6 @@ class Rule34VideoConnector(_BaseConnector):
     """
 
     provider = "rule34video"
-    semantics = "work"
     #: 往回翻到尽头时作者页回 404。
     HISTORY_END_STATUSES = (404,)
     _SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9_\-]{0,80}$")
@@ -982,7 +974,7 @@ class Rule34VideoConnector(_BaseConnector):
         slug = matched.group(1)
         return ParsedSource("rule34video", slug,
                             f"https://rule34video.com/models/{slug}/",
-                            _slug_label(slug), "work")
+                            _slug_label(slug))
 
     def __init__(self, *, max_probes: int = DEFAULT_MAX_PROBES,
                  max_collection_models: int = MAX_COLLECTION_MODELS, **kwargs):
@@ -1163,7 +1155,6 @@ class Rule34XxxConnector(_BaseConnector):
     """
 
     provider = "rule34xxx"
-    semantics = "work"
     #: 一页 24 条时整页都能补上；额度存在是为了页面变长时请求数不跟着长。
     DEFAULT_ENRICH_BUDGET = 24
     #: 详情页给的就是标签分类，所以补齐过的行 metadata 里一定有 `tag_types`。
@@ -1187,7 +1178,7 @@ class Rule34XxxConnector(_BaseConnector):
         return ParsedSource("rule34xxx", tags,
                             "https://rule34.xxx/index.php?page=post&s=list"
                             f"&tags={urllib.parse.quote(tags)}",
-                            _slug_label(tags), "work")
+                            _slug_label(tags))
 
     @classmethod
     def display_thumb_url(cls, item) -> str | None:
@@ -1407,7 +1398,6 @@ class Rule34PahealConnector(_BaseConnector):
     """rule34.paheal.net 标签页；详情页补齐原始出处用于精确跨站去重。"""
 
     provider = "rule34paheal"
-    semantics = "work"
     #: 往回翻到尽头时标签页回 404。
     HISTORY_END_STATUSES = (404,)
     #: 一页 24 条，整页都能补上；额度存在是为了页面变长时请求数不跟着长。
@@ -1434,7 +1424,7 @@ class Rule34PahealConnector(_BaseConnector):
         encoded = urllib.parse.quote(tag, safe="()_")
         return ParsedSource("rule34paheal", tag,
                             f"https://rule34.paheal.net/post/list/{encoded}/1",
-                            _slug_label(tag), "work")
+                            _slug_label(tag))
 
     def __init__(self, *, max_items: int = 24, **kwargs):
         super().__init__(max_items=max_items, **kwargs)
@@ -1584,7 +1574,6 @@ class F95ZoneConnector(_BaseConnector):
     """
 
     provider = "f95zone"
-    semantics = "release"
     _THREAD_RE = re.compile(r"^\d{1,12}$")
     #: latest_data.php 按分类分库，线程不在哪个分类里事先不知道，只能逐个试。
     CATEGORIES = ("games", "animations", "comics", "assets", "mods")
@@ -1606,7 +1595,7 @@ class F95ZoneConnector(_BaseConnector):
         slug = path.split("/threads/", 1)[1].rsplit(".", 1)[0] if "." in path else ""
         return ParsedSource("f95zone", thread,
                             f"https://f95zone.to/threads/{thread}/",
-                            _slug_label(slug) or f"线程 {thread}", "release")
+                            _slug_label(slug) or f"线程 {thread}")
 
     def fetch(self, ref: str, *, etag: str | None = None,
               last_modified: str | None = None, page: int = 0) -> SourceFetch:
@@ -1875,7 +1864,6 @@ class FanboxConnector(_BaseConnector):
     """
 
     provider = "fanbox"
-    semantics = "work"
     #: 2026-08-27 实测公开接口单页 10 条，整页都能补上。
     DEFAULT_ENRICH_BUDGET = 10
     #: 正文类型只有 post.info 给。详情被 Cloudflare 挡回来时它是 null，所以拿它
@@ -1896,7 +1884,7 @@ class FanboxConnector(_BaseConnector):
             raise FollowSourceError(
                 "FANBOX 的链接要指向创作者主页，形如 https://creator.fanbox.cc/")
         return ParsedSource("fanbox", creator, f"https://{creator}.fanbox.cc/",
-                            creator, "work")
+                            creator)
 
     @classmethod
     def profile_handle(cls, ref: str) -> str:
@@ -2063,7 +2051,6 @@ class SubscribeStarConnector(_BaseConnector):
     """SubscribeStar 的公开创作者页；不登录，也不穿过付费墙。"""
 
     provider = "subscribestar"
-    semantics = "work"
     HOSTS = frozenset({"subscribestar.adult", "subscribestar.com"})
     _SLUG_RE = re.compile(r"^[A-Za-z0-9_-]{1,80}$")
 
@@ -2081,7 +2068,7 @@ class SubscribeStarConnector(_BaseConnector):
         slug = matched.group(1)
         # ref 带上主机名：`.adult` 与 `.com` 是两个站，同名创作者不一定是一个人。
         return ParsedSource("subscribestar", f"{host}/{slug}",
-                            f"https://{host}/{slug}", slug, "work")
+                            f"https://{host}/{slug}", slug)
 
     @classmethod
     def profile_handle(cls, ref: str) -> str:
@@ -2153,7 +2140,6 @@ class PatreonConnector(_BaseConnector):
     """
 
     provider = "patreon"
-    semantics = "work"
     _VANITY_RE = re.compile(r"^[A-Za-z0-9_-]{1,80}$")
     _POST_RE = re.compile(r"/posts/(?:[^/?#]*-)?(\d{4,})(?:[/?#]|$)")
 
@@ -2168,7 +2154,7 @@ class PatreonConnector(_BaseConnector):
         if path.rstrip("/") == "/user" and user_id.isdigit():
             return ParsedSource("patreon", f"user/{user_id}",
                                 f"https://www.patreon.com/user?u={user_id}",
-                                f"Patreon {user_id}", "work")
+                                f"Patreon {user_id}")
         parts = [part for part in path.split("/") if part]
         if parts and parts[0] == "cw":
             parts = parts[1:]
@@ -2177,7 +2163,7 @@ class PatreonConnector(_BaseConnector):
                 "Patreon 的链接要指向创作者主页，形如 https://patreon.com/cw/creator")
         vanity = parts[0]
         return ParsedSource("patreon", vanity,
-                            f"https://www.patreon.com/cw/{vanity}", vanity, "work")
+                            f"https://www.patreon.com/cw/{vanity}", vanity)
 
     @classmethod
     def profile_handle(cls, ref: str) -> str:
@@ -2252,7 +2238,6 @@ class SimpCityConnector(_BaseConnector):
     """
 
     provider = "simpcity"
-    semantics = "release"
     blocked_reason = (
         "simpcity.cr 由 DDoS-Guard 的浏览器质询保护；Peach 不绕机器人验证。"
         "要接入需要你在浏览器里通过质询后提供会话 cookie，或改用其他来源。")
@@ -2350,7 +2335,7 @@ def official_profile_handle(provider: str, ref: str) -> str:
     return factory.profile_handle(ref) if factory is not None else ""
 
 
-def build_connector(provider: str, **kwargs) -> FollowConnector:
+def build_connector(provider: str, **kwargs) -> _BaseConnector:
     factory = CONNECTORS.get(provider)
     if factory is None:
         raise FollowSourceError(f"未知的追更来源：{provider}")

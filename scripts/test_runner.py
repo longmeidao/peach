@@ -179,15 +179,6 @@ def scopes_of_module(stem: str) -> tuple[str, ...]:
                         for pattern in patterns))
 
 
-def scope_of_path(path: str) -> str:
-    """一个非测试源码文件按 `AUTO_SCOPE_PREFIXES` 落在哪个域；映射不到返回空串。"""
-    normalized = path.replace("\\", "/").strip("/")
-    for prefix, scope in AUTO_SCOPE_PREFIXES:
-        if normalized.startswith(prefix):
-            return scope
-    return ""
-
-
 #: `<某个 Path> / "a" / "b/c.js"` 这种拼接。要求左边有个 `/`，是为了把「路径当字符串
 #: 参数传进去」的写法排除掉：`scopes_for_changes(["web/app.js"])` 喂的是假清单，
 #: 不读真文件，不该因为字面量长得像路径就被算成读了它。
@@ -212,13 +203,6 @@ def repository_paths_read_by(source: str) -> tuple[str, ...]:
             if (ROOT / candidate).is_file():
                 found.add(candidate)
     return tuple(sorted(found))
-
-
-def unclassified_files() -> tuple[Path, ...]:
-    classified = set()
-    for scope in SCOPES:
-        classified.update(selected_files(scope))
-    return tuple(sorted(set(TESTS.glob("test_*.py")) - classified))
 
 
 def dependency_inputs(source: str) -> dict:

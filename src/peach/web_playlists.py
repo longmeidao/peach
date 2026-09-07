@@ -4,11 +4,10 @@ from __future__ import annotations
 from typing import Protocol
 
 from .web_activity import DEFAULT_PROFILE_ID
-from .web_catalog import con_entities, entity_ref
+from .web_catalog import COST, con_entities, entity_ref
 
 
 MAX_PLAYLIST_ITEMS = 200
-SOURCE_COST = {"local": "free", "115": "free", "pikpak": "metered", "online": "metered"}
 #: 卡片上摆几张脸、封面翻几张。两个都是卡片的容量，不是数据上限。
 PLAYLIST_FACES = 3
 PLAYLIST_PREVIEWS = 5
@@ -177,7 +176,7 @@ def q_playlist(contract: PlaylistContract, args):
             (playlist_id,),
         )]
     for item in items:
-        item["cost"] = SOURCE_COST.get(item["location"], "metered")
+        item["cost"] = COST.get(item["location"], "metered")
         item["has_thumb"] = contract.has_snapshot(item.pop("snapshot_path", None))
     playlist["items"] = items
     playlist["item_count"] = len(items)

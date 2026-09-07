@@ -301,7 +301,7 @@ def create_app(
         # 不探测共享目录或迁移数据库；健康检查必须无副作用。
         ffmpeg = resolver.ffmpeg()
         read_only = bool(sync is not None and sync.read_only)
-        return {"ok": True, "service": "peach-api", "version": __version__, "mode": "fastapi",
+        return {"ok": True, "service": "peach-api", "version": __version__,
                 # 打包这份代码的提交。源码运行时是 null：跑的就是检出本身。
                 "build_commit": BUILD.commit if BUILD else None,
                 # 这台机器跑过 `peach init` 没有。未配置时服务照常起，只是没有数据。
