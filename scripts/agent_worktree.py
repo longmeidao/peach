@@ -130,10 +130,13 @@ def integrate(repo: Path, worker_branch: str, target_branch: str = "master") -> 
     folder = test_evidence.evidence_dir(repo)
     folder.mkdir(parents=True, exist_ok=True)
     try:
-        with test_evidence.FileLock(folder / "integration.lock", timeout=0):
+        with test_evidence.held(folder / "integration.lock",
+                                branch=worker_branch, root=str(repo)):
             return _integrate_locked(repo, worker_branch, target_branch)
     except test_evidence.Timeout as error:
-        raise WorkspaceError("另一任务正在集成；本次未修改分支，请等待后重试") from error
+        raise WorkspaceError(
+            f"另一任务正在集成（{test_evidence.describe_holder(Path(error.lock_file))}）；"
+            "本次未修改分支，请等待后重试") from error
 
 
 def _integrate_locked(repo: Path, worker_branch: str,
