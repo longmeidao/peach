@@ -3,7 +3,7 @@ import { fieldsetTitle, setActionBusy, confirmModal, wireCollapse } from '@peach
 import { icon } from '@peach/legacy/core';
 import { apiSend, errorMessage } from '../api';
 
-export interface StartupState { available: boolean; enabled: boolean; silent: boolean; message: string }
+export interface StartupState { available: boolean; enabled: boolean; silent: boolean; message: string; desktop: boolean; desktop_message: string }
 export interface UninstallState { available: boolean; full_available: boolean; message: string; data_root: string; directories: string[] }
 
 function SettingCheck({ label, checked, disabled, change }: { label:string; checked:boolean; disabled:boolean; change(value:boolean):void }) {
@@ -18,13 +18,17 @@ function SettingToggle({ label, checked, disabled, change }: { label:string; che
 export function StartupSettings({ startup, receipt }: { startup: StartupState; receipt(message: string): void }) {
   const [enabled,setEnabled] = useState(startup.enabled);
   const [silent,setSilent] = useState(startup.silent);
+  const [desktop,setDesktop] = useState(startup.desktop);
   const [error,setError] = useState('');
   const busy = useRef(false);
   const button = useRef<HTMLButtonElement>(null);
+  // 桌面快捷方式只有 Windows 有，桌面上已经摆着另一份安装的图标时也不给动；两种情况后端
+  // 都在 desktop_message 里说了原因，所以这里按它有没有内容判禁用，不再自己判平台。
+  const desktopReady = startup.available && !startup.desktop_message;
   async function save() {
     if (busy.current) return;
     busy.current = true; setActionBusy(button.current,true); setError('');
-    try { await apiSend('/api/configuration/startup',{enabled,silent}); receipt('已保存开机自启'); }
+    try { await apiSend('/api/configuration/startup',{enabled,silent,desktop}); receipt('已保存开机自启'); }
     catch (cause) { setError(errorMessage(cause)); }
     finally { busy.current = false; setActionBusy(button.current,false); }
   }
@@ -36,6 +40,8 @@ export function StartupSettings({ startup, receipt }: { startup: StartupState; r
           <SettingToggle label="开机后启动 Peach" checked={enabled} disabled={!startup.available} change={setEnabled} />
           <div class="configoption"><SettingToggle label="静默启动" checked={silent} disabled={!startup.available || !enabled} change={setSilent} />
             <p class="confighelp">静默启动仅显示托盘，开机后启动 Peach 打开时生效。</p></div>
+          <div class="configoption"><SettingToggle label="在桌面创建快捷方式" checked={desktop} disabled={!desktopReady} change={setDesktop} />
+            <p class="confighelp">{startup.desktop_message || '双击图标打开 Peach 网页；卸载时一并移除。'}</p></div>
         </div>
         {startup.message && <p class="confighelp">{startup.message}</p>}
         {error && <p class="configbad" role="alert">{error}</p>}
@@ -66,8 +72,8 @@ export function UninstallSettings({ uninstall }: { uninstall: UninstallState }) 
   const [accepted,setAccepted] = useState('');
   async function remove() {
     await confirmModal({title:'卸载 Peach',danger:true,body:removeData
-      ? '将退出 Peach，移除程序、开机自启、设置、本地数据库、观看记录、凭据和缓存。原始媒体文件保留。'
-      : '将退出 Peach 并移除程序和开机自启。设置、本地数据库、观看记录与缓存保留。',
+      ? '将退出 Peach，移除程序、开机自启、桌面图标、设置、本地数据库、观看记录、凭据和缓存。原始媒体文件保留。'
+      : '将退出 Peach 并移除程序、开机自启和桌面图标。设置、本地数据库、观看记录与缓存保留。',
     confirmLabel:'卸载 Peach',onConfirm:async () => {
       const result = await apiSend<{message:string}>('/api/configuration/uninstall',{delete_data:removeData,confirmation:'卸载 Peach'});
       setAccepted(result.message);
@@ -77,7 +83,7 @@ export function UninstallSettings({ uninstall }: { uninstall: UninstallState }) 
       <div class="geist-fieldset-content">
         <div class="configfieldset-heading">
         <div dangerouslySetInnerHTML={{__html:fieldsetTitle('uninstallTitle','卸载 Peach')}} />
-        {uninstall.available && <p class="confighelp">卸载会退出 Peach、移除程序和开机自启。原始媒体文件保留。</p>}
+        {uninstall.available && <p class="confighelp">卸载会退出 Peach、移除程序、开机自启和桌面图标。原始媒体文件保留。</p>}
         </div>
         <SettingCheck label="完全卸载：同时删除设置、本地数据库、观看记录、凭据和缓存" checked={removeData} disabled={!uninstall.full_available || !!accepted} change={setRemoveData} />
         <DataDirectories data={uninstall} />

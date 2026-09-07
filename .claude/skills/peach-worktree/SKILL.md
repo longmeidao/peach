@@ -29,9 +29,9 @@ description: 在用户说并行、工作树、暂存、提交、ready、集成�
    差异补测不延长全量基线有效期；版本号行单独变化归 tooling，包内其他逻辑变化仍按源码判断。
    相同状态复用记录；Windows `-Fresh`、POSIX 第二参数 `--fresh` 强制重跑；显式 `full` 总是实际执行。
 4. `ready` 前将当前 `master` 纳入工作树并运行 `auto`。相同内容可复用记录；目标变化重算影响域。`ready` / `integrate` 拒绝缺记录、范围不足或目标分支未纳入的提交。
-5. 协调者统一运行 `integrate`：锁内复查、合并固定提交、推进版本。锁忙就等待后重试，禁止直接 merge。同一批任务由协调者整理 `STATUS` 和版本，工作者按文件分工；共享文件安排顺序。版本号默认 `--bump auto`：改动碰到
-   运行时输入才动，`feat`／破坏性标记／新迁移推 minor，其余推 patch（ADR-0012 修订）。
-   它不打标签：发布走 `scripts/release_tag.py`，那是唯一入口。
+5. 协调者统一运行 `integrate`：锁内复查、合并固定提交。锁忙就等待后重试，禁止直接 merge。同一批任务由协调者整理 `STATUS`，工作者按文件分工；共享文件安排顺序。
+   版本号不在这里动，`integrate` 只报当前值：推进与打标签都走 `scripts/release_tag.py`，
+   它是唯一入口，`--bump auto --apply` 推版本并定版变更日志，`--apply` 打标签（ADR-0012 修订）。
    CI 分片、系统覆盖与发布复用见 `docs/TESTING.md`；合并完成不机械追加全量。耗时和慢测试记录在主目录 `build/agent-verification/`。
    记录和锁约束统一入口，不是权限隔离；直接 Git 或篡改记录仍可绕过，不能宣称绝对防绕过。
 

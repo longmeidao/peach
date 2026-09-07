@@ -347,6 +347,7 @@ class ReleaseFilesTests(unittest.TestCase):
         "LICENSE",
         "CONTRIBUTING.md",
         "SECURITY.md",
+        "CHANGELOG.md",
         ".github/PULL_REQUEST_TEMPLATE.md",
         ".github/ISSUE_TEMPLATE/config.yml",
     )

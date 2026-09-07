@@ -2724,7 +2724,7 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("${icon('chevron-down')}加载更多")
         self.assertPageLacks("${icon('plus')}加载更多")
         self.assertPageContains("${icon('history')}抓更早的一页")
-        self.assertPageContains("spinnerHtml('加载更多')")
+        self.assertPageContains("spinnerHtml('正在加载更多')")
         self.assertPageContains("spinnerHtml('抓取中')")
 
     def test_follow_management_list_has_routed_sorting(self):

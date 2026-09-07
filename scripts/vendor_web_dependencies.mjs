@@ -225,7 +225,12 @@ for (const [path, version] of versionRoots) {
 
 if (checkOnly) {
   if (problems.length) {
-    console.error(`前端固定依赖未同步：\n${problems.map(path => `- ${path}`).join("\n")}`);
+    // 修复命令必须印在消息里。只列不同步的路径时，CI 上看到这一段的人得先翻
+    // package.json 才知道重算入口叫什么，Dependabot 的 PR 尤其——那些改动不是人写的，
+    // 谁都不知道漏了哪一步。
+    console.error(`前端固定依赖未同步：\n${problems.map(path => `- ${path}`).join("\n")}\n\n`
+      + "重算：npm ci --ignore-scripts && npm run vendor:web\n"
+      + "Dependabot 的清单升级用：scripts/adopt_dependency_bump.py --pr <编号>");
     process.exit(1);
   }
   console.log(`前端固定依赖已同步：Video.js ${versions["video.js"]}、Swiper ${versions.swiper}、Lucide ${versions["lucide-static"]}、Phosphor ${versions["@phosphor-icons/core"]}、Health Icons ${versions.healthicons}`);

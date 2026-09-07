@@ -70,7 +70,16 @@ export function progressHtml(label,value,max=100,{variant='active',stops=[]}={})
     style="--progress-value:${percent}%;--progress-color:var(${variant==='error'?'--drop':variant==='warning'?'--meter':'--feedback-success'})"><i></i>${stops.filter(stop=>Number(stop.value)>0&&Number(stop.value)<ceiling&&stop.label).map(stop=>`<span class="geist-progress-stop" style="left:${Number(stop.value)/ceiling*100}%" role="img" aria-label="${esc(stop.label)}"></span>`).join('')}</div>`;
 }
 
-/** Geist Spinner: immediate feedback for a user-triggered action. */
+/**
+ * Geist Spinner: immediate feedback for a user-triggered action. Geist names
+ * "inline icon refresh" as one of its three cases, so an icon-only key that
+ * swaps its glyph for these ten bars is the prescribed shape, not a fallback.
+ *
+ * `label` names the work in flight (`正在换一批`), never the action the button
+ * already carries. This span is a `role=status` region sitting inside a button
+ * that has its own accessible name: repeating that name announces the same
+ * words twice and tells the reader nothing changed.
+ */
 export function spinnerHtml(label='加载中'){
   const bars=Array.from({length:10},(_,index)=>
     `<i aria-hidden="true" style="--spinner-angle:${index*36}deg;--spinner-delay:${index*100-900}ms"></i>`).join('');
