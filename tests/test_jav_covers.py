@@ -195,7 +195,7 @@ class OfficialSourceTests(unittest.TestCase):
         url = "https://contents-thumbnail2.fc2.com/w1200/x/cover.jpg"
         candidate = covers.Candidate("contents-thumbnail2.fc2.com", url,
                                      "https://fc2cmadb.com/")
-        with patch.object(covers, "r18_images") as r18:
+        with patch.object(covers, "r18_evidence") as r18:
             winner, size, _body = covers.best_cover(
                 transport_for({url: (200, jpeg(1200, 1361))}), "FC2-PPV-3701252", 0,
                 prior_candidates=(candidate,),
@@ -583,15 +583,6 @@ class SettledMissTests(unittest.TestCase):
 
     def test_missing_log_means_nothing_is_skipped(self):
         self.assertEqual(covers.settled_misses(self.log / "nope.csv"), set())
-
-    def test_skipped_rows_are_carried_into_the_new_log(self):
-        """日志是整份重写；不带上就等于把上轮判定删掉，复核页会凭空少一批。"""
-        self._log([{"code": "HEYZO-1380", "result": "未取得",
-                    "note": "所有渠道都没有候选"},
-                   {"code": "GYAN-017", "result": "取得", "width": "2184"}])
-        carried = covers.carried_rows(self.log, {"HEYZO-1380"})
-        self.assertEqual([row["code"] for row in carried], ["HEYZO-1380"])
-        self.assertEqual(sorted(carried[0]), sorted(covers.FIELDS))
 
     def test_scoped_batch_keeps_unselected_source_rows(self):
         self._log([{"code": "HEYZO-1380", "result": "未取得"},

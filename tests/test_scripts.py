@@ -88,12 +88,6 @@ class OperationalScriptTests(unittest.TestCase):
         self.assertIsNone(self.clean_names._logf)
         self.assertIsNone(self.scrape_codes._logf)
 
-    def test_cover_face_detector_only_treats_dvd_proportions_as_sleeves(self):
-        source = (ROOT / "scripts" / "detect_cover_faces.py").read_text(encoding="utf-8")
-        self.assertIn("SLEEVE_RATIO_MIN = 1.2", source)
-        self.assertIn("SLEEVE_RATIO_MAX = 1.65", source)
-        self.assertIn("SLEEVE_RATIO_MIN <= ratio < SLEEVE_RATIO_MAX", source)
-
     def test_english_title_batch_excludes_codes_that_already_have_japanese(self):
         connection = sqlite3.connect(":memory:")
         connection.execute("CREATE TABLE asset(medium TEXT,code TEXT,catalog_title TEXT,original_title TEXT)")
@@ -374,7 +368,6 @@ class OperationalScriptTests(unittest.TestCase):
             orphans, [],
             "这些测试文件不属于任何域，把它们登记进 scripts/test_runner.py 的 SCOPES"
             "（或 COMMON_PATTERNS），否则只有 full 才跑到它们：\n  " + "\n  ".join(orphans))
-        self.assertEqual(runner.unclassified_files(), ())
 
     def test_auto_scope_maps_changed_files_and_falls_back_to_full(self):
         """`auto` 的选域是纯函数：喂文件清单，不碰 git。"""

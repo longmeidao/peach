@@ -508,13 +508,3 @@ def is_interactive(stdin) -> bool:
     except (AttributeError, ValueError, OSError):
         return False
 
-
-__all__ = [
-    "HOST_OPTIONS", "SCAN_PROMPT",
-    "Answers", "Applied", "Ask", "DataTree", "LOCAL_LOCATION", "MAX_ATTEMPTS",
-    "OnboardingAborted", "POSIX_LOCAL_DECLARED_ROOT", "Question", "apply",
-    "ask_until_valid", "configure", "console_ask", "create_data_tree",
-    "default_media_dir", "interview", "is_interactive", "mounts_explanation",
-    "questions", "request_first_scan", "resolve_config", "scan_question",
-    "scan_request_path", "scan_root", "take_first_scan_request",
-]

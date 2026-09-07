@@ -54,7 +54,6 @@ SORT_COLUMNS = {
 
 #: 旧键沿用：地址栏和书签里存着把方向写进键名的值，认不出来它们会落到
 #: `a.id DESC`——那不报错，只是给出一屏顺序看起来合理、其实没按要求排的结果。
-SORT_LEGACY_KEYS = {"big": ("size", "desc"), "short": ("dur", "asc"), "long": ("dur", "desc")}
 
 
 def attach_jav_display_fields(row: dict, tags=(), entity_kinds=()) -> None:
@@ -241,9 +240,8 @@ def catalog_filter(contract: WebContract, args):
 
 def q_items(contract: WebContract, args):
     where, par = catalog_filter(contract, args)
-    requested = str(args.get("sort") or "")
-    sort_key, legacy_dir = SORT_LEGACY_KEYS.get(requested, (requested, ""))
-    direction = "ASC" if (str(args.get("dir") or "").lower() or legacy_dir) == "asc" else "DESC"
+    sort_key = str(args.get("sort") or "")
+    direction = "ASC" if str(args.get("dir") or "").lower() == "asc" else "DESC"
     column = SORT_COLUMNS.get(sort_key)
     order = column.format(d=direction) if column else ("RANDOM()" if sort_key == "rand" else None)
     if order is None:

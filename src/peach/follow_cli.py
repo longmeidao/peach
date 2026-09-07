@@ -21,9 +21,6 @@ from .follow_store import FollowStore
 #: 形状与登记表一致，投影自 follow_providers；新增来源只改那一处。
 _SOURCE_URL = follow_providers.source_urls()
 
-#: 这些来源的每个条目是同一作品的一次发布，不是独立作品。
-_RELEASE_PROVIDERS = follow_providers.release_providers()
-
 #: 支持往回翻页的来源，和 Web 那边同一份声明。
 _BACKFILL_PROVIDERS = follow_providers.backfill_providers()
 
@@ -44,8 +41,7 @@ def _add(args) -> int:
     provider = args.provider
     if provider not in CONNECTORS:
         raise SystemExit(f"未知的追更来源：{provider}；可选 {', '.join(sorted(CONNECTORS))}")
-    semantics = args.semantics or (
-        "release" if provider in _RELEASE_PROVIDERS else "work")
+    semantics = args.semantics or follow_providers.PROVIDERS[provider].semantics
     url = args.url or _SOURCE_URL[provider].format(ref=args.ref)
     try:
         source_id = store.register(

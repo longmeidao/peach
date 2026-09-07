@@ -4,6 +4,14 @@ from peach import related
 from peach.related import rank_related
 
 
+def _closeness(left, right, weights):
+    return related._closeness_features(related._feature(left), related._feature(right), weights)
+
+
+def _reasons(source, candidate):
+    return related._reasons_features(related._sets(source), related._sets(candidate))
+
+
 def _naive_rank(source, candidates, limit, *, seed=None, diversity=0.22):
     """优化前的朴素 MMR：每选一条，就把整池和**全部**已选重算一遍 closeness。
 
@@ -15,8 +23,8 @@ def _naive_rank(source, candidates, limit, *, seed=None, diversity=0.22):
             if int(candidate["id"]) != int(source["id"])]
     weights = related._idf([source, *pool])
     for candidate in pool:
-        candidate["_relevance"] = related._closeness(source, candidate, weights)
-        candidate["_reasons"] = related._reasons(source, candidate)
+        candidate["_relevance"] = _closeness(source, candidate, weights)
+        candidate["_reasons"] = _reasons(source, candidate)
     pool = [candidate for candidate in pool
             if candidate["_relevance"] > 0 and candidate["_reasons"]]
     selected = []
@@ -24,7 +32,7 @@ def _naive_rank(source, candidates, limit, *, seed=None, diversity=0.22):
     while pool and len(selected) < max(0, int(limit)):
         def key(candidate):
             redundancy = max(
-                (related._closeness(candidate, prior, weights) for prior in selected),
+                (_closeness(candidate, prior, weights) for prior in selected),
                 default=0.0,
             )
             mmr = float(candidate["_relevance"]) - diversity * redundancy

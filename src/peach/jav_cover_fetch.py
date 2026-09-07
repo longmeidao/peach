@@ -331,12 +331,6 @@ def logged_success_evidence(
     return None
 
 
-def logged_success_candidate(rows: list[dict], code: str) -> Candidate | None:
-    """兼容只需要历史 URL 的调用方。"""
-    evidence = logged_success_evidence(rows, code)
-    return evidence[0] if evidence is not None else None
-
-
 #: DMM 的 content_id 一定带番号字母段：`ABW-232` -> `118abw232`、
 #: `MGT-164` -> `h_1711mgt00164`。
 _DMM_CID = re.compile(
@@ -399,10 +393,6 @@ def r18_evidence(transport: HttpTransport, code: str) -> MetadataEvidence:
                            for key in ("maker", "label") if isinstance(payload.get(key), dict))
         return MetadataEvidence(tuple(_unique_candidates(found)), makers, frozenset({"r18dev"}))
     return MetadataEvidence()
-
-
-def r18_images(transport: HttpTransport, code: str) -> list[Candidate]:
-    return list(r18_evidence(transport, code).candidates)
 
 
 def mgstage_images(transport: HttpTransport, code: str) -> list[Candidate]:
@@ -592,15 +582,6 @@ def settled_misses(log: Path) -> set[str]:
             if row.get("result") == "未取得"
             and not TRANSIENT.search(str(row.get("note") or ""))
             and str(row.get("code") or "").strip()}
-
-
-def carried_rows(log: Path, keep: set[str]) -> list[dict]:
-    """把这轮跳过的番号的上轮记录原样带进新日志。"""
-    if not keep:
-        return []
-    return [{field: row.get(field, "") for field in FIELDS}
-            for row in logged_rows(log)
-            if str(row.get("code") or "").strip() in keep]
 
 
 def logged_rows(log: Path) -> list[dict]:

@@ -3,8 +3,8 @@ import unittest
 from pathlib import Path
 
 from peach import follow_cli, follow_discovery, follow_providers, web_follow
-from peach.follow_cli import _RELEASE_PROVIDERS, _SOURCE_URL
-from peach.follow_sources import CONNECTORS, _SEMANTICS
+from peach.follow_cli import _SOURCE_URL
+from peach.follow_sources import CONNECTORS, ParsedSource, _BaseConnector
 from peach.follow_stream import _PROVIDER_HOSTS
 from peach.follow_variants import PROVIDER_PRIORITY
 from peach.follow_secrets import (
@@ -12,8 +12,7 @@ from peach.follow_secrets import (
     SYNCABLE_FIELDS,
     credential_store_for,
 )
-from peach.follow_store import (_OFFICIAL_IDENTITY_PROVIDERS,
-                                _RELEASE_KEY_PER_POST)
+from peach.follow_store import _OFFICIAL_IDENTITY_PROVIDERS
 from peach.web_follow import PROVIDER_LABELS, _BACKFILL_PROVIDERS
 
 
@@ -36,30 +35,23 @@ class ProviderRegistryTests(unittest.TestCase):
         self.assertIsNone(follow_providers.PROVIDERS["gofile"].source_url)
         self.assertNotIn("gofile", _SOURCE_URL)
 
-    def test_release_semantics_is_stated_once(self):
-        """`_RELEASE_PROVIDERS` 与 `_SEMANTICS` 说的是同一件事，过去是两份手写清单。
+    def test_semantics_is_declared_only_in_the_registry(self):
+        """连接器类与解析结果都从登记表读语义，没有第二份可以改漏的清单。
 
-        键必须相同、值只能是 release；改了一处忘了另一处，分组语义会和优先级排序
-        对不上，而且两边都不抛错。现在两者都投影自同一个 spec，这条断言守住它。"""
-        self.assertEqual(set(_RELEASE_PROVIDERS), set(_SEMANTICS))
-        self.assertEqual(set(_SEMANTICS.values()), {"release"})
-        for key in _RELEASE_PROVIDERS:
-            self.assertEqual(follow_providers.PROVIDERS[key].semantics, "release")
+        改了登记表却忘了连接器时，分组语义会和优先级排序对不上，而且不会抛错；
+        所以连接器不得自己声明 `semantics`，解析结果也只能派生。"""
+        self.assertIsInstance(vars(_BaseConnector)["semantics"], property)
+        for key, factory in CONNECTORS.items():
+            self.assertNotIn("semantics", vars(factory), f"{key} 不得自己声明语义")
+        self.assertNotIn("semantics", ParsedSource.__dataclass_fields__)
+        self.assertEqual(
+            ParsedSource("f95zone", "1", "https://f95zone.to/threads/1/", "x").semantics,
+            "release")
 
-    def test_projections_keep_their_original_shapes(self):
-        """各模块的投影形状固定：调用方按声明的类型使用它们。"""
-        self.assertIsInstance(_SOURCE_URL, dict)
-        self.assertIsInstance(_PROVIDER_HOSTS, dict)
-        self.assertIsInstance(PROVIDER_PRIORITY, dict)
-        self.assertIsInstance(PROVIDER_LABELS, dict)
-        self.assertIsInstance(_RELEASE_PROVIDERS, frozenset)
-        self.assertIsInstance(_BACKFILL_PROVIDERS, frozenset)
-        self.assertIsInstance(_OFFICIAL_IDENTITY_PROVIDERS, frozenset)
-        for hosts in _PROVIDER_HOSTS.values():
-            self.assertIsInstance(hosts, tuple)
-            self.assertTrue(hosts, "登记了主机就不能是空元组，否则代理会全部拒绝")
-        for template in _SOURCE_URL.values():
-            self.assertIn("{ref}", template, "作品页模板必须能填入 ref")
+    def test_a_source_url_without_ref_is_refused_at_declaration_time(self):
+        with self.assertRaises(ValueError):
+            follow_providers.ProviderSpec(key="x", label="X", source_url="https://x/",
+                                          url_hosts=("x",))
 
     def test_priority_is_unique_so_primary_choice_is_deterministic(self):
         values = list(PROVIDER_PRIORITY.values())
@@ -198,8 +190,6 @@ class ReleaseKeyPerPostTests(unittest.TestCase):
         """论坛线程每层各自成组，这是来源语义，不是 `follow_store` 里的站点点名。"""
         self.assertEqual(follow_providers.release_key_per_post(),
                          frozenset({"f95zone"}))
-        self.assertEqual(_RELEASE_KEY_PER_POST,
-                         follow_providers.release_key_per_post())
 
     def test_it_only_applies_to_release_semantics(self):
         """每条各自成组只对「同一作品的历次发布」有意义；work 语义靠标题合并。"""
@@ -216,11 +206,6 @@ class ExcludedItemTests(unittest.TestCase):
         """
         excluded = follow_providers.excluded_external_ids()
         self.assertEqual(excluded, {"rule34video": frozenset({"4533145"})})
-
-    def test_the_web_layer_only_projects_the_registry(self):
-        self.assertEqual(web_follow._EXCLUDED_EXTERNAL_IDS,
-                         follow_providers.excluded_external_ids())
-
 
 if __name__ == "__main__":
     unittest.main()

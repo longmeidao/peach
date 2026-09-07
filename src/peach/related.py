@@ -64,19 +64,11 @@ def _closeness_features(left, right, weights: Mapping[int, float]) -> float:
     return score
 
 
-def _closeness(left: Mapping, right: Mapping, weights: Mapping[int, float]) -> float:
-    return _closeness_features(_feature(left), _feature(right), weights)
-
-
 def _reasons_features(a: Mapping[str, set[int]], b: Mapping[str, set[int]]) -> list[str]:
     return [label for kind, label in (
         ("creator", "同创作者"), ("series", "同系列"),
         ("performer", "同出演者"), ("tag", "标签接近"), ("studio", "同厂牌"),
     ) if a[kind] & b[kind]]
-
-
-def _reasons(source: Mapping, candidate: Mapping) -> list[str]:
-    return _reasons_features(_sets(source), _sets(candidate))
 
 
 @dataclass(slots=True)

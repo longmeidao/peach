@@ -7,7 +7,6 @@ import sys
 import threading
 import time
 import ipaddress
-import threading
 from collections.abc import Callable
 
 from zeroconf import ServiceInfo, Zeroconf
