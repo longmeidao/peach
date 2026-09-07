@@ -333,7 +333,10 @@ class OperationalScriptTests(unittest.TestCase):
         # 模块名 ↔ 测试文件名推断，登记在几个域就跑几个域。
         self.assertEqual(pick(["src/peach/media.py"])[0], ("media",))
         self.assertEqual(pick(["src/peach/jobs.py"])[0], ("media", "tooling"))
-        self.assertEqual(pick(["src/peach/metadata.py"])[0], ("metadata",))
+        # `test_metadata_library.py` 也登记在 web 域（它有一段读 `web/app.js`），
+        # 名字又落在 `test_metadata_` 这一族里，于是这个模块把 web 域一起带上。
+        # 宽一档是安全的那一侧，web 域全是源码文本断言，代价只有几秒。
+        self.assertEqual(pick(["src/peach/metadata.py"])[0], ("metadata", "web"))
         # 测试文件按自己的文件名归域；公共门槛文件归 tooling。
         self.assertEqual(pick(["tests/test_certs.py"])[0], ("sync", "tooling"))
         self.assertEqual(pick(["tests/test_context_budget.py"])[0], ("tooling",))
