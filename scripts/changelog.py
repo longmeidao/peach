@@ -8,6 +8,9 @@ Semantic Versioning 2.0.0（https://semver.org/lang/zh-CN/spec/v2.0.0.html）：
 人看，不是 `git log` 的转储。只改开发过程的提交（`docs`、`test`、`chore`、`refactor`）
 不进日志。定版时未发布节里人润色过的内容整段搬进版本节，那一节空着才用草稿兜底。
 
+每个条目再带一个区域标签（`- **播放**：…`）：分组标题按变化性质分，标签按使用者看到的
+区域分。认得的 scope 自动换成标签，草稿里还留着英文 scope 的条目就是等人定标签的。
+
     python scripts/changelog.py                                # 起草未发布区间
     python scripts/changelog.py --range v0.16.0..v0.27.1       # 起草任意区间
     python scripts/changelog.py --release 0.30.0 --apply       # 把未发布节定版为 0.30.0
@@ -49,6 +52,27 @@ GROUP_ORDER = ("破坏性变化", "新增", "变更", "弃用", "移除", "修�
 
 #: 安全相关的提交：类型或 scope 点名 security 的一律进「安全」组。
 SECURITY = "security"
+
+#: 条目前缀用的区域标签，说的是使用者在哪儿看到这个变化。分组标题按变化性质
+#: 分（规范这么定），标签按使用者看到的区域分，两维叠起来才既合规范又找得到东西。
+#: 这个清单是封闭的：`tests/test_changelog.py` 拒绝清单外的标签，免得各写一套近义词。
+AREAS = ("界面", "播放", "馆藏", "采集", "复核", "关注", "配置", "更新", "桌面", "账本")
+
+#: scope 到区域标签的映射，只收没有歧义的。`web` 故意不映射——它占了近八成提交，
+#: 机械挂上「界面」等于给每条都贴同一个标签，标签就不再有区分力，留给人按条目内容定。
+AREA_BY_SCOPE = {
+    "ui": "界面", "cards": "界面", "detail": "界面",
+    "media": "播放", "player": "播放",
+    "library": "馆藏", "catalog": "馆藏", "names": "馆藏",
+    "metadata": "采集", "sourcing": "采集", "avatars": "采集",
+    "studios": "采集", "links": "采集",
+    "review": "复核",
+    "follow": "关注",
+    "setup": "配置", "config": "配置", "auth": "配置",
+    "update": "更新",
+    "tray": "桌面", "desktop": "桌面", "ops": "桌面",
+    "ledger": "账本", "migrations": "账本",
+}
 
 #: 未发布节：标题到下一节标题或底部链接块之间的全部内容。
 UNRELEASED_BLOCK = re.compile(
@@ -94,6 +118,10 @@ def entry_for(commit: Commit) -> tuple[str, str] | None:
 
 
 def _label(scope: str, text: str) -> str:
+    """条目前缀。认得的 scope 换成区域标签，认不出的原样留着英文等人定。"""
+    area = AREA_BY_SCOPE.get(scope)
+    if area:
+        return f"**{area}**：{text}"
     return f"{scope}：{text}" if scope else text
 
 

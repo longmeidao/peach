@@ -61,6 +61,8 @@ Python 服务与打包件直接读它。改了 `frontend/src` 就在同一个 PR
 `python scripts/changelog.py` 按它们起草 [`CHANGELOG.md`](CHANGELOG.md)。PR 不用改那份文件：
 版本号在发布点推进，维护者在同一步定版并把措辞改成使用者读得懂的话；每个 PR 各改一次
 只会互相冲突。破坏性变化在主题里带 `!` 或写 `BREAKING CHANGE:` 脚注。
+条目带一个区域标签（`- **播放**：…`），取值限于 `scripts/changelog.py` 的 `AREAS`；
+提交的 scope 认得出就自动填，`web` 这种覆盖面太广的留给定版的人按条目内容定。
 
 ## 文案
 

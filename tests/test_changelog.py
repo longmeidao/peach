@@ -39,11 +39,25 @@ class EntryTests(unittest.TestCase):
         self.assertEqual(entry_for(Commit("fix(web): 忙态提示说明在做什么", "")),
                          ("修复", "web：忙态提示说明在做什么"))
         self.assertEqual(entry_for(Commit("perf(media): 首段缩到 0.67 秒", "")),
-                         ("变更", "media：首段缩到 0.67 秒"))
+                         ("变更", "**播放**：首段缩到 0.67 秒"))
         for subject in ("docs: 记一笔", "test: 补断言", "chore(release): 版本 0.29.1",
                         "refactor(follow): 登记表收口", "style: 空行", "随手写的主题"):
             with self.subTest(subject=subject):
                 self.assertIsNone(entry_for(Commit(subject, "")))
+
+    def test_known_scopes_become_area_labels_and_unknown_ones_wait_for_a_human(self):
+        self.assertEqual(entry_for(Commit("feat(review): 候选支持多选", "")),
+                         ("新增", "**复核**：候选支持多选"))
+        self.assertEqual(entry_for(Commit("fix(avatars): 只装更大的那张", "")),
+                         ("修复", "**采集**：只装更大的那张"))
+        self.assertEqual(entry_for(Commit("fix(web): 忙态提示说明在做什么", "")),
+                         ("修复", "web：忙态提示说明在做什么"))
+        self.assertEqual(entry_for(Commit("feat: 没有 scope 就没有标签", "")),
+                         ("新增", "没有 scope 就没有标签"))
+
+    def test_every_mapped_label_is_in_the_closed_vocabulary(self):
+        self.assertLessEqual(set(changelog.AREA_BY_SCOPE.values()),
+                             set(changelog.AREAS))
 
     def test_development_only_scopes_stay_out_even_under_fix(self):
         self.assertIsNone(entry_for(Commit("fix(tests): 断言跟上新名字", "")))
@@ -54,7 +68,7 @@ class EntryTests(unittest.TestCase):
                          ("破坏性变化", "账本路径改成 location 键"))
         self.assertEqual(
             entry_for(Commit("feat(config): 换掉盘符键", "BREAKING CHANGE: 设置文件要重写")),
-            ("破坏性变化", "config：设置文件要重写"))
+            ("破坏性变化", "**配置**：设置文件要重写"))
 
     def test_security_work_gets_its_own_group(self):
         self.assertEqual(entry_for(Commit("fix(security): 凭据不再进日志", "")),
@@ -165,6 +179,14 @@ class ShippedChangelogTests(unittest.TestCase):
             with self.subTest(version=version):
                 self.assertRegex(self.document,
                                  rf"(?m)^\[{re.escape(version)}\]: https://github\.com/")
+
+    def test_every_entry_carries_a_label_from_the_closed_vocabulary(self):
+        allowed = "|".join(changelog.AREAS)
+        for line in self.document.splitlines():
+            if not line.startswith("- "):
+                continue
+            with self.subTest(line=line):
+                self.assertRegex(line, rf"^- \*\*(?:{allowed})\*\*：")
 
     def test_released_sections_run_newest_first(self):
         keys = [tuple(int(part) for part in version.split("."))
