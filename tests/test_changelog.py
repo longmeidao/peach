@@ -1,4 +1,7 @@
+import contextlib
+import io
 import re
+import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -177,6 +180,18 @@ class NotesTests(unittest.TestCase):
     def test_a_version_without_a_section_cannot_be_released(self):
         with self.assertRaisesRegex(VersionError, "0.28.0"):
             changelog.notes(DOCUMENT, "0.28.0")
+
+    def test_the_command_line_names_what_it_failed_to_produce(self):
+        """`--notes` 失败说的是 Release 正文，不借用定版那条「变更日志未更新」。"""
+        with tempfile.TemporaryDirectory() as folder:
+            (Path(folder) / changelog.CHANGELOG).write_text(DOCUMENT, encoding="utf-8")
+            out = io.StringIO()
+            with mock.patch.object(changelog, "ROOT", Path(folder)), \
+                    contextlib.redirect_stdout(out):
+                code = changelog.main(["--notes", "0.28.0"])
+        self.assertEqual(code, 1)
+        self.assertTrue(out.getvalue().startswith("Release 正文未生成："), out.getvalue())
+        self.assertNotIn("变更日志未更新", out.getvalue())
 
     def test_the_release_workflow_reads_the_notes_it_does_not_inline_them(self):
         """固定文案只活在 `INSTALL_NOTE` 一处；工作流在标签提交上生成文件再交给 gh。"""
