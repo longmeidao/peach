@@ -99,8 +99,13 @@ PROVIDERS: dict[str, ProviderSpec] = {
         ProviderSpec("f95zone", "F95zone", source_url="https://f95zone.to/threads/{ref}/",
                      semantics="release", hosts=("f95zone.to",), url_hosts=("f95zone.to",),
                      priority=50, release_key_per_post=True),
+        # 帖子里的图挂在站方自己的图床 `simp6.cuckcapital.cr`（2026-09-08 实测原图对无
+        # cookie 请求直接 200），所以只放行这一个后缀；论坛主机本身不进白名单——那里的
+        # 附件要 cookie，而媒体代理不该替浏览器带着登录态去取。第三方图站不代理，
+        # 界面退回直接引用缩略图。
         ProviderSpec("simpcity", "SimpCity", source_url="https://simpcity.cr/threads/{ref}/",
-                     semantics="release", url_hosts=("simpcity.cr",), priority=60),
+                     semantics="release", hosts=("cuckcapital.cr",),
+                     url_hosts=("simpcity.cr",), priority=60, release_key_per_post=True),
         # 文件站：不是追更来源，只作为媒体来源出现在界面上，所以没有 source_url。
         ProviderSpec("gofile", "Gofile"),
     )

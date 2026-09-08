@@ -1331,6 +1331,38 @@ class FollowSourceAddTests(FollowContractTests):
         source = self._get()["sources"][0]
         self.assertEqual((source["provider"], source["ref"]), ("simpcity", "4242"))
 
+    def test_simpcity_images_are_playable_only_when_the_media_proxy_can_fetch_them(self):
+        # 站方图床上的原图经 /follow-stream 就地看；第三方图站不在白名单里，界面退回
+        # 直接引用缩略图，不能说「可播」再让代理拒收——那会渲染成一张打不开的图。
+        self._seed(candidates=(
+            FollowCandidate(provider="simpcity", external_id="51632037", title="Solazola / baby_sue",
+                            url="https://simpcity.cr/threads/17401/post-51632037",
+                            media_url="https://simp6.cuckcapital.cr/images4/b73b.png",
+                            thumb_url="https://simp6.cuckcapital.cr/images4/b73b.png",
+                            extra={"images": ["https://simp6.cuckcapital.cr/images4/b73b.png"]}),
+            FollowCandidate(provider="simpcity", external_id="51632038", title="Solazola / baby_sue",
+                            url="https://simpcity.cr/threads/17401/post-51632038",
+                            media_url="https://jpg5.su/img/abc.jpg",
+                            thumb_url="https://jpg5.su/img/abc.md.jpg",
+                            extra={"images": ["https://jpg5.su/img/abc.jpg"]}),
+            FollowCandidate(provider="simpcity", external_id="51632039", title="Solazola / baby_sue",
+                            url="https://simpcity.cr/threads/17401/post-51632039",
+                            media_url="https://gofile.io/d/rFyusPzL",
+                            thumb_url="https://simp6.cuckcapital.cr/images4/c0de.png",
+                            extra={"links": ["https://gofile.io/d/rFyusPzL",
+                                             "https://pixeldrain.com/u/zF3PqTJF"]}),
+        ), provider="simpcity", ref="17401", semantics="release", label="Solazola / baby_sue")
+        # 每个带资源的楼层各自成组，线程标题只是容器名。
+        items = {group["primary"]["external_id"]: group["primary"] for group in self._get()["groups"]}
+        self.assertEqual(sorted(items), ["51632037", "51632038", "51632039"])
+        self.assertTrue(items["51632037"]["playable"])
+        self.assertEqual(items["51632037"]["media_kind"], "image")
+        self.assertFalse(items["51632038"]["playable"])
+        self.assertEqual(items["51632038"]["thumb_url"], "https://jpg5.su/img/abc.md.jpg")
+        self.assertFalse(items["51632039"]["playable"])
+        self.assertEqual(items["51632039"]["resource_urls"],
+                         ["https://gofile.io/d/rFyusPzL", "https://pixeldrain.com/u/zF3PqTJF"])
+
     def test_removing_a_source_takes_its_items_with_it(self):
         self._seed()
         source_id = self._get()["sources"][0]["id"]
@@ -2155,6 +2187,8 @@ class FollowWebSourceTests(unittest.TestCase):
         icons = self.page.split("const SOURCE_ICONS={", 1)[1].split("};", 1)[0]
         self.assertIn("kemono.cr/assets/favicon-", icons)
         self.assertIn("pawchive.pw/static/favicon.png", icons)
+        # simpcity 的 `/favicon.ico` 是 404，站点声明的图标在 `/data/assets/logo/` 下。
+        self.assertIn("simpcity:'https://simpcity.cr/data/assets/logo/favicon.png'", icons)
         self.assertNotIn("kemono.cr/favicon.ico", icons)
         # 取不到图标就把 <img> 摘掉，露出纯文字；收场动作由 image-fallback 的
         # 委托监听执行，模板里只声明 `data-drop`。

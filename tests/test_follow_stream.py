@@ -6,7 +6,7 @@ import httpx
 from peach.follow_stream import (
     MAX_PROXY_REDIRECTS, FollowMediaResolver, FollowMediaUnavailable,
     FollowProxyError, ResolvedFollowMedia, open_upstream, proxy_request_headers,
-    proxy_response_headers,
+    proxy_response_headers, proxyable,
 )
 from peach.follow_secrets import Credential
 from peach.http import HttpResponse
@@ -41,6 +41,21 @@ class FollowMediaResolverTests(unittest.TestCase):
             media_url="https://img.kemono.cr/data/8.mp4", metadata={},
         )
         self.assertEqual(resolver.resolve(item).url, item.media_url)
+
+    def test_simpcity_images_on_the_site_image_host_are_proxied_without_a_cookie(self):
+        resolver = FollowMediaResolver(lambda *_args: self.fail("unexpected network probe"))
+        item = SimpleNamespace(
+            id=11, provider="simpcity", url="https://simpcity.cr/threads/17401/post-1",
+            media_url="https://simp6.cuckcapital.cr/images4/b73b.png", metadata={},
+        )
+        resolved = resolver.resolve(item)
+        self.assertEqual(resolved.url, item.media_url)
+        self.assertIsNone(resolved.headers)
+        self.assertEqual(resolved.allowed_hosts, ("cuckcapital.cr",))
+        self.assertTrue(proxyable("simpcity", item.media_url))
+        # 第三方图站不在白名单里：既不代理，也不能在界面上说「可播」。
+        self.assertFalse(proxyable("simpcity", "https://jpg5.su/img/abc.jpg"))
+        self.assertFalse(proxyable("simpcity", "https://simpcity.cr/attachments/clip-mp4.9001/"))
 
     def test_untrusted_or_credentialed_targets_are_rejected(self):
         resolver = FollowMediaResolver(lambda *_args: self.fail("unexpected network probe"))

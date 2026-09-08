@@ -5413,6 +5413,7 @@ const SOURCE_ICONS={
   rule34paheal:'https://rule34.paheal.net/favicon.ico',
   gofile:'https://gofile.io/favicon.ico',
   f95zone:'https://f95zone.to/assets/favicon-32x32.png',
+  simpcity:'https://simpcity.cr/data/assets/logo/favicon.png',
 };
 function sourceIcon(provider){return SOURCE_ICONS[provider]
   ? `<img class="ficon" src="${esc(SOURCE_ICONS[provider])}" alt="" loading="lazy"

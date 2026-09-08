@@ -8,6 +8,7 @@
 """
 from __future__ import annotations
 
+import base64
 import html
 import json
 import re
@@ -1589,6 +1590,15 @@ def _xenforo_posts(soup, limit: int):
         time_node = article.select_one("time")
         body = article.select_one(".bbWrapper")
         if body is not None:
+            # 链接预览卡（unfurl）是楼主贴的一条裸链接被站点渲染成的卡片：卡片上的标题
+            # 和摘要不是楼主写的，链接却是。先把它换回一个指向 `data-url` 的普通链接，
+            # 再剥块级引用，否则网盘链接会连同预览一起被当成引用剥掉（2026-09-08 实测
+            # simpcity 一楼的 Gofile 链接就只存在于预览卡里）。
+            for unfurl in body.select(".bbCodeBlock--unfurl[data-url]"):
+                target = str(unfurl.get("data-url") or "")
+                link = soup.new_tag("a", href=target)
+                link.string = target
+                unfurl.replace_with(link)
             for quote in body.select("blockquote, .bbCodeBlock, .js-expandWatch"):
                 quote.extract()
         yield article, post_id, time_node, body
@@ -2381,7 +2391,7 @@ class SimpCityConnector(_BaseConnector):
             images = self._images(body)
             file_links: list[str] = []
             for node in (body.select("a[href]") if body else []):
-                link = str(node.get("href") or "")
+                link = self._external_href(str(node.get("href") or ""))
                 if _is_resource_url(link) and link not in file_links:
                     file_links.append(link)
             attachments = self._attachments(body)
@@ -2412,6 +2422,32 @@ class SimpCityConnector(_BaseConnector):
                        "embed_count": embeds},
             ))
         return candidates, parsed, skipped
+
+    @classmethod
+    def _external_href(cls, href: str) -> str:
+        """把站点的跳转链接还原成真实外链。
+
+        simpcity 给每个外链套一层 `/redirect/?to=<base64url>&e=1&m=b64`（2026-09-08 实测
+        `aHR0cHM6Ly9waXhlbGRyYWluLmNvbS91L3pGM1BxVEpG` 即 `https://pixeldrain.com/u/zF3PqTJF`）。
+        不还原的话网盘链接一个都认不出来。只接受解出来是 http(s) 地址的；解不开就原样
+        返回，让后面的域名判定自己拒掉。
+        """
+        try:
+            parsed = urllib.parse.urlsplit(href)
+        except ValueError:
+            return href
+        if parsed.path.rstrip("/") != "/redirect" or (parsed.netloc and parsed.netloc != cls.HOST):
+            return href
+        query = urllib.parse.parse_qs(parsed.query)
+        encoded = (query.get("to") or [""])[0]
+        if not encoded:
+            return href
+        try:
+            decoded = base64.urlsafe_b64decode(encoded + "=" * (-len(encoded) % 4)) \
+                .decode("utf-8")
+        except (ValueError, UnicodeDecodeError):
+            return href
+        return decoded if decoded.startswith(("https://", "http://")) else href
 
     @classmethod
     def _images(cls, body) -> list[tuple[str, str]]:
