@@ -5665,7 +5665,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("cards.splice(MIX_SLOT,0,mixCardHtml(seed))")
         self.assertPageContains(".mixstack::before,.mixstack::after")
         # Mix 是同一网格里的同级卡片，JAV 大图不能让它单独掉回 16:9；有封面时
-        # 也应和普通作品卡共用同一张官方封套，而不是永远显示视频接触表。
+        # 也应和普通作品卡共用同一张官方封套，而不是永远显示视频九宫格。
         self.assertPageContains("? javArtwork(it,jav?layout:'small')")
         self.assertPageContains("const ar=jav&&layout==='big'?COVER_FRONT_RATIO:16/9;")
         self.assertPageContains('<div class="mixstack"><div class="pic" style="--card-ratio:${ar}">')

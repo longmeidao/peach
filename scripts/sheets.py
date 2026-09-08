@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""全库关键帧接触表：可续跑、显式计费授权、产物落地后登记。"""
+"""全库关键帧九宫格：可续跑、显式计费授权、产物落地后登记。"""
 from __future__ import annotations
 
 import argparse
@@ -37,7 +37,7 @@ from peach.media import resolve_case_insensitive
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="生成视频关键帧接触表")
+    parser = argparse.ArgumentParser(description="生成视频关键帧九宫格")
     parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--location")
     parser.add_argument("--frames", type=int, default=9)

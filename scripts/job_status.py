@@ -111,7 +111,7 @@ def collect(db_path: Path, generated: Path, state_path: Path | None = None) -> l
     lines.append("  PikPak 的策略组已可切 DIRECT：2026-08-15 实测走代理时 9 帧 163 MB / 13.7 秒，"
                  "走直连时 30.5 MB / 64.2 秒——慢约 4.7 倍但流量少约 5 倍且不占代理预算。"
                  "全量抽帧仍是 773 GB 量级（代理口径），按创作者采样 88 板直连约 2.7 GB。"
-                 "115 一直走直连，同样动作约 285 MB 一张接触表。")
+                 "115 一直走直连，同样动作约 285 MB 一张九宫格。")
 
     untagged = one("SELECT count(*) FROM asset WHERE medium='video' "
                    "AND id NOT IN (SELECT asset_id FROM asset_tag)")

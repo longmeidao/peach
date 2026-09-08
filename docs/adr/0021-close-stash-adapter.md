@@ -41,7 +41,7 @@ ADR-0002 把 Stash 定为「可关闭的 adapter」，路线图（`docs/STASH.md
   本机运维决定，与 Peach 无关。
 - 每次 `media_asset()` 少一次 SQLite 查询。
 - 转码、预览和搜索都不受影响：它们本来就是 Peach 自己的实现——`TranscodeService`、
-  `PreviewService` 加 `scripts/sheets.py` 的 FFmpeg 接触表、SQLite 查询，从不经过
+  `PreviewService` 加 `scripts/sheets.py` 的 FFmpeg 九宫格、SQLite 查询，从不经过
   Stash。`MediaCapabilities` 里的 `transcode`/`search` 只是声明字段，没有任何调用方
   读过。
 - 想恢复 Stash 作为播放来源，要连 `media_binding` 的回填一起重做。Git 是归档，
