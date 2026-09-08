@@ -64,6 +64,19 @@ class AccessTests(unittest.IsolatedAsyncioTestCase):
         with patch.object(access.time, "time", return_value=access.time.time() + 43201):
             self.assertFalse(access.valid_session(policy, session))
 
+    async def test_custom_duration_and_unchecked_remember_control(self):
+        access.save(self.path, "correct-password")
+        response = await self.login(days=17)
+        self.assertIn("Max-Age=1468800", response.headers["set-cookie"])
+        self.client.cookies.clear()
+        response = await self.client.post("/login", data={"token": "correct-password"})
+        session_header = next(header for header in response.headers.get_list("set-cookie") if header.startswith(access.COOKIE))
+        self.assertNotIn("Max-Age", session_header)
+        self.assertEqual((await self.login(days=366)).status_code, 400)
+        html = routes_auth.login_html("/")
+        self.assertIn('type="checkbox" name="days"', html)
+        self.assertNotIn('type="radio"', html)
+
     async def test_password_change_revokes_sessions_and_disable_is_explicit(self):
         policy = access.save(self.path, "correct-password")
         await self.login()

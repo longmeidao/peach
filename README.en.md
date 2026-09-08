@@ -42,6 +42,8 @@ Interface preferences are saved in the current browser and live under Settings: 
 
 The interface uses Board styling. Select “Use classic UI” in Settings and apply with a refresh to use the classic interface. “Increase contrast” disables navigation transparency and refraction. Numeric preferences accept custom values within their supported ranges, with switches for optional features.
 
+“Remember me” uses this browser’s Security preference (1–365 days, default 30). Leaving it unchecked creates a browser session lasting at most 12 hours.
+
 ## Quick start
 
 Peach is **pre-1.0**. The application interface is currently Chinese only.

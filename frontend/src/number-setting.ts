@@ -1,6 +1,7 @@
 /** 带单位、可选开关及字段错误反馈的数值设置。 */
 export interface NumberSettingSpec { min: number; max: number; unit: string; optional?: boolean; fallback: number }
 const specs: Record<string, NumberSettingSpec> = {
+  loginDaysSetting: { min: 1, max: 365, unit: '天', fallback: 30 },
   batchSizeSetting: { min: 1, max: 200, unit: '个', fallback: 60 },
   hoverDelaySetting: { min: 1, max: 60, unit: '秒', optional: true, fallback: 5 },
   seekSecondsSetting: { min: 1, max: 300, unit: '秒', fallback: 10 },

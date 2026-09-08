@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { apiGet, apiSend, errorMessage } from '../api';
-import { fieldsetTitle, loadingDotsHtml, noteHtml, progressHtml, projectBannerHtml, setActionBusy } from '@peach/legacy/ui';
+import { fieldsetTitle, loadingDotsHtml, noteHtml, projectBannerHtml, setActionBusy } from '@peach/legacy/ui';
+import { jobProgressHtml } from '../board-metrics';
 import { watchJob } from '../jobs';
 import type { JobState } from '../jobs';
 import type { IslandState } from '../islands';
@@ -71,7 +72,7 @@ export function LibraryProcessing({ data, error, toast, onComplete, mode, monito
       <div aria-live="polite">
         {state.status === 'running' && <>
           <div dangerouslySetInnerHTML={{ __html: loadingDotsHtml(`${state.stage || '正在处理'}${state.total ? ` · ${state.checked || 0} / ${state.total}` : ''}`) }} />
-          {!!state.total && <div dangerouslySetInnerHTML={{ __html: progressHtml(`已处理 ${state.checked || 0} / ${state.total} 个视频`, state.checked || 0, state.total) }} />}
+          {!!state.total && <div dangerouslySetInnerHTML={{ __html: jobProgressHtml(`已处理 ${state.checked || 0} / ${state.total} 个视频`, state.checked || 0, state.total) }} />}
         </>}
         {(problem || state.status === 'failed') && <div role="alert" onClick={event=>{if((event.target as HTMLElement).closest('[data-note-action]'))void start();}} dangerouslySetInnerHTML={{ __html: noteHtml(problem || state.error || '处理未完成，请重试', { variant: 'error',filled:true,actionLabel:state.status==='failed'?'重试未完成项':'' }) }} />}
         {state.status === 'failed' && !!state.issues?.length && <ul>{state.issues.slice(0, 20).map(issue =>

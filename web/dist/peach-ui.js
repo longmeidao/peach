@@ -259,6 +259,12 @@ function ke(e, t, n) {
 //#endregion
 //#region src/number-setting.ts
 var Ae = {
+	loginDaysSetting: {
+		min: 1,
+		max: 365,
+		unit: "天",
+		fallback: 30
+	},
 	batchSizeSetting: {
 		min: 1,
 		max: 200,
@@ -344,14 +350,63 @@ function Ne(e, t, n, r, i) {
 	return !0;
 }
 //#endregion
+//#region src/board-metrics.ts
+var R = (e) => String(e ?? "").replace(/[&<>"']/g, (e) => ({
+	"&": "&amp;",
+	"<": "&lt;",
+	">": "&gt;",
+	"\"": "&quot;",
+	"'": "&#39;"
+})[e]);
+function Pe(e, t, n, r = "chart-no-axes-combined") {
+	return `<span class="board-stat-label"><span class="board-stat-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#i-${/^[a-z0-9-]+$/.test(r) ? r : "database"}"/></svg></span>${R(e)}</span><b class="board-stat-value">${R(t)}</b><small class="board-stat-footer">${R(n || "当前记录")}</small>`;
+}
+function Fe(e, t, n) {
+	if (!Number.isFinite(n) || n <= 0) return "";
+	let r = Math.max(0, Math.min(n, Number.isFinite(t) ? t : 0)), i = r / n * 100;
+	return `<div class="board-job-progress" role="progressbar" aria-label="${R(e)}" aria-valuemin="0" aria-valuemax="${n}" aria-valuenow="${r}"><svg width="36" height="36" viewBox="0 0 36 36" aria-hidden="true"><circle class="board-job-track" cx="18" cy="18" r="15"/><circle class="board-job-fill" cx="18" cy="18" r="15" pathLength="100" stroke-dasharray="${i} ${100 - i}" transform="rotate(-90 18 18)"/></svg><span>${R(e)}<small>${Math.round(i)}%</small></span></div>`;
+}
+function Ie(e, t) {
+	let n = e.filter((e) => Number.isFinite(e.score) && e.score > 0), r = n.reduce((e, t) => e + t.score, 0);
+	if (!r) return "";
+	let i = 0, a = n.map((e, t) => {
+		let n = e.score / r * 100, a = `<circle cx="100" cy="100" r="72" pathLength="100" fill="none" stroke="var(--chart-${t % 4})" stroke-width="22" stroke-dasharray="${n} ${100 - n}" stroke-dashoffset="${-i}"><title>${R(e.name)}：${e.score.toLocaleString()}</title></circle>`;
+		return i += n, a;
+	}).join("");
+	return `<svg class="board-distribution" viewBox="0 0 200 200" role="img" aria-label="${R(t)}"><g transform="rotate(-90 100 100)">${a}</g><text x="100" y="100" text-anchor="middle" dominant-baseline="middle">${R(t)}</text></svg>`;
+}
+function Le(e, t) {
+	let n = e.filter((e) => Number.isFinite(e.score) && e.score > 0).slice().sort((e, t) => t.score - e.score).slice(0, 8);
+	if (!n.length) return "";
+	let r = n[0].score, i = n.map((e) => `<li><span class="board-rank-fill" style="width:${(e.score / r * 100).toFixed(2)}%"></span><span>${R(e.name)}</span><b>${e.score.toLocaleString()}</b></li>`).join("");
+	return `<ol class="board-ranked-chart" aria-label="${R(t)}">${i}</ol>`;
+}
+function Re(e, t) {
+	let n = e.filter((e) => Number.isFinite(e.score) && e.score > 0).slice().sort((e, t) => t.score - e.score).slice(0, 6);
+	if (n.length < 3) return "";
+	let r = Math.max(...n.map((e) => e.score)), i = n.length, a = (e, t) => {
+		let n = e / i * Math.PI * 2 - Math.PI / 2;
+		return [160 + Math.cos(n) * t, 140 + Math.sin(n) * t];
+	}, o = (e) => n.map((t, n) => a(n, e(n)).map((e) => e.toFixed(2)).join(",")).join(" "), s = [
+		25,
+		50,
+		75,
+		100
+	].map((e) => `<polygon points="${o(() => e)}" class="board-radar-grid"/>`).join(""), c = n.map((e, t) => {
+		let [n, r] = a(t, 116);
+		return `<text x="${n}" y="${r}" text-anchor="${n < 145 ? "end" : n > 175 ? "start" : "middle"}">${R(e.name)}</text>`;
+	}).join("");
+	return `<svg class="board-radar" viewBox="0 0 320 280" role="img" aria-label="${R(t)}"><title>${R(n.map((e) => `${e.name} ${e.score}`).join("，"))}</title>${s}<polygon points="${o((e) => n[e].score / r * 100)}" class="board-radar-value"/>${c}</svg>`;
+}
+//#endregion
 //#region src/api.ts
-var Pe = class extends Error {
+var ze = class extends Error {
 	status;
 	body;
 	constructor(e, t, n = null) {
 		super(o(e, t)), this.name = "ApiError", this.status = t, this.body = n;
 	}
-}, Fe = (e) => {
+}, Be = (e) => {
 	if (!e || typeof e != "object") return "";
 	let t = e;
 	for (let e of [
@@ -363,8 +418,8 @@ var Pe = class extends Error {
 		if (typeof n == "string" && n) return n;
 	}
 	return "";
-}, R = (e) => o(e);
-async function z(e, t) {
+}, z = (e) => o(e);
+async function B(e, t) {
 	let n = await fetch(e, {
 		headers: { Accept: "application/json" },
 		credentials: "same-origin",
@@ -373,10 +428,10 @@ async function z(e, t) {
 	try {
 		r = await n.json();
 	} catch {}
-	if (!n.ok) throw new Pe(Fe(r) || `请求失败（${n.status}）`, n.status);
+	if (!n.ok) throw new ze(Be(r) || `请求失败（${n.status}）`, n.status);
 	return r;
 }
-async function B(e, t, n = "POST", r) {
+async function V(e, t, n = "POST", r) {
 	let i = await fetch(e, {
 		method: n,
 		...r ? { signal: r } : {},
@@ -390,14 +445,14 @@ async function B(e, t, n = "POST", r) {
 	try {
 		a = await i.json();
 	} catch {}
-	if (!i.ok) throw new Pe(Fe(a) || `请求失败（${i.status}）`, i.status, a);
+	if (!i.ok) throw new ze(Be(a) || `请求失败（${i.status}）`, i.status, a);
 	return a;
 }
 //#endregion
 //#region node_modules/preact/hooks/dist/hooks.module.js
-var V, H, Ie, Le, Re = 0, ze = [], U = S, Be = U.__b, Ve = U.__r, He = U.diffed, Ue = U.__c, We = U.unmount, Ge = U.__;
-function Ke(e, t) {
-	U.__h && U.__h(H, e, Re || t), Re = 0;
+var Ve, H, He, Ue, We = 0, Ge = [], U = S, Ke = U.__b, qe = U.__r, Je = U.diffed, Ye = U.__c, Xe = U.unmount, Ze = U.__;
+function Qe(e, t) {
+	U.__h && U.__h(H, e, We || t), We = 0;
 	var n = H.__H || (H.__H = {
 		__: [],
 		__h: []
@@ -405,11 +460,11 @@ function Ke(e, t) {
 	return e >= n.__.length && n.__.push({}), n.__[e];
 }
 function W(e) {
-	return Re = 1, qe(tt, e);
+	return We = 1, $e(st, e);
 }
-function qe(e, t, n) {
-	var r = Ke(V++, 2);
-	if (r.t = e, !r.__c && (r.__ = [n ? n(t) : tt(void 0, t), function(e) {
+function $e(e, t, n) {
+	var r = Qe(Ve++, 2);
+	if (r.t = e, !r.__c && (r.__ = [n ? n(t) : st(void 0, t), function(e) {
 		var t = r.__N ? r.__N[0] : r.__[0], n = r.t(t, e);
 		t !== n && (r.__N = [n, r.__[1]], r.__c.setState({}));
 	}], r.__c = H, !H.__f)) {
@@ -441,97 +496,97 @@ function qe(e, t, n) {
 	return r.__N || r.__;
 }
 function G(e, t) {
-	var n = Ke(V++, 3);
-	!U.__s && et(n.__H, t) && (n.__ = e, n.u = t, H.__H.__h.push(n));
+	var n = Qe(Ve++, 3);
+	!U.__s && ot(n.__H, t) && (n.__ = e, n.u = t, H.__H.__h.push(n));
 }
 function K(e, t) {
-	var n = Ke(V++, 4);
-	!U.__s && et(n.__H, t) && (n.__ = e, n.u = t, H.__h.push(n));
+	var n = Qe(Ve++, 4);
+	!U.__s && ot(n.__H, t) && (n.__ = e, n.u = t, H.__h.push(n));
 }
 function q(e) {
-	return Re = 5, Je(function() {
+	return We = 5, et(function() {
 		return { current: e };
 	}, []);
 }
-function Je(e, t) {
-	var n = Ke(V++, 7);
-	return et(n.__H, t) && (n.__ = e(), n.__H = t, n.__h = e), n.__;
+function et(e, t) {
+	var n = Qe(Ve++, 7);
+	return ot(n.__H, t) && (n.__ = e(), n.__H = t, n.__h = e), n.__;
 }
-function Ye() {
-	for (var e; e = ze.shift();) {
+function tt() {
+	for (var e; e = Ge.shift();) {
 		var t = e.__H;
 		if (e.__P && t) try {
-			t.__h.some(Qe), t.__h.some($e), t.__h = [];
+			t.__h.some(it), t.__h.some(at), t.__h = [];
 		} catch (n) {
 			t.__h = [], U.__e(n, e.__v);
 		}
 	}
 }
 U.__b = function(e) {
-	H = null, Be && Be(e);
+	H = null, Ke && Ke(e);
 }, U.__ = function(e, t) {
-	e && t.__k && t.__k.__m && (e.__m = t.__k.__m), Ge && Ge(e, t);
+	e && t.__k && t.__k.__m && (e.__m = t.__k.__m), Ze && Ze(e, t);
 }, U.__r = function(e) {
-	Ve && Ve(e), V = 0;
+	qe && qe(e), Ve = 0;
 	var t = (H = e.__c).__H;
-	t && (Ie === H ? (t.__h = [], H.__h = [], t.__.some(function(e) {
+	t && (He === H ? (t.__h = [], H.__h = [], t.__.some(function(e) {
 		e.__N && (e.__ = e.__N), e.u = e.__N = void 0;
-	})) : (t.__h.some(Qe), t.__h.some($e), t.__h = [], V = 0)), Ie = H;
+	})) : (t.__h.some(it), t.__h.some(at), t.__h = [], Ve = 0)), He = H;
 }, U.diffed = function(e) {
-	He && He(e);
+	Je && Je(e);
 	var t = e.__c;
-	t && t.__H && (t.__H.__h.length && (ze.push(t) !== 1 && Le === U.requestAnimationFrame || ((Le = U.requestAnimationFrame) || Ze)(Ye)), t.__H.__.some(function(e) {
+	t && t.__H && (t.__H.__h.length && (Ge.push(t) !== 1 && Ue === U.requestAnimationFrame || ((Ue = U.requestAnimationFrame) || rt)(tt)), t.__H.__.some(function(e) {
 		e.u &&= (e.__H = e.u, void 0);
-	})), Ie = H = null;
+	})), He = H = null;
 }, U.__c = function(e, t) {
 	t.some(function(e) {
 		try {
-			e.__h.some(Qe), e.__h = e.__h.filter(function(e) {
-				return !e.__ || $e(e);
+			e.__h.some(it), e.__h = e.__h.filter(function(e) {
+				return !e.__ || at(e);
 			});
 		} catch (n) {
 			t.some(function(e) {
 				e.__h &&= [];
 			}), t = [], U.__e(n, e.__v);
 		}
-	}), Ue && Ue(e, t);
+	}), Ye && Ye(e, t);
 }, U.unmount = function(e) {
-	We && We(e);
+	Xe && Xe(e);
 	var t, n = e.__c;
 	n && n.__H && (n.__H.__.some(function(e) {
 		try {
-			Qe(e);
+			it(e);
 		} catch (e) {
 			t = e;
 		}
 	}), n.__H = void 0, t && U.__e(t, n.__v));
 };
-var Xe = typeof requestAnimationFrame == "function";
-function Ze(e) {
+var nt = typeof requestAnimationFrame == "function";
+function rt(e) {
 	var t, n = function() {
-		clearTimeout(r), Xe && cancelAnimationFrame(t), setTimeout(e);
+		clearTimeout(r), nt && cancelAnimationFrame(t), setTimeout(e);
 	}, r = setTimeout(n, 35);
-	Xe && (t = requestAnimationFrame(n));
+	nt && (t = requestAnimationFrame(n));
 }
-function Qe(e) {
+function it(e) {
 	var t = H, n = e.__c;
 	typeof n == "function" && (e.__c = void 0, n()), H = t;
 }
-function $e(e) {
+function at(e) {
 	var t = H;
 	e.__c = e.__(), H = t;
 }
-function et(e, t) {
+function ot(e, t) {
 	return !e || e.length !== t.length || t.some(function(t, n) {
 		return t !== e[n];
 	});
 }
-function tt(e, t) {
+function st(e, t) {
 	return typeof t == "function" ? t(e) : t;
 }
 //#endregion
 //#region node_modules/preact/jsx-runtime/dist/jsxRuntime.module.js
-var nt = 0;
+var ct = 0;
 Array.isArray;
 function J(e, t, n, r, i, a) {
 	t ||= {};
@@ -548,7 +603,7 @@ function J(e, t, n, r, i, a) {
 		__e: null,
 		__c: null,
 		constructor: void 0,
-		__v: --nt,
+		__v: --ct,
 		__i: -1,
 		__u: 0,
 		__source: i,
@@ -559,7 +614,7 @@ function J(e, t, n, r, i, a) {
 }
 //#endregion
 //#region src/islands/access-settings.tsx
-function rt({ id: e, label: t, value: n, onInput: r, error: i, help: a, current: o = !1, disabled: s = !1 }) {
+function lt({ id: e, label: t, value: n, onInput: r, error: i, help: a, current: o = !1, disabled: s = !1 }) {
 	return /* @__PURE__ */ J("div", {
 		class: "configfield",
 		children: [
@@ -589,7 +644,7 @@ function rt({ id: e, label: t, value: n, onInput: r, error: i, help: a, current:
 		]
 	});
 }
-function it({ initial: e, receipt: t }) {
+function ut({ initial: e, receipt: t }) {
 	let [n, r] = W(e), [i, a] = W(""), [o, s] = W(""), [c, l] = W(""), [u, f] = W(!1), [m, h] = W(""), [g, _] = W({}), y = q(null), b = q(!1), x = q(null);
 	return /* @__PURE__ */ J("form", {
 		class: "configfieldset",
@@ -604,7 +659,7 @@ function it({ initial: e, receipt: t }) {
 			}
 			b.current = !0, v(x.current, !0);
 			try {
-				let e = await B("/api/configuration/access", {
+				let e = await V("/api/configuration/access", {
 					revision: n.revision,
 					action: u ? "disable" : "set",
 					confirm_disable: u,
@@ -614,8 +669,8 @@ function it({ initial: e, receipt: t }) {
 				});
 				r(e), a(""), s(""), l(""), f(!1), _({}), t(e.mode === "open" ? "已关闭访问密码" : "已保存访问密码");
 			} catch (e) {
-				let t = e instanceof Pe ? e.body : null, n = t?.errors || t?.detail?.errors;
-				n ? _(n) : h(R(e));
+				let t = e instanceof ze ? e.body : null, n = t?.errors || t?.detail?.errors;
+				n ? _(n) : h(z(e));
 			} finally {
 				b.current = !1, v(x.current, !1);
 			}
@@ -650,7 +705,7 @@ function it({ initial: e, receipt: t }) {
 						})]
 					}), /* @__PURE__ */ J("span", { children: "关闭访问密码，允许能连接到 Peach 的设备直接访问" })]
 				}) : null,
-				n.mode === "password" ? /* @__PURE__ */ J(rt, {
+				n.mode === "password" ? /* @__PURE__ */ J(lt, {
 					id: "access-current",
 					label: "当前访问密码",
 					value: i,
@@ -658,7 +713,7 @@ function it({ initial: e, receipt: t }) {
 					error: g.current_password,
 					current: !0
 				}) : null,
-				n.mode === "locked" ? null : /* @__PURE__ */ J(I, { children: [/* @__PURE__ */ J(rt, {
+				n.mode === "locked" ? null : /* @__PURE__ */ J(I, { children: [/* @__PURE__ */ J(lt, {
 					id: "access-password",
 					label: n.mode === "password" ? "新访问密码" : "设置访问密码",
 					value: o,
@@ -666,7 +721,7 @@ function it({ initial: e, receipt: t }) {
 					disabled: u,
 					error: u ? void 0 : g.password,
 					help: u ? "关闭访问密码时无需填写。" : "至少 8 个字符。保存后其他设备需要重新登录。"
-				}), /* @__PURE__ */ J(rt, {
+				}), /* @__PURE__ */ J(lt, {
 					id: "access-confirm",
 					label: "确认访问密码",
 					value: c,
@@ -697,7 +752,7 @@ function it({ initial: e, receipt: t }) {
 }
 //#endregion
 //#region src/islands/release-updates.tsx
-var at = /* @__PURE__ */ new Set([
+var dt = /* @__PURE__ */ new Set([
 	"downloading",
 	"verifying",
 	"extracting",
@@ -705,18 +760,18 @@ var at = /* @__PURE__ */ new Set([
 	"restarting",
 	"installing"
 ]);
-function ot({ initial: e, initialJob: t }) {
+function ft({ initial: e, initialJob: t }) {
 	let [n, r] = W(e), [i, a] = W(t || {
 		state: "idle",
 		progress: 0
 	}), [o, s] = W(""), c = q(null), u = q(!0), f = q(!1), h = q(null);
 	G(() => {
-		v(h.current, at.has(i.state));
+		v(h.current, dt.has(i.state));
 	}, [i.state]), G(() => () => {
 		u.current = !1, c.current?.abort();
 	}, []);
 	let g = async () => {
-		let e = await B("/api/configuration/update-restart", {});
+		let e = await V("/api/configuration/update-restart", {});
 		u.current && a(e);
 	};
 	G(() => {
@@ -728,10 +783,10 @@ function ot({ initial: e, initialJob: t }) {
 			onConfirm: g
 		}));
 	}, [i.state]), G(() => {
-		if (!at.has(i.state)) return;
+		if (!dt.has(i.state)) return;
 		let e = new AbortController(), t, n = 0, o = async () => {
 			try {
-				let t = await z("/api/configuration/update-status", e.signal);
+				let t = await B("/api/configuration/update-status", e.signal);
 				e.signal.aborted || (a(t), n = 0, t.state === "complete" && r((e) => ({
 					...e,
 					current_version: t.version || e.current_version,
@@ -748,14 +803,14 @@ function ot({ initial: e, initialJob: t }) {
 		};
 	}, [i.state]);
 	let _ = async (e) => {
-		if (c.current || at.has(i.state)) return;
+		if (c.current || dt.has(i.state)) return;
 		let t = new AbortController();
 		c.current = t, f.current = !1, s(""), v(e, !0);
 		try {
-			let e = await B("/api/configuration/update", {}, "POST", t.signal);
+			let e = await V("/api/configuration/update", {}, "POST", t.signal);
 			t.signal.aborted || a(e);
 		} catch (e) {
-			t.signal.aborted || s(R(e));
+			t.signal.aborted || s(z(e));
 		} finally {
 			c.current = null, v(e, !1);
 		}
@@ -764,13 +819,13 @@ function ot({ initial: e, initialJob: t }) {
 		let n = new AbortController();
 		c.current = n, v(t, !0), s("");
 		try {
-			let e = await z("/api/configuration/updates", n.signal);
+			let e = await B("/api/configuration/updates", n.signal);
 			n.signal.aborted || r(e);
 		} catch (t) {
 			n.signal.aborted || (r({
 				...e,
 				state: "error"
-			}), s(R(t)));
+			}), s(z(t)));
 		} finally {
 			c.current = null, v(t, !1);
 		}
@@ -875,7 +930,7 @@ function ot({ initial: e, initialJob: t }) {
 				/* @__PURE__ */ J("button", {
 					type: "button",
 					class: "geist-button",
-					disabled: at.has(i.state),
+					disabled: dt.has(i.state),
 					onClick: (e) => y(e.currentTarget),
 					children: "检查更新"
 				})
@@ -885,7 +940,7 @@ function ot({ initial: e, initialJob: t }) {
 }
 //#endregion
 //#region src/islands/peach-proxy.tsx
-function st({ initial: e, receipt: t }) {
+function pt({ initial: e, receipt: t }) {
 	let [n, r] = W(e), [i, a] = W(e.mode), [o, s] = W(""), [c, l] = W(""), u = q(!1), f = q(null), p = q(null), m = q(new AbortController());
 	G(() => () => m.current.abort(), []), K(() => {
 		let t = f.current;
@@ -907,13 +962,13 @@ function st({ initial: e, receipt: t }) {
 		if (!u.current) {
 			u.current = !0, v(p.current, !0), l("");
 			try {
-				let e = await B("/api/configuration/peach-proxy", {
+				let e = await V("/api/configuration/peach-proxy", {
 					mode: i,
 					proxy: o
 				}, "POST", m.current.signal);
 				m.current.signal.aborted || (r(e), s(""), t("已保存 Peach 代理"));
 			} catch (e) {
-				m.current.signal.aborted || l(R(e));
+				m.current.signal.aborted || l(z(e));
 			} finally {
 				u.current = !1, v(p.current, !1);
 			}
@@ -976,7 +1031,7 @@ function st({ initial: e, receipt: t }) {
 }
 //#endregion
 //#region src/islands/desktop-settings.tsx
-function ct({ label: e, checked: t, disabled: n, change: r }) {
+function mt({ label: e, checked: t, disabled: n, change: r }) {
 	return /* @__PURE__ */ J("label", {
 		class: "configcheck",
 		children: [/* @__PURE__ */ J("span", {
@@ -996,7 +1051,7 @@ function ct({ label: e, checked: t, disabled: n, change: r }) {
 		}), /* @__PURE__ */ J("span", { children: e })]
 	});
 }
-function lt({ label: e, checked: t, disabled: n, change: r }) {
+function ht({ label: e, checked: t, disabled: n, change: r }) {
 	return /* @__PURE__ */ J("label", {
 		class: "configtoggle",
 		children: [/* @__PURE__ */ J("span", { children: e }), /* @__PURE__ */ J("input", {
@@ -1009,19 +1064,19 @@ function lt({ label: e, checked: t, disabled: n, change: r }) {
 		})]
 	});
 }
-function ut({ startup: e, receipt: t }) {
+function gt({ startup: e, receipt: t }) {
 	let [n, r] = W(e.enabled), [i, a] = W(e.silent), [o, s] = W(e.desktop), [c, l] = W(""), u = q(!1), f = q(null), p = e.available && !e.desktop_message;
 	async function m() {
 		if (!u.current) {
 			u.current = !0, v(f.current, !0), l("");
 			try {
-				await B("/api/configuration/startup", {
+				await V("/api/configuration/startup", {
 					enabled: n,
 					silent: i,
 					desktop: o
 				}), t("已保存开机自启");
 			} catch (e) {
-				l(R(e));
+				l(z(e));
 			} finally {
 				u.current = !1, v(f.current, !1);
 			}
@@ -1042,7 +1097,7 @@ function ut({ startup: e, receipt: t }) {
 					role: "group",
 					"aria-labelledby": "startupTitle",
 					children: [
-						/* @__PURE__ */ J(lt, {
+						/* @__PURE__ */ J(ht, {
 							label: "开机后启动 Peach",
 							checked: n,
 							disabled: !e.available,
@@ -1050,7 +1105,7 @@ function ut({ startup: e, receipt: t }) {
 						}),
 						/* @__PURE__ */ J("div", {
 							class: "configoption",
-							children: [/* @__PURE__ */ J(lt, {
+							children: [/* @__PURE__ */ J(ht, {
 								label: "静默启动",
 								checked: i,
 								disabled: !e.available || !n,
@@ -1062,7 +1117,7 @@ function ut({ startup: e, receipt: t }) {
 						}),
 						/* @__PURE__ */ J("div", {
 							class: "configoption",
-							children: [/* @__PURE__ */ J(lt, {
+							children: [/* @__PURE__ */ J(ht, {
 								label: "在桌面创建快捷方式",
 								checked: o,
 								disabled: !p,
@@ -1097,7 +1152,7 @@ function ut({ startup: e, receipt: t }) {
 		})]
 	});
 }
-function dt({ data: e }) {
+function _t({ data: e }) {
 	let t = q(null);
 	return K(() => {
 		let n = t.current, r = document.createElement("details");
@@ -1111,7 +1166,7 @@ function dt({ data: e }) {
 		return n.replaceChildren(r), y(n, "details", "uninstall-data"), () => n.replaceChildren();
 	}, [e]), /* @__PURE__ */ J("div", { ref: t });
 }
-function ft({ uninstall: e }) {
+function vt({ uninstall: e }) {
 	let [t, n] = W(!1), [r, i] = W("");
 	async function a() {
 		await l({
@@ -1120,7 +1175,7 @@ function ft({ uninstall: e }) {
 			body: t ? "将退出 Peach，移除程序、开机自启、桌面图标、设置、本地数据库、观看记录、凭据和缓存。原始媒体文件保留。" : "将退出 Peach 并移除程序、开机自启和桌面图标。设置、本地数据库、观看记录与缓存保留。",
 			confirmLabel: "卸载 Peach",
 			onConfirm: async () => {
-				let e = await B("/api/configuration/uninstall", {
+				let e = await V("/api/configuration/uninstall", {
 					delete_data: t,
 					confirmation: "卸载 Peach"
 				});
@@ -1143,13 +1198,13 @@ function ft({ uninstall: e }) {
 						children: "卸载会退出 Peach、移除程序、开机自启和桌面图标。原始媒体文件保留。"
 					})]
 				}),
-				/* @__PURE__ */ J(ct, {
+				/* @__PURE__ */ J(mt, {
 					label: "完全卸载：同时删除设置、本地数据库、观看记录、凭据和缓存",
 					checked: t,
 					disabled: !e.full_available || !!r,
 					change: n
 				}),
-				/* @__PURE__ */ J(dt, { data: e }),
+				/* @__PURE__ */ J(_t, { data: e }),
 				e.message && /* @__PURE__ */ J("p", {
 					class: "confighelp",
 					children: e.message
@@ -1175,7 +1230,7 @@ function ft({ uninstall: e }) {
 }
 //#endregion
 //#region src/islands/clouddrive-guide.tsx
-var pt = [
+var yt = [
 	{
 		name: "机械硬盘，或内存 8 GB 以内",
 		cache: "10–20 GiB",
@@ -1195,7 +1250,7 @@ var pt = [
 		task: "2 个起步"
 	}
 ];
-function mt() {
+function bt() {
 	let e = q(null);
 	return K(() => {
 		e.current && y(e.current, "details", "clouddrive-guide");
@@ -1247,7 +1302,7 @@ function mt() {
 							scope: "col",
 							children: "同时处理视频"
 						})
-					] }) }), /* @__PURE__ */ J("tbody", { children: pt.map((e) => /* @__PURE__ */ J("tr", { children: [
+					] }) }), /* @__PURE__ */ J("tbody", { children: yt.map((e) => /* @__PURE__ */ J("tr", { children: [
 						/* @__PURE__ */ J("th", {
 							scope: "row",
 							children: e.name
@@ -1291,18 +1346,18 @@ function mt() {
 }
 //#endregion
 //#region src/islands/configuration.tsx
-var ht = "/api/configuration", gt = "/api/pick-folder", _t = 8e3, vt = (e, t) => z(ht, t), yt = ({ html: e, class: t }) => /* @__PURE__ */ J("div", {
+var xt = "/api/configuration", St = "/api/pick-folder", Ct = 8e3, wt = (e, t) => B(xt, t), Tt = ({ html: e, class: t }) => /* @__PURE__ */ J("div", {
 	class: t,
 	dangerouslySetInnerHTML: { __html: e }
-}), bt = (e) => !(e instanceof Pe) || e.status !== 400 ? null : e.body?.errors ?? null;
-function xt({ facts: e }) {
+}), Et = (e) => !(e instanceof ze) || e.status !== 400 ? null : e.body?.errors ?? null;
+function Dt({ facts: e }) {
 	return /* @__PURE__ */ J("section", {
 		class: "configfieldset",
 		"data-geist-fieldset": !0,
 		"aria-labelledby": "configFactsTitle",
 		children: /* @__PURE__ */ J("div", {
 			class: "geist-fieldset-content",
-			children: [/* @__PURE__ */ J(yt, { html: d("configFactsTitle", "运行信息") }), /* @__PURE__ */ J("dl", {
+			children: [/* @__PURE__ */ J(Tt, { html: d("configFactsTitle", "运行信息") }), /* @__PURE__ */ J("dl", {
 				class: "configfacts",
 				children: e.map((e) => /* @__PURE__ */ J(I, { children: [/* @__PURE__ */ J("dt", { children: e.term }), /* @__PURE__ */ J("dd", { children: [e.value, e.download_url ? /* @__PURE__ */ J("span", {
 					class: "confighelp",
@@ -1323,7 +1378,7 @@ function xt({ facts: e }) {
 		})
 	});
 }
-function St({ data: e }) {
+function Ot({ data: e }) {
 	let [t, n] = W(e.media_sources), [r, i] = W(""), a = q(null);
 	G(() => () => a.current?.abort(), []);
 	let o = async (e) => {
@@ -1331,10 +1386,10 @@ function St({ data: e }) {
 		let t = new AbortController();
 		a.current = t, v(e, !0), i("");
 		try {
-			let e = await z(ht, t.signal);
+			let e = await B(xt, t.signal);
 			t.signal.aborted || n(e.media_sources);
 		} catch (e) {
-			t.signal.aborted || i(R(e));
+			t.signal.aborted || i(z(e));
 		} finally {
 			a.current = null, v(e, !1);
 		}
@@ -1345,7 +1400,7 @@ function St({ data: e }) {
 		children: [/* @__PURE__ */ J("div", {
 			class: "geist-fieldset-content",
 			children: [
-				/* @__PURE__ */ J(yt, { html: d("configMountsTitle", "挂载状态") }),
+				/* @__PURE__ */ J(Tt, { html: d("configMountsTitle", "挂载状态") }),
 				/* @__PURE__ */ J("dl", {
 					class: "configfacts",
 					children: t.map((e) => /* @__PURE__ */ J(I, { children: [/* @__PURE__ */ J("dt", { children: [/* @__PURE__ */ J("span", {
@@ -1382,7 +1437,7 @@ function St({ data: e }) {
 		})]
 	}) : null;
 }
-function Ct({ value: e, label: t, onChange: n }) {
+function kt({ value: e, label: t, onChange: n }) {
 	let r = q(null), i = q(null), a = q(n);
 	return a.current = n, K(() => {
 		let n = r.current;
@@ -1408,7 +1463,7 @@ function Ct({ value: e, label: t, onChange: n }) {
 		class: "configsourcecontrol"
 	});
 }
-function wt({ data: e, receipt: t }) {
+function At({ data: e, receipt: t }) {
 	let n = e.media_sources?.filter((e) => [
 		"local",
 		"115",
@@ -1418,7 +1473,7 @@ function wt({ data: e, receipt: t }) {
 		w !== null && (O.current[w]?.focus(), T(null));
 	}, [w]), G(() => {
 		if (!S) return;
-		let e = setTimeout(() => location.assign(S.url), _t);
+		let e = setTimeout(() => location.assign(S.url), Ct);
 		return () => clearTimeout(e);
 	}, [S]);
 	let A = (e, t) => {
@@ -1437,10 +1492,10 @@ function wt({ data: e, receipt: t }) {
 		if (t.getAttribute("aria-busy") !== "true") {
 			v(t, !0);
 			try {
-				let { path: t } = await B(gt, { initial: r[e] ?? "" });
+				let { path: t } = await V(St, { initial: r[e] ?? "" });
 				t && (A(e, t), M(e, ""));
 			} catch (t) {
-				M(e, R(t));
+				M(e, z(t));
 			} finally {
 				v(t, !1);
 			}
@@ -1473,7 +1528,7 @@ function wt({ data: e, receipt: t }) {
 			if (n.preventDefault(), !E.current) {
 				E.current = !0, v(k.current, !0), x("");
 				try {
-					let n = await B(ht, {
+					let n = await V(xt, {
 						revision: D.current,
 						media_dirs: r,
 						...e.media_sources ? { media_sources: r.map((e, t) => ({
@@ -1486,8 +1541,8 @@ function wt({ data: e, receipt: t }) {
 					});
 					D.current = n.revision, g([]), y(""), t("已保存配置"), C(n);
 				} catch (e) {
-					let t = bt(e);
-					t ? (g(t.media_dirs ?? []), y(t.port ?? "")) : (g([]), y(""), x(R(e)));
+					let t = Et(e);
+					t ? (g(t.media_dirs ?? []), y(t.port ?? "")) : (g([]), y(""), x(z(e)));
 				} finally {
 					E.current = !1, v(k.current, !1);
 				}
@@ -1497,7 +1552,7 @@ function wt({ data: e, receipt: t }) {
 		children: [/* @__PURE__ */ J("div", {
 			class: "geist-fieldset-content",
 			children: [
-				/* @__PURE__ */ J(yt, { html: d("configTitle", "这台电脑") }),
+				/* @__PURE__ */ J(Tt, { html: d("configTitle", "这台电脑") }),
 				/* @__PURE__ */ J("div", {
 					class: "configfield",
 					children: [
@@ -1554,7 +1609,7 @@ function wt({ data: e, receipt: t }) {
 										class: "configsource",
 										children: [/* @__PURE__ */ J("div", {
 											class: "configsourcelabel",
-											children: ["媒体来源", /* @__PURE__ */ J(Ct, {
+											children: ["媒体来源", /* @__PURE__ */ J(kt, {
 												label: `媒体来源 ${n + 1}`,
 												value: a[n] || "local",
 												onChange: (e) => {
@@ -1587,7 +1642,7 @@ function wt({ data: e, receipt: t }) {
 							onClick: j,
 							children: "添加文件夹"
 						}),
-						a.some((e) => e === "115" || e === "pikpak") ? /* @__PURE__ */ J(mt, {}) : null,
+						a.some((e) => e === "115" || e === "pikpak") ? /* @__PURE__ */ J(bt, {}) : null,
 						a.some((e) => e === "115" || e === "pikpak") ? e.mount_dependencies?.filter((e) => !e.available).map((e) => /* @__PURE__ */ J("p", {
 							class: "confighelp",
 							children: [
@@ -1662,7 +1717,7 @@ function wt({ data: e, receipt: t }) {
 						})]
 					}), /* @__PURE__ */ J("span", { children: "保存后扫描并补全资料" })]
 				}),
-				b ? /* @__PURE__ */ J(yt, { html: p(b, {
+				b ? /* @__PURE__ */ J(Tt, { html: p(b, {
 					variant: "error",
 					label: "没有保存"
 				}) }) : null
@@ -1679,8 +1734,8 @@ function wt({ data: e, receipt: t }) {
 		})]
 	});
 }
-function Tt({ receipt: e, data: t, error: n }) {
-	return n || !t ? /* @__PURE__ */ J(yt, {
+function jt({ receipt: e, data: t, error: n }) {
+	return n || !t ? /* @__PURE__ */ J(Tt, {
 		class: "configpage",
 		html: p(n || "没有读到配置", {
 			variant: "error",
@@ -1693,7 +1748,7 @@ function Tt({ receipt: e, data: t, error: n }) {
 				class: "configgroup",
 				children: "通用"
 			}) : null,
-			t.startup ? /* @__PURE__ */ J(ut, {
+			t.startup ? /* @__PURE__ */ J(gt, {
 				startup: t.startup,
 				receipt: e
 			}) : null,
@@ -1701,23 +1756,23 @@ function Tt({ receipt: e, data: t, error: n }) {
 				class: "configgroup",
 				children: "媒体"
 			}),
-			t.editable ? /* @__PURE__ */ J(wt, {
+			t.editable ? /* @__PURE__ */ J(At, {
 				data: t,
 				receipt: e
-			}) : /* @__PURE__ */ J(yt, { html: p(t.notice, {
+			}) : /* @__PURE__ */ J(Tt, { html: p(t.notice, {
 				variant: "secondary",
 				label: "只读"
 			}) }),
-			/* @__PURE__ */ J(St, { data: t }),
+			/* @__PURE__ */ J(Ot, { data: t }),
 			t.peach_proxy || t.access ? /* @__PURE__ */ J("h2", {
 				class: "configgroup",
 				children: "网络与访问"
 			}) : null,
-			t.peach_proxy ? /* @__PURE__ */ J(st, {
+			t.peach_proxy ? /* @__PURE__ */ J(pt, {
 				initial: t.peach_proxy,
 				receipt: e
 			}) : null,
-			t.access ? /* @__PURE__ */ J(it, {
+			t.access ? /* @__PURE__ */ J(ut, {
 				initial: t.access,
 				receipt: e
 			}) : null,
@@ -1725,34 +1780,34 @@ function Tt({ receipt: e, data: t, error: n }) {
 				class: "configgroup",
 				children: "更新与维护"
 			}),
-			t.updates ? /* @__PURE__ */ J(ot, {
+			t.updates ? /* @__PURE__ */ J(ft, {
 				initial: t.updates,
 				initialJob: t.update_job
 			}) : null,
-			/* @__PURE__ */ J(xt, { facts: t.facts }),
-			t.uninstall ? /* @__PURE__ */ J(ft, { uninstall: t.uninstall }) : null
+			/* @__PURE__ */ J(Dt, { facts: t.facts }),
+			t.uninstall ? /* @__PURE__ */ J(vt, { uninstall: t.uninstall }) : null
 		]
 	});
 }
 //#endregion
 //#region node_modules/@preact/signals-core/dist/signals-core.module.js
-var Et = Symbol.for("preact-signals");
-function Dt() {
+var Mt = Symbol.for("preact-signals");
+function Nt() {
 	if (X > 1) X--;
 	else {
 		var e, t = !1;
 		for ((function() {
-			var e = Ft;
-			for (Ft = void 0; e !== void 0;) {
+			var e = Vt;
+			for (Vt = void 0; e !== void 0;) {
 				var t = e.S;
 				if (t.v === e.v) for (var n = t.t; n !== void 0; n = n.x) n.i === e.i && (n.i = t.i);
 				e = e.o;
 			}
-		})(); jt !== void 0;) {
-			var n = jt;
-			for (jt = void 0, Mt++; n !== void 0;) {
+		})(); Lt !== void 0;) {
+			var n = Lt;
+			for (Lt = void 0, Rt++; n !== void 0;) {
 				var r = n.u;
-				if (n.u = void 0, n.f &= -3, !(8 & n.f) && zt(n)) try {
+				if (n.u = void 0, n.f &= -3, !(8 & n.f) && Gt(n)) try {
 					n.c();
 				} catch (n) {
 					t ||= (e = n, !0);
@@ -1760,30 +1815,30 @@ function Dt() {
 				n = r;
 			}
 		}
-		if (Mt = 0, X--, t) throw e;
+		if (Rt = 0, X--, t) throw e;
 	}
 }
-function Ot(e) {
+function Pt(e) {
 	if (X > 0) return e();
-	Pt = ++Nt, X++;
+	Bt = ++zt, X++;
 	try {
 		return e();
 	} finally {
-		Dt();
+		Nt();
 	}
 }
-var kt, Y = void 0;
-function At(e) {
-	var t = Y, n = kt;
-	Y = void 0, kt = void 0;
+var Ft, Y = void 0;
+function It(e) {
+	var t = Y, n = Ft;
+	Y = void 0, Ft = void 0;
 	try {
 		return e();
 	} finally {
-		Y = t, kt = n;
+		Y = t, Ft = n;
 	}
 }
-var jt = void 0, X = 0, Mt = 0, Nt = 0, Pt = 0, Ft = void 0, It = 0;
-function Lt(e) {
+var Lt = void 0, X = 0, Rt = 0, zt = 0, Bt = 0, Vt = void 0, Ht = 0;
+function Ut(e) {
 	if (Y !== void 0) {
 		var t = e.n;
 		if (t === void 0 || t.t !== Y) return t = {
@@ -1802,11 +1857,11 @@ function Lt(e) {
 function Z(e, t) {
 	this.v = e, this.i = 0, this.n = void 0, this.t = void 0, this.l = 0, this.W = t?.watched, this.Z = t?.unwatched, this.name = t?.name;
 }
-Z.prototype.brand = Et, Z.prototype.h = function() {
+Z.prototype.brand = Mt, Z.prototype.h = function() {
 	return !0;
 }, Z.prototype.S = function(e) {
 	var t = this, n = this.t;
-	n !== e && e.e === void 0 && (e.x = n, this.t = e, n === void 0 ? At(function() {
+	n !== e && e.e === void 0 && (e.x = n, this.t = e, n === void 0 ? It(function() {
 		var e;
 		(e = t.W) == null || e.call(t);
 	}) : n.e = e);
@@ -1814,16 +1869,16 @@ Z.prototype.brand = Et, Z.prototype.h = function() {
 	var t = this;
 	if (this.t !== void 0) {
 		var n = e.e, r = e.x;
-		n !== void 0 && (n.x = r, e.e = void 0), r !== void 0 && (r.e = n, e.x = void 0), e === this.t && (this.t = r, r === void 0 && At(function() {
+		n !== void 0 && (n.x = r, e.e = void 0), r !== void 0 && (r.e = n, e.x = void 0), e === this.t && (this.t = r, r === void 0 && It(function() {
 			var e;
 			(e = t.Z) == null || e.call(t);
 		}));
 	}
 }, Z.prototype.subscribe = function(e) {
 	var t = this;
-	return qt(function() {
+	return $t(function() {
 		var n = t.value;
-		At(function() {
+		It(function() {
 			return e(n);
 		});
 	}, { name: "sub" });
@@ -1835,41 +1890,41 @@ Z.prototype.brand = Et, Z.prototype.h = function() {
 	return this.value;
 }, Z.prototype.peek = function() {
 	var e = this;
-	return At(function() {
+	return It(function() {
 		return e.value;
 	});
 }, Object.defineProperty(Z.prototype, "value", {
 	get: function() {
-		var e = Lt(this);
+		var e = Ut(this);
 		return e !== void 0 && (e.i = this.i), this.v;
 	},
 	set: function(e) {
 		if (e !== this.v) {
-			if (Mt > 100) throw Error("Cycle detected");
+			if (Rt > 100) throw Error("Cycle detected");
 			(function(e) {
-				X !== 0 && Mt === 0 && e.l !== Pt && (e.l = Pt, Ft = {
+				X !== 0 && Rt === 0 && e.l !== Bt && (e.l = Bt, Vt = {
 					S: e,
 					v: e.v,
 					i: e.i,
-					o: Ft
+					o: Vt
 				});
-			})(this), this.v = e, this.i++, It++, X++;
+			})(this), this.v = e, this.i++, Ht++, X++;
 			try {
 				for (var t = this.t; t !== void 0; t = t.x) t.t.N();
 			} finally {
-				Dt();
+				Nt();
 			}
 		}
 	}
 });
-function Rt(e, t) {
+function Wt(e, t) {
 	return new Z(e, t);
 }
-function zt(e) {
+function Gt(e) {
 	for (var t = e.s; t !== void 0; t = t.n) if (t.S.i !== t.i || !t.S.h() || t.S.i !== t.i) return !0;
 	return !1;
 }
-function Bt(e) {
+function Kt(e) {
 	for (var t = e.s; t !== void 0; t = t.n) {
 		var n = t.S.n;
 		if (n !== void 0 && (t.r = n), t.S.n = t, t.i = -1, t.n === void 0) {
@@ -1878,7 +1933,7 @@ function Bt(e) {
 		}
 	}
 }
-function Vt(e) {
+function qt(e) {
 	for (var t = e.s, n = void 0; t !== void 0;) {
 		var r = t.p;
 		t.i === -1 ? (t.S.U(t), r !== void 0 && (r.n = t.n), t.n !== void 0 && (t.n.p = r)) : n = t, t.S.n = t.r, t.r !== void 0 && (t.r = void 0), t = r;
@@ -1886,21 +1941,21 @@ function Vt(e) {
 	e.s = n;
 }
 function Q(e, t) {
-	Z.call(this, void 0, t), this.x = e, this.s = void 0, this.g = It - 1, this.f = 4;
+	Z.call(this, void 0, t), this.x = e, this.s = void 0, this.g = Ht - 1, this.f = 4;
 }
 Q.prototype = new Z(), Q.prototype.h = function() {
 	if (this.f &= -3, 1 & this.f) return !1;
-	if ((36 & this.f) == 32 || (this.f &= -5, this.g === It)) return !0;
-	if (this.g = It, this.f |= 1, this.i > 0 && !zt(this)) return this.f &= -2, !0;
+	if ((36 & this.f) == 32 || (this.f &= -5, this.g === Ht)) return !0;
+	if (this.g = Ht, this.f |= 1, this.i > 0 && !Gt(this)) return this.f &= -2, !0;
 	var e = Y;
 	try {
-		Bt(this), Y = this;
+		Kt(this), Y = this;
 		var t = this.x();
 		(16 & this.f || this.v !== t || this.i === 0) && (this.v = t, this.f &= -17, this.i++);
 	} catch (e) {
 		this.v = e, this.f |= 16, this.i++;
 	}
-	return Y = e, Vt(this), this.f &= -2, !0;
+	return Y = e, qt(this), this.f &= -2, !0;
 }, Q.prototype.S = function(e) {
 	if (this.t === void 0) {
 		this.f |= 36;
@@ -1919,14 +1974,14 @@ Q.prototype = new Z(), Q.prototype.h = function() {
 	}
 }, Object.defineProperty(Q.prototype, "value", { get: function() {
 	if (1 & this.f) throw Error("Cycle detected");
-	var e = Lt(this);
+	var e = Ut(this);
 	if (this.h(), e !== void 0 && (e.i = this.i), 16 & this.f) throw this.v;
 	return this.v;
 } });
-function Ht(e, t) {
+function Jt(e, t) {
 	return new Q(e, t);
 }
-function Ut(e) {
+function Yt(e) {
 	var t = e.m;
 	if (e.m = void 0, typeof t == "function") {
 		X++;
@@ -1935,24 +1990,24 @@ function Ut(e) {
 		try {
 			t();
 		} catch (t) {
-			throw e.f &= -2, e.f |= 8, Wt(e), t;
+			throw e.f &= -2, e.f |= 8, Xt(e), t;
 		} finally {
-			Y = n, Dt();
+			Y = n, Nt();
 		}
 	}
 }
-function Wt(e) {
+function Xt(e) {
 	for (var t = e.s; t !== void 0; t = t.n) t.S.U(t);
-	e.x = void 0, e.s = void 0, Ut(e);
+	e.x = void 0, e.s = void 0, Yt(e);
 }
-function Gt(e) {
+function Zt(e) {
 	if (Y !== this) throw Error("Out-of-order effect");
-	Vt(this), Y = e, this.f &= -2, 8 & this.f && Wt(this), Dt();
+	qt(this), Y = e, this.f &= -2, 8 & this.f && Xt(this), Nt();
 }
-function Kt(e, t) {
-	this.x = e, this.m = void 0, this.s = void 0, this.u = void 0, this.f = 32, this.name = t?.name, kt && kt.push(this);
+function Qt(e, t) {
+	this.x = e, this.m = void 0, this.s = void 0, this.u = void 0, this.f = 32, this.name = t?.name, Ft && Ft.push(this);
 }
-Kt.prototype.c = function() {
+Qt.prototype.c = function() {
 	var e = this.S();
 	try {
 		if (8 & this.f || this.x === void 0) return;
@@ -1961,20 +2016,20 @@ Kt.prototype.c = function() {
 	} finally {
 		e();
 	}
-}, Kt.prototype.S = function() {
+}, Qt.prototype.S = function() {
 	if (1 & this.f) throw Error("Cycle detected");
-	this.f |= 1, this.f &= -9, Ut(this), Bt(this), X++;
+	this.f |= 1, this.f &= -9, Yt(this), Kt(this), X++;
 	var e = Y;
-	return Y = this, Gt.bind(this, e);
-}, Kt.prototype.N = function() {
-	2 & this.f || (this.f |= 2, this.u = jt, jt = this);
-}, Kt.prototype.d = function() {
-	this.f |= 8, 1 & this.f || Wt(this);
-}, Kt.prototype.dispose = function() {
+	return Y = this, Zt.bind(this, e);
+}, Qt.prototype.N = function() {
+	2 & this.f || (this.f |= 2, this.u = Lt, Lt = this);
+}, Qt.prototype.d = function() {
+	this.f |= 8, 1 & this.f || Xt(this);
+}, Qt.prototype.dispose = function() {
 	this.d();
 };
-function qt(e, t) {
-	var n = new Kt(e, t);
+function $t(e, t) {
+	var n = new Qt(e, t);
 	try {
 		n.c();
 	} catch (e) {
@@ -1985,35 +2040,35 @@ function qt(e, t) {
 }
 //#endregion
 //#region node_modules/@preact/signals/dist/signals.module.js
-var Jt, Yt, Xt = typeof window < "u" && !!window.__PREACT_SIGNALS_DEVTOOLS__, Zt = [];
-qt(function() {
-	Jt = this.N;
+var en, tn, nn = typeof window < "u" && !!window.__PREACT_SIGNALS_DEVTOOLS__, rn = [];
+$t(function() {
+	en = this.N;
 })();
-function Qt(e, t) {
+function an(e, t) {
 	S[e] = t.bind(null, S[e] || function() {});
 }
-function $t(e) {
-	if (Yt) {
-		var t = Yt;
-		Yt = void 0, t();
+function on(e) {
+	if (tn) {
+		var t = tn;
+		tn = void 0, t();
 	}
-	Yt = e && e.S();
+	tn = e && e.S();
 }
-function en(e) {
-	var t = this, n = e.data, r = nn(n);
+function sn(e) {
+	var t = this, n = e.data, r = ln(n);
 	r.name = "ReactiveDom", r.value = n;
-	var i = Je(function() {
+	var i = et(function() {
 		for (var e = t, n = t.__v; n = n.__;) if (n.__c) {
 			n.__c.__$f |= 4;
 			break;
 		}
-		var i = Ht(function() {
+		var i = Jt(function() {
 			var e = r.value.value;
 			return e === 0 ? 0 : !0 === e ? "" : e || "";
-		}), a = Ht(function() {
+		}), a = Jt(function() {
 			return !Array.isArray(i.value) && !w(i.value);
-		}), o = qt(function() {
-			if (this.N = on, a.value) {
+		}), o = $t(function() {
+			if (this.N = fn, a.value) {
 				var t = i.value;
 				e.__v && e.__v.__e && e.__v.__e.nodeType === 3 && (e.__v.__e.data = t);
 			}
@@ -2024,14 +2079,14 @@ function en(e) {
 	}, []), a = i[0], o = i[1];
 	return a.value ? o.peek() : o.value;
 }
-en.displayName = "ReactiveTextNode", Object.defineProperties(Z.prototype, {
+sn.displayName = "ReactiveTextNode", Object.defineProperties(Z.prototype, {
 	constructor: {
 		configurable: !0,
 		value: void 0
 	},
 	type: {
 		configurable: !0,
-		value: en
+		value: sn
 	},
 	props: {
 		configurable: !0,
@@ -2046,7 +2101,7 @@ en.displayName = "ReactiveTextNode", Object.defineProperties(Z.prototype, {
 		configurable: !0,
 		value: 1
 	}
-}), Qt("__b", function(e, t) {
+}), an("__b", function(e, t) {
 	if (typeof t.type == "string") {
 		var n, r = t.props;
 		for (var i in r) if (i !== "children") {
@@ -2055,26 +2110,26 @@ en.displayName = "ReactiveTextNode", Object.defineProperties(Z.prototype, {
 		}
 	}
 	e(t);
-}), Qt("__r", function(e, t) {
+}), an("__r", function(e, t) {
 	if (e(t), t.type !== I) {
-		$t();
+		on();
 		var n, r = t.__c;
 		r && (r.__$f &= -2, (n = r.__$u) === void 0 && (r.__$u = n = function(e, t) {
 			var n;
-			return qt(function() {
+			return $t(function() {
 				n = this;
 			}, { name: t }), n.c = e, n;
 		}(function(e) {
 			return function() {
 				var t;
-				Xt && ((t = this.y) == null || t.call(this)), e.__$f |= 1, e.setState({});
+				nn && ((t = this.y) == null || t.call(this)), e.__$f |= 1, e.setState({});
 			};
-		}(r), typeof t.type == "function" ? t.type.displayName || t.type.name : ""))), $t(n);
+		}(r), typeof t.type == "function" ? t.type.displayName || t.type.name : ""))), on(n);
 	}
-}), Qt("__e", function(e, t, n, r) {
-	$t(), e(t, n, r);
-}), Qt("diffed", function(e, t) {
-	$t();
+}), an("__e", function(e, t, n, r) {
+	on(), e(t, n, r);
+}), an("diffed", function(e, t) {
+	on();
 	var n;
 	if (typeof t.type == "string" && (n = t.__e)) {
 		var r = t.__np, i = t.props, a = n.U;
@@ -2084,25 +2139,25 @@ en.displayName = "ReactiveTextNode", Object.defineProperties(Z.prototype, {
 		}
 		if (r) for (var c in a || (a = {}, n.U = a), r) {
 			var l = a[c], u = r[c];
-			l === void 0 ? (l = tn(n, c, u, i), a[c] = l) : l.o(u, i);
+			l === void 0 ? (l = cn(n, c, u, i), a[c] = l) : l.o(u, i);
 		}
 	}
 	e(t);
 });
-function tn(e, t, n, r) {
-	var i = t in e && e.ownerSVGElement === void 0, a = Rt(n);
+function cn(e, t, n, r) {
+	var i = t in e && e.ownerSVGElement === void 0, a = Wt(n);
 	return {
 		o: function(e, t) {
 			a.value = e, r = t;
 		},
-		d: qt(function() {
-			this.N = on;
+		d: $t(function() {
+			this.N = fn;
 			var n = a.value.value;
 			r[t] !== n && (r[t] = n, i ? e[t] = n : n != null && (!1 !== n || t[4] === "-") ? e.setAttribute(t, n) : e.removeAttribute(t));
 		})
 	};
 }
-Qt("unmount", function(e, t) {
+an("unmount", function(e, t) {
 	if (typeof t.type == "string") {
 		var n = t.__e;
 		if (n) {
@@ -2126,7 +2181,7 @@ Qt("unmount", function(e, t) {
 		}
 	}
 	e(t);
-}), Qt("__h", function(e, t, n, r) {
+}), an("__h", function(e, t, n, r) {
 	r < 3 && (t.__$f |= 2), e(t, n, r);
 }), ce.prototype.shouldComponentUpdate = function(e, t) {
 	if (this.__R) return !0;
@@ -2140,54 +2195,54 @@ Qt("unmount", function(e, t) {
 	for (var s in this.props) if (!(s in e)) return !0;
 	return !1;
 };
-function nn(e, t) {
-	return Je(function() {
-		return Rt(e, t);
+function ln(e, t) {
+	return et(function() {
+		return Wt(e, t);
 	}, []);
 }
-var rn = function(e) {
+var un = function(e) {
 	queueMicrotask(function() {
 		queueMicrotask(e);
 	});
 };
-function an() {
-	Ot(function() {
-		for (var e; e = Zt.shift();) Jt.call(e);
+function dn() {
+	Pt(function() {
+		for (var e; e = rn.shift();) en.call(e);
 	});
 }
-function on() {
-	Zt.push(this) === 1 && (S.requestAnimationFrame || rn)(an);
+function fn() {
+	rn.push(this) === 1 && (S.requestAnimationFrame || un)(dn);
 }
 //#endregion
 //#region src/state/quality-goals.ts
-var sn = "/api/quality-goals?limit=200", cn = {
+var pn = "/api/quality-goals?limit=200", mn = {
 	data: null,
 	error: ""
-}, ln = Rt(cn), un = 0, dn = Ht(() => ln.value);
-Ht(() => ln.value.data?.total ?? null);
-function fn() {
-	un += 1, ln.value = cn;
+}, hn = Wt(mn), gn = 0, _n = Jt(() => hn.value);
+Jt(() => hn.value.data?.total ?? null);
+function vn() {
+	gn += 1, hn.value = mn;
 }
-async function pn(e) {
-	let t = un += 1;
+async function yn(e) {
+	let t = gn += 1;
 	try {
-		let n = await z(sn, e);
-		return t === un && (ln.value = {
+		let n = await B(pn, e);
+		return t === gn && (hn.value = {
 			data: n,
 			error: ""
 		}), n;
 	} catch (n) {
-		throw !e?.aborted && t === un && (ln.value = {
+		throw !e?.aborted && t === gn && (hn.value = {
 			data: null,
-			error: R(n)
+			error: z(n)
 		}), n;
 	}
 }
 //#endregion
 //#region src/islands/quality-goals.tsx
-var mn = (e, t) => pn(t), hn = (e) => e.has_cover ? `/cover?code=${encodeURIComponent(e.code ?? "")}` : `/poster?id=${e.id}&c=4`;
-function gn({ openItem: t, javTitleHtml: n, javDisplayName: a, srcBadge: o }) {
-	let { data: s, error: c } = dn.value;
+var bn = (e, t) => yn(t), xn = (e) => e.has_cover ? `/cover?code=${encodeURIComponent(e.code ?? "")}` : `/poster?id=${e.id}&c=4`;
+function Sn({ openItem: t, javTitleHtml: n, javDisplayName: a, srcBadge: o }) {
+	let { data: s, error: c } = _n.value;
 	if (c) return /* @__PURE__ */ J("div", {
 		class: "qualitylist",
 		dangerouslySetInnerHTML: { __html: p(c, {
@@ -2206,7 +2261,7 @@ function gn({ openItem: t, javTitleHtml: n, javDisplayName: a, srcBadge: o }) {
 				"aria-label": `打开 ${a(s)}`,
 				onClick: () => t(s.id),
 				children: /* @__PURE__ */ J("img", {
-					src: hn(s),
+					src: xn(s),
 					alt: "",
 					loading: "lazy",
 					onError: (e) => e.currentTarget.remove()
@@ -2240,7 +2295,7 @@ function gn({ openItem: t, javTitleHtml: n, javDisplayName: a, srcBadge: o }) {
 }
 //#endregion
 //#region src/jobs.ts
-async function _n(e) {
+async function Cn(e) {
 	let t = e.pause || ((e) => new Promise((t) => setTimeout(t, e))), n = 0;
 	for (; e.active();) {
 		let r;
@@ -2255,11 +2310,11 @@ async function _n(e) {
 		await t(2e3);
 	}
 }
-function vn(e) {
+function wn(e) {
 	let t = document.createElement("div");
 	e.host.hidden = !0, t.dataset.followJob = "", t.setAttribute("aria-live", "polite"), e.host.prepend(t);
 	let n = e.storageKey || "peach-follow-job", r = sessionStorage.getItem(n) || void 0, i = !1;
-	_n({
+	Cn({
 		read: e.read,
 		active: () => !i && e.active() && t.isConnected,
 		keepWatching: e.watchIdle !== !1,
@@ -2285,8 +2340,8 @@ function vn(e) {
 }
 //#endregion
 //#region src/islands/scraping.tsx
-var yn = (e, t) => z("/api/scraping", t);
-function bn({ value: e, onChange: t }) {
+var Tn = (e, t) => B("/api/scraping", t);
+function En({ value: e, onChange: t }) {
 	let n = q(null), r = q(t);
 	return r.current = t, K(() => {
 		let t = n.current;
@@ -2300,7 +2355,7 @@ function bn({ value: e, onChange: t }) {
 		class: "scraping-network"
 	});
 }
-function xn({ source: e, toast: t }) {
+function Dn({ source: e, toast: t }) {
 	let [r, i] = W(e), [a, o] = W(e.network), [s, c] = W(""), [l, u] = W(""), [f, m] = W("paste"), [h, g] = W(""), [_, y] = W(!1), [b, x] = W(""), [S, C] = W([]), w = q(null), T = q(null);
 	K(() => {
 		T.current?.querySelectorAll("footer button").forEach((e) => v(e, _));
@@ -2312,10 +2367,10 @@ function xn({ source: e, toast: t }) {
 			y(!0), x(""), C([]);
 			try {
 				if (n === "check") {
-					let t = await B("/api/scraping/check", { source: e.source }, "POST", E.current.signal);
+					let t = await V("/api/scraping/check", { source: e.source }, "POST", E.current.signal);
 					E.current.signal.aborted || C(t.results);
 				} else {
-					let r = await B("/api/scraping/settings", {
+					let r = await V("/api/scraping/settings", {
 						source: e.source,
 						network: a,
 						cookie: s,
@@ -2325,7 +2380,7 @@ function xn({ source: e, toast: t }) {
 					E.current.signal.aborted || (i(r.saved), c(""), u(""), g(""), w.current && (w.current.value = ""), t(n === "revoke" ? "Cookie 已撤销" : "来源设置已保存"));
 				}
 			} catch (e) {
-				E.current.signal.aborted || x(R(e));
+				E.current.signal.aborted || x(z(e));
 			} finally {
 				E.current.signal.aborted || y(!1);
 			}
@@ -2371,7 +2426,7 @@ function xn({ source: e, toast: t }) {
 					}),
 					/* @__PURE__ */ J("div", {
 						class: "scraping-label",
-						children: ["连接方式", /* @__PURE__ */ J(bn, {
+						children: ["连接方式", /* @__PURE__ */ J(En, {
 							value: a,
 							onChange: o
 						})]
@@ -2482,14 +2537,14 @@ function xn({ source: e, toast: t }) {
 		})
 	});
 }
-function Sn({ data: e, error: t, toast: n }) {
+function On({ data: e, error: t, toast: n }) {
 	let [r, i] = W(""), [a, o] = W(!1), [s, c] = W(""), l = q(null);
 	K(() => v(l.current, a), [a]);
 	let u = q(new AbortController()), f = q(0);
 	async function m(e = !1) {
 		let t = ++f.current;
-		await _n({
-			read: (e) => z("/api/scraping/cover", e),
+		await Cn({
+			read: (e) => B("/api/scraping/cover", e),
 			active: () => !u.current.signal.aborted && t === f.current,
 			render: (t) => {
 				o(t.status === "running"), t.status === "running" && (e = !1), t.status === "failed" && !e && c(t.error || "采集未取得"), t.status === "complete" && !e && n(t.result || "封面采集完成");
@@ -2502,9 +2557,9 @@ function Sn({ data: e, error: t, toast: n }) {
 		if (!a) {
 			f.current++, o(!0), c("");
 			try {
-				await B("/api/scraping/cover", { code: r }, "POST", u.current.signal), await m();
+				await V("/api/scraping/cover", { code: r }, "POST", u.current.signal), await m();
 			} catch (e) {
-				u.current.signal.aborted || (o(!1), c(R(e)));
+				u.current.signal.aborted || (o(!1), c(z(e)));
 			}
 		}
 	}
@@ -2549,7 +2604,7 @@ function Sn({ data: e, error: t, toast: n }) {
 					]
 				})
 			}),
-			e?.sources.map((e) => /* @__PURE__ */ J(xn, {
+			e?.sources.map((e) => /* @__PURE__ */ J(Dn, {
 				source: e,
 				toast: n
 			}, e.source))
@@ -2558,32 +2613,32 @@ function Sn({ data: e, error: t, toast: n }) {
 }
 //#endregion
 //#region src/islands/library-processing.tsx
-var Cn = (e, t) => z("/api/library-processing", t);
-function wn({ data: e, error: t, toast: n, onComplete: r, mode: i, monitor: a }) {
-	let [o, s] = W(e || { status: "idle" }), [c, l] = W(t), [u, g] = W(!1), [_, y] = W(!1), b = q(new AbortController()), x = q(0), S = q(o.status), C = q(null), w = u || o.status === "running";
-	K(() => v(C.current, w), [w]);
-	async function T() {
-		let e = ++x.current;
-		await _n({
-			read: (e) => z("/api/library-processing", e),
-			active: () => !b.current.signal.aborted && x.current === e,
+var kn = (e, t) => B("/api/library-processing", t);
+function An({ data: e, error: t, toast: n, onComplete: r, mode: i, monitor: a }) {
+	let [o, s] = W(e || { status: "idle" }), [c, l] = W(t), [u, m] = W(!1), [g, _] = W(!1), y = q(new AbortController()), b = q(0), x = q(o.status), S = q(null), C = u || o.status === "running";
+	K(() => v(S.current, C), [C]);
+	async function w() {
+		let e = ++b.current;
+		await Cn({
+			read: (e) => B("/api/library-processing", e),
+			active: () => !y.current.signal.aborted && b.current === e,
 			keepWatching: i === "notice" || !!a,
 			render: (e) => {
-				s(e), l(""), e.status === "complete" && S.current === "running" && i !== "notice" && (y(!0), n("已完成扫描与资料采集")), S.current === "running" && (e.status === "complete" || e.status === "failed") && r?.(), S.current = e.status;
+				s(e), l(""), e.status === "complete" && x.current === "running" && i !== "notice" && (_(!0), n("已完成扫描与资料采集")), x.current === "running" && (e.status === "complete" || e.status === "failed") && r?.(), x.current = e.status;
 			},
 			disconnected: () => l("连接中断，正在重新读取处理进度")
 		});
 	}
-	G(() => ((o.status === "running" || i === "notice" || a) && T(), () => b.current.abort()), []);
-	async function E() {
-		if (!w) {
-			g(!0), l(""), y(!1);
+	G(() => ((o.status === "running" || i === "notice" || a) && w(), () => y.current.abort()), []);
+	async function T() {
+		if (!C) {
+			m(!0), l(""), _(!1);
 			try {
-				let e = await B("/api/library-processing", {}, "POST", b.current.signal);
-				if (b.current.signal.aborted) return;
-				S.current = e.status, s(e), g(!1), await T();
+				let e = await V("/api/library-processing", {}, "POST", y.current.signal);
+				if (y.current.signal.aborted) return;
+				x.current = e.status, s(e), m(!1), await w();
 			} catch (e) {
-				b.current.signal.aborted || (l(R(e)), g(!1));
+				y.current.signal.aborted || (l(z(e)), m(!1));
 			}
 		}
 	}
@@ -2606,11 +2661,11 @@ function wn({ data: e, error: t, toast: n, onComplete: r, mode: i, monitor: a })
 			/* @__PURE__ */ J("div", {
 				"aria-live": "polite",
 				children: [
-					o.status === "running" && /* @__PURE__ */ J(I, { children: [/* @__PURE__ */ J("div", { dangerouslySetInnerHTML: { __html: f(`${o.stage || "正在处理"}${o.total ? ` · ${o.checked || 0} / ${o.total}` : ""}`) } }), !!o.total && /* @__PURE__ */ J("div", { dangerouslySetInnerHTML: { __html: m(`已处理 ${o.checked || 0} / ${o.total} 个视频`, o.checked || 0, o.total) } })] }),
+					o.status === "running" && /* @__PURE__ */ J(I, { children: [/* @__PURE__ */ J("div", { dangerouslySetInnerHTML: { __html: f(`${o.stage || "正在处理"}${o.total ? ` · ${o.checked || 0} / ${o.total}` : ""}`) } }), !!o.total && /* @__PURE__ */ J("div", { dangerouslySetInnerHTML: { __html: Fe(`已处理 ${o.checked || 0} / ${o.total} 个视频`, o.checked || 0, o.total) } })] }),
 					(c || o.status === "failed") && /* @__PURE__ */ J("div", {
 						role: "alert",
 						onClick: (e) => {
-							e.target.closest("[data-note-action]") && E();
+							e.target.closest("[data-note-action]") && T();
 						},
 						dangerouslySetInnerHTML: { __html: p(c || o.error || "处理未完成，请重试", {
 							variant: "error",
@@ -2626,7 +2681,7 @@ function wn({ data: e, error: t, toast: n, onComplete: r, mode: i, monitor: a })
 						e.asset_id ? "：" : "",
 						e.message
 					] })) }),
-					_ && /* @__PURE__ */ J("div", {
+					g && /* @__PURE__ */ J("div", {
 						class: "library-processing-result",
 						dangerouslySetInnerHTML: { __html: p(`已扫描 ${o.scanned || 0} 个文件，识别 ${o.identified || 0} 个番号，整理 ${o.candidates || 0} 组资料候选。`, {
 							variant: "success",
@@ -2651,10 +2706,10 @@ function wn({ data: e, error: t, toast: n, onComplete: r, mode: i, monitor: a })
 				children: "复核资料"
 			}),
 			o.status !== "failed" && /* @__PURE__ */ J("button", {
-				ref: C,
+				ref: S,
 				type: "button",
 				class: "geist-button primary",
-				onClick: () => void E(),
+				onClick: () => void T(),
 				children: "扫描并补全资料"
 			})
 		]
@@ -2662,12 +2717,12 @@ function wn({ data: e, error: t, toast: n, onComplete: r, mode: i, monitor: a })
 }
 //#endregion
 //#region src/state/index.ts
-var Tn = { "quality-goals": {
-	refresh: pn,
-	reset: fn
-} }, En = () => Object.keys(Tn);
-async function Dn(e) {
-	let t = Tn[e];
+var jn = { "quality-goals": {
+	refresh: yn,
+	reset: vn
+} }, Mn = () => Object.keys(jn);
+async function Nn(e) {
+	let t = jn[e];
 	if (!t) throw Error(`未登记的共享 store：${String(e)}`);
 	try {
 		return await t.refresh(), !0;
@@ -2677,24 +2732,24 @@ async function Dn(e) {
 }
 //#endregion
 //#region src/review-evidence.ts
-var On = (e = "") => /^https?:\/\//i.test(e) ? e : "";
-function kn(e = "") {
-	let n = On(e) || (e.startsWith("/") && !e.startsWith("//") ? e : "");
+var Pn = (e = "") => /^https?:\/\//i.test(e) ? e : "";
+function Fn(e = "") {
+	let n = Pn(e) || (e.startsWith("/") && !e.startsWith("//") ? e : "");
 	return `<div class="reviewimage" data-review-picture><span class="reviewimageempty"${n ? " hidden" : ""}>未取得来源图片</span>${n ? `<img src="${t(n)}" alt="来源候选图片" loading="lazy">` : ""}</div>`;
 }
-function An(e) {
-	let n = On(e.profile_url), r = (e.preview_assets || []).slice(0, 6), i = Math.max(0, Number(e.video_count || e.videos || 0));
+function In(e) {
+	let n = Pn(e.profile_url), r = (e.preview_assets || []).slice(0, 6), i = Math.max(0, Number(e.video_count || e.videos || 0));
 	return `<section class="reviewidentityevidence"><h5>候选身份：${t(e.babepedia_name || "未标注")}</h5>
     <div class="reviewevidenceactions">${n ? `<a class="geist-button externallink" href="${t(n)}" target="_blank" rel="noopener noreferrer">来源资料<svg class="externalmark" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-external-link" /></svg></a>` : ""}
     <button type="button" class="geist-button" data-entity-kind="creator" data-entity-name="${t(e.creator || "")}">查看全部 ${i.toLocaleString()} 部作品</button></div>
-    ${kn(e.preview_url)}
+    ${Fn(e.preview_url)}
     <p>通过后记录身份判断。</p>
     ${r.length ? `<h5>本地作品样本</h5><div class="reviewevidencesamples">${r.map((e) => `<div class="reviewevidencesample">
       <button class="geist-button" type="button" data-review-open-item="${e.id}"><span data-middle-truncate title="${t(e.name)}">${t(e.name)}</span></button>
       <button class="geist-button" type="button" data-review-reveal="${e.id}" aria-label="打开 ${t(e.name)} 的文件位置">文件位置</button>
     </div>`).join("")}</div>` : "<p>暂无本地作品样本，打开全部作品核对。</p>"}</section>`;
 }
-function jn(e) {
+function Ln(e) {
 	for (let t of e.querySelectorAll("[data-review-picture] img")) {
 		let e = () => {
 			t.hidden = !0;
@@ -2706,7 +2761,7 @@ function jn(e) {
 }
 //#endregion
 //#region src/review-bulk.ts
-var Mn = () => ({
+var Rn = () => ({
 	busy: !1,
 	category: "",
 	filter: "",
@@ -2717,7 +2772,7 @@ var Mn = () => ({
 	assets: /* @__PURE__ */ new Map(),
 	errors: /* @__PURE__ */ new Map()
 });
-function Nn(e) {
+function zn(e) {
 	let t = e?.querySelector(".reviewcontrols");
 	if (!e || !t || t.offsetParent === null) return;
 	let n = e.closest("main");
@@ -2727,7 +2782,7 @@ function Nn(e) {
 		n.classList.toggle("is-stuck", n.offsetParent !== null && window.scrollY > 0 && Number.isFinite(e) && Math.abs(n.getBoundingClientRect().top - e) <= 1);
 	}
 }
-function Pn(e, t) {
+function Bn(e, t) {
 	let n = [[
 		"candidates",
 		t ? "按候选数量" : "全部待复核",
@@ -2743,7 +2798,7 @@ function Pn(e, t) {
 		"list-filter"
 	]), n;
 }
-function Fn(e, t) {
+function Vn(e, t) {
 	let n = /* @__PURE__ */ new Map();
 	for (let r of e) {
 		let e, i;
@@ -2760,11 +2815,11 @@ function Fn(e, t) {
 	}
 	return [...n.values()];
 }
-function In(e, t, n, r, i) {
+function Hn(e, t, n, r, i) {
 	let a = e.anchor === null ? -1 : t.indexOf(e.anchor), o = t.indexOf(n);
 	r && a >= 0 && o >= 0 ? t.slice(Math.min(a, o), Math.max(a, o) + 1).forEach((t) => e.selected.add(t)) : i ? e.selected.add(n) : e.selected.delete(n), e.anchor = n;
 }
-async function Ln(e, t, n, r) {
+async function Un(e, t, n, r) {
 	let i = [], a = 0;
 	for (let o of e) {
 		if (!r()) break;
@@ -2775,7 +2830,7 @@ async function Ln(e, t, n, r) {
 		} catch (e) {
 			i.push({
 				key: o.key,
-				message: R(e)
+				message: z(e)
 			});
 		}
 	}
@@ -2784,17 +2839,17 @@ async function Ln(e, t, n, r) {
 		failures: i
 	};
 }
-function Rn(e) {
+function Wn(e) {
 	return e.length ? [...new Set(e.flatMap((e) => e.candidates?.map((e) => e.source || "") || []))].filter((t) => t && e.every((e) => e.candidates?.filter((e) => e.source === t).length === 1)) : [];
 }
-function zn(e, t) {
+function Gn(e, t) {
 	let n = e.querySelector(".reviewlist");
 	if (!n || !t.rows.length || t.locked) return;
 	let r = t.state, i = [...n.querySelectorAll("[data-review-key]")];
 	t.category !== void 0 && r.category !== t.category && (r.category = t.category, r.filter = "", r.groupBy = "candidates", r.anchor = null);
-	let a = Pn(t.rows, t.metadata);
+	let a = Bn(t.rows, t.metadata);
 	a.some((e) => e[0] === r.groupBy) || (r.groupBy = "candidates", r.filter = "");
-	let o = Fn(t.rows, r.groupBy);
+	let o = Vn(t.rows, r.groupBy);
 	o.some((e) => e.key === r.filter) || (r.filter = "");
 	let s = () => [...n.querySelectorAll("[data-review-key]")].filter((e) => !e.closest("[hidden]")), l = () => s().filter((e) => r.selected.has(e.dataset.reviewKey)), u = () => t.rows.filter((e) => l().some((t) => t.dataset.reviewKey === e.item_key)), d = (e) => !e.querySelector("[data-review-status=\"approved\"]")?.disabled, f = (e, t = "") => {
 		let n = document.createElement("button");
@@ -2886,7 +2941,7 @@ function zn(e, t) {
 				e.className = "reviewpickname", e.append(...n.childNodes), n.classList.add("reviewpickheading"), n.append(i, e);
 			} else e.prepend(i);
 			let o = (e, n) => {
-				In(r, s().map((e) => e.dataset.reviewKey), t, e, n), P();
+				Hn(r, s().map((e) => e.dataset.reviewKey), t, e, n), P();
 			};
 			if (i.addEventListener("mousedown", (e) => {
 				e.shiftKey && e.preventDefault();
@@ -2900,7 +2955,7 @@ function zn(e, t) {
 					else if (n.key === "ArrowDown" || n.key === "ArrowUp") {
 						n.preventDefault();
 						let i = s(), a = i[i.indexOf(e) + (n.key === "ArrowDown" ? 1 : -1)];
-						a && (r.anchor === null && (r.anchor = t), In(r, i.map((e) => e.dataset.reviewKey), a.dataset.reviewKey, !0, !0), P(), a.querySelector(".reviewpickitem input")?.focus());
+						a && (r.anchor === null && (r.anchor = t), Hn(r, i.map((e) => e.dataset.reviewKey), a.dataset.reviewKey, !0, !0), P(), a.querySelector(".reviewpickitem input")?.focus());
 					}
 				}
 			}), M.push(() => {
@@ -2929,14 +2984,14 @@ function zn(e, t) {
 	function P() {
 		let e = l();
 		S.textContent = e.length === s().length ? "清空当前选择" : r.filter ? "全选当前分类" : "全选本页", k.hidden = !e.length, T.textContent = `已选 ${e.length} 项`, C.disabled = !e.length || e.some((e) => !d(e)), w.disabled = !e.length;
-		let n = Rn(u());
+		let n = Wn(u());
 		E.hidden = !t.metadata || !u().some((e) => (e.candidates?.length || 0) > 1);
 		let i = e.length && !n.length ? "所选项目无共同来源" : "统一选择来源", a = JSON.stringify([i, n]);
 		if (a !== N) {
 			N = a, E.innerHTML = g([["", i], ...n.map((e) => [e, e])], "", { label: "统一选择来源" });
 			let e = b(E.firstElementChild);
 			e.disabled = !n.length, e.addEventListener("change", () => {
-				if (!(r.busy || !Rn(u()).includes(e.value))) {
+				if (!(r.busy || !Wn(u()).includes(e.value))) {
 					for (let n of l()) {
 						let i = t.rows.find((e) => e.item_key === n.dataset.reviewKey).candidates.find((t) => t.source === e.value);
 						n.querySelectorAll("input[type=\"radio\"]").forEach((e) => {
@@ -2969,7 +3024,7 @@ function zn(e, t) {
 			e instanceof KeyboardEvent && e.key === "Tab" || (e.preventDefault(), e.stopImmediatePropagation());
 		};
 		e.addEventListener("click", c, !0), e.addEventListener("keydown", c, !0);
-		let u = 0, d = await Ln(a, async (e) => {
+		let u = 0, d = await Un(a, async (e) => {
 			try {
 				return await t.submit(e);
 			} finally {
@@ -2986,14 +3041,14 @@ function zn(e, t) {
 		let f = e.parentElement;
 		t.refresh(), f?.querySelector(".reviewbulktoolbar button")?.focus({ preventScroll: !0 });
 	}
-	P(), Nn(e);
+	P(), zn(e);
 }
 //#endregion
 //#region src/native-image.ts
-function Bn(e, t, n, r) {
+function Kn(e, t, n, r) {
 	return e > 0 && t > 0 && e === n && t === r;
 }
-function Vn(e, t, n, r, i = 1) {
+function qn(e, t, n, r, i = 1) {
 	let a = Number.isFinite(i) && i > 0 ? i : 1;
 	e /= a, t /= a;
 	let o = [
@@ -3010,7 +3065,7 @@ function Vn(e, t, n, r, i = 1) {
 }
 //#endregion
 //#region src/entity-skeleton.ts
-function Hn(e, t) {
+function Jn(e, t) {
 	return `<section data-skeleton="entity/${e}" role="status" aria-label="正在读取资料">
     <span class="sr-only">正在读取资料</span><div aria-hidden="true">
     <div class="entityhero"><div class="entityportrait ${e === "studio" || e === "agency" ? "square " : ""}skeleton"></div>
@@ -3022,7 +3077,7 @@ function Hn(e, t) {
 }
 //#endregion
 //#region src/catalog-onboarding.ts
-var Un = [
+var Yn = [
 	"loc",
 	"creator",
 	"performer",
@@ -3039,16 +3094,16 @@ var Un = [
 	"jav",
 	"thumb"
 ];
-function Wn() {
+function Xn() {
 	let e = (e) => Array(64).fill(e).join("");
 	return {
 		tiers: "<div class=\"tier catalog-placeholder\" aria-hidden=\"true\">" + e("<span class=\"av\"><span class=\"ring\"></span><span class=\"nm\">&nbsp;</span></span>") + "</div><div class=\"tier catalog-placeholder\" aria-hidden=\"true\">" + e("<span class=\"brandpill\"><span class=\"mk\"></span><span class=\"placeholder-name\">&nbsp;</span></span>") + "</div>",
 		tags: "<span class=\"catalog-placeholder placeholder-tags\" aria-hidden=\"true\">" + e("<span class=\"pill\">&nbsp;</span>") + "</span>"
 	};
 }
-async function Gn(e, t) {
+async function Zn(e, t) {
 	let n = new URLSearchParams();
-	for (let t of Un) e[t] && n.set(t, e[t]);
+	for (let t of Yn) e[t] && n.set(t, e[t]);
 	let [r, i] = await Promise.all([t("/api/facets?" + n), t("/api/items?" + n + "&limit=5")]), a = [...new Set([
 		...r.creators || [],
 		...r.tagperformers || [],
@@ -3059,7 +3114,7 @@ async function Gn(e, t) {
 		return r.set("q", e), r.set("limit", "1"), (await t("/api/items?" + r)).total > 0 ? e : "";
 	}))).filter(Boolean);
 }
-function Kn({ kind: e = "catalog", filtered: t = !1, jav: n = !1, configurable: r = !1, online: i = !1 } = {}) {
+function Qn({ kind: e = "catalog", filtered: t = !1, jav: n = !1, configurable: r = !1, online: i = !1 } = {}) {
 	let a = r ? "<a class=\"geist-button primary\" href=\"/configuration\">添加内容</a>" : "", o = "<a class=\"geist-button\" href=\"/follow-manage\">添加来源</a>";
 	return t || n ? u("search", n ? "还没有符合条件的 JAV 作品" : "没有符合条件的内容", n ? "已扫描但尚未补充发行资料的视频可在全部内容中查看。" : "清除筛选或搜索条件后查看全部内容。", { actions: "<a class=\"geist-button primary\" href=\"/?loc=&thumb=0\">查看全部内容</a>" }) : e === "catalog" ? u("play", "还没有视频", "添加媒体文件夹或关注来源，开始建立你的馆藏。", { actions: a + o }) : u(e === "tags" ? "tags" : "user-round", "还没有" + ({
 		tags: "标签",
@@ -3072,7 +3127,7 @@ function Kn({ kind: e = "catalog", filtered: t = !1, jav: n = !1, configurable: 
 }
 //#endregion
 //#region src/sidebar.ts
-function qn(e) {
+function $n(e) {
 	return [
 		"/",
 		"/unseen",
@@ -3082,23 +3137,23 @@ function qn(e) {
 		"/junk-files"
 	].includes(e) || /^\/(item|mix|parts|editions)\//.test(e) || /^\/playlists\/\d+\/\d+$/.test(e) || /^\/(performers|studios|creators|series|agencies)\/.+/.test(e);
 }
-function Jn(e, t) {
+function er(e, t) {
 	return e.dataset.surface === t && e.querySelector(".dnav") ? !1 : (e.dataset.surface = t, e.replaceChildren(), !0);
 }
-function Yn(e) {
+function tr(e) {
 	let t = /* @__PURE__ */ new Map();
 	for (let n of e) for (let e of new Set(n.tags || [])) t.set(e, (t.get(e) || 0) + 1);
 	return [...t].sort((e, t) => t[1] - e[1]).slice(0, 30);
 }
 //#endregion
 //#region src/management.ts
-function Xn(e) {
+function nr(e) {
 	return e.filter((e) => ["115", "pikpak"].includes(e.location) && (e.roots === void 0 || e.roots.length > 0)).map((e) => e.location);
 }
-function Zn(e, t) {
+function rr(e, t) {
 	return t.filter((t) => e.some((e) => e.location === t));
 }
-function Qn() {
+function ir() {
 	return `<div class="cleanuppage" data-skeleton="cleanup" aria-busy="true" aria-label="正在读取数据管理状态">
     <div class="cleanupgrid">${[
 		[
@@ -3144,7 +3199,7 @@ function Qn() {
         <footer class="geist-fieldset-footer" data-geist-fieldset-footer><button type="button"${r === 3 ? " class=\"danger\"" : ""} disabled>${r === 3 ? "<svg aria-hidden=\"true\"><use href=\"#i-trash\"></use></svg><span>" + t + "</span>" : t}</button></footer>
       </section>`).join("")}</div></div>`;
 }
-function $n(e, t = !1, n = !1) {
+function ar(e, t = !1, n = !1) {
 	if (t || n) return "";
 	let r = "<svg class=\"externalmark\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><use href=\"#i-external-link\"></use></svg>";
 	return `<details class="taste-history-guide"${e ? " open" : ""}>
@@ -3158,28 +3213,28 @@ function $n(e, t = !1, n = !1) {
       <button type="button" class="geist-button taste-guide-skip">跳过</button>
     </div></details>`;
 }
-var er = "peach-taste-guide-dismissed";
-function tr(e, t) {
+var or = "peach-taste-guide-dismissed";
+function sr(e, t) {
 	y(e, ".taste-history-guide", "taste-guide-collapse");
 	let n = e.querySelector(".taste-history-guide");
 	n?.querySelector(".taste-guide-skip")?.addEventListener("click", () => {
-		t.setItem(er, "1"), n.remove();
+		t.setItem(or, "1"), n.remove();
 	});
 }
 //#endregion
 //#region src/resource-sync.ts
-var $ = (e = 0) => Number(e).toLocaleString(), nr = {
+var $ = (e = 0) => Number(e).toLocaleString(), cr = {
 	local: "本地磁盘",
 	115: "115",
 	pikpak: "PikPak"
 };
-function rr(e, t) {
+function lr(e, t) {
 	let n = e.cache || {
 		files: 0,
 		bytes: 0
 	}, r = !!(e.missing || n.files);
 	return `<div class="resourcepanel" data-geist-fieldset><div class="resourcesources">${(e.sources || []).map((e) => `<article>
-    <div class="resourcesourcetitle"><b>${nr[e.location] || "媒体来源"}</b><span class="${e.online ? "online" : "offline"}">${e.online ? "可访问" : "离线，已跳过"}</span></div>
+    <div class="resourcesourcetitle"><b>${cr[e.location] || "媒体来源"}</b><span class="${e.online ? "online" : "offline"}">${e.online ? "可访问" : "离线，已跳过"}</span></div>
     <strong>${e.online ? `${$(e.missing)} 项` : "—"}</strong>
     <small>${e.online ? `找不到文件 · 已检查 ${$(e.checked)} 项` : `馆藏中有 ${$(e.total)} 项`}</small>
     ${e.unreadable ? `<small>${$(e.unreadable)} 项读取失败，已跳过</small>` : ""}</article>`).join("")}</div>
@@ -3190,60 +3245,60 @@ function rr(e, t) {
 }
 //#endregion
 //#region src/jav-artwork.ts
-function ir(e) {
+function ur(e) {
 	return [
 		"small",
 		"sleeve",
 		"preview"
 	].includes(String(e)) ? "small" : "big";
 }
-function ar(e) {
+function dr(e) {
 	return {
-		javLayout: ir(e.javLayout),
-		javImage: or(e.javLayout === "preview" ? "thumbnail" : e.javImage)
+		javLayout: ur(e.javLayout),
+		javImage: fr(e.javLayout === "preview" ? "thumbnail" : e.javImage)
 	};
 }
-function or(e) {
+function fr(e) {
 	return e === "thumbnail" ? "thumbnail" : "cover";
 }
-function sr(e, t) {
-	return e.is_jav && e.code && e.has_cover && (or(t) === "cover" || !e.has_thumb) ? "cover" : e.has_thumb ? "thumbnail" : "";
+function pr(e, t) {
+	return e.is_jav && e.code && e.has_cover && (fr(t) === "cover" || !e.has_thumb) ? "cover" : e.has_thumb ? "thumbnail" : "";
 }
-function cr(e, t) {
+function mr(e, t) {
 	e.querySelectorAll("img[data-jav-image]").forEach((e) => {
-		let n = e.dataset.javCover || "", r = e.dataset.javThumb || "", i = !!(n && (or(t) === "cover" || !r)), a = i ? n : r;
+		let n = e.dataset.javCover || "", r = e.dataset.javThumb || "", i = !!(n && (fr(t) === "cover" || !r)), a = i ? n : r;
 		e.classList.toggle("cover", i), e.classList.toggle("whole", i && e.dataset.javImageLayout !== "big"), e.classList.toggle("front", i && e.dataset.javImageLayout === "big"), e.removeAttribute("style"), a && e.getAttribute("src") !== a && (e.src = a);
 	});
 }
 //#endregion
 //#region src/islands.ts
-var lr = {
+var hr = {
 	"library-processing": {
-		load: Cn,
-		component: wn
+		load: kn,
+		component: An
 	},
 	scraping: {
-		load: yn,
-		component: Sn
+		load: Tn,
+		component: On
 	},
 	"quality-goals": {
-		load: mn,
-		component: gn
+		load: bn,
+		component: Sn
 	},
 	configuration: {
-		load: vt,
-		component: Tt
+		load: wt,
+		component: jt
 	}
-}, ur = () => Object.keys(lr), dr = /* @__PURE__ */ new Map();
-async function fr(e, t, n, r = {}) {
-	let i = lr[e];
+}, gr = () => Object.keys(hr), _r = /* @__PURE__ */ new Map();
+async function vr(e, t, n, r = {}) {
+	let i = hr[e];
 	if (!i) throw Error(`未注册的 island：${String(e)}`);
-	pr(t);
+	yr(t);
 	let a = {
 		controller: new AbortController(),
 		painted: !1
 	};
-	dr.set(t, a);
+	_r.set(t, a);
 	let o;
 	try {
 		o = {
@@ -3254,12 +3309,12 @@ async function fr(e, t, n, r = {}) {
 		if (a.controller.signal.aborted) return;
 		o = {
 			data: null,
-			error: R(e)
+			error: z(e)
 		};
 	}
-	if (dr.get(t) !== a) return;
+	if (_r.get(t) !== a) return;
 	if (r.isCurrent && !r.isCurrent()) {
-		dr.delete(t);
+		_r.delete(t);
 		return;
 	}
 	t.textContent = "", a.painted = !0;
@@ -3269,9 +3324,9 @@ async function fr(e, t, n, r = {}) {
 	};
 	Oe(oe(i.component, s), t);
 }
-function pr(e) {
-	let t = dr.get(e);
-	t && (t.controller.abort(), dr.delete(e), t.painted && Oe(null, e));
+function yr(e) {
+	let t = _r.get(e);
+	t && (t.controller.abort(), _r.delete(e), t.painted && Oe(null, e));
 }
 //#endregion
-export { er as TASTE_GUIDE_KEY, je as boundedPreference, Kn as catalogEmptyHtml, Gn as catalogSuggestions, Qn as cleanupSkeletonHtml, Xn as cloudLocations, Zn as cloudPreferenceLocations, Mn as createReviewSelection, Wn as emptyCatalogLayout, Hn as entitySkeletonHtml, vn as followJobProgress, An as identityEvidenceHtml, ur as islandNames, sr as javImageKind, Bn as matchesFaceSource, fr as mountIsland, Ne as mountNumberSetting, Vn as nativeImageFit, or as normalizeJavImage, ir as normalizeJavLayout, ar as normalizeJavPreferences, ke as preferredDirection, Dn as refreshStore, rr as resourceScanHtml, kn as reviewImageHtml, qn as sidebarHasCatalogContent, Yn as sidebarTagCounts, En as storeNames, cr as syncJavImages, Me as syncNumberSetting, Jn as syncSidebarSurface, $n as tasteHistoryGuideHtml, pr as unmountIsland, Nn as updateReviewSticky, _n as watchJob, jn as wireReviewPictures, zn as wireReviewSelection, tr as wireTasteHistoryGuide };
+export { or as TASTE_GUIDE_KEY, je as boundedPreference, Qn as catalogEmptyHtml, Zn as catalogSuggestions, ir as cleanupSkeletonHtml, nr as cloudLocations, rr as cloudPreferenceLocations, Rn as createReviewSelection, Ie as distributionChart, Xn as emptyCatalogLayout, Jn as entitySkeletonHtml, wn as followJobProgress, In as identityEvidenceHtml, gr as islandNames, pr as javImageKind, Fe as jobProgressHtml, Kn as matchesFaceSource, vr as mountIsland, Ne as mountNumberSetting, qn as nativeImageFit, fr as normalizeJavImage, ur as normalizeJavLayout, dr as normalizeJavPreferences, ke as preferredDirection, Re as radarChart, Le as rankedChart, Nn as refreshStore, lr as resourceScanHtml, Fn as reviewImageHtml, $n as sidebarHasCatalogContent, tr as sidebarTagCounts, Pe as statCardBody, Mn as storeNames, mr as syncJavImages, Me as syncNumberSetting, er as syncSidebarSurface, ar as tasteHistoryGuideHtml, yr as unmountIsland, zn as updateReviewSticky, Cn as watchJob, Ln as wireReviewPictures, Gn as wireReviewSelection, sr as wireTasteHistoryGuide };

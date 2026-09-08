@@ -10,3 +10,6 @@ button[type=submit],form>button,.geist-button.primary{background:linear-gradient
 button[type=submit]:hover,form>button:hover,.geist-button.primary:hover{background:linear-gradient(#2879fa,#1459df);color:#fff}
 .switch label:has(input:checked){background:var(--ground);box-shadow:0 1px 3px #0002}
 @media(max-width:480px){main{padding:20px}}
+/* Auth Card：单行登录偏好。 */
+.remember{display:flex;align-items:center;gap:8px;font-size:14px;line-height:20px}
+.remember input{appearance:auto;width:16px;height:16px;margin:0;accent-color:#2473fe;flex:none}

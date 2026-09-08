@@ -1,4 +1,4 @@
-import { resourceScanHtml, boundedPreference, mountNumberSetting, syncNumberSetting } from './dist/peach-ui.js';
+import { resourceScanHtml, boundedPreference, mountNumberSetting, syncNumberSetting, statCardBody, rankedChart, radarChart, distributionChart, jobProgressHtml } from './dist/peach-ui.js';
 import {$, ENTITY_ROUTES, LOC, ROUTE_ENTITIES, ROUTE_STATES, SITE_FAVICONS, STATE_LABELS, STATE_ROUTES, api, isAbort, mapLimit, brandIcon, entityPath, esc, faviconFallbackUrl, faviconUrl, linkHost, linkMarkUrl, fmtClock, fmtDur, fmtSize, foldName, icon, isCatalogPath, realDuration} from './js/core.js';
 import { faceFrame } from './js/face-frame.js';
 import { imageFallbackAttrs, wireImageFallbacks } from './js/image-fallback.js';
@@ -425,6 +425,7 @@ appSettings.batchSize=boundedPreference(+appSettings.batchSize,1,200,60);
 appSettings.defaultSort=allowedSetting(appSettings.defaultSort,SORT_KEYS,'seed');
 appSettings.hoverDelaySeconds=boundedPreference(+appSettings.hoverDelaySeconds,0,60,5);
 appSettings.seekSeconds=boundedPreference(+appSettings.seekSeconds,1,300,10);
+appSettings.loginDays=boundedPreference(+appSettings.loginDays,1,365,30);
 appSettings.ambientMode=appSettings.ambientMode!==false;
 appSettings.theaterMode=appSettings.theaterMode===true;
 appSettings.groupCollapse=appSettings.groupCollapse!==false;
@@ -483,6 +484,8 @@ function renderThemeSetting(){
    一处写它们的地方，面板每次打开重画一遍。关注自动更新那一档也在表里，它的应用是
    一次网络写入，所以额外报告状态并在往返期间禁用自己。 */
 const SETTING_SELECTS=[
+  ['loginDaysSetting','保持登录时间',[['30','30 天']],()=>appSettings.loginDays,
+    value=>{appSettings.loginDays=+value;saveSettings()}],
   ['batchSizeSetting','每批作品',[['30','30 个'],['60','60 个'],['90','90 个']],
     ()=>appSettings.batchSize,
     value=>{appSettings.batchSize=+value||60;saveSettings();if(location.pathname==='/')load(true)}],
@@ -589,6 +592,7 @@ $('#detailAutoplaySetting').onchange=e=>{appSettings.detailAutoplay=e.target.che
    已经进去的反而像没生效。 */
 $('#miniplayerSetting').onchange=e=>{appSettings.miniplayer=e.target.checked;saveSettings();if(!appSettings.miniplayer)closeMiniplayer()};
 let followScheduleRequest=0;
+let followScheduleStatus=null;
 const followScheduleCopy=status=>{
   if(!status.available)return '只在账本写入端运行';
   if(status.running)return '正在检查全部来源…';
@@ -603,7 +607,7 @@ async function loadFollowScheduleSetting(){
   syncNumberSetting($('#followScheduleSetting'),null,true);state.innerHTML=loadingDotsHtml('正在读取状态');
   try{
     const status=await api('/api/follow/schedule');if(request!==followScheduleRequest)return;
-    field.value=status.enabled?String(status.interval_minutes):'0';
+    followScheduleStatus=status;field.value=String(status.interval_minutes);
     syncNumberSetting($('#followScheduleSetting'),status.enabled?status.interval_minutes:0,!status.available);
     field.disabled=!status.available;state.textContent=followScheduleCopy(status);
   }catch(error){if(request===followScheduleRequest)state.textContent=`状态未取得：${error.message||error}`}
@@ -613,9 +617,10 @@ async function saveFollowSchedule(minutes){
   state.innerHTML=`${spinnerHtml('保存中')}<span>正在保存…</span>`;
   try{
     const status=await api('/api/follow/schedule',{method:'POST',body:JSON.stringify({enabled:minutes>0,interval_minutes:minutes||60})});
+    followScheduleStatus=status;
     state.textContent=followScheduleCopy(status);
   }catch(error){state.textContent=error.message||'保存失败'}
-  finally{syncNumberSetting($('#followScheduleSetting'),null,false)}
+  finally{const status=followScheduleStatus;syncNumberSetting($('#followScheduleSetting'),status?(status.enabled?status.interval_minutes:0):null,status?!status.available:false)}
 }
 /* 来源图标：品牌使用已缓存的官方资产；通用操作图标统一使用本地 Lucide 子集。 */
 const SRCICON={
@@ -3354,7 +3359,7 @@ async function openStats(push=true){
   const metric=(k,v,max)=>`<div class="statmetric">${kv(k,v.toLocaleString(),pct(v,max)+'%')}${progressHtml(`${k}：${v.toLocaleString()} / ${max.toLocaleString()}`,v,max)}</div>`;
   const metricTab=(key,label,value,detail,selected=false)=>`<button type="button" role="tab" data-stats-metric="${key}"
     aria-selected="${selected}" aria-controls="stats-detail-${key}" tabindex="${selected?'0':'-1'}">
-    <span>${label}</span><b>${value}</b><small>${detail}</small></button>`;
+    ${statCardBody(label,value,detail,{inventory:'database',viewing:'eye',coverage:'tags',storage:'hard-drive'}[key])}</button>`;
   const locationRows=d.by_loc.map(row=>{const label=row.k==='online'?'已保存在线':(LOC[row.k]||row.k);return `<div class="insightbarrow"><div><span>${label}</span><b>${row.videos.toLocaleString()}</b></div>
     ${progressHtml(`${label}：${row.videos.toLocaleString()} / ${totalVideos.toLocaleString()}`,row.videos,totalVideos)}
     <small>${gb(row.bytes)} · ${pct(row.videos,totalVideos)}%</small></div>`}).join('');
@@ -3389,8 +3394,7 @@ async function openStats(push=true){
       </div>
       <section class="insightdetail">
         <div id="stats-detail-inventory" role="tabpanel" data-stats-detail="inventory" class="insightdetailbody">
-          <div class="insightcopy"><span>库存</span><h2>${totalVideos.toLocaleString()}</h2><b>个视频</b>
-            </div>
+          <div class="insightcopy"><span>库存</span>${distributionChart(d.by_loc.map(row=>({name:LOC[row.k]||row.k,score:row.videos})),'视频分布')}</div>
           <div class="insightvisual">${totalVideos?locationRows:catalogEmptyHtml({configurable:runtimeConfigurable})}</div></div>
         <div id="stats-detail-viewing" role="tabpanel" data-stats-detail="viewing" class="insightdetailbody" hidden>
           <div class="insightcopy"><span>观看</span><h2>${cs.played.toLocaleString()}</h2><b>个作品有播放记录</b>
@@ -3492,7 +3496,7 @@ async function wireLinkManager(){
     if(payload.status==='idle'){result.innerHTML='';return}
     if(payload.status==='failed'){result.innerHTML=noteHtml(payload.error||'检查失败',{variant:'error',label:'检查失败'});return}
     const progress=running?loadingDotsHtml(`已检查 ${payload.checked.toLocaleString()} / ${(payload.total||0).toLocaleString()} 条`)
-      +(payload.total?progressHtml('已检查链接',payload.checked,payload.total):''):'';
+      +(payload.total?jobProgressHtml('已检查链接',payload.checked,payload.total):''):'';
     /* gone 和 unclear 必须分开摆：`linktr.ee` 回 403 是挡爬虫、`x.com` 回 500 是临时错误，
        链接本身好好的。混成一张表会让人顺手把好链接一起删掉。 */
     const gone=table('已失效',payload.gone||[],'上游明确回 404／410，页面确实没了。');
@@ -3583,7 +3587,7 @@ async function wireResourceSync(){
         read:signal=>api('/api/resource-sync/scan',{signal,method:'POST',body:JSON.stringify({background:true,status_only:true})}),
         render:state=>{payload=state;if(state.status==='running'){
           result.innerHTML=loadingDotsHtml(`后台扫描中：已完成 ${state.completed_sources||0}/${state.total_sources||0} 个来源`)
-            +(state.total_sources?progressHtml('已扫描来源',state.completed_sources||0,state.total_sources):'')}},
+            +(state.total_sources?jobProgressHtml('已扫描来源',state.completed_sources||0,state.total_sources):'')}},
         disconnected:()=>{result.innerHTML=noteHtml('暂时无法读取进度，正在重新连接…',{label:'任务状态'})}});
       if(payload.status==='failed')throw new Error(payload.error||'后台扫描失败');
       if(payload.status==='idle')throw new Error('任务尚未启动，请重试扫描');
@@ -3694,7 +3698,7 @@ function tasteAnalysisSection(analysis){
 }
 function renderTaste(d){
   const s=d.summary||{},coverage=d.coverage||{},rank=d.rankings||{},storage=d.storage||{};
-  const summary=(label,value,sub='')=>`<div class="tastesummary"><span>${label}</span><b>${value}</b>${sub?`<small>${sub}</small>`:''}</div>`;
+  const summary=(label,value,sub='')=>`<div class="tastesummary">${statCardBody(label,value,sub,{'浏览记录':'history','口味维度':'tags','浏览候选':'search','私有导出':'database','Peach 看过':'eye','喜欢':'thumbs-up','不合口味':'thumbs-down','有标签':'tags'}[label])}</div>`;
   const coverageMetric=(label,value,sub,done,total)=>`<div class="tastecovermetric"><span>${label}</span><b>${value}</b><small>${sub}</small>${progressHtml(`${label}：${done} / ${total}`,done,total)}</div>`;
   const sourceRows=(d.sources||[]).map(source=>`<div class="tastesource">
     <span class="tastebrowser">${icon(source.browser==='browserexport'?'upload':'database')}</span>
@@ -3703,9 +3707,7 @@ function renderTaste(d){
   const gapRows=(d.gaps||[]).map(row=>({...row,evidence:['浏览记录']}));
   const domainRows=(rank.domains||[]).map(row=>({name:row.name,score:row.visits}));
   const categoryRows=(rank.categories||[]).map(row=>({name:row.name,score:row.score}));
-  const categoryMax=Math.max(1,...categoryRows.map(row=>Number(row.score||0)));
-  const categoryBars=categoryRows.length?categoryRows.map(row=>`<div class="tastebar"><div><span>${esc(row.name)}</span><b>${Number(row.score||0).toLocaleString()}</b></div>
-    ${progressHtml(`${row.name}：${Number(row.score||0).toLocaleString()} / ${categoryMax.toLocaleString()}`,row.score||0,categoryMax)}</div>`).join(''):
+  const categoryBars=categoryRows.length?rankedChart(categoryRows,'口味维度排名'):
     emptyStateHtml('search','暂无口味维度','采集浏览记录后，这里会显示聚合后的口味证据。');
   const rankPanel=(source,key,rows,kind='',empty='暂无足够证据',visual='')=>`<div id="taste-${source}-${key}" role="tabpanel"
     data-taste-dimension-panel="${source}:${key}"${tasteDimension[source]===key?'':' hidden'}>
@@ -3740,7 +3742,7 @@ function renderTaste(d){
       ${summary('不合口味',Number(s.disliked||0).toLocaleString())}
       ${summary('有标签',Number(coverage.tagged||0).toLocaleString())}</div>
     <section class="tastehero" data-taste-evidence-panel="browser"${tasteEvidence==='browser'?'':' hidden'}>
-      <div class="insightcopy"><span>浏览器画像</span><h2>${Number(s.history_visits||0).toLocaleString()}</h2><b>条聚合访问证据</b>
+      <div class="insightcopy"><span>浏览器画像</span>${radarChart(categoryRows,'主要口味维度')||'<h2>口味分布</h2>'}
         <small>${d.updated_at?`更新于 ${tasteDate(d.updated_at)}`:'尚未采集浏览记录'}</small></div>
       <div class="tastebars">${categoryBars}</div></section>
     <section class="tastehero" data-taste-evidence-panel="peach"${tasteEvidence==='peach'?'':' hidden'}>
@@ -5308,7 +5310,7 @@ async function wireFollowProgress(){
       if(surfaceCurrent(surface))void refreshFollowSurface(surface)},
     note:text=>noteHtml(text,{label:'任务状态'}),loading:text=>loadingDotsHtml(text),
     container:content=>`<section class="followtask" data-geist-fieldset aria-label="检查更新进度"><div class="geist-fieldset-content">${content}</div></section>`,
-    progress:(value,max)=>progressHtml(`已完成 ${value}/${max} 个来源`,value,max)});
+    progress:(value,max)=>jobProgressHtml(`已完成 ${value}/${max} 个来源`,value,max)});
 }
 async function refreshFollowSurface(surface){
   try{
@@ -5333,7 +5335,7 @@ async function wireOperationProgress({host,path,key,title,busy,complete}){
       complete(report)},note:text=>noteHtml(text,{label:'任务状态'}),
     loading:text=>loadingDotsHtml(text),
     container:content=>`<section class="followtask" data-geist-fieldset aria-label="任务进度"><div class="geist-fieldset-content">${content}</div></section>`,
-    progress:(value,max)=>progressHtml(`已处理 ${value} / ${max}`,value,max)});
+    progress:(value,max)=>jobProgressHtml(`已处理 ${value} / ${max}`,value,max)});
 }
 function wireTasteProgress(){
   const button=$('#stats').querySelector('[data-taste-refresh]');
@@ -7127,8 +7129,12 @@ function renderFollowDrawer(items){
     followTags=new Set([b.dataset.followDrawerTag]);
     openDrawer(false);route(followViewPath());openFollow(false)});
 }
-function openDrawer(v){const drawer=$('#drawer');if(!v&&drawer.contains(document.activeElement))$('#filterBtn').focus();drawer.inert=!v;drawer.classList.toggle('open',v);$('#scrim').classList.toggle('on',v);
-  document.body.classList.toggle('drawer-open',!!v);$('#filterBtn').setAttribute('aria-expanded',String(!!v));$('#filterBtn').setAttribute('aria-controls','drawer');$('#filterBtn').setAttribute('aria-label',v?'收起侧栏':'展开侧栏');sessionStorage.setItem('board.sidebar',v?'open':'closed')}
+function openDrawer(v){const drawer=$('#drawer'),restore=!v&&drawer.contains(document.activeElement);
+  drawer.inert=!v&&(innerWidth<=760||document.documentElement.classList.contains('original-design'));
+  drawer.classList.toggle('open',v);$('#scrim').classList.toggle('on',v);
+  document.body.classList.toggle('drawer-open',!!v);document.dispatchEvent(new Event('board:sidebar'));
+  $('#filterBtn').setAttribute('aria-expanded',String(!!v));$('#filterBtn').setAttribute('aria-controls','drawer');$('#filterBtn').setAttribute('aria-label',v?'收起侧栏':'展开侧栏');
+  if(restore)$('#filterBtn').focus();sessionStorage.setItem('board.sidebar',v?'open':'closed')}
 function closeDrawerAfterNav(){drawerSuppressUntil=Date.now()+650;if(innerWidth<=760||document.documentElement.classList.contains('original-design'))openDrawer(false)}
 $('#filterBtn').onclick=()=>openDrawer(!$('#drawer').classList.contains('open'));
 /* 常驻窄图标条：点即切视图，鼠标停留 180ms 展开完整抽屉 */
@@ -9075,7 +9081,8 @@ function decorate(){
     localTabs(config,groups,titles);
   }
   const settings=document.querySelector('.settingsscroll');
-  if(settings){const groups=[...settings.querySelectorAll(':scope > .settinggroup')];localTabs(settings,groups.map(x=>[x]),groups.map(x=>x.querySelector('h3').textContent),settings.parentElement)}
+  if(settings){const groups=[...settings.querySelectorAll(':scope > .settinggroup')];localTabs(settings,groups.map(x=>[x]),groups.map(x=>x.querySelector('h3').textContent),settings.parentElement);
+    if(!settings.dataset.boardScroll){settings.dataset.boardScroll='true';const fade=()=>settings.parentElement.classList.toggle('board-settings-scrolled',settings.scrollTop>0);settings.addEventListener('scroll',fade,{passive:true});fade()}}
   const icons={'人工复核':'square-check-big','高清版':'sparkles','重复文件':'file-stack','垃圾文件':'file-archive','空文件夹':'folder','回收站':'trash','扫描与采集':'hard-drive'};
   document.querySelectorAll('.cleanupfieldset h2,.cleanupfieldset h3').forEach(heading=>{
     if(heading.querySelector('.board-card-icon'))return;
@@ -9084,27 +9091,27 @@ function decorate(){
   });
   document.querySelectorAll('#managebar [data-manage]').forEach(button=>{if(button.getAttribute('aria-pressed')==='true')button.setAttribute('aria-current','page');else button.removeAttribute('aria-current')});
 }
-function syncSortVisibility(){
-  const direction=document.querySelector('#defaultSortDirectionSetting');
-  const field=direction?.querySelector('.gselect');
-  if(direction&&field)direction.hidden=field.disabled;
-}
-const sortDirection=document.querySelector('#defaultSortDirectionSetting');
-if(sortDirection){
-  new MutationObserver(syncSortVisibility).observe(sortDirection,{childList:true,subtree:true,attributes:true,attributeFilter:['disabled']});
-  syncSortVisibility();
-}
 let filterFrame;
 const boardBrand=document.querySelector('#brandHome');
+boardBrand.setAttribute('aria-label','Peach 首页');
+const boardToggle=document.querySelector('#filterBtn'),toggleHome=document.createComment('sidebar toggle');boardToggle.before(toggleHome);
 function placeBrand(){
   if(legacyUI)return;
   const close=document.querySelector('#drawerClose');
+  if(close){const head=close.parentElement;head.classList.add('board-sidebar-head');
+    const expanded=document.querySelector('#drawer').classList.contains('open'),desktop=innerWidth>760;
+    if(desktop||expanded){if(boardToggle.parentElement!==head)head.append(boardToggle)}else if(boardToggle.parentElement!==toggleHome.parentElement)toggleHome.after(boardToggle);
+    document.querySelector('#drawer').inert=!desktop&&!expanded;
+    document.querySelectorAll('#drawer .dnav button').forEach(button=>button.setAttribute('aria-label',button.textContent.trim()));
+  }
   if(close&&boardBrand.parentElement!==close.parentElement){
     const heading=close.parentElement.querySelector('h2,h3,strong,b');if(heading)heading.hidden=true;
     close.before(boardBrand);
   }
 }
 placeBrand();
+document.addEventListener('board:sidebar',placeBrand);
+addEventListener('resize',placeBrand);
 new MutationObserver(placeBrand).observe(document.querySelector('#drawer'),{childList:true,subtree:true});
 const overflowObservers=new WeakMap();
 const boardTagbar=document.querySelector('#tagbar'),countbar=document.querySelector('#count');
