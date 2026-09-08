@@ -42,6 +42,11 @@ description: 在用户说并行、工作树、暂存、提交、ready、集成�
 
 ## 暂存与提交
 
+- 分支上每个提交的主题都写成 `type(scope): 中文描述`，如 `fix(web): 补齐图标声明与兜底路径`。
+  类型的封闭清单在 `scripts/commit_subject.py` 的 `TYPES`；`feat` / `fix` / `perf` 会进变更日志，
+  scope 被 `scripts/changelog.py` 换成区域标签，所以写歪的后果是日志静默漏条，不是报错。
+  `ready` / `integrate` 拒收形状不对、类型不在清单的主题；从 master 合进来的 merge 不算。
+
 - 提交前核对 README 影响；交付分支最后提交加 `README-Impact: updated; 说明` 或 `README-Impact: none; 原因`。
   它与 `Co-Authored-By` 等 trailer 连续写在消息末尾同一块里，中间隔一个空行就只算正文，解析不到。
   触发面、格式、中英文同批与例外见 `docs/HANDOFF.md`「README 维护」；`ready/integrate` 拒收缺失或矛盾声明。
