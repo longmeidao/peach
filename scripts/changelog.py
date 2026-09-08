@@ -14,6 +14,7 @@ Semantic Versioning 2.0.0（https://semver.org/lang/zh-CN/spec/v2.0.0.html）：
     python scripts/changelog.py                                # 起草未发布区间
     python scripts/changelog.py --range v0.16.0..v0.27.1       # 起草任意区间
     python scripts/changelog.py --release 0.30.0 --apply       # 把未发布节定版为 0.30.0
+    python scripts/changelog.py --notes 0.30.0 --to NOTES.md   # 生成这一版的 Release 正文
 """
 from __future__ import annotations
 
@@ -35,6 +36,12 @@ CHANGELOG = "CHANGELOG.md"
 
 #: 未发布节的标题。Keep a Changelog 要求它常驻，让人随时知道主线上攒了什么。
 UNRELEASED = "未发布"
+
+#: Release 页正文里跟在变更日志后面的安装提示。每一版都一样，所以只写在这里一处，
+#: 工作流不再自己抄一份。
+INSTALL_NOTE = ("Windows x64 独立测试包。完整解压后双击 Peach.exe，选择媒体文件夹即可开始。"
+                "本机使用；无需 Python、Git 或 Node。FFmpeg 需另装，未安装时不提供转码与"
+                "缩略图。配置和日志入口见程序内「配置 Peach」。macOS 请按 README 使用源码安装。")
 
 #: Conventional Commits 的主题形状：`type(scope)!: 描述`。
 SUBJECT = re.compile(r"^(?P<type>[a-z]+)(?:\((?P<scope>[^)]*)\))?(?P<bang>!)?:\s*(?P<text>.+)$")
@@ -220,6 +227,18 @@ def section_of(document: str, version: str) -> str:
     return found["body"].strip("\n") if found else ""
 
 
+def notes(document: str, version: str) -> str:
+    """Release 页的正文：这一版在 `CHANGELOG.md` 里的那一节，后面跟安装提示。
+
+    使用者在 GitHub 上读到的就是这段，所以那一节缺了不能静默发一段固定文案顶上，
+    直接拒绝，让发布链停在这里。
+    """
+    section = section_of(document, version)
+    if not section:
+        raise version_bump.VersionError(f"{CHANGELOG} 里没有 {version} 这一节，Release 正文无从生成")
+    return f"{section}\n\n{INSTALL_NOTE}\n"
+
+
 def promote(document: str, version: str, *, date: str, repo: str, previous: str | None,
             fallback: str = "") -> str:
     """把未发布节定版成 `version` 一节，并在它上面留一个空的未发布节。
@@ -268,8 +287,17 @@ def main(argv=None) -> int:
     parser.add_argument("--range", dest="spec", help="提交区间，默认上一个版本标签到 HEAD")
     parser.add_argument("--release", help=f"把{UNRELEASED}节定版成这个版本号")
     parser.add_argument("--apply", action="store_true", help=f"写进 {CHANGELOG}")
+    parser.add_argument("--notes", metavar="VERSION", help="输出这一版的 Release 正文")
+    parser.add_argument("--to", metavar="PATH", help="把 --notes 的正文以 UTF-8 写进这个文件")
     args = parser.parse_args(argv)
     try:
+        if args.notes:
+            text = notes((ROOT / CHANGELOG).read_text(encoding="utf-8"), args.notes)
+            if args.to:
+                Path(args.to).write_bytes(text.encode("utf-8"))
+            else:
+                print(text, end="")
+            return 0
         spec = args.spec or version_bump.release_range(ROOT)
         if not args.apply:
             heading = args.release or UNRELEASED
