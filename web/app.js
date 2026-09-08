@@ -1,4 +1,4 @@
-import { resourceScanHtml, boundedPreference, mountNumberSetting, syncNumberSetting, statCardBody, rankedChart, radarChart, distributionChart, jobProgressHtml } from './dist/peach-ui.js';
+import { resourceScanHtml, boundedPreference, mountNumberSetting, syncNumberSetting, statCardBody, rankedChart, radarChart, distributionChart, jobProgressHtml, sidebarSectionHtml, wireSidebarGroups, transitionTheme } from './dist/peach-ui.js';
 import {$, ENTITY_ROUTES, LOC, ROUTE_ENTITIES, ROUTE_STATES, SITE_FAVICONS, STATE_LABELS, STATE_ROUTES, api, isAbort, mapLimit, brandIcon, entityPath, esc, faviconFallbackUrl, faviconUrl, linkHost, linkMarkUrl, fmtClock, fmtDur, fmtSize, foldName, icon, isCatalogPath, realDuration} from './js/core.js';
 import { faceFrame } from './js/face-frame.js';
 import { imageFallbackAttrs, wireImageFallbacks } from './js/image-fallback.js';
@@ -452,6 +452,8 @@ function applyTheme(choice=appSettings.theme){
   const root=document.documentElement;
   if(choice==='system')delete root.dataset.theme;else root.dataset.theme=choice;
   const dark=choice==='dark'||(choice==='system'&&prefersDark.matches);
+  document.querySelectorAll('[data-board-theme]').forEach(button=>button.setAttribute('aria-pressed',String((button.dataset.boardTheme==='dark')===dark)));
+  document.querySelector('.board-theme-toggle')?.classList.toggle('is-dark',dark);
   document.querySelectorAll('meta[data-theme-color]').forEach(meta=>{
     meta.media=(meta.dataset.themeColor==='dark')===dark?'all':'not all';
   });
@@ -3150,10 +3152,10 @@ async function buildBars(){
     const off=key==='loc'&&sourceOffline(it.k);
     return `<button class="chip${off?' offline':''}" aria-pressed="${sel}" data-key="${key}" data-multi="${multi?1:0}"
       ${off?`disabled title="${OFFLINE_HINT}"`:''}
-      data-val="${esc(it.k)}">${dot}${esc(it.label||tagLabel(it.k))}${it.n!=null?`<span class="n">${it.n.toLocaleString()}</span>`:''}</button>`;
+      data-val="${esc(it.k)}">${dot}<span class="chip-label">${esc(it.label||tagLabel(it.k))}</span>${it.n!=null?`<span class="n">${it.n.toLocaleString()}</span>`:''}</button>`;
   }).join('')+`</div>`:'';
   // 按语义类别区分来源、创作者、内容和技术规格。
-  const sec=(t,b,x,cat)=>b?`<div class="sec${cat?' cat-'+cat:''}"><h3>${t}${x||''}</h3>${b}</div>`:'';
+  const sec=(t,b,x,cat)=>document.documentElement.classList.contains('original-design')?(b?`<div class="sec${cat?' cat-'+cat:''}"><h3>${t}${x||''}</h3>${b}</div>`:''):sidebarSectionHtml(t,b,x,cat);
   const scopedCreators=context.type==='entity'&&context.kind==='creator'
     ? facetData.creators.filter(item=>item.k!==context.name):facetData.creators;
   // 与窄栏共用 EDGE_ICONS —— 两边条目必须一致，抽屉不另写一份硬编码
@@ -3175,7 +3177,7 @@ async function buildBars(){
     +sec('内容标签',chips(facetData.tags,'tag',false,30),facetData.tags.length>30?'<button data-more="tag">更多</button>':'','general')
     +sec('影片属性',chips(facetData.tech,'tag',false,16),'','meta')
     +sec('关注标签',followTagRows.length?`<div class="chips">`+followTagRows.map(row=>
-      `<button class="chip online" data-follow-drawer-tag="${esc(row.k)}">${esc(tagLabel(row.k))}<span class="n">${row.n.toLocaleString()}</span></button>`
+      `<button class="chip online" data-follow-drawer-tag="${esc(row.k)}"><span class="chip-label">${esc(tagLabel(row.k))}</span><span class="n">${row.n.toLocaleString()}</span></button>`
       ).join('')+`</div>`:'','','online');
   const dc=$('#drawerClose'); if(dc)dc.onclick=()=>openDrawer(false);
   $('#drawer').querySelectorAll('[data-page]').forEach(b=>b.onclick=()=>{
@@ -7122,9 +7124,10 @@ function renderFollowDrawer(items){
   scroll.querySelectorAll('.sec').forEach(section=>section.remove());
   const counts=sidebarTagCounts(items.map(item=>({tags:followCardTags(item)})));
   if(!counts.length)return;
-  scroll.insertAdjacentHTML('beforeend',`<div class="sec cat-online"><h3>内容标签</h3><div class="chips">${
+  const tagBody=`<div class="chips">${
     counts.map(([tag,n])=>
-      `<button class="chip online" data-follow-drawer-tag="${esc(tag)}" aria-pressed="${followTags.has(tag)}">${esc(tagLabel(tag))}<span class="n">${n}</span></button>`).join('')}</div></div>`);
+      `<button class="chip online" data-follow-drawer-tag="${esc(tag)}" aria-pressed="${followTags.has(tag)}"><span class="chip-label">${esc(tagLabel(tag))}</span><span class="n">${n}</span></button>`).join('')}</div>`;
+  scroll.insertAdjacentHTML('beforeend',document.documentElement.classList.contains('original-design')?`<div class="sec cat-online"><h3>内容标签</h3>${tagBody}</div>`:sidebarSectionHtml('内容标签',tagBody,'','online'));
   $('#drawer').querySelectorAll('[data-follow-drawer-tag]').forEach(b=>b.onclick=()=>{
     followTags=new Set([b.dataset.followDrawerTag]);
     openDrawer(false);route(followViewPath());openFollow(false)});
@@ -8115,10 +8118,10 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
         ${it.release_date?`<span class="detailmetaitem">${icon('calendar')}<span>${esc(it.release_date)}</span></span>`:''}</div>
       <div class="detailidentity">${identityRows}</div>
       <div class="stags" id="detailTags"></div>
-      <div class="trace"><div class="lab mono"><span>离开位置</span><span id="ratioTxt">0%</span></div>
-        <div class="bar"><u id="watched"></u><b id="mark"></b></div>
-        <div class="lab mono trace-real"><span>真实观看</span><span id="realTxt">0%</span></div>
-        <div class="bar"><u id="realBar"></u></div>
+      <div class="trace"><div class="trace-metric"><div class="lab mono"><span>离开位置</span><span id="ratioTxt">0%</span></div>
+        <div class="bar"><u id="watched"></u><b id="mark"></b></div></div>
+        <div class="trace-metric"><div class="lab mono trace-real"><span>真实观看</span><span id="realTxt">0%</span></div>
+        <div class="bar"><u id="realBar"></u></div></div>
       </div>
       <div class="fb">
         <button class="like" id="likeBtn" aria-label="${it.liked?'取消喜欢':'喜欢'}" title="喜欢 · 记录口味偏好" aria-pressed="${!!it.liked}">${icon('thumbs-up')}</button>
@@ -8824,9 +8827,9 @@ document.addEventListener('keydown',e=>{
     if(!$('#settingsPanel').hidden){openSettings(false);return}
     if(!$('#searchMenu').hidden){$('#searchMenu').hidden=true;return}
     if(!$('#tok').hidden){$('#tokClose').click();return}
+    const st=$('#stage');if(st&&!st.hidden){const c=$('#closeStage');if(c){c.click();return}}
     if($('#drawer').classList.contains('open')){openDrawer(false);return}
     if(selectMode||selected.size||followSelected.size){setSelectMode(false,true);return}
-    const st=$('#stage');if(st&&!st.hidden){const c=$('#closeStage');if(c)c.click()}
     return;
   }
   // 输入态不抢键：搜索框、标签弹窗和任何可编辑区域里的按键归它们自己处理。
@@ -9094,11 +9097,41 @@ function decorate(){
 let filterFrame;
 const boardBrand=document.querySelector('#brandHome');
 boardBrand.setAttribute('aria-label','Peach 首页');
+let libraryPicker;
+if(!legacyUI){
+  libraryPicker=document.createElement('div');libraryPicker.className='board-library-menu';libraryPicker.id='boardLibraryMenu';libraryPicker.hidden=true;libraryPicker.setAttribute('popover','manual');libraryPicker.setAttribute('role','dialog');libraryPicker.setAttribute('aria-label','媒体库');
+  document.body.append(libraryPicker);
+  boardBrand.setAttribute('aria-haspopup','dialog');boardBrand.setAttribute('aria-controls',libraryPicker.id);
+  boardBrand.insertAdjacentHTML('beforeend','<svg class="board-library-chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="m5 6 3-3 3 3M5 10l3 3 3-3"/></svg>');
+  boardBrand.onclick=event=>{event.preventDefault();if(!document.querySelector('#drawer').classList.contains('open')){event.stopImmediatePropagation();openDrawer(true)}};
+  const floating=wireAnchoredMenu(document.querySelector('#drawer'),boardBrand,libraryPicker,{side:true});
+  libraryPicker.addEventListener('toggle',event=>{if(event.newState==='open')libraryPicker.querySelector('button')?.focus()});
+  libraryPicker.addEventListener('keydown',event=>{if(event.key==='Escape'){event.stopPropagation();floating.setOpen(false);boardBrand.focus()}});
+  api('/api/libraries').then(data=>{
+    const choices=[['','全部媒体库'],...data.libraries.map(row=>[row.id,row.name])];
+    const selected=sessionStorage.getItem('peach.library')||'';
+    if(!choices.some(row=>row[0]===selected)){sessionStorage.removeItem('peach.library');location.reload();return}
+    const current=sessionStorage.getItem('peach.library')||'';
+    boardBrand.querySelector('h1').textContent=current||'全部媒体库';
+    libraryPicker.innerHTML=`<p>媒体库</p><div class="board-library-rows">${choices.map(([id,name],i)=>`<button type="button" data-library="${esc(id)}" aria-pressed="${id===current}"><span class="board-library-avatar" data-color="${i%3}">${esc(name.slice(0,1))}</span><span>${esc(name)}</span></button>`).join('')}</div><footer><button type="button" class="geist-button" data-library-manage>管理媒体库</button></footer>`;
+    libraryPicker.querySelectorAll('[data-library]').forEach(button=>button.onclick=()=>{sessionStorage.setItem('peach.library',button.dataset.library);location.assign('/')});
+    libraryPicker.querySelector('[data-library-manage]').onclick=()=>{floating.setOpen(false);openDrawer(false);location.assign('/configuration')};
+  }).catch(()=>{libraryPicker.hidden=true});
+}
 const boardToggle=document.querySelector('#filterBtn'),toggleHome=document.createComment('sidebar toggle');boardToggle.before(toggleHome);
+if(!legacyUI){
+  const foot=document.createElement('div');foot.className='board-sidebar-foot';
+  foot.innerHTML=`<div class="board-theme-toggle" role="group" aria-label="明暗主题"><span class="board-theme-thumb" aria-hidden="true"></span><button type="button" data-board-theme="light" aria-label="浅色主题">${icon('sun')}</button><button type="button" data-board-theme="dark" aria-label="深色主题">${icon('moon')}</button></div>`;
+  foot.append(document.querySelector('#settingsBtn'));document.querySelector('#drawer').append(foot);
+  foot.querySelectorAll('[data-board-theme]').forEach(button=>button.onclick=()=>{if(button.getAttribute('aria-pressed')==='true')return;transitionTheme(button,()=>{appSettings.theme=button.dataset.boardTheme;saveSettings();applyTheme();renderThemeSetting()})});
+  applyTheme();
+}
 function placeBrand(){
   if(legacyUI)return;
   const close=document.querySelector('#drawerClose');
   if(close){const head=close.parentElement;head.classList.add('board-sidebar-head');
+    boardBrand.setAttribute('aria-label',document.querySelector('#drawer').classList.contains('open')?'选择媒体库':'展开侧栏');
+    wireSidebarGroups(document.querySelector('#drawerScroll'));
     const expanded=document.querySelector('#drawer').classList.contains('open'),desktop=innerWidth>760;
     if(desktop||expanded){if(boardToggle.parentElement!==head)head.append(boardToggle)}else if(boardToggle.parentElement!==toggleHome.parentElement)toggleHome.after(boardToggle);
     document.querySelector('#drawer').inert=!desktop&&!expanded;
@@ -9177,7 +9210,7 @@ if(!legacyUI && /Chrome|Chromium|Edg\//.test(navigator.userAgent)){
     };
     new ResizeObserver(draw).observe(node);draw();
   }
-  const sync=()=>document.querySelectorAll('.board-filter-frame,.top .search,.edge,.drawer').forEach(attach);
+  const sync=()=>document.querySelectorAll('.board-filter-frame,.top .search,.top>.ib,.edge,.drawer').forEach(attach);
   new MutationObserver(sync).observe(document.querySelector('#main'),{childList:true,subtree:true});sync();
 }
 

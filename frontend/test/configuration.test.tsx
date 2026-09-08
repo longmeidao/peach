@@ -167,7 +167,7 @@ describe('媒体文件夹列表', () => {
     const fetch = fetchMock(200, { saved: true, url: '/', revision: 'rev-2' });
     vi.stubGlobal('fetch', fetch);
     const { el } = mount({ windows: false, media_sources: [
-      { location: '115', root: 'B:\\', path: '/Volumes/115', online: false },
+      { location: '115', root: 'B:\\', path: '/Volumes/115', online: false, library: '收藏' },
       { location: 'pikpak', root: 'A:\\', path: '/Volumes/PikPak', online: true },
     ] });
     expect(inputs(el).map((input) => input.value)).toEqual(['/Volumes/115', '/Volumes/PikPak']);
@@ -176,8 +176,8 @@ describe('媒体文件夹列表', () => {
     submit(el); await settle();
     const body = JSON.parse(String(fetch.mock.calls[0]?.[1].body));
     expect(body.media_sources).toEqual([
-      { location: '115', root: 'B:\\', path: '/Volumes/115' },
-      { location: 'pikpak', root: 'A:\\', path: '/Volumes/PikPak' },
+      { location: '115', root: 'B:\\', path: '/Volumes/115', library: '收藏' },
+      { location: 'pikpak', root: 'A:\\', path: '/Volumes/PikPak', library: '' },
     ]);
   });
   it('一行一个文件夹，只有一行时没有移除键', () => {

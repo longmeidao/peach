@@ -169,6 +169,7 @@ class PeachConfig:
     #: `asset.location` -> 本机挂载点，即该来源的每个声明根落在本机哪个目录，按顺序
     #: 与 `locations` 里的声明根一一对应。Windows 上通常为空：盘符本身就是挂载点。
     mounts: dict[str, tuple[str, ...]] = field(default_factory=dict)
+    library_names: dict[str, str] = field(default_factory=dict)
     #: `asset.location` -> 账本口径的声明根，至少一个。
     locations: dict[str, tuple[str, ...]] = field(
         default_factory=lambda: dict(DEFAULT_LOCATION_ROOTS))
@@ -294,7 +295,7 @@ def _merge(
         raise _fail(path, "`directories` 里有不认识的键：" + "、".join(unknown))
 
     media = _table(document, "media", path)
-    stray = sorted(set(media) - {_LOCATIONS_KEY, _MOUNTS_KEY})
+    stray = sorted(set(media) - {_LOCATIONS_KEY, _MOUNTS_KEY, "libraries"})
     if stray:
         # 第一阶段的 `[media] R = '/Volumes/RESOURCES'`。键空间从盘符换成了 location ID，
         # 把它当未知键忽略等于「所有来源都没挂」——整台机器安静地进脱盘模式。
@@ -365,6 +366,7 @@ def _merge(
     config = PeachConfig(
         data_root=data_root, path=path, present=present, data_root_found=found,
         directories=directories, mounts=mounts, locations=locations,
+        library_names=_string_map(_table(media, "libraries", path), path, "media.libraries."),
         server=server, replication=replication,
     )
     return _apply_environment(config, environ)
@@ -519,6 +521,8 @@ def render(config: PeachConfig) -> str:
         "# 一个来源有几个目录就写几个：local = ['D:\\Videos', 'E:\\Movies']。",
     ]
     lines += _render_roots(dict(config.locations))
+    lines += ["", "[media.libraries]"]
+    lines += [f"{_render_value(root)} = {_render_value(name)}" for root, name in config.library_names.items()]
     lines += [
         "",
         "[media.mounts]",

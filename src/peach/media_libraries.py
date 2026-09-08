@@ -1,0 +1,22 @@
+"""媒体库按声明路径分组，来源与挂载仍由媒体配置管理。"""
+from pathlib import PureWindowsPath
+
+
+def libraries(config):
+    groups = {}
+    for location, roots in config.locations.items():
+        for root in roots:
+            name = config.library_names.get(root) or PureWindowsPath(root).name or root
+            groups.setdefault(name, []).append({"location": location, "root": root})
+    return [{"id": name, "name": name, "roots": roots} for name, roots in groups.items()]
+
+
+def predicate(config, library):
+    """路径边界精确匹配；未知库返回空集。"""
+    roots = next((row["roots"] for row in libraries(config) if row["id"] == library), [])
+    terms, params = [], []
+    for item in roots:
+        prefix = str(PureWindowsPath(item["root"])).rstrip("\\") + "\\"
+        terms.append("(a.location=? AND substr(a.path,1,?)=? COLLATE NOCASE)")
+        params.extend((item["location"], len(prefix), prefix))
+    return "(" + " OR ".join(terms) + ")" if terms else "0", params

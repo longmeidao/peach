@@ -59,6 +59,7 @@ def rows(config, *, windows: bool, probe: bool = False) -> list[dict[str, Any]]:
         for index, root in enumerate(roots):
             mount = root if windows else (mounts[index] if index < len(mounts) else "")
             result.append({"location": location, "root": root, "path": mount,
+                           "library": config.library_names.get(root) or PureWindowsPath(root).name or root,
                            "online": platform.root_online(Path(mount)) if probe and mount else False})
     return result
 

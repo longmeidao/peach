@@ -43,7 +43,7 @@ export interface ConfigurationData {
   /** 设置文件的指纹，保存时带回去，服务端据此拒绝盖掉别处的改动。 */
   revision: string;
   media_dirs: string[];
-  media_sources?: { location: string; root: string; path: string; online?: boolean }[];
+  media_sources?: { location: string; root: string; path: string; online?: boolean; library?: string }[];
   windows?: boolean;
   port: number;
   port_editable?: boolean;
@@ -153,6 +153,7 @@ function ConfigurationForm({ data, receipt }: { data: ConfigurationData; receipt
   const [dirs, setDirs] = useState<string[]>(initial?.length ? initial.map((row) => row.path) : data.media_dirs.length ? data.media_dirs : ['']);
   const [kinds, setKinds] = useState<string[]>(initial?.map((row) => row.location) ?? []);
   const [roots, setRoots] = useState<string[]>(initial?.map((row) => row.root) ?? []);
+  const [libraries, setLibraries] = useState<string[]>(initial?.map((row) => row.library || '') ?? []);
   const [port, setPort] = useState(String(data.port));
   const [scanNow, setScanNow] = useState(false);
   const [rowErrors, setRowErrors] = useState<string[]>([]);
@@ -188,6 +189,7 @@ function ConfigurationForm({ data, receipt }: { data: ConfigurationData; receipt
   const remove = (index: number) => {
     setKinds((list) => list.filter((_, i) => i !== index));
     setRoots((list) => list.filter((_, i) => i !== index));
+    setLibraries((list) => list.filter((_, i) => i !== index));
     setDirs((list) => list.filter((_, i) => i !== index));
     setRowErrors((errors) => errors.filter((_, i) => i !== index));
   };
@@ -226,7 +228,7 @@ function ConfigurationForm({ data, receipt }: { data: ConfigurationData; receipt
       const result = await apiSend<SaveResult>(CONFIGURATION_URL, {
         revision: revision.current,
         media_dirs: dirs,
-        ...(data.media_sources ? { media_sources: dirs.map((path, i) => ({ path, location: kinds[i] || 'local', root: roots[i] || '' })) } : {}),
+        ...(data.media_sources ? { media_sources: dirs.map((path, i) => ({ path, location: kinds[i] || 'local', root: roots[i] || '', library: libraries[i] || '' })) } : {}),
         port,
         scan_now: scanNow,
       });
@@ -290,6 +292,10 @@ function ConfigurationForm({ data, receipt }: { data: ConfigurationData; receipt
                   </button>
                 ) : null}
                 <div class="configsource">
+                  <label>媒体库
+                    <input class="geist-input" aria-label={`媒体库 ${index + 1}`} maxLength={80} value={libraries[index] || ''} placeholder="同名文件夹归入同一个媒体库"
+                      onInput={(event) => { const next = [...libraries]; next[index] = event.currentTarget.value; setLibraries(next); }} />
+                  </label>
                   <div class="configsourcelabel">媒体来源
                     <MediaSourceSelect label={`媒体来源 ${index + 1}`} value={kinds[index] || 'local'}
                       onChange={(value) => { const next = [...kinds]; next[index] = value; setKinds(next); }} />

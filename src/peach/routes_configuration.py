@@ -193,6 +193,18 @@ def _validate(body: dict[str, Any], config) -> tuple[dict[str, Any], dict[str, A
         locations, mounts, problems = media_configuration.validate(body["media_sources"], windows=os.name == "nt")
         paths = []
         validated.update(locations=locations, mounts=mounts)
+        names = {}
+        if not problems:
+            for index, row in enumerate(body["media_sources"]):
+                name = str(row.get("library", "")).strip()
+                if len(name) > 80 or any(ord(char) < 32 for char in name):
+                    problems = [""] * len(body["media_sources"])
+                    problems[index] = "媒体库名称请使用 1 到 80 个可见字符"
+                    break
+                root = str(media_configuration.PureWindowsPath(row["path"] if os.name == "nt" else row["root"]))
+                if name:
+                    names[root] = name
+            validated["library_names"] = names
     else:
         paths, problems = onboarding.read_media_dirs(
             rows, validate=onboarding.media_dir_validator(windows=os.name == "nt"))
@@ -316,6 +328,7 @@ def save_configuration(request: Request, body: dict[str, Any] = Body(default_fac
             locations["local"] = onboarding.posix_declared_roots(len(paths))
             mounts["local"] = tuple(str(path) for path in paths)
         prepared = replace(config, locations=locations, mounts=mounts,
+                           library_names=validated.get("library_names", config.library_names),
                            server=replace(config.server, port=validated["port"]))
         temporary = config.path.with_suffix(".pending.toml")
         try:

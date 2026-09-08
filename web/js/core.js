@@ -25,6 +25,10 @@ export function requestErrorMessage(cause,status=0){
   return '操作未完成，请重试；持续失败时查看托盘日志。';
 }
 const api=async(p,o)=>{
+  if(!o?.method||o.method==='GET'){
+    const library=sessionStorage.getItem('peach.library');
+    if(library&&/^\/api\/(items|facets)(\?|$)/.test(p))p+=(p.includes('?')?'&':'?')+'library='+encodeURIComponent(library);
+  }
   const {signal=null,...rest}=o||{};
   const init={headers:{'Content-Type':'application/json'},...rest};
   if(signal)init.signal=signal;

@@ -16,6 +16,7 @@ import { h, render } from 'preact';
 export { preferredDirection } from './sort-preferences';
 export { boundedPreference, mountNumberSetting, syncNumberSetting } from './number-setting';
 export { statCardBody, rankedChart, radarChart, distributionChart, jobProgressHtml } from './board-metrics';
+export { sidebarSectionHtml, wireSidebarGroups, transitionTheme } from './sidebar-groups';
 import type { Attributes, ComponentType } from 'preact';
 
 import { errorMessage } from './api';

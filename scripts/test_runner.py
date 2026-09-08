@@ -27,7 +27,7 @@ COMMON_PATTERNS = ("test_context_budget.py", "test_test_collection.py")
 SCOPES: dict[str, tuple[str, ...]] = {
     "checks": ("test_copy_final_state.py", "test_dependency_policy.py", "test_repo_hygiene.py", "test_test_planning.py"),
     "follow": ("test_follow*.py", "test_http.py", "test_migrations.py"),
-    "catalog": ("test_ad_judgement.py", "test_composite_name_split.py",
+    "catalog": ("test_ad_judgement.py", "test_composite_name_split.py", "test_media_libraries.py",
                 "test_duplicate_identity_merge.py",
                 "test_entity_merge.py", "test_fastapi_api.py", "test_migrations.py",
                 "test_review_mirror.py", "test_rm_web.py",

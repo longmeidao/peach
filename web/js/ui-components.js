@@ -519,16 +519,21 @@ let openedMenu=null;
 if(!globalThis.__peachMenuCloser){
   globalThis.__peachMenuCloser=true;
   document.addEventListener('click',event=>{
-    if(openedMenu&&!openedMenu.mount.contains(event.target))openedMenu.setOpen(false)},true);
+    if(openedMenu&&!openedMenu.mount.contains(event.target)&&!openedMenu.menu.contains(event.target))openedMenu.setOpen(false)},true);
 }
 export function closeAnchoredMenu(){if(openedMenu)openedMenu.setOpen(false)}
 /* 可用的视口上沿是固定顶栏的下缘。顶栏在每一页都盖着最上面那一条，菜单顶到 8px
    会被它压掉半截，而且看不出是被压住的——只是第一项凭空不见了。 */
 const viewportTop=()=>8+(parseFloat(getComputedStyle(document.documentElement)
   .getPropertyValue('--topH'))||0);
-export function wireAnchoredMenu(mount,toggle,menu){
+export function wireAnchoredMenu(mount,toggle,menu,{side=false}={}){
   const position=()=>{
     const anchor=toggle.getBoundingClientRect(),width=menu.getBoundingClientRect().width;
+    if(side&&innerWidth>=640){
+      menu.style.maxHeight=Math.max(0,innerHeight-32)+'px';
+      menu.style.left=Math.max(16,Math.min(anchor.right+8,innerWidth-width-16))+'px';
+      menu.style.top=Math.max(16,Math.min(anchor.top,innerHeight-menu.offsetHeight-16))+'px';return;
+    }
     const top=viewportTop(),under=innerHeight-8-anchor.bottom-8,over=anchor.top-8-top;
     /* 下方放不下就改到上方；两侧都放不下时取宽的那一侧，并把菜单压到那一侧的高度，
        内容在菜单内滚。不压高度的话它会横跨触发钮盖住自己，点开之后连改的是哪一个
@@ -563,10 +568,10 @@ export function wireAnchoredMenu(mount,toggle,menu){
       window.removeEventListener('scroll',closeFromViewport,true);
     }
     toggle.setAttribute('aria-expanded',String(open));
-    openedMenu=open?{mount,setOpen}:(openedMenu&&openedMenu.mount===mount?null:openedMenu)};
+    openedMenu=open?{mount,menu,setOpen}:(openedMenu&&openedMenu.mount===mount?null:openedMenu)};
   toggle.addEventListener('click',event=>{event.stopPropagation();setOpen(menu.hidden)});
   mount.addEventListener('keydown',event=>{
-    if(event.key==='Escape'&&!menu.hidden){setOpen(false);toggle.focus()}});
+    if(event.key==='Escape'&&!menu.hidden){event.stopPropagation();setOpen(false);toggle.focus()}});
   return {setOpen,isOpen:()=>!menu.hidden};
 }
 

@@ -12,6 +12,7 @@ from __future__ import annotations
 import hashlib
 import random
 import time
+from . import media_libraries, settings_file
 
 from .catalog_rules import (
     LENGTH_TAGS,
@@ -131,6 +132,10 @@ def catalog_filter(contract: WebContract, args):
     # 普通馆藏仍是视频表面；回收站必须展示所有文件类型，否则从垃圾复核移入的
     # 图片、网址快捷方式等会变成不可见、不可恢复，只能被「清空回收站」直接删掉。
     where, par = ([] if trash else ["a.medium='video'"]), []
+    if args.get("library"):
+        clause, values = media_libraries.predicate(settings_file.active(), args["library"])
+        where.append(clause)
+        par.extend(values)
     if trash:
         where.append("a.disposal='trash'")
     else:
@@ -932,6 +937,10 @@ def q_facets(
     with contract.read_connection() as c:
         scope = (JAV_ASSET_CLAUSE if jav else "") + state_clause(state)
         scope_params: list[object] = []
+        if filters and filters.get("library") and asset_id is None:
+            library_clause, library_params = media_libraries.predicate(settings_file.active(), filters["library"])
+            scope += "AND " + library_clause + " "
+            scope_params.extend(library_params)
         if asset_id is not None:
             scope += "AND a.id=? "
             scope_params.append(int(asset_id))

@@ -581,7 +581,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertNotIn("$('#drawer').insertAdjacentHTML(", source)
         self.assertPageContains("const scroll=$('#drawerScroll'),key=surfacePath()+location.search;")
         self.assertPageContains("scroll.innerHTML=`<div style=\"display:flex;align-items:center;justify-content:space-between;margin-bottom:10px\">")
-        self.assertPageContains("scroll.insertAdjacentHTML('beforeend',`<div class=\"sec cat-online\">")
+        self.assertPageContains("scroll.insertAdjacentHTML('beforeend',document.documentElement.classList.contains('original-design')?")
+        self.assertPageContains("sidebarSectionHtml('内容标签',tagBody,'','online')")
         # 换页面的判据记在滚动层上：syncSidebarSurface() 判定换页就 replaceChildren()，
         # 传宿主进去会连 #drawerScroll 一起清掉，和整块 innerHTML 是同一种失败。
         self.assertPageContains("syncSidebarSurface(scroll,key)")
@@ -5473,7 +5474,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("function commitContextFilter(mutate)")
         self.assertPageContains("const search=entityFilterSearch(filters)")
         # 没有数据的区块不渲染，画幅也必须来自 scoped API，不能硬画横屏/竖屏两个按钮。
-        self.assertPageContains("const sec=(t,b,x,cat)=>b?")
+        self.assertPageContains("sidebarSectionHtml(t,b,x,cat)")
         self.assertPageContains("const chips=(items,key,multi,limit)=>items.length?")
         self.assertPageContains("chips(facetData.orientations,'orient')")
         self.assertPageLacks("chips([{k:'竖屏'},{k:'横屏'}],'orient')")
