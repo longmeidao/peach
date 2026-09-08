@@ -7193,11 +7193,10 @@ async function openEntity(kind,name,push=true){
       // 纯图标的链接自己不带可读文字，得把标签留给辅助技术。
       return `<a class="iconlink" href="${esc(x.url)}" target="_blank" rel="noreferrer" title="${esc(x.label)}">${mark}<span class="sr-only">${esc(x.label)}</span></a>`;
     }
-    /* 官网这一格只给域名。域名是这条链接里唯一确定的东西：谁的站、点过去到哪，都在
-       它里面；前面的地球说明这是条外链。站点自己声明的图标不一定是标识——事务所
-       ACT 的站标是旗下一位艺人的照片，摆在人物页上就是一张认错人的脸。事务所的名字
-       另有去处，在上面那行别名里，点进去是它的资料页。 */
-    return `<a class="urllink" href="${esc(x.url)}" target="_blank" rel="noreferrer" title="${esc(x.label)}"><span class="entitylinkicon">${icon('globe')}</span><span class="entitylinklabel">${esc(linkHost(x.url)||x.label)}</span></a>`;
+    /* 官网这一格的文字是域名，图标是站点自己的那枚。域名说的是「点过去到哪」，图标说的
+       是「这是哪家」，两句话不重复，所以图标不退回地球。取不到图时 `data-drop="self"`
+       把 img 撤掉，露出底下那枚地球。 */
+    return `<a class="urllink" href="${esc(x.url)}" target="_blank" rel="noreferrer" title="${esc(x.label)}"><span class="entitylinkicon">${icon('globe')}<img class="entityfavicon" src="${esc(linkMarkUrl(x))}" alt="" loading="lazy" referrerpolicy="no-referrer" data-drop="self"></span><span class="entitylinklabel">${esc(linkHost(x.url)||x.label)}</span></a>`;
   }).join('');
   const tags=(d.tags||[]).map(x=>`<button class="pill" data-entity-tag="${esc(x.k)}" aria-pressed="${tagPressed(filters.tag,x.k)}">${esc(tagLabel(x.k))}<small>${x.n.toLocaleString()}</small></button>`).join('');
   /* 事务所名下的这批人不摆在这排小圆头像里：那是「同台艺人」，一条附注；名册是这一页

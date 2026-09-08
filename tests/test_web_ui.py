@@ -1856,18 +1856,20 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('<span class="sr-only">${esc(x.label)}</span></a>')
         self.assertPageContains('.entitylinks a.iconlink{padding:4px;gap:0;border-radius:50%}')
 
-    def test_an_official_link_shows_its_domain_and_globe_on_every_profile(self):
-        # 域名是这条链接里唯一确定的东西，前面的地球说明它通向站外。站点自己声明的
-        # 图标不是可信的标识：事务所 ACT 的站标是旗下一位艺人的照片，摆在人物页的
-        # 官网那一格就成了一张认错人的脸。名字也不必在这里重复——公司页的标题就是
-        # 它，人物页的事务所名在别名行里，还带着通往那张资料页的链接。
+    def test_an_official_link_shows_its_domain_next_to_the_sites_own_mark(self):
+        # 文字是域名——这条链接里唯一确定的东西；图标是站点自己那枚，说的是「这是哪家」。
+        # 两句话不重复，所以官网这一格两样都给。名字不在这里重复：公司页的标题就是它，
+        # 人物页的事务所名在别名行里，还带着通往那张资料页的链接。
+        # 已知例外：事务所 ACT 的站标是旗下一位艺人的照片，那一条会在人物页上摆出一张
+        # 别人的脸。取不到图时 `data-drop="self"` 撤掉 img，露出底下那枚地球。
         self.assertPageContains('<a class="urllink" href="${esc(x.url)}"')
         self.assertPageContains("${esc(linkHost(x.url)||x.label)}")
         self.assertPageContains(".entitylinks a.urllink{padding:4px 12px 4px 4px")
         links = self.app_js[self.app_js.index("const links=(d.links||[]).map"):]
         links = links[:links.index(".join('');")]
-        self.assertNotIn("entityfavicon", links.split('class="iconlink"')[-1],
-                         "非社媒的外链不得再取对方站点自己声明的图标")
+        official = links.split('class="iconlink"')[-1]
+        self.assertIn('<img class="entityfavicon" src="${esc(linkMarkUrl(x))}"', official)
+        self.assertIn('data-drop="self"', official)
 
     def test_entity_loading_and_detail_autoplay_share_their_entry_contracts(self):
         self.assertPageContains("showEntityLoading(ROUTE_ENTITIES[path.split('/')[1]])")
@@ -7670,6 +7672,54 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn("const selector='.managebar-menu,.board-local-nav:not(.settingscard>.board-local-nav)';",
                       controls)
         self.assertNotIn(".insighttabs{display:flex", board)
+        # 原样式把线挂在选中态上，权重比 `button::after` 高：只写后者，滑块底下还压着一条线。
+        self.assertIn(".insighttabs button::after,.insighttabs button[aria-selected=\"true\"]::after"
+                      "{content:none}", board)
+
+    def test_hovering_a_button_raises_the_fill_and_leaves_its_outline_alone(self):
+        """悬停只抬填充。按钮静止态已经带一圈 1px，悬停再把它加深就是一排边框忽明忽暗。
+
+        药丸、标签和外链卡的边各有自己的颜色来源，所以逐类钉回静止值；它们和按钮同一条。
+        """
+        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
+        for rule in re.findall(r"[^\n{}]*:hover[^\n{}]*\{[^}]*\}", board):
+            selector, _, body = rule.partition("{")
+            if not re.search(r"\.geist-button|\.fbtn|\.resourceaction|\.pill|\.brandpill|\.tg\b", selector):
+                continue
+            self.assertNotIn("--color-border-button-hover", body,
+                             f"悬停不改按钮那圈线：{selector.strip()}")
+        self.assertIn("body .pill:hover,body .brandpill:hover{border-color:var(--field-ring)}", board)
+        # 边不动之后悬停还得剩点东西：玻璃条上的药丸提文字色。
+        self.assertIn(".board-filter-frame.board-filter-frame .pill:hover{color:var(--ink)}", board)
+        self.assertIn("body .entitylinks a:hover{border-color:var(--line)}", board)
+
+    def test_the_shuffle_key_sits_as_flat_as_the_sort_keys_beside_it(self):
+        """换一批和排序键同一条，静止态一样平：单独铺一层面就是一排透明按钮里露出一块灰片。"""
+        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
+        self.assertIn(".sorts #batchAction,.entitycollectionhead .sorts .entitybatch"
+                      "{color:var(--ink);background:none;border:0;border-radius:7px;box-shadow:none}", board)
+        # 选中态归排序键，换一批只有悬停。
+        self.assertIn(".sorts #batchAction:hover,.entitycollectionhead .sorts .entitybatch:hover"
+                      "{background:var(--hover);color:var(--ink)}", board)
+
+    def test_profile_tags_are_the_same_pill_as_the_ones_on_the_home_filter_bar(self):
+        """资料页的标签跟首页筛选条上的标签是同一个控件，只是换了个位置。"""
+        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
+        self.assertIn(".entitytags .pill{height:30px;padding:0 10px;font-size:13px;line-height:20px;"
+                      "border-radius:8px;border:1px solid var(--line);color:var(--ink-2)}", board)
+        self.assertIn(".entitytags .pill[aria-pressed=\"true\"]{border-color:transparent;"
+                      "background:var(--picked);color:var(--ink)}", board)
+        self.assertIn(".board-filter-frame #tagbar .pill{height:30px;padding:0 10px;font-size:13px;", board)
+
+    def test_a_profile_website_link_shows_the_sites_own_mark(self):
+        """官网那一格的文字是域名，图标是站点自己的那枚；取不到才露出地球。"""
+        app = self.app_js
+        self.assertIn("<a class=\"urllink\"", app)
+        urllink = app[app.index("<a class=\"urllink\""):]
+        urllink = urllink[:urllink.index("</a>")]
+        self.assertIn("linkMarkUrl(x)", urllink)
+        self.assertIn("data-drop=\"self\"", urllink)
+        self.assertIn("linkHost(x.url)", urllink)
 
     def test_a_collapsed_ranking_fades_its_last_row_instead_of_covering_it(self):
         """收起的排名靠 mask 淡掉最后一行，不是拿一块渐变色盖上去。

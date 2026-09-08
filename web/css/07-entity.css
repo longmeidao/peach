@@ -55,7 +55,7 @@
 .entitylinkicon.brand svg{width:100%;height:100%;stroke:none;filter:none}
 /* 纯图标的社媒链接：收成圆形，没有文字就不给文字留位置。 */
 .entitylinks a.iconlink{padding:4px;gap:0;border-radius:50%}
-/* 官网域名前显示地球图标，与带名称的链接共用间距。 */
+/* 官网域名前显示站点自己那枚图标，取不到才露出地球；与带名称的链接共用间距。 */
 .entitylinks a.urllink{padding:4px 12px 4px 4px;letter-spacing:.02em}
 .entityskeletontext{width:100%}
 .entityskeletontext .entitytitle .skeleton{width:60%;height:auto}
