@@ -127,7 +127,7 @@ body :is(#manageTitle,#manageCrumb,#manageLede){max-width:var(--board-content);w
 
 /* Task entry cards and editing panels have different information density. */
 .cleanuppage,.configpage{width:100%;max-width:var(--board-content)}
-.cleanupgrid{grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.cleanupgrid{gap:16px}
 .cleanupfieldset{border:1px solid var(--line);border-radius:16px;box-shadow:0 1px 2px #00000003}
 .cleanupfieldset>.geist-fieldset-content{padding:20px 20px 16px;min-height:120px}
 .cleanupfieldset h3,.cleanupfieldset h2{font-size:16px;line-height:24px;font-weight:500;margin:0 0 12px}
@@ -139,6 +139,29 @@ body :is(#manageTitle,#manageCrumb,#manageLede){max-width:var(--board-content);w
 #libraryProcessing>.cleanupfieldset{display:grid;grid-template-columns:1fr auto;align-items:center}
 #libraryProcessing>.cleanupfieldset>.geist-fieldset-content{min-height:0;padding:24px}
 #libraryProcessing>.cleanupfieldset>.geist-fieldset-footer{border:0;padding:24px;background:none;display:flex;gap:8px;flex-wrap:wrap}
+/* ── 数据管理页照 Board 的 dashboard 模板排：顶上一排 plain stat card（stat-cards.tsx：132px 高、圆角 16、secondary 底、
+   内边距 16，32px 的图标格里 20px 字形，标签 Body Medium 次文字色，读数 title-1-medium 24/34）。Peach 把整张卡做成
+   按钮——它就是那一页的入口，读数下面那行 Caption 是同一份 payload 里的分项。五张在 1120 内一行摆下，窄了折两列、
+   再折一列。上游的卡不可点也没有悬停；悬停抬主文字色 6% 底是 Peach 自己加的，告诉人这张卡按得下去。 ── */
+.cleanupstats{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:16px}
+.board-plain-stat{display:flex;flex-direction:column;justify-content:space-between;gap:8px;min-width:0;min-height:132px;margin:0;padding:16px;border:0;border-radius:16px;background:var(--color-background-secondary-default);color:var(--color-text-primary);font:var(--board-body);text-align:left;cursor:pointer;transition:background-color .15s ease}
+.board-plain-stat:hover{background:color-mix(in srgb,var(--color-text-primary) 6%,var(--color-background-secondary-default))}
+.board-plain-stat:disabled{cursor:default}
+.board-plain-stat:focus-visible{outline:2px solid var(--color-border-focus-ring);outline-offset:2px}
+.board-plain-stat-head{display:flex;align-items:center;gap:8px;min-width:0;color:var(--color-text-secondary);font:var(--board-body-medium);white-space:nowrap}
+.board-stat-tile{display:grid;place-items:center;flex:none;width:32px;height:32px;border-radius:6px;background:var(--color-background-primary-default);color:var(--color-text-primary)}
+.board-stat-tile svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.board-plain-stat>strong{display:block;margin:auto 0 0;font:var(--board-figure);letter-spacing:-.02em;color:var(--color-text-primary);font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.board-plain-stat>.cleanupmeta{display:block;min-height:16px;margin:0;font:var(--board-caption);color:var(--color-text-tertiary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.board-plain-stat>.cleanupmeta:empty{display:block}
+.board-plain-stat .skeleton{height:1em;max-width:60%}
+@media(max-width:1119px){.cleanupstats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:559px){.cleanupstats{grid-template-columns:minmax(0,1fr)}}
+/* 读数下面那两张是要做的事，各占一行，与扫描卡同一个左说明右按钮的形状。 */
+.cleanupgrid>.cleanupemptyfolders{display:grid;grid-template-columns:1fr auto;align-items:center}
+.cleanupgrid>.cleanupemptyfolders>.geist-fieldset-content{min-height:0;padding:24px}
+.cleanupgrid>.cleanupemptyfolders>.geist-fieldset-footer{border:0;padding:24px;background:none;display:flex;gap:8px;flex-wrap:wrap}
+.cleanupgrid>.cleanupemptyfolders strong{font:var(--board-body);color:var(--color-text-secondary);letter-spacing:0}
 .library-processing-outcome:empty{display:none}
 .board-card-icon{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border:1px solid var(--line-soft);background:var(--surface);border-radius:10px;margin-right:10px;vertical-align:middle;color:var(--ink-2)}
 .board-card-icon svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
@@ -686,6 +709,19 @@ html.board-high-contrast :is(.selectiondock,.reviewcontrols.is-stuck,.reviewgrou
 .reviewtabs button:hover{background:none;color:var(--color-text-primary)}
 .reviewtabs button[aria-selected="true"]{background:var(--picked);color:var(--color-text-primary);font:var(--board-body-medium)}
 .reviewtabs .n{color:var(--color-text-secondary);font:500 12px/16px var(--board-font);font-variant-numeric:tabular-nums}
+/* ── 复核队列的分页条照 Board 的 Pagination（pagination.tsx）：nav 两端对齐、gap 8；上一页／下一页是 32px 的次级小键
+   （圆角 8、内边距 6/8）；页码 32×32、圆角 8、Body Medium，当前页借次级键的面（primary 底、border-button 描边、xs 阴影），
+   其它页码只有文字，悬停 primary-hover 底；「…」是三级文字色。页码格不做过渡：动了背景和阴影，换页时上一枚当前页会
+   肉眼可见地淡出。 ── */
+.board-pagination{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;margin-top:16px}
+.board-pagination>ul{display:flex;align-items:center;gap:2px;margin:0;padding:0;list-style:none}
+body .review .board-pagination>.geist-button{height:32px;min-height:32px;padding:6px 8px;border-radius:8px}
+.board-pagination>.geist-button svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.board-page,.board-page-dots{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;margin:0;padding:0;border:0;border-radius:8px;background:none;color:var(--color-text-secondary);font:var(--board-body-medium);font-variant-numeric:tabular-nums}
+.board-page{cursor:pointer;transition:none}
+.board-page:hover{background:var(--color-background-primary-hover);color:var(--color-text-primary)}
+.board-page[aria-current="page"]{border:1px solid var(--color-border-button-default);background:var(--color-background-primary-default);color:var(--color-text-primary);box-shadow:0 1px 2px #0000000d}
+.board-page-dots{color:var(--color-text-tertiary)}
 /* ── 口味页三个面板的标题同一档：Heading 20/26、上 24 左 24 下 12 ── */
 .insightpanel>header:not(:has([role="tablist"])){display:block;min-height:0;padding:24px 24px 12px}
 .insightpanel>header h3,.insightcopy>span{margin:0;font:var(--board-heading);color:var(--color-text-primary)}
@@ -729,17 +765,23 @@ body .reviewactions button:disabled{opacity:.5;cursor:not-allowed}
 .idface:not(:has(img)){background:color-mix(in srgb,var(--color-text-primary) 10%,var(--color-background-primary-default));color:var(--color-text-secondary)}
 /* ── 数据管理首屏骨架：扫描卡的底部条不铺灰底，和岛挂载后的样子一致 ── */
 .cleanupgrid>.board-processing-skeleton>.geist-fieldset-footer{background:none}
-/* ── 首页顶部两排：女优与厂牌都是一枚 34px 的灰 Pill Tab（boardui pill-tab.tsx gray）——24px 圆头像／标识在左、名字在右，
-   悬停 primary-hover，选中 tertiary 底主文字色。两排同一枚控件、同一高度、同一间距（4px）。 ── */
+/* ── 首页顶部两排。女优是竖排人像格：48px 圆头像在上、名字（Caption）在下，格宽 76、圆角 12——Board 的 Avatar 只到
+   lg 36px（avatar.tsx），竖排格无对应，48 取的是它 `size-12` 那一级；厂牌是 40px 的灰 Pill（pill-tab.tsx gray 放大一档）：
+   28px 圆标识在左、名字在右。两排都不描边、悬停 primary-hover、选中 tertiary 底主文字色；标签那一排是 30px 的描边药丸，
+   厂牌靠更高的身量、圆标识和无边框跟它分开。 ── */
 #tiers .tier{gap:4px;padding:0 16px 6px;align-items:center}
 #tiers .tier:last-child{padding-bottom:4px}
-#tiers .av,#tiers .brandpill{flex:none;display:inline-flex;align-items:center;gap:8px;width:auto;max-width:none;height:34px;padding:5px 10px 5px 5px;border:0;border-radius:10px;background:transparent;color:var(--color-text-secondary);font:var(--board-body-medium);text-align:left;white-space:nowrap;transition:background-color .2s ease-out,color .2s ease-out}
+#tiers .av,#tiers .brandpill{flex:none;border:0;background:transparent;color:var(--color-text-secondary);font:var(--board-body-medium);white-space:nowrap;transition:background-color .2s ease-out,color .2s ease-out}
+#tiers .av{display:flex;flex-direction:column;align-items:center;gap:6px;width:76px;max-width:none;height:auto;padding:6px 4px;border-radius:12px;text-align:center}
+#tiers .brandpill{display:inline-flex;align-items:center;gap:8px;width:auto;max-width:none;height:40px;padding:6px 12px 6px 6px;border-radius:12px;text-align:left}
 #tiers .av:hover,#tiers .brandpill:hover{background:var(--color-background-primary-hover);color:var(--color-text-primary);border-color:transparent}
 #tiers .av[aria-pressed="true"],#tiers .brandpill[aria-pressed="true"]{background:var(--color-background-tertiary-default);color:var(--color-text-primary);border-color:transparent}
-#tiers .av .ring,#tiers .brandpill .mk{position:relative;flex:none;width:24px;height:24px;margin:0;border-radius:50%;overflow:hidden;background:color-mix(in srgb,var(--color-text-primary) 10%,var(--color-background-primary-default));color:var(--color-text-secondary);font:600 12px/16px var(--board-font)}
+#tiers .av .ring,#tiers .brandpill .mk{position:relative;flex:none;margin:0;border-radius:50%;overflow:hidden;background:color-mix(in srgb,var(--color-text-primary) 10%,var(--color-background-primary-default));color:var(--color-text-secondary)}
+#tiers .av .ring{width:48px;height:48px;font:600 18px/24px var(--board-font)}
+#tiers .brandpill .mk{width:28px;height:28px;font:600 12px/16px var(--board-font)}
 #tiers .av .ring .ini{font:inherit;color:inherit}
 #tiers .av:hover .ring,#tiers .av[aria-pressed="true"] .ring{box-shadow:none}
-#tiers .av .nm{display:block;max-width:12em;font:inherit;color:inherit;text-align:left;overflow:hidden;text-overflow:ellipsis}
+#tiers .av .nm{display:block;max-width:100%;font:var(--board-caption);color:inherit;text-align:center;overflow:hidden;text-overflow:ellipsis}
 @media(prefers-reduced-motion:reduce){.board-ranked-chart .board-rank-fill,.tasteranks .taste-rank-track i,.board-radar .board-radar-value{animation:none;transform:none;opacity:1}}
 
 /* ── 关注列表整段进框，与「添加关注」同一只卡：头 20/24/8，选择栏与列表左右 24，脚是卡片脚 ──

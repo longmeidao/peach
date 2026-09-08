@@ -40,7 +40,8 @@ import type { LibraryProcessingData, LibraryProcessingProps } from './islands/li
 export { refreshStore, storeNames } from './state';
 export { watchJob, followJobProgress } from './jobs';
 export { identityEvidenceHtml, reviewImageHtml, wireReviewPictures } from './review-evidence';
-export { createReviewSelection, wireReviewSelection, updateReviewSticky } from './review-bulk';
+export { createReviewSelection, wireReviewSelection, updateReviewSticky, groupReviewRows } from './review-bulk';
+export { paginationHtml, pageCount, clampPage } from './pagination';
 export { nativeImageFit, matchesFaceSource } from './native-image';
 export { entitySkeletonHtml } from './entity-skeleton';
 export { boardPageSkeleton } from './board-skeleton';

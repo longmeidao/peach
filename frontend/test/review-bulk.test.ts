@@ -174,6 +174,16 @@ it('分类筛选后全选和快捷键仅操作当前分类，清除筛选可恢�
   expect(f.root.querySelectorAll('.reviewgroup:not([hidden])')).toHaveLength(2);
 });
 
+it('分组与筛选项按整条队列算，本页上一张都没有的组不画分组条', () => {
+  const state = createReviewSelection();
+  const root = document.createElement('div'); document.body.append(root);
+  const catalog = [{ item_key: 'one', candidates: [{ candidate_key: 'one-nfo', source: 'local_nfo' }] }, { item_key: 'two', candidates: [{ candidate_key: 'two-nfo', source: 'local_nfo' }, { candidate_key: 'two-api', source: 'api' }] }];
+  root.innerHTML = '<div class="reviewcontrols"></div><div class="reviewlist"><fieldset data-review-key="one"><h4>one</h4><input type="radio" name="metadata-one" value="one-nfo" checked><button data-review-status="approved">通过</button><span class="reviewstate"></span></fieldset></div>';
+  wireReviewSelection(root, { rows: catalog.slice(0, 1), catalog, metadata: true, locked: false, state, payload: () => ({}), submit: async () => ({ ok: true }), applied: () => {}, active: () => true, refresh: () => {}, notify: () => {} });
+  expect(root.querySelectorAll('.reviewgroup')).toHaveLength(1);
+  expect((root.querySelector('.reviewcategoryfilter') as HTMLElement).hidden).toBe(false);
+});
+
 it('分组菜单只提供当前类别的数据维度，失效字段筛选自动重置', () => {
   expect(reviewGroupingOptions([{item_key:'identity'}],false)).toEqual([['candidates','全部待复核','list-filter']]);
   expect(reviewGroupingOptions([{item_key:'field',field:'performers',source:'nfo'}],true).map(item=>item[0])).toEqual(['candidates','source','field']);

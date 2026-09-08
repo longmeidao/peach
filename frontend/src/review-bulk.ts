@@ -83,7 +83,7 @@ export function commonReviewSources(rows: ReviewRow[]): string[] {
 }
 
 export function wireReviewSelection(root: HTMLElement, options: {
-  rows: ReviewRow[]; metadata: boolean; category?: string; locked: boolean; state: Selection;
+  rows: ReviewRow[]; catalog?: ReviewRow[]; metadata: boolean; category?: string; locked: boolean; state: Selection;
   payload(item: HTMLElement): Payload; submit(payload: Payload): Promise<{ ok: boolean; error?: string }>;
   applied(key: string): void; active(): boolean; refresh(): void; notify(message: string): void;
 }) {
@@ -93,9 +93,11 @@ export function wireReviewSelection(root: HTMLElement, options: {
   if (options.category !== undefined && state.category !== options.category) {
     state.category = options.category; state.filter = ''; state.groupBy = 'candidates'; state.anchor = null;
   }
-  const groupOptions = reviewGroupingOptions(options.rows, options.metadata);
+  // 分组方式和筛选项按整条队列算，卡片只画当前这一页：筛选里的计数说的是队列，不是这一屏。
+  const catalog = options.catalog || options.rows;
+  const groupOptions = reviewGroupingOptions(catalog, options.metadata);
   if (!groupOptions.some(option => option[0] === state.groupBy)) { state.groupBy = 'candidates'; state.filter = ''; }
-  const groups = groupReviewRows(options.rows, state.groupBy);
+  const groups = groupReviewRows(catalog, state.groupBy);
   if (!groups.some(group => group.key === state.filter)) state.filter = '';
   const visible = () => [...list.querySelectorAll<HTMLElement>('[data-review-key]')].filter(card => !card.closest('[hidden]'));
   const selected = () => visible().filter(card => state.selected.has(card.dataset.reviewKey!));
@@ -137,6 +139,8 @@ export function wireReviewSelection(root: HTMLElement, options: {
   const controls: (() => void)[] = [];
   for (const group of groups) {
     const groupCards = group.rows.map(row => cards.find(card => card.dataset.reviewKey === row.item_key)).filter((card): card is HTMLElement => !!card);
+    // 这一页上一张都没有的组不画分组条：条子底下空着，读起来像加载坏了。
+    if (!groupCards.length) continue;
     const section = document.createElement('section'); section.className = 'reviewgroup';
     section.hidden = !!state.filter && group.key !== state.filter;
     const bar = document.createElement('div'); bar.className = 'reviewbulkbar reviewgroupbar';

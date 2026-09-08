@@ -1,7 +1,7 @@
 import { LOC as e, esc as t, faviconUrl as n, fmtDur as r, fmtSize as i, icon as a, requestErrorMessage as o } from "/js/core.js";
 import { MEDIA_SOURCE_ICONS as s, checkboxHtml as c, confirmModal as l, emptyStateHtml as u, fieldsetTitle as d, loadingDotsHtml as f, noteHtml as p, progressHtml as m, projectBannerHtml as h, selectFieldHtml as g, selectOptionIconHtml as _, setActionBusy as v, wireCollapse as y, wireSelectField as b } from "/js/ui-components.js";
 //#region node_modules/preact/dist/preact.module.js
-var x, S, C, w, T, E, D, O, k, A, j, ee, M, N, P, F = {}, te = [], ne = /acit|ex(?:s|g|n|p|$)|rph|grid|ows|mnc|ntw|ine[ch]|zoo|^ord|itera/i, re = Array.isArray;
+var x, S, C, w, T, E, D, O, k, A, j, ee, M, N, te, P = {}, F = [], ne = /acit|ex(?:s|g|n|p|$)|rph|grid|ows|mnc|ntw|ine[ch]|zoo|^ord|itera/i, re = Array.isArray;
 function I(e, t) {
 	for (var n in t) e[n] = t[n];
 	return e;
@@ -66,8 +66,8 @@ function fe() {
 	}
 }
 function pe(e, t, n, r, i, a, o, s, c, l, u) {
-	var d, f, p, m, h, g, _ = r && r.__k || te, v = t.length;
-	for (c = me(n, t, _, c, v), d = 0; d < v; d++) (p = n.__k[d]) != null && (f = p.__i != -1 && _[p.__i] || F, p.__i = d, g = be(e, p, f, i, a, o, s, c, l, u), m = p.__e, p.ref && f.ref != p.ref && (f.ref && Te(f.ref, null, p), u.push(p.ref, p.__c || m, p)), h == null && m != null && (h = m), 4 & p.__u ? (c = he(p, c, e), f.__e && (f.__e = null)) : typeof p.type == "function" && g !== void 0 ? c = g : m && (c = m.nextSibling), p.__u &= -7);
+	var d, f, p, m, h, g, _ = r && r.__k || F, v = t.length;
+	for (c = me(n, t, _, c, v), d = 0; d < v; d++) (p = n.__k[d]) != null && (f = p.__i != -1 && _[p.__i] || P, p.__i = d, g = be(e, p, f, i, a, o, s, c, l, u), m = p.__e, p.ref && f.ref != p.ref && (f.ref && Te(f.ref, null, p), u.push(p.ref, p.__c || m, p)), h == null && m != null && (h = m), 4 & p.__u ? (c = he(p, c, e), f.__e && (f.__e = null)) : typeof p.type == "function" && g !== void 0 ? c = g : m && (c = m.nextSibling), p.__u &= -7);
 	return n.__e = h, c;
 }
 function me(e, t, n, r, i) {
@@ -107,7 +107,7 @@ function ve(e, t, n, r, i) {
 			if (typeof r == "string" && (e.style.cssText = r = ""), r) for (t in r) n && t in n || _e(e.style, t, "");
 			if (n) for (t in n) r && n[t] == r[t] || _e(e.style, t, n[t]);
 		}
-	} else if (t[0] == "o" && t[1] == "n") a = t != (t = t.replace(ee, "$1")), o = t.toLowerCase(), t = o in e || t == "onFocusOut" || t == "onFocusIn" ? o.slice(2) : t.slice(2), e.l ||= {}, e.l[t + a] = n, n ? r ? n[j] = r[j] : (n[j] = M, e.addEventListener(t, a ? P : N, a)) : e.removeEventListener(t, a ? P : N, a);
+	} else if (t[0] == "o" && t[1] == "n") a = t != (t = t.replace(ee, "$1")), o = t.toLowerCase(), t = o in e || t == "onFocusOut" || t == "onFocusIn" ? o.slice(2) : t.slice(2), e.l ||= {}, e.l[t + a] = n, n ? r ? n[j] = r[j] : (n[j] = M, e.addEventListener(t, a ? te : N, a)) : e.removeEventListener(t, a ? te : N, a);
 	else {
 		if (i == "http://www.w3.org/2000/svg") t = t.replace(/xlink(H|:h)/, "h").replace(/sName$/, "s");
 		else if (t != "width" && t != "height" && t != "href" && t != "list" && t != "form" && t != "tabIndex" && t != "download" && t != "rowSpan" && t != "colSpan" && t != "role" && t != "popover" && t in e) try {
@@ -139,14 +139,14 @@ function be(e, t, n, r, i, a, o, s, c, l) {
 				if (y && D.getDerivedStateFromProps == null && v !== m && f.componentWillReceiveProps != null && f.componentWillReceiveProps(v, x), t.__v == n.__v || !f.__e && f.shouldComponentUpdate != null && !1 === f.shouldComponentUpdate(v, f.__s, x)) {
 					t.__v != n.__v && (f.props = v, f.state = f.__s, f.__d = !1), t.__e = n.__e, t.__k = n.__k, t.__k.some(function(e) {
 						e && (e.__ = t);
-					}), te.push.apply(f.__h, f._sb), f._sb = [], f.__h.length && o.push(f), s = ce(n);
+					}), F.push.apply(f.__h, f._sb), f._sb = [], f.__h.length && o.push(f), s = ce(n);
 					break n;
 				}
 				f.componentWillUpdate != null && f.componentWillUpdate(v, f.__s, x), y && f.componentDidUpdate != null && f.__h.push(function() {
 					f.componentDidUpdate(m, h, g);
 				});
 			}
-			if (f.context = x, f.props = v, f.__P = e, f.__e = !1, C = S.__r, w = 0, y) f.state = f.__s, f.__d = !1, C && C(t), u = f.render(f.props, f.state, f.context), te.push.apply(f.__h, f._sb), f._sb = [];
+			if (f.context = x, f.props = v, f.__P = e, f.__e = !1, C = S.__r, w = 0, y) f.state = f.__s, f.__d = !1, C && C(t), u = f.render(f.props, f.state, f.context), F.push.apply(f.__h, f._sb), f._sb = [];
 			else do
 				f.__d = !1, C && C(t), u = f.render(f.props, f.state, f.context), f.state = f.__s;
 			while (f.__d && ++w < 25);
@@ -182,7 +182,7 @@ function Ce(e) {
 	return typeof e != "object" || !e || e.__b > 0 ? e : re(e) ? e.map(Ce) : e.constructor === void 0 ? I({}, e) : null;
 }
 function we(e, t, n, r, i, a, o, s, c) {
-	var l, u, d, f, p, m, h, g = n.props || F, _ = t.props, v = t.type;
+	var l, u, d, f, p, m, h, g = n.props || P, _ = t.props, v = t.type;
 	if (v == "svg" ? i = "http://www.w3.org/2000/svg" : v == "math" ? i = "http://www.w3.org/1998/Math/MathML" : i ||= "http://www.w3.org/1999/xhtml", a != null) {
 		for (l = 0; l < a.length; l++) if ((p = a[l]) && "setAttribute" in p == !!v && (v ? p.localName == v : p.nodeType == 3)) {
 			e = p, a[l] = null;
@@ -232,9 +232,9 @@ function De(e, t, n) {
 }
 function Oe(e, t, n) {
 	var r, i, a, o;
-	t == document && (t = document.documentElement), S.__ && S.__(e, t), i = (r = typeof n == "function") ? null : n && n.__k || t.__k, a = [], o = [], be(t, e = (!r && n || t).__k = ae(L, null, [e]), i || F, F, t.namespaceURI, !r && n ? [n] : i ? null : t.firstChild ? x.call(t.childNodes) : null, a, !r && n ? n : i ? i.__e : t.firstChild, r, o), Se(a, e, o), e.props.children = null;
+	t == document && (t = document.documentElement), S.__ && S.__(e, t), i = (r = typeof n == "function") ? null : n && n.__k || t.__k, a = [], o = [], be(t, e = (!r && n || t).__k = ae(L, null, [e]), i || P, P, t.namespaceURI, !r && n ? [n] : i ? null : t.firstChild ? x.call(t.childNodes) : null, a, !r && n ? n : i ? i.__e : t.firstChild, r, o), Se(a, e, o), e.props.children = null;
 }
-x = te.slice, S = { __e: function(e, t, n, r) {
+x = F.slice, S = { __e: function(e, t, n, r) {
 	for (var i, a, o; t = t.__;) if ((i = t.__c) && !i.__) try {
 		if ((a = i.constructor) && a.getDerivedStateFromError != null && (i.setState(a.getDerivedStateFromError(e)), o = i.__d), i.componentDidCatch != null && (i.componentDidCatch(e, r || {}), o = i.__d), o) return i.__E = i;
 	} catch (t) {
@@ -250,7 +250,7 @@ x = te.slice, S = { __e: function(e, t, n, r) {
 	this.__v && (this.__e = !0, e && this.__h.push(e), de(this));
 }, se.prototype.render = L, T = [], D = typeof Promise == "function" ? Promise.prototype.then.bind(Promise.resolve()) : setTimeout, O = function(e, t) {
 	return e.__v.__b - t.__v.__b;
-}, fe.__r = 0, k = Math.random().toString(8), A = "__d" + k, j = "__a" + k, ee = /(PointerCapture)$|Capture$/i, M = 0, N = ye(!1), P = ye(!0);
+}, fe.__r = 0, k = Math.random().toString(8), A = "__d" + k, j = "__a" + k, ee = /(PointerCapture)$|Capture$/i, M = 0, N = ye(!1), te = ye(!0);
 //#endregion
 //#region src/sort-preferences.ts
 function ke(e, t, n) {
@@ -778,50 +778,29 @@ function mt(e, t) {
 	return t.filter((t) => e.some((e) => e.location === t));
 }
 function ht() {
+	let e = [
+		["人工复核", "square-check-big"],
+		["高清版", "sparkles"],
+		["重复文件", "file-stack"],
+		["垃圾文件", "file-archive"],
+		["回收站", "trash"]
+	], t = "<span class=\"skeleton cleanup-count-skeleton\" aria-hidden=\"true\"></span>";
 	return `<div class="cleanuppage" data-skeleton="cleanup" aria-busy="true" aria-label="正在读取数据管理状态">
-    <div class="cleanupgrid">${[
-		[
-			"扫描与采集",
-			"扫描并补全资料",
-			"扫描媒体文件夹，导入已有资料，采集缺失信息。"
-		],
-		[
-			"人工复核",
-			"查看候选",
-			""
-		],
-		[
-			"高清版",
-			"查看高清版",
-			""
-		],
-		[
-			"重复文件",
-			"查看重复文件",
-			""
-		],
-		[
-			"垃圾文件",
-			"查看垃圾文件",
-			""
-		],
-		[
-			"空文件夹",
-			"扫描空文件夹",
-			""
-		],
-		[
-			"回收站",
-			"查看回收站",
-			""
-		]
-	].map(([e, t, n], r) => `
-        <section class="cleanupfieldset${r === 0 ? " board-processing-skeleton" : ""}" data-geist-fieldset aria-labelledby="cleanup-loading-${r}">
-        <div class="geist-fieldset-content"><h3 class="geist-fieldset-title" id="cleanup-loading-${r}">${e}</h3>
-          ${n ? `<p>${n}</p>` : "<strong><span class=\"skeleton cleanup-count-skeleton\" aria-hidden=\"true\"></span></strong>"}
-          ${r === 5 ? "<p class=\"cleanupmeta\"><span class=\"skeleton cleanup-count-skeleton\" aria-hidden=\"true\"></span></p>" : ""}</div>
-        <footer class="geist-fieldset-footer" data-geist-fieldset-footer>${r === 0 ? "<a class=\"geist-button\" href=\"/scraping\">采集来源</a>" : ""}<button type="button"${r === 0 ? " class=\"geist-button primary\"" : ""} disabled>${r === 5 ? "<svg aria-hidden=\"true\"><use href=\"#i-scan-search\"></use></svg><span>" + t + "</span>" : t}</button></footer>
-      </section>`).join("")}</div></div>`;
+    <div class="cleanupstats">${e.map(([e, n]) => `
+      <button type="button" class="board-plain-stat" disabled>
+        <span class="board-plain-stat-head"><span class="board-stat-tile"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-${n}"></use></svg></span>${e}</span>
+        <strong>${t}</strong><span class="cleanupmeta">${t}</span></button>`).join("")}</div>
+    <div class="cleanupgrid">
+      <section class="cleanupfieldset board-processing-skeleton" data-geist-fieldset aria-labelledby="cleanup-loading-scan">
+        <div class="geist-fieldset-content"><h3 class="geist-fieldset-title" id="cleanup-loading-scan">扫描与采集</h3>
+          <p>扫描媒体文件夹，导入已有资料，采集缺失信息。</p></div>
+        <footer class="geist-fieldset-footer" data-geist-fieldset-footer><a class="geist-button" href="/scraping">采集来源</a><button type="button" class="geist-button primary" disabled>扫描并补全资料</button></footer>
+      </section>
+      <section class="cleanupfieldset cleanupemptyfolders" data-geist-fieldset aria-labelledby="cleanup-loading-empty">
+        <div class="geist-fieldset-content"><h3 class="geist-fieldset-title" id="cleanup-loading-empty">空文件夹</h3>
+          <strong>${t}</strong><p class="cleanupmeta">${t}</p></div>
+        <footer class="geist-fieldset-footer" data-geist-fieldset-footer><button type="button" disabled><svg aria-hidden="true"><use href="#i-scan-search"></use></svg><span>扫描空文件夹</span></button></footer>
+      </section></div></div>`;
 }
 function gt(e, t = !1, n = !1) {
 	if (t || n) return "";
@@ -2677,11 +2656,11 @@ function Kn({ data: e, receipt: t }) {
 	}, [E]);
 	let N = (e, t) => {
 		i((n) => n.map((n, r) => r === e ? t : n));
-	}, P = () => {
+	}, te = () => {
 		k(r.length), i((e) => [...e, ""]);
-	}, F = (e) => {
+	}, P = (e) => {
 		o((t) => t.filter((t, n) => n !== e)), c((t) => t.filter((t, n) => n !== e)), u((t) => t.filter((t, n) => n !== e)), m((t) => t.filter((t, n) => n !== e)), i((t) => t.filter((t, n) => n !== e)), x((t) => t.filter((t, n) => n !== e));
-	}, te = (e, t) => {
+	}, F = (e, t) => {
 		x((n) => {
 			let r = [...n];
 			for (; r.length <= e;) r.push("");
@@ -2692,9 +2671,9 @@ function Kn({ data: e, receipt: t }) {
 			v(t, !0);
 			try {
 				let { path: t } = await q(Rn, { initial: r[e] ?? "" });
-				t && (N(e, t), te(e, ""));
+				t && (N(e, t), F(e, ""));
 			} catch (t) {
-				te(e, G(t));
+				F(e, G(t));
 			} finally {
 				v(t, !1);
 			}
@@ -2799,7 +2778,7 @@ function Kn({ data: e, receipt: t }) {
 										type: "button",
 										class: "geist-button configrm danger",
 										"aria-label": "移除这个文件夹",
-										onClick: () => F(n),
+										onClick: () => P(n),
 										children: /* @__PURE__ */ J("svg", {
 											viewBox: "0 0 24 24",
 											"aria-hidden": "true",
@@ -2866,7 +2845,7 @@ function Kn({ data: e, receipt: t }) {
 						/* @__PURE__ */ J("button", {
 							type: "button",
 							class: "geist-button configadd",
-							onClick: P,
+							onClick: te,
 							children: "添加文件夹"
 						}),
 						a.some((e) => e === "115" || e === "pikpak") ? /* @__PURE__ */ J(Nn, {}) : null,
@@ -3929,86 +3908,88 @@ function ri(e, t) {
 	if (!n || !t.rows.length || t.locked) return;
 	let r = t.state, i = [...n.querySelectorAll("[data-review-key]")];
 	t.category !== void 0 && r.category !== t.category && (r.category = t.category, r.filter = "", r.groupBy = "candidates", r.anchor = null);
-	let a = Qr(t.rows, t.metadata);
-	a.some((e) => e[0] === r.groupBy) || (r.groupBy = "candidates", r.filter = "");
-	let o = $r(t.rows, r.groupBy);
-	o.some((e) => e.key === r.filter) || (r.filter = "");
-	let s = () => [...n.querySelectorAll("[data-review-key]")].filter((e) => !e.closest("[hidden]")), l = () => s().filter((e) => r.selected.has(e.dataset.reviewKey)), u = () => t.rows.filter((e) => l().some((t) => t.dataset.reviewKey === e.item_key)), d = (e) => !e.querySelector("[data-review-status=\"approved\"]")?.disabled, f = (e, t = "") => {
+	let a = t.catalog || t.rows, o = Qr(a, t.metadata);
+	o.some((e) => e[0] === r.groupBy) || (r.groupBy = "candidates", r.filter = "");
+	let s = $r(a, r.groupBy);
+	s.some((e) => e.key === r.filter) || (r.filter = "");
+	let l = () => [...n.querySelectorAll("[data-review-key]")].filter((e) => !e.closest("[hidden]")), u = () => l().filter((e) => r.selected.has(e.dataset.reviewKey)), d = () => t.rows.filter((e) => u().some((t) => t.dataset.reviewKey === e.item_key)), f = (e) => !e.querySelector("[data-review-status=\"approved\"]")?.disabled, p = (e, t = "") => {
 		let n = document.createElement("button");
 		return n.type = "button", n.className = `geist-button ${t}`.trim(), n.textContent = e, n;
-	}, p = document.createElement("div");
-	p.className = "reviewbulkbar reviewbulktoolbar", p.setAttribute("role", "group"), p.setAttribute("aria-label", "复核批量操作");
-	let m = document.createElement("div");
-	m.className = "reviewgroupby", m.innerHTML = g(a, r.groupBy, { label: "筛选分组方式" });
-	let h = b(m.firstElementChild);
-	m.querySelectorAll("[data-select-option] .gselectmark").forEach((e) => e.remove()), h.addEventListener("change", () => {
-		if (r.busy || !a.some((e) => e[0] === h.value)) return;
-		r.groupBy = h.value, r.filter = "", r.anchor = null;
+	}, m = document.createElement("div");
+	m.className = "reviewbulkbar reviewbulktoolbar", m.setAttribute("role", "group"), m.setAttribute("aria-label", "复核批量操作");
+	let h = document.createElement("div");
+	h.className = "reviewgroupby", h.innerHTML = g(o, r.groupBy, { label: "筛选分组方式" });
+	let _ = b(h.firstElementChild);
+	h.querySelectorAll("[data-select-option] .gselectmark").forEach((e) => e.remove()), _.addEventListener("change", () => {
+		if (r.busy || !o.some((e) => e[0] === _.value)) return;
+		r.groupBy = _.value, r.filter = "", r.anchor = null;
 		let n = e.parentElement;
 		t.refresh(), n?.querySelector(".reviewgroupby button")?.focus({ preventScroll: !0 });
 	});
-	let _ = document.createElement("div");
-	_.className = "reviewcategoryfilter", _.hidden = o.length < 2, _.innerHTML = g([[
+	let y = document.createElement("div");
+	y.className = "reviewcategoryfilter", y.hidden = s.length < 2, y.innerHTML = g([[
 		"",
 		"全部分类",
 		"list-filter"
-	], ...o.map((e) => [
+	], ...s.map((e) => [
 		e.key,
 		`${e.title} · ${e.rows.length}`,
 		"list-filter"
 	])], r.filter, { label: r.groupBy === "field" ? "筛选字段分类" : "筛选当前分类" });
-	let y = _.querySelector("[data-select-menu]");
-	if (y) {
+	let x = y.querySelector("[data-select-menu]");
+	if (x) {
 		let e = document.createElement("div");
 		e.setAttribute("role", "group"), e.setAttribute("aria-label", r.groupBy === "field" ? "字段分类" : "当前分类");
 		let t = document.createElement("div");
-		t.className = "reviewfilterheading", t.textContent = e.getAttribute("aria-label"), t.setAttribute("aria-hidden", "true"), e.append(t, ...Array.from(y.children).slice(1)), y.append(e);
+		t.className = "reviewfilterheading", t.textContent = e.getAttribute("aria-label"), t.setAttribute("aria-hidden", "true"), e.append(t, ...Array.from(x.children).slice(1)), x.append(e);
 	}
-	let x = b(_.firstElementChild);
-	_.querySelectorAll("[data-select-option] .gselectmark").forEach((e) => e.remove()), x.addEventListener("change", () => {
-		if (r.busy || x.value && !o.some((e) => e.key === x.value)) return;
-		r.filter = x.value, r.anchor = null;
+	let S = b(y.firstElementChild);
+	y.querySelectorAll("[data-select-option] .gselectmark").forEach((e) => e.remove()), S.addEventListener("change", () => {
+		if (r.busy || S.value && !s.some((e) => e.key === S.value)) return;
+		r.filter = S.value, r.anchor = null;
 		let n = e.parentElement;
 		t.refresh(), n?.querySelector(".reviewcategoryfilter button")?.focus({ preventScroll: !0 });
 	});
-	let S = f("全选本页"), C = f("通过所选", "primary"), w = f("拒绝所选", "error"), T = document.createElement("span");
-	T.className = "reviewselectedcount selectiondockcount", T.setAttribute("role", "status");
-	let E = document.createElement("div");
-	E.className = "reviewbulksource", E.hidden = !t.metadata;
-	let D = document.createElement("p");
-	D.className = "reviewstate reviewbulkfeedback", D.setAttribute("role", "status");
-	let O = document.createElement("div");
-	O.className = "reviewbulkdecisions", O.append(C, w);
+	let C = p("全选本页"), w = p("通过所选", "primary"), T = p("拒绝所选", "error"), E = document.createElement("span");
+	E.className = "reviewselectedcount selectiondockcount", E.setAttribute("role", "status");
+	let D = document.createElement("div");
+	D.className = "reviewbulksource", D.hidden = !t.metadata;
+	let O = document.createElement("p");
+	O.className = "reviewstate reviewbulkfeedback", O.setAttribute("role", "status");
 	let k = document.createElement("div");
-	k.className = "selectiondock reviewdock", k.setAttribute("role", "group"), k.setAttribute("aria-label", "复核所选项目");
-	let A = f("取消选择");
-	k.append(T, E, O, A, D), p.append(m, _, S);
-	let j = e.querySelector(".reviewcontrols");
-	j ? j.after(p) : n.before(p), e.append(k), n.classList.add("reviewgroups");
-	let ee = () => {
+	k.className = "reviewbulkdecisions", k.append(w, T);
+	let A = document.createElement("div");
+	A.className = "selectiondock reviewdock", A.setAttribute("role", "group"), A.setAttribute("aria-label", "复核所选项目");
+	let j = p("取消选择");
+	A.append(E, D, k, j, O), m.append(h, y, C);
+	let ee = e.querySelector(".reviewcontrols");
+	ee ? ee.after(m) : n.before(m), e.append(A), n.classList.add("reviewgroups");
+	let M = () => {
 		r.selected.clear(), r.anchor = null, P();
 	};
-	A.onclick = () => {
-		r.busy || (ee(), S.focus({ preventScroll: !0 }));
-	}, S.onclick = () => {
+	j.onclick = () => {
+		r.busy || (M(), C.focus({ preventScroll: !0 }));
+	}, C.onclick = () => {
 		if (r.busy) return;
-		let e = s(), t = l().length === e.length;
+		let e = l(), t = u().length === e.length;
 		e.forEach((e) => t ? r.selected.delete(e.dataset.reviewKey) : r.selected.add(e.dataset.reviewKey)), P();
-	}, C.onclick = () => F("approved", C), w.onclick = () => F("rejected", w);
-	let M = [];
-	for (let e of o) {
-		let t = e.rows.map((e) => i.find((t) => t.dataset.reviewKey === e.item_key)).filter((e) => !!e), a = document.createElement("section");
+	}, w.onclick = () => F("approved", w), T.onclick = () => F("rejected", T);
+	let N = [];
+	for (let e of s) {
+		let t = e.rows.map((e) => i.find((t) => t.dataset.reviewKey === e.item_key)).filter((e) => !!e);
+		if (!t.length) continue;
+		let a = document.createElement("section");
 		a.className = "reviewgroup", a.hidden = !!r.filter && e.key !== r.filter;
 		let o = document.createElement("div");
 		o.className = "reviewbulkbar reviewgroupbar";
-		let l = document.createElement("h3");
-		l.textContent = `${e.title} · ${t.length}`;
-		let u = f("全选本组"), d = document.createElement("div");
-		d.className = "reviewlist", o.append(l, u), a.append(o, d), n.append(a), u.onclick = () => {
+		let s = document.createElement("h3");
+		s.textContent = `${e.title} · ${t.length}`;
+		let u = p("全选本组"), d = document.createElement("div");
+		d.className = "reviewlist", o.append(s, u), a.append(o, d), n.append(a), u.onclick = () => {
 			if (r.busy) return;
 			let e = t.every((e) => r.selected.has(e.dataset.reviewKey));
 			t.forEach((t) => e ? r.selected.delete(t.dataset.reviewKey) : r.selected.add(t.dataset.reviewKey)), P();
-		}, M.push(() => {
+		}, N.push(() => {
 			u.textContent = t.every((e) => r.selected.has(e.dataset.reviewKey)) ? "清空本组" : "全选本组";
 		});
 		for (let e of t) {
@@ -4023,7 +4004,7 @@ function ri(e, t) {
 				e.className = "reviewpickname", e.append(...n.childNodes), n.classList.add("reviewpickheading"), n.append(i, e);
 			} else e.prepend(i);
 			let o = (e, n) => {
-				ei(r, s().map((e) => e.dataset.reviewKey), t, e, n), P();
+				ei(r, l().map((e) => e.dataset.reviewKey), t, e, n), P();
 			};
 			if (i.addEventListener("mousedown", (e) => {
 				e.shiftKey && e.preventDefault();
@@ -4036,11 +4017,11 @@ function ri(e, t) {
 					if (n.key === " ") n.preventDefault(), o(!0, !0);
 					else if (n.key === "ArrowDown" || n.key === "ArrowUp") {
 						n.preventDefault();
-						let i = s(), a = i[i.indexOf(e) + (n.key === "ArrowDown" ? 1 : -1)];
+						let i = l(), a = i[i.indexOf(e) + (n.key === "ArrowDown" ? 1 : -1)];
 						a && (r.anchor === null && (r.anchor = t), ei(r, i.map((e) => e.dataset.reviewKey), a.dataset.reviewKey, !0, !0), P(), a.querySelector(".reviewpickitem input")?.focus());
 					}
 				}
-			}), M.push(() => {
+			}), N.push(() => {
 				a.checked = r.selected.has(t);
 			}), r.assets.has(t)) {
 				let n = r.assets.get(t), i = [...e.querySelectorAll("[data-review-asset]")];
@@ -4060,35 +4041,35 @@ function ri(e, t) {
 		}
 	}
 	e.addEventListener("keydown", (t) => {
-		r.busy || !e.contains(n) || (t.key === "Escape" && r.selected.size && (t.preventDefault(), t.stopPropagation(), ee()), (t.ctrlKey || t.metaKey) && t.key.toLowerCase() === "a" && !t.target.matches("textarea,input:not([type=\"checkbox\"]):not([type=\"radio\"])") && (t.preventDefault(), t.stopPropagation(), s().forEach((e) => r.selected.add(e.dataset.reviewKey)), P()));
+		r.busy || !e.contains(n) || (t.key === "Escape" && r.selected.size && (t.preventDefault(), t.stopPropagation(), M()), (t.ctrlKey || t.metaKey) && t.key.toLowerCase() === "a" && !t.target.matches("textarea,input:not([type=\"checkbox\"]):not([type=\"radio\"])") && (t.preventDefault(), t.stopPropagation(), l().forEach((e) => r.selected.add(e.dataset.reviewKey)), P()));
 	});
-	let N = "";
+	let te = "";
 	function P() {
-		let e = l();
-		S.textContent = e.length === s().length ? "清空当前选择" : r.filter ? "全选当前分类" : "全选本页", k.hidden = !e.length, T.textContent = `已选 ${e.length} 项`, C.disabled = !e.length || e.some((e) => !d(e)), w.disabled = !e.length;
-		let n = ni(u());
-		E.hidden = !t.metadata || !u().some((e) => (e.candidates?.length || 0) > 1);
+		let e = u();
+		C.textContent = e.length === l().length ? "清空当前选择" : r.filter ? "全选当前分类" : "全选本页", A.hidden = !e.length, E.textContent = `已选 ${e.length} 项`, w.disabled = !e.length || e.some((e) => !f(e)), T.disabled = !e.length;
+		let n = ni(d());
+		D.hidden = !t.metadata || !d().some((e) => (e.candidates?.length || 0) > 1);
 		let i = e.length && !n.length ? "所选项目无共同来源" : "统一选择来源", a = JSON.stringify([i, n]);
-		if (a !== N) {
-			N = a, E.innerHTML = g([["", i], ...n.map((e) => [e, e])], "", { label: "统一选择来源" });
-			let e = b(E.firstElementChild);
+		if (a !== te) {
+			te = a, D.innerHTML = g([["", i], ...n.map((e) => [e, e])], "", { label: "统一选择来源" });
+			let e = b(D.firstElementChild);
 			e.disabled = !n.length, e.addEventListener("change", () => {
-				if (!(r.busy || !ni(u()).includes(e.value))) {
-					for (let n of l()) {
+				if (!(r.busy || !ni(d()).includes(e.value))) {
+					for (let n of u()) {
 						let i = t.rows.find((e) => e.item_key === n.dataset.reviewKey).candidates.find((t) => t.source === e.value);
 						n.querySelectorAll("input[type=\"radio\"]").forEach((e) => {
 							e.checked = e.value === i.candidate_key;
 						}), r.choices.set(n.dataset.reviewKey, i.candidate_key);
 					}
-					D.textContent = `已选择 ${e.value}，点击通过所选采用。`;
+					O.textContent = `已选择 ${e.value}，点击通过所选采用。`;
 				}
 			});
 		}
-		M.forEach((e) => e());
+		N.forEach((e) => e());
 	}
 	async function F(n, i) {
-		if (r.busy || !l().length) return;
-		let a = l().map((e) => ({
+		if (r.busy || !u().length) return;
+		let a = u().map((e) => ({
 			key: e.dataset.reviewKey,
 			payload: {
 				...t.payload(e),
@@ -4096,21 +4077,21 @@ function ri(e, t) {
 			}
 		}));
 		if (n === "approved" && t.metadata && a.some((e) => !e.payload.candidate_key)) {
-			D.textContent = "请先为所选的多来源候选选择来源。", l().find((e) => !e.querySelector("input[type=\"radio\"]:checked"))?.querySelector("input[type=\"radio\"]")?.focus();
+			O.textContent = "请先为所选的多来源候选选择来源。", u().find((e) => !e.querySelector("input[type=\"radio\"]:checked"))?.querySelector("input[type=\"radio\"]")?.focus();
 			return;
 		}
-		r.busy = !0, D.textContent = `正在处理 0 / ${a.length}`, v(i, !0);
+		r.busy = !0, O.textContent = `正在处理 0 / ${a.length}`, v(i, !0);
 		let o = [...e.querySelectorAll("button,input")], s = o.map((e) => e.getAttribute("aria-disabled"));
 		o.forEach((e) => e.setAttribute("aria-disabled", "true"));
 		let c = (e) => {
 			e instanceof KeyboardEvent && e.key === "Tab" || (e.preventDefault(), e.stopImmediatePropagation());
 		};
 		e.addEventListener("click", c, !0), e.addEventListener("keydown", c, !0);
-		let u = 0, d = await ti(a, async (e) => {
+		let l = 0, d = await ti(a, async (e) => {
 			try {
 				return await t.submit(e);
 			} finally {
-				u++, t.active() && (D.textContent = `正在处理 ${u} / ${a.length}`);
+				l++, t.active() && (O.textContent = `正在处理 ${l} / ${a.length}`);
 			}
 		}, (e) => {
 			r.selected.delete(e), r.errors.delete(e), t.applied(e);
@@ -4125,12 +4106,47 @@ function ri(e, t) {
 	}
 	P(), Zr(e);
 }
+function ii(e, t, n = 1) {
+	let r = (e, t) => Array.from({ length: t - e + 1 }, (t, n) => e + n);
+	if (n * 2 + 5 >= t) return r(1, t);
+	let i = Math.max(e - n, 1), a = Math.min(e + n, t), o = i > 2, s = a < t - 2;
+	return !o && s ? [
+		...r(1, 3 + 2 * n),
+		"…",
+		t
+	] : o && !s ? [
+		1,
+		"…",
+		...r(t - (2 + 2 * n), t)
+	] : [
+		1,
+		"…",
+		...r(i, a),
+		"…",
+		t
+	];
+}
+function ai(e, t) {
+	return Math.max(1, Math.ceil(e / t));
+}
+function oi(e, t) {
+	return Math.min(Math.max(1, Math.floor(e) || 1), t);
+}
+function si(e, t, n) {
+	if (t <= 1) return "";
+	let r = ii(e, t).map((t) => t === "…" ? "<li class=\"board-page-dots\" aria-hidden=\"true\">…</li>" : `<li><button type="button" class="board-page" data-page="${t}" aria-label="第 ${t} 页"${t === e ? " aria-current=\"page\"" : ""}>${t}</button></li>`).join("");
+	return `<nav class="board-pagination" aria-label="${n}">
+    <button type="button" class="geist-button" data-page="${e - 1}"${e <= 1 ? " disabled" : ""}><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chevron-left"></use></svg>上一页</button>
+    <ul>${r}</ul>
+    <button type="button" class="geist-button" data-page="${e + 1}"${e >= t ? " disabled" : ""}>下一页<svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chevron-right"></use></svg></button>
+  </nav>`;
+}
 //#endregion
 //#region src/native-image.ts
-function ii(e, t, n, r) {
+function ci(e, t, n, r) {
 	return e > 0 && t > 0 && e === n && t === r;
 }
-function ai(e, t, n, r, i = 1) {
+function li(e, t, n, r, i = 1) {
 	let a = Number.isFinite(i) && i > 0 ? i : 1;
 	e /= a, t /= a;
 	let o = [
@@ -4147,7 +4163,7 @@ function ai(e, t, n, r, i = 1) {
 }
 //#endregion
 //#region src/entity-skeleton.ts
-function oi(e, t) {
+function ui(e, t) {
 	return `<section data-skeleton="entity/${e}" role="status" aria-label="正在读取资料">
     <span class="sr-only">正在读取资料</span><div aria-hidden="true">
     <div class="entityhero"><div class="entityportrait ${e === "studio" || e === "agency" ? "square " : ""}skeleton"></div>
@@ -4159,7 +4175,7 @@ function oi(e, t) {
 }
 //#endregion
 //#region src/board-skeleton.ts
-function si(e) {
+function di(e) {
 	let t = (e = "60%") => `<i class="skeleton" style="width:${e}"></i>`, n = () => `<div class="board-skeleton-row">${t("36%")}${t("24%")}</div>`, r = "";
 	if (e === "/stats" || e === "/taste") r = `${e === "/taste" ? `<div class="board-skeleton-row">${t("26%")}${t("32%")}</div>` : ""}<div class="metricstrip board-skeleton-metrics">${Array.from({ length: 4 }, () => `<div class="tastesummary">${t()}<b class="skeleton"></b><small class="board-stat-footer">${t("48%")}</small></div>`).join("")}</div><div class="board-skeleton-chart"><div class="board-skeleton-ring skeleton"></div><div>${n().repeat(4)}</div></div><div class="board-skeleton-section">${t("32%")}${n().repeat(5)}</div>`;
 	else if (e === "/follow-manage") r = `<div class="board-skeleton-section">${t("20%")}<div class="skeleton board-skeleton-input"></div>${t("72%")}</div><div class="board-skeleton-row">${t("24%")}${t("40%")}</div><div class="board-skeleton-section">${n().repeat(6)}</div><div class="board-skeleton-row">${t("30%")}${t("30%")}</div>`;
@@ -4169,7 +4185,7 @@ function si(e) {
 }
 //#endregion
 //#region src/catalog-onboarding.ts
-var ci = [
+var fi = [
 	"loc",
 	"creator",
 	"performer",
@@ -4186,16 +4202,16 @@ var ci = [
 	"jav",
 	"thumb"
 ];
-function li() {
+function pi() {
 	let e = (e) => Array(64).fill(e).join("");
 	return {
 		tiers: "<div class=\"tier catalog-placeholder\" aria-hidden=\"true\">" + e("<span class=\"av\"><span class=\"ring\"></span><span class=\"nm\">&nbsp;</span></span>") + "</div><div class=\"tier catalog-placeholder\" aria-hidden=\"true\">" + e("<span class=\"brandpill\"><span class=\"mk\"></span><span class=\"placeholder-name\">&nbsp;</span></span>") + "</div>",
 		tags: "<span class=\"catalog-placeholder placeholder-tags\" aria-hidden=\"true\">" + e("<span class=\"pill\">&nbsp;</span>") + "</span>"
 	};
 }
-async function ui(e, t) {
+async function mi(e, t) {
 	let n = new URLSearchParams();
-	for (let t of ci) e[t] && n.set(t, e[t]);
+	for (let t of fi) e[t] && n.set(t, e[t]);
 	let [r, i] = await Promise.all([t("/api/facets?" + n), t("/api/items?" + n + "&limit=5")]), a = [...new Set([
 		...r.creators || [],
 		...r.tagperformers || [],
@@ -4206,7 +4222,7 @@ async function ui(e, t) {
 		return r.set("q", e), r.set("limit", "1"), (await t("/api/items?" + r)).total > 0 ? e : "";
 	}))).filter(Boolean);
 }
-function di({ kind: e = "catalog", filtered: t = !1, jav: n = !1, configurable: r = !1, online: i = !1 } = {}) {
+function hi({ kind: e = "catalog", filtered: t = !1, jav: n = !1, configurable: r = !1, online: i = !1 } = {}) {
 	let a = r ? "<a class=\"geist-button primary\" href=\"/configuration\">添加内容</a>" : "", o = "<a class=\"geist-button\" href=\"/follow-manage\">添加来源</a>";
 	return t || n ? u("search", n ? "还没有符合条件的 JAV 作品" : "没有符合条件的内容", n ? "已扫描但尚未补充发行资料的视频可在全部内容中查看。" : "清除筛选或搜索条件后查看全部内容。", { actions: "<a class=\"geist-button primary\" href=\"/?loc=&thumb=0\">查看全部内容</a>" }) : e === "catalog" ? u("play", "还没有视频", "添加媒体文件夹或关注来源，开始建立你的馆藏。", { actions: a + o }) : u(e === "tags" ? "tags" : "user-round", "还没有" + ({
 		tags: "标签",
@@ -4219,7 +4235,7 @@ function di({ kind: e = "catalog", filtered: t = !1, jav: n = !1, configurable: 
 }
 //#endregion
 //#region src/sidebar.ts
-function fi(e) {
+function gi(e) {
 	return [
 		"/",
 		"/unseen",
@@ -4229,28 +4245,28 @@ function fi(e) {
 		"/junk-files"
 	].includes(e) || /^\/(item|mix|parts|editions)\//.test(e) || /^\/playlists\/\d+\/\d+$/.test(e) || /^\/(performers|studios|creators|series|agencies)\/.+/.test(e);
 }
-function pi(e, t) {
+function _i(e, t) {
 	return e.dataset.surface === t && e.querySelector(".dnav") ? !1 : (e.dataset.surface = t, e.replaceChildren(), !0);
 }
-function mi(e) {
+function vi(e) {
 	let t = /* @__PURE__ */ new Map();
 	for (let n of e) for (let e of new Set(n.tags || [])) t.set(e, (t.get(e) || 0) + 1);
 	return [...t].sort((e, t) => t[1] - e[1]).slice(0, 30);
 }
 //#endregion
 //#region src/resource-sync.ts
-var $ = (e = 0) => Number(e).toLocaleString(), hi = {
+var $ = (e = 0) => Number(e).toLocaleString(), yi = {
 	local: "本地磁盘",
 	115: "115",
 	pikpak: "PikPak"
 };
-function gi(e, t) {
+function bi(e, t) {
 	let n = e.cache || {
 		files: 0,
 		bytes: 0
 	}, r = !!(e.missing || n.files);
 	return `<div class="resourcepanel" data-geist-fieldset><div class="resourcesources">${(e.sources || []).map((e) => `<article>
-    <div class="resourcesourcetitle"><b>${hi[e.location] || "媒体来源"}</b><span class="${e.online ? "online" : "offline"}">${e.online ? "可访问" : "离线，已跳过"}</span></div>
+    <div class="resourcesourcetitle"><b>${yi[e.location] || "媒体来源"}</b><span class="${e.online ? "online" : "offline"}">${e.online ? "可访问" : "离线，已跳过"}</span></div>
     <strong>${e.online ? `${$(e.missing)} 项` : "—"}</strong>
     <small>${e.online ? `找不到文件 · 已检查 ${$(e.checked)} 项` : `馆藏中有 ${$(e.total)} 项`}</small>
     ${e.unreadable ? `<small>${$(e.unreadable)} 项读取失败，已跳过</small>` : ""}</article>`).join("")}</div>
@@ -4261,34 +4277,34 @@ function gi(e, t) {
 }
 //#endregion
 //#region src/jav-artwork.ts
-function _i(e) {
+function xi(e) {
 	return [
 		"small",
 		"sleeve",
 		"preview"
 	].includes(String(e)) ? "small" : "big";
 }
-function vi(e) {
+function Si(e) {
 	return {
-		javLayout: _i(e.javLayout),
-		javImage: yi(e.javLayout === "preview" ? "thumbnail" : e.javImage)
+		javLayout: xi(e.javLayout),
+		javImage: Ci(e.javLayout === "preview" ? "thumbnail" : e.javImage)
 	};
 }
-function yi(e) {
+function Ci(e) {
 	return e === "thumbnail" ? "thumbnail" : "cover";
 }
-function bi(e, t) {
-	return e.is_jav && e.code && e.has_cover && (yi(t) === "cover" || !e.has_thumb) ? "cover" : e.has_thumb ? "thumbnail" : "";
+function wi(e, t) {
+	return e.is_jav && e.code && e.has_cover && (Ci(t) === "cover" || !e.has_thumb) ? "cover" : e.has_thumb ? "thumbnail" : "";
 }
-function xi(e, t) {
+function Ti(e, t) {
 	e.querySelectorAll("img[data-jav-image]").forEach((e) => {
-		let n = e.dataset.javCover || "", r = e.dataset.javThumb || "", i = !!(n && (yi(t) === "cover" || !r)), a = i ? n : r;
+		let n = e.dataset.javCover || "", r = e.dataset.javThumb || "", i = !!(n && (Ci(t) === "cover" || !r)), a = i ? n : r;
 		e.classList.toggle("cover", i), e.classList.toggle("whole", i && e.dataset.javImageLayout !== "big"), e.classList.toggle("front", i && e.dataset.javImageLayout === "big"), e.removeAttribute("style"), a && e.getAttribute("src") !== a && (e.src = a);
 	});
 }
 //#endregion
 //#region src/islands.ts
-var Si = {
+var Ei = {
 	"library-processing": {
 		load: dt,
 		component: ft
@@ -4305,16 +4321,16 @@ var Si = {
 		load: Bn,
 		component: qn
 	}
-}, Ci = () => Object.keys(Si), wi = /* @__PURE__ */ new Map();
-async function Ti(e, t, n, r = {}) {
-	let i = Si[e];
+}, Di = () => Object.keys(Ei), Oi = /* @__PURE__ */ new Map();
+async function ki(e, t, n, r = {}) {
+	let i = Ei[e];
 	if (!i) throw Error(`未注册的 island：${String(e)}`);
-	Ei(t);
+	Ai(t);
 	let a = {
 		controller: new AbortController(),
 		painted: !1
 	};
-	wi.set(t, a);
+	Oi.set(t, a);
 	let o;
 	try {
 		o = {
@@ -4328,9 +4344,9 @@ async function Ti(e, t, n, r = {}) {
 			error: G(e)
 		};
 	}
-	if (wi.get(t) !== a) return;
+	if (Oi.get(t) !== a) return;
 	if (r.isCurrent && !r.isCurrent()) {
-		wi.delete(t);
+		Oi.delete(t);
 		return;
 	}
 	t.textContent = "", a.painted = !0;
@@ -4340,9 +4356,9 @@ async function Ti(e, t, n, r = {}) {
 	};
 	Oe(ae(i.component, s), t);
 }
-function Ei(e) {
-	let t = wi.get(e);
-	t && (t.controller.abort(), wi.delete(e), t.painted && Oe(null, e));
+function Ai(e) {
+	let t = Oi.get(e);
+	t && (t.controller.abort(), Oi.delete(e), t.painted && Oe(null, e));
 }
 //#endregion
-export { _t as TASTE_GUIDE_KEY, hn as activityChartsHtml, si as boardPageSkeleton, je as boundedPreference, di as catalogEmptyHtml, ui as catalogSuggestions, ht as cleanupSkeletonHtml, pt as cloudLocations, mt as cloudPreferenceLocations, Xr as createReviewSelection, ln as creatorSankeyHtml, Ie as distributionChart, li as emptyCatalogLayout, oi as entitySkeletonHtml, lt as followJobProgress, Jr as identityEvidenceHtml, Ct as initBoardControls, Ci as islandNames, bi as javImageKind, Fe as jobProgressHtml, ii as matchesFaceSource, xt as mountBoardStatePreview, Ti as mountIsland, Ne as mountNumberSetting, ai as nativeImageFit, yi as normalizeJavImage, _i as normalizeJavLayout, vi as normalizeJavPreferences, ke as preferredDirection, Re as radarChart, fn as radialCardHtml, Le as rankedChart, Gr as refreshStore, gi as resourceScanHtml, qr as reviewImageHtml, fi as sidebarHasCatalogContent, vn as sidebarSectionHtml, mi as sidebarTagCounts, Pe as statCardBody, Wr as storeNames, St as syncBoardRange, xi as syncJavImages, Me as syncNumberSetting, pi as syncSidebarSurface, gt as tasteHistoryGuideHtml, xn as transitionTheme, Ei as unmountIsland, Zr as updateReviewSticky, ct as watchJob, gn as wireActivityCharts, un as wireCreatorSankey, Ot as wireExpandableRanks, Dt as wireGrowingCharts, pn as wireRadialCards, Yr as wireReviewPictures, ri as wireReviewSelection, yn as wireSidebarGroups, vt as wireTasteHistoryGuide };
+export { _t as TASTE_GUIDE_KEY, hn as activityChartsHtml, di as boardPageSkeleton, je as boundedPreference, hi as catalogEmptyHtml, mi as catalogSuggestions, oi as clampPage, ht as cleanupSkeletonHtml, pt as cloudLocations, mt as cloudPreferenceLocations, Xr as createReviewSelection, ln as creatorSankeyHtml, Ie as distributionChart, pi as emptyCatalogLayout, ui as entitySkeletonHtml, lt as followJobProgress, $r as groupReviewRows, Jr as identityEvidenceHtml, Ct as initBoardControls, Di as islandNames, wi as javImageKind, Fe as jobProgressHtml, ci as matchesFaceSource, xt as mountBoardStatePreview, ki as mountIsland, Ne as mountNumberSetting, li as nativeImageFit, Ci as normalizeJavImage, xi as normalizeJavLayout, Si as normalizeJavPreferences, ai as pageCount, si as paginationHtml, ke as preferredDirection, Re as radarChart, fn as radialCardHtml, Le as rankedChart, Gr as refreshStore, bi as resourceScanHtml, qr as reviewImageHtml, gi as sidebarHasCatalogContent, vn as sidebarSectionHtml, vi as sidebarTagCounts, Pe as statCardBody, Wr as storeNames, St as syncBoardRange, Ti as syncJavImages, Me as syncNumberSetting, _i as syncSidebarSurface, gt as tasteHistoryGuideHtml, xn as transitionTheme, Ai as unmountIsland, Zr as updateReviewSticky, ct as watchJob, gn as wireActivityCharts, un as wireCreatorSankey, Ot as wireExpandableRanks, Dt as wireGrowingCharts, pn as wireRadialCards, Yr as wireReviewPictures, ri as wireReviewSelection, yn as wireSidebarGroups, vt as wireTasteHistoryGuide };

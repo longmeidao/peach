@@ -4527,7 +4527,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('panel.hidden=!selectMode||!selectedIndexTags.size;')
         self.assertPageContains('.selectiondock[hidden]{display:none}')
         self.assertPageContains('.review:has(.reviewdock:not([hidden])){padding-bottom:220px}')
-        self.assertPageContains("{rows,category,metadata:category==='metadata_fields'")
+        self.assertPageContains("{rows,catalog:queue,category,metadata:category==='metadata_fields'")
         self.assertPageContains(".reviewpickitem{display:inline-flex;align-items:center;flex:none;margin:0;user-select:none}")
         self.assertNotIn("reviewSelectionController", self.page)
         self.assertNotIn("selection.active=selectMode", self.page)
@@ -5516,8 +5516,12 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn(".stage .vwrap>.gate{height:100%;aspect-ratio:auto;border-radius:inherit}", board)
         self.assertIn(".idface:not(:has(img)){background:color-mix(in srgb,var(--color-text-primary) 10%,var(--color-background-primary-default));", board)
         self.assertIn(".cleanupgrid>.board-processing-skeleton>.geist-fieldset-footer{background:none}", board)
-        self.assertIn("#tiers .av,#tiers .brandpill{flex:none;display:inline-flex;align-items:center;gap:8px;width:auto;max-width:none;height:34px;", board)
-        self.assertIn("#tiers .av .ring,#tiers .brandpill .mk{position:relative;flex:none;width:24px;height:24px;", board)
+        # 首页顶上两排：女优是竖排人像格（48px 圆头像在上、名字在下），厂牌是 40px 的灰 Pill（28px 圆标识在左）。
+        self.assertIn("#tiers .av{display:flex;flex-direction:column;align-items:center;gap:6px;width:76px;max-width:none;height:auto;padding:6px 4px;border-radius:12px;text-align:center}", board)
+        self.assertIn("#tiers .brandpill{display:inline-flex;align-items:center;gap:8px;width:auto;max-width:none;height:40px;padding:6px 12px 6px 6px;border-radius:12px;text-align:left}", board)
+        self.assertIn("#tiers .av .ring{width:48px;height:48px;", board)
+        self.assertIn("#tiers .brandpill .mk{width:28px;height:28px;", board)
+        self.assertIn("#tiers .av .nm{display:block;max-width:100%;font:var(--board-caption);", board)
         self.assertPageContains("const list=d.items.filter(x=>x.cost!=='metered' && x.duration && !sourceOffline(x.location));")
 
     def test_toasts_leave_like_a_boardui_notification(self):
@@ -6824,11 +6828,10 @@ class WebUiSourceTests(unittest.TestCase):
         for path in ("'/api/ads?limit=1'", "'/api/duplicates?limit=1'", "'/api/sources'"):
             self.assertPageContains(path)
         # 标题是正文区的第一行，不用原生 legend——legend 会在上边框上开个缺口，
-        # 三张卡内容高度不同时那道缺口的位置也跟着不齐。
-        for title in ("fieldsetTitle('cleanupJunkTitle','垃圾文件')",
-                      "fieldsetTitle('cleanupDupTitle','重复文件')",
-                      "fieldsetTitle('cleanupEmptyTitle','空文件夹')"):
-            self.assertPageContains(title)
+        # 卡片内容高度不同时那道缺口的位置也跟着不齐。垃圾文件与重复文件是顶上一排的读数卡。
+        self.assertPageContains("fieldsetTitle('cleanupEmptyTitle','空文件夹')")
+        self.assertPageContains("junk:statCard('垃圾文件','file-archive',")
+        self.assertPageContains("duplicates:statCard('重复文件','file-stack',")
         self.assertPageLacks("<legend>垃圾文件</legend>")
         self.assertPageContains('class="cleanupfieldset" data-geist-fieldset aria-labelledby=')
         self.assertPageContains('class="cleanupfieldset cleanupemptyfolders" data-geist-fieldset')
@@ -6893,7 +6896,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn("已忽略 ${Number(junk.dismissed_total).toLocaleString()}", cleanup)
         self.assertIn("可回收 ${fmtSize(duplicates.reclaimable||0)}", cleanup)
         self.assertIn("'没有重复内容'", cleanup, "0 组时别写成「0 组 · 0 个文件」")
-        self.assertIn('<p class="cleanupmeta" data-cleanup-meta="${section}">', cleanup)
+        self.assertIn('<span class="cleanupmeta" data-cleanup-meta="${section}">', cleanup)
         counts = self.page.split("async function paintDataManagementCounts()", 1)[1].split(
             "let dupData=null;", 1)[0]
         self.assertIn("REVIEW_LABELS[key]||key", counts, "人工复核的分项得是分类名")
@@ -7369,7 +7372,8 @@ class WebUiSourceTests(unittest.TestCase):
         # 结果区空着时也占一条网格轨道，区块底部会凭空多出一个间距。
         self.assertIn("#linkCheckResult:empty,#resourceSyncResult:empty{display:none}", self.css)
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
-        self.assertIn(".cleanupgrid{grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}", board)
+        self.assertIn(".cleanupgrid{gap:16px}", board)
+        self.assertIn(".cleanupstats{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:16px}", board)
         # 这两个 section 的标题也走同一条字阶，不留浏览器默认的 700。
         self.assertIn(".followmanage .fsechead h3,.resourcesync>h2{font:var(--board-heading)", board)
 
@@ -7436,6 +7440,72 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertNotIn(".insighttabs,.reviewtabs{", board)
         # 键盘行为仍是 tablist：方向键在同一条里移动焦点。
         self.assertPageContains('<div class="reviewtabs" role="tablist" aria-label="复核分类">')
+
+    def test_the_review_queue_is_paged_on_the_client(self):
+        """复核队列一页 20 张，翻页只重画这一屏。
+
+        接口一次给出整条队列（实测 4.6 MB、1300 行）本机读 0.1 秒，卡的是把 331 张候选表单和
+        799 张卡一次画进 DOM。分页做在前端：分组筛选先筛后分页，换分类、换分组、换筛选都回第 1 页；
+        分组条与筛选项按整条队列算，这一页上一张都没有的组不画。分页条照 Board 的 Pagination
+        （`r/pagination.json`）：上一页／下一页是 32px 次级小键，页码 32×32 圆角 8，当前页借次级键的面。
+        """
+        self.assertPageContains("const REVIEW_PAGE_SIZE=20;")
+        self.assertPageContains("const rows=filtered.slice((reviewPage-1)*REVIEW_PAGE_SIZE,reviewPage*REVIEW_PAGE_SIZE);")
+        self.assertPageContains("if(view!==reviewPageView){reviewPageView=view;reviewPage=1}")
+        self.assertPageContains("</section>${paginationHtml(reviewPage,pages,'复核分页')}</div>`;")
+        # 采用／拒绝后从整条队列里摘掉，不是从这一页的切片里。
+        self.assertPageContains("const index=queue.findIndex(row=>String(row.item_key)===key);")
+        self.assertPageContains("{rows,catalog:queue,category,metadata:category==='metadata_fields',")
+        root = Path(__file__).resolve().parents[1]
+        board = (root / "web/board.css").read_text(encoding="utf-8")
+        self.assertIn(".board-pagination{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;margin-top:16px}", board)
+        # 全站 36px 那条按钮规则是 `body :is(…):not(…)`，权重 0,2,2；分页键要压过它得再带上 `.review`。
+        self.assertIn("body .review .board-pagination>.geist-button{height:32px;min-height:32px;padding:6px 8px;border-radius:8px}", board)
+        self.assertIn(".board-page{cursor:pointer;transition:none}", board)
+        self.assertIn('.board-page[aria-current="page"]{border:1px solid var(--color-border-button-default);'
+                      "background:var(--color-background-primary-default);color:var(--color-text-primary);box-shadow:0 1px 2px #0000000d}", board)
+        pagination = (root / "frontend/src/pagination.ts").read_text(encoding="utf-8")
+        self.assertIn("if (pages <= 1) return '';", pagination)
+        self.assertIn('<use href="#i-chevron-left">', pagination)
+        self.assertIn("' aria-current=\"page\"'", pagination)
+        bulk = (root / "frontend/src/review-bulk.ts").read_text(encoding="utf-8")
+        self.assertIn("const catalog = options.catalog || options.rows;", bulk)
+        self.assertIn("if (!groupCards.length) continue;", bulk)
+
+    def test_the_follow_batch_bar_only_carries_row_actions(self):
+        """关注页的批量条只有保存、跳过这类按行动作；勾选靠每行行首的全选／全不选。"""
+        self.assertPageLacks('id="followBatchAll"')
+        self.assertPageLacks("#followBatchAll")
+        self.assertPageContains("$('#batchbar').querySelectorAll('[data-follow-batch]').forEach(button=>button.hidden=!followPage);")
+
+    def test_the_data_management_page_opens_with_a_row_of_stat_cards(self):
+        """数据管理页照 Board 的 dashboard 模板：顶上一排读数卡，下面两张任务卡各占一行。
+
+        读数卡是 stat-cards.tsx 的 plain 变体做成按钮（132px、圆角 16、secondary 底、内边距 16、
+        32px 图标格里 20px 字形、读数 24/34），整张卡就是那一页的入口；五张在 1120 内一行摆下，
+        窄了折两列、再折一列。扫描与采集和空文件夹是要做的事，不是读数，各占一整行、左说明右按钮。
+        骨架复用同一套结构。
+        """
+        self.assertPageContains("const DATA_MANAGEMENT_STATS=['review','quality','duplicates','junk','trash'];")
+        self.assertPageContains('<button type="button" class="board-plain-stat" ${attrs}>')
+        self.assertPageContains('<span class="board-plain-stat-head"><span class="board-stat-tile">${icon(glyph)}</span>${esc(title)}</span>${body}</button>`;')
+        self.assertPageContains('<div class="cleanuppage"><div class="cleanupstats">')
+        self.assertPageContains('</div><div class="cleanupgrid">${cleanupCards.scraping}${cleanupCards.empty}</div>')
+        for entry in ("['review','人工复核','square-check-big']", "['trash','回收站','trash']", "['quality','高清版','sparkles']"):
+            self.assertPageContains(entry)
+        root = Path(__file__).resolve().parents[1]
+        board = (root / "web/board.css").read_text(encoding="utf-8")
+        self.assertIn(".board-plain-stat{display:flex;flex-direction:column;justify-content:space-between;gap:8px;min-width:0;min-height:132px;margin:0;padding:16px;border:0;border-radius:16px;background:var(--color-background-secondary-default);", board)
+        self.assertIn(".board-stat-tile{display:grid;place-items:center;flex:none;width:32px;height:32px;border-radius:6px;", board)
+        self.assertIn(".board-stat-tile svg{width:20px;height:20px;", board)
+        self.assertIn(".board-plain-stat>strong{display:block;margin:auto 0 0;font:var(--board-figure);", board)
+        self.assertIn(".board-plain-stat>.cleanupmeta{display:block;min-height:16px;margin:0;font:var(--board-caption);color:var(--color-text-tertiary);", board)
+        self.assertIn("@media(max-width:1119px){.cleanupstats{grid-template-columns:repeat(2,minmax(0,1fr))}}", board)
+        self.assertIn("@media(max-width:559px){.cleanupstats{grid-template-columns:minmax(0,1fr)}}", board)
+        self.assertIn(".cleanupgrid>.cleanupemptyfolders{display:grid;grid-template-columns:1fr auto;align-items:center}", board)
+        skeleton = (root / "frontend/src/management.ts").read_text(encoding="utf-8")
+        self.assertIn('<div class="cleanupstats">${stats.map(([title, glyph]) => `', skeleton)
+        self.assertIn('<section class="cleanupfieldset cleanupemptyfolders" data-geist-fieldset aria-labelledby="cleanup-loading-empty">', skeleton)
 
     def test_the_toast_glyph_is_stroked_and_sits_level_with_its_line(self):
         """Toast 里那枚勾是描边件，和文字同一条中线。
