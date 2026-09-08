@@ -14,6 +14,7 @@ import { fieldsetTitle, noteHtml, setActionBusy, selectFieldHtml, wireSelectFiel
 import { ApiError, apiGet, apiSend, errorMessage } from '../api';
 import { AccessSettings, type AccessState } from './access-settings';
 import { ReleaseUpdates, type ReleaseState, type UpdateJob } from './release-updates';
+import { AutomaticUpdateSettings, type AutomaticUpdateState } from './automatic-updates';
 import { PeachProxy, type PeachProxyState } from './peach-proxy';
 import { StartupSettings, UninstallSettings, type StartupState, type UninstallState } from './desktop-settings';
 import { CloudDriveGuide } from './clouddrive-guide';
@@ -37,6 +38,7 @@ export interface ConfigurationData {
   peach_proxy?: PeachProxyState;
   updates?: ReleaseState;
   update_job?: UpdateJob;
+  automatic_updates?: AutomaticUpdateState;
   access?: AccessState;
   editable: boolean;
   /** 不能编辑时给用户看的原因，可编辑时为空。 */
@@ -370,6 +372,7 @@ export function Configuration({ receipt, data, error }: ConfigurationProps & Sta
       {data.peach_proxy ? <PeachProxy initial={data.peach_proxy} receipt={receipt} /> : null}
       {data.access ? <AccessSettings initial={data.access} receipt={receipt} /> : null}
       <h2 class="configgroup">更新与维护</h2>
+      {data.automatic_updates ? <AutomaticUpdateSettings initial={data.automatic_updates} receipt={receipt} /> : null}
       {data.updates ? <ReleaseUpdates initial={data.updates} initialJob={data.update_job} /> : null}
       <Facts facts={data.facts} />
       {data.uninstall ? <UninstallSettings uninstall={data.uninstall} /> : null}

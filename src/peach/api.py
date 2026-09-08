@@ -163,10 +163,17 @@ def create_app(
         available=sync is None or not sync.read_only,
     )
     contract.follow_scheduler = follow_scheduler
+    from .automatic_updates import AutomaticUpdates
+    from .routes_configuration import managed_configuration
+    automatic_updates = AutomaticUpdates(
+        settings.follow_state_root,
+        available=managed_configuration() and bool(settings.configured),
+    )
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
         follow_scheduler.start()
+        automatic_updates.start()
         if mdns is not None:
             try:
                 await asyncio.to_thread(mdns.start)
@@ -177,6 +184,7 @@ def create_app(
             yield
         finally:
             follow_scheduler.stop()
+            automatic_updates.stop()
             # 死链检查和资源对账的后台线程是 daemon，本来挡不住进程退出；这里显式收
             # 一下，免得在途的那一轮在解释器拆卸期间还继续查库、往没人读的状态里写。
             contract.stop_background_jobs()
@@ -211,6 +219,7 @@ def create_app(
     app.state.follow_media_resolver = follow_media_resolver
     app.state.follow_cover_service = follow_cover_service
     app.state.follow_scheduler = follow_scheduler
+    app.state.automatic_updates = automatic_updates
     app.state.stream_sessions = StreamSessionRegistry()
     app.state.sync = sync
 
