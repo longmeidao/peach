@@ -21,6 +21,8 @@ Removed / Fixed / Security。
 
 ## [未发布]
 
+## [0.31.0] - 2026-09-08
+
 ### 新增
 
 - **关注**：SimpCity 线程可以作为关注来源。站点不让游客读帖，需要把你自己的登录 Cookie 写进凭据文件；Peach 不解任何机器人质询。
@@ -113,7 +115,8 @@ Removed / Fixed / Security。
 - **桌面**：独立包使用 UTF-8 启动日志。
 - **配置**：首次设置后的跳转目标取新鲜读到的 mDNS 名。
 
-[未发布]: https://github.com/longmeidao/peach/compare/v0.30.0...HEAD
+[未发布]: https://github.com/longmeidao/peach/compare/v0.31.0...HEAD
+[0.31.0]: https://github.com/longmeidao/peach/compare/v0.30.0...v0.31.0
 [0.30.0]: https://github.com/longmeidao/peach/compare/v0.27.1...v0.30.0
 [0.27.1]: https://github.com/longmeidao/peach/compare/v0.16.0...v0.27.1
 [0.16.0]: https://github.com/longmeidao/peach/compare/v0.11.2...v0.16.0
