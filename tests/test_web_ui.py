@@ -2547,8 +2547,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(
             "$('#count').removeAttribute('aria-busy');$('#count').removeAttribute('aria-label');")
 
-    def test_the_count_placeholder_and_the_spinning_refresh_key_keep_the_row_height(self):
-        """计数骨架宽高定死，等数据时只有换批键在转，行高不变。
+    def test_the_count_placeholder_and_the_redrawn_refresh_key_keep_the_row_height(self):
+        """计数骨架宽高定死，等数据时只有换批键在画，行高不变。
 
         骨架跟着真实文本走的话，数字回来那一刻整行会横向弹一下；14px 远低于筛选条
         按钮的 32px，而两条计数行都有 `min-height:var(--sortH)` 兜底，所以换成真
@@ -2561,13 +2561,36 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".entitycollectionhead h3 .countskeleton{width:96px}")
         self.assertPageContains("  min-height:var(--sortH);color:var(--ink-2);margin:0 -16px 16px;padding:8px 16px;")
         self.assertPageContains("  min-height:var(--sortH);margin:0 -16px 12px;padding:8px 16px;min-width:0;")
-        # 转动复用既有的转圈关键帧；全局 prefers-reduced-motion 规则会把它关掉。
+        # 图标拆成两条线，各自 pathLength 归一到 100，dash 的算法就与真实弧长无关了。
+        self.assertPageContains(
+            '<path class="strand strand-a" pathLength="100" '
+            'd="M2 18h1.973a4 4 0 0 0 3.3-1.7l5.454-8.6a4 4 0 0 1 3.3-1.7H22M18 2l4 4-4 4" />')
+        self.assertPageContains(
+            '<path class="strand strand-b" pathLength="100" '
+            'd="M2 6h1.972a4 4 0 0 1 3.6 2.2M22 18h-6.041a4 4 0 0 1-3.3-1.8l-.359-.45'
+            'M18 14l4 4-4 4" />')
+        # 一圈 2.2 秒：第一条画 748ms，第二条接着画 748ms，停 352ms，两条一起淡出 308ms。
+        self.assertPageContains(
+            "@keyframes peach-strand-draw{\n"
+            "  0%{stroke-dashoffset:100;opacity:1}\n"
+            "  34%,86%{stroke-dashoffset:0;opacity:1}\n"
+            "  100%{stroke-dashoffset:0;opacity:0}}")
+        self.assertPageContains(
+            "@keyframes peach-strand-draw-late{\n"
+            "  0%,36%{stroke-dashoffset:100;opacity:1}\n"
+            "  70%,86%{stroke-dashoffset:0;opacity:1}\n"
+            "  100%{stroke-dashoffset:0;opacity:0}}")
+        # 忙态只传自定义属性：`<use>` 的影子树里选不到外层的忙态标记，继承的属性进得去。
+        self.assertPageContains(
+            "#i-shuffle .strand{stroke-dasharray:var(--strand-dash,none);\n"
+            "  animation:peach-strand-draw var(--strand-cycle,0s) linear infinite}")
+        self.assertPageContains(
+            "#i-shuffle .strand-b{animation-name:peach-strand-draw-late}")
         self.assertPageContains(
             '.count[aria-busy="true"] #batchAction svg,\n'
             'body.refreshing #batchAction svg,\n'
             '.entitycollectionhead[aria-busy="true"] .entitybatch svg{\n'
-            "  animation:peach-spinner-linspin .9s linear infinite}")
-        self.assertPageContains("@keyframes peach-spinner-linspin{to{transform:rotate(1turn)}}")
+            "  --strand-dash:100;--strand-cycle:2.2s}")
 
     def test_skeletons_shimmer_by_sweeping_instead_of_breathing(self):
         """微光是横向扫光，不是整块呼吸。
@@ -5482,11 +5505,11 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("const seededRank=(seed,value)=>{")
         self.assertPageContains("const followDiscoveryRank=value=>seededRank(followDiscoverySeed,value);")
 
-    def test_the_refresh_key_keeps_spinning_until_the_bars_land_too(self):
-        """转圈归「换一批」这一层，不挂在计数行上。
+    def test_the_refresh_key_keeps_redrawing_until_the_bars_land_too(self):
+        """忙态动效归「换一批」这一层，不挂在计数行上。
 
         网格和顶部三层一起换，两边耗时不一样。挂在计数行的 aria-busy 上时，网格
-        先到就被 renderCount 摘掉，标签条还在等的那段时间按钮已经停了。顶部三层
+        先到就被 renderCount 摘掉，标签条还在等的那段时间按钮已经不动了。顶部三层
         与标签条不铺骨架：它们此刻有内容在屏幕上，撕成灰条再填回去比直接换掉更
         晃眼，骨架留给从无到有的首屏。
         """

@@ -36,7 +36,7 @@ Peach is a single-user, local-first media system. Search, play and organize medi
 
 Local disks alone work. 115 and PikPak arrive as folders mounted by CloudDrive: sign in and mount them there first, then add the folders to Peach. See [CloudDrive tuning](docs/CLOUDDRIVE.md) for cache and read-length settings.
 
-Follow sources include FANBOX, Patreon, SubscribeStar, Kemono, Pawchive, Coomer, the Rule34 family and F95zone. Availability depends on the site and your access rights. See [source collection](docs/SOURCING.md) for supported workflows and boundaries.
+Follow sources include FANBOX, Patreon, SubscribeStar, Kemono, Pawchive, Coomer, the Rule34 family, F95zone and SimpCity (needs your own login cookie). Availability depends on the site and your access rights. See [source collection](docs/SOURCING.md) for supported workflows and boundaries.
 
 Interface preferences are saved in the current browser and live under Settings: default sort, official covers or preview images for JAV works, autoplay when details open, and SFW mode, which blurs, desaturates and dims images and video and stops hover previews.
 

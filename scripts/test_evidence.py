@@ -12,6 +12,7 @@ import stat
 import subprocess
 import sys
 import time
+from contextlib import contextmanager
 from functools import lru_cache
 from pathlib import Path
 
@@ -205,7 +206,42 @@ def write(root: Path, state: str, scopes: tuple[str, ...], *, success: bool,
     temporary.replace(folder / f"{state}.json")
 
 
-def run_lock(root: Path, state: str) -> FileLock:
-    folder = evidence_dir(root)
-    folder.mkdir(parents=True, exist_ok=True)
-    return FileLock(folder / f"{state}.lock", timeout=0)
+def holder_path(lock_path: Path) -> Path:
+    return lock_path.with_name(lock_path.name + ".holder.json")
+
+
+@contextmanager
+def held(lock_path: Path, **note: object):
+    """拿锁，并在旁边留下「谁在持有」的记录，让等锁的人知道在等什么。
+
+    互斥只靠 filelock：锁是操作系统层面的句柄，只能被活着的进程持有，进程退出就释放。
+    记录是旁证，不参与互斥。持有者正常退出就删掉它；异常退出留下的旧记录会被下一位
+    持有者进门时覆盖，而等锁那一侧只在锁真的被占着时才去读，所以读到的总是当前持有者。
+    """
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with FileLock(lock_path, timeout=0):
+        record = holder_path(lock_path)
+        record.write_text(json.dumps({
+            "pid": os.getpid(),
+            "started_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+            **note,
+        }, ensure_ascii=False), encoding="utf-8")
+        try:
+            yield
+        finally:
+            record.unlink(missing_ok=True)
+
+
+def describe_holder(lock_path: Path) -> str:
+    """等锁时打印用：`pid 8772、01:54:39 起、scope full、root C:\\…`。"""
+    try:
+        note = json.loads(holder_path(lock_path).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return "持有者刚退出或没留记录"
+    parts = [f"pid {note.get('pid')}", f"{note.get('started_at')} 起"]
+    parts.extend(f"{key} {note[key]}" for key in ("scope", "branch", "root") if note.get(key))
+    return "、".join(parts)
+
+
+def run_lock(repo: Path, state: str, **note: object):
+    return held(evidence_dir(repo) / f"{state}.lock", **note)
