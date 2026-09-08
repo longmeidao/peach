@@ -23,7 +23,12 @@ class JobStatusTests(unittest.TestCase):
 
         这台机器上裸 `python` 曾解析到 Microsoft Store 的 MSIX 别名：路径存在、
         执行报 FileNotFoundError，而 hook 的失败没人盯着看。写成项目内的
-        `.venv` 解释器，缺了就是缺了，不会解析到另一个 Python。"""
+        `.venv` 解释器，缺了就是缺了，不会解析到另一个 Python。
+
+        `uv` 是唯一另一个允许出现的命令。它不是 `python`，顶不到那个别名上；而它那
+        一条的整条命令由 `tests/test_release_due.py` 原样执行一遍，PATH 上没有它就是
+        测试红，不是 hook 静默。走 `uv` 是因为那条 hook 要在 Windows 和 macOS 上都
+        跑，而 hook 配置不支持按平台分支。"""
         settings = json.loads(
             (SCRIPT.parents[1] / ".claude" / "settings.json").read_text(encoding="utf-8")
         )
@@ -33,7 +38,8 @@ class JobStatusTests(unittest.TestCase):
             for matcher in event
             for hook in matcher["hooks"]
         }
-        self.assertEqual(commands, {"${CLAUDE_PROJECT_DIR}/.venv/Scripts/python.exe"})
+        self.assertEqual(commands,
+                         {"${CLAUDE_PROJECT_DIR}/.venv/Scripts/python.exe", "uv"})
         result = subprocess.run(
             [sys.executable, str(SCRIPT), "--help"],
             cwd=SCRIPT.parents[1],

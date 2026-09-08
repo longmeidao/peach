@@ -171,21 +171,85 @@ class WiringTests(unittest.TestCase):
 
     ROOT = Path(__file__).resolve().parents[1]
 
-    def test_the_claude_stop_hook_runs_the_check(self):
+    def claude_stop_argv(self) -> list[list[str]]:
         settings = json.loads((self.ROOT / ".claude" / "settings.json")
                               .read_text(encoding="utf-8"))
-        commands = [" ".join([entry["command"], *entry.get("args", [])])
-                    for group in settings["hooks"]["Stop"] for entry in group["hooks"]]
-        self.assertTrue(any("scripts/release_due.py" in line and "--hook-event" in line
-                            for line in commands), commands)
+        return [[entry["command"], *entry.get("args", [])]
+                for group in settings["hooks"]["Stop"] for entry in group["hooks"]]
 
-    def test_the_codex_stop_hook_runs_the_same_check(self):
+    def claude_stop_commands(self) -> list[str]:
+        return [" ".join(argv) for argv in self.claude_stop_argv()]
+
+    def codex_stop_commands(self) -> list[str]:
         hooks = json.loads((self.ROOT / ".codex" / "hooks.json")
                            .read_text(encoding="utf-8"))
-        commands = [entry["command"]
-                    for group in hooks["hooks"]["Stop"] for entry in group["hooks"]]
-        self.assertTrue(any("scripts/release_due.py" in line and "--hook-event" in line
-                            for line in commands), commands)
+        return [entry["command"]
+                for group in hooks["hooks"]["Stop"] for entry in group["hooks"]]
+
+    def called_by(self, commands: list[str]) -> str:
+        found = [line for line in commands
+                 if "scripts/release_due.py" in line and "--hook-event" in line]
+        self.assertEqual(len(found), 1, commands)
+        return found[0]
+
+    def called_by_argv(self, every: list[list[str]]) -> list[str]:
+        found = [argv for argv in every
+                 if any("scripts/release_due.py" in part for part in argv)]
+        self.assertEqual(len(found), 1, every)
+        return found[0]
+
+    def test_the_claude_stop_hook_runs_the_check(self):
+        self.called_by(self.claude_stop_commands())
+
+    def test_the_codex_stop_hook_runs_the_same_check(self):
+        self.called_by(self.codex_stop_commands())
+
+    def test_both_entries_launch_through_uv_so_one_line_serves_both_platforms(self):
+        """解释器由 `uv` 解析，命令里不出现 venv 的平台子目录。
+
+        钩子配置不支持按操作系统分支（`if` 只对工具事件生效，也不认平台），所以写死
+        `.venv/Scripts` 的那一台以外，解释器根本不存在，钩子每轮报一次错。挂两条让
+        错的那条自然失败也不行：报错本身就是每轮一行的噪音，而这条提醒的全部价值在于
+        不该说的时候一个字都不说。
+
+        `--no-project` 是这里的重点，不是随手加的开关。这个脚本整条导入链都是标准库，
+        不需要项目的 venv；而带上项目的话，`uv` 在一个有 `pyproject.toml` 却还没建
+        venv 的检出里会顺手建一个空的，`scripts/test.ps1` 随后优先选中它，那棵树的
+        测试从此连 `filelock` 都导不进来。钩子每轮都跑，这种副作用会落在每一个新工作树上。
+        """
+        for commands in (self.claude_stop_commands(), self.codex_stop_commands()):
+            line = self.called_by(commands)
+            self.assertRegex(line, r"(^|[/\\\s])uv(\.exe)?\s")
+            self.assertIn("run", line)
+            self.assertIn("--no-project", line)
+            for platform_only in (".venv/Scripts", ".venv\\Scripts", ".venv/bin"):
+                self.assertNotIn(platform_only, line)
+
+    def test_the_configured_command_runs_without_leaving_a_venv_behind(self):
+        """把配置里那条命令原样跑一遍，落在一个装成项目的空目录里。
+
+        两件事一起验。一是它跑得起来：这条提醒设计成不该说时一个字都不打印，所以
+        「命令根本跑不起来」和「没什么要说的」在屏幕上长得一模一样，字符串比对认不出
+        这种失败——装没装 `uv`、PATH 上是不是别的东西，只有真执行一次才知道；裸
+        `python` 曾解析到 MSIX 别名，路径在、一执行就报错，正是这一类。二是它什么都
+        不留下：工作目录摆着 `pyproject.toml`，跑完那里不能多出一个 `.venv`。
+        """
+        argv = [part.replace("${CLAUDE_PROJECT_DIR}", str(self.ROOT))
+                for part in self.called_by_argv(self.claude_stop_argv())]
+        with tempfile.TemporaryDirectory() as elsewhere:
+            looks_like_a_project = Path(elsewhere).resolve()
+            (looks_like_a_project / "pyproject.toml").write_text(
+                '[project]\nname = "bait"\nversion = "0"\n', encoding="utf-8")
+            done = subprocess.run(
+                argv, cwd=str(looks_like_a_project),
+                input=json.dumps({"hook_event_name": "Stop",
+                                  "cwd": str(looks_like_a_project)}),
+                capture_output=True, text=True, encoding="utf-8",
+                errors="replace", check=False)
+            left_behind = sorted(path.name for path in looks_like_a_project.iterdir())
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertEqual(done.stdout, "")
+        self.assertEqual(left_behind, ["pyproject.toml"])
 
 
 if __name__ == "__main__":
