@@ -65,6 +65,8 @@ jobs:
           Copy-Item docs/TESTING_DESKTOP.md dist/Peach/开始使用.md
           Compress-Archive -Path dist/Peach -DestinationPath 'release/Peach-${{ steps.version.outputs.version }}-windows-x64.zip'
           Copy-Item scripts/smoke_desktop.py release/smoke_desktop.py
+          python scripts/changelog.py --notes '${{ steps.version.outputs.version }}' --to release/RELEASE_NOTES.md
+          if ($LASTEXITCODE -ne 0) { throw 'CHANGELOG.md 缺这一版的一节，不发没有说明的版本' }
       - uses: actions/upload-artifact@v7
         with:
           name: desktop-candidate
@@ -108,4 +110,4 @@ jobs:
         run: |
           cd release
           sha256sum *.zip > SHA256SUMS.txt
-          gh release create "$GITHUB_REF_NAME" *.zip SHA256SUMS.txt --verify-tag --prerelease --title "Peach $VERSION · Windows 测试版" --notes 'Windows x64 独立测试包。完整解压后双击 Peach.exe，选择媒体文件夹即可开始。本机使用；无需 Python、Git 或 Node。FFmpeg 需另装，未安装时不提供转码与缩略图。配置和日志入口见程序内「配置 Peach」。macOS 请按 README 使用源码安装。'
+          gh release create "$GITHUB_REF_NAME" *.zip SHA256SUMS.txt --verify-tag --prerelease --title "Peach $VERSION · Windows 测试版" --notes-file RELEASE_NOTES.md

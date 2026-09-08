@@ -167,6 +167,26 @@ class SectionTests(unittest.TestCase):
         self.assertEqual(changelog.section_of(DOCUMENT, "0.28.0"), "")
 
 
+class NotesTests(unittest.TestCase):
+    """Release 页正文：那一节原文加安装提示，缺那一节就拒绝。"""
+
+    def test_the_notes_are_the_section_followed_by_the_install_note(self):
+        self.assertEqual(changelog.notes(DOCUMENT, "0.27.1"),
+                         f"第四个预发布。\n\n{changelog.INSTALL_NOTE}\n")
+
+    def test_a_version_without_a_section_cannot_be_released(self):
+        with self.assertRaisesRegex(VersionError, "0.28.0"):
+            changelog.notes(DOCUMENT, "0.28.0")
+
+    def test_the_release_workflow_reads_the_notes_it_does_not_inline_them(self):
+        """固定文案只活在 `INSTALL_NOTE` 一处；工作流在标签提交上生成文件再交给 gh。"""
+        workflow = (Path(changelog.ROOT) / ".github/workflows/release.yml").read_text(encoding="utf-8")
+        self.assertIn("scripts/changelog.py --notes", workflow)
+        self.assertIn("--to release/RELEASE_NOTES.md", workflow)
+        self.assertIn("--notes-file RELEASE_NOTES.md", workflow)
+        self.assertNotIn("--notes 'Windows", workflow)
+
+
 class DueTests(unittest.TestCase):
     """该不该发下一版。判据只看使用者那一侧，不看集成了多少次。"""
 
