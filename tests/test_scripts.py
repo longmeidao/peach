@@ -1061,6 +1061,15 @@ class OperationalScriptTests(unittest.TestCase):
                          "内容小的补到占宽下限就停，不补到 64")
         self.assertEqual(refit_plate(capped), capped, "停在下限上，两条规则不再拉锯")
 
+        # 先裁才不够用的那一半：Flower 是 180 的画布上一圈 43 px 的金环，裁掉留白
+        # 落在 57，判据看的是这一趟的产物，所以一趟就补到 64，产物是不动点。
+        padded = Image.new("RGB", (180, 180), (18, 140, 220))
+        ImageDraw.Draw(padded).rectangle((69, 69, 111, 111), fill=(255, 255, 255))
+        cropped = refit_plate(png(padded))
+        _, size = opened(cropped)
+        self.assertEqual(size, (PLATE_MIN_SIDE, PLATE_MIN_SIDE), "裁完不够用的同一趟补上")
+        self.assertEqual(refit_plate(cropped), cropped, "一趟定完，重跑不再动")
+
         big = Image.new("RGB", (PLATE_MIN_SIDE, PLATE_MIN_SIDE), (18, 140, 220))
         ImageDraw.Draw(big).rectangle((8, 8, 55, 55), fill=(255, 255, 255))
         payload = png(big)

@@ -71,8 +71,9 @@ PLATE_NOISE_RATIO = 0.0005
 PLATE_NOISE_FLOOR = 3
 # 方图短边不到这个数，就用自己的底色补到这个数。小圆片（`.brandpill .mk`）是 32 CSS px，
 # 2 倍屏要 64 实像素，短边不够时浏览器只能放大——放大糊掉的是整张图，而补出来的边是
-# 这张图自己的底色，笔画一个像素都不缩放。实测受影响的是 HEYZO 39、Prestige 42、
-# DorcelClub 57 这三张。补到这里为止：再往外撑会把内容占宽压到 `PLATE_MIN_SPAN` 以下，
+# 这张图自己的底色，笔画一个像素都不缩放。2026-09-08 实测受影响 7 张：DorcelClub 57、
+# Flower 三张 55、LINX 63、HEYZO 39、Prestige 42（前面的数是裁完留白之后的短边，
+# 一半的图是先裁小才不够用的）。补到这里为止：再往外撑会把内容占宽压到 `PLATE_MIN_SPAN` 以下，
 # 那正是上一条要裁掉的形状，两条规则会在同一张图上来回拉锯，重跑一遍就不再幂等。
 # 上限用截断而不是四舍五入，就为了让占宽落在 0.6 这一侧。
 PLATE_MIN_SIDE = 64
@@ -232,9 +233,10 @@ def refit_plate(payload: bytes) -> bytes | None:
     金环只占 0.24），铺进去就小得认不出；反过来顶到边的实心方标（MARRION 0.95）
     四角落在圆外，金框和字样直接看不见。
 
-    动手只有三种：内容太小就裁掉多余留白，会被圆切就把画布补到内容的外接圆，整张
-    小于圆片要的实像素（`PLATE_MIN_SIDE`）就用自己的底色补到那个数。像素一律不缩放，
-    所以裁出来的图更小但更清晰，补出来的图更大而清晰度不变。
+    动手只有三种：内容太小就裁掉多余留白，会被圆切就把画布补到内容的外接圆，这一趟
+    的产物小于圆片要的实像素（`PLATE_MIN_SIDE`）就用自己的底色补到那个数——裁和补在
+    同一趟里定完，产物才是不动点。像素一律不缩放，所以裁出来的图更小但更清晰，
+    补出来的图更大而清晰度不变。
     三者都不适用时返回原字节；`None` 只表示解析不了。
     """
     image = _open_rgba(payload)
@@ -274,7 +276,10 @@ def refit_plate(payload: bytes) -> bytes | None:
         side = round(span / PLATE_CONTENT_RATIO)
     if lost > PLATE_CIRCLE_LOSS:
         side = max(side, ceil(_content_radius(mask, box) * 2))
-    if short < PLATE_MIN_SIDE:
+    if (side or short) < PLATE_MIN_SIDE:
+        # 判的是这一趟的产物，不是原图。裁掉大留白之后才不够圆片用的最多（Flower
+        # 从 180 裁到 57），按原图短边判就永远轮不到它，得再跑一趟才补上——那也
+        # 就是说产物不是不动点，而归一脚本承诺幂等。
         # 上限是内容占宽的下限：补过头就成了上面那条要裁的大留白。
         side = max(side, min(PLATE_MIN_SIDE, int(span / PLATE_MIN_SPAN)))
     if side <= 0 or (side == width and side == height):
