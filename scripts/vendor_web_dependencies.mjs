@@ -110,6 +110,7 @@ const lucideIcons = new Map([
 // 这张名单只收 `i-` 开头、能被 `<use>` 引用的图标；symbol 内部的遮罩、渐变一类
 // 零件不带那个前缀，也就不进这张名单。
 const handDrawnIcons = new Set([
+  "shuffle", // 两条带 pathLength 的动画路径由 Peach 维护。
   "alert", "pics", "jav", "theater-enter", "theater-exit", "brand-x",
   // 「换一批」：Lucide shuffle 的线条拆成 strand-a／strand-b 两条 path 供忙态逐条画出，
   // 上游一刷新就会把两条并回五条，所以由手工维护。
@@ -159,6 +160,16 @@ index = index.replace(/Health Icons sperm outline-24px, CC0\/public domain/,
 index = index.replace(/Phosphor [0-9.]+ regular, MIT/,
   `Phosphor ${versions["@phosphor-icons/core"]} regular, MIT`);
 index = index.replaceAll(/\/vendor\/videojs\/[0-9.]+\//g, `/vendor/videojs/${versions["video.js"]}/`);
+const remixIcons = ["palette-line", "layout-grid-line", "play-circle-line", "search-line", "rss-line", "shield-check-line"];
+const remixSprite = lfText("node_modules", "remixicon", "fonts", "remixicon.symbol.svg");
+for (const name of remixIcons) {
+  const pattern = new RegExp(`<symbol[^>]*id="ri-${name}"[^>]*>[\\s\\S]*?<\\/symbol>`);
+  const symbol = remixSprite.match(pattern)?.[0];
+  if (!symbol || !pattern.test(index)) throw new Error(`缺少 Remix symbol：${name}`);
+  index = index.replace(pattern, symbol);
+}
+stage("web/vendor/remixicon-LICENSE.txt", lfText("node_modules", "remixicon", "License"));
+stage("web/vendor/remixicon-ORIGIN.md", `# Remix Icon ${versions.remixicon}\n\n- npm 包：\`remixicon@${versions.remixicon}\`\n- npm lock integrity：\`${integrity("remixicon")}\`\n- 许可证：Remix Icon License v1.0，见 \`remixicon-LICENSE.txt\`。\n- 消费者：设置导航六枚内联 symbol。完整候选由本地 HTML 审查。\n`);
 stage("web/index.html", index);
 
 let app = text("web", "app.js");

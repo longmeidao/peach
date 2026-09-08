@@ -1,4 +1,4 @@
-import { resourceScanHtml } from './dist/peach-ui.js';
+import { resourceScanHtml, boundedPreference, mountNumberSetting, syncNumberSetting } from './dist/peach-ui.js';
 import {$, ENTITY_ROUTES, LOC, ROUTE_ENTITIES, ROUTE_STATES, SITE_FAVICONS, STATE_LABELS, STATE_ROUTES, api, isAbort, mapLimit, brandIcon, entityPath, esc, faviconFallbackUrl, faviconUrl, linkHost, linkMarkUrl, fmtClock, fmtDur, fmtSize, foldName, icon, isCatalogPath, realDuration} from './js/core.js';
 import { faceFrame } from './js/face-frame.js';
 import { imageFallbackAttrs, wireImageFallbacks } from './js/image-fallback.js';
@@ -421,17 +421,17 @@ if((+appSettings.sortDefaultsVersion||0)<3&&SORT_ALIASES[appSettings.defaultSort
   appSettings.defaultSort=SORT_ALIASES[appSettings.defaultSort][0];sortDefaultsMigrated=true
 }
 appSettings.sortDefaultsVersion=3;
-appSettings.batchSize=allowedSetting(+appSettings.batchSize,[30,60,90],60);
+appSettings.batchSize=boundedPreference(+appSettings.batchSize,1,200,60);
 appSettings.defaultSort=allowedSetting(appSettings.defaultSort,SORT_KEYS,'seed');
-appSettings.hoverDelaySeconds=allowedSetting(+appSettings.hoverDelaySeconds,[0,3,5,8],5);
-appSettings.seekSeconds=allowedSetting(+appSettings.seekSeconds,[5,10,30],10);
+appSettings.hoverDelaySeconds=boundedPreference(+appSettings.hoverDelaySeconds,0,60,5);
+appSettings.seekSeconds=boundedPreference(+appSettings.seekSeconds,1,300,10);
 appSettings.ambientMode=appSettings.ambientMode!==false;
 appSettings.theaterMode=appSettings.theaterMode===true;
 appSettings.groupCollapse=appSettings.groupCollapse!==false;
 appSettings.detailAutoplay=appSettings.detailAutoplay!==false;
 appSettings.miniplayer=appSettings.miniplayer!==false;
-appSettings.searchHistoryLimit=allowedSetting(+appSettings.searchHistoryLimit,[5,10,20],10);
-appSettings.relatedLimit=allowedSetting(+appSettings.relatedLimit,[12,20,30],20);
+appSettings.searchHistoryLimit=boundedPreference(+appSettings.searchHistoryLimit,0,50,10);
+appSettings.relatedLimit=boundedPreference(+appSettings.relatedLimit,0,60,20);
 const METADATA_REFRESH_DAYS=[0,7,30,90];
 appSettings.metadataRefreshDays=allowedSetting(+appSettings.metadataRefreshDays,METADATA_REFRESH_DAYS,30);
 Object.assign(appSettings,normalizeJavPreferences(appSettings));
@@ -496,7 +496,7 @@ const SETTING_SELECTS=[
     value=>{appSettings.defaultSortDirection=value;syncSortDirectionSetting();saveSettings();state.dir=preferredDirection(state.sort,appSettings.defaultSort,appSettings.defaultSortDirection);if(location.pathname==='/')load(true)}],
   ['hoverDelaySetting','悬停放大',[['0','关闭'],['3','3 秒'],['5','5 秒'],['8','8 秒']],
     ()=>appSettings.hoverDelaySeconds,
-    value=>{appSettings.hoverDelaySeconds=allowedSetting(+value,[0,3,5,8],5);
+    value=>{appSettings.hoverDelaySeconds=boundedPreference(+value,0,60,5);
       if(!appSettings.hoverDelaySeconds)document.querySelectorAll('.previewing,.longhover').forEach(el=>el.classList.remove('previewing','longhover'));
       document.documentElement.style.setProperty('--hover-delay',`${appSettings.hoverDelaySeconds}s`);saveSettings()}],
   ['seekSecondsSetting','快进 / 快退',[['5','5 秒'],['10','10 秒'],['30','30 秒']],
@@ -504,10 +504,10 @@ const SETTING_SELECTS=[
     value=>{appSettings.seekSeconds=+value||10;saveSettings()}],
   ['relatedLimitSetting','相关推荐',[['12','12 个'],['20','20 个'],['30','30 个']],
     ()=>appSettings.relatedLimit,
-    value=>{appSettings.relatedLimit=+value||20;saveSettings()}],
+    value=>{appSettings.relatedLimit=+value;saveSettings()}],
   ['searchHistoryLimitSetting','搜索记录',[['5','最近 5 条'],['10','最近 10 条'],['20','最近 20 条']],
     ()=>appSettings.searchHistoryLimit,
-    value=>{appSettings.searchHistoryLimit=+value||10;saveSettings();writeSearchHistory(readSearchHistory())}],
+    value=>{appSettings.searchHistoryLimit=+value;saveSettings();writeSearchHistory(readSearchHistory())}],
   ['followScheduleSetting','关注自动更新',[['0','关闭'],['15','每 15 分钟'],['30','每 30 分钟'],['60','每小时'],
     ['180','每 3 小时'],['360','每 6 小时'],['720','每 12 小时'],['1440','每天']],
     ()=>'0',value=>saveFollowSchedule(+value)],
@@ -518,6 +518,8 @@ const SETTING_SELECTS=[
       api('/api/settings',{method:'POST',body:JSON.stringify({metadataRefreshDays:appSettings.metadataRefreshDays})}).catch(()=>{})}],
 ];
 function syncSortDirectionSetting(){
+  const directionMount=$('#defaultSortDirectionSetting');
+  if(directionMount)directionMount.hidden=appSettings.defaultSort==='seed';
   const field=$('#defaultSortDirectionSetting .gselect');
   if(field){
     field.disabled=appSettings.defaultSort==='seed';
@@ -530,6 +532,7 @@ function syncSortDirectionSetting(){
 function renderSettingSelects(){
   for(const [id,label,options,read,apply] of SETTING_SELECTS){
     const mount=$(`#${id}`);if(!mount)continue;
+    if(mountNumberSetting(mount,id,label,+read(),apply))continue;
     mount.innerHTML=selectFieldHtml(options,read(),{label});
     const field=wireSelectField(mount.firstElementChild);
     field.addEventListener('change',()=>apply(field.value));
@@ -594,24 +597,25 @@ const followScheduleCopy=status=>{
   if(status.next_run_at)return `下次 ${localTime(status.next_run_at)}`;
   return status.enabled?'等待首次运行':'已关闭';
 };
-const followScheduleField=()=>$('#followScheduleSetting .gselect');
+const followScheduleField=()=>$('#followScheduleSetting input[type=number]');
 async function loadFollowScheduleSetting(){
   const field=followScheduleField(),state=$('#followScheduleState'),request=++followScheduleRequest;
-  field.disabled=true;state.innerHTML=loadingDotsHtml('正在读取状态');
+  syncNumberSetting($('#followScheduleSetting'),null,true);state.innerHTML=loadingDotsHtml('正在读取状态');
   try{
     const status=await api('/api/follow/schedule');if(request!==followScheduleRequest)return;
     field.value=status.enabled?String(status.interval_minutes):'0';
+    syncNumberSetting($('#followScheduleSetting'),status.enabled?status.interval_minutes:0,!status.available);
     field.disabled=!status.available;state.textContent=followScheduleCopy(status);
   }catch(error){if(request===followScheduleRequest)state.textContent=`状态未取得：${error.message||error}`}
 }
 async function saveFollowSchedule(minutes){
-  const field=followScheduleField(),state=$('#followScheduleState');field.disabled=true;
+  const field=followScheduleField(),state=$('#followScheduleState');syncNumberSetting($('#followScheduleSetting'),null,true);
   state.innerHTML=`${spinnerHtml('保存中')}<span>正在保存…</span>`;
   try{
     const status=await api('/api/follow/schedule',{method:'POST',body:JSON.stringify({enabled:minutes>0,interval_minutes:minutes||60})});
     state.textContent=followScheduleCopy(status);
   }catch(error){state.textContent=error.message||'保存失败'}
-  finally{field.disabled=false}
+  finally{syncNumberSetting($('#followScheduleSetting'),null,false)}
 }
 /* 来源图标：品牌使用已缓存的官方资产；通用操作图标统一使用本地 Lucide 子集。 */
 const SRCICON={
@@ -7123,9 +7127,9 @@ function renderFollowDrawer(items){
     followTags=new Set([b.dataset.followDrawerTag]);
     openDrawer(false);route(followViewPath());openFollow(false)});
 }
-function openDrawer(v){$('#drawer').classList.toggle('open',v);$('#scrim').classList.toggle('on',v);
-  document.body.classList.toggle('drawer-open',!!v)}
-function closeDrawerAfterNav(){drawerSuppressUntil=Date.now()+650;openDrawer(false)}
+function openDrawer(v){const drawer=$('#drawer');if(!v&&drawer.contains(document.activeElement))$('#filterBtn').focus();drawer.inert=!v;drawer.classList.toggle('open',v);$('#scrim').classList.toggle('on',v);
+  document.body.classList.toggle('drawer-open',!!v);$('#filterBtn').setAttribute('aria-expanded',String(!!v));$('#filterBtn').setAttribute('aria-controls','drawer');$('#filterBtn').setAttribute('aria-label',v?'收起侧栏':'展开侧栏');sessionStorage.setItem('board.sidebar',v?'open':'closed')}
+function closeDrawerAfterNav(){drawerSuppressUntil=Date.now()+650;if(innerWidth<=760||document.documentElement.classList.contains('original-design'))openDrawer(false)}
 $('#filterBtn').onclick=()=>openDrawer(!$('#drawer').classList.contains('open'));
 /* 常驻窄图标条：点即切视图，鼠标停留 180ms 展开完整抽屉 */
 const EDGE_ICONS=[
@@ -7578,7 +7582,7 @@ function buildEdge(){
   wireNavigationDrag($('#edge'));
   syncHeaderActions();
 }
-$('#edge').addEventListener('mouseenter',()=>{if(Date.now()<drawerSuppressUntil)return;
+$('#edge').addEventListener('mouseenter',()=>{if(!document.documentElement.classList.contains('original-design')||Date.now()<drawerSuppressUntil)return;
   edgeT=setTimeout(()=>openDrawer(true),180)});
 /* 滚动期间挂起悬停预览：内容在鼠标下滑过会连续触发 mouseenter，
    每次都新建 video 并发起 /stream 请求，直接把页面拖垮。 */
@@ -7609,7 +7613,7 @@ window.addEventListener('resize',()=>{scheduleStickySurfaces();alignFollowImageC
 
 /* 只在真正进入 72 px 图标栏时展开；内容区左缘不再设隐形热区。 */
 $('#edge').addEventListener('mouseleave',()=>clearTimeout(edgeT));
-$('#drawer').addEventListener('mouseleave',()=>{
+$('#drawer').addEventListener('mouseleave',()=>{if(!document.documentElement.classList.contains('original-design'))return;
   setTimeout(()=>{if(!$('#drawer').matches(':hover')&&!$('#edge').matches(':hover'))openDrawer(false)},240)});
 $('#scrim').onclick=()=>openDrawer(false);
 
@@ -7713,11 +7717,11 @@ async function loadSearchPool(){
 $('#q').dataset.suggestion='';$('#q').placeholder='搜索馆藏';
 let searchHistory=[];
 function readSearchHistory(){return searchHistory.slice(0,appSettings.searchHistoryLimit)}
-const loadSearchHistory=()=>api('/api/search-history?limit='+appSettings.searchHistoryLimit).then(d=>{searchHistory=Array.isArray(d.items)?d.items:[];return searchHistory}).catch(()=>searchHistory);
+const loadSearchHistory=()=>!appSettings.searchHistoryLimit?Promise.resolve([]):api('/api/search-history?limit='+appSettings.searchHistoryLimit).then(d=>{searchHistory=Array.isArray(d.items)?d.items:[];return searchHistory}).catch(()=>searchHistory);
 function writeSearchHistory(list){searchHistory=list.slice(0,appSettings.searchHistoryLimit);return searchHistory}
 // 搜索本身是只读能力；账本暂时只读时，历史记录降级为本次页面内存，不能让一个
 // 非关键 POST 变成未处理异常或妨碍搜索结果。
-const rememberSearch=async query=>{if(!query)return;
+const rememberSearch=async query=>{if(!query||!appSettings.searchHistoryLimit)return;
   writeSearchHistory([query,...readSearchHistory().filter(x=>foldName(x)!==foldName(query))]);
   await api('/api/search-history',{method:'POST',body:JSON.stringify({query})}).catch(()=>null)};
 function renderSearchMenu(){const menu=$('#searchMenu'),history=readSearchHistory();
@@ -8382,7 +8386,7 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
   buildBars();
   scrollItemDetailIntoView();
 
-  if(!queueContext)api('/api/related?id='+it.id+'&limit='+appSettings.relatedLimit).then(d=>{
+  if(!queueContext&&appSettings.relatedLimit>0)api('/api/related?id='+it.id+'&limit='+appSettings.relatedLimit).then(d=>{
     const n=$('#nrow'); if(!n)return; cache(d.items);
     n.innerHTML=d.items.length?d.items.map(x=>cardHtml(x,'ncard')).join(''):'<span class="empty">暂无</span>';
     wireCards(n);});
@@ -9018,3 +9022,158 @@ loadSourceStatus()
   .then(()=>wantsDiscoveryBars()?buildBars():null)
   .then(async()=>{buildEdge();wireAllDrag();await restoreRoute();scheduleStickySurfaces()})
   .then(loadSyncedSettings);
+
+;(()=>{
+/* Board 外壳与设置导航。 */
+const legacyUI=localStorage.getItem('peach.legacy-ui')==='true';
+document.documentElement.classList.toggle('board-high-contrast',localStorage.getItem('peach.high-contrast')==='true');
+document.documentElement.classList.toggle('original-design',legacyUI);
+
+function installUISetting(){
+  const group=document.querySelector('.settingsscroll .settinggroup');
+  if(!group||document.getElementById('legacyUISetting'))return;
+  const row=document.createElement('div');row.className='settingrow';
+  row.innerHTML='<label for="legacyUISetting"><b>使用旧版 UI</b><small style="display:block">保留 Peach 原有界面，刷新页面后生效。</small></label><input type="checkbox" id="legacyUISetting" class="ptoggle" role="switch"><button type="button" class="geist-button" id="applyUISetting" hidden>应用并刷新</button>';
+  group.querySelector('.settingrow').after(row);
+  const field=row.querySelector('input'),apply=row.querySelector('button');field.checked=legacyUI;
+  field.onchange=()=>{localStorage.setItem('peach.legacy-ui',String(field.checked));apply.hidden=field.checked===legacyUI};
+  apply.onclick=()=>location.reload();
+  const contrastRow=document.createElement('div');contrastRow.className='settingrow';
+  contrastRow.innerHTML='<label for="glassContrastSetting"><b>增加对比度</b><small style="display:block">关闭玻璃折射与透明效果，使用实色背景。</small></label><input type="checkbox" id="glassContrastSetting" class="ptoggle" role="switch">';
+  row.after(contrastRow);
+  const contrast=contrastRow.querySelector('input');contrast.checked=document.documentElement.classList.contains('board-high-contrast');
+  contrast.onchange=()=>{localStorage.setItem('peach.high-contrast',String(contrast.checked));document.documentElement.classList.toggle('board-high-contrast',contrast.checked)};
+}
+let tabSequence=0;
+function localTabs(root,groups,titles,host=root){
+  if(!groups.length||host.querySelector(':scope > .board-local-nav'))return;
+  const prefix=`board-tabs-${++tabSequence}`;
+  const nav=document.createElement('div');nav.className='board-local-nav';nav.setAttribute('role','tablist');nav.setAttribute('aria-label',host===root?'配置分区':'设置分区');
+  const choose=index=>{
+    if(host!==root){const heading=host.querySelector('.settingshead h2');if(heading)heading.textContent=titles[index];root.scrollTop=0}
+    groups.forEach((nodes,i)=>nodes.forEach(node=>node.classList.toggle('board-group-active',i===index)));
+    [...nav.children].forEach((button,i)=>{button.setAttribute('aria-selected',String(i===index));button.tabIndex=i===index?0:-1});
+  };
+  groups.forEach((nodes,i)=>{
+    const button=document.createElement('button');button.type='button';button.role='tab';button.id=`${prefix}-tab-${i}`;button.textContent=titles[i];
+    nodes.forEach((node,j)=>{node.dataset.boardGroup=String(i);node.id||=`${prefix}-panel-${i}-${j}`;node.setAttribute('role','tabpanel');node.setAttribute('aria-labelledby',button.id)});
+    if(host!==root){const iconId=['palette-line','layout-grid-line','play-circle-line','search-line','rss-line','shield-check-line'][i];const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('viewBox','0 0 24 24');svg.setAttribute('aria-hidden','true');svg.style.fill='currentColor';svg.style.stroke='none';svg.innerHTML=`<use href="#ri-${iconId}"/>`;button.prepend(svg)}
+    button.setAttribute('aria-controls',nodes.map(node=>node.id).join(' '));button.onclick=()=>choose(i);
+    button.onkeydown=event=>{let next=i;if(event.key==='ArrowRight'||event.key==='ArrowDown')next=(i+1)%groups.length;else if(event.key==='ArrowLeft'||event.key==='ArrowUp')next=(i+groups.length-1)%groups.length;else if(event.key==='Home')next=0;else if(event.key==='End')next=groups.length-1;else return;event.preventDefault();choose(next);nav.children[next].focus()};
+    nav.append(button);
+  });
+  host===root?root.prepend(nav):host.insertBefore(nav,root);
+  choose(0);
+}
+function decorate(){
+  installUISetting();
+  if(legacyUI)return;
+  const config=document.querySelector('.configpage');
+  if(config&&!config.querySelector(':scope > .board-local-nav')){
+    const groups=[],titles=[];
+    [...config.children].forEach(node=>{if(node.matches('.configgroup')){titles.push(node.textContent);groups.push([])}else if(groups.length)groups.at(-1).push(node)});
+    localTabs(config,groups,titles);
+  }
+  const settings=document.querySelector('.settingsscroll');
+  if(settings){const groups=[...settings.querySelectorAll(':scope > .settinggroup')];localTabs(settings,groups.map(x=>[x]),groups.map(x=>x.querySelector('h3').textContent),settings.parentElement)}
+  const icons={'人工复核':'square-check-big','高清版':'sparkles','重复文件':'file-stack','垃圾文件':'file-archive','空文件夹':'folder','回收站':'trash','扫描与采集':'hard-drive'};
+  document.querySelectorAll('.cleanupfieldset h2,.cleanupfieldset h3').forEach(heading=>{
+    if(heading.querySelector('.board-card-icon'))return;
+    const id=icons[heading.textContent.trim()];if(!id||!document.getElementById(`i-${id}`))return;
+    const tile=document.createElement('span');tile.className='board-card-icon';tile.setAttribute('aria-hidden','true');tile.innerHTML=`<svg viewBox="0 0 24 24"><use href="#i-${id}"/></svg>`;heading.prepend(tile);
+  });
+  document.querySelectorAll('#managebar [data-manage]').forEach(button=>{if(button.getAttribute('aria-pressed')==='true')button.setAttribute('aria-current','page');else button.removeAttribute('aria-current')});
+}
+function syncSortVisibility(){
+  const direction=document.querySelector('#defaultSortDirectionSetting');
+  const field=direction?.querySelector('.gselect');
+  if(direction&&field)direction.hidden=field.disabled;
+}
+const sortDirection=document.querySelector('#defaultSortDirectionSetting');
+if(sortDirection){
+  new MutationObserver(syncSortVisibility).observe(sortDirection,{childList:true,subtree:true,attributes:true,attributeFilter:['disabled']});
+  syncSortVisibility();
+}
+let filterFrame;
+const boardBrand=document.querySelector('#brandHome');
+function placeBrand(){
+  if(legacyUI)return;
+  const close=document.querySelector('#drawerClose');
+  if(close&&boardBrand.parentElement!==close.parentElement){
+    const heading=close.parentElement.querySelector('h2,h3,strong,b');if(heading)heading.hidden=true;
+    close.before(boardBrand);
+  }
+}
+placeBrand();
+new MutationObserver(placeBrand).observe(document.querySelector('#drawer'),{childList:true,subtree:true});
+const overflowObservers=new WeakMap();
+const boardTagbar=document.querySelector('#tagbar'),countbar=document.querySelector('#count');
+const tagHome=document.createComment('filter position');boardTagbar.before(tagHome);
+const countHome=document.createComment('sort position');countbar.before(countHome);
+function syncFilterFrame(){
+  if(legacyUI)return;
+  const catalog=!boardTagbar.hidden&&!countbar.hidden&&getComputedStyle(boardTagbar).display!=='none'&&getComputedStyle(countbar).display!=='none';
+  if(catalog&&!filterFrame){filterFrame=document.createElement('div');filterFrame.className='board-filter-frame';countHome.after(filterFrame);filterFrame.append(boardTagbar,countbar)}
+  else if(!catalog&&filterFrame){tagHome.after(boardTagbar);countHome.after(countbar);filterFrame.remove();filterFrame=null}
+  if(filterFrame)[boardTagbar,countbar.querySelector('.sorts')].filter(Boolean).forEach(scroller=>{
+    if(!overflowObservers.has(scroller)){
+      const update=()=>{scroller.dataset.overflowLeft=String(scroller.scrollLeft>2);scroller.dataset.overflowRight=String(scroller.scrollWidth-scroller.clientWidth-scroller.scrollLeft>2)};
+      overflowObservers.set(scroller,update);scroller.addEventListener('scroll',update,{passive:true});new ResizeObserver(update).observe(scroller);
+    }
+    overflowObservers.get(scroller)();
+  });
+}
+syncFilterFrame();
+new MutationObserver(syncFilterFrame).observe(countbar,{childList:true,subtree:true});
+new MutationObserver(syncFilterFrame).observe(boardTagbar,{childList:true});
+new MutationObserver(syncFilterFrame).observe(boardTagbar,{attributes:true,attributeFilter:['hidden','style']});
+new MutationObserver(syncFilterFrame).observe(countbar,{attributes:true,attributeFilter:['hidden','style']});
+decorate();
+new MutationObserver(decorate).observe(document.querySelector('#stats'),{childList:true,subtree:true});
+new MutationObserver(decorate).observe(document.querySelector('#managebar'),{childList:true});
+/* The selected design is loaded on refresh, not hot-swapped in a running page. */
+
+let floatingScheduled=false;
+function updateFloating(){
+  floatingScheduled=false;
+  document.body.classList.toggle('board-scrolled',scrollY>8);
+  if(filterFrame){const top=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--topH'))||64;filterFrame.classList.toggle('board-is-stuck',filterFrame.getBoundingClientRect().top<=top+9)}
+}
+if(!legacyUI){addEventListener('scroll',()=>{if(!floatingScheduled){floatingScheduled=true;requestAnimationFrame(updateFloating)}},{passive:true});addEventListener('resize',updateFloating);updateFloating()}
+
+/* Generate an edge-normal displacement field; only the backdrop is refracted. */
+if(!legacyUI && /Chrome|Chromium|Edg\//.test(navigator.userAgent)){
+  const ns='http://www.w3.org/2000/svg';
+  const svg=document.createElementNS(ns,'svg');svg.setAttribute('width','0');svg.setAttribute('height','0');svg.setAttribute('aria-hidden','true');svg.style.position='fixed';svg.style.pointerEvents='none';
+  const defs=document.createElementNS(ns,'defs');svg.append(defs);document.body.append(svg);
+  const attached=new WeakSet();let sequence=0;
+  function attach(node){
+    if(attached.has(node))return;attached.add(node);
+    const id=`peach-optic-${++sequence}`;const filter=document.createElementNS(ns,'filter');filter.id=id;filter.setAttribute('filterUnits','userSpaceOnUse');filter.setAttribute('color-interpolation-filters','sRGB');
+    const map=document.createElementNS(ns,'feImage');map.setAttribute('result','edge-map');map.setAttribute('preserveAspectRatio','none');
+    const displacement=document.createElementNS(ns,'feDisplacementMap');displacement.setAttribute('in','SourceGraphic');displacement.setAttribute('in2','edge-map');displacement.setAttribute('xChannelSelector','R');displacement.setAttribute('yChannelSelector','G');displacement.setAttribute('scale','24');filter.append(map,displacement);defs.append(filter);
+    let previous='';
+    const draw=()=>{
+      const width=Math.round(node.clientWidth),height=Math.round(node.clientHeight);if(!width||!height)return;
+      const radius=Math.min(parseFloat(getComputedStyle(node).borderRadius)||22,width/2,height/2);const key=`${width}:${height}:${radius}`;if(previous===key)return;previous=key;
+      const ratio=Math.min(1,600/width,600/height);const w=Math.max(2,Math.round(width*ratio)),h=Math.max(2,Math.round(height*ratio));
+      const canvas=document.createElement('canvas');canvas.width=w;canvas.height=h;const ctx=canvas.getContext('2d');const pixels=ctx.createImageData(w,h);
+      const distance=(x,y)=>{const qx=Math.abs(x-width/2)-(width/2-radius),qy=Math.abs(y-height/2)-(height/2-radius);return Math.hypot(Math.max(qx,0),Math.max(qy,0))+Math.min(Math.max(qx,qy),0)-radius};
+      const depth=Math.min(24,Math.min(width,height)/3);
+      for(let y=0;y<h;y++)for(let x=0;x<w;x++){
+        const px=(x+.5)/ratio,py=(y+.5)/ratio,inside=-distance(px,py);let dx=0,dy=0;
+        if(inside>0&&inside<depth){const gx=distance(px+.5,py)-distance(px-.5,py),gy=distance(px,py+.5)-distance(px,py-.5),length=Math.hypot(gx,gy)||1;const bend=Math.sin(Math.PI*inside/depth);dx=gx/length*bend;dy=gy/length*bend}
+        const i=(y*w+x)*4;pixels.data[i]=128+dx*116;pixels.data[i+1]=128+dy*116;pixels.data[i+2]=128;pixels.data[i+3]=255;
+      }
+      ctx.putImageData(pixels,0,0);map.setAttribute('href',canvas.toDataURL());map.setAttribute('width',width);map.setAttribute('height',height);filter.setAttribute('x','0');filter.setAttribute('y','0');filter.setAttribute('width',width);filter.setAttribute('height',height);
+      node.style.setProperty('--glass-optic',`url("#${id}") blur(2px)`);node.dataset.opticGlass='true';
+    };
+    new ResizeObserver(draw).observe(node);draw();
+  }
+  const sync=()=>document.querySelectorAll('.board-filter-frame,.top .search,.edge,.drawer').forEach(attach);
+  new MutationObserver(sync).observe(document.querySelector('#main'),{childList:true,subtree:true});sync();
+}
+
+})();
+
+if(!document.documentElement.classList.contains('original-design'))openDrawer(innerWidth>760&&sessionStorage.getItem('board.sidebar')!=='closed');

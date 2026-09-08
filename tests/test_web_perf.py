@@ -195,6 +195,7 @@ class PageAssetDeliveryTests(unittest.IsolatedAsyncioTestCase):
         self.css_parts[0].write_text("body{margin:0}\n" + "/* filler */\n" * 200,
                                      encoding="utf-8")
         self.css_parts[1].write_text(".card{display:grid}\n", encoding="utf-8")
+        (root / "board.css").write_text(".ptoggle{width:42px}\n", encoding="utf-8")
         page = root / "index.html"
         page.write_text("<!doctype html><title>Peach test</title>", encoding="utf-8")
         (root / "js").mkdir()
@@ -230,7 +231,7 @@ class PageAssetDeliveryTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("const peach=2", updated.text)
 
     async def test_every_asset_route_shares_the_same_revalidation_contract(self):
-        for path in ("/app.css", "/js/core.js", "/dist/peach-ui.js"):
+        for path in ("/app.css", "/board.css", "/js/core.js", "/dist/peach-ui.js"):
             first = await self.client.get(path)
             self.assertEqual(first.status_code, 200, path)
             self.assertEqual(first.headers["cache-control"], "no-cache", path)

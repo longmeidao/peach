@@ -5677,7 +5677,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('class="mixqueue"')
         self.assertPageContains('class="mixitem ${x.id===itemId?\'current\':\'\'}"')
         self.assertPageContains("data-queue-item")
-        self.assertPageContains("if(!queueContext)api('/api/related?id='")
+        self.assertPageContains("if(!queueContext&&appSettings.relatedLimit>0)api('/api/related?id='")
         self.assertPageContains("async function openPlaylists(push=true)")
         self.assertPageContains("const surface=claimSurface('/playlists')")
         self.assertPageContains("async function openPlaylist(playlistId,itemId=null,push=true)")
@@ -7369,7 +7369,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('class="settingsortcontrols"')
         self.assertPageContains("field.disabled=appSettings.defaultSort==='seed'")
         self.assertPageContains("['hoverDelaySetting','悬停放大',[['0','关闭']")
-        self.assertPageContains('allowedSetting(+appSettings.hoverDelaySeconds,[0,3,5,8],5)')
+        self.assertPageContains('boundedPreference(+appSettings.hoverDelaySeconds,0,60,5)')
         self.assertPageContains('if(!appSettings.hoverDelaySeconds)return;')
         self.assertPageContains("if(appSettings.hoverDelaySeconds)el.classList.add('longhover')")
 
@@ -8330,6 +8330,27 @@ class CoverSleeveThresholdTests(unittest.TestCase):
         self.assertIsNotNone(anchor, "coverAnchor 的封套判定不见了")
         self.assertEqual((low, high), (float(anchor.group(2)), float(anchor.group(1))))
         self.assertLess(low, high)
+
+
+class BoardStyleIsolationTests(unittest.TestCase):
+    def test_board_assets_and_legacy_choice_are_available_before_app_start(self):
+        root = Path(__file__).resolve().parents[1]
+        html = (root / "web/index.html").read_text(encoding="utf-8")
+        self.assertIn('id="boardStyles"', html)
+        self.assertIn('href="/board.css"', html)
+        self.assertLess(html.index('peach.legacy-ui'), html.index('src="/app.js"'))
+        css = (root / "web/css/16-settings.css").read_text(encoding="utf-8")
+        self.assertIn('#applyUISetting[hidden]{display:none}', css)
+
+    def test_icon_centering_does_not_override_toolbar_visibility(self):
+        root = Path(__file__).resolve().parents[1]
+        css = (root / "web/board.css").read_text(encoding="utf-8")
+        rules = re.findall(r'([^{}]+)\{([^{}]*)\}', css)
+        centering = [selector for selector, body in rules
+                     if 'display:inline-grid' in body and 'place-items:center' in body]
+        self.assertTrue(any('.settingshead button' in selector for selector in centering))
+        self.assertFalse(any('.ib,' in selector or '.sidebaraddmenu button' in selector
+                             for selector in centering))
 
 
 if __name__ == "__main__":

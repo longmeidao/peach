@@ -118,6 +118,7 @@ def set_auth_cookie(response: Response, request: Request, *, days: int = 30, log
 
 
 def login_html(next_path: str, *, invalid: bool = False) -> str:
+    from .routes_pages import board_entry_style
     safe_next = html.escape(next_path, quote=True)
     error = '<p role="alert">访问密码不正确</p>' if invalid else ""
     return (
@@ -161,7 +162,7 @@ def login_html(next_path: str, *, invalid: bool = False) -> str:
         'button{width:100%;height:44px;margin-top:16px;border:0;border-radius:11px;cursor:pointer;'
         'background:var(--ink);color:var(--bg);font:500 15px system-ui,sans-serif}'
         'button:hover{background:color-mix(in srgb,var(--ink) 88%,var(--bg));color:var(--bg)}p[role=alert]{margin:0 0 14px;color:var(--alert)}'
-        '</style><body><main><div class="brand"><img src="/peach-logo.png" alt=""><h1>Peach</h1></div>'
+        f'</style>{board_entry_style()}<body><main><div class="brand"><img src="/peach-logo.png" alt=""><h1>Peach</h1></div>'
         f'{error}<form method="post" action="/login">'
         '<label>访问密码 <input name="token" type="password" maxlength="256" '
         'autocomplete="current-password" required></label>'

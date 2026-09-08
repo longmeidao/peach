@@ -14,6 +14,7 @@
  * 都先自我卸载，`unmountIsland` 也不假设 DOM 还在原处。 */
 import { h, render } from 'preact';
 export { preferredDirection } from './sort-preferences';
+export { boundedPreference, mountNumberSetting, syncNumberSetting } from './number-setting';
 import type { Attributes, ComponentType } from 'preact';
 
 import { errorMessage } from './api';

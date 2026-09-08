@@ -81,7 +81,7 @@ class DependencyPolicyTests(unittest.TestCase):
         self.assertTrue(manifest["private"])
         versions = manifest["devDependencies"]
         self.assertEqual(set(versions), {"@phosphor-icons/core", "healthicons",
-                                         "lucide-static", "swiper", "video.js"})
+                                         "lucide-static", "swiper", "video.js", "remixicon"})
         for version in versions.values():
             self.assertRegex(version, r"^\d+\.\d+\.\d+$")
 

@@ -327,7 +327,15 @@ def _document(title: str, body: str) -> str:
     index = (PROJECT_ROOT / "web/index.html").read_text(encoding="utf-8")
     symbols = ''.join(re.findall(r'<symbol id="i-(?:check|chevron-down|hard-drive)"[^>]*>.*?</symbol>', index))
     return (f"{_SETUP_HEAD}<title>{title}</title><style>{_theme_tokens()}{_scrollbar_rules()}</style>"
-            f'{_SETUP_STYLE}<style>{_button_rules()}</style></head><body><svg width="0" height="0" aria-hidden="true" style="position:absolute">{symbols}</svg><main>{body}</main>{_SETUP_SCRIPT}{_SHARED_SCRIPT}</body></html>\n')
+            f'{_SETUP_STYLE}<style>{_button_rules()}</style>{board_entry_style()}</head><body><svg width="0" height="0" aria-hidden="true" style="position:absolute">{symbols}</svg><main>{body}</main>{_SETUP_SCRIPT}{_SHARED_SCRIPT}</body></html>\n')
+
+
+def board_entry_style() -> str:
+    """入口页内联公共视觉层，保留设备上的旧版界面偏好。"""
+    css = (PROJECT_ROOT / "web/board-entry.css").read_text(encoding="utf-8")
+    return (f'<style id="boardEntryStyles">{css}</style>'
+            '<script>try{document.getElementById("boardEntryStyles").disabled='
+            'localStorage.getItem("peach.legacy-ui")==="true"}catch(e){}</script>')
 
 
 def _check_html(name: str, text_html: str, *, checked: bool) -> str:
@@ -790,6 +798,7 @@ def _read_answers(
 
 
 @router.api_route("/app.css", methods=["GET", "HEAD"])
+@router.api_route("/board.css", methods=["GET", "HEAD"])
 @router.api_route("/app.js", methods=["GET", "HEAD"])
 def app_asset(request: Request, args: dict[str, str] = Depends(require_asset_auth)):
     """页面拆出来的样式与入口脚本。样式在 `web/css/`，脚本和 index.html 同目录，同一套口令。
@@ -805,7 +814,7 @@ def app_asset(request: Request, args: dict[str, str] = Depends(require_asset_aut
     path = web / name
     if not path.is_file():
         return PlainTextResponse("missing", status_code=404)
-    return asset_response(request, path, "text/javascript")
+    return asset_response(request, path, "text/css" if name == "board.css" else "text/javascript")
 
 
 @router.api_route("/js/{name}", methods=["GET", "HEAD"])

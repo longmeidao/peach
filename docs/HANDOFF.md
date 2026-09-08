@@ -72,6 +72,8 @@
 
 ## 参考产品证据登记
 
+- [BoardUI 适配与控件对应](BOARD_UI.md)：2026-09-08 的公开注册表证据、固定哈希、Switch 与 Segmented Control 的语义区别。用户指定 Board 视觉，旧版样式通过设置保留；字段错误锚定提示和媒体播放器是 Peach 差异。
+
 - [Geist 控件](reference-snapshots/vercel-geist-controls-measured.md)；[复核操作](reference-snapshots/vercel-review-actions.md)；[README 维护](README_MAINTENANCE.md)。
 
 - 设置：`reference-snapshots/geist-settings.md`。

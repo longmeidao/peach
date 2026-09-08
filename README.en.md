@@ -40,6 +40,8 @@ Follow sources include FANBOX, Patreon, SubscribeStar, Kemono, Pawchive, Coomer,
 
 Interface preferences are saved in the current browser and live under Settings: default sort, official covers or preview images for JAV works, autoplay when details open, and SFW mode, which blurs, desaturates and dims images and video and stops hover previews.
 
+The interface uses Board styling. Select “Use classic UI” in Settings and apply with a refresh to use the classic interface. “Increase contrast” disables navigation transparency and refraction. Numeric preferences accept custom values within their supported ranges, with switches for optional features.
+
 ## Quick start
 
 Peach is **pre-1.0**. The application interface is currently Chinese only.
