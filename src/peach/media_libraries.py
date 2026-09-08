@@ -1,7 +1,9 @@
 """媒体库按声明路径分组，来源与挂载仍由媒体配置管理。"""
 from pathlib import PureWindowsPath
 
-LIBRARY_ICONS = frozenset({"hard-drive", "database", "heart", "star", "tags", "115", "pikpak"})
+LIBRARY_ICONS = frozenset({"hard-drive", "database", "heart", "star", "tags", "115", "pikpak",
+                         "heart-hand", "flame", "cherry", "gem", "crown", "shirt", "footprints",
+                         "flower", "venetian-mask", "hand", "bed-double", "moon", "sparkles", "camera", "video"})
 
 
 def libraries(config):

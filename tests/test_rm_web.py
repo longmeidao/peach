@@ -1137,6 +1137,20 @@ class WebDataTests(unittest.TestCase):
             "清理服务端物理目录不写 ledger，不该被 reader 的账本闸门误拦",
         )
 
+    def test_empty_folder_scan_counts_nested_candidates_without_removing_anything(self):
+        source_root = Path(self.tmp.name) / "scan-source"
+        leaf = source_root / "empty" / "nested"
+        leaf.mkdir(parents=True)
+        kept = source_root / "kept"
+        kept.mkdir()
+        (kept / "media.mp4").write_bytes(b"keep")
+        with mock.patch.object(web_batch, "LOCATION_ROOT_DECLARATIONS", {"local": (str(source_root),)}):
+            result = web_batch.w_cleanup_empty_directories(self.contract, {"dry_run": True})
+        self.assertEqual(result["empty"], 2)
+        self.assertEqual(result["removed"], 0)
+        self.assertTrue(leaf.is_dir())
+        self.assertEqual((kept / "media.mp4").read_bytes(), b"keep")
+
     def test_failed_database_commit_restores_quarantined_media(self):
         path = self.stage_media(1, "commit-failure.mp4")
         rm_web.w_feedback(self.contract, {"id": 1, "kind": "dispose"})

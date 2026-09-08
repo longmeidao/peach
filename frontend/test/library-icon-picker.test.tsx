@@ -1,0 +1,21 @@
+import { afterEach, expect, it, vi } from 'vitest';
+import { h, render } from 'preact';
+import { act } from 'preact/test-utils';
+import { LibraryIconPicker, LIBRARY_ICON_CHOICES } from '../src/library-icon-picker';
+let root:HTMLDivElement;
+afterEach(()=>{render(null,root);document.body.innerHTML=''});
+it('候选图标不包含网盘，取消保持原值，应用才提交草稿',async()=>{
+  expect(LIBRARY_ICON_CHOICES.some(([value])=>['115','pikpak'].includes(value))).toBe(false);
+  root=document.createElement('div');document.body.append(root);const change=vi.fn();
+  await act(async()=>render(h(LibraryIconPicker,{label:'媒体库图标',value:'heart',onChange:change}),root));
+  const dialog=root.querySelector('dialog')!;dialog.showModal=()=>dialog.setAttribute('open','');dialog.close=()=>dialog.removeAttribute('open');
+  await act(async()=>root.querySelector<HTMLButtonElement>('.board-icon-trigger')!.click());
+  await act(async()=>root.querySelector<HTMLInputElement>('input[value=cherry]')!.click());
+  expect(change).not.toHaveBeenCalled();
+  await act(async()=>root.querySelector<HTMLButtonElement>('footer button')!.click());
+  await act(async()=>root.querySelector<HTMLButtonElement>('.board-icon-trigger')!.click());
+  expect(root.querySelector<HTMLInputElement>('input[value=heart]')!.checked).toBe(true);
+  await act(async()=>root.querySelector<HTMLInputElement>('input[value=cherry]')!.click());
+  await act(async()=>root.querySelector<HTMLButtonElement>('footer button.primary')!.click());
+  expect(change).toHaveBeenCalledWith('cherry');
+});

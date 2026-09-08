@@ -3508,8 +3508,7 @@ async function wireLinkManager(){
     setActionBusy(button,running);
     if(payload.status==='idle'){result.innerHTML='';return}
     if(payload.status==='failed'){result.innerHTML=noteHtml(payload.error||'检查失败',{variant:'error',label:'检查失败'});return}
-    const progress=running?loadingDotsHtml(`已检查 ${payload.checked.toLocaleString()} / ${(payload.total||0).toLocaleString()} 条`)
-      +(payload.total?jobProgressHtml('已检查链接',payload.checked,payload.total):''):'';
+    const progress=running?(payload.total?jobProgressHtml(`已检查 ${payload.checked.toLocaleString()} / ${payload.total.toLocaleString()} 条链接`,payload.checked,payload.total):loadingDotsHtml('正在检查链接')):'';
     /* gone 和 unclear 必须分开摆：`linktr.ee` 回 403 是挡爬虫、`x.com` 回 500 是临时错误，
        链接本身好好的。混成一张表会让人顺手把好链接一起删掉。 */
     const gone=table('已失效',payload.gone||[],'上游明确回 404／410，页面确实没了。');
@@ -3599,8 +3598,7 @@ async function wireResourceSync(){
       await ui.watchJob({active,
         read:signal=>api('/api/resource-sync/scan',{signal,method:'POST',body:JSON.stringify({background:true,status_only:true})}),
         render:state=>{payload=state;if(state.status==='running'){
-          result.innerHTML=loadingDotsHtml(`后台扫描中：已完成 ${state.completed_sources||0}/${state.total_sources||0} 个来源`)
-            +(state.total_sources?jobProgressHtml('已扫描来源',state.completed_sources||0,state.total_sources):'')}},
+          result.innerHTML=state.total_sources?jobProgressHtml(`已扫描 ${state.completed_sources||0}/${state.total_sources} 个来源`,state.completed_sources||0,state.total_sources):loadingDotsHtml('正在扫描来源')}},
         disconnected:()=>{result.innerHTML=noteHtml('暂时无法读取进度，正在重新连接…',{label:'任务状态'})}});
       if(payload.status==='failed')throw new Error(payload.error||'后台扫描失败');
       if(payload.status==='idle')throw new Error('任务尚未启动，请重试扫描');
@@ -4136,11 +4134,11 @@ async function openDataCleanup(push=true){
         <p class="cleanupmeta">${Number(duplicates.total||0)?`可回收 ${fmtSize(duplicates.reclaimable||0)}`:''}</p></div>
       <footer class="geist-fieldset-footer" data-geist-fieldset-footer><button type="button" data-cleanup-open="duplicates">查看重复文件</button></footer>
     </section>`,
-    empty:`<section class="cleanupfieldset cleanupemptyfolders" data-geist-fieldset data-fieldset-type="error" aria-labelledby="cleanupEmptyTitle">
+    empty:`<section class="cleanupfieldset cleanupemptyfolders" data-geist-fieldset aria-labelledby="cleanupEmptyTitle">
       <div class="geist-fieldset-content">${fieldsetTitle('cleanupEmptyTitle','空文件夹')}
         <strong>${online.length.toLocaleString()} 个来源可扫描</strong>
         <p class="cleanupmeta">${sourceLine}</p><p class="cleanupstate" aria-live="polite"></p></div>
-      <footer class="geist-fieldset-footer" data-geist-fieldset-footer><button type="button" class="danger" data-cleanup-empty>${icon('trash')}<span>删除空文件夹</span></button></footer>
+      <footer class="geist-fieldset-footer" data-geist-fieldset-footer><button type="button" data-cleanup-empty-scan ${online.length?'':'disabled'}>${icon('scan-search')}<span>扫描空文件夹</span></button><button type="button" class="danger" data-cleanup-empty hidden>${icon('trash')}<span>删除空文件夹</span></button></footer>
     </section>`,
     review:entryCard('review'),quality:entryCard('quality'),trash:entryCard('trash'),
   };
@@ -4160,6 +4158,16 @@ async function openDataCleanup(push=true){
     button.onclick=()=>openManage(button.dataset.cleanupGo));
   paintDataManagementCounts();
   const emptyButton=$('#stats').querySelector('[data-cleanup-empty]');
+  const emptyScan=$('#stats').querySelector('[data-cleanup-empty-scan]');
+  emptyScan.onclick=async()=>{
+    const status=$('#stats').querySelector('.cleanupstate');setActionBusy(emptyScan);emptyButton.hidden=true;
+    status.textContent='正在检查空文件夹…';
+    try{const result=await api('/api/data-cleanup/empty-folders',{method:'POST',body:JSON.stringify({dry_run:true})});
+      if(!surfaceCurrent(surface))return;
+      status.textContent=`已检查 ${Number(result.scanned||0).toLocaleString()} 个目录，发现 ${Number(result.empty||0).toLocaleString()} 个空文件夹${result.errors?`，${result.errors} 个目录读取失败`:''}。`;
+      emptyButton.hidden=!(result.empty>0);
+    }catch(error){status.textContent=`扫描失败：${error.message}`}finally{setActionBusy(emptyScan,false)}
+  };
   emptyButton.onclick=async()=>{
     return confirmModal({title:'删除空文件夹',body:'将删除已连接磁盘和网盘中的空文件夹，保留来源根目录。',confirmLabel:'删除空文件夹',danger:true,onConfirm:async()=>{
     const status=$('#stats').querySelector('.cleanupstate'),original=emptyButton.innerHTML;
@@ -4170,7 +4178,7 @@ async function openDataCleanup(push=true){
       status.textContent=`已检查 ${Number(result.scanned||0).toLocaleString()} 个目录，删除 ${Number(result.removed||0).toLocaleString()} 个${result.errors?`，${Number(result.errors).toLocaleString()} 个读取或删除失败`:''}。`;
       if(result.errors)actionFailure('空文件夹清理',new Error(`${result.errors} 个目录处理失败`));
       else actionReceipt(`已删除 ${Number(result.removed||0).toLocaleString()} 个空文件夹`);
-    }finally{setActionBusy(emptyButton,false);emptyButton.innerHTML=original}
+    }finally{setActionBusy(emptyButton,false);emptyButton.innerHTML=original;emptyButton.hidden=true}
   }});
   };
   await wireLinkManager();
@@ -4416,7 +4424,7 @@ async function openReview(push=true){
            // 账本规范名当标题，抓取来源给的写法（多为罗马音）留作副标题。
            row.source_name?`<p class="reviewalias">来源写法：${esc(row.source_name)}</p>`:''}${
            // 实体类卡片的作品数已经写在创作者入口里，这里再写一遍就是同一个数字两处。
-           subjectKind&&subjectName?'':`<p>${esc(row.board||row.assets?`样本/资产：${row.video_count||row.assets||''}`:'')}</p>`}${subjectKind&&subjectName?'':origin}${tags?`<div class="reviewtags">${tags}</div>`:''}${stage}`;
+           subjectKind&&subjectName?'':`<p>${esc(row.board||row.assets?`样本/资产：${row.video_count||row.assets||''}`:'')}</p>`}${subjectKind&&subjectName?'':origin}${tags||reviewCategory==='creator_tags'?`<div class="reviewtags">${tags||'<small>暂无候选标签</small>'}</div>`:''}${stage}`;
          /* 主体动作在最右：一行里从左到右是「拒绝、跳过、通过」，读到最后一枚才是这张卡
             真正要人做的判断。Geist 的弹层与 Fieldset 操作条都是这个方向——取消在左，
             主动作靠 margin-left:auto 推到最右（vercel-geist-fieldset-scroller-empty-state.md）。 */
@@ -5329,7 +5337,7 @@ async function wireFollowProgress(){
       if(surfaceCurrent(surface))void refreshFollowSurface(surface)},
     note:text=>noteHtml(text,{label:'任务状态'}),loading:text=>loadingDotsHtml(text),
     container:content=>`<section class="followtask" data-geist-fieldset aria-label="检查更新进度"><div class="geist-fieldset-content">${content}</div></section>`,
-    progress:(value,max)=>jobProgressHtml(`已完成 ${value}/${max} 个来源`,value,max)});
+    progress:(value,max,label)=>jobProgressHtml(label||`已完成 ${value}/${max} 个来源`,value,max)});
 }
 async function refreshFollowSurface(surface){
   try{
@@ -5354,7 +5362,7 @@ async function wireOperationProgress({host,path,key,title,busy,complete}){
       complete(report)},note:text=>noteHtml(text,{label:'任务状态'}),
     loading:text=>loadingDotsHtml(text),
     container:content=>`<section class="followtask" data-geist-fieldset aria-label="任务进度"><div class="geist-fieldset-content">${content}</div></section>`,
-    progress:(value,max)=>jobProgressHtml(`已处理 ${value} / ${max}`,value,max)});
+    progress:(value,max,label)=>jobProgressHtml(label||`已处理 ${value} / ${max}`,value,max)});
 }
 function wireTasteProgress(){
   const button=$('#stats').querySelector('[data-taste-refresh]');
@@ -5534,7 +5542,7 @@ const followSourceSelection=new Set();
 function followSourceRow(source,selectable=false){
   const state=source.last_status||'未检查';
   const bad=state==='error'||state==='unauthorized';
-  const badge=!source.enabled?'none':state==='ok'?'ok':bad?'error':'none';
+  const badge=!source.enabled?'paused':state==='ok'?'ok':bad?'error':'none';
   const stateTitle=source.history_exhausted?'没有更多':!source.enabled?'已暂停':state==='ok'?'正常':bad?'检查失败':'未检查';
   const statusChip=`<span class="sbadge ${badge}" title="${esc(stateTitle)}"><i aria-hidden="true"></i><span>${esc(stateTitle)}</span></span>`;
   return `<div class="frow fsource${bad?' bad':''}${source.enabled?'':' disabled'}">
@@ -5827,6 +5835,10 @@ function wireFollowManage(creds=[]){
     });
   };
   selectable.forEach(field=>field.onchange=()=>{const id=Number(field.dataset.followSelect);if(field.checked)followSourceSelection.add(id);else followSourceSelection.delete(id);syncSelection()});
+  selectable.forEach(field=>field.closest('.fsource').addEventListener('click',event=>{
+    if(event.target.closest('a,button,label,input'))return;
+    field.click();
+  }));
   root.querySelectorAll('[data-follow-author-select]').forEach(button=>button.onclick=event=>{
     event.preventDefault();event.stopPropagation();
     const fields=[...button.closest('.fauthor').querySelectorAll('[data-follow-select]')],checked=!fields.every(field=>field.checked);
@@ -9298,7 +9310,7 @@ if(!legacyUI && /Chrome|Chromium|Edg\//.test(navigator.userAgent)){
     };
     new ResizeObserver(draw).observe(node);draw();
   }
-  const sync=()=>document.querySelectorAll('.board-filter-frame,.top .search,.top>.ib,.edge,.drawer').forEach(attach);
+  const sync=()=>document.querySelectorAll('.board-filter-frame,.top .search,.top>.ib,.edge,.drawer,.selectiondock,.reviewcontrols,.reviewgroupbar').forEach(attach);
   new MutationObserver(sync).observe(document.querySelector('#main'),{childList:true,subtree:true});sync();
 }
 

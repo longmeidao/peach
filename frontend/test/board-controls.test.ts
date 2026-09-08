@@ -1,7 +1,16 @@
 import { describe,it,expect } from 'vitest';
-import { syncBoardRange, wireExpandableRanks } from '../src/board-controls';
+import { syncBoardRange, wireExpandableRanks, wireBoardSegments } from '../src/board-controls';
 
 describe('范围控件',()=>{
+  it('视图切换保留原生 radio 且重复接线只创建一个滑块',()=>{
+    document.body.innerHTML='<div class="iconswitch"><label><input type="radio" name="view" value="large" checked>大图</label><label><input type="radio" name="view" value="small">小图</label></div>';
+    wireBoardSegments(document);wireBoardSegments(document);
+    expect(document.querySelectorAll('.board-segment-thumb')).toHaveLength(1);
+    const inputs=[...document.querySelectorAll<HTMLInputElement>('input')];
+    inputs[1]!.click();
+    expect(inputs[0]!.checked).toBe(false);expect(inputs[1]!.checked).toBe(true);
+    expect(document.querySelector('.board-segment-thumb')?.getAttribute('aria-hidden')).toBe('true');
+  });
   it('折叠排名退出键盘导航，展开后恢复，重复接线不重复按钮',()=>{
     document.body.innerHTML='<div class="tasteranks">'+Array.from({length:7},()=>'<button>排名</button>').join('')+'</div>';
     wireExpandableRanks(document);wireExpandableRanks(document);

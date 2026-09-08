@@ -13,7 +13,7 @@ export function syncBoardRange(input: HTMLInputElement) {
 }
 
 export function initBoardControls() {
-  const scan=(root:ParentNode)=>root.querySelectorAll<HTMLInputElement>('input[type=range]').forEach(syncBoardRange);
+  const scan=(root:ParentNode)=>{root.querySelectorAll<HTMLInputElement>('input[type=range]').forEach(syncBoardRange);wireBoardSegments(root);wireBoardTabs(root)};
   scan(document);
   const observer=new MutationObserver(records=>{for(const record of records)for(const node of record.addedNodes)if(node instanceof Element){if(node.matches('input[type=range]'))syncBoardRange(node as HTMLInputElement);scan(node)}});
   observer.observe(document.body,{subtree:true,childList:true});
@@ -38,6 +38,42 @@ export function initBoardControls() {
   document.addEventListener('focusout',hide);
   document.addEventListener('keydown',event=>{if(event.key==='Escape')hide()});
   document.addEventListener('scroll',hide,true);window.addEventListener('resize',hide);
+}
+
+const tabPositions=new Map<string,{left:number;width:number}>();
+function wireBoardTabs(root:ParentNode){
+  const selector='.managebar-menu,.board-local-nav:not(.settingscard>.board-local-nav),.insighttabs';
+  const groups=[...root.querySelectorAll<HTMLElement>(selector)];
+  if(root instanceof HTMLElement&&root.matches(selector))groups.push(root);
+  groups.forEach(group=>{
+    if(group.hasAttribute('data-board-tabs'))return;group.dataset.boardTabs='true';
+    const key=group.className+group.getAttribute('aria-label');
+    const paint=(position:{left:number;width:number})=>{group.style.setProperty('--tab-x',`${position.left}px`);group.style.setProperty('--tab-width',`${position.width}px`)};
+    const measure=()=>{const selected=group.querySelector<HTMLElement>('button[aria-selected=true],button[aria-pressed=true]');if(!selected||!selected.offsetWidth)return;const position={left:selected.offsetLeft,width:selected.offsetWidth};paint(position);tabPositions.set(key,position)};
+    const previous=tabPositions.get(key);if(previous)paint(previous);else measure();
+    requestAnimationFrame(()=>{group.classList.add('board-tabs-ready');requestAnimationFrame(measure)});
+    const mutation=new MutationObserver(measure);mutation.observe(group,{subtree:true,attributes:true,attributeFilter:['aria-selected','aria-pressed']});
+    const resize=new ResizeObserver(()=>{if(!group.isConnected){resize.disconnect();mutation.disconnect();return}measure()});resize.observe(group);
+  });
+}
+
+/** 原生 radio 保留方向键语义，选中底板按实际尺寸滑动。 */
+export function wireBoardSegments(root:ParentNode) {
+  const groups=[...root.querySelectorAll<HTMLElement>('.iconswitch')];
+  if(root instanceof HTMLElement&&root.matches('.iconswitch'))groups.push(root);
+  groups.forEach(group=>{
+    if(group.hasAttribute('data-board-segments'))return;
+    group.dataset.boardSegments='true';
+    const thumb=document.createElement('span');thumb.className='board-segment-thumb';thumb.setAttribute('aria-hidden','true');group.prepend(thumb);
+    const measure=()=>{
+      const selected=group.querySelector<HTMLElement>('label:has(input:checked)');if(!selected)return;
+      thumb.style.transform=`translate(${selected.offsetLeft}px,${selected.offsetTop}px)`;
+      thumb.style.width=`${selected.offsetWidth}px`;thumb.style.height=`${selected.offsetHeight}px`;
+    };
+    group.addEventListener('change',measure);
+    const resize=new ResizeObserver(()=>{if(!group.isConnected){resize.disconnect();return}measure()});resize.observe(group);
+    measure();requestAnimationFrame(()=>group.classList.add('board-segments-ready'));
+  });
 }
 
 export function wireExpandableRanks(root:ParentNode) {

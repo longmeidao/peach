@@ -297,11 +297,24 @@ export function wireScrollers(root=document){
       container.addEventListener('scroll',()=>updateScroller(wrapper),{passive:true});
       container.addEventListener('load',()=>updateScroller(wrapper),true);
     }
-    requestAnimationFrame(()=>updateScroller(wrapper));
+    if(!deferReviewScroller(container))requestAnimationFrame(()=>updateScroller(wrapper));
   });
 }
 
 /** 挂覆盖式滚动条的滚动容器。列表只写在这一处，样式那边认的是挂上之后的属性。 */
+const deferredReviewScrollers=new WeakSet();
+let reviewScrollerObserver;
+function deferReviewScroller(container){
+  if(typeof IntersectionObserver==='undefined'||!container.closest('.reviewitem'))return false;
+  if(!deferredReviewScrollers.has(container)){
+    deferredReviewScrollers.add(container);
+    reviewScrollerObserver ||= new IntersectionObserver(entries=>{
+      for(const entry of entries)if(entry.isIntersecting){reviewScrollerObserver.unobserve(entry.target);const wrapper=entry.target.closest('[data-geist-scroller]');if(wrapper)updateScroller(wrapper);attachOverlayScrollbar(entry.target)}
+    },{rootMargin:'200px'});
+    reviewScrollerObserver.observe(container);
+  }
+  return true;
+}
 const OVERLAY_SCROLLERS=[
   '.settingsscroll','.sidecontent','.tagpickbody','.mixlist','.playlistpicklist','.playerstats',
   '.vjs-peach-settings-menu','.geist-scroller-container','.metricstrip','.tastesummaries',
@@ -419,7 +432,15 @@ export function attachOverlayScrollbar(container,{variant=''}={}){
 
 /** 把这一批 DOM 里所有该有覆盖式滚动条的容器接上；重复调用只接新出现的那些。 */
 export function wireOverlayScrollbars(root=document){
-  root.querySelectorAll(OVERLAY_SCROLLERS).forEach(el=>attachOverlayScrollbar(el));
+  root.querySelectorAll(OVERLAY_SCROLLERS).forEach(el=>{
+    if(deferReviewScroller(el))return;
+    if(el.matches('.reviewtabs')&&localStorage.getItem('peach.legacy-ui')!=='true'){
+      const edges=()=>{el.dataset.overflowLeft=String(el.scrollLeft>1);el.dataset.overflowRight=String(el.scrollLeft+el.clientWidth<el.scrollWidth-1)};
+      if(!el.dataset.boardScroll){el.dataset.boardScroll='true';el.addEventListener('scroll',edges,{passive:true});el.addEventListener('wheel',event=>{if(Math.abs(event.deltaY)>Math.abs(event.deltaX)&&el.scrollWidth>el.clientWidth){const before=el.scrollLeft;el.scrollLeft+=event.deltaY;if(before!==el.scrollLeft)event.preventDefault()}},{passive:false});new ResizeObserver(edges).observe(el)}
+      edges();return;
+    }
+    attachOverlayScrollbar(el);
+  });
 }
 
 /**

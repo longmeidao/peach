@@ -21,13 +21,13 @@ export function wireRadialCards(root:ParentNode) {
     const tiles=[...card.querySelectorAll<HTMLButtonElement>('[data-radial-tile]')],rings=[...card.querySelectorAll<SVGCircleElement>('[data-radial-ring]')];
     const headline=card.querySelector<HTMLElement>('[data-radial-number]')!,label=card.querySelector<HTMLElement>('[data-radial-label]')!;
     let selected=-1,current=0,animation=0;
-    const paint=(index:number)=>{
+    const paint=(index:number,duration=300)=>{
       card.dataset.radialFocus=String(index);
       tiles.forEach((tile,i)=>{tile.dataset.active=String(i===index);tile.setAttribute('aria-pressed',String(i===selected));rings[i]?.setAttribute('aria-pressed',String(i===selected));if(rings[i])rings[i]!.dataset.active=String(i===index)});
       const value=index<0?Number(card.dataset.radialTotal):Number(tiles[index]?.dataset.radialValue);
       label.textContent=index<0?card.dataset.radialTitle!:tiles[index]!.dataset.radialName!;
       cancelAnimationFrame(animation);const start=current,time=performance.now();
-      const frame=(now:number)=>{const progress=matchMedia('(prefers-reduced-motion: reduce)').matches?1:Math.min(1,(now-time)/300);current=start+(value-start)*(1-(1-progress)**3);headline.textContent=Math.round(current).toLocaleString();if(progress<1)animation=requestAnimationFrame(frame)};
+      const frame=(now:number)=>{if(!card.isConnected)return;const progress=matchMedia('(prefers-reduced-motion: reduce)').matches?1:Math.min(1,(now-time)/duration);current=start+(value-start)*(1-(1-progress)**3);headline.textContent=Math.round(current).toLocaleString();if(progress<1)animation=requestAnimationFrame(frame)};
       animation=requestAnimationFrame(frame);
     };
     const toggle=(index:number)=>{selected=selected===index?-1:index;paint(selected)};
@@ -37,7 +37,10 @@ export function wireRadialCards(root:ParentNode) {
       control.addEventListener('focus',()=>paint(index));control.addEventListener('blur',()=>paint(selected));control.addEventListener('click',()=>toggle(index));
       if(control instanceof SVGElement)control.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();toggle(index)}});
     });
-    paint(-1);
+    card.dataset.radialFocus='-1';headline.textContent='0';
+    const reveal=()=>{requestAnimationFrame(()=>{if(!card.isConnected)return;card.classList.add('board-chart-visible');paint(-1,1200)})};
+    if(typeof IntersectionObserver==='undefined'||matchMedia('(prefers-reduced-motion: reduce)').matches)reveal();
+    else {const observer=new IntersectionObserver(entries=>{if(entries.some(entry=>entry.isIntersecting)){observer.disconnect();reveal()}},{threshold:.15});observer.observe(card)}
   });
 }
 

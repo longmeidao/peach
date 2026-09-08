@@ -10,11 +10,11 @@ export interface LibraryProcessingData extends JobState {
   stage?: string; scanned?: number; identified?: number; candidates?: number; covers?: number;
   issues?: { asset_id: number | null; message: string }[];
 }
-export interface LibraryProcessingProps { toast(message: string): void; onComplete?(): void; mode?: 'notice'; monitor?: boolean }
+export interface LibraryProcessingProps { toast(message: string): void; onComplete?(): void; mode?: 'notice'; monitor?: boolean; preview?: boolean }
 export const loadLibraryProcessing = (_props: LibraryProcessingProps, signal: AbortSignal) =>
   apiGet<LibraryProcessingData>('/api/library-processing', signal);
 
-export function LibraryProcessing({ data, error, toast, onComplete, mode, monitor }: LibraryProcessingProps & IslandState<LibraryProcessingData>) {
+export function LibraryProcessing({ data, error, toast, onComplete, mode, monitor, preview }: LibraryProcessingProps & IslandState<LibraryProcessingData>) {
   const [state, setState] = useState<LibraryProcessingData>(data || { status: 'idle' });
   const [problem, setProblem] = useState(error);
   const [submitting, setSubmitting] = useState(false);
@@ -41,11 +41,11 @@ export function LibraryProcessing({ data, error, toast, onComplete, mode, monito
     });
   }
   useEffect(() => {
-    if (state.status === 'running' || mode === 'notice' || monitor) void follow();
+    if (!preview && (state.status === 'running' || mode === 'notice' || monitor)) void follow();
     return () => lifetime.current.abort();
   }, []);
   async function start() {
-    if (busy) return;
+    if (busy || preview) return;
     setSubmitting(true); setProblem(''); setReceipt(false);
     try {
       const next = await apiSend<LibraryProcessingData>('/api/library-processing', {}, 'POST', lifetime.current.signal);
@@ -71,8 +71,9 @@ export function LibraryProcessing({ data, error, toast, onComplete, mode, monito
       <p>扫描媒体文件夹，导入已有资料，采集缺失信息。</p>
       <div aria-live="polite">
         {state.status === 'running' && <>
-          <div dangerouslySetInnerHTML={{ __html: loadingDotsHtml(`${state.stage || '正在处理'}${state.total ? ` · ${state.checked || 0} / ${state.total}` : ''}`) }} />
-          {!!state.total && <div dangerouslySetInnerHTML={{ __html: jobProgressHtml(`已处理 ${state.checked || 0} / ${state.total} 个视频`, state.checked || 0, state.total) }} />}
+          <div dangerouslySetInnerHTML={{ __html: state.total
+            ? jobProgressHtml(`${state.stage || '正在处理'} · ${state.checked || 0} / ${state.total} 个视频`, state.checked || 0, state.total)
+            : loadingDotsHtml(state.stage || '正在处理') }} />
         </>}
         {(problem || state.status === 'failed') && <div role="alert" onClick={event=>{if((event.target as HTMLElement).closest('[data-note-action]'))void start();}} dangerouslySetInnerHTML={{ __html: noteHtml(problem || state.error || '处理未完成，请重试', { variant: 'error',filled:true,actionLabel:state.status==='failed'?'重试未完成项':'' }) }} />}
         {state.status === 'failed' && !!state.issues?.length && <ul>{state.issues.slice(0, 20).map(issue =>

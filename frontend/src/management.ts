@@ -16,17 +16,17 @@ export function cloudPreferenceLocations(files: readonly { location: string }[],
 export function cleanupSkeletonHtml(): string {
   const cards = [
     ['扫描与采集', '扫描并补全资料', '扫描媒体文件夹，导入已有资料，采集缺失信息。'],
-    ['垃圾文件', '查看垃圾文件', ''], ['重复文件', '查看重复文件', ''],
-    ['空文件夹', '删除空文件夹', ''], ['人工复核', '查看候选', ''],
-    ['回收站', '查看回收站', ''], ['高清版', '查看高清版', ''],
+    ['人工复核', '查看候选', ''], ['高清版', '查看高清版', ''],
+    ['重复文件', '查看重复文件', ''], ['垃圾文件', '查看垃圾文件', ''],
+    ['空文件夹', '扫描空文件夹', ''], ['回收站', '查看回收站', ''],
   ];
   return `<div class="cleanuppage" data-skeleton="cleanup" aria-busy="true" aria-label="正在读取数据管理状态">
     <div class="cleanupgrid">${cards.map(([title, action, description], index) => `
-      <section class="cleanupfieldset" data-geist-fieldset aria-labelledby="cleanup-loading-${index}">
+        <section class="cleanupfieldset${index===0?' board-processing-skeleton':''}" data-geist-fieldset aria-labelledby="cleanup-loading-${index}">
         <div class="geist-fieldset-content"><h3 class="geist-fieldset-title" id="cleanup-loading-${index}">${title}</h3>
           ${description ? `<p>${description}</p>` : '<strong><span class="skeleton cleanup-count-skeleton" aria-hidden="true"></span></strong>'}
-          ${index === 3 ? '<p class="cleanupmeta"><span class="skeleton cleanup-count-skeleton" aria-hidden="true"></span></p>' : ''}</div>
-        <footer class="geist-fieldset-footer" data-geist-fieldset-footer><button type="button"${index === 3 ? ' class="danger"' : ''} disabled>${index === 3 ? '<svg aria-hidden="true"><use href="#i-trash"></use></svg><span>' + action + '</span>' : action}</button></footer>
+          ${index === 5 ? '<p class="cleanupmeta"><span class="skeleton cleanup-count-skeleton" aria-hidden="true"></span></p>' : ''}</div>
+        <footer class="geist-fieldset-footer" data-geist-fieldset-footer><button type="button" disabled>${index === 5 ? '<svg aria-hidden="true"><use href="#i-scan-search"></use></svg><span>' + action + '</span>' : action}</button></footer>
       </section>`).join('')}</div></div>`;
 }
 

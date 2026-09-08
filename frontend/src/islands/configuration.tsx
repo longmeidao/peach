@@ -17,6 +17,7 @@ import { ReleaseUpdates, type ReleaseState, type UpdateJob } from './release-upd
 import { PeachProxy, type PeachProxyState } from './peach-proxy';
 import { StartupSettings, UninstallSettings, type StartupState, type UninstallState } from './desktop-settings';
 import { CloudDriveGuide } from './clouddrive-guide';
+import { LibraryIconPicker } from '../library-icon-picker';
 
 export interface ConfigurationProps {
   /** 保存成功后的过去时回执（遗留层的 Toast）。 */
@@ -130,21 +131,21 @@ function MountStatus({ data }: { data: ConfigurationData }) {
   </div></section>;
 }
 
-function MediaSourceSelect({ value, label, onChange, libraryIcon=false }: { value: string; label: string; onChange(value: string): void; libraryIcon?: boolean }) {
+function MediaSourceSelect({ value, label, onChange }: { value: string; label: string; onChange(value: string): void }) {
   const mount = useRef<HTMLDivElement>(null);
   const control = useRef<HTMLElement & { value: string; disabled: boolean } | null>(null);
   const callback = useRef(onChange);
   callback.current = onChange;
   useLayoutEffect(() => {
     const root = mount.current!;
-    const options=libraryIcon ? [['','自动识别'],['hard-drive','磁盘'],['database','资料库'],['heart','心形'],['star','星标'],['tags','标签'],['115','115'],['pikpak','PikPak']] : [['local', '本地磁盘'], ['115', 'CloudDrive · 115'], ['pikpak', 'CloudDrive · PikPak']];
+    const options=[['local', '本地磁盘'], ['115', 'CloudDrive · 115'], ['pikpak', 'CloudDrive · PikPak']];
     root.innerHTML = selectFieldHtml(options.map(([kind, text]) => [kind!, text!, MEDIA_SOURCE_ICONS[kind!] || kind || 'database']), value, { label });
     const field = wireSelectField(root.firstElementChild!);
     control.current = field;
     const change = () => callback.current(field.value);
     field.addEventListener('change', change);
     return () => { control.current = null; field.disabled = true; field.removeEventListener('change', change); root.replaceChildren(); };
-  }, [label,libraryIcon]);
+  }, [label]);
   useLayoutEffect(() => { if (control.current) control.current.value = value; }, [value]);
   return <div ref={mount} class="configsourcecontrol" />;
 }
@@ -295,12 +296,12 @@ function ConfigurationForm({ data, receipt }: { data: ConfigurationData; receipt
                   </button>
                 ) : null}
                 <div class="configsource">
-                  <label>媒体库
+                  <label>媒体库名称
                     <input class="geist-input" aria-label={`媒体库 ${index + 1}`} maxLength={80} value={libraries[index] || ''} placeholder="同名文件夹归入同一个媒体库"
                       onInput={(event) => { const next = [...libraries]; next[index] = event.currentTarget.value; setLibraries(next); }} />
                   </label>
                   <div class="configsourcelabel">媒体库图标
-                    <MediaSourceSelect libraryIcon label={`媒体库图标 ${index + 1}`} value={libraryIcons[index] || ''}
+                    <LibraryIconPicker label={`媒体库图标 ${index + 1}`} value={libraryIcons[index] || ''}
                       onChange={(value) => { const next = [...libraryIcons]; next[index] = value; setLibraryIcons(next); }} />
                   </div>
                   <div class="configsourcelabel">媒体来源

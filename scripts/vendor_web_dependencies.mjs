@@ -69,6 +69,10 @@ copyPackageFiles({
 });
 
 const lucideIcons = new Map([
+  ["heart-hand","hand-heart"], ["flame","flame"], ["cherry","cherry"], ["gem","gem"],
+  ["crown","crown"], ["shirt","shirt"], ["footprints","footprints"], ["flower","flower"],
+  ["venetian-mask","venetian-mask"], ["hand","hand"], ["bed-double","bed-double"],
+  ["camera","camera"], ["video","video"], ["scan-search","scan-search"],
   ["clapperboard", "clapperboard"], ["briefcase", "briefcase"],
   ["home", "home"], ["panel-left", "panel-left"], ["search", "search"],
   ["layout-grid", "layout-grid"], ["square-check-big", "square-check-big"],

@@ -1871,7 +1871,8 @@ class WebUiSourceTests(unittest.TestCase):
                                 "${framed?' data-framed=\"\"':''}>${preview}${")
         self.assertPageContains("!metadata&&evidence?`<p class=\"reviewevidence\">"
                                 "${esc(evidence)}</p>`:''}</div>`;")
-        self.assertPageContains('${tags?`<div class="reviewtags">${tags}</div>`:\'\'}${stage}`;')
+        self.assertPageContains("tags||reviewCategory==='creator_tags'")
+        self.assertPageContains('暂无候选标签</small>')
         # 高度从卡身一路传到框：滚动壳不给 height，中间就断在内容高度上，框只到
         # 内容为止，卡的下半截空着。框只长不缩，内容超出时由滚动壳接手。
         self.assertPageContains(".reviewcontent .geist-scroller{height:100%}")
@@ -7162,8 +7163,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn("button._observer?.disconnect();", body, "重画后必须先断开旧观察器")
         self.assertIn("if(button.hidden)return;", body, "藏起来的按钮不该被观察")
         self.assertIn("rootMargin:'320px'", body)
-        self.assertEqual(self.page.count("new IntersectionObserver"), 2,
-                         "观察器只允许存在两处：wireLoadMore 与首页自己的 loadObserver")
+        self.assertEqual(self.page.count("new IntersectionObserver"), 3,
+                         "观察器用于 wireLoadMore、首页 loadObserver 与复核滚动容器延迟初始化")
         self.assertEqual(self.page.count("wireLoadMore("), 4,
                          "1 处定义加 3 处调用；对不上就是又有人自己写了一套")
 
