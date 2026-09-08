@@ -2268,7 +2268,7 @@ class ReleaseTagTests(unittest.TestCase):
     def _shell(self, changes=None):
         answers = {**self.CLEAN, **(changes or {})}
         return mock.patch.object(self.release, "command",
-                                 side_effect=lambda *args: answers.get(args, ""))
+                                 side_effect=lambda *args, **_: answers.get(args, ""))
 
     def test_plan_refuses_dirty_checkout_wrong_branch_and_existing_tags(self):
         for changes, refs in (({("git", "status", "--porcelain"): " M file"}, []),
@@ -2352,7 +2352,7 @@ class ShipTests(unittest.TestCase):
     def _shell(self, changes=None):
         answers = {**self.SHELL, **(changes or {})}
         return mock.patch.object(self.release, "command",
-                                 side_effect=lambda *args: answers.get(args, ""))
+                                 side_effect=lambda *args, **_: answers.get(args, ""))
 
     def _api(self, *, tags=(), remote="old", runs=(SUCCESS,)):
         def answer(_repo, endpoint):
@@ -2384,6 +2384,16 @@ class ShipTests(unittest.TestCase):
         self.assertEqual((result["tag"], result["commit"], result["push"]),
                          ("v0.8.0", True, True))
         self.assertEqual(self._writes(command), [])
+
+    def test_pending_files_keep_the_status_column_of_the_first_line(self):
+        """`git status --porcelain` 首行以空格开头；按列取路径前不能对整段输出 strip。
+
+        2026-09-08 定版时两份文件都在，发布却被拒：第一行被读成 `HANGELOG.md`。"""
+        porcelain = " M CHANGELOG.md\n M src/peach/__init__.py\n"
+        with mock.patch.object(self.release.subprocess, "run",
+                               return_value=mock.Mock(stdout=porcelain)):
+            self.assertEqual(self.release._pending_files(),
+                             ["CHANGELOG.md", "src/peach/__init__.py"])
 
     def test_unrelated_changes_are_never_carried_into_the_release_commit(self):
         """标签指向发布提交，夹带什么就等于发出去什么。"""

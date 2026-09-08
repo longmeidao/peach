@@ -1559,6 +1559,41 @@ class Rule34PahealConnector(_BaseConnector):
         return " · ".join(values[:5])
 
 
+def _xenforo_thread_title(soup) -> str | None:
+    """取 XenForo 线程页的 `h1.p-title-value` 并去掉前缀标签。
+
+    `<title>` 会被站点拼上栏目名和站名，og:title 同样带前缀，只有 h1 里的
+    `.label` 是可以精确摘掉的结构。f95zone 与 simpcity 都是 XenForo，这段只写一份。
+    """
+    heading = soup.select_one("h1.p-title-value")
+    if heading is None:
+        return None
+    for label in heading.select(".label, .labelLink"):
+        label.extract()
+    return plain_text(heading.get_text(" "))
+
+
+def _xenforo_posts(soup, limit: int):
+    """XenForo 线程页里最后 `limit` 个楼层，逐个给出 `(article, post_id, time, body)`。
+
+    引用块在这里就剥掉。XenForo 把被引用的楼层原样嵌在正文里，不剥的话摘要会变成
+    「某某 said: … Click to expand…」，而引用里的下载链接还会被算成这条回复自己发的——
+    追更判断因此指向错误的楼层。
+    """
+    posts = soup.select('article[data-content^="post-"]')
+    for article in posts[-limit:]:
+        content = str(article.get("data-content") or "")
+        post_id = content.removeprefix("post-")
+        if not post_id.isdigit():
+            continue
+        time_node = article.select_one("time")
+        body = article.select_one(".bbWrapper")
+        if body is not None:
+            for quote in body.select("blockquote, .bbCodeBlock, .js-expandWatch"):
+                quote.extract()
+        yield article, post_id, time_node, body
+
+
 class F95ZoneConnector(_BaseConnector):
     """f95zone.to 的线程追更。
 
@@ -1617,7 +1652,7 @@ class F95ZoneConnector(_BaseConnector):
         if response is None:
             return SourceFetch(not_modified=True, **common)
         soup = BeautifulSoup(response.body, "html.parser")
-        title = self._thread_title(soup)
+        title = _xenforo_thread_title(soup)
         candidates, parsed, skipped = self._replies(
             soup, thread, title or f"thread {thread}")
         if not parsed:
@@ -1637,39 +1672,12 @@ class F95ZoneConnector(_BaseConnector):
         return SourceFetch(candidates=tuple(enriched), skipped=skipped,
                            raw_body=response.body, **common)
 
-    @staticmethod
-    def _thread_title(soup) -> str | None:
-        """取 `h1.p-title-value` 并去掉前缀标签。
-
-        `<title>` 会被站点拼上栏目名和站名，og:title 同样带前缀，只有 h1 里的
-        `.label` 是可以精确摘掉的结构。
-        """
-        heading = soup.select_one("h1.p-title-value")
-        if heading is None:
-            return None
-        for label in heading.select(".label, .labelLink"):
-            label.extract()
-        return plain_text(heading.get_text(" "))
-
     def _replies(self, soup, thread: str, thread_title: str):
-        posts = soup.select('article[data-content^="post-"]')
         candidates: list[FollowCandidate] = []
         parsed = 0
         skipped = 0
-        for article in posts[-self.max_items:]:
-            content = str(article.get("data-content") or "")
-            post_id = content.removeprefix("post-")
-            if not post_id.isdigit():
-                continue
+        for article, post_id, time_node, body in _xenforo_posts(soup, self.max_items):
             parsed += 1
-            time_node = article.select_one("time")
-            body = article.select_one(".bbWrapper")
-            # XenForo 把被引用的楼层原样嵌在正文里。不剥掉的话，摘要会变成
-            # 「某某 said: … Click to expand…」，而引用里的下载链接还会被算成这条
-            # 回复自己发的——追更判断因此指向错误的楼层。
-            if body is not None:
-                for quote in body.select("blockquote, .bbCodeBlock, .js-expandWatch"):
-                    quote.extract()
             links = [
                 str(node.get("href")) for node in (body.select("a[href]") if body else [])
                 if str(node.get("href", "")).startswith("http")
@@ -1846,7 +1854,7 @@ class F95ZoneConnector(_BaseConnector):
             if found is None or found.group(1) in seen:
                 continue
             seen.add(found.group(1))
-            # 标题前挂着 `Collection`、`Pinup` 这类前缀标签，和 `_thread_title` 一样摘掉。
+            # 标题前挂着 `Collection`、`Pinup` 这类前缀标签，和 `_xenforo_thread_title` 一样摘掉。
             for label in link.select(".label, .labelLink, .label-append"):
                 label.extract()
             # 命中的词被 `<em class="textHighlight">` 包着，按分隔符取文本会把
@@ -2232,25 +2240,193 @@ class PatreonConnector(_BaseConnector):
 
 
 class SimpCityConnector(_BaseConnector):
-    """simpcity.cr 目前挂着 DDoS-Guard 的浏览器质询。
+    """simpcity.cr 的线程追更。
 
-    Peach 不绕机器人验证，所以这个连接器只登记不可用，并把原因原样报出来。
+    站点前面是 DDoS-Guard。2026-09-08 实测它对 Peach 的标准桌面 UA 不出质询：首页、
+    版块列表和登录页在无 cookie 下直接 200。帖子页 403 不是机器人拦截，而是站点
+    「游客不可读帖」的访问规则——所以这里**必须**带用户自己的登录 cookie，而 Peach
+    仍然不解任何质询：cookie 不对就把 403 原样报出来，不重试、不换指纹。
+
+    **只请求不重定向的规范地址。** XenForo 的 `/latest` 会 303 到末页，而 HTTPX 跟随
+    重定向时会丢掉显式的 `Cookie` 头：同一份 cookie 直接请求目标页是 200，经重定向
+    到达就是 403（2026-09-08 实测）。所以末页由自己算——先读第一页的分页导航取末页号，
+    末页不是第一页时再读 `page-N`；一次检查最多两个请求。
+
+    cookie 只发回 simpcity.cr。帖子里的图站与网盘链接只记录，不在这里去取。
+    `ref` 是线程 id，例如 `21229`。
     """
 
     provider = "simpcity"
-    blocked_reason = (
-        "simpcity.cr 由 DDoS-Guard 的浏览器质询保护；Peach 不绕机器人验证。"
-        "要接入需要你在浏览器里通过质询后提供会话 cookie，或改用其他来源。")
+    HOST = "simpcity.cr"
+    _THREAD_RE = re.compile(r"^\d{1,12}$")
+    _PAGE_HREF_RE = re.compile(r"/page-(\d+)(?:[?#]|$)")
+    _ATTACHMENT_PATH_RE = re.compile(r"^/attachments/[^/?#]+/?$", re.IGNORECASE)
 
     @classmethod
     def parse_url(cls, provider: str, parsed: urllib.parse.SplitResult,
                   host: str) -> "ParsedSource":
-        # 整站被质询挡着，登记下来也抓不到；当场说原因比留一条死来源好。
-        raise FollowSourceError(cls.blocked_reason)
+        path = parsed.path or "/"
+        matched = _THREAD_PATH_RE.match(path)
+        if not matched:
+            raise FollowSourceError(
+                "simpcity 的链接要指向一个线程，形如 "
+                "https://simpcity.cr/threads/xxx.21229/")
+        thread = matched.group(1)
+        segment = path.split("/threads/", 1)[1].split("/", 1)[0]
+        slug = segment.rsplit(".", 1)[0] if "." in segment else ""
+        return ParsedSource("simpcity", thread,
+                            f"https://{cls.HOST}/threads/{thread}/",
+                            _slug_label(slug) or f"线程 {thread}")
+
+    def _cookie(self) -> str:
+        if self.credential is None:
+            raise CredentialError(
+                "simpcity 需要登录 cookie：站点不让游客读帖。登录后把浏览器里 "
+                "simpcity.cr 的整条 Cookie 请求头写进凭据文件的 cookie 字段。")
+        return self.credential.require("cookie")[0]
+
+    def _check_status(self, response: HttpResponse) -> None:
+        if response.status == 403:
+            raise FollowSourceError(
+                "simpcity 拒绝访问（HTTP 403）：站点不让游客读帖，cookie 可能已过期或"
+                "不完整，请重新登录后更新凭据文件")
+        super()._check_status(response)
 
     def fetch(self, ref: str, *, etag: str | None = None,
               last_modified: str | None = None, page: int = 0) -> SourceFetch:
-        raise FollowSourceError(self.blocked_reason)
+        thread = (ref or "").strip()
+        if not self._THREAD_RE.match(thread):
+            raise FollowSourceError(f"simpcity 的 ref 必须是线程 id，收到：{ref!r}")
+        headers = {"Accept": "text/html", "Cookie": self._cookie()}
+        base = f"https://{self.HOST}/threads/{thread}/"
+        # 第一页不带条件请求头：新回复长在末页，第一页没变不代表线程没更新。
+        common, response = self._request(base, ref=thread, headers=headers)
+        soup = self._page(response)
+        target = self._last_page(soup) - int(page or 0)
+        if target < 1:
+            raise FollowHistoryEnd("没有更多历史内容")
+        if target != 1:
+            common, response = self._request(
+                f"{base}page-{target}", ref=thread, etag=etag,
+                last_modified=last_modified, page=page, headers=headers)
+            if response is None:
+                return SourceFetch(not_modified=True, **common)
+            soup = self._page(response)
+        title = _xenforo_thread_title(soup) or f"thread {thread}"
+        candidates, parsed, skipped = self._posts(soup, thread, title, target)
+        if not parsed:
+            raise FollowSourceError("simpcity 线程页没有解析出任何楼层：页面结构可能已变")
+        return SourceFetch(candidates=tuple(candidates), skipped=skipped,
+                           raw_body=response.body, **common)
+
+    @staticmethod
+    def _page(response: HttpResponse):
+        """解析一页并确认站点认出了登录态。
+
+        游客态的帖子页是 403；能拿到 200 却写着 `data-logged-in="false"` 只会发生在
+        cookie 被部分接受时，这时候正文是残缺的，与其解析出一堆「什么都没有」不如
+        直接说 cookie 没被认出。
+        """
+        soup = BeautifulSoup(response.body, "html.parser")
+        root = soup.find("html")
+        if root is not None and str(root.get("data-logged-in") or "").lower() == "false":
+            raise FollowSourceError(
+                "simpcity 没有认出这份 cookie（页面仍是游客态）：请重新登录后复制整条 "
+                "Cookie 请求头")
+        return soup
+
+    @classmethod
+    def _last_page(cls, soup) -> int:
+        """分页导航里最大的页号；单页线程没有导航，就是第 1 页。"""
+        last = 1
+        for node in soup.select(".pageNav-page a[href]"):
+            matched = cls._PAGE_HREF_RE.search(str(node.get("href") or ""))
+            if matched:
+                last = max(last, int(matched.group(1)))
+        return last
+
+    def _posts(self, soup, thread: str, title: str, page_number: int):
+        candidates: list[FollowCandidate] = []
+        parsed = 0
+        skipped = 0
+        for article, post_id, time_node, body in _xenforo_posts(soup, self.max_items):
+            parsed += 1
+            images = self._images(body)
+            file_links: list[str] = []
+            for node in (body.select("a[href]") if body else []):
+                link = str(node.get("href") or "")
+                if _is_resource_url(link) and link not in file_links:
+                    file_links.append(link)
+            attachments = self._attachments(body)
+            embeds = len(body.select("[data-s9e-mediaembed], .bbMediaWrapper iframe")) \
+                if body else 0
+            # 图、网盘、附件、嵌入播放器四样都没有的楼层是纯讨论，不进追更。
+            if not (images or file_links or attachments or embeds):
+                skipped += 1
+                continue
+            media_url = file_links[0] if file_links else (images[0][0] if images else None)
+            candidates.append(FollowCandidate(
+                provider=self.provider,
+                external_id=post_id,
+                title=title,
+                url=f"https://{self.HOST}/threads/{thread}/post-{post_id}",
+                media_url=media_url,
+                thumb_url=images[0][1] if images else None,
+                published_at=_iso_from_text(time_node.get("datetime"))
+                if time_node is not None else None,
+                author=plain_text(str(article.get("data-author") or "")) or None,
+                summary=(plain_text(body.get_text(" ")) or None) if body else None,
+                extra={"thread_id": thread, "page": page_number,
+                       "images": [full for full, _ in images[:40]],
+                       "image_count": len(images),
+                       "links": file_links[:8], "link_count": len(file_links),
+                       "attachments": attachments[:8],
+                       "attachment_count": len(attachments),
+                       "embed_count": embeds},
+            ))
+        return candidates, parsed, skipped
+
+    @classmethod
+    def _images(cls, body) -> list[tuple[str, str]]:
+        """正文里的图片：`(原图, 缩略图)`。
+
+        2026-09-08 实测：图片是 `img.bbImage`，`data-url` 指原图、`src` 指缩略图，
+        外面套着图站页面的链接。表情是 `img.smilie`，不带 bbImage，选择器天然排除。
+        """
+        if body is None:
+            return []
+        result: list[tuple[str, str]] = []
+        seen: set[str] = set()
+        for node in body.select("img.bbImage"):
+            full = str(node.get("data-url") or node.get("data-src") or node.get("src") or "")
+            thumb = str(node.get("src") or full)
+            if not full.startswith("https://") or full in seen:
+                continue
+            host = (urllib.parse.urlsplit(full).hostname or "").casefold()
+            if host == cls.HOST or host.endswith("." + cls.HOST):
+                continue
+            seen.add(full)
+            result.append((full, thumb if thumb.startswith("https://") else full))
+        return result
+
+    @classmethod
+    def _attachments(cls, body) -> list[str]:
+        """站内附件链接，统一写成绝对地址；取附件同样需要登录，这里只登记。"""
+        if body is None:
+            return []
+        found: list[str] = []
+        for node in body.select("a[href]"):
+            value = str(node.get("href") or "").strip()
+            if value.startswith("/"):
+                value = f"https://{cls.HOST}{value}"
+            try:
+                parsed = urllib.parse.urlsplit(value)
+            except ValueError:
+                continue
+            if (parsed.scheme == "https" and parsed.hostname == cls.HOST
+                    and cls._ATTACHMENT_PATH_RE.match(parsed.path) and value not in found):
+                found.append(value)
+        return found
 
 
 def parse_source_url(raw_url: str) -> ParsedSource:

@@ -190,13 +190,40 @@ class VerificationTests(unittest.TestCase):
         before = self.git("rev-parse", "HEAD")
         command = [sys.executable, str(Path(coordinator.__file__)), "--repo", str(self.repo),
                    "integrate", "--branch", branch]
-        with evidence.FileLock(folder / "integration.lock"):
+        with evidence.held(folder / "integration.lock", branch="agent/x/other"):
             result = subprocess.run(command, capture_output=True, text=True,
                                     encoding="utf-8", timeout=15,
                                     env={**os.environ, "PYTHONIOENCODING": "gbk"})
         self.assertEqual(result.returncode, 2, result.stderr)
-        self.assertIn("另一任务正在集成", json.loads(result.stdout)["error"])
+        error = json.loads(result.stdout)["error"]
+        self.assertIn("另一任务正在集成", error)
+        self.assertIn(f"pid {os.getpid()}", error, "被拒的一方要能看到在等谁")
+        self.assertIn("branch agent/x/other", error)
         self.assertEqual(self.git("rev-parse", "HEAD"), before)
+
+    def test_a_held_lock_leaves_a_holder_note_only_while_it_is_held(self):
+        """三个会话同时在等锁时，光看进程列表判断不出谁在测；记录要说清 pid、时间和范围。"""
+        lock = evidence.evidence_dir(self.repo) / "full-suite.lock"
+        with evidence.held(lock, scope="full"):
+            note = json.loads(evidence.holder_path(lock).read_text(encoding="utf-8"))
+            self.assertEqual(note["pid"], os.getpid())
+            self.assertEqual(note["scope"], "full")
+            self.assertIn("pid", evidence.describe_holder(lock))
+            self.assertIn("scope full", evidence.describe_holder(lock))
+        self.assertFalse(evidence.holder_path(lock).exists())
+        self.assertIn("刚退出或没留记录", evidence.describe_holder(lock))
+
+    def test_the_waiting_runner_names_the_holder_of_the_full_suite_lock(self):
+        lock = evidence.evidence_dir(self.repo) / "full-suite.lock"
+        output = io.StringIO()
+        with evidence.held(lock, scope="full", root="elsewhere"), \
+                redirect_stderr(io.StringIO()), redirect_stdout(output), \
+                mock.patch.object(runner, "ROOT", self.repo), \
+                mock.patch.object(runner, "build_suite", side_effect=AssertionError("不该开跑")):
+            self.assertEqual(runner.main(["--scope", "full"]), 2)
+        self.assertIn("本仓库全量测试正在运行", output.getvalue())
+        self.assertIn(f"pid {os.getpid()}", output.getvalue())
+        self.assertIn("root elsewhere", output.getvalue())
 
     def test_empty_active_worktree_survives_prune(self):
         item = coordinator.create(self.repo, "codex", "active", self.root / "worktrees")

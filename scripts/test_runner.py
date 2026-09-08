@@ -68,7 +68,7 @@ SCOPES: dict[str, tuple[str, ...]] = {
     "tooling": ("test_scripts.py", "test_auth.py", "test_access.py", "test_cli.py", "test_script_policy.py",
                 "test_scan.py", "test_onboarding.py", "test_configuration_sources.py", "test_folder_picker.py", "test_ledger_backups.py",
                 "test_agent_worktree.py", "test_test_evidence.py", "test_dependency_policy.py",
-                "test_version_bump.py", "test_changelog.py",
+                "test_version_bump.py", "test_changelog.py", "test_release_due.py",
                 "test_restart_windows_tray.py", "test_deploy_windows_tray.py",
                 "test_buildinfo.py", "test_versioning.py",
                 "test_windows_update.py", "test_release_updates.py", "test_standalone_update.py", "test_certs.py", "test_config.py",
@@ -372,7 +372,7 @@ def main(argv: list[str] | None = None) -> int:
     context = test_evidence.inputs(ROOT)
     state = context["state"]
     try:
-        with test_evidence.run_lock(ROOT, state):
+        with test_evidence.run_lock(ROOT, state, scope=" ".join(scopes), root=str(ROOT)):
             if not args.fresh and args.scope != "full" and test_evidence.covers(
                     test_evidence.read(ROOT, state), scopes):
                 print("复用本机测试记录：代码、依赖环境和范围匹配（24 小时内）。", flush=True)
@@ -393,7 +393,8 @@ def main(argv: list[str] | None = None) -> int:
                     _, baseline, scopes = min(choices, key=lambda item: item[0])
                     print(f"复用全量基线 {baseline['state'][:12]}；新增差异补测：{' '.join(scopes)}", flush=True)
             folder = test_evidence.evidence_dir(ROOT)
-            full_lock = test_evidence.FileLock(folder / "full-suite.lock", timeout=0) \
+            full_lock = test_evidence.held(folder / "full-suite.lock",
+                                           scope=" ".join(scopes), root=str(ROOT)) \
                 if "full" in scopes else nullcontext()
             with full_lock:
                 (folder / f"{state}.json").unlink(missing_ok=True)
@@ -410,8 +411,11 @@ def main(argv: list[str] | None = None) -> int:
             if not stable:
                 print("验证期间代码或依赖环境改变，本次记录无效。", flush=True)
             return 0 if success else 1
-    except test_evidence.Timeout:
-        print("相同状态的验证或本仓库全量测试正在运行，请等待该次结果。", flush=True)
+    except test_evidence.Timeout as error:
+        lock = Path(error.lock_file)
+        what = "本仓库全量测试" if lock.name == "full-suite.lock" else "相同状态的验证"
+        print(f"{what}正在运行（{test_evidence.describe_holder(lock)}），请等待该次结果。",
+              flush=True)
         return 2
 
 

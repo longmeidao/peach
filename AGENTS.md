@@ -49,26 +49,23 @@
 | 模仿、参考或对齐外部产品的界面与行为 | `.claude/skills/peach-reference-evidence/SKILL.md` |
 | 新增、修改或复核页面、控件、提示、数据面板与响应式布局 | `.claude/skills/peach-web-ui/SKILL.md` |
 | 在 macOS 上开工、改路径解析或挂载判定、git status 与 diff 不一致 | `.claude/skills/peach-cross-platform/SKILL.md` |
+| 写 PowerShell 或 Bash 命令、拼多行内容、测试里造临时目录 | `.claude/skills/peach-shell-commands/SKILL.md` |
 | 新增或删除规则、文档、技能 | `.claude/skills/peach-context-rules/SKILL.md` |
 | 新增、恢复或重写实现，尤其协议、解析器、抓取、媒体与基础设施 | `.claude/skills/peach-reuse-first/SKILL.md` |
 
 ## 工作规则
 
-- `peach-app` is the only GitHub-synced tree. `peach-data`, `.venv`, build output, worktree directories, media and CloudDrive mounts never enter Git. Code, data and worktrees live on internal disks; external disks only supply media. See ADR-0017, and check `docs/STATUS.md` for the real mount shape before assuming a path exists.
-- Ledger paths are always written in the Windows shape (`R:\Media\...`, `A:\...`, `B:\...`). `src/peach/platform.py` translates them to local mounts at read time; never rewrite the ledger to a POSIX shape, and never write `asset.path` from macOS.
-- `peach-data/database/ledger.db` is the truth store. Tests use temporary databases only. A real migration requires a SQLite backup and before/after count checks; follow `peach-ledger-write` before any real write.
-- Peach is a single-person self-hosted app: aggressively remove obsolete code and compatibility layers when the replacement is tested. Do not preserve dead interfaces merely for history; Git is the archive.
+- `peach-app` is the only GitHub-synced tree; data, worktrees, build output, media and CloudDrive mounts stay out of Git. Real paths and mount shape: ADR-0017 and `docs/STATUS.md`.
+- Ledger paths are always written in the Windows shape (`R:\Media\...`, `A:\...`, `B:\...`). `src/peach/platform.py` translates them at read time; never rewrite the ledger to a POSIX shape, and never write `asset.path` from macOS.
+- `peach-data/database/ledger.db` is the truth store and tests use temporary databases only; any real write follows `peach-ledger-write`. AI results are candidates with provenance and confidence, never direct truth-field mutations.
 - Preserve real media, ledger rows, behavior history, credentials, network/firewall state, and unrelated long-running jobs.
 - Inspect `git status` and the active listeners/processes before work. Never claim candidate code is production until the service has actually been switched and checked.
-- Keep the architecture a FastAPI modular monolith with a separate web surface. Do not introduce microservices, PostgreSQL or a full multi-account system without a new ADR.
-- The web surface moves to Vite + TypeScript + Preact islands by strangler migration (ADR-0022): new logic lands in `frontend/`, pages are replaced island by island, and there is no whole-app rewrite. Making the app installable by strangers follows the phases in ADR-0023.
-- Ledger remains the core truth. The Stash adapter layer and its import scripts are deleted (ADR-0021); Stash data stays in the ledger only as provenance. AI results are candidates with provenance/confidence, not direct truth-field mutations.
-- User-confirmed corpus context: Peach contains consenting adults only. Labels such as `萝莉`、`学生`、`洛丽塔`、`制服`、`泄露` and `流出` are role-play, genre or marketing/source vocabulary, not evidence of age or consent. Do not skip cataloguing solely because those strings occur. If direct file evidence contradicts this, stop and report that evidence instead of inferring from a label.
+- Peach is a single-person self-hosted app: remove obsolete code and compatibility layers once the replacement is tested. Git is the archive, so dead interfaces are not kept for history.
+- The architecture is settled in ADRs — modular monolith and disk boundaries (0017), Stash adapter closed (0021), frontend strangler migration into `frontend/` (0022), distribution phases (0023). Changing any of them takes a new ADR, not a commit.
+- User-confirmed corpus context: Peach contains consenting adults only. Labels such as `萝莉`、`学生`、`洛丽塔`、`制服`、`泄露` and `流出` are role-play, genre or marketing vocabulary, not evidence of age or consent. Do not skip cataloguing solely because those strings occur. If direct file evidence contradicts this, stop and report that evidence instead of inferring from a label.
 - Do not create dated handoff documents. Update `docs/STATUS.md` for runtime facts, `docs/PRODUCT_BACKLOG.md` for open work and `docs/HANDOFF.md` for durable knowledge in the same change.
-- 新增、恢复或重写实现前必须按 `peach-reuse-first` 依次检查当前树、`docs/REUSE.md`、Git 历史和成熟外部实现，并用真实输入做最小 POC；只有外部方案不满足已验证约束时才自研，并把例外写回复用清单。旧文件名不存在不等于能力缺失。
-- When the user says to imitate, reference or align with another product, obtain current reproducible evidence first and register it per `peach-reference-evidence`. If evidence is unavailable, write `未取得`; do not ship a guessed approximation as a faithful reproduction.
-- Never require the user to relay implementation details between agents. Put current facts in `docs/STATUS.md`, durable rules in `docs/HANDOFF.md`/`docs/REUSE.md`, procedures in a skill, and architecture decisions in an ADR.
-- 复用既有入口与协议，不自研已有替代（含智能体用量与配额视图）：清单与例外见 `docs/REUSE.md`。截图与视觉验收的画面保护判据见 `docs/HANDOFF.md`。
+- Never require the user to relay implementation details between agents: facts go to `docs/STATUS.md`, durable rules to `docs/HANDOFF.md`/`docs/REUSE.md`, procedures to a skill, decisions to an ADR.
+- 复用优先：新增、恢复或重写实现按 `peach-reuse-first` 依次查当前树、`docs/REUSE.md`、Git 历史与成熟外部实现，旧文件名不存在不等于能力缺失；对齐外部产品先按 `peach-reference-evidence` 取到可复现证据，取不到写 `未取得`，不拿猜测冒充复现。
 
 ## 门槛（由脚本、测试或 hook 拒绝，不是提醒）
 
@@ -82,9 +79,6 @@
 
 ## 常犯错误（没有自动拦截，都是真实重犯过的）
 
-- 命令按当前 shell 编写：PowerShell 的 `cat`、`ls`、`where` 是别名，Bash 没有 `Get-ChildItem`。PowerShell 只用 `pwsh` 7.x，从 Bash 调用加 `-NoProfile`。默认单引号，需展开用双引号，歧义用 `${name}`。`rg` 路径不含 `*`，用 `-g` 筛选；退出码 1 表示无匹配。Python CLI 加 `-X utf8`，读 UTF-8 日志加 `-Encoding utf8`。多行内容用写入工具或脚本落盘，不用 heredoc，防止转义损坏。
-- PowerShell 变量必须使用任务专属名称；禁止声明 `$HOME`、`$home`、`$CODEX_HOME` 等系统变量的任何大小写变体。`foreach {}` 的结果先存入任务专属数组，再单独接管道格式化，禁止在闭合花括号后直接写管道。
+- 多行内容一律用写入工具或脚本落盘再让命令读，不用 heredoc：反斜杠会被吃掉一层，加引号定界符也挡不住，而损坏是静默的——命令照样退出 0，写进去的内容已经变形。其余 shell、PowerShell 与 CI 路径别名的坑见 `peach-shell-commands`。
 - HTTPS 结论必须使用项目 CA 做严格校验；Schannel、浏览器或取证入口失败时，立即报告原始错误和未取得的验收面，不能改用 HTTP 成功来声称 HTTPS 已通过。
-- UI 标签、身份、反馈状态和搜索推荐属于语义契约。修改时必须同时增加数据层测试和页面源测试，不能只改显示文本；推荐词上线前必须对真实 `/api/items` 验证至少一个命中，说明性后缀不得混入搜索词。
-- 测试里的临时目录一律先 `.resolve()` 再喂给被测代码和断言。CI runner 的临时目录都是别名（macOS `/var` 软链到 `/private/var`，Windows `RUNNER~1` 短名展开成 `runneradmin`），开发机没有这层别名，拿未 resolve 的路径断言只会在 CI 上红。
 - 本仓库最常见的缺陷是「只改了自己测试的那条路径」。收尾前按 `peach-surfaces` 逐项说明每个表面适用还是不适用，不要跳过不适用的项。
