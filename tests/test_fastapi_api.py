@@ -131,7 +131,6 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         self.db = self.root / "ledger.db"
         self.media_root = self.root / "media"
         self.snapshot_root = self.root / "snapshots"
-        self.legacy_snapshot_root = self.root / "legacy-snapshots"
         self.poster_root = self.root / "posters"
         self.avatar_root = self.root / "avatars"
         self.logo_root = self.root / "logos"
@@ -167,7 +166,6 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         self.snapshot_file = self.snapshot_root / "cloud" / "local" / "one.jpg"
         self.snapshot_file.parent.mkdir(parents=True)
         self.snapshot_file.write_bytes(b"snapshot")
-        self.legacy_snapshot_file = self.legacy_snapshot_root / "cloud" / "local" / "one.jpg"
         (self.poster_root / "1_4.jpg").write_bytes(b"poster")
         (self.avatar_root / "1.jpg").write_bytes(b"avatar")
         (self.logo_root / "Studio_A.img").write_bytes(b"logo")
@@ -191,7 +189,7 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
                                   width,height,ctx_orient,snapshot_path,first_seen)
                VALUES(1,'local',?,'one.mp4','video',100,
                       'Alice','Studio A',100,1920,1080,'横屏',?,'2026-08-14')""",
-            (str(self.media_file), str(self.legacy_snapshot_file)),
+            (str(self.media_file), str(self.snapshot_file)),
         )
         con.execute("INSERT INTO asset_tag(asset_id,tag,source) VALUES(1,'Tag A','test')")
         con.execute(
@@ -219,7 +217,6 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         self.settings = PeachSettings(
             db_path=self.db, configured=True, token="secret", page_path=self.page, vendor_path=self.vendor_root,
             allowed_media_roots=(self.media_root,), snapshot_root=self.snapshot_root,
-            legacy_snapshot_roots=(self.legacy_snapshot_root,),
             poster_root=self.poster_root, avatar_root=self.avatar_root, logo_root=self.logo_root,
             cover_root=self.cover_root, stream_root=self.stream_root,
             ffmpeg_root=self.root / "ffmpeg", transcode_root=self.transcode_root,
@@ -1529,7 +1526,6 @@ class UnconfiguredMachineTests(unittest.IsolatedAsyncioTestCase):
             vendor_path=missing / "web" / "vendor",
             allowed_media_roots=(),
             snapshot_root=missing / "snapshots",
-            legacy_snapshot_roots=(),
             poster_root=missing / "posters", avatar_root=missing / "avatars",
             logo_root=missing / "logos", cover_root=missing / "covers",
             photo_root=missing / "photos", stream_root=missing / "stream",

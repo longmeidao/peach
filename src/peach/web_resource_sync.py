@@ -19,7 +19,7 @@ from typing import Callable, Protocol, Sequence
 from .catalog_rules import dir_expr, normalise_code_key, photo_set_title
 from .config import LOCATION_ROOT_DECLARATIONS
 from .jobs import BackgroundJob
-from .media import remap_managed_path
+from .media import normalized_path
 from .platform import is_unmapped, root_online, translate_ledger_path
 
 
@@ -28,7 +28,6 @@ class ResourceSyncContract(Protocol):
 
     db_path: Path
     snapshot_root: Path | None
-    legacy_snapshot_roots: tuple[Path, ...]
     cover_root: Path
     poster_root: Path
     avatar_root: Path
@@ -210,9 +209,8 @@ def _resource_orphan_plan(contract: ResourceSyncContract, excluded_ids: Sequence
     for row in rows:
         raw = row["snapshot_path"]
         if raw:
-            active_snapshots.add(remap_managed_path(
-                raw, contract.snapshot_root, contract.legacy_snapshot_roots,
-            ) if contract.snapshot_root is not None else Path(raw))
+            active_snapshots.add(normalized_path(raw)
+                                 if contract.snapshot_root is not None else Path(raw))
 
     files: list[tuple[str, Path, int]] = []
     cleanup_dirs: set[Path] = set()

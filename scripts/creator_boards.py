@@ -33,7 +33,7 @@ from peach.jobs import (
     job_main,
 )
 from peach.platform import system_volume
-from peach.media import remap_managed_path
+from peach.media import normalized_path
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -53,12 +53,6 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--db", type=Path, default=DATABASE_PATH)
     parser.add_argument("--output-dir", type=Path, default=GENERATED_DIR / "boards")
-    parser.add_argument("--snapshot-root", type=Path, default=GENERATED_DIR / "snapshots")
-    parser.add_argument(
-        "--legacy-snapshot-root",
-        type=Path,
-        default=Path(r"R:\Resources\Intake\snapshots"),
-    )
     parser.add_argument("--lock", type=Path, default=STATE_DIR / ".creator-boards.lock")
     return parser
 
@@ -254,7 +248,7 @@ def build_from_snapshots(args: argparse.Namespace, ffmpeg: str, ffprobe: str) ->
     for creator, name, asset_path, snapshot in rows:
         if is_structural_creator(creator) or is_probable_mainstream_release(name, asset_path):
             continue
-        path = remap_managed_path(snapshot, args.snapshot_root, (args.legacy_snapshot_root,))
+        path = normalized_path(snapshot)
         if path.is_file():
             by_creator[creator].append(path)
     ranked = [(creator, count) for creator, count in counts.most_common() if len(by_creator.get(creator, [])) >= 4][:args.top]

@@ -19,7 +19,7 @@ import time
 
 from collections import OrderedDict
 from pathlib import Path
-from typing import NamedTuple, Sequence
+from typing import NamedTuple
 
 from .catalog_rules import normalise_code_key
 from .config import (
@@ -32,7 +32,7 @@ from .config import (
     STATE_DIR,
 )
 from .jobs import BackgroundJob
-from .media import remap_managed_path
+from .media import normalized_path
 # `previews` 是取图那一侧，不是 web 域处理器：依赖方向仍然只有一个走法。落盘名的
 # 规则必须和 `/logo` 用的是同一个函数，否则可用性判定迟早和取图对不上。
 from .previews import ENTITY_IMAGE_KINDS, LOGO_VARIANTS, entity_image_key, logo_key
@@ -99,7 +99,6 @@ class WebContract:
     """单个应用实例的数据库、写锁和聚合缓存；不共享模块级可变状态。"""
 
     def __init__(self, db_path: Path, snapshot_root: Path | None = None,
-                 legacy_snapshot_roots: Sequence[Path] = (),
                  candidate_root: Path | None = None,
                  cover_root: Path | None = None,
                  avatar_root: Path | None = None,
@@ -160,7 +159,6 @@ class WebContract:
         self.database = database or LedgerDatabase(db_path)
         self.db_path = self.database.db_path
         self.snapshot_root = Path(snapshot_root) if snapshot_root is not None else None
-        self.legacy_snapshot_roots = tuple(Path(path) for path in legacy_snapshot_roots)
         self.cache: OrderedDict[str, tuple[float, object]] = OrderedDict()
         self.cache_lock = threading.Lock()
         #: 按资产取键的读缓存，LRU 限界。键空间不封闭的场景走这里，见 `cached_lru()`。
@@ -265,9 +263,7 @@ class WebContract:
     def has_snapshot(self, raw_path: str | None) -> bool:
         if not raw_path:
             return False
-        path = (remap_managed_path(
-            raw_path, self.snapshot_root, self.legacy_snapshot_roots,
-        ) if self.snapshot_root is not None else Path(raw_path))
+        path = normalized_path(raw_path) if self.snapshot_root is not None else Path(raw_path)
         return path.is_file()
 
     def cover_path(self, code: str | None) -> Path | None:

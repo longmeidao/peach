@@ -38,7 +38,7 @@ def _settings(root: Path, page: Path, **overrides) -> "PeachSettings":
     return PeachSettings(
         db_path=root / "ledger.db", token="", page_path=page,
         vendor_path=root / "vendor", allowed_media_roots=(root / "media",),
-        snapshot_root=root / "snapshots", legacy_snapshot_roots=(),
+        snapshot_root=root / "snapshots",
         cover_root=root / "covers", poster_root=root / "posters",
         avatar_root=root / "avatars", logo_root=root / "logos",
         transcode_root=root / "transcodes", stream_root=root / "stream",

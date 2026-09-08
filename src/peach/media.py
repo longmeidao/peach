@@ -73,26 +73,6 @@ def resolve_case_insensitive(path: Path | str) -> str:
     return str(candidate)
 
 
-def remap_managed_path(
-    path: Path | str,
-    current_root: Path,
-    legacy_roots: Sequence[Path] = (),
-) -> Path:
-    """将拆分前的受控根映射到当前根，不接受 basename 搜索。"""
-    candidate = normalized_path(path)
-    current = normalized_path(current_root)
-    if candidate == current or current in candidate.parents:
-        return candidate
-    for legacy_root in legacy_roots:
-        legacy = normalized_path(legacy_root)
-        try:
-            relative = candidate.relative_to(legacy)
-        except ValueError:
-            continue
-        return current / relative
-    return candidate
-
-
 @dataclass(frozen=True)
 class StreamPlan:
     """协议层播放计划；来源层决定是否值得切到短分片。"""
@@ -124,7 +104,7 @@ class MediaOffline(MediaUnavailable):
 
 
 class FilesystemBackend:
-    """原生文件 backend；路径授权、旧快照映射和存在性检查集中在这里。"""
+    """原生文件 backend；路径授权和存在性检查集中在这里。"""
 
     name = "filesystem"
 
@@ -132,23 +112,15 @@ class FilesystemBackend:
         self,
         allowed_roots: Sequence[Path],
         snapshot_root: Path,
-        legacy_snapshot_roots: Sequence[Path] = (),
     ):
         self.allowed_roots = tuple(normalized_path(root) for root in allowed_roots)
         self.snapshot_root = normalized_path(snapshot_root)
-        self.legacy_snapshot_roots = tuple(
-            normalized_path(root) for root in legacy_snapshot_roots
-        )
 
     def file_for(self, asset: MediaAsset, thumbnail: bool = False) -> Path:
         raw = asset.snapshot_path if thumbnail else asset.path
         if not raw:
             raise MediaUnavailable(asset.id)
-        path = (
-            remap_managed_path(raw, self.snapshot_root, self.legacy_snapshot_roots)
-            if thumbnail
-            else normalized_path(raw)
-        )
+        path = normalized_path(raw)
         roots = (self.snapshot_root,) if thumbnail else self.allowed_roots
         if not any(within_root(path, root) for root in roots):
             self._raise_unavailable(asset.id, raw, thumbnail)

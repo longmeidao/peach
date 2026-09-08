@@ -106,7 +106,7 @@ def create_app(
     settings = settings or PeachSettings()
     database = LedgerDatabase(settings.db_path)
     contract = web_contract.WebContract(
-        settings.db_path, settings.snapshot_root, settings.legacy_snapshot_roots,
+        settings.db_path, settings.snapshot_root,
         candidate_root=settings.candidate_root,
         cover_root=settings.cover_root,
         avatar_root=settings.avatar_root,
@@ -132,12 +132,11 @@ def create_app(
     filesystem = FilesystemBackend(
         settings.allowed_media_roots,
         settings.snapshot_root,
-        settings.legacy_snapshot_roots,
     )
     media_engine = MediaEngine(repository, filesystem)
     preview_service = PreviewService(
         repository, resolver, settings.snapshot_root, settings.poster_root,
-        settings.avatar_root, settings.logo_root, settings.legacy_snapshot_roots,
+        settings.avatar_root, settings.logo_root,
     )
     photo_service = PhotoThumbnailService(settings.photo_root)
     transcode_service = TranscodeService(resolver, settings.transcode_root)
