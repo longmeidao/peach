@@ -1790,6 +1790,23 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertIn("innerWidth-width-8", anchored)
         self.assertIn("innerHeight-8", anchored)
 
+    def test_source_filter_menu_offers_select_all_and_select_none(self):
+        # 两个按钮是对整张清单的动作，摆在来源行上方；勾选状态仍只有 fsrcUnchecked 一份真相。
+        source_filter = self.page[self.page.index("function renderFollowSrcFilter("):
+                                  self.page.index("function renderFollowPicks(")]
+        self.assertIn('<button type="button" class="geist-button" data-srcfilter-all>全选</button>',
+                      source_filter)
+        self.assertIn('<button type="button" class="geist-button" data-srcfilter-none>全不选</button>',
+                      source_filter)
+        self.assertLess(source_filter.index("data-srcfilter-all"),
+                        source_filter.index('data-srcfilter="${esc(provider)}"'))
+        self.assertIn("if(all)all.onclick=()=>setAll(true);", source_filter)
+        self.assertIn("if(none)none.onclick=()=>setAll(false);", source_filter)
+        self.assertIn("const setAll=checked=>{inputs.forEach(input=>setChecked(input,checked));sync()};",
+                      source_filter)
+        bulk = self.page[self.page.index(".fsrcbulk{"):]
+        self.assertIn("border-bottom:1px solid var(--border-10)", bulk[:bulk.index("}")])
+
     def test_the_manage_page_is_ordered_by_what_you_do_first(self):
         # 只看管理页那一段：同样的标题在别的页面上也出现过，全页搜索会命中错的那个。
         page = self.page

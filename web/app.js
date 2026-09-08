@@ -5977,7 +5977,9 @@ function renderFollowSrcFilter(mount,credentials=[]){
       aria-expanded="false" aria-haspopup="menu" aria-controls="follow-source-menu"
       aria-label="${esc(label())}" title="${esc(label())}">
       ${icon('list-filter')}<span data-srcfilter-label>${esc(label())}</span></button>
-    <div class="popmenu fsrcmenu" id="follow-source-menu" role="menu" data-srcfilter-menu hidden>${providers.map(provider=>{
+    <div class="popmenu fsrcmenu" id="follow-source-menu" role="menu" data-srcfilter-menu hidden>${providers.length?`<div class="fsrcbulk">
+      <button type="button" class="geist-button" data-srcfilter-all>全选</button>
+      <button type="button" class="geist-button" data-srcfilter-none>全不选</button></div>`:''}${providers.map(provider=>{
       const row=requirements.get(provider);
       const needsCredentials=row?.requirement==='required'&&(!row.present||(row.missing||[]).length);
       return `<div class="fsrcoption"><label>${checkboxHtml(`data-srcfilter="${esc(provider)}"${fsrcUnchecked.has(provider)?'':' checked'}`)}
@@ -5993,13 +5995,22 @@ function renderFollowSrcFilter(mount,credentials=[]){
     const details=form?.closest('details');
     if(details){details.open=true;details.scrollIntoView({block:'center',behavior:'smooth'});form.querySelector('input')?.focus({preventScroll:true})}
   });
-  menu.querySelectorAll('[data-srcfilter]').forEach(input=>input.onchange=()=>{
-    input.checked?fsrcUnchecked.delete(input.dataset.srcfilter)
-      :fsrcUnchecked.add(input.dataset.srcfilter);
+  const inputs=[...menu.querySelectorAll('[data-srcfilter]')];
+  /* 勾选状态只有 fsrcUnchecked 一份真相：单个复选框、全选、全不选都先改它，
+     再统一刷新按钮标签和查找结果的隐藏行。 */
+  const sync=()=>{
     toggle.setAttribute('aria-label',label());toggle.title=label();
     toggle.querySelector('[data-srcfilter-label]').textContent=label();
     document.querySelectorAll('.fpickitem').forEach(item=>{
-      item.hidden=fsrcUnchecked.has(item.dataset.provider||'')})});
+      item.hidden=fsrcUnchecked.has(item.dataset.provider||'')})};
+  const setChecked=(input,checked)=>{
+    input.checked=checked;
+    checked?fsrcUnchecked.delete(input.dataset.srcfilter):fsrcUnchecked.add(input.dataset.srcfilter)};
+  inputs.forEach(input=>input.onchange=()=>{setChecked(input,input.checked);sync()});
+  const setAll=checked=>{inputs.forEach(input=>setChecked(input,checked));sync()};
+  const all=menu.querySelector('[data-srcfilter-all]'),none=menu.querySelector('[data-srcfilter-none]');
+  if(all)all.onclick=()=>setAll(true);
+  if(none)none.onclick=()=>setAll(false);
 }
 function renderFollowPicks(results){
   const box=$('#followPicks');

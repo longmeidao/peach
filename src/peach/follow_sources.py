@@ -1594,6 +1594,58 @@ def _xenforo_posts(soup, limit: int):
         yield article, post_id, time_node, body
 
 
+#: 搜索结果里线程链接的形状：`/threads/<slug>.<id>/`，后面可能还跟着帖子锚点。
+_XENFORO_SEARCH_THREAD_RE = re.compile(r"^/threads/(?:[^/]*\.)?(\d+)/")
+_XENFORO_TOKEN_RE = re.compile(rb'name="_xfToken" value="([^"]+)"')
+
+
+def _xenforo_search_threads(connector: "_BaseConnector", host: str, query: str, *,
+                            cookie: str, title_only: bool = True) -> tuple[dict, ...]:
+    """XenForo 站内搜索按标题找线程；f95zone 与 simpcity 共用这一份。
+
+    **站内搜索必须登录**，无 cookie 时 `/search/` 直接回 403。搜索表单里的
+    `_xfToken` 和会话绑定，所以每次都要先取一遍，不能缓存成常量。提交后站点
+    303 到 `/search/<id>/?q=…` 结果页，传输层同源跟随并保留 Cookie。
+
+    每行给出 `thread_id`、去掉前缀标签的 `title`，以及那些前缀标签本身 `labels`
+    （f95 的 `Collection`、`Pinup`，simpcity 的 `OnlyFans`、`Simp Chat`）：同一个
+    名字的资源线程和讨论帖都会命中，标签是让人分辨的依据。
+    """
+    headers = {"Accept": "text/html", "Cookie": cookie}
+    form = connector._get(f"https://{host}/search/", headers=headers)
+    connector._check_status(form)
+    matched = _XENFORO_TOKEN_RE.search(form.body)
+    if matched is None:
+        raise FollowSourceError(
+            f"{connector.provider} 搜索表单里没有 _xfToken：cookie 可能已失效")
+    body = urllib.parse.urlencode({
+        "keywords": query, "c[title_only]": "1" if title_only else "0",
+        "order": "relevance", "search_type": "post",
+        "_xfToken": matched.group(1).decode("utf-8", errors="replace"),
+    }).encode()
+    response = connector._post(
+        f"https://{host}/search/search", body,
+        headers={**headers, "Content-Type": "application/x-www-form-urlencoded",
+                 "Referer": f"https://{host}/search/"})
+    connector._check_status(response)
+    soup = BeautifulSoup(response.body, "html.parser")
+    rows, seen = [], set()
+    for link in soup.select("h3.contentRow-title a[href]"):
+        found = _XENFORO_SEARCH_THREAD_RE.match(link.get("href") or "")
+        if found is None or found.group(1) in seen:
+            continue
+        seen.add(found.group(1))
+        labels = [plain_text(node.get_text(" ")) for node in link.select(".label")]
+        for label in link.select(".label, .labelLink, .label-append"):
+            label.extract()
+        # 命中的词被 `<em class="textHighlight">` 包着，按分隔符取文本会把
+        # `[Ria_neearts]` 拆成 `[ Ria_neearts ]`——标题要的是原样。
+        rows.append({"thread_id": found.group(1),
+                     "title": plain_text(link.get_text("")),
+                     "labels": [label for label in labels if label]})
+    return tuple(rows)
+
+
 class F95ZoneConnector(_BaseConnector):
     """f95zone.to 的线程追更。
 
@@ -1811,10 +1863,6 @@ class F95ZoneConnector(_BaseConnector):
         rows = ((payload or {}).get("msg") or {}).get("data") or []
         return tuple(row for row in rows if isinstance(row, dict))
 
-    #: 搜索结果里线程链接的形状：`/threads/<slug>.<id>/`，后面可能还跟着帖子锚点。
-    _SEARCH_THREAD_RE = re.compile(r"^/threads/(?:[^/]*\.)?(\d+)/")
-    _XF_TOKEN_RE = re.compile(rb'name="_xfToken" value="([^"]+)"')
-
     def search_threads(self, query: str, *, title_only: bool = True) -> tuple[dict, ...]:
         """用站内搜索按标题找线程。
 
@@ -1822,46 +1870,14 @@ class F95ZoneConnector(_BaseConnector):
         艺术家的 Collection 帖发在普通版块，那份索引里根本没有：2026-09-01 实测
         `Ria_neearts` 在五个分类全为空，站内搜索一次就命中
         `/threads/ria-collection-2026-08-03-ria_neearts.146348/`。
-
-        **站内搜索必须登录**，无 cookie 时 `/search/` 直接回 403。搜索表单里的
-        `_xfToken` 和会话绑定，所以每次都要先取一遍，不能缓存成常量。
         """
         cookie = self.credential.values.get("cookie") if self.credential else None
         if not cookie:
             raise CredentialError(
                 "f95zone 站内搜索需要登录 cookie；请把它写进 "
                 "peach-data/secrets/follow/f95zone.json")
-        headers = {"Accept": "text/html", "Cookie": cookie}
-        form = self._get("https://f95zone.to/search/", headers=headers)
-        self._check_status(form)
-        matched = self._XF_TOKEN_RE.search(form.body)
-        if matched is None:
-            raise FollowSourceError("f95zone 搜索表单里没有 _xfToken：cookie 可能已失效")
-        body = urllib.parse.urlencode({
-            "keywords": query, "c[title_only]": "1" if title_only else "0",
-            "order": "relevance", "search_type": "post",
-            "_xfToken": matched.group(1).decode("utf-8", errors="replace"),
-        }).encode()
-        response = self._post(
-            "https://f95zone.to/search/search", body,
-            headers={**headers, "Content-Type": "application/x-www-form-urlencoded",
-                     "Referer": "https://f95zone.to/search/"})
-        self._check_status(response)
-        soup = BeautifulSoup(response.body, "html.parser")
-        rows, seen = [], set()
-        for link in soup.select("h3.contentRow-title a[href]"):
-            found = self._SEARCH_THREAD_RE.match(link.get("href") or "")
-            if found is None or found.group(1) in seen:
-                continue
-            seen.add(found.group(1))
-            # 标题前挂着 `Collection`、`Pinup` 这类前缀标签，和 `_xenforo_thread_title` 一样摘掉。
-            for label in link.select(".label, .labelLink, .label-append"):
-                label.extract()
-            # 命中的词被 `<em class="textHighlight">` 包着，按分隔符取文本会把
-            # `[Ria_neearts]` 拆成 `[ Ria_neearts ]`——标题要的是原样。
-            rows.append({"thread_id": found.group(1),
-                         "title": plain_text(link.get_text(""))})
-        return tuple(rows)
+        return _xenforo_search_threads(self, "f95zone.to", query,
+                                       cookie=cookie, title_only=title_only)
 
 
 class FanboxConnector(_BaseConnector):
@@ -2291,6 +2307,17 @@ class SimpCityConnector(_BaseConnector):
                 "simpcity 拒绝访问（HTTP 403）：站点不让游客读帖，cookie 可能已过期或"
                 "不完整，请重新登录后更新凭据文件")
         super()._check_status(response)
+
+    def search_threads(self, query: str, *, title_only: bool = True) -> tuple[dict, ...]:
+        """用站内搜索按标题找线程；simpcity 没有别的索引，这是唯一一条路。
+
+        2026-09-08 实测 `solazola` 按标题命中两条：`OnlyFans` 版块的
+        `solazola-baby_sue.17401` 和 `Simp Chat` 版块的 `solazola-discussion.392510`。
+        正文全文搜会把「Who is this?」这类提到名字的帖子一起带回来，所以默认只搜标题，
+        版块标签跟着每行回去让人自己分。
+        """
+        return _xenforo_search_threads(self, self.HOST, query,
+                                       cookie=self._cookie(), title_only=title_only)
 
     def fetch(self, ref: str, *, etag: str | None = None,
               last_modified: str | None = None, page: int = 0) -> SourceFetch:
