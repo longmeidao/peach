@@ -167,7 +167,7 @@ Radial Chart Card、Bar List Card、Heatmap 与 Sankey 的 Pro 源码**未取得
 | 侧栏收起键 | 36px、`rounded-2lg`、`foreground-icon-secondary`，收起时与品牌相隔 10px | 采用，图标沿用 Peach 的 `panel-left` |
 | 详情页门挡 | 无对应 | 铺满播放器格不留黑；播放器格只圆左上角（右贴侧栏、下接「接着看」），窄屏与影院模式圆上面两角 |
 | 没有图的身份头像 | Avatar initials 盘 `avatar-neutral-background` 值未取得 | 主文字色 10% 混底、次文字色首字 |
-| 首页女优与厂牌两排 | 无 Avatar Group；PillTab gray + Avatar sm（24px） | 两排统一成一枚 34px 灰 Pill：24px 圆头像／标识在左、名字在右，选中 tertiary 底 |
+| 首页女优与厂牌两排 | 无 Avatar Group；PillTab gray + Avatar sm（24px） | 见 2026-09-09 那一节：女优竖排人像格、厂牌 40px 灰 Pill |
 | 管理页标题 | 无对应 | 只在 812px 窄列页面居中，别处与面包屑同一左边线 |
 | 沉浸模式 | 无对应 | 随机流在入口筛掉脱盘来源的片子 |
 
@@ -193,6 +193,18 @@ Radial Chart Card、Bar List Card、Heatmap 与 Sankey 的 Pro 源码**未取得
 | 视频网格 | bar-list-card 之外无对应 | 去掉网格外面那一圈框，卡片直接摆在页面上 |
 | 社媒标记 | 无对应 | Instagram 与 X 同一只墨色圆盘，字形取 Phosphor instagram-logo |
 | 侧栏切换器 | 32px 圆头像 + 名字 + 双向箭头，`gap-2`，悬停在按钮外 6/5px 处描 2px 圆环；收起键只有 20px 高的图标、无底 | 数据库标识放进 32px `tertiary` 圆盘，悬停与展开态同一圈线；收起键展开时 20×20 靠右，收起时 36×20 在标识上方，相隔 10px，头部 62px 与上游同高 |
+
+### 首页两排、关注批量条、复核分页与数据管理页（2026-09-09）
+
+取证来源：公开注册表 `r/pagination.json`（`pagination.tsx`）、`r/stat-cards.json`（`stat-cards.tsx` 的 PlainStatCard）、`r/avatar.json`（`avatar.tsx`），以及 `/templates/dashboard` 与 `/templates/finance` 的实时 DOM。这三份 JSON 本轮只读了正文，SHA-256 未取得。模板左侧可切换的其它视图（calendar、medical-profile、ai-chat、ai-image-generation、ai-profile）是日历、档案、对话与生图页，与 Peach 现有页面无对应，未采用。
+
+| 位置 | 上游 | Peach |
+| --- | --- | --- |
+| 首页女优一排 | Avatar 只到 lg 36px，没有竖排人像格 | 竖排格：48px 圆头像在上（取上游 `size-12` 那一级）、名字 Caption 在下，格宽 76、圆角 12、不描边；悬停 primary-hover，选中 tertiary 底 |
+| 首页厂牌一排 | PillTab gray | 40px 灰 Pill 放大一档：28px 圆标识在左、名字在右、圆角 12。标签那一排是 30px 描边药丸，厂牌靠身量、圆标识和无边框跟它分开 |
+| 关注页批量条 | 无对应 | 批量条只有保存、跳过这类按行动作；勾选靠每行行首的「全选／全不选」 |
+| 复核队列分页 | Pagination：nav 两端对齐 `gap-2`；Previous／Next 是 32px 次级小键（圆角 8、内边距 6/8、带箭头）；页码 `size-8 rounded-lg` Body Medium，当前页 border-button 描边 + primary 底 + xs 阴影并标 `aria-current="page"`，其余次文字色、悬停 secondary-hover；两侧折成「…」各留一个邻页；一页时不渲染；没有过渡 | 尺寸与颜色照抄；分页做在前端，一页 20 张（接口 4.6 MB 本机读 0.1 秒，卡的是一次画 1300 张卡）；箭头用雪碧图的 `chevron-left/right`，文案「上一页／下一页」；分组与筛选按整条队列算、卡片只画本页；换分类／分组／筛选回第 1 页 |
+| 数据管理页 | dashboard／finance 模板：顶上一排 plain stat card（132px、圆角 16、secondary 底、p 16；32px 图标格 + 20px 字形；标签 Body Medium 次文字色；读数 title-1-medium 24/34；`grid-cols-2 lg:grid-cols-4 gap-4`），下面是图表卡与数据表 | 五张读数卡一行（1120 内），窄了折两列、再折一列；整张卡是入口按钮，悬停抬主文字色 6% 底（上游卡不可点）；读数下一行 Caption 是同一份 payload 的分项；扫描与采集、空文件夹各占一整行，左说明右按钮；链接管理与资源同步不动 |
 
 ## 验证记录
 

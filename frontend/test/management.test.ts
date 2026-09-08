@@ -17,11 +17,22 @@ describe('网盘功能范围', () => {
 });
 
 describe('数据管理首屏', () => {
-  it('卡片复用最终正文和操作条，静态标题与按钮文本立即呈现', () => {
+  it('读数卡与两张任务卡复用最终排版，静态标题、图标与按钮文本立即呈现', () => {
     const root = document.createElement('div');
     root.innerHTML = cleanupSkeletonHtml();
-    const cards = root.querySelectorAll('.cleanupfieldset');
-    expect(cards).toHaveLength(7);
+    const stats = root.querySelectorAll('.cleanupstats > .board-plain-stat');
+    expect(stats).toHaveLength(5);
+    expect([...stats].map(card => card.querySelector('.board-stat-tile use')?.getAttribute('href')))
+      .toEqual(['#i-square-check-big', '#i-sparkles', '#i-file-stack', '#i-file-archive', '#i-trash']);
+    expect([...stats].map(card => card.querySelector('.board-plain-stat-head')?.textContent))
+      .toEqual(['人工复核', '高清版', '重复文件', '垃圾文件', '回收站']);
+    for (const card of stats) {
+      expect(card.hasAttribute('disabled')).toBe(true);
+      expect(card.querySelector('strong > .cleanup-count-skeleton')).not.toBeNull();
+      expect(card.querySelector('.cleanupmeta > .cleanup-count-skeleton')).not.toBeNull();
+    }
+    const cards = root.querySelectorAll('.cleanupgrid > .cleanupfieldset');
+    expect(cards).toHaveLength(2);
     for (const card of cards) {
       expect(card.querySelector('.geist-fieldset-content > .geist-fieldset-title')).not.toBeNull();
       expect(card.querySelector('.geist-fieldset-footer > button')?.textContent).not.toBe('');
@@ -31,7 +42,9 @@ describe('数据管理首屏', () => {
     // 扫描卡的两枚键从骨架起就都在位，内容换入时只是变成可点。
     expect(cards[0]?.querySelector('.geist-fieldset-footer > a.geist-button')?.getAttribute('href')).toBe('/scraping');
     expect(cards[0]?.querySelector('.geist-fieldset-footer > button.geist-button.primary')?.hasAttribute('disabled')).toBe(true);
-    expect(root.querySelectorAll('.cleanup-count-skeleton')).toHaveLength(7);
+    expect(cards[1]?.classList.contains('cleanupemptyfolders')).toBe(true);
+    expect(cards[1]?.querySelector('.geist-fieldset-footer use')?.getAttribute('href')).toBe('#i-scan-search');
+    expect(root.querySelectorAll('.cleanup-count-skeleton')).toHaveLength(12);
     expect(root.querySelector('#resource-sync')).toBeNull();
   });
 });

@@ -12,22 +12,26 @@ export function cloudPreferenceLocations(files: readonly { location: string }[],
   return configured.filter(location => files.some(file => file.location === location));
 }
 
-/** 首屏复用最终 Fieldset 的排版，静态标题、说明和按钮无需等待接口。 */
+/** 首屏复用最终排版：顶上五张读数卡的图标与标题、下面两张卡的标题、说明和按钮都不必等接口。 */
 export function cleanupSkeletonHtml(): string {
-  const cards = [
-    ['扫描与采集', '扫描并补全资料', '扫描媒体文件夹，导入已有资料，采集缺失信息。'],
-    ['人工复核', '查看候选', ''], ['高清版', '查看高清版', ''],
-    ['重复文件', '查看重复文件', ''], ['垃圾文件', '查看垃圾文件', ''],
-    ['空文件夹', '扫描空文件夹', ''], ['回收站', '查看回收站', ''],
-  ];
+  const stats = [['人工复核', 'square-check-big'], ['高清版', 'sparkles'], ['重复文件', 'file-stack'], ['垃圾文件', 'file-archive'], ['回收站', 'trash']];
+  const bar = '<span class="skeleton cleanup-count-skeleton" aria-hidden="true"></span>';
   return `<div class="cleanuppage" data-skeleton="cleanup" aria-busy="true" aria-label="正在读取数据管理状态">
-    <div class="cleanupgrid">${cards.map(([title, action, description], index) => `
-        <section class="cleanupfieldset${index===0?' board-processing-skeleton':''}" data-geist-fieldset aria-labelledby="cleanup-loading-${index}">
-        <div class="geist-fieldset-content"><h3 class="geist-fieldset-title" id="cleanup-loading-${index}">${title}</h3>
-          ${description ? `<p>${description}</p>` : '<strong><span class="skeleton cleanup-count-skeleton" aria-hidden="true"></span></strong>'}
-          ${index === 5 ? '<p class="cleanupmeta"><span class="skeleton cleanup-count-skeleton" aria-hidden="true"></span></p>' : ''}</div>
-        <footer class="geist-fieldset-footer" data-geist-fieldset-footer>${index === 0 ? '<a class="geist-button" href="/scraping">采集来源</a>' : ''}<button type="button"${index === 0 ? ' class="geist-button primary"' : ''} disabled>${index === 5 ? '<svg aria-hidden="true"><use href="#i-scan-search"></use></svg><span>' + action + '</span>' : action}</button></footer>
-      </section>`).join('')}</div></div>`;
+    <div class="cleanupstats">${stats.map(([title, glyph]) => `
+      <button type="button" class="board-plain-stat" disabled>
+        <span class="board-plain-stat-head"><span class="board-stat-tile"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-${glyph}"></use></svg></span>${title}</span>
+        <strong>${bar}</strong><span class="cleanupmeta">${bar}</span></button>`).join('')}</div>
+    <div class="cleanupgrid">
+      <section class="cleanupfieldset board-processing-skeleton" data-geist-fieldset aria-labelledby="cleanup-loading-scan">
+        <div class="geist-fieldset-content"><h3 class="geist-fieldset-title" id="cleanup-loading-scan">扫描与采集</h3>
+          <p>扫描媒体文件夹，导入已有资料，采集缺失信息。</p></div>
+        <footer class="geist-fieldset-footer" data-geist-fieldset-footer><a class="geist-button" href="/scraping">采集来源</a><button type="button" class="geist-button primary" disabled>扫描并补全资料</button></footer>
+      </section>
+      <section class="cleanupfieldset cleanupemptyfolders" data-geist-fieldset aria-labelledby="cleanup-loading-empty">
+        <div class="geist-fieldset-content"><h3 class="geist-fieldset-title" id="cleanup-loading-empty">空文件夹</h3>
+          <strong>${bar}</strong><p class="cleanupmeta">${bar}</p></div>
+        <footer class="geist-fieldset-footer" data-geist-fieldset-footer><button type="button" disabled><svg aria-hidden="true"><use href="#i-scan-search"></use></svg><span>扫描空文件夹</span></button></footer>
+      </section></div></div>`;
 }
 
 /** 使用口味页现有读取／导入按钮，展开指南本身不发起读取。 */

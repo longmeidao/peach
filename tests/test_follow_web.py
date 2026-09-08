@@ -1868,8 +1868,8 @@ class FollowWebSourceTests(unittest.TestCase):
         bulk = self.page[self.page.index(".fsrcbulk{"):]
         self.assertIn("border-bottom:1px solid var(--border-10)", bulk[:bulk.index("}")])
 
-    def test_follow_filter_rows_are_multi_select_with_select_all_and_select_none(self):
-        """关注页的作者、来源两行多选，各带「全选／全不选」；标签行是交集，只给「全不选」。
+    def test_follow_filter_rows_are_multi_select_without_bulk_keys(self):
+        """关注页的作者、来源、标签三行都是多选，行首不配「全选／全不选」：这一页是浏览用的。
 
         选中状态只有三个 Set 一份真相，URL 里按逗号拼；服务端同样按逗号拆。
         """
@@ -1879,20 +1879,14 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertNotIn("followProvider=", self.page.replace("followProviders=", ""))
         render = self.page[self.page.index("function renderFollow("):
                            self.page.index("function followAuthorGroups(")]
-        self.assertIn("followBulkButtons('authors',followAuthors.size,authors.size)", render)
-        self.assertIn("followBulkButtons('providers',followProviders.size,providers.size)", render)
-        self.assertIn("followBulkButtons('tags',followTags.size,topTags.length,{all:false})", render)
         self.assertIn('aria-pressed="${followAuthors.has(key)}"', render)
         self.assertIn('aria-pressed="${followProviders.has(key)}"', render)
-        self.assertIn("followAuthors=new Set(all?authors.keys():[])", render)
-        self.assertIn("followProviders=new Set(all?providers.keys():[])", render)
-        helper = self.page[self.page.index("function followBulkButtons("):
-                           self.page.index("function followMediaControl(")]
-        self.assertIn('data-bulk-all${selected>=total?\' disabled\':\'\'}>全选</button>', helper)
-        self.assertIn('data-bulk-none${selected?\'\':\' disabled\'}>全不选</button>', helper)
+        self.assertIn('aria-pressed="${followTags.has(key)}"', render)
+        self.assertNotIn("followBulkButtons", self.page)
+        self.assertNotIn("data-bulk-all", self.page)
+        self.assertNotIn(".followauthors .fbulk{", self.page)
         self.assertIn("params.set('author',[...followAuthors].join(','))", self.page)
         self.assertIn("params.set('provider',[...followProviders].join(','))", self.page)
-        self.assertIn(".followauthors .fbulk{flex-direction:column", self.page)
 
     def test_the_manage_page_is_ordered_by_what_you_do_first(self):
         # 只看管理页那一段：同样的标题在别的页面上也出现过，全页搜索会命中错的那个。

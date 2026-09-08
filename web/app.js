@@ -9,7 +9,7 @@ import { javDisplayName, javTitleHtml } from './js/jav-title.js';
 import { matchRoute, routeLabel } from './js/routes.js';
 import { initMiddleTruncate } from './js/middle-truncate.js';
 import { tagLabel } from './js/tags.js';
-import { mountIsland, unmountIsland, createReviewSelection, wireReviewSelection, updateReviewSticky, identityEvidenceHtml, reviewImageHtml, wireReviewPictures, preferredDirection } from './dist/peach-ui.js';
+import { mountIsland, unmountIsland, createReviewSelection, wireReviewSelection, updateReviewSticky, groupReviewRows, paginationHtml, pageCount, clampPage, identityEvidenceHtml, reviewImageHtml, wireReviewPictures, preferredDirection } from './dist/peach-ui.js';
 import { catalogSuggestions, catalogEmptyHtml, emptyCatalogLayout, syncSidebarSurface, sidebarTagCounts, sidebarHasCatalogContent, cleanupSkeletonHtml, cloudLocations, cloudPreferenceLocations, tasteHistoryGuideHtml, wireTasteHistoryGuide, TASTE_GUIDE_KEY } from './dist/peach-ui.js';
 import { javImageKind, normalizeJavImage, normalizeJavLayout, normalizeJavPreferences, syncJavImages, nativeImageFit, matchesFaceSource, entitySkeletonHtml } from './dist/peach-ui.js';
 import {
@@ -2074,7 +2074,7 @@ function paintSelection(){
   const picked=followPage?followSelected:selected;
   $('#batchbar').hidden=!picked.size;$('#batchCount').textContent=`已选 ${picked.size} 项`;
   $('#batchbar').querySelectorAll('[data-batch]').forEach(button=>button.hidden=followPage||junkPage);
-  $('#batchbar').querySelectorAll('[data-follow-batch],[data-follow-control]').forEach(button=>button.hidden=!followPage);
+  $('#batchbar').querySelectorAll('[data-follow-batch]').forEach(button=>button.hidden=!followPage);
   $('#batchbar').querySelectorAll('[data-trash-only]').forEach(button=>button.hidden=followPage||junkPage||state.state!=='trash');
   $('#batchbar').querySelectorAll('[data-batch="like"],[data-batch="seen"],[data-batch="later"],[data-batch="dispose"]').forEach(button=>button.hidden=followPage||junkPage||state.state==='trash');
   $('#batchbar').querySelectorAll('[data-junk-batch]').forEach(button=>{
@@ -2109,7 +2109,6 @@ function toggleFollowSelection(id,range=false){
 }
 $('#selectMode').onclick=()=>setSelectMode(!selectMode,!selectMode?false:true);
 $('#batchClear').onclick=()=>setSelectMode(false,true);
-$('#followBatchAll').onclick=()=>{visibleFollowIds().forEach(id=>followSelected.add(id));setSelectMode(true);paintSelection()};
 $('#batchbar').querySelectorAll('[data-batch]').forEach(button=>button.onclick=async()=>{
   const labels={like:'喜欢',seen:'标为看过',later:'加入稍后看',dispose:'移入回收站',restore:'还原',delete:'彻底删除'};
   const titles={like:'喜欢所选项目',seen:'标记为已看',later:'加入稍后看',dispose:'移入回收站',restore:'还原所选项目',delete:'永久删除所选项目'};
@@ -4069,6 +4068,8 @@ async function openPlaylists(push=true){
 }
 
 let reviewData=null,reviewRuntime=null,reviewCategory='metadata_fields';
+const REVIEW_PAGE_SIZE=20;
+let reviewPage=1,reviewPageView='';
 /* 主体是实体而不是单条作品的复核分类。值就是实体 kind。 */
 const ENTITY_REVIEW_CATEGORIES={creator_tags:'creator',western_identity:'creator'};
 const REVIEW_LABELS={metadata_fields:'元数据字段',creator_tags:'创作者标签',studio_logos:'厂牌 Logo',performer_avatars:'女优头像',western_identity:'西方身份回配',code_creators:'番号目录存疑',fc2_markings:'FC2 评论标记',fc2_similarity:'FC2 跨号相似',video_endcards:'片尾/出处证据',media_failure:'媒体失败'};
@@ -4077,14 +4078,15 @@ const REVIEW_LABELS={metadata_fields:'元数据字段',creator_tags:'创作者�
    加上复核队列、回收站和高清版。它们此前散在管理菜单和统计页两处，
    统计页因此还挂着两块跟统计无关的面板。 */
 const DATA_MANAGEMENT_ENTRIES=[
-  ['review','人工复核','查看候选'],
-  ['trash','回收站','查看回收站'],
-  ['quality','高清版','查看高清版'],
+  ['review','人工复核','square-check-big'],
+  ['trash','回收站','trash'],
+  ['quality','高清版','sparkles'],
 ];
-/* 这一页按一条内容在库里的经过排：先进来（扫描与采集），再把它说清楚（人工复核、
-   高清版），然后把不该留的挑出去（重复文件、垃圾文件、空文件夹），最后是删掉的东西
-   还在哪儿（回收站）。复核紧跟采集，因为它是采集的下一步，不是清理的收尾。 */
-const DATA_MANAGEMENT_ORDER=['scraping','review','quality','duplicates','junk','empty','trash'];
+/* 这一页照 Board 的 dashboard 模板排：顶上一排是读数卡（stat-cards.tsx 的 plain 变体），五张按一条
+   内容在库里的经过排——先把它说清楚（人工复核、高清版），再把不该留的挑出去（重复文件、垃圾文件），
+   最后是删掉的东西还在哪儿（回收站）。扫描与采集和空文件夹是两件要在这页上做的事，不是读数，
+   各占一整行放在读数下面。 */
+const DATA_MANAGEMENT_STATS=['review','quality','duplicates','junk','trash'];
 
 async function openDataCleanup(push=true){
   releaseHoverPreviews();disposeStage(false);enterManagementSurface();
@@ -4108,14 +4110,14 @@ async function openDataCleanup(push=true){
   const junkBreakdown=[...JUNK_KIND_OPTIONS.filter(([key])=>key&&Number(junkCounts[key])>0)
     .map(([key,label])=>`${esc(label)} ${Number(junkCounts[key]).toLocaleString()}`),
     ...(Number(junk.dismissed_total)>0?[`已忽略 ${Number(junk.dismissed_total).toLocaleString()}`]:[])].join(' · ');
+  /* 读数卡是 Board 的 plain stat card 做成按钮：整张卡就是那一页的入口，读数下一行 Caption 是同一份
+     payload 里的分项。人工复核、高清版、回收站的读数由 paintDataManagementCounts 稍后填进来。 */
+  const statCard=(title,glyph,body,attrs)=>`<button type="button" class="board-plain-stat" ${attrs}>
+      <span class="board-plain-stat-head"><span class="board-stat-tile">${icon(glyph)}</span>${esc(title)}</span>${body}</button>`;
   const entryCard=section=>{
-    const [,title,label]=DATA_MANAGEMENT_ENTRIES.find(([key])=>key===section);
-    return `<section class="cleanupfieldset" data-geist-fieldset aria-labelledby="cleanup-${section}-title">
-      <div class="geist-fieldset-content">${fieldsetTitle(`cleanup-${section}-title`,title)}
-        <strong data-cleanup-count="${section}">—</strong>
-        <p class="cleanupmeta" data-cleanup-meta="${section}"></p></div>
-      <footer class="geist-fieldset-footer" data-geist-fieldset-footer><button type="button" data-cleanup-go="${section}">${esc(label)}</button></footer>
-    </section>`;
+    const [,title,glyph]=DATA_MANAGEMENT_ENTRIES.find(([key])=>key===section);
+    return statCard(title,glyph,`<strong data-cleanup-count="${section}">—</strong>
+      <span class="cleanupmeta" data-cleanup-meta="${section}"></span>`,`data-cleanup-go="${section}"`);
   };
   const cleanupCards={
     /* 卡片和它的提示是两件东西：提示挂在卡片外面，和资源同步那两块一个写法。
@@ -4126,20 +4128,12 @@ async function openDataCleanup(push=true){
           <p>扫描媒体文件夹，导入已有资料，采集缺失信息。</p></div>
         <footer class="geist-fieldset-footer" data-geist-fieldset-footer><button type="button" disabled>扫描并补全资料</button></footer>
       </section></div>`,
-    junk:`<section class="cleanupfieldset" data-geist-fieldset aria-labelledby="cleanupJunkTitle">
-      <div class="geist-fieldset-content">${fieldsetTitle('cleanupJunkTitle','垃圾文件')}
-        <strong>${Number(junk.pending_total||0).toLocaleString()} 个待判断</strong>
-        <p class="cleanupmeta">${junkBreakdown}</p></div>
-      <footer class="geist-fieldset-footer" data-geist-fieldset-footer><button type="button" data-cleanup-open="junk">查看垃圾文件</button></footer>
-    </section>`,
-    duplicates:`<section class="cleanupfieldset" data-geist-fieldset aria-labelledby="cleanupDupTitle">
-      <div class="geist-fieldset-content">${fieldsetTitle('cleanupDupTitle','重复文件')}
-        <strong>${Number(duplicates.total||0)
+    junk:statCard('垃圾文件','file-archive',`<strong>${Number(junk.pending_total||0).toLocaleString()} 个待判断</strong>
+      <span class="cleanupmeta">${junkBreakdown}</span>`,'data-cleanup-open="junk"'),
+    duplicates:statCard('重复文件','file-stack',`<strong>${Number(duplicates.total||0)
           ?`${Number(duplicates.total).toLocaleString()} 组 · ${Number(duplicates.files||0).toLocaleString()} 个文件`
           :'没有重复内容'}</strong>
-        <p class="cleanupmeta">${Number(duplicates.total||0)?`可回收 ${fmtSize(duplicates.reclaimable||0)}`:''}</p></div>
-      <footer class="geist-fieldset-footer" data-geist-fieldset-footer><button type="button" data-cleanup-open="duplicates">查看重复文件</button></footer>
-    </section>`,
+      <span class="cleanupmeta">${Number(duplicates.total||0)?`可回收 ${fmtSize(duplicates.reclaimable||0)}`:''}</span>`,'data-cleanup-open="duplicates"'),
     empty:`<section class="cleanupfieldset cleanupemptyfolders" data-geist-fieldset aria-labelledby="cleanupEmptyTitle">
       <div class="geist-fieldset-content">${fieldsetTitle('cleanupEmptyTitle','空文件夹')}
         <strong>${online.length.toLocaleString()} 个来源可扫描</strong>
@@ -4148,9 +4142,9 @@ async function openDataCleanup(push=true){
     </section>`,
     review:entryCard('review'),quality:entryCard('quality'),trash:entryCard('trash'),
   };
-  $('#stats').innerHTML=`<div class="cleanuppage"><div class="cleanupgrid">
-    ${DATA_MANAGEMENT_ORDER.map(section=>cleanupCards[section]).join('')}
-  </div>
+  $('#stats').innerHTML=`<div class="cleanuppage"><div class="cleanupstats">
+    ${DATA_MANAGEMENT_STATS.map(section=>cleanupCards[section]).join('')}
+  </div><div class="cleanupgrid">${cleanupCards.scraping}${cleanupCards.empty}</div>
   ${linkManagerMarkup()}
   ${(sources.sources||[]).some(source=>['local','115','pikpak'].includes(source.location)&&source.roots?.length)?resourceSyncMarkup():''}</div>`;
   $('#stats').querySelector('[data-cleanup-open="junk"]').onclick=()=>openManage('ads');
@@ -4334,7 +4328,16 @@ async function openReview(push=true){
   const selection=createReviewSelection();
   const render=()=>{
     const category=reviewCategory;
-    const rows=reviewData.sections[reviewCategory]||[];
+    const queue=reviewData.sections[reviewCategory]||[];
+    /* 分页只做在前端：接口一次给出整条队列（实测 4.6 MB、1300 行，本机读 0.1 秒），卡的是把 331 张候选
+       表单和 799 张卡一次画进 DOM。一页 20 张；分组筛选先筛后分页；换分类、换分组或换筛选都回第 1 页。 */
+    if(selection.category!==category){selection.filter='';selection.groupBy='candidates'}
+    const filtered=selection.filter?groupReviewRows(queue,selection.groupBy).find(group=>group.key===selection.filter)?.rows||queue:queue;
+    const pages=pageCount(filtered.length,REVIEW_PAGE_SIZE);
+    const view=`${category}|${selection.groupBy}|${selection.filter}`;
+    if(view!==reviewPageView){reviewPageView=view;reviewPage=1}
+    reviewPage=clampPage(reviewPage,pages);
+    const rows=filtered.slice((reviewPage-1)*REVIEW_PAGE_SIZE,reviewPage*REVIEW_PAGE_SIZE);
     const title=REVIEW_LABELS[reviewCategory];
     const mirror=reviewData.mirror||null,locked=!!reviewRuntime.ledger_read_only;
     const writer=reviewRuntime.ledger_writer_origin
@@ -4435,7 +4438,11 @@ async function openReview(push=true){
             真正要人做的判断。Geist 的弹层与 Fieldset 操作条都是这个方向——取消在左，
             主动作靠 margin-left:auto 推到最右（vercel-geist-fieldset-scroller-empty-state.md）。 */
          const actions=`<button class="geist-button error" data-review-status="rejected"${locked?' disabled':''}>拒绝</button><button class="geist-button warning" data-review-status="skipped"${locked?' disabled':''}>跳过</button><button class="geist-button primary" data-review-status="approved"${canApprove&&!locked?'':' disabled'}>${approveLabel}</button><span class="reviewstate" aria-live="polite"></span>`;
-         return `<fieldset class="reviewitem" data-geist-fieldset data-review-key="${esc(key)}" data-decision="${esc(decision)}"><legend class="sr-only">${esc(titleText)}</legend><header class="reviewitemheader">${heading}</header><div class="geist-fieldset-content">${scrollerHtml(body,{className:'reviewcontent',label:`复核：${titleText}`})}</div>${currentInfo}<footer class="reviewactions geist-fieldset-footer" data-geist-fieldset-footer>${actions}</footer></fieldset>`}).join(''):emptyState('square-check-big','暂无候选','该分类当前没有待人工复核的项目。')}</div></section></div>`;
+         return `<fieldset class="reviewitem" data-geist-fieldset data-review-key="${esc(key)}" data-decision="${esc(decision)}"><legend class="sr-only">${esc(titleText)}</legend><header class="reviewitemheader">${heading}</header><div class="geist-fieldset-content">${scrollerHtml(body,{className:'reviewcontent',label:`复核：${titleText}`})}</div>${currentInfo}<footer class="reviewactions geist-fieldset-footer" data-geist-fieldset-footer>${actions}</footer></fieldset>`}).join(''):emptyState('square-check-big','暂无候选','该分类当前没有待人工复核的项目。')}</div></section>${paginationHtml(reviewPage,pages,'复核分页')}</div>`;
+     $('#stats').querySelectorAll('.board-pagination [data-page]').forEach(button=>button.onclick=()=>{
+       if(selection.busy)return;
+       reviewPage=+button.dataset.page;selection.anchor=null;render();window.scrollTo({top:0,behavior:'smooth'});
+     });
      wireReviewAssets($('#stats'));
     wireScrollers($('#stats'));wireReviewPictures($('#stats'));
     $('#stats').querySelectorAll('[data-review-reveal]').forEach(button=>button.onclick=()=>revealSource(+button.dataset.reviewReveal,button.closest('[data-review-key]').querySelector('.reviewstate'),{button}));
@@ -4464,12 +4471,12 @@ async function openReview(push=true){
     };
     const removeReviewed=key=>{
       if(!current())return;
-      const index=rows.findIndex(row=>String(row.item_key)===key);
-      if(index>=0){rows.splice(index,1);reviewData.counts[category]=Math.max(0,(reviewData.counts[category]||1)-1)}
+      const index=queue.findIndex(row=>String(row.item_key)===key);
+      if(index>=0){queue.splice(index,1);reviewData.counts[category]=Math.max(0,(reviewData.counts[category]||1)-1)}
       selection.selected.delete(key);selection.choices.delete(key);selection.assets.delete(key);selection.errors.delete(key);
     };
     const current=()=>surfaceCurrent(surface)&&category===reviewCategory;
-    wireReviewSelection($('#stats').querySelector('.review'),{rows,category,metadata:category==='metadata_fields',locked,state:selection,
+    wireReviewSelection($('#stats').querySelector('.review'),{rows,catalog:queue,category,metadata:category==='metadata_fields',locked,state:selection,
       payload:decisionPayload,submit:payload=>api('/api/review/decision',{method:'POST',body:JSON.stringify(payload)}),
       applied:removeReviewed,active:current,refresh:render,notify:actionReceipt});
     syncHeaderActions();
@@ -5179,15 +5186,8 @@ function readFollowView(){
   followFilter=(status===null||status==='all')?'':status;
   followMediaView=params.get('media')==='images'?'images':'videos';
 }
-/* 作者、来源两行是多选：按下的算「只看这些」，一个都不按就是全部。「全选」把这一行
-   全部按下，之后再抬起几个就是排除法；「全不选」抬起全部，回到不筛。标签行是
-   「同时具备」的交集（服务端如此判），全部按下只会一条不中，所以那一行只给「全不选」。
-   两个按钮在无事可做时禁用：全按下了就没有「全选」，一个没按就没有「全不选」。 */
-function followBulkButtons(dim,selected,total,{all=true}={}){
-  return `<span class="fbulk" role="group" aria-label="批量选择">${all
-    ?`<button type="button" class="geist-button" data-follow-bulk="${dim}" data-bulk-all${selected>=total?' disabled':''}>全选</button>`:''
-    }<button type="button" class="geist-button" data-follow-bulk="${dim}" data-bulk-none${selected?'':' disabled'}>全不选</button></span>`;
-}
+/* 作者、来源两行是多选：按下的算「只看这些」，一个都不按就是全部；标签行是「同时具备」的
+   交集（服务端如此判）。这一页是浏览用的，不配批量选择键，想回到不筛就把按下的几个抬起来。 */
 function followMediaControl(counts){
   if(!counts.images&&followMediaView!=='images')return '';
   return mediaViewButtonsHtml({active:followMediaView,videoCount:counts.videos,imageCount:counts.images});
@@ -5247,18 +5247,15 @@ function renderFollow(){
   $('#stats').innerHTML=`<div class="follow">
     <div class="followhead"><h2 class="disp pagetitle">关注</h2>
       <button class="fbtn primary fcheck" data-follow-manage>${icon('settings')}管理关注</button></div>
-    ${authors.size?`<div class="tier followauthors" aria-label="按作者筛选">${
-      followBulkButtons('authors',followAuthors.size,authors.size)}${randomizedAuthors.map(([key,author])=>
+    ${authors.size?`<div class="tier followauthors" aria-label="按作者筛选">${randomizedAuthors.map(([key,author])=>
       `<button class="av" data-follow-author="${esc(key)}" aria-pressed="${followAuthors.has(key)}">
         <span class="ring">${followAuthorAvatar(author.sources)}</span><span class="nm">${esc(author.name)}</span></button>`
       ).join('')}</div>`:''}
     <div class="tagbar followfilters" aria-label="关注筛选">${followMediaControl(mediaCounts)}${FOLLOW_FILTERS.map(([key,label])=>
       `<button class="pill" data-follow-filter="${key}" aria-pressed="${key===followFilter}">${label}${
         ` <span class="n mono">${key?counts[key]||0:allCount}</span>`}</button>`).join('')}
-      ${providerPills?`<span class="sep" aria-hidden="true"></span>${
-        followBulkButtons('providers',followProviders.size,providers.size)}${providerPills}`:''}
-      ${topTags.length?`<span class="sep" aria-hidden="true"></span>${
-        followBulkButtons('tags',followTags.size,topTags.length,{all:false})}`+
+      ${providerPills?`<span class="sep" aria-hidden="true"></span>${providerPills}`:''}
+      ${topTags.length?`<span class="sep" aria-hidden="true"></span>`+
         topTags.map(([key,label,n])=>
           `<button class="pill r34-${esc(groupTagType(groups,key))}" data-follow-tag="${esc(key)}" aria-pressed="${followTags.has(key)}">${
             esc(label)}${n?` <span class="n mono">${n}</span>`:''}</button>`).join(''):''}</div>
@@ -5300,12 +5297,6 @@ function renderFollow(){
     toggle(followProviders,button.dataset.followProvider);applyFollowView()});
   $('#stats').querySelectorAll('[data-follow-tag]').forEach(button=>button.onclick=()=>{
     toggle(followTags,button.dataset.followTag);applyFollowView()});
-  $('#stats').querySelectorAll('[data-follow-bulk]').forEach(button=>button.onclick=()=>{
-    const all=button.hasAttribute('data-bulk-all');
-    if(button.dataset.followBulk==='authors')followAuthors=new Set(all?authors.keys():[]);
-    else if(button.dataset.followBulk==='providers')followProviders=new Set(all?providers.keys():[]);
-    else followTags=new Set();
-    applyFollowView()});
   $('#stats').querySelectorAll('[data-follow-manage]').forEach(button=>
     button.onclick=()=>openFollowManage());
 
