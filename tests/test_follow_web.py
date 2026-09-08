@@ -2152,8 +2152,14 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("wireIconSwitch(root,'data-follow-layout',setFollowListLayout)")
         self.assertPageContains('<div class="frows fsources" data-layout="${followListLayout()}">${sourceList}</div>')
         self.assertPageContains(
-            "const sourceList=followListLayout()==='table'?followSourceTable(groups,!legacy)")
-        self.assertPageContains("  renderFollowManage(followCredentials||{});\n}\n\n/* 版式判据来自")
+            "return followListLayout()==='table'?followSourceTable(groups,!legacy)")
+        # 切换只换列表本身：页头那枚开关留在原地，滑块才有得滑。
+        self.assertPageContains("const list=document.querySelector('#stats .fsources');\n"
+                                "  if(!list){renderFollowManage(followCredentials||{});return}\n"
+                                "  list.dataset.layout=value;\n"
+                                "  list.innerHTML=followSourceListHtml(followAuthorGroups(followData.sources||[]));\n"
+                                "  wireFollowManage(followCredentials?.providers||[]);")
+        self.assertPageContains("const sourceList=followSourceListHtml(groups);")
         self.assertPageContains("const collapsed=!legacy&&collapsedFollowAuthors.has(key);")
         self.assertPageContains("group.map(source=>followSourceRow(source,!legacy))")
         self.assertPageContains("data-follow-selection-remove")
@@ -2204,10 +2210,10 @@ class FollowWebSourceTests(unittest.TestCase):
         的注释里：页码、表尾密度档、表头全选。窄屏照它的做法横向滚动，不折叠列。
         """
         self.assertPageContains(
-            '<div class="ftablewrap"><table class="ftable"><thead><tr>')
+            '<div class="ftableframe"><div class="ftablewrap"><table class="ftable"><thead><tr>')
         self.assertPageContains('<th scope="col"><span class="sr-only">${selectable?\'选择\':\'启用\'}</span></th>')
-        self.assertPageContains('<th scope="col">来源</th><th scope="col">站点</th><th scope="col">状态</th>')
-        self.assertPageContains('<th scope="col"><span class="sr-only">操作</span></th></tr></thead><tbody>${rows}</tbody></table></div>')
+        self.assertPageContains("${followTableHeader('source','来源')}${followTableHeader('provider','站点')}${followTableHeader('status','状态')}")
+        self.assertPageContains('<th scope="col"><span class="sr-only">操作</span></th></tr></thead><tbody>${rows}</tbody></table></div></div>')
         self.assertPageContains(".ftablewrap{overflow-x:auto;overscroll-behavior-x:contain}")
         self.assertPageContains(
             ".ftable{width:100%;min-width:760px;border-collapse:collapse;text-align:left;font-size:var(--fs-md);line-height:20px}")
@@ -2218,20 +2224,40 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains(".ftable tbody tr:last-child{border-bottom:0}")
         # Board 层换成 boardui 同名 token。外框是 primary 底：Board 层的 --ground 就是 secondary，
         # 和表头同色，表头那条带子会消失；boardui 的表格本来就摆在 primary 面上。
+        # 外框管边线与圆角，里层管横向滚动与两端渐隐：右边线不跟内容一起淡掉。
         self.assertBoardContains(
-            ".followmanage .ftablewrap{border-radius:var(--surface-radius);background:var(--color-background-primary-default)}")
+            ".followmanage .ftableframe{border:1px solid var(--color-separator-border);border-radius:var(--surface-radius);"
+            "background:var(--color-background-primary-default);overflow:hidden}"
+            ".followmanage .ftablewrap{border-radius:0;background:transparent}.followmanage .ftable th{border-top:0}")
+        self.assertBoardContains(
+            ".followmanage .fmain>.fsec:has(>.fsecfoot) .ftableframe{border-bottom:0;border-bottom-left-radius:0;border-bottom-right-radius:0}")
+        self.assertBoardContains(
+            ".followmanage .ftable tr.fsource.selected,.followmanage .ftable tr.fsource.selected:hover"
+            "{background:color-mix(in srgb,var(--tungsten) 8%,var(--color-background-primary-default));border-color:var(--color-separator-border);box-shadow:none}")
+        # 表格滚动层与复核页标签条同一份接线：两端渐隐、鼠标停在上面时竖向滚轮转横向。
+        components = (ROOT / "web" / "js" / "ui-components.js").read_text(encoding="utf-8")
+        self.assertIn("const BOARD_EDGE_SCROLLERS='.reviewtabs,.ftablewrap';", components)
+        self.assertIn("if(el.matches(BOARD_EDGE_SCROLLERS)&&localStorage.getItem('peach.legacy-ui')!=='true'){", components)
+        self.assertIn("'.reviewtabs','.junkfilters','.ftablewrap',", components)
         self.assertBoardContains(
             ".followmanage .ftable th{color:var(--color-text-tertiary);background:var(--color-background-secondary-default);border-color:var(--color-separator-border)}")
 
     def test_the_table_header_sorts_by_the_toolbar_sort_keys(self):
-        """能点的两列对应工具栏里已有的排序，只是多一个入口，不另造一套顺序。
+        """表头五列与工具栏下拉是同一份维度：作者、上次检查按作者分组比，来源、站点、状态
+        按单条来源比，表格此时按那一列拉平排。
 
         再点当前列翻方向，点另一列换列并回到该列默认方向；`aria-sort` 只标当前列，
-        方向字形沿用工具栏那对箭头。
+        方向字形沿用工具栏那对箭头。状态正序是「先看要处理的」：失败、暂停、未检查、正常。
         """
-        self.assertPageContains("const FOLLOW_TABLE_SORT={author:'name',checked:'checked'};")
+        self.assertPageContains("const FOLLOW_TABLE_SORT={author:'name',source:'source',provider:'provider',status:'status',checked:'checked'};")
         self.assertPageContains("${followTableHeader('author','作者')}")
         self.assertPageContains("${followTableHeader('checked','上次检查')}")
+        self.assertPageContains("const bySource=FOLLOW_SOURCE_SORTS[followManageSort];")
+        self.assertPageContains("groups.forEach(group=>group.sort((a,b)=>flip*bySource(a,b)));")
+        self.assertPageContains("return groups.sort((a,b)=>flip*bySource(a[0],b[0])||byName(a,b));")
+        self.assertPageContains("const pairs=groups.flatMap(group=>group.map(source=>[source,group]));")
+        self.assertPageContains("pairs.sort(([a],[b])=>flip*bySource(a,b));")
+        self.assertPageContains("if(state==='error'||state==='unauthorized')return 0;\n  if(!source.enabled)return 1;\n  return state==='ok'?3:2;")
         self.assertPageContains(
             '<th scope="col" aria-sort="${active?(ascending?\'ascending\':\'descending\'):\'none\'}">'
             '<button type="button" class="ftsort" data-follow-table-sort="${sort}" aria-label="按${label}排序">'
@@ -2885,16 +2911,16 @@ class FollowWebSourceTests(unittest.TestCase):
     def test_follow_management_list_has_routed_sorting(self):
         self.assertPageContains("{label:'关注列表排序',attr:'data-follow-sort'}")
         self.assertPageContains(
-            "const FOLLOW_SORT_OPTIONS=[['checked','检查时间'],['added','添加时间'],"
-            "['name','作者名称'],['sources','来源数量']]")
-        self.assertPageContains("followManageSort=['checked','added','name','sources'].includes(requested)?requested:'checked'")
+            "const FOLLOW_SORT_OPTIONS=[['checked','检查时间'],['added','添加时间'],['name','作者名称'],['sources','来源数量'],\n"
+            "  ['source','来源名称'],['provider','站点'],['status','状态']];")
+        self.assertPageContains("followManageSort=FOLLOW_SORT_OPTIONS.some(([key])=>key===requested)?requested:'checked'")
         self.assertPageContains("const added=group=>Math.max(...group.map(source=>Date.parse(source.created_at||'')||0))")
         self.assertPageContains("if(followManageSort==='added')return flip*(added(b)-added(a))||byName(a,b);")
         # 每条比较器写的都是该列的默认方向，`flip` 只在方向偏离默认时取反：写成
         # 「asc 就取反」的话，作者名称默认本来就是正序，一进页面就被翻成倒序。
         self.assertPageContains(
             "const flip=followManageDir===(FOLLOW_SORT_DEFAULT_DIR[followManageSort]||'desc')?1:-1;")
-        self.assertPageContains("const FOLLOW_SORT_DEFAULT_DIR={checked:'desc',added:'desc',name:'asc',sources:'desc'};")
+        self.assertPageContains("const FOLLOW_SORT_DEFAULT_DIR={checked:'desc',added:'desc',name:'asc',sources:'desc',source:'asc',provider:'asc',status:'asc'};")
         # 方向键与排序下拉并排，名称播报点下去会得到什么。
         self.assertPageContains("<button class=\"fbtn fmanagedir\" type=\"button\" data-follow-dir aria-label=\"${")
         self.assertPageContains("icon(followManageDir==='asc'?'arrow-up':'arrow-down')")

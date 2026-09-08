@@ -5371,11 +5371,49 @@ class WebUiSourceTests(unittest.TestCase):
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
         self.assertIn(".board-icon-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}", board)
         self.assertIn(".board-icon-grid label{position:relative;display:grid;place-items:center;height:40px;border-radius:8px;cursor:pointer}", board)
-        self.assertIn(".board-icon-grid svg{width:22px;height:22px}", board)
+        # 格子里和触发钮上是同一枚字形：同 20px、同 2 描边、同一个 20px 的盒子居中。
+        self.assertIn(".board-icon-trigger svg,.board-icon-grid svg{display:block;width:20px;height:20px;stroke-width:2}", board)
+        self.assertIn(".board-icon-trigger>span:first-child,.board-icon-grid label>span{display:inline-flex;align-items:center;"
+                      "justify-content:center;width:20px;height:20px;flex:none}", board)
         self.assertNotIn(".board-icon-grid small", board)
         picker = (Path(__file__).resolve().parents[1] / "frontend/src/library-icon-picker.tsx").read_text(encoding="utf-8")
         self.assertNotIn("<small>{name}</small>", picker)
-        self.assertIn("<label title={name} class={draft===key?'selected':''}>", picker)
+        self.assertIn("<label title={choiceLabel(key,name)} class={draft===key?'selected':''}>", picker)
+        # 42 枚候选每一枚都在服务端白名单和雪碧图里；网盘库不另选时用来源站标，本地路径就是默认磁盘。
+        choices = re.findall(r"\['([a-z0-9-]*)', ?'([^']+)'\]", picker.split("LIBRARY_ICON_CHOICES = [", 1)[1].split("] as const", 1)[0])
+        self.assertEqual(len(choices), 42)
+        from peach.media_libraries import LIBRARY_ICONS
+        for key, _name in choices[1:]:
+            self.assertIn(key, LIBRARY_ICONS)
+            self.assertPageContains(f'<symbol id="i-{key}" viewBox="0 0 24 24">')
+        self.assertIn("return mark?[mark,'自动识别']:['hard-drive','默认'];", picker)
+        self.assertIn("kind={kinds[index] || 'local'}",
+                      (Path(__file__).resolve().parents[1] / "frontend/src/islands/configuration.tsx").read_text(encoding="utf-8"))
+
+    def test_the_follow_list_is_one_card_and_its_checkboxes_draw_their_tick(self):
+        """关注列表整段进框，和「添加关注」同一只卡；来源行是 boardui 的 CheckboxCard，勾选框照
+        checkbox-glyph.tsx：未选 1px 边加 shadow-xs、悬停只深边线不换底，选中蓝渐变加内嵌高光，
+        勾 200ms 从零画出。分区标题行里的视图开关与同排按钮同高，图标与 fbtn 的字形同粗。
+        """
+        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
+        self.assertNotIn(".followmanage .fmain>.fsec:has(.fsources){background:none}", board)
+        self.assertIn(".followmanage .fmain>.fsec:has(.fsources)>.fsechead{padding:20px 24px 8px}", board)
+        self.assertIn(".followmanage .fsec:has(.board-follow-selection){padding:0;border-radius:18px;background:var(--ground);overflow:visible}"
+                      ".followmanage .fsec>.board-follow-selection{padding:4px 24px 12px}", board)
+        self.assertIn(".followmanage .fmain>.fsec>.fsources{padding:0 24px 24px;grid-template-columns:minmax(0,1fr);gap:16px}", board)
+        self.assertIn(".followmanage .board-follow-list .fauthor{background:var(--color-background-primary-default);border-radius:var(--surface-radius);padding:16px}", board)
+        self.assertIn(".followmanage .board-follow-list .fsource.frow{min-height:0;margin:0;padding:12px 20px 12px 16px;border:1px solid var(--color-border-button-default);"
+                      "border-radius:10px;background:var(--color-background-primary-default);transition:background-color .15s ease,border-color .15s ease}", board)
+        self.assertIn(".followmanage .board-follow-list .fsource.frow:hover{background:var(--color-background-primary-hover)}", board)
+        self.assertIn(".followmanage .fsechead .iconswitch[data-board-segments]>label{width:34px;height:30px;border-radius:7px}", board)
+        self.assertIn(".followmanage .fsechead .iconswitch svg{width:16px;height:16px;stroke-width:1.8}", board)
+        self.assertIn("--color-border-checkbox-default:#d4d4d4;--color-border-checkbox-hover:#a3a3a3", board)
+        self.assertIn("--color-border-checkbox-default:#404040;--color-border-checkbox-hover:#737373", board)
+        self.assertIn(".pcheck:hover>span,label:hover>.pcheck>span{border-color:var(--color-border-checkbox-hover);background:var(--color-background-primary-default)}", board)
+        self.assertIn(".pcheck input:is(:checked,:indeterminate)+span{border-color:transparent;background:var(--board-blue);"
+                      "box-shadow:inset 0 2px 0 0 #ffffff40,inset 0 0 0 1px #3b82f6}", board)
+        self.assertIn("@keyframes board-check-draw{from{stroke-dashoffset:23px}to{stroke-dashoffset:0}}", board)
+        self.assertIn(".pcheck input:checked+span svg{animation:board-check-draw .2s cubic-bezier(.65,0,.35,1) forwards}", board)
 
     def test_the_board_layer_shares_one_tabs_segments_and_chart_motion(self):
         """口味页、复核页与首页工具栏的控件都用 Board 那一份：下划线 Tabs 的蓝线会滑，

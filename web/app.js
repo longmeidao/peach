@@ -62,8 +62,10 @@ let followData=null,followRuntime=null,followCredentials=null,followFilter='',fo
 const FOLLOW_SORT_LABELS={checked:'检查时间',added:'添加时间',name:'作者名称',sources:'来源数量'};
 const FOLLOW_SORT_DIR_WORDS={checked:['从近到远','从远到近'],added:['从近到远','从远到近'],
   name:['倒序','正序'],sources:['从多到少','从少到多']};
-const FOLLOW_SORT_DEFAULT_DIR={checked:'desc',added:'desc',name:'asc',sources:'desc'};
-const FOLLOW_SORT_OPTIONS=[['checked','检查时间'],['added','添加时间'],['name','作者名称'],['sources','来源数量']];
+const FOLLOW_SORT_DEFAULT_DIR={checked:'desc',added:'desc',name:'asc',sources:'desc',source:'asc',provider:'asc',status:'asc'};
+/* 工具栏下拉与表格表头是同一份维度：前四个按作者分组比，后三个按单条来源比。 */
+const FOLLOW_SORT_OPTIONS=[['checked','检查时间'],['added','添加时间'],['name','作者名称'],['sources','来源数量'],
+  ['source','来源名称'],['provider','站点'],['status','状态']];
 /* 同 `sortButtonHtml`：这枚键的无障碍名称说的是点下去会得到什么，所以取反方向的词。 */
 const followSortLabel=()=>`按${FOLLOW_SORT_LABELS[followManageSort]||'关注列表'}${
   (FOLLOW_SORT_DIR_WORDS[followManageSort]||[])[followManageDir==='asc'?0:1]||''}排序`;
@@ -5424,6 +5426,21 @@ async function openFollow(push=true,renderForDetail=false){
 }
 
 /* ── 管的那一页 ── */
+/* 状态的排序位：失败最前，其次暂停、未检查，正常最后——正序就是「先看要处理的」。 */
+function followStatusRank(source){
+  const state=source.last_status;
+  if(state==='error'||state==='unauthorized')return 0;
+  if(!source.enabled)return 1;
+  return state==='ok'?3:2;
+}
+const followSourceLabel=source=>String(source.label||'');
+const bySourceLabel=(a,b)=>followSourceLabel(a).localeCompare(followSourceLabel(b),'zh-CN',{numeric:true});
+const FOLLOW_SOURCE_SORTS={
+  source:bySourceLabel,
+  provider:(a,b)=>String(a.provider_label||'').localeCompare(String(b.provider_label||''),'zh-CN')||bySourceLabel(a,b),
+  status:(a,b)=>followStatusRank(a)-followStatusRank(b)||bySourceLabel(a,b),
+};
+
 /* 同一个作者在不同站点上是多条来源、一个人。用户截图里 `LazyProcrastinator · fanbox`
    出现两次（Kemono / Pawchive）、`lazyprocrastinator` 出现两次（Rule34Video /
    Rule34.xxx），四行读起来像四个人。归组用后端给的 `author_key`——那是实体 id
@@ -5448,6 +5465,12 @@ function followAuthorGroups(sources){
      每换一次方向就整段倒序一遍，看着像列表在乱跳。 */
   const flip=followManageDir===(FOLLOW_SORT_DEFAULT_DIR[followManageSort]||'desc')?1:-1;
   const byName=(a,b)=>name(a).localeCompare(name(b),'zh-CN',{numeric:true});
+  /* 按单条来源比的维度：先排每位作者名下的来源，作者之间再按各自排在最前的那条比。 */
+  const bySource=FOLLOW_SOURCE_SORTS[followManageSort];
+  if(bySource){
+    groups.forEach(group=>group.sort((a,b)=>flip*bySource(a,b)));
+    return groups.sort((a,b)=>flip*bySource(a[0],b[0])||byName(a,b));
+  }
   return groups.sort((a,b)=>{
     if(followManageSort==='name')return flip*byName(a,b);
     if(followManageSort==='sources')return flip*(b.length-a.length)||byName(a,b);
@@ -5581,17 +5604,24 @@ function followSourceRow(source,selectable=false){
 /* 表格视图照 boardui.com/components/data-table（取证见 docs/BOARD_UI.md）：一行一条来源，
    作者列每行都写，表头两列能点，点的是工具栏里已有的那两种排序。它有而这里不要的三样：
    页码——列表本来就是全量；表尾的密度档——视图开关自己就是；表头里的全选——全选连着
-   批量动作留在上面那条选择栏，两个全选框会互相打架。排序方向沿用工具栏那对箭头字形。 */
-const FOLLOW_TABLE_SORT={author:'name',checked:'checked'};
+   批量动作留在上面那条选择栏，两个全选框会互相打架。排序方向沿用工具栏那对箭头字形。
+   五列都能点：作者、上次检查按作者分组比，来源、站点、状态按单条来源比，此时表格按
+   那一列拉平排，不再按作者聚在一起。 */
+const FOLLOW_TABLE_SORT={author:'name',source:'source',provider:'provider',status:'status',checked:'checked'};
 function followTableHeader(key,label){
   const sort=FOLLOW_TABLE_SORT[key],active=followManageSort===sort;
   const ascending=active&&followManageDir==='asc';
   return `<th scope="col" aria-sort="${active?(ascending?'ascending':'descending'):'none'}"><button type="button" class="ftsort" data-follow-table-sort="${sort}" aria-label="按${label}排序">${label}${icon(ascending?'arrow-up':'arrow-down')}</button></th>`;
 }
 function followSourceTable(groups,selectable){
-  const rows=groups.map(group=>{
-    const name=followAuthorName(group);
-    return group.map(source=>{
+  const pairs=groups.flatMap(group=>group.map(source=>[source,group]));
+  const bySource=FOLLOW_SOURCE_SORTS[followManageSort];
+  if(bySource){
+    const flip=followManageDir===(FOLLOW_SORT_DEFAULT_DIR[followManageSort]||'desc')?1:-1;
+    pairs.sort(([a],[b])=>flip*bySource(a,b));
+  }
+  const rows=pairs.map(([source,group])=>{
+      const name=followAuthorName(group);
       const cell=followSourceCells(source,selectable);
       return `<tr class="${cell.className}">
         <td class="ftcheck">${cell.check}</td>
@@ -5601,14 +5631,14 @@ function followSourceTable(groups,selectable){
         <td class="ftstatus">${cell.status}</td>
         <td class="ftchecked">${cell.checked}</td>
         <td class="ftactions">${cell.actions}</td></tr>`;
-    }).join('');
   }).join('');
-  return `<div class="ftablewrap"><table class="ftable"><thead><tr>
+  // 外框只管边线与圆角，里层只管横向滚动：渐隐遮罩落在里层，右边线才不会跟着内容一起淡掉。
+  return `<div class="ftableframe"><div class="ftablewrap"><table class="ftable"><thead><tr>
     <th scope="col"><span class="sr-only">${selectable?'选择':'启用'}</span></th>
     ${followTableHeader('author','作者')}
-    <th scope="col">来源</th><th scope="col">站点</th><th scope="col">状态</th>
+    ${followTableHeader('source','来源')}${followTableHeader('provider','站点')}${followTableHeader('status','状态')}
     ${followTableHeader('checked','上次检查')}
-    <th scope="col"><span class="sr-only">操作</span></th></tr></thead><tbody>${rows}</tbody></table></div>`;
+    <th scope="col"><span class="sr-only">操作</span></th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
 }
 
 function followAliasManager(groups,suggestions){
@@ -5703,10 +5733,20 @@ function followLayoutButtons(){
 function setFollowListLayout(value){
   appSettings.followLayout=value;
   saveSettings();
-  // 两种视图的 DOM 不同，切换走排序那条重画路径：拿手里这份 followData 重画，不重取接口、
-  // 不换骨架。勾选记在 followSourceSelection 里，收起的作者记在 collapsedFollowAuthors 里，
-  // 重画后都还在。
-  renderFollowManage(followCredentials||{});
+  // 两种视图的 DOM 不同，但换的只有列表本身：只重画 `.fsources`，页头那枚开关留在原地，
+  // 滑块才有得滑。拿手里这份 followData 重画，不重取接口、不换骨架；勾选记在
+  // followSourceSelection 里，收起的作者记在 collapsedFollowAuthors 里，重画后都还在。
+  const list=document.querySelector('#stats .fsources');
+  if(!list){renderFollowManage(followCredentials||{});return}
+  list.dataset.layout=value;
+  list.innerHTML=followSourceListHtml(followAuthorGroups(followData.sources||[]));
+  wireFollowManage(followCredentials?.providers||[]);
+}
+function followSourceListHtml(groups){
+  const legacy=localStorage.getItem('peach.legacy-ui')==='true';
+  return followListLayout()==='table'?followSourceTable(groups,!legacy)
+    :legacy?groups.map(followAuthorBlock).join('')
+    :`<div class="board-follow-list">${groups.map(followAuthorBlock).join('')}</div>`;
 }
 
 /* 版式判据来自 docs/reference-sources.json 的 vercel-report-design：
@@ -5717,9 +5757,7 @@ function renderFollowManage(credentials){
   const sources=followData.sources||[],counts=followData.counts||{};
   const legacy=localStorage.getItem('peach.legacy-ui')==='true';
   const groups=followAuthorGroups(sources);
-  const sourceList=followListLayout()==='table'?followSourceTable(groups,!legacy)
-    :legacy?groups.map(followAuthorBlock).join('')
-    :`<div class="board-follow-list">${groups.map(followAuthorBlock).join('')}</div>`;
+  const sourceList=followSourceListHtml(groups);
   const broken=sources.filter(s=>s.last_status==='error'||s.last_status==='unauthorized');
   const creds=(credentials.providers||[]);
   const needCred=creds.filter(c=>c.requirement==='required'&&!(c.present&&!c.missing.length));
@@ -5806,7 +5844,7 @@ async function openFollowManage(push=true){
   if(push){followManageSort='checked';followManageDir='desc';route('/follow-manage')}
   else if(location.pathname==='/follow-manage'){
     const params=new URLSearchParams(location.search),requested=params.get('sort');
-    followManageSort=['checked','added','name','sources'].includes(requested)?requested:'checked';
+    followManageSort=FOLLOW_SORT_OPTIONS.some(([key])=>key===requested)?requested:'checked';
     const requestedDir=params.get('dir');
     followManageDir=requestedDir==='asc'||requestedDir==='desc'?requestedDir
       :(FOLLOW_SORT_DEFAULT_DIR[followManageSort]||'desc');

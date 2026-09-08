@@ -3,7 +3,10 @@ from pathlib import PureWindowsPath
 
 LIBRARY_ICONS = frozenset({"hard-drive", "database", "heart", "star", "tags", "115", "pikpak",
                          "heart-hand", "flame", "cherry", "gem", "crown", "shirt", "footprints",
-                         "flower", "venetian-mask", "hand", "bed-double", "moon", "sparkles", "camera", "video"})
+                         "flower", "venetian-mask", "hand", "bed-double", "moon", "sparkles", "camera", "video",
+                         "lollipop", "candy", "banana", "droplets", "venus", "mars", "venus-and-mars",
+                         "ribbon", "graduation-cap", "stethoscope", "glasses", "rabbit", "paw-print", "dumbbell",
+                         "bath", "key-round", "wine", "cigarette", "film", "image", "gamepad-2"})
 
 
 def libraries(config):

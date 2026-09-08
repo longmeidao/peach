@@ -1,9 +1,25 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { h, render } from 'preact';
 import { act } from 'preact/test-utils';
-import { LibraryIconPicker, LIBRARY_ICON_CHOICES } from '../src/library-icon-picker';
+import { LibraryIconPicker, LIBRARY_ICON_CHOICES, libraryAutoChoice } from '../src/library-icon-picker';
 let root:HTMLDivElement;
 afterEach(()=>{render(null,root);document.body.innerHTML=''});
+it('一行七枚排满六行，不另选时网盘库显示站标、本地路径就是默认磁盘',async()=>{
+  expect(LIBRARY_ICON_CHOICES).toHaveLength(42);
+  expect(new Set(LIBRARY_ICON_CHOICES.map(([key])=>key)).size).toBe(42);
+  expect(libraryAutoChoice('local')).toEqual(['hard-drive','默认']);
+  expect(libraryAutoChoice('115')[1]).toBe('自动识别');
+  expect(libraryAutoChoice('115')[0]).toBe('fixture-115');
+  root=document.createElement('div');document.body.append(root);
+  await act(async()=>render(h(LibraryIconPicker,{label:'媒体库图标',value:'',kind:'local',onChange:()=>{}}),root));
+  expect(root.querySelector('.board-icon-trigger span:last-child')!.textContent).toBe('默认');
+  expect(root.querySelector('.board-icon-trigger [data-source-icon]')!.getAttribute('data-source-icon')).toBe('hard-drive');
+  await act(async()=>render(h(LibraryIconPicker,{label:'媒体库图标',value:'',kind:'115',onChange:()=>{}}),root));
+  expect(root.querySelector('.board-icon-trigger span:last-child')!.textContent).toBe('自动识别');
+  expect(root.querySelector('.board-icon-trigger [data-source-icon]')!.getAttribute('data-source-icon')).toBe('fixture-115');
+  await act(async()=>root.querySelector<HTMLButtonElement>('.board-icon-trigger')!.click());
+  expect(root.querySelector('.board-icon-grid label[title=自动识别] [data-source-icon]')!.getAttribute('data-source-icon')).toBe('fixture-115');
+});
 it('候选图标不包含网盘，取消保持原值，应用才提交草稿',async()=>{
   expect(LIBRARY_ICON_CHOICES.some(([value])=>['115','pikpak'].includes(value))).toBe(false);
   root=document.createElement('div');document.body.append(root);const change=vi.fn();

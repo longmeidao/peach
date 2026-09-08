@@ -104,7 +104,23 @@ Radial Chart Card、Bar List Card、Heatmap 与 Sankey 的 Pro 源码**未取得
 | 可排序表头带 `ChevronSortDown` 字形 | 表头两列接入工具栏已有的两种排序；方向字形沿用工具栏的 `arrow-up`／`arrow-down` |
 | 表格 `min-w-[1000px]`，外层 `overflow-x-auto` | `min-width:760px`，外层横向滚动，窄屏不折叠列 |
 
-选中行的样式上游页面没有暴露出来（复选框选中后 `tr` 无 `data-selected`），Peach 沿用 Board 层已有的 `.fsource.selected`。
+选中行的样式上游页面没有暴露出来（复选框选中后 `tr` 无 `data-selected`）：Peach 给选中行铺一层蓝色 8% 的底，不描蓝线。表格外面多一层 `.ftableframe` 管边线与圆角，`.ftablewrap` 只管横向滚动：两端按滚动位置渐隐说明「那边还有」，鼠标停在表格上时竖向滚轮转成横向，与复核页标签条同一份接线；边线留在外层，才不会跟内容一起淡掉。表头五列都能点，维度与工具栏下拉是同一份并集：作者、上次检查按作者分组比，来源、站点、状态按单条来源比。
+
+### 关注列表的框、来源行与勾选框（2026-09-08）
+
+取证来源是公开注册表 `r/checkbox.json` 与 `r/checkbox-card.json`（`checkbox-glyph.tsx`、`checkbox-card.tsx`），以及站点样式表 `0n0ugaibgw__p.css`（SHA-256 `a856db5e9e1a58b2e32b7bfa6d7f1cab69dd09e4bd7ac22fc455dd10b525cf27`）里的 `check-draw`、`--shadow-checkbox-selected`、`--shadow-xs` 与 token 定义。
+
+| 上游 | Peach |
+| --- | --- |
+| CheckboxCard：10px 圆角、1px `border-button-default`、pl 16 / pr 20 / py 12，悬停 `background-primary-hover` 150ms，整卡可点 | 关注列表的每条来源行；勾选框在左（Peach 的行右边是检查、移除两枚动作键）；选中行沿用焦点环色的边，上游只亮勾选框 |
+| Checkbox 16px、4px 圆角；未选 `border-checkbox-default`（亮 neutral-300、暗 neutral-700）+ `shadow-xs`；悬停边线到 neutral-400／500，底不变 | `.pcheck` 同值；旧版层的悬停换底被 Board 层压掉 |
+| 选中 blue-500→600 渐变 + `inset 0 2px 0 0 #ffffff40, inset 0 0 0 1px accent-500`；悬停渐变提到 400→500 | 同值，渐变取 `--board-blue` |
+| 勾 2px 圆头，`pathLength=1`，`check-draw` 200ms cubic-bezier(.65,0,.35,1) 从零画出；减少动态效果时直接显示 | 勾是雪碧图的 `check`，无法写 pathLength，按路径实长 23 写 dasharray；其余同值 |
+| 页面上卡片摆在 primary 面上 | 关注列表整段是一只 `--ground` 卡（与「添加关注」同一只），作者卡是 primary 面，来源行才是 CheckboxCard；这样悬停的 primary-hover 才不与底同色 |
+| Segmented Control 暗色：轨道 neutral-925、滑块 neutral-800 | Peach 暗色页面本身更深，轨道留 tertiary（#262626），滑块提主文字色 14%；上一节写的「未取得」以此为准 |
+| Avatar `avatar-neutral-background`：亮 neutral-300、暗 `background-primary-default` | 首页两排与身份头像继续用主文字色 10% 混底：暗色里上游值与卡片底同色，正是用户回执的问题 |
+
+媒体库图标选择器同批：格子与触发钮同一枚 20px、2 描边的字形，装在同一个 20px 盒子里居中；候选 42 枚一行七枚，题材、身份、场景、媒介各一组；网盘库不另选时显示来源站标（服务端 `media_libraries.libraries` 本就把单一来源的库落到该来源），本地路径没有可识别的来源，写作「默认」并显示磁盘。
 
 ### 下拉菜单的开合动效（2026-09-08）
 

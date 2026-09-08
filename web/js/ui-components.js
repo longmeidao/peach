@@ -319,8 +319,11 @@ const OVERLAY_SCROLLERS=[
   '.settingsscroll','.sidecontent','.tagpickbody','.mixlist','.playlistpicklist','.playerstats',
   '.vjs-peach-settings-menu','.geist-scroller-container','.metricstrip','.tastesummaries',
   '.insighttabs','.insightstorage','.skeletondashstrip','.followpagination','.linktablewrap',
-  '.reviewtabs','.junkfilters',
+  '.reviewtabs','.junkfilters','.ftablewrap',
 ].join(',');
+/* Board 层里会超宽的横向滚动层：两端按滚动位置渐隐说明「那边还有」，鼠标停在上面时竖向
+   滚轮转成横向。边线留给外层框，渐隐只落在这一层。 */
+const BOARD_EDGE_SCROLLERS='.reviewtabs,.ftablewrap';
 
 /**
  * 覆盖式滚动条：滑块浮在内容上，一列宽度都不占。
@@ -434,7 +437,7 @@ export function attachOverlayScrollbar(container,{variant=''}={}){
 export function wireOverlayScrollbars(root=document){
   root.querySelectorAll(OVERLAY_SCROLLERS).forEach(el=>{
     if(deferReviewScroller(el))return;
-    if(el.matches('.reviewtabs')&&localStorage.getItem('peach.legacy-ui')!=='true'){
+    if(el.matches(BOARD_EDGE_SCROLLERS)&&localStorage.getItem('peach.legacy-ui')!=='true'){
       const edges=()=>{el.dataset.overflowLeft=String(el.scrollLeft>1);el.dataset.overflowRight=String(el.scrollLeft+el.clientWidth<el.scrollWidth-1)};
       if(!el.dataset.boardScroll){el.dataset.boardScroll='true';el.addEventListener('scroll',edges,{passive:true});el.addEventListener('wheel',event=>{if(Math.abs(event.deltaY)>Math.abs(event.deltaX)&&el.scrollWidth>el.clientWidth){const before=el.scrollLeft;el.scrollLeft+=event.deltaY;if(before!==el.scrollLeft)event.preventDefault()}},{passive:false});new ResizeObserver(edges).observe(el)}
       edges();return;

@@ -301,7 +301,7 @@ function ConfigurationForm({ data, receipt }: { data: ConfigurationData; receipt
                       onInput={(event) => { const next = [...libraries]; next[index] = event.currentTarget.value; setLibraries(next); }} />
                   </label>
                   <div class="configsourcelabel">媒体库图标
-                    <LibraryIconPicker label={`媒体库图标 ${index + 1}`} value={libraryIcons[index] || ''}
+                    <LibraryIconPicker label={`媒体库图标 ${index + 1}`} value={libraryIcons[index] || ''} kind={kinds[index] || 'local'}
                       onChange={(value) => { const next = [...libraryIcons]; next[index] = value; setLibraryIcons(next); }} />
                   </div>
                   <div class="configsourcelabel">媒体来源

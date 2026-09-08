@@ -450,7 +450,7 @@ button,input,select,textarea{font-family:inherit}
 .tasterank-visual{grid-template-columns:24px 36px minmax(0,1fr) 16px}.tasterank .tasteavatar{width:36px;height:36px}.tasterank b{font-size:14px;line-height:20px;font-weight:500;white-space:normal;overflow-wrap:anywhere}.tasterank small{white-space:normal;line-height:18px}.tasterank .taste-rank-copy{min-width:0}
 .taste-rank-track{display:block;height:4px;margin-top:8px;background:var(--line-soft);border-radius:var(--pill-radius);overflow:hidden}.taste-rank-track i{display:block;height:100%;background:var(--tungsten);opacity:.55;border-radius:inherit}
 .tasteleads>header{padding:24px 24px 12px}.tastelede{display:flex;flex-direction:column;gap:12px}.tasteleads .tastelede p{font-size:20px;line-height:30px;color:var(--ink);max-width:64ch}.tasteleads .insightpanelbody{padding:8px 24px 24px;display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:28px}.tasteinsights{display:flex;flex-direction:column;gap:20px;margin:0}.tasteinsight{padding:0;background:none;gap:6px}.tasteinsight>b{font-weight:400;line-height:22px}.tasteleadlist{align-content:start}.tastelead{background:var(--surface);padding:14px}.tastesources .insightpanelbody>div{grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.tastesource{border:0;background:var(--surface);padding:16px}
-.followmanage .fmain{gap:28px}.followmanage .fmain>.fsec:has(.fsources){background:none}.followmanage .fmain>.fsec:has(.fsources)>.fsechead{padding:0 0 16px}.followmanage .fmain>.fsec>.fsources{padding:0;grid-template-columns:minmax(0,1fr);gap:16px}
+.followmanage .fmain{gap:28px}.followmanage .fmain>.fsec>.fsources{padding:0 24px 24px;grid-template-columns:minmax(0,1fr);gap:16px}
 .followmanage .fauthor{height:auto;padding:16px 20px;border:0;border-radius:16px;background:var(--ground);display:block}.followmanage .fauthorhead{padding:0 0 12px}.followmanage .fauthorhead b{font-weight:500;white-space:normal}.followmanage .fauthorsources{height:auto;max-height:none;overflow:visible}.followmanage .fauthor .fsource.frow{padding-block:12px;border:0}.followmanage .fauthor .fsource.frow>b{font-weight:400}.followmanage .fauthor .fsource.frow+.fsource.frow{border-top:1px solid var(--line-soft)}
 .followmanage .fmain>.fsec:has(.fcred){background:none}.followmanage .fmain>.fsec:has(.fcred)>.fsechead{padding:0 0 12px}.followmanage .fmain>.fsec:has(.fcred)>.frows{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-items:start;gap:12px;padding:0}.followmanage .fcred{margin:0;padding:16px;border:0;border-radius:12px;background:var(--ground);min-width:0}.followmanage .fcred summary{padding:0;min-height:32px}.followmanage .fcred.none{min-height:64px}.followmanage .fcred p{overflow-wrap:anywhere}.followmanage .fmain>.fsec>.fdesc{background:none;border:0;padding:16px 0}
 .configfieldset-heading{border:0;padding-bottom:0}.configfieldset{border:0}.configfieldset>.geist-fieldset-footer{border:0}.configfieldset .configfieldset-heading h2{margin:0}
@@ -494,7 +494,7 @@ body button.danger:not(.frowicon):hover:not(:disabled){background:linear-gradien
 .board-sidebar-head #brandHome .mark{color:var(--glass-text)}
 .followmanage .fsec>.faliasmanager,.followmanage .fsec>.faliasmanager[open]{background:transparent}
 .followmanage .fcred{box-sizing:border-box;min-height:64px;padding:16px}.followmanage .fcred summary{box-sizing:border-box;min-height:32px;margin:0;padding:0}.followmanage .fcred.none{height:64px;align-items:center}
-.followmanage .fmain>.fsec:has(>.fsecfoot){overflow:hidden;border-radius:var(--surface-radius)}
+.followmanage .fmain>.fsec:has(>.fsecfoot){overflow:hidden;border-radius:18px}
 .followmanage .fmain>.fsec:has(>.fsecfoot)>.frows,.followmanage .fmain>.fsec:has(>.fsecfoot) .board-follow-list,.followmanage .fmain>.fsec:has(>.fsecfoot) .fauthor:last-child{border-bottom-left-radius:0;border-bottom-right-radius:0}
 .followmanage .fmain>.fsec>.fsecfoot{border-top-left-radius:0;border-top-right-radius:0}
 .configfieldset>.geist-fieldset-footer,.cleanupfieldset>.geist-fieldset-footer,.resourcesyncfooter,.resourceapplyrow{border-top-left-radius:0;border-top-right-radius:0;background:var(--board-card-foot)}
@@ -505,7 +505,7 @@ body button.danger:not(.frowicon):hover:not(:disabled){background:linear-gradien
 /* 表格视图在 Board 层套的是 Board 自己的 token：表头次级底、三级字、分隔线色都取自
    boardui 同名变量。外框用 primary 底而不是作者卡那块 --ground：Board 层把 --ground 定成了
    secondary，和表头同色，表头那条带子就没了；boardui 的表格本来就摆在 primary 面上。 */
-.followmanage .ftablewrap{border-radius:var(--surface-radius);background:var(--color-background-primary-default)}
+.followmanage .ftableframe{border:1px solid var(--color-separator-border);border-radius:var(--surface-radius);background:var(--color-background-primary-default);overflow:hidden}.followmanage .ftablewrap{border-radius:0;background:transparent}.followmanage .ftable th{border-top:0}
 .followmanage .ftable th{color:var(--color-text-tertiary);background:var(--color-background-secondary-default);border-color:var(--color-separator-border)}
 .followmanage .ftable tbody tr{border-color:var(--color-separator-border)}
 @media(min-width:1200px){.followmanage .fsources[data-layout="default"] .board-follow-list{grid-template-columns:repeat(2,minmax(0,1fr));align-items:start}}
@@ -561,7 +561,7 @@ body :is(.sbadge.ok,.board-chip.success){background:color-mix(in srgb,#84cc16 16
 .followmanage .fsource.selected{background:var(--color-background-primary-default);box-shadow:none;border-color:var(--color-border-focus-ring)}.followmanage .fsource.selected.disabled{opacity:1}
 .followmanage .fsource:has([data-follow-select]){border:1px solid var(--color-border-button-default);border-radius:10px;padding:12px 20px 12px 16px;margin:8px 0;cursor:pointer;transition:background-color 150ms ease,border-color 150ms ease}
 .followmanage .fsource:has([data-follow-select]):hover{background:var(--color-background-primary-hover)}
-.followmanage .fsec:has(.board-follow-selection){padding:20px;border-radius:20px;background:var(--color-background-secondary-default);overflow:visible}
+.followmanage .fsec:has(.board-follow-selection){padding:0;border-radius:18px;background:var(--ground);overflow:visible}.followmanage .fsec>.board-follow-selection{padding:4px 24px 12px}
 .followmanage .fsourceactions{padding:2px;overflow:visible}
 body .sbadge.paused{background:color-mix(in srgb,#ffc600 18%,var(--color-background-primary-default));color:#a87600}
 :root[data-theme=dark] .sbadge.paused{color:#ffd54a}
@@ -589,12 +589,12 @@ body [data-board-tabs] button[aria-selected=true],body .managebar [data-board-ta
 @media(prefers-reduced-motion:reduce){[data-board-tabs].board-tabs-ready::before{transition:none}}
 .followmanage .fsource:has([data-follow-select]){background:var(--color-background-primary-default)}
 .followmanage .fsource.selected:has([data-follow-select]){border-color:var(--color-border-focus-ring)}
-.board-icon-trigger{width:100%;justify-content:flex-start!important;min-height:var(--control-h);height:var(--control-h)!important}.board-icon-trigger svg{width:20px;height:20px}
+.board-icon-trigger{width:100%;gap:8px;justify-content:flex-start!important;min-height:var(--control-h);height:var(--control-h)!important}.board-icon-trigger>span:first-child,.board-icon-grid label>span{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;flex:none}.board-icon-trigger svg,.board-icon-grid svg{display:block;width:20px;height:20px;stroke-width:2}.board-icon-trigger img,.board-icon-grid img{display:block;width:20px;height:20px;margin:0}
 .splitbutton.board-button-group>.splitmain,.splitbutton.board-button-group>.splittoggle{border:0;border-radius:0;box-shadow:none}
 .splitbutton.board-button-group>.splittoggle::before{width:1px;left:0;top:6px;bottom:6px;background:var(--color-border-button-default)}
 body [data-cleanup-empty][hidden]{display:none}
 dialog.board-icon-popover{position:fixed;inset:auto;margin:0;width:min(360px,calc(100vw - 16px));max-height:calc(100dvh - 16px);box-sizing:border-box;padding:8px;border:0;border-radius:24px;background:var(--color-background-secondary-default);color:var(--ink);box-shadow:0 12px 40px #00000024;overflow:auto}
-.board-icon-popover::backdrop{background:transparent}.board-icon-panel{padding:12px;border-radius:20px;background:var(--color-background-primary-default);box-shadow:0 1px 2px #0000000d}.board-icon-panel h3{font:var(--board-body-medium);margin:0 0 10px;padding:0 4px}.board-icon-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}.board-icon-grid label{position:relative;display:grid;place-items:center;height:40px;border-radius:8px;cursor:pointer}.board-icon-grid label:hover{background:var(--color-background-primary-hover)}.board-icon-grid label.selected{background:var(--picked);color:var(--tungsten)}.board-icon-grid input{position:absolute;opacity:0;width:1px;height:1px}.board-icon-grid label:focus-within{outline:2px solid var(--tungsten)}.board-icon-grid svg{width:22px;height:22px}.board-icon-popover footer{display:flex;justify-content:flex-end;gap:8px;padding:8px 4px 0}
+.board-icon-popover::backdrop{background:transparent}.board-icon-panel{padding:12px;border-radius:20px;background:var(--color-background-primary-default);box-shadow:0 1px 2px #0000000d}.board-icon-panel h3{font:var(--board-body-medium);margin:0 0 10px;padding:0 4px}.board-icon-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}.board-icon-grid label{position:relative;display:grid;place-items:center;height:40px;border-radius:8px;cursor:pointer}.board-icon-grid label:hover{background:var(--color-background-primary-hover)}.board-icon-grid label.selected{background:var(--picked);color:var(--tungsten)}.board-icon-grid input{position:absolute;opacity:0;width:1px;height:1px}.board-icon-grid label:focus-within{outline:2px solid var(--tungsten)}.board-icon-popover footer{display:flex;justify-content:flex-end;gap:8px;padding:8px 4px 0}
 .reviewitem .reviewstage[data-framed]{padding:0;border:0;background:transparent;box-shadow:none}.reviewitem .reviewtags{min-height:28px;align-content:start}.reviewitem .reviewempty{min-height:160px;max-height:190px;border-radius:12px;background:var(--color-background-secondary-default)}.reviewitem .reviewstage{flex:0 0 auto}.reviewitem .reviewevidence{border:0;padding:12px 0 0}.reviewitem .reviewactions{border:0;border-radius:0 0 16px 16px;background:var(--color-background-secondary-default);margin-top:auto}
 .reviewitem{content-visibility:auto;contain-intrinsic-size:auto var(--review-fieldset-height)}
 body .reviewactions button,body .junkactions button:not(.danger){height:36px;border:1px solid var(--color-border-button-default);border-radius:10px;padding:8px 12px;background:var(--color-background-primary-default);color:var(--ink);box-shadow:0 1px 2px #0000000d;font:var(--board-body-medium)}
@@ -702,3 +702,40 @@ body .reviewactions button:disabled{opacity:.5;cursor:not-allowed}
 #tiers .av:hover .ring,#tiers .av[aria-pressed="true"] .ring{box-shadow:none}
 #tiers .av .nm{display:block;max-width:12em;font:inherit;color:inherit;text-align:left;overflow:hidden;text-overflow:ellipsis}
 @media(prefers-reduced-motion:reduce){.board-ranked-chart .board-rank-fill,.tasteranks .taste-rank-track i,.board-radar .board-radar-value{animation:none;transform:none;opacity:1}}
+
+/* ── 关注列表整段进框，与「添加关注」同一只卡：头 20/24/8，选择栏与列表左右 24，脚是卡片脚 ──
+   作者卡是 primary 面上的一只卡；来源行照 boardui checkbox-card.tsx：10px 圆角、1px border-button-default、
+   pl 16 / pr 20 / py 12，悬停 primary-hover 150ms；行距 8px。选中行沿用焦点环色的边（上游 CheckboxCard 只亮勾选框）。 */
+.followmanage .fmain>.fsec:has(.fsources)>.fsechead{padding:20px 24px 8px}
+.followmanage .fmain>.fsec:has(>.fsecfoot)>.fsources{padding-bottom:20px}
+.followmanage .board-follow-list{padding:0;background:transparent;gap:16px}
+.followmanage .board-follow-list .fauthor{background:var(--color-background-primary-default);border-radius:var(--surface-radius);padding:16px}
+.followmanage .board-follow-list .fauthorsources{display:grid;gap:8px}
+.followmanage .board-follow-list .fsource.frow{min-height:0;margin:0;padding:12px 20px 12px 16px;border:1px solid var(--color-border-button-default);border-radius:10px;background:var(--color-background-primary-default);transition:background-color .15s ease,border-color .15s ease}
+.followmanage .board-follow-list .fsource.frow+.fsource.frow{border-top:1px solid var(--color-border-button-default)}
+.followmanage .board-follow-list .fsource.frow:hover{background:var(--color-background-primary-hover)}
+.followmanage .board-follow-list .fsource.selected,.followmanage .board-follow-list .fsource.selected:hover{background:var(--color-background-primary-default);border-color:var(--color-border-focus-ring)}
+@media(max-width:760px){.followmanage .fmain>.fsec:has(.fsources)>.fsechead{padding:16px 16px 8px}.followmanage .fmain>.fsec>.fsources{padding:0 16px 16px}.followmanage .fsec>.board-follow-selection{padding:4px 16px 12px}.followmanage .board-follow-list .fauthor{padding:12px}}
+/* ── 表格：外框管边线与圆角，里层管横向滚动与两端渐隐；接着卡片脚时下面两角不圆。选中行是蓝色 8% 的一层底，不描蓝线（上游选中行样式未取得） ── */
+.followmanage .fmain>.fsec:has(>.fsecfoot) .ftableframe{border-bottom:0;border-bottom-left-radius:0;border-bottom-right-radius:0}
+.followmanage .ftable tr.fsource.selected,.followmanage .ftable tr.fsource.selected:hover{background:color-mix(in srgb,var(--tungsten) 8%,var(--color-background-primary-default));border-color:var(--color-separator-border);box-shadow:none}
+.followmanage .ftable tbody tr{transition:background-color .15s ease}
+.followmanage .ftable tbody tr:last-child{border-bottom:0}
+/* ── 分区标题行里的视图开关与同排按钮同高（36px）：轨道 3px、选项 30px，图标 16px、1.8 描边与 fbtn 的字形同粗 ── */
+.followmanage .fsechead .iconswitch[data-board-segments]{padding:3px;border-radius:10px;gap:2px}
+.followmanage .fsechead .iconswitch[data-board-segments]>label{width:34px;height:30px;border-radius:7px}
+.followmanage .fsechead .iconswitch[data-board-segments]>.board-segment-thumb{border-radius:7px}
+.followmanage .fsechead .iconswitch svg{width:16px;height:16px;stroke-width:1.8}
+/* ── 勾选框（boardui checkbox-glyph.tsx）：未选 1px border-checkbox-default 加 shadow-xs，悬停边线深一档、底不变；
+   选中蓝渐变 + 内嵌高光；勾 2px 圆头，200ms cubic-bezier(.65,0,.35,1) 从零画出。tokens：亮 neutral-300／400，暗 neutral-700／500。 ── */
+:root,:root[data-theme="light"]{--color-border-checkbox-default:#d4d4d4;--color-border-checkbox-hover:#a3a3a3}
+:root[data-theme="dark"]{--color-border-checkbox-default:#404040;--color-border-checkbox-hover:#737373}
+@media(prefers-color-scheme:dark){:root:not([data-theme]){--color-border-checkbox-default:#404040;--color-border-checkbox-hover:#737373}}
+.pcheck>span{border-color:var(--color-border-checkbox-default);box-shadow:0 1px 2px 0 #0000000d;transition:background-color .15s ease,border-color .15s ease,box-shadow .15s ease}
+.pcheck:hover>span,label:hover>.pcheck>span{border-color:var(--color-border-checkbox-hover);background:var(--color-background-primary-default)}
+.pcheck input:is(:checked,:indeterminate)+span{border-color:transparent;background:var(--board-blue);box-shadow:inset 0 2px 0 0 #ffffff40,inset 0 0 0 1px #3b82f6}
+.pcheck:hover input:is(:checked,:indeterminate)+span,label:hover>.pcheck input:is(:checked,:indeterminate)+span{border-color:transparent;background:linear-gradient(180deg,#60a5fa,#3b82f6);box-shadow:inset 0 2px 0 0 #ffffff40,inset 0 0 0 1px #3b82f6}
+.pcheck>span svg{stroke-dasharray:23;stroke-dashoffset:0}
+@keyframes board-check-draw{from{stroke-dashoffset:23px}to{stroke-dashoffset:0}}
+.pcheck input:checked+span svg{animation:board-check-draw .2s cubic-bezier(.65,0,.35,1) forwards}
+@media(prefers-reduced-motion:reduce){.pcheck input:checked+span svg{animation:none;stroke-dashoffset:0}}

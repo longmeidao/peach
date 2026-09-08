@@ -72,6 +72,13 @@ const lucideIcons = new Map([
   ["heart-hand","hand-heart"], ["flame","flame"], ["cherry","cherry"], ["gem","gem"],
   ["crown","crown"], ["shirt","shirt"], ["footprints","footprints"], ["flower","flower"],
   ["venetian-mask","venetian-mask"], ["hand","hand"], ["bed-double","bed-double"],
+  // 媒体库图标的候选，只归设置页的图标选择器：题材、身份、场景与媒介各一组。
+  ["lollipop","lollipop"], ["candy","candy"], ["banana","banana"], ["droplets","droplets"],
+  ["venus","venus"], ["mars","mars"], ["venus-and-mars","venus-and-mars"], ["ribbon","ribbon"],
+  ["graduation-cap","graduation-cap"], ["stethoscope","stethoscope"], ["glasses","glasses"],
+  ["rabbit","rabbit"], ["paw-print","paw-print"], ["dumbbell","dumbbell"], ["bath","bath"],
+  ["key-round","key-round"], ["wine","wine"], ["cigarette","cigarette"], ["film","film"],
+  ["image","image"], ["gamepad-2","gamepad-2"],
   ["camera","camera"], ["video","video"], ["scan-search","scan-search"],
   ["clapperboard", "clapperboard"], ["briefcase", "briefcase"],
   ["home", "home"], ["panel-left", "panel-left"], ["search", "search"],
