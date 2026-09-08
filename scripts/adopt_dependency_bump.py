@@ -24,6 +24,12 @@ import json
 from pathlib import Path
 import shutil
 import subprocess
+import sys
+
+if not __package__:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    __package__ = "scripts"
+from . import co_author
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -102,8 +108,17 @@ def working_changes() -> list[str]:
     return [line for line in run(("git", "diff", "--name-only", "HEAD")).splitlines() if line]
 
 
-def commit_message(key: str, versions: list[str], pr: str | None) -> str:
-    """接管提交的说明。README-Impact 与 Co-Authored-By 必须同一个 trailer 块、中间不空行。"""
+def commit_message(key: str, versions: list[str], pr: str | None,
+                   signature: str) -> str:
+    """接管提交的说明。README-Impact 与 Co-Authored-By 必须同一个 trailer 块、中间不空行。
+
+    署名由 `--co-author` 传进来，脚本不替谁署名：跑它的可能是任一个智能体，写死一个
+    工具名就是往提交历史里记错人。形态由 `co_author.FORM` 判，这里提前判一次，免得
+    错在 `ready` 才报出来。
+    """
+    if co_author.FORM.fullmatch(signature) is None:
+        raise ValueError("--co-author 形态须为 工具 (模型 版本) <厂商 noreply>，如 "
+                         + co_author.EXAMPLE.partition(": ")[2])
     origin = f"Dependabot PR #{pr}" if pr else "Dependabot 分支"
     rebuild = "`" + "`、`".join(" ".join(item) for item in RECIPES[key]["commands"]) + "`"
     return (f"chore(deps): 接管 {RECIPES[key]['label']} 的升级\n\n"
@@ -111,7 +126,7 @@ def commit_message(key: str, versions: list[str], pr: str | None) -> str:
             "它在只读 token 下算不出来，所以接管到本地分支一起提交。\n\n"
             + ("升级：" + "、".join(versions) + "\n\n" if versions else "")
             + "README-Impact: none; 依赖版本与派生产物，README 不涉及。\n"
-              "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>\n")
+            + f"Co-Authored-By: {signature}\n")
 
 
 def manifest_versions(key: str) -> list[str]:
@@ -142,6 +157,9 @@ def main(argv: list[str] | None = None) -> int:
     source.add_argument("--pr", help="Dependabot 的 PR 编号")
     source.add_argument("--branch", help="Dependabot 的分支名，跳过 gh 查询")
     parser.add_argument("--apply", action="store_true", help="暂存并提交；缺省只列计划")
+    parser.add_argument("--co-author", required=True,
+                        help="本次提交的署名，形如 "
+                             "Claude Code (Opus 5) <noreply@anthropic.com>")
     args = parser.parse_args(argv)
 
     try:
@@ -173,7 +191,7 @@ def main(argv: list[str] | None = None) -> int:
             run(("git", "add", "--", *landed))
             message = ROOT / "build" / f"adopt-{key}.txt"
             message.parent.mkdir(parents=True, exist_ok=True)
-            message.write_text(commit_message(key, versions, args.pr), encoding="utf-8", newline="\n")
+            message.write_text(commit_message(key, versions, args.pr, args.co_author), encoding="utf-8", newline="\n")
             run(("git", "commit", "--quiet", "-F", str(message)))
             message.unlink()
             plan["applied"] = True
