@@ -881,21 +881,42 @@ class Rule34VideoConnectorTests(unittest.TestCase):
         self.assertTrue(first.thumb_url.endswith("/preview.jpg"))
         self.assertIn("4542721_360.mp4", first.media_url)
 
-    def test_detail_with_many_credited_models_is_not_collected(self):
-        models = "".join(
-            f'<a class="item btn_link video_meta_pill" href="https://rule34video.com/models/m{n}/">M{n}</a>'
-            for n in range(21)
+    def _detail_with_credits(self, names):
+        credits = "".join(
+            f'<a class="item btn_link video_meta_pill"'
+            f' href="https://rule34video.com/models/m{n}/">{name}</a>'
+            for n, name in enumerate(names)
         ).encode()
-        detail = RULE34VIDEO_DETAIL_HTML.replace(b"</body>", models + b"</body>")
+        detail = RULE34VIDEO_DETAIL_HTML.replace(b"</body>", credits + b"</body>")
 
         def transport(request, timeout, max_bytes):
             return HttpResponse(200, {},
                                 RULE34VIDEO_HTML if "/models/" in request.url else detail)
 
-        result = Rule34VideoConnector(transport=transport).fetch("lazyprocrastinator")
+        return Rule34VideoConnector(transport=transport).fetch("lazyprocrastinator")
+
+    def test_detail_with_many_credited_models_is_not_collected(self):
+        # 样本自带 LazyProcrastinator 一位，这里再添三位就是四位画面作者。
+        result = self._detail_with_credits(["M1", "M2", "M3"])
         self.assertEqual(result.candidates, ())
         self.assertEqual(result.skipped, 2)
         self.assertEqual(result.skipped_compilations, 2)
+
+    def test_voice_and_audio_credits_do_not_make_a_work_a_collection(self):
+        """配音和音效不算画面作者。
+
+        站点把它们记在同一份 Artist 名单里，角色写在名字末尾的括号中。三位配音
+        加一位音效的单人作品在名单上是五位，画面作者只有一位；数满名单会把
+        `Yunara Showing Ahri Some Discipline`、`The Rite of Loss` 这类作品
+        误判成合辑。
+        """
+        result = self._detail_with_credits(
+            ["Adaline (VA)", "GeminiStarsign1 (VA)", "Cinderdryadva (va)",
+             "Huntress___ (Audio/SFX)", "HentAudio (Audio)"])
+        self.assertEqual(result.skipped_compilations, 0)
+        first = result.candidates[0]
+        self.assertEqual(first.extra["model_count"], 6)
+        self.assertEqual(first.extra["visual_model_count"], 1)
 
 
 class PagingBackTests(unittest.TestCase):

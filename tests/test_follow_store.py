@@ -788,5 +788,56 @@ class EnrichedMarkTests(_StoreCase):
             self.store.enriched_external_ids(source_id, "whatever")
 
 
+class StoredCompilationTests(_StoreCase):
+    """判据收紧之前入库的跨作者打包，按同一判据清退。"""
+
+    def _record(self, external_id, title, models):
+        source_id = self._source()
+        self.store.record(source_id, _fetch([
+            _candidate(external_id, title, extra={"models": list(models),
+                                                  "model_count": len(models)}),
+        ]), moment=MOMENT)
+        return self.store.items()[0]
+
+    def test_voice_and_audio_credits_keep_a_single_creator_work_out_of_the_list(self):
+        self._record("1", "Yunara Showing Ahri Some Discipline",
+                     ["Iidssm", "Adaline (VA)", "GeminiStarsign1 (VA)",
+                      "Huntress___ (Audio/SFX)", "HentAudio (Audio)"])
+        self.assertEqual(self.store.collected_compilations(), ())
+
+    def test_a_cross_artist_pack_is_listed_with_both_counts(self):
+        self._record("2", "Fuck Track / Futa PMV", [f"M{n}" for n in range(13)])
+        listed = self.store.collected_compilations()
+        self.assertEqual(len(listed), 1)
+        self.assertEqual((listed[0].credited, listed[0].visual), (13, 13))
+        self.assertEqual(listed[0].external_id, "2")
+
+    def test_an_item_already_saved_as_an_asset_is_left_alone(self):
+        item = self._record("3", "ON AND ON | HMV / PMV", [f"M{n}" for n in range(17)])
+        self.connection.execute("UPDATE follow_item SET url=? WHERE id=?",
+                                ("https://rule34video.com/video/3/x/", item.id))
+        self.store.save_asset(item.id, confirm=True, moment=MOMENT)
+        self.assertEqual(self.store.collected_compilations(), ())
+
+    def test_purging_requires_explicit_confirmation(self):
+        self._record("4", "Resident Evil - The Fallen Saga",
+                     [f"M{n}" for n in range(14)])
+        listed = self.store.collected_compilations()
+        with self.assertRaises(FollowSourceError):
+            self.store.purge_compilations(listed)
+        self.assertEqual(self.connection.execute(
+            "SELECT count(*) FROM follow_item").fetchone()[0], 1)
+
+    def test_a_confirmed_purge_takes_the_playback_rows_with_it(self):
+        item = self._record("5", "triss blacked censored", [f"M{n}" for n in range(13)])
+        self.store.record_playback(item.id)
+        listed = self.store.collected_compilations()
+        self.assertEqual(self.store.purge_compilations(listed, confirm=True), 1)
+        self.assertEqual(self.connection.execute(
+            "SELECT count(*) FROM follow_item").fetchone()[0], 0)
+        self.assertEqual(self.connection.execute(
+            "SELECT count(*) FROM follow_playback").fetchone()[0], 0)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -20,7 +20,8 @@ from pathlib import Path
 from . import follow_providers
 from .follow import FollowSourceError, write_immutable
 from .follow_sources import (
-    FollowCandidate, SourceFetch, canonical_source_ref, official_profile_handle,
+    FollowCandidate, Rule34VideoConnector, SourceFetch, canonical_source_ref,
+    official_profile_handle,
 )
 from .follow_variants import classify, group_duplicates
 
@@ -777,6 +778,68 @@ class FollowStore:
             "UPDATE follow_item SET status='saved', asset_id=? WHERE id=?",
             (asset_id, item_id))
         return asset_id
+
+    # ---- 跨作者合集的存量清退 -------------------------------------------
+
+    def collected_compilations(self) -> tuple["CompilationRow", ...]:
+        """已入库、按当前判据算跨作者打包的条目。
+
+        抓取那一侧只过滤新拿到的候选，判据收紧之前入库的行还在库里。已经保存成
+        asset 的不在结果里：那条 asset 是真相，留不留由它自己那一侧决定。
+        """
+        connection = self._connect()
+        rows = connection.execute(
+            "SELECT i.id,i.external_id,i.title,i.status,s.ref,i.metadata_json"
+            " FROM follow_item i JOIN follow_source s ON s.id=i.source_id"
+            " WHERE s.provider='rule34video' AND i.asset_id IS NULL"
+        ).fetchall()
+        found = []
+        for item_id, external_id, title, status, ref, payload in rows:
+            try:
+                credits = json.loads(payload or "{}").get("models") or []
+            except json.JSONDecodeError:
+                continue
+            visual = [name for name in credits
+                      if not Rule34VideoConnector._CREDIT_ROLE_RE.search(str(name))]
+            if len(visual) <= Rule34VideoConnector.MAX_COLLECTION_MODELS:
+                continue
+            found.append(CompilationRow(
+                item_id=int(item_id), external_id=str(external_id), title=str(title),
+                status=str(status), source_ref=str(ref),
+                credited=len(credits), visual=len(visual)))
+        return tuple(sorted(found, key=lambda row: -row.visual))
+
+    def purge_compilations(self, rows, *, confirm: bool = False) -> int:
+        """删掉这些条目，连同它们的播放记录。不可逆，要显式 `confirm=True`。
+
+        播放记录先删：`PRAGMA foreign_keys` 默认是 OFF，指望表上那条
+        `ON DELETE CASCADE` 会留下认不出主人的孤儿行。
+        """
+        if not confirm:
+            raise FollowSourceError("删 ledger 行需要显式 confirm=True")
+        connection = self._connect()
+        removed = 0
+        for row in rows:
+            connection.execute("DELETE FROM follow_playback WHERE follow_item_id=?",
+                               (row.item_id,))
+            removed += connection.execute(
+                "DELETE FROM follow_item WHERE id=?", (row.item_id,)).rowcount
+        return removed
+
+
+@dataclass(frozen=True)
+class CompilationRow:
+    """一条按画面作者数判为跨作者打包的存量条目。"""
+
+    item_id: int
+    external_id: str
+    title: str
+    status: str
+    source_ref: str
+    #: 站点 Artist 名单的长度，配音和音效都算在里面。
+    credited: int
+    #: 剔掉配音与音效之后的画面作者数，判据看的是这个。
+    visual: int
 
 
 def _medium_for(item: FollowItemRow) -> str:
