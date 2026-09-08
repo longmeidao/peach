@@ -14,9 +14,11 @@
   },
   "dependencies": {
     "@preact/signals": "2.11.1",
+    "d3-sankey": "0.12.3",
     "preact": "10.29.8"
   },
   "devDependencies": {
+    "@types/d3-sankey": "0.12.5",
     "happy-dom": "20.14.0",
     "typescript": "7.0.2",
     "vite": "8.2.2",

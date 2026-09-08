@@ -258,6 +258,12 @@ class TasteHistoryTests(unittest.TestCase):
             future = build_taste_dashboard(store, db, since="2099-01-01T00:00:00+00:00")
 
         self.assertEqual(dashboard["summary"]["history_visits"], 2)
+        self.assertEqual(dashboard["activity"]["days"], [{"date": "2023-11-15", "count": 2}])
+        self.assertEqual(dashboard["activity"]["hours"], [{"weekday": 2, "hour": 6, "count": 2}])
+        self.assertEqual(dashboard["creator_flows"], [{"source": "onlyfans.com", "target": "alice", "value": 1}])
+        self.assertEqual(future["activity"]["days"], [])
+        self.assertEqual(future["creator_flows"], [])
+        self.assertEqual(future["rankings"]["browser_categories"], [])
         self.assertGreater(dashboard["summary"]["history_sources"], 0)
         self.assertEqual(future["summary"]["history_visits"], 0)
         self.assertEqual(future["summary"]["history_sources"], dashboard["summary"]["history_sources"])

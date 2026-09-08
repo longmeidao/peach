@@ -71,7 +71,11 @@ Agent Progress 的公开演示使用定时步骤。Peach 的作业由服务端�
 | 添加关注 | 共享后台作业数量进度 |
 | 版本更新 | 已有下载、校验与安装阶段；由版本分支负责 |
 
-Charts 已核对 Stat Cards、Bar List、Radar、Radial，以及 Orders、Revenue、Contributions、Heatmap、Funnel、Sankey 的数据需求。当前统计查询是快照，`last_played` 不是完整播放事件序列，因此不据此伪造时间热图或月度涨跌；非互斥口味标签不进入漏斗或流向图。
+Charts 已核对 Stat Cards、Bar List、Radar、Radial、Contributions、Heatmap 和 Sankey 的公开行为。馆藏统计使用当前快照；浏览历史按去重后的真实访问时间生成星期／小时热图与每日活跃格，支持 7、30、90、365 天和全部时间。`last_played` 不充当完整播放事件序列。创作者流向使用来源网站与创作者线索的实际关联计数；非互斥口味标签不进入漏斗或流向图。
+
+Slider、Notification、Tooltip、Carousel、Checkbox、Chip、Dropdown、Link Button、Button Group 已取得官方公开注册表，文件位于验收目录的 `board-reference`。范围控件保留原生键盘操作，Checkbox 支持部分选中，通知悬停与聚焦暂停计时，图片查看复用 Swiper 的缩放及键盘导航。排名默认展示五项，通过底部渐隐和按钮展开当前排名数据。
+
+Radial Chart Card、Bar List Card、Heatmap 与 Sankey 的 Pro 源码**未取得**；当前为依据公开文档实现的 Peach 适配，不是安装 Pro 组件。环形图连接媒体库及网盘计数，支持加载、聚焦与选中反馈；Sankey 使用 d3-sankey 的成熟布局计算，保留来源颜色、流线聚焦与数值联动。
 
 补充公开参考文件 SHA-256：
 

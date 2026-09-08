@@ -2,7 +2,8 @@ import { resourceScanHtml, boundedPreference, mountNumberSetting, syncNumberSett
 import {$, ENTITY_ROUTES, LOC, ROUTE_ENTITIES, ROUTE_STATES, SITE_FAVICONS, STATE_LABELS, STATE_ROUTES, api, isAbort, mapLimit, brandIcon, entityPath, esc, faviconFallbackUrl, faviconUrl, linkHost, linkMarkUrl, fmtClock, fmtDur, fmtSize, foldName, icon, isCatalogPath, realDuration} from './js/core.js';
 import { faceFrame } from './js/face-frame.js';
 import { MEDIA_SOURCE_ICONS } from './js/media-source-icons.js';
-import { boardPageSkeleton } from './dist/peach-ui.js';
+import { boardPageSkeleton, initBoardControls, syncBoardRange, wireExpandableRanks, creatorSankeyHtml, wireCreatorSankey } from './dist/peach-ui.js';
+import { radialCardHtml, wireRadialCards, activityChartsHtml, wireActivityCharts } from './dist/peach-ui.js';
 import { imageFallbackAttrs, wireImageFallbacks } from './js/image-fallback.js';
 import { javDisplayName, javTitleHtml } from './js/jav-title.js';
 import { matchRoute, routeLabel } from './js/routes.js';
@@ -20,6 +21,7 @@ import {
 } from './js/ui-components.js';
 
 initMiddleTruncate(document);
+if(localStorage.getItem('peach.legacy-ui')!=='true')initBoardControls();
 wireBusyActions(document);
 attachOverlayScrollbar(document.documentElement,{variant:'page'});
 attachOverlayScrollbar($('#drawerScroll'));
@@ -664,30 +666,37 @@ const toast=(message,{timeout=6000,warn=false,action=null}={})=>{
   const root=$('#toasts');
   const item=document.createElement('div');
   item.className='toast'+(warn?' warn':'');
+  const board=localStorage.getItem('peach.legacy-ui')!=='true';
   const initial=toastBody(message);
   const paint=(body,alert)=>{
     item.classList.toggle('warn',!!alert);
-    item.innerHTML=`${alert?icon('alert'):''}<p>${body}</p>${
+    item.setAttribute('role',alert?'alert':'status');
+    item.innerHTML=`${board?`<span class="board-notification-icon" aria-hidden="true">${icon(alert?'alert':'check')}</span>`:alert?icon('alert'):''}<p>${body}</p>${
       action&&!alert&&body===initial?`<button class="tact">${esc(action.label)}</button>`:''
       }<button class="tclose" title="关闭" aria-label="关闭提示">${icon('x')}</button>`;
     item.querySelector('.tclose').onclick=close;
     const act=item.querySelector('.tact');
     if(act)act.onclick=()=>{setActionBusy(act);action.run()};
   };
-  let timer=null;
+  let timer=null,remaining=timeout,started=0,hovered=false,focused=false;
   /* 收起前先把当前高度写死再过渡到 0。直接 remove() 会让这一格瞬间消失，
      栈里剩下的 toast 一次跳过来，正是撤销那一下最明显的抖动。 */
   const close=()=>{clearTimeout(timer);
     item.style.height=`${item.offsetHeight}px`;item.getBoundingClientRect();
     item.classList.add('leaving');setTimeout(()=>item.remove(),200)};
-  const arm=()=>{if(timeout)timer=setTimeout(close,timeout)};
+  const arm=()=>{if(timeout&&!hovered&&!focused&&timer===null){started=Date.now();timer=setTimeout(close,remaining)}};
+  const pause=()=>{if(timer!==null){clearTimeout(timer);timer=null;remaining=Math.max(0,remaining-(Date.now()-started))}};
+  const progress=()=>{if(board&&timeout){const bar=document.createElement('span');bar.className='board-notification-timer';bar.setAttribute('aria-hidden','true');bar.style.setProperty('--notification-duration',`${timeout}ms`);item.append(bar)}};
   /* 结果就写在同一条 toast 上。「关掉回执 + 另发一条已撤销」会让两条在同一个
      底部对齐的栈里一进一出，看上去就是整块跳了一下。 */
   item.replaceMessage=(body,{warn:alert=false,timeout:next=4000}={})=>{
-    clearTimeout(timer);paint(toastBody(body),alert);timeout=next;arm()};
+    clearTimeout(timer);timer=null;paint(toastBody(body),alert);timeout=next;remaining=next;progress();arm()};
   paint(initial,warn);
-  item.addEventListener('mouseenter',()=>clearTimeout(timer));
-  item.addEventListener('mouseleave',arm);
+  progress();
+  item.addEventListener('mouseenter',()=>{hovered=true;pause()});
+  item.addEventListener('mouseleave',()=>{hovered=false;arm()});
+  item.addEventListener('focusin',()=>{focused=true;pause()});
+  item.addEventListener('focusout',event=>{focused=item.contains(event.relatedTarget);arm()});
   root.prepend(item);arm();
   while(root.children.length>4)root.lastElementChild.remove();
   return item;
@@ -3397,8 +3406,7 @@ async function openStats(push=true){
       </div>
       <section class="insightdetail">
         <div id="stats-detail-inventory" role="tabpanel" data-stats-detail="inventory" class="insightdetailbody">
-          <div class="insightcopy"><span>库存</span>${distributionChart(d.by_loc.map(row=>({name:LOC[row.k]||row.k,score:row.videos})),'视频分布')}</div>
-          <div class="insightvisual">${totalVideos?locationRows:catalogEmptyHtml({configurable:runtimeConfigurable})}</div></div>
+          ${totalVideos?`<div class="board-inventory-charts">${radialCardHtml(d.by_loc.map(row=>({name:LOC[row.k]||row.k,value:row.videos,detail:gb(row.bytes)})),'网盘与本地')}${radialCardHtml((d.by_library||[]).map(row=>({name:row.name,value:row.videos,detail:gb(row.bytes)})),'媒体库')}</div>`:catalogEmptyHtml({configurable:runtimeConfigurable})}</div>
         <div id="stats-detail-viewing" role="tabpanel" data-stats-detail="viewing" class="insightdetailbody" hidden>
           <div class="insightcopy"><span>观看</span><h2>${cs.played.toLocaleString()}</h2><b>个作品有播放记录</b>
             <p>累计 ${hrs(cs.play_seconds)}</p></div>
@@ -3427,6 +3435,8 @@ async function openStats(push=true){
       </section>
     </div>`;
   const statsRoot=$('#stats');
+  wireRadialCards(statsRoot);
+  if(localStorage.getItem('peach.legacy-ui')!=='true')wireExpandableRanks(statsRoot);
   statsRoot.querySelectorAll('[data-stats-metric]').forEach(button=>button.onclick=()=>{
     statsRoot.querySelectorAll('[data-stats-metric]').forEach(tab=>{
       const selected=tab===button;tab.setAttribute('aria-selected',String(selected));tab.tabIndex=selected?0:-1});
@@ -3625,8 +3635,8 @@ async function openResourceSync(push=true){
 /* 口味仪表按窗口持久缓存：刷新页面也先显示上次结果。24 小时内不重读；
    过期后仍先显示旧结果，再在后台更新。导入、移除数据源和显式「读取」
    会立即写回缓存。缓存只含页面已经展示的聚合结果，不含原始历史。 */
-const TASTE_CACHE_KEY='peach-taste-dashboard-v3',TASTE_CACHE_FRESH_MS=24*60*60*1000;
-const TASTE_CACHE_WINDOWS=new Set(['all','365d','90d']);
+const TASTE_CACHE_KEY='peach-taste-dashboard-v6',TASTE_CACHE_FRESH_MS=24*60*60*1000;
+const TASTE_CACHE_WINDOWS=new Set(['all','365d','90d','30d','7d']);
 function readTasteCache(){
   try{
     const stored=JSON.parse(localStorage.getItem(TASTE_CACHE_KEY)||'{}');
@@ -3635,7 +3645,7 @@ function readTasteCache(){
       entry.dashboard&&typeof entry.dashboard==='object'))
   }catch(_error){return new Map()}
 }
-const TASTE_WINDOWS=[['all','全部时间'],['365d','最近一年'],['90d','最近 90 天']];
+const TASTE_WINDOWS=[['7d','最近 7 天'],['30d','最近 30 天'],['90d','最近 90 天'],['365d','最近一年'],['all','全部时间']];
 let tasteWindow='all',tasteEvidence='browser',tasteDimension={browser:'tags',peach:'tags'};
 let tasteCache=readTasteCache(),tasteRequest=0;
 function tasteCacheSet(window,dashboard){
@@ -3711,7 +3721,7 @@ function renderTaste(d){
     <button data-taste-remove="${source.source_key}" title="移除分析记录" aria-label="移除 ${esc(source.profile)}">${icon('trash')}</button></div>`).join('');
   const gapRows=(d.gaps||[]).map(row=>({...row,evidence:['浏览记录']}));
   const domainRows=(rank.domains||[]).map(row=>({name:row.name,score:row.visits}));
-  const categoryRows=(rank.categories||[]).map(row=>({name:row.name,score:row.score}));
+  const categoryRows=(rank.browser_categories||[]).map(row=>({name:row.name,score:row.score}));
   const categoryBars=categoryRows.length?rankedChart(categoryRows,'口味维度排名'):
     emptyStateHtml('search','暂无口味维度','采集浏览记录后，这里会显示聚合后的口味证据。');
   const rankPanel=(source,key,rows,kind='',empty='暂无足够证据',visual='')=>`<div id="taste-${source}-${key}" role="tabpanel"
@@ -3725,7 +3735,7 @@ function renderTaste(d){
         <label><input type="radio" name="taste-evidence" value="browser"${tasteEvidence==='browser'?' checked':''}><span>浏览器记录</span></label>
         <label><input type="radio" name="taste-evidence" value="peach"${tasteEvidence==='peach'?' checked':''}><span>Peach 内部</span></label></div>
       <div class="tasteactions">${selectFieldHtml(TASTE_WINDOWS,d.window||tasteWindow,{label:'分析范围',attr:'data-taste-window'})}
-        <div class="splitbutton" data-taste-history-menu>
+        <div class="splitbutton board-button-group" data-taste-history-menu>
           <button class="splitmain" data-taste-refresh title="读取运行 Peach 的这台电脑上的浏览记录">${icon('compass')}读取浏览器历史</button>
           <button type="button" class="splittoggle" data-taste-history-toggle aria-haspopup="menu"
             aria-expanded="false" aria-controls="tasteHistoryMenu"
@@ -3758,6 +3768,7 @@ function renderTaste(d){
         ${coverageMetric('有身份',Number(coverage.identified||0).toLocaleString(),`${coverage.unidentified||0} 项待补`,coverage.identified||0,(coverage.identified||0)+(coverage.unidentified||0))}
       </div></section>
     ${tasteAnalysisSection(d.analysis)}
+    <div data-taste-evidence-panel="browser"${tasteEvidence==='browser'?'':' hidden'}>${activityChartsHtml(d.activity)}${creatorSankeyHtml(d.creator_flows)}</div>
     <section class="insightpanel tasteanalysis" data-taste-evidence-panel="browser"${tasteEvidence==='browser'?'':' hidden'}>
       <header>${sourceTabs('browser',[['tags','标签'],['creators','创作者'],['domains','常访问网站'],['gaps','浏览候选']])}</header>
       <div class="insightpanelbody">
@@ -3777,6 +3788,9 @@ function renderTaste(d){
       <div class="insightpanelbody"><div>${sourceRows||emptyStateHtml('database','还没有数据源','导入或读取浏览记录后，这里会列出已采集设备。')}</div></div></section>
   </div>`;
   const root=$('#stats'),stateEl=root.querySelector('[data-taste-state]'),file=root.querySelector('[data-taste-file]');
+  wireActivityCharts(root);
+  wireCreatorSankey(root);
+  if(localStorage.getItem('peach.legacy-ui')!=='true')wireExpandableRanks(root);
   wireTasteHistoryGuide(root,localStorage);
   root.querySelectorAll('input[name="taste-evidence"]').forEach(input=>input.onchange=()=>{
     tasteEvidence=input.value;
@@ -5501,9 +5515,9 @@ function followAuthorBlock(group){
   const sourceRows=group.map(source=>followSourceRow(source,!legacy)).join('');
   const sources=localStorage.getItem('peach.legacy-ui')==='true'
     ?scrollerHtml(sourceRows,{className:'fauthorsources',label:`${name} 的关注来源`})
-    :`<div class="fauthorsources" id="follow-author-${group[0].id}" aria-label="${esc(name)} 的关注来源"${collapsed?' hidden':''}>${sourceRows}</div>`;
-  return `<div class="fauthor${bad?' bad':''}">
-    <div class="fauthorhead">${followAuthorAvatar(group)}
+    :`<div class="fauthorsources" id="follow-author-${group[0].id}" aria-label="${esc(name)} 的关注来源">${sourceRows}</div>`;
+  return `<${legacy?'div':'details'} class="fauthor${bad?' bad':''}"${!legacy&&!collapsed?' open':''}>
+    <${legacy?'div':'summary'} class="fauthorhead">${followAuthorAvatar(group)}
       <b>${esc(name)}</b>
       <button type="button" class="frowicon" data-follow-check="" data-follow-sources="${group.filter(s=>s.enabled).map(s=>s.id).join(',')}"
         ${group.some(s=>s.enabled)?'':'disabled'} title="检查此作者" aria-label="检查 ${esc(name)} 的全部来源">${icon('refresh-cw')}</button>
@@ -5511,19 +5525,18 @@ function followAuthorBlock(group){
         ? group.map(source=>sourceIcon(source.provider)).join('')
         : sourceIcon(group[0].provider)+esc(group[0].provider_label)}</span>
       ${bad?`<span class="fmeta warn">${bad} 个失败</span>`:''}
-      ${legacy?'':`<button type="button" class="frowicon board-author-toggle" data-follow-author-toggle="${esc(key)}" aria-controls="follow-author-${group[0].id}" aria-expanded="${!collapsed}" aria-label="${collapsed?'展开':'收起'} ${esc(name)} 的来源">${icon('chevron-down')}</button>`}
-    </div>
-    ${sources}</div>`;
+      ${legacy?'':`<span class="board-author-actions"><button type="button" class="fbtn small" data-follow-author-select aria-pressed="false" aria-label="全选 ${esc(name)} 的来源">全选该作者</button><button type="button" class="frowicon board-author-toggle" data-follow-author-toggle="${esc(key)}" aria-controls="follow-author-${group[0].id}" aria-expanded="${!collapsed}" aria-label="${collapsed?'展开':'收起'} ${esc(name)} 的来源">${icon('chevron-down')}</button></span>`}
+    </${legacy?'div':'summary'}>
+    ${sources}</${legacy?'div':'details'}>`;
 }
 
 const followSourceSelection=new Set();
 function followSourceRow(source,selectable=false){
   const state=source.last_status||'未检查';
   const bad=state==='error'||state==='unauthorized';
-  /* 状态用 Geist 的低饱和徽章（取证 vercel-geist-semantics-measured.md）：
-     行级状态不上实底彩色，ok 绿 tint、失败红 tint、未检查灰。 */
-  const badge=state==='ok'?'ok':bad?'error':'none';
-  const stateTitle=source.history_exhausted?'没有更多历史内容':state;
+  const badge=!source.enabled?'none':state==='ok'?'ok':bad?'error':'none';
+  const stateTitle=source.history_exhausted?'没有更多':!source.enabled?'已暂停':state==='ok'?'正常':bad?'检查失败':'未检查';
+  const statusChip=`<span class="sbadge ${badge}" title="${esc(stateTitle)}"><i aria-hidden="true"></i><span>${esc(stateTitle)}</span></span>`;
   return `<div class="frow fsource${bad?' bad':''}${source.enabled?'':' disabled'}">
     ${selectable?`<label class="fchannelcheck">${checkboxHtml(`data-follow-select="${source.id}" ${followSourceSelection.has(source.id)?'checked':''} aria-label="选择 ${esc(source.label)}"`)}</label>`:`<label class="fchannelcheck" title="${source.enabled?'参与检查更新':'暂停检查更新'}">${checkboxHtml(
       `data-follow-enabled="${source.id}" ${source.enabled?'checked':''}`
@@ -5531,10 +5544,9 @@ function followSourceRow(source,selectable=false){
     <b><a class="fsourcelink externallink" href="${esc(source.url)}" target="_blank"
       rel="noreferrer noopener" title="打开原来源">${esc(source.label)}${icon('external-link','externalmark')}</a></b>
     <span class="fmeta fprovider" title="${esc(source.provider_label)}">${sourceIcon(source.provider)
-      }<span>${esc(source.provider_label)}</span></span>
+      }<span>${esc(source.provider_label)}</span>${selectable?statusChip:''}</span>
     <span class="fmeta fchecked">${source.last_checked_at?localTimeHtml(source.last_checked_at):'未检查'}</span>
-    <span class="sbadge ${badge}" title="${esc(stateTitle)}"><i aria-hidden="true"></i>
-      ${source.history_exhausted?'<span>没有更多</span>':''}</span>
+    ${selectable?'':statusChip}
     <span class="fsourceactions">
       <button class="frowicon" data-follow-check="${source.id}" title="检查更新"
         ${source.enabled?'':'disabled'}
@@ -5641,8 +5653,11 @@ function setFollowListLayout(value){
   root.querySelectorAll('.fsources').forEach(node=>node.dataset.layout=followListLayout());
   root.querySelectorAll('[data-follow-author-toggle]').forEach(button=>{
     const expanded=value==='compact'||!collapsedFollowAuthors.has(button.dataset.followAuthorToggle);
-    button.setAttribute('aria-expanded',String(expanded));
-    root.querySelector(`#${button.getAttribute('aria-controls')}`).hidden=!expanded;
+    if((button.getAttribute('aria-expanded')==='true')!==expanded){
+      const wasCollapsed=collapsedFollowAuthors.has(button.dataset.followAuthorToggle);
+      button.click();
+      if(wasCollapsed)collapsedFollowAuthors.add(button.dataset.followAuthorToggle);else collapsedFollowAuthors.delete(button.dataset.followAuthorToggle);
+    }
   });
 }
 
@@ -5790,11 +5805,11 @@ function wireFollowItems(){
 function wireFollowManage(creds=[]){
   void wireResolveProgress();
   const root=$('#stats'),form=root.querySelector('#followAdd');
-  root.querySelectorAll('[data-follow-author-toggle]').forEach(button=>button.onclick=()=>{
-    const expanded=button.getAttribute('aria-expanded')!=='true';
-    button.setAttribute('aria-expanded',String(expanded));
+  wireCollapse(root,'details.fauthor','follow-author-collapse','[data-follow-author-toggle]');
+  root.querySelectorAll('[data-follow-author-toggle]').forEach(button=>button.onclick=event=>{
+    event.stopPropagation();
+    const expanded=button.getAttribute('aria-expanded')==='true';
     button.setAttribute('aria-label',button.getAttribute('aria-label').replace(/^(展开|收起)/,expanded?'收起':'展开'));
-    root.querySelector(`#${button.getAttribute('aria-controls')}`).hidden=!expanded;
     if(expanded)collapsedFollowAuthors.delete(button.dataset.followAuthorToggle);else collapsedFollowAuthors.add(button.dataset.followAuthorToggle);
   });
   const selectable=[...root.querySelectorAll('[data-follow-select]')];
@@ -5806,8 +5821,17 @@ function wireFollowManage(creds=[]){
     if(all){all.checked=ids.length>0&&ids.length===selectable.length;all.indeterminate=ids.length>0&&ids.length < selectable.length}
     root.querySelectorAll('[data-follow-selection-action]').forEach(button=>{button.disabled=!ids.length||!!followRuntime?.ledger_read_only;if(button.hasAttribute('data-follow-check'))button.dataset.followSources=ids.join(',')});
     selectable.forEach(field=>field.closest('.fsource').classList.toggle('selected',field.checked));
+    root.querySelectorAll('[data-follow-author-select]').forEach(button=>{
+      const fields=[...button.closest('.fauthor').querySelectorAll('[data-follow-select]')],count=fields.filter(field=>field.checked).length;
+      button.textContent=count===fields.length?'取消全选':'全选该作者';button.setAttribute('aria-pressed',count===fields.length?'true':count?'mixed':'false');
+    });
   };
   selectable.forEach(field=>field.onchange=()=>{const id=Number(field.dataset.followSelect);if(field.checked)followSourceSelection.add(id);else followSourceSelection.delete(id);syncSelection()});
+  root.querySelectorAll('[data-follow-author-select]').forEach(button=>button.onclick=event=>{
+    event.preventDefault();event.stopPropagation();
+    const fields=[...button.closest('.fauthor').querySelectorAll('[data-follow-select]')],checked=!fields.every(field=>field.checked);
+    fields.forEach(field=>{field.checked=checked;const id=Number(field.dataset.followSelect);if(checked)followSourceSelection.add(id);else followSourceSelection.delete(id)});syncSelection();
+  });
   const selectAll=root.querySelector('[data-follow-select-all]');
   if(selectAll)selectAll.onchange=()=>{selectable.forEach(field=>{field.checked=selectAll.checked;const id=Number(field.dataset.followSelect);if(field.checked)followSourceSelection.add(id);else followSourceSelection.delete(id)});syncSelection()};
   root.querySelectorAll('[data-follow-selection-enabled]').forEach(button=>button.onclick=async()=>{
@@ -6816,7 +6840,7 @@ function wirePhotoZoom(box, main){
     if(!img?.naturalWidth||!img.naturalHeight)return 100;
     return Math.min(100,img.offsetWidth/img.naturalWidth*100,img.offsetHeight/img.naturalHeight*100)
   };
-  const show=percent=>{const value=Math.round(percent);slider.value=value;label.textContent=value+'%'};
+  const show=percent=>{const value=Math.round(percent);slider.value=value;label.textContent=value+'%';syncBoardRange(slider)};
   const apply=raw=>{
     const fit=fitPercent();
     const percent=raw==='fit'?fit:Math.min(PHOTO_ZOOM_MAX,Math.max(PHOTO_ZOOM_MIN,Number(raw)||fit));
@@ -6900,7 +6924,7 @@ async function openPhotoLightbox(index,source=null){
   const box=document.createElement('div');
   box.className='photolight'+(items.length>1?' has-strip':'');
   box.innerHTML=`<button class="media-circle media-overlay photoclose" type="button" aria-label="关闭">${icon('x')}</button>
-    <div class="swiper photomain"><div class="swiper-wrapper">${items.map(item=>
+    <div class="swiper photomain" role="region" aria-roledescription="轮播" aria-label="图片浏览"><div class="swiper-wrapper">${items.map(item=>
       `<div class="swiper-slide"><div class="swiper-zoom-container"><img src="${esc(item.src)}"
         alt="${esc(item.name)}" loading="lazy" referrerpolicy="no-referrer"></div></div>`).join('')}</div>
       <button class="media-circle media-overlay photonav back" type="button" aria-label="上一张">${icon('chevron-left')}</button>
@@ -6909,7 +6933,7 @@ async function openPhotoLightbox(index,source=null){
       <button class="photodetailtoggle" type="button" aria-expanded="false" aria-controls="photoDetail"
         aria-haspopup="dialog"
         aria-label="图片详情" title="图片详情">${icon('info')}</button>
-      <div class="photocount mono" aria-live="polite">${index+1} / ${items.length}</div>
+      <div><div class="photocount mono" aria-live="polite">${index+1} / ${items.length}</div>${items.length>1?'<div class="board-carousel-pagination" aria-label="选择图片"></div>':''}</div>
       <div class="photozoom">
         <button type="button" data-zoom-step="-1" aria-label="缩小">${icon('zoom-out')}</button>
         <input type="range" min="${PHOTO_ZOOM_MIN}" max="${PHOTO_ZOOM_MAX}" step="1" value="100" aria-label="缩放">
@@ -6938,6 +6962,7 @@ async function openPhotoLightbox(index,source=null){
     // 上下滚也翻页：看图时手在滚轮上，没人愿意为了换一张去够左右键或按钮。
     mousewheel:{enabled:true,forceToAxis:false},
     thumbs:{swiper:strip},
+    pagination:localStorage.getItem('peach.legacy-ui')==='true'?undefined:{el:box.querySelector('.board-carousel-pagination'),clickable:true,dynamicBullets:true,dynamicMainBullets:3,renderBullet:(at,className)=>`<button type="button" class="${className}" aria-label="查看第 ${at+1} 张图片"></button>`},
     navigation:{prevEl:box.querySelector('.photonav.back'),nextEl:box.querySelector('.photonav.fwd')},
     on:{slideChange(){counter.textContent=`${this.activeIndex+1} / ${items.length}`;
       centerThumb(this.activeIndex)}}});

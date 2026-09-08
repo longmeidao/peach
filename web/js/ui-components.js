@@ -460,7 +460,7 @@ export function checkboxHtml(inputAttrs=''){
  *
  * 同一个 `details` 只接一次，重绘后原样再调用是安全的。
  */
-export function wireCollapse(root,selector,idPrefix){
+export function wireCollapse(root,selector,idPrefix,triggerSelector='summary'){
   root?.querySelectorAll(selector).forEach((details,index)=>{
     if(details.querySelector(':scope > .fcollapse'))return;
     const body=document.createElement('div');body.className='fcollapse';
@@ -472,7 +472,8 @@ export function wireCollapse(root,selector,idPrefix){
       inner.appendChild(child);
     });
     body.appendChild(inner);details.appendChild(body);
-    const summary=details.querySelector('summary');
+    const summary=details.querySelector(triggerSelector);
+    if(triggerSelector!=='summary')details.querySelector('summary').addEventListener('click',event=>event.preventDefault());
     let expanded=details.open,transitionRun=0;
     body.id=`${idPrefix}-${index}`;
     body.inert=!expanded;

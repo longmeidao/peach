@@ -16,6 +16,9 @@ import { h, render } from 'preact';
 export { preferredDirection } from './sort-preferences';
 export { boundedPreference, mountNumberSetting, syncNumberSetting } from './number-setting';
 export { statCardBody, rankedChart, radarChart, distributionChart, jobProgressHtml } from './board-metrics';
+export { initBoardControls, syncBoardRange, wireExpandableRanks } from './board-controls';
+export { creatorSankeyHtml, wireCreatorSankey } from './board-sankey';
+export { radialCardHtml, wireRadialCards, activityChartsHtml, wireActivityCharts } from './board-analytics';
 export { sidebarSectionHtml, wireSidebarGroups, transitionTheme } from './sidebar-groups';
 import type { Attributes, ComponentType } from 'preact';
 
