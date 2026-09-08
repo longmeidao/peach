@@ -10,6 +10,9 @@ it('候选图标不包含网盘，取消保持原值，应用才提交草稿',as
   await act(async()=>render(h(LibraryIconPicker,{label:'媒体库图标',value:'heart',onChange:change}),root));
   const dialog=root.querySelector('dialog')!;dialog.showModal=()=>dialog.setAttribute('open','');dialog.close=()=>dialog.removeAttribute('open');
   await act(async()=>root.querySelector<HTMLButtonElement>('.board-icon-trigger')!.click());
+  // 格子只有图标，名字留在 title 与 aria-label 上。
+  expect(root.querySelector('.board-icon-grid small')).toBeNull();
+  expect(root.querySelector<HTMLLabelElement>('.board-icon-grid label[title=樱桃]')!.querySelector('input')!.getAttribute('aria-label')).toBe('樱桃');
   await act(async()=>root.querySelector<HTMLInputElement>('input[value=cherry]')!.click());
   expect(change).not.toHaveBeenCalled();
   await act(async()=>root.querySelector<HTMLButtonElement>('footer button')!.click());

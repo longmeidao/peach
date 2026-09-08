@@ -5362,6 +5362,21 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("plus.onclick=()=>{presentMenu(picker);")
         self.assertPageLacks("$('#searchMenu').hidden=true")
 
+    def test_the_library_icon_picker_is_a_grid_of_glyphs(self):
+        """媒体库图标选择器的格子只放图标，一行七个，21 个候选三行排完。
+
+        每格 40px、图标 22px；名字留在 title 与 aria-label 上。带着字排四列要六行，
+        面板比触发它的设置卡还高，用户回执「不需要图标下面的文字」「高度太长了」。
+        """
+        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
+        self.assertIn(".board-icon-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}", board)
+        self.assertIn(".board-icon-grid label{position:relative;display:grid;place-items:center;height:40px;border-radius:8px;cursor:pointer}", board)
+        self.assertIn(".board-icon-grid svg{width:22px;height:22px}", board)
+        self.assertNotIn(".board-icon-grid small", board)
+        picker = (Path(__file__).resolve().parents[1] / "frontend/src/library-icon-picker.tsx").read_text(encoding="utf-8")
+        self.assertNotIn("<small>{name}</small>", picker)
+        self.assertIn("<label title={name} class={draft===key?'selected':''}>", picker)
+
     def test_toasts_leave_like_a_boardui_notification(self):
         """Board 层的 Toast 退场按 Notification 的 exit：180ms ease-out，下沉 8px、缩到 .96、
         模糊 3px。高度收成 0 留着，栈里上面那条才是滑下来而不是跳下来。"""

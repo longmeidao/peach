@@ -2457,18 +2457,14 @@ function Pn({ value: e, label: t, onChange: n }) {
 					children: Nn.map(([e, n]) => /* @__PURE__ */ J("label", {
 						title: n,
 						class: r === e ? "selected" : "",
-						children: [
-							/* @__PURE__ */ J("input", {
-								type: "radio",
-								name: `${t}-icon`,
-								"aria-label": n,
-								value: e,
-								checked: r === e,
-								onChange: () => i(e)
-							}),
-							s(e),
-							/* @__PURE__ */ J("small", { children: n })
-						]
+						children: [/* @__PURE__ */ J("input", {
+							type: "radio",
+							name: `${t}-icon`,
+							"aria-label": n,
+							value: e,
+							checked: r === e,
+							onChange: () => i(e)
+						}), s(e)]
 					}))
 				})]
 			}), /* @__PURE__ */ J("footer", { children: [/* @__PURE__ */ J("button", {
