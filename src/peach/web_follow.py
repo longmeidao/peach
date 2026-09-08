@@ -16,7 +16,7 @@ import threading
 import uuid
 import urllib.parse
 
-from . import follow_providers
+from . import follow_assets, follow_providers
 from .follow import FollowSourceError
 from .follow_check import plan_check, run_check
 from .follow_discovery import discover
@@ -412,24 +412,14 @@ def _follow_alias_suggestions(rows, aliases: dict[str, str]) -> list[dict]:
 
 
 def _avatar_url(provider: str, ref: str) -> str | None:
-    """作者头像。**只有实测拿得到的来源才给，取不到就是 `None`。**
+    """归档站上的作者头像，经 Peach 取回存在本机再交给页面。
 
-    2026-08-27 实测（`curl`，不带凭据）：
-    `https://kemono.cr/icons/fanbox/30917150` → 302 → `img.kemono.cr`，
-    200 `image/webp` 160×160；`pawchive.pw` 同路径 200、14,534 字节。
-    coomer.st 对这个创作者回 404，但那只说明他不在 coomer 上，
-    不能据此断定 coomer 没有这个端点——所以 coomer 照样按同一规则给 URL，
-    取不到时由 `<img onerror>` 收场。
-
-    rule34video / rule34.xxx **未取得**：没有可用的作者页样本可测，不猜一个路径。
-    取不到头像时界面显示站点缩写，不用首字母假装成头像。
+    哪些来源实测拿得到由 `follow_assets.mirror_avatar_url` 一处判定；拿不到的来源
+    这里也是 `None`，页面退回作者首字母，不猜一个路径。
     """
-    if provider not in KemonoConnector.HOSTS:
+    if follow_assets.mirror_avatar_url(provider, ref) is None:
         return None
-    service, _, user = str(ref or "").partition("/")
-    if not service or not user:
-        return None
-    return f"https://{KemonoConnector.HOSTS[provider]}/icons/{service}/{user}"
+    return "/follow-avatar?" + urllib.parse.urlencode({"provider": provider, "ref": ref})
 
 
 def _official_avatar_url(provider: str, ref: str) -> str | None:

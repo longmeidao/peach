@@ -21,12 +21,12 @@ from urllib.parse import quote, urlsplit
 import httpx
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import (
-    FileResponse, JSONResponse, PlainTextResponse, RedirectResponse, Response,
+    FileResponse, JSONResponse, PlainTextResponse, Response,
     StreamingResponse,
 )
 from starlette.staticfiles import StaticFiles
 
-from . import link_marks, site_icons
+from . import follow_assets, link_marks, site_icons, web_settings
 from .config import GENERATED_DIR
 from .follow import FollowSourceError
 from .follow_avatar import resolve_official_avatar
@@ -54,6 +54,28 @@ MEDIA_CACHE_SECONDS = 365 * 24 * 3600
 
 #: 头像单独短一档：id 不变但人会换头像，作者换得还挺勤。
 AVATAR_CACHE_SECONDS = 30 * 24 * 3600
+
+
+def _metadata_ttl(state) -> int | None:
+    """头像、来源图标与外链圆标共用的保鲜期，来自设置「头像与站点图标刷新」。"""
+    return web_settings.metadata_refresh_seconds(state.web_contract)
+
+
+def _asset_root(state) -> Path:
+    return Path(state.settings.candidate_root) / follow_assets.ROOT_NAME
+
+
+def _asset_response(request: Request, path: Path | None):
+    """这些端点只出现在 `<img src>` 里，所以取不到时回的是占位图而不是 JSON：
+
+    错误正文对 `<img>` 毫无意义，只会留下一个碎图。状态码仍然是 404，
+    前端据此把 `<img>` 摘掉、换成站名或首字母。
+    """
+    if path is None:
+        return Response(PLACEHOLDER_IMAGE, status_code=404,
+                        media_type=PLACEHOLDER_CONTENT_TYPE,
+                        headers={"cache-control": "no-store"})
+    return _image_response(request, path, media_type=follow_assets.content_type(path))
 
 #: 取图标时报浏览器 UA。CDN 上的图标资产（p-smith、static.cdninstagram）对
 #: 机器人 UA 会直接 403，而这只是一次公开静态文件请求，没有伪装成用户的意思。
@@ -318,26 +340,53 @@ def avatar(request: Request, id: int, args: dict[str, str] = Depends(require_aut
 
 
 @router.api_route("/follow-avatar", methods=["GET", "HEAD"])
-def follow_avatar(request: Request, service: str, id: str, args: dict[str, str] = Depends(require_auth)):
-    """Resolve an official creator avatar, then let the image CDN serve it.
+def follow_avatar(request: Request, service: str = "", id: str = "",
+                  provider: str = "", ref: str = "",
+                  args: dict[str, str] = Depends(require_auth)):
+    """作者头像：官方资料页的那张（`service`+`id`）或归档站的那张（`provider`+`ref`）。
 
-    这个端点只出现在 `<img src>` 里，所以取不到时回的是占位图而不是 JSON：
-    错误正文对 `<img>` 毫无意义，只会留下一个碎图。状态码仍然是 404，
-    前端与缓存据此知道这次没取到。
-
-    成功路径仍然 307 到 CDN：`resolve_official_avatar` 只认 pixiv.pximg.net
-    这一个固定主机，地址不带签名也不带凭据，交给浏览器不泄露任何东西；
-    改成回源代理反而要为每个头像多打一次上游，还丢掉 CDN 缓存。
+    两种都由服务端取回存在本机再交给页面，浏览器不直接碰对方站点。地址只从固定主机
+    拼：官方那条由 `resolve_official_avatar` 认 pixiv.pximg.net 一个主机，归档那条由
+    `follow_assets.mirror_avatar_url` 按 provider 查表；前端递不进任何 URL。
     """
-    try:
-        target = resolve_official_avatar(service, id)
-    except (OSError, FollowSourceError):
-        return Response(PLACEHOLDER_IMAGE, status_code=404,
-                        media_type=PLACEHOLDER_CONTENT_TYPE,
-                        headers={"cache-control": "no-store"})
-    response = RedirectResponse(target, status_code=307)
-    response.headers["Cache-Control"] = f"private, max-age={AVATAR_CACHE_SECONDS}"
-    return response
+    state = request.app.state
+    client = state.http_transport.client
+    if provider:
+        target = follow_assets.mirror_avatar_url(provider, ref)
+        if target is None:
+            return _asset_response(request, None)
+        key = f"mirror:{provider}:{ref}"
+
+        def fetch():
+            return follow_assets.fetch_image(client, target)
+    else:
+        if service != "fanbox" or not id.isdigit():
+            return _asset_response(request, None)
+        key = f"official:{service}:{id}"
+
+        def fetch():
+            try:
+                resolved = resolve_official_avatar(service, id)
+            except (OSError, FollowSourceError):
+                return None
+            return follow_assets.fetch_image(client, resolved)
+    path = follow_assets.cached_image(_asset_root(state), "avatars", key,
+                                      _metadata_ttl(state), fetch)
+    return _asset_response(request, path)
+
+
+@router.api_route("/source-icon", methods=["GET", "HEAD"])
+def source_icon(request: Request, provider: str = "", args: dict[str, str] = Depends(require_auth)):
+    """来源的站点图标。地址只认 `follow_assets.SOURCE_ICON_URLS` 那张表，没登记的 404。"""
+    state = request.app.state
+    target = follow_assets.SOURCE_ICON_URLS.get(provider)
+    if target is None:
+        return _asset_response(request, None)
+    client = state.http_transport.client
+    path = follow_assets.cached_image(
+        _asset_root(state), "icons", provider, _metadata_ttl(state),
+        lambda: follow_assets.fetch_image(client, target))
+    return _asset_response(request, path)
 
 
 def _follow_media_size(state, item_id: int, target: ResolvedFollowMedia) -> int | None:
@@ -500,7 +549,7 @@ def link_mark(request: Request, id: int = 0, args: dict[str, str] = Depends(requ
     cached = link_marks.cached_path(root, row["url"])
     if cached is None:
         return JSONResponse({"error": "unavailable"}, status_code=404)
-    if not link_marks.is_fresh(cached):
+    if not link_marks.is_fresh(cached, ttl=_metadata_ttl(state)):
         def fetch(target: str):
             try:
                 upstream = state.http_transport.client.get(

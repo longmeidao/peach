@@ -432,6 +432,8 @@ appSettings.detailAutoplay=appSettings.detailAutoplay!==false;
 appSettings.miniplayer=appSettings.miniplayer!==false;
 appSettings.searchHistoryLimit=allowedSetting(+appSettings.searchHistoryLimit,[5,10,20],10);
 appSettings.relatedLimit=allowedSetting(+appSettings.relatedLimit,[12,20,30],20);
+const METADATA_REFRESH_DAYS=[0,7,30,90];
+appSettings.metadataRefreshDays=allowedSetting(+appSettings.metadataRefreshDays,METADATA_REFRESH_DAYS,30);
 Object.assign(appSettings,normalizeJavPreferences(appSettings));
 appSettings.theme=allowedSetting(appSettings.theme,THEME_CHOICES,'system');
 const sidebarKeyAlias=key=>key==='ads'||key==='dupes'?'data-cleanup':key;
@@ -509,6 +511,11 @@ const SETTING_SELECTS=[
   ['followScheduleSetting','关注自动更新',[['0','关闭'],['15','每 15 分钟'],['30','每 30 分钟'],['60','每小时'],
     ['180','每 3 小时'],['360','每 6 小时'],['720','每 12 小时'],['1440','每天']],
     ()=>'0',value=>saveFollowSchedule(+value)],
+  /* 服务端按这个数决定要不要重取，所以它跟着账本走（/api/settings），本地那份只是镜像。 */
+  ['metadataRefreshSetting','头像与站点图标刷新',[['7','每周'],['30','每月'],['90','每季'],['0','从不']],
+    ()=>appSettings.metadataRefreshDays,
+    value=>{appSettings.metadataRefreshDays=allowedSetting(+value,METADATA_REFRESH_DAYS,30);saveSettings();
+      api('/api/settings',{method:'POST',body:JSON.stringify({metadataRefreshDays:appSettings.metadataRefreshDays})}).catch(()=>{})}],
 ];
 function syncSortDirectionSetting(){
   const field=$('#defaultSortDirectionSetting .gselect');
@@ -5416,24 +5423,12 @@ function followAuthorGroups(sources){
   });
 }
 
-/* 这些地址来自各站实际声明的图标；内容哈希变更或站点拒绝外链时退回纯文字。 */
-const SOURCE_ICONS={
-  fanbox:'https://www.fanbox.cc/favicon.ico',
-  patreon:'https://www.patreon.com/favicon.ico',
-  subscribestar:'https://assets.subscribestar.com/assets/public/images/favicons/favicon-32x32-b9aa1e7e5bab6cb1b28b5161e16f9d42.png',
-  kemono:'https://kemono.cr/assets/favicon-CPB6l7kH.ico',
-  coomer:'https://coomer.st/assets/favicon-CPB6l7kH.ico',
-  pawchive:'https://pawchive.pw/static/favicon.png',
-  rule34video:'https://rule34video.com/favicon-32x32.png',
-  rule34xxx:'https://rule34.xxx/favicon.ico',
-  rule34paheal:'https://rule34.paheal.net/favicon.ico',
-  gofile:'https://gofile.io/favicon.ico',
-  f95zone:'https://f95zone.to/assets/favicon-32x32.png',
-  simpcity:'https://simpcity.cr/data/assets/logo/favicon.png',
-};
-function sourceIcon(provider){return SOURCE_ICONS[provider]
-  ? `<img class="ficon" src="${esc(SOURCE_ICONS[provider])}" alt="" loading="lazy"
-       referrerpolicy="no-referrer" data-drop="self">`
+/* 有站点图标的来源。图标由服务端按 follow_assets.SOURCE_ICON_URLS 取回、保存在本机，
+   页面只认这张名单：没登记的来源直接不出 <img>，取不到的由 data-drop 摘掉退回纯文字。 */
+const SOURCE_ICON_PROVIDERS=new Set(['fanbox','patreon','subscribestar','kemono','coomer','pawchive',
+  'rule34video','rule34xxx','rule34paheal','gofile','f95zone','simpcity']);
+function sourceIcon(provider){return SOURCE_ICON_PROVIDERS.has(provider)
+  ? `<img class="ficon" src="/source-icon?provider=${encodeURIComponent(provider)}" alt="" loading="lazy" data-drop="self">`
   : ''}
 
 function followAvatarInitial(group){
@@ -5983,7 +5978,7 @@ function renderFollowSrcFilter(mount,credentials=[]){
   const providers=[...new Set(sources
     .map(source=>source.provider_label).filter(Boolean))];
   /* 下拉里的每一行带上该来源的 favicon：label 只是展示名，图标要靠 provider
-     查 SOURCE_ICONS，所以另建一张 label→provider 的映射。 */
+     查 SOURCE_ICON_PROVIDERS，所以另建一张 label→provider 的映射。 */
   const providerIcon=new Map(sources.filter(source=>source.provider&&source.provider_label)
     .map(source=>[source.provider_label,source.provider]));
   providers.forEach(provider=>{if(!fsrcProviders.has(provider))fsrcProviders.add(provider)});
@@ -7205,6 +7200,11 @@ function saveSidebarSetting(){
 async function loadSyncedSettings(){
   let remote=null;
   try{remote=await api('/api/settings')}catch(_e){return}
+  const days=remote&&remote.metadataRefreshDays;
+  if(METADATA_REFRESH_DAYS.includes(days)&&days!==appSettings.metadataRefreshDays){
+    appSettings.metadataRefreshDays=days;saveSettings();
+    const field=$('#metadataRefreshSetting .gselect');if(field)field.value=String(days);
+  }
   const order=Array.isArray(remote&&remote.sidebarOrder)?remote.sidebarOrder:null;
   if(!order||!order.length||order.join(',')===appSettings.sidebarOrder.join(','))return;
   appSettings.sidebarOrder=order;

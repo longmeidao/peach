@@ -92,12 +92,31 @@ class SettingsRoundTripTests(unittest.TestCase):
 
     def test_an_unset_profile_reads_the_default_order(self):
         self.assertEqual(q_settings(self.contract),
-                         {"sidebarOrder": list(DEFAULT_SIDEBAR_ORDER)})
+                         {"sidebarOrder": list(DEFAULT_SIDEBAR_ORDER),
+                          "metadataRefreshDays": web_settings.DEFAULT_METADATA_REFRESH_DAYS})
+
+    def test_the_metadata_refresh_period_round_trips_and_rejects_odd_values(self):
+        """这个数直接决定服务端要不要出网重取头像，坏载荷不能把它变成 1 秒或 1 天。"""
+        self.assertEqual(w_settings(self.contract, {"metadataRefreshDays": 7})["metadataRefreshDays"], 7)
+        self.assertEqual(q_settings(self.contract)["metadataRefreshDays"], 7)
+        self.assertEqual(web_settings.metadata_refresh_seconds(self.contract), 7 * 24 * 3600)
+        w_settings(self.contract, {"metadataRefreshDays": "0"})
+        self.assertEqual(q_settings(self.contract)["metadataRefreshDays"], 0)
+        self.assertIsNone(web_settings.metadata_refresh_seconds(self.contract), "0 是从不重取")
+        for odd in (1, -7, "soon", None, True, 3.5):
+            w_settings(self.contract, {"metadataRefreshDays": odd})
+            self.assertEqual(q_settings(self.contract)["metadataRefreshDays"],
+                             web_settings.DEFAULT_METADATA_REFRESH_DAYS, repr(odd))
+        # 写它不动侧栏顺序：合并而不是整体替换。
+        w_settings(self.contract, {"sidebarOrder": ["", "tags"]})
+        w_settings(self.contract, {"metadataRefreshDays": 90})
+        self.assertEqual(self._stored_json(), {"sidebarOrder": ["", "tags"], "metadataRefreshDays": 90})
 
     def test_a_written_order_survives_a_reread(self):
         order = ["", "follow", "tags", "trash"]
         self.assertEqual(w_settings(self.contract, {"sidebarOrder": order}),
-                         {"ok": True, "sidebarOrder": order})
+                         {"ok": True, "sidebarOrder": order,
+                          "metadataRefreshDays": web_settings.DEFAULT_METADATA_REFRESH_DAYS})
         self.assertEqual(q_settings(self.contract)["sidebarOrder"], order)
         self.assertEqual(self._stored_json()["sidebarOrder"], order)
 
@@ -182,6 +201,25 @@ class ContractRegistrationTests(unittest.TestCase):
         self.assertIn("immerse", web_settings.OPTIONAL_SIDEBAR_KEYS)
         self.assertEqual(js_list("OPTIONAL_SIDEBAR_KEYS"),
                          web_settings.OPTIONAL_SIDEBAR_KEYS)
+
+    def test_the_metadata_refresh_choices_match_the_web_surface(self):
+        """选项两边各一份：服务端多一个前端没有的值，页面就会把账本里的值打回默认。"""
+        import re
+
+        page = (Path(__file__).resolve().parents[1] / "web" / "app.js").read_text(
+            encoding="utf-8")
+        raw = re.search(r"const METADATA_REFRESH_DAYS=\[(.*?)\];", page).group(1)
+        self.assertEqual(tuple(int(item) for item in raw.split(",")),
+                         web_settings.METADATA_REFRESH_DAYS)
+        options = re.search(r"\['metadataRefreshSetting','头像与站点图标刷新',\[(.*?)\]\],", page).group(1)
+        self.assertEqual(sorted(int(value) for value in re.findall(r"\['(\d+)',", options)),
+                         sorted(web_settings.METADATA_REFRESH_DAYS))
+        # 选中的值要写进账本（服务端按它决定要不要出网），启动时再用账本那份纠正本地镜像。
+        self.assertIn("body:JSON.stringify({metadataRefreshDays:appSettings.metadataRefreshDays})", page)
+        self.assertIn("const days=remote&&remote.metadataRefreshDays;", page)
+        html = (Path(__file__).resolve().parents[1] / "web" / "index.html").read_text(encoding="utf-8")
+        self.assertIn('<b>头像与站点图标刷新</b>', html)
+        self.assertIn('id="metadataRefreshSetting"', html)
 
 if __name__ == "__main__":
     unittest.main()

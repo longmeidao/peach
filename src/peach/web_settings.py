@@ -34,9 +34,14 @@ OPTIONAL_SIDEBAR_KEYS = (
 ALL_SIDEBAR_KEYS = frozenset(DEFAULT_SIDEBAR_ORDER) | frozenset(OPTIONAL_SIDEBAR_KEYS)
 SIDEBAR_KEY_ALIASES = {"ads": "data-cleanup", "dupes": "data-cleanup"}
 
+#: 头像与站点图标多久重取一次，单位天；0 是从不。这是服务端的行为参数（缓存在哪台
+#: 机器就由哪台机器取），所以它必须落在账本里让服务端读得到，浏览器本地那份只是镜像。
+METADATA_REFRESH_DAYS = (0, 7, 30, 90)
+DEFAULT_METADATA_REFRESH_DAYS = 30
+
 #: 只有这些键跟着账本走。白名单而不是黑名单：将来往设置里加字段的人必须显式表态
 #: 它该不该跨机同步，而不是默认就同步过去。
-SYNCED_SETTING_KEYS = frozenset({"sidebarOrder"})
+SYNCED_SETTING_KEYS = frozenset({"sidebarOrder", "metadataRefreshDays"})
 
 
 class SettingsContract(Protocol):
@@ -66,6 +71,23 @@ def normalise_sidebar_order(raw) -> list[str]:
     return seen or list(DEFAULT_SIDEBAR_ORDER)
 
 
+def normalise_metadata_refresh_days(raw) -> int:
+    """不在选项里的值一律回到默认：这个数直接决定要不要出网，不能让坏载荷把它变成 1 秒。"""
+    if isinstance(raw, bool):
+        return DEFAULT_METADATA_REFRESH_DAYS
+    try:
+        days = int(raw)
+    except (TypeError, ValueError):
+        return DEFAULT_METADATA_REFRESH_DAYS
+    return days if days in METADATA_REFRESH_DAYS else DEFAULT_METADATA_REFRESH_DAYS
+
+
+def metadata_refresh_seconds(contract: SettingsContract) -> int | None:
+    """图片端点用的保鲜期，秒；None 表示从不重取。"""
+    days = normalise_metadata_refresh_days(_stored(contract).get("metadataRefreshDays"))
+    return days * 24 * 3600 or None
+
+
 def _stored(contract: SettingsContract) -> dict:
     with contract.read_connection() as connection:
         row = connection.execute(
@@ -84,7 +106,11 @@ def _stored(contract: SettingsContract) -> dict:
 def q_settings(contract: SettingsContract, _args=None) -> dict:
     """读取跟人走的那部分设置。缺省时返回默认值，不返回空。"""
     payload = _stored(contract)
-    return {"sidebarOrder": normalise_sidebar_order(payload.get("sidebarOrder"))}
+    return {
+        "sidebarOrder": normalise_sidebar_order(payload.get("sidebarOrder")),
+        "metadataRefreshDays": normalise_metadata_refresh_days(
+            payload.get("metadataRefreshDays")),
+    }
 
 
 def w_settings(contract: SettingsContract, body) -> dict:
@@ -104,6 +130,9 @@ def w_settings(contract: SettingsContract, body) -> dict:
     merged = _stored(contract)
     if "sidebarOrder" in body:
         merged["sidebarOrder"] = normalise_sidebar_order(body["sidebarOrder"])
+    if "metadataRefreshDays" in body:
+        merged["metadataRefreshDays"] = normalise_metadata_refresh_days(
+            body["metadataRefreshDays"])
     stamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     with contract.write_transaction() as connection:
         updated = connection.execute(

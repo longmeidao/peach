@@ -170,6 +170,7 @@ CloudDrive 为外部应用，本项目不捆绑其二进制或依赖其管理 AP
 - 实体链接可安装：`entity_link` 表、`q_entity` 的 `links` 契约、资料页 favicon 与管理页链接管理成套；死链区分「搬走了」和「没了」，`rediscover_entity_links.py` 从站点索引页上溯找新锚。
 - 事务所是实体：57 家各有 `/agencies/<名字>` 页，成员、官网、标签与作品都按 `entity_membership` 算，女优页点得进去，搜名字出这家人的片；原文留在 `metadata.agency`。
 - 外链圆标与厂牌标识取站点自己声明的资产，宽扁字标不参加小圆标竞选；`/logo` 的 `variant` 分 `icon`、`logo` 与最清晰的 `large`，大图版式和资料页取 `large`，紧凑版式取 `icon`。头像与标识共用 `nativeImageFit`：按屏幕像素密度折算的源尺寸不足框四成时等比居中且不放大，四周同图模糊补底；框短边小于 64 px 不补底，70 px 紧凑圆框适用。加载、图片回落和版式切换均重新度量。
+- 关注的作者头像与来源图标是元数据，由 `follow_assets` 取回落在 `generated/follow-assets/` 再经 `/follow-avatar`、`/source-icon` 给页面：地址只从固定表或固定主机拼、字节先认成图再落盘、到期重取失败继续用旧的并退避一小时；保鲜期与 `/link-mark` 共用设置「头像与站点图标刷新」（`web_settings.metadata_refresh_seconds`）。视频与图片不落盘。
 - 厂牌标识由契约位 `has_logo` 决定出不出图：没装标识的厂牌一个 `<img>` 都不发，改用首字母底板，不靠 404 摘。
 - 关注检查分两阶段：列表阶段落 partial 行，详情补全按 provider 额度只补新行和未补齐行。
 - `/api/related` 用 Tag IDF 加 MMR 排序并缓存；搜索使用 FTS5 trigram，短查询回退 LIKE 并覆盖规范名、别名和检索词，搜索历史在 reader 写入被拒时降级到页面内存。

@@ -1766,10 +1766,9 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("${icon('check')}")
 
     def test_official_channel_icons_and_alias_manager_are_visible(self):
-        icons = self.page.split("const SOURCE_ICONS={", 1)[1].split("};", 1)[0]
+        icons = self.page.split("const SOURCE_ICON_PROVIDERS=new Set([", 1)[1].split("]);", 1)[0]
         for provider in ("fanbox", "patreon", "subscribestar"):
-            self.assertIn(provider, icons)
-        self.assertIn("assets.subscribestar.com/assets/public/images/favicons/favicon-32x32-", icons)
+            self.assertIn(f"'{provider}'", icons)
         self.assertPageContains("followAliasManager(followData.author_aliases,followData.alias_suggestions)")
         self.assertPageContains("'/api/follow/author-alias'")
 
@@ -2194,7 +2193,7 @@ class FollowWebSourceTests(unittest.TestCase):
         """
         self.assertPageContains(':has(.ficon)>span{display:none}')
         self.assertIn('data-drop="self"', self.page)
-        self.assertPageContains("function sourceIcon(provider){return SOURCE_ICONS[provider]")
+        self.assertPageContains("function sourceIcon(provider){return SOURCE_ICON_PROVIDERS.has(provider)")
 
     def test_the_layout_switch_lines_up_with_the_sort_box(self):
         """开关和排序框、按钮同处分区标题行，高度必须是同一档。"""
@@ -2234,12 +2233,13 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertNotIn("pill-radius", badge)
 
     def test_follow_source_icons_fail_back_to_plain_text(self):
-        icons = self.page.split("const SOURCE_ICONS={", 1)[1].split("};", 1)[0]
-        self.assertIn("kemono.cr/assets/favicon-", icons)
-        self.assertIn("pawchive.pw/static/favicon.png", icons)
-        # simpcity 的 `/favicon.ico` 是 404，站点声明的图标在 `/data/assets/logo/` 下。
-        self.assertIn("simpcity:'https://simpcity.cr/data/assets/logo/favicon.png'", icons)
-        self.assertNotIn("kemono.cr/favicon.ico", icons)
+        """图标由服务端取回落盘（follow_assets.SOURCE_ICON_URLS），页面只认名单、只请求本机。"""
+        icons = self.page.split("const SOURCE_ICON_PROVIDERS=new Set([", 1)[1].split("]);", 1)[0]
+        for provider in ("kemono", "pawchive", "simpcity"):
+            self.assertIn(f"'{provider}'", icons)
+        self.assertNotIn("https://", icons)
+        self.assertPageContains(
+            'src="/source-icon?provider=${encodeURIComponent(provider)}" alt="" loading="lazy" data-drop="self"')
         # 取不到图标就把 <img> 摘掉，露出纯文字；收场动作由 image-fallback 的
         # 委托监听执行，模板里只声明 `data-drop`。
         self.assertPageContains('data-drop="self"')
@@ -2586,17 +2586,16 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertEqual(follow_store.author_display_text("Billyhhyb · patreon"),
                          "Billyhhyb")
 
-    def test_avatars_only_come_from_providers_that_actually_serve_one(self):
-        """头像按 peach-reference-evidence：实测拿得到才给，取不到写「未取得」。
+    def test_avatars_are_local_urls_and_only_for_providers_that_serve_one(self):
+        """头像是元数据，经 Peach 落盘再给页面：两个字段都是本机地址，浏览器不碰对方站点。
 
-        2026-08-27 实测 `https://kemono.cr/icons/fanbox/30917150` → 302 →
-        `img.kemono.cr`，200 `image/webp` 160×160；pawchive.pw 同路径 200。
-        rule34 系没有可用样本可测，所以不给 URL——不猜一个路径。
+        哪些来源实测拿得到由 `follow_assets.mirror_avatar_url` 判定（证据在它的测试里）；
+        拿不到的这里也是 None，页面退回首字母，不猜一个路径。
         """
         self.assertEqual(web_follow._avatar_url("kemono", "fanbox/30917150"),
-                         "https://kemono.cr/icons/fanbox/30917150")
+                         "/follow-avatar?provider=kemono&ref=fanbox%2F30917150")
         self.assertEqual(web_follow._avatar_url("pawchive", "fanbox/30917150"),
-                         "https://pawchive.pw/icons/fanbox/30917150")
+                         "/follow-avatar?provider=pawchive&ref=fanbox%2F30917150")
         self.assertEqual(
             web_follow._official_avatar_url("kemono", "fanbox/30917150"),
             "/follow-avatar?service=fanbox&id=30917150",
