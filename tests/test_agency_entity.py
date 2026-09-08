@@ -137,6 +137,16 @@ class LinkDestinationTests(unittest.TestCase):
     def test_a_query_string_still_distinguishes_pages(self):
         self.assertNotEqual(destination("https://a.jp/t?id=3"), destination("https://a.jp/t?id=4"))
 
+    def test_percent_escapes_are_compared_by_byte_not_by_case(self):
+        """凉森玲梦的官网被两个来源各按自己的大小写写了一遍，指向同一个页面。"""
+        self.assertEqual(
+            destination("https://www.t-powers.co.jp/talent/%e6%b6%bc%e6%a3%ae%e3%82%8c%e3%82%80/"),
+            destination("https://www.t-powers.co.jp/talent/%E6%B6%BC%E6%A3%AE%E3%82%8C%E3%82%80/"))
+
+    def test_two_escaped_paths_that_differ_stay_apart(self):
+        self.assertNotEqual(destination("https://a.jp/t/%E6%B6%BC"),
+                            destination("https://a.jp/t/%E6%A3%AE"))
+
 
 class AgencyLedgerTests(unittest.TestCase):
     """按真实形状建一份小账本：两家事务所、三位女优、几条链接。"""
