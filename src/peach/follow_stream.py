@@ -85,6 +85,17 @@ def _allowed(provider: str, url: str) -> bool:
                for suffix in _PROVIDER_HOSTS.get(provider, ()))
 
 
+def proxyable(provider: str, media_url: str | None) -> bool:
+    """一条直链媒体能不能经 `/follow-stream` 代理出去。
+
+    界面上的 `playable` 要和这里同一口径：说「可播」却让代理在白名单那一步拒收，
+    详情页就只剩一张打不开的图。归档站的存量行先按 `archive_file_url` 修回可取的
+    形式再判，与 `resolve()` 的直链分支一致。
+    """
+    url = archive_file_url(provider, str(media_url or ""))
+    return bool(url) and _allowed(provider, url)
+
+
 class FollowMediaResolver:
     """Resolve stable ledger candidates into short-lived upstream playback URLs."""
 

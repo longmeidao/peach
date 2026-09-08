@@ -186,7 +186,7 @@ class ReleaseKeyPerPostTests(unittest.TestCase):
     def test_the_rule_is_declared_in_the_registry_not_named_in_the_data_layer(self):
         """论坛线程每层各自成组，这是来源语义，不是 `follow_store` 里的站点点名。"""
         self.assertEqual(follow_providers.release_key_per_post(),
-                         frozenset({"f95zone"}))
+                         frozenset({"f95zone", "simpcity"}))
 
     def test_it_only_applies_to_release_semantics(self):
         """每条各自成组只对「同一作品的历次发布」有意义；work 语义靠标题合并。"""

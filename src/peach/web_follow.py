@@ -23,6 +23,7 @@ from .follow_discovery import discover
 from .follow_secrets import (
     CREDENTIAL_GUIDE, CredentialError, CredentialStore, credential_store_for,
 )
+from .follow_stream import proxyable
 from .follow_sources import (
     CONNECTORS, KemonoConnector, build_connector, canonical_source_ref,
     display_thumb_url, f95_attachment_media_items, is_history_end_error,
@@ -264,9 +265,10 @@ def _item_payload(item, credential_providers: frozenset[str] = frozenset()) -> d
     )
     needs_credential = bool(item.metadata.get("media_needs_credential"))
     credential_ready = not needs_credential or item.provider in credential_providers
+    # 直链媒体只有代理白名单放行的才算可播；不放行的图站图片由界面直接引用缩略图。
     playable = (media_kind in {"video", "image"}
                 and ((bool(media_items) and credential_ready)
-                     or (bool(item.media_url) and not needs_credential)))
+                     or (not needs_credential and proxyable(item.provider, item.media_url))))
     return {
         "id": item.id,
         "provider": item.provider,

@@ -220,7 +220,13 @@ SIMPCITY_LAST_HTML = b"""<html data-logged-in="true" data-cookie-prefix="yMziCv8
     <a href="https://imgpage.test/img/def"><img class="bbImage"
         src="https://cdn.imgpage.test/def.md.jpg" data-url="https://cdn.imgpage.test/def.jpg"></a>
     <img class="smilie smilie--emoji" src="https://cdn.jsdelivr.net/emoji.png">
-    <a href="https://gofile.io/d/abc123">Gofile</a>
+    <a href="/redirect/?to=aHR0cHM6Ly9nb2ZpbGUuaW8vZC9hYmMxMjM&amp;e=1&amp;m=b64" class="link link--external">Gofile</a>
+    <a href="/redirect/?to=aHR0cHM6Ly9waXhlbGRyYWluLmNvbS91L3pGM1BxVEpG&amp;e=1&amp;m=b64" class="link link--external">https://pixeldrain.com/u/zF3PqTJF</a>
+    <a href="/redirect/?to=bm90IGEgdXJs&amp;e=1&amp;m=b64">broken</a>
+    <div class="bbCodeBlock bbCodeBlock--unfurl js-unfurl fauxBlockLink" data-unfurl="true"
+        data-url="https://mega.nz/folder/xyz" data-host="mega.nz">
+      <a href="/redirect/?to=aHR0cHM6Ly9tZWdhLm56L2ZvbGRlci94eXo&amp;e=1&amp;m=b64" class="fauxBlockLink-blockLink">MEGA</a>
+      <div class="contentRow-snippet">Unfurl snippet text</div></div>
   </div>
 </article>
 <article data-content="post-701" data-author="replier">
@@ -1388,11 +1394,17 @@ class SimpCityConnectorTests(unittest.TestCase):
         self.assertEqual(first.url, "https://simpcity.cr/threads/4242/post-700")
         self.assertEqual(first.author, "uploader1")
         self.assertEqual(first.published_at, "2026-09-07T10:00:00Z")
+        # 站点把外链套在 `/redirect/?to=<base64url>` 里，网盘链接要还原之后才认得出。
         self.assertEqual(first.media_url, "https://gofile.io/d/abc123")
+        # 预览卡（unfurl）里的链接是楼主贴的，要留下；卡片上站点生成的摘要文字不是。
+        self.assertEqual(first.extra["links"],
+                         ["https://gofile.io/d/abc123", "https://pixeldrain.com/u/zF3PqTJF",
+                          "https://mega.nz/folder/xyz"])
+        self.assertNotIn("Unfurl snippet text", first.summary)
         self.assertEqual(first.thumb_url, "https://cdn.imgpage.test/abc.md.jpg")
         self.assertEqual(first.extra["images"],
                          ["https://cdn.imgpage.test/abc.jpg", "https://cdn.imgpage.test/def.jpg"])
-        self.assertEqual((first.extra["image_count"], first.extra["link_count"]), (2, 1))
+        self.assertEqual((first.extra["image_count"], first.extra["link_count"]), (2, 3))
         self.assertEqual(first.extra["page"], 7)
         # 表情图不是内容；被引用的网盘链接属于被引用的楼层，不算 replier 发的。
         self.assertNotIn("cdn.jsdelivr.net", str(first.extra))
@@ -1402,6 +1414,18 @@ class SimpCityConnectorTests(unittest.TestCase):
         self.assertEqual(second.extra["attachments"],
                          ["https://simpcity.cr/attachments/clip-mp4.9001/"])
         self.assertEqual(second.extra["embed_count"], 1)
+
+    def test_redirect_links_are_decoded_only_when_they_hold_a_real_url(self):
+        decode = SimpCityConnector._external_href
+        self.assertEqual(decode("/redirect/?to=aHR0cHM6Ly9waXhlbGRyYWluLmNvbS91L3pGM1BxVEpG&e=1&m=b64"),
+                         "https://pixeldrain.com/u/zF3PqTJF")
+        self.assertEqual(decode("https://simpcity.cr/redirect/?to=aHR0cHM6Ly9nb2ZpbGUuaW8vZC9hYmMxMjM"),
+                         "https://gofile.io/d/abc123")
+        # 解出来不是地址、缺 to、别的站的 /redirect/、普通链接：一律原样返回。
+        for href in ("/redirect/?to=bm90IGEgdXJs&m=b64", "/redirect/?e=1",
+                     "https://other.test/redirect/?to=aHR0cHM6Ly9nb2ZpbGUuaW8vZC9hYmMxMjM",
+                     "https://gofile.io/d/abc123", "/redirect/?to=%%%"):
+            self.assertEqual(decode(href), href)
 
     def test_history_pages_count_back_from_the_last_page(self):
         seen = []
