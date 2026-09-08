@@ -74,8 +74,9 @@ const lucideIcons = new Map([
   ["eye-off", "eye-off"], ["grip-vertical", "grip-vertical"], ["trash", "trash-2"],
   // 卡片右上角那个点点点菜单的触发钮，和菜单里的「编辑名称」。
   ["ellipsis", "ellipsis"], ["pencil", "pencil"],
-  // 动作图标：一个动作一枚，不共用「转圈」当万能替身。
-  ["shuffle", "shuffle"], ["unlink", "unlink"], ["git-compare", "git-compare"],
+  // 动作图标：一个动作一枚，不共用「转圈」当万能替身。`shuffle` 不在这里：它的几何
+  // 取自 Lucide，但为忙态动效拆成两条带 pathLength 的 strand，归 handDrawnIcons。
+  ["unlink", "unlink"], ["git-compare", "git-compare"],
   ["compass", "compass"], ["folder-sync", "folder-sync"], ["expand", "expand"],
   ["zoom-in", "zoom-in"], ["zoom-out", "zoom-out"],
   ["plus", "plus"], ["minus", "minus"], ["check", "check"],
@@ -110,6 +111,9 @@ const lucideIcons = new Map([
 // 零件不带那个前缀，也就不进这张名单。
 const handDrawnIcons = new Set([
   "alert", "pics", "jav", "theater-enter", "theater-exit", "brand-x",
+  // 「换一批」：Lucide shuffle 的线条拆成 strand-a／strand-b 两条 path 供忙态逐条画出，
+  // 上游一刷新就会把两条并回五条，所以由手工维护。
+  "shuffle",
 ]);
 
 const svgInner = source => {
