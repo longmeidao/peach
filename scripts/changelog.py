@@ -310,7 +310,9 @@ def main(argv=None) -> int:
         print(f"{CHANGELOG} 的{UNRELEASED}节已定版成 {args.release}，请核对措辞。")
         return 0
     except version_bump.VersionError as error:
-        print(f"变更日志未更新：{error}")
+        # 两条路各说自己没做成的事：起草或定版是「变更日志未更新」，--notes 是「Release 正文未生成」。
+        what = "Release 正文未生成" if args.notes else "变更日志未更新"
+        print(f"{what}：{error}")
         return 1
 
 
