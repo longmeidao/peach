@@ -51,12 +51,27 @@ main{position:relative;z-index:1;padding:14px 16px 90px}
   -webkit-backdrop-filter:saturate(1.35) blur(16px)}
 .count:empty{display:none}
 .count>span:first-child{flex:none}
-/* 等数据时换批键自己转：它是这一行唯一还在动的东西，其余部分必须保持静止。
-   全局的 prefers-reduced-motion 规则会关掉它。 */
+/* 等数据时换批键自己画：先画完第一条线，再从左到右画第二条，停住让图案看清，两条一起
+   淡出，下一圈立刻起笔。淡出结束正好落在一圈的末尾，所以中间没有一帧是空的。让它整圈
+   旋转的话，这枚两条交叉箭头的图标指向会一直变，读起来像图标画错了而不是像在忙。
+   动效写在 #i-shuffle 自己的两条线上，忙态只负责把两个自定义属性传下去：`<use>` 的影子树
+   里选不到外层那些忙态标记，但继承来的自定义属性进得去。它是这一行唯一还在动的东西，
+   其余部分必须保持静止。全局的 prefers-reduced-motion 规则会关掉它，图标停在画满的样子。 */
+@keyframes peach-strand-draw{
+  0%{stroke-dashoffset:100;opacity:1}
+  34%,86%{stroke-dashoffset:0;opacity:1}
+  100%{stroke-dashoffset:0;opacity:0}}
+@keyframes peach-strand-draw-late{
+  0%,36%{stroke-dashoffset:100;opacity:1}
+  70%,86%{stroke-dashoffset:0;opacity:1}
+  100%{stroke-dashoffset:0;opacity:0}}
+#i-shuffle .strand{stroke-dasharray:var(--strand-dash,none);
+  animation:peach-strand-draw var(--strand-cycle,0s) linear infinite}
+#i-shuffle .strand-b{animation-name:peach-strand-draw-late}
 .count[aria-busy="true"] #batchAction svg,
 body.refreshing #batchAction svg,
 .entitycollectionhead[aria-busy="true"] .entitybatch svg{
-  animation:peach-spinner-linspin .9s linear infinite}
+  --strand-dash:100;--strand-cycle:2.2s}
 .count .sorts,.entitycollectionhead .sorts{display:flex;gap:5px;margin-left:auto;flex-wrap:nowrap;
   overflow-x:auto;scrollbar-width:none;min-width:0}
 .count .sorts::-webkit-scrollbar,.entitycollectionhead .sorts::-webkit-scrollbar{display:none}
