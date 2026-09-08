@@ -5,6 +5,8 @@
 构建 → 用暂存包自己跑一次打包迁移检查 → 停旧托盘、换二进制、起新托盘（新托盘起不来
 就换回备份并重开旧的）→ 走项目 CA 严格校验读生产 HTTPS 口的 `/healthz`。
 
+最后那步的判据看回话的是哪个进程，两条判据都在 `deploy()` 末尾，理由写在那里。
+
 在主检出里运行，用 `.venv` 的 Python：
 
     .venv\\Scripts\\python.exe scripts\\deploy_windows_tray.py
@@ -14,6 +16,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import subprocess
 import sys
@@ -38,6 +41,15 @@ from peach.windows_update import WindowsUpdateInstaller
 #: 换过二进制的那次启动比平常慢：单文件包要先把四十多 MB 解到 `%TEMP%` 才画得出托盘
 #: 图标，再由它拉起两个服务。这里超时就会把一份好的二进制回滚掉，所以给足。
 SWAP_RESTART_TIMEOUT = 90.0
+
+
+def digest(path: Path) -> str:
+    """文件的 sha256。分块读，因为托盘包是八十多 MB，不整份进内存。"""
+    digested = hashlib.sha256()
+    with path.open("rb") as handle:
+        for block in iter(lambda: handle.read(1 << 20), b""):
+            digested.update(block)
+    return digested.hexdigest()
 
 
 def serving_identity(*, timeout: float = 60.0,
@@ -124,6 +136,10 @@ def deploy(
                         f"暂存包没通过打包迁移资源检查，生产入口未动；日志见 {installer.log_path}。",
                         **fields)
 
+    # 指纹只能在这里取：换二进制走的是 `os.replace`，暂存包被搬走，换完就没这个文件了。
+    built = digest(staged)
+    fields["built_digest"] = built
+
     result = restart(target, swap_from=staged, timeout=SWAP_RESTART_TIMEOUT)
     fields.update({
         "old_tray_pid": result.old_tray_pid, "new_tray_pid": result.new_tray_pid,
@@ -140,12 +156,29 @@ def deploy(
                         **fields)
     fields["version"] = served["version"]
     fields["served_commit"] = served["build_commit"]
-    # 认的是构建提交，不是版本号：版本号一次发布才推一格，同一个号下有很多个构建。
-    if served["build_commit"] != commit:
-        return _outcome(False, "verify",
-                        f"新托盘已就位，但 /healthz 报的构建是 "
-                        f"{served['build_commit'] or '未取得'}，不是这次打的 {commit[:8]}。",
-                        **fields)
+    # 两种形态问的不是同一个进程，所以判据也不是同一条，但都不认版本号：版本号一次
+    # 发布才推一格，同一个号下有很多个构建，比中了什么也没证明。
+    #
+    # 独立发行版里回话的就是冻结进程自己，它读得出 `build-info.json`，直接认构建提交。
+    # 本机这套形态下回话的是 venv 里的源码进程——托盘按 `_peach_executable()` 的设计
+    # 刻意把子服务交回项目 venv，那个进程根本没有第二个版本，`build_commit` 结构上恒为
+    # None，拿它当判据的话，换得再对也必然判失败。这时认的是生产入口那个文件的指纹：
+    # 它等于这次打出来的那份，而 `restart()` 是在换完之后才从这个文件启动托盘并等到两个
+    # 子服务就绪的，所以「跑着的就是刚打的这份」这句话仍然成立。
+    if served["build_commit"] is not None:
+        if served["build_commit"] != commit:
+            return _outcome(False, "verify",
+                            f"新托盘已就位，但 /healthz 报的构建是 "
+                            f"{served['build_commit']}，不是这次打的 {commit[:8]}。",
+                            **fields)
+    else:
+        landed = digest(target)
+        fields["target_digest"] = landed
+        if landed != built:
+            return _outcome(False, "verify",
+                            f"新托盘已就位，但生产入口的指纹是 {landed[:12]}，"
+                            f"不是这次打的 {built[:12]}。",
+                            **fields)
     return _outcome(True, "verify",
                     f"生产入口已换成 {commit[:8]} 打出的托盘，/healthz 报 {served['version']}。",
                     **fields)

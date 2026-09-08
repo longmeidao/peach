@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import os
 import subprocess
 import sys
 import tempfile
@@ -101,12 +102,41 @@ class DeployWindowsTrayTests(unittest.TestCase):
         self.assertEqual(outcome["expected_version"], __version__)
         self.assertEqual(outcome["backup"], self.restarted.return_value.backup)
 
-    def test_a_package_without_a_build_identity_cannot_pass_verification(self):
+    def swapping_restart(self):
+        """照真实那步的样子换文件：`os.replace` 是搬走，暂存包换完就不在了。
+
+        指纹只能在换之前取，这个替身把「换完再去读暂存包」直接变成 FileNotFoundError。
+        """
+        def restart(target, *, swap_from, **_kwargs):
+            os.replace(swap_from, target)
+            return self.restarted.return_value
+        return restart
+
+    def test_a_venv_owned_deployment_is_verified_by_the_binary_that_landed(self):
+        """回话的是源码进程时，认落地那个文件的指纹。
+
+        托盘按 `_peach_executable()` 的设计把两个子服务交回项目 venv，那个进程没有第二个
+        版本，`/healthz` 的 `build_commit` 结构上恒为 None。拿它当判据的话，二进制换得
+        再对也必然判失败——这条链路上唯一动了生产入口的那一步，反而永远报不出成功。
+        """
         outcome = self.run_deploy(
+            staged=self.staged, restart=self.swapping_restart(),
+            identity=lambda **_kwargs: {"version": __version__, "build_commit": None})
+        self.assertTrue(outcome["ok"], outcome["message"])
+        self.assertEqual(outcome["step"], "verify")
+        self.assertEqual(outcome["built_digest"], outcome["target_digest"])
+        self.assertEqual(self.target.read_bytes(), b"new")
+
+    def test_a_binary_that_never_landed_fails_even_though_the_tray_answers(self):
+        """托盘回话不等于跑的是这一份：指纹对不上就是没换上。"""
+        outcome = self.run_deploy(
+            staged=self.staged,
             identity=lambda **_kwargs: {"version": __version__, "build_commit": None})
         self.assertFalse(outcome["ok"])
         self.assertEqual(outcome["step"], "verify")
-        self.assertIn("未取得", outcome["message"])
+        self.assertNotEqual(outcome["built_digest"], outcome["target_digest"])
+        self.assertIn("指纹", outcome["message"])
+        self.assertEqual(outcome["backup"], self.restarted.return_value.backup)
 
     def test_a_silent_health_endpoint_is_reported_as_a_failure(self):
         outcome = self.run_deploy(identity=lambda **_kwargs: None)
