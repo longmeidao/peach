@@ -673,7 +673,7 @@ const toast=(message,{timeout=6000,warn=false,action=null}={})=>{
   const paint=(body,alert)=>{
     item.classList.toggle('warn',!!alert);
     item.setAttribute('role',alert?'alert':'status');
-    item.innerHTML=`${board?`<span class="board-notification-icon" aria-hidden="true">${icon(alert?'alert':'check')}</span>`:alert?icon('alert'):''}<p>${body}</p>${
+    item.innerHTML=`${board?`<span class="board-notification-icon" aria-hidden="true">${icon(alert?'circle-alert':'check')}</span>`:alert?icon('alert'):''}<p>${body}</p>${
       action&&!alert&&body===initial?`<button class="tact">${esc(action.label)}</button>`:''
       }<button class="tclose" title="关闭" aria-label="关闭提示">${icon('x')}</button>`;
     item.querySelector('.tclose').onclick=close;
@@ -2111,7 +2111,7 @@ $('#selectMode').onclick=()=>setSelectMode(!selectMode,!selectMode?false:true);
 $('#batchClear').onclick=()=>setSelectMode(false,true);
 $('#followBatchAll').onclick=()=>{visibleFollowIds().forEach(id=>followSelected.add(id));setSelectMode(true);paintSelection()};
 $('#batchbar').querySelectorAll('[data-batch]').forEach(button=>button.onclick=async()=>{
-  const labels={like:'喜欢',seen:'标为看过',later:'加入稍后看',dispose:'加入回收站',restore:'还原',delete:'彻底删除'};
+  const labels={like:'喜欢',seen:'标为看过',later:'加入稍后看',dispose:'移入回收站',restore:'还原',delete:'彻底删除'};
   const titles={like:'喜欢所选项目',seen:'标记为已看',later:'加入稍后看',dispose:'移入回收站',restore:'还原所选项目',delete:'永久删除所选项目'};
   const operation=button.dataset.batch,ids=[...selected];if(!ids.length)return;
   return confirmModal({title:titles[operation],body:`将处理选中的 ${ids.length} 项。${operation==='delete'?'文件和馆藏记录会永久删除，无法恢复。':operation==='dispose'?'馆藏记录可在回收站还原。':''}`,confirmLabel:titles[operation],danger:operation==='delete',onConfirm:async()=>{
@@ -5507,6 +5507,16 @@ function followAuthorAvatar(group){
   return `<span class="favatar none" title="没有可用头像">${esc(initial)}</span>`;
 }
 
+/* 别名组只带规范名，头像在这位作者的来源上：按 author_key 找回来源再走同一个头像函数，
+   一条来源都没有时用规范名首字母。 */
+function followAliasAvatar(group){
+  const sources=(followData?.sources||[]).filter(source=>source.author_key===`name:${group.canonical_key}`);
+  if(sources.length)return followAuthorAvatar(sources);
+  const ascii=String(group.canonical_name||'').match(/[A-Za-z0-9]/);
+  const initial=(ascii?ascii[0]:Array.from(String(group.canonical_name||''))[0]||'?').toUpperCase();
+  return `<span class="favatar none" title="没有可用头像">${esc(initial)}</span>`;
+}
+
 /* 分组标题要用作者本人的名字，不是某一条来源的标签。`LazyProcrastinator · fanbox`
    里「· fanbox」只说明他在哪个平台连载——四条来源合成一组之后还挂着其中一条的
    平台后缀，等于说这一组只属于 fanbox，那正是这次要消掉的误读。
@@ -5649,7 +5659,7 @@ function followAliasManager(groups,suggestions){
     <button class="fbtn small" data-follow-alias-add
       data-canonical="${esc(item.canonical)}" data-alias="${esc(item.alias)}">合并</button>
   </div>`).join('');
-  const saved=groups.map(group=>`<div class="faliasrow"><b>${esc(group.canonical_name)}</b>
+  const saved=groups.map(group=>`<div class="faliasrow">${followAliasAvatar(group)}<b>${esc(group.canonical_name)}</b>
     <span>${group.aliases.map(alias=>`<span class="faliaschip">${esc(alias.name)}
       <button type="button" data-follow-alias-remove="${esc(alias.name)}"
         data-canonical="${esc(group.canonical_name)}"
@@ -8318,7 +8328,7 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
         <button class="later" id="stageLater" aria-label="稍后看" title="稍后看 · 加入或移出队列" aria-pressed="${!!it.watch_later}">${it.watch_later?icon('check'):icon('bookmark-plus')}</button>
         <button class="playlistadd" id="addPlaylist" aria-label="加入播放列表" title="加入播放列表">${icon('playlist')}</button>
         <button class="upgrade" id="betterVersion" aria-label="寻找更好版本" title="寻找高清、无水印或完整版" aria-pressed="${!!it.better_version}">${icon('sparkles')}</button>
-        <button class="dispose" data-kind="dispose" aria-label="加入回收站" title="加入回收站 · 文件仍保留，可从回收站永久清除" aria-pressed="${it.disposal==='trash'}">${icon('trash')}</button></div>
+        <button class="dispose" data-kind="dispose" aria-label="移入回收站" title="移入回收站 · 文件仍保留，可从回收站永久清除" aria-pressed="${it.disposal==='trash'}">${icon('trash')}</button></div>
       <div class="preference" id="preferencePanel" hidden>
         <textarea id="likeReason" maxlength="2000" placeholder="为什么喜欢？">${esc(it.like_reason||'')}</textarea>
         <div class="preference-foot"><span id="preferenceState" aria-live="polite"></span>

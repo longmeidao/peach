@@ -2176,6 +2176,18 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertBoardContains(
             '.followmanage .fsources[data-layout="default"] .board-follow-list{grid-template-columns:repeat(2,minmax(0,1fr))')
 
+    def test_selected_rows_keep_their_top_edge_and_row_icons_share_one_stroke(self):
+        """选中行四边都是蓝框：相邻行那条灰色上边线权重更高，会盖住选中框的上沿，删掉。
+
+        行里的刷新与移除键和列表其它图标同一条线宽；别名行前面是这位作者的头像。
+        """
+        self.assertNotIn('.followmanage .board-follow-list .fsource.frow+.fsource.frow{border-top:',
+                         (ROOT / 'web' / 'board.css').read_text(encoding='utf-8'))
+        self.assertBoardContains('.followmanage .frowicon svg{stroke-width:1.8}')
+        self.assertBoardContains('.faliasrow>.favatar{width:24px;height:24px;font-size:var(--fs-xs)}')
+        self.assertPageContains('<div class="faliasrow">${followAliasAvatar(group)}<b>${esc(group.canonical_name)}</b>')
+        self.assertPageContains("const sources=(followData?.sources||[]).filter(source=>source.author_key===`name:${group.canonical_key}`);")
+
     def test_both_views_render_the_same_source_cells(self):
         """一条来源的格子只有一份模板：默认视图排成一行，表格视图各放一个 <td>。
 

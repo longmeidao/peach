@@ -119,7 +119,7 @@ body.drawer-open{--railW:296px}
 .managebar .managebar-menu button[aria-pressed="true"]{background:none;color:var(--tungsten);border-bottom-color:var(--tungsten);font-weight:500}
 .managebar .managebar-menu button:hover{background:none;color:var(--ink)}
 .managebar .managebar-menu button[aria-pressed="true"]:hover{color:var(--tungsten)}
-body body.cleanup-layout #manageTitle,body.cleanup-layout #manageCrumb,body.cleanup-layout #manageLede{max-width:var(--board-content);width:100%;margin-left:auto;margin-right:auto}
+body:is(.cleanup-layout,.follow-manage-layout,.insight-layout,.configuration-layout) :is(#manageTitle,#manageCrumb,#manageLede){max-width:var(--board-content);width:100%;margin-left:auto;margin-right:auto}
 #manageTitle{font-size:26px;line-height:34px;margin-bottom:24px}
 
 /* Task entry cards and editing panels have different information density. */
@@ -405,7 +405,7 @@ button,input,select,textarea{font-family:inherit}
 .metricstrip,.tastesummaries{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));grid-auto-flow:row;gap:16px;overflow:visible;border:0;background:none}
 .metricstrip>button,.tastesummary{display:flex;flex-direction:column;min-width:0;padding:16px 0 0;border:0;border-radius:16px;background:var(--ground);overflow:hidden;text-align:left;box-shadow:0 1px 2px #00000008}
 .metricstrip>button[aria-selected=true]{background:var(--ground);box-shadow:inset 0 0 0 2px var(--tungsten)}
-.metricstrip>button:hover{background:var(--surface)}
+.metricstrip>button:hover{background:color-mix(in srgb,var(--color-text-primary) 6%,var(--ground))}
 .metricstrip>button[aria-selected=true]::after{content:"";display:block;position:absolute;inset:0;height:auto;border:2px solid var(--tungsten);border-radius:inherit;background:none;pointer-events:none;z-index:1}
 .metricstrip>button:focus-visible{outline:2px solid var(--tungsten);outline-offset:3px}
 .metricstrip .board-stat-label,.tastesummary>.board-stat-label{display:flex;align-items:center;gap:8px;padding:0 16px;color:var(--ink-2);font-size:14px;line-height:20px}
@@ -565,7 +565,7 @@ body :is(.sbadge.ok,.board-chip.success){background:color-mix(in srgb,#84cc16 16
 .followmanage .fsourceactions{padding:2px;overflow:visible}
 body .sbadge.paused{background:color-mix(in srgb,#ffc600 18%,var(--color-background-primary-default));color:#a87600}
 :root[data-theme=dark] .sbadge.paused{color:#ffd54a}
-.cleanupgrid>.board-processing-skeleton{grid-column:1/-1;display:grid;grid-template-columns:1fr auto;align-items:center;min-height:140px}
+.cleanupgrid>.board-processing-skeleton{grid-column:1/-1;display:grid;grid-template-columns:1fr auto;align-items:center;min-height:114px}
 .board-processing-skeleton>.geist-fieldset-footer{border:0;background:none}
 @media(max-width:1000px){.cleanupgrid>.board-processing-skeleton{grid-template-columns:1fr}.board-processing-skeleton>.geist-fieldset-footer{justify-content:flex-start}}
 .metricstrip>button[aria-selected=true]{background:var(--color-background-primary-default);box-shadow:none}.metricstrip>button[aria-selected=true]::after{box-sizing:border-box}.metricstrip>button[aria-selected=true] .board-stat-footer{background:var(--board-card-foot)}
@@ -613,8 +613,8 @@ html.board-high-contrast :is(.selectiondock,.reviewcontrols.is-stuck,.reviewgrou
 .board-state-preview>nav{display:flex;flex-wrap:wrap;gap:8px;margin:20px 0}.board-state-preview>nav [aria-pressed=true]{outline:2px solid var(--tungsten);outline-offset:1px}
 .board-preview-tools{display:flex;align-items:center;gap:20px;flex-wrap:wrap}.board-preview-tools label{display:flex;align-items:center;gap:12px}.board-preview-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.board-preview-grid article{padding:20px;border-radius:16px;background:var(--ground);min-width:0}.board-state-preview .cleanupgrid{padding-bottom:0}
 @media(max-width:600px){.board-preview-grid{grid-template-columns:1fr}.board-state-preview>header{align-items:flex-start}.board-state-preview{padding:16px}}
-.board-expand-ranks{position:relative;padding-bottom:36px}.board-rank-list{position:relative;display:grid;grid-template-columns:1fr;max-height:var(--rank-collapsed-height,300px);overflow:hidden;transition:max-height .24s ease}.board-expand-ranks:not(.expanded)::after{content:'';position:absolute;bottom:30px;left:0;right:0;height:48px;background:linear-gradient(transparent,var(--ground));pointer-events:none}.board-expand-ranks.expanded>.board-rank-list{max-height:var(--rank-expanded-height)}.board-rank-expand{position:absolute;z-index:1;bottom:4px;left:50%;transform:translateX(-50%);display:grid;place-items:center;width:40px;height:24px;padding:0;border:1px solid var(--line);border-radius:999px;background:var(--surface);box-shadow:0 1px 3px #0000001a;color:var(--muted)}.board-rank-expand svg{width:16px;height:16px;transition:transform .2s}.board-rank-expand[aria-expanded=true] svg{transform:rotate(180deg)}
-.board-rank-list .tasterank{position:relative;isolation:isolate;border:0;border-radius:10px;background:transparent;overflow:hidden;min-height:44px}.board-rank-list .taste-rank-track{position:absolute;inset:0;height:100%;margin:0;z-index:-1;background:none;opacity:.16}.board-rank-list .taste-rank-track i{height:100%;border-radius:10px}.board-rank-list .tasterank:hover{background:var(--color-background-primary-hover)}
+.board-expand-ranks{position:relative;padding-bottom:28px}.board-rank-list{position:relative;display:grid;grid-template-columns:1fr;max-height:var(--rank-collapsed-height,300px);overflow:hidden}.board-expand-ranks:not(.expanded)::after{content:'';position:absolute;bottom:24px;left:0;right:0;height:48px;background:linear-gradient(transparent,var(--ground));pointer-events:none}.board-expand-ranks.expanded>.board-rank-list{max-height:var(--rank-expanded-height)}.board-rank-expand{position:absolute;z-index:1;bottom:4px;left:50%;transform:translateX(-50%);display:grid;place-items:center;width:40px;height:20px;padding:0;border:1px solid var(--line);border-radius:999px;background:var(--surface);box-shadow:0 1px 3px #0000001a;color:var(--muted)}.board-rank-expand svg{width:14px;height:14px;transition:transform .2s}.board-rank-expand[aria-expanded=true] svg{transform:rotate(180deg)}
+.board-rank-list .tasterank{position:relative;isolation:isolate;border:0;border-radius:8px;background:transparent;overflow:hidden;min-height:44px}.board-rank-list .taste-rank-track{position:absolute;inset:0;height:100%;margin:0;z-index:-1;background:none;opacity:.14}.board-rank-list .taste-rank-track i{height:100%;border-radius:8px}
 .board-sankey-card{padding:20px;border-radius:20px;margin-bottom:20px;background:var(--color-background-secondary-default);min-width:0}.board-sankey-card header{display:grid;grid-template-columns:1fr auto;gap:8px;margin-bottom:20px}.board-sankey-card h3{margin:0;font:var(--board-heading)}.board-sankey-card header b{grid-row:2;font:var(--board-title);font-variant-numeric:tabular-nums}.board-sankey-card header span{grid-column:2;grid-row:2;color:var(--muted);align-self:end;font:var(--board-caption)}.board-sankey-scroll{overflow-x:auto}.board-sankey-scroll svg{display:block;width:100%;min-width:640px;max-height:520px}.board-sankey-links path{fill:none;stroke:var(--flow-color);opacity:.3;transition:opacity .2s;animation:board-heat-enter .6s ease-out}.board-sankey-nodes g{transition:opacity .2s}.board-sankey-nodes text{fill:var(--color-text-primary);font:var(--board-caption)}.board-sankey-nodes tspan{fill:var(--muted);font-size:11px}.board-sankey-card footer{display:flex;justify-content:space-between;color:var(--muted);font:var(--board-caption);margin-top:12px}
 .tasteactions [data-taste-window] .gselectfield::before{content:'';width:16px;height:16px;flex:none;background:currentColor;mask:url('data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2"%3E%3Crect x="3" y="5" width="18" height="16" rx="2"/%3E%3Cpath d="M16 3v4M8 3v4M3 11h18"/%3E%3C/svg%3E') center/contain no-repeat}
 @media(prefers-reduced-motion:reduce){.board-sankey-links path{animation:none;transition:none}.board-rank-list,.board-rank-expand svg{transition:none}}
@@ -658,9 +658,9 @@ html.board-high-contrast :is(.selectiondock,.reviewcontrols.is-stuck,.reviewgrou
 .tasteleads>header{padding:24px 24px 12px}
 /* ── 排名行悬停与展开键同一层：主文字色 6% 的一层薄底、200ms 淡入，亮暗两档都看得见 ── */
 .tasterank,.board-rank-list .tasterank{transition:background-color .2s ease-out}
-body .tasterank:is(button):hover,body .board-rank-list .tasterank:hover{border-color:transparent;background:color-mix(in srgb,var(--color-text-primary) 6%,transparent)}
-.board-rank-expand{border-color:var(--color-border-button-default);background:var(--color-background-primary-default);color:var(--color-text-secondary);box-shadow:0 1px 2px #0000000d;transition:background-color .2s ease-out,color .2s ease-out}
-.board-rank-expand:hover{background:color-mix(in srgb,var(--color-text-primary) 6%,var(--color-background-primary-default));color:var(--color-text-primary)}
+body .tasterank:is(button):hover,body .board-rank-list .tasterank:hover{border-color:transparent;background:transparent}
+.board-rank-expand{border-color:var(--color-border-button-default);background:var(--color-background-primary-default);color:var(--color-text-secondary);box-shadow:0 1px 2px #0000000d;transition:background-color .15s ease,color .15s ease}
+.board-rank-expand:hover{background:var(--color-background-primary-hover);color:var(--color-text-primary)}
 /* ── 排名条与雷达图进入视口后从零长出：1.2s、与统计圆环同一条曲线 ── */
 @keyframes board-grow-x{from{transform:scaleX(0)}to{transform:scaleX(1)}}
 @keyframes board-grow-radar{from{transform:scale(0);opacity:0}to{transform:scale(1);opacity:1}}
@@ -678,7 +678,7 @@ body .reviewactions button.warning:hover:not(:disabled){background:#93c5fd;color
 @media(prefers-color-scheme:dark){:root:not([data-theme]) body .reviewactions button.warning:not(:disabled){background:#17255499;color:#93c5fd}:root:not([data-theme]) body .reviewactions button.warning:hover:not(:disabled){background:#1e3a8a;color:#bfdbfe}}
 body .reviewactions button:disabled{opacity:.5;cursor:not-allowed}
 /* ── 侧栏收起键（boardui sidebar.tsx）：36px、10px 圆角、次级图标色，悬停与导航项同一层底；收起时与品牌相隔 10px ── */
-.drawer .board-sidebar-head #filterBtn{border-radius:10px;color:var(--color-text-secondary);transition:background-color .15s ease,color .15s ease}
+.drawer .board-sidebar-head #filterBtn{border-radius:0;color:var(--color-text-secondary);transition:color .15s ease}
 .drawer .board-sidebar-head #filterBtn:hover{background:var(--color-background-primary-hover);color:var(--color-text-primary)}
 @media(min-width:761px){.drawer:not(.open) .board-sidebar-head{gap:10px}}
 /* ── 详情页：门挡（脱盘、在线、拉流）铺满播放器格，不再上下留黑；播放器格只圆左上角——右边贴着侧栏，下面接着「接着看」 ── */
@@ -712,7 +712,6 @@ body .reviewactions button:disabled{opacity:.5;cursor:not-allowed}
 .followmanage .board-follow-list .fauthor{background:var(--color-background-primary-default);border-radius:var(--surface-radius);padding:16px}
 .followmanage .board-follow-list .fauthorsources{display:grid;gap:8px}
 .followmanage .board-follow-list .fsource.frow{min-height:0;margin:0;padding:12px 20px 12px 16px;border:1px solid var(--color-border-button-default);border-radius:10px;background:var(--color-background-primary-default);transition:background-color .15s ease,border-color .15s ease}
-.followmanage .board-follow-list .fsource.frow+.fsource.frow{border-top:1px solid var(--color-border-button-default)}
 .followmanage .board-follow-list .fsource.frow:hover{background:var(--color-background-primary-hover)}
 .followmanage .board-follow-list .fsource.selected,.followmanage .board-follow-list .fsource.selected:hover{background:var(--color-background-primary-default);border-color:var(--color-border-focus-ring)}
 @media(max-width:760px){.followmanage .fmain>.fsec:has(.fsources)>.fsechead{padding:16px 16px 8px}.followmanage .fmain>.fsec>.fsources{padding:0 16px 16px}.followmanage .fsec>.board-follow-selection{padding:4px 16px 12px}.followmanage .board-follow-list .fauthor{padding:12px}}
@@ -739,3 +738,43 @@ body .reviewactions button:disabled{opacity:.5;cursor:not-allowed}
 @keyframes board-check-draw{from{stroke-dashoffset:23px}to{stroke-dashoffset:0}}
 .pcheck input:checked+span svg{animation:board-check-draw .2s cubic-bezier(.65,0,.35,1) forwards}
 @media(prefers-reduced-motion:reduce){.pcheck input:checked+span svg{animation:none;stroke-dashoffset:0}}
+/* ── Board 第三批：数据源删除键、主按钮尺寸、配置页白底、通知与提醒、复核悬浮框、批量条、关注行图标、侧栏切换器 ── */
+/* 数据源卡上的删除键是 36px 图标键：只换底色和文字色，不位移。悬停文字落到 --drop，说明这是删除。 */
+body .tastesource{grid-template-columns:34px minmax(0,1fr) 36px}
+body .tastesource>button{width:36px;height:36px;border:0;border-radius:10px;background:transparent;color:var(--color-text-secondary);transform:none;transition:background-color .15s ease,color .15s ease}
+body .tastesource>button:hover{background:color-mix(in srgb,var(--color-text-primary) 6%,transparent);color:var(--drop);transform:none}
+body .tastesource>button svg{width:20px;height:20px}
+/* 主按钮与旁边的 Board 按钮同一副盒子：36px、10px 圆角、Body Medium。复核底部工具条里所有控件都压到 --control-h，主按钮跟着。 */
+body :is(.geist-button,.fbtn,.resourceaction,.tagselection button,.reviewpickhead button,.geist-fieldset-footer>a,.geist-fieldset-footer>button).primary{box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;gap:4px;height:36px;min-height:36px;padding:8px 12px;border-radius:10px;font:var(--board-body-medium);white-space:nowrap}
+body .reviewdock .geist-button.primary{height:var(--control-h);min-height:0}
+/* 灰卡上的控件用 primary 白底：secondary 底上再放 secondary 控件就看不出框。 */
+body.configuration-layout .configpage :is(.gselectfield,.geist-input,input.geist-input,.board-icon-trigger),body .followmanage .faddform .geist-search input{background:var(--color-background-primary-default)}
+/* 提醒条与上下内容留 12px：关注页检查结果、扫描卡失败都是同一个 Note。 */
+body .followmanage .fcheckreport,body .followmanage .fwarn{margin:0 0 12px}
+body .library-processing [role=alert]>.geist-note{margin-top:12px}
+/* 别名行前面是作者头像，与来源列表里同一个人同一张脸。 */
+.faliasrow>.favatar{width:24px;height:24px;font-size:var(--fs-xs)}
+/* 复核页与别的管理页同宽；标签条不悬浮，悬浮的是工具条这一层，分组条贴在它下面合成一个玻璃框。 */
+body .review{width:100%;max-width:var(--board-content);margin:0 auto;box-sizing:border-box}
+body .review .reviewcontrols{position:static;z-index:auto;padding-block:0;display:block;border-radius:0}
+body .review .reviewbulktoolbar{position:sticky;top:var(--topH);z-index:60;padding-block:12px;margin-bottom:16px;border-radius:20px;transition:border-radius .15s ease}
+body .review .reviewbulktoolbar.is-stuck{background:linear-gradient(125deg,var(--glass-sheen),transparent 42%,var(--glass-low)),var(--glass-fill);backdrop-filter:var(--glass-optic,blur(22px)) saturate(145%);border:0;box-shadow:inset 0 1px 0 var(--glass-rim),var(--glass-shadow)}
+body .review:has(.reviewgroupbar.is-stuck) .reviewbulktoolbar.is-stuck{border-radius:20px 20px 0 0}
+body .review .reviewgroupbar.is-stuck{border-radius:0 0 20px 20px;box-shadow:var(--glass-shadow)}
+/* 批量条：隐藏的键真的隐藏（Board 的 inline-flex 曾压过 hidden）；「加入回收站」用 error 按钮的红色渐变。 */
+body .batchbar button.danger{box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;gap:4px;height:36px;min-height:36px;padding:8px 12px;border:1px solid transparent;border-radius:10px;background:linear-gradient(180deg,#ff3347,#e60012);color:#fff;font:var(--board-body-medium);transition:background-color .15s ease}
+body .batchbar button.danger:hover{background:linear-gradient(180deg,#ff6471,#ff3347);color:#fff}
+body .batchbar button.danger svg{margin-right:0}
+body .batchbar button[hidden],body .batchbar button.danger[hidden]{display:none}
+/* 关注行里的刷新与删除键：线宽与列表其它图标一致。 */
+.followmanage .frowicon svg{stroke-width:1.8}
+/* 侧栏切换器：32px 圆形标识 + 名字 + 双向箭头，悬停在按钮外 5/6px 处描一圈 2px 线；收起键只有 20px 高的图标。 */
+.board-sidebar-head #brandHome{position:relative;flex:0 1 auto;max-width:calc(100% - 28px);gap:8px;padding:2px}
+.board-sidebar-head #brandHome::before{content:'';position:absolute;inset:-5px -6px;border:2px solid var(--color-border-button-default);border-radius:999px;opacity:0;transition:opacity .15s ease;pointer-events:none}
+.board-sidebar-head #brandHome:hover,.board-sidebar-head #brandHome[aria-expanded=true]{background:none;box-shadow:none}
+.board-sidebar-head #brandHome:hover::before,.board-sidebar-head #brandHome[aria-expanded=true]::before{opacity:1}
+.board-sidebar-head #brandHome .mark{width:32px;height:32px;border-radius:50%;background:var(--color-background-tertiary-default)}
+.board-sidebar-head #brandHome .sub{display:none}
+.drawer .board-sidebar-head #filterBtn{width:20px;height:20px;padding:0;background:none;box-shadow:none}
+.drawer .board-sidebar-head #filterBtn:hover{background:none;color:var(--color-text-primary)}
+@media(min-width:761px){.drawer:not(.open) .board-sidebar-head{min-height:0;gap:10px;align-items:center;justify-content:flex-start}.drawer:not(.open) .board-sidebar-head #filterBtn{width:36px;height:20px}.drawer:not(.open) #brandHome{width:32px;height:32px;min-height:32px;padding:0;max-width:none}.drawer:not(.open) #brandHome .mark{width:32px;height:32px}}

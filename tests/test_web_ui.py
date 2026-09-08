@@ -5362,6 +5362,41 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("plus.onclick=()=>{presentMenu(picker);")
         self.assertPageLacks("$('#searchMenu').hidden=true")
 
+    def test_board_batch_three_aligns_ranks_buttons_and_the_sidebar_switcher(self):
+        """排名展开键是 bar-list-card 的 40×20 药丸，排名行不再有悬停底；管理页标题四种布局都对齐 1120；
+        主按钮与 Board 按钮同一副 36px 盒子；批量条隐藏键真的隐藏、回收站键用 error 渐变；
+        复核页工具条自己悬浮、标签条留在原地；通知的状态圆用 lucide circle-alert；
+        侧栏切换器是 32px 圆标识加名字加箭头，悬停外描一圈线，收起键只有 20px 高。
+        """
+        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
+        self.assertIn(".board-rank-expand{position:absolute;z-index:1;bottom:4px;left:50%;transform:translateX(-50%);display:grid;place-items:center;width:40px;height:20px;", board)
+        self.assertIn(".board-rank-expand svg{width:14px;height:14px;", board)
+        self.assertNotIn("transition:max-height", board)
+        self.assertIn(".board-rank-list .tasterank{position:relative;isolation:isolate;border:0;border-radius:8px;", board)
+        self.assertNotIn(".board-rank-list .tasterank:hover{background:var(--color-background-primary-hover)}", board)
+        self.assertIn(".metricstrip>button:hover{background:color-mix(in srgb,var(--color-text-primary) 6%,var(--ground))}", board)
+        self.assertIn("body .tastesource>button{width:36px;height:36px;border:0;border-radius:10px;background:transparent;color:var(--color-text-secondary);transform:none;", board)
+        self.assertIn(".geist-fieldset-footer>a,.geist-fieldset-footer>button).primary{box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;gap:4px;height:36px;min-height:36px;padding:8px 12px;border-radius:10px;font:var(--board-body-medium);", board)
+        self.assertIn("body.configuration-layout .configpage :is(.gselectfield,.geist-input,input.geist-input,.board-icon-trigger),body .followmanage .faddform .geist-search input{background:var(--color-background-primary-default)}", board)
+        self.assertIn("body .review{width:100%;max-width:var(--board-content);margin:0 auto;box-sizing:border-box}", board)
+        self.assertIn("body .review .reviewcontrols{position:static;", board)
+        self.assertIn("body .review .reviewbulktoolbar{position:sticky;top:var(--topH);z-index:60;", board)
+        self.assertIn("body .review:has(.reviewgroupbar.is-stuck) .reviewbulktoolbar.is-stuck{border-radius:20px 20px 0 0}", board)
+        self.assertIn("body .review .reviewgroupbar.is-stuck{border-radius:0 0 20px 20px;", board)
+        self.assertIn("body .batchbar button[hidden],body .batchbar button.danger[hidden]{display:none}", board)
+        self.assertIn("body .batchbar button.danger{", board)
+        self.assertIn("background:linear-gradient(180deg,#ff3347,#e60012);color:#fff;font:var(--board-body-medium);", board)
+        self.assertIn(".board-sidebar-head #brandHome::before{content:'';position:absolute;inset:-5px -6px;border:2px solid var(--color-border-button-default);border-radius:999px;", board)
+        self.assertIn(".board-sidebar-head #brandHome .mark{width:32px;height:32px;border-radius:50%;background:var(--color-background-tertiary-default)}", board)
+        self.assertIn(".drawer .board-sidebar-head #filterBtn{width:20px;height:20px;padding:0;background:none;box-shadow:none}", board)
+        self.assertIn(".drawer:not(.open) .board-sidebar-head #filterBtn{width:36px;height:20px}", board)
+        self.assertIn(".cleanupgrid>.board-processing-skeleton{grid-column:1/-1;display:grid;grid-template-columns:1fr auto;align-items:center;min-height:114px}", board)
+        self.assertPageContains("${icon(alert?'circle-alert':'check')}")
+        self.assertPageContains('<symbol id="i-circle-alert" viewBox="0 0 24 24">')
+        bulk = (Path(__file__).resolve().parents[1] / "frontend/src/review-bulk.ts").read_text(encoding="utf-8")
+        self.assertIn("root?.querySelector<HTMLElement>('.reviewbulktoolbar')", bulk)
+        self.assertIn("if (context) context.after(toolbar); else list.before(toolbar);", bulk)
+
     def test_the_library_icon_picker_is_a_grid_of_glyphs(self):
         """媒体库图标选择器的格子只放图标，一行七个，21 个候选三行排完。
 
@@ -5439,13 +5474,13 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn(".insighttabs button[aria-selected=\"true\"],.reviewtabs button[aria-selected=\"true\"]{background:none;color:var(--tungsten);font:var(--board-body-medium)}", board)
         self.assertIn(".insightpanel>header h3,.insightcopy>span{margin:0;font:var(--board-heading);color:var(--color-text-primary)}", board)
         self.assertIn("body .tasterank:is(button):hover,body .board-rank-list .tasterank:hover{border-color:transparent;"
-                      "background:color-mix(in srgb,var(--color-text-primary) 6%,transparent)}", board)
+                      "background:transparent}", board)
         self.assertIn(".board-ranked-chart.board-chart-visible .board-rank-fill,.tasteranks.board-chart-visible .taste-rank-track i"
                       "{animation:board-grow-x 1.2s cubic-bezier(.22,.61,.36,1) both}", board)
         self.assertIn(".board-radar.board-chart-visible .board-radar-value{animation:board-grow-radar 1.2s cubic-bezier(.22,.61,.36,1) both}", board)
-        self.assertIn("body.cleanup-layout #manageTitle,body.cleanup-layout #manageCrumb,body.cleanup-layout #manageLede{max-width:var(--board-content);", board)
+        self.assertIn("body:is(.cleanup-layout,.follow-manage-layout,.insight-layout,.configuration-layout) :is(#manageTitle,#manageCrumb,#manageLede){max-width:var(--board-content);", board)
         self.assertIn("body .reviewactions button.warning:not(:disabled){background:#bfdbfe;color:#1e40af;border-color:transparent}", board)
-        self.assertIn(".drawer .board-sidebar-head #filterBtn{border-radius:10px;color:var(--color-text-secondary);", board)
+        self.assertIn(".drawer .board-sidebar-head #filterBtn{border-radius:0;color:var(--color-text-secondary);", board)
         self.assertIn(".stage .vwrap{border-radius:var(--surface-radius) 0 0 0}", board)
         self.assertIn(".stage .vwrap>.gate{height:100%;aspect-ratio:auto;border-radius:inherit}", board)
         self.assertIn(".idface:not(:has(img)){background:color-mix(in srgb,var(--color-text-primary) 10%,var(--color-background-primary-default));", board)

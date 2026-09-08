@@ -8,7 +8,7 @@ type Selection = ReturnType<typeof createReviewSelection>;
 type Payload = Record<string, unknown>;
 
 export function updateReviewSticky(root: HTMLElement | null) {
-  const controls = root?.querySelector<HTMLElement>('.reviewcontrols');
+  const controls = root?.querySelector<HTMLElement>('.reviewbulktoolbar');
   if (!root || !controls || controls.offsetParent === null) return;
   const main = root.closest('main');
   if (main) root.style.setProperty('--review-edge', getComputedStyle(main).paddingLeft);
@@ -120,7 +120,7 @@ export function wireReviewSelection(root: HTMLElement, options: {
   const cancel = button('取消选择'); dock.append(count, source, decisions, cancel, feedback);
   toolbar.append(grouping, filter, all);
   const context = root.querySelector('.reviewcontrols');
-  if (context) context.append(toolbar); else list.before(toolbar);
+  if (context) context.after(toolbar); else list.before(toolbar);
   root.append(dock); list.classList.add('reviewgroups');
   const clear = () => { state.selected.clear(); state.anchor = null; update(); };
   cancel.onclick = () => { if (!state.busy) { clear(); all.focus({preventScroll:true}); } };

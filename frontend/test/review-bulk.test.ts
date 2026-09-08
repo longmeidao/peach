@@ -104,7 +104,7 @@ it('默认勾选框位于名称前，数量使用共用文字样式，Shift 按�
   expect([...f.state.selected]).toEqual(['one','two']);
   expect(f.root.querySelector('.selectiondockcount')?.textContent).toBe('已选 2 项');
   expect(f.root.querySelector('.selectiondockcount .geist-badge')).toBeNull();
-  expect(f.root.querySelector('.reviewcontrols .reviewbulktoolbar')).not.toBeNull();
+  expect(f.root.querySelector('.reviewcontrols + .reviewbulktoolbar')).not.toBeNull();
   expect(f.button('通过所选').textContent).toBe('通过所选');
   f.root.dispatchEvent(new KeyboardEvent('keydown', {key:'Escape', bubbles:true}));
   inputs[0]!.dispatchEvent(new KeyboardEvent('keydown', {key:'ArrowDown', shiftKey:true, bubbles:true}));

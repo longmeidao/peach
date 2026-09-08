@@ -171,6 +171,24 @@ Radial Chart Card、Bar List Card、Heatmap 与 Sankey 的 Pro 源码**未取得
 | 管理页标题 | 无对应 | 只在 812px 窄列页面居中，别处与面包屑同一左边线 |
 | 沉浸模式 | 无对应 | 随机流在入口筛掉脱盘来源的片子 |
 
+### 排名列表、复核悬浮框、批量条与侧栏切换器（2026-09-08）
+
+取证来源是 boardui.com 的实时 DOM：`/components/bar-list-card` 与首页侧栏（`aside` 260px / 收起 60px）。`r/bar-list-card.json` 与 `r/sidebar.json` 之外的注册表条目未取得。
+
+| 位置 | 上游 | Peach |
+| --- | --- | --- |
+| 排名行 | 行 36px、圆角 8、无悬停类；填充条 `absolute inset-y-0 left-0` 圆角 8，`chart-6` 14% 透明，只对宽度和颜色做 500ms 过渡 | 行与填充条圆角 8，填充 14%，去掉行悬停底（两层叠一起就是回执里的「违和」）；行高保留 44 容两行字 |
+| 「Show N more」 | 40×20 药丸，居中贴底 4px，`border-button-default` 描边、primary 底、xs 阴影，14px 箭头，悬停 primary-hover 150ms；被折起的行直接不渲染，没有渐隐 | 同尺寸同色；列表高度不再做 240ms 过渡（上游没有高度动画，切维度标签时它会跟着抖一下）；保留 48px 渐隐是主动差异 |
+| 数据源卡的删除键 | 站上图标键 `size-9 rounded-2lg text-foreground-icon-secondary`，只过渡颜色 | 36px、圆角 10、透明底，悬停主文字色 6% 薄底加 `--drop` 文字，`transform:none` |
+| 指标卡悬停 | 无对应 | `--surface` 与 `--ground` 在亮色里同为白，改主文字色 6% 混底 |
+| 管理页标题 | 无对应 | `body body.cleanup-layout` 写错让标题一直留在 812px 窄列；四种管理布局的标题、面包屑、导语都对齐 1120，复核页容器同宽 |
+| 主按钮 | Button 36px、Body Medium | `.primary` 也进 36px / 圆角 10 / Body Medium 的盒子；复核底部工具条整条压 `--control-h`，主按钮跟着 |
+| 灰卡上的控件 | secondary 底上放 primary 白底控件 | 配置页下拉、输入、图标触发键与关注页添加框都白底 |
+| 通知状态圆 | Notification 用 lucide 图标 | 警告态换 `circle-alert`（自绘 `i-alert` 在 20px 下只剩一个点）；Note 与上下留 12px |
+| 复核页悬浮 | 无对应 | 标签条留在原地，工具条自己悬浮；分组条贴在它下面时两条合成一个玻璃框（上 20 0 0 / 下 0 0 20 20） |
+| 批量条 | 无对应 | Board 的 `inline-flex` 曾压过 `[hidden]`，从垃圾页回首页会多出三个键；「移入回收站」用 error 按钮同一条红色渐变，首页与垃圾页文案统一 |
+| 侧栏切换器 | 32px 圆头像 + 名字 + 双向箭头，`gap-2`，悬停在按钮外 6/5px 处描 2px 圆环；收起键只有 20px 高的图标、无底 | 数据库标识放进 32px `tertiary` 圆盘，悬停与展开态同一圈线；收起键展开时 20×20 靠右，收起时 36×20 在标识上方，相隔 10px，头部 62px 与上游同高 |
+
 ## 验证记录
 
 侧栏采用 AI chat 公开变体的分组标题、展开叶项与尾部计数；分组箭头位于右侧，标题高 36px，展开复用共享 Collapse。媒体库入口适配公开 `DashboardUserMenu`：265px 面板、16px 圆角、10px 内边距，桌面右侧 8px、手机下方展开，150ms ease-out 淡入、缩放 .95 与 2px 模糊。独立按钮控制侧栏展开；媒体库图标打开选择面板，展开面板时入口显示轮廓。首页使用 20px 槽位的 Peach logo，按透明边距校准可见轮廓及文字起点，收起态按钮为 36px 正方形。媒体库与导航图标统一 20px、1.7px 线宽，无图标底色。设置固定在底部，与明暗开关并排；收起时明暗开关只显示目标主题图标。主题动画参考公开 `https://www.boardui.com/r/theme-toggle.json`：200ms 滑块与 820ms 柔边扩散，缓动 `cubic-bezier(.16,1,.3,1)`，减少动态效果时直接切换。

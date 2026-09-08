@@ -3835,7 +3835,7 @@ var Xr = () => ({
 	errors: /* @__PURE__ */ new Map()
 });
 function Zr(e) {
-	let t = e?.querySelector(".reviewcontrols");
+	let t = e?.querySelector(".reviewbulktoolbar");
 	if (!e || !t || t.offsetParent === null) return;
 	let n = e.closest("main");
 	n && e.style.setProperty("--review-edge", getComputedStyle(n).paddingLeft), e.style.setProperty("--review-controls-height", `${t.getBoundingClientRect().height}px`);
@@ -3964,7 +3964,7 @@ function ri(e, t) {
 	let A = f("取消选择");
 	k.append(T, E, O, A, D), p.append(m, _, S);
 	let j = e.querySelector(".reviewcontrols");
-	j ? j.append(p) : n.before(p), e.append(k), n.classList.add("reviewgroups");
+	j ? j.after(p) : n.before(p), e.append(k), n.classList.add("reviewgroups");
 	let ee = () => {
 		r.selected.clear(), r.anchor = null, P();
 	};
