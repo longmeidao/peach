@@ -1394,8 +1394,9 @@ class SimpCityConnectorTests(unittest.TestCase):
         self.assertEqual(first.url, "https://simpcity.cr/threads/4242/post-700")
         self.assertEqual(first.author, "uploader1")
         self.assertEqual(first.published_at, "2026-09-07T10:00:00Z")
+        # 有图的楼层以图为媒体，网盘链接只做资源按钮。
+        self.assertEqual(first.media_url, "https://cdn.imgpage.test/abc.jpg")
         # 站点把外链套在 `/redirect/?to=<base64url>` 里，网盘链接要还原之后才认得出。
-        self.assertEqual(first.media_url, "https://gofile.io/d/abc123")
         # 预览卡（unfurl）里的链接是楼主贴的，要留下；卡片上站点生成的摘要文字不是。
         self.assertEqual(first.extra["links"],
                          ["https://gofile.io/d/abc123", "https://pixeldrain.com/u/zF3PqTJF",

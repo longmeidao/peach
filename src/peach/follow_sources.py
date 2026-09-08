@@ -2401,7 +2401,9 @@ class SimpCityConnector(_BaseConnector):
             if not (images or file_links or attachments or embeds):
                 skipped += 1
                 continue
-            media_url = file_links[0] if file_links else (images[0][0] if images else None)
+            # 图片才是能在详情页看的媒体；网盘链接只做资源按钮，没有图时才顶上来
+            # 当外链媒体，免得一条网盘链接把整层的图挤成缩略图。
+            media_url = images[0][0] if images else (file_links[0] if file_links else None)
             candidates.append(FollowCandidate(
                 provider=self.provider,
                 external_id=post_id,
