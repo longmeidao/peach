@@ -26,7 +26,7 @@ export function cleanupSkeletonHtml(): string {
         <div class="geist-fieldset-content"><h3 class="geist-fieldset-title" id="cleanup-loading-${index}">${title}</h3>
           ${description ? `<p>${description}</p>` : '<strong><span class="skeleton cleanup-count-skeleton" aria-hidden="true"></span></strong>'}
           ${index === 5 ? '<p class="cleanupmeta"><span class="skeleton cleanup-count-skeleton" aria-hidden="true"></span></p>' : ''}</div>
-        <footer class="geist-fieldset-footer" data-geist-fieldset-footer><button type="button" disabled>${index === 5 ? '<svg aria-hidden="true"><use href="#i-scan-search"></use></svg><span>' + action + '</span>' : action}</button></footer>
+        <footer class="geist-fieldset-footer" data-geist-fieldset-footer>${index === 0 ? '<a class="geist-button" href="/scraping">采集来源</a>' : ''}<button type="button"${index === 0 ? ' class="geist-button primary"' : ''} disabled>${index === 5 ? '<svg aria-hidden="true"><use href="#i-scan-search"></use></svg><span>' + action + '</span>' : action}</button></footer>
       </section>`).join('')}</div></div>`;
 }
 

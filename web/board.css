@@ -119,7 +119,7 @@ body.drawer-open{--railW:296px}
 .managebar .managebar-menu button[aria-pressed="true"]{background:none;color:var(--tungsten);border-bottom-color:var(--tungsten);font-weight:500}
 .managebar .managebar-menu button:hover{background:none;color:var(--ink)}
 .managebar .managebar-menu button[aria-pressed="true"]:hover{color:var(--tungsten)}
-body:is(.cleanup-layout,.follow-manage-layout,.insight-layout,.configuration-layout) :is(#manageTitle,#manageCrumb,#manageLede){max-width:var(--board-content);width:100%;margin-left:auto;margin-right:auto}
+body :is(#manageTitle,#manageCrumb,#manageLede){max-width:var(--board-content);width:100%;margin-left:auto;margin-right:auto}
 #manageTitle{font-size:26px;line-height:34px;margin-bottom:24px}
 
 /* Task entry cards and editing panels have different information density. */
@@ -757,10 +757,11 @@ body .library-processing [role=alert]>.geist-note{margin-top:12px}
 /* 复核页与别的管理页同宽；标签条不悬浮，悬浮的是工具条这一层，分组条贴在它下面合成一个玻璃框。 */
 body .review{width:100%;max-width:var(--board-content);margin:0 auto;box-sizing:border-box}
 body .review .reviewcontrols{position:static;z-index:auto;padding-block:0;display:block;border-radius:0}
-body .review .reviewbulktoolbar{position:sticky;top:var(--topH);z-index:60;padding-block:12px;margin-bottom:16px;border-radius:20px;transition:border-radius .15s ease}
-body .review .reviewbulktoolbar.is-stuck{background:linear-gradient(125deg,var(--glass-sheen),transparent 42%,var(--glass-low)),var(--glass-fill);backdrop-filter:var(--glass-optic,blur(22px)) saturate(145%);border:0;box-shadow:inset 0 1px 0 var(--glass-rim),var(--glass-shadow)}
-body .review:has(.reviewgroupbar.is-stuck) .reviewbulktoolbar.is-stuck{border-radius:20px 20px 0 0}
-body .review .reviewgroupbar.is-stuck{border-radius:0 0 20px 20px;box-shadow:var(--glass-shadow)}
+body .review .reviewbulktoolbar{position:sticky;top:var(--topH);z-index:60;margin:0 -16px 16px;padding:12px 16px;border-radius:20px;transition:border-radius .15s ease}
+body .review .reviewgroupbar{margin-inline:-16px;padding-inline:16px}
+body .review .reviewbulktoolbar.is-stuck{background:var(--glass-fill);backdrop-filter:var(--glass-optic,blur(22px)) saturate(145%);border:0;box-shadow:inset 0 1px 0 var(--glass-rim),var(--glass-shadow)}
+body .review:has(.reviewgroupbar.is-stuck) .reviewbulktoolbar.is-stuck{border-radius:20px 20px 0 0;box-shadow:inset 0 1px 0 var(--glass-rim)}
+body .review .reviewgroupbar.is-stuck{background:var(--glass-fill);border-radius:0 0 20px 20px;box-shadow:var(--glass-shadow)}
 /* 批量条：隐藏的键真的隐藏（Board 的 inline-flex 曾压过 hidden）；「加入回收站」用 error 按钮的红色渐变。 */
 body .batchbar button.danger{box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;gap:4px;height:36px;min-height:36px;padding:8px 12px;border:1px solid transparent;border-radius:10px;background:linear-gradient(180deg,#ff3347,#e60012);color:#fff;font:var(--board-body-medium);transition:background-color .15s ease}
 body .batchbar button.danger:hover{background:linear-gradient(180deg,#ff6471,#ff3347);color:#fff}
@@ -778,3 +779,7 @@ body .batchbar button[hidden],body .batchbar button.danger[hidden]{display:none}
 .drawer .board-sidebar-head #filterBtn{width:20px;height:20px;padding:0;background:none;box-shadow:none}
 .drawer .board-sidebar-head #filterBtn:hover{background:none;color:var(--color-text-primary)}
 @media(min-width:761px){.drawer:not(.open) .board-sidebar-head{min-height:0;gap:10px;align-items:center;justify-content:flex-start}.drawer:not(.open) .board-sidebar-head #filterBtn{width:36px;height:20px}.drawer:not(.open) #brandHome{width:32px;height:32px;min-height:32px;padding:0;max-width:none}.drawer:not(.open) #brandHome .mark{width:32px;height:32px}}
+/* 详情页的关闭键压在画面上：亮色主题下白底白晕看不出悬停，用户以 YouTube 为参照——播放器上的键在亮色下也是黑底。 */
+.closestage,.closestage:hover{background:rgba(0,0,0,.6);color:#fff}
+.closestage:hover:after,.closestage:focus-visible:after{background:rgba(255,255,255,.2)}
+.closestage:active:after{background:rgba(255,255,255,.3)}

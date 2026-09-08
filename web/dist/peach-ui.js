@@ -812,7 +812,7 @@ function ht() {
         <div class="geist-fieldset-content"><h3 class="geist-fieldset-title" id="cleanup-loading-${r}">${e}</h3>
           ${n ? `<p>${n}</p>` : "<strong><span class=\"skeleton cleanup-count-skeleton\" aria-hidden=\"true\"></span></strong>"}
           ${r === 5 ? "<p class=\"cleanupmeta\"><span class=\"skeleton cleanup-count-skeleton\" aria-hidden=\"true\"></span></p>" : ""}</div>
-        <footer class="geist-fieldset-footer" data-geist-fieldset-footer><button type="button" disabled>${r === 5 ? "<svg aria-hidden=\"true\"><use href=\"#i-scan-search\"></use></svg><span>" + t + "</span>" : t}</button></footer>
+        <footer class="geist-fieldset-footer" data-geist-fieldset-footer>${r === 0 ? "<a class=\"geist-button\" href=\"/scraping\">采集来源</a>" : ""}<button type="button"${r === 0 ? " class=\"geist-button primary\"" : ""} disabled>${r === 5 ? "<svg aria-hidden=\"true\"><use href=\"#i-scan-search\"></use></svg><span>" + t + "</span>" : t}</button></footer>
       </section>`).join("")}</div></div>`;
 }
 function gt(e, t = !1, n = !1) {

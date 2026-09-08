@@ -28,6 +28,9 @@ describe('数据管理首屏', () => {
     }
     expect(cards[0]?.querySelector('p')?.textContent).toBe('扫描媒体文件夹，导入已有资料，采集缺失信息。');
     expect(cards[0]?.querySelector('.skeleton')).toBeNull();
+    // 扫描卡的两枚键从骨架起就都在位，内容换入时只是变成可点。
+    expect(cards[0]?.querySelector('.geist-fieldset-footer > a.geist-button')?.getAttribute('href')).toBe('/scraping');
+    expect(cards[0]?.querySelector('.geist-fieldset-footer > button.geist-button.primary')?.hasAttribute('disabled')).toBe(true);
     expect(root.querySelectorAll('.cleanup-count-skeleton')).toHaveLength(7);
     expect(root.querySelector('#resource-sync')).toBeNull();
   });
