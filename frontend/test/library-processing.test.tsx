@@ -4,6 +4,17 @@ import { act } from 'preact/test-utils';
 import { LibraryProcessing } from '../src/islands/library-processing';
 
 let host: HTMLDivElement;
+it('演示运行态与失败重试都不请求真实任务', async()=>{
+  const fetch=vi.fn();vi.stubGlobal('fetch',fetch);
+  host=document.createElement('div');document.body.append(host);
+  await act(async()=>render(h(LibraryProcessing,{data:{status:'running',checked:2,total:10},error:'',toast:vi.fn(),preview:true,monitor:true}),host));
+  expect(host.querySelector('[role=progressbar]')?.getAttribute('aria-valuenow')).toBe('2');
+  expect(host.querySelectorAll('[role=progressbar]')).toHaveLength(1);
+  expect(host.querySelector('.geist-loading-dots')).toBeNull();
+  await act(async()=>{render(h(LibraryProcessing,{key:'failed',data:{status:'failed'},error:'',toast:vi.fn(),preview:true}),host)});
+  await act(async()=>{host.querySelector<HTMLButtonElement>('[data-note-action]')?.click()});
+  expect(fetch).not.toHaveBeenCalled();
+});
 afterEach(() => { if(host)render(null, host); document.body.innerHTML=''; vi.useRealTimers(); vi.unstubAllGlobals(); });
 it('启动只提交一次，进度用 GET 读取并提供复核入口', async () => {
   const requests: string[]=[];

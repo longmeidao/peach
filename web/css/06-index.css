@@ -4,7 +4,7 @@
 body.entity-open .index{overflow-x:visible}
 .index .ihead{display:flex;align-items:center;gap:12px;margin-bottom:20px}
 .index .ihead h2{margin:0}
-.indexheading{display:inline-flex;align-items:center;gap:9px}.indexheading svg{width:25px;height:25px;stroke:currentColor;fill:none;stroke-width:1.8}
+.indexheading{display:inline-flex;align-items:center;gap:9px}.indexheading svg{width:25px;height:25px;stroke:currentColor;fill:none;stroke-width:2}
 .index .ihead .geist-search{flex:1;max-width:320px;margin-left:auto}
 #indexCount{color:var(--muted)}
 .igrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:16px 10px}
@@ -37,7 +37,7 @@ body.entity-open .index{overflow-x:visible}
    高度也钉成和它一样的 36px（28 + 3 padding + 1 border），并排才谈得上底部对齐。 */
 .viewmodes{display:flex;gap:4px;padding:3px;border:1px solid var(--line-soft);border-radius:var(--surface-radius);background:var(--overlay-5)}
 .viewmodes button{border:0;border-radius:var(--control-radius);background:transparent;color:var(--muted);height:28px;padding:0 10px;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
-.viewmodes button svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.8}
+.viewmodes button svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2}
 /* 「Aa」是 1.4:1 的字形，宽高都锁 15px 只能按宽缩，画出来比邻座矮一截。 */
 .viewmodes button svg.iconwide{width:auto}
 .viewmodes button:hover{color:var(--ink)}

@@ -17,6 +17,7 @@ import time
 from datetime import UTC, datetime, timedelta
 
 from .catalog_rules import tag_cat
+from . import media_libraries, settings_file
 from .config import LOCATION_ROOT_DECLARATIONS
 from .platform import is_unmapped, root_online, system_volume, translate_ledger_path
 from .taste_history import (
@@ -41,7 +42,7 @@ def q_search_history(contract: WebContract, limit: int = 10):
     return {"items": [row["query"] for row in rows]}
 
 
-TASTE_WINDOWS = {"all": None, "90d": 90, "365d": 365}
+TASTE_WINDOWS = {"all": None, "7d": 7, "30d": 30, "90d": 90, "365d": 365}
 
 
 def _taste_since(window: str) -> str | None:
@@ -224,6 +225,16 @@ def q_stats(contract: WebContract):
         out["by_medium"] = [dict(r) for r in c.execute(
             "SELECT medium k, count(*) n, COALESCE(sum(size),0) bytes "
             "FROM asset GROUP BY medium ORDER BY bytes DESC")]
+        config = settings_file.active()
+        out["by_library"] = []
+        for library in media_libraries.libraries(config):
+            clause, params = media_libraries.predicate(config, library["id"])
+            counts = c.execute(
+                "SELECT count(*) videos,COALESCE(sum(a.size),0) bytes FROM asset a "
+                "WHERE a.medium='video' AND " + clause, params,
+            ).fetchone()
+            out["by_library"].append({"k": library["id"], "name": library["name"],
+                                      "icon": library["icon"], **dict(counts)})
         v = c.execute("SELECT count(*) FROM asset WHERE medium='video'").fetchone()[0]
         def one(sql, *a):
             r = c.execute(sql, a).fetchone()

@@ -380,6 +380,8 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
     async def test_front_end_modules_need_the_same_token_as_the_page(self):
         unauthorized = await self.client.get("/js/core.js")
         self.assertEqual(unauthorized.status_code, 401)
+        unauthorized_board = await self.client.get("/board.css")
+        self.assertEqual(unauthorized_board.status_code, 401)
 
     async def test_island_bundle_is_served_with_the_same_guards_as_the_modules(self):
         """`/dist/{name}` 提供 `frontend/` 的构建产物（ADR-0022）。

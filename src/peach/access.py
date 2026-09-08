@@ -12,7 +12,6 @@ import time
 
 from itsdangerous import BadData, URLSafeSerializer
 
-DURATIONS = {0: "本次浏览器会话", 1: "1 天", 7: "7 天", 30: "30 天", 365: "1 年"}
 COOKIE = "peach_session"
 
 
@@ -86,7 +85,7 @@ def public(policy: dict) -> dict:
 
 
 def issue(policy: dict, days: int) -> tuple[str, int | None]:
-    if days not in DURATIONS:
+    if type(days) is not int or not 0 <= days <= 365:
         raise ValueError("请选择有效的保持登录时间")
     seconds = days * 86400 if days else 43200
     value = URLSafeSerializer(policy["key"], salt="peach-browser-access").dumps(

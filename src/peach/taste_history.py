@@ -583,7 +583,7 @@ def _history_dashboard_evidence(store_path: Path, since: str | None) -> dict[str
     empty = {
         "visits": 0, "sources": [], "range_start": None, "range_end": None,
         "tags": Counter(), "creators": Counter(), "categories": Counter(),
-        "domains": Counter(), "creator_domains": {},
+        "domains": Counter(), "creator_domains": {}, "activity": {"days": [], "hours": []},
     }
     if not store_path.is_file():
         return empty
@@ -617,6 +617,8 @@ def _history_dashboard_evidence(store_path: Path, since: str | None) -> dict[str
         range_start: str | None = None
         range_end: str | None = None
         visits = 0
+        activity_days: Counter[str] = Counter()
+        activity_hours: Counter[tuple[int, int]] = Counter()
         for row in rows:
             visited_at, url = str(row["visited_at"]), str(row["url"])
             try:
@@ -632,6 +634,12 @@ def _history_dashboard_evidence(store_path: Path, since: str | None) -> dict[str
             domain, row_tags, row_creators = _url_candidates(url)
             if domain and _is_taste_domain(domain):
                 domains[domain] += 1
+                moment = datetime.fromisoformat(visited_at)
+                if moment.tzinfo is None:
+                    moment = moment.replace(tzinfo=UTC)
+                moment = moment.astimezone(HONG_KONG_TIMEZONE)
+                activity_days[moment.date().isoformat()] += 1
+                activity_hours[(moment.weekday(), moment.hour)] += 1
             tags.update(row_tags)
             creators.update(row_creators)
             if domain:
@@ -652,6 +660,12 @@ def _history_dashboard_evidence(store_path: Path, since: str | None) -> dict[str
             "creator_domains": creator_domains,
             "categories": categories,
             "domains": domains,
+            "activity": {
+                "timezone": "UTC+08:00",
+                "days": [{"date": day, "count": count} for day, count in sorted(activity_days.items())],
+                "hours": [{"weekday": day, "hour": hour, "count": count}
+                          for (day, hour), count in sorted(activity_hours.items())],
+            },
         }
 
 
@@ -986,6 +1000,19 @@ def build_taste_dashboard(
     analysis = _taste_analysis(
         history, peach, all_tags, all_creators, _tag_inventory(ledger_connection),
     )
+    creator_flows: Counter[tuple[str, str]] = Counter()
+    top_creators = {name.casefold().strip() for name, _ in history["creators"].most_common(8)}
+    flow_domains: Counter[str] = Counter()
+    for domains in history["creator_domains"].values():
+        flow_domains.update({domain: count for domain, count in domains.items()
+                             if _is_taste_domain(domain)})
+    top_domains = {name for name, _ in flow_domains.most_common(6)}
+    for creator, domains in history["creator_domains"].items():
+        for domain, count in domains.items():
+            if not _is_taste_domain(domain):
+                continue
+            creator_flows[(domain if domain in top_domains else "其他网站",
+                           creator if creator in top_creators else "其他创作者")] += count
     return {
         "summary": {
             "history_visits": history["visits"],
@@ -998,7 +1025,12 @@ def build_taste_dashboard(
             "range_end": history["range_end"],
         },
         "sources": history["sources"],
+        "activity": history["activity"],
+        "creator_flows": [{"source": source, "target": target, "value": count}
+                          for (source, target), count in creator_flows.most_common()],
         "rankings": {
+            "browser_categories": [{"name": name, "score": score}
+                                   for name, score in history["categories"].most_common(20)],
             "categories": [{"name": name, "score": score}
                            for name, score in category_scores.most_common(20)],
             "tags": tags,

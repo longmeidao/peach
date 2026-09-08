@@ -7,9 +7,10 @@ import tempfile
 import threading
 import time
 import unittest
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from pathlib import Path
 from unittest import mock
+from types import SimpleNamespace
 
 from peach import catalog_rules, web_batch, web_catalog, web_stats
 from peach import web_contract as rm_web
@@ -195,6 +196,18 @@ class WebDataTests(unittest.TestCase):
         stats = rm_web.q_stats(self.contract)
         self.assertEqual(stats["tag_cov"], 2)
         self.assertIn("审核标签", {row["k"] for row in stats["top_tags"]})
+
+    def test_library_counts_follow_named_roots_and_exclude_images(self):
+        with closing(sqlite3.connect(self.db_path)) as connection:
+            connection.execute("UPDATE asset SET path=? WHERE id=1", (r"R:\Media\one.mp4",))
+            connection.execute("UPDATE asset SET path=? WHERE id=3", (r"R:\Media\cover.jpg",))
+            connection.commit()
+        config = SimpleNamespace(locations={"local": [r"R:\Media", r"R:\Media-more"]},
+                                 library_names={}, library_icons={})
+        with mock.patch.object(web_stats.settings_file, "active", return_value=config):
+            rows = rm_web.q_stats(self.contract)["by_library"]
+        self.assertEqual([(row["name"], row["videos"], row["bytes"]) for row in rows],
+                         [("Media", 1, 100), ("Media-more", 0, 0)])
 
     def test_stats_use_the_platform_system_volume_and_keep_the_old_alias(self):
         usage = type("Usage", (), {"free": 20, "total": 100})
@@ -1123,6 +1136,20 @@ class WebDataTests(unittest.TestCase):
             "/api/data-cleanup/empty-folders", rm_web.READ_ONLY_POST_ROUTES,
             "清理服务端物理目录不写 ledger，不该被 reader 的账本闸门误拦",
         )
+
+    def test_empty_folder_scan_counts_nested_candidates_without_removing_anything(self):
+        source_root = Path(self.tmp.name) / "scan-source"
+        leaf = source_root / "empty" / "nested"
+        leaf.mkdir(parents=True)
+        kept = source_root / "kept"
+        kept.mkdir()
+        (kept / "media.mp4").write_bytes(b"keep")
+        with mock.patch.object(web_batch, "LOCATION_ROOT_DECLARATIONS", {"local": (str(source_root),)}):
+            result = web_batch.w_cleanup_empty_directories(self.contract, {"dry_run": True})
+        self.assertEqual(result["empty"], 2)
+        self.assertEqual(result["removed"], 0)
+        self.assertTrue(leaf.is_dir())
+        self.assertEqual((kept / "media.mp4").read_bytes(), b"keep")
 
     def test_failed_database_commit_restores_quarantined_media(self):
         path = self.stage_media(1, "commit-failure.mp4")

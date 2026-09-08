@@ -4,11 +4,10 @@
 
 索引：`PRODUCT_BACKLOG.md`、`REUSE.md`、`HANDOFF.md`。
 
-- 自启、代理、卸载设置已上线，见 `REUSE.md`。
-
 ## 运行态
 
-- 复核分组吸附、取证及多选浮窗见 `REUSE.md`。
+- BoardUI：只读预览 18984，状态演示 `/state-preview`；生产未切换。验收见 `BOARD_UI.md`。
+
 - 设置与反馈已部署；预览 18976。骨架桌面及 390px 验收通过，生产浏览器超时。
 
 - 女优头像 545 张：2026-09-06 经用户批准换上 54 张 Gfriends 正脸照，脸宽中位数 148px → 320px；被顶掉的整套留在 `avatars-superseded/`，挑图与换源判据见 `SOURCING.md`。

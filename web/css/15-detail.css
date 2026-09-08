@@ -27,7 +27,7 @@
 .photohead .srcstate{flex:none}
 .smeta{display:flex;gap:9px;flex-wrap:wrap;color:var(--muted);margin-bottom:18px}
 .detailmetaitem{display:inline-flex;align-items:center;gap:5px}.detailmetaitem svg{width:15px;height:15px;
-  flex:none;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+  flex:none;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .stags{position:relative;display:flex;flex-wrap:wrap;align-items:center;gap:7px;margin:0 0 18px}
 .detailtag{display:inline-flex;align-items:center;border:1px solid var(--line);border-radius:var(--tag-radius);
   background:color-mix(in srgb,var(--surface) 82%,var(--ground));overflow:hidden;min-height:30px}

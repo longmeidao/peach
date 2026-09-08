@@ -34,8 +34,10 @@ body.settings-open{overflow:hidden}
 .settinggroup>h3+.settingrow{border-top:0}.settingrow b{display:block;font-size:var(--fs-md)}.settingrow small{display:block;color:var(--muted);margin-top:8px;line-height:1.45}
 .settingrow .gselect{min-width:148px}
 .settingrow.settingrelated{border-top:0}
-.settingsortrow{grid-template-columns:minmax(0,1fr)}
-.settingsortcontrols{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px}
+.settinggroup .settingrow.settingsortrow{grid-template-columns:minmax(0,1fr);gap:12px;padding-block:14px 16px}
+.settingsortcontrols{display:flex;gap:8px;min-width:0}
+.settingsortcontrols>div{flex:1;min-width:0}
+.settingsortcontrols>[hidden]{display:none}
 .settingsortcontrols .gselect{min-width:0;width:100%}
 .settinggroup{margin:16px 0 0;border:1px solid var(--field-ring);border-radius:var(--floating-radius);
   background:var(--ground);padding:0 16px 12px}
@@ -90,4 +92,4 @@ body.settings-open{overflow:hidden}
   .settingrow:has(input[type="checkbox"]){grid-template-columns:minmax(0,1fr) auto;gap:12px}
   .settingrow .gselect{width:100%;min-width:0}.settingrow .pcheck{justify-self:start}}
 .sidebaradd .sidebaraddmenu button{justify-items:start}
-
+#applyUISetting[hidden]{display:none}

@@ -40,6 +40,12 @@ Follow sources include FANBOX, Patreon, SubscribeStar, Kemono, Pawchive, Coomer,
 
 Interface preferences are saved in the current browser and live under Settings: default sort, official covers or preview images for JAV works, autoplay when details open, and SFW mode, which blurs, desaturates and dims images and video and stops hover previews.
 
+The interface uses Board styling. Select “Use classic UI” in Settings and apply with a refresh to use the classic interface. “Increase contrast” disables navigation transparency and refraction. Numeric preferences accept custom values within their supported ranges, with switches for optional features.
+
+Choose a media library at the top of the sidebar; theme and settings controls are fixed at the bottom. Set library names and icons in Configuration; matching names group folders into one library. Library selection filters work lists and facets. Cloud libraries use locally served provider icons by default.
+
+“Remember me” uses this browser’s Security preference (1–365 days, default 30). Leaving it unchecked creates a browser session lasting at most 12 hours.
+
 ## Quick start
 
 Peach is **pre-1.0**. The application interface is currently Chinese only.
@@ -96,7 +102,7 @@ uv sync --locked --python 3.14 --extra macos
 Setup configures media folders, access scope and ports. Alternatively, use the `peach init` terminal wizard followed by `peach serve`; executables are in the virtual environment directories above.
 
 Source deployments default to a sibling `peach-data/` directory. Set `PEACH_DATA_ROOT` for a custom location.
-The access password is optional during setup. Leave it blank to allow devices that can reach Peach to enter directly. Configuration lets you set, change or disable the password; the login page offers session durations. Existing deployments retain their current login requirement. Local CA generation requires OpenSSL.
+The access password is optional during setup. Leave it blank to allow devices that can reach Peach to enter directly. Configuration lets you set, change or disable the password; Security settings control how long to stay signed in. Existing deployments retain their current login requirement. Local CA generation requires OpenSSL.
 See [operations](docs/OPERATIONS.md) for configuration, HTTPS, CloudDrive mounts and non-interactive initialization.
 
 ## Your data

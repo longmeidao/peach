@@ -72,6 +72,8 @@
 
 ## 参考产品证据登记
 
+- [Board 适配、控件映射与取证](BOARD_UI.md)。
+
 - [Geist 控件](reference-snapshots/vercel-geist-controls-measured.md)；[复核操作](reference-snapshots/vercel-review-actions.md)；[README 维护](README_MAINTENANCE.md)。
 
 - 设置：`reference-snapshots/geist-settings.md`。

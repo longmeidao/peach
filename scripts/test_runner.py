@@ -27,7 +27,7 @@ COMMON_PATTERNS = ("test_context_budget.py", "test_test_collection.py")
 SCOPES: dict[str, tuple[str, ...]] = {
     "checks": ("test_copy_final_state.py", "test_dependency_policy.py", "test_repo_hygiene.py", "test_test_planning.py"),
     "follow": ("test_follow*.py", "test_http.py", "test_migrations.py"),
-    "catalog": ("test_ad_judgement.py", "test_composite_name_split.py",
+    "catalog": ("test_ad_judgement.py", "test_composite_name_split.py", "test_media_libraries.py",
                 "test_duplicate_identity_merge.py",
                 "test_entity_merge.py", "test_fastapi_api.py", "test_migrations.py",
                 "test_review_mirror.py", "test_rm_web.py",
@@ -113,6 +113,7 @@ SCOPE_TEST_IDS: dict[str, tuple[str, ...]] = {
 # 其余模块按「模块名 ↔ 测试文件名」推断（`media.py` → `test_media.py` → media）。
 # 仓库根的 Markdown 归 tooling：入口文件、README 与待办的门槛都在那个域里。
 AUTO_SCOPE_PREFIXES: tuple[tuple[str, str], ...] = (
+    ("src/peach/media.py", "media"),
     ("src/peach/desktop_startup.py", "tooling"),
     ("src/peach/desktop_uninstall.py", "tooling"),
     ("src/peach/peach_proxy.py", "tooling"),

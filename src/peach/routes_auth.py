@@ -118,6 +118,7 @@ def set_auth_cookie(response: Response, request: Request, *, days: int = 30, log
 
 
 def login_html(next_path: str, *, invalid: bool = False) -> str:
+    from .routes_pages import board_entry_style
     safe_next = html.escape(next_path, quote=True)
     error = '<p role="alert">访问密码不正确</p>' if invalid else ""
     return (
@@ -155,22 +156,21 @@ def login_html(next_path: str, *, invalid: bool = False) -> str:
         'background:var(--field);color:var(--ink);padding:0 13px;font:inherit;outline:none}'
         'input:focus,select:focus{outline:2px solid var(--ink);outline-offset:2px}'
         'form{display:grid;gap:16px}form p{font-size:13px;color:var(--ink-2);margin:0}'
-        '.duration{border:0;padding:0;margin:0;display:grid;grid-template-columns:1fr 1fr;gap:8px}'
-        '.duration legend{margin-bottom:8px}.duration label{display:flex;align-items:center;gap:8px}'
-        '.duration input{width:16px;height:16px;margin:0;accent-color:var(--ink)}'
+        '.remember{display:flex;align-items:center;gap:8px;font-size:14px;line-height:20px}'
+        '.remember input{width:16px;height:16px;margin:0;accent-color:var(--ink);flex:none}'
         'button{width:100%;height:44px;margin-top:16px;border:0;border-radius:11px;cursor:pointer;'
         'background:var(--ink);color:var(--bg);font:500 15px system-ui,sans-serif}'
         'button:hover{background:color-mix(in srgb,var(--ink) 88%,var(--bg));color:var(--bg)}p[role=alert]{margin:0 0 14px;color:var(--alert)}'
-        '</style><body><main><div class="brand"><img src="/peach-logo.png" alt=""><h1>Peach</h1></div>'
+        f'</style>{board_entry_style()}<body><main><div class="brand"><img src="/peach-logo.png" alt=""><h1>Peach</h1></div>'
         f'{error}<form method="post" action="/login">'
         '<label>访问密码 <input name="token" type="password" maxlength="256" '
         'autocomplete="current-password" required></label>'
         f'<input name="next" type="hidden" value="{safe_next}">'
-        '<fieldset class="duration"><legend>在此设备保持登录</legend>'
-        + ''.join(f'<label><input type="radio" name="days" value="{days}"{" checked" if days == 30 else ""}>{label}</label>'
-                  for days, label in access.DURATIONS.items())
-        + '</fieldset><p>本次浏览器会话最长 12 小时。清除浏览器数据后需要重新登录。</p>'
-        '<button type="submit">登录</button></form></main></body></html>'
+        '<label class="remember"><input type="checkbox" name="days" value="30" checked>保持登录</label>'
+        '<button type="submit">登录</button></form></main><script>'
+        'try{const d=JSON.parse(localStorage.getItem("peach.settings.v1")||"{}").loginDays;'
+        'if(Number.isInteger(d)&&d>=1&&d<=365)document.querySelector("[name=days]").value=String(d)}catch{}'
+        '</script></body></html>'
     )
 
 
@@ -200,8 +200,8 @@ async def login_submit(request: Request):
     if token and policy["mode"] != "open" and not await run_in_threadpool(access.verify, policy, supplied, token):
         return HTMLResponse(login_html(next_path, invalid=True), status_code=401)
     try:
-        days = int((form.get("days") or ["30"])[0])
-        if days not in access.DURATIONS:
+        days = int((form.get("days") or ["0"])[0])
+        if not 0 <= days <= 365:
             raise ValueError
     except ValueError:
         raise HTTPException(400, "请选择有效的保持登录时间") from None

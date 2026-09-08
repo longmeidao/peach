@@ -23,7 +23,7 @@ export declare function confirmModal(options: {title: string; body: string; conf
 export declare function selectFieldHtml(items: string[][], current: string,
   options?: { label?: string; attr?: string; className?: string }): string;
 export declare function wireSelectField(root: Element): HTMLElement & { value: string; disabled: boolean };
-export declare function wireCollapse(root: ParentNode, selector: string, idPrefix: string): void;
+export declare function wireCollapse(root: ParentNode, selector: string, idPrefix: string, triggerSelector?: string): void;
 export declare const MEDIA_SOURCE_ICONS: Record<string, string>;
 export declare function selectOptionIconHtml(mark?: string): string;
 

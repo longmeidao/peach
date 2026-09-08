@@ -39,6 +39,14 @@ const copyPackageFiles = ({ packageName, vendorName, files, note }) => {
 };
 
 copyPackageFiles({
+  packageName: "@fontsource-variable/inter",
+  vendorName: "inter",
+  files: [["index.css", "index.css"], ...readdirSync(join(root, "node_modules/@fontsource-variable/inter/files"))
+    .filter(name => name.endsWith("-wght-normal.woff2")).map(name => [`files/${name}`, `files/${name}`])],
+  note: "Board 界面使用 Inter 可变字体；中文由系统中文字体补齐。",
+});
+
+copyPackageFiles({
   packageName: "video.js",
   vendorName: "videojs",
   files: [
@@ -61,6 +69,17 @@ copyPackageFiles({
 });
 
 const lucideIcons = new Map([
+  ["heart-hand","hand-heart"], ["flame","flame"], ["cherry","cherry"], ["gem","gem"],
+  ["crown","crown"], ["shirt","shirt"], ["footprints","footprints"], ["flower","flower"],
+  ["venetian-mask","venetian-mask"], ["hand","hand"], ["bed-double","bed-double"],
+  // 媒体库图标的候选，只归设置页的图标选择器：题材、身份、场景与媒介各一组。
+  ["circle-alert","circle-alert"], ["lollipop","lollipop"], ["candy","candy"], ["banana","banana"], ["droplets","droplets"],
+  ["venus","venus"], ["mars","mars"], ["venus-and-mars","venus-and-mars"], ["ribbon","ribbon"],
+  ["graduation-cap","graduation-cap"], ["stethoscope","stethoscope"], ["glasses","glasses"],
+  ["rabbit","rabbit"], ["paw-print","paw-print"], ["dumbbell","dumbbell"], ["bath","bath"],
+  ["key-round","key-round"], ["wine","wine"], ["cigarette","cigarette"], ["film","film"],
+  ["image","image"], ["gamepad-2","gamepad-2"],
+  ["camera","camera"], ["video","video"], ["scan-search","scan-search"],
   ["clapperboard", "clapperboard"], ["briefcase", "briefcase"],
   ["home", "home"], ["panel-left", "panel-left"], ["search", "search"],
   ["layout-grid", "layout-grid"], ["square-check-big", "square-check-big"],
@@ -89,6 +108,8 @@ const lucideIcons = new Map([
   ["notebook-pen", "notebook-pen"], ["search-x", "search-x"],
   ["file-archive", "file-archive"], ["file-audio", "file-audio"],
   ["file-stack", "file-stack"],
+  // 关注列表的表格视图：行列格子，和「默认视图」那枚网格并排。
+  ["table", "table"],
   // 名字和上游对不上的只有排序键：Peach 叫 `sort`，Lucide 叫 `sort-desc`。
   ["sort", "sort-desc"], ["arrow-up", "arrow-up"], ["arrow-down", "arrow-down"],
   ["calendar", "calendar"], ["download", "download"], ["monitor", "monitor"],
@@ -98,6 +119,8 @@ const lucideIcons = new Map([
   ["folder-cog", "folder-cog"],
   // 配置页每行文件夹的「选择文件夹」：弹系统对话框去挑。`folder-open` 归「打开位置」，不兼任。
   ["folder-search", "folder-search"],
+  // 数据管理页「空文件夹」那张卡的标识：说的是目录本身，既不是打开它，也不是去里面找。
+  ["folder", "folder"],
   ["sun", "sun"], ["moon", "moon"],
   // 小窗播放：右键菜单里「迷你播放器」是缩进角落的小屏，小窗上的「展开」是对角撑开；
   // `maximize` 归 JAV 大图版式，不兼任。「循环播放」与「复制视频网址」照 Lucide 本名。
@@ -110,7 +133,9 @@ const lucideIcons = new Map([
 // 这张名单只收 `i-` 开头、能被 `<use>` 引用的图标；symbol 内部的遮罩、渐变一类
 // 零件不带那个前缀，也就不进这张名单。
 const handDrawnIcons = new Set([
+  "shuffle", // 两条带 pathLength 的动画路径由 Peach 维护。
   "alert", "pics", "jav", "theater-enter", "theater-exit", "brand-x",
+  "brand-instagram", // 字形来自 Phosphor regular instagram-logo（MIT），套进与 brand-x 同一只墨色圆盘。
   // 「换一批」：Lucide shuffle 的线条拆成 strand-a／strand-b 两条 path 供忙态逐条画出，
   // 上游一刷新就会把两条并回五条，所以由手工维护。
   "shuffle",
@@ -159,6 +184,16 @@ index = index.replace(/Health Icons sperm outline-24px, CC0\/public domain/,
 index = index.replace(/Phosphor [0-9.]+ regular, MIT/,
   `Phosphor ${versions["@phosphor-icons/core"]} regular, MIT`);
 index = index.replaceAll(/\/vendor\/videojs\/[0-9.]+\//g, `/vendor/videojs/${versions["video.js"]}/`);
+const remixIcons = ["palette-line", "layout-grid-line", "play-circle-line", "search-line", "rss-line", "shield-check-line"];
+const remixSprite = lfText("node_modules", "remixicon", "fonts", "remixicon.symbol.svg");
+for (const name of remixIcons) {
+  const pattern = new RegExp(`<symbol[^>]*id="ri-${name}"[^>]*>[\\s\\S]*?<\\/symbol>`);
+  const symbol = remixSprite.match(pattern)?.[0];
+  if (!symbol || !pattern.test(index)) throw new Error(`缺少 Remix symbol：${name}`);
+  index = index.replace(pattern, symbol);
+}
+stage("web/vendor/remixicon-LICENSE.txt", lfText("node_modules", "remixicon", "License"));
+stage("web/vendor/remixicon-ORIGIN.md", `# Remix Icon ${versions.remixicon}\n\n- npm 包：\`remixicon@${versions.remixicon}\`\n- npm lock integrity：\`${integrity("remixicon")}\`\n- 许可证：Remix Icon License v1.0，见 \`remixicon-LICENSE.txt\`。\n- 消费者：设置导航六枚内联 symbol。完整候选由本地 HTML 审查。\n`);
 stage("web/index.html", index);
 
 let app = text("web", "app.js");

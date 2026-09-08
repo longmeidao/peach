@@ -86,6 +86,13 @@ def source_health(request: Request, args: dict[str, str] = Depends(require_auth)
     }
 
 
+@router.get("/api/libraries")
+def media_library_list(request: Request, args: dict[str, str] = Depends(require_auth)):
+    from . import media_libraries, settings_file
+    return {"libraries": [{"id": row["id"], "name": row["name"], "icon": row["icon"], "folders": len(row["roots"])}
+                          for row in media_libraries.libraries(settings_file.active())]}
+
+
 @router.post("/api/reveal")
 def reveal(request: Request, body: dict[str, Any] = Body(default_factory=dict), args: dict[str, str] = Depends(require_auth)):
     """在本机文件管理器里定位某个资产的源文件。

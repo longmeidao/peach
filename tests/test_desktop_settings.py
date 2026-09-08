@@ -39,7 +39,11 @@ class DesktopSettingsTests(unittest.TestCase):
         self.assertIn("{label: '清理内容'}", renderer)
         self.assertIn('class="geist-button primary" type="button" id="resourceApply"', renderer)
         self.assertIn("danger:false,onConfirm", sync)
-        self.assertIn('cleanupemptyfolders" data-geist-fieldset data-fieldset-type="error"', app)
+        empty = app[app.index('empty:`<section'):app.index("review:entryCard('review')")]
+        self.assertNotIn('data-fieldset-type="error"', empty)
+        self.assertIn('data-cleanup-empty-scan', empty)
+        self.assertIn('class="danger" data-cleanup-empty hidden', empty)
+        self.assertIn("{dry_run:true}", app)
 
     def setUp(self):
         temporary = tempfile.TemporaryDirectory()

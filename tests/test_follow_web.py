@@ -1581,6 +1581,12 @@ class FollowWebSourceTests(unittest.TestCase):
         if needle not in self.page:
             self.fail(f"Web 表面缺少：{needle!r}" + (f"（{message}）" if message else ""))
 
+    def assertBoardContains(self, needle):
+        # Board 层的覆盖单独一张表，不在上面那份页面里；按 test_web_ui 的写法直接读它。
+        board = (ROOT / "web" / "board.css").read_text(encoding="utf-8")
+        if needle not in board:
+            self.fail(f"board.css 缺少：{needle!r}")
+
     def test_follow_task_controls_keep_content_and_name_the_author(self):
         self.assertPageContains('data-follow-sources=')
         self.assertPageContains('group.filter(s=>s.enabled).map(s=>s.id)')
@@ -1725,7 +1731,7 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains('class="frows fsources"')
         grid = self.page[self.page.index(".fsources{"):]
         self.assertIn("repeat(auto-fit,minmax(430px,1fr))", grid[:grid.index("}")])
-        self.assertPageContains("followAuthorGroups(sources).map(followAuthorBlock).join('')")
+        self.assertPageContains("groups.map(followAuthorBlock).join('')")
         self.assertNotIn(".fsources>.fauthor{display:grid", self.page,
                          "多栏单位是作者组，不能拆开作者下面的来源行")
         self.assertPageContains('class="fsourcelink externallink" href="${esc(source.url)}"')
@@ -1736,14 +1742,14 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertIn("height:280px", author_rule)
         self.assertIn("border:1px solid var(--border-10)", author_rule)
         self.assertIn("grid-template-rows:auto minmax(0,1fr)", author_rule)
-        self.assertPageContains("scrollerHtml(group.map(followSourceRow).join(''),{")
+        self.assertPageContains("scrollerHtml(sourceRows,{")
         self.assertPageContains("className:'fauthorsources',label:`${name} 的关注来源`")
         # 滚动条由 attachOverlayScrollbar() 统一自绘，这里只留出滑块那一档的右内边距。
         self.assertPageContains(".fauthorsources .geist-scroller-container{padding-right:12px}")
         self.assertPageContains("wireScrollers(root)")
 
     def test_source_actions_are_icon_only_and_stay_on_one_row(self):
-        row = self.page[self.page.index("function followSourceRow(source)"):]
+        row = self.page[self.page.index("function followSourceCells(source,selectable=false)"):]
         row = row[:row.index("function followAliasManager")]
         self.assertIn("data-follow-check", row)
         self.assertIn("data-follow-remove", row)
@@ -1779,7 +1785,7 @@ class FollowWebSourceTests(unittest.TestCase):
         真要确认就读 title。
         """
         page = self.page
-        block = page[page.index('return `<div class="fauthor${bad?\' bad\':\'\'}">'):]
+        block = page[page.index('function followAuthorBlock('):]
         block = block[:block.index("${sources}")]
         self.assertIn("? group.map(source=>sourceIcon(source.provider)).join('')", block)
         self.assertNotIn("个来源`", block)
@@ -2104,7 +2110,8 @@ class FollowWebSourceTests(unittest.TestCase):
         `details.fcred` 是 block 布局才接得上：flex 行布局对不上 Collapse 的高度过渡。
         展开一段正文这件事不该有第二套开合逻辑。
         """
-        self.assertPageContains("export function wireCollapse(root,selector,idPrefix)")
+        self.assertPageContains("export function wireCollapse(root,selector,idPrefix,triggerSelector='summary')")
+        self.assertPageContains("wireCollapse(root,'details.fauthor','follow-author-collapse','[data-follow-author-toggle]')")
         self.assertPageContains("wireCollapse(root,'details.faliasmanager','follow-alias-collapse')")
         self.assertPageContains("wireCollapse(root,'details.fcred','follow-cred-collapse')")
         self.assertEqual(self.page.count("body.style.height=body.scrollHeight+'px'"), 1,
@@ -2128,72 +2135,153 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains(".fcred .ficon{margin-right:0}")
         self.assertIn('data-drop="self"', self.page)
 
-    def test_the_follow_list_has_a_compact_switch_that_puts_two_per_row(self):
-        """两个互斥视图用 Switch（共享 name 的 radio），不是 Toggle。"""
+    def test_the_follow_list_has_a_default_view_and_a_table_view(self):
+        """两个互斥视图用 Switch（共享 name 的 radio），不是 Toggle。
+
+        默认视图按作者分卡，表格视图一行一条来源。两种视图的 DOM 不同，切换走排序那条
+        重画路径：拿手里这份 followData 重画，不重取接口、不换骨架；勾选与收起的作者
+        各记在自己的 Set 里，重画后都还在。
+        """
         self.assertPageContains(
-            "const FOLLOW_LAYOUTS=[['cozy','舒适 · 一行一个','maximize'],"
-            "['compact','紧凑 · 一行两个','layout-grid']]")
+            "const FOLLOW_LAYOUTS=[['default','默认视图','layout-grid'],['table','表格视图','table']]")
+        self.assertPageContains('<symbol id="i-table" viewBox="0 0 24 24">')
         self.assertPageContains(
-            "iconSwitchHtml('follow-layout','关注列表版式',FOLLOW_LAYOUTS,followListLayout()")
+            "iconSwitchHtml('follow-layout','关注列表视图',FOLLOW_LAYOUTS,followListLayout()")
         self.assertPageContains("{attr:'data-follow-layout'}")
         self.assertPageContains("${followLayoutButtons()}")
         self.assertPageContains("wireIconSwitch(root,'data-follow-layout',setFollowListLayout)")
-        # 版式是纯展示层的事：改容器上的一个属性就够，不重画列表，也不重新请求。
-        self.assertPageContains('<div class="frows fsources" data-layout="${followListLayout()}">')
-        self.assertPageContains("node.dataset.layout=followListLayout()")
-        # 紧凑就是一行两个；半幅宽度放不下六列，见 test_compact_rows_keep_the_favicon…。
+        self.assertPageContains('<div class="frows fsources" data-layout="${followListLayout()}">${sourceList}</div>')
         self.assertPageContains(
-            '.fsources[data-layout="compact"]{grid-template-columns:repeat(2,minmax(0,1fr))}')
-        # 窄屏两栏塞不下，仍旧回到一栏——媒体查询要连紧凑一起覆盖，否则属性选择器更具体。
-        self.assertPageContains('.fsources,.fsources[data-layout="compact"]{grid-template-columns:1fr}')
-        # 窄屏两栏不成立，开关一起收起，不留一个按了没反应的控件。
-        self.assertPageContains('.fsechead .iconswitch{display:none}')
-        # 属性可能还留着上次在宽屏选的 compact；窄屏是整幅一栏，站名不该再收成图标。
-        self.assertPageContains(
-            '.fsources[data-layout="compact"] .fsource .fprovider:has(.ficon)>span{display:inline}')
-        self.assertPageContains(
-            '.fsources[data-layout="compact"] .fsource .fprovider:has(.ficon) .ficon{margin-right:5px}')
-        # 选择要留下来，和 JAV 版式一样存进设置。
-        self.assertPageContains("followLayout:'cozy'")
+            "return followListLayout()==='table'?followSourceTable(groups,!legacy)")
+        # 切换只换列表本身：页头那枚开关留在原地，滑块才有得滑。
+        self.assertPageContains("const list=document.querySelector('#stats .fsources');\n"
+                                "  if(!list){renderFollowManage(followCredentials||{});return}\n"
+                                "  list.dataset.layout=value;\n"
+                                "  list.innerHTML=followSourceListHtml(followAuthorGroups(followData.sources||[]));\n"
+                                "  wireFollowManage(followCredentials?.providers||[]);")
+        self.assertPageContains("const sourceList=followSourceListHtml(groups);")
+        self.assertPageContains("const collapsed=!legacy&&collapsedFollowAuthors.has(key);")
+        self.assertPageContains("group.map(source=>followSourceRow(source,!legacy))")
+        self.assertPageContains("data-follow-selection-remove")
+        self.assertPageContains("data-follow-author-toggle")
+        self.assertPageContains("button.disabled=!ids.length||!!followRuntime?.ledger_read_only")
+        # 选择要留下来，和 JAV 版式一样存进设置；存过旧值的机器落回默认视图。
+        self.assertPageContains("followLayout:'default'")
         self.assertPageContains("appSettings.followLayout=value")
         self.assertPageContains(
-            "allowedSetting(appSettings.followLayout,FOLLOW_LAYOUTS.map(([k])=>k),'cozy')")
+            "allowedSetting(appSettings.followLayout,FOLLOW_LAYOUTS.map(([k])=>k),'default')")
+        # 表格在任何宽度都成立，开关不再按宽度收起。
+        self.assertPageLacks('.fsechead .iconswitch{display:none}')
+        # 宽屏两栏只归默认视图。
+        self.assertBoardContains(
+            '.followmanage .fsources[data-layout="default"] .board-follow-list{grid-template-columns:repeat(2,minmax(0,1fr))')
 
-    def test_compact_rows_keep_the_favicon_and_a_clock_without_the_year(self):
-        """紧凑半幅腾地方的办法是压缩两列，不是删掉一列。
+    def test_selected_rows_keep_their_top_edge_and_row_icons_share_one_stroke(self):
+        """选中行四边都是蓝框：相邻行那条灰色上边线权重更高，会盖住选中框的上沿，删掉。
 
-        来源那格收成一枚 favicon——图标已经指认了站点，站名是重复的；上次检查整列回来，
-        只去掉年份，因为看的是最近有没有检查过，年份是这串里最不影响判断的一段。
+        行里的刷新与移除键和列表其它图标同一条线宽；别名行前面是这位作者的头像。
         """
-        # 版式切换只翻容器上的属性、不重画列表，所以两种显示得出自同一份 DOM。
-        self.assertPageContains('<i class="fyear">${esc(text.slice(0,5))}</i>${esc(text.slice(5))}')
-        self.assertPageContains("${source.last_checked_at?localTimeHtml(source.last_checked_at):'未检查'}")
+        self.assertNotIn('.followmanage .board-follow-list .fsource.frow+.fsource.frow{border-top:',
+                         (ROOT / 'web' / 'board.css').read_text(encoding='utf-8'))
+        self.assertBoardContains('.followmanage .frowicon svg{stroke-width:2}')
+        self.assertBoardContains('.faliasrow>.favatar{width:24px;height:24px;font-size:var(--fs-xs)}')
+        self.assertPageContains('<div class="faliasrow">${followAliasAvatar(group)}<b>${esc(group.canonical_name)}</b>')
+        self.assertPageContains("const sources=(followData?.sources||[]).filter(source=>source.author_key===`name:${group.canonical_key}`);")
+
+    def test_both_views_render_the_same_source_cells(self):
+        """一条来源的格子只有一份模板：默认视图排成一行，表格视图各放一个 <td>。
+
+        勾选、检查、移除的 data 属性两边一样，wireFollowManage 不分视图；表格里的
+        `<tr>` 顶着 `fsource` 类，`field.closest('.fsource')` 在两种视图里都找得到行。
+        """
+        self.assertPageContains("function followSourceCells(source,selectable=false){")
         self.assertPageContains(
-            '.fsources[data-layout="compact"] .fsource .fchecked .fyear{display:none}')
-        # <i> 是包一层用的，不是排版意图。
+            "return {className:`fsource${bad?' bad':''}${source.enabled?'':' disabled'}`,"
+            "check,name,provider,status,checked,actions,error};")
+        self.assertPageContains("const cell=followSourceCells(source,selectable);\n  return `<div class=\"frow ${cell.className}\">")
+        self.assertPageContains("${cell.provider(selectable?cell.status:'')}")
+        self.assertPageContains("return `<tr class=\"${cell.className}\">")
+        self.assertPageContains('<td class="ftcheck">${cell.check}</td>')
+        self.assertPageContains('<td class="ftname">${cell.name}${cell.error}</td>')
+        self.assertPageContains('<td class="ftprovider">${cell.provider(\'\')}</td>')
+        self.assertPageContains('<td class="ftstatus">${cell.status}</td>')
+        self.assertPageContains('<td class="ftactions">${cell.actions}</td></tr>')
+        self.assertPageContains("selectable.forEach(field=>field.closest('.fsource').classList.toggle('selected',field.checked))")
+        # 时间格两边同一个写法，<i> 只是包一层，不是排版意图。
+        self.assertPageContains('<i class="fyear">${esc(text.slice(0,5))}</i>${esc(text.slice(5))}')
         self.assertPageContains(".fsource .fchecked .fyear{font-style:normal}")
-        # 时间列回来后名字那格只剩 118px，35 条里 11 条被截；列间距收到 8px 换回 10px。
-        self.assertPageContains('.fsources[data-layout="compact"] .fsource.frow{gap:8px}')
-        # 站名收起，但仍在 DOM 里，并且悬停能看到。
         self.assertPageContains(
             '<span class="fmeta fprovider" title="${esc(source.provider_label)}">')
-        self.assertPageContains("<span>${esc(source.provider_label)}</span></span>")
-        self.assertPageContains(
-            '.fsources[data-layout="compact"] .fsource .fprovider:has(.ficon)>span{display:none}')
-        # 图标右边那 5px 是给站名留的间距，站名收起后跟着去掉。
-        self.assertPageContains(
-            '.fsources[data-layout="compact"] .fsource .fprovider:has(.ficon) .ficon{margin-right:0}')
-
-    def test_a_source_without_a_favicon_keeps_its_name_in_compact(self):
-        """`:has(.ficon)` 是这条规则的全部要害，不能写成无条件隐藏。
-
-        没登记 favicon 的站 `sourceIcon` 直接返回空串；取得下来但加载失败的那些，
-        全局兜底会按 `data-drop="self"` 把 `<img>` 整个摘掉——两种情况下无条件隐藏
-        站名都会留下一格纯空白。`:has` 在 img 被摘掉后会重新求值。
-        """
-        self.assertPageContains(':has(.ficon)>span{display:none}')
-        self.assertIn('data-drop="self"', self.page)
         self.assertPageContains("function sourceIcon(provider){return SOURCE_ICON_PROVIDERS.has(provider)")
+
+    def test_the_table_view_follows_the_boardui_data_table(self):
+        """表格视图的数值取自 boardui.com/components/data-table 的 `.bui-table`，登记在 docs/BOARD_UI.md。
+
+        表头与格子 10px 12px 内边距、14/20、竖直居中；表头 500 字重、次要字色、次级底色、
+        上下各一条分隔线；正文行只有一条下边线。它有而这里不要的三样写在 followSourceTable
+        的注释里：页码、表尾密度档、表头全选。窄屏照它的做法横向滚动，不折叠列。
+        """
+        self.assertPageContains(
+            '<div class="ftableframe"><div class="ftablewrap"><table class="ftable"><thead><tr>')
+        self.assertPageContains('<th scope="col"><span class="sr-only">${selectable?\'选择\':\'启用\'}</span></th>')
+        self.assertPageContains("${followTableHeader('source','来源')}${followTableHeader('provider','站点')}${followTableHeader('status','状态')}")
+        self.assertPageContains('<th scope="col"><span class="sr-only">操作</span></th></tr></thead><tbody>${rows}</tbody></table></div></div>')
+        self.assertPageContains(".ftablewrap{overflow-x:auto;overscroll-behavior-x:contain}")
+        self.assertPageContains(
+            ".ftable{width:100%;min-width:760px;border-collapse:collapse;text-align:left;font-size:var(--fs-md);line-height:20px}")
+        self.assertPageContains(".ftable th,.ftable td{padding:10px 12px;vertical-align:middle}")
+        self.assertPageContains(".ftable th{font-weight:500;white-space:nowrap;color:var(--muted);background:var(--sunk);")
+        self.assertPageContains("border-top:1px solid var(--line-soft);border-bottom:1px solid var(--line-soft)}")
+        self.assertPageContains(".ftable tbody tr{border-bottom:1px solid var(--line-soft)}")
+        self.assertPageContains(".ftable tbody tr:last-child{border-bottom:0}")
+        # Board 层换成 boardui 同名 token。外框是 primary 底：Board 层的 --ground 就是 secondary，
+        # 和表头同色，表头那条带子会消失；boardui 的表格本来就摆在 primary 面上。
+        # 外框管边线与圆角，里层管横向滚动与两端渐隐：右边线不跟内容一起淡掉。
+        self.assertBoardContains(
+            ".followmanage .ftableframe{border:1px solid var(--color-separator-border);border-radius:var(--surface-radius);"
+            "background:var(--color-background-primary-default);overflow:hidden}"
+            ".followmanage .ftablewrap{border-radius:0;background:transparent}.followmanage .ftable th{border-top:0}")
+        # 外框四边自己收口：它离卡片脚还隔着一层内边距，缺了底边和下面两个圆角就没有收尾。
+        self.assertNotIn(".followmanage .fmain>.fsec:has(>.fsecfoot) .ftableframe",
+                         (ROOT / "web" / "board.css").read_text(encoding="utf-8"))
+        self.assertBoardContains(
+            ".followmanage .ftable tr.fsource.selected,.followmanage .ftable tr.fsource.selected:hover"
+            "{background:color-mix(in srgb,var(--tungsten) 8%,var(--color-background-primary-default));border-color:var(--color-separator-border);box-shadow:none}")
+        # 表格滚动层与复核页标签条同一份接线：两端渐隐、鼠标停在上面时竖向滚轮转横向。
+        components = (ROOT / "web" / "js" / "ui-components.js").read_text(encoding="utf-8")
+        self.assertIn("const BOARD_EDGE_SCROLLERS='.reviewtabs,.ftablewrap';", components)
+        self.assertIn("if(el.matches(BOARD_EDGE_SCROLLERS)&&localStorage.getItem('peach.legacy-ui')!=='true'){", components)
+        self.assertIn("'.reviewtabs','.junkfilters','.ftablewrap',", components)
+        self.assertBoardContains(
+            ".followmanage .ftable th{color:var(--color-text-tertiary);background:var(--color-background-secondary-default);border-color:var(--color-separator-border)}")
+
+    def test_the_table_header_sorts_by_the_toolbar_sort_keys(self):
+        """表头五列与工具栏下拉是同一份维度：作者、上次检查按作者分组比，来源、站点、状态
+        按单条来源比，表格此时按那一列拉平排。
+
+        再点当前列翻方向，点另一列换列并回到该列默认方向；`aria-sort` 只标当前列，
+        方向字形沿用工具栏那对箭头。状态正序是「先看要处理的」：失败、暂停、未检查、正常。
+        """
+        self.assertPageContains("const FOLLOW_TABLE_SORT={author:'name',source:'source',provider:'provider',status:'status',checked:'checked'};")
+        self.assertPageContains("${followTableHeader('author','作者')}")
+        self.assertPageContains("${followTableHeader('checked','上次检查')}")
+        self.assertPageContains("const bySource=FOLLOW_SOURCE_SORTS[followManageSort];")
+        self.assertPageContains("groups.forEach(group=>group.sort((a,b)=>flip*bySource(a,b)));")
+        self.assertPageContains("return groups.sort((a,b)=>flip*bySource(a[0],b[0])||byName(a,b));")
+        self.assertPageContains("const pairs=groups.flatMap(group=>group.map(source=>[source,group]));")
+        self.assertPageContains("pairs.sort(([a],[b])=>flip*bySource(a,b));")
+        self.assertPageContains("if(state==='error'||state==='unauthorized')return 0;\n  if(!source.enabled)return 1;\n  return state==='ok'?3:2;")
+        self.assertPageContains(
+            '<th scope="col" aria-sort="${active?(ascending?\'ascending\':\'descending\'):\'none\'}">'
+            '<button type="button" class="ftsort" data-follow-table-sort="${sort}" aria-label="按${label}排序">'
+            "${label}${icon(ascending?'arrow-up':'arrow-down')}</button></th>")
+        self.assertPageContains(
+            "if(followManageSort===sort)followManageDir=followManageDir==='asc'?'desc':'asc';\n"
+            "    else{followManageSort=sort;followManageDir=FOLLOW_SORT_DEFAULT_DIR[sort]||'desc'}\n"
+            "    routeFollowManageSort();")
+        self.assertPageContains(
+            'th[aria-sort="ascending"] .ftsort svg,th[aria-sort="descending"] .ftsort svg{opacity:1}')
+        self.assertPageContains(".ftsort:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}")
 
     def test_the_layout_switch_lines_up_with_the_sort_box(self):
         """开关和排序框、按钮同处分区标题行，高度必须是同一档。"""
@@ -2707,7 +2795,8 @@ class FollowWebSourceTests(unittest.TestCase):
         """
         self.assertPageContains("function followAuthorGroups(sources)")
         self.assertPageContains("source.author_key")
-        self.assertPageContains("followAuthorGroups(sources).map(followAuthorBlock)")
+        self.assertPageContains("const groups=followAuthorGroups(sources);")
+        self.assertPageContains("groups.map(followAuthorBlock)")
         # 组标题用作者本人的名字：四条来源合成一组之后还挂着其中一条的平台后缀，
         # 等于说这一组只属于 fanbox，正是这次要消掉的误读。
         self.assertPageContains("function followAuthorName(group)")
@@ -2835,16 +2924,16 @@ class FollowWebSourceTests(unittest.TestCase):
     def test_follow_management_list_has_routed_sorting(self):
         self.assertPageContains("{label:'关注列表排序',attr:'data-follow-sort'}")
         self.assertPageContains(
-            "const FOLLOW_SORT_OPTIONS=[['checked','检查时间'],['added','添加时间'],"
-            "['name','作者名称'],['sources','来源数量']]")
-        self.assertPageContains("followManageSort=['checked','added','name','sources'].includes(requested)?requested:'checked'")
+            "const FOLLOW_SORT_OPTIONS=[['checked','检查时间'],['added','添加时间'],['name','作者名称'],['sources','来源数量'],\n"
+            "  ['source','来源名称'],['provider','站点'],['status','状态']];")
+        self.assertPageContains("followManageSort=FOLLOW_SORT_OPTIONS.some(([key])=>key===requested)?requested:'checked'")
         self.assertPageContains("const added=group=>Math.max(...group.map(source=>Date.parse(source.created_at||'')||0))")
         self.assertPageContains("if(followManageSort==='added')return flip*(added(b)-added(a))||byName(a,b);")
         # 每条比较器写的都是该列的默认方向，`flip` 只在方向偏离默认时取反：写成
         # 「asc 就取反」的话，作者名称默认本来就是正序，一进页面就被翻成倒序。
         self.assertPageContains(
             "const flip=followManageDir===(FOLLOW_SORT_DEFAULT_DIR[followManageSort]||'desc')?1:-1;")
-        self.assertPageContains("const FOLLOW_SORT_DEFAULT_DIR={checked:'desc',added:'desc',name:'asc',sources:'desc'};")
+        self.assertPageContains("const FOLLOW_SORT_DEFAULT_DIR={checked:'desc',added:'desc',name:'asc',sources:'desc',source:'asc',provider:'asc',status:'asc'};")
         # 方向键与排序下拉并排，名称播报点下去会得到什么。
         self.assertPageContains("<button class=\"fbtn fmanagedir\" type=\"button\" data-follow-dir aria-label=\"${")
         self.assertPageContains("icon(followManageDir==='asc'?'arrow-up':'arrow-down')")

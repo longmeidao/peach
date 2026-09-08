@@ -283,6 +283,8 @@ class WebJsBehaviourTests(unittest.TestCase):
             ("core.js", "brandIcon", ["https://x.com/remu"], "brand-x"),
             ("core.js", "brandIcon", ["https://www.twitter.com/remu"], "brand-x"),
             ("core.js", "brandIcon", ["https://mobile.x.com/remu"], "brand-x"),
+            # Instagram 的 favicon 同样取不到，给它自己的标记。
+            ("core.js", "brandIcon", ["https://www.instagram.com/arina_hashimoto1215"], "brand-instagram"),
             # 只认后缀边界：`notx.com` 不是 `x.com` 的子域。
             ("core.js", "brandIcon", ["https://notx.com/remu"], ""),
             ("core.js", "brandIcon", ["https://example.com/a"], ""),

@@ -16,7 +16,7 @@
 .media-circle:hover{background:rgba(255,255,255,.18)}
 .media-circle:focus-visible{outline:2px solid var(--tungsten);outline-offset:3px}
 .media-circle svg{display:block;width:24px;height:24px;flex:none;stroke:currentColor;fill:none;
-  stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+  stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .media-circle.media-overlay{background:rgba(0,0,0,.6);color:#fff;backdrop-filter:blur(16px)}
 .media-circle.media-overlay:hover{background:rgba(0,0,0,.78)}
 /* 灯箱本体只负责固定视口；主图、顶部工具和底部缩略图各自绝对定位。

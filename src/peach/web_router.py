@@ -133,7 +133,7 @@ def _get_facets(contract, args):
     scope_key = f"{scope_kind}:{scope_name}:{asset_id or ''}:{state}"
     filters = {key: args[key] for key in (
         'loc', 'creator', 'performer', 'studio', 'series', 'agency', 'tag', 'tag_match',
-        'len', 'dur_min', 'dur_max', 'orient', 'exclude_vertical', 'q', 'thumb',
+        'len', 'dur_min', 'dur_max', 'orient', 'exclude_vertical', 'q', 'thumb', 'library',
     ) if args.get(key)}
     scope_key += repr(sorted(filters.items()))
     return contract.cached(

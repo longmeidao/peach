@@ -25,6 +25,10 @@ export function requestErrorMessage(cause,status=0){
   return '操作未完成，请重试；持续失败时查看托盘日志。';
 }
 const api=async(p,o)=>{
+  if(!o?.method||o.method==='GET'){
+    const library=sessionStorage.getItem('peach.library');
+    if(library&&/^\/api\/(items|facets)(\?|$)/.test(p))p+=(p.includes('?')?'&':'?')+'library='+encodeURIComponent(library);
+  }
   const {signal=null,...rest}=o||{};
   const init={headers:{'Content-Type':'application/json'},...rest};
   if(signal)init.signal=signal;
@@ -91,8 +95,9 @@ const linkMarkUrl=link=>`/link-mark?id=${encodeURIComponent(link.link_id ?? '')}
    favicon 是别人服务器上的一张小位图：X 直接挡掉爬取（资料页那个空白白圆就是它），
    取到的也多是 16×16，放进 32 px 的圆里必然糊。内联 SVG 没有这两个问题，还省一次
    跨站请求。只覆盖真正占量的主机——416 条社媒链接里 372 条是 x.com／twitter.com；
+   Instagram 的 favicon 同样被挡，资料页上只剩一只地球，所以也给它一枚；
    其余继续走 favicon，不为个位数的链接各配一个图标。 */
-const BRAND_ICONS=[[['x.com','twitter.com'],'brand-x']];
+const BRAND_ICONS=[[['x.com','twitter.com'],'brand-x'],[['instagram.com'],'brand-instagram']];
 const brandIcon=url=>{try{
   const host=new URL(url).hostname.replace(/^www\./,'').toLowerCase();
   return BRAND_ICONS.find(([hosts])=>hosts.some(d=>host===d||host.endsWith('.'+d)))?.[1]||'';

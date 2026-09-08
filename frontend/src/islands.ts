@@ -14,6 +14,13 @@
  * 都先自我卸载，`unmountIsland` 也不假设 DOM 还在原处。 */
 import { h, render } from 'preact';
 export { preferredDirection } from './sort-preferences';
+export { boundedPreference, mountNumberSetting, syncNumberSetting } from './number-setting';
+export { statCardBody, rankedChart, radarChart, distributionChart, jobProgressHtml } from './board-metrics';
+export { mountBoardStatePreview } from './board-state-preview';
+export { initBoardControls, syncBoardRange, wireExpandableRanks, wireGrowingCharts } from './board-controls';
+export { creatorSankeyHtml, wireCreatorSankey } from './board-sankey';
+export { radialCardHtml, wireRadialCards, activityChartsHtml, wireActivityCharts } from './board-analytics';
+export { sidebarSectionHtml, wireSidebarGroups, transitionTheme } from './sidebar-groups';
 import type { Attributes, ComponentType } from 'preact';
 
 import { errorMessage } from './api';
@@ -36,6 +43,7 @@ export { identityEvidenceHtml, reviewImageHtml, wireReviewPictures } from './rev
 export { createReviewSelection, wireReviewSelection, updateReviewSticky } from './review-bulk';
 export { nativeImageFit, matchesFaceSource } from './native-image';
 export { entitySkeletonHtml } from './entity-skeleton';
+export { boardPageSkeleton } from './board-skeleton';
 export { catalogSuggestions, catalogEmptyHtml, emptyCatalogLayout } from './catalog-onboarding';
 export { syncSidebarSurface, sidebarTagCounts, sidebarHasCatalogContent } from './sidebar';
 export { cleanupSkeletonHtml, cloudLocations, cloudPreferenceLocations, tasteHistoryGuideHtml, wireTasteHistoryGuide, TASTE_GUIDE_KEY } from './management';

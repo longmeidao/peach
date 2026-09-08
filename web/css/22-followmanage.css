@@ -145,7 +145,7 @@
 .fbtn[data-srcfilter-toggle]:hover:not(:disabled),.fbtn.fmanagedir:hover:not(:disabled){border-color:var(--field-ring-hover);background:var(--ground)}
 .fbtn[data-srcfilter-toggle][aria-expanded="true"]{border-color:var(--field-ring-focus);box-shadow:0 0 0 4px var(--field-glow)}
 .fbtn.small{height:26px;padding:0 10px;font-size:var(--fs-sm)}
-.fbtn svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.8}
+.fbtn svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2}
 
 .faddform{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:start}
 /* 没有按钮可以变灰，查找中的唯一凭据就是前缀位上的 Spinner——输入框自己必须还能改。 */
@@ -157,14 +157,36 @@
 .frows{display:grid;min-width:0}
 .frows>*{min-width:0}
 .fsources{grid-template-columns:repeat(auto-fit,minmax(430px,1fr));gap:16px 22px;align-items:start}
-/* 紧凑版式：一行两个。半幅宽度放不下来源行的六列，来源收成一枚 favicon，时间去掉
-   年份——看的是最近有没有检查过，年份是其中最不影响判断的一段。取不到图标的站保留
-   站名，否则那一格就空了；`:has` 会跟着图片加载失败后被摘掉的 `<img>` 一起重算。 */
-.fsources[data-layout="compact"]{grid-template-columns:repeat(2,minmax(0,1fr))}
-.fsources[data-layout="compact"] .fsource .fprovider:has(.ficon)>span{display:none}
-.fsources[data-layout="compact"] .fsource .fprovider:has(.ficon) .ficon{margin-right:0}
-.fsources[data-layout="compact"] .fsource .fchecked .fyear{display:none}
 .fsource .fchecked .fyear{font-style:normal}
+/* 表格视图。数值取自 boardui.com/components/data-table 的 `.bui-table`（2026-09-08，
+   登记见 docs/BOARD_UI.md）：表头与格子都是 10px 12px 内边距、14/20、竖直居中；表头
+   500 字重、次要字色、次级底色、上下各一条分隔线；正文行只有一条下边线，悬停不换底。
+   窄屏不折叠列——它的做法是容器横向滚动，这里照做。 */
+.fsources[data-layout="table"]{display:block}
+.ftablewrap{overflow-x:auto;overscroll-behavior-x:contain}
+.ftable{width:100%;min-width:760px;border-collapse:collapse;text-align:left;font-size:var(--fs-md);line-height:20px}
+.ftable th,.ftable td{padding:10px 12px;vertical-align:middle}
+.ftable th{font-weight:500;white-space:nowrap;color:var(--muted);background:var(--sunk);
+  border-top:1px solid var(--line-soft);border-bottom:1px solid var(--line-soft)}
+.ftable tbody tr{border-bottom:1px solid var(--line-soft)}
+.ftable tbody tr:last-child{border-bottom:0}
+.ftable .ftcheck{width:20px;padding-right:0}
+.ftable .ftauthorcell{display:flex;align-items:center;gap:8px;white-space:nowrap}
+.ftable .ftauthorcell .favatar{width:24px;height:24px;font-size:var(--fs-xs)}
+.ftable .ftname{max-width:360px}
+.ftable .ftname>b{display:block;min-width:0;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ftable .ftname>.frowerr{margin:4px 0 0}
+.ftable .fmeta{white-space:nowrap}
+.ftable .ftactions{width:72px;padding-left:0}
+.ftable .ftactions .fsourceactions{justify-content:flex-end}
+/* 能排序的表头是一颗文字键：文字与箭头同色，非当前列的箭头淡下去只说「这列能点」。 */
+.ftsort{display:inline-flex;align-items:center;gap:4px;padding:0;border:0;background:none;
+  font:inherit;color:inherit;cursor:pointer}
+.ftsort svg{width:14px;height:14px;stroke:currentColor;fill:none;opacity:.45}
+.ftsort:hover{color:var(--ink)}
+th[aria-sort="ascending"] .ftsort,th[aria-sort="descending"] .ftsort{color:var(--ink)}
+th[aria-sort="ascending"] .ftsort svg,th[aria-sort="descending"] .ftsort svg{opacity:1}
+.ftsort:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}
 .frow{display:flex;align-items:center;gap:12px;padding:9px 0;flex-wrap:wrap;
   border-bottom:1px solid var(--border-10)}
 .frows>.frow:last-child{border-bottom:0}
@@ -204,8 +226,6 @@
 .fauthorsources .fsource:last-child{border-bottom:0}
 .fauthor .fsource.frow{padding-left:0px;display:grid;
   grid-template-columns:22px minmax(0,1fr) auto auto auto auto;gap:10px;flex-wrap:nowrap}
-/* 时间那列回来后名字只剩 118px，35 条里 11 条被截；列间距收到 8px 换回 10px 给名字。 */
-.fsources[data-layout="compact"] .fsource.frow{gap:8px}
 .fauthor .fsource.frow>b{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .fsource.disabled{opacity:.62}
 .fchannelcheck{display:grid;place-items:center;align-self:center}
@@ -256,7 +276,7 @@
 .faliasmanager .fcollapsebody{padding:4px 16px 16px}
 .faliassuggestions,.faliasrows{display:grid;gap:6px;margin-top:10px}
 .faliassuggest,.faliasrow{display:flex;align-items:center;gap:10px;min-width:0}
-.faliassuggest>span,.faliasrow>span{display:flex;align-items:center;gap:7px;min-width:0;flex:1;flex-wrap:wrap}
+.faliassuggest>span:not(.favatar),.faliasrow>span:not(.favatar){display:flex;align-items:center;gap:7px;min-width:0;flex:1;flex-wrap:wrap}
 .faliassuggest i{font-style:normal;color:var(--muted)}
 .faliassuggest small{color:var(--muted)}
 .faliasform{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;gap:7px;margin-top:10px}
@@ -318,16 +338,10 @@ details.fcred{display:block;min-width:0}
   .faddform>.geist-search{grid-column:1/-1}
   .faddform>.fsrcfilter{justify-self:start}
   .frow{gap:8px}
-  .fsources,.fsources[data-layout="compact"]{grid-template-columns:1fr}
-  /* 窄屏放不下两栏，紧凑版式在这里不成立；开关跟着收起，不留一个按了没反应的控件。
-     属性也可能还留着上次在宽屏选的 compact，那几条压缩规则一并撤销：这里是整幅一栏，
-     没有理由把站名收成图标。 */
-  .fsechead .iconswitch{display:none}
+  .fsources{grid-template-columns:1fr}
   /* 省略后剩给说明文字的不到 120px，读出来只是「N 个来源 · 」这种半句；
      未看条数在下面每一行来源上都有，标题行让给排序和两个动作键。 */
   .fsechead .fmeta{display:none}
-  .fsources[data-layout="compact"] .fsource .fprovider:has(.ficon)>span{display:inline}
-  .fsources[data-layout="compact"] .fsource .fprovider:has(.ficon) .ficon{margin-right:5px}
   .frow .fmeta:nth-of-type(2){display:none}
   .faliasform{grid-template-columns:1fr}
   .faliasform .fbtn{width:100%}

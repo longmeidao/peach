@@ -75,8 +75,8 @@
 .reviewalias{margin:2px 0 0;font-size:var(--fs-xs);color:var(--muted)}
 /* 数据管理整页收进一条窄列（vercel.com/geist/fieldset 实测示例块宽 812px），
    fieldset 一行一个，不再拼三列。 */
-.cleanuppage{width:min(812px,100%);margin:0 auto}
-.cleanupgrid{display:grid;grid-template-columns:minmax(0,1fr);gap:20px;padding:0 0 42px}
+.cleanuppage{width:min(812px,100%);margin:0 auto;display:grid;gap:32px}
+.cleanupgrid{display:grid;grid-template-columns:minmax(0,1fr);gap:20px}
 /* Geist Fieldset：全框只有一条线，在底部操作条上方。标题是正文区的第一行，
    底下不划线（证据：vercel.com/geist/fieldset 的 Multiple Fieldsets 示例）。
    操作条固定 52px、竖直居中，按钮一律靠右；左侧有说明时说明推到最左。
@@ -174,9 +174,10 @@
 @media(max-width:600px){.scraping-page{--control-h:44px}.scraping-source button{min-height:44px}.scraping-cookie-method span{height:44px}}
 #libraryProcessing{scroll-margin-top:80px}
 
-.reviewbulktoolbar{width:100%;padding-block:0;margin-bottom:0}
+.reviewbulktoolbar{padding-block:0;margin-bottom:0}
 .reviewcontrols{position:sticky;top:var(--topH);z-index:60;display:grid;gap:12px;padding-block:12px;margin-bottom:16px}
-.reviewcontrols,.reviewgroupbar{margin-inline:calc(-1 * var(--review-edge,16px));padding-inline:var(--review-edge,16px);background:transparent;border-bottom:1px solid transparent}
+/* 粘住的这两条左右就是内容列，和标题、面包屑、卡片同一条边，不向外出血。 */
+.reviewcontrols,.reviewgroupbar{background:transparent;border-bottom:1px solid transparent}
 .reviewcontrols.is-stuck,.reviewgroupbar.is-stuck{background:var(--ground);border-bottom-color:var(--line-soft)}
 .reviewgroupbar{position:sticky;top:calc(var(--topH) + var(--review-controls-height,0px));z-index:59;padding-block:8px}
 .reviewgroupbar.is-stuck h3{margin-right:0}

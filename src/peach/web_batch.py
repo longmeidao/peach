@@ -359,7 +359,7 @@ def _remove_empty_ancestors(parent: Path, source_roots: Sequence[Path]) -> list[
     return removed
 
 
-def cleanup_empty_source_directories() -> dict[str, object]:
+def cleanup_empty_source_directories(*, dry_run: bool = False) -> dict[str, object]:
     """Delete empty directories below each online physical source.
 
     The declared source roots themselves are permanent boundaries and are never removed.
@@ -367,7 +367,7 @@ def cleanup_empty_source_directories() -> dict[str, object]:
     directory links are not followed or removed.
     """
     results: list[dict[str, object]] = []
-    total_scanned = total_removed = total_errors = 0
+    total_scanned = total_removed = total_errors = total_empty = 0
     for location, declarations in LOCATION_ROOT_DECLARATIONS.items():
         roots = [translate_ledger_path(declaration) for declaration in declarations]
         mapped = all(not is_unmapped(root) for root in roots)
@@ -378,6 +378,7 @@ def cleanup_empty_source_directories() -> dict[str, object]:
             "online": online,
             "scanned": 0,
             "removed": 0,
+            "empty": 0,
             "errors": 0,
         }
         if not online:
@@ -385,6 +386,7 @@ def cleanup_empty_source_directories() -> dict[str, object]:
             continue
 
         walk_errors: list[OSError] = []
+        empty_paths: set[Path] = set()
         for root in roots:
             for directory, _subdirectories, _files in os.walk(
                     root, topdown=False, onerror=walk_errors.append, followlinks=False):
@@ -393,6 +395,11 @@ def cleanup_empty_source_directories() -> dict[str, object]:
                     continue
                 row["scanned"] = int(row["scanned"]) + 1
                 try:
+                    if dry_run:
+                        if all(child in empty_paths and not child.is_symlink() for child in candidate.iterdir()):
+                            empty_paths.add(candidate)
+                            row["empty"] = int(row["empty"]) + 1
+                        continue
                     candidate.rmdir()
                 except FileNotFoundError:
                     # CloudDrive can remove the same empty directory concurrently.
@@ -405,12 +412,15 @@ def cleanup_empty_source_directories() -> dict[str, object]:
         row["errors"] = int(row["errors"]) + len(walk_errors)
         total_scanned += int(row["scanned"])
         total_removed += int(row["removed"])
+        total_empty += int(row["empty"])
         total_errors += int(row["errors"])
         results.append(row)
     return {
         "ok": total_errors == 0,
         "scanned": total_scanned,
         "removed": total_removed,
+        "empty": total_empty,
+        "dry_run": dry_run,
         "errors": total_errors,
         "sources": results,
     }
@@ -515,7 +525,7 @@ def w_empty_trash(contract: WebContract):
 
 def w_cleanup_empty_directories(_contract: WebContract, _body):
     """Remove empty folders from online physical sources without touching the ledger."""
-    return cleanup_empty_source_directories()
+    return cleanup_empty_source_directories(dry_run=True) if _body.get('dry_run') is True else cleanup_empty_source_directories()
 
 
 

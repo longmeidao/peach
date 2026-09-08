@@ -1,6 +1,9 @@
-import { resourceScanHtml } from './dist/peach-ui.js';
+import { resourceScanHtml, boundedPreference, mountNumberSetting, syncNumberSetting, statCardBody, rankedChart, radarChart, distributionChart, jobProgressHtml, sidebarSectionHtml, wireSidebarGroups, transitionTheme } from './dist/peach-ui.js';
 import {$, ENTITY_ROUTES, LOC, ROUTE_ENTITIES, ROUTE_STATES, SITE_FAVICONS, STATE_LABELS, STATE_ROUTES, api, isAbort, mapLimit, brandIcon, entityPath, esc, faviconFallbackUrl, faviconUrl, linkHost, linkMarkUrl, fmtClock, fmtDur, fmtSize, foldName, icon, isCatalogPath, realDuration} from './js/core.js';
 import { faceFrame } from './js/face-frame.js';
+import { MEDIA_SOURCE_ICONS } from './js/media-source-icons.js';
+import { boardPageSkeleton, initBoardControls, syncBoardRange, wireExpandableRanks, creatorSankeyHtml, wireCreatorSankey } from './dist/peach-ui.js';
+import { radialCardHtml, wireRadialCards, activityChartsHtml, wireActivityCharts } from './dist/peach-ui.js';
 import { imageFallbackAttrs, wireImageFallbacks } from './js/image-fallback.js';
 import { javDisplayName, javTitleHtml } from './js/jav-title.js';
 import { matchRoute, routeLabel } from './js/routes.js';
@@ -10,14 +13,15 @@ import { mountIsland, unmountIsland, createReviewSelection, wireReviewSelection,
 import { catalogSuggestions, catalogEmptyHtml, emptyCatalogLayout, syncSidebarSurface, sidebarTagCounts, sidebarHasCatalogContent, cleanupSkeletonHtml, cloudLocations, cloudPreferenceLocations, tasteHistoryGuideHtml, wireTasteHistoryGuide, TASTE_GUIDE_KEY } from './dist/peach-ui.js';
 import { javImageKind, normalizeJavImage, normalizeJavLayout, normalizeJavPreferences, syncJavImages, nativeImageFit, matchesFaceSource, entitySkeletonHtml } from './dist/peach-ui.js';
 import {
-  attachOverlayScrollbar, breadcrumbHtml, checkboxHtml, closeAnchoredMenu, confirmModal, emptyStateHtml, fieldsetTitle,
+  attachOverlayScrollbar, breadcrumbHtml, checkboxHtml, closeAnchoredMenu, confirmModal, dismissMenu, emptyStateHtml, fieldsetTitle,
   fillSkeletonTier, fitSkeleton, formModal, iconSwitchHtml, indexSkeletonHtml, loadingDotsHtml,
-  mediaViewButtonsHtml, noteHtml, progressHtml, gaugeHtml, scrollerHtml, searchInputHtml, selectFieldHtml,
+  mediaViewButtonsHtml, noteHtml, presentMenu, progressHtml, gaugeHtml, scrollerHtml, searchInputHtml, selectFieldHtml,
   setActionBusy, skeletonHtml, spinnerHtml, wireAnchoredMenu, wireBusyActions, wireCollapse, wireDragReorder,
   wireIconSwitch, wireOverlayScrollbars, wireScrollers, wireSelectField, wireContextCard, configurationSkeletonHtml,
 } from './js/ui-components.js';
 
 initMiddleTruncate(document);
+if(localStorage.getItem('peach.legacy-ui')!=='true')initBoardControls();
 wireBusyActions(document);
 attachOverlayScrollbar(document.documentElement,{variant:'page'});
 attachOverlayScrollbar($('#drawerScroll'));
@@ -58,8 +62,10 @@ let followData=null,followRuntime=null,followCredentials=null,followFilter='',fo
 const FOLLOW_SORT_LABELS={checked:'检查时间',added:'添加时间',name:'作者名称',sources:'来源数量'};
 const FOLLOW_SORT_DIR_WORDS={checked:['从近到远','从远到近'],added:['从近到远','从远到近'],
   name:['倒序','正序'],sources:['从多到少','从少到多']};
-const FOLLOW_SORT_DEFAULT_DIR={checked:'desc',added:'desc',name:'asc',sources:'desc'};
-const FOLLOW_SORT_OPTIONS=[['checked','检查时间'],['added','添加时间'],['name','作者名称'],['sources','来源数量']];
+const FOLLOW_SORT_DEFAULT_DIR={checked:'desc',added:'desc',name:'asc',sources:'desc',source:'asc',provider:'asc',status:'asc'};
+/* 工具栏下拉与表格表头是同一份维度：前四个按作者分组比，后三个按单条来源比。 */
+const FOLLOW_SORT_OPTIONS=[['checked','检查时间'],['added','添加时间'],['name','作者名称'],['sources','来源数量'],
+  ['source','来源名称'],['provider','站点'],['status','状态']];
 /* 同 `sortButtonHtml`：这枚键的无障碍名称说的是点下去会得到什么，所以取反方向的词。 */
 const followSortLabel=()=>`按${FOLLOW_SORT_LABELS[followManageSort]||'关注列表'}${
   (FOLLOW_SORT_DIR_WORDS[followManageSort]||[])[followManageDir==='asc'?0:1]||''}排序`;
@@ -265,6 +271,7 @@ const MANAGEMENT_PLACEHOLDERS={
     ${pageSkeletonHtml('正在读取采集来源',{cards:true,count:4,fill:false,className:'cleanup-skeleton'})}</div>`,
 };
 const managementPlaceholder=path=>
+  (localStorage.getItem('peach.legacy-ui')!=='true'&&boardPageSkeleton(path))||
   (MANAGEMENT_PLACEHOLDERS[path]||(()=>pageSkeletonHtml('正在读取页面')))();
 /* 顶部三层只属于首页。深链启动时先画一遍再由路由收起来，等于向管理页和索引页
    承诺了三条永远不会到货的横条。 */
@@ -406,7 +413,7 @@ const THEME_CHOICES=['system','light','dark'];
 const JAV_LAYOUTS=[['big','大图','maximize'],['small','小图','layout-grid']];
 /* 显示器用于跟随系统主题和详情页的画面分辨率。 */
 const THEME_OPTIONS=[['system','跟随系统','monitor'],['light','浅色','sun'],['dark','深色','moon']];
-const DEFAULT_SETTINGS={batchSize:60,defaultSort:'seed',sortDefaultsVersion:3,hoverDelaySeconds:5,seekSeconds:10,searchHistoryLimit:10,relatedLimit:20,javLayout:'big',javImage:'cover',followLayout:'cozy',peopleLayout:'big',ambientMode:true,miniplayer:true,theaterMode:false,theme:'system',groupCollapse:true,sidebarOrder:DEFAULT_SIDEBAR_ORDER};
+const DEFAULT_SETTINGS={batchSize:60,defaultSort:'seed',sortDefaultsVersion:3,hoverDelaySeconds:5,seekSeconds:10,searchHistoryLimit:10,relatedLimit:20,javLayout:'big',javImage:'cover',followLayout:'default',peopleLayout:'big',ambientMode:true,miniplayer:true,theaterMode:false,theme:'system',groupCollapse:true,sidebarOrder:DEFAULT_SIDEBAR_ORDER};
 let appSettings={...DEFAULT_SETTINGS};
 try{appSettings={...DEFAULT_SETTINGS,...JSON.parse(localStorage.getItem(SETTINGS_KEY)||'{}')}}catch(_e){}
 const allowedSetting=(value,allowed,fallback)=>allowed.includes(value)?value:fallback;
@@ -421,17 +428,18 @@ if((+appSettings.sortDefaultsVersion||0)<3&&SORT_ALIASES[appSettings.defaultSort
   appSettings.defaultSort=SORT_ALIASES[appSettings.defaultSort][0];sortDefaultsMigrated=true
 }
 appSettings.sortDefaultsVersion=3;
-appSettings.batchSize=allowedSetting(+appSettings.batchSize,[30,60,90],60);
+appSettings.batchSize=boundedPreference(+appSettings.batchSize,1,200,60);
 appSettings.defaultSort=allowedSetting(appSettings.defaultSort,SORT_KEYS,'seed');
-appSettings.hoverDelaySeconds=allowedSetting(+appSettings.hoverDelaySeconds,[0,3,5,8],5);
-appSettings.seekSeconds=allowedSetting(+appSettings.seekSeconds,[5,10,30],10);
+appSettings.hoverDelaySeconds=boundedPreference(+appSettings.hoverDelaySeconds,0,60,5);
+appSettings.seekSeconds=boundedPreference(+appSettings.seekSeconds,1,300,10);
+appSettings.loginDays=boundedPreference(+appSettings.loginDays,1,365,30);
 appSettings.ambientMode=appSettings.ambientMode!==false;
 appSettings.theaterMode=appSettings.theaterMode===true;
 appSettings.groupCollapse=appSettings.groupCollapse!==false;
 appSettings.detailAutoplay=appSettings.detailAutoplay!==false;
 appSettings.miniplayer=appSettings.miniplayer!==false;
-appSettings.searchHistoryLimit=allowedSetting(+appSettings.searchHistoryLimit,[5,10,20],10);
-appSettings.relatedLimit=allowedSetting(+appSettings.relatedLimit,[12,20,30],20);
+appSettings.searchHistoryLimit=boundedPreference(+appSettings.searchHistoryLimit,0,50,10);
+appSettings.relatedLimit=boundedPreference(+appSettings.relatedLimit,0,60,20);
 const METADATA_REFRESH_DAYS=[0,7,30,90];
 appSettings.metadataRefreshDays=allowedSetting(+appSettings.metadataRefreshDays,METADATA_REFRESH_DAYS,30);
 Object.assign(appSettings,normalizeJavPreferences(appSettings));
@@ -451,6 +459,8 @@ function applyTheme(choice=appSettings.theme){
   const root=document.documentElement;
   if(choice==='system')delete root.dataset.theme;else root.dataset.theme=choice;
   const dark=choice==='dark'||(choice==='system'&&prefersDark.matches);
+  document.querySelectorAll('[data-board-theme]').forEach(button=>button.setAttribute('aria-pressed',String((button.dataset.boardTheme==='dark')===dark)));
+  document.querySelector('.board-theme-toggle')?.classList.toggle('is-dark',dark);
   document.querySelectorAll('meta[data-theme-color]').forEach(meta=>{
     meta.media=(meta.dataset.themeColor==='dark')===dark?'all':'not all';
   });
@@ -483,6 +493,8 @@ function renderThemeSetting(){
    一处写它们的地方，面板每次打开重画一遍。关注自动更新那一档也在表里，它的应用是
    一次网络写入，所以额外报告状态并在往返期间禁用自己。 */
 const SETTING_SELECTS=[
+  ['loginDaysSetting','保持登录时间',[['30','30 天']],()=>appSettings.loginDays,
+    value=>{appSettings.loginDays=+value;saveSettings()}],
   ['batchSizeSetting','每批作品',[['30','30 个'],['60','60 个'],['90','90 个']],
     ()=>appSettings.batchSize,
     value=>{appSettings.batchSize=+value||60;saveSettings();if(location.pathname==='/')load(true)}],
@@ -496,7 +508,7 @@ const SETTING_SELECTS=[
     value=>{appSettings.defaultSortDirection=value;syncSortDirectionSetting();saveSettings();state.dir=preferredDirection(state.sort,appSettings.defaultSort,appSettings.defaultSortDirection);if(location.pathname==='/')load(true)}],
   ['hoverDelaySetting','悬停放大',[['0','关闭'],['3','3 秒'],['5','5 秒'],['8','8 秒']],
     ()=>appSettings.hoverDelaySeconds,
-    value=>{appSettings.hoverDelaySeconds=allowedSetting(+value,[0,3,5,8],5);
+    value=>{appSettings.hoverDelaySeconds=boundedPreference(+value,0,60,5);
       if(!appSettings.hoverDelaySeconds)document.querySelectorAll('.previewing,.longhover').forEach(el=>el.classList.remove('previewing','longhover'));
       document.documentElement.style.setProperty('--hover-delay',`${appSettings.hoverDelaySeconds}s`);saveSettings()}],
   ['seekSecondsSetting','快进 / 快退',[['5','5 秒'],['10','10 秒'],['30','30 秒']],
@@ -504,10 +516,10 @@ const SETTING_SELECTS=[
     value=>{appSettings.seekSeconds=+value||10;saveSettings()}],
   ['relatedLimitSetting','相关推荐',[['12','12 个'],['20','20 个'],['30','30 个']],
     ()=>appSettings.relatedLimit,
-    value=>{appSettings.relatedLimit=+value||20;saveSettings()}],
+    value=>{appSettings.relatedLimit=+value;saveSettings()}],
   ['searchHistoryLimitSetting','搜索记录',[['5','最近 5 条'],['10','最近 10 条'],['20','最近 20 条']],
     ()=>appSettings.searchHistoryLimit,
-    value=>{appSettings.searchHistoryLimit=+value||10;saveSettings();writeSearchHistory(readSearchHistory())}],
+    value=>{appSettings.searchHistoryLimit=+value;saveSettings();writeSearchHistory(readSearchHistory())}],
   ['followScheduleSetting','关注自动更新',[['0','关闭'],['15','每 15 分钟'],['30','每 30 分钟'],['60','每小时'],
     ['180','每 3 小时'],['360','每 6 小时'],['720','每 12 小时'],['1440','每天']],
     ()=>'0',value=>saveFollowSchedule(+value)],
@@ -518,6 +530,8 @@ const SETTING_SELECTS=[
       api('/api/settings',{method:'POST',body:JSON.stringify({metadataRefreshDays:appSettings.metadataRefreshDays})}).catch(()=>{})}],
 ];
 function syncSortDirectionSetting(){
+  const directionMount=$('#defaultSortDirectionSetting');
+  if(directionMount)directionMount.hidden=appSettings.defaultSort==='seed';
   const field=$('#defaultSortDirectionSetting .gselect');
   if(field){
     field.disabled=appSettings.defaultSort==='seed';
@@ -530,6 +544,7 @@ function syncSortDirectionSetting(){
 function renderSettingSelects(){
   for(const [id,label,options,read,apply] of SETTING_SELECTS){
     const mount=$(`#${id}`);if(!mount)continue;
+    if(mountNumberSetting(mount,id,label,+read(),apply))continue;
     mount.innerHTML=selectFieldHtml(options,read(),{label});
     const field=wireSelectField(mount.firstElementChild);
     field.addEventListener('change',()=>apply(field.value));
@@ -586,6 +601,7 @@ $('#detailAutoplaySetting').onchange=e=>{appSettings.detailAutoplay=e.target.che
    已经进去的反而像没生效。 */
 $('#miniplayerSetting').onchange=e=>{appSettings.miniplayer=e.target.checked;saveSettings();if(!appSettings.miniplayer)closeMiniplayer()};
 let followScheduleRequest=0;
+let followScheduleStatus=null;
 const followScheduleCopy=status=>{
   if(!status.available)return '只在账本写入端运行';
   if(status.running)return '正在检查全部来源…';
@@ -594,31 +610,33 @@ const followScheduleCopy=status=>{
   if(status.next_run_at)return `下次 ${localTime(status.next_run_at)}`;
   return status.enabled?'等待首次运行':'已关闭';
 };
-const followScheduleField=()=>$('#followScheduleSetting .gselect');
+const followScheduleField=()=>$('#followScheduleSetting input[type=number]');
 async function loadFollowScheduleSetting(){
   const field=followScheduleField(),state=$('#followScheduleState'),request=++followScheduleRequest;
-  field.disabled=true;state.innerHTML=loadingDotsHtml('正在读取状态');
+  syncNumberSetting($('#followScheduleSetting'),null,true);state.innerHTML=loadingDotsHtml('正在读取状态');
   try{
     const status=await api('/api/follow/schedule');if(request!==followScheduleRequest)return;
-    field.value=status.enabled?String(status.interval_minutes):'0';
+    followScheduleStatus=status;field.value=String(status.interval_minutes);
+    syncNumberSetting($('#followScheduleSetting'),status.enabled?status.interval_minutes:0,!status.available);
     field.disabled=!status.available;state.textContent=followScheduleCopy(status);
   }catch(error){if(request===followScheduleRequest)state.textContent=`状态未取得：${error.message||error}`}
 }
 async function saveFollowSchedule(minutes){
-  const field=followScheduleField(),state=$('#followScheduleState');field.disabled=true;
+  const field=followScheduleField(),state=$('#followScheduleState');syncNumberSetting($('#followScheduleSetting'),null,true);
   state.innerHTML=`${spinnerHtml('保存中')}<span>正在保存…</span>`;
   try{
     const status=await api('/api/follow/schedule',{method:'POST',body:JSON.stringify({enabled:minutes>0,interval_minutes:minutes||60})});
+    followScheduleStatus=status;
     state.textContent=followScheduleCopy(status);
   }catch(error){state.textContent=error.message||'保存失败'}
-  finally{field.disabled=false}
+  finally{const status=followScheduleStatus;syncNumberSetting($('#followScheduleSetting'),status?(status.enabled?status.interval_minutes:0):null,status?!status.available:false)}
 }
 /* 来源图标：品牌使用已缓存的官方资产；通用操作图标统一使用本地 Lucide 子集。 */
 const SRCICON={
   local:icon('hard-drive'),
   '115':'<img class="source-icon" src="/logo?studio=115&variant=icon" alt="" data-drop="self">',
   // PikPak 官方触屏图标（取证 follow-source-icons-measured.md）；/logo 的生成 logo 不对版。
-  pikpak:'<img class="source-icon" src="https://mypikpak.com/apple-touch-icon.png" alt="" loading="lazy" referrerpolicy="no-referrer" data-drop="self">',
+  pikpak:`<img class="source-icon" src="${MEDIA_SOURCE_ICONS.pikpak}" alt="">`,
   online:icon('rss'),
 };
 const srcBadge=(loc,cost,cls)=>{const label=`${LOC[loc]||loc}${cost==='metered'?' · 计费':''}`;
@@ -650,30 +668,37 @@ const toast=(message,{timeout=6000,warn=false,action=null}={})=>{
   const root=$('#toasts');
   const item=document.createElement('div');
   item.className='toast'+(warn?' warn':'');
+  const board=localStorage.getItem('peach.legacy-ui')!=='true';
   const initial=toastBody(message);
   const paint=(body,alert)=>{
     item.classList.toggle('warn',!!alert);
-    item.innerHTML=`${alert?icon('alert'):''}<p>${body}</p>${
+    item.setAttribute('role',alert?'alert':'status');
+    item.innerHTML=`${board?`<span class="board-notification-icon" aria-hidden="true">${icon(alert?'circle-alert':'check')}</span>`:alert?icon('alert'):''}<p>${body}</p>${
       action&&!alert&&body===initial?`<button class="tact">${esc(action.label)}</button>`:''
       }<button class="tclose" title="关闭" aria-label="关闭提示">${icon('x')}</button>`;
     item.querySelector('.tclose').onclick=close;
     const act=item.querySelector('.tact');
     if(act)act.onclick=()=>{setActionBusy(act);action.run()};
   };
-  let timer=null;
+  let timer=null,remaining=timeout,started=0,hovered=false,focused=false;
   /* 收起前先把当前高度写死再过渡到 0。直接 remove() 会让这一格瞬间消失，
      栈里剩下的 toast 一次跳过来，正是撤销那一下最明显的抖动。 */
   const close=()=>{clearTimeout(timer);
     item.style.height=`${item.offsetHeight}px`;item.getBoundingClientRect();
     item.classList.add('leaving');setTimeout(()=>item.remove(),200)};
-  const arm=()=>{if(timeout)timer=setTimeout(close,timeout)};
+  const arm=()=>{if(timeout&&!hovered&&!focused&&timer===null){started=Date.now();timer=setTimeout(close,remaining)}};
+  const pause=()=>{if(timer!==null){clearTimeout(timer);timer=null;remaining=Math.max(0,remaining-(Date.now()-started))}};
+  const progress=()=>{if(board&&timeout){const bar=document.createElement('span');bar.className='board-notification-timer';bar.setAttribute('aria-hidden','true');bar.style.setProperty('--notification-duration',`${timeout}ms`);item.append(bar)}};
   /* 结果就写在同一条 toast 上。「关掉回执 + 另发一条已撤销」会让两条在同一个
      底部对齐的栈里一进一出，看上去就是整块跳了一下。 */
   item.replaceMessage=(body,{warn:alert=false,timeout:next=4000}={})=>{
-    clearTimeout(timer);paint(toastBody(body),alert);timeout=next;arm()};
+    clearTimeout(timer);timer=null;paint(toastBody(body),alert);timeout=next;remaining=next;progress();arm()};
   paint(initial,warn);
-  item.addEventListener('mouseenter',()=>clearTimeout(timer));
-  item.addEventListener('mouseleave',arm);
+  progress();
+  item.addEventListener('mouseenter',()=>{hovered=true;pause()});
+  item.addEventListener('mouseleave',()=>{hovered=false;arm()});
+  item.addEventListener('focusin',()=>{focused=true;pause()});
+  item.addEventListener('focusout',event=>{focused=item.contains(event.relatedTarget);arm()});
   root.prepend(item);arm();
   while(root.children.length>4)root.lastElementChild.remove();
   return item;
@@ -1165,7 +1190,7 @@ wireMiniplayer();
 let playerMenuCleanup=null;
 function closePlayerMenu(){
   const menu=$('#playerMenu');
-  if(menu){menu.hidden=true;menu.innerHTML=''}
+  if(menu)dismissMenu(menu,()=>{menu.innerHTML=''});
   if(playerMenuCleanup){playerMenuCleanup();playerMenuCleanup=null}
 }
 async function copyTextToClipboard(text){
@@ -1209,10 +1234,10 @@ function openPlayerMenu(player,x,y){
     return `<button type="button" class="playermenuitem" role="${checkable?'menuitemcheckbox':'menuitem'}"${checkable?` aria-checked="${item.checked}"`:''} data-player-menu="${index}">${
       icon(item.icon,item.fill?'playermenufill':'')}<span>${esc(item.label)}</span>${checkable?icon('check','playermenucheck'):''}</button>`;
   }).join('');
-  menu.hidden=false;
-  const box=menu.getBoundingClientRect();
-  menu.style.left=`${Math.max(8,Math.min(x,innerWidth-box.width-8))}px`;
-  menu.style.top=`${Math.max(8,Math.min(y,innerHeight-box.height-8))}px`;
+  presentMenu(menu);
+  // 量 offsetWidth／offsetHeight：进场动画起手是 scale(.95)，getBoundingClientRect 量到的是缩过的框。
+  menu.style.left=`${Math.max(8,Math.min(x,innerWidth-menu.offsetWidth-8))}px`;
+  menu.style.top=`${Math.max(8,Math.min(y,innerHeight-menu.offsetHeight-8))}px`;
   const buttons=[...menu.querySelectorAll('[data-player-menu]')];
   buttons.forEach(button=>button.onclick=event=>{
     event.stopPropagation();const item=items[+button.dataset.playerMenu];closePlayerMenu();item.run();
@@ -2086,7 +2111,7 @@ $('#selectMode').onclick=()=>setSelectMode(!selectMode,!selectMode?false:true);
 $('#batchClear').onclick=()=>setSelectMode(false,true);
 $('#followBatchAll').onclick=()=>{visibleFollowIds().forEach(id=>followSelected.add(id));setSelectMode(true);paintSelection()};
 $('#batchbar').querySelectorAll('[data-batch]').forEach(button=>button.onclick=async()=>{
-  const labels={like:'喜欢',seen:'标为看过',later:'加入稍后看',dispose:'加入回收站',restore:'还原',delete:'彻底删除'};
+  const labels={like:'喜欢',seen:'标为看过',later:'加入稍后看',dispose:'移入回收站',restore:'还原',delete:'彻底删除'};
   const titles={like:'喜欢所选项目',seen:'标记为已看',later:'加入稍后看',dispose:'移入回收站',restore:'还原所选项目',delete:'永久删除所选项目'};
   const operation=button.dataset.batch,ids=[...selected];if(!ids.length)return;
   return confirmModal({title:titles[operation],body:`将处理选中的 ${ids.length} 项。${operation==='delete'?'文件和馆藏记录会永久删除，无法恢复。':operation==='dispose'?'馆藏记录可在回收站还原。':''}`,confirmLabel:titles[operation],danger:operation==='delete',onConfirm:async()=>{
@@ -3141,15 +3166,15 @@ async function buildBars(){
     const off=key==='loc'&&sourceOffline(it.k);
     return `<button class="chip${off?' offline':''}" aria-pressed="${sel}" data-key="${key}" data-multi="${multi?1:0}"
       ${off?`disabled title="${OFFLINE_HINT}"`:''}
-      data-val="${esc(it.k)}">${dot}${esc(it.label||tagLabel(it.k))}${it.n!=null?`<span class="n">${it.n.toLocaleString()}</span>`:''}</button>`;
+      data-val="${esc(it.k)}">${dot}<span class="chip-label">${esc(it.label||tagLabel(it.k))}</span>${it.n!=null?`<span class="n">${it.n.toLocaleString()}</span>`:''}</button>`;
   }).join('')+`</div>`:'';
   // 按语义类别区分来源、创作者、内容和技术规格。
-  const sec=(t,b,x,cat)=>b?`<div class="sec${cat?' cat-'+cat:''}"><h3>${t}${x||''}</h3>${b}</div>`:'';
+  const sec=(t,b,x,cat)=>document.documentElement.classList.contains('original-design')?(b?`<div class="sec${cat?' cat-'+cat:''}"><h3>${t}${x||''}</h3>${b}</div>`:''):sidebarSectionHtml(t,b,x,cat);
   const scopedCreators=context.type==='entity'&&context.kind==='creator'
     ? facetData.creators.filter(item=>item.k!==context.name):facetData.creators;
   // 与窄栏共用 EDGE_ICONS —— 两边条目必须一致，抽屉不另写一份硬编码
   const navBtn=(k,label,ic)=>`<button data-nav="${k}" draggable="true" aria-pressed="${navOn(k)}">
-    ${icon(ic)}<span>${label}</span></button>`;
+    ${navigationIcon(k,ic)}<span>${label}</span></button>`;
   $('#drawerScroll').innerHTML=
     `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
       <b class="disp" style="font-size:15px;letter-spacing:.1em">导航与筛选</b>
@@ -3157,7 +3182,9 @@ async function buildBars(){
     `<div class="dnav">${orderedEdgeIcons().map(([k,label,ic])=>navBtn(k,label,ic)).join('')}</div>`+
     sec('来源',chips(facetData.locations.map(l=>({k:l.k,label:LOC[l.k]||l.k,n:l.n,
         cost:(l.k==='pikpak'||l.k==='online')?'metered':'free'})),'loc',true),'','src')
-    +sec('时长',facetData.stats.duration?`<div class="duration-filter"><div class="duration-readout"><span id="durMinText">不限</span><b>—</b><span id="durMaxText">不限</span></div>
+    /* 时长只有一处读数：手柄上方那枚气泡，在拖它的时候出现。另起一行写「不限 — 不限」
+       是同一件事说第二遍，而且滑块不动时它永远是那句话。 */
+    +sec('时长',facetData.stats.duration?`<div class="duration-filter">
       <div class="dual-range" id="durationRange"><span class="range-base"></span><span class="range-fill"></span>
         <input id="durMin" type="range" min="0" max="180" step="5" value="${filterState.dur_min?Math.min(180,+filterState.dur_min/60):0}" aria-label="最短时长（分钟）">
         <input id="durMax" type="range" min="0" max="180" step="5" value="${filterState.dur_max?Math.min(180,+filterState.dur_max/60):180}" aria-label="最长时长（分钟）"></div></div>`:'','','meta')
@@ -3166,7 +3193,7 @@ async function buildBars(){
     +sec('内容标签',chips(facetData.tags,'tag',false,30),facetData.tags.length>30?'<button data-more="tag">更多</button>':'','general')
     +sec('影片属性',chips(facetData.tech,'tag',false,16),'','meta')
     +sec('关注标签',followTagRows.length?`<div class="chips">`+followTagRows.map(row=>
-      `<button class="chip online" data-follow-drawer-tag="${esc(row.k)}">${esc(tagLabel(row.k))}<span class="n">${row.n.toLocaleString()}</span></button>`
+      `<button class="chip online" data-follow-drawer-tag="${esc(row.k)}"><span class="chip-label">${esc(tagLabel(row.k))}</span><span class="n">${row.n.toLocaleString()}</span></button>`
       ).join('')+`</div>`:'','','online');
   const dc=$('#drawerClose'); if(dc)dc.onclick=()=>openDrawer(false);
   $('#drawer').querySelectorAll('[data-page]').forEach(b=>b.onclick=()=>{
@@ -3194,7 +3221,6 @@ async function buildBars(){
       let lo=+durMin.value,hi=+durMax.value;
       if(lo>hi){if(changed==='min')hi=lo;else lo=hi;durMin.value=lo;durMax.value=hi}
       durRange.style.setProperty('--lo',(lo/180*100)+'%');durRange.style.setProperty('--hi',(hi/180*100)+'%');
-      $('#durMinText').textContent=lo?lo+' 分钟':'不限';$('#durMaxText').textContent=hi<180?hi+' 分钟':'不限';
       if(commit)commitContextFilter(filters=>{
         filters.len='';filters.dur_min=lo?String(lo*60):'';filters.dur_max=hi<180?String(hi*60):''})
     };
@@ -3350,29 +3376,27 @@ async function openStats(push=true){
   const metric=(k,v,max)=>`<div class="statmetric">${kv(k,v.toLocaleString(),pct(v,max)+'%')}${progressHtml(`${k}：${v.toLocaleString()} / ${max.toLocaleString()}`,v,max)}</div>`;
   const metricTab=(key,label,value,detail,selected=false)=>`<button type="button" role="tab" data-stats-metric="${key}"
     aria-selected="${selected}" aria-controls="stats-detail-${key}" tabindex="${selected?'0':'-1'}">
-    <span>${label}</span><b>${value}</b><small>${detail}</small></button>`;
+    ${statCardBody(label,value,detail,{inventory:'database',viewing:'eye',coverage:'tags',storage:'hard-drive'}[key])}</button>`;
   const locationRows=d.by_loc.map(row=>{const label=row.k==='online'?'已保存在线':(LOC[row.k]||row.k);return `<div class="insightbarrow"><div><span>${label}</span><b>${row.videos.toLocaleString()}</b></div>
     ${progressHtml(`${label}：${row.videos.toLocaleString()} / ${totalVideos.toLocaleString()}`,row.videos,totalVideos)}
     <small>${gb(row.bytes)} · ${pct(row.videos,totalVideos)}%</small></div>`}).join('');
-  /* 一行都没有时整张表不出现，只留 Empty State：Geist Table 的判据是空态渲染在表格
-     外面，留一张只有列头的空表等于让人对着两个列名找不存在的行。 */
-  const table=(head,rows,empty)=>rows?`<div class="insighttable"><div class="insighttablehead">${head.map(value=>`<span>${value}</span>`).join('')}</div>${rows}</div>`:empty;
   const tagsTable=d.top_tags.length?`<ol class="insightranking">${d.top_tags.map((t,index)=>`<li><button type="button" class="insightrankrow" data-k="${esc(t.k)}">
     <span class="insightrankpos">${index+1}</span><span>${esc(tagLabel(t.k))}</span><b>${t.n.toLocaleString()}</b></button></li>`).join('')}</ol>`
     :emptyStateHtml('tags','还没有内容标签','补全资料或添加标签后，这里会显示馆藏中的内容标签。');
-  const recentTable=table(['作品','观看证据'],d.recent.map(row=>{
+  const recentTable=d.recent.length?`<div class="board-watch-history">${d.recent.map(row=>{
     const real=row.duration?Math.min(row.play_seconds/row.duration,1)*100:0;
     const reached=(row.max_reached||0)*100;
     const note=row.kind==='online'?'在线直接观看':(real<reached-25?'快进扫过':(row.o_count?`高潮 ${row.o_count}`:'正常观看'));
-    return `<div class="insighttablerow"><span>${esc((row.creator?row.creator+' · ':'')+row.name)}</span>
-      <b>真实 ${real.toFixed(0)}% · 到达 ${reached.toFixed(0)}% · ${note}</b></div>`}).join(''),
-    `<div class="insightempty">${emptyStateHtml('history','还没有观看记录','开始播放后，这里会显示最近的真实观看证据。')}</div>`);
-  const sourceTable=table(['标签来源','覆盖视频'],d.tag_source.map(row=>`<div class="insighttablerow"><span>${esc(row.k)}</span>
-    <b>${row.n.toLocaleString()} 条 · ${row.assets.toLocaleString()} 个视频</b></div>`).join(''),
-    `<div class="insightempty">${emptyStateHtml('tags','还没有标签来源','刮削或手动打标之后，这里会显示每个来源覆盖了多少视频。')}</div>`);
-  const storageTable=(d.storage_volumes||[]).length?`<table class="insightdatatable"><thead><tr><th>位置</th><th>已用</th><th>可用</th><th>使用率</th></tr></thead><tbody>${(d.storage_volumes||[]).map(row=>{
+    return `<article class="board-watch-entry"><div><h3><a href="${row.kind==='online'?'/follow/item/':'/item/'}${Number(row.id)}" data-middle-truncate>${esc(row.name)}</a></h3><p>${esc(row.creator||'')}<span>${note}</span></p></div>
+      <div class="board-watch-measures">${progressHtml(`真实观看 ${real.toFixed(0)}%`,real,100)}<small>真实 ${real.toFixed(0)}% · 到达 ${reached.toFixed(0)}%</small></div></article>`}).join('')}</div>`:
+    `<div class="insightempty">${emptyStateHtml('history','还没有观看记录','开始播放后，这里会显示最近的真实观看证据。')}</div>`;
+  const sourceTable=d.tag_source.length?`<div class="board-source-list">${d.tag_source.map(row=>`<article><header><h3>${esc(row.k)}</h3><b>${row.assets.toLocaleString()} <small>个视频</small></b></header>
+    ${progressHtml(`${row.k} 覆盖视频`,row.assets,a.videos)}<small>${row.n.toLocaleString()} 条标签</small></article>`).join('')}</div>`:
+    `<div class="insightempty">${emptyStateHtml('tags','还没有标签来源','刮削或手动打标之后，这里会显示每个来源覆盖了多少视频。')}</div>`;
+  const storageTable=(d.storage_volumes||[]).length?`<div class="board-volume-list">${(d.storage_volumes||[]).map(row=>{
     const measured=row.total!=null, usedPct=measured?pct(row.used,row.total):0;
-    return `<tr><th scope="row"><span>${esc(row.label)}</span><small>${row.root?esc(row.root):'未映射'}</small></th><td>${measured?gb(row.used):'—'}</td><td>${measured?gb(row.free):'—'}</td><td>${measured?gaugeHtml(`${row.label}空间使用率`,row.used,row.total,{usage:true,compact:true})+usedPct+'%':(row.online?'容量未取得':'离线')}</td></tr>`}).join('')}</tbody></table>`
+    return `<article><header><h3>${esc(row.label)}</h3><b>${measured?usedPct+'%':(row.online===false?'离线':'容量未取得')}</b></header><small>${row.root?esc(row.root):'未映射'}</small>
+      ${measured?progressHtml(`${row.label}空间使用率`,row.used,row.total)+`<div class="board-volume-values"><span>已用 <b>${gb(row.used)}</b></span><span>可用 <b>${gb(row.free)}</b></span></div>`:''}</article>`}).join('')}</div>`
     :emptyStateHtml('hard-drive','还没有存储来源','添加媒体文件夹后，这里会显示存储空间。');
   $('#stats').innerHTML=`
     <div class="insightpage statsdashboard" data-stats-dashboard>
@@ -3385,9 +3409,7 @@ async function openStats(push=true){
       </div>
       <section class="insightdetail">
         <div id="stats-detail-inventory" role="tabpanel" data-stats-detail="inventory" class="insightdetailbody">
-          <div class="insightcopy"><span>库存</span><h2>${totalVideos.toLocaleString()}</h2><b>个视频</b>
-            </div>
-          <div class="insightvisual">${totalVideos?locationRows:catalogEmptyHtml({configurable:runtimeConfigurable})}</div></div>
+          ${localStorage.getItem('peach.legacy-ui')==='true'?(totalVideos?locationRows:catalogEmptyHtml({configurable:runtimeConfigurable})):(totalVideos?`<div class="board-inventory-charts">${radialCardHtml(d.by_loc.map(row=>({name:LOC[row.k]||row.k,value:row.videos,detail:gb(row.bytes)})),'网盘与本地')}${radialCardHtml((d.by_library||[]).map(row=>({name:row.name,value:row.videos,detail:gb(row.bytes)})),'媒体库')}</div>`:catalogEmptyHtml({configurable:runtimeConfigurable}))}</div>
         <div id="stats-detail-viewing" role="tabpanel" data-stats-detail="viewing" class="insightdetailbody" hidden>
           <div class="insightcopy"><span>观看</span><h2>${cs.played.toLocaleString()}</h2><b>个作品有播放记录</b>
             <p>累计 ${hrs(cs.play_seconds)}</p></div>
@@ -3416,6 +3438,8 @@ async function openStats(push=true){
       </section>
     </div>`;
   const statsRoot=$('#stats');
+  wireRadialCards(statsRoot);
+  if(localStorage.getItem('peach.legacy-ui')!=='true')wireExpandableRanks(statsRoot);
   statsRoot.querySelectorAll('[data-stats-metric]').forEach(button=>button.onclick=()=>{
     statsRoot.querySelectorAll('[data-stats-metric]').forEach(tab=>{
       const selected=tab===button;tab.setAttribute('aria-selected',String(selected));tab.tabIndex=selected?0:-1});
@@ -3487,8 +3511,7 @@ async function wireLinkManager(){
     setActionBusy(button,running);
     if(payload.status==='idle'){result.innerHTML='';return}
     if(payload.status==='failed'){result.innerHTML=noteHtml(payload.error||'检查失败',{variant:'error',label:'检查失败'});return}
-    const progress=running?loadingDotsHtml(`已检查 ${payload.checked.toLocaleString()} / ${(payload.total||0).toLocaleString()} 条`)
-      +(payload.total?progressHtml('已检查链接',payload.checked,payload.total):''):'';
+    const progress=running?(payload.total?jobProgressHtml(`已检查 ${payload.checked.toLocaleString()} / ${payload.total.toLocaleString()} 条链接`,payload.checked,payload.total):loadingDotsHtml('正在检查链接')):'';
     /* gone 和 unclear 必须分开摆：`linktr.ee` 回 403 是挡爬虫、`x.com` 回 500 是临时错误，
        链接本身好好的。混成一张表会让人顺手把好链接一起删掉。 */
     const gone=table('已失效',payload.gone||[],'上游明确回 404／410，页面确实没了。');
@@ -3578,8 +3601,7 @@ async function wireResourceSync(){
       await ui.watchJob({active,
         read:signal=>api('/api/resource-sync/scan',{signal,method:'POST',body:JSON.stringify({background:true,status_only:true})}),
         render:state=>{payload=state;if(state.status==='running'){
-          result.innerHTML=loadingDotsHtml(`后台扫描中：已完成 ${state.completed_sources||0}/${state.total_sources||0} 个来源`)
-            +(state.total_sources?progressHtml('已扫描来源',state.completed_sources||0,state.total_sources):'')}},
+          result.innerHTML=state.total_sources?jobProgressHtml(`已扫描 ${state.completed_sources||0}/${state.total_sources} 个来源`,state.completed_sources||0,state.total_sources):loadingDotsHtml('正在扫描来源')}},
         disconnected:()=>{result.innerHTML=noteHtml('暂时无法读取进度，正在重新连接…',{label:'任务状态'})}});
       if(payload.status==='failed')throw new Error(payload.error||'后台扫描失败');
       if(payload.status==='idle')throw new Error('任务尚未启动，请重试扫描');
@@ -3614,8 +3636,8 @@ async function openResourceSync(push=true){
 /* 口味仪表按窗口持久缓存：刷新页面也先显示上次结果。24 小时内不重读；
    过期后仍先显示旧结果，再在后台更新。导入、移除数据源和显式「读取」
    会立即写回缓存。缓存只含页面已经展示的聚合结果，不含原始历史。 */
-const TASTE_CACHE_KEY='peach-taste-dashboard-v3',TASTE_CACHE_FRESH_MS=24*60*60*1000;
-const TASTE_CACHE_WINDOWS=new Set(['all','365d','90d']);
+const TASTE_CACHE_KEY='peach-taste-dashboard-v7',TASTE_CACHE_FRESH_MS=24*60*60*1000;
+const TASTE_CACHE_WINDOWS=new Set(['all','365d','90d','30d','7d']);
 function readTasteCache(){
   try{
     const stored=JSON.parse(localStorage.getItem(TASTE_CACHE_KEY)||'{}');
@@ -3624,7 +3646,7 @@ function readTasteCache(){
       entry.dashboard&&typeof entry.dashboard==='object'))
   }catch(_error){return new Map()}
 }
-const TASTE_WINDOWS=[['all','全部时间'],['365d','最近一年'],['90d','最近 90 天']];
+const TASTE_WINDOWS=[['7d','最近 7 天'],['30d','最近 30 天'],['90d','最近 90 天'],['365d','最近一年'],['all','全部时间']];
 let tasteWindow='all',tasteEvidence='browser',tasteDimension={browser:'tags',peach:'tags'};
 let tasteCache=readTasteCache(),tasteRequest=0;
 function tasteCacheSet(window,dashboard){
@@ -3643,6 +3665,8 @@ function siteAvatar(name,domain,title=''){
 }
 const tasteRankRows=(rows,kind,empty='暂无足够证据',visual='')=>rows.length?rows.map((row,index)=>{
     const clickable=kind&&row.peach_items>0;
+    const strength=Number(row.web_visits??row.score??row.visits??row.peach_items??0);
+    const maximum=Math.max(1,...rows.map(item=>Number(item.web_visits??item.score??item.visits??item.peach_items??0)));
     const detail=row.web_visits!=null
       ?`${row.web_visits?`浏览 ${row.web_visits}`:''}${row.web_visits&&row.peach_items?' · ':''}${row.peach_items?`Peach ${row.peach_items}`:''}`
       :`${Number(row.score||row.visits||0).toLocaleString()}`;
@@ -3656,7 +3680,7 @@ const tasteRankRows=(rows,kind,empty='暂无足够证据',visual='')=>rows.lengt
         ?siteAvatar(row.name,sourceDomain,`来源：${sourceDomain}`)
       :visual?`<span class="tasteavatar">${avatarInner(row.name,ref,rep,visual)}</span>`:'';
     return `<${clickable?'button':'div'} class="tasterank${kind==='tag'?' tasterank-tag':''}${visual?' tasterank-visual':''}"${clickable?` data-taste-kind="${kind}" data-taste-name="${esc(row.name)}"`:''}>
-      <span class="tastepos mono">${index+1}</span>${media}<span><b>${esc(row.name)}</b><small>${esc(detail)}</small></span>
+      <span class="tastepos mono">${index+1}</span>${media}<span class="taste-rank-copy"><b>${esc(row.name)}</b><small>${esc(detail)}</small><span class="taste-rank-track" aria-hidden="true"><i style="width:${Math.max(0,Math.min(100,strength/maximum*100))}%"></i></span></span>
       ${clickable?icon('chevron-right'):''}</${clickable?'button':'div'}>`}).join(''):
   emptyStateHtml('search','暂无足够证据',empty);
 function openTasteSignal(kind,name){
@@ -3690,7 +3714,7 @@ function tasteAnalysisSection(analysis){
 }
 function renderTaste(d){
   const s=d.summary||{},coverage=d.coverage||{},rank=d.rankings||{},storage=d.storage||{};
-  const summary=(label,value,sub='')=>`<div class="tastesummary"><span>${label}</span><b>${value}</b>${sub?`<small>${sub}</small>`:''}</div>`;
+  const summary=(label,value,sub='')=>`<div class="tastesummary">${statCardBody(label,value,sub,{'浏览记录':'history','口味维度':'tags','浏览候选':'search','私有导出':'database','Peach 看过':'eye','喜欢':'thumbs-up','不合口味':'thumbs-down','有标签':'tags'}[label])}</div>`;
   const coverageMetric=(label,value,sub,done,total)=>`<div class="tastecovermetric"><span>${label}</span><b>${value}</b><small>${sub}</small>${progressHtml(`${label}：${done} / ${total}`,done,total)}</div>`;
   const sourceRows=(d.sources||[]).map(source=>`<div class="tastesource">
     <span class="tastebrowser">${icon(source.browser==='browserexport'?'upload':'database')}</span>
@@ -3698,10 +3722,8 @@ function renderTaste(d){
     <button data-taste-remove="${source.source_key}" title="移除分析记录" aria-label="移除 ${esc(source.profile)}">${icon('trash')}</button></div>`).join('');
   const gapRows=(d.gaps||[]).map(row=>({...row,evidence:['浏览记录']}));
   const domainRows=(rank.domains||[]).map(row=>({name:row.name,score:row.visits}));
-  const categoryRows=(rank.categories||[]).map(row=>({name:row.name,score:row.score}));
-  const categoryMax=Math.max(1,...categoryRows.map(row=>Number(row.score||0)));
-  const categoryBars=categoryRows.length?categoryRows.map(row=>`<div class="tastebar"><div><span>${esc(row.name)}</span><b>${Number(row.score||0).toLocaleString()}</b></div>
-    ${progressHtml(`${row.name}：${Number(row.score||0).toLocaleString()} / ${categoryMax.toLocaleString()}`,row.score||0,categoryMax)}</div>`).join(''):
+  const categoryRows=(rank.browser_categories||[]).map(row=>({name:row.name,score:row.score}));
+  const categoryBars=categoryRows.length?rankedChart(categoryRows,'口味维度排名'):
     emptyStateHtml('search','暂无口味维度','采集浏览记录后，这里会显示聚合后的口味证据。');
   const rankPanel=(source,key,rows,kind='',empty='暂无足够证据',visual='')=>`<div id="taste-${source}-${key}" role="tabpanel"
     data-taste-dimension-panel="${source}:${key}"${tasteDimension[source]===key?'':' hidden'}>
@@ -3714,7 +3736,7 @@ function renderTaste(d){
         <label><input type="radio" name="taste-evidence" value="browser"${tasteEvidence==='browser'?' checked':''}><span>浏览器记录</span></label>
         <label><input type="radio" name="taste-evidence" value="peach"${tasteEvidence==='peach'?' checked':''}><span>Peach 内部</span></label></div>
       <div class="tasteactions">${selectFieldHtml(TASTE_WINDOWS,d.window||tasteWindow,{label:'分析范围',attr:'data-taste-window'})}
-        <div class="splitbutton" data-taste-history-menu>
+        <div class="splitbutton board-button-group" data-taste-history-menu>
           <button class="splitmain" data-taste-refresh title="读取运行 Peach 的这台电脑上的浏览记录">${icon('compass')}读取浏览器历史</button>
           <button type="button" class="splittoggle" data-taste-history-toggle aria-haspopup="menu"
             aria-expanded="false" aria-controls="tasteHistoryMenu"
@@ -3736,7 +3758,7 @@ function renderTaste(d){
       ${summary('不合口味',Number(s.disliked||0).toLocaleString())}
       ${summary('有标签',Number(coverage.tagged||0).toLocaleString())}</div>
     <section class="tastehero" data-taste-evidence-panel="browser"${tasteEvidence==='browser'?'':' hidden'}>
-      <div class="insightcopy"><span>浏览器画像</span><h2>${Number(s.history_visits||0).toLocaleString()}</h2><b>条聚合访问证据</b>
+      <div class="insightcopy"><span>浏览器画像</span>${radarChart(categoryRows,'主要口味维度')||'<h2>口味分布</h2>'}
         <small>${d.updated_at?`更新于 ${tasteDate(d.updated_at)}`:'尚未采集浏览记录'}</small></div>
       <div class="tastebars">${categoryBars}</div></section>
     <section class="tastehero" data-taste-evidence-panel="peach"${tasteEvidence==='peach'?'':' hidden'}>
@@ -3747,6 +3769,7 @@ function renderTaste(d){
         ${coverageMetric('有身份',Number(coverage.identified||0).toLocaleString(),`${coverage.unidentified||0} 项待补`,coverage.identified||0,(coverage.identified||0)+(coverage.unidentified||0))}
       </div></section>
     ${tasteAnalysisSection(d.analysis)}
+    <div data-taste-evidence-panel="browser"${tasteEvidence==='browser'?'':' hidden'}>${activityChartsHtml(d.activity)}${creatorSankeyHtml(d.creator_flows)}</div>
     <section class="insightpanel tasteanalysis" data-taste-evidence-panel="browser"${tasteEvidence==='browser'?'':' hidden'}>
       <header>${sourceTabs('browser',[['tags','标签'],['creators','创作者'],['domains','常访问网站'],['gaps','浏览候选']])}</header>
       <div class="insightpanelbody">
@@ -3766,6 +3789,9 @@ function renderTaste(d){
       <div class="insightpanelbody"><div>${sourceRows||emptyStateHtml('database','还没有数据源','导入或读取浏览记录后，这里会列出已采集设备。')}</div></div></section>
   </div>`;
   const root=$('#stats'),stateEl=root.querySelector('[data-taste-state]'),file=root.querySelector('[data-taste-file]');
+  wireActivityCharts(root);
+  wireCreatorSankey(root);
+  if(localStorage.getItem('peach.legacy-ui')!=='true')wireExpandableRanks(root);
   wireTasteHistoryGuide(root,localStorage);
   root.querySelectorAll('input[name="taste-evidence"]').forEach(input=>input.onchange=()=>{
     tasteEvidence=input.value;
@@ -4092,11 +4118,14 @@ async function openDataCleanup(push=true){
     </section>`;
   };
   const cleanupCards={
-    scraping:`<section class="cleanupfieldset" id="libraryProcessing" data-geist-fieldset aria-labelledby="cleanupScrapingTitle">
-      <div class="geist-fieldset-content">${fieldsetTitle('cleanupScrapingTitle','扫描与采集')}
-        <p>扫描媒体文件夹，导入已有资料，采集缺失信息。</p></div>
-      <footer class="geist-fieldset-footer" data-geist-fieldset-footer><button type="button" disabled>扫描并补全资料</button></footer>
-    </section>`,
+    /* 卡片和它的提示是两件东西：提示挂在卡片外面，和资源同步那两块一个写法。
+       `#libraryProcessing` 因此是这一格本身，卡片是它的第一个孩子。 */
+    scraping:`<div class="cleanupscraping" id="libraryProcessing">
+      <section class="cleanupfieldset" data-geist-fieldset aria-labelledby="cleanupScrapingTitle">
+        <div class="geist-fieldset-content">${fieldsetTitle('cleanupScrapingTitle','扫描与采集')}
+          <p>扫描媒体文件夹，导入已有资料，采集缺失信息。</p></div>
+        <footer class="geist-fieldset-footer" data-geist-fieldset-footer><button type="button" disabled>扫描并补全资料</button></footer>
+      </section></div>`,
     junk:`<section class="cleanupfieldset" data-geist-fieldset aria-labelledby="cleanupJunkTitle">
       <div class="geist-fieldset-content">${fieldsetTitle('cleanupJunkTitle','垃圾文件')}
         <strong>${Number(junk.pending_total||0).toLocaleString()} 个待判断</strong>
@@ -4111,11 +4140,11 @@ async function openDataCleanup(push=true){
         <p class="cleanupmeta">${Number(duplicates.total||0)?`可回收 ${fmtSize(duplicates.reclaimable||0)}`:''}</p></div>
       <footer class="geist-fieldset-footer" data-geist-fieldset-footer><button type="button" data-cleanup-open="duplicates">查看重复文件</button></footer>
     </section>`,
-    empty:`<section class="cleanupfieldset cleanupemptyfolders" data-geist-fieldset data-fieldset-type="error" aria-labelledby="cleanupEmptyTitle">
+    empty:`<section class="cleanupfieldset cleanupemptyfolders" data-geist-fieldset aria-labelledby="cleanupEmptyTitle">
       <div class="geist-fieldset-content">${fieldsetTitle('cleanupEmptyTitle','空文件夹')}
         <strong>${online.length.toLocaleString()} 个来源可扫描</strong>
         <p class="cleanupmeta">${sourceLine}</p><p class="cleanupstate" aria-live="polite"></p></div>
-      <footer class="geist-fieldset-footer" data-geist-fieldset-footer><button type="button" class="danger" data-cleanup-empty>${icon('trash')}<span>删除空文件夹</span></button></footer>
+      <footer class="geist-fieldset-footer" data-geist-fieldset-footer><button type="button" data-cleanup-empty-scan ${online.length?'':'disabled'}>${icon('scan-search')}<span>扫描空文件夹</span></button><button type="button" class="danger" data-cleanup-empty hidden>${icon('trash')}<span>删除空文件夹</span></button></footer>
     </section>`,
     review:entryCard('review'),quality:entryCard('quality'),trash:entryCard('trash'),
   };
@@ -4135,6 +4164,16 @@ async function openDataCleanup(push=true){
     button.onclick=()=>openManage(button.dataset.cleanupGo));
   paintDataManagementCounts();
   const emptyButton=$('#stats').querySelector('[data-cleanup-empty]');
+  const emptyScan=$('#stats').querySelector('[data-cleanup-empty-scan]');
+  emptyScan.onclick=async()=>{
+    const status=$('#stats').querySelector('.cleanupstate');setActionBusy(emptyScan);emptyButton.hidden=true;
+    status.textContent='正在检查空文件夹…';
+    try{const result=await api('/api/data-cleanup/empty-folders',{method:'POST',body:JSON.stringify({dry_run:true})});
+      if(!surfaceCurrent(surface))return;
+      status.textContent=`已检查 ${Number(result.scanned||0).toLocaleString()} 个目录，发现 ${Number(result.empty||0).toLocaleString()} 个空文件夹${result.errors?`，${result.errors} 个目录读取失败`:''}。`;
+      emptyButton.hidden=!(result.empty>0);
+    }catch(error){status.textContent=`扫描失败：${error.message}`}finally{setActionBusy(emptyScan,false)}
+  };
   emptyButton.onclick=async()=>{
     return confirmModal({title:'删除空文件夹',body:'将删除已连接磁盘和网盘中的空文件夹，保留来源根目录。',confirmLabel:'删除空文件夹',danger:true,onConfirm:async()=>{
     const status=$('#stats').querySelector('.cleanupstate'),original=emptyButton.innerHTML;
@@ -4145,7 +4184,7 @@ async function openDataCleanup(push=true){
       status.textContent=`已检查 ${Number(result.scanned||0).toLocaleString()} 个目录，删除 ${Number(result.removed||0).toLocaleString()} 个${result.errors?`，${Number(result.errors).toLocaleString()} 个读取或删除失败`:''}。`;
       if(result.errors)actionFailure('空文件夹清理',new Error(`${result.errors} 个目录处理失败`));
       else actionReceipt(`已删除 ${Number(result.removed||0).toLocaleString()} 个空文件夹`);
-    }finally{setActionBusy(emptyButton,false);emptyButton.innerHTML=original}
+    }finally{setActionBusy(emptyButton,false);emptyButton.innerHTML=original;emptyButton.hidden=true}
   }});
   };
   await wireLinkManager();
@@ -4391,7 +4430,7 @@ async function openReview(push=true){
            // 账本规范名当标题，抓取来源给的写法（多为罗马音）留作副标题。
            row.source_name?`<p class="reviewalias">来源写法：${esc(row.source_name)}</p>`:''}${
            // 实体类卡片的作品数已经写在创作者入口里，这里再写一遍就是同一个数字两处。
-           subjectKind&&subjectName?'':`<p>${esc(row.board||row.assets?`样本/资产：${row.video_count||row.assets||''}`:'')}</p>`}${subjectKind&&subjectName?'':origin}${tags?`<div class="reviewtags">${tags}</div>`:''}${stage}`;
+           subjectKind&&subjectName?'':`<p>${esc(row.board||row.assets?`样本/资产：${row.video_count||row.assets||''}`:'')}</p>`}${subjectKind&&subjectName?'':origin}${tags||reviewCategory==='creator_tags'?`<div class="reviewtags">${tags||'<small>暂无候选标签</small>'}</div>`:''}${stage}`;
          /* 主体动作在最右：一行里从左到右是「拒绝、跳过、通过」，读到最后一枚才是这张卡
             真正要人做的判断。Geist 的弹层与 Fieldset 操作条都是这个方向——取消在左，
             主动作靠 margin-left:auto 推到最右（vercel-geist-fieldset-scroller-empty-state.md）。 */
@@ -5304,7 +5343,7 @@ async function wireFollowProgress(){
       if(surfaceCurrent(surface))void refreshFollowSurface(surface)},
     note:text=>noteHtml(text,{label:'任务状态'}),loading:text=>loadingDotsHtml(text),
     container:content=>`<section class="followtask" data-geist-fieldset aria-label="检查更新进度"><div class="geist-fieldset-content">${content}</div></section>`,
-    progress:(value,max)=>progressHtml(`已完成 ${value}/${max} 个来源`,value,max)});
+    progress:(value,max,label)=>jobProgressHtml(label||`已完成 ${value}/${max} 个来源`,value,max)});
 }
 async function refreshFollowSurface(surface){
   try{
@@ -5329,7 +5368,7 @@ async function wireOperationProgress({host,path,key,title,busy,complete}){
       complete(report)},note:text=>noteHtml(text,{label:'任务状态'}),
     loading:text=>loadingDotsHtml(text),
     container:content=>`<section class="followtask" data-geist-fieldset aria-label="任务进度"><div class="geist-fieldset-content">${content}</div></section>`,
-    progress:(value,max)=>progressHtml(`已处理 ${value} / ${max}`,value,max)});
+    progress:(value,max,label)=>jobProgressHtml(label||`已处理 ${value} / ${max}`,value,max)});
 }
 function wireTasteProgress(){
   const button=$('#stats').querySelector('[data-taste-refresh]');
@@ -5391,6 +5430,21 @@ async function openFollow(push=true,renderForDetail=false){
 }
 
 /* ── 管的那一页 ── */
+/* 状态的排序位：失败最前，其次暂停、未检查，正常最后——正序就是「先看要处理的」。 */
+function followStatusRank(source){
+  const state=source.last_status;
+  if(state==='error'||state==='unauthorized')return 0;
+  if(!source.enabled)return 1;
+  return state==='ok'?3:2;
+}
+const followSourceLabel=source=>String(source.label||'');
+const bySourceLabel=(a,b)=>followSourceLabel(a).localeCompare(followSourceLabel(b),'zh-CN',{numeric:true});
+const FOLLOW_SOURCE_SORTS={
+  source:bySourceLabel,
+  provider:(a,b)=>String(a.provider_label||'').localeCompare(String(b.provider_label||''),'zh-CN')||bySourceLabel(a,b),
+  status:(a,b)=>followStatusRank(a)-followStatusRank(b)||bySourceLabel(a,b),
+};
+
 /* 同一个作者在不同站点上是多条来源、一个人。用户截图里 `LazyProcrastinator · fanbox`
    出现两次（Kemono / Pawchive）、`lazyprocrastinator` 出现两次（Rule34Video /
    Rule34.xxx），四行读起来像四个人。归组用后端给的 `author_key`——那是实体 id
@@ -5415,6 +5469,12 @@ function followAuthorGroups(sources){
      每换一次方向就整段倒序一遍，看着像列表在乱跳。 */
   const flip=followManageDir===(FOLLOW_SORT_DEFAULT_DIR[followManageSort]||'desc')?1:-1;
   const byName=(a,b)=>name(a).localeCompare(name(b),'zh-CN',{numeric:true});
+  /* 按单条来源比的维度：先排每位作者名下的来源，作者之间再按各自排在最前的那条比。 */
+  const bySource=FOLLOW_SOURCE_SORTS[followManageSort];
+  if(bySource){
+    groups.forEach(group=>group.sort((a,b)=>flip*bySource(a,b)));
+    return groups.sort((a,b)=>flip*bySource(a[0],b[0])||byName(a,b));
+  }
   return groups.sort((a,b)=>{
     if(followManageSort==='name')return flip*byName(a,b);
     if(followManageSort==='sources')return flip*(b.length-a.length)||byName(a,b);
@@ -5451,6 +5511,16 @@ function followAuthorAvatar(group){
   return `<span class="favatar none" title="没有可用头像">${esc(initial)}</span>`;
 }
 
+/* 别名组只带规范名，头像在这位作者的来源上：按 author_key 找回来源再走同一个头像函数，
+   一条来源都没有时用规范名首字母。 */
+function followAliasAvatar(group){
+  const sources=(followData?.sources||[]).filter(source=>source.author_key===`name:${group.canonical_key}`);
+  if(sources.length)return followAuthorAvatar(sources);
+  const ascii=String(group.canonical_name||'').match(/[A-Za-z0-9]/);
+  const initial=(ascii?ascii[0]:Array.from(String(group.canonical_name||''))[0]||'?').toUpperCase();
+  return `<span class="favatar none" title="没有可用头像">${esc(initial)}</span>`;
+}
+
 /* 分组标题要用作者本人的名字，不是某一条来源的标签。`LazyProcrastinator · fanbox`
    里「· fanbox」只说明他在哪个平台连载——四条来源合成一组之后还挂着其中一条的
    平台后缀，等于说这一组只属于 fanbox，那正是这次要消掉的误读。
@@ -5480,13 +5550,19 @@ function followAuthorName(group){
   return names.reduce((best,name)=>caps(name)>caps(best)?name:best,names[0]);
 }
 
+const collapsedFollowAuthors=new Set();
 function followAuthorBlock(group){
   const name=followAuthorName(group);
+  const legacy=localStorage.getItem('peach.legacy-ui')==='true';
+  const key=String(group[0].author_key||group[0].id);
+  const collapsed=!legacy&&collapsedFollowAuthors.has(key);
   const bad=group.filter(s=>s.last_status==='error'||s.last_status==='unauthorized').length;
-  const sources=scrollerHtml(group.map(followSourceRow).join(''),{
-    className:'fauthorsources',label:`${name} 的关注来源`});
-  return `<div class="fauthor${bad?' bad':''}">
-    <div class="fauthorhead">${followAuthorAvatar(group)}
+  const sourceRows=group.map(source=>followSourceRow(source,!legacy)).join('');
+  const sources=localStorage.getItem('peach.legacy-ui')==='true'
+    ?scrollerHtml(sourceRows,{className:'fauthorsources',label:`${name} 的关注来源`})
+    :`<div class="fauthorsources" id="follow-author-${group[0].id}" aria-label="${esc(name)} 的关注来源">${sourceRows}</div>`;
+  return `<${legacy?'div':'details'} class="fauthor${bad?' bad':''}"${!legacy&&!collapsed?' open':''}>
+    <${legacy?'div':'summary'} class="fauthorhead">${followAuthorAvatar(group)}
       <b>${esc(name)}</b>
       <button type="button" class="frowicon" data-follow-check="" data-follow-sources="${group.filter(s=>s.enabled).map(s=>s.id).join(',')}"
         ${group.some(s=>s.enabled)?'':'disabled'} title="检查此作者" aria-label="检查 ${esc(name)} 的全部来源">${icon('refresh-cw')}</button>
@@ -5494,36 +5570,89 @@ function followAuthorBlock(group){
         ? group.map(source=>sourceIcon(source.provider)).join('')
         : sourceIcon(group[0].provider)+esc(group[0].provider_label)}</span>
       ${bad?`<span class="fmeta warn">${bad} 个失败</span>`:''}
-    </div>
-    ${sources}</div>`;
+      ${legacy?'':`<span class="board-author-actions"><button type="button" class="fbtn small" data-follow-author-select aria-pressed="false" aria-label="全选 ${esc(name)} 的来源">全选该作者</button><button type="button" class="frowicon board-author-toggle" data-follow-author-toggle="${esc(key)}" aria-controls="follow-author-${group[0].id}" aria-expanded="${!collapsed}" aria-label="${collapsed?'展开':'收起'} ${esc(name)} 的来源">${icon('chevron-down')}</button></span>`}
+    </${legacy?'div':'summary'}>
+    ${sources}</${legacy?'div':'details'}>`;
 }
 
-function followSourceRow(source){
+const followSourceSelection=new Set();
+/* 一条来源在两种视图里是同一批格子：勾选、名字、站点、状态、上次检查、动作和错误。
+   默认视图把它们排成作者卡里的一行，表格视图把每格放进一个 <td>；勾选、检查、移除
+   的 data 属性两边一样，接线不分视图。 */
+function followSourceCells(source,selectable=false){
   const state=source.last_status||'未检查';
   const bad=state==='error'||state==='unauthorized';
-  /* 状态用 Geist 的低饱和徽章（取证 vercel-geist-semantics-measured.md）：
-     行级状态不上实底彩色，ok 绿 tint、失败红 tint、未检查灰。 */
-  const badge=state==='ok'?'ok':bad?'error':'none';
-  const stateTitle=source.history_exhausted?'没有更多历史内容':state;
-  return `<div class="frow fsource${bad?' bad':''}${source.enabled?'':' disabled'}">
-    <label class="fchannelcheck" title="${source.enabled?'参与检查更新':'暂停检查更新'}">${checkboxHtml(
+  const badge=!source.enabled?'paused':state==='ok'?'ok':bad?'error':'none';
+  const stateTitle=source.history_exhausted?'没有更多':!source.enabled?'已暂停':state==='ok'?'正常':bad?'检查失败':'未检查';
+  const status=`<span class="sbadge ${badge}" title="${esc(stateTitle)}"><i aria-hidden="true"></i><span>${esc(stateTitle)}</span></span>`;
+  const check=selectable?`<label class="fchannelcheck">${checkboxHtml(`data-follow-select="${source.id}" ${followSourceSelection.has(source.id)?'checked':''} aria-label="选择 ${esc(source.label)}"`)}</label>`:`<label class="fchannelcheck" title="${source.enabled?'参与检查更新':'暂停检查更新'}">${checkboxHtml(
       `data-follow-enabled="${source.id}" ${source.enabled?'checked':''}`
-      +` aria-label="${source.enabled?'暂停':'启用'} ${esc(source.label)} 的更新检查"`)}</label>
-    <b><a class="fsourcelink externallink" href="${esc(source.url)}" target="_blank"
-      rel="noreferrer noopener" title="打开原来源">${esc(source.label)}${icon('external-link','externalmark')}</a></b>
-    <span class="fmeta fprovider" title="${esc(source.provider_label)}">${sourceIcon(source.provider)
-      }<span>${esc(source.provider_label)}</span></span>
-    <span class="fmeta fchecked">${source.last_checked_at?localTimeHtml(source.last_checked_at):'未检查'}</span>
-    <span class="sbadge ${badge}" title="${esc(stateTitle)}"><i aria-hidden="true"></i>
-      ${source.history_exhausted?'<span>没有更多</span>':''}</span>
-    <span class="fsourceactions">
+      +` aria-label="${source.enabled?'暂停':'启用'} ${esc(source.label)} 的更新检查"`)}</label>`;
+  const name=`<b><a class="fsourcelink externallink" href="${esc(source.url)}" target="_blank"
+      rel="noreferrer noopener" title="打开原来源">${esc(source.label)}${icon('external-link','externalmark')}</a></b>`;
+  const provider=extra=>`<span class="fmeta fprovider" title="${esc(source.provider_label)}">${sourceIcon(source.provider)
+      }<span>${esc(source.provider_label)}</span>${extra}</span>`;
+  const checked=`<span class="fmeta fchecked">${source.last_checked_at?localTimeHtml(source.last_checked_at):'未检查'}</span>`;
+  const actions=`<span class="fsourceactions">
       <button class="frowicon" data-follow-check="${source.id}" title="检查更新"
         ${source.enabled?'':'disabled'}
         aria-label="检查 ${esc(source.label)} 的更新">${icon('refresh-cw')}</button>
       <button class="frowicon danger" data-follow-remove="${source.id}" title="移除来源"
         aria-label="移除 ${esc(source.label)}">${icon('trash')}</button>
-    </span>
-    ${source.last_error?`<p class="frowerr">${esc(source.last_error)}</p>`:''}</div>`;
+    </span>`;
+  const error=source.last_error?`<p class="frowerr">${esc(source.last_error)}</p>`:'';
+  return {className:`fsource${bad?' bad':''}${source.enabled?'':' disabled'}`,check,name,provider,status,checked,actions,error};
+}
+function followSourceRow(source,selectable=false){
+  const cell=followSourceCells(source,selectable);
+  return `<div class="frow ${cell.className}">
+    ${cell.check}
+    ${cell.name}
+    ${cell.provider(selectable?cell.status:'')}
+    ${cell.checked}
+    ${selectable?'':cell.status}
+    ${cell.actions}
+    ${cell.error}</div>`;
+}
+
+/* 表格视图照 boardui.com/components/data-table（取证见 docs/BOARD_UI.md）：一行一条来源，
+   作者列每行都写，表头两列能点，点的是工具栏里已有的那两种排序。它有而这里不要的三样：
+   页码——列表本来就是全量；表尾的密度档——视图开关自己就是；表头里的全选——全选连着
+   批量动作留在上面那条选择栏，两个全选框会互相打架。排序方向沿用工具栏那对箭头字形。
+   五列都能点：作者、上次检查按作者分组比，来源、站点、状态按单条来源比，此时表格按
+   那一列拉平排，不再按作者聚在一起。 */
+const FOLLOW_TABLE_SORT={author:'name',source:'source',provider:'provider',status:'status',checked:'checked'};
+function followTableHeader(key,label){
+  const sort=FOLLOW_TABLE_SORT[key],active=followManageSort===sort;
+  const ascending=active&&followManageDir==='asc';
+  return `<th scope="col" aria-sort="${active?(ascending?'ascending':'descending'):'none'}"><button type="button" class="ftsort" data-follow-table-sort="${sort}" aria-label="按${label}排序">${label}${icon(ascending?'arrow-up':'arrow-down')}</button></th>`;
+}
+function followSourceTable(groups,selectable){
+  const pairs=groups.flatMap(group=>group.map(source=>[source,group]));
+  const bySource=FOLLOW_SOURCE_SORTS[followManageSort];
+  if(bySource){
+    const flip=followManageDir===(FOLLOW_SORT_DEFAULT_DIR[followManageSort]||'desc')?1:-1;
+    pairs.sort(([a],[b])=>flip*bySource(a,b));
+  }
+  const rows=pairs.map(([source,group])=>{
+      const name=followAuthorName(group);
+      const cell=followSourceCells(source,selectable);
+      return `<tr class="${cell.className}">
+        <td class="ftcheck">${cell.check}</td>
+        <td class="ftauthor"><span class="ftauthorcell">${followAuthorAvatar(group)}<span>${esc(name)}</span></span></td>
+        <td class="ftname">${cell.name}${cell.error}</td>
+        <td class="ftprovider">${cell.provider('')}</td>
+        <td class="ftstatus">${cell.status}</td>
+        <td class="ftchecked">${cell.checked}</td>
+        <td class="ftactions">${cell.actions}</td></tr>`;
+  }).join('');
+  // 外框只管边线与圆角，里层只管横向滚动：渐隐遮罩落在里层，右边线才不会跟着内容一起淡掉。
+  return `<div class="ftableframe"><div class="ftablewrap"><table class="ftable"><thead><tr>
+    <th scope="col"><span class="sr-only">${selectable?'选择':'启用'}</span></th>
+    ${followTableHeader('author','作者')}
+    ${followTableHeader('source','来源')}${followTableHeader('provider','站点')}${followTableHeader('status','状态')}
+    ${followTableHeader('checked','上次检查')}
+    <th scope="col"><span class="sr-only">操作</span></th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
 }
 
 function followAliasManager(groups,suggestions){
@@ -5534,7 +5663,7 @@ function followAliasManager(groups,suggestions){
     <button class="fbtn small" data-follow-alias-add
       data-canonical="${esc(item.canonical)}" data-alias="${esc(item.alias)}">合并</button>
   </div>`).join('');
-  const saved=groups.map(group=>`<div class="faliasrow"><b>${esc(group.canonical_name)}</b>
+  const saved=groups.map(group=>`<div class="faliasrow">${followAliasAvatar(group)}<b>${esc(group.canonical_name)}</b>
     <span>${group.aliases.map(alias=>`<span class="faliaschip">${esc(alias.name)}
       <button type="button" data-follow-alias-remove="${esc(alias.name)}"
         data-canonical="${esc(group.canonical_name)}"
@@ -5605,22 +5734,33 @@ function followCredentialRow(row){
     </summary>${body}</details>`;
 }
 
-/* 关注列表版式。默认一行一个，来源行的六列都在；紧凑是一行两个，半幅宽度放不下
-   六列，收掉「上次检查」——哪个站、成没成功、能不能点都还留着，时间是里面最不
-   影响判断的一列。和 JAV 版式共用 iconSwitchHtml，只是 name 与选项不同。 */
-const FOLLOW_LAYOUTS=[['cozy','舒适 · 一行一个','maximize'],['compact','紧凑 · 一行两个','layout-grid']];
+/* 关注列表的两种视图共用同一份来源集合、作者顺序和勾选：默认视图按作者分卡，
+   表格视图一行一条来源。 */
+const FOLLOW_LAYOUTS=[['default','默认视图','layout-grid'],['table','表格视图','table']];
 function followListLayout(){
-  return allowedSetting(appSettings.followLayout,FOLLOW_LAYOUTS.map(([k])=>k),'cozy');
+  return allowedSetting(appSettings.followLayout,FOLLOW_LAYOUTS.map(([k])=>k),'default');
 }
 function followLayoutButtons(){
-  return iconSwitchHtml('follow-layout','关注列表版式',FOLLOW_LAYOUTS,followListLayout(),
+  return iconSwitchHtml('follow-layout','关注列表视图',FOLLOW_LAYOUTS,followListLayout(),
     {attr:'data-follow-layout'});
 }
 function setFollowListLayout(value){
   appSettings.followLayout=value;
   saveSettings();
-  // 版式是纯展示层的事：改容器上的一个属性就够，不重画列表，也不重新请求。
-  document.querySelectorAll('.fsources').forEach(node=>{node.dataset.layout=followListLayout()});
+  // 两种视图的 DOM 不同，但换的只有列表本身：只重画 `.fsources`，页头那枚开关留在原地，
+  // 滑块才有得滑。拿手里这份 followData 重画，不重取接口、不换骨架；勾选记在
+  // followSourceSelection 里，收起的作者记在 collapsedFollowAuthors 里，重画后都还在。
+  const list=document.querySelector('#stats .fsources');
+  if(!list){renderFollowManage(followCredentials||{});return}
+  list.dataset.layout=value;
+  list.innerHTML=followSourceListHtml(followAuthorGroups(followData.sources||[]));
+  wireFollowManage(followCredentials?.providers||[]);
+}
+function followSourceListHtml(groups){
+  const legacy=localStorage.getItem('peach.legacy-ui')==='true';
+  return followListLayout()==='table'?followSourceTable(groups,!legacy)
+    :legacy?groups.map(followAuthorBlock).join('')
+    :`<div class="board-follow-list">${groups.map(followAuthorBlock).join('')}</div>`;
 }
 
 /* 版式判据来自 docs/reference-sources.json 的 vercel-report-design：
@@ -5629,6 +5769,9 @@ function setFollowListLayout(value){
    行与行之间也只用分隔线，不各自套框。控件尺寸按实测 Geist：32px 高、6px 圆角、14px。 */
 function renderFollowManage(credentials){
   const sources=followData.sources||[],counts=followData.counts||{};
+  const legacy=localStorage.getItem('peach.legacy-ui')==='true';
+  const groups=followAuthorGroups(sources);
+  const sourceList=followSourceListHtml(groups);
   const broken=sources.filter(s=>s.last_status==='error'||s.last_status==='unauthorized');
   const creds=(credentials.providers||[]);
   const needCred=creds.filter(c=>c.requirement==='required'&&!(c.present&&!c.missing.length));
@@ -5666,8 +5809,8 @@ function renderFollowManage(credentials){
             icon('refresh-cw')}检查全部</button>
           <button class="fbtn" data-follow-view>${icon('rss')}去看更新</button></div>
         ${followCheckReport?followCheckFailNote(followCheckReport):''}
-        ${sources.length?`<div class="frows fsources" data-layout="${followListLayout()}">${
-          followAuthorGroups(sources).map(followAuthorBlock).join('')}</div>
+        ${sources.length&&localStorage.getItem('peach.legacy-ui')!=='true'?`<div class="board-follow-selection"><label>${checkboxHtml('data-follow-select-all aria-label="全选来源"')}全选</label><span data-follow-selected-count>已选 0</span><button class="fbtn" data-follow-check="" data-follow-sources="" data-follow-selection-action disabled>检查所选</button><button class="fbtn" data-follow-selection-enabled="true" data-follow-selection-action disabled>启用</button><button class="fbtn" data-follow-selection-enabled="false" data-follow-selection-action disabled>暂停</button><button class="fbtn danger" data-follow-selection-remove data-follow-selection-action disabled>删除</button></div>`:''}
+        ${sources.length?`<div class="frows fsources" data-layout="${followListLayout()}">${sourceList}</div>
           ${counts.new?`<div class="fsecfoot"><p class="fnote fbulkrow"><span class="fbulkcounts">未看 ${counts.new} · 已看 ${counts.seen||0}
             · 已保存 ${counts.saved||0} · 已忽略 ${counts.ignored||0}</span>
             <span class="fbulk"><button class="fbtn" data-follow-bulk="seen">全部标记已看</button>
@@ -5689,7 +5832,7 @@ function renderFollowManage(credentials){
   void wireFollowProgress();
   if(locked)$('#stats').querySelectorAll(
     '#followAdd input,#followAdd button,[data-follow-remove],[data-follow-check],'+
-    '[data-follow-enabled],'+
+    '[data-follow-enabled],[data-follow-selection-enabled],[data-follow-selection-remove],'+
     '[data-follow-bulk],[data-follow-guess],[data-follow-alias-add],'+
     '[data-follow-alias-remove],#followAliasAdd input,#followAliasAdd button,[data-cred-form] input,'+
     '[data-cred-form] button,[data-cred-clear]'
@@ -5715,7 +5858,7 @@ async function openFollowManage(push=true){
   if(push){followManageSort='checked';followManageDir='desc';route('/follow-manage')}
   else if(location.pathname==='/follow-manage'){
     const params=new URLSearchParams(location.search),requested=params.get('sort');
-    followManageSort=['checked','added','name','sources'].includes(requested)?requested:'checked';
+    followManageSort=FOLLOW_SORT_OPTIONS.some(([key])=>key===requested)?requested:'checked';
     const requestedDir=params.get('dir');
     followManageDir=requestedDir==='asc'||requestedDir==='desc'?requestedDir
       :(FOLLOW_SORT_DEFAULT_DIR[followManageSort]||'desc');
@@ -5765,6 +5908,61 @@ function wireFollowItems(){
 function wireFollowManage(creds=[]){
   void wireResolveProgress();
   const root=$('#stats'),form=root.querySelector('#followAdd');
+  wireCollapse(root,'details.fauthor','follow-author-collapse','[data-follow-author-toggle]');
+  root.querySelectorAll('[data-follow-author-toggle]').forEach(button=>button.onclick=event=>{
+    event.stopPropagation();
+    const expanded=button.getAttribute('aria-expanded')==='true';
+    button.setAttribute('aria-label',button.getAttribute('aria-label').replace(/^(展开|收起)/,expanded?'收起':'展开'));
+    if(expanded)collapsedFollowAuthors.delete(button.dataset.followAuthorToggle);else collapsedFollowAuthors.add(button.dataset.followAuthorToggle);
+  });
+  const selectable=[...root.querySelectorAll('[data-follow-select]')];
+  const selectedIds=()=>selectable.filter(field=>field.checked).map(field=>Number(field.dataset.followSelect));
+  const syncSelection=()=>{
+    const ids=selectedIds(),count=root.querySelector('[data-follow-selected-count]');
+    if(count)count.textContent=`已选 ${ids.length}`;
+    const all=root.querySelector('[data-follow-select-all]');
+    if(all){all.checked=ids.length>0&&ids.length===selectable.length;all.indeterminate=ids.length>0&&ids.length < selectable.length}
+    root.querySelectorAll('[data-follow-selection-action]').forEach(button=>{button.disabled=!ids.length||!!followRuntime?.ledger_read_only;if(button.hasAttribute('data-follow-check'))button.dataset.followSources=ids.join(',')});
+    selectable.forEach(field=>field.closest('.fsource').classList.toggle('selected',field.checked));
+    root.querySelectorAll('[data-follow-author-select]').forEach(button=>{
+      const fields=[...button.closest('.fauthor').querySelectorAll('[data-follow-select]')],count=fields.filter(field=>field.checked).length;
+      button.textContent=count===fields.length?'取消全选':'全选该作者';button.setAttribute('aria-pressed',count===fields.length?'true':count?'mixed':'false');
+    });
+  };
+  selectable.forEach(field=>field.onchange=()=>{const id=Number(field.dataset.followSelect);if(field.checked)followSourceSelection.add(id);else followSourceSelection.delete(id);syncSelection()});
+  selectable.forEach(field=>field.closest('.fsource').addEventListener('click',event=>{
+    if(event.target.closest('a,button,label,input'))return;
+    field.click();
+  }));
+  root.querySelectorAll('[data-follow-author-select]').forEach(button=>button.onclick=event=>{
+    event.preventDefault();event.stopPropagation();
+    const fields=[...button.closest('.fauthor').querySelectorAll('[data-follow-select]')],checked=!fields.every(field=>field.checked);
+    fields.forEach(field=>{field.checked=checked;const id=Number(field.dataset.followSelect);if(checked)followSourceSelection.add(id);else followSourceSelection.delete(id)});syncSelection();
+  });
+  const selectAll=root.querySelector('[data-follow-select-all]');
+  if(selectAll)selectAll.onchange=()=>{selectable.forEach(field=>{field.checked=selectAll.checked;const id=Number(field.dataset.followSelect);if(field.checked)followSourceSelection.add(id);else followSourceSelection.delete(id)});syncSelection()};
+  root.querySelectorAll('[data-follow-selection-enabled]').forEach(button=>button.onclick=async()=>{
+    const ids=selectedIds(),enabled=button.dataset.followSelectionEnabled==='true';if(!ids.length)return;
+    setActionBusy(button);
+    const results=await mapLimit(ids,4,id=>api('/api/follow/source',{method:'POST',body:JSON.stringify({action:'enabled',id,enabled})}));
+    const failures=results.filter(result=>!result.ok);
+    await openFollowManage(false);
+    if(failures.length)actionFailure(`批量更新 ${failures.length}/${ids.length} 个来源`,failures[0].error);
+    else actionReceipt(`已${enabled?'启用':'暂停'} ${ids.length} 个关注来源`);
+  });
+  syncSelection();
+  const removeSelection=root.querySelector('[data-follow-selection-remove]');
+  if(removeSelection)removeSelection.onclick=()=>{
+    const ids=selectedIds();if(!ids.length)return;
+    return confirmModal({title:`删除 ${ids.length} 个关注来源`,body:'将移除所选关注来源及其已抓取条目，媒体文件保留。',confirmLabel:'删除所选来源',danger:true,onConfirm:async()=>{
+      const results=await mapLimit(ids,4,id=>api('/api/follow/source',{method:'POST',body:JSON.stringify({action:'remove',id})}));
+      results.forEach((result,index)=>{if(result.ok)followSourceSelection.delete(ids[index])});
+      await openFollowManage(false);
+      const failures=results.filter(result=>!result.ok);
+      if(failures.length)throw new Error(`${failures.length} 个来源未删除：${failures[0].error?.message||'请求失败'}`);
+      actionReceipt(`已删除 ${ids.length} 个关注来源`);
+    }});
+  };
   wireScrollers(root);
   const sortField=root.querySelector('[data-follow-sort]');
   if(sortField)wireSelectField(sortField).addEventListener('change',()=>{
@@ -5777,6 +5975,13 @@ function wireFollowManage(creds=[]){
     followManageDir=followManageDir==='asc'?'desc':'asc';
     routeFollowManageSort();
   };
+  // 表格视图的表头：再点当前那列是翻方向，点另一列是换列并回到该列的默认方向。
+  root.querySelectorAll('[data-follow-table-sort]').forEach(button=>button.onclick=()=>{
+    const sort=button.dataset.followTableSort;
+    if(followManageSort===sort)followManageDir=followManageDir==='asc'?'desc':'asc';
+    else{followManageSort=sort;followManageDir=FOLLOW_SORT_DEFAULT_DIR[sort]||'desc'}
+    routeFollowManageSort();
+  });
   wireIconSwitch(root,'data-follow-layout',setFollowListLayout);
   renderFollowSrcFilter(root.querySelector('#followSrcFilter'),creds);
   const tooltipTrigger=root.querySelector('[data-fdesc-tooltip]');
@@ -6749,7 +6954,7 @@ function wirePhotoZoom(box, main){
     if(!img?.naturalWidth||!img.naturalHeight)return 100;
     return Math.min(100,img.offsetWidth/img.naturalWidth*100,img.offsetHeight/img.naturalHeight*100)
   };
-  const show=percent=>{const value=Math.round(percent);slider.value=value;label.textContent=value+'%'};
+  const show=percent=>{const value=Math.round(percent);slider.value=value;label.textContent=value+'%';syncBoardRange(slider)};
   const apply=raw=>{
     const fit=fitPercent();
     const percent=raw==='fit'?fit:Math.min(PHOTO_ZOOM_MAX,Math.max(PHOTO_ZOOM_MIN,Number(raw)||fit));
@@ -6833,7 +7038,7 @@ async function openPhotoLightbox(index,source=null){
   const box=document.createElement('div');
   box.className='photolight'+(items.length>1?' has-strip':'');
   box.innerHTML=`<button class="media-circle media-overlay photoclose" type="button" aria-label="关闭">${icon('x')}</button>
-    <div class="swiper photomain"><div class="swiper-wrapper">${items.map(item=>
+    <div class="swiper photomain" role="region" aria-roledescription="轮播" aria-label="图片浏览"><div class="swiper-wrapper">${items.map(item=>
       `<div class="swiper-slide"><div class="swiper-zoom-container"><img src="${esc(item.src)}"
         alt="${esc(item.name)}" loading="lazy" referrerpolicy="no-referrer"></div></div>`).join('')}</div>
       <button class="media-circle media-overlay photonav back" type="button" aria-label="上一张">${icon('chevron-left')}</button>
@@ -6842,7 +7047,7 @@ async function openPhotoLightbox(index,source=null){
       <button class="photodetailtoggle" type="button" aria-expanded="false" aria-controls="photoDetail"
         aria-haspopup="dialog"
         aria-label="图片详情" title="图片详情">${icon('info')}</button>
-      <div class="photocount mono" aria-live="polite">${index+1} / ${items.length}</div>
+      <div><div class="photocount mono" aria-live="polite">${index+1} / ${items.length}</div>${items.length>1?'<div class="board-carousel-pagination" aria-label="选择图片"></div>':''}</div>
       <div class="photozoom">
         <button type="button" data-zoom-step="-1" aria-label="缩小">${icon('zoom-out')}</button>
         <input type="range" min="${PHOTO_ZOOM_MIN}" max="${PHOTO_ZOOM_MAX}" step="1" value="100" aria-label="缩放">
@@ -6871,6 +7076,7 @@ async function openPhotoLightbox(index,source=null){
     // 上下滚也翻页：看图时手在滚轮上，没人愿意为了换一张去够左右键或按钮。
     mousewheel:{enabled:true,forceToAxis:false},
     thumbs:{swiper:strip},
+    pagination:localStorage.getItem('peach.legacy-ui')==='true'?undefined:{el:box.querySelector('.board-carousel-pagination'),clickable:true,dynamicBullets:true,dynamicMainBullets:3,renderBullet:(at,className)=>`<button type="button" class="${className}" aria-label="查看第 ${at+1} 张图片"></button>`},
     navigation:{prevEl:box.querySelector('.photonav.back'),nextEl:box.querySelector('.photonav.fwd')},
     on:{slideChange(){counter.textContent=`${this.activeIndex+1} / ${items.length}`;
       centerThumb(this.activeIndex)}}});
@@ -7105,7 +7311,7 @@ function buildDrawerNavigation(){
     <b class="disp" style="font-size:15px;letter-spacing:.1em">导航与筛选</b>
     <button id="drawerClose" class="ib" title="收起" aria-label="收起导航">${icon('x')}</button></div>
     <div class="dnav">${orderedEdgeIcons().map(([k,label,ic])=>
-      `<button data-nav="${k}" draggable="true" aria-pressed="${navOn(k)}">${icon(ic)}<span>${label}</span></button>`).join('')}</div>`;
+      `<button data-nav="${k}" draggable="true" aria-pressed="${navOn(k)}">${navigationIcon(k,ic)}<span>${label}</span></button>`).join('')}</div>`;
   $('#drawerClose').onclick=()=>openDrawer(false);
   scroll.querySelectorAll('[data-nav]').forEach(b=>b.onclick=()=>navTo(b.dataset.nav));
   wireNavigationDrag(scroll.querySelector('.dnav'));
@@ -7116,16 +7322,21 @@ function renderFollowDrawer(items){
   scroll.querySelectorAll('.sec').forEach(section=>section.remove());
   const counts=sidebarTagCounts(items.map(item=>({tags:followCardTags(item)})));
   if(!counts.length)return;
-  scroll.insertAdjacentHTML('beforeend',`<div class="sec cat-online"><h3>内容标签</h3><div class="chips">${
+  const tagBody=`<div class="chips">${
     counts.map(([tag,n])=>
-      `<button class="chip online" data-follow-drawer-tag="${esc(tag)}" aria-pressed="${followTags.has(tag)}">${esc(tagLabel(tag))}<span class="n">${n}</span></button>`).join('')}</div></div>`);
+      `<button class="chip online" data-follow-drawer-tag="${esc(tag)}" aria-pressed="${followTags.has(tag)}"><span class="chip-label">${esc(tagLabel(tag))}</span><span class="n">${n}</span></button>`).join('')}</div>`;
+  scroll.insertAdjacentHTML('beforeend',document.documentElement.classList.contains('original-design')?`<div class="sec cat-online"><h3>内容标签</h3>${tagBody}</div>`:sidebarSectionHtml('内容标签',tagBody,'','online'));
   $('#drawer').querySelectorAll('[data-follow-drawer-tag]').forEach(b=>b.onclick=()=>{
     followTags=new Set([b.dataset.followDrawerTag]);
     openDrawer(false);route(followViewPath());openFollow(false)});
 }
-function openDrawer(v){$('#drawer').classList.toggle('open',v);$('#scrim').classList.toggle('on',v);
-  document.body.classList.toggle('drawer-open',!!v)}
-function closeDrawerAfterNav(){drawerSuppressUntil=Date.now()+650;openDrawer(false)}
+function openDrawer(v){const drawer=$('#drawer'),restore=!v&&drawer.contains(document.activeElement);
+  drawer.inert=!v&&(innerWidth<=760||document.documentElement.classList.contains('original-design'));
+  drawer.classList.toggle('open',v);$('#scrim').classList.toggle('on',v);
+  document.body.classList.toggle('drawer-open',!!v);document.dispatchEvent(new Event('board:sidebar'));
+  $('#filterBtn').setAttribute('aria-expanded',String(!!v));$('#filterBtn').setAttribute('aria-controls','drawer');$('#filterBtn').setAttribute('aria-label',v?'收起侧栏':'展开侧栏');
+  if(restore)$('#filterBtn').focus();sessionStorage.setItem('board.sidebar',v?'open':'closed')}
+function closeDrawerAfterNav(){drawerSuppressUntil=Date.now()+650;if(innerWidth<=760||document.documentElement.classList.contains('original-design'))openDrawer(false)}
 $('#filterBtn').onclick=()=>openDrawer(!$('#drawer').classList.contains('open'));
 /* 常驻窄图标条：点即切视图，鼠标停留 180ms 展开完整抽屉 */
 const EDGE_ICONS=[
@@ -7143,6 +7354,7 @@ const EDGE_ICONS=[
      归右上角。三个名字都带「管」「设」的字，字形就得把它们分开。 */
   ['manage','管理','wrench'],
 ];
+function navigationIcon(key,glyph){return key===''&&localStorage.getItem('peach.legacy-ui')!=='true'?'<img class="board-home-logo" src="/peach-logo.png" alt="">':icon(glyph)}
 /* 每个管理页的身份（标题、图标、可直达的 URL）。用户仍可在设置里把其中任何
    一个加到顶层侧栏，所以这里保留全部页面，不因为它进了数据管理就删掉。 */
 const MANAGE_SECTIONS=[
@@ -7271,9 +7483,10 @@ function renderSidebarOrderSetting(){
     <button type="button" class="geist-button primary" data-sidebar-add${available.length?'':' disabled'}>添加</button></div>`;
   let selectedAddKey=firstValue;
   const addTrigger=root.querySelector('[data-sidebar-add-trigger]'),addMenu=root.querySelector('[data-sidebar-add-menu]');
-  const closeAddMenu=()=>{if(!addMenu)return;addMenu.hidden=true;addTrigger.setAttribute('aria-expanded','false')};
+  const closeAddMenu=()=>{if(!addMenu)return;dismissMenu(addMenu);addTrigger.setAttribute('aria-expanded','false')};
   addTrigger?.addEventListener('click',()=>{
-    if(!addMenu)return;const opening=addMenu.hidden;addMenu.hidden=!opening;addTrigger.setAttribute('aria-expanded',String(opening));
+    if(!addMenu)return;const opening=addTrigger.getAttribute('aria-expanded')!=='true';
+    if(opening)presentMenu(addMenu);else dismissMenu(addMenu);addTrigger.setAttribute('aria-expanded',String(opening));
     if(opening)addMenu.querySelector('[aria-selected="true"]')?.focus();
   });
   addMenu?.querySelectorAll('[data-sidebar-add-option]').forEach(option=>{
@@ -7564,7 +7777,7 @@ function buildEdge(){
   buildDrawerNavigation();
   $('#edge').innerHTML=orderedEdgeIcons().map(([k,t,ic])=>
     `<button data-nav="${k}" draggable="true" title="${t}" aria-pressed="${navOn(k)}">
-      ${icon(ic)}</button>`).join('')
+      ${navigationIcon(k,ic)}</button>`).join('')
 ;
   $('#edge').querySelectorAll('[data-loc]').forEach(b=>b.onclick=()=>{
     const cur=(state.loc||'').split(',').filter(Boolean);
@@ -7578,7 +7791,7 @@ function buildEdge(){
   wireNavigationDrag($('#edge'));
   syncHeaderActions();
 }
-$('#edge').addEventListener('mouseenter',()=>{if(Date.now()<drawerSuppressUntil)return;
+$('#edge').addEventListener('mouseenter',()=>{if(!document.documentElement.classList.contains('original-design')||Date.now()<drawerSuppressUntil)return;
   edgeT=setTimeout(()=>openDrawer(true),180)});
 /* 滚动期间挂起悬停预览：内容在鼠标下滑过会连续触发 mouseenter，
    每次都新建 video 并发起 /stream 请求，直接把页面拖垮。 */
@@ -7609,7 +7822,7 @@ window.addEventListener('resize',()=>{scheduleStickySurfaces();alignFollowImageC
 
 /* 只在真正进入 72 px 图标栏时展开；内容区左缘不再设隐形热区。 */
 $('#edge').addEventListener('mouseleave',()=>clearTimeout(edgeT));
-$('#drawer').addEventListener('mouseleave',()=>{
+$('#drawer').addEventListener('mouseleave',()=>{if(!document.documentElement.classList.contains('original-design'))return;
   setTimeout(()=>{if(!$('#drawer').matches(':hover')&&!$('#edge').matches(':hover'))openDrawer(false)},240)});
 $('#scrim').onclick=()=>openDrawer(false);
 
@@ -7713,21 +7926,22 @@ async function loadSearchPool(){
 $('#q').dataset.suggestion='';$('#q').placeholder='搜索馆藏';
 let searchHistory=[];
 function readSearchHistory(){return searchHistory.slice(0,appSettings.searchHistoryLimit)}
-const loadSearchHistory=()=>api('/api/search-history?limit='+appSettings.searchHistoryLimit).then(d=>{searchHistory=Array.isArray(d.items)?d.items:[];return searchHistory}).catch(()=>searchHistory);
+const loadSearchHistory=()=>!appSettings.searchHistoryLimit?Promise.resolve([]):api('/api/search-history?limit='+appSettings.searchHistoryLimit).then(d=>{searchHistory=Array.isArray(d.items)?d.items:[];return searchHistory}).catch(()=>searchHistory);
 function writeSearchHistory(list){searchHistory=list.slice(0,appSettings.searchHistoryLimit);return searchHistory}
 // 搜索本身是只读能力；账本暂时只读时，历史记录降级为本次页面内存，不能让一个
 // 非关键 POST 变成未处理异常或妨碍搜索结果。
-const rememberSearch=async query=>{if(!query)return;
+const rememberSearch=async query=>{if(!query||!appSettings.searchHistoryLimit)return;
   writeSearchHistory([query,...readSearchHistory().filter(x=>foldName(x)!==foldName(query))]);
   await api('/api/search-history',{method:'POST',body:JSON.stringify({query})}).catch(()=>null)};
+function hideSearchMenu(){dismissMenu($('#searchMenu'))}
 function renderSearchMenu(){const menu=$('#searchMenu'),history=readSearchHistory();
   const recommendations=[...searchPool()].sort(()=>Math.random()-.5).filter(x=>!history.some(h=>foldName(h)===foldName(x))).slice(0,5);
   const row=(value,type)=>`<div class="searchoption" data-search-value="${esc(value)}">${icon(type==='history'?'history':'sparkles')}<span>${esc(value)}</span>${type==='history'?`<button class="removehistory" data-remove-history="${esc(value)}" aria-label="删除历史 ${esc(value)}">${icon('x')}</button>`:''}</div>`;
   menu.innerHTML=(history.length?`<section class="searchgroup"><h3>搜索记录</h3>${history.map(x=>row(x,'history')).join('')}</section>`:'')+
     (recommendations.length?`<section class="searchgroup"><h3>推荐</h3>${recommendations.map(x=>row(x,'recommend')).join('')}</section>`:'');
-  menu.hidden=!menu.innerHTML;searchActive=-1;
+  if(menu.innerHTML)presentMenu(menu);else hideSearchMenu();searchActive=-1;
   menu.querySelectorAll('[data-search-value]').forEach(x=>x.onclick=e=>{if(e.target.closest('[data-remove-history]'))return;
-    $('#q').value=x.dataset.searchValue;runSearch(false,true);menu.hidden=true});
+    $('#q').value=x.dataset.searchValue;runSearch(false,true);hideSearchMenu()});
   menu.querySelectorAll('[data-remove-history]').forEach(b=>{
     /* 按下就 preventDefault，不让删除按钮把焦点从输入框抢走。抢走会触发 `#q` 的
        blur，那个 handler 140ms 后无条件 `hidden=true`，于是「删一条记录」实际等于
@@ -7769,7 +7983,7 @@ $('#q').onkeydown=e=>{
   /* 组字过程中的方向键在挑候选字、回车在定字，都不是给这个菜单的。 */
   if(e.isComposing)return;
   if(e.key==='Escape'&&!$('#searchMenu').hidden){
-    $('#searchMenu').hidden=true;searchActive=-1;e.preventDefault();return;
+    hideSearchMenu();searchActive=-1;e.preventDefault();return;
   }
   if(e.key==='ArrowDown'||e.key==='ArrowUp'){
     if(moveSearchActive(e.key==='ArrowDown'?1:-1))e.preventDefault();
@@ -7782,7 +7996,7 @@ $('#q').onkeydown=e=>{
   searchActive=-1;
   // 选中某一项时用它原样搜索；没选中才回退到「空输入按 Enter 用推荐词」。
   runSearch(!picked,true);
-  $('#searchMenu').hidden=true;$('#q').blur();
+  hideSearchMenu();$('#q').blur();
 };
 /* 两个请求回来时，焦点可能已经不在输入框上了：用户敲完就点走，失焦那条 140ms
    的兜底先把下拉栏收了，晚到的 then 再把它掀开——而这一刻没有焦点，也就再不会
@@ -8105,10 +8319,10 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
         ${it.release_date?`<span class="detailmetaitem">${icon('calendar')}<span>${esc(it.release_date)}</span></span>`:''}</div>
       <div class="detailidentity">${identityRows}</div>
       <div class="stags" id="detailTags"></div>
-      <div class="trace"><div class="lab mono"><span>离开位置</span><span id="ratioTxt">0%</span></div>
-        <div class="bar"><u id="watched"></u><b id="mark"></b></div>
-        <div class="lab mono trace-real"><span>真实观看</span><span id="realTxt">0%</span></div>
-        <div class="bar"><u id="realBar"></u></div>
+      <div class="trace"><div class="trace-metric"><div class="lab mono"><span>离开位置</span><span id="ratioTxt">0%</span></div>
+        <div class="bar"><u id="watched"></u><b id="mark"></b></div></div>
+        <div class="trace-metric"><div class="lab mono trace-real"><span>真实观看</span><span id="realTxt">0%</span></div>
+        <div class="bar"><u id="realBar"></u></div></div>
       </div>
       <div class="fb">
         <button class="like" id="likeBtn" aria-label="${it.liked?'取消喜欢':'喜欢'}" title="喜欢 · 记录口味偏好" aria-pressed="${!!it.liked}">${icon('thumbs-up')}</button>
@@ -8118,7 +8332,7 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
         <button class="later" id="stageLater" aria-label="稍后看" title="稍后看 · 加入或移出队列" aria-pressed="${!!it.watch_later}">${it.watch_later?icon('check'):icon('bookmark-plus')}</button>
         <button class="playlistadd" id="addPlaylist" aria-label="加入播放列表" title="加入播放列表">${icon('playlist')}</button>
         <button class="upgrade" id="betterVersion" aria-label="寻找更好版本" title="寻找高清、无水印或完整版" aria-pressed="${!!it.better_version}">${icon('sparkles')}</button>
-        <button class="dispose" data-kind="dispose" aria-label="加入回收站" title="加入回收站 · 文件仍保留，可从回收站永久清除" aria-pressed="${it.disposal==='trash'}">${icon('trash')}</button></div>
+        <button class="dispose" data-kind="dispose" aria-label="移入回收站" title="移入回收站 · 文件仍保留，可从回收站永久清除" aria-pressed="${it.disposal==='trash'}">${icon('trash')}</button></div>
       <div class="preference" id="preferencePanel" hidden>
         <textarea id="likeReason" maxlength="2000" placeholder="为什么喜欢？">${esc(it.like_reason||'')}</textarea>
         <div class="preference-foot"><span id="preferenceState" aria-live="polite"></span>
@@ -8265,7 +8479,7 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
     };
     const plus=$('#tagPlus'),picker=$('#tagPicker'),search=$('#tagPickSearch'),body=$('#tagPickBody');
     let detachOutside=null,activeIndex=-1;
-    const closePicker=()=>{picker.hidden=true;plus.setAttribute('aria-expanded','false');
+    const closePicker=()=>{dismissMenu(picker);plus.setAttribute('aria-expanded','false');
       if(detachOutside){detachOutside();detachOutside=null}};
     const candidates=()=>{const source=(facets&&facets.tags)||[],byName=new Map(source.map(x=>[foldName(x.k),x]));
       let recent=[];try{recent=JSON.parse(localStorage.getItem('peach.recentTags')||'[]')}catch(_e){}
@@ -8293,7 +8507,7 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
         options.forEach((b,i)=>b.classList.toggle('active',i===activeIndex));options[activeIndex].scrollIntoView({block:'nearest'});return}
       if(e.key==='Enter'){e.preventDefault();if(activeIndex>=0&&options[activeIndex])options[activeIndex].click();
         else if(search.value.trim()){closePicker();addTag(search.value.trim())}}};
-    plus.onclick=()=>{picker.hidden=false;plus.setAttribute('aria-expanded','true');renderPicker();search.focus();
+    plus.onclick=()=>{presentMenu(picker);plus.setAttribute('aria-expanded','true');renderPicker();search.focus();
       detachOutside=bindOutsideClose(plus,picker,closePicker)};
   };
   renderDetailTags();
@@ -8382,7 +8596,7 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
   buildBars();
   scrollItemDetailIntoView();
 
-  if(!queueContext)api('/api/related?id='+it.id+'&limit='+appSettings.relatedLimit).then(d=>{
+  if(!queueContext&&appSettings.relatedLimit>0)api('/api/related?id='+it.id+'&limit='+appSettings.relatedLimit).then(d=>{
     const n=$('#nrow'); if(!n)return; cache(d.items);
     n.innerHTML=d.items.length?d.items.map(x=>cardHtml(x,'ncard')).join(''):'<span class="empty">暂无</span>';
     wireCards(n);});
@@ -8474,7 +8688,8 @@ async function fetchTok(){
   p.set('sort','rand');                      // ⚠️ 随机，不是顺序播前 60 个
   p.set('limit',60); p.set('offset',0); p.set('thumb','');
   const d=await api('/api/items?'+p);
-  const list=d.items.filter(x=>x.cost!=='metered' && x.duration);
+  // 脱盘来源的片子拉不到流，进了队列就是一条黑屏加载中；详情页有门挡着，这里只能在入口筛掉。
+  const list=d.items.filter(x=>x.cost!=='metered' && x.duration && !sourceOffline(x.location));
   for(let i=list.length-1;i>0;i--){const j=Math.random()*(i+1)|0;[list[i],list[j]]=[list[j],list[i]]}
   return list;
 }
@@ -8669,16 +8884,16 @@ $('#searchBtn').onclick=()=>{const s=$('.search');s.classList.toggle('open');
    输入过内容就没有出口了；返回按钮无条件收起，并清掉下拉栏。 */
 $('#searchBack').onclick=()=>{
   $('.search').classList.remove('open');
-  $('#searchMenu').hidden=true;
+  hideSearchMenu();
   $('#q').blur();
 };
-$('#q').addEventListener('blur',()=>setTimeout(()=>{if(!$('#q').value&&!$('#searchMenu').matches(':hover'))$('.search').classList.remove('open');$('#searchMenu').hidden=true},140));
+$('#q').addEventListener('blur',()=>setTimeout(()=>{if(!$('#q').value&&!$('#searchMenu').matches(':hover'))$('.search').classList.remove('open');hideSearchMenu()},140));
 /* 收起下拉栏不能只有失焦这一条路：焦点未必在输入框上，而下拉栏照样开着。
    落在 `.search` 之外的第一下按压一律收起，这条判据不问焦点在哪儿。走捕获期
    的 pointerdown，是因为被点的那个东西自己可能吃掉事件或立刻把自己从页面里
    摘掉，冒泡到 document 时已经没有可供判断的祖先了。 */
 document.addEventListener('pointerdown',event=>{
-  if(!event.target.closest('.search'))$('#searchMenu').hidden=true;
+  if(!event.target.closest('.search'))hideSearchMenu();
 },true);
 $('#brandHome').onclick=e=>{e.preventDefault();openHome(true)};
 $('#tokClose').onclick=()=>{setTokLoading(false);clearTokTap();$('#tok').hidden=true;$('#tokTrack').querySelectorAll('video').forEach(v=>{
@@ -8812,11 +9027,11 @@ function seekVideoBy(video,seconds){
 document.addEventListener('keydown',e=>{
   if(e.key==='Escape'){
     if(!$('#settingsPanel').hidden){openSettings(false);return}
-    if(!$('#searchMenu').hidden){$('#searchMenu').hidden=true;return}
+    if(!$('#searchMenu').hidden){hideSearchMenu();return}
     if(!$('#tok').hidden){$('#tokClose').click();return}
+    const st=$('#stage');if(st&&!st.hidden){const c=$('#closeStage');if(c){c.click();return}}
     if($('#drawer').classList.contains('open')){openDrawer(false);return}
     if(selectMode||selected.size||followSelected.size){setSelectMode(false,true);return}
-    const st=$('#stage');if(st&&!st.hidden){const c=$('#closeStage');if(c)c.click()}
     return;
   }
   // 输入态不抢键：搜索框、标签弹窗和任何可编辑区域里的按键归它们自己处理。
@@ -9018,3 +9233,192 @@ loadSourceStatus()
   .then(()=>wantsDiscoveryBars()?buildBars():null)
   .then(async()=>{buildEdge();wireAllDrag();await restoreRoute();scheduleStickySurfaces()})
   .then(loadSyncedSettings);
+
+;(()=>{
+/* Board 外壳与设置导航。 */
+const legacyUI=localStorage.getItem('peach.legacy-ui')==='true';
+document.documentElement.classList.toggle('board-high-contrast',localStorage.getItem('peach.high-contrast')==='true');
+document.documentElement.classList.toggle('original-design',legacyUI);
+
+function installUISetting(){
+  const group=document.querySelector('.settingsscroll .settinggroup');
+  if(!group||document.getElementById('legacyUISetting'))return;
+  const row=document.createElement('div');row.className='settingrow';
+  row.innerHTML='<label for="legacyUISetting"><b>使用旧版 UI</b><small style="display:block">保留 Peach 原有界面，刷新页面后生效。</small></label><input type="checkbox" id="legacyUISetting" class="ptoggle" role="switch"><button type="button" class="geist-button" id="applyUISetting" hidden>应用并刷新</button>';
+  group.querySelector('.settingrow').after(row);
+  const field=row.querySelector('input'),apply=row.querySelector('button');field.checked=legacyUI;
+  field.onchange=()=>{localStorage.setItem('peach.legacy-ui',String(field.checked));apply.hidden=field.checked===legacyUI};
+  apply.onclick=()=>location.reload();
+  const contrastRow=document.createElement('div');contrastRow.className='settingrow';
+  contrastRow.innerHTML='<label for="glassContrastSetting"><b>增加对比度</b><small style="display:block">关闭玻璃折射与透明效果，使用实色背景。</small></label><input type="checkbox" id="glassContrastSetting" class="ptoggle" role="switch">';
+  row.after(contrastRow);
+  const contrast=contrastRow.querySelector('input');contrast.checked=document.documentElement.classList.contains('board-high-contrast');
+  contrast.onchange=()=>{localStorage.setItem('peach.high-contrast',String(contrast.checked));document.documentElement.classList.toggle('board-high-contrast',contrast.checked)};
+}
+let tabSequence=0;
+function localTabs(root,groups,titles,host=root){
+  if(!groups.length||host.querySelector(':scope > .board-local-nav'))return;
+  const prefix=`board-tabs-${++tabSequence}`;
+  const nav=document.createElement('div');nav.className='board-local-nav';nav.setAttribute('role','tablist');nav.setAttribute('aria-label',host===root?'配置分区':'设置分区');
+  const choose=index=>{
+    if(host!==root){const heading=host.querySelector('.settingshead h2');if(heading)heading.textContent=titles[index];root.scrollTop=0}
+    groups.forEach((nodes,i)=>nodes.forEach(node=>node.classList.toggle('board-group-active',i===index)));
+    [...nav.children].forEach((button,i)=>{button.setAttribute('aria-selected',String(i===index));button.tabIndex=i===index?0:-1});
+  };
+  groups.forEach((nodes,i)=>{
+    const button=document.createElement('button');button.type='button';button.role='tab';button.id=`${prefix}-tab-${i}`;button.textContent=titles[i];
+    nodes.forEach((node,j)=>{node.dataset.boardGroup=String(i);node.id||=`${prefix}-panel-${i}-${j}`;node.setAttribute('role','tabpanel');node.setAttribute('aria-labelledby',button.id)});
+    if(host!==root){const iconId=['palette-line','layout-grid-line','play-circle-line','search-line','rss-line','shield-check-line'][i];const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('viewBox','0 0 24 24');svg.setAttribute('aria-hidden','true');svg.style.fill='currentColor';svg.style.stroke='none';svg.innerHTML=`<use href="#ri-${iconId}"/>`;button.prepend(svg)}
+    button.setAttribute('aria-controls',nodes.map(node=>node.id).join(' '));button.onclick=()=>choose(i);
+    button.onkeydown=event=>{let next=i;if(event.key==='ArrowRight'||event.key==='ArrowDown')next=(i+1)%groups.length;else if(event.key==='ArrowLeft'||event.key==='ArrowUp')next=(i+groups.length-1)%groups.length;else if(event.key==='Home')next=0;else if(event.key==='End')next=groups.length-1;else return;event.preventDefault();choose(next);nav.children[next].focus()};
+    nav.append(button);
+  });
+  host===root?root.prepend(nav):host.insertBefore(nav,root);
+  choose(0);
+}
+function decorate(){
+  installUISetting();
+  if(legacyUI)return;
+  const config=document.querySelector('.configpage');
+  if(config&&!config.querySelector(':scope > .board-local-nav')){
+    const groups=[],titles=[];
+    [...config.children].forEach(node=>{if(node.matches('.configgroup')){titles.push(node.textContent);groups.push([])}else if(groups.length)groups.at(-1).push(node)});
+    localTabs(config,groups,titles);
+  }
+  const settings=document.querySelector('.settingsscroll');
+  if(settings){const groups=[...settings.querySelectorAll(':scope > .settinggroup')];localTabs(settings,groups.map(x=>[x]),groups.map(x=>x.querySelector('h3').textContent),settings.parentElement);
+    if(!settings.dataset.boardScroll){settings.dataset.boardScroll='true';const fade=()=>settings.parentElement.classList.toggle('board-settings-scrolled',settings.scrollTop>0);settings.addEventListener('scroll',fade,{passive:true});fade()}}
+  const icons={'人工复核':'square-check-big','高清版':'sparkles','重复文件':'file-stack','垃圾文件':'file-archive','空文件夹':'folder','回收站':'trash','扫描与采集':'hard-drive'};
+  document.querySelectorAll('.cleanupfieldset h2,.cleanupfieldset h3').forEach(heading=>{
+    if(heading.querySelector('.board-card-icon'))return;
+    const id=icons[heading.textContent.trim()];if(!id||!document.getElementById(`i-${id}`))return;
+    const tile=document.createElement('span');tile.className='board-card-icon';tile.setAttribute('aria-hidden','true');tile.innerHTML=`<svg viewBox="0 0 24 24"><use href="#i-${id}"/></svg>`;heading.prepend(tile);
+  });
+  document.querySelectorAll('#managebar [data-manage]').forEach(button=>{if(button.getAttribute('aria-pressed')==='true')button.setAttribute('aria-current','page');else button.removeAttribute('aria-current')});
+}
+let filterFrame;
+const boardBrand=document.querySelector('#brandHome');
+boardBrand.setAttribute('aria-label','Peach 首页');
+let libraryPicker;
+if(!legacyUI){
+  libraryPicker=document.createElement('div');libraryPicker.className='board-library-menu';libraryPicker.id='boardLibraryMenu';libraryPicker.hidden=true;libraryPicker.setAttribute('popover','manual');libraryPicker.setAttribute('role','dialog');libraryPicker.setAttribute('aria-label','媒体库');
+  document.body.append(libraryPicker);
+  boardBrand.setAttribute('aria-haspopup','dialog');boardBrand.setAttribute('aria-controls',libraryPicker.id);
+  boardBrand.insertAdjacentHTML('beforeend','<svg class="board-library-chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="m5 6 3-3 3 3M5 10l3 3 3-3"/></svg>');
+  boardBrand.onclick=event=>{event.preventDefault()};
+  const floating=wireAnchoredMenu(document.querySelector('#drawer'),boardBrand,libraryPicker,{side:true});
+  libraryPicker.addEventListener('toggle',event=>{if(event.newState==='open')libraryPicker.querySelector('button')?.focus()});
+  libraryPicker.addEventListener('keydown',event=>{if(event.key==='Escape'){event.stopPropagation();floating.setOpen(false);boardBrand.focus()}});
+  api('/api/libraries').then(data=>{
+    const choices=[['','全部媒体库','database'],...data.libraries.map(row=>[row.id,row.name,row.icon||'database'])];
+    const selected=sessionStorage.getItem('peach.library')||'';
+    if(!choices.some(row=>row[0]===selected)){sessionStorage.removeItem('peach.library');location.reload();return}
+    const current=sessionStorage.getItem('peach.library')||'';
+    boardBrand.querySelector('h1').textContent=current||'全部媒体库';
+    const libraryMark=glyph=>MEDIA_SOURCE_ICONS[glyph]?.startsWith('data:')?`<img src="${MEDIA_SOURCE_ICONS[glyph]}" alt="">`:icon(glyph==='local'?'hard-drive':glyph);
+    const mark=document.createElement('span');mark.className='mark';mark.setAttribute('aria-hidden','true');
+    mark.innerHTML=libraryMark(choices.find(row=>row[0]===current)?.[2]||'database');boardBrand.querySelector('.mark').replaceWith(mark);
+    libraryPicker.innerHTML=`<p>媒体库</p><div class="board-library-rows">${choices.map(([id,name,glyph])=>`<button type="button" data-library="${esc(id)}" aria-pressed="${id===current}"><span class="board-library-avatar">${libraryMark(glyph)}</span><span>${esc(name)}</span></button>`).join('')}</div><footer><button type="button" class="geist-button" data-library-manage>管理媒体库</button></footer>`;
+    libraryPicker.querySelectorAll('[data-library]').forEach(button=>button.onclick=()=>{sessionStorage.setItem('peach.library',button.dataset.library);location.assign('/')});
+    libraryPicker.querySelector('[data-library-manage]').onclick=()=>{floating.setOpen(false);openDrawer(false);location.assign('/configuration')};
+  }).catch(()=>{libraryPicker.hidden=true});
+}
+const boardToggle=document.querySelector('#filterBtn'),toggleHome=document.createComment('sidebar toggle');boardToggle.before(toggleHome);
+if(!legacyUI){
+  const foot=document.createElement('div');foot.className='board-sidebar-foot';
+  foot.innerHTML=`<div class="board-theme-toggle" role="group" aria-label="明暗主题"><span class="board-theme-thumb" aria-hidden="true"></span><button type="button" data-board-theme="light" aria-label="浅色主题">${icon('sun')}</button><button type="button" data-board-theme="dark" aria-label="深色主题">${icon('moon')}</button></div>`;
+  foot.append(document.querySelector('#settingsBtn'));document.querySelector('#drawer').append(foot);
+  foot.querySelectorAll('[data-board-theme]').forEach(button=>button.onclick=()=>{if(button.getAttribute('aria-pressed')==='true')return;transitionTheme(button,()=>{appSettings.theme=button.dataset.boardTheme;saveSettings();applyTheme();renderThemeSetting()})});
+  applyTheme();
+}
+function placeBrand(){
+  if(legacyUI)return;
+  const close=document.querySelector('#drawerClose');
+  if(close){const head=close.parentElement;head.classList.add('board-sidebar-head');
+    boardBrand.setAttribute('aria-label','选择媒体库');
+    wireSidebarGroups(document.querySelector('#drawerScroll'));
+    const expanded=document.querySelector('#drawer').classList.contains('open'),desktop=innerWidth>760;
+    if(desktop||expanded){if(boardToggle.parentElement!==head)head.append(boardToggle)}else if(boardToggle.parentElement!==toggleHome.parentElement)toggleHome.after(boardToggle);
+    document.querySelector('#drawer').inert=!desktop&&!expanded;
+    document.querySelectorAll('#drawer .dnav button').forEach(button=>button.setAttribute('aria-label',button.textContent.trim()));
+  }
+  if(close&&boardBrand.parentElement!==close.parentElement){
+    const heading=close.parentElement.querySelector('h2,h3,strong,b');if(heading)heading.hidden=true;
+    close.before(boardBrand);
+  }
+}
+placeBrand();
+document.addEventListener('board:sidebar',placeBrand);
+addEventListener('resize',placeBrand);
+new MutationObserver(placeBrand).observe(document.querySelector('#drawer'),{childList:true,subtree:true});
+const overflowObservers=new WeakMap();
+const boardTagbar=document.querySelector('#tagbar'),countbar=document.querySelector('#count');
+const tagHome=document.createComment('filter position');boardTagbar.before(tagHome);
+const countHome=document.createComment('sort position');countbar.before(countHome);
+function syncFilterFrame(){
+  if(legacyUI)return;
+  const catalog=!boardTagbar.hidden&&!countbar.hidden&&getComputedStyle(boardTagbar).display!=='none'&&getComputedStyle(countbar).display!=='none';
+  if(catalog&&!filterFrame){filterFrame=document.createElement('div');filterFrame.className='board-filter-frame';countHome.after(filterFrame);filterFrame.append(boardTagbar,countbar)}
+  else if(!catalog&&filterFrame){tagHome.after(boardTagbar);countHome.after(countbar);filterFrame.remove();filterFrame=null}
+  if(filterFrame)[boardTagbar,countbar.querySelector('.sorts')].filter(Boolean).forEach(scroller=>{
+    if(!overflowObservers.has(scroller)){
+      const update=()=>{scroller.dataset.overflowLeft=String(scroller.scrollLeft>2);scroller.dataset.overflowRight=String(scroller.scrollWidth-scroller.clientWidth-scroller.scrollLeft>2)};
+      overflowObservers.set(scroller,update);scroller.addEventListener('scroll',update,{passive:true});new ResizeObserver(update).observe(scroller);
+    }
+    overflowObservers.get(scroller)();
+  });
+}
+syncFilterFrame();
+new MutationObserver(syncFilterFrame).observe(countbar,{childList:true,subtree:true});
+new MutationObserver(syncFilterFrame).observe(boardTagbar,{childList:true});
+new MutationObserver(syncFilterFrame).observe(boardTagbar,{attributes:true,attributeFilter:['hidden','style']});
+new MutationObserver(syncFilterFrame).observe(countbar,{attributes:true,attributeFilter:['hidden','style']});
+decorate();
+new MutationObserver(decorate).observe(document.querySelector('#stats'),{childList:true,subtree:true});
+new MutationObserver(decorate).observe(document.querySelector('#managebar'),{childList:true});
+/* The selected design is loaded on refresh, not hot-swapped in a running page. */
+
+let floatingScheduled=false;
+function updateFloating(){
+  floatingScheduled=false;
+  document.body.classList.toggle('board-scrolled',scrollY>8);
+  if(filterFrame){const top=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--topH'))||64;filterFrame.classList.toggle('board-is-stuck',filterFrame.getBoundingClientRect().top<=top+9)}
+}
+if(!legacyUI){addEventListener('scroll',()=>{if(!floatingScheduled){floatingScheduled=true;requestAnimationFrame(updateFloating)}},{passive:true});addEventListener('resize',updateFloating);updateFloating()}
+
+/* Generate an edge-normal displacement field; only the backdrop is refracted. */
+if(!legacyUI && /Chrome|Chromium|Edg\//.test(navigator.userAgent)){
+  const ns='http://www.w3.org/2000/svg';
+  const svg=document.createElementNS(ns,'svg');svg.setAttribute('width','0');svg.setAttribute('height','0');svg.setAttribute('aria-hidden','true');svg.style.position='fixed';svg.style.pointerEvents='none';
+  const defs=document.createElementNS(ns,'defs');svg.append(defs);document.body.append(svg);
+  const attached=new WeakSet();let sequence=0;
+  function attach(node){
+    if(attached.has(node))return;attached.add(node);
+    const id=`peach-optic-${++sequence}`;const filter=document.createElementNS(ns,'filter');filter.id=id;filter.setAttribute('filterUnits','userSpaceOnUse');filter.setAttribute('color-interpolation-filters','sRGB');
+    const map=document.createElementNS(ns,'feImage');map.setAttribute('result','edge-map');map.setAttribute('preserveAspectRatio','none');
+    const displacement=document.createElementNS(ns,'feDisplacementMap');displacement.setAttribute('in','SourceGraphic');displacement.setAttribute('in2','edge-map');displacement.setAttribute('xChannelSelector','R');displacement.setAttribute('yChannelSelector','G');displacement.setAttribute('scale','24');filter.append(map,displacement);defs.append(filter);
+    let previous='';
+    const draw=()=>{
+      const width=Math.round(node.clientWidth),height=Math.round(node.clientHeight);if(!width||!height)return;
+      const radius=Math.min(parseFloat(getComputedStyle(node).borderRadius)||22,width/2,height/2);const key=`${width}:${height}:${radius}`;if(previous===key)return;previous=key;
+      const ratio=Math.min(1,600/width,600/height);const w=Math.max(2,Math.round(width*ratio)),h=Math.max(2,Math.round(height*ratio));
+      const canvas=document.createElement('canvas');canvas.width=w;canvas.height=h;const ctx=canvas.getContext('2d');const pixels=ctx.createImageData(w,h);
+      const distance=(x,y)=>{const qx=Math.abs(x-width/2)-(width/2-radius),qy=Math.abs(y-height/2)-(height/2-radius);return Math.hypot(Math.max(qx,0),Math.max(qy,0))+Math.min(Math.max(qx,qy),0)-radius};
+      const depth=Math.min(24,Math.min(width,height)/3);
+      for(let y=0;y<h;y++)for(let x=0;x<w;x++){
+        const px=(x+.5)/ratio,py=(y+.5)/ratio,inside=-distance(px,py);let dx=0,dy=0;
+        if(inside>0&&inside<depth){const gx=distance(px+.5,py)-distance(px-.5,py),gy=distance(px,py+.5)-distance(px,py-.5),length=Math.hypot(gx,gy)||1;const bend=Math.sin(Math.PI*inside/depth);dx=gx/length*bend;dy=gy/length*bend}
+        const i=(y*w+x)*4;pixels.data[i]=128+dx*116;pixels.data[i+1]=128+dy*116;pixels.data[i+2]=128;pixels.data[i+3]=255;
+      }
+      ctx.putImageData(pixels,0,0);map.setAttribute('href',canvas.toDataURL());map.setAttribute('width',width);map.setAttribute('height',height);filter.setAttribute('x','0');filter.setAttribute('y','0');filter.setAttribute('width',width);filter.setAttribute('height',height);
+      node.style.setProperty('--glass-optic',`url("#${id}") blur(2px)`);node.dataset.opticGlass='true';
+    };
+    new ResizeObserver(draw).observe(node);draw();
+  }
+  const sync=()=>document.querySelectorAll('.board-filter-frame,.top .search,.top>.ib,.edge,.drawer,.selectiondock,.reviewcontrols,.reviewgroupbar').forEach(attach);
+  new MutationObserver(sync).observe(document.querySelector('#main'),{childList:true,subtree:true});sync();
+}
+
+})();
+
+if(!document.documentElement.classList.contains('original-design'))openDrawer(innerWidth>760&&sessionStorage.getItem('board.sidebar')!=='closed');

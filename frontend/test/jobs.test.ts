@@ -9,7 +9,7 @@ describe('后台任务状态恢复', () => {
     const host=document.createElement('div');document.body.append(host);
     let state={status:'running',job_id:'taste',checked:0,total:3,message:'分析浏览记录：已处理 0 / 3 条'};
     followJobProgress({host,active:()=>true,read:async()=>state,busy:()=>{},complete:()=>{},
-      title:'读取浏览记录',note:text=>text,loading:text=>text,progress:(value,max)=>`${value}/${max}`});
+      title:'读取浏览记录',note:text=>text,loading:text=>text,progress:(value,max,label)=>`${label} ${value}/${max}`});
     await vi.advanceTimersByTimeAsync(0);
     expect(host.textContent).toContain(state.message);
     state={...state,checked:2,message:'分析浏览记录：已处理 2 / 3 条'};
@@ -25,7 +25,7 @@ describe('后台任务状态恢复', () => {
       current: {label: '演示来源', attempt: 3, max_attempts: 5, retry_in: 2}};
     const mount = (element: HTMLElement) => followJobProgress({host: element,
       active: () => true, read: async () => state, busy: () => {}, complete,
-      note: text => text, loading: text => text, progress: () => '',
+      note: text => text, loading: text => text, progress: (_value,_max,label) => label||'',
       container: content => `<section data-geist-fieldset>${content}</section>`});
     mount(host); await vi.advanceTimersByTimeAsync(0);
     expect(host.textContent).toContain('1/3');

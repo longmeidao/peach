@@ -1,0 +1,15 @@
+/* 未登录与首启页面共用的 Board 表面；无需访问受保护的资产。 */
+:root{--bg:#f7f7f7;--page:#f7f7f7;--ground:#fff;--card:#fff;--field:#fafafa;--surface:#fafafa;--line:#e5e5e5;--line-soft:#ebebeb;--ink:#171717;--ink-2:#525252;--tungsten:#2563eb;--control-radius:10px}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#111;--page:#111;--ground:#1c1c1c;--card:#1c1c1c;--field:#232323;--surface:#232323;--line:#383838;--line-soft:#303030;--ink:#fafafa;--ink-2:#a3a3a3}}
+:root[data-theme=dark]{--bg:#111;--page:#111;--ground:#1c1c1c;--card:#1c1c1c;--field:#232323;--surface:#232323;--line:#383838;--line-soft:#303030;--ink:#fafafa;--ink-2:#a3a3a3}
+body{background:var(--page)}
+main{background:var(--ground);border:1px solid var(--line);border-radius:24px;padding:28px;box-shadow:0 4px 16px #00000008}
+h1{font-weight:500}
+input[type=text],input[type=password],input[type=number],select,.affix{background:var(--field);border-radius:10px}
+button[type=submit],form>button,.geist-button.primary{background:linear-gradient(#3986ff,#1760ef);color:#fff;border:1px solid #3986ff;box-shadow:inset 0 1px 1px #ffffff60;border-radius:10px}
+button[type=submit]:hover,form>button:hover,.geist-button.primary:hover{background:linear-gradient(#2879fa,#1459df);color:#fff}
+.switch label:has(input:checked){background:var(--ground);box-shadow:0 1px 3px #0002}
+@media(max-width:480px){main{padding:20px}}
+/* Auth Card：单行登录偏好。 */
+.remember{display:flex;align-items:center;gap:8px;font-size:14px;line-height:20px}
+.remember input{appearance:auto;width:16px;height:16px;margin:0;accent-color:#2473fe;flex:none}
