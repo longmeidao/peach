@@ -101,6 +101,8 @@ const lucideIcons = new Map([
   ["notebook-pen", "notebook-pen"], ["search-x", "search-x"],
   ["file-archive", "file-archive"], ["file-audio", "file-audio"],
   ["file-stack", "file-stack"],
+  // 关注列表的表格视图：行列格子，和「默认视图」那枚网格并排。
+  ["table", "table"],
   // 名字和上游对不上的只有排序键：Peach 叫 `sort`，Lucide 叫 `sort-desc`。
   ["sort", "sort-desc"], ["arrow-up", "arrow-up"], ["arrow-down", "arrow-down"],
   ["calendar", "calendar"], ["download", "download"], ["monitor", "monitor"],

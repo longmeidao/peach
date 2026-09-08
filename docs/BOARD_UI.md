@@ -87,13 +87,32 @@ Radial Chart Card、Bar List Card、Heatmap 与 Sankey 的 Pro 源码**未取得
 | typography.json | 5b7eca25350829755eb15cb474ab009fd1f8b929e62d54182f648b4f2e97bf8e |
 | stat-cards.json | 3a140eeb9ab4ebc327e0e585f6cd6e4331be3e68694e72ec6aab80fd5adf705c |
 
+### 关注列表的表格视图（2026-09-08）
+
+取证来源是 https://www.boardui.com/components/data-table 的实时 DOM 与样式表：`_next/static/chunks/0n0ugaibgw__p.css`（SHA-256 `a856db5e9e1a58b2e32b7bfa6d7f1cab69dd09e4bd7ac22fc455dd10b525cf27`）里的 `.bui-table` 规则，以及公开注册表 `r/table.json`（`fc12a8f2f4012d9e983e0b9bbb10f9fe3288d74046566d2623d60e7056c50d88`）和 `r/data-table.json`（`613299eca0f448460a546f7959feab8dab19fbfd6e18670f7216ff304a1e3574`）。
+
+| 上游实测 | Peach 表格视图 |
+| --- | --- |
+| `th`／`td` 内边距 `--spacing`×3 / ×2.5，实测 10px 12px；`vertical-align:middle` | 同值 |
+| 字阶 `text-body-medium`，实测 14/20、500；表头 `--color-text-tertiary`，正文 `--color-text-primary` | 同值；Board 层用同名 token，旧版层用 `--muted`／`--ink` |
+| 表格摆在 `--color-background-primary-default` 面上；表头 `--color-background-secondary-default` 底，上下各一条 `--color-separator-border` | 同值。外框不用作者卡那块 `--ground`：Board 层把它定成 secondary，与表头同色 |
+| `tbody tr` 只有一条下边线，悬停不换底（实测 `rgba(0,0,0,0)`） | 同值 |
+| 行焦点 `data-focus-visible` 内嵌 2px 焦点环 | 未采用：Peach 的行不可聚焦，焦点落在格子里的控件上 |
+| `bui-table-sm` 紧凑档（10px 6px、`text-body-2-medium`）与表尾 Normal／Compact 分段器 | 不采用：视图开关本身就是密度选择 |
+| 表头首格全选复选框，带 indeterminate | 不采用：全选连着批量动作留在列表上方的选择栏，避免两个全选框 |
+| 分页底部 Previous／Next | 不采用：关注列表一次全量 |
+| 可排序表头带 `ChevronSortDown` 字形 | 表头两列接入工具栏已有的两种排序；方向字形沿用工具栏的 `arrow-up`／`arrow-down` |
+| 表格 `min-w-[1000px]`，外层 `overflow-x-auto` | `min-width:760px`，外层横向滚动，窄屏不折叠列 |
+
+选中行的样式上游页面没有暴露出来（复选框选中后 `tr` 无 `data-selected`），Peach 沿用 Board 层已有的 `.fsource.selected`。
+
 ## 验证记录
 
 侧栏采用 AI chat 公开变体的分组标题、展开叶项与尾部计数；分组箭头位于右侧，标题高 36px，展开复用共享 Collapse。媒体库入口适配公开 `DashboardUserMenu`：265px 面板、16px 圆角、10px 内边距，桌面右侧 8px、手机下方展开，150ms ease-out 淡入、缩放 .95 与 2px 模糊。独立按钮控制侧栏展开；媒体库图标打开选择面板，展开面板时入口显示轮廓。首页使用 20px 槽位的 Peach logo，按透明边距校准可见轮廓及文字起点，收起态按钮为 36px 正方形。媒体库与导航图标统一 20px、1.7px 线宽，无图标底色。设置固定在底部，与明暗开关并排；收起时明暗开关只显示目标主题图标。主题动画参考公开 `https://www.boardui.com/r/theme-toggle.json`：200ms 滑块与 820ms 柔边扩散，缓动 `cubic-bezier(.16,1,.3,1)`，减少动态效果时直接切换。
 
 媒体库使用 `[media.libraries]` 为声明路径命名，同名路径归为一库；`[media.library_icons]` 保存可选图标，自动模式按来源显示本地磁盘或本机提供的网盘图标。库选择限定作品列表与筛选项；来源 ID、挂载映射和 ledger 路径保留其业务含义。统计、口味和维护任务按整个部署汇总。预览只读，不保存真实配置。
 
-颜色按 [Board Color](https://www.boardui.com/components/color) 的文字、背景、边框和交互角色映射；字阶按 [Typography](https://www.boardui.com/components/typography) 使用正文 14/20、紧凑 13/18、说明 12/16、标题 20/26 与页面标题 32/44。本机打包 Inter Variable。统计、口味、关注管理和配置使用对应结构的骨架；其它页面复用实体、海报与网格骨架的 Board 样式。关注的宽松与紧凑模式共享作者分组、排序和多选；行高分别为 64px 和 48px，宽松模式支持作者收起；批量删除使用数量明确的确认框，选择与启用状态独立；最近观看标题单行中间省略并链接视频详情。
+颜色按 [Board Color](https://www.boardui.com/components/color) 的文字、背景、边框和交互角色映射；字阶按 [Typography](https://www.boardui.com/components/typography) 使用正文 14/20、紧凑 13/18、说明 12/16、标题 20/26 与页面标题 32/44。本机打包 Inter Variable。统计、口味、关注管理和配置使用对应结构的骨架；其它页面复用实体、海报与网格骨架的 Board 样式。关注的默认视图与表格视图共享作者分组、排序和多选；默认视图作者卡内行高 64px 并支持作者收起，表格视图一行一条来源、表头可排序；批量删除使用数量明确的确认框，选择与启用状态独立；最近观看标题单行中间省略并链接视频详情。
 
 详情使用并列观看进度卡与独立动作按钮；Esc 先退出详情、再收起侧栏。首页与实体页排序保持横向滚动，换批按钮沿用动画 SVG，采用中性 Board 按钮。
 

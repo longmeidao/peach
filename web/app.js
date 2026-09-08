@@ -411,7 +411,7 @@ const THEME_CHOICES=['system','light','dark'];
 const JAV_LAYOUTS=[['big','大图','maximize'],['small','小图','layout-grid']];
 /* 显示器用于跟随系统主题和详情页的画面分辨率。 */
 const THEME_OPTIONS=[['system','跟随系统','monitor'],['light','浅色','sun'],['dark','深色','moon']];
-const DEFAULT_SETTINGS={batchSize:60,defaultSort:'seed',sortDefaultsVersion:3,hoverDelaySeconds:5,seekSeconds:10,searchHistoryLimit:10,relatedLimit:20,javLayout:'big',javImage:'cover',followLayout:'cozy',peopleLayout:'big',ambientMode:true,miniplayer:true,theaterMode:false,theme:'system',groupCollapse:true,sidebarOrder:DEFAULT_SIDEBAR_ORDER};
+const DEFAULT_SETTINGS={batchSize:60,defaultSort:'seed',sortDefaultsVersion:3,hoverDelaySeconds:5,seekSeconds:10,searchHistoryLimit:10,relatedLimit:20,javLayout:'big',javImage:'cover',followLayout:'default',peopleLayout:'big',ambientMode:true,miniplayer:true,theaterMode:false,theme:'system',groupCollapse:true,sidebarOrder:DEFAULT_SIDEBAR_ORDER};
 let appSettings={...DEFAULT_SETTINGS};
 try{appSettings={...DEFAULT_SETTINGS,...JSON.parse(localStorage.getItem(SETTINGS_KEY)||'{}')}}catch(_e){}
 const allowedSetting=(value,allowed,fallback)=>allowed.includes(value)?value:fallback;
@@ -5518,7 +5518,7 @@ function followAuthorBlock(group){
   const name=followAuthorName(group);
   const legacy=localStorage.getItem('peach.legacy-ui')==='true';
   const key=String(group[0].author_key||group[0].id);
-  const collapsed=!legacy&&followListLayout()==='cozy'&&collapsedFollowAuthors.has(key);
+  const collapsed=!legacy&&collapsedFollowAuthors.has(key);
   const bad=group.filter(s=>s.last_status==='error'||s.last_status==='unauthorized').length;
   const sourceRows=group.map(source=>followSourceRow(source,!legacy)).join('');
   const sources=localStorage.getItem('peach.legacy-ui')==='true'
@@ -5539,30 +5539,76 @@ function followAuthorBlock(group){
 }
 
 const followSourceSelection=new Set();
-function followSourceRow(source,selectable=false){
+/* 一条来源在两种视图里是同一批格子：勾选、名字、站点、状态、上次检查、动作和错误。
+   默认视图把它们排成作者卡里的一行，表格视图把每格放进一个 <td>；勾选、检查、移除
+   的 data 属性两边一样，接线不分视图。 */
+function followSourceCells(source,selectable=false){
   const state=source.last_status||'未检查';
   const bad=state==='error'||state==='unauthorized';
   const badge=!source.enabled?'paused':state==='ok'?'ok':bad?'error':'none';
   const stateTitle=source.history_exhausted?'没有更多':!source.enabled?'已暂停':state==='ok'?'正常':bad?'检查失败':'未检查';
-  const statusChip=`<span class="sbadge ${badge}" title="${esc(stateTitle)}"><i aria-hidden="true"></i><span>${esc(stateTitle)}</span></span>`;
-  return `<div class="frow fsource${bad?' bad':''}${source.enabled?'':' disabled'}">
-    ${selectable?`<label class="fchannelcheck">${checkboxHtml(`data-follow-select="${source.id}" ${followSourceSelection.has(source.id)?'checked':''} aria-label="选择 ${esc(source.label)}"`)}</label>`:`<label class="fchannelcheck" title="${source.enabled?'参与检查更新':'暂停检查更新'}">${checkboxHtml(
+  const status=`<span class="sbadge ${badge}" title="${esc(stateTitle)}"><i aria-hidden="true"></i><span>${esc(stateTitle)}</span></span>`;
+  const check=selectable?`<label class="fchannelcheck">${checkboxHtml(`data-follow-select="${source.id}" ${followSourceSelection.has(source.id)?'checked':''} aria-label="选择 ${esc(source.label)}"`)}</label>`:`<label class="fchannelcheck" title="${source.enabled?'参与检查更新':'暂停检查更新'}">${checkboxHtml(
       `data-follow-enabled="${source.id}" ${source.enabled?'checked':''}`
-      +` aria-label="${source.enabled?'暂停':'启用'} ${esc(source.label)} 的更新检查"`)}</label>`}
-    <b><a class="fsourcelink externallink" href="${esc(source.url)}" target="_blank"
-      rel="noreferrer noopener" title="打开原来源">${esc(source.label)}${icon('external-link','externalmark')}</a></b>
-    <span class="fmeta fprovider" title="${esc(source.provider_label)}">${sourceIcon(source.provider)
-      }<span>${esc(source.provider_label)}</span>${selectable?statusChip:''}</span>
-    <span class="fmeta fchecked">${source.last_checked_at?localTimeHtml(source.last_checked_at):'未检查'}</span>
-    ${selectable?'':statusChip}
-    <span class="fsourceactions">
+      +` aria-label="${source.enabled?'暂停':'启用'} ${esc(source.label)} 的更新检查"`)}</label>`;
+  const name=`<b><a class="fsourcelink externallink" href="${esc(source.url)}" target="_blank"
+      rel="noreferrer noopener" title="打开原来源">${esc(source.label)}${icon('external-link','externalmark')}</a></b>`;
+  const provider=extra=>`<span class="fmeta fprovider" title="${esc(source.provider_label)}">${sourceIcon(source.provider)
+      }<span>${esc(source.provider_label)}</span>${extra}</span>`;
+  const checked=`<span class="fmeta fchecked">${source.last_checked_at?localTimeHtml(source.last_checked_at):'未检查'}</span>`;
+  const actions=`<span class="fsourceactions">
       <button class="frowicon" data-follow-check="${source.id}" title="检查更新"
         ${source.enabled?'':'disabled'}
         aria-label="检查 ${esc(source.label)} 的更新">${icon('refresh-cw')}</button>
       <button class="frowicon danger" data-follow-remove="${source.id}" title="移除来源"
         aria-label="移除 ${esc(source.label)}">${icon('trash')}</button>
-    </span>
-    ${source.last_error?`<p class="frowerr">${esc(source.last_error)}</p>`:''}</div>`;
+    </span>`;
+  const error=source.last_error?`<p class="frowerr">${esc(source.last_error)}</p>`:'';
+  return {className:`fsource${bad?' bad':''}${source.enabled?'':' disabled'}`,check,name,provider,status,checked,actions,error};
+}
+function followSourceRow(source,selectable=false){
+  const cell=followSourceCells(source,selectable);
+  return `<div class="frow ${cell.className}">
+    ${cell.check}
+    ${cell.name}
+    ${cell.provider(selectable?cell.status:'')}
+    ${cell.checked}
+    ${selectable?'':cell.status}
+    ${cell.actions}
+    ${cell.error}</div>`;
+}
+
+/* 表格视图照 boardui.com/components/data-table（取证见 docs/BOARD_UI.md）：一行一条来源，
+   作者列每行都写，表头两列能点，点的是工具栏里已有的那两种排序。它有而这里不要的三样：
+   页码——列表本来就是全量；表尾的密度档——视图开关自己就是；表头里的全选——全选连着
+   批量动作留在上面那条选择栏，两个全选框会互相打架。排序方向沿用工具栏那对箭头字形。 */
+const FOLLOW_TABLE_SORT={author:'name',checked:'checked'};
+function followTableHeader(key,label){
+  const sort=FOLLOW_TABLE_SORT[key],active=followManageSort===sort;
+  const ascending=active&&followManageDir==='asc';
+  return `<th scope="col" aria-sort="${active?(ascending?'ascending':'descending'):'none'}"><button type="button" class="ftsort" data-follow-table-sort="${sort}" aria-label="按${label}排序">${label}${icon(ascending?'arrow-up':'arrow-down')}</button></th>`;
+}
+function followSourceTable(groups,selectable){
+  const rows=groups.map(group=>{
+    const name=followAuthorName(group);
+    return group.map(source=>{
+      const cell=followSourceCells(source,selectable);
+      return `<tr class="${cell.className}">
+        <td class="ftcheck">${cell.check}</td>
+        <td class="ftauthor"><span class="ftauthorcell">${followAuthorAvatar(group)}<span>${esc(name)}</span></span></td>
+        <td class="ftname">${cell.name}${cell.error}</td>
+        <td class="ftprovider">${cell.provider('')}</td>
+        <td class="ftstatus">${cell.status}</td>
+        <td class="ftchecked">${cell.checked}</td>
+        <td class="ftactions">${cell.actions}</td></tr>`;
+    }).join('');
+  }).join('');
+  return `<div class="ftablewrap"><table class="ftable"><thead><tr>
+    <th scope="col"><span class="sr-only">${selectable?'选择':'启用'}</span></th>
+    ${followTableHeader('author','作者')}
+    <th scope="col">来源</th><th scope="col">站点</th><th scope="col">状态</th>
+    ${followTableHeader('checked','上次检查')}
+    <th scope="col"><span class="sr-only">操作</span></th></tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
 function followAliasManager(groups,suggestions){
@@ -5644,29 +5690,23 @@ function followCredentialRow(row){
     </summary>${body}</details>`;
 }
 
-/* 关注列表以同一来源集合、作者顺序和选择状态提供两种疏密排版。 */
-const FOLLOW_LAYOUTS=[['cozy','宽松','layout-grid'],['compact','紧凑','list-filter']];
+/* 关注列表的两种视图共用同一份来源集合、作者顺序和勾选：默认视图按作者分卡，
+   表格视图一行一条来源。 */
+const FOLLOW_LAYOUTS=[['default','默认视图','layout-grid'],['table','表格视图','table']];
 function followListLayout(){
-  return allowedSetting(appSettings.followLayout,FOLLOW_LAYOUTS.map(([k])=>k),'cozy');
+  return allowedSetting(appSettings.followLayout,FOLLOW_LAYOUTS.map(([k])=>k),'default');
 }
 function followLayoutButtons(){
-  return iconSwitchHtml('follow-layout','关注列表版式',FOLLOW_LAYOUTS,followListLayout(),
+  return iconSwitchHtml('follow-layout','关注列表视图',FOLLOW_LAYOUTS,followListLayout(),
     {attr:'data-follow-layout'});
 }
 function setFollowListLayout(value){
   appSettings.followLayout=value;
   saveSettings();
-  // 疏密只改变排版，保留来源顺序、选择与作者状态。
-  const root=$('#stats');
-  root.querySelectorAll('.fsources').forEach(node=>node.dataset.layout=followListLayout());
-  root.querySelectorAll('[data-follow-author-toggle]').forEach(button=>{
-    const expanded=value==='compact'||!collapsedFollowAuthors.has(button.dataset.followAuthorToggle);
-    if((button.getAttribute('aria-expanded')==='true')!==expanded){
-      const wasCollapsed=collapsedFollowAuthors.has(button.dataset.followAuthorToggle);
-      button.click();
-      if(wasCollapsed)collapsedFollowAuthors.add(button.dataset.followAuthorToggle);else collapsedFollowAuthors.delete(button.dataset.followAuthorToggle);
-    }
-  });
+  // 两种视图的 DOM 不同，切换走排序那条重画路径：拿手里这份 followData 重画，不重取接口、
+  // 不换骨架。勾选记在 followSourceSelection 里，收起的作者记在 collapsedFollowAuthors 里，
+  // 重画后都还在。
+  renderFollowManage(followCredentials||{});
 }
 
 /* 版式判据来自 docs/reference-sources.json 的 vercel-report-design：
@@ -5675,7 +5715,11 @@ function setFollowListLayout(value){
    行与行之间也只用分隔线，不各自套框。控件尺寸按实测 Geist：32px 高、6px 圆角、14px。 */
 function renderFollowManage(credentials){
   const sources=followData.sources||[],counts=followData.counts||{};
-  const groupedSources=followAuthorGroups(sources).map(followAuthorBlock).join('');
+  const legacy=localStorage.getItem('peach.legacy-ui')==='true';
+  const groups=followAuthorGroups(sources);
+  const sourceList=followListLayout()==='table'?followSourceTable(groups,!legacy)
+    :legacy?groups.map(followAuthorBlock).join('')
+    :`<div class="board-follow-list">${groups.map(followAuthorBlock).join('')}</div>`;
   const broken=sources.filter(s=>s.last_status==='error'||s.last_status==='unauthorized');
   const creds=(credentials.providers||[]);
   const needCred=creds.filter(c=>c.requirement==='required'&&!(c.present&&!c.missing.length));
@@ -5714,8 +5758,7 @@ function renderFollowManage(credentials){
           <button class="fbtn" data-follow-view>${icon('rss')}去看更新</button></div>
         ${followCheckReport?followCheckFailNote(followCheckReport):''}
         ${sources.length&&localStorage.getItem('peach.legacy-ui')!=='true'?`<div class="board-follow-selection"><label>${checkboxHtml('data-follow-select-all aria-label="全选来源"')}全选</label><span data-follow-selected-count>已选 0</span><button class="fbtn" data-follow-check="" data-follow-sources="" data-follow-selection-action disabled>检查所选</button><button class="fbtn" data-follow-selection-enabled="true" data-follow-selection-action disabled>启用</button><button class="fbtn" data-follow-selection-enabled="false" data-follow-selection-action disabled>暂停</button><button class="fbtn danger" data-follow-selection-remove data-follow-selection-action disabled>删除</button></div>`:''}
-        ${sources.length?`<div class="frows fsources" data-layout="${followListLayout()}">${
-          localStorage.getItem('peach.legacy-ui')==='true'?groupedSources:`<div class="board-follow-list">${groupedSources}</div>`}</div>
+        ${sources.length?`<div class="frows fsources" data-layout="${followListLayout()}">${sourceList}</div>
           ${counts.new?`<div class="fsecfoot"><p class="fnote fbulkrow"><span class="fbulkcounts">未看 ${counts.new} · 已看 ${counts.seen||0}
             · 已保存 ${counts.saved||0} · 已忽略 ${counts.ignored||0}</span>
             <span class="fbulk"><button class="fbtn" data-follow-bulk="seen">全部标记已看</button>
@@ -5880,6 +5923,13 @@ function wireFollowManage(creds=[]){
     followManageDir=followManageDir==='asc'?'desc':'asc';
     routeFollowManageSort();
   };
+  // 表格视图的表头：再点当前那列是翻方向，点另一列是换列并回到该列的默认方向。
+  root.querySelectorAll('[data-follow-table-sort]').forEach(button=>button.onclick=()=>{
+    const sort=button.dataset.followTableSort;
+    if(followManageSort===sort)followManageDir=followManageDir==='asc'?'desc':'asc';
+    else{followManageSort=sort;followManageDir=FOLLOW_SORT_DEFAULT_DIR[sort]||'desc'}
+    routeFollowManageSort();
+  });
   wireIconSwitch(root,'data-follow-layout',setFollowListLayout);
   renderFollowSrcFilter(root.querySelector('#followSrcFilter'),creds);
   const tooltipTrigger=root.querySelector('[data-fdesc-tooltip]');

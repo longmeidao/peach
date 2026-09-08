@@ -6766,7 +6766,10 @@ class WebUiSourceTests(unittest.TestCase):
             ".fbulkcounts",
             ".fchip", ".followpageaction .fmeta", ".fpickactions [data-pick-state]",
             ".fsechead .fmeta",
-            ".frow>b", ".fvkind", ".idname", ".kv>span:first-child",
+            ".frow>b",
+            # 表格视图的来源名一格：和默认视图那枚 `.frow>b` 是同一段语义文本，只是换了容器。
+            ".ftable .ftname>b",
+            ".fvkind", ".idname", ".kv>span:first-child",
             ".meta .t", ".meta .who", ".mixcopy b,.mixcopy span",
             # 小窗信息栏与播放器右键菜单：标题、来源和菜单标签都是语义文本，尾部省略。
             ".miniplayertitle", ".miniplayersub", ".playermenuitem>span",
