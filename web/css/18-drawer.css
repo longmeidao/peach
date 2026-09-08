@@ -59,7 +59,7 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
    分辨「你在这儿」全靠颜色。 */
 .dnav button:hover{background:var(--hover)}
 .dnav button[aria-pressed="true"]{background:var(--hover);color:var(--ink)}
-.dnav svg{width:20px;height:20px;flex:none;stroke:currentColor;fill:none;stroke-width:1.7;
+.dnav svg{width:20px;height:20px;flex:none;stroke:currentColor;fill:none;stroke-width:2;
   stroke-linecap:round;stroke-linejoin:round}
 .drawer .chip{font-size:var(--fs-xs);padding:4px 10px}
 .scrim{position:fixed;inset:0;z-index:95;background:rgba(0,0,0,.42);opacity:0;pointer-events:none;
@@ -74,7 +74,7 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 .chips{display:flex;flex-wrap:wrap;gap:4px}
 .chip img,.chip>svg{width:14px;height:14px;border-radius:var(--badge-radius);object-fit:contain;flex:none}
 .source-icon{display:block!important;width:16px!important;height:16px!important;min-width:16px;opacity:1!important;filter:none!important;object-fit:contain}
-.chip>svg{stroke:currentColor;fill:none;stroke-width:1.7}
+.chip>svg{stroke:currentColor;fill:none;stroke-width:2}
 .chip{display:inline-flex;align-items:center;gap:6px;padding:var(--tag-pad-y) var(--tag-pad-x);border:1px solid var(--line);
   border-radius:var(--tag-radius);background:transparent;cursor:pointer;font-size:var(--fs-xs)}
 .chip:hover{color:var(--ink)}
@@ -95,8 +95,7 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 .chip .n{font-size:var(--fs-xs);color:var(--muted);font-variant-numeric:tabular-nums}
 .cost{width:5px;height:5px;border-radius:50%;flex:none}
 .cost.free{background:var(--keep)} .cost.metered{background:var(--meter)}
-.duration-filter{padding:3px 2px 8px}.duration-readout{display:flex;justify-content:space-between;align-items:center;
-  color:var(--ink-2);font-size:var(--fs-xs);margin-bottom:8px}.duration-readout b{color:var(--ink);font-weight:600}
+.duration-filter{padding:3px 2px 8px}
 /* 时长拉条是控件不是进度条，蓝只剩它的焦点环：已选段填 --ink，抓手填 --ground 再描一圈
    --ink。两个 token 随主题翻面的方向相反，所以两档读出来是同一句话——抓手永远和它坐落
    的那张面同色，像是从墨色轨道上抠下来的一段。单给抓手填 --ink 就不成立：浅色下它是压在

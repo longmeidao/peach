@@ -145,7 +145,7 @@
 .fbtn[data-srcfilter-toggle]:hover:not(:disabled),.fbtn.fmanagedir:hover:not(:disabled){border-color:var(--field-ring-hover);background:var(--ground)}
 .fbtn[data-srcfilter-toggle][aria-expanded="true"]{border-color:var(--field-ring-focus);box-shadow:0 0 0 4px var(--field-glow)}
 .fbtn.small{height:26px;padding:0 10px;font-size:var(--fs-sm)}
-.fbtn svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.8}
+.fbtn svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2}
 
 .faddform{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:start}
 /* 没有按钮可以变灰，查找中的唯一凭据就是前缀位上的 Spinner——输入框自己必须还能改。 */
@@ -276,7 +276,7 @@ th[aria-sort="ascending"] .ftsort svg,th[aria-sort="descending"] .ftsort svg{opa
 .faliasmanager .fcollapsebody{padding:4px 16px 16px}
 .faliassuggestions,.faliasrows{display:grid;gap:6px;margin-top:10px}
 .faliassuggest,.faliasrow{display:flex;align-items:center;gap:10px;min-width:0}
-.faliassuggest>span,.faliasrow>span{display:flex;align-items:center;gap:7px;min-width:0;flex:1;flex-wrap:wrap}
+.faliassuggest>span:not(.favatar),.faliasrow>span:not(.favatar){display:flex;align-items:center;gap:7px;min-width:0;flex:1;flex-wrap:wrap}
 .faliassuggest i{font-style:normal;color:var(--muted)}
 .faliassuggest small{color:var(--muted)}
 .faliasform{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;gap:7px;margin-top:10px}

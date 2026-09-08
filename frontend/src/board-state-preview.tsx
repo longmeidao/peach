@@ -34,7 +34,7 @@ function StatePreview() {
       {!['running','preparing','disconnected','retrying','reconnected','failed'].includes(state)&&<p>此状态不常驻全局横幅。</p>}
     </section>
     <section><h2>数据管理 · 扫描与采集</h2>
-      {state==='loading'?<Html html={cleanupSkeletonHtml()}/>:<div class="cleanupgrid"><section id="libraryProcessing" class="cleanupfieldset"><LibraryProcessing key={`${state}-${revision}-${value}`} data={data} error={problem} preview toast={()=>{}}/></section></div>}
+      {state==='loading'?<Html html={cleanupSkeletonHtml()}/>:<div class="cleanupgrid"><div id="libraryProcessing" class="cleanupscraping"><LibraryProcessing key={`${state}-${revision}-${value}`} data={data} error={problem} preview toast={()=>{}}/></div></div>}
       {state==='complete'&&<Html html={noteHtml('已完成扫描与资料采集',{variant:'success',label:'任务完成'})}/>}
       {state==='expired'&&<Html html={noteHtml('任务状态已失效，请重新发起任务',{variant:'warning'})}/>}
       {state==='paused'&&<span class="sbadge paused">已暂停</span>}

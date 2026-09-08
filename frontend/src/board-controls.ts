@@ -80,11 +80,17 @@ export function wireBoardSegments(root:ParentNode) {
 
 /** 排名条与雷达图进入可见区域后才从零长出（1.2 秒，与统计圆环同一条曲线）；减少动态效果时直接显示。 */
 export function wireGrowingCharts(root:ParentNode) {
-  const selector='.board-ranked-chart,.board-radar,.tasteranks';
+  const selector='.board-ranked-chart,.board-radar,.tasteranks,.board-heat-card,.board-sankey-card';
   const charts=[...root.querySelectorAll<HTMLElement>(selector)];
   if(root instanceof HTMLElement&&root.matches(selector))charts.push(root);
   charts.forEach(chart=>{
     if(chart.hasAttribute('data-board-chart'))return;chart.dataset.boardChart='true';
+    /* 长完就钉住终态：这些图表大多住在 tab 面板里，面板一藏一显 display 就换过一轮，
+       动画会跟着重头再放。等同一棵子树里没有还在跑的动画再钉，避免掐掉后半段。 */
+    chart.addEventListener('animationend',()=>{
+      if(chart.getAnimations?.({subtree:true}).some(animation=>animation.playState==='running'))return;
+      chart.classList.add('board-chart-settled');
+    });
     const reveal=()=>chart.classList.add('board-chart-visible');
     if(typeof IntersectionObserver==='undefined'||matchMedia('(prefers-reduced-motion: reduce)').matches){reveal();return}
     const observer=new IntersectionObserver(entries=>{if(entries.some(entry=>entry.isIntersecting)){observer.disconnect();reveal()}},{threshold:.15});

@@ -76,7 +76,7 @@
 .emptystate{grid-column:1/-1;display:grid;justify-items:center;align-content:center;gap:8px;box-sizing:border-box;width:100%;min-height:320px;padding:48px 24px;text-align:center;border:1px solid var(--line-soft);border-radius:var(--floating-radius);background:var(--ground)}
 .emptystate.compact{min-height:220px;border:0;background:transparent}
 .emptystate .es-icon{display:grid;place-items:center;box-sizing:border-box;width:54px;height:54px;padding:10px;border-radius:var(--floating-radius);border:1px solid var(--border-15);color:var(--muted);margin-bottom:8px}
-.emptystate .es-icon svg{width:32px;height:32px;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.emptystate .es-icon svg{width:32px;height:32px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .emptystate .es-copy{display:grid;justify-items:center;gap:8px}
 .emptystate h3{margin:0;font-size:var(--fs-md);font-weight:600;color:var(--ink)}
 .emptystate p{margin:0;max-width:340px;font-size:var(--fs-sm);line-height:1.55;color:var(--muted)}
@@ -241,8 +241,8 @@ body:has(#batchbar:not([hidden])) #stage{padding-bottom:180px}
    给它们切「封面」没有意义。 */
 .javbar{display:flex;align-items:center;gap:8px;padding:0 0 10px;flex-wrap:wrap}
 .javbar[hidden]{display:none}
-.javbar button{width:34px;height:30px;display:inline-grid;place-items:center;border-radius:var(--control-radius);border:1px solid var(--overlay-10);background:transparent;color:var(--muted);cursor:pointer;padding:0}.javbar button svg{width:17px;height:17px;stroke:currentColor;fill:none;stroke-width:1.8}.javbar button:hover{color:var(--ink)}.javbar button[aria-pressed="true"]{background:var(--picked);color:var(--ink)}
-.iconswitch{min-width:0;margin:0;padding:3px;border:1px solid var(--line-soft);border-radius:var(--surface-radius);background:var(--overlay-5)}.iconswitch label{position:relative;display:inline-grid;width:34px;height:28px;place-items:center;border-radius:var(--control-radius);color:var(--muted);cursor:pointer}.iconswitch input{position:absolute;inline-size:1px;block-size:1px;opacity:0}.iconswitch label:hover{color:var(--ink)}.iconswitch label:has(input:checked){background:var(--surface);color:var(--ink);box-shadow:0 1px 2px #0005}.iconswitch label:has(input:focus-visible){outline:2px solid var(--tungsten);outline-offset:2px}.iconswitch svg{display:block;width:17px;height:17px;stroke:currentColor;fill:none;stroke-width:1.8}
+.javbar button{width:34px;height:30px;display:inline-grid;place-items:center;border-radius:var(--control-radius);border:1px solid var(--overlay-10);background:transparent;color:var(--muted);cursor:pointer;padding:0}.javbar button svg{width:17px;height:17px;stroke:currentColor;fill:none;stroke-width:2}.javbar button:hover{color:var(--ink)}.javbar button[aria-pressed="true"]{background:var(--picked);color:var(--ink)}
+.iconswitch{min-width:0;margin:0;padding:3px;border:1px solid var(--line-soft);border-radius:var(--surface-radius);background:var(--overlay-5)}.iconswitch label{position:relative;display:inline-grid;width:34px;height:28px;place-items:center;border-radius:var(--control-radius);color:var(--muted);cursor:pointer}.iconswitch input{position:absolute;inline-size:1px;block-size:1px;opacity:0}.iconswitch label:hover{color:var(--ink)}.iconswitch label:has(input:checked){background:var(--surface);color:var(--ink);box-shadow:0 1px 2px #0005}.iconswitch label:has(input:focus-visible){outline:2px solid var(--tungsten);outline-offset:2px}.iconswitch svg{display:block;width:17px;height:17px;stroke:currentColor;fill:none;stroke-width:2}
 
 /* 共用勾选框：站内此前一半地方用原生 checkbox（只调了 accent-color，未选中态由浏览器
    自绘、没有悬停反馈），另一半用关注列表自绘的那份，两种画法并排出现。统一成这一份。

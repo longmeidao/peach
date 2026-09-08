@@ -65,26 +65,28 @@ export function LibraryProcessing({ data, error, toast, onComplete, mode, monito
       value:state.checked || 0,...(state.status === 'running' && state.total !== undefined ? {max:state.total} : {}),
     })}} />;
   }
+  /* 进度条讲的是卡片上那个按钮此刻在做什么，留在卡片里；结果和故障讲的是这一趟任务
+     的下场，挂在卡片外面，和链接管理、资源同步那两块同一个写法。 */
   return <>
-    <div class="geist-fieldset-content library-processing">
-      <div dangerouslySetInnerHTML={{ __html: fieldsetTitle('cleanupScrapingTitle', '扫描与采集') }} />
-      <p>扫描媒体文件夹，导入已有资料，采集缺失信息。</p>
-      <div aria-live="polite">
-        {state.status === 'running' && <>
-          <div dangerouslySetInnerHTML={{ __html: state.total
-            ? jobProgressHtml(`${state.stage || '正在处理'} · ${state.checked || 0} / ${state.total} 个视频`, state.checked || 0, state.total)
-            : loadingDotsHtml(state.stage || '正在处理') }} />
-        </>}
-        {(problem || state.status === 'failed') && <div role="alert" onClick={event=>{if((event.target as HTMLElement).closest('[data-note-action]'))void start();}} dangerouslySetInnerHTML={{ __html: noteHtml(problem || state.error || '处理未完成，请重试', { variant: 'error',filled:true,actionLabel:state.status==='failed'?'重试未完成项':'' }) }} />}
-        {state.status === 'failed' && !!state.issues?.length && <ul>{state.issues.slice(0, 20).map(issue =>
-          <li>{issue.asset_id ? <a href={`/item/${issue.asset_id}`}>查看视频</a> : null}{issue.asset_id ? '：' : ''}{issue.message}</li>)}</ul>}
-        {receipt && <div class="library-processing-result" dangerouslySetInnerHTML={{ __html: noteHtml(`已扫描 ${state.scanned || 0} 个文件，识别 ${state.identified || 0} 个番号，整理 ${state.candidates || 0} 组资料候选。`, { variant: 'success', label: '处理完成' }) }} />}
+    <section class="cleanupfieldset" data-geist-fieldset aria-labelledby="cleanupScrapingTitle">
+      <div class="geist-fieldset-content library-processing">
+        <div dangerouslySetInnerHTML={{ __html: fieldsetTitle('cleanupScrapingTitle', '扫描与采集') }} />
+        <p>扫描媒体文件夹，导入已有资料，采集缺失信息。</p>
+        {state.status === 'running' && <div aria-live="polite" dangerouslySetInnerHTML={{ __html: state.total
+          ? jobProgressHtml(`${state.stage || '正在处理'} · ${state.checked || 0} / ${state.total} 个视频`, state.checked || 0, state.total)
+          : loadingDotsHtml(state.stage || '正在处理') }} />}
       </div>
+      <footer class="geist-fieldset-footer" data-geist-fieldset-footer>
+        <a class="geist-button" href="/scraping">采集来源</a>
+        {!!state.candidates && <a class="geist-button" href="/review">复核资料</a>}
+        {state.status !== 'failed' && <button ref={button} type="button" class="geist-button primary" onClick={() => void start()}>扫描并补全资料</button>}
+      </footer>
+    </section>
+    <div class="library-processing-outcome" aria-live="polite">
+      {(problem || state.status === 'failed') && <div role="alert" onClick={event=>{if((event.target as HTMLElement).closest('[data-note-action]'))void start();}} dangerouslySetInnerHTML={{ __html: noteHtml(problem || state.error || '处理未完成，请重试', { variant: 'error',filled:true,actionLabel:state.status==='failed'?'重试未完成项':'' }) }} />}
+      {state.status === 'failed' && !!state.issues?.length && <ul>{state.issues.slice(0, 20).map(issue =>
+        <li>{issue.asset_id ? <a href={`/item/${issue.asset_id}`}>查看视频</a> : null}{issue.asset_id ? '：' : ''}{issue.message}</li>)}</ul>}
+      {receipt && <div class="library-processing-result" dangerouslySetInnerHTML={{ __html: noteHtml(`已扫描 ${state.scanned || 0} 个文件，识别 ${state.identified || 0} 个番号，整理 ${state.candidates || 0} 组资料候选。`, { variant: 'success', label: '处理完成' }) }} />}
     </div>
-    <footer class="geist-fieldset-footer" data-geist-fieldset-footer>
-      <a class="geist-button" href="/scraping">采集来源</a>
-      {!!state.candidates && <a class="geist-button" href="/review">复核资料</a>}
-      {state.status !== 'failed' && <button ref={button} type="button" class="geist-button primary" onClick={() => void start()}>扫描并补全资料</button>}
-    </footer>
   </>;
 }

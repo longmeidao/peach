@@ -1899,7 +1899,7 @@ class WebUiSourceTests(unittest.TestCase):
                                 "gap:2px;min-width:0}")
         self.assertPageContains("svg.externalmark{width:1.15em;height:1.15em;flex:none;"
                                 "align-self:center;")
-        self.assertPageContains("stroke:currentColor;fill:none;stroke-width:2.25;"
+        self.assertPageContains("stroke:currentColor;fill:none;stroke-width:2;"
                                 "stroke-linecap:round;stroke-linejoin:round}")
         # 尺寸和间距不许再按页面分档：差的不是 1px，是同一个意思有八个长相。
         for stale in (".fsourcelink svg{", ".fcredget svg{", ".fpicksearch b svg{",
@@ -4501,7 +4501,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".reviewpickitem{display:inline-flex;align-items:center;flex:none;margin:0;user-select:none}")
         self.assertNotIn("reviewSelectionController", self.page)
         self.assertNotIn("selection.active=selectMode", self.page)
-        self.assertPageContains(".reviewbulktoolbar{width:100%;padding-block:0;margin-bottom:0}")
+        self.assertPageContains(".reviewbulktoolbar{padding-block:0;margin-bottom:0}")
         self.assertPageContains('class="reviewcontrols"')
         self.assertPageContains("updateReviewSticky($('.review'))")
         self.assertPageContains('.reviewgroupbar.is-stuck h3{margin-right:0}')
@@ -4902,7 +4902,7 @@ class WebUiSourceTests(unittest.TestCase):
                         "CENTERED_CLEANUP_PAGES.has(decodeURIComponent(location.pathname)));")
         self.assertPageLacks("document.body.classList.toggle('cleanup-layout',current==='cleanup')")
         # 窄列本体仍在 hub 上，这两条规则本身不动。
-        self.assertPageContains(".cleanuppage{width:min(812px,100%);margin:0 auto}")
+        self.assertPageContains(".cleanuppage{width:min(812px,100%);margin:0 auto;display:grid;gap:32px}")
         self.assertPageContains(
             ".cleanup-layout .geist-breadcrumb,.cleanup-layout .managetitle,.cleanup-layout .pagelede")
 
@@ -5379,10 +5379,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn("body.configuration-layout .configpage :is(.gselectfield,.geist-input,input.geist-input,.board-icon-trigger),body .followmanage .faddform .geist-search input{background:var(--color-background-primary-default)}", board)
         self.assertIn("body .review{width:100%;max-width:var(--board-content);margin:0 auto;box-sizing:border-box}", board)
         self.assertIn("body .review .reviewcontrols{position:static;", board)
-        self.assertIn("body .review .reviewbulktoolbar{position:sticky;top:var(--topH);z-index:60;margin:0 -16px 16px;padding:12px 16px;", board)
-        self.assertIn("body .review .reviewgroupbar{margin-inline:-16px;padding-inline:16px}", board)
-        self.assertIn("body .review:has(.reviewgroupbar.is-stuck) .reviewbulktoolbar.is-stuck{border-radius:20px 20px 0 0;box-shadow:inset 0 1px 0 var(--glass-rim)}", board)
-        self.assertIn("body .review .reviewgroupbar.is-stuck{background:var(--glass-fill);border-radius:0 0 20px 20px;", board)
+        self.assertIn("body .review .reviewbulktoolbar{position:sticky;top:var(--topH);z-index:60;width:auto;", board)
+        self.assertIn("body .review .reviewgroupbar{margin-inline:calc(-1 * var(--review-edge,16px));", board)
         self.assertIn(".closestage,.closestage:hover{background:rgba(0,0,0,.6);color:#fff}", board)
         self.assertIn("body .batchbar button[hidden],body .batchbar button.danger[hidden]{display:none}", board)
         self.assertIn("body .batchbar button.danger{", board)
@@ -5442,7 +5440,7 @@ class WebUiSourceTests(unittest.TestCase):
                       "border-radius:10px;background:var(--color-background-primary-default);transition:background-color .15s ease,border-color .15s ease}", board)
         self.assertIn(".followmanage .board-follow-list .fsource.frow:hover{background:var(--color-background-primary-hover)}", board)
         self.assertIn(".followmanage .fsechead .iconswitch[data-board-segments]>label{width:34px;height:30px;border-radius:7px}", board)
-        self.assertIn(".followmanage .fsechead .iconswitch svg{width:16px;height:16px;stroke-width:1.8}", board)
+        self.assertIn(".followmanage .fsechead .iconswitch svg{width:16px;height:16px;stroke-width:2}", board)
         self.assertIn("--color-border-checkbox-default:#d4d4d4;--color-border-checkbox-hover:#a3a3a3", board)
         self.assertIn("--color-border-checkbox-default:#404040;--color-border-checkbox-hover:#737373", board)
         self.assertIn(".pcheck:hover>span,label:hover>.pcheck>span{border-color:var(--color-border-checkbox-hover);background:var(--color-background-primary-default)}", board)
@@ -5471,8 +5469,9 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn(".count .sorts .iconswitch[data-board-segments]>label,.entitycollectionhead .sorts .iconswitch[data-board-segments]>label"
                       "{height:24px;min-height:24px;width:30px;padding:0;border-radius:5px}", board)
         self.assertIn(".count .sorts,.entitycollectionhead .sorts{padding:0 2px}", board)
-        self.assertIn(".insighttabs,.reviewtabs{display:flex;align-items:center;gap:4px;width:100%;", board)
-        self.assertIn(".insighttabs button[aria-selected=\"true\"],.reviewtabs button[aria-selected=\"true\"]{background:none;color:var(--tungsten);font:var(--board-body-medium)}", board)
+        # 下划线只归洞察页；复核分类是次级菜单，判据在 test_the_review_categories_look_like_a_secondary_menu。
+        self.assertIn(".insighttabs{display:flex;align-items:center;gap:4px;width:100%;", board)
+        self.assertIn(".insighttabs button[aria-selected=\"true\"]{background:none;color:var(--tungsten);font:var(--board-body-medium)}", board)
         self.assertIn(".insightpanel>header h3,.insightcopy>span{margin:0;font:var(--board-heading);color:var(--color-text-primary)}", board)
         self.assertIn("body .tasterank:is(button):hover,body .board-rank-list .tasterank:hover{border-color:transparent;"
                       "background:transparent}", board)
@@ -7183,6 +7182,9 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('<symbol id="i-folder-cog" viewBox="0 0 24 24">')
         # 配置页每行文件夹的「选择文件夹」弹系统对话框去挑：`folder-search`。`folder-open` 归「打开位置」。
         self.assertPageContains('<symbol id="i-folder-search" viewBox="0 0 24 24">')
+        # 数据管理页「空文件夹」那张卡说的是目录本身：不是打开它，也不是去里面找。
+        self.assertPageContains("'空文件夹':'folder',")
+        self.assertPageContains('<symbol id="i-folder" viewBox="0 0 24 24">')
         self.assertIn('href="#i-folder-search"', (Path(__file__).resolve().parents[1] / "frontend" / "src" / "islands" / "configuration.tsx")
                       .read_text(encoding="utf-8"))
         # 主题三档各归各的：太阳是浅色、月亮是深色；跟随系统那档说的是「照这台设备走」，
@@ -7222,6 +7224,242 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn('viewBox: "-7.3 32.8 262.5 182.9"', generator)
         self.assertIn('viewBox: "10.4 10.5 259.2 259.2"', generator)
         self.assertIn('const SPERM_VIEWBOX = "1.5 1.2 21.2 21.2";', generator)
+
+    def test_every_glyph_is_drawn_at_one_stroke_weight(self):
+        """字形描边只有一档：2。粗细不是尺寸的调节旋钮。
+
+        Lucide、Phosphor、Remix 都按 24 的画格、2 的描边出图，尺寸差异交给
+        `width`/`height` 表达。同一行里并排的两枚字形必须一样粗，包括那些自己
+        不写描边、会落到 SVG 默认 1 的规则。
+
+        例外都不是字形：勾选、仪表弧、进度环、雷达底格和圆环本身，它们的线宽是
+        图形语义的一部分，逐条点名。
+        """
+        # 线宽属于图形本身的那几处：勾的笔画、弧的粗细、底格的细线。
+        # 勾收两个值是分层的结果：BoardUI 那一层把画格放到 14，笔画跟着收一档。
+        not_a_glyph = {
+            ".reviewasset .pickmark svg": {"3"},
+            ".pcheck>span svg": {"2", "2.5"},
+            ".geist-gauge svg": {"3"},
+            ".board-job-progress circle": {"2.5"},
+            ".board-radar-grid": {"1"},
+            ".board-ring-value[data-active=true]": {"18"},
+        }
+        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
+        css = re.sub(r"/\*.*?\*/", "", self.css + board, flags=re.S)
+        for selector, body in re.findall(r"([^{}]+)\{([^{}]*)\}", css):
+            found = re.search(r"(?<![-\w])stroke-width:\s*([^;}]+)", body)
+            if not found:
+                continue
+            selector, width = selector.strip(), found.group(1).strip()
+            self.assertIn(width, not_a_glyph.get(selector, {"2"}),
+                          f"{selector} 的描边是 {width}")
+        # 下拉框的前缀图标自己写死一份，不靠继承。
+        self.assertIn("stroke:currentColor;fill:none;stroke-width:2}", self.css)
+
+    def test_the_review_toolbar_and_group_bar_read_as_one_box(self):
+        """复核页顶上那两行是一个框：等宽、常驻、中间不划线。
+
+        工具条此前写死 `width:100%` 再配负外边距，右边就比分组条短一个页边距；
+        底色只在 `is-stuck` 时才有，刚进页面看上去根本没有框。现在两行都用同一个
+        `--review-edge` 出血、同一层 `--ground` 底，圆角上下各收一半；只有分组条
+        自己滚上去顶住时才各自收口。
+        """
+        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
+        self.assertIn("body .review .reviewbulktoolbar{position:sticky;top:var(--topH);z-index:60;width:auto;"
+                      "margin:0 calc(-1 * var(--review-edge,16px));padding:12px var(--review-edge,16px);"
+                      "background:var(--ground);border-radius:20px 20px 0 0}", board)
+        self.assertIn("body .review .reviewgroupbar{margin-inline:calc(-1 * var(--review-edge,16px));"
+                      "padding-inline:var(--review-edge,16px);background:var(--ground);border:0;"
+                      "border-radius:0 0 20px 20px}", board)
+        # 下面那些分组各自成框：上一个可见分组和它之间隔着一整屏卡片。
+        self.assertIn("body .review .reviewgroup:not([hidden])~.reviewgroup:not([hidden])"
+                      ">.reviewgroupbar{border-radius:20px}", board)
+        self.assertNotIn(".reviewbulktoolbar{width:100%", self.css)
+
+    def test_a_selectable_follow_row_keeps_its_own_border_on_every_edge(self):
+        """关注列表进选择态后，行与行之间那条线是卡片自己的上边框。
+
+        卡片模式下作者卡内还有一条 `--line-soft` 的分隔线，选择器比卡片边框更长，
+        压掉的正是第二行起的上边框——在深色底上 `--line-soft` 几乎看不见，读起来
+        就是「横线没了」。表格模式下行是 `tr`，卡片那套边框圆角落上去会和外框画出
+        两条重叠的竖线，所以那套只给非 `tr`。
+        """
+        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
+        self.assertIn(".followmanage .fauthor .fsource.frow:not(:has([data-follow-select]))"
+                      "+.fsource.frow:not(:has([data-follow-select])){border-top:1px solid var(--line-soft)}", board)
+        self.assertIn(".followmanage .fsource:has([data-follow-select]):not(tr){"
+                      "border:1px solid var(--color-border-button-default);border-radius:10px;", board)
+        # 表格外框自己收口：它离卡片脚还有一层内边距，去掉下边框就没有收尾。
+        self.assertNotIn(".followmanage .fmain>.fsec:has(>.fsecfoot) .ftableframe", board)
+
+    def test_the_alias_avatar_stays_a_circle_when_there_is_no_picture(self):
+        """取不到头像时那个空位仍然是一个圆。
+
+        别名行里头像和别名组都是直接子 `span`，同一条规则把两者都摊成 `flex:1`，
+        兜底头像于是被拉成一颗药丸；有图那一枚是 `<img>`，所以只在取不到时才露馅。
+        """
+        self.assertIn(".faliassuggest>span:not(.favatar),.faliasrow>span:not(.favatar)"
+                      "{display:flex;align-items:center;gap:7px;min-width:0;flex:1;flex-wrap:wrap}", self.css)
+
+    def test_a_finished_chart_does_not_grow_again_when_its_tab_comes_back(self):
+        """长完的图表钉住终态，切回这个 tab 不重放。
+
+        面板靠 `hidden` 收起，再显示时 `display` 从 none 换回来，CSS 动画会整段重放：
+        读起来就是每点一次 tab，条形图重新长一次。等同一棵子树里没有还在跑的动画
+        再打标，避免掐掉带延迟的后半段。
+        """
+        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
+        self.assertIn(".board-ranked-chart.board-chart-settled .board-rank-fill,"
+                      ".tasteranks.board-chart-settled .taste-rank-track i,"
+                      ".board-radar.board-chart-settled .board-radar-value"
+                      "{animation:none;transform:none;opacity:1}", board)
+        self.assertIn(".board-heat-card.board-chart-settled [data-heat-value],"
+                      ".board-sankey-card.board-chart-settled .board-sankey-links path{animation:none}", board)
+        controls = (Path(__file__).resolve().parents[1]
+                    / "frontend" / "src" / "board-controls.ts").read_text(encoding="utf-8")
+        self.assertIn("const selector='.board-ranked-chart,.board-radar,.tasteranks,"
+                      ".board-heat-card,.board-sankey-card';", controls)
+        self.assertIn("chart.classList.add('board-chart-settled');", controls)
+        self.assertIn("if(chart.getAnimations?.({subtree:true})"
+                      ".some(animation=>animation.playState==='running'))return;", controls)
+
+    def test_the_data_cleanup_page_spaces_its_blocks_the_same_way(self):
+        """数据管理页三块内容之间是同一个间距。
+
+        页面此前是块级流：卡片网格靠自己的下内边距撑出 32px，底下两个 section 之间
+        什么也没有，贴在一起。间距交给页面这一层的 `gap`，网格不再兼职。
+        """
+        self.assertIn(".cleanuppage{width:min(812px,100%);margin:0 auto;display:grid;gap:32px}", self.css)
+        self.assertIn(".cleanupgrid{display:grid;grid-template-columns:minmax(0,1fr);gap:20px}", self.css)
+        # 结果区空着时也占一条网格轨道，区块底部会凭空多出一个间距。
+        self.assertIn("#linkCheckResult:empty,#resourceSyncResult:empty{display:none}", self.css)
+        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
+        self.assertIn(".cleanupgrid{grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}", board)
+        # 这两个 section 的标题也走同一条字阶，不留浏览器默认的 700。
+        self.assertIn(".followmanage .fsechead h3,.resourcesync>h2{font:var(--board-heading)", board)
+
+    def test_a_scan_card_keeps_its_outcome_outside_the_box(self):
+        """扫描与采集的结果和故障挂在卡片外面，和链接管理、资源同步一个写法。
+
+        那三块讲的都是「这一趟任务的下场」，一块写在框里、两块写在框外，读起来是两种
+        不同的东西。`#libraryProcessing` 因此是这一格本身，卡片是它的第一个孩子，
+        提示是第二个，间距由这一格的 `gap` 给。进度条留在卡片里：它说的是卡片上那个
+        按钮此刻在做什么。
+        """
+        self.assertPageContains('<div class="cleanupscraping" id="libraryProcessing">')
+        self.assertPageContains('<section class="cleanupfieldset" data-geist-fieldset aria-labelledby="cleanupScrapingTitle">')
+        island = (Path(__file__).resolve().parents[1]
+                  / "frontend" / "src" / "islands" / "library-processing.tsx").read_text(encoding="utf-8")
+        self.assertIn('<div class="library-processing-outcome" aria-live="polite">', island)
+        head, outcome = island.split('<div class="library-processing-outcome"', 1)
+        self.assertIn("jobProgressHtml(", head.split("return <>", 1)[1])
+        for banner in ("noteHtml(problem", "library-processing-result"):
+            self.assertIn(banner, outcome)
+        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
+        self.assertIn(".cleanupgrid>#libraryProcessing{grid-column:1/-1;display:grid;gap:16px}", board)
+        self.assertIn("#libraryProcessing>.cleanupfieldset{display:grid;grid-template-columns:1fr auto;align-items:center}", board)
+        # 一格里空着的第二行照样占一条轨道，卡片底下会凭空多出一个间距。
+        self.assertIn(".library-processing-outcome:empty{display:none}", board)
+
+    def test_the_pinned_review_bars_share_one_pane_of_glass(self):
+        """粘住的工具条和分组条是一块玻璃，中间没有接缝。
+
+        每条横条各挂一层 `backdrop-filter` 的话，每层只糊自己身后那一段页面：工具条
+        身后是一排卡片，分组条身后是另一排，两段颜色不同，接缝就成了一条明显的分界。
+        玻璃因此由 `.review::before` 画一块，铺满当前粘住的那几行；两条横条粘住后
+        只剩内容，不带底也不带影。
+        """
+        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
+        self.assertIn('body .review.review-is-stuck::before{content:"";position:fixed;top:var(--topH);'
+                      "left:var(--review-pane-left,0);width:var(--review-pane-width,0);"
+                      "height:var(--review-pane-height,0);z-index:58;pointer-events:none;border-radius:20px;"
+                      "background:var(--glass-fill);", board)
+        self.assertIn("body .review :is(.reviewbulktoolbar,.reviewgroupbar).is-stuck{background:transparent;"
+                      "backdrop-filter:none;-webkit-backdrop-filter:none;border:0;box-shadow:none}", board)
+        # 玻璃压在两条横条底下：58 低于分组条的 59 和工具条的 60。
+        self.assertPageContains(".reviewgroupbar{position:sticky;top:calc(var(--topH) + var(--review-controls-height,0px));z-index:59;")
+        for fallback in ("html.board-high-contrast .review.review-is-stuck::before{background:var(--ground)",
+                         "@media(prefers-reduced-transparency:reduce){body .review.review-is-stuck::before{background:var(--ground)"):
+            self.assertIn(fallback, board)
+        bulk = (Path(__file__).resolve().parents[1] / "frontend" / "src" / "review-bulk.ts").read_text(encoding="utf-8")
+        self.assertIn("root.classList.toggle('review-is-stuck', stuck.length > 0);", bulk)
+        self.assertIn("const head = stuck[0].getBoundingClientRect(), foot = stuck[stuck.length - 1].getBoundingClientRect();", bulk)
+        for name, edge in (("left", "head.left"), ("width", "head.width"), ("height", "foot.bottom - head.top")):
+            self.assertIn(f"root.style.setProperty('--review-pane-{name}', `${{{edge}}}px`);", bulk)
+
+    def test_the_review_categories_look_like_a_secondary_menu(self):
+        """复核分类是一排药丸，不是一排下划线 Tab。
+
+        底下那一屏是同一份复核队列换了个筛法。十枚下划线并排会把它读成十块各不相干的
+        内容；药丸走全站横排互斥那一套——选中只有填充，未选中悬停只提文字色。
+        """
+        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
+        self.assertIn(".reviewtabs button{height:32px;padding:0 12px;gap:6px;border-radius:var(--control-radius);", board)
+        self.assertIn(".reviewtabs button:hover{background:none;color:var(--color-text-primary)}", board)
+        self.assertIn(".reviewtabs button[aria-selected=\"true\"]{background:var(--picked);color:var(--color-text-primary);", board)
+        # 下划线那一套只留给洞察页：那里并排的确实是三块各自成篇的内容。
+        self.assertNotIn(".insighttabs,.reviewtabs{", board)
+        self.assertIn(".insighttabs{display:flex;align-items:center;gap:4px;width:100%;min-height:0;margin:0;padding:0;border:0;"
+                      "border-bottom:1px solid var(--color-border-button-default);", board)
+        # 键盘行为仍是 tablist：方向键在同一条里移动焦点。
+        self.assertPageContains('<div class="reviewtabs" role="tablist" aria-label="复核分类">')
+
+    def test_the_toast_glyph_is_stroked_and_sits_level_with_its_line(self):
+        """Toast 里那枚勾是描边件，和文字同一条中线。
+
+        不写 `fill:none` 的话它按 `fill` 的初值涂黑，一个勾会糊成实心箭头。文字靠
+        `align-items` 对齐，不靠给 `<p>` 加上下内边距去凑——字数换行时那个凑法就散了。
+        """
+        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
+        self.assertIn(".toast{position:relative;align-items:center;", board)
+        self.assertIn(".board-notification-icon svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2}", board)
+        self.assertIn(".toast p{margin:0}", board)
+        self.assertPageContains("""<span class="board-notification-icon" aria-hidden="true">${icon(alert?'circle-alert':'check')}</span>""")
+
+    def test_the_shorts_band_is_told_apart_by_its_fill_not_a_line(self):
+        """竖屏带靠底色和网格区分，不描一圈线。
+
+        它嵌在两段无边框的网格中间，一条线会把它读成一个可以点开的容器。
+        """
+        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
+        self.assertIn(".shorts-inline{border:0}", board)
+        self.assertPageContains(".shorts-inline{padding:16px;background:var(--ground);")
+
+    def test_a_range_slider_reports_only_the_end_being_dragged(self):
+        """时长只有一处读数：手柄上方那枚气泡，在碰它的时候出现。
+
+        两枚气泡常驻的话，滑块不动时它们说的是同一句「不限」；另起一行写「不限 — 不限」
+        则是同一件事说第三遍，而手真正要看的是当前拖到了哪。两个 input 覆盖同一条轨道，
+        只有压在手柄上才命中，所以按 `:nth-of-type` 各自认领一端。
+        """
+        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
+        self.assertIn("white-space:nowrap;box-shadow:0 1px 2px #0000000d;pointer-events:none;"
+                      "opacity:0;transition:opacity .12s ease}", board)
+        self.assertIn(".dual-range input:nth-of-type(1):is(:hover,:active,:focus-visible)~"
+                      ".board-range-tip[data-range-end=min],", board)
+        self.assertIn(".dual-range input:nth-of-type(2):is(:hover,:active,:focus-visible)~"
+                      ".board-range-tip[data-range-end=max]{opacity:1}", board)
+        for gone in ("durMinText", "durMaxText", "duration-readout"):
+            self.assertPageLacks(gone, "时长读数只由手柄上那枚气泡承担")
+
+    def test_a_chart_legend_tile_is_the_grey_surface_itself(self):
+        """图例小卡自己是灰片，不是摆在一块灰托盘上的白片。
+
+        卡片底、托盘底、小卡底三层各一个颜色时，数字读起来像是嵌在框里的框；而这一组
+        里只有小卡是可以点的，托盘不承担任何动作，也就不该占一层底色。
+        """
+        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
+        self.assertIn(".board-radial-tiles{display:flex;flex-wrap:wrap;gap:8px;"
+                      "padding:0;border-radius:0;background:none}", board)
+        self.assertIn(".board-radial-tiles>button{display:flex;flex:1 1 calc(33.333% - 8px);min-width:0;"
+                      "flex-direction:column;align-items:flex-start;gap:4px;padding:10px;border:0;"
+                      "border-radius:12px;background:var(--color-background-secondary-default);", board)
+        # 选中仍然只有填充加一圈同色描边，不再靠「白片压在灰托盘上」拉开层次。
+        self.assertIn(".board-radial-tiles>button:is([data-active=true],[aria-pressed=true])"
+                      "{background:color-mix(in srgb,var(--ring-color) 10%,"
+                      "var(--color-background-secondary-default));box-shadow:inset 0 0 0 1px var(--ring-color)}",
+                      board)
 
     def test_a_wide_glyph_gets_a_wide_slot_instead_of_being_shrunk_to_fit(self):
         """1.4:1 的字形锁死方形槽位只能按宽缩，画出来就比满格的邻座矮一截。

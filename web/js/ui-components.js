@@ -575,9 +575,9 @@ export function wireAnchoredMenu(mount,toggle,menu,{side=false}={}){
     if(side&&innerWidth>=640){
       menu.dataset.placement='right';
       menu.style.maxHeight=Math.max(0,innerHeight-32)+'px';
-      // 从挂载容器和触发钮两者更靠右的那条边起算：收起的侧栏里触发钮只有 32px 宽，按钮右缘加 8 还落在侧栏里面。
+      // 从挂载容器和触发钮两者更靠右的那条边起算：收起的侧栏里触发钮只有 32px 宽，按它的右缘会落在侧栏里面。
       const edge=Math.max(anchor.right,mount.getBoundingClientRect().right);
-      menu.style.left=Math.max(16,Math.min(edge+8,innerWidth-width-16))+'px';
+      menu.style.left=Math.max(16,Math.min(edge,innerWidth-width-16))+'px';
       menu.style.top=Math.max(16,Math.min(anchor.top,innerHeight-menu.offsetHeight-16))+'px';return;
     }
     const top=viewportTop(),under=innerHeight-8-anchor.bottom-8,over=anchor.top-8-top;

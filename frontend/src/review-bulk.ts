@@ -13,11 +13,21 @@ export function updateReviewSticky(root: HTMLElement | null) {
   const main = root.closest('main');
   if (main) root.style.setProperty('--review-edge', getComputedStyle(main).paddingLeft);
   root.style.setProperty('--review-controls-height', `${controls.getBoundingClientRect().height}px`);
-  for (const bar of [controls, ...root.querySelectorAll<HTMLElement>('.reviewgroupbar')]) {
+  const bars = [controls, ...root.querySelectorAll<HTMLElement>('.reviewgroupbar')];
+  for (const bar of bars) {
     const top = parseFloat(getComputedStyle(bar).top);
     bar.classList.toggle('is-stuck', bar.offsetParent !== null && window.scrollY > 0 &&
       Number.isFinite(top) && Math.abs(bar.getBoundingClientRect().top - top) <= 1);
   }
+  /* 粘住的那几行合成一块玻璃，由 `.review::before` 画。每行各挂一层 backdrop-filter 的话，
+     每层只糊自己身后那一段页面，两行相接处就显出两种颜色，读起来是上下两个框。 */
+  const stuck = bars.filter(bar => bar.classList.contains('is-stuck'));
+  root.classList.toggle('review-is-stuck', stuck.length > 0);
+  if (!stuck.length) return;
+  const head = stuck[0].getBoundingClientRect(), foot = stuck[stuck.length - 1].getBoundingClientRect();
+  root.style.setProperty('--review-pane-left', `${head.left}px`);
+  root.style.setProperty('--review-pane-width', `${head.width}px`);
+  root.style.setProperty('--review-pane-height', `${foot.bottom - head.top}px`);
 }
 
 export function reviewGroupingOptions(rows: ReviewRow[], metadata: boolean): string[][] {

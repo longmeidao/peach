@@ -8,7 +8,7 @@
 .settingscard.settingscard>.board-local-nav{grid-column:1;grid-row:1/3;display:flex;flex-direction:column;align-items:stretch;padding:10px;gap:4px;background:var(--ground);border:0}
 .settingscard.settingscard>.board-local-nav:before{content:'设置';font-size:13px;color:var(--muted);padding:4px 8px 8px}
 .settingscard.settingscard>.board-local-nav button{flex:0 0 auto;justify-content:flex-start;padding:8px;border:0;border-radius:10px;font-size:14px;min-height:36px;font-weight:500}
-.settingscard.settingscard>.board-local-nav button{display:flex;align-items:center;gap:8px}.settingscard.settingscard>.board-local-nav button svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.7;flex:none}
+.settingscard.settingscard>.board-local-nav button{display:flex;align-items:center;gap:8px}.settingscard.settingscard>.board-local-nav button svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2;flex:none}
 .settingscard.settingscard>.board-local-nav button[aria-selected=true]{background:var(--picked);box-shadow:none}
 .settingscard.settingscard .settingshead{grid-column:2;grid-row:1;padding:32px 32px 12px;background:transparent;border:0}
 .settingscard .settingshead h2{font-size:20px;font-weight:500;line-height:28px}
@@ -124,7 +124,7 @@ body :is(#manageTitle,#manageCrumb,#manageLede){max-width:var(--board-content);w
 
 /* Task entry cards and editing panels have different information density. */
 .cleanuppage,.configpage{width:100%;max-width:var(--board-content)}
-.cleanupgrid{grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;padding-bottom:32px}
+.cleanupgrid{grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
 .cleanupfieldset{border:1px solid var(--line);border-radius:16px;box-shadow:0 1px 2px #00000003}
 .cleanupfieldset>.geist-fieldset-content{padding:20px 20px 16px;min-height:120px}
 .cleanupfieldset h3,.cleanupfieldset h2{font-size:16px;line-height:24px;font-weight:500;margin:0 0 12px}
@@ -132,11 +132,13 @@ body :is(#manageTitle,#manageCrumb,#manageLede){max-width:var(--board-content);w
 .cleanupfieldset .cleanupmeta{font-size:12px;line-height:18px;margin-top:8px}
 .cleanupfieldset>.geist-fieldset-footer{background:transparent;border-top:1px solid var(--line-soft);padding:12px 20px;min-height:56px}
 .cleanupfieldset>.geist-fieldset-footer button{font-size:13px}
-.cleanupgrid>#libraryProcessing{grid-column:1/-1;display:grid;grid-template-columns:1fr auto;align-items:center}
-.cleanupgrid>#libraryProcessing>.geist-fieldset-content{min-height:0;padding:24px}
-.cleanupgrid>#libraryProcessing>.geist-fieldset-footer{border:0;padding:24px;background:none;display:flex;gap:8px;flex-wrap:wrap}
+.cleanupgrid>#libraryProcessing{grid-column:1/-1;display:grid;gap:16px}
+#libraryProcessing>.cleanupfieldset{display:grid;grid-template-columns:1fr auto;align-items:center}
+#libraryProcessing>.cleanupfieldset>.geist-fieldset-content{min-height:0;padding:24px}
+#libraryProcessing>.cleanupfieldset>.geist-fieldset-footer{border:0;padding:24px;background:none;display:flex;gap:8px;flex-wrap:wrap}
+.library-processing-outcome:empty{display:none}
 .board-card-icon{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border:1px solid var(--line-soft);background:var(--surface);border-radius:10px;margin-right:10px;vertical-align:middle;color:var(--ink-2)}
-.board-card-icon svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.board-card-icon svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .configfieldset{border:1px solid var(--line);border-radius:16px;box-shadow:0 1px 2px #00000003}
 .configfieldset>.geist-fieldset-content{padding:24px;gap:20px}
 .configfieldset>.geist-fieldset-footer{background:var(--ground);border-top:1px solid var(--line-soft);padding:14px 24px}
@@ -190,11 +192,14 @@ body::before{display:none}
 .board-filter-frame .sorts button[aria-pressed="true"]{background:var(--picked)}
 #grid.gridstack{border:0;background:transparent;padding:0;box-shadow:none;border-radius:0}
 #grid.gridstack>.grid{border:0;background:transparent;padding:0;box-shadow:none;border-radius:0}
+/* 竖屏带靠底色和网格区分，不再描一圈线：它嵌在两段无边框的网格中间，一条线反而
+   把它读成一个可以点开的容器。 */
+.shorts-inline{border:0}
 @media(pointer:coarse){.board-filter-frame #tagbar .pill{height:36px}.board-filter-frame #tagbar{height:52px}.board-filter-frame .sorts button{height:36px}}
 #applyUISetting{padding:8px 12px;border:1px solid var(--line);border-radius:8px;cursor:pointer}
 #applyUISetting[hidden]{display:none}
 
-@media(max-width:1000px){.cleanupgrid>#libraryProcessing{display:grid;grid-template-columns:minmax(0,1fr);align-items:stretch;text-align:left}.cleanupgrid>#libraryProcessing>.geist-fieldset-content{width:100%;box-sizing:border-box}.cleanupgrid>#libraryProcessing>.geist-fieldset-footer{padding:0 24px 24px;border:0;justify-content:flex-start;min-width:0}.settingscard{width:calc(100vw - 32px)}}
+@media(max-width:1000px){#libraryProcessing>.cleanupfieldset{grid-template-columns:minmax(0,1fr);align-items:stretch;text-align:left}#libraryProcessing>.cleanupfieldset>.geist-fieldset-content{width:100%;box-sizing:border-box}#libraryProcessing>.cleanupfieldset>.geist-fieldset-footer{padding:0 24px 24px;border:0;justify-content:flex-start;min-width:0}.settingscard{width:calc(100vw - 32px)}}
 @media(max-width:760px){
   :root,body.drawer-open{--railW:0px}
   .drawer{top:64px;bottom:12px;width:min(320px,calc(100vw - 24px));border-radius:20px;z-index:97}
@@ -325,7 +330,7 @@ button,input,select,textarea{font-family:inherit}
 .drawer .ovtrack{display:none}
 .drawer #brandHome{min-width:0;border-radius:24px;flex:1}
 .drawer #brandHome h1{font-size:14px;line-height:20px;letter-spacing:0;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.board-library-chevron{width:16px;height:16px;flex:none;fill:none;stroke:var(--muted);stroke-width:1.6}
+.board-library-chevron{width:16px;height:16px;flex:none;fill:none;stroke:var(--muted);stroke-width:2}
 .board-library-menu{position:fixed;inset:auto;margin:0;box-sizing:border-box;width:265px;max-width:calc(100vw - 32px);padding:10px;border:1px solid var(--line);border-radius:16px;background:var(--ground);color:var(--ink);box-shadow:0 8px 24px #0002;overflow-y:auto;scrollbar-width:none;transform-origin:top left}
 .board-library-menu>p{padding:5px 8px 0;margin:0 0 6px;color:var(--muted);font-size:14px;line-height:20px}
 .board-library-rows{display:flex;flex-direction:column;gap:4px}
@@ -353,7 +358,7 @@ button,input,select,textarea{font-family:inherit}
 .board-theme-toggle{position:relative;isolation:isolate;display:flex;gap:4px;padding:4px;border-radius:24px;background:var(--picked)}
 .board-theme-toggle button{display:grid;place-items:center;width:32px;height:32px;flex:none;padding:0;border:0;border-radius:50%;background:transparent;color:var(--muted);cursor:pointer}
 .board-theme-toggle button[aria-pressed=true]{color:var(--ink)}
-.board-theme-toggle svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8}
+.board-theme-toggle svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2}
 .board-theme-thumb{position:absolute;z-index:-1;left:4px;top:4px;width:32px;height:32px;background:var(--ground);border-radius:50%;box-shadow:0 1px 3px #0001;transition:transform .2s ease}
 .board-theme-toggle.is-dark .board-theme-thumb{transform:translateX(36px)}
 @media(min-width:761px){.drawer:not(.open) .board-sidebar-foot{flex-direction:column;padding:12px 10px}.drawer:not(.open) .board-theme-toggle{padding:2px;background:transparent}.drawer:not(.open) .board-theme-toggle button[aria-pressed=true],.drawer:not(.open) .board-theme-thumb{display:none}}
@@ -363,11 +368,11 @@ button,input,select,textarea{font-family:inherit}
 .board-section-toggle{display:flex;align-items:center;gap:8px;flex:1;min-width:0;padding:8px;border:0;border-radius:10px;background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer}
 .board-section-toggle:hover{background:var(--hover)}
 .board-sidebar-head #brandHome[aria-expanded=true]{box-shadow:0 0 0 2px var(--line);border-radius:var(--pill-radius)}
-.board-sidebar-head #brandHome .mark{display:grid;place-items:center;background:none;border-radius:0}.board-sidebar-head .mark svg,.board-library-avatar svg,.drawer .dnav button svg{width:20px;height:20px;stroke-width:1.7}.board-library-avatar{background:none;border-radius:0}.board-home-logo{width:24px;height:24px;object-fit:contain;flex:none}.drawer:not(.open) .dnav button:has(.board-home-logo){padding:6px}
+.board-sidebar-head #brandHome .mark{display:grid;place-items:center;background:none;border-radius:0}.board-sidebar-head .mark svg,.board-library-avatar svg,.drawer .dnav button svg{width:20px;height:20px;stroke-width:2}.board-library-avatar{background:none;border-radius:0}.board-home-logo{width:24px;height:24px;object-fit:contain;flex:none}.drawer:not(.open) .dnav button:has(.board-home-logo){padding:6px}
 .drawer.drawer .dnav button[aria-pressed=true]:hover,.drawer.drawer .dnav button[aria-pressed=true]:active{background:var(--board-blue);color:white;filter:brightness(1.08)}
 .board-section-toggle>span{font-size:12px;line-height:20px;font-weight:500;color:var(--muted)}
 .vwrap>.gate{box-sizing:border-box;border-radius:inherit}.stage .vwrap{overflow:hidden;border-radius:var(--surface-radius)}
-.board-section-toggle svg{order:2;margin-left:auto;width:14px;height:14px;flex:none;fill:none;stroke:currentColor;stroke-width:1.7;transform:rotate(0deg)}
+.board-section-toggle svg{order:2;margin-left:auto;width:14px;height:14px;flex:none;fill:none;stroke:currentColor;stroke-width:2;transform:rotate(0deg)}
 .board-section-toggle[aria-expanded=true] svg{transform:rotate(90deg)}
 .drawer .sec:has(.board-section-toggle[aria-expanded=false]) [data-more]{display:none}
 .drawer .board-sidebar-body[hidden]{display:none}
@@ -410,7 +415,7 @@ button,input,select,textarea{font-family:inherit}
 .metricstrip>button:focus-visible{outline:2px solid var(--tungsten);outline-offset:3px}
 .metricstrip .board-stat-label,.tastesummary>.board-stat-label{display:flex;align-items:center;gap:8px;padding:0 16px;color:var(--ink-2);font-size:14px;line-height:20px}
 .board-stat-icon{display:grid;place-items:center;width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,#3986ff25,#1760ef08);color:var(--tungsten);flex:none}
-.board-stat-icon svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.board-stat-icon svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .metricstrip>button:nth-child(2) .board-stat-icon,.tastesummary:nth-child(2) .board-stat-icon{color:#a78bfa;background:#a78bfa18}
 .metricstrip>button:nth-child(3) .board-stat-icon,.tastesummary:nth-child(3) .board-stat-icon{color:#34d399;background:#34d39918}
 .metricstrip>button:nth-child(4) .board-stat-icon,.tastesummary:nth-child(4) .board-stat-icon{color:#f59e0b;background:#f59e0b18}
@@ -451,7 +456,7 @@ button,input,select,textarea{font-family:inherit}
 .taste-rank-track{display:block;height:4px;margin-top:8px;background:var(--line-soft);border-radius:var(--pill-radius);overflow:hidden}.taste-rank-track i{display:block;height:100%;background:var(--tungsten);opacity:.55;border-radius:inherit}
 .tasteleads>header{padding:24px 24px 12px}.tastelede{display:flex;flex-direction:column;gap:12px}.tasteleads .tastelede p{font-size:20px;line-height:30px;color:var(--ink);max-width:64ch}.tasteleads .insightpanelbody{padding:8px 24px 24px;display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:28px}.tasteinsights{display:flex;flex-direction:column;gap:20px;margin:0}.tasteinsight{padding:0;background:none;gap:6px}.tasteinsight>b{font-weight:400;line-height:22px}.tasteleadlist{align-content:start}.tastelead{background:var(--surface);padding:14px}.tastesources .insightpanelbody>div{grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.tastesource{border:0;background:var(--surface);padding:16px}
 .followmanage .fmain{gap:28px}.followmanage .fmain>.fsec>.fsources{padding:0 24px 24px;grid-template-columns:minmax(0,1fr);gap:16px}
-.followmanage .fauthor{height:auto;padding:16px 20px;border:0;border-radius:16px;background:var(--ground);display:block}.followmanage .fauthorhead{padding:0 0 12px}.followmanage .fauthorhead b{font-weight:500;white-space:normal}.followmanage .fauthorsources{height:auto;max-height:none;overflow:visible}.followmanage .fauthor .fsource.frow{padding-block:12px;border:0}.followmanage .fauthor .fsource.frow>b{font-weight:400}.followmanage .fauthor .fsource.frow+.fsource.frow{border-top:1px solid var(--line-soft)}
+.followmanage .fauthor{height:auto;padding:16px 20px;border:0;border-radius:16px;background:var(--ground);display:block}.followmanage .fauthorhead{padding:0 0 12px}.followmanage .fauthorhead b{font-weight:500;white-space:normal}.followmanage .fauthorsources{height:auto;max-height:none;overflow:visible}.followmanage .fauthor .fsource.frow{padding-block:12px;border:0}.followmanage .fauthor .fsource.frow>b{font-weight:400}.followmanage .fauthor .fsource.frow:not(:has([data-follow-select]))+.fsource.frow:not(:has([data-follow-select])){border-top:1px solid var(--line-soft)}
 .followmanage .fmain>.fsec:has(.fcred){background:none}.followmanage .fmain>.fsec:has(.fcred)>.fsechead{padding:0 0 12px}.followmanage .fmain>.fsec:has(.fcred)>.frows{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-items:start;gap:12px;padding:0}.followmanage .fcred{margin:0;padding:16px;border:0;border-radius:12px;background:var(--ground);min-width:0}.followmanage .fcred summary{padding:0;min-height:32px}.followmanage .fcred.none{min-height:64px}.followmanage .fcred p{overflow-wrap:anywhere}.followmanage .fmain>.fsec>.fdesc{background:none;border:0;padding:16px 0}
 .configfieldset-heading{border:0;padding-bottom:0}.configfieldset{border:0}.configfieldset>.geist-fieldset-footer{border:0}.configfieldset .configfieldset-heading h2{margin:0}
 #linkCheckResult:not(:empty),#resourceSyncResult:not(:empty){margin-block:16px 28px}
@@ -468,7 +473,7 @@ button,input,select,textarea{font-family:inherit}
 :root{--page:var(--color-background-full);--ground:var(--color-background-secondary-default);--surface:var(--color-background-primary-default);--sunk:var(--color-background-secondary-default);--ink:var(--color-text-primary);--ink-2:var(--color-text-secondary);--muted:var(--color-text-secondary);--line:var(--color-border-button-default);--line-soft:var(--color-separator-border);--picked:var(--color-background-tertiary-default);--inset:var(--color-background-tertiary-default);--hover:var(--color-background-primary-hover);--tungsten:var(--color-border-focus-ring);--chart-0:#2dd4bf;--chart-1:#a3e635;--chart-2:#f472b6;--chart-3:#38bdf8;--board-font:'Inter Variable','Inter','Segoe UI','Microsoft YaHei UI','PingFang SC',sans-serif;--board-body:400 14px/20px var(--board-font);--board-body-medium:500 14px/20px var(--board-font);--board-compact:400 13px/18px var(--board-font);--board-caption:400 12px/16px var(--board-font);--board-heading:500 20px/26px var(--board-font);--board-title:500 32px/44px var(--board-font);--board-figure:500 24px/34px var(--board-font)}
 :root[data-theme]{--page:var(--color-background-full);--ground:var(--color-background-secondary-default);--surface:var(--color-background-primary-default);--sunk:var(--color-background-secondary-default);--ink:var(--color-text-primary);--ink-2:var(--color-text-secondary);--muted:var(--color-text-secondary);--line:var(--color-border-button-default);--line-soft:var(--color-separator-border);--picked:var(--color-background-tertiary-default);--inset:var(--color-background-tertiary-default);--hover:var(--color-background-primary-hover);--tungsten:var(--color-border-focus-ring)}
 body,.disp{font-family:var(--board-font);letter-spacing:0}body{font:var(--board-body)}button,input,textarea,select{font-family:var(--board-font)}
-.pagetitle,.listtitle,body #manageTitle,.index .ihead h2,.indexheading,.playlistpage h2{font:var(--board-title);letter-spacing:0}.settingscard .settingshead h2,.configfieldset h2,.configfieldset h3,.cleanupfieldset h3,.followmanage .fsechead h3{font:var(--board-heading);letter-spacing:0}.metricstrip>button .board-stat-value,.tastesummary>.board-stat-value{font:var(--board-figure);letter-spacing:0}.drawer .dnav button,.board-library-rows button,.settingrow b,.fsource.frow>b{font:var(--board-body)}.fmeta,.confighelp,.settingrow small{font:var(--board-compact)}.board-stat-footer,.board-watch-measures small,.tasterank small,.insighttoolbar p{font:var(--board-caption);letter-spacing:.15px}
+.pagetitle,.listtitle,body #manageTitle,.index .ihead h2,.indexheading,.playlistpage h2{font:var(--board-title);letter-spacing:0}.settingscard .settingshead h2,.configfieldset h2,.configfieldset h3,.cleanupfieldset h3,.followmanage .fsechead h3,.resourcesync>h2{font:var(--board-heading);letter-spacing:0}.metricstrip>button .board-stat-value,.tastesummary>.board-stat-value{font:var(--board-figure);letter-spacing:0}.drawer .dnav button,.board-library-rows button,.settingrow b,.fsource.frow>b{font:var(--board-body)}.fmeta,.confighelp,.settingrow small{font:var(--board-compact)}.board-stat-footer,.board-watch-measures small,.tasterank small,.insighttoolbar p{font:var(--board-caption);letter-spacing:.15px}
 .geist-button,.fbtn,.resourceaction{background-color:var(--color-background-primary-default);border-color:var(--color-border-button-default);color:var(--color-text-primary);transition:background-color .15s ease,border-color .15s ease,color .15s ease}
 .geist-button:hover:not(:disabled),.fbtn:hover:not(:disabled),.resourceaction:hover:not(:disabled){background-color:var(--color-background-primary-hover);border-color:var(--color-border-button-hover);color:var(--color-text-primary)}
 .geist-button.primary,.geist-button.primary:hover:not(:disabled),.tagselection button.primary,.tagselection button.primary:hover:not(:disabled){background:var(--board-blue);color:var(--color-text-white);transition:filter .15s ease}.geist-button.primary:hover:not(:disabled),.tagselection button.primary:hover:not(:disabled){filter:brightness(1.08)}
@@ -532,10 +537,15 @@ body :is(.dual-range input,.photozoom input,.vjs-peach-speed-range)::-moz-range-
 body :is(.photozoom input,.vjs-peach-speed-range)::-webkit-slider-runnable-track{height:6px;border-radius:999px;background:linear-gradient(90deg,#3986ff var(--board-range-value,var(--peach-speed-percent,0%)),var(--color-background-tertiary-default) 0);box-shadow:inset 0 1px 1px #0000000f}
 body :is(.photozoom input,.vjs-peach-speed-range)::-webkit-slider-thumb{margin-top:-7px}
 body :is(.photozoom input,.vjs-peach-speed-range)::-moz-range-track{height:6px;border-radius:999px;background:linear-gradient(90deg,#3986ff var(--board-range-value,var(--peach-speed-percent,0%)),var(--color-background-tertiary-default) 0)}
-.board-range-tip{position:absolute;bottom:calc(100% + 4px);transform:translateX(-50%);padding:4px 8px;border:1px solid var(--color-border-button-default);border-radius:8px;background:var(--color-background-primary-default);color:var(--color-text-primary);font:var(--board-caption);white-space:nowrap;box-shadow:0 1px 2px #0000000d;pointer-events:none}
+.board-range-tip{position:absolute;bottom:calc(100% + 4px);transform:translateX(-50%);padding:4px 8px;border:1px solid var(--color-border-button-default);border-radius:8px;background:var(--color-background-primary-default);color:var(--color-text-primary);font:var(--board-caption);white-space:nowrap;box-shadow:0 1px 2px #0000000d;pointer-events:none;opacity:0;transition:opacity .12s ease}
+/* 只有正在动的那一端报数。两枚常驻的话，滑块不动时它们说的是同一句「不限」，
+   而手真正需要看的是当前拖到了哪。两个 input 覆盖同一条轨道，只有压在手柄上才命中。 */
+.dual-range input:nth-of-type(1):is(:hover,:active,:focus-visible)~.board-range-tip[data-range-end=min],
+.dual-range input:nth-of-type(2):is(:hover,:active,:focus-visible)~.board-range-tip[data-range-end=max]{opacity:1}
 .dual-range{margin-top:36px}.dual-range .board-range-tip[data-range-end=max]{transform:translateX(-100%)}.dual-range .board-range-tip[data-range-end=min]{transform:none}
-.toast{position:relative;align-items:flex-start;gap:12px;width:min(400px,calc(100vw - 32px));padding:16px 44px 16px 16px;border-radius:16px;background:var(--color-background-primary-default);border-color:var(--color-border-button-default);color:var(--color-text-primary);font:var(--board-body);box-shadow:0 12px 24px -4px #0000001a,0 4px 8px -2px #0000000d;overflow:hidden}
-.toast.warn{border-color:var(--color-border-button-default)}.toast .board-notification-icon{display:grid;place-items:center;width:40px;height:40px;flex:none;border-radius:50%;background:color-mix(in srgb,#3986ff 12%,var(--color-background-primary-default));color:#1760ef}.toast.warn .board-notification-icon{background:color-mix(in srgb,#f04452 12%,var(--color-background-primary-default));color:var(--drop)}.board-notification-icon svg{width:20px;height:20px}.toast p{padding-block:8px}.toast .tclose{position:absolute;right:12px;top:12px}.toast .tact{align-self:center;font-weight:500;color:var(--tungsten)}
+.toast{position:relative;align-items:center;gap:12px;width:min(400px,calc(100vw - 32px));padding:16px 44px 16px 16px;border-radius:16px;background:var(--color-background-primary-default);border-color:var(--color-border-button-default);color:var(--color-text-primary);font:var(--board-body);box-shadow:0 12px 24px -4px #0000001a,0 4px 8px -2px #0000000d;overflow:hidden}
+.toast.warn{border-color:var(--color-border-button-default)}.toast .board-notification-icon{display:grid;place-items:center;width:40px;height:40px;flex:none;border-radius:50%;background:color-mix(in srgb,#3986ff 12%,var(--color-background-primary-default));color:#1760ef}.toast.warn .board-notification-icon{background:color-mix(in srgb,#f04452 12%,var(--color-background-primary-default));color:var(--drop)}/* 这枚字形是描边件：不写 `fill:none` 就按 `fill` 的初值涂黑，一个勾会糊成实心箭头。 */
+.board-notification-icon svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2}.toast p{margin:0}.toast .tclose{position:absolute;right:12px;top:12px}.toast .tact{align-self:center;font-weight:500;color:var(--tungsten)}
 .toast.leaving{transform:translateY(8px) scale(.96);filter:blur(3px);transition:height .18s ease-out,margin .18s ease-out,padding .18s ease-out,border-width .18s ease-out,opacity .18s ease-out,transform .18s ease-out,filter .18s ease-out}
 .board-notification-timer{position:absolute;bottom:0;left:0;right:0;height:3px;background:#1760ef;transform-origin:left;animation:board-notification-countdown var(--notification-duration) linear forwards}.toast:hover .board-notification-timer,.toast:focus-within .board-notification-timer{animation-play-state:paused}@keyframes board-notification-countdown{to{transform:scaleX(0)}}
 .board-tooltip,.vjs-peach-tooltip{box-sizing:border-box;max-width:240px;padding:6px 10px;border:1px solid var(--color-border-button-default);border-radius:8px;background:var(--color-background-primary-default);color:var(--color-text-primary);font:var(--board-caption);white-space:normal;box-shadow:0 12px 24px -4px #0000001a,0 4px 8px -2px #0000000d}
@@ -559,7 +569,7 @@ body :is(.sbadge.ok,.board-chip.success){background:color-mix(in srgb,#84cc16 16
 :root{--board-chart-0:#94e000;--board-chart-1:#3493ff;--board-chart-2:#bc74f9;--board-chart-3:#f657bd;--board-chart-4:#ffc600;--board-chart-5:#2dcbb8}
 .fauthorhead{list-style:none}.fauthorhead::-webkit-details-marker{display:none}.board-author-actions{display:flex;align-items:center;gap:8px;margin-left:auto;flex:none}.board-author-actions .board-author-toggle{margin:0}.followmanage details.fauthor>.fcollapse>.fcollapsebody{padding:0}.followmanage details.fauthor:not([open]) .fauthorhead{margin-bottom:0}
 .followmanage .fsource.selected{background:var(--color-background-primary-default);box-shadow:none;border-color:var(--color-border-focus-ring)}.followmanage .fsource.selected.disabled{opacity:1}
-.followmanage .fsource:has([data-follow-select]){border:1px solid var(--color-border-button-default);border-radius:10px;padding:12px 20px 12px 16px;margin:8px 0;cursor:pointer;transition:background-color 150ms ease,border-color 150ms ease}
+.followmanage .fsource:has([data-follow-select]):not(tr){border:1px solid var(--color-border-button-default);border-radius:10px;padding:12px 20px 12px 16px;margin:8px 0;cursor:pointer;transition:background-color 150ms ease,border-color 150ms ease}
 .followmanage .fsource:has([data-follow-select]):hover{background:var(--color-background-primary-hover)}
 .followmanage .fsec:has(.board-follow-selection){padding:0;border-radius:18px;background:var(--ground);overflow:visible}.followmanage .fsec>.board-follow-selection{padding:4px 24px 12px}
 .followmanage .fsourceactions{padding:2px;overflow:visible}
@@ -576,7 +586,9 @@ body .gselectmenu [role=option][aria-selected=true],body .popmenu [aria-checked=
 @keyframes board-ring-enter{from{stroke-dasharray:0px 100px;opacity:0}to{stroke-dasharray:calc(var(--ring-length) * 1px) calc((100 - var(--ring-length)) * 1px);opacity:1}}
 .board-radial-card:not(.board-chart-visible) .board-ring-value{animation:none;stroke-dasharray:0 100;opacity:0}
 .board-radial-card.board-chart-visible .board-ring-value{animation-duration:1.2s;animation-timing-function:cubic-bezier(.22,.61,.36,1)}
-.board-radial-tiles{display:flex;flex-wrap:wrap;gap:8px;padding:8px;border-radius:16px;background:var(--color-background-secondary-default)}.board-radial-tiles>button{display:flex;flex:1 1 calc(33.333% - 8px);min-width:0;flex-direction:column;align-items:flex-start;gap:4px;padding:10px;border:0;border-radius:12px;background:var(--color-background-primary-default);text-align:left;color:var(--color-text-primary);font:var(--board-body);transition:background .18s,box-shadow .18s}.board-radial-tiles>button>span{display:flex;align-items:center;gap:6px;min-width:0;color:var(--color-text-secondary);overflow-wrap:anywhere}.board-radial-tiles i{width:12px;height:12px;flex:none;border-radius:4px;background:var(--ring-color)}.board-radial-tiles b{font:var(--board-heading);font-variant-numeric:tabular-nums}.board-radial-tiles small{font:var(--board-caption);color:var(--color-text-secondary)}.board-radial-tiles>button:is([data-active=true],[aria-pressed=true]){background:color-mix(in srgb,var(--ring-color) 10%,var(--color-background-primary-default));box-shadow:inset 0 0 0 1px var(--ring-color)}
+/* 图例小卡直接是灰片，不再摆在一块灰托盘上：卡片底、托盘底、小卡底三层各一个颜色，
+   数字读起来像是嵌在框里的框，而这里只有小卡是可以点的。 */
+.board-radial-tiles{display:flex;flex-wrap:wrap;gap:8px;padding:0;border-radius:0;background:none}.board-radial-tiles>button{display:flex;flex:1 1 calc(33.333% - 8px);min-width:0;flex-direction:column;align-items:flex-start;gap:4px;padding:10px;border:0;border-radius:12px;background:var(--color-background-secondary-default);text-align:left;color:var(--color-text-primary);font:var(--board-body);transition:background .18s,box-shadow .18s}.board-radial-tiles>button>span{display:flex;align-items:center;gap:6px;min-width:0;color:var(--color-text-secondary);overflow-wrap:anywhere}.board-radial-tiles i{width:12px;height:12px;flex:none;border-radius:4px;background:var(--ring-color)}.board-radial-tiles b{font:var(--board-heading);font-variant-numeric:tabular-nums}.board-radial-tiles small{font:var(--board-caption);color:var(--color-text-secondary)}.board-radial-tiles>button:is([data-active=true],[aria-pressed=true]){background:color-mix(in srgb,var(--ring-color) 10%,var(--color-background-secondary-default));box-shadow:inset 0 0 0 1px var(--ring-color)}
 .board-activity-charts{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:20px;margin:20px 0}.board-heat-card,.board-activity-empty{min-width:0;padding:20px;border-radius:20px;background:var(--color-background-secondary-default)}.board-heat-card header{display:grid;grid-template-columns:1fr auto;gap:8px;margin-bottom:24px}.board-heat-card h3{margin:0;font:var(--board-heading)}.board-heat-card header b{grid-row:2;font:var(--board-title);font-variant-numeric:tabular-nums}.board-heat-card header span{grid-column:2;grid-row:2;align-self:end;color:var(--muted);font:var(--board-caption)}.board-heat-scroll{overflow-x:auto;padding:3px}.board-hour-grid{display:grid;grid-template-columns:32px repeat(24,minmax(10px,1fr));gap:4px;min-width:360px}.board-heat-axis{font:var(--board-caption);color:var(--muted);align-self:center}.board-day-grid{display:grid;grid-auto-flow:column;grid-template-rows:repeat(7,1fr);grid-template-columns:repeat(13,1fr);gap:5px;padding:3px}
 .board-heat-card [data-heat-value]{display:block;aspect-ratio:1;min-width:0;padding:0;border:0;border-radius:3px;background:color-mix(in srgb,#3493ff var(--heat),var(--color-background-tertiary-default));animation:board-heat-enter .4s ease-out both}.board-heat-card [data-heat-value]:is(:hover,:focus-visible){outline:2px solid var(--color-border-focus-ring);outline-offset:1px;filter:brightness(.9)}.board-heat-card footer{display:flex;justify-content:space-between;gap:8px;margin-top:16px;font:var(--board-caption);color:var(--muted)}@keyframes board-heat-enter{from{opacity:0;transform:scale(.8)}to{opacity:1;transform:none}}
 @media(max-width:1000px){.board-inventory-charts,.board-activity-charts{grid-template-columns:1fr}.board-rings{height:260px}}
@@ -642,13 +654,18 @@ html.board-high-contrast :is(.selectiondock,.reviewcontrols.is-stuck,.reviewgrou
    1px 基线、选中 2px 蓝线由 `[data-board-tabs]::before` 滑过去；选项 px 10 / py 8、Body 1、间隔 4px；
    选中蓝字 Medium，未选主文字色 Regular。计数徽标 px 4 / py 1、Caption Medium、4px 圆角：选中蓝底蓝字，未选黑 10% 半透明。 */
 .insightpanel>header:has(.insighttabs){padding:8px 16px 0;min-height:0}
-.insighttabs,.reviewtabs{display:flex;align-items:center;gap:4px;width:100%;min-height:0;margin:0;padding:0;border:0;border-bottom:1px solid var(--color-border-button-default);border-radius:0;background:none;overflow-x:auto;overflow-y:hidden;scrollbar-width:none}
-.insighttabs button,.reviewtabs button{position:relative;display:inline-flex;flex:none;align-items:center;gap:10px;height:auto;min-height:0;margin:0;padding:8px 10px;border:0;border-radius:0;background:none;box-shadow:none;color:var(--color-text-primary);font:var(--board-body);white-space:nowrap;transition:color .15s ease}
-.insighttabs button::after,.reviewtabs button::after{content:none}
-.insighttabs button:hover,.reviewtabs button:hover{background:none;color:var(--color-text-primary)}
-.insighttabs button[aria-selected="true"],.reviewtabs button[aria-selected="true"]{background:none;color:var(--tungsten);font:var(--board-body-medium)}
-.reviewtabs .n{display:inline-flex;align-items:center;justify-content:center;padding:1px 4px;border-radius:4px;background:color-mix(in srgb,var(--color-text-primary) 10%,transparent);color:var(--color-text-primary);opacity:.5;font:500 12px/16px var(--board-font);font-variant-numeric:tabular-nums}
-.reviewtabs button[aria-selected="true"] .n{background:color-mix(in srgb,var(--tungsten) 16%,var(--color-background-primary-default));color:var(--tungsten);opacity:1}
+.insighttabs{display:flex;align-items:center;gap:4px;width:100%;min-height:0;margin:0;padding:0;border:0;border-bottom:1px solid var(--color-border-button-default);border-radius:0;background:none;overflow-x:auto;overflow-y:hidden;scrollbar-width:none}
+.insighttabs button{position:relative;display:inline-flex;flex:none;align-items:center;gap:10px;height:auto;min-height:0;margin:0;padding:8px 10px;border:0;border-radius:0;background:none;box-shadow:none;color:var(--color-text-primary);font:var(--board-body);white-space:nowrap;transition:color .15s ease}
+.insighttabs button::after{content:none}
+.insighttabs button:hover{background:none;color:var(--color-text-primary)}
+.insighttabs button[aria-selected="true"]{background:none;color:var(--tungsten);font:var(--board-body-medium)}
+/* 复核分类长成次级菜单：底下那一屏是同一份复核队列换了个筛法，十枚下划线并排会
+   把它读成十块各不相干的内容。药丸走全站横排互斥那一套——选中只有填充，未选中
+   悬停只提文字色。键盘行为仍是 tablist，方向键在同一条里移动焦点。 */
+.reviewtabs button{height:32px;padding:0 12px;gap:6px;border-radius:var(--control-radius);color:var(--color-text-secondary);font:var(--board-body)}
+.reviewtabs button:hover{background:none;color:var(--color-text-primary)}
+.reviewtabs button[aria-selected="true"]{background:var(--picked);color:var(--color-text-primary);font:var(--board-body-medium)}
+.reviewtabs .n{color:var(--color-text-secondary);font:500 12px/16px var(--board-font);font-variant-numeric:tabular-nums}
 /* ── 口味页三个面板的标题同一档：Heading 20/26、上 24 左 24 下 12 ── */
 .insightpanel>header:not(:has([role="tablist"])){display:block;min-height:0;padding:24px 24px 12px}
 .insightpanel>header h3,.insightcopy>span{margin:0;font:var(--board-heading);color:var(--color-text-primary)}
@@ -670,6 +687,8 @@ body .tasterank:is(button):hover,body .board-rank-list .tasterank:hover{border-c
 .board-radar-value{transform-box:view-box;transform-origin:160px 140px}
 .board-radar:not(.board-chart-visible) .board-radar-value{transform:scale(0);opacity:0}
 .board-radar.board-chart-visible .board-radar-value{animation:board-grow-radar 1.2s cubic-bezier(.22,.61,.36,1) both}
+.board-ranked-chart.board-chart-settled .board-rank-fill,.tasteranks.board-chart-settled .taste-rank-track i,.board-radar.board-chart-settled .board-radar-value{animation:none;transform:none;opacity:1}
+.board-heat-card.board-chart-settled [data-heat-value],.board-sankey-card.board-chart-settled .board-sankey-links path{animation:none}
 /* ── 复核动作：跳过是蓝色 Chip 的配色（boardui chip.tsx blue：亮 200/800，暗 950@60%/300），悬停深一档 ── */
 body .reviewactions button.warning:not(:disabled){background:#bfdbfe;color:#1e40af;border-color:transparent}
 body .reviewactions button.warning:hover:not(:disabled){background:#93c5fd;color:#1e3a8a}
@@ -715,8 +734,7 @@ body .reviewactions button:disabled{opacity:.5;cursor:not-allowed}
 .followmanage .board-follow-list .fsource.frow:hover{background:var(--color-background-primary-hover)}
 .followmanage .board-follow-list .fsource.selected,.followmanage .board-follow-list .fsource.selected:hover{background:var(--color-background-primary-default);border-color:var(--color-border-focus-ring)}
 @media(max-width:760px){.followmanage .fmain>.fsec:has(.fsources)>.fsechead{padding:16px 16px 8px}.followmanage .fmain>.fsec>.fsources{padding:0 16px 16px}.followmanage .fsec>.board-follow-selection{padding:4px 16px 12px}.followmanage .board-follow-list .fauthor{padding:12px}}
-/* ── 表格：外框管边线与圆角，里层管横向滚动与两端渐隐；接着卡片脚时下面两角不圆。选中行是蓝色 8% 的一层底，不描蓝线（上游选中行样式未取得） ── */
-.followmanage .fmain>.fsec:has(>.fsecfoot) .ftableframe{border-bottom:0;border-bottom-left-radius:0;border-bottom-right-radius:0}
+/* ── 表格：外框管边线与圆角，里层管横向滚动与两端渐隐。选中行是蓝色 8% 的一层底，不描蓝线（上游选中行样式未取得） ── */
 .followmanage .ftable tr.fsource.selected,.followmanage .ftable tr.fsource.selected:hover{background:color-mix(in srgb,var(--tungsten) 8%,var(--color-background-primary-default));border-color:var(--color-separator-border);box-shadow:none}
 .followmanage .ftable tbody tr{transition:background-color .15s ease}
 .followmanage .ftable tbody tr:last-child{border-bottom:0}
@@ -724,7 +742,7 @@ body .reviewactions button:disabled{opacity:.5;cursor:not-allowed}
 .followmanage .fsechead .iconswitch[data-board-segments]{padding:3px;border-radius:10px;gap:2px}
 .followmanage .fsechead .iconswitch[data-board-segments]>label{width:34px;height:30px;border-radius:7px}
 .followmanage .fsechead .iconswitch[data-board-segments]>.board-segment-thumb{border-radius:7px}
-.followmanage .fsechead .iconswitch svg{width:16px;height:16px;stroke-width:1.8}
+.followmanage .fsechead .iconswitch svg{width:16px;height:16px;stroke-width:2}
 /* ── 勾选框（boardui checkbox-glyph.tsx）：未选 1px border-checkbox-default 加 shadow-xs，悬停边线深一档、底不变；
    选中蓝渐变 + 内嵌高光；勾 2px 圆头，200ms cubic-bezier(.65,0,.35,1) 从零画出。tokens：亮 neutral-300／400，暗 neutral-700／500。 ── */
 :root,:root[data-theme="light"]{--color-border-checkbox-default:#d4d4d4;--color-border-checkbox-hover:#a3a3a3}
@@ -757,18 +775,25 @@ body .library-processing [role=alert]>.geist-note{margin-top:12px}
 /* 复核页与别的管理页同宽；标签条不悬浮，悬浮的是工具条这一层，分组条贴在它下面合成一个玻璃框。 */
 body .review{width:100%;max-width:var(--board-content);margin:0 auto;box-sizing:border-box}
 body .review .reviewcontrols{position:static;z-index:auto;padding-block:0;display:block;border-radius:0}
-body .review .reviewbulktoolbar{position:sticky;top:var(--topH);z-index:60;margin:0 -16px 16px;padding:12px 16px;border-radius:20px;transition:border-radius .15s ease}
-body .review .reviewgroupbar{margin-inline:-16px;padding-inline:16px}
-body .review .reviewbulktoolbar.is-stuck{background:var(--glass-fill);backdrop-filter:var(--glass-optic,blur(22px)) saturate(145%);border:0;box-shadow:inset 0 1px 0 var(--glass-rim),var(--glass-shadow)}
-body .review:has(.reviewgroupbar.is-stuck) .reviewbulktoolbar.is-stuck{border-radius:20px 20px 0 0;box-shadow:inset 0 1px 0 var(--glass-rim)}
-body .review .reviewgroupbar.is-stuck{background:var(--glass-fill);border-radius:0 0 20px 20px;box-shadow:var(--glass-shadow)}
+body .review .reviewbulktoolbar{position:sticky;top:var(--topH);z-index:60;width:auto;margin:0 calc(-1 * var(--review-edge,16px));padding:12px var(--review-edge,16px);background:var(--ground);border-radius:20px 20px 0 0}
+body .review .reviewgroupbar{margin-inline:calc(-1 * var(--review-edge,16px));padding-inline:var(--review-edge,16px);background:var(--ground);border:0;border-radius:0 0 20px 20px}
+body .review .reviewgroup:not([hidden])~.reviewgroup:not([hidden])>.reviewgroupbar{border-radius:20px}
+/* 悬浮起来的是一块玻璃，不是两块叠在一起。每块玻璃只糊自己身后那一段页面，两块
+   上下相接就会在接缝处显出两种颜色——工具条身后是卡片，分组条身后是另一排卡片。
+   所以玻璃由页面自己画一层，铺满当前粘住的那几行；两条横条只留内容，不带底。
+   矩形由 `updateReviewSticky` 逐帧量出来，写进 `--review-pane-*`。 */
+body .review{position:relative}
+body .review.review-is-stuck::before{content:"";position:fixed;top:var(--topH);left:var(--review-pane-left,0);width:var(--review-pane-width,0);height:var(--review-pane-height,0);z-index:58;pointer-events:none;border-radius:20px;background:var(--glass-fill);backdrop-filter:var(--glass-optic,blur(22px)) saturate(145%);-webkit-backdrop-filter:var(--glass-optic,blur(22px)) saturate(145%);box-shadow:inset 0 1px 0 var(--glass-rim),var(--glass-shadow)}
+body .review :is(.reviewbulktoolbar,.reviewgroupbar).is-stuck{background:transparent;backdrop-filter:none;-webkit-backdrop-filter:none;border:0;box-shadow:none}
+html.board-high-contrast .review.review-is-stuck::before{background:var(--ground);backdrop-filter:none;-webkit-backdrop-filter:none}
+@media(prefers-reduced-transparency:reduce){body .review.review-is-stuck::before{background:var(--ground);backdrop-filter:none;-webkit-backdrop-filter:none}}
 /* 批量条：隐藏的键真的隐藏（Board 的 inline-flex 曾压过 hidden）；「加入回收站」用 error 按钮的红色渐变。 */
 body .batchbar button.danger{box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;gap:4px;height:36px;min-height:36px;padding:8px 12px;border:1px solid transparent;border-radius:10px;background:linear-gradient(180deg,#ff3347,#e60012);color:#fff;font:var(--board-body-medium);transition:background-color .15s ease}
 body .batchbar button.danger:hover{background:linear-gradient(180deg,#ff6471,#ff3347);color:#fff}
 body .batchbar button.danger svg{margin-right:0}
 body .batchbar button[hidden],body .batchbar button.danger[hidden]{display:none}
 /* 关注行里的刷新与删除键：线宽与列表其它图标一致。 */
-.followmanage .frowicon svg{stroke-width:1.8}
+.followmanage .frowicon svg{stroke-width:2}
 /* 侧栏切换器：32px 圆形标识 + 名字 + 双向箭头，悬停在按钮外 5/6px 处描一圈 2px 线；收起键只有 20px 高的图标。 */
 .board-sidebar-head #brandHome{position:relative;flex:0 1 auto;max-width:calc(100% - 28px);gap:8px;padding:2px}
 .board-sidebar-head #brandHome::before{content:'';position:absolute;inset:-5px -6px;border:2px solid var(--color-border-button-default);border-radius:999px;opacity:0;transition:opacity .15s ease;pointer-events:none}

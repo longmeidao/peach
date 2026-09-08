@@ -3182,7 +3182,9 @@ async function buildBars(){
     `<div class="dnav">${orderedEdgeIcons().map(([k,label,ic])=>navBtn(k,label,ic)).join('')}</div>`+
     sec('来源',chips(facetData.locations.map(l=>({k:l.k,label:LOC[l.k]||l.k,n:l.n,
         cost:(l.k==='pikpak'||l.k==='online')?'metered':'free'})),'loc',true),'','src')
-    +sec('时长',facetData.stats.duration?`<div class="duration-filter"><div class="duration-readout"><span id="durMinText">不限</span><b>—</b><span id="durMaxText">不限</span></div>
+    /* 时长只有一处读数：手柄上方那枚气泡，在拖它的时候出现。另起一行写「不限 — 不限」
+       是同一件事说第二遍，而且滑块不动时它永远是那句话。 */
+    +sec('时长',facetData.stats.duration?`<div class="duration-filter">
       <div class="dual-range" id="durationRange"><span class="range-base"></span><span class="range-fill"></span>
         <input id="durMin" type="range" min="0" max="180" step="5" value="${filterState.dur_min?Math.min(180,+filterState.dur_min/60):0}" aria-label="最短时长（分钟）">
         <input id="durMax" type="range" min="0" max="180" step="5" value="${filterState.dur_max?Math.min(180,+filterState.dur_max/60):180}" aria-label="最长时长（分钟）"></div></div>`:'','','meta')
@@ -3219,7 +3221,6 @@ async function buildBars(){
       let lo=+durMin.value,hi=+durMax.value;
       if(lo>hi){if(changed==='min')hi=lo;else lo=hi;durMin.value=lo;durMax.value=hi}
       durRange.style.setProperty('--lo',(lo/180*100)+'%');durRange.style.setProperty('--hi',(hi/180*100)+'%');
-      $('#durMinText').textContent=lo?lo+' 分钟':'不限';$('#durMaxText').textContent=hi<180?hi+' 分钟':'不限';
       if(commit)commitContextFilter(filters=>{
         filters.len='';filters.dur_min=lo?String(lo*60):'';filters.dur_max=hi<180?String(hi*60):''})
     };
@@ -4117,11 +4118,14 @@ async function openDataCleanup(push=true){
     </section>`;
   };
   const cleanupCards={
-    scraping:`<section class="cleanupfieldset" id="libraryProcessing" data-geist-fieldset aria-labelledby="cleanupScrapingTitle">
-      <div class="geist-fieldset-content">${fieldsetTitle('cleanupScrapingTitle','扫描与采集')}
-        <p>扫描媒体文件夹，导入已有资料，采集缺失信息。</p></div>
-      <footer class="geist-fieldset-footer" data-geist-fieldset-footer><button type="button" disabled>扫描并补全资料</button></footer>
-    </section>`,
+    /* 卡片和它的提示是两件东西：提示挂在卡片外面，和资源同步那两块一个写法。
+       `#libraryProcessing` 因此是这一格本身，卡片是它的第一个孩子。 */
+    scraping:`<div class="cleanupscraping" id="libraryProcessing">
+      <section class="cleanupfieldset" data-geist-fieldset aria-labelledby="cleanupScrapingTitle">
+        <div class="geist-fieldset-content">${fieldsetTitle('cleanupScrapingTitle','扫描与采集')}
+          <p>扫描媒体文件夹，导入已有资料，采集缺失信息。</p></div>
+        <footer class="geist-fieldset-footer" data-geist-fieldset-footer><button type="button" disabled>扫描并补全资料</button></footer>
+      </section></div>`,
     junk:`<section class="cleanupfieldset" data-geist-fieldset aria-labelledby="cleanupJunkTitle">
       <div class="geist-fieldset-content">${fieldsetTitle('cleanupJunkTitle','垃圾文件')}
         <strong>${Number(junk.pending_total||0).toLocaleString()} 个待判断</strong>

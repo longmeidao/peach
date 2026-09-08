@@ -19,7 +19,7 @@
   background:var(--surface);border:1px solid var(--line);border-radius:var(--pill-radius);padding:8px 16px;position:relative}
 .search:focus-within{border-color:var(--field-ring-focus);box-shadow:0 0 0 4px var(--field-glow)}
 .search input{flex:1;min-width:0;background:none;border:0;outline:none;font-size:var(--fs-lg)}
-.search>svg{width:21px;height:21px;flex:none;stroke:var(--muted);fill:none;stroke-width:1.8;stroke-linecap:round}
+.search>svg{width:21px;height:21px;flex:none;stroke:var(--muted);fill:none;stroke-width:2;stroke-linecap:round}
 .searchmenu{position:absolute;z-index:130;left:0;right:0;top:calc(100% + 8px);padding:8px;
   border:1px solid var(--border-10);border-radius:var(--floating-radius);
   background:color-mix(in srgb,var(--surface) 96%,var(--ground));

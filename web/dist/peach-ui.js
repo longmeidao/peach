@@ -699,64 +699,72 @@ function ft({ data: e, error: t, toast: n, onComplete: r, mode: i, monitor: a, p
 			...s.status === "running" && s.total !== void 0 ? { max: s.total } : {}
 		}) } });
 	}
-	return /* @__PURE__ */ J(L, { children: [/* @__PURE__ */ J("div", {
-		class: "geist-fieldset-content library-processing",
+	return /* @__PURE__ */ J(L, { children: [/* @__PURE__ */ J("section", {
+		class: "cleanupfieldset",
+		"data-geist-fieldset": !0,
+		"aria-labelledby": "cleanupScrapingTitle",
+		children: [/* @__PURE__ */ J("div", {
+			class: "geist-fieldset-content library-processing",
+			children: [
+				/* @__PURE__ */ J("div", { dangerouslySetInnerHTML: { __html: d("cleanupScrapingTitle", "扫描与采集") } }),
+				/* @__PURE__ */ J("p", { children: "扫描媒体文件夹，导入已有资料，采集缺失信息。" }),
+				s.status === "running" && /* @__PURE__ */ J("div", {
+					"aria-live": "polite",
+					dangerouslySetInnerHTML: { __html: s.total ? Fe(`${s.stage || "正在处理"} · ${s.checked || 0} / ${s.total} 个视频`, s.checked || 0, s.total) : f(s.stage || "正在处理") }
+				})
+			]
+		}), /* @__PURE__ */ J("footer", {
+			class: "geist-fieldset-footer",
+			"data-geist-fieldset-footer": !0,
+			children: [
+				/* @__PURE__ */ J("a", {
+					class: "geist-button",
+					href: "/scraping",
+					children: "采集来源"
+				}),
+				!!s.candidates && /* @__PURE__ */ J("a", {
+					class: "geist-button",
+					href: "/review",
+					children: "复核资料"
+				}),
+				s.status !== "failed" && /* @__PURE__ */ J("button", {
+					ref: C,
+					type: "button",
+					class: "geist-button primary",
+					onClick: () => void E(),
+					children: "扫描并补全资料"
+				})
+			]
+		})]
+	}), /* @__PURE__ */ J("div", {
+		class: "library-processing-outcome",
+		"aria-live": "polite",
 		children: [
-			/* @__PURE__ */ J("div", { dangerouslySetInnerHTML: { __html: d("cleanupScrapingTitle", "扫描与采集") } }),
-			/* @__PURE__ */ J("p", { children: "扫描媒体文件夹，导入已有资料，采集缺失信息。" }),
-			/* @__PURE__ */ J("div", {
-				"aria-live": "polite",
-				children: [
-					s.status === "running" && /* @__PURE__ */ J(L, { children: /* @__PURE__ */ J("div", { dangerouslySetInnerHTML: { __html: s.total ? Fe(`${s.stage || "正在处理"} · ${s.checked || 0} / ${s.total} 个视频`, s.checked || 0, s.total) : f(s.stage || "正在处理") } }) }),
-					(l || s.status === "failed") && /* @__PURE__ */ J("div", {
-						role: "alert",
-						onClick: (e) => {
-							e.target.closest("[data-note-action]") && E();
-						},
-						dangerouslySetInnerHTML: { __html: p(l || s.error || "处理未完成，请重试", {
-							variant: "error",
-							filled: !0,
-							actionLabel: s.status === "failed" ? "重试未完成项" : ""
-						}) }
-					}),
-					s.status === "failed" && !!s.issues?.length && /* @__PURE__ */ J("ul", { children: s.issues.slice(0, 20).map((e) => /* @__PURE__ */ J("li", { children: [
-						e.asset_id ? /* @__PURE__ */ J("a", {
-							href: `/item/${e.asset_id}`,
-							children: "查看视频"
-						}) : null,
-						e.asset_id ? "：" : "",
-						e.message
-					] })) }),
-					_ && /* @__PURE__ */ J("div", {
-						class: "library-processing-result",
-						dangerouslySetInnerHTML: { __html: p(`已扫描 ${s.scanned || 0} 个文件，识别 ${s.identified || 0} 个番号，整理 ${s.candidates || 0} 组资料候选。`, {
-							variant: "success",
-							label: "处理完成"
-						}) }
-					})
-				]
-			})
-		]
-	}), /* @__PURE__ */ J("footer", {
-		class: "geist-fieldset-footer",
-		"data-geist-fieldset-footer": !0,
-		children: [
-			/* @__PURE__ */ J("a", {
-				class: "geist-button",
-				href: "/scraping",
-				children: "采集来源"
+			(l || s.status === "failed") && /* @__PURE__ */ J("div", {
+				role: "alert",
+				onClick: (e) => {
+					e.target.closest("[data-note-action]") && E();
+				},
+				dangerouslySetInnerHTML: { __html: p(l || s.error || "处理未完成，请重试", {
+					variant: "error",
+					filled: !0,
+					actionLabel: s.status === "failed" ? "重试未完成项" : ""
+				}) }
 			}),
-			!!s.candidates && /* @__PURE__ */ J("a", {
-				class: "geist-button",
-				href: "/review",
-				children: "复核资料"
-			}),
-			s.status !== "failed" && /* @__PURE__ */ J("button", {
-				ref: C,
-				type: "button",
-				class: "geist-button primary",
-				onClick: () => void E(),
-				children: "扫描并补全资料"
+			s.status === "failed" && !!s.issues?.length && /* @__PURE__ */ J("ul", { children: s.issues.slice(0, 20).map((e) => /* @__PURE__ */ J("li", { children: [
+				e.asset_id ? /* @__PURE__ */ J("a", {
+					href: `/item/${e.asset_id}`,
+					children: "查看视频"
+				}) : null,
+				e.asset_id ? "：" : "",
+				e.message
+			] })) }),
+			_ && /* @__PURE__ */ J("div", {
+				class: "library-processing-result",
+				dangerouslySetInnerHTML: { __html: p(`已扫描 ${s.scanned || 0} 个文件，识别 ${s.identified || 0} 个番号，整理 ${s.candidates || 0} 组资料候选。`, {
+					variant: "success",
+					label: "处理完成"
+				}) }
 			})
 		]
 	})] });
@@ -934,9 +942,9 @@ function bt() {
 				/* @__PURE__ */ J("h2", { children: "数据管理 · 扫描与采集" }),
 				e === "loading" ? /* @__PURE__ */ J(Y, { html: ht() }) : /* @__PURE__ */ J("div", {
 					class: "cleanupgrid",
-					children: /* @__PURE__ */ J("section", {
+					children: /* @__PURE__ */ J("div", {
 						id: "libraryProcessing",
-						class: "cleanupfieldset",
+						class: "cleanupscraping",
 						children: /* @__PURE__ */ J(ft, {
 							data: c,
 							error: l,
@@ -1088,10 +1096,12 @@ function Et(e) {
 	});
 }
 function Dt(e) {
-	let t = ".board-ranked-chart,.board-radar,.tasteranks", n = [...e.querySelectorAll(t)];
+	let t = ".board-ranked-chart,.board-radar,.tasteranks,.board-heat-card,.board-sankey-card", n = [...e.querySelectorAll(t)];
 	e instanceof HTMLElement && e.matches(t) && n.push(e), n.forEach((e) => {
 		if (e.hasAttribute("data-board-chart")) return;
-		e.dataset.boardChart = "true";
+		e.dataset.boardChart = "true", e.addEventListener("animationend", () => {
+			e.getAnimations?.({ subtree: !0 }).some((e) => e.playState === "running") || e.classList.add("board-chart-settled");
+		});
 		let t = () => e.classList.add("board-chart-visible");
 		if (typeof IntersectionObserver > "u" || matchMedia("(prefers-reduced-motion: reduce)").matches) {
 			t();
@@ -3839,10 +3849,15 @@ function Zr(e) {
 	if (!e || !t || t.offsetParent === null) return;
 	let n = e.closest("main");
 	n && e.style.setProperty("--review-edge", getComputedStyle(n).paddingLeft), e.style.setProperty("--review-controls-height", `${t.getBoundingClientRect().height}px`);
-	for (let n of [t, ...e.querySelectorAll(".reviewgroupbar")]) {
-		let e = parseFloat(getComputedStyle(n).top);
-		n.classList.toggle("is-stuck", n.offsetParent !== null && window.scrollY > 0 && Number.isFinite(e) && Math.abs(n.getBoundingClientRect().top - e) <= 1);
+	let r = [t, ...e.querySelectorAll(".reviewgroupbar")];
+	for (let e of r) {
+		let t = parseFloat(getComputedStyle(e).top);
+		e.classList.toggle("is-stuck", e.offsetParent !== null && window.scrollY > 0 && Number.isFinite(t) && Math.abs(e.getBoundingClientRect().top - t) <= 1);
 	}
+	let i = r.filter((e) => e.classList.contains("is-stuck"));
+	if (e.classList.toggle("review-is-stuck", i.length > 0), !i.length) return;
+	let a = i[0].getBoundingClientRect(), o = i[i.length - 1].getBoundingClientRect();
+	e.style.setProperty("--review-pane-left", `${a.left}px`), e.style.setProperty("--review-pane-width", `${a.width}px`), e.style.setProperty("--review-pane-height", `${o.bottom - a.top}px`);
 }
 function Qr(e, t) {
 	let n = [[

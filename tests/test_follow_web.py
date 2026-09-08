@@ -2183,7 +2183,7 @@ class FollowWebSourceTests(unittest.TestCase):
         """
         self.assertNotIn('.followmanage .board-follow-list .fsource.frow+.fsource.frow{border-top:',
                          (ROOT / 'web' / 'board.css').read_text(encoding='utf-8'))
-        self.assertBoardContains('.followmanage .frowicon svg{stroke-width:1.8}')
+        self.assertBoardContains('.followmanage .frowicon svg{stroke-width:2}')
         self.assertBoardContains('.faliasrow>.favatar{width:24px;height:24px;font-size:var(--fs-xs)}')
         self.assertPageContains('<div class="faliasrow">${followAliasAvatar(group)}<b>${esc(group.canonical_name)}</b>')
         self.assertPageContains("const sources=(followData?.sources||[]).filter(source=>source.author_key===`name:${group.canonical_key}`);")
@@ -2241,8 +2241,9 @@ class FollowWebSourceTests(unittest.TestCase):
             ".followmanage .ftableframe{border:1px solid var(--color-separator-border);border-radius:var(--surface-radius);"
             "background:var(--color-background-primary-default);overflow:hidden}"
             ".followmanage .ftablewrap{border-radius:0;background:transparent}.followmanage .ftable th{border-top:0}")
-        self.assertBoardContains(
-            ".followmanage .fmain>.fsec:has(>.fsecfoot) .ftableframe{border-bottom:0;border-bottom-left-radius:0;border-bottom-right-radius:0}")
+        # 外框四边自己收口：它离卡片脚还隔着一层内边距，缺了底边和下面两个圆角就没有收尾。
+        self.assertNotIn(".followmanage .fmain>.fsec:has(>.fsecfoot) .ftableframe",
+                         (ROOT / "web" / "board.css").read_text(encoding="utf-8"))
         self.assertBoardContains(
             ".followmanage .ftable tr.fsource.selected,.followmanage .ftable tr.fsource.selected:hover"
             "{background:color-mix(in srgb,var(--tungsten) 8%,var(--color-background-primary-default));border-color:var(--color-separator-border);box-shadow:none}")

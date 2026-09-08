@@ -45,7 +45,7 @@
    周围暗一档，看着像这条链接被禁用了——而图标要说的是「去哪」，不是「能不能点」。 */
 .entitylinkicon{width:32px;height:32px;border-radius:50%;background:transparent;display:grid;place-items:center;
   overflow:hidden;position:relative;flex:none}.entitylinkicon svg{width:16px;height:16px;stroke:currentColor;fill:none;
-  stroke-width:1.8}
+  stroke-width:2}
 /* favicon 是别人服务器上的位图，取不到时 `onerror` 会把 img 摘掉、露出下面的地球。
    但白底会让「取到了一张空图」看起来和「圆盘坏了」一模一样——X 的 favicon 正是这种。
    现在 X 走内联品牌标记不再发请求，其余主机也不再垫白底。 */

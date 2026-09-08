@@ -217,7 +217,7 @@ button,a,input,textarea,select,summary{touch-action:manipulation}
    间距只由 .externallink 的 gap 说：挂在标自己身上会和容器的 gap 叠起来。 */
 .externallink{display:inline-flex;align-items:center;gap:2px;min-width:0}
 svg.externalmark{width:1.15em;height:1.15em;flex:none;align-self:center;
-  stroke:currentColor;fill:none;stroke-width:2.25;stroke-linecap:round;stroke-linejoin:round}
+  stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .geist-button:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}
 .geist-button:disabled{background:var(--sunk);color:var(--muted);cursor:not-allowed}
 /* Vercel/Geist loading actions look unavailable and reject repeat activation,
@@ -329,7 +329,7 @@ button.danger:not(.frowicon):disabled{
 .gselectfield>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .gselectmenu [data-select-content]{display:flex;align-items:center;gap:8px;min-width:0}
 .gselectfield .gselectmark{vertical-align:-3px;margin-inline-end:8px}
-.gselectmark{width:16px;height:16px;flex:none;object-fit:contain;stroke:currentColor;fill:none}
+.gselectmark{width:16px;height:16px;flex:none;object-fit:contain;stroke:currentColor;fill:none;stroke-width:2}
 .gselectfield>svg{width:16px;height:16px;flex:none;stroke:currentColor;fill:none;color:var(--muted)}
 .gselectfield:hover:not(:disabled){border-color:var(--field-ring-hover)}
 /* 展开时按住焦点态：菜单开着而触发器看起来没被点中，读起来像两个控件。 */

@@ -119,6 +119,8 @@ const lucideIcons = new Map([
   ["folder-cog", "folder-cog"],
   // 配置页每行文件夹的「选择文件夹」：弹系统对话框去挑。`folder-open` 归「打开位置」，不兼任。
   ["folder-search", "folder-search"],
+  // 数据管理页「空文件夹」那张卡的标识：说的是目录本身，既不是打开它，也不是去里面找。
+  ["folder", "folder"],
   ["sun", "sun"], ["moon", "moon"],
   // 小窗播放：右键菜单里「迷你播放器」是缩进角落的小屏，小窗上的「展开」是对角撑开；
   // `maximize` 归 JAV 大图版式，不兼任。「循环播放」与「复制视频网址」照 Lucide 本名。
