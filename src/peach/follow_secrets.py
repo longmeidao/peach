@@ -212,9 +212,14 @@ CREDENTIAL_GUIDE: dict[str, dict] = {
         "howto": "登录后从浏览器复制整条 Cookie 请求头，写进凭据文件的 cookie 字段。",
     },
     "simpcity": {
-        "requirement": "blocked",
-        "why": "站点由 DDoS-Guard 的浏览器质询保护，放行绑客户端 IP 且最短 20 分钟过期，"
-               "撑不起定时追更。Peach 不绕机器人验证。",
+        "requirement": "required",
+        "fields": ["cookie"],
+        # 登录会话绑浏览器与 DDoS-Guard 的放行记录，同步到另一台大概率直接失效——不同步。
+        "syncable": [],
+        "why": "站点不让游客读帖，检查更新必须带登录会话；前面的 DDoS-Guard 对标准桌面浏览器"
+               "标识不出质询，Peach 也不解任何质询，cookie 失效就原样报错。",
+        "where": "https://simpcity.cr/",
+        "howto": "登录后从浏览器复制整条 Cookie 请求头，写进凭据文件的 cookie 字段。",
     },
 }
 

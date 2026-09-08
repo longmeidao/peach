@@ -938,8 +938,9 @@ class FollowContractTests(unittest.TestCase):
         self.assertEqual(by_provider["gofile"]["requirement"], "optional")
         self.assertEqual(by_provider["gofile"]["needs"], ["api_token"])
         self.assertTrue(by_provider["gofile"]["path"].endswith("gofile.json"))
-        self.assertEqual(by_provider["simpcity"]["requirement"], "blocked")
-        self.assertIn("DDoS-Guard", by_provider["simpcity"]["why"])
+        self.assertEqual(by_provider["simpcity"]["requirement"], "required")
+        self.assertEqual(by_provider["simpcity"]["needs"], ["cookie"])
+        self.assertIn("游客", by_provider["simpcity"]["why"])
         self.assertTrue(by_provider["rule34xxx"]["path"].endswith("rule34xxx.json"))
 
     def test_a_configured_credential_reports_nothing_missing(self):
@@ -1319,11 +1320,16 @@ class FollowSourceAddTests(FollowContractTests):
                        {"action": "add", "url": "https://example.test/creator"})
         self.assertIn("kemono.cr", str(caught.exception))
 
-    def test_simpcity_is_refused_with_the_bot_check_reason(self):
-        with self.assertRaises(FollowSourceError) as caught:
-            self._post("/api/follow/source",
-                       {"action": "add", "url": "https://simpcity.cr/threads/x.1/"})
-        self.assertIn("DDoS-Guard", str(caught.exception))
+    def test_a_simpcity_thread_registers_and_the_first_check_asks_for_the_cookie(self):
+        # 没有 cookie 时来源照样登记，首次检查报「未授权」而不是把整次登记回滚。
+        result = self._post("/api/follow/source",
+                            {"action": "add", "url": "https://simpcity.cr/threads/x.4242/"})
+        self.assertTrue(result["ok"])
+        self.assertFalse(result["checked"]["ok"])
+        self.assertEqual(result["checked"]["status"], "unauthorized")
+        self.assertIn("cookie", result["checked"]["error"])
+        source = self._get()["sources"][0]
+        self.assertEqual((source["provider"], source["ref"]), ("simpcity", "4242"))
 
     def test_removing_a_source_takes_its_items_with_it(self):
         self._seed()

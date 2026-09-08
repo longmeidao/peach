@@ -1,0 +1,7 @@
+{
+  "hooks": {
+    "Stop": [{"hooks": [
+      {"type": "command", "command": ".venv/Scripts/python.exe scripts/release_due.py --hook-event", "timeout": 30}
+    ]}]
+  }
+}

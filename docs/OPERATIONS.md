@@ -183,6 +183,7 @@ curl -s --noproxy '*' -o /dev/null -w '%{http_code}\n' https://peach.local/healt
 - 中途停下（网络断、CI 还在跑、等超时）就再跑一次同一条命令：每一步都先看当下状态再决定做不做，已提交的不重提，已推送的不重推，Test 没绿绝不打标签。
 - `scripts/agent_worktree.py integrate` 不碰版本号，只在结果里报当前值；主线上跑着的是哪一份由 commit 与 `build-info.json` 认定。
 - 「什么时候该发」也不靠人判断：`integrate` 的输出带一个 `release` 字段（`changelog.due()`），`due` 为真时智能体在收尾照 `why` 提出来。节奏是每周一次、攒够提前、破坏性变化与安全修复不等周期（`DUE_DAYS = 7`、`DUE_ENTRIES = 10`）。判据只数使用者看得见的条目，不数提交：一百个重构提交对使用者是零，那正是这份判据要跟「集成了多少次」分开的地方。
+- 同一份判断还挂在每次会话收尾上：`scripts/release_due.py --hook-event` 由 Claude 的 `.claude/settings.json` 与 Codex 的 `.codex/hooks.json` 里的 `Stop` 钩子调用。两家的钩子约定一致——stdin 收 JSON、stdout 回 `systemMessage`、退出码 0，所以一个脚本供两边。挂在这里才覆盖得到「一周没集成」的那几天，而那正是最容易忘的时候。四道门先挡住不该出声的场合：不在主检出、不在 master、工作区不干净、这个 master sha 已经问过；四条全过且 `due` 为真才说话，其余情形一个字都不打印。闩记在 `<数据根>/state/release-due.json`，master 前进了才会再问。人手查用不带参数的 `python scripts/release_due.py`，那条只读，不动闩。钩子命令里写的是 `.venv/Scripts/python.exe`，在 macOS 上要换成 `.venv/bin/python` 才跑得起来。
 - 时间那一半有先例可依（Firefox 四周、Ubuntu 与 GNOME 半年都把「要不要发」交给日历）；条数那一半没有可靠样本。已发四版各带 6、8、6、9 条，但那是「每次集成推一格」时期的产物，反映的是那三天写了多少代码，不是多少变化值得让人下载一次。`DUE_ENTRIES` 是没有样本时的保守起点，`due()` 每次都报出实际条目数与分组，积累几次真实发布之后拿那几个数回来校准，别再拿旧机制的数字当依据。
 - PyInstaller 的资源直接位于 `sys._MEIPASS`，没有源码树的 `src/` 层；打包后的 `migrate`、Web 与品牌资源必须从这里解析，不能对 `config.py` 固定取 `parents[2]`。
 - 创建 Win32 窗口前必须启用 Per-Monitor V2 DPI；正常动作不弹模态 MessageBox，更新检查在后台线程执行并用 pystray 原生非模态通知反馈。
