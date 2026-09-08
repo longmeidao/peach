@@ -246,6 +246,10 @@ class CacheTests(unittest.TestCase):
             self.assertFalse(link_marks.is_fresh(tmp, now=modified - 1))
             self.assertTrue(link_marks.is_fresh(tmp, now=modified + link_marks.CACHE_TTL - 1))
             self.assertFalse(link_marks.is_fresh(tmp, now=modified + link_marks.CACHE_TTL))
+            # 设置里选「从不」时 ttl 是 None：文件在就算新鲜；选了别的天数就按那个数。
+            self.assertTrue(link_marks.is_fresh(tmp, now=modified + 10 ** 9, ttl=None))
+            self.assertTrue(link_marks.is_fresh(tmp, now=modified + 6, ttl=7))
+            self.assertFalse(link_marks.is_fresh(tmp, now=modified + 7, ttl=7))
 
 
 if __name__ == "__main__":

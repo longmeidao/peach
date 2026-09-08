@@ -83,6 +83,11 @@ CREATE TABLE review_decision(
   category TEXT NOT NULL,item_key TEXT NOT NULL,status TEXT NOT NULL,
   reviewer TEXT NOT NULL DEFAULT 'local-default',note TEXT NOT NULL DEFAULT '',updated_at TEXT NOT NULL,
   PRIMARY KEY(category,item_key));
+CREATE TABLE profile(
+  id TEXT PRIMARY KEY, user_id TEXT NOT NULL, name TEXT NOT NULL, is_default INTEGER NOT NULL DEFAULT 0,
+  settings_json TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+INSERT INTO profile(id,user_id,name,is_default,settings_json,created_at,updated_at)
+VALUES('local-default','local','Default',1,'{}','2026-08-14T12:17:23Z','2026-08-14T12:17:23Z');
 """
 
 
@@ -396,19 +401,105 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         unauthorized = await self.client.get("/dist/peach-ui.js")
         self.assertEqual(unauthorized.status_code, 401)
 
-    async def test_follow_avatar_redirects_only_after_the_official_resolver(self):
+    def _swap_http_client(self, upstream):
+        fake = httpx.Client(transport=httpx.MockTransport(upstream), follow_redirects=True)
+        original = self.app.state.http_transport.client
+        self.app.state.http_transport.client = fake
+
+        def restore():
+            self.app.state.http_transport.client = original
+            fake.close()
+        self.addCleanup(restore)
+        return fake
+
+    async def test_follow_avatar_is_fetched_once_and_then_served_from_disk(self):
+        """头像是元数据，落在本机：浏览器不直接碰 pixiv，第二次显示也不再问上游。"""
         denied = await self.client.get("/follow-avatar?service=fanbox&id=30917150")
         self.assertEqual(denied.status_code, 401)
-        # patch 打在真正 import 它的模块上。`/follow-avatar` 现在住在 routes_media，
+        png = b"\x89PNG\r\n\x1a\n" + b"\x00" * 24
+        hits = []
+
+        def upstream(request):
+            hits.append(str(request.url))
+            return httpx.Response(200, content=png, request=request,
+                                  headers={"content-type": "image/png"})
+        self._swap_http_client(upstream)
+        # patch 打在真正 import 它的模块上。`/follow-avatar` 住在 routes_media，
         # 打在 `peach.api` 上会静默失效——那个名字已经不在那里了。
         with patch("peach.routes_media.resolve_official_avatar",
                    return_value="https://pixiv.pximg.net/icon.jpeg") as resolver:
             response = await self.client.get(
                 "/follow-avatar?t=secret&service=fanbox&id=30917150")
-        self.assertEqual(response.status_code, 307)
-        self.assertEqual(response.headers["location"],
-                         "https://pixiv.pximg.net/icon.jpeg")
+            again = await self.client.get(
+                "/follow-avatar?t=secret&service=fanbox&id=30917150")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.headers["content-type"], "image/png")
+        self.assertEqual(response.content, png)
+        self.assertEqual(hits, ["https://pixiv.pximg.net/icon.jpeg"], "第二次不再出网")
         resolver.assert_called_once_with("fanbox", "30917150")
+        self.assertEqual(again.status_code, 200)
+        self.assertEqual(again.content, png)
+        cached = list((self.candidate_root / "follow-assets" / "avatars").glob("*.img"))
+        self.assertEqual(len(cached), 1, "头像落在 generated/follow-assets/avatars 下")
+
+    async def test_mirror_avatars_come_from_the_fixed_archive_host(self):
+        webp = b"RIFF\x00\x00\x00\x00WEBPVP8 " + b"\x00" * 16
+        hits = []
+
+        def upstream(request):
+            hits.append(str(request.url))
+            return httpx.Response(200, content=webp, request=request,
+                                  headers={"content-type": "image/webp"})
+        self._swap_http_client(upstream)
+        response = await self.client.get(
+            "/follow-avatar?t=secret&provider=kemono&ref=fanbox/30917150")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.headers["content-type"], "image/webp")
+        self.assertEqual(hits, ["https://kemono.cr/icons/fanbox/30917150"])
+        # 没有实测过头像端点的来源、缺 ref 的请求都不出网，直接给占位图。
+        for query in ("provider=rule34video&ref=1", "provider=kemono&ref=noslash",
+                      "service=fanbox&id=not-a-number", "service=patreon&id=1"):
+            missing = await self.client.get(f"/follow-avatar?t=secret&{query}")
+            self.assertEqual(missing.status_code, 404, query)
+            self.assertEqual(missing.headers["content-type"], PLACEHOLDER_CONTENT_TYPE, query)
+        self.assertEqual(len(hits), 1)
+
+    async def test_source_icons_are_served_from_disk_and_only_from_the_table(self):
+        """来源图标同样经 Peach 落盘；地址只认 follow_assets.SOURCE_ICON_URLS 那张表。"""
+        from peach import follow_assets
+
+        ico = b"\x00\x00\x01\x00\x01\x00" + b"\x00" * 24
+        hits = []
+
+        def upstream(request):
+            hits.append(str(request.url))
+            if "simpcity" in request.url.host:
+                # 机器人质询页：content-type 说是图也不算，认不出字节就不落盘。
+                return httpx.Response(200, content=b"<html>Just a moment...</html>",
+                                      request=request, headers={"content-type": "image/png"})
+            return httpx.Response(200, content=ico, request=request,
+                                  headers={"content-type": "image/x-icon"})
+        self._swap_http_client(upstream)
+        denied = await self.client.get("/source-icon?provider=kemono")
+        self.assertEqual(denied.status_code, 401)
+        response = await self.client.get("/source-icon?t=secret&provider=kemono")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.headers["content-type"], "image/x-icon")
+        self.assertEqual(response.content, ico)
+        again = await self.client.get("/source-icon?t=secret&provider=kemono")
+        self.assertEqual(again.status_code, 200)
+        self.assertEqual(hits, [follow_assets.SOURCE_ICON_URLS["kemono"]])
+        blocked = await self.client.get("/source-icon?t=secret&provider=simpcity")
+        self.assertEqual(blocked.status_code, 404)
+        self.assertEqual(blocked.headers["content-type"], PLACEHOLDER_CONTENT_TYPE)
+        self.assertEqual(hits[-1], follow_assets.SOURCE_ICON_URLS["simpcity"])
+        unknown = await self.client.get("/source-icon?t=secret&provider=evil.example")
+        self.assertEqual(unknown.status_code, 404)
+        self.assertEqual(len(hits), 2, "没登记的来源不出网")
+        self.assertEqual(
+            sorted(p.name for p in (self.candidate_root / "follow-assets" / "icons").iterdir()),
+            sorted(p.name for p in (self.candidate_root / "follow-assets" / "icons").iterdir()
+                   if p.suffix in (".img", ".failed")))
 
     async def test_unauthorized_keeps_three_shapes_grouped_by_route_class(self):
         """401 三种形态按路由类分组，收敛到 Depends 之后也不许并成一种。

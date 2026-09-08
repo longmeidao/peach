@@ -279,14 +279,15 @@ def cached_path(root: Path, url: str) -> Path | None:
     return (root / f"{key}.png") if key else None
 
 
-def is_fresh(path: Path, now: float | None = None) -> bool:
+def is_fresh(path: Path, now: float | None = None, ttl: int | None = CACHE_TTL) -> bool:
     """缓存还新鲜吗。
 
     图标会随站点改版变，但不必每次开页都重取；一个月是「站点改了版早晚会跟上」和
-    「不要每开一页就打一遍别人的服务器」之间的折中。
+    「不要每开一页就打一遍别人的服务器」之间的折中。用户在设置里选的「头像与站点
+    图标刷新」通过 `ttl` 传进来；None 表示从不重取，文件在就算新鲜。
     """
     try:
         age = (now if now is not None else time.time()) - path.stat().st_mtime
     except OSError:
         return False
-    return 0 <= age < CACHE_TTL
+    return ttl is None or 0 <= age < ttl

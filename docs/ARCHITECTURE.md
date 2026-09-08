@@ -48,7 +48,7 @@ durable artifact 拆分仍待续，见 ADR-0017 与 `docs/STATUS.md`。三条链
 可改，环境变量 `PEACH_DATA_ROOT` 覆盖它；本机坐标写在 `<数据根>/config.toml`）：
 
 - `database/`：SQLite 真相库。本地是工作副本，血缘记在同目录的 `ledger.db.sync.json`
-- `generated/`：快照、海报、头像和厂牌 Logo
+- `generated/`：快照、海报、头像和厂牌 Logo；`follow-assets/` 与 `link-marks/` 是关注头像、来源图标与外链圆标的可重建缓存
 - `sources/`：浏览器、追更、盘点和导出等不可变原始输入
 - `state/`：人工维护的本机状态和锁
 - `secrets/`：仅本机保存的凭据材料
