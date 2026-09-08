@@ -41,7 +41,9 @@
 .board-filter-frame.board-filter-frame .pill,.board-filter-frame.board-filter-frame .sorts button{color:var(--glass-text)}
 .board-filter-frame.board-filter-frame #tagbar .pill[data-tag]:not([aria-pressed="true"]){border-color:var(--glass-low)}
 .board-filter-frame.board-filter-frame #tagbar .pill[data-state][aria-pressed="true"],.board-filter-frame.board-filter-frame .sorts button[aria-pressed="true"]{background:color-mix(in srgb,var(--ink) 10%,transparent)}
-.board-filter-frame.board-filter-frame .sorts #batchAction,.entitycollectionhead .sorts .entitybatch{color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:8px;box-shadow:inset 0 1px 0 #ffffff0a,0 1px 2px #00000012}
+/* 换一批跟同一条上的排序键一样平：给它单独铺一层面加一圈线，静止态就在一排透明
+   按钮里露出一块灰片，看着像图标背后还垫了个东西。选中态归排序键，它只有悬停。 */
+.board-filter-frame.board-filter-frame .sorts #batchAction,.entitycollectionhead .sorts .entitybatch{color:var(--ink);background:none;border:0;border-radius:7px;box-shadow:none}
 .top.top,body.board-scrolled .top.top{background:transparent;box-shadow:none;backdrop-filter:none;border:0}
 .top .search.search{border-radius:999px;padding-left:16px}
 .top.top>.ib{border-radius:50%}
@@ -213,6 +215,12 @@ body::before{display:none}
 .board-filter-frame #tagbar .pill[data-state]{border:0;background:none}
 .board-filter-frame #tagbar .pill[data-state][aria-pressed="true"]{background:var(--picked);color:var(--ink)}
 .board-filter-frame #tagbar .pill[data-tag]:not([aria-pressed="true"]){border:1px solid var(--line);background:transparent}
+/* 资料页的标签跟首页筛选条上的标签是同一个控件，只是换了个位置：那边 30px 高、8px
+   圆角、13px 字，这边还留着 40px 高的大药丸，同一个人的标签在两页上大一圈小一圈。
+   计数跟着缩到 Caption。 */
+.entitytags .pill{height:30px;padding:0 10px;font-size:13px;line-height:20px;border-radius:8px;border:1px solid var(--line);color:var(--ink-2)}
+.entitytags .pill[aria-pressed="true"]{border-color:transparent;background:var(--picked);color:var(--ink)}
+.entitytags .pill small{margin-left:5px;font:var(--board-caption)}
 .board-filter-frame .count{padding:8px 12px;min-height:46px;gap:12px}
 .board-filter-frame .sorts{gap:4px}.board-filter-frame .sorts button{height:30px;min-height:30px;font-size:12px;padding:0 8px;border:0;border-radius:7px;background:transparent}
 .board-filter-frame .sorts button[aria-pressed="true"]{background:var(--picked)}
@@ -507,7 +515,9 @@ button,input,select,textarea{font-family:inherit}
 body,.disp{font-family:var(--board-font);letter-spacing:0}body{font:var(--board-body)}button,input,textarea,select{font-family:var(--board-font)}
 .pagetitle,.listtitle,body #manageTitle,.index .ihead h2,.indexheading,.playlistpage h2{font:var(--board-title);letter-spacing:0}.settingscard .settingshead h2,.configfieldset h2,.configfieldset h3,.cleanupfieldset h3,.followmanage .fsechead h3,.resourcesync>h2{font:var(--board-heading);letter-spacing:0}.metricstrip>button .board-stat-value,.tastesummary>.board-stat-value{font:var(--board-figure);letter-spacing:0}.drawer .dnav button,.board-library-rows button,.settingrow b,.fsource.frow>b{font:var(--board-body)}.fmeta,.confighelp,.settingrow small{font:var(--board-compact)}.board-stat-footer,.board-watch-measures small,.tasterank small,.insighttoolbar p{font:var(--board-caption);letter-spacing:.15px}
 .geist-button,.fbtn,.resourceaction{background-color:var(--color-background-primary-default);border-color:var(--color-border-button-default);color:var(--color-text-primary);transition:background-color .15s ease,border-color .15s ease,color .15s ease}
-.geist-button:hover:not(:disabled),.fbtn:hover:not(:disabled),.resourceaction:hover:not(:disabled){background-color:var(--color-background-primary-hover);border-color:var(--color-border-button-hover);color:var(--color-text-primary)}
+/* 悬停只抬填充，那圈线一步不动：按钮静止态已经带一圈 1px，悬停再把它加深，
+   鼠标扫过一排次级键就是一排边框忽明忽暗，而键本身并没有变化。 */
+.geist-button:hover:not(:disabled),.fbtn:hover:not(:disabled),.resourceaction:hover:not(:disabled){background-color:var(--color-background-primary-hover);color:var(--color-text-primary)}
 .geist-button.primary,.geist-button.primary:hover:not(:disabled),.tagselection button.primary,.tagselection button.primary:hover:not(:disabled){background:var(--board-blue);color:var(--color-text-white);transition:filter .15s ease}.geist-button.primary:hover:not(:disabled),.tagselection button.primary:hover:not(:disabled){filter:brightness(1.08)}
 .drawer.drawer .dnav button[aria-pressed=true],.drawer.drawer .dnav button[aria-pressed=true]:hover{background:var(--board-blue);color:var(--color-text-white);transition:filter .15s ease}
 .geist-button.danger:hover:not(:disabled),.fbtn.danger:hover:not(:disabled),.resourceaction.danger:hover:not(:disabled){background:var(--drop);color:#fff}
@@ -520,7 +530,15 @@ body,.disp{font-family:var(--board-font);letter-spacing:0}body{font:var(--board-
 
 /* Board secondary：实体细边框、轻阴影和统一的三档控件尺寸。 */
 body :is(.geist-button,.fbtn,.resourceaction,.fcredactions button,.fpickactions button,.batchbar button,.reviewpickhead button,.tagselection button,.geist-fieldset-footer>a,.geist-fieldset-footer>button):not(.primary,.danger,.error,.warning){box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;gap:4px;height:36px;min-height:36px;padding:8px 12px;border:1px solid var(--color-border-button-default);border-radius:10px;background:var(--color-background-primary-default);color:var(--color-text-primary);box-shadow:0 1px 2px #0000000d;font:var(--board-body-medium);white-space:nowrap;text-decoration:none;transition:background-color .15s ease,border-color .15s ease}
-body :is(.geist-button,.fbtn,.resourceaction,.fcredactions button,.fpickactions button,.batchbar button,.reviewpickhead button,.tagselection button,.geist-fieldset-footer>a,.geist-fieldset-footer>button):not(.primary,.danger,.error,.warning):hover:not(:disabled,[aria-disabled=true]){background:var(--color-background-primary-hover);border-color:var(--color-border-button-hover)}
+body :is(.geist-button,.fbtn,.resourceaction,.fcredactions button,.fpickactions button,.batchbar button,.reviewpickhead button,.tagselection button,.geist-fieldset-footer>a,.geist-fieldset-footer>button):not(.primary,.danger,.error,.warning):hover:not(:disabled,[aria-disabled=true]){background:var(--color-background-primary-hover)}
+/* 药丸、标签和外链卡跟按钮同一条。它们的边各有自己的颜色来源，所以逐类钉回静止值，
+   不能统一写成一个 token。 */
+body .pill:hover,body .brandpill:hover{border-color:var(--field-ring)}
+/* 玻璃条上的药丸这样一来没有任何悬停反馈：那层 `--glass-text` 的权重比基线的
+   `.pill:hover` 高，把提亮文字色的那半也一起吃掉了。横排互斥选项的悬停就是提文字色。 */
+.board-filter-frame.board-filter-frame .pill:hover{color:var(--ink)}
+body .index .index-tags .tg:hover{border-color:color-mix(in srgb,var(--tag-color) 32%,transparent)}
+body .entitylinks a:hover{border-color:var(--line)}
 body :is(.geist-button,.fbtn,.resourceaction,.fcredactions button,.fpickactions button,.batchbar button,.reviewpickhead button,.tagselection button):not(.primary,.danger,.error,.warning):is(:disabled,[aria-disabled=true]){background:var(--ground);border-color:var(--line);color:var(--muted);box-shadow:none}
 body :is(.geist-button,.fbtn,.resourceaction,.tagselection button).primary:not(:disabled){background:var(--board-blue);border:1px solid transparent;color:#fff;box-shadow:0 1px 2px #0000000d;transition:filter .15s ease}
 body :is(.geist-button,.fbtn,.resourceaction,.tagselection button).primary:hover:not(:disabled){background:var(--board-blue);color:#fff;filter:brightness(1.08)}
@@ -696,7 +714,10 @@ html.board-high-contrast :is(.selectiondock,.reviewcontrols.is-stuck,.reviewgrou
 .insightpanel>header:has(.insighttabs){padding:12px 16px;min-height:0}
 .insighttabs{position:relative;display:inline-flex;align-items:center;gap:2px;width:auto;max-width:100%;min-height:0;margin:0;padding:4px;border:0;border-radius:10px;background:var(--color-background-tertiary-default);overflow-x:auto;overflow-y:hidden;scrollbar-width:none}
 .insighttabs button{position:relative;z-index:1;display:inline-flex;flex:none;align-items:center;gap:6px;height:auto;min-height:28px;margin:0;padding:4px 10px;border:0;border-radius:6px;background:none;box-shadow:none;color:var(--color-text-secondary);font:var(--board-body);white-space:nowrap;transition:color .2s cubic-bezier(.4,0,.2,1)}
-.insighttabs button::after{content:none}
+/* 取消基线那条下划线要连选中态一起写：原样式把线挂在
+   `.insighttabs button[aria-selected="true"]:after` 上，只写 `button::after` 权重更低，
+   于是滑块底下还压着一条 2px 墨线。原样式留着给 `original-design` 那条退路用。 */
+.insighttabs button::after,.insighttabs button[aria-selected="true"]::after{content:none}
 .insighttabs button:hover{background:none;color:var(--color-text-primary)}
 .insighttabs button[aria-selected="true"]{background:none;color:var(--color-text-primary);font:var(--board-body-medium)}
 /* 复核分类长成次级菜单：底下那一屏是同一份复核队列换了个筛法，十枚下划线并排会

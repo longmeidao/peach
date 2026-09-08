@@ -4,16 +4,20 @@
 
     http://kawakami-yuu.livedoor.biz      http://kawakami-yuu.livedoor.biz/
     https://x.com/yu_kinao               https://x.com/yu_kinao/status/1221041995415580672
+    …/talent/%e6%b6%bc%e6%a3%ae…/        …/talent/%E6%B6%BC%E6%A3%AE…/
 
-第一组差一个斜杠，第二组是同一个账号的主页和它的一条推文。两组在资料页上都是并排
-两枚一模一样的图标，点下去到同一个人那里。采集器还在跑，所以这不是一次性清理：
-不同来源对同一个账号的写法本来就不同，这条路要留着复用。
+第一组差一个斜杠，第二组是同一个账号的主页和它的一条推文，第三组只差百分号转义的
+大小写。三组在资料页上都是并排两枚一模一样的图标，点下去到同一个人那里。采集器还在
+跑，所以这不是一次性清理：不同来源对同一个账号的写法本来就不同，这条路要留着复用。
 
 判据分两种，因为「同一个去处」在社媒和普通网站上不是一回事：
   * 社媒按账号算。平台加 handle 就是身份，路径后面挂什么（status、photo、媒体页）
     都还是同一个人的账号。
   * 其余按主机加路径算，路径末尾的斜杠不算差别。查询串和片段照算——`?id=3` 换一个
     值多半就是另一个页面。
+
+路径先解回字节再比：`%E6` 和 `%e6` 是同一个字节，而日文艺人页的路径整段都是转义的
+假名，两个来源各按自己的习惯写大小写。解成字节而不是文字，是因为路径不保证是 UTF-8。
 
 同组保留 URL 最短的那条：最短的就是账号主页或站点根，也就是点进去最有用的那个。
 
@@ -24,7 +28,7 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import unquote_to_bytes, urlsplit
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 SRC_DIR = PROJECT_ROOT / "src"
@@ -54,7 +58,7 @@ def destination(url: str) -> str:
         if handle:
             return f"{name}\t{handle.casefold()}"
     parts = urlsplit(url.strip())
-    path = parts.path.rstrip("/")
+    path = unquote_to_bytes(parts.path).rstrip(b"/").decode("latin-1")
     return "\t".join((host_of(url), path, parts.query, parts.fragment))
 
 
