@@ -327,8 +327,6 @@ button,input,select,textarea{font-family:inherit}
 .drawer #brandHome h1{font-size:14px;line-height:20px;letter-spacing:0;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .board-library-chevron{width:16px;height:16px;flex:none;fill:none;stroke:var(--muted);stroke-width:1.6}
 .board-library-menu{position:fixed;inset:auto;margin:0;box-sizing:border-box;width:265px;max-width:calc(100vw - 32px);padding:10px;border:1px solid var(--line);border-radius:16px;background:var(--ground);color:var(--ink);box-shadow:0 8px 24px #0002;overflow-y:auto;scrollbar-width:none;transform-origin:top left}
-.board-library-menu:popover-open{animation:board-library-in .15s ease-out both}
-@keyframes board-library-in{from{opacity:0;transform:scale(.95);filter:blur(2px)}to{opacity:1;transform:scale(1);filter:blur(0)}}
 .board-library-menu>p{padding:5px 8px 0;margin:0 0 6px;color:var(--muted);font-size:14px;line-height:20px}
 .board-library-rows{display:flex;flex-direction:column;gap:4px}
 .board-library-rows button{display:flex;align-items:center;gap:8px;padding:6px 8px;min-height:32px;border:0;border-radius:10px;background:transparent;color:var(--ink);font:inherit;text-align:left;cursor:pointer}
@@ -340,7 +338,15 @@ button,input,select,textarea{font-family:inherit}
 .board-library-menu footer{margin:14px -10px 0;padding:14px 18px 8px;border-top:1px solid var(--line)}
 .board-library-menu footer button{width:100%}
 @media(min-width:761px){.drawer:not(.open) .board-library-chevron{display:none}.drawer:not(.open) .board-sidebar-head{min-height:80px;flex-direction:column-reverse;justify-content:flex-end}.drawer:not(.open) .board-sidebar-head #filterBtn{display:grid;width:36px;height:36px}.drawer:not(.open) #brandHome{justify-content:center;flex:none;width:36px;height:36px;gap:0}.drawer:not(.open) #brandHome .mark{width:28px;height:28px}.drawer:not(.open) .dnav button{width:36px;height:36px;min-height:36px;padding:8px;justify-content:center}}
-@media(prefers-reduced-motion:reduce){.board-library-menu:popover-open{animation:none}}
+/* 菜单面板的开合（boardui menu-styles.ts，登记在 docs/BOARD_UI.md）：150ms ease-out，透明度、scale .95、2px 模糊一起进出。
+   进场只填起点（backwards），放完就回到没有 transform／filter 的常态，不给面板留一层 blur(0) 光栅；退场填终点，等 dismissMenu 收走。
+   缩放原点按开的方向：向下开从上沿长出来，向上开从下沿，侧开从左沿。减少动态效果时由 01-base 的全局规则关掉，dismissMenu 读到 none 就直接藏。 */
+@keyframes board-menu-in{from{opacity:0;transform:scale(.95);filter:blur(2px)}}
+@keyframes board-menu-out{to{opacity:0;transform:scale(.95);filter:blur(2px)}}
+:is(.popmenu,.context-card,.board-library-menu,.searchmenu,.tagpicker):not([hidden]){animation:board-menu-in .15s ease-out backwards;transform-origin:top left}
+:is(.popmenu,.context-card,.board-library-menu,.searchmenu,.tagpicker).leaving{animation:board-menu-out .15s ease-out forwards}
+:is(.popmenu,.context-card,.board-library-menu)[data-placement=top],.sidebaraddmenu.sidebaraddmenu{transform-origin:bottom left}
+.board-library-menu[data-placement=right]{transform-origin:left}
 .board-sidebar-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;flex:none;padding:12px}
 .board-sidebar-foot>#settingsBtn{width:36px;height:36px;padding:0;display:grid;place-items:center;border-radius:8px;background:transparent;flex:none}
 .board-sidebar-foot>#settingsBtn svg{width:20px;height:20px;margin:0}
@@ -530,6 +536,7 @@ body :is(.photozoom input,.vjs-peach-speed-range)::-moz-range-track{height:6px;b
 .dual-range{margin-top:36px}.dual-range .board-range-tip[data-range-end=max]{transform:translateX(-100%)}.dual-range .board-range-tip[data-range-end=min]{transform:none}
 .toast{position:relative;align-items:flex-start;gap:12px;width:min(400px,calc(100vw - 32px));padding:16px 44px 16px 16px;border-radius:16px;background:var(--color-background-primary-default);border-color:var(--color-border-button-default);color:var(--color-text-primary);font:var(--board-body);box-shadow:0 12px 24px -4px #0000001a,0 4px 8px -2px #0000000d;overflow:hidden}
 .toast.warn{border-color:var(--color-border-button-default)}.toast .board-notification-icon{display:grid;place-items:center;width:40px;height:40px;flex:none;border-radius:50%;background:color-mix(in srgb,#3986ff 12%,var(--color-background-primary-default));color:#1760ef}.toast.warn .board-notification-icon{background:color-mix(in srgb,#f04452 12%,var(--color-background-primary-default));color:var(--drop)}.board-notification-icon svg{width:20px;height:20px}.toast p{padding-block:8px}.toast .tclose{position:absolute;right:12px;top:12px}.toast .tact{align-self:center;font-weight:500;color:var(--tungsten)}
+.toast.leaving{transform:translateY(8px) scale(.96);filter:blur(3px);transition:height .18s ease-out,margin .18s ease-out,padding .18s ease-out,border-width .18s ease-out,opacity .18s ease-out,transform .18s ease-out,filter .18s ease-out}
 .board-notification-timer{position:absolute;bottom:0;left:0;right:0;height:3px;background:#1760ef;transform-origin:left;animation:board-notification-countdown var(--notification-duration) linear forwards}.toast:hover .board-notification-timer,.toast:focus-within .board-notification-timer{animation-play-state:paused}@keyframes board-notification-countdown{to{transform:scaleX(0)}}
 .board-tooltip,.vjs-peach-tooltip{box-sizing:border-box;max-width:240px;padding:6px 10px;border:1px solid var(--color-border-button-default);border-radius:8px;background:var(--color-background-primary-default);color:var(--color-text-primary);font:var(--board-caption);white-space:normal;box-shadow:0 12px 24px -4px #0000001a,0 4px 8px -2px #0000000d}
 .board-tooltip{position:fixed;z-index:var(--layer-tooltip);pointer-events:none}.board-tooltip[hidden]{display:none}

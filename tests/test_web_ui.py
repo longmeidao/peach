@@ -600,8 +600,9 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertCode('<div class="popmenu gselectmenu" role="listbox" '
                         'aria-label="${esc(label)}" popover="manual" data-select-menu hidden>')
         self.assertPageContains("const inTopLayer=menu.hasAttribute('popover');")
-        self.assertPageContains("menu.hidden=false;if(inTopLayer)menu.showPopover();position();")
-        self.assertPageContains("if(inTopLayer&&menu.matches(':popover-open'))menu.hidePopover();")
+        self.assertPageContains(
+            "open=true;presentMenu(menu);if(inTopLayer&&!menu.matches(':popover-open'))menu.showPopover();position();")
+        self.assertPageContains("if(inTopLayer&&menu.matches(':popover-open'))menu.hidePopover()});")
         # 浏览器给 [popover] 的是 inset:0 加 margin:auto 的居中盒，不拆掉的话菜单会被
         # 拉宽并落在屏幕正中，而定位算的是 left/top。
         self.assertPageContains(".popmenu[popover]{inset:auto;margin:0}")
@@ -2225,7 +2226,7 @@ class WebUiSourceTests(unittest.TestCase):
             "  .then(()=>{if(document.activeElement===$('#q'))renderSearchMenu()})});")
         self.assertPageContains("document.addEventListener('pointerdown',event=>{\n"
                                 "  if(!event.target.closest('.search'))"
-                                "$('#searchMenu').hidden=true;\n},true);")
+                                "hideSearchMenu();\n},true);")
         self.assertPageContains("if(e.key==='Escape'&&!$('#searchMenu').hidden){")
         self.assertPageLacks("]).then(renderSearchMenu)});")
 
@@ -3020,7 +3021,7 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_search_active_index_resets_when_the_list_is_rebuilt(self):
         # 列表重建后旧索引会指向不存在的行；输入和重新渲染都必须归零。
-        self.assertPageContains("menu.hidden=!menu.innerHTML;searchActive=-1;")
+        self.assertPageContains("if(menu.innerHTML)presentMenu(menu);else hideSearchMenu();searchActive=-1;")
         self.assertPageContains("const refreshSearchMenu=()=>{searchActive=-1;")
 
     def test_enter_uses_the_highlighted_option_before_the_suggestion(self):
@@ -5319,7 +5320,56 @@ class WebUiSourceTests(unittest.TestCase):
             "const viewportTop=()=>8+(parseFloat(getComputedStyle(document.documentElement)")
         self.assertCode(".getPropertyValue('--topH'))||0);")
         self.assertPageContains(
-            "menu.hidden=true;menu.style.left='';menu.style.top='';menu.style.maxHeight='';")
+            "dismissMenu(menu,()=>{menu.style.left='';menu.style.top='';menu.style.maxHeight='';")
+
+    def test_menus_open_and_close_with_the_boardui_dropdown_motion(self):
+        """全站的下拉面板一个开合动效：boardui menu-styles.ts 的 150ms ease-out，透明度、
+        scale .95 与 2px 模糊一起进出（证据登记在 docs/BOARD_UI.md）。
+
+        进场由 Board 层 CSS 按 `:not([hidden])` 起；退场得等动画放完再 hidden，所以每个
+        面板的关闭都走 `dismissMenu`，它读到 animation-name 为 none（旧界面、减少动态
+        效果）就当场藏。开着没开着由 wireAnchoredMenu 自己记，不再看 `hidden`：退场那
+        150ms 里 hidden 还是 false。
+        """
+        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
+        self.assertIn("@keyframes board-menu-in{from{opacity:0;transform:scale(.95);filter:blur(2px)}}", board)
+        self.assertIn("@keyframes board-menu-out{to{opacity:0;transform:scale(.95);filter:blur(2px)}}", board)
+        self.assertIn(":is(.popmenu,.context-card,.board-library-menu,.searchmenu,.tagpicker):not([hidden])"
+                      "{animation:board-menu-in .15s ease-out backwards;transform-origin:top left}", board)
+        self.assertIn(":is(.popmenu,.context-card,.board-library-menu,.searchmenu,.tagpicker).leaving"
+                      "{animation:board-menu-out .15s ease-out forwards}", board)
+        # 缩放原点跟着开的方向：向上开从下沿、侧开从左沿。
+        self.assertIn(":is(.popmenu,.context-card,.board-library-menu)[data-placement=top],.sidebaraddmenu.sidebaraddmenu{transform-origin:bottom left}", board)
+        self.assertIn(".board-library-menu[data-placement=right]{transform-origin:left}", board)
+        self.assertNotIn("board-library-in", board, "媒体库菜单没有自己单独的一份动画")
+        self.assertCode("menu.dataset.placement=downward?'bottom':'top';")
+        self.assertCode("export function dismissMenu(menu,finish){")
+        self.assertCode("if(getComputedStyle(menu).animationName==='none'){done();return}")
+        self.assertCode("export function presentMenu(menu){leavingMenus.delete(menu);menu.classList.remove('leaving');menu.hidden=false}")
+        self.assertCode("let open=false;")
+        self.assertCode("return {setOpen,isOpen:()=>open};")
+        # 进场起手是 scale(.95)，定位量框只能读 offsetWidth。
+        self.assertCode("const anchor=toggle.getBoundingClientRect(),width=menu.offsetWidth;")
+        self.assertCode("event.stopPropagation();setOpen(!open)")
+        # wireAnchoredMenu 之外自己开合的四个面板也从同一个口进出。
+        self.assertPageContains("if(menu)dismissMenu(menu,()=>{menu.innerHTML=''});")
+        self.assertPageContains("innerWidth-menu.offsetWidth-8")
+        self.assertPageContains("function hideSearchMenu(){dismissMenu($('#searchMenu'))}")
+        self.assertPageContains("if(menu.innerHTML)presentMenu(menu);else hideSearchMenu();")
+        self.assertPageContains("const closeAddMenu=()=>{if(!addMenu)return;dismissMenu(addMenu);")
+        self.assertPageContains("if(opening)presentMenu(addMenu);else dismissMenu(addMenu);")
+        self.assertPageContains("const closePicker=()=>{dismissMenu(picker);")
+        self.assertPageContains("plus.onclick=()=>{presentMenu(picker);")
+        self.assertPageLacks("$('#searchMenu').hidden=true")
+
+    def test_toasts_leave_like_a_boardui_notification(self):
+        """Board 层的 Toast 退场按 Notification 的 exit：180ms ease-out，下沉 8px、缩到 .96、
+        模糊 3px。高度收成 0 留着，栈里上面那条才是滑下来而不是跳下来。"""
+        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
+        self.assertIn(".toast.leaving{transform:translateY(8px) scale(.96);filter:blur(3px);"
+                      "transition:height .18s ease-out,margin .18s ease-out,padding .18s ease-out,"
+                      "border-width .18s ease-out,opacity .18s ease-out,transform .18s ease-out,filter .18s ease-out}", board)
+        self.assertPageContains("item.classList.add('leaving');setTimeout(()=>item.remove(),200)")
 
     def test_anchored_menu_closes_on_page_scroll_but_not_on_its_own(self):
         # 菜单装不下时本来就要在内部滚；捕获阶段的 scroll 连它自己的也收得到。
@@ -6255,7 +6305,7 @@ class WebUiSourceTests(unittest.TestCase):
         # 清空回收站：danger 语义色。
         self.assertPageContains('class="batchaction danger" id="emptyTrash"')
         self.assertPageContains("button.danger:not(.frowicon){")
-        # Geist 菜单：触发器和每个选项都有入口图标，菜单内部滚动且不加猜测动画。
+        # Geist 菜单：触发器和每个选项都有入口图标，菜单内部滚动；开合动效走 Board 层共用那一份。
         self.assertPageContains('data-sidebar-add-trigger aria-haspopup="listbox" aria-expanded="false"')
         self.assertPageContains('role="option" data-sidebar-add-option=')
         # 弹层盒子走共用的 .popmenu：发丝边、投影和 2px 行距只有一份定义，本页只接管定位。

@@ -13,9 +13,9 @@ import { mountIsland, unmountIsland, createReviewSelection, wireReviewSelection,
 import { catalogSuggestions, catalogEmptyHtml, emptyCatalogLayout, syncSidebarSurface, sidebarTagCounts, sidebarHasCatalogContent, cleanupSkeletonHtml, cloudLocations, cloudPreferenceLocations, tasteHistoryGuideHtml, wireTasteHistoryGuide, TASTE_GUIDE_KEY } from './dist/peach-ui.js';
 import { javImageKind, normalizeJavImage, normalizeJavLayout, normalizeJavPreferences, syncJavImages, nativeImageFit, matchesFaceSource, entitySkeletonHtml } from './dist/peach-ui.js';
 import {
-  attachOverlayScrollbar, breadcrumbHtml, checkboxHtml, closeAnchoredMenu, confirmModal, emptyStateHtml, fieldsetTitle,
+  attachOverlayScrollbar, breadcrumbHtml, checkboxHtml, closeAnchoredMenu, confirmModal, dismissMenu, emptyStateHtml, fieldsetTitle,
   fillSkeletonTier, fitSkeleton, formModal, iconSwitchHtml, indexSkeletonHtml, loadingDotsHtml,
-  mediaViewButtonsHtml, noteHtml, progressHtml, gaugeHtml, scrollerHtml, searchInputHtml, selectFieldHtml,
+  mediaViewButtonsHtml, noteHtml, presentMenu, progressHtml, gaugeHtml, scrollerHtml, searchInputHtml, selectFieldHtml,
   setActionBusy, skeletonHtml, spinnerHtml, wireAnchoredMenu, wireBusyActions, wireCollapse, wireDragReorder,
   wireIconSwitch, wireOverlayScrollbars, wireScrollers, wireSelectField, wireContextCard, configurationSkeletonHtml,
 } from './js/ui-components.js';
@@ -1188,7 +1188,7 @@ wireMiniplayer();
 let playerMenuCleanup=null;
 function closePlayerMenu(){
   const menu=$('#playerMenu');
-  if(menu){menu.hidden=true;menu.innerHTML=''}
+  if(menu)dismissMenu(menu,()=>{menu.innerHTML=''});
   if(playerMenuCleanup){playerMenuCleanup();playerMenuCleanup=null}
 }
 async function copyTextToClipboard(text){
@@ -1232,10 +1232,10 @@ function openPlayerMenu(player,x,y){
     return `<button type="button" class="playermenuitem" role="${checkable?'menuitemcheckbox':'menuitem'}"${checkable?` aria-checked="${item.checked}"`:''} data-player-menu="${index}">${
       icon(item.icon,item.fill?'playermenufill':'')}<span>${esc(item.label)}</span>${checkable?icon('check','playermenucheck'):''}</button>`;
   }).join('');
-  menu.hidden=false;
-  const box=menu.getBoundingClientRect();
-  menu.style.left=`${Math.max(8,Math.min(x,innerWidth-box.width-8))}px`;
-  menu.style.top=`${Math.max(8,Math.min(y,innerHeight-box.height-8))}px`;
+  presentMenu(menu);
+  // 量 offsetWidth／offsetHeight：进场动画起手是 scale(.95)，getBoundingClientRect 量到的是缩过的框。
+  menu.style.left=`${Math.max(8,Math.min(x,innerWidth-menu.offsetWidth-8))}px`;
+  menu.style.top=`${Math.max(8,Math.min(y,innerHeight-menu.offsetHeight-8))}px`;
   const buttons=[...menu.querySelectorAll('[data-player-menu]')];
   buttons.forEach(button=>button.onclick=event=>{
     event.stopPropagation();const item=items[+button.dataset.playerMenu];closePlayerMenu();item.run();
@@ -7431,9 +7431,10 @@ function renderSidebarOrderSetting(){
     <button type="button" class="geist-button primary" data-sidebar-add${available.length?'':' disabled'}>添加</button></div>`;
   let selectedAddKey=firstValue;
   const addTrigger=root.querySelector('[data-sidebar-add-trigger]'),addMenu=root.querySelector('[data-sidebar-add-menu]');
-  const closeAddMenu=()=>{if(!addMenu)return;addMenu.hidden=true;addTrigger.setAttribute('aria-expanded','false')};
+  const closeAddMenu=()=>{if(!addMenu)return;dismissMenu(addMenu);addTrigger.setAttribute('aria-expanded','false')};
   addTrigger?.addEventListener('click',()=>{
-    if(!addMenu)return;const opening=addMenu.hidden;addMenu.hidden=!opening;addTrigger.setAttribute('aria-expanded',String(opening));
+    if(!addMenu)return;const opening=addTrigger.getAttribute('aria-expanded')!=='true';
+    if(opening)presentMenu(addMenu);else dismissMenu(addMenu);addTrigger.setAttribute('aria-expanded',String(opening));
     if(opening)addMenu.querySelector('[aria-selected="true"]')?.focus();
   });
   addMenu?.querySelectorAll('[data-sidebar-add-option]').forEach(option=>{
@@ -7880,14 +7881,15 @@ function writeSearchHistory(list){searchHistory=list.slice(0,appSettings.searchH
 const rememberSearch=async query=>{if(!query||!appSettings.searchHistoryLimit)return;
   writeSearchHistory([query,...readSearchHistory().filter(x=>foldName(x)!==foldName(query))]);
   await api('/api/search-history',{method:'POST',body:JSON.stringify({query})}).catch(()=>null)};
+function hideSearchMenu(){dismissMenu($('#searchMenu'))}
 function renderSearchMenu(){const menu=$('#searchMenu'),history=readSearchHistory();
   const recommendations=[...searchPool()].sort(()=>Math.random()-.5).filter(x=>!history.some(h=>foldName(h)===foldName(x))).slice(0,5);
   const row=(value,type)=>`<div class="searchoption" data-search-value="${esc(value)}">${icon(type==='history'?'history':'sparkles')}<span>${esc(value)}</span>${type==='history'?`<button class="removehistory" data-remove-history="${esc(value)}" aria-label="删除历史 ${esc(value)}">${icon('x')}</button>`:''}</div>`;
   menu.innerHTML=(history.length?`<section class="searchgroup"><h3>搜索记录</h3>${history.map(x=>row(x,'history')).join('')}</section>`:'')+
     (recommendations.length?`<section class="searchgroup"><h3>推荐</h3>${recommendations.map(x=>row(x,'recommend')).join('')}</section>`:'');
-  menu.hidden=!menu.innerHTML;searchActive=-1;
+  if(menu.innerHTML)presentMenu(menu);else hideSearchMenu();searchActive=-1;
   menu.querySelectorAll('[data-search-value]').forEach(x=>x.onclick=e=>{if(e.target.closest('[data-remove-history]'))return;
-    $('#q').value=x.dataset.searchValue;runSearch(false,true);menu.hidden=true});
+    $('#q').value=x.dataset.searchValue;runSearch(false,true);hideSearchMenu()});
   menu.querySelectorAll('[data-remove-history]').forEach(b=>{
     /* 按下就 preventDefault，不让删除按钮把焦点从输入框抢走。抢走会触发 `#q` 的
        blur，那个 handler 140ms 后无条件 `hidden=true`，于是「删一条记录」实际等于
@@ -7929,7 +7931,7 @@ $('#q').onkeydown=e=>{
   /* 组字过程中的方向键在挑候选字、回车在定字，都不是给这个菜单的。 */
   if(e.isComposing)return;
   if(e.key==='Escape'&&!$('#searchMenu').hidden){
-    $('#searchMenu').hidden=true;searchActive=-1;e.preventDefault();return;
+    hideSearchMenu();searchActive=-1;e.preventDefault();return;
   }
   if(e.key==='ArrowDown'||e.key==='ArrowUp'){
     if(moveSearchActive(e.key==='ArrowDown'?1:-1))e.preventDefault();
@@ -7942,7 +7944,7 @@ $('#q').onkeydown=e=>{
   searchActive=-1;
   // 选中某一项时用它原样搜索；没选中才回退到「空输入按 Enter 用推荐词」。
   runSearch(!picked,true);
-  $('#searchMenu').hidden=true;$('#q').blur();
+  hideSearchMenu();$('#q').blur();
 };
 /* 两个请求回来时，焦点可能已经不在输入框上了：用户敲完就点走，失焦那条 140ms
    的兜底先把下拉栏收了，晚到的 then 再把它掀开——而这一刻没有焦点，也就再不会
@@ -8425,7 +8427,7 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
     };
     const plus=$('#tagPlus'),picker=$('#tagPicker'),search=$('#tagPickSearch'),body=$('#tagPickBody');
     let detachOutside=null,activeIndex=-1;
-    const closePicker=()=>{picker.hidden=true;plus.setAttribute('aria-expanded','false');
+    const closePicker=()=>{dismissMenu(picker);plus.setAttribute('aria-expanded','false');
       if(detachOutside){detachOutside();detachOutside=null}};
     const candidates=()=>{const source=(facets&&facets.tags)||[],byName=new Map(source.map(x=>[foldName(x.k),x]));
       let recent=[];try{recent=JSON.parse(localStorage.getItem('peach.recentTags')||'[]')}catch(_e){}
@@ -8453,7 +8455,7 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
         options.forEach((b,i)=>b.classList.toggle('active',i===activeIndex));options[activeIndex].scrollIntoView({block:'nearest'});return}
       if(e.key==='Enter'){e.preventDefault();if(activeIndex>=0&&options[activeIndex])options[activeIndex].click();
         else if(search.value.trim()){closePicker();addTag(search.value.trim())}}};
-    plus.onclick=()=>{picker.hidden=false;plus.setAttribute('aria-expanded','true');renderPicker();search.focus();
+    plus.onclick=()=>{presentMenu(picker);plus.setAttribute('aria-expanded','true');renderPicker();search.focus();
       detachOutside=bindOutsideClose(plus,picker,closePicker)};
   };
   renderDetailTags();
@@ -8829,16 +8831,16 @@ $('#searchBtn').onclick=()=>{const s=$('.search');s.classList.toggle('open');
    输入过内容就没有出口了；返回按钮无条件收起，并清掉下拉栏。 */
 $('#searchBack').onclick=()=>{
   $('.search').classList.remove('open');
-  $('#searchMenu').hidden=true;
+  hideSearchMenu();
   $('#q').blur();
 };
-$('#q').addEventListener('blur',()=>setTimeout(()=>{if(!$('#q').value&&!$('#searchMenu').matches(':hover'))$('.search').classList.remove('open');$('#searchMenu').hidden=true},140));
+$('#q').addEventListener('blur',()=>setTimeout(()=>{if(!$('#q').value&&!$('#searchMenu').matches(':hover'))$('.search').classList.remove('open');hideSearchMenu()},140));
 /* 收起下拉栏不能只有失焦这一条路：焦点未必在输入框上，而下拉栏照样开着。
    落在 `.search` 之外的第一下按压一律收起，这条判据不问焦点在哪儿。走捕获期
    的 pointerdown，是因为被点的那个东西自己可能吃掉事件或立刻把自己从页面里
    摘掉，冒泡到 document 时已经没有可供判断的祖先了。 */
 document.addEventListener('pointerdown',event=>{
-  if(!event.target.closest('.search'))$('#searchMenu').hidden=true;
+  if(!event.target.closest('.search'))hideSearchMenu();
 },true);
 $('#brandHome').onclick=e=>{e.preventDefault();openHome(true)};
 $('#tokClose').onclick=()=>{setTokLoading(false);clearTokTap();$('#tok').hidden=true;$('#tokTrack').querySelectorAll('video').forEach(v=>{
@@ -8972,7 +8974,7 @@ function seekVideoBy(video,seconds){
 document.addEventListener('keydown',e=>{
   if(e.key==='Escape'){
     if(!$('#settingsPanel').hidden){openSettings(false);return}
-    if(!$('#searchMenu').hidden){$('#searchMenu').hidden=true;return}
+    if(!$('#searchMenu').hidden){hideSearchMenu();return}
     if(!$('#tok').hidden){$('#tokClose').click();return}
     const st=$('#stage');if(st&&!st.hidden){const c=$('#closeStage');if(c){c.click();return}}
     if($('#drawer').classList.contains('open')){openDrawer(false);return}

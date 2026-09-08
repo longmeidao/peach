@@ -106,6 +106,34 @@ Radial Chart Card、Bar List Card、Heatmap 与 Sankey 的 Pro 源码**未取得
 
 选中行的样式上游页面没有暴露出来（复选框选中后 `tr` 无 `data-selected`），Peach 沿用 Board 层已有的 `.fsource.selected`。
 
+### 下拉菜单的开合动效（2026-09-08）
+
+取证来源是公开注册表 `r/dropdown.json`（SHA-256 `e91198d2f1eb131570a0aab53685a4c2c724365d17aecbc5d2113e561152b0b6`）里的 `components/base/dropdown/menu-styles.ts`：`MENU_POPOVER_SURFACE` 写着 `transition duration-150 ease-out`，`data-[entering]` 与 `data-[exiting]` 都是 `opacity-0 scale-95 blur-[2px]`，缩放原点按 `data-[placement]`：bottom 用 `origin-top-left`、top 用 `origin-bottom-left`、left／right 用 `origin-right`／`origin-left`。同一份配方由 Select 与 Dropdown 共用。
+
+| 上游 | Peach |
+| --- | --- |
+| 150ms ease-out，透明度、scale .95、2px 模糊一起进出 | 同值，`board-menu-in`／`board-menu-out` 两组关键帧 |
+| React Aria 在 entering／exiting 期间挂 data 属性 | 进场由 CSS 按 `:not([hidden])` 起；退场加 `leaving`，`dismissMenu` 等 `animationend` 再 hidden |
+| 原点按 placement | `wireAnchoredMenu` 写 `data-placement`（bottom／top／right）；侧栏添加页面的 listbox 向上开，原点固定在下沿 |
+| 只有 Dropdown 与 Select 两种面板 | 全站的下拉都走同一份：锚定菜单、Select、上下文卡、媒体库菜单、搜索建议、播放器右键菜单、侧栏添加页面、标签选择器 |
+| 未取得：`shadow-dropdown` 与 `--color-border-button-default` 的具体值 | 面板的边框、投影沿用 Board 层已有的写法 |
+
+旧版 Geist 层不加动画；系统减少动态效果时由全局规则关掉，`dismissMenu` 读到 `animation-name:none` 就直接藏。
+
+### Toast、Note 与 Notification 的对照（2026-09-08）
+
+取证来源是公开注册表 `r/notification.json`（SHA-256 `92d9e93d7c89f5cdfd79b5f05c14f3663f5aa9fd7bb6bf68729aa0b6e6bb714e`）里的 `components/base/notification/notification.tsx`：卡片 `p-4 pr-11`、`rounded-2xl`、`border-border-button-default`、`bg-background-primary-default`、`shadow-dropdown`；40px 圆形状态图标；标题 `text-body-medium`、说明 `text-body-regular text-text-secondary`；关闭键 `top-3 right-3`；3px 蓝色倒计时条；退场 `opacity 0 / y 8 / scale .96 / blur 3px`，180ms ease-out；进场只在传了 `introDelay` 时才有；视口栈 `min(400px,100vw-24px)`、间距 12px，位置变化走 spring。
+
+| Peach 现有 | 处理 | 依据 |
+| --- | --- | --- |
+| Toast（操作回执、撤销） | 切成 Notification：卡片、状态圆、倒计时条已由 Board 层承接，本次补上 180ms 退场 | 短暂、可自动消失的回执正是 Notification 的用途 |
+| Toast 的进场 | 保留 Peach 的 180ms 淡入 | 上游无 `introDelay` 时不做进场；一条突然出现的卡片在 Peach 里没有别的东西衬托 |
+| Toast 的正文与动作 | 保留单段正文和行内文字动作，未拆标题／说明、未换成下方小按钮 | Peach 的回执只有一句话、最多一个「撤销」 |
+| 成功态的颜色 | 保留信息蓝 | `notification-success-*` token 的值未取得 |
+| Note（字段、任务面板旁的持久反馈：读取失败、任务状态、完成汇总、权限过宽） | 保留，不切 | Notification 是浮在视口角上、会自动消失的栈；这些要留在发生位置，失败还得带重试入口 |
+| Banner（页面级问题与恢复动作） | 保留，不切 | 上游注册表里没有 Announcement 的对应源码，未取得 |
+| Tooltip | 保留 | 已有 Board Tooltip 的对应 |
+
 ## 验证记录
 
 侧栏采用 AI chat 公开变体的分组标题、展开叶项与尾部计数；分组箭头位于右侧，标题高 36px，展开复用共享 Collapse。媒体库入口适配公开 `DashboardUserMenu`：265px 面板、16px 圆角、10px 内边距，桌面右侧 8px、手机下方展开，150ms ease-out 淡入、缩放 .95 与 2px 模糊。独立按钮控制侧栏展开；媒体库图标打开选择面板，展开面板时入口显示轮廓。首页使用 20px 槽位的 Peach logo，按透明边距校准可见轮廓及文字起点，收起态按钮为 36px 正方形。媒体库与导航图标统一 20px、1.7px 线宽，无图标底色。设置固定在底部，与明暗开关并排；收起时明暗开关只显示目标主题图标。主题动画参考公开 `https://www.boardui.com/r/theme-toggle.json`：200ms 滑块与 820ms 柔边扩散，缓动 `cubic-bezier(.16,1,.3,1)`，减少动态效果时直接切换。

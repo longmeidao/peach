@@ -534,9 +534,8 @@ export function wireCollapse(root,selector,idPrefix,triggerSelector='summary'){
 
 /* 锚定在触发钮上的菜单：无展开动画，固定在视口内，内容在菜单内滚动。
 
-   Vercel 项目页的 Filter and Sort 菜单没有展开动画。优先从触发钮右缘向左展开，
-   下方放不下时改到上方。全站的锚定菜单共用这一份定位与开关：菜单在视口边缘的表现
-   最容易各写各的，同一语义留两份实现就只会有一份被修。 */
+   优先从触发钮右缘向左展开，下方放不下时改到上方。全站的锚定菜单共用这一份定位与
+   开关：菜单在视口边缘的表现最容易各写各的，同一语义留两份实现就只会有一份被修。 */
 let openedMenu=null;
 if(!globalThis.__peachMenuCloser){
   globalThis.__peachMenuCloser=true;
@@ -544,14 +543,34 @@ if(!globalThis.__peachMenuCloser){
     if(openedMenu&&!openedMenu.mount.contains(event.target)&&!openedMenu.menu.contains(event.target))openedMenu.setOpen(false)},true);
 }
 export function closeAnchoredMenu(){if(openedMenu)openedMenu.setOpen(false)}
+/* 菜单面板的开合动效来自 boardui 的 menu-styles.ts（登记在 docs/BOARD_UI.md）：150ms
+   ease-out，透明度、scale .95 和 2px 模糊一起进出。进场由 Board 层的 CSS 按 `:not([hidden])`
+   起；退场要等动画放完再 hidden，display:none 一落下去动画就被掐掉。哪些面板算菜单由
+   CSS 决定：读到的 animation-name 是 none（旧界面、prefers-reduced-motion）就当场藏起来。
+   全站的菜单都从这两个口进出，`hidden` 才始终是「看不见了」，不会有一份自己写的 150ms。 */
+const leavingMenus=new WeakMap();
+export function presentMenu(menu){leavingMenus.delete(menu);menu.classList.remove('leaving');menu.hidden=false}
+export function dismissMenu(menu,finish){
+  if(menu.hidden||leavingMenus.has(menu))return;
+  const done=()=>{if(leavingMenus.get(menu)!==done)return;
+    leavingMenus.delete(menu);menu.classList.remove('leaving');menu.hidden=true;if(finish)finish()};
+  leavingMenus.set(menu,done);
+  menu.classList.add('leaving');
+  if(getComputedStyle(menu).animationName==='none'){done();return}
+  menu.addEventListener('animationend',event=>{if(event.target===menu)done()},{once:true});
+  // 面板在动画结束前被别的规则藏掉（比如切了页）就收不到 animationend，兜一拍。
+  setTimeout(done,240);
+}
 /* 可用的视口上沿是固定顶栏的下缘。顶栏在每一页都盖着最上面那一条，菜单顶到 8px
    会被它压掉半截，而且看不出是被压住的——只是第一项凭空不见了。 */
 const viewportTop=()=>8+(parseFloat(getComputedStyle(document.documentElement)
   .getPropertyValue('--topH'))||0);
 export function wireAnchoredMenu(mount,toggle,menu,{side=false}={}){
   const position=()=>{
-    const anchor=toggle.getBoundingClientRect(),width=menu.getBoundingClientRect().width;
+    // 宽度读 offsetWidth：进场动画起手是 scale(.95)，getBoundingClientRect 量到的是缩过的框。
+    const anchor=toggle.getBoundingClientRect(),width=menu.offsetWidth;
     if(side&&innerWidth>=640){
+      menu.dataset.placement='right';
       menu.style.maxHeight=Math.max(0,innerHeight-32)+'px';
       menu.style.left=Math.max(16,Math.min(anchor.right+8,innerWidth-width-16))+'px';
       menu.style.top=Math.max(16,Math.min(anchor.top,innerHeight-menu.offsetHeight-16))+'px';return;
@@ -563,6 +582,7 @@ export function wireAnchoredMenu(mount,toggle,menu,{side=false}={}){
     const naturalHeight=menu.scrollHeight+menu.offsetHeight-menu.clientHeight;
     const downward=under>=naturalHeight||under>=over;
     const height=Math.min(naturalHeight,Math.max(downward?under:over,0));
+    menu.dataset.placement=downward?'bottom':'top';
     menu.style.maxHeight=height+'px';
     const preferredLeft=menu.classList.contains('context-card')?anchor.left:anchor.right-width;
     menu.style.left=Math.max(8,Math.min(preferredLeft,innerWidth-width-8))+'px';
@@ -577,24 +597,28 @@ export function wireAnchoredMenu(mount,toggle,menu,{side=false}={}){
      整体偏移，还要被那个祖先的 overflow 裁掉。设置面板的卡片正是这种祖先——入场动画的
      fill-mode 让 transform 一直挂在上面——菜单于是开在看不见的地方，读起来就是「点不开」。 */
   const inTopLayer=menu.hasAttribute('popover');
-  const setOpen=open=>{
-    if(open){
+  /* 开着没开着记在这里，不看 `hidden`：退场那 150ms 里面板还在、hidden 还是 false，
+     按 hidden 判会把「正在收」当成「开着」，再点一下触发钮就关了个已经在关的。 */
+  let open=false;
+  const setOpen=next=>{
+    if(next){
       if(openedMenu&&openedMenu.mount!==mount)openedMenu.setOpen(false);
-      menu.hidden=false;if(inTopLayer)menu.showPopover();position();
+      open=true;presentMenu(menu);if(inTopLayer&&!menu.matches(':popover-open'))menu.showPopover();position();
       window.addEventListener('resize',position);
       window.addEventListener('scroll',closeFromViewport,{capture:true,passive:true});
     }else{
-      menu.hidden=true;menu.style.left='';menu.style.top='';menu.style.maxHeight='';
-      if(inTopLayer&&menu.matches(':popover-open'))menu.hidePopover();
+      open=false;
       window.removeEventListener('resize',position);
       window.removeEventListener('scroll',closeFromViewport,true);
+      dismissMenu(menu,()=>{menu.style.left='';menu.style.top='';menu.style.maxHeight='';
+        if(inTopLayer&&menu.matches(':popover-open'))menu.hidePopover()});
     }
-    toggle.setAttribute('aria-expanded',String(open));
-    openedMenu=open?{mount,menu,setOpen}:(openedMenu&&openedMenu.mount===mount?null:openedMenu)};
-  toggle.addEventListener('click',event=>{event.stopPropagation();setOpen(menu.hidden)});
+    toggle.setAttribute('aria-expanded',String(next));
+    openedMenu=next?{mount,menu,setOpen}:(openedMenu&&openedMenu.mount===mount?null:openedMenu)};
+  toggle.addEventListener('click',event=>{event.stopPropagation();setOpen(!open)});
   mount.addEventListener('keydown',event=>{
-    if(event.key==='Escape'&&!menu.hidden){event.stopPropagation();setOpen(false);toggle.focus()}});
-  return {setOpen,isOpen:()=>!menu.hidden};
+    if(event.key==='Escape'&&open){event.stopPropagation();setOpen(false);toggle.focus()}});
+  return {setOpen,isOpen:()=>open};
 }
 
 /** 复杂补充信息复用顶层浮层和视口避让，正文可聚焦并独立滚动。 */
@@ -613,7 +637,7 @@ export function wireContextCard(mount,trigger,panel){
   trigger.addEventListener('click',()=>clearTimeout(timer));
   mount.addEventListener('keydown',event=>{if(event.key==='Escape')hide()});
   panel.addEventListener('focusout',leave);
-  trigger.addEventListener('keydown',event=>{if(event.key==='ArrowDown'&&!panel.hidden){event.preventDefault();(panel.querySelector('a,button,[tabindex="0"]')||panel).focus()}});
+  trigger.addEventListener('keydown',event=>{if(event.key==='ArrowDown'&&floating.isOpen()){event.preventDefault();(panel.querySelector('a,button,[tabindex="0"]')||panel).focus()}});
   return {...floating,hide};
 }
 
@@ -658,7 +682,7 @@ export function wireSelectField(root){
     if(root.hasAttribute('data-fixed-width'))menu.style.width=width;
   });
   const anchored=wireAnchoredMenu(root,trigger,menu);
-  trigger.addEventListener('click',()=>{if(!menu.hidden)current()?.focus()});
+  trigger.addEventListener('click',()=>{if(anchored.isOpen())current()?.focus()});
   const choose=value=>{
     const picked=options().find(option=>option.dataset.selectOption===String(value));
     if(!picked)return;
