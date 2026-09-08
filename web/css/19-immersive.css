@@ -96,7 +96,7 @@ body:has(#batchbar:not([hidden])) #stage{padding-bottom:180px}
 .reviewdock .reviewbulksource{max-width:min(280px,calc(100vw - 48px))}
 .reviewdock .geist-button,.reviewdock .gselectfield{height:var(--control-h)}
 .batchbar span{padding:0 8px;color:var(--ink-2);white-space:nowrap}.batchbar button{border:0;border-radius:var(--floating-radius);
-  background:var(--ground);color:var(--ink);padding:9px 12px;cursor:pointer}.batchbar button:hover{background:var(--hover);color:var(--ink)}
+  box-shadow:0 0 0 1px var(--line-soft);background:var(--ground);color:var(--ink);padding:9px 12px;cursor:pointer}.batchbar button:hover{background:var(--hover);color:var(--ink)}
 .batchbar button svg{width:17px;height:17px;margin-right:6px;vertical-align:-4px;stroke:currentColor;fill:none;stroke-width:2}
 
 @media (max-width:1080px){.sgrid,.sgrid.mixgrid{grid-template-columns:minmax(0,1fr)}

@@ -349,8 +349,11 @@ button.danger:not(.frowicon):disabled{
    https://vercel.com/geist/split-button（2026-09-07）：两颗按钮拼成一个盒子，主动作占左半、
    右侧两角不倒角，触发档占右半、左侧两角不倒角，中间靠一条 1px 竖线分开，触发档里只有一枚
    箭头、读屏名由 aria-label 给。菜单第一项必须与主动作同名同事，1 到 4 个近亲动作为宜；
-   不相干的动作归普通菜单，破坏性动作不当主动作。高度取所在动作条的 36px。 */
-.splitbutton{position:relative;display:inline-flex;flex:none}
+   不相干的动作归普通菜单，破坏性动作不当主动作。高度取所在动作条的 36px。
+   次级那圈环挂在盒子上，不挂两半各自的按钮：挂按钮上会在交界处与 `.splittoggle::before`
+   那根竖线叠成两条。 */
+.splitbutton{position:relative;display:inline-flex;flex:none;
+  border-radius:var(--control-radius);box-shadow:0 0 0 1px var(--line-soft)}
 .splitbutton>button{display:inline-flex;align-items:center;justify-content:center;gap:7px;
   height:36px;border:0;background:var(--ground);color:var(--ink);font:inherit;
   font-size:var(--fs-sm);cursor:pointer}

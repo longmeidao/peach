@@ -54,9 +54,9 @@ body.entity-open .index{overflow-x:visible}
 .tagselection[hidden]{display:none}.tagselection label{display:flex;align-items:center;gap:9px;margin-right:auto;cursor:pointer}
 .tagselection label>span{display:grid;gap:2px}.tagselection label b{font-size:var(--fs-sm)}
 .tagselection label small{color:var(--muted);font-size:var(--fs-xs)}
-.tagselection button{height:34px;padding:0 13px;border:0;border-radius:var(--control-radius);background:var(--ground);color:var(--ink-2);cursor:pointer}
+.tagselection button{height:34px;padding:0 13px;border:0;border-radius:var(--control-radius);box-shadow:0 0 0 1px var(--line-soft);background:var(--ground);color:var(--ink-2);cursor:pointer}
 .tagselection button:hover:not(:disabled){background:var(--hover);color:var(--ink)}
-.tagselection button.primary{background:var(--ink);color:var(--ground)}
+.tagselection button.primary{background:var(--ink);color:var(--ground);box-shadow:none}
 .tagselection button.primary:hover:not(:disabled){background:color-mix(in srgb,var(--ink) 88%,var(--ground));color:var(--ground)}
 .tagselection button:disabled{background:var(--sunk);color:var(--muted);cursor:not-allowed}
 .tagfilters .all::before{background:linear-gradient(135deg,#55A7FF,#D783FF)}
