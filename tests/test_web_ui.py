@@ -2506,27 +2506,16 @@ class WebUiSourceTests(unittest.TestCase):
         ):
             self.assertPageContains(rule, f"{group} 的未选中基态必须是 --muted")
 
-    def test_insight_tables_follow_the_bordered_variant_with_the_empty_state_outside(self):
-        """三张表用分隔线变体，空态在表外，数字列数位对齐。
-
-        2026-09-04 实测 vercel.com/geist/table：隔栏异色与分隔线是两个互斥变体
-        （Striped 示例没有行线，Bordered 示例没有行填充），悬停填充是第三个独立
-        开关。Peach 三张表统一走分隔线，所以不叠加隔栏异色；悬停只给可点的行，
-        不可点的行加悬停等于给一个不存在的动作画反馈。
-        """
-        self.assertPageContains(".insighttablerow:last-child{border-bottom:0}")
-        self.assertPageContains(".insighttablerow:is(button):hover{background:var(--overlay-5)}")
-        self.assertPageLacks(".insighttablerow:hover{",
-                             "不可点的行不给悬停填充")
-        self.assertPageLacks(".insighttablerow:nth-child(odd)",
-                             "分隔线变体不叠加隔栏异色")
+    def test_insight_lists_show_real_values_links_and_empty_states(self):
+        """观看、存储和来源以对应结构显示真实数值，缺数据时显示空态。"""
+        self.assertPageContains('class="board-volume-values"')
+        self.assertPageContains('class="board-source-list"')
         # 空态渲染在表格外面：留一张只有列头的空表等于让人对着两个列名找不存在的行。
         self.assertPageContains('class="board-watch-history"')
         self.assertPageContains("emptyStateHtml('history','还没有观看记录'")
         self.assertPageContains("emptyStateHtml('tags','还没有标签来源'")
         # 数字列 tabular numerals，各行数位对齐才好跨行比较。
-        self.assertPageContains(".insighttablerow b{font-weight:500;color:var(--ink-2);font-variant-numeric:tabular-nums}")
-        self.assertPageContains(".insightdatatable td{font-variant-numeric:tabular-nums}")
+        self.assertPageContains('data-middle-truncate>${esc(row.name)}</a>')
 
     def test_loading_state_only_covers_the_count_and_leaves_the_filter_bar_in_place(self):
         """骨架只盖会变的计数，筛选条照常画成最终样子并接上事件。
@@ -4250,7 +4239,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".tastesources>header{min-height:0;padding-block:14px}")
         self.assertPageContains(".tastesources .insightpanelbody{padding:16px}")
         self.assertPageContains(".tastesource{display:grid;grid-template-columns:34px minmax(0,1fr) 34px;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--line-soft);border-radius:var(--control-radius);background:var(--overlay-5)}")
-        self.assertPageContains(".insighttablerow:last-child{border-bottom:0}")
+        self.assertPageContains('class="board-watch-history"')
         self.assertPageContains("tasteAnalysisSection(d.analysis)")
         self.assertPageContains('<section class="insightpanel tasteleads">')
         self.assertPageContains("<h3>口味总结</h3>")
@@ -4858,7 +4847,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('class="insightranking"')
         self.assertPageContains("grid-template-columns:repeat(2,minmax(0,1fr))")
         self.assertPageContains("border-top:1px solid var(--line-soft);border-left:1px solid var(--line-soft);list-style:none")
-        self.assertPageContains(".insighttable{border-top:0}")
+        self.assertPageContains('class="board-source-list"')
         self.assertPageContains(".managebar{margin-left:auto;margin-right:auto}")
         self.assertPageContains(".insight-layout .managetitle,.insight-layout .pagelede{width:min(1100px,100%)")
         self.assertPageLacks(".tasteprivacy{margin:16px 16px 0")
@@ -6787,7 +6776,7 @@ class WebUiSourceTests(unittest.TestCase):
             ".relatedperson .nm", ".reviewentity b",
             ".reviewitem h4", ".reviewpickname", ".searchoption span",
             ".sgrid.mixgrid>.mixqueue .mixqueuehead span", ".sidebarorderlabel>b",
-            ".insightrankrow>span:nth-child(2)", ".insighttablerow span", ".metricstrip small,.tastesummary>small",
+            ".insightrankrow>span:nth-child(2)", ".metricstrip small,.tastesummary>small",
             ".gselectfield>span",
             ".tagpickitem .pickname", ".tasterank b,.tasterank small",
             ".tastesource b,.tastesource small", ".tg",

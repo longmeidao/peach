@@ -1,20 +1,25 @@
 /** 侧栏筛选分组：标题、展开状态与叶项计数各自承担一种含义。 */
+import { wireCollapse } from '@peach/legacy/ui';
 const escape=(value:string)=>value.replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]!));
 export function sidebarSectionHtml(title:string,body:string,extra='',kind=''):string {
   if(!body)return '';
   const id=`sidebar-group-${encodeURIComponent(title)}`;
-  return `<section class="sec${kind?' cat-'+escape(kind):''}" data-sidebar-group="${escape(title)}"><h3><button type="button" class="board-section-toggle" aria-expanded="true" aria-controls="${id}"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chevron-right"/></svg><span>${escape(title)}</span></button>${extra}</h3><div class="board-sidebar-body" id="${id}">${body}</div></section>`;
+  return `<details class="sec${kind?' cat-'+escape(kind):''}" data-sidebar-group="${escape(title)}"><summary role="button" class="board-section-toggle"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chevron-right"/></svg><span>${escape(title)}</span>${extra}</summary><div class="board-sidebar-body" id="${id}">${body}</div></details>`;
 }
 export function wireSidebarGroups(root:HTMLElement):void {
-  root.querySelectorAll<HTMLElement>('[data-sidebar-group]').forEach(group=>{
+  root.querySelectorAll<HTMLDetailsElement>('[data-sidebar-group]').forEach(group=>{
     if(group.dataset.sidebarWired)return;group.dataset.sidebarWired='true';
-    const button=group.querySelector<HTMLButtonElement>('.board-section-toggle')!,body=group.querySelector<HTMLElement>('.board-sidebar-body')!;
+    const button=group.querySelector<HTMLElement>('.board-section-toggle')!,body=group.querySelector<HTMLElement>('.board-sidebar-body')!;
     const key=`peach.sidebar.group.${group.dataset.sidebarGroup}`;
     let saved:string|null=null;try{saved=sessionStorage.getItem(key)}catch{}
-    const show=(open:boolean)=>{button.setAttribute('aria-expanded',String(open));body.hidden=!open};
     const active=!!body.querySelector('[aria-pressed=true]');
-    show(saved!==null?saved==='open':active||group.classList.contains('cat-src')||group.dataset.sidebarGroup==='时长');
-    button.onclick=()=>{const open=button.getAttribute('aria-expanded')!=='true';show(open);try{sessionStorage.setItem(key,open?'open':'closed')}catch{}};
+    group.open=saved!==null?saved==='open':active||group.classList.contains('cat-src')||group.dataset.sidebarGroup==='时长';
+    button.querySelectorAll('button').forEach(control=>control.addEventListener('click',event=>event.stopPropagation()));
+  });
+  wireCollapse(root,'details[data-sidebar-group]','sidebar-collapse');
+  root.querySelectorAll<HTMLElement>('.board-section-toggle').forEach(button=>{
+    if(button.dataset.persistWired)return;button.dataset.persistWired='true';
+    button.addEventListener('click',()=>{const key=`peach.sidebar.group.${button.closest<HTMLElement>('[data-sidebar-group]')!.dataset.sidebarGroup}`;try{sessionStorage.setItem(key,button.getAttribute('aria-expanded')==='true'?'open':'closed')}catch{}});
   });
 }
 

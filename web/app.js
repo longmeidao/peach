@@ -5491,13 +5491,17 @@ function followAuthorName(group){
   return names.reduce((best,name)=>caps(name)>caps(best)?name:best,names[0]);
 }
 
+const collapsedFollowAuthors=new Set();
 function followAuthorBlock(group){
   const name=followAuthorName(group);
+  const legacy=localStorage.getItem('peach.legacy-ui')==='true';
+  const key=String(group[0].author_key||group[0].id);
+  const collapsed=!legacy&&followListLayout()==='cozy'&&collapsedFollowAuthors.has(key);
   const bad=group.filter(s=>s.last_status==='error'||s.last_status==='unauthorized').length;
-  const sourceRows=group.map(source=>followSourceRow(source)).join('');
+  const sourceRows=group.map(source=>followSourceRow(source,!legacy)).join('');
   const sources=localStorage.getItem('peach.legacy-ui')==='true'
     ?scrollerHtml(sourceRows,{className:'fauthorsources',label:`${name} 的关注来源`})
-    :`<div class="fauthorsources" aria-label="${esc(name)} 的关注来源">${sourceRows}</div>`;
+    :`<div class="fauthorsources" id="follow-author-${group[0].id}" aria-label="${esc(name)} 的关注来源"${collapsed?' hidden':''}>${sourceRows}</div>`;
   return `<div class="fauthor${bad?' bad':''}">
     <div class="fauthorhead">${followAuthorAvatar(group)}
       <b>${esc(name)}</b>
@@ -5507,6 +5511,7 @@ function followAuthorBlock(group){
         ? group.map(source=>sourceIcon(source.provider)).join('')
         : sourceIcon(group[0].provider)+esc(group[0].provider_label)}</span>
       ${bad?`<span class="fmeta warn">${bad} 个失败</span>`:''}
+      ${legacy?'':`<button type="button" class="frowicon board-author-toggle" data-follow-author-toggle="${esc(key)}" aria-controls="follow-author-${group[0].id}" aria-expanded="${!collapsed}" aria-label="${collapsed?'展开':'收起'} ${esc(name)} 的来源">${icon('chevron-down')}</button>`}
     </div>
     ${sources}</div>`;
 }
@@ -5619,10 +5624,8 @@ function followCredentialRow(row){
     </summary>${body}</details>`;
 }
 
-/* 关注列表版式。默认一行一个，来源行的六列都在；紧凑是一行两个，半幅宽度放不下
-   六列，收掉「上次检查」——哪个站、成没成功、能不能点都还留着，时间是里面最不
-   影响判断的一列。和 JAV 版式共用 iconSwitchHtml，只是 name 与选项不同。 */
-const FOLLOW_LAYOUTS=[['cozy','作者分组','layout-grid'],['compact','列表 · 一行一个来源','list-filter']];
+/* 关注列表以同一来源集合、作者顺序和选择状态提供两种疏密排版。 */
+const FOLLOW_LAYOUTS=[['cozy','宽松','layout-grid'],['compact','紧凑','list-filter']];
 function followListLayout(){
   return allowedSetting(appSettings.followLayout,FOLLOW_LAYOUTS.map(([k])=>k),'cozy');
 }
@@ -5633,8 +5636,14 @@ function followLayoutButtons(){
 function setFollowListLayout(value){
   appSettings.followLayout=value;
   saveSettings();
-  // 版式复用已载入的来源，分别渲染作者分组和来源列表。
-  renderFollowManage(followCredentials);
+  // 疏密只改变排版，保留来源顺序、选择与作者状态。
+  const root=$('#stats');
+  root.querySelectorAll('.fsources').forEach(node=>node.dataset.layout=followListLayout());
+  root.querySelectorAll('[data-follow-author-toggle]').forEach(button=>{
+    const expanded=value==='compact'||!collapsedFollowAuthors.has(button.dataset.followAuthorToggle);
+    button.setAttribute('aria-expanded',String(expanded));
+    root.querySelector(`#${button.getAttribute('aria-controls')}`).hidden=!expanded;
+  });
 }
 
 /* 版式判据来自 docs/reference-sources.json 的 vercel-report-design：
@@ -5643,6 +5652,7 @@ function setFollowListLayout(value){
    行与行之间也只用分隔线，不各自套框。控件尺寸按实测 Geist：32px 高、6px 圆角、14px。 */
 function renderFollowManage(credentials){
   const sources=followData.sources||[],counts=followData.counts||{};
+  const groupedSources=followAuthorGroups(sources).map(followAuthorBlock).join('');
   const broken=sources.filter(s=>s.last_status==='error'||s.last_status==='unauthorized');
   const creds=(credentials.providers||[]);
   const needCred=creds.filter(c=>c.requirement==='required'&&!(c.present&&!c.missing.length));
@@ -5680,9 +5690,9 @@ function renderFollowManage(credentials){
             icon('refresh-cw')}检查全部</button>
           <button class="fbtn" data-follow-view>${icon('rss')}去看更新</button></div>
         ${followCheckReport?followCheckFailNote(followCheckReport):''}
-        ${sources.length&&followListLayout()==='compact'?`<div class="board-follow-selection"><label>${checkboxHtml('data-follow-select-all aria-label="全选来源"')}全选</label><span data-follow-selected-count>已选 0</span><button class="fbtn" data-follow-check="" data-follow-sources="" data-follow-selection-action disabled>检查所选</button><button class="fbtn" data-follow-selection-enabled="true" data-follow-selection-action disabled>启用</button><button class="fbtn" data-follow-selection-enabled="false" data-follow-selection-action disabled>暂停</button></div>`:''}
+        ${sources.length&&localStorage.getItem('peach.legacy-ui')!=='true'?`<div class="board-follow-selection"><label>${checkboxHtml('data-follow-select-all aria-label="全选来源"')}全选</label><span data-follow-selected-count>已选 0</span><button class="fbtn" data-follow-check="" data-follow-sources="" data-follow-selection-action disabled>检查所选</button><button class="fbtn" data-follow-selection-enabled="true" data-follow-selection-action disabled>启用</button><button class="fbtn" data-follow-selection-enabled="false" data-follow-selection-action disabled>暂停</button><button class="fbtn danger" data-follow-selection-remove data-follow-selection-action disabled>删除</button></div>`:''}
         ${sources.length?`<div class="frows fsources" data-layout="${followListLayout()}">${
-          followListLayout()==='compact'?`<div class="board-follow-list">${sources.map(source=>followSourceRow(source,true)).join('')}</div>`:followAuthorGroups(sources).map(followAuthorBlock).join('')}</div>
+          localStorage.getItem('peach.legacy-ui')==='true'?groupedSources:`<div class="board-follow-list">${groupedSources}</div>`}</div>
           ${counts.new?`<div class="fsecfoot"><p class="fnote fbulkrow"><span class="fbulkcounts">未看 ${counts.new} · 已看 ${counts.seen||0}
             · 已保存 ${counts.saved||0} · 已忽略 ${counts.ignored||0}</span>
             <span class="fbulk"><button class="fbtn" data-follow-bulk="seen">全部标记已看</button>
@@ -5704,7 +5714,7 @@ function renderFollowManage(credentials){
   void wireFollowProgress();
   if(locked)$('#stats').querySelectorAll(
     '#followAdd input,#followAdd button,[data-follow-remove],[data-follow-check],'+
-    '[data-follow-enabled],[data-follow-selection-enabled],'+
+    '[data-follow-enabled],[data-follow-selection-enabled],[data-follow-selection-remove],'+
     '[data-follow-bulk],[data-follow-guess],[data-follow-alias-add],'+
     '[data-follow-alias-remove],#followAliasAdd input,#followAliasAdd button,[data-cred-form] input,'+
     '[data-cred-form] button,[data-cred-clear]'
@@ -5780,6 +5790,13 @@ function wireFollowItems(){
 function wireFollowManage(creds=[]){
   void wireResolveProgress();
   const root=$('#stats'),form=root.querySelector('#followAdd');
+  root.querySelectorAll('[data-follow-author-toggle]').forEach(button=>button.onclick=()=>{
+    const expanded=button.getAttribute('aria-expanded')!=='true';
+    button.setAttribute('aria-expanded',String(expanded));
+    button.setAttribute('aria-label',button.getAttribute('aria-label').replace(/^(展开|收起)/,expanded?'收起':'展开'));
+    root.querySelector(`#${button.getAttribute('aria-controls')}`).hidden=!expanded;
+    if(expanded)collapsedFollowAuthors.delete(button.dataset.followAuthorToggle);else collapsedFollowAuthors.add(button.dataset.followAuthorToggle);
+  });
   const selectable=[...root.querySelectorAll('[data-follow-select]')];
   const selectedIds=()=>selectable.filter(field=>field.checked).map(field=>Number(field.dataset.followSelect));
   const syncSelection=()=>{
@@ -5803,6 +5820,18 @@ function wireFollowManage(creds=[]){
     else actionReceipt(`已${enabled?'启用':'暂停'} ${ids.length} 个关注来源`);
   });
   syncSelection();
+  const removeSelection=root.querySelector('[data-follow-selection-remove]');
+  if(removeSelection)removeSelection.onclick=()=>{
+    const ids=selectedIds();if(!ids.length)return;
+    return confirmModal({title:`删除 ${ids.length} 个关注来源`,body:'将移除所选关注来源及其已抓取条目，媒体文件保留。',confirmLabel:'删除所选来源',danger:true,onConfirm:async()=>{
+      const results=await mapLimit(ids,4,id=>api('/api/follow/source',{method:'POST',body:JSON.stringify({action:'remove',id})}));
+      results.forEach((result,index)=>{if(result.ok)followSourceSelection.delete(ids[index])});
+      await openFollowManage(false);
+      const failures=results.filter(result=>!result.ok);
+      if(failures.length)throw new Error(`${failures.length} 个来源未删除：${failures[0].error?.message||'请求失败'}`);
+      actionReceipt(`已删除 ${ids.length} 个关注来源`);
+    }});
+  };
   wireScrollers(root);
   const sortField=root.querySelector('[data-follow-sort]');
   if(sortField)wireSelectField(sortField).addEventListener('change',()=>{

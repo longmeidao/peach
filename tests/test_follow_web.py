@@ -2131,8 +2131,8 @@ class FollowWebSourceTests(unittest.TestCase):
     def test_the_follow_list_has_author_and_selectable_source_views(self):
         """两个互斥视图用 Switch（共享 name 的 radio），不是 Toggle。"""
         self.assertPageContains(
-            "const FOLLOW_LAYOUTS=[['cozy','作者分组','layout-grid'],"
-            "['compact','列表 · 一行一个来源','list-filter']]")
+            "const FOLLOW_LAYOUTS=[['cozy','宽松','layout-grid'],"
+            "['compact','紧凑','list-filter']]")
         self.assertPageContains(
             "iconSwitchHtml('follow-layout','关注列表版式',FOLLOW_LAYOUTS,followListLayout()")
         self.assertPageContains("{attr:'data-follow-layout'}")
@@ -2140,9 +2140,10 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("wireIconSwitch(root,'data-follow-layout',setFollowListLayout)")
         # 版式是纯展示层的事：改容器上的一个属性就够，不重画列表，也不重新请求。
         self.assertPageContains('<div class="frows fsources" data-layout="${followListLayout()}">')
-        self.assertPageContains("renderFollowManage(followCredentials)")
-        self.assertPageContains("sources.map(source=>followSourceRow(source,true))")
-        self.assertPageContains("group.map(source=>followSourceRow(source))")
+        self.assertPageContains("node.dataset.layout=followListLayout()")
+        self.assertPageContains("group.map(source=>followSourceRow(source,!legacy))")
+        self.assertPageContains("data-follow-selection-remove")
+        self.assertPageContains("data-follow-author-toggle")
         self.assertPageContains("button.disabled=!ids.length||!!followRuntime?.ledger_read_only")
         # 紧凑就是一行两个；半幅宽度放不下六列，见 test_compact_rows_keep_the_favicon…。
         self.assertPageContains(

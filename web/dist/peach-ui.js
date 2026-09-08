@@ -1,5 +1,5 @@
-import { LOC as e, esc as t, faviconUrl as n, fmtDur as r, fmtSize as i, icon as a, requestErrorMessage as o } from "/js/core.js";
-import { MEDIA_SOURCE_ICONS as s, checkboxHtml as c, confirmModal as l, emptyStateHtml as u, fieldsetTitle as d, loadingDotsHtml as f, noteHtml as p, progressHtml as m, projectBannerHtml as h, selectFieldHtml as g, selectOptionIconHtml as _, setActionBusy as v, wireCollapse as y, wireSelectField as b } from "/js/ui-components.js";
+import { MEDIA_SOURCE_ICONS as e, checkboxHtml as t, confirmModal as n, emptyStateHtml as r, fieldsetTitle as i, loadingDotsHtml as a, noteHtml as o, progressHtml as s, projectBannerHtml as c, selectFieldHtml as l, selectOptionIconHtml as u, setActionBusy as d, wireCollapse as f, wireSelectField as p } from "/js/ui-components.js";
+import { LOC as m, esc as h, faviconUrl as g, fmtDur as _, fmtSize as v, icon as y, requestErrorMessage as b } from "/js/core.js";
 //#region node_modules/preact/dist/preact.module.js
 var x, S, C, w, T, E, D, O, k, A, j, ee, M, N, P, F = {}, te = [], ne = /acit|ex(?:s|g|n|p|$)|rph|grid|ows|mnc|ntw|ine[ch]|zoo|^ord|itera/i, re = Array.isArray;
 function I(e, t) {
@@ -410,7 +410,7 @@ var Re = (e) => e.replace(/[&<>"']/g, (e) => ({
 function ze(e, t, n = "", r = "") {
 	if (!t) return "";
 	let i = `sidebar-group-${encodeURIComponent(e)}`;
-	return `<section class="sec${r ? " cat-" + Re(r) : ""}" data-sidebar-group="${Re(e)}"><h3><button type="button" class="board-section-toggle" aria-expanded="true" aria-controls="${i}"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chevron-right"/></svg><span>${Re(e)}</span></button>${n}</h3><div class="board-sidebar-body" id="${i}">${t}</div></section>`;
+	return `<details class="sec${r ? " cat-" + Re(r) : ""}" data-sidebar-group="${Re(e)}"><summary role="button" class="board-section-toggle"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chevron-right"/></svg><span>${Re(e)}</span>${n}</summary><div class="board-sidebar-body" id="${i}">${t}</div></details>`;
 }
 function Be(e) {
 	e.querySelectorAll("[data-sidebar-group]").forEach((e) => {
@@ -420,16 +420,15 @@ function Be(e) {
 		try {
 			i = sessionStorage.getItem(r);
 		} catch {}
-		let a = (e) => {
-			t.setAttribute("aria-expanded", String(e)), n.hidden = !e;
-		}, o = !!n.querySelector("[aria-pressed=true]");
-		a(i === null ? o || e.classList.contains("cat-src") || e.dataset.sidebarGroup === "时长" : i === "open"), t.onclick = () => {
-			let e = t.getAttribute("aria-expanded") !== "true";
-			a(e);
+		let a = !!n.querySelector("[aria-pressed=true]");
+		e.open = i === null ? a || e.classList.contains("cat-src") || e.dataset.sidebarGroup === "时长" : i === "open", t.querySelectorAll("button").forEach((e) => e.addEventListener("click", (e) => e.stopPropagation()));
+	}), f(e, "details[data-sidebar-group]", "sidebar-collapse"), e.querySelectorAll(".board-section-toggle").forEach((e) => {
+		e.dataset.persistWired || (e.dataset.persistWired = "true", e.addEventListener("click", () => {
+			let t = `peach.sidebar.group.${e.closest("[data-sidebar-group]").dataset.sidebarGroup}`;
 			try {
-				sessionStorage.setItem(r, e ? "open" : "closed");
+				sessionStorage.setItem(t, e.getAttribute("aria-expanded") === "true" ? "open" : "closed");
 			} catch {}
-		};
+		}));
 	});
 }
 var Ve = !1;
@@ -455,7 +454,7 @@ var Ue = class extends Error {
 	status;
 	body;
 	constructor(e, t, n = null) {
-		super(o(e, t)), this.name = "ApiError", this.status = t, this.body = n;
+		super(b(e, t)), this.name = "ApiError", this.status = t, this.body = n;
 	}
 }, We = (e) => {
 	if (!e || typeof e != "object") return "";
@@ -469,7 +468,7 @@ var Ue = class extends Error {
 		if (typeof n == "string" && n) return n;
 	}
 	return "";
-}, B = (e) => o(e);
+}, B = (e) => b(e);
 async function V(e, t) {
 	let n = await fetch(e, {
 		headers: { Accept: "application/json" },
@@ -696,34 +695,34 @@ function pt({ id: e, label: t, value: n, onInput: r, error: i, help: a, current:
 	});
 }
 function mt({ initial: e, receipt: t }) {
-	let [n, r] = G(e), [i, a] = G(""), [o, s] = G(""), [c, l] = G(""), [u, f] = G(!1), [m, h] = G(""), [g, _] = G({}), y = J(null), b = J(!1), x = J(null);
+	let [n, r] = G(e), [a, s] = G(""), [c, l] = G(""), [u, f] = G(""), [p, m] = G(!1), [h, g] = G(""), [_, v] = G({}), y = J(null), b = J(!1), x = J(null);
 	return /* @__PURE__ */ Y("form", {
 		class: "configfieldset",
-		"data-fieldset-type": u ? "warning" : void 0,
+		"data-fieldset-type": p ? "warning" : void 0,
 		onSubmit: async (e) => {
 			if (e.preventDefault(), b.current) return;
-			h("");
-			let d = {};
-			if (n.mode === "password" && !i && (d.current_password = "请输入当前访问密码"), u || ((o.length < 8 || o.length > 256) && (d.password = "访问密码需为 8–256 个字符"), o !== c && (d.confirmation = "两次输入的密码不一致")), _(d), Object.keys(d).length) {
+			g("");
+			let i = {};
+			if (n.mode === "password" && !a && (i.current_password = "请输入当前访问密码"), p || ((c.length < 8 || c.length > 256) && (i.password = "访问密码需为 8–256 个字符"), c !== u && (i.confirmation = "两次输入的密码不一致")), v(i), Object.keys(i).length) {
 				requestAnimationFrame(() => y.current?.querySelector("[aria-invalid=\"true\"]")?.focus());
 				return;
 			}
-			b.current = !0, v(x.current, !0);
+			b.current = !0, d(x.current, !0);
 			try {
 				let e = await H("/api/configuration/access", {
 					revision: n.revision,
-					action: u ? "disable" : "set",
-					confirm_disable: u,
-					current_password: i,
-					password: u ? "" : o,
-					confirmation: u ? "" : c
+					action: p ? "disable" : "set",
+					confirm_disable: p,
+					current_password: a,
+					password: p ? "" : c,
+					confirmation: p ? "" : u
 				});
-				r(e), a(""), s(""), l(""), f(!1), _({}), t(e.mode === "open" ? "已关闭访问密码" : "已保存访问密码");
+				r(e), s(""), l(""), f(""), m(!1), v({}), t(e.mode === "open" ? "已关闭访问密码" : "已保存访问密码");
 			} catch (e) {
 				let t = e instanceof Ue ? e.body : null, n = t?.errors || t?.detail?.errors;
-				n ? _(n) : h(B(e));
+				n ? v(n) : g(B(e));
 			} finally {
-				b.current = !1, v(x.current, !1);
+				b.current = !1, d(x.current, !1);
 			}
 		},
 		"aria-labelledby": "accessTitle",
@@ -734,7 +733,7 @@ function mt({ initial: e, receipt: t }) {
 			children: [
 				/* @__PURE__ */ Y("div", {
 					class: "configfieldset-heading",
-					children: [/* @__PURE__ */ Y("div", { dangerouslySetInnerHTML: { __html: d("accessTitle", "访问密码") } }), /* @__PURE__ */ Y("p", {
+					children: [/* @__PURE__ */ Y("div", { dangerouslySetInnerHTML: { __html: i("accessTitle", "访问密码") } }), /* @__PURE__ */ Y("p", {
 						class: "confighelp",
 						children: n.mode === "open" ? "未设置密码，能连接到 Peach 的设备可直接访问。" : n.mode === "legacy" ? "当前使用系统生成的访问口令。你可以设置自己的密码，或关闭登录要求。" : n.mode === "locked" ? "访问设置无法读取，请在本机检查配置文件。" : "已设置密码。新设备需要登录，保持登录时间在登录页选择。"
 					})]
@@ -745,8 +744,8 @@ function mt({ initial: e, receipt: t }) {
 						class: "pcheck",
 						children: [/* @__PURE__ */ Y("input", {
 							type: "checkbox",
-							checked: u,
-							onChange: (e) => f(e.currentTarget.checked)
+							checked: p,
+							onChange: (e) => m(e.currentTarget.checked)
 						}), /* @__PURE__ */ Y("span", {
 							"aria-hidden": "true",
 							children: /* @__PURE__ */ Y("svg", {
@@ -759,35 +758,35 @@ function mt({ initial: e, receipt: t }) {
 				n.mode === "password" ? /* @__PURE__ */ Y(pt, {
 					id: "access-current",
 					label: "当前访问密码",
-					value: i,
-					onInput: a,
-					error: g.current_password,
+					value: a,
+					onInput: s,
+					error: _.current_password,
 					current: !0
 				}) : null,
 				n.mode === "locked" ? null : /* @__PURE__ */ Y(L, { children: [/* @__PURE__ */ Y(pt, {
 					id: "access-password",
 					label: n.mode === "password" ? "新访问密码" : "设置访问密码",
-					value: o,
-					onInput: s,
-					disabled: u,
-					error: u ? void 0 : g.password,
-					help: u ? "关闭访问密码时无需填写。" : "至少 8 个字符。保存后其他设备需要重新登录。"
+					value: c,
+					onInput: l,
+					disabled: p,
+					error: p ? void 0 : _.password,
+					help: p ? "关闭访问密码时无需填写。" : "至少 8 个字符。保存后其他设备需要重新登录。"
 				}), /* @__PURE__ */ Y(pt, {
 					id: "access-confirm",
 					label: "确认访问密码",
-					value: c,
-					onInput: l,
-					disabled: u,
-					error: u ? void 0 : g.confirmation
+					value: u,
+					onInput: f,
+					disabled: p,
+					error: p ? void 0 : _.confirmation
 				})] }),
-				u && /* @__PURE__ */ Y("div", { dangerouslySetInnerHTML: { __html: p("保存后，能连接到 Peach 的设备将直接访问馆藏。", {
+				p && /* @__PURE__ */ Y("div", { dangerouslySetInnerHTML: { __html: o("保存后，能连接到 Peach 的设备将直接访问馆藏。", {
 					variant: "warning",
 					label: "访问范围"
 				}) } }),
-				m ? /* @__PURE__ */ Y("p", {
+				h ? /* @__PURE__ */ Y("p", {
 					class: "configbad",
 					role: "alert",
-					children: m
+					children: h
 				}) : null
 			]
 		}), n.mode === "locked" ? null : /* @__PURE__ */ Y("div", {
@@ -812,73 +811,73 @@ var ht = /* @__PURE__ */ new Set([
 	"installing"
 ]);
 function gt({ initial: e, initialJob: t }) {
-	let [n, r] = G(e), [i, a] = G(t || {
+	let [r, a] = G(e), [c, l] = G(t || {
 		state: "idle",
 		progress: 0
-	}), [o, s] = G(""), c = J(null), u = J(!0), f = J(!1), h = J(null);
+	}), [u, f] = G(""), p = J(null), m = J(!0), h = J(!1), g = J(null);
 	K(() => {
-		v(h.current, ht.has(i.state));
-	}, [i.state]), K(() => () => {
-		u.current = !1, c.current?.abort();
+		d(g.current, ht.has(c.state));
+	}, [c.state]), K(() => () => {
+		m.current = !1, p.current?.abort();
 	}, []);
-	let g = async () => {
+	let _ = async () => {
 		let e = await H("/api/configuration/update-restart", {});
-		u.current && a(e);
+		m.current && l(e);
 	};
 	K(() => {
-		i.state !== "ready" || f.current || (f.current = !0, l({
+		c.state !== "ready" || h.current || (h.current = !0, n({
 			title: "更新已准备好",
-			body: `Peach ${i.version || ""} 将在重启后安装。`,
+			body: `Peach ${c.version || ""} 将在重启后安装。`,
 			confirmLabel: "立即重启",
 			cancelLabel: "稍后",
-			onConfirm: g
+			onConfirm: _
 		}));
-	}, [i.state]), K(() => {
-		if (!ht.has(i.state)) return;
-		let e = new AbortController(), t, n = 0, o = async () => {
+	}, [c.state]), K(() => {
+		if (!ht.has(c.state)) return;
+		let e = new AbortController(), t, n = 0, r = async () => {
 			try {
 				let t = await V("/api/configuration/update-status", e.signal);
-				e.signal.aborted || (a(t), n = 0, t.state === "complete" && r((e) => ({
+				e.signal.aborted || (l(t), n = 0, t.state === "complete" && a((e) => ({
 					...e,
 					current_version: t.version || e.current_version,
 					state: "current",
 					message: "已是最新测试版。"
 				})));
 			} catch {
-				++n >= 120 && !e.signal.aborted && s("尚未连接到 Peach，请检查托盘后刷新页面。");
+				++n >= 120 && !e.signal.aborted && f("尚未连接到 Peach，请检查托盘后刷新页面。");
 			}
-			!e.signal.aborted && n < 120 && (t = setTimeout(o, 1e3));
+			!e.signal.aborted && n < 120 && (t = setTimeout(r, 1e3));
 		};
-		return t = setTimeout(o, 1e3), () => {
+		return t = setTimeout(r, 1e3), () => {
 			e.abort(), clearTimeout(t);
 		};
-	}, [i.state]);
-	let _ = async (e) => {
-		if (c.current || ht.has(i.state)) return;
+	}, [c.state]);
+	let v = async (e) => {
+		if (p.current || ht.has(c.state)) return;
 		let t = new AbortController();
-		c.current = t, f.current = !1, s(""), v(e, !0);
+		p.current = t, h.current = !1, f(""), d(e, !0);
 		try {
 			let e = await H("/api/configuration/update", {}, "POST", t.signal);
-			t.signal.aborted || a(e);
+			t.signal.aborted || l(e);
 		} catch (e) {
-			t.signal.aborted || s(B(e));
+			t.signal.aborted || f(B(e));
 		} finally {
-			c.current = null, v(e, !1);
+			p.current = null, d(e, !1);
 		}
 	}, y = async (t) => {
-		if (c.current) return;
+		if (p.current) return;
 		let n = new AbortController();
-		c.current = n, v(t, !0), s("");
+		p.current = n, d(t, !0), f("");
 		try {
 			let e = await V("/api/configuration/updates", n.signal);
-			n.signal.aborted || r(e);
+			n.signal.aborted || a(e);
 		} catch (t) {
-			n.signal.aborted || (r({
+			n.signal.aborted || (a({
 				...e,
 				state: "error"
-			}), s(B(t)));
+			}), f(B(t)));
 		} finally {
-			c.current = null, v(t, !1);
+			p.current = null, d(t, !1);
 		}
 	};
 	return /* @__PURE__ */ Y("section", {
@@ -888,35 +887,35 @@ function gt({ initial: e, initialJob: t }) {
 		children: [/* @__PURE__ */ Y("div", {
 			class: "geist-fieldset-content",
 			children: [
-				/* @__PURE__ */ Y("div", { dangerouslySetInnerHTML: { __html: d("configUpdatesTitle", "检查更新") } }),
+				/* @__PURE__ */ Y("div", { dangerouslySetInnerHTML: { __html: i("configUpdatesTitle", "检查更新") } }),
 				/* @__PURE__ */ Y("dl", {
 					class: "configfacts",
 					children: [
 						/* @__PURE__ */ Y("dt", { children: "当前版本" }),
-						/* @__PURE__ */ Y("dd", { children: n.current_version }),
+						/* @__PURE__ */ Y("dd", { children: r.current_version }),
 						/* @__PURE__ */ Y("dt", { children: "安装方式" }),
-						/* @__PURE__ */ Y("dd", { children: n.installation }),
+						/* @__PURE__ */ Y("dd", { children: r.installation }),
 						/* @__PURE__ */ Y("dt", { children: "更新通道" }),
-						/* @__PURE__ */ Y("dd", { children: n.channel }),
+						/* @__PURE__ */ Y("dd", { children: r.channel }),
 						/* @__PURE__ */ Y("dt", { children: "最新版本" }),
-						/* @__PURE__ */ Y("dd", { children: n.latest_version || (n.state === "unchecked" ? "尚未检查" : "未取得") })
+						/* @__PURE__ */ Y("dd", { children: r.latest_version || (r.state === "unchecked" ? "尚未检查" : "未取得") })
 					]
 				}),
-				n.state === "available" && !o ? /* @__PURE__ */ Y("div", {
+				r.state === "available" && !u ? /* @__PURE__ */ Y("div", {
 					role: "status",
-					dangerouslySetInnerHTML: { __html: p(n.message, { label: "有可用更新" }) }
+					dangerouslySetInnerHTML: { __html: o(r.message, { label: "有可用更新" }) }
 				}) : /* @__PURE__ */ Y("p", {
-					class: o || n.state === "error" ? "configbad" : "confighelp",
-					role: o || n.state === "error" ? "alert" : "status",
-					children: o || n.message
+					class: u || r.state === "error" ? "configbad" : "confighelp",
+					role: u || r.state === "error" ? "alert" : "status",
+					children: u || r.message
 				}),
-				i.state === "idle" ? null : /* @__PURE__ */ Y("div", {
+				c.state === "idle" ? null : /* @__PURE__ */ Y("div", {
 					"aria-live": "polite",
 					children: [/* @__PURE__ */ Y("p", {
-						class: i.state === "error" ? "configbad" : "confighelp",
-						children: i.message
-					}), i.state === "error" ? null : /* @__PURE__ */ Y(L, { children: [
-						/* @__PURE__ */ Y("div", { dangerouslySetInnerHTML: { __html: m("更新准备进度：下载、校验、解压、准备安装", i.progress, 100, { stops: [
+						class: c.state === "error" ? "configbad" : "confighelp",
+						children: c.message
+					}), c.state === "error" ? null : /* @__PURE__ */ Y(L, { children: [
+						/* @__PURE__ */ Y("div", { dangerouslySetInnerHTML: { __html: s("更新准备进度：下载、校验、解压、准备安装", c.progress, 100, { stops: [
 							{
 								value: 65,
 								label: "下载结束"
@@ -932,11 +931,11 @@ function gt({ initial: e, initialJob: t }) {
 						] }) } }),
 						/* @__PURE__ */ Y("p", {
 							class: "confighelp",
-							children: ["下载 → 校验 → 解压 → 准备安装 · ", i.message]
+							children: ["下载 → 校验 → 解压 → 准备安装 · ", c.message]
 						}),
 						/* @__PURE__ */ Y("p", {
 							class: "confighelp",
-							children: i.state === "downloading" && i.total ? `${((i.downloaded || 0) / 1048576).toFixed(1)} / ${(i.total / 1048576).toFixed(1)} MB` : `${i.progress}%`
+							children: c.state === "downloading" && c.total ? `${((c.downloaded || 0) / 1048576).toFixed(1)} / ${(c.total / 1048576).toFixed(1)} MB` : `${c.progress}%`
 						})
 					] })]
 				})
@@ -947,7 +946,7 @@ function gt({ initial: e, initialJob: t }) {
 			children: [
 				/* @__PURE__ */ Y("a", {
 					class: "geist-button externallink",
-					href: n.release_url,
+					href: r.release_url,
 					target: "_blank",
 					rel: "noreferrer",
 					children: ["查看发布页", /* @__PURE__ */ Y("svg", {
@@ -957,31 +956,31 @@ function gt({ initial: e, initialJob: t }) {
 						children: /* @__PURE__ */ Y("use", { href: "#i-external-link" })
 					})]
 				}),
-				i.state === "ready" ? /* @__PURE__ */ Y("button", {
+				c.state === "ready" ? /* @__PURE__ */ Y("button", {
 					type: "button",
 					class: "geist-button primary",
 					onClick: () => {
-						l({
+						n({
 							title: "更新已准备好",
-							body: `Peach ${i.version || ""} 将在重启后安装。`,
+							body: `Peach ${c.version || ""} 将在重启后安装。`,
 							confirmLabel: "立即重启",
 							cancelLabel: "稍后",
-							onConfirm: g
+							onConfirm: _
 						});
 					},
 					children: "重启安装"
 				}) : null,
-				n.state === "available" && n.installation === "独立测试包" && i.state !== "ready" ? /* @__PURE__ */ Y("button", {
-					ref: h,
+				r.state === "available" && r.installation === "独立测试包" && c.state !== "ready" ? /* @__PURE__ */ Y("button", {
+					ref: g,
 					type: "button",
 					class: "geist-button primary",
-					onClick: (e) => _(e.currentTarget),
+					onClick: (e) => v(e.currentTarget),
 					children: "下载并安装"
 				}) : null,
 				/* @__PURE__ */ Y("button", {
 					type: "button",
 					class: "geist-button",
-					disabled: ht.has(i.state),
+					disabled: ht.has(c.state),
 					onClick: (e) => y(e.currentTarget),
 					children: "检查更新"
 				})
@@ -992,10 +991,10 @@ function gt({ initial: e, initialJob: t }) {
 //#endregion
 //#region src/islands/peach-proxy.tsx
 function _t({ initial: e, receipt: t }) {
-	let [n, r] = G(e), [i, a] = G(e.mode), [o, s] = G(""), [c, l] = G(""), u = J(!1), f = J(null), p = J(null), m = J(new AbortController());
-	K(() => () => m.current.abort(), []), q(() => {
-		let t = f.current;
-		t.innerHTML = g([
+	let [n, r] = G(e), [a, o] = G(e.mode), [s, c] = G(""), [u, f] = G(""), m = J(!1), h = J(null), g = J(null), _ = J(new AbortController());
+	K(() => () => _.current.abort(), []), q(() => {
+		let t = h.current;
+		t.innerHTML = l([
 			["environment", "系统代理"],
 			["direct", "直连"],
 			["proxy", "自定义"]
@@ -1004,24 +1003,24 @@ function _t({ initial: e, receipt: t }) {
 			className: "configselect",
 			attr: "data-fixed-width"
 		});
-		let n = b(t.firstElementChild), r = () => a(n.value);
+		let n = p(t.firstElementChild), r = () => o(n.value);
 		return n.addEventListener("change", r), () => {
 			n.removeEventListener("change", r), t.replaceChildren();
 		};
 	}, []);
-	async function h() {
-		if (!u.current) {
-			u.current = !0, v(p.current, !0), l("");
+	async function v() {
+		if (!m.current) {
+			m.current = !0, d(g.current, !0), f("");
 			try {
 				let e = await H("/api/configuration/peach-proxy", {
-					mode: i,
-					proxy: o
-				}, "POST", m.current.signal);
-				m.current.signal.aborted || (r(e), s(""), t("已保存 Peach 代理"));
+					mode: a,
+					proxy: s
+				}, "POST", _.current.signal);
+				_.current.signal.aborted || (r(e), c(""), t("已保存 Peach 代理"));
 			} catch (e) {
-				m.current.signal.aborted || l(B(e));
+				_.current.signal.aborted || f(B(e));
 			} finally {
-				u.current = !1, v(p.current, !1);
+				m.current = !1, d(g.current, !1);
 			}
 		}
 	}
@@ -1030,20 +1029,20 @@ function _t({ initial: e, receipt: t }) {
 		class: "configfieldset",
 		"data-geist-fieldset": !0,
 		onSubmit: (e) => {
-			e.preventDefault(), h();
+			e.preventDefault(), v();
 		},
 		children: [/* @__PURE__ */ Y("div", {
 			class: "geist-fieldset-content",
 			children: [
 				/* @__PURE__ */ Y("div", {
 					class: "configfieldset-heading",
-					children: [/* @__PURE__ */ Y("div", { dangerouslySetInnerHTML: { __html: d("peachProxyTitle", "Peach 代理") } }), /* @__PURE__ */ Y("p", {
+					children: [/* @__PURE__ */ Y("div", { dangerouslySetInnerHTML: { __html: i("peachProxyTitle", "Peach 代理") } }), /* @__PURE__ */ Y("p", {
 						class: "confighelp",
 						children: "采集来源选择“Peach 代理”时共用此设置。"
 					})]
 				}),
-				/* @__PURE__ */ Y("div", { ref: f }),
-				i === "proxy" && /* @__PURE__ */ Y("div", {
+				/* @__PURE__ */ Y("div", { ref: h }),
+				a === "proxy" && /* @__PURE__ */ Y("div", {
 					class: "configfield",
 					children: [/* @__PURE__ */ Y("label", {
 						htmlFor: "peachProxyAddress",
@@ -1053,26 +1052,26 @@ function _t({ initial: e, receipt: t }) {
 						class: "geist-input",
 						type: "password",
 						autoComplete: "off",
-						value: o,
+						value: s,
 						placeholder: n.proxy_saved ? "已保存，留空保留" : "http://127.0.0.1:7890",
-						onInput: (e) => s(e.currentTarget.value)
+						onInput: (e) => c(e.currentTarget.value)
 					})]
 				}),
 				n.needs_selection && /* @__PURE__ */ Y("p", {
 					class: "configbad",
 					children: "已有来源的代理地址不同，请选择公共连接方式。"
 				}),
-				c && /* @__PURE__ */ Y("p", {
+				u && /* @__PURE__ */ Y("p", {
 					class: "configbad",
 					role: "alert",
-					children: c
+					children: u
 				})
 			]
 		}), /* @__PURE__ */ Y("footer", {
 			class: "geist-fieldset-footer",
 			"data-geist-fieldset-footer": !0,
 			children: /* @__PURE__ */ Y("button", {
-				ref: p,
+				ref: g,
 				class: "geist-button primary",
 				type: "submit",
 				children: "保存代理"
@@ -1116,20 +1115,20 @@ function yt({ label: e, checked: t, disabled: n, change: r }) {
 	});
 }
 function bt({ startup: e, receipt: t }) {
-	let [n, r] = G(e.enabled), [i, a] = G(e.silent), [o, s] = G(e.desktop), [c, l] = G(""), u = J(!1), f = J(null), p = e.available && !e.desktop_message;
-	async function m() {
-		if (!u.current) {
-			u.current = !0, v(f.current, !0), l("");
+	let [n, r] = G(e.enabled), [a, o] = G(e.silent), [s, c] = G(e.desktop), [l, u] = G(""), f = J(!1), p = J(null), m = e.available && !e.desktop_message;
+	async function h() {
+		if (!f.current) {
+			f.current = !0, d(p.current, !0), u("");
 			try {
 				await H("/api/configuration/startup", {
 					enabled: n,
-					silent: i,
-					desktop: o
+					silent: a,
+					desktop: s
 				}), t("已保存开机自启");
 			} catch (e) {
-				l(B(e));
+				u(B(e));
 			} finally {
-				u.current = !1, v(f.current, !1);
+				f.current = !1, d(p.current, !1);
 			}
 		}
 	}
@@ -1137,12 +1136,12 @@ function bt({ startup: e, receipt: t }) {
 		class: "configfieldset",
 		"data-geist-fieldset": !0,
 		onSubmit: (e) => {
-			e.preventDefault(), m();
+			e.preventDefault(), h();
 		},
 		children: [/* @__PURE__ */ Y("div", {
 			class: "geist-fieldset-content",
 			children: [
-				/* @__PURE__ */ Y("div", { dangerouslySetInnerHTML: { __html: d("startupTitle", "开机自启") } }),
+				/* @__PURE__ */ Y("div", { dangerouslySetInnerHTML: { __html: i("startupTitle", "开机自启") } }),
 				/* @__PURE__ */ Y("div", {
 					class: "configoptions",
 					role: "group",
@@ -1158,9 +1157,9 @@ function bt({ startup: e, receipt: t }) {
 							class: "configoption",
 							children: [/* @__PURE__ */ Y(yt, {
 								label: "静默启动",
-								checked: i,
+								checked: a,
 								disabled: !e.available || !n,
-								change: a
+								change: o
 							}), /* @__PURE__ */ Y("p", {
 								class: "confighelp",
 								children: "静默启动仅显示托盘，开机后启动 Peach 打开时生效。"
@@ -1170,9 +1169,9 @@ function bt({ startup: e, receipt: t }) {
 							class: "configoption",
 							children: [/* @__PURE__ */ Y(yt, {
 								label: "在桌面创建快捷方式",
-								checked: o,
-								disabled: !p,
-								change: s
+								checked: s,
+								disabled: !m,
+								change: c
 							}), /* @__PURE__ */ Y("p", {
 								class: "confighelp",
 								children: e.desktop_message || "双击图标打开 Peach 网页；卸载时一并移除。"
@@ -1184,17 +1183,17 @@ function bt({ startup: e, receipt: t }) {
 					class: "confighelp",
 					children: e.message
 				}),
-				c && /* @__PURE__ */ Y("p", {
+				l && /* @__PURE__ */ Y("p", {
 					class: "configbad",
 					role: "alert",
-					children: c
+					children: l
 				})
 			]
 		}), /* @__PURE__ */ Y("footer", {
 			class: "geist-fieldset-footer",
 			"data-geist-fieldset-footer": !0,
 			children: /* @__PURE__ */ Y("button", {
-				ref: f,
+				ref: p,
 				type: "submit",
 				class: "geist-button primary",
 				disabled: !e.available,
@@ -1209,18 +1208,18 @@ function xt({ data: e }) {
 		let n = t.current, r = document.createElement("details");
 		r.className = "configdirectories";
 		let i = document.createElement("summary");
-		i.innerHTML = a("chevron-right") + "<span>数据目录</span>", r.append(i);
+		i.innerHTML = y("chevron-right") + "<span>数据目录</span>", r.append(i);
 		for (let t of [.../* @__PURE__ */ new Set([e.data_root, ...e.directories])]) {
 			let e = document.createElement("p");
 			e.className = "confighelp", e.textContent = t, r.append(e);
 		}
-		return n.replaceChildren(r), y(n, "details", "uninstall-data"), () => n.replaceChildren();
+		return n.replaceChildren(r), f(n, "details", "uninstall-data"), () => n.replaceChildren();
 	}, [e]), /* @__PURE__ */ Y("div", { ref: t });
 }
 function St({ uninstall: e }) {
-	let [t, n] = G(!1), [r, i] = G("");
-	async function a() {
-		await l({
+	let [t, r] = G(!1), [a, o] = G("");
+	async function s() {
+		await n({
 			title: "卸载 Peach",
 			danger: !0,
 			body: t ? "将退出 Peach，移除程序、开机自启、桌面图标、设置、本地数据库、观看记录、凭据和缓存。原始媒体文件保留。" : "将退出 Peach 并移除程序、开机自启和桌面图标。设置、本地数据库、观看记录与缓存保留。",
@@ -1230,7 +1229,7 @@ function St({ uninstall: e }) {
 					delete_data: t,
 					confirmation: "卸载 Peach"
 				});
-				i(e.message);
+				o(e.message);
 			}
 		});
 	}
@@ -1244,7 +1243,7 @@ function St({ uninstall: e }) {
 			children: [
 				/* @__PURE__ */ Y("div", {
 					class: "configfieldset-heading",
-					children: [/* @__PURE__ */ Y("div", { dangerouslySetInnerHTML: { __html: d("uninstallTitle", "卸载 Peach") } }), e.available && /* @__PURE__ */ Y("p", {
+					children: [/* @__PURE__ */ Y("div", { dangerouslySetInnerHTML: { __html: i("uninstallTitle", "卸载 Peach") } }), e.available && /* @__PURE__ */ Y("p", {
 						class: "confighelp",
 						children: "卸载会退出 Peach、移除程序、开机自启和桌面图标。原始媒体文件保留。"
 					})]
@@ -1252,18 +1251,18 @@ function St({ uninstall: e }) {
 				/* @__PURE__ */ Y(vt, {
 					label: "完全卸载：同时删除设置、本地数据库、观看记录、凭据和缓存",
 					checked: t,
-					disabled: !e.full_available || !!r,
-					change: n
+					disabled: !e.full_available || !!a,
+					change: r
 				}),
 				/* @__PURE__ */ Y(xt, { data: e }),
 				e.message && /* @__PURE__ */ Y("p", {
 					class: "confighelp",
 					children: e.message
 				}),
-				r && /* @__PURE__ */ Y("p", {
+				a && /* @__PURE__ */ Y("p", {
 					class: "confighelp",
 					role: "status",
-					children: r
+					children: a
 				})
 			]
 		}), /* @__PURE__ */ Y("footer", {
@@ -1272,8 +1271,8 @@ function St({ uninstall: e }) {
 			children: /* @__PURE__ */ Y("button", {
 				type: "button",
 				class: "geist-button danger",
-				disabled: !e.available || !!r,
-				onClick: () => void a(),
+				disabled: !e.available || !!a,
+				onClick: () => void s(),
 				children: "卸载 Peach"
 			})
 		})]
@@ -1304,7 +1303,7 @@ var Ct = [
 function wt() {
 	let e = J(null);
 	return q(() => {
-		e.current && y(e.current, "details", "clouddrive-guide");
+		e.current && f(e.current, "details", "clouddrive-guide");
 	}, []), /* @__PURE__ */ Y("div", {
 		ref: e,
 		class: "cloudguide",
@@ -1408,7 +1407,7 @@ function jt({ facts: e }) {
 		"aria-labelledby": "configFactsTitle",
 		children: /* @__PURE__ */ Y("div", {
 			class: "geist-fieldset-content",
-			children: [/* @__PURE__ */ Y(kt, { html: d("configFactsTitle", "运行信息") }), /* @__PURE__ */ Y("dl", {
+			children: [/* @__PURE__ */ Y(kt, { html: i("configFactsTitle", "运行信息") }), /* @__PURE__ */ Y("dl", {
 				class: "configfacts",
 				children: e.map((e) => /* @__PURE__ */ Y(L, { children: [/* @__PURE__ */ Y("dt", { children: e.term }), /* @__PURE__ */ Y("dd", { children: [e.value, e.download_url ? /* @__PURE__ */ Y("span", {
 					class: "confighelp",
@@ -1429,51 +1428,51 @@ function jt({ facts: e }) {
 		})
 	});
 }
-function Mt({ data: e }) {
-	let [t, n] = G(e.media_sources), [r, i] = G(""), a = J(null);
-	K(() => () => a.current?.abort(), []);
-	let o = async (e) => {
-		if (a.current) return;
+function Mt({ data: t }) {
+	let [n, r] = G(t.media_sources), [a, o] = G(""), s = J(null);
+	K(() => () => s.current?.abort(), []);
+	let c = async (e) => {
+		if (s.current) return;
 		let t = new AbortController();
-		a.current = t, v(e, !0), i("");
+		s.current = t, d(e, !0), o("");
 		try {
 			let e = await V(Tt, t.signal);
-			t.signal.aborted || n(e.media_sources);
+			t.signal.aborted || r(e.media_sources);
 		} catch (e) {
-			t.signal.aborted || i(B(e));
+			t.signal.aborted || o(B(e));
 		} finally {
-			a.current = null, v(e, !1);
+			s.current = null, d(e, !1);
 		}
 	};
-	return t ? /* @__PURE__ */ Y("section", {
+	return n ? /* @__PURE__ */ Y("section", {
 		class: "configfieldset",
 		"aria-labelledby": "configMountsTitle",
 		children: [/* @__PURE__ */ Y("div", {
 			class: "geist-fieldset-content",
 			children: [
-				/* @__PURE__ */ Y(kt, { html: d("configMountsTitle", "挂载状态") }),
+				/* @__PURE__ */ Y(kt, { html: i("configMountsTitle", "挂载状态") }),
 				/* @__PURE__ */ Y("dl", {
 					class: "configfacts",
-					children: t.map((e) => /* @__PURE__ */ Y(L, { children: [/* @__PURE__ */ Y("dt", { children: [/* @__PURE__ */ Y("span", {
+					children: n.map((t) => /* @__PURE__ */ Y(L, { children: [/* @__PURE__ */ Y("dt", { children: [/* @__PURE__ */ Y("span", {
 						"aria-hidden": "true",
-						dangerouslySetInnerHTML: { __html: _(s[e.location]) }
+						dangerouslySetInnerHTML: { __html: u(e[t.location]) }
 					}), {
 						local: "本地磁盘",
 						115: "CloudDrive · 115",
 						pikpak: "CloudDrive · PikPak"
-					}[e.location] || e.location] }), /* @__PURE__ */ Y("dd", { children: [
-						e.path || "未配置挂载点",
+					}[t.location] || t.location] }), /* @__PURE__ */ Y("dd", { children: [
+						t.path || "未配置挂载点",
 						" ",
 						/* @__PURE__ */ Y("span", {
-							class: `configstatus ${e.online === !0 ? "online" : e.online === !1 ? "offline" : "unknown"}`,
-							children: e.online === !0 ? "在线" : e.online === !1 ? "离线" : "未检测"
+							class: `configstatus ${t.online === !0 ? "online" : t.online === !1 ? "offline" : "unknown"}`,
+							children: t.online === !0 ? "在线" : t.online === !1 ? "离线" : "未检测"
 						})
 					] })] }))
 				}),
-				r ? /* @__PURE__ */ Y("p", {
+				a ? /* @__PURE__ */ Y("p", {
 					class: "configbad",
 					role: "alert",
-					children: r
+					children: a
 				}) : null
 			]
 		}), /* @__PURE__ */ Y("div", {
@@ -1482,17 +1481,17 @@ function Mt({ data: e }) {
 			children: /* @__PURE__ */ Y("button", {
 				type: "button",
 				class: "geist-button",
-				onClick: (e) => o(e.currentTarget),
+				onClick: (e) => c(e.currentTarget),
 				children: "刷新挂载状态"
 			})
 		})]
 	}) : null;
 }
-function Nt({ value: e, label: t, onChange: n, libraryIcon: r = !1 }) {
-	let i = J(null), a = J(null), o = J(n);
-	return o.current = n, q(() => {
-		let n = i.current;
-		n.innerHTML = g((r ? [
+function Nt({ value: t, label: n, onChange: r, libraryIcon: i = !1 }) {
+	let a = J(null), o = J(null), s = J(r);
+	return s.current = r, q(() => {
+		let r = a.current;
+		r.innerHTML = l((i ? [
 			["", "自动识别"],
 			["hard-drive", "磁盘"],
 			["database", "资料库"],
@@ -1505,21 +1504,21 @@ function Nt({ value: e, label: t, onChange: n, libraryIcon: r = !1 }) {
 			["local", "本地磁盘"],
 			["115", "CloudDrive · 115"],
 			["pikpak", "CloudDrive · PikPak"]
-		]).map(([e, t]) => [
-			e,
+		]).map(([t, n]) => [
 			t,
-			s[e] || e || "database"
-		]), e, { label: t });
-		let c = b(n.firstElementChild);
-		a.current = c;
-		let l = () => o.current(c.value);
-		return c.addEventListener("change", l), () => {
-			a.current = null, c.disabled = !0, c.removeEventListener("change", l), n.replaceChildren();
+			n,
+			e[t] || t || "database"
+		]), t, { label: n });
+		let c = p(r.firstElementChild);
+		o.current = c;
+		let u = () => s.current(c.value);
+		return c.addEventListener("change", u), () => {
+			o.current = null, c.disabled = !0, c.removeEventListener("change", u), r.replaceChildren();
 		};
-	}, [t, r]), q(() => {
-		a.current && (a.current.value = e);
-	}, [e]), /* @__PURE__ */ Y("div", {
-		ref: i,
+	}, [n, i]), q(() => {
+		o.current && (o.current.value = t);
+	}, [t]), /* @__PURE__ */ Y("div", {
+		ref: a,
 		class: "configsourcecontrol"
 	});
 }
@@ -1528,7 +1527,7 @@ function Pt({ data: e, receipt: t }) {
 		"local",
 		"115",
 		"pikpak"
-	].includes(e.location)), [r, i] = G(n?.length ? n.map((e) => e.path) : e.media_dirs.length ? e.media_dirs : [""]), [a, o] = G(n?.map((e) => e.location) ?? []), [s, c] = G(n?.map((e) => e.root) ?? []), [l, u] = G(n?.map((e) => e.library || "") ?? []), [f, m] = G(n?.map((e) => e.library_icon || "") ?? []), [h, g] = G(String(e.port)), [_, y] = G(!1), [b, x] = G([]), [S, C] = G(""), [w, T] = G(""), [E, D] = G(null), [O, k] = G(null), A = J(!1), j = J(e.revision), ee = J([]), M = J(null);
+	].includes(e.location)), [r, a] = G(n?.length ? n.map((e) => e.path) : e.media_dirs.length ? e.media_dirs : [""]), [s, c] = G(n?.map((e) => e.location) ?? []), [l, u] = G(n?.map((e) => e.root) ?? []), [f, p] = G(n?.map((e) => e.library || "") ?? []), [m, h] = G(n?.map((e) => e.library_icon || "") ?? []), [g, _] = G(String(e.port)), [v, y] = G(!1), [b, x] = G([]), [S, C] = G(""), [w, T] = G(""), [E, D] = G(null), [O, k] = G(null), A = J(!1), j = J(e.revision), ee = J([]), M = J(null);
 	q(() => {
 		O !== null && (ee.current[O]?.focus(), k(null));
 	}, [O]), K(() => {
@@ -1537,11 +1536,11 @@ function Pt({ data: e, receipt: t }) {
 		return () => clearTimeout(e);
 	}, [E]);
 	let N = (e, t) => {
-		i((n) => n.map((n, r) => r === e ? t : n));
+		a((n) => n.map((n, r) => r === e ? t : n));
 	}, P = () => {
-		k(r.length), i((e) => [...e, ""]);
+		k(r.length), a((e) => [...e, ""]);
 	}, F = (e) => {
-		o((t) => t.filter((t, n) => n !== e)), c((t) => t.filter((t, n) => n !== e)), u((t) => t.filter((t, n) => n !== e)), m((t) => t.filter((t, n) => n !== e)), i((t) => t.filter((t, n) => n !== e)), x((t) => t.filter((t, n) => n !== e));
+		c((t) => t.filter((t, n) => n !== e)), u((t) => t.filter((t, n) => n !== e)), p((t) => t.filter((t, n) => n !== e)), h((t) => t.filter((t, n) => n !== e)), a((t) => t.filter((t, n) => n !== e)), x((t) => t.filter((t, n) => n !== e));
 	}, te = (e, t) => {
 		x((n) => {
 			let r = [...n];
@@ -1550,14 +1549,14 @@ function Pt({ data: e, receipt: t }) {
 		});
 	}, ne = async (e, t) => {
 		if (t.getAttribute("aria-busy") !== "true") {
-			v(t, !0);
+			d(t, !0);
 			try {
 				let { path: t } = await H(Et, { initial: r[e] ?? "" });
 				t && (N(e, t), te(e, ""));
 			} catch (t) {
 				te(e, B(t));
 			} finally {
-				v(t, !1);
+				d(t, !1);
 			}
 		}
 	};
@@ -1586,27 +1585,27 @@ function Pt({ data: e, receipt: t }) {
 		"aria-labelledby": "configTitle",
 		onSubmit: async (n) => {
 			if (n.preventDefault(), !A.current) {
-				A.current = !0, v(M.current, !0), T("");
+				A.current = !0, d(M.current, !0), T("");
 				try {
 					let n = await H(Tt, {
 						revision: j.current,
 						media_dirs: r,
 						...e.media_sources ? { media_sources: r.map((e, t) => ({
 							path: e,
-							location: a[t] || "local",
-							root: s[t] || "",
-							library: l[t] || "",
-							library_icon: f[t] || ""
+							location: s[t] || "local",
+							root: l[t] || "",
+							library: f[t] || "",
+							library_icon: m[t] || ""
 						})) } : {},
-						port: h,
-						scan_now: _
+						port: g,
+						scan_now: v
 					});
 					j.current = n.revision, x([]), C(""), t("已保存配置"), D(n);
 				} catch (e) {
 					let t = At(e);
 					t ? (x(t.media_dirs ?? []), C(t.port ?? "")) : (x([]), C(""), T(B(e)));
 				} finally {
-					A.current = !1, v(M.current, !1);
+					A.current = !1, d(M.current, !1);
 				}
 			}
 		},
@@ -1614,7 +1613,7 @@ function Pt({ data: e, receipt: t }) {
 		children: [/* @__PURE__ */ Y("div", {
 			class: "geist-fieldset-content",
 			children: [
-				/* @__PURE__ */ Y(kt, { html: d("configTitle", "这台电脑") }),
+				/* @__PURE__ */ Y(kt, { html: i("configTitle", "这台电脑") }),
 				/* @__PURE__ */ Y("div", {
 					class: "configfield",
 					children: [
@@ -1674,11 +1673,11 @@ function Pt({ data: e, receipt: t }) {
 												class: "geist-input",
 												"aria-label": `媒体库 ${n + 1}`,
 												maxLength: 80,
-												value: l[n] || "",
+												value: f[n] || "",
 												placeholder: "同名文件夹归入同一个媒体库",
 												onInput: (e) => {
-													let t = [...l];
-													t[n] = e.currentTarget.value, u(t);
+													let t = [...f];
+													t[n] = e.currentTarget.value, p(t);
 												}
 											})] }),
 											/* @__PURE__ */ Y("div", {
@@ -1686,10 +1685,10 @@ function Pt({ data: e, receipt: t }) {
 												children: ["媒体库图标", /* @__PURE__ */ Y(Nt, {
 													libraryIcon: !0,
 													label: `媒体库图标 ${n + 1}`,
-													value: f[n] || "",
+													value: m[n] || "",
 													onChange: (e) => {
-														let t = [...f];
-														t[n] = e, m(t);
+														let t = [...m];
+														t[n] = e, h(t);
 													}
 												})]
 											}),
@@ -1697,21 +1696,21 @@ function Pt({ data: e, receipt: t }) {
 												class: "configsourcelabel",
 												children: ["媒体来源", /* @__PURE__ */ Y(Nt, {
 													label: `媒体来源 ${n + 1}`,
-													value: a[n] || "local",
+													value: s[n] || "local",
 													onChange: (e) => {
-														let t = [...a];
-														t[n] = e, o(t);
+														let t = [...s];
+														t[n] = e, c(t);
 													}
 												})]
 											}),
 											e.windows === !1 ? /* @__PURE__ */ Y("label", { children: ["Windows 中的对应路径", /* @__PURE__ */ Y("input", {
 												class: "geist-input",
 												"aria-label": `Windows 中的对应路径 ${n + 1}`,
-												value: s[n] || "",
+												value: l[n] || "",
 												placeholder: "例如 B:\\\\",
 												onInput: (e) => {
-													let t = [...s];
-													t[n] = e.currentTarget.value, c(t);
+													let t = [...l];
+													t[n] = e.currentTarget.value, u(t);
 												}
 											})] }) : null
 										]
@@ -1730,8 +1729,8 @@ function Pt({ data: e, receipt: t }) {
 							onClick: P,
 							children: "添加文件夹"
 						}),
-						a.some((e) => e === "115" || e === "pikpak") ? /* @__PURE__ */ Y(wt, {}) : null,
-						a.some((e) => e === "115" || e === "pikpak") ? e.mount_dependencies?.filter((e) => !e.available).map((e) => /* @__PURE__ */ Y("p", {
+						s.some((e) => e === "115" || e === "pikpak") ? /* @__PURE__ */ Y(wt, {}) : null,
+						s.some((e) => e === "115" || e === "pikpak") ? e.mount_dependencies?.filter((e) => !e.available).map((e) => /* @__PURE__ */ Y("p", {
 							class: "confighelp",
 							children: [
 								"未检测到 ",
@@ -1773,9 +1772,9 @@ function Pt({ data: e, receipt: t }) {
 							class: "geist-input",
 							type: "text",
 							inputMode: "numeric",
-							value: h,
+							value: g,
 							"aria-invalid": S ? "true" : void 0,
-							onInput: (e) => g(e.currentTarget.value)
+							onInput: (e) => _(e.currentTarget.value)
 						}),
 						S ? /* @__PURE__ */ Y("p", {
 							class: "configbad",
@@ -1794,7 +1793,7 @@ function Pt({ data: e, receipt: t }) {
 						class: "pcheck",
 						children: [/* @__PURE__ */ Y("input", {
 							type: "checkbox",
-							checked: _,
+							checked: v,
 							onChange: (e) => y(e.currentTarget.checked)
 						}), /* @__PURE__ */ Y("span", {
 							"aria-hidden": "true",
@@ -1805,7 +1804,7 @@ function Pt({ data: e, receipt: t }) {
 						})]
 					}), /* @__PURE__ */ Y("span", { children: "保存后扫描并补全资料" })]
 				}),
-				w ? /* @__PURE__ */ Y(kt, { html: p(w, {
+				w ? /* @__PURE__ */ Y(kt, { html: o(w, {
 					variant: "error",
 					label: "没有保存"
 				}) }) : null
@@ -1825,7 +1824,7 @@ function Pt({ data: e, receipt: t }) {
 function Ft({ receipt: e, data: t, error: n }) {
 	return n || !t ? /* @__PURE__ */ Y(kt, {
 		class: "configpage",
-		html: p(n || "没有读到配置", {
+		html: o(n || "没有读到配置", {
 			variant: "error",
 			label: "打不开配置"
 		})
@@ -1847,7 +1846,7 @@ function Ft({ receipt: e, data: t, error: n }) {
 			t.editable ? /* @__PURE__ */ Y(Pt, {
 				data: t,
 				receipt: e
-			}) : /* @__PURE__ */ Y(kt, { html: p(t.notice, {
+			}) : /* @__PURE__ */ Y(kt, { html: o(t.notice, {
 				variant: "secondary",
 				label: "只读"
 			}) }),
@@ -2329,27 +2328,27 @@ async function wn(e) {
 //#endregion
 //#region src/islands/quality-goals.tsx
 var Tn = (e, t) => wn(t), En = (e) => e.has_cover ? `/cover?code=${encodeURIComponent(e.code ?? "")}` : `/poster?id=${e.id}&c=4`;
-function Dn({ openItem: t, javTitleHtml: n, javDisplayName: a, srcBadge: o }) {
-	let { data: s, error: c } = Sn.value;
-	if (c) return /* @__PURE__ */ Y("div", {
+function Dn({ openItem: e, javTitleHtml: t, javDisplayName: n, srcBadge: i }) {
+	let { data: a, error: s } = Sn.value;
+	if (s) return /* @__PURE__ */ Y("div", {
 		class: "qualitylist",
-		dangerouslySetInnerHTML: { __html: p(c, {
+		dangerouslySetInnerHTML: { __html: o(s, {
 			variant: "error",
 			label: "读取失败"
 		}) }
 	});
-	let l = s?.items ?? [];
-	return l.length ? /* @__PURE__ */ Y("div", {
+	let c = a?.items ?? [];
+	return c.length ? /* @__PURE__ */ Y("div", {
 		class: "qualitylist",
-		children: l.map((s) => /* @__PURE__ */ Y("article", {
+		children: c.map((r) => /* @__PURE__ */ Y("article", {
 			class: "qualityitem",
 			children: [/* @__PURE__ */ Y("button", {
 				class: "qualitycover",
 				type: "button",
-				"aria-label": `打开 ${a(s)}`,
-				onClick: () => t(s.id),
+				"aria-label": `打开 ${n(r)}`,
+				onClick: () => e(r.id),
 				children: /* @__PURE__ */ Y("img", {
-					src: En(s),
+					src: En(r),
 					alt: "",
 					loading: "lazy",
 					onError: (e) => e.currentTarget.remove()
@@ -2358,27 +2357,27 @@ function Dn({ openItem: t, javTitleHtml: n, javDisplayName: a, srcBadge: o }) {
 				/* @__PURE__ */ Y("h3", { children: /* @__PURE__ */ Y("button", {
 					type: "button",
 					"data-middle-truncate": !0,
-					onClick: () => t(s.id),
-					dangerouslySetInnerHTML: { __html: n(s) }
+					onClick: () => e(r.id),
+					dangerouslySetInnerHTML: { __html: t(r) }
 				}) }),
 				/* @__PURE__ */ Y("p", {
 					class: "mono",
 					children: [
 						/* @__PURE__ */ Y("span", {
 							style: "display:contents",
-							dangerouslySetInnerHTML: { __html: o(s.location, s.cost) }
+							dangerouslySetInnerHTML: { __html: i(r.location, r.cost) }
 						}),
-						/* @__PURE__ */ Y("span", { children: e[s.location] ?? s.location }),
-						/* @__PURE__ */ Y("span", { children: r(s.duration) }),
-						/* @__PURE__ */ Y("span", { children: i(s.size ?? 0) })
+						/* @__PURE__ */ Y("span", { children: m[r.location] ?? r.location }),
+						/* @__PURE__ */ Y("span", { children: _(r.duration) }),
+						/* @__PURE__ */ Y("span", { children: v(r.size ?? 0) })
 					]
 				}),
-				s.reason ? /* @__PURE__ */ Y("p", { children: s.reason }) : null
+				r.reason ? /* @__PURE__ */ Y("p", { children: r.reason }) : null
 			] })]
-		}, s.id))
+		}, r.id))
 	}) : /* @__PURE__ */ Y("div", {
 		class: "qualitylist",
-		dangerouslySetInnerHTML: { __html: u("sparkles", "没有标记中的高清版目标", "现有版本都已满足条件，或还没有加入追踪。") }
+		dangerouslySetInnerHTML: { __html: r("sparkles", "没有标记中的高清版目标", "现有版本都已满足条件，或还没有加入追踪。") }
 	});
 }
 //#endregion
@@ -2433,8 +2432,8 @@ function jn({ value: e, onChange: t }) {
 	let n = J(null), r = J(t);
 	return r.current = t, q(() => {
 		let t = n.current;
-		t.innerHTML = g([["peach", "Peach 代理"], ["direct", "直接连接"]], e, { label: "连接方式" });
-		let i = b(t.firstElementChild), a = () => r.current(i.value);
+		t.innerHTML = l([["peach", "Peach 代理"], ["direct", "直接连接"]], e, { label: "连接方式" });
+		let i = p(t.firstElementChild), a = () => r.current(i.value);
 		return i.addEventListener("change", a), () => {
 			i.disabled = !0, i.removeEventListener("change", a), t.replaceChildren();
 		};
@@ -2444,28 +2443,28 @@ function jn({ value: e, onChange: t }) {
 	});
 }
 function Mn({ source: e, toast: t }) {
-	let [r, i] = G(e), [a, o] = G(e.network), [s, c] = G(""), [l, u] = G(""), [f, m] = G("paste"), [h, g] = G(""), [_, y] = G(!1), [b, x] = G(""), [S, C] = G([]), w = J(null), T = J(null);
+	let [n, r] = G(e), [a, s] = G(e.network), [c, l] = G(""), [u, f] = G(""), [p, m] = G("paste"), [h, _] = G(""), [v, y] = G(!1), [b, x] = G(""), [S, C] = G([]), w = J(null), T = J(null);
 	q(() => {
-		T.current?.querySelectorAll("footer button").forEach((e) => v(e, _));
-	}, [_]);
+		T.current?.querySelectorAll("footer button").forEach((e) => d(e, v));
+	}, [v]);
 	let E = J(new AbortController());
 	K(() => () => E.current.abort(), []);
 	async function D(n) {
-		if (!_) {
+		if (!v) {
 			y(!0), x(""), C([]);
 			try {
 				if (n === "check") {
 					let t = await H("/api/scraping/check", { source: e.source }, "POST", E.current.signal);
 					E.current.signal.aborted || C(t.results);
 				} else {
-					let r = await H("/api/scraping/settings", {
+					let i = await H("/api/scraping/settings", {
 						source: e.source,
 						network: a,
-						cookie: s,
-						cookies_text: l,
+						cookie: c,
+						cookies_text: u,
 						revoke: n === "revoke"
 					}, "POST", E.current.signal);
-					E.current.signal.aborted || (i(r.saved), c(""), u(""), g(""), w.current && (w.current.value = ""), t(n === "revoke" ? "Cookie 已撤销" : "来源设置已保存"));
+					E.current.signal.aborted || (r(i.saved), l(""), f(""), _(""), w.current && (w.current.value = ""), t(n === "revoke" ? "Cookie 已撤销" : "来源设置已保存"));
 				}
 			} catch (e) {
 				E.current.signal.aborted || x(B(e));
@@ -2488,14 +2487,14 @@ function Mn({ source: e, toast: t }) {
 				children: [
 					/* @__PURE__ */ Y("div", {
 						class: "geist-fieldset-heading",
-						children: [/* @__PURE__ */ Y("div", { dangerouslySetInnerHTML: { __html: d(`scraping-${e.source}`, e.label) } }), /* @__PURE__ */ Y("a", {
+						children: [/* @__PURE__ */ Y("div", { dangerouslySetInnerHTML: { __html: i(`scraping-${e.source}`, e.label) } }), /* @__PURE__ */ Y("a", {
 							class: "scraping-url externallink",
 							href: e.login,
 							target: "_blank",
 							rel: "noopener noreferrer",
 							children: [
 								/* @__PURE__ */ Y("img", {
-									src: n(e.login),
+									src: g(e.login),
 									alt: "",
 									width: "16",
 									height: "16",
@@ -2516,7 +2515,7 @@ function Mn({ source: e, toast: t }) {
 						class: "scraping-label",
 						children: ["连接方式", /* @__PURE__ */ Y(jn, {
 							value: a,
-							onChange: o
+							onChange: s
 						})]
 					}),
 					a === "peach" && /* @__PURE__ */ Y("a", {
@@ -2525,7 +2524,7 @@ function Mn({ source: e, toast: t }) {
 						children: "配置 Peach 代理"
 					}),
 					e.accepts_cookie && /* @__PURE__ */ Y(L, { children: [
-						/* @__PURE__ */ Y("p", { children: r.cookie_saved ? "Cookie 已保存，登录是否有效请在抓取时确认。" : "需要登录时，任选一种方式提供 Cookie。" }),
+						/* @__PURE__ */ Y("p", { children: n.cookie_saved ? "Cookie 已保存，登录是否有效请在抓取时确认。" : "需要登录时，任选一种方式提供 Cookie。" }),
 						/* @__PURE__ */ Y("div", {
 							class: "insightswitch scraping-cookie-method",
 							role: "radiogroup",
@@ -2534,19 +2533,19 @@ function Mn({ source: e, toast: t }) {
 								type: "radio",
 								name: `cookie-method-${e.source}`,
 								value: t,
-								checked: f === t,
+								checked: p === t,
 								onChange: () => {
-									m(t), c(""), u(""), g("");
+									m(t), l(""), f(""), _("");
 								}
 							}), /* @__PURE__ */ Y("span", { children: n })] }, t))
 						}),
-						f === "paste" ? /* @__PURE__ */ Y("label", { children: ["Cookie", /* @__PURE__ */ Y("input", {
+						p === "paste" ? /* @__PURE__ */ Y("label", { children: ["Cookie", /* @__PURE__ */ Y("input", {
 							class: "geist-input",
 							type: "password",
 							autoComplete: "off",
-							value: s,
-							disabled: _,
-							onInput: (e) => c(e.currentTarget.value)
+							value: c,
+							disabled: v,
+							onInput: (e) => l(e.currentTarget.value)
 						})] }) : /* @__PURE__ */ Y("label", {
 							class: "scraping-file",
 							children: ["Netscape Cookie 文件（.txt）", /* @__PURE__ */ Y("span", {
@@ -2564,21 +2563,21 @@ function Mn({ source: e, toast: t }) {
 										ref: w,
 										type: "file",
 										accept: ".txt",
-										disabled: _,
+										disabled: v,
 										onChange: async (e) => {
 											let t = e.currentTarget.files?.[0];
 											if (!t) {
-												u(""), g("");
+												f(""), _("");
 												return;
 											}
-											if (u(""), t.size > 262144) {
+											if (f(""), t.size > 262144) {
 												x("Cookie 文本超过 256 KiB"), e.currentTarget.value = "";
 												return;
 											}
 											y(!0);
 											try {
 												let e = await t.text();
-												E.current.signal.aborted || (u(e), g(t.name));
+												E.current.signal.aborted || (f(e), _(t.name));
 											} catch {
 												E.current.signal.aborted || x("Cookie 文件未读取，请重新选择");
 											} finally {
@@ -2592,18 +2591,18 @@ function Mn({ source: e, toast: t }) {
 					] }),
 					b && /* @__PURE__ */ Y("div", {
 						role: "alert",
-						dangerouslySetInnerHTML: { __html: p(b, { variant: "error" }) }
+						dangerouslySetInnerHTML: { __html: o(b, { variant: "error" }) }
 					}),
 					S.map((t) => /* @__PURE__ */ Y("div", {
 						role: "status",
-						dangerouslySetInnerHTML: { __html: p(`${e.label}${t.label === "来源页面" ? "" : " 高清图片"}：${t.ok ? "可连接" : "不能连接"}` + (t.width ? ` · ${t.width} × ${t.height}` : "") + (t.message ? `。${t.message}` : ""), { variant: t.ok ? "success" : "error" }) }
+						dangerouslySetInnerHTML: { __html: o(`${e.label}${t.label === "来源页面" ? "" : " 高清图片"}：${t.ok ? "可连接" : "不能连接"}` + (t.width ? ` · ${t.width} × ${t.height}` : "") + (t.message ? `。${t.message}` : ""), { variant: t.ok ? "success" : "error" }) }
 					}, t.label))
 				]
 			}), /* @__PURE__ */ Y("footer", {
 				class: "geist-fieldset-footer",
 				"data-geist-fieldset-footer": !0,
 				children: [
-					e.accepts_cookie && r.cookie_saved && /* @__PURE__ */ Y("button", {
+					e.accepts_cookie && n.cookie_saved && /* @__PURE__ */ Y("button", {
 						class: "geist-button",
 						type: "button",
 						onClick: () => void D("revoke"),
@@ -2626,34 +2625,34 @@ function Mn({ source: e, toast: t }) {
 	});
 }
 function Nn({ data: e, error: t, toast: n }) {
-	let [r, i] = G(""), [a, o] = G(!1), [s, c] = G(""), l = J(null);
-	q(() => v(l.current, a), [a]);
-	let u = J(new AbortController()), f = J(0);
-	async function m(e = !1) {
-		let t = ++f.current;
+	let [r, a] = G(""), [s, c] = G(!1), [l, u] = G(""), f = J(null);
+	q(() => d(f.current, s), [s]);
+	let p = J(new AbortController()), m = J(0);
+	async function h(e = !1) {
+		let t = ++m.current;
 		await On({
 			read: (e) => V("/api/scraping/cover", e),
-			active: () => !u.current.signal.aborted && t === f.current,
+			active: () => !p.current.signal.aborted && t === m.current,
 			render: (t) => {
-				o(t.status === "running"), t.status === "running" && (e = !1), t.status === "failed" && !e && c(t.error || "采集未取得"), t.status === "complete" && !e && n(t.result || "封面采集完成");
+				c(t.status === "running"), t.status === "running" && (e = !1), t.status === "failed" && !e && u(t.error || "采集未取得"), t.status === "complete" && !e && n(t.result || "封面采集完成");
 			},
-			disconnected: () => c("连接中断，正在重新读取后台进度")
+			disconnected: () => u("连接中断，正在重新读取后台进度")
 		});
 	}
-	K(() => (m(!0), () => u.current.abort()), []);
-	async function h() {
-		if (!a) {
-			f.current++, o(!0), c("");
+	K(() => (h(!0), () => p.current.abort()), []);
+	async function g() {
+		if (!s) {
+			m.current++, c(!0), u("");
 			try {
-				await H("/api/scraping/cover", { code: r }, "POST", u.current.signal), await m();
+				await H("/api/scraping/cover", { code: r }, "POST", p.current.signal), await h();
 			} catch (e) {
-				u.current.signal.aborted || (o(!1), c(B(e)));
+				p.current.signal.aborted || (c(!1), u(B(e)));
 			}
 		}
 	}
 	return t ? /* @__PURE__ */ Y("div", {
 		role: "alert",
-		dangerouslySetInnerHTML: { __html: p(t, { variant: "error" }) }
+		dangerouslySetInnerHTML: { __html: o(t, { variant: "error" }) }
 	}) : /* @__PURE__ */ Y("div", {
 		class: "scraping-page",
 		children: [
@@ -2664,30 +2663,30 @@ function Nn({ data: e, error: t, toast: n }) {
 				children: /* @__PURE__ */ Y("div", {
 					class: "geist-fieldset-content scraping-fields",
 					children: [
-						/* @__PURE__ */ Y("div", { dangerouslySetInnerHTML: { __html: d("scraping-cover", "高清封面") } }),
+						/* @__PURE__ */ Y("div", { dangerouslySetInnerHTML: { __html: i("scraping-cover", "高清封面") } }),
 						/* @__PURE__ */ Y("form", {
 							class: "scraping-cover-form",
 							onSubmit: (e) => {
-								e.preventDefault(), h();
+								e.preventDefault(), g();
 							},
 							children: [/* @__PURE__ */ Y("input", {
 								class: "geist-input",
 								"aria-label": "馆藏番号",
 								required: !0,
 								value: r,
-								disabled: a,
+								disabled: s,
 								placeholder: "输入馆藏番号，如 ABW-232",
-								onInput: (e) => i(e.currentTarget.value)
+								onInput: (e) => a(e.currentTarget.value)
 							}), /* @__PURE__ */ Y("button", {
-								ref: l,
+								ref: f,
 								class: "geist-button primary",
 								type: "submit",
 								children: "抓取封面"
 							})]
 						}),
-						s && /* @__PURE__ */ Y("div", {
+						l && /* @__PURE__ */ Y("div", {
 							role: "alert",
-							dangerouslySetInnerHTML: { __html: p(s, { variant: "error" }) }
+							dangerouslySetInnerHTML: { __html: o(l, { variant: "error" }) }
 						})
 					]
 				})
@@ -2702,66 +2701,66 @@ function Nn({ data: e, error: t, toast: n }) {
 //#endregion
 //#region src/islands/library-processing.tsx
 var Pn = (e, t) => V("/api/library-processing", t);
-function Fn({ data: e, error: t, toast: n, onComplete: r, mode: i, monitor: a }) {
-	let [o, s] = G(e || { status: "idle" }), [c, l] = G(t), [u, m] = G(!1), [g, _] = G(!1), y = J(new AbortController()), b = J(0), x = J(o.status), S = J(null), C = u || o.status === "running";
-	q(() => v(S.current, C), [C]);
+function Fn({ data: e, error: t, toast: n, onComplete: r, mode: s, monitor: l }) {
+	let [u, f] = G(e || { status: "idle" }), [p, m] = G(t), [h, g] = G(!1), [_, v] = G(!1), y = J(new AbortController()), b = J(0), x = J(u.status), S = J(null), C = h || u.status === "running";
+	q(() => d(S.current, C), [C]);
 	async function w() {
 		let e = ++b.current;
 		await On({
 			read: (e) => V("/api/library-processing", e),
 			active: () => !y.current.signal.aborted && b.current === e,
-			keepWatching: i === "notice" || !!a,
+			keepWatching: s === "notice" || !!l,
 			render: (e) => {
-				s(e), l(""), e.status === "complete" && x.current === "running" && i !== "notice" && (_(!0), n("已完成扫描与资料采集")), x.current === "running" && (e.status === "complete" || e.status === "failed") && r?.(), x.current = e.status;
+				f(e), m(""), e.status === "complete" && x.current === "running" && s !== "notice" && (v(!0), n("已完成扫描与资料采集")), x.current === "running" && (e.status === "complete" || e.status === "failed") && r?.(), x.current = e.status;
 			},
-			disconnected: () => l("连接中断，正在重新读取处理进度")
+			disconnected: () => m("连接中断，正在重新读取处理进度")
 		});
 	}
-	K(() => ((o.status === "running" || i === "notice" || a) && w(), () => y.current.abort()), []);
+	K(() => ((u.status === "running" || s === "notice" || l) && w(), () => y.current.abort()), []);
 	async function T() {
 		if (!C) {
-			m(!0), l(""), _(!1);
+			g(!0), m(""), v(!1);
 			try {
 				let e = await H("/api/library-processing", {}, "POST", y.current.signal);
 				if (y.current.signal.aborted) return;
-				x.current = e.status, s(e), m(!1), await w();
+				x.current = e.status, f(e), g(!1), await w();
 			} catch (e) {
-				y.current.signal.aborted || (l(B(e)), m(!1));
+				y.current.signal.aborted || (m(B(e)), g(!1));
 			}
 		}
 	}
-	if (i === "notice") {
-		if (!c && o.status !== "running" && o.status !== "failed") return null;
-		let e = c || (o.status === "failed" ? "扫描与资料采集未完成" : `${o.stage || "正在整理馆藏"}${o.total ? ` · ${o.checked || 0} / ${o.total}` : ""}`);
-		return /* @__PURE__ */ Y("div", { dangerouslySetInnerHTML: { __html: h(e, {
-			variant: o.status === "failed" ? "error" : c ? "warning" : "gray",
+	if (s === "notice") {
+		if (!p && u.status !== "running" && u.status !== "failed") return null;
+		let e = p || (u.status === "failed" ? "扫描与资料采集未完成" : `${u.stage || "正在整理馆藏"}${u.total ? ` · ${u.checked || 0} / ${u.total}` : ""}`);
+		return /* @__PURE__ */ Y("div", { dangerouslySetInnerHTML: { __html: c(e, {
+			variant: u.status === "failed" ? "error" : p ? "warning" : "gray",
 			href: "/data-cleanup#libraryProcessing",
-			label: c || o.status === "failed" ? "查看并处理" : "查看进度",
-			value: o.checked || 0,
-			...o.status === "running" && o.total !== void 0 ? { max: o.total } : {}
+			label: p || u.status === "failed" ? "查看并处理" : "查看进度",
+			value: u.checked || 0,
+			...u.status === "running" && u.total !== void 0 ? { max: u.total } : {}
 		}) } });
 	}
 	return /* @__PURE__ */ Y(L, { children: [/* @__PURE__ */ Y("div", {
 		class: "geist-fieldset-content library-processing",
 		children: [
-			/* @__PURE__ */ Y("div", { dangerouslySetInnerHTML: { __html: d("cleanupScrapingTitle", "扫描与采集") } }),
+			/* @__PURE__ */ Y("div", { dangerouslySetInnerHTML: { __html: i("cleanupScrapingTitle", "扫描与采集") } }),
 			/* @__PURE__ */ Y("p", { children: "扫描媒体文件夹，导入已有资料，采集缺失信息。" }),
 			/* @__PURE__ */ Y("div", {
 				"aria-live": "polite",
 				children: [
-					o.status === "running" && /* @__PURE__ */ Y(L, { children: [/* @__PURE__ */ Y("div", { dangerouslySetInnerHTML: { __html: f(`${o.stage || "正在处理"}${o.total ? ` · ${o.checked || 0} / ${o.total}` : ""}`) } }), !!o.total && /* @__PURE__ */ Y("div", { dangerouslySetInnerHTML: { __html: Pe(`已处理 ${o.checked || 0} / ${o.total} 个视频`, o.checked || 0, o.total) } })] }),
-					(c || o.status === "failed") && /* @__PURE__ */ Y("div", {
+					u.status === "running" && /* @__PURE__ */ Y(L, { children: [/* @__PURE__ */ Y("div", { dangerouslySetInnerHTML: { __html: a(`${u.stage || "正在处理"}${u.total ? ` · ${u.checked || 0} / ${u.total}` : ""}`) } }), !!u.total && /* @__PURE__ */ Y("div", { dangerouslySetInnerHTML: { __html: Pe(`已处理 ${u.checked || 0} / ${u.total} 个视频`, u.checked || 0, u.total) } })] }),
+					(p || u.status === "failed") && /* @__PURE__ */ Y("div", {
 						role: "alert",
 						onClick: (e) => {
 							e.target.closest("[data-note-action]") && T();
 						},
-						dangerouslySetInnerHTML: { __html: p(c || o.error || "处理未完成，请重试", {
+						dangerouslySetInnerHTML: { __html: o(p || u.error || "处理未完成，请重试", {
 							variant: "error",
 							filled: !0,
-							actionLabel: o.status === "failed" ? "重试未完成项" : ""
+							actionLabel: u.status === "failed" ? "重试未完成项" : ""
 						}) }
 					}),
-					o.status === "failed" && !!o.issues?.length && /* @__PURE__ */ Y("ul", { children: o.issues.slice(0, 20).map((e) => /* @__PURE__ */ Y("li", { children: [
+					u.status === "failed" && !!u.issues?.length && /* @__PURE__ */ Y("ul", { children: u.issues.slice(0, 20).map((e) => /* @__PURE__ */ Y("li", { children: [
 						e.asset_id ? /* @__PURE__ */ Y("a", {
 							href: `/item/${e.asset_id}`,
 							children: "查看视频"
@@ -2769,9 +2768,9 @@ function Fn({ data: e, error: t, toast: n, onComplete: r, mode: i, monitor: a })
 						e.asset_id ? "：" : "",
 						e.message
 					] })) }),
-					g && /* @__PURE__ */ Y("div", {
+					_ && /* @__PURE__ */ Y("div", {
 						class: "library-processing-result",
-						dangerouslySetInnerHTML: { __html: p(`已扫描 ${o.scanned || 0} 个文件，识别 ${o.identified || 0} 个番号，整理 ${o.candidates || 0} 组资料候选。`, {
+						dangerouslySetInnerHTML: { __html: o(`已扫描 ${u.scanned || 0} 个文件，识别 ${u.identified || 0} 个番号，整理 ${u.candidates || 0} 组资料候选。`, {
 							variant: "success",
 							label: "处理完成"
 						}) }
@@ -2788,12 +2787,12 @@ function Fn({ data: e, error: t, toast: n, onComplete: r, mode: i, monitor: a })
 				href: "/scraping",
 				children: "采集来源"
 			}),
-			!!o.candidates && /* @__PURE__ */ Y("a", {
+			!!u.candidates && /* @__PURE__ */ Y("a", {
 				class: "geist-button",
 				href: "/review",
 				children: "复核资料"
 			}),
-			o.status !== "failed" && /* @__PURE__ */ Y("button", {
+			u.status !== "failed" && /* @__PURE__ */ Y("button", {
 				ref: S,
 				type: "button",
 				class: "geist-button primary",
@@ -2822,19 +2821,19 @@ async function Rn(e) {
 //#region src/review-evidence.ts
 var zn = (e = "") => /^https?:\/\//i.test(e) ? e : "";
 function Bn(e = "") {
-	let n = zn(e) || (e.startsWith("/") && !e.startsWith("//") ? e : "");
-	return `<div class="reviewimage" data-review-picture><span class="reviewimageempty"${n ? " hidden" : ""}>未取得来源图片</span>${n ? `<img src="${t(n)}" alt="来源候选图片" loading="lazy">` : ""}</div>`;
+	let t = zn(e) || (e.startsWith("/") && !e.startsWith("//") ? e : "");
+	return `<div class="reviewimage" data-review-picture><span class="reviewimageempty"${t ? " hidden" : ""}>未取得来源图片</span>${t ? `<img src="${h(t)}" alt="来源候选图片" loading="lazy">` : ""}</div>`;
 }
 function Vn(e) {
-	let n = zn(e.profile_url), r = (e.preview_assets || []).slice(0, 6), i = Math.max(0, Number(e.video_count || e.videos || 0));
-	return `<section class="reviewidentityevidence"><h5>候选身份：${t(e.babepedia_name || "未标注")}</h5>
-    <div class="reviewevidenceactions">${n ? `<a class="geist-button externallink" href="${t(n)}" target="_blank" rel="noopener noreferrer">来源资料<svg class="externalmark" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-external-link" /></svg></a>` : ""}
-    <button type="button" class="geist-button" data-entity-kind="creator" data-entity-name="${t(e.creator || "")}">查看全部 ${i.toLocaleString()} 部作品</button></div>
+	let t = zn(e.profile_url), n = (e.preview_assets || []).slice(0, 6), r = Math.max(0, Number(e.video_count || e.videos || 0));
+	return `<section class="reviewidentityevidence"><h5>候选身份：${h(e.babepedia_name || "未标注")}</h5>
+    <div class="reviewevidenceactions">${t ? `<a class="geist-button externallink" href="${h(t)}" target="_blank" rel="noopener noreferrer">来源资料<svg class="externalmark" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-external-link" /></svg></a>` : ""}
+    <button type="button" class="geist-button" data-entity-kind="creator" data-entity-name="${h(e.creator || "")}">查看全部 ${r.toLocaleString()} 部作品</button></div>
     ${Bn(e.preview_url)}
     <p>通过后记录身份判断。</p>
-    ${r.length ? `<h5>本地作品样本</h5><div class="reviewevidencesamples">${r.map((e) => `<div class="reviewevidencesample">
-      <button class="geist-button" type="button" data-review-open-item="${e.id}"><span data-middle-truncate title="${t(e.name)}">${t(e.name)}</span></button>
-      <button class="geist-button" type="button" data-review-reveal="${e.id}" aria-label="打开 ${t(e.name)} 的文件位置">文件位置</button>
+    ${n.length ? `<h5>本地作品样本</h5><div class="reviewevidencesamples">${n.map((e) => `<div class="reviewevidencesample">
+      <button class="geist-button" type="button" data-review-open-item="${e.id}"><span data-middle-truncate title="${h(e.name)}">${h(e.name)}</span></button>
+      <button class="geist-button" type="button" data-review-reveal="${e.id}" aria-label="打开 ${h(e.name)} 的文件位置">文件位置</button>
     </div>`).join("")}</div>` : "<p>暂无本地作品样本，打开全部作品核对。</p>"}</section>`;
 }
 function Hn(e) {
@@ -2930,161 +2929,161 @@ async function Jn(e, t, n, r) {
 function Yn(e) {
 	return e.length ? [...new Set(e.flatMap((e) => e.candidates?.map((e) => e.source || "") || []))].filter((t) => t && e.every((e) => e.candidates?.filter((e) => e.source === t).length === 1)) : [];
 }
-function Xn(e, t) {
-	let n = e.querySelector(".reviewlist");
-	if (!n || !t.rows.length || t.locked) return;
-	let r = t.state, i = [...n.querySelectorAll("[data-review-key]")];
-	t.category !== void 0 && r.category !== t.category && (r.category = t.category, r.filter = "", r.groupBy = "candidates", r.anchor = null);
-	let a = Gn(t.rows, t.metadata);
-	a.some((e) => e[0] === r.groupBy) || (r.groupBy = "candidates", r.filter = "");
-	let o = Kn(t.rows, r.groupBy);
-	o.some((e) => e.key === r.filter) || (r.filter = "");
-	let s = () => [...n.querySelectorAll("[data-review-key]")].filter((e) => !e.closest("[hidden]")), l = () => s().filter((e) => r.selected.has(e.dataset.reviewKey)), u = () => t.rows.filter((e) => l().some((t) => t.dataset.reviewKey === e.item_key)), d = (e) => !e.querySelector("[data-review-status=\"approved\"]")?.disabled, f = (e, t = "") => {
+function Xn(e, n) {
+	let r = e.querySelector(".reviewlist");
+	if (!r || !n.rows.length || n.locked) return;
+	let i = n.state, a = [...r.querySelectorAll("[data-review-key]")];
+	n.category !== void 0 && i.category !== n.category && (i.category = n.category, i.filter = "", i.groupBy = "candidates", i.anchor = null);
+	let o = Gn(n.rows, n.metadata);
+	o.some((e) => e[0] === i.groupBy) || (i.groupBy = "candidates", i.filter = "");
+	let s = Kn(n.rows, i.groupBy);
+	s.some((e) => e.key === i.filter) || (i.filter = "");
+	let c = () => [...r.querySelectorAll("[data-review-key]")].filter((e) => !e.closest("[hidden]")), u = () => c().filter((e) => i.selected.has(e.dataset.reviewKey)), f = () => n.rows.filter((e) => u().some((t) => t.dataset.reviewKey === e.item_key)), m = (e) => !e.querySelector("[data-review-status=\"approved\"]")?.disabled, h = (e, t = "") => {
 		let n = document.createElement("button");
 		return n.type = "button", n.className = `geist-button ${t}`.trim(), n.textContent = e, n;
-	}, p = document.createElement("div");
-	p.className = "reviewbulkbar reviewbulktoolbar", p.setAttribute("role", "group"), p.setAttribute("aria-label", "复核批量操作");
-	let m = document.createElement("div");
-	m.className = "reviewgroupby", m.innerHTML = g(a, r.groupBy, { label: "筛选分组方式" });
-	let h = b(m.firstElementChild);
-	m.querySelectorAll("[data-select-option] .gselectmark").forEach((e) => e.remove()), h.addEventListener("change", () => {
-		if (r.busy || !a.some((e) => e[0] === h.value)) return;
-		r.groupBy = h.value, r.filter = "", r.anchor = null;
-		let n = e.parentElement;
-		t.refresh(), n?.querySelector(".reviewgroupby button")?.focus({ preventScroll: !0 });
-	});
+	}, g = document.createElement("div");
+	g.className = "reviewbulkbar reviewbulktoolbar", g.setAttribute("role", "group"), g.setAttribute("aria-label", "复核批量操作");
 	let _ = document.createElement("div");
-	_.className = "reviewcategoryfilter", _.hidden = o.length < 2, _.innerHTML = g([[
+	_.className = "reviewgroupby", _.innerHTML = l(o, i.groupBy, { label: "筛选分组方式" });
+	let v = p(_.firstElementChild);
+	_.querySelectorAll("[data-select-option] .gselectmark").forEach((e) => e.remove()), v.addEventListener("change", () => {
+		if (i.busy || !o.some((e) => e[0] === v.value)) return;
+		i.groupBy = v.value, i.filter = "", i.anchor = null;
+		let t = e.parentElement;
+		n.refresh(), t?.querySelector(".reviewgroupby button")?.focus({ preventScroll: !0 });
+	});
+	let y = document.createElement("div");
+	y.className = "reviewcategoryfilter", y.hidden = s.length < 2, y.innerHTML = l([[
 		"",
 		"全部分类",
 		"list-filter"
-	], ...o.map((e) => [
+	], ...s.map((e) => [
 		e.key,
 		`${e.title} · ${e.rows.length}`,
 		"list-filter"
-	])], r.filter, { label: r.groupBy === "field" ? "筛选字段分类" : "筛选当前分类" });
-	let y = _.querySelector("[data-select-menu]");
-	if (y) {
+	])], i.filter, { label: i.groupBy === "field" ? "筛选字段分类" : "筛选当前分类" });
+	let b = y.querySelector("[data-select-menu]");
+	if (b) {
 		let e = document.createElement("div");
-		e.setAttribute("role", "group"), e.setAttribute("aria-label", r.groupBy === "field" ? "字段分类" : "当前分类");
+		e.setAttribute("role", "group"), e.setAttribute("aria-label", i.groupBy === "field" ? "字段分类" : "当前分类");
 		let t = document.createElement("div");
-		t.className = "reviewfilterheading", t.textContent = e.getAttribute("aria-label"), t.setAttribute("aria-hidden", "true"), e.append(t, ...Array.from(y.children).slice(1)), y.append(e);
+		t.className = "reviewfilterheading", t.textContent = e.getAttribute("aria-label"), t.setAttribute("aria-hidden", "true"), e.append(t, ...Array.from(b.children).slice(1)), b.append(e);
 	}
-	let x = b(_.firstElementChild);
-	_.querySelectorAll("[data-select-option] .gselectmark").forEach((e) => e.remove()), x.addEventListener("change", () => {
-		if (r.busy || x.value && !o.some((e) => e.key === x.value)) return;
-		r.filter = x.value, r.anchor = null;
-		let n = e.parentElement;
-		t.refresh(), n?.querySelector(".reviewcategoryfilter button")?.focus({ preventScroll: !0 });
+	let x = p(y.firstElementChild);
+	y.querySelectorAll("[data-select-option] .gselectmark").forEach((e) => e.remove()), x.addEventListener("change", () => {
+		if (i.busy || x.value && !s.some((e) => e.key === x.value)) return;
+		i.filter = x.value, i.anchor = null;
+		let t = e.parentElement;
+		n.refresh(), t?.querySelector(".reviewcategoryfilter button")?.focus({ preventScroll: !0 });
 	});
-	let S = f("全选本页"), C = f("通过所选", "primary"), w = f("拒绝所选", "error"), T = document.createElement("span");
+	let S = h("全选本页"), C = h("通过所选", "primary"), w = h("拒绝所选", "error"), T = document.createElement("span");
 	T.className = "reviewselectedcount selectiondockcount", T.setAttribute("role", "status");
 	let E = document.createElement("div");
-	E.className = "reviewbulksource", E.hidden = !t.metadata;
+	E.className = "reviewbulksource", E.hidden = !n.metadata;
 	let D = document.createElement("p");
 	D.className = "reviewstate reviewbulkfeedback", D.setAttribute("role", "status");
 	let O = document.createElement("div");
 	O.className = "reviewbulkdecisions", O.append(C, w);
 	let k = document.createElement("div");
 	k.className = "selectiondock reviewdock", k.setAttribute("role", "group"), k.setAttribute("aria-label", "复核所选项目");
-	let A = f("取消选择");
-	k.append(T, E, O, A, D), p.append(m, _, S);
+	let A = h("取消选择");
+	k.append(T, E, O, A, D), g.append(_, y, S);
 	let j = e.querySelector(".reviewcontrols");
-	j ? j.append(p) : n.before(p), e.append(k), n.classList.add("reviewgroups");
+	j ? j.append(g) : r.before(g), e.append(k), r.classList.add("reviewgroups");
 	let ee = () => {
-		r.selected.clear(), r.anchor = null, P();
+		i.selected.clear(), i.anchor = null, P();
 	};
 	A.onclick = () => {
-		r.busy || (ee(), S.focus({ preventScroll: !0 }));
+		i.busy || (ee(), S.focus({ preventScroll: !0 }));
 	}, S.onclick = () => {
-		if (r.busy) return;
-		let e = s(), t = l().length === e.length;
-		e.forEach((e) => t ? r.selected.delete(e.dataset.reviewKey) : r.selected.add(e.dataset.reviewKey)), P();
+		if (i.busy) return;
+		let e = c(), t = u().length === e.length;
+		e.forEach((e) => t ? i.selected.delete(e.dataset.reviewKey) : i.selected.add(e.dataset.reviewKey)), P();
 	}, C.onclick = () => F("approved", C), w.onclick = () => F("rejected", w);
 	let M = [];
-	for (let e of o) {
-		let t = e.rows.map((e) => i.find((t) => t.dataset.reviewKey === e.item_key)).filter((e) => !!e), a = document.createElement("section");
-		a.className = "reviewgroup", a.hidden = !!r.filter && e.key !== r.filter;
-		let o = document.createElement("div");
-		o.className = "reviewbulkbar reviewgroupbar";
+	for (let e of s) {
+		let n = e.rows.map((e) => a.find((t) => t.dataset.reviewKey === e.item_key)).filter((e) => !!e), o = document.createElement("section");
+		o.className = "reviewgroup", o.hidden = !!i.filter && e.key !== i.filter;
+		let s = document.createElement("div");
+		s.className = "reviewbulkbar reviewgroupbar";
 		let l = document.createElement("h3");
-		l.textContent = `${e.title} · ${t.length}`;
-		let u = f("全选本组"), d = document.createElement("div");
-		d.className = "reviewlist", o.append(l, u), a.append(o, d), n.append(a), u.onclick = () => {
-			if (r.busy) return;
-			let e = t.every((e) => r.selected.has(e.dataset.reviewKey));
-			t.forEach((t) => e ? r.selected.delete(t.dataset.reviewKey) : r.selected.add(t.dataset.reviewKey)), P();
+		l.textContent = `${e.title} · ${n.length}`;
+		let u = h("全选本组"), d = document.createElement("div");
+		d.className = "reviewlist", s.append(l, u), o.append(s, d), r.append(o), u.onclick = () => {
+			if (i.busy) return;
+			let e = n.every((e) => i.selected.has(e.dataset.reviewKey));
+			n.forEach((t) => e ? i.selected.delete(t.dataset.reviewKey) : i.selected.add(t.dataset.reviewKey)), P();
 		}, M.push(() => {
-			u.textContent = t.every((e) => r.selected.has(e.dataset.reviewKey)) ? "清空本组" : "全选本组";
+			u.textContent = n.every((e) => i.selected.has(e.dataset.reviewKey)) ? "清空本组" : "全选本组";
 		});
-		for (let e of t) {
+		for (let e of n) {
 			d.append(e);
-			let t = e.dataset.reviewKey;
-			r.errors.has(t) && (e.querySelector(".reviewstate").textContent = r.errors.get(t));
-			let n = e.querySelector("h4,.reviewentity b") || e, i = document.createElement("label");
-			i.className = "reviewpickitem", i.innerHTML = c();
-			let a = i.querySelector("input");
-			if (a.setAttribute("aria-label", `选择 ${e.querySelector("legend")?.textContent || n.textContent || t}`), n !== e) {
+			let n = e.dataset.reviewKey;
+			i.errors.has(n) && (e.querySelector(".reviewstate").textContent = i.errors.get(n));
+			let r = e.querySelector("h4,.reviewentity b") || e, a = document.createElement("label");
+			a.className = "reviewpickitem", a.innerHTML = t();
+			let o = a.querySelector("input");
+			if (o.setAttribute("aria-label", `选择 ${e.querySelector("legend")?.textContent || r.textContent || n}`), r !== e) {
 				let e = document.createElement("span");
-				e.className = "reviewpickname", e.append(...n.childNodes), n.classList.add("reviewpickheading"), n.append(i, e);
-			} else e.prepend(i);
-			let o = (e, n) => {
-				qn(r, s().map((e) => e.dataset.reviewKey), t, e, n), P();
+				e.className = "reviewpickname", e.append(...r.childNodes), r.classList.add("reviewpickheading"), r.append(a, e);
+			} else e.prepend(a);
+			let s = (e, t) => {
+				qn(i, c().map((e) => e.dataset.reviewKey), n, e, t), P();
 			};
-			if (i.addEventListener("mousedown", (e) => {
+			if (a.addEventListener("mousedown", (e) => {
 				e.shiftKey && e.preventDefault();
-			}), i.addEventListener("click", (e) => {
-				e.target !== a && (e.preventDefault(), r.busy || (a.focus(), o(e.shiftKey, !a.checked)));
 			}), a.addEventListener("click", (e) => {
-				r.busy || o(e.shiftKey, a.checked);
-			}), a.addEventListener("keydown", (n) => {
-				if (!(r.busy || !n.shiftKey)) {
-					if (n.key === " ") n.preventDefault(), o(!0, !0);
-					else if (n.key === "ArrowDown" || n.key === "ArrowUp") {
-						n.preventDefault();
-						let i = s(), a = i[i.indexOf(e) + (n.key === "ArrowDown" ? 1 : -1)];
-						a && (r.anchor === null && (r.anchor = t), qn(r, i.map((e) => e.dataset.reviewKey), a.dataset.reviewKey, !0, !0), P(), a.querySelector(".reviewpickitem input")?.focus());
+				e.target !== o && (e.preventDefault(), i.busy || (o.focus(), s(e.shiftKey, !o.checked)));
+			}), o.addEventListener("click", (e) => {
+				i.busy || s(e.shiftKey, o.checked);
+			}), o.addEventListener("keydown", (t) => {
+				if (!(i.busy || !t.shiftKey)) {
+					if (t.key === " ") t.preventDefault(), s(!0, !0);
+					else if (t.key === "ArrowDown" || t.key === "ArrowUp") {
+						t.preventDefault();
+						let r = c(), a = r[r.indexOf(e) + (t.key === "ArrowDown" ? 1 : -1)];
+						a && (i.anchor === null && (i.anchor = n), qn(i, r.map((e) => e.dataset.reviewKey), a.dataset.reviewKey, !0, !0), P(), a.querySelector(".reviewpickitem input")?.focus());
 					}
 				}
 			}), M.push(() => {
-				a.checked = r.selected.has(t);
-			}), r.assets.has(t)) {
-				let n = r.assets.get(t), i = [...e.querySelectorAll("[data-review-asset]")];
-				i.forEach((e) => {
-					let t = n.includes(Number(e.dataset.reviewAsset));
-					e.setAttribute("aria-pressed", String(t)), e.classList.toggle("picked", t);
+				o.checked = i.selected.has(n);
+			}), i.assets.has(n)) {
+				let t = i.assets.get(n), r = [...e.querySelectorAll("[data-review-asset]")];
+				r.forEach((e) => {
+					let n = t.includes(Number(e.dataset.reviewAsset));
+					e.setAttribute("aria-pressed", String(n)), e.classList.toggle("picked", n);
 				});
 				let a = e.querySelector("[data-picked-count]");
-				a && (a.textContent = `已选 ${n.length} / ${i.length}`);
+				a && (a.textContent = `已选 ${t.length} / ${r.length}`);
 			}
-			e.addEventListener("click", (n) => {
-				n.target.closest("[data-review-asset],[data-pick-all],[data-pick-none]") && r.assets.set(t, [...e.querySelectorAll("[data-review-asset][aria-pressed=\"true\"]")].map((e) => Number(e.dataset.reviewAsset)));
+			e.addEventListener("click", (t) => {
+				t.target.closest("[data-review-asset],[data-pick-all],[data-pick-none]") && i.assets.set(n, [...e.querySelectorAll("[data-review-asset][aria-pressed=\"true\"]")].map((e) => Number(e.dataset.reviewAsset)));
 			});
-			for (let n of e.querySelectorAll("input[type=\"radio\"]")) r.choices.has(t) && (n.checked = r.choices.get(t) === n.value), n.addEventListener("change", () => {
-				n.checked && r.choices.set(t, n.value), P();
+			for (let t of e.querySelectorAll("input[type=\"radio\"]")) i.choices.has(n) && (t.checked = i.choices.get(n) === t.value), t.addEventListener("change", () => {
+				t.checked && i.choices.set(n, t.value), P();
 			});
 		}
 	}
 	e.addEventListener("keydown", (t) => {
-		r.busy || !e.contains(n) || (t.key === "Escape" && r.selected.size && (t.preventDefault(), t.stopPropagation(), ee()), (t.ctrlKey || t.metaKey) && t.key.toLowerCase() === "a" && !t.target.matches("textarea,input:not([type=\"checkbox\"]):not([type=\"radio\"])") && (t.preventDefault(), t.stopPropagation(), s().forEach((e) => r.selected.add(e.dataset.reviewKey)), P()));
+		i.busy || !e.contains(r) || (t.key === "Escape" && i.selected.size && (t.preventDefault(), t.stopPropagation(), ee()), (t.ctrlKey || t.metaKey) && t.key.toLowerCase() === "a" && !t.target.matches("textarea,input:not([type=\"checkbox\"]):not([type=\"radio\"])") && (t.preventDefault(), t.stopPropagation(), c().forEach((e) => i.selected.add(e.dataset.reviewKey)), P()));
 	});
 	let N = "";
 	function P() {
-		let e = l();
-		S.textContent = e.length === s().length ? "清空当前选择" : r.filter ? "全选当前分类" : "全选本页", k.hidden = !e.length, T.textContent = `已选 ${e.length} 项`, C.disabled = !e.length || e.some((e) => !d(e)), w.disabled = !e.length;
-		let n = Yn(u());
-		E.hidden = !t.metadata || !u().some((e) => (e.candidates?.length || 0) > 1);
-		let i = e.length && !n.length ? "所选项目无共同来源" : "统一选择来源", a = JSON.stringify([i, n]);
+		let e = u();
+		S.textContent = e.length === c().length ? "清空当前选择" : i.filter ? "全选当前分类" : "全选本页", k.hidden = !e.length, T.textContent = `已选 ${e.length} 项`, C.disabled = !e.length || e.some((e) => !m(e)), w.disabled = !e.length;
+		let t = Yn(f());
+		E.hidden = !n.metadata || !f().some((e) => (e.candidates?.length || 0) > 1);
+		let r = e.length && !t.length ? "所选项目无共同来源" : "统一选择来源", a = JSON.stringify([r, t]);
 		if (a !== N) {
-			N = a, E.innerHTML = g([["", i], ...n.map((e) => [e, e])], "", { label: "统一选择来源" });
-			let e = b(E.firstElementChild);
-			e.disabled = !n.length, e.addEventListener("change", () => {
-				if (!(r.busy || !Yn(u()).includes(e.value))) {
-					for (let n of l()) {
-						let i = t.rows.find((e) => e.item_key === n.dataset.reviewKey).candidates.find((t) => t.source === e.value);
-						n.querySelectorAll("input[type=\"radio\"]").forEach((e) => {
-							e.checked = e.value === i.candidate_key;
-						}), r.choices.set(n.dataset.reviewKey, i.candidate_key);
+			N = a, E.innerHTML = l([["", r], ...t.map((e) => [e, e])], "", { label: "统一选择来源" });
+			let e = p(E.firstElementChild);
+			e.disabled = !t.length, e.addEventListener("change", () => {
+				if (!(i.busy || !Yn(f()).includes(e.value))) {
+					for (let t of u()) {
+						let r = n.rows.find((e) => e.item_key === t.dataset.reviewKey).candidates.find((t) => t.source === e.value);
+						t.querySelectorAll("input[type=\"radio\"]").forEach((e) => {
+							e.checked = e.value === r.candidate_key;
+						}), i.choices.set(t.dataset.reviewKey, r.candidate_key);
 					}
 					D.textContent = `已选择 ${e.value}，点击通过所选采用。`;
 				}
@@ -3092,42 +3091,42 @@ function Xn(e, t) {
 		}
 		M.forEach((e) => e());
 	}
-	async function F(n, i) {
-		if (r.busy || !l().length) return;
-		let a = l().map((e) => ({
+	async function F(t, r) {
+		if (i.busy || !u().length) return;
+		let a = u().map((e) => ({
 			key: e.dataset.reviewKey,
 			payload: {
-				...t.payload(e),
-				status: n
+				...n.payload(e),
+				status: t
 			}
 		}));
-		if (n === "approved" && t.metadata && a.some((e) => !e.payload.candidate_key)) {
-			D.textContent = "请先为所选的多来源候选选择来源。", l().find((e) => !e.querySelector("input[type=\"radio\"]:checked"))?.querySelector("input[type=\"radio\"]")?.focus();
+		if (t === "approved" && n.metadata && a.some((e) => !e.payload.candidate_key)) {
+			D.textContent = "请先为所选的多来源候选选择来源。", u().find((e) => !e.querySelector("input[type=\"radio\"]:checked"))?.querySelector("input[type=\"radio\"]")?.focus();
 			return;
 		}
-		r.busy = !0, D.textContent = `正在处理 0 / ${a.length}`, v(i, !0);
+		i.busy = !0, D.textContent = `正在处理 0 / ${a.length}`, d(r, !0);
 		let o = [...e.querySelectorAll("button,input")], s = o.map((e) => e.getAttribute("aria-disabled"));
 		o.forEach((e) => e.setAttribute("aria-disabled", "true"));
 		let c = (e) => {
 			e instanceof KeyboardEvent && e.key === "Tab" || (e.preventDefault(), e.stopImmediatePropagation());
 		};
 		e.addEventListener("click", c, !0), e.addEventListener("keydown", c, !0);
-		let u = 0, d = await Jn(a, async (e) => {
+		let l = 0, f = await Jn(a, async (e) => {
 			try {
-				return await t.submit(e);
+				return await n.submit(e);
 			} finally {
-				u++, t.active() && (D.textContent = `正在处理 ${u} / ${a.length}`);
+				l++, n.active() && (D.textContent = `正在处理 ${l} / ${a.length}`);
 			}
 		}, (e) => {
-			r.selected.delete(e), r.errors.delete(e), t.applied(e);
-		}, t.active);
-		if (r.busy = !1, e.removeEventListener("click", c, !0), e.removeEventListener("keydown", c, !0), o.forEach((e, t) => {
+			i.selected.delete(e), i.errors.delete(e), n.applied(e);
+		}, n.active);
+		if (i.busy = !1, e.removeEventListener("click", c, !0), e.removeEventListener("keydown", c, !0), o.forEach((e, t) => {
 			let n = s[t];
 			n === null ? e.removeAttribute("aria-disabled") : e.setAttribute("aria-disabled", n);
-		}), v(i, !1), !t.active()) return;
-		t.notify(`已${n === "approved" ? "通过" : "拒绝"} ${d.completed} 项${d.failures.length ? `，${d.failures.length} 项未完成` : ""}`), d.failures.forEach((e) => r.errors.set(e.key, e.message));
-		let f = e.parentElement;
-		t.refresh(), f?.querySelector(".reviewbulktoolbar button")?.focus({ preventScroll: !0 });
+		}), d(r, !1), !n.active()) return;
+		n.notify(`已${t === "approved" ? "通过" : "拒绝"} ${f.completed} 项${f.failures.length ? `，${f.failures.length} 项未完成` : ""}`), f.failures.forEach((e) => i.errors.set(e.key, e.message));
+		let p = e.parentElement;
+		n.refresh(), p?.querySelector(".reviewbulktoolbar button")?.focus({ preventScroll: !0 });
 	}
 	P(), Wn(e);
 }
@@ -3212,16 +3211,16 @@ async function rr(e, t) {
 		return r.set("q", e), r.set("limit", "1"), (await t("/api/items?" + r)).total > 0 ? e : "";
 	}))).filter(Boolean);
 }
-function ir({ kind: e = "catalog", filtered: t = !1, jav: n = !1, configurable: r = !1, online: i = !1 } = {}) {
-	let a = r ? "<a class=\"geist-button primary\" href=\"/configuration\">添加内容</a>" : "", o = "<a class=\"geist-button\" href=\"/follow-manage\">添加来源</a>";
-	return t || n ? u("search", n ? "还没有符合条件的 JAV 作品" : "没有符合条件的内容", n ? "已扫描但尚未补充发行资料的视频可在全部内容中查看。" : "清除筛选或搜索条件后查看全部内容。", { actions: "<a class=\"geist-button primary\" href=\"/?loc=&thumb=0\">查看全部内容</a>" }) : e === "catalog" ? u("play", "还没有视频", "添加媒体文件夹或关注来源，开始建立你的馆藏。", { actions: a + o }) : u(e === "tags" ? "tags" : "user-round", "还没有" + ({
+function ir({ kind: e = "catalog", filtered: t = !1, jav: n = !1, configurable: i = !1, online: a = !1 } = {}) {
+	let o = i ? "<a class=\"geist-button primary\" href=\"/configuration\">添加内容</a>" : "", s = "<a class=\"geist-button\" href=\"/follow-manage\">添加来源</a>";
+	return t || n ? r("search", n ? "还没有符合条件的 JAV 作品" : "没有符合条件的内容", n ? "已扫描但尚未补充发行资料的视频可在全部内容中查看。" : "清除筛选或搜索条件后查看全部内容。", { actions: "<a class=\"geist-button primary\" href=\"/?loc=&thumb=0\">查看全部内容</a>" }) : e === "catalog" ? r("play", "还没有视频", "添加媒体文件夹或关注来源，开始建立你的馆藏。", { actions: o + s }) : r(e === "tags" ? "tags" : "user-round", "还没有" + ({
 		tags: "标签",
 		performers: "艺人",
 		creators: "创作者",
 		studios: "厂牌",
 		agencies: "事务所",
 		series: "系列"
-	}[e] || "资料"), i ? "添加关注来源并获取内容后，这里会显示对应标签。" : "添加内容并补充资料后，这里会显示对应信息。", { actions: i ? o : a + o });
+	}[e] || "资料"), a ? "添加关注来源并获取内容后，这里会显示对应标签。" : "添加内容并补充资料后，这里会显示对应信息。", { actions: a ? s : o + s });
 }
 //#endregion
 //#region src/sidebar.ts
@@ -3313,7 +3312,7 @@ function dr(e, t = !1, n = !1) {
 }
 var fr = "peach-taste-guide-dismissed";
 function pr(e, t) {
-	y(e, ".taste-history-guide", "taste-guide-collapse");
+	f(e, ".taste-history-guide", "taste-guide-collapse");
 	let n = e.querySelector(".taste-history-guide");
 	n?.querySelector(".taste-guide-skip")?.addEventListener("click", () => {
 		t.setItem(fr, "1"), n.remove();
@@ -3338,7 +3337,7 @@ function hr(e, t) {
     ${e.unreadable ? `<small>${$(e.unreadable)} 项读取失败，已跳过</small>` : ""}</article>`).join("")}</div>
     <div class="resourcecache"><div><span>可清理的缓存</span><b>${$(n.files)} 个</b><small>${t(n.bytes)}</small></div>
     <div><span>待移入回收站</span><b>${$(e.missing)} 项</b></div></div>
-    ${r ? p(`将把找不到文件的 ${$(e.missing)} 项馆藏记录移入回收站，并清理 ${$(n.files)} 个闲置缓存。`, { label: "清理内容" }) : ""}
+    ${r ? o(`将把找不到文件的 ${$(e.missing)} 项馆藏记录移入回收站，并清理 ${$(n.files)} 个闲置缓存。`, { label: "清理内容" }) : ""}
     <div class="resourceapplyrow geist-fieldset-footer" data-geist-fieldset-footer>${r ? "<button class=\"geist-button primary\" type=\"button\" id=\"resourceApply\">清理失效记录与缓存</button>" : "<p class=\"resourcesyncok\">已检查可访问的来源，没有待清理的记录或缓存。</p>"}</div></div>`;
 }
 //#endregion
