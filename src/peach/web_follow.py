@@ -265,7 +265,8 @@ def _item_payload(item, credential_providers: frozenset[str] = frozenset()) -> d
     )
     needs_credential = bool(item.metadata.get("media_needs_credential"))
     credential_ready = not needs_credential or item.provider in credential_providers
-    # 直链媒体只有代理白名单放行的才算可播；不放行的图站图片由界面直接引用缩略图。
+    # 直链媒体只有媒体代理肯取的才算可播（白名单主机，或来源登记为放行任意公网图床）；
+    # 不放行的由界面直接引用缩略图。
     playable = (media_kind in {"video", "image"}
                 and ((bool(media_items) and credential_ready)
                      or (not needs_credential and proxyable(item.provider, item.media_url))))

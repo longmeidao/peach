@@ -194,6 +194,20 @@ class ReleaseKeyPerPostTests(unittest.TestCase):
             self.assertEqual(follow_providers.PROVIDERS[key].semantics, "release")
 
 
+class PublicMediaHostsTests(unittest.TestCase):
+    def test_public_image_hosts_are_declared_in_the_registry(self):
+        """论坛帖子里的图挂在几十家图站上，放行任意公网主机是来源语义，登记在这张表上。"""
+        self.assertEqual(follow_providers.public_media_hosts(), frozenset({"simpcity"}))
+
+    def test_public_mode_replaces_the_whitelist_instead_of_sitting_beside_it(self):
+        """两个都写会让读者以为白名单还在起作用。"""
+        for key in follow_providers.public_media_hosts():
+            self.assertEqual(follow_providers.PROVIDERS[key].hosts, ())
+            self.assertNotIn(key, _PROVIDER_HOSTS)
+        with self.assertRaises(ValueError):
+            follow_providers.ProviderSpec("x", "X", hosts=("x.example",), public_media_hosts=True)
+
+
 class ExcludedItemTests(unittest.TestCase):
     def test_hidden_items_are_declared_in_the_registry_not_in_the_web_layer(self):
         """用户点名要隐藏的既有条目登记在这张表上。

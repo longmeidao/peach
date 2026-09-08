@@ -41,10 +41,18 @@ class ProviderSpec:
     #: 这个来源的每个条目都是一次独立发布，即使标题相同。
     #: F95 的线程标题只是容器名，每个带资源的楼层各自成组。
     release_key_per_post: bool = False
+    #: 直链媒体可以落在任意公网主机。给帖子里贴的第三方图床用：图站有几十家、还在
+    #: 换，白名单追不上；而这类媒体本来就不带凭据取，代理到哪个公网主机都泄露不了
+    #: 什么。安全边界改由 `follow_stream` 守：明文 http、IP 字面量、本机与局域网专用
+    #: 名字、解析到内网地址的主机仍然拒收。与 `hosts` 互斥——两个都写会让读者以为
+    #: 白名单还在起作用。
+    public_media_hosts: bool = False
 
     def __post_init__(self) -> None:
         if self.semantics not in ("work", "release"):
             raise ValueError(f"{self.key} 的 semantics 只能是 work 或 release")
+        if self.public_media_hosts and self.hosts:
+            raise ValueError(f"{self.key} 放行任意公网主机时不能再写 hosts 白名单")
         if self.source_url and not self.url_hosts:
             raise ValueError(f"{self.key} 是追更来源，必须登记至少一个 url_hosts")
         if self.source_url and "{ref}" not in self.source_url:
@@ -99,12 +107,12 @@ PROVIDERS: dict[str, ProviderSpec] = {
         ProviderSpec("f95zone", "F95zone", source_url="https://f95zone.to/threads/{ref}/",
                      semantics="release", hosts=("f95zone.to",), url_hosts=("f95zone.to",),
                      priority=50, release_key_per_post=True),
-        # 帖子里的图挂在站方自己的图床 `simp6.cuckcapital.cr`（2026-09-08 实测原图对无
-        # cookie 请求直接 200），所以只放行这一个后缀；论坛主机本身不进白名单——那里的
-        # 附件要 cookie，而媒体代理不该替浏览器带着登录态去取。第三方图站不代理，
-        # 界面退回直接引用缩略图。
+        # 帖子里的图挂在站方图床 `simp4/5/6.cuckcapital.cr` 和各家第三方图站上（2026-09-08
+        # 实测原图对无 cookie 请求直接 200），图站名单没法穷举，所以不写白名单而是放行
+        # 任意公网主机、不带凭据取。论坛附件要 cookie，连接器只登记不当媒体，代理也就
+        # 不会替浏览器带着登录态去取。
         ProviderSpec("simpcity", "SimpCity", source_url="https://simpcity.cr/threads/{ref}/",
-                     semantics="release", hosts=("cuckcapital.cr",),
+                     semantics="release", public_media_hosts=True,
                      url_hosts=("simpcity.cr",), priority=60, release_key_per_post=True),
         # 文件站：不是追更来源，只作为媒体来源出现在界面上，所以没有 source_url。
         ProviderSpec("gofile", "Gofile"),
@@ -118,8 +126,13 @@ def labels() -> dict[str, str]:
 
 
 def hosts() -> dict[str, tuple[str, ...]]:
-    """媒体代理允许的主机；不在表里的 provider 一律拒绝。"""
+    """媒体代理允许的主机；不在表里也没登记 `public_media_hosts` 的 provider 一律拒绝。"""
     return {key: spec.hosts for key, spec in PROVIDERS.items() if spec.hosts}
+
+
+def public_media_hosts() -> frozenset[str]:
+    """直链媒体放行任意公网主机（不带凭据取）的来源。"""
+    return frozenset(key for key, spec in PROVIDERS.items() if spec.public_media_hosts)
 
 
 def priorities() -> dict[str, int]:

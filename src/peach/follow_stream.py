@@ -6,7 +6,9 @@ Rule34Video's expiring signed URL is resolved only when the user explicitly pres
 from __future__ import annotations
 
 import html
+import ipaddress
 import re
+import socket
 import threading
 import time
 import urllib.parse
@@ -46,10 +48,24 @@ class ResolvedFollowMedia:
     #: 时还要再按它校验每一跳：`headers` 里可能带 Cookie / Bearer token，一旦上游
     #: 把我们指到别的主机，那些凭据就跟着送出去了。空表示不允许代理。
     allowed_hosts: tuple[str, ...] = ()
+    #: 允许落到任意公网主机。给帖子里贴的第三方图床用：图站有几十家，白名单追不上；
+    #: 这类媒体不带凭据取，跳到哪个公网主机都泄露不了什么，所以它与 `headers` 互斥。
+    #: 边界由 `_public_https_host` 与 `_resolves_publicly` 守：明文、IP 字面量、本机与
+    #: 局域网名字、解析到内网地址的主机仍然拒收。
+    public_hosts: bool = False
+
+    def __post_init__(self) -> None:
+        if self.public_hosts and self.headers:
+            raise ValueError("带凭据的媒体不能放行任意公网主机")
 
 
 #: 媒体代理允许的主机，投影自 follow_providers；不在表里的 provider 一律拒绝。
 _PROVIDER_HOSTS = follow_providers.hosts()
+#: 直链媒体放行任意公网主机的来源，同样投影自 follow_providers。
+_PUBLIC_MEDIA_PROVIDERS = follow_providers.public_media_hosts()
+#: 公网模式下仍然拒绝的主机名后缀：这些名字只在本机或局域网里有意义，帖子里出现
+#: 它们只可能是想让 Peach 替人去探内网。
+_LOCAL_NAME_SUFFIXES = ("localhost", "local", "internal", "intranet", "lan", "home.arpa")
 #: rule34video 把每一档清晰度写成独立字段：`video_url` 是最低档，
 #: `video_alt_url`、`video_alt_url2`、`video_alt_url3` 依次更高。
 #: 2026-08-31 实测 video/4564733 给出 360 / 480p / 720p / 1080p 四档；
@@ -73,6 +89,54 @@ def _pick_quality(resolved: ResolvedFollowMedia, height: int | None) -> Resolved
             return replace(resolved, url=url)
     return resolved
 
+def _public_https_host(url: str) -> bool:
+    """帖子里贴的第三方图床：只要求 https、公网域名、不带用户信息。
+
+    IP 字面量和本机／局域网专用后缀一律不算；域名解析到哪里由 `_resolves_publicly`
+    在真正连接前再查一次，这里只看字面。
+    """
+    try:
+        parsed = urllib.parse.urlsplit(url)
+    except ValueError:
+        return False
+    host = (parsed.hostname or "").casefold().rstrip(".")
+    if parsed.scheme != "https" or not host or parsed.username or parsed.password:
+        return False
+    try:
+        ipaddress.ip_address(host)
+    except ValueError:
+        pass
+    else:
+        return False
+    if "." not in host:
+        return False
+    return not any(host == suffix or host.endswith("." + suffix)
+                   for suffix in _LOCAL_NAME_SUFFIXES)
+
+
+def _host_addresses(host: str) -> tuple[str, ...]:
+    """主机名解析到的全部地址；解析不了就是空。测试只替换这一个函数。"""
+    try:
+        infos = socket.getaddrinfo(host, 443, proto=socket.IPPROTO_TCP)
+    except (socket.gaierror, UnicodeError, OSError):
+        return ()
+    return tuple(str(info[4][0]) for info in infos)
+
+
+def _resolves_publicly(host: str) -> bool:
+    """公网模式的最后一道：域名字面上像公网，解析出来也必须全是公网地址。"""
+    addresses = _host_addresses(host)
+    if not addresses:
+        return False
+    for address in addresses:
+        try:
+            if not ipaddress.ip_address(address).is_global:
+                return False
+        except ValueError:
+            return False
+    return True
+
+
 def _allowed(provider: str, url: str) -> bool:
     try:
         parsed = urllib.parse.urlsplit(url)
@@ -81,8 +145,10 @@ def _allowed(provider: str, url: str) -> bool:
     host = (parsed.hostname or "").casefold()
     if parsed.scheme != "https" or not host or parsed.username or parsed.password:
         return False
-    return any(host == suffix or host.endswith("." + suffix)
-               for suffix in _PROVIDER_HOSTS.get(provider, ()))
+    if any(host == suffix or host.endswith("." + suffix)
+           for suffix in _PROVIDER_HOSTS.get(provider, ())):
+        return True
+    return provider in _PUBLIC_MEDIA_PROVIDERS and _public_https_host(url)
 
 
 def proxyable(provider: str, media_url: str | None) -> bool:
@@ -189,7 +255,8 @@ class FollowMediaResolver:
                 raise FollowMediaUnavailable("来源媒体地址不可用")
             return ResolvedFollowMedia(
                 media_url, item.url,
-                allowed_hosts=tuple(_PROVIDER_HOSTS.get(item.provider, ())))
+                allowed_hosts=tuple(_PROVIDER_HOSTS.get(item.provider, ())),
+                public_hosts=item.provider in _PUBLIC_MEDIA_PROVIDERS)
 
         with self._lock:
             cached = self._cache.get(item.id)
@@ -233,6 +300,17 @@ def _allowed_resource(url: str, hosts: tuple[str, ...]) -> bool:
     host = (parsed.hostname or "").casefold()
     return (parsed.scheme == "https" and not parsed.username and not parsed.password
             and any(host == suffix or host.endswith("." + suffix) for suffix in hosts))
+
+
+def _hop_allowed(target: ResolvedFollowMedia, url: str) -> bool:
+    """代理的每一跳（含第一跳）都过这一关：白名单主机直接放行；公网模式还要域名字面
+    像公网、解析出来也全是公网地址。解析放在连接前而不是解析时，是因为存量行的
+    地址可能躺了几个月，域名早已换主。"""
+    if _allowed_resource(url, tuple(target.allowed_hosts)):
+        return True
+    if not target.public_hosts or not _public_https_host(url):
+        return False
+    return _resolves_publicly(urllib.parse.urlsplit(url).hostname or "")
 
 
 #: 代理层允许跟几跳重定向。归档站的主域会 302 到实际取文件的节点（2026-08-30 实测
@@ -285,12 +363,15 @@ def open_upstream(client: httpx.Client, method: str, target: ResolvedFollowMedia
     非 2xx 同样在这里终止：上游的 403 页面、限流提示或错误 JSON 转发给播放器毫无
     用处，只会把上游的状态与正文（可能含主机名、提示语）原样交给浏览器。
     """
-    if not target.allowed_hosts:
+    if not target.allowed_hosts and not target.public_hosts:
         raise FollowProxyError("这条媒体没有可代理的主机白名单")
     url = target.url
     headers = proxy_request_headers(target, incoming)
     response: httpx.Response | None = None
     for _ in range(MAX_PROXY_REDIRECTS + 1):
+        if not _hop_allowed(target, url):
+            raise FollowProxyError("媒体地址不在可代理的主机范围内" if url == target.url
+                                   else "上游把媒体重定向到了不受信任的地址")
         request = client.build_request(method, url, headers=headers)
         response = client.send(request, stream=True, follow_redirects=False)
         if response.status_code not in _REDIRECT_STATUSES:
@@ -299,8 +380,6 @@ def open_upstream(client: httpx.Client, method: str, target: ResolvedFollowMedia
         response.close()
         response = None
         url = urllib.parse.urljoin(url, location)
-        if not _allowed_resource(url, tuple(target.allowed_hosts)):
-            raise FollowProxyError("上游把媒体重定向到了不受信任的地址")
     if response is None:
         raise FollowProxyError("上游重定向次数过多")
     if not 200 <= response.status_code < 300:

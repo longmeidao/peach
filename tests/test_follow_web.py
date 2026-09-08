@@ -1332,8 +1332,8 @@ class FollowSourceAddTests(FollowContractTests):
         self.assertEqual((source["provider"], source["ref"]), ("simpcity", "4242"))
 
     def test_simpcity_images_are_playable_only_when_the_media_proxy_can_fetch_them(self):
-        # 站方图床上的原图经 /follow-stream 就地看；第三方图站不在白名单里，界面退回
-        # 直接引用缩略图，不能说「可播」再让代理拒收——那会渲染成一张打不开的图。
+        # 帖子里的图不论挂在站方图床还是哪家第三方图站，都经 /follow-stream 就地看；
+        # 「可播」必须与代理同一口径，说可播再让代理拒收就会渲染成一张打不开的图。
         self._seed(candidates=(
             FollowCandidate(provider="simpcity", external_id="51632037", title="Solazola / baby_sue",
                             url="https://simpcity.cr/threads/17401/post-51632037",
@@ -1357,8 +1357,10 @@ class FollowSourceAddTests(FollowContractTests):
         self.assertEqual(sorted(items), ["51632037", "51632038", "51632039"])
         self.assertTrue(items["51632037"]["playable"])
         self.assertEqual(items["51632037"]["media_kind"], "image")
-        self.assertFalse(items["51632038"]["playable"])
+        self.assertTrue(items["51632038"]["playable"])
+        self.assertEqual(items["51632038"]["media_kind"], "image")
         self.assertEqual(items["51632038"]["thumb_url"], "https://jpg5.su/img/abc.md.jpg")
+        # 只有网盘链接的楼层不是图：不可播，链接显示成按钮。
         self.assertFalse(items["51632039"]["playable"])
         self.assertEqual(items["51632039"]["resource_urls"],
                          ["https://gofile.io/d/rFyusPzL", "https://pixeldrain.com/u/zF3PqTJF"])

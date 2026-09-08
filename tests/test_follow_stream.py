@@ -1,8 +1,10 @@
 import unittest
 from types import SimpleNamespace
+from unittest import mock
 
 import httpx
 
+from peach import follow_stream
 from peach.follow_stream import (
     MAX_PROXY_REDIRECTS, FollowMediaResolver, FollowMediaUnavailable,
     FollowProxyError, ResolvedFollowMedia, open_upstream, proxy_request_headers,
@@ -42,20 +44,35 @@ class FollowMediaResolverTests(unittest.TestCase):
         )
         self.assertEqual(resolver.resolve(item).url, item.media_url)
 
-    def test_simpcity_images_on_the_site_image_host_are_proxied_without_a_cookie(self):
+    def test_simpcity_images_on_any_public_image_host_are_proxied_without_a_cookie(self):
+        """帖子里的图挂在几十家图站上，白名单追不上；这类媒体不带凭据，放行任意公网主机。"""
         resolver = FollowMediaResolver(lambda *_args: self.fail("unexpected network probe"))
         item = SimpleNamespace(
             id=11, provider="simpcity", url="https://simpcity.cr/threads/17401/post-1",
-            media_url="https://simp6.cuckcapital.cr/images4/b73b.png", metadata={},
+            media_url="https://jpg5.su/img/abc.jpg", metadata={},
         )
         resolved = resolver.resolve(item)
         self.assertEqual(resolved.url, item.media_url)
         self.assertIsNone(resolved.headers)
-        self.assertEqual(resolved.allowed_hosts, ("cuckcapital.cr",))
-        self.assertTrue(proxyable("simpcity", item.media_url))
-        # 第三方图站不在白名单里：既不代理，也不能在界面上说「可播」。
-        self.assertFalse(proxyable("simpcity", "https://jpg5.su/img/abc.jpg"))
-        self.assertFalse(proxyable("simpcity", "https://simpcity.cr/attachments/clip-mp4.9001/"))
+        self.assertEqual(resolved.allowed_hosts, ())
+        self.assertTrue(resolved.public_hosts)
+        for url in ("https://simp6.cuckcapital.cr/images4/b73b.png", "https://jpg5.su/img/abc.jpg",
+                    "https://i.ibb.co/x/y.png", "https://images2.imgbox.com/ab/cd/ef.jpg"):
+            self.assertTrue(proxyable("simpcity", url), url)
+        # 放宽的是域名清单，不是安全边界：明文、IP 字面量、本机与局域网名字、带用户
+        # 信息的地址照旧拒收。
+        for url in ("http://jpg5.su/img/abc.jpg", "https://169.254.1.1/a.png", "https://[::1]/a.png",
+                    "https://localhost/a.png", "https://peach.local/a.png", "https://router.lan/a.png",
+                    "https://intranet/a.png", "https://user:pw@jpg5.su/a.png"):
+            self.assertFalse(proxyable("simpcity", url), url)
+        # 别的来源仍只认自己的白名单。
+        self.assertFalse(proxyable("kemono", "https://jpg5.su/img/abc.jpg"))
+
+    def test_public_host_media_never_carries_credentials(self):
+        """公网模式成立的前提是这条媒体不带凭据，结构上就不允许两者同时出现。"""
+        with self.assertRaises(ValueError):
+            ResolvedFollowMedia("https://jpg5.su/a.jpg", headers={"Cookie": "x"},
+                                public_hosts=True)
 
     def test_untrusted_or_credentialed_targets_are_rejected(self):
         resolver = FollowMediaResolver(lambda *_args: self.fail("unexpected network probe"))
@@ -313,6 +330,43 @@ class ProxyUpstreamTests(unittest.TestCase):
             open_upstream(
                 self._client(lambda request: self.fail("不该发出请求")),
                 "GET", target, incoming={})
+
+    def test_public_host_media_follows_redirects_across_public_hosts(self):
+        """图站常把原图 302 到自己的 CDN，公网模式下这一跳要跟得上。"""
+        def handler(request):
+            if request.url.host == "jpg5.su":
+                return httpx.Response(302, request=request, headers={
+                    "location": "https://cdn.jpg5cdn.example/a.jpg"})
+            return httpx.Response(200, request=request,
+                                  stream=httpx.ByteStream(b"pixels"),
+                                  headers={"content-type": "image/jpeg"})
+
+        target = ResolvedFollowMedia("https://jpg5.su/a.jpg", public_hosts=True)
+        with mock.patch.object(follow_stream, "_host_addresses", return_value=("93.184.216.34",)):
+            upstream = open_upstream(self._client(handler), "GET", target, incoming={})
+        self.addCleanup(upstream.close)
+        self.assertEqual(upstream.read(), b"pixels")
+        self.assertNotIn("cookie", upstream.request.headers)
+
+    def test_public_host_media_never_reaches_into_the_lan(self):
+        """域名字面上像公网但解析到内网，或者上游把我们指到内网地址：一次都不发。"""
+        seen = []
+
+        def to_lan(request):
+            seen.append(request)
+            return httpx.Response(302, request=request, headers={
+                "location": "https://169.254.169.254/admin.png"})
+
+        target = ResolvedFollowMedia("https://jpg5.su/a.jpg", public_hosts=True)
+        with mock.patch.object(follow_stream, "_host_addresses", return_value=("93.184.216.34",)):
+            with self.assertRaises(FollowProxyError):
+                open_upstream(self._client(to_lan), "GET", target, incoming={})
+        self.assertEqual([str(request.url) for request in seen], ["https://jpg5.su/a.jpg"])
+        for addresses in ((), ("127.0.0.1",), ("93.184.216.34", "fd00::1")):
+            with mock.patch.object(follow_stream, "_host_addresses", return_value=addresses):
+                with self.assertRaises(FollowProxyError, msg=str(addresses)):
+                    open_upstream(self._client(lambda request: self.fail("不该发出请求")),
+                                  "GET", target, incoming={})
 
     def test_only_range_headers_come_in_and_only_media_headers_go_back(self):
         target = ResolvedFollowMedia(
