@@ -20,7 +20,7 @@ from .follow_avatar import resolve_official_profile
 from .follow_secrets import Credential, CredentialError, credential_store_for
 from .follow_sources import (
     F95ZoneConnector, KemonoConnector, Rule34VideoConnector, Rule34XxxConnector,
-    canonical_source_ref,
+    SimpCityConnector, canonical_source_ref,
 )
 
 #: 创作者索引的缓存有效期。索引是几 MB 的整站清单，不该每次发现都重下一遍。
@@ -280,11 +280,12 @@ def _f95_external_search(term: str) -> ExternalSearch:
     )
 
 
-def _f95_forum_candidates(term: str, connector) -> list[Candidate]:
-    """站内搜索：`latest_data.php` 索引之外的线程。
+def _forum_candidates(provider: str, host: str, term: str, connector) -> list[Candidate]:
+    """XenForo 站内搜索按标题命中的线程，f95zone 与 simpcity 共用。
 
-    那份索引只有 Latest Updates 五个分类，艺术家的 Collection 帖发在普通版块里，
-    怎么搜都不会出现。站内搜索能看到它们，代价是必须带登录 cookie。
+    站内搜索必须带登录 cookie；调用方先判断有没有。命中行带回的版块标签
+    （`OnlyFans`、`Simp Chat`、`Collection`）写进证据：同一个名字的资源线程和
+    讨论帖都会命中，人要靠这个分辨。
     """
     picked: list[Candidate] = []
     seen: set[str] = set()
@@ -294,15 +295,30 @@ def _f95_forum_candidates(term: str, connector) -> list[Candidate]:
             if not thread or thread in seen:
                 continue
             seen.add(thread)
+            labels = "、".join(str(label) for label in row.get("labels") or () if label)
             picked.append(Candidate(
-                "f95zone", thread, f"https://f95zone.to/threads/{thread}/",
+                provider, thread, f"https://{host}/threads/{thread}/",
                 str(row.get("title") or f"线程 {thread}"), "release",
-                f"站内搜索按标题命中「{query}」"))
+                f"站内搜索按标题命中「{query}」" + (f"，版块标签 {labels}" if labels else "")))
             if len(picked) >= MAX_CANDIDATES_PER_SOURCE:
                 return picked
         if picked:
             return picked
     return picked
+
+
+def _simpcity_candidates(term: str, transport,
+                         credential: Credential | None = None) -> list[Candidate]:
+    """simpcity 只有站内搜索这一条路，而它必须登录。
+
+    没有 cookie 就静默跳过：来源筛选菜单里已经标着「需要配置凭据」，每查一个名字
+    都在结果里再报一次只是噪音。裸数字不去试——simpcity 的线程页对游客是 403，
+    对登录用户任何数字都可能存在，「存在」不构成「就是他」的证据。
+    """
+    if credential is None or not credential.values.get("cookie"):
+        return []
+    connector = SimpCityConnector(transport=transport, credential=credential)
+    return _forum_candidates("simpcity", SimpCityConnector.HOST, term, connector)
 
 
 def _f95_candidates(term: str, transport,
@@ -337,7 +353,9 @@ def _f95_candidates(term: str, transport,
     if credential is None or not credential.values.get("cookie"):
         # 没有 cookie 就搜不了站内，别把「查不到」说成「站上没有」——外部搜索入口还在。
         return picked
-    return _f95_forum_candidates(term, connector)
+    # `latest_data.php` 只索引 Latest Updates 五个分类，艺术家的 Collection 帖发在
+    # 普通版块里，怎么搜都不会出现；站内搜索能看到它们。
+    return _forum_candidates("f95zone", "f95zone.to", term, connector)
 
 
 def discover(term: str, *, secrets_root: Path, state_root: Path,
@@ -359,7 +377,7 @@ def discover(term: str, *, secrets_root: Path, state_root: Path,
     credentials = credential_store_for(secrets_root, shared_root=shared_root)
     index = CreatorIndex(state_root, transport=transport)
     wanted = providers or ("kemono", "coomer", "pawchive", "fanbox", "rule34video",
-                           "rule34xxx", "f95zone")
+                           "rule34xxx", "f95zone", "simpcity")
     found: list[Candidate] = []
     failures: dict[str, str] = {}
     external_searches: list[ExternalSearch] = []
@@ -380,6 +398,8 @@ def discover(term: str, *, secrets_root: Path, state_root: Path,
         run("rule34xxx",
             lambda: _rule34xxx_candidates(text, transport,
                                           credentials.load("rule34xxx")))
+        run("simpcity", lambda: _simpcity_candidates(text, transport,
+                                                     credentials.load("simpcity")))
     run("f95zone", lambda: _f95_candidates(text, transport,
                                            credentials.load("f95zone")))
     if "f95zone" in wanted and not any(row.provider == "f95zone" for row in found):

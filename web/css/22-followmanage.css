@@ -342,6 +342,9 @@ details.fcred{display:block;min-width:0}
 .fsrcfilter{position:relative;display:inline-flex;min-width:0}
 .faddform .fsrcfilter .fbtn{width:auto;height:38px;min-height:38px;padding:0 11px}
 .fsrcmenu{width:min(250px,calc(100vw - 16px))}
+/* 全选与全不选是对整张清单的动作，放在清单上方并用发丝线隔开，不混进来源行里。 */
+.fsrcbulk{display:flex;gap:6px;padding:2px 9px 8px;margin-bottom:4px;border-bottom:1px solid var(--border-10)}
+.fsrcbulk .geist-button{height:28px;padding:0 10px;font-size:var(--fs-sm)}
 .fsrcmenu label{display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:var(--control-radius);
   cursor:pointer;font-size:var(--fs-sm);color:var(--ink-2)}
 .fsrcmenu label:hover{background:var(--hover)}

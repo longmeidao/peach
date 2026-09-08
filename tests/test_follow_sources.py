@@ -241,6 +241,24 @@ SIMPCITY_LAST_HTML = b"""<html data-logged-in="true" data-cookie-prefix="yMziCv8
 SIMPCITY_GUEST_HTML = b"""<html data-logged-in="false"><body>
 <h1 class="p-title-value">Sample Creator</h1></body></html>"""
 
+SIMPCITY_SEARCH_FORM = b"""<html data-logged-in="true"><body>
+<form action="/search/search"><input type="hidden" name="_xfToken" value="1757300000,sc" /></form>
+</body></html>"""
+
+# 2026-09-08 实测 `solazola` 按标题命中的两行：资源线程与讨论帖各一条，标题前挂着版块标签。
+SIMPCITY_SEARCH_RESULTS = b"""<html data-logged-in="true"><body>
+<div class="contentRow"><div class="contentRow-main">
+<h3 class="contentRow-title"><a href="/threads/solazola-discussion.392510/"><span class="label label--primary" dir="auto">Simp Chat</span><span class="label-append">&nbsp;</span><em class="textHighlight">solazola</em> discussion</a></h3>
+<div class="contentRow-minor">HatEF Thread Sep 11, 2024 Replies: 124 Forum: Model Discussion</div>
+</div></div>
+<div class="contentRow"><div class="contentRow-main">
+<h3 class="contentRow-title"><a href="/threads/solazola-baby_sue.17401/"><span class="label label--accent" dir="auto">OnlyFans</span><span class="label-append">&nbsp;</span><em class="textHighlight">Solazola</em> / baby_sue</a></h3>
+</div></div>
+<div class="contentRow"><div class="contentRow-main">
+<h3 class="contentRow-title"><a href="/threads/solazola-baby_sue.17401/page-15#post-50529217">Solazola / baby_sue</a></h3>
+</div></div>
+</body></html>"""
+
 
 class OfficialConnectorTests(unittest.TestCase):
     def test_fanbox_keeps_only_public_free_posts(self):
@@ -1412,6 +1430,51 @@ class SimpCityConnectorTests(unittest.TestCase):
             SimpCityConnector(credential=self.COOKIE,
                               transport=_transport(body=SIMPCITY_GUEST_HTML)).fetch("4242")
         self.assertIn("游客态", str(caught.exception))
+
+    @staticmethod
+    def _search_transport(record):
+        def call(request, timeout, max_bytes):
+            record.append(request)
+            body = SIMPCITY_SEARCH_RESULTS if request.method == "POST" else SIMPCITY_SEARCH_FORM
+            return HttpResponse(200, {}, body)
+        return call
+
+    def test_forum_search_returns_each_thread_once_with_its_forum_label(self):
+        rows = SimpCityConnector(credential=self.COOKIE,
+                                 transport=self._search_transport([])).search_threads("solazola")
+        # 同一线程的两条帖子只留一条；标题去掉版块标签，标签另给一列让人分辨资源帖和讨论帖。
+        self.assertEqual([row["thread_id"] for row in rows], ["392510", "17401"])
+        self.assertEqual([row["title"] for row in rows],
+                         ["solazola discussion", "Solazola / baby_sue"])
+        self.assertEqual([row["labels"] for row in rows], [["Simp Chat"], ["OnlyFans"]])
+
+    def test_forum_search_sends_the_session_token_and_cookie_to_simpcity_only(self):
+        seen = []
+        SimpCityConnector(credential=self.COOKIE,
+                          transport=self._search_transport(seen)).search_threads("solazola")
+        self.assertEqual([(request.method, request.url) for request in seen],
+                         [("GET", "https://simpcity.cr/search/"),
+                          ("POST", "https://simpcity.cr/search/search")])
+        body = seen[1].body.decode()
+        self.assertIn("_xfToken=1757300000%2Csc", body)
+        self.assertIn("keywords=solazola", body)
+        self.assertIn("c%5Btitle_only%5D=1", body)
+        self.assertTrue(all(request.headers["Cookie"] == self.COOKIE.values["cookie"]
+                            for request in seen))
+
+    def test_forum_search_without_a_cookie_asks_for_it_before_requesting(self):
+        seen = []
+        with self.assertRaises(CredentialError) as caught:
+            SimpCityConnector(transport=_transport(record=seen)).search_threads("solazola")
+        self.assertIn("cookie", str(caught.exception))
+        self.assertEqual(seen, [])
+
+    def test_a_forbidden_search_form_blames_the_cookie(self):
+        with self.assertRaises(FollowSourceError) as caught:
+            SimpCityConnector(credential=self.COOKIE,
+                              transport=_transport(status=403, body=b"Forbidden")
+                              ).search_threads("solazola")
+        self.assertIn("cookie", str(caught.exception))
 
 
 class OriginGroupKeyTests(unittest.TestCase):

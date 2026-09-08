@@ -28,6 +28,12 @@ F95_SEARCH_FORM = b"""<html><body><input type="hidden" name="_xfToken" value="1,
 F95_SEARCH_RESULTS = b"""<html><body><h3 class="contentRow-title">
 <a href="/threads/ria-collection-2026-08-03-ria_neearts.146348/"><span class="label">Collection</span>Ria Collection [2026-08-03] [<em class="textHighlight">Ria_neearts</em>]</a>
 </h3></body></html>"""
+SIMPCITY_SEARCH_FORM = b"""<html><body><input type="hidden" name="_xfToken" value="1,s" /></body></html>"""
+# 2026-09-08 实测 `solazola`：资源线程和讨论帖各一条，标题前的版块标签是分辨两者的依据。
+SIMPCITY_SEARCH_RESULTS = b"""<html><body>
+<h3 class="contentRow-title"><a href="/threads/solazola-baby_sue.17401/"><span class="label">OnlyFans</span><em class="textHighlight">Solazola</em> / baby_sue</a></h3>
+<h3 class="contentRow-title"><a href="/threads/solazola-discussion.392510/"><span class="label">Simp Chat</span><em class="textHighlight">solazola</em> discussion</a></h3>
+</body></html>"""
 # 2026-09-01 实测：站上的写法是 `ria-neearts`，补全按字面前缀匹配，所以
 # `Ria_neearts` 查出来是空的，`Ria-neearts` 才命中。
 R34_AUTOCOMPLETE_HIT = json.dumps(
@@ -256,6 +262,50 @@ class DiscoverTests(_DiscoveryCase):
         self.assertEqual(found.failures, {})
         self.assertEqual([search.provider for search in found.external_searches], ["f95zone"])
         self.assertFalse([url for url in calls if "/search/" in url])
+
+    SIMPCITY_ROUTES = {
+        "simpcity.cr/search/search": HttpResponse(200, {}, SIMPCITY_SEARCH_RESULTS),
+        "simpcity.cr/search/": HttpResponse(200, {}, SIMPCITY_SEARCH_FORM),
+    }
+
+    def test_a_simpcity_thread_is_found_by_the_forum_search_with_its_forum_label(self):
+        self._write_credential("simpcity", {"cookie": "yMziCv8BrCZz1o7_user=u"})
+        found = self._discover("solazola", self.SIMPCITY_ROUTES, providers=("simpcity",))
+        self.assertEqual([(c.provider, c.ref) for c in found.candidates],
+                         [("simpcity", "17401"), ("simpcity", "392510")])
+        self.assertEqual(found.candidates[0].url, "https://simpcity.cr/threads/17401/")
+        self.assertEqual(found.candidates[0].label, "Solazola / baby_sue")
+        self.assertEqual(found.candidates[0].evidence, "站内搜索按标题命中「solazola」，版块标签 OnlyFans")
+        self.assertIn("Simp Chat", found.candidates[1].evidence)
+        self.assertEqual(found.failures, {})
+
+    def test_simpcity_is_asked_by_default_when_a_name_is_looked_up(self):
+        self._write_credential("simpcity", {"cookie": "yMziCv8BrCZz1o7_user=u"})
+        found = self._discover("solazola", {**self.ROUTES, **self.SIMPCITY_ROUTES})
+        self.assertIn("simpcity", {c.provider for c in found.candidates})
+
+    def test_without_a_simpcity_cookie_the_site_is_skipped_silently(self):
+        # 来源筛选菜单里已经标着「需要配置凭据」，每查一个名字都再报一次只是噪音。
+        calls = []
+        found = self._discover("solazola", self.SIMPCITY_ROUTES, providers=("simpcity",), calls=calls)
+        self.assertEqual(found.candidates, ())
+        self.assertEqual(found.failures, {})
+        self.assertEqual(calls, [])
+
+    def test_a_bare_number_is_not_probed_on_simpcity(self):
+        # 登录后任何数字的线程页都可能存在，「存在」不构成「就是他」的证据。
+        self._write_credential("simpcity", {"cookie": "yMziCv8BrCZz1o7_user=u"})
+        calls = []
+        found = self._discover("17401", self.SIMPCITY_ROUTES, providers=("simpcity",), calls=calls)
+        self.assertEqual(found.candidates, ())
+        self.assertEqual(calls, [])
+
+    def test_a_stale_simpcity_cookie_is_reported_as_a_failure_not_an_empty_result(self):
+        self._write_credential("simpcity", {"cookie": "stale"})
+        found = self._discover("solazola", {"simpcity.cr/search/": HttpResponse(403, {}, b"Forbidden")},
+                               providers=("simpcity",))
+        self.assertEqual(found.candidates, ())
+        self.assertIn("cookie", found.failures["simpcity"])
 
     def test_junk_terms_are_refused_before_any_request(self):
         calls = []
