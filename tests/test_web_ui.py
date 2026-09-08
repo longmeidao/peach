@@ -5377,6 +5377,45 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertNotIn("<small>{name}</small>", picker)
         self.assertIn("<label title={name} class={draft===key?'selected':''}>", picker)
 
+    def test_the_board_layer_shares_one_tabs_segments_and_chart_motion(self):
+        """口味页、复核页与首页工具栏的控件都用 Board 那一份：下划线 Tabs 的蓝线会滑，
+        证据切换与版式切换是同一枚分段滑块，排名条与雷达图进入视口后从零长出 1.2 秒。
+
+        随之对齐的还有：排序行里的分段控件与排序键同高（30px）；管理页标题只在 812px
+        窄列页面居中，别处与面包屑同一条左边线；复核「跳过」用蓝色 Chip 配色；侧栏收起键
+        36px、10px 圆角；详情页门挡铺满播放器格、只圆左上角；首页女优与厂牌两排同一枚
+        34px 灰 Pill；沉浸模式的随机流不进脱盘来源的片子。
+        """
+        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
+        controls = (Path(__file__).resolve().parents[1] / "frontend/src/board-controls.ts").read_text(encoding="utf-8")
+        self.assertIn("const selector='.managebar-menu,.board-local-nav:not(.settingscard>.board-local-nav),.insighttabs,.reviewtabs';", controls)
+        self.assertIn("const selector='.iconswitch,.insightswitch';", controls)
+        self.assertIn("export function wireGrowingCharts(root:ParentNode) {", controls)
+        self.assertIn("wireBoardSegments(root);wireBoardTabs(root);wireGrowingCharts(root)", controls)
+        self.assertIn(".insightswitch[data-board-segments]{position:relative;display:inline-flex;align-items:center;gap:2px;padding:4px;"
+                      "border:0;border-radius:10px;background:var(--color-background-tertiary-default);box-shadow:none}", board)
+        self.assertIn(".count .sorts .iconswitch[data-board-segments]>label,.entitycollectionhead .sorts .iconswitch[data-board-segments]>label"
+                      "{height:24px;min-height:24px;width:30px;padding:0;border-radius:5px}", board)
+        self.assertIn(".count .sorts,.entitycollectionhead .sorts{padding:0 2px}", board)
+        self.assertIn(".insighttabs,.reviewtabs{display:flex;align-items:center;gap:4px;width:100%;", board)
+        self.assertIn(".insighttabs button[aria-selected=\"true\"],.reviewtabs button[aria-selected=\"true\"]{background:none;color:var(--tungsten);font:var(--board-body-medium)}", board)
+        self.assertIn(".insightpanel>header h3,.insightcopy>span{margin:0;font:var(--board-heading);color:var(--color-text-primary)}", board)
+        self.assertIn("body .tasterank:is(button):hover,body .board-rank-list .tasterank:hover{border-color:transparent;"
+                      "background:color-mix(in srgb,var(--color-text-primary) 6%,transparent)}", board)
+        self.assertIn(".board-ranked-chart.board-chart-visible .board-rank-fill,.tasteranks.board-chart-visible .taste-rank-track i"
+                      "{animation:board-grow-x 1.2s cubic-bezier(.22,.61,.36,1) both}", board)
+        self.assertIn(".board-radar.board-chart-visible .board-radar-value{animation:board-grow-radar 1.2s cubic-bezier(.22,.61,.36,1) both}", board)
+        self.assertIn("body.cleanup-layout #manageTitle,body.cleanup-layout #manageCrumb,body.cleanup-layout #manageLede{max-width:var(--board-content);", board)
+        self.assertIn("body .reviewactions button.warning:not(:disabled){background:#bfdbfe;color:#1e40af;border-color:transparent}", board)
+        self.assertIn(".drawer .board-sidebar-head #filterBtn{border-radius:10px;color:var(--color-text-secondary);", board)
+        self.assertIn(".stage .vwrap{border-radius:var(--surface-radius) 0 0 0}", board)
+        self.assertIn(".stage .vwrap>.gate{height:100%;aspect-ratio:auto;border-radius:inherit}", board)
+        self.assertIn(".idface:not(:has(img)){background:color-mix(in srgb,var(--color-text-primary) 10%,var(--color-background-primary-default));", board)
+        self.assertIn(".cleanupgrid>.board-processing-skeleton>.geist-fieldset-footer{background:none}", board)
+        self.assertIn("#tiers .av,#tiers .brandpill{flex:none;display:inline-flex;align-items:center;gap:8px;width:auto;max-width:none;height:34px;", board)
+        self.assertIn("#tiers .av .ring,#tiers .brandpill .mk{position:relative;flex:none;width:24px;height:24px;", board)
+        self.assertPageContains("const list=d.items.filter(x=>x.cost!=='metered' && x.duration && !sourceOffline(x.location));")
+
     def test_toasts_leave_like_a_boardui_notification(self):
         """Board 层的 Toast 退场按 Notification 的 exit：180ms ease-out，下沉 8px、缩到 .96、
         模糊 3px。高度收成 0 留着，栈里上面那条才是滑下来而不是跳下来。"""

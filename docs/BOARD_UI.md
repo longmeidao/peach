@@ -134,6 +134,27 @@ Radial Chart Card、Bar List Card、Heatmap 与 Sankey 的 Pro 源码**未取得
 | Banner（页面级问题与恢复动作） | 保留，不切 | 上游注册表里没有 Announcement 的对应源码，未取得 |
 | Tooltip | 保留 | 已有 Board Tooltip 的对应 |
 
+### 口味、复核、首页与详情控件的对齐（2026-09-08）
+
+新增取证：公开注册表 `r/tabs.json`（SHA-256 `feab9789b17008436597b51e52b90de5cff6180924f2a7c8bef14a2136d3a240`，含 `tabs.tsx` 与 `pill-tab.tsx`）、`r/avatar.json`（`614f2a384e2d44c0a15df8e3fc42c1648ccd7101f1c8be98911087641ab28aec`）、`r/chip.json`（`d2b0dd38146325acada58fbc241d13fcd633bb5407ce1ef457e752023fe282de`），与已登记的 `segmented-control.json`、`sidebar.json` 一起保存在 `attic/evidence/20260908-boardui-preview/board-reference/`。`avatar-group`、`bar-list-card`、`radar-chart-card` 在注册表返回 404，未取得。
+
+| 位置 | 上游 | Peach |
+| --- | --- | --- |
+| 口味维度、复核分类的标签条 | Tabs：1px 基线、2px 蓝线随选中项 `transform`／`width` 各 200ms 滑动；选项 px 10 / py 8、Body 1，选中蓝字 Medium；计数徽标 Caption Medium、px 4 / py 1、4px 圆角 | 复核页的 `.reviewtabs` 接进同一份 `wireBoardTabs`；两处按上游字号与间距重排，计数徽标沿用上游两态 |
+| 口味页「浏览器记录／Peach 内部」 | Segmented Control：tertiary 轨道 p 4 / r 10、选项 px 10 / py 4 / r 6、滑块 200ms | `.insightswitch` 接进 `wireBoardSegments`，原生 radio 不变 |
+| 排序行的版式切换 | 同上，高度 36px | 压到 30px 与同一行的排序键、换批键齐平：主动保留的差异 |
+| 分段滑块的暗色 | `segmented-control-selected` 暗色值未取得 | 主文字色 14% 混进轨道色；暗色里轨道与 primary 同值，滑块必须比轨道亮一档 |
+| 排名条、雷达图 | 上游 Pro 图表源码未取得 | 进入视口后从零长出 1.2s，与统计圆环同一条曲线；减少动态效果时直接显示 |
+| 排名行悬停与展开键 | PillTab 悬停 `background-primary-hover` 200ms | 悬停改为主文字色 6% 薄底 + 200ms：暗色 primary-hover 太跳、亮色看不见；展开键同一层 |
+| 三个面板标题（口味总结、浏览器画像、数据源） | Heading 20/26 | 同一档、同一内边距（24 / 24 / 12） |
+| 复核「跳过」 | Chip blue：亮 200/800、暗 950@60%/300 | 采用；`error`／`primary` 不变 |
+| 侧栏收起键 | 36px、`rounded-2lg`、`foreground-icon-secondary`，收起时与品牌相隔 10px | 采用，图标沿用 Peach 的 `panel-left` |
+| 详情页门挡 | 无对应 | 铺满播放器格不留黑；播放器格只圆左上角（右贴侧栏、下接「接着看」），窄屏与影院模式圆上面两角 |
+| 没有图的身份头像 | Avatar initials 盘 `avatar-neutral-background` 值未取得 | 主文字色 10% 混底、次文字色首字 |
+| 首页女优与厂牌两排 | 无 Avatar Group；PillTab gray + Avatar sm（24px） | 两排统一成一枚 34px 灰 Pill：24px 圆头像／标识在左、名字在右，选中 tertiary 底 |
+| 管理页标题 | 无对应 | 只在 812px 窄列页面居中，别处与面包屑同一左边线 |
+| 沉浸模式 | 无对应 | 随机流在入口筛掉脱盘来源的片子 |
+
 ## 验证记录
 
 侧栏采用 AI chat 公开变体的分组标题、展开叶项与尾部计数；分组箭头位于右侧，标题高 36px，展开复用共享 Collapse。媒体库入口适配公开 `DashboardUserMenu`：265px 面板、16px 圆角、10px 内边距，桌面右侧 8px、手机下方展开，150ms ease-out 淡入、缩放 .95 与 2px 模糊。独立按钮控制侧栏展开；媒体库图标打开选择面板，展开面板时入口显示轮廓。首页使用 20px 槽位的 Peach logo，按透明边距校准可见轮廓及文字起点，收起态按钮为 36px 正方形。媒体库与导航图标统一 20px、1.7px 线宽，无图标底色。设置固定在底部，与明暗开关并排；收起时明暗开关只显示目标主题图标。主题动画参考公开 `https://www.boardui.com/r/theme-toggle.json`：200ms 滑块与 820ms 柔边扩散，缓动 `cubic-bezier(.16,1,.3,1)`，减少动态效果时直接切换。

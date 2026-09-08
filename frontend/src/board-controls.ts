@@ -13,7 +13,7 @@ export function syncBoardRange(input: HTMLInputElement) {
 }
 
 export function initBoardControls() {
-  const scan=(root:ParentNode)=>{root.querySelectorAll<HTMLInputElement>('input[type=range]').forEach(syncBoardRange);wireBoardSegments(root);wireBoardTabs(root)};
+  const scan=(root:ParentNode)=>{root.querySelectorAll<HTMLInputElement>('input[type=range]').forEach(syncBoardRange);wireBoardSegments(root);wireBoardTabs(root);wireGrowingCharts(root)};
   scan(document);
   const observer=new MutationObserver(records=>{for(const record of records)for(const node of record.addedNodes)if(node instanceof Element){if(node.matches('input[type=range]'))syncBoardRange(node as HTMLInputElement);scan(node)}});
   observer.observe(document.body,{subtree:true,childList:true});
@@ -41,8 +41,9 @@ export function initBoardControls() {
 }
 
 const tabPositions=new Map<string,{left:number;width:number}>();
-function wireBoardTabs(root:ParentNode){
-  const selector='.managebar-menu,.board-local-nav:not(.settingscard>.board-local-nav),.insighttabs';
+/** 全站的下划线 Tabs 共用一条会滑的 2px 蓝线（boardui tabs.tsx：transform 与 width 各 200ms ease）。 */
+export function wireBoardTabs(root:ParentNode){
+  const selector='.managebar-menu,.board-local-nav:not(.settingscard>.board-local-nav),.insighttabs,.reviewtabs';
   const groups=[...root.querySelectorAll<HTMLElement>(selector)];
   if(root instanceof HTMLElement&&root.matches(selector))groups.push(root);
   groups.forEach(group=>{
@@ -59,8 +60,9 @@ function wireBoardTabs(root:ParentNode){
 
 /** 原生 radio 保留方向键语义，选中底板按实际尺寸滑动。 */
 export function wireBoardSegments(root:ParentNode) {
-  const groups=[...root.querySelectorAll<HTMLElement>('.iconswitch')];
-  if(root instanceof HTMLElement&&root.matches('.iconswitch'))groups.push(root);
+  const selector='.iconswitch,.insightswitch';
+  const groups=[...root.querySelectorAll<HTMLElement>(selector)];
+  if(root instanceof HTMLElement&&root.matches(selector))groups.push(root);
   groups.forEach(group=>{
     if(group.hasAttribute('data-board-segments'))return;
     group.dataset.boardSegments='true';
@@ -73,6 +75,20 @@ export function wireBoardSegments(root:ParentNode) {
     group.addEventListener('change',measure);
     const resize=new ResizeObserver(()=>{if(!group.isConnected){resize.disconnect();return}measure()});resize.observe(group);
     measure();requestAnimationFrame(()=>group.classList.add('board-segments-ready'));
+  });
+}
+
+/** 排名条与雷达图进入可见区域后才从零长出（1.2 秒，与统计圆环同一条曲线）；减少动态效果时直接显示。 */
+export function wireGrowingCharts(root:ParentNode) {
+  const selector='.board-ranked-chart,.board-radar,.tasteranks';
+  const charts=[...root.querySelectorAll<HTMLElement>(selector)];
+  if(root instanceof HTMLElement&&root.matches(selector))charts.push(root);
+  charts.forEach(chart=>{
+    if(chart.hasAttribute('data-board-chart'))return;chart.dataset.boardChart='true';
+    const reveal=()=>chart.classList.add('board-chart-visible');
+    if(typeof IntersectionObserver==='undefined'||matchMedia('(prefers-reduced-motion: reduce)').matches){reveal();return}
+    const observer=new IntersectionObserver(entries=>{if(entries.some(entry=>entry.isIntersecting)){observer.disconnect();reveal()}},{threshold:.15});
+    observer.observe(chart);
   });
 }
 

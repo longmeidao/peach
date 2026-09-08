@@ -8636,7 +8636,8 @@ async function fetchTok(){
   p.set('sort','rand');                      // ⚠️ 随机，不是顺序播前 60 个
   p.set('limit',60); p.set('offset',0); p.set('thumb','');
   const d=await api('/api/items?'+p);
-  const list=d.items.filter(x=>x.cost!=='metered' && x.duration);
+  // 脱盘来源的片子拉不到流，进了队列就是一条黑屏加载中；详情页有门挡着，这里只能在入口筛掉。
+  const list=d.items.filter(x=>x.cost!=='metered' && x.duration && !sourceOffline(x.location));
   for(let i=list.length-1;i>0;i--){const j=Math.random()*(i+1)|0;[list[i],list[j]]=[list[j],list[i]]}
   return list;
 }
