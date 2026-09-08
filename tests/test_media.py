@@ -7,7 +7,7 @@ from unittest.mock import patch
 import peach.media as media_module
 from peach.ffmpeg import FFmpegResolver
 from peach.media import (
-    FilesystemBackend, MediaEngine, MediaUnavailable, normalized_path, remap_managed_path,
+    FilesystemBackend, MediaEngine, MediaUnavailable, normalized_path,
     resolve_case_insensitive,
 )
 from peach.repository import MediaAsset
@@ -84,21 +84,6 @@ class MediaEngineTests(unittest.TestCase):
         with patch.object(Path, "resolve", side_effect=OSError("offline")):
             path = normalized_path(Path("B:/"))
         self.assertTrue(path.is_absolute())
-
-    def test_legacy_snapshot_path_is_rebased_by_prefix(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            current = root / "generated" / "snapshots"
-            legacy = root / "old" / "snapshots"
-            raw = legacy / "cloud" / "local" / "aa" / "one.jpg"
-            expected = current / "cloud" / "local" / "aa" / "one.jpg"
-            self.assertEqual(
-                remap_managed_path(raw, current, (legacy,)),
-                normalized_path(expected),
-            )
-
-            unrelated = root / "untrusted" / "one.jpg"
-            self.assertEqual(remap_managed_path(unrelated, current, (legacy,)), unrelated.resolve())
 
     def test_filesystem_backend_matches_case_insensitively_on_sensitive_mounts(self):
         """CloudDrive 大小写敏感：账本 `abw-118.mp4` 对磁盘 `ABW-118.mp4` 必须救回。"""

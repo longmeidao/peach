@@ -10,7 +10,7 @@ from PIL import Image, ImageOps
 
 from .ffmpeg import FFmpegResolver
 from .fsutil import atomic_path
-from .media import remap_managed_path
+from .media import normalized_path
 from .repository import LedgerRepository
 
 
@@ -85,15 +85,13 @@ def _generate_lock(destination: Path) -> threading.Lock:
 
 class PreviewService:
     def __init__(self, repository: LedgerRepository, resolver: FFmpegResolver,
-                 snapshot_root: Path, poster_root: Path, avatar_root: Path, logo_root: Path,
-                 legacy_snapshot_roots: tuple[Path, ...] = ()):
+                 snapshot_root: Path, poster_root: Path, avatar_root: Path, logo_root: Path):
         self.repository = repository
         self.resolver = resolver
         self.snapshot_root = snapshot_root.resolve()
         self.poster_root = poster_root.resolve()
         self.avatar_root = avatar_root.resolve()
         self.logo_root = logo_root.resolve()
-        self.legacy_snapshot_roots = tuple(path.resolve() for path in legacy_snapshot_roots)
         #: 标识清晰度按 (路径, mtime, 字节数) 记住，换了文件自然算新键。大位每格一次
         #: 请求，不缓存就是一屏一百多次开图读头。
         self._logo_sharpness: dict[tuple[str, int, int], tuple[int, int]] = {}
@@ -262,9 +260,7 @@ class PreviewService:
         asset = self.repository.media_asset(asset_id)
         if asset is None or not asset.snapshot_path:
             raise PreviewUnavailable("snapshot unavailable")
-        path = remap_managed_path(
-            asset.snapshot_path, self.snapshot_root, self.legacy_snapshot_roots,
-        )
+        path = normalized_path(asset.snapshot_path)
         if not (path == self.snapshot_root or self.snapshot_root in path.parents) or not path.is_file():
             raise PreviewUnavailable("snapshot unavailable")
         return path

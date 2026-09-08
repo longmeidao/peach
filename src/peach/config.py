@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from . import settings_file
-from .platform import translate_ledger_path, translate_roots
+from .platform import translate_roots
 from .settings_file import PROJECT_ROOT, SettingsFileError
 
 _SETTINGS = settings_file.active()
@@ -73,9 +73,6 @@ MDNS_HOSTNAME: str = f"{MDNS_NAME}.local"
 SERVE_HOST: str = _SETTINGS.server.host
 SERVE_PORT: int = _SETTINGS.server.port
 
-# 2026-08 仓库/数据拆分前写入 ledger 的旧快照根；运行时只做受控前缀重映射。
-LEGACY_SNAPSHOT_DECLARATIONS: tuple[str, ...] = (r"R:\Resources\Intake\snapshots",)
-
 
 @dataclass(frozen=True)
 class PeachSettings:
@@ -104,9 +101,6 @@ class PeachSettings:
     # 本机挂载不到的来源不进授权列表，对应资产按「脱盘」处理而不是报错。
     allowed_media_roots: tuple[Path, ...] = translate_roots(MEDIA_ROOT_DECLARATIONS)
     snapshot_root: Path = GENERATED_DIR / "snapshots"
-    legacy_snapshot_roots: tuple[Path, ...] = tuple(
-        translate_ledger_path(root) for root in LEGACY_SNAPSHOT_DECLARATIONS
-    )
     poster_root: Path = GENERATED_DIR / "posters"
     avatar_root: Path = GENERATED_DIR / "avatars"
     logo_root: Path = GENERATED_DIR / "logos"
