@@ -717,6 +717,28 @@ class FollowContractTests(unittest.TestCase):
         self.assertEqual([group["primary"]["external_id"] for group in both["groups"]], ["1"])
         self.assertEqual(sum(self._get(tag="anal")["counts"].values()), 2)
 
+    def test_author_and_provider_filters_take_several_values_as_any_of_them(self):
+        """作者与来源多选是「任一」：选两个作者就看两个人的更新。
+
+        标签那一维是交集，这里不是：作者之间没有「同时是两个人」这回事。
+        """
+        self._seed(ref="a", label="Author A")
+        self._seed(ref="b", label="Author B", candidates=(
+            FollowCandidate(provider="rule34video", external_id="9001", title="B one",
+                            url="https://rule34video.com/video/9001/x/"),))
+        self._seed(ref="c", label="Author C", candidates=(
+            FollowCandidate(provider="rule34video", external_id="9002", title="C one",
+                            url="https://rule34video.com/video/9002/x/"),))
+        whole = self._get()
+        keys = {source["ref"]: source["author_key"] for source in whole["sources"]}
+        two = self._get(author=f"{keys['b']},{keys['c']}")
+        self.assertEqual(sorted(group["primary"]["title"] for group in two["groups"]),
+                         ["B one", "C one"])
+        self.assertEqual(sum(two["counts"].values()), 2)
+        self.assertEqual(sum(self._get(provider="rule34video,f95zone")["counts"].values()),
+                         sum(whole["counts"].values()))
+        self.assertEqual(sum(self._get(provider="f95zone")["counts"].values()), 0)
+
     def test_filter_options_stay_whole_library_so_the_bar_does_not_collapse(self):
         """可选项按全库算，不按筛后结果。
 
@@ -1841,6 +1863,32 @@ class FollowWebSourceTests(unittest.TestCase):
         bulk = self.page[self.page.index(".fsrcbulk{"):]
         self.assertIn("border-bottom:1px solid var(--border-10)", bulk[:bulk.index("}")])
 
+    def test_follow_filter_rows_are_multi_select_with_select_all_and_select_none(self):
+        """关注页的作者、来源两行多选，各带「全选／全不选」；标签行是交集，只给「全不选」。
+
+        选中状态只有三个 Set 一份真相，URL 里按逗号拼；服务端同样按逗号拆。
+        """
+        self.assertIn("let followAuthors=new Set(),followProviders=new Set(),followTags=new Set()",
+                      self.page)
+        self.assertNotIn("followAuthor=", self.page.replace("followAuthors=", ""))
+        self.assertNotIn("followProvider=", self.page.replace("followProviders=", ""))
+        render = self.page[self.page.index("function renderFollow("):
+                           self.page.index("function followAuthorGroups(")]
+        self.assertIn("followBulkButtons('authors',followAuthors.size,authors.size)", render)
+        self.assertIn("followBulkButtons('providers',followProviders.size,providers.size)", render)
+        self.assertIn("followBulkButtons('tags',followTags.size,topTags.length,{all:false})", render)
+        self.assertIn('aria-pressed="${followAuthors.has(key)}"', render)
+        self.assertIn('aria-pressed="${followProviders.has(key)}"', render)
+        self.assertIn("followAuthors=new Set(all?authors.keys():[])", render)
+        self.assertIn("followProviders=new Set(all?providers.keys():[])", render)
+        helper = self.page[self.page.index("function followBulkButtons("):
+                           self.page.index("function followMediaControl(")]
+        self.assertIn('data-bulk-all${selected>=total?\' disabled\':\'\'}>全选</button>', helper)
+        self.assertIn('data-bulk-none${selected?\'\':\' disabled\'}>全不选</button>', helper)
+        self.assertIn("params.set('author',[...followAuthors].join(','))", self.page)
+        self.assertIn("params.set('provider',[...followProviders].join(','))", self.page)
+        self.assertIn(".followauthors .fbulk{flex-direction:column", self.page)
+
     def test_the_manage_page_is_ordered_by_what_you_do_first(self):
         # 只看管理页那一段：同样的标题在别的页面上也出现过，全页搜索会命中错的那个。
         page = self.page
@@ -2199,8 +2247,8 @@ class FollowWebSourceTests(unittest.TestCase):
     def test_follow_watch_filters_use_the_source_identity(self):
         # 判定本身搬去了服务端（见 FollowContractTests 里的筛选用例）；页面这一侧要
         # 保证的是把身份原样交出去，而不是把显示名或来源标签当筛选值送过去。
-        self.assertPageContains("+(followAuthor?`&author=${encodeURIComponent(followAuthor)}`:'')")
-        self.assertPageContains("+(followProvider?`&provider=${encodeURIComponent(followProvider)}`:'')")
+        self.assertPageContains("+(followAuthors.size?`&author=${encodeURIComponent([...followAuthors].join(','))}`:'')")
+        self.assertPageContains("+(followProviders.size?`&provider=${encodeURIComponent([...followProviders].join(','))}`:'')")
         self.assertPageContains('class="tier followauthors"')
         self.assertPageContains('class="tagbar followfilters"')
         self.assertPageContains('class="pill sourcepill" data-follow-provider=')
@@ -2211,7 +2259,7 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("topTagRows.push([tag,tagCounts.get(tag)||allCount])")
 
     def test_follow_tags_are_multi_select_and_use_rule34_property_colours(self):
-        self.assertPageContains("let followAuthor='',followProvider='',followTags=new Set()")
+        self.assertPageContains("let followAuthors=new Set(),followProviders=new Set(),followTags=new Set()")
         # 取交集的判定在服务端；页面负责把多选的标签一次全交出去。
         self.assertPageContains("+(followTags.size?`&tag=${encodeURIComponent([...followTags].join(','))}`:'')")
         self.assertPageContains("aria-pressed=\"${followTags.has(key)}\"")
@@ -2344,9 +2392,8 @@ class FollowWebSourceTests(unittest.TestCase):
             "function followBackfillState", 1)[0]
         self.assertNotIn("全部来源", watch)
         self.assertNotIn("全部标签", watch)
-        self.assertPageContains("followProvider=followProvider===button.dataset.followProvider?'':button.dataset.followProvider")
-        self.assertPageContains(
-            "if(followTags.has(tag))followTags.delete(tag);else followTags.add(tag)")
+        self.assertPageContains("toggle(followProviders,button.dataset.followProvider);applyFollowView()")
+        self.assertPageContains("toggle(followTags,button.dataset.followTag);applyFollowView()")
 
     def test_follow_horizontal_rails_are_wired_after_each_render(self):
         self.assertPageContains("wireDrag($('#stats').querySelector('.followauthors'))")
@@ -2749,7 +2796,7 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageLacks("params.set('media-ui','switch')")
         self.assertPageLacks('class="followmediaicons"')
         self.assertPageLacks('data-follow-media=')
-        self.assertPageContains("params.set('author',followAuthor)")
+        self.assertPageContains("params.set('author',[...followAuthors].join(','))")
         self.assertPageContains("route(followViewPath());renderFollow()")
         self.assertPageContains("if(!counts.images&&followMediaView!=='images')return ''")
         self.assertPageLacks("if(followMediaView==='images'&&!mediaCounts.images)followMediaView='videos'")

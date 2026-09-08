@@ -9,6 +9,10 @@
 .followauthors .av[aria-pressed="true"] .ring{box-shadow:0 0 0 2px var(--ink)}
 .followauthors .favatar{width:64px;height:64px;border-radius:50%;outline:0}
 .followauthors .favatar.none{font-size:var(--fs-lg);background:var(--overlay-5)}
+/* 每行开头的「全选／全不选」：作者行按头像高度竖排两颗，筛选条上横排。 */
+.fbulk{display:inline-flex;flex:none;align-items:center;gap:4px;margin-right:6px}
+.fbulk .geist-button{height:28px;padding:0 10px;font-size:var(--fs-sm);white-space:nowrap}
+.followauthors .fbulk{flex-direction:column;align-self:center;margin-right:10px}
 .followfilters{position:relative;top:auto;z-index:1;height:auto;min-height:58px;margin:0 0 16px;
   padding:9px 0 8px;border-bottom-color:transparent;scrollbar-width:none;overscroll-behavior-inline:contain;
   touch-action:pan-x}

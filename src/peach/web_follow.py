@@ -586,6 +586,16 @@ def q_follow_tags(contract, args) -> dict:
             "categories": categories}
 
 
+def _csv_values(value) -> tuple[str, ...]:
+    """逗号分隔的查询值，去空、去重、保持顺序。"""
+    seen: list[str] = []
+    for part in str(value or "").split(","):
+        part = part.strip()
+        if part and part not in seen:
+            seen.append(part)
+    return tuple(seen)
+
+
 def q_follow(contract, args) -> dict:
     statuses = tuple(
         value for value in str(args.get("status") or "").split(",") if value in _STATUSES
@@ -602,11 +612,11 @@ def q_follow(contract, args) -> dict:
     source_id = int(source) if str(source or "").isdigit() else None
     requested_item = args.get("item")
     item_id = int(requested_item) if str(requested_item or "").isdigit() else None
-    author = str(args.get("author") or "").strip()
-    provider = str(args.get("provider") or "").strip()
-    wanted_tags = tuple(value for value in
-                        (part.strip() for part in str(args.get("tag") or "").split(","))
-                        if value)
+    # 三个筛选都接受逗号分隔的多个值。作者、来源在同一维度内是「任一」：选两个作者
+    # 就看两个人的更新；标签是「同时具备」，见下面 `_matches` 里的说明。
+    authors = frozenset(_csv_values(args.get("author")))
+    providers = frozenset(_csv_values(args.get("provider")))
+    wanted_tags = _csv_values(args.get("tag"))
     credential_store = _credential_store(contract)
     credential_providers = frozenset(
         provider for provider in CREDENTIAL_GUIDE
@@ -627,13 +637,14 @@ def q_follow(contract, args) -> dict:
 
         def _matches(item) -> bool:
             row = by_source.get(item.source_id)
-            if author and (row is None or author_key(row, alias_map) != author):
+            if authors and (row is None or author_key(row, alias_map) not in authors):
                 return False
-            if provider and (row is None or str(row["provider"] or "") != provider):
+            if providers and (row is None or str(row["provider"] or "") not in providers):
                 return False
             if wanted_tags:
                 # 在线标签索引包含 artist/character/copyright/metadata；点进去也必须
                 # 能筛到对应更新，而不是只允许卡片上那份 general 投影。
+                # 多个标签取交集：并集会把筛选变成越点越多，跟用户的意图正好相反。
                 tags = set(_item_all_tags(item))
                 if not all(tag in tags for tag in wanted_tags):
                     return False

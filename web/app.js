@@ -63,7 +63,7 @@ const FOLLOW_SORT_OPTIONS=[['checked','检查时间'],['added','添加时间'],[
 /* 同 `sortButtonHtml`：这枚键的无障碍名称说的是点下去会得到什么，所以取反方向的词。 */
 const followSortLabel=()=>`按${FOLLOW_SORT_LABELS[followManageSort]||'关注列表'}${
   (FOLLOW_SORT_DIR_WORDS[followManageSort]||[])[followManageDir==='asc'?0:1]||''}排序`;
-let followAuthor='',followProvider='',followTags=new Set(),followMediaView='videos',followGroupByItemId=new Map(),followItemsById=new Map(),followDetailReturnPath='/follow';
+let followAuthors=new Set(),followProviders=new Set(),followTags=new Set(),followMediaView='videos',followGroupByItemId=new Map(),followItemsById=new Map(),followDetailReturnPath='/follow';
 const selectedIndexTags=new Set();
 let entityPhotos=null,entityMediaView=emptyMediaView(),photoWallItems=[];
 /* 事务所页看的是它签了谁，所以进页面先摆艺人。视频照样在，只是换一个开关的距离：
@@ -3166,7 +3166,7 @@ async function buildBars(){
     openIndex(b.dataset.page); closeDrawerAfterNav()});
   $('#drawer').querySelectorAll('[data-nav]').forEach(b=>b.onclick=()=>navTo(b.dataset.nav));
   $('#drawer').querySelectorAll('[data-follow-drawer-tag]').forEach(b=>b.onclick=()=>{
-    followAuthor='';followProvider='';followMediaView='videos';followFilter='saved';
+    followAuthors=new Set();followProviders=new Set();followMediaView='videos';followFilter='saved';
     followTags=new Set([b.dataset.followDrawerTag]);
     openDrawer(false);route(followViewPath());openFollow(false)});
   wireNavigationDrag($('#drawer').querySelector('.dnav'));
@@ -4526,8 +4526,8 @@ const FOLLOW_PAGE=300;
 const followPageUrl=offset=>
   `/api/follow?limit=${FOLLOW_PAGE}&offset=${offset}`
   +(followFilter?`&status=${followFilter}`:'')
-  +(followAuthor?`&author=${encodeURIComponent(followAuthor)}`:'')
-  +(followProvider?`&provider=${encodeURIComponent(followProvider)}`:'')
+  +(followAuthors.size?`&author=${encodeURIComponent([...followAuthors].join(','))}`:'')
+  +(followProviders.size?`&provider=${encodeURIComponent([...followProviders].join(','))}`:'')
   +(followTags.size?`&tag=${encodeURIComponent([...followTags].join(','))}`:'');
 /* 分组在取回之后做，所以同一个作品可能被这一页的边界切开：
    前 300 条里有它的一个变体，后 300 条里有另一个。按 release_key 合并，
@@ -5116,8 +5116,8 @@ function followCheckFailNote(report){
    `status=all` 仍按全部读——那是「全部」还不是默认值时的写法。 */
 function followViewPath(){
   const params=new URLSearchParams();
-  if(followAuthor)params.set('author',followAuthor);
-  if(followProvider)params.set('provider',followProvider);
+  if(followAuthors.size)params.set('author',[...followAuthors].join(','));
+  if(followProviders.size)params.set('provider',[...followProviders].join(','));
   if(followTags.size)params.set('tag',[...followTags].join(','));
   if(followFilter)params.set('status',followFilter);
   if(followMediaView==='images')params.set('media','images');
@@ -5125,12 +5125,22 @@ function followViewPath(){
 }
 function readFollowView(){
   const params=new URLSearchParams(location.search);
-  followAuthor=params.get('author')||'';
-  followProvider=params.get('provider')||'';
-  followTags=new Set((params.get('tag')||'').split(',').filter(Boolean));
+  const csv=key=>new Set((params.get(key)||'').split(',').filter(Boolean));
+  followAuthors=csv('author');
+  followProviders=csv('provider');
+  followTags=csv('tag');
   const status=params.get('status');
   followFilter=(status===null||status==='all')?'':status;
   followMediaView=params.get('media')==='images'?'images':'videos';
+}
+/* 作者、来源两行是多选：按下的算「只看这些」，一个都不按就是全部。「全选」把这一行
+   全部按下，之后再抬起几个就是排除法；「全不选」抬起全部，回到不筛。标签行是
+   「同时具备」的交集（服务端如此判），全部按下只会一条不中，所以那一行只给「全不选」。
+   两个按钮在无事可做时禁用：全按下了就没有「全选」，一个没按就没有「全不选」。 */
+function followBulkButtons(dim,selected,total,{all=true}={}){
+  return `<span class="fbulk" role="group" aria-label="批量选择">${all
+    ?`<button type="button" class="geist-button" data-follow-bulk="${dim}" data-bulk-all${selected>=total?' disabled':''}>全选</button>`:''
+    }<button type="button" class="geist-button" data-follow-bulk="${dim}" data-bulk-none${selected?'':' disabled'}>全不选</button></span>`;
 }
 function followMediaControl(counts){
   if(!counts.images&&followMediaView!=='images')return '';
@@ -5174,8 +5184,8 @@ function renderFollow(){
       topTagRows.push([tag,tagCounts.get(tag)||allCount]);
   });
   const topTags=topTagRows.map(([tag,n])=>[tag,tagLabel(tag),n]);
-  if(followAuthor&&!authors.has(followAuthor))followAuthor='';
-  if(followProvider&&!providers.has(followProvider))followProvider='';
+  followAuthors=new Set([...followAuthors].filter(key=>authors.has(key)));
+  followProviders=new Set([...followProviders].filter(key=>providers.has(key)));
   // artist/character/copyright/metadata 不进入 general facets，但从在线标签索引点入后
   // 仍是有效筛选，不能因为顶部筛选条的口径更窄就把它从 URL 和界面删掉。
   // 作者、来源和标签都已在服务端筛过，这里不再筛第二遍——两份同义的判定必然漂移。
@@ -5186,20 +5196,23 @@ function renderFollow(){
   const visible=groups.filter(group=>followMediaKinds(group).has(wantedKind));
   renderFollowDrawer(visible.flatMap(group=>followCollectionItems(group)));
   const providerPills=[...providers].map(([key,label])=>
-    `<button class="pill sourcepill" data-follow-provider="${esc(key)}" aria-pressed="${key===followProvider}"
+    `<button class="pill sourcepill" data-follow-provider="${esc(key)}" aria-pressed="${followProviders.has(key)}"
       title="${esc(label)}" aria-label="来源：${esc(label)}">${sourceIcon(key)}</button>`).join('');
   $('#stats').innerHTML=`<div class="follow">
     <div class="followhead"><h2 class="disp pagetitle">关注</h2>
       <button class="fbtn primary fcheck" data-follow-manage>${icon('settings')}管理关注</button></div>
-    ${authors.size?`<div class="tier followauthors" aria-label="按作者筛选">${randomizedAuthors.map(([key,author])=>
-      `<button class="av" data-follow-author="${esc(key)}" aria-pressed="${key===followAuthor}">
+    ${authors.size?`<div class="tier followauthors" aria-label="按作者筛选">${
+      followBulkButtons('authors',followAuthors.size,authors.size)}${randomizedAuthors.map(([key,author])=>
+      `<button class="av" data-follow-author="${esc(key)}" aria-pressed="${followAuthors.has(key)}">
         <span class="ring">${followAuthorAvatar(author.sources)}</span><span class="nm">${esc(author.name)}</span></button>`
       ).join('')}</div>`:''}
     <div class="tagbar followfilters" aria-label="关注筛选">${followMediaControl(mediaCounts)}${FOLLOW_FILTERS.map(([key,label])=>
       `<button class="pill" data-follow-filter="${key}" aria-pressed="${key===followFilter}">${label}${
         ` <span class="n mono">${key?counts[key]||0:allCount}</span>`}</button>`).join('')}
-      ${providerPills?`<span class="sep" aria-hidden="true"></span>${providerPills}`:''}
-      ${topTags.length?`<span class="sep" aria-hidden="true"></span>`+
+      ${providerPills?`<span class="sep" aria-hidden="true"></span>${
+        followBulkButtons('providers',followProviders.size,providers.size)}${providerPills}`:''}
+      ${topTags.length?`<span class="sep" aria-hidden="true"></span>${
+        followBulkButtons('tags',followTags.size,topTags.length,{all:false})}`+
         topTags.map(([key,label,n])=>
           `<button class="pill r34-${esc(groupTagType(groups,key))}" data-follow-tag="${esc(key)}" aria-pressed="${followTags.has(key)}">${
             esc(label)}${n?` <span class="n mono">${n}</span>`:''}</button>`).join(''):''}</div>
@@ -5234,15 +5247,18 @@ function renderFollow(){
     // 媒体类型是纯前端的分组，不影响服务端取哪些条目，所以只重画不重取。
     followMediaView=button.dataset.mediaView;
     route(followViewPath());renderFollow()});
+  const toggle=(set,key)=>{if(set.has(key))set.delete(key);else set.add(key)};
   $('#stats').querySelectorAll('[data-follow-author]').forEach(button=>button.onclick=()=>{
-    followAuthor=followAuthor===button.dataset.followAuthor?'':button.dataset.followAuthor;
-    applyFollowView()});
+    toggle(followAuthors,button.dataset.followAuthor);applyFollowView()});
   $('#stats').querySelectorAll('[data-follow-provider]').forEach(button=>button.onclick=()=>{
-    followProvider=followProvider===button.dataset.followProvider?'':button.dataset.followProvider;
-    applyFollowView()});
+    toggle(followProviders,button.dataset.followProvider);applyFollowView()});
   $('#stats').querySelectorAll('[data-follow-tag]').forEach(button=>button.onclick=()=>{
-    const tag=button.dataset.followTag;
-    if(followTags.has(tag))followTags.delete(tag);else followTags.add(tag);
+    toggle(followTags,button.dataset.followTag);applyFollowView()});
+  $('#stats').querySelectorAll('[data-follow-bulk]').forEach(button=>button.onclick=()=>{
+    const all=button.hasAttribute('data-bulk-all');
+    if(button.dataset.followBulk==='authors')followAuthors=new Set(all?authors.keys():[]);
+    else if(button.dataset.followBulk==='providers')followProviders=new Set(all?providers.keys():[]);
+    else followTags=new Set();
     applyFollowView()});
   $('#stats').querySelectorAll('[data-follow-manage]').forEach(button=>
     button.onclick=()=>openFollowManage());
@@ -6387,7 +6403,7 @@ async function openIndex(kind,q,push=true,refine=false){
     /* 在线标签只在关注页有意义——它标注的是还没入库的在线更新，拿去筛目录必然
        一条不中。所以直接进「关注 · 这个标签」，并且绕过多选：多选拼的是目录筛选。 */
     if(onlineTags){
-      followAuthor='';followProvider='';followMediaView='videos';followFilter='';
+      followAuthors=new Set();followProviders=new Set();followMediaView='videos';followFilter='';
       followTags=new Set([b.dataset.k]);
       $('#index').hidden=true;route(followViewPath());openFollow(false);return}
     if(selectMode){const key=b.dataset.k;selectedIndexTags.has(key)?selectedIndexTags.delete(key):selectedIndexTags.add(key);paintTagIndexSelection();return}
@@ -8357,7 +8373,7 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
     /* 直接进「已保存」这一档。openFollow(true) 会 route 回干净的 /follow 再照 URL
        推导，所以状态要先写进 URL，光设全局会被推回未看。 */
     $('#openSavedFollow').onclick=()=>{
-      followAuthor='';followProvider='';followTags=new Set();followMediaView='videos';
+      followAuthors=new Set();followProviders=new Set();followTags=new Set();followMediaView='videos';
       followFilter='saved';route(followViewPath());openFollow(false)};
   }
   else if(g)g.onclick=async()=>{vv.hidden=false;g.remove();const mounted=await mountDetailPlayer(it,vv,true);stopAmbient=mountPlayerAmbient(vv);mounted?.one?.('dispose',stopAmbient)};
