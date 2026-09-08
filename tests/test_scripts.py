@@ -983,10 +983,10 @@ class OperationalScriptTests(unittest.TestCase):
                 self.assertEqual(opened.size[0], opened.size[1])
                 return opened.size[0]
 
-        roomy = Image.new("RGB", (200, 200), (255, 255, 255))
-        ImageDraw.Draw(roomy).rectangle((80, 80, 119, 119), fill=(196, 20, 24))
+        roomy = Image.new("RGB", (400, 400), (255, 255, 255))
+        ImageDraw.Draw(roomy).rectangle((160, 160, 239, 239), fill=(196, 20, 24))
         cropped = refit_plate(png(roomy))
-        self.assertEqual(side(cropped), round(40 / PLATE_CONTENT_RATIO),
+        self.assertEqual(side(cropped), round(80 / PLATE_CONTENT_RATIO),
                          "裁到内容框，四周各留约 12%")
         with Image.open(io.BytesIO(cropped)) as plate:
             self.assertEqual(plate.getpixel((plate.width // 2, plate.height // 2)),
@@ -994,22 +994,22 @@ class OperationalScriptTests(unittest.TestCase):
         self.assertEqual(refit_plate(cropped), cropped, "摆好的不再动")
 
         speckled = roomy.copy()
-        for spot in ((3, 3), (196, 4), (5, 195), (194, 197)):
+        for spot in ((6, 6), (392, 8), (10, 390), (388, 394)):
             speckled.putpixel(spot, (250, 250, 250))
         self.assertEqual(side(refit_plate(png(speckled))), side(cropped),
                          "有损压缩留下的零星斑点不算内容，撑不开内容框")
 
-        packed = Image.new("RGB", (200, 200), (255, 255, 255))
-        ImageDraw.Draw(packed).rectangle((10, 10, 189, 189), fill=(196, 20, 24))
+        packed = Image.new("RGB", (400, 400), (255, 255, 255))
+        ImageDraw.Draw(packed).rectangle((20, 20, 379, 379), fill=(196, 20, 24))
         padded = refit_plate(png(packed))
-        self.assertEqual(side(padded), ceil(hypot(179, 179)),
+        self.assertEqual(side(padded), ceil(hypot(359, 359)),
                          "补到内容的外接圆，直径就是内容框的对角线，四角不再被圆片切掉")
         with Image.open(io.BytesIO(padded)) as plate:
             self.assertEqual(plate.getpixel((2, 2)), (255, 255, 255),
                              "补出来的边取原图底色")
 
-        circular = Image.new("RGB", (200, 200), (255, 255, 255))
-        ImageDraw.Draw(circular).ellipse((0, 0, 199, 199), fill=(196, 20, 24))
+        circular = Image.new("RGB", (400, 400), (255, 255, 255))
+        ImageDraw.Draw(circular).ellipse((0, 0, 399, 399), fill=(196, 20, 24))
         payload = png(circular)
         self.assertEqual(refit_plate(payload), payload, "本来就是圆的图标一个字节不动")
 
@@ -1020,6 +1020,51 @@ class OperationalScriptTests(unittest.TestCase):
         self.assertEqual(refit_plate(transparent), transparent,
                          "还没配底的图没有底色可取，补出来的边会变成黑块")
         self.assertIsNone(refit_plate(b"not an image"))
+
+    def test_a_plate_smaller_than_the_round_slot_grows_to_it_without_rescaling(self):
+        """短边不够小圆片的实像素就用自己的底色补上去，笔画一个像素都不缩放。
+
+        小圆片是 32 CSS px、2 倍屏 64 实像素。短边不够时浏览器只能放大整张图；
+        补边换来的是笔画按原样出图，代价是标识相对圆片小一档。补到内容占宽的下限
+        为止——再往外撑就成了另一条规则要裁掉的大留白，两条会来回拉锯。
+        """
+        import io
+
+        from PIL import Image, ImageDraw
+
+        from peach.images import PLATE_MIN_SIDE, PLATE_MIN_SPAN, refit_plate
+
+        def png(image):
+            buffer = io.BytesIO()
+            image.save(buffer, "PNG")
+            return buffer.getvalue()
+
+        def opened(payload):
+            with Image.open(io.BytesIO(payload)) as image:
+                return image.convert("RGB"), image.size
+
+        small = Image.new("RGB", (48, 48), (18, 140, 220))
+        ImageDraw.Draw(small).rectangle((4, 4, 43, 43), fill=(255, 255, 255))
+        grown = refit_plate(png(small))
+        image, size = opened(grown)
+        self.assertEqual(size, (PLATE_MIN_SIDE, PLATE_MIN_SIDE), "补到圆片要的实像素")
+        self.assertEqual(image.getpixel((1, 1)), (18, 140, 220), "补出来的边取原图底色")
+        self.assertEqual(image.getpixel((PLATE_MIN_SIDE // 2, PLATE_MIN_SIDE // 2)),
+                         (255, 255, 255), "内容原样居中，像素不缩放")
+        self.assertEqual(refit_plate(grown), grown, "补好的不再动")
+
+        sparse = Image.new("RGB", (40, 40), (18, 140, 220))
+        ImageDraw.Draw(sparse).rectangle((16, 16, 27, 27), fill=(255, 255, 255))
+        capped = refit_plate(png(sparse))
+        _, size = opened(capped)
+        self.assertEqual(size, (int(12 / PLATE_MIN_SPAN),) * 2,
+                         "内容小的补到占宽下限就停，不补到 64")
+        self.assertEqual(refit_plate(capped), capped, "停在下限上，两条规则不再拉锯")
+
+        big = Image.new("RGB", (PLATE_MIN_SIDE, PLATE_MIN_SIDE), (18, 140, 220))
+        ImageDraw.Draw(big).rectangle((8, 8, 55, 55), fill=(255, 255, 255))
+        payload = png(big)
+        self.assertEqual(refit_plate(payload), payload, "够实像素的一个字节不动")
 
     def test_a_vector_mark_gets_the_same_plate_without_rasterising(self):
         """矢量标识：白底和边距一样烤进文件，但是包一层外层 SVG，原文档不动。

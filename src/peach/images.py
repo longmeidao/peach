@@ -69,6 +69,13 @@ PLATE_CIRCLE_LOSS = 0.025
 # 杂点却让框横跨 685 行。下限挡住内容本来就很少的小图。
 PLATE_NOISE_RATIO = 0.0005
 PLATE_NOISE_FLOOR = 3
+# 方图短边不到这个数，就用自己的底色补到这个数。小圆片（`.brandpill .mk`）是 32 CSS px，
+# 2 倍屏要 64 实像素，短边不够时浏览器只能放大——放大糊掉的是整张图，而补出来的边是
+# 这张图自己的底色，笔画一个像素都不缩放。实测受影响的是 HEYZO 39、Prestige 42、
+# DorcelClub 57 这三张。补到这里为止：再往外撑会把内容占宽压到 `PLATE_MIN_SPAN` 以下，
+# 那正是上一条要裁掉的形状，两条规则会在同一张图上来回拉锯，重跑一遍就不再幂等。
+# 上限用截断而不是四舍五入，就为了让占宽落在 0.6 这一侧。
+PLATE_MIN_SIDE = 64
 
 SVG_NS = "http://www.w3.org/2000/svg"
 XLINK_NS = "http://www.w3.org/1999/xlink"
@@ -225,9 +232,10 @@ def refit_plate(payload: bytes) -> bytes | None:
     金环只占 0.24），铺进去就小得认不出；反过来顶到边的实心方标（MARRION 0.95）
     四角落在圆外，金框和字样直接看不见。
 
-    动手只有两种：内容太小就裁掉多余留白，会被圆切就把画布补到内容的外接圆。
-    像素一律不缩放，所以裁出来的图更小但更清晰，补出来的图更大而清晰度不变。
-    两者都不适用时返回原字节；`None` 只表示解析不了。
+    动手只有三种：内容太小就裁掉多余留白，会被圆切就把画布补到内容的外接圆，整张
+    小于圆片要的实像素（`PLATE_MIN_SIDE`）就用自己的底色补到那个数。像素一律不缩放，
+    所以裁出来的图更小但更清晰，补出来的图更大而清晰度不变。
+    三者都不适用时返回原字节；`None` 只表示解析不了。
     """
     image = _open_rgba(payload)
     if image is None:
@@ -266,6 +274,9 @@ def refit_plate(payload: bytes) -> bytes | None:
         side = round(span / PLATE_CONTENT_RATIO)
     if lost > PLATE_CIRCLE_LOSS:
         side = max(side, ceil(_content_radius(mask, box) * 2))
+    if short < PLATE_MIN_SIDE:
+        # 上限是内容占宽的下限：补过头就成了上面那条要裁的大留白。
+        side = max(side, min(PLATE_MIN_SIDE, int(span / PLATE_MIN_SPAN)))
     if side <= 0 or (side == width and side == height):
         return payload
     content = image.crop(box)
