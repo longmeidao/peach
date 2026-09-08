@@ -2,8 +2,8 @@
 
 ## 范围
 
-先全量重跑 PikPak `probe`，再生成官方封套和九帧接触表；不运行创作者板、标签识别、人物归属或
-其他元数据刮削。这里的「缩略图」是 `snapshot_path` 指向的九帧接触表，`/thumb` 直接返回它，
+先全量重跑 PikPak `probe`，再生成官方封套和九宫格；不运行创作者板、标签识别、人物归属或
+其他元数据刮削。这里的「缩略图」是 `snapshot_path` 指向的九宫格，`/thumb` 直接返回它，
 卡片海报再从中裁一格。
 
 真实批次只在 Windows 写入端运行。macOS 当前是 reader，只用于代码验证和账本副本抽样，不能把
@@ -13,11 +13,11 @@ probe 结果写进真实 Mac ledger。开跑前必须确认 `/healthz.ledger_syn
 队列数字不抄在这里。开跑前跑 `python scripts/job_status.py`，它按真实账本现算「可抽 / 缺时长
 待 probe / 合计」；之前写在这里的那份 Mac 副本基线被当成过远端现值用，这类数字只在生成的那一刻
 成立。口径上要分清 `duration=0`（还没探测）和 `duration<0`（探测失败，只有 `--redo all` 会重试），
-正时长不超过 2 秒的资产不进接触表队列。
+正时长不超过 2 秒的资产不进九宫格队列。
 
 ## 流量样本与停止条件
 
-2026-08-22 Mac 隔离样本：506 MiB、1,769 秒视频生成九帧接触表耗时 11.69 秒，Stash 按
+2026-08-22 Mac 隔离样本：506 MiB、1,769 秒视频生成九宫格耗时 11.69 秒，Stash 按
 CloudDrive 进程连接增量计得下载 126,744,568 字节（120.9 MiB）、上传 107,604 字节；当前路线是
 香港代理链，不是 DIRECT。官方封套样本 `KUZU-25010` 用 3.25 秒确认所有渠道无候选，下载
 14,366 字节、上传 3,912 字节。旧 DIRECT 九帧样本为 30.5 MB / 64.2 秒；路线差异很大，夜跑报告
@@ -71,7 +71,7 @@ Get-Item $peachBackup | Select-Object FullName,Length,LastWriteTime
 & $peachPython scripts\traffic_watch.py --limit 200 --warn 120 --count-direct
 ```
 
-另一个窗口按顺序执行封套、probe 和接触表；probe 非零退出时不得继续接触表：
+另一个窗口按顺序执行封套、probe 和九宫格；probe 非零退出时不得继续九宫格：
 
 ```powershell
 & $peachPython scripts\fetch_jav_covers.py --location pikpak

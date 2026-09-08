@@ -1,6 +1,6 @@
 ---
 name: peach-batch-jobs
-description: 在用户说抽帧、接触表、probe、sheets、creator_boards、刮削、批量、长任务、限流、续跑、流量预算或磁盘余量时使用。
+description: 在用户说抽帧、九宫格、probe、sheets、creator_boards、刮削、批量、长任务、限流、续跑、流量预算或磁盘余量时使用。
 ---
 
 # 长跑批处理与流量边界
@@ -47,7 +47,7 @@ description: 在用户说抽帧、接触表、probe、sheets、creator_boards、
 
 - 200 GB 守卫默认只统计代理流量，覆盖 PikPak，看不到直连 115；需要覆盖直连时显式
   `--count-direct`，且不要在同一计量窗口混跑不同来源。
-- 实测（2026-08-15，经 mihomo）：115 单文件 ffprobe 约 25 MB，九帧接触表约 285 MB；
+- 实测（2026-08-15，经 mihomo）：115 单文件 ffprobe 约 25 MB，九宫格约 285 MB；
   PikPak 单文件 probe 12–52 MB，九帧约 163 MB / 13.7 秒。PikPak 抽帧的主要约束是字节不是耗时。
   PikPak 策略组切 DIRECT 后九帧为 30.5 MB / 64.2 秒。
 - `-probesize`/`-analyzeduration` 无法减少 CloudDrive 固定块预取；未知时长时创作者板可回退到

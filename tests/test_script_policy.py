@@ -38,7 +38,7 @@ DML_CLAUSE = re.compile(r"\b(INTO|FROM|SET)\b", re.I)
 #: 复核产物和真实写入之间必须有一道人为闸门。下面这些不是那种形态。
 APPLY_ALLOWLIST = {
     # 常驻批处理，由 `peach.jobs.job_main` + PidFileLock 驱动，没有「先出复核表再决定
-    # 写不写」这一步：它们写的是自己刚生成的探测结果与接触表产物。停不停由任务控制，
+    # 写不写」这一步：它们写的是自己刚生成的探测结果与九宫格产物。停不停由任务控制，
     # 不由一个命令行开关控制。
     "probe.py",
     "sheets.py",

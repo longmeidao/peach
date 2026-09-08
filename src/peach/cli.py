@@ -176,12 +176,12 @@ def _migrate(args: argparse.Namespace) -> int:
     return 0
 
 
-#: 「加工进度」的分母：能落到本机的视频。在线资产没有文件，探测和接触表对它们
+#: 「加工进度」的分母：能落到本机的视频。在线资产没有文件，探测和九宫格对它们
 #: 不适用，混进分母只会让每一行的百分比永远到不了 100。
 _PROCESSED_SCOPE = "medium='video' AND location!='online'"
 _PROCESSED_MEASURES = (
     ("有时长 (ffprobe)", "duration IS NOT NULL"),
-    ("有接触表", "snapshot_path IS NOT NULL"),
+    ("有九宫格", "snapshot_path IS NOT NULL"),
     ("有哈希", "hash IS NOT NULL"),
     ("有创作者归属", "creator IS NOT NULL AND creator!=''"),
     ("有消费记录", "play_count>0 OR rating IS NOT NULL"),
