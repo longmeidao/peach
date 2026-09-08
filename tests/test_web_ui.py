@@ -681,24 +681,18 @@ class WebUiSourceTests(unittest.TestCase):
         # 没有 JS 会挂 .act，留着只会让人以为选中态有两套写法。
         self.assertPageLacks(".pill.act{")
 
-    def test_the_video_area_is_one_frame_and_the_portrait_strip_shares_its_face(self):
-        """框画在网格上，卡片本身不带框；竖屏带和框、和卡片同一张面。
+    def test_the_video_area_has_no_frame_and_the_portrait_strip_shares_the_card_face(self):
+        """视频网格不画框：卡片直接摆在页面上，竖屏带和卡片同一张面。
 
-        一张卡一个框会在一屏里画出几十条互相平行的细线，读起来是表格不是图墙。
-        垃圾复核用的是同一个 `#grid`，但它那张卡自己就是一块 `--ground` 的面，
-        外面再套一层同色的框只会把卡吃掉——所以这条按内容认，不按页面认。
+        网格外面那一圈 `--field-ring` 框只是把一屏卡片再圈一次，用户点名去掉；
+        卡片本身也不带框。
         """
-        self.assertPageContains(".grid:has(>.card:not(.junkcard)),.grid:has(>.catalog-skeleton){")
+        self.assertPageLacks(".grid:has(>.card:not(.junkcard))")
         css = stylesheet_source()
-        start = css.index(".grid:has(>.card:not(.junkcard))")
-        frame = css[start:css.index("}", start)]
-        for piece in ("background:var(--ground)", "border:1px solid var(--field-ring)",
-                      "border-radius:var(--floating-radius)"):
-            self.assertIn(piece, frame, "视频区是一整块面")
         start = css.index(chr(10) + ".card{")
         card = css[start:css.index("}", start)]
-        self.assertNotIn("background:", card, "卡片不自带填色，框由网格出")
-        self.assertNotIn("border:", card, "卡片不自带描边，框由网格出")
+        self.assertNotIn("background:", card, "卡片不自带填色")
+        self.assertNotIn("border:", card, "卡片不自带描边")
         start = css.index(chr(10) + ".shorts-inline{")
         strip = css[start:css.index("}", start)]
         self.assertIn("background:var(--ground)", strip, "竖屏带和视频段同一张面")
@@ -1928,6 +1922,11 @@ class WebUiSourceTests(unittest.TestCase):
             'mask="url(#brand-x-knockout)"/>')
         self.assertPageContains(
             'transform="translate(12 12) scale(.5) translate(-12 -12)"')
+        # Instagram 同一只圆盘：Phosphor 的 256 视口字形按 24×.5/256 缩进去。
+        self.assertPageContains('<symbol id="i-brand-instagram" viewBox="0 0 24 24">')
+        self.assertPageContains(
+            'transform="translate(12 12) scale(.046875) translate(-128 -128)"')
+        self.assertPageContains("[['instagram.com'],'brand-instagram']")
         self.assertPageLacks('fill="#000" stroke="none"', "品牌标记不写死板子的颜色")
         self.assertPageContains(
             '.entitylinkicon.brand svg{width:100%;height:100%;stroke:none;filter:none}')

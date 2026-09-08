@@ -133,6 +133,7 @@ const lucideIcons = new Map([
 const handDrawnIcons = new Set([
   "shuffle", // 两条带 pathLength 的动画路径由 Peach 维护。
   "alert", "pics", "jav", "theater-enter", "theater-exit", "brand-x",
+  "brand-instagram", // 字形来自 Phosphor regular instagram-logo（MIT），套进与 brand-x 同一只墨色圆盘。
   // 「换一批」：Lucide shuffle 的线条拆成 strand-a／strand-b 两条 path 供忙态逐条画出，
   // 上游一刷新就会把两条并回五条，所以由手工维护。
   "shuffle",

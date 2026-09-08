@@ -94,12 +94,6 @@ body.refreshing #batchAction svg,
    剪开，上下两半于是各自成为一张独立的卡。`#grid` 本身只是这叠卡的容器，不再是网格。 */
 .gridstack{display:flex;flex-direction:column;gap:16px}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--tile),1fr));gap:16px 8px}
-/* 视频区是一整块面，框画在网格上，卡片本身不填色也不描边——一张卡一个框会在一屏里
-   画出几十条互相平行的细线，读起来是表格不是图墙。垃圾复核用的是同一个 #grid，
-   但它那张卡自己就是一块 --ground 的面，外面再套一层同色的框只会把卡吃掉，
-   所以按内容认，不按页面认。 */
-.grid:has(>.card:not(.junkcard)),.grid:has(>.catalog-skeleton){
-  padding:16px;border:1px solid var(--field-ring);border-radius:var(--floating-radius);background:var(--ground)}
 .card{cursor:pointer;display:flex;flex-direction:column;gap:8px;min-width:0;
   position:relative;transition:transform .18s ease,filter .18s ease;transform-origin:center}
 /* 叠层往上溢出到行间距里，卡片本体不为它留白。留白的写法（padding-top:7px）会把
