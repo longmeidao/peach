@@ -518,23 +518,77 @@ Windows 空数据预览的项目 CA HTTPS、合成 Cookie 保存／撤销、DMM 
 - **Logo 文件一律是不透明方图。** 小位铺满（cover）；大位按 contain 摆，图不足框的八成时不再放大，
   原尺寸居中、四周用同一张图放大模糊补底（页面侧的 `data-fit-native`）。
   边距和底色烤进文件，页面不再各自补救。
-  唯一入口是 `peach.images.bake_square`，`classify_plate` 给出它据以分流的判定：
-  - `mark`（有透明像素，如 PREMIUM 的全透明底蓝色字标）——按 alpha 外接框裁掉透明边，居中放到**白色
-    不透明**方底上，内容占边长 `PLATE_CONTENT_RATIO`（0.76，四周各留约 12%），像素不缩放，出不透明 PNG。
+  位图的唯一入口是 `peach.images.bake_square`，`classify_plate` 给出它据以分流的判定：
+  - `mark`（有透明像素，如 PREMIUM 的全透明底蓝色字标）——按 alpha 外接框裁掉透明边，居中放到不透明
+    方底上，内容占边长 `PLATE_CONTENT_RATIO`（0.76，四周各留约 12%），像素不缩放，出不透明 PNG。
   - `tile`（完全不透明，如 M's Video Group 400×400 黑底方块、Natural High 红底、Hon Naka 64×64 青底）——
     底色是设计的一部分：接近方形的原字节返回，长条按边缘主色补方（`pad_to_square`）。不刷白。
+  两条路的产物都再过一遍 `refit_plate`，因为方图**摆得不对**和**不是方图**是两件事：小圆片铺满的是
+  整张画布不是内容，源站 favicon 常自带大留白（Flower 的金环占宽 0.24、いんすた 0.30、Planet_Plus 0.31、
+  まんまんランド 0.55、EST 0.56），铺进 32 px 圆片就小得认不出；反过来顶到边的实心方标四角落在圆外，
+  MARRION 的金框和 Tushy 的「T」直接看不见。内容占宽低于 `PLATE_MIN_SPAN`（0.6）裁到内容框、四周留
+  12%；内容落在内切圆之外的比例超过 `PLATE_CIRCLE_LOSS`（0.025）把画布补到内容的外接圆；这一趟的
+  产物不到小圆片要的实像素（`PLATE_MIN_SIDE`，64 = 32 CSS px 在 2 倍屏上的实像素）就用自己的底色
+  补到那个数，浏览器不必再放大它。第三条判的是产物、不是原图：受影响的图有一半是**先裁小才不够用**
+  的（Flower 是 180 的画布上一圈 43 px 的金环，裁掉留白落在 55），按原图短边判就永远轮不到它们，
+  得再跑一趟才补上——而归一脚本承诺幂等。补边的上限卡在 `PLATE_MIN_SPAN`：再往外撑，内容占宽就掉到
+  0.6 以下，成了第一条要裁的那种大留白，两条规则会在同一张图上来回拉锯。2026-09-08 实测命中 7 张：
+  DorcelClub 57→64、Flower 三张 55→64、LINX 63→64；HEYZO.icon 39→50、Prestige.icon 42→53
+  是撞上这个上限停下的。同一批 150 个文件连跑三趟：第一趟 7 张，第二、三趟 0 张。像素一律
+  不缩放，所以裁出来的更小但更清晰、补出来的更大而清晰度不变。断点都是实测的：占宽下一档 FC2-PPV
+  0.62 起看着正常，圆外损失落在 T-POWERS 0.019 与 TEPPAN 0.034 之间，圆形图标（Wanz Factory 0.008）
+  不受影响。内容框按行列统计，只有零星几个像素的行列不算内容——有损压缩在纯色区留下的淡斑点会把
+  逐像素外接框撑满整张画布（EST 的字样只占纵向 249 行，斑点却让框横跨 685 行）。
   写入侧只有两条路径，规则同一条：`harvest_studio_icons.py` 的 `install()` 落盘前烤，
   `normalize_studio_logos.py` 对历史文件回溯（目录下所有 `*.img`，含 `.icon.img`／`.logo.img`）。
   两者都幂等——烤出来的产物再跑一次不再有动作。女优头像等照片不走这条路径，不加白边。
-  矢量标识（4 个 `image/svg+xml`：DarkRoomVR、TeamSkeetXReislin、TeenFidelity、VirtualTaboo）不栅格化，
-  复核件上记 `vector` 原样留着——烤底按像素判透明和取外接框，矢量得先定目标尺寸再栅格，那是另一件事。
-  真实目录的 dry-run 实测 27 个待改：26 个 `mark` 待烤白底（Attackers、PREMIUM、MOODYZ、HEYZO、
-  Natural High、BangBus／BangBros18 各三份变体等），`pikpak.img` 116×68 是唯一的不透明长条待补方。
-  已经是不透明方图的（M's Video Group 那类整块 tile）不进复核件。回溯真实目录需另行授权。
-  页面三处取图位（品牌小圆片 `.brandpill .mk`、身份格 `.idface`、厂牌页 160 px 大位 `.entityportrait`）
+  `install()` 只收位图：矢量烤不出方图，它按「拒绝安装」处理，所以目录里那 4 张 SVG 是更早的遗留，
+  归一由 `normalize_studio_logos.py` 补上。
+  矢量标识（4 个 `image/svg+xml`：DarkRoomVR、TeamSkeetXReislin、TeenFidelity、VirtualTaboo）
+  走 `peach.images.bake_square_vector`：同样的 76% 边距，但方底由外层 SVG 给，原文档整个塞进
+  嵌套 `<svg>`，一个节点都不改写——栅格化会把「放多大都清晰」这个唯一优势丢掉。内容框直接取
+  `viewBox`：4 张渲染后实测，决定方框边长的长边都是 tight 的（横向占满 0.97～1.00），
+  纵向留白只影响居中。矢量没有像素可读，外层根元素上留 `data-peach-plate="1"` 让重跑据此跳过，
+  不靠这个标记就会越套越多。`viewBox`、`width`／`height` 都没有的空壳量不出比例，仍记 `vector`
+  原样留着。
+- **底色按内容明暗判，位图和矢量同一条规则**（`images._plate_color`；矢量先栅格化一张 256 px 探针数
+  像素，产物仍是矢量）。只有笔画直接挨着底色的稀疏标识会被底色吞掉：内容框里的不透明覆盖低于
+  `PLATE_SOLID_COVER`（0.9）才判底色，白底上还看得见的比例低于 `PLATE_VISIBLE_RATIO`（0.7）就配深底
+  `#111111`。DarkRoomVR 的「DARK ROOM」、TeamSkeetXReislin 的「TEAM」、HEYZO 的「HEY」都是白笔画，
+  白底可见率实测 0.20、0.52、0.44，配白底等于把半个标识抹掉。自带整块底的另说：Fitch 的白卡片覆盖
+  0.98、Hunter 的迷彩方块 1.00，它们的边界是自己画的，外面那圈只是画框，配深底反而让那块底浮在黑里。
+- **归一从原图开始。** 装上去的文件如果记着备份原图、备份又还在本机，`normalize_studio_logos.py` 拿
+  备份当输入：烤底毁掉的透明通道和配错的底色在产物上判不回来，从原图重来才能让算法的改进落到已经
+  装好的文件上（HEYZO 就是这么修回来的）。边车继续指向原图，别把指针改指到这一轮备份的归一产物。
+  边车的 `action` 是认来路的稳定标识不是描述：`bake-white-plate`、`pad-to-square`、`refit-plate`、
+  `plate-vector`。`harvest_studio_icons.padded_studios` 按 `pad-to-square` 认「这一张的源图是条状字标」，
+  把重新摆位记成补方等于污染那份名单，所以三条位图路径分开记。
+  已装的位图里 26 个 `mark` 烤过底、5 个长条补过方（边车在 `*.img.normalization.json`）；2026-09-08 的
+  dry-run 报 52 个待改：46 个重新摆位、4 个矢量包方底、HEYZO 改配深底、pikpak 重补方。
+  回溯真实目录需另行授权。
+- **已装的方标太小要再问一趟。** 小圆片是 32 CSS px，2 倍屏 64 实像素；`harvest_studio_icons.py`
+  把短边不够这个数的厂牌一并收进目标（`INSTALLED_SHORT_EDGE`、`small_installed_marks`），量的是小位
+  真会取到的那一份（`<safe>.icon.img` 优先，没有才回落 `<safe>.img`；`.logo.img` 归大位不参与）。
+  落盘另有 `_shorter_than_installed` 守卫，所以再问一趟只可能换上更大的，问不到就在复核件上留判词。
+  2026-09-08 实测命中三家：DorcelClub 57、Prestige 42、HEYZO 32。
+- **这三家的来源已经问到底，结论分三种**（2026-09-08 实测）。DorcelClub 站上挂着 180×180 的
+  apple-touch-icon，够用；取不到的原因在账本：这个厂牌一条链接都没有（entity 5586），采集从零链接
+  出发走不到它的站，补一条 `official` 链接就能自己取回。Wanz Factory 与 HEYZO 更大的方标**未取得**：
+  官网只有 64×64／32×32 的 favicon（wanz-factory.com 的 `/favicon.ico` 回 0 字节，声明的那枚在
+  `/favicons/wanz-factory/`），header 那张是 181×38／339×58 的横向字标，JAE 2014／2015 名录里 Wanz
+  那一枚是同一条橙底字标、里面那个「W」章不到 64 px，截出来比手上这张更小；Wanz 那张 64 px 自己就是
+  放大件（半分辨率往返 RMS 1.63，同为 64 px 的 Hon Naka 13.65、Idea Pocket 15.37 是真实像素）。
+  Prestige 官网 header 是一份 SVG（`/_nuxt/img/logo.*.svg`），那是大位可用的资产，小位仍是字标。
+- **页面三处取图位统一铺满，不各自补救。**
+  三处（品牌小圆片 `.brandpill .mk`、身份格 `.idface`、厂牌页 160 px 大位 `.entityportrait`）
   的 `img` 统一 `object-fit: cover` 铺满方框，不加 inset、不加 padding、不改 contain：文件已经带够边距，
   页面再补一层就在图自带的底之外多围出一圈框，而三处各自补救的结果必然互相不一致。占位底色
   （`#CFCFCF`、`#fff`、`--overlay-5`）与首字母回落只在取不到图时露出来。
+  「原生尺寸 + 模糊补底」（`data-fit-native`）只装在后两处大位上。它的前提是文件比框小，而小圆片
+  在 2 倍屏上只要 64 实像素，目录里够不到的只有那三张；按原生摆，换来的是清晰、代价是标识小一半，
+  而自带白卡片的 Prestige 42 与 DorcelClub 57 一旦不铺满就露出方角。小图糊的根子在文件，
+  该换的是文件；换不到更大的一份，就按 `PLATE_MIN_SIDE` 用这张图自己的底色把画布补到 64 实像素，
+  笔画一个像素都不缩放。
 - **没装标识的厂牌一个 `<img>` 都不输出。** 可用性随资料一起下发：`/api/tops` 的 `studios[].has_logo`、
   `/api/item` 的 `entity_refs.studio[].has_logo` 与 `has_studio_logo`（非规范厂牌只有扁平 `studio`
   字段，那格单独一个标志，漏了它那条路径会从「本来能取到图」退化成永远只显示首字母）、`/api/entity`

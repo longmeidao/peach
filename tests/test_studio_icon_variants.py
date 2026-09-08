@@ -375,7 +375,7 @@ class PaddedStudioTests(unittest.TestCase):
 
 
 class HarvestTargetTests(unittest.TestCase):
-    """目标集 = 补白过的 ∪ 有链接但一张图都没有的。"""
+    """目标集 = 补白过的 ∪ 装着的方标太小的 ∪ 有链接但一张图都没有的。"""
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -435,6 +435,43 @@ class HarvestTargetTests(unittest.TestCase):
         """已经装好的一张都不动：这个脚本的入口只补空位。"""
         MODULE.LOGO_SOURCES_BY_SAFE["Fitch"] = "http://logos.example/fitch.png"
         self.assertNotIn("Fitch", MODULE.harvest_targets({}, {}, self.logos))
+
+    def test_an_installed_mark_too_small_for_the_round_slot_is_asked_again(self):
+        """小圆片是 32 CSS px、2 倍屏 64 实像素，装着 57 的那一位是在被放大。"""
+        (self.logos / "DorcelClub.img").write_bytes(png_bytes(size=(57, 57)))
+        targets = MODULE.harvest_targets({}, {}, self.logos)
+        self.assertEqual(targets["DorcelClub"],
+                         {"original_size": "57x57", "installed": "DorcelClub.img"})
+
+    def test_a_mark_that_already_fills_the_round_slot_is_left_alone(self):
+        """够 64 就不再敲别人的门：每多问一趟就多一次对外请求。"""
+        (self.logos / "Hunter.img").write_bytes(png_bytes(size=(64, 64)))
+        self.assertNotIn("Hunter", MODULE.harvest_targets({}, {}, self.logos))
+
+    def test_the_small_slots_own_file_decides_not_the_big_sibling(self):
+        """小位取的是 `.icon.img`，那一份太小就该再问，`<safe>.img` 多大都不顶用。"""
+        (self.logos / "HEYZO.icon.img").write_bytes(png_bytes(size=(32, 32)))
+        (self.logos / "HEYZO.img").write_bytes(png_bytes(size=(446, 446)))
+        targets = MODULE.harvest_targets({}, {}, self.logos)
+        self.assertEqual(targets["HEYZO"],
+                         {"original_size": "32x32", "installed": "HEYZO.icon.img"})
+
+    def test_the_hero_variant_alone_does_not_make_a_studio_a_target(self):
+        """`.logo.img` 归 160 px 大位，小位的尺寸不由它决定。"""
+        (self.logos / "KRONE.logo.img").write_bytes(png_bytes(size=(40, 40)))
+        (self.logos / "KRONE.img").write_bytes(png_bytes(size=(253, 253)))
+        self.assertNotIn("KRONE", MODULE.harvest_targets({}, {}, self.logos))
+
+    def test_a_padded_studio_keeps_the_size_of_the_original_it_was_padded_from(self):
+        """两条判据都命中时留补白那一条：那个尺寸说明的是「源图是条状字标」。"""
+        (self.logos / "Fitch.img").write_bytes(png_bytes(size=(40, 40)))
+        targets = MODULE.harvest_targets(self.padded, {}, self.logos)
+        self.assertEqual(targets["Fitch"],
+                         {"original_size": "130x43", "installed": "Fitch.img"})
+
+    def test_an_unreadable_installed_file_is_skipped_not_fatal(self):
+        """量不出尺寸的不当成「小」：那是坏文件或 Pillow 不认的格式，不是判据。"""
+        self.assertEqual(MODULE.small_installed_marks(self.logos), {})
 
 
 class LogoSourceTests(unittest.TestCase):

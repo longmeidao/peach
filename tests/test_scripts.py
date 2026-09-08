@@ -923,6 +923,219 @@ class OperationalScriptTests(unittest.TestCase):
         self.assertIsNone(classify_plate(b"not an image"))
         self.assertIsNone(bake_square(b"not an image"))
 
+    def test_the_plate_colour_follows_the_marks_own_brightness(self):
+        """浅色笔画配深底，自带整块底的一律白底。
+
+        笔画直接挨着底色的标识才会被底色吞掉：白笔画配白底等于把它抹掉。自带整
+        块底的标识边界是自己画的，外面那圈只是画框，配深底反而让那块底浮在黑里。
+        """
+        import io
+
+        from PIL import Image
+
+        from peach.images import bake_square
+
+        def png(image):
+            buffer = io.BytesIO()
+            image.save(buffer, "PNG")
+            return buffer.getvalue()
+
+        strokes = Image.new("RGBA", (200, 60), (0, 0, 0, 0))
+        for x in list(range(20, 80)) + list(range(120, 180)):
+            for y in range(10, 50):
+                strokes.putpixel((x, y), (255, 255, 255, 255))
+        with Image.open(io.BytesIO(bake_square(png(strokes)))) as plate:
+            self.assertEqual(plate.convert("RGB").getpixel((2, 2)), (17, 17, 17),
+                             "白笔画配深底才看得见")
+
+        card = Image.new("RGBA", (200, 60), (0, 0, 0, 0))
+        for x in range(20, 180):
+            for y in range(10, 50):
+                card.putpixel((x, y), (255, 255, 255, 255))
+        for x in range(60, 140):
+            for y in range(24, 36):
+                card.putpixel((x, y), (196, 20, 24, 255))
+        with Image.open(io.BytesIO(bake_square(png(card)))) as plate:
+            self.assertEqual(plate.convert("RGB").getpixel((2, 2)), (255, 255, 255),
+                             "自带整块白底的标识，外面那圈跟着它一起白")
+
+    def test_a_square_plate_is_refit_so_the_round_slot_shows_the_whole_mark(self):
+        """不透明方图重新摆位：内容太小裁掉留白，会被圆片切掉就补到外接圆。
+
+        小圆片（`.brandpill .mk`）是 32 px 圆、`cover` 铺满，铺满的是整张画布不是
+        内容。源站 favicon 常自带大留白，铺进去内容小得认不出；顶到边的实心方标
+        四角落在圆外，那部分直接看不见。像素一律不缩放。
+        """
+        import io
+        from math import ceil, hypot
+
+        from PIL import Image, ImageDraw
+
+        from peach.images import PLATE_CONTENT_RATIO, refit_plate
+
+        def png(image):
+            buffer = io.BytesIO()
+            image.save(buffer, "PNG")
+            return buffer.getvalue()
+
+        def side(payload):
+            with Image.open(io.BytesIO(payload)) as opened:
+                self.assertEqual(opened.size[0], opened.size[1])
+                return opened.size[0]
+
+        roomy = Image.new("RGB", (400, 400), (255, 255, 255))
+        ImageDraw.Draw(roomy).rectangle((160, 160, 239, 239), fill=(196, 20, 24))
+        cropped = refit_plate(png(roomy))
+        self.assertEqual(side(cropped), round(80 / PLATE_CONTENT_RATIO),
+                         "裁到内容框，四周各留约 12%")
+        with Image.open(io.BytesIO(cropped)) as plate:
+            self.assertEqual(plate.getpixel((plate.width // 2, plate.height // 2)),
+                             (196, 20, 24), "像素不缩放，只是换了画布")
+        self.assertEqual(refit_plate(cropped), cropped, "摆好的不再动")
+
+        speckled = roomy.copy()
+        for spot in ((6, 6), (392, 8), (10, 390), (388, 394)):
+            speckled.putpixel(spot, (250, 250, 250))
+        self.assertEqual(side(refit_plate(png(speckled))), side(cropped),
+                         "有损压缩留下的零星斑点不算内容，撑不开内容框")
+
+        packed = Image.new("RGB", (400, 400), (255, 255, 255))
+        ImageDraw.Draw(packed).rectangle((20, 20, 379, 379), fill=(196, 20, 24))
+        padded = refit_plate(png(packed))
+        self.assertEqual(side(padded), ceil(hypot(359, 359)),
+                         "补到内容的外接圆，直径就是内容框的对角线，四角不再被圆片切掉")
+        with Image.open(io.BytesIO(padded)) as plate:
+            self.assertEqual(plate.getpixel((2, 2)), (255, 255, 255),
+                             "补出来的边取原图底色")
+
+        circular = Image.new("RGB", (400, 400), (255, 255, 255))
+        ImageDraw.Draw(circular).ellipse((0, 0, 399, 399), fill=(196, 20, 24))
+        payload = png(circular)
+        self.assertEqual(refit_plate(payload), payload, "本来就是圆的图标一个字节不动")
+
+        strip = png(Image.new("RGB", (400, 100), (196, 20, 24)))
+        self.assertEqual(refit_plate(strip), strip, "条状字标的摆位归 pad_to_square 管")
+
+        transparent = png(Image.new("RGBA", (200, 200), (0, 0, 0, 0)))
+        self.assertEqual(refit_plate(transparent), transparent,
+                         "还没配底的图没有底色可取，补出来的边会变成黑块")
+        self.assertIsNone(refit_plate(b"not an image"))
+
+    def test_a_plate_smaller_than_the_round_slot_grows_to_it_without_rescaling(self):
+        """短边不够小圆片的实像素就用自己的底色补上去，笔画一个像素都不缩放。
+
+        小圆片是 32 CSS px、2 倍屏 64 实像素。短边不够时浏览器只能放大整张图；
+        补边换来的是笔画按原样出图，代价是标识相对圆片小一档。补到内容占宽的下限
+        为止——再往外撑就成了另一条规则要裁掉的大留白，两条会来回拉锯。
+        """
+        import io
+
+        from PIL import Image, ImageDraw
+
+        from peach.images import PLATE_MIN_SIDE, PLATE_MIN_SPAN, refit_plate
+
+        def png(image):
+            buffer = io.BytesIO()
+            image.save(buffer, "PNG")
+            return buffer.getvalue()
+
+        def opened(payload):
+            with Image.open(io.BytesIO(payload)) as image:
+                return image.convert("RGB"), image.size
+
+        small = Image.new("RGB", (48, 48), (18, 140, 220))
+        ImageDraw.Draw(small).rectangle((4, 4, 43, 43), fill=(255, 255, 255))
+        grown = refit_plate(png(small))
+        image, size = opened(grown)
+        self.assertEqual(size, (PLATE_MIN_SIDE, PLATE_MIN_SIDE), "补到圆片要的实像素")
+        self.assertEqual(image.getpixel((1, 1)), (18, 140, 220), "补出来的边取原图底色")
+        self.assertEqual(image.getpixel((PLATE_MIN_SIDE // 2, PLATE_MIN_SIDE // 2)),
+                         (255, 255, 255), "内容原样居中，像素不缩放")
+        self.assertEqual(refit_plate(grown), grown, "补好的不再动")
+
+        sparse = Image.new("RGB", (40, 40), (18, 140, 220))
+        ImageDraw.Draw(sparse).rectangle((16, 16, 27, 27), fill=(255, 255, 255))
+        capped = refit_plate(png(sparse))
+        _, size = opened(capped)
+        self.assertEqual(size, (int(12 / PLATE_MIN_SPAN),) * 2,
+                         "内容小的补到占宽下限就停，不补到 64")
+        self.assertEqual(refit_plate(capped), capped, "停在下限上，两条规则不再拉锯")
+
+        # 先裁才不够用的那一半：Flower 是 180 的画布上一圈 43 px 的金环，裁掉留白
+        # 落在 57，判据看的是这一趟的产物，所以一趟就补到 64，产物是不动点。
+        padded = Image.new("RGB", (180, 180), (18, 140, 220))
+        ImageDraw.Draw(padded).rectangle((69, 69, 111, 111), fill=(255, 255, 255))
+        cropped = refit_plate(png(padded))
+        _, size = opened(cropped)
+        self.assertEqual(size, (PLATE_MIN_SIDE, PLATE_MIN_SIDE), "裁完不够用的同一趟补上")
+        self.assertEqual(refit_plate(cropped), cropped, "一趟定完，重跑不再动")
+
+        big = Image.new("RGB", (PLATE_MIN_SIDE, PLATE_MIN_SIDE), (18, 140, 220))
+        ImageDraw.Draw(big).rectangle((8, 8, 55, 55), fill=(255, 255, 255))
+        payload = png(big)
+        self.assertEqual(refit_plate(payload), payload, "够实像素的一个字节不动")
+
+    def test_a_vector_mark_gets_the_same_plate_without_rasterising(self):
+        """矢量标识：白底和边距一样烤进文件，但是包一层外层 SVG，原文档不动。
+
+        VirtualTaboo 装的就是一张 207×70 的透明底字标。栅格化会把「放多大都清晰」
+        这个唯一优势丢掉，所以方底由外层 SVG 给，内容整个塞进嵌套 `<svg>`。
+        """
+        import xml.etree.ElementTree as ElementTree
+
+        from peach.images import (PLATE_CONTENT_RATIO, SVG_NS, bake_square_vector,
+                                  vector_image_size)
+
+        def svg(body, box="0 0 207 70"):
+            return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="{box}">'
+                    f'{body}</svg>').encode("utf-8")
+
+        wordmark = ('<svg xmlns="http://www.w3.org/2000/svg" width="207" height="70" '
+                    'viewBox="0 0 207 70"><path fill="#D14747" d="M105 49h9v3z"/>'
+                    '</svg>').encode("utf-8")
+
+        self.assertEqual(vector_image_size(wordmark), (207.0, 70.0))
+        plated = bake_square_vector(wordmark)
+        self.assertIn(b'd="M105 49h9v3z"', plated, "原文档照抄，不栅格化")
+
+        root = ElementTree.fromstring(plated)
+        side = float(root.get("width"))
+        self.assertEqual(root.get("height"), root.get("width"), "包出来必须是方的")
+        self.assertAlmostEqual(207 / side, PLATE_CONTENT_RATIO, places=6,
+                               msg="长边占边长约 76%，四周各留约 12%")
+        plate, inner = list(root)
+        self.assertEqual(plate.tag, f"{{{SVG_NS}}}rect")
+        self.assertEqual(plate.get("fill"), "#ffffff", "底是白的")
+        self.assertEqual(plate.get("width"), root.get("width"), "白底铺满整个方框")
+        self.assertEqual(inner.get("viewBox"), "0 0 207 70", "内容自己的坐标系不变")
+        self.assertAlmostEqual(float(inner.get("x")), (side - 207) / 2, places=6)
+        self.assertAlmostEqual(float(inner.get("y")), (side - 70) / 2, places=6)
+
+        self.assertEqual(bake_square_vector(plated), plated,
+                         "已经包过方底的原样返回，重复跑不会越套越多")
+
+        # 白字标配白底等于把标识抹掉：DarkRoomVR 的「DARK ROOM」和
+        # TeamSkeetXReislin 的「TEAM」都是白的，白底可见率 0.20 与 0.52。
+        def strokes(color):
+            return svg(f'<rect x="10" y="10" width="60" height="50" fill="{color}"/>'
+                       f'<rect x="137" y="10" width="60" height="50" fill="{color}"/>')
+
+        pale = bake_square_vector(strokes("#ffffff"))
+        self.assertEqual(ElementTree.fromstring(pale)[0].get("fill"), "#111111",
+                         "浅色内容改配深底")
+        self.assertEqual(
+            ElementTree.fromstring(bake_square_vector(strokes("#101820")))[0]
+            .get("fill"), "#ffffff", "深色内容仍是白底，和位图的 mark 一条规则")
+        self.assertEqual(
+            ElementTree.fromstring(bake_square_vector(svg(
+                '<rect x="10" y="10" width="187" height="50" fill="#ffffff"/>')))[0]
+            .get("fill"), "#ffffff", "自带整块底的标识不判底色，外面那圈跟着它一起白")
+        # 空壳没有 viewBox 也没有 width／height：比例无从算起，方框边长也就无从定。
+        self.assertIsNone(vector_image_size(b'<svg xmlns="http://www.w3.org/2000/svg"/>'))
+        self.assertIsNone(bake_square_vector(b'<svg xmlns="http://www.w3.org/2000/svg"/>'))
+        self.assertIsNone(bake_square_vector(b"not an image"))
+        self.assertIsNone(bake_square_vector(b"<html><body>404</body></html>"))
+
     def test_studio_avatar_candidates_never_guess_a_handle_by_default(self):
         """猜错 handle 会产出一个「看起来很官方」的错误 Logo，和它要取代的搜索猜测同一种失败。"""
         module = load_script("fetch_studio_avatar_candidates")
@@ -946,7 +1159,7 @@ class OperationalScriptTests(unittest.TestCase):
         """整个目录归一成不透明方图；测试只能写临时目录。
 
         `*.img` 全在范围内，`<safe>.icon.img` 与 `<safe>.logo.img` 也算。带透明的
-        烤白底，不透明的长条补方，已经是不透明方图的一个字节都不动。
+        烤白底，不透明的长条补方，矢量包一层白底外层 SVG，已经归一的一个字节都不动。
         """
         from PIL import Image
 
@@ -961,6 +1174,10 @@ class OperationalScriptTests(unittest.TestCase):
         for x in range(20, 180):
             for y in range(10, 50):
                 mark.putpixel((x, y), (0, 174, 239, 255))
+        roomy = Image.new("RGB", (200, 200), (255, 255, 255))
+        for x in range(80, 120):
+            for y in range(80, 120):
+                roomy.putpixel((x, y), (196, 20, 24))
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp).resolve() / "logos"
@@ -969,13 +1186,18 @@ class OperationalScriptTests(unittest.TestCase):
             originals = {
                 "wide.img": png(Image.new("RGB", (400, 100), (196, 20, 24))),
                 "flat.icon.img": png(Image.new("RGB", (256, 256), (12, 12, 12))),
+                "spot.icon.img": png(roomy),
                 "sign.logo.img": png(mark),
                 "vector.img": b'<svg xmlns="http://www.w3.org/2000/svg"/>',
+                "sign.icon.img": ('<svg xmlns="http://www.w3.org/2000/svg" '
+                                  'viewBox="0 0 200 60"><path d="M1 1h2v2z"/>'
+                                  '</svg>').encode("utf-8"),
             }
+            vectors = {"vector.img", "sign.icon.img"}
             for name, payload in originals.items():
                 (root / name).write_bytes(payload)
                 Path(f"{root / name}.ct").write_text(
-                    "image/svg+xml" if name == "vector.img" else "image/png",
+                    "image/svg+xml" if name in vectors else "image/png",
                     encoding="utf-8")
 
             dry = {str(row["file"]): row for row in module.normalize(root)}
@@ -983,8 +1205,13 @@ class OperationalScriptTests(unittest.TestCase):
             self.assertEqual(dry["wide.img"]["kind"], "tile")
             self.assertEqual(dry["sign.logo.img"]["action"], "would-bake")
             self.assertEqual(dry["sign.logo.img"]["kind"], "mark")
+            self.assertEqual(dry["spot.icon.img"]["action"], "would-refit",
+                             "已经是方图、只是内容太小的记重新摆位，不冒充补方")
+            self.assertEqual(dry["spot.icon.img"]["kind"], "tile")
+            self.assertEqual(dry["sign.icon.img"]["action"], "would-plate")
+            self.assertEqual(dry["sign.icon.img"]["kind"], "vector")
             self.assertEqual(dry["vector.img"]["action"], "vector",
-                             "矢量标识本脚本不栅格化，单列出来而不是记成坏文件")
+                             "连内容框都没声明，方框边长无从算起，单列出来而不是记成坏文件")
             self.assertNotIn("flat.icon.img", dry, "已经是不透明方图，不进复核件")
             for name, payload in originals.items():
                 self.assertEqual((root / name).read_bytes(), payload, "dry-run 不得改图")
@@ -995,6 +1222,14 @@ class OperationalScriptTests(unittest.TestCase):
                        module.normalize(root, apply=True, backup_dir=backup)}
             self.assertEqual(applied["wide.img"]["action"], "padded")
             self.assertEqual(applied["sign.logo.img"]["action"], "baked")
+            self.assertEqual(applied["spot.icon.img"]["action"], "refitted")
+            self.assertEqual(applied["sign.icon.img"]["action"], "plated")
+            self.assertEqual((backup / "sign.icon.img").read_bytes(),
+                             originals["sign.icon.img"])
+            self.assertIn(b'd="M1 1h2v2z"', (root / "sign.icon.img").read_bytes(),
+                          "矢量原文档照抄进外层 SVG，没有被栅格化")
+            self.assertEqual(Path(f'{root / "sign.icon.img"}.ct').read_text(
+                encoding="utf-8"), "image/svg+xml", "包完还是 SVG，类型不能改成 png")
             self.assertEqual((backup / "wide.img").read_bytes(), originals["wide.img"])
             self.assertFalse((backup / "flat.icon.img").exists(), "没动的文件不备份")
             self.assertEqual((root / "flat.icon.img").read_bytes(),
@@ -1010,7 +1245,9 @@ class OperationalScriptTests(unittest.TestCase):
                 self.assertNotIn("A", plate.getbands(), "烤过的文件必须不透明")
 
             for name, action in (("wide.img", "pad-to-square"),
-                                 ("sign.logo.img", "bake-white-plate")):
+                                 ("spot.icon.img", "refit-plate"),
+                                 ("sign.logo.img", "bake-white-plate"),
+                                 ("sign.icon.img", "plate-vector")):
                 sidecar = json.loads(
                     Path(f"{root / name}.normalization.json").read_text(encoding="utf-8"))
                 self.assertEqual(sidecar["action"], action)
@@ -1019,13 +1256,74 @@ class OperationalScriptTests(unittest.TestCase):
                 self.assertEqual(sidecar["normalized_sha256"],
                                  hashlib.sha256((root / name).read_bytes()).hexdigest())
                 self.assertEqual(sidecar["backup"], str(backup / name))
-                self.assertEqual(Path(f"{root / name}.ct").read_text(encoding="utf-8"),
-                                 "image/png")
+                if name not in vectors:
+                    self.assertEqual(
+                        Path(f"{root / name}.ct").read_text(encoding="utf-8"), "image/png")
 
-            # 重跑不再有动作：产物已经是不透明方图，归一是幂等的。矢量那一行照旧
-            # 每次都在，它是「还没处理」的记录，不是待办完成。
+            # 重跑不再有动作：位图是不透明方图，矢量已经包过方底，归一是幂等的。
+            # 量不出内容框的那一行照旧每次都在，它是「还没处理」的记录，不是待办完成。
             self.assertEqual([row["action"] for row in module.normalize(root)],
                              ["vector"])
+
+    def test_normalising_again_takes_the_backup_original_as_its_input(self):
+        """已归一的文件重跑时输入取边车记的备份原图。
+
+        烤底会毁掉透明通道，配错的底色在产物上再也判不回来。从原图重来，算法的
+        改进才能落到已经装好的文件上；边车继续指向原图，别把指针改指到这一轮备份
+        的归一产物。备份不在本机时只能拿现装的文件当输入。
+        """
+        from PIL import Image
+
+        module = load_script("normalize_studio_logos")
+
+        def png(image):
+            buffer = io.BytesIO()
+            image.save(buffer, "PNG")
+            return buffer.getvalue()
+
+        strokes = Image.new("RGBA", (200, 60), (0, 0, 0, 0))
+        for x in list(range(20, 80)) + list(range(120, 180)):
+            for y in range(10, 50):
+                strokes.putpixel((x, y), (255, 255, 255, 255))
+        original = png(strokes)
+        swallowed = Image.new("RGB", (211, 211), (255, 255, 255))
+        swallowed.paste(strokes.convert("RGB"), (5, 75), strokes)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp).resolve() / "logos"
+            archive = Path(tmp).resolve() / "archive"
+            backup = Path(tmp).resolve() / "backup"
+            root.mkdir()
+            archive.mkdir()
+            (archive / "sign.img").write_bytes(original)
+            installed = png(swallowed)
+            (root / "sign.img").write_bytes(installed)
+            Path(f'{root / "sign.img"}.ct').write_text("image/png", encoding="utf-8")
+            Path(f'{root / "sign.img"}.normalization.json').write_text(json.dumps({
+                "action": "bake-white-plate", "kind": "mark",
+                "backup": str(archive / "sign.img"),
+            }), encoding="utf-8")
+
+            applied = {str(row["file"]): row for row in
+                       module.normalize(root, apply=True, backup_dir=backup)}
+            self.assertEqual(applied["sign.img"]["action"], "baked")
+            self.assertEqual(applied["sign.img"]["backup"], str(archive / "sign.img"))
+            self.assertEqual(applied["sign.img"]["before_sha256"],
+                             hashlib.sha256(installed).hexdigest(),
+                             "复核件上的 before 是被替换掉的那个文件")
+            with Image.open(root / "sign.img") as plate:
+                self.assertEqual(plate.convert("RGB").getpixel((2, 2)), (17, 17, 17),
+                                 "从原图重来才判得出白笔画该配深底")
+            sidecar = json.loads(Path(f'{root / "sign.img"}.normalization.json')
+                                 .read_text(encoding="utf-8"))
+            self.assertEqual(sidecar["backup"], str(archive / "sign.img"),
+                             "边车继续指向原图")
+            self.assertEqual(sidecar["original_sha256"],
+                             hashlib.sha256(original).hexdigest())
+            self.assertEqual((backup / "sign.img").read_bytes(), installed,
+                             "这一轮换掉的文件也留一份")
+            self.assertEqual([row["action"] for row in module.normalize(root)], [],
+                             "原图再走一遍还是同一个产物，归一是幂等的")
 
     def test_frame_retry_is_reserved_for_bad_color_metadata(self):
         """坏色彩元数据才重试。无条件重试会让网盘超时的文件每帧白跑两次 45 秒。"""

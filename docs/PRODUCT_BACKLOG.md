@@ -72,7 +72,7 @@
 
 合计：**30 项开放需求**，其中 6 项已有骨架，24 项尚未实现。已完成的需求不在这里留痕，去 Git 历史查。
 
-## 待执行的操作（36 项）
+## 待执行的操作（38 项）
 
 需要另行授权、外部条件或人工判断才能做的具体操作与复核批次，比上面的需求细一层；做完就删，不在这里留痕。待办只放这一处：`docs/STATUS.md` 每次会话开头都要读，队列不该常驻在那种入口文件里。
 
@@ -96,7 +96,7 @@
 18. 另行授权后跑 `scripts/normalize_link_hosts.py --apply --backup <落点>`，把 296 条 twitter 写法收成 x.com（290 改写、6 删除），随后重启托盘并在真实浏览器验收 `/link-mark` 的清晰度与边缘。
 19. 用户复核 `directory-links-<日期>.csv` 后用 `install_entity_links.py` 装入社媒链接；`conflict` 且账本旧号「疑似失效」的行由用户决定换号，随后可对账本现有全部 X 链接跑同样的验活。
 20. 用户复核 `studio-names-<日期>.csv` 的 26 条厂牌改名后另行授权；3 条不一致按「一个账本名混了两家」处理，5 条 404 未取得，搜索兜底要先有一个能用的搜索出口。
-21. 厂牌标识规则：logo 文件一律不透明方图（`images.bake_square`），页面三处一律 cover。另行授权后跑 `normalize_studio_logos.py --apply --backup <落点>` 回溯真实目录：27 改、4 个 SVG 不动。
+21. 厂牌标识规则：logo 文件一律不透明方图（位图 `images.bake_square`、矢量 `images.bake_square_vector`），产物再过 `images.refit_plate` 摆到圆形图位里看得全的位置，页面三处一律 cover。另行授权后跑一次 `normalize_studio_logos.py --apply --backup <落点>`，2026-09-08 dry-run 报 52 张待改：46 张重新摆位（自带大留白的裁掉、顶到边的补到外接圆）、4 张 SVG 包方底（DarkRoomVR、TeamSkeetXReislin、TeenFidelity、VirtualTaboo，前两张白字标配深底）、HEYZO 从备份原图重烤改配深底、pikpak 重补方。
 22. 把 javdatabase 的 idol 页接进社媒／官网候选：183 页缓存里 139 页带 X 链接、138 页带另一个官方站，由番号定位、不必离线比名。复用 `peach.social_links` 的判据与 `install_entity_links.py` 的 `FIELDS`，排掉四个整站广告主机。
 23. 人工判 `domain-code-review.csv` 里 `WX17` 那 269 条水印存疑行，脚本不给提案。
 24. 给账本厂牌补日文别名。MGStage 名录 351 家只对上 29 家，卡点是账本 118 个厂牌只有 27 条别名、几乎没有日文名——补完别名再对一次，覆盖面会一次性抬上去。
@@ -122,3 +122,5 @@
     - 前端：9 处 `await import('/dist/peach-ui.js')` 与文件顶部静态 import 并存（`test_frontend_build.py` 与 `test_web_ui.py` 钉住了这种写法，要同改）；`wireNavigationDrag` 与 `ui-components.wireDragReorder` 双实现；`refreshStore` 零消费；`.fnote` 在 21 与 22 号 CSS 互相覆盖。
     - 文档：同一条规则最多写在 15 处（测试入口）；`CLAUDE.md` 正文与 AGENTS、worktree 技能重复；`peach-ledger-write`、`peach-reference-evidence`、`peach-worktree` 引用的 HANDOFF 节名已不存在；`docs/STATUS.md` 版本行落后；本文件有 7 对重复条目（7↔18、12↔21②、13↔22、9↔34、8↔30、28↔30）与一节评审记录；`docs/PIKPAK.md` 是按日期的 runbook，流程该归 `peach-batch-jobs`。
 36. 域映射门槛只覆盖 `web/` 与 `frontend/`。同一个漏洞在别的前缀上照样成立：`tests/test_babepedia_match.py` 读 `scripts/match_babepedia_creators.py` 却只登记在 metadata 域，改那个脚本时 `auto` 选的是 tooling；`tests/test_frontend_build.py` 读 `docs/CLOUDDRIVE.md`，而 `.md` 一律归 checks。按 `test_runner.repository_paths_read_by` 全树扫一遍，`scripts/`、`docs/`、`.github/`、`resources/` 四类共约三十处。要补的是 `AUTO_SCOPE_PREFIXES` 本身——把逐个脚本映射到它真正的域，像 `scripts/localize_performer_names.py` 那两条那样——补完再把 `tests/test_test_planning.py` 那条门槛的前缀白名单去掉。
+37. 归一后要用户判的 10 张厂牌标识：AttractiveLLC ×3、C-more_Entertainment ×3、Bambi_Promotion ×2、Deep_s、Tameike_Goro。补到内容外接圆这条规则在「设计上就出血到边」的标识上会把内容推离边缘，逐张判词在 `peach-data/review/refit-review-20260908.csv`，原图在 `peach-data/archive/logos-pre-refit-20260908/`，对比页 `build/logo_compare.html` 的第一节。占宽和圆外损失都分不开 C-more（0.98／0.97）与 MARRION（0.95／0.94），所以没加窄化条件——先由用户定还原哪几张，再按定下来的形状写判据和测试。
+38. 补底到 64 的 7 张还没落盘：`normalize_studio_logos.py --apply` 要用户自己跑（DorcelClub.img、Flower 三张、LINX.img、HEYZO.icon、Prestige.icon，逐张前后见对比页第三节）。
