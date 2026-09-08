@@ -2521,7 +2521,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks(".insighttablerow:nth-child(odd)",
                              "分隔线变体不叠加隔栏异色")
         # 空态渲染在表格外面：留一张只有列头的空表等于让人对着两个列名找不存在的行。
-        self.assertPageContains("const table=(head,rows,empty)=>rows?")
+        self.assertPageContains('class="board-watch-history"')
         self.assertPageContains("emptyStateHtml('history','还没有观看记录'")
         self.assertPageContains("emptyStateHtml('tags','还没有标签来源'")
         # 数字列 tabular numerals，各行数位对齐才好跨行比较。
@@ -4853,8 +4853,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks("max-width:1440px")
         self.assertPageContains(".insightpage,.tastepage{width:min(1100px,100%);margin:0 auto")
         self.assertPageContains("metricTab('storage','使用空间'")
-        self.assertPageContains('class="insightdatatable"')
-        self.assertPageContains('<th>位置</th><th>已用</th><th>可用</th><th>使用率</th>')
+        self.assertPageContains('class="board-volume-list"')
+        self.assertPageContains('class="board-volume-values"')
         self.assertPageContains('class="insightranking"')
         self.assertPageContains("grid-template-columns:repeat(2,minmax(0,1fr))")
         self.assertPageContains("border-top:1px solid var(--line-soft);border-left:1px solid var(--line-soft);list-style:none")

@@ -42,7 +42,7 @@ Interface preferences are saved in the current browser and live under Settings: 
 
 The interface uses Board styling. Select “Use classic UI” in Settings and apply with a refresh to use the classic interface. “Increase contrast” disables navigation transparency and refraction. Numeric preferences accept custom values within their supported ranges, with switches for optional features.
 
-Choose a media library at the top of the sidebar; theme and settings controls are fixed at the bottom. Give folders a library name in Configuration to group matching names into one library. Library selection filters work lists and facets.
+Choose a media library at the top of the sidebar; theme and settings controls are fixed at the bottom. Set library names and icons in Configuration; matching names group folders into one library. Library selection filters work lists and facets. Cloud libraries use locally served provider icons by default.
 
 “Remember me” uses this browser’s Security preference (1–365 days, default 30). Leaving it unchecked creates a browser session lasting at most 12 hours.
 

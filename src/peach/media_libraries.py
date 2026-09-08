@@ -1,6 +1,8 @@
 """媒体库按声明路径分组，来源与挂载仍由媒体配置管理。"""
 from pathlib import PureWindowsPath
 
+LIBRARY_ICONS = frozenset({"hard-drive", "database", "heart", "star", "tags", "115", "pikpak"})
+
 
 def libraries(config):
     groups = {}
@@ -8,7 +10,12 @@ def libraries(config):
         for root in roots:
             name = config.library_names.get(root) or PureWindowsPath(root).name or root
             groups.setdefault(name, []).append({"location": location, "root": root})
-    return [{"id": name, "name": name, "roots": roots} for name, roots in groups.items()]
+    icons = getattr(config, "library_icons", {})
+    return [{"id": name, "name": name, "roots": roots,
+             "icon": next((icons[item["root"]] for item in roots
+                           if icons.get(item["root"]) in LIBRARY_ICONS),
+                          roots[0]["location"] if len({item["location"] for item in roots}) == 1 else "database")}
+            for name, roots in groups.items()]
 
 
 def predicate(config, library):

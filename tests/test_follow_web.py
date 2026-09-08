@@ -1736,14 +1736,14 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertIn("height:280px", author_rule)
         self.assertIn("border:1px solid var(--border-10)", author_rule)
         self.assertIn("grid-template-rows:auto minmax(0,1fr)", author_rule)
-        self.assertPageContains("scrollerHtml(group.map(followSourceRow).join(''),{")
+        self.assertPageContains("scrollerHtml(sourceRows,{")
         self.assertPageContains("className:'fauthorsources',label:`${name} 的关注来源`")
         # 滚动条由 attachOverlayScrollbar() 统一自绘，这里只留出滑块那一档的右内边距。
         self.assertPageContains(".fauthorsources .geist-scroller-container{padding-right:12px}")
         self.assertPageContains("wireScrollers(root)")
 
     def test_source_actions_are_icon_only_and_stay_on_one_row(self):
-        row = self.page[self.page.index("function followSourceRow(source)"):]
+        row = self.page[self.page.index("function followSourceRow(source,selectable=false)"):]
         row = row[:row.index("function followAliasManager")]
         self.assertIn("data-follow-check", row)
         self.assertIn("data-follow-remove", row)
@@ -2128,11 +2128,11 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains(".fcred .ficon{margin-right:0}")
         self.assertIn('data-drop="self"', self.page)
 
-    def test_the_follow_list_has_a_compact_switch_that_puts_two_per_row(self):
+    def test_the_follow_list_has_author_and_selectable_source_views(self):
         """两个互斥视图用 Switch（共享 name 的 radio），不是 Toggle。"""
         self.assertPageContains(
-            "const FOLLOW_LAYOUTS=[['cozy','舒适 · 一行一个','maximize'],"
-            "['compact','紧凑 · 一行两个','layout-grid']]")
+            "const FOLLOW_LAYOUTS=[['cozy','作者分组','layout-grid'],"
+            "['compact','列表 · 一行一个来源','list-filter']]")
         self.assertPageContains(
             "iconSwitchHtml('follow-layout','关注列表版式',FOLLOW_LAYOUTS,followListLayout()")
         self.assertPageContains("{attr:'data-follow-layout'}")
@@ -2140,7 +2140,10 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("wireIconSwitch(root,'data-follow-layout',setFollowListLayout)")
         # 版式是纯展示层的事：改容器上的一个属性就够，不重画列表，也不重新请求。
         self.assertPageContains('<div class="frows fsources" data-layout="${followListLayout()}">')
-        self.assertPageContains("node.dataset.layout=followListLayout()")
+        self.assertPageContains("renderFollowManage(followCredentials)")
+        self.assertPageContains("sources.map(source=>followSourceRow(source,true))")
+        self.assertPageContains("group.map(source=>followSourceRow(source))")
+        self.assertPageContains("button.disabled=!ids.length||!!followRuntime?.ledger_read_only")
         # 紧凑就是一行两个；半幅宽度放不下六列，见 test_compact_rows_keep_the_favicon…。
         self.assertPageContains(
             '.fsources[data-layout="compact"]{grid-template-columns:repeat(2,minmax(0,1fr))}')

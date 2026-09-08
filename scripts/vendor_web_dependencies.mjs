@@ -39,6 +39,14 @@ const copyPackageFiles = ({ packageName, vendorName, files, note }) => {
 };
 
 copyPackageFiles({
+  packageName: "@fontsource-variable/inter",
+  vendorName: "inter",
+  files: [["index.css", "index.css"], ...readdirSync(join(root, "node_modules/@fontsource-variable/inter/files"))
+    .filter(name => name.endsWith("-wght-normal.woff2")).map(name => [`files/${name}`, `files/${name}`])],
+  note: "Board 界面使用 Inter 可变字体；中文由系统中文字体补齐。",
+});
+
+copyPackageFiles({
   packageName: "video.js",
   vendorName: "videojs",
   files: [

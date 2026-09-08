@@ -39,6 +39,7 @@ export { identityEvidenceHtml, reviewImageHtml, wireReviewPictures } from './rev
 export { createReviewSelection, wireReviewSelection, updateReviewSticky } from './review-bulk';
 export { nativeImageFit, matchesFaceSource } from './native-image';
 export { entitySkeletonHtml } from './entity-skeleton';
+export { boardPageSkeleton } from './board-skeleton';
 export { catalogSuggestions, catalogEmptyHtml, emptyCatalogLayout } from './catalog-onboarding';
 export { syncSidebarSurface, sidebarTagCounts, sidebarHasCatalogContent } from './sidebar';
 export { cleanupSkeletonHtml, cloudLocations, cloudPreferenceLocations, tasteHistoryGuideHtml, wireTasteHistoryGuide, TASTE_GUIDE_KEY } from './management';

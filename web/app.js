@@ -1,6 +1,8 @@
 import { resourceScanHtml, boundedPreference, mountNumberSetting, syncNumberSetting, statCardBody, rankedChart, radarChart, distributionChart, jobProgressHtml, sidebarSectionHtml, wireSidebarGroups, transitionTheme } from './dist/peach-ui.js';
 import {$, ENTITY_ROUTES, LOC, ROUTE_ENTITIES, ROUTE_STATES, SITE_FAVICONS, STATE_LABELS, STATE_ROUTES, api, isAbort, mapLimit, brandIcon, entityPath, esc, faviconFallbackUrl, faviconUrl, linkHost, linkMarkUrl, fmtClock, fmtDur, fmtSize, foldName, icon, isCatalogPath, realDuration} from './js/core.js';
 import { faceFrame } from './js/face-frame.js';
+import { MEDIA_SOURCE_ICONS } from './js/media-source-icons.js';
+import { boardPageSkeleton } from './dist/peach-ui.js';
 import { imageFallbackAttrs, wireImageFallbacks } from './js/image-fallback.js';
 import { javDisplayName, javTitleHtml } from './js/jav-title.js';
 import { matchRoute, routeLabel } from './js/routes.js';
@@ -265,6 +267,7 @@ const MANAGEMENT_PLACEHOLDERS={
     ${pageSkeletonHtml('正在读取采集来源',{cards:true,count:4,fill:false,className:'cleanup-skeleton'})}</div>`,
 };
 const managementPlaceholder=path=>
+  (localStorage.getItem('peach.legacy-ui')!=='true'&&boardPageSkeleton(path))||
   (MANAGEMENT_PLACEHOLDERS[path]||(()=>pageSkeletonHtml('正在读取页面')))();
 /* 顶部三层只属于首页。深链启动时先画一遍再由路由收起来，等于向管理页和索引页
    承诺了三条永远不会到货的横条。 */
@@ -629,7 +632,7 @@ const SRCICON={
   local:icon('hard-drive'),
   '115':'<img class="source-icon" src="/logo?studio=115&variant=icon" alt="" data-drop="self">',
   // PikPak 官方触屏图标（取证 follow-source-icons-measured.md）；/logo 的生成 logo 不对版。
-  pikpak:'<img class="source-icon" src="https://mypikpak.com/apple-touch-icon.png" alt="" loading="lazy" referrerpolicy="no-referrer" data-drop="self">',
+  pikpak:`<img class="source-icon" src="${MEDIA_SOURCE_ICONS.pikpak}" alt="">`,
   online:icon('rss'),
 };
 const srcBadge=(loc,cost,cls)=>{const label=`${LOC[loc]||loc}${cost==='metered'?' · 计费':''}`;
@@ -3160,7 +3163,7 @@ async function buildBars(){
     ? facetData.creators.filter(item=>item.k!==context.name):facetData.creators;
   // 与窄栏共用 EDGE_ICONS —— 两边条目必须一致，抽屉不另写一份硬编码
   const navBtn=(k,label,ic)=>`<button data-nav="${k}" draggable="true" aria-pressed="${navOn(k)}">
-    ${icon(ic)}<span>${label}</span></button>`;
+    ${navigationIcon(k,ic)}<span>${label}</span></button>`;
   $('#drawerScroll').innerHTML=
     `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
       <b class="disp" style="font-size:15px;letter-spacing:.1em">导航与筛选</b>
@@ -3365,25 +3368,23 @@ async function openStats(push=true){
   const locationRows=d.by_loc.map(row=>{const label=row.k==='online'?'已保存在线':(LOC[row.k]||row.k);return `<div class="insightbarrow"><div><span>${label}</span><b>${row.videos.toLocaleString()}</b></div>
     ${progressHtml(`${label}：${row.videos.toLocaleString()} / ${totalVideos.toLocaleString()}`,row.videos,totalVideos)}
     <small>${gb(row.bytes)} · ${pct(row.videos,totalVideos)}%</small></div>`}).join('');
-  /* 一行都没有时整张表不出现，只留 Empty State：Geist Table 的判据是空态渲染在表格
-     外面，留一张只有列头的空表等于让人对着两个列名找不存在的行。 */
-  const table=(head,rows,empty)=>rows?`<div class="insighttable"><div class="insighttablehead">${head.map(value=>`<span>${value}</span>`).join('')}</div>${rows}</div>`:empty;
   const tagsTable=d.top_tags.length?`<ol class="insightranking">${d.top_tags.map((t,index)=>`<li><button type="button" class="insightrankrow" data-k="${esc(t.k)}">
     <span class="insightrankpos">${index+1}</span><span>${esc(tagLabel(t.k))}</span><b>${t.n.toLocaleString()}</b></button></li>`).join('')}</ol>`
     :emptyStateHtml('tags','还没有内容标签','补全资料或添加标签后，这里会显示馆藏中的内容标签。');
-  const recentTable=table(['作品','观看证据'],d.recent.map(row=>{
+  const recentTable=d.recent.length?`<div class="board-watch-history">${d.recent.map(row=>{
     const real=row.duration?Math.min(row.play_seconds/row.duration,1)*100:0;
     const reached=(row.max_reached||0)*100;
     const note=row.kind==='online'?'在线直接观看':(real<reached-25?'快进扫过':(row.o_count?`高潮 ${row.o_count}`:'正常观看'));
-    return `<div class="insighttablerow"><span>${esc((row.creator?row.creator+' · ':'')+row.name)}</span>
-      <b>真实 ${real.toFixed(0)}% · 到达 ${reached.toFixed(0)}% · ${note}</b></div>`}).join(''),
-    `<div class="insightempty">${emptyStateHtml('history','还没有观看记录','开始播放后，这里会显示最近的真实观看证据。')}</div>`);
-  const sourceTable=table(['标签来源','覆盖视频'],d.tag_source.map(row=>`<div class="insighttablerow"><span>${esc(row.k)}</span>
-    <b>${row.n.toLocaleString()} 条 · ${row.assets.toLocaleString()} 个视频</b></div>`).join(''),
-    `<div class="insightempty">${emptyStateHtml('tags','还没有标签来源','刮削或手动打标之后，这里会显示每个来源覆盖了多少视频。')}</div>`);
-  const storageTable=(d.storage_volumes||[]).length?`<table class="insightdatatable"><thead><tr><th>位置</th><th>已用</th><th>可用</th><th>使用率</th></tr></thead><tbody>${(d.storage_volumes||[]).map(row=>{
+    return `<article class="board-watch-entry"><div><h3><a href="${row.kind==='online'?'/follow/item/':'/item/'}${Number(row.id)}" data-middle-truncate>${esc(row.name)}</a></h3><p>${esc(row.creator||'')}<span>${note}</span></p></div>
+      <div class="board-watch-measures">${progressHtml(`真实观看 ${real.toFixed(0)}%`,real,100)}<small>真实 ${real.toFixed(0)}% · 到达 ${reached.toFixed(0)}%</small></div></article>`}).join('')}</div>`:
+    `<div class="insightempty">${emptyStateHtml('history','还没有观看记录','开始播放后，这里会显示最近的真实观看证据。')}</div>`;
+  const sourceTable=d.tag_source.length?`<div class="board-source-list">${d.tag_source.map(row=>`<article><header><h3>${esc(row.k)}</h3><b>${row.assets.toLocaleString()} <small>个视频</small></b></header>
+    ${progressHtml(`${row.k} 覆盖视频`,row.assets,a.videos)}<small>${row.n.toLocaleString()} 条标签</small></article>`).join('')}</div>`:
+    `<div class="insightempty">${emptyStateHtml('tags','还没有标签来源','刮削或手动打标之后，这里会显示每个来源覆盖了多少视频。')}</div>`;
+  const storageTable=(d.storage_volumes||[]).length?`<div class="board-volume-list">${(d.storage_volumes||[]).map(row=>{
     const measured=row.total!=null, usedPct=measured?pct(row.used,row.total):0;
-    return `<tr><th scope="row"><span>${esc(row.label)}</span><small>${row.root?esc(row.root):'未映射'}</small></th><td>${measured?gb(row.used):'—'}</td><td>${measured?gb(row.free):'—'}</td><td>${measured?gaugeHtml(`${row.label}空间使用率`,row.used,row.total,{usage:true,compact:true})+usedPct+'%':(row.online?'容量未取得':'离线')}</td></tr>`}).join('')}</tbody></table>`
+    return `<article><header><h3>${esc(row.label)}</h3><b>${measured?usedPct+'%':(row.online===false?'离线':'容量未取得')}</b></header><small>${row.root?esc(row.root):'未映射'}</small>
+      ${measured?progressHtml(`${row.label}空间使用率`,row.used,row.total)+`<div class="board-volume-values"><span>已用 <b>${gb(row.used)}</b></span><span>可用 <b>${gb(row.free)}</b></span></div>`:''}</article>`}).join('')}</div>`
     :emptyStateHtml('hard-drive','还没有存储来源','添加媒体文件夹后，这里会显示存储空间。');
   $('#stats').innerHTML=`
     <div class="insightpage statsdashboard" data-stats-dashboard>
@@ -3653,6 +3654,8 @@ function siteAvatar(name,domain,title=''){
 }
 const tasteRankRows=(rows,kind,empty='暂无足够证据',visual='')=>rows.length?rows.map((row,index)=>{
     const clickable=kind&&row.peach_items>0;
+    const strength=Number(row.web_visits??row.score??row.visits??row.peach_items??0);
+    const maximum=Math.max(1,...rows.map(item=>Number(item.web_visits??item.score??item.visits??item.peach_items??0)));
     const detail=row.web_visits!=null
       ?`${row.web_visits?`浏览 ${row.web_visits}`:''}${row.web_visits&&row.peach_items?' · ':''}${row.peach_items?`Peach ${row.peach_items}`:''}`
       :`${Number(row.score||row.visits||0).toLocaleString()}`;
@@ -3666,7 +3669,7 @@ const tasteRankRows=(rows,kind,empty='暂无足够证据',visual='')=>rows.lengt
         ?siteAvatar(row.name,sourceDomain,`来源：${sourceDomain}`)
       :visual?`<span class="tasteavatar">${avatarInner(row.name,ref,rep,visual)}</span>`:'';
     return `<${clickable?'button':'div'} class="tasterank${kind==='tag'?' tasterank-tag':''}${visual?' tasterank-visual':''}"${clickable?` data-taste-kind="${kind}" data-taste-name="${esc(row.name)}"`:''}>
-      <span class="tastepos mono">${index+1}</span>${media}<span><b>${esc(row.name)}</b><small>${esc(detail)}</small></span>
+      <span class="tastepos mono">${index+1}</span>${media}<span class="taste-rank-copy"><b>${esc(row.name)}</b><small>${esc(detail)}</small><span class="taste-rank-track" aria-hidden="true"><i style="width:${Math.max(0,Math.min(100,strength/maximum*100))}%"></i></span></span>
       ${clickable?icon('chevron-right'):''}</${clickable?'button':'div'}>`}).join(''):
   emptyStateHtml('search','暂无足够证据',empty);
 function openTasteSignal(kind,name){
@@ -5491,8 +5494,10 @@ function followAuthorName(group){
 function followAuthorBlock(group){
   const name=followAuthorName(group);
   const bad=group.filter(s=>s.last_status==='error'||s.last_status==='unauthorized').length;
-  const sources=scrollerHtml(group.map(followSourceRow).join(''),{
-    className:'fauthorsources',label:`${name} 的关注来源`});
+  const sourceRows=group.map(source=>followSourceRow(source)).join('');
+  const sources=localStorage.getItem('peach.legacy-ui')==='true'
+    ?scrollerHtml(sourceRows,{className:'fauthorsources',label:`${name} 的关注来源`})
+    :`<div class="fauthorsources" aria-label="${esc(name)} 的关注来源">${sourceRows}</div>`;
   return `<div class="fauthor${bad?' bad':''}">
     <div class="fauthorhead">${followAuthorAvatar(group)}
       <b>${esc(name)}</b>
@@ -5506,7 +5511,7 @@ function followAuthorBlock(group){
     ${sources}</div>`;
 }
 
-function followSourceRow(source){
+function followSourceRow(source,selectable=false){
   const state=source.last_status||'未检查';
   const bad=state==='error'||state==='unauthorized';
   /* 状态用 Geist 的低饱和徽章（取证 vercel-geist-semantics-measured.md）：
@@ -5514,9 +5519,9 @@ function followSourceRow(source){
   const badge=state==='ok'?'ok':bad?'error':'none';
   const stateTitle=source.history_exhausted?'没有更多历史内容':state;
   return `<div class="frow fsource${bad?' bad':''}${source.enabled?'':' disabled'}">
-    <label class="fchannelcheck" title="${source.enabled?'参与检查更新':'暂停检查更新'}">${checkboxHtml(
+    ${selectable?`<label class="fchannelcheck">${checkboxHtml(`data-follow-select="${source.id}" ${followSourceSelection.has(source.id)?'checked':''} aria-label="选择 ${esc(source.label)}"`)}</label>`:`<label class="fchannelcheck" title="${source.enabled?'参与检查更新':'暂停检查更新'}">${checkboxHtml(
       `data-follow-enabled="${source.id}" ${source.enabled?'checked':''}`
-      +` aria-label="${source.enabled?'暂停':'启用'} ${esc(source.label)} 的更新检查"`)}</label>
+      +` aria-label="${source.enabled?'暂停':'启用'} ${esc(source.label)} 的更新检查"`)}</label>`}
     <b><a class="fsourcelink externallink" href="${esc(source.url)}" target="_blank"
       rel="noreferrer noopener" title="打开原来源">${esc(source.label)}${icon('external-link','externalmark')}</a></b>
     <span class="fmeta fprovider" title="${esc(source.provider_label)}">${sourceIcon(source.provider)
@@ -5616,7 +5621,8 @@ function followCredentialRow(row){
 /* 关注列表版式。默认一行一个，来源行的六列都在；紧凑是一行两个，半幅宽度放不下
    六列，收掉「上次检查」——哪个站、成没成功、能不能点都还留着，时间是里面最不
    影响判断的一列。和 JAV 版式共用 iconSwitchHtml，只是 name 与选项不同。 */
-const FOLLOW_LAYOUTS=[['cozy','舒适 · 一行一个','maximize'],['compact','紧凑 · 一行两个','layout-grid']];
+const followSourceSelection=new Set();
+const FOLLOW_LAYOUTS=[['cozy','作者分组','layout-grid'],['compact','列表 · 一行一个来源','list-filter']];
 function followListLayout(){
   return allowedSetting(appSettings.followLayout,FOLLOW_LAYOUTS.map(([k])=>k),'cozy');
 }
@@ -5627,8 +5633,8 @@ function followLayoutButtons(){
 function setFollowListLayout(value){
   appSettings.followLayout=value;
   saveSettings();
-  // 版式是纯展示层的事：改容器上的一个属性就够，不重画列表，也不重新请求。
-  document.querySelectorAll('.fsources').forEach(node=>{node.dataset.layout=followListLayout()});
+  // 版式复用已载入的来源，分别渲染作者分组和来源列表。
+  renderFollowManage(followCredentials);
 }
 
 /* 版式判据来自 docs/reference-sources.json 的 vercel-report-design：
@@ -5674,8 +5680,9 @@ function renderFollowManage(credentials){
             icon('refresh-cw')}检查全部</button>
           <button class="fbtn" data-follow-view>${icon('rss')}去看更新</button></div>
         ${followCheckReport?followCheckFailNote(followCheckReport):''}
+        ${sources.length&&followListLayout()==='compact'?`<div class="board-follow-selection"><label>${checkboxHtml('data-follow-select-all aria-label="全选来源"')}全选</label><span data-follow-selected-count>已选 0</span><button class="fbtn" data-follow-check="" data-follow-sources="" data-follow-selection-action disabled>检查所选</button><button class="fbtn" data-follow-selection-enabled="true" data-follow-selection-action disabled>启用</button><button class="fbtn" data-follow-selection-enabled="false" data-follow-selection-action disabled>暂停</button></div>`:''}
         ${sources.length?`<div class="frows fsources" data-layout="${followListLayout()}">${
-          followAuthorGroups(sources).map(followAuthorBlock).join('')}</div>
+          followListLayout()==='compact'?`<div class="board-follow-list">${sources.map(source=>followSourceRow(source,true)).join('')}</div>`:followAuthorGroups(sources).map(followAuthorBlock).join('')}</div>
           ${counts.new?`<div class="fsecfoot"><p class="fnote fbulkrow"><span class="fbulkcounts">未看 ${counts.new} · 已看 ${counts.seen||0}
             · 已保存 ${counts.saved||0} · 已忽略 ${counts.ignored||0}</span>
             <span class="fbulk"><button class="fbtn" data-follow-bulk="seen">全部标记已看</button>
@@ -5697,7 +5704,7 @@ function renderFollowManage(credentials){
   void wireFollowProgress();
   if(locked)$('#stats').querySelectorAll(
     '#followAdd input,#followAdd button,[data-follow-remove],[data-follow-check],'+
-    '[data-follow-enabled],'+
+    '[data-follow-enabled],[data-follow-selection-enabled],'+
     '[data-follow-bulk],[data-follow-guess],[data-follow-alias-add],'+
     '[data-follow-alias-remove],#followAliasAdd input,#followAliasAdd button,[data-cred-form] input,'+
     '[data-cred-form] button,[data-cred-clear]'
@@ -5773,6 +5780,29 @@ function wireFollowItems(){
 function wireFollowManage(creds=[]){
   void wireResolveProgress();
   const root=$('#stats'),form=root.querySelector('#followAdd');
+  const selectable=[...root.querySelectorAll('[data-follow-select]')];
+  const selectedIds=()=>selectable.filter(field=>field.checked).map(field=>Number(field.dataset.followSelect));
+  const syncSelection=()=>{
+    const ids=selectedIds(),count=root.querySelector('[data-follow-selected-count]');
+    if(count)count.textContent=`已选 ${ids.length}`;
+    const all=root.querySelector('[data-follow-select-all]');
+    if(all){all.checked=ids.length>0&&ids.length===selectable.length;all.indeterminate=ids.length>0&&ids.length<selectable.length}
+    root.querySelectorAll('[data-follow-selection-action]').forEach(button=>{button.disabled=!ids.length||!!followRuntime?.ledger_read_only;if(button.hasAttribute('data-follow-check'))button.dataset.followSources=ids.join(',')});
+    selectable.forEach(field=>field.closest('.fsource').classList.toggle('selected',field.checked));
+  };
+  selectable.forEach(field=>field.onchange=()=>{const id=Number(field.dataset.followSelect);if(field.checked)followSourceSelection.add(id);else followSourceSelection.delete(id);syncSelection()});
+  const selectAll=root.querySelector('[data-follow-select-all]');
+  if(selectAll)selectAll.onchange=()=>{selectable.forEach(field=>{field.checked=selectAll.checked;const id=Number(field.dataset.followSelect);if(field.checked)followSourceSelection.add(id);else followSourceSelection.delete(id)});syncSelection()};
+  root.querySelectorAll('[data-follow-selection-enabled]').forEach(button=>button.onclick=async()=>{
+    const ids=selectedIds(),enabled=button.dataset.followSelectionEnabled==='true';if(!ids.length)return;
+    setActionBusy(button);
+    const results=await mapLimit(ids,4,id=>api('/api/follow/source',{method:'POST',body:JSON.stringify({action:'enabled',id,enabled})}));
+    const failures=results.filter(result=>!result.ok);
+    await openFollowManage(false);
+    if(failures.length)actionFailure(`批量更新 ${failures.length}/${ids.length} 个来源`,failures[0].error);
+    else actionReceipt(`已${enabled?'启用':'暂停'} ${ids.length} 个关注来源`);
+  });
+  syncSelection();
   wireScrollers(root);
   const sortField=root.querySelector('[data-follow-sort]');
   if(sortField)wireSelectField(sortField).addEventListener('change',()=>{
@@ -7113,7 +7143,7 @@ function buildDrawerNavigation(){
     <b class="disp" style="font-size:15px;letter-spacing:.1em">导航与筛选</b>
     <button id="drawerClose" class="ib" title="收起" aria-label="收起导航">${icon('x')}</button></div>
     <div class="dnav">${orderedEdgeIcons().map(([k,label,ic])=>
-      `<button data-nav="${k}" draggable="true" aria-pressed="${navOn(k)}">${icon(ic)}<span>${label}</span></button>`).join('')}</div>`;
+      `<button data-nav="${k}" draggable="true" aria-pressed="${navOn(k)}">${navigationIcon(k,ic)}<span>${label}</span></button>`).join('')}</div>`;
   $('#drawerClose').onclick=()=>openDrawer(false);
   scroll.querySelectorAll('[data-nav]').forEach(b=>b.onclick=()=>navTo(b.dataset.nav));
   wireNavigationDrag(scroll.querySelector('.dnav'));
@@ -7156,6 +7186,7 @@ const EDGE_ICONS=[
      归右上角。三个名字都带「管」「设」的字，字形就得把它们分开。 */
   ['manage','管理','wrench'],
 ];
+function navigationIcon(key,glyph){return key===''&&localStorage.getItem('peach.legacy-ui')!=='true'?'<img class="board-home-logo" src="/peach-logo.png" alt="">':icon(glyph)}
 /* 每个管理页的身份（标题、图标、可直达的 URL）。用户仍可在设置里把其中任何
    一个加到顶层侧栏，所以这里保留全部页面，不因为它进了数据管理就删掉。 */
 const MANAGE_SECTIONS=[
@@ -7577,7 +7608,7 @@ function buildEdge(){
   buildDrawerNavigation();
   $('#edge').innerHTML=orderedEdgeIcons().map(([k,t,ic])=>
     `<button data-nav="${k}" draggable="true" title="${t}" aria-pressed="${navOn(k)}">
-      ${icon(ic)}</button>`).join('')
+      ${navigationIcon(k,ic)}</button>`).join('')
 ;
   $('#edge').querySelectorAll('[data-loc]').forEach(b=>b.onclick=()=>{
     const cur=(state.loc||'').split(',').filter(Boolean);
@@ -9103,17 +9134,20 @@ if(!legacyUI){
   document.body.append(libraryPicker);
   boardBrand.setAttribute('aria-haspopup','dialog');boardBrand.setAttribute('aria-controls',libraryPicker.id);
   boardBrand.insertAdjacentHTML('beforeend','<svg class="board-library-chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="m5 6 3-3 3 3M5 10l3 3 3-3"/></svg>');
-  boardBrand.onclick=event=>{event.preventDefault();if(!document.querySelector('#drawer').classList.contains('open')){event.stopImmediatePropagation();openDrawer(true)}};
+  boardBrand.onclick=event=>{event.preventDefault()};
   const floating=wireAnchoredMenu(document.querySelector('#drawer'),boardBrand,libraryPicker,{side:true});
   libraryPicker.addEventListener('toggle',event=>{if(event.newState==='open')libraryPicker.querySelector('button')?.focus()});
   libraryPicker.addEventListener('keydown',event=>{if(event.key==='Escape'){event.stopPropagation();floating.setOpen(false);boardBrand.focus()}});
   api('/api/libraries').then(data=>{
-    const choices=[['','全部媒体库'],...data.libraries.map(row=>[row.id,row.name])];
+    const choices=[['','全部媒体库','database'],...data.libraries.map(row=>[row.id,row.name,row.icon||'database'])];
     const selected=sessionStorage.getItem('peach.library')||'';
     if(!choices.some(row=>row[0]===selected)){sessionStorage.removeItem('peach.library');location.reload();return}
     const current=sessionStorage.getItem('peach.library')||'';
     boardBrand.querySelector('h1').textContent=current||'全部媒体库';
-    libraryPicker.innerHTML=`<p>媒体库</p><div class="board-library-rows">${choices.map(([id,name],i)=>`<button type="button" data-library="${esc(id)}" aria-pressed="${id===current}"><span class="board-library-avatar" data-color="${i%3}">${esc(name.slice(0,1))}</span><span>${esc(name)}</span></button>`).join('')}</div><footer><button type="button" class="geist-button" data-library-manage>管理媒体库</button></footer>`;
+    const libraryMark=glyph=>MEDIA_SOURCE_ICONS[glyph]?.startsWith('data:')?`<img src="${MEDIA_SOURCE_ICONS[glyph]}" alt="">`:icon(glyph==='local'?'hard-drive':glyph);
+    const mark=document.createElement('span');mark.className='mark';mark.setAttribute('aria-hidden','true');
+    mark.innerHTML=libraryMark(choices.find(row=>row[0]===current)?.[2]||'database');boardBrand.querySelector('.mark').replaceWith(mark);
+    libraryPicker.innerHTML=`<p>媒体库</p><div class="board-library-rows">${choices.map(([id,name,glyph])=>`<button type="button" data-library="${esc(id)}" aria-pressed="${id===current}"><span class="board-library-avatar">${libraryMark(glyph)}</span><span>${esc(name)}</span></button>`).join('')}</div><footer><button type="button" class="geist-button" data-library-manage>管理媒体库</button></footer>`;
     libraryPicker.querySelectorAll('[data-library]').forEach(button=>button.onclick=()=>{sessionStorage.setItem('peach.library',button.dataset.library);location.assign('/')});
     libraryPicker.querySelector('[data-library-manage]').onclick=()=>{floating.setOpen(false);openDrawer(false);location.assign('/configuration')};
   }).catch(()=>{libraryPicker.hidden=true});
@@ -9130,7 +9164,7 @@ function placeBrand(){
   if(legacyUI)return;
   const close=document.querySelector('#drawerClose');
   if(close){const head=close.parentElement;head.classList.add('board-sidebar-head');
-    boardBrand.setAttribute('aria-label',document.querySelector('#drawer').classList.contains('open')?'选择媒体库':'展开侧栏');
+    boardBrand.setAttribute('aria-label','选择媒体库');
     wireSidebarGroups(document.querySelector('#drawerScroll'));
     const expanded=document.querySelector('#drawer').classList.contains('open'),desktop=innerWidth>760;
     if(desktop||expanded){if(boardToggle.parentElement!==head)head.append(boardToggle)}else if(boardToggle.parentElement!==toggleHome.parentElement)toggleHome.after(boardToggle);

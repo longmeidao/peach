@@ -43,7 +43,7 @@ export interface ConfigurationData {
   /** 设置文件的指纹，保存时带回去，服务端据此拒绝盖掉别处的改动。 */
   revision: string;
   media_dirs: string[];
-  media_sources?: { location: string; root: string; path: string; online?: boolean; library?: string }[];
+  media_sources?: { location: string; root: string; path: string; online?: boolean; library?: string; library_icon?: string }[];
   windows?: boolean;
   port: number;
   port_editable?: boolean;
@@ -130,20 +130,21 @@ function MountStatus({ data }: { data: ConfigurationData }) {
   </div></section>;
 }
 
-function MediaSourceSelect({ value, label, onChange }: { value: string; label: string; onChange(value: string): void }) {
+function MediaSourceSelect({ value, label, onChange, libraryIcon=false }: { value: string; label: string; onChange(value: string): void; libraryIcon?: boolean }) {
   const mount = useRef<HTMLDivElement>(null);
   const control = useRef<HTMLElement & { value: string; disabled: boolean } | null>(null);
   const callback = useRef(onChange);
   callback.current = onChange;
   useLayoutEffect(() => {
     const root = mount.current!;
-    root.innerHTML = selectFieldHtml([['local', '本地磁盘'], ['115', 'CloudDrive · 115'], ['pikpak', 'CloudDrive · PikPak']].map(([kind, text]) => [kind!, text!, MEDIA_SOURCE_ICONS[kind!]!]), value, { label });
+    const options=libraryIcon ? [['','自动识别'],['hard-drive','磁盘'],['database','资料库'],['heart','心形'],['star','星标'],['tags','标签'],['115','115'],['pikpak','PikPak']] : [['local', '本地磁盘'], ['115', 'CloudDrive · 115'], ['pikpak', 'CloudDrive · PikPak']];
+    root.innerHTML = selectFieldHtml(options.map(([kind, text]) => [kind!, text!, MEDIA_SOURCE_ICONS[kind!] || kind || 'database']), value, { label });
     const field = wireSelectField(root.firstElementChild!);
     control.current = field;
     const change = () => callback.current(field.value);
     field.addEventListener('change', change);
     return () => { control.current = null; field.disabled = true; field.removeEventListener('change', change); root.replaceChildren(); };
-  }, [label]);
+  }, [label,libraryIcon]);
   useLayoutEffect(() => { if (control.current) control.current.value = value; }, [value]);
   return <div ref={mount} class="configsourcecontrol" />;
 }
@@ -154,6 +155,7 @@ function ConfigurationForm({ data, receipt }: { data: ConfigurationData; receipt
   const [kinds, setKinds] = useState<string[]>(initial?.map((row) => row.location) ?? []);
   const [roots, setRoots] = useState<string[]>(initial?.map((row) => row.root) ?? []);
   const [libraries, setLibraries] = useState<string[]>(initial?.map((row) => row.library || '') ?? []);
+  const [libraryIcons, setLibraryIcons] = useState<string[]>(initial?.map((row) => row.library_icon || '') ?? []);
   const [port, setPort] = useState(String(data.port));
   const [scanNow, setScanNow] = useState(false);
   const [rowErrors, setRowErrors] = useState<string[]>([]);
@@ -190,6 +192,7 @@ function ConfigurationForm({ data, receipt }: { data: ConfigurationData; receipt
     setKinds((list) => list.filter((_, i) => i !== index));
     setRoots((list) => list.filter((_, i) => i !== index));
     setLibraries((list) => list.filter((_, i) => i !== index));
+    setLibraryIcons((list) => list.filter((_, i) => i !== index));
     setDirs((list) => list.filter((_, i) => i !== index));
     setRowErrors((errors) => errors.filter((_, i) => i !== index));
   };
@@ -228,7 +231,7 @@ function ConfigurationForm({ data, receipt }: { data: ConfigurationData; receipt
       const result = await apiSend<SaveResult>(CONFIGURATION_URL, {
         revision: revision.current,
         media_dirs: dirs,
-        ...(data.media_sources ? { media_sources: dirs.map((path, i) => ({ path, location: kinds[i] || 'local', root: roots[i] || '', library: libraries[i] || '' })) } : {}),
+        ...(data.media_sources ? { media_sources: dirs.map((path, i) => ({ path, location: kinds[i] || 'local', root: roots[i] || '', library: libraries[i] || '', library_icon: libraryIcons[i] || '' })) } : {}),
         port,
         scan_now: scanNow,
       });
@@ -296,6 +299,10 @@ function ConfigurationForm({ data, receipt }: { data: ConfigurationData; receipt
                     <input class="geist-input" aria-label={`媒体库 ${index + 1}`} maxLength={80} value={libraries[index] || ''} placeholder="同名文件夹归入同一个媒体库"
                       onInput={(event) => { const next = [...libraries]; next[index] = event.currentTarget.value; setLibraries(next); }} />
                   </label>
+                  <div class="configsourcelabel">媒体库图标
+                    <MediaSourceSelect libraryIcon label={`媒体库图标 ${index + 1}`} value={libraryIcons[index] || ''}
+                      onChange={(value) => { const next = [...libraryIcons]; next[index] = value; setLibraryIcons(next); }} />
+                  </div>
                   <div class="configsourcelabel">媒体来源
                     <MediaSourceSelect label={`媒体来源 ${index + 1}`} value={kinds[index] || 'local'}
                       onChange={(value) => { const next = [...kinds]; next[index] = value; setKinds(next); }} />

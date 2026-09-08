@@ -20,6 +20,15 @@ class MediaLibraryTests(unittest.TestCase):
         self.assertEqual(len(rows), 1)
         self.assertEqual(len(rows[0]["roots"]), 2)
 
+    def test_library_icons_follow_source_or_explicit_selection(self):
+        config = self.config()
+        config.locations = {"pikpak": ("A:\\",)}
+        self.assertEqual(media_libraries.libraries(config)[0]["icon"], "pikpak")
+        config.library_icons = {"A:\\": "heart"}
+        self.assertEqual(media_libraries.libraries(config)[0]["icon"], "heart")
+        config.library_icons = {"A:\\": "<script>"}
+        self.assertEqual(media_libraries.libraries(config)[0]["icon"], "pikpak")
+
     def test_filter_observes_source_and_directory_boundary(self):
         with sqlite3.connect(":memory:") as db:
             db.execute("CREATE TABLE asset (location TEXT, path TEXT)")
@@ -37,8 +46,9 @@ class MediaLibraryTests(unittest.TestCase):
         self.assertEqual(tomllib.loads(line), {root: name})
         with TemporaryDirectory() as directory:
             config = settings_file.load_config(environ={"PEACH_DATA_ROOT": directory})
-            config = replace(config, library_names={root: name})
+            config = replace(config, library_names={root: name}, library_icons={root: "star"})
             config.path.parent.mkdir(parents=True, exist_ok=True)
             config.path.write_text(settings_file.render(config), encoding="utf-8")
             loaded = settings_file.load_config(environ={"PEACH_DATA_ROOT": directory})
             self.assertEqual(loaded.library_names, {root: name})
+            self.assertEqual(loaded.library_icons, {root: "star"})

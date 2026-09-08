@@ -113,6 +113,7 @@ SCOPE_TEST_IDS: dict[str, tuple[str, ...]] = {
 # 其余模块按「模块名 ↔ 测试文件名」推断（`media.py` → `test_media.py` → media）。
 # 仓库根的 Markdown 归 tooling：入口文件、README 与待办的门槛都在那个域里。
 AUTO_SCOPE_PREFIXES: tuple[tuple[str, str], ...] = (
+    ("src/peach/media.py", "media"),
     ("src/peach/desktop_startup.py", "tooling"),
     ("src/peach/desktop_uninstall.py", "tooling"),
     ("src/peach/peach_proxy.py", "tooling"),
