@@ -4,7 +4,8 @@
 补方让这些字标在 160px 的厂牌页大位上好看，但塞进筛选片那种 28px 的小圆里只剩一条糊字，
 所以小位要另找一枚方标。社媒头像早就分 icon / logo 两用，厂牌按同一条判断走。另有一批
 厂牌连一张图都没有（账本里现在是 Hon Naka），它们不在那份名单里，可两个位置一样空着，
-所以也纳进来。
+所以也纳进来。第三批是**取回来过、但取小了**的：已装方标的短边不够小圆片的实像素，
+`cover` 铺满就是在放大它（见 `INSTALLED_SHORT_EDGE`）。
 
 取哪一份先问 `site_icons`：官网首页声明的 apple-touch-icon / SVG / manifest 优先，
 都没有才落到 `/favicon.ico`。**站点声明的不等于就该用**，还有两条后手（见下）。
@@ -110,6 +111,11 @@ MIN_SHORT_EDGE = 32
 #: `logo` 位是厂牌页那个 160 px 大位，2x 屏要 320 px；96 是「还能看」的下限，
 #: 低于它说明取到的是缩略图不是标识资产。
 MIN_LOGO_SHORT_EDGE = 96
+#: 已装方标的短边下限。小圆片（`.brandpill .mk`）是 32 CSS px，2 倍屏 64 实像素，
+#: 短边到不了这个数，`cover` 铺满就是在放大它。站点上往往还挂着更大的一份：
+#: dorcelclub.com 声明了 180×180 的 apple-touch-icon，装着的那枚是 57×57
+#: （2026-09-08 实测）。这些厂牌要再问一趟，见 `small_installed_marks`。
+INSTALLED_SHORT_EDGE = 64
 #: 够用就停的线：公司格最宽 180 CSS px，2 倍屏要 360 实像素，再大在页面上没有分别。
 #: 到不了这条线才把这条链接的其余来源问完——每多问一个来源就多敲一次别人的门。
 GOOD_ENOUGH_SHORT_EDGE = 360
@@ -255,14 +261,47 @@ def padded_studios(logo_root: Path) -> dict[str, dict[str, object]]:
     return found
 
 
+def small_installed_marks(logo_root: Path) -> dict[str, dict[str, str]]:
+    """已装的方标里短边不够小圆片用的那些：safe → 量到的文件名与尺寸。
+
+    判据是文件的短边，不是边车。这些图各来自不同的一趟（`DorcelClub.img` 是取图标那趟
+    装的、`HEYZO.icon.img` 是补方标那趟装的），共同点只有短边不够 `INSTALLED_SHORT_EDGE`。
+    小位取的是 `<safe>.icon.img`，没有那一份才回落到 `<safe>.img`，所以量的也是这个
+    顺序，见 `previews.Previews.logo`；`<safe>.logo.img` 归大位，不参与。
+    """
+    marks: dict[str, dict[str, Path]] = {}
+    for path in sorted(logo_root.glob("*.img")):
+        safe, _, variant = path.name[: -len(".img")].partition(".")
+        if variant in ("", ICON):
+            marks.setdefault(safe, {})[variant or "base"] = path
+    small: dict[str, dict[str, str]] = {}
+    for safe, found in sorted(marks.items()):
+        path = found.get(ICON) or found.get("base")
+        if path is None:
+            continue
+        try:
+            size = images.measure_image_size(path.read_bytes())
+        except OSError:
+            continue
+        if size is None or min(size) >= INSTALLED_SHORT_EDGE:
+            continue
+        small[safe] = {"original_size": f"{size[0]}x{size[1]}", "installed": path.name}
+    return small
+
+
 def harvest_targets(padded: dict[str, dict[str, object]],
                     links: dict[str, list[dict[str, str]]],
                     logo_root: Path) -> dict[str, dict[str, str]]:
-    """要补标识的厂牌：补白过的 ∪ 一张图都没有、但有链接或有指定 logo 来源的。
+    """要补标识的厂牌：补白过的 ∪ 装着的方标太小的 ∪ 一张图都没有、但有链接或有指定
+    logo 来源的。
 
-    后一半不在补白名单里——`normalize_studio_logos.py` 从来没处理过它们，因为没有可处理
+    后两半不在补白名单里——`normalize_studio_logos.py` 从来没处理过它们，因为没有可处理
     的文件。可它们在页面上占的位置和别人一样，两个变体都是空的（账本里现在是 Hon Naka）。
     只看补白名单等于承认「没图的就一直没图」。
+
+    装着的方标太小同样是入场理由：那一位的图取回来过，只是取小了，而站点上还挂着更大
+    的一份，见 `small_installed_marks`。落盘另有一道 `_shorter_than_installed` 守卫，
+    所以再问一趟只可能换上更大的，问不到更大的就在复核件上留一行判词。
 
     指定 logo 来源自己就是入场理由。jae.tokyo 那 26 家在账本里没有任何链接，按「有链接」
     收目标一条都收不到，而这一位的图早就指好了在哪。`WORDMARK_SOURCES` 同理：那 12 家
@@ -274,6 +313,8 @@ def harvest_targets(padded: dict[str, dict[str, object]],
         targets[safe] = {
             "original_size": f"{width}x{height}" if width and height else "",
             "installed": f"{safe}.img"}
+    for safe, measured in small_installed_marks(logo_root).items():
+        targets.setdefault(safe, dict(measured))
     for safe in list(links) + list(LOGO_SOURCES_BY_SAFE) + list(WORDMARK_SOURCES_BY_SAFE):
         if safe in targets or (logo_root / f"{safe}.img").exists():
             continue

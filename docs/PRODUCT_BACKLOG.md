@@ -72,7 +72,7 @@
 
 合计：**30 项开放需求**，其中 6 项已有骨架，24 项尚未实现。已完成的需求不在这里留痕，去 Git 历史查。
 
-## 待执行的操作（36 项）
+## 待执行的操作（37 项）
 
 需要另行授权、外部条件或人工判断才能做的具体操作与复核批次，比上面的需求细一层；做完就删，不在这里留痕。待办只放这一处：`docs/STATUS.md` 每次会话开头都要读，队列不该常驻在那种入口文件里。
 
@@ -122,3 +122,4 @@
     - 前端：9 处 `await import('/dist/peach-ui.js')` 与文件顶部静态 import 并存（`test_frontend_build.py` 与 `test_web_ui.py` 钉住了这种写法，要同改）；`wireNavigationDrag` 与 `ui-components.wireDragReorder` 双实现；`refreshStore` 零消费；`.fnote` 在 21 与 22 号 CSS 互相覆盖。
     - 文档：同一条规则最多写在 15 处（测试入口）；`CLAUDE.md` 正文与 AGENTS、worktree 技能重复；`peach-ledger-write`、`peach-reference-evidence`、`peach-worktree` 引用的 HANDOFF 节名已不存在；`docs/STATUS.md` 版本行落后；本文件有 7 对重复条目（7↔18、12↔21②、13↔22、9↔34、8↔30、28↔30）与一节评审记录；`docs/PIKPAK.md` 是按日期的 runbook，流程该归 `peach-batch-jobs`。
 36. 域映射门槛只覆盖 `web/` 与 `frontend/`。同一个漏洞在别的前缀上照样成立：`tests/test_babepedia_match.py` 读 `scripts/match_babepedia_creators.py` 却只登记在 metadata 域，改那个脚本时 `auto` 选的是 tooling；`tests/test_frontend_build.py` 读 `docs/CLOUDDRIVE.md`，而 `.md` 一律归 checks。按 `test_runner.repository_paths_read_by` 全树扫一遍，`scripts/`、`docs/`、`.github/`、`resources/` 四类共约三十处。要补的是 `AUTO_SCOPE_PREFIXES` 本身——把逐个脚本映射到它真正的域，像 `scripts/localize_performer_names.py` 那两条那样——补完再把 `tests/test_test_planning.py` 那条门槛的前缀白名单去掉。
+37. Dorcel Club 的方标：站上挂着 180×180 的 apple-touch-icon，账本里这个厂牌（entity 5586）一条链接都没有，采集走不到它的站，小圆片现在放大一张 57×57。授权后往 `entity_link` 补一条 `official` 指向 `https://www.dorcelclub.com/`，再跑 `harvest_studio_icons.py --only "DorcelClub" --install`（落盘有 `_shorter_than_installed` 守卫，只可能换上更大的）。同一趟命中的另外两家 Wanz Factory 与 HEYZO 更大的方标**未取得**，逐项证据见 `docs/SOURCING.md`，换来源之前不必再问一遍。

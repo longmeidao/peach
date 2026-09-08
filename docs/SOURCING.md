@@ -559,11 +559,28 @@ Windows 空数据预览的项目 CA HTTPS、合成 Cookie 保存／撤销、DMM 
   已装的位图里 26 个 `mark` 烤过底、5 个长条补过方（边车在 `*.img.normalization.json`）；2026-09-08 的
   dry-run 报 52 个待改：46 个重新摆位、4 个矢量包方底、HEYZO 改配深底、pikpak 重补方。
   回溯真实目录需另行授权。
+- **已装的方标太小要再问一趟。** 小圆片是 32 CSS px，2 倍屏 64 实像素；`harvest_studio_icons.py`
+  把短边不够这个数的厂牌一并收进目标（`INSTALLED_SHORT_EDGE`、`small_installed_marks`），量的是小位
+  真会取到的那一份（`<safe>.icon.img` 优先，没有才回落 `<safe>.img`；`.logo.img` 归大位不参与）。
+  落盘另有 `_shorter_than_installed` 守卫，所以再问一趟只可能换上更大的，问不到就在复核件上留判词。
+  2026-09-08 实测命中三家：DorcelClub 57、Prestige 42、HEYZO 32。
+- **这三家的来源已经问到底，结论分三种**（2026-09-08 实测）。DorcelClub 站上挂着 180×180 的
+  apple-touch-icon，够用；取不到的原因在账本：这个厂牌一条链接都没有（entity 5586），采集从零链接
+  出发走不到它的站，补一条 `official` 链接就能自己取回。Wanz Factory 与 HEYZO 更大的方标**未取得**：
+  官网只有 64×64／32×32 的 favicon（wanz-factory.com 的 `/favicon.ico` 回 0 字节，声明的那枚在
+  `/favicons/wanz-factory/`），header 那张是 181×38／339×58 的横向字标，JAE 2014／2015 名录里 Wanz
+  那一枚是同一条橙底字标、里面那个「W」章不到 64 px，截出来比手上这张更小；Wanz 那张 64 px 自己就是
+  放大件（半分辨率往返 RMS 1.63，同为 64 px 的 Hon Naka 13.65、Idea Pocket 15.37 是真实像素）。
+  Prestige 官网 header 是一份 SVG（`/_nuxt/img/logo.*.svg`），那是大位可用的资产，小位仍是字标。
 - **页面三处取图位统一铺满，不各自补救。**
   三处（品牌小圆片 `.brandpill .mk`、身份格 `.idface`、厂牌页 160 px 大位 `.entityportrait`）
   的 `img` 统一 `object-fit: cover` 铺满方框，不加 inset、不加 padding、不改 contain：文件已经带够边距，
   页面再补一层就在图自带的底之外多围出一圈框，而三处各自补救的结果必然互相不一致。占位底色
   （`#CFCFCF`、`#fff`、`--overlay-5`）与首字母回落只在取不到图时露出来。
+  「原生尺寸 + 模糊补底」（`data-fit-native`）只装在后两处大位上。它的前提是文件比框小，而小圆片
+  在 2 倍屏上只要 64 实像素，目录里够不到的只有那三张；按原生摆，换来的是清晰、代价是标识小一半，
+  而自带白卡片的 Prestige 42 与 DorcelClub 57 一旦不铺满就露出方角。小图糊的根子在文件，
+  该换的是文件。
 - **没装标识的厂牌一个 `<img>` 都不输出。** 可用性随资料一起下发：`/api/tops` 的 `studios[].has_logo`、
   `/api/item` 的 `entity_refs.studio[].has_logo` 与 `has_studio_logo`（非规范厂牌只有扁平 `studio`
   字段，那格单独一个标志，漏了它那条路径会从「本来能取到图」退化成永远只显示首字母）、`/api/entity`
