@@ -7925,14 +7925,38 @@ const rememberSearch=async query=>{if(!query||!appSettings.searchHistoryLimit)re
   writeSearchHistory([query,...readSearchHistory().filter(x=>foldName(x)!==foldName(query))]);
   await api('/api/search-history',{method:'POST',body:JSON.stringify({query})}).catch(()=>null)};
 function hideSearchMenu(){dismissMenu($('#searchMenu'))}
-function renderSearchMenu(){const menu=$('#searchMenu'),history=readSearchHistory();
-  const recommendations=[...searchPool()].sort(()=>Math.random()-.5).filter(x=>!history.some(h=>foldName(h)===foldName(x))).slice(0,5);
+/* 敲一下就查一次的补全。分组顺序和每组的名字都由 `/api/suggest` 给出，这里照抄：
+   两侧各排一次的话，改了一侧就会出现「后端认为最该先看的组显示在第三位」。 */
+const SUGGEST_DEBOUNCE=150;
+let suggestGroups=[],suggestFor='',suggestRequest=0,suggestTimer=0;
+async function loadSuggestions(query){
+  const request=++suggestRequest;
+  try{
+    const data=await api('/api/suggest?q='+encodeURIComponent(query)+'&limit=5');
+    /* 慢的旧响应不许盖掉新的。连敲两个字时先发的那次完全可能后回来，盖回去
+       就是下拉里挂着上一个字的补全，而输入框里已经是下一个字了。 */
+    if(request!==suggestRequest)return;
+    suggestFor=data.q||'';suggestGroups=data.groups||[];
+  }catch(e){if(request===suggestRequest){suggestFor=query;suggestGroups=[]}}
+}
+function renderSearchMenu(){const menu=$('#searchMenu'),query=$('#q').value.trim();
+  // 有输入时历史跟着筛：这一刻用户在找一个词，不是在回顾自己搜过什么。
+  const history=readSearchHistory().filter(x=>!query||foldName(x).includes(foldName(query)));
+  const recommendations=query?[]:[...searchPool()].sort(()=>Math.random()-.5).filter(x=>!history.some(h=>foldName(h)===foldName(x))).slice(0,5);
   const row=(value,type)=>`<div class="searchoption" data-search-value="${esc(value)}">${icon(type==='history'?'history':'sparkles')}<span>${esc(value)}</span>${type==='history'?`<button class="removehistory" data-remove-history="${esc(value)}" aria-label="删除历史 ${esc(value)}">${icon('x')}</button>`:''}</div>`;
-  menu.innerHTML=(history.length?`<section class="searchgroup"><h3>搜索记录</h3>${history.map(x=>row(x,'history')).join('')}</section>`:'')+
+  /* 补全项不各配一枚字形：组标题已经说明这一组是女优还是标签，每行再放一枚人像
+     等于把同一件事说两遍。带 `data-open-item` 的那些是作品，点它直接开详情——
+     整句标题填回搜索框，下一次搜索会因为其中任何一个字符对不上而落空。 */
+  const suggestRow=item=>`<div class="searchoption" data-search-value="${esc(item.value)}"${item.id?` data-open-item="${item.id}"`:''}><span>${esc(item.value)}</span>${item.matched?`<span class="matched">${esc(item.matched)}</span>`:''}${item.n?`<span class="n">${item.n.toLocaleString()}</span>`:''}</div>`;
+  const completions=(query&&suggestFor===query?suggestGroups:[]).map(group=>
+    `<section class="searchgroup"><h3>${esc(group.label)}</h3>${group.items.map(suggestRow).join('')}</section>`).join('');
+  menu.innerHTML=(history.length?`<section class="searchgroup"><h3>搜索记录</h3>${history.map(x=>row(x,'history')).join('')}</section>`:'')+completions+
     (recommendations.length?`<section class="searchgroup"><h3>推荐</h3>${recommendations.map(x=>row(x,'recommend')).join('')}</section>`:'');
   if(menu.innerHTML)presentMenu(menu);else hideSearchMenu();searchActive=-1;
   menu.querySelectorAll('[data-search-value]').forEach(x=>x.onclick=e=>{if(e.target.closest('[data-remove-history]'))return;
-    $('#q').value=x.dataset.searchValue;runSearch(false,true);hideSearchMenu()});
+    hideSearchMenu();
+    if(x.dataset.openItem){$('#q').blur();openItem(+x.dataset.openItem);return}
+    $('#q').value=x.dataset.searchValue;runSearch(false,true)});
   menu.querySelectorAll('[data-remove-history]').forEach(b=>{
     /* 按下就 preventDefault，不让删除按钮把焦点从输入框抢走。抢走会触发 `#q` 的
        blur，那个 handler 140ms 后无条件 `hidden=true`，于是「删一条记录」实际等于
@@ -7967,7 +7991,18 @@ function moveSearchActive(step){
   options[searchActive].scrollIntoView({block:'nearest'});
   return true;
 }
-const refreshSearchMenu=()=>{searchActive=-1;if(!$('#searchMenu').hidden)renderSearchMenu()};
+/* 每一下输入都排一次补全，但只发一次请求：150ms 内继续敲就换掉上一次的排期。
+   先按手头已有的内容重绘一遍，下拉栏不会在等请求的这段里空着。 */
+const refreshSearchMenu=()=>{searchActive=-1;
+  clearTimeout(suggestTimer);
+  const query=$('#q').value.trim();
+  if(!query){suggestFor='';suggestGroups=[]}
+  if(!$('#searchMenu').hidden)renderSearchMenu();
+  if(!query)return;
+  suggestTimer=setTimeout(()=>loadSuggestions(query).then(()=>{
+    /* 回调回来时焦点可能已经不在输入框上：失焦那条 140ms 的兜底先把下拉栏收了，
+       晚到的 then 再把它掀开，而这一刻没有焦点，也就再不会有第二次失焦来收场。 */
+    if(document.activeElement===$('#q'))renderSearchMenu()}),SUGGEST_DEBOUNCE)};
 $('#q').oninput=e=>{if(e.isComposing)return;refreshSearchMenu()};
 $('#q').oncompositionend=refreshSearchMenu;
 $('#q').onkeydown=e=>{
@@ -7983,18 +8018,23 @@ $('#q').onkeydown=e=>{
   if(e.key!=='Enter')return;
   e.preventDefault();
   const picked=searchOptions()[searchActive];
-  if(picked)$('#q').value=picked.dataset.searchValue;
   searchActive=-1;
+  hideSearchMenu();
+  // 选中的是一部作品时回车就开它，和点它一样，不绕一趟搜索。
+  if(picked&&picked.dataset.openItem){$('#q').blur();openItem(+picked.dataset.openItem);return}
+  if(picked)$('#q').value=picked.dataset.searchValue;
   // 选中某一项时用它原样搜索；没选中才回退到「空输入按 Enter 用推荐词」。
   runSearch(!picked,true);
-  hideSearchMenu();$('#q').blur();
+  $('#q').blur();
 };
 /* 两个请求回来时，焦点可能已经不在输入框上了：用户敲完就点走，失焦那条 140ms
    的兜底先把下拉栏收了，晚到的 then 再把它掀开——而这一刻没有焦点，也就再不会
    有第二次失焦来收场。点哪儿都关不掉的下拉栏就是这么来的。所以回调先确认焦点
    还在自己身上。 */
 $('#q').addEventListener('focus',()=>{Promise.all([loadSearchHistory(),loadSearchPool()])
-  .then(()=>{if(document.activeElement===$('#q'))renderSearchMenu()})});
+  .then(()=>{if(document.activeElement!==$('#q'))return;
+    // 带着 `?q=` 进来再点回输入框时，框里已经有词，补全该跟着这个词给。
+    renderSearchMenu();refreshSearchMenu()})});
 
 /* 竖屏带每接一页出现一条，位置在这一页新增的那几行里随机取一个行边界。
    固定第几行的写法从第二屏起就成了可预期的栏目，而这条带子的作用正是打断节奏——

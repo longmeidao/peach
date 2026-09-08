@@ -89,7 +89,14 @@ from .web_catalog import (
     tag_not_hidden,
     w_item_tag,
 )
-from .web_entity import q_entity, q_entity_photos, q_index, q_photo_set, w_entity_name
+from .web_entity import (
+    q_entity,
+    q_entity_photos,
+    q_index,
+    q_photo_set,
+    q_suggest,
+    w_entity_name,
+)
 from .web_router import (
     GET_HANDLERS,
     POST_HANDLERS,
@@ -128,7 +135,7 @@ __all__ = [
     "q_ads", "q_duplicates", "q_editions", "q_entity", "q_entity_photos", "q_facets",
     "w_entity_name",
     "q_index", "q_item", "q_items", "q_parts", "q_photo_set", "q_playlists",
-    "q_quality_goals", "q_related", "q_search_history", "q_stats", "q_taste",
+    "q_quality_goals", "q_related", "q_search_history", "q_stats", "q_suggest", "q_taste",
     "q_tops", "state_clause", "state_predicate", "tag_is_not_a_performer_name",
     "tag_not_hidden", "w_activity", "w_batch", "w_cleanup_empty_directories",
     "w_empty_trash", "w_feedback", "w_item_tag", "w_playlist", "w_preference",

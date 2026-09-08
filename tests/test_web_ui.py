@@ -2251,8 +2251,10 @@ class WebUiSourceTests(unittest.TestCase):
         确认焦点还在，另外补一条不问焦点的出口：`.search` 之外的按压一律收起。
         捕获期是必须的，被点的元素可能吃掉事件或当场把自己摘掉。
         """
-        self.assertPageContains(
-            "  .then(()=>{if(document.activeElement===$('#q'))renderSearchMenu()})});")
+        self.assertCode(".then(()=>{if(document.activeElement!==$('#q'))return;")
+        # 补全那条隔着 150ms 才回来，同一个守卫在那里也必须成立。
+        self.assertCode(
+            "if(document.activeElement===$('#q'))renderSearchMenu()}),SUGGEST_DEBOUNCE)")
         self.assertPageContains("document.addEventListener('pointerdown',event=>{\n"
                                 "  if(!event.target.closest('.search'))"
                                 "hideSearchMenu();\n},true);")
@@ -4339,6 +4341,16 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('.runtimegate>svg{width:16px;height:16px;flex:none;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}')
         self.assertPageContains('.geist-note>svg{width:16px;height:24px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}')
         self.assertPageContains('.runtimegate a{grid-column:2/-1}')
+        # 横幅是第四个装这两枚字形的容器。圆点是长度 .01 的路径，缺了圆头就渲染成
+        # 看不见的薄片，警告只剩上半截竖杠。选择器认直接子元素：带进度时横幅里那一枚
+        # 圆环归 `.geist-gauge`，它的端点是弧的两头而不是字形笔画。
+        css = stylesheet_source()
+        start = css.index(".project-banner>div>svg{")
+        banner_glyph = css[start:css.index("}", start)]
+        self.assertIn("stroke-linecap:round", banner_glyph)
+        self.assertIn("stroke-linejoin:round", banner_glyph)
+        self.assertPageContains(
+            "icon(kind==='error'||kind==='warning'?'alert':'info')")
 
     def test_taste_drilldown_and_legacy_duration_tags_never_leak_filter_state(self):
         self.assertPageContains("const cleanTagFilter=value=>")
@@ -6672,6 +6684,44 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".top:has(.search.open){overflow:visible}")
         self.assertPageLacks("setTimeout(runSearch,320)")
         self.assertPageContains("runSearch(!picked,true)")
+
+    def test_search_menu_completes_from_the_ledger_as_you_type(self):
+        """敲字的同时给出馆藏里的身份与作品，不是聚焦时那一批固定推荐。"""
+        self.assertPageContains("/api/suggest?q=")
+        self.assertCode("const SUGGEST_DEBOUNCE=150;")
+        # 慢的旧响应不许盖掉新的：连敲两个字时先发的那次完全可能后回来。
+        self.assertCode("const request=++suggestRequest;")
+        self.assertCode("if(request!==suggestRequest)return;")
+        # 分组顺序和名字都由后端给，页面不另排一遍。
+        self.assertCode("esc(group.label)")
+        self.assertPageLacks("const SUGGEST_GROUPS=[")
+        # 有输入时历史跟着筛，这一刻用户在找词而不是回顾搜过什么。
+        self.assertCode("foldName(x).includes(foldName(query))")
+
+    def test_a_completed_work_opens_instead_of_running_a_search(self):
+        """整句标题填回搜索框，下一次搜索会因为任何一个字符对不上而落空。"""
+        self.assertPageContains("data-open-item")
+        self.assertCode("if(x.dataset.openItem){$('#q').blur();openItem(+x.dataset.openItem);return}")
+        # 键盘选中的那一项走同一条路，回车不绕一趟搜索。
+        self.assertCode(
+            "if(picked&&picked.dataset.openItem){$('#q').blur();"
+            "openItem(+picked.dataset.openItem);return}")
+
+    def test_the_search_menu_scrolls_inside_itself(self):
+        """七组补全装不进一屏，滚到底不把身后的列表一起翻走。"""
+        self.assertCode("max-height:min(60vh,520px);overflow:auto;overscroll-behavior:contain;")
+        self.assertCode(
+            ".searchmenu{position:fixed;left:8px;right:8px;top:56px;"
+            "max-height:70vh;overflow:auto;overscroll-behavior:contain}")
+
+    def test_a_suggestion_keeps_its_alias_and_count_subordinate(self):
+        """命中的别名和作品数都是这一行的注脚，不与统称争分量。"""
+        self.assertCode(
+            ".searchoption .matched{flex:0 8 auto;min-width:0;"
+            "color:var(--muted);font-size:var(--fs-xs)}")
+        self.assertCode(
+            ".searchoption .n{margin-left:auto;flex:none;color:var(--muted);"
+            "font-size:var(--fs-xs);font-variant-numeric:tabular-nums}")
 
     def test_detail_has_stats_ambient_and_better_version_goal(self):
         self.assertPageContains('class="ambientcanvas"')

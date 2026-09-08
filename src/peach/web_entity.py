@@ -18,6 +18,7 @@ from .catalog_rules import LENGTH_TAGS, dir_expr, photo_set_title, tag_cat
 from .entities import normalize_entity_name, resolve_entity, rewrite_flat_projection
 from .web_catalog import (
     COST,
+    VISIBLE_CATALOG_ASSET,
     attach_avatar_availability,
     tag_is_not_a_performer_name,
     tag_not_hidden,
@@ -403,6 +404,181 @@ def q_index(contract: WebContract, kind, q="", limit=600, offset=0, category="")
     if kind == "tags":
         result["categories"] = category_counts
     return result
+
+
+#: 补全每组的条数上限。下拉栏还要同时装搜索记录，每组给满五条已经会把靠后的组
+#: 推到需要滚动的位置。
+SUGGEST_GROUP_LIMIT = 5
+
+#: 补全的分组顺序与显示名，顺序就是下拉栏里的先后。它只定在这里，界面照抄——
+#: 两侧各排一次的话，改了一侧就会出现「后端认为最该先看的组显示在第三位」。
+#: 作品垫底：它的值是番号或整句标题，扫读成本比一个人名高。
+SUGGEST_GROUPS = (
+    ("performer", "女优"), ("creator", "创作者"), ("studio", "厂牌"),
+    ("agency", "事务所"), ("series", "系列"), ("tag", "标签"), ("asset", "作品"),
+)
+
+#: 直接挂在作品上的实体种类。事务所不在内：`asset_entity` 里没有它的行，
+#: 作品是它的成员拍的，所以它单走一条查询。
+SUGGEST_ENTITY_KINDS = ("performer", "creator", "studio", "series", "tag")
+
+#: 拉丁短输入按词首比的字符数门槛。两个字母做子串比，命中的多半是别的词中间那
+#: 两个字母：真实账本上「MO」会捞出 `kemonokai`，「Pr」会捞出 `chf3_prob4`，而用户
+#: 在打的是 MOODYZ 和 Prestige。
+SUGGEST_WORD_HEAD_BELOW = 3
+
+
+def _suggest_patterns(query: str) -> dict[str, str]:
+    """这段输入该按什么形状去比。
+
+    拉丁文字的词有词首，所以短输入比词首——整串开头，或某个空格之后。汉字和假名
+    没有分词空格，人名与标签本来就出现在名字中间，那一侧照旧按子串，否则「凉森」
+    这种两字输入会连自己都补不出来。
+
+    补全按这两种形状取词，`/api/items` 一律按子串找片，所以补全给出的是搜索命中的
+    一个子集——反过来不成立才是问题：那意味着下拉里的词点下去是空的。
+    """
+    prefix = f"{query}%"
+    if len(query) < SUGGEST_WORD_HEAD_BELOW and query.isascii():
+        return {"head": prefix, "tail": f"% {query}%", "prefix": prefix}
+    contains = f"%{query}%"
+    return {"head": contains, "tail": contains, "prefix": prefix}
+
+
+def _suggest_like(column: str) -> str:
+    """一列与这段输入的比较。两个占位符是同一件事的两种形状，见 `_suggest_patterns`。"""
+    return f"({column} LIKE :head OR {column} LIKE :tail)"
+
+
+#: 一个实体被这段输入命中的三条路，与 `/api/items` 的搜索同源：规范名、别名、检索词。
+#: 少认一条的后果是两个方向的落空——补出来的词搜不到，或者搜得到的词补不出来。
+SUGGEST_ENTITY_MATCH = (
+    "(" + _suggest_like("e.canonical_name")
+    + " OR EXISTS(SELECT 1 FROM entity_alias al WHERE al.entity_id=e.id"
+    " AND " + _suggest_like("al.alias") + ")"
+    " OR EXISTS(SELECT 1 FROM entity_search_term st WHERE st.entity_id=e.id"
+    " AND " + _suggest_like("st.term") + "))"
+)
+
+#: 命中的是哪个写法。规范名自己命中时留空——那一项显示的就是规范名，再标一次
+#: 等于把「涼森れむ（涼森れむ）」摆到用户面前。命中别名或检索词才有话要说：
+#: 用户输入「凉森」，看到的一行是「涼森れむ」，不说凭什么，他会以为补错了人。
+SUGGEST_MATCHED = (
+    "CASE WHEN " + _suggest_like("e.canonical_name") + " THEN '' ELSE COALESCE("
+    "(SELECT al.alias FROM entity_alias al WHERE al.entity_id=e.id"
+    " AND " + _suggest_like("al.alias") + " LIMIT 1),"
+    "(SELECT st.term FROM entity_search_term st WHERE st.entity_id=e.id"
+    " AND " + _suggest_like("st.term") + " LIMIT 1),'') END matched"
+)
+
+
+def _suggest_entity_rows(connection, params):
+    """直接挂着作品的实体，按名下作品数排，前缀命中的排在前面。"""
+    length_keys = {f"lt{index}": tag for index, tag in enumerate(sorted(LENGTH_TAGS))}
+    kinds = ",".join(f"'{kind}'" for kind in SUGGEST_ENTITY_KINDS)
+    sql = (
+        "SELECT e.kind kind, e.canonical_name k, count(DISTINCT ae.asset_id) n, "
+        + SUGGEST_MATCHED + " FROM entity e "
+        "JOIN asset_entity ae ON ae.entity_id=e.id JOIN asset a ON a.id=ae.asset_id "
+        "WHERE " + VISIBLE_CATALOG_ASSET + f" AND e.kind IN ({kinds}) "
+        "AND " + SUGGEST_ENTITY_MATCH + " "
+        # 标签沿用标签榜的可见性：时长标签是筛选控件而不是词，与女优同名的标签是
+        # 另一个身份的冒充，被隐藏的标签用户已经说过不想看见。
+        "AND (e.kind<>'tag' OR (e.canonical_name NOT IN ("
+        + ",".join(f":{key}" for key in length_keys) + ") AND "
+        + tag_is_not_a_performer_name("e.normalized_name") + " AND "
+        + tag_not_hidden("ae.asset_id", "e.normalized_name") + ")) "
+        "GROUP BY e.id ORDER BY "
+        "CASE WHEN e.canonical_name LIKE :prefix THEN 0 ELSE 1 END, n DESC, e.canonical_name"
+    )
+    return connection.execute(sql, {**params, **length_keys}).fetchall()
+
+
+def _suggest_agency_rows(connection, params):
+    """事务所的规模顺着成员算，判据与它的资料页、索引页同一份。
+
+    名下一部作品都没有的事务所不进补全：账本里有它的身份，但按它搜出来是空的。
+    """
+    sql = (
+        "SELECT * FROM (SELECT 'agency' kind, e.canonical_name k, "
+        "(SELECT count(DISTINCT ae.asset_id) FROM asset_entity ae "
+        " JOIN asset a ON a.id=ae.asset_id WHERE " + VISIBLE_CATALOG_ASSET + " AND "
+        + scope_predicate("agency", "ae.entity_id", "e.id") + ") n, "
+        + SUGGEST_MATCHED + " FROM entity e WHERE e.kind='agency' AND "
+        + SUGGEST_ENTITY_MATCH + ") WHERE n>0 "
+        "ORDER BY CASE WHEN k LIKE :prefix THEN 0 ELSE 1 END, n DESC, k"
+    )
+    return connection.execute(sql, params).fetchall()
+
+
+def _suggest_asset_rows(connection, params, limit):
+    """作品这一组给的是「打开这一条」，不是一个搜索词。
+
+    番号是可搜的短词，整句标题不是：把一整行带全角括号和空格的标题填回搜索框，
+    下一次搜索会因为其中任何一个字符对不上而落空。所以这一组带上 id，由界面
+    直接开详情，而不是绕一趟搜索。
+
+    文件名排在最后一档。它是存储事实而不是这部片叫什么，命中它的多半是扩展名和
+    转码标记：真实账本上「MO」会从文件名里捞出 `IMG_2757_682.MOV` 和一条标题里
+    带 `MOVIE版` 的转码文件。番号和发行标题够五条时它就不露面。
+    """
+    named = (
+        "(" + _suggest_like("a.code") + " OR " + _suggest_like("a.catalog_title")
+        + " OR " + _suggest_like("a.original_title") + ")"
+    )
+    sql = (
+        "SELECT a.id id, COALESCE(a.code,'') code, COALESCE(a.catalog_title,'') title, "
+        "COALESCE(a.name,'') name FROM asset a WHERE " + VISIBLE_CATALOG_ASSET
+        + " AND (" + named + " OR " + _suggest_like("a.name") + ") "
+        "ORDER BY CASE WHEN a.code LIKE :prefix THEN 0 WHEN " + named + " THEN 1 "
+        "ELSE 2 END, COALESCE(a.play_count,0) DESC, a.id DESC LIMIT :limit"
+    )
+    return connection.execute(sql, {**params, "limit": limit}).fetchall()
+
+
+def _asset_display_name(name: str) -> str:
+    """文件名去掉扩展名。`.mp4` 是存储事实，不是这部片叫什么。
+
+    去掉之后它仍是 `asset.name` 的子串，所以拿它去搜照样命中这一条。
+    """
+    head, _, tail = name.rpartition(".")
+    return head if head and len(tail) <= 4 else name
+
+
+def q_suggest(contract: WebContract, q: str, limit: int = SUGGEST_GROUP_LIMIT):
+    """搜索栏下拉的补全：给一段输入，返回馆藏里点得开的身份与作品。
+
+    「点得开」不是靠调用方逐条验一遍达成的，是判据本身与 `/api/items` 同源：
+    可见性用的是同一个 `VISIBLE_CATALOG_ASSET`，命中的三条路是搜索 LIKE 分支的
+    那三条，实体行来自实际挂着作品的 join。所以这里返回的每一项，按它的 `value`
+    去搜都有结果——补全与搜索口径漂开，比没有补全更难查。
+    """
+    query = (q or "").strip()
+    if not query:
+        return {"q": "", "groups": []}
+    per_group = max(1, min(int(limit), SUGGEST_GROUP_LIMIT * 4))
+    params = _suggest_patterns(query)
+    with contract.read_connection() as connection:
+        entities = [dict(row) for row in _suggest_entity_rows(connection, params)]
+        entities += [dict(row) for row in _suggest_agency_rows(connection, params)]
+        assets = [dict(row) for row in _suggest_asset_rows(connection, params, per_group)]
+    buckets: dict[str, list[dict]] = {}
+    for row in entities:
+        bucket = buckets.setdefault(row["kind"], [])
+        if len(bucket) < per_group:
+            bucket.append({"value": row["k"], "n": row["n"],
+                           "matched": row["matched"], "id": None})
+    buckets["asset"] = [{
+        # 番号优先：它既是这条作品的名字，也是一个搜得到的短词。没有番号的
+        # 才退到发行标题，最后才是文件名——文件名是最不像「这部片叫什么」的
+        # 那个写法。
+        "value": row["code"] or row["title"] or _asset_display_name(row["name"]),
+        "n": 0, "matched": "", "id": row["id"],
+    } for row in assets]
+    return {"q": query, "groups": [
+        {"kind": kind, "label": label, "items": buckets[kind]}
+        for kind, label in SUGGEST_GROUPS if buckets.get(kind)
+    ]}
 
 
 #: 用户在资料页选定统称时，被换下的旧规范名记这个来源。合并留的是 `merge:*`，

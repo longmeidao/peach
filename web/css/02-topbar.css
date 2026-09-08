@@ -20,7 +20,10 @@
 .search:focus-within{border-color:var(--field-ring-focus);box-shadow:0 0 0 4px var(--field-glow)}
 .search input{flex:1;min-width:0;background:none;border:0;outline:none;font-size:var(--fs-lg)}
 .search>svg{width:21px;height:21px;flex:none;stroke:var(--muted);fill:none;stroke-width:2;stroke-linecap:round}
+/* 补全按种类分组，一次可能有七组，所以下拉栏自己滚：滚到底不把页面接着往下带，
+   否则在搜索框里翻补全会把身后的列表也翻走。 */
 .searchmenu{position:absolute;z-index:130;left:0;right:0;top:calc(100% + 8px);padding:8px;
+  max-height:min(60vh,520px);overflow:auto;overscroll-behavior:contain;
   border:1px solid var(--border-10);border-radius:var(--floating-radius);
   background:color-mix(in srgb,var(--surface) 96%,var(--ground));
   box-shadow:0 22px 56px -20px #000b;backdrop-filter:saturate(1.5) blur(26px)}
@@ -30,6 +33,11 @@
   display:flex;align-items:center;gap:11px;padding:0 10px;text-align:left;cursor:pointer}
 .searchoption:hover,.searchoption.active{background:var(--hover)}.searchoption svg{width:18px;height:18px;stroke:var(--muted);fill:none;flex:none}
 .searchoption span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.searchoption .removehistory{margin-left:auto;border:0;background:none;color:var(--muted);padding:7px;cursor:pointer}
+/* 命中的别名跟在统称后面，作品数靠右。两个都是这一行的注脚，不与名字争分量。
+   宽度不够时别名先让位（收缩权重比统称高）：系列的规范名本身就是一整句日文标题、
+   别名是它的整句英文译名，平摊的话一行里两段都收在省略号里，谁也读不出来。 */
+.searchoption .matched{flex:0 8 auto;min-width:0;color:var(--muted);font-size:var(--fs-xs)}
+.searchoption .n{margin-left:auto;flex:none;color:var(--muted);font-size:var(--fs-xs);font-variant-numeric:tabular-nums}
 .readout{display:flex;gap:20px;flex:none;align-items:center}
 .readout div{display:flex;flex-direction:column;line-height:1.3;align-items:flex-start}
 .readout b{font-size:var(--fs-lg);font-weight:600;font-variant-numeric:tabular-nums}

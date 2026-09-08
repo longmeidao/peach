@@ -176,7 +176,7 @@ body:has(#batchbar:not([hidden])) #stage{padding-bottom:180px}
   .top:has(.search.open) #selectMode,
   .top:has(.search.open) #settingsBtn{display:none!important}
   .top:has(.search.open) .searchback{display:inline-flex;position:absolute;left:8px;top:8px;z-index:6}
-  .searchmenu{position:fixed;left:8px;right:8px;top:56px;max-height:70vh;overflow:auto}
+  .searchmenu{position:fixed;left:8px;right:8px;top:56px;max-height:70vh;overflow:auto;overscroll-behavior:contain}
   #searchBtn{display:inline-flex!important}
   /* 移动端不需要密度切换和筛选抽屉按钮挤在一起 */
   #density{display:none}
