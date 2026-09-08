@@ -13,7 +13,9 @@ export function wireSidebarGroups(root:HTMLElement):void {
     const key=`peach.sidebar.group.${group.dataset.sidebarGroup}`;
     let saved:string|null=null;try{saved=sessionStorage.getItem(key)}catch{}
     const active=!!body.querySelector('[aria-pressed=true]');
-    group.open=saved!==null?saved==='open':active||group.classList.contains('cat-src')||group.dataset.sidebarGroup==='时长';
+    /* 一进来只有正在生效的那几组是展开的。挑两组常驻展开等于替人决定他这次要按哪个维度
+       筛，而侧栏一屏就那么长，展开的部分把别的组挤到看不见的地方去。 */
+    group.open=saved!==null?saved==='open':active;
     button.querySelectorAll('button').forEach(control=>control.addEventListener('click',event=>event.stopPropagation()));
   });
   wireCollapse(root,'details[data-sidebar-group]','sidebar-collapse');

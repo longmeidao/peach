@@ -1039,7 +1039,7 @@ function Ct() {
 }
 var wt = /* @__PURE__ */ new Map();
 function Tt(e) {
-	let t = ".managebar-menu,.board-local-nav:not(.settingscard>.board-local-nav),.insighttabs,.reviewtabs", n = [...e.querySelectorAll(t)];
+	let t = ".managebar-menu,.board-local-nav:not(.settingscard>.board-local-nav),.insighttabs", n = [...e.querySelectorAll(t)];
 	e instanceof HTMLElement && e.matches(t) && n.push(e), n.forEach((e) => {
 		if (e.hasAttribute("data-board-tabs")) return;
 		e.dataset.boardTabs = "true";
@@ -1661,7 +1661,7 @@ function yn(e) {
 			i = sessionStorage.getItem(r);
 		} catch {}
 		let a = !!n.querySelector("[aria-pressed=true]");
-		e.open = i === null ? a || e.classList.contains("cat-src") || e.dataset.sidebarGroup === "时长" : i === "open", t.querySelectorAll("button").forEach((e) => e.addEventListener("click", (e) => e.stopPropagation()));
+		e.open = i === null ? a : i === "open", t.querySelectorAll("button").forEach((e) => e.addEventListener("click", (e) => e.stopPropagation()));
 	}), y(e, "details[data-sidebar-group]", "sidebar-collapse"), e.querySelectorAll(".board-section-toggle").forEach((e) => {
 		e.dataset.persistWired || (e.dataset.persistWired = "true", e.addEventListener("click", () => {
 			let t = `peach.sidebar.group.${e.closest("[data-sidebar-group]").dataset.sidebarGroup}`;
@@ -3847,17 +3847,16 @@ var Xr = () => ({
 function Zr(e) {
 	let t = e?.querySelector(".reviewbulktoolbar");
 	if (!e || !t || t.offsetParent === null) return;
-	let n = e.closest("main");
-	n && e.style.setProperty("--review-edge", getComputedStyle(n).paddingLeft), e.style.setProperty("--review-controls-height", `${t.getBoundingClientRect().height}px`);
-	let r = [t, ...e.querySelectorAll(".reviewgroupbar")];
-	for (let e of r) {
+	e.style.setProperty("--review-controls-height", `${t.getBoundingClientRect().height}px`);
+	let n = [t, ...e.querySelectorAll(".reviewgroupbar")];
+	for (let e of n) {
 		let t = parseFloat(getComputedStyle(e).top);
 		e.classList.toggle("is-stuck", e.offsetParent !== null && window.scrollY > 0 && Number.isFinite(t) && Math.abs(e.getBoundingClientRect().top - t) <= 1);
 	}
-	let i = r.filter((e) => e.classList.contains("is-stuck"));
-	if (e.classList.toggle("review-is-stuck", i.length > 0), !i.length) return;
-	let a = i[0].getBoundingClientRect(), o = i[i.length - 1].getBoundingClientRect();
-	e.style.setProperty("--review-pane-left", `${a.left}px`), e.style.setProperty("--review-pane-width", `${a.width}px`), e.style.setProperty("--review-pane-height", `${o.bottom - a.top}px`);
+	let r = n.filter((e) => e.classList.contains("is-stuck"));
+	if (e.classList.toggle("review-is-stuck", r.length > 0), !r.length) return;
+	let i = r[0].getBoundingClientRect(), a = r[r.length - 1].getBoundingClientRect();
+	e.style.setProperty("--review-pane-left", `${i.left}px`), e.style.setProperty("--review-pane-width", `${i.width}px`), e.style.setProperty("--review-pane-height", `${a.bottom - i.top}px`);
 }
 function Qr(e, t) {
 	let n = [[

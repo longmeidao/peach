@@ -5380,7 +5380,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn("body .review{width:100%;max-width:var(--board-content);margin:0 auto;box-sizing:border-box}", board)
         self.assertIn("body .review .reviewcontrols{position:static;", board)
         self.assertIn("body .review .reviewbulktoolbar{position:sticky;top:var(--topH);z-index:60;width:auto;", board)
-        self.assertIn("body .review .reviewgroupbar{margin-inline:calc(-1 * var(--review-edge,16px));", board)
+        self.assertIn("body .review .reviewgroupbar{background:var(--ground);border:0;border-radius:0 0 20px 20px}", board)
         self.assertIn(".closestage,.closestage:hover{background:rgba(0,0,0,.6);color:#fff}", board)
         self.assertIn("body .batchbar button[hidden],body .batchbar button.danger[hidden]{display:none}", board)
         self.assertIn("body .batchbar button.danger{", board)
@@ -5450,7 +5450,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn(".pcheck input:checked+span svg{animation:board-check-draw .2s cubic-bezier(.65,0,.35,1) forwards}", board)
 
     def test_the_board_layer_shares_one_tabs_segments_and_chart_motion(self):
-        """口味页、复核页与首页工具栏的控件都用 Board 那一份：下划线 Tabs 的蓝线会滑，
+        """口味页、复核页与首页工具栏的控件都用 Board 那一份：下划线 Tabs 的指示条会滑，
         证据切换与版式切换是同一枚分段滑块，排名条与雷达图进入视口后从零长出 1.2 秒。
 
         随之对齐的还有：排序行里的分段控件与排序键同高（30px）；管理页标题只在 812px
@@ -5460,7 +5460,7 @@ class WebUiSourceTests(unittest.TestCase):
         """
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
         controls = (Path(__file__).resolve().parents[1] / "frontend/src/board-controls.ts").read_text(encoding="utf-8")
-        self.assertIn("const selector='.managebar-menu,.board-local-nav:not(.settingscard>.board-local-nav),.insighttabs,.reviewtabs';", controls)
+        self.assertIn("const selector='.managebar-menu,.board-local-nav:not(.settingscard>.board-local-nav),.insighttabs';", controls)
         self.assertIn("const selector='.iconswitch,.insightswitch';", controls)
         self.assertIn("export function wireGrowingCharts(root:ParentNode) {", controls)
         self.assertIn("wireBoardSegments(root);wireBoardTabs(root);wireGrowingCharts(root)", controls)
@@ -5471,7 +5471,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn(".count .sorts,.entitycollectionhead .sorts{padding:0 2px}", board)
         # 下划线只归洞察页；复核分类是次级菜单，判据在 test_the_review_categories_look_like_a_secondary_menu。
         self.assertIn(".insighttabs{display:flex;align-items:center;gap:4px;width:100%;", board)
-        self.assertIn(".insighttabs button[aria-selected=\"true\"]{background:none;color:var(--tungsten);font:var(--board-body-medium)}", board)
+        self.assertIn(".insighttabs button[aria-selected=\"true\"]{background:none;color:var(--color-text-primary);font:var(--board-body-medium)}", board)
         self.assertIn(".insightpanel>header h3,.insightcopy>span{margin:0;font:var(--board-heading);color:var(--color-text-primary)}", board)
         self.assertIn("body .tasterank:is(button):hover,body .board-rank-list .tasterank:hover{border-color:transparent;"
                       "background:transparent}", board)
@@ -7258,24 +7258,27 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn("stroke:currentColor;fill:none;stroke-width:2}", self.css)
 
     def test_the_review_toolbar_and_group_bar_read_as_one_box(self):
-        """复核页顶上那两行是一个框：等宽、常驻、中间不划线。
+        """复核页顶上那两行是一个框：等宽、常驻、中间不划线，左右就是内容列。
 
         工具条此前写死 `width:100%` 再配负外边距，右边就比分组条短一个页边距；
-        底色只在 `is-stuck` 时才有，刚进页面看上去根本没有框。现在两行都用同一个
-        `--review-edge` 出血、同一层 `--ground` 底，圆角上下各收一半；只有分组条
-        自己滚上去顶住时才各自收口。
+        底色只在 `is-stuck` 时才有，刚进页面看上去根本没有框。现在两行同一层
+        `--ground` 底、圆角上下各收一半，左右和标题、面包屑、卡片同一条边；只有
+        分组条自己滚上去顶住时才各自收口。
         """
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
         self.assertIn("body .review .reviewbulktoolbar{position:sticky;top:var(--topH);z-index:60;width:auto;"
-                      "margin:0 calc(-1 * var(--review-edge,16px));padding:12px var(--review-edge,16px);"
+                      "margin-inline:0;padding:12px 0;"
                       "background:var(--ground);border-radius:20px 20px 0 0}", board)
-        self.assertIn("body .review .reviewgroupbar{margin-inline:calc(-1 * var(--review-edge,16px));"
-                      "padding-inline:var(--review-edge,16px);background:var(--ground);border:0;"
+        self.assertIn("body .review .reviewgroupbar{background:var(--ground);border:0;"
                       "border-radius:0 0 20px 20px}", board)
         # 下面那些分组各自成框：上一个可见分组和它之间隔着一整屏卡片。
         self.assertIn("body .review .reviewgroup:not([hidden])~.reviewgroup:not([hidden])"
                       ">.reviewgroupbar{border-radius:20px}", board)
         self.assertNotIn(".reviewbulktoolbar{width:100%", self.css)
+        # 出血那一套整条退役：只留在 CSS 里也会被下一个人当成还在生效的写法去改。
+        self.assertNotIn("--review-edge", self.css)
+        bulk = (Path(__file__).resolve().parents[1] / "frontend/src/review-bulk.ts").read_text(encoding="utf-8")
+        self.assertNotIn("--review-edge", bulk)
 
     def test_a_selectable_follow_row_keeps_its_own_border_on_every_edge(self):
         """关注列表进选择态后，行与行之间那条线是卡片自己的上边框。
@@ -7426,25 +7429,22 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn(".shorts-inline{border:0}", board)
         self.assertPageContains(".shorts-inline{padding:16px;background:var(--ground);")
 
-    def test_a_range_slider_reports_only_the_end_being_dragged(self):
-        """时长只有一处读数：手柄上方那枚气泡，在碰它的时候出现。
+    def test_both_ends_of_a_range_slider_always_report_their_value(self):
+        """时长两端的读数常显：这里是唯一报数的地方。
 
-        两枚气泡常驻的话，滑块不动时它们说的是同一句「不限」；另起一行写「不限 — 不限」
-        则是同一件事说第三遍，而手真正要看的是当前拖到了哪。两个 input 覆盖同一条轨道，
-        只有压在手柄上才命中，所以按 `:nth-of-type` 各自认领一端。
+        藏到碰上去才出现的话，不动滑块就看不出当前筛的是哪一段；另起一行写
+        「不限 — 不限」则是同一件事说第二遍，而且滑块不动时它永远是那句话。
         """
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
-        self.assertIn("white-space:nowrap;box-shadow:0 1px 2px #0000000d;pointer-events:none;"
-                      "opacity:0;transition:opacity .12s ease}", board)
-        self.assertIn(".dual-range input:nth-of-type(1):is(:hover,:active,:focus-visible)~"
-                      ".board-range-tip[data-range-end=min],", board)
-        self.assertIn(".dual-range input:nth-of-type(2):is(:hover,:active,:focus-visible)~"
-                      ".board-range-tip[data-range-end=max]{opacity:1}", board)
+        self.assertIn("white-space:nowrap;box-shadow:0 1px 2px #0000000d;pointer-events:none}", board)
+        self.assertNotIn(".board-range-tip[data-range-end=max]{opacity:1}", board)
+        controls = (Path(__file__).resolve().parents[1] / "frontend/src/board-controls.ts").read_text(encoding="utf-8")
+        self.assertIn("tip.textContent=value>=max&&end==='max'?'不限':`${value} 分钟`;", controls)
         for gone in ("durMinText", "durMaxText", "duration-readout"):
-            self.assertPageLacks(gone, "时长读数只由手柄上那枚气泡承担")
+            self.assertPageLacks(gone, "时长读数只由手柄上那两枚气泡承担")
 
-    def test_a_chart_legend_tile_is_the_grey_surface_itself(self):
-        """图例小卡自己是灰片，不是摆在一块灰托盘上的白片。
+    def test_a_chart_legend_tile_is_the_inlaid_surface_itself(self):
+        """图例小卡自己就是那层凹片，不是摆在一块托盘上的另一张卡。
 
         卡片底、托盘底、小卡底三层各一个颜色时，数字读起来像是嵌在框里的框；而这一组
         里只有小卡是可以点的，托盘不承担任何动作，也就不该占一层底色。
@@ -7454,12 +7454,75 @@ class WebUiSourceTests(unittest.TestCase):
                       "padding:0;border-radius:0;background:none}", board)
         self.assertIn(".board-radial-tiles>button{display:flex;flex:1 1 calc(33.333% - 8px);min-width:0;"
                       "flex-direction:column;align-items:flex-start;gap:4px;padding:10px;border:0;"
-                      "border-radius:12px;background:var(--color-background-secondary-default);", board)
+                      "border-radius:12px;background:var(--board-inlay);", board)
         # 选中仍然只有填充加一圈同色描边，不再靠「白片压在灰托盘上」拉开层次。
         self.assertIn(".board-radial-tiles>button:is([data-active=true],[aria-pressed=true])"
                       "{background:color-mix(in srgb,var(--ring-color) 10%,"
-                      "var(--color-background-secondary-default));box-shadow:inset 0 0 0 1px var(--ring-color)}",
+                      "var(--board-inlay));box-shadow:inset 0 0 0 1px var(--ring-color)}",
                       board)
+
+    def test_a_surface_inlaid_into_a_card_flips_direction_with_the_theme(self):
+        """卡片上凹进去的那一层按文字色去混，深浅两档的方向自动相反。
+
+        三档背景 token 表达不了它：深色下 tertiary 与 primary 同值，secondary 又比卡片
+        更深，在卡上画出一个黑洞；浅色下 secondary 与白卡只差一点。文字色和面色永远
+        反相，拿它当混色的一端，两档读出来都是「比卡片进去一层」。
+        """
+        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
+        self.assertIn("--board-inlay:color-mix(in srgb,var(--color-text-primary) 6%,"
+                      "var(--color-background-primary-default));", board)
+        # 环轨和图例小卡是同一层：都直接坐在 primary 的卡片面上。
+        self.assertIn(".board-ring-track{stroke:var(--board-inlay)}", board)
+        self.assertNotIn(".board-ring-track{stroke:var(--color-background-secondary-default)}", board)
+
+    def test_a_tab_marks_the_current_page_in_ink_not_in_blue(self):
+        """选中的 tab 用文字色，蓝留给焦点环、链接、进度与 Toggle 开态。
+
+        一条蓝线在导航上读起来是「这里可以点开」而不是「你在这儿」，而全站三处下划线
+        Tabs 共用同一枚指示条，颜色写在一处。
+        """
+        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
+        self.assertIn("width:var(--tab-width,0px);height:2px;background:var(--color-text-primary);", board)
+        self.assertIn(".managebar .managebar-menu button[aria-pressed=\"true\"]{background:none;"
+                      "color:var(--color-text-primary);border-bottom-color:var(--color-text-primary);"
+                      "font-weight:500}", board)
+        self.assertIn(".board-local-nav button[aria-selected=\"true\"]{border-bottom-color:var(--color-text-primary);"
+                      "color:var(--color-text-primary);font-weight:500}", board)
+        # 未选中是次级文字色：选中项只多一档字重的话，两态在同一排里分不出来。
+        self.assertIn("box-shadow:none;color:var(--color-text-secondary);font:var(--board-body);"
+                      "white-space:nowrap;transition:color .15s ease}", board)
+        # 焦点环仍然是蓝的，那是它唯一的去处。
+        self.assertIn(".board-local-nav button:focus-visible{outline:2px solid var(--tungsten);", board)
+
+    def test_the_library_switcher_menu_opens_against_the_control_it_belongs_to(self):
+        """媒体库弹窗贴着切换器的右缘开，允许压住侧栏剩下的那一段。
+
+        按侧栏右缘起算的话，展开态下切换器到侧栏边还有两百来像素，弹窗和它点开的那个
+        控件之间隔着一片空白，读不出是谁弹出来的。
+        """
+        ui = (Path(__file__).resolve().parents[1] / "web/js/ui-components.js").read_text(encoding="utf-8")
+        self.assertIn("menu.style.left=Math.max(16,Math.min(anchor.right+8,innerWidth-width-16))+'px';", ui)
+        self.assertNotIn("Math.max(anchor.right,mount.getBoundingClientRect().right)", ui)
+
+    def test_the_sidebar_switcher_clears_the_first_nav_row(self):
+        """切换器和导航首项之间留 12px。
+
+        切换器展开时自己带一圈 2px 描边，首项又会抬起 hover 底：留 4px 的话这两块底色
+        是挨着的，读起来像切换器压在第一项上。
+        """
+        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
+        self.assertIn(".drawer .dnav{margin-top:12px;gap:4px}", board)
+
+    def test_a_filter_group_opens_only_when_something_in_it_is_active(self):
+        """一进侧栏只有正在生效的那几组是展开的。
+
+        挑两组常驻展开等于替人决定他这次要按哪个维度筛，而侧栏一屏就那么长，展开的
+        部分把别的组挤到看不见的地方去。记住的选择仍然优先于这个默认。
+        """
+        groups = (Path(__file__).resolve().parents[1] / "frontend/src/sidebar-groups.ts").read_text(encoding="utf-8")
+        self.assertIn("group.open=saved!==null?saved==='open':active;", groups)
+        self.assertNotIn("group.classList.contains('cat-src')", groups)
+        self.assertNotIn("group.dataset.sidebarGroup==='时长'", groups)
 
     def test_a_wide_glyph_gets_a_wide_slot_instead_of_being_shrunk_to_fit(self):
         """1.4:1 的字形锁死方形槽位只能按宽缩，画出来就比满格的邻座矮一截。

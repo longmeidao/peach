@@ -41,9 +41,10 @@ export function initBoardControls() {
 }
 
 const tabPositions=new Map<string,{left:number;width:number}>();
-/** 全站的下划线 Tabs 共用一条会滑的 2px 蓝线（boardui tabs.tsx：transform 与 width 各 200ms ease）。 */
+/** 全站的下划线 Tabs 共用一条会滑的 2px 指示条，颜色是文字色（boardui tabs.tsx：transform 与
+    width 各 200ms ease）。复核分类是药丸，选中靠填充，不进这条。 */
 export function wireBoardTabs(root:ParentNode){
-  const selector='.managebar-menu,.board-local-nav:not(.settingscard>.board-local-nav),.insighttabs,.reviewtabs';
+  const selector='.managebar-menu,.board-local-nav:not(.settingscard>.board-local-nav),.insighttabs';
   const groups=[...root.querySelectorAll<HTMLElement>(selector)];
   if(root instanceof HTMLElement&&root.matches(selector))groups.push(root);
   groups.forEach(group=>{

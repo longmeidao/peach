@@ -17,10 +17,10 @@ describe('范围控件',()=>{
     expect(document.querySelectorAll('.insightswitch .board-segment-thumb')).toHaveLength(1);
     expect(document.querySelector('.insightswitch')?.getAttribute('data-board-segments')).toBe('true');
   });
-  it('复核页与口味页的标签条都接上会滑的下划线',()=>{
+  it('口味页的标签条接上会滑的指示条，复核分类是药丸不接',()=>{
     document.body.innerHTML='<div class="reviewtabs" role="tablist"><button role="tab" aria-selected="true">元数据字段</button><button role="tab" aria-selected="false">厂牌 Logo</button></div><div class="insighttabs" role="tablist"><button role="tab" aria-selected="true">标签</button></div>';
     wireBoardTabs(document);wireBoardTabs(document);
-    expect([...document.querySelectorAll('[data-board-tabs]')].map(group=>group.className)).toEqual(['reviewtabs','insighttabs']);
+    expect([...document.querySelectorAll('[data-board-tabs]')].map(group=>group.className)).toEqual(['insighttabs']);
   });
   it('排名条与雷达图没有 IntersectionObserver 时立刻可见，重复接线不重复标记',()=>{
     document.body.innerHTML='<ol class="board-ranked-chart"><li></li></ol><svg class="board-radar"></svg><div class="tasteranks"></div>';

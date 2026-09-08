@@ -176,7 +176,8 @@
 
 .reviewbulktoolbar{padding-block:0;margin-bottom:0}
 .reviewcontrols{position:sticky;top:var(--topH);z-index:60;display:grid;gap:12px;padding-block:12px;margin-bottom:16px}
-.reviewcontrols,.reviewgroupbar{margin-inline:calc(-1 * var(--review-edge,16px));padding-inline:var(--review-edge,16px);background:transparent;border-bottom:1px solid transparent}
+/* 粘住的这两条左右就是内容列，和标题、面包屑、卡片同一条边，不向外出血。 */
+.reviewcontrols,.reviewgroupbar{background:transparent;border-bottom:1px solid transparent}
 .reviewcontrols.is-stuck,.reviewgroupbar.is-stuck{background:var(--ground);border-bottom-color:var(--line-soft)}
 .reviewgroupbar{position:sticky;top:calc(var(--topH) + var(--review-controls-height,0px));z-index:59;padding-block:8px}
 .reviewgroupbar.is-stuck h3{margin-right:0}
