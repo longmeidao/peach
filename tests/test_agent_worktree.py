@@ -473,3 +473,65 @@ class CoAuthorTests(unittest.TestCase):
             with self.assertRaisesRegex(agent_worktree.WorkspaceError, "Co-Authored-By"):
                 agent_worktree.require_verified(self.repo, "master", {"tests/example.py"})
             key.assert_not_called()
+
+
+from scripts import commit_subject
+
+
+class CommitSubjectTests(unittest.TestCase):
+    """提交主题的形状。变更日志按它分组，写歪的提交不报错，只是静默漏掉。"""
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.repo = Path(self.temp.name).resolve()
+        git(self.repo, "init", "-b", "master")
+        git(self.repo, "config", "user.name", "Test")
+        git(self.repo, "config", "user.email", "test@example.invalid")
+        git(self.repo, "commit", "--allow-empty", "-m", "base")
+        git(self.repo, "checkout", "-b", "worker")
+
+    def titled(self, *subjects):
+        for subject in subjects:
+            git(self.repo, "commit", "--allow-empty", "-m", subject)
+        return commit_subject.check(self.repo, "master")
+
+    def test_a_conventional_subject_passes_with_or_without_scope(self):
+        self.assertEqual(self.titled("fix(web): 补齐图标声明", "docs: 补记四个版本",
+                                     "refactor(media)!: 删掉旧快照根"), [])
+
+    def test_a_bare_sentence_is_not_a_subject(self):
+        self.assertTrue(self.titled("修复关注页按手柄查不到"))
+
+    def test_the_space_after_the_colon_is_part_of_the_shape(self):
+        self.assertTrue(self.titled("fix(web):保留必需凭据"))
+
+    def test_an_unlisted_type_waits_until_someone_lists_it(self):
+        """清单在 `commit_subject.TYPES`：加类型要先想清它在变更日志里归哪一组。"""
+        problems = self.titled("release(app): 版本 0.30.0")
+        self.assertEqual(len(problems), 1)
+        self.assertIn("release", problems[0])
+
+    def test_every_commit_on_the_branch_is_checked_not_only_head(self):
+        problems = self.titled("补齐 JAV 元数据", "fix(web): 后面这条是对的")
+        self.assertEqual(len(problems), 1)
+        self.assertIn("补齐 JAV 元数据", problems[0])
+
+    def test_merges_from_the_target_branch_are_not_the_worker_s_subjects(self):
+        git(self.repo, "checkout", "master")
+        git(self.repo, "commit", "--allow-empty", "-m", "chore(deps-dev): bump vitest")
+        git(self.repo, "checkout", "worker")
+        git(self.repo, "commit", "--allow-empty", "-m", "fix(web): 自己的提交")
+        git(self.repo, "merge", "--no-ff", "-m", "Merge branch 'master' into worker", "master")
+        self.assertEqual(commit_subject.check(self.repo, "master"), [])
+
+    def test_the_subject_gate_runs_before_the_test_evidence_is_read(self):
+        (self.repo / "tests").mkdir()
+        (self.repo / "tests" / "example.py").write_text("x = 1\n", encoding="utf-8")
+        git(self.repo, "add", "--", "tests/example.py")
+        git(self.repo, "commit", "-m", "加个测试", "-m",
+            "Co-Authored-By: Claude Code (Opus 5) <noreply@anthropic.com>")
+        with mock.patch.object(agent_worktree.test_evidence, "key") as key:
+            with self.assertRaisesRegex(agent_worktree.WorkspaceError, "提交主题"):
+                agent_worktree.require_verified(self.repo, "master", {"tests/example.py"})
+            key.assert_not_called()
