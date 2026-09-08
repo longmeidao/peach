@@ -108,7 +108,27 @@ def read_configuration(request: Request, _args=Depends(require_auth)):
     config = settings_file.load_config()
     if not config.present:
         raise HTTPException(409, "请先完成首次设置")
-    return snapshot(config)
+    result = snapshot(config)
+    result["automatic_updates"] = request.app.state.automatic_updates.snapshot()
+    if result["automatic_updates"].get("result"):
+        result["updates"] = result["automatic_updates"]["result"]
+    return result
+
+
+@router.get("/api/configuration/automatic-updates")
+def read_automatic_updates(request: Request, _args=Depends(require_auth)):
+    local_only(request)
+    return request.app.state.automatic_updates.snapshot()
+
+
+@router.post("/api/configuration/automatic-updates")
+def save_automatic_updates(request: Request, body: dict = Body(...), _args=Depends(require_auth)):
+    local_only(request)
+    same_origin(request)
+    try:
+        return request.app.state.automatic_updates.save(body)
+    except (ValueError, OSError, Timeout) as exc:
+        raise HTTPException(400, str(exc)) from exc
 
 
 @router.post("/api/configuration/peach-proxy")
@@ -151,7 +171,9 @@ def uninstall(request: Request, body: dict = Body(...), _args=Depends(require_au
 @router.get("/api/configuration/updates")
 def check_updates(request: Request, _args=Depends(require_auth)):
     local_only(request)
-    return release_updates.check()
+    result = release_updates.check()
+    request.app.state.automatic_updates.remember(result)
+    return result
 
 
 @router.get("/api/configuration/update-status")

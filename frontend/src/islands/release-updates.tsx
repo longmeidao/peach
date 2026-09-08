@@ -10,6 +10,7 @@ export interface ReleaseState {
   state: string;
   message: string;
   release_url: string;
+  checked_at?: number;
 }
 
 export interface UpdateJob {state: string; progress: number; message?: string; downloaded?: number; total?: number; version?: string}
@@ -35,7 +36,6 @@ export function ReleaseUpdates({ initial, initialJob }: { initial: ReleaseState;
     void confirmModal({title:'更新已准备好',body:`Peach ${job.version || ''} 将在重启后安装。`,confirmLabel:'立即重启',cancelLabel:'稍后',onConfirm:restart});
   }, [job.state]);
   useEffect(() => {
-    if (!active.has(job.state)) return;
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout>;
     let failures = 0;
@@ -45,13 +45,15 @@ export function ReleaseUpdates({ initial, initialJob }: { initial: ReleaseState;
         if (!controller.signal.aborted) {
           setJob(result); failures = 0;
           if (result.state === 'complete') setData(current => ({...current,current_version:result.version || current.current_version,state:'current',message:'已是最新测试版。'}));
+          const automatic = await apiGet<{result?: ReleaseState}>('/api/configuration/automatic-updates',controller.signal);
+          if (!controller.signal.aborted && automatic.result) setData(automatic.result);
         }
       } catch {
         if (++failures >= 120 && !controller.signal.aborted) setError('尚未连接到 Peach，请检查托盘后刷新页面。');
       }
-      if (!controller.signal.aborted && failures < 120) timer = setTimeout(poll,1000);
+      if (!controller.signal.aborted && failures < 120) timer = setTimeout(poll,active.has(job.state) ? 1000 : 30000);
     };
-    timer = setTimeout(poll,1000);
+    timer = setTimeout(poll,active.has(job.state) ? 1000 : 30000);
     return () => { controller.abort(); clearTimeout(timer); };
   }, [job.state]);
   const download = async (button: HTMLButtonElement) => {
@@ -91,6 +93,7 @@ export function ReleaseUpdates({ initial, initialJob }: { initial: ReleaseState;
         <dt>更新通道</dt><dd>{data.channel}</dd>
         <dt>最新版本</dt><dd>{data.latest_version || (data.state === 'unchecked' ? '尚未检查' : '未取得')}</dd>
       </dl>
+      {data.checked_at ? <p class="confighelp">检查于 {new Date(data.checked_at * 1000).toLocaleString()}</p> : null}
       {data.state === 'available' && !error ? <div role="status" dangerouslySetInnerHTML={{__html:noteHtml(data.message,{label:'有可用更新'})}} /> : <p class={error || data.state === 'error' ? 'configbad' : 'confighelp'} role={error || data.state === 'error' ? 'alert' : 'status'}>
         {error || data.message}
       </p>}

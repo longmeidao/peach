@@ -19,6 +19,10 @@
 首页进度 Banner 与数据管理复用 `LibraryProcessing`、`watchJob` 和 `/api/library-processing`，启动只提交一次，状态查询接续托盘首次处理。首页在完成后收起，失败跳转数据管理；数据管理持续读取阶段与真实计数。Geist Banner 取证与 Peach 差异见 `docs/reference-snapshots/vercel-geist-library-banner.md`。
 ## 独立测试包在线更新
 
+- 2026-09-08 自动检查只读 POC：临时设置触发 GitHub 查询，取得 v0.30.0、35,633,626 字节的 Windows ZIP 与 SHA-256；未下载或安装。桌面 1280×720 与手机 390×844 的设置预览通过，开关联动、频率菜单和保存回执正常。
+
+- 自动更新设置复用 APScheduler 3.11.3（MIT，项目已有依赖，Python 3.12+ 与 Windows/macOS）、共享 HTTPX 发行查询、filelock 与原子 JSON 写入，安装继续走 `standalone_update`。按 [interval trigger](https://apscheduler.readthedocs.io/en/3.x/modules/triggers/interval.html) 每分钟检查是否到期；本机持久时间与文件锁协调多个服务，关闭、6/24/168 小时间隔与源码下载限制由 Peach 管理。默认关闭，下载仅准备安装，重启仍需确认；没有新增依赖或安装框架。设置保存在 state 目录的 `automatic-updates.json`。
+
 - 版本与资产信息复用 GitHub Releases REST API，测试通道包含预发布版本；查询复用项目 HTTPX 0.28.1，下载用其流式读取，ZIP 解压使用 Python 3.12+ 标准库，互斥复用 FileLock。没有新增依赖。
 - 2026-09-06 真实只读 POC：GitHub 返回 v0.16.0、Windows ZIP 35,489,963 字节和 SHA-256 digest；仅发布记录中已上传的完整独立包可进入更新。
 - Peach 维护安装策略与进度：下载校验后在程序同卷暂存，用户确认重启，复制出来的包内助手等待原托盘退出，再切换完整目录；失败保留或恢复旧目录。配置、数据库与媒体不作为更新包内容写入。

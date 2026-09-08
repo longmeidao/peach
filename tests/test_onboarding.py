@@ -661,6 +661,24 @@ class SetupPageTests(_Case):
 
 
 class StandaloneConfigurationTests(_Case):
+    def test_automatic_update_settings_roundtrip_and_access_boundaries(self):
+        from peach.automatic_updates import AutomaticUpdates
+        path = "/api/configuration/automatic-updates"
+        headers = {"X-Token": "test-token"}
+        with self.client() as client:
+            client.app.state.automatic_updates = AutomaticUpdates(self.root, available=True)
+            self.assertEqual(client.get(path).status_code, 401)
+            self.assertEqual(client.post(path, headers=dict(headers, Origin="https://evil.example"),
+                                         json={"mode": "check", "interval_hours": 24}).status_code, 403)
+            saved = client.post(path, headers=headers, json={"mode": "download", "interval_hours": 6})
+            self.assertEqual(saved.status_code, 200, saved.text)
+            self.assertEqual(client.get(path, headers=headers).json()["mode"], "download")
+            self.assertEqual(client.get("/api/configuration", headers=headers).json()["automatic_updates"]["interval_hours"], 6)
+            self.assertEqual(client.post(path, headers=headers, json={"mode": "off", "interval_hours": 24}).status_code, 200)
+        with self.client(address="192.0.2.9") as client:
+            self.assertEqual(client.get(path, headers=headers).status_code, 403)
+            self.assertEqual(client.post(path, headers=headers, json={}).status_code, 403)
+
     def test_release_update_endpoints_require_local_authenticated_access(self):
         with self.client() as client, mock.patch("peach.release_updates.check", return_value={"state": "current"}) as check:
             self.assertEqual(client.get("/api/configuration/updates").status_code, 401)
@@ -723,6 +741,7 @@ class StandaloneConfigurationTests(_Case):
         from peach.api import create_app
         from peach.config import PeachSettings
         app = create_app(PeachSettings(configured=True, token=token, mdns_name="peach-writer",
+                         follow_state_root=self.root / "state",
                          db_path=self.config.data_root / "database" / "ledger.db"))
         if server:
             @app.middleware("http")

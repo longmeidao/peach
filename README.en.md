@@ -66,6 +66,7 @@ The test package is accessible only on the same computer and needs no Python, Gi
 Data lives separately from the program in `%LOCALAPPDATA%\Peach\peach-data`.
 
 Management → Configuration → Check for updates compares the installed version with the latest GitHub prerelease.
+Automatic updates can check every 6 hours, daily, or weekly and are off by default. Standalone packages can download automatically and wait for restart confirmation; source installations support automatic checks.
 Standalone packages download and install the update in the app and restore the previous version if installation fails;
 you can also exit the tray and extract a complete new package over it, keeping the data directory.
 Configuration also offers uninstall, with optional removal of Peach data; original media is preserved.
