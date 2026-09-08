@@ -246,6 +246,7 @@ curl -s --noproxy '*' -o /dev/null -w '%{http_code}\n' https://peach.local/healt
 - 备份自带保留：`ledger.pre-*.db` 由 `peach.ledger_backups` 按「最近 5 份、24 小时内、比 `ledger.db` 更新」三类全留、其余连同 `-wal`／`-shm` 清退；Windows 托盘每次启动自动执行，`scripts/prune_ledger_backups.py` 手动跑缺省只列计划、`--apply` 才删，账本 `integrity_check` 不是 ok 时拒绝清退并以退出码 2 报出。每份备份一百多 MB，5 天不清就是 7 GB。
 - 已应用的迁移文件不得修改，任何后续变更必须新增版本：`0007` 曾在应用后被改写格式导致校验和漂移，只能用迁移前备份重放、逐条比对差异为 0 后才校正 `schema_migration`。
 - 导入运维脚本不得触发文件、网络或数据库副作用；`scrape_codes.py` 默认写可续跑复核 CSV，`clean_names.py` 先预览，`--apply` 必须同时给出 `--backup <路径>`，备份落盘后当场校验完整性（`peach.scripting.open_for_write`）。
+- 追更的合集判据只作用于新抓到的候选，收紧阈值后跑 `scripts/prune_follow_compilations.py` 扫存量：缺省只列清单并落一份复核 CSV，`--apply` 先备份成 `ledger.pre-follow-compilations-*.db` 再删，已保存成 asset 的条目一律不动。没探过详情页的旧行拿不到署名，判据数不到它们。
 - 文件名只按 ledger 已确认的番号规范化，不从名称重新猜番号；大小写单改走同目录临时名，去广告后撞名用 `(2)` 起的后缀保留两份媒体。
 - `generated/cover-fetch-log.csv` 是来源、尺寸和结果证据，不随图片清理；图片丢失时用 `scripts/fetch_jav_covers.py --restore-successes` 按成功记录的原 URL 恢复并原子替换，失败保留为失败，不拿缩略图冒充封面。
 - 封面候选必须限定在当前作品的主封面节点：作品页混有数百张关联作品、剧照和演员头像，禁止对整页图片 URL 逐张量尺寸。

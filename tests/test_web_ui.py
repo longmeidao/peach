@@ -1105,6 +1105,36 @@ class WebUiSourceTests(unittest.TestCase):
                                            css.index(".geist-button,.geist-button:hover{")],
                          "悬停不动那圈环")
 
+    def test_every_button_filled_with_ground_carries_that_ring(self):
+        """凡是填 `--ground` 的可点控件都要有一条 1px 的边，名单之外的也算。
+
+        上一条按名单守四个写法，名单外的七处照样没边：关注管理的「关闭」「添加」、
+        重复页的操作条、评审的选片头、首页的标签选择条、垃圾卡的三颗动作、沉浸浮条。
+        它们填的都是 `--ground`，又坐在同为 `--ground` 的卡片和面板上，暗色一档
+        `#080A0D` 压在 `#080A0D` 上，整颗键化在面里。所以这里不数名单，直接扫。
+
+        `.splitbutton>button` 是唯一的例外，环挂在 `.splitbutton` 盒子上——两半各挂
+        一圈会在交界处与那根竖线叠成两条。
+        """
+        css = re.sub(r"/\*.*?\*/", "", stylesheet_source(), flags=re.S)
+        exempt = {".splitbutton>button"}
+        scanned = []
+        for rule in re.finditer(r"([^{}]+)\{([^{}]*)\}", css):
+            selector = rule.group(1).strip().splitlines()[-1].strip()
+            body = rule.group(2)
+            if "background:var(--ground)" not in body or "cursor:pointer" not in body:
+                continue
+            if selector in exempt:
+                continue
+            self.assertTrue(
+                "box-shadow:0 0 0 1px" in body or "border:1px solid" in body,
+                f"{selector} 填 --ground 又没有边，坐在同色的面上就看不见了")
+            scanned.append(selector)
+        self.assertIn(".fpickactions button", scanned, "扫描要真的覆盖到关注管理那组")
+        start = css.index(".splitbutton{")
+        self.assertIn("box-shadow:0 0 0 1px var(--line-soft)",
+                      css[start:css.index("}", start)], "拆分按钮的环挂在盒子上")
+
     def test_disabled_controls_show_the_forbidden_cursor(self):
         """禁用的控件移上去是禁止符号，不是普通箭头。
 

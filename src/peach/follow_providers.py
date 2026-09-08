@@ -83,8 +83,8 @@ PROVIDERS: dict[str, ProviderSpec] = {
                      hosts=("coomer.st",), url_hosts=("coomer.st",),
                      priority=20, backfill=True),
         # 标签／模特站。
-        # `excluded_external_ids` 是用户明确点名的那个既有超大合集。连接器现在按
-        # 详情页署名作者数拦截同类条目；这一条只让已经入库的旧候选立即从浏览面消失。
+        # `excluded_external_ids` 是用户明确点名的那条，它没探过详情页、拿不到署名。
+        # 同类条目由连接器按详情页的画面作者数拦截；这一条只管让它从浏览面消失。
         ProviderSpec("rule34video", "Rule34Video",
                      source_url="https://rule34video.com/models/{ref}/",
                      # 正片不在站内：详情页给的 `/get_file/…` 会 302 到 `*.boomio-cdn.com`

@@ -1,8 +1,8 @@
-# Rule34 追更标签与超大合集证据
+# Rule34 追更标签与跨作者合集证据
 
-- 取证日期：2026-08-27
+- 取证日期：2026-08-27（选择器与字段）、2026-09-08（署名里的角色标注与阈值）
 - 取证通道：Python HTTPX 直接读取公开 HTML/CSS；浏览器加载详情页 45 秒超时，视觉与实时 DOM 为**未取得**。
-- 用途：Rule34Video 详情补全、超大跨作者合集排除、关注页标签类型配色。
+- 用途：Rule34Video 详情补全、跨作者合集排除、关注页标签类型配色。
 
 ## Rule34Video 详情页
 
@@ -22,9 +22,28 @@ URL：`https://rule34video.com/video/4533145/…/`
 | 作品分类 | `a.video_meta_pill[href*="/categories/"]`，本页 3 个 |
 | 署名作者 | `a.video_meta_pill[href*="/models/"]`，本页 54 位 |
 
-同一作者页抽取的 8 个普通作品均只有 1 位署名作者，内容标签为 3–11 个。因此 Peach 以
-`model_count > 20` 识别超大跨作者合集；详情取不到时保留候选，不用一次网络失败删更新。
-已有的 4533145 行只在读取时隐藏，不删除 ledger。
+同一作者页抽取的 8 个普通作品均只有 1 位署名作者，内容标签为 3–11 个。
+
+### 署名里的角色标注（2026-09-08）
+
+站点把配音与音效记在同一份 `Artist` 名单里，角色写在名字末尾的括号中：
+`Oolay-Tiger (VA)`、`HentAudio (Audio)`、`Huntress___ (Audio/SFX)`、
+`Squish The Succubus (sound)`。当日抓取的 16 个详情页与库内 623 条记录中，
+后缀出现 `va` 126 次、`audio` 54 次、`sound` 5 次、`audio/sfx` 3 次、`voice` 1 次。
+
+判跨作者打包只数剔掉这些角色之后的画面作者，阈值 `> 3`：
+
+| 条目 | 名单 | 画面作者 |
+| --- | --- | --- |
+| `Yunara Showing Ahri Some Discipline` | 5 | 1 |
+| `The Rite of Loss` | 6 | 1 |
+| `Max Feetfuck [Regina3D]` | 4 | 2 |
+| `Fuck Track / Futa PMV` | 13 | 13 |
+| `ON AND ON \| HMV / PMV` | 17 | 17 |
+
+同一批 623 条里超过阈值的共 12 条。`Uploaded by` 不是判据：抽样 16 条无一由署名
+作者本人上传，站内几乎全是搬运号。详情取不到时保留候选，不用一次网络失败删更新。
+4533145 没探过详情页、拿不到署名，它单独按 id 在读取时隐藏。
 
 ## Rule34.xxx 标签类型
 

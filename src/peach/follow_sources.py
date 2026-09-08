@@ -159,7 +159,7 @@ class SourceFetch:
     #: 这次抓取里被判为「不是 release」而丢掉的条数。必须报出来：用户看到的条目数
     #: 比站点上少的时候，他得能分清少的是被过滤掉的，还是根本没抓到。
     skipped: int = 0
-    #: `skipped` 里有多少条是来源详情确认的超大跨作者合集。单列出来让界面能说清
+    #: `skipped` 里有多少条是来源详情确认的跨作者合集。单列出来让界面能说清
     #: 「主动不收」而不是把它误报成「没有资源」。
     skipped_compilations: int = 0
     #: 列表判不出来、额外抓了详情页的条数。这是唯一会放大请求数的路径，
@@ -959,9 +959,13 @@ class Rule34VideoConnector(_BaseConnector):
     HISTORY_END_STATUSES = (404,)
     _SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9_\-]{0,80}$")
     _VIDEO_RE = re.compile(r"^https://rule34video\.com/video/(\d+)/")
-    #: 详情页的署名作者通常只有 1 位；用户给出的超大合集实测有 54 位。20 以上只会
-    #: 排除这种跨作者打包，不影响普通合作作品。
-    MAX_COLLECTION_MODELS = 20
+    #: 站点把配音和音效也记在同一份 Artist 名单里，角色写在名字末尾的括号中
+    #: （`Oolay-Tiger (VA)`、`HentAudio (Audio)`、`Huntress___ (Audio/SFX)`）。
+    #: 判跨作者打包只数画面作者：2026-09-08 复核库内 623 条，普通作品剔掉配音后
+    #: 剩 1 到 2 位，PMV 与合辑剩 7 到 17 位，超过 3 位的一共 12 条。
+    _CREDIT_ROLE_RE = re.compile(
+        r"\((?:va|audio|audio/sfx|sfx|sound|voice|music)\)\s*$", re.IGNORECASE)
+    MAX_COLLECTION_MODELS = 3
     DEFAULT_MAX_PROBES = 24
 
     @classmethod
@@ -1025,8 +1029,8 @@ class Rule34VideoConnector(_BaseConnector):
             if probed < self.max_probes and candidate.url:
                 probed += 1
                 enriched = self._probe_detail(candidate)
-            model_count = int(enriched.extra.get("model_count") or 0)
-            if model_count > self.max_collection_models:
+            visual = int(enriched.extra.get("visual_model_count") or 0)
+            if visual > self.max_collection_models:
                 skipped_compilations += 1
                 continue
             candidates.append(enriched)
@@ -1093,8 +1097,8 @@ class Rule34VideoConnector(_BaseConnector):
             extra=extra,
         )
 
-    @staticmethod
-    def _detail(body: bytes) -> dict[str, object]:
+    @classmethod
+    def _detail(cls, body: bytes) -> dict[str, object]:
         soup = BeautifulSoup(body, "html.parser")
         video = {}
         for node in soup.find_all("script", attrs={"type": "application/ld+json"}):
@@ -1114,6 +1118,8 @@ class Rule34VideoConnector(_BaseConnector):
         tags = list(dict.fromkeys(value for value in tags if value))
         categories = list(dict.fromkeys(value for value in categories if value))
         models = list(dict.fromkeys(value for value in models if value))
+        visual_models = [value for value in models
+                         if not cls._CREDIT_ROLE_RE.search(value)]
         if not video and not tags and not categories and not models:
             return {}
         tag_types = {tag: "general" for tag in tags}
@@ -1138,6 +1144,7 @@ class Rule34VideoConnector(_BaseConnector):
                 "categories": categories,
                 "models": models,
                 "model_count": len(models),
+                "visual_model_count": len(visual_models),
                 "tag_types": tag_types,
             },
         }

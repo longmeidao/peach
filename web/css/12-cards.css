@@ -261,7 +261,7 @@ button.junkcardtitle:focus-visible{outline:2px solid var(--tungsten);outline-off
   border-top:1px solid var(--line-soft);background:var(--overlay-5)}
 /* 三个按钮等宽，图标加标签在各自那一格里居中。 */
 .junkactions button{box-sizing:border-box;min-width:0;min-height:36px;padding:0 10px;display:inline-flex;align-items:center;justify-content:center;gap:7px;
-  border:0;border-radius:var(--control-radius);background:var(--ground);color:var(--ink-2);
+  border:0;border-radius:var(--control-radius);box-shadow:0 0 0 1px var(--line-soft);background:var(--ground);color:var(--ink-2);
   font:inherit;font-size:var(--fs-xs);white-space:nowrap;cursor:pointer}
 .junkactions button:hover:not(:disabled){background:var(--inset);color:var(--ink)}
 .junkactions button:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}
