@@ -7473,7 +7473,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn("if (!groupCards.length) continue;", bulk)
 
     def test_the_follow_batch_bar_only_carries_row_actions(self):
-        """关注页的批量条只有保存、跳过这类按行动作；勾选靠每行行首的全选／全不选。"""
+        """关注页的批量条只有保存、跳过这类按行动作：这一页是浏览用的，不配全选键。"""
         self.assertPageLacks('id="followBatchAll"')
         self.assertPageLacks("#followBatchAll")
         self.assertPageContains("$('#batchbar').querySelectorAll('[data-follow-batch]').forEach(button=>button.hidden=!followPage);")

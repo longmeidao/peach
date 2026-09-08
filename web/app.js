@@ -5186,15 +5186,8 @@ function readFollowView(){
   followFilter=(status===null||status==='all')?'':status;
   followMediaView=params.get('media')==='images'?'images':'videos';
 }
-/* 作者、来源两行是多选：按下的算「只看这些」，一个都不按就是全部。「全选」把这一行
-   全部按下，之后再抬起几个就是排除法；「全不选」抬起全部，回到不筛。标签行是
-   「同时具备」的交集（服务端如此判），全部按下只会一条不中，所以那一行只给「全不选」。
-   两个按钮在无事可做时禁用：全按下了就没有「全选」，一个没按就没有「全不选」。 */
-function followBulkButtons(dim,selected,total,{all=true}={}){
-  return `<span class="fbulk" role="group" aria-label="批量选择">${all
-    ?`<button type="button" class="geist-button" data-follow-bulk="${dim}" data-bulk-all${selected>=total?' disabled':''}>全选</button>`:''
-    }<button type="button" class="geist-button" data-follow-bulk="${dim}" data-bulk-none${selected?'':' disabled'}>全不选</button></span>`;
-}
+/* 作者、来源两行是多选：按下的算「只看这些」，一个都不按就是全部；标签行是「同时具备」的
+   交集（服务端如此判）。这一页是浏览用的，不配批量选择键，想回到不筛就把按下的几个抬起来。 */
 function followMediaControl(counts){
   if(!counts.images&&followMediaView!=='images')return '';
   return mediaViewButtonsHtml({active:followMediaView,videoCount:counts.videos,imageCount:counts.images});
@@ -5254,18 +5247,15 @@ function renderFollow(){
   $('#stats').innerHTML=`<div class="follow">
     <div class="followhead"><h2 class="disp pagetitle">关注</h2>
       <button class="fbtn primary fcheck" data-follow-manage>${icon('settings')}管理关注</button></div>
-    ${authors.size?`<div class="tier followauthors" aria-label="按作者筛选">${
-      followBulkButtons('authors',followAuthors.size,authors.size)}${randomizedAuthors.map(([key,author])=>
+    ${authors.size?`<div class="tier followauthors" aria-label="按作者筛选">${randomizedAuthors.map(([key,author])=>
       `<button class="av" data-follow-author="${esc(key)}" aria-pressed="${followAuthors.has(key)}">
         <span class="ring">${followAuthorAvatar(author.sources)}</span><span class="nm">${esc(author.name)}</span></button>`
       ).join('')}</div>`:''}
     <div class="tagbar followfilters" aria-label="关注筛选">${followMediaControl(mediaCounts)}${FOLLOW_FILTERS.map(([key,label])=>
       `<button class="pill" data-follow-filter="${key}" aria-pressed="${key===followFilter}">${label}${
         ` <span class="n mono">${key?counts[key]||0:allCount}</span>`}</button>`).join('')}
-      ${providerPills?`<span class="sep" aria-hidden="true"></span>${
-        followBulkButtons('providers',followProviders.size,providers.size)}${providerPills}`:''}
-      ${topTags.length?`<span class="sep" aria-hidden="true"></span>${
-        followBulkButtons('tags',followTags.size,topTags.length,{all:false})}`+
+      ${providerPills?`<span class="sep" aria-hidden="true"></span>${providerPills}`:''}
+      ${topTags.length?`<span class="sep" aria-hidden="true"></span>`+
         topTags.map(([key,label,n])=>
           `<button class="pill r34-${esc(groupTagType(groups,key))}" data-follow-tag="${esc(key)}" aria-pressed="${followTags.has(key)}">${
             esc(label)}${n?` <span class="n mono">${n}</span>`:''}</button>`).join(''):''}</div>
@@ -5307,12 +5297,6 @@ function renderFollow(){
     toggle(followProviders,button.dataset.followProvider);applyFollowView()});
   $('#stats').querySelectorAll('[data-follow-tag]').forEach(button=>button.onclick=()=>{
     toggle(followTags,button.dataset.followTag);applyFollowView()});
-  $('#stats').querySelectorAll('[data-follow-bulk]').forEach(button=>button.onclick=()=>{
-    const all=button.hasAttribute('data-bulk-all');
-    if(button.dataset.followBulk==='authors')followAuthors=new Set(all?authors.keys():[]);
-    else if(button.dataset.followBulk==='providers')followProviders=new Set(all?providers.keys():[]);
-    else followTags=new Set();
-    applyFollowView()});
   $('#stats').querySelectorAll('[data-follow-manage]').forEach(button=>
     button.onclick=()=>openFollowManage());
 
