@@ -1369,7 +1369,7 @@ class WebUiSourceTests(unittest.TestCase):
         由 aria-label 给。菜单第一项必须与主动作同名同事——键盘和读屏用户只走菜单这一条路，
         少列一项就是少一个动作。
         """
-        self.assertPageContains('<div class="splitbutton" data-taste-history-menu>')
+        self.assertPageContains('<div class="splitbutton board-button-group" data-taste-history-menu>')
         self.assertPageContains('<button class="splitmain" data-taste-refresh')
         self.assertPageContains('aria-label="更多取得浏览记录的方式">${icon(\'chevron-down\')}')
         menu = self.page.split('id="tasteHistoryMenu"')[1]
@@ -6301,7 +6301,7 @@ class WebUiSourceTests(unittest.TestCase):
         口味数据来自浏览器历史聚合，24 小时内无需重读。过期时仍先显示
         持久缓存，再后台更新；请求带序号，慢响应不能覆盖别的窗口或页面。
         """
-        self.assertPageContains("const TASTE_CACHE_KEY='peach-taste-dashboard-v3',TASTE_CACHE_FRESH_MS=24*60*60*1000;")
+        self.assertPageContains("const TASTE_CACHE_KEY='peach-taste-dashboard-v7',TASTE_CACHE_FRESH_MS=24*60*60*1000;")
         self.assertPageContains("let tasteWindow='all',tasteEvidence='browser',tasteDimension={browser:'tags',peach:'tags'};")
         self.assertPageContains("let tasteCache=readTasteCache(),tasteRequest=0;")
         self.assertPageContains("localStorage.getItem(TASTE_CACHE_KEY)")

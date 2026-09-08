@@ -9,6 +9,7 @@ from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 import pathlib
 from urllib.parse import quote
+from unittest import mock
 
 from peach import taste_history
 from peach.taste_history import (
@@ -256,11 +257,16 @@ class TasteHistoryTests(unittest.TestCase):
             db.commit()
             dashboard = build_taste_dashboard(store, db)
             future = build_taste_dashboard(store, db, since="2099-01-01T00:00:00+00:00")
+            history = taste_history._history_dashboard_evidence(store, None)
+            history["domains"].update({f"popular-{index}.example": 1000 for index in range(7)})
+            with mock.patch.object(taste_history, "_history_dashboard_evidence", return_value=history):
+                unrelated_traffic = build_taste_dashboard(store, db)
 
         self.assertEqual(dashboard["summary"]["history_visits"], 2)
         self.assertEqual(dashboard["activity"]["days"], [{"date": "2023-11-15", "count": 2}])
         self.assertEqual(dashboard["activity"]["hours"], [{"weekday": 2, "hour": 6, "count": 2}])
         self.assertEqual(dashboard["creator_flows"], [{"source": "onlyfans.com", "target": "alice", "value": 1}])
+        self.assertEqual(unrelated_traffic["creator_flows"], dashboard["creator_flows"])
         self.assertEqual(future["activity"]["days"], [])
         self.assertEqual(future["creator_flows"], [])
         self.assertEqual(future["rankings"]["browser_categories"], [])

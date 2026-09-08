@@ -1779,7 +1779,7 @@ class FollowWebSourceTests(unittest.TestCase):
         真要确认就读 title。
         """
         page = self.page
-        block = page[page.index('return `<div class="fauthor${bad?\' bad\':\'\'}">'):]
+        block = page[page.index('function followAuthorBlock('):]
         block = block[:block.index("${sources}")]
         self.assertIn("? group.map(source=>sourceIcon(source.provider)).join('')", block)
         self.assertNotIn("个来源`", block)
@@ -2104,7 +2104,8 @@ class FollowWebSourceTests(unittest.TestCase):
         `details.fcred` 是 block 布局才接得上：flex 行布局对不上 Collapse 的高度过渡。
         展开一段正文这件事不该有第二套开合逻辑。
         """
-        self.assertPageContains("export function wireCollapse(root,selector,idPrefix)")
+        self.assertPageContains("export function wireCollapse(root,selector,idPrefix,triggerSelector='summary')")
+        self.assertPageContains("wireCollapse(root,'details.fauthor','follow-author-collapse','[data-follow-author-toggle]')")
         self.assertPageContains("wireCollapse(root,'details.faliasmanager','follow-alias-collapse')")
         self.assertPageContains("wireCollapse(root,'details.fcred','follow-cred-collapse')")
         self.assertEqual(self.page.count("body.style.height=body.scrollHeight+'px'"), 1,
@@ -2181,7 +2182,7 @@ class FollowWebSourceTests(unittest.TestCase):
         # 站名收起，但仍在 DOM 里，并且悬停能看到。
         self.assertPageContains(
             '<span class="fmeta fprovider" title="${esc(source.provider_label)}">')
-        self.assertPageContains("<span>${esc(source.provider_label)}</span></span>")
+        self.assertPageContains("<span>${esc(source.provider_label)}</span>${selectable?statusChip:''}</span>")
         self.assertPageContains(
             '.fsources[data-layout="compact"] .fsource .fprovider:has(.ficon)>span{display:none}')
         # 图标右边那 5px 是给站名留的间距，站名收起后跟着去掉。

@@ -1002,7 +1002,11 @@ def build_taste_dashboard(
     )
     creator_flows: Counter[tuple[str, str]] = Counter()
     top_creators = {name.casefold().strip() for name, _ in history["creators"].most_common(8)}
-    top_domains = {name for name, _ in history["domains"].most_common(6)}
+    flow_domains: Counter[str] = Counter()
+    for domains in history["creator_domains"].values():
+        flow_domains.update({domain: count for domain, count in domains.items()
+                             if _is_taste_domain(domain)})
+    top_domains = {name for name, _ in flow_domains.most_common(6)}
     for creator, domains in history["creator_domains"].items():
         for domain, count in domains.items():
             if not _is_taste_domain(domain):

@@ -3406,7 +3406,7 @@ async function openStats(push=true){
       </div>
       <section class="insightdetail">
         <div id="stats-detail-inventory" role="tabpanel" data-stats-detail="inventory" class="insightdetailbody">
-          ${totalVideos?`<div class="board-inventory-charts">${radialCardHtml(d.by_loc.map(row=>({name:LOC[row.k]||row.k,value:row.videos,detail:gb(row.bytes)})),'网盘与本地')}${radialCardHtml((d.by_library||[]).map(row=>({name:row.name,value:row.videos,detail:gb(row.bytes)})),'媒体库')}</div>`:catalogEmptyHtml({configurable:runtimeConfigurable})}</div>
+          ${localStorage.getItem('peach.legacy-ui')==='true'?(totalVideos?locationRows:catalogEmptyHtml({configurable:runtimeConfigurable})):(totalVideos?`<div class="board-inventory-charts">${radialCardHtml(d.by_loc.map(row=>({name:LOC[row.k]||row.k,value:row.videos,detail:gb(row.bytes)})),'网盘与本地')}${radialCardHtml((d.by_library||[]).map(row=>({name:row.name,value:row.videos,detail:gb(row.bytes)})),'媒体库')}</div>`:catalogEmptyHtml({configurable:runtimeConfigurable}))}</div>
         <div id="stats-detail-viewing" role="tabpanel" data-stats-detail="viewing" class="insightdetailbody" hidden>
           <div class="insightcopy"><span>观看</span><h2>${cs.played.toLocaleString()}</h2><b>个作品有播放记录</b>
             <p>累计 ${hrs(cs.play_seconds)}</p></div>
@@ -3635,7 +3635,7 @@ async function openResourceSync(push=true){
 /* 口味仪表按窗口持久缓存：刷新页面也先显示上次结果。24 小时内不重读；
    过期后仍先显示旧结果，再在后台更新。导入、移除数据源和显式「读取」
    会立即写回缓存。缓存只含页面已经展示的聚合结果，不含原始历史。 */
-const TASTE_CACHE_KEY='peach-taste-dashboard-v6',TASTE_CACHE_FRESH_MS=24*60*60*1000;
+const TASTE_CACHE_KEY='peach-taste-dashboard-v7',TASTE_CACHE_FRESH_MS=24*60*60*1000;
 const TASTE_CACHE_WINDOWS=new Set(['all','365d','90d','30d','7d']);
 function readTasteCache(){
   try{
