@@ -5511,6 +5511,7 @@ function followAuthorBlock(group){
     ${sources}</div>`;
 }
 
+const followSourceSelection=new Set();
 function followSourceRow(source,selectable=false){
   const state=source.last_status||'未检查';
   const bad=state==='error'||state==='unauthorized';
@@ -5621,7 +5622,6 @@ function followCredentialRow(row){
 /* 关注列表版式。默认一行一个，来源行的六列都在；紧凑是一行两个，半幅宽度放不下
    六列，收掉「上次检查」——哪个站、成没成功、能不能点都还留着，时间是里面最不
    影响判断的一列。和 JAV 版式共用 iconSwitchHtml，只是 name 与选项不同。 */
-const followSourceSelection=new Set();
 const FOLLOW_LAYOUTS=[['cozy','作者分组','layout-grid'],['compact','列表 · 一行一个来源','list-filter']];
 function followListLayout(){
   return allowedSetting(appSettings.followLayout,FOLLOW_LAYOUTS.map(([k])=>k),'cozy');
@@ -5786,7 +5786,7 @@ function wireFollowManage(creds=[]){
     const ids=selectedIds(),count=root.querySelector('[data-follow-selected-count]');
     if(count)count.textContent=`已选 ${ids.length}`;
     const all=root.querySelector('[data-follow-select-all]');
-    if(all){all.checked=ids.length>0&&ids.length===selectable.length;all.indeterminate=ids.length>0&&ids.length<selectable.length}
+    if(all){all.checked=ids.length>0&&ids.length===selectable.length;all.indeterminate=ids.length>0&&ids.length < selectable.length}
     root.querySelectorAll('[data-follow-selection-action]').forEach(button=>{button.disabled=!ids.length||!!followRuntime?.ledger_read_only;if(button.hasAttribute('data-follow-check'))button.dataset.followSources=ids.join(',')});
     selectable.forEach(field=>field.closest('.fsource').classList.toggle('selected',field.checked));
   };

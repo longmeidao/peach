@@ -6751,9 +6751,8 @@ class WebUiSourceTests(unittest.TestCase):
                 # 外链标才留得住：中缩靠改写 textContent 实现，同一节点里的图标会被抹掉。
                 '<span data-middle-truncate>${esc(item.url)}</span>'):
             self.assertPageContains(consumer)
-        # 11 而不是 12：高清版目标页的标题按钮搬进了 island，那一处由
-        # tests/test_frontend_build.py 断言。
-        self.assertEqual(self.app_js.count("data-middle-truncate"), 11)
+        # 高清版目标页由 island 测试覆盖；最近观看的文件名也保留首尾。
+        self.assertEqual(self.app_js.count("data-middle-truncate"), 12)
         self.assertEqual(self.app_js.count('class="mixitemtext"'), 3)
         self.assertEqual(self.app_js.count("data-truncate-end"), 4)
         self.assertPageContains("new Intl.Segmenter(undefined,{granularity:'grapheme'})")
