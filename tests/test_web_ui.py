@@ -5460,8 +5460,8 @@ class WebUiSourceTests(unittest.TestCase):
         """
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
         controls = (Path(__file__).resolve().parents[1] / "frontend/src/board-controls.ts").read_text(encoding="utf-8")
-        self.assertIn("const selector='.managebar-menu,.board-local-nav:not(.settingscard>.board-local-nav),.insighttabs';", controls)
-        self.assertIn("const selector='.iconswitch,.insightswitch';", controls)
+        self.assertIn("const selector='.managebar-menu,.board-local-nav:not(.settingscard>.board-local-nav)';", controls)
+        self.assertIn("const selector='.iconswitch,.insightswitch,.insighttabs';", controls)
         self.assertIn("export function wireGrowingCharts(root:ParentNode) {", controls)
         self.assertIn("wireBoardSegments(root);wireBoardTabs(root);wireGrowingCharts(root)", controls)
         self.assertIn(".insightswitch[data-board-segments]{position:relative;display:inline-flex;align-items:center;gap:2px;padding:4px;"
@@ -5469,8 +5469,9 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn(".count .sorts .iconswitch[data-board-segments]>label,.entitycollectionhead .sorts .iconswitch[data-board-segments]>label"
                       "{height:24px;min-height:24px;width:30px;padding:0;border-radius:5px}", board)
         self.assertIn(".count .sorts,.entitycollectionhead .sorts{padding:0 2px}", board)
-        # 下划线只归洞察页；复核分类是次级菜单，判据在 test_the_review_categories_look_like_a_secondary_menu。
-        self.assertIn(".insighttabs{display:flex;align-items:center;gap:4px;width:100%;", board)
+        # 下划线只归管理导航与设置分区；洞察页的维度是分段控件，复核分类是次级菜单，判据各在
+        # test_the_stats_and_taste_dimensions_switch_as_a_segmented_control 与
+        # test_the_review_categories_look_like_a_secondary_menu。
         self.assertIn(".insighttabs button[aria-selected=\"true\"]{background:none;color:var(--color-text-primary);font:var(--board-body-medium)}", board)
         self.assertIn(".insightpanel>header h3,.insightcopy>span{margin:0;font:var(--board-heading);color:var(--color-text-primary)}", board)
         self.assertIn("body .tasterank:is(button):hover,body .board-rank-list .tasterank:hover{border-color:transparent;"
@@ -7401,10 +7402,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn(".reviewtabs button{height:32px;padding:0 12px;gap:6px;border-radius:var(--control-radius);", board)
         self.assertIn(".reviewtabs button:hover{background:none;color:var(--color-text-primary)}", board)
         self.assertIn(".reviewtabs button[aria-selected=\"true\"]{background:var(--picked);color:var(--color-text-primary);", board)
-        # 下划线那一套只留给洞察页：那里并排的确实是三块各自成篇的内容。
+        # 药丸也不跟洞察页那组维度共用一条规则：那边是带滑块的分段控件。
         self.assertNotIn(".insighttabs,.reviewtabs{", board)
-        self.assertIn(".insighttabs{display:flex;align-items:center;gap:4px;width:100%;min-height:0;margin:0;padding:0;border:0;"
-                      "border-bottom:1px solid var(--color-border-button-default);", board)
         # 键盘行为仍是 tablist：方向键在同一条里移动焦点。
         self.assertPageContains('<div class="reviewtabs" role="tablist" aria-label="复核分类">')
 
@@ -7454,45 +7453,91 @@ class WebUiSourceTests(unittest.TestCase):
                       "padding:0;border-radius:0;background:none}", board)
         self.assertIn(".board-radial-tiles>button{display:flex;flex:1 1 calc(33.333% - 8px);min-width:0;"
                       "flex-direction:column;align-items:flex-start;gap:4px;padding:10px;border:0;"
-                      "border-radius:12px;background:var(--board-inlay);", board)
+                      "border-radius:12px;background:var(--color-background-tertiary-default);", board)
         # 选中仍然只有填充加一圈同色描边，不再靠「白片压在灰托盘上」拉开层次。
         self.assertIn(".board-radial-tiles>button:is([data-active=true],[aria-pressed=true])"
                       "{background:color-mix(in srgb,var(--ring-color) 10%,"
-                      "var(--board-inlay));box-shadow:inset 0 0 0 1px var(--ring-color)}",
+                      "var(--color-background-tertiary-default));box-shadow:inset 0 0 0 1px var(--ring-color)}",
                       board)
 
-    def test_a_surface_inlaid_into_a_card_flips_direction_with_the_theme(self):
-        """卡片上凹进去的那一层按文字色去混，深浅两档的方向自动相反。
+    def test_a_chart_card_takes_the_card_face_and_stands_on_the_page(self):
+        """图表卡的底是 secondary，而且它上面不再套一层面板。
 
-        三档背景 token 表达不了它：深色下 tertiary 与 primary 同值，secondary 又比卡片
-        更深，在卡上画出一个黑洞；浅色下 secondary 与白卡只差一点。文字色和面色永远
-        反相，拿它当混色的一端，两档读出来都是「比卡片进去一层」。
+        primary 是浮层与输入框的面：拿它当卡片，浅色下卡和纯白页面一样白、只有靠底下那层
+        面板才看得出边，深色下又比周围都亮一档、卡缝里透出比卡更深的一条。面板与卡同时
+        铺面，同一块地方就叠了三层底色。boardui 的看板卡实测是 secondary、无边框无投影，
+        直接坐在页面上。
         """
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
-        self.assertIn("--board-inlay:color-mix(in srgb,var(--color-text-primary) 6%,"
-                      "var(--color-background-primary-default));", board)
-        # 环轨和图例小卡是同一层：都直接坐在 primary 的卡片面上。
-        self.assertIn(".board-ring-track{stroke:var(--board-inlay)}", board)
-        self.assertNotIn(".board-ring-track{stroke:var(--color-background-secondary-default)}", board)
+        self.assertIn(".board-radial-card{min-width:0;padding:20px;border-radius:20px;"
+                      "background:var(--ground);overflow:hidden}", board)
+        # 面移到当前那一格上；装着卡的那一格不铺，两张卡各自独立。
+        self.assertIn(".insightdetail{background:none;overflow:visible}", board)
+        self.assertIn(".insightdetailbody{border-radius:16px;background:var(--ground)}", board)
+        self.assertIn(".insightdetailbody:has(.board-inventory-charts){background:none}", board)
+        # 卡上凹一档用 tertiary：卡面既然是 secondary，三档在深浅两边都还是单调的。
+        self.assertIn(".board-ring-track{stroke:var(--color-background-tertiary-default)}", board)
+        self.assertNotIn("--board-inlay", board)
 
-    def test_a_tab_marks_the_current_page_in_ink_not_in_blue(self):
-        """选中的 tab 用文字色，蓝留给焦点环、链接、进度与 Toggle 开态。
+    def test_a_selected_tab_is_marked_in_the_accent_blue(self):
+        """选中的 tab 是蓝字加蓝线，全站两处下划线 Tabs 共用同一枚指示条。
 
-        一条蓝线在导航上读起来是「这里可以点开」而不是「你在这儿」，而全站三处下划线
-        Tabs 共用同一枚指示条，颜色写在一处。
+        boardui tabs.tsx 实测：选中标签 `text-accent-600`，指示条是 tablist 外面那个 span
+        （`h-0.5 bg-accent-600`）。Geist 的单色规则不覆盖这一层——board.css 是 boardui
+        适配层，它自己就把强调色花在了「你在这一页」上。
         """
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
-        self.assertIn("width:var(--tab-width,0px);height:2px;background:var(--color-text-primary);", board)
+        self.assertIn("width:var(--tab-width,0px);height:2px;background:var(--tungsten);", board)
         self.assertIn(".managebar .managebar-menu button[aria-pressed=\"true\"]{background:none;"
-                      "color:var(--color-text-primary);border-bottom-color:var(--color-text-primary);"
+                      "color:var(--tungsten);border-bottom-color:var(--tungsten);"
                       "font-weight:500}", board)
-        self.assertIn(".board-local-nav button[aria-selected=\"true\"]{border-bottom-color:var(--color-text-primary);"
-                      "color:var(--color-text-primary);font-weight:500}", board)
-        # 未选中是次级文字色：选中项只多一档字重的话，两态在同一排里分不出来。
-        self.assertIn("box-shadow:none;color:var(--color-text-secondary);font:var(--board-body);"
-                      "white-space:nowrap;transition:color .15s ease}", board)
-        # 焦点环仍然是蓝的，那是它唯一的去处。
+        self.assertIn(".board-local-nav button[aria-selected=\"true\"]{border-bottom-color:var(--tungsten);"
+                      "color:var(--tungsten);font-weight:500}", board)
+        # 焦点环也是蓝的，两者靠形态分开：焦点是一圈 outline，当前项是底下那条线。
         self.assertIn(".board-local-nav button:focus-visible{outline:2px solid var(--tungsten);", board)
+
+    def test_the_stats_and_taste_dimensions_switch_as_a_segmented_control(self):
+        """统计与口味的维度切换是分段控件，不是下划线 Tabs。
+
+        这三四个面板是同一份数据的互斥视图，一条横线会把它读成页面层级的导航。滑块复用
+        `.board-segment-thumb`，深色下那一档更亮的底一并继承；ARIA 仍然是 Tabs 控制
+        tabpanel，不为了长得像分段控件就改写成 radiogroup。boardui dashboard 实测：内边距
+        4px、10px 圆角，滑块 6px 圆角、transform／width／height 各 200ms。
+        """
+        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
+        controls = (Path(__file__).resolve().parents[1] / "frontend/src/board-controls.ts").read_text(encoding="utf-8")
+        self.assertIn(".insighttabs{position:relative;display:inline-flex;align-items:center;gap:2px;"
+                      "width:auto;max-width:100%;min-height:0;margin:0;padding:4px;border:0;"
+                      "border-radius:10px;background:var(--color-background-tertiary-default);", board)
+        self.assertIn("min-height:28px;margin:0;padding:4px 10px;border:0;border-radius:6px;", board)
+        self.assertIn(":is(.iconswitch:not(.themeswitch),.insightswitch,.insighttabs)>.board-segment-thumb",
+                      board)
+        self.assertIn("const selector='.iconswitch,.insightswitch,.insighttabs';", controls)
+        self.assertIn("'label:has(input:checked),button[aria-selected=true]'", controls)
+        self.assertIn("mutation.observe(group,{subtree:true,attributes:true,attributeFilter:['aria-selected']})",
+                      controls)
+        # 它退出下划线 Tabs 那一族，否则滑块和指示条同时挂上去。
+        self.assertIn("const selector='.managebar-menu,.board-local-nav:not(.settingscard>.board-local-nav)';",
+                      controls)
+        self.assertNotIn(".insighttabs{display:flex", board)
+
+    def test_a_collapsed_ranking_fades_its_last_row_instead_of_covering_it(self):
+        """收起的排名靠 mask 淡掉最后一行，不是拿一块渐变色盖上去。
+
+        盖的那种要先猜卡片是什么底色，猜错就在图上留一道横带；淡的这种在任何底色上都
+        成立。boardui 实测：列表自己带 `linear-gradient(#000 calc(100% - 44px),transparent)`，
+        展开就取消，正好露五行、淡掉最后 44px；展开没有高度动画，只有箭头转 200ms。
+        """
+        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
+        controls = (Path(__file__).resolve().parents[1] / "frontend/src/board-controls.ts").read_text(encoding="utf-8")
+        self.assertIn(".board-expand-ranks:not(.expanded)>.board-rank-list"
+                      "{mask-image:linear-gradient(#000 calc(100% - 44px),transparent)}", board)
+        self.assertNotIn(".board-expand-ranks:not(.expanded)::after", board)
+        # 箭头是描边字形。只给宽高的话 use 里那条折线会被默认 fill 填成一枚实心三角。
+        self.assertIn(".board-rank-expand svg{width:14px;height:14px;fill:none;stroke:currentColor;"
+                      "stroke-width:2;stroke-linecap:round;stroke-linejoin:round;"
+                      "transition:transform .2s cubic-bezier(0,0,.2,1)}", board)
+        self.assertIn("`${row.offsetTop-list.offsetTop+row.offsetHeight}px`", controls)
 
     def test_the_library_switcher_menu_opens_against_the_control_it_belongs_to(self):
         """媒体库弹窗贴着切换器的右缘开，允许压住侧栏剩下的那一段。

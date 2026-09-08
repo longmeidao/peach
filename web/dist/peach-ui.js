@@ -1039,7 +1039,7 @@ function Ct() {
 }
 var wt = /* @__PURE__ */ new Map();
 function Tt(e) {
-	let t = ".managebar-menu,.board-local-nav:not(.settingscard>.board-local-nav),.insighttabs", n = [...e.querySelectorAll(t)];
+	let t = ".managebar-menu,.board-local-nav:not(.settingscard>.board-local-nav)", n = [...e.querySelectorAll(t)];
 	e instanceof HTMLElement && e.matches(t) && n.push(e), n.forEach((e) => {
 		if (e.hasAttribute("data-board-tabs")) return;
 		e.dataset.boardTabs = "true";
@@ -1074,25 +1074,31 @@ function Tt(e) {
 	});
 }
 function Et(e) {
-	let t = ".iconswitch,.insightswitch", n = [...e.querySelectorAll(t)];
+	let t = ".iconswitch,.insightswitch,.insighttabs", n = [...e.querySelectorAll(t)];
 	e instanceof HTMLElement && e.matches(t) && n.push(e), n.forEach((e) => {
 		if (e.hasAttribute("data-board-segments")) return;
 		e.dataset.boardSegments = "true";
 		let t = document.createElement("span");
 		t.className = "board-segment-thumb", t.setAttribute("aria-hidden", "true"), e.prepend(t);
 		let n = () => {
-			let n = e.querySelector("label:has(input:checked)");
-			n && (t.style.transform = `translate(${n.offsetLeft}px,${n.offsetTop}px)`, t.style.width = `${n.offsetWidth}px`, t.style.height = `${n.offsetHeight}px`);
+			let n = e.querySelector("label:has(input:checked),button[aria-selected=true]");
+			!n || !n.offsetWidth || (t.style.transform = `translate(${n.offsetLeft}px,${n.offsetTop}px)`, t.style.width = `${n.offsetWidth}px`, t.style.height = `${n.offsetHeight}px`);
 		};
 		e.addEventListener("change", n);
-		let r = new ResizeObserver(() => {
+		let r = new MutationObserver(n);
+		r.observe(e, {
+			subtree: !0,
+			attributes: !0,
+			attributeFilter: ["aria-selected"]
+		});
+		let i = new ResizeObserver(() => {
 			if (!e.isConnected) {
-				r.disconnect();
+				i.disconnect(), r.disconnect();
 				return;
 			}
 			n();
 		});
-		r.observe(e), n(), requestAnimationFrame(() => e.classList.add("board-segments-ready"));
+		i.observe(e), n(), requestAnimationFrame(() => e.classList.add("board-segments-ready"));
 	});
 }
 function Dt(e) {
@@ -1122,7 +1128,7 @@ function Ot(e) {
 		r.type = "button", r.className = "board-rank-expand", r.setAttribute("aria-controls", e.id), r.setAttribute("aria-expanded", "false"), r.setAttribute("aria-label", "展开更多排名"), r.innerHTML = "<svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><use href=\"#i-chevron-down\"/></svg>", n.append(r);
 		let i = () => {
 			let t = e.children[4];
-			e.offsetWidth && (n.style.setProperty("--rank-collapsed-height", `${t.offsetTop - e.offsetTop + t.offsetHeight + 20}px`), n.style.setProperty("--rank-expanded-height", `${e.scrollHeight}px`));
+			e.offsetWidth && (n.style.setProperty("--rank-collapsed-height", `${t.offsetTop - e.offsetTop + t.offsetHeight}px`), n.style.setProperty("--rank-expanded-height", `${e.scrollHeight}px`));
 		}, a = () => {
 			let t = r.getAttribute("aria-expanded") === "true";
 			n.classList.toggle("expanded", t), [...e.children].forEach((e, n) => e.inert = !t && n >= 5), i();

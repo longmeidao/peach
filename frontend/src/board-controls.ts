@@ -41,10 +41,10 @@ export function initBoardControls() {
 }
 
 const tabPositions=new Map<string,{left:number;width:number}>();
-/** 全站的下划线 Tabs 共用一条会滑的 2px 指示条，颜色是文字色（boardui tabs.tsx：transform 与
-    width 各 200ms ease）。复核分类是药丸，选中靠填充，不进这条。 */
+/** 全站的下划线 Tabs 共用一条会滑的 2px 蓝色指示条（boardui tabs.tsx：transform 与 width
+    各 200ms ease）。复核分类是药丸、统计与口味的维度是分段控件，选中都靠填充，不进这条。 */
 export function wireBoardTabs(root:ParentNode){
-  const selector='.managebar-menu,.board-local-nav:not(.settingscard>.board-local-nav),.insighttabs';
+  const selector='.managebar-menu,.board-local-nav:not(.settingscard>.board-local-nav)';
   const groups=[...root.querySelectorAll<HTMLElement>(selector)];
   if(root instanceof HTMLElement&&root.matches(selector))groups.push(root);
   groups.forEach(group=>{
@@ -59,9 +59,11 @@ export function wireBoardTabs(root:ParentNode){
   });
 }
 
-/** 原生 radio 保留方向键语义，选中底板按实际尺寸滑动。 */
+/** 原生 radio 保留方向键语义，选中底板按实际尺寸滑动。
+    面板切换那几组是 `role=tablist`：滑块换成按 `aria-selected` 找当前项，ARIA 仍然是 Tabs
+    控制 tabpanel，不为了长得像分段控件就把它写成 radiogroup。 */
 export function wireBoardSegments(root:ParentNode) {
-  const selector='.iconswitch,.insightswitch';
+  const selector='.iconswitch,.insightswitch,.insighttabs';
   const groups=[...root.querySelectorAll<HTMLElement>(selector)];
   if(root instanceof HTMLElement&&root.matches(selector))groups.push(root);
   groups.forEach(group=>{
@@ -69,12 +71,13 @@ export function wireBoardSegments(root:ParentNode) {
     group.dataset.boardSegments='true';
     const thumb=document.createElement('span');thumb.className='board-segment-thumb';thumb.setAttribute('aria-hidden','true');group.prepend(thumb);
     const measure=()=>{
-      const selected=group.querySelector<HTMLElement>('label:has(input:checked)');if(!selected)return;
+      const selected=group.querySelector<HTMLElement>('label:has(input:checked),button[aria-selected=true]');if(!selected||!selected.offsetWidth)return;
       thumb.style.transform=`translate(${selected.offsetLeft}px,${selected.offsetTop}px)`;
       thumb.style.width=`${selected.offsetWidth}px`;thumb.style.height=`${selected.offsetHeight}px`;
     };
     group.addEventListener('change',measure);
-    const resize=new ResizeObserver(()=>{if(!group.isConnected){resize.disconnect();return}measure()});resize.observe(group);
+    const mutation=new MutationObserver(measure);mutation.observe(group,{subtree:true,attributes:true,attributeFilter:['aria-selected']});
+    const resize=new ResizeObserver(()=>{if(!group.isConnected){resize.disconnect();mutation.disconnect();return}measure()});resize.observe(group);
     measure();requestAnimationFrame(()=>group.classList.add('board-segments-ready'));
   });
 }
@@ -105,7 +108,9 @@ export function wireExpandableRanks(root:ParentNode) {
     const outer=document.createElement('div');outer.className='board-expand-ranks';outer.dataset.expandableRanks='';list.before(outer);outer.append(list);
     list.id=list.id||`board-rank-list-${index}`;list.classList.add('board-rank-list');
     const button=document.createElement('button');button.type='button';button.className='board-rank-expand';button.setAttribute('aria-controls',list.id);button.setAttribute('aria-expanded','false');button.setAttribute('aria-label','展开更多排名');button.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chevron-down"/></svg>';outer.append(button);
-    const size=()=>{const row=list.children[4] as HTMLElement;if(!list.offsetWidth)return;outer.style.setProperty('--rank-collapsed-height',`${row.offsetTop-list.offsetTop+row.offsetHeight+20}px`);outer.style.setProperty('--rank-expanded-height',`${list.scrollHeight}px`)};
+    /* 收起时正好露五行，第五行落在渐隐里当那个「还有」的提示（boardui 实测：五行 196px、
+       淡掉最后 44px）。多留一截空白的话渐隐盖的是空处，看不出下面还有内容。 */
+    const size=()=>{const row=list.children[4] as HTMLElement;if(!list.offsetWidth)return;outer.style.setProperty('--rank-collapsed-height',`${row.offsetTop-list.offsetTop+row.offsetHeight}px`);outer.style.setProperty('--rank-expanded-height',`${list.scrollHeight}px`)};
     const update=()=>{const expanded=button.getAttribute('aria-expanded')==='true';outer.classList.toggle('expanded',expanded);[...list.children].forEach((child,i)=>(child as HTMLElement).inert=!expanded&&i>=5);size()};
     button.onclick=()=>{const expanded=button.getAttribute('aria-expanded')!=='true';button.setAttribute('aria-expanded',String(expanded));button.setAttribute('aria-label',expanded?'收起排名':'展开更多排名');update()};
     new ResizeObserver(size).observe(list);update();

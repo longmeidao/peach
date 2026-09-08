@@ -17,10 +17,18 @@ describe('范围控件',()=>{
     expect(document.querySelectorAll('.insightswitch .board-segment-thumb')).toHaveLength(1);
     expect(document.querySelector('.insightswitch')?.getAttribute('data-board-segments')).toBe('true');
   });
-  it('口味页的标签条接上会滑的指示条，复核分类是药丸不接',()=>{
-    document.body.innerHTML='<div class="reviewtabs" role="tablist"><button role="tab" aria-selected="true">元数据字段</button><button role="tab" aria-selected="false">厂牌 Logo</button></div><div class="insighttabs" role="tablist"><button role="tab" aria-selected="true">标签</button></div>';
+  it('管理导航接上会滑的指示条，复核分类是药丸不接',()=>{
+    document.body.innerHTML='<div class="reviewtabs" role="tablist"><button role="tab" aria-selected="true">元数据字段</button><button role="tab" aria-selected="false">厂牌 Logo</button></div><div class="managebar"><div class="managebar-menu"><button aria-pressed="true">统计</button></div></div>';
     wireBoardTabs(document);wireBoardTabs(document);
-    expect([...document.querySelectorAll('[data-board-tabs]')].map(group=>group.className)).toEqual(['insighttabs']);
+    expect([...document.querySelectorAll('[data-board-tabs]')].map(group=>group.className)).toEqual(['managebar-menu']);
+  });
+  it('洞察页的维度切换拿到滑块，选中项换了也跟着量',()=>{
+    document.body.innerHTML='<div class="insighttabs" role="tablist"><button role="tab" aria-selected="true">内容标签</button><button role="tab" aria-selected="false">最近看过</button></div>';
+    wireBoardSegments(document);wireBoardSegments(document);
+    const group=document.querySelector('.insighttabs')!;
+    expect(group.querySelectorAll('.board-segment-thumb')).toHaveLength(1);
+    expect(group.getAttribute('data-board-segments')).toBe('true');
+    expect(group.getAttribute('data-board-tabs')).toBeNull();
   });
   it('排名条与雷达图没有 IntersectionObserver 时立刻可见，重复接线不重复标记',()=>{
     document.body.innerHTML='<ol class="board-ranked-chart"><li></li></ol><svg class="board-radar"></svg><div class="tasteranks"></div>';
