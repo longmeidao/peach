@@ -1273,6 +1273,25 @@ class FollowSourceAddTests(FollowContractTests):
             "evidence": "链接直接指明", "known": False,
         }])
 
+    def test_resolve_progress_counts_sources_instead_of_lines(self):
+        """一行的背后是十几个来源在查：进度按来源数走，环才会逐个涨过去。"""
+        ticks = []
+
+        def fake_discover(line, **kwargs):
+            note = kwargs["on_progress"]
+            note("kemono", 0, 8)
+            note("f95zone", 7, 8)
+            return Discovery(line, external_searches=())
+
+        with mock.patch.object(web_follow, "discover", side_effect=fake_discover):
+            web_follow.w_follow_resolve(self.contract, {
+                "lines": ["suzutaro3d", "https://kemono.cr/fanbox/user/30917150"],
+            }, progress=lambda **fields: ticks.append(fields))
+        self.assertEqual([tick["checked"] for tick in ticks], [0, 7])
+        self.assertTrue(all(tick["total"] == 9 for tick in ticks))
+        self.assertIn("Kemono", ticks[0]["message"])
+        self.assertIn("F95zone", ticks[1]["message"])
+
     def test_a_thread_link_is_registered_with_release_semantics(self):
         self._add("https://f95zone.to/threads/"
                   "lazy-procrastinator-collection-2026-06-28-lazyprocrast.50685/")
