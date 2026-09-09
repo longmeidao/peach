@@ -437,6 +437,12 @@ details.fcred{display:block;min-width:0}
 .linktable td{padding:6px 10px;border-bottom:1px solid var(--line-soft);color:var(--ink-2)}
 .linktable tr:last-child td{border-bottom:0}
 .linktable .linknote{color:var(--drop);font-variant-numeric:tabular-nums}
+/* 勾选格只放一个方框，宽度收到内容最小；表头那个是全选。 */
+.linktable .linkpick{width:1%;padding-right:0}
+.linktable .linkpick input{margin:0;display:block;accent-color:var(--ink)}
+/* 重试条贴着表格底边，和「删除失效链接」那条操作条同一形态；负外边距是为了让它
+   顶到 .linkgroup 的内边距之外，跟分组框对齐。 */
+.linkretryrow{display:flex;align-items:center;justify-content:flex-end;gap:8px;margin:12px -16px -16px;padding:12px 16px;border-top:1px solid var(--line-soft);background:var(--overlay-5)}
 /* 地址用中间截断而不是尾部省略：这张表要回答「哪一条坏了」，而
    `/official/talent/X` 与 `/talent/X` 的差别就在尾部，切掉尾部等于切掉答案。 */
 .linktable .linkurl{max-width:360px;overflow:hidden}
