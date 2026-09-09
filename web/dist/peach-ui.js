@@ -3807,24 +3807,24 @@ function Hr({ source: e, toast: t }) {
 function Ur({ data: e, error: t, toast: n }) {
 	let [r, i] = V(""), [a, o] = V(!1), [s, c] = V(""), l = W(null);
 	U(() => v(l.current, a), [a]);
-	let u = W(new AbortController()), f = W(0);
-	async function m(e = !1) {
-		let t = ++f.current;
+	let u = W(new AbortController()), m = W(0);
+	async function h(e = !1) {
+		let t = ++m.current;
 		await ct({
 			read: (e) => K("/api/scraping/cover", e),
-			active: () => !u.current.signal.aborted && t === f.current,
+			active: () => !u.current.signal.aborted && t === m.current,
 			render: (t) => {
 				o(t.status === "running"), t.status === "running" && (e = !1), t.status === "failed" && !e && c(t.error || "采集未取得"), t.status === "complete" && !e && n(t.result || "封面采集完成");
 			},
 			disconnected: () => c("连接中断，正在重新读取后台进度")
 		});
 	}
-	H(() => (m(!0), () => u.current.abort()), []);
-	async function h() {
+	H(() => (h(!0), () => u.current.abort()), []);
+	async function g() {
 		if (!a) {
-			f.current++, o(!0), c("");
+			m.current++, o(!0), c("");
 			try {
-				await q("/api/scraping/cover", { code: r }, "POST", u.current.signal), await m();
+				await q("/api/scraping/cover", { code: r }, "POST", u.current.signal), await h();
 			} catch (e) {
 				u.current.signal.aborted || (o(!1), c(G(e)));
 			}
@@ -3847,7 +3847,7 @@ function Ur({ data: e, error: t, toast: n }) {
 						/* @__PURE__ */ J("form", {
 							class: "scraping-cover-form",
 							onSubmit: (e) => {
-								e.preventDefault(), h();
+								e.preventDefault(), g();
 							},
 							children: [/* @__PURE__ */ J("input", {
 								class: "geist-input",
@@ -3863,6 +3863,10 @@ function Ur({ data: e, error: t, toast: n }) {
 								type: "submit",
 								children: "抓取封面"
 							})]
+						}),
+						a && /* @__PURE__ */ J("div", {
+							"aria-live": "polite",
+							dangerouslySetInnerHTML: { __html: f("正在抓取封面") }
 						}),
 						s && /* @__PURE__ */ J("div", {
 							role: "alert",

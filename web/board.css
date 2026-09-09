@@ -6,7 +6,9 @@
 .settingspanel.settingspanel{background:rgba(0,0,0,.7);backdrop-filter:none}
 .settingscard.settingscard{width:871px;max-width:calc(100vw - 32px);height:614px;max-height:calc(100dvh - 32px);border-radius:24px;grid-template-columns:274px minmax(0,1fr);grid-template-rows:auto minmax(0,1fr);overflow:clip;background:var(--page)}
 .settingscard.settingscard>.board-local-nav{grid-column:1;grid-row:1/3;display:flex;flex-direction:column;align-items:stretch;padding:10px;gap:4px;background:var(--ground);border:0}
-.settingscard.settingscard>.board-local-nav:before{content:'设置';font-size:13px;color:var(--muted);padding:4px 8px 8px}
+/* 左栏分块：一个小标题带一组条目。第一块贴着栏顶，后面每块自己往上让 12px 断开。 */
+.settingscard.settingscard>.board-local-nav .board-local-nav-caption{margin:12px 0 0;font-size:13px;color:var(--muted);padding:4px 8px 8px}
+.settingscard.settingscard>.board-local-nav .board-local-nav-caption:first-child{margin-top:0}
 .settingscard.settingscard>.board-local-nav button{flex:0 0 auto;justify-content:flex-start;padding:8px;border:0;border-radius:10px;font-size:14px;min-height:36px;font-weight:500}
 .settingscard.settingscard>.board-local-nav button{display:flex;align-items:center;gap:8px}.settingscard.settingscard>.board-local-nav button svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2;flex:none}
 .settingscard.settingscard>.board-local-nav button[aria-selected=true]{background:var(--picked);box-shadow:none}
@@ -17,6 +19,16 @@
 .settingscard.settingscard .settingsscroll{padding:0 32px 32px;min-height:0;overflow-y:auto}
 .settingscard .settingsscroll>.settinggroup{background:var(--ground);border-radius:16px;padding:0 0 0 12px}
 .settingscard .settingsscroll>.settinggroup>h3{display:none}
+/* 「这台电脑」那一格装的是整张配置页，不是一列开关行。上面那圈 `--ground` 底和左边
+   12px 是给开关行留的：套在配置卡片外面，卡片和它同色就看不出边，还只有左边缩进、
+   右边贴齐。这一格自己不画底，卡片各画各的。
+   它的外壳不是面板，面板是里面那几段配置；里面没有一段亮着，就是用户在看左栏上半段的
+   某一项，这时整个外壳都不该占位置。 */
+.settingscard .settingsscroll>.settinggroup:has(>.machinesettings){background:none;border-radius:0;padding:0}
+.settingscard .settingsscroll>.settinggroup:has(>.machinesettings):not(:has(.board-group-active)){display:none}
+/* 框里的输入件照配置页那边抬一档底色。那条规则挂在 `body.configuration-layout` 上，
+   弹层不带这个类，控件就落回 `--surface`，压在同一张卡上几乎看不出边。 */
+.settingscard .machinesettings :is(.gselectfield,.geist-input,input.geist-input,.board-icon-trigger){background:var(--color-background-primary-default)}
 .settingscard .settingsscroll .settingrow{min-height:52px;padding:10px 10px 10px 0;gap:16px;border-top:0;border-bottom:1px solid var(--line-soft)}
 .settingscard .settingsscroll .settingrow:last-child{border-bottom:0}
 .settingscard .settingsscroll .settingrow b{font-size:14px;line-height:20px;font-weight:400}
@@ -24,17 +36,35 @@
 .settingscard .settingsscroll .gselect{min-width:90px;min-height:32px;height:32px;padding:6px 8px;font-size:13px;border-radius:8px}
 .settingscard .board-number-control{gap:5px;font-size:12px}.settingscard .board-number-control input{width:64px;height:32px;padding:6px;border-radius:8px;font-size:13px}
 .settingscard .board-number-control button{min-height:32px;padding:4px 8px;font-size:12px}
-@media(max-width:760px){.settingscard.settingscard{display:flex;flex-direction:column;width:calc(100vw - 24px);max-width:calc(100vw - 24px)}.settingscard.settingscard>.board-local-nav{flex-direction:row;flex-shrink:0;overflow-x:auto;border-right:0}.settingscard.settingscard>.board-local-nav:before{display:none}.settingscard.settingscard .settingshead{padding:16px 20px 12px}.settingscard.settingscard .settingsscroll{padding:0 20px 20px;flex:1}}
+@media(max-width:760px){.settingscard.settingscard{display:flex;flex-direction:column;width:calc(100vw - 24px);max-width:calc(100vw - 24px)}.settingscard.settingscard>.board-local-nav{flex-direction:row;flex-shrink:0;overflow-x:auto;border-right:0}.settingscard.settingscard>.board-local-nav .board-local-nav-caption{margin:0;padding:0 4px 0 8px;align-self:center;white-space:nowrap}.settingscard.settingscard>.board-local-nav .board-local-nav-caption:first-child{padding-left:0}.settingscard.settingscard .settingshead{padding:16px 20px 12px}.settingscard.settingscard .settingsscroll{padding:0 20px 20px;flex:1}}
 /* Translucent navigation experiment, using browser-native backdrop compositing. */
 :root{--glass-fill:rgba(248,250,255,.72);--glass-rim:rgba(255,255,255,.76);--glass-low:rgba(70,80,100,.12);--glass-text:#242830;--glass-shadow:0 5px 20px #11182714;--glass-sheen:rgba(255,255,255,.38)}
 :root[data-theme="dark"]{--glass-fill:rgba(29,32,39,.68);--glass-rim:rgba(255,255,255,.23);--glass-low:rgba(255,255,255,.055);--glass-text:#e7e9ee;--glass-shadow:0 5px 20px #00000026;--glass-sheen:rgba(230,239,255,.08)}
 @media(prefers-color-scheme:dark){:root:not([data-theme]){--glass-fill:rgba(29,32,39,.68);--glass-rim:rgba(255,255,255,.23);--glass-low:rgba(255,255,255,.055);--glass-text:#e7e9ee;--glass-shadow:0 5px 20px #00000026;--glass-sheen:rgba(230,239,255,.08)}}
-.board-filter-frame.board-filter-frame.board-filter-frame,.drawer.drawer,.drawer.drawer.open,.edge.edge,.top .search.search,.top.top>.ib{
+.board-filter-frame.board-filter-frame.board-filter-frame,.entitytagbar.entitytagbar.entitytagbar,.entitycollectionhead.entitycollectionhead.entitycollectionhead,body .review .reviewbulktoolbar,body .review .reviewgroupbar,.drawer.drawer,.drawer.drawer.open,.edge.edge,.top .search.search,.top.top>.ib{
   background:linear-gradient(125deg,var(--glass-sheen),transparent 42%,var(--glass-low)),var(--glass-fill);
   backdrop-filter:var(--glass-optic,blur(22px)) saturate(145%);-webkit-backdrop-filter:var(--glass-optic,blur(22px)) saturate(145%);
   border:0;box-shadow:inset 0 1px 0 var(--glass-rim),inset 1px 0 0 var(--glass-low),inset -1px 0 0 var(--glass-low),inset 0 -1px 0 var(--glass-low),var(--glass-shadow);
 }
 .board-filter-frame.board-filter-frame{border-radius:22px;isolation:isolate;color:var(--glass-text)}
+/* 资料页的标签行和排序行是两个兄弟，一个挂在 `.index` 上、一个在 `.entitysection` 里，
+   而那一段的 innerHTML 每次重画都整块换掉，套不进首页那个 `.board-filter-frame`。
+   改成让它们各做一块玻璃的上下半：圆角只留外侧，接缝那两条内描线去掉，吸顶的光晕由
+   下半的 ::after 一次画完整块——它比上半低一层，画在上半左右两侧的那部分不会被盖住。 */
+/* 那道 125° 高光是按盒子自己的对角线铺的：上下两半各铺一遍，接缝两边就成了亮的一段
+   和灰的一段，静止时看着是两块叠在一起。分两个盒子的浮层不铺它，只留一层平的底色，
+   边上那圈高光仍然由 `inset` 描出来。首页那块是一个盒子，它照旧。 */
+.entitytagbar.entitytagbar.entitytagbar,.entitycollectionhead.entitycollectionhead.entitycollectionhead,
+body .review .reviewbulktoolbar,body .review .reviewgroupbar{background:var(--glass-fill)}
+.entitycollectionhead.entitycollectionhead.entitycollectionhead{border-radius:22px;color:var(--glass-text)}
+.entitytagbar.entitytagbar.entitytagbar{border-radius:22px 22px 0 0;color:var(--glass-text);
+  box-shadow:inset 0 1px 0 var(--glass-rim),inset 1px 0 0 var(--glass-low),inset -1px 0 0 var(--glass-low),var(--glass-shadow)}
+.entitytagbar+.entitysection .entitycollectionhead.entitycollectionhead.entitycollectionhead{border-radius:0 0 22px 22px;
+  box-shadow:inset 1px 0 0 var(--glass-low),inset -1px 0 0 var(--glass-low),inset 0 -1px 0 var(--glass-low),var(--glass-shadow)}
+.entitytagbar .pill,.entitycollectionhead h3,.entitycollectionhead .sorts button{color:var(--glass-text)}
+.entitytagbar .pill[data-tag]:not([aria-pressed="true"]){border-color:var(--glass-low)}
+.entitytagbar .pill[aria-pressed="true"],.entitycollectionhead .sorts button[aria-pressed="true"],
+.entitytagbar .mediaviewbutton[aria-pressed="true"]{background:color-mix(in srgb,var(--ink) 10%,transparent)}
 .board-filter-frame.board-is-stuck::before,.board-filter-frame.board-is-stuck::after{display:none}
 .board-filter-frame.board-filter-frame .tagbar{border-radius:22px 22px 0 0}
 .board-filter-frame.board-filter-frame .count{border-radius:0 0 22px 22px}
@@ -49,10 +79,10 @@
 .top.top>.ib{border-radius:50%}
 .drawer.drawer{border-radius:26px}.edge.edge{border-radius:24px}
 .drawer.drawer .dnav button:not([aria-pressed="true"]),.edge.edge button:not([aria-pressed="true"]){color:var(--glass-text)}
-@supports not (backdrop-filter:blur(1px)){.board-filter-frame.board-filter-frame.board-filter-frame,.drawer.drawer,.drawer.drawer.open,.edge.edge,.top .search.search{background:var(--ground)}}
-@media(prefers-reduced-transparency:reduce),(prefers-contrast:more){.board-filter-frame.board-filter-frame.board-filter-frame,.drawer.drawer,.drawer.drawer.open,.edge.edge,.top .search.search,.top.top>.ib{background:var(--ground);backdrop-filter:none;-webkit-backdrop-filter:none}}
+@supports not (backdrop-filter:blur(1px)){.board-filter-frame.board-filter-frame.board-filter-frame,.entitytagbar.entitytagbar.entitytagbar,.entitycollectionhead.entitycollectionhead.entitycollectionhead,body .review .reviewbulktoolbar,body .review .reviewgroupbar,.drawer.drawer,.drawer.drawer.open,.edge.edge,.top .search.search{background:var(--ground)}}
+@media(prefers-reduced-transparency:reduce),(prefers-contrast:more){.board-filter-frame.board-filter-frame.board-filter-frame,.entitytagbar.entitytagbar.entitytagbar,.entitycollectionhead.entitycollectionhead.entitycollectionhead,body .review .reviewbulktoolbar,body .review .reviewgroupbar,.drawer.drawer,.drawer.drawer.open,.edge.edge,.top .search.search,.top.top>.ib{background:var(--ground);backdrop-filter:none;-webkit-backdrop-filter:none}}
 /* Peach-owned media and analytics layouts. */
-html.board-high-contrast .board-filter-frame.board-filter-frame.board-filter-frame,html.board-high-contrast .drawer.drawer,html.board-high-contrast .edge.edge,html.board-high-contrast .top .search.search,html.board-high-contrast .top.top>.ib{background:var(--ground);backdrop-filter:none;-webkit-backdrop-filter:none}
+html.board-high-contrast .board-filter-frame.board-filter-frame.board-filter-frame,html.board-high-contrast .entitytagbar.entitytagbar.entitytagbar,html.board-high-contrast .entitycollectionhead.entitycollectionhead.entitycollectionhead,html.board-high-contrast .review .reviewbulktoolbar,html.board-high-contrast .review .reviewgroupbar,html.board-high-contrast .drawer.drawer,html.board-high-contrast .edge.edge,html.board-high-contrast .top .search.search,html.board-high-contrast .top.top>.ib{background:var(--ground);backdrop-filter:none;-webkit-backdrop-filter:none}
 :root{--board-card-foot:color-mix(in srgb,var(--ground) 92%,var(--ink))}
 .followmanage.followmanage{width:100%;max-width:1120px}
 .followmanage .fmain{width:100%;max-width:1120px;margin-inline:auto;gap:20px}
@@ -165,6 +195,10 @@ body :is(#manageTitle,#manageCrumb,#manageLede){max-width:var(--board-content);w
 .cleanupgrid>.cleanupemptyfolders>.geist-fieldset-footer{border:0;padding:24px;background:none;display:flex;gap:8px;flex-wrap:wrap}
 .cleanupgrid>.cleanupemptyfolders strong{font:var(--board-body);color:var(--color-text-secondary);letter-spacing:0}
 .library-processing-outcome:empty{display:none}
+/* 首页那条整理提示是正文列里的一条 Note，上下两条线是它自己的收口。少了这个空当，
+   两条线一边挨着身份行、一边挨着筛选浮层，看着像三块东西粘在一起。下面照浮层那个数
+   留一样宽（上面由 `.tiers` 收尾与 `main` 上沿凑够）。 */
+#libraryProcessingNotice:not(:empty){margin:0 0 22px}
 .board-card-icon{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border:1px solid var(--line-soft);background:var(--surface);border-radius:10px;margin-right:10px;vertical-align:middle;color:var(--ink-2)}
 .board-card-icon svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .configfieldset{border:1px solid var(--line);border-radius:16px;box-shadow:0 1px 2px #00000003}
@@ -205,6 +239,26 @@ body::before{display:none}
 .board-filter-frame .tagbar{border-bottom:0;border-radius:16px 16px 0 0}
 .board-filter-frame .count{border-radius:0 0 16px 16px;min-width:0}
 .board-filter-frame .sorts{position:relative;min-width:0;overflow-x:auto;scrollbar-width:none}
+/* 上下半合起来照首页那块浮层量：跟顶栏留 8px、跟下面的网格留 22px，左右不再往外溢 16px，
+   两行各 48px。基础层的 `--filterH` 是 58px，那是没有浮层时贴着顶栏的老尺寸，这里不能用它
+   算下半的吸顶位置，另起一个只归这块浮层的高度。下半的吸顶位置是上半的下沿，上半没有时
+   它自己就是整块，回到顶栏下 8px。 */
+:root{--board-filterH:48px}
+.entitytagbar{position:sticky;top:calc(var(--topH) + 8px);margin:0;height:var(--board-filterH);gap:6px;padding:8px 12px}
+.entitytagbar .entitytags{gap:6px}
+.entitytagbar .mediaviewbuttons .mediaviewbutton{flex:0 0 30px;width:30px;height:30px}
+.entitycollectionhead{position:sticky;top:calc(var(--topH) + 8px);margin:0 0 22px;padding:8px 12px;min-height:var(--board-filterH);gap:12px}
+.entitytagbar+.entitysection .entitycollectionhead{top:calc(var(--topH) + 8px + var(--board-filterH))}
+.entitycollectionhead.is-stuck::after{content:'';position:absolute;inset:0;z-index:-1;border-radius:inherit;
+  box-shadow:0 0 24px 4px #00000038,0 8px 20px #00000026;pointer-events:none}
+.entitytagbar+.entitysection .entitycollectionhead.is-stuck::after{top:calc(-1 * var(--board-filterH));border-radius:22px}
+/* 读数照首页那条 `10,471 个符合` 写：12px、常规字重、不加字距，颜色比标签低一档。
+   排序键也跟那边同一套——30px 高、12px 字、7px 圆角，选中只有填充。 */
+.entitycollectionhead h3{font-size:12px;font-weight:400;letter-spacing:normal;color:var(--ink-2)}
+.entitycollectionhead .sorts{gap:4px}
+.entitycollectionhead .sorts button{height:30px;min-height:30px;font-size:12px;padding:0 8px;border:0;border-radius:7px;background:transparent}
+.entitycollectionhead .sorts button[aria-pressed="true"]{background:color-mix(in srgb,var(--ink) 10%,transparent)}
+.entitytagbar.is-stuck::before{content:'';position:absolute;left:-16px;right:-16px;top:-9px;height:9px;z-index:-1;background:var(--page);mask-image:linear-gradient(to right,transparent,#000 24px,#000 calc(100% - 24px),transparent);pointer-events:none}
 @media(max-width:760px){.board-filter-frame .count{display:flex;flex-wrap:wrap;gap:8px;overflow:visible}.board-filter-frame .count>.mono{width:100%}.board-filter-frame .count .sorts,.entitycollectionhead .sorts{flex:1 1 100%;width:0;max-width:100%;min-width:0;margin:0;overflow-x:auto;overflow-y:hidden;overscroll-behavior-x:contain;touch-action:pan-x pan-y;padding:4px 2px}}
 [data-overflow-right="true"]{mask-image:linear-gradient(to right,#000 calc(100% - 18px),transparent)}
 [data-overflow-left="true"]{mask-image:linear-gradient(to right,transparent,#000 18px)}
@@ -221,8 +275,8 @@ body::before{display:none}
 /* 资料页的标签跟首页筛选条上的标签是同一个控件，只是换了个位置：那边 30px 高、8px
    圆角、13px 字，这边还留着 40px 高的大药丸，同一个人的标签在两页上大一圈小一圈。
    计数跟着缩到 Caption。 */
-.entitytags .pill{height:30px;padding:0 10px;font-size:13px;line-height:20px;border-radius:8px;border:1px solid var(--line);color:var(--ink-2)}
-.entitytags .pill[aria-pressed="true"]{border-color:transparent;background:var(--picked);color:var(--ink)}
+.entitytags .pill{height:30px;padding:0 10px;font-size:13px;line-height:20px;border-radius:8px;border:1px solid var(--glass-low);color:var(--glass-text)}
+.entitytags .pill[aria-pressed="true"]{border-color:transparent;background:color-mix(in srgb,var(--ink) 10%,transparent);color:var(--glass-text)}
 .entitytags .pill small{margin-left:5px;font:var(--board-caption)}
 .board-filter-frame .count{padding:8px 12px;min-height:46px;gap:12px}
 .board-filter-frame .sorts{gap:4px}.board-filter-frame .sorts button{height:30px;min-height:30px;font-size:12px;padding:0 8px;border:0;border-radius:7px;background:transparent}
@@ -440,6 +494,9 @@ button,input,select,textarea{font-family:inherit}
 .board-distribution{width:100%;max-width:240px;align-self:center;margin:auto;min-height:200px}
 .board-distribution text{fill:var(--ink-2);font-family:inherit;font-size:12px}
 .board-job-progress{display:flex;align-items:center;gap:12px;padding:12px 0;font-size:14px;line-height:20px}
+/* 这张卡自己不留内边距，里面每块各带各的。进度环少了这一条，圆环就贴着卡片左沿，
+   和它下面那几组链接表的 16px 对不上一条线。 */
+.resourcepanel>.board-job-progress{padding:12px 16px}
 .board-job-progress svg{flex:none}.board-job-progress circle{fill:none;stroke-width:2.5;stroke-linecap:round}
 .board-job-track{stroke:var(--line-soft)}.board-job-fill{stroke:var(--tungsten);transition:stroke-dasharray .3s ease-out}
 .board-job-progress small{display:block;color:var(--muted);font-size:12px;line-height:16px;font-variant-numeric:tabular-nums}
@@ -728,7 +785,9 @@ html.board-high-contrast :is(.selectiondock,.reviewcontrols.is-stuck,.reviewgrou
    悬停只提文字色。键盘行为仍是 tablist，方向键在同一条里移动焦点。 */
 /* 药丸的字要和标题同一条左边，所以整排往外挪掉一枚药丸的内边距——对齐看的是文字，
    不是药丸那块底。 */
-.reviewtabs{margin-inline:-12px}
+/* 这一条跟标题、面包屑和下面那块浮层同一条左边。往外挪 12px 能让第一个标签的字
+   顶到那条线上，代价是选中那块底色比整页任何东西都往左出去一截。 */
+.reviewtabs{margin-inline:0}
 .reviewtabs button{height:32px;padding:0 12px;gap:6px;border-radius:var(--control-radius);color:var(--color-text-secondary);font:var(--board-body)}
 .reviewtabs button:hover{background:none;color:var(--color-text-primary)}
 .reviewtabs button[aria-selected="true"]{background:var(--picked);color:var(--color-text-primary);font:var(--board-body-medium)}
@@ -862,10 +921,16 @@ body .library-processing [role=alert]>.geist-note{margin-top:12px}
 body .review{width:100%;max-width:var(--board-content);margin:0 auto;box-sizing:border-box}
 body .review .reviewcontrols{position:static;z-index:auto;padding-block:0;display:block;border-radius:0}
 /* 玻璃框左右就是内容列，和标题、面包屑、卡片同一条边。往外扩 16px 再垫回来能让
-   条里的控件对齐卡片，代价是这一块比整页任何东西都宽出去一截，读起来是溢出。 */
-body .review .reviewbulktoolbar{position:sticky;top:var(--topH);z-index:60;width:auto;margin-inline:0;padding:12px 0;background:var(--ground);border-radius:20px 20px 0 0}
-body .review .reviewgroupbar{background:var(--ground);border:0;border-radius:0 0 20px 20px}
-body .review .reviewgroup:not([hidden])~.reviewgroup:not([hidden])>.reviewgroupbar{border-radius:20px}
+   条里的控件对齐卡片，代价是这一块比整页任何东西都宽出去一截，读起来是溢出。
+   框里的控件照首页那块浮层留 12px，不贴着 20px 的圆角。玻璃静止时就在——首页那块
+   浮层从进页面起就是玻璃，这边等吸顶才变，同一套语言里就成了两种东西；粘住之后由
+   `.review::before` 那一层接管，两条横条让出底色。 */
+body .review .reviewbulktoolbar{position:sticky;top:var(--topH);z-index:60;width:auto;margin-inline:0;padding:12px;border-radius:20px 20px 0 0;
+  box-shadow:inset 0 1px 0 var(--glass-rim),inset 1px 0 0 var(--glass-low),inset -1px 0 0 var(--glass-low),var(--glass-shadow)}
+body .review .reviewgroupbar{border:0;border-radius:0 0 20px 20px;padding:8px 12px;
+  box-shadow:inset 1px 0 0 var(--glass-low),inset -1px 0 0 var(--glass-low),inset 0 -1px 0 var(--glass-low),var(--glass-shadow)}
+body .review .reviewgroup:not([hidden])~.reviewgroup:not([hidden])>.reviewgroupbar{border-radius:20px;
+  box-shadow:inset 0 1px 0 var(--glass-rim),inset 1px 0 0 var(--glass-low),inset -1px 0 0 var(--glass-low),inset 0 -1px 0 var(--glass-low),var(--glass-shadow)}
 /* 悬浮起来的是一块玻璃，不是两块叠在一起。每块玻璃只糊自己身后那一段页面，两块
    上下相接就会在接缝处显出两种颜色——工具条身后是卡片，分组条身后是另一排卡片。
    所以玻璃由页面自己画一层，铺满当前粘住的那几行；两条横条只留内容，不带底。
