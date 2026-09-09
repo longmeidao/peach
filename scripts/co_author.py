@@ -29,26 +29,43 @@ def values(repo: Path, head: str = "HEAD") -> list[str]:
             if line.partition(":")[0].casefold() == "co-authored-by"]
 
 
-def check(repo: Path, head: str = "HEAD") -> list[str]:
-    """交付提交至少要有一条署名，且每一条都合规。
+def commits(repo: Path, base: str, head: str = "HEAD") -> list[tuple[str, str]]:
+    """分支自己的提交：(取值用的 hash, 给人看的 `短 hash 主题`)，不含合进来的 merge。"""
+    output = git(repo, "log", "--no-merges", "--format=%H%x00%h %s", f"{base}..{head}")
+    return [(line.partition("\0")[0], line.partition("\0")[2])
+            for line in output.splitlines() if line.strip()]
 
-    署名是事后追责唯一的入手处：出问题的那一行是哪个工具的哪个模型写的，只能从这里看。
-    所以缺了、形态不对、工具没登记、地址与工具不配，四种都拒收。多条并列是允许的，
-    一个提交确实可能由两个智能体接力写成。
-    """
-    found = values(repo, head)
+
+def _problems(commit: str, label: str, found: list[str]) -> list[str]:
     if not found:
-        return [f"交付提交须有 Co-Authored-By 写明工具与模型，如 {EXAMPLE}"]
+        return [f"提交「{label}」须有 Co-Authored-By 写明工具与模型，如 {EXAMPLE}"]
     problems = []
     for value in found:
         parsed = FORM.fullmatch(value)
         if parsed is None:
-            problems.append(f"署名「{value}」形态不对，须为 工具 (模型 版本) "
+            problems.append(f"提交「{label}」的署名「{value}」形态不对，须为 工具 (模型 版本) "
                             f"<厂商 noreply>，如 {EXAMPLE}")
         elif parsed["tool"] not in VENDORS:
-            problems.append(f"署名里的工具「{parsed['tool']}」未登记，"
+            problems.append(f"提交「{label}」的署名里，工具「{parsed['tool']}」未登记，"
                             "已登记：" + "、".join(VENDORS))
         elif parsed["mail"] != VENDORS[parsed["tool"]]:
-            problems.append(f"{parsed['tool']} 的署名地址须是 "
+            problems.append(f"提交「{label}」里 {parsed['tool']} 的署名地址须是 "
                             f"{VENDORS[parsed['tool']]}，不是 {parsed['mail']}")
+    return problems
+
+
+def check(repo: Path, base: str, head: str = "HEAD") -> list[str]:
+    """分支上每个非 merge 提交都要有署名，且每一条都合规。
+
+    署名是事后追责唯一的入手处：出问题的那一行是哪个工具的哪个模型写的，只能从这里看。
+    所以缺了、形态不对、工具没登记、地址与工具不配，四种都拒收。多条并列是允许的，
+    一个提交确实可能由两个智能体接力写成。
+
+    判据落在每个提交上，不是落在分支尖端：一次交付常常是好几个提交，只看最后一个
+    等于只要收尾那次签对了，前面写代码的几次签成谁都放行——而要追的恰恰是写出那
+    一行的提交。合进来的 merge 不算分支自己的产出，跳过。
+    """
+    problems = []
+    for commit, label in commits(repo, base, head):
+        problems += _problems(commit, label, values(repo, commit))
     return problems

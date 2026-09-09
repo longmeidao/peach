@@ -210,6 +210,14 @@ class DiscoverTests(_DiscoveryCase):
                          ["patreon/suzutaro3d"])
         self.assertEqual(found.candidates[0].evidence, "站内 id 精确匹配")
 
+    def test_a_handle_id_matches_whatever_case_it_was_copied_in(self):
+        # 手柄的大小写只是显示形态：从主页标题复制来的 `SuzuTaro3D` 和索引里的
+        # `suzutaro3d` 是同一个创作者。按名字比对已经这么判，按 id 也要一样。
+        found = self._discover("SuzuTaro3D", self.ROUTES, providers=("kemono",))
+        self.assertEqual([c.ref for c in found.candidates],
+                         ["patreon/suzutaro3d"])
+        self.assertEqual(found.candidates[0].evidence, "站内 id 精确匹配")
+
     def test_a_numeric_term_probes_the_thread_id(self):
         routes = {**self.ROUTES, "f95zone.to/threads/50685/": HttpResponse(200, {}, b"<html/>")}
         found = self._discover("50685", routes, providers=("f95zone",))

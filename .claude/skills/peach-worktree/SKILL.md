@@ -52,11 +52,12 @@ description: 在用户说并行、工作树、暂存、提交、ready、集成�
   它与 `Co-Authored-By` 等 trailer 连续写在消息末尾同一块里，中间隔一个空行就只算正文，解析不到。
   触发面、格式、中英文同批与例外见 `docs/HANDOFF.md`「README 维护」；`ready/integrate` 拒收缺失或矛盾声明。
 
-- 每个交付提交都要署名，形态是 `Co-Authored-By: 工具 (模型 版本) <厂商 noreply>`：
+- 分支上每个提交都要署名，形态是 `Co-Authored-By: 工具 (模型 版本) <厂商 noreply>`：
   `Claude Code (Opus 5) <noreply@anthropic.com>`、`Codex (GPT-5.5) <noreply@openai.com>`。
   括号里那一段是重点——事后翻这一行是要知道哪个模型写的，同一个工具换代模型，写出来的
   代码差别比换工具本身还大。工具与地址的名单在 `scripts/co_author.py` 的 `VENDORS`，
-  `ready` / `integrate` 拒收缺失、形态不对、工具未登记和地址与工具不配四种。
+  `ready` / `integrate` 逐个提交判（合进来的 merge 不算），拒收缺失、形态不对、工具未
+  登记和地址与工具不配四种。
   一个提交由两个智能体接力写成时，两条并列署名都写上。
 
 - 禁止 `git add .`、`git add -A`、目录路径或 glob。只暂存任务明确拥有的文件。

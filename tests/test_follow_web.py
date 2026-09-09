@@ -1287,10 +1287,31 @@ class FollowSourceAddTests(FollowContractTests):
             web_follow.w_follow_resolve(self.contract, {
                 "lines": ["suzutaro3d", "https://kemono.cr/fanbox/user/30917150"],
             }, progress=lambda **fields: ticks.append(fields))
-        self.assertEqual([tick["checked"] for tick in ticks], [0, 7])
+        self.assertEqual([tick["checked"] for tick in ticks], [0, 7, 9])
         self.assertTrue(all(tick["total"] == 9 for tick in ticks))
         self.assertIn("Kemono", ticks[0]["message"])
         self.assertIn("F95zone", ticks[1]["message"])
+
+    def test_a_line_that_fails_still_advances_the_ring_by_its_own_sources(self):
+        """来源是开查前报一次，报的是 `position`，所以查完最后一个来源分子停在 total-1；
+        查失败的行一个来源都不报。两样都不补，环就走不满，后面的行还一路偏低。
+        """
+        ticks = []
+
+        def fake_discover(line, **kwargs):
+            if line == "suzutaro3d":
+                raise FollowSourceError("索引下不来")
+            kwargs["on_progress"]("kemono", 0, 8)
+            return Discovery(line, external_searches=())
+
+        with mock.patch.object(web_follow, "discover", side_effect=fake_discover):
+            result = web_follow.w_follow_resolve(self.contract, {
+                "lines": ["suzutaro3d", "lazyprocrastinator"],
+            }, progress=lambda **fields: ticks.append(fields))
+        self.assertEqual(result["results"][0]["kind"], "error")
+        # 两行各 8 个来源：第二行开查时分子已经是第一行的 8，收尾走满 16。
+        self.assertEqual([tick["checked"] for tick in ticks], [8, 16])
+        self.assertTrue(all(tick["total"] == 16 for tick in ticks))
 
     def test_a_thread_link_is_registered_with_release_semantics(self):
         self._add("https://f95zone.to/threads/"

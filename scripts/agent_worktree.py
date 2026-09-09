@@ -116,7 +116,7 @@ def require_verified(worker: Path, target_branch: str, paths: Iterable[str]) -> 
     if _git(worker, "merge-base", "--is-ancestor", target_branch, "HEAD", check=False).returncode:
         raise WorkspaceError("目标分支已前进；请在工作树 rebase 后运行 auto 验证")
     problems = (check_readme_impact.check(worker, target_branch)
-                + co_author.check(worker)
+                + co_author.check(worker, target_branch)
                 + commit_subject.check(worker, target_branch))
     if problems:
         raise WorkspaceError("; ".join(problems))
