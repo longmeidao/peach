@@ -4093,7 +4093,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("if(runtime)runtimeConfigurable=!!runtime.configurable;")
         self.assertPageContains(
             "await mountIsland('configuration',host,{receipt:message=>actionReceipt(message)},{isCurrent:open});")
-        self.assertPageContains("{label:'这台设备上改不了'}")
+        self.assertPageContains("{label:'该配置需在服务端设备修改'}")
         # 弹层里那一份配置页已经由外面那圈分区页签管着，别再给它自己叠一排。
         self.assertPageContains("const config=document.querySelector('#stats .configpage');")
         # `runtimeConfigurable` 还有第二个用处：馆藏空态按它决定给不给「去配置媒体文件夹」。

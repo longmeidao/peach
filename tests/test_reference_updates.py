@@ -41,6 +41,8 @@ class ReferenceUpdateTests(unittest.TestCase):
              "openaver-related-ranking",
              "vercel-geist-tabs-secondary",
              "vercel-geist-switch-segmented",
+             "boardui-input",
+             "boardui-theme",
              "youtube-stats-buffer-20260829"},
         )
         self.assertNotEqual(

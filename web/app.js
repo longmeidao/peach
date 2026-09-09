@@ -742,8 +742,8 @@ async function syncMachineSettings(){
   if(!open())return;
   if(runtime)runtimeConfigurable=!!runtime.configurable;
   if(!runtime||!runtimeConfigurable){
-    host.innerHTML=noteHtml('媒体文件夹、端口、代理和更新讲的是跑着 Peach 的那台电脑，在它自己的浏览器里打开设置就能改。',
-      {label:'这台设备上改不了'});
+    host.innerHTML=noteHtml('媒体文件夹、端口、代理与更新属于运行 Peach 服务的设备；在该设备的浏览器打开设置进行修改。',
+      {label:'该配置需在服务端设备修改'});
     return;
   }
   machineSettingsMounted=true;

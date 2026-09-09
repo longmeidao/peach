@@ -1,5 +1,8 @@
 /* 内边距吃掉刘海和底部横条：iOS 上 `inset:0` 会一直铺到状态栏和 Home 指示条底下。 */
 body.settings-open{overflow:hidden}
+/* 页面滚动条属于 html 而不只是 body：锁住 body 后文档根仍可滚，打开弹层时
+   背后的页滚动条还在，弹层自身加上它就是两条。 */
+@supports selector(:has(*)){html:has(body.settings-open){overflow:hidden}}
 .iconswitch.javimageswitch label{width:auto;min-width:52px;padding-inline:10px}
 .javimageswitch label>span[aria-hidden]{display:inline-flex;align-items:center;gap:6px}
 .settingspanel{position:fixed;z-index:var(--layer-dialog);inset:0;isolation:isolate;display:grid;place-items:center;background:rgba(242,242,242,.8);padding:18px;padding-top:max(18px,env(safe-area-inset-top));padding-bottom:max(18px,env(safe-area-inset-bottom));overscroll-behavior:contain}

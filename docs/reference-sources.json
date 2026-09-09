@@ -312,6 +312,33 @@
         "README.md",
         "README.en.md"
       ]
+    },
+    {
+      "id": "boardui-input",
+      "name": "BoardUI Input 组件源",
+      "url": "https://www.boardui.com/r/input.json",
+      "snapshot": "docs/reference-snapshots/upstream/boardui-input.json",
+      "checked_on": "2026-09-09",
+      "sha256": "ac1e66c9ed15f9db2750dd528bc894c856ac84e79f72ff4acb96f14b1ab9c249",
+      "role": "输入框焦点口径：2px inset ring，悬停 border-button-hover、聚焦 border-button-active，无外发光；Peach 输入面板按用户的决定保留白底。",
+      "consumers": [
+        "web/css/22-followmanage.css",
+        "web/board.css",
+        "tests/test_web_ui.py"
+      ]
+    },
+    {
+      "id": "boardui-theme",
+      "name": "BoardUI 主题 token 源",
+      "url": "https://www.boardui.com/r/theme.json",
+      "snapshot": "docs/reference-snapshots/upstream/boardui-theme.json",
+      "checked_on": "2026-09-09",
+      "sha256": "ee1cb0e973b108b90fd4999796a595fff6a1e5e453e115a6966c43b6e53ed428",
+      "role": "border-button-active 的取值出处（浅色 neutral-400、深色 neutral-600）；Peach 只取该档，不搬全量变量表。",
+      "consumers": [
+        "web/board.css",
+        "web/css/22-followmanage.css"
+      ]
     }
   ]
 }

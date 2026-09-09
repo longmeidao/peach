@@ -49,6 +49,126 @@ def process_alive(process_id: int) -> bool:
     return PidFileLock._running(process_id)
 
 
+def parse_windows_command_line(script: str | None) -> list[str]:
+    """按 CommandLineToArgvW 的规则拆开一条命令行。
+
+    托盘的自定义 bootstrap 里既有引号又有字面引号内的单引号，`shlex` 的
+    posix 反斜杠规则在 Windows 上不成立，所以要照 Win32 的两条规则自己劈：
+    2n 个反斜杠后跟引号 → n 个反斜杠加一个定界引号；2n+1 个 → n 个反斜杠加字面引号。
+    分隔空白不带引号才算分隔，别把路径里的盘符斜杠拆成碎块。
+    """
+    if not script:
+        return []
+    argv: list[str] = []
+    current: list[str] = []
+    slashes = 0
+    in_quotes = False
+    index = 0
+    while index < len(script):
+        char = script[index]
+        if char == "\\":
+            count = 0
+            while index < len(script) and script[index] == "\\":
+                count += 1
+                index += 1
+            followed_quote = index < len(script) and script[index] == '"'
+            if followed_quote:
+                current.append("\\" * (count // 2))
+                if count % 2:
+                    current.append('"')
+                    index += 1
+                else:
+                    pass
+            else:
+                current.append("\\" * count)
+            continue
+        if char == '"':
+            if in_quotes:
+                in_quotes = False
+            else:
+                in_quotes = True
+            index += 1
+            continue
+        if not in_quotes and char.isspace():
+            if current:
+                argv.append("".join(current))
+                current = []
+            index += 1
+            continue
+        current.append(char)
+        index += 1
+    if current:
+        argv.append("".join(current))
+    return argv
+
+
+def _command_lines() -> dict[int, str]:
+    """按 pid 读全部 Win32 进程的命令行，读不到就返回空。
+
+    找源码托盘要认的就是这条命令行里的 `peach.tray`；失败不抛——这条
+    路径宁可安静地确认「没有源码托盘」，也不误伤别的窗口。
+    """
+    result = subprocess.run(
+        ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command",
+         "Get-CimInstance Win32_Process | ForEach-Object {"
+         " \"$($_.ProcessId)|$($_.CommandLine)\" }"],
+        capture_output=True, check=False,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        encoding="utf-8", errors="replace")
+    lines: dict[int, str] = {}
+    for raw in (result.stdout or "").splitlines():
+        pid_text, _, command = raw.partition("|")
+        try:
+            lines[int(pid_text)] = command
+        except ValueError:
+            continue
+    return lines
+
+
+def find_source_tray_windows() -> tuple[TrayWindow, ...]:
+    """源码形态的托盘：`pythonw -c …peach.tray…` 拉起的托盘窗口。
+
+    `find_tray_windows` 只认打包入口（窗口类名加 dist 可执行路径）；源码部署
+    的托盘是 venv 的 pythonw 启动的，桌面启动器和 `--show` 参数都在命令行里，
+    所以按同一窗口类名加「命令行含 peach.tray 找」。返回的仍是一道窗口，跟
+    restart_tray 用的是同一套唯一性检验。
+    """
+    if os.name != "nt":
+        return ()
+    user32 = ctypes.WinDLL("user32", use_last_error=True)
+    paths, _parents = _process_paths_and_parents()
+    command_lines = _command_lines()
+    found: list[TrayWindow] = []
+    callback_type = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+    user32.EnumWindows.argtypes = [callback_type, wintypes.LPARAM]
+    user32.EnumWindows.restype = wintypes.BOOL
+    user32.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.DWORD)]
+    user32.GetClassNameW.argtypes = [wintypes.HWND, ctypes.LPWSTR, ctypes.c_int]
+
+    @callback_type
+    def visit(window, _extra):
+        process_id = wintypes.DWORD()
+        user32.GetWindowThreadProcessId(window, ctypes.byref(process_id))
+        process_id = int(process_id.value)
+        image = paths.get(process_id, "")
+        command = command_lines.get(process_id, "")
+        buffer = ctypes.create_unicode_buffer(512)
+        user32.GetClassNameW(window, buffer, len(buffer))
+        class_name = buffer.value
+        if (class_name.startswith("Peach") and class_name.endswith("SystemTrayIcon")
+                and image.lower().endswith("pythonw.exe")
+                and "peach.tray" in command):
+            found.append(TrayWindow(process_id, int(window)))
+        return True
+
+    ctypes.set_last_error(0)
+    if not user32.EnumWindows(visit, 0):
+        error = ctypes.get_last_error()
+        if error:
+            raise ctypes.WinError(error)
+    return tuple(found)
+
+
 def _process_paths_and_parents() -> tuple[dict[int, str], dict[int, int]]:
     if os.name != "nt":
         raise OSError("Windows tray control is only available on Windows")
@@ -286,3 +406,77 @@ def restart_tray(
             message="新托盘或两个子服务未在期限内就绪",
             old_tray_pid=old_process_id, swapped_from=swapped_from)
     return RestartResult(False, "新托盘或两个子服务未在期限内就绪", old_tray_pid=old_process_id)
+
+
+def restart_source_tray(
+    *,
+    timeout: float = 25.0,
+    find_windows: Callable[[], tuple[TrayWindow, ...]] = find_source_tray_windows,
+    stop_window: Callable[[int], bool] = post_stop,
+    alive: Callable[[int], bool] = process_alive,
+    command_lines: Callable[[], dict[int, str]] = _command_lines,
+    start: Callable[[list[str]], subprocess.Popen] = None,
+    services: Callable[[int, Path], tuple[int, ...]] = owned_service_pids,
+    sleep: Callable[[float], None] = time.sleep,
+) -> RestartResult:
+    """源码部署托盘的正常重启：按同一命令行自起新托盘。
+
+    依据现有托盘自己的命令行重建 argv：`--show`／`--silent` 和数据根都在
+    那一串里，照抄它们就不会把静默启动重启成开浏览器，或者反过来。入口
+    是项目 `.venv` 的 `pythonw.exe`，服务入口由它旁推出
+    `.venv\\Scripts\\peach.exe`。没有换二进制这一步，也不涉及备份回滚。
+    """
+    def start_argv(argv: list[str]) -> subprocess.Popen:
+        if start is None:
+            working_directory = Path(argv[0]).parents[2]
+            return subprocess.Popen(
+                argv, cwd=str(working_directory), stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                shell=False, creationflags=subprocess.DETACHED_PROCESS
+                | subprocess.CREATE_NO_WINDOW,
+            )
+        return start(argv)
+
+    windows = find_windows()
+    process_ids = {window.process_id for window in windows}
+    if len(process_ids) != 1 or not windows:
+        return RestartResult(False, "拒绝重启：没有找到唯一且命令行匹配的源码托盘窗口")
+    old_process_id = next(iter(process_ids))
+    argv = parse_windows_command_line(command_lines().get(old_process_id))
+    if len(argv) < 2 or "peach.tray" not in " ".join(argv):
+        return RestartResult(False, "拒绝重启：托盘窗口的命令行没有 peach.tray"
+                                     "可信起步，无法照原样重启",
+                             old_tray_pid=old_process_id)
+    service_executable = Path(argv[0]).parent / "peach.exe"
+    if service_executable.name.lower() != "peach.exe" or not service_executable.is_file():
+        return RestartResult(False, f"拒绝重启：源码托盘旁没有服务入口 {service_executable}",
+                             old_tray_pid=old_process_id)
+    if not all(stop_window(window.handle) for window in windows):
+        return RestartResult(False, "托盘停止消息发送失败", old_tray_pid=old_process_id)
+
+    deadline = time.monotonic() + timeout
+    while alive(old_process_id) and time.monotonic() < deadline:
+        sleep(0.1)
+    if alive(old_process_id):
+        return RestartResult(False, "托盘未在期限内正常退出；未强杀、未另启",
+                             old_tray_pid=old_process_id)
+
+    deadline = time.monotonic() + timeout
+    launched = start_argv(argv)
+    while time.monotonic() < deadline:
+        if launched.poll() is not None:
+            return RestartResult(False, f"新托盘退出，代码 {launched.returncode}",
+                                 old_tray_pid=old_process_id)
+        new_windows = find_windows()
+        new_process_ids = {window.process_id for window in new_windows}
+        if len(new_process_ids) == 1:
+            new_process_id = next(iter(new_process_ids))
+            service_pids = services(new_process_id, service_executable)
+            if len(service_pids) >= 2:
+                return RestartResult(True, "源码托盘已正常重启并重新拥有 HTTP/HTTPS 子服务",
+                                     old_tray_pid=old_process_id,
+                                     new_tray_pid=new_process_id,
+                                     service_pids=service_pids)
+        sleep(0.2)
+    return RestartResult(False, "新托盘或两个子服务未在期限内就绪",
+                         old_tray_pid=old_process_id)

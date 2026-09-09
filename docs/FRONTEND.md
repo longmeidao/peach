@@ -33,7 +33,7 @@ island。原因是那一套一上来就打 `/api/items`，而未配置的机器�
 那一块按它自己的 `.configgroup` 拆成「通用 / 媒体 / 网络与访问 / 更新与维护」四条。
 `/configuration` 这条路由保留，媒体库选单和首次配置引导都指向它。
 服务端按两道门放行：托盘管理的服务、发起连接的是本机；并在 `/healthz` 里按调用方回
-`configurable`，遗留层据此决定这一块是挂 island 还是换成一句「这台设备上改不了」。
+`configurable`，遗留层据此决定这一块是挂 island 还是换成一句「该配置需在服务端设备修改」。
 表单校验的原因由服务端按字段给（400 的 `errors`），island 写回原位，不在前端复制判定。
 浏览器直接导航撞上 `HTTPException` 时，`api.py` 的处理器按 `Accept` 回一张 HTML 错误页
 （`routes_pages.error_page`），`/api/` 下和非导航请求仍回 JSON。

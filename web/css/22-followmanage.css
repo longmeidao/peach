@@ -155,9 +155,16 @@
    「全部来源」在白面上只剩一行字，升降序那枚只剩一个箭头浮在页面上。 */
 .fbtn[data-srcfilter-toggle],.fbtn.fmanagedir{border:1px solid var(--field-ring);background:var(--ground);color:var(--ink-2)}
 .fbtn[data-srcfilter-toggle]:hover:not(:disabled),.fbtn.fmanagedir:hover:not(:disabled){border-color:var(--field-ring-hover);background:var(--ground)}
-/* 焦点样式跟 boardui 口径走：2px 的蓝环加位移，不再画 vercel 的中性辉光。
-   范围只限本页覆盖部分；共享输入的全局 vercel 档是别人的，没动。 */
-.followmanage .geist-search input[type="search"]:focus{outline:2px solid var(--color-border-focus-ring);outline-offset:2px;box-shadow:none;border-color:var(--color-border-button-default)}
+/* 输入焦点按 BoardUI Input 口径（2026-09-09 取证登记 boardui-input）：壳不描边、
+   悬停与聚焦是同一枚 2px inset ring 在两档灰之间换档——悬停 border-button-hover、
+   聚焦 border-button-active，无辉光无蓝环。fill 由用户定成白底，环跟着走；
+   外框清零才不会有 1px 亮边夹在环和壳之间。按钮类的 focus-visible 仍按 Button 源的蓝 ring。 */
+.followmanage .geist-search input[type="search"],
+.followmanage .fcredfield input{border:0}
+.followmanage .geist-search input[type="search"]:hover,
+.followmanage .fcredfield input:hover{box-shadow:inset 0 0 0 2px var(--color-border-button-hover)}
+.followmanage .geist-search input[type="search"]:focus,
+.followmanage .fcredfield input:focus-visible{outline:0;box-shadow:inset 0 0 0 2px var(--color-border-button-active)}
 .fbtn[data-srcfilter-toggle][aria-expanded="true"]{border-color:var(--color-border-focus-ring);box-shadow:none;outline:2px solid var(--color-border-focus-ring);outline-offset:2px}
 .fbtn.small{height:26px;padding:0 10px;font-size:var(--fs-sm)}
 .fbtn svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2}
