@@ -7566,15 +7566,15 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn("pills.forEach(b=>b.addEventListener('pointerenter',e=>{", app)
         self.assertIn("tagbar.onpointerleave=e=>{if(e.pointerType!=='touch')syncViewGlide(true)};", app)
         # 中间那一帧铺满起点到终点，玻璃是被拉过去的，不是整块平移。
-        self.assertIn("{transform:`translateX(${near}px) scaleY(.88)`,width:`${far-near}px`,offset:.34,", app)
+        self.assertIn("{transform:`translateX(${near}px)`,width:`${far-near}px`,offset:.34,", app)
         # 顶栏这一条本身不是玻璃，压制带只压不糊：再铺一层就成了玻璃叠玻璃。
         self.assertIn(".top.top,body.board-scrolled .top.top{background:transparent;box-shadow:none;"
                       "backdrop-filter:none;border:0}", board)
         self.assertNotIn(".top.top::before{content:'';position:absolute;inset:0 0 -8px;z-index:-1;"
                          "pointer-events:none;opacity:0;transition:opacity .18s;\n  backdrop-filter:", board)
 
-    def test_every_glass_panel_casts_three_layers_and_the_sliding_pane_leaves_its_row(self):
-        """玻璃的落影分三层，选中那块玻璃弹过头时越过那一排的边沿。
+    def test_every_glass_panel_casts_three_layers_and_the_pane_overshoots_by_distance(self):
+        """玻璃的落影分三层，选中那块玻璃冲过头的距离跟着这一跳的跨度走。
 
         一层管一件事：1px 那层是接触影，画出玻璃和它底下那张纸之间的缝；中间一层是本体
         投影；最远那层大而极淡，是环境光被这块板挡住留下的那片。单层做不到——同一个模糊
@@ -7584,8 +7584,11 @@ class WebUiSourceTests(unittest.TestCase):
         那一档看不出来。
         选中那块的保底填充是白：`brightness()` 乘零时得有东西垫着，而垫墨色等于蒙一层
         灰，浅色下选中那枚会成为整条上唯一发灰的地方。
-        它挂在 `.board-filter-frame` 上而不是 `#tagbar` 里：那一排横滚，`overflow-x:auto`
-        把纵向一起算成滚动，住在里面的话弹多少都在框沿被切平。
+        冲过落点的距离按跨度线性给，不封顶：从最左跳到最后一枚甩得最开，跳到隔壁只是
+        轻轻一顿。封顶等于把这条关系抹平，远近两种跳法弹出来一样多，那一下就只是个固定
+        的小动作，不再说明它跑了多远。形变只在左右——高度是那一排给定的。
+        它挂在 `.board-filter-frame` 上而不是 `#tagbar` 里：那一排横滚会裁掉越界的部分，
+        住在里面的话跳到头一枚时那下回弹就在框沿被切平。
         """
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
         app = (Path(__file__).resolve().parents[1] / "web/app.js").read_text(encoding="utf-8")
@@ -7609,9 +7612,9 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn("viewGlide.hidden=box.x+box.w<=tagbar.offsetLeft"
                       "||box.x>=tagbar.offsetLeft+tagbar.clientWidth;", app)
         self.assertIn("tagbar.onscroll=()=>syncViewGlide(false,viewGlideAim?.isConnected?viewGlideAim:null);", app)
-        # 冲过落点再弹回，鼓起的那一下越过那一排的边沿。
-        self.assertIn("const over=box.x+(box.x>from.x?1:-1)*Math.min(14,(far-near)*.09);", app)
-        self.assertIn("{transform:`translateX(${over}px) scaleY(1.2)`,width:`${box.w*1.05}px`,offset:.68,", app)
+        # 冲过落点再弹回，冲多远跟这一跳的跨度成正比。
+        self.assertIn("const over=box.x+(box.x-from.x)*.16;", app)
+        self.assertIn("{transform:`translateX(${over}px)`,width:`${box.w*1.06}px`,offset:.68,", app)
         self.assertIn("if(!animate||!from||from.x===box.x||reduceMotion()){settle();return}", app)
 
     def test_the_sidebar_current_item_is_a_pane_of_glass_over_the_rail(self):

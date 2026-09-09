@@ -3126,18 +3126,18 @@ function syncViewGlide(animate,target){
   const settle=()=>{viewGlide.style.transform=`translateX(${box.x}px)`;viewGlide.style.width=`${box.w}px`;
     viewGlide.style.top=`${box.y}px`;viewGlide.style.height=`${box.h}px`};
   if(!animate||!from||from.x===box.x||reduceMotion()){settle();return}
-  /* 一块被拽着走的软东西：先朝两头拉长盖住起点和终点，同时压扁；宽度收回来时冲过落点
-     一小截再弹回，鼓起的那一下比自己该有的高度多出几像素，落在那一排的内边距里——这是
-     它唯一越过框沿的时刻，也是"到了"这件事真正被看见的地方，纯减速的曲线只会让它悄悄
-     停住。冲过头的距离按这一跳的跨度算并且封顶：相邻两枚之间跨度小，按比例冲出去才不会
-     显得每一跳都在甩；跨越整排时封顶挡住它冲出那一排。 */
+  /* 一块被拽着走的软东西：先朝两头拉长盖住起点和终点，收回来时冲过落点一小截再弹回。
+     形变只发生在左右——高度是这一排给定的，纵向拉扯会让它看起来不是同一排里的东西。
+     冲过头的距离按这一跳的跨度线性给，不封顶：从最左跳到最后一枚甩得最开，跳到隔壁
+     只是轻轻一顿。封顶等于把这条关系抹平，远近两种跳法弹出来一样多，那一下就只是个
+     固定的小动作，不再说明它跑了多远。 */
   const near=Math.min(from.x,box.x),far=Math.max(from.x+from.w,box.x+box.w);
-  const over=box.x+(box.x>from.x?1:-1)*Math.min(14,(far-near)*.09);
+  const over=box.x+(box.x-from.x)*.16;
   viewGlide.animate([
-    {transform:`translateX(${from.x}px) scaleY(1)`,width:`${from.w}px`,easing:'cubic-bezier(.2,.75,.3,1)'},
-    {transform:`translateX(${near}px) scaleY(.88)`,width:`${far-near}px`,offset:.34,easing:'cubic-bezier(.4,0,.2,1)'},
-    {transform:`translateX(${over}px) scaleY(1.2)`,width:`${box.w*1.05}px`,offset:.68,easing:'cubic-bezier(.36,0,.24,1)'},
-    {transform:`translateX(${box.x}px) scaleY(1)`,width:`${box.w}px`}],
+    {transform:`translateX(${from.x}px)`,width:`${from.w}px`,easing:'cubic-bezier(.2,.75,.3,1)'},
+    {transform:`translateX(${near}px)`,width:`${far-near}px`,offset:.34,easing:'cubic-bezier(.4,0,.2,1)'},
+    {transform:`translateX(${over}px)`,width:`${box.w*1.06}px`,offset:.68,easing:'cubic-bezier(.36,0,.24,1)'},
+    {transform:`translateX(${box.x}px)`,width:`${box.w}px`}],
     {duration:300,easing:'linear'});
   settle();
 }
