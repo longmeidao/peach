@@ -10,6 +10,10 @@ export function syncBoardRange(input: HTMLInputElement) {
   if(!tip){tip=document.createElement('output');tip.className='board-range-tip';tip.dataset.rangeEnd=end;tip.setAttribute('aria-hidden','true');group.append(tip)}
   tip.textContent=value>=max&&end==='max'?'不限':`${value} 分钟`;
   tip.style.left=`${percent}%`;
+  /* 两端拖到一起时，刚动过的那枚压在上面：另一枚报的是它自己停下的位置，盖住这一枚
+     等于把唯一正在变的读数藏起来——手上还在拖，屏幕上却没有数在动。 */
+  group.querySelectorAll('.board-range-tip').forEach(node=>
+    node.toggleAttribute('data-range-active',node===tip));
 }
 
 export function initBoardControls() {

@@ -3171,9 +3171,10 @@ function syncViewGlide(animate,target){
    一个微任务里就断了，看到的只是当前项换了个地方亮起来。`#drawer` 自己不重画，是这
    一侧唯一的定位宿主。代价跟筛选条那边一样——那一列自己的位置和纵滚都得补回来。 */
 let navGlide=null,navGlideBox=null;
-function syncNavGlide(animate){
+function syncNavGlide(animate,target){
   const host=$('#drawer'),scroll=$('#drawerScroll');
-  const active=scroll&&scroll.querySelector('.dnav button[aria-pressed="true"]');
+  const active=(target&&target.isConnected?target:null)
+    ||(scroll&&scroll.querySelector('.dnav button[aria-pressed="true"]'));
   if(!host||!active){if(navGlide)navGlide.hidden=true;navGlideBox=null;return}
   if(!navGlide||navGlide.parentElement!==host){
     navGlide=document.createElement('span');navGlide.className='navglide';
@@ -3198,6 +3199,21 @@ $('#drawerScroll').addEventListener('scroll',()=>{
   if(navGlideTick)return;
   navGlideTick=requestAnimationFrame(()=>{navGlideTick=0;syncNavGlide(false)});
 },{passive:true});
+/* 玻璃跟着指针走，不等点击：指到哪一格就滑过去，指针离开这一列再滑回真正选中的那格。
+   `aria-pressed` 全程不动——移过去不是选中，读屏和键盘那边不该跟着变。
+   两个监听都委托在 `#drawer` 上：那一列每次切页都整块重画，挂在按钮身上等于每次重画
+   都要记得再接一遍。用 `pointerover`／`pointerout` 而不是 enter／leave，后两个不冒泡，
+   委托接不到。 */
+$('#drawer').addEventListener('pointerover',event=>{
+  if(event.pointerType==='touch')return;
+  const button=event.target.closest?.('.dnav button[data-nav]');
+  if(button)syncNavGlide(true,button);
+});
+$('#drawer').addEventListener('pointerout',event=>{
+  if(event.pointerType==='touch')return;
+  const column=event.target.closest?.('.dnav');
+  if(column&&!column.contains(event.relatedTarget))syncNavGlide(true);
+});
 function wireViewPills(){
   const tagbar=$('#tagbar'),pills=[...$('#viewPills').querySelectorAll('[data-state]')];
   pills.forEach(b=>b.onclick=e=>{
@@ -9381,8 +9397,8 @@ function wireDrag(el){
 }
 /* `#count` 一起登记：窄屏下排序筛选整行由 `.count` 自己横向滚动，而它没有滚动条，
    不接拖动和滚轮就只剩看得见够不着的半个按钮。 */
-function wireAllDrag(){['#tagbar','#nrow','#count'].forEach(s=>wireDrag($(s)));
-  document.querySelectorAll('.tier').forEach(wireDrag)}
+function wireAllDrag(){['#tagScroll','#nrow','#count'].forEach(s=>wireDrag($(s)));
+  document.querySelectorAll('.tier,.srow').forEach(wireDrag)}
 
 /* 目录页（首页 + 四个筛选态）：筛选全部从 URL 读，路径只决定初始筛选态。
    `enteringHome` 判的是「从别处回到首页」：顶部三层有 30 秒会话缓存，不作废的话

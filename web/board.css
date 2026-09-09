@@ -135,23 +135,35 @@ body .review .reviewbulktoolbar,body .review .reviewgroupbar{
   box-shadow:inset 0 1px 0 var(--glass-rim),inset 1px 0 0 var(--glass-low),inset -1px 0 0 var(--glass-low),var(--glass-shadow)}
 .entitytagbar+.entitysection .entitycollectionhead.entitycollectionhead.entitycollectionhead{border-radius:0 0 22px 22px;
   box-shadow:inset 1px 0 0 var(--glass-low),inset -1px 0 0 var(--glass-low),inset 0 -1px 0 var(--glass-low),var(--glass-shadow)}
-.entitytagbar .pill,.entitycollectionhead h3,.entitycollectionhead .sorts button{color:var(--glass-text)}
+.entitytagbar .pill,.entitycollectionhead h3{color:var(--glass-text)}
 .entitytagbar .pill[data-tag]:not([aria-pressed="true"]){border-color:var(--glass-low)}
-/* 一条上被选中的那一枚，不管是视图、标签还是排序键，都是同一块玻璃：白填充垫底、
-   在已经合成好的底子上再提一档亮度、整圈 rim 描边。铺一层墨色灰是另一种东西——它在
-   亮内容上是块脏斑，浅色下又是整条里唯一发灰的地方。 */
+/* 这块玻璃回答的是「你在哪儿」：侧栏的当前项、四枚视图里生效的那一枚、实体页正在看
+   的那一档媒体，都是位置。白填充垫底、在已经合成好的底子上再提一档亮度、整圈 rim
+   描边。铺一层墨色灰是另一种东西——它在亮内容上是块脏斑，浅色下又是整条里唯一发灰的
+   地方。 */
 .entitytagbar.entitytagbar .pill[aria-pressed="true"],
-.entitycollectionhead.entitycollectionhead .sorts button[aria-pressed="true"],
-.entitytagbar.entitytagbar .mediaviewbutton[aria-pressed="true"],
-.board-filter-frame.board-filter-frame .sorts button[aria-pressed="true"]{
+.entitytagbar.entitytagbar .mediaviewbutton[aria-pressed="true"]{
   background:linear-gradient(180deg,var(--glass-sheen),transparent 62%),var(--glass-pick-fill);
   backdrop-filter:var(--glass-pick);-webkit-backdrop-filter:var(--glass-pick);
   color:var(--glass-text);border-color:transparent;
   box-shadow:inset 0 0 0 1px var(--glass-rim),0 1px 2px #00000024,0 6px 14px #0000001f}
+/* 排序键回答的是「这一列按什么排」——一个参数的当前值，不是一个位置，所以不占那块
+   玻璃：同一种材质担两种语义，这一排读起来就成了另一组导航。当前值由字自己说：整排
+   八九个候选都退到六成，生效的那枚回到满值再加半档字重。只差字重不够——一排等亮度的
+   字里，扫一眼看不出哪个粗一点。 */
+.entitycollectionhead.entitycollectionhead .sorts button,
+.board-filter-frame.board-filter-frame .sorts button{
+  color:color-mix(in srgb,var(--glass-text) 62%,transparent)}
+.entitycollectionhead.entitycollectionhead .sorts button:hover,
+.board-filter-frame.board-filter-frame .sorts button:hover{color:var(--glass-text)}
+.entitycollectionhead.entitycollectionhead .sorts button[aria-pressed="true"],
+.board-filter-frame.board-filter-frame .sorts button[aria-pressed="true"]{
+  background:none;backdrop-filter:none;-webkit-backdrop-filter:none;
+  color:var(--glass-text);border-color:transparent;box-shadow:none;font-weight:500}
 .board-filter-frame.board-is-stuck::before,.board-filter-frame.board-is-stuck::after{display:none}
 .board-filter-frame.board-filter-frame .tagbar{border-radius:22px 22px 0 0}
 .board-filter-frame.board-filter-frame .count{border-radius:0 0 22px 22px}
-.board-filter-frame.board-filter-frame .pill,.board-filter-frame.board-filter-frame .sorts button{color:var(--glass-text)}
+.board-filter-frame.board-filter-frame .pill{color:var(--glass-text)}
 .board-filter-frame.board-filter-frame #tagbar .pill[data-tag]:not([aria-pressed="true"]){border-color:var(--glass-low)}
 /* 四枚视图之间只有一块玻璃在移动，不是四块各自亮灭：Apple 把同一层里的玻璃先合成
    再形变（`GlassEffectContainer` 的 "fluidly morphing Liquid Glass shapes into each
@@ -231,11 +243,14 @@ body .review .reviewbulktoolbar,body .review .reviewgroupbar{
   backdrop-filter:var(--glass-pick);-webkit-backdrop-filter:var(--glass-pick);
   color:var(--glass-text);filter:none;
   box-shadow:inset 0 0 0 1px var(--glass-rim),0 1px 2px #00000024,0 6px 14px #0000001f}
-/* 没选中的那些悬停只抬一层薄白：不提亮、不描边、不带影，浮起来这件事整列只有一处。
-   侧栏走的是悬停抬填充、当前项握着颜色那一套，两态的差别落在厚度上而不是有无。 */
-.drawer.drawer.drawer .dnav button:not([aria-pressed="true"]):hover,
+/* 窄栏没选中的那些悬停只抬一层薄白：不提亮、不描边、不带影，浮起来这件事整列只有
+   一处。那一列是纯图标，认哪个亮着靠的就是那一格自己。 */
 .edge.edge.edge button:not([aria-pressed="true"]):hover{
   background:color-mix(in srgb,var(--glass-rim) 26%,transparent);color:var(--glass-text)}
+/* 抽屉那一列的悬停归那块会滑的玻璃：指到哪一格它滑过去，指针离开这一列再滑回当前
+   项。格子底下再垫一层薄白就是两套反馈同时说话——薄白说「鼠标在这儿」，玻璃说「你
+   在这儿」，指针停在别的格上时这两句话指着两个地方。 */
+.drawer.drawer.drawer .dnav button:hover{background:none;color:var(--glass-text)}
 @supports not (backdrop-filter:blur(1px)){.board-filter-frame.board-filter-frame.board-filter-frame,.entitytagbar.entitytagbar.entitytagbar,.entitycollectionhead.entitycollectionhead.entitycollectionhead,body .review .reviewbulktoolbar,body .review .reviewgroupbar,.drawer.drawer,.drawer.drawer.open,.edge.edge,.top .search.search{background:var(--ground);animation:none}}
 @media(prefers-reduced-transparency:reduce),(prefers-contrast:more){.board-filter-frame.board-filter-frame.board-filter-frame,.entitytagbar.entitytagbar.entitytagbar,.entitycollectionhead.entitycollectionhead.entitycollectionhead,body .review .reviewbulktoolbar,body .review .reviewgroupbar,.drawer.drawer,.drawer.drawer.open,.edge.edge,.top .search.search,.top.top>.ib{background:var(--ground);backdrop-filter:none;-webkit-backdrop-filter:none;animation:none}}
 /* 面上那两团光停在 `background-position` 给的那一处，不再挪：它讲的是光在动，而这
@@ -820,7 +835,9 @@ body :is(.dual-range input,.photozoom input,.vjs-peach-speed-range)::-moz-range-
 body :is(.photozoom input,.vjs-peach-speed-range)::-webkit-slider-runnable-track{height:6px;border-radius:999px;background:linear-gradient(90deg,#3986ff var(--board-range-value,var(--peach-speed-percent,0%)),var(--color-background-tertiary-default) 0);box-shadow:inset 0 1px 1px #0000000f}
 body :is(.photozoom input,.vjs-peach-speed-range)::-webkit-slider-thumb{margin-top:-7px}
 body :is(.photozoom input,.vjs-peach-speed-range)::-moz-range-track{height:6px;border-radius:999px;background:linear-gradient(90deg,#3986ff var(--board-range-value,var(--peach-speed-percent,0%)),var(--color-background-tertiary-default) 0)}
-.board-range-tip{position:absolute;bottom:calc(100% + 4px);transform:translateX(-50%);padding:4px 8px;border:1px solid var(--color-border-button-default);border-radius:8px;background:var(--color-background-primary-default);color:var(--color-text-primary);font:var(--board-caption);white-space:nowrap;box-shadow:0 1px 2px #0000000d;pointer-events:none}
+.board-range-tip{position:absolute;z-index:1;bottom:calc(100% + 4px);transform:translateX(-50%);padding:4px 8px;border:1px solid var(--color-border-button-default);border-radius:8px;background:var(--color-background-primary-default);color:var(--color-text-primary);font:var(--board-caption);white-space:nowrap;box-shadow:0 1px 2px #0000000d;pointer-events:none}
+/* 刚动过的那枚压在另一枚上面：两端拖到一起时它们会叠，底下那枚报的是自己停下的位置。 */
+.board-range-tip[data-range-active]{z-index:2}
 /* 两端都常显：这里是唯一报数的地方，藏起来的话不碰滑块就看不出当前筛的是哪一段。 */
 .dual-range{margin-top:36px}.dual-range .board-range-tip[data-range-end=max]{transform:translateX(-100%)}.dual-range .board-range-tip[data-range-end=min]{transform:none}
 .toast{position:relative;align-items:center;gap:12px;width:min(400px,calc(100vw - 32px));padding:16px 44px 16px 16px;border-radius:16px;background:var(--color-background-primary-default);border-color:var(--color-border-button-default);color:var(--color-text-primary);font:var(--board-body);box-shadow:0 12px 24px -4px #0000001a,0 4px 8px -2px #0000000d;overflow:hidden}

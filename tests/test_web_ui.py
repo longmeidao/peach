@@ -6129,8 +6129,10 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".count .sorts{width:max-content;margin-left:0;flex:0 0 auto;overflow:visible}")
         self.assertPageContains("flex:0 0 auto;white-space:nowrap")
         self.assertPageContains(".count .sorts button{min-height:36px}")
-        # 这一行没有滚动条（scrollbar-width:none），不登记拖动就只剩看得见够不着的半个按钮。
-        self.assertPageContains("['#tagbar','#nrow','#count'].forEach(s=>wireDrag($(s)))")
+        # 这些行都没有滚动条（scrollbar-width:none），不登记拖动就只剩看得见够不着的半个按钮。
+        # 登记的必须是真正在滚的那一层：筛选条里横滚的是右半截的标签，`#tagbar` 自己不滚。
+        self.assertPageContains("['#tagScroll','#nrow','#count'].forEach(s=>wireDrag($(s)))")
+        self.assertPageContains("document.querySelectorAll('.tier,.srow').forEach(wireDrag)")
         # 同一个元素宽屏不溢出、窄屏才溢出，不判溢出就会在宽屏抢走滚轮和拖动。
         self.assertPageContains("const scrollable=()=>el.scrollWidth-el.clientWidth>1;")
         self.assertPageContains("if(e.button!==0||!scrollable())return;")
@@ -7707,8 +7709,11 @@ class WebUiSourceTests(unittest.TestCase):
         它跟筛选条那一排是同一块玻璃、同一条弹簧，只是换了根轴：竖排缩 Y。
         `filter:none` 不能省：抽屉那边给当前项的悬停和按下写了 `brightness(1.08)`，
         留着会把这块玻璃连同它身后的内容一起推亮一档。
-        没选中的那些悬停只抬一层薄白——侧栏走的是悬停抬填充、当前项握着颜色那一套，
-        两态的差别落在厚度上而不是有无。
+        抽屉那一列的悬停也归这块玻璃：指到哪一格它滑过去，指针离开这一列再滑回当前项。
+        格子底下另垫一层薄白就是两套反馈同时说话——薄白说「鼠标在这儿」，玻璃说「你在
+        这儿」，指针停在别的格上时这两句话指着两个地方。薄白留给窄栏，那一列没有会滑
+        的玻璃。委托挂在 `#drawer` 上，那一列每次切页整块重画都不必再接一遍；用的是会
+        冒泡的 `pointerover`／`pointerout`，enter／leave 委托接不到。
         """
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
         app = (Path(__file__).resolve().parents[1] / "web/app.js").read_text(encoding="utf-8")
@@ -7723,10 +7728,17 @@ class WebUiSourceTests(unittest.TestCase):
                       "var(--glass-pick-fill);\n"
                       "  backdrop-filter:var(--glass-pick);-webkit-backdrop-filter:var(--glass-pick);\n"
                       "  color:var(--glass-text);filter:none;", board)
-        self.assertIn('.drawer.drawer.drawer .dnav button:not([aria-pressed="true"]):hover,\n'
-                      '.edge.edge.edge button:not([aria-pressed="true"]):hover{\n'
+        self.assertIn('.edge.edge.edge button:not([aria-pressed="true"]):hover{\n'
                       "  background:color-mix(in srgb,var(--glass-rim) 26%,transparent);"
                       "color:var(--glass-text)}", board)
+        self.assertIn(".drawer.drawer.drawer .dnav button:hover{background:none;"
+                      "color:var(--glass-text)}", board)
+        self.assertIn("const active=(target&&target.isConnected?target:null)\n"
+                      "    ||(scroll&&scroll.querySelector('.dnav button[aria-pressed=\"true\"]'));", app)
+        self.assertIn("  const button=event.target.closest?.('.dnav button[data-nav]');\n"
+                      "  if(button)syncNavGlide(true,button);", app)
+        self.assertIn("  const column=event.target.closest?.('.dnav');\n"
+                      "  if(column&&!column.contains(event.relatedTarget))syncNavGlide(true);", app)
         # 那块玻璃住在 `#drawer` 上：切页会把 `#drawerScroll` 整块重画，住在里面的话
         # 它跟着一起没，动画在第一个微任务里就断了。
         self.assertIn(".drawer.drawer>.navglide{border-radius:10px;z-index:-1}", board)
@@ -7782,27 +7794,38 @@ class WebUiSourceTests(unittest.TestCase):
             self.assertIn("animation:none", board.split(fallback, 1)[1].split("}", 1)[0],
                           f"{fallback} 换成实色后还在推一层看不见的光")
 
-    def test_a_picked_key_on_any_glass_bar_is_the_same_pane_of_white(self):
-        """玻璃条上被选中的那一枚，四个位置读起来是同一块东西。
+    def test_the_glass_pane_marks_a_place_and_sort_keys_speak_by_weight(self):
+        """那块玻璃标的是位置，排序键靠字自己说当前值。
 
-        首页的排序键、资料页的标签、资料页的排序键、媒体视图的那两个图标钮坐在同一
-        材质的浮层上；选中态只要还是一层墨色 `color-mix`，同一块玻璃上就会同时出现
-        两种「被选中」——一处是提亮的白玻璃，一处是压暗的灰片。墨色那层在亮封面上是
-        块脏斑，浅色主题下又成了整条里唯一发灰的地方。
+        资料页的标签、媒体视图那两个图标钮和侧栏、视图那几处一样，回答的都是「你在
+        哪儿」，坐在同一材质的浮层上；选中态只要还是一层墨色 `color-mix`，同一块玻璃
+        上就会同时出现两种「被选中」——一处是提亮的白玻璃，一处是压暗的灰片。墨色那层
+        在亮封面上是块脏斑，浅色主题下又成了整条里唯一发灰的地方。
         白填充不能省：`brightness()` 乘的是零时那块玻璃跟着背景一起黑，得有东西垫着，
         而垫的必须是白——白往上加是加光，跟提亮同向。
+
+        排序键回答的是「这一列按什么排」，是一个参数的当前值，不是一个位置。同一种
+        材质担两种语义，那一排读起来就成了另一组导航。八九个候选值一起退到六成，生效
+        的那枚回到满值再加半档字重；只差字重不够，一排等亮度的字里扫一眼看不出哪个粗
+        一点。
         """
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
         self.assertIn('.entitytagbar.entitytagbar .pill[aria-pressed="true"],\n'
-                      '.entitycollectionhead.entitycollectionhead .sorts button[aria-pressed="true"],\n'
-                      '.entitytagbar.entitytagbar .mediaviewbutton[aria-pressed="true"],\n'
-                      '.board-filter-frame.board-filter-frame .sorts button[aria-pressed="true"]{\n'
+                      '.entitytagbar.entitytagbar .mediaviewbutton[aria-pressed="true"]{\n'
                       "  background:linear-gradient(180deg,var(--glass-sheen),transparent 62%),"
                       "var(--glass-pick-fill);\n"
                       "  backdrop-filter:var(--glass-pick);-webkit-backdrop-filter:var(--glass-pick);\n"
                       "  color:var(--glass-text);border-color:transparent;\n"
                       "  box-shadow:inset 0 0 0 1px var(--glass-rim),0 1px 2px #00000024,"
                       "0 6px 14px #0000001f}", board)
+        self.assertIn(".entitycollectionhead.entitycollectionhead .sorts button,\n"
+                      ".board-filter-frame.board-filter-frame .sorts button{\n"
+                      "  color:color-mix(in srgb,var(--glass-text) 62%,transparent)}", board)
+        self.assertIn('.entitycollectionhead.entitycollectionhead .sorts button[aria-pressed="true"],\n'
+                      '.board-filter-frame.board-filter-frame .sorts button[aria-pressed="true"]{\n'
+                      "  background:none;backdrop-filter:none;-webkit-backdrop-filter:none;\n"
+                      "  color:var(--glass-text);border-color:transparent;box-shadow:none;"
+                      "font-weight:500}", board)
         for stale in ('.entitycollectionhead .sorts button[aria-pressed="true"]{'
                       'background:color-mix(in srgb,var(--ink) 10%,transparent)}',
                       '.entitytags .pill[aria-pressed="true"]{border-color:transparent;',
@@ -8063,7 +8086,11 @@ class WebUiSourceTests(unittest.TestCase):
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
         self.assertIn("white-space:nowrap;box-shadow:0 1px 2px #0000000d;pointer-events:none}", board)
         self.assertNotIn(".board-range-tip[data-range-end=max]{opacity:1}", board)
+        # 两端拖到一起时它们会叠，刚动过的那枚压在上面：底下那枚报的是自己停下的位置。
+        self.assertIn(".board-range-tip[data-range-active]{z-index:2}", board)
         controls = (Path(__file__).resolve().parents[1] / "frontend/src/board-controls.ts").read_text(encoding="utf-8")
+        self.assertIn("  group.querySelectorAll('.board-range-tip').forEach(node=>\n"
+                      "    node.toggleAttribute('data-range-active',node===tip));", controls)
         self.assertIn("tip.textContent=value>=max&&end==='max'?'不限':`${value} 分钟`;", controls)
         for gone in ("durMinText", "durMaxText", "duration-readout"):
             self.assertPageLacks(gone, "时长读数只由手柄上那两枚气泡承担")
