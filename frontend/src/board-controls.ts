@@ -63,7 +63,7 @@ export function wireBoardTabs(root:ParentNode){
     面板切换那几组是 `role=tablist`：滑块换成按 `aria-selected` 找当前项，ARIA 仍然是 Tabs
     控制 tabpanel，不为了长得像分段控件就把它写成 radiogroup。 */
 export function wireBoardSegments(root:ParentNode) {
-  const selector='.iconswitch,.insightswitch,.insighttabs';
+  const selector='.iconswitch,.insightswitch,.insighttabs,.follow-workspace-switch';
   const groups=[...root.querySelectorAll<HTMLElement>(selector)];
   if(root instanceof HTMLElement&&root.matches(selector))groups.push(root);
   groups.forEach(group=>{

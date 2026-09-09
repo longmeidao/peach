@@ -809,6 +809,15 @@ class StandaloneConfigurationTests(_Case):
             self.assertFalse(client.get("/api/configuration", headers=headers).json()["editable"])
             self.assertEqual(client.post("/api/configuration", headers=headers, json=body).status_code, 409)
 
+    def test_a_dev_serve_counts_as_configurable_without_a_tray(self):
+        """裸 serve 调试（--no-auth 置 PEACH_DEV=1）免掉「先去托管主机」的前提。"""
+        with mock.patch.dict(os.environ, {"PEACH_DEV": "1", "PEACH_TRAY_MANAGED": ""}), \
+                mock.patch("peach.distribution.standalone", return_value=False), \
+                self.client() as client:
+            self.assertTrue(client.get("/healthz").json()["configurable"])
+            headers = {"X-Token": "test-token"}
+            self.assertEqual(client.get("/api/configuration", headers=headers).status_code, 200)
+
     def test_the_configuration_page_is_a_screen_of_the_app_and_its_data_a_json_contract(self):
         """`/configuration` 是主站外壳里的一屏，表单由 island 画；真相只在 `/api/configuration`。"""
         from peach.routes_configuration import RELOAD_NAME

@@ -395,29 +395,48 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn('.fcredfield input{height:32px;width:100%;min-width:0;', css)
 
     def test_field_focus_rings_are_neutral_and_theme_aware(self):
-        """输入框的静止边、悬停边与聚焦环都是当前主题的中性透明色，不是蓝的。
+        """输入框静止 1px 中性边、悬停与聚焦同一枚 2px inset ring 换灰档（BoardUI Input）。
 
-        2026-09-05 实测 vercel.com 后台：输入框静止 1px `--ds-gray-alpha-400`、悬停
-        alpha-500、聚焦 1px alpha-600 再套一圈 4px 的 16% 黑，暗色那档换成 24% 白；
-        整站没有一处焦点或选中用到蓝。同一组 token 写成明暗两档后，全站带输入语义的
-        控件只有这一份配方——否则浅色主题下会留下一圈只在深底上成立的高饱和蓝。
+        2026-09-05 实测 vercel.com 后台的 4px 中性辉光已被 BoardUI Input
+        （2026-09-09 取证登记 boardui-input）接替：`ring-2 ring-inset` 在
+        border-button-hover／-active 两档间换档，聚焦压过悬停。环画在静止那条边的
+        内侧，三态边框同色——聚焦时把边改成透明只会露出控件自己的底，那正是环外
+        那条亮边的来源。上游把 box-shadow 写进了 transition，环是渐出来的。
         """
         for palette in (":root{", '@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){',
                         ':root[data-theme="dark"]{'):
             self.assertPageContains(palette)
         self.assertPageContains("--field-ring:rgba(0,0,0,.08);--field-ring-hover:rgba(0,0,0,.21);")
-        self.assertPageContains("--field-ring-focus:rgba(0,0,0,.34);--field-glow:rgba(0,0,0,.16);")
+        self.assertPageContains("--field-ring-focus:rgba(0,0,0,.34);")
 
         self.assertPageContains("--field-ring:rgba(255,255,255,.14);--field-ring-hover:rgba(255,255,255,.24);")
-        self.assertPageContains("--field-ring-focus:rgba(255,255,255,.51);--field-glow:rgba(255,255,255,.24);")
-        for selector in ('.geist-search input[type="search"]', ".geist-input", ".preference textarea"):
-            self.assertPageContains(selector + ":hover{border-color:var(--field-ring-hover)}")
-        self.assertPageContains(".search:focus-within{border-color:var(--field-ring-focus);"
-                                "box-shadow:0 0 0 4px var(--field-glow)}")
-        self.assertPageContains('.gselectfield[aria-expanded="true"]{border-color:var(--field-ring-focus);')
+        self.assertPageContains("--field-ring-focus:rgba(255,255,255,.51);")
         css = stylesheet_source()
-        self.assertNotIn("color-mix(in srgb,var(--tungsten) 72%,transparent)", css,
-                         "输入框的聚焦环不用蓝，走 --field-ring-focus")
+        for stale in ("border-color:var(--field-ring-focus);box-shadow:0 0 0 4px var(--field-glow)",
+                      ":hover{border-color:var(--field-ring-focus)",
+                      "--field-glow"):
+            self.assertNotIn(stale, css, f"焦点配方已接替：{stale}")
+        self.assertNotIn("border-color:transparent;box-shadow:inset", css,
+                         "环画在边的内侧，聚焦时不清空那条边")
+        for rule in ('.geist-search input[type="search"]:hover{box-shadow:inset 0 0 0 2px var(--color-border-button-hover)}',
+                     '.geist-search input[type="search"]:focus{outline:0;'
+                     'box-shadow:inset 0 0 0 2px var(--color-border-button-active)}',
+                     '.geist-input:hover{box-shadow:inset 0 0 0 2px var(--color-border-button-hover)}',
+                     '.geist-input:focus{outline:0;box-shadow:inset 0 0 0 2px var(--color-border-button-active)}',
+                     '.gselectfield[aria-expanded="true"]{box-shadow:inset 0 0 0 2px var(--color-border-button-active)}',
+                     '.search:focus-within{box-shadow:inset 0 0 0 2px var(--color-border-button-active)}',
+                     '.preference textarea:focus{box-shadow:inset 0 0 0 2px var(--color-border-button-active);outline:0}',
+                     '.fcredfield input:hover{box-shadow:inset 0 0 0 2px var(--color-border-button-hover)}',
+                     '.fcredfield input:focus-visible{outline:0;'
+                     'box-shadow:inset 0 0 0 2px var(--color-border-button-active)}'):
+            self.assertPageContains(rule)
+        # 换档要渐出来：上游 field 的 transition 明确列了 box-shadow，只写
+        # border-color 的话环是硬切的。带环的那几个控件都得把它列进去。
+        for transition in ('line-height:20px;transition:box-shadow .12s ease}',
+                           'font:inherit;font-size:var(--fs-md);line-height:20px;transition:box-shadow .12s ease}',
+                           'transition:border-color .12s ease,background-color .12s ease,box-shadow .12s ease}',
+                           'font-family:inherit;transition:box-shadow .12s ease}'):
+            self.assertPageContains(transition)
 
     def test_fieldsets_put_the_bright_face_on_the_content_and_the_bar_below_it(self):
         """操作条以中性透明灰叠在框体上，与骨架使用同一灰阶。"""
@@ -1509,8 +1528,8 @@ class WebUiSourceTests(unittest.TestCase):
     def test_browser_chrome_focus_and_mobile_inputs_follow_the_ui_checklist(self):
         self.assertPageContains('<meta name="theme-color" content="#FFFFFF"')
         self.assertPageContains('<meta name="theme-color" content="#080A0D"')
-        # 聚焦环是中性的：1px 提到 alpha-600 的边加一圈 4px 辉光，仍是「看得见的焦点」。
-        self.assertPageContains('.search:focus-within{border-color:var(--field-ring-focus);box-shadow:0 0 0 4px var(--field-glow)}')
+        # 聚焦环按 BoardUI Input：静止那条边内侧的 2px inset 灰环，仍是「看得见的焦点」。
+        self.assertPageContains('.search:focus-within{box-shadow:inset 0 0 0 2px var(--color-border-button-active)}')
         self.assertPageContains('@media (max-width:760px){input,textarea,select{font-size:16px!important}}')
         self.assertPageContains('button,a,input,textarea,select,summary{touch-action:manipulation}')
 
@@ -1528,9 +1547,9 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('<div class="geist-search" data-search-input>')
         self.assertPageContains(
             """<span class="geist-search-prefix" data-search-prefix>${icon('search')}</span>""")
-        # 焦点环与顶部搜索框同一个配方，中性不带色相。
+        # 焦点环与顶部搜索框同一个配方：BoardUI Input 的 2px inset 灰环。
         self.assertCode('.geist-search input[type="search"]:focus{outline:0;'
-                        'border-color:var(--field-ring-focus);box-shadow:0 0 0 4px var(--field-glow)}')
+                        'box-shadow:inset 0 0 0 2px var(--color-border-button-active)}')
         # 忙态换的是前缀位，输入框自己不动；hook 跟着组件走，不留关注页专属的名字。
         self.assertPageContains("form.querySelector('[data-search-prefix]')")
         self.assertPageContains("if(prefix)prefix.innerHTML=spinnerHtml('查找中');")
@@ -4093,7 +4112,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("if(runtime)runtimeConfigurable=!!runtime.configurable;")
         self.assertPageContains(
             "await mountIsland('configuration',host,{receipt:message=>actionReceipt(message)},{isCurrent:open});")
-        self.assertPageContains("{label:'这台设备上改不了'}")
+        self.assertPageContains("{label:'该配置需在服务端设备修改'}")
         # 弹层里那一份配置页已经由外面那圈分区页签管着，别再给它自己叠一排。
         self.assertPageContains("const config=document.querySelector('#stats .configpage');")
         # `runtimeConfigurable` 还有第二个用处：馆藏空态按它决定给不给「去配置媒体文件夹」。
@@ -5630,7 +5649,8 @@ class WebUiSourceTests(unittest.TestCase):
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
         controls = (Path(__file__).resolve().parents[1] / "frontend/src/board-controls.ts").read_text(encoding="utf-8")
         self.assertIn("const selector='.managebar-menu,.board-local-nav:not(.settingscard>.board-local-nav)';", controls)
-        self.assertIn("const selector='.iconswitch,.insightswitch,.insighttabs';", controls)
+        self.assertIn("const selector='.iconswitch,.insightswitch,.insighttabs,"
+                      ".follow-workspace-switch';", controls)
         self.assertIn("export function wireGrowingCharts(root:ParentNode) {", controls)
         self.assertIn("wireBoardSegments(root);wireBoardTabs(root);wireGrowingCharts(root)", controls)
         self.assertIn(".insightswitch[data-board-segments]{position:relative;display:inline-flex;align-items:center;gap:2px;padding:4px;"
@@ -7815,9 +7835,11 @@ class WebUiSourceTests(unittest.TestCase):
                       "width:auto;max-width:100%;min-height:0;margin:0;padding:4px;border:0;"
                       "border-radius:10px;background:var(--color-background-tertiary-default);", board)
         self.assertIn("min-height:28px;margin:0;padding:4px 10px;border:0;border-radius:6px;", board)
-        self.assertIn(":is(.iconswitch:not(.themeswitch),.insightswitch,.insighttabs)>.board-segment-thumb",
+        self.assertIn(":is(.iconswitch:not(.themeswitch),.insightswitch,.insighttabs,"
+                      ".follow-workspace-switch)>.board-segment-thumb",
                       board)
-        self.assertIn("const selector='.iconswitch,.insightswitch,.insighttabs';", controls)
+        self.assertIn("const selector='.iconswitch,.insightswitch,.insighttabs,"
+                      ".follow-workspace-switch';", controls)
         self.assertIn("'label:has(input:checked),button[aria-selected=true]'", controls)
         self.assertIn("mutation.observe(group,{subtree:true,attributes:true,attributeFilter:['aria-selected']})",
                       controls)

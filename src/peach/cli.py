@@ -118,6 +118,9 @@ def _serve_token(args: argparse.Namespace) -> str:
                 f"拒绝启动：--no-auth 只对回环地址成立，而 --host {args.host} 不是。\n"
                 f"在局域网地址上关掉登录，等于把整个馆藏和写接口交给同网段的任何设备。"
             )
+        # 直接写而不是 setdefault：走到这里就是这次启动确实要开调试口径，
+        # 继承来的旧值不该把它顶掉，反过来也不该由它决定别的进程算不算调试。
+        os.environ["PEACH_DEV"] = "1"
         return ""
     secrets_dir = settings_file.active().directory("secrets")
     token = auth.resolve_token(args.token, secrets_dir)

@@ -4,6 +4,7 @@ import contextlib
 import importlib.util
 import io
 import json
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -58,6 +59,74 @@ class RestartWindowsTrayTests(unittest.TestCase):
         )
         self.assertFalse(result.ok)
         self.assertIn("唯一", result.message)
+        start.assert_not_called()
+
+    BOOTSTRAP = ("import os,runpy;os.environ['PEACH_DATA_ROOT']=r'X'"
+                 ";runpy.run_module('peach.tray',run_name='__main__')")
+
+    def test_windows_command_line_splits_the_source_bootstrap_intact(self):
+        line = f'"{self.service.parent / "pythonw.exe"}" -c "{self.BOOTSTRAP}" --show'
+        argv = windows_restart.parse_windows_command_line(line)
+        self.assertEqual(argv, [f"{self.service.parent / 'pythonw.exe'}",
+                                "-c", self.BOOTSTRAP, "--show"])
+
+    def test_the_command_line_rules_that_only_show_up_in_odd_arguments(self):
+        """三条 Win32 规则各要一条判据：反斜杠、引号里的引号、真的空参数。
+
+        照抄命令行重启，argv 差一格起的就是另一个东西，所以这里比对的是逐项相等，
+        不是「大致长这样」。
+        """
+        cases = {
+            r'a "b c" d': ["a", "b c", "d"],
+            # 2n 个反斜杠后跟引号：反斜杠减半，引号收界。
+            r'"C:\dir\\" next': ["C:\\dir\\", "next"],
+            # 2n+1 个：反斜杠减半，引号变字面量。
+            r'"say \"hi\"" done': ['say "hi"', "done"],
+            # 引号里的 "" 是一个字面引号，不收界。
+            r'"a""b"': ['a"b'],
+            # 空参数是真参数，不能因为没攒到字符就丢掉。
+            'first "" last': ["first", "", "last"],
+        }
+        for line, expected in cases.items():
+            with self.subTest(line=line):
+                self.assertEqual(windows_restart.parse_windows_command_line(line), expected)
+
+    def test_source_restart_reruns_the_recorded_command_line(self):
+        pythonw = self.service.parent / "pythonw.exe"
+        pythonw.write_bytes(b"shim")
+        argv = [str(pythonw), "-c", self.BOOTSTRAP, "--show"]
+        windows = iter((
+            (windows_restart.TrayWindow(10, 20),),
+            (windows_restart.TrayWindow(30, 40),),
+        ))
+        launched = mock.Mock()
+        launched.poll.return_value = None
+        started_with = []
+        result = windows_restart.restart_source_tray(
+            find_windows=lambda: next(windows),
+            stop_window=lambda _handle: True,
+            alive=lambda _pid: False,
+            command_lines=lambda: {10: subprocess.list2cmdline(argv)},
+            start=lambda argv: started_with.append(list(argv)) or launched,
+            services=lambda tray_pid, executable: (51, 52)
+            if tray_pid == 30 and executable == self.service else (),
+            sleep=lambda _seconds: None,
+        )
+        self.assertTrue(result.ok, result.message)
+        self.assertEqual(started_with, [argv])
+        self.assertEqual(result.new_tray_pid, 30)
+        self.assertEqual(result.service_pids, (51, 52))
+
+    def test_source_restart_refuses_when_the_window_command_has_no_tray_marker(self):
+        windows = iter(((windows_restart.TrayWindow(10, 20),),))
+        start = mock.Mock()
+        result = windows_restart.restart_source_tray(
+            find_windows=lambda: next(windows),
+            command_lines=lambda: {10: "notepad.exe"},
+            start=start,
+        )
+        self.assertFalse(result.ok)
+        self.assertIn("peach.tray", result.message)
         start.assert_not_called()
 
     def test_timeout_never_force_kills_or_starts_a_second_tray(self):
@@ -152,11 +221,37 @@ class RestartEntryTests(unittest.TestCase):
         finished = windows_restart.RestartResult(True, "重启完成", backup="C:/dist/backup.exe")
         with (
             mock.patch.object(entry, "restart_tray", return_value=finished) as restart,
+            mock.patch.object(entry, "find_tray_windows",
+                              return_value=(windows_restart.TrayWindow(10, 20),)) as search,
             contextlib.redirect_stdout(io.StringIO()) as printed,
         ):
             self.assertEqual(entry.main(["--swap-from", "staged.exe"]), 0)
         self.assertEqual(restart.call_args.kwargs["swap_from"], Path("staged.exe"))
         self.assertEqual(json.loads(printed.getvalue())["backup"], "C:/dist/backup.exe")
+
+    def test_without_a_packaged_tray_the_entry_falls_back_to_the_source_tray(self):
+        entry = load_entry()
+        source = windows_restart.RestartResult(True, "源码托盘已重启")
+        with (
+            mock.patch.object(entry, "find_tray_windows", return_value=()) as search,
+            mock.patch.object(entry, "restart_source_tray", return_value=source) as srcs,
+            contextlib.redirect_stdout(io.StringIO()) as printed,
+        ):
+            self.assertEqual(entry.main(["--swap-from", "staged.exe"]), 0)
+        srcs.assert_called_once()
+        self.assertEqual(json.loads(printed.getvalue())["message"], "源码托盘已重启")
+
+    def test_source_requests_bypass_the_packaged_tray(self):
+        entry = load_entry()
+        source = windows_restart.RestartResult(True, "源码托盘已重启")
+        with (
+            mock.patch.object(entry, "find_tray_windows", return_value=()) as search,
+            mock.patch.object(entry, "restart_source_tray", return_value=source),
+            mock.patch.object(entry, "restart_tray") as ghost,
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            self.assertEqual(entry.main(["--source"]), 0)
+        ghost.assert_not_called()
 
 
 if __name__ == "__main__":

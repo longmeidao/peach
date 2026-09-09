@@ -570,14 +570,18 @@ function openSettings(open=true){
   const panel=$('#settingsPanel');
   if(open){
     settingsTransition++;panel.classList.remove('closing');
-    settingsReturnFocus=settingsReturnFocus||document.activeElement;panel.hidden=false;document.body.classList.add('settings-open');syncSettingsPanel();void syncMachineSettings();
+    settingsReturnFocus=settingsReturnFocus||document.activeElement;panel.hidden=false;
+    document.documentElement.style.overflow='hidden';
+    document.body.classList.add('settings-open');syncSettingsPanel();void syncMachineSettings();
     queueMicrotask(()=>$('#settingsClose').focus());return
   }
   if(panel.hidden||panel.classList.contains('closing'))return;
   const transition=++settingsTransition;panel.classList.add('closing');
   const finish=()=>{
     if(transition!==settingsTransition||!panel.classList.contains('closing'))return;
-    panel.hidden=true;panel.classList.remove('closing');document.body.classList.remove('settings-open');
+    panel.hidden=true;panel.classList.remove('closing');
+    document.documentElement.style.overflow='';
+    document.body.classList.remove('settings-open');
     if(settingsReturnFocus&&document.contains(settingsReturnFocus))settingsReturnFocus.focus();
     settingsReturnFocus=null;
   };
@@ -742,8 +746,8 @@ async function syncMachineSettings(){
   if(!open())return;
   if(runtime)runtimeConfigurable=!!runtime.configurable;
   if(!runtime||!runtimeConfigurable){
-    host.innerHTML=noteHtml('媒体文件夹、端口、代理和更新讲的是跑着 Peach 的那台电脑，在它自己的浏览器里打开设置就能改。',
-      {label:'这台设备上改不了'});
+    host.innerHTML=noteHtml('媒体文件夹、端口、代理与更新属于运行 Peach 服务的设备；在该设备的浏览器打开设置进行修改。',
+      {label:'该配置需在服务端设备修改'});
     return;
   }
   machineSettingsMounted=true;

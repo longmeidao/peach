@@ -312,6 +312,53 @@
         "README.md",
         "README.en.md"
       ]
+    },
+    {
+      "id": "boardui-input",
+      "name": "BoardUI Input 组件源",
+      "url": "https://www.boardui.com/r/input.json",
+      "snapshot": "docs/reference-snapshots/upstream/boardui-input.json",
+      "checked_on": "2026-09-09",
+      "sha256": "ac1e66c9ed15f9db2750dd528bc894c856ac84e79f72ff4acb96f14b1ab9c249",
+      "role": "输入框焦点口径：field 基类是 ring-2 ring-inset ring-transparent，悬停 border-button-hover、聚焦 border-button-active 且聚焦压过悬停，无外发光，transition 明确列了 box-shadow；Peach 输入面板按用户的决定保留白底与静止那条边，环画在边的内侧。",
+      "consumers": [
+        "web/css/22-followmanage.css",
+        "web/css/01-base.css",
+        "web/css/02-topbar.css",
+        "web/css/15-detail.css",
+        "web/board.css",
+        "tests/test_web_ui.py"
+      ]
+    },
+    {
+      "id": "boardui-theme",
+      "name": "BoardUI 主题 token 源",
+      "url": "https://www.boardui.com/r/theme.json",
+      "snapshot": "docs/reference-snapshots/upstream/boardui-theme.json",
+      "checked_on": "2026-09-09",
+      "sha256": "ee1cb0e973b108b90fd4999796a595fff6a1e5e453e115a6966c43b6e53ed428",
+      "role": "border-button-active 的取值出处（浅色 neutral-400、深色 neutral-600）；Peach 只取该档，不搬全量变量表。",
+      "consumers": [
+        "web/board.css",
+        "web/css/22-followmanage.css",
+        "web/css/01-base.css",
+        "web/css/02-topbar.css",
+        "web/css/15-detail.css"
+      ]
+    },
+    {
+      "id": "boardui-auth-card",
+      "name": "BoardUI Auth Card 组件源",
+      "url": "https://www.boardui.com/r/auth-card.json",
+      "snapshot": "docs/reference-snapshots/upstream/boardui-auth-card.json",
+      "checked_on": "2026-09-09",
+      "sha256": "cf4159a700769519867f150acbfafd6f3345b9990fd5b6b76c7609407f413cf2",
+      "role": "同底色下的嵌套卡层次：一条发丝边加 shadow-xs（0 1px 2px 0 rgb(0 0 0 / 0.18)），shadow-sm 与它同批取自上游的主题 token；xs 是在 auth-card 的 24px 大圆角上成立的，Peach 这两处是 10px 小圆角，贴地细影只剩一条硬边读成环，所以改用 sm 的两档扩散，圆角沿用本站 token。",
+      "consumers": [
+        "web/board.css",
+        "web/css/22-followmanage.css",
+        "tests/test_web_ui.py"
+      ]
     }
   ]
 }
