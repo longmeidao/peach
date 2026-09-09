@@ -27,6 +27,8 @@
 
 /* 多标签交集筛选条 */
 .combo{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:0 0 10px}
+/* 一条也没有时不占位：高度是 0，那 10px 下边距却照留，成了下面那块浮层头顶的一段空白。 */
+.combo:empty{margin-bottom:0}
 /* 交集条上的每一颗都是已经生效的筛选。 */
 .combo .cb{min-height:36px;box-sizing:border-box;display:inline-flex;align-items:center;gap:7px;padding:0 9px 0 12px;
   border-radius:var(--tag-radius);border:1px solid var(--field-ring);color:var(--ink-2);

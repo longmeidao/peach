@@ -1293,7 +1293,10 @@ function placeItemDetail(anchor,above=false){
 
 function itemDetailStickyOffset(){
   const stage=$('#stage');
-  return ['.top','#tagbar','#count','.entitytagbar','.entitycollectionhead'].reduce((bottom,selector)=>{
+  /* 玻璃筛选条把 `#tagbar` 与 `#count` 收进 `.board-filter-frame` 之后，粘住的是外面这一层，
+     里面两条成了 `position:relative`。只按里面两个名字量就只剩顶栏那 64px：详情停在 144px，
+     筛选条底边却在 168px，最上面 24px 连同关闭键一起压在它下面。 */
+  return ['.top','.board-filter-frame','#tagbar','#count','.entitytagbar','.entitycollectionhead'].reduce((bottom,selector)=>{
     const el=$(selector),css=el&&getComputedStyle(el);
     const beforeStage=!!el&&(el.compareDocumentPosition(stage)&Node.DOCUMENT_POSITION_FOLLOWING);
     if(!beforeStage||el.offsetParent===null||css.position!=='sticky')return bottom;
@@ -1304,7 +1307,11 @@ function itemDetailStickyOffset(){
 
 function scrollItemDetailIntoView(){
   const stage=$('#stage');
-  stage.style.scrollMarginTop=`${itemDetailStickyOffset()+8}px`;
+  /* `html` 的 `scroll-padding-top` 已经替顶栏留了一段，它和 `scroll-margin-top` 是叠加的：
+     把顶栏那 72px 再算一遍，落点就比要的位置低整整一个顶栏。扣掉它之后这个数只负责
+     顶栏以外还粘着的东西，也就是筛选条那一层。 */
+  const paved=parseFloat(getComputedStyle(document.documentElement).scrollPaddingTop)||0;
+  stage.style.scrollMarginTop=`${Math.max(0,itemDetailStickyOffset()+8-paved)}px`;
   stage.scrollIntoView({behavior:'auto',block:'start'});
   scheduleStickySurfaces();
 }

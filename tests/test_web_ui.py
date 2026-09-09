@@ -6068,12 +6068,28 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".grid>.stage{grid-column:1/-1;width:100%;min-width:0}")
 
     def test_inline_detail_stays_below_the_visible_sticky_navigation(self):
+        """详情展开后停在最后一层粘着的东西下面 8px。
+
+        名单要跟着粘的那一层走：`#tagbar` 与 `#count` 被收进 `.board-filter-frame` 之后
+        自己是 `position:relative`，只按这两个旧名字量就只剩顶栏那 64px，详情停在 144px、
+        浮层底边却在 168px，最上面 24px 连同关闭键一起压在它下面。两个旧名字留着，
+        `original-design` 那条退路下粘的仍是它们自己。
+
+        顶栏那一段另有出处：`html` 的 `scroll-padding-top` 已经替它留好，而它和
+        `scroll-margin-top` 是叠加的，再算一遍就把落点压低整整一个顶栏（要 176px，
+        实测落在 248px）。
+        """
         self.assertPageLacks("body.detail-open .tagbar{position:relative;top:auto;z-index:1}")
         self.assertPageContains("function itemDetailStickyOffset()")
-        self.assertPageContains("['.top','#tagbar','#count','.entitytagbar','.entitycollectionhead']")
+        self.assertPageContains("['.top','.board-filter-frame','#tagbar','#count',"
+                                "'.entitytagbar','.entitycollectionhead']")
         self.assertPageContains("el.compareDocumentPosition(stage)&Node.DOCUMENT_POSITION_FOLLOWING")
         self.assertPageContains("el.offsetParent===null||css.position!=='sticky'")
-        self.assertPageContains("stage.style.scrollMarginTop=`${itemDetailStickyOffset()+8}px`")
+        self.assertPageContains("getComputedStyle(document.documentElement).scrollPaddingTop)||0")
+        self.assertPageContains("stage.style.scrollMarginTop="
+                                "`${Math.max(0,itemDetailStickyOffset()+8-paved)}px`")
+        self.assertIn("html{color-scheme:light;scroll-padding-top:calc(var(--topH) + 8px);",
+                      stylesheet_source())
         self.assertCode("buildBars();\n  scrollItemDetailIntoView();")
 
     def test_catalog_skeleton_collects_the_bottom_loading_dots(self):
@@ -7710,6 +7726,24 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn(".entitytags .pill[aria-pressed=\"true\"]{border-color:transparent;"
                       "background:var(--picked);color:var(--ink)}", board)
         self.assertIn(".board-filter-frame #tagbar .pill{height:30px;padding:0 10px;font-size:13px;", board)
+
+    def test_the_floating_filter_panel_leaves_the_same_gap_above_and_below(self):
+        """浮层上下留一样宽的空隙；上面那段由页面给，它自己就不再加一层。
+
+        上沿是几段叠出来的：`.tiers` 收尾 8px、`main` 上沿 14px，浮层自己再要 8px，
+        而空着的 `.combo` 那 10px 下边距把它顶成 10px——实测上面 32px、下面 20px，
+        同一块浮层两头差 12px。前两段是每个页面共用的，改不动；所以浮层上面不加，
+        下面照那两段的和写，两个数从同一处读出来，谁改了页面上沿测试就在这里说话。
+        """
+        root = Path(__file__).resolve().parents[1]
+        board = (root / "web/board.css").read_text(encoding="utf-8")
+        base = stylesheet_source()
+        rail = re.search(r"\.tiers\{[^}]*?padding:10px 0 (\d+)px", base)
+        gutter = re.search(r"\bmain\{[^}]*?padding:(\d+)px \d+px", base)
+        self.assertTrue(rail and gutter, "读不到 .tiers 的收尾与 main 的上沿")
+        gap = int(rail.group(1)) + int(gutter.group(1))
+        self.assertIn(f"background:var(--ground);margin:0 0 {gap}px;", board)
+        self.assertIn(".combo:empty{margin-bottom:0}", base)
 
     def test_a_profile_website_link_shows_the_sites_own_mark(self):
         """官网那一格的文字是域名，图标是站点自己的那枚；取不到才露出地球。"""

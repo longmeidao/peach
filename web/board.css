@@ -197,7 +197,10 @@ body :is(#manageTitle,#manageCrumb,#manageLede){max-width:var(--board-content);w
 :root[data-theme="dark"]{--page:#111;--ground:#1c1c1c;--surface:#232323;--sunk:#171717;--ink:#fafafa;--ink-2:#d4d4d4;--muted:#a3a3a3;--line:#383838;--line-soft:#303030;--inset:#303030;--picked:#303030;--hover:rgba(255,255,255,.07);--tungsten:#60a5fa}
 body::before{display:none}
 .tiers{background:transparent}
-.board-filter-frame{position:sticky;top:calc(var(--topH) + 8px);z-index:60;border:0;border-radius:16px;background:var(--ground);margin:8px 0 20px;box-shadow:0 2px 14px #00000014}
+/* 面板上沿那道空隙不由自己决定：`.tiers` 收尾留 8px、`main` 上沿又是 14px，它自己那
+   8px 还被 `.combo` 的下边距吃掉，加起来 32px，下面却只有 20px，同一块浮层上下差出 12px。
+   上面这 22px 改不动（两处都是别的页面共用的），所以自己不再加，下面照同一个数写。 */
+.board-filter-frame{position:sticky;top:calc(var(--topH) + 8px);z-index:60;border:0;border-radius:16px;background:var(--ground);margin:0 0 22px;box-shadow:0 2px 14px #00000014}
 .board-filter-frame .tagbar,.board-filter-frame .count{position:relative;top:auto;left:auto;width:auto;margin:0;background:transparent;box-shadow:none;border:0;padding:10px 16px}
 .board-filter-frame .tagbar{border-bottom:0;border-radius:16px 16px 0 0}
 .board-filter-frame .count{border-radius:0 0 16px 16px;min-width:0}
