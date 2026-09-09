@@ -21,6 +21,8 @@ Removed / Fixed / Security。
 
 ## [未发布]
 
+## [0.32.0] - 2026-09-09
+
 ### 新增
 
 - **关注**：关注页的作者与来源筛选可以同时选多个，行首各有「全选」「全不选」；标签行加「全不选」（多个标签仍按「同时具备」筛，所以没有「全选」）。
@@ -142,7 +144,8 @@ Removed / Fixed / Security。
 - **桌面**：独立包使用 UTF-8 启动日志。
 - **配置**：首次设置后的跳转目标取新鲜读到的 mDNS 名。
 
-[未发布]: https://github.com/longmeidao/peach/compare/v0.31.0...HEAD
+[未发布]: https://github.com/longmeidao/peach/compare/v0.32.0...HEAD
+[0.32.0]: https://github.com/longmeidao/peach/compare/v0.31.0...v0.32.0
 [0.31.0]: https://github.com/longmeidao/peach/compare/v0.30.0...v0.31.0
 [0.30.0]: https://github.com/longmeidao/peach/compare/v0.27.1...v0.30.0
 [0.27.1]: https://github.com/longmeidao/peach/compare/v0.16.0...v0.27.1
