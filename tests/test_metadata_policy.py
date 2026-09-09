@@ -50,7 +50,10 @@ class MetadataPolicyTests(unittest.TestCase):
         for profile in ("baseline", "censored", "uncensored", "fc2"):
             policy = resolve_policy(profile=profile)
             for code in ("WX-017", "AR-301", "JI-103", "SA-104", "MY-102",
-                         "ar-301", "AR301"):
+                         "ar-301", "AR301",
+                         # 三字母前缀同属这套命名，`B:\MVP\MIB\` 下共 40 条。
+                         "MIN-102", "SUY-101", "YUJ-103", "CHU-101", "ERI-102",
+                         "SIA-104", "HNL-101", "SYN-103", "ENS-101"):
                 self.assertFalse(policy.allows_code(code), f"{profile} 放行了 {code}")
         # 显式点名来源也不能绕过：这不是「这次不想问」，是「问了必错」。
         self.assertFalse(resolve_policy(sources="javbus").allows_code(

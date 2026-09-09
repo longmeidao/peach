@@ -1992,7 +1992,7 @@ class OperationalScriptTests(unittest.TestCase):
                 self.assertEqual(list(csv.DictReader(handle)), [], "回退命中不算失败")
 
     def test_scrape_rejects_a_source_result_for_a_different_release(self):
-        """javbus 搜不到就返回首个近似命中：`CHU-101` 会取回 `CHUC-101`。
+        """javbus 搜不到就返回首个近似命中：`259LUXU-164` 会取回 `259LUXU-1642`。
 
         韩国 MIB 那批番号由 `allows_code` 拦在刮削入口，走不到这里；这道守卫管的是
         剩下那些形状相近的误配，它们没有前缀表可依，只能靠比对来源自报的番号认出来。
@@ -2005,14 +2005,14 @@ class OperationalScriptTests(unittest.TestCase):
             connection.executemany(
                 "INSERT INTO asset(id,location,path,name,medium,code) "
                 "VALUES(?,'local',?,?,'video',?)",
-                [(1, "1.mp4", "1.mp4", "CHU-101"), (2, "2.mp4", "2.mp4", "IQQQ-026"),
+                [(1, "1.mp4", "1.mp4", "259LUXU-164"), (2, "2.mp4", "2.mp4", "IQQQ-026"),
                  (3, "3.mp4", "3.mp4", "390JAC-040")])
             connection.commit(); connection.close()
 
             class LooseSearchProvider:
                 def query(self, code, source):
-                    if code == "CHU-101":
-                        return {"source": source, "id": "CHUC-101", "maker": "别人的厂牌"}
+                    if code in {"259LUXU-164", "LUXU-164"}:
+                        return {"source": source, "id": "259LUXU-1642", "maker": "别人的厂牌"}
                     if code in {"390JAC-040", "JAC-040"}:
                         return {"source": source, "id": "JAC-040", "content_id": "118jac040",
                                 "source_url": "https://r18.dev/videos/vod/movies/detail/-/combined=118jac040/json",
@@ -2032,14 +2032,15 @@ class OperationalScriptTests(unittest.TestCase):
             with errors.open(encoding="utf-8-sig", newline="") as handle:
                 error_rows = list(csv.DictReader(handle))
             self.assertCountEqual([(row["code"], row["kind"]) for row in error_rows],
-                             [("390JAC-040", "identity_mismatch"), ("CHU-101", "identity_mismatch")])
-            self.assertTrue(any("CHUC-101" in row["message"] for row in error_rows))
+                             [("390JAC-040", "identity_mismatch"),
+                              ("259LUXU-164", "identity_mismatch")])
+            self.assertTrue(any("259LUXU-1642" in row["message"] for row in error_rows))
             with output.open(encoding="utf-8-sig", newline="") as handle:
                 rows = list(csv.DictReader(handle))
             # 补零差异是良性的，`IQQQ-26` 必须照常收下。
             self.assertEqual({row["code"] for row in rows}, {"IQQQ-026"})
             # 原始响应仍然落盘：拒收的是候选，不是证据。
-            self.assertTrue((raw / "CHU-101" / "javbus.json").is_file())
+            self.assertTrue((raw / "259LUXU-164" / "javbus.json").is_file())
 
     def test_scrape_uses_official_product_identity_for_display_alias(self):
         check = self.scrape_codes._identity_mismatch

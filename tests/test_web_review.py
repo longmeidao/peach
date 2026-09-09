@@ -115,6 +115,9 @@ class ReviewQueueTests(unittest.TestCase):
             value = value["value"]
         return {"candidate_key": f"{item['item_key']}:{index}", "source": source,
                 "display_value": display, "value": value, "confidence": 0.9,
+                # 来源自报的番号。落库前要和这一行的番号对得上，所以默认取同一个值；
+                # 用例给 `provider_id` 就能造出「来源返回的是别的作品」那一半。
+                "provider_id": item.get("provider_id") or item.get("code", item["item_key"]),
                 "source_url": "", "raw_snapshot": ""}
 
     def _asset(self, aid, code, name):
@@ -345,6 +348,52 @@ class ReviewQueueTests(unittest.TestCase):
         self.assertEqual(self._auto()["applied"], 0)
         self.assertEqual(self.queue_keys("metadata_fields"), ["GGG:title"])
 
+    def test_a_result_for_another_release_never_lands(self):
+        """来源返回的不是这个番号，就不该写进真相字段。
+
+        自动批准的三项判据对这类候选全部成立——`AR-101 Ari....mp4` 的文件名里确实
+        逐字有 `AR-101`——但那证明的是候选属于这个文件，不是来源返回的属于这个番号。
+        javbus 搜不到就给首个近似命中，`AR-101` 取回的是 `STAR-101`。
+        """
+        self._asset(130, "AR-101", "AR-101 Ari.mp4")
+        self._asset(131, "259LUXU-764", "259LUXU-764.mp4")
+        self.write_metadata_rows([
+            {"item_key": "AR-101:studio", "field": "studio", "current": "",
+             "candidates": ["SODクリエイト"], "code": "AR-101",
+             "provider_id": "STAR-101", "source": "javbus"},
+            {"item_key": "259LUXU-764:studio", "field": "studio", "current": "",
+             "candidates": ["ラグジュTV"], "code": "259LUXU-764",
+             "provider_id": "259LUXU-1764", "source": "javbus"},
+        ])
+        self.assertEqual(self._auto()["applied"], 0)
+        con = sqlite3.connect(self.db_path)
+        try:
+            self.assertEqual(
+                con.execute("SELECT count(*) FROM asset WHERE studio IS NOT NULL")
+                .fetchone()[0], 0)
+        finally:
+            con.close()
+
+    def test_manual_approval_is_refused_for_another_release_too(self):
+        """人点的批准也过这道闸：错配落库的那批里有四成是人工批准的。"""
+        self._asset(132, "259LUXU-811", "259LUXU-811.mp4")
+        self.write_metadata_rows([
+            {"item_key": "259LUXU-811:studio", "field": "studio", "current": "",
+             "candidates": ["ラグジュTV"], "code": "259LUXU-811",
+             "provider_id": "259LUXU-1811", "source": "javbus"},
+        ])
+        with self.assertRaises(ValueError) as caught:
+            rm_review.w_review_decision(self.contract, {
+                "category": "metadata_fields", "item_key": "259LUXU-811:studio",
+                "candidate_key": "259LUXU-811:studio:0", "status": "approved"})
+        self.assertIn("259LUXU-811", str(caught.exception))
+        con = sqlite3.connect(self.db_path)
+        try:
+            self.assertIsNone(
+                con.execute("SELECT studio FROM asset WHERE id=132").fetchone()[0])
+        finally:
+            con.close()
+
     def test_performer_name_is_cut_at_the_age_the_official_page_appends(self):
         """素人系官方页把年龄职业写进出演者栏，照抄会把整句变成实体名。"""
         self._asset(122, "259LUXU-1509", "259LUXU-1509.mp4")
@@ -492,6 +541,29 @@ class ReviewQueueTests(unittest.TestCase):
              "candidates": ["Faleno"], "code": "ARM-123"},
         ])
         self.assertEqual(sorted(self.queue_keys("metadata_fields")), ["BEFREE", "REAL"])
+
+    def test_korean_mib_candidates_are_not_auto_applied_either(self):
+        """自动批准不读复核队列，那道过滤管不着它，MIB 的闸要单独立在这里。
+
+        三字母前缀同属这套命名，`MIN-102`、`SUY-101` 和两字母的一样不能问 JAV 来源。
+        """
+        for index, code in enumerate(("AR-101", "MIN-102", "SUY-101", "YUJ-103")):
+            self._asset(140 + index, code, f"{code} MIB.mp4")
+        self._asset(150, "ARM-123", "ARM-123.mp4")
+        self.write_metadata_rows([
+            {"item_key": f"{code}:studio", "field": "studio", "current": "",
+             "candidates": ["某厂牌"], "code": code}
+            for code in ("AR-101", "MIN-102", "SUY-101", "YUJ-103")
+        ] + [{"item_key": "ARM-123:studio", "field": "studio", "current": "",
+              "candidates": ["Faleno"], "code": "ARM-123"}])
+        self.assertEqual(self._auto()["applied"], 1)
+        con = sqlite3.connect(self.db_path)
+        try:
+            written = con.execute(
+                "SELECT code FROM asset WHERE studio IS NOT NULL").fetchall()
+        finally:
+            con.close()
+        self.assertEqual([row[0] for row in written], ["ARM-123"])
 
     def test_japanese_performer_candidate_folds_onto_the_localised_entity(self):
         """r18dev 给日文名，账本规范名多已本地化成中文，而日文名早登记为别名。
@@ -673,6 +745,7 @@ class ReviewQueueTests(unittest.TestCase):
         candidate = {
             "candidate_key": "ABC-001:performers:r18dev:abc", "source": "r18dev",
             "source_url": "https://r18.dev/example", "confidence": 0.9,
+            "provider_id": "ABC-001",
             "provider_id": "ABC-001", "content_id": "abc00001",
             "value": [{"name": "木村さん", "external_id": "7", "thumb_url": ""}],
             "display_value": "木村さん", "warnings": [], "raw_snapshot": "/evidence.json",
@@ -723,6 +796,7 @@ class ReviewQueueTests(unittest.TestCase):
         candidate = {
             "candidate_key": "ABC-001:release_date:r18dev:abc", "source": "r18dev",
             "source_url": "https://r18.dev/example", "confidence": 0.9,
+            "provider_id": "ABC-001",
             "value": "2020-09-13", "display_value": "2020-09-13", "warnings": [],
             "raw_snapshot": "/evidence.json",
         }
@@ -753,6 +827,7 @@ class ReviewQueueTests(unittest.TestCase):
         candidate = {
             "candidate_key": "ABC-001:tags:r18dev:abc", "source": "r18dev",
             "source_url": "https://r18.dev/example", "confidence": 0.9,
+            "provider_id": "ABC-001",
             "value": ["乳系", "颜射"], "display_value": "乳系、颜射", "warnings": [],
         }
         self.write_metadata_candidates([{
@@ -788,6 +863,7 @@ class ReviewQueueTests(unittest.TestCase):
         candidate = {
             "candidate_key": "ABC-001:tags:r18dev:specific", "source": "r18dev",
             "source_url": "https://r18.dev/example", "confidence": 0.9,
+            "provider_id": "ABC-001",
             "value": ["乳系", "美乳", "颜射"], "display_value": "乳系、美乳、颜射",
             "warnings": [],
         }
@@ -820,6 +896,7 @@ class ReviewQueueTests(unittest.TestCase):
         candidate = {
             "candidate_key": "ABC-001:title:r18dev:abc", "source": "r18dev",
             "source_url": "https://r18.dev/example", "confidence": 0.9,
+            "provider_id": "ABC-001",
             "value": "正式作品标题", "display_value": "正式作品标题", "warnings": [],
         }
         self.write_metadata_candidates([{
