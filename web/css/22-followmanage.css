@@ -67,7 +67,7 @@
 .fdesc>span:first-of-type{color:var(--muted);line-height:1.5}
 .fdescinfo{display:inline-grid;place-items:center;width:18px;height:18px;padding:0;border:0;
   border-radius:var(--badge-radius);background:transparent;color:var(--muted);cursor:help}
-.fdescinfo:hover{color:var(--ink)}.fdescinfo:focus-visible{color:var(--ink);outline:none;box-shadow:0 0 0 2px var(--tungsten)}
+.fdescinfo:hover{color:var(--ink)}.fdescinfo:focus-visible{color:var(--ink);outline:2px solid var(--color-border-focus-ring);outline-offset:2px}
 .fdescinfo svg{width:13px;height:13px;stroke:currentColor;fill:none;
   stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .fnote{margin:8px 0 0;font-size:var(--fs-sm);line-height:1.7;color:var(--muted)}
@@ -155,7 +155,10 @@
    「全部来源」在白面上只剩一行字，升降序那枚只剩一个箭头浮在页面上。 */
 .fbtn[data-srcfilter-toggle],.fbtn.fmanagedir{border:1px solid var(--field-ring);background:var(--ground);color:var(--ink-2)}
 .fbtn[data-srcfilter-toggle]:hover:not(:disabled),.fbtn.fmanagedir:hover:not(:disabled){border-color:var(--field-ring-hover);background:var(--ground)}
-.fbtn[data-srcfilter-toggle][aria-expanded="true"]{border-color:var(--field-ring-focus);box-shadow:0 0 0 4px var(--field-glow)}
+/* 焦点样式跟 boardui 口径走：2px 的蓝环加位移，不再画 vercel 的中性辉光。
+   范围只限本页覆盖部分；共享输入的全局 vercel 档是别人的，没动。 */
+.followmanage .geist-search input[type="search"]:focus{outline:2px solid var(--color-border-focus-ring);outline-offset:2px;box-shadow:none;border-color:var(--color-border-button-default)}
+.fbtn[data-srcfilter-toggle][aria-expanded="true"]{border-color:var(--color-border-focus-ring);box-shadow:none;outline:2px solid var(--color-border-focus-ring);outline-offset:2px}
 .fbtn.small{height:26px;padding:0 10px;font-size:var(--fs-sm)}
 .fbtn svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2}
 
@@ -223,7 +226,7 @@ th[aria-sort="ascending"] .ftsort svg,th[aria-sort="descending"] .ftsort svg{opa
 /* 进度面板与它上下的分区是同一档容器：发丝边 --field-ring 加 --ground 的面。
    `--border-10` 配 `--surface` 会让它在同一列里比 `.fsec` 亮一档、边又淡一档，
    读起来像另一种东西浮在页面上。 */
-.followtask{border:1px solid var(--field-ring);border-radius:var(--surface-radius);background:var(--ground);margin-bottom:16px}
+.followtask{border:1px solid var(--field-ring);border-radius:var(--surface-radius);background:var(--color-background-primary-default);margin-bottom:16px}
 /* 进度卡常住在说明行（data-follow-add-state 是 p.fnote）的 data-follow-job
    挂载层里，说明的字号与颜色不许往里面灌：任务标签与正文同色可读，
    百分比那行保留 board 自己的更淡小字。 */
@@ -327,10 +330,9 @@ details.fcred{display:block;min-width:0}
 .fcredfield{display:grid;gap:8px;min-width:0}
 .fcredfield span{font-size:var(--fs-xs);color:var(--muted)}
 .fcredfield input{height:32px;width:100%;min-width:0;box-sizing:border-box;border:1px solid var(--border-15);
-  border-radius:var(--control-radius);background:var(--ground);color:var(--ink);padding:0 12px;font-size:var(--fs-md);
+  border-radius:var(--control-radius);background:var(--color-background-primary-default);color:var(--ink);padding:0 12px;font-size:var(--fs-md);
   font-family:inherit;transition:border-color .12s ease}
-.fcredfield input:focus-visible{outline:2px solid var(--tungsten);outline-offset:1px;
-  border-color:var(--tungsten)}
+.fcredfield input:focus-visible{outline:2px solid var(--color-border-focus-ring);outline-offset:2px}
 /* 「去取」指向站外的凭据页，后缀那枚外链箭头说明这一下会离开 Peach。 */
 .fcredactions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:0}
 .fcredactions button{height:32px;box-sizing:border-box;padding:0 14px;border-radius:var(--control-radius);
