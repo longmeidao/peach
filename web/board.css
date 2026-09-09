@@ -964,6 +964,11 @@ body .batchbar button[hidden],body .batchbar button.danger[hidden]{display:none}
 
 /* 关注工作区：Board Tabs、读数与 Table 的层级，业务分区保留各自表单。 */
 .followmanage .fmanageoverview{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px}
+.follow-workspace-switch{display:inline-flex;gap:3px;padding:4px;background:var(--ground);border-radius:var(--control-radius);width:max-content;max-width:100%;overflow-x:auto}
+.follow-workspace-switch button{border:0;border-radius:var(--control-radius);padding:8px 14px;background:transparent;color:var(--muted);font:var(--board-body-medium);white-space:nowrap;cursor:pointer}
+.follow-workspace-switch button:hover{color:var(--ink)}
+.follow-workspace-switch button[aria-selected=true]{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px color-mix(in srgb,var(--ink) 12%,transparent)}
+.followmanage .fmain>[data-follow-workspace-panel][hidden]{display:none}
 .fmanageoverview>div{display:grid;gap:12px;padding:20px 24px;background:var(--ground);border-radius:var(--surface-radius);min-width:0}
 .fmanageoverview span{font:var(--board-body-medium);color:var(--muted)}
 .fmanageoverview b{font:var(--board-figure);font-variant-numeric:tabular-nums}

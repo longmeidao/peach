@@ -5812,8 +5812,13 @@ function renderFollowManage(credentials){
       <div><span>检查失败</span><b>${broken.length}<small> 个来源</small></b></div>
       <div><span>未看更新</span><b>${counts.new||0}<small> 条</small></b></div>
     </div>`}
+    ${legacy?'':`<div class="follow-workspace-switch" role="tablist" aria-label="关注管理区域">
+      <button type="button" role="tab" aria-selected="true" data-follow-workspace="list">关注列表</button>
+      <button type="button" role="tab" aria-selected="false" data-follow-workspace="add">添加关注</button>
+      <button type="button" role="tab" aria-selected="false" data-follow-workspace="source">来源管理</button>
+    </div>`}
     <div class="fmain">
-      <section class="fsec">
+      <section class="fsec" data-follow-workspace-panel="add">
         <div class="fsechead"><h3>添加关注</h3></div>
         <form class="faddform" id="followAdd">
           ${searchInputHtml({name:'line',label:'来源链接、名字或 id',
@@ -5827,7 +5832,7 @@ function renderFollowManage(credentials){
               followSuggestionChips(followData.suggestions)}</div>`:''}
         ${followAliasManager(followData.author_aliases,followData.alias_suggestions)}
       </section>
-      <section class="fsec">
+      <section class="fsec" data-follow-workspace-panel="list">
         <div class="fsechead"><h3>关注列表</h3>
           <span class="fmeta">${sources.length} 个来源${
             counts.new?` · <b>${counts.new}</b> 条未看`:''}</span>
@@ -5848,8 +5853,8 @@ function renderFollowManage(credentials){
             <button class="fbtn" data-follow-bulk="ignored">全部忽略</button></span></p></div>`:''}`
           :emptyState('rss','还没有关注来源','关注来源及其检查状态会显示在这里。',{className:'compact'})}
       </section>
-      <section class="fsec">
-        <div class="fsechead"><h3>凭据</h3>
+      <section class="fsec" data-follow-workspace-panel="source">
+        <div class="fsechead"><h3>来源管理</h3>
           ${needCred.length?`<span class="fmeta warn">${needCred.length} 个待配置</span>`:''}</div>
         <div class="frows">${creds.map(followCredentialRow).join('')}</div>
         <div class="fdesc"><b>存放位置与权限
@@ -5860,6 +5865,7 @@ function renderFollowManage(credentials){
       </section>
     </div></div>`;
   wireFollowManage(creds);
+  if(!legacy){const tabs=[...$('#stats').querySelectorAll('[data-follow-workspace]')],panels=[...$('#stats').querySelectorAll('[data-follow-workspace-panel]')];tabs.forEach(tab=>tab.onclick=()=>{const key=tab.dataset.followWorkspace;tabs.forEach(t=>t.setAttribute('aria-selected',String(t===tab)));panels.forEach(panel=>panel.hidden=panel.dataset.followWorkspacePanel!==key)});panels.forEach(panel=>panel.hidden=panel.dataset.followWorkspacePanel!=='list')}
   void wireFollowProgress();
   if(locked)$('#stats').querySelectorAll(
     '#followAdd input,#followAdd button,[data-follow-remove],[data-follow-check],'+
