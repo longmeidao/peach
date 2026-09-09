@@ -333,6 +333,10 @@ const syncPageTitle=path=>{
 function paintNav(){
   document.querySelectorAll('.edge button[data-nav],#drawer .dnav button[data-nav]')
     .forEach(b=>b.setAttribute('aria-pressed',String(navOn(b.dataset.nav))));
+  /* 侧栏那块玻璃的动画从这里起跑，不从点击那里：这一行是激活态唯一的权威出口，
+     窄栏、抽屉、浏览器后退和键盘走的都是它。挂在点击上等于每加一个入口补一次。
+     它跑在 `route()` 的同步段里，比抽屉重画早一拍，玻璃拿到的是旧位置到新位置。 */
+  syncNavGlide(true);
 }
 let surfaceEpoch=0;
 const surfacePath=()=>decodeURIComponent(location.pathname);
@@ -3102,6 +3106,45 @@ const viewPillsHtml=filterState=>VIEW_PILLS.map(v=>
    点下去要立刻动。切换视图会重新取数，`buildBars` 约一秒后才把 `aria-pressed` 写成
    新值，等它就等于点完先僵一下再跳。 */
 let viewGlide=null,viewGlideBox=null,viewGlideAim=null;
+/* 弹簧曲线和它的时长都写在 `board.css` 的 `--spring-pane` 上，这里只读一次。两处各写
+   一份数就会各改各的，而那串数是一次弹簧模拟的采样结果，不是能随手对齐的东西。 */
+let glideSpring=null;
+function glideEase(){
+  if(!glideSpring){
+    const css=getComputedStyle(document.documentElement);
+    glideSpring={easing:css.getPropertyValue('--spring-pane').trim()||'ease',
+      duration:parseFloat(css.getPropertyValue('--spring-pane-ms'))||300};
+  }
+  return glideSpring;
+}
+/* 位移走 `translate`、形变走 `scale`，两个独立属性各挂一段动画，不挤进同一条
+   `transform`：一条属性上只放得下一段，而这两下的时间形状不是同一条曲线——位移冲过
+   落点再荡回来，抻开是中途最大、两头归一。分开写，两段仍然都在合成线程上。
+   都不碰 `width`：宽度是布局属性，逐帧改它等于让整份文档重新排版一遍，合成线程碰不
+   到它，主线程一忙这块玻璃就跟着卡住。 */
+function moveGlidePane(pane,from,box,axis){
+  pane.style.width=`${box.w}px`;pane.style.height=`${box.h}px`;
+  const span=axis==='y'?'h':'w',head=axis==='y'?'y':'x';
+  const settled=`${box.x}px ${box.y}px`;
+  if(from&&from[head]!==box[head]&&!reduceMotion()){
+    const ease=glideEase();
+    /* 先撤掉还在跑的那两段：一枚上叠着两段位移，晚建的那段从头起跑，先建的还在往它
+       自己的终点走，合出来的位置两边都不是。 */
+    pane.getAnimations().forEach(a=>a.cancel());
+    pane.animate([{translate:axis==='y'?`${box.x}px ${from.y}px`:`${from.x}px ${box.y}px`},
+      {translate:settled}],{duration:ease.duration,easing:ease.easing,fill:'none'});
+    /* 一块被拽着走的软东西，跑起来在跑的方向上抻开，停下来收回去。抻多少按这一跳跨了
+       自己几个身位算，封在一个半身位：再远也不该更长，那时候读起来不是被拉长的同一
+       块，是换上来的另一块。峰值压在前三成——加速那一段才拉得动它。
+       形变只在这一列排布的方向上：另一根轴的尺寸是这一排给定的，在那儿拉扯会让它看
+       起来不是这一排里的东西。 */
+    const reach=Math.min(Math.abs(box[head]-from[head])/box[span],1.5),grow=1+reach*.12;
+    pane.animate([{scale:'1 1',offset:0},
+      {scale:axis==='y'?`1 ${grow}`:`${grow} 1`,offset:.3},{scale:'1 1',offset:1}],
+      {duration:ease.duration,easing:'ease-in-out',fill:'none'});
+  }
+  pane.style.translate=settled;
+}
 /* 坐标基准是 `.board-filter-frame`，不是那一排本身：这块玻璃住在框外一层，才能在纵向
    弹出那一排的边沿——那一排要横滚，`overflow-x:auto` 会把纵向一起算成滚动，住在里面
    的话弹多少都在框沿被切平。代价是每一处几何都得把那一排自己的位置和横滚补回来。 */
@@ -3117,30 +3160,46 @@ function syncViewGlide(animate,target){
   const box=viewGlideGeometry(tagbar,active);
   if(!box||!box.w)return;
   viewGlideAim=active;
-  if(!viewGlide){viewGlide=document.createElement('span');viewGlide.className='viewglide';viewGlide.setAttribute('aria-hidden','true')}
+  if(!viewGlide){viewGlide=document.createElement('span');viewGlide.className='viewglide';viewGlide.setAttribute('aria-hidden','true');viewGlideBox=null}
   if(viewGlide.parentElement!==box.frame)box.frame.prepend(viewGlide);
   /* 那一排横滚到看不见这一枚时收起来：它住在框外一层，不再跟着那一排一起被裁，不收
      的话会一路飘到筛选条的内边距上，停在那儿像块没人要的高光。 */
   viewGlide.hidden=box.x+box.w<=tagbar.offsetLeft||box.x>=tagbar.offsetLeft+tagbar.clientWidth;
   const from=viewGlideBox;viewGlideBox=box;
-  const settle=()=>{viewGlide.style.transform=`translateX(${box.x}px)`;viewGlide.style.width=`${box.w}px`;
-    viewGlide.style.top=`${box.y}px`;viewGlide.style.height=`${box.h}px`};
-  if(!animate||!from||from.x===box.x||reduceMotion()){settle();return}
-  /* 一块被拽着走的软东西：先朝两头拉长盖住起点和终点，收回来时冲过落点一小截再弹回。
-     形变只发生在左右——高度是这一排给定的，纵向拉扯会让它看起来不是同一排里的东西。
-     冲过头的距离按这一跳的跨度线性给，不封顶：从最左跳到最后一枚甩得最开，跳到隔壁
-     只是轻轻一顿。封顶等于把这条关系抹平，远近两种跳法弹出来一样多，那一下就只是个
-     固定的小动作，不再说明它跑了多远。 */
-  const near=Math.min(from.x,box.x),far=Math.max(from.x+from.w,box.x+box.w);
-  const over=box.x+(box.x-from.x)*.16;
-  viewGlide.animate([
-    {transform:`translateX(${from.x}px)`,width:`${from.w}px`,easing:'cubic-bezier(.2,.75,.3,1)'},
-    {transform:`translateX(${near}px)`,width:`${far-near}px`,offset:.34,easing:'cubic-bezier(.4,0,.2,1)'},
-    {transform:`translateX(${over}px)`,width:`${box.w*1.06}px`,offset:.68,easing:'cubic-bezier(.36,0,.24,1)'},
-    {transform:`translateX(${box.x}px)`,width:`${box.w}px`}],
-    {duration:300,easing:'linear'});
-  settle();
+  moveGlidePane(viewGlide,animate?from:null,box,'x');
 }
+/* 抽屉那一列跟筛选条那一排是同一块玻璃，只是换了根轴。它挂在 `#drawer` 上而不是那
+   一列里：切页会把 `#drawerScroll` 整块重画，住在里面的话玻璃跟着一起没，动画在第
+   一个微任务里就断了，看到的只是当前项换了个地方亮起来。`#drawer` 自己不重画，是这
+   一侧唯一的定位宿主。代价跟筛选条那边一样——那一列自己的位置和纵滚都得补回来。 */
+let navGlide=null,navGlideBox=null;
+function syncNavGlide(animate){
+  const host=$('#drawer'),scroll=$('#drawerScroll');
+  const active=scroll&&scroll.querySelector('.dnav button[aria-pressed="true"]');
+  if(!host||!active){if(navGlide)navGlide.hidden=true;navGlideBox=null;return}
+  if(!navGlide||navGlide.parentElement!==host){
+    navGlide=document.createElement('span');navGlide.className='navglide';
+    navGlide.setAttribute('aria-hidden','true');host.prepend(navGlide);navGlideBox=null;
+  }
+  /* 坐标走 `offsetTop` 不走 `getBoundingClientRect`：抽屉自己带一条收起的位移动画，
+     量屏幕坐标会把宿主正在走的那一下一起吃进来，每量一次都是个新位置，玻璃于是在
+     一次切页里连着起跑好几段。偏移量只认布局，抽屉滑到哪儿它都不变。 */
+  const box={x:active.offsetLeft,y:active.offsetTop-scroll.scrollTop,
+    w:active.offsetWidth,h:active.offsetHeight};
+  if(!box.h)return;
+  /* 那一列纵滚到看不见当前项时收起来：它住在滚动容器外面，不跟着一起被裁，不收的话
+     会停在侧栏顶上，像块没人要的高光。 */
+  navGlide.hidden=box.y+box.h<=scroll.offsetTop||box.y>=scroll.offsetTop+scroll.clientHeight;
+  const from=navGlideBox;navGlideBox=box;
+  moveGlidePane(navGlide,animate?from:null,box,'y');
+}
+/* 侧栏纵滚时玻璃原地跟上：容器滚走了它不动就会脱开对准的那一格。一帧只算一次——
+   每次都要量位置，逐个滚动事件地量等于把滚动这件事拖回主线程排队。 */
+let navGlideTick=0;
+$('#drawerScroll').addEventListener('scroll',()=>{
+  if(navGlideTick)return;
+  navGlideTick=requestAnimationFrame(()=>{navGlideTick=0;syncNavGlide(false)});
+},{passive:true});
 function wireViewPills(){
   const tagbar=$('#tagbar'),pills=[...tagbar.querySelectorAll('[data-state]')];
   pills.forEach(b=>b.onclick=e=>{
@@ -3302,6 +3361,7 @@ async function buildBars(){
     followTags=new Set([b.dataset.followDrawerTag]);
     openDrawer(false);route(followViewPath());openFollow(false)});
   wireNavigationDrag($('#drawer').querySelector('.dnav'));
+  syncNavGlide(false);
   /* 只认目录筛选自己的芯片。选择器写成 `.chip` 会把关注标签也扫进来——它同样
      用 chip 的样式，但没有 data-key，被这里接管后点下去等于按 undefined 筛目录，
      表现是跳回首页。这段在下面才执行，覆盖的正是关注标签自己的处理。 */
@@ -7450,6 +7510,7 @@ function buildDrawerNavigation(){
   if(!syncSidebarSurface(scroll,key)){
     scroll.querySelectorAll('[data-nav]').forEach(button=>
       button.setAttribute('aria-pressed',String(navOn(button.dataset.nav))));
+    syncNavGlide(true);
     return;
   }
   scroll.innerHTML=`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
@@ -7460,6 +7521,9 @@ function buildDrawerNavigation(){
   $('#drawerClose').onclick=()=>openDrawer(false);
   scroll.querySelectorAll('[data-nav]').forEach(b=>b.onclick=()=>navTo(b.dataset.nav));
   wireNavigationDrag(scroll.querySelector('.dnav'));
+  /* 重画换掉的是那一列的按钮，玻璃在 `#drawer` 上没动。这一下只把它对回新画出来的
+     那一格，不带动画：这时候动画早已经从 `paintNav` 那里起跑了。 */
+  syncNavGlide(false);
 }
 function renderFollowDrawer(items){
   buildDrawerNavigation();

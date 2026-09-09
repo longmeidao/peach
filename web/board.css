@@ -62,6 +62,13 @@
    看着像贴在背景上的剪纸，浮不起来。三层都用冷灰 `#111827` 而不是纯黑：这一层底下
    多半是肤色和暖色封面，纯黑压上去发脏。暗色那一档不靠加更多黑——玻璃和背景本来
    就都是深的，再黑也分不出层，分层交给上缘那道 `--glass-rim` 亮线。 */
+/* 滑板那一下的缓动是一条弹簧曲线，不是手挑的贝塞尔：`linear()` 里那串数是把一个
+   `stiffness:1700 damping:46 mass:1` 的弹簧按 240Hz 跑完再采样下来的（算法出自
+   liquid-gooey 的 spring.ts，MIT）。手挑的贝塞尔只能描出「快出慢收」这一类形状，
+   冲过头再荡回来那一段它画不出——四次控制点里没有超出 0..1 的余地。
+   313ms、峰值 1.103：冲过落点一成，一次回荡就收住。冲过头多少不必再另算一遍，
+   它本来就按这一跳的跨度成比例——弹簧拉得越长，甩过去越远。 */
+:root{--spring-pane:linear(0,0.1515,0.3211,0.5922,0.8223,0.937,1.0477,1.096,1.1029,1.0901,1.0641,1.0455,1.021,1.0036,0.9937,0.9905,0.9895,0.9912,0.993,0.9959,0.9983,0.9994,1.0005,1.001,1.0011,1.0009,1.0007,1.0005,1);--spring-pane-ms:313}
 /* 面上那两团光是屋里的光源落在玻璃上的反射，位置一直在极慢地挪。钉死的高光会把玻璃
    变成一张贴图——真玻璃对着一屋子的光，人一动、窗外云一过，面上的亮斑就换个地方，
    正是这一点让它读成一块有厚度的实物而不是一层半透明的涂层。
@@ -155,8 +162,14 @@ body .review .reviewbulktoolbar,body .review .reviewgroupbar{
    几像素落在 `#tagbar` 的内边距里，仍在同一块玻璃的合成范围内——`isolation:isolate`
    把这块玻璃定成了 backdrop root，出了这个框，`--glass-pick` 采不到东西就成了一块
    死白。横向裁切的活由 app.js 接手：滚出这一排的可视范围就收起来。 */
-.board-filter-frame.board-filter-frame>.viewglide{position:absolute;left:0;top:0;z-index:0;pointer-events:none;
-  border-radius:8px;transform-origin:50% 50%;
+/* 形变走 `scale` 而不是动 `width`：宽度是布局属性，每一帧都要让整份文档重新排版，
+   合成线程碰不到它，主线程一忙这块玻璃就跟着卡住。缩放和位移各占一个独立属性，两段
+   动画都交给合成线程，主线程正在重算样式时它们照样走完。
+   代价是描边和圆角跟着缩放变形——被拉长的那一瞬圆角扁一点、边细一点。这一下恰好就是
+   要的：一块软东西被拽着走，本来就该在跑的方向上抻开。
+   缩放的原点留在正中，两端一起外扩；位移写在 `translate` 属性上，不看这个原点。 */
+.board-filter-frame.board-filter-frame>.viewglide,.drawer.drawer>.navglide{position:absolute;left:0;top:0;z-index:0;pointer-events:none;
+  border-radius:8px;will-change:translate,scale;
   /* 高光从上往下，不走那道 125° 对角线：对角线是按盒子自己的长边铺的，在一枚
      三十来像素高的药丸上，转折点正好落在中间，静止看是左右两块拼起来的。 */
   background:linear-gradient(180deg,var(--glass-sheen),transparent 62%),var(--glass-pick-fill);
@@ -166,7 +179,12 @@ body .review .reviewbulktoolbar,body .review .reviewgroupbar{
      落影按这块的尺寸缩过：整条筛选条那三层是给一块二十几像素圆角的板算的，原样套到
      一枚三十来像素高的药丸上，最远那层比药丸本身还大一圈，看着是它在发光而不是浮起。 */
   box-shadow:inset 0 0 0 1px var(--glass-rim),0 1px 2px #00000024,0 6px 14px #0000001f}
-.board-filter-frame.board-filter-frame>.viewglide[hidden]{display:none}
+.board-filter-frame.board-filter-frame>.viewglide[hidden],.drawer.drawer>.navglide[hidden]{display:none}
+/* 侧栏那一列是竖排，圆角照按钮自己的 10px 走，不跟着那一排药丸的 8px。
+   它住在滚动容器外面、抽屉这块玻璃里面，`z-index:-1` 把它压回内容底下：抽屉自己带
+   `backdrop-filter`，那一层已经是个层叠上下文，负层号只会落到抽屉的面之上、那一列
+   的字之下。写 0 的话它是这层里唯一的定位元素，整块盖住下面所有的字。 */
+.drawer.drawer>.navglide{border-radius:10px;z-index:-1}
 /* 文字要压在那块玻璃上面，否则滑过去的时候字被盖住一路暗过去。 */
 .board-filter-frame.board-filter-frame #tagbar .pill[data-state]{position:relative;z-index:1}
 /* 换一批跟同一条上的排序键一样平：给它单独铺一层面加一圈线，静止态就在一排透明
@@ -185,11 +203,16 @@ body .review .reviewbulktoolbar,body .review .reviewgroupbar{
    白填充垫底、整圈 rim 描边、两层落影。这一屏铺开玻璃之后，一块蓝实底就成了唯一不
    透光的地方，看着像贴上去的另一套控件；蓝色在这套配色里只归焦点环和链接，导航的
    当前项不靠颜色说话，靠它比邻居高出一层。
+   抽屉那一列的这块玻璃由 `.navglide` 一块在列间滑，按钮自己只管字色：两边都铺的话，
+   静止态是一块不动的底压在滑过来的玻璃上，切换时只看得见它瞬间换位置。窄栏那一列
+   是图标，一列里认哪个亮着靠的就是那一格自己，它照旧各铺各的。
    `filter:none` 不能省：抽屉那边给当前项的悬停和按下写了 `brightness(1.08)`，留着
    会把这块玻璃连同它身后的内容一起推亮一档，指过去整块发白。 */
 .drawer.drawer.drawer .dnav button[aria-pressed="true"],
 .drawer.drawer.drawer .dnav button[aria-pressed="true"]:hover,
-.drawer.drawer.drawer .dnav button[aria-pressed="true"]:active,
+.drawer.drawer.drawer .dnav button[aria-pressed="true"]:active{
+  background:none;backdrop-filter:none;-webkit-backdrop-filter:none;
+  color:var(--glass-text);filter:none;box-shadow:none}
 .edge.edge.edge button[aria-pressed="true"],.edge.edge.edge button[aria-pressed="true"]:hover{
   background:linear-gradient(180deg,var(--glass-sheen),transparent 62%),var(--glass-pick-fill);
   backdrop-filter:var(--glass-pick);-webkit-backdrop-filter:var(--glass-pick);
@@ -580,7 +603,12 @@ button,input,select,textarea{font-family:inherit}
 .board-theme-toggle button{display:grid;place-items:center;width:32px;height:32px;flex:none;padding:0;border:0;border-radius:50%;background:transparent;color:var(--muted);cursor:pointer}
 .board-theme-toggle button[aria-pressed=true]{color:var(--ink)}
 .board-theme-toggle svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2}
-.board-theme-thumb{position:absolute;z-index:-1;left:4px;top:4px;width:32px;height:32px;background:var(--ground);border-radius:50%;box-shadow:0 1px 3px #0001;transition:transform .2s ease}
+/* `will-change` 把这一枚提成自己的合成层。换主题要把 `:root` 上整套变量重写一遍，
+   五千个节点跟着重算样式，主线程一口气忙掉二十几毫秒；滑块跟着卡在半路，按下去的
+   那一下就是「点了没反应，然后突然到位」。提层之后这段位移归合成线程管，主线程忙它
+   的，这一枚照样走完——它跟身后那片重算的内容本来就没有关系。
+   缓动跟滑板同一条弹簧：这一列上会动的东西只有一种手感。 */
+.board-theme-thumb{position:absolute;z-index:-1;left:4px;top:4px;width:32px;height:32px;background:var(--ground);border-radius:50%;box-shadow:0 1px 3px #0001;will-change:transform;transition:transform calc(var(--spring-pane-ms) * 1ms) var(--spring-pane)}
 .board-theme-toggle.is-dark .board-theme-thumb{transform:translateX(36px)}
 @media(min-width:761px){.drawer:not(.open) .board-sidebar-foot{flex-direction:column;padding:12px 10px}.drawer:not(.open) .board-theme-toggle{padding:2px;background:transparent}.drawer:not(.open) .board-theme-toggle button[aria-pressed=true],.drawer:not(.open) .board-theme-thumb{display:none}}
 @media(prefers-reduced-motion:reduce){.board-theme-thumb{transition:none}}

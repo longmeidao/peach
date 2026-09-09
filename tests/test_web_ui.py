@@ -7560,13 +7560,16 @@ class WebUiSourceTests(unittest.TestCase):
         # 选中那枚的填充只有一处，就是那块玻璃自己。
         self.assertNotIn('.board-filter-frame #tagbar .pill[data-state][aria-pressed="true"]{'
                          'background:var(--picked)', board)
-        self.assertIn(".board-filter-frame.board-filter-frame>.viewglide{"
+        self.assertIn(".board-filter-frame.board-filter-frame>.viewglide,.drawer.drawer>.navglide{"
                       "position:absolute;left:0;top:0;z-index:0;pointer-events:none;", board)
         self.assertIn("backdrop-filter:var(--glass-pick);", board)
         self.assertIn("pills.forEach(b=>b.addEventListener('pointerenter',e=>{", app)
         self.assertIn("tagbar.onpointerleave=e=>{if(e.pointerType!=='touch')syncViewGlide(true)};", app)
-        # 中间那一帧铺满起点到终点，玻璃是被拉过去的，不是整块平移。
-        self.assertIn("{transform:`translateX(${near}px)`,width:`${far-near}px`,offset:.34,", app)
+        # 位移和形变各占一个独立属性：一条属性上只放得下一段动画，而这两下的时间
+        # 形状不是同一条曲线。
+        self.assertIn("pane.animate([{translate:axis==='y'?`${box.x}px ${from.y}px`"
+                      ":`${from.x}px ${box.y}px`},", app)
+        self.assertIn("{translate:settled}],{duration:ease.duration,easing:ease.easing,fill:'none'});", app)
         # 顶栏这一条本身不铺任何底，中间那片空处直接通到内容。
         self.assertIn(".top.top,body.board-scrolled .top.top{background:transparent;box-shadow:none;"
                       "backdrop-filter:none;border:0}", board)
@@ -7583,9 +7586,10 @@ class WebUiSourceTests(unittest.TestCase):
         那一档看不出来。
         选中那块的保底填充是白：`brightness()` 乘零时得有东西垫着，而垫墨色等于蒙一层
         灰，浅色下选中那枚会成为整条上唯一发灰的地方。
-        冲过落点的距离按跨度线性给，不封顶：从最左跳到最后一枚甩得最开，跳到隔壁只是
-        轻轻一顿。封顶等于把这条关系抹平，远近两种跳法弹出来一样多，那一下就只是个固定
-        的小动作，不再说明它跑了多远。形变只在左右——高度是那一排给定的。
+        冲过落点这一下由那条弹簧曲线自己给：峰值 1.103，冲过头的距离就是这一跳跨度的
+        一成——从最左跳到最后一枚甩得最开，跳到隔壁只是轻轻一顿。另算一份「按跨度乘个
+        系数」等于同一件事上摆两处能各自漂移的数。形变只在这一列排布的方向上，另一根
+        轴的尺寸是那一排给定的。
         它挂在 `.board-filter-frame` 上而不是 `#tagbar` 里：那一排横滚会裁掉越界的部分，
         住在里面的话跳到头一枚时那下回弹就在框沿被切平。
         """
@@ -7611,28 +7615,41 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn("viewGlide.hidden=box.x+box.w<=tagbar.offsetLeft"
                       "||box.x>=tagbar.offsetLeft+tagbar.clientWidth;", app)
         self.assertIn("tagbar.onscroll=()=>syncViewGlide(false,viewGlideAim?.isConnected?viewGlideAim:null);", app)
-        # 冲过落点再弹回，冲多远跟这一跳的跨度成正比。
-        self.assertIn("const over=box.x+(box.x-from.x)*.16;", app)
-        self.assertIn("{transform:`translateX(${over}px)`,width:`${box.w*1.06}px`,offset:.68,", app)
-        self.assertIn("if(!animate||!from||from.x===box.x||reduceMotion()){settle();return}", app)
+        # 冲过落点再弹回：那条曲线是一次弹簧模拟的采样，峰值 1.103、313ms 收住。
+        self.assertIn("--spring-pane:linear(0,0.1515,", board)
+        self.assertIn(",1.0477,1.096,1.1029,1.0901,1.0641,", board)
+        self.assertIn("--spring-pane-ms:313}", board)
+        # 曲线和它的时长只有 CSS 那一份，JS 读它，不各写各的。
+        self.assertIn("glideSpring={easing:css.getPropertyValue('--spring-pane').trim()||'ease',", app)
+        self.assertIn("duration:parseFloat(css.getPropertyValue('--spring-pane-ms'))||300};", app)
+        self.assertIn("if(from&&from[head]!==box[head]&&!reduceMotion()){", app)
+        # 抻开按这一跳跨了自己几个身位算，封在一个半身位。
+        self.assertIn("const reach=Math.min(Math.abs(box[head]-from[head])/box[span],1.5),grow=1+reach*.12;", app)
 
-    def test_the_sidebar_current_item_is_a_pane_of_glass_over_the_rail(self):
-        """侧栏的当前项是压在侧栏那块玻璃上的又一块玻璃，不是一块蓝实底。
+    def test_the_sidebar_current_item_is_a_pane_of_glass_that_slides_down_the_rail(self):
+        """侧栏的当前项是压在侧栏那块玻璃上的又一块玻璃，它在这一列里滑。
 
         这一屏铺开玻璃之后，一块蓝实底就成了唯一不透光的地方，看着像贴上去的另一套
         控件；蓝色在这套配色里只归焦点环和链接，导航的当前项靠比邻居高出一层来说话。
+        抽屉那一列的这块玻璃归 `.navglide` 一块，按钮自己只管字色：两边都铺的话，静止
+        态是一块不动的底压在滑过来的玻璃上，切换时只看得见它瞬间换位置。窄栏那一列是
+        图标，一列里认哪个亮着靠的就是那一格自己，它照旧各铺各的。
+        它跟筛选条那一排是同一块玻璃、同一条弹簧，只是换了根轴：竖排缩 Y。
         `filter:none` 不能省：抽屉那边给当前项的悬停和按下写了 `brightness(1.08)`，
         留着会把这块玻璃连同它身后的内容一起推亮一档。
         没选中的那些悬停只抬一层薄白——侧栏走的是悬停抬填充、当前项握着颜色那一套，
         两态的差别落在厚度上而不是有无。
         """
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
+        app = (Path(__file__).resolve().parents[1] / "web/app.js").read_text(encoding="utf-8")
         self.assertIn('.drawer.drawer.drawer .dnav button[aria-pressed="true"],\n'
                       '.drawer.drawer.drawer .dnav button[aria-pressed="true"]:hover,\n'
-                      '.drawer.drawer.drawer .dnav button[aria-pressed="true"]:active,\n'
-                      '.edge.edge.edge button[aria-pressed="true"],'
-                      '.edge.edge.edge button[aria-pressed="true"]:hover{', board)
-        self.assertIn("  background:linear-gradient(180deg,var(--glass-sheen),transparent 62%),"
+                      '.drawer.drawer.drawer .dnav button[aria-pressed="true"]:active{\n'
+                      "  background:none;backdrop-filter:none;-webkit-backdrop-filter:none;\n"
+                      "  color:var(--glass-text);filter:none;box-shadow:none}", board)
+        self.assertIn('.edge.edge.edge button[aria-pressed="true"],'
+                      '.edge.edge.edge button[aria-pressed="true"]:hover{\n'
+                      "  background:linear-gradient(180deg,var(--glass-sheen),transparent 62%),"
                       "var(--glass-pick-fill);\n"
                       "  backdrop-filter:var(--glass-pick);-webkit-backdrop-filter:var(--glass-pick);\n"
                       "  color:var(--glass-text);filter:none;", board)
@@ -7640,6 +7657,20 @@ class WebUiSourceTests(unittest.TestCase):
                       '.edge.edge.edge button:not([aria-pressed="true"]):hover{\n'
                       "  background:color-mix(in srgb,var(--glass-rim) 26%,transparent);"
                       "color:var(--glass-text)}", board)
+        # 那块玻璃住在 `#drawer` 上：切页会把 `#drawerScroll` 整块重画，住在里面的话
+        # 它跟着一起没，动画在第一个微任务里就断了。
+        self.assertIn(".drawer.drawer>.navglide{border-radius:10px;z-index:-1}", board)
+        self.assertIn("navGlide.className='navglide';", app)
+        self.assertIn("navGlide.setAttribute('aria-hidden','true');host.prepend(navGlide);navGlideBox=null;", app)
+        self.assertIn("const box={x:active.offsetLeft,y:active.offsetTop-scroll.scrollTop,", app)
+        # 激活态只有 `paintNav` 这一个权威出口，玻璃从那里起跑。
+        self.assertIn("    .forEach(b=>b.setAttribute('aria-pressed',String(navOn(b.dataset.nav))));", app)
+        self.assertIn("  syncNavGlide(true);\n}", app)
+        # 换的是轴，不是另一套动画：竖排缩 Y，走的还是那一块的搬运函数。
+        self.assertIn("moveGlidePane(navGlide,animate?from:null,box,'y');", app)
+        self.assertIn("moveGlidePane(viewGlide,animate?from:null,box,'x');", app)
+        self.assertIn("{scale:axis==='y'?`1 ${grow}`:`${grow} 1`,offset:.3},{scale:'1 1',offset:1}],", app)
+        self.assertIn("wireNavigationDrag($('#drawer').querySelector('.dnav'));\n  syncNavGlide(false);", app)
 
     def test_two_soft_lights_drift_across_every_pane_on_two_coprime_clocks(self):
         """玻璃面上那两团光在极慢地挪，横竖两根轴各走各的钟。
