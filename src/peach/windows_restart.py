@@ -161,7 +161,7 @@ def find_source_tray_windows() -> tuple[TrayWindow, ...]:
     user32.EnumWindows.argtypes = [callback_type, wintypes.LPARAM]
     user32.EnumWindows.restype = wintypes.BOOL
     user32.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.DWORD)]
-    user32.GetClassNameW.argtypes = [wintypes.HWND, ctypes.LPWSTR, ctypes.c_int]
+    user32.GetClassNameW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
 
     @callback_type
     def visit(window, _extra):
