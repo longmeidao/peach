@@ -7545,7 +7545,7 @@ class WebUiSourceTests(unittest.TestCase):
         反过来先位移再糊，折射出来的亮边会被第二步抹平。
         四枚视图自己不铺底：两边都铺，静止态就是一块不透明的 `--picked` 压在滑动的那块
         玻璃上面。那块玻璃必须写 `left:0`，只写 `top` 的话水平方向回落到静态位置，
-        整块右移一个 `#tagbar` 内边距，盖不住选中那枚的左半边。
+        整块右移一个内边距，盖不住选中那枚的左半边。
         动画挂在指针进入，不是点击：指到哪一枚就滑过去，`aria-pressed` 全程不动——
         移过去不是选中，读屏和键盘那边不该跟着变。
         """
@@ -7560,18 +7560,84 @@ class WebUiSourceTests(unittest.TestCase):
         # 选中那枚的填充只有一处，就是那块玻璃自己。
         self.assertNotIn('.board-filter-frame #tagbar .pill[data-state][aria-pressed="true"]{'
                          'background:var(--picked)', board)
-        self.assertIn(".board-filter-frame.board-filter-frame #tagbar .viewglide{"
-                      "position:absolute;left:0;z-index:0;pointer-events:none;", board)
+        self.assertIn(".board-filter-frame.board-filter-frame>.viewglide{"
+                      "position:absolute;left:0;top:0;z-index:0;pointer-events:none;", board)
         self.assertIn("backdrop-filter:var(--glass-pick);", board)
         self.assertIn("pills.forEach(b=>b.addEventListener('pointerenter',e=>{", app)
         self.assertIn("tagbar.onpointerleave=e=>{if(e.pointerType!=='touch')syncViewGlide(true)};", app)
         # 中间那一帧铺满起点到终点，玻璃是被拉过去的，不是整块平移。
-        self.assertIn("{transform:`translateX(${near}px)`,width:`${far-near}px`,offset:.42},", app)
+        self.assertIn("{transform:`translateX(${near}px) scaleY(.88)`,width:`${far-near}px`,offset:.34,", app)
         # 顶栏这一条本身不是玻璃，压制带只压不糊：再铺一层就成了玻璃叠玻璃。
         self.assertIn(".top.top,body.board-scrolled .top.top{background:transparent;box-shadow:none;"
                       "backdrop-filter:none;border:0}", board)
         self.assertNotIn(".top.top::before{content:'';position:absolute;inset:0 0 -8px;z-index:-1;"
                          "pointer-events:none;opacity:0;transition:opacity .18s;\n  backdrop-filter:", board)
+
+    def test_every_glass_panel_casts_three_layers_and_the_sliding_pane_leaves_its_row(self):
+        """玻璃的落影分三层，选中那块玻璃弹过头时越过那一排的边沿。
+
+        一层管一件事：1px 那层是接触影，画出玻璃和它底下那张纸之间的缝；中间一层是本体
+        投影；最远那层大而极淡，是环境光被这块板挡住留下的那片。单层做不到——同一个模糊
+        半径既要贴着边缘又要铺开一大片，只能取中间值，出来是一圈均匀的灰晕。
+        三层都用冷灰而不是纯黑：这一层底下多半是肤色和暖色封面，纯黑压上去发脏。
+        吸顶那一档要压过玻璃那组规则的特异性，否则整条 `box-shadow` 归后者，抬起来的
+        那一档看不出来。
+        选中那块的保底填充是白：`brightness()` 乘零时得有东西垫着，而垫墨色等于蒙一层
+        灰，浅色下选中那枚会成为整条上唯一发灰的地方。
+        它挂在 `.board-filter-frame` 上而不是 `#tagbar` 里：那一排横滚，`overflow-x:auto`
+        把纵向一起算成滚动，住在里面的话弹多少都在框沿被切平。
+        """
+        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
+        app = (Path(__file__).resolve().parents[1] / "web/app.js").read_text(encoding="utf-8")
+        for shadow in ("--glass-shadow:0 1px 2px #1118270f,0 8px 18px #11182714,0 24px 48px #11182710;",
+                       "--glass-shadow:0 1px 2px #00000047,0 10px 22px #00000038,0 28px 56px #0000002b;",
+                       "--glass-lift:0 2px 4px #11182714,0 12px 26px #1118271f,0 30px 60px #11182717;",
+                       "--glass-lift:0 2px 4px #00000052,0 14px 30px #00000047,0 34px 68px #00000038;"):
+            self.assertIn(shadow, board)
+        self.assertIn(".board-filter-frame.board-filter-frame.board-filter-frame.board-is-stuck{"
+                      "box-shadow:inset 0 1px 0 var(--glass-rim),", board)
+        self.assertIn("var(--glass-lift)}", board)
+        # 保底填充两档都是白，加光而不是蒙灰。
+        self.assertIn("--glass-pick-fill:rgba(255,255,255,.52)", board)
+        self.assertIn("--glass-pick-fill:rgba(255,255,255,.13)", board)
+        self.assertIn("transparent 62%),var(--glass-pick-fill);", board)
+        self.assertNotIn("transparent 62%),color-mix(in srgb,var(--ink) 12%,transparent);", board)
+        # 描边走满一圈，不只压上缘那一道。
+        self.assertIn("box-shadow:inset 0 0 0 1px var(--glass-rim),0 1px 2px #00000024,0 6px 14px #0000001f}", board)
+        # 几何相对筛选条算，横滚要补回来；滚出可视范围就收起来。
+        self.assertIn("return {frame,x:tagbar.offsetLeft+pill.offsetLeft-tagbar.scrollLeft,w:pill.offsetWidth,", app)
+        self.assertIn("viewGlide.hidden=box.x+box.w<=tagbar.offsetLeft"
+                      "||box.x>=tagbar.offsetLeft+tagbar.clientWidth;", app)
+        self.assertIn("tagbar.onscroll=()=>syncViewGlide(false,viewGlideAim?.isConnected?viewGlideAim:null);", app)
+        # 冲过落点再弹回，鼓起的那一下越过那一排的边沿。
+        self.assertIn("const over=box.x+(box.x>from.x?1:-1)*Math.min(14,(far-near)*.09);", app)
+        self.assertIn("{transform:`translateX(${over}px) scaleY(1.2)`,width:`${box.w*1.05}px`,offset:.68,", app)
+        self.assertIn("if(!animate||!from||from.x===box.x||reduceMotion()){settle();return}", app)
+
+    def test_the_sidebar_current_item_is_a_pane_of_glass_over_the_rail(self):
+        """侧栏的当前项是压在侧栏那块玻璃上的又一块玻璃，不是一块蓝实底。
+
+        这一屏铺开玻璃之后，一块蓝实底就成了唯一不透光的地方，看着像贴上去的另一套
+        控件；蓝色在这套配色里只归焦点环和链接，导航的当前项靠比邻居高出一层来说话。
+        `filter:none` 不能省：抽屉那边给当前项的悬停和按下写了 `brightness(1.08)`，
+        留着会把这块玻璃连同它身后的内容一起推亮一档。
+        没选中的那些悬停只抬一层薄白——侧栏走的是悬停抬填充、当前项握着颜色那一套，
+        两态的差别落在厚度上而不是有无。
+        """
+        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
+        self.assertIn('.drawer.drawer.drawer .dnav button[aria-pressed="true"],\n'
+                      '.drawer.drawer.drawer .dnav button[aria-pressed="true"]:hover,\n'
+                      '.drawer.drawer.drawer .dnav button[aria-pressed="true"]:active,\n'
+                      '.edge.edge.edge button[aria-pressed="true"],'
+                      '.edge.edge.edge button[aria-pressed="true"]:hover{', board)
+        self.assertIn("  background:linear-gradient(180deg,var(--glass-sheen),transparent 62%),"
+                      "var(--glass-pick-fill);\n"
+                      "  backdrop-filter:var(--glass-pick);-webkit-backdrop-filter:var(--glass-pick);\n"
+                      "  color:var(--glass-text);filter:none;", board)
+        self.assertIn('.drawer.drawer.drawer .dnav button:not([aria-pressed="true"]):hover,\n'
+                      '.edge.edge.edge button:not([aria-pressed="true"]):hover{\n'
+                      "  background:color-mix(in srgb,var(--glass-rim) 26%,transparent);"
+                      "color:var(--glass-text)}", board)
 
     def test_a_selectable_follow_row_keeps_its_own_border_on_every_edge(self):
         """关注列表进选择态后，行与行之间那条线是卡片自己的上边框。

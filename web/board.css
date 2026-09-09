@@ -52,10 +52,19 @@
    压住了，不必额外收。 */
 /* `--glass-pick` 是选中那块自己的光学：它不铺一层灰，而是在这块玻璃已经合成好的
    底子上再提一档亮度，所以它跟着身后的内容一起变，暗处淡、亮处也淡，唯独比同一条
-   上的邻居亮——铺灰的那种做法在亮内容上会变成一块脏斑。 */
-:root{--glass-fill:rgba(252,253,255,.44);--glass-rim:rgba(255,255,255,.72);--glass-low:rgba(70,80,100,.1);--glass-text:#1d2129;--glass-shadow:0 8px 26px #1118270f;--glass-sheen:rgba(255,255,255,.5);--glass-lume:brightness(1.26) saturate(.55);--glass-pick:brightness(1.1) saturate(1.1)}
-:root[data-theme="dark"]{--glass-fill:rgba(26,29,35,.34);--glass-rim:rgba(255,255,255,.2);--glass-low:rgba(255,255,255,.05);--glass-text:#eceef3;--glass-shadow:0 8px 26px #00000038;--glass-sheen:rgba(230,239,255,.1);--glass-lume:brightness(.58) contrast(1.06);--glass-pick:brightness(1.7) saturate(1.15)}
-@media(prefers-color-scheme:dark){:root:not([data-theme]){--glass-fill:rgba(26,29,35,.34);--glass-rim:rgba(255,255,255,.2);--glass-low:rgba(255,255,255,.05);--glass-text:#eceef3;--glass-shadow:0 8px 26px #00000038;--glass-sheen:rgba(230,239,255,.1);--glass-lume:brightness(.58) contrast(1.06);--glass-pick:brightness(1.7) saturate(1.15)}}
+   上的邻居亮——铺灰的那种做法在亮内容上会变成一块脏斑。
+   `--glass-pick-fill` 是它的保底填充，两档都是白：`brightness()` 乘的是零时那块玻璃
+   跟着背景一起黑，得有东西垫着。垫的必须是白——白往上加是加光，跟提亮同向；墨色往上
+   加是蒙一层灰，浅色下选中那枚就成了整条上唯一发灰的地方。 */
+/* 阴影分三层，一层管一件事：1px 那层是接触影，画出玻璃和它底下那张纸之间的那条缝；
+   中间一层是本体投影；最远那层大而极淡，是环境光被这块板挡住留下的那片。单层做不到
+   ——同一个模糊半径既要贴着边缘又要铺开一大片，只能取中间值，出来是一圈均匀的灰晕，
+   看着像贴在背景上的剪纸，浮不起来。三层都用冷灰 `#111827` 而不是纯黑：这一层底下
+   多半是肤色和暖色封面，纯黑压上去发脏。暗色那一档不靠加更多黑——玻璃和背景本来
+   就都是深的，再黑也分不出层，分层交给上缘那道 `--glass-rim` 亮线。 */
+:root{--glass-fill:rgba(252,253,255,.44);--glass-rim:rgba(255,255,255,.72);--glass-low:rgba(70,80,100,.1);--glass-text:#1d2129;--glass-shadow:0 1px 2px #1118270f,0 8px 18px #11182714,0 24px 48px #11182710;--glass-lift:0 2px 4px #11182714,0 12px 26px #1118271f,0 30px 60px #11182717;--glass-sheen:rgba(255,255,255,.5);--glass-lume:brightness(1.26) saturate(.55);--glass-pick:brightness(1.1) saturate(1.1);--glass-pick-fill:rgba(255,255,255,.52)}
+:root[data-theme="dark"]{--glass-fill:rgba(26,29,35,.34);--glass-rim:rgba(255,255,255,.2);--glass-low:rgba(255,255,255,.05);--glass-text:#eceef3;--glass-shadow:0 1px 2px #00000047,0 10px 22px #00000038,0 28px 56px #0000002b;--glass-lift:0 2px 4px #00000052,0 14px 30px #00000047,0 34px 68px #00000038;--glass-sheen:rgba(230,239,255,.1);--glass-lume:brightness(.58) contrast(1.06);--glass-pick:brightness(1.7) saturate(1.15);--glass-pick-fill:rgba(255,255,255,.13)}
+@media(prefers-color-scheme:dark){:root:not([data-theme]){--glass-fill:rgba(26,29,35,.34);--glass-rim:rgba(255,255,255,.2);--glass-low:rgba(255,255,255,.05);--glass-text:#eceef3;--glass-shadow:0 1px 2px #00000047,0 10px 22px #00000038,0 28px 56px #0000002b;--glass-lift:0 2px 4px #00000052,0 14px 30px #00000047,0 34px 68px #00000038;--glass-sheen:rgba(230,239,255,.1);--glass-lume:brightness(.58) contrast(1.06);--glass-pick:brightness(1.7) saturate(1.15);--glass-pick-fill:rgba(255,255,255,.13)}}
 .board-filter-frame.board-filter-frame.board-filter-frame,.entitytagbar.entitytagbar.entitytagbar,.entitycollectionhead.entitycollectionhead.entitycollectionhead,body .review .reviewbulktoolbar,body .review .reviewgroupbar,.drawer.drawer,.drawer.drawer.open,.edge.edge,.top .search.search,.top.top>.ib{
   background:linear-gradient(125deg,var(--glass-sheen),transparent 42%,var(--glass-low)),var(--glass-fill);
   backdrop-filter:var(--glass-optic,blur(22px)) saturate(160%) var(--glass-lume);-webkit-backdrop-filter:var(--glass-optic,blur(22px)) saturate(160%) var(--glass-lume);
@@ -92,18 +101,25 @@ body .review .reviewbulktoolbar,body .review .reviewgroupbar{background:var(--gl
    几何由 app.js 按当前那枚的实际位置写进来，这里只管形状和材质；四枚自己不画边框，
    一排里唯一的填充就是这块玻璃，看的人不必在四个框里再找哪个亮着。 */
 /* `left:0` 不能省：只写 `top` 的话水平方向还是 auto，绝对定位就回落到它作为第一个
-   子元素本该待的静态位置——也就是 `#tagbar` 那 12px 内边距之后，再叠上按 `offsetLeft`
-   算的位移，整块正好右移一个内边距，盖不住选中那枚的左半边。 */
-.board-filter-frame.board-filter-frame #tagbar .viewglide{position:absolute;left:0;z-index:0;pointer-events:none;
-  border-radius:8px;
+   子元素本该待的静态位置——也就是 `.board-filter-frame` 那一圈内边距之后，再叠上按
+   `offsetLeft` 算的位移，整块正好右移一个内边距，盖不住选中那枚的左半边。 */
+/* 它挂在 `.board-filter-frame` 上而不是 `#tagbar` 里：那一排要横滚，`overflow-x:auto`
+   会把另一根轴一起算成滚动，纵向再怎么弹也在框沿被切平。挪到外面这一层，弹过头的那
+   几像素落在 `#tagbar` 的内边距里，仍在同一块玻璃的合成范围内——`isolation:isolate`
+   把这块玻璃定成了 backdrop root，出了这个框，`--glass-pick` 采不到东西就成了一块
+   死白。横向裁切的活由 app.js 接手：滚出这一排的可视范围就收起来。 */
+.board-filter-frame.board-filter-frame>.viewglide{position:absolute;left:0;top:0;z-index:0;pointer-events:none;
+  border-radius:8px;transform-origin:50% 50%;
   /* 高光从上往下，不走那道 125° 对角线：对角线是按盒子自己的长边铺的，在一枚
      三十来像素高的药丸上，转折点正好落在中间，静止看是左右两块拼起来的。 */
-  /* 提亮之外还得垫一层薄填充：卡片黑下来的时候，`brightness()` 乘的是零，那块玻璃
-     跟着一起黑，整条上就找不出选中的是哪一枚了。 */
-  background:linear-gradient(180deg,var(--glass-sheen),transparent 62%),color-mix(in srgb,var(--ink) 12%,transparent);
+  background:linear-gradient(180deg,var(--glass-sheen),transparent 62%),var(--glass-pick-fill);
   backdrop-filter:var(--glass-pick);-webkit-backdrop-filter:var(--glass-pick);
-  box-shadow:inset 0 1px 0 var(--glass-rim),0 2px 8px #00000020}
-.board-filter-frame.board-filter-frame #tagbar .viewglide[hidden]{display:none}
+  /* 描边走满一圈，不只压上缘那一道：这块要能在一排同色的字里被一眼认出来，只有顶上
+     一条亮线时，它和邻居的差别全靠那点提亮，亮内容上就分不出来了。
+     落影按这块的尺寸缩过：整条筛选条那三层是给一块二十几像素圆角的板算的，原样套到
+     一枚三十来像素高的药丸上，最远那层比药丸本身还大一圈，看着是它在发光而不是浮起。 */
+  box-shadow:inset 0 0 0 1px var(--glass-rim),0 1px 2px #00000024,0 6px 14px #0000001f}
+.board-filter-frame.board-filter-frame>.viewglide[hidden]{display:none}
 /* 文字要压在那块玻璃上面，否则滑过去的时候字被盖住一路暗过去。 */
 .board-filter-frame.board-filter-frame #tagbar .pill[data-state]{position:relative;z-index:1}
 /* 换一批跟同一条上的排序键一样平：给它单独铺一层面加一圈线，静止态就在一排透明
@@ -124,6 +140,25 @@ body.board-scrolled .top.top::before{opacity:1}
 .top.top>.ib{border-radius:50%}
 .drawer.drawer{border-radius:26px}.edge.edge{border-radius:24px}
 .drawer.drawer .dnav button:not([aria-pressed="true"]),.edge.edge button:not([aria-pressed="true"]){color:var(--glass-text)}
+/* 侧栏的当前项跟筛选条上滑动的那一块是同一种东西：一块提亮的玻璃压在侧栏这块玻璃上，
+   白填充垫底、整圈 rim 描边、两层落影。这一屏铺开玻璃之后，一块蓝实底就成了唯一不
+   透光的地方，看着像贴上去的另一套控件；蓝色在这套配色里只归焦点环和链接，导航的
+   当前项不靠颜色说话，靠它比邻居高出一层。
+   `filter:none` 不能省：抽屉那边给当前项的悬停和按下写了 `brightness(1.08)`，留着
+   会把这块玻璃连同它身后的内容一起推亮一档，指过去整块发白。 */
+.drawer.drawer.drawer .dnav button[aria-pressed="true"],
+.drawer.drawer.drawer .dnav button[aria-pressed="true"]:hover,
+.drawer.drawer.drawer .dnav button[aria-pressed="true"]:active,
+.edge.edge.edge button[aria-pressed="true"],.edge.edge.edge button[aria-pressed="true"]:hover{
+  background:linear-gradient(180deg,var(--glass-sheen),transparent 62%),var(--glass-pick-fill);
+  backdrop-filter:var(--glass-pick);-webkit-backdrop-filter:var(--glass-pick);
+  color:var(--glass-text);filter:none;
+  box-shadow:inset 0 0 0 1px var(--glass-rim),0 1px 2px #00000024,0 6px 14px #0000001f}
+/* 没选中的那些悬停只抬一层薄白：不提亮、不描边、不带影，浮起来这件事整列只有一处。
+   侧栏走的是悬停抬填充、当前项握着颜色那一套，两态的差别落在厚度上而不是有无。 */
+.drawer.drawer.drawer .dnav button:not([aria-pressed="true"]):hover,
+.edge.edge.edge button:not([aria-pressed="true"]):hover{
+  background:color-mix(in srgb,var(--glass-rim) 26%,transparent);color:var(--glass-text)}
 @supports not (backdrop-filter:blur(1px)){.board-filter-frame.board-filter-frame.board-filter-frame,.entitytagbar.entitytagbar.entitytagbar,.entitycollectionhead.entitycollectionhead.entitycollectionhead,body .review .reviewbulktoolbar,body .review .reviewgroupbar,.drawer.drawer,.drawer.drawer.open,.edge.edge,.top .search.search{background:var(--ground)}}
 @media(prefers-reduced-transparency:reduce),(prefers-contrast:more){.board-filter-frame.board-filter-frame.board-filter-frame,.entitytagbar.entitytagbar.entitytagbar,.entitycollectionhead.entitycollectionhead.entitycollectionhead,body .review .reviewbulktoolbar,body .review .reviewgroupbar,.drawer.drawer,.drawer.drawer.open,.edge.edge,.top .search.search,.top.top>.ib{background:var(--ground);backdrop-filter:none;-webkit-backdrop-filter:none}}
 /* Peach-owned media and analytics layouts. */
@@ -142,7 +177,11 @@ html.board-high-contrast .board-filter-frame.board-filter-frame.board-filter-fra
 .gridstack>.grid{row-gap:24px;column-gap:16px}
 .top{isolation:isolate}
 body.board-scrolled .top{box-shadow:none;border-bottom:0}
-.board-filter-frame.board-is-stuck{box-shadow:0 0 24px 4px #00000038,0 8px 20px #00000026}
+/* 吸顶那一刻这块板离开纸面往上抬一档，三层影跟着加重：它盖住内容滚过去，两层之间
+   要有东西说明谁在上面。类名写三遍是为了压过上面那组玻璃规则——两条都从
+   `.board-filter-frame` 起头，`box-shadow` 整条归特异性高的那一条，少写一遍这里就
+   不生效，抬起来的那一档看不出来。 */
+.board-filter-frame.board-filter-frame.board-filter-frame.board-is-stuck{box-shadow:inset 0 1px 0 var(--glass-rim),inset 1px 0 0 var(--glass-low),inset -1px 0 0 var(--glass-low),inset 0 -1px 0 var(--glass-low),var(--glass-lift)}
 .board-filter-frame.board-is-stuck::before{content:'';position:absolute;left:-16px;right:-16px;top:-9px;height:9px;z-index:-1;background:var(--page);mask-image:linear-gradient(to right,transparent,#000 24px,#000 calc(100% - 24px),transparent);pointer-events:none}
 .board-filter-frame .tagbar.is-stuck,.board-filter-frame .count.is-stuck{backdrop-filter:none;-webkit-backdrop-filter:none}
 .peach-insights{max-width:1120px;margin:0 auto 40px;color:var(--ink)}

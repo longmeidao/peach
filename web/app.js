@@ -3101,27 +3101,44 @@ const viewPillsHtml=filterState=>VIEW_PILLS.map(v=>
    而不是新建：换了元素，动画就从头开始，看到的只是瞬移。
    点下去要立刻动。切换视图会重新取数，`buildBars` 约一秒后才把 `aria-pressed` 写成
    新值，等它就等于点完先僵一下再跳。 */
-let viewGlide=null,viewGlideBox=null;
+let viewGlide=null,viewGlideBox=null,viewGlideAim=null;
+/* 坐标基准是 `.board-filter-frame`，不是那一排本身：这块玻璃住在框外一层，才能在纵向
+   弹出那一排的边沿——那一排要横滚，`overflow-x:auto` 会把纵向一起算成滚动，住在里面
+   的话弹多少都在框沿被切平。代价是每一处几何都得把那一排自己的位置和横滚补回来。 */
+function viewGlideGeometry(tagbar,pill){
+  const frame=tagbar.closest('.board-filter-frame');if(!frame)return null;
+  return {frame,x:tagbar.offsetLeft+pill.offsetLeft-tagbar.scrollLeft,w:pill.offsetWidth,
+    y:tagbar.offsetTop+pill.offsetTop,h:pill.offsetHeight};
+}
 function syncViewGlide(animate,target){
   const tagbar=$('#tagbar');if(!tagbar)return;
   const active=target||tagbar.querySelector('[data-state][aria-pressed="true"]');
   if(!active){if(viewGlide)viewGlide.hidden=true;return}
+  const box=viewGlideGeometry(tagbar,active);
+  if(!box||!box.w)return;
+  viewGlideAim=active;
   if(!viewGlide){viewGlide=document.createElement('span');viewGlide.className='viewglide';viewGlide.setAttribute('aria-hidden','true')}
-  if(viewGlide.parentElement!==tagbar)tagbar.prepend(viewGlide);
-  viewGlide.hidden=false;
-  const box=[active.offsetLeft,active.offsetWidth,active.offsetTop,active.offsetHeight];
-  if(!box[1])return;
+  if(viewGlide.parentElement!==box.frame)box.frame.prepend(viewGlide);
+  /* 那一排横滚到看不见这一枚时收起来：它住在框外一层，不再跟着那一排一起被裁，不收
+     的话会一路飘到筛选条的内边距上，停在那儿像块没人要的高光。 */
+  viewGlide.hidden=box.x+box.w<=tagbar.offsetLeft||box.x>=tagbar.offsetLeft+tagbar.clientWidth;
   const from=viewGlideBox;viewGlideBox=box;
-  const settle=()=>{viewGlide.style.transform=`translateX(${box[0]}px)`;viewGlide.style.width=`${box[1]}px`;
-    viewGlide.style.top=`${box[2]}px`;viewGlide.style.height=`${box[3]}px`};
-  if(!animate||!from||from[0]===box[0]){settle();return}
-  /* 中间那一帧铺满起点到终点：玻璃是被拉过去的，不是滑过去的。 */
-  const near=Math.min(from[0],box[0]),far=Math.max(from[0]+from[1],box[0]+box[1]);
+  const settle=()=>{viewGlide.style.transform=`translateX(${box.x}px)`;viewGlide.style.width=`${box.w}px`;
+    viewGlide.style.top=`${box.y}px`;viewGlide.style.height=`${box.h}px`};
+  if(!animate||!from||from.x===box.x||reduceMotion()){settle();return}
+  /* 一块被拽着走的软东西：先朝两头拉长盖住起点和终点，同时压扁；宽度收回来时冲过落点
+     一小截再弹回，鼓起的那一下比自己该有的高度多出几像素，落在那一排的内边距里——这是
+     它唯一越过框沿的时刻，也是"到了"这件事真正被看见的地方，纯减速的曲线只会让它悄悄
+     停住。冲过头的距离按这一跳的跨度算并且封顶：相邻两枚之间跨度小，按比例冲出去才不会
+     显得每一跳都在甩；跨越整排时封顶挡住它冲出那一排。 */
+  const near=Math.min(from.x,box.x),far=Math.max(from.x+from.w,box.x+box.w);
+  const over=box.x+(box.x>from.x?1:-1)*Math.min(14,(far-near)*.09);
   viewGlide.animate([
-    {transform:`translateX(${from[0]}px)`,width:`${from[1]}px`},
-    {transform:`translateX(${near}px)`,width:`${far-near}px`,offset:.42},
-    {transform:`translateX(${box[0]}px)`,width:`${box[1]}px`}],
-    {duration:380,easing:'cubic-bezier(.33,.9,.28,1)'});
+    {transform:`translateX(${from.x}px) scaleY(1)`,width:`${from.w}px`,easing:'cubic-bezier(.2,.75,.3,1)'},
+    {transform:`translateX(${near}px) scaleY(.88)`,width:`${far-near}px`,offset:.34,easing:'cubic-bezier(.4,0,.2,1)'},
+    {transform:`translateX(${over}px) scaleY(1.2)`,width:`${box.w*1.05}px`,offset:.68,easing:'cubic-bezier(.36,0,.24,1)'},
+    {transform:`translateX(${box.x}px) scaleY(1)`,width:`${box.w}px`}],
+    {duration:300,easing:'linear'});
   settle();
 }
 function wireViewPills(){
@@ -3136,6 +3153,10 @@ function wireViewPills(){
   pills.forEach(b=>b.addEventListener('pointerenter',e=>{
     if(e.pointerType==='touch')return;syncViewGlide(true,b)}));
   tagbar.onpointerleave=e=>{if(e.pointerType!=='touch')syncViewGlide(true)};
+  /* 横滚时原地跟上，不走动画：那块玻璃的坐标是相对筛选条算的，那一排自己滚走了它不动
+     就会脱开对准的那一枚。跟的是上一次瞄准的目标，不是当前选中的——指针停在某一枚上
+     时滚动，玻璃不该趁机跳回去。 */
+  tagbar.onscroll=()=>syncViewGlide(false,viewGlideAim?.isConnected?viewGlideAim:null);
   syncViewGlide(false);
 }
 // 宽度是一组定值而不是随机数：随机会让同一次冷启动在两台机器上长得不一样，也没法测。
