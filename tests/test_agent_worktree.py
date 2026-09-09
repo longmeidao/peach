@@ -437,7 +437,7 @@ class CoAuthorTests(unittest.TestCase):
 
     def signed(self, *trailers):
         git(self.repo, "commit", "--allow-empty", "-m", "测试", "-m", "\n".join(trailers))
-        return co_author.check(self.repo)
+        return co_author.check(self.repo, "master")
 
     def test_an_unsigned_commit_cannot_be_traced_back_to_a_model(self):
         self.assertTrue(self.signed())
@@ -464,6 +464,28 @@ class CoAuthorTests(unittest.TestCase):
         self.assertEqual(
             self.signed("Co-Authored-By: Claude Code (Opus 5) <noreply@anthropic.com>",
                         "Co-Authored-By: Codex (GPT-5.5) <noreply@openai.com>"), [])
+
+    def test_every_commit_on_the_branch_is_checked_not_only_head(self):
+        """一次交付常常是好几个提交。只判尖端等于只判收尾那一次签得对不对，
+        而要追的恰恰是写出某一行的那个提交，所以问题里要报出它的短 hash 和主题。
+        """
+        self.signed("Co-Authored-By: Gemini CLI (3.5) <noreply@google.com>")
+        problems = self.signed(
+            "Co-Authored-By: Claude Code (Opus 5) <noreply@anthropic.com>")
+        self.assertEqual(len(problems), 1)
+        self.assertIn(git(self.repo, "log", "-1", "--format=%h", "HEAD~1").strip(),
+                      problems[0])
+        self.assertIn("Gemini CLI", problems[0])
+
+    def test_merges_from_the_target_branch_are_not_the_worker_s_commits(self):
+        """目标分支上的提交由它自己那次交付负责，合进来不等于这个分支重写了一遍。"""
+        git(self.repo, "checkout", "master")
+        git(self.repo, "commit", "--allow-empty", "-m", "上游的提交")
+        git(self.repo, "checkout", "worker")
+        self.signed("Co-Authored-By: Claude Code (Opus 5) <noreply@anthropic.com>")
+        git(self.repo, "merge", "--no-ff", "-m", "Merge branch 'master' into worker",
+            "master")
+        self.assertEqual(co_author.check(self.repo, "master"), [])
 
     def test_the_signature_gate_runs_before_the_test_evidence_is_read(self):
         """署名和 README 影响面在同一处拒收，都不必等到去读测试记录。"""
