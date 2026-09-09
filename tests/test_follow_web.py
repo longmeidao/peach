@@ -1710,7 +1710,9 @@ class FollowWebSourceTests(unittest.TestCase):
         page = self.page
         manage = page[page.index("function renderFollowManage("):
                       page.index("function wireFollowItems(")]
-        add_section = manage[manage.index('<section class="fsec">'):
+        # 三块内容各是一个工作区面板，按 `data-follow-workspace-panel` 认，别按
+        # `class="fsec"` 认——三块都带这个类，取到的会是第一块而不是「添加关注」。
+        add_section = manage[manage.index('<section class="fsec" data-follow-workspace-panel="add">'):
                              manage.index('</section>')]
         self.assertIn('id="followPicks"', add_section)
         self.assertNotIn('</section>\n      <div id="followPicks">', manage)
@@ -1925,10 +1927,12 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains(
             "document.body.classList.toggle('follow-manage-layout',"
             "decodeURIComponent(location.pathname)==='/follow-manage')")
-        # 凭据现在是主列里的第三块，不再是 aside。
+        # 凭据是主列里的第三块，标题是「来源管理」，凭据行就渲染在它里面。
         body = page[page.index("function renderFollowManage("):
                     page.index("function wireFollowManage(")]
-        self.assertLess(body.index("<h3>关注列表</h3>"), body.index("<h3>凭据</h3>"))
+        self.assertLess(body.index("<h3>关注列表</h3>"), body.index("<h3>来源管理</h3>"))
+        credentials = body[body.index("<h3>来源管理</h3>"):]
+        self.assertIn("creds.map(followCredentialRow)", credentials)
 
     def test_sections_have_a_frame_but_their_rows_do_not(self):
         """反模式是卡片**套**卡片，不是「不要任何容器」。

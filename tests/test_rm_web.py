@@ -8,9 +8,9 @@ import threading
 import time
 import unittest
 from contextlib import closing, contextmanager
+from dataclasses import replace
 from pathlib import Path
 from unittest import mock
-from types import SimpleNamespace
 
 from peach import catalog_rules, web_batch, web_catalog, web_stats
 from peach import web_contract as rm_web
@@ -202,8 +202,13 @@ class WebDataTests(unittest.TestCase):
             connection.execute("UPDATE asset SET path=? WHERE id=1", (r"R:\Media\one.mp4",))
             connection.execute("UPDATE asset SET path=? WHERE id=3", (r"R:\Media\cover.jpg",))
             connection.commit()
-        config = SimpleNamespace(locations={"local": [r"R:\Media", r"R:\Media-more"]},
-                                 library_names={}, library_icons={})
+        # 改真配置的这几个字段，不另捏一个只带它们的对象：`active()` 是全模块共用的，
+        # 存储卷那一段顺着 `translate_ledger_path` 也要读 `mounts`，缺字段就是
+        # AttributeError。Windows 上账本路径不必翻译、走不到那一步，只有 macOS 会红。
+        config = replace(
+            web_stats.settings_file.load_config(environ={}, strict=False),
+            locations={"local": (r"R:\Media", r"R:\Media-more")},
+            library_names={}, library_icons={})
         with mock.patch.object(web_stats.settings_file, "active", return_value=config):
             rows = rm_web.q_stats(self.contract)["by_library"]
         self.assertEqual([(row["name"], row["videos"], row["bytes"]) for row in rows],

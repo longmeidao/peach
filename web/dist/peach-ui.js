@@ -3949,9 +3949,11 @@ function Qr(e) {
 		e.classList.toggle("is-stuck", e.offsetParent !== null && window.scrollY > 0 && Number.isFinite(t) && Math.abs(e.getBoundingClientRect().top - t) <= 1);
 	}
 	let r = n.filter((e) => e.classList.contains("is-stuck"));
-	if (e.classList.toggle("review-is-stuck", r.length > 0), !r.length) return;
-	let i = r[0].getBoundingClientRect(), a = r[r.length - 1].getBoundingClientRect();
-	e.style.setProperty("--review-pane-left", `${i.left}px`), e.style.setProperty("--review-pane-width", `${i.width}px`), e.style.setProperty("--review-pane-height", `${a.bottom - i.top}px`);
+	e.classList.toggle("review-is-stuck", r.length > 0);
+	let i = r[0], a = r.at(-1);
+	if (!i || !a) return;
+	let o = i.getBoundingClientRect(), s = a.getBoundingClientRect();
+	e.style.setProperty("--review-pane-left", `${o.left}px`), e.style.setProperty("--review-pane-width", `${o.width}px`), e.style.setProperty("--review-pane-height", `${s.bottom - o.top}px`);
 }
 function $r(e, t) {
 	let n = [[

@@ -7586,7 +7586,9 @@ class WebUiSourceTests(unittest.TestCase):
             self.assertIn(fallback, board)
         bulk = (Path(__file__).resolve().parents[1] / "frontend" / "src" / "review-bulk.ts").read_text(encoding="utf-8")
         self.assertIn("root.classList.toggle('review-is-stuck', stuck.length > 0);", bulk)
-        self.assertIn("const head = stuck[0].getBoundingClientRect(), foot = stuck[stuck.length - 1].getBoundingClientRect();", bulk)
+        # 玻璃的两端取自首尾两条粘住的横条；下面三行 setProperty 才是它铺多大。
+        self.assertIn("const first = stuck[0], last = stuck.at(-1);", bulk)
+        self.assertIn("const head = first.getBoundingClientRect(), foot = last.getBoundingClientRect();", bulk)
         for name, edge in (("left", "head.left"), ("width", "head.width"), ("height", "foot.bottom - head.top")):
             self.assertIn(f"root.style.setProperty('--review-pane-{name}', `${{{edge}}}px`);", bulk)
 
