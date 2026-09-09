@@ -158,7 +158,7 @@ class LibraryNfoTests(unittest.TestCase):
         self.assertIn("needsAttention?' open':''", source)
         self.assertIn('还没有内容标签', source)
         self.assertIn('还没有存储来源', source)
-        self.assertIn("totalVideos?locationRows:catalogEmptyHtml", source)
+        self.assertIn("catalogEmptyHtml({configurable:runtimeConfigurable})}</div>", source)
         self.assertIn("unmountIsland($('#libraryProcessingNotice'))", source)
         self.assertIn("mode:'notice'", source)
         configuration = (root / 'frontend/src/islands/configuration.tsx').read_text(encoding='utf-8')

@@ -581,8 +581,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertNotIn("$('#drawer').insertAdjacentHTML(", source)
         self.assertPageContains("const scroll=$('#drawerScroll'),key=surfacePath()+location.search;")
         self.assertPageContains("scroll.innerHTML=`<div style=\"display:flex;align-items:center;justify-content:space-between;margin-bottom:10px\">")
-        self.assertPageContains("scroll.insertAdjacentHTML('beforeend',document.documentElement.classList.contains('original-design')?")
-        self.assertPageContains("sidebarSectionHtml('内容标签',tagBody,'','online')")
+        self.assertPageContains("scroll.insertAdjacentHTML('beforeend',sidebarSectionHtml('内容标签',tagBody,'','online'));")
         # 换页面的判据记在滚动层上：syncSidebarSurface() 判定换页就 replaceChildren()，
         # 传宿主进去会连 #drawerScroll 一起清掉，和整块 innerHTML 是同一种失败。
         self.assertPageContains("syncSidebarSurface(scroll,key)")
@@ -4137,6 +4136,37 @@ class WebUiSourceTests(unittest.TestCase):
             "items.forEach(item=>item.nodes.forEach(node=>node.classList.remove('board-group-active')));")
         self.assertPageContains("items[index].nodes.forEach(node=>node.classList.add('board-group-active'));")
 
+    def test_one_hairline_separates_the_settings_rows_from_the_block_under_them(self):
+        """「左侧导航」那一块和它上面那行之间只有一条线，而且和上面几条一样长。
+
+        两侧各画各的时，一条 1px 的下边线和一条 1px 的上边线落在同一个 y 上，看着就是
+        一道 2px 的粗线；而这一块不让出滑块那 16px 的话，它的线还会比上面几行长一截，
+        一直贴到卡片边上。线归行的下沿，右边这一格跟着行走。
+        """
+        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
+        self.assertIn(".settingscard .settingsscroll .settingrow+.sidebarsetting{border-top:0}", board)
+        self.assertIn(".settingscard .settingsscroll .sidebarsetting"
+                      "{padding:16px 12px 12px 0!important;margin:0 16px 0 0!important}", board)
+        self.assertIn(".settingscard .settingsscroll .settingrow{min-height:52px;"
+                      "padding:10px 10px 10px 0;gap:16px;border-top:0;"
+                      "border-bottom:1px solid var(--line-soft)}", board)
+
+    def test_a_locked_page_does_not_keep_drawing_its_own_scrollbar(self):
+        """弹层盖住页面时只剩弹层自己那条滚动条。
+
+        页面这时是 `overflow:hidden`，整页那条轨道拖不动、也读不出任何进度，留着就是
+        弹层旁边多一条竖线。判据跟着锁走：加 `overflow:hidden` 的就是这两个类。
+        """
+        base = (Path(__file__).resolve().parents[1] / "web/css/01-base.css").read_text(encoding="utf-8")
+        self.assertIn("body.settings-open>.ovtrack.page,body.photolight-open>.ovtrack.page"
+                      "{display:none}", base)
+        settings = (Path(__file__).resolve().parents[1]
+                    / "web/css/16-settings.css").read_text(encoding="utf-8")
+        self.assertIn("body.settings-open{overflow:hidden}", settings)
+        photos = (Path(__file__).resolve().parents[1]
+                  / "web/css/08-photos.css").read_text(encoding="utf-8")
+        self.assertIn("body.photolight-open{overflow:hidden}", photos)
+
     def test_the_this_computer_group_is_a_page_not_a_row_list(self):
         """「这台电脑」那一格装的是整张配置页，外面不套开关行那圈底。
 
@@ -4300,7 +4330,12 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("const stat=(label,value,note='')=>")
         self.assertPageContains(".map(([kind,count])=>stat(KINDS[kind]||kind,Number(count).toLocaleString())).join('');")
         self.assertPageContains(".linkstats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr))")
-        self.assertPageContains('<div class="linkhosts"><span>最多的站点</span>')
+        self.assertPageContains('<div class="linkhosts"><span>来得最多的站点</span>')
+        # 类型名要能被没读过代码的人读懂：`catalog` 收的是 DMM、MGStage、JavLibrary
+        # 这类作品检索站，`source_reference` 是这条资料的出处。
+        self.assertPageContains("catalog:'作品资料站'")
+        self.assertPageContains("source_reference:'资料出处'")
+        self.assertPageContains("挂在 ${info.entities.toLocaleString()} 位女优、厂牌或系列名下")
 
     def test_taste_page_combines_private_exports_and_peach_behavior(self):
         self.assertRoute('/taste', "openTaste(push)", "section:'taste'")
@@ -6158,9 +6193,9 @@ class WebUiSourceTests(unittest.TestCase):
         """详情展开后停在最后一层粘着的东西下面 8px。
 
         名单要跟着粘的那一层走：`#tagbar` 与 `#count` 被收进 `.board-filter-frame` 之后
-        自己是 `position:relative`，只按这两个旧名字量就只剩顶栏那 64px，详情停在 144px、
-        浮层底边却在 168px，最上面 24px 连同关闭键一起压在它下面。两个旧名字留着，
-        `original-design` 那条退路下粘的仍是它们自己。
+        自己是 `position:relative`，只按这两个名字量就只剩顶栏那 64px，详情停在 144px、
+        浮层底边却在 168px，最上面 24px 连同关闭键一起压在它下面。这两个名字仍留在名单里：
+        `syncFilterFrame()` 判定不是馆藏版式时会把它们放回原位，那时粘着的是它们自己。
 
         顶栏那一段另有出处：`html` 的 `scroll-padding-top` 已经替它留好，而它和
         `scroll-margin-top` 是叠加的，再算一遍就把落点压低整整一个顶栏（要 176px，
@@ -6688,7 +6723,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("wireDragReorder(root,{selector:'[data-sidebar-row]',attribute:'data-sidebar-row',")
         self.assertPageContains("wireDragReorder(list,{selector:'[data-queue-row]',attribute:'data-queue-row',")
         self.assertPageContains("function wireNavigationDrag(root){")
-        self.assertPageContains("clearTimeout(edgeT);edgeT=null;drawerSuppressUntil=Date.now()+900")
         self.assertPageContains("wireNavigationDrag($('#edge'))")
         self.assertPageContains("wireNavigationDrag($('#drawer').querySelector('.dnav'))")
         self.assertPageContains('data-nav="${k}" draggable="true"')
@@ -6975,8 +7009,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("async function openDataCleanup(push=true)")
         self.assertPageContains("route('/data-cleanup')")
         self.assertPageContains("${(sources.sources||[]).some(source=>['local','115','pikpak'].includes(source.location)&&source.roots?.length)?resourceSyncMarkup():''}")
-        self.assertPageContains("fieldsetTitle('resourceBoxTitle','检查文件与馆藏记录')")
-        self.assertPageLacks("fieldsetTitle('resourceBoxTitle','网盘与账本')")
+        self.assertPageContains("fieldsetTitle('resourceBoxTitle','文件与记录是否对得上')")
+        self.assertPageContains("照着馆藏里的记录，去本地磁盘和网盘上找对应的文件")
         self.assertPageContains("cloudPreferenceLocations(g.files,d.cloudLocations||[])")
         self.assertPageContains("Boolean(s.history_sources||d.updated_at),localStorage.getItem(TASTE_GUIDE_KEY)==='1')")
         self.assertPageContains('wireTasteHistoryGuide(root,localStorage);')
@@ -9306,14 +9340,29 @@ class CoverSleeveThresholdTests(unittest.TestCase):
 
 
 class BoardStyleIsolationTests(unittest.TestCase):
-    def test_board_assets_and_legacy_choice_are_available_before_app_start(self):
+    def test_the_board_layer_is_the_only_interface_and_ships_unconditionally(self):
+        """board.css 随页面一起加载，页面上没有第二套界面可选。
+
+        它是盖在 `web/css/` 上的覆盖层，两份一起才画得出一个界面。留一个开关把它摘掉，
+        剩下的是一屏对不上的类名——`.board-*` 那些节点仍在 DOM 里，谁也不给它们样式。
+        判据落在四处：入口 HTML 无条件引它、首屏那段脚本不再读任何界面偏好、
+        `web/` 下没有 `peach.legacy-ui` 与 `original-design` 的消费者、设置里只剩对比度
+        这一个开关。
+        """
         root = Path(__file__).resolve().parents[1]
         html = (root / "web/index.html").read_text(encoding="utf-8")
-        self.assertIn('id="boardStyles"', html)
-        self.assertIn('href="/board.css"', html)
-        self.assertLess(html.index('peach.legacy-ui'), html.index('src="/app.js"'))
-        css = (root / "web/css/16-settings.css").read_text(encoding="utf-8")
-        self.assertIn('#applyUISetting[hidden]{display:none}', css)
+        self.assertIn('<link rel="stylesheet" href="/board.css">', html)
+        entry = (root / "src/peach/routes_pages.py").read_text(encoding="utf-8")
+        self.assertIn("return f'<style id=\"boardEntryStyles\">{css}</style>'", entry)
+        for path in sorted((root / "web").rglob("*")):
+            if path.suffix not in {".js", ".css", ".html"} or "dist" in path.parts:
+                continue
+            text = path.read_text(encoding="utf-8")
+            for token in ("peach.legacy-ui", "original-design"):
+                self.assertNotIn(token, text, f"{path.name} 仍在读第二套界面的开关")
+        app = (root / "web/app.js").read_text(encoding="utf-8")
+        self.assertIn("if(!group||document.getElementById('glassContrastSetting'))return;", app)
+        self.assertNotIn("legacyUISetting", app)
 
     def test_icon_centering_does_not_override_toolbar_visibility(self):
         root = Path(__file__).resolve().parents[1]

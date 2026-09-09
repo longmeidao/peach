@@ -21,7 +21,7 @@ import {
 } from './js/ui-components.js';
 
 initMiddleTruncate(document);
-if(localStorage.getItem('peach.legacy-ui')!=='true')initBoardControls();
+initBoardControls();
 wireBusyActions(document);
 attachOverlayScrollbar(document.documentElement,{variant:'page'});
 attachOverlayScrollbar($('#drawerScroll'));
@@ -81,7 +81,6 @@ let entityPhotos=null,entityMediaView=emptyMediaView(),photoWallItems=[];
    艺人，切到视频是这一次浏览的选择，不是这类页面的常态。 */
 let agencyRosterView='people',agencyRoster=[];
 let sidebarDragKey=null;
-let edgeT=null;
 /* 搜索下拉里被键盘选中的那一项。列表每次重建都要归零，否则索引会指向已经不存在的行。 */
 let searchActive=-1;
 /* ────────────────────────────────────────────────────────────────────────── */
@@ -275,7 +274,7 @@ const MANAGEMENT_PLACEHOLDERS={
     ${pageSkeletonHtml('正在读取采集来源',{cards:true,count:4,fill:false,className:'cleanup-skeleton'})}</div>`,
 };
 const managementPlaceholder=path=>
-  (localStorage.getItem('peach.legacy-ui')!=='true'&&boardPageSkeleton(path))||
+  boardPageSkeleton(path)||
   (MANAGEMENT_PLACEHOLDERS[path]||(()=>pageSkeletonHtml('正在读取页面')))();
 /* 顶部三层只属于首页。深链启动时先画一遍再由路由收起来，等于向管理页和索引页
    承诺了三条永远不会到货的横条。 */
@@ -673,12 +672,11 @@ const toast=(message,{timeout=6000,warn=false,action=null}={})=>{
   const root=$('#toasts');
   const item=document.createElement('div');
   item.className='toast'+(warn?' warn':'');
-  const board=localStorage.getItem('peach.legacy-ui')!=='true';
   const initial=toastBody(message);
   const paint=(body,alert)=>{
     item.classList.toggle('warn',!!alert);
     item.setAttribute('role',alert?'alert':'status');
-    item.innerHTML=`${board?`<span class="board-notification-icon" aria-hidden="true">${icon(alert?'circle-alert':'check')}</span>`:alert?icon('alert'):''}<p>${body}</p>${
+    item.innerHTML=`<span class="board-notification-icon" aria-hidden="true">${icon(alert?'circle-alert':'check')}</span><p>${body}</p>${
       action&&!alert&&body===initial?`<button class="tact">${esc(action.label)}</button>`:''
       }<button class="tclose" title="关闭" aria-label="关闭提示">${icon('x')}</button>`;
     item.querySelector('.tclose').onclick=close;
@@ -3207,7 +3205,7 @@ async function buildBars(){
       data-val="${esc(it.k)}">${dot}<span class="chip-label">${esc(it.label||tagLabel(it.k))}</span>${it.n!=null?`<span class="n">${it.n.toLocaleString()}</span>`:''}</button>`;
   }).join('')+`</div>`:'';
   // 按语义类别区分来源、创作者、内容和技术规格。
-  const sec=(t,b,x,cat)=>document.documentElement.classList.contains('original-design')?(b?`<div class="sec${cat?' cat-'+cat:''}"><h3>${t}${x||''}</h3>${b}</div>`:''):sidebarSectionHtml(t,b,x,cat);
+  const sec=(t,b,x,cat)=>sidebarSectionHtml(t,b,x,cat);
   const scopedCreators=context.type==='entity'&&context.kind==='creator'
     ? facetData.creators.filter(item=>item.k!==context.name):facetData.creators;
   // 与窄栏共用 EDGE_ICONS —— 两边条目必须一致，抽屉不另写一份硬编码
@@ -3415,9 +3413,6 @@ async function openStats(push=true){
   const metricTab=(key,label,value,detail,selected=false)=>`<button type="button" role="tab" data-stats-metric="${key}"
     aria-selected="${selected}" aria-controls="stats-detail-${key}" tabindex="${selected?'0':'-1'}">
     ${statCardBody(label,value,detail,{inventory:'database',viewing:'eye',coverage:'tags',storage:'hard-drive'}[key])}</button>`;
-  const locationRows=d.by_loc.map(row=>{const label=row.k==='online'?'已保存在线':(LOC[row.k]||row.k);return `<div class="insightbarrow"><div><span>${label}</span><b>${row.videos.toLocaleString()}</b></div>
-    ${progressHtml(`${label}：${row.videos.toLocaleString()} / ${totalVideos.toLocaleString()}`,row.videos,totalVideos)}
-    <small>${gb(row.bytes)} · ${pct(row.videos,totalVideos)}%</small></div>`}).join('');
   const tagsTable=d.top_tags.length?`<ol class="insightranking">${d.top_tags.map((t,index)=>`<li><button type="button" class="insightrankrow" data-k="${esc(t.k)}">
     <span class="insightrankpos">${index+1}</span><span>${esc(tagLabel(t.k))}</span><b>${t.n.toLocaleString()}</b></button></li>`).join('')}</ol>`
     :emptyStateHtml('tags','还没有内容标签','补全资料或添加标签后，这里会显示馆藏中的内容标签。');
@@ -3447,7 +3442,7 @@ async function openStats(push=true){
       </div>
       <section class="insightdetail">
         <div id="stats-detail-inventory" role="tabpanel" data-stats-detail="inventory" class="insightdetailbody">
-          ${localStorage.getItem('peach.legacy-ui')==='true'?(totalVideos?locationRows:catalogEmptyHtml({configurable:runtimeConfigurable})):(totalVideos?`<div class="board-inventory-charts">${radialCardHtml(d.by_loc.map(row=>({name:LOC[row.k]||row.k,value:row.videos,detail:gb(row.bytes)})),'网盘与本地')}${radialCardHtml((d.by_library||[]).map(row=>({name:row.name,value:row.videos,detail:gb(row.bytes)})),'媒体库')}</div>`:catalogEmptyHtml({configurable:runtimeConfigurable}))}</div>
+          ${totalVideos?`<div class="board-inventory-charts">${radialCardHtml(d.by_loc.map(row=>({name:LOC[row.k]||row.k,value:row.videos,detail:gb(row.bytes)})),'网盘与本地')}${radialCardHtml((d.by_library||[]).map(row=>({name:row.name,value:row.videos,detail:gb(row.bytes)})),'媒体库')}</div>`:catalogEmptyHtml({configurable:runtimeConfigurable})}</div>
         <div id="stats-detail-viewing" role="tabpanel" data-stats-detail="viewing" class="insightdetailbody" hidden>
           <div class="insightcopy"><span>观看</span><h2>${cs.played.toLocaleString()}</h2><b>个作品有播放记录</b>
             <p>累计 ${hrs(cs.play_seconds)}</p></div>
@@ -3477,7 +3472,7 @@ async function openStats(push=true){
     </div>`;
   const statsRoot=$('#stats');
   wireRadialCards(statsRoot);
-  if(localStorage.getItem('peach.legacy-ui')!=='true')wireExpandableRanks(statsRoot);
+  wireExpandableRanks(statsRoot);
   statsRoot.querySelectorAll('[data-stats-metric]').forEach(button=>button.onclick=()=>{
     statsRoot.querySelectorAll('[data-stats-metric]').forEach(tab=>{
       const selected=tab===button;tab.setAttribute('aria-selected',String(selected));tab.tabIndex=selected?0:-1});
@@ -3509,7 +3504,7 @@ function linkManagerMarkup(){
   return `<section class="resourcesync" id="link-manager" aria-labelledby="linkManagerTitle">
     <h2 id="linkManagerTitle">链接管理</h2>
     <div class="resourcesyncbox" data-geist-fieldset>
-      <div class="resourcesyncbody geist-fieldset-content">${fieldsetTitle('linkBoxTitle','外链与实体')}
+      <div class="resourcesyncbody geist-fieldset-content">${fieldsetTitle('linkBoxTitle','库里存着的站外链接')}
       <div id="linkSummary" class="linksummary"></div></div>
       <div class="resourcesyncfooter geist-fieldset-footer" data-geist-fieldset-footer>
       <button class="resourceaction" type="button" id="linkCheck">${icon('unlink')}<span>检查死链</span></button></div></div>
@@ -3521,7 +3516,7 @@ async function wireLinkManager(){
   const active=()=>location.pathname==='/data-cleanup'&&!$('#stats').hidden&&document.body.contains(result);
   /* `官网 · 事务所` 里的间隔点会和「按类型」那行的分隔点撞在一起，读出来是
      「社媒 373 · 官网 · 事务所 224」——分不清哪个数字属于哪一类。 */
-  const KINDS={official:'官网/事务所',social:'社媒',catalog:'资料库',source_reference:'来源记录'};
+  const KINDS={official:'官网/事务所',social:'社交账号',catalog:'作品资料站',source_reference:'资料出处'};
   try{
     const info=await api('/api/links');
     /* 每一类各占一格。挤成一行时标签和数字之间只剩间隔点，数字归谁全靠猜。 */
@@ -3531,16 +3526,16 @@ async function wireLinkManager(){
       .map(([kind,count])=>stat(KINDS[kind]||kind,Number(count).toLocaleString())).join('');
     const hosts=(info.top_hosts||[]).slice(0,3).map(([host,count])=>`${esc(host)} ${count}`).join(' · ');
     summary.innerHTML=`<div class="linkstats">
-      ${stat('链接',info.total.toLocaleString(),`分布在 ${info.entities.toLocaleString()} 个实体上`)}
+      ${stat('链接总数',info.total.toLocaleString(),`挂在 ${info.entities.toLocaleString()} 位女优、厂牌或系列名下`)}
       ${kinds}</div>
-      ${hosts?`<div class="linkhosts"><span>最多的站点</span><b>${hosts}</b></div>`:''}`;
+      ${hosts?`<div class="linkhosts"><span>来得最多的站点</span><b>${hosts}</b></div>`:''}`;
   }catch(error){summary.innerHTML=noteHtml(error.message,{variant:'error',label:'读取失败'})}
 
   const row=(item,pick)=>`<tr>${pick?`<td class="linkpick"><input type="checkbox" data-link-id="${item.id}" aria-label="选择 ${esc(item.entity)} 的${esc(item.label||item.url)}"></td>`:''}<td>${esc(item.entity)}</td><td>${esc(KINDS[item.link_kind]||item.link_kind)}</td>
     <td>${esc(item.label||'')}</td><td class="linknote">${esc(item.note)}</td>
     <td class="linkurl"><a class="externallink" href="${esc(item.url)}" target="_blank" rel="noreferrer"><span data-middle-truncate>${esc(item.url)}</span>${icon('external-link','externalmark')}</a></td></tr>`;
   const table=(title,items,hint,{pick=false,footer=''}={})=>items.length?`<div class="linkgroup"><h4>${esc(title)} <b>${items.length}</b></h4>
-    <p>${esc(hint)}</p><div class="linktablewrap"><table class="linktable"><thead><tr>${pick?'<th class="linkpick"><input type="checkbox" id="linkPickAll" aria-label="全选取不到的链接"></th>':''}<th>实体</th><th>类型</th><th>标签</th><th>结果</th><th>地址</th></tr></thead><tbody>${items.map(item=>row(item,pick)).join('')}</tbody></table></div>${footer}</div>`:'';
+    <p>${esc(hint)}</p><div class="linktablewrap"><table class="linktable"><thead><tr>${pick?'<th class="linkpick"><input type="checkbox" id="linkPickAll" aria-label="全选这次没访问成功的链接"></th>':''}<th>所属</th><th>类型</th><th>标签</th><th>结果</th><th>地址</th></tr></thead><tbody>${items.map(item=>row(item,pick)).join('')}</tbody></table></div>${footer}</div>`:'';
 
   const render=payload=>{
     const running=payload.status==='running';
@@ -3553,14 +3548,14 @@ async function wireLinkManager(){
     const progress=running?(payload.total?jobProgressHtml(`${retrying?'已重验':'已检查'} ${payload.checked.toLocaleString()} / ${payload.total.toLocaleString()} 条链接`,payload.checked,payload.total):loadingDotsHtml(retrying?'正在重验链接':'正在检查链接')):'';
     /* gone 和 unclear 必须分开摆：`linktr.ee` 回 403 是挡爬虫、`x.com` 回 500 是临时错误，
        链接本身好好的。混成一张表会让人顺手把好链接一起删掉。 */
-    const gone=table('已失效',payload.gone||[],'上游明确回 404／410，页面确实没了。');
-    /* 「取不到」大多是站点挡爬虫或一次抖动，换个时间再问一次就通了。重跑整批要好几
+    const gone=table('页面已经没了',payload.gone||[],'站点明确回答这个地址不存在（HTTP 404 或 410）。');
+    /* 这一组大多是站点拒绝程序访问或一次抖动，换个时间再问一次就通了。重跑整批要好几
        分钟，所以这里能挑着重试：勾中哪几条就只问哪几条，别的结论原样留着。 */
     const retryable=done?(payload.unclear||[]):[];
     const retryRow=retryable.length?`<div class="linkretryrow">
       <button class="resourceaction" type="button" id="linkRetryPicked" disabled>${icon('rotate-cw')}<span>重试选中的链接</span></button>
       <button class="resourceaction" type="button" id="linkRetryAll">${icon('rotate-cw')}<span>全部重试（${retryable.length}）</span></button></div>`:'';
-    const unclear=table('取不到',payload.unclear||[],'一次访问没成功，但不等于没了：有的站挡爬虫，有的是临时错误。这些链接不会被删除，勾选后可以只重试它们。',{pick:retryable.length>0,footer:retryRow});
+    const unclear=table('这次没访问成功',payload.unclear||[],'页面不一定没了：有的站点拒绝程序访问，有的是临时故障。这些链接会保留，勾选后可以只重试其中几条。',{pick:retryable.length>0,footer:retryRow});
     const apply=(done&&(payload.gone||[]).length)?`<div class="resourceapplyrow"><p>删除前会逐条重验一次；此操作不可撤销。</p>
       <button class="resourceaction danger" type="button" id="linkPrune">删除 ${payload.gone.length} 条失效链接</button></div>`:'';
     const clean=(done&&!(payload.gone||[]).length&&!(payload.unclear||[]).length)?'<p class="resourcesyncok">全部链接都能打开。</p>':'';
@@ -3629,8 +3624,8 @@ function resourceSyncMarkup(){
   return `<section class="resourcesync" id="resource-sync" aria-labelledby="resourceSyncTitle">
     <h2 id="resourceSyncTitle">资源同步</h2>
     <div class="resourcesyncbox" data-geist-fieldset>
-      <div class="resourcesyncbody geist-fieldset-content">${fieldsetTitle('resourceBoxTitle','检查文件与馆藏记录')}
-      <p>检查本地磁盘和网盘，找出失效的馆藏记录与闲置缓存。</p></div>
+      <div class="resourcesyncbody geist-fieldset-content">${fieldsetTitle('resourceBoxTitle','文件与记录是否对得上')}
+      <p>照着馆藏里的记录，去本地磁盘和网盘上找对应的文件：文件已经不在的记录挑出来，没有记录再用到的缓存一并列出。</p></div>
       <div class="resourcesyncfooter geist-fieldset-footer" data-geist-fieldset-footer>
       <button class="resourceaction" type="button" id="resourceScan">${icon('git-compare')}<span>检查文件</span></button></div></div>
     <div id="resourceSyncResult" aria-live="polite"></div></section>`;
@@ -3861,7 +3856,7 @@ function renderTaste(d){
   const root=$('#stats'),stateEl=root.querySelector('[data-taste-state]'),file=root.querySelector('[data-taste-file]');
   wireActivityCharts(root);
   wireCreatorSankey(root);
-  if(localStorage.getItem('peach.legacy-ui')!=='true')wireExpandableRanks(root);
+  wireExpandableRanks(root);
   wireTasteHistoryGuide(root,localStorage);
   root.querySelectorAll('input[name="taste-evidence"]').forEach(input=>input.onchange=()=>{
     tasteEvidence=input.value;
@@ -5618,16 +5613,13 @@ function followAuthorName(group){
 const collapsedFollowAuthors=new Set();
 function followAuthorBlock(group){
   const name=followAuthorName(group);
-  const legacy=localStorage.getItem('peach.legacy-ui')==='true';
   const key=String(group[0].author_key||group[0].id);
-  const collapsed=!legacy&&collapsedFollowAuthors.has(key);
+  const collapsed=collapsedFollowAuthors.has(key);
   const bad=group.filter(s=>s.last_status==='error'||s.last_status==='unauthorized').length;
-  const sourceRows=group.map(source=>followSourceRow(source,!legacy)).join('');
-  const sources=localStorage.getItem('peach.legacy-ui')==='true'
-    ?scrollerHtml(sourceRows,{className:'fauthorsources',label:`${name} 的关注来源`})
-    :`<div class="fauthorsources" id="follow-author-${group[0].id}" aria-label="${esc(name)} 的关注来源">${sourceRows}</div>`;
-  return `<${legacy?'div':'details'} class="fauthor${bad?' bad':''}"${!legacy&&!collapsed?' open':''}>
-    <${legacy?'div':'summary'} class="fauthorhead">${followAuthorAvatar(group)}
+  const sourceRows=group.map(source=>followSourceRow(source,true)).join('');
+  const sources=`<div class="fauthorsources" id="follow-author-${group[0].id}" aria-label="${esc(name)} 的关注来源">${sourceRows}</div>`;
+  return `<details class="fauthor${bad?' bad':''}"${collapsed?'':' open'}>
+    <summary class="fauthorhead">${followAuthorAvatar(group)}
       <b>${esc(name)}</b>
       <button type="button" class="frowicon" data-follow-check="" data-follow-sources="${group.filter(s=>s.enabled).map(s=>s.id).join(',')}"
         ${group.some(s=>s.enabled)?'':'disabled'} title="检查此作者" aria-label="检查 ${esc(name)} 的全部来源">${icon('refresh-cw')}</button>
@@ -5635,9 +5627,9 @@ function followAuthorBlock(group){
         ? group.map(source=>sourceIcon(source.provider)).join('')
         : sourceIcon(group[0].provider)+esc(group[0].provider_label)}</span>
       ${bad?`<span class="fmeta warn">${bad} 个失败</span>`:''}
-      ${legacy?'':`<span class="board-author-actions"><button type="button" class="fbtn small" data-follow-author-select aria-pressed="false" aria-label="全选 ${esc(name)} 的来源">全选该作者</button><button type="button" class="frowicon board-author-toggle" data-follow-author-toggle="${esc(key)}" aria-controls="follow-author-${group[0].id}" aria-expanded="${!collapsed}" aria-label="${collapsed?'展开':'收起'} ${esc(name)} 的来源">${icon('chevron-down')}</button></span>`}
-    </${legacy?'div':'summary'}>
-    ${sources}</${legacy?'div':'details'}>`;
+      <span class="board-author-actions"><button type="button" class="fbtn small" data-follow-author-select aria-pressed="false" aria-label="全选 ${esc(name)} 的来源">全选该作者</button><button type="button" class="frowicon board-author-toggle" data-follow-author-toggle="${esc(key)}" aria-controls="follow-author-${group[0].id}" aria-expanded="${!collapsed}" aria-label="${collapsed?'展开':'收起'} ${esc(name)} 的来源">${icon('chevron-down')}</button></span>
+    </summary>
+    ${sources}</details>`;
 }
 
 const followSourceSelection=new Set();
@@ -5822,9 +5814,7 @@ function setFollowListLayout(value){
   wireFollowManage(followCredentials?.providers||[]);
 }
 function followSourceListHtml(groups){
-  const legacy=localStorage.getItem('peach.legacy-ui')==='true';
-  return followListLayout()==='table'?followSourceTable(groups,!legacy)
-    :legacy?groups.map(followAuthorBlock).join('')
+  return followListLayout()==='table'?followSourceTable(groups,true)
     :`<div class="board-follow-list">${groups.map(followAuthorBlock).join('')}</div>`;
 }
 
@@ -5834,7 +5824,6 @@ function followSourceListHtml(groups){
    行与行之间也只用分隔线，不各自套框。控件尺寸按实测 Geist：32px 高、6px 圆角、14px。 */
 function renderFollowManage(credentials){
   const sources=followData.sources||[],counts=followData.counts||{};
-  const legacy=localStorage.getItem('peach.legacy-ui')==='true';
   const groups=followAuthorGroups(sources);
   const sourceList=followSourceListHtml(groups);
   const broken=sources.filter(s=>s.last_status==='error'||s.last_status==='unauthorized');
@@ -5846,17 +5835,17 @@ function renderFollowManage(credentials){
   $('#stats').innerHTML=`<div class="follow followmanage">
     ${locked?`<div class="runtimegate">${icon('info')}<span>${esc(followRuntime.ledger_read_only_message||'本机当前只能浏览')}</span>${writer
       ?`<a href="${esc(writer)}">前往写入端管理关注</a>`:''}</div>`:''}
-    ${legacy?'':`<div class="fmanageoverview" aria-label="关注概览">
+    <div class="fmanageoverview" aria-label="关注概览">
       <div><span>关注作者</span><b>${groups.length}<small> 位</small></b></div>
       <div><span>启用来源</span><b>${sources.filter(source=>source.enabled).length}<small> / ${sources.length}</small></b></div>
       <div><span>检查失败</span><b>${broken.length}<small> 个来源</small></b></div>
       <div><span>未看更新</span><b>${counts.new||0}<small> 条</small></b></div>
-    </div>`}
-    ${legacy?'':`<div class="follow-workspace-switch" role="tablist" aria-label="关注管理区域">
+    </div>
+    <div class="follow-workspace-switch" role="tablist" aria-label="关注管理区域">
       <button type="button" role="tab" aria-selected="true" data-follow-workspace="list">关注列表</button>
       <button type="button" role="tab" aria-selected="false" data-follow-workspace="add">添加关注</button>
       <button type="button" role="tab" aria-selected="false" data-follow-workspace="source">来源管理</button>
-    </div>`}
+    </div>
     <div class="fmain">
       <section class="fsec" data-follow-workspace-panel="add">
         <div class="fsechead"><h3>添加关注</h3></div>
@@ -5887,7 +5876,7 @@ function renderFollowManage(credentials){
             icon('refresh-cw')}检查全部</button>
           <button class="fbtn" data-follow-view>${icon('rss')}去看更新</button></div>
         ${followCheckReport?followCheckFailNote(followCheckReport):''}
-        ${sources.length&&localStorage.getItem('peach.legacy-ui')!=='true'?`<div class="board-follow-selection"><label>${checkboxHtml('data-follow-select-all aria-label="全选来源"')}全选</label><span data-follow-selected-count>已选 0</span><button class="fbtn" data-follow-check="" data-follow-sources="" data-follow-selection-action disabled>检查所选</button><button class="fbtn" data-follow-selection-enabled="true" data-follow-selection-action disabled>启用</button><button class="fbtn" data-follow-selection-enabled="false" data-follow-selection-action disabled>暂停</button><button class="fbtn danger" data-follow-selection-remove data-follow-selection-action disabled>删除</button></div>`:''}
+        ${sources.length?`<div class="board-follow-selection"><label>${checkboxHtml('data-follow-select-all aria-label="全选来源"')}全选</label><span data-follow-selected-count>已选 0</span><button class="fbtn" data-follow-check="" data-follow-sources="" data-follow-selection-action disabled>检查所选</button><button class="fbtn" data-follow-selection-enabled="true" data-follow-selection-action disabled>启用</button><button class="fbtn" data-follow-selection-enabled="false" data-follow-selection-action disabled>暂停</button><button class="fbtn danger" data-follow-selection-remove data-follow-selection-action disabled>删除</button></div>`:''}
         ${sources.length?`<div class="frows fsources" data-layout="${followListLayout()}">${sourceList}</div>
           ${counts.new?`<div class="fsecfoot"><p class="fnote fbulkrow"><span class="fbulkcounts">未看 ${counts.new} · 已看 ${counts.seen||0}
             · 已保存 ${counts.saved||0} · 已忽略 ${counts.ignored||0}</span>
@@ -5899,15 +5888,17 @@ function renderFollowManage(credentials){
         <div class="fsechead"><h3>来源管理</h3>
           ${needCred.length?`<span class="fmeta warn">${needCred.length} 个待配置</span>`:''}</div>
         <div class="frows">${creds.map(followCredentialRow).join('')}</div>
-        <div class="fdesc"><b>存放位置与权限
+        <div class="fdesc"><b>这些账号信息存在哪里
             <button type="button" class="fdescinfo" data-fdesc-tooltip
               aria-label="凭据存放位置说明">${icon('info')}</button></b>
-          <span>Windows 上不收紧文件权限</span>
-          <div class="context-card" id="follow-credential-tooltip" role="dialog" aria-label="凭据存放信息" hidden><h3>凭据存放信息</h3><dl><dt>所在设备</dt><dd>运行 Peach 的电脑</dd><dt>访问权限</dt><dd>由该电脑的文件访问权限控制</dd><dt>其他设备</dt><dd>浏览器不会保存这份凭据文件</dd></dl></div></div>
+          <span>存成运行 Peach 那台电脑上的一个文件。在 Windows 上它不额外加锁，能登录那台电脑的人都能打开。</span>
+          <div class="context-card" id="follow-credential-tooltip" role="dialog" aria-label="凭据存放信息" hidden><h3>凭据存放信息</h3><dl><dt>所在设备</dt><dd>运行 Peach 的电脑</dd><dt>谁能看到</dt><dd>能登录那台电脑的人</dd><dt>其他设备</dt><dd>浏览器不保存这份文件</dd></dl></div></div>
       </section>
     </div></div>`;
   wireFollowManage(creds);
-  if(!legacy){const tabs=[...$('#stats').querySelectorAll('[data-follow-workspace]')],panels=[...$('#stats').querySelectorAll('[data-follow-workspace-panel]')];tabs.forEach(tab=>tab.onclick=()=>{const key=tab.dataset.followWorkspace;tabs.forEach(t=>t.setAttribute('aria-selected',String(t===tab)));panels.forEach(panel=>panel.hidden=panel.dataset.followWorkspacePanel!==key)});panels.forEach(panel=>panel.hidden=panel.dataset.followWorkspacePanel!=='list')}
+  const tabs=[...$('#stats').querySelectorAll('[data-follow-workspace]')],panels=[...$('#stats').querySelectorAll('[data-follow-workspace-panel]')];
+  tabs.forEach(tab=>tab.onclick=()=>{const key=tab.dataset.followWorkspace;tabs.forEach(t=>t.setAttribute('aria-selected',String(t===tab)));panels.forEach(panel=>panel.hidden=panel.dataset.followWorkspacePanel!==key)});
+  panels.forEach(panel=>panel.hidden=panel.dataset.followWorkspacePanel!=='list');
   void wireFollowProgress();
   if(locked)$('#stats').querySelectorAll(
     '#followAdd input,#followAdd button,[data-follow-remove],[data-follow-check],'+
@@ -7158,7 +7149,7 @@ async function openPhotoLightbox(index,source=null){
     // 上下滚也翻页：看图时手在滚轮上，没人愿意为了换一张去够左右键或按钮。
     mousewheel:{enabled:true,forceToAxis:false},
     thumbs:{swiper:strip},
-    pagination:localStorage.getItem('peach.legacy-ui')==='true'?undefined:{el:box.querySelector('.board-carousel-pagination'),clickable:true,dynamicBullets:true,dynamicMainBullets:3,renderBullet:(at,className)=>`<button type="button" class="${className}" aria-label="查看第 ${at+1} 张图片"></button>`},
+    pagination:{el:box.querySelector('.board-carousel-pagination'),clickable:true,dynamicBullets:true,dynamicMainBullets:3,renderBullet:(at,className)=>`<button type="button" class="${className}" aria-label="查看第 ${at+1} 张图片"></button>`},
     navigation:{prevEl:box.querySelector('.photonav.back'),nextEl:box.querySelector('.photonav.fwd')},
     on:{slideChange(){counter.textContent=`${this.activeIndex+1} / ${items.length}`;
       centerThumb(this.activeIndex)}}});
@@ -7388,7 +7379,6 @@ async function openEntity(kind,name,push=true){
   window.scrollTo({top:0,behavior:'smooth'});
 }
 
-let drawerSuppressUntil=0;
 /* 抽屉里所有重画都只写 #drawerScroll：#drawer 本身是定位宿主，覆盖式滚动条的轨道和
    这层滚动容器都挂在它身上，整块 innerHTML 一换就把 buildBars() 要写的容器连轨道一起
    抹掉，首页从此停在骨架态。换页面的判据 data-surface 也记在滚动层上：
@@ -7418,18 +7408,18 @@ function renderFollowDrawer(items){
   const tagBody=`<div class="chips">${
     counts.map(([tag,n])=>
       `<button class="chip online" data-follow-drawer-tag="${esc(tag)}" aria-pressed="${followTags.has(tag)}"><span class="chip-label">${esc(tagLabel(tag))}</span><span class="n">${n}</span></button>`).join('')}</div>`;
-  scroll.insertAdjacentHTML('beforeend',document.documentElement.classList.contains('original-design')?`<div class="sec cat-online"><h3>内容标签</h3>${tagBody}</div>`:sidebarSectionHtml('内容标签',tagBody,'','online'));
+  scroll.insertAdjacentHTML('beforeend',sidebarSectionHtml('内容标签',tagBody,'','online'));
   $('#drawer').querySelectorAll('[data-follow-drawer-tag]').forEach(b=>b.onclick=()=>{
     followTags=new Set([b.dataset.followDrawerTag]);
     openDrawer(false);route(followViewPath());openFollow(false)});
 }
 function openDrawer(v){const drawer=$('#drawer'),restore=!v&&drawer.contains(document.activeElement);
-  drawer.inert=!v&&(innerWidth<=760||document.documentElement.classList.contains('original-design'));
+  drawer.inert=!v&&innerWidth<=760;
   drawer.classList.toggle('open',v);$('#scrim').classList.toggle('on',v);
   document.body.classList.toggle('drawer-open',!!v);document.dispatchEvent(new Event('board:sidebar'));
   $('#filterBtn').setAttribute('aria-expanded',String(!!v));$('#filterBtn').setAttribute('aria-controls','drawer');$('#filterBtn').setAttribute('aria-label',v?'收起侧栏':'展开侧栏');
   if(restore)$('#filterBtn').focus();sessionStorage.setItem('board.sidebar',v?'open':'closed')}
-function closeDrawerAfterNav(){drawerSuppressUntil=Date.now()+650;if(innerWidth<=760||document.documentElement.classList.contains('original-design'))openDrawer(false)}
+function closeDrawerAfterNav(){if(innerWidth<=760)openDrawer(false)}
 $('#filterBtn').onclick=()=>openDrawer(!$('#drawer').classList.contains('open'));
 /* 常驻窄图标条：点即切视图，鼠标停留 180ms 展开完整抽屉 */
 const EDGE_ICONS=[
@@ -7447,7 +7437,7 @@ const EDGE_ICONS=[
      归右上角。三个名字都带「管」「设」的字，字形就得把它们分开。 */
   ['manage','管理','wrench'],
 ];
-function navigationIcon(key,glyph){return key===''&&localStorage.getItem('peach.legacy-ui')!=='true'?'<img class="board-home-logo" src="/peach-logo.png" alt="">':icon(glyph)}
+function navigationIcon(key,glyph){return key===''?'<img class="board-home-logo" src="/peach-logo.png" alt="">':icon(glyph)}
 /* 每个管理页的身份（标题、图标、可直达的 URL）。用户仍可在设置里把其中任何
    一个加到顶层侧栏，所以这里保留全部页面，不因为它进了数据管理就删掉。 */
 const MANAGE_SECTIONS=[
@@ -7526,10 +7516,6 @@ function wireNavigationDrag(root){
   if(!root)return;
   const items=[...root.querySelectorAll(':scope > [data-nav]')];
   items.forEach(item=>{
-    if(root.id==='edge')item.onpointerdown=()=>{
-      // 按下时就决定是点击或拖动；不能让 180ms 悬停计时器在按住期间把窄栏换成抽屉。
-      clearTimeout(edgeT);edgeT=null;drawerSuppressUntil=Date.now()+900;
-    };
     item.ondragstart=e=>{
       sidebarDragKey=item.dataset.nav;item.classList.add('nav-dragging');
       e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain',sidebarDragKey||'__home__');
@@ -7881,8 +7867,6 @@ function buildEdge(){
   wireNavigationDrag($('#edge'));
   syncHeaderActions();
 }
-$('#edge').addEventListener('mouseenter',()=>{if(!document.documentElement.classList.contains('original-design')||Date.now()<drawerSuppressUntil)return;
-  edgeT=setTimeout(()=>openDrawer(true),180)});
 /* 滚动期间挂起悬停预览：内容在鼠标下滑过会连续触发 mouseenter，
    每次都新建 video 并发起 /stream 请求，直接把页面拖垮。 */
 window.__scrolling=false; let scrollT=null;
@@ -7910,10 +7894,6 @@ window.addEventListener('scroll',()=>{
 },{passive:true});
 window.addEventListener('resize',()=>{scheduleStickySurfaces();alignFollowImageControls()},{passive:true});
 
-/* 只在真正进入 72 px 图标栏时展开；内容区左缘不再设隐形热区。 */
-$('#edge').addEventListener('mouseleave',()=>clearTimeout(edgeT));
-$('#drawer').addEventListener('mouseleave',()=>{if(!document.documentElement.classList.contains('original-design'))return;
-  setTimeout(()=>{if(!$('#drawer').matches(':hover')&&!$('#edge').matches(':hover'))openDrawer(false)},240)});
 $('#scrim').onclick=()=>openDrawer(false);
 
 /* ── 列表 ── */
@@ -9366,22 +9346,14 @@ loadSourceStatus()
 
 ;(()=>{
 /* Board 外壳与设置导航。 */
-const legacyUI=localStorage.getItem('peach.legacy-ui')==='true';
 document.documentElement.classList.toggle('board-high-contrast',localStorage.getItem('peach.high-contrast')==='true');
-document.documentElement.classList.toggle('original-design',legacyUI);
 
 function installUISetting(){
   const group=document.querySelector('.settingsscroll .settinggroup');
-  if(!group||document.getElementById('legacyUISetting'))return;
-  const row=document.createElement('div');row.className='settingrow';
-  row.innerHTML='<label for="legacyUISetting"><b>使用旧版 UI</b><small style="display:block">保留 Peach 原有界面，刷新页面后生效。</small></label><input type="checkbox" id="legacyUISetting" class="ptoggle" role="switch"><button type="button" class="geist-button" id="applyUISetting" hidden>应用并刷新</button>';
-  group.querySelector('.settingrow').after(row);
-  const field=row.querySelector('input'),apply=row.querySelector('button');field.checked=legacyUI;
-  field.onchange=()=>{localStorage.setItem('peach.legacy-ui',String(field.checked));apply.hidden=field.checked===legacyUI};
-  apply.onclick=()=>location.reload();
+  if(!group||document.getElementById('glassContrastSetting'))return;
   const contrastRow=document.createElement('div');contrastRow.className='settingrow';
   contrastRow.innerHTML='<label for="glassContrastSetting"><b>增加对比度</b><small style="display:block">关闭玻璃折射与透明效果，使用实色背景。</small></label><input type="checkbox" id="glassContrastSetting" class="ptoggle" role="switch">';
-  row.after(contrastRow);
+  group.querySelector('.settingrow').after(contrastRow);
   const contrast=contrastRow.querySelector('input');contrast.checked=document.documentElement.classList.contains('board-high-contrast');
   contrast.onchange=()=>{localStorage.setItem('peach.high-contrast',String(contrast.checked));document.documentElement.classList.toggle('board-high-contrast',contrast.checked)};
 }
@@ -9467,7 +9439,6 @@ function buildSettingsTabs(){
 refreshSettingsTabs=buildSettingsTabs;
 function decorate(){
   installUISetting();
-  if(legacyUI)return;
   /* 只认管理区那一份配置页。它现在还长在设置弹层的「这台电脑」里，那一份已经由外面
      那圈设置分区页签管着，再给它自己叠一排页签就是页签套页签。 */
   const config=document.querySelector('#stats .configpage');
@@ -9486,40 +9457,34 @@ function decorate(){
 let filterFrame;
 const boardBrand=document.querySelector('#brandHome');
 boardBrand.setAttribute('aria-label','Peach 首页');
-let libraryPicker;
-if(!legacyUI){
-  libraryPicker=document.createElement('div');libraryPicker.className='board-library-menu';libraryPicker.id='boardLibraryMenu';libraryPicker.hidden=true;libraryPicker.setAttribute('popover','manual');libraryPicker.setAttribute('role','dialog');libraryPicker.setAttribute('aria-label','媒体库');
-  document.body.append(libraryPicker);
-  boardBrand.setAttribute('aria-haspopup','dialog');boardBrand.setAttribute('aria-controls',libraryPicker.id);
-  boardBrand.insertAdjacentHTML('beforeend','<svg class="board-library-chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="m5 6 3-3 3 3M5 10l3 3 3-3"/></svg>');
-  boardBrand.onclick=event=>{event.preventDefault()};
-  const floating=wireAnchoredMenu(document.querySelector('#drawer'),boardBrand,libraryPicker,{side:true});
-  libraryPicker.addEventListener('toggle',event=>{if(event.newState==='open')libraryPicker.querySelector('button')?.focus()});
-  libraryPicker.addEventListener('keydown',event=>{if(event.key==='Escape'){event.stopPropagation();floating.setOpen(false);boardBrand.focus()}});
-  api('/api/libraries').then(data=>{
-    const choices=[['','全部媒体库','database'],...data.libraries.map(row=>[row.id,row.name,row.icon||'database'])];
-    const selected=sessionStorage.getItem('peach.library')||'';
-    if(!choices.some(row=>row[0]===selected)){sessionStorage.removeItem('peach.library');location.reload();return}
-    const current=sessionStorage.getItem('peach.library')||'';
-    boardBrand.querySelector('h1').textContent=current||'全部媒体库';
-    const libraryMark=glyph=>MEDIA_SOURCE_ICONS[glyph]?.startsWith('data:')?`<img src="${MEDIA_SOURCE_ICONS[glyph]}" alt="">`:icon(glyph==='local'?'hard-drive':glyph);
-    const mark=document.createElement('span');mark.className='mark';mark.setAttribute('aria-hidden','true');
-    mark.innerHTML=libraryMark(choices.find(row=>row[0]===current)?.[2]||'database');boardBrand.querySelector('.mark').replaceWith(mark);
-    libraryPicker.innerHTML=`<p>媒体库</p><div class="board-library-rows">${choices.map(([id,name,glyph])=>`<button type="button" data-library="${esc(id)}" aria-pressed="${id===current}"><span class="board-library-avatar">${libraryMark(glyph)}</span><span>${esc(name)}</span></button>`).join('')}</div><footer><button type="button" class="geist-button" data-library-manage>管理媒体库</button></footer>`;
-    libraryPicker.querySelectorAll('[data-library]').forEach(button=>button.onclick=()=>{sessionStorage.setItem('peach.library',button.dataset.library);location.assign('/')});
-    libraryPicker.querySelector('[data-library-manage]').onclick=()=>{floating.setOpen(false);openDrawer(false);location.assign('/configuration')};
-  }).catch(()=>{libraryPicker.hidden=true});
-}
+const libraryPicker=document.createElement('div');libraryPicker.className='board-library-menu';libraryPicker.id='boardLibraryMenu';libraryPicker.hidden=true;libraryPicker.setAttribute('popover','manual');libraryPicker.setAttribute('role','dialog');libraryPicker.setAttribute('aria-label','媒体库');
+document.body.append(libraryPicker);
+boardBrand.setAttribute('aria-haspopup','dialog');boardBrand.setAttribute('aria-controls',libraryPicker.id);
+boardBrand.insertAdjacentHTML('beforeend','<svg class="board-library-chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="m5 6 3-3 3 3M5 10l3 3 3-3"/></svg>');
+boardBrand.onclick=event=>{event.preventDefault()};
+const libraryFloating=wireAnchoredMenu(document.querySelector('#drawer'),boardBrand,libraryPicker,{side:true});
+libraryPicker.addEventListener('toggle',event=>{if(event.newState==='open')libraryPicker.querySelector('button')?.focus()});
+libraryPicker.addEventListener('keydown',event=>{if(event.key==='Escape'){event.stopPropagation();libraryFloating.setOpen(false);boardBrand.focus()}});
+api('/api/libraries').then(data=>{
+  const choices=[['','全部媒体库','database'],...data.libraries.map(row=>[row.id,row.name,row.icon||'database'])];
+  const selected=sessionStorage.getItem('peach.library')||'';
+  if(!choices.some(row=>row[0]===selected)){sessionStorage.removeItem('peach.library');location.reload();return}
+  const current=sessionStorage.getItem('peach.library')||'';
+  boardBrand.querySelector('h1').textContent=current||'全部媒体库';
+  const libraryMark=glyph=>MEDIA_SOURCE_ICONS[glyph]?.startsWith('data:')?`<img src="${MEDIA_SOURCE_ICONS[glyph]}" alt="">`:icon(glyph==='local'?'hard-drive':glyph);
+  const mark=document.createElement('span');mark.className='mark';mark.setAttribute('aria-hidden','true');
+  mark.innerHTML=libraryMark(choices.find(row=>row[0]===current)?.[2]||'database');boardBrand.querySelector('.mark').replaceWith(mark);
+  libraryPicker.innerHTML=`<p>媒体库</p><div class="board-library-rows">${choices.map(([id,name,glyph])=>`<button type="button" data-library="${esc(id)}" aria-pressed="${id===current}"><span class="board-library-avatar">${libraryMark(glyph)}</span><span>${esc(name)}</span></button>`).join('')}</div><footer><button type="button" class="geist-button" data-library-manage>管理媒体库</button></footer>`;
+  libraryPicker.querySelectorAll('[data-library]').forEach(button=>button.onclick=()=>{sessionStorage.setItem('peach.library',button.dataset.library);location.assign('/')});
+  libraryPicker.querySelector('[data-library-manage]').onclick=()=>{libraryFloating.setOpen(false);openDrawer(false);location.assign('/configuration')};
+}).catch(()=>{libraryPicker.hidden=true});
 const boardToggle=document.querySelector('#filterBtn'),toggleHome=document.createComment('sidebar toggle');boardToggle.before(toggleHome);
-if(!legacyUI){
-  const foot=document.createElement('div');foot.className='board-sidebar-foot';
-  foot.innerHTML=`<div class="board-theme-toggle" role="group" aria-label="明暗主题"><span class="board-theme-thumb" aria-hidden="true"></span><button type="button" data-board-theme="light" aria-label="浅色主题">${icon('sun')}</button><button type="button" data-board-theme="dark" aria-label="深色主题">${icon('moon')}</button></div>`;
-  foot.append(document.querySelector('#settingsBtn'));document.querySelector('#drawer').append(foot);
-  foot.querySelectorAll('[data-board-theme]').forEach(button=>button.onclick=()=>{if(button.getAttribute('aria-pressed')==='true')return;transitionTheme(button,()=>{appSettings.theme=button.dataset.boardTheme;saveSettings();applyTheme();renderThemeSetting()})});
-  applyTheme();
-}
+const boardFoot=document.createElement('div');boardFoot.className='board-sidebar-foot';
+boardFoot.innerHTML=`<div class="board-theme-toggle" role="group" aria-label="明暗主题"><span class="board-theme-thumb" aria-hidden="true"></span><button type="button" data-board-theme="light" aria-label="浅色主题">${icon('sun')}</button><button type="button" data-board-theme="dark" aria-label="深色主题">${icon('moon')}</button></div>`;
+boardFoot.append(document.querySelector('#settingsBtn'));document.querySelector('#drawer').append(boardFoot);
+boardFoot.querySelectorAll('[data-board-theme]').forEach(button=>button.onclick=()=>{if(button.getAttribute('aria-pressed')==='true')return;transitionTheme(button,()=>{appSettings.theme=button.dataset.boardTheme;saveSettings();applyTheme();renderThemeSetting()})});
+applyTheme();
 function placeBrand(){
-  if(legacyUI)return;
   const close=document.querySelector('#drawerClose');
   if(close){const head=close.parentElement;head.classList.add('board-sidebar-head');
     boardBrand.setAttribute('aria-label','选择媒体库');
@@ -9542,7 +9507,6 @@ const boardTagbar=document.querySelector('#tagbar'),countbar=document.querySelec
 const tagHome=document.createComment('filter position');boardTagbar.before(tagHome);
 const countHome=document.createComment('sort position');countbar.before(countHome);
 function syncFilterFrame(){
-  if(legacyUI)return;
   const catalog=!boardTagbar.hidden&&!countbar.hidden&&getComputedStyle(boardTagbar).display!=='none'&&getComputedStyle(countbar).display!=='none';
   if(catalog&&!filterFrame){filterFrame=document.createElement('div');filterFrame.className='board-filter-frame';countHome.after(filterFrame);filterFrame.append(boardTagbar,countbar)}
   else if(!catalog&&filterFrame){tagHome.after(boardTagbar);countHome.after(countbar);filterFrame.remove();filterFrame=null}
@@ -9556,7 +9520,6 @@ new MutationObserver(syncFilterFrame).observe(countbar,{attributes:true,attribut
 decorate();
 new MutationObserver(decorate).observe(document.querySelector('#stats'),{childList:true,subtree:true});
 new MutationObserver(decorate).observe(document.querySelector('#managebar'),{childList:true});
-/* The selected design is loaded on refresh, not hot-swapped in a running page. */
 
 let floatingScheduled=false;
 function updateFloating(){
@@ -9564,10 +9527,10 @@ function updateFloating(){
   document.body.classList.toggle('board-scrolled',scrollY>8);
   if(filterFrame){const top=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--topH'))||64;filterFrame.classList.toggle('board-is-stuck',filterFrame.getBoundingClientRect().top<=top+9)}
 }
-if(!legacyUI){addEventListener('scroll',()=>{if(!floatingScheduled){floatingScheduled=true;requestAnimationFrame(updateFloating)}},{passive:true});addEventListener('resize',updateFloating);updateFloating()}
+addEventListener('scroll',()=>{if(!floatingScheduled){floatingScheduled=true;requestAnimationFrame(updateFloating)}},{passive:true});addEventListener('resize',updateFloating);updateFloating();
 
 /* Generate an edge-normal displacement field; only the backdrop is refracted. */
-if(!legacyUI && /Chrome|Chromium|Edg\//.test(navigator.userAgent)){
+if(/Chrome|Chromium|Edg\//.test(navigator.userAgent)){
   const ns='http://www.w3.org/2000/svg';
   const svg=document.createElementNS(ns,'svg');svg.setAttribute('width','0');svg.setAttribute('height','0');svg.setAttribute('aria-hidden','true');svg.style.position='fixed';svg.style.pointerEvents='none';
   const defs=document.createElementNS(ns,'defs');svg.append(defs);document.body.append(svg);
@@ -9601,4 +9564,4 @@ if(!legacyUI && /Chrome|Chromium|Edg\//.test(navigator.userAgent)){
 
 })();
 
-if(!document.documentElement.classList.contains('original-design'))openDrawer(innerWidth>760&&sessionStorage.getItem('board.sidebar')!=='closed');
+openDrawer(innerWidth>760&&sessionStorage.getItem('board.sidebar')!=='closed');

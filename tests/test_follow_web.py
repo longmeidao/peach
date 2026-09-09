@@ -1729,7 +1729,7 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains('target="_blank" rel="noreferrer noopener"')
         self.assertPageContains("${esc(search.query)}")
 
-    def test_follow_author_groups_use_fixed_scrolling_cards_and_link_to_the_original_page(self):
+    def test_follow_author_groups_are_one_card_per_author_and_link_to_the_original_page(self):
         self.assertPageContains('class="frows fsources"')
         grid = self.page[self.page.index(".fsources{"):]
         self.assertIn("repeat(auto-fit,minmax(430px,1fr))", grid[:grid.index("}")])
@@ -1744,11 +1744,11 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertIn("height:280px", author_rule)
         self.assertIn("border:1px solid var(--border-10)", author_rule)
         self.assertIn("grid-template-rows:auto minmax(0,1fr)", author_rule)
-        self.assertPageContains("scrollerHtml(sourceRows,{")
-        self.assertPageContains("className:'fauthorsources',label:`${name} 的关注来源`")
-        # 滚动条由 attachOverlayScrollbar() 统一自绘，这里只留出滑块那一档的右内边距。
-        self.assertPageContains(".fauthorsources .geist-scroller-container{padding-right:12px}")
-        self.assertPageContains("wireScrollers(root)")
+        # 一个作者一张卡，来源直接铺在卡里：卡片高度由 Board 层放开（`.followmanage .fauthor`
+        # 的 `height:auto`），来源那一格不再自带滚动区。
+        self.assertPageContains('<div class="fauthorsources" id="follow-author-${group[0].id}"'
+                                ' aria-label="${esc(name)} 的关注来源">${sourceRows}</div>')
+        self.assertBoardContains(".followmanage .fauthorsources{height:auto;max-height:none;overflow:visible}")
 
     def test_source_actions_are_icon_only_and_stay_on_one_row(self):
         row = self.page[self.page.index("function followSourceCells(source,selectable=false)"):]
@@ -2065,7 +2065,8 @@ class FollowWebSourceTests(unittest.TestCase):
     def test_the_page_says_where_the_credential_actually_lands(self):
         # 从 Mac 浏览 Windows 实例时，凭据落在 Windows 上——不能写成「本机」。
         self.assertPageContains("运行 Peach 的电脑")
-        self.assertPageContains("Windows 上不收紧文件权限")
+        # Windows 那句要把后果说出来，不能只报一个「不收紧权限」的动作。
+        self.assertPageContains("在 Windows 上它不额外加锁，能登录那台电脑的人都能打开")
         self.assertPageContains("row.path")
         self.assertPageContains("row.world_readable")
 
@@ -2150,7 +2151,7 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("wireIconSwitch(root,'data-follow-layout',setFollowListLayout)")
         self.assertPageContains('<div class="frows fsources" data-layout="${followListLayout()}">${sourceList}</div>')
         self.assertPageContains(
-            "return followListLayout()==='table'?followSourceTable(groups,!legacy)")
+            "return followListLayout()==='table'?followSourceTable(groups,true)")
         # 切换只换列表本身：页头那枚开关留在原地，滑块才有得滑。
         self.assertPageContains("const list=document.querySelector('#stats .fsources');\n"
                                 "  if(!list){renderFollowManage(followCredentials||{});return}\n"
@@ -2158,8 +2159,8 @@ class FollowWebSourceTests(unittest.TestCase):
                                 "  list.innerHTML=followSourceListHtml(followAuthorGroups(followData.sources||[]));\n"
                                 "  wireFollowManage(followCredentials?.providers||[]);")
         self.assertPageContains("const sourceList=followSourceListHtml(groups);")
-        self.assertPageContains("const collapsed=!legacy&&collapsedFollowAuthors.has(key);")
-        self.assertPageContains("group.map(source=>followSourceRow(source,!legacy))")
+        self.assertPageContains("const collapsed=collapsedFollowAuthors.has(key);")
+        self.assertPageContains("group.map(source=>followSourceRow(source,true))")
         self.assertPageContains("data-follow-selection-remove")
         self.assertPageContains("data-follow-author-toggle")
         self.assertPageContains("button.disabled=!ids.length||!!followRuntime?.ledger_read_only")
@@ -2248,7 +2249,7 @@ class FollowWebSourceTests(unittest.TestCase):
         # 表格滚动层与复核页标签条同一份接线：两端渐隐、鼠标停在上面时竖向滚轮转横向。
         components = (ROOT / "web" / "js" / "ui-components.js").read_text(encoding="utf-8")
         self.assertIn("const BOARD_EDGE_SCROLLERS='.reviewtabs,.ftablewrap';", components)
-        self.assertIn("if(el.matches(BOARD_EDGE_SCROLLERS)&&localStorage.getItem('peach.legacy-ui')!=='true'){", components)
+        self.assertIn("if(el.matches(BOARD_EDGE_SCROLLERS)){", components)
         self.assertIn("'.reviewtabs','.junkfilters','.ftablewrap',", components)
         self.assertBoardContains(
             ".followmanage .ftable th{color:var(--color-text-tertiary);background:var(--color-background-secondary-default);border-color:var(--color-separator-border)}")

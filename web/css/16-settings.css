@@ -92,4 +92,3 @@ body.settings-open{overflow:hidden}
   .settingrow:has(input[type="checkbox"]){grid-template-columns:minmax(0,1fr) auto;gap:12px}
   .settingrow .gselect{width:100%;min-width:0}.settingrow .pcheck{justify-self:start}}
 .sidebaradd .sidebaraddmenu button{justify-items:start}
-#applyUISetting[hidden]{display:none}

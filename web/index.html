@@ -9,16 +9,13 @@
 <link rel="stylesheet" href="/vendor/videojs/8.24.0/video-js.min.css">
 <title>Peach · 蜜桃</title>
 <link rel="stylesheet" href="/app.css">
-<link rel="stylesheet" href="/board.css" id="boardStyles">
+<link rel="stylesheet" href="/board.css">
 <!-- 主题必须在第一次绘制之前定下来。app.js 是 module，等同 defer：轮到它跑的时候
      浏览器已经按系统色画过一帧，手动选了浅色的人每次进页面都要先看一下深色。
      这段只做两件事——把选择写到 <html> 的 data-theme、把地址栏色块切到同一档；
      色板只在 web/css/01-base.css 一份，切换逻辑只在 app.js 的 applyTheme() 一份。 -->
 <script>
 (()=>{try{
-  const legacy=localStorage.getItem('peach.legacy-ui')==='true';
-  document.documentElement.classList.toggle('original-design',legacy);
-  document.getElementById('boardStyles').disabled=legacy;
   document.documentElement.classList.toggle('board-high-contrast',localStorage.getItem('peach.high-contrast')==='true');
   const choice=JSON.parse(localStorage.getItem('peach.settings.v1')||'{}').theme;
   if(choice!=='light'&&choice!=='dark')return;

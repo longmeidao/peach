@@ -331,11 +331,9 @@ def _document(title: str, body: str) -> str:
 
 
 def board_entry_style() -> str:
-    """入口页内联公共视觉层，保留设备上的旧版界面偏好。"""
+    """入口页内联公共视觉层。首启和登录页不加载 app.js，样式得随 HTML 一起送到。"""
     css = (PROJECT_ROOT / "web/board-entry.css").read_text(encoding="utf-8")
-    return (f'<style id="boardEntryStyles">{css}</style>'
-            '<script>try{document.getElementById("boardEntryStyles").disabled='
-            'localStorage.getItem("peach.legacy-ui")==="true"}catch(e){}</script>')
+    return f'<style id="boardEntryStyles">{css}</style>'
 
 
 def _check_html(name: str, text_html: str, *, checked: bool) -> str:
