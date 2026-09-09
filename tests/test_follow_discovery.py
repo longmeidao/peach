@@ -7,8 +7,8 @@ from pathlib import Path
 
 from peach.follow import FollowSourceError
 from peach.follow_discovery import (
-    CREATOR_INDEX_TTL_SECONDS, CreatorIndex, discover, identity_key,
-    search_variants, spelling_variants,
+    CREATOR_INDEX_TTL_SECONDS, DEFAULT_PROVIDERS, CreatorIndex, discover,
+    discovery_plan, identity_key, search_variants, spelling_variants,
 )
 from peach.follow_secrets import CredentialError
 from peach.http import HttpResponse
@@ -98,6 +98,21 @@ class SearchVariantTests(unittest.TestCase):
         self.assertEqual(spelling_variants("Ria_neearts"),
                          ("Ria_neearts", "Ria-neearts", "Rianeearts", "Ria neearts"))
 
+
+class DiscoveryPlanTests(unittest.TestCase):
+    def test_a_handle_includes_the_name_searching_sources(self):
+        tasks = discovery_plan("suzutaro3d")
+        self.assertEqual(tasks, DEFAULT_PROVIDERS)
+
+    def test_a_numeric_word_skips_the_name_searching_sources(self):
+        tasks = discovery_plan("30917150")
+        for skipped in ("rule34video", "rule34xxx", "simpcity"):
+            self.assertNotIn(skipped, tasks)
+
+    def test_a_restricted_provider_paid_respects_the_selection(self):
+        self.assertEqual(discovery_plan("Lazy", providers=("kemono",)),
+                         ("kemono",))
+
     def test_a_handle_without_separators_has_only_itself(self):
         self.assertEqual(spelling_variants("lazyprocrastinator"), ("lazyprocrastinator",))
 
@@ -153,6 +168,15 @@ class DiscoverTests(_DiscoveryCase):
         self.assertEqual(by_provider["kemono"].ref, "fanbox/30917150")
         self.assertEqual(by_provider["rule34video"].ref, "lazyprocrastinator")
         self.assertEqual(by_provider["f95zone"].ref, "50685")
+
+    def test_each_source_reports_itself_before_it_runs(self):
+        notes = []
+        found = discover("LazyProcrastinator", secrets_root=self.secrets,
+                         state_root=self.state, transport=_router(self.ROUTES),
+                         providers=("kemono", "fanbox"),
+                         on_progress=lambda *args: notes.append(args))
+        self.assertEqual(notes, [("kemono", 0, 2), ("fanbox", 1, 2)])
+        self.assertTrue(found.candidates)
 
     def test_every_candidate_says_why_it_matched(self):
         found = self._discover("LazyProcrastinator", self.ROUTES,

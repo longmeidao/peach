@@ -224,9 +224,10 @@ th[aria-sort="ascending"] .ftsort svg,th[aria-sort="descending"] .ftsort svg{opa
    `--border-10` 配 `--surface` 会让它在同一列里比 `.fsec` 亮一档、边又淡一档，
    读起来像另一种东西浮在页面上。 */
 .followtask{border:1px solid var(--field-ring);border-radius:var(--surface-radius);background:var(--ground);margin-bottom:16px}
-/* 进度卡常住在说明行（data-follow-add-state 是 p.fnote）里，说明色不许往里灌：
-   任务标签要与正文同色可读，百分比那行保留 board 自己的更淡小字。 */
-p.fnote>.followtask{color:var(--ink-2)}
+/* 进度卡常住在说明行（data-follow-add-state 是 p.fnote）的 data-follow-job
+   挂载层里，说明的字号与颜色不许往里面灌：任务标签与正文同色可读，
+   百分比那行保留 board 自己的更淡小字。 */
+p.fnote .followtask{color:var(--ink-2)}
 .followtask>.geist-fieldset-content{padding:20px;min-width:0;overflow-wrap:anywhere}
 .followmanage .followtask{margin-bottom:0}
 .fcheckfail strong{font-weight:600}

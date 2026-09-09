@@ -359,13 +359,40 @@ def _f95_candidates(term: str, transport,
     return _forum_candidates("f95zone", "f95zone.to", term, connector)
 
 
+DEFAULT_PROVIDERS = ("kemono", "coomer", "pawchive", "fanbox", "rule34video",
+                     "rule34xxx", "simpcity", "f95zone")
+
+
+def discovery_plan(term: str, providers: tuple[str, ...] | None = None) -> tuple[str, ...]:
+    """这一轮实际会去问的来源，按执行顺序。
+
+    数字的词不去 rule34video / rule34.xxx / simpcity 碰运气——那三个都按名字或
+    标签查——fanbox 只是把归档身份换算成官方页。计划先算出来，调用方才能把
+    进度摊到每个来源上，而不是整轮查完只跳一格。
+    """
+    wanted = providers or DEFAULT_PROVIDERS
+    tasks = [provider for provider in ("kemono", "coomer", "pawchive")
+             if provider in wanted]
+    if "fanbox" in wanted:
+        tasks.append("fanbox")
+    if not _NUMERIC_RE.match(term):
+        tasks.extend(provider for provider in ("rule34video", "rule34xxx", "simpcity")
+                     if provider in wanted)
+    if "f95zone" in wanted:
+        tasks.append("f95zone")
+    return tuple(tasks)
+
+
 def discover(term: str, *, secrets_root: Path, state_root: Path,
              shared_root: Path | None = None, transport=None,
-             providers: tuple[str, ...] | None = None) -> Discovery:
+             providers: tuple[str, ...] | None = None,
+             on_progress=None) -> Discovery:
     """把一个裸 id 或名字拿去各来源问一遍。
 
     只回**查到的**结果，每个都带上「为什么认为它命中」。查不到就是查不到，
     不按命名规律拼一个看起来像的链接——那种猜测登记之后永远抓不到东西。
+    `on_progress(provider, index, total)` 在每个来源开查前调一次，供界面
+    显示当前点名到哪一家；不传就不发。
     """
     text = (term or "").strip()
     if not text:
@@ -377,32 +404,34 @@ def discover(term: str, *, secrets_root: Path, state_root: Path,
 
     credentials = credential_store_for(secrets_root, shared_root=shared_root)
     index = CreatorIndex(state_root, transport=transport)
-    wanted = providers or ("kemono", "coomer", "pawchive", "fanbox", "rule34video",
-                           "rule34xxx", "f95zone", "simpcity")
+    tasks = discovery_plan(text, providers)
     found: list[Candidate] = []
     failures: dict[str, str] = {}
     external_searches: list[ExternalSearch] = []
 
     def run(name: str, fn) -> None:
-        if name not in wanted:
-            return
         try:
             found.extend(fn())
         except (FollowSourceError, CredentialError) as error:
             failures[name] = str(error)
 
-    for provider in ("kemono", "coomer", "pawchive"):
-        run(provider, lambda provider=provider: _kemono_candidates(provider, text, index))
-    run("fanbox", lambda: _fanbox_candidates(found, transport))
-    if not _NUMERIC_RE.match(text):
-        run("rule34video", lambda: _rule34video_candidates(text, transport))
-        run("rule34xxx",
-            lambda: _rule34xxx_candidates(text, transport,
-                                          credentials.load("rule34xxx")))
-        run("simpcity", lambda: _simpcity_candidates(text, transport,
-                                                     credentials.load("simpcity")))
-    run("f95zone", lambda: _f95_candidates(text, transport,
-                                           credentials.load("f95zone")))
-    if "f95zone" in wanted and not any(row.provider == "f95zone" for row in found):
+    runners = {
+        "kemono": lambda: _kemono_candidates("kemono", text, index),
+        "coomer": lambda: _kemono_candidates("coomer", text, index),
+        "pawchive": lambda: _kemono_candidates("pawchive", text, index),
+        "fanbox": lambda: _fanbox_candidates(found, transport),
+        "rule34video": lambda: _rule34video_candidates(text, transport),
+        "rule34xxx": lambda: _rule34xxx_candidates(text, transport,
+                                                   credentials.load("rule34xxx")),
+        "simpcity": lambda: _simpcity_candidates(text, transport,
+                                                 credentials.load("simpcity")),
+        "f95zone": lambda: _f95_candidates(text, transport,
+                                           credentials.load("f95zone")),
+    }
+    for position, name in enumerate(tasks):
+        if on_progress:
+            on_progress(name, position, len(tasks))
+        run(name, runners[name])
+    if "f95zone" in tasks and not any(row.provider == "f95zone" for row in found):
         external_searches.append(_f95_external_search(text))
     return Discovery(text, tuple(found), failures, tuple(external_searches))

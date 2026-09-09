@@ -19,7 +19,7 @@ import urllib.parse
 from . import follow_assets, follow_providers
 from .follow import FollowSourceError
 from .follow_check import plan_check, run_check
-from .follow_discovery import discover
+from .follow_discovery import discover, discovery_plan
 from .follow_secrets import (
     CREDENTIAL_GUIDE, CredentialError, CredentialStore, credential_store_for,
 )
@@ -1080,11 +1080,35 @@ def w_follow_resolve(contract, body, *, progress=None) -> dict:
 
     known = {(row["provider"], canonical_source_ref(row["provider"], row["ref"])) for row in
              (_source_payload(r) for r in _existing_sources(contract))}
+
+    # 进度按来源计，不按行计：一行检索词背后是十几个来源各查各的，
+    # 行数当分母只会整轮卡在 0% 然后跳满。计划先算一遍（不联网），
+    # 每行链接算 1 个单位，检索词行按 discovery_plan 的来源数算。
+    def plan_units(line: str) -> int:
+        try:
+            parse_source_url(line)
+            return 1
+        except FollowSourceError:
+            if "://" in line or "/" in line:
+                return 0
+            return len(discovery_plan(line))
+
+    total_units = sum(plan_units(line) for line in lines)
+    done_units = 0
+
+    def source_progress(line_index: int):
+        def note(provider: str, position: int, plan_total: int) -> None:
+            if progress is not None:
+                label = PROVIDER_LABELS.get(provider, provider)
+                progress(
+                    checked=done_units + position, total=total_units,
+                    message=f"查找关注来源：来源 {done_units + position + 1}/{total_units} · {label}"
+                            + (f"（第 {line_index + 1}/{len(lines)} 行）" if len(lines) > 1 else ""))
+
+        return note
+
     results = []
     for index, line in enumerate(lines):
-        if progress:
-            progress(checked=index, total=len(lines),
-                     message=f"查找关注来源：已完成 {index} / {len(lines)} 行，正在解析第 {index + 1} 行")
         try:
             parsed = parse_source_url(line)
         except FollowSourceError as url_error:
@@ -1095,7 +1119,8 @@ def w_follow_resolve(contract, body, *, progress=None) -> dict:
             try:
                 found = discover(line, secrets_root=contract.follow_secrets_root,
                                  shared_root=contract.follow_shared_root,
-                                 state_root=contract.follow_state_root)
+                                 state_root=contract.follow_state_root,
+                                 on_progress=source_progress(index))
             except (FollowSourceError, CredentialError) as term_error:
                 results.append({"line": line, "kind": "error", "error": str(term_error)})
                 continue
@@ -1109,11 +1134,13 @@ def w_follow_resolve(contract, body, *, progress=None) -> dict:
                 "external_searches": [_external_search_payload(search)
                                       for search in found.external_searches],
             })
+            done_units += len(discovery_plan(line))
             continue
         results.append({"line": line, "kind": "url",
                         "candidates": [{**_candidate_payload(parsed),
                                         "known": (parsed.provider, canonical_source_ref(
                                             parsed.provider, parsed.ref)) in known}]})
+        done_units += 1
     return {"ok": True, "results": results}
 
 
