@@ -4330,7 +4330,12 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("const stat=(label,value,note='')=>")
         self.assertPageContains(".map(([kind,count])=>stat(KINDS[kind]||kind,Number(count).toLocaleString())).join('');")
         self.assertPageContains(".linkstats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr))")
-        self.assertPageContains('<div class="linkhosts"><span>最多的站点</span>')
+        self.assertPageContains('<div class="linkhosts"><span>来得最多的站点</span>')
+        # 类型名要能被没读过代码的人读懂：`catalog` 收的是 DMM、MGStage、JavLibrary
+        # 这类作品检索站，`source_reference` 是这条资料的出处。
+        self.assertPageContains("catalog:'作品资料站'")
+        self.assertPageContains("source_reference:'资料出处'")
+        self.assertPageContains("挂在 ${info.entities.toLocaleString()} 位女优、厂牌或系列名下")
 
     def test_taste_page_combines_private_exports_and_peach_behavior(self):
         self.assertRoute('/taste', "openTaste(push)", "section:'taste'")
@@ -7004,8 +7009,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("async function openDataCleanup(push=true)")
         self.assertPageContains("route('/data-cleanup')")
         self.assertPageContains("${(sources.sources||[]).some(source=>['local','115','pikpak'].includes(source.location)&&source.roots?.length)?resourceSyncMarkup():''}")
-        self.assertPageContains("fieldsetTitle('resourceBoxTitle','检查文件与馆藏记录')")
-        self.assertPageLacks("fieldsetTitle('resourceBoxTitle','网盘与账本')")
+        self.assertPageContains("fieldsetTitle('resourceBoxTitle','文件与记录是否对得上')")
+        self.assertPageContains("照着馆藏里的记录，去本地磁盘和网盘上找对应的文件")
         self.assertPageContains("cloudPreferenceLocations(g.files,d.cloudLocations||[])")
         self.assertPageContains("Boolean(s.history_sources||d.updated_at),localStorage.getItem(TASTE_GUIDE_KEY)==='1')")
         self.assertPageContains('wireTasteHistoryGuide(root,localStorage);')

@@ -2065,7 +2065,8 @@ class FollowWebSourceTests(unittest.TestCase):
     def test_the_page_says_where_the_credential_actually_lands(self):
         # 从 Mac 浏览 Windows 实例时，凭据落在 Windows 上——不能写成「本机」。
         self.assertPageContains("运行 Peach 的电脑")
-        self.assertPageContains("Windows 上不收紧文件权限")
+        # Windows 那句要把后果说出来，不能只报一个「不收紧权限」的动作。
+        self.assertPageContains("在 Windows 上它不额外加锁，能登录那台电脑的人都能打开")
         self.assertPageContains("row.path")
         self.assertPageContains("row.world_readable")
 

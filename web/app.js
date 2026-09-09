@@ -3504,7 +3504,7 @@ function linkManagerMarkup(){
   return `<section class="resourcesync" id="link-manager" aria-labelledby="linkManagerTitle">
     <h2 id="linkManagerTitle">链接管理</h2>
     <div class="resourcesyncbox" data-geist-fieldset>
-      <div class="resourcesyncbody geist-fieldset-content">${fieldsetTitle('linkBoxTitle','外链与实体')}
+      <div class="resourcesyncbody geist-fieldset-content">${fieldsetTitle('linkBoxTitle','库里存着的站外链接')}
       <div id="linkSummary" class="linksummary"></div></div>
       <div class="resourcesyncfooter geist-fieldset-footer" data-geist-fieldset-footer>
       <button class="resourceaction" type="button" id="linkCheck">${icon('unlink')}<span>检查死链</span></button></div></div>
@@ -3516,7 +3516,7 @@ async function wireLinkManager(){
   const active=()=>location.pathname==='/data-cleanup'&&!$('#stats').hidden&&document.body.contains(result);
   /* `官网 · 事务所` 里的间隔点会和「按类型」那行的分隔点撞在一起，读出来是
      「社媒 373 · 官网 · 事务所 224」——分不清哪个数字属于哪一类。 */
-  const KINDS={official:'官网/事务所',social:'社媒',catalog:'资料库',source_reference:'来源记录'};
+  const KINDS={official:'官网/事务所',social:'社交账号',catalog:'作品资料站',source_reference:'资料出处'};
   try{
     const info=await api('/api/links');
     /* 每一类各占一格。挤成一行时标签和数字之间只剩间隔点，数字归谁全靠猜。 */
@@ -3526,16 +3526,16 @@ async function wireLinkManager(){
       .map(([kind,count])=>stat(KINDS[kind]||kind,Number(count).toLocaleString())).join('');
     const hosts=(info.top_hosts||[]).slice(0,3).map(([host,count])=>`${esc(host)} ${count}`).join(' · ');
     summary.innerHTML=`<div class="linkstats">
-      ${stat('链接',info.total.toLocaleString(),`分布在 ${info.entities.toLocaleString()} 个实体上`)}
+      ${stat('链接总数',info.total.toLocaleString(),`挂在 ${info.entities.toLocaleString()} 位女优、厂牌或系列名下`)}
       ${kinds}</div>
-      ${hosts?`<div class="linkhosts"><span>最多的站点</span><b>${hosts}</b></div>`:''}`;
+      ${hosts?`<div class="linkhosts"><span>来得最多的站点</span><b>${hosts}</b></div>`:''}`;
   }catch(error){summary.innerHTML=noteHtml(error.message,{variant:'error',label:'读取失败'})}
 
   const row=(item,pick)=>`<tr>${pick?`<td class="linkpick"><input type="checkbox" data-link-id="${item.id}" aria-label="选择 ${esc(item.entity)} 的${esc(item.label||item.url)}"></td>`:''}<td>${esc(item.entity)}</td><td>${esc(KINDS[item.link_kind]||item.link_kind)}</td>
     <td>${esc(item.label||'')}</td><td class="linknote">${esc(item.note)}</td>
     <td class="linkurl"><a class="externallink" href="${esc(item.url)}" target="_blank" rel="noreferrer"><span data-middle-truncate>${esc(item.url)}</span>${icon('external-link','externalmark')}</a></td></tr>`;
   const table=(title,items,hint,{pick=false,footer=''}={})=>items.length?`<div class="linkgroup"><h4>${esc(title)} <b>${items.length}</b></h4>
-    <p>${esc(hint)}</p><div class="linktablewrap"><table class="linktable"><thead><tr>${pick?'<th class="linkpick"><input type="checkbox" id="linkPickAll" aria-label="全选取不到的链接"></th>':''}<th>实体</th><th>类型</th><th>标签</th><th>结果</th><th>地址</th></tr></thead><tbody>${items.map(item=>row(item,pick)).join('')}</tbody></table></div>${footer}</div>`:'';
+    <p>${esc(hint)}</p><div class="linktablewrap"><table class="linktable"><thead><tr>${pick?'<th class="linkpick"><input type="checkbox" id="linkPickAll" aria-label="全选这次没访问成功的链接"></th>':''}<th>所属</th><th>类型</th><th>标签</th><th>结果</th><th>地址</th></tr></thead><tbody>${items.map(item=>row(item,pick)).join('')}</tbody></table></div>${footer}</div>`:'';
 
   const render=payload=>{
     const running=payload.status==='running';
@@ -3548,14 +3548,14 @@ async function wireLinkManager(){
     const progress=running?(payload.total?jobProgressHtml(`${retrying?'已重验':'已检查'} ${payload.checked.toLocaleString()} / ${payload.total.toLocaleString()} 条链接`,payload.checked,payload.total):loadingDotsHtml(retrying?'正在重验链接':'正在检查链接')):'';
     /* gone 和 unclear 必须分开摆：`linktr.ee` 回 403 是挡爬虫、`x.com` 回 500 是临时错误，
        链接本身好好的。混成一张表会让人顺手把好链接一起删掉。 */
-    const gone=table('已失效',payload.gone||[],'上游明确回 404／410，页面确实没了。');
-    /* 「取不到」大多是站点挡爬虫或一次抖动，换个时间再问一次就通了。重跑整批要好几
+    const gone=table('页面已经没了',payload.gone||[],'站点明确回答这个地址不存在（HTTP 404 或 410）。');
+    /* 这一组大多是站点拒绝程序访问或一次抖动，换个时间再问一次就通了。重跑整批要好几
        分钟，所以这里能挑着重试：勾中哪几条就只问哪几条，别的结论原样留着。 */
     const retryable=done?(payload.unclear||[]):[];
     const retryRow=retryable.length?`<div class="linkretryrow">
       <button class="resourceaction" type="button" id="linkRetryPicked" disabled>${icon('rotate-cw')}<span>重试选中的链接</span></button>
       <button class="resourceaction" type="button" id="linkRetryAll">${icon('rotate-cw')}<span>全部重试（${retryable.length}）</span></button></div>`:'';
-    const unclear=table('取不到',payload.unclear||[],'一次访问没成功，但不等于没了：有的站挡爬虫，有的是临时错误。这些链接不会被删除，勾选后可以只重试它们。',{pick:retryable.length>0,footer:retryRow});
+    const unclear=table('这次没访问成功',payload.unclear||[],'页面不一定没了：有的站点拒绝程序访问，有的是临时故障。这些链接会保留，勾选后可以只重试其中几条。',{pick:retryable.length>0,footer:retryRow});
     const apply=(done&&(payload.gone||[]).length)?`<div class="resourceapplyrow"><p>删除前会逐条重验一次；此操作不可撤销。</p>
       <button class="resourceaction danger" type="button" id="linkPrune">删除 ${payload.gone.length} 条失效链接</button></div>`:'';
     const clean=(done&&!(payload.gone||[]).length&&!(payload.unclear||[]).length)?'<p class="resourcesyncok">全部链接都能打开。</p>':'';
@@ -3624,8 +3624,8 @@ function resourceSyncMarkup(){
   return `<section class="resourcesync" id="resource-sync" aria-labelledby="resourceSyncTitle">
     <h2 id="resourceSyncTitle">资源同步</h2>
     <div class="resourcesyncbox" data-geist-fieldset>
-      <div class="resourcesyncbody geist-fieldset-content">${fieldsetTitle('resourceBoxTitle','检查文件与馆藏记录')}
-      <p>检查本地磁盘和网盘，找出失效的馆藏记录与闲置缓存。</p></div>
+      <div class="resourcesyncbody geist-fieldset-content">${fieldsetTitle('resourceBoxTitle','文件与记录是否对得上')}
+      <p>照着馆藏里的记录，去本地磁盘和网盘上找对应的文件：文件已经不在的记录挑出来，没有记录再用到的缓存一并列出。</p></div>
       <div class="resourcesyncfooter geist-fieldset-footer" data-geist-fieldset-footer>
       <button class="resourceaction" type="button" id="resourceScan">${icon('git-compare')}<span>检查文件</span></button></div></div>
     <div id="resourceSyncResult" aria-live="polite"></div></section>`;
@@ -5888,11 +5888,11 @@ function renderFollowManage(credentials){
         <div class="fsechead"><h3>来源管理</h3>
           ${needCred.length?`<span class="fmeta warn">${needCred.length} 个待配置</span>`:''}</div>
         <div class="frows">${creds.map(followCredentialRow).join('')}</div>
-        <div class="fdesc"><b>存放位置与权限
+        <div class="fdesc"><b>这些账号信息存在哪里
             <button type="button" class="fdescinfo" data-fdesc-tooltip
               aria-label="凭据存放位置说明">${icon('info')}</button></b>
-          <span>Windows 上不收紧文件权限</span>
-          <div class="context-card" id="follow-credential-tooltip" role="dialog" aria-label="凭据存放信息" hidden><h3>凭据存放信息</h3><dl><dt>所在设备</dt><dd>运行 Peach 的电脑</dd><dt>访问权限</dt><dd>由该电脑的文件访问权限控制</dd><dt>其他设备</dt><dd>浏览器不会保存这份凭据文件</dd></dl></div></div>
+          <span>存成运行 Peach 那台电脑上的一个文件。在 Windows 上它不额外加锁，能登录那台电脑的人都能打开。</span>
+          <div class="context-card" id="follow-credential-tooltip" role="dialog" aria-label="凭据存放信息" hidden><h3>凭据存放信息</h3><dl><dt>所在设备</dt><dd>运行 Peach 的电脑</dd><dt>谁能看到</dt><dd>能登录那台电脑的人</dd><dt>其他设备</dt><dd>浏览器不保存这份文件</dd></dl></div></div>
       </section>
     </div></div>`;
   wireFollowManage(creds);
