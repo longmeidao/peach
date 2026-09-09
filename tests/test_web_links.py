@@ -148,6 +148,70 @@ class SummaryTests(unittest.TestCase):
         """不可逆动作不接受默认参数。"""
         self.assertFalse(web_links.w_links_prune(self.contract, {})["ok"])
 
+    def _finished_check(self):
+        self.contract.link_check.state = {
+            "check_id": "fresh", "status": "complete", "checked": 3, "total": 3,
+            "scope": "all", "error": "",
+            "gone": [{"id": 1, "entity": "凉森玲梦", "link_kind": "social",
+                      "label": "X @a", "url": "https://x.com/a", "note": "HTTP 404"}],
+            "unclear": [
+                {"id": 2, "entity": "凉森玲梦", "link_kind": "official",
+                 "label": "T-POWERS", "url": "https://www.t-powers.co.jp/talent/x/",
+                 "note": "HTTP 403"},
+                {"id": 3, "entity": "MOODYZ", "link_kind": "official",
+                 "label": "官方网站", "url": "https://moodyz.com/", "note": "HTTP 500"},
+            ],
+        }
+
+    def _retry(self, body):
+        original_probe, original_interval = web_links._probe, web_links.CHECK_INTERVAL
+        web_links._probe = lambda url, timeout=0: (
+            (200, "") if "t-powers" in url else (500, ""))
+        web_links.CHECK_INTERVAL = 0
+        try:
+            out = web_links.w_links_check(self.contract, body)
+            thread = self.contract.link_check.thread
+            if thread is not None:
+                thread.join(5)
+        finally:
+            web_links._probe, web_links.CHECK_INTERVAL = original_probe, original_interval
+        return out
+
+    def test_retrying_the_picked_links_keeps_every_other_verdict(self):
+        """重问几条不该让另外几百条的结论一起清零。
+
+        整批重跑要好几分钟；「取不到」多半是站点挡爬虫或一次抖动，值得单独再问一次。
+        如果重试把状态清空，删除失效链接就得再等一整轮才能按。
+        """
+        self._finished_check()
+        started = self._retry({"retry": [2], "check_id": "fresh"})
+        self.assertEqual((started["scope"], started["total"]), ("retry", 1))
+        state = self.contract.link_check.snapshot()
+        self.assertEqual(state["status"], "complete")
+        self.assertEqual([item["id"] for item in state["gone"]], [1])
+        self.assertEqual([item["id"] for item in state["unclear"]], [3])
+
+    def test_a_retried_link_that_is_still_broken_comes_back(self):
+        """重验没通过的要留在表里，否则一次重试就等于把它判成好的。"""
+        self._finished_check()
+        self._retry({"retry": [2, 3], "check_id": "fresh"})
+        state = self.contract.link_check.snapshot()
+        self.assertEqual([item["id"] for item in state["unclear"]], [3])
+        self.assertEqual(state["unclear"][0]["note"], "HTTP 500")
+
+    def test_retry_refuses_a_stale_result_or_an_unknown_link(self):
+        """重试要改的是这一次结果里的行，别的 id 不该被一个请求标成已通过。"""
+        self.assertFalse(web_links.w_links_check(
+            self.contract, {"retry": [2]})["ok"])
+        self._finished_check()
+        stale = web_links.w_links_check(self.contract, {"retry": [2], "check_id": "old"})
+        self.assertFalse(stale["ok"])
+        self.assertIn("过期", stale["error"])
+        unknown = web_links.w_links_check(
+            self.contract, {"retry": [999], "check_id": "fresh"})
+        self.assertFalse(unknown["ok"])
+        self.assertEqual(self.contract.link_check.snapshot()["check_id"], "fresh")
+
 
 if __name__ == "__main__":
     unittest.main()

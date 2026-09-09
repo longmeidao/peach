@@ -107,17 +107,28 @@ def _check_public(state: dict) -> dict:
         "total": state["total"],
         "gone": [dict(item) for item in state["gone"]],
         "unclear": [dict(item) for item in state["unclear"]],
+        "scope": state.get("scope", "all"),
         **({"error": state["error"]} if state["status"] == "failed" else {}),
     }
 
 
-def _run_link_check(contract: LinkContract, check_id: str) -> None:
-    """逐条联网重验。异常由 `BackgroundJob` 翻成 `failed` 状态，这里不再自己接。"""
+def _run_link_check(contract: LinkContract, check_id: str,
+                    link_ids: list[int] | None = None) -> None:
+    """逐条联网重验。异常由 `BackgroundJob` 翻成 `failed` 状态，这里不再自己接。
+
+    给了 `link_ids` 就只验点名的那几条，别的链接的判定由调用方原样带进初始状态。
+    """
     job = contract.link_check
+    query = ("SELECT l.id, l.link_kind, l.label, l.url, e.canonical_name AS entity "
+             "FROM entity_link l JOIN entity e ON e.id=l.entity_id")
     with contract.read_connection() as connection:
-        rows = [dict(row) for row in connection.execute(
-            "SELECT l.id, l.link_kind, l.label, l.url, e.canonical_name AS entity "
-            "FROM entity_link l JOIN entity e ON e.id=l.entity_id ORDER BY l.id")]
+        if link_ids is None:
+            rows = [dict(row) for row in connection.execute(query + " ORDER BY l.id")]
+        else:
+            # 点名的链接可能在上一次检查之后已经被删掉；查不到就是不必再验。
+            marks = ",".join("?" * len(link_ids))
+            rows = [dict(row) for row in connection.execute(
+                f"{query} WHERE l.id IN ({marks}) ORDER BY l.id", link_ids)]
     with job.editing(check_id) as state:
         if state is None:
             return
@@ -140,6 +151,21 @@ def _run_link_check(contract: LinkContract, check_id: str) -> None:
     job.update(check_id, status="complete", completed_at=time.time())
 
 
+def _retry_state(state: dict, link_ids: list[int]) -> dict:
+    """重验这几条时的初始状态：把它们从上一次的结论里摘掉，别的原样留着。
+
+    留着是重点。「取不到」多半是站点挡爬虫或一次抖动，值得单独再问一次，但重问几条
+    不该让另外七百条的结论一起清零——那样每次重试都要再等好几分钟才能按删除。
+    """
+    targets = set(link_ids)
+    return {
+        "checked": 0, "total": len(link_ids), "scope": "retry",
+        "gone": [dict(item) for item in state["gone"] if int(item["id"]) not in targets],
+        "unclear": [dict(item) for item in state["unclear"]
+                    if int(item["id"]) not in targets],
+    }
+
+
 def w_links_check(contract: LinkContract, body=None):
     """开始（或查询）一次死链检查。
 
@@ -151,11 +177,31 @@ def w_links_check(contract: LinkContract, body=None):
         state = contract.link_check.snapshot()
         if state is None:
             return {"ok": True, "status": "idle", "check_id": "", "checked": 0,
-                    "total": 0, "gone": [], "unclear": []}
+                    "total": 0, "gone": [], "unclear": [], "scope": "all"}
         return _check_public(state)
+
+    if body.get("retry") is not None:
+        state = contract.link_check.snapshot()
+        if state is None or state["status"] != "complete":
+            return {"ok": False, "error": "没有已完成的检查结果"}
+        if body.get("check_id") != state["check_id"]:
+            return {"ok": False, "error": "检查结果已过期，请重新检查"}
+        # 只认这次结果里真有的那些行。前端传来的 id 决定要删哪几条结论，放行库里
+        # 别的链接等于让一个请求把没检查过的东西也标成「已通过」。
+        known = {int(item["id"]) for item in state["gone"]}
+        known |= {int(item["id"]) for item in state["unclear"]}
+        link_ids = [int(value) for value in body["retry"]
+                    if str(value).lstrip("-").isdigit() and int(value) in known]
+        if not link_ids:
+            return {"ok": False, "error": "没有可重试的链接"}
+        return _check_public(contract.link_check.start(
+            lambda check_id: _run_link_check(contract, check_id, link_ids),
+            initial=_retry_state(state, link_ids), restart=True,
+        ))
+
     return _check_public(contract.link_check.start(
         lambda check_id: _run_link_check(contract, check_id),
-        initial={"checked": 0, "total": 0, "gone": [], "unclear": []},
+        initial={"checked": 0, "total": 0, "gone": [], "unclear": [], "scope": "all"},
         restart=body.get("restart") is True,
     ))
 

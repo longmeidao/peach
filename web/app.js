@@ -3536,11 +3536,11 @@ async function wireLinkManager(){
       ${hosts?`<div class="linkhosts"><span>最多的站点</span><b>${hosts}</b></div>`:''}`;
   }catch(error){summary.innerHTML=noteHtml(error.message,{variant:'error',label:'读取失败'})}
 
-  const row=item=>`<tr><td>${esc(item.entity)}</td><td>${esc(KINDS[item.link_kind]||item.link_kind)}</td>
+  const row=(item,pick)=>`<tr>${pick?`<td class="linkpick"><input type="checkbox" data-link-id="${item.id}" aria-label="选择 ${esc(item.entity)} 的${esc(item.label||item.url)}"></td>`:''}<td>${esc(item.entity)}</td><td>${esc(KINDS[item.link_kind]||item.link_kind)}</td>
     <td>${esc(item.label||'')}</td><td class="linknote">${esc(item.note)}</td>
     <td class="linkurl"><a class="externallink" href="${esc(item.url)}" target="_blank" rel="noreferrer"><span data-middle-truncate>${esc(item.url)}</span>${icon('external-link','externalmark')}</a></td></tr>`;
-  const table=(title,items,hint)=>items.length?`<div class="linkgroup"><h4>${esc(title)} <b>${items.length}</b></h4>
-    <p>${esc(hint)}</p><div class="linktablewrap"><table class="linktable"><thead><tr><th>实体</th><th>类型</th><th>标签</th><th>结果</th><th>地址</th></tr></thead><tbody>${items.map(row).join('')}</tbody></table></div></div>`:'';
+  const table=(title,items,hint,{pick=false,footer=''}={})=>items.length?`<div class="linkgroup"><h4>${esc(title)} <b>${items.length}</b></h4>
+    <p>${esc(hint)}</p><div class="linktablewrap"><table class="linktable"><thead><tr>${pick?'<th class="linkpick"><input type="checkbox" id="linkPickAll" aria-label="全选取不到的链接"></th>':''}<th>实体</th><th>类型</th><th>标签</th><th>结果</th><th>地址</th></tr></thead><tbody>${items.map(item=>row(item,pick)).join('')}</tbody></table></div>${footer}</div>`:'';
 
   const render=payload=>{
     const running=payload.status==='running';
@@ -3549,11 +3549,18 @@ async function wireLinkManager(){
     setActionBusy(button,running);
     if(payload.status==='idle'){result.innerHTML='';return}
     if(payload.status==='failed'){result.innerHTML=noteHtml(payload.error||'检查失败',{variant:'error',label:'检查失败'});return}
-    const progress=running?(payload.total?jobProgressHtml(`已检查 ${payload.checked.toLocaleString()} / ${payload.total.toLocaleString()} 条链接`,payload.checked,payload.total):loadingDotsHtml('正在检查链接')):'';
+    const retrying=payload.scope==='retry';
+    const progress=running?(payload.total?jobProgressHtml(`${retrying?'已重验':'已检查'} ${payload.checked.toLocaleString()} / ${payload.total.toLocaleString()} 条链接`,payload.checked,payload.total):loadingDotsHtml(retrying?'正在重验链接':'正在检查链接')):'';
     /* gone 和 unclear 必须分开摆：`linktr.ee` 回 403 是挡爬虫、`x.com` 回 500 是临时错误，
        链接本身好好的。混成一张表会让人顺手把好链接一起删掉。 */
     const gone=table('已失效',payload.gone||[],'上游明确回 404／410，页面确实没了。');
-    const unclear=table('取不到',payload.unclear||[],'一次访问没成功，但不等于没了：有的站挡爬虫，有的是临时错误。不会被删除，下次检查会重试。');
+    /* 「取不到」大多是站点挡爬虫或一次抖动，换个时间再问一次就通了。重跑整批要好几
+       分钟，所以这里能挑着重试：勾中哪几条就只问哪几条，别的结论原样留着。 */
+    const retryable=done?(payload.unclear||[]):[];
+    const retryRow=retryable.length?`<div class="linkretryrow">
+      <button class="resourceaction" type="button" id="linkRetryPicked" disabled>${icon('rotate-cw')}<span>重试选中的链接</span></button>
+      <button class="resourceaction" type="button" id="linkRetryAll">${icon('rotate-cw')}<span>全部重试（${retryable.length}）</span></button></div>`:'';
+    const unclear=table('取不到',payload.unclear||[],'一次访问没成功，但不等于没了：有的站挡爬虫，有的是临时错误。这些链接不会被删除，勾选后可以只重试它们。',{pick:retryable.length>0,footer:retryRow});
     const apply=(done&&(payload.gone||[]).length)?`<div class="resourceapplyrow"><p>删除前会逐条重验一次；此操作不可撤销。</p>
       <button class="resourceaction danger" type="button" id="linkPrune">删除 ${payload.gone.length} 条失效链接</button></div>`:'';
     const clean=(done&&!(payload.gone||[]).length&&!(payload.unclear||[]).length)?'<p class="resourcesyncok">全部链接都能打开。</p>':'';
@@ -3570,6 +3577,31 @@ async function wireLinkManager(){
       }catch(error){setActionBusy(control,false);if(active())void wirePruneProgress();throw error}
   }});
     });
+    const boxes=()=>[...result.querySelectorAll('[data-link-id]')];
+    const picked=()=>boxes().filter(box=>box.checked).map(box=>Number(box.dataset.linkId));
+    const all=$('#linkPickAll'),pickedButton=$('#linkRetryPicked');
+    const syncPicks=()=>{
+      const ids=picked(),total=boxes().length;
+      if(pickedButton){pickedButton.disabled=!ids.length;
+        pickedButton.querySelector('span').textContent=ids.length?`重试选中的 ${ids.length} 条`:'重试选中的链接'}
+      if(all){all.checked=total>0&&ids.length===total;all.indeterminate=ids.length>0&&ids.length<total}
+    };
+    boxes().forEach(box=>box.addEventListener('change',syncPicks));
+    all?.addEventListener('change',()=>{boxes().forEach(box=>box.checked=all.checked);syncPicks()});
+    const retry=async(control,ids)=>{
+      if(!ids.length)return;
+      setActionBusy(control);
+      try{
+        const out=await api('/api/links/check',{method:'POST',body:JSON.stringify({retry:ids,check_id:payload.check_id})});
+        if(!active())return;
+        render(out);void poll();
+      }catch(error){
+        setActionBusy(control,false);
+        if(active()){result.innerHTML=noteHtml(error.message,{variant:'error',label:'重试失败'});void poll()}
+      }
+    };
+    pickedButton?.addEventListener('click',event=>void retry(event.currentTarget,picked()));
+    $('#linkRetryAll')?.addEventListener('click',event=>void retry(event.currentTarget,retryable.map(item=>item.id)));
   };
 
   const ui=await import('/dist/peach-ui.js');
