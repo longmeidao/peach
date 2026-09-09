@@ -183,6 +183,35 @@ class SourceIdentityTests(unittest.TestCase):
         self.assertTrue(identifies_code("JBS-023", {
             "source_url": "https://www.javbus.com/ja/JBS-023"}))
 
+    def test_fc2_bare_digits_are_the_same_release(self):
+        """FC2 来源只给裸数字，那仍然是同一部作品。
+
+        判据交给 `same_release_code`，它认得这种写法；照形状比对的那一套不认，
+        于是 `FC2-PPV-3701252` 和来源返回的 `3701252` 被判成两部不同的作品。
+        """
+        for payload in (
+            {"id": "3701252", "content_id": "3701252",
+             "source_url": "https://fc2cmadb.com/articles/3701252"},
+            {"content_id": "3701252"},
+        ):
+            self.assertTrue(identifies_code("FC2-PPV-3701252", payload))
+        self.assertFalse(identifies_code("FC2-PPV-3701252", {"id": "3701253"}))
+
+    def test_javbus_loose_search_results_are_a_different_release(self):
+        """javbus 搜不到就返回首个近似命中，两个方向都要认出来。
+
+        字母段被补长（`AR-101` 取回 `STAR-101`）和数字段被补长（`259LUXU-764`
+        取回 `259LUXU-1764`）都是别的作品，来源自报的番号是唯一能认出它的证据。
+        """
+        for code, returned in (
+            ("AR-101", "STAR-101"), ("AR-102", "ZMAR-102"), ("WX17", "WXSD-017"),
+            ("CD-101", "BCDP-101"), ("259LUXU-764", "259LUXU-1764"),
+            ("259LUXU-164", "259LUXU-1642"),
+        ):
+            self.assertFalse(identifies_code(code, {
+                "id": returned, "content_id": returned,
+                "source_url": f"https://www.javbus.com/ja/{returned}"}), f"{code} <- {returned}")
+
     def test_provider_turns_a_mismatched_product_into_not_found(self):
         def runner(command, **kwargs):
             if "version" in command:

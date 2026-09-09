@@ -169,9 +169,13 @@ RELEASE_EVIDENCE_KINDS = frozenset({"performer", "studio", "series"})
 #: `BF-366` 在 `B:\番号\BeFree\` 下，BeFree 是真实 JAV 厂牌；`TZ-105` 的 `TZ` 来自转载站
 #: 水印 `[ThZu.Cc]`，压根不是番号（`is_repost_site_label` 那条路管它）；`FC-437689` 是 FC2
 #: 的变体写法。按形状一刀切会把 BeFree 的真作品一起拦掉。
+#: 三字母前缀同属这套命名。2026-09-09 复查 `B:\MVP\MIB\` 下 120 条资产，这 15 种
+#: 三字母前缀共 40 条，目录外同样零条。
 KOREAN_MIB_PREFIXES = frozenset({
     "WX", "AR", "JH", "CA", "IY", "JA", "MY", "SH", "HA", "MH", "DB", "JI",
     "ES", "SR", "SY", "CD", "YH", "UY", "NN", "SA", "JE", "YR",
+    "CHU", "ENS", "ERI", "HAL", "HNL", "MIJ", "MIN", "SAR", "SEY", "SIA",
+    "SOY", "SRN", "SUY", "SYN", "YUJ",
 })
 _KOREAN_MIB_CODE = re.compile(r"^([A-Z]{2,4})-\d+$")
 

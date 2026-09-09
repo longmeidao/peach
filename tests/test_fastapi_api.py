@@ -706,6 +706,7 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         candidate = {
             "candidate_key": "ABC-001:studio:r18dev:abc", "source": "r18dev",
             "source_url": "https://r18.dev/example", "confidence": 0.9,
+            "provider_id": "ABC-001",
             "value": "Studio B", "display_value": "Studio B", "warnings": [],
             "raw_snapshot": "/evidence.json",
         }
@@ -745,6 +746,7 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         candidate = {
             "candidate_key": "ABC-001:tags:r18dev:abc", "source": "r18dev",
             "source_url": "https://r18.dev/example", "confidence": 0.9,
+            "provider_id": "ABC-001",
             "value": ["乳系", "颜射"], "display_value": "乳系、颜射", "warnings": [],
         }
         fields = ["item_key", "code", "query", "field", "field_label", "current_value",

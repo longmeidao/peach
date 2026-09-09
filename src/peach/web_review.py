@@ -33,6 +33,7 @@ from .entities import (
     upsert_asset_entity,
 )
 from .fsutil import atomic_write_bytes
+from .metadata import identifies_code
 from .metadata_policy import FIELD_SOURCE_ORDER, SOURCE_SPECS
 from .previews import entity_image_key, logo_key
 from .review_csv import read_rows
@@ -720,6 +721,11 @@ def metadata_auto_apply_candidate(connection, row: dict) -> dict | None:
     query = str(row.get("query") or code).strip()
     if not code:
         return None
+    # 韩国 MIB 的番号问 JAV 目录站必错，这类候选一条都不该走自动批准。第 3 条对它们
+    # 全部成立——文件名就叫 `AR-101 Ari....mp4`——但它保证的是「候选属于这个文件」，
+    # 保证不了「来源返回的是这个番号」，而 MIB 恰恰错在后者。
+    if is_korean_mib_code(code):
+        return None
     names = [r["name"] for r in connection.execute(
         "SELECT name FROM asset WHERE medium='video' AND (upper(trim(code))=upper(?) "
         "OR upper(trim(code))=upper(?)) AND (disposal IS NULL OR disposal<>'trash')",
@@ -893,6 +899,21 @@ def _apply_metadata_candidate(connection, group: dict, candidate: dict, now: str
         raise ValueError("字段候选置信度无效") from exc
     if not 0 <= confidence <= 1:
         raise ValueError("字段候选置信度越界")
+    # 来源返回的必须就是这个番号。抓取时也核验，但那道闸只管「快照落盘之前」，
+    # 而候选一旦进了 CSV 就再没人问过身份：2026-09-08 的自动批准读的正是 09-02
+    # 落盘的那批，把 356 条错配写进真相字段，`AR-101` 拿的是 `STAR-101`、
+    # `259LUXU-764` 拿的是 `259LUXU-1764`。落库是唯一必经之处，闸放在这里才
+    # 同时管住人工批准和自动批准——那 356 条里有 142 条是人点的。
+    #
+    # 两种情形没有番号可核：没有番号的资产（靠 `asset_path` 钉住那一个文件），
+    # 以及本地 NFO——它不按番号去问谁，证据是这份 sidecar 就躺在视频旁边。
+    if code and source != "local_nfo" and not identifies_code(code, {
+        "id": candidate.get("provider_id"), "content_id": candidate.get("content_id"),
+        "source_url": candidate.get("source_url"),
+    }):
+        raise ValueError(
+            f"来源返回的不是 {code}：id={candidate.get('provider_id')!r} "
+            f"content_id={candidate.get('content_id')!r}")
     metadata = {
         "provider": candidate.get("provider") or "javinizer-go", "source": source,
         "source_url": candidate.get("source_url"),
