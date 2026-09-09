@@ -150,8 +150,9 @@ class CreatorIndex:
 def _kemono_candidates(provider: str, term: str, index: CreatorIndex) -> list[Candidate]:
     rows = index.load(provider)
     folded = term.casefold()
-    numeric = bool(_NUMERIC_RE.match(term))
-    exact_id = [row for row in rows if numeric and row["id"] == term]
+    # id 的形状跟服务走：fanbox 的 id 是数字，patreon、switch 这些直接拿创作者
+    # 手柄当 id。精确比对把两种都收进来，只认数字会把手柄当 id 的来源整个排除。
+    exact_id = [row for row in rows if row["id"] == term]
     by_name = [row for row in rows if row["name"].casefold() == folded]
     partial = [row for row in rows
                if folded in row["name"].casefold() and row not in by_name]
