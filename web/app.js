@@ -4177,7 +4177,10 @@ async function openDataCleanup(push=true){
     </section>`,
     review:entryCard('review'),quality:entryCard('quality'),trash:entryCard('trash'),
   };
-  $('#stats').innerHTML=`<div class="cleanuppage"><div class="cleanupstats">
+  const cleanupNav=[['/review','人工复核','review'],['/quality-goals','高清版','sparkles'],['/duplicates','重复文件','file-stack'],['/junk-files','垃圾文件','file-archive'],['/trash','回收站','trash']];
+  $('#stats').innerHTML=`<div class="cleanuppage"><div class="cleanup-workspace-switch" role="tablist" aria-label="数据管理区域">
+    ${cleanupNav.map(([href,label,glyph])=>`<a href="${href}" role="tab" data-cleanup-workspace="${href}" aria-selected="false">${icon(glyph)}<span>${label}</span></a>`).join('')}
+  </div><div class="cleanupstats">
     ${DATA_MANAGEMENT_STATS.map(section=>cleanupCards[section]).join('')}
   </div><div class="cleanupgrid">${cleanupCards.scraping}${cleanupCards.empty}</div>
   ${linkManagerMarkup()}
