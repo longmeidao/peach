@@ -6324,9 +6324,9 @@ function renderFollowPicks(results){
       <span><b>${esc(c.provider_label)}</b> ${esc(c.label)}
         <i>${esc(c.known?'已经关注':c.evidence)}</i></span></label>`).join('');
     const searches=(row.external_searches||[]).map(search=>
-      `<a class="fpicksearch" href="${esc(search.url)}" target="_blank" rel="noreferrer noopener">
-        <b class="externallink">${esc(search.label)}${icon('external-link','externalmark')}</b><span>${esc(search.query)}</span>
-        <i>${esc(search.evidence)}</i></a>`).join('');
+      `<div class="fpicksearch"><i>${esc(search.evidence)}</i>
+        <a class="externallink" href="${esc(search.url)}" target="_blank" rel="noreferrer noopener">
+          <b>${esc(search.label)}</b><span>${esc(search.query)}</span>${icon('external-link','externalmark')}</a></div>`).join('');
     return `<div class="fpick"><b>${esc(row.line)}</b>
       ${items||'<p class="fpickempty">站内没有查到来源</p>'}
       ${searches}

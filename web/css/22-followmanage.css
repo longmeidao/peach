@@ -224,6 +224,9 @@ th[aria-sort="ascending"] .ftsort svg,th[aria-sort="descending"] .ftsort svg{opa
    `--border-10` 配 `--surface` 会让它在同一列里比 `.fsec` 亮一档、边又淡一档，
    读起来像另一种东西浮在页面上。 */
 .followtask{border:1px solid var(--field-ring);border-radius:var(--surface-radius);background:var(--ground);margin-bottom:16px}
+/* 进度卡常住在说明行（data-follow-add-state 是 p.fnote）里，说明色不许往里灌：
+   任务标签要与正文同色可读，百分比那行保留 board 自己的更淡小字。 */
+p.fnote>.followtask{color:var(--ink-2)}
 .followtask>.geist-fieldset-content{padding:20px;min-width:0;overflow-wrap:anywhere}
 .followmanage .followtask{margin-bottom:0}
 .fcheckfail strong{font-weight:600}
@@ -382,17 +385,20 @@ details.fcred{display:block;min-width:0}
 .fpick.bad p{color:var(--drop)}
 .fpickitem{display:flex;gap:9px;align-items:center;padding:7px 9px;border:1px solid var(--border-10);border-radius:var(--surface-radius);margin-bottom:4px;cursor:pointer;font-size:var(--fs-xs);transition:background-color .12s ease}
 .fpickitem:hover{background:var(--hover);color:var(--ink)}
-.fpickitem.known{opacity:.55;cursor:default}
-.fpickitem.known:hover{border-color:var(--border-10)}
+/* 「已经关注」整行退成主题的中性灰：不该用透明度——它会把边框和复选框一起冲淡，
+   在同一档底色上灰到读不出来。--muted 按主题自己深浅，比底色各深一档。 */
+.fpickitem.known{cursor:default}
+.fpickitem.known:hover{background:transparent;border-color:var(--border-10)}
+.fpickitem.known span{color:var(--muted)}
 .fpickitem span{min-width:0;overflow-wrap:anywhere}
 .fpickitem b{margin-right:6px}
 .fpickitem i{display:block;font-style:normal;color:var(--muted);font-size:var(--fs-xs);margin-top:1px}
-.fpicksearch{display:grid;grid-template-columns:auto minmax(0,1fr);gap:2px 9px;
-  align-items:baseline;margin:6px 0;padding:8px 10px;border:1px dashed var(--border-15);
-  border-radius:var(--control-radius);color:var(--ink-2);text-decoration:none;font-size:var(--fs-xs)}
-.fpicksearch:hover{border-color:color-mix(in srgb,var(--ink) 28%,transparent);color:var(--ink)}
-.fpicksearch span{min-width:0;overflow-wrap:anywhere;color:var(--ink)}
-.fpicksearch i{grid-column:1/-1;font-style:normal;color:var(--muted)}
+/* 外链建议的说明与链接分层：为什么建议去站外是上下文，独立一行吃说明色；
+   下方链接行才是可点的外链，标一枚 externalmark。 */
+.fpicksearch{display:grid;gap:3px;margin:6px 0;padding:8px 10px;border:1px dashed var(--border-15);
+  border-radius:var(--control-radius);font-size:var(--fs-xs)}
+.fpicksearch i{font-style:normal;color:var(--muted)}
+.fpicksearch .externallink{align-items:baseline;justify-self:start}
 .fpickfail{color:var(--drop)!important}
 .fpickactions{display:flex;gap:8px;align-items:center;flex-wrap:nowrap;min-width:0;margin-top:10px}
 .fpickactions button{border:0;border-radius:var(--control-radius);box-shadow:0 0 0 1px var(--line-soft);background:var(--ground);color:var(--ink-2);padding:6px 14px;font-size:var(--fs-xs);cursor:pointer}

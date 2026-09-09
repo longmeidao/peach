@@ -1725,9 +1725,15 @@ class FollowWebSourceTests(unittest.TestCase):
 
     def test_f95_misses_offer_a_clickable_google_query(self):
         self.assertPageContains("row.external_searches||[]")
-        self.assertPageContains('class="fpicksearch" href="${esc(search.url)}"')
+        self.assertPageContains(
+            'class="externallink" href="${esc(search.url)}"')
         self.assertPageContains('target="_blank" rel="noreferrer noopener"')
         self.assertPageContains("${esc(search.query)}")
+        block = self.page[self.page.index("const searches=(row.external_searches||[])"):
+                          self.page.index("return `<div class=\"fpick\">")]
+        # 说明先行、不在链接里；链接行在其后，带外链标。
+        self.assertLess(block.index("<i>${esc(search.evidence)}</i>"),
+                        block.index("<a class=\"externallink\""))
 
     def test_follow_author_groups_are_one_card_per_author_and_link_to_the_original_page(self):
         self.assertPageContains('class="frows fsources"')
