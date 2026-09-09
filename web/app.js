@@ -66,6 +66,10 @@ const FOLLOW_SORT_DEFAULT_DIR={checked:'desc',added:'desc',name:'asc',sources:'d
 /* 工具栏下拉与表格表头是同一份维度：前四个按作者分组比，后三个按单条来源比。 */
 const FOLLOW_SORT_OPTIONS=[['checked','检查时间'],['added','添加时间'],['name','作者名称'],['sources','来源数量'],
   ['source','来源名称'],['provider','站点'],['status','状态']];
+/* 值是天数，`0` 表示不限。选项文本自己说清量的是时间：这一行不挂文字标签，收起时
+   框里只剩当前这一项，「全部」放在时钟图标旁边读不出是全部什么。 */
+const FOLLOW_UNREAD_RANGE_OPTIONS=[['0','不限时间'],['7','最近 7 天'],['30','最近 30 天'],
+  ['90','最近 90 天']];
 /* 同 `sortButtonHtml`：这枚键的无障碍名称说的是点下去会得到什么，所以取反方向的词。 */
 const followSortLabel=()=>`按${FOLLOW_SORT_LABELS[followManageSort]||'关注列表'}${
   (FOLLOW_SORT_DIR_WORDS[followManageSort]||[])[followManageDir==='asc'?0:1]||''}排序`;
@@ -5838,7 +5842,8 @@ function renderFollowManage(credentials){
       </section>
       <section class="fsec" data-follow-workspace-panel="list">
         <div class="fsechead"><h3>关注列表</h3>
-          <label class="funreadrange">未看范围<select aria-label="未看范围" data-follow-unread-days><option value="0"${appSettings.unreadDays===0?' selected':''}>全部</option><option value="7"${appSettings.unreadDays===7?' selected':''}>最近 7 天</option><option value="30"${appSettings.unreadDays===30?' selected':''}>最近 30 天</option><option value="90"${appSettings.unreadDays===90?' selected':''}>最近 90 天</option></select></label>
+          <span class="funreadrange">${icon('clock')}${selectFieldHtml(FOLLOW_UNREAD_RANGE_OPTIONS,
+            String(appSettings.unreadDays),{label:'未看范围',attr:'data-follow-unread-days'})}</span>
           <span class="fmeta">${sources.length} 个来源${
             counts.new?` · <b>${counts.new}</b> 条未看`:''}</span>
           <span class="fmanagesort">${icon('sort')}${selectFieldHtml(FOLLOW_SORT_OPTIONS,followManageSort,
@@ -5950,7 +5955,9 @@ function wireFollowItems(){
 function wireFollowManage(creds=[]){
   void wireResolveProgress();
   const root=$('#stats'),form=root.querySelector('#followAdd');
-  root.querySelector('[data-follow-unread-days]')?.addEventListener('change',event=>{appSettings.unreadDays=+event.target.value||0;saveSettings();openFollowManage(false)});
+  const unreadRange=root.querySelector('[data-follow-unread-days]');
+  if(unreadRange)wireSelectField(unreadRange).addEventListener('change',()=>{
+    appSettings.unreadDays=+unreadRange.value||0;saveSettings();openFollowManage(false)});
   wireCollapse(root,'details.fauthor','follow-author-collapse','[data-follow-author-toggle]');
   root.querySelectorAll('[data-follow-author-toggle]').forEach(button=>button.onclick=event=>{
     event.stopPropagation();

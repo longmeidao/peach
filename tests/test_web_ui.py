@@ -7586,7 +7586,9 @@ class WebUiSourceTests(unittest.TestCase):
             self.assertIn(fallback, board)
         bulk = (Path(__file__).resolve().parents[1] / "frontend" / "src" / "review-bulk.ts").read_text(encoding="utf-8")
         self.assertIn("root.classList.toggle('review-is-stuck', stuck.length > 0);", bulk)
-        self.assertIn("const head = stuck[0].getBoundingClientRect(), foot = stuck[stuck.length - 1].getBoundingClientRect();", bulk)
+        # 玻璃的两端取自首尾两条粘住的横条；下面三行 setProperty 才是它铺多大。
+        self.assertIn("const first = stuck[0], last = stuck.at(-1);", bulk)
+        self.assertIn("const head = first.getBoundingClientRect(), foot = last.getBoundingClientRect();", bulk)
         for name, edge in (("left", "head.left"), ("width", "head.width"), ("height", "foot.bottom - head.top")):
             self.assertIn(f"root.style.setProperty('--review-pane-{name}', `${{{edge}}}px`);", bulk)
 
@@ -7643,7 +7645,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("$('#batchbar').querySelectorAll('[data-follow-batch]').forEach(button=>button.hidden=!followPage);")
 
     def test_the_data_management_page_opens_with_a_row_of_stat_cards(self):
-        """数据管理页照 Board 的 dashboard 模板：顶上一排读数卡，下面两张任务卡各占一行。
+        """数据管理页照 Board 的 dashboard 模板：工作区切换条领头，跟着一排读数卡，
+        下面两张任务卡各占一行。
 
         读数卡是 stat-cards.tsx 的 plain 变体做成按钮（132px、圆角 16、secondary 底、内边距 16、
         32px 图标格里 20px 字形、读数 24/34），整张卡就是那一页的入口；五张在 1120 内一行摆下，
@@ -7653,7 +7656,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("const DATA_MANAGEMENT_STATS=['review','quality','duplicates','junk','trash'];")
         self.assertPageContains('<button type="button" class="board-plain-stat" ${attrs}>')
         self.assertPageContains('<span class="board-plain-stat-head"><span class="board-stat-tile">${icon(glyph)}</span>${esc(title)}</span>${body}</button>`;')
-        self.assertPageContains('<div class="cleanuppage"><div class="cleanupstats">')
+        self.assertPageContains('<div class="cleanuppage"><div class="cleanup-workspace-switch" role="tablist"')
+        self.assertPageContains('</div><div class="cleanupstats">')
         self.assertPageContains('</div><div class="cleanupgrid">${cleanupCards.scraping}${cleanupCards.empty}</div>')
         for entry in ("['review','人工复核','square-check-big']", "['trash','回收站','trash']", "['quality','高清版','sparkles']"):
             self.assertPageContains(entry)

@@ -21,8 +21,9 @@ export function updateReviewSticky(root: HTMLElement | null) {
      每层只糊自己身后那一段页面，两行相接处就显出两种颜色，读起来是上下两个框。 */
   const stuck = bars.filter(bar => bar.classList.contains('is-stuck'));
   root.classList.toggle('review-is-stuck', stuck.length > 0);
-  if (!stuck.length) return;
-  const head = stuck[0].getBoundingClientRect(), foot = stuck[stuck.length - 1].getBoundingClientRect();
+  const first = stuck[0], last = stuck.at(-1);
+  if (!first || !last) return;
+  const head = first.getBoundingClientRect(), foot = last.getBoundingClientRect();
   root.style.setProperty('--review-pane-left', `${head.left}px`);
   root.style.setProperty('--review-pane-width', `${head.width}px`);
   root.style.setProperty('--review-pane-height', `${foot.bottom - head.top}px`);

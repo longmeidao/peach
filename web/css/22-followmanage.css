@@ -34,6 +34,7 @@
    缩放根本轮不到发生。基准 0 让它先占 0 再吃剩下的宽度，末尾省略。 */
 .fsechead .fmeta{flex:1 1 0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .fsechead .fbtn,.fsechead .fmanagesort{flex:none}
+.fsechead .funreadrange{flex:none}
 /* 升降序键是这一行里唯一的纯图标键：正方形、边长取 --control-h，和同排的下拉、
    版式开关一样高，图标 16px 与排序框左侧那枚同尺寸。写成两级选择器是因为 .fbtn 的
    `padding:0 12px` 排在本文件后面——单类名压不过它，内容宽只剩 8px，图标会被压成一条。 */
@@ -45,6 +46,11 @@
 .fmanagesort{position:relative;display:inline-flex;align-items:center;color:var(--muted);font-size:var(--fs-xs)}
 .fmanagesort>svg{position:absolute;z-index:1;left:9px;width:16px;height:16px;stroke:currentColor;fill:none;pointer-events:none}
 .fmanagesort:hover>svg{color:var(--ink-2)}
+/* 未看范围照排序框的同一套：框内前缀图标，框外不挂文字。 */
+.funreadrange{position:relative;display:inline-flex;align-items:center;color:var(--muted);font-size:var(--fs-xs)}
+.funreadrange>svg{position:absolute;z-index:1;left:9px;width:16px;height:16px;stroke:currentColor;fill:none;pointer-events:none}
+.funreadrange:hover>svg{color:var(--ink-2)}
+.funreadrange .gselectfield{height:var(--control-h);padding:0 12px 0 33px;color:var(--ink-2)}
 /* 版式开关和排序框、按钮同处分区标题行，一起收到 --control-h 上（内边距 2px + 1px 边框
    凑齐同一个外高）。这一行不给自己开小一号的档：同排三个控件里只有下拉缩了尺寸和字号，
    读起来就是一个点不动的说明标签，而它恰恰是这行里唯一能改变列表内容的控件。 */
