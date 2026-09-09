@@ -7681,6 +7681,21 @@ class WebUiSourceTests(unittest.TestCase):
         # 关掉动效时两档弹簧一起归零，剩下的是瞬时到位。
         self.assertIn("--board-motion:0s;--board-dialog-motion:0s;--spring-pane-ms:0;--spring-press-ms:0}", board)
 
+    def test_the_theme_sweep_masks_with_a_gradient_instead_of_a_filtered_svg(self):
+        """明暗切换那圈扩散用一段 CSS 渐变当遮罩，柔边靠色标位置给。
+
+        遮罩的尺寸每一帧都在变，每一帧就要照新尺寸把它重新光栅化一遍。一张挂着高斯
+        模糊滤镜的 SVG 每次都得连滤镜一起重跑，整屏那么大的一层，一次切换要跑几十遍；
+        渐变没有这一层。柔边本身要留着——一条硬边扫过整屏，读出来是一块板在推。
+        """
+        source = (Path(__file__).resolve().parents[1]
+                  / "frontend/src/sidebar-groups.ts").read_text(encoding="utf-8")
+        self.assertIn("const mask='radial-gradient(circle closest-side,"
+                      "#000 78%,#0006 88%,transparent)';", source)
+        self.assertNotIn("feGaussianBlur", source)
+        self.assertIn("will-change:mask-position,mask-size;"
+                      "animation:peach-theme-reveal 560ms cubic-bezier(.16,1,.3,1) both}", source)
+
     def test_the_sidebar_current_item_is_a_pane_of_glass_that_slides_down_the_rail(self):
         """侧栏的当前项是压在侧栏那块玻璃上的又一块玻璃，它在这一列里滑。
 
