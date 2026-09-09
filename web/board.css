@@ -62,11 +62,47 @@
    看着像贴在背景上的剪纸，浮不起来。三层都用冷灰 `#111827` 而不是纯黑：这一层底下
    多半是肤色和暖色封面，纯黑压上去发脏。暗色那一档不靠加更多黑——玻璃和背景本来
    就都是深的，再黑也分不出层，分层交给上缘那道 `--glass-rim` 亮线。 */
-:root{--glass-fill:rgba(252,253,255,.44);--glass-rim:rgba(255,255,255,.72);--glass-low:rgba(70,80,100,.1);--glass-text:#1d2129;--glass-shadow:0 1px 2px #1118270f,0 8px 18px #11182714,0 24px 48px #11182710;--glass-lift:0 2px 4px #11182714,0 12px 26px #1118271f,0 30px 60px #11182717;--glass-sheen:rgba(255,255,255,.5);--glass-lume:brightness(1.26) saturate(.55);--glass-pick:brightness(1.1) saturate(1.1);--glass-pick-fill:rgba(255,255,255,.52)}
-:root[data-theme="dark"]{--glass-fill:rgba(26,29,35,.34);--glass-rim:rgba(255,255,255,.2);--glass-low:rgba(255,255,255,.05);--glass-text:#eceef3;--glass-shadow:0 1px 2px #00000047,0 10px 22px #00000038,0 28px 56px #0000002b;--glass-lift:0 2px 4px #00000052,0 14px 30px #00000047,0 34px 68px #00000038;--glass-sheen:rgba(230,239,255,.1);--glass-lume:brightness(.58) contrast(1.06);--glass-pick:brightness(1.7) saturate(1.15);--glass-pick-fill:rgba(255,255,255,.13)}
-@media(prefers-color-scheme:dark){:root:not([data-theme]){--glass-fill:rgba(26,29,35,.34);--glass-rim:rgba(255,255,255,.2);--glass-low:rgba(255,255,255,.05);--glass-text:#eceef3;--glass-shadow:0 1px 2px #00000047,0 10px 22px #00000038,0 28px 56px #0000002b;--glass-lift:0 2px 4px #00000052,0 14px 30px #00000047,0 34px 68px #00000038;--glass-sheen:rgba(230,239,255,.1);--glass-lume:brightness(.58) contrast(1.06);--glass-pick:brightness(1.7) saturate(1.15);--glass-pick-fill:rgba(255,255,255,.13)}}
+/* 面上那两团光是屋里的光源落在玻璃上的反射，位置一直在极慢地挪。钉死的高光会把玻璃
+   变成一张贴图——真玻璃对着一屋子的光，人一动、窗外云一过，面上的亮斑就换个地方，
+   正是这一点让它读成一块有厚度的实物而不是一层半透明的涂层。
+   两团大小和亮度不同，加起来才不像一只手电筒；两条轨迹的周期是 41s 和 67s，互质，
+   合起来四十多分钟不重样，看不出循环点在哪。 */
+:root{--glass-fill:rgba(252,253,255,.32);--glass-rim:rgba(255,255,255,.72);--glass-low:rgba(70,80,100,.1);--glass-text:#1d2129;--glass-shadow:0 1px 2px #1118270f,0 8px 18px #11182714,0 24px 48px #11182710;--glass-lift:0 2px 4px #11182714,0 12px 26px #1118271f,0 30px 60px #11182717;--glass-sheen:rgba(255,255,255,.5);--glass-lume:brightness(1.32) saturate(.5);--glass-pick:brightness(1.1) saturate(1.1);--glass-pick-fill:rgba(255,255,255,.52);--glass-drift-a:radial-gradient(20% 20% at 50% 50%,#ffffff1a,#ffffff0d 42%,transparent 72%);--glass-drift-b:radial-gradient(26% 26% at 50% 50%,#ffffff14,#ffffff0a 44%,transparent 74%)}
+:root[data-theme="dark"]{--glass-fill:rgba(24,27,33,.24);--glass-rim:rgba(255,255,255,.2);--glass-low:rgba(255,255,255,.05);--glass-text:#eceef3;--glass-shadow:0 1px 2px #00000047,0 10px 22px #00000038,0 28px 56px #0000002b;--glass-lift:0 2px 4px #00000052,0 14px 30px #00000047,0 34px 68px #00000038;--glass-sheen:rgba(230,239,255,.1);--glass-lume:brightness(.5) contrast(1.1);--glass-pick:brightness(1.7) saturate(1.15);--glass-pick-fill:rgba(255,255,255,.13)}
+@media(prefers-color-scheme:dark){:root:not([data-theme]){--glass-fill:rgba(24,27,33,.24);--glass-rim:rgba(255,255,255,.2);--glass-low:rgba(255,255,255,.05);--glass-text:#eceef3;--glass-shadow:0 1px 2px #00000047,0 10px 22px #00000038,0 28px 56px #0000002b;--glass-lift:0 2px 4px #00000052,0 14px 30px #00000047,0 34px 68px #00000038;--glass-sheen:rgba(230,239,255,.1);--glass-lume:brightness(.5) contrast(1.1);--glass-pick:brightness(1.7) saturate(1.15);--glass-pick-fill:rgba(255,255,255,.13)}}
+/* 光斑铺在一张两倍大的画布上，靠 `background-position` 推着走：画布只有元素两倍大时，
+   位置从 0% 到 100% 正好把光斑中心从元素的右下角推到左上角，`-10%` 和 `110%` 那两档
+   是让它探出框外一点——真实的光斑不会老老实实待在板子里。半径写 20% 是画布的比例，
+   落到元素上就是 40%，跟着元素自己的长宽各向异性地拉成椭圆。
+   横竖两根轴各挂一条时长不同的动画：`background-position-x` 和 `-y` 是两个独立属性，
+   两条正弦频率不同，合出来是一条李萨如轨迹，不是一个来回滑动的椭圆。 */
+@keyframes glassdriftx{
+  0%{background-position-x:50%,50%,0}
+  12.5%{background-position-x:7.6%,92.4%,0}
+  25%{background-position-x:-10%,110%,0}
+  37.5%{background-position-x:7.6%,92.4%,0}
+  50%{background-position-x:50%,50%,0}
+  62.5%{background-position-x:92.4%,7.6%,0}
+  75%{background-position-x:110%,-10%,0}
+  87.5%{background-position-x:92.4%,7.6%,0}
+  100%{background-position-x:50%,50%,0}
+}
+@keyframes glassdrifty{
+  0%{background-position-y:-10%,50%,0}
+  12.5%{background-position-y:7.6%,7.6%,0}
+  25%{background-position-y:50%,-10%,0}
+  37.5%{background-position-y:92.4%,7.6%,0}
+  50%{background-position-y:110%,50%,0}
+  62.5%{background-position-y:92.4%,92.4%,0}
+  75%{background-position-y:50%,110%,0}
+  87.5%{background-position-y:7.6%,92.4%,0}
+  100%{background-position-y:-10%,50%,0}
+}
 .board-filter-frame.board-filter-frame.board-filter-frame,.entitytagbar.entitytagbar.entitytagbar,.entitycollectionhead.entitycollectionhead.entitycollectionhead,body .review .reviewbulktoolbar,body .review .reviewgroupbar,.drawer.drawer,.drawer.drawer.open,.edge.edge,.top .search.search,.top.top>.ib{
-  background:linear-gradient(125deg,var(--glass-sheen),transparent 42%,var(--glass-low)),var(--glass-fill);
+  background:var(--glass-drift-a),var(--glass-drift-b),linear-gradient(125deg,var(--glass-sheen),transparent 42%,var(--glass-low)),var(--glass-fill);
+  background-size:200% 200%,200% 200%,auto;background-repeat:no-repeat,no-repeat,repeat;
+  background-position:50% 20%,80% 70%,0 0;
+  animation:glassdriftx 41s linear infinite,glassdrifty 67s linear infinite;
   backdrop-filter:var(--glass-optic,blur(22px)) saturate(160%) var(--glass-lume);-webkit-backdrop-filter:var(--glass-optic,blur(22px)) saturate(160%) var(--glass-lume);
   border:0;box-shadow:inset 0 1px 0 var(--glass-rim),inset 1px 0 0 var(--glass-low),inset -1px 0 0 var(--glass-low),inset 0 -1px 0 var(--glass-low),var(--glass-shadow);
 }
@@ -76,10 +112,13 @@
    改成让它们各做一块玻璃的上下半：圆角只留外侧，接缝那两条内描线去掉，吸顶的光晕由
    下半的 ::after 一次画完整块——它比上半低一层，画在上半左右两侧的那部分不会被盖住。 */
 /* 那道 125° 高光是按盒子自己的对角线铺的：上下两半各铺一遍，接缝两边就成了亮的一段
-   和灰的一段，静止时看着是两块叠在一起。分两个盒子的浮层不铺它，只留一层平的底色，
-   边上那圈高光仍然由 `inset` 描出来。首页那块是一个盒子，它照旧。 */
+   和灰的一段，静止时看着是两块叠在一起。分两个盒子的浮层不铺它，边上那圈高光仍然由
+   `inset` 描出来。首页那块是一个盒子，它照旧。
+   漂移的那两团光不受这一条影响，两半各自飘各自的：它们是圆的，接缝上不留边界。 */
 .entitytagbar.entitytagbar.entitytagbar,.entitycollectionhead.entitycollectionhead.entitycollectionhead,
-body .review .reviewbulktoolbar,body .review .reviewgroupbar{background:var(--glass-fill)}
+body .review .reviewbulktoolbar,body .review .reviewgroupbar{
+  background-image:var(--glass-drift-a),var(--glass-drift-b);background-color:var(--glass-fill);
+  background-size:200% 200%,200% 200%;background-repeat:no-repeat}
 .entitycollectionhead.entitycollectionhead.entitycollectionhead{border-radius:22px;color:var(--glass-text)}
 .entitytagbar.entitytagbar.entitytagbar{border-radius:22px 22px 0 0;color:var(--glass-text);
   box-shadow:inset 0 1px 0 var(--glass-rim),inset 1px 0 0 var(--glass-low),inset -1px 0 0 var(--glass-low),var(--glass-shadow)}
@@ -161,10 +200,14 @@ body .review .reviewbulktoolbar,body .review .reviewgroupbar{background:var(--gl
 .drawer.drawer.drawer .dnav button:not([aria-pressed="true"]):hover,
 .edge.edge.edge button:not([aria-pressed="true"]):hover{
   background:color-mix(in srgb,var(--glass-rim) 26%,transparent);color:var(--glass-text)}
-@supports not (backdrop-filter:blur(1px)){.board-filter-frame.board-filter-frame.board-filter-frame,.entitytagbar.entitytagbar.entitytagbar,.entitycollectionhead.entitycollectionhead.entitycollectionhead,body .review .reviewbulktoolbar,body .review .reviewgroupbar,.drawer.drawer,.drawer.drawer.open,.edge.edge,.top .search.search{background:var(--ground)}}
-@media(prefers-reduced-transparency:reduce),(prefers-contrast:more){.board-filter-frame.board-filter-frame.board-filter-frame,.entitytagbar.entitytagbar.entitytagbar,.entitycollectionhead.entitycollectionhead.entitycollectionhead,body .review .reviewbulktoolbar,body .review .reviewgroupbar,.drawer.drawer,.drawer.drawer.open,.edge.edge,.top .search.search,.top.top>.ib{background:var(--ground);backdrop-filter:none;-webkit-backdrop-filter:none}}
+@supports not (backdrop-filter:blur(1px)){.board-filter-frame.board-filter-frame.board-filter-frame,.entitytagbar.entitytagbar.entitytagbar,.entitycollectionhead.entitycollectionhead.entitycollectionhead,body .review .reviewbulktoolbar,body .review .reviewgroupbar,.drawer.drawer,.drawer.drawer.open,.edge.edge,.top .search.search{background:var(--ground);animation:none}}
+@media(prefers-reduced-transparency:reduce),(prefers-contrast:more){.board-filter-frame.board-filter-frame.board-filter-frame,.entitytagbar.entitytagbar.entitytagbar,.entitycollectionhead.entitycollectionhead.entitycollectionhead,body .review .reviewbulktoolbar,body .review .reviewgroupbar,.drawer.drawer,.drawer.drawer.open,.edge.edge,.top .search.search,.top.top>.ib{background:var(--ground);backdrop-filter:none;-webkit-backdrop-filter:none;animation:none}}
+/* 面上那两团光停在 `background-position` 给的那一处，不再挪：它讲的是光在动，而这
+   台机器上「减少动态效果」说的就是别让不由我操作的东西自己动。停住之后它还是两团
+   高光，玻璃仍有厚度，只是这屋里的光不再走了。 */
+@media(prefers-reduced-motion:reduce){.board-filter-frame.board-filter-frame.board-filter-frame,.entitytagbar.entitytagbar.entitytagbar,.entitycollectionhead.entitycollectionhead.entitycollectionhead,body .review .reviewbulktoolbar,body .review .reviewgroupbar,.drawer.drawer,.drawer.drawer.open,.edge.edge,.top .search.search,.top.top>.ib{animation:none}}
 /* Peach-owned media and analytics layouts. */
-html.board-high-contrast .board-filter-frame.board-filter-frame.board-filter-frame,html.board-high-contrast .entitytagbar.entitytagbar.entitytagbar,html.board-high-contrast .entitycollectionhead.entitycollectionhead.entitycollectionhead,html.board-high-contrast .review .reviewbulktoolbar,html.board-high-contrast .review .reviewgroupbar,html.board-high-contrast .drawer.drawer,html.board-high-contrast .edge.edge,html.board-high-contrast .top .search.search,html.board-high-contrast .top.top>.ib{background:var(--ground);backdrop-filter:none;-webkit-backdrop-filter:none}
+html.board-high-contrast .board-filter-frame.board-filter-frame.board-filter-frame,html.board-high-contrast .entitytagbar.entitytagbar.entitytagbar,html.board-high-contrast .entitycollectionhead.entitycollectionhead.entitycollectionhead,html.board-high-contrast .review .reviewbulktoolbar,html.board-high-contrast .review .reviewgroupbar,html.board-high-contrast .drawer.drawer,html.board-high-contrast .edge.edge,html.board-high-contrast .top .search.search,html.board-high-contrast .top.top>.ib{background:var(--ground);backdrop-filter:none;-webkit-backdrop-filter:none;animation:none}
 :root{--board-card-foot:color-mix(in srgb,var(--ground) 92%,var(--ink))}
 .followmanage.followmanage{width:100%;max-width:1120px}
 .followmanage .fmain{width:100%;max-width:1120px;margin-inline:auto;gap:20px}
@@ -818,16 +861,17 @@ dialog.board-icon-popover{position:fixed;inset:auto;margin:0;width:min(360px,cal
 .reviewitem{content-visibility:auto;contain-intrinsic-size:auto var(--review-fieldset-height)}
 body .reviewactions button,body .junkactions button:not(.danger){height:36px;border:1px solid var(--color-border-button-default);border-radius:10px;padding:8px 12px;background:var(--color-background-primary-default);color:var(--ink);box-shadow:0 1px 2px #0000000d;font:var(--board-body-medium)}
 body .reviewactions button.warning,body [data-follow-bulk],body [data-follow-status=seen],body [data-follow-status=ignored]{background:color-mix(in srgb,#3986ff 16%,var(--color-background-primary-default));color:#1760ef;border-color:transparent}
-.reviewcontrols,.reviewgroupbar{border:0;border-radius:20px}.reviewcontrols.is-stuck,.reviewgroupbar.is-stuck,.batchbar,.tagselection{background:linear-gradient(125deg,var(--glass-sheen),transparent 42%,var(--glass-low)),var(--glass-fill);backdrop-filter:var(--glass-optic,blur(22px)) saturate(145%);border:0;box-shadow:inset 0 1px 0 var(--glass-rim),var(--glass-shadow);border-radius:20px}
+.reviewcontrols,.reviewgroupbar{border:0;border-radius:20px}.reviewcontrols.is-stuck,.reviewgroupbar.is-stuck,.batchbar,.tagselection{background:var(--glass-drift-a),var(--glass-drift-b),linear-gradient(125deg,var(--glass-sheen),transparent 42%,var(--glass-low)),var(--glass-fill);background-size:200% 200%,200% 200%,auto;background-repeat:no-repeat,no-repeat,repeat;background-position:50% 20%,80% 70%,0 0;animation:glassdriftx 41s linear infinite,glassdrifty 67s linear infinite;backdrop-filter:var(--glass-optic,blur(22px)) saturate(145%);border:0;box-shadow:inset 0 1px 0 var(--glass-rim),var(--glass-shadow);border-radius:20px}
 .reviewtabs{overflow-x:auto!important;overflow-y:hidden;scrollbar-width:none!important;touch-action:pan-x pan-y;overscroll-behavior-x:contain}.reviewtabs::-webkit-scrollbar{display:none!important}.reviewtabs .os-scrollbar{display:none!important}
 .settingsscroll .settingrow{margin-right:16px}.settingsscroll .settinggroup{border-bottom:0}
 .iconswitch.themeswitch[data-board-segments]{padding:4px;border:0;border-radius:24px;background:var(--picked);gap:4px}.iconswitch.themeswitch[data-board-segments]>label{width:32px;height:32px;border-radius:50%}.themeswitch .board-segment-thumb{border-radius:50%;background:var(--ground)}
 .configsource{align-items:start}.configsource input.geist-input,.configsource .gselectfield{height:var(--control-h);min-height:var(--control-h);box-sizing:border-box}.configpage .configcheck{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 20px 12px 16px;border:1px solid var(--color-border-button-default);border-radius:10px;background:var(--color-background-primary-default);cursor:pointer}.configpage .configcheck>.pcheck{order:2}.configpage .configcheck:hover{background:var(--color-background-primary-hover)}
 body .reviewactions button.primary:not(:disabled){background:var(--board-blue);color:#fff;border-color:transparent}body .reviewactions button.error:not(:disabled){background:linear-gradient(180deg,#ff3347,#e60012);color:#fff;border-color:transparent}body .reviewactions button.error:hover:not(:disabled){background:linear-gradient(180deg,#ff6471,#ff3347)}
 .card .pic>.badge{padding:4px;border-radius:10px;background:var(--glass-fill);box-shadow:inset 0 1px 0 var(--glass-rim),var(--glass-shadow);backdrop-filter:blur(16px) saturate(145%)}.card .pic>.badge .src{background:transparent;padding:0;width:20px;height:20px}
-body .selectiondock{border:0;border-radius:22px;background:linear-gradient(125deg,var(--glass-sheen),transparent 42%,var(--glass-low)),var(--glass-fill);backdrop-filter:var(--glass-optic,blur(22px)) saturate(145%);box-shadow:inset 0 1px 0 var(--glass-rim),inset 1px 0 0 var(--glass-low),inset -1px 0 0 var(--glass-low),inset 0 -1px 0 var(--glass-low),var(--glass-shadow)}
-html.board-high-contrast :is(.selectiondock,.reviewcontrols.is-stuck,.reviewgroupbar.is-stuck,.batchbar,.tagselection,.card .badge){background:var(--ground);backdrop-filter:none;-webkit-backdrop-filter:none}
-@media(prefers-reduced-transparency:reduce){body :is(.selectiondock,.reviewcontrols.is-stuck,.reviewgroupbar.is-stuck,.batchbar,.tagselection,.card .badge){background:var(--ground);backdrop-filter:none}}
+body .selectiondock{border:0;border-radius:22px;background:var(--glass-drift-a),var(--glass-drift-b),linear-gradient(125deg,var(--glass-sheen),transparent 42%,var(--glass-low)),var(--glass-fill);background-size:200% 200%,200% 200%,auto;background-repeat:no-repeat,no-repeat,repeat;background-position:50% 20%,80% 70%,0 0;animation:glassdriftx 41s linear infinite,glassdrifty 67s linear infinite;backdrop-filter:var(--glass-optic,blur(22px)) saturate(145%);box-shadow:inset 0 1px 0 var(--glass-rim),inset 1px 0 0 var(--glass-low),inset -1px 0 0 var(--glass-low),inset 0 -1px 0 var(--glass-low),var(--glass-shadow)}
+html.board-high-contrast :is(.selectiondock,.reviewcontrols.is-stuck,.reviewgroupbar.is-stuck,.batchbar,.tagselection,.card .badge){background:var(--ground);backdrop-filter:none;-webkit-backdrop-filter:none;animation:none}
+@media(prefers-reduced-transparency:reduce){body :is(.selectiondock,.reviewcontrols.is-stuck,.reviewgroupbar.is-stuck,.batchbar,.tagselection,.card .badge){background:var(--ground);backdrop-filter:none;animation:none}}
+@media(prefers-reduced-motion:reduce){body :is(.selectiondock,.reviewcontrols.is-stuck,.reviewgroupbar.is-stuck,.batchbar,.tagselection){animation:none}}
 .board-state-preview>header{display:flex;align-items:center;justify-content:space-between;gap:16px}.board-state-preview h1{font-size:28px}.board-state-preview h2{font-size:18px;margin:20px 0 12px}.board-state-preview h3{font-size:15px}.board-state-preview p{color:var(--muted);line-height:1.6}
 .board-state-preview>nav{display:flex;flex-wrap:wrap;gap:8px;margin:20px 0}.board-state-preview>nav [aria-pressed=true]{outline:2px solid var(--tungsten);outline-offset:1px}
 .board-preview-tools{display:flex;align-items:center;gap:20px;flex-wrap:wrap}.board-preview-tools label{display:flex;align-items:center;gap:12px}.board-preview-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.board-preview-grid article{padding:20px;border-radius:16px;background:var(--ground);min-width:0}.board-state-preview .cleanupgrid{padding-bottom:0}
@@ -1031,10 +1075,11 @@ body .review .reviewgroup:not([hidden])~.reviewgroup:not([hidden])>.reviewgroupb
    所以玻璃由页面自己画一层，铺满当前粘住的那几行；两条横条只留内容，不带底。
    矩形由 `updateReviewSticky` 逐帧量出来，写进 `--review-pane-*`。 */
 body .review{position:relative}
-body .review.review-is-stuck::before{content:"";position:fixed;top:var(--topH);left:var(--review-pane-left,0);width:var(--review-pane-width,0);height:var(--review-pane-height,0);z-index:58;pointer-events:none;border-radius:20px;background:var(--glass-fill);backdrop-filter:var(--glass-optic,blur(22px)) saturate(145%);-webkit-backdrop-filter:var(--glass-optic,blur(22px)) saturate(145%);box-shadow:inset 0 1px 0 var(--glass-rim),var(--glass-shadow)}
+body .review.review-is-stuck::before{content:"";position:fixed;top:var(--topH);left:var(--review-pane-left,0);width:var(--review-pane-width,0);height:var(--review-pane-height,0);z-index:58;pointer-events:none;border-radius:20px;background:var(--glass-drift-a),var(--glass-drift-b),var(--glass-fill);background-size:200% 200%,200% 200%;background-repeat:no-repeat;background-position:50% 20%,80% 70%;animation:glassdriftx 41s linear infinite,glassdrifty 67s linear infinite;backdrop-filter:var(--glass-optic,blur(22px)) saturate(145%);-webkit-backdrop-filter:var(--glass-optic,blur(22px)) saturate(145%);box-shadow:inset 0 1px 0 var(--glass-rim),var(--glass-shadow)}
 body .review :is(.reviewbulktoolbar,.reviewgroupbar).is-stuck{background:transparent;backdrop-filter:none;-webkit-backdrop-filter:none;border:0;box-shadow:none}
-html.board-high-contrast .review.review-is-stuck::before{background:var(--ground);backdrop-filter:none;-webkit-backdrop-filter:none}
-@media(prefers-reduced-transparency:reduce){body .review.review-is-stuck::before{background:var(--ground);backdrop-filter:none;-webkit-backdrop-filter:none}}
+html.board-high-contrast .review.review-is-stuck::before{background:var(--ground);backdrop-filter:none;-webkit-backdrop-filter:none;animation:none}
+@media(prefers-reduced-transparency:reduce){body .review.review-is-stuck::before{background:var(--ground);backdrop-filter:none;-webkit-backdrop-filter:none;animation:none}}
+@media(prefers-reduced-motion:reduce){body .review.review-is-stuck::before{animation:none}}
 /* 批量条：隐藏的键真的隐藏（Board 的 inline-flex 曾压过 hidden）；「加入回收站」用 error 按钮的红色渐变。 */
 body .batchbar button.danger{box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;gap:4px;height:36px;min-height:36px;padding:8px 12px;border:1px solid transparent;border-radius:10px;background:linear-gradient(180deg,#ff3347,#e60012);color:#fff;font:var(--board-body-medium);transition:background-color .15s ease}
 body .batchbar button.danger:hover{background:linear-gradient(180deg,#ff6471,#ff3347);color:#fff}

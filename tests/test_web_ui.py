@@ -7551,8 +7551,8 @@ class WebUiSourceTests(unittest.TestCase):
         """
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
         app = (Path(__file__).resolve().parents[1] / "web/app.js").read_text(encoding="utf-8")
-        for theme in ("--glass-lume:brightness(1.26) saturate(.55)",
-                      "--glass-lume:brightness(.58) contrast(1.06)"):
+        for theme in ("--glass-lume:brightness(1.32) saturate(.5)",
+                      "--glass-lume:brightness(.5) contrast(1.1)"):
             self.assertIn(theme, board)
         self.assertIn("backdrop-filter:var(--glass-optic,blur(22px)) saturate(160%) var(--glass-lume);", board)
         self.assertIn('`blur(14px) url("#${id}")`', app)
@@ -7640,6 +7640,46 @@ class WebUiSourceTests(unittest.TestCase):
                       '.edge.edge.edge button:not([aria-pressed="true"]):hover{\n'
                       "  background:color-mix(in srgb,var(--glass-rim) 26%,transparent);"
                       "color:var(--glass-text)}", board)
+
+    def test_two_soft_lights_drift_across_every_pane_on_two_coprime_clocks(self):
+        """玻璃面上那两团光在极慢地挪，横竖两根轴各走各的钟。
+
+        钉死的高光把玻璃变成一张贴图。真玻璃对着一屋子的光，人一动、窗外云一过，面上
+        的亮斑就换个地方，正是这一点让它读成一块有厚度的实物。
+        光斑铺在一张两倍大的画布上，靠 `background-position` 推着走——画布只有元素两倍
+        大时，位置从 0% 到 100% 正好把光斑中心从元素的右下角推到左上角。半径写 20% 是
+        画布的比例，落到元素上是 40%，跟着元素自己的长宽拉成椭圆。
+        `background-position-x` 和 `-y` 是两个独立属性，各挂一条时长不同的动画，41 与
+        67 互质，合起来四十多分钟不重样，看不出循环点在哪。
+        这一层不改用伪元素加 `transform`：吸顶那条遮挡带是靠 `::before` 探出框外画的，
+        要裁住一团飘出去的光就得给玻璃加 `overflow:hidden`，那条带子跟着一起没了。
+        """
+        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
+        self.assertIn("--glass-drift-a:radial-gradient(20% 20% at 50% 50%,"
+                      "#ffffff1a,#ffffff0d 42%,transparent 72%)", board)
+        self.assertIn("--glass-drift-b:radial-gradient(26% 26% at 50% 50%,"
+                      "#ffffff14,#ffffff0a 44%,transparent 74%)", board)
+        self.assertIn("  background:var(--glass-drift-a),var(--glass-drift-b),"
+                      "linear-gradient(125deg,var(--glass-sheen),transparent 42%,var(--glass-low)),"
+                      "var(--glass-fill);\n"
+                      "  background-size:200% 200%,200% 200%,auto;"
+                      "background-repeat:no-repeat,no-repeat,repeat;\n"
+                      "  background-position:50% 20%,80% 70%,0 0;\n"
+                      "  animation:glassdriftx 41s linear infinite,glassdrifty 67s linear infinite;", board)
+        # 两团反着走：同一条轨迹上错开半个周期，面上才不是一只手电筒。
+        self.assertIn("  25%{background-position-x:-10%,110%,0}", board)
+        self.assertIn("  75%{background-position-x:110%,-10%,0}", board)
+        # 竖轴上错开四分之一个周期，两团合出来的是李萨如轨迹，不是一条对角线。
+        self.assertIn("  0%{background-position-y:-10%,50%,0}", board)
+        self.assertIn("  25%{background-position-y:50%,-10%,0}", board)
+        # 光停在 `background-position` 给的那一处：还是两团高光，只是这屋里的光不再走了。
+        self.assertIn("@media(prefers-reduced-motion:reduce){"
+                      ".board-filter-frame.board-filter-frame.board-filter-frame,", board)
+        for fallback in ("@supports not (backdrop-filter:blur(1px)){",
+                         "@media(prefers-reduced-transparency:reduce),(prefers-contrast:more){",
+                         "html.board-high-contrast .board-filter-frame"):
+            self.assertIn("animation:none", board.split(fallback, 1)[1].split("}", 1)[0],
+                          f"{fallback} 换成实色后还在推一层看不见的光")
 
     def test_a_picked_key_on_any_glass_bar_is_the_same_pane_of_white(self):
         """玻璃条上被选中的那一枚，四个位置读起来是同一块东西。
@@ -7766,7 +7806,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn('body .review.review-is-stuck::before{content:"";position:fixed;top:var(--topH);'
                       "left:var(--review-pane-left,0);width:var(--review-pane-width,0);"
                       "height:var(--review-pane-height,0);z-index:58;pointer-events:none;border-radius:20px;"
-                      "background:var(--glass-fill);", board)
+                      "background:var(--glass-drift-a),var(--glass-drift-b),var(--glass-fill);", board)
         self.assertIn("body .review :is(.reviewbulktoolbar,.reviewgroupbar).is-stuck{background:transparent;"
                       "backdrop-filter:none;-webkit-backdrop-filter:none;border:0;box-shadow:none}", board)
         # 玻璃压在两条横条底下：58 低于分组条的 59 和工具条的 60。
@@ -8068,9 +8108,11 @@ class WebUiSourceTests(unittest.TestCase):
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
         self.assertIn(".entitytagbar.entitytagbar.entitytagbar,"
                       ".entitycollectionhead.entitycollectionhead.entitycollectionhead,\n"
-                      "body .review .reviewbulktoolbar,body .review .reviewgroupbar"
-                      "{background:var(--glass-fill)}", board)
-        sheen = board.split("background:linear-gradient(125deg,var(--glass-sheen)", 1)[0].rsplit("\n", 2)[1]
+                      "body .review .reviewbulktoolbar,body .review .reviewgroupbar{\n"
+                      "  background-image:var(--glass-drift-a),var(--glass-drift-b);"
+                      "background-color:var(--glass-fill);", board)
+        sheen = board.split("\n  background:var(--glass-drift-a),var(--glass-drift-b),"
+                            "linear-gradient(125deg,var(--glass-sheen)", 1)[0].rsplit("\n", 1)[1]
         for selector in (".board-filter-frame.board-filter-frame.board-filter-frame",
                          ".entitytagbar.entitytagbar.entitytagbar",
                          ".entitycollectionhead.entitycollectionhead.entitycollectionhead",
