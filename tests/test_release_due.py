@@ -225,6 +225,31 @@ class WiringTests(unittest.TestCase):
             for platform_only in (".venv/Scripts", ".venv\\Scripts", ".venv/bin"):
                 self.assertNotIn(platform_only, line)
 
+    def test_the_reminder_comes_out_as_utf8_whatever_the_console_codepage_is(self):
+        """这句话经配置里那条命令出来必须是 UTF-8 字节。
+
+        `uv run --no-project python` 拿的是系统解释器，它在这台 Windows 上把
+        `sys.stdout.encoding` 定成 `gbk`：`systemMessage` 里的中文按 GBK 编出去，
+        读的一端按 UTF-8 解，屏幕上只有命令名和数字还认得出来，正文是一片乱码。
+        这条提醒的全部价值就在那一句话本身，读不出来等于没说。`-X utf8` 把输出端
+        钉死，和测试入口固定 `PYTHONIOENCODING` 是同一条。
+
+        解释器那一段照配置原样取出来跑一遍：只比对 `-X utf8` 写在不写在，认不出
+        「写了却没生效」，而这里要的正是出来的字节。
+        """
+        claude = self.called_by_argv(self.claude_stop_argv())
+        codex = self.called_by(self.codex_stop_commands()).split()
+        for argv in (claude, codex):
+            script = next(i for i, part in enumerate(argv) if "release_due.py" in part)
+            self.assertIn("-X", argv[:script], argv)
+            self.assertEqual(argv[argv.index("-X") + 1], "utf8", argv)
+        interpreter = claude[:next(i for i, part in enumerate(claude)
+                                   if "release_due.py" in part)]
+        spoken = subprocess.run([*interpreter, "-c", "print('该发下一版了')"],
+                                cwd=str(self.ROOT), capture_output=True, check=False)
+        self.assertEqual(spoken.returncode, 0, spoken.stderr)
+        self.assertEqual(spoken.stdout.strip(), "该发下一版了".encode("utf-8"))
+
     def test_the_configured_command_runs_without_leaving_a_venv_behind(self):
         """把配置里那条命令原样跑一遍，落在一个装成项目的空目录里。
 

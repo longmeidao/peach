@@ -40,6 +40,14 @@ class JobStatusTests(unittest.TestCase):
         }
         self.assertEqual(commands,
                          {"${CLAUDE_PROJECT_DIR}/.venv/Scripts/python.exe", "uv"})
+        # 每条都带 `-X utf8`：这几个脚本打的都是中文，而 Windows 上解释器的输出端
+        # 默认落在 gbk，读的一端按 UTF-8 解，屏幕上就只剩命令名和数字认得出来。
+        for event in settings["hooks"].values():
+            for matcher in event:
+                for hook in matcher["hooks"]:
+                    args = hook.get("args", [])
+                    self.assertIn("-X", args, hook)
+                    self.assertEqual(args[args.index("-X") + 1], "utf8", hook)
         result = subprocess.run(
             [sys.executable, str(SCRIPT), "--help"],
             cwd=SCRIPT.parents[1],
