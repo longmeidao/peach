@@ -70,6 +70,27 @@ class RestartWindowsTrayTests(unittest.TestCase):
         self.assertEqual(argv, [f"{self.service.parent / 'pythonw.exe'}",
                                 "-c", self.BOOTSTRAP, "--show"])
 
+    def test_the_command_line_rules_that_only_show_up_in_odd_arguments(self):
+        """三条 Win32 规则各要一条判据：反斜杠、引号里的引号、真的空参数。
+
+        照抄命令行重启，argv 差一格起的就是另一个东西，所以这里比对的是逐项相等，
+        不是「大致长这样」。
+        """
+        cases = {
+            r'a "b c" d': ["a", "b c", "d"],
+            # 2n 个反斜杠后跟引号：反斜杠减半，引号收界。
+            r'"C:\dir\\" next': ["C:\\dir\\", "next"],
+            # 2n+1 个：反斜杠减半，引号变字面量。
+            r'"say \"hi\"" done': ['say "hi"', "done"],
+            # 引号里的 "" 是一个字面引号，不收界。
+            r'"a""b"': ['a"b'],
+            # 空参数是真参数，不能因为没攒到字符就丢掉。
+            'first "" last': ["first", "", "last"],
+        }
+        for line, expected in cases.items():
+            with self.subTest(line=line):
+                self.assertEqual(windows_restart.parse_windows_command_line(line), expected)
+
     def test_source_restart_reruns_the_recorded_command_line(self):
         pythonw = self.service.parent / "pythonw.exe"
         pythonw.write_bytes(b"shim")
