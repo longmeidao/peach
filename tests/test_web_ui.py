@@ -8676,8 +8676,8 @@ class WebUiSourceTests(unittest.TestCase):
                                 "grid-template-columns:minmax(0,1fr) auto;")
         self.assertPageContains("title=\"打开原来源\">${esc(source.label)}"
                                 "${icon('external-link','externalmark')}")
-        self.assertPageContains('<b class="externallink">${esc(search.label)}'
-                                "${icon('external-link','externalmark')}</b>")
+        self.assertPageContains('<a class="externallink" href="${esc(search.url)}"'
+                                ' target="_blank" rel="noreferrer noopener"')
         # 一处漏掉类名就又变成八档里的第九档，所以按调用点数，不按人工清单。
         self.assertEqual(self.app_js.count("icon('external-link'"),
                          self.app_js.count("icon('external-link','externalmark')"),

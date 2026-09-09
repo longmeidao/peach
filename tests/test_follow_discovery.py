@@ -18,6 +18,7 @@ CREATORS = json.dumps([
     {"id": "30917150", "name": "LazyProcrastinator", "service": "fanbox"},
     {"id": "109730638", "name": "EcchiWaffle", "service": "patreon"},
     {"id": "25775753", "name": "LazyMazer", "service": "patreon"},
+    {"id": "suzutaro3d", "name": "鈴太郎3D", "service": "patreon"},
 ]).encode()
 
 F95_HIT = json.dumps({"status": "ok", "msg": {"data": [
@@ -116,8 +117,8 @@ class CreatorIndexTests(_DiscoveryCase):
     def test_the_index_is_downloaded_once_and_then_cached(self):
         calls = []
         index = self._index(calls)
-        self.assertEqual(len(index.load("kemono")), 3)
-        self.assertEqual(len(index.load("kemono")), 3)
+        self.assertEqual(len(index.load("kemono")), 4)
+        self.assertEqual(len(index.load("kemono")), 4)
         self.assertEqual(len(calls), 1, "第二次不该再下载")
 
     def test_a_stale_cache_is_refreshed(self):
@@ -176,6 +177,14 @@ class DiscoverTests(_DiscoveryCase):
                          ["fanbox/30917150"])
         # 纯数字不去 rule34video / rule34.xxx 碰运气——那两个都是按名字/标签查的。
         self.assertFalse(any("/models/" in url for url in calls))
+
+    def test_a_handle_may_be_the_creator_id_itself(self):
+        # patreon 归档的 id 就是创作者手柄：`suzutaro3d` 按 id 命中，
+        # 不需要它的日文名也写进索引。
+        found = self._discover("suzutaro3d", self.ROUTES, providers=("kemono",))
+        self.assertEqual([c.ref for c in found.candidates],
+                         ["patreon/suzutaro3d"])
+        self.assertEqual(found.candidates[0].evidence, "站内 id 精确匹配")
 
     def test_a_numeric_term_probes_the_thread_id(self):
         routes = {**self.ROUTES, "f95zone.to/threads/50685/": HttpResponse(200, {}, b"<html/>")}

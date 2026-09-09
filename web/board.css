@@ -667,6 +667,11 @@ body :is(.popmenu,.gselectmenu,.cardmenupanel)>:is(button,[role=option],[role=me
 body :is(.popmenu,.gselectmenu,.cardmenupanel)>:is(button,[role=option],[role=menuitem]):is(:hover,:focus-visible,[aria-selected=true]){background:var(--color-background-primary-hover);color:var(--color-text-primary)}
 body a:is(.externallink,[target=_blank]):not(:has(img)):not(.cardlink){display:inline-flex;align-items:center;gap:4px;min-height:20px;padding:0;border:0;border-radius:4px;background:transparent;box-shadow:none;color:var(--tungsten);font-weight:500;text-decoration:none;text-underline-offset:3px}
 body a:is(.externallink,[target=_blank]):not(:has(img)):hover{background:transparent;text-decoration:underline;box-shadow:none}.externallink .externalmark{width:18px;height:18px;flex:none}
+/* 来源名链接在会换行的行里（作者卡窄容器 white-space:normal）：inline-flex 把
+   外链标钉在锚点整体右缘，标题两行时它悬在半空，跟不上文字。改回行内排版，
+   标按 1.15em 的比例缩，靠基线跟在最后一个字后面。*/
+body .fsource.frow b>a.fsourcelink{display:inline}
+body .fsource.frow b>a.fsourcelink .externalmark{width:1.15em;height:1.15em;vertical-align:-0.15em}
 body :is(.sbadge,.faliasbadge,.tasteconfidence,.board-chip,.badge){display:inline-flex;align-items:center;justify-content:center;gap:4px;padding:4px 6px;min-height:24px;box-sizing:border-box;border:0;border-radius:6px;background:var(--color-background-tertiary-default);color:var(--color-text-secondary);font:var(--board-caption);white-space:nowrap}
 body :is(.sbadge.ok,.board-chip.success){background:color-mix(in srgb,#84cc16 16%,var(--color-background-primary-default));color:#4d7c0f}body :is(.sbadge.error,.board-chip.error){background:color-mix(in srgb,#f43f5e 12%,var(--color-background-primary-default));color:#e11d48}.sbadge i,.tasteconfidence i{display:none}
 .fprovider{display:flex;align-items:center;gap:6px;flex-wrap:wrap}.fprovider .sbadge{flex:none}.followmanage .fsource.frow{grid-template-columns:20px minmax(120px,1fr) minmax(100px,auto) auto auto}.followmanage .fchannelcheck{align-self:start;margin-top:2px}
