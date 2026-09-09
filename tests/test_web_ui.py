@@ -1057,13 +1057,16 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('.dnav button[aria-pressed="true"]'
                                 "{background:var(--hover);color:var(--ink)}")
 
-    def test_buttons_do_not_shrink_on_press_and_disable_to_a_solid_gray(self):
-        """按下不缩放，禁用是实底灰而不是半透明。
+    def test_form_buttons_do_not_shrink_on_press_and_disable_to_a_solid_gray(self):
+        """表单里那一族按钮按下不缩放，禁用是实底灰而不是半透明。
 
-        同一次实测：Geist Button 页面上全部按钮的 `transform` 都是 `none`——按下缩放
-        是 Peach 自己加的。禁用则是 `rgb(26,26,26)` 底、`rgb(143,143,143)` 字、
-        1px `rgb(46,46,46)` 环、`opacity:1`；半透明会让按钮连同它下面的底色一起变淡，
-        在深色卡片和浅色卡片上淡出的程度还不一样。
+        同一次实测：Geist Button 页面上全部按钮的 `transform` 都是 `none`。一屏表单上
+        七八个按钮排在一起，各自按下去弹一下，读起来是整页在抖；缩放留给手指直接拨的
+        那几类——竖屏那一条上的换一批、沉浸态右下角那一列。
+
+        禁用则是 `rgb(26,26,26)` 底、`rgb(143,143,143)` 字、1px `rgb(46,46,46)` 环、
+        `opacity:1`；半透明会让按钮连同它下面的底色一起变淡，在深色卡片和浅色卡片上
+        淡出的程度还不一样。
 
         光标是 `not-allowed`（2026-09-07 复测，透明底的 tertiary 那档也是）。`default`
         说的是「这里没有交互」，禁用要说的是「有交互，现在不给」：移上去有没有那个禁止
@@ -1071,7 +1074,10 @@ class WebUiSourceTests(unittest.TestCase):
         """
         css = re.sub(r"/\*.*?\*/", "", stylesheet_source(),
                      flags=re.S)
-        self.assertNotIn("scale:.96", css, "Geist 按下没有缩放，别再加回来")
+        pressed = sorted(chunk.rsplit("}", 1)[-1].strip()
+                         for chunk in css.split("{scale:.96")[:-1])
+        self.assertEqual(pressed, [".shorts-inline h2 button:active", ".tokbtns button:active"],
+                         "按下缩放只给手指直接拨的控件，表单按钮那一族不动")
         # 描边那一档连边一起变灰；不描边的动作按钮只换填充和字色。
         ringed = ("{background:var(--sunk);border-color:var(--line-soft);"
                   "color:var(--muted);cursor:not-allowed}")
@@ -7643,6 +7649,37 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn("if(from&&from[head]!==box[head]&&!reduceMotion()){", app)
         # 抻开按这一跳跨了自己几个身位算，封在一个半身位。
         self.assertIn("const reach=Math.min(Math.abs(box[head]-from[head])/box[span],1.5),grow=1+reach*.12;", app)
+
+    def test_a_pressed_control_snaps_down_at_once_and_springs_back_on_release(self):
+        """手指直接拨的控件按下即时缩一档，松手按弹簧弹回去。
+
+        按下那一步不能有缓动：隔两百毫秒才动读成的是「点了没反应」，那一下是手要的
+        回执。弹回来才交给弹簧，冲过原尺寸一点点再收住——手指离开以后那块东西还自己
+        动了一下，捏着的就是软的。回弹这一档比滑板那一档硬得多：按钮上要走的距离只有
+        几个百分点，313ms 挂上去会拖成一次缓慢的呼吸。
+
+        缩放走独立的 `scale` 属性，不挤进 `transform`：那一格上还挂着别的位移。滑块
+        手柄只在抓住时涨一圈，位置一律不参与过渡——给位置加缓动等于让手柄落在指针
+        后面，滑块立刻变成拖不准的东西。
+        """
+        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
+        # 208ms、峰值 1.088，同一支弹簧模拟跑出来的短程版。
+        self.assertIn("--spring-press:linear(0,0.1659,", board)
+        self.assertIn(",1.0066,1.084,1.0861,1.069,", board)
+        self.assertIn("--spring-press-ms:208}", board)
+        self.assertIn(".dnav button,.pill,.sorts button{"
+                      "transition:scale calc(var(--spring-press-ms) * 1ms) var(--spring-press)}", board)
+        # 窄栏自己带一段填充过渡，`transition` 是整份覆盖，漏掉它悬停的渐变就没了。
+        self.assertIn(".edge button{transition:scale calc(var(--spring-press-ms) * 1ms) "
+                      "var(--spring-press),background .12s}", board)
+        self.assertIn(".dnav button:active,.pill:active,.sorts button:active,.edge button:active{"
+                      "scale:.96;transition:scale .06s ease-out}", board)
+        self.assertIn("#tiers .av:active,#tiers .brandpill:active{scale:.96;transition:scale .06s ease-out}", board)
+        self.assertIn("cursor:grab;transition:scale calc(var(--spring-press-ms) * 1ms) "
+                      "var(--spring-press),box-shadow .15s}", board)
+        self.assertIn(":active::-webkit-slider-thumb{scale:1.18;transition:scale .06s ease-out}", board)
+        # 关掉动效时两档弹簧一起归零，剩下的是瞬时到位。
+        self.assertIn("--board-motion:0s;--board-dialog-motion:0s;--spring-pane-ms:0;--spring-press-ms:0}", board)
 
     def test_the_sidebar_current_item_is_a_pane_of_glass_that_slides_down_the_rail(self):
         """侧栏的当前项是压在侧栏那块玻璃上的又一块玻璃，它在这一列里滑。

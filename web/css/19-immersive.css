@@ -25,9 +25,9 @@
   display:flex;flex-direction:column;align-items:center;gap:16px}
 .tokstage.wide .tokbtns{left:auto;right:12px;bottom:18px}
 .tokaction{display:flex;flex-direction:column;align-items:center;gap:6px;color:#f1f1f1}
-.tokbtns button{position:relative;transition:transform .14s,background .14s}
-.tokbtns button:hover{transform:scale(1.05);border-color:rgba(255,255,255,.5)}
-.tokbtns button:active{transform:scale(.96)}
+.tokbtns button{position:relative;transition:scale calc(var(--spring-press-ms) * 1ms) var(--spring-press),background .14s}
+.tokbtns button:hover{scale:1.05;border-color:rgba(255,255,255,.5)}
+.tokbtns button:active{scale:.96;transition:scale .06s ease-out}
 .tokbtns button:focus-visible{outline:2px solid var(--tungsten);outline-offset:3px}
 .toklabel{font-size:var(--fs-xs);font-weight:500;line-height:1.25;white-space:nowrap}.toklabel b{font:inherit}
 /* 进度条。可见部分只有 4px，但命中区得够高——屏幕最下沿的 4px 是鼠标最难瑞的

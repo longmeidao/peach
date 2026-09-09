@@ -382,9 +382,11 @@ body[data-density="dense"] .card .meta .watchcount{display:none}
 .shortscount{color:var(--muted);font-size:var(--fs-xs)}
 .shorts-inline h2 button{margin-left:auto;min-height:48px;display:inline-flex;align-items:center;gap:7px;
   font-size:var(--fs-xs);background:var(--overlay-5);border:0;border-radius:var(--pill-radius);padding:0 16px;cursor:pointer;
-  color:var(--ink);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);transition:background .14s,transform .14s}
-.shorts-inline h2 button:hover{background:color-mix(in srgb,var(--ink) 16%,transparent);transform:translateY(-1px)}
-.shorts-inline h2 button:active{transform:scale(.97)}
+  color:var(--ink);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);transition:background .14s,translate .14s,scale calc(var(--spring-press-ms) * 1ms) var(--spring-press)}
+.shorts-inline h2 button:hover{background:color-mix(in srgb,var(--ink) 16%,transparent);translate:0 -1px}
+/* 抬起和缩放各占一个属性：两样都写在 `transform` 上时，按下那一刻抬起的那 1px 被顶
+   掉，按钮在缩小的同时还往下掉一格。 */
+.shorts-inline h2 button:active{scale:.96;transition:scale .06s ease-out}
 .shorts-inline h2 button svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2}
 .srow{display:flex;gap:13px;overflow-x:auto;padding-bottom:7px}
 .srow .scard{flex:none;width:214px;cursor:pointer}

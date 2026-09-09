@@ -69,6 +69,10 @@
    313ms、峰值 1.103：冲过落点一成，一次回荡就收住。冲过头多少不必再另算一遍，
    它本来就按这一跳的跨度成比例——弹簧拉得越长，甩过去越远。 */
 :root{--spring-pane:linear(0,0.1515,0.3211,0.5922,0.8223,0.937,1.0477,1.096,1.1029,1.0901,1.0641,1.0455,1.021,1.0036,0.9937,0.9905,0.9895,0.9912,0.993,0.9959,0.9983,0.9994,1.0005,1.001,1.0011,1.0009,1.0007,1.0005,1);--spring-pane-ms:313}
+/* 按钮和滑块手柄松手回弹走同一套弹簧的短程版：那一下要走的距离只有几个百分点，
+   跨度短就得更硬、收得更快，313ms 那一档挂上去会拖成一次缓慢的呼吸。
+   208ms、峰值 1.088（stiffness:3600 damping:68 mass:1）。 */
+:root{--spring-press:linear(0,0.1659,0.4268,0.6816,0.8795,1.0066,1.084,1.0861,1.069,1.0457,1.0241,1.0079,0.998,0.9933,0.9923,0.9934,0.9954,0.9973,0.9995,1.0003,1.0006,1.0007,1.0005,1.0004,1);--spring-press-ms:208}
 /* 面上那两团光是屋里的光源落在玻璃上的反射，位置一直在极慢地挪。钉死的高光会把玻璃
    变成一张贴图——真玻璃对着一屋子的光，人一动、窗外云一过，面上的亮斑就换个地方，
    正是这一点让它读成一块有厚度的实物而不是一层半透明的涂层。
@@ -187,6 +191,15 @@ body .review .reviewbulktoolbar,body .review .reviewgroupbar{
 .drawer.drawer>.navglide{border-radius:10px;z-index:-1}
 /* 文字要压在那块玻璃上面，否则滑过去的时候字被盖住一路暗过去。 */
 .board-filter-frame.board-filter-frame #tagbar .pill[data-state]{position:relative;z-index:1}
+/* 按下去那一下归手，弹回来那一下归弹簧。按住立刻缩到 96%——这一步要跟手，隔两百
+   毫秒才动读成的是「点了没反应」；松开才交给弹簧，冲过原尺寸一点点再收住，手指离开
+   以后那块东西还自己动了一下，捏着的是软的不是一张贴纸。
+   缩放走独立的 `scale` 属性：`transform` 那一格上还挂着别的位移，挤进去只能留一个。
+   窄栏那条连着写了填充，它自己本来就有一段——`transition` 是整份覆盖，漏掉的那段
+   会连同悬停的渐变一起没了。 */
+.dnav button,.pill,.sorts button{transition:scale calc(var(--spring-press-ms) * 1ms) var(--spring-press)}
+.edge button{transition:scale calc(var(--spring-press-ms) * 1ms) var(--spring-press),background .12s}
+.dnav button:active,.pill:active,.sorts button:active,.edge button:active{scale:.96;transition:scale .06s ease-out}
 /* 换一批跟同一条上的排序键一样平：给它单独铺一层面加一圈线，静止态就在一排透明
    按钮里露出一块灰片，看着像图标背后还垫了个东西。选中态归排序键，它只有悬停。 */
 .board-filter-frame.board-filter-frame .sorts #batchAction,.entitycollectionhead .sorts .entitybatch{color:var(--ink);background:none;border:0;border-radius:7px;box-shadow:none}
@@ -565,7 +578,7 @@ button,input,select,textarea{font-family:inherit}
   .settingscard .settingsscroll .gselect,.settingscard .settingsscroll .gselectfield{height:40px;font-size:14px}
   .settingscard .settingsscroll .board-number-control>span{font-size:14px}
 }
-@media(prefers-reduced-motion:reduce){:root{--board-motion:0s;--board-dialog-motion:0s}.settingscard .settingshead::after{transition:none}}
+@media(prefers-reduced-motion:reduce){:root{--board-motion:0s;--board-dialog-motion:0s;--spring-pane-ms:0;--spring-press-ms:0}.settingscard .settingshead::after{transition:none}}
 /* Stat Cards 的内层读数与底栏；统计卡仍是可键盘切换的视图入口。 */
 /* 侧栏分组使用标题行与带计数的叶项。 */
 .drawer.drawer{display:flex;flex-direction:column;overflow:hidden}
@@ -737,7 +750,6 @@ body,.disp{font-family:var(--board-font);letter-spacing:0}body{font:var(--board-
    鼠标扫过一排次级键就是一排边框忽明忽暗，而键本身并没有变化。 */
 .geist-button:hover:not(:disabled),.fbtn:hover:not(:disabled),.resourceaction:hover:not(:disabled){background-color:var(--color-background-primary-hover);color:var(--color-text-primary)}
 .geist-button.primary,.geist-button.primary:hover:not(:disabled),.tagselection button.primary,.tagselection button.primary:hover:not(:disabled){background:var(--board-blue);color:var(--color-text-white);transition:filter .15s ease}.geist-button.primary:hover:not(:disabled),.tagselection button.primary:hover:not(:disabled){filter:brightness(1.08)}
-.drawer.drawer .dnav button[aria-pressed=true],.drawer.drawer .dnav button[aria-pressed=true]:hover{background:var(--board-blue);color:var(--color-text-white);transition:filter .15s ease}
 .geist-button.danger:hover:not(:disabled),.fbtn.danger:hover:not(:disabled),.resourceaction.danger:hover:not(:disabled){background:var(--drop);color:#fff}
 @media(max-width:760px){.pagetitle,.listtitle,body #manageTitle,.index .ihead h2,.indexheading{font:var(--board-figure)}input.geist-input,.configfield input,.geist-search input{font-size:16px}}
 
@@ -800,7 +812,10 @@ body button.danger:not(.frowicon):hover:not(:disabled){background:linear-gradien
 .pcheck input:disabled+span{opacity:.5}.pcheck>span svg{width:14px;height:14px;stroke-width:2}.pcheck:hover>span{border-color:var(--color-border-button-hover)}
 input[type=checkbox]:not(.ptoggle):not(.pcheck input){accent-color:#1760ef;width:16px;height:16px;vertical-align:middle;margin:0;flex:none}
 .dual-range .range-base,.dual-range .range-fill{height:6px;top:11px}.dual-range .range-base{background:var(--color-background-tertiary-default);box-shadow:inset 0 1px 1px #0000000f}.dual-range .range-fill{background:linear-gradient(90deg,#3986ff,#1760ef);box-shadow:inset 0 1px 0 #ffffff3d,0 1px 2px #0450e229}
-body :is(.dual-range input,.photozoom input,.vjs-peach-speed-range)::-webkit-slider-thumb{appearance:none;width:20px;height:20px;border:1px solid var(--color-border-button-default);border-radius:50%;background:radial-gradient(circle at center,#fff 3px,#e5e5e5 3.5px,#fff 4px);box-shadow:0 2px 4px #0000001a,inset 0 1px 0 #ffffffcc;cursor:grab;transition:scale .15s,box-shadow .15s}
+body :is(.dual-range input,.photozoom input,.vjs-peach-speed-range)::-webkit-slider-thumb{appearance:none;width:20px;height:20px;border:1px solid var(--color-border-button-default);border-radius:50%;background:radial-gradient(circle at center,#fff 3px,#e5e5e5 3.5px,#fff 4px);box-shadow:0 2px 4px #0000001a,inset 0 1px 0 #ffffffcc;cursor:grab;transition:scale calc(var(--spring-press-ms) * 1ms) var(--spring-press),box-shadow .15s}
+/* 抓住的时候手柄涨一圈，松开按同一条弹簧收回去。位置不参与任何过渡——手柄要贴着
+   指针走，给它加一段缓动就是让它落在指针后面，滑块立刻变成拖不准的东西。 */
+body :is(.dual-range input,.photozoom input,.vjs-peach-speed-range):active::-webkit-slider-thumb{scale:1.18;transition:scale .06s ease-out}
 body :is(.dual-range input,.photozoom input,.vjs-peach-speed-range)::-moz-range-thumb{width:18px;height:18px;border:1px solid var(--color-border-button-default);border-radius:50%;background:radial-gradient(circle at center,#fff 3px,#e5e5e5 3.5px,#fff 4px);box-shadow:0 2px 4px #0000001a}
 body :is(.photozoom input,.vjs-peach-speed-range)::-webkit-slider-runnable-track{height:6px;border-radius:999px;background:linear-gradient(90deg,#3986ff var(--board-range-value,var(--peach-speed-percent,0%)),var(--color-background-tertiary-default) 0);box-shadow:inset 0 1px 1px #0000000f}
 body :is(.photozoom input,.vjs-peach-speed-range)::-webkit-slider-thumb{margin-top:-7px}
@@ -1036,7 +1051,8 @@ body .reviewactions button:disabled{opacity:.5;cursor:not-allowed}
     border-radius:0 var(--floating-radius) var(--floating-radius) 0}
   .shorts-inline .srow{margin-left:calc(-1 * (var(--railW) + 32px));padding-left:calc(var(--railW) + 32px)}
 }
-#tiers .av,#tiers .brandpill{flex:none;border:0;background:transparent;color:var(--color-text-secondary);font:var(--board-body-medium);white-space:nowrap;transition:background-color .2s ease-out,color .2s ease-out}
+#tiers .av,#tiers .brandpill{flex:none;border:0;background:transparent;color:var(--color-text-secondary);font:var(--board-body-medium);white-space:nowrap;transition:scale calc(var(--spring-press-ms) * 1ms) var(--spring-press),background-color .2s ease-out,color .2s ease-out}
+#tiers .av:active,#tiers .brandpill:active{scale:.96;transition:scale .06s ease-out}
 #tiers .av{display:flex;flex-direction:column;align-items:center;gap:6px;width:76px;max-width:none;height:auto;padding:6px 4px;border-radius:12px;text-align:center}
 #tiers .brandpill{display:inline-flex;align-items:center;gap:8px;width:auto;max-width:none;height:40px;padding:6px 12px 6px 6px;border-radius:12px;text-align:left}
 #tiers .av:hover,#tiers .brandpill:hover{background:var(--color-background-primary-hover);color:var(--color-text-primary);border-color:transparent}
