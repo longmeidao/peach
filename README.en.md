@@ -65,11 +65,11 @@ Peach is **pre-1.0**. The application interface is currently Chinese only.
 The test package is accessible only on the same computer and needs no Python, Git, Node or OpenSSL.
 Data lives separately from the program in `%LOCALAPPDATA%\Peach\peach-data`.
 
-Management → Configuration → Check for updates compares the installed version with the latest GitHub prerelease.
+Settings → “This computer” → Updates and maintenance compares the installed version with the latest GitHub prerelease.
 Automatic updates can check every 6 hours, daily, or weekly and are off by default. Standalone packages can download automatically and wait for restart confirmation; source installations support automatic checks.
 Standalone packages download and install the update in the app and restore the previous version if installation fails;
 you can also exit the tray and extract a complete new package over it, keeping the data directory.
-Configuration also offers uninstall, with optional removal of Peach data; original media is preserved.
+The same section offers uninstall, with optional removal of Peach data; original media is preserved.
 
 Install FFmpeg and ffprobe separately for transcoding, probing and thumbnails. Without them, browsing and playback of browser-compatible formats remain available.
 The package is unsigned; see [Windows testing](docs/TESTING_DESKTOP.md) for download verification, configuration and feedback.

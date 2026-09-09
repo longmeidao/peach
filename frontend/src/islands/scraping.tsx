@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { apiGet, apiSend, errorMessage } from '../api';
-import { noteHtml, fieldsetTitle, setActionBusy, selectFieldHtml, wireSelectField } from '@peach/legacy/ui';
+import { noteHtml, fieldsetTitle, loadingDotsHtml, setActionBusy, selectFieldHtml, wireSelectField } from '@peach/legacy/ui';
 import { faviconUrl } from '@peach/legacy/core';
 import type { IslandState } from '../islands';
 import { watchJob } from '../jobs';
@@ -177,6 +177,9 @@ export function Scraping({ data, error, toast }: ScrapingProps & IslandState<Scr
             onInput={event => setCode(event.currentTarget.value)} />
           <button ref={submit} class="geist-button primary" type="submit">抓取封面</button>
         </form>
+        {/* 这一趟要挨个问几家站点、还可能走代理，没有可数的总量，也不能编一个百分比出来。
+            关掉页面它照样在跑，回来能接上，所以状态得留在页面上，而不是只让按钮转一下。 */}
+        {running && <div aria-live="polite" dangerouslySetInnerHTML={{ __html: loadingDotsHtml('正在抓取封面') }} />}
         {problem && <div role="alert" dangerouslySetInnerHTML={{ __html: noteHtml(problem, { variant: 'error' }) }} />}
       </div>
     </section>

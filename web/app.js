@@ -566,7 +566,7 @@ function openSettings(open=true){
   const panel=$('#settingsPanel');
   if(open){
     settingsTransition++;panel.classList.remove('closing');
-    settingsReturnFocus=settingsReturnFocus||document.activeElement;panel.hidden=false;document.body.classList.add('settings-open');syncSettingsPanel();
+    settingsReturnFocus=settingsReturnFocus||document.activeElement;panel.hidden=false;document.body.classList.add('settings-open');syncSettingsPanel();void syncMachineSettings();
     queueMicrotask(()=>$('#settingsClose').focus());return
   }
   if(panel.hidden||panel.classList.contains('closing'))return;
@@ -720,6 +720,33 @@ const actionReceipt=(message,{undo=null,timeout=undo?8000:6000}={})=>{
 };
 const actionFailure=(message,error)=>toast(
   {text:`${message}失败：${error?.message||'请重试'}`},{warn:true});
+
+/* 设置弹层最后一格装的是配置页：媒体文件夹、端口、代理、更新，讲的都是跑着 Peach
+   的那台电脑，不是这个浏览器。别的设备打开设置照样看得见这一格，里面换成一句话说清
+   在哪儿改——判据是 `/healthz` 的 `configurable`（服务由托盘管、已完成配置、请求来自
+   本机三条同时成立）。整格藏起来只会让人以为设置少了一块，还得再找一遍。
+   写在这儿是因为它要用上面那两个模块级绑定；`openSettings` 靠函数声明提升调到它。 */
+let machineSettingsMounted=false;
+/* 左栏由 Board 外壳那段（`buildSettingsTabs`）画，它在自己的闭包里。配置页挂上来之后
+   那一列要从一条「这台电脑」变成四条，得让它重画一遍，所以留这个口子。 */
+let refreshSettingsTabs=null;
+async function syncMachineSettings(){
+  const host=$('#machineSettings');
+  if(!host||machineSettingsMounted)return;
+  const open=()=>!$('#settingsPanel').hidden;
+  if(!host.childElementCount)host.innerHTML=loadingDotsHtml('正在读取这台电脑的配置');
+  const runtime=await api('/healthz').catch(()=>null);
+  if(!open())return;
+  if(runtime)runtimeConfigurable=!!runtime.configurable;
+  if(!runtime||!runtimeConfigurable){
+    host.innerHTML=noteHtml('媒体文件夹、端口、代理和更新讲的是跑着 Peach 的那台电脑，在它自己的浏览器里打开设置就能改。',
+      {label:'这台设备上改不了'});
+    return;
+  }
+  machineSettingsMounted=true;
+  await mountIsland('configuration',host,{receipt:message=>actionReceipt(message)},{isCurrent:open});
+  refreshSettingsTabs?.();
+}
 
 /* 随机排序每次进入首页都换种子；同一次访问继续复用该种子，保证筛选和分页
    不会重复或漏项。「换一批」仍可在当前访问里主动生成下一批。 */
@@ -7128,6 +7155,17 @@ function wireNamePicker(kind,current){
   });
 }
 
+/* 横着滚的那一行两端要渐隐：不然浮层圆角那儿最后一个标签被直角硬切掉半个字，
+   也看不出右边还有。首页筛选条本来就这么做，资料页的标签行是同一条，用同一段。 */
+const overflowObservers=new WeakMap();
+function wireOverflowFade(scroller){
+  if(!scroller)return;
+  if(!overflowObservers.has(scroller)){
+    const update=()=>{scroller.dataset.overflowLeft=String(scroller.scrollLeft>2);scroller.dataset.overflowRight=String(scroller.scrollWidth-scroller.clientWidth-scroller.scrollLeft>2)};
+    overflowObservers.set(scroller,update);scroller.addEventListener('scroll',update,{passive:true});new ResizeObserver(update).observe(scroller);
+  }
+  overflowObservers.get(scroller)();
+}
 function showEntityLoading(kind){
   const body=kind==='agency'?'<div class="entitycollectionhead"><h3 class="skeleton">&nbsp;</h3></div>'+indexSkeletonHtml({kind:'performers',layout:peopleIndexLayout()}):pageSkeletonHtml('正在读取作品',{cards:true});
   const placeholder=entitySkeletonHtml(kind,body);
@@ -7280,6 +7318,7 @@ async function openEntity(kind,name,push=true){
      够不着。全站横向行的那套拖动加滚轮映射就是为这个写的，登记上即可。 */
   wireDrag($('#index').querySelector('.relatedpeople'));
   wireDrag($('#index').querySelector('.entitytags'));
+  wireOverflowFade($('#index').querySelector('.entitytags'));
   if(namePick)wireNamePicker(kind,d.canonical_name);
   entityPhotos=photos&&!photos.error?photos:null;
   if(entityMediaView.media==='photos'&&!photoTotalOf())entityMediaView=emptyMediaView();
@@ -7367,22 +7406,19 @@ const MANAGE_SECTIONS=[
   // 这台电脑的媒体文件夹与端口，字形是一个待配置的文件夹；`settings` 归右上角的设置弹层。
   ['configuration','配置','folder-cog'],
 ];
-/* 管理菜单只留五项。人工复核、回收站、高清版都是「收拾库里已有的东西」，
+/* 管理菜单只留四项。人工复核、回收站、高清版都是「收拾库里已有的东西」，
    和垃圾文件、重复文件、空文件夹是同一件事的不同步骤，统一从数据管理进；
    统计页也因此不再挂链接管理和资源同步这两块跟统计无关的面板。 */
-const MANAGE_MENU_SECTIONS=['stats','taste','cleanup','follow','configuration'];
-/* 「配置」只对运行 Peach 的这台电脑有意义：服务端按调用方回 `/healthz` 的 `configurable`，
-   手机和另一台电脑的菜单里不列它。第一次画管理条时问一次，答复回来后重画。 */
+const MANAGE_MENU_SECTIONS=['stats','taste','cleanup','follow'];
+/* 「配置」不在管理菜单里，它是设置弹层的最后一格（见 syncMachineSettings）：那一页讲的
+   是这台电脑怎么跑 Peach，和「我的界面偏好」是同一类东西，不是库里的一堆内容。
+   `runtimeConfigurable` 仍要问，馆藏空态按它决定是给「去配置媒体文件夹」还是给一句解释。 */
 function probeConfigurable(){
   if(runtimeConfigurable!==null)return;
   runtimeConfigurable=false;
-  api('/healthz').then(runtime=>{
-    runtimeConfigurable=!!runtime.configurable;
-    if(runtimeConfigurable&&manageSection())buildManageBar();
-  }).catch(()=>{});
+  api('/healthz').then(runtime=>{runtimeConfigurable=!!runtime.configurable}).catch(()=>{});
 }
-const manageMenuSections=()=>MANAGE_SECTIONS.filter(([key])=>MANAGE_MENU_SECTIONS.includes(key)
-  &&(key!=='configuration'||runtimeConfigurable===true));
+const manageMenuSections=()=>MANAGE_SECTIONS.filter(([key])=>MANAGE_MENU_SECTIONS.includes(key));
 /* 配置页绑定这台机器，不进跨机同步的侧栏顺序：钉到手机的侧栏上只会得到一句「请在运行
    Peach 的电脑上打开」。 */
 const OPTIONAL_EDGE_ICONS=MANAGE_SECTIONS.filter(([key])=>key!=='configuration').map(([key,label,ic])=>
@@ -9293,37 +9329,94 @@ function installUISetting(){
   contrast.onchange=()=>{localStorage.setItem('peach.high-contrast',String(contrast.checked));document.documentElement.classList.toggle('board-high-contrast',contrast.checked)};
 }
 let tabSequence=0;
-function localTabs(root,groups,titles,host=root){
-  if(!groups.length||host.querySelector(':scope > .board-local-nav'))return;
+/* 左栏按分区分块：一个小标题带一组条目。形状照 BoardUI 的设置弹层
+   （boardui.com/components/settings-modal 的组件页只写了怎么装，量不到间距与字号，
+   未取得；小标题用本站自己那一档：13px、`--muted`）。
+   整块仍是一个 tablist：拆成两个的话方向键只在自己那一段里走，从「安全」按下去到不了
+   「通用」，而这两段在用户眼里就是一列。小标题因此写成 presentation，不占 tab 的位置。 */
+function localTabs(root,sections,host=root){
+  const items=sections.flatMap(section=>section.items);
+  if(!items.length||host.querySelector(':scope > .board-local-nav'))return null;
   const prefix=`board-tabs-${++tabSequence}`;
   const nav=document.createElement('div');nav.className='board-local-nav';nav.setAttribute('role','tablist');nav.setAttribute('aria-label',host===root?'配置分区':'设置分区');
+  const buttons=[];let active=0;
   const choose=index=>{
-    if(host!==root){const heading=host.querySelector('.settingshead h2');if(heading)heading.textContent=titles[index];root.scrollTop=0}
-    groups.forEach((nodes,i)=>nodes.forEach(node=>node.classList.toggle('board-group-active',i===index)));
-    [...nav.children].forEach((button,i)=>{button.setAttribute('aria-selected',String(i===index));button.tabIndex=i===index?0:-1});
+    active=index;
+    if(host!==root){const heading=host.querySelector('.settingshead h2');if(heading)heading.textContent=items[index].title;root.scrollTop=0}
+    /* 先全清再点亮当前这一条。同一个节点可能挂在好几条下面（「这台电脑」那一格的外壳
+       就是），一条一条 toggle 的话后面那条会把前面点亮的又抹掉。 */
+    items.forEach(item=>item.nodes.forEach(node=>node.classList.remove('board-group-active')));
+    items[index].nodes.forEach(node=>node.classList.add('board-group-active'));
+    buttons.forEach((button,i)=>{button.setAttribute('aria-selected',String(i===index));button.tabIndex=i===index?0:-1});
   };
-  groups.forEach((nodes,i)=>{
-    const button=document.createElement('button');button.type='button';button.role='tab';button.id=`${prefix}-tab-${i}`;button.textContent=titles[i];
-    nodes.forEach((node,j)=>{node.dataset.boardGroup=String(i);node.id||=`${prefix}-panel-${i}-${j}`;node.setAttribute('role','tabpanel');node.setAttribute('aria-labelledby',button.id)});
-    if(host!==root){const iconId=['palette-line','layout-grid-line','play-circle-line','search-line','rss-line','shield-check-line'][i];const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('viewBox','0 0 24 24');svg.setAttribute('aria-hidden','true');svg.style.fill='currentColor';svg.style.stroke='none';svg.innerHTML=`<use href="#ri-${iconId}"/>`;button.prepend(svg)}
-    button.setAttribute('aria-controls',nodes.map(node=>node.id).join(' '));button.onclick=()=>choose(i);
-    button.onkeydown=event=>{let next=i;if(event.key==='ArrowRight'||event.key==='ArrowDown')next=(i+1)%groups.length;else if(event.key==='ArrowLeft'||event.key==='ArrowUp')next=(i+groups.length-1)%groups.length;else if(event.key==='Home')next=0;else if(event.key==='End')next=groups.length-1;else return;event.preventDefault();choose(next);nav.children[next].focus()};
-    nav.append(button);
+  sections.forEach(section=>{
+    if(section.caption){const caption=document.createElement('p');caption.className='board-local-nav-caption';caption.setAttribute('role','presentation');caption.textContent=section.caption;nav.append(caption)}
+    section.items.forEach(item=>{
+      const i=buttons.length;
+      const button=document.createElement('button');button.type='button';button.role='tab';button.id=`${prefix}-tab-${i}`;button.textContent=item.title;
+      item.nodes.forEach((node,j)=>{node.dataset.boardGroup=String(i);node.id||=`${prefix}-panel-${i}-${j}`;node.setAttribute('role','tabpanel');node.setAttribute('aria-labelledby',button.id)});
+      /* 两套字形混在一排：`ri-` 是实心的、靠 `fill` 画，`i-` 是 lucide 那套线条的、靠
+         `stroke` 画。给线条件套上 `fill:currentColor` 会填成一坨黑块，按前缀分开设。 */
+      if(item.icon){const solid=item.icon.startsWith('ri-');const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('viewBox','0 0 24 24');svg.setAttribute('aria-hidden','true');svg.style.fill=solid?'currentColor':'none';svg.style.stroke=solid?'none':'currentColor';svg.innerHTML=`<use href="#${item.icon}"/>`;button.prepend(svg)}
+      button.setAttribute('aria-controls',item.nodes.map(node=>node.id).join(' '));button.onclick=()=>choose(i);
+      button.onkeydown=event=>{let next=i;if(event.key==='ArrowRight'||event.key==='ArrowDown')next=(i+1)%items.length;else if(event.key==='ArrowLeft'||event.key==='ArrowUp')next=(i+items.length-1)%items.length;else if(event.key==='Home')next=0;else if(event.key==='End')next=items.length-1;else return;event.preventDefault();choose(next);buttons[next].focus()};
+      buttons.push(button);nav.append(button);
+    });
   });
   host===root?root.prepend(nav):host.insertBefore(nav,root);
   choose(0);
+  return {nav,select:index=>choose(Math.min(Math.max(index,0),items.length-1)),get index(){return active}};
 }
+/* 一张配置页按 `.configgroup` 小标题切成几段，标题本身不进面板：它的字已经由左栏那一条
+   写出来了，留着就是同一句话在两处各说一遍。 */
+const configTabItems=page=>{
+  const items=[];
+  [...page.children].forEach(node=>{if(node.matches('.configgroup'))items.push({title:node.textContent.trim(),nodes:[]});else if(items.length)items.at(-1).nodes.push(node)});
+  return items.filter(item=>item.nodes.length);
+};
+/* 字形按条目自己的名字取，不按它排第几：这一列的条数会变（「这台电脑」挂上配置页之后
+   一条变四条），按下标取字形只会整排错位。
+   下面四枚各说各的名词：`monitor` 是这台设备（跟「跟随系统」同一个意思），`folder` 是
+   媒体文件夹，`globe` 是网址那一类，`download` 是把更新下下来。 */
+const SETTINGS_TAB_ICONS={'界面':'ri-palette-line','浏览':'ri-layout-grid-line','播放':'ri-play-circle-line',
+  '搜索':'ri-search-line','关注':'ri-rss-line','安全':'ri-shield-check-line','这台电脑':'i-hard-drive',
+  '通用':'i-monitor','媒体':'i-folder','网络与访问':'i-globe','更新与维护':'i-download'};
+let settingsTabs=null;
+function buildSettingsTabs(){
+  const settings=document.querySelector('.settingsscroll');
+  if(!settings)return;
+  if(settingsTabs){
+    settingsTabs.nav.remove();
+    settings.querySelectorAll('[data-board-group]').forEach(node=>{delete node.dataset.boardGroup;
+      node.classList.remove('board-group-active');node.removeAttribute('role');node.removeAttribute('aria-labelledby')});
+  }
+  const keep=settingsTabs?settingsTabs.index:0;
+  const groups=[...settings.querySelectorAll(':scope > .settinggroup')];
+  const machine=groups.find(node=>node.querySelector(':scope > .machinesettings'));
+  const item=node=>{const title=node.querySelector('h3').textContent.trim();return{title,icon:SETTINGS_TAB_ICONS[title],nodes:[node]}};
+  const sections=[{caption:'设置',items:groups.filter(node=>node!==machine).map(item)}];
+  if(machine){
+    const page=machine.querySelector('.configpage');
+    const parts=page?configTabItems(page).map(part=>({...part,icon:SETTINGS_TAB_ICONS[part.title]})):null;
+    /* 配置页挂上来了才单独起一块，小标题是「这台电脑」。挂不上来（别的设备、或还在读）
+       时里面只有一句话，那就仍旧排在上面那一列的末尾——小标题和它下面唯一那一条同名，
+       等于把一句话说两遍。 */
+    if(parts?.length)sections.push({caption:machine.querySelector('h3').textContent.trim(),items:parts});
+    else sections[0].items.push({...item(machine),nodes:[machine.querySelector('.machinesettings')]});
+  }
+  settingsTabs=localTabs(settings,sections,settings.parentElement);
+  settingsTabs?.select(keep);
+}
+refreshSettingsTabs=buildSettingsTabs;
 function decorate(){
   installUISetting();
   if(legacyUI)return;
-  const config=document.querySelector('.configpage');
-  if(config&&!config.querySelector(':scope > .board-local-nav')){
-    const groups=[],titles=[];
-    [...config.children].forEach(node=>{if(node.matches('.configgroup')){titles.push(node.textContent);groups.push([])}else if(groups.length)groups.at(-1).push(node)});
-    localTabs(config,groups,titles);
-  }
+  /* 只认管理区那一份配置页。它现在还长在设置弹层的「这台电脑」里，那一份已经由外面
+     那圈设置分区页签管着，再给它自己叠一排页签就是页签套页签。 */
+  const config=document.querySelector('#stats .configpage');
+  if(config&&!config.querySelector(':scope > .board-local-nav'))localTabs(config,[{items:configTabItems(config)}]);
   const settings=document.querySelector('.settingsscroll');
-  if(settings){const groups=[...settings.querySelectorAll(':scope > .settinggroup')];localTabs(settings,groups.map(x=>[x]),groups.map(x=>x.querySelector('h3').textContent),settings.parentElement);
+  if(settings){if(!settingsTabs)buildSettingsTabs();
     if(!settings.dataset.boardScroll){settings.dataset.boardScroll='true';const fade=()=>settings.parentElement.classList.toggle('board-settings-scrolled',settings.scrollTop>0);settings.addEventListener('scroll',fade,{passive:true});fade()}}
   const icons={'人工复核':'square-check-big','高清版':'sparkles','重复文件':'file-stack','垃圾文件':'file-archive','空文件夹':'folder','回收站':'trash','扫描与采集':'hard-drive'};
   document.querySelectorAll('.cleanupfieldset h2,.cleanupfieldset h3').forEach(heading=>{
@@ -9388,7 +9481,6 @@ placeBrand();
 document.addEventListener('board:sidebar',placeBrand);
 addEventListener('resize',placeBrand);
 new MutationObserver(placeBrand).observe(document.querySelector('#drawer'),{childList:true,subtree:true});
-const overflowObservers=new WeakMap();
 const boardTagbar=document.querySelector('#tagbar'),countbar=document.querySelector('#count');
 const tagHome=document.createComment('filter position');boardTagbar.before(tagHome);
 const countHome=document.createComment('sort position');countbar.before(countHome);
@@ -9397,13 +9489,7 @@ function syncFilterFrame(){
   const catalog=!boardTagbar.hidden&&!countbar.hidden&&getComputedStyle(boardTagbar).display!=='none'&&getComputedStyle(countbar).display!=='none';
   if(catalog&&!filterFrame){filterFrame=document.createElement('div');filterFrame.className='board-filter-frame';countHome.after(filterFrame);filterFrame.append(boardTagbar,countbar)}
   else if(!catalog&&filterFrame){tagHome.after(boardTagbar);countHome.after(countbar);filterFrame.remove();filterFrame=null}
-  if(filterFrame)[boardTagbar,countbar.querySelector('.sorts')].filter(Boolean).forEach(scroller=>{
-    if(!overflowObservers.has(scroller)){
-      const update=()=>{scroller.dataset.overflowLeft=String(scroller.scrollLeft>2);scroller.dataset.overflowRight=String(scroller.scrollWidth-scroller.clientWidth-scroller.scrollLeft>2)};
-      overflowObservers.set(scroller,update);scroller.addEventListener('scroll',update,{passive:true});new ResizeObserver(update).observe(scroller);
-    }
-    overflowObservers.get(scroller)();
-  });
+  if(filterFrame)[boardTagbar,countbar.querySelector('.sorts')].forEach(wireOverflowFade);
 }
 syncFilterFrame();
 new MutationObserver(syncFilterFrame).observe(countbar,{childList:true,subtree:true});

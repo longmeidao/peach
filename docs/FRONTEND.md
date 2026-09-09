@@ -27,10 +27,13 @@ island。原因是那一套一上来就打 `/api/items`，而未配置的机器�
 状态，原生 `<form method="post">` 不写一行 JS 就能工作。设置成功以浏览器 cookie 登录并跳入馆藏。
 它的配色 token 从 `web/css/01-base.css` 的 `:root` 两段抽出来，跟随系统深浅色。
 
-配置好之后改文件夹与端口走 `/configuration`：那是主站里的一屏（管理菜单 → 配置），
-由 `frontend/src/islands/configuration.tsx` 渲染，数据契约是 `/api/configuration`
-（`src/peach/routes_configuration.py`）。服务端按两道门放行：托盘管理的服务、发起连接的是本机。
-并在 `/healthz` 里按调用方回 `configurable`，遗留层据此决定菜单里列不列这一项。
+配置好之后改文件夹与端口的那张页由 `frontend/src/islands/configuration.tsx` 渲染，
+数据契约是 `/api/configuration`（`src/peach/routes_configuration.py`）。
+日常入口是右上角的设置弹层：同一个 island 挂进 `#machineSettings`，左栏「这台电脑」
+那一块按它自己的 `.configgroup` 拆成「通用 / 媒体 / 网络与访问 / 更新与维护」四条。
+`/configuration` 这条路由保留，媒体库选单和首次配置引导都指向它。
+服务端按两道门放行：托盘管理的服务、发起连接的是本机；并在 `/healthz` 里按调用方回
+`configurable`，遗留层据此决定这一块是挂 island 还是换成一句「这台设备上改不了」。
 表单校验的原因由服务端按字段给（400 的 `errors`），island 写回原位，不在前端复制判定。
 浏览器直接导航撞上 `HTTPException` 时，`api.py` 的处理器按 `Accept` 回一张 HTML 错误页
 （`routes_pages.error_page`），`/api/` 下和非导航请求仍回 JSON。

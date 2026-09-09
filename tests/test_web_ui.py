@@ -4069,26 +4069,112 @@ class WebUiSourceTests(unittest.TestCase):
             "身份注册表保留全部管理页，删掉哪一个就等于让它的标题和直达 URL 一起失效",
         )
         self.assertPageContains(
-            "const MANAGE_MENU_SECTIONS=['stats','taste','cleanup','follow','configuration'];")
+            "const MANAGE_MENU_SECTIONS=['stats','taste','cleanup','follow'];")
         self.assertPageContains("manageMenuSections().map(([k,label,ic])=>")
 
-    def test_the_configuration_entry_only_shows_on_the_machine_that_runs_peach(self):
-        """「配置」改的是这台电脑的文件夹与端口，在手机上点进去只会得到一句拒绝。
+    def test_this_computers_configuration_lives_in_the_settings_modal(self):
+        """配置页讲的是这台电脑怎么跑 Peach，和「我的界面偏好」同一类，进设置弹层。
 
-        服务端在 `/healthz` 里按调用方回 `configurable`；菜单第一次画时问一次，答复回来
-        再补上这一项。它也不进可钉到侧栏的候选：侧栏顺序跨机同步，钉在手机上就是死链接。
+        管理菜单因此不再列它，判断也就不必再摊到菜单上。`/configuration` 这条 URL 留着：
+        媒体库选单和首次配置引导都指向它，身份注册表也保留这一项。
+        别的设备打开设置照样看得见这一格，里面换成一句话说清在哪儿改——整格藏起来只会
+        让人以为设置少了一块，还得再找一遍。判据是 `/healthz` 的 `configurable`。
         """
         self.assertPageContains("['configuration','配置','folder-cog'],")
+        self.assertPageContains(
+            "const manageMenuSections=()=>MANAGE_SECTIONS.filter(([key])=>MANAGE_MENU_SECTIONS.includes(key));")
+        self.assertPageContains('<section class="settinggroup"><h3>这台电脑</h3>')
+        self.assertPageContains('<div id="machineSettings" class="machinesettings"></div>')
+        # 每次打开都重新问一遍：这一格的答案随「从哪台设备打开」变，缓存下来就会骗人。
+        self.assertPageContains("syncSettingsPanel();void syncMachineSettings();")
+        self.assertPageContains("const runtime=await api('/healthz').catch(()=>null);")
+        self.assertPageContains("if(runtime)runtimeConfigurable=!!runtime.configurable;")
+        self.assertPageContains(
+            "await mountIsland('configuration',host,{receipt:message=>actionReceipt(message)},{isCurrent:open});")
+        self.assertPageContains("{label:'这台设备上改不了'}")
+        # 弹层里那一份配置页已经由外面那圈分区页签管着，别再给它自己叠一排。
+        self.assertPageContains("const config=document.querySelector('#stats .configpage');")
+        # `runtimeConfigurable` 还有第二个用处：馆藏空态按它决定给不给「去配置媒体文件夹」。
         self.assertPageContains("let runtimeConfigurable=null;")
         self.assertPageContains("  bar.hidden=!current;\n  probeConfigurable();")
-        self.assertPageContains("api('/healthz').then(runtime=>{")
-        self.assertPageContains("runtimeConfigurable=!!runtime.configurable;")
-        self.assertPageContains("&&(key!=='configuration'||runtimeConfigurable===true));")
+        self.assertPageContains(
+            "api('/healthz').then(runtime=>{runtimeConfigurable=!!runtime.configurable}).catch(()=>{});")
+        # 它不进可钉到侧栏的候选：侧栏顺序跨机同步，钉在手机上就是死链接。
         self.assertPageContains(
             "const OPTIONAL_EDGE_ICONS=MANAGE_SECTIONS.filter(([key])=>key!=='configuration')")
-        # 入口只有管理菜单这一处：设置弹层里不再挂一条链接。
         self.assertPageLacks('href="/configuration"')
         self.assertPageLacks("媒体文件夹与服务配置")
+
+    def test_the_settings_rail_is_split_into_captioned_sections(self):
+        """左栏按分区分块：一个小标题带一组条目，「设置」在上、「这台电脑」在下。
+
+        形状照 BoardUI 的设置弹层。它的组件页只写怎么装，间距、字号与颜色未取得，
+        小标题用本站自己那一档：13px、`--muted`。
+        整块仍是一个 tablist：拆成两个之后方向键只在自己那一段里走，从「安全」按下去
+        到不了「通用」，而这两段在用户眼里就是一列，所以小标题写成 presentation。
+        配置页挂不上来时那一条排回上面一列的末尾——小标题和它下面唯一那一条同名，
+        等于把一句话说两遍。
+        """
+        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
+        self.assertPageContains("const items=sections.flatMap(section=>section.items);")
+        self.assertPageContains(
+            "caption.className='board-local-nav-caption';caption.setAttribute('role','presentation');")
+        self.assertPageContains("if(parts?.length)sections.push({caption:machine.querySelector('h3')"
+                                ".textContent.trim(),items:parts});")
+        self.assertPageContains("const sections=[{caption:'设置',items:groups.filter(node=>node!==machine)"
+                                ".map(item)}];")
+        # 方向键在整列上循环，不在某一段里打转。
+        self.assertPageContains("next=(i+1)%items.length;")
+        self.assertPageContains("next=(i+items.length-1)%items.length;")
+        self.assertIn(".settingscard.settingscard>.board-local-nav .board-local-nav-caption"
+                      "{margin:12px 0 0;font-size:13px;color:var(--muted);padding:4px 8px 8px}", board)
+        self.assertIn(".settingscard.settingscard>.board-local-nav .board-local-nav-caption"
+                      ":first-child{margin-top:0}", board)
+        # 那句写死在样式里的「设置」退役：分块之后它只是其中一块的名字，得由 DOM 给。
+        self.assertNotIn("content:'设置'", board)
+        # 同一个节点会挂在好几条下面，一条一条 toggle 会把前面点亮的又抹掉。
+        self.assertPageContains(
+            "items.forEach(item=>item.nodes.forEach(node=>node.classList.remove('board-group-active')));")
+        self.assertPageContains("items[index].nodes.forEach(node=>node.classList.add('board-group-active'));")
+
+    def test_the_this_computer_group_is_a_page_not_a_row_list(self):
+        """「这台电脑」那一格装的是整张配置页，外面不套开关行那圈底。
+
+        `.settinggroup` 的 `--ground` 底和左边 12px 是给开关行留的：套在配置卡片外面，
+        卡片和它同色就看不出边，还只有左边缩进、右边贴齐。外壳自己不是面板，面板是里面
+        那几段配置；里面没有一段亮着就说明用户在看上半列的某一项，这时整个外壳不占位置。
+        """
+        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
+        self.assertIn(".settingscard .settingsscroll>.settinggroup:has(>.machinesettings)"
+                      "{background:none;border-radius:0;padding:0}", board)
+        self.assertIn(".settingscard .settingsscroll>.settinggroup:has(>.machinesettings)"
+                      ":not(:has(.board-group-active)){display:none}", board)
+        # 控件底色照配置页那边抬一档：那条规则挂在 `body.configuration-layout` 上，
+        # 弹层不带这个类，控件就落回 `--surface`，压在同一张卡上几乎看不出边。
+        self.assertIn(".settingscard .machinesettings :is(.gselectfield,.geist-input,input.geist-input,"
+                      ".board-icon-trigger){background:var(--color-background-primary-default)}", board)
+
+    def test_each_settings_tab_takes_its_glyph_from_its_own_name(self):
+        """字形按条目自己的名字取，不按它排第几。
+
+        这一列的条数会变——「这台电脑」挂上配置页之后一条变四条——按下标取字形只会
+        整排错位。两套字形也混在一排：`ri-` 实心靠 `fill` 画，`i-` 是线条靠 `stroke` 画，
+        给线条件套上 `fill:currentColor` 会填成一坨黑块。
+        下面四枚各说各的名词：`monitor` 是这台设备（和「跟随系统」同一个意思），
+        `folder` 是媒体文件夹，`globe` 是网址那一类，`download` 是把更新下下来。
+        """
+        self.assertPageContains(
+            "const SETTINGS_TAB_ICONS={'界面':'ri-palette-line','浏览':'ri-layout-grid-line',"
+            "'播放':'ri-play-circle-line',\n"
+            "  '搜索':'ri-search-line','关注':'ri-rss-line','安全':'ri-shield-check-line',"
+            "'这台电脑':'i-hard-drive',\n"
+            "  '通用':'i-monitor','媒体':'i-folder','网络与访问':'i-globe','更新与维护':'i-download'};")
+        self.assertPageContains(
+            "const solid=item.icon.startsWith('ri-');")
+        self.assertPageContains(
+            "svg.style.fill=solid?'currentColor':'none';svg.style.stroke=solid?'none':'currentColor';")
+        for symbol in ("i-hard-drive", "i-monitor", "i-folder", "i-globe", "i-download"):
+            self.assertPageContains(f'<symbol id="{symbol}" viewBox="0 0 24 24">')
 
     def test_the_follow_management_section_is_named_after_the_page_it_opens(self):
         """管理区那一项叫「关注管理」：它开的是 /follow-manage，不是关注更新流。
@@ -5424,7 +5510,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn("body .review{width:100%;max-width:var(--board-content);margin:0 auto;box-sizing:border-box}", board)
         self.assertIn("body .review .reviewcontrols{position:static;", board)
         self.assertIn("body .review .reviewbulktoolbar{position:sticky;top:var(--topH);z-index:60;width:auto;", board)
-        self.assertIn("body .review .reviewgroupbar{background:var(--ground);border:0;border-radius:0 0 20px 20px}", board)
+        # 那两条横条的形状归 `test_the_review_toolbar_and_group_bar_read_as_one_box`，同一条
+        # 事实写在两处的话，改一次要改两处，漏掉哪一处都是拿旧样子当断言。
         self.assertIn(".closestage,.closestage:hover{background:rgba(0,0,0,.6);color:#fff}", board)
         self.assertIn("body .batchbar button[hidden],body .batchbar button.danger[hidden]{display:none}", board)
         self.assertIn("body .batchbar button.danger{", board)
@@ -7363,19 +7450,28 @@ class WebUiSourceTests(unittest.TestCase):
         """复核页顶上那两行是一个框：等宽、常驻、中间不划线，左右就是内容列。
 
         工具条此前写死 `width:100%` 再配负外边距，右边就比分组条短一个页边距；
-        底色只在 `is-stuck` 时才有，刚进页面看上去根本没有框。现在两行同一层
-        `--ground` 底、圆角上下各收一半，左右和标题、面包屑、卡片同一条边；只有
-        分组条自己滚上去顶住时才各自收口。
+        底色只在 `is-stuck` 时才有，刚进页面看上去根本没有框。现在两行同一层玻璃、
+        圆角上下各收一半，左右和标题、面包屑、卡片同一条边；只有分组条自己滚上去
+        顶住时才各自收口。
+        玻璃静止时就在：首页那块浮层从进页面起就是玻璃，这边等吸顶才变的话，同一套
+        语言里就成了两种东西。框里的控件照那块浮层留 12px，不贴着 20px 的圆角。
         """
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
         self.assertIn("body .review .reviewbulktoolbar{position:sticky;top:var(--topH);z-index:60;width:auto;"
-                      "margin-inline:0;padding:12px 0;"
-                      "background:var(--ground);border-radius:20px 20px 0 0}", board)
-        self.assertIn("body .review .reviewgroupbar{background:var(--ground);border:0;"
-                      "border-radius:0 0 20px 20px}", board)
+                      "margin-inline:0;padding:12px;border-radius:20px 20px 0 0;\n"
+                      "  box-shadow:inset 0 1px 0 var(--glass-rim),inset 1px 0 0 var(--glass-low),"
+                      "inset -1px 0 0 var(--glass-low),var(--glass-shadow)}", board)
+        self.assertIn("body .review .reviewgroupbar{border:0;border-radius:0 0 20px 20px;padding:8px 12px;\n"
+                      "  box-shadow:inset 1px 0 0 var(--glass-low),inset -1px 0 0 var(--glass-low),"
+                      "inset 0 -1px 0 var(--glass-low),var(--glass-shadow)}", board)
         # 下面那些分组各自成框：上一个可见分组和它之间隔着一整屏卡片。
         self.assertIn("body .review .reviewgroup:not([hidden])~.reviewgroup:not([hidden])"
-                      ">.reviewgroupbar{border-radius:20px}", board)
+                      ">.reviewgroupbar{border-radius:20px;\n"
+                      "  box-shadow:inset 0 1px 0 var(--glass-rim),inset 1px 0 0 var(--glass-low),"
+                      "inset -1px 0 0 var(--glass-low),inset 0 -1px 0 var(--glass-low),var(--glass-shadow)}", board)
+        # 复核页那排标签跟标题、面包屑和下面那块浮层同一条左边。往外挪 12px 能让第一个
+        # 标签的字顶到那条线上，代价是选中那块底色比整页任何东西都往左出去一截。
+        self.assertIn(".reviewtabs{margin-inline:0}", board)
         self.assertNotIn(".reviewbulktoolbar{width:100%", self.css)
         # 出血那一套整条退役：只留在 CSS 里也会被下一个人当成还在生效的写法去改。
         self.assertNotIn("--review-edge", self.css)
@@ -7719,13 +7815,135 @@ class WebUiSourceTests(unittest.TestCase):
                       "{background:var(--hover);color:var(--ink)}", board)
 
     def test_profile_tags_are_the_same_pill_as_the_ones_on_the_home_filter_bar(self):
-        """资料页的标签跟首页筛选条上的标签是同一个控件，只是换了个位置。"""
+        """资料页的标签跟首页筛选条上的标签是同一个控件，只是换了个位置。
+
+        它现在坐在玻璃上，描边和字色跟着玻璃那套读数走：`--line` 与 `--ink-2` 是配着
+        页面底色调的，压到半透明的玻璃上比周围重一档。
+        """
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
         self.assertIn(".entitytags .pill{height:30px;padding:0 10px;font-size:13px;line-height:20px;"
-                      "border-radius:8px;border:1px solid var(--line);color:var(--ink-2)}", board)
+                      "border-radius:8px;border:1px solid var(--glass-low);color:var(--glass-text)}", board)
         self.assertIn(".entitytags .pill[aria-pressed=\"true\"]{border-color:transparent;"
-                      "background:var(--picked);color:var(--ink)}", board)
+                      "background:color-mix(in srgb,var(--ink) 10%,transparent);color:var(--glass-text)}", board)
         self.assertIn(".board-filter-frame #tagbar .pill{height:30px;padding:0 10px;font-size:13px;", board)
+
+    def test_the_profile_floating_panel_is_one_pane_measured_off_the_home_one(self):
+        """资料页顶上那块浮层是一块玻璃，尺寸照首页那块量。
+
+        标签行和排序行是两个兄弟，一个挂在 `.index` 上、一个在 `.entitysection` 里，
+        而那一段的 innerHTML 每次重画都整块换掉，套不进首页那个 `.board-filter-frame`。
+        所以改成让它们各做一块玻璃的上下半：圆角只留外侧，接缝那两条内描线去掉。
+        下半的吸顶位置是上半的下沿，那个高度只归这块浮层——基础层的 `--filterH` 是
+        没有浮层时贴着顶栏的老尺寸，拿它算会差 10px。
+        """
+        root = Path(__file__).resolve().parents[1]
+        board = (root / "web/board.css").read_text(encoding="utf-8")
+        base = stylesheet_source()
+        rail = re.search(r"\.tiers\{[^}]*?padding:10px 0 (\d+)px", base)
+        gutter = re.search(r"\bmain\{[^}]*?padding:(\d+)px \d+px", base)
+        self.assertTrue(rail and gutter, "读不到 .tiers 的收尾与 main 的上沿")
+        gap = int(rail.group(1)) + int(gutter.group(1))
+        self.assertIn(":root{--board-filterH:48px}", board)
+        self.assertIn(".entitytagbar{position:sticky;top:calc(var(--topH) + 8px);margin:0;"
+                      "height:var(--board-filterH);gap:6px;padding:8px 12px}", board)
+        self.assertIn(f".entitycollectionhead{{position:sticky;top:calc(var(--topH) + 8px);margin:0 0 {gap}px;"
+                      "padding:8px 12px;min-height:var(--board-filterH);gap:12px}", board)
+        self.assertIn(".entitytagbar+.entitysection .entitycollectionhead"
+                      "{top:calc(var(--topH) + 8px + var(--board-filterH))}", board)
+        # 圆角只留外侧，接缝那两条内描线去掉：中间显出一条线就成了两块。
+        self.assertIn(".entitytagbar.entitytagbar.entitytagbar{border-radius:22px 22px 0 0;", board)
+        self.assertIn(".entitytagbar+.entitysection .entitycollectionhead.entitycollectionhead"
+                      ".entitycollectionhead{border-radius:0 0 22px 22px;", board)
+        # 读数和排序键照首页那条 `10,471 个符合` 与它旁边那排写。
+        self.assertIn(".entitycollectionhead h3{font-size:12px;font-weight:400;letter-spacing:normal;"
+                      "color:var(--ink-2)}", board)
+        self.assertIn(".entitycollectionhead .sorts button{height:30px;min-height:30px;font-size:12px;"
+                      "padding:0 8px;border:0;border-radius:7px;background:transparent}", board)
+        self.assertIn(".board-filter-frame .sorts button{height:30px;min-height:30px;font-size:12px;"
+                      "padding:0 8px;border:0;border-radius:7px;background:transparent}", board)
+
+    def test_a_two_piece_glass_panel_does_not_paint_the_diagonal_sheen(self):
+        """分两个盒子的浮层只铺一层平的底色，静止时不显出上下两层。
+
+        那道 125° 高光是按盒子自己的对角线铺的：上下两半各铺一遍，接缝两边就成了亮的
+        一段和灰的一段，读起来是两块叠在一起。边上那圈高光仍由 `inset` 描出来，
+        首页那块是一个盒子，它照旧铺。
+        兜底那三条（不支持 backdrop-filter、降低透明度／提高对比度、高对比开关）要和
+        主选择器一起长：漏掉哪一条，那些用户看到的就是没有底色的一块。
+        """
+        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
+        self.assertIn(".entitytagbar.entitytagbar.entitytagbar,"
+                      ".entitycollectionhead.entitycollectionhead.entitycollectionhead,\n"
+                      "body .review .reviewbulktoolbar,body .review .reviewgroupbar"
+                      "{background:var(--glass-fill)}", board)
+        sheen = board.split("background:linear-gradient(125deg,var(--glass-sheen)", 1)[0].rsplit("\n", 2)[1]
+        for selector in (".board-filter-frame.board-filter-frame.board-filter-frame",
+                         ".entitytagbar.entitytagbar.entitytagbar",
+                         ".entitycollectionhead.entitycollectionhead.entitycollectionhead",
+                         "body .review .reviewbulktoolbar", "body .review .reviewgroupbar"):
+            self.assertIn(selector, sheen, "玻璃那条主规则少了一个面")
+        for fallback in ("@supports not (backdrop-filter:blur(1px)){",
+                         "@media(prefers-reduced-transparency:reduce),(prefers-contrast:more){"):
+            rule = board.split(fallback, 1)[1].split("}", 1)[0]
+            for selector in (".entitytagbar.entitytagbar.entitytagbar",
+                             ".entitycollectionhead.entitycollectionhead.entitycollectionhead",
+                             "body .review .reviewbulktoolbar", "body .review .reviewgroupbar"):
+                self.assertIn(selector, rule, f"{fallback} 少了一个面")
+        contrast = board.split("html.board-high-contrast .board-filter-frame", 1)[1].split("}", 1)[0]
+        for selector in ("html.board-high-contrast .entitytagbar.entitytagbar.entitytagbar",
+                         "html.board-high-contrast .review .reviewbulktoolbar",
+                         "html.board-high-contrast .review .reviewgroupbar"):
+            self.assertIn(selector, contrast, "高对比那条少了一个面")
+
+    def test_a_horizontal_tag_row_fades_at_both_ends(self):
+        """横着滚的标签行两端要渐隐，资料页和首页用同一段。
+
+        不渐隐的话，浮层圆角那儿最后一个标签被直角硬切掉半个字，也看不出右边还有。
+        """
+        self.assertPageContains("function wireOverflowFade(scroller){")
+        self.assertPageContains(
+            "wireDrag($('#index').querySelector('.entitytags'));"
+            "\n  wireOverflowFade($('#index').querySelector('.entitytags'));")
+        self.assertPageContains(
+            "if(filterFrame)[boardTagbar,countbar.querySelector('.sorts')].forEach(wireOverflowFade);")
+
+    def test_the_tidy_up_notice_keeps_the_panels_gap_below_it(self):
+        """首页那条整理提示下面留和浮层一样宽的空当。
+
+        它是正文列里的一条 Note，上下两条线是它自己的收口。少了这个空当，两条线一边
+        挨着身份行、一边挨着筛选浮层，看着像三块东西粘在一起。上面那段由 `.tiers`
+        的收尾和 `main` 的上沿凑够，所以只写下面这一个数，和浮层从同一处读出来。
+        """
+        root = Path(__file__).resolve().parents[1]
+        board = (root / "web/board.css").read_text(encoding="utf-8")
+        base = stylesheet_source()
+        rail = re.search(r"\.tiers\{[^}]*?padding:10px 0 (\d+)px", base)
+        gutter = re.search(r"\bmain\{[^}]*?padding:(\d+)px \d+px", base)
+        self.assertTrue(rail and gutter, "读不到 .tiers 的收尾与 main 的上沿")
+        gap = int(rail.group(1)) + int(gutter.group(1))
+        self.assertIn(f"#libraryProcessingNotice:not(:empty){{margin:0 0 {gap}px}}", board)
+
+    def test_a_progress_ring_lines_up_with_the_lists_under_it(self):
+        """资源面板里的进度环和它下面那几组链接表对同一条左边。
+
+        那张卡自己不留内边距，里面每块各带各的；进度环少了这一条就贴着卡片左沿。
+        """
+        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
+        self.assertIn(".board-job-progress{display:flex;align-items:center;gap:12px;padding:12px 0;", board)
+        self.assertIn(".resourcepanel>.board-job-progress{padding:12px 16px}", board)
+
+    def test_cover_scraping_says_it_is_still_running(self):
+        """抓封面这一趟在页面上留状态，不是只让按钮转一下。
+
+        它要挨个问几家站点、还可能走代理，没有可数的总量，也不能编一个百分比出来，
+        所以是 Loading Dots 不是 Progress。关掉页面它照样在跑、回来能接上，状态就得
+        留在页面上——按钮的忙态随着重进页面一起没了。
+        """
+        island = (Path(__file__).resolve().parents[1]
+                  / "frontend/src/islands/scraping.tsx").read_text(encoding="utf-8")
+        self.assertIn("loadingDotsHtml", island.split("from '@peach/legacy/ui';", 1)[0])
+        self.assertIn("{running && <div aria-live=\"polite\" dangerouslySetInnerHTML="
+                      "{{ __html: loadingDotsHtml('正在抓取封面') }} />}", island)
 
     def test_the_floating_filter_panel_leaves_the_same_gap_above_and_below(self):
         """浮层上下留一样宽的空隙；上面那段由页面给，它自己就不再加一层。
