@@ -11,6 +11,7 @@ from .check_readme_impact import git
 VENDORS = {
     "Claude Code": "noreply@anthropic.com",
     "Codex": "noreply@openai.com",
+    "opencode": "noreply@opencode.ai",
 }
 
 #: 署名形态：`工具 (模型 版本) <厂商 noreply>`。括号里那一段是重点——同一个工具换代
