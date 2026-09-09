@@ -961,3 +961,47 @@ body .batchbar button[hidden],body .batchbar button.danger[hidden]{display:none}
 .closestage,.closestage:hover{background:rgba(0,0,0,.6);color:#fff}
 .closestage:hover:after,.closestage:focus-visible:after{background:rgba(255,255,255,.2)}
 .closestage:active:after{background:rgba(255,255,255,.3)}
+
+/* 关注工作区：Board Tabs、读数与 Table 的层级，业务分区保留各自表单。 */
+.followmanage .fmanageoverview{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px}
+.fmanageoverview>div{display:grid;gap:12px;padding:20px 24px;background:var(--ground);border-radius:var(--surface-radius);min-width:0}
+.fmanageoverview span{font:var(--board-body-medium);color:var(--muted)}
+.fmanageoverview b{font:var(--board-figure);font-variant-numeric:tabular-nums}
+.fmanageoverview small{font:var(--board-compact);color:var(--muted);white-space:nowrap}
+.followmanage .fmanagenav{display:flex;position:relative;gap:16px;overflow-x:auto;margin:4px 0 0;border-bottom:1px solid var(--line-soft);min-width:0}
+.fmanagenav>button{display:inline-flex;align-items:center;gap:8px;flex:none;min-height:44px;padding:8px 10px;border:0;background:transparent;color:var(--muted);font:var(--board-body-medium);cursor:pointer}
+.fmanagenav>button:hover{color:var(--ink)}
+.fmanagenav>button[aria-selected=true]{color:var(--tungsten)}
+.fmanagenav>button>span{padding:1px 5px;border-radius:var(--badge-radius);background:var(--picked);color:var(--muted);font:var(--board-caption);font-variant-numeric:tabular-nums}
+.followmanage .fmain>[data-follow-panel][hidden]{display:none}
+.followmanage .fmain>[data-follow-panel=sources]{background:transparent}
+.followmanage .fmain>[data-follow-panel=sources]>.fsechead{padding:0 0 16px;min-height:48px;gap:10px}
+.followmanage [data-follow-panel=sources]>.fsechead h3{font:var(--board-body-medium)}
+.followmanage .fmain>[data-follow-panel=sources]>.board-follow-selection{padding:12px 16px;background:var(--ground);border-radius:var(--surface-radius) var(--surface-radius) 0 0;border-bottom:1px solid var(--line-soft)}
+.followmanage .fmain>[data-follow-panel=sources]>.fsources{padding:0;gap:0}
+.followmanage [data-follow-panel=sources] .board-follow-list{gap:0;background:var(--ground);border-radius:0 0 var(--surface-radius) var(--surface-radius);overflow:hidden}
+.followmanage [data-follow-panel=sources] .fauthor{padding:20px 24px;border-radius:0;background:transparent}
+.followmanage [data-follow-panel=sources] .fauthor+.fauthor{border-top:1px solid var(--line-soft)}
+.followmanage [data-follow-panel=sources] .fauthorhead{padding:0;min-height:40px;gap:12px}
+.followmanage [data-follow-panel=sources] .fauthorhead>.favatar{width:36px;height:36px}
+.followmanage [data-follow-panel=sources] .fauthorsources{gap:0;padding-top:12px}
+.followmanage [data-follow-panel=sources] .fsource.frow{padding:12px 16px;border:0;border-radius:var(--control-radius);background:transparent}
+.followmanage [data-follow-panel=sources] .fsource.frow.selected{background:var(--picked)}
+.followmanage [data-follow-panel=sources] .fsource.frow:hover{background:var(--hover)}
+.followmanage [data-follow-panel=sources] .fsource.frow.selected:hover{background:var(--picked)}
+.followmanage [data-follow-panel=sources] .ftableframe{border-top:0;border-radius:0 0 var(--surface-radius) var(--surface-radius)}
+.followmanage .fmain>[data-follow-panel=add]{max-width:812px;width:100%;justify-self:center}
+.followmanage .fmain>[data-follow-panel=credentials]>.frows{gap:0;background:var(--ground);border-radius:var(--surface-radius);overflow:hidden}
+.followmanage [data-follow-panel=credentials] .fcred{border-radius:0;border-bottom:1px solid var(--line-soft);padding:20px 24px;background:transparent}
+@media(max-width:760px){
+  .followmanage .fmanageoverview{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+  .fmanageoverview>div{padding:16px;gap:8px}
+  .followmanage .fmanagenav{gap:4px}
+  .fmanagenav>button{padding-inline:8px;gap:6px}
+  .followmanage .fmain>[data-follow-panel=sources]>.fsechead{padding:0 0 12px}
+  .followmanage [data-follow-panel=sources]>.fsechead h3{flex-basis:100%}
+  .followmanage .fmain>[data-follow-panel=sources]>.board-follow-selection{padding:12px}
+  .followmanage [data-follow-panel=sources] .fauthor{padding:16px 12px}
+  .followmanage [data-follow-panel=sources] .fsource.frow{padding:12px 8px}
+  .followmanage [data-follow-panel=credentials] .fcred{padding:16px}
+}

@@ -5792,6 +5792,28 @@ function followSourceListHtml(groups){
    要避开卡片套卡片、用边框补救层级、成排通栏空条、
    细小灰字加随意字号。所以这里不再用嵌套卡片盒子——分组靠标题和一条发丝分隔线，
    行与行之间也只用分隔线，不各自套框。控件尺寸按实测 Geist：32px 高、6px 圆角、14px。 */
+let followManagePanel='sources';
+function wireFollowManagePanels(root){
+  const tabs=[...root.querySelectorAll('[data-follow-panel-tab]')];
+  if(!tabs.length)return;
+  const activate=key=>{
+    followManagePanel=key;
+    tabs.forEach(tab=>{const selected=tab.dataset.followPanelTab===key;
+      tab.setAttribute('aria-selected',String(selected));tab.tabIndex=selected?0:-1});
+    root.querySelectorAll('[data-follow-panel]').forEach(panel=>{
+      panel.hidden=panel.dataset.followPanel!==key});
+  };
+  tabs.forEach((tab,index)=>{
+    tab.onclick=()=>activate(tab.dataset.followPanelTab);
+    tab.onkeydown=event=>{
+      const next=event.key==='ArrowRight'?(index+1)%tabs.length:event.key==='ArrowLeft'
+        ?(index+tabs.length-1)%tabs.length:event.key==='Home'?0:event.key==='End'?tabs.length-1:null;
+      if(next===null)return;
+      event.preventDefault();tabs[next].click();tabs[next].focus();
+    };
+  });
+  activate(followManagePanel);
+}
 function renderFollowManage(credentials){
   const sources=followData.sources||[],counts=followData.counts||{};
   const legacy=localStorage.getItem('peach.legacy-ui')==='true';
@@ -5806,8 +5828,18 @@ function renderFollowManage(credentials){
   $('#stats').innerHTML=`<div class="follow followmanage">
     ${locked?`<div class="runtimegate">${icon('info')}<span>${esc(followRuntime.ledger_read_only_message||'本机当前只能浏览')}</span>${writer
       ?`<a href="${esc(writer)}">前往写入端管理关注</a>`:''}</div>`:''}
+    ${legacy?'':`<div class="fmanageoverview" aria-label="关注概览">
+      <div><span>关注作者</span><b>${groups.length}<small> 位</small></b></div>
+      <div><span>启用来源</span><b>${sources.filter(source=>source.enabled).length}<small> / ${sources.length}</small></b></div>
+      <div><span>检查失败</span><b>${broken.length}<small> 个来源</small></b></div>
+      <div><span>未看更新</span><b>${counts.new||0}<small> 条</small></b></div>
+    </div>
+    <div class="board-local-nav fmanagenav" role="tablist" aria-label="关注管理分区">
+      ${[['sources','关注列表',sources.length],['add','添加关注',null],['credentials','站点凭据',needCred.length||null]].map(([key,label,count])=>
+        `<button type="button" role="tab" id="follow-tab-${key}" data-follow-panel-tab="${key}" aria-controls="follow-panel-${key}" aria-selected="${followManagePanel===key}" tabindex="${followManagePanel===key?0:-1}">${label}${count===null?'':`<span>${count}</span>`}</button>`).join('')}
+    </div>`}
     <div class="fmain">
-      <section class="fsec">
+      <section class="fsec" data-follow-panel="add" id="follow-panel-add" role="tabpanel" aria-labelledby="follow-tab-add">
         <div class="fsechead"><h3>添加关注</h3></div>
         <form class="faddform" id="followAdd">
           ${searchInputHtml({name:'line',label:'来源链接、名字或 id',
@@ -5821,7 +5853,7 @@ function renderFollowManage(credentials){
               followSuggestionChips(followData.suggestions)}</div>`:''}
         ${followAliasManager(followData.author_aliases,followData.alias_suggestions)}
       </section>
-      <section class="fsec">
+      <section class="fsec"${legacy?'':' data-follow-panel="sources" id="follow-panel-sources" role="tabpanel" aria-labelledby="follow-tab-sources"'}>
         <div class="fsechead"><h3>关注列表</h3>
           <span class="fmeta">${sources.length} 个来源${
             counts.new?` · <b>${counts.new}</b> 条未看`:''}</span>
@@ -5842,7 +5874,7 @@ function renderFollowManage(credentials){
             <button class="fbtn" data-follow-bulk="ignored">全部忽略</button></span></p></div>`:''}`
           :emptyState('rss','还没有关注来源','关注来源及其检查状态会显示在这里。',{className:'compact'})}
       </section>
-      <section class="fsec">
+      <section class="fsec"${legacy?'':' data-follow-panel="credentials" id="follow-panel-credentials" role="tabpanel" aria-labelledby="follow-tab-credentials"'}>
         <div class="fsechead"><h3>凭据</h3>
           ${needCred.length?`<span class="fmeta warn">${needCred.length} 个待配置</span>`:''}</div>
         <div class="frows">${creds.map(followCredentialRow).join('')}</div>
@@ -5933,6 +5965,7 @@ function wireFollowItems(){
 function wireFollowManage(creds=[]){
   void wireResolveProgress();
   const root=$('#stats'),form=root.querySelector('#followAdd');
+  wireFollowManagePanels(root);
   wireCollapse(root,'details.fauthor','follow-author-collapse','[data-follow-author-toggle]');
   root.querySelectorAll('[data-follow-author-toggle]').forEach(button=>button.onclick=event=>{
     event.stopPropagation();
