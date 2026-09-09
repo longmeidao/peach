@@ -1224,11 +1224,11 @@ body .review .reviewcontrols{position:static;z-index:auto;padding-block:0;displa
    浮层从进页面起就是玻璃，这边等吸顶才变，同一套语言里就成了两种东西；粘住之后由
    `.review::before` 那一层接管，两条横条让出底色。 */
 body .review .reviewbulktoolbar{position:sticky;top:var(--topH);z-index:60;width:auto;margin-inline:0;padding:12px;border-radius:20px 20px 0 0;
-  box-shadow:inset 0 1px 0 var(--glass-rim),inset 1px 0 0 var(--glass-low),inset -1px 0 0 var(--glass-low),var(--glass-shadow)}
+  box-shadow:var(--glass-shadow)}
 body .review .reviewgroupbar{border:0;border-radius:0 0 20px 20px;padding:8px 12px;
-  box-shadow:inset 1px 0 0 var(--glass-low),inset -1px 0 0 var(--glass-low),inset 0 -1px 0 var(--glass-low),var(--glass-shadow)}
+  box-shadow:var(--glass-shadow)}
 body .review .reviewgroup:not([hidden])~.reviewgroup:not([hidden])>.reviewgroupbar{border-radius:20px;
-  box-shadow:inset 0 1px 0 var(--glass-rim),inset 1px 0 0 var(--glass-low),inset -1px 0 0 var(--glass-low),inset 0 -1px 0 var(--glass-low),var(--glass-shadow)}
+  box-shadow:var(--glass-shadow)}
 /* 悬浮起来的是一块玻璃，不是两块叠在一起。每块玻璃只糊自己身后那一段页面，两块
    上下相接就会在接缝处显出两种颜色——工具条身后是卡片，分组条身后是另一排卡片。
    所以玻璃由页面自己画一层，铺满当前粘住的那几行；两条横条只留内容，不带底。
@@ -1270,13 +1270,13 @@ body[data-surface="/duplicates"] .duprow{grid-template-columns:112px 90px minmax
 body[data-surface="/duplicates"] .duppath{grid-column:2/-1}
 .quality-workspace{max-width:var(--board-content);margin:auto}
 body[data-surface="/quality-goals"] .qualitylist{grid-template-columns:repeat(auto-fill,minmax(min(100%,280px),1fr));gap:20px}
-body[data-surface="/quality-goals"] .qualityitem{display:flex;flex-direction:column;gap:0;padding:0;overflow:hidden;border:1px solid var(--line-soft);border-radius:var(--surface-radius)}
-body[data-surface="/quality-goals"] .qualitycover{position:relative;display:grid;place-items:center;width:100%;aspect-ratio:16/10;border-radius:0;background:var(--color-background-tertiary-default)}
+body[data-surface="/quality-goals"] .qualityitem{display:grid;grid-template-columns:150px minmax(0,1fr);grid-template-rows:1fr auto;gap:0 16px;padding:12px;overflow:hidden;border:1px solid var(--line-soft);border-radius:var(--surface-radius)}
+body[data-surface="/quality-goals"] .qualitycover{position:relative;display:grid;place-items:center;grid-row:1 / span 2;width:150px;aspect-ratio:16/10;border-radius:var(--control-radius);background:var(--color-background-tertiary-default)}
 .qualityfallback{color:var(--muted);font:var(--board-body)}
 body[data-surface="/quality-goals"] .qualitycover img{position:absolute;inset:0;background:var(--color-background-tertiary-default)}
-.qualitybody{padding:20px;flex:1;min-width:0}
+.qualitybody{padding:4px 4px 0;min-width:0}
 .qualityreason{padding-top:12px;border-top:1px solid var(--line-soft)}
-.qualityactions{display:flex;justify-content:flex-end;padding:12px 20px;background:var(--color-background-secondary-default)}
+.qualityactions{display:flex;justify-content:flex-end;padding:8px 4px 0;background:transparent}
 body[data-surface="/junk-files"] .junksummary{width:100%}
 body[data-surface="/junk-files"] .collection-summary{margin:0}
 body[data-surface="/junk-files"] .junkfilters{width:100%;padding:12px;gap:8px;border-radius:var(--surface-radius);background:var(--color-background-primary-default)}
