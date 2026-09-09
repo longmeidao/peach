@@ -289,6 +289,10 @@ button.danger:not(.frowicon):disabled{
 @media (pointer:fine){.ovtrack.page .ovthumb{pointer-events:auto}}
 .ovtrack.page:hover .ovthumb{width:3px}
 .ovtrack.page .ovthumb:hover,.ovtrack.page.dragging .ovthumb{width:6px}
+/* 弹层盖住页面时整页那条轨道要收起来：页面已经 overflow:hidden，它拖不动也没有对应的
+   滚动可读，留着就是弹层旁边多一条竖线。判据跟着锁走——下面两个类就是加 overflow:hidden
+   的那两处，弹层自己那条轨道挂在卡片上，不受这条影响。 */
+body.settings-open>.ovtrack.page,body.photolight-open>.ovtrack.page{display:none}
 /* 原生滚动条在挂上覆盖式那条之后才藏：属性是 attachOverlayScrollbar() 挂上去的，
    脚本没跑到的容器就还留着系统滚动条，不会变成一个既没有滑块也拖不动的死框。 */
 [data-overlay-scrollbar]{scrollbar-width:none}

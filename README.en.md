@@ -40,7 +40,7 @@ Follow sources include FANBOX, Patreon, SubscribeStar, Kemono, Pawchive, Coomer,
 
 Interface preferences are saved in the current browser and live under Settings: default sort, official covers or preview images for JAV works, autoplay when details open, and SFW mode, which blurs, desaturates and dims images and video and stops hover previews.
 
-The interface uses Board styling. Select “Use classic UI” in Settings and apply with a refresh to use the classic interface. “Increase contrast” disables navigation transparency and refraction. Numeric preferences accept custom values within their supported ranges, with switches for optional features.
+The interface uses Board styling. “Increase contrast” in Settings disables navigation transparency and refraction. Numeric preferences accept custom values within their supported ranges, with switches for optional features.
 
 Choose a media library at the top of the sidebar; theme and settings controls are fixed at the bottom. Set library names and icons in Configuration; matching names group folders into one library. Library selection filters work lists and facets. Cloud libraries use locally served provider icons by default.
 

@@ -437,7 +437,7 @@ export function attachOverlayScrollbar(container,{variant=''}={}){
 export function wireOverlayScrollbars(root=document){
   root.querySelectorAll(OVERLAY_SCROLLERS).forEach(el=>{
     if(deferReviewScroller(el))return;
-    if(el.matches(BOARD_EDGE_SCROLLERS)&&localStorage.getItem('peach.legacy-ui')!=='true'){
+    if(el.matches(BOARD_EDGE_SCROLLERS)){
       const edges=()=>{el.dataset.overflowLeft=String(el.scrollLeft>1);el.dataset.overflowRight=String(el.scrollLeft+el.clientWidth<el.scrollWidth-1)};
       if(!el.dataset.boardScroll){el.dataset.boardScroll='true';el.addEventListener('scroll',edges,{passive:true});el.addEventListener('wheel',event=>{if(Math.abs(event.deltaY)>Math.abs(event.deltaX)&&el.scrollWidth>el.clientWidth){const before=el.scrollLeft;el.scrollLeft+=event.deltaY;if(before!==el.scrollLeft)event.preventDefault()}},{passive:false});new ResizeObserver(edges).observe(el)}
       edges();return;

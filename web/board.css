@@ -1,5 +1,7 @@
 @import url('/vendor/inter/5.3.0/index.css');
-.settingscard .settingsscroll .sidebarsetting{padding:16px 12px 12px 0!important;margin:0!important}
+/* 右边这 16px 和设置行一样，是给覆盖式滑块让出的道；不留的话这一块会比上面几行宽出
+   一截，它那条上边线直贴到卡片边上。 */
+.settingscard .settingsscroll .sidebarsetting{padding:16px 12px 12px 0!important;margin:0 16px 0 0!important}
 .settingscard .settingsscroll .settingsortcontrols>[hidden]{display:none}
 .board-optional-number{display:flex;align-items:center;gap:12px;flex-direction:row-reverse}.board-number-fields[hidden]{display:none}
 .board-number-control input::-webkit-inner-spin-button,.board-number-control input::-webkit-outer-spin-button{appearance:none;margin:0}.board-number-control input{appearance:textfield;-moz-appearance:textfield}
@@ -31,6 +33,9 @@
 .settingscard .machinesettings :is(.gselectfield,.geist-input,input.geist-input,.board-icon-trigger){background:var(--color-background-primary-default)}
 .settingscard .settingsscroll .settingrow{min-height:52px;padding:10px 10px 10px 0;gap:16px;border-top:0;border-bottom:1px solid var(--line-soft)}
 .settingscard .settingsscroll .settingrow:last-child{border-bottom:0}
+/* 一组里排在设置行后面的分区（「左侧导航」是唯一一处）不自己画上边线：这一层的线挂在
+   行的下沿，两条 1px 落在同一条 y 上就成了一道 2px 的粗线。 */
+.settingscard .settingsscroll .settingrow+.sidebarsetting{border-top:0}
 .settingscard .settingsscroll .settingrow b{font-size:14px;line-height:20px;font-weight:400}
 .settingscard .settingsscroll .settingrow small{font-size:12px;line-height:18px;margin-top:2px;max-width:none}
 .settingscard .settingsscroll .gselect{min-width:90px;min-height:32px;height:32px;padding:6px 8px;font-size:13px;border-radius:8px}
@@ -774,9 +779,9 @@ html.board-high-contrast :is(.selectiondock,.reviewcontrols.is-stuck,.reviewgrou
 .insightpanel>header:has(.insighttabs){padding:12px 16px;min-height:0}
 .insighttabs{position:relative;display:inline-flex;align-items:center;gap:2px;width:auto;max-width:100%;min-height:0;margin:0;padding:4px;border:0;border-radius:10px;background:var(--color-background-tertiary-default);overflow-x:auto;overflow-y:hidden;scrollbar-width:none}
 .insighttabs button{position:relative;z-index:1;display:inline-flex;flex:none;align-items:center;gap:6px;height:auto;min-height:28px;margin:0;padding:4px 10px;border:0;border-radius:6px;background:none;box-shadow:none;color:var(--color-text-secondary);font:var(--board-body);white-space:nowrap;transition:color .2s cubic-bezier(.4,0,.2,1)}
-/* 取消基线那条下划线要连选中态一起写：原样式把线挂在
+/* 取消基线那条下划线要连选中态一起写：`web/css` 那份把线挂在
    `.insighttabs button[aria-selected="true"]:after` 上，只写 `button::after` 权重更低，
-   于是滑块底下还压着一条 2px 墨线。原样式留着给 `original-design` 那条退路用。 */
+   于是滑块底下还压着一条 2px 墨线。 */
 .insighttabs button::after,.insighttabs button[aria-selected="true"]::after{content:none}
 .insighttabs button:hover{background:none;color:var(--color-text-primary)}
 .insighttabs button[aria-selected="true"]{background:none;color:var(--color-text-primary);font:var(--board-body-medium)}
