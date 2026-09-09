@@ -2693,7 +2693,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".avskeleton .ring,.avskeleton .nm{background:var(--hover)}")
         # 只在还空着时画：导航到已经有内容的页面不是从无到有，不该铺骨架。
         self.assertPageContains("  if(!tiers.innerHTML){")
-        self.assertPageContains("  if(!tagbar.innerHTML){")
+        self.assertPageContains("  if(!views.innerHTML){")
         self.assertPageContains("  $('#tiers').removeAttribute('aria-busy');")
         self.assertPageContains("  $('#tagbar').removeAttribute('aria-busy');")
         # 四枚视图胶囊由 state 决定，加载期间就画成最终样子并接上事件，和排序条同规矩。
@@ -2743,7 +2743,7 @@ class WebUiSourceTests(unittest.TestCase):
         for call in ("fitSkeleton($('#grid'));", "fitSkeleton($('#index'));",
                      "fitSkeleton(stats);", "fitSkeleton(tiers);"):
             self.assertPageContains("  " + call)
-        self.assertPageContains("    fillSkeletonTier(tagbar,'pill');")
+        self.assertPageContains("    fillSkeletonTier(tags,'pill');")
         # 一列 fieldset 的两张骨架照自己的轮廓排，补整行会把它们撑成海报网格。
         self.assertPageContains("'/data-cleanup':()=>cleanupSkeletonHtml()")
         self.assertPageContains("{cards:true,count:3,fill:false,className:'followmanage-skeleton'})}</div>`,")
@@ -4674,9 +4674,28 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_empty_home_places_tags_after_view_filters_and_clips_identity_tracks(self):
         self.assertPageContains("$('#tiers').innerHTML=emptyLayout?emptyLayout.tiers:tier(perfRow)+tier(studioRow);")
-        self.assertPageContains("viewPillsHtml(filterState)+(emptyLayout?.tags||'')")
+        self.assertPageContains("$('#tagScroll').innerHTML=(emptyLayout?.tags||'')")
         self.assertPageContains(".tier.catalog-placeholder{overflow:hidden}")
         self.assertPageContains("flex:1 0 240px;min-width:240px;overflow:hidden")
+
+    def test_the_view_pills_hold_still_while_only_the_tags_scroll(self):
+        """筛选条左边那四枚视图钉住不动，横滚只发生在右半截的标签上。
+
+        四枚视图是四选一、恒有一枚生效，读的是「这一屏现在在看什么」；右边的标签才是
+        可加可不加的筛选。两者装进同一个滚动容器时，往右翻几个标签就把读数推出视野，
+        这条上再没有任何东西说明当前在哪一档。
+        关注那一条整条照旧横滚：它没有这种分工，一整排都是可加可不加的筛选，钉住开头
+        几枚只会占掉本来就不宽的一行。
+        """
+        self.assertPageContains('<div class="tagbar" id="tagbar">'
+                                '<div class="viewpills" id="viewPills"></div>'
+                                '<div class="tagscroll" id="tagScroll"></div></div>')
+        self.assertPageContains("  display:flex;gap:7px;overflow:hidden;align-items:center}")
+        self.assertPageContains(".viewpills{display:flex;gap:7px;flex:none;align-items:center}")
+        self.assertPageContains(".tagscroll{display:flex;gap:7px;flex:1;min-width:0;align-items:center;\n"
+                                "  overflow-x:auto;overflow-y:hidden;scrollbar-width:none}")
+        self.assertPageContains("  padding:9px 0 8px;border-bottom-color:transparent;"
+                                "overflow-x:auto;overflow-y:hidden;")
 
     def test_review_selection_uses_default_checkboxes_and_a_separate_toolbar(self):
         self.assertPageContains('class="batchbar selectiondock"')
@@ -7610,11 +7629,10 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertNotIn("transparent 62%),color-mix(in srgb,var(--ink) 12%,transparent);", board)
         # 描边走满一圈，不只压上缘那一道。
         self.assertIn("box-shadow:inset 0 0 0 1px var(--glass-rim),0 1px 2px #00000024,0 6px 14px #0000001f}", board)
-        # 几何相对筛选条算，横滚要补回来；滚出可视范围就收起来。
-        self.assertIn("return {frame,x:tagbar.offsetLeft+pill.offsetLeft-tagbar.scrollLeft,w:pill.offsetWidth,", app)
-        self.assertIn("viewGlide.hidden=box.x+box.w<=tagbar.offsetLeft"
-                      "||box.x>=tagbar.offsetLeft+tagbar.clientWidth;", app)
-        self.assertIn("tagbar.onscroll=()=>syncViewGlide(false,viewGlideAim?.isConnected?viewGlideAim:null);", app)
+        # 几何相对筛选条算，那一排自己的位置要补回来。四枚视图不横滚，偏移量就是最终
+        # 位置，不必再减一次滚动量，也不会滚出可视范围。
+        self.assertIn("return {frame,x:tagbar.offsetLeft+pill.offsetLeft,w:pill.offsetWidth,", app)
+        self.assertNotIn("tagbar.scrollLeft", app)
         # 冲过落点再弹回：那条曲线是一次弹簧模拟的采样，峰值 1.103、313ms 收住。
         self.assertIn("--spring-pane:linear(0,0.1515,", board)
         self.assertIn(",1.0477,1.096,1.1029,1.0901,1.0641,", board)
@@ -8734,7 +8752,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks("state.tag=tg.dataset.tag",
                              "卡片上的标签绕过语境，在资料页点一下就把人带回目录")
         # 顶部标签条、资料页标签、卡片标签、芯片的 ✕ 与「全部清除」：五个入口一个落点。
-        self.assertPageContains("$('#tagbar').querySelectorAll('[data-tag]')"
+        self.assertPageContains("$('#tagScroll').querySelectorAll('[data-tag]')"
                                 ".forEach(b=>b.onclick=()=>{toggleTag(b.dataset.tag)});")
         self.assertCode("$('#index').querySelectorAll('[data-entity-tag]').forEach(b=>b.onclick=()=>\n"
                         "    toggleTag(b.dataset.entityTag));")

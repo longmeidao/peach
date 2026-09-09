@@ -1,8 +1,14 @@
 /* ── 常驻筛选层：原位保持透明，只在真正吸顶后加磨砂黑底 ── */
 .tagbar{position:sticky;top:var(--topH);z-index:61;height:var(--filterH);padding:9px 16px;
   border-bottom:1px solid transparent;background:transparent;
-  display:flex;gap:7px;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;align-items:center}
-.tagbar::-webkit-scrollbar{display:none}
+  display:flex;gap:7px;overflow:hidden;align-items:center}
+/* 横滚只发生在右半截。左边那四枚是视图，四选一、恒有一枚生效，读的是「这一屏现在
+   在看什么」；右边的标签才是可加可不加的筛选。读数跟着筛选一起滚走的话，滚到一半
+   这条上就没有任何东西说明现在看的是哪一档了。 */
+.viewpills{display:flex;gap:7px;flex:none;align-items:center}
+.tagscroll{display:flex;gap:7px;flex:1;min-width:0;align-items:center;
+  overflow-x:auto;overflow-y:hidden;scrollbar-width:none}
+.tagscroll::-webkit-scrollbar{display:none}
 /* 选中药丸和生效筛选共用高亮填充。 */
 .pill{flex:none;height:var(--filterItemH);padding:0 20px;border:1px solid var(--field-ring);
   border-radius:var(--pill-radius);background:transparent;display:inline-flex;align-items:center;justify-content:center;

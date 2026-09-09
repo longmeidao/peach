@@ -3105,7 +3105,7 @@ const viewPillsHtml=filterState=>VIEW_PILLS.map(v=>
    而不是新建：换了元素，动画就从头开始，看到的只是瞬移。
    点下去要立刻动。切换视图会重新取数，`buildBars` 约一秒后才把 `aria-pressed` 写成
    新值，等它就等于点完先僵一下再跳。 */
-let viewGlide=null,viewGlideBox=null,viewGlideAim=null;
+let viewGlide=null,viewGlideBox=null;
 /* 弹簧曲线和它的时长都写在 `board.css` 的 `--spring-pane` 上，这里只读一次。两处各写
    一份数就会各改各的，而那串数是一次弹簧模拟的采样结果，不是能随手对齐的东西。 */
 let glideSpring=null;
@@ -3145,26 +3145,24 @@ function moveGlidePane(pane,from,box,axis){
   }
   pane.style.translate=settled;
 }
-/* 坐标基准是 `.board-filter-frame`，不是那一排本身：这块玻璃住在框外一层，才能在纵向
-   弹出那一排的边沿——那一排要横滚，`overflow-x:auto` 会把纵向一起算成滚动，住在里面
-   的话弹多少都在框沿被切平。代价是每一处几何都得把那一排自己的位置和横滚补回来。 */
+/* 坐标基准是 `.board-filter-frame`，不是那一排本身：这块玻璃住在框外一层，才能弹出
+   那一排的边沿——`#viewPills` 与它的邻居都开着 `overflow`，住在里面弹多少都在框沿被
+   切平。代价是几何要把那一排自己的位置补回来。四枚视图不横滚，它们的偏移量就是最终
+   位置，不必再减一次滚动量。 */
 function viewGlideGeometry(tagbar,pill){
   const frame=tagbar.closest('.board-filter-frame');if(!frame)return null;
-  return {frame,x:tagbar.offsetLeft+pill.offsetLeft-tagbar.scrollLeft,w:pill.offsetWidth,
+  return {frame,x:tagbar.offsetLeft+pill.offsetLeft,w:pill.offsetWidth,
     y:tagbar.offsetTop+pill.offsetTop,h:pill.offsetHeight};
 }
 function syncViewGlide(animate,target){
-  const tagbar=$('#tagbar');if(!tagbar)return;
-  const active=target||tagbar.querySelector('[data-state][aria-pressed="true"]');
+  const tagbar=$('#tagbar'),views=$('#viewPills');if(!tagbar||!views)return;
+  const active=target||views.querySelector('[data-state][aria-pressed="true"]');
   if(!active){if(viewGlide)viewGlide.hidden=true;return}
   const box=viewGlideGeometry(tagbar,active);
   if(!box||!box.w)return;
-  viewGlideAim=active;
   if(!viewGlide){viewGlide=document.createElement('span');viewGlide.className='viewglide';viewGlide.setAttribute('aria-hidden','true');viewGlideBox=null}
   if(viewGlide.parentElement!==box.frame)box.frame.prepend(viewGlide);
-  /* 那一排横滚到看不见这一枚时收起来：它住在框外一层，不再跟着那一排一起被裁，不收
-     的话会一路飘到筛选条的内边距上，停在那儿像块没人要的高光。 */
-  viewGlide.hidden=box.x+box.w<=tagbar.offsetLeft||box.x>=tagbar.offsetLeft+tagbar.clientWidth;
+  viewGlide.hidden=false;
   const from=viewGlideBox;viewGlideBox=box;
   moveGlidePane(viewGlide,animate?from:null,box,'x');
 }
@@ -3201,7 +3199,7 @@ $('#drawerScroll').addEventListener('scroll',()=>{
   navGlideTick=requestAnimationFrame(()=>{navGlideTick=0;syncNavGlide(false)});
 },{passive:true});
 function wireViewPills(){
-  const tagbar=$('#tagbar'),pills=[...tagbar.querySelectorAll('[data-state]')];
+  const tagbar=$('#tagbar'),pills=[...$('#viewPills').querySelectorAll('[data-state]')];
   pills.forEach(b=>b.onclick=e=>{
     e.preventDefault();state.state=b.dataset.state;
     pills.forEach(p=>p.setAttribute('aria-pressed',String(p===b)));syncViewGlide(true,b);
@@ -3212,25 +3210,21 @@ function wireViewPills(){
   pills.forEach(b=>b.addEventListener('pointerenter',e=>{
     if(e.pointerType==='touch')return;syncViewGlide(true,b)}));
   tagbar.onpointerleave=e=>{if(e.pointerType!=='touch')syncViewGlide(true)};
-  /* 横滚时原地跟上，不走动画：那块玻璃的坐标是相对筛选条算的，那一排自己滚走了它不动
-     就会脱开对准的那一枚。跟的是上一次瞄准的目标，不是当前选中的——指针停在某一枚上
-     时滚动，玻璃不该趁机跳回去。 */
-  tagbar.onscroll=()=>syncViewGlide(false,viewGlideAim?.isConnected?viewGlideAim:null);
   syncViewGlide(false);
 }
 // 宽度是一组定值而不是随机数：随机会让同一次冷启动在两台机器上长得不一样，也没法测。
 function renderBarsLoading(filterState){
-  const tiers=$('#tiers'),tagbar=$('#tagbar');
+  const tiers=$('#tiers'),tagbar=$('#tagbar'),views=$('#viewPills'),tags=$('#tagScroll');
   if(!tiers.innerHTML){
     tiers.hidden=false;tiers.setAttribute('aria-busy','true');
     tiers.innerHTML=`<div class="tier" data-skeleton-tier="av"></div>
       <div class="tier" data-skeleton-tier="brandpill"></div>`;
     fitSkeleton(tiers);
   }
-  if(!tagbar.innerHTML){
+  if(!views.innerHTML){
     tagbar.setAttribute('aria-busy','true');
-    tagbar.innerHTML=viewPillsHtml(filterState);
-    fillSkeletonTier(tagbar,'pill');
+    views.innerHTML=viewPillsHtml(filterState);
+    fillSkeletonTier(tags,'pill');
     wireViewPills();
   }
 }
@@ -3308,12 +3302,13 @@ async function buildBars(){
   });
 
   $('#tagbar').removeAttribute('aria-busy');
-  $('#tagbar').innerHTML=viewPillsHtml(filterState)+(emptyLayout?.tags||'')
+  $('#viewPills').innerHTML=viewPillsHtml(filterState);
+  $('#tagScroll').innerHTML=(emptyLayout?.tags||'')
     +seededSample(topTags,26,`tags:${state.seed||''}`).map(t=>
       `<button class="pill" data-tag="${esc(t.k)}" aria-pressed="${
         tagPressed(filterState.tag,t.k)}">${esc(tagLabel(t.k))}</button>`).join('');
   wireViewPills();
-  $('#tagbar').querySelectorAll('[data-tag]').forEach(b=>b.onclick=()=>{toggleTag(b.dataset.tag)});
+  $('#tagScroll').querySelectorAll('[data-tag]').forEach(b=>b.onclick=()=>{toggleTag(b.dataset.tag)});
   renderCombo(); wireAllDrag();
 
   const chips=(items,key,multi,limit)=>items.length?`<div class="chips">`+items.slice(0,limit||999).map(it=>{

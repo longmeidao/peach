@@ -9,9 +9,11 @@
 .followauthors .av[aria-pressed="true"] .ring{box-shadow:0 0 0 2px var(--ink)}
 .followauthors .favatar{width:64px;height:64px;border-radius:50%;outline:0}
 .followauthors .favatar.none{font-size:var(--fs-lg);background:var(--overlay-5)}
+/* 关注这一条整条横滚：它没有首页那种「左边读数、右边筛选」的分工，一整排都是可加
+   可不加的筛选，钉住开头几枚只会占掉本来就不宽的一行。 */
 .followfilters{position:relative;top:auto;z-index:1;height:auto;min-height:58px;margin:0 0 16px;
-  padding:9px 0 8px;border-bottom-color:transparent;scrollbar-width:none;overscroll-behavior-inline:contain;
-  touch-action:pan-x}
+  padding:9px 0 8px;border-bottom-color:transparent;overflow-x:auto;overflow-y:hidden;
+  scrollbar-width:none;overscroll-behavior-inline:contain;touch-action:pan-x}
 .followfilters::-webkit-scrollbar{display:none}
 .followfilters .sep{flex:none;width:1px;height:24px;background:var(--field-ring-hover);margin:0 3px}
 .followfilters .pill .n{margin-left:5px;color:inherit}
