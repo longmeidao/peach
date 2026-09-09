@@ -7975,6 +7975,33 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn(".shorts-inline{border:0}", board)
         self.assertPageContains(".shorts-inline{padding:16px;background:var(--ground);")
 
+    def test_the_home_rows_keep_their_left_edge_and_pass_under_the_sidebar(self):
+        """首页那几排横滚到右边时从侧栏底下穿过去，往左滚到头仍停在原对齐线上。
+
+        让出去的宽度和加回的内边距是同一个数（轨道宽 `--railW` 加这一屏的 16px），
+        所以 `scrollLeft` 归零时第一枚站的位置跟不越界时一模一样，越界只发生在往右
+        那一侧。竖屏那一条连同它的底一起铺过去，卡片才不会在面板边缘从自己的底上掉
+        出来，铺到视口边的那一侧不留圆角。窄屏的抽屉是盖上来的，没有常驻轨道，这一
+        段整体不开。
+        """
+        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
+        self.assertIn(
+            "@media(min-width:761px){\n"
+            "  #tiers .tier{margin-left:calc(-1 * var(--railW));padding-left:calc(var(--railW) + 16px)}",
+            board,
+        )
+        self.assertIn(
+            "  .shorts-inline{margin-left:calc(-1 * (var(--railW) + 16px));"
+            "padding-left:calc(var(--railW) + 32px);\n"
+            "    border-radius:0 var(--floating-radius) var(--floating-radius) 0}",
+            board,
+        )
+        self.assertIn(
+            "  .shorts-inline .srow{margin-left:calc(-1 * (var(--railW) + 32px));"
+            "padding-left:calc(var(--railW) + 32px)}",
+            board,
+        )
+
     def test_both_ends_of_a_range_slider_always_report_their_value(self):
         """时长两端的读数常显：这里是唯一报数的地方。
 

@@ -1021,6 +1021,21 @@ body .reviewactions button:disabled{opacity:.5;cursor:not-allowed}
    厂牌靠更高的身量、圆标识和无边框跟它分开。 ── */
 #tiers .tier{gap:4px;padding:0 16px 6px;align-items:center}
 #tiers .tier:last-child{padding-bottom:4px}
+/* 往右翻的时候这几排从侧栏底下穿过去，不在侧栏那条边上被切平：侧栏是一块玻璃，底下
+   有东西在走才看得出它是透的，一整屏都在那条边上齐刷刷停住的话，那块玻璃身后永远是
+   同一片空底。左边界仍停在原处——那是这一屏的左对齐线，跟着一起挪等于把整页的对齐线
+   也挪了，所以让出去多少宽度就原样加回内边距，滚到头时第一枚还站在原位。窄屏那一档
+   的抽屉是盖上来的，没有这条常驻的边，让出去的宽度只会把内容推到屏幕外，所以整段只
+   在留了轨道宽度的档位上开。 */
+@media(min-width:761px){
+  #tiers .tier{margin-left:calc(-1 * var(--railW));padding-left:calc(var(--railW) + 16px)}
+  /* 竖屏那一条是块有底的面板，跟着一起铺过去：只让里面那一排越界的话，卡片滑到面板左
+     边缘就从自己的底上掉出来，接缝是一条直上直下的硬边。面板铺到视口边上，左边那两个
+     圆角也就没有存在的理由了。 */
+  .shorts-inline{margin-left:calc(-1 * (var(--railW) + 16px));padding-left:calc(var(--railW) + 32px);
+    border-radius:0 var(--floating-radius) var(--floating-radius) 0}
+  .shorts-inline .srow{margin-left:calc(-1 * (var(--railW) + 32px));padding-left:calc(var(--railW) + 32px)}
+}
 #tiers .av,#tiers .brandpill{flex:none;border:0;background:transparent;color:var(--color-text-secondary);font:var(--board-body-medium);white-space:nowrap;transition:background-color .2s ease-out,color .2s ease-out}
 #tiers .av{display:flex;flex-direction:column;align-items:center;gap:6px;width:76px;max-width:none;height:auto;padding:6px 4px;border-radius:12px;text-align:center}
 #tiers .brandpill{display:inline-flex;align-items:center;gap:8px;width:auto;max-width:none;height:40px;padding:6px 12px 6px 6px;border-radius:12px;text-align:left}
