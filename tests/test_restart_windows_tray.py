@@ -64,6 +64,15 @@ class RestartWindowsTrayTests(unittest.TestCase):
     BOOTSTRAP = ("import os,runpy;os.environ['PEACH_DATA_ROOT']=r'X'"
                  ";runpy.run_module('peach.tray',run_name='__main__')")
 
+    def test_the_source_search_runs_its_own_win32_declarations(self):
+        """两步筛的第一步是一串 ctypes 声明，名字取错要到调用那一刻才炸。
+
+        EnumWindows 是替换不掉的，那就真枚举一遍：非 Windows 上函数在开头就返回空，
+        Windows 上把整串声明走完。命令行那步替掉，免得为一条判据起 PowerShell。
+        """
+        with mock.patch.object(windows_restart, "_command_lines", return_value={}):
+            self.assertEqual(windows_restart.find_source_tray_windows(), ())
+
     def test_windows_command_line_splits_the_source_bootstrap_intact(self):
         line = f'"{self.service.parent / "pythonw.exe"}" -c "{self.BOOTSTRAP}" --show'
         argv = windows_restart.parse_windows_command_line(line)
