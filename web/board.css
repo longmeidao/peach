@@ -1239,6 +1239,75 @@ body .review :is(.reviewbulktoolbar,.reviewgroupbar).is-stuck{background:transpa
 html.board-high-contrast .review.review-is-stuck::before{background:var(--ground);backdrop-filter:none;-webkit-backdrop-filter:none;animation:none}
 @media(prefers-reduced-transparency:reduce){body .review.review-is-stuck::before{background:var(--ground);backdrop-filter:none;-webkit-backdrop-filter:none;animation:none}}
 @media(prefers-reduced-motion:reduce){body .review.review-is-stuck::before{animation:none}}
+
+/* 数据管理子页：结果标题、证据区域和操作栏各有固定归属。 */
+.collection-summary{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;padding:20px 24px;margin-bottom:20px;border-radius:var(--surface-radius);background:var(--color-background-primary-default)}
+.collection-summary>div{display:grid;gap:8px;min-width:0}
+.collection-summary span{font:var(--board-body);color:var(--color-text-secondary)}
+.collection-summary strong{font:var(--board-title);color:var(--color-text-primary);font-variant-numeric:tabular-nums}
+.collection-summary p{margin:0;color:var(--color-text-secondary);font:var(--board-body)}
+body[data-surface="/review"] .review-workspace{display:grid;grid-template-columns:184px minmax(0,1fr);column-gap:24px;align-items:start}
+body[data-surface="/review"] .review-workspace>.reviewcontrols{grid-column:1;grid-row:1 / span 4;position:sticky;top:var(--topH);padding:16px 8px;background:var(--color-background-primary-default);border-radius:var(--surface-radius)}
+body[data-surface="/review"] .review-category-title{font:var(--board-caption);color:var(--muted);margin:0 12px 12px}
+body[data-surface="/review"] .reviewtabs{display:flex;flex-direction:column;gap:4px;align-items:stretch;white-space:normal}
+body[data-surface="/review"] .reviewtabs button{height:auto;min-height:40px;text-align:left;justify-content:space-between;padding:10px 12px;white-space:normal}
+body[data-surface="/review"] .review-workspace>:is(.reviewsection,.reviewbulktoolbar,.board-pagination){grid-column:2;min-width:0}
+body[data-surface="/review"] .review-workspace>.runtimegate{grid-column:1/-1;grid-row:1}
+body[data-surface="/review"] .review-workspace:has(>.runtimegate)>.reviewcontrols{grid-row:2 / span 4}
+body[data-surface="/review"] .reviewitem{border:1px solid var(--line-soft);border-radius:var(--surface-radius);background:var(--color-background-primary-default)}
+body[data-surface="/review"] :is(.reviewlist:not(.reviewgroups),.reviewgroupitems){grid-template-columns:repeat(auto-fill,minmax(min(100%,340px),1fr));gap:20px}
+body[data-surface="/review"] .reviewitem .reviewactions{border-radius:0 0 var(--surface-radius) var(--surface-radius)}
+body[data-surface="/duplicates"] #manageLede{display:none}
+body[data-surface="/duplicates"] .dupactions{padding:16px 20px;border-radius:var(--surface-radius);background:var(--color-background-primary-default);flex-wrap:wrap}
+body[data-surface="/duplicates"] .dupgroup{margin-bottom:24px;border-color:var(--line-soft);background:var(--color-background-primary-default)}
+body[data-surface="/duplicates"] .duphead{padding:20px;gap:12px;background:var(--color-background-secondary-default)}
+body[data-surface="/duplicates"] .duphead>b{font:var(--board-heading)}
+body[data-surface="/duplicates"] .duphead .dupbtns{flex-wrap:wrap;gap:8px}
+body[data-surface="/duplicates"] .duprow{grid-template-columns:112px 90px minmax(0,1fr) 64px 84px 84px;padding:16px 20px;gap:12px}
+.dupcover{grid-row:span 2;position:relative;aspect-ratio:16/10;padding:0;overflow:hidden;border:0;border-radius:var(--control-radius);background:var(--color-background-tertiary-default);color:var(--muted);cursor:pointer;display:grid;place-items:center}
+.dupcover img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
+.dupcover svg{width:24px;height:24px}
+body[data-surface="/duplicates"] .duppath{grid-column:2/-1}
+.quality-workspace{max-width:var(--board-content);margin:auto}
+body[data-surface="/quality-goals"] .qualitylist{grid-template-columns:repeat(auto-fill,minmax(min(100%,280px),1fr));gap:20px}
+body[data-surface="/quality-goals"] .qualityitem{display:flex;flex-direction:column;gap:0;padding:0;overflow:hidden;border:1px solid var(--line-soft);border-radius:var(--surface-radius)}
+body[data-surface="/quality-goals"] .qualitycover{position:relative;display:grid;place-items:center;width:100%;aspect-ratio:16/10;border-radius:0;background:var(--color-background-tertiary-default)}
+.qualityfallback{color:var(--muted);font:var(--board-body)}
+body[data-surface="/quality-goals"] .qualitycover img{position:absolute;inset:0;background:var(--color-background-tertiary-default)}
+.qualitybody{padding:20px;flex:1;min-width:0}
+.qualityreason{padding-top:12px;border-top:1px solid var(--line-soft)}
+.qualityactions{display:flex;justify-content:flex-end;padding:12px 20px;background:var(--color-background-secondary-default)}
+body[data-surface="/junk-files"] .junksummary{width:100%}
+body[data-surface="/junk-files"] .collection-summary{margin:0}
+body[data-surface="/junk-files"] .junkfilters{width:100%;padding:12px;gap:8px;border-radius:var(--surface-radius);background:var(--color-background-primary-default)}
+body:is([data-surface="/junk-files"],[data-surface="/trash"]) .gridstack>.grid{grid-template-columns:repeat(auto-fill,minmax(min(100%,280px),1fr));gap:20px}
+body:is([data-surface="/junk-files"],[data-surface="/trash"]) .gridstack .card{border:1px solid var(--line-soft);border-radius:var(--surface-radius);background:var(--color-background-primary-default);overflow:hidden;gap:0}
+body[data-surface="/trash"] .gridstack .card .pic{border-radius:0}
+body[data-surface="/trash"] .gridstack .card>.meta{padding:16px 20px}
+body[data-surface="/trash"] #manageLede{padding:20px 24px;background:var(--color-background-primary-default);border-radius:var(--surface-radius);gap:16px;flex-wrap:wrap}
+body[data-surface="/trash"] #manageLede>span{font:var(--board-heading)}
+body[data-surface="/junk-files"] .junkmeta{padding:20px}
+body[data-surface="/junk-files"] .junkactions{padding:12px;background:var(--color-background-secondary-default);flex-wrap:wrap}
+@media(max-width:900px){
+ body[data-surface="/review"] .review-workspace{grid-template-columns:1fr}
+ body[data-surface="/review"] .review-workspace>.reviewcontrols{position:static;grid-column:1;grid-row:auto!important;margin-bottom:16px}
+ body[data-surface="/review"] .reviewtabs{flex-direction:row;flex-wrap:wrap}
+ body[data-surface="/review"] .review-workspace>:is(.reviewsection,.reviewbulktoolbar,.board-pagination){grid-column:1}
+ body[data-surface="/duplicates"] .duprow{grid-template-columns:88px minmax(0,1fr) auto}
+ body[data-surface="/duplicates"] .dupcover{grid-row:span 3}
+ body[data-surface="/duplicates"] .dupmarks{grid-column:2/-1}
+ body[data-surface="/duplicates"] .dupname{grid-column:2/-1}
+ body[data-surface="/duplicates"] .duppath{grid-column:1/-1}
+}
+@media(max-width:600px){
+ .collection-summary{padding:16px;align-items:flex-start;flex-direction:column;gap:12px}
+ body[data-surface="/review"] .reviewtabs button{min-height:36px;padding:8px}
+ body[data-surface="/duplicates"] .duphead{padding:16px}
+ body[data-surface="/duplicates"] .duphead .dupbtns{margin:0;width:100%}
+ body[data-surface="/duplicates"] .duprow{padding:16px}
+ body[data-surface="/review"] .board-pagination{display:flex;flex-wrap:wrap;gap:8px;max-width:100%;overflow:hidden}
+ body[data-surface="/review"] .board-pagination>.geist-button{max-width:calc(50% - 4px);overflow:hidden}
+}
 /* 批量条：隐藏的键真的隐藏（Board 的 inline-flex 曾压过 hidden）；「加入回收站」用 error 按钮的红色渐变。 */
 body .batchbar button.danger{box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;gap:4px;height:36px;min-height:36px;padding:8px 12px;border:1px solid transparent;border-radius:10px;background:linear-gradient(180deg,#ff3347,#e60012);color:#fff;font:var(--board-body-medium);transition:background-color .15s ease}
 body .batchbar button.danger:hover{background:linear-gradient(180deg,#ff6471,#ff3347);color:#fff}

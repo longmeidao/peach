@@ -5020,13 +5020,13 @@ class WebUiSourceTests(unittest.TestCase):
         # 外观一样不代表语义一样。复核那条切的是 10 个互不相同的候选数据集，每个分类换掉
         # 整个面板的数据模型，也没有独立 URL，所以是真 tablist：方向键漫游焦点，tabindex
         # 只留在选中项上。
-        self.assertPageContains('<div class="reviewtabs" role="tablist" aria-label="复核分类">')
+        self.assertPageContains('<div class="reviewtabs" role="tablist" aria-label="复核分类" aria-orientation="vertical">')
         self.assertPageContains('<button role="tab" id="reviewtab-${key}" aria-controls="reviewpanel"')
         self.assertPageContains('aria-selected="${on}" tabindex="${on?' + repr('0') + ':' + repr('-1') + '}"')
         self.assertPageContains('<section class="reviewsection" id="reviewpanel" role="tabpanel" '
                                 'aria-labelledby="reviewtab-${reviewCategory}">')
         self.assertPageLacks('<button data-review-tab="${key}" aria-pressed=')
-        self.assertPageContains("const step=event.key==='ArrowRight'?1:event.key==='ArrowLeft'?-1:0;")
+        self.assertPageContains("const step=event.key==='ArrowRight'||event.key==='ArrowDown'?1:event.key==='ArrowLeft'||event.key==='ArrowUp'?-1:0;")
         self.assertPageContains(
             ":event.key==='Home'?reviewTabs[0]:event.key==='End'?reviewTabs[reviewTabs.length-1]:null;")
         # 垃圾文件那条是同一批候选按 type 收窄，数据模型不变，当前项落在 URL 上，所以是
@@ -8248,7 +8248,7 @@ class WebUiSourceTests(unittest.TestCase):
         # 药丸也不跟洞察页那组维度共用一条规则：那边是带滑块的分段控件。
         self.assertNotIn(".insighttabs,.reviewtabs{", board)
         # 键盘行为仍是 tablist：方向键在同一条里移动焦点。
-        self.assertPageContains('<div class="reviewtabs" role="tablist" aria-label="复核分类">')
+        self.assertPageContains('<div class="reviewtabs" role="tablist" aria-label="复核分类" aria-orientation="vertical">')
 
     def test_the_review_queue_is_paged_on_the_client(self):
         """复核队列一页 20 张，翻页只重画这一屏。

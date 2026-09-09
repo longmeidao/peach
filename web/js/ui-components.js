@@ -113,6 +113,11 @@ function noteDetailsHtml({label='',items=[],footnote=''}={}){
     <ul>${items.map(line).join('')}</ul>${footnote?`<p>${esc(footnote)}</p>`:''}</details>`;
 }
 
+/** 数据管理子页的结果标题，只接收当前查询得到的读数。 */
+export function collectionSummaryHtml(label,value,detail=''){
+  return `<header class="collection-summary"><div><span>${esc(label)}</span><strong>${esc(value)}</strong></div>${detail?`<p>${esc(detail)}</p>`:''}</header>`;
+}
+
 /** Inline, persistent context beside the field/card/section it describes. */
 export function noteHtml(message,{variant='secondary',label='',className='',size='medium',filled=false,actionLabel='',details=null}={}){
   const kind=NOTE_VARIANTS.has(variant)?variant:'secondary';
