@@ -152,7 +152,9 @@ def _kemono_candidates(provider: str, term: str, index: CreatorIndex) -> list[Ca
     folded = term.casefold()
     # id 的形状跟服务走：fanbox 的 id 是数字，patreon、switch 这些直接拿创作者
     # 手柄当 id。精确比对把两种都收进来，只认数字会把手柄当 id 的来源整个排除。
-    exact_id = [row for row in rows if row["id"] == term]
+    # 手柄的大小写只是显示形态，`SuzuTaro3D` 和 `suzutaro3d` 是同一个创作者，
+    # 所以按 casefold 比；数字 id 过一遍 casefold 也还是它自己。
+    exact_id = [row for row in rows if row["id"].casefold() == folded]
     by_name = [row for row in rows if row["name"].casefold() == folded]
     partial = [row for row in rows
                if folded in row["name"].casefold() and row not in by_name]

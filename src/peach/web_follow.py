@@ -1107,24 +1107,21 @@ def w_follow_resolve(contract, body, *, progress=None) -> dict:
 
         return note
 
-    results = []
-    for index, line in enumerate(lines):
+    def resolve_line(index: int, line: str) -> dict:
         try:
             parsed = parse_source_url(line)
         except FollowSourceError as url_error:
             if "://" in line or "/" in line:
                 # 看着就是链接，那就照链接的错误报，不要再拿去当名字查一遍。
-                results.append({"line": line, "kind": "error", "error": str(url_error)})
-                continue
+                return {"line": line, "kind": "error", "error": str(url_error)}
             try:
                 found = discover(line, secrets_root=contract.follow_secrets_root,
                                  shared_root=contract.follow_shared_root,
                                  state_root=contract.follow_state_root,
                                  on_progress=source_progress(index))
             except (FollowSourceError, CredentialError) as term_error:
-                results.append({"line": line, "kind": "error", "error": str(term_error)})
-                continue
-            results.append({
+                return {"line": line, "kind": "error", "error": str(term_error)}
+            return {
                 "line": line, "kind": "term",
                 "candidates": [{**_candidate_payload(c, author=line),
                                 "known": (c.provider, canonical_source_ref(
@@ -1133,14 +1130,22 @@ def w_follow_resolve(contract, body, *, progress=None) -> dict:
                 "failures": found.failures,
                 "external_searches": [_external_search_payload(search)
                                       for search in found.external_searches],
-            })
-            done_units += len(discovery_plan(line))
-            continue
-        results.append({"line": line, "kind": "url",
-                        "candidates": [{**_candidate_payload(parsed),
-                                        "known": (parsed.provider, canonical_source_ref(
-                                            parsed.provider, parsed.ref)) in known}]})
-        done_units += 1
+            }
+        return {"line": line, "kind": "url",
+                "candidates": [{**_candidate_payload(parsed),
+                                "known": (parsed.provider, canonical_source_ref(
+                                    parsed.provider, parsed.ref)) in known}]}
+
+    results = []
+    for index, line in enumerate(lines):
+        # 分母是 plan_units 算出来的，分子就照同一把尺子加：一行查失败也占掉了它那
+        # 几个来源，不加进去的话后面每一行都低这么多，环最后停在半路。
+        results.append(resolve_line(index, line))
+        done_units += plan_units(line)
+    if progress is not None and total_units:
+        # 每个来源是开查前报一次自己的序号，最后一个报的是 total-1；收尾这一下才走满。
+        progress(checked=total_units, total=total_units,
+                 message=f"查找关注来源：{total_units} 个来源已查完")
     return {"ok": True, "results": results}
 
 
