@@ -384,12 +384,16 @@ details.fcred{display:block;min-width:0}
 .fpickempty{margin:7px 0;color:var(--muted);font-size:var(--fs-sm)}
 .fpick p{margin:2px 0;font-size:var(--fs-xs);color:var(--muted)}
 .fpick.bad p{color:var(--drop)}
-.fpickitem{display:flex;gap:9px;align-items:center;padding:7px 9px;border:1px solid var(--border-10);border-radius:var(--surface-radius);margin-bottom:4px;cursor:pointer;font-size:var(--fs-xs);transition:background-color .12s ease}
-.fpickitem:hover{background:var(--hover);color:var(--ink)}
+.fpickitem{display:flex;gap:9px;align-items:center;padding:7px 9px;border:1px solid var(--border-10);border-radius:var(--surface-radius);margin-bottom:4px;cursor:pointer;font-size:var(--fs-xs);transition:background-color .15s ease,border-color .15s ease}
+/* CheckboxCard 的悬停与 board 同一档：卡片自己的底是 primary-default，
+   悬停整面抬到 primary-hover，边框抬钮悬停档。底色不能缺——查找结果躺在
+   --ground 的灰面上，透明底配 #f5f5f5 的悬停在浅色下等于没动。 */
+.fpickitem{background:var(--color-background-primary-default)}
+.fpickitem:hover{background:var(--color-background-primary-hover);border-color:var(--color-border-button-hover);color:var(--ink)}
 /* 「已经关注」整行退成主题的中性灰：不该用透明度——它会把边框和复选框一起冲淡，
    在同一档底色上灰到读不出来。--muted 按主题自己深浅，比底色各深一档。 */
 .fpickitem.known{cursor:default}
-.fpickitem.known:hover{background:transparent;border-color:var(--border-10)}
+.fpickitem.known:hover{background:var(--color-background-primary-default);border-color:var(--border-10)}
 .fpickitem.known span{color:var(--muted)}
 .fpickitem span{min-width:0;overflow-wrap:anywhere}
 .fpickitem b{margin-right:6px}
