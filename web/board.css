@@ -43,12 +43,22 @@
 .settingscard .board-number-control button{min-height:32px;padding:4px 8px;font-size:12px}
 @media(max-width:760px){.settingscard.settingscard{display:flex;flex-direction:column;width:calc(100vw - 24px);max-width:calc(100vw - 24px)}.settingscard.settingscard>.board-local-nav{flex-direction:row;flex-shrink:0;overflow-x:auto;border-right:0}.settingscard.settingscard>.board-local-nav .board-local-nav-caption{margin:0;padding:0 4px 0 8px;align-self:center;white-space:nowrap}.settingscard.settingscard>.board-local-nav .board-local-nav-caption:first-child{padding-left:0}.settingscard.settingscard .settingshead{padding:16px 20px 12px}.settingscard.settingscard .settingsscroll{padding:0 20px 20px;flex:1}}
 /* Translucent navigation experiment, using browser-native backdrop compositing. */
-:root{--glass-fill:rgba(248,250,255,.72);--glass-rim:rgba(255,255,255,.76);--glass-low:rgba(70,80,100,.12);--glass-text:#242830;--glass-shadow:0 5px 20px #11182714;--glass-sheen:rgba(255,255,255,.38)}
-:root[data-theme="dark"]{--glass-fill:rgba(29,32,39,.68);--glass-rim:rgba(255,255,255,.23);--glass-low:rgba(255,255,255,.055);--glass-text:#e7e9ee;--glass-shadow:0 5px 20px #00000026;--glass-sheen:rgba(230,239,255,.08)}
-@media(prefers-color-scheme:dark){:root:not([data-theme]){--glass-fill:rgba(29,32,39,.68);--glass-rim:rgba(255,255,255,.23);--glass-low:rgba(255,255,255,.055);--glass-text:#e7e9ee;--glass-shadow:0 5px 20px #00000026;--glass-sheen:rgba(230,239,255,.08)}}
+/* 底色薄到能看见身后的东西在动，可读性交给 `--glass-lume`：Apple 的 regular 变体
+   「blurs and adjusts the luminosity of background content」，压暗（暗色）或提亮（浅色）
+   身后那一片，而不是拿一层厚白／厚黑把它盖掉。盖掉的那一版底色要 .68 才读得动字，
+   代价是玻璃底下什么都看不见，等于一块磨砂塑料。 */
+/* 浅色一档要多压一点饱和：提亮是为了让深色的字站得住，可身后多半是肤色和暖色封面，
+   同一步提亮会把它们一起推到溢出，整条读成一片花的。暗色反过来，压暗顺带把彩度也
+   压住了，不必额外收。 */
+/* `--glass-pick` 是选中那块自己的光学：它不铺一层灰，而是在这块玻璃已经合成好的
+   底子上再提一档亮度，所以它跟着身后的内容一起变，暗处淡、亮处也淡，唯独比同一条
+   上的邻居亮——铺灰的那种做法在亮内容上会变成一块脏斑。 */
+:root{--glass-fill:rgba(252,253,255,.44);--glass-rim:rgba(255,255,255,.72);--glass-low:rgba(70,80,100,.1);--glass-text:#1d2129;--glass-shadow:0 8px 26px #1118270f;--glass-sheen:rgba(255,255,255,.5);--glass-lume:brightness(1.26) saturate(.55);--glass-pick:brightness(1.1) saturate(1.1)}
+:root[data-theme="dark"]{--glass-fill:rgba(26,29,35,.34);--glass-rim:rgba(255,255,255,.2);--glass-low:rgba(255,255,255,.05);--glass-text:#eceef3;--glass-shadow:0 8px 26px #00000038;--glass-sheen:rgba(230,239,255,.1);--glass-lume:brightness(.58) contrast(1.06);--glass-pick:brightness(1.7) saturate(1.15)}
+@media(prefers-color-scheme:dark){:root:not([data-theme]){--glass-fill:rgba(26,29,35,.34);--glass-rim:rgba(255,255,255,.2);--glass-low:rgba(255,255,255,.05);--glass-text:#eceef3;--glass-shadow:0 8px 26px #00000038;--glass-sheen:rgba(230,239,255,.1);--glass-lume:brightness(.58) contrast(1.06);--glass-pick:brightness(1.7) saturate(1.15)}}
 .board-filter-frame.board-filter-frame.board-filter-frame,.entitytagbar.entitytagbar.entitytagbar,.entitycollectionhead.entitycollectionhead.entitycollectionhead,body .review .reviewbulktoolbar,body .review .reviewgroupbar,.drawer.drawer,.drawer.drawer.open,.edge.edge,.top .search.search,.top.top>.ib{
   background:linear-gradient(125deg,var(--glass-sheen),transparent 42%,var(--glass-low)),var(--glass-fill);
-  backdrop-filter:var(--glass-optic,blur(22px)) saturate(145%);-webkit-backdrop-filter:var(--glass-optic,blur(22px)) saturate(145%);
+  backdrop-filter:var(--glass-optic,blur(22px)) saturate(160%) var(--glass-lume);-webkit-backdrop-filter:var(--glass-optic,blur(22px)) saturate(160%) var(--glass-lume);
   border:0;box-shadow:inset 0 1px 0 var(--glass-rim),inset 1px 0 0 var(--glass-low),inset -1px 0 0 var(--glass-low),inset 0 -1px 0 var(--glass-low),var(--glass-shadow);
 }
 .board-filter-frame.board-filter-frame{border-radius:22px;isolation:isolate;color:var(--glass-text)}
@@ -75,11 +85,41 @@ body .review .reviewbulktoolbar,body .review .reviewgroupbar{background:var(--gl
 .board-filter-frame.board-filter-frame .count{border-radius:0 0 22px 22px}
 .board-filter-frame.board-filter-frame .pill,.board-filter-frame.board-filter-frame .sorts button{color:var(--glass-text)}
 .board-filter-frame.board-filter-frame #tagbar .pill[data-tag]:not([aria-pressed="true"]){border-color:var(--glass-low)}
-.board-filter-frame.board-filter-frame #tagbar .pill[data-state][aria-pressed="true"],.board-filter-frame.board-filter-frame .sorts button[aria-pressed="true"]{background:color-mix(in srgb,var(--ink) 10%,transparent)}
+.board-filter-frame.board-filter-frame .sorts button[aria-pressed="true"]{background:color-mix(in srgb,var(--ink) 10%,transparent)}
+/* 四枚视图之间只有一块玻璃在移动，不是四块各自亮灭：Apple 把同一层里的玻璃先合成
+   再形变（`GlassEffectContainer` 的 "fluidly morphing Liquid Glass shapes into each
+   other"），落到这一排就是先拉长盖住起点和终点、再收拢到新的那一枚。
+   几何由 app.js 按当前那枚的实际位置写进来，这里只管形状和材质；四枚自己不画边框，
+   一排里唯一的填充就是这块玻璃，看的人不必在四个框里再找哪个亮着。 */
+/* `left:0` 不能省：只写 `top` 的话水平方向还是 auto，绝对定位就回落到它作为第一个
+   子元素本该待的静态位置——也就是 `#tagbar` 那 12px 内边距之后，再叠上按 `offsetLeft`
+   算的位移，整块正好右移一个内边距，盖不住选中那枚的左半边。 */
+.board-filter-frame.board-filter-frame #tagbar .viewglide{position:absolute;left:0;z-index:0;pointer-events:none;
+  border-radius:8px;
+  /* 高光从上往下，不走那道 125° 对角线：对角线是按盒子自己的长边铺的，在一枚
+     三十来像素高的药丸上，转折点正好落在中间，静止看是左右两块拼起来的。 */
+  /* 提亮之外还得垫一层薄填充：卡片黑下来的时候，`brightness()` 乘的是零，那块玻璃
+     跟着一起黑，整条上就找不出选中的是哪一枚了。 */
+  background:linear-gradient(180deg,var(--glass-sheen),transparent 62%),color-mix(in srgb,var(--ink) 12%,transparent);
+  backdrop-filter:var(--glass-pick);-webkit-backdrop-filter:var(--glass-pick);
+  box-shadow:inset 0 1px 0 var(--glass-rim),0 2px 8px #00000020}
+.board-filter-frame.board-filter-frame #tagbar .viewglide[hidden]{display:none}
+/* 文字要压在那块玻璃上面，否则滑过去的时候字被盖住一路暗过去。 */
+.board-filter-frame.board-filter-frame #tagbar .pill[data-state]{position:relative;z-index:1}
 /* 换一批跟同一条上的排序键一样平：给它单独铺一层面加一圈线，静止态就在一排透明
    按钮里露出一块灰片，看着像图标背后还垫了个东西。选中态归排序键，它只有悬停。 */
 .board-filter-frame.board-filter-frame .sorts #batchAction,.entitycollectionhead .sorts .entitybatch{color:var(--ink);background:none;border:0;border-radius:7px;box-shadow:none}
 .top.top,body.board-scrolled .top.top{background:transparent;box-shadow:none;backdrop-filter:none;border:0}
+/* 顶栏这一条本身不是玻璃，玻璃是搜索框和右边那几个图标钮各自一块，它们中间的空处
+   直接通到内容——滚起来顶上就是一条读不成句的字。Apple 给的是 scroll edge effect：
+   滚到栏底下的内容「blurring and reducing the opacity」，一条从上往下衰减的压制带。
+   这里只压不糊：糊留给那几块真正的玻璃，再铺一层 backdrop-filter 就成了玻璃叠玻璃，
+   会把搜索框身后那点流动的内容一起抹平，正好抹掉要看的东西。
+   往下多盖 8px：顶栏下缘到筛选条吸顶位之间留着这么一条缝，压制带在栏底就收干净的
+   话，内容照样从缝里爬上来。 */
+.top.top::before{content:'';position:absolute;inset:0 0 -8px;z-index:-1;pointer-events:none;opacity:0;transition:opacity .18s;
+  background:linear-gradient(180deg,var(--page) 62%,color-mix(in srgb,var(--page) 58%,transparent) 86%,transparent)}
+body.board-scrolled .top.top::before{opacity:1}
 .top .search.search{border-radius:999px;padding-left:16px}
 .top.top>.ib{border-radius:50%}
 .drawer.drawer{border-radius:26px}.edge.edge{border-radius:24px}
@@ -274,8 +314,12 @@ body::before{display:none}
 .top .search{max-width:none;flex:1 1 0;min-width:0;margin-left:0;margin-right:0}
 .board-filter-frame #tagbar{height:48px;gap:6px;padding:8px 12px}
 .board-filter-frame #tagbar .pill{height:30px;padding:0 10px;font-size:13px;line-height:20px;border-radius:8px;border:1px solid transparent}
-.board-filter-frame #tagbar .pill[data-state]{border:0;background:none}
-.board-filter-frame #tagbar .pill[data-state][aria-pressed="true"]{background:var(--picked);color:var(--ink)}
+/* 四枚视图自己不铺底，选中那一枚的填充由 `.viewglide` 那块滑过去的玻璃提供：
+   两边都铺，静止态就是一块不透明的 `--picked` 压在玻璃上面，切换时也只能看见它
+   瞬间换位置，滑动的那块从头到尾被盖住。 */
+.board-filter-frame #tagbar .pill[data-state]{border:0;background:none;color:color-mix(in srgb,var(--glass-text) 60%,transparent)}
+.board-filter-frame #tagbar .pill[data-state]:hover,
+.board-filter-frame #tagbar .pill[data-state][aria-pressed="true"]{background:none;color:var(--glass-text)}
 .board-filter-frame #tagbar .pill[data-tag]:not([aria-pressed="true"]){border:1px solid var(--line);background:transparent}
 /* 资料页的标签跟首页筛选条上的标签是同一个控件，只是换了个位置：那边 30px 高、8px
    圆角、13px 字，这边还留着 40px 高的大药丸，同一个人的标签在两页上大一圈小一圈。

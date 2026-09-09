@@ -7535,6 +7535,44 @@ class WebUiSourceTests(unittest.TestCase):
         bulk = (Path(__file__).resolve().parents[1] / "frontend/src/review-bulk.ts").read_text(encoding="utf-8")
         self.assertNotIn("--review-edge", bulk)
 
+    def test_the_home_glass_reads_by_luminosity_and_the_four_views_share_one_sliding_pane(self):
+        """玻璃靠调背景亮度保可读，四枚视图共用一块会滑的玻璃。
+
+        Apple 的 regular 变体是「blurs and adjusts the luminosity of background
+        content」：底色薄到能看见身后的东西在动，可读性交给 `--glass-lume`。拿一层厚底
+        盖掉的话，玻璃底下什么都看不见，等于一块磨砂塑料。
+        折射链里模糊排在位移前面——先糊身后的内容，再由边缘法线场把糊掉的像素往外挤；
+        反过来先位移再糊，折射出来的亮边会被第二步抹平。
+        四枚视图自己不铺底：两边都铺，静止态就是一块不透明的 `--picked` 压在滑动的那块
+        玻璃上面。那块玻璃必须写 `left:0`，只写 `top` 的话水平方向回落到静态位置，
+        整块右移一个 `#tagbar` 内边距，盖不住选中那枚的左半边。
+        动画挂在指针进入，不是点击：指到哪一枚就滑过去，`aria-pressed` 全程不动——
+        移过去不是选中，读屏和键盘那边不该跟着变。
+        """
+        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
+        app = (Path(__file__).resolve().parents[1] / "web/app.js").read_text(encoding="utf-8")
+        for theme in ("--glass-lume:brightness(1.26) saturate(.55)",
+                      "--glass-lume:brightness(.58) contrast(1.06)"):
+            self.assertIn(theme, board)
+        self.assertIn("backdrop-filter:var(--glass-optic,blur(22px)) saturate(160%) var(--glass-lume);", board)
+        self.assertIn('`blur(14px) url("#${id}")`', app)
+        self.assertNotIn('`url("#${id}") blur(2px)`', app)
+        # 选中那枚的填充只有一处，就是那块玻璃自己。
+        self.assertNotIn('.board-filter-frame #tagbar .pill[data-state][aria-pressed="true"]{'
+                         'background:var(--picked)', board)
+        self.assertIn(".board-filter-frame.board-filter-frame #tagbar .viewglide{"
+                      "position:absolute;left:0;z-index:0;pointer-events:none;", board)
+        self.assertIn("backdrop-filter:var(--glass-pick);", board)
+        self.assertIn("pills.forEach(b=>b.addEventListener('pointerenter',e=>{", app)
+        self.assertIn("tagbar.onpointerleave=e=>{if(e.pointerType!=='touch')syncViewGlide(true)};", app)
+        # 中间那一帧铺满起点到终点，玻璃是被拉过去的，不是整块平移。
+        self.assertIn("{transform:`translateX(${near}px)`,width:`${far-near}px`,offset:.42},", app)
+        # 顶栏这一条本身不是玻璃，压制带只压不糊：再铺一层就成了玻璃叠玻璃。
+        self.assertIn(".top.top,body.board-scrolled .top.top{background:transparent;box-shadow:none;"
+                      "backdrop-filter:none;border:0}", board)
+        self.assertNotIn(".top.top::before{content:'';position:absolute;inset:0 0 -8px;z-index:-1;"
+                         "pointer-events:none;opacity:0;transition:opacity .18s;\n  backdrop-filter:", board)
+
     def test_a_selectable_follow_row_keeps_its_own_border_on_every_edge(self):
         """关注列表进选择态后，行与行之间那条线是卡片自己的上边框。
 

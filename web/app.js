@@ -3097,9 +3097,46 @@ const VIEW_PILLS=[{k:'',label:'全部'},{k:'fresh',label:'没看过'},
 const viewPillsHtml=filterState=>VIEW_PILLS.map(v=>
     `<a class="pill" href="${v.k?STATE_ROUTES[v.k]:'/'}" data-state="${v.k}" aria-pressed="${
       filterState.state===v.k}">${v.label}</a>`).join('')+`<span class="sep"></span>`;
+/* 视图之间移动的那块玻璃。它是一个常驻节点，`#tagbar` 每次重画都把同一个节点挪回去
+   而不是新建：换了元素，动画就从头开始，看到的只是瞬移。
+   点下去要立刻动。切换视图会重新取数，`buildBars` 约一秒后才把 `aria-pressed` 写成
+   新值，等它就等于点完先僵一下再跳。 */
+let viewGlide=null,viewGlideBox=null;
+function syncViewGlide(animate,target){
+  const tagbar=$('#tagbar');if(!tagbar)return;
+  const active=target||tagbar.querySelector('[data-state][aria-pressed="true"]');
+  if(!active){if(viewGlide)viewGlide.hidden=true;return}
+  if(!viewGlide){viewGlide=document.createElement('span');viewGlide.className='viewglide';viewGlide.setAttribute('aria-hidden','true')}
+  if(viewGlide.parentElement!==tagbar)tagbar.prepend(viewGlide);
+  viewGlide.hidden=false;
+  const box=[active.offsetLeft,active.offsetWidth,active.offsetTop,active.offsetHeight];
+  if(!box[1])return;
+  const from=viewGlideBox;viewGlideBox=box;
+  const settle=()=>{viewGlide.style.transform=`translateX(${box[0]}px)`;viewGlide.style.width=`${box[1]}px`;
+    viewGlide.style.top=`${box[2]}px`;viewGlide.style.height=`${box[3]}px`};
+  if(!animate||!from||from[0]===box[0]){settle();return}
+  /* 中间那一帧铺满起点到终点：玻璃是被拉过去的，不是滑过去的。 */
+  const near=Math.min(from[0],box[0]),far=Math.max(from[0]+from[1],box[0]+box[1]);
+  viewGlide.animate([
+    {transform:`translateX(${from[0]}px)`,width:`${from[1]}px`},
+    {transform:`translateX(${near}px)`,width:`${far-near}px`,offset:.42},
+    {transform:`translateX(${box[0]}px)`,width:`${box[1]}px`}],
+    {duration:380,easing:'cubic-bezier(.33,.9,.28,1)'});
+  settle();
+}
 function wireViewPills(){
-  $('#tagbar').querySelectorAll('[data-state]').forEach(b=>b.onclick=e=>{
-    e.preventDefault();state.state=b.dataset.state;route(homePath());buildBars();load(true)});
+  const tagbar=$('#tagbar'),pills=[...tagbar.querySelectorAll('[data-state]')];
+  pills.forEach(b=>b.onclick=e=>{
+    e.preventDefault();state.state=b.dataset.state;
+    pills.forEach(p=>p.setAttribute('aria-pressed',String(p===b)));syncViewGlide(true,b);
+    route(homePath());buildBars();load(true)});
+  /* 玻璃跟着指针走，不等点击：指到哪一枚就滑过去，指针离开这一排再回到真正选中的
+     那枚。这一排是四选一，滑过去等于先把这一下的结果比划出来，点不点是下一步的事。
+     `aria-pressed` 全程不动——移过去不是选中，读屏和键盘那边不该跟着变。 */
+  pills.forEach(b=>b.addEventListener('pointerenter',e=>{
+    if(e.pointerType==='touch')return;syncViewGlide(true,b)}));
+  tagbar.onpointerleave=e=>{if(e.pointerType!=='touch')syncViewGlide(true)};
+  syncViewGlide(false);
 }
 // 宽度是一组定值而不是随机数：随机会让同一次冷启动在两台机器上长得不一样，也没法测。
 function renderBarsLoading(filterState){
@@ -9558,7 +9595,10 @@ if(/Chrome|Chromium|Edg\//.test(navigator.userAgent)){
         const i=(y*w+x)*4;pixels.data[i]=128+dx*116;pixels.data[i+1]=128+dy*116;pixels.data[i+2]=128;pixels.data[i+3]=255;
       }
       ctx.putImageData(pixels,0,0);map.setAttribute('href',canvas.toDataURL());map.setAttribute('width',width);map.setAttribute('height',height);filter.setAttribute('x','0');filter.setAttribute('y','0');filter.setAttribute('width',width);filter.setAttribute('height',height);
-      node.style.setProperty('--glass-optic',`url("#${id}") blur(2px)`);node.dataset.opticGlass='true';
+      /* 模糊排在位移前面：backdrop-filter 是一条流水线，先糊的是身后那片内容，
+         再由边缘法线场把已经糊掉的像素往外挤，边上那圈拉伸就带着颜色一起走。
+         反过来先位移再糊，折射出来的亮边会被第二步抹平，只剩一块均匀磨砂。 */
+      node.style.setProperty('--glass-optic',`blur(14px) url("#${id}")`);node.dataset.opticGlass='true';
     };
     new ResizeObserver(draw).observe(node);draw();
   }
