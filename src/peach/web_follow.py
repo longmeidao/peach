@@ -607,6 +607,11 @@ def q_follow(contract, args) -> dict:
     authors = frozenset(_csv_values(args.get("author")))
     providers = frozenset(_csv_values(args.get("provider")))
     wanted_tags = _csv_values(args.get("tag"))
+    try:
+        unread_days = max(0, min(int(args.get("unread_days") or 0), 3650))
+    except (TypeError, ValueError):
+        unread_days = 0
+    unread_cutoff = time.time() - unread_days * 86400 if unread_days else None
     credential_store = _credential_store(contract)
     credential_providers = frozenset(
         provider for provider in CREDENTIAL_GUIDE
@@ -663,6 +668,13 @@ def q_follow(contract, args) -> dict:
         counts: dict[str, int] = {}
         for item in counted:
             status = str(item.status)
+            if status == "new" and unread_cutoff is not None:
+                stamp = item.published_at or item.first_seen_at
+                try:
+                    if stamp and __import__('datetime').datetime.fromisoformat(str(stamp).replace('Z', '+00:00')).timestamp() < unread_cutoff:
+                        continue
+                except (TypeError, ValueError, OverflowError):
+                    pass
             counts[status] = counts.get(status, 0) + 1
     suggestions = _suggestions(contract, sources)
     return {
@@ -673,6 +685,7 @@ def q_follow(contract, args) -> dict:
         "suggestions": suggestions,
         "groups": groups,
         "counts": {status: int(counts.get(status, 0)) for status in _STATUSES},
+        "unread_days": unread_days,
         "facets": facets,
         # counts 是全库口径，groups 只是这一页——两个数并排显示过，看起来像自相矛盾。
         "offset": offset,

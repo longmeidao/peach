@@ -416,6 +416,7 @@ const THEME_OPTIONS=[['system','跟随系统','monitor'],['light','浅色','sun'
 const DEFAULT_SETTINGS={batchSize:60,defaultSort:'seed',sortDefaultsVersion:3,hoverDelaySeconds:5,seekSeconds:10,searchHistoryLimit:10,relatedLimit:20,javLayout:'big',javImage:'cover',followLayout:'default',peopleLayout:'big',ambientMode:true,miniplayer:true,theaterMode:false,theme:'system',groupCollapse:true,sidebarOrder:DEFAULT_SIDEBAR_ORDER};
 let appSettings={...DEFAULT_SETTINGS};
 try{appSettings={...DEFAULT_SETTINGS,...JSON.parse(localStorage.getItem(SETTINGS_KEY)||'{}')}}catch(_e){}
+appSettings.unreadDays=Number.isFinite(+appSettings.unreadDays)?Math.max(0,+appSettings.unreadDays):0;
 const allowedSetting=(value,allowed,fallback)=>allowed.includes(value)?value:fallback;
 delete appSettings.rotateMinutes;
 /* 迁移只碰默认值本身：把界面上已经不存在的键换成当前键，用户主动选过的排序不动。
@@ -5834,6 +5835,7 @@ function renderFollowManage(credentials){
       </section>
       <section class="fsec" data-follow-workspace-panel="list">
         <div class="fsechead"><h3>关注列表</h3>
+          <label class="funreadrange">未看范围<select aria-label="未看范围" data-follow-unread-days><option value="0"${appSettings.unreadDays===0?' selected':''}>全部</option><option value="7"${appSettings.unreadDays===7?' selected':''}>最近 7 天</option><option value="30"${appSettings.unreadDays===30?' selected':''}>最近 30 天</option><option value="90"${appSettings.unreadDays===90?' selected':''}>最近 90 天</option></select></label>
           <span class="fmeta">${sources.length} 个来源${
             counts.new?` · <b>${counts.new}</b> 条未看`:''}</span>
           <span class="fmanagesort">${icon('sort')}${selectFieldHtml(FOLLOW_SORT_OPTIONS,followManageSort,
@@ -5903,7 +5905,7 @@ async function openFollowManage(push=true){
   const surface=claimSurface('/follow-manage');
   showManagementBody({placeholder:managementPlaceholder('/follow-manage')});
   const [data,credentials,runtime]=await Promise.all([
-    surfaceApi(surface,'/api/follow?limit=1'),surfaceApi(surface,'/api/follow/credentials'),
+    surfaceApi(surface,'/api/follow?limit=1&unread_days='+encodeURIComponent(appSettings.unreadDays)),surfaceApi(surface,'/api/follow/credentials'),
     surfaceApi(surface,'/healthz')]);
   if(!surfaceCurrent(surface))return;
   followData=data;followRuntime=runtime;followCredentials=credentials;
@@ -5945,6 +5947,7 @@ function wireFollowItems(){
 function wireFollowManage(creds=[]){
   void wireResolveProgress();
   const root=$('#stats'),form=root.querySelector('#followAdd');
+  root.querySelector('[data-follow-unread-days]')?.addEventListener('change',event=>{appSettings.unreadDays=+event.target.value||0;saveSettings();openFollowManage(false)});
   wireCollapse(root,'details.fauthor','follow-author-collapse','[data-follow-author-toggle]');
   root.querySelectorAll('[data-follow-author-toggle]').forEach(button=>button.onclick=event=>{
     event.stopPropagation();
