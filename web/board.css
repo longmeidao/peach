@@ -87,14 +87,22 @@ body .review .reviewbulktoolbar,body .review .reviewgroupbar{background:var(--gl
   box-shadow:inset 1px 0 0 var(--glass-low),inset -1px 0 0 var(--glass-low),inset 0 -1px 0 var(--glass-low),var(--glass-shadow)}
 .entitytagbar .pill,.entitycollectionhead h3,.entitycollectionhead .sorts button{color:var(--glass-text)}
 .entitytagbar .pill[data-tag]:not([aria-pressed="true"]){border-color:var(--glass-low)}
-.entitytagbar .pill[aria-pressed="true"],.entitycollectionhead .sorts button[aria-pressed="true"],
-.entitytagbar .mediaviewbutton[aria-pressed="true"]{background:color-mix(in srgb,var(--ink) 10%,transparent)}
+/* 一条上被选中的那一枚，不管是视图、标签还是排序键，都是同一块玻璃：白填充垫底、
+   在已经合成好的底子上再提一档亮度、整圈 rim 描边。铺一层墨色灰是另一种东西——它在
+   亮内容上是块脏斑，浅色下又是整条里唯一发灰的地方。 */
+.entitytagbar.entitytagbar .pill[aria-pressed="true"],
+.entitycollectionhead.entitycollectionhead .sorts button[aria-pressed="true"],
+.entitytagbar.entitytagbar .mediaviewbutton[aria-pressed="true"],
+.board-filter-frame.board-filter-frame .sorts button[aria-pressed="true"]{
+  background:linear-gradient(180deg,var(--glass-sheen),transparent 62%),var(--glass-pick-fill);
+  backdrop-filter:var(--glass-pick);-webkit-backdrop-filter:var(--glass-pick);
+  color:var(--glass-text);border-color:transparent;
+  box-shadow:inset 0 0 0 1px var(--glass-rim),0 1px 2px #00000024,0 6px 14px #0000001f}
 .board-filter-frame.board-is-stuck::before,.board-filter-frame.board-is-stuck::after{display:none}
 .board-filter-frame.board-filter-frame .tagbar{border-radius:22px 22px 0 0}
 .board-filter-frame.board-filter-frame .count{border-radius:0 0 22px 22px}
 .board-filter-frame.board-filter-frame .pill,.board-filter-frame.board-filter-frame .sorts button{color:var(--glass-text)}
 .board-filter-frame.board-filter-frame #tagbar .pill[data-tag]:not([aria-pressed="true"]){border-color:var(--glass-low)}
-.board-filter-frame.board-filter-frame .sorts button[aria-pressed="true"]{background:color-mix(in srgb,var(--ink) 10%,transparent)}
 /* 四枚视图之间只有一块玻璃在移动，不是四块各自亮灭：Apple 把同一层里的玻璃先合成
    再形变（`GlassEffectContainer` 的 "fluidly morphing Liquid Glass shapes into each
    other"），落到这一排就是先拉长盖住起点和终点、再收拢到新的那一枚。
@@ -126,16 +134,10 @@ body .review .reviewbulktoolbar,body .review .reviewgroupbar{background:var(--gl
    按钮里露出一块灰片，看着像图标背后还垫了个东西。选中态归排序键，它只有悬停。 */
 .board-filter-frame.board-filter-frame .sorts #batchAction,.entitycollectionhead .sorts .entitybatch{color:var(--ink);background:none;border:0;border-radius:7px;box-shadow:none}
 .top.top,body.board-scrolled .top.top{background:transparent;box-shadow:none;backdrop-filter:none;border:0}
-/* 顶栏这一条本身不是玻璃，玻璃是搜索框和右边那几个图标钮各自一块，它们中间的空处
-   直接通到内容——滚起来顶上就是一条读不成句的字。Apple 给的是 scroll edge effect：
-   滚到栏底下的内容「blurring and reducing the opacity」，一条从上往下衰减的压制带。
-   这里只压不糊：糊留给那几块真正的玻璃，再铺一层 backdrop-filter 就成了玻璃叠玻璃，
-   会把搜索框身后那点流动的内容一起抹平，正好抹掉要看的东西。
-   往下多盖 8px：顶栏下缘到筛选条吸顶位之间留着这么一条缝，压制带在栏底就收干净的
-   话，内容照样从缝里爬上来。 */
-.top.top::before{content:'';position:absolute;inset:0 0 -8px;z-index:-1;pointer-events:none;opacity:0;transition:opacity .18s;
-  background:linear-gradient(180deg,var(--page) 62%,color-mix(in srgb,var(--page) 58%,transparent) 86%,transparent)}
-body.board-scrolled .top.top::before{opacity:1}
+/* 顶栏这一条本身不铺任何底：玻璃是搜索框和右边那几个图标钮各自一块，它们中间的空处
+   直接通到内容。往那片空处垫一条压制带能让滚上来的字不那么碎，代价是整条顶栏成了一块
+   不透光的板——玻璃两边各留一段实色，比穿帮更扎眼，而这一屏铺开玻璃就是为了看见底下
+   在动。字碎归字碎，那几块玻璃自己压得住它们各自身后那一片。 */
 .top .search.search{border-radius:999px;padding-left:16px}
 .top.top>.ib{border-radius:50%}
 .drawer.drawer{border-radius:26px}.edge.edge{border-radius:24px}
@@ -337,11 +339,10 @@ body::before{display:none}
   box-shadow:0 0 24px 4px #00000038,0 8px 20px #00000026;pointer-events:none}
 .entitytagbar+.entitysection .entitycollectionhead.is-stuck::after{top:calc(-1 * var(--board-filterH));border-radius:22px}
 /* 读数照首页那条 `10,471 个符合` 写：12px、常规字重、不加字距，颜色比标签低一档。
-   排序键也跟那边同一套——30px 高、12px 字、7px 圆角，选中只有填充。 */
+   排序键也跟那边同一套——30px 高、12px 字、7px 圆角，选中态那块玻璃在上面统一给。 */
 .entitycollectionhead h3{font-size:12px;font-weight:400;letter-spacing:normal;color:var(--ink-2)}
 .entitycollectionhead .sorts{gap:4px}
 .entitycollectionhead .sorts button{height:30px;min-height:30px;font-size:12px;padding:0 8px;border:0;border-radius:7px;background:transparent}
-.entitycollectionhead .sorts button[aria-pressed="true"]{background:color-mix(in srgb,var(--ink) 10%,transparent)}
 .entitytagbar.is-stuck::before{content:'';position:absolute;left:-16px;right:-16px;top:-9px;height:9px;z-index:-1;background:var(--page);mask-image:linear-gradient(to right,transparent,#000 24px,#000 calc(100% - 24px),transparent);pointer-events:none}
 @media(max-width:760px){.board-filter-frame .count{display:flex;flex-wrap:wrap;gap:8px;overflow:visible}.board-filter-frame .count>.mono{width:100%}.board-filter-frame .count .sorts,.entitycollectionhead .sorts{flex:1 1 100%;width:0;max-width:100%;min-width:0;margin:0;overflow-x:auto;overflow-y:hidden;overscroll-behavior-x:contain;touch-action:pan-x pan-y;padding:4px 2px}}
 [data-overflow-right="true"]{mask-image:linear-gradient(to right,#000 calc(100% - 18px),transparent)}
@@ -364,11 +365,9 @@ body::before{display:none}
    圆角、13px 字，这边还留着 40px 高的大药丸，同一个人的标签在两页上大一圈小一圈。
    计数跟着缩到 Caption。 */
 .entitytags .pill{height:30px;padding:0 10px;font-size:13px;line-height:20px;border-radius:8px;border:1px solid var(--glass-low);color:var(--glass-text)}
-.entitytags .pill[aria-pressed="true"]{border-color:transparent;background:color-mix(in srgb,var(--ink) 10%,transparent);color:var(--glass-text)}
 .entitytags .pill small{margin-left:5px;font:var(--board-caption)}
 .board-filter-frame .count{padding:8px 12px;min-height:46px;gap:12px}
 .board-filter-frame .sorts{gap:4px}.board-filter-frame .sorts button{height:30px;min-height:30px;font-size:12px;padding:0 8px;border:0;border-radius:7px;background:transparent}
-.board-filter-frame .sorts button[aria-pressed="true"]{background:var(--picked)}
 #grid.gridstack{border:0;background:transparent;padding:0;box-shadow:none;border-radius:0}
 #grid.gridstack>.grid{border:0;background:transparent;padding:0;box-shadow:none;border-radius:0}
 /* 竖屏带靠底色和网格区分，不再描一圈线：它嵌在两段无边框的网格中间，一条线反而

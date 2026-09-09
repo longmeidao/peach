@@ -7567,11 +7567,10 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn("tagbar.onpointerleave=e=>{if(e.pointerType!=='touch')syncViewGlide(true)};", app)
         # 中间那一帧铺满起点到终点，玻璃是被拉过去的，不是整块平移。
         self.assertIn("{transform:`translateX(${near}px)`,width:`${far-near}px`,offset:.34,", app)
-        # 顶栏这一条本身不是玻璃，压制带只压不糊：再铺一层就成了玻璃叠玻璃。
+        # 顶栏这一条本身不铺任何底，中间那片空处直接通到内容。
         self.assertIn(".top.top,body.board-scrolled .top.top{background:transparent;box-shadow:none;"
                       "backdrop-filter:none;border:0}", board)
-        self.assertNotIn(".top.top::before{content:'';position:absolute;inset:0 0 -8px;z-index:-1;"
-                         "pointer-events:none;opacity:0;transition:opacity .18s;\n  backdrop-filter:", board)
+        self.assertNotIn(".top.top::before", board)
 
     def test_every_glass_panel_casts_three_layers_and_the_pane_overshoots_by_distance(self):
         """玻璃的落影分三层，选中那块玻璃冲过头的距离跟着这一跳的跨度走。
@@ -7641,6 +7640,33 @@ class WebUiSourceTests(unittest.TestCase):
                       '.edge.edge.edge button:not([aria-pressed="true"]):hover{\n'
                       "  background:color-mix(in srgb,var(--glass-rim) 26%,transparent);"
                       "color:var(--glass-text)}", board)
+
+    def test_a_picked_key_on_any_glass_bar_is_the_same_pane_of_white(self):
+        """玻璃条上被选中的那一枚，四个位置读起来是同一块东西。
+
+        首页的排序键、资料页的标签、资料页的排序键、媒体视图的那两个图标钮坐在同一
+        材质的浮层上；选中态只要还是一层墨色 `color-mix`，同一块玻璃上就会同时出现
+        两种「被选中」——一处是提亮的白玻璃，一处是压暗的灰片。墨色那层在亮封面上是
+        块脏斑，浅色主题下又成了整条里唯一发灰的地方。
+        白填充不能省：`brightness()` 乘的是零时那块玻璃跟着背景一起黑，得有东西垫着，
+        而垫的必须是白——白往上加是加光，跟提亮同向。
+        """
+        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
+        self.assertIn('.entitytagbar.entitytagbar .pill[aria-pressed="true"],\n'
+                      '.entitycollectionhead.entitycollectionhead .sorts button[aria-pressed="true"],\n'
+                      '.entitytagbar.entitytagbar .mediaviewbutton[aria-pressed="true"],\n'
+                      '.board-filter-frame.board-filter-frame .sorts button[aria-pressed="true"]{\n'
+                      "  background:linear-gradient(180deg,var(--glass-sheen),transparent 62%),"
+                      "var(--glass-pick-fill);\n"
+                      "  backdrop-filter:var(--glass-pick);-webkit-backdrop-filter:var(--glass-pick);\n"
+                      "  color:var(--glass-text);border-color:transparent;\n"
+                      "  box-shadow:inset 0 0 0 1px var(--glass-rim),0 1px 2px #00000024,"
+                      "0 6px 14px #0000001f}", board)
+        for stale in ('.entitycollectionhead .sorts button[aria-pressed="true"]{'
+                      'background:color-mix(in srgb,var(--ink) 10%,transparent)}',
+                      '.entitytags .pill[aria-pressed="true"]{border-color:transparent;',
+                      '.board-filter-frame .sorts button[aria-pressed="true"]{background:var(--picked)}'):
+            self.assertNotIn(stale, board)
 
     def test_a_selectable_follow_row_keeps_its_own_border_on_every_edge(self):
         """关注列表进选择态后，行与行之间那条线是卡片自己的上边框。
@@ -7993,8 +8019,6 @@ class WebUiSourceTests(unittest.TestCase):
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
         self.assertIn(".entitytags .pill{height:30px;padding:0 10px;font-size:13px;line-height:20px;"
                       "border-radius:8px;border:1px solid var(--glass-low);color:var(--glass-text)}", board)
-        self.assertIn(".entitytags .pill[aria-pressed=\"true\"]{border-color:transparent;"
-                      "background:color-mix(in srgb,var(--ink) 10%,transparent);color:var(--glass-text)}", board)
         self.assertIn(".board-filter-frame #tagbar .pill{height:30px;padding:0 10px;font-size:13px;", board)
 
     def test_the_profile_floating_panel_is_one_pane_measured_off_the_home_one(self):
