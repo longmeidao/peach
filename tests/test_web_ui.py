@@ -434,19 +434,22 @@ class WebUiSourceTests(unittest.TestCase):
             self.assertIn("background:var(--overlay-5)", rule, f"{name} 是操作条")
             self.assertIn("var(--line-soft)", rule, f"{name} 与正文之间是一条发丝线")
 
-    def test_the_follow_job_panel_is_the_same_container_tier_as_its_neighbours(self):
-        """检查更新的进度面板与 `.fsec` 同档：`--field-ring` 的发丝边配 `--ground` 的面。
+    def test_the_follow_job_panel_sits_on_the_card_tier_inside_the_section(self):
+        """进度面板是灰面 `.fsec` 里的一张白卡，与查找结果卡同档。
 
-        它在 `/follow-manage` 上就夹在两张 `.fsec` 中间，容器档位一不一样一眼就看得出来：
-        亮一档的面加淡一档的边会让同一列里出现两种卡片，而它承载的只是同一页的一段进度。
+        它承载的只是一段进度，和 `.fpickitem` 一样躺在 `--ground` 的灰面上；透明或
+        同灰会让框只剩一圈边。面板不再与 `.fsec` 同灰，而是 CheckboxCard 那一档：
+        `--field-ring` 发丝边配 primary 的白面。
         """
         css = stylesheet_source()
         panel = css[css.index(".followtask{"):]
         panel = panel[:panel.index("}")]
         section = css[css.index(".fsec{"):]
         section = section[:section.index("}")]
+        self.assertIn("border:1px solid var(--field-ring)", panel, "发丝边跟分区对齐")
+        self.assertIn("background:var(--color-background-primary-default)", panel,
+                      "进度面板是灰面上的一张白卡")
         for token in ("border:1px solid var(--field-ring)", "background:var(--ground)"):
-            self.assertIn(token, panel, "进度面板与分区容器同档")
             self.assertIn(token, section, "分区容器是这一档的基准")
         self.assertPageContains('<section class="followtask" data-geist-fieldset '
                                 'aria-label="检查更新进度">')
