@@ -155,16 +155,10 @@
    「全部来源」在白面上只剩一行字，升降序那枚只剩一个箭头浮在页面上。 */
 .fbtn[data-srcfilter-toggle],.fbtn.fmanagedir{border:1px solid var(--field-ring);background:var(--ground);color:var(--ink-2)}
 .fbtn[data-srcfilter-toggle]:hover:not(:disabled),.fbtn.fmanagedir:hover:not(:disabled){border-color:var(--field-ring-hover);background:var(--ground)}
-/* 输入焦点按 BoardUI Input 口径（2026-09-09 取证登记 boardui-input）：壳不描边、
-   悬停与聚焦是同一枚 2px inset ring 在两档灰之间换档——悬停 border-button-hover、
-   聚焦 border-button-active，无辉光无蓝环。fill 由用户定成白底，环跟着走；
-   外框清零才不会有 1px 亮边夹在环和壳之间。按钮类的 focus-visible 仍按 Button 源的蓝 ring。 */
-.followmanage .geist-search input[type="search"],
-.followmanage .fcredfield input{border:0}
-.followmanage .geist-search input[type="search"]:hover,
-.followmanage .fcredfield input:hover{box-shadow:inset 0 0 0 2px var(--color-border-button-hover)}
-.followmanage .geist-search input[type="search"]:focus,
-.followmanage .fcredfield input:focus-visible{outline:0;box-shadow:inset 0 0 0 2px var(--color-border-button-active)}
+/* 输入焦点已按 BoardUI Input 收进 01-base 的共享档（hover/focus 的 inset ring），
+   此处只改「添加关注」这一面板的底色：白卡躺在灰面上。选择器用 :where 写开，
+   避免字面上再出现一遍共享输入框的整段规则。 */
+.followmanage :where(.geist-search) input[type="search"]{background:var(--color-background-primary-default)}
 .fbtn[data-srcfilter-toggle][aria-expanded="true"]{border-color:var(--color-border-focus-ring);box-shadow:none;outline:2px solid var(--color-border-focus-ring);outline-offset:2px}
 .fbtn.small{height:26px;padding:0 10px;font-size:var(--fs-sm)}
 .fbtn svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2}
@@ -248,7 +242,9 @@ p.fnote .followtask{color:var(--ink-2)}
 .fauthorhead .fmeta{margin-left:auto;flex:0 1 auto;min-width:0;white-space:nowrap}
 .fauthorhead .fmeta.warn{margin-left:0}
 .fauthorsources{min-height:0}
-.fauthorsources .geist-scroller-container{padding-right:12px}
+/* 底部这 6px 是给来源卡的落影留的：滚动容器按内容盒裁边，不留就把最后一枚卡
+   贴着底的那圈 shadow-sm（3px 扩散）切掉一半，读起来像最后一行缺了一条边。 */
+.fauthorsources .geist-scroller-container{padding-right:12px;padding-bottom:6px}
 .fauthorsources .fsource:last-child{border-bottom:0}
 .fauthor .fsource.frow{padding-left:0px;display:grid;
   grid-template-columns:22px minmax(0,1fr) auto auto auto auto;gap:10px;flex-wrap:nowrap}
@@ -338,8 +334,10 @@ details.fcred{display:block;min-width:0}
 .fcredfield span{font-size:var(--fs-xs);color:var(--muted)}
 .fcredfield input{height:32px;width:100%;min-width:0;box-sizing:border-box;border:1px solid var(--border-15);
   border-radius:var(--control-radius);background:var(--color-background-primary-default);color:var(--ink);padding:0 12px;font-size:var(--fs-md);
-  font-family:inherit;transition:border-color .12s ease}
-.fcredfield input:focus-visible{outline:2px solid var(--color-border-focus-ring);outline-offset:2px}
+  font-family:inherit;transition:box-shadow .12s ease}
+/* 凭据输入框不是 .geist-input，吃不到 01-base 那份共享档，两档环在这里各写一遍。 */
+.fcredfield input:hover{box-shadow:inset 0 0 0 2px var(--color-border-button-hover)}
+.fcredfield input:focus-visible{outline:0;box-shadow:inset 0 0 0 2px var(--color-border-button-active)}
 /* 「去取」指向站外的凭据页，后缀那枚外链箭头说明这一下会离开 Peach。 */
 .fcredactions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:0}
 .fcredactions button{height:32px;box-sizing:border-box;padding:0 14px;border-radius:var(--control-radius);
@@ -396,8 +394,9 @@ details.fcred{display:block;min-width:0}
 .fpickitem{display:flex;gap:9px;align-items:center;padding:7px 9px;border:1px solid var(--border-10);border-radius:var(--surface-radius);margin-bottom:4px;cursor:pointer;font-size:var(--fs-xs);transition:background-color .15s ease,border-color .15s ease}
 /* CheckboxCard 的悬停与 board 同一档：卡片自己的底是 primary-default，
    悬停整面抬到 primary-hover，边框抬钮悬停档。底色不能缺——查找结果躺在
-   --ground 的灰面上，透明底配 #f5f5f5 的悬停在浅色下等于没动。 */
-.fpickitem{background:var(--color-background-primary-default)}
+   --ground 的灰面上，透明底配 #f5f5f5 的悬停在浅色下等于没动。
+   落影与作者卡里的来源行同档，两处都是躺在同底色上的嵌套卡。 */
+.fpickitem{background:var(--color-background-primary-default);box-shadow:var(--shadow-sm)}
 .fpickitem:hover{background:var(--color-background-primary-hover);border-color:var(--color-border-button-hover);color:var(--ink)}
 /* 「已经关注」整行退成主题的中性灰：不该用透明度——它会把边框和复选框一起冲淡，
    在同一档底色上灰到读不出来。--muted 按主题自己深浅，比底色各深一档。 */

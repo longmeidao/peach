@@ -1053,7 +1053,7 @@ function Tt(e) {
 	});
 }
 function Et(e) {
-	let t = ".iconswitch,.insightswitch,.insighttabs", n = [...e.querySelectorAll(t)];
+	let t = ".iconswitch,.insightswitch,.insighttabs,.follow-workspace-switch", n = [...e.querySelectorAll(t)];
 	e instanceof HTMLElement && e.matches(t) && n.push(e), n.forEach((e) => {
 		if (e.hasAttribute("data-board-segments")) return;
 		e.dataset.boardSegments = "true";

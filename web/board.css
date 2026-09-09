@@ -683,10 +683,13 @@ body :is(.sbadge.ok,.board-chip.success){background:color-mix(in srgb,#84cc16 16
 @media(max-width:760px){.followmanage .fsource.frow{grid-template-columns:20px minmax(0,1fr) auto}.board-follow-list .fprovider{grid-column:2;grid-row:2}.board-follow-list .fchecked{grid-column:2;grid-row:3}}
 @container(max-width:520px){.followmanage .fauthor .fsource.frow{grid-template-columns:20px minmax(0,1fr) auto}.followmanage .fauthor .fprovider{grid-column:2;grid-row:2}.followmanage .fauthor .fchecked{grid-column:2;grid-row:3}}
 @media(prefers-reduced-motion:reduce){.board-tooltip,.board-carousel-pagination .swiper-pagination-bullet{transition:none}}
-:root{--board-chart-0:#94e000;--board-chart-1:#3493ff;--board-chart-2:#bc74f9;--board-chart-3:#f657bd;--board-chart-4:#ffc600;--board-chart-5:#2dcbb8}
+:root{--shadow-sm:0 1px 2px 0 rgb(0 0 0 / 0.06),0 1px 3px 0 rgb(0 0 0 / 0.10);--board-chart-0:#94e000;--board-chart-1:#3493ff;--board-chart-2:#bc74f9;--board-chart-3:#f657bd;--board-chart-4:#ffc600;--board-chart-5:#2dcbb8}
 .fauthorhead{list-style:none}.fauthorhead::-webkit-details-marker{display:none}.board-author-actions{display:flex;align-items:center;gap:8px;margin-left:auto;flex:none}.board-author-actions .board-author-toggle{margin:0}.followmanage details.fauthor>.fcollapse>.fcollapsebody{padding:0}.followmanage details.fauthor:not([open]) .fauthorhead{margin-bottom:0}
 .followmanage .fsource.selected{background:var(--color-background-primary-default);box-shadow:none;border-color:var(--color-border-focus-ring)}.followmanage .fsource.selected.disabled{opacity:1}
-.followmanage .fsource:has([data-follow-select]):not(tr){border:1px solid var(--color-border-button-default);border-radius:10px;padding:12px 20px 12px 16px;margin:8px 0;cursor:pointer;transition:background-color 150ms ease,border-color 150ms ease}
+/* 同底色上的嵌套卡（作者卡里的来源行）按 10px 圆角取 shadow-sm：
+   BoardUI 的 shadow-xs 出自 24px 大圆角的 auth-card（2026-09-09 取证登记
+   boardui-auth-card），贴地细影在小圆角上只剩一条硬边读成环，sm 多一档 3px 扩散。 */
+.followmanage .fsource:has([data-follow-select]):not(tr){border:1px solid var(--color-border-button-default);border-radius:10px;padding:12px 20px 12px 16px;margin:8px 0;cursor:pointer;transition:background-color 150ms ease,border-color 150ms ease;box-shadow:var(--shadow-sm)}
 .followmanage .fsource:has([data-follow-select]):hover{background:var(--color-background-primary-hover)}
 .followmanage .fsec:has(.board-follow-selection){padding:0;border-radius:18px;background:var(--ground);overflow:visible}.followmanage .fsec>.board-follow-selection{padding:4px 24px 12px}
 .followmanage .fsourceactions{padding:2px;overflow:visible}
@@ -765,8 +768,8 @@ html.board-high-contrast :is(.selectiondock,.reviewcontrols.is-stuck,.reviewgrou
 .insightswitch[data-board-segments] label>span{display:flex;align-items:center;min-height:28px;height:auto;padding:4px 10px;border-radius:6px;background:transparent;box-shadow:none;color:var(--color-text-secondary);font:var(--board-body);transition:color .2s ease}
 .insightswitch[data-board-segments] label:hover>span{color:var(--color-text-primary)}
 .insightswitch[data-board-segments] label:has(input:checked)>span{background:transparent;box-shadow:none;color:var(--color-text-primary);font:var(--board-body-medium)}
-:root[data-theme="dark"] :is(.iconswitch:not(.themeswitch),.insightswitch,.insighttabs)>.board-segment-thumb{background:color-mix(in srgb,var(--color-text-primary) 14%,var(--color-background-tertiary-default));box-shadow:0 1px 2px #00000040}
-@media(prefers-color-scheme:dark){:root:not([data-theme]) :is(.iconswitch:not(.themeswitch),.insightswitch,.insighttabs)>.board-segment-thumb{background:color-mix(in srgb,var(--color-text-primary) 14%,var(--color-background-tertiary-default));box-shadow:0 1px 2px #00000040}}
+:root[data-theme="dark"] :is(.iconswitch:not(.themeswitch),.insightswitch,.insighttabs,.follow-workspace-switch)>.board-segment-thumb{background:color-mix(in srgb,var(--color-text-primary) 14%,var(--color-background-tertiary-default));box-shadow:0 1px 2px #00000040}
+@media(prefers-color-scheme:dark){:root:not([data-theme]) :is(.iconswitch:not(.themeswitch),.insightswitch,.insighttabs,.follow-workspace-switch)>.board-segment-thumb{background:color-mix(in srgb,var(--color-text-primary) 14%,var(--color-background-tertiary-default));box-shadow:0 1px 2px #00000040}}
 /* 排序行里的版式切换跟同一行的排序键、换批键一样高（30px）：轨道 3px 内边距、选项 24px、图标 16px。
    筛选行与排序行上下留白都是 8px，排序滚动容器不再自己多垫 4px。 */
 .count .sorts .iconswitch[data-board-segments],.entitycollectionhead .sorts .iconswitch[data-board-segments]{padding:3px;border-radius:8px;gap:2px}
@@ -974,10 +977,12 @@ body .batchbar button[hidden],body .batchbar button.danger[hidden]{display:none}
 
 /* 关注工作区：Board Tabs、读数与 Table 的层级，业务分区保留各自表单。 */
 .followmanage .fmanageoverview{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px}
-.follow-workspace-switch{display:inline-flex;gap:3px;padding:4px;background:var(--ground);border-radius:var(--control-radius);width:max-content;max-width:100%;overflow-x:auto}
-.follow-workspace-switch button{border:0;border-radius:var(--control-radius);padding:8px 14px;background:transparent;color:var(--muted);font:var(--board-body-medium);white-space:nowrap;cursor:pointer}
-.follow-workspace-switch button:hover{color:var(--ink)}
-.follow-workspace-switch button[aria-selected=true]{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px color-mix(in srgb,var(--ink) 12%,transparent)}
+/* 关注管理工作区切换进分段控件一族：几何照 .insighttabs（4px 内边距、10px 外圆角、
+   tertiary 灰轨道），滑块与色变由 wireBoardSegments 的共享驱动负责，200ms 一条缓动。 */
+.follow-workspace-switch{position:relative;display:inline-flex;align-items:center;gap:2px;width:max-content;max-width:100%;min-height:0;padding:4px;border:0;border-radius:10px;background:var(--color-background-tertiary-default);overflow-x:auto;overflow-y:hidden;scrollbar-width:none}
+.follow-workspace-switch button{position:relative;z-index:1;display:inline-flex;flex:none;align-items:center;gap:6px;height:auto;min-height:28px;margin:0;padding:4px 10px;border:0;border-radius:6px;background:none;box-shadow:none;color:var(--color-text-secondary);font:var(--board-body-medium);white-space:nowrap;cursor:pointer;transition:color .2s cubic-bezier(.4,0,.2,1)}
+.follow-workspace-switch button:hover{background:none;color:var(--color-text-primary)}
+.follow-workspace-switch button[aria-selected=true]{background:none;color:var(--color-text-primary);box-shadow:none}
 .cleanup-workspace-switch{display:flex;gap:4px;overflow-x:auto;margin:0 0 20px;padding:4px;background:var(--ground);border-radius:var(--control-radius)}
 .cleanup-workspace-switch a{display:inline-flex;align-items:center;gap:8px;padding:8px 14px;border-radius:var(--control-radius);color:var(--muted);font:var(--board-body-medium);text-decoration:none;white-space:nowrap}
 .cleanup-workspace-switch a:hover{background:var(--hover);color:var(--ink)}

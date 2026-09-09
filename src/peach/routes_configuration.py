@@ -36,6 +36,16 @@ def managed_configuration() -> bool:
     return distribution.standalone() or os.environ.get("PEACH_TRAY_MANAGED") == "1"
 
 
+def dev_environment() -> bool:
+    """调试用的裸 serve：`--no-auth` 启动时由 CLI 置上 `PEACH_DEV=1`。
+
+    未过初始配置、也没有托盘接管时，配置页不该再要求「先在托管主机上打开」——
+    调试期间的这台本身就是主机。这个标记只免掉「托盘接管且已配置」那两条前提，
+    本机调用方那一条仍要成立：环境变量会被子进程继承，光凭它放行等于把配置写
+    接口交给能连上这个端口的任何设备。保存后的重载由重启这份服务的调用方负责。"""
+    return os.environ.get("PEACH_DEV") == "1"
+
+
 def revision(config) -> str:
     return hashlib.sha256(config.path.read_bytes()).hexdigest()
 
@@ -73,7 +83,9 @@ def local_only(request: Request) -> None:
 
 
 def configurable(request: Request) -> bool:
-    """配置只向已配置的托盘服务的本机调用方开放。"""
+    """配置只向已配置的托盘服务的本机调用方开放；调试 serve 免掉托管那两条。"""
+    if dev_environment():
+        return local_client(request)
     return (managed_configuration() and bool(request.app.state.settings.configured)
             and local_client(request))
 

@@ -570,14 +570,18 @@ function openSettings(open=true){
   const panel=$('#settingsPanel');
   if(open){
     settingsTransition++;panel.classList.remove('closing');
-    settingsReturnFocus=settingsReturnFocus||document.activeElement;panel.hidden=false;document.body.classList.add('settings-open');syncSettingsPanel();void syncMachineSettings();
+    settingsReturnFocus=settingsReturnFocus||document.activeElement;panel.hidden=false;
+    document.documentElement.style.overflow='hidden';
+    document.body.classList.add('settings-open');syncSettingsPanel();void syncMachineSettings();
     queueMicrotask(()=>$('#settingsClose').focus());return
   }
   if(panel.hidden||panel.classList.contains('closing'))return;
   const transition=++settingsTransition;panel.classList.add('closing');
   const finish=()=>{
     if(transition!==settingsTransition||!panel.classList.contains('closing'))return;
-    panel.hidden=true;panel.classList.remove('closing');document.body.classList.remove('settings-open');
+    panel.hidden=true;panel.classList.remove('closing');
+    document.documentElement.style.overflow='';
+    document.body.classList.remove('settings-open');
     if(settingsReturnFocus&&document.contains(settingsReturnFocus))settingsReturnFocus.focus();
     settingsReturnFocus=null;
   };

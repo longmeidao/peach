@@ -43,6 +43,7 @@ class ReferenceUpdateTests(unittest.TestCase):
              "vercel-geist-switch-segmented",
              "boardui-input",
              "boardui-theme",
+             "boardui-auth-card",
              "youtube-stats-buffer-20260829"},
         )
         self.assertNotEqual(
