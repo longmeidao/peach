@@ -274,7 +274,7 @@ class OfficialSourceTests(unittest.TestCase):
                 patch.object(covers, "mgstage_images", return_value=[]) as mgstage:
             actual = covers.prestige_group_images(object(), "ABW-232")
         self.assertEqual(actual, official)
-        mgstage.assert_called_once_with(unittest.mock.ANY, "ABW-232")
+        mgstage.assert_called_once_with(unittest.mock.ANY, "ABW-232", deadline=None)
 
     def test_prestige_miss_uses_mgstage_as_the_fallback(self):
         fallback = [covers.candidate_for(
@@ -284,7 +284,7 @@ class OfficialSourceTests(unittest.TestCase):
                 patch.object(covers, "mgstage_images", return_value=fallback) as mgstage:
             actual = covers.prestige_group_images(object(), "ABW-232")
         self.assertEqual(actual, fallback)
-        mgstage.assert_called_once_with(unittest.mock.ANY, "ABW-232")
+        mgstage.assert_called_once_with(unittest.mock.ANY, "ABW-232", deadline=None)
 
     def test_standard_flow_never_requests_blocked_avbase(self):
         with tempfile.TemporaryDirectory() as tmp:

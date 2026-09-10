@@ -111,6 +111,10 @@ class Unavailable(RuntimeError):
     pass
 
 
+class DeadlineExceeded(RuntimeError):
+    """动作预算已用尽：调用方记录当前项目后继续下一项。"""
+
+
 class HostLimitedTransport:
     """把请求间隔按主机分别计算；不同官方站点互不阻塞。"""
 
@@ -163,9 +167,22 @@ class _MGSDetailParser(HTMLParser):
             self.urls.append(url)
 
 
+def _remaining(deadline: float | None) -> float | None:
+    return None if deadline is None else deadline - time.monotonic()
+
+
+def _sleep_within(delay: float, deadline: float | None) -> None:
+    """限速等待也服从截止时间，不让睡眠越过预算。"""
+    remaining = _remaining(deadline)
+    if remaining is not None and delay >= remaining:
+        raise DeadlineExceeded("动作预算已用尽")
+    time.sleep(delay)
+
+
 def _fetch(transport: HttpTransport, url: str, *, referer: str,
            limit: int, ranged: bool = False,
-           extra_headers: dict[str, str] | None = None) -> bytes:
+           extra_headers: dict[str, str] | None = None,
+           deadline: float | None = None) -> bytes:
     headers = {"User-Agent": USER_AGENT, "Referer": referer,
                "Accept-Language": "ja,en;q=0.9"}
     if extra_headers:
@@ -174,13 +191,17 @@ def _fetch(transport: HttpTransport, url: str, *, referer: str,
         headers["Range"] = f"bytes=0-{PROBE_BYTES - 1}"
     request = HttpRequest("GET", url, headers)
     for attempt in range(len(NETWORK_RETRY_DELAYS) + 1):
+        remaining = _remaining(deadline)
+        if remaining is not None and remaining <= 0:
+            raise DeadlineExceeded("动作预算已用尽")
+        timeout = 30.0 if remaining is None else max(1.0, min(30.0, remaining))
         try:
-            response = transport(request, 30, limit)
+            response = transport(request, timeout, limit)
             break
         except httpx.TransportError:
             if attempt == len(NETWORK_RETRY_DELAYS):
                 raise
-            time.sleep(NETWORK_RETRY_DELAYS[attempt])
+            _sleep_within(NETWORK_RETRY_DELAYS[attempt], deadline)
     if response.status not in (200, 206):
         raise Unavailable(f"HTTP {response.status}")
     return response.body
@@ -364,7 +385,8 @@ def _is_prestige(evidence: MetadataEvidence) -> bool:
                for value in evidence.makers)
 
 
-def r18_evidence(transport: HttpTransport, code: str) -> MetadataEvidence:
+def r18_evidence(transport: HttpTransport, code: str, *,
+                 deadline: float | None = None) -> MetadataEvidence:
     """读取 r18 返回的官方封套，并保留旧数字版高清 URL 探测。
 
     `content_id` 不是稳定的数字版路径。Prestige 的 ABW 系列会返回
@@ -377,6 +399,7 @@ def r18_evidence(transport: HttpTransport, code: str) -> MetadataEvidence:
             payload = json.loads(_fetch(
                 transport, R18_DETAIL.format(code=urllib.parse.quote(variant)),
                 referer="https://r18.dev/", limit=2 * 1024 * 1024,
+                deadline=deadline,
             ).decode("utf-8", "ignore"))
         except (Unavailable, ValueError, httpx.TransportError):
             continue
@@ -395,7 +418,8 @@ def r18_evidence(transport: HttpTransport, code: str) -> MetadataEvidence:
     return MetadataEvidence()
 
 
-def mgstage_images(transport: HttpTransport, code: str) -> list[Candidate]:
+def mgstage_images(transport: HttpTransport, code: str, *,
+                   deadline: float | None = None) -> list[Candidate]:
     """直取 MGS 商品页 EnlargeImage；年龄确认只用公开 cookie，不绕挑战。"""
     for variant in code_variants(code):
         try:
@@ -405,6 +429,7 @@ def mgstage_images(transport: HttpTransport, code: str) -> list[Candidate]:
                 referer="https://www.mgstage.com/",
                 limit=4 * 1024 * 1024,
                 extra_headers={"Cookie": "adc=1"},
+                deadline=deadline,
             ).decode("utf-8", "ignore")
         except (Unavailable, httpx.TransportError):
             continue
@@ -421,7 +446,8 @@ def mgstage_images(transport: HttpTransport, code: str) -> list[Candidate]:
     return []
 
 
-def prestige_images(transport: HttpTransport, code: str) -> list[Candidate]:
+def prestige_images(transport: HttpTransport, code: str, *,
+                    deadline: float | None = None) -> list[Candidate]:
     """按 MDCX 固定 revision 的公开 API 模型直取 Prestige packageImage。"""
     query = urllib.parse.urlencode({
         "isEnabledQuery": "true",
@@ -438,6 +464,7 @@ def prestige_images(transport: HttpTransport, code: str) -> list[Candidate]:
         payload = json.loads(_fetch(
             transport, f"{PRESTIGE_SEARCH}?{query}",
             referer="https://www.prestige-av.com/", limit=4 * 1024 * 1024,
+            deadline=deadline,
         ).decode("utf-8", "ignore"))
     except (Unavailable, ValueError, httpx.TransportError):
         return []
@@ -462,6 +489,7 @@ def prestige_images(transport: HttpTransport, code: str) -> list[Candidate]:
             product = json.loads(_fetch(
                 transport, PRESTIGE_PRODUCT.format(uuid=urllib.parse.quote(uuid)),
                 referer="https://www.prestige-av.com/", limit=4 * 1024 * 1024,
+                deadline=deadline,
             ).decode("utf-8", "ignore"))
         except (Unavailable, ValueError, httpx.TransportError):
             continue
@@ -474,15 +502,17 @@ def prestige_images(transport: HttpTransport, code: str) -> list[Candidate]:
     return []
 
 
-def prestige_group_images(transport: HttpTransport, code: str) -> list[Candidate]:
+def prestige_group_images(transport: HttpTransport, code: str, *,
+                          deadline: float | None = None) -> list[Candidate]:
     """汇总 Prestige 与 MGS 的官方候选，尺寸由统一探测比较。"""
-    official = prestige_images(transport, code)
-    return _unique_candidates(official + mgstage_images(transport, code))
+    official = prestige_images(transport, code, deadline=deadline)
+    return _unique_candidates(official + mgstage_images(transport, code, deadline=deadline))
 
 
-def probe_size(transport: HttpTransport, candidate: Candidate) -> tuple[int, int]:
+def probe_size(transport: HttpTransport, candidate: Candidate, *,
+               deadline: float | None = None) -> tuple[int, int]:
     head = _fetch(transport, candidate.url, referer=candidate.referer,
-                  limit=PROBE_BYTES * 2, ranged=True)
+                  limit=PROBE_BYTES * 2, ranged=True, deadline=deadline)
     return Image.open(io.BytesIO(head)).size
 
 
@@ -491,6 +521,7 @@ def best_cover(transport: HttpTransport, code: str, delay: float, *,
                prior_candidates: tuple[Candidate, ...] = (),
                known_sizes: dict[str, tuple[int, int]] | None = None,
                minimum_pixels: int = 0,
+               deadline: float | None = None,
                ) -> tuple[Candidate, tuple[int, int], bytes]:
     # 来源一律记主机名。缓存、构造路径和官方页常指向同一个主机，记成多个名字
     # 会让覆盖率统计凭空多出「渠道」。
@@ -500,19 +531,19 @@ def best_cover(transport: HttpTransport, code: str, delay: float, *,
     is_fc2 = code.upper().startswith("FC2-PPV-")
     # 有成功快照时不重复打 r18；失败快照不算证据，仍允许联网刷新。
     if not is_fc2 and "r18dev" not in evidence.sources:
-        live_evidence = r18_evidence(transport, code)
+        live_evidence = r18_evidence(transport, code, deadline=deadline)
         candidates += list(live_evidence.candidates)
-        time.sleep(delay)
+        _sleep_within(delay, deadline)
     # MGS 与 Prestige 都是 Prestige 集团的官方供给面。只在本地厂牌证据命中时
     # 查询，避免把全库 960 个番号无差别打到两个站点。
     if not is_fc2 and (_is_prestige(evidence) or _is_prestige(live_evidence)):
-        candidates += prestige_group_images(transport, code)
-        time.sleep(delay)
+        candidates += prestige_group_images(transport, code, deadline=deadline)
+        _sleep_within(delay, deadline)
     # 素人系番号按形状就能确定发行面是 MGS，不必先有元数据。等元数据的旧写法让
     # 259LUXU / 300MIUM / 428SUKE 这批番号一次也没问过 MGS——而 MGS 一直有图。
     elif not is_fc2 and (is_amateur_code(code) or "mgstage" in evidence.sources):
-        candidates += mgstage_images(transport, code)
-        time.sleep(delay)
+        candidates += mgstage_images(transport, code, deadline=deadline)
+        _sleep_within(delay, deadline)
     candidates = _unique_candidates([
         candidate for candidate in candidates
         if (not THUMBNAIL.search(candidate.url) or FC2_HIRES.match(candidate.url))
@@ -533,11 +564,11 @@ def best_cover(transport: HttpTransport, code: str, delay: float, *,
     measured: list[tuple[int, Candidate, tuple[int, int]]] = []
     for candidate in candidates:
         try:
-            width, height = probe_size(transport, candidate)
+            width, height = probe_size(transport, candidate, deadline=deadline)
         except (Unavailable, UnidentifiedImageError, OSError, httpx.TransportError):
             continue
         finally:
-            time.sleep(delay)
+            _sleep_within(delay, deadline)
         if width >= MIN_WIDTH:
             measured.append((width * height, candidate, (width, height)))
     if not measured:
@@ -546,7 +577,7 @@ def best_cover(transport: HttpTransport, code: str, delay: float, *,
     for _pixels, winner, size in sorted(measured, key=lambda item: item[0], reverse=True):
         try:
             data = _fetch(transport, winner.url, referer=winner.referer,
-                          limit=16 * 1024 * 1024)
+                          limit=16 * 1024 * 1024, deadline=deadline)
         except (Unavailable, httpx.TransportError):
             continue
         try:
