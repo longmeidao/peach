@@ -563,7 +563,7 @@ def setup_page(
 
 
 def setup_done_page(applied, *, windows: bool, scan_requested: bool, history_guide: bool = False) -> str:
-    """成功页：接下来会自动发生什么，以及口令在哪。口令本身不显示在页面上。"""
+    """成功页：扫描是否已排队、进入 Peach 的入口，运行信息默认折叠。口令不显示在页面上。"""
     config = applied.config
     destination = escape(_normal_url(config) + ('taste?onboarding=1' if history_guide else ''), quote=True)
     destination_label = '导入浏览器历史记录' if history_guide else '进入 Peach'
