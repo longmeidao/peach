@@ -30,7 +30,7 @@
 - 前端按 ADR-0022 以 Preact island 逐岛迁往 `frontend/`（Vite + TypeScript），产物 `web/dist/peach-ui.js` 进 Git、经 `/dist/{name}` 提供，`/quality-goals` 已迁；改前端需 Node 24+，见 `docs/FRONTEND.md`。
 - 本机运行 Python 3.14；`requires-python` 下限 3.12，GitHub Actions 同时测 3.12 与 3.14；Windows FFmpeg/ffprobe 位于 `peach-data/tools/ffmpeg`，macOS 走 PATH。
 - 发行名 `peach`，目录名 `peach-app`；Windows venv 已按发行名重装。macOS 落后 master 一组有顺序的操作（待办「待执行的操作」第 30 条），做完之前别重启菜单栏：没有口令的 `peach serve --host 0.0.0.0` 会拒绝启动。
-- 扫描与采集任务显示当前项目、动作与等待时长；无进展 120 秒先在页面预警，单项外部动作（资料 90 秒、封面 240 秒）超预算只跳过当前项目并计入可重试；「重试未完成项」按原任务失败集合重试。完整问题写入 `state/library-processing-<job_id>.issues.jsonl`，接口按 `job_id` 分页读取。已测试通过，待部署。
+- 扫描与采集任务显示当前项目、动作与等待时长；无进展 120 秒先在页面预警，单项外部动作（资料 90 秒、封面 240 秒）超预算只跳过当前项目并计入可重试；「重试未完成项」按原任务失败集合重试。完整问题写入 `state/library-processing-<job_id>.issues.jsonl`，接口按 `job_id` 分页读取；旧任务的问题列表读取时投影成计数与前 20 条。已部署并核对。
 
 ## 批处理进度
 
