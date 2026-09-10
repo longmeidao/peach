@@ -263,6 +263,15 @@ class LibraryWatchdogTests(unittest.TestCase):
         self.assertFalse(within['stalled'])
         self.assertTrue(expired['stalled'])
 
+    def test_legacy_issue_list_projects_into_count_and_preview(self):
+        legacy = [{'asset_id': index, 'message': '未识别到番号'} for index in range(1, 26)]
+        state = decorate({'status': 'failed', 'job_id': 'old', 'issues': legacy})
+        self.assertNotIn('issues', state)
+        self.assertEqual(state['issue_count'], 25)
+        self.assertEqual(len(state['issue_preview']), 20)
+        self.assertEqual(state['issue_preview'][0], {'asset_id': 1, 'message': '未识别到番号'})
+        self.assertTrue(state['issues_truncated'])
+
     @unittest.skipUnless(os.name == 'nt', '真实声明根使用 Windows 盘符')
     def test_deadline_skips_one_asset_and_keeps_processing(self):
         from peach.jav_cover_fetch import DeadlineExceeded

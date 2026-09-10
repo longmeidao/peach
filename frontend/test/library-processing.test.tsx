@@ -61,10 +61,19 @@ it('失败时列出问题总数并只提交失败项重试', async () => {
   await act(async()=>{render(h(LibraryProcessing,{data,error:'',toast:vi.fn()}),host)});
   expect(host.textContent).toContain('共 23 项问题，以下为前 1 项');
   expect(host.textContent).toContain('重试未完成项');
+  expect(host.querySelector('.geist-fieldset-footer .geist-button.primary')).toBeNull();
   await act(async()=>{host.querySelector<HTMLButtonElement>('[data-note-action]')!.click();await new Promise(resolve=>setTimeout(resolve,0));});
   const post=calls.find(call=>call.init?.method==='POST');
   expect(post).toBeTruthy();
   expect(JSON.parse(String(post!.init!.body))).toEqual({job_id:'one',retry:[7,8]});
+});
+it('失败项都不可重试时仍能重新发起整批任务', async () => {
+  host=document.createElement('div');document.body.append(host);
+  const data={status:'failed',job_id:'one',error:'1 项需要处理',issue_count:1,
+    issue_preview:[{asset_id:1,message:'未识别到番号'}],retryable_asset_ids:[]};
+  await act(async()=>{render(h(LibraryProcessing,{data,error:'',toast:vi.fn()}),host)});
+  expect(host.querySelector('[data-note-action]')).toBeNull();
+  expect(host.querySelector('.geist-fieldset-footer .geist-button.primary')?.textContent).toBe('扫描并补全资料');
 });
 it('首页从空闲发现后台任务，完成后收起并在卸载后停止查询', async () => {
   vi.useFakeTimers();

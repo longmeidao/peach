@@ -743,7 +743,7 @@ function mt({ data: e, error: t, toast: n, onComplete: r, mode: i, monitor: a, p
 					href: "/review",
 					children: "复核资料"
 				}),
-				s.status !== "failed" && /* @__PURE__ */ J("button", {
+				(s.status !== "failed" || !A) && /* @__PURE__ */ J("button", {
 					ref: C,
 					type: "button",
 					class: "geist-button primary",

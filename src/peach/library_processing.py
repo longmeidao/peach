@@ -103,11 +103,19 @@ def _save(path, payload):
 
 
 def decorate(state, *, now=None):
-    """给运行中的状态副本补上等待时长与「长时间没有进展」标记。
+    """把状态投影成当前契约，并给运行中的副本补上等待时长与「长时间没有进展」标记。
 
-    只改这一次读取的副本：GET 不会把任务改成失败，慢与卡死由人判断。
+    旧状态文件把完整问题存在 `issues` 数组里；投影只留计数与前 20 条预览，
+    其余照旧可读，也不把上千条问题重新塞回每次轮询的响应。读取只改副本，
+    GET 不会把任务改成失败，慢与卡死由人判断。
     """
     state = dict(state)
+    legacy = state.pop('issues', None)
+    if legacy and 'issue_count' not in state:
+        state['issue_count'] = len(legacy)
+        state['issue_preview'] = [dict(asset_id=row.get('asset_id'), message=str(row.get('message') or ''))
+                                  for row in legacy[:ISSUE_PREVIEW_LIMIT]]
+        state['issues_truncated'] = len(legacy) > ISSUE_PREVIEW_LIMIT
     if state.get('status') != 'running':
         return state
     now = time.time() if now is None else now

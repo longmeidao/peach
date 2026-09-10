@@ -101,7 +101,7 @@ export function LibraryProcessing({ data, error, toast, onComplete, mode, monito
       <footer class="geist-fieldset-footer" data-geist-fieldset-footer>
         <a class="geist-button" href="/scraping">采集来源</a>
         {!!state.candidates && <a class="geist-button" href="/review">复核资料</a>}
-        {state.status !== 'failed' && <button ref={button} type="button" class="geist-button primary" onClick={start}>扫描并补全资料</button>}
+        {(state.status !== 'failed' || !retryable) && <button ref={button} type="button" class="geist-button primary" onClick={start}>扫描并补全资料</button>}
       </footer>
     </section>
     <div class="library-processing-outcome" aria-live="polite">
