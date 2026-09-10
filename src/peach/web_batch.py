@@ -99,6 +99,39 @@ DISC_TAIL = re.compile(r"[-_. ]?(?:bd|bdmv|bdiso|bdrip|dvd|dvdiso|iso|uhd|fhd|hd
 #: 一个上 GB 的文件是资源站给自己的资源改了目录名，不是资源站塞进来的推广。
 CONTENT_BYTES = 1024 ** 3
 INTERNET_SHORTCUT_SUFFIXES = frozenset({".url"})
+#: 保存下来的网页。`.mhtml` 是 Edge 的整页存档，媒体目录里的这份没有内容价值；
+#: 它和 `.url` 一样是「导航页」而不是媒体，不给体积兜底留机会。
+PAGE_ARCHIVE_SUFFIXES = frozenset({".mhtml", ".mht", ".htm", ".html"})
+#: 推广品牌词。它们单独出现在视频名里不构成证据——`麻豆传媒`、`外围`、`直播` 都可能是
+#: 真片名的一部分——只有叠加推广形态、装饰符或推广目录上下文时才计分。
+#: 名单来自 2026-09 用户实例 `B:\xxr\0208 (23)` 里自曝身份的推广站与推广 APP。
+AD_BRAND = re.compile(
+    r"(91(?:短视频|视频|国产|AV|約炮|约炮)|成人抖音|快手直播|杏吧|草榴|色中色|成人头条|"
+    r"泡芙短视频|含羞草|她趣|台湾UU|全国外围|外围楼凤|楼凤|麻豆传媒映画|蜜桃影像|"
+    r"成人游戏|169BBS|SEX169)", re.I)
+#: 与品牌词同现才算推广名的形态词。`视频`、`直播` 这类过常见的词不进这张表：
+#: `麻豆传媒映画APP-限时免费体验` 是推广包，`麻豆传媒 某作品` 是资源。
+AD_BRAND_FORM = re.compile(
+    r"(APP|一键|导航|聊天室|免费体验|限时免费|扫码|资源获取|网址|发布页)", re.I)
+#: 品牌推广图的体积上限。`蜜桃影像传媒.png` 18 KB、`東方秋白…169BBS…` 75 KB，
+#: 而任何一张内容图都在 MB 量级；品牌名 + 这种体积才是广告卡，不是作品套图。
+BRAND_TINY_BYTES = 300 * 1024
+#: 装饰符名（`❤91短视频❤.jpg`）：两侧都挂或挂多个爱心的小图，名字里没有实质描述。
+DECOR_MARKS = "❤♥❥♡💕💗💖💘💝"
+#: 装饰图体积上限。`❤草榴视频❤.jpg` 705 KB 是广告卡；同名配套封面（2 MB 级）不算，
+#: 它走 `has_sibling_original` 的正片配对豁免。
+DECORATED_MAX_BYTES = 1536 * 1024
+#: 目录名自曝是推广包的形态：`-APP`、`一键约炮`、`論壇文宣`、聊天室等。
+#: 只匹配目录分量，不看文件名；命中后目录里不构成内容的文件都进复核。
+AD_DIR_FORM = re.compile(
+    r"(論壇文宣|论坛文宣|文宣|宣傳|一键约炮|全国外围|外围楼凤|楼凤|聊天室|"
+    r"免费体验|限时免费)", re.I)
+#: `APP` 按词匹配：`Happy` 里也藏着 `app`，裸子串会把正常目录卷进来；
+#: `.app` 是域名后缀，`bkm9.app` 那类推广目录靠目录里其他证据，不靠这一条。
+AD_DIR_APP = re.compile(r"(?:^|[^A-Za-z.])APP(?:[^A-Za-z.]|$)", re.I)
+#: 品牌名只在目录里还带媒体平台词时才算推广目录；`草榴视频` 是推广 APP，
+#: `麻豆传媒` 单独出现可能是这个厂牌的资源目录。
+AD_DIR_BRAND_MEDIA = re.compile(r"(?:视频|視頻|影视|影視|传媒|傳媒|直播|短视频|短視頻)", re.I)
 JUNK_KINDS = frozenset({"video", "image", "audio", "archive", "url", "other"})
 
 
@@ -155,6 +188,30 @@ def has_sibling_original(stem: str, sibling_videos: set[str]) -> bool:
     return key in sibling_videos or SHOT_TAIL.sub("", key) in sibling_videos
 
 
+def is_decorated_name(stem: str) -> bool:
+    """名字挂着两个以上装饰符，没有任何实质描述。
+
+    样本是 `B:\\xxr\\0208 (23)` 里那批 7~20 KB 的 `❤91短视频❤.png`。
+    只挂一个爱心不算：Telegram 导出与正常标题里单个爱心常见，两个以上才是装饰性命名。
+    """
+    return sum(str(stem or "").count(mark) for mark in DECOR_MARKS) >= 2
+
+
+def _promo_directory(parts) -> bool:
+    """路径里有任意一层目录自曝是推广包。
+
+    三种形态：`APP` 词形（`_含羞草APP`）、促销目录名（`一键约炮`、`論壇文宣`）、
+    品牌名叠加媒体词（`_草榴视频`）。只看目录分量，文件名自己是不是推广由调用方判。
+    """
+    for part in parts:
+        text = str(part)
+        if AD_DIR_APP.search(text) or AD_DIR_FORM.search(text):
+            return True
+        if AD_BRAND.search(text) and AD_DIR_BRAND_MEDIA.search(text):
+            return True
+    return False
+
+
 def q_ads(contract: WebContract, limit=200, offset=0, kind="", status="pending"):
     """疑似垃圾复核队列 —— **不自动删**，只排队让人看证据确认。
 
@@ -175,7 +232,12 @@ def q_ads(contract: WebContract, limit=200, offset=0, kind="", status="pending")
 
     物理资源的类型不能成为免检条件。视频保留时长、体积和同番号长版证据；图片、
     音频、压缩包和其它文件走共用的推广名／推广目录证据；Windows ``.url`` 是网址
-    快捷方式，在媒体目录中直接进入人工复核。在线资产不是待清理的物理文件，排除。"""
+    快捷方式，在媒体目录中直接进入人工复核。在线资产不是待清理的物理文件，排除。
+
+    广告包还有一类没有推广词的样本：目录名自曝（`一键约炮`、`-APP`、`論壇文宣`），
+    整包只有一条正片加一张配套封面，其余是装饰符小图、品牌推广卡与网页存档。
+    这几种形态各自独立计分，配套封面走正片配对豁免，推广目录里的长视频只加 30 分、
+    要再叠一条时长或体积证据才到门槛。"""
     kind = str(kind or "").strip().casefold()
     status = str(status or "pending").strip().casefold()
     if kind and kind not in JUNK_KINDS:
@@ -224,8 +286,11 @@ def q_ads(contract: WebContract, limit=200, offset=0, kind="", status="pending")
         )
         residue = promo_residue(nm)
         promo = bool(PROMO_PHRASE.search(nm) or PROMO_DOMAIN.search(nm))
+        page_archive = suffix in PAGE_ARCHIVE_SUFFIXES
         if suffix in INTERNET_SHORTCUT_SUFFIXES:
             s += 60; why.append("网址快捷方式")
+        elif page_archive:
+            s += 60; why.append("网页存档")
         # 目录维度的证据：广告包的文件名往往干净（`极道世界.mp4`），唯一线索在旧导入器
         # 从目录名投影出来的创作者位或路径里。creator 位本身是推广站域名时，它就不再是
         # 「有归属所以是正片」的证据，下面两处对 creator 的信任都必须先排除这种情况。
@@ -250,6 +315,13 @@ def q_ads(contract: WebContract, limit=200, offset=0, kind="", status="pending")
             or (d.get("size") or 0) >= CONTENT_BYTES
             or has_sibling_original(nm, folder_videos.get(folder, frozenset()))
         )
+        decorated = (d.get("medium") != "video" and is_decorated_name(nm)
+                     and (d.get("size") or 0) <= DECORATED_MAX_BYTES)
+        brand_hit = bool(AD_BRAND.search(nm)) and bool(
+            AD_BRAND_FORM.search(nm)
+            or (d.get("medium") == "image"
+                and (d.get("size") or 0) <= BRAND_TINY_BYTES))
+        promo_dir = _promo_directory(PureWindowsPath(d.get("path") or name).parent.parts)
         if promo and residue < 6 and not bundled:
             # 名字剥完只剩广告本身，这是最硬的信号。
             s += 60; why.append("整个名字都是推广语")
@@ -263,6 +335,17 @@ def q_ads(contract: WebContract, limit=200, offset=0, kind="", status="pending")
             s += 50; why.append("创作者位是推广站域名")
         elif AD_DIRPACK.search(folder) and not self_evident:
             s += 45; why.append("目录是「域名+番号」的推广打包")
+        # 非视频的推广形态：装饰符小图、品牌推广名、住在推广目录。`self_evident`
+        # （真番号、内容级体积、正片配套图）与网页存档、网址快捷方式已单独计分，
+        # 这里不重复叠加。
+        if (d.get("medium") != "video" and not self_evident and not page_archive
+                and suffix not in INTERNET_SHORTCUT_SUFFIXES):
+            if decorated:
+                s += 60; why.append("装饰符小图")
+            elif brand_hit:
+                s += 60; why.append("推广品牌名")
+            elif promo_dir:
+                s += 50; why.append("住在推广目录")
         if d.get("medium") == "video":
             code = (d["code"] or "").strip()
             mx = longer.get(code)
@@ -275,6 +358,10 @@ def q_ads(contract: WebContract, limit=200, offset=0, kind="", status="pending")
                 s += 15; why.append("不足 4 分钟")
             if (d["size"] or 0) < 120 * 1024**2:
                 s += 10; why.append("小于 120 MB")
+            if promo_dir:
+                # 30 分单独不构成删片理由：正片也可能躺在别人起错名的目录里，
+                # 要再叠一条时长或体积证据才到门槛。
+                s += 30; why.append("住在推广目录")
         # 有真实创作者归属、且名字剥完仍有实质描述的，是被打了水印的正片，不是广告。
         if real_owner and residue >= 14:
             s -= 45

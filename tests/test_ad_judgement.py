@@ -322,6 +322,43 @@ class ResourceJunkQueueTests(unittest.TestCase):
 
         self.assertEqual(result["items"], [])
 
+    def test_ad_flooded_folder_keeps_video_and_its_cover_only(self):
+        """用户实例 `B:\\xxr\\0208 (23)`：整包只有正片和它的同名 PNG 是资源。
+
+        26 条广告各有各的自曝形态：装饰符小图、品牌推广卡、`.mhtml` 网页存档、
+        目录名自曝（`-APP`、`一键约炮`、`論壇文宣`）里的推广图。
+        """
+        base = r"B:\xxr\0208 (23)"
+        self.add(100, "115", rf"{base}\梓怡-背著老公.mp4", "video",
+                 985 * 1024**2, 1647)
+        self.add(101, "115", rf"{base}\梓怡-背著老公.png", "image", 2379 * 1024)
+        self.add(102, "115", rf"{base}\❤91短视频❤.jpg", "image", 600 * 1024)
+        self.add(103, "115", rf"{base}\全国外围-一键约炮.jpg", "image", 606 * 1024)
+        self.add(104, "115", rf"{base}\❤成人游戏-导航-.mhtml", "other", 6615 * 1024)
+        self.add(105, "115", rf"{base}\_含羞草APP\❤含 羞 草❤.png", "image", 8 * 1024)
+        self.add(106, "115",
+                 rf"{base}\論壇文宣\(_0高清国产精品资源获取.png", "image", 18 * 1024)
+
+        result = q_ads(self.contract, limit=200)
+
+        self.assertEqual(
+            {item["id"] for item in result["items"]},
+            {102, 103, 104, 105, 106},
+        )
+        by_id = {item["id"]: item for item in result["items"]}
+        self.assertIn("装饰符小图", by_id[102]["why"])
+        self.assertIn("推广品牌名", by_id[103]["why"])
+        self.assertIn("网页存档", by_id[104]["why"])
+
+    def test_brand_word_in_a_video_title_is_not_promo_by_itself(self):
+        """`麻豆传媒` 一类品牌词也可以是正片标题的一部分，视频单独命中不算证据。"""
+        self.add(110, "115", r"B:\番号\麻豆传媒 背著老公的妻子.mp4", "video",
+                 400 * 1024**2, 900)
+
+        result = q_ads(self.contract, limit=200)
+
+        self.assertEqual(result["items"], [])
+
     def test_invalid_junk_filters_are_rejected(self):
         with self.assertRaisesRegex(ValueError, "invalid junk kind"):
             q_ads(self.contract, kind="document")
