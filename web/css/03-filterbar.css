@@ -32,9 +32,15 @@
 .sep{flex:none;width:1px;height:19px;background:var(--field-ring-hover);margin:0 3px}
 
 /* 多标签交集筛选条 */
-.combo{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:0 0 10px}
+/* 这一条从无到有会把底下整块推下四十像素。留着空位等它是另一种代价——一屏没有任何
+   筛选时头顶白占一条。所以让它自己长出来：高度从 0 走到 auto，二百来毫秒，推的过程
+   看得见就不叫跳。`interpolate-size` 是这段动画的前提，缺了它高度直接跳到终值。 */
+.combo{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:0 0 10px;
+  overflow:hidden;interpolate-size:allow-keywords;height:auto;
+  transition:height .22s cubic-bezier(0,0,.2,1),margin-bottom .22s cubic-bezier(0,0,.2,1)}
 /* 一条也没有时不占位：高度是 0，那 10px 下边距却照留，成了下面那块浮层头顶的一段空白。 */
-.combo:empty{margin-bottom:0}
+.combo:empty{height:0;margin-bottom:0}
+@media(prefers-reduced-motion:reduce){.combo{transition:none}}
 /* 交集条上的每一颗都是一个标签，跟详情面板里那一颗是同一样东西：名字加一颗撤掉它的
    键。所以照那一颗画——同一档圆角、一圈线、一样的身量和一样的移除键，只把面换成
    --picked，因为这一颗说的是「已经加上去了」。差别留给状态，形状不参与表意。 */

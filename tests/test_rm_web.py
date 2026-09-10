@@ -2599,6 +2599,41 @@ class TopsRotationTests(unittest.TestCase):
         rows = rm_web.q_tops(self.contract, 100, seed="111")["performers"]
         self.assertEqual(len(rows), 40, "候选不足时不能抽空，也不能报错")
 
+    def test_the_next_page_picks_up_where_the_first_batch_left_off(self):
+        """横滚续接靠页号往后数：续上来的人不能跟第一页重，也不能跳过谁。
+
+        第一页那几个是从数量前 `n * TOPS_POOL_FACTOR` 里抽的，抽剩下的那些不再露面：
+        续页要是回头补它们，就得先知道抽走了谁，而那份名单只存在于上一次请求里。
+        所以那一段整个归第一页，续页从它的末尾往后按数量数下去——代价是抽剩的几个这一
+        轮不出现，换一批时它们照样有机会。
+        """
+        first = self.names(seed="111")
+        second = self.names(seed="111", page=1)
+        self.assertEqual(len(second), 8)
+        self.assertEqual(set(first) & set(second), set(), "续页不能给出第一页已经有的人")
+        # 第一页独占数量前 8*4 名，第二页就是第 33 名往后的 8 个。
+        strict = [row["k"] for row in rm_web.q_tops(self.contract, 40)["performers"]]
+        self.assertEqual(second, strict[8 * web_catalog.TOPS_POOL_FACTOR:][:8])
+
+    def test_pages_run_out_instead_of_repeating_the_tail(self):
+        # 数到库里没人了就回空数组：前端据此停下，回一份重复的会让那一排无限续。
+        self.assertEqual(self.names(seed="111", page=9), [])
+
+    def test_without_a_seed_the_next_page_follows_the_strict_list(self):
+        # 无种子时第一页就是严格前 N，没有候选池那一段，续页紧接着第 N 名往后。
+        strict = [row["k"] for row in rm_web.q_tops(self.contract, 40)["performers"]]
+        self.assertEqual(self.names(page=1), strict[8:16])
+
+    def test_the_page_number_is_part_of_the_cache_key(self):
+        # 页号不进键的话，续页拿回的是第一页那份缓存，那一排会一直续出同一批人。
+        def page(number):
+            args = {"n": "8", "seed": "111", "page": str(number)}
+            return [row["k"] for row
+                    in rm_web.dispatch_api_get(self.contract, "/api/tops", args)["performers"]]
+
+        self.assertEqual(page(0), page(0), "同一页仍走缓存")
+        self.assertEqual(set(page(0)) & set(page(1)), set())
+
 
 class PhotoSetTests(unittest.TestCase):
     """图集就是目录：账本没有图集实体，同一目录下的图片本来就是一份图集。"""

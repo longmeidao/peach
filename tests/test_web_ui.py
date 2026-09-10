@@ -2856,7 +2856,7 @@ class WebUiSourceTests(unittest.TestCase):
             "  return api('/api/tops?'+wide)")
         # 取数只经这一条路：直接打 /api/tops 的调用会绕过回退。
         self.assertEqual(self.app_js.count("api('/api/tops?"), 2)
-        self.assertPageContains("      loadTops(topsParams)])")
+        self.assertPageContains("      loadTops(topsQueryParams(context))])")
 
     def test_the_page_chrome_paints_without_waiting_for_any_request(self):
         """左侧导航、管理条、标题和面包屑只认 location，不该排在网络请求后面。
@@ -4715,7 +4715,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(
             "if(context.type==='home'&&state.state)facetParams.set('state',state.state);")
         self.assertPageContains(
-            "if(context.type==='home'&&state.state)topsParams.set('state',state.state);")
+            "if(context.type==='home'&&state.state)params.set('state',state.state);")
         # 缓存键跟着 state 变，否则切到已标记会沿用首页那份。
         scope = self.page.split("const scope=facetParams.toString();", 1)[0]
         self.assertIn("facetParams.set('state'", scope)
@@ -5933,6 +5933,56 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertCode("  if(grid){grid.innerHTML=pageSkeletonHtml('正在读取作品',\n"
                         "    {cards:true,className:'catalog-skeleton postercard-skeleton'});fitSkeleton(grid)}")
         self.assertPageContains("  if(more)more.hidden=true;")
+
+    def test_adding_a_filter_only_changes_the_list_underneath(self):
+        """点一条筛选，动的只有底下那份名单；上面那几排原地改按下态。
+
+        整块重画的代价不是耗时，是把人读到一半的东西换掉：实测那排女优已经横着续到六十
+        枚、停在第 600 像素上，重画一次退回二十四枚、滚回起点，标签条同理。而他按下这一
+        下要看的是底下那份名单变成什么样，上面那几排跟这件事无关。
+
+        侧栏那些数字仍要跟着当前筛选走，不刷新就是一列对不上的数；但刷新只改数字，整段
+        重画会合上人展开的那几组、把这一列滚回顶上，那正是要避免的事。数请求回得慢，中
+        途再按一条就有两份答案在路上，序号只认最后发的那次。
+        """
+        self.assertPageContains("function applyFilterStateInPlace(filters){")
+        self.assertCode(
+            "  mutate(state);route(homePath());\n"
+            "  applyFilterStateInPlace(state);refreshFacetCounts(barsContext);\n"
+            "  load(true);")
+        self.assertCode(
+            "    applyFilterStateInPlace(filters);refreshFacetCounts(barsContext);\n"
+            "    updateEntityCollection(barsContext.kind,barsContext.name,filters,true);return")
+        # 三处按下态：筛选条的药丸、卡片和资料页上的标签、侧栏那些芯片。
+        self.assertPageContains(
+            "    b.setAttribute('aria-pressed',String(tagPressed(filters.tag,b.dataset.tag))));")
+        self.assertPageContains(
+            "    b.setAttribute('aria-pressed',String(tagPressed(filters.tag,b.dataset.entityTag))));")
+        self.assertPageContains("$('#drawer').querySelectorAll('.chip[data-key]')")
+        # 轨道上那截填充由 oninput 算，改 value 不会自己触发。
+        self.assertPageContains("    durMin.dispatchEvent(new Event('input'));")
+        self.assertPageContains("  renderCombo();")
+        self.assertCode(
+            "  const seq=++facetCountsSeq;\n"
+            "  const [facetData]=await getBarsData(context);\n"
+            "  if(seq!==facetCountsSeq)return;")
+        self.assertPageContains("  $('#drawer').querySelectorAll('.chip[data-key] .n').forEach(el=>{")
+        # 从详情回到列表是换语境，不是换一条筛选：那几排本来就要照新语境重新画。
+        detail = self.app_js.split("if(barsContext.type==='item'){", 1)[1]
+        self.assertIn("buildBars();load(true);return", detail[:detail.index("\n}")])
+
+    def test_the_intersection_bar_grows_into_place_instead_of_shoving_the_page(self):
+        """交集条从无到有是长出来的：高度从 0 走到 auto，二百来毫秒。
+
+        它一出现就把底下整块推下四十像素，而人这时正盯着底下那份名单换成新的。留着空位
+        等它是另一种代价——一屏没有任何筛选时头顶白占一条。`interpolate-size` 是这段动画
+        的前提，缺了它高度直接跳到终值。
+        """
+        base = stylesheet_source()
+        self.assertIn("overflow:hidden;interpolate-size:allow-keywords;height:auto;", base)
+        self.assertIn("transition:height .22s cubic-bezier(0,0,.2,1),"
+                      "margin-bottom .22s cubic-bezier(0,0,.2,1)}", base)
+        self.assertIn("@media(prefers-reduced-motion:reduce){.combo{transition:none}}", base)
 
     def test_untagged_detail_uses_home_tags_only_in_the_top_discovery_bar(self):
         # 作品没有内容标签时，顶部发现栏回退首页口径；详情抽屉仍使用作品 scoped facets。
@@ -8235,21 +8285,44 @@ class WebUiSourceTests(unittest.TestCase):
         续到这一排真的溢出为止再停：宽屏上一批可能还填不满一行，没溢出就滚不动，滚不
         动就再没有第二次 `scroll` 来接着续。空的那一排根本不画，`.tier` 的序号跟着往前
         挪，所以要按这一排画没画来认。
+
+        手上这份用完再去要下一页：`/api/tops` 一次最多回六十个，而库里六百多位女优，
+        没有续页那一排就停在第六十位。
         """
         self.assertPageContains("const ROW_FIRST=24,TAGS_FIRST=26,ROW_BATCH=12;")
-        self.assertPageContains("const topsParams=new URLSearchParams({n:'60',seed:state.seed||''});")
+        self.assertPageContains("const params=new URLSearchParams({n:'60',seed:state.seed||''});")
         self.assertPageContains("const perfRow=tops.performers.slice(0,ROW_FIRST).map(avHtml).join('');")
         self.assertCode(
-            "    while(cursor<rest.length&&row.scrollLeft+row.clientWidth>=row.scrollWidth-320){\n"
+            "    while(atEnd()){\n"
+            "      if(cursor>=rest.length){\n"
+            "        if(drained)break;\n"
+            "        fetching=true;"
+        )
+        self.assertCode(
+            "        const more=await nextPage().catch(()=>[]);\n"
+            "        fetching=false;\n"
+            "        if(!more.length){drained=true;break}\n"
+            "        rest=rest.concat(more);\n"
+            "      }\n"
             "      row.insertAdjacentHTML('beforeend',rest.slice(cursor,cursor+ROW_BATCH).map(itemHtml).join(''));\n"
             "      cursor+=ROW_BATCH;added=true;\n"
             "    }"
         )
-        self.assertPageContains("if(cursor>=rest.length)row.removeEventListener('scroll',fill);")
+        # 要页的这段时间里人还在滚：进得来第二遍就会把同一页要两次，续上来的成双。
+        self.assertPageContains("    if(fetching)return;")
+        self.assertPageContains("if(drained&&cursor>=rest.length)row.removeEventListener('scroll',fill);")
         self.assertPageContains("row.addEventListener('scroll',fill,{passive:true});")
+        # 页号各排各记：共用一个的话，先到头的那排会替另一排把页翻过去。
         self.assertCode(
-            "    if(perfRow)wireRowPaging(rows[next++],tops.performers.slice(ROW_FIRST),avHtml,wireTierEntities);\n"
-            "    if(studioRow)wireRowPaging(rows[next++],tops.studios.slice(ROW_FIRST),bpHtml,wireTierEntities);"
+            "    const nextTopsPage=kind=>{let page=0;\n"
+            "      return async()=>(await loadTops(topsQueryParams(context,++page)))[kind]||[]};"
+        )
+        self.assertPageContains("if(page)params.set('page',String(page));")
+        self.assertCode(
+            "    if(perfRow)wireRowPaging(rows[next++],tops.performers.slice(ROW_FIRST),avHtml,\n"
+            "      wireTierEntities,nextTopsPage('performers'));\n"
+            "    if(studioRow)wireRowPaging(rows[next++],tops.studios.slice(ROW_FIRST),bpHtml,\n"
+            "      wireTierEntities,nextTopsPage('studios'));"
         )
         # 续上来的那几个要跟第一屏一样能点开、一样有图片兜底。
         self.assertPageContains("function wireTierEntities(root){")
@@ -8531,7 +8604,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertTrue(rail and gutter, "读不到 .tiers 的收尾与 main 的上沿")
         gap = int(rail.group(1)) + int(gutter.group(1))
         self.assertIn(f"background:var(--ground);margin:0 0 {gap}px;", board)
-        self.assertIn(".combo:empty{margin-bottom:0}", base)
+        self.assertIn(".combo:empty{height:0;margin-bottom:0}", base)
 
     def test_a_profile_website_link_shows_the_sites_own_mark(self):
         """官网那一格的文字是域名，图标是站点自己的那枚；取不到才露出地球。"""

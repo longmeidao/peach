@@ -54,6 +54,9 @@ wireImageFallbacks(document.body);
    不再落在 TDZ 里。 */
 let state;
 let barsRequestSeq=0,barsDataCache=null,barsDataAt=0,barsDataPromise=null;
+/* 侧栏「更多」摊开时要照最新那份 facets 重画那一列。挂在 buildBars 的闭包上就只能是
+   画那一遍时的那份——中途改过筛选，摊开看到的是一列旧数字。 */
+let barsFacets=null,barsScopedCreators=[];
 let adsBatch=null,loadRequestSeq=0,listLoading=false;
 let followData=null,followRuntime=null,followCredentials=null,followFilter='',followBusy=false,
   followManageSort='checked',followManageDir='desc';
@@ -3041,6 +3044,15 @@ async function loadTops(params){
   const wide=new URLSearchParams(params);wide.delete('state');
   return api('/api/tops?'+wide)
 }
+/* 一排一页六十个，滚到底再要下一页。写成函数是因为续页要跟第一页同一套口径——种子、
+   JAV、状态少一个，续上来的就是另一份名单里的人。 */
+const topsQueryParams=(context,page=0)=>{
+  const params=new URLSearchParams({n:'60',seed:state.seed||''});
+  if(page)params.set('page',String(page));
+  if(javActive())params.set('jav','1');
+  if(context.type==='home'&&state.state)params.set('state',state.state);
+  return params;
+};
 let barsDataScope='';
 async function getBarsData(context=barsContext){
   // JAV 模式的顶部三层与筛选面板要跟着收窄，否则会列出只出现在创作者作品里的
@@ -3062,14 +3074,10 @@ async function getBarsData(context=barsContext){
   const scope=facetParams.toString();
   if(scope!==barsDataScope){barsDataCache=null;barsDataPromise=null;barsDataScope=scope}
   if(barsDataCache&&Date.now()-barsDataAt<30000)return barsDataCache;
-  // 取到端点的上限：那几排先画一屏，剩下的留给横滚续，续的时候不再发请求。
-  const topsParams=new URLSearchParams({n:'60',seed:state.seed||''});
-  if(javActive())topsParams.set('jav','1');
-  if(context.type==='home'&&state.state)topsParams.set('state',state.state);
   // 顶部三层跟着「换一批」的同一个种子走，刷新后才真的换人。
   if(!barsDataPromise)barsDataPromise=Promise.all([
       api('/api/facets'+(scope?'?'+scope:'')),
-      loadTops(topsParams)])
+      loadTops(topsQueryParams(context))])
     .then(data=>{barsDataCache=data;barsDataAt=Date.now();return data})
     .finally(()=>{barsDataPromise=null});
   return barsDataPromise
@@ -3087,14 +3095,57 @@ function scrollFilteredViewToTop(){
   setTimeout(done,1200);
   scrollTo({top:0,behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});
 }
+/* 加一条筛选不重画顶部。整块重画的代价不是耗时，是把人读到一半的东西换掉：那排女优
+   已经横着续到六十枚、停在第 600 像素上，重画一次退回二十四枚、滚回起点；标签条同理。
+   而这一下他要看的是底下那份名单变成什么样，上面那几排跟这件事无关。
+   所以按下态就地改，成员和滚动位置一概不动。选中的标签排到最前是重画时的事——刚点的
+   那枚就在他眼皮底下，这一下把它抽走反倒是替他决定现在该看哪儿。 */
+function applyFilterStateInPlace(filters){
+  const bar=$('#tagScroll');
+  if(bar)bar.querySelectorAll('.pill[data-tag]').forEach(b=>
+    b.setAttribute('aria-pressed',String(tagPressed(filters.tag,b.dataset.tag))));
+  $('#index').querySelectorAll('[data-entity-tag]').forEach(b=>
+    b.setAttribute('aria-pressed',String(tagPressed(filters.tag,b.dataset.entityTag))));
+  $('#drawer').querySelectorAll('.chip[data-key]').forEach(b=>
+    b.setAttribute('aria-pressed',String(String(filters[b.dataset.key]||'')
+      .split(',').filter(Boolean).includes(b.dataset.val))));
+  const durMin=$('#durMin'),durMax=$('#durMax');
+  if(durMin&&durMax){
+    durMin.value=String(filters.dur_min?Math.min(180,+filters.dur_min/60):0);
+    durMax.value=String(filters.dur_max?Math.min(180,+filters.dur_max/60):180);
+    // 轨道上那截填充由 oninput 算，改 value 不会自己触发。
+    durMin.dispatchEvent(new Event('input'));
+  }
+  renderCombo();
+}
+/* 侧栏那些数字是跟着当前筛选走的，不刷新就是一列对不上的数。但刷新只该改数字：整段
+   重画会合上人展开的那几组、把这一列滚回顶上，而那正是「重画一遍」要避免的事。 */
+let facetCountsSeq=0;
+async function refreshFacetCounts(context){
+  const seq=++facetCountsSeq;
+  const [facetData]=await getBarsData(context);
+  if(seq!==facetCountsSeq)return;
+  barsFacets=facetData;
+  if(context.type==='home')facets=facetData;
+  const counts=new Map();
+  [['loc',facetData.locations],['orient',facetData.orientations],['creator',facetData.creators],
+   ['tag',facetData.tags],['tag',facetData.tech]].forEach(([key,rows])=>
+    (rows||[]).forEach(row=>counts.set(key+'\n'+row.k,row.n)));
+  $('#drawer').querySelectorAll('.chip[data-key] .n').forEach(el=>{
+    const chip=el.closest('.chip');
+    el.textContent=(counts.get(chip.dataset.key+'\n'+chip.dataset.val)||0).toLocaleString();
+  });
+}
 function commitContextFilter(mutate){
   scrollFilteredViewToTop();
   if(barsContext.type==='entity'){
     const filters={...barsContext.filters};mutate(filters);
     barsContext={...barsContext,filters};
-    buildBars();updateEntityCollection(barsContext.kind,barsContext.name,filters,true);return
+    applyFilterStateInPlace(filters);refreshFacetCounts(barsContext);
+    updateEntityCollection(barsContext.kind,barsContext.name,filters,true);return
   }
   if(barsContext.type==='item'){
+    // 从详情回到列表是换语境，不是换一条筛选：那几排本来就要照新语境重新画。
     const target=cloneBarsContext(detailReturnBarsContext);
     disposeStage(false);detailReturnBarsContext=null;
     if(target&&target.type==='entity'){
@@ -3104,7 +3155,9 @@ function commitContextFilter(mutate){
     mutate(state);barsContext={type:'home',filters:state};route(homePath());showHomeSurfaces();
     buildBars();load(true);return
   }
-  mutate(state);route(homePath());buildBars();load(true)
+  mutate(state);route(homePath());
+  applyFilterStateInPlace(state);refreshFacetCounts(barsContext);
+  load(true);
 }
 /* 首屏时顶部三层和标签条还是两个空 div，而这一次请求要花约一秒。Geist 的判据是
    骨架宽高必须等于最终内容——「200×20 的块变成 80×16 的字读起来像故障」——所以
@@ -3291,21 +3344,33 @@ function renderBarsLoading(filterState){
    图，把手上这份全画出来等于让首屏替一个多半不会滚到那么远的人买单；而滚到头就没有
    了、还剩大半份在内存里没露面，那一排看起来就是「只有这些」。
    续的门槛留 320px，不是等真的贴到右端：滚到那一刻才开始拼 HTML，手底下已经是一段
-   空白了。数据一次取全，续这一下不再发请求。 */
+   空白了。手上这份用完再去要下一页：库里六百多位女优，一次全取回来是替一个多半滚不到
+   那里的人买单，取一页就停下则是另一种「只有这些」。 */
 const ROW_FIRST=24,TAGS_FIRST=26,ROW_BATCH=12;
-function wireRowPaging(row,rest,itemHtml,wire){
-  if(!row||!rest.length)return;
-  let cursor=0;
+function wireRowPaging(row,rest,itemHtml,wire,nextPage){
+  if(!row||(!rest.length&&!nextPage))return;
+  let cursor=0,fetching=false,drained=!nextPage;
+  const atEnd=()=>row.scrollLeft+row.clientWidth>=row.scrollWidth-320;
   /* 续到这一排真的溢出为止再停：宽屏上一批十二个可能还填不满一行，而没溢出就滚不动，
      滚不动就再没有第二次 `scroll` 来接着续——那一排会停在「还有货但拿不出来」。 */
-  const fill=()=>{
+  const fill=async()=>{
+    if(fetching)return;
     let added=false;
-    while(cursor<rest.length&&row.scrollLeft+row.clientWidth>=row.scrollWidth-320){
+    while(atEnd()){
+      if(cursor>=rest.length){
+        if(drained)break;
+        fetching=true;
+        // 要下一页的这段时间里人还在滚，`fetching` 挡住重入，免得同一页要两遍。
+        const more=await nextPage().catch(()=>[]);
+        fetching=false;
+        if(!more.length){drained=true;break}
+        rest=rest.concat(more);
+      }
       row.insertAdjacentHTML('beforeend',rest.slice(cursor,cursor+ROW_BATCH).map(itemHtml).join(''));
       cursor+=ROW_BATCH;added=true;
     }
     if(added)wire(row);
-    if(cursor>=rest.length)row.removeEventListener('scroll',fill);
+    if(drained&&cursor>=rest.length)row.removeEventListener('scroll',fill);
   };
   row.addEventListener('scroll',fill,{passive:true});
   fill();
@@ -3395,10 +3460,16 @@ async function buildBars(){
   $('#tiers').removeAttribute('aria-busy');
   wireTierEntities($('#tiers'));
   if(!emptyLayout){
+    /* 每排各记各的页号：两排的长度不一样，共用一个计数会让先到头的那排替另一排把页
+       翻过去。同一次重画里建的闭包，重画一次就从头数起。 */
+    const nextTopsPage=kind=>{let page=0;
+      return async()=>(await loadTops(topsQueryParams(context,++page)))[kind]||[]};
     // 空的那一排根本没画出来，`.tier` 的序号跟着往前挪，认死 0 和 1 会把厂牌续到女优那排。
     const rows=$('#tiers').querySelectorAll('.tier');let next=0;
-    if(perfRow)wireRowPaging(rows[next++],tops.performers.slice(ROW_FIRST),avHtml,wireTierEntities);
-    if(studioRow)wireRowPaging(rows[next++],tops.studios.slice(ROW_FIRST),bpHtml,wireTierEntities);
+    if(perfRow)wireRowPaging(rows[next++],tops.performers.slice(ROW_FIRST),avHtml,
+      wireTierEntities,nextTopsPage('performers'));
+    if(studioRow)wireRowPaging(rows[next++],tops.studios.slice(ROW_FIRST),bpHtml,
+      wireTierEntities,nextTopsPage('studios'));
   }
 
   $('#tagbar').removeAttribute('aria-busy');
@@ -3436,6 +3507,7 @@ async function buildBars(){
   const sec=(t,b,x,cat)=>sidebarSectionHtml(t,b,x,cat);
   const scopedCreators=context.type==='entity'&&context.kind==='creator'
     ? facetData.creators.filter(item=>item.k!==context.name):facetData.creators;
+  barsFacets=facetData;barsScopedCreators=scopedCreators;
   // 与窄栏共用 EDGE_ICONS —— 两边条目必须一致，抽屉不另写一份硬编码
   const navBtn=(k,label,ic)=>`<button data-nav="${k}" draggable="true" aria-pressed="${navOn(k)}">
     ${navigationIcon(k,ic)}<span>${label}</span></button>`;
@@ -3497,7 +3569,7 @@ async function buildBars(){
   }
   $('#drawer').querySelectorAll('[data-more]').forEach(b=>b.onclick=()=>{
     const group=b.closest('.sec'), k=b.dataset.more;
-    const src=k==='tag'?facetData.tags:scopedCreators;
+    const src=k==='tag'?barsFacets.tags:barsScopedCreators;
     const lim=k==='tag'?30:26;
     const name=group.dataset.sidebarGroup;
     const expanded=b.getAttribute('aria-expanded')==='true';
