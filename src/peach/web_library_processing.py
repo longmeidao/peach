@@ -11,7 +11,14 @@ def _current(contract):
 
 
 def q_library_processing(contract, _args):
-    return decorate(_current(contract))
+    state = decorate(_current(contract))
+    # 上一趟任务的状态文件里没有这个字段，而它那份完整清单还在磁盘上：按 job_id
+    # 推出地址补回去，界面才有得可给。
+    if state.get('issue_count') and state.get('job_id') and not state.get('issues_log'):
+        path = issues_path(settings_file.active(), str(state['job_id']))
+        if path.is_file():
+            state['issues_log'] = str(path)
+    return state
 
 
 def q_library_processing_issues(contract, args):

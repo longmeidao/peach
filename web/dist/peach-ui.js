@@ -720,7 +720,16 @@ function ht({ data: e, error: t, toast: n, onComplete: r, mode: i, monitor: a, p
 			...s.status === "running" && s.total !== void 0 ? { max: s.total } : {}
 		}) } });
 	}
-	let O = s.issue_preview || [], k = s.status === "failed" && !!s.retryable_asset_ids?.length;
+	let O = s.issue_preview || [], k = s.status === "failed" && !!s.retryable_asset_ids?.length, A = s.status === "failed" && O.length ? {
+		label: s.issues_truncated ? `问题清单：共 ${s.issue_count || 0} 项，展开查看前 ${O.length} 项` : `问题清单：共 ${s.issue_count || 0} 项`,
+		items: O.map((e) => ({
+			label: e.title || (e.asset_id ? `视频 ${e.asset_id}` : "媒体来源"),
+			href: e.asset_id ? `/item/${e.asset_id}` : "",
+			note: e.message,
+			hint: e.path || ""
+		})),
+		footnote: s.issues_log ? `完整记录：${s.issues_log}` : ""
+	} : null;
 	return /* @__PURE__ */ J(L, { children: [/* @__PURE__ */ J("section", {
 		class: "cleanupfieldset",
 		"data-geist-fieldset": !0,
@@ -778,25 +787,9 @@ function ht({ data: e, error: t, toast: n, onComplete: r, mode: i, monitor: a, p
 				dangerouslySetInnerHTML: { __html: p(l || s.error || "处理未完成，请重试", {
 					variant: "error",
 					filled: !0,
-					actionLabel: k ? "重试未完成项" : ""
+					actionLabel: k ? "重试未完成项" : "",
+					details: A
 				}) }
-			}),
-			s.status === "failed" && !!O.length && /* @__PURE__ */ J("div", {
-				class: "library-processing-issues-wrap",
-				children: [/* @__PURE__ */ J("p", {
-					class: "library-processing-issues-summary",
-					children: s.issues_truncated ? `共 ${s.issue_count || 0} 项问题，以下为前 ${O.length} 项` : `共 ${s.issue_count || 0} 项问题`
-				}), /* @__PURE__ */ J("ul", {
-					class: "library-processing-issues",
-					children: O.map((e) => /* @__PURE__ */ J("li", { children: [
-						e.asset_id ? /* @__PURE__ */ J("a", {
-							href: `/item/${e.asset_id}`,
-							children: "查看视频"
-						}) : null,
-						e.asset_id ? "：" : "",
-						e.message
-					] }))
-				})]
 			}),
 			g && /* @__PURE__ */ J("div", {
 				class: "library-processing-result",
@@ -894,8 +887,11 @@ function Ct() {
 		issue_count: +(e === "failed"),
 		issue_preview: e === "failed" ? [{
 			asset_id: null,
+			title: "本地磁盘",
+			path: "R:\\Media",
 			message: "来源连接超时"
 		}] : [],
+		issues_log: e === "failed" ? "peach-data\\state\\library-processing-preview.issues.jsonl" : "",
 		retryable_asset_ids: e === "failed" ? [7] : []
 	}, l = e === "disconnected" ? "连接中断，正在重新读取处理进度" : "";
 	return /* @__PURE__ */ J("main", {

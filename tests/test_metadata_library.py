@@ -276,6 +276,40 @@ class LibraryWatchdogTests(unittest.TestCase):
         logged = [json.loads(line) for line in log.read_text(encoding='utf-8').splitlines() if line]
         self.assertEqual(page['rows'], logged[20:25])
 
+    def test_status_read_recovers_the_log_path_left_by_an_earlier_job(self):
+        """上一趟任务的状态文件里没有这个字段，它那份完整清单却还在磁盘上。"""
+        from peach.web_library_processing import q_library_processing
+        config = self._config(self.root / 'media')
+        log = issues_path(config, 'old')
+        log.parent.mkdir(parents=True, exist_ok=True)
+        log.write_text(json.dumps({'asset_id': 1, 'message': '未识别到番号'}) + '\n', encoding='utf-8')
+        state_path(config).write_text(json.dumps({'status': 'failed', 'job_id': 'old', 'issue_count': 1}),
+                                      encoding='utf-8')
+        contract = Mock()
+        contract.library_processing_job.snapshot.return_value = None
+        with patch('peach.web_library_processing.settings_file.active', return_value=config):
+            self.assertEqual(q_library_processing(contract, {})['issues_log'], str(log))
+
+    @unittest.skipUnless(os.name == 'nt', '真实声明根使用 Windows 盘符')
+    def test_each_issue_names_the_item_its_path_and_where_the_full_log_is(self):
+        """一句「未识别到番号」加一个链接，是哪个文件得逐个点开才知道；改名或去磁盘上
+        确认时要用的是路径。完整清单的地址跟着状态一起给出，不让人按 job_id 自己去拼。
+        """
+        media = self.root / 'media'
+        media.mkdir()
+        (media / '样品.mp4').write_bytes(b'video')
+        db = fresh_ledger(self.root)
+        config = self._config(media)
+        result = process_library(config, db, self.root / 'generated', self.root / 'covers')
+        preview = result['issue_preview'][0]
+        self.assertEqual(preview['title'], '样品.mp4')
+        self.assertTrue(preview['path'].endswith('样品.mp4'), preview['path'])
+        self.assertEqual(result['issues_log'], str(issues_path(config, result['job_id'])))
+        log = issues_path(config, result['job_id'])
+        logged = json.loads(log.read_text(encoding='utf-8').splitlines()[0])
+        self.assertEqual(logged['title'], '样品.mp4')
+        self.assertEqual(logged['path'], preview['path'])
+
     def test_stalled_warning_never_flips_a_live_task_to_failed(self):
         config = self._config(self.root / 'media')
         path = state_path(config)
@@ -313,7 +347,8 @@ class LibraryWatchdogTests(unittest.TestCase):
         self.assertNotIn('issues', state)
         self.assertEqual(state['issue_count'], 25)
         self.assertEqual(len(state['issue_preview']), 20)
-        self.assertEqual(state['issue_preview'][0], {'asset_id': 1, 'message': '未识别到番号'})
+        self.assertEqual(state['issue_preview'][0],
+                         {'asset_id': 1, 'title': '', 'path': '', 'message': '未识别到番号'})
         self.assertTrue(state['issues_truncated'])
 
     @unittest.skipUnless(os.name == 'nt', '真实声明根使用 Windows 盘符')

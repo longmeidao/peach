@@ -5,10 +5,10 @@ import { jobActivityHtml, watchJob } from '../jobs';
 import type { JobState } from '../jobs';
 import type { IslandState } from '../islands';
 
-export interface LibraryProcessingIssue { asset_id: number | null; message: string }
+export interface LibraryProcessingIssue { asset_id: number | null; title?: string; path?: string; message: string }
 export interface LibraryProcessingData extends JobState {
   stage?: string; scanned?: number; identified?: number; candidates?: number; covers?: number;
-  issue_count?: number; issue_preview?: LibraryProcessingIssue[];
+  issue_count?: number; issue_preview?: LibraryProcessingIssue[]; issues_log?: string;
   issues_truncated?: boolean; retryable_asset_ids?: number[];
   current_asset_id?: number | null; current_asset_name?: string; current_action?: string;
   current_started_at?: number; last_progress_at?: number; stalled?: boolean; waited_seconds?: number;
@@ -88,6 +88,19 @@ export function LibraryProcessing({ data, error, toast, onComplete, mode, monito
      的下场，挂在卡片外面，和链接管理、资源同步那两块同一个写法。 */
   const issues = state.issue_preview || [];
   const retryable = state.status === 'failed' && !!state.retryable_asset_ids?.length;
+  /* 问题清单收进那条错误 Note 的折叠里：卡片下面先看到的应该是「这一趟怎么了」，
+     逐条明细是要展开才读的东西。完整清单在状态给出的日志文件里，界面只留前 20 条。 */
+  const issueDetails = state.status === 'failed' && issues.length ? {
+    label: state.issues_truncated
+      ? `问题清单：共 ${state.issue_count || 0} 项，展开查看前 ${issues.length} 项`
+      : `问题清单：共 ${state.issue_count || 0} 项`,
+    items: issues.map(issue => ({
+      label: issue.title || (issue.asset_id ? `视频 ${issue.asset_id}` : '媒体来源'),
+      href: issue.asset_id ? `/item/${issue.asset_id}` : '',
+      note: issue.message, hint: issue.path || '',
+    })),
+    footnote: state.issues_log ? `完整记录：${state.issues_log}` : '',
+  } : null;
   return <>
     <section class="cleanupfieldset" data-geist-fieldset aria-labelledby="cleanupScrapingTitle">
       <div class="geist-fieldset-content library-processing">
@@ -106,14 +119,7 @@ export function LibraryProcessing({ data, error, toast, onComplete, mode, monito
       {state.status === 'running' && state.stalled && <div class="library-processing-stalled" dangerouslySetInnerHTML={{ __html: noteHtml(
         '这个项目处理时间较长，暂时没有新进展。可以继续等待，或在任务结束后重试未完成项。',
         { variant: 'warning', label: '处理较慢', filled: true }) }} />}
-      {(problem || state.status === 'failed') && <div role="alert" onClick={event=>{if((event.target as HTMLElement).closest('[data-note-action]'))retry();}} dangerouslySetInnerHTML={{ __html: noteHtml(problem || state.error || '处理未完成，请重试', { variant: 'error',filled:true,actionLabel:retryable?'重试未完成项':'' }) }} />}
-      {state.status === 'failed' && !!issues.length && <div class="library-processing-issues-wrap">
-        <p class="library-processing-issues-summary">{state.issues_truncated
-          ? `共 ${state.issue_count || 0} 项问题，以下为前 ${issues.length} 项`
-          : `共 ${state.issue_count || 0} 项问题`}</p>
-        <ul class="library-processing-issues">{issues.map(issue =>
-          <li>{issue.asset_id ? <a href={`/item/${issue.asset_id}`}>查看视频</a> : null}{issue.asset_id ? '：' : ''}{issue.message}</li>)}</ul>
-      </div>}
+      {(problem || state.status === 'failed') && <div role="alert" onClick={event=>{if((event.target as HTMLElement).closest('[data-note-action]'))retry();}} dangerouslySetInnerHTML={{ __html: noteHtml(problem || state.error || '处理未完成，请重试', { variant: 'error',filled:true,actionLabel:retryable?'重试未完成项':'',details:issueDetails }) }} />}
       {receipt && <div class="library-processing-result" dangerouslySetInnerHTML={{ __html: noteHtml(`已扫描 ${state.scanned || 0} 个文件，识别 ${state.identified || 0} 个番号，整理 ${state.candidates || 0} 组资料候选。`, { variant: 'success', label: '处理完成' }) }} />}
     </div>
   </>;

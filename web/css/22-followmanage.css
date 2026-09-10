@@ -92,6 +92,17 @@
 .geist-note-filled{background:color-mix(in srgb,var(--feedback-color) 8%,var(--ground))}
 .geist-note-small{min-height:32px;padding:4px 8px;font-size:var(--fs-xs);line-height:22px}
 .geist-note-small>svg{height:22px}
+/* 折叠明细跟结论同一列，带操作按钮时那一列到行尾为止。 */
+.geist-note-details{grid-column:2/-1;min-width:0;margin-bottom:6px;font-size:var(--fs-sm);line-height:22px}
+.geist-note-details>summary{cursor:pointer;color:inherit}
+/* 明细可能有上千条：只在这块里滚，长路径就地换行，不让页面被撑破。 */
+.geist-note-details>ul{box-sizing:border-box;display:grid;gap:8px;max-height:min(40vh,520px);margin:8px 0 0;padding-inline-start:0;list-style:none;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain}
+.geist-note-details li{display:grid;gap:2px;min-width:0;overflow-wrap:anywhere}
+.geist-note-details li>a{justify-self:start;color:inherit;font-weight:500}
+.geist-note-details li>b{font-weight:500}
+.geist-note-details li>span,.geist-note-details li>code,.geist-note-details>p{color:var(--muted)}
+.geist-note-details li>code{font-size:var(--fs-xs)}
+.geist-note-details>p{margin:8px 0 0;overflow-wrap:anywhere}
 .project-banner{--feedback-color:var(--muted);display:flex;align-items:center;justify-content:center;gap:8px 16px;flex-wrap:wrap;padding:8px 24px;min-height:40px;border-block:1px solid color-mix(in srgb,var(--feedback-color) 30%,var(--ground));background:color-mix(in srgb,var(--feedback-color) 5%,var(--ground));color:var(--feedback-color);font-size:var(--fs-md);line-height:20px}
 .project-banner>div{display:flex;align-items:center;gap:8px;min-width:0}.project-banner p{margin:0;overflow-wrap:anywhere}
 /* 圆头端点是这枚字形的一部分：alert 与 info 圆圈里那个点是长度 .01 的路径，
