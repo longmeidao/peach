@@ -40,8 +40,31 @@ it('刷新接续已有任务时只查询，旧完成结果不冒充当前回执'
   await act(async()=>{await new Promise(resolve=>setTimeout(resolve,0));});
   expect(fetch).toHaveBeenCalledTimes(1);
   expect(host.textContent).toContain('来源离线');
-  expect(host.textContent).toContain('重试未完成项');
   expect(toast).not.toHaveBeenCalled();
+});
+it('运行态显示当前项目、动作与等待时长，stalled 只提示不另起任务', async () => {
+  host=document.createElement('div');document.body.append(host);
+  await act(async()=>render(h(LibraryProcessing,{data:{status:'running',job_id:'one',checked:2,total:10,stalled:true,current_asset_name:'ABW-001.mp4',current_action:'querying_metadata',waited_seconds:300},error:'',toast:vi.fn(),preview:true}),host));
+  expect(host.textContent).toContain('当前：ABW-001.mp4 · 查询外部资料 · 已等待 300 秒');
+  expect(host.textContent).toContain('处理时间较长');
+  expect(host.querySelector('[data-note-action]')).toBeNull();
+});
+it('失败时列出问题总数并只提交失败项重试', async () => {
+  const calls:{url:string,init:RequestInit|undefined}[]=[];
+  vi.stubGlobal('fetch',vi.fn(async (url:string, init?:RequestInit)=>{
+    calls.push({url,init});
+    return {ok:true,json:async()=>init?.method==='POST'?{status:'running',job_id:'two'}:{status:'running',job_id:'two'}};
+  }));
+  host=document.createElement('div');document.body.append(host);
+  const data={status:'failed',job_id:'one',error:'2 项需要处理',issue_count:23,
+    issue_preview:[{asset_id:7,message:'未识别到番号'}],issues_truncated:true,retryable_asset_ids:[7,8]};
+  await act(async()=>{render(h(LibraryProcessing,{data,error:'',toast:vi.fn()}),host)});
+  expect(host.textContent).toContain('共 23 项问题，以下为前 1 项');
+  expect(host.textContent).toContain('重试未完成项');
+  await act(async()=>{host.querySelector<HTMLButtonElement>('[data-note-action]')!.click();await new Promise(resolve=>setTimeout(resolve,0));});
+  const post=calls.find(call=>call.init?.method==='POST');
+  expect(post).toBeTruthy();
+  expect(JSON.parse(String(post!.init!.body))).toEqual({job_id:'one',retry:[7,8]});
 });
 it('首页从空闲发现后台任务，完成后收起并在卸载后停止查询', async () => {
   vi.useFakeTimers();

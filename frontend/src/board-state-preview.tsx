@@ -22,7 +22,9 @@ function StatePreview() {
   const data:LibraryProcessingData={status:state==='failed'?'failed':['running','preparing','disconnected','retrying','reconnected'].includes(state)?'running':'idle',
     stage:state==='preparing'?'正在准备扫描':state==='retrying'?'等待来源响应 · 8 秒后重试':'正在整理资料',
     checked:value,...(state==='preparing'?{}:{total:100}),error:state==='failed'?'来源暂时不可用，请重试未完成项':'',
-    issues:state==='failed'?[{asset_id:null,message:'来源连接超时'}]:[]};
+    issue_count:state==='failed'?1:0,
+    issue_preview:state==='failed'?[{asset_id:null,message:'来源连接超时'}]:[],
+    retryable_asset_ids:state==='failed'?[7]:[]};
   const problem=state==='disconnected'?'连接中断，正在重新读取处理进度':'';
   return <main class="board-state-preview">
     <header><div><h1>运行状态预览</h1><p>演示数据 · 不连接任务接口，不执行扫描或写入。</p></div>
