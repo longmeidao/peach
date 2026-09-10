@@ -115,6 +115,26 @@ class LibraryNfoTests(unittest.TestCase):
             self.assertEqual(q_library_processing(contract, {})['job_id'], 'one')
             worker.assert_not_called()
 
+    @unittest.skipUnless(os.name == 'nt', '真实声明根使用 Windows 盘符')
+    def test_no_code_video_pairs_with_its_sibling_image_without_nfo(self):
+        """无番号、无 NFO 的视频也拿同目录图片当海报，落在 `{id}_4.jpg`。"""
+        from PIL import Image
+        media = self.root / 'media'
+        media.mkdir()
+        (media / '梓怡-背著老公.mp4').write_bytes(b'video')
+        Image.new('RGB', (24, 36), (180, 120, 90)).save(media / '梓怡-背著老公.png')
+        db = fresh_ledger(self.root)
+        config = PeachConfig(self.root, self.root / 'config.toml', present=True,
+                             locations={'local': (str(media),)})
+        result = process_library(config, db, self.root / 'generated',
+                                 self.root / 'covers', provider_factory=Mock())
+        with closing(sqlite3.connect(db)) as connection:
+            asset_id = connection.execute(
+                "SELECT id FROM asset WHERE name='梓怡-背著老公.mp4'").fetchone()[0]
+        self.assertEqual(result['covers'], 1)
+        self.assertTrue(
+            (self.root / 'generated' / 'posters' / f'{asset_id}_4.jpg').is_file())
+
     def test_reader_cannot_scan_or_create_candidates(self):
         from peach.settings_file import ReplicationSettings
         config = PeachConfig(self.root, self.root / 'config.toml', replication=ReplicationSettings(enabled=True))
