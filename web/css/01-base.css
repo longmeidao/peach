@@ -42,6 +42,11 @@
      字重同理只有 400／500／600 三档：vercel.com/design.md 明说不要自造数字字重，650、700 全部收到 600。 */
   --pill-radius:999px; --tag-radius:var(--pill-radius);
   --control-radius:6px; --badge-radius:4px; --floating-radius:12px; --surface-radius:8px; --tag-pad-y:4px; --tag-pad-x:10px; --ambient-opacity:0; --hover-delay:5s;
+  /* 一颗标签的脸只有这一张：--tag-radius 的圆角、一圈 --line、这块比面再沉一档的填充、
+     --ink-2 的字。同一个词出现在卡片上、详情面板里、筛选条上和交集条里，读的人认的是
+     同一样东西；四处各画各的，同一个词就成了四种控件。写成 token 是因为这块填充是一句
+     算式，抄第三遍时总有一处的比例会错开一两个百分点，而差一档正好是「另一种东西」。 */
+  --tag-fill:color-mix(in srgb,var(--surface) 82%,var(--ground));
   /* 一行里的输入框、下拉触发器和按钮共用这一个高度。写成变量是因为差 3px 就不是一行了，
      而窄屏那条把输入框字号顶到 16 像素的防放大规则只抬没写死高度的那几个，同排的按钮不动。
      Geist 自己的实测值是 32px，见 docs/reference-snapshots/vercel-geist-controls-measured.md。 */

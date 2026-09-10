@@ -702,31 +702,50 @@ class WebUiSourceTests(unittest.TestCase):
         # 没有 JS 会挂 .act，留着只会让人以为选中态有两套写法。
         self.assertPageLacks(".pill.act{")
 
-    def test_an_applied_filter_reads_as_a_chip_and_not_as_another_pill(self):
-        """交集条上那颗按 Chip 画：不描边，上下 4 左右 6，Body 1 Medium，标记那一档圆角。
+    def test_one_tag_wears_one_face_everywhere_it_shows_up(self):
+        """标签只有一张脸：同一档圆角、一圈线、同一块填充、同一档字色。
 
-        取证：BoardUI 公开注册表 `r/chip.json`（SHA-256
-        d2b0dd38146325acada58fbc241d13fcd633bb5407ce1ef457e752023fe282de，与
-        `docs/BOARD_UI.md` 登记的一致），`components/base/badges/chip.tsx` 的 subtle
-        档是 `px-1.5 py-1 text-body-medium`，neutral 色为 `bg-background-tertiary-default`
-        配 `text-text-secondary`——Peach 的 `--picked` 与 `--muted` 正映射这两个。
+        同一个词出现在卡片上、详情面板里、首页筛选条上和交集条里。四处各画各的时——
+        交集条 4px 方角实心、筛选条 8px 描边、卡片整圆、详情面板 8px 加一层自己的
+        面——读的人得先认出这是四种控件，再想明白它们说的是同一件事。用户点名以详情
+        面板那一颗作基底，Board 主题下就是 8px 那一档，所以 `--tag-radius` 在这套里是
+        8px，五处（连标签骨架）跟着一个 token 走。
 
-        药丸那一圈线是可点控件的样子，而它报的是一条已经成立的筛选，读完就过；真正可点
-        的只有那颗 ✕。移除键是 Peach 的主动差异，上游那颗只标状态，所以它贴着标签名放，
-        不另撑出一个按钮的身量。
+        填充是唯一允许分叉的一处，因为它承担状态：陈述事实的那两处（卡片、详情面板）
+        用 `--tag-fill`，已经加上去的筛选用 `--picked`，玻璃条上还没加的那些留透明，
+        底下那块玻璃就是它的面。形状、边和字色不参与表意。
         """
         css = stylesheet_source()
+        self.assertIn("--tag-fill:color-mix(in srgb,var(--surface) 82%,var(--ground));", css)
+        for base in (".detailtag", ".tg"):
+            start = css.index(chr(10) + base + "{")
+            rule = css[start:css.index("}", start)]
+            self.assertIn("border-radius:var(--tag-radius)", rule, f"{base} 取同一档圆角")
+            self.assertIn("1px solid var(--line)", rule, f"{base} 画一圈线")
+            self.assertIn("background:var(--tag-fill)", rule, f"{base} 共用同一块填充")
+        # 字色：卡片那颗自己带，详情面板那颗落在里面那两枚按钮上。
+        self.assertIn("color:var(--ink-2)", css[css.index("\n.tg{"):css.index("}", css.index("\n.tg{"))])
+        self.assertPageContains(".detailtag button{border:0;background:transparent;color:var(--ink-2);")
         start = css.index(".combo .cb{")
         applied = css[start:css.index("}", start)]
-        self.assertIn("padding:4px 6px", applied)
-        self.assertIn("border-radius:var(--badge-radius)", applied)
-        self.assertIn("border:0", applied)
-        self.assertIn("color:var(--muted)", applied)
-        self.assertIn("font-size:var(--fs-md);line-height:20px;font-weight:500", applied)
-        self.assertNotIn("var(--tag-radius)", applied, "它不是药丸，不取胶囊那一档圆角")
-        # 移除键自己占一个 16px 的方格：它是这颗芯片里唯一可点的东西。
-        self.assertPageContains(".combo .cb b{display:grid;place-items:center;width:16px;height:16px;")
-        self.assertPageContains(".combo .cb b:hover{opacity:1;background:var(--hover)}")
+        self.assertIn("border:1px solid var(--line)", applied)
+        self.assertIn("border-radius:var(--tag-radius)", applied)
+        self.assertIn("color:var(--ink-2)", applied)
+        self.assertIn("min-height:30px", applied, "跟详情面板那一颗同样高")
+        self.assertIn("background:var(--picked)", applied, "填充说的是这条已经加上去了")
+        self.assertNotIn("var(--badge-radius)", applied, "它是标签不是元信息标记")
+        # 移除键跟详情面板那颗同一副身量与同一种反馈：28px 方格，悬停转成撤销的红。
+        self.assertPageContains(".combo .cb b{display:grid;place-items:center;width:28px;height:28px;")
+        self.assertPageContains(
+            ".combo .cb b:hover{color:var(--drop);background:color-mix(in srgb,var(--drop) 12%,transparent)}")
+        # Board 这套的标签是圆角方片，一个 token 定死；详情面板那颗不再自带一份圆角和面。
+        board = (Path(__file__).resolve().parents[1] / "web" / "board.css").read_text(encoding="utf-8")
+        self.assertIn(":root{--tag-radius:8px}", board)
+        self.assertNotIn(".detailtag{", board, "基底那颗的脸归 --tag-fill 与 --tag-radius 管")
+        # 筛选条与资料页那两排也从同一个 token 取形状，只有描边换成玻璃上的那一档。
+        self.assertIn(".board-filter-frame.board-filter-frame #tagbar .pill[data-tag]"
+                      "{border-radius:var(--tag-radius);border-color:var(--glass-low)}", board)
+        self.assertIn("border-radius:var(--tag-radius);border:1px solid var(--glass-low)", board)
 
     def test_the_video_area_has_no_frame_and_the_portrait_strip_shares_the_card_face(self):
         """视频网格不画框：卡片直接摆在页面上，竖屏带和卡片同一张面。
@@ -5920,7 +5939,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("if(context.type==='item'&&!topTags.length)")
         self.assertPageContains("const recommendationFacets=await api('/api/facets'")
         self.assertCode("if(requestSeq!==barsRequestSeq)return;\n    topTags=recommendationFacets.tags||[]")
-        self.assertPageContains("const pickedTags=seededSample(topTags,TAGS_FIRST,`tags:${state.seed||''}`);")
+        self.assertPageContains("const pickedTags=seededSample(tagPool,TAGS_FIRST,`tags:${state.seed||''}`);")
         self.assertPageContains("+sec('内容标签',chips(facetData.tags,'tag',false,30)")
 
     def test_a_truncated_sidebar_list_says_so_at_its_own_end(self):
@@ -5966,14 +5985,14 @@ class WebUiSourceTests(unittest.TestCase):
         等于「换一批」只换了半个顶部。抽样不动顺序——条上照旧按数量从多到少读下来，
         换的是成员，不是位置。
         """
-        self.assertPageContains("const pickedTags=seededSample(topTags,TAGS_FIRST,`tags:${state.seed||''}`);")
-        self.assertPageContains("$('#tagScroll').innerHTML=(emptyLayout?.tags||'')+pickedTags.map(tagPillHtml).join('');")
+        self.assertPageContains("const pickedTags=seededSample(tagPool,TAGS_FIRST,`tags:${state.seed||''}`);")
+        self.assertPageContains("+appliedTags.concat(pickedTags).map(tagPillHtml).join('');")
         self.assertPageLacks("topTags.slice(0,26)",
                              "取前 26 会把这一批的成员钉死在数量榜的头部")
         # 续在后面的是这一批之外的那些，抽样只决定开头露谁，不重排后面的数量序。
         self.assertPageContains("const pickedKeys=new Set(pickedTags.map(row=>row.k));")
         self.assertPageContains(
-            "wireRowPaging($('#tagScroll'),topTags.filter(row=>!pickedKeys.has(row.k)),tagPillHtml,wireTagPills);")
+            "wireRowPaging($('#tagScroll'),tagPool.filter(row=>!pickedKeys.has(row.k)),tagPillHtml,wireTagPills);")
         # 同一个种子给同一套成员，所以这一批内翻页和刷新都不会让标签跳动。
         self.assertPageContains("const seededSample=(rows,count,seed,key=row=>row.k)=>{")
         self.assertPageContains("  if(rows.length<=count)return rows;")
@@ -5981,6 +6000,22 @@ class WebUiSourceTests(unittest.TestCase):
         # 种子随机只有一份算法，关注页的随机发现共用它。
         self.assertPageContains("const seededRank=(seed,value)=>{")
         self.assertPageContains("const followDiscoveryRank=value=>seededRank(followDiscoverySeed,value);")
+
+    def test_the_applied_tags_sit_at_the_head_of_the_filter_row(self):
+        """加上去的标签排在标签条最前面，按加的先后。
+
+        这一排横着滚，一枚生效的标签落在第三十位跟没画出来是一回事：要撤掉刚加的那
+        一条，人得先把整排推过去把它找回来。抽样也不该再抽它——它已经在屏幕上了，
+        再抽一次就是同一个词出现两遍。
+
+        名单里还可能有榜上没有的：标签是从卡片或详情页点进来的，`/api/facets` 的前
+        几十名里不一定有它。缺的那几枚只有 key，标签条上照样要画出来。
+        """
+        self.assertPageContains("const appliedKeys=tagList(filterState.tag);")
+        self.assertPageContains("const byTagKey=new Map(topTags.map(row=>[row.k,row]));")
+        self.assertPageContains("const appliedTags=appliedKeys.map(k=>byTagKey.get(k)||{k});")
+        self.assertPageContains("const tagPool=topTags.filter(row=>!appliedKeys.includes(row.k));")
+        self.assertPageContains("+appliedTags.concat(pickedTags).map(tagPillHtml).join('');")
 
     def test_the_refresh_key_keeps_redrawing_until_the_bars_land_too(self):
         """忙态动效归「换一批」这一层，不挂在计数行上。
@@ -8356,7 +8391,8 @@ class WebUiSourceTests(unittest.TestCase):
         """
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
         self.assertIn(".entitytags .pill{height:30px;padding:0 10px;font-size:13px;line-height:20px;"
-                      "border-radius:8px;border:1px solid var(--glass-low);color:var(--glass-text)}", board)
+                      "border-radius:var(--tag-radius);border:1px solid var(--glass-low);"
+                      "color:var(--glass-text)}", board)
         self.assertIn(".board-filter-frame #tagbar .pill{height:30px;padding:0 10px;font-size:13px;", board)
 
     def test_the_profile_floating_panel_is_one_pane_measured_off_the_home_one(self):

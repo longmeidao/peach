@@ -455,10 +455,15 @@ body::before{display:none}
 .board-filter-frame #tagbar .pill[data-state]:hover,
 .board-filter-frame #tagbar .pill[data-state][aria-pressed="true"]{background:none;color:var(--glass-text)}
 .board-filter-frame #tagbar .pill[data-tag]:not([aria-pressed="true"]){border:1px solid var(--line);background:transparent}
-/* 资料页的标签跟首页筛选条上的标签是同一个控件，只是换了个位置：那边 30px 高、8px
-   圆角、13px 字，这边还留着 40px 高的大药丸，同一个人的标签在两页上大一圈小一圈。
+/* 右半截这些是标签，圆角从标签那个 token 取，跟卡片、详情面板、交集条一起走；左边四枚
+   是分段器，形状归它自己那一排。线画满两态：填充说的是这条加没加上去，那一圈线说的是
+   「这是一颗标签」，两句话不能合成一句讲。玻璃上取 --glass-low、flat 面上取 --line，
+   同一个角色各按自己的底选值。 */
+.board-filter-frame.board-filter-frame #tagbar .pill[data-tag]{border-radius:var(--tag-radius);border-color:var(--glass-low)}
+/* 资料页的标签跟首页筛选条上的标签是同一个控件，只是换了个位置：那边 30px 高、13px
+   字，这边还留着 40px 高的大药丸，同一个人的标签在两页上大一圈小一圈。
    计数跟着缩到 Caption。 */
-.entitytags .pill{height:30px;padding:0 10px;font-size:13px;line-height:20px;border-radius:8px;border:1px solid var(--glass-low);color:var(--glass-text)}
+.entitytags .pill{height:30px;padding:0 10px;font-size:13px;line-height:20px;border-radius:var(--tag-radius);border:1px solid var(--glass-low);color:var(--glass-text)}
 .entitytags .pill small{margin-left:5px;font:var(--board-caption)}
 .board-filter-frame .count{padding:8px 12px;min-height:46px;gap:12px}
 .board-filter-frame .sorts{gap:4px}.board-filter-frame .sorts button{height:30px;min-height:30px;font-size:12px;padding:0 8px;border:0;border-radius:7px;background:transparent}
@@ -524,7 +529,6 @@ body::before{display:none}
 .stage .side{background:var(--ground);backdrop-filter:none;border-color:var(--line-soft)}
 .sidecontent{padding:20px;gap:4px}
 .stitle{font-weight:500;line-height:1.5}
-.detailtag{border-radius:8px;background:var(--surface);border-color:var(--line-soft)}
 .detailtag .tagfilter{padding-inline:8px}
 .srctools button,.detailtitletools button{border-radius:8px;background:var(--surface)}
 .geist-fieldset,.configfieldset,.cleanupfieldset,.resourcepanel,.resourcesyncbox{border-color:var(--line);border-radius:var(--surface-radius);background:var(--ground);overflow:clip}
@@ -764,6 +768,12 @@ button,input,select,textarea{font-family:inherit}
 @media(prefers-color-scheme:dark){:root:not([data-theme]){--color-text-primary:#fafafa;--color-text-secondary:#a3a3a3;--color-text-tertiary:#737373;--color-background-full:#121212;--color-background-primary-default:#262626;--color-background-primary-hover:#40404099;--color-background-secondary-default:#171717;--color-background-tertiary-default:#262626;--color-border-button-default:#404040;--color-border-button-hover:#737373;--color-border-button-active:#525252;--color-separator-border:#262626;--color-text-disabled:#525252}}
 :root{--page:var(--color-background-full);--ground:var(--color-background-secondary-default);--surface:var(--color-background-primary-default);--sunk:var(--color-background-secondary-default);--ink:var(--color-text-primary);--ink-2:var(--color-text-secondary);--muted:var(--color-text-secondary);--line:var(--color-border-button-default);--line-soft:var(--color-separator-border);--picked:var(--color-background-tertiary-default);--inset:var(--color-background-tertiary-default);--hover:var(--color-background-primary-hover);--tungsten:var(--color-border-focus-ring);--chart-0:#2dd4bf;--chart-1:#a3e635;--chart-2:#f472b6;--chart-3:#38bdf8;--board-font:'Inter Variable','Inter','Segoe UI','Microsoft YaHei UI','PingFang SC',sans-serif;--board-body:400 14px/20px var(--board-font);--board-body-medium:500 14px/20px var(--board-font);--board-compact:400 13px/18px var(--board-font);--board-caption:400 12px/16px var(--board-font);--board-heading:500 20px/26px var(--board-font);--board-title:500 32px/44px var(--board-font);--board-figure:500 24px/34px var(--board-font)}
 :root[data-theme]{--page:var(--color-background-full);--ground:var(--color-background-secondary-default);--surface:var(--color-background-primary-default);--sunk:var(--color-background-secondary-default);--ink:var(--color-text-primary);--ink-2:var(--color-text-secondary);--muted:var(--color-text-secondary);--line:var(--color-border-button-default);--line-soft:var(--color-separator-border);--picked:var(--color-background-tertiary-default);--inset:var(--color-background-tertiary-default);--hover:var(--color-background-primary-hover);--tungsten:var(--color-border-focus-ring)}
+/* 这套里的标签不是胶囊，是一枚 8px 的圆角方片——详情面板那颗一直这么画，筛选条和资料
+   页的那两排也是。基线主题给 --tag-radius 的是整圆，那是 Peach 自己那套的写法。
+   8px 比 --surface-radius 的 14px 小一档：那一档是给卡片、面板这些成块的表面的，
+   套到一枚三十像素高的标签上，圆角会吃掉两端的字。改这一个 token 就够了——卡片、详情
+   面板、筛选条、交集条和标签骨架都从它取值，一处改完五处一起走。 */
+:root{--tag-radius:8px}
 body,.disp{font-family:var(--board-font);letter-spacing:0}body{font:var(--board-body)}button,input,textarea,select{font-family:var(--board-font)}
 .pagetitle,.listtitle,body #manageTitle,.index .ihead h2,.indexheading,.playlistpage h2{font:var(--board-title);letter-spacing:0}.settingscard .settingshead h2,.configfieldset h2,.configfieldset h3,.cleanupfieldset h3,.followmanage .fsechead h3,.resourcesync>h2{font:var(--board-heading);letter-spacing:0}.metricstrip>button .board-stat-value,.tastesummary>.board-stat-value{font:var(--board-figure);letter-spacing:0}.drawer .dnav button,.board-library-rows button,.settingrow b,.fsource.frow>b{font:var(--board-body)}.fmeta,.confighelp,.settingrow small{font:var(--board-compact)}.board-stat-footer,.board-watch-measures small,.tasterank small,.insighttoolbar p{font:var(--board-caption);letter-spacing:.15px}
 .geist-button,.fbtn,.resourceaction{background-color:var(--color-background-primary-default);border-color:var(--color-border-button-default);color:var(--color-text-primary);transition:background-color .15s ease,border-color .15s ease,color .15s ease}

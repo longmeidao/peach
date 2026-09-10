@@ -3403,16 +3403,24 @@ async function buildBars(){
 
   $('#tagbar').removeAttribute('aria-busy');
   $('#viewPills').innerHTML=viewPillsHtml(filterState);
-  /* 第一屏是那一批抽出来的——「换一批」换的就是这批成员。续上去的是这一批之外剩下的，
-     照数量从多到少读下来：抽样只管开头露谁，后面的顺序不归它管。 */
-  const pickedTags=seededSample(topTags,TAGS_FIRST,`tags:${state.seed||''}`);
+  /* 加上去的那几枚排在最前面，按加的先后。它们不一定在抽出来的这一批里，也可能压根不
+     在榜上——人是从卡片或详情页点进来的。这一排横着滚，一枚生效的标签落在第三十位跟没
+     画出来是一回事：要撤掉刚加的那一条，得先把整排推过去把它找回来。
+     第一屏其余的位置由那一批抽样填——「换一批」换的就是这批成员。续上去的是这一批之外
+     剩下的，照数量从多到少读下来：抽样只管开头露谁，后面的顺序不归它管。 */
+  const appliedKeys=tagList(filterState.tag);
+  const byTagKey=new Map(topTags.map(row=>[row.k,row]));
+  const appliedTags=appliedKeys.map(k=>byTagKey.get(k)||{k});
+  const tagPool=topTags.filter(row=>!appliedKeys.includes(row.k));
+  const pickedTags=seededSample(tagPool,TAGS_FIRST,`tags:${state.seed||''}`);
   const pickedKeys=new Set(pickedTags.map(row=>row.k));
   const tagPillHtml=t=>`<button class="pill" data-tag="${esc(t.k)}" aria-pressed="${
     tagPressed(filterState.tag,t.k)}">${esc(tagLabel(t.k))}</button>`;
-  $('#tagScroll').innerHTML=(emptyLayout?.tags||'')+pickedTags.map(tagPillHtml).join('');
+  $('#tagScroll').innerHTML=(emptyLayout?.tags||'')
+    +appliedTags.concat(pickedTags).map(tagPillHtml).join('');
   wireViewPills();
   wireTagPills($('#tagScroll'));
-  wireRowPaging($('#tagScroll'),topTags.filter(row=>!pickedKeys.has(row.k)),tagPillHtml,wireTagPills);
+  wireRowPaging($('#tagScroll'),tagPool.filter(row=>!pickedKeys.has(row.k)),tagPillHtml,wireTagPills);
   renderCombo(); wireAllDrag();
 
   const chips=(items,key,multi,limit)=>items.length?`<div class="chips">`+items.slice(0,limit||999).map(it=>{

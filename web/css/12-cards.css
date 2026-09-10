@@ -349,7 +349,7 @@ body[data-density="dense"] .junkcard .junkactions button span{display:none}
   height:calc(var(--fs-xs)*1.45 + var(--tag-pad-y)*2 + 2px)}
 .tg{padding:var(--tag-pad-y) var(--tag-pad-x);border-radius:var(--tag-radius);font-size:var(--fs-xs);border:1px solid var(--line);
   line-height:1.45;white-space:nowrap;cursor:pointer;color:var(--ink-2);overflow:hidden;text-overflow:ellipsis;max-width:100%;
-  background:color-mix(in srgb,var(--surface) 82%,var(--ground))}
+  background:var(--tag-fill)}
 .tg.general,.tg.artist,.tg.meta,.tg.relationship,.tg.role,.tg.appearance,.tg.scene,.tg.story,.tg.position{color:var(--ink-2);border-color:var(--line)}
 .tg.artist{font-weight:600}
 .tg:hover{color:var(--ink);background:var(--hover)}
