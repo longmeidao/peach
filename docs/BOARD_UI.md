@@ -165,6 +165,8 @@ Radial Chart Card、Bar List Card、Heatmap 与 Sankey 的 Pro 源码**未取得
 | 排名行悬停与展开键 | PillTab 悬停 `background-primary-hover` 200ms | 悬停改为主文字色 6% 薄底 + 200ms：暗色 primary-hover 太跳、亮色看不见；展开键同一层 |
 | 三个面板标题（口味总结、浏览器画像、数据源） | Heading 20/26 | 同一档、同一内边距（24 / 24 / 12） |
 | 复核「跳过」 | Chip blue：亮 200/800、暗 950@60%/300 | 采用；`error`／`primary` 不变 |
+| 交集条上已生效的筛选 | Chip subtle + neutral：`px-1.5 py-1`、Body 1 Medium、tertiary 底配次文字色，不描边 | 同值（`--picked` 与 `--muted` 正映射那两个 token），圆角取标记那一档；一颗 16px 的移除键是主动差异——上游那颗只标状态，这里那条筛选要能就地撤掉 |
+| 侧栏名单的展开键 | 无对应（上游侧栏不截断名单） | 取排名卡那枚展开药丸的身量；再按一下收的是整组，不是把名单退回另一个断点 |
 | 侧栏收起键 | 36px、`rounded-2lg`、`foreground-icon-secondary`，收起时与品牌相隔 10px | 采用，图标沿用 Peach 的 `panel-left` |
 | 详情页门挡 | 无对应 | 铺满播放器格不留黑；播放器格只圆左上角（右贴侧栏、下接「接着看」），窄屏与影院模式圆上面两角 |
 | 没有图的身份头像 | Avatar initials 盘 `avatar-neutral-background` 值未取得 | 主文字色 10% 混底、次文字色首字 |

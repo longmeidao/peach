@@ -3074,7 +3074,21 @@ async function getBarsData(context=barsContext){
     .finally(()=>{barsDataPromise=null});
   return barsDataPromise
 }
+/* 换一个筛选就是换一份名单，而第一屏是这份名单的开头。人停在半路时原地换掉，屏幕上那
+   一段跟他刚才在读的既不连也不相干；新名单还常比旧的短，浏览器只好把他钳到别处，落点
+   跟按之前不是同一个地方。滚动锚定这时也在帮倒忙：骨架换成卡片那一下它会照新内容再推
+   一次，把正在走的这段滚动顶开——所以这一路上先把它关掉。 */
+function scrollFilteredViewToTop(){
+  if(scrollY<=0)return;
+  const root=document.documentElement;
+  root.classList.add('refiltering');
+  const done=()=>{root.classList.remove('refiltering');removeEventListener('scrollend',done)};
+  addEventListener('scrollend',done);
+  setTimeout(done,1200);
+  scrollTo({top:0,behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});
+}
 function commitContextFilter(mutate){
+  scrollFilteredViewToTop();
   if(barsContext.type==='entity'){
     const filters={...barsContext.filters};mutate(filters);
     barsContext={...barsContext,filters};
@@ -3513,8 +3527,7 @@ function renderCombo(){
   if(!cur.length&&!extra.length){$('#combo').innerHTML='';return}
   const comboLabel={creator:'创作者',studio:'厂牌',owner:'归属'};
   $('#combo').innerHTML=
-    extra.map(([k,v])=>`<span class="cb">${comboLabel[k]} ${esc(v)}
-      <b data-clear="${k}">✕</b></span>`).join('')
+    extra.map(([k,v])=>`<span class="cb">${comboLabel[k]} ${esc(v)}<b data-clear="${k}">✕</b></span>`).join('')
     +cur.map(t=>`<span class="cb">${esc(tagLabel(t))} <b data-untag="${esc(t)}">✕</b></span>`).join('')
     +`<button class="clr" id="clrAll">全部清除</button>`;
   $('#combo').querySelectorAll('[data-untag]').forEach(b=>b.onclick=()=>toggleTag(b.dataset.untag));
@@ -6933,6 +6946,13 @@ function markEntityCollectionBusy(kind,name,filters){
   head.querySelector('.sorts').outerHTML=entityCollectionSortsHtml(filters);
   head.querySelector('h3').innerHTML='<span class="countskeleton"></span>';
   wireEntityCollectionHead(section,kind,name,filters);
+  /* 名单已经不是刚才那一份了。把旧卡片留在屏幕上等新的回来，等的这一下人读到的是一份
+     跟头上的筛选对不上的列表——数字在转圈，底下那几十张却还是上一次的答案。 */
+  const grid=section.querySelector('.grid');
+  if(grid){grid.innerHTML=pageSkeletonHtml('正在读取作品',
+    {cards:true,className:'catalog-skeleton postercard-skeleton'});fitSkeleton(grid)}
+  const more=section.querySelector('.entitymore');
+  if(more)more.hidden=true;
 }
 /* 事务所名册。和艺人索引摆的是同一格、同一套版式设置，只是这批人随资料页一起下来了，
    不再单独请求；读数写的是这个人有多少视频。 */

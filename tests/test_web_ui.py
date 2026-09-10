@@ -694,13 +694,39 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertEqual(len(dashed_pills), 1, dashed_pills)
         # 左边四枚视图胶囊四选一、恒有一枚生效，「这条筛选还没加上去」对它们从来不成立。
         self.assertNotIn("[data-state]", dashed_pills[0])
-        # 已经生效的交集筛选和选中的药丸是同一件事，穿同一身。
+        # 交集条上那颗填同一份 --picked，但不穿药丸那身线：见下一条。
         start = css.index(".combo .cb{")
         applied = css[start:css.index("}", start)]
         self.assertIn("background:var(--picked)", applied)
-        self.assertIn("1px solid var(--field-ring)", applied)
+        self.assertNotIn("dashed", applied)
         # 没有 JS 会挂 .act，留着只会让人以为选中态有两套写法。
         self.assertPageLacks(".pill.act{")
+
+    def test_an_applied_filter_reads_as_a_chip_and_not_as_another_pill(self):
+        """交集条上那颗按 Chip 画：不描边，上下 4 左右 6，Body 1 Medium，标记那一档圆角。
+
+        取证：BoardUI 公开注册表 `r/chip.json`（SHA-256
+        d2b0dd38146325acada58fbc241d13fcd633bb5407ce1ef457e752023fe282de，与
+        `docs/BOARD_UI.md` 登记的一致），`components/base/badges/chip.tsx` 的 subtle
+        档是 `px-1.5 py-1 text-body-medium`，neutral 色为 `bg-background-tertiary-default`
+        配 `text-text-secondary`——Peach 的 `--picked` 与 `--muted` 正映射这两个。
+
+        药丸那一圈线是可点控件的样子，而它报的是一条已经成立的筛选，读完就过；真正可点
+        的只有那颗 ✕。移除键是 Peach 的主动差异，上游那颗只标状态，所以它贴着标签名放，
+        不另撑出一个按钮的身量。
+        """
+        css = stylesheet_source()
+        start = css.index(".combo .cb{")
+        applied = css[start:css.index("}", start)]
+        self.assertIn("padding:4px 6px", applied)
+        self.assertIn("border-radius:var(--badge-radius)", applied)
+        self.assertIn("border:0", applied)
+        self.assertIn("color:var(--muted)", applied)
+        self.assertIn("font-size:var(--fs-md);line-height:20px;font-weight:500", applied)
+        self.assertNotIn("var(--tag-radius)", applied, "它不是药丸，不取胶囊那一档圆角")
+        # 移除键自己占一个 16px 的方格：它是这颗芯片里唯一可点的东西。
+        self.assertPageContains(".combo .cb b{display:grid;place-items:center;width:16px;height:16px;")
+        self.assertPageContains(".combo .cb b:hover{opacity:1;background:var(--hover)}")
 
     def test_the_video_area_has_no_frame_and_the_portrait_strip_shares_the_card_face(self):
         """视频网格不画框：卡片直接摆在页面上，竖屏带和卡片同一张面。
@@ -5864,6 +5890,30 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("const chips=(items,key,multi,limit)=>items.length?")
         self.assertPageContains("chips(facetData.orientations,'orient')")
         self.assertPageLacks("chips([{k:'竖屏'},{k:'横屏'}],'orient')")
+
+    def test_changing_a_filter_takes_the_reader_back_to_the_top_of_the_new_list(self):
+        """换筛选就回到新名单的开头，等数据的那一下铺骨架。
+
+        第一屏是这份名单的开头。人停在半路时原地换掉，屏幕上那一段跟他刚才在读的既不连
+        也不相干；新名单还常比旧的短，浏览器只好把他钳到别处，落点跟按之前不是同一个地
+        方。滚动锚定这时也在帮倒忙：骨架换成卡片那一下它会照新内容再推一次，把正在走的
+        这段滚动顶开，所以这一路上先关掉它。已经在顶上就什么都不做，减少动态效果时直接
+        到位，不走那段滑行。
+
+        资料页那一份名单同样要换掉：数字在转圈、底下几十张却还是上一次的答案，等的这一
+        下人读到的是一份跟头上的筛选对不上的列表。
+        """
+        self.assertPageContains("function commitContextFilter(mutate){\n  scrollFilteredViewToTop();")
+        self.assertPageContains("  if(scrollY<=0)return;")
+        self.assertPageContains("  root.classList.add('refiltering');")
+        self.assertPageContains("addEventListener('scrollend',done);")
+        self.assertPageContains(
+            "scrollTo({top:0,behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});")
+        self.assertIn("html.refiltering{overflow-anchor:none}", stylesheet_source())
+        # 目录那边的骨架由 load(true) 铺；资料页的集合自己铺一份同样的。
+        self.assertCode("  if(grid){grid.innerHTML=pageSkeletonHtml('正在读取作品',\n"
+                        "    {cards:true,className:'catalog-skeleton postercard-skeleton'});fitSkeleton(grid)}")
+        self.assertPageContains("  if(more)more.hidden=true;")
 
     def test_untagged_detail_uses_home_tags_only_in_the_top_discovery_bar(self):
         # 作品没有内容标签时，顶部发现栏回退首页口径；详情抽屉仍使用作品 scoped facets。
