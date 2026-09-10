@@ -299,6 +299,16 @@ class PhotoThumbnailService:
         self.root = root.resolve()
         self.width = width
 
+    def cached(self, asset_id: int) -> Path | None:
+        """已经缩好的那一份，没有就是 None。
+
+        单独开这一条是为了让调用方能先问缓存再解析原图：解析要在挂载的网盘上确认原文件
+        还在，一次往返 0.1–0.4 秒，一屏几十张就是几十次；缩略图既然已经躺在本地磁盘上，
+        这一趟问的东西对这次响应没有用处。
+        """
+        destination = self.root / f"{asset_id}.jpg"
+        return destination if destination.is_file() else None
+
     def thumbnail(self, asset_id: int, source: Path) -> Path:
         destination = self.root / f"{asset_id}.jpg"
         if destination.is_file():

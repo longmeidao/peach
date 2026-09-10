@@ -3220,11 +3220,36 @@ function viewGlideGeometry(tagbar,pill){
   return {frame,x:tagbar.offsetLeft+pill.offsetLeft,w:pill.offsetWidth,
     y:tagbar.offsetTop+pill.offsetTop,h:pill.offsetHeight};
 }
+/* 首页和资料页各有一排四选一，玻璃是同一块：在人眼里这两排就是同一个控件，「跟着指针
+   滑过去」没有理由只在其中一页成立。两边的 DOM 对不上——首页那排是 `#viewPills` 里的
+   链接，选中记在 `data-state` 上；资料页是 `.entityviews` 里的按钮，记在
+   `data-entity-state` 上——所以按结构找，不按 id 找，这一页有哪一排就管哪一排。
+   判据是「此刻量得出宽度」，不是「存在」也不是自己那个 `hidden`：两排在同一份文档里
+   一直都在，资料页开着的时候首页那排只是被祖先收起来了，`hidden` 上看不出来。零宽度
+   把这一种连同 `display:none` 和资料页照片视图下那一排自己的 `hidden` 一起挡住——玻璃
+   留在一排收起来的按钮上，就是在一块空玻璃上亮着。 */
+function viewPillsRow(){
+  for(const row of document.querySelectorAll('#viewPills,.entityviews')){
+    if(!row.offsetWidth)continue;
+    const tagbar=row.closest('#tagbar,.entitytagbar');
+    if(tagbar)return{row,tagbar};
+  }
+  return null;
+}
+/* 悬停跟随和离开归位这两下两页是同一回事，接法也只有一种。用属性赋值而不是
+   `addEventListener`：资料页每换一次筛选都会把这一排重新接一遍，叠加式的接法会让
+   同一枚按钮上攒下越来越多份同样的监听。点击各自接——那一下要做的事两页不一样。 */
+function wireViewGlideRow(tagbar,pills){
+  pills.forEach(b=>b.onpointerenter=e=>{if(e.pointerType!=='touch')syncViewGlide(true,b)});
+  tagbar.onpointerleave=e=>{if(e.pointerType!=='touch')syncViewGlide(true)};
+  syncViewGlide(false);
+}
 function syncViewGlide(animate,target){
-  const tagbar=$('#tagbar'),views=$('#viewPills');if(!tagbar||!views)return;
-  const active=target||views.querySelector('[data-state][aria-pressed="true"]');
+  const found=viewPillsRow();
+  const active=found&&(target||found.row.querySelector(
+    '[data-state][aria-pressed="true"],[data-entity-state][aria-pressed="true"]'));
   if(!active){if(viewGlide)viewGlide.hidden=true;return}
-  const box=viewGlideGeometry(tagbar,active);
+  const box=viewGlideGeometry(found.tagbar,active);
   if(!box||!box.w)return;
   if(!viewGlide){viewGlide=document.createElement('span');viewGlide.className='viewglide';viewGlide.setAttribute('aria-hidden','true');viewGlideBox=null}
   if(viewGlide.parentElement!==box.frame)box.frame.prepend(viewGlide);
@@ -3317,10 +3342,7 @@ function wireViewPills(){
   /* 玻璃跟着指针走，不等点击：指到哪一枚就滑过去，指针离开这一排再回到真正选中的
      那枚。这一排是四选一，滑过去等于先把这一下的结果比划出来，点不点是下一步的事。
      `aria-pressed` 全程不动——移过去不是选中，读屏和键盘那边不该跟着变。 */
-  pills.forEach(b=>b.addEventListener('pointerenter',e=>{
-    if(e.pointerType==='touch')return;syncViewGlide(true,b)}));
-  tagbar.onpointerleave=e=>{if(e.pointerType!=='touch')syncViewGlide(true)};
-  syncViewGlide(false);
+  wireViewGlideRow(tagbar,pills);
 }
 // 宽度是一组定值而不是随机数：随机会让同一次冷启动在两台机器上长得不一样，也没法测。
 function renderBarsLoading(filterState){
@@ -7008,15 +7030,25 @@ function syncEntityFilterFrame(){
   mountFilterFrame(top,bottom,{views:top.querySelector('.entityviews'),
     tags:top.querySelector('.entitytags'),readout:bottom.querySelector('h3'),
     controls:bottom.querySelector('.sorts')});
+  /* 玻璃的坐标基准是这块外框，所以要等框搭好才量得到位置。这一排本身在框搭好之前就
+     接过了，那一次量到的是 null。 */
+  syncViewGlide(false);
   scheduleStickySurfaces();
 }
 function syncEntityStateControls(kind,name,filters){
   const controls=$('#index').querySelector('.entityviews');if(!controls)return;
   controls.hidden=entityViewNow(kind)!=='videos';
-  controls.querySelectorAll('[data-entity-state]').forEach(button=>{
+  const buttons=[...controls.querySelectorAll('[data-entity-state]')];
+  buttons.forEach(button=>{
     button.setAttribute('aria-pressed',String(button.dataset.entityState===(filters.state||'')));
-    button.onclick=()=>updateEntityCollection(kind,name,{...filters,state:button.dataset.entityState},true);
+    /* 玻璃先滑过去，再去取数：这一下的结果要等一个请求，而按下去的反馈不该跟着等。 */
+    button.onclick=()=>{
+      buttons.forEach(other=>other.setAttribute('aria-pressed',String(other===button)));
+      syncViewGlide(true,button);
+      updateEntityCollection(kind,name,{...filters,state:button.dataset.entityState},true);
+    };
   });
+  wireViewGlideRow(controls.closest('.entitytagbar')||controls,buttons);
 }
 /* 资料页作品集的表头与首页计数行同源：排序条由 filters 决定，`视频 · N` 由响应决定。 */
 const entityCollectionSortsHtml=filters=>sortControlsHtml({extra:javActive()?javLayoutButtons():'',items:sortOptions(),

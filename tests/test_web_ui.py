@@ -4550,6 +4550,20 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(
             "icon(kind==='error'||kind==='warning'?'alert':'info')")
 
+    def test_the_project_banner_keeps_its_action_at_the_right_edge_on_a_phone(self):
+        """窄屏上说明从左边起，动作在右端。
+
+        桌面上整条居中，说明和动作是挨着的一组；窄屏一居中，两头就都不齐了，所以说明
+        改成左对齐。动作跟着靠回右端，用 `auto` 而不是一个定值缩进：说明的长短随任务
+        状态变，定值会让那个链接每次停在不同的地方，而它是这条横幅上唯一能点的东西。
+        溢出换行之后它仍在这一横条的右端。
+        """
+        self.assertPageContains(
+            "@media(max-width:600px){.project-banner{justify-content:flex-start}"
+            ".project-banner>a{margin-left:auto}}")
+        self.assertPageLacks(".project-banner>a{margin-left:24px}",
+                             "定值缩进会让动作跟着说明的长短漂移")
+
     def test_taste_drilldown_and_legacy_duration_tags_never_leak_filter_state(self):
         self.assertPageContains("const cleanTagFilter=value=>")
         self.assertPageContains("tag:cleanTagFilter(initialParam('tag'))")
@@ -7789,7 +7803,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn(".board-filter-frame.board-filter-frame>.viewglide,.drawer.drawer>.navglide{"
                       "position:absolute;left:0;top:0;z-index:0;pointer-events:none;", board)
         self.assertIn("backdrop-filter:var(--glass-pick);", board)
-        self.assertIn("pills.forEach(b=>b.addEventListener('pointerenter',e=>{", app)
+        self.assertIn("pills.forEach(b=>b.onpointerenter=e=>"
+                      "{if(e.pointerType!=='touch')syncViewGlide(true,b)});", app)
         self.assertIn("tagbar.onpointerleave=e=>{if(e.pointerType!=='touch')syncViewGlide(true)};", app)
         # 位移和形变各占一个独立属性：一条属性上只放得下一段动画，而这两下的时间
         # 形状不是同一条曲线。
@@ -7800,6 +7815,42 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn(".top.top,body.board-scrolled .top.top{background:transparent;box-shadow:none;"
                       "backdrop-filter:none;border:0}", board)
         self.assertNotIn(".top.top::before", board)
+
+    def test_the_entity_view_row_shares_the_home_sliding_pane(self):
+        """资料页那四枚跟首页那四枚共用同一块滑动玻璃。
+
+        在人眼里这两排就是同一个控件——同一套词、同一个位置、同一件事——「跟着指针滑
+        过去」没有理由只在其中一页成立。
+
+        两边的 DOM 对不上：首页那排是 `#viewPills` 里的链接，选中记在 `data-state` 上；
+        资料页是 `.entityviews` 里的按钮，记在 `data-entity-state` 上。所以按结构找，
+        不按 id 找。判据还得是「此刻量得出宽度」而不是「存在」：两排在同一份文档里一直
+        都在，资料页开着的时候首页那排只是被祖先收起来了，`hidden` 上看不出来，写死
+        `#viewPills` 于是一直取到那一排——资料页从来没有过玻璃，这就是原样。零宽度把
+        这一种连同 `display:none` 和照片视图下那一排自己的 `hidden` 一起挡住。
+
+        选中态的填充只有一处，就是那块玻璃自己，两排各自都不铺底：两边都铺的话，静止态
+        是一块不透明的填充压在玻璃上面，切换时也只看得见它瞬间换位置，滑动的那块从头到
+        尾被盖在下面。首页那四枚是同一个写法。
+        """
+        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
+        self.assertPageContains("for(const row of document.querySelectorAll('#viewPills,.entityviews')){")
+        self.assertPageContains("if(!row.offsetWidth)continue;")
+        self.assertPageContains("const tagbar=row.closest('#tagbar,.entitytagbar');")
+        self.assertPageContains(
+            "'[data-state][aria-pressed=\"true\"],[data-entity-state][aria-pressed=\"true\"]'")
+        # 两页共用同一段接线；玻璃要等外框搭好才量得到位置。
+        self.assertPageContains("function wireViewGlideRow(tagbar,pills){")
+        self.assertPageContains("wireViewGlideRow(controls.closest('.entitytagbar')||controls,buttons);")
+        self.assertPageContains("  syncViewGlide(false);\n  scheduleStickySurfaces();")
+        self.assertPageLacks("const tagbar=$('#tagbar'),views=$('#viewPills');if(!tagbar||!views)return;",
+                             "写死首页那两个 id 就是资料页没有玻璃的原因")
+        # 资料页那四枚不再自己铺底，选中和悬停都只提字色。
+        self.assertIn('.entitytagbar.entitytagbar .pill[data-entity-state],\n'
+                      '.entitytagbar.entitytagbar .pill[data-entity-state]:hover,\n'
+                      '.entitytagbar.entitytagbar .pill[data-entity-state][aria-pressed="true"]{\n'
+                      '  border:0;background:none;backdrop-filter:none;'
+                      '-webkit-backdrop-filter:none;box-shadow:none}', board)
 
     def test_every_glass_panel_casts_three_layers_and_the_pane_overshoots_by_distance(self):
         """玻璃的落影分三层，选中那块玻璃冲过头的距离跟着这一跳的跨度走。
@@ -9475,7 +9526,7 @@ class WebUiSourceTests(unittest.TestCase):
             "background:var(--sunk);")
         self.assertPageContains(
             ".photocell img{width:100%;height:100%;object-fit:cover;display:block;"
-            "background:var(--sunk)}")
+            "background:var(--sunk);color:transparent}")
         # 窄屏两列也是网格；这条写在灯箱分区的断点里，和上面同优先级、排在后面。
         self.assertPageContains(
             "  .photowall{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}")
@@ -9486,6 +9537,19 @@ class WebUiSourceTests(unittest.TestCase):
             (".photocell img{width:100%;height:auto", "高度得由格子给，不能等图片撑"),
         ):
             self.assertPageLacks(lacking, why)
+
+    def test_a_photo_cell_waiting_for_its_thumbnail_is_an_empty_tile(self):
+        """图还没到的格子是一块空底，不是一行文件名。
+
+        `alt` 是这张图的文件名，留着给读屏；但格子按比例占好位置之后，浏览器就有地方
+        把它画出来，一屏几十格同时在等图，看到的是满屏 `118abp00325pl.jpg`。格子高度
+        是 0 的年代看不见它，纯粹是因为没地方画。
+
+        隐去的办法是把字色调成透明，不是删掉 `alt`：删了读屏就只剩一个没有名字的按钮。
+        这块 `--sunk` 底本身就是这里的骨架，不另画「正在读取」。
+        """
+        self.assertPageContains("background:var(--sunk);color:transparent}")
+        self.assertPageContains('<img src="/photo-thumb?id=${item.id}" alt="${esc(item.name)}"')
 
     def test_photo_tab_opens_the_flat_wall_without_album_cover_cards(self):
         self.assertPageContains("if(media==='photos'){renderPhotoWall(kind,name,filters,entityPhotos);return}")
@@ -9521,6 +9585,40 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(
             "const head=collectionHeaderHtml({readout:'&nbsp;',loading:true});")
 
+    def test_the_filter_panel_is_two_rows_on_a_phone(self):
+        """手机上这块浮层是两行，两侧也留出跟内容一样的白。
+
+        上半那排标签本来就横滚。下半再让读数和控件各占一行的话，浮层要吃掉三行高度，
+        同一块玻璃上一半横滚一半换行，读起来是两个不同的东西。所以下半也保持一行，
+        装不下就整条往右滚。首页和资料页是同一句规则，两页不该在这件事上分家。
+
+        滚动开在这一条自己身上，不是里面的 `.sorts`：套两层横滚，触摸时两层抢同一个
+        手势，而读数留在外层怎么滚都不走，控件却已经滑没了。控件那 `margin-left:auto`
+        只在装得下时把它推到右端，溢出时自身失效，所以窄一点也不会在读数和第一枚键
+        之间空出一块。
+
+        左右那 16px 归首页那块：它住在 `body` 底下，两侧没有东西给它留白，22px 的圆角
+        直接切在屏幕边沿上；资料页那块在 `#index` 里，`main` 的 16px 已经把它让开了。
+        补的就是 `main` 自己那个数，两页的浮层因此和底下的网格对在同一条竖线上。
+        """
+        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
+        self.assertPageContains("main{position:relative;z-index:1;padding:14px 16px 90px}")
+        self.assertIn("body>.board-filter-frame{margin-inline:16px}", board)
+        self.assertIn("  .board-filter-frame .count,.entitycollectionhead{display:flex;"
+                      "flex-wrap:nowrap;align-items:center;gap:10px;\n", board)
+        self.assertIn("    overflow-x:auto;overflow-y:hidden;scrollbar-width:none;\n", board)
+        self.assertIn("  .board-filter-frame .count .sorts,.entitycollectionhead .sorts{flex:none;"
+                      "width:max-content;max-width:none;min-width:0;\n    margin-left:auto;"
+                      "overflow:visible;padding:0}}", board)
+        for lacking, why in (
+            (".board-filter-frame .count{display:flex;flex-wrap:wrap;", "换行就是三行"),
+            (".board-filter-frame .count>.mono{width:100%}", "读数不占满一行"),
+            ("flex:1 1 100%;width:0;", "控件也不占满一行，宽度更不能被压成 0"),
+        ):
+            self.assertNotIn(lacking, board, why)
+        self.assertPageLacks(".entitycollectionhead{align-items:flex-start;flex-direction:column}",
+                             "资料页那一排在窄屏上同样不竖排")
+
     def test_the_entity_floating_panel_is_one_pane_of_glass(self):
         """首页与资料页使用共享外框，槽位内容保持透明。"""
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
@@ -9544,8 +9642,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn("body .review .reviewbulktoolbar{clip-path:inset(-48px -48px 0 -48px)}", board)
         self.assertIn("body .review .reviewbulktoolbar,body .review .reviewgroupbar{\n"
                       "  background-image:none;background-color:var(--glass-fill);animation:none}", board)
-        # 窄屏上那一排是纵向排的，控件那一行要占满宽度，不能被 width:0 压没。
-        self.assertIn("  .entitycollectionhead .sorts{flex:none;width:100%}}", board)
+        # 窄屏上这一排仍是一行，判据在 test_the_filter_panel_is_two_rows_on_a_phone。
         self.assertIn("--glass-pick-shadow:0 1px 2px #1118270f,0 4px 10px #11182714;", board)
         self.assertIn("--glass-pick-shadow:0 1px 2px #00000024,0 6px 14px #0000001f}", board)
         self.assertNotIn("var(--glass-rim),0 1px 2px #00000024", board)

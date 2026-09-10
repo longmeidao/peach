@@ -154,6 +154,16 @@ body .review .reviewbulktoolbar{clip-path:inset(-48px -48px 0 -48px)}
   backdrop-filter:var(--glass-pick);-webkit-backdrop-filter:var(--glass-pick);
   color:var(--glass-text);border-color:transparent;
   box-shadow:inset 0 0 0 1px var(--glass-rim),var(--glass-pick-shadow)}
+/* 上面那条对四枚视图不适用：这一排的填充由 `.viewglide` 那块滑过去的玻璃给，跟首页
+   那四枚是同一块。两边都铺的话，静止态是一块不透明的填充压在玻璃上面，切换时也只看
+   得见它瞬间换位置，滑动的那块从头到尾被盖在下面。选中和悬停都只提字色。 */
+.entitytagbar.entitytagbar .pill[data-entity-state],
+.entitytagbar.entitytagbar .pill[data-entity-state]:hover,
+.entitytagbar.entitytagbar .pill[data-entity-state][aria-pressed="true"]{
+  border:0;background:none;backdrop-filter:none;-webkit-backdrop-filter:none;box-shadow:none}
+.entitytagbar.entitytagbar .pill[data-entity-state]{color:color-mix(in srgb,var(--glass-text) 60%,transparent)}
+.entitytagbar.entitytagbar .pill[data-entity-state]:hover,
+.entitytagbar.entitytagbar .pill[data-entity-state][aria-pressed="true"]{color:var(--glass-text)}
 /* 版式、大小这类分段开关问的也是「你在哪儿」。滑块的位置和几何归分段器自己管，这里
    只换材质与配色：那一套是给 flat 面配的，一块灰底衬一枚不透明的白滑块，摆到浮层上
    就是整条里唯一一块实心的面，读起来像贴上去的另一个控件；字色取的也是 flat 面的
@@ -446,6 +456,10 @@ body::before{display:none}
    8px 还被 `.combo` 的下边距吃掉，加起来 32px，下面却只有 20px，同一块浮层上下差出 12px。
    上面这 22px 改不动（两处都是别的页面共用的），所以自己不再加，下面照同一个数写。 */
 .board-filter-frame{position:sticky;top:calc(var(--topH) + 8px);z-index:60;border:0;border-radius:16px;background:var(--ground);margin:0 0 22px;box-shadow:0 2px 14px #00000014}
+/* 首页那块住在 `body` 底下，两侧没有任何东西给它留白，22px 的圆角直接切在屏幕边沿上；
+   资料页那块在 `#index` 里，`main` 的 16px 已经把它让开了。这里补的就是那 16px，取的
+   也是 `main` 自己的那个数，所以两页的浮层和底下的网格对在同一条竖线上。 */
+body>.board-filter-frame{margin-inline:16px}
 .board-filter-frame .tagbar,.board-filter-frame .count{position:relative;top:auto;left:auto;width:auto;margin:0;background:transparent;box-shadow:none;border:0;padding:10px 16px}
 .board-filter-frame .tagbar{border-bottom:0;border-radius:16px 16px 0 0}
 .board-filter-frame .count{border-radius:0 0 16px 16px;min-width:0}
@@ -470,10 +484,20 @@ body::before{display:none}
 .entitycollectionhead .photoback{height:30px;border-color:var(--glass-low);color:var(--glass-text)}
 .entitycollectionhead .sorts{gap:4px}
 .entitycollectionhead .sorts button{height:30px;min-height:30px;font-size:12px;padding:0 8px;border:0;border-radius:7px;background:transparent}
-@media(max-width:760px){.board-filter-frame .count{display:flex;flex-wrap:wrap;gap:8px;overflow:visible}.board-filter-frame .count>.mono{width:100%}.board-filter-frame .count .sorts,.entitycollectionhead .sorts{flex:1 1 100%;width:0;max-width:100%;min-width:0;margin:0;overflow-x:auto;overflow-y:hidden;overscroll-behavior-x:contain;touch-action:pan-x pan-y;padding:4px 2px}
-  /* 资料页那一排在窄屏上是纵向排的（读数一行、控件一行）。上面那条 flex 在纵向里管的
-     是高度，宽度就被 width:0 压得只剩内边距，整排控件看不见。 */
-  .entitycollectionhead .sorts{flex:none;width:100%}}
+/* 浮层下半在手机上仍是一横条：读数在左，控件跟在右边，装不下就整条往右滚。让读数
+   和控件各占一行的话，这块玻璃要吃掉三行高度——上半那排标签本来就是横滚的，同一块
+   玻璃上一半横滚、一半换行，读起来是两个不同的东西。滚动开在这一条自己身上而不是
+   里面的 `.sorts`：套两层横滚，触摸时两层抢同一个手势，而读数留在外层怎么滚都不走，
+   控件却已经滑没了。控件那 `margin-left:auto` 只在装得下时把它推到右端，溢出时自动
+   失效，所以窄一点也不会在读数和第一枚键之间空出一块。 */
+@media(max-width:760px){
+  .board-filter-frame .count,.entitycollectionhead{display:flex;flex-wrap:nowrap;align-items:center;gap:10px;
+    overflow-x:auto;overflow-y:hidden;scrollbar-width:none;
+    overscroll-behavior-inline:contain;touch-action:pan-x pan-y}
+  .board-filter-frame .count::-webkit-scrollbar,.entitycollectionhead::-webkit-scrollbar{display:none}
+  .board-filter-frame .count>.mono,.entitycollectionhead>h3,.entitycollectionhead>.photoback{flex:none;white-space:nowrap}
+  .board-filter-frame .count .sorts,.entitycollectionhead .sorts{flex:none;width:max-content;max-width:none;min-width:0;
+    margin-left:auto;overflow:visible;padding:0}}
 [data-overflow-right="true"]{mask-image:linear-gradient(to right,#000 calc(100% - 18px),transparent)}
 [data-overflow-left="true"]{mask-image:linear-gradient(to right,transparent,#000 18px)}
 [data-overflow-left="true"][data-overflow-right="true"]{mask-image:linear-gradient(to right,transparent,#000 18px,#000 calc(100% - 18px),transparent)}
