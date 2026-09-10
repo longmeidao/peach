@@ -3,13 +3,17 @@ import json
 import os
 import sqlite3
 import tempfile
+import time
 import unittest
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 from contextlib import closing
 
+from filelock import FileLock
+
 from peach.library_nfo import read_nfo, sidecars, local_art
-from peach.library_processing import process_library, _fields, snapshot
+from peach.library_processing import (STALL_AFTER_SECONDS, decorate, issues_path,
+                                      process_library, snapshot, state_path, _fields)
 from peach.review_csv import read_rows
 from peach.settings_file import PeachConfig
 from peach.web_review import _apply_metadata_candidate
@@ -139,7 +143,9 @@ class LibraryNfoTests(unittest.TestCase):
         self.assertEqual(result['identified'], 1)
         self.assertEqual(result['covers'], 1)
         provider.cover.assert_not_called()
-        provider.query.assert_called_once_with('ABW-358', 'r18dev')
+        provider.query.assert_called_once()
+        self.assertEqual(provider.query.call_args.args, ('ABW-358', 'r18dev'))
+        self.assertIn('deadline', provider.query.call_args.kwargs)
         groups = read_rows(self.root / 'generated/library-metadata-field-candidates.csv')
         studio = next(row for row in groups if row['field'] == 'studio')
         self.assertEqual(json.loads(studio['candidates_json'])[0]['catalog_evidence']['runtime']['value'], 210)
@@ -164,3 +170,170 @@ class LibraryNfoTests(unittest.TestCase):
         configuration = (root / 'frontend/src/islands/configuration.tsx').read_text(encoding='utf-8')
         self.assertNotIn("'/api/library-processing'", configuration)
         self.assertIn('toast,monitor:true,onComplete:', source)
+
+
+class LibraryWatchdogTests(unittest.TestCase):
+    """扫描与采集任务的进度心跳、卡住提示、预算与失败项重试。"""
+
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name).resolve()
+
+    def _config(self, media):
+        return PeachConfig(self.root, self.root / 'config.toml', present=True,
+                           locations={'local': (str(media),)})
+
+    def _provider(self):
+        provider = Mock()
+        provider.query.return_value = {'id': 'code', 'maker': 'Studio', 'source_url': ''}
+        provider.cover.return_value = False
+        return provider
+
+    @unittest.skipUnless(os.name == 'nt', '真实声明根使用 Windows 盘符')
+    def test_reports_carry_current_asset_action_and_rising_sequence(self):
+        media = self.root / 'media'
+        media.mkdir()
+        for name in ('ABW-001.mp4', 'ABW-002.mp4'):
+            (media / name).write_bytes(b'video')
+        db = fresh_ledger(self.root)
+        config = self._config(media)
+        reports = []
+        result = process_library(config, db, self.root / 'generated', self.root / 'covers',
+                                 provider_factory=lambda: self._provider(), report=reports.append)
+        actions = [row['current_action'] for row in reports]
+        names = {row['current_asset_name'] for row in reports if row['current_asset_name']}
+        self.assertEqual(names, {'ABW-001.mp4', 'ABW-002.mp4'})
+        self.assertIn('reading_local', actions)
+        self.assertIn('querying_metadata', actions)
+        self.assertIn('fetching_cover', actions)
+        sequences = [row['progress_seq'] for row in reports]
+        self.assertEqual(sequences, sorted(sequences))
+        self.assertEqual(len(set(sequences)), len(sequences))
+        self.assertEqual(result['status'], 'complete')
+        self.assertIsNone(result['current_asset_id'])
+        self.assertEqual(result['current_action'], '')
+
+    @unittest.skipUnless(os.name == 'nt', '真实声明根使用 Windows 盘符')
+    def test_issue_preview_is_capped_while_the_log_keeps_every_row(self):
+        media = self.root / 'media'
+        media.mkdir()
+        for index in range(25):
+            (media / f'样品{index:02d}.mp4').write_bytes(b'video')
+        db = fresh_ledger(self.root)
+        config = self._config(media)
+        result = process_library(config, db, self.root / 'generated', self.root / 'covers')
+        self.assertEqual(result['issue_count'], 25)
+        self.assertEqual(len(result['issue_preview']), 20)
+        self.assertTrue(result['issues_truncated'])
+        log = issues_path(config, result['job_id'])
+        self.assertEqual(len([line for line in log.read_text(encoding='utf-8').splitlines() if line]), 25)
+        from peach.web_library_processing import q_library_processing_issues
+        contract = Mock()
+        contract.library_processing_job.snapshot.return_value = {'status': 'running', 'job_id': result['job_id']}
+        with patch('peach.web_library_processing.settings_file.active', return_value=config):
+            page = q_library_processing_issues(contract, {'job_id': result['job_id'], 'offset': 20, 'limit': 5})
+        self.assertEqual(page['total'], 25)
+        self.assertEqual(len(page['rows']), 5)
+        logged = [json.loads(line) for line in log.read_text(encoding='utf-8').splitlines() if line]
+        self.assertEqual(page['rows'], logged[20:25])
+
+    def test_stalled_warning_never_flips_a_live_task_to_failed(self):
+        config = self._config(self.root / 'media')
+        path = state_path(config)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        old = time.time() - (STALL_AFTER_SECONDS + 30)
+        path.write_text(json.dumps({'status': 'running', 'job_id': 'one', 'started_at': old,
+                                    'last_progress_at': old, 'current_started_at': old,
+                                    'current_action': 'reading_local'}), encoding='utf-8')
+        with FileLock(str(path) + '.lock', timeout=0):
+            live = snapshot(config)
+        self.assertEqual(live['status'], 'running')
+        self.assertTrue(live['stalled'])
+        dead = snapshot(config)
+        self.assertEqual(dead['status'], 'failed')
+        self.assertIn('中断', dead['error'])
+
+    def test_deadline_within_budget_is_running_and_expired_is_stalled(self):
+        now = time.time()
+        within = decorate({'status': 'running', 'last_progress_at': now - 300,
+                           'current_deadline_at': now + 30}, now=now)
+        expired = decorate({'status': 'running', 'last_progress_at': now - 300,
+                            'current_deadline_at': now - 1}, now=now)
+        self.assertFalse(within['stalled'])
+        self.assertTrue(expired['stalled'])
+
+    @unittest.skipUnless(os.name == 'nt', '真实声明根使用 Windows 盘符')
+    def test_deadline_skips_one_asset_and_keeps_processing(self):
+        from peach.jav_cover_fetch import DeadlineExceeded
+        media = self.root / 'media'
+        media.mkdir()
+        for name in ('ABW-101.mp4', 'ABW-102.mp4'):
+            (media / name).write_bytes(b'video')
+        db = fresh_ledger(self.root)
+        config = self._config(media)
+        provider = self._provider()
+        provider.query.side_effect = [DeadlineExceeded('预算'), provider.query.return_value]
+        result = process_library(config, db, self.root / 'generated', self.root / 'covers',
+                                 provider_factory=lambda: provider)
+        with closing(sqlite3.connect(db)) as connection:
+            ids = {name: row_id for name, row_id in connection.execute('SELECT name, id FROM asset')}
+        self.assertEqual(result['retryable_asset_ids'], [ids['ABW-101.mp4']])
+        self.assertEqual(result['status'], 'failed')
+        self.assertEqual(provider.query.call_count, 2)
+        self.assertEqual(provider.reset.call_count, 1)
+
+    @unittest.skipUnless(os.name == 'nt', '真实声明根使用 Windows 盘符')
+    def test_retry_skips_rescan_and_touches_only_listed_assets(self):
+        media = self.root / 'media'
+        media.mkdir()
+        for name in ('ABW-201.mp4', 'ABW-202.mp4'):
+            (media / name).write_bytes(b'video')
+        db = fresh_ledger(self.root)
+        config = self._config(media)
+        provider = self._provider()
+        first = process_library(config, db, self.root / 'generated', self.root / 'covers',
+                                provider_factory=lambda: provider)
+        self.assertEqual(first['total'], 2)
+        with closing(sqlite3.connect(db)) as connection:
+            ids = {name: row_id for name, row_id in connection.execute('SELECT name, id FROM asset')}
+        provider.reset_mock()
+        with patch('peach.library_processing.scan_location') as scan:
+            retried = process_library(config, db, self.root / 'generated', self.root / 'covers',
+                                      retry_ids=[ids['ABW-202.mp4']],
+                                      provider_factory=lambda: provider)
+        scan.assert_not_called()
+        self.assertEqual(retried['total'], 1)
+        self.assertEqual(retried['checked'], 1)
+        self.assertEqual(retried['status'], 'complete')
+
+    def test_retry_request_accepts_only_the_previous_failure_set(self):
+        from peach.web_library_processing import _retry_ids
+        previous = {'job_id': 'one', 'retryable_asset_ids': [130, 131]}
+        self.assertIsNone(_retry_ids(previous, {}))
+        self.assertEqual(_retry_ids(previous, {'job_id': 'one', 'retry': [130]}), [130])
+        self.assertEqual(_retry_ids(previous, {'job_id': 'one', 'retry': []}), [130, 131])
+        with self.assertRaises(ValueError):
+            _retry_ids(previous, {'job_id': 'old', 'retry': [130]})
+        with self.assertRaises(ValueError):
+            _retry_ids(previous, {'job_id': 'one', 'retry': [999]})
+        with self.assertRaises(ValueError):
+            _retry_ids(previous, {'job_id': 'one', 'retry': 'all'})
+
+    def test_fetch_refuses_to_start_after_its_budget_is_gone(self):
+        from peach.jav_cover_fetch import DeadlineExceeded, _fetch
+        transport = Mock()
+        with self.assertRaises(DeadlineExceeded):
+            _fetch(transport, 'https://example.com/a.jpg', referer='https://example.com/',
+                   limit=100, deadline=time.monotonic() - 1)
+        transport.assert_not_called()
+
+    def test_fetch_clamps_each_attempt_to_the_remaining_budget(self):
+        from peach.jav_cover_fetch import _fetch
+        transport = Mock()
+        transport.return_value = Mock(status=200, body=b'x')
+        _fetch(transport, 'https://example.com/a.jpg', referer='https://example.com/',
+               limit=100, deadline=time.monotonic() + 5)
+        timeout = transport.call_args.args[1]
+        self.assertGreater(timeout, 4)
+        self.assertLessEqual(timeout, 5)

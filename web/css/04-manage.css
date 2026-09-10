@@ -130,7 +130,12 @@
 .fsrcoption{display:flex;align-items:center;gap:8px;justify-content:space-between}
 .fsrcoption label{flex:1;min-width:0}
 .fsrcoption .geist-button{font-size:var(--fs-sm);white-space:nowrap}
-.library-processing ul{padding-left:20px}
+.library-processing-outcome{min-width:0;max-width:100%}
+.library-processing-issues-wrap{min-width:0;max-width:100%;margin-top:12px}
+.library-processing-issues-summary{margin:0 0 8px;color:var(--muted);font-size:var(--fs-xs);overflow-wrap:anywhere}
+/* 问题列表可能有上千条：只在这个框里滚，长消息就地换行，不让页面被撑破。 */
+.library-processing-issues{box-sizing:border-box;max-width:100%;max-height:min(40vh,520px);margin:0;padding-inline-start:20px;overflow-x:hidden;overflow-y:auto;overflow-wrap:anywhere;overscroll-behavior:contain}
+.library-processing-issues li{min-width:0;overflow-wrap:anywhere}
 .statsdashboard .emptystate{border:0;background:var(--ground)}
 .taste-history-guide-content a{color:var(--tungsten);text-decoration:none}
 .taste-history-guide-content a:hover{text-decoration:underline;text-underline-offset:3px}

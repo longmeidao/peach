@@ -310,7 +310,17 @@ class OperationalScriptTests(unittest.TestCase):
             f'{stub_line}\n', encoding="utf-8")
 
         # `/bin/bash` 在 macOS 上就是那个 3.2；装了新版 bash 的机器两个都跑。
-        shells = [path for path in ("/bin/bash", shutil.which("bash")) if path and Path(path).exists()]
+        # WSL 的 bash 不算：它按 Linux 规则解析路径，入口文件在 Windows 盘符下，
+        # 被它执行只会得到「文件不存在」的假失败。Git for Windows 的 bash 在
+        # PATH 里可能排在 WSL 后面，这里把标准安装位置补上，按内核名筛一遍。
+        shells = []
+        for path in ("/bin/bash", shutil.which("bash"), r"C:\Program Files\Git\bin\bash.exe"):
+            if not path or not Path(path).exists():
+                continue
+            probe = subprocess.run([path, "-c", "uname -s"],
+                                   capture_output=True, text=True, encoding="utf-8", check=False)
+            if probe.returncode == 0 and "linux" not in probe.stdout.casefold():
+                shells.append(path)
         self.assertTrue(shells)
         for shell in dict.fromkeys(shells):
             for argv, expected in (
