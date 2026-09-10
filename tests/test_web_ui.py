@@ -5870,20 +5870,25 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("if(context.type==='item'&&!topTags.length)")
         self.assertPageContains("const recommendationFacets=await api('/api/facets'")
         self.assertCode("if(requestSeq!==barsRequestSeq)return;\n    topTags=recommendationFacets.tags||[]")
-        self.assertPageContains("+seededSample(topTags,26,`tags:${state.seed||''}`).map(t=>")
+        self.assertPageContains("const pickedTags=seededSample(topTags,TAGS_FIRST,`tags:${state.seed||''}`);")
         self.assertPageContains("+sec('内容标签',chips(facetData.tags,'tag',false,30)")
 
     def test_the_discovery_tag_row_changes_with_the_batch_seed(self):
         """标签条跟着「换一批」的种子换成员，同一批内不动。
 
-        `/api/facets` 给 44 个内容标签，条上只放得下 26 个，取前 26 的话后面 18 个
-        永远轮不到；顶部三层本来就跟着同一个 state.seed 换人，标签条留在原地等于
-        「换一批」只换了半个顶部。抽样不动顺序——条上照旧按数量从多到少读下来，
+        `/api/facets` 给 44 个内容标签，第一屏只放得下 26 个，取前 26 的话后面 18 个
+        永远排在这一屏之后；顶部三层本来就跟着同一个 state.seed 换人，标签条留在原地
+        等于「换一批」只换了半个顶部。抽样不动顺序——条上照旧按数量从多到少读下来，
         换的是成员，不是位置。
         """
-        self.assertPageContains("+seededSample(topTags,26,`tags:${state.seed||''}`).map(t=>")
+        self.assertPageContains("const pickedTags=seededSample(topTags,TAGS_FIRST,`tags:${state.seed||''}`);")
+        self.assertPageContains("$('#tagScroll').innerHTML=(emptyLayout?.tags||'')+pickedTags.map(tagPillHtml).join('');")
         self.assertPageLacks("topTags.slice(0,26)",
-                             "取前 26 会让第 27 名之后的标签永远露不出来")
+                             "取前 26 会把这一批的成员钉死在数量榜的头部")
+        # 续在后面的是这一批之外的那些，抽样只决定开头露谁，不重排后面的数量序。
+        self.assertPageContains("const pickedKeys=new Set(pickedTags.map(row=>row.k));")
+        self.assertPageContains(
+            "wireRowPaging($('#tagScroll'),topTags.filter(row=>!pickedKeys.has(row.k)),tagPillHtml,wireTagPills);")
         # 同一个种子给同一套成员，所以这一批内翻页和刷新都不会让标签跳动。
         self.assertPageContains("const seededSample=(rows,count,seed,key=row=>row.k)=>{")
         self.assertPageContains("  if(rows.length<=count)return rows;")
@@ -8077,6 +8082,36 @@ class WebUiSourceTests(unittest.TestCase):
             board,
         )
 
+    def test_the_home_rows_keep_loading_as_they_scroll_toward_their_right_end(self):
+        """首页三排横滚到右端接着续，首屏只画一屏够用的量。
+
+        一排里每个头像都是一张要解码的图，把手上这份全画出来等于让首屏替一个多半不会
+        滚到那么远的人买单；而滚到头就没有了、还剩大半份在内存里没露面，那一排看起来
+        就是「只有这些」。数据在首屏那一次请求里一并取回，续这一下不再发请求。
+
+        续到这一排真的溢出为止再停：宽屏上一批可能还填不满一行，没溢出就滚不动，滚不
+        动就再没有第二次 `scroll` 来接着续。空的那一排根本不画，`.tier` 的序号跟着往前
+        挪，所以要按这一排画没画来认。
+        """
+        self.assertPageContains("const ROW_FIRST=24,TAGS_FIRST=26,ROW_BATCH=12;")
+        self.assertPageContains("const topsParams=new URLSearchParams({n:'60',seed:state.seed||''});")
+        self.assertPageContains("const perfRow=tops.performers.slice(0,ROW_FIRST).map(avHtml).join('');")
+        self.assertCode(
+            "    while(cursor<rest.length&&row.scrollLeft+row.clientWidth>=row.scrollWidth-320){\n"
+            "      row.insertAdjacentHTML('beforeend',rest.slice(cursor,cursor+ROW_BATCH).map(itemHtml).join(''));\n"
+            "      cursor+=ROW_BATCH;added=true;\n"
+            "    }"
+        )
+        self.assertPageContains("if(cursor>=rest.length)row.removeEventListener('scroll',fill);")
+        self.assertPageContains("row.addEventListener('scroll',fill,{passive:true});")
+        self.assertCode(
+            "    if(perfRow)wireRowPaging(rows[next++],tops.performers.slice(ROW_FIRST),avHtml,wireTierEntities);\n"
+            "    if(studioRow)wireRowPaging(rows[next++],tops.studios.slice(ROW_FIRST),bpHtml,wireTierEntities);"
+        )
+        # 续上来的那几个要跟第一屏一样能点开、一样有图片兜底。
+        self.assertPageContains("function wireTierEntities(root){")
+        self.assertPageContains("root.querySelectorAll('.mk img:not([data-fallback-wired])')")
+
     def test_both_ends_of_a_range_slider_always_report_their_value(self):
         """时长两端的读数常显：这里是唯一报数的地方。
 
@@ -8858,7 +8893,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks("state.tag=tg.dataset.tag",
                              "卡片上的标签绕过语境，在资料页点一下就把人带回目录")
         # 顶部标签条、资料页标签、卡片标签、芯片的 ✕ 与「全部清除」：五个入口一个落点。
-        self.assertPageContains("$('#tagScroll').querySelectorAll('[data-tag]')"
+        self.assertPageContains("wireTagPills($('#tagScroll'));")
+        self.assertPageContains("root.querySelectorAll('[data-tag]')"
                                 ".forEach(b=>b.onclick=()=>{toggleTag(b.dataset.tag)});")
         self.assertCode("$('#index').querySelectorAll('[data-entity-tag]').forEach(b=>b.onclick=()=>\n"
                         "    toggleTag(b.dataset.entityTag));")

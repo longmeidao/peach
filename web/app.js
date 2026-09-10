@@ -3062,7 +3062,8 @@ async function getBarsData(context=barsContext){
   const scope=facetParams.toString();
   if(scope!==barsDataScope){barsDataCache=null;barsDataPromise=null;barsDataScope=scope}
   if(barsDataCache&&Date.now()-barsDataAt<30000)return barsDataCache;
-  const topsParams=new URLSearchParams({n:'30',seed:state.seed||''});
+  // 取到端点的上限：那几排先画一屏，剩下的留给横滚续，续的时候不再发请求。
+  const topsParams=new URLSearchParams({n:'60',seed:state.seed||''});
   if(javActive())topsParams.set('jav','1');
   if(context.type==='home'&&state.state)topsParams.set('state',state.state);
   // 顶部三层跟着「换一批」的同一个种子走，刷新后才真的换人。
@@ -3244,6 +3245,46 @@ function renderBarsLoading(filterState){
     wireViewPills();
   }
 }
+/* 顶上那几排先画一屏够用的量，横滚到右端再续下一批。一排里每个头像都是一张要解码的
+   图，把手上这份全画出来等于让首屏替一个多半不会滚到那么远的人买单；而滚到头就没有
+   了、还剩大半份在内存里没露面，那一排看起来就是「只有这些」。
+   续的门槛留 320px，不是等真的贴到右端：滚到那一刻才开始拼 HTML，手底下已经是一段
+   空白了。数据一次取全，续这一下不再发请求。 */
+const ROW_FIRST=24,TAGS_FIRST=26,ROW_BATCH=12;
+function wireRowPaging(row,rest,itemHtml,wire){
+  if(!row||!rest.length)return;
+  let cursor=0;
+  /* 续到这一排真的溢出为止再停：宽屏上一批十二个可能还填不满一行，而没溢出就滚不动，
+     滚不动就再没有第二次 `scroll` 来接着续——那一排会停在「还有货但拿不出来」。 */
+  const fill=()=>{
+    let added=false;
+    while(cursor<rest.length&&row.scrollLeft+row.clientWidth>=row.scrollWidth-320){
+      row.insertAdjacentHTML('beforeend',rest.slice(cursor,cursor+ROW_BATCH).map(itemHtml).join(''));
+      cursor+=ROW_BATCH;added=true;
+    }
+    if(added)wire(row);
+    if(cursor>=rest.length)row.removeEventListener('scroll',fill);
+  };
+  row.addEventListener('scroll',fill,{passive:true});
+  fill();
+}
+/* 接线按整排重跑，不只认新添的那几个：`onclick` 是覆盖赋值，旧的那些接第二遍等于没
+   发生，比记住「哪些已经接过」省一份状态。 */
+function wireTierEntities(root){
+  root.querySelectorAll('[data-entity-kind]').forEach(b=>b.onclick=()=>
+    openEntity(b.dataset.entityKind,b.dataset.entityName));
+  // 兜底只剩「装了但读不出来」这一种：文件坏了，或归一漏掉、图小到看不出是什么。
+  // 「没装标识」在 bpHtml 就已经不出图了，走不到这里。
+  root.querySelectorAll('.mk img:not([data-fallback-wired])').forEach(img=>{
+    img.dataset.fallbackWired='1';
+    const fallback=()=>{const box=img.parentNode;if(box)box.textContent=box.dataset.fallback||''};
+    img.addEventListener('error',fallback,{once:true});
+    img.addEventListener('load',()=>{if(img.naturalWidth<32)fallback()},{once:true});
+  });
+}
+function wireTagPills(root){
+  root.querySelectorAll('[data-tag]').forEach(b=>b.onclick=()=>{toggleTag(b.dataset.tag)});
+}
 async function buildBars(){
   const requestSeq=++barsRequestSeq;
   buildDrawerNavigation();
@@ -3299,32 +3340,34 @@ async function buildBars(){
   };
   // 空的一排仍占 28px，画出来就是一条什么都没有的空带，所以没人就不画那一排。
   // 「两排都空」现在只剩全库真的一个人都没有这一种：窄集合已经由 loadTops 退回全库口径。
-  const perfRow=tops.performers.map(avHtml).join('');
-  const studioRow=tops.studios.map(bpHtml).join('');
+  const perfRow=tops.performers.slice(0,ROW_FIRST).map(avHtml).join('');
+  const studioRow=tops.studios.slice(0,ROW_FIRST).map(bpHtml).join('');
   const tier=html=>html?`<div class="tier">${html}</div>`:'';
   const emptyHome=context.type==='home'&&!javActive()&&!state.state&&!state.q&&!facetData.locations.some(row=>row.n>0);
   const emptyLayout=emptyHome?emptyCatalogLayout():null;
   $('#tiers').innerHTML=emptyLayout?emptyLayout.tiers:tier(perfRow)+tier(studioRow);
   $('#tiers').hidden=!(emptyLayout||perfRow||studioRow);
   $('#tiers').removeAttribute('aria-busy');
-  $('#tiers').querySelectorAll('[data-entity-kind]').forEach(b=>b.onclick=()=>
-    openEntity(b.dataset.entityKind,b.dataset.entityName));
-  // 兜底只剩「装了但读不出来」这一种：文件坏了，或归一漏掉、图小到看不出是什么。
-  // 「没装标识」在 bpHtml 就已经不出图了，走不到这里。
-  $('#tiers').querySelectorAll('.mk img').forEach(img=>{
-    const fallback=()=>{const box=img.parentNode;if(box)box.textContent=box.dataset.fallback||''};
-    img.addEventListener('error',fallback,{once:true});
-    img.addEventListener('load',()=>{if(img.naturalWidth<32)fallback()},{once:true});
-  });
+  wireTierEntities($('#tiers'));
+  if(!emptyLayout){
+    // 空的那一排根本没画出来，`.tier` 的序号跟着往前挪，认死 0 和 1 会把厂牌续到女优那排。
+    const rows=$('#tiers').querySelectorAll('.tier');let next=0;
+    if(perfRow)wireRowPaging(rows[next++],tops.performers.slice(ROW_FIRST),avHtml,wireTierEntities);
+    if(studioRow)wireRowPaging(rows[next++],tops.studios.slice(ROW_FIRST),bpHtml,wireTierEntities);
+  }
 
   $('#tagbar').removeAttribute('aria-busy');
   $('#viewPills').innerHTML=viewPillsHtml(filterState);
-  $('#tagScroll').innerHTML=(emptyLayout?.tags||'')
-    +seededSample(topTags,26,`tags:${state.seed||''}`).map(t=>
-      `<button class="pill" data-tag="${esc(t.k)}" aria-pressed="${
-        tagPressed(filterState.tag,t.k)}">${esc(tagLabel(t.k))}</button>`).join('');
+  /* 第一屏是那一批抽出来的——「换一批」换的就是这批成员。续上去的是这一批之外剩下的，
+     照数量从多到少读下来：抽样只管开头露谁，后面的顺序不归它管。 */
+  const pickedTags=seededSample(topTags,TAGS_FIRST,`tags:${state.seed||''}`);
+  const pickedKeys=new Set(pickedTags.map(row=>row.k));
+  const tagPillHtml=t=>`<button class="pill" data-tag="${esc(t.k)}" aria-pressed="${
+    tagPressed(filterState.tag,t.k)}">${esc(tagLabel(t.k))}</button>`;
+  $('#tagScroll').innerHTML=(emptyLayout?.tags||'')+pickedTags.map(tagPillHtml).join('');
   wireViewPills();
-  $('#tagScroll').querySelectorAll('[data-tag]').forEach(b=>b.onclick=()=>{toggleTag(b.dataset.tag)});
+  wireTagPills($('#tagScroll'));
+  wireRowPaging($('#tagScroll'),topTags.filter(row=>!pickedKeys.has(row.k)),tagPillHtml,wireTagPills);
   renderCombo(); wireAllDrag();
 
   const chips=(items,key,multi,limit)=>items.length?`<div class="chips">`+items.slice(0,limit||999).map(it=>{
