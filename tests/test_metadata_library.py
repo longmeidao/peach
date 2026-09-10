@@ -291,6 +291,12 @@ class LibraryWatchdogTests(unittest.TestCase):
         dead = snapshot(config)
         self.assertEqual(dead['status'], 'failed')
         self.assertIn('中断', dead['error'])
+        self.assertEqual(json.loads(path.read_text(encoding='utf-8'))['status'], 'failed')
+        # 另一个读取者正好占着锁时读到的也是同一个结论，不会跳回「运行中」。
+        with FileLock(str(path) + '.lock', timeout=0):
+            again = snapshot(config)
+        self.assertEqual(again['status'], 'failed')
+        self.assertNotIn('stalled', again)
 
     def test_deadline_within_budget_is_running_and_expired_is_stalled(self):
         now = time.time()
