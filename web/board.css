@@ -651,7 +651,6 @@ button,input,select,textarea{font-family:inherit}
 .vwrap>.gate{box-sizing:border-box;border-radius:inherit}.stage .vwrap{overflow:hidden;border-radius:var(--surface-radius)}
 .board-section-toggle svg{order:2;margin-left:auto;width:14px;height:14px;flex:none;fill:none;stroke:currentColor;stroke-width:2;transform:rotate(0deg)}
 .board-section-toggle[aria-expanded=true] svg{transform:rotate(90deg)}
-.drawer .sec:has(.board-section-toggle[aria-expanded=false]) [data-more]{display:none}
 .drawer .board-sidebar-body[hidden]{display:none}
 .drawer .board-sidebar-body .chips{display:flex;flex-direction:column;gap:2px;padding-left:8px}
 .drawer .board-sidebar-body .chip{display:flex;width:100%;min-width:0;min-height:36px;gap:8px;padding:8px;border:0;border-radius:10px;background:transparent;color:var(--muted);font-size:14px;line-height:20px;text-align:left;font-weight:400}
@@ -660,6 +659,9 @@ button,input,select,textarea{font-family:inherit}
 .drawer .board-sidebar-body .chip-label{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .drawer .board-sidebar-body .chip .n{margin-left:auto;flex:none;padding:1px 4px;border-radius:4px;background:var(--surface);color:var(--muted);font-size:12px;line-height:16px}
 .drawer .board-sidebar-body .chip svg{flex:none;width:16px;height:16px}
+/* 名单末尾那一句跟条目左对齐，但比条目轻：它不是名单里的一项，是名单还没完这件事。 */
+.drawer .board-sidebar-body .sidemore{display:flex;align-items:center;width:calc(100% - 8px);margin:2px 0 0 8px;min-height:32px;padding:6px 8px;border:0;border-radius:10px;background:transparent;color:var(--muted);font-size:13px;line-height:20px;text-align:left;font-weight:500}
+.drawer .board-sidebar-body .sidemore:hover{background:var(--hover);color:var(--ink)}
 /* 观看进度与动作分别成组，操作按钮保留各自的可访问名称。 */
 .sidecontent .trace{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;padding:0;margin:8px 0 16px}
 .sidecontent .trace-metric{min-width:0;padding:14px 12px;background:var(--surface);border-radius:12px}

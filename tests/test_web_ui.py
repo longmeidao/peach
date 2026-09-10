@@ -5873,6 +5873,26 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("const pickedTags=seededSample(topTags,TAGS_FIRST,`tags:${state.seed||''}`);")
         self.assertPageContains("+sec('内容标签',chips(facetData.tags,'tag',false,30)")
 
+    def test_a_truncated_sidebar_list_says_so_at_its_own_end(self):
+        """侧栏名单没列完时，那句话接在名单末尾，不挂到组名那一行。
+
+        「更多」说的是「这张名单还没完」——它要跟名单断掉的地方在一起。挂在标题上时，
+        人得先把这一列读到底、再抬头回到标题去找它；而标题那一行的职责是开合这一组，
+        旁边多一个按钮，点哪儿会展开就成了两件要分辨的事。
+        """
+        self.assertPageContains(
+            "scopedCreators.length>26?'<button class=\"sidemore\" data-more=\"creator\">更多</button>':''")
+        self.assertPageContains(
+            "facetData.tags.length>30?'<button class=\"sidemore\" data-more=\"tag\">更多</button>':''")
+        # 展开与收起是同一枚按钮的两面，不另开一处入口。
+        self.assertPageContains("group.querySelector('.chips').outerHTML=chips(src,k,false,expanded?lim:999);")
+        self.assertPageContains("b.textContent=expanded?'更多':'收起';")
+        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
+        self.assertIn(".drawer .board-sidebar-body .sidemore{", board)
+        self.assertNotIn(
+            ".drawer .sec:has(.board-section-toggle[aria-expanded=false]) [data-more]", board,
+            "它落在组的正文里，折叠时跟正文一起收走，不必单独藏")
+
     def test_the_discovery_tag_row_changes_with_the_batch_seed(self):
         """标签条跟着「换一批」的种子换成员，同一批内不动。
 

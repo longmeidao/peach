@@ -3400,8 +3400,10 @@ async function buildBars(){
         <input id="durMin" type="range" min="0" max="180" step="5" value="${filterState.dur_min?Math.min(180,+filterState.dur_min/60):0}" aria-label="最短时长（分钟）">
         <input id="durMax" type="range" min="0" max="180" step="5" value="${filterState.dur_max?Math.min(180,+filterState.dur_max/60):180}" aria-label="最长时长（分钟）"></div></div>`:'','','meta')
     +sec('画幅',chips(facetData.orientations,'orient'),'','meta')
-    +sec('创作者',chips(scopedCreators,'creator',false,26),scopedCreators.length>26?'<button data-more="creator">更多</button>':'','artist')
-    +sec('内容标签',chips(facetData.tags,'tag',false,30),facetData.tags.length>30?'<button data-more="tag">更多</button>':'','general')
+    /* 「更多」接在名单末尾，它说的是「这张名单还没完」——那句话要跟名单断掉的地方在
+       一起。挂在组名那一行时，人得先把这一列读到底、再抬头回到标题去找它。 */
+    +sec('创作者',chips(scopedCreators,'creator',false,26),scopedCreators.length>26?'<button class="sidemore" data-more="creator">更多</button>':'','artist')
+    +sec('内容标签',chips(facetData.tags,'tag',false,30),facetData.tags.length>30?'<button class="sidemore" data-more="tag">更多</button>':'','general')
     +sec('影片属性',chips(facetData.tech,'tag',false,16),'','meta')
     +sec('关注标签',followTagRows.length?`<div class="chips">`+followTagRows.map(row=>
       `<button class="chip online" data-follow-drawer-tag="${esc(row.k)}"><span class="chip-label">${esc(tagLabel(row.k))}</span><span class="n">${row.n.toLocaleString()}</span></button>`
@@ -3439,12 +3441,12 @@ async function buildBars(){
     durMin.oninput=()=>syncDuration(false,'min');durMax.oninput=()=>syncDuration(false,'max');
     durMin.onchange=()=>syncDuration(true,'min');durMax.onchange=()=>syncDuration(true,'max');syncDuration();
   }
-  $('#drawer').querySelectorAll('[data-more]').forEach(b=>b.onclick=e=>{e.stopPropagation();
-    const sec=b.closest('.sec'), k=b.dataset.more;
+  $('#drawer').querySelectorAll('[data-more]').forEach(b=>b.onclick=()=>{
+    const group=b.closest('.sec'), k=b.dataset.more;
     const src=k==='tag'?facetData.tags:scopedCreators;
     const lim=k==='tag'?30:26;
     const expanded=b.dataset.on==='1';
-    sec.querySelector('.chips').outerHTML=chips(src,k,false,expanded?lim:999);
+    group.querySelector('.chips').outerHTML=chips(src,k,false,expanded?lim:999);
     b.dataset.on=expanded?'0':'1';
     b.textContent=expanded?'更多':'收起';
     bind();});

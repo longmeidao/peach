@@ -1670,18 +1670,18 @@ var yn = (e) => e.replace(/[&<>"']/g, (e) => ({
 function bn(e, t, n = "", r = "") {
 	if (!t) return "";
 	let i = `sidebar-group-${encodeURIComponent(e)}`;
-	return `<details class="sec${r ? " cat-" + yn(r) : ""}" data-sidebar-group="${yn(e)}"><summary role="button" class="board-section-toggle"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chevron-right"/></svg><span>${yn(e)}</span>${n}</summary><div class="board-sidebar-body" id="${i}">${t}</div></details>`;
+	return `<details class="sec${r ? " cat-" + yn(r) : ""}" data-sidebar-group="${yn(e)}"><summary role="button" class="board-section-toggle"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chevron-right"/></svg><span>${yn(e)}</span></summary><div class="board-sidebar-body" id="${i}">${t}${n}</div></details>`;
 }
 function xn(e) {
 	e.querySelectorAll("[data-sidebar-group]").forEach((e) => {
 		if (e.dataset.sidebarWired) return;
 		e.dataset.sidebarWired = "true";
-		let t = e.querySelector(".board-section-toggle"), n = e.querySelector(".board-sidebar-body"), r = `peach.sidebar.group.${e.dataset.sidebarGroup}`, i = null;
+		let t = e.querySelector(".board-sidebar-body"), n = `peach.sidebar.group.${e.dataset.sidebarGroup}`, r = null;
 		try {
-			i = sessionStorage.getItem(r);
+			r = sessionStorage.getItem(n);
 		} catch {}
-		let a = !!n.querySelector("[aria-pressed=true]");
-		e.open = i === null ? a : i === "open", t.querySelectorAll("button").forEach((e) => e.addEventListener("click", (e) => e.stopPropagation()));
+		let i = !!t.querySelector("[aria-pressed=true]");
+		e.open = r === null ? i : r === "open";
 	}), y(e, "details[data-sidebar-group]", "sidebar-collapse"), e.querySelectorAll(".board-section-toggle").forEach((e) => {
 		e.dataset.persistWired || (e.dataset.persistWired = "true", e.addEventListener("click", () => {
 			let t = `peach.sidebar.group.${e.closest("[data-sidebar-group]").dataset.sidebarGroup}`;
