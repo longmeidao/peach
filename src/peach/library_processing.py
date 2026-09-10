@@ -308,6 +308,14 @@ def process_library(config, db_path, candidate_root, cover_root, *, location='co
                         issue(row['id'], str(error), action='reading_local')
                         continue
                 if not code and not payload:
+                    # 番号认不出不影响本地封面：正片旁边的同名 PNG／JPG 就是它的海报，
+                    # 落在 `{id}_4.jpg` 后卡片和详情直接用这一张，不再回退九宫格。
+                    try:
+                        state['covers'] += int(_local_poster(
+                            video, f"{row['id']}_4",
+                            config.directory('generated') / 'posters'))
+                    except (OSError, ValueError):
+                        issue(row['id'], '本地封面无法读取', action='reading_local', retryable=True)
                     issue(row['id'], '未识别到番号，请在详情中补充资料', action='reading_local')
                     continue
                 if code:
