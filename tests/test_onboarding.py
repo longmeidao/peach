@@ -433,7 +433,7 @@ class SetupPageTests(_Case):
         for question in onboarding.questions(self.config, windows=NATIVE_WINDOWS):
             self.assertIn(f'name="{question.key}"', body)
         # 页面用自己的题面：短名词加一句说明，不把命令行那份带可选值的题面搬上来。
-        for title in ("数据目录", "媒体文件夹", "谁可以访问", "端口", "局域网访问地址"):
+        for title in ("数据目录", "媒体库", "谁可以访问", "端口", "局域网访问地址"):
             self.assertIn(f">{title}<", body)
         # 只有媒体文件夹非填不可。其余四项都有能直接用的默认值，折进「高级设置」，
         # 独立包与源码部署是同一张表单；有一项报错时折叠展开着。
@@ -445,11 +445,11 @@ class SetupPageTests(_Case):
         self.assertNotIn('type="hidden"', body)
         self.assertIn("details .field+.field{margin-top:24px}", body)
         self.assertIn("Peach 数据库、缓存和设置文件都放在这里。", body)
-        self.assertIn("可以是外置硬盘上的文件夹", body)
-        # 媒体文件夹是一个可加减的列表：默认一行，「添加文件夹」和移除键由页内脚本亮出来，
+        self.assertIn("也可以使用外置硬盘", body)
+        # 媒体文件夹是一个可加减的列表：默认一行，「添加媒体库」和移除键由页内脚本亮出来，
         # 新行从 <template> 里克隆，所以没有脚本时页面只有一个输入框。
-        self.assertEqual(body.count('<div class="dir"><input name="media_dir"'), 2)
-        self.assertIn('<button type="button" class="add" id="add-dir" hidden>添加文件夹</button>', body)
+        self.assertEqual(body.count('<div class="dir"><span class="entry-input"><input name="media_dir"'), 2)
+        self.assertIn('<button type="button" class="add" id="add-dir" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>添加媒体库</button>', body)
         self.assertIn('<template id="dir-row"><div class="dir">', body)
         self.assertIn('class="rm" aria-label="移除这个文件夹" hidden>', body)
         self.assertIn("template.content.firstElementChild.cloneNode(true)", body)
@@ -480,7 +480,7 @@ class SetupPageTests(_Case):
         self.assertIn('<span class="pcheck"><input type="checkbox" name="scan_now" value="y" checked>', body)
         self.assertIn("完成设置后扫描并补全资料：", body)
         self.assertNotIn("完成设置后扫描并补全资料：<code>", body)
-        self.assertIn('媒体文件夹<span class="req"', body)
+        self.assertIn('媒体库<span class="req"', body)
         self.assertIn('数据目录<span class="req"', body)
         self.assertIn('端口<span class="req"', body)
         self.assertIn('局域网访问地址<span class="req"', body)
@@ -520,7 +520,7 @@ class SetupPageTests(_Case):
         response = self._post("/setup", self._form(media_dir=[str(self.media), str(nested)]))
         self.assertEqual(response.status_code, 400)
         body = response.text
-        self.assertEqual(body.count('<div class="dir"><input name="media_dir"'), 3, "两行都回显，外加模板")
+        self.assertEqual(body.count('<div class="dir"><span class="entry-input"><input name="media_dir"'), 3, "两行都回显，外加模板")
         self.assertIn("已经在", body)
         # 错误挂在第二行底下，第一行不背锅。
         first_row = body.index(f'value="{escape(str(self.media), quote=True)}"')
@@ -554,12 +554,12 @@ class SetupPageTests(_Case):
         self.assertTrue((self.data_root / "state" / onboarding.SCAN_REQUEST_NAME).is_file())
         body = response.text
         self.assertIn("设置完成", body)
-        self.assertIn("访问密码可在配置页设置、修改或关闭", body)
+        self.assertIn("首次扫描已排队", body)
         self.assertNotIn("peach token", body)
-        self.assertIn("Peach 数据库：", body)
         self.assertNotIn("账本", body)
-        # 完成页尾部是与配置页共用的运行信息：版本、位置和 FFmpeg 一眼可查。
-        self.assertIn("<h2>运行信息</h2>", body)
+        # 完成页尾部是与配置页共用的运行信息，默认折叠：版本、位置和 FFmpeg 展开可查。
+        self.assertIn("<details><summary><span>运行信息</span>", body)
+        self.assertNotIn("<details open", body)
         for term in ("版本", "数据目录", "设置文件", "日志目录", "FFmpeg"):
             self.assertIn(f"<dt>{term}</dt>", body)
         self.assertIn(str(self.data_root), body)
