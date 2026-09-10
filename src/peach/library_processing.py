@@ -13,7 +13,7 @@ from pathlib import Path
 from filelock import FileLock, Timeout
 from PIL import Image
 
-from .catalog_rules import release_code_from_filename, same_release_code
+from .catalog_rules import is_korean_mib_code, release_code_from_filename, same_release_code
 from .jav_cover_fetch import DeadlineExceeded
 from .library_nfo import read_nfo, sidecars, local_art
 from .metadata import extract_catalog_evidence, extract_peach_fields, identifies_code, validate_provider_code
@@ -336,7 +336,10 @@ def process_library(config, db_path, candidate_root, cover_root, *, location='co
                 missing = [field for field in ('title', 'performers', 'studio', 'release_date', 'tags')
                            if field not in local_fields and f'{target_key}:{field}' not in groups
                            and not row.get({'title': 'catalog_title'}.get(field, field))]
-                if missing and code:
+                # 韩国 MIB 的编号不在 JAV 目录站上，资料与封面都不问：番号相同的日本作品
+                # 会原样通过番号核验，取回来的是别的片。
+                jav_catalog = bool(code) and not is_korean_mib_code(code)
+                if missing and jav_catalog:
                     budget = ACTION_BUDGETS['querying_metadata']
                     update(stage='采集缺失资料', current_action='querying_metadata',
                            current_started_at=time.time(),
@@ -357,7 +360,7 @@ def process_library(config, db_path, candidate_root, cover_root, *, location='co
                     except Exception:
                         issue(row['id'], '外部资料未取得，请检查采集来源后重试',
                               action='querying_metadata', retryable=True)
-                if code and not (cover_root / (code + '.jpg')).is_file():
+                if jav_catalog and not (cover_root / (code + '.jpg')).is_file():
                     budget = ACTION_BUDGETS['fetching_cover']
                     update(stage='采集缺失封面', current_action='fetching_cover',
                            current_started_at=time.time(),

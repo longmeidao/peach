@@ -64,6 +64,7 @@ from peach.catalog_rules import (
     code_letter_stem,
     is_amateur_code,
     is_jav_code,
+    is_korean_mib_code,
     normalise_code_key,
 )
 
@@ -82,6 +83,8 @@ DEFAULT_FC2_METADATA_LOG = GENERATED_DIR / "fc2-candidate-log.csv"
 
 #: 低于这个宽度的是缩略图或占位图，不当封套。实测最低的正片封套是 800 宽。
 MIN_WIDTH = 700
+#: 韩国 MIB 的编号不在 JAV 目录站上，封面来源一律不问；记进日志算确认落空，不重探。
+MIB_NOT_JAV = "韩国 MIB 不适用 JAV 封面来源"
 #: 量尺寸只需要 JPEG 头部，别把整张 1 MB 的图拉下来。
 PROBE_BYTES = 64 * 1024
 # 瞬时 TLS EOF / 连接重置不能落成“官方没有封面”。按项目外网退避规则重试，
@@ -359,6 +362,9 @@ _DMM_CID = re.compile(
     r"(?:/adult)?/(?P<cid>[^/]+)/",
     re.I,
 )
+#: 番号与 content_id 各自末尾那段数字。content_id 可能带 DVD 版尾缀（`49ha102r`）。
+_CODE_NUMBER = re.compile(r"(\d+)\D*$")
+_CID_NUMBER = re.compile(r"(\d+)[a-z]*$")
 
 
 def is_cross_product_cover(code: str, url: str) -> bool:
@@ -377,7 +383,13 @@ def is_cross_product_cover(code: str, url: str) -> bool:
     match = _DMM_CID.search(urlparse(url or "").path)
     if not stem or match is None:
         return False
-    return stem not in match.group("cid").lower()
+    cid = match.group("cid").lower()
+    if stem not in cid:
+        return True
+    # 字母段对上还不够：`YUJ-101` 取回的是 `yuj00011`，`CHU-201` 是 `chu00021`，
+    # `435MFC-135` 是 `h_1711mfcc00027`。数字段按整数比，补零和厂牌前缀都不影响。
+    wanted, got = _CODE_NUMBER.search(code or ""), _CID_NUMBER.search(cid)
+    return bool(wanted and got) and int(wanted.group(1)) != int(got.group(1))
 
 
 def _is_prestige(evidence: MetadataEvidence) -> bool:
@@ -523,6 +535,11 @@ def best_cover(transport: HttpTransport, code: str, delay: float, *,
                minimum_pixels: int = 0,
                deadline: float | None = None,
                ) -> tuple[Candidate, tuple[int, int], bytes]:
+    # 韩国 MIB 的编号在 JAV 目录站上要么不存在、要么撞上番号相同的日本作品：
+    # `HA-101`、`MY-102` 取回的都是那部日本片的封套，番号核验拦不住，因为番号本来
+    # 就一样。所以不是「找不到」，是根本不该去找。
+    if is_korean_mib_code(code):
+        raise Unavailable(MIB_NOT_JAV)
     # 来源一律记主机名。缓存、构造路径和官方页常指向同一个主机，记成多个名字
     # 会让覆盖率统计凭空多出「渠道」。
     evidence = cached_metadata(metadata_root, code)
@@ -631,11 +648,12 @@ def restore_logged_successes(transport: HttpTransport, log: Path, root: Path,
     root.mkdir(parents=True, exist_ok=True)
     restored = skipped = 0
     failed: list[dict[str, str]] = []
-    # 恢复不做发现请求，所以它比抓取更容易把历史错图原样搬回本地：跨片封套在这里
-    # 也要挡掉，否则删掉错图重跑恢复只会把同一张再下一次。
+    # 恢复不做发现请求，所以它比抓取更容易把历史错图原样搬回本地：跨片封套与 MIB
+    # 在这里也要挡掉，否则删掉错图重跑恢复只会把同一张再下一次。
     successes = [row for row in logged_rows(log)
                  if row.get("result") == "取得" and row.get("code") and row.get("url")
-                 and not is_cross_product_cover(str(row["code"]), str(row["url"]))]
+                 and not is_cross_product_cover(str(row["code"]), str(row["url"]))
+                 and not is_korean_mib_code(str(row["code"]))]
     for index, row in enumerate(successes, 1):
         if guard is not None:
             guard.check()
@@ -699,6 +717,9 @@ def pending(database: Path, root: Path, only_shaped: bool,
         # FC2 在 r18/avsox/javbus 三源实测零命中（见 HANDOFF），本抓取器用的是
         # 同一批来源。默认跳过 400 个必然落空的请求；`--all-codes` 仍可强制尝试。
         if only_shaped and str(code).upper().startswith("FC2"):
+            continue
+        # MIB 不走 JAV 封面来源（见 `best_cover`），排进队列只会每轮落空一次。
+        if is_korean_mib_code(str(code)):
             continue
         key = normalise_code_key(str(code))
         target = root / f"{key}.jpg"

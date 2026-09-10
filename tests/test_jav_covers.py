@@ -339,6 +339,21 @@ class CrossProductCoverTests(unittest.TestCase):
             "FC2-PPV-3071875",
             "https://contents-thumbnail2.fc2.com/w1200/storage/x.jpg"))
 
+    def test_dmm_content_id_must_carry_the_code_number(self):
+        # 字母段对上、数字段不对：MIB 的 `YUJ-101` 取回 `yuj00011`，`435MFC-135` 取回
+        # `mfcc00027`。954 条成功记录里，这样的正好 9 条，全是错图。
+        for code, cid in (("YUJ-101", "yuj00011"), ("CHU-201", "chu00021"),
+                          ("435MFC-135", "h_1711mfcc00027")):
+            with self.subTest(code=code):
+                self.assertTrue(covers.is_cross_product_cover(
+                    code, f"https://awsimgsrc.dmm.co.jp/pics_dig/digital/video/{cid}/{cid}pl.jpg"))
+        # 补零、厂牌数字前缀、去掉的素人前缀和 DVD 版尾缀都不改变数字本身。
+        for code, cid in (("278GYAN-017", "gyan00017"), ("428SUKE-073", "h_1711suke00073"),
+                          ("476MLA-234", "mla234"), ("HA-102", "49ha102r")):
+            with self.subTest(code=code):
+                self.assertFalse(covers.is_cross_product_cover(
+                    code, f"https://pics.dmm.co.jp/mono/movie/{cid}/{cid}pl.jpg"))
+
     def test_a_carried_wrong_cover_loses_to_the_right_one(self):
         wrong = "https://pics.dmm.co.jp/mono/movie/adult/118sng021/118sng021pl.jpg"
         right = "https://image.mgstage.com/images/luxutv/259luxu/1475/pb_e_259luxu-1475.jpg"
@@ -390,6 +405,57 @@ class CrossProductCoverTests(unittest.TestCase):
 
         self.assertEqual((winner.source, winner.url, size),
                          ("image.mgstage.com", cover, (800, 539)))
+
+
+class KoreanMibCoverTests(unittest.TestCase):
+    """韩国 MIB 的编号不在 JAV 目录站上。
+
+    真实事故：`B:\\MVP\\MIB\\` 下 19 张封面全错。`YUJ-101` 这类是数字段拼错，番号核验
+    拦得住；`HA-101`、`MY-102` 这类撞上番号完全相同的日本作品，核验拦不住，只能不问。
+    """
+
+    def test_best_cover_refuses_without_asking_any_source(self):
+        def transport(request, timeout, limit):
+            self.fail(f"不该发出请求：{request.url}")
+
+        with self.assertRaises(covers.Unavailable) as raised:
+            covers.best_cover(transport, "HA-101", 0, prior_candidates=(covers.candidate_for(
+                "https://pics.dmm.co.jp/digital/video/3ha00101/3ha00101pl.jpg"),))
+        self.assertEqual(str(raised.exception), covers.MIB_NOT_JAV)
+
+    def test_restore_does_not_bring_a_mib_cover_back(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            log = Path(tmp) / "cover-fetch-log.csv"
+            url = "https://image.mgstage.com/images/mywife/sp/292my/102/pake-03_sp-292my-102.jpg"
+            with log.open("w", encoding="utf-8-sig", newline="") as handle:
+                writer = csv.DictWriter(handle, fieldnames=covers.FIELDS)
+                writer.writeheader()
+                writer.writerow({"code": "MY-102", "result": "取得", "source": "",
+                                 "width": "900", "height": "506", "kb": "120",
+                                 "url": url, "note": ""})
+            output = Path(tmp) / "covers"
+
+            result = covers.restore_logged_successes(
+                transport_for({url: (200, jpeg(900, 506))}), log, output)
+
+            self.assertEqual(result["logged"], 0)
+            self.assertFalse((output / "MY-102.jpg").exists())
+
+    def test_mib_codes_never_enter_the_queue(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            database = root / "ledger.db"
+            connection = sqlite3.connect(database)
+            connection.execute("CREATE TABLE asset(code TEXT, medium TEXT, location TEXT)")
+            connection.executemany(
+                "INSERT INTO asset(code,medium,location) VALUES(?, 'video', '115')",
+                [("ABW-232",), ("HA-101",), ("YUJ-101",)],
+            )
+            connection.commit(); connection.close()
+            for only_shaped in (True, False):
+                with self.subTest(only_shaped=only_shaped):
+                    self.assertEqual(
+                        covers.pending(database, root / "covers", only_shaped), ["ABW-232"])
 
 
 class BestCoverTests(unittest.TestCase):

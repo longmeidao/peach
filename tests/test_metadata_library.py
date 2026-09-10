@@ -154,6 +154,24 @@ class LibraryNfoTests(unittest.TestCase):
         self.assertEqual(second['candidates'], result['candidates'])
         provider.query.assert_called_once()
 
+    def test_korean_mib_codes_ask_no_jav_source_for_metadata_or_cover(self):
+        """`HA-101` 是 MIB 的编号，也是一部日本片的番号：问了就取回那部日本片。"""
+        media = self.root / 'media'
+        media.mkdir()
+        for name in ('HA-101.mp4', 'ABW-001.mp4'):
+            (media / name).write_bytes(b'video')
+        db = fresh_ledger(self.root)
+        config = PeachConfig(self.root, self.root / 'config.toml', present=True, locations={'local': (str(media),)})
+        provider = Mock()
+        provider.query.return_value = {'maker': 'Studio', 'id': 'ABW-001', 'source_url': ''}
+        provider.cover.return_value = False
+        result = process_library(config, db, self.root / 'generated', self.root / 'covers',
+                                 provider_factory=Mock(return_value=provider))
+        self.assertEqual(result['status'], 'complete')
+        self.assertEqual(result['identified'], 2)
+        self.assertEqual([item.args[0] for item in provider.query.call_args_list], ['ABW-001'])
+        self.assertEqual([item.args[0] for item in provider.cover.call_args_list], ['ABW-001'])
+
     def test_management_controls_keep_credentials_and_empty_sections_visible(self):
         root = Path(__file__).resolve().parents[1]
         source = (root / 'web/app.js').read_text(encoding='utf-8')
