@@ -115,7 +115,9 @@
 .project-banner-error{--feedback-color:var(--drop)}.project-banner-warning{--feedback-color:var(--meter)}.project-banner-success{--feedback-color:var(--feedback-success)}
 .context-card{position:fixed;inset:auto;margin:0;width:320px;max-width:calc(100vw - 16px);box-sizing:border-box;overflow:auto;overscroll-behavior:contain;padding:16px;border:1px solid var(--line);border-radius:var(--floating-radius);background:var(--ground);color:var(--ink);box-shadow:0 8px 24px rgba(0,0,0,.16);font-size:var(--fs-md);line-height:1.5;overflow-wrap:anywhere;z-index:var(--layer-popover);pointer-events:auto}
 .context-card[hidden]{display:none}.context-card h3{margin:0 0 8px;font-size:var(--fs-md)}.context-card dl{display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px 12px;margin:0}.context-card dt{color:var(--muted)}.context-card dd{margin:0}
-@media(max-width:600px){.project-banner{justify-content:flex-start}.project-banner>a{margin-left:24px}}
+/* 窄屏上说明从左边起，动作靠右端：`auto` 而不是定值缩进，说明长短不一时那个链接才
+   总在同一条竖线上，换行之后也还在这一横条的右端。 */
+@media(max-width:600px){.project-banner{justify-content:flex-start}.project-banner>a{margin-left:auto}}
 
 
 /* 检查失败明细持续保留到状态解决，复用 Note 的边界、图标和语义色。 */

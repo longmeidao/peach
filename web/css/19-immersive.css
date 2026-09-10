@@ -144,9 +144,6 @@ body:has(#batchbar:not([hidden])) #stage{padding-bottom:180px}
     align-items:center;justify-content:center;padding:8px 6px;white-space:nowrap;font-size:var(--fs-xs)}
   .batchbar:has([data-junk-batch]:not([hidden])) button[hidden]{display:none}
   .batchbar:has([data-junk-batch]:not([hidden])) button svg{margin-right:4px}
-  .entitycollectionhead{align-items:flex-start;flex-direction:column}
-  .entitycollectionhead .sorts{width:100%;margin-left:0;padding-bottom:2px}
-  .entitycollectionhead .sorts button{min-height:36px}
   .playlistpage>header{align-items:stretch;flex-direction:column}.playlistcreate label{max-width:none}.playlistcreate input{min-width:0}
   .fb{width:100%}.fb button{flex:1 1 0;min-width:38px}
   /* 关注详情只有三四个动作键，撑满一行就是四个大得离谱的方块。 */

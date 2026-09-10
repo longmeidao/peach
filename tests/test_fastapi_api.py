@@ -1595,6 +1595,28 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         full = await self.client.get("/photo?id=9", headers=headers)
         self.assertEqual(full.content, source.read_bytes())
 
+    async def test_a_warm_photo_thumbnail_answers_without_resolving_the_original(self):
+        """缩略图已经躺在本地时，这条路径不再去解析原图。
+
+        解析要在挂载的网盘上确认原文件还在，实测一次 137–402 毫秒；一屏几十张缩略图
+        全部命中缓存，也要为这几十次往返一张张等下去，人看到的是图片墙加载半天。缩略
+        图缩好之后，原图还在不在都不改变这次的响应。
+
+        判据用「把原图删掉」而不是数调用次数：先问缓存的答得出来，先解析原图的答不
+        出来，顺序换回去这条就红。原图那条路仍然照常认它不在了——省掉的只是缩略图这
+        一条上的那次确认。
+        """
+        source = self._seed_photo()
+        headers = {"X-Token": "secret"}
+        warm = await self.client.get("/photo-thumb?id=9", headers=headers)
+        self.assertEqual(warm.status_code, 200)
+        source.unlink()
+        again = await self.client.get("/photo-thumb?id=9", headers=headers)
+        self.assertEqual(again.status_code, 200)
+        self.assertEqual(again.content, warm.content)
+        full = await self.client.get("/photo?id=9", headers=headers)
+        self.assertNotEqual(full.status_code, 200)
+
     async def test_photo_endpoints_require_the_token(self):
         self._seed_photo()
         for path in ("/photo?id=9", "/photo-thumb?id=9"):
