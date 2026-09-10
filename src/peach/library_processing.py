@@ -107,7 +107,7 @@ def decorate(state, *, now=None):
 
     旧状态文件把完整问题存在 `issues` 数组里；投影只留计数与前 20 条预览，
     其余照旧可读，也不把上千条问题重新塞回每次轮询的响应。读取只改副本，
-    GET 不会把任务改成失败，慢与卡死由人判断。
+    写入者还拿着锁时 GET 不会把任务改成失败，慢与卡死由人判断。
     """
     state = dict(state)
     legacy = state.pop('issues', None)
@@ -142,7 +142,11 @@ def snapshot(config):
             with FileLock(str(state_path(config)) + '.lock', timeout=0):
                 state = json.loads(state_path(config).read_text(encoding='utf-8'))
                 if state.get('status') == 'running':
-                    state.update(status='failed', error='处理被中断，请重试。')
+                    # 拿得到锁说明写入者已经不在了。结论写回文件：只改副本的话，另一个读取者
+                    # 正好短暂占着锁时会读到原样的「运行中」，界面就在两种状态之间来回跳。
+                    state.update(status='failed', error='处理被中断，请重试。',
+                                 completed_at=state.get('last_progress_at') or time.time())
+                    _save(state_path(config), state)
         except Timeout:
             pass
     return decorate(state)
