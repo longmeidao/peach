@@ -15,8 +15,12 @@ _COVER_LOCK = threading.Lock()
 
 def w_scraping_cover(contract, body):
     """仅处理用户指定且馆藏命中的番号；完整解码后才允许升级封面。"""
+    from .catalog_rules import is_korean_mib_code
+    from .jav_cover_fetch import MIB_NOT_JAV
     from .metadata import validate_provider_code
     code = validate_provider_code(str(body.get("code", "")))
+    if is_korean_mib_code(code):
+        raise ValueError(MIB_NOT_JAV)
     with contract.database.read_connection() as connection:
         if not connection.execute("SELECT 1 FROM asset WHERE code=? LIMIT 1", (code,)).fetchone():
             raise ValueError("馆藏未找到这个番号")
