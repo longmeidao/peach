@@ -33,8 +33,8 @@
 .photolight .photostrip .swiper-slide-thumb-active{opacity:1;box-shadow:0 0 0 2px #fff inset}
 /* 窄屏断点写在这一段之后：和上面同优先级，写在前面会被原样盖掉。 */
 @media (max-width:640px){
-  .photowall{column-count:2;column-gap:8px}
-  .photowall[data-size="big"]{column-count:1}
+  .photowall{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+  .photowall[data-size="big"]{grid-template-columns:repeat(1,minmax(0,1fr))}
   .photozoom input{width:72px}.photozoom b{display:none}
   .photolight .photomain .swiper-zoom-container{padding:12px 12px 70px}
   .photolight.has-strip .photomain .swiper-zoom-container{padding-bottom:136px}

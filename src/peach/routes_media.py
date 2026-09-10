@@ -280,7 +280,7 @@ def thumbnail(request: Request, id: int, args: dict[str, str] = Depends(require_
 
 @router.api_route("/photo", methods=["GET", "HEAD"])
 def photo(request: Request, id: int, args: dict[str, str] = Depends(require_auth)):
-    """图片资产原图。灯箱看大图用这条，瀑布流一律走 `/photo-thumb`。"""
+    """图片资产原图。灯箱看大图用这条，图片墙一律走 `/photo-thumb`。"""
     path = request.app.state.media_engine.file_for(id)
     return _image_response(request, path)
 

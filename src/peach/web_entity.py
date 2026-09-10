@@ -232,7 +232,7 @@ def _display_entity_aliases(canonical_name: str, aliases: list[str]) -> list[str
 
 
 def q_entity_photos(contract: WebContract, args):
-    """实体名下的图片瀑布流；目录分组只保留为兼容元数据。"""
+    """实体名下的图片墙；目录分组只保留为兼容元数据。"""
     kind, name = args.get("kind", ""), args.get("name", "")
     if kind not in PROFILE_KINDS or not name:
         return {"error": "invalid entity"}

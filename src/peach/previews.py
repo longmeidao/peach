@@ -283,7 +283,7 @@ class PreviewService:
             raise PreviewUnavailable("ffmpeg generation failed")
 
 
-#: 瀑布流一列大约 300 CSS px，二倍屏取 640 够用；再大只是白付云盘流量。
+#: 图片墙一列大约 300 CSS px，二倍屏取 640 够用；再大只是白付云盘流量。
 PHOTO_THUMB_WIDTH = 640
 
 
@@ -291,7 +291,7 @@ class PhotoThumbnailService:
     """图片资产的缓存缩略图。
 
     图片和视频不一样：视频有接触印相可裁，图片只能读原图。云盘一张原图动辄几 MB，
-    瀑布流一屏就是几十张，所以每张只回源一次、缩好存下来，之后都读本地缓存。
+    图片墙一屏就是几十张，所以每张只回源一次、缩好存下来，之后都读本地缓存。
     授权由调用方的 MediaEngine 负责，这里只认已解析好的源文件路径。
     """
 

@@ -179,7 +179,8 @@ CloudDrive 为外部应用，本项目不捆绑其二进制或依赖其管理 AP
 - JAV 详情持有 `asset.catalog_title`／`original_title` 与官方 Tag 身份，官方标记用常规字重，身份区收齐到同一内容起点。
 - JAV 官方封面重探只在面积更大时替换，失败保留原图。
 - 播放器按 YouTube 锁定源码对齐控件、状态、图标形变、设置面板动画与悬停提示，倍速五格到 3.0，窄屏按播放器宽度折叠留黑边，沉浸模式按 Shorts 版式，竖屏用居中 9:16 舞台，播放统计两页共用、按传输方式分口径。
-- 图片灯箱在本地照片和关注在线图片间复用同一套 Swiper，在线图片只显示来源、合集序号和浏览器实际解析结果；照片标签按原图比例进入分页瀑布流。
+- 图片灯箱在本地照片和关注在线图片间复用同一套 Swiper，在线图片只显示来源、合集序号和浏览器实际解析结果；照片标签进入分页图片墙，点开才按原图比例呈现。
+- 账本没有图片宽高，两处图片墙（资料页照片、关注在线图片）一律等宽网格配固定比例格子，不用多列流式排版：缩略图懒加载到达之前每格高度是 0，分栏按零高摊格子，会把一屏格子整批塞进最后一列。
 - 统计与口味两页按登录态 Vercel Analytics／Speed Insights 的当前页面重做，排行与数据源共用父网格的引导线。
 - 口味页顶部给出结论与可点入口：浏览与 Peach 两侧的共同信号、可探索标签、待补证据的下一步动作。
 - 操作回执复用 Toast；按钮以 Spinner 和 `aria-busy` 标明忙态。后台任务显示可恢复进度，断线自动重连。
@@ -227,7 +228,7 @@ CloudDrive 为外部应用，本项目不捆绑其二进制或依赖其管理 AP
 | 播放器设置与影院布局 | Video.js 8.24.0 的 `playbackRate`、既有 QualityLevel、原生 tooltip 与控制栏插槽；YouTube `e937390a` 实际 DOM／CSS／JS 提供可复现的几何、状态、动画和图形证据 | Peach 在现有 DOM 上组合氛围模式、播放速度、真实清晰度和影院模式，并复用 59 px 两排控制栏、40→111 px 横向音量、4→6 px 进度动画、右侧共享胶囊、整行悬停的 274 px 设置菜单和视口级全屏；普通视图 `contain` 保全片源，全屏按用户明确要求改用 `cover` 铺满视口，接受非等比例片源的边缘裁切。全屏命中同时使用 Video.js／原生类和 `isFullscreen()` 同步的 `data-peach-fullscreen`，并覆盖 `body.vjs-full-window` 回退，不能再靠单个 CSS 类推断运行态；标准、WebKit、Gecko 等浏览器专用伪类必须放进 forgiving `:is(...)` 或拆成独立规则，不能在普通 selector list 混写后让某浏览器因未知伪类废掉整组声明。用户要求精准图形的设置项、radio 选中勾、菜单箭头、中央 bezel 与 loading 只 vendoring 当前锁定版本的 SVG path／spinner 结构，音量 hover 与滑轨中心沿用上游外层伪元素和 50% 几何，tooltip 仅补 Peach 两排控制栏需要的显式层级与越界可见；不复制播放器控制逻辑、不迁移到 Video.js 10 Menu，也不引入重复现有质量选择的插件 |
 | 播放器时刻预览 | Video.js 原生进度控件 + Peach 既有 `/poster?id=&c=0…8` 九宫格切片 | 本地媒体用已有九宫格提供近似时刻缩略图；在线视频只显示时刻。`videojs-vtt-thumbnails` 与 `videojs-sprite-thumbnails` 都要求另建 sprite/VTT 契约，本项目不为已有能力新增依赖或重复抽帧 |
 | 分卷文件命名 | [Plex 官方命名](https://support.plex.tv/articles/naming-and-organizing-your-movie-media-files/)的 `cd/disc/disk/dvd/part/pt + 数字` 与 [Kodi 官方 File Stacking](https://kodi.wiki/view/File_stacking)只作行为证据；运行时复用当前树的 `part_marker`，不新增扫描器依赖 | 兼容馆藏已有的裸数字和 A–H 后缀；仅连续、唯一标记自动合卡，保留每个 asset 和播放会话，不拼接或改写媒体 |
-| 照片灯箱轮播 | Swiper 14.2.0（MIT，本地固定版本，按需加载 CSS／JS）的 Thumbs / Keyboard / Zoom 模块 | 构造轮播前必须同时等到样式与脚本就绪，并保留 scoped 的单 slide 结构样式防止首载竞态重叠；Swiper 管轮播、键盘、缩放变换与缩略图，Peach 管图集来源与顺序、当前缩略图居中、相对原图百分比、适应窗口／原大小语义、缩略图缓存与计费口径。瀑布流本身继续用 CSS `column-count`，不经过 Swiper。 |
+| 照片灯箱轮播 | Swiper 14.2.0（MIT，本地固定版本，按需加载 CSS／JS）的 Thumbs / Keyboard / Zoom 模块 | 构造轮播前必须同时等到样式与脚本就绪，并保留 scoped 的单 slide 结构样式防止首载竞态重叠；Swiper 管轮播、键盘、缩放变换与缩略图，Peach 管图集来源与顺序、当前缩略图居中、相对原图百分比、适应窗口／原大小语义、缩略图缓存与计费口径。图片墙本身是 CSS 网格，不经过 Swiper。 |
 | 导航排序 | 浏览器原生 HTML Drag and Drop | 桌面鼠标直接拖动、落点提示、上下移动按钮作为键盘与触屏回退、`localStorage` 持久化；不为单列排序引入额外运行时依赖 |
 | 单列拖动排序 | `web/js/ui-components.js` 的 `wireDragReorder()` | 侧栏顺序与播放列表队列共用这一份：`dragstart` 标记被拖行，`dragover` 按指针落在行的上半还是下半给出落点线，`drop` 把整份新顺序交给调用方落库。落点线、抓手和键盘焦点样式都在共用件里，每加一处可拖列表不再各写一份 |
 | 图标 | 固定版本的本地 Lucide 子集；Health Icons 24 px outline（CC0）用于领域图标；Phosphor regular 填充字形（MIT）只用在描边说不清的地方（字母表 Aa、播放列表） | 标签、状态和交互设计 |
