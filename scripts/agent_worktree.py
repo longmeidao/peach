@@ -32,6 +32,13 @@ class WorkspaceError(RuntimeError):
 #: 版本号留给真正发出去的那些（ADR-0012）。集成结果里的 `version` 只是当前值，供人核对。
 RELEASE_TAG_ENTRY = "scripts/release_tag.py"
 
+#: 仓库自带的 git hook。`create` 与 `integrate` 每次都把 `core.hooksPath` 指到这里：
+#: 哪台机器先走一遍工作流就在哪台装上，不靠人记着去配。
+HOOKS_PATH = "scripts/githooks"
+#: 主检出的 master 上该落提交的只有 `integrate` 与 `RELEASE_TAG_ENTRY`。它们调用 git 时
+#: 带上这个配置，`scripts/githooks/pre-commit` 据此放行，别的提交与手工 merge 一律拒收。
+MASTER_WRITER = "peach.masterWriter"
+
 
 def _git(repo: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
     command = [
@@ -60,6 +67,10 @@ def _lines(result: subprocess.CompletedProcess[str]) -> list[str]:
     return [line for line in result.stdout.splitlines() if line]
 
 
+def _install_hooks(main: Path) -> None:
+    _git(main, "config", "core.hooksPath", HOOKS_PATH)
+
+
 def create(repo: Path, agent: str, task: str, root: Path | None = None) -> dict[str, object]:
     main = _main_worktree(repo)
     agent_slug, task_slug = _slug(agent), _slug(task)
@@ -73,6 +84,7 @@ def create(repo: Path, agent: str, task: str, root: Path | None = None) -> dict[
     target_root.mkdir(parents=True, exist_ok=True)
     _git(main, "worktree", "add", "--lock", "--reason", "Peach active agent task",
          "-b", branch, str(target), "HEAD")
+    _install_hooks(main)
     return {
         "ok": True,
         "action": "create",
@@ -176,7 +188,9 @@ def _integrate_locked(repo: Path, worker_branch: str,
     if _git(main, "rev-parse", "HEAD").stdout.strip() != before or \
             _git(main, "status", "--porcelain").stdout.strip():
         raise WorkspaceError("验证检查期间集成工作树改变，请重试")
-    _git(main, "merge", "--no-ff", "--no-edit", "-m", f"Merge branch '{worker_branch}'", worker_head)
+    _install_hooks(main)
+    _git(main, "-c", f"{MASTER_WRITER}=integrate", "merge", "--no-ff", "--no-edit",
+         "-m", f"Merge branch '{worker_branch}'", worker_head)
     _git(main, "worktree", "unlock", str(workers[0]), check=False)
     return {
         "ok": True,

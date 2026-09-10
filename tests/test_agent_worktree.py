@@ -1,14 +1,18 @@
+import shutil
 import subprocess
 import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
 
-from scripts import agent_worktree
+from scripts import agent_worktree, release_tag
 from scripts.agent_worktree import (
     WorkspaceError, _git, _lines, create, integrate, prune, ready,
 )
 from scripts.version_bump import read_version
+
+#: 仓库里版本化的 git hook，测试原样装进临时仓库。
+HOOKS = Path(__file__).resolve().parents[1] / agent_worktree.HOOKS_PATH
 
 #: 版本号的唯一来源，`src/peach/__init__.py` 在测试仓库里的最小复刻。
 VERSION_SEED = b'"""Peach application package."""\n\n__version__ = "0.7.14"\n'
@@ -101,6 +105,57 @@ class AgentWorktreeTests(_WorktreeCase):
         commit(self.repo, "main overlap")
         with self.assertRaisesRegex(WorkspaceError, "same-file"):
             integrate(self.repo, str(result["branch"]))
+
+
+class MasterCommitGuardTests(_WorktreeCase):
+    """主检出的 master 只收 `integrate` 与 `release_tag.py` 的提交。
+
+    2026-09 进 master 的五个红提交，四个是在主检出上直接提交，一个是手工 merge，
+    都没经过 ready / integrate 的检查。这里用仓库里那份 hook 原样装进测试仓库。
+    """
+
+    def setUp(self):
+        super().setUp()
+        hooks = self.repo / agent_worktree.HOOKS_PATH
+        hooks.mkdir(parents=True)
+        for source in HOOKS.iterdir():
+            target = hooks / source.name
+            shutil.copyfile(source, target)
+            target.chmod(0o755)
+            _git(self.repo, "add", target.relative_to(self.repo).as_posix())
+        _git(self.repo, "commit", "-m", "hooks")
+        result = create(self.repo, "Claude", "guarded", self.root / "worktrees")
+        self.worker, self.branch = Path(result["path"]), str(result["branch"])
+        (self.worker / "worker.txt").write_text("worker\n", encoding="utf-8")
+        commit(self.worker, "worker change")
+
+    def test_create_points_the_repository_at_the_versioned_hooks(self):
+        self.assertEqual(_git(self.repo, "config", "core.hooksPath").stdout.strip(),
+                         agent_worktree.HOOKS_PATH)
+
+    def test_a_direct_commit_on_master_in_the_main_checkout_is_refused(self):
+        before = _git(self.repo, "rev-parse", "HEAD").stdout
+        (self.repo / "tracked.txt").write_text("main\n", encoding="utf-8")
+        with self.assertRaisesRegex(WorkspaceError, "主检出只做集成"):
+            commit(self.repo, "direct")
+        self.assertEqual(_git(self.repo, "rev-parse", "HEAD").stdout, before)
+
+    def test_a_hand_made_merge_into_master_is_refused(self):
+        before = _git(self.repo, "rev-parse", "HEAD").stdout
+        with self.assertRaisesRegex(WorkspaceError, "主检出只做集成"):
+            _git(self.repo, "merge", "--no-ff", "-m", "merge by hand", self.branch)
+        self.assertEqual(_git(self.repo, "rev-parse", "HEAD").stdout, before)
+
+    def test_integrate_still_merges_the_worker_branch(self):
+        integrate(self.repo, self.branch)
+        self.assertEqual((self.repo / "worker.txt").read_text(encoding="utf-8"), "worker\n")
+
+    def test_the_release_commit_carries_the_pass(self):
+        """`release_tag.py` 发出的实际参数由 `test_scripts.ShipTests` 钉住。"""
+        (self.repo / "tracked.txt").write_text("release\n", encoding="utf-8")
+        _git(self.repo, "add", "tracked.txt")
+        _git(self.repo, "-c", f"{release_tag.MASTER_WRITER}=release", "commit", "-m", "release")
+        self.assertEqual(_git(self.repo, "log", "-1", "--format=%s").stdout.strip(), "release")
 
 
 if __name__ == "__main__":
