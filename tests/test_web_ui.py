@@ -7844,6 +7844,29 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn("{scale:axis==='y'?`1 ${grow}`:`${grow} 1`,offset:.3},{scale:'1 1',offset:1}],", app)
         self.assertIn("wireNavigationDrag($('#drawer').querySelector('.dnav'));\n  syncNavGlide(false);", app)
 
+    def test_the_sidebar_pane_lands_on_the_layout_that_settles_not_the_one_mid_flight(self):
+        """那块玻璃画完下一帧再对一次位置，对的是当次那一格自己。
+
+        切一次页那一列要被画两遍：先是导航自己那一遍，跟着是发现栏连侧栏一起重画的那一
+        遍，两遍的标题行相差 4px。同步落在第一遍的读数上，玻璃就钉在那儿——一次切页留
+        下 4px，来回切几次它离当前那一格越来越远。
+
+        复对认的是当次传进来的那一格，不重新去找按下态：指针悬在别的格上时，按下态是另
+        一格，照它对等于把跟着指针走的那块玻璃拽回去。位移正在跑就等它跑完，改终点会把
+        走到一半的那段掐掉；切页那次动画正好压在重画上，只看一帧就放弃的话，要对的正是
+        这一次。
+        """
+        app = (Path(__file__).resolve().parents[1] / "web/app.js").read_text(encoding="utf-8")
+        self.assertIn("let navGlide=null,navGlideBox=null,navGlideTarget=null;", app)
+        self.assertIn("  navGlideTarget=active||null;", app)
+        self.assertIn("    const scroll=$('#drawerScroll'),active=navGlideTarget;", app)
+        self.assertIn("    if(navGlide.getAnimations().length){\n"
+                      "      if(performance.now()<until)settleNavGlide(until);\n"
+                      "      return;\n    }", app)
+        self.assertIn("    if(box.x===navGlideBox.x&&box.y===navGlideBox.y\n"
+                      "      &&box.w===navGlideBox.w&&box.h===navGlideBox.h)return;", app)
+        self.assertIn("  moveGlidePane(navGlide,animate?from:null,box,'y');\n  settleNavGlide();", app)
+
     def test_two_soft_lights_drift_across_every_pane_on_two_coprime_clocks(self):
         """玻璃面上那两团光在极慢地挪，横竖两根轴各走各的钟。
 

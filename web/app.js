@@ -3185,11 +3185,38 @@ function syncViewGlide(animate,target){
    一列里：切页会把 `#drawerScroll` 整块重画，住在里面的话玻璃跟着一起没，动画在第
    一个微任务里就断了，看到的只是当前项换了个地方亮起来。`#drawer` 自己不重画，是这
    一侧唯一的定位宿主。代价跟筛选条那边一样——那一列自己的位置和纵滚都得补回来。 */
-let navGlide=null,navGlideBox=null;
+let navGlide=null,navGlideBox=null,navGlideTarget=null;
+/* 切一次页那一列要被画两遍：先是导航自己那一遍，跟着是发现栏连侧栏一起重画的那一遍，
+   两遍的标题行相差 4px。同步落在第一遍的读数上，玻璃就钉在那儿——一次切页留下 4px，
+   来回切几次，它离当前那一格越来越远。所以画完下一帧再对一次，量到的一样就什么都不
+   做。用当次那一格自己的引用，不重新去找按下态：指针悬在别的格上时找到的是另一格。 */
+let navGlideSettle=0;
+function settleNavGlide(deadline){
+  if(navGlideSettle)return;
+  const until=deadline||performance.now()+800;
+  navGlideSettle=requestAnimationFrame(()=>{
+    navGlideSettle=0;
+    const scroll=$('#drawerScroll'),active=navGlideTarget;
+    if(!navGlide||!navGlideBox||!scroll||!active||!active.isConnected)return;
+    /* 有位移正在跑就等它跑完再对：这一下改的是终点，会把走到一半的那段掐掉。切页那次
+       动画正好压在重画上，只看一帧就放弃的话，要对的正是这一次。 */
+    if(navGlide.getAnimations().length){
+      if(performance.now()<until)settleNavGlide(until);
+      return;
+    }
+    const box={x:active.offsetLeft,y:active.offsetTop-scroll.scrollTop,
+      w:active.offsetWidth,h:active.offsetHeight};
+    if(!box.h)return;
+    if(box.x===navGlideBox.x&&box.y===navGlideBox.y
+      &&box.w===navGlideBox.w&&box.h===navGlideBox.h)return;
+    navGlideBox=box;moveGlidePane(navGlide,null,box,'y');
+  });
+}
 function syncNavGlide(animate,target){
   const host=$('#drawer'),scroll=$('#drawerScroll');
   const active=(target&&target.isConnected?target:null)
     ||(scroll&&scroll.querySelector('.dnav button[aria-pressed="true"]'));
+  navGlideTarget=active||null;
   if(!host||!active){if(navGlide)navGlide.hidden=true;navGlideBox=null;return}
   if(!navGlide||navGlide.parentElement!==host){
     navGlide=document.createElement('span');navGlide.className='navglide';
@@ -3206,6 +3233,7 @@ function syncNavGlide(animate,target){
   navGlide.hidden=box.y+box.h<=scroll.offsetTop||box.y>=scroll.offsetTop+scroll.clientHeight;
   const from=navGlideBox;navGlideBox=box;
   moveGlidePane(navGlide,animate?from:null,box,'y');
+  settleNavGlide();
 }
 /* 侧栏纵滚时玻璃原地跟上：容器滚走了它不动就会脱开对准的那一格。一帧只算一次——
    每次都要量位置，逐个滚动事件地量等于把滚动这件事拖回主线程排队。 */
