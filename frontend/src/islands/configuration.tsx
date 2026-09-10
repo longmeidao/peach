@@ -10,7 +10,8 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import type { JSX } from 'preact';
 
-import { fieldsetTitle, noteHtml, setActionBusy, selectFieldHtml, wireSelectField, MEDIA_SOURCE_ICONS, selectOptionIconHtml } from '@peach/legacy/ui';
+import { fieldsetTitle, noteHtml, setActionBusy, MEDIA_SOURCE_ICONS, selectOptionIconHtml } from '@peach/legacy/ui';
+import { SelectField } from '../settings-controls';
 import { ApiError, apiGet, apiSend, errorMessage } from '../api';
 import { AccessSettings, type AccessState } from './access-settings';
 import { ReleaseUpdates, type ReleaseState, type UpdateJob } from './release-updates';
@@ -134,22 +135,9 @@ function MountStatus({ data }: { data: ConfigurationData }) {
 }
 
 function MediaSourceSelect({ value, label, onChange }: { value: string; label: string; onChange(value: string): void }) {
-  const mount = useRef<HTMLDivElement>(null);
-  const control = useRef<HTMLElement & { value: string; disabled: boolean } | null>(null);
-  const callback = useRef(onChange);
-  callback.current = onChange;
-  useLayoutEffect(() => {
-    const root = mount.current!;
-    const options=[['local', '本地磁盘'], ['115', 'CloudDrive · 115'], ['pikpak', 'CloudDrive · PikPak']];
-    root.innerHTML = selectFieldHtml(options.map(([kind, text]) => [kind!, text!, MEDIA_SOURCE_ICONS[kind!] || kind || 'database']), value, { label });
-    const field = wireSelectField(root.firstElementChild!);
-    control.current = field;
-    const change = () => callback.current(field.value);
-    field.addEventListener('change', change);
-    return () => { control.current = null; field.disabled = true; field.removeEventListener('change', change); root.replaceChildren(); };
-  }, [label]);
-  useLayoutEffect(() => { if (control.current) control.current.value = value; }, [value]);
-  return <div ref={mount} class="configsourcecontrol" />;
+  const options=[['local', '本地磁盘'], ['115', 'CloudDrive · 115'], ['pikpak', 'CloudDrive · PikPak']];
+  return <SelectField value={value} label={label} onChange={onChange} className="configsourcecontrol"
+    options={options.map(([kind, text]) => [kind!, text!, MEDIA_SOURCE_ICONS[kind!] || kind || 'database'])} />;
 }
 
 function ConfigurationForm({ data, receipt }: { data: ConfigurationData; receipt: ConfigurationProps['receipt'] }) {

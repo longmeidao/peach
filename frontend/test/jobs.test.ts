@@ -1,9 +1,20 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { watchJob, followJobProgress } from '../src/jobs';
+import { watchJob, followJobProgress, jobActivityHtml } from '../src/jobs';
 
 afterEach(() => { vi.useRealTimers(); sessionStorage.clear(); document.body.innerHTML = ''; });
 
 describe('后台任务状态恢复', () => {
+  it('默认任务面板展示真实进度，失败原因持续可见', async () => {
+    vi.useFakeTimers();const host=document.createElement('div');document.body.append(host);const complete=vi.fn();
+    let state={status:'running',job_id:'default',checked:2,total:5,error:''};
+    followJobProgress({host,active:()=>true,read:async()=>state,busy:()=>{},complete});
+    await vi.advanceTimersByTimeAsync(0);
+    expect(host.querySelector('[data-geist-fieldset]')).not.toBeNull();
+    expect(host.querySelector('[role="progressbar"]')?.getAttribute('aria-valuenow')).toBe('2');
+    state={...state,status:'failed',error:'来源不可用'};await vi.advanceTimersByTimeAsync(4000);
+    expect(host.hidden).toBe(false);expect(host.textContent).toContain('来源不可用');expect(complete).toHaveBeenCalledOnce();
+    expect(jobActivityHtml('正在扫描')).not.toContain('role="progressbar"');
+  });
   it('后台阶段说明随轮询更新并保留真实计数', async () => {
     vi.useFakeTimers();
     const host=document.createElement('div');document.body.append(host);

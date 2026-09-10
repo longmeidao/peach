@@ -1,5 +1,6 @@
 import { checkboxHtml, setActionBusy, selectFieldHtml, wireSelectField } from '@peach/legacy/ui';
 import { errorMessage } from './api';
+import { selectRange, selectGroup, selectionSummary, syncSelectionToolbar } from './selection';
 
 export interface ReviewRow { item_key: string; field?: string; field_label?: string; source?: string; candidates?: { candidate_key: string; source?: string }[] }
 export type ReviewGrouping = 'candidates' | 'source' | 'field';
@@ -57,11 +58,7 @@ export function groupReviewRows(rows: ReviewRow[], by: ReviewGrouping) {
 
 /** Shift 使用当前显示顺序，与馆藏页相同地扩展选择范围。 */
 export function selectReviewRange(state: Selection, keys: string[], key: string, range: boolean, checked: boolean) {
-  const first = state.anchor === null ? -1 : keys.indexOf(state.anchor), last = keys.indexOf(key);
-  if (range && first >= 0 && last >= 0) {
-    keys.slice(Math.min(first, last), Math.max(first, last) + 1).forEach(value => state.selected.add(value));
-  } else if (checked) state.selected.add(key); else state.selected.delete(key);
-  state.anchor = key;
+  state.anchor = selectRange(state.selected, keys, state.anchor, key, range, checked);
 }
 
 export async function applyReviewSelection(items: { key: string; payload: Payload }[], submit: (payload: Payload) => Promise<{ ok: boolean; error?: string }>, applied: (key: string) => void, active: () => boolean) {
@@ -148,7 +145,7 @@ export function wireReviewSelection(root: HTMLElement, options: {
     const title = document.createElement('h3'); title.textContent = `${group.title} · ${groupCards.length}`;
     const select = button('全选本组'), grid = document.createElement('div'); grid.className = 'reviewlist';
     bar.append(title, select); section.append(bar, grid); list.append(section);
-    select.onclick = () => { if (state.busy) return; const all = groupCards.every(card => state.selected.has(card.dataset.reviewKey!)); groupCards.forEach(card => all ? state.selected.delete(card.dataset.reviewKey!) : state.selected.add(card.dataset.reviewKey!)); update(); };
+    select.onclick = () => { if (state.busy) return; const keys=groupCards.map(card=>card.dataset.reviewKey!); selectGroup(state.selected,keys,!keys.every(key=>state.selected.has(key))); update(); };
     controls.push(() => { select.textContent = groupCards.every(card => state.selected.has(card.dataset.reviewKey!)) ? '清空本组' : '全选本组'; });
     for (const card of groupCards) {
       grid.append(card); const key = card.dataset.reviewKey!;
@@ -194,8 +191,9 @@ export function wireReviewSelection(root: HTMLElement, options: {
   function update() {
     const chosen = selected(); all.textContent = chosen.length === visible().length ? '清空当前选择' : state.filter ? '全选当前分类' : '全选本页';
     dock.hidden = !chosen.length;
-    count.textContent = `已选 ${chosen.length} 项`;
-    approve.disabled = !chosen.length || chosen.some(card => !eligible(card)); reject.disabled = !chosen.length;
+    syncSelectionToolbar({count,label:`已选 ${chosen.length} 项`,
+      summary:selectionSummary(state.selected,visible().map(card=>card.dataset.reviewKey!)),actions:[approve,reject]});
+    approve.disabled ||= chosen.some(card => !eligible(card));
     const sources = commonReviewSources(selectedRows());
     source.hidden = !options.metadata || !selectedRows().some(row => (row.candidates?.length || 0) > 1);
     const label = chosen.length && !sources.length ? '所选项目无共同来源' : '统一选择来源';

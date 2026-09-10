@@ -80,7 +80,7 @@
    视图拨回视频，所以那两档只留媒体开关。切回视频它们照旧在。 */
 .entitytagbar[data-media-only] .entitytags .pill{display:none}
 /* 交集条列的也是作品筛选，照片视图下同样不成立。 */
-.entitycombo:has(+.entitytagbar[data-media-only]){display:none}
+.entitycombo:has(+.board-filter-frame .entitytagbar[data-media-only]){display:none}
 .mediaviewbuttons{display:inline-flex;align-items:center;gap:2px;flex:none}
 .mediaviewbuttons .mediaviewbutton{display:grid;place-items:center;flex:0 0 var(--filterItemH);width:var(--filterItemH);height:var(--filterItemH);padding:0;
   border:0;border-radius:50%;background:transparent;color:var(--muted);cursor:pointer}
@@ -99,7 +99,6 @@
 .entitycollectionhead{position:sticky;top:var(--topH);z-index:60;display:flex;align-items:center;gap:10px;
   min-height:var(--sortH);margin:0 -16px 12px;padding:8px 16px;min-width:0;
   background:transparent;border-bottom:1px solid transparent}
-.entitytagbar+.entitysection .entitycollectionhead{top:calc(var(--topH) + var(--filterH))}
 .entitycollectionhead h3{margin:0;flex:0 0 auto}.entitycollectionhead .javlayout{display:inline-flex;gap:2px}
 /* 照片这一栏的抬头就是 `.entitycollectionhead`，横向排布、间距和吸顶都归那一条管；
    `.photohead` 只是个记号，给这一屏特有的返回键认门；换一批那枚键跟视频那一排共用

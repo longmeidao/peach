@@ -746,6 +746,22 @@ class WebDataTests(unittest.TestCase):
             0,
         )
 
+    def test_entity_collection_states_keep_identity_and_clear_independently(self):
+        def ids(state):
+            return {item['id'] for item in rm_web.q_items(self.contract,
+                {'creator': 'Canonical Creator', 'state': state, 'limit': '10'})['items']}
+
+        self.assertEqual(ids(''), {1, 2})
+        self.assertEqual(ids('fresh'), {1, 2})
+        rm_web.w_watch_later(self.contract, {'id': 2})
+        rm_web.w_preference(self.contract, {'id': 1, 'liked': True, 'reason': ''})
+        self.assertEqual(ids('later'), {2})
+        self.assertEqual(ids('flagged'), {1})
+        self.assertEqual(ids(''), {1, 2})
+        rm_web.w_watch_later(self.contract, {'id': 2})
+        self.assertEqual(ids('later'), set())
+        self.assertEqual(ids('flagged'), {1})
+
     def test_flagged_means_positive_marks_not_disposal_or_negative_feedback(self):
         rm_web.w_feedback(self.contract, {"id": 1, "kind": "dislike"})
         rm_web.w_feedback(self.contract, {"id": 1, "kind": "dispose"})

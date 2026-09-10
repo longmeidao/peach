@@ -114,8 +114,7 @@
   87.5%{background-position-y:7.6%,92.4%,0}
   100%{background-position-y:-10%,50%,0}
 }
-.board-filter-frame.board-filter-frame.board-filter-frame,.entitytagbar.entitytagbar.entitytagbar,.entitycollectionhead.entitycollectionhead.entitycollectionhead,body .review .reviewbulktoolbar,body .review .reviewgroupbar,.drawer.drawer,.drawer.drawer.open,.edge.edge,.top .search.search,.top.top>.ib,
-.entitytagbar+.entitysection>.entitycollectionhead::before{
+.board-filter-frame.board-filter-frame.board-filter-frame,.entitytagbar.entitytagbar.entitytagbar,.entitycollectionhead.entitycollectionhead.entitycollectionhead,body .review .reviewbulktoolbar,body .review .reviewgroupbar,.drawer.drawer,.drawer.drawer.open,.edge.edge,.top .search.search,.top.top>.ib{
   background:var(--glass-drift-a),var(--glass-drift-b),linear-gradient(125deg,var(--glass-sheen),transparent 42%,var(--glass-low)),var(--glass-fill);
   background-size:200% 200%,200% 200%,auto;background-repeat:no-repeat,no-repeat,repeat;
   background-position:50% 20%,80% 70%,0 0;
@@ -124,24 +123,18 @@
   border:0;box-shadow:inset 0 1px 0 var(--glass-rim),inset 1px 0 0 var(--glass-low),inset -1px 0 0 var(--glass-low),inset 0 -1px 0 var(--glass-low),var(--glass-shadow);
 }
 .board-filter-frame.board-filter-frame{border-radius:22px;isolation:isolate;color:var(--glass-text)}
-/* 资料页的标签行和排序行是两个兄弟，一个挂在 `.index` 上、一个在 `.entitysection` 里，
-   而那一段的 innerHTML 每次重画都整块换掉，套不进首页那个 `.board-filter-frame`。
-   两行却只能有一块玻璃。各做一块的话，模糊、投影、光斑都是各算各的：底下内容明暗反差
-   一大，接缝两边糊出来的颜色就对不上，读起来是一条分栏线，去掉哪一样都还剩另外几样。
-   所以整块由下半的 ::before 画：从上半的顶沿铺到自己的底沿，一次模糊、一次投影、一张
-   光斑画布，材质跟首页那块走同一条规则；两行自己都不铺底。上半的层级比下半高，它的内容
-   画在这块玻璃之上。从下半往上够而不是反过来：上半的高度是定值，下半在窄屏上会折成两行。
-   只剩一行的时候（没有标签也没有媒体开关，或者下半还没画出来）它自己就是整块。 */
 .entitytagbar.entitytagbar.entitytagbar,
 .entitycollectionhead.entitycollectionhead.entitycollectionhead{border-radius:22px;color:var(--glass-text)}
-.entitytagbar.entitytagbar.entitytagbar:has(+.entitysection>.entitycollectionhead),
-.entitytagbar+.entitysection>.entitycollectionhead.entitycollectionhead.entitycollectionhead{
-  background:none;backdrop-filter:none;-webkit-backdrop-filter:none;box-shadow:none;animation:none}
-.entitytagbar+.entitysection>.entitycollectionhead::before{content:'';position:absolute;
-  inset:calc(-1 * var(--board-filterH)) 0 0;z-index:-1;border-radius:22px;pointer-events:none}
-/* 吸顶以后那一档影跟首页那块一样换成 --glass-lift。 */
-.entitytagbar+.entitysection>.entitycollectionhead.is-stuck::before{
-  box-shadow:inset 0 1px 0 var(--glass-rim),inset 1px 0 0 var(--glass-low),inset -1px 0 0 var(--glass-low),inset 0 -1px 0 var(--glass-low),var(--glass-lift)}
+/* 浮层材质与吸顶归外框，槽位只负责排列内容。 */
+.board-filter-frame.board-filter-frame.board-filter-frame.board-filter-frame>[data-filter-row]{position:relative;top:auto;left:auto;
+  width:auto;margin:0;min-width:0;z-index:auto;border:0;box-shadow:none;background:none;
+  backdrop-filter:none;-webkit-backdrop-filter:none;animation:none}
+.board-filter-frame>[data-filter-row]::before,.board-filter-frame>[data-filter-row]::after{display:none}
+.board-filter-frame .entityviews{display:flex;flex:none;gap:6px}
+.board-filter-frame .entityviews[hidden]{display:none}
+.board-filter-frame .entitytagbar{overflow-x:auto;scrollbar-width:none;overscroll-behavior-x:contain}
+.board-filter-frame .entitytagbar .entitytags{overflow:visible;flex:0 0 auto}
+.board-filter-frame .entityviews .pill{height:30px;padding:0 10px;font-size:13px;white-space:nowrap}
 /* 复核页那两条还是各做一块：上面那条的高度不是定值，从下面往上够不到。吸顶时整块由
    `.review-is-stuck::before` 画，这里管的只是没吸顶的时候。那道 125° 高光和漂移光斑
    都按盒子自己的尺寸铺，两半各铺一遍会在接缝处断开，所以不铺；上面那条的外阴影往下
@@ -282,14 +275,14 @@ body .review .reviewbulktoolbar{clip-path:inset(-48px -48px 0 -48px)}
    项。格子底下再垫一层薄白就是两套反馈同时说话——薄白说「鼠标在这儿」，玻璃说「你
    在这儿」，指针停在别的格上时这两句话指着两个地方。 */
 .drawer.drawer.drawer .dnav button:hover{background:none;color:var(--glass-text)}
-@supports not (backdrop-filter:blur(1px)){.board-filter-frame.board-filter-frame.board-filter-frame,.entitytagbar.entitytagbar.entitytagbar,.entitycollectionhead.entitycollectionhead.entitycollectionhead,body .review .reviewbulktoolbar,body .review .reviewgroupbar,.drawer.drawer,.drawer.drawer.open,.edge.edge,.top .search.search,.entitytagbar+.entitysection>.entitycollectionhead::before{background:var(--ground);animation:none}}
-@media(prefers-reduced-transparency:reduce),(prefers-contrast:more){.board-filter-frame.board-filter-frame.board-filter-frame,.entitytagbar.entitytagbar.entitytagbar,.entitycollectionhead.entitycollectionhead.entitycollectionhead,body .review .reviewbulktoolbar,body .review .reviewgroupbar,.drawer.drawer,.drawer.drawer.open,.edge.edge,.top .search.search,.top.top>.ib,.entitytagbar+.entitysection>.entitycollectionhead::before{background:var(--ground);backdrop-filter:none;-webkit-backdrop-filter:none;animation:none}}
+@supports not (backdrop-filter:blur(1px)){.board-filter-frame.board-filter-frame.board-filter-frame,.entitytagbar.entitytagbar.entitytagbar,.entitycollectionhead.entitycollectionhead.entitycollectionhead,body .review .reviewbulktoolbar,body .review .reviewgroupbar,.drawer.drawer,.drawer.drawer.open,.edge.edge,.top .search.search{background:var(--ground);animation:none}}
+@media(prefers-reduced-transparency:reduce),(prefers-contrast:more){.board-filter-frame.board-filter-frame.board-filter-frame,.entitytagbar.entitytagbar.entitytagbar,.entitycollectionhead.entitycollectionhead.entitycollectionhead,body .review .reviewbulktoolbar,body .review .reviewgroupbar,.drawer.drawer,.drawer.drawer.open,.edge.edge,.top .search.search,.top.top>.ib{background:var(--ground);backdrop-filter:none;-webkit-backdrop-filter:none;animation:none}}
 /* 面上那两团光停在 `background-position` 给的那一处，不再挪：它讲的是光在动，而这
    台机器上「减少动态效果」说的就是别让不由我操作的东西自己动。停住之后它还是两团
    高光，玻璃仍有厚度，只是这屋里的光不再走了。 */
-@media(prefers-reduced-motion:reduce){.board-filter-frame.board-filter-frame.board-filter-frame,.entitytagbar.entitytagbar.entitytagbar,.entitycollectionhead.entitycollectionhead.entitycollectionhead,body .review .reviewbulktoolbar,body .review .reviewgroupbar,.drawer.drawer,.drawer.drawer.open,.edge.edge,.top .search.search,.top.top>.ib,.entitytagbar+.entitysection>.entitycollectionhead::before{animation:none}}
+@media(prefers-reduced-motion:reduce){.board-filter-frame.board-filter-frame.board-filter-frame,.entitytagbar.entitytagbar.entitytagbar,.entitycollectionhead.entitycollectionhead.entitycollectionhead,body .review .reviewbulktoolbar,body .review .reviewgroupbar,.drawer.drawer,.drawer.drawer.open,.edge.edge,.top .search.search,.top.top>.ib{animation:none}}
 /* Peach-owned media and analytics layouts. */
-html.board-high-contrast .board-filter-frame.board-filter-frame.board-filter-frame,html.board-high-contrast .entitytagbar.entitytagbar.entitytagbar,html.board-high-contrast .entitycollectionhead.entitycollectionhead.entitycollectionhead,html.board-high-contrast .review .reviewbulktoolbar,html.board-high-contrast .review .reviewgroupbar,html.board-high-contrast .drawer.drawer,html.board-high-contrast .edge.edge,html.board-high-contrast .top .search.search,html.board-high-contrast .top.top>.ib,html.board-high-contrast .entitytagbar+.entitysection>.entitycollectionhead::before{background:var(--ground);backdrop-filter:none;-webkit-backdrop-filter:none;animation:none}
+html.board-high-contrast .board-filter-frame.board-filter-frame.board-filter-frame,html.board-high-contrast .entitytagbar.entitytagbar.entitytagbar,html.board-high-contrast .entitycollectionhead.entitycollectionhead.entitycollectionhead,html.board-high-contrast .review .reviewbulktoolbar,html.board-high-contrast .review .reviewgroupbar,html.board-high-contrast .drawer.drawer,html.board-high-contrast .edge.edge,html.board-high-contrast .top .search.search,html.board-high-contrast .top.top>.ib{background:var(--ground);backdrop-filter:none;-webkit-backdrop-filter:none;animation:none}
 :root{--board-card-foot:color-mix(in srgb,var(--ground) 92%,var(--ink))}
 .followmanage.followmanage{width:100%;max-width:1120px}
 .followmanage .fmain{width:100%;max-width:1120px;margin-inline:auto;gap:20px}
@@ -466,11 +459,9 @@ body::before{display:none}
 .entitytagbar .entitytags{gap:6px}
 .entitytagbar .mediaviewbuttons .mediaviewbutton{flex:0 0 30px;width:30px;height:30px}
 .entitycollectionhead{position:sticky;top:calc(var(--topH) + 8px);margin:0 0 22px;padding:8px 12px;min-height:var(--board-filterH);gap:12px}
-.entitytagbar+.entitysection .entitycollectionhead{top:calc(var(--topH) + 8px + var(--board-filterH))}
 .entitycollectionhead.is-stuck::after{content:'';position:absolute;inset:0;z-index:-1;border-radius:inherit;
   box-shadow:0 0 24px 4px #00000038,0 8px 20px #00000026;pointer-events:none}
 /* 两行合成一块时，吸顶那一档影由整块玻璃自己换成 --glass-lift，这一层不再叠。 */
-.entitytagbar+.entitysection .entitycollectionhead.is-stuck::after{display:none}
 /* 读数照首页那条 `10,471 个符合` 写：12px、常规字重、不加字距，颜色比标签低一档。
    排序键也跟那边同一套——30px 高、12px 字、7px 圆角，选中态那块玻璃在上面统一给。 */
 .entitycollectionhead h3{font-size:12px;font-weight:400;letter-spacing:normal;color:var(--ink-2)}
