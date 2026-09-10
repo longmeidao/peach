@@ -171,13 +171,25 @@ RELEASE_EVIDENCE_KINDS = frozenset({"performer", "studio", "series"})
 #: 的变体写法。按形状一刀切会把 BeFree 的真作品一起拦掉。
 #: 三字母前缀同属这套命名。2026-09-09 复查 `B:\MVP\MIB\` 下 120 条资产，这 15 种
 #: 三字母前缀共 40 条，目录外同样零条。
+#:
+#: 其余前缀取自官网 k-mib.com 的自有作品目录（2026-09-10 快照 368 部，合作厂牌的
+#: JS、STRC、SFL 等不在此列）。它们在账本里 MIB 目录外同样零条。
 KOREAN_MIB_PREFIXES = frozenset({
     "WX", "AR", "JH", "CA", "IY", "JA", "MY", "SH", "HA", "MH", "DB", "JI",
     "ES", "SR", "SY", "CD", "YH", "UY", "NN", "SA", "JE", "YR",
     "CHU", "ENS", "ERI", "HAL", "HNL", "MIJ", "MIN", "SAR", "SEY", "SIA",
     "SOY", "SRN", "SUY", "SYN", "YUJ",
+    "CY", "DK", "JM", "JW", "RA", "RI", "SJ", "UB", "YL",
+    "AIN", "GUL", "HRI", "JIE", "KJI", "MGL", "MOI", "MOR", "SEI", "SEO",
+    "XIA", "YEL", "YJI", "YNS", "YWN",
+    "MOSA", "MOSY", "NOAH", "SJSK",
 })
 _KOREAN_MIB_CODE = re.compile(r"^([A-Z]{2,4})-\d+$")
+#: MIB 文件名是「番号 + 空格 + 演员名与片名」（`YUJ-103 Ain Do you wanna be my slave`），
+#: 或带站名方括号与括号注记（`[K-MIB]NOAH-101(NOAH)(1)`），整段不是纯番号，
+#: `_CODE_BODY` 认不出。只对 MIB 前缀开这条路，前缀之外的仍走通用规则。
+_KOREAN_MIB_FILENAME = re.compile(
+    r"^(?:\[K-?MIB\]\s*)?([A-Za-z]{2,4})[-_](\d{3,4})(?=$|[\s(\[._-])", re.I)
 
 DUPLICATE_TOLERANCE = 0.005
 DUPLICATE_FLOOR_SECONDS = 15.0
@@ -401,8 +413,14 @@ def release_code_from_text(value: str | None) -> str | None:
 def release_code_from_filename(name: str | None) -> str | None:
     """文件名带分卷、画质和重复计数，剥掉噪声后再解析。"""
     stem = _ASSET_EXTENSION.sub("", str(name or "").strip())
-    return release_code_from_text(stem) or release_code_from_text(
+    code = release_code_from_text(stem) or release_code_from_text(
         _FILE_NOISE.sub("", stem))
+    if code:
+        return code
+    mib = _KOREAN_MIB_FILENAME.match(stem)
+    if mib and mib.group(1).upper() in KOREAN_MIB_PREFIXES:
+        return normalise_code_key(f"{mib.group(1)}-{mib.group(2)}")
+    return None
 
 
 def _jav_code_pattern(code: str | None) -> str:

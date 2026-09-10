@@ -43,11 +43,11 @@ CONTENT_GENRES: dict[str, str] = {
     "Titty Fuck": "乳交", "パイズリ": "乳交",
     "Footjob": "足交", "足コキ": "足交",
     "Squirting": "潮吹", "Squirts": "潮吹", "潮吹き": "潮吹",
-    "Masturbation": "自慰", "オナニー": "自慰",
+    "Masturbation": "自慰", "Masterbation": "自慰", "オナニー": "自慰",
     "Anal Sex": "肛交", "Anal Play": "肛交", "Anal": "肛交",
     "アナル": "肛交", "アナルセックス": "肛交",
     "Cowgirl": "骑乘", "Girl on Top": "骑乘", "騎乗位": "骑乘",
-    "Doggystyle": "后入", "Strong Doggy Style": "后入",
+    "Doggystyle": "后入", "Doggy-Style": "后入", "Strong Doggy Style": "后入",
     "Standing Doggy Style": "后入", "バック": "后入",
     "POV": "主观视角", "Gonzo": "主观视角", "主観": "主观视角", "ハメ撮り": "主观视角",
     "Threesome / Foursome": "3P多人", "Threesome": "3P多人", "3P・4P": "3P多人",
@@ -63,7 +63,7 @@ CONTENT_GENRES: dict[str, str] = {
     "Beautiful Tits": "美乳", "Nice Tits": "美乳", "美乳": "美乳",
     "Small Tits": "贫乳", "貧乳": "贫乳", "貧乳・微乳": "贫乳", "微乳": "贫乳",
     "おっぱい": "乳系",
-    "Ass Lover": "美臀", "Big Asses": "美臀", "Butt": "美臀", "Nice Ass": "美臀",
+    "Ass Lover": "美臀", "Big Asses": "美臀", "Big Ass": "美臀", "Butt": "美臀", "Nice Ass": "美臀",
     "美尻": "美臀", "尻": "美臀", "お尻": "美臀", "尻フェチ": "美臀",
     "巨尻": "美臀",
     "Foot Fetish": "美腿", "Legs": "美腿", "Beautiful Leg": "美腿",
@@ -72,7 +72,7 @@ CONTENT_GENRES: dict[str, str] = {
     "Chubby": "丰满", "ぽっちゃり": "丰满",
     "Beautiful Girl": "高颜值", "Neat and Clean": "高颜值", "Beauty": "高颜值",
     "美少女": "高颜值", "美女": "高颜值", "可愛い": "高颜值", "かわいい": "高颜值",
-    "美人": "高颜值", "清楚": "高颜值", "Pretty Face": "高颜值",
+    "美人": "高颜值", "清楚": "高颜值", "Pretty Face": "高颜值", "Pretty Girl": "高颜值",
     "Shaved Pussy": "白虎", "パイパン": "白虎",
     "Glasses": "眼镜", "眼鏡": "眼镜", "メガネ": "眼镜",
 
@@ -93,6 +93,7 @@ CONTENT_GENRES: dict[str, str] = {
     "ツインテール": "双马尾",
     "High Heels": "高跟鞋", "ハイヒール": "高跟鞋",
     "Cosplay": "角色扮演", "コスプレ": "角色扮演", "コスプレ一般": "角色扮演",
+    "Role Play": "角色扮演",
     "Maid": "女仆", "メイド": "女仆",
 
     # —— 身份 ——
@@ -116,7 +117,7 @@ CONTENT_GENRES: dict[str, str] = {
     "Female Teacher": "教师", "女教師": "教师", "教師": "教师",
     "Private Tutor": "老师", "家庭教師": "老师",
     "Stewardess": "空姐", "スチュワーデス": "空姐",
-    "Picking Up Girls": "探花", "ナンパ": "探花",
+    "Picking Up Girls": "探花", "Pick up": "探花", "ナンパ": "探花",
 
     # —— 场景 ——
     "Outdoor": "户外露出", "露出": "户外露出", "野外・露出": "户外露出",
@@ -130,6 +131,7 @@ CONTENT_GENRES: dict[str, str] = {
     # —— 剧情 ——
     "Training": "调教", "BDSM": "调教", "Sadism": "调教", "Torture": "调教",
     "SM": "调教", "調教": "调教",
+    "Slave": "调教", "Femsub": "调教", "Humiliation": "调教", "Spanking": "调教",
     "Bondage": "捆绑", "Ropes & Ties": "捆绑", "Restraint": "捆绑",
     "拘束": "捆绑", "縛り": "捆绑", "縛り・緊縛": "捆绑", "Bind": "捆绑",
     "Cheating Wife": "出轨", "Adultery": "出轨", "不倫": "出轨",
@@ -179,6 +181,9 @@ NON_CONTENT_GENRES: frozenset[str] = frozenset({
     "Gril on top 2", "All Sex",
     # 同人载体
     "同人ソフト オリジナル",
+    # K-MIB 的氛围词与厂牌名：几乎每部都挂，区分不了内容
+    "Sexy", "Glamour", "Model", "Couple", "Romantic", "Caress", "Orgasm",
+    "JSmedia",
 })
 
 

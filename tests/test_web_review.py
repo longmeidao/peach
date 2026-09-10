@@ -565,6 +565,32 @@ class ReviewQueueTests(unittest.TestCase):
             con.close()
         self.assertEqual([row[0] for row in written], ["ARM-123"])
 
+    def test_mib_official_candidates_reach_the_review_queue(self):
+        """MIB 官网是这批番号自己的发行方，它的候选要让人看得到；混进 JAV 来源的仍拦下。"""
+        self.write_metadata_rows([
+            {"item_key": "AR-101:title:kmib", "field": "title", "current": "",
+             "candidates": ["PURE PINK"], "code": "AR-101", "source": "kmib"},
+            {"item_key": "AR-101:studio", "field": "studio", "current": "",
+             "candidates": [{"value": "MIB", "source": "kmib"},
+                            {"value": "Attackers", "source": "r18dev"}],
+             "code": "AR-101"},
+        ])
+        self.assertEqual(self.queue_keys("metadata_fields"), ["AR-101:title:kmib"])
+
+    def test_mib_official_candidates_fill_empty_fields_automatically(self):
+        self._asset(160, "YUJ-103", "YUJ-103 Ain Do you wanna be my slave.mp4")
+        self.write_metadata_rows([
+            {"item_key": "YUJ-103:release_date:kmib", "field": "release_date",
+             "current": "", "candidates": ["2024-11-20"], "code": "YUJ-103",
+             "source": "kmib"}])
+        self.assertEqual(self._auto()["applied"], 1)
+        con = sqlite3.connect(self.db_path)
+        try:
+            written = con.execute("SELECT release_date FROM asset WHERE id=160").fetchone()
+        finally:
+            con.close()
+        self.assertEqual(written, ("2024-11-20",))
+
     def test_japanese_performer_candidate_folds_onto_the_localised_entity(self):
         """r18dev 给日文名，账本规范名多已本地化成中文，而日文名早登记为别名。
 

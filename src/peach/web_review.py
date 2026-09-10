@@ -73,7 +73,7 @@ CANDIDATE_PREFIX = {
 ADDITIONAL_CANDIDATE_FILES = {
     # 分区文件先于通用批次读取；同一个 item_key 出现时，窄范围的刷新证据应覆盖
     # 通用批次里的旧候选，而不是被 seen 去重静默吞掉。
-    "metadata_fields": ("library-metadata-field-candidates.csv", "japanese-title-candidates.csv", "fc2-metadata-field-candidates.csv"),
+    "metadata_fields": ("library-metadata-field-candidates.csv", "japanese-title-candidates.csv", "fc2-metadata-field-candidates.csv", "kmib-metadata-field-candidates.csv"),
 }
 # 每类候选的稳定主键列。缺这一列的行直接跳过并计数，绝不退化成行号——
 # 行号会在 CSV 重排后把历史决定悄悄挪到别的条目上。
@@ -398,8 +398,10 @@ def _review_rows(contract: ReviewContract, category: str) -> tuple[list[dict], s
             # 历史产物，闸门只管以后不再生成，管不了已经落盘的那些：2026-09-04 实测队列里
             # 还有 214 条（title 51、studio 51、release_date 51、performers 39、series 22）。
             # 这些值全是 JAV 目录站按错番号返回的别的作品，没有一条值得占用人的注意力。
+            # MIB 官网（kmib）的候选是例外：那是这批番号自己的发行方。
             rows = [row for row in rows
-                    if not is_korean_mib_code(str(row.get("code") or ""))]
+                    if not is_korean_mib_code(str(row.get("code") or ""))
+                    or _only_mib_official(row)]
             rows = _drop_community_challenges_to_official(connection, rows)
         elif category == "performer_avatars":
             # 候选 CSV 里的 `current_name` 是抓取来源给的罗马音；账本早就有更好的
@@ -661,6 +663,23 @@ def _preferred_candidate(field: str, candidates: list[dict]) -> dict:
     return min(candidates, key=rank)
 
 
+#: 韩国 MIB 番号唯一可信的来源：官网 k-mib.com（`metadata_kmib`）。
+MIB_OFFICIAL_SOURCE = "kmib"
+
+
+def _only_mib_official(row: dict) -> bool:
+    """这一行的候选是否全部来自 MIB 官网；没有候选或解析不了时为 False。"""
+    candidates = row.get("candidates")
+    if candidates is None:
+        try:
+            candidates = json.loads(str(row.get("candidates_json") or "[]"))
+        except (TypeError, ValueError):
+            return False
+    sources = {str(c.get("source") or "").strip()
+               for c in candidates if isinstance(c, dict)}
+    return sources == {MIB_OFFICIAL_SOURCE}
+
+
 def _auto_apply_rule(candidate: dict, agreed: int) -> str:
     """这条自动落库该记在哪条规则名下。
 
@@ -723,8 +742,9 @@ def metadata_auto_apply_candidate(connection, row: dict) -> dict | None:
         return None
     # 韩国 MIB 的番号问 JAV 目录站必错，这类候选一条都不该走自动批准。第 3 条对它们
     # 全部成立——文件名就叫 `AR-101 Ari....mp4`——但它保证的是「候选属于这个文件」，
-    # 保证不了「来源返回的是这个番号」，而 MIB 恰恰错在后者。
-    if is_korean_mib_code(code):
+    # 保证不了「来源返回的是这个番号」，而 MIB 恰恰错在后者。只有候选全部来自 MIB
+    # 官网时才放行：官网按番号列出的就是这部片本身。
+    if is_korean_mib_code(code) and not _only_mib_official(row):
         return None
     names = [r["name"] for r in connection.execute(
         "SELECT name FROM asset WHERE medium='video' AND (upper(trim(code))=upper(?) "
