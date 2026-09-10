@@ -106,9 +106,13 @@ def _sibling_images(connection) -> dict[str, dict[str, str]]:
 def build_worklist(
     connection: sqlite3.Connection, *, locations: tuple[str, ...] = ("local", "115", "pikpak"),
     prefix: str | None = None, ids: tuple[int, ...] | None = None,
-    paired_only: bool = False, limit: int = 0,
+    paired_only: bool = False, sparse_only: bool = False, limit: int = 0,
 ) -> list[dict[str, object]]:
-    """列出无番号视频与它们的检索材料；只读，不改账本。"""
+    """列出无番号视频与它们的检索材料；只读，不改账本。
+
+    `sparse_only` 只留元信息最少的那些：创作者、标题、厂牌、系列、演员实体一个
+    都没有。识别优先做这些——已经有元数据的条目不缺这一趟联网。
+    """
     if not locations:
         return []
     marks = ",".join("?" * len(locations))
@@ -125,10 +129,14 @@ def build_worklist(
         where.append(f"id IN ({id_marks})")
         parameters.extend(int(value) for value in ids)
     rows = connection.execute(
-        "SELECT id,location,name,path,size,duration,creator,catalog_title,original_title "
-        f"FROM asset WHERE {' AND '.join(where)} ORDER BY path",
+        "SELECT id,location,name,path,size,duration,creator,catalog_title,original_title,"
+        "studio,series FROM asset "
+        f"WHERE {' AND '.join(where)} ORDER BY path",
         parameters,
     ).fetchall()
+    entity_roles = {int(row[0]) for row in connection.execute(
+        "SELECT DISTINCT asset_id FROM asset_entity "
+        "WHERE role IN ('performer','studio','series')")}
     images = _sibling_images(connection)
     worklist: list[dict[str, object]] = []
     for row in rows:
@@ -136,6 +144,13 @@ def build_worklist(
         parsed = PureWindowsPath(path)
         cover = images.get(str(parsed.parent).casefold(), {}).get(str(parsed.stem).casefold(), "")
         if paired_only and not cover:
+            continue
+        metadata_hits = sum(
+            1 for value in (row["creator"], row["catalog_title"], row["original_title"],
+                            row["studio"], row["series"])
+            if str(value or "").strip()
+        ) + (1 if int(row["id"]) in entity_roles else 0)
+        if sparse_only and metadata_hits:
             continue
         name = str(row["name"] or parsed.name)
         variants = query_variants(name) or [name]
@@ -146,6 +161,7 @@ def build_worklist(
             "name": name,
             "size_gb": round((row["size"] or 0) / 1024 ** 3, 2),
             "duration": round(float(row["duration"]), 1) if row["duration"] else "",
+            "metadata_hits": metadata_hits,
             "performer_guess": performer_guess(name),
             "cover_path": cover,
             "existing_creator": row["creator"] or "",
@@ -155,6 +171,7 @@ def build_worklist(
         })
         if limit and len(worklist) >= limit:
             break
+    worklist.sort(key=lambda item: (int(item["metadata_hits"]), str(item["path"])))
     return worklist
 
 

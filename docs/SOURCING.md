@@ -84,6 +84,8 @@ Telegram 资源）走 `scripts/identify_resources.py` 的两段式流程，识�
 
 1. `worklist` 只读账本，按文件名生成搜索写法（原样名、摘推广头尾、分隔符换空格、
    无空格英文按大小写拆词、剥尾部画质标签）并标出同目录配套图片，可直接作海报；
+   `metadata_hits` 数出创作者／标题／厂牌／系列／演员里已有几项，默认把少的排前面，
+   `--sparse-only` 只留一项都没有的条目——识别优先做这些；
 2. 智能体或人联网核对后按 `asset_id,field,value,source_url,confidence,note` 填回 CSV；
 3. `ingest` 合并进 `generated/library-metadata-field-candidates.csv`，候选来源
    `websearch`、`asset_path` 钉住具体文件，无番号资产的复核与落库靠这条路径。

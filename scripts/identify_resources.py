@@ -33,7 +33,7 @@ from peach.review_csv import read_rows, write_rows
 from peach.scripting import open_readonly
 
 WORKLIST_FIELDS = [
-    "asset_id", "location", "path", "name", "size_gb", "duration",
+    "asset_id", "location", "path", "name", "size_gb", "duration", "metadata_hits",
     "performer_guess", "cover_path", "existing_creator", "existing_title",
     "query_primary", "query_variants",
 ]
@@ -48,6 +48,8 @@ def build_parser() -> argparse.ArgumentParser:
     worklist.add_argument("--location", action="append", choices=("local", "115", "pikpak"))
     worklist.add_argument("--root", help="账本口径的目录前缀，例如 B:\\xxr\\0208 (23)")
     worklist.add_argument("--paired-only", action="store_true", help="只列有同目录配套图片的")
+    worklist.add_argument("--sparse-only", action="store_true",
+                          help="只列元信息最少的（无创作者／标题／厂牌／系列／演员）")
     worklist.add_argument("--limit", type=int, default=0)
     worklist.add_argument("--out", type=Path)
 
@@ -64,7 +66,8 @@ def cmd_worklist(args: argparse.Namespace) -> int:
         rows = build_worklist(
             connection,
             locations=tuple(args.location or ("local", "115", "pikpak")),
-            prefix=args.root, paired_only=args.paired_only, limit=args.limit,
+            prefix=args.root, paired_only=args.paired_only,
+            sparse_only=args.sparse_only, limit=args.limit,
         )
     finally:
         connection.close()
@@ -75,8 +78,8 @@ def cmd_worklist(args: argparse.Namespace) -> int:
     for row in rows[:15]:
         cover = "有图" if row["cover_path"] else "无图"
         guess = f" 演出者线索={row['performer_guess']}" if row["performer_guess"] else ""
-        print(f"  {row['asset_id']:>7} {cover} {row['size_gb']:>8.2f}GB "
-              f"{str(row['name'])[:60]!r}{guess}")
+        print(f"  {row['asset_id']:>7} 元信息{row['metadata_hits']} {cover} "
+              f"{row['size_gb']:>8.2f}GB {str(row['name'])[:56]!r}{guess}")
     if len(rows) > 15:
         print(f"  …… 其余 {len(rows) - 15} 条见 CSV")
     return 0

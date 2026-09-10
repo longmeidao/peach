@@ -93,6 +93,26 @@ class ResourceWorklistTests(unittest.TestCase):
             connection.close()
         self.assertEqual([row["asset_id"] for row in rows], [1])
 
+    def test_sparse_only_keeps_assets_without_any_metadata(self):
+        self.add(1, "115", r"B:\xxr\a\已有标题.mp4", "video", 100 * 1024**2, 600)
+        self.add(2, "115", r"B:\xxr\b\没有元信息.mp4", "video", 100 * 1024**2, 600)
+        connection = sqlite3.connect(self.db_path)
+        connection.row_factory = sqlite3.Row
+        try:
+            with connection:
+                connection.execute(
+                    "UPDATE asset SET catalog_title='已有标题' WHERE id=1")
+            rows = build_worklist(connection, locations=("115",), prefix=r"B:\xxr",
+                                  sparse_only=True)
+            all_rows = build_worklist(connection, locations=("115",), prefix=r"B:\xxr")
+        finally:
+            connection.close()
+
+        self.assertEqual([row["asset_id"] for row in rows], [2])
+        self.assertEqual(rows[0]["metadata_hits"], 0)
+        self.assertEqual([row["asset_id"] for row in all_rows], [2, 1])
+        self.assertEqual(all_rows[1]["metadata_hits"], 1)
+
 
 class ResourceIngestTests(unittest.TestCase):
     def setUp(self):
