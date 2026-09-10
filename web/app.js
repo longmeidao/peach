@@ -424,7 +424,7 @@ const defaultSortDir=key=>SORT_DIR_WORDS[key]?'desc':'';
    跟随系统是默认档，选它等于不写属性。 */
 const THEME_CHOICES=['system','light','dark'];
 const JAV_LAYOUTS=[['big','大图','maximize'],['small','小图','layout-grid']];
-/* 图片墙是多列瀑布流，改的是列数。默认小图——一套图几十上百张，先看得见全貌，挑中
+/* 图片墙是等宽网格，改的是列数。默认小图——一套图几十上百张，先看得见全貌，挑中
    哪一张再点开看大的。 */
 const PHOTO_SIZES=[['big','大图','maximize'],['small','小图','layout-grid']];
 /* 显示器用于跟随系统主题和详情页的画面分辨率。 */
@@ -7115,11 +7115,12 @@ async function updateEntityCollection(kind,name,filters,push=true){
 }
 /* ── 资料页的照片 ─────────────────────────────────────────────────────────────
    图集就是目录：账本里没有图集实体，`<作品目录>\P\001.jpg` 这种约定只保留在后端，
-   页面不先造一层固定比例封面，照片标签直接进入瀑布流，再点图进入灯箱。
-   瀑布流用 CSS `column-count` 而不是 JS 布局：图片行没有宽高，等宽多列流式排版正好
-   不需要知道比例，也就不用等图片加载完再算位置。
+   页面不先造一层图集封面，照片标签直接进入这面墙，再点图进入灯箱。
+   墙是 CSS 网格而不是 JS 布局，每格自带比例：账本里图片没有宽高，缩略图到达之前
+   高度是 0，把分栏交给加载顺序的话，一屏格子会整批摊进最后一列。理由和取舍写在
+   `web/css/08-photos.css` 里那条规则上面。
    缩略图一律走 `/photo-thumb`（服务端缓存），只有灯箱里的大图读 `/photo` 原图——
-   PikPak 是计费来源，瀑布流直接铺原图等于一屏付几十兆流量。 ── */
+   PikPak 是计费来源，一屏直接铺原图等于付几十兆流量。 ── */
 function emptyMediaView(){return {media:'videos',set:0}}
 const parseMediaView=search=>{const params=new URLSearchParams(search),set=params.get('set')||'';
   return {media:params.get('media')==='photos'?'photos':'videos',set:/^\d+$/.test(set)?Number(set):0}};

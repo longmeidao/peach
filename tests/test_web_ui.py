@@ -5319,7 +5319,7 @@ class WebUiSourceTests(unittest.TestCase):
         )
         self.assertPageContains("['.board-filter-frame','#tagbar','#count','.entitytagbar','.entitycollectionhead']")
         self.assertPageContains("scheduleStickySurfaces();")
-        # 照片瀑布流没有视频排序语义，切换后直接渲染照片，不复用作品头。
+        # 照片墙没有视频排序语义，切换后直接渲染照片，不复用作品头。
         self.assertPageContains("if(media==='photos'){renderPhotoWall(kind,name,filters,entityPhotos);return}")
 
     def test_entity_profile_uses_display_aliases_not_search_identity_aliases(self):
@@ -9426,16 +9426,51 @@ class WebUiSourceTests(unittest.TestCase):
             "const applyFollowView=()=>{route(followViewPath());openFollow(false)};")
 
     def test_photo_wall_uses_cached_thumbnails_and_only_the_lightbox_reads_originals(self):
-        # 瀑布流铺原图等于一屏付几十兆 PikPak 流量；缩略图由服务端缓存一次。
+        # 图片墙铺原图等于一屏付几十兆 PikPak 流量；缩略图由服务端缓存一次。
         self.assertPageContains('<img src="/photo-thumb?id=${item.id}"')
         # 取图口收进 photoSlide：灯箱现在也服务关注页的在线图，模板不能再写死本地口。
         self.assertPageContains(
             ':{src:`/photo?id=${item.id}`,thumb:`/photo-thumb?id=${item.id}`')
         self.assertPageLacks('<img src="/photo?id=${item.id}" class="photocell"')
-        self.assertPageContains(".photowall{column-count:5;column-gap:10px}")
-        self.assertPageContains("break-inside:avoid")
+        self.assertPageContains(
+            ".photowall{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px}")
 
-    def test_photo_tab_opens_the_flat_waterfall_without_fixed_ratio_album_cards(self):
+    def test_photo_wall_columns_all_start_at_the_top_before_any_thumbnail_arrives(self):
+        """每格先占好位置，分栏不再取决于哪几张图先到。
+
+        账本没有图片宽高，缩略图带 `loading="lazy"`，到达之前每格高度是 0。多列流式排版
+        按分栏那一刻的高度摊格子：一屏 240 个零高的格子会被整批摊进最后一列，前几列只
+        留下已经加载出来的十几张，右边几列从顶上就空着，390 宽的手机上收成半幅一列。
+        实测 1440×900 那一屏是 12/12/12/12/192，最后一列一个人扛下 192 格。
+
+        齐平还顺带修掉一件事：墙塌成零高时「载入更多」一开页就在视口里，自动翻页会连着
+        触发，一进来就是 240 项。
+
+        固定比例的格子与加载顺序无关。关注页的图片墙同样是从多列换成网格才稳住的，
+        那边的判据在 `tests/test_follow_web.py`。方框配 cover 是因为这个库横竖两种取景
+        各占一半（805 张已缓存缩略图里 415 横 381 竖），任何一种长框都会把另一半压成
+        一条；点开灯箱仍是全图。
+        """
+        self.assertPageContains(
+            ".photowall{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px}")
+        self.assertPageContains(
+            ".photocell{display:block;width:100%;aspect-ratio:1;border:0;padding:0;margin:0;"
+            "background:var(--sunk);")
+        self.assertPageContains(
+            ".photocell img{width:100%;height:100%;object-fit:cover;display:block;"
+            "background:var(--sunk)}")
+        # 窄屏两列也是网格；这条写在灯箱分区的断点里，和上面同优先级、排在后面。
+        self.assertPageContains(
+            "  .photowall{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}")
+        for lacking, why in (
+            (".photowall{column-count:5;column-gap:10px}", "多列流式排版会按零高摊格子"),
+            (".photowall{column-count:2;column-gap:8px}", "窄屏那两列同样不能靠图片撑高"),
+            ("break-inside:avoid", "网格里没有需要避免的断栏"),
+            (".photocell img{width:100%;height:auto", "高度得由格子给，不能等图片撑"),
+        ):
+            self.assertPageLacks(lacking, why)
+
+    def test_photo_tab_opens_the_flat_wall_without_album_cover_cards(self):
         self.assertPageContains("if(media==='photos'){renderPhotoWall(kind,name,filters,entityPhotos);return}")
         self.assertPageContains("readout:`${back?esc(data.title)+' · ':'照片 · '}${(data.total||0).toLocaleString()} 张`")
         self.assertPageContains("/api/photos?kind=${encodeURIComponent(kind)}&name=${encodeURIComponent(name)}&limit=120&offset=${photoWallItems.length}")
@@ -9459,8 +9494,10 @@ class WebUiSourceTests(unittest.TestCase):
         # 大小：存进设置，改的只是那面墙上的一个属性。
         self.assertPageContains("photoSize:'small',")
         self.assertPageContains("if(wall)wall.dataset.size=appSettings.photoSize;")
-        self.assertPageContains('.photowall[data-size="big"]{column-count:3}')
-        self.assertPageContains('.photowall[data-size="big"]{column-count:1}')
+        self.assertPageContains(
+            '.photowall[data-size="big"]{grid-template-columns:repeat(3,minmax(0,1fr))}')
+        self.assertPageContains(
+            '  .photowall[data-size="big"]{grid-template-columns:repeat(1,minmax(0,1fr))}')
         # 标签只在视频视图里露面。
         self.assertPageContains("toggleAttribute('data-media-only',now!=='videos')")
         self.assertPageContains(".entitytagbar[data-media-only] .entitytags .pill{display:none}")

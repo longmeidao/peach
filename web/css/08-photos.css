@@ -2,16 +2,22 @@
    按默认的 fill:black/stroke:none 画成黑块——深色底上等于看不见。 */
 .photoback svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2}
 .photoback:hover{background:var(--overlay-5);color:var(--ink)}
-/* 瀑布流：账本没有图片宽高，等宽多列流式排版正好不需要比例，也不用等图加载完再算位置。
-   大小就是列数。窄屏两档一起收，但大图那档始终比小图少两列——收成同一个数等于这个开关
-   在这块屏幕上不起作用，而按钮上还亮着人上一次点的那一档。 */
-.photowall{column-count:5;column-gap:10px}
-.photowall[data-size="big"]{column-count:3}
-@media (max-width:1400px){.photowall{column-count:4}.photowall[data-size="big"]{column-count:2}}
-@media (max-width:1000px){.photowall{column-count:3}.photowall[data-size="big"]{column-count:1}}
-.photocell{display:block;width:100%;border:0;padding:0;margin:0 0 10px;background:transparent;
-  border-radius:var(--surface-radius);overflow:hidden;cursor:zoom-in;break-inside:avoid;line-height:0}
-.photocell img{width:100%;height:auto;display:block;background:var(--sunk)}
+/* 等宽网格，每格先占好位置再等图。账本没有图片宽高，缩略图在懒加载前高度是 0，而多列
+   流式排版是按分栏那一刻的高度摊的：一屏 240 个零高的格子会被整批摊进最后一列，前几列
+   只留下已经加载出来的那十几张，右边几列从顶上就空着，窄屏则收成半幅一列。固定比例的
+   格子与加载顺序无关，各列自然齐平；关注页的图片墙同样是从多列换成网格才稳住的。
+   方框配 cover：这个库横竖两种取景各占一半，长框总有一半图要被压成一条，方框对两种各
+   裁四分之一，点开就是全图。大小就是列数。窄屏两档一起收，但大图那档始终比小图少两列
+   ——收成同一个数等于这个开关在这块屏幕上不起作用，而按钮上还亮着人上一次点的那一档。 */
+.photowall{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px}
+.photowall[data-size="big"]{grid-template-columns:repeat(3,minmax(0,1fr))}
+@media (max-width:1400px){.photowall{grid-template-columns:repeat(4,minmax(0,1fr))}
+  .photowall[data-size="big"]{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:1000px){.photowall{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .photowall[data-size="big"]{grid-template-columns:repeat(1,minmax(0,1fr))}}
+.photocell{display:block;width:100%;aspect-ratio:1;border:0;padding:0;margin:0;background:var(--sunk);
+  border-radius:var(--surface-radius);overflow:hidden;cursor:zoom-in;line-height:0}
+.photocell img{width:100%;height:100%;object-fit:cover;display:block;background:var(--sunk)}
 .photocell:hover img{filter:brightness(1.06)}
 /* 媒体圆钮只共享 48/24 的几何与图标居中；表面色由使用场景决定。 */
 .media-circle{box-sizing:border-box;width:48px;height:48px;padding:0;border:0;border-radius:50%;
