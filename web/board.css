@@ -659,9 +659,13 @@ button,input,select,textarea{font-family:inherit}
 .drawer .board-sidebar-body .chip-label{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .drawer .board-sidebar-body .chip .n{margin-left:auto;flex:none;padding:1px 4px;border-radius:4px;background:var(--surface);color:var(--muted);font-size:12px;line-height:16px}
 .drawer .board-sidebar-body .chip svg{flex:none;width:16px;height:16px}
-/* 名单末尾那一句跟条目左对齐，但比条目轻：它不是名单里的一项，是名单还没完这件事。 */
-.drawer .board-sidebar-body .sidemore{display:flex;align-items:center;width:calc(100% - 8px);margin:2px 0 0 8px;min-height:32px;padding:6px 8px;border:0;border-radius:10px;background:transparent;color:var(--muted);font-size:13px;line-height:20px;text-align:left;font-weight:500}
+/* 名单末尾那枚展开键跟排名卡上的那枚同一副身量：40×20 药丸居中，14px 箭头，摊开后翻
+   过来。它不是名单里的一项，所以不跟条目左对齐——那个位置上一行字会被读成最后一条。 */
+.drawer .board-sidebar-body .sidemore{display:grid;place-items:center;width:40px;height:20px;margin:6px auto 2px;padding:0;border:1px solid var(--line);border-radius:999px;background:var(--surface);color:var(--muted);box-shadow:0 1px 2px #0000000d;transition:background-color .15s ease,color .15s ease}
 .drawer .board-sidebar-body .sidemore:hover{background:var(--hover);color:var(--ink)}
+.drawer .board-sidebar-body .sidemore svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;transition:transform .2s cubic-bezier(0,0,.2,1)}
+.drawer .board-sidebar-body .sidemore[aria-expanded=true] svg{transform:rotate(180deg)}
+@media(prefers-reduced-motion:reduce){.drawer .board-sidebar-body .sidemore svg{transition:none}}
 /* 观看进度与动作分别成组，操作按钮保留各自的可访问名称。 */
 .sidecontent .trace{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;padding:0;margin:8px 0 16px}
 .sidecontent .trace-metric{min-width:0;padding:14px 12px;background:var(--surface);border-radius:12px}

@@ -3285,6 +3285,9 @@ function wireTierEntities(root){
 function wireTagPills(root){
   root.querySelectorAll('[data-tag]').forEach(b=>b.onclick=()=>{toggleTag(b.dataset.tag)});
 }
+/* 展开与收起是同一枚键的两面，`aria-expanded` 说的就是这一组眼下摊开到哪一步，箭头照它
+   翻。一个箭头说得完的事不再配一句字：名单末尾那个位置，字比图标更像名单的最后一项。 */
+const sidebarMoreHtml=(key,group)=>`<button class="sidemore" data-more="${key}" aria-expanded="false" aria-label="展开全部${group}"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chevron-down"/></svg></button>`;
 async function buildBars(){
   const requestSeq=++barsRequestSeq;
   buildDrawerNavigation();
@@ -3400,10 +3403,11 @@ async function buildBars(){
         <input id="durMin" type="range" min="0" max="180" step="5" value="${filterState.dur_min?Math.min(180,+filterState.dur_min/60):0}" aria-label="最短时长（分钟）">
         <input id="durMax" type="range" min="0" max="180" step="5" value="${filterState.dur_max?Math.min(180,+filterState.dur_max/60):180}" aria-label="最长时长（分钟）"></div></div>`:'','','meta')
     +sec('画幅',chips(facetData.orientations,'orient'),'','meta')
-    /* 「更多」接在名单末尾，它说的是「这张名单还没完」——那句话要跟名单断掉的地方在
-       一起。挂在组名那一行时，人得先把这一列读到底、再抬头回到标题去找它。 */
-    +sec('创作者',chips(scopedCreators,'creator',false,26),scopedCreators.length>26?'<button class="sidemore" data-more="creator">更多</button>':'','artist')
-    +sec('内容标签',chips(facetData.tags,'tag',false,30),facetData.tags.length>30?'<button class="sidemore" data-more="tag">更多</button>':'','general')
+    /* 展开键接在名单末尾，它说的是「这张名单还没完」——那句话要跟名单断掉的地方在
+       一起。挂在组名那一行时，人得先把这一列读到底、再抬头回到标题去找它。
+       身量取排名那枚展开药丸：一个箭头就说得完的事不必再配一句字。 */
+    +sec('创作者',chips(scopedCreators,'creator',false,26),scopedCreators.length>26?sidebarMoreHtml('creator','创作者'):'','artist')
+    +sec('内容标签',chips(facetData.tags,'tag',false,30),facetData.tags.length>30?sidebarMoreHtml('tag','内容标签'):'','general')
     +sec('影片属性',chips(facetData.tech,'tag',false,16),'','meta')
     +sec('关注标签',followTagRows.length?`<div class="chips">`+followTagRows.map(row=>
       `<button class="chip online" data-follow-drawer-tag="${esc(row.k)}"><span class="chip-label">${esc(tagLabel(row.k))}</span><span class="n">${row.n.toLocaleString()}</span></button>`
@@ -3445,11 +3449,19 @@ async function buildBars(){
     const group=b.closest('.sec'), k=b.dataset.more;
     const src=k==='tag'?facetData.tags:scopedCreators;
     const lim=k==='tag'?30:26;
-    const expanded=b.dataset.on==='1';
+    const name=group.dataset.sidebarGroup;
+    const expanded=b.getAttribute('aria-expanded')==='true';
+    /* 这一列的位置归人自己管：摊开的内容全在按下的这个点以下，把他挪过去等于替他决定
+       现在要看第几条。名单一变长，浏览器会顺着焦点和锚定把这一列推走，所以记下再放回。 */
+    const scroller=$('#drawerScroll'),keep=scroller.scrollTop;
+    const hold=()=>{scroller.scrollTop=keep};
     group.querySelector('.chips').outerHTML=chips(src,k,false,expanded?lim:999);
-    b.dataset.on=expanded?'0':'1';
-    b.textContent=expanded?'更多':'收起';
-    bind();});
+    b.setAttribute('aria-expanded',String(!expanded));
+    b.setAttribute('aria-label',(expanded?'展开全部':'收起')+name);
+    /* 收起收的是整组。名单已经摊到最长，把它退回二十几条只是换一个断点，人还站在同一
+       列读不完的东西前面；他按这一下要的是把这一组放回去。 */
+    if(expanded)group.querySelector('.board-section-toggle').click();
+    bind();hold();requestAnimationFrame(hold);});
 }
 /* 排序和换批都属于当前列表，放在计数行，不占用全局导航。 */
 function renderCount(){

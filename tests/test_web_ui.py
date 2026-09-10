@@ -5874,21 +5874,36 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("+sec('内容标签',chips(facetData.tags,'tag',false,30)")
 
     def test_a_truncated_sidebar_list_says_so_at_its_own_end(self):
-        """侧栏名单没列完时，那句话接在名单末尾，不挂到组名那一行。
+        """侧栏名单没列完时，末尾那枚箭头接着摊开，再按一下把整组放回去。
 
-        「更多」说的是「这张名单还没完」——它要跟名单断掉的地方在一起。挂在标题上时，
-        人得先把这一列读到底、再抬头回到标题去找它；而标题那一行的职责是开合这一组，
-        旁边多一个按钮，点哪儿会展开就成了两件要分辨的事。
+        它说的是「这张名单还没完」——要跟名单断掉的地方在一起。挂在标题上时，人得先把
+        这一列读到底、再抬头回到标题去找它；而标题那一行的职责是开合这一组，旁边多一个
+        按钮，点哪儿会展开就成了两件要分辨的事。
+
+        身量取排名卡上那枚展开药丸：40×20 居中，14px 箭头随 `aria-expanded` 翻面。摊开
+        之后按下去收的是整组——名单已经到最长，把它退回二十几条只是换一个断点，人还站
+        在同一列读不完的东西前面。
         """
         self.assertPageContains(
-            "scopedCreators.length>26?'<button class=\"sidemore\" data-more=\"creator\">更多</button>':''")
+            "scopedCreators.length>26?sidebarMoreHtml('creator','创作者'):''")
+        self.assertPageContains("facetData.tags.length>30?sidebarMoreHtml('tag','内容标签'):''")
         self.assertPageContains(
-            "facetData.tags.length>30?'<button class=\"sidemore\" data-more=\"tag\">更多</button>':''")
+            "<button class=\"sidemore\" data-more=\"${key}\" aria-expanded=\"false\""
+            " aria-label=\"展开全部${group}\">"
+            "<svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><use href=\"#i-chevron-down\"/></svg></button>")
         # 展开与收起是同一枚按钮的两面，不另开一处入口。
         self.assertPageContains("group.querySelector('.chips').outerHTML=chips(src,k,false,expanded?lim:999);")
-        self.assertPageContains("b.textContent=expanded?'更多':'收起';")
+        self.assertPageContains("b.setAttribute('aria-expanded',String(!expanded));")
+        self.assertPageContains("if(expanded)group.querySelector('.board-section-toggle').click();")
+        # 摊开的内容全在按下的这个点以下，这一列停在哪儿归人自己管。
+        self.assertPageContains("const scroller=$('#drawerScroll'),keep=scroller.scrollTop;")
+        self.assertPageContains("bind();hold();requestAnimationFrame(hold);});")
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
-        self.assertIn(".drawer .board-sidebar-body .sidemore{", board)
+        self.assertIn(
+            ".drawer .board-sidebar-body .sidemore{display:grid;place-items:center;"
+            "width:40px;height:20px;margin:6px auto 2px;", board)
+        self.assertIn(".drawer .board-sidebar-body .sidemore[aria-expanded=true] svg{transform:rotate(180deg)}",
+                      board)
         self.assertNotIn(
             ".drawer .sec:has(.board-section-toggle[aria-expanded=false]) [data-more]", board,
             "它落在组的正文里，折叠时跟正文一起收走，不必单独藏")
