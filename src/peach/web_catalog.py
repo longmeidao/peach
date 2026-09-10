@@ -251,6 +251,15 @@ def catalog_filter(contract: WebContract, args):
     return where, par
 
 
+def seeded_order(seed) -> str:
+    """按种子打散的 ORDER BY 片段，列名固定是 `a.id`。
+
+    同一粒种子顺序固定，翻页不重不漏；换一粒就是「换一批」。拼进 SQL 的是算出来的
+    整数，不是请求里的原文。"""
+    sd = int(seed or 1) % 99991 or 7
+    return f"((a.id * {sd}) % 99991), a.id"
+
+
 def q_items(contract: WebContract, args):
     where, par = catalog_filter(contract, args)
     sort_key = str(args.get("sort") or "")
@@ -259,8 +268,7 @@ def q_items(contract: WebContract, args):
     order = column.format(d=direction) if column else ("RANDOM()" if sort_key == "rand" else None)
     if order is None:
         if args.get("sort") == "seed":
-            sd = int(args.get("seed") or 1) % 99991 or 7
-            order = f"((a.id * {sd}) % 99991), a.id"
+            order = seeded_order(args.get("seed"))
         elif args.get("sort") == "daily" or not args.get("sort"):
             # 每日轮换：用当天日期做种子打散，同一天顺序固定，隔天自动换一批。
             # 不用 RANDOM() —— 那样每次刷新都不同，翻页还会重复/漏掉。

@@ -62,6 +62,11 @@
    看着像贴在背景上的剪纸，浮不起来。三层都用冷灰 `#111827` 而不是纯黑：这一层底下
    多半是肤色和暖色封面，纯黑压上去发脏。暗色那一档不靠加更多黑——玻璃和背景本来
    就都是深的，再黑也分不出层，分层交给上缘那道 `--glass-rim` 亮线。 */
+/* `--glass-pick-shadow` 是选中那一小块自己的影，跟整块浮层的 `--glass-shadow` 分开定，
+   但两档都得跟着主题走。写死一个值的后果只在浅色下看得见：整块浮层在浅色里投的是
+   0.06 的冷灰，一枚三十像素的圆片却投 0.14 的黑，比托着它的那整块还重，读起来是贴在
+   玻璃上的一片纸，而不是玻璃自己亮起来的一块。深色那档比整块淡是对的——那里分层靠的
+   是上缘那道亮线，影再重也只是把它按进底色里。 */
 /* 滑板那一下的缓动是一条弹簧曲线，不是手挑的贝塞尔：`linear()` 里那串数是把一个
    `stiffness:1700 damping:46 mass:1` 的弹簧按 240Hz 跑完再采样下来的（算法出自
    liquid-gooey 的 spring.ts，MIT）。手挑的贝塞尔只能描出「快出慢收」这一类形状，
@@ -78,9 +83,9 @@
    正是这一点让它读成一块有厚度的实物而不是一层半透明的涂层。
    两团大小和亮度不同，加起来才不像一只手电筒；两条轨迹的周期是 41s 和 67s，互质，
    合起来四十多分钟不重样，看不出循环点在哪。 */
-:root{--glass-fill:rgba(252,253,255,.32);--glass-rim:rgba(255,255,255,.72);--glass-low:rgba(70,80,100,.1);--glass-text:#1d2129;--glass-shadow:0 1px 2px #1118270f,0 8px 18px #11182714,0 24px 48px #11182710;--glass-lift:0 2px 4px #11182714,0 12px 26px #1118271f,0 30px 60px #11182717;--glass-sheen:rgba(255,255,255,.5);--glass-lume:brightness(1.32) saturate(.5);--glass-pick:brightness(1.1) saturate(1.1);--glass-pick-fill:rgba(255,255,255,.52);--glass-drift-a:radial-gradient(20% 20% at 50% 50%,#ffffff1a,#ffffff0d 42%,transparent 72%);--glass-drift-b:radial-gradient(26% 26% at 50% 50%,#ffffff14,#ffffff0a 44%,transparent 74%)}
-:root[data-theme="dark"]{--glass-fill:rgba(24,27,33,.24);--glass-rim:rgba(255,255,255,.2);--glass-low:rgba(255,255,255,.05);--glass-text:#eceef3;--glass-shadow:0 1px 2px #00000047,0 10px 22px #00000038,0 28px 56px #0000002b;--glass-lift:0 2px 4px #00000052,0 14px 30px #00000047,0 34px 68px #00000038;--glass-sheen:rgba(230,239,255,.1);--glass-lume:brightness(.5) contrast(1.1);--glass-pick:brightness(1.7) saturate(1.15);--glass-pick-fill:rgba(255,255,255,.13)}
-@media(prefers-color-scheme:dark){:root:not([data-theme]){--glass-fill:rgba(24,27,33,.24);--glass-rim:rgba(255,255,255,.2);--glass-low:rgba(255,255,255,.05);--glass-text:#eceef3;--glass-shadow:0 1px 2px #00000047,0 10px 22px #00000038,0 28px 56px #0000002b;--glass-lift:0 2px 4px #00000052,0 14px 30px #00000047,0 34px 68px #00000038;--glass-sheen:rgba(230,239,255,.1);--glass-lume:brightness(.5) contrast(1.1);--glass-pick:brightness(1.7) saturate(1.15);--glass-pick-fill:rgba(255,255,255,.13)}}
+:root{--glass-fill:rgba(252,253,255,.32);--glass-rim:rgba(255,255,255,.72);--glass-low:rgba(70,80,100,.1);--glass-text:#1d2129;--glass-shadow:0 1px 2px #1118270f,0 8px 18px #11182714,0 24px 48px #11182710;--glass-lift:0 2px 4px #11182714,0 12px 26px #1118271f,0 30px 60px #11182717;--glass-sheen:rgba(255,255,255,.5);--glass-lume:brightness(1.32) saturate(.5);--glass-pick:brightness(1.1) saturate(1.1);--glass-pick-fill:rgba(255,255,255,.52);--glass-pick-shadow:0 1px 2px #1118270f,0 4px 10px #11182714;--glass-drift-a:radial-gradient(20% 20% at 50% 50%,#ffffff1a,#ffffff0d 42%,transparent 72%);--glass-drift-b:radial-gradient(26% 26% at 50% 50%,#ffffff14,#ffffff0a 44%,transparent 74%)}
+:root[data-theme="dark"]{--glass-fill:rgba(24,27,33,.24);--glass-rim:rgba(255,255,255,.2);--glass-low:rgba(255,255,255,.05);--glass-text:#eceef3;--glass-shadow:0 1px 2px #00000047,0 10px 22px #00000038,0 28px 56px #0000002b;--glass-lift:0 2px 4px #00000052,0 14px 30px #00000047,0 34px 68px #00000038;--glass-sheen:rgba(230,239,255,.1);--glass-lume:brightness(.5) contrast(1.1);--glass-pick:brightness(1.7) saturate(1.15);--glass-pick-fill:rgba(255,255,255,.13);--glass-pick-shadow:0 1px 2px #00000024,0 6px 14px #0000001f}
+@media(prefers-color-scheme:dark){:root:not([data-theme]){--glass-fill:rgba(24,27,33,.24);--glass-rim:rgba(255,255,255,.2);--glass-low:rgba(255,255,255,.05);--glass-text:#eceef3;--glass-shadow:0 1px 2px #00000047,0 10px 22px #00000038,0 28px 56px #0000002b;--glass-lift:0 2px 4px #00000052,0 14px 30px #00000047,0 34px 68px #00000038;--glass-sheen:rgba(230,239,255,.1);--glass-lume:brightness(.5) contrast(1.1);--glass-pick:brightness(1.7) saturate(1.15);--glass-pick-fill:rgba(255,255,255,.13);--glass-pick-shadow:0 1px 2px #00000024,0 6px 14px #0000001f}}
 /* 光斑铺在一张两倍大的画布上，靠 `background-position` 推着走：画布只有元素两倍大时，
    位置从 0% 到 100% 正好把光斑中心从元素的右下角推到左上角，`-10%` 和 `110%` 那两档
    是让它探出框外一点——真实的光斑不会老老实实待在板子里。半径写 20% 是画布的比例，
@@ -109,7 +114,8 @@
   87.5%{background-position-y:7.6%,92.4%,0}
   100%{background-position-y:-10%,50%,0}
 }
-.board-filter-frame.board-filter-frame.board-filter-frame,.entitytagbar.entitytagbar.entitytagbar,.entitycollectionhead.entitycollectionhead.entitycollectionhead,body .review .reviewbulktoolbar,body .review .reviewgroupbar,.drawer.drawer,.drawer.drawer.open,.edge.edge,.top .search.search,.top.top>.ib{
+.board-filter-frame.board-filter-frame.board-filter-frame,.entitytagbar.entitytagbar.entitytagbar,.entitycollectionhead.entitycollectionhead.entitycollectionhead,body .review .reviewbulktoolbar,body .review .reviewgroupbar,.drawer.drawer,.drawer.drawer.open,.edge.edge,.top .search.search,.top.top>.ib,
+.entitytagbar+.entitysection>.entitycollectionhead::before{
   background:var(--glass-drift-a),var(--glass-drift-b),linear-gradient(125deg,var(--glass-sheen),transparent 42%,var(--glass-low)),var(--glass-fill);
   background-size:200% 200%,200% 200%,auto;background-repeat:no-repeat,no-repeat,repeat;
   background-position:50% 20%,80% 70%,0 0;
@@ -120,21 +126,29 @@
 .board-filter-frame.board-filter-frame{border-radius:22px;isolation:isolate;color:var(--glass-text)}
 /* 资料页的标签行和排序行是两个兄弟，一个挂在 `.index` 上、一个在 `.entitysection` 里，
    而那一段的 innerHTML 每次重画都整块换掉，套不进首页那个 `.board-filter-frame`。
-   改成让它们各做一块玻璃的上下半：圆角只留外侧，接缝那两条内描线去掉，吸顶的光晕由
-   下半的 ::after 一次画完整块——它比上半低一层，画在上半左右两侧的那部分不会被盖住。 */
-/* 那道 125° 高光是按盒子自己的对角线铺的：上下两半各铺一遍，接缝两边就成了亮的一段
-   和灰的一段，静止时看着是两块叠在一起。分两个盒子的浮层不铺它，边上那圈高光仍然由
-   `inset` 描出来。首页那块是一个盒子，它照旧。
-   漂移的那两团光不受这一条影响，两半各自飘各自的：它们是圆的，接缝上不留边界。 */
-.entitytagbar.entitytagbar.entitytagbar,.entitycollectionhead.entitycollectionhead.entitycollectionhead,
-body .review .reviewbulktoolbar,body .review .reviewgroupbar{
-  background-image:var(--glass-drift-a),var(--glass-drift-b);background-color:var(--glass-fill);
-  background-size:200% 200%,200% 200%;background-repeat:no-repeat}
+   两行却只能有一块玻璃。各做一块的话，模糊、投影、光斑都是各算各的：底下内容明暗反差
+   一大，接缝两边糊出来的颜色就对不上，读起来是一条分栏线，去掉哪一样都还剩另外几样。
+   所以整块由下半的 ::before 画：从上半的顶沿铺到自己的底沿，一次模糊、一次投影、一张
+   光斑画布，材质跟首页那块走同一条规则；两行自己都不铺底。上半的层级比下半高，它的内容
+   画在这块玻璃之上。从下半往上够而不是反过来：上半的高度是定值，下半在窄屏上会折成两行。
+   只剩一行的时候（没有标签也没有媒体开关，或者下半还没画出来）它自己就是整块。 */
+.entitytagbar.entitytagbar.entitytagbar,
 .entitycollectionhead.entitycollectionhead.entitycollectionhead{border-radius:22px;color:var(--glass-text)}
-.entitytagbar.entitytagbar.entitytagbar{border-radius:22px 22px 0 0;color:var(--glass-text);
-  box-shadow:inset 0 1px 0 var(--glass-rim),inset 1px 0 0 var(--glass-low),inset -1px 0 0 var(--glass-low),var(--glass-shadow)}
-.entitytagbar+.entitysection .entitycollectionhead.entitycollectionhead.entitycollectionhead{border-radius:0 0 22px 22px;
-  box-shadow:inset 1px 0 0 var(--glass-low),inset -1px 0 0 var(--glass-low),inset 0 -1px 0 var(--glass-low),var(--glass-shadow)}
+.entitytagbar.entitytagbar.entitytagbar:has(+.entitysection>.entitycollectionhead),
+.entitytagbar+.entitysection>.entitycollectionhead.entitycollectionhead.entitycollectionhead{
+  background:none;backdrop-filter:none;-webkit-backdrop-filter:none;box-shadow:none;animation:none}
+.entitytagbar+.entitysection>.entitycollectionhead::before{content:'';position:absolute;
+  inset:calc(-1 * var(--board-filterH)) 0 0;z-index:-1;border-radius:22px;pointer-events:none}
+/* 吸顶以后那一档影跟首页那块一样换成 --glass-lift。 */
+.entitytagbar+.entitysection>.entitycollectionhead.is-stuck::before{
+  box-shadow:inset 0 1px 0 var(--glass-rim),inset 1px 0 0 var(--glass-low),inset -1px 0 0 var(--glass-low),inset 0 -1px 0 var(--glass-low),var(--glass-lift)}
+/* 复核页那两条还是各做一块：上面那条的高度不是定值，从下面往上够不到。吸顶时整块由
+   `.review-is-stuck::before` 画，这里管的只是没吸顶的时候。那道 125° 高光和漂移光斑
+   都按盒子自己的尺寸铺，两半各铺一遍会在接缝处断开，所以不铺；上面那条的外阴影往下
+   不露，不然正好落在下面那条的顶上，接缝多出一条暗带。 */
+body .review .reviewbulktoolbar,body .review .reviewgroupbar{
+  background-image:none;background-color:var(--glass-fill);animation:none}
+body .review .reviewbulktoolbar{clip-path:inset(-48px -48px 0 -48px)}
 .entitytagbar .pill,.entitycollectionhead h3{color:var(--glass-text)}
 .entitytagbar .pill[data-tag]:not([aria-pressed="true"]){border-color:var(--glass-low)}
 /* 这块玻璃回答的是「你在哪儿」：侧栏的当前项、四枚视图里生效的那一枚、实体页正在看
@@ -146,7 +160,24 @@ body .review .reviewbulktoolbar,body .review .reviewgroupbar{
   background:linear-gradient(180deg,var(--glass-sheen),transparent 62%),var(--glass-pick-fill);
   backdrop-filter:var(--glass-pick);-webkit-backdrop-filter:var(--glass-pick);
   color:var(--glass-text);border-color:transparent;
-  box-shadow:inset 0 0 0 1px var(--glass-rim),0 1px 2px #00000024,0 6px 14px #0000001f}
+  box-shadow:inset 0 0 0 1px var(--glass-rim),var(--glass-pick-shadow)}
+/* 版式、大小这类分段开关问的也是「你在哪儿」。滑块的位置和几何归分段器自己管，这里
+   只换材质与配色：那一套是给 flat 面配的，一块灰底衬一枚不透明的白滑块，摆到浮层上
+   就是整条里唯一一块实心的面，读起来像贴上去的另一个控件；字色取的也是 flat 面的
+   --muted/--ink，跟旁边同一排的排序键差一档。壳撤掉，滑块换成选中态那块玻璃。 */
+.entitytagbar.entitytagbar .iconswitch[data-board-segments],
+.entitycollectionhead.entitycollectionhead .iconswitch[data-board-segments],
+.board-filter-frame.board-filter-frame .iconswitch[data-board-segments]{background:none}
+.entitytagbar.entitytagbar .iconswitch>label,
+.entitycollectionhead.entitycollectionhead .iconswitch>label,
+.board-filter-frame.board-filter-frame .iconswitch>label{
+  color:color-mix(in srgb,var(--glass-text) 62%,transparent)}
+.entitytagbar.entitytagbar .iconswitch>label:hover,
+.entitytagbar.entitytagbar .iconswitch>label:has(input:checked),
+.entitycollectionhead.entitycollectionhead .iconswitch>label:hover,
+.entitycollectionhead.entitycollectionhead .iconswitch>label:has(input:checked),
+.board-filter-frame.board-filter-frame .iconswitch>label:hover,
+.board-filter-frame.board-filter-frame .iconswitch>label:has(input:checked){color:var(--glass-text)}
 /* 排序键回答的是「这一列按什么排」——一个参数的当前值，不是一个位置，所以不占那块
    玻璃：同一种材质担两种语义，这一排读起来就成了另一组导航。当前值由字自己说：整排
    八九个候选都退到六成，生效的那枚回到满值再加半档字重。只差字重不够——一排等亮度的
@@ -194,7 +225,7 @@ body .review .reviewbulktoolbar,body .review .reviewgroupbar{
      一条亮线时，它和邻居的差别全靠那点提亮，亮内容上就分不出来了。
      落影按这块的尺寸缩过：整条筛选条那三层是给一块二十几像素圆角的板算的，原样套到
      一枚三十来像素高的药丸上，最远那层比药丸本身还大一圈，看着是它在发光而不是浮起。 */
-  box-shadow:inset 0 0 0 1px var(--glass-rim),0 1px 2px #00000024,0 6px 14px #0000001f}
+  box-shadow:inset 0 0 0 1px var(--glass-rim),var(--glass-pick-shadow)}
 .board-filter-frame.board-filter-frame>.viewglide[hidden],.drawer.drawer>.navglide[hidden]{display:none}
 /* 侧栏那一列是竖排，圆角照按钮自己的 10px 走，不跟着那一排药丸的 8px。
    它住在滚动容器外面、抽屉这块玻璃里面，`z-index:-1` 把它压回内容底下：抽屉自己带
@@ -242,7 +273,7 @@ body .review .reviewbulktoolbar,body .review .reviewgroupbar{
   background:linear-gradient(180deg,var(--glass-sheen),transparent 62%),var(--glass-pick-fill);
   backdrop-filter:var(--glass-pick);-webkit-backdrop-filter:var(--glass-pick);
   color:var(--glass-text);filter:none;
-  box-shadow:inset 0 0 0 1px var(--glass-rim),0 1px 2px #00000024,0 6px 14px #0000001f}
+  box-shadow:inset 0 0 0 1px var(--glass-rim),var(--glass-pick-shadow)}
 /* 窄栏没选中的那些悬停只抬一层薄白：不提亮、不描边、不带影，浮起来这件事整列只有
    一处。那一列是纯图标，认哪个亮着靠的就是那一格自己。 */
 .edge.edge.edge button:not([aria-pressed="true"]):hover{
@@ -251,14 +282,14 @@ body .review .reviewbulktoolbar,body .review .reviewgroupbar{
    项。格子底下再垫一层薄白就是两套反馈同时说话——薄白说「鼠标在这儿」，玻璃说「你
    在这儿」，指针停在别的格上时这两句话指着两个地方。 */
 .drawer.drawer.drawer .dnav button:hover{background:none;color:var(--glass-text)}
-@supports not (backdrop-filter:blur(1px)){.board-filter-frame.board-filter-frame.board-filter-frame,.entitytagbar.entitytagbar.entitytagbar,.entitycollectionhead.entitycollectionhead.entitycollectionhead,body .review .reviewbulktoolbar,body .review .reviewgroupbar,.drawer.drawer,.drawer.drawer.open,.edge.edge,.top .search.search{background:var(--ground);animation:none}}
-@media(prefers-reduced-transparency:reduce),(prefers-contrast:more){.board-filter-frame.board-filter-frame.board-filter-frame,.entitytagbar.entitytagbar.entitytagbar,.entitycollectionhead.entitycollectionhead.entitycollectionhead,body .review .reviewbulktoolbar,body .review .reviewgroupbar,.drawer.drawer,.drawer.drawer.open,.edge.edge,.top .search.search,.top.top>.ib{background:var(--ground);backdrop-filter:none;-webkit-backdrop-filter:none;animation:none}}
+@supports not (backdrop-filter:blur(1px)){.board-filter-frame.board-filter-frame.board-filter-frame,.entitytagbar.entitytagbar.entitytagbar,.entitycollectionhead.entitycollectionhead.entitycollectionhead,body .review .reviewbulktoolbar,body .review .reviewgroupbar,.drawer.drawer,.drawer.drawer.open,.edge.edge,.top .search.search,.entitytagbar+.entitysection>.entitycollectionhead::before{background:var(--ground);animation:none}}
+@media(prefers-reduced-transparency:reduce),(prefers-contrast:more){.board-filter-frame.board-filter-frame.board-filter-frame,.entitytagbar.entitytagbar.entitytagbar,.entitycollectionhead.entitycollectionhead.entitycollectionhead,body .review .reviewbulktoolbar,body .review .reviewgroupbar,.drawer.drawer,.drawer.drawer.open,.edge.edge,.top .search.search,.top.top>.ib,.entitytagbar+.entitysection>.entitycollectionhead::before{background:var(--ground);backdrop-filter:none;-webkit-backdrop-filter:none;animation:none}}
 /* 面上那两团光停在 `background-position` 给的那一处，不再挪：它讲的是光在动，而这
    台机器上「减少动态效果」说的就是别让不由我操作的东西自己动。停住之后它还是两团
    高光，玻璃仍有厚度，只是这屋里的光不再走了。 */
-@media(prefers-reduced-motion:reduce){.board-filter-frame.board-filter-frame.board-filter-frame,.entitytagbar.entitytagbar.entitytagbar,.entitycollectionhead.entitycollectionhead.entitycollectionhead,body .review .reviewbulktoolbar,body .review .reviewgroupbar,.drawer.drawer,.drawer.drawer.open,.edge.edge,.top .search.search,.top.top>.ib{animation:none}}
+@media(prefers-reduced-motion:reduce){.board-filter-frame.board-filter-frame.board-filter-frame,.entitytagbar.entitytagbar.entitytagbar,.entitycollectionhead.entitycollectionhead.entitycollectionhead,body .review .reviewbulktoolbar,body .review .reviewgroupbar,.drawer.drawer,.drawer.drawer.open,.edge.edge,.top .search.search,.top.top>.ib,.entitytagbar+.entitysection>.entitycollectionhead::before{animation:none}}
 /* Peach-owned media and analytics layouts. */
-html.board-high-contrast .board-filter-frame.board-filter-frame.board-filter-frame,html.board-high-contrast .entitytagbar.entitytagbar.entitytagbar,html.board-high-contrast .entitycollectionhead.entitycollectionhead.entitycollectionhead,html.board-high-contrast .review .reviewbulktoolbar,html.board-high-contrast .review .reviewgroupbar,html.board-high-contrast .drawer.drawer,html.board-high-contrast .edge.edge,html.board-high-contrast .top .search.search,html.board-high-contrast .top.top>.ib{background:var(--ground);backdrop-filter:none;-webkit-backdrop-filter:none;animation:none}
+html.board-high-contrast .board-filter-frame.board-filter-frame.board-filter-frame,html.board-high-contrast .entitytagbar.entitytagbar.entitytagbar,html.board-high-contrast .entitycollectionhead.entitycollectionhead.entitycollectionhead,html.board-high-contrast .review .reviewbulktoolbar,html.board-high-contrast .review .reviewgroupbar,html.board-high-contrast .drawer.drawer,html.board-high-contrast .edge.edge,html.board-high-contrast .top .search.search,html.board-high-contrast .top.top>.ib,html.board-high-contrast .entitytagbar+.entitysection>.entitycollectionhead::before{background:var(--ground);backdrop-filter:none;-webkit-backdrop-filter:none;animation:none}
 :root{--board-card-foot:color-mix(in srgb,var(--ground) 92%,var(--ink))}
 .followmanage.followmanage{width:100%;max-width:1120px}
 .followmanage .fmain{width:100%;max-width:1120px;margin-inline:auto;gap:20px}
@@ -438,14 +469,20 @@ body::before{display:none}
 .entitytagbar+.entitysection .entitycollectionhead{top:calc(var(--topH) + 8px + var(--board-filterH))}
 .entitycollectionhead.is-stuck::after{content:'';position:absolute;inset:0;z-index:-1;border-radius:inherit;
   box-shadow:0 0 24px 4px #00000038,0 8px 20px #00000026;pointer-events:none}
-.entitytagbar+.entitysection .entitycollectionhead.is-stuck::after{top:calc(-1 * var(--board-filterH));border-radius:22px}
+/* 两行合成一块时，吸顶那一档影由整块玻璃自己换成 --glass-lift，这一层不再叠。 */
+.entitytagbar+.entitysection .entitycollectionhead.is-stuck::after{display:none}
 /* 读数照首页那条 `10,471 个符合` 写：12px、常规字重、不加字距，颜色比标签低一档。
    排序键也跟那边同一套——30px 高、12px 字、7px 圆角，选中态那块玻璃在上面统一给。 */
 .entitycollectionhead h3{font-size:12px;font-weight:400;letter-spacing:normal;color:var(--ink-2)}
+/* 返回键在这块玻璃上，那圈线和字色都得跟着玻璃取，不然是浮层里唯一一处用 flat 面
+   配色的东西；高度跟同一排的排序键对齐。 */
+.entitycollectionhead .photoback{height:30px;border-color:var(--glass-low);color:var(--glass-text)}
 .entitycollectionhead .sorts{gap:4px}
 .entitycollectionhead .sorts button{height:30px;min-height:30px;font-size:12px;padding:0 8px;border:0;border-radius:7px;background:transparent}
-.entitytagbar.is-stuck::before{content:'';position:absolute;left:-16px;right:-16px;top:-9px;height:9px;z-index:-1;background:var(--page);mask-image:linear-gradient(to right,transparent,#000 24px,#000 calc(100% - 24px),transparent);pointer-events:none}
-@media(max-width:760px){.board-filter-frame .count{display:flex;flex-wrap:wrap;gap:8px;overflow:visible}.board-filter-frame .count>.mono{width:100%}.board-filter-frame .count .sorts,.entitycollectionhead .sorts{flex:1 1 100%;width:0;max-width:100%;min-width:0;margin:0;overflow-x:auto;overflow-y:hidden;overscroll-behavior-x:contain;touch-action:pan-x pan-y;padding:4px 2px}}
+@media(max-width:760px){.board-filter-frame .count{display:flex;flex-wrap:wrap;gap:8px;overflow:visible}.board-filter-frame .count>.mono{width:100%}.board-filter-frame .count .sorts,.entitycollectionhead .sorts{flex:1 1 100%;width:0;max-width:100%;min-width:0;margin:0;overflow-x:auto;overflow-y:hidden;overscroll-behavior-x:contain;touch-action:pan-x pan-y;padding:4px 2px}
+  /* 资料页那一排在窄屏上是纵向排的（读数一行、控件一行）。上面那条 flex 在纵向里管的
+     是高度，宽度就被 width:0 压得只剩内边距，整排控件看不见。 */
+  .entitycollectionhead .sorts{flex:none;width:100%}}
 [data-overflow-right="true"]{mask-image:linear-gradient(to right,#000 calc(100% - 18px),transparent)}
 [data-overflow-left="true"]{mask-image:linear-gradient(to right,transparent,#000 18px)}
 [data-overflow-left="true"][data-overflow-right="true"]{mask-image:linear-gradient(to right,transparent,#000 18px,#000 calc(100% - 18px),transparent)}
@@ -986,6 +1023,14 @@ html.board-high-contrast :is(.selectiondock,.reviewcontrols.is-stuck,.reviewgrou
 .count .sorts .iconswitch[data-board-segments] svg,.entitycollectionhead .sorts .iconswitch[data-board-segments] svg{width:16px;height:16px}
 .count .sorts .iconswitch[data-board-segments]>.board-segment-thumb,.entitycollectionhead .sorts .iconswitch[data-board-segments]>.board-segment-thumb{border-radius:5px}
 .count .sorts,.entitycollectionhead .sorts{padding:0 2px}
+/* 浮层上的滑块。深色那两条按主题给的填充和影写在上面，特指度到 0-5-0，所以这里也得
+   数够——`[data-board-segments]` 那一节的几何照旧，换掉的只有材质。 */
+.entitytagbar.entitytagbar.entitytagbar .iconswitch[data-board-segments]>.board-segment-thumb,
+.entitycollectionhead.entitycollectionhead.entitycollectionhead .iconswitch[data-board-segments]>.board-segment-thumb,
+.board-filter-frame.board-filter-frame.board-filter-frame .iconswitch[data-board-segments]>.board-segment-thumb{
+  background:linear-gradient(180deg,var(--glass-sheen),transparent 62%),var(--glass-pick-fill);
+  backdrop-filter:var(--glass-pick);-webkit-backdrop-filter:var(--glass-pick);
+  box-shadow:inset 0 0 0 1px var(--glass-rim),var(--glass-pick-shadow)}
 .board-filter-frame #count{min-height:48px}
 /* ── 下划线 Tabs（boardui tabs.tsx）：管理导航与设置内的分区同一副样子 ──
    1px 基线、选中 2px 蓝线由 `[data-board-tabs]::before` 滑过去；选项 px 10 / py 8、Body 1、间隔 4px；

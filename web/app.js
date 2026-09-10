@@ -425,9 +425,12 @@ const defaultSortDir=key=>SORT_DIR_WORDS[key]?'desc':'';
    跟随系统是默认档，选它等于不写属性。 */
 const THEME_CHOICES=['system','light','dark'];
 const JAV_LAYOUTS=[['big','大图','maximize'],['small','小图','layout-grid']];
+/* 图片墙是多列瀑布流，改的是列数。默认小图——一套图几十上百张，先看得见全貌，挑中
+   哪一张再点开看大的。 */
+const PHOTO_SIZES=[['big','大图','maximize'],['small','小图','layout-grid']];
 /* 显示器用于跟随系统主题和详情页的画面分辨率。 */
 const THEME_OPTIONS=[['system','跟随系统','monitor'],['light','浅色','sun'],['dark','深色','moon']];
-const DEFAULT_SETTINGS={batchSize:60,defaultSort:'seed',sortDefaultsVersion:3,hoverDelaySeconds:5,seekSeconds:10,searchHistoryLimit:10,relatedLimit:20,javLayout:'big',javImage:'cover',followLayout:'default',peopleLayout:'big',ambientMode:true,miniplayer:true,theaterMode:false,theme:'system',groupCollapse:true,sidebarOrder:DEFAULT_SIDEBAR_ORDER};
+const DEFAULT_SETTINGS={batchSize:60,defaultSort:'seed',sortDefaultsVersion:3,hoverDelaySeconds:5,seekSeconds:10,searchHistoryLimit:10,relatedLimit:20,javLayout:'big',javImage:'cover',followLayout:'default',peopleLayout:'big',photoSize:'small',ambientMode:true,miniplayer:true,theaterMode:false,theme:'system',groupCollapse:true,sidebarOrder:DEFAULT_SIDEBAR_ORDER};
 let appSettings={...DEFAULT_SETTINGS};
 try{appSettings={...DEFAULT_SETTINGS,...JSON.parse(localStorage.getItem(SETTINGS_KEY)||'{}')}}catch(_e){}
 appSettings.unreadDays=Number.isFinite(+appSettings.unreadDays)?Math.max(0,+appSettings.unreadDays):0;
@@ -3630,23 +3633,35 @@ function toggleTag(t){commitContextFilter(filters=>{filters.tag=t?withTagToggled
    对本页无效、点下去还会把人带走的筛选条。判据取自屏幕本身，不依赖每个整页入口记得
    清一次——绘制侧无条件画，清除侧就得在每个新入口补一遍，补漏一个就复发。 */
 const catalogOnScreen=()=>$('#index').hidden&&$('#stats').hidden;
-function renderCombo(){
-  if(!catalogOnScreen()){$('#combo').innerHTML='';return}
-  const cur=tagList(); const extra=[];
-  if(state.creator)extra.push(['creator',state.creator]);
-  if(state.studio)extra.push(['studio',state.studio]);
-  if(state.owner==='none')extra.push(['owner','未归属']);
-  if(!cur.length&&!extra.length){$('#combo').innerHTML='';return}
-  const comboLabel={creator:'创作者',studio:'厂牌',owner:'归属'};
-  $('#combo').innerHTML=
-    extra.map(([k,v])=>`<span class="cb">${comboLabel[k]} ${esc(v)}<b data-clear="${k}">✕</b></span>`).join('')
+const COMBO_LABELS={creator:'创作者',studio:'厂牌',owner:'归属'};
+function comboHtml(filters){
+  const cur=tagList(filters.tag); const extra=[];
+  if(filters.creator)extra.push(['creator',filters.creator]);
+  if(filters.studio)extra.push(['studio',filters.studio]);
+  if(filters.owner==='none')extra.push(['owner','未归属']);
+  if(!cur.length&&!extra.length)return '';
+  return extra.map(([k,v])=>`<span class="cb">${COMBO_LABELS[k]} ${esc(v)}<b data-clear="${k}">✕</b></span>`).join('')
     +cur.map(t=>`<span class="cb">${esc(tagLabel(t))} <b data-untag="${esc(t)}">✕</b></span>`).join('')
-    +`<button class="clr" id="clrAll">全部清除</button>`;
-  $('#combo').querySelectorAll('[data-untag]').forEach(b=>b.onclick=()=>toggleTag(b.dataset.untag));
-  $('#combo').querySelectorAll('[data-clear]').forEach(b=>b.onclick=()=>
+    +`<button class="clr" type="button">全部清除</button>`;
+}
+function wireCombo(root){
+  root.querySelectorAll('[data-untag]').forEach(b=>b.onclick=()=>toggleTag(b.dataset.untag));
+  root.querySelectorAll('[data-clear]').forEach(b=>b.onclick=()=>
     commitContextFilter(filters=>{filters[b.dataset.clear]=''}));
-  $('#clrAll').onclick=()=>commitContextFilter(filters=>{
+  const clear=root.querySelector('.clr');
+  if(clear)clear.onclick=()=>commitContextFilter(filters=>{
     filters.tag='';filters.creator='';filters.studio='';filters.owner=''});
+}
+/* 资料页有自己的一条，挂在这一页的标签条正上方，所指的是这一页的筛选；目录那条这时
+   跟目录一起被盖住。两条是同一样东西，拼法和落点都共用。 */
+function renderCombo(){
+  const entityCombo=$('#index').querySelector('.entitycombo');
+  if(entityCombo&&barsContext.type==='entity'){
+    entityCombo.innerHTML=comboHtml(barsContext.filters);wireCombo(entityCombo)}
+  if(!catalogOnScreen()){$('#combo').innerHTML='';return}
+  $('#combo').innerHTML=
+    comboHtml(state);
+  wireCombo($('#combo'));
 }
 
 /* ── 统计与管理 ── */
@@ -7157,6 +7172,11 @@ function renderEntityMediaToggle(kind,name,filters){
     button.setAttribute('aria-pressed',String(now===media));
     button.onclick=()=>switchEntityMedia(kind,name,filters,media);
   });
+  /* 那排标签数的是视频，照片和名册上一个都对不上——「痴女 23」在这一屏指的是二十三个
+     视频，而屏幕上摆着的是照片。点下去也不留在这儿：标签是作品筛选，`toggleTag` 会把
+     视图拨回视频。一排点了就走人、数字又对不上当前内容的东西，摆在这儿只会让人以为
+     照片能这么筛。切回视频它们照旧在。 */
+  $('#index').querySelector('.entitytagbar')?.toggleAttribute('data-media-only',now!=='videos');
 }
 
 async function switchEntityMedia(kind,name,filters,media){
@@ -7189,32 +7209,73 @@ async function openPhotoSet(kind,name,filters,setId,push=true){
   renderPhotoWall(kind,name,filters,data);
 }
 
+/* 换一批：换一粒种子把这一屏重排一遍，整组照片或单个图集都是。翻页沿用回话里带回的
+   那一粒。等的这一下键上转圈，跟首页那枚一样；新的一面墙回来时整排连它一起重画。 */
+async function shufflePhotos(kind,name,filters,setId,button){
+  if(button?.getAttribute('aria-busy')==='true')return;
+  const seq=++entityRequestSeq,seed=encodeURIComponent(rollSeed()),old=button?.innerHTML;
+  if(button){setActionBusy(button);button.innerHTML=spinnerHtml('正在换一批')}
+  try{
+    const data=await api(setId
+      ?`/api/photo-set?id=${setId}&limit=120&seed=${seed}`
+      :`/api/photos?kind=${encodeURIComponent(kind)}&name=${encodeURIComponent(name)}&limit=120&seed=${seed}`);
+    if(seq!==entityRequestSeq||data.error)return;
+    if(!setId)entityPhotos=data;
+    renderPhotoWall(kind,name,filters,data);
+  }finally{if(button?.isConnected){setActionBusy(button,false);button.innerHTML=old}}
+}
+function photoSize(){
+  return allowedSetting(appSettings.photoSize,PHOTO_SIZES.map(([key])=>key),'small');
+}
+/* 换大小一次请求都不发，也不重拼这面墙：列数是 CSS 的事，重画只会把已经取回的缩略图
+   丢掉再要一遍，还把人滚到的位置带走。 */
+function setPhotoSize(value){
+  appSettings.photoSize=allowedSetting(value,PHOTO_SIZES.map(([key])=>key),'small');
+  saveSettings();
+  document.querySelectorAll('[data-photo-size]').forEach(input=>{
+    input.checked=input.value===appSettings.photoSize});
+  const wall=$('#index').querySelector('.photowall');
+  if(wall)wall.dataset.size=appSettings.photoSize;
+}
 const photoCell=(item,index)=>`<button class="photocell" data-photo-index="${index}" title="${esc(item.name)}">
     <img src="/photo-thumb?id=${item.id}" alt="${esc(item.name)}" loading="lazy"
       decoding="async" fetchpriority="low"
       data-drop="closest:.photocell"></button>`;
 
+/* 照片这一栏跟视频那一栏是同一块浮层的下半，所以用同一个壳。换成别的容器的话，切一下
+   媒体类型，浮层的下半就整块消失——上半的下沿留着两个直角，底下接着页面底色。
+
+   壳一样，里面装的不一样：这一排不给排序键。排序读的是每条记录上的值，而账本里图片只
+   有文件名、体积和来源三样，视频那八个键有七个在这里没有对应的数。这一排只放三样：
+   张数、换一批、大小。换一批跟首页和视频那一排是同一枚键、同一个位置、同一个意思。
+   不点它时按文件名排：`001.jpg` 这类编号本来就是一套图的顺序。 */
+const photoHeadHtml=(data,{back=false}={})=>`<div class="entitycollectionhead photohead">
+    ${back?`<button class="photoback" type="button">${icon('chevron-left')}<span>全部照片</span></button>`:''}
+    <h3>${back?esc(data.title)+' · ':'照片 · '}${(data.total||0).toLocaleString()} 张</h3>
+    <span class="sorts">
+      <button class="batchaction entitybatch" type="button" title="换一批" aria-label="换一批">${icon('shuffle')}</button>
+      ${iconSwitchHtml('photo-size','照片大小',PHOTO_SIZES,photoSize(),
+        {attr:'data-photo-size',className:'photosize'})}
+      ${back?sourceTools(data.id):''}</span></div>`;
 function renderPhotoWall(kind,name,filters,data,append=false){
   const section=$('#index').querySelector('.entitysection');if(!section)return;
   const entityWide=!data.id;
   if(!append){
     photoWallItems=[];
-    section.innerHTML=entityWide
-      ? `<div class="photohead"><h3>照片 · ${(data.total||0).toLocaleString()} 张</h3></div>
-        <div class="photowall"></div><button class="entitymore" type="button">载入更多</button>`
-      : `<div class="photohead">
-          <button class="photoback" type="button">${icon('chevron-left')}<span>全部照片</span></button>
-          <h3>${esc(data.title)} · ${(data.total||0).toLocaleString()} 张</h3>
-          ${sourceTools(data.id)}</div>
-        <div class="photowall"></div><button class="entitymore" type="button">载入更多</button>`;
+    section.innerHTML=photoHeadHtml(data,{back:!entityWide})
+      +`<div class="photowall" data-size="${photoSize()}"></div>
+        <button class="entitymore" type="button">载入更多</button>`;
+    const head=section.querySelector('.photohead');
+    wireIconSwitch(head,'data-photo-size',setPhotoSize);
+    head.querySelector('.entitybatch').onclick=event=>
+      shufflePhotos(kind,name,filters,entityWide?0:data.id,event.currentTarget);
     if(!entityWide){
-      section.querySelector('.photoback').onclick=()=>{
+      head.querySelector('.photoback').onclick=()=>{
         entityMediaView={media:'photos',set:0};
         routeEntityView(kind,name,entityMediaView);
         renderPhotoWall(kind,name,filters,entityPhotos)};
       // 对账后整组数量都变了，重开这一组比逐格摘除简单也更不容易错。
-      wireSourceTools(section.querySelector('.photohead'),
-        ()=>openPhotoSet(kind,name,filters,data.id,false));
+      wireSourceTools(head,()=>openPhotoSet(kind,name,filters,data.id,false));
     }
   }
   const wall=section.querySelector('.photowall');
@@ -7227,9 +7288,11 @@ function renderPhotoWall(kind,name,filters,data,append=false){
   const more=section.querySelector('.entitymore');
   more.hidden=!data.has_more;
   const requestMore=async()=>{if(more.hidden||more.disabled)return;more.disabled=true;const seq=entityRequestSeq;
+    // 换过一批的话，后面几页得沿用同一粒种子，不然前后两页的排法不同，会重也会漏。
+    const seed=data.seed?`&seed=${encodeURIComponent(data.seed)}`:'';
     try{const next=await api(entityWide
-      ? `/api/photos?kind=${encodeURIComponent(kind)}&name=${encodeURIComponent(name)}&limit=120&offset=${photoWallItems.length}`
-      : `/api/photo-set?id=${data.id}&limit=120&offset=${photoWallItems.length}`);
+      ? `/api/photos?kind=${encodeURIComponent(kind)}&name=${encodeURIComponent(name)}&limit=120&offset=${photoWallItems.length}${seed}`
+      : `/api/photo-set?id=${data.id}&limit=120&offset=${photoWallItems.length}${seed}`);
       if(seq===entityRequestSeq&&!next.error&&$('#index').dataset.entityName===name)
         renderPhotoWall(kind,name,filters,next,true)}
     finally{if(seq===entityRequestSeq)more.disabled=false}};
@@ -7536,8 +7599,13 @@ function wireOverflowFade(scroller){
   }
   overflowObservers.get(scroller)();
 }
+/* 等着的这一下浮层也得是整块的：下半要到列表回来才画的话，上半的下沿在等的那几秒里
+   留着两个直角，读起来是这块浮层缺了一半。这一页的作品多时那几秒不算短。 */
 function showEntityLoading(kind){
-  const body=kind==='agency'?'<div class="entitycollectionhead"><h3 class="skeleton">&nbsp;</h3></div>'+indexSkeletonHtml({kind:'performers',layout:peopleIndexLayout()}):pageSkeletonHtml('正在读取作品',{cards:true});
+  const head='<div class="entitycollectionhead"><h3 class="skeleton">&nbsp;</h3></div>';
+  const body=head+(kind==='agency'
+    ?indexSkeletonHtml({kind:'performers',layout:peopleIndexLayout()})
+    :pageSkeletonHtml('正在读取作品',{cards:true}));
   const placeholder=entitySkeletonHtml(kind,body);
   if($('#index').firstElementChild?.dataset.skeleton!==`entity/${kind}`){
     $('#index').innerHTML=placeholder;fitSkeleton($('#index'));
@@ -7673,6 +7741,7 @@ async function openEntity(kind,name,push=true){
         <div class="alias">${(d.display_aliases||[]).length?`${d.display_aliases.map(esc).join(' / ')} · `:''}<b>${d.asset_count.toLocaleString()}</b> 个视频${memberHtml}${agencyHtml}</div>
         ${links?`<div class="entitylinks">${links}</div>`:''}</div></div>
     ${related?`<div class="entitymeta"><section aria-label="同台艺人"><div class="relatedpeople">${related}</div></section></div>`:''}
+    <div class="combo entitycombo"></div>
     ${(tags||mediaToggle)?`<section class="entitytagbar" aria-label="媒体与标签"><div class="entitytags">${mediaToggle}${tags}</div></section>`:''}
     <div class="entitysection"></div>`;
   // 资料页的标签和顶部标签条是同一个开关，读的写的都是这一页的筛选。

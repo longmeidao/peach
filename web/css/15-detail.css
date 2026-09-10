@@ -23,7 +23,10 @@
 .srcstate{font-size:var(--fs-xs);color:var(--muted);min-width:0;flex:1 1 100%}
 .detailtitletools{display:inline-flex;vertical-align:middle;margin:3px 0 3px 8px;flex-wrap:nowrap}.detailtitlestate{display:block;margin:-4px 0 10px}
 .detailtitlestate:empty{display:none}
-.photohead .srctools{margin:0 0 0 auto}
+/* 来源那两个键跟大小、刷新排在同一组里，靠 `.sorts` 自己的 `margin-left:auto` 一起推到
+   右边；再给它加一次 auto 会把它从那组里推开，中间空出一截。下边距同理，这一排是横着的。
+   `.srcstate` 默认独占一整行，而这一排不换行，占满行等于把它右边的东西挤到看不见。 */
+.photohead .srctools{margin:0}
 .photohead .srcstate{flex:none}
 .smeta{display:flex;gap:9px;flex-wrap:wrap;color:var(--muted);margin-bottom:18px}
 .detailmetaitem{display:inline-flex;align-items:center;gap:5px}.detailmetaitem svg{width:15px;height:15px;

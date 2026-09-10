@@ -2727,6 +2727,28 @@ class PhotoSetTests(unittest.TestCase):
         self.assertEqual(rm_web.q_photo_set(self.contract, {"id": "x"}),
                          {"error": "invalid id"})
 
+    def test_a_seed_reshuffles_the_photos_and_later_pages_keep_its_order(self):
+        ids = [self.add(rf"A:\创作者\桃子\夏日写真\{n:03d}.jpg") for n in range(1, 9)]
+        plain = self.sets()
+        self.assertEqual([item["id"] for item in plain["items"]], ids, "不带种子按文件名排")
+        self.assertEqual(plain["seed"], "")
+        args = {"kind": "creator", "name": "桃子", "seed": "40000", "limit": "3"}
+        pages = [rm_web.q_entity_photos(self.contract, {**args, "offset": str(offset)})
+                 for offset in (0, 3, 6)]
+        shuffled = [item["id"] for page in pages for item in page["items"]]
+        self.assertEqual(sorted(shuffled), ids, "三页拼起来不重不漏")
+        self.assertEqual(shuffled, sorted(ids, key=lambda i: ((i * 40000) % 99991, i)))
+        self.assertNotEqual(shuffled, ids)
+        self.assertEqual(pages[0]["seed"], "40000", "回话带回种子，翻页照它接着要")
+
+    def test_a_set_takes_the_same_seed(self):
+        ids = [self.add(rf"A:\创作者\桃子\夏日写真\{n:03d}.jpg") for n in range(1, 6)]
+        result = rm_web.q_photo_set(self.contract, {"id": ids[0], "seed": "40000"})
+        self.assertEqual([item["id"] for item in result["items"]],
+                         sorted(ids, key=lambda i: ((i * 40000) % 99991, i)))
+        self.assertEqual(result["seed"], "40000")
+        self.assertEqual(rm_web.q_photo_set(self.contract, {"id": ids[0]})["seed"], "")
+
 
 
 
