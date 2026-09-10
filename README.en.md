@@ -76,7 +76,7 @@ The package is unsigned; see [Windows testing](docs/TESTING_DESKTOP.md) for down
 
 ### Run from source
 
-Requires Git, [uv](https://docs.astral.sh/uv/getting-started/installation/) **0.12.10** and **Python 3.12 or newer**. These examples use 3.14; uv can download a missing Python interpreter. CI covers 3.12 and 3.14.
+Requires Git, [uv](https://docs.astral.sh/uv/getting-started/installation/) **0.12.12** and **Python 3.12 or newer**. These examples use 3.14; uv can download a missing Python interpreter. CI covers 3.12 and 3.14.
 Node is unnecessary at runtime; frontend development needs Node 24 or newer.
 
 Clone the repository:
