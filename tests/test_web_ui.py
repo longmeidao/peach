@@ -4405,12 +4405,12 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("const stat=(label,value,note='')=>")
         self.assertPageContains(".map(([kind,count])=>stat(KINDS[kind]||kind,Number(count).toLocaleString())).join('');")
         self.assertPageContains(".linkstats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr))")
-        self.assertPageContains('<div class="linkhosts"><span>来得最多的站点</span>')
+        self.assertPageContains('<div class="linkhosts"><span>主要站点</span>')
         # 类型名要能被没读过代码的人读懂：`catalog` 收的是 DMM、MGStage、JavLibrary
         # 这类作品检索站，`source_reference` 是这条资料的出处。
         self.assertPageContains("catalog:'作品资料站'")
         self.assertPageContains("source_reference:'资料出处'")
-        self.assertPageContains("挂在 ${info.entities.toLocaleString()} 位女优、厂牌或系列名下")
+        self.assertPageContains("分布在 ${info.entities.toLocaleString()} 个女优、厂牌与系列")
 
     def test_taste_page_combines_private_exports_and_peach_behavior(self):
         self.assertRoute('/taste', "openTaste(push)", "section:'taste'")
@@ -7257,8 +7257,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("async function openDataCleanup(push=true)")
         self.assertPageContains("route('/data-cleanup')")
         self.assertPageContains("${(sources.sources||[]).some(source=>['local','115','pikpak'].includes(source.location)&&source.roots?.length)?resourceSyncMarkup():''}")
-        self.assertPageContains("fieldsetTitle('resourceBoxTitle','文件与记录是否对得上')")
-        self.assertPageContains("照着馆藏里的记录，去本地磁盘和网盘上找对应的文件")
+        self.assertPageContains("fieldsetTitle('resourceBoxTitle','文件与记录核对')")
+        self.assertPageContains("按馆藏记录逐条查找本地磁盘与网盘上的文件")
         self.assertPageContains("cloudPreferenceLocations(g.files,d.cloudLocations||[])")
         self.assertPageContains("Boolean(s.history_sources||d.updated_at),localStorage.getItem(TASTE_GUIDE_KEY)==='1')")
         self.assertPageContains('wireTasteHistoryGuide(root,localStorage);')
@@ -8139,6 +8139,23 @@ class WebUiSourceTests(unittest.TestCase):
         # 一格里空着的第二行照样占一条轨道，卡片底下会凭空多出一个间距。
         self.assertIn(".library-processing-outcome:empty{display:none}", board)
 
+    def test_a_failed_scan_folds_its_issue_list_into_the_error_note(self):
+        """处理失败先给一句结论，逐条明细收在这条 Note 自己的 details 里，默认折叠。
+
+        一次扫描能攒下几千条问题，摊开写就把结论、重试键和下面两块面板全推走了。每条
+        给标题、说明和路径三段：只给一个链接的话，是哪个文件得逐个点开才知道，而路径
+        才是去磁盘上确认或改名时要用的。前 20 条之外的去完整日志里看，地址写在折叠底部。
+        """
+        island = (Path(__file__).resolve().parents[1]
+                  / "frontend" / "src" / "islands" / "library-processing.tsx").read_text(encoding="utf-8")
+        self.assertIn("actionLabel:retryable?'重试未完成项':'',details:issueDetails", island)
+        self.assertIn("label: issue.title || (issue.asset_id ? `视频 ${issue.asset_id}` : '媒体来源'),", island)
+        self.assertIn("note: issue.message, hint: issue.path || '',", island)
+        self.assertIn("footnote: state.issues_log ? `完整记录：${state.issues_log}` : '',", island)
+        self.assertPageContains('<details class="geist-note-details"><summary>${esc(label)}</summary>')
+        self.assertPageContains(".geist-note-details{grid-column:2/-1;")
+        self.assertPageContains(".geist-note-details>ul{box-sizing:border-box;display:grid;gap:8px;max-height:min(40vh,520px);")
+
     def test_the_pinned_review_bars_share_one_pane_of_glass(self):
         """粘住的工具条和分组条是一块玻璃，中间没有接缝。
 
@@ -8220,19 +8237,19 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("$('#batchbar').querySelectorAll('[data-follow-batch]').forEach(button=>button.hidden=!followPage);")
 
     def test_the_data_management_page_opens_with_a_row_of_stat_cards(self):
-        """数据管理页照 Board 的 dashboard 模板：工作区切换条领头，跟着一排读数卡，
-        下面两张任务卡各占一行。
+        """数据管理页照 Board 的 dashboard 模板：一排读数卡打头，下面两张任务卡各占一行。
 
         读数卡是 stat-cards.tsx 的 plain 变体做成按钮（132px、圆角 16、secondary 底、内边距 16、
         32px 图标格里 20px 字形、读数 24/34），整张卡就是那一页的入口；五张在 1120 内一行摆下，
         窄了折两列、再折一列。扫描与采集和空文件夹是要做的事，不是读数，各占一整行、左说明右按钮。
-        骨架复用同一套结构。
+        骨架复用同一套结构，页首因此和读数卡直接接上：同样五个入口再排一条链接条，是同一件事
+        画两遍，而那条链接条连选中态都没有。
         """
         self.assertPageContains("const DATA_MANAGEMENT_STATS=['review','quality','duplicates','junk','trash'];")
         self.assertPageContains('<button type="button" class="board-plain-stat" ${attrs}>')
         self.assertPageContains('<span class="board-plain-stat-head"><span class="board-stat-tile">${icon(glyph)}</span>${esc(title)}</span>${body}</button>`;')
-        self.assertPageContains('<div class="cleanuppage"><div class="cleanup-workspace-switch" role="tablist"')
-        self.assertPageContains('</div><div class="cleanupstats">')
+        self.assertPageContains('<div class="cleanuppage"><div class="cleanupstats">')
+        self.assertPageLacks('cleanup-workspace-switch')
         self.assertPageContains('</div><div class="cleanupgrid">${cleanupCards.scraping}${cleanupCards.empty}</div>')
         for entry in ("['review','人工复核','square-check-big']", "['trash','回收站','trash']", "['quality','高清版','sparkles']"):
             self.assertPageContains(entry)

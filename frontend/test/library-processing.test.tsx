@@ -49,7 +49,7 @@ it('运行态显示当前项目、动作与等待时长，stalled 只提示不�
   expect(host.textContent).toContain('处理时间较长');
   expect(host.querySelector('[data-note-action]')).toBeNull();
 });
-it('失败时列出问题总数并只提交失败项重试', async () => {
+it('失败时把问题清单折叠进错误提示并只提交失败项重试', async () => {
   const calls:{url:string,init:RequestInit|undefined}[]=[];
   vi.stubGlobal('fetch',vi.fn(async (url:string, init?:RequestInit)=>{
     calls.push({url,init});
@@ -57,9 +57,17 @@ it('失败时列出问题总数并只提交失败项重试', async () => {
   }));
   host=document.createElement('div');document.body.append(host);
   const data={status:'failed',job_id:'one',error:'2 项需要处理',issue_count:23,
-    issue_preview:[{asset_id:7,message:'未识别到番号'}],issues_truncated:true,retryable_asset_ids:[7,8]};
+    issues_log:'C:\\peach-data\\state\\library-processing-one.issues.jsonl',
+    issue_preview:[{asset_id:7,title:'样品.mp4',path:'R:\\Media\\样品.mp4',message:'未识别到番号'}],
+    issues_truncated:true,retryable_asset_ids:[7,8]};
   await act(async()=>{render(h(LibraryProcessing,{data,error:'',toast:vi.fn()}),host)});
-  expect(host.textContent).toContain('共 23 项问题，以下为前 1 项');
+  const details=host.querySelector<HTMLDetailsElement>('.geist-note .geist-note-details')!;
+  expect(details.open).toBe(false);
+  expect(details.querySelector('summary')?.textContent).toBe('问题清单：共 23 项，展开查看前 1 项');
+  expect(details.querySelector('li a')?.getAttribute('href')).toBe('/item/7');
+  expect(details.querySelector('li')?.textContent).toContain('样品.mp4');
+  expect(details.querySelector('li code')?.textContent).toBe('R:\\Media\\样品.mp4');
+  expect(details.querySelector('p')?.textContent).toContain('C:\\peach-data\\state\\library-processing-one.issues.jsonl');
   expect(host.textContent).toContain('重试未完成项');
   expect(host.querySelector('.geist-fieldset-footer .geist-button.primary')).toBeNull();
   await act(async()=>{host.querySelector<HTMLButtonElement>('[data-note-action]')!.click();await new Promise(resolve=>setTimeout(resolve,0));});

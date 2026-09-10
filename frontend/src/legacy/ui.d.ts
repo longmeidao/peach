@@ -40,6 +40,12 @@ export declare function noteHtml(
     className?: string;
     size?: 'small' | 'medium';
     actionLabel?:string; filled?: boolean;
+    /** 逐条明细，收在 Note 里默认折叠的 details；`hint` 放路径这类次要标注。 */
+    details?: {
+      label: string;
+      items: { label: string; href?: string; note?: string; hint?: string }[];
+      footnote?: string;
+    } | null;
   },
 ): string;
 export declare function projectBannerHtml(message:string,options:{variant?:'gray'|'success'|'warning'|'error';href:string;label:string;value?:number;max?:number}):string;

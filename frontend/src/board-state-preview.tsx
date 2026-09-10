@@ -23,7 +23,8 @@ function StatePreview() {
     stage:state==='preparing'?'正在准备扫描':state==='retrying'?'等待来源响应 · 8 秒后重试':'正在整理资料',
     checked:value,...(state==='preparing'?{}:{total:100}),error:state==='failed'?'来源暂时不可用，请重试未完成项':'',
     issue_count:state==='failed'?1:0,
-    issue_preview:state==='failed'?[{asset_id:null,message:'来源连接超时'}]:[],
+    issue_preview:state==='failed'?[{asset_id:null,title:'本地磁盘',path:'R:\\Media',message:'来源连接超时'}]:[],
+    issues_log:state==='failed'?'peach-data\\state\\library-processing-preview.issues.jsonl':'',
     retryable_asset_ids:state==='failed'?[7]:[]};
   const problem=state==='disconnected'?'连接中断，正在重新读取处理进度':'';
   return <main class="board-state-preview">

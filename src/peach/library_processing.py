@@ -113,7 +113,8 @@ def decorate(state, *, now=None):
     legacy = state.pop('issues', None)
     if legacy and 'issue_count' not in state:
         state['issue_count'] = len(legacy)
-        state['issue_preview'] = [dict(asset_id=row.get('asset_id'), message=str(row.get('message') or ''))
+        state['issue_preview'] = [dict(asset_id=row.get('asset_id'), title=str(row.get('title') or ''),
+                                       path=str(row.get('path') or ''), message=str(row.get('message') or ''))
                                   for row in legacy[:ISSUE_PREVIEW_LIMIT]]
         state['issues_truncated'] = len(legacy) > ISSUE_PREVIEW_LIMIT
     if state.get('status') != 'running':
@@ -220,6 +221,9 @@ def process_library(config, db_path, candidate_root, cover_root, *, location='co
                      current_started_at=None, current_deadline_at=None,
                      started_at=time.time(), error='')
         log_path = issues_path(config, state['job_id'])
+        # 界面只展示前 20 条，完整清单在这个文件里；地址跟着状态一起给出，
+        # 不让人按 job_id 自己去拼路径。
+        state['issues_log'] = str(log_path)
         for stale in log_path.parent.glob('library-processing-*.issues.jsonl'):
             stale.unlink(missing_ok=True)
 
@@ -233,14 +237,24 @@ def process_library(config, db_path, candidate_root, cover_root, *, location='co
             _save(path, state)
             report(dict(state))
 
-        def issue(asset_id, message, *, action='', retryable=False):
+        def issue(asset, message, *, action='', retryable=False):
+            """`asset` 是这一项的馆藏行，来源离线一类与具体项目无关的问题给 `None`。
+
+            每条问题都带上标题与路径：光有「未识别到番号」和一个链接，人得逐个点开
+            才知道是哪个文件，而路径才是去磁盘上确认或改名时真正要用的东西。
+            """
+            asset = asset or {}
+            asset_id = asset.get('id')
+            title = str(asset.get('catalog_title') or '') or Path(str(asset.get('name') or '')).name
+            asset_path = str(asset.get('path') or '')
             with open(log_path, 'a', encoding='utf-8') as handle:
-                handle.write(json.dumps({'asset_id': asset_id, 'message': message,
-                    'failed_action': action, 'retryable': retryable,
+                handle.write(json.dumps({'asset_id': asset_id, 'title': title, 'path': asset_path,
+                    'message': message, 'failed_action': action, 'retryable': retryable,
                     'last_failed_at': time.time()}, ensure_ascii=False) + '\n')
             state['issue_count'] += 1
             if len(state['issue_preview']) < ISSUE_PREVIEW_LIMIT:
-                state['issue_preview'].append(dict(asset_id=asset_id, message=message))
+                state['issue_preview'].append(dict(asset_id=asset_id, title=title,
+                                                   path=asset_path, message=message))
             else:
                 state['issues_truncated'] = True
             if retryable and asset_id is not None and asset_id not in state['retryable_asset_ids']:
@@ -297,7 +311,7 @@ def process_library(config, db_path, candidate_root, cover_root, *, location='co
                        current_deadline_at=None)
                 video = translate_ledger_path(row['path'])
                 if not video.is_file():
-                    issue(row['id'], '媒体文件不可访问', action='reading_local', retryable=True)
+                    issue(row, '媒体文件不可访问', action='reading_local', retryable=True)
                     continue
                 code = row['code'] or release_code_from_filename(row['name'])
                 payload = None
@@ -309,7 +323,7 @@ def process_library(config, db_path, candidate_root, cover_root, *, location='co
                             raise ValueError('文件名与 NFO 番号冲突，请复核')
                         code = code or payload['id']
                     except (OSError, ValueError, ET.ParseError) as error:
-                        issue(row['id'], str(error), action='reading_local')
+                        issue(row, str(error), action='reading_local')
                         continue
                 if not code and not payload:
                     # 番号认不出不影响本地封面：正片旁边的同名 PNG／JPG 就是它的海报，
@@ -319,14 +333,14 @@ def process_library(config, db_path, candidate_root, cover_root, *, location='co
                             video, f"{row['id']}_4",
                             config.directory('generated') / 'posters'))
                     except (OSError, ValueError):
-                        issue(row['id'], '本地封面无法读取', action='reading_local', retryable=True)
-                    issue(row['id'], '未识别到番号，请在详情中补充资料', action='reading_local')
+                        issue(row, '本地封面无法读取', action='reading_local', retryable=True)
+                    issue(row, '未识别到番号，请在详情中补充资料', action='reading_local')
                     continue
                 if code:
                     try:
                         code = validate_provider_code(code)
                     except ValueError:
-                        issue(row['id'], '番号格式无效，请复核影片资料', action='reading_local')
+                        issue(row, '番号格式无效，请复核影片资料', action='reading_local')
                         continue
                 if code and not row['code']:
                     with closing(sqlite3.connect(db_path, timeout=30)) as connection, connection:
@@ -336,7 +350,7 @@ def process_library(config, db_path, candidate_root, cover_root, *, location='co
                     poster_root = cover_root if code else config.directory('generated') / 'posters'
                     state['covers'] += int(_local_poster(video, code or f"{row['id']}_4", poster_root, payload))
                 except (OSError, ValueError):
-                    issue(row['id'], '本地封面无法读取', action='reading_local', retryable=True)
+                    issue(row, '本地封面无法读取', action='reading_local', retryable=True)
                 entries = []
                 if payload:
                     evidence_path = config.directory('sources') / 'library-metadata' / (hashlib.sha256(raw).hexdigest() + '.nfo')
@@ -367,10 +381,10 @@ def process_library(config, db_path, candidate_root, cover_root, *, location='co
                         entries.append(('r18dev', external, evidence_path))
                     except DeadlineExceeded:
                         reset_provider()
-                        issue(row['id'], '外部资料在预算时间内未取得，可稍后重试',
+                        issue(row, '外部资料在预算时间内未取得，可稍后重试',
                               action='querying_metadata', retryable=True)
                     except Exception:
-                        issue(row['id'], '外部资料未取得，请检查采集来源后重试',
+                        issue(row, '外部资料未取得，请检查采集来源后重试',
                               action='querying_metadata', retryable=True)
                 if jav_catalog and not (cover_root / (code + '.jpg')).is_file():
                     budget = ACTION_BUDGETS['fetching_cover']
@@ -384,10 +398,10 @@ def process_library(config, db_path, candidate_root, cover_root, *, location='co
                                                               deadline=time.monotonic() + budget))
                     except DeadlineExceeded:
                         reset_provider()
-                        issue(row['id'], '封面在预算时间内未取得，可稍后重试',
+                        issue(row, '封面在预算时间内未取得，可稍后重试',
                               action='fetching_cover', retryable=True)
                     except Exception:
-                        issue(row['id'], '封面未取得，请检查采集来源后重试',
+                        issue(row, '封面未取得，请检查采集来源后重试',
                               action='fetching_cover', retryable=True)
                 update(stage='保存资料候选', current_action='writing_candidates',
                        current_started_at=time.time(), current_deadline_at=None)

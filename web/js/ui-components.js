@@ -102,13 +102,24 @@ export function mountFilterFrame(top,bottom,{views,tags,readout,controls}){
   return frame;
 }
 
+/* 逐条明细收在 Note 自己的 <details> 里，默认折叠：一句话的结论后面跟着上千行清单时，
+   下面的内容全被推走，而那句结论本身才是要先读到的东西。每条给标题、说明和路径三段：
+   只给一个「查看视频」链接的话，是哪个文件得逐个点开才知道。 */
+function noteDetailsHtml({label='',items=[],footnote=''}={}){
+  const line=item=>`<li>${item.href?`<a href="${esc(item.href)}">${esc(item.label||'')}</a>`
+    :`<b>${esc(item.label||'')}</b>`}<span>${esc(item.note||'')}</span>${
+    item.hint?`<code>${esc(item.hint)}</code>`:''}</li>`;
+  return `<details class="geist-note-details"><summary>${esc(label)}</summary>
+    <ul>${items.map(line).join('')}</ul>${footnote?`<p>${esc(footnote)}</p>`:''}</details>`;
+}
+
 /** Inline, persistent context beside the field/card/section it describes. */
-export function noteHtml(message,{variant='secondary',label='',className='',size='medium',filled=false,actionLabel=''}={}){
+export function noteHtml(message,{variant='secondary',label='',className='',size='medium',filled=false,actionLabel='',details=null}={}){
   const kind=NOTE_VARIANTS.has(variant)?variant:'secondary';
   const symbol=kind==='secondary'?'info':kind==='success'?'check':'alert';
   const role=kind==='error'?' role="alert"':' role="note"';
   return `<div class="geist-note geist-note-${kind}${className?` ${esc(className)}`:''}${size==='small'?' geist-note-small':''}${filled?' geist-note-filled':''}"${role}>
-    ${icon(symbol)}<p>${label?`<b>${esc(label)}</b>`:''}<span>${esc(kind==='error'?requestErrorMessage(message):message)}</span></p>${actionLabel?`<button type="button" class="geist-button primary" data-note-action>${esc(actionLabel)}</button>`:''}</div>`;
+    ${icon(symbol)}<p>${label?`<b>${esc(label)}</b>`:''}<span>${esc(kind==='error'?requestErrorMessage(message):message)}</span></p>${actionLabel?`<button type="button" class="geist-button primary" data-note-action>${esc(actionLabel)}</button>`:''}${details?noteDetailsHtml(details):''}</div>`;
 }
 
 const PROJECT_BANNER_CLASSES={gray:'project-banner-gray',success:'project-banner-success',warning:'project-banner-warning',error:'project-banner-error'};

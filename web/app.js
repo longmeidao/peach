@@ -3804,7 +3804,7 @@ function linkManagerMarkup(){
   return `<section class="resourcesync" id="link-manager" aria-labelledby="linkManagerTitle">
     <h2 id="linkManagerTitle">链接管理</h2>
     <div class="resourcesyncbox" data-geist-fieldset>
-      <div class="resourcesyncbody geist-fieldset-content">${fieldsetTitle('linkBoxTitle','库里存着的站外链接')}
+      <div class="resourcesyncbody geist-fieldset-content">${fieldsetTitle('linkBoxTitle','站外链接')}
       <div id="linkSummary" class="linksummary"></div></div>
       <div class="resourcesyncfooter geist-fieldset-footer" data-geist-fieldset-footer>
       <button class="resourceaction" type="button" id="linkCheck">${icon('unlink')}<span>检查死链</span></button></div></div>
@@ -3826,16 +3826,16 @@ async function wireLinkManager(){
       .map(([kind,count])=>stat(KINDS[kind]||kind,Number(count).toLocaleString())).join('');
     const hosts=(info.top_hosts||[]).slice(0,3).map(([host,count])=>`${esc(host)} ${count}`).join(' · ');
     summary.innerHTML=`<div class="linkstats">
-      ${stat('链接总数',info.total.toLocaleString(),`挂在 ${info.entities.toLocaleString()} 位女优、厂牌或系列名下`)}
+      ${stat('链接总数',info.total.toLocaleString(),`分布在 ${info.entities.toLocaleString()} 个女优、厂牌与系列`)}
       ${kinds}</div>
-      ${hosts?`<div class="linkhosts"><span>来得最多的站点</span><b>${hosts}</b></div>`:''}`;
+      ${hosts?`<div class="linkhosts"><span>主要站点</span><b>${hosts}</b></div>`:''}`;
   }catch(error){summary.innerHTML=noteHtml(error.message,{variant:'error',label:'读取失败'})}
 
   const row=(item,pick)=>`<tr>${pick?`<td class="linkpick"><input type="checkbox" data-link-id="${item.id}" aria-label="选择 ${esc(item.entity)} 的${esc(item.label||item.url)}"></td>`:''}<td>${esc(item.entity)}</td><td>${esc(KINDS[item.link_kind]||item.link_kind)}</td>
     <td>${esc(item.label||'')}</td><td class="linknote">${esc(item.note)}</td>
     <td class="linkurl"><a class="externallink" href="${esc(item.url)}" target="_blank" rel="noreferrer"><span data-middle-truncate>${esc(item.url)}</span>${icon('external-link','externalmark')}</a></td></tr>`;
   const table=(title,items,hint,{pick=false,footer=''}={})=>items.length?`<div class="linkgroup"><h4>${esc(title)} <b>${items.length}</b></h4>
-    <p>${esc(hint)}</p><div class="linktablewrap"><table class="linktable"><thead><tr>${pick?'<th class="linkpick"><input type="checkbox" id="linkPickAll" aria-label="全选这次没访问成功的链接"></th>':''}<th>所属</th><th>类型</th><th>标签</th><th>结果</th><th>地址</th></tr></thead><tbody>${items.map(item=>row(item,pick)).join('')}</tbody></table></div>${footer}</div>`:'';
+    <p>${esc(hint)}</p><div class="linktablewrap"><table class="linktable"><thead><tr>${pick?'<th class="linkpick"><input type="checkbox" id="linkPickAll" aria-label="全选本次未访问成功的链接"></th>':''}<th>所属</th><th>类型</th><th>标签</th><th>结果</th><th>地址</th></tr></thead><tbody>${items.map(item=>row(item,pick)).join('')}</tbody></table></div>${footer}</div>`:'';
 
   const render=payload=>{
     const running=payload.status==='running';
@@ -3848,17 +3848,17 @@ async function wireLinkManager(){
     const progress=running?jobActivityHtml(payload.total?`${retrying?'已重验':'已检查'} ${payload.checked.toLocaleString()} / ${payload.total.toLocaleString()} 条链接`:retrying?'正在重验链接':'正在检查链接',payload.checked,payload.total):'';
     /* gone 和 unclear 必须分开摆：`linktr.ee` 回 403 是挡爬虫、`x.com` 回 500 是临时错误，
        链接本身好好的。混成一张表会让人顺手把好链接一起删掉。 */
-    const gone=table('页面已经没了',payload.gone||[],'站点明确回答这个地址不存在（HTTP 404 或 410）。');
+    const gone=table('地址已失效',payload.gone||[],'站点返回 404 或 410，确认这个地址不存在。');
     /* 这一组大多是站点拒绝程序访问或一次抖动，换个时间再问一次就通了。重跑整批要好几
        分钟，所以这里能挑着重试：勾中哪几条就只问哪几条，别的结论原样留着。 */
     const retryable=done?(payload.unclear||[]):[];
     const retryRow=retryable.length?`<div class="linkretryrow">
       <button class="resourceaction" type="button" id="linkRetryPicked" disabled>${icon('rotate-cw')}<span>重试选中的链接</span></button>
       <button class="resourceaction" type="button" id="linkRetryAll">${icon('rotate-cw')}<span>全部重试（${retryable.length}）</span></button></div>`:'';
-    const unclear=table('这次没访问成功',payload.unclear||[],'页面不一定没了：有的站点拒绝程序访问，有的是临时故障。这些链接会保留，勾选后可以只重试其中几条。',{pick:retryable.length>0,footer:retryRow});
+    const unclear=table('本次未访问成功',payload.unclear||[],'未必失效：部分站点拒绝程序访问，也可能是临时故障。这些链接保留，可勾选后单独重试。',{pick:retryable.length>0,footer:retryRow});
     const apply=(done&&(payload.gone||[]).length)?`<div class="resourceapplyrow"><p>删除前会逐条重验一次；此操作不可撤销。</p>
       <button class="resourceaction danger" type="button" id="linkPrune">删除 ${payload.gone.length} 条失效链接</button></div>`:'';
-    const clean=(done&&!(payload.gone||[]).length&&!(payload.unclear||[]).length)?'<p class="resourcesyncok">全部链接都能打开。</p>':'';
+    const clean=(done&&!(payload.gone||[]).length&&!(payload.unclear||[]).length)?'<p class="resourcesyncok">全部链接均可访问。</p>':'';
     result.innerHTML=`<div class="resourcepanel"${apply?' data-fieldset-type="error"':''}>${progress}${gone}${unclear}${apply}${clean}</div>`;
     $('#linkPrune')?.addEventListener('click',async event=>{
       const control=event.currentTarget;
@@ -3924,8 +3924,8 @@ function resourceSyncMarkup(){
   return `<section class="resourcesync" id="resource-sync" aria-labelledby="resourceSyncTitle">
     <h2 id="resourceSyncTitle">资源同步</h2>
     <div class="resourcesyncbox" data-geist-fieldset>
-      <div class="resourcesyncbody geist-fieldset-content">${fieldsetTitle('resourceBoxTitle','文件与记录是否对得上')}
-      <p>照着馆藏里的记录，去本地磁盘和网盘上找对应的文件：文件已经不在的记录挑出来，没有记录再用到的缓存一并列出。</p></div>
+      <div class="resourcesyncbody geist-fieldset-content">${fieldsetTitle('resourceBoxTitle','文件与记录核对')}
+      <p>按馆藏记录逐条查找本地磁盘与网盘上的文件，列出文件已不存在的记录，以及不再被引用的缓存。</p></div>
       <div class="resourcesyncfooter geist-fieldset-footer" data-geist-fieldset-footer>
       <button class="resourceaction" type="button" id="resourceScan">${icon('git-compare')}<span>检查文件</span></button></div></div>
     <div id="resourceSyncResult" aria-live="polite"></div></section>`;
@@ -4508,10 +4508,7 @@ async function openDataCleanup(push=true){
     </section>`,
     review:entryCard('review'),quality:entryCard('quality'),trash:entryCard('trash'),
   };
-  const cleanupNav=[['/review','人工复核','review'],['/quality-goals','高清版','sparkles'],['/duplicates','重复文件','file-stack'],['/junk-files','垃圾文件','file-archive'],['/trash','回收站','trash']];
-  $('#stats').innerHTML=`<div class="cleanuppage"><div class="cleanup-workspace-switch" role="tablist" aria-label="数据管理区域">
-    ${cleanupNav.map(([href,label,glyph])=>`<a href="${href}" role="tab" data-cleanup-workspace="${href}" aria-selected="false">${icon(glyph)}<span>${label}</span></a>`).join('')}
-  </div><div class="cleanupstats">
+  $('#stats').innerHTML=`<div class="cleanuppage"><div class="cleanupstats">
     ${DATA_MANAGEMENT_STATS.map(section=>cleanupCards[section]).join('')}
   </div><div class="cleanupgrid">${cleanupCards.scraping}${cleanupCards.empty}</div>
   ${linkManagerMarkup()}
