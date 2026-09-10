@@ -37,6 +37,9 @@ SOURCE_SPECS = {
         "javlibrary": "community", "javdb": "community", "javbus": "community",
         "jav321": "community", "javstash": "community",
         "sougouwiki": "community",
+        # 韩国 MIB 的官网（scripts/harvest_kmib.py）。不走 Javinizer-Go，所以不进
+        # REGISTERED_SOURCES；登记在这里是为了复核与自动批准按官方来源对待它。
+        "kmib": "official",
     }.items()
 }
 

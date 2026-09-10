@@ -28,6 +28,26 @@ Seesaa 是托管平台，以下 Wiki 由各自维护者编辑，不能按平台�
 以上入口已于 2026-09-06 取页。除素人系総合外仅完成来源调查，详情解析尚未接入；平台首页的
 游戏、小说、生成模型教程和场所服务 Wiki 不适用于现有视频作品元数据补全。
 
+## K-MIB 官网作品与演员
+
+韩国 MIB 的番号问 JAV 目录站必错，官网 [k-mib.com](https://www.k-mib.com/) 是唯一可信来源。
+`scripts/harvest_kmib.py` 解析 `peach-data/sources/k-mib/` 下的快照（列表页、`video/<idx>.html`、
+`star/<idx>.html`、`images/`），解析器在 `peach.metadata_kmib`。
+
+- `--fetch` 联网补快照：同主机间隔 1.5 秒，已有的跳过，403、429 立即停止本批。robots.txt 只挡
+  `/_adm/` 与登录页。
+- 缺省只读，写 `kmib-catalog.csv`（全站作品与账本对照，官网没有的账本番号记「未取得」）、
+  `kmib-performers.csv` 与 `kmib-metadata-field-candidates.csv`。
+- `--apply` 先备份 ledger，再补空番号、按 ADR-0018 自动批准官网候选、装缺失封面，给已关联
+  MIB 作品的演员装官网资料页链接和头像，给 MIB 装官网链接和 logo。候选的 item_key 带 `:kmib`
+  后缀：这批番号的 `<番号>:<字段>` 已被 JAV 错配候选的拒绝决定占用。
+- 合作厂牌（JS MEDIA、Studio REAL、SETFLIX、PEEKO、MMP、JO GLOBAL）的 Actor 栏常写厂牌名，
+  按厂牌名与番号前缀记为 maker；这些前缀不属于 `KOREAN_MIB_PREFIXES`。
+- 分类只投影到已有词表。Fetish、Kiss、Sex Toy、Ahegao、Tiny Girl、Oil、Femdom 作为未收录
+  提示随候选进复核。
+- 双词罗马音艺名（`Mao Hamasaki`、`Sarina Momonaga`）过不了艺名形态门槛，由人工复核；
+  后者按别名对到 `藤木真央`，身份待确认。
+
 ## 本机采集入口
 
 「数据管理」→「设置采集来源」（`/scraping`）提供官方高清封面定点抓取和来源连接设置。
