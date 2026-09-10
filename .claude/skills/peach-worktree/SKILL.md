@@ -39,7 +39,10 @@ description: 在用户说并行、工作树、暂存、提交、ready、集成�
    闩住、集成后的干净主检出正好满足它那四道闸，两边都说就是一屏里两条一样的话。判据是
    每周一次、攒够提前、破坏性变化与安全修复不等周期，只数使用者看得见的条目。
    CI 分片、系统覆盖与发布复用见 `docs/TESTING.md`；合并完成不机械追加全量。耗时和慢测试记录在主目录 `build/agent-verification/`。
-   记录和锁约束统一入口，不是权限隔离；直接 Git 或篡改记录仍可绕过，不能宣称绝对防绕过。
+   主检出 master 上的直接提交与手工 merge 由 `scripts/githooks/` 拒收，`core.hooksPath`
+   由 `create` / `integrate` 自动指过去；只有 `integrate` 与 `release_tag.py` 带放行标记。
+   记录、锁和 hook 约束统一入口，不是权限隔离；`--no-verify`、快进合并或篡改记录仍可绕过，
+   不能宣称绝对防绕过。
 
 ## 暂存与提交
 

@@ -25,6 +25,7 @@ if not __package__:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     __package__ = "scripts"
 from . import changelog, version_bump
+from .agent_worktree import MASTER_WRITER
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -186,7 +187,8 @@ def ship(repo: str, *, apply: bool, timeout: float = TEST_TIMEOUT) -> dict:
         return result
     if pending:
         command("git", "add", *RELEASE_FILES)
-        command("git", "commit", "-m", f"chore(release): 版本 {version}")
+        command("git", "-c", f"{MASTER_WRITER}=release", "commit",
+                "-m", f"chore(release): 版本 {version}")
     sha = command("git", "rev-parse", "HEAD")
     if api(repo, "git/ref/heads/master")["object"]["sha"] != sha:
         command("git", "push", f"https://github.com/{repo}.git", "refs/heads/master")

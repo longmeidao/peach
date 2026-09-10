@@ -2682,9 +2682,10 @@ class ShipTests(unittest.TestCase):
 
     @staticmethod
     def _writes(command):
-        """真正动了仓库的那些调用；`git tag --list` 这种查询不算。"""
+        """真正动了仓库的那些调用；`git tag --list` 这种查询不算。
+        发版提交带着 `-c peach.masterWriter=release` 过主检出的 pre-commit，排在 `commit` 前面。"""
         return [args for args, _ in command.call_args_list
-                if args[:2] in {("git", "add"), ("git", "commit"), ("git", "push")}
+                if args[:2] in {("git", "add"), ("git", "commit"), ("git", "push"), ("git", "-c")}
                 or args[:3] == ("git", "tag", "-a")]
 
     def test_a_plan_without_apply_writes_nothing(self):
@@ -2733,7 +2734,7 @@ class ShipTests(unittest.TestCase):
             result = self.release.ship("owner/repo", apply=True)
         self.assertEqual(self._writes(command), [
             ("git", "add", "src/peach/__init__.py", "CHANGELOG.md"),
-            ("git", "commit", "-m", "chore(release): 版本 0.8.0"),
+            ("git", "-c", "peach.masterWriter=release", "commit", "-m", "chore(release): 版本 0.8.0"),
             ("git", "push", "https://github.com/owner/repo.git", "refs/heads/master"),
             ("git", "tag", "-a", "v0.8.0", "abc", "-m", "Peach v0.8.0 Windows 测试版"),
             ("git", "push", "https://github.com/owner/repo.git", "refs/tags/v0.8.0"),
@@ -2746,7 +2747,8 @@ class ShipTests(unittest.TestCase):
                 self._document(), self.assertRaisesRegex(ValueError, "尚未通过"):
             self.release.ship("owner/repo", apply=True)
         issued = self._writes(command)
-        self.assertIn(("git", "commit", "-m", "chore(release): 版本 0.8.0"), issued)
+        self.assertIn(("git", "-c", "peach.masterWriter=release", "commit",
+                       "-m", "chore(release): 版本 0.8.0"), issued)
         self.assertFalse([args for args in issued if "refs/tags/v0.8.0" in args], issued)
 
     def test_running_it_again_skips_what_is_already_done(self):
