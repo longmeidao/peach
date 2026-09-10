@@ -1,5 +1,39 @@
 # BoardUI 适配
 
+## 数据整理子页
+
+2026-09-09 使用内置浏览器读取组件目录及 Dashboard 侧栏的八个模板。线上 CSS 资源版本为
+`dpl_3cjHNDgN6SsY8bTxSfXGACCCc8Zp`，样式资源为 `0pj0_xn8e6w4j.css`、
+`0i-yg_o67~u3a.css`、`0z54_bq~~57b~.css`。
+
+| 当前参考 | 实际观察与采用范围 |
+| --- | --- |
+| `/components` | 检查 Foundations、Base、Blocks、Charts、Templates 完整目录；目录覆盖不等于逐组件全部状态验收 |
+| `/components/segmented-control` | 单选滑块、方向键移动、Space 选择；适合短的局部视图选择 |
+| `/components/tabs` | 下划线面板切换与 PillTab 局部筛选区分；Peach 复核十类采用纵向分类，保留面板关联和键盘操作 |
+| `/components/data-table` | 结果数、筛选、逐行操作、部分选择状态、分页分层；复用 Peach 已有选择与分页逻辑 |
+| `/components/stat-cards` | 紧凑统计与底部比较栏两种结构；子页只有当前任务读数，不引入无实际数据的趋势 |
+| `/templates/dashboard` | 面包屑、标题动作、统计与结果工具行；radio 轨道 padding 4px、radius 10px |
+| `/templates/marketing` | 分类筛选与结果表独立；采用局部筛选结构 |
+| `/templates/calendar` | 月份导航与日期网格；五个子页不采用日历 |
+| `/templates/finance` | 汇总指标与交易结果表分层；采用结果标题与操作区归属 |
+| `/templates/medical-profile` | 主体信息、指标与提醒分区；复核保留主体、证据、动作分区 |
+| `/templates/ai-chat` | 项目侧栏与 Code、Changes、Browser 局部切换；不把局部切换当第二层页面导航 |
+| `/templates/ai-image-generation` | Gallery、Styles 与图像网格；采用预览优先的卡片结构 |
+| `/templates/ai-profile` | 身份概要与指标卡；不引入与文件整理无关的数据面板 |
+
+模板已逐页读取实时 DOM；没有宣称八个模板的所有交互、动画和响应式状态均已验证。
+Pro 模板只作为公开外观和信息层级参考。实现使用现有 Preact、共享 HTML 控件及 Board token，无新增依赖。
+
+作用范围是 `/review`、`/quality-goals`、`/duplicates`、`/junk-files`、`/trash`。
+数据管理入口保持卡片导航。复核分类在桌面纵向排列，窄屏自动换行；分组、候选、批量动作和分页沿用既有实现。
+重复组提供文件预览及尺寸、时长、位置比较；高清版、垃圾文件和回收站共用预览卡片的版式。
+
+预览来源核对：8095 的 `app.js` 和 `board.css` 匹配 `claude-entity-float-and-settings`，
+其提交已包含于当前 master；8097 的 `app.js` 匹配本次工作树基线 `f09fc8b6`，
+`board.css` 匹配 master。18984 使用当前 `codex-data-pages-board` 的源码和构建，写入请求由只读预览拒绝。
+生产入口、真实 ledger 和凭据未修改。
+
 Peach 使用 Board 的视觉与组件语义，保留 Vite、Preact、FastAPI 和现有媒体行为。Board 的公开实现依赖 React Aria，不能把组件名称相同当作 Preact 可直接替换的证明。本次由共享 HTML 控件、原生键盘行为与 Preact 数值控件适配；没有新增 React 运行时。
 
 ## 控件对应

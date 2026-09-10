@@ -13,7 +13,7 @@ export const emptyStateHtml = (
   + `<div class="es-copy"><h3>${title}</h3><p>${description}</p></div>${options.actions || ''}</div>`;
 
 // @ts-expect-error 横幅复用正式模板。
-export {projectBannerHtml} from '../../../web/js/ui-components.js';
+export {projectBannerHtml, collectionSummaryHtml} from '../../../web/js/ui-components.js';
 export const fieldsetTitle = (id: string, title: string): string =>
   `<h3 class="geist-fieldset-title" id="${id}">${title}</h3>`;
 export const loadingDotsHtml = (label: string): string => `<span>${label}</span>`;

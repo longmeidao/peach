@@ -5020,13 +5020,13 @@ class WebUiSourceTests(unittest.TestCase):
         # 外观一样不代表语义一样。复核那条切的是 10 个互不相同的候选数据集，每个分类换掉
         # 整个面板的数据模型，也没有独立 URL，所以是真 tablist：方向键漫游焦点，tabindex
         # 只留在选中项上。
-        self.assertPageContains('<div class="reviewtabs" role="tablist" aria-label="复核分类">')
+        self.assertPageContains('<div class="reviewtabs" role="tablist" aria-label="复核分类" aria-orientation="vertical">')
         self.assertPageContains('<button role="tab" id="reviewtab-${key}" aria-controls="reviewpanel"')
         self.assertPageContains('aria-selected="${on}" tabindex="${on?' + repr('0') + ':' + repr('-1') + '}"')
         self.assertPageContains('<section class="reviewsection" id="reviewpanel" role="tabpanel" '
                                 'aria-labelledby="reviewtab-${reviewCategory}">')
         self.assertPageLacks('<button data-review-tab="${key}" aria-pressed=')
-        self.assertPageContains("const step=event.key==='ArrowRight'?1:event.key==='ArrowLeft'?-1:0;")
+        self.assertPageContains("const step=event.key==='ArrowRight'||event.key==='ArrowDown'?1:event.key==='ArrowLeft'||event.key==='ArrowUp'?-1:0;")
         self.assertPageContains(
             ":event.key==='Home'?reviewTabs[0]:event.key==='End'?reviewTabs[reviewTabs.length-1]:null;")
         # 垃圾文件那条是同一批候选按 type 收窄，数据模型不变，当前项落在 URL 上，所以是
@@ -7754,18 +7754,17 @@ class WebUiSourceTests(unittest.TestCase):
         语言里就成了两种东西。框里的控件照那块浮层留 12px，不贴着 20px 的圆角。
         """
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
+        # 两条横条不描自己的边：那圈 inset 会在工具条和分组条的接缝上画出一道线，
+        # 一块玻璃就被切成两块。边界交给 `.review::before` 那一层，横条只留落影。
         self.assertIn("body .review .reviewbulktoolbar{position:sticky;top:var(--topH);z-index:60;width:auto;"
                       "margin-inline:0;padding:12px;border-radius:20px 20px 0 0;\n"
-                      "  box-shadow:inset 0 1px 0 var(--glass-rim),inset 1px 0 0 var(--glass-low),"
-                      "inset -1px 0 0 var(--glass-low),var(--glass-shadow)}", board)
+                      "  box-shadow:var(--glass-shadow)}", board)
         self.assertIn("body .review .reviewgroupbar{border:0;border-radius:0 0 20px 20px;padding:8px 12px;\n"
-                      "  box-shadow:inset 1px 0 0 var(--glass-low),inset -1px 0 0 var(--glass-low),"
-                      "inset 0 -1px 0 var(--glass-low),var(--glass-shadow)}", board)
+                      "  box-shadow:var(--glass-shadow)}", board)
         # 下面那些分组各自成框：上一个可见分组和它之间隔着一整屏卡片。
         self.assertIn("body .review .reviewgroup:not([hidden])~.reviewgroup:not([hidden])"
                       ">.reviewgroupbar{border-radius:20px;\n"
-                      "  box-shadow:inset 0 1px 0 var(--glass-rim),inset 1px 0 0 var(--glass-low),"
-                      "inset -1px 0 0 var(--glass-low),inset 0 -1px 0 var(--glass-low),var(--glass-shadow)}", board)
+                      "  box-shadow:var(--glass-shadow)}", board)
         # 复核页那排标签跟标题、面包屑和下面那块浮层同一条左边。往外挪 12px 能让第一个
         # 标签的字顶到那条线上，代价是选中那块底色比整页任何东西都往左出去一截。
         self.assertIn(".reviewtabs{margin-inline:0}", board)
@@ -8248,7 +8247,7 @@ class WebUiSourceTests(unittest.TestCase):
         # 药丸也不跟洞察页那组维度共用一条规则：那边是带滑块的分段控件。
         self.assertNotIn(".insighttabs,.reviewtabs{", board)
         # 键盘行为仍是 tablist：方向键在同一条里移动焦点。
-        self.assertPageContains('<div class="reviewtabs" role="tablist" aria-label="复核分类">')
+        self.assertPageContains('<div class="reviewtabs" role="tablist" aria-label="复核分类" aria-orientation="vertical">')
 
     def test_the_review_queue_is_paged_on_the_client(self):
         """复核队列一页 20 张，翻页只重画这一屏。

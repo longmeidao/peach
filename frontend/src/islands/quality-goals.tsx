@@ -14,7 +14,7 @@
  * 它们是全站语义契约的唯一实现，抄一份就会漂。等下一批页面迁移时再把它们提升成
  * TS 组件，那时 props 一起收窄。 */
 import { LOC, fmtDur, fmtSize } from '@peach/legacy/core';
-import { emptyStateHtml, noteHtml } from '@peach/legacy/ui';
+import { collectionSummaryHtml, emptyStateHtml, noteHtml } from '@peach/legacy/ui';
 
 import { qualityGoals, refreshQualityGoals } from '../state/quality-goals';
 import type { QualityGoal, QualityGoalsData } from '../state/quality-goals';
@@ -71,7 +71,9 @@ export function QualityGoals(
     );
   }
   return (
-    <div class="qualitylist">
+    <div class="quality-workspace">
+      <div dangerouslySetInnerHTML={{ __html: collectionSummaryHtml('待升级', `${data?.total ?? items.length} 部作品`) }} />
+      <div class="qualitylist">
       {items.map(item => (
         <article class="qualityitem" key={item.id}>
           <button
@@ -80,6 +82,7 @@ export function QualityGoals(
             aria-label={`打开 ${javDisplayName(item)}`}
             onClick={() => openItem(item.id)}
           >
+            <span class="qualityfallback">暂无预览</span>
             <img
               src={previewUrl(item)}
               alt=""
@@ -87,7 +90,7 @@ export function QualityGoals(
               onError={event => event.currentTarget.remove()}
             />
           </button>
-          <div>
+          <div class="qualitybody">
             <h3>
               <button
                 type="button"
@@ -105,10 +108,12 @@ export function QualityGoals(
               <span>{fmtDur(item.duration)}</span>
               <span>{fmtSize(item.size ?? 0)}</span>
             </p>
-            {item.reason ? <p>{item.reason}</p> : null}
+            {item.reason ? <p class="qualityreason">{item.reason}</p> : null}
           </div>
+          <footer class="qualityactions"><button type="button" class="geist-button" onClick={() => openItem(item.id)}>查看版本</button></footer>
         </article>
       ))}
+      </div>
     </div>
   );
 }

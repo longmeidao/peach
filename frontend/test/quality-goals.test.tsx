@@ -28,6 +28,12 @@ afterEach(() => {
 });
 
 describe('高清版目标列表', () => {
+  it('版本入口打开所属作品，汇总保留服务端总数', async () => {
+    const { el, props } = await mountGoals([goal({ id: 42 })]);
+    expect(el.querySelector('.collection-summary')?.textContent).toContain('1 部作品');
+    el.querySelector<HTMLButtonElement>('.qualityactions button')!.click();
+    expect(props.openItem).toHaveBeenCalledWith(42);
+  });
   it('每条目标一张卡片，读数走遗留层同一套格式化口径', async () => {
     const { el } = await mountGoals([goal({
       id: 42, name: 'one.mp4', location: '115', cost: 'metered',

@@ -14,7 +14,7 @@ import { mountIsland, unmountIsland, islandMounted, createReviewSelection, wireR
 import { catalogSuggestions, catalogEmptyHtml, emptyCatalogLayout, syncSidebarSurface, sidebarTagCounts, sidebarHasCatalogContent, cleanupSkeletonHtml, cloudLocations, cloudPreferenceLocations, tasteHistoryGuideHtml, wireTasteHistoryGuide, TASTE_GUIDE_KEY } from './dist/peach-ui.js';
 import { javImageKind, normalizeJavImage, normalizeJavLayout, normalizeJavPreferences, syncJavImages, nativeImageFit, matchesFaceSource, entitySkeletonHtml } from './dist/peach-ui.js';
 import {
-  attachOverlayScrollbar, breadcrumbHtml, checkboxHtml, closeAnchoredMenu, confirmModal, dismissMenu, emptyStateHtml, fieldsetTitle,
+  attachOverlayScrollbar, breadcrumbHtml, checkboxHtml, collectionSummaryHtml, closeAnchoredMenu, confirmModal, dismissMenu, emptyStateHtml, fieldsetTitle,
   fillSkeletonTier, fitSkeleton, formModal, iconSwitchHtml, indexSkeletonHtml, loadingDotsHtml,
   mediaViewButtonsHtml, mountFilterFrame, filterChipHtml, sortControlsHtml, collectionHeaderHtml, wireHorizontalScroller, noteHtml, presentMenu, progressHtml, gaugeHtml, scrollerHtml, searchInputHtml, selectFieldHtml,
   setActionBusy, skeletonHtml, spinnerHtml, wireAnchoredMenu, wireBusyActions, wireCollapse, wireDragReorder,
@@ -2749,7 +2749,7 @@ function renderJunkNavigation(data){
     return `<a href="${junkPath(key,junkView)}" data-junk-kind-link="${esc(key)}"${current?' aria-current="page"':''}>${icon(glyph)}${esc(label)}${count?` <span class="n mono">${count.toLocaleString()}</span>`:''}</a>`;
   }).join('');
   $('#count').removeAttribute('aria-busy');
-  $('#count').innerHTML=`<div class="junksummary" aria-live="polite">显示 ${Number(data.total||0).toLocaleString()} 个</div>
+  $('#count').innerHTML=`<div class="junksummary" aria-live="polite">${collectionSummaryHtml(junkView==='dismissed'?'已排除':'待判断',`${Number(data.total||0).toLocaleString()} 个`)}</div>
     <nav class="junkfilters" aria-label="垃圾文件分类">${categoryLinks}<i aria-hidden="true"></i>
       <a href="${junkPath('',junkView==='dismissed'?'pending':'dismissed')}" data-junk-view-link="${junkView==='dismissed'?'pending':'dismissed'}"${junkView==='dismissed'?' aria-current="page"':''}>${icon(junkView==='dismissed'?'rotate-ccw':'eye-off')}${junkView==='dismissed'?'返回待判断':'已排除'}${dismissedTotal?` <span class="n mono">${dismissedTotal.toLocaleString()}</span>`:''}</a>
     </nav>`;
@@ -4629,7 +4629,8 @@ function renderDuplicates(){
   const groups=d.groups||[];
   paintManageLede(`${d.total} 组 · ${d.files} 个文件 · 可回收 ${fmtSize(d.reclaimable)}`);
   $('#stats').innerHTML=`<div class="review">
-    ${groups.length?`<div class="fsechead dupactions"><h3>操作</h3>
+    ${collectionSummaryHtml('重复内容',`${Number(d.total||0).toLocaleString()} 组`,`${d.files} 个文件 · 可回收 ${fmtSize(d.reclaimable)}`)}
+    ${groups.length?`<div class="fsechead dupactions"><h3>批量保留</h3>
       <button data-dup-all="largest">全部保留最大</button>
       <button data-dup-all="longest">全部保留最长</button>
       ${cloudPreferenceLocations(groups.flatMap(g=>g.files),d.cloudLocations||[]).map(loc=>`<button data-dup-all="${loc}">全部优先 ${esc(LOC[loc])}</button>`).join('')}</div>`:''}
@@ -4643,6 +4644,7 @@ function renderDuplicates(){
           ${cloudPreferenceLocations(g.files,d.cloudLocations||[]).map(loc=>`<button data-dup-keep="${loc}" data-dup-i="${gi}">留 ${esc(LOC[loc])}</button>`).join('')}
           <button class="danger" data-dup-keep="all" data-dup-i="${gi}">整组回收</button></span></div>
       <div class="duplist">${g.files.map(f=>`<div class="duprow">
+        <button type="button" class="dupcover" data-open-dup="${f.id}" aria-label="预览 ${esc(f.name)}"><img src="/thumb?id=${f.id}&c=4" alt="" loading="lazy" data-drop="self">${icon('play')}</button>
         <span class="dupmarks">${f.is_largest?'<i class="big">最大</i>':''}${f.is_longest?'<i class="long">最长</i>':''}</span>
         <button class="dupname" data-middle-truncate data-open-dup="${f.id}" title="${esc(f.name)}">${esc(f.name)}</button>
         <span class="mono">${esc(LOC[f.location]||f.location||f.drive||'')}</span>
@@ -4734,10 +4736,10 @@ async function openReview(push=true){
       :mirror?.state==='cached'?`写入端暂时不可达，显示 ${localTime(mirror.fetched_at)} 的缓存`
       :mirror?.error||reviewRuntime.ledger_read_only_message||'';
     const value=row=>row.tags||row.japanese_name||row.path||row.suggested_query||'';
-     $('#stats').innerHTML=`<div class="review">
+     $('#stats').innerHTML=`<div class="review review-workspace">
       ${locked?`<div class="runtimegate">${icon('info')}<span>${esc(mirrorText)}</span>${writer
         ?`<a href="${esc(writer)}">前往写入端复核</a>`:''}</div>`:''}
-      <div class="reviewcontrols"><div class="reviewtabs" role="tablist" aria-label="复核分类">${Object.entries(REVIEW_LABELS).map(([key,label])=>{
+      <div class="reviewcontrols"><h2 class="review-category-title">复核分类</h2><div class="reviewtabs" role="tablist" aria-label="复核分类" aria-orientation="vertical">${Object.entries(REVIEW_LABELS).map(([key,label])=>{
         /* Geist Tabs（vercel.com/geist/tabs）：计数走独立徽标，为 0 时整枚去掉，不留一个
            「0」占位；tabindex 只留在选中项上，方向键负责在同一条里移动焦点。 */
         const on=key===reviewCategory,count=Number(reviewData.counts[key]||0);
@@ -4844,7 +4846,7 @@ async function openReview(push=true){
     reviewTabs.forEach((button,index)=>{
       button.onclick=()=>{if(selection.busy)return;selection.selected.clear();selection.anchor=null;selection.choices.clear();selection.assets.clear();selection.errors.clear();reviewCategory=button.dataset.reviewTab;render()};
       button.onkeydown=event=>{
-        const step=event.key==='ArrowRight'?1:event.key==='ArrowLeft'?-1:0;
+        const step=event.key==='ArrowRight'||event.key==='ArrowDown'?1:event.key==='ArrowLeft'||event.key==='ArrowUp'?-1:0;
         const target=step?reviewTabs[(index+step+reviewTabs.length)%reviewTabs.length]
           :event.key==='Home'?reviewTabs[0]:event.key==='End'?reviewTabs[reviewTabs.length-1]:null;
         if(!target)return;
