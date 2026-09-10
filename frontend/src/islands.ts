@@ -38,9 +38,10 @@ import type { LibraryProcessingData, LibraryProcessingProps } from './islands/li
  * `mountIsland` 挂一屏，`refreshStore` 告诉已经挂着的那屏「数据变了」。
  * 怎么写一个 store 见 `./state/index.ts` 和 `docs/FRONTEND.md`。 */
 export { refreshStore, storeNames } from './state';
-export { watchJob, followJobProgress } from './jobs';
+export { watchJob, followJobProgress, jobActivityHtml } from './jobs';
 export { identityEvidenceHtml, reviewImageHtml, wireReviewPictures } from './review-evidence';
 export { createReviewSelection, wireReviewSelection, updateReviewSticky, groupReviewRows } from './review-bulk';
+export { selectRange, selectionSummary, selectGroup, syncSelectionToolbar } from './selection';
 export { paginationHtml, pageCount, clampPage } from './pagination';
 export { nativeImageFit, matchesFaceSource } from './native-image';
 export { entitySkeletonHtml } from './entity-skeleton';

@@ -1,7 +1,8 @@
 /** 本机访问密码；表单值只留在提交期间的组件内存中。 */
 import { useRef, useState } from 'preact/hooks';
 import type { JSX } from 'preact';
-import { fieldsetTitle, setActionBusy, noteHtml } from '@peach/legacy/ui';
+import { noteHtml } from '@peach/legacy/ui';
+import { SettingsSection, useSubmitAction } from '../settings-controls';
 import { ApiError, apiSend, errorMessage } from '../api';
 
 export interface AccessState { mode: 'open' | 'password' | 'legacy' | 'locked'; revision: string }
@@ -25,11 +26,10 @@ export function AccessSettings({ initial, receipt }: { initial: AccessState; rec
   const [password, setPassword] = useState('');
   const [confirmation, setConfirmation] = useState('');
   const [disable, setDisable] = useState(false);
-  const [error, setError] = useState('');
   const [fields, setFields] = useState<FieldErrors>({});
   const form = useRef<HTMLFormElement>(null);
-  const busy = useRef(false);
   const button = useRef<HTMLButtonElement>(null);
+  const {run, error, setError, busy} = useSubmitAction(button);
   const submit = async (event: JSX.TargetedEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (busy.current) return;
@@ -45,27 +45,21 @@ export function AccessSettings({ initial, receipt }: { initial: AccessState; rec
       requestAnimationFrame(() => form.current?.querySelector<HTMLInputElement>('[aria-invalid="true"]')?.focus());
       return;
     }
-    busy.current = true; setActionBusy(button.current, true);
-    try {
-      const next = await apiSend<AccessState>('/api/configuration/access', {
+    await run(signal => apiSend<AccessState>('/api/configuration/access', {
         revision: state.revision, action: disable ? 'disable' : 'set', confirm_disable: disable,
         current_password: current, password: disable ? '' : password, confirmation: disable ? '' : confirmation,
-      });
+      }, 'POST', signal), next => {
       setState(next); setCurrent(''); setPassword(''); setConfirmation(''); setDisable(false); setFields({});
       receipt(next.mode === 'open' ? '已关闭访问密码' : '已保存访问密码');
-    } catch (cause) {
+    }, cause => {
       const payload = cause instanceof ApiError ? cause.body as { errors?: FieldErrors; detail?: { errors?: FieldErrors } } : null;
       const errors = payload?.errors || payload?.detail?.errors;
       if (errors) setFields(errors); else setError(errorMessage(cause));
-    }
-    finally { busy.current = false; setActionBusy(button.current, false); }
+    });
   };
-  return <form class="configfieldset" data-fieldset-type={disable ? 'warning' : undefined} onSubmit={submit} aria-labelledby="accessTitle" noValidate ref={form}>
-    <div class="geist-fieldset-content">
-      <div class="configfieldset-heading">
-      <div dangerouslySetInnerHTML={{ __html: fieldsetTitle('accessTitle', '访问密码') }} />
-      <p class="confighelp">{state.mode === 'open' ? '未设置密码，能连接到 Peach 的设备可直接访问。' : state.mode === 'legacy' ? '当前使用系统生成的访问口令。你可以设置自己的密码，或关闭登录要求。' : state.mode === 'locked' ? '访问设置无法读取，请在本机检查配置文件。' : '已设置密码。新设备需要登录，保持登录时间在登录页选择。'}</p>
-      </div>
+  return <SettingsSection titleId="accessTitle" title="访问密码" warning={disable} onSubmit={submit} noValidate formRef={form} error={error}
+    help={state.mode === 'open' ? '未设置密码，能连接到 Peach 的设备可直接访问。' : state.mode === 'legacy' ? '当前使用系统生成的访问口令。你可以设置自己的密码，或关闭登录要求。' : state.mode === 'locked' ? '访问设置无法读取，请在本机检查配置文件。' : '已设置密码。新设备需要登录，保持登录时间在登录页选择。'}
+    footer={state.mode !== 'locked' && <><p>保存后立即生效。</p><button class="geist-button primary" type="submit" ref={button}>保存配置</button></>}>
       {state.mode === 'password' || state.mode === 'legacy' ? <label class="configcheck"><span class="pcheck"><input type="checkbox" checked={disable} onChange={(event) => setDisable(event.currentTarget.checked)} /><span aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#i-check" /></svg></span></span><span>关闭访问密码，允许能连接到 Peach 的设备直接访问</span></label> : null}
       {state.mode === 'password' ? <PasswordField id="access-current" label="当前访问密码" value={current} onInput={setCurrent} error={fields.current_password} current /> : null}
       {state.mode !== 'locked' ? <>
@@ -73,8 +67,5 @@ export function AccessSettings({ initial, receipt }: { initial: AccessState; rec
         <PasswordField id="access-confirm" label="确认访问密码" value={confirmation} onInput={setConfirmation} disabled={disable} error={disable ? undefined : fields.confirmation} />
       </> : null}
       {disable && <div dangerouslySetInnerHTML={{__html:noteHtml('保存后，能连接到 Peach 的设备将直接访问馆藏。',{variant:'warning',label:'访问范围'})}} />}
-      {error ? <p class="configbad" role="alert">{error}</p> : null}
-    </div>
-    {state.mode !== 'locked' ? <div class="geist-fieldset-footer"><p>保存后立即生效。</p><button class="geist-button primary" type="submit" ref={button}>保存配置</button></div> : null}
-  </form>;
+  </SettingsSection>;
 }

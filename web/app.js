@@ -1,6 +1,7 @@
-import { resourceScanHtml, boundedPreference, mountNumberSetting, syncNumberSetting, statCardBody, rankedChart, radarChart, distributionChart, jobProgressHtml, sidebarSectionHtml, wireSidebarGroups, transitionTheme } from './dist/peach-ui.js';
+import { resourceScanHtml, boundedPreference, mountNumberSetting, syncNumberSetting, statCardBody, rankedChart, radarChart, distributionChart, jobActivityHtml, sidebarSectionHtml, wireSidebarGroups, transitionTheme } from './dist/peach-ui.js';
 import {$, ENTITY_ROUTES, LOC, ROUTE_ENTITIES, ROUTE_STATES, SITE_FAVICONS, STATE_LABELS, STATE_ROUTES, api, isAbort, mapLimit, brandIcon, entityPath, esc, faviconFallbackUrl, faviconUrl, linkHost, linkMarkUrl, fmtClock, fmtDur, fmtSize, foldName, icon, isCatalogPath, realDuration} from './js/core.js';
 import { faceFrame } from './js/face-frame.js';
+import { selectRange, selectionSummary, selectGroup, syncSelectionToolbar } from './dist/peach-ui.js';
 import { MEDIA_SOURCE_ICONS } from './js/media-source-icons.js';
 import { boardPageSkeleton, initBoardControls, syncBoardRange, wireExpandableRanks, creatorSankeyHtml, wireCreatorSankey } from './dist/peach-ui.js';
 import { radialCardHtml, wireRadialCards, activityChartsHtml, wireActivityCharts } from './dist/peach-ui.js';
@@ -15,9 +16,9 @@ import { javImageKind, normalizeJavImage, normalizeJavLayout, normalizeJavPrefer
 import {
   attachOverlayScrollbar, breadcrumbHtml, checkboxHtml, closeAnchoredMenu, confirmModal, dismissMenu, emptyStateHtml, fieldsetTitle,
   fillSkeletonTier, fitSkeleton, formModal, iconSwitchHtml, indexSkeletonHtml, loadingDotsHtml,
-  mediaViewButtonsHtml, noteHtml, presentMenu, progressHtml, gaugeHtml, scrollerHtml, searchInputHtml, selectFieldHtml,
+  mediaViewButtonsHtml, mountFilterFrame, filterChipHtml, sortControlsHtml, collectionHeaderHtml, wireHorizontalScroller, noteHtml, presentMenu, progressHtml, gaugeHtml, scrollerHtml, searchInputHtml, selectFieldHtml,
   setActionBusy, skeletonHtml, spinnerHtml, wireAnchoredMenu, wireBusyActions, wireCollapse, wireDragReorder,
-  wireIconSwitch, wireOverlayScrollbars, wireScrollers, wireSelectField, wireContextCard, configurationSkeletonHtml,
+  wireIconSwitch, wireOverlayScrollbars, wireScrollers, wireSelectField, wireContextCard, configurationSkeletonHtml, wireLoadMore,
 } from './js/ui-components.js';
 
 initMiddleTruncate(document);
@@ -197,11 +198,9 @@ $('#loadSentinel').innerHTML=loadingDotsHtml('继续载入中…');
 $('#tokLoader').insertAdjacentHTML('afterbegin',spinnerHtml('媒体加载中'));
 /* 筛选条只由当前 state 决定，这次加载不会改变它，所以它现在就能画成最终样子。
    `state` 在启动 URL 解析之后才赋值，冷启动第一张骨架比它早，那一次只画计数骨架。 */
-const countSortsHtml=()=>!state?'':`<span class="sorts"><button class="batchaction" id="batchAction" type="button"
-    title="换一批" aria-label="换一批">${icon('shuffle')}</button>`
-  // JAV 版式紧跟换批动作，和排序连成一条。
-  +(javActive()?javLayoutButtons():'')
-  +sortOptions().map(([k,l])=>sortButtonHtml(k,l,state.sort,state.dir,'data-sort')).join('')+`</span>`;
+const countSortsHtml=()=>!state?'':sortControlsHtml({shuffleId:'batchAction',shuffleClass:'',
+  extra:javActive()?javLayoutButtons():'',items:sortOptions(),
+  renderItem:([k,l])=>sortButtonHtml(k,l,state.sort,state.dir,'data-sort')});
 function wireCountRow(){
   const batch=$('#batchAction');
   if(batch)batch.onclick=async()=>{
@@ -875,7 +874,7 @@ function openHome(scroll=false){
   buildEdge();buildBars();load(true);
   if(scroll)window.scrollTo({top:0,behavior:'smooth'});
 }
-const ENTITY_FILTER_KEYS=['loc','creator','tag','dur_min','dur_max','orient','sort','dir'];
+const ENTITY_FILTER_KEYS=['loc','creator','tag','state','dur_min','dur_max','orient','sort','dir'];
 const emptyEntityFilters=()=>Object.fromEntries(
   ENTITY_FILTER_KEYS.map(key=>[key,key==='sort'?'new':key==='dir'?'desc':'']));
 const parseEntityFilters=search=>{const params=new URLSearchParams(search),filters=emptyEntityFilters();
@@ -2147,20 +2146,12 @@ function setSelectMode(on,clear=false){
 /* 只取网格直属卡片：竖屏条是嵌在网格里的横向滚动条，不该被 Shift 范围选中顺带框进来。 */
 function visibleCardIds(){return [...gridCards()].map(card=>+card.dataset.id)}
 function toggleSelection(id,range=false){
-  if(range&&lastSelectedId!=null){const ids=visibleCardIds(),a=ids.indexOf(lastSelectedId),b=ids.indexOf(id);
-    if(a>=0&&b>=0){for(let i=Math.min(a,b);i<=Math.max(a,b);i++)selected.add(ids[i])}
-    else selected.add(id);
-  }else{selected.has(id)?selected.delete(id):selected.add(id)}
-  lastSelectedId=id;setSelectMode(true);paintSelection();
+  lastSelectedId=selectRange(selected,visibleCardIds(),lastSelectedId,id,range);setSelectMode(true);paintSelection();
 }
 function visibleFollowIds(){return [...document.querySelectorAll('.followlist > .followitem[data-follow-item]')]
   .map(card=>+card.dataset.followItem)}
 function toggleFollowSelection(id,range=false){
-  if(range&&followLastSelectedId!=null){const ids=visibleFollowIds(),a=ids.indexOf(followLastSelectedId),b=ids.indexOf(id);
-    if(a>=0&&b>=0){for(let i=Math.min(a,b);i<=Math.max(a,b);i++)followSelected.add(ids[i])}
-    else followSelected.add(id);
-  }else{followSelected.has(id)?followSelected.delete(id):followSelected.add(id)}
-  followLastSelectedId=id;setSelectMode(true);paintSelection();
+  followLastSelectedId=selectRange(followSelected,visibleFollowIds(),followLastSelectedId,id,range);setSelectMode(true);paintSelection();
 }
 $('#selectMode').onclick=()=>setSelectMode(!selectMode,!selectMode?false:true);
 $('#batchClear').onclick=()=>setSelectMode(false,true);
@@ -3492,8 +3483,7 @@ async function buildBars(){
   const tagPool=topTags.filter(row=>!appliedKeys.includes(row.k));
   const pickedTags=seededSample(tagPool,TAGS_FIRST,`tags:${state.seed||''}`);
   const pickedKeys=new Set(pickedTags.map(row=>row.k));
-  const tagPillHtml=t=>`<button class="pill" data-tag="${esc(t.k)}" aria-pressed="${
-    tagPressed(filterState.tag,t.k)}">${esc(tagLabel(t.k))}</button>`;
+  const tagPillHtml=t=>filterChipHtml(tagLabel(t.k),{attr:'data-tag',value:t.k,selected:tagPressed(filterState.tag,t.k)});
   $('#tagScroll').innerHTML=(emptyLayout?.tags||'')
     +appliedTags.concat(pickedTags).map(tagPillHtml).join('');
   wireViewPills();
@@ -3676,26 +3666,6 @@ function renderCombo(){
    之前跑（`loadRequestSeq++` 要抢在在途的目录请求之前作废它），而主体有的入口在取数
    前铺（配 `placeholder` 给反馈），有的在取数后铺（数据快时不闪一下骨架）。
    两个都要调，由 `test_every_full_page_view_enters_through_the_shared_helpers` 兜住。 */
-/* 「载入更多」按钮观察自己：滚到它进视口就自动续取，按钮只是兜底（观察器不可用、
-   或用户用键盘跳到底部）。这么做是因为「未看 3036」和「已显示 152」是两个口径，
-   用户不必先看懂它们，一直往下滚就是了。
-
-   这段此前抄了三份：关注流、实体合集、照片墙。已经开始漂——后两份有 `hidden` 判断，
-   关注那份没有。藏起来的按钮观察它没有意义（它永远不会进视口），漏掉只是浪费一个
-   观察器，但下一次抄漏的可能就不是这一行了。
-
-   重画会换掉按钮节点，所以每次都要先 disconnect：旧观察器还盯着已经脱离文档的节点，
-   既不会触发也不会被回收。 */
-function wireLoadMore(button, load){
-  if(!button)return;
-  button.onclick=()=>load();
-  button._observer?.disconnect();
-  if(button.hidden)return;
-  button._observer=new IntersectionObserver(
-    entries=>{if(entries.some(entry=>entry.isIntersecting))load()},
-    {rootMargin:'320px'});
-  button._observer.observe(button);
-}
 const skeletonKeyOf=html=>String(html).match(/data-skeleton="([^"]*)"/)?.[1]||'';
 function showManagementBody({manage=true,placeholder=''}={}){
   $('#stats').hidden=false;$('#index').hidden=true;$('#grid').innerHTML='';
@@ -3875,7 +3845,7 @@ async function wireLinkManager(){
     if(payload.status==='idle'){result.innerHTML='';return}
     if(payload.status==='failed'){result.innerHTML=noteHtml(payload.error||'检查失败',{variant:'error',label:'检查失败'});return}
     const retrying=payload.scope==='retry';
-    const progress=running?(payload.total?jobProgressHtml(`${retrying?'已重验':'已检查'} ${payload.checked.toLocaleString()} / ${payload.total.toLocaleString()} 条链接`,payload.checked,payload.total):loadingDotsHtml(retrying?'正在重验链接':'正在检查链接')):'';
+    const progress=running?jobActivityHtml(payload.total?`${retrying?'已重验':'已检查'} ${payload.checked.toLocaleString()} / ${payload.total.toLocaleString()} 条链接`:retrying?'正在重验链接':'正在检查链接',payload.checked,payload.total):'';
     /* gone 和 unclear 必须分开摆：`linktr.ee` 回 403 是挡爬虫、`x.com` 回 500 是临时错误，
        链接本身好好的。混成一张表会让人顺手把好链接一起删掉。 */
     const gone=table('页面已经没了',payload.gone||[],'站点明确回答这个地址不存在（HTTP 404 或 410）。');
@@ -3996,7 +3966,7 @@ async function wireResourceSync(){
       await ui.watchJob({active,
         read:signal=>api('/api/resource-sync/scan',{signal,method:'POST',body:JSON.stringify({background:true,status_only:true})}),
         render:state=>{payload=state;if(state.status==='running'){
-          result.innerHTML=state.total_sources?jobProgressHtml(`已扫描 ${state.completed_sources||0}/${state.total_sources} 个来源`,state.completed_sources||0,state.total_sources):loadingDotsHtml('正在扫描来源')}},
+          result.innerHTML=jobActivityHtml(state.total_sources?`已扫描 ${state.completed_sources||0}/${state.total_sources} 个来源`:'正在扫描来源',state.completed_sources,state.total_sources)}},
         disconnected:()=>{result.innerHTML=noteHtml('暂时无法读取进度，正在重新连接…',{label:'任务状态'})}});
       if(payload.status==='failed')throw new Error(payload.error||'后台扫描失败');
       if(payload.status==='idle')throw new Error('任务尚未启动，请重试扫描');
@@ -4996,20 +4966,6 @@ function mergeFollowGroups(existing,incoming){
   }
   return existing;
 }
-async function loadMoreFollow(button){
-  if(!followData||followBusy)return;
-  followBusy=true;
-  const oldButton=button?.innerHTML;
-  if(button){setActionBusy(button);button.innerHTML=`${spinnerHtml('正在加载更多')}<span>加载中…</span>`}
-  try{
-    const next=await api(followPageUrl((followData.offset||0)+FOLLOW_PAGE));
-    followData={...next,
-      groups:mergeFollowGroups([...followData.groups],next.groups||[]),
-      // counts 一直是全库口径，用新的那份即可；offset/has_more 跟着最新一页走。
-      sources:next.sources||followData.sources};
-    renderFollow();
-  }finally{followBusy=false;if(button){setActionBusy(button,false);button.innerHTML=oldButton}}
-}
 let followCredentialProviders=new Set();
 /* 上一次检查的结果。检查完页面会整页重画，如果不把结果留在这里，用户看到的就只是
    一次闪烁——他的原话是「完全没返回任何结果」。接口其实每条来源都回了
@@ -5651,13 +5607,11 @@ function renderFollow(){
         <span class="ring">${followAuthorAvatar(author.sources)}</span><span class="nm">${esc(author.name)}</span></button>`
       ).join('')}</div>`:''}
     <div class="tagbar followfilters" aria-label="关注筛选">${followMediaControl(mediaCounts)}${FOLLOW_FILTERS.map(([key,label])=>
-      `<button class="pill" data-follow-filter="${key}" aria-pressed="${key===followFilter}">${label}${
-        ` <span class="n mono">${key?counts[key]||0:allCount}</span>`}</button>`).join('')}
+      filterChipHtml(label,{attr:'data-follow-filter',value:key,selected:key===followFilter,count:key?counts[key]||0:allCount})).join('')}
       ${providerPills?`<span class="sep" aria-hidden="true"></span>${providerPills}`:''}
       ${topTags.length?`<span class="sep" aria-hidden="true"></span>`+
         topTags.map(([key,label,n])=>
-          `<button class="pill r34-${esc(groupTagType(groups,key))}" data-follow-tag="${esc(key)}" aria-pressed="${followTags.has(key)}">${
-            esc(label)}${n?` <span class="n mono">${n}</span>`:''}</button>`).join(''):''}</div>
+          filterChipHtml(label,{attr:'data-follow-tag',value:key,selected:followTags.has(key),count:n||undefined,className:'r34-'+groupTagType(groups,key)})).join(''):''}</div>
     ${broken.length
       ?`<div class="geist-note geist-note-error fwarn" role="alert">${icon('alert')}<span>${broken.length} 个来源上次检查失败，去<button class="flink" data-follow-manage>管理关注</button>看原因。</span></div>`:''}
     <div class="followlist${followMediaView==='images'?' followphotowall':''}">${visible.length?visible.map(group=>{
@@ -5673,7 +5627,13 @@ function renderFollow(){
       ${sources.some(source=>source.can_backfill)?`<span class="followpageaction"><button class="fbtn" data-follow-older>${icon('history')}抓更早的一页</button>
         <span class="fmeta">${esc(followBackfillState(sources))}</span></span>`:''}</div>`:''}</div>`;
   const more=$('#stats').querySelector('[data-follow-more]');
-  wireLoadMore(more,()=>loadMoreFollow(more));
+  const page=followData,surface=surfaceToken(surfacePath());
+  wireLoadMore(more,{
+    enabled:()=>!followBusy,
+    isCurrent:()=>surfaceCurrent(surface)&&followData===page,
+    read:signal=>api(followPageUrl((page.offset||0)+FOLLOW_PAGE),{signal}),
+    apply:next=>{followData={...next,groups:mergeFollowGroups([...page.groups],next.groups||[]),sources:next.sources||page.sources};renderFollow()},
+  });
   wireFollowItems();
   wireFollowOlder();
   void wireFollowProgress();
@@ -5730,10 +5690,7 @@ async function wireFollowProgress(){
     complete:report=>{followCheckReport=report.status==='failed'
       ?{results:[{ok:false,error:report.error}]}:report;
       followCheckToast(followCheckReport);
-      if(surfaceCurrent(surface))void refreshFollowSurface(surface)},
-    note:text=>noteHtml(text,{label:'任务状态'}),loading:text=>loadingDotsHtml(text),
-    container:content=>`<section class="followtask" data-geist-fieldset aria-label="检查更新进度"><div class="geist-fieldset-content">${content}</div></section>`,
-    progress:(value,max,label)=>jobProgressHtml(label||`已完成 ${value}/${max} 个来源`,value,max)});
+      if(surfaceCurrent(surface))void refreshFollowSurface(surface)}});
 }
 async function refreshFollowSurface(surface){
   try{
@@ -5755,10 +5712,7 @@ async function wireOperationProgress({host,path,key,title,busy,complete}){
   ui.followJobProgress({host:marker,active:()=>surfaceCurrent(surface),read:signal=>api(path,{signal}),
     storageKey:key,title,busy,watchIdle:false,complete:report=>{
       if(report.status==='failed'){marker.innerHTML=noteHtml(report.error||'任务失败',{variant:'error',label:'任务失败'});return}
-      complete(report)},note:text=>noteHtml(text,{label:'任务状态'}),
-    loading:text=>loadingDotsHtml(text),
-    container:content=>`<section class="followtask" data-geist-fieldset aria-label="任务进度"><div class="geist-fieldset-content">${content}</div></section>`,
-    progress:(value,max,label)=>jobProgressHtml(label||`已处理 ${value} / ${max}`,value,max)});
+      complete(report)}});
 }
 function wireTasteProgress(){
   const button=$('#stats').querySelector('[data-taste-refresh]');
@@ -6322,10 +6276,10 @@ function wireFollowManage(creds=[]){
   const selectedIds=()=>selectable.filter(field=>field.checked).map(field=>Number(field.dataset.followSelect));
   const syncSelection=()=>{
     const ids=selectedIds(),count=root.querySelector('[data-follow-selected-count]');
-    if(count)count.textContent=`已选 ${ids.length}`;
     const all=root.querySelector('[data-follow-select-all]');
-    if(all){all.checked=ids.length>0&&ids.length===selectable.length;all.indeterminate=ids.length>0&&ids.length < selectable.length}
-    root.querySelectorAll('[data-follow-selection-action]').forEach(button=>{button.disabled=!ids.length||!!followRuntime?.ledger_read_only;if(button.hasAttribute('data-follow-check'))button.dataset.followSources=ids.join(',')});
+    syncSelectionToolbar({count,label:`已选 ${ids.length}`,all,summary:selectionSummary(new Set(ids),selectable.map(field=>Number(field.dataset.followSelect))),
+      actions:root.querySelectorAll('[data-follow-selection-action]'),locked:!!followRuntime?.ledger_read_only});
+    root.querySelectorAll('[data-follow-selection-action][data-follow-check]').forEach(button=>{button.dataset.followSources=ids.join(',')});
     selectable.forEach(field=>field.closest('.fsource').classList.toggle('selected',field.checked));
     root.querySelectorAll('[data-follow-author-select]').forEach(button=>{
       const fields=[...button.closest('.fauthor').querySelectorAll('[data-follow-select]')],count=fields.filter(field=>field.checked).length;
@@ -6340,10 +6294,11 @@ function wireFollowManage(creds=[]){
   root.querySelectorAll('[data-follow-author-select]').forEach(button=>button.onclick=event=>{
     event.preventDefault();event.stopPropagation();
     const fields=[...button.closest('.fauthor').querySelectorAll('[data-follow-select]')],checked=!fields.every(field=>field.checked);
-    fields.forEach(field=>{field.checked=checked;const id=Number(field.dataset.followSelect);if(checked)followSourceSelection.add(id);else followSourceSelection.delete(id)});syncSelection();
+    selectGroup(followSourceSelection,fields.map(field=>Number(field.dataset.followSelect)),checked);
+    fields.forEach(field=>{field.checked=checked});syncSelection();
   });
   const selectAll=root.querySelector('[data-follow-select-all]');
-  if(selectAll)selectAll.onchange=()=>{selectable.forEach(field=>{field.checked=selectAll.checked;const id=Number(field.dataset.followSelect);if(field.checked)followSourceSelection.add(id);else followSourceSelection.delete(id)});syncSelection()};
+  if(selectAll)selectAll.onchange=()=>{selectGroup(followSourceSelection,selectable.map(field=>Number(field.dataset.followSelect)),selectAll.checked);selectable.forEach(field=>{field.checked=selectAll.checked});syncSelection()};
   root.querySelectorAll('[data-follow-selection-enabled]').forEach(button=>button.onclick=async()=>{
     const ids=selectedIds(),enabled=button.dataset.followSelectionEnabled==='true';if(!ids.length)return;
     setActionBusy(button);
@@ -7037,7 +6992,7 @@ async function openIndex(kind,q,push=true,refine=false){
    套上 JAV 的行业称谓既不准确也会和创作者身份混淆。判据由后端 `is_jav` 给。 */
 function performerLabel(it){return it&&it.is_jav?'女优':'艺人'}
 let entityRequestSeq=0,entityJavLayout=false;
-async function fetchEntityItems(kind,name,filters,offset=0){
+async function fetchEntityItems(kind,name,filters,offset=0,signal){
   const p=new URLSearchParams();p.set(kind,name);p.set('limit','48');p.set('offset',String(offset));
   p.set('sort',filters.sort||'new');
   if(filters.dir)p.set('dir',filters.dir);
@@ -7046,15 +7001,29 @@ async function fetchEntityItems(kind,name,filters,offset=0){
   ENTITY_FILTER_KEYS.forEach(key=>{if(filters[key]&&key!==kind&&key!=='sort')p.set(key,filters[key])});
   // 资料页继承 JAV 开关：女优页和厂牌页同样是按番号浏览的语境。
   if(state.jav==='1')p.set('jav','1');
-  const items=await api('/api/items?'+p);cache(items.items);return items
+  const items=await api('/api/items?'+p,{signal});cache(items.items);return items
 }
 let entityCollectionPage={items:[],total:0,has_more:false};
+function syncEntityFilterFrame(){
+  const root=$('#index'),top=root.querySelector('.entitytagbar');
+  const bottom=root.querySelector('.entitysection>.entitycollectionhead');
+  if(!top||!bottom)return;
+  mountFilterFrame(top,bottom,{views:top.querySelector('.entityviews'),
+    tags:top.querySelector('.entitytags'),readout:bottom.querySelector('h3'),
+    controls:bottom.querySelector('.sorts')});
+  scheduleStickySurfaces();
+}
+function syncEntityStateControls(kind,name,filters){
+  const controls=$('#index').querySelector('.entityviews');if(!controls)return;
+  controls.hidden=entityViewNow(kind)!=='videos';
+  controls.querySelectorAll('[data-entity-state]').forEach(button=>{
+    button.setAttribute('aria-pressed',String(button.dataset.entityState===(filters.state||'')));
+    button.onclick=()=>updateEntityCollection(kind,name,{...filters,state:button.dataset.entityState},true);
+  });
+}
 /* 资料页作品集的表头与首页计数行同源：排序条由 filters 决定，`视频 · N` 由响应决定。 */
-const entityCollectionSortsHtml=filters=>`<span class="sorts">
-      <button class="batchaction entitybatch" type="button" title="换一批" aria-label="换一批">${icon('shuffle')}</button>
-      ${javActive()?javLayoutButtons():''}
-      ${sortOptions().map(([key,label])=>sortButtonHtml(
-        key,label,filters.sort||'new',filters.dir,'data-entity-sort')).join('')}</span>`;
+const entityCollectionSortsHtml=filters=>sortControlsHtml({extra:javActive()?javLayoutButtons():'',items:sortOptions(),
+  renderItem:([key,label])=>sortButtonHtml(key,label,filters.sort||'new',filters.dir,'data-entity-sort')});
 function wireEntityCollectionHead(section,kind,name,filters){
   wireJavLayoutButtons(section);
   section.querySelector('.entitybatch').onclick=()=>{
@@ -7067,12 +7036,14 @@ function wireEntityCollectionHead(section,kind,name,filters){
    最终样子，只让会变的 `视频 · N` 换成骨架。标题、标签条和已经铺好的网格不动。 */
 function markEntityCollectionBusy(kind,name,filters){
   const section=$('#index').querySelector('.entitysection');
-  const head=section&&section.querySelector('.entitycollectionhead');
+  const head=$('#index').querySelector('.entitycollectionhead');
   if(!head)return;
   head.setAttribute('aria-busy','true');
+  const focused=head.contains(document.activeElement)?document.activeElement.getAttribute('data-entity-sort'):null;
   head.querySelector('.sorts').outerHTML=entityCollectionSortsHtml(filters);
+  if(focused)head.querySelector(`[data-entity-sort="${focused}"]`)?.focus({preventScroll:true});
   head.querySelector('h3').innerHTML='<span class="countskeleton"></span>';
-  wireEntityCollectionHead(section,kind,name,filters);
+  wireEntityCollectionHead(head,kind,name,filters);
   /* 名单已经不是刚才那一份了。把旧卡片留在屏幕上等新的回来，等的这一下人读到的是一份
      跟头上的筛选对不上的列表——数字在转圈，底下那几十张却还是上一次的答案。 */
   const grid=section.querySelector('.grid');
@@ -7085,12 +7056,12 @@ function markEntityCollectionBusy(kind,name,filters){
    不再单独请求；读数写的是这个人有多少视频。 */
 function renderAgencyRoster(people){
   const section=$('#index').querySelector('.entitysection');if(!section)return;
-  section.innerHTML=`<div class="entitycollectionhead"><h3>艺人 · ${
-      people.length.toLocaleString()}</h3></div>
+  section.innerHTML=`${collectionHeaderHtml({readout:'艺人 · '+people.length.toLocaleString()})}
     <div class="igrid" data-layout="${peopleIndexLayout()}">${
       people.map(x=>personCellHtml(x,'performer',x.n.toLocaleString())).join('')}</div>`;
   section.querySelectorAll('[data-k]').forEach(button=>button.onclick=()=>
     openEntity('performer',button.dataset.k));
+  syncEntityFilterFrame();
   scheduleStickySurfaces();
 }
 function renderEntityCollection(kind,name,items,filters,append=false){
@@ -7101,7 +7072,7 @@ function renderEntityCollection(kind,name,items,filters,append=false){
     renderedPartGroups.clear();renderedEditionGroups.clear();
     entityCollectionPage={items:[...(items.items||[])],total:items.total||0,
       has_more:items.has_more==null?(items.items||[]).length<(items.total||0):!!items.has_more};
-    section.innerHTML=`<div class="entitycollectionhead"><h3></h3>${entityCollectionSortsHtml(filters)}</div>
+    section.innerHTML=`${collectionHeaderHtml({controls:entityCollectionSortsHtml(filters)})}
       <div class="grid"></div><button class="entitymore" type="button">载入更多</button>`;
     section.dataset.total=String(items.total||0);
     section.querySelector('h3').textContent=`视频 · ${(items.total||0).toLocaleString()}${entityTags.length?' · '+entityTags.join(' · '):''}`;
@@ -7116,12 +7087,13 @@ function renderEntityCollection(kind,name,items,filters,append=false){
   wireCards(grid);
   const more=section.querySelector('.entitymore');
   more.hidden=!entityCollectionPage.has_more;
-  const requestMore=async()=>{if(more.hidden||more.disabled)return;more.disabled=true;const seq=entityRequestSeq;
-    try{const next=await fetchEntityItems(kind,name,filters,entityCollectionPage.items.length);
-      if(seq===entityRequestSeq&&$('#index').dataset.entityKind===kind&&$('#index').dataset.entityName===name)
-        renderEntityCollection(kind,name,next,filters,true)}
-    finally{if(seq===entityRequestSeq)more.disabled=false}};
-  wireLoadMore(more,requestMore);
+  const seq=entityRequestSeq;
+  wireLoadMore(more,{
+    isCurrent:()=>seq===entityRequestSeq&&$('#index').dataset.entityKind===kind&&$('#index').dataset.entityName===name,
+    read:signal=>fetchEntityItems(kind,name,filters,entityCollectionPage.items.length,signal),
+    apply:next=>renderEntityCollection(kind,name,next,filters,true),
+  });
+  syncEntityFilterFrame();
   scheduleStickySurfaces();
 }
 async function updateEntityCollection(kind,name,filters,push=true){
@@ -7131,6 +7103,7 @@ async function updateEntityCollection(kind,name,filters,push=true){
   const search=entityFilterSearch(filters);
   if(push)route(entityPath(kind,name)+(search?'?'+search:''));
   barsContext={type:'entity',kind,name,filters:{...filters}};
+  syncEntityStateControls(kind,name,filters);
   const seq=++entityRequestSeq;
   markEntityCollectionBusy(kind,name,filters);
   const items=await fetchEntityItems(kind,name,filters);
@@ -7161,10 +7134,11 @@ const photoTotalOf=()=>entityPhotos&&!entityPhotos.error?(entityPhotos.total||0)
 
 /* 这一页当前是哪个视图。名册和媒体不共用 `entityMediaView`：地址栏只认 `media`，
    而名册是事务所页的默认视图，进页面就该在那里，不靠一个参数撑着。 */
-const entityViewNow=kind=>kind==='agency'&&agencyRosterView==='people'&&agencyRoster.length
-  ?'people':(entityMediaView.media==='photos'?'photos':'videos');
+function entityViewNow(kind){return kind==='agency'&&agencyRosterView==='people'&&agencyRoster.length
+  ?'people':(entityMediaView.media==='photos'?'photos':'videos')}
 
 function renderEntityMediaToggle(kind,name,filters){
+  syncEntityStateControls(kind,name,filters);
   const controls=$('#index').querySelector('.entitymediaview');if(!controls)return;
   const now=entityViewNow(kind);
   controls.querySelectorAll('[data-media-view]').forEach(button=>{
@@ -7249,14 +7223,11 @@ const photoCell=(item,index)=>`<button class="photocell" data-photo-index="${ind
    有文件名、体积和来源三样，视频那八个键有七个在这里没有对应的数。这一排只放三样：
    张数、换一批、大小。换一批跟首页和视频那一排是同一枚键、同一个位置、同一个意思。
    不点它时按文件名排：`001.jpg` 这类编号本来就是一套图的顺序。 */
-const photoHeadHtml=(data,{back=false}={})=>`<div class="entitycollectionhead photohead">
-    ${back?`<button class="photoback" type="button">${icon('chevron-left')}<span>全部照片</span></button>`:''}
-    <h3>${back?esc(data.title)+' · ':'照片 · '}${(data.total||0).toLocaleString()} 张</h3>
-    <span class="sorts">
-      <button class="batchaction entitybatch" type="button" title="换一批" aria-label="换一批">${icon('shuffle')}</button>
-      ${iconSwitchHtml('photo-size','照片大小',PHOTO_SIZES,photoSize(),
-        {attr:'data-photo-size',className:'photosize'})}
-      ${back?sourceTools(data.id):''}</span></div>`;
+const photoHeadHtml=(data,{back=false}={})=>collectionHeaderHtml({className:'photohead',
+  before:back?`<button class="photoback" type="button">${icon('chevron-left')}<span>全部照片</span></button>`:'',
+  readout:`${back?esc(data.title)+' · ':'照片 · '}${(data.total||0).toLocaleString()} 张`,
+  controls:sortControlsHtml({extra:iconSwitchHtml('photo-size','照片大小',PHOTO_SIZES,photoSize(),
+    {attr:'data-photo-size',className:'photosize'})+(back?sourceTools(data.id):'')})});
 function renderPhotoWall(kind,name,filters,data,append=false){
   const section=$('#index').querySelector('.entitysection');if(!section)return;
   const entityWide=!data.id;
@@ -7277,6 +7248,7 @@ function renderPhotoWall(kind,name,filters,data,append=false){
       // 对账后整组数量都变了，重开这一组比逐格摘除简单也更不容易错。
       wireSourceTools(head,()=>openPhotoSet(kind,name,filters,data.id,false));
     }
+    syncEntityFilterFrame();
   }
   const wall=section.querySelector('.photowall');
   const start=photoWallItems.length;
@@ -7287,16 +7259,14 @@ function renderPhotoWall(kind,name,filters,data,append=false){
     cell.onclick=()=>openPhotoLightbox(Number(cell.dataset.photoIndex))});
   const more=section.querySelector('.entitymore');
   more.hidden=!data.has_more;
-  const requestMore=async()=>{if(more.hidden||more.disabled)return;more.disabled=true;const seq=entityRequestSeq;
-    // 换过一批的话，后面几页得沿用同一粒种子，不然前后两页的排法不同，会重也会漏。
-    const seed=data.seed?`&seed=${encodeURIComponent(data.seed)}`:'';
-    try{const next=await api(entityWide
+  const seq=entityRequestSeq,seed=data.seed?`&seed=${encodeURIComponent(data.seed)}`:'';
+  wireLoadMore(more,{
+    isCurrent:()=>seq===entityRequestSeq&&$('#index').dataset.entityKind===kind&&$('#index').dataset.entityName===name,
+    read:signal=>api(entityWide
       ? `/api/photos?kind=${encodeURIComponent(kind)}&name=${encodeURIComponent(name)}&limit=120&offset=${photoWallItems.length}${seed}`
-      : `/api/photo-set?id=${data.id}&limit=120&offset=${photoWallItems.length}${seed}`);
-      if(seq===entityRequestSeq&&!next.error&&$('#index').dataset.entityName===name)
-        renderPhotoWall(kind,name,filters,next,true)}
-    finally{if(seq===entityRequestSeq)more.disabled=false}};
-  wireLoadMore(more,requestMore);
+      : `/api/photo-set?id=${data.id}&limit=120&offset=${photoWallItems.length}${seed}`,{signal}),
+    apply:next=>{if(next.error)throw new Error(next.error);renderPhotoWall(kind,name,filters,next,true)},
+  });
 }
 
 /* ── 源文件管理 ───────────────────────────────────────────────────────────────
@@ -7590,19 +7560,10 @@ function wireNamePicker(kind,current){
 
 /* 横着滚的那一行两端要渐隐：不然浮层圆角那儿最后一个标签被直角硬切掉半个字，
    也看不出右边还有。首页筛选条本来就这么做，资料页的标签行是同一条，用同一段。 */
-const overflowObservers=new WeakMap();
-function wireOverflowFade(scroller){
-  if(!scroller)return;
-  if(!overflowObservers.has(scroller)){
-    const update=()=>{scroller.dataset.overflowLeft=String(scroller.scrollLeft>2);scroller.dataset.overflowRight=String(scroller.scrollWidth-scroller.clientWidth-scroller.scrollLeft>2)};
-    overflowObservers.set(scroller,update);scroller.addEventListener('scroll',update,{passive:true});new ResizeObserver(update).observe(scroller);
-  }
-  overflowObservers.get(scroller)();
-}
 /* 等着的这一下浮层也得是整块的：下半要到列表回来才画的话，上半的下沿在等的那几秒里
    留着两个直角，读起来是这块浮层缺了一半。这一页的作品多时那几秒不算短。 */
 function showEntityLoading(kind){
-  const head='<div class="entitycollectionhead"><h3 class="skeleton">&nbsp;</h3></div>';
+  const head=collectionHeaderHtml({readout:'&nbsp;',loading:true});
   const body=head+(kind==='agency'
     ?indexSkeletonHtml({kind:'performers',layout:peopleIndexLayout()})
     :pageSkeletonHtml('正在读取作品',{cards:true}));
@@ -7681,7 +7642,7 @@ async function openEntity(kind,name,push=true){
        把 img 撤掉，露出底下那枚地球。 */
     return `<a class="urllink" href="${esc(x.url)}" target="_blank" rel="noreferrer" title="${esc(x.label)}"><span class="entitylinkicon">${icon('globe')}<img class="entityfavicon" src="${esc(linkMarkUrl(x))}" alt="" loading="lazy" referrerpolicy="no-referrer" data-drop="self"></span><span class="entitylinklabel">${esc(linkHost(x.url)||x.label)}</span></a>`;
   }).join('');
-  const tags=(d.tags||[]).map(x=>`<button class="pill" data-entity-tag="${esc(x.k)}" aria-pressed="${tagPressed(filters.tag,x.k)}">${esc(tagLabel(x.k))}<small>${x.n.toLocaleString()}</small></button>`).join('');
+  const tags=(d.tags||[]).map(x=>filterChipHtml(tagLabel(x.k),{attr:'data-entity-tag',value:x.k,selected:tagPressed(filters.tag,x.k),count:x.n.toLocaleString()})).join('');
   /* 事务所名下的这批人不摆在这排小圆头像里：那是「同台艺人」，一条附注；名册是这一页
      的正文，占的是下面那整块。所以同一份 `related_performers` 在事务所页走另一条路。 */
   const roster=kind==='agency'?(d.related_performers||[]):[];
@@ -7742,7 +7703,7 @@ async function openEntity(kind,name,push=true){
         ${links?`<div class="entitylinks">${links}</div>`:''}</div></div>
     ${related?`<div class="entitymeta"><section aria-label="同台艺人"><div class="relatedpeople">${related}</div></section></div>`:''}
     <div class="combo entitycombo"></div>
-    ${(tags||mediaToggle)?`<section class="entitytagbar" aria-label="媒体与标签"><div class="entitytags">${mediaToggle}${tags}</div></section>`:''}
+    <section class="entitytagbar" aria-label="媒体与标签"><div class="entityviews" role="group" aria-label="观看状态">${VIEW_PILLS.map(v=>`<button type="button" class="pill" data-entity-state="${v.k}" aria-pressed="${(filters.state||'')===v.k}">${v.label}</button>`).join('')}</div><div class="entitytags">${mediaToggle}${tags}</div></section>
     <div class="entitysection"></div>`;
   // 资料页的标签和顶部标签条是同一个开关，读的写的都是这一页的筛选。
   $('#index').querySelectorAll('[data-entity-tag]').forEach(b=>b.onclick=()=>
@@ -7757,7 +7718,7 @@ async function openEntity(kind,name,push=true){
      够不着。全站横向行的那套拖动加滚轮映射就是为这个写的，登记上即可。 */
   wireDrag($('#index').querySelector('.relatedpeople'));
   wireDrag($('#index').querySelector('.entitytags'));
-  wireOverflowFade($('#index').querySelector('.entitytags'));
+  wireHorizontalScroller($('#index').querySelector('.entitytags'));
   if(namePick)wireNamePicker(kind,d.canonical_name);
   entityPhotos=photos&&!photos.error?photos:null;
   if(entityMediaView.media==='photos'&&!photoTotalOf())entityMediaView=emptyMediaView();
@@ -8268,11 +8229,12 @@ window.__scrolling=false; let scrollT=null;
 let stickyFrame=0;
 function updateStickySurfaces(){
   updateReviewSticky($('.review'));
-  ['#tagbar','#count','.entitytagbar','.entitycollectionhead'].forEach(selector=>{
+  ['.board-filter-frame','#tagbar','#count','.entitytagbar','.entitycollectionhead'].forEach(selector=>{
     const el=$(selector),css=el&&getComputedStyle(el),top=css?parseFloat(css.top):NaN;
     const stuck=!!el&&css.position==='sticky'&&el.offsetParent!==null&&window.scrollY>0&&
       Number.isFinite(top)&&el.getBoundingClientRect().top<=top+1;
     if(el)el.classList.toggle('is-stuck',stuck);
+    if(el?.matches('.board-filter-frame'))el.classList.toggle('board-is-stuck',stuck);
   });
 }
 function scheduleStickySurfaces(){
@@ -8295,11 +8257,13 @@ $('#scrim').onclick=()=>openDrawer(false);
 async function load(reset){
   const requestSeq=reset?++loadRequestSeq:loadRequestSeq;
   const surface=reset?claimSurface(surfacePath()):surfaceToken(surfacePath());
+  if(reset)wireLoadMore($('#loadSentinel'),{}).destroy();
   // 已经挂着就让它接着跑：重挂要先清空容器，而它这一刻要说的话跟上一刻是同一句。
   if(reset&&isCatalogPath(location.pathname)&&!islandMounted($('#libraryProcessingNotice')))
     void mountIsland('library-processing',$('#libraryProcessingNotice'),{toast,mode:'notice'},{isCurrent:()=>surfaceCurrent(surface)});
   if(!reset&&listLoading)return;
   if(!reset)listLoading=true;
+  const pageOffset=reset?0:offset+appSettings.batchSize;
   try{
   if(reset){barsContext={type:'home',filters:state};detailReturnBarsContext=null;disposeStage(false);
     renderCatalogLoading(state.state==='ads'?'正在读取垃圾文件':'正在读取作品')}
@@ -8318,14 +8282,15 @@ async function load(reset){
       const nextAds=await surfaceApi(surface,'/api/ads?'+junkQuery);
       if(requestSeq!==loadRequestSeq||!surfaceCurrent(surface))return;
       adsBatch=nextAds;cache(adsBatch.items)}
-    const batch=adsBatch.items.slice(offset,offset+appSettings.batchSize);
+    const batch=adsBatch.items.slice(pageOffset,pageOffset+appSettings.batchSize);
+    offset=pageOffset;
     const html=batch.map(junkCardHtml).join('');
     if(reset)releaseHoverPreviews($('#grid'));
     if(reset&&!batch.length)$('#grid').innerHTML=emptyState('check',junkView==='dismissed'?'没有已排除的文件':'没有待判断的垃圾文件',junkView==='dismissed'?'点“不是垃圾”的资源会保留在这里，可随时重新判断。':'当前分类没有候选文件。');
     else if(reset)setGridCards(html);else appendGridCards(html);
     renderJunkNavigation(adsBatch);
     $('#loadSentinel').hidden=$('#grid').querySelectorAll('.junkcard').length>=adsBatch.items.length;
-    wireJunkCards($('#grid'));paintSelection();return;
+    wireJunkCards($('#grid'));paintSelection();wireCatalogLoadMore(surface);return;
   }
   adsBatch=null;
   const p=new URLSearchParams(Object.entries(state).filter(([,v])=>v));
@@ -8334,10 +8299,11 @@ async function load(reset){
   if(isCatalogPath(decodeURIComponent(location.pathname))&&!state.q&&!state.orient)p.set('exclude_vertical','1');
   // JAV 模式恒不含竖屏：番号发行物本身就是横版，竖屏是另一类内容。
   if(state.jav==='1')p.set('exclude_vertical','1');
-  p.set('limit',appSettings.batchSize); p.set('offset',offset);
+  p.set('limit',appSettings.batchSize); p.set('offset',pageOffset);
   if(!reset)p.set('count','0');
   const d=await surfaceApi(surface,'/api/items?'+p);
   if(requestSeq!==loadRequestSeq||!surfaceCurrent(surface))return;
+  offset=pageOffset;
   cache(d.items);
   if(reset)total=d.total;
   buildManageBar();
@@ -8367,13 +8333,17 @@ async function load(reset){
   wireMixCards($('#grid'));
   paintSelection();
   loadShorts(requestSeq,surface,{reset,addedFrom});
-  }finally{if(!reset&&requestSeq===loadRequestSeq)listLoading=false}
+  wireCatalogLoadMore(surface);
+  }catch(error){if(requestSeq===loadRequestSeq&&surfaceCurrent(surface))throw error}
+  finally{if(!reset&&requestSeq===loadRequestSeq)listLoading=false}
 }
-const loadObserver=new IntersectionObserver(entries=>{
-  if(entries.some(x=>x.isIntersecting)&&!listLoading&&!$('#loadSentinel').hidden&&$('#stats').hidden&&$('#index').hidden){
-    offset+=appSettings.batchSize;load(false)}
-},{rootMargin:'320px'});
-loadObserver.observe($('#loadSentinel'));
+function wireCatalogLoadMore(surface){
+  wireLoadMore($('#loadSentinel'),{
+    enabled:()=>!listLoading&&$('#stats').hidden&&$('#index').hidden,
+    isCurrent:()=>surfaceCurrent(surface),
+    read:()=>load(false),
+  });
+}
 let searchPoolCache=[];
 let searchPoolRequest=0;
 function searchPool(){return searchPoolCache}
@@ -9626,35 +9596,7 @@ $('#censorSetting').onchange=e=>{
   if(on)releaseHoverPreviews();
 };
 
-/* 横向行支持鼠标拖动（三层顶栏、短片带、接着看都没滚动条，只能滚轮/触摸） */
-/* 正在被拖的那一行。松开鼠标全站只需要一个 window 监听。
-   每 wireDrag 一个元素就往 window 上挂一条 mouseup 的话，麻烦在这些横向行是
-   innerHTML 重绘出来的：每次重绘都换一批新节点，那些闭包连着已经脱离文档的元素
-   永远不回收。一屏三层顶栏加两条横向带，翻十几页就攒下上百条死监听。 */
-let dragRow=null;
-window.addEventListener('mouseup',()=>{
-  if(!dragRow)return;
-  dragRow.style.cursor='';dragRow=null;
-});
-function wireDrag(el){
-  if(!el||el.dataset.drag)return; el.dataset.drag='1';
-  let sx=0,sl=0,moved=0;
-  /* 同一个元素在宽屏不溢出、窄屏才溢出（`.count` 就是这样）。不判溢出就会在宽屏
-     把滚轮和拖动从真正在滚的子元素手里抢走。 */
-  const scrollable=()=>el.scrollWidth-el.clientWidth>1;
-  el.addEventListener('mousedown',e=>{
-    if(e.button!==0||!scrollable())return; dragRow=el;moved=0;sx=e.pageX;sl=el.scrollLeft;
-    el.style.cursor='grabbing'});
-  el.addEventListener('mousemove',e=>{
-    if(dragRow!==el)return; const dx=e.pageX-sx; moved=Math.max(moved,Math.abs(dx));
-    el.scrollLeft=sl-dx; e.preventDefault()});
-  // 拖动过就吞掉这次点击，别误触发筛选
-  el.addEventListener('click',e=>{if(moved>6){e.stopPropagation();e.preventDefault();moved=0}},true);
-  // 滚轮竖向 → 横向
-  el.addEventListener('wheel',e=>{
-    if(scrollable()&&Math.abs(e.deltaY)>Math.abs(e.deltaX)){el.scrollLeft+=e.deltaY;e.preventDefault()}},
-    {passive:false});
-}
+function wireDrag(el){return wireHorizontalScroller(el,{drag:true})}
 /* `#count` 一起登记：窄屏下排序筛选整行由 `.count` 自己横向滚动，而它没有滚动条，
    不接拖动和滚轮就只剩看得见够不着的半个按钮。 */
 function wireAllDrag(){['#tagScroll','#nrow','#count'].forEach(s=>wireDrag($(s)));
@@ -9905,9 +9847,9 @@ const tagHome=document.createComment('filter position');boardTagbar.before(tagHo
 const countHome=document.createComment('sort position');countbar.before(countHome);
 function syncFilterFrame(){
   const catalog=!boardTagbar.hidden&&!countbar.hidden&&getComputedStyle(boardTagbar).display!=='none'&&getComputedStyle(countbar).display!=='none';
-  if(catalog&&!filterFrame){filterFrame=document.createElement('div');filterFrame.className='board-filter-frame';countHome.after(filterFrame);filterFrame.append(boardTagbar,countbar)}
+  if(catalog){filterFrame=mountFilterFrame(boardTagbar,countbar,{views:$('#viewPills'),tags:$('#tagScroll'),readout:countbar.querySelector('.mono'),controls:countbar.querySelector('.sorts')})}
   else if(!catalog&&filterFrame){tagHome.after(boardTagbar);countHome.after(countbar);filterFrame.remove();filterFrame=null}
-  if(filterFrame)[boardTagbar,countbar.querySelector('.sorts')].forEach(wireOverflowFade);
+  if(filterFrame)[boardTagbar,countbar.querySelector('.sorts')].forEach(el=>wireHorizontalScroller(el));
 }
 syncFilterFrame();
 new MutationObserver(syncFilterFrame).observe(countbar,{childList:true,subtree:true});

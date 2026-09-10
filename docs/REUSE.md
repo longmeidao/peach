@@ -2,8 +2,15 @@
 
 ## Board 界面与数值设置
 
+- 浮层筛选由 `web/js/ui-components.js` 的 `mountFilterFrame()` 承载：首页与实体资料页共用视图、标签、读数、控件四个槽位。外框负责玻璃与吸顶，页面负责查询状态和事件；视频、照片与名册更新只替换底行。复用现有 Board 控件及原生 DOM，不新增依赖；身份与观看状态的组合沿用 `/api/items`。
+
 - 组件映射、官方公开注册表证据与许可证见 [Board 界面](BOARD_UI.md)。`web/board.css` 共用正式页面结构，设置可关闭该视觉层；登录和首启页共用 `board_entry_style()`。
 - `frontend/src/number-setting.ts` 共用带单位输入、可选 Switch、整数边界和锚定错误提示。关闭保留上次合法值，异步读取后切换也恢复实际值；业务保存仍由调用方负责。
+- 筛选内层复用 `filterChipHtml`、`sortControlsHtml`、`collectionHeaderHtml`，首页、关注和资料页提供查询键及读数。横向行复用 `wireHorizontalScroller`，拖动、滚轮、渐隐与卸载清理归同一个生命周期。
+- 选择范围与工具条复用 `frontend/src/selection.ts`；馆藏、关注与复核保持各自身份、可见顺序、默认选择及写入权限。批量失败项的保留由业务负责。
+- 设置表单复用 `frontend/src/settings-controls.tsx`：`SelectField` 适配现有 Select，`SettingsSection` 提供表头、正文、错误和底栏，`useSubmitAction` 负责提交互斥及卸载取消。密码字段校验与服务端回执仍归各表单，不自动重试写入。
+- 增量列表复用 `wireLoadMore` 的请求锁、原位重试与卸载清理；页面注入读取、追加、代际判定和可用条件。首页页码在读取成功后推进，照片沿用随机种子，关注合并分组。显式页码继续使用 `pagination.ts`。
+- 后台任务复用 `watchJob`、`followJobProgress` 默认面板及 `jobActivityHtml` 的真实计数／未知总量显示；关注、来源扫描、链接检查和扫描采集共用渲染。业务保留启动、终态回执和结果面板，不新增轮询循环。
 - 图标按钮统一清除浏览器内边距并居中 SVG，不覆盖业务显隐。Remix Icon 由 `vendor_web_dependencies.mjs` 生成设置导航 symbol；随机按钮保留原有双路径动画。
 - `frontend/src/board-sankey.ts` 使用 d3-sankey 0.12.3（BSD-3-Clause；类型包 0.12.5）计算来源网站到创作者线索的流向。布局依赖不读取浏览历史；Peach 提供去重聚合值并负责隐私边界。分发许可随 `web/vendor/d3-LICENSE.txt` 保留。
 

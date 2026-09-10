@@ -3,6 +3,105 @@ export { MEDIA_SOURCE_ICONS } from './media-source-icons.js';
 
 const NOTE_VARIANTS=new Set(['secondary','warning','error','success']);
 
+/** 标签含义、计数口径和查询由页面提供。 */
+export function filterChipHtml(label,{attr,value,selected=false,count,className='',countClass='n mono'}={}){
+  return `<button type="button" class="pill${className?' '+esc(className):''}" ${attr}="${esc(value)}" aria-pressed="${selected}">${esc(label)}${count==null?'':` <span class="${esc(countClass)}">${esc(count)}</span>`}</button>`;
+}
+export function sortControlsHtml({items=[],renderItem=String,extra='',shuffleId='',shuffleClass='entitybatch'}={}){
+  return `<span class="sorts"><button class="batchaction ${esc(shuffleClass)}"${shuffleId?` id="${esc(shuffleId)}"`:''} type="button" title="换一批" aria-label="换一批">${icon('shuffle')}</button>${extra}${items.map(renderItem).join('')}</span>`;
+}
+export function collectionHeaderHtml({readout='',controls='',before='',className='',loading=false}={}){
+  return `<div class="entitycollectionhead${className?' '+esc(className):''}">${before}<h3${loading?' class="skeleton"':''}>${readout}</h3>${controls}</div>`;
+}
+
+const horizontalControls=new Map();
+let horizontalCleanup;
+/** 同一容器只绑定一次，滚到边缘后将滚轮交还页面。 */
+export function wireHorizontalScroller(el,{drag=false,fade=true}={}){
+  if(!el)return;
+  const existing=horizontalControls.get(el);
+  if(existing){existing.options.drag ||= drag;existing.options.fade ||= fade;existing.update();return existing}
+  const options={drag,fade},abort=new AbortController();
+  let start=null,moved=0;
+  const update=()=>{if(options.fade){el.dataset.overflowLeft=String(el.scrollLeft>1);el.dataset.overflowRight=String(el.scrollLeft+el.clientWidth<el.scrollWidth-1)}};
+  const listen=(target,event,handler,extra={})=>target.addEventListener(event,handler,{...extra,signal:abort.signal});
+  listen(el,'scroll',update,{passive:true});
+  listen(el,'wheel',event=>{
+    if(event.defaultPrevented||Math.abs(event.deltaY)<=Math.abs(event.deltaX)||el.scrollWidth<=el.clientWidth)return;
+    const before=el.scrollLeft;el.scrollLeft+=event.deltaY;
+    if(before!==el.scrollLeft)event.preventDefault();
+  },{passive:false});
+  listen(el,'mousedown',event=>{if(!options.drag||event.button!==0||el.scrollWidth-el.clientWidth<=1)return;event.stopPropagation();start={x:event.pageX,left:el.scrollLeft};moved=0;el.style.cursor='grabbing'});
+  listen(window,'mousemove',event=>{if(!start)return;const dx=event.pageX-start.x;moved=Math.max(moved,Math.abs(dx));el.scrollLeft=start.left-dx;event.preventDefault()});
+  listen(window,'mouseup',()=>{start=null;el.style.cursor=''});
+  listen(el,'click',event=>{if(moved>6){event.stopPropagation();event.preventDefault();moved=0}},{capture:true});
+  const resize=new ResizeObserver(update);resize.observe(el);
+  const control={options,update,destroy(){abort.abort();resize.disconnect();horizontalControls.delete(el);el.style.cursor='';if(!horizontalControls.size){horizontalCleanup?.disconnect();horizontalCleanup=null}}};
+  horizontalControls.set(el,control);
+  if(!horizontalCleanup){horizontalCleanup=new MutationObserver(()=>{for(const [node,item] of horizontalControls)if(!node.isConnected)item.destroy()});horizontalCleanup.observe(document.body,{childList:true,subtree:true})}
+  update();return control;
+}
+
+const incrementalControls=new Map();
+let incrementalCleanup;
+/** 分页请求互斥，失败留在原位手动重试，卸载后丢弃结果。 */
+export function wireLoadMore(button,options){
+  if(!button)return;
+  const existing=incrementalControls.get(button);
+  if(existing){existing.options=options;return existing}
+  let busy=false,failed=false,errorNode=null,request=null,disposed=false;
+  const clearError=()=>{errorNode?.remove();errorNode=null;failed=false};
+  const control={options,async run(manual=false){
+    const current=control.options;
+    if(disposed||busy||button.hidden||!button.isConnected||(!manual&&failed)||current.enabled?.()===false)return;
+    clearError();busy=true;request=new AbortController();
+    const alive=()=>!disposed&&!request.signal.aborted&&button.isConnected&&current.isCurrent?.()!==false;
+    setActionBusy(button,true);
+    try{
+      const result=await current.read(request.signal);
+      if(alive())await current.apply?.(result);
+    }catch(error){
+      if(alive()&&error?.name!=='AbortError'){
+        failed=true;errorNode=document.createElement('div');
+        errorNode.innerHTML=noteHtml(error?.message||String(error),{variant:'error',actionLabel:'重试'});
+        errorNode.querySelector('[data-note-action]').onclick=()=>control.run(true);
+        button.after(errorNode);
+      }
+    }finally{busy=false;setActionBusy(button,false)}
+  },destroy(){disposed=true;request?.abort();observer.disconnect();button.removeEventListener('click',click);clearError();incrementalControls.delete(button);if(!incrementalControls.size){incrementalCleanup?.disconnect();incrementalCleanup=null}}};
+  const click=()=>control.run(true);
+  button.addEventListener('click',click);
+  const observer=new IntersectionObserver(entries=>{if(entries.some(entry=>entry.isIntersecting))void control.run()},{rootMargin:'320px'});
+  observer.observe(button);incrementalControls.set(button,control);
+  if(!incrementalCleanup){incrementalCleanup=new MutationObserver(()=>{for(const [node,item] of incrementalControls)if(!node.isConnected)item.destroy()});incrementalCleanup.observe(document.body,{childList:true,subtree:true})}
+  return control;
+}
+
+/** 两行筛选浮层；页面拥有槽位里的控件与查询状态。 */
+export function mountFilterFrame(top,bottom,{views,tags,readout,controls}){
+  let frame=top.closest('[data-filter-frame]');
+  if(!frame){
+    frame=document.createElement('div');
+    frame.className='board-filter-frame';
+    frame.dataset.filterFrame='';
+    top.before(frame);
+    frame.append(top);
+    top.dataset.filterRow='top';
+  }
+  const previous=frame.querySelector('[data-filter-row="bottom"]');
+  if(previous!==bottom){
+    const active=document.activeElement;
+    const key=previous?.contains(active)?['id','data-sort','data-entity-sort','data-photo-size','aria-label'].map(attr=>[attr,active.getAttribute(attr)]).find(([,value])=>value):null;
+    previous?.remove();frame.append(bottom);
+    if(key)[...bottom.querySelectorAll('button,input,[tabindex]')].find(node=>node.getAttribute(key[0])===key[1])?.focus({preventScroll:true});
+  }
+  bottom.dataset.filterRow='bottom';
+  for(const [slot,node] of Object.entries({views,tags,readout,controls})){
+    if(node)node.dataset.filterSlot=slot;
+  }
+  return frame;
+}
+
 /** Inline, persistent context beside the field/card/section it describes. */
 export function noteHtml(message,{variant='secondary',label='',className='',size='medium',filled=false,actionLabel=''}={}){
   const kind=NOTE_VARIANTS.has(variant)?variant:'secondary';
@@ -438,9 +537,7 @@ export function wireOverlayScrollbars(root=document){
   root.querySelectorAll(OVERLAY_SCROLLERS).forEach(el=>{
     if(deferReviewScroller(el))return;
     if(el.matches(BOARD_EDGE_SCROLLERS)){
-      const edges=()=>{el.dataset.overflowLeft=String(el.scrollLeft>1);el.dataset.overflowRight=String(el.scrollLeft+el.clientWidth<el.scrollWidth-1)};
-      if(!el.dataset.boardScroll){el.dataset.boardScroll='true';el.addEventListener('scroll',edges,{passive:true});el.addEventListener('wheel',event=>{if(Math.abs(event.deltaY)>Math.abs(event.deltaX)&&el.scrollWidth>el.clientWidth){const before=el.scrollLeft;el.scrollLeft+=event.deltaY;if(before!==el.scrollLeft)event.preventDefault()}},{passive:false});new ResizeObserver(edges).observe(el)}
-      edges();return;
+      wireHorizontalScroller(el);return;
     }
     attachOverlayScrollbar(el);
   });

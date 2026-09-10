@@ -614,7 +614,7 @@ class FollowContractTests(unittest.TestCase):
         self.assertIn("const followCardTags=item=>item.tags||[]", page)
         self.assertIn("const tags=followCardTags(item).slice(0,3)", page,
                       "卡片必须走过滤后的标签")
-        self.assertIn("data-follow-tag=\"${esc(key)}\"", page,
+        self.assertIn("attr:'data-follow-tag',value:key", page,
                       "筛选条必须直接消费服务端投影")
         self.assertNotIn("FOLLOW_TAG_NOISE", page)
         self.assertNotIn("FOLLOW_TAG_TOPICAL", page)
@@ -1929,7 +1929,7 @@ class FollowWebSourceTests(unittest.TestCase):
                            self.page.index("function followAuthorGroups(")]
         self.assertIn('aria-pressed="${followAuthors.has(key)}"', render)
         self.assertIn('aria-pressed="${followProviders.has(key)}"', render)
-        self.assertIn('aria-pressed="${followTags.has(key)}"', render)
+        self.assertIn('selected:followTags.has(key)', render)
         self.assertNotIn("followBulkButtons", self.page)
         self.assertNotIn("data-bulk-all", self.page)
         self.assertNotIn(".followauthors .fbulk{", self.page)
@@ -2209,7 +2209,7 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("group.map(source=>followSourceRow(source,true))")
         self.assertPageContains("data-follow-selection-remove")
         self.assertPageContains("data-follow-author-toggle")
-        self.assertPageContains("button.disabled=!ids.length||!!followRuntime?.ledger_read_only")
+        self.assertPageContains("actions:root.querySelectorAll('[data-follow-selection-action]'),locked:!!followRuntime?.ledger_read_only")
         # 选择要留下来，和 JAV 版式一样存进设置；存过旧值的机器落回默认视图。
         self.assertPageContains("followLayout:'default'")
         self.assertPageContains("appSettings.followLayout=value")
@@ -2395,7 +2395,7 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("let followAuthors=new Set(),followProviders=new Set(),followTags=new Set()")
         # 取交集的判定在服务端；页面负责把多选的标签一次全交出去。
         self.assertPageContains("+(followTags.size?`&tag=${encodeURIComponent([...followTags].join(','))}`:'')")
-        self.assertPageContains("aria-pressed=\"${followTags.has(key)}\"")
+        self.assertPageContains("selected:followTags.has(key)")
         self.assertPageContains(".r34-artist")
         self.assertPageContains(".r34-character")
         self.assertPageContains(".r34-copyright")
@@ -2963,7 +2963,8 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("${icon('chevron-down')}加载更多")
         self.assertPageLacks("${icon('plus')}加载更多")
         self.assertPageContains("${icon('history')}抓更早的一页")
-        self.assertPageContains("spinnerHtml('正在加载更多')")
+        self.assertPageContains("wireLoadMore(more,{")
+        self.assertPageContains("isCurrent:()=>surfaceCurrent(surface)&&followData===page")
         self.assertPageContains("spinnerHtml('抓取中')")
 
     def test_follow_management_list_has_routed_sorting(self):

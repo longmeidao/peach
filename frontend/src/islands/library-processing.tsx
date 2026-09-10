@@ -1,8 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { apiGet, apiSend, errorMessage } from '../api';
-import { fieldsetTitle, loadingDotsHtml, noteHtml, projectBannerHtml, setActionBusy } from '@peach/legacy/ui';
-import { jobProgressHtml } from '../board-metrics';
-import { watchJob } from '../jobs';
+import { fieldsetTitle, noteHtml, projectBannerHtml, setActionBusy } from '@peach/legacy/ui';
+import { jobActivityHtml, watchJob } from '../jobs';
 import type { JobState } from '../jobs';
 import type { IslandState } from '../islands';
 
@@ -94,9 +93,8 @@ export function LibraryProcessing({ data, error, toast, onComplete, mode, monito
       <div class="geist-fieldset-content library-processing">
         <div dangerouslySetInnerHTML={{ __html: fieldsetTitle('cleanupScrapingTitle', '扫描与采集') }} />
         <p>扫描媒体文件夹，导入已有资料，采集缺失信息。</p>
-        {state.status === 'running' && <div aria-live="polite" dangerouslySetInnerHTML={{ __html: state.total
-          ? jobProgressHtml(`${currentLine(state)} · ${state.checked || 0} / ${state.total} 个视频`, state.checked || 0, state.total)
-          : loadingDotsHtml(currentLine(state)) }} />}
+        {state.status === 'running' && <div aria-live="polite" dangerouslySetInnerHTML={{ __html:
+          jobActivityHtml(state.total ? `${currentLine(state)} · ${state.checked || 0} / ${state.total} 个视频` : currentLine(state), state.checked, state.total) }} />}
       </div>
       <footer class="geist-fieldset-footer" data-geist-fieldset-footer>
         <a class="geist-button" href="/scraping">采集来源</a>
