@@ -2,10 +2,13 @@
    按默认的 fill:black/stroke:none 画成黑块——深色底上等于看不见。 */
 .photoback svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2}
 .photoback:hover{background:var(--overlay-5);color:var(--ink)}
-/* 瀑布流：账本没有图片宽高，等宽多列流式排版正好不需要比例，也不用等图加载完再算位置。 */
+/* 瀑布流：账本没有图片宽高，等宽多列流式排版正好不需要比例，也不用等图加载完再算位置。
+   大小就是列数。窄屏两档一起收，但大图那档始终比小图少两列——收成同一个数等于这个开关
+   在这块屏幕上不起作用，而按钮上还亮着人上一次点的那一档。 */
 .photowall{column-count:5;column-gap:10px}
-@media (max-width:1400px){.photowall{column-count:4}}
-@media (max-width:1000px){.photowall{column-count:3}}
+.photowall[data-size="big"]{column-count:3}
+@media (max-width:1400px){.photowall{column-count:4}.photowall[data-size="big"]{column-count:2}}
+@media (max-width:1000px){.photowall{column-count:3}.photowall[data-size="big"]{column-count:1}}
 .photocell{display:block;width:100%;border:0;padding:0;margin:0 0 10px;background:transparent;
   border-radius:var(--surface-radius);overflow:hidden;cursor:zoom-in;break-inside:avoid;line-height:0}
 .photocell img{width:100%;height:auto;display:block;background:var(--sunk)}

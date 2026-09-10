@@ -1018,7 +1018,7 @@ function wt(e) {
 	let a = e.closest(".dual-range");
 	if (!a) return;
 	let o = e.id === "durMax" ? "max" : "min", s = a.querySelector(`[data-range-end="${o}"]`);
-	s || (s = document.createElement("output"), s.className = "board-range-tip", s.dataset.rangeEnd = o, s.setAttribute("aria-hidden", "true"), a.append(s)), s.textContent = r >= n && o === "max" ? "不限" : `${r} 分钟`, s.style.left = `${i}%`;
+	s || (s = document.createElement("output"), s.className = "board-range-tip", s.dataset.rangeEnd = o, s.setAttribute("aria-hidden", "true"), a.append(s)), s.textContent = r >= n && o === "max" ? "不限" : `${r} 分钟`, s.style.left = `${i}%`, a.querySelectorAll(".board-range-tip").forEach((e) => e.toggleAttribute("data-range-active", e === s));
 }
 function Tt() {
 	let e = (e) => {
@@ -1670,18 +1670,18 @@ var yn = (e) => e.replace(/[&<>"']/g, (e) => ({
 function bn(e, t, n = "", r = "") {
 	if (!t) return "";
 	let i = `sidebar-group-${encodeURIComponent(e)}`;
-	return `<details class="sec${r ? " cat-" + yn(r) : ""}" data-sidebar-group="${yn(e)}"><summary role="button" class="board-section-toggle"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chevron-right"/></svg><span>${yn(e)}</span>${n}</summary><div class="board-sidebar-body" id="${i}">${t}</div></details>`;
+	return `<details class="sec${r ? " cat-" + yn(r) : ""}" data-sidebar-group="${yn(e)}"><summary role="button" class="board-section-toggle"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chevron-right"/></svg><span>${yn(e)}</span></summary><div class="board-sidebar-body" id="${i}">${t}${n}</div></details>`;
 }
 function xn(e) {
 	e.querySelectorAll("[data-sidebar-group]").forEach((e) => {
 		if (e.dataset.sidebarWired) return;
 		e.dataset.sidebarWired = "true";
-		let t = e.querySelector(".board-section-toggle"), n = e.querySelector(".board-sidebar-body"), r = `peach.sidebar.group.${e.dataset.sidebarGroup}`, i = null;
+		let t = e.querySelector(".board-sidebar-body"), n = `peach.sidebar.group.${e.dataset.sidebarGroup}`, r = null;
 		try {
-			i = sessionStorage.getItem(r);
+			r = sessionStorage.getItem(n);
 		} catch {}
-		let a = !!n.querySelector("[aria-pressed=true]");
-		e.open = i === null ? a : i === "open", t.querySelectorAll("button").forEach((e) => e.addEventListener("click", (e) => e.stopPropagation()));
+		let i = !!t.querySelector("[aria-pressed=true]");
+		e.open = r === null ? i : r === "open";
 	}), y(e, "details[data-sidebar-group]", "sidebar-collapse"), e.querySelectorAll(".board-section-toggle").forEach((e) => {
 		e.dataset.persistWired || (e.dataset.persistWired = "true", e.addEventListener("click", () => {
 			let t = `peach.sidebar.group.${e.closest("[data-sidebar-group]").dataset.sidebarGroup}`;
@@ -1699,7 +1699,7 @@ async function Cn(e, t) {
 		return;
 	}
 	let n = e.getBoundingClientRect(), r = n.left + n.width / 2, i = n.top + n.height / 2, a = Math.hypot(Math.max(r, innerWidth - r), Math.max(i, innerHeight - i)) * 2.5, o = document.createElement("style");
-	o.textContent = `::view-transition-old(root){animation:none}::view-transition-new(root){mix-blend-mode:normal;mask-image:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20100%20100%22%3E%3Cdefs%3E%3Cfilter%20id%3D%22b%22%20x%3D%22-50%25%22%20y%3D%22-50%25%22%20width%3D%22200%25%22%20height%3D%22200%25%22%3E%3CfeGaussianBlur%20stdDeviation%3D%222%22%2F%3E%3C%2Ffilter%3E%3C%2Fdefs%3E%3Ccircle%20cx%3D%2250%22%20cy%3D%2250%22%20r%3D%2242%22%20fill%3D%22white%22%20filter%3D%22url(%23b)%22%2F%3E%3C%2Fsvg%3E");mask-repeat:no-repeat;animation:peach-theme-reveal 820ms cubic-bezier(.16,1,.3,1) both}@keyframes peach-theme-reveal{from{mask-position:${r}px ${i}px;mask-size:0px 0px}to{mask-position:${r - a / 2}px ${i - a / 2}px;mask-size:${a}px ${a}px}}`, Sn = !0, document.head.append(o);
+	o.textContent = `::view-transition-old(root){animation:none}::view-transition-new(root){mix-blend-mode:normal;mask-image:radial-gradient(circle closest-side,#000 78%,#0006 88%,transparent);mask-repeat:no-repeat;will-change:mask-position,mask-size;animation:peach-theme-reveal 560ms cubic-bezier(.16,1,.3,1) both}@keyframes peach-theme-reveal{from{mask-position:${r}px ${i}px;mask-size:0px 0px}to{mask-position:${r - a / 2}px ${i - a / 2}px;mask-size:${a}px ${a}px}}`, Sn = !0, document.head.append(o);
 	try {
 		await document.startViewTransition(t).finished;
 	} catch {
@@ -4472,7 +4472,7 @@ var ki = {
 async function Mi(e, t, n, r = {}) {
 	let i = ki[e];
 	if (!i) throw Error(`未注册的 island：${String(e)}`);
-	Ni(t);
+	Pi(t);
 	let a = {
 		controller: new AbortController(),
 		painted: !1
@@ -4503,9 +4503,10 @@ async function Mi(e, t, n, r = {}) {
 	};
 	Oe(ae(i.component, s), t);
 }
-function Ni(e) {
+var Ni = (e) => !!e && ji.has(e);
+function Pi(e) {
 	let t = ji.get(e);
 	t && (t.controller.abort(), ji.delete(e), t.painted && Oe(null, e));
 }
 //#endregion
-export { yt as TASTE_GUIDE_KEY, _n as activityChartsHtml, mi as boardPageSkeleton, je as boundedPreference, vi as catalogEmptyHtml, _i as catalogSuggestions, li as clampPage, _t as cleanupSkeletonHtml, ht as cloudLocations, gt as cloudPreferenceLocations, $r as createReviewSelection, dn as creatorSankeyHtml, Ie as distributionChart, gi as emptyCatalogLayout, pi as entitySkeletonHtml, lt as followJobProgress, ni as groupReviewRows, Zr as identityEvidenceHtml, Tt as initBoardControls, Ai as islandNames, Di as javImageKind, Fe as jobProgressHtml, di as matchesFaceSource, Ct as mountBoardStatePreview, Mi as mountIsland, Ne as mountNumberSetting, fi as nativeImageFit, Ei as normalizeJavImage, wi as normalizeJavLayout, Ti as normalizeJavPreferences, ci as pageCount, ui as paginationHtml, ke as preferredDirection, Re as radarChart, mn as radialCardHtml, Le as rankedChart, Jr as refreshStore, Ci as resourceScanHtml, Xr as reviewImageHtml, yi as sidebarHasCatalogContent, bn as sidebarSectionHtml, xi as sidebarTagCounts, Pe as statCardBody, qr as storeNames, wt as syncBoardRange, Oi as syncJavImages, Me as syncNumberSetting, bi as syncSidebarSurface, vt as tasteHistoryGuideHtml, Cn as transitionTheme, Ni as unmountIsland, ei as updateReviewSticky, ct as watchJob, vn as wireActivityCharts, fn as wireCreatorSankey, At as wireExpandableRanks, kt as wireGrowingCharts, hn as wireRadialCards, Qr as wireReviewPictures, oi as wireReviewSelection, xn as wireSidebarGroups, bt as wireTasteHistoryGuide };
+export { yt as TASTE_GUIDE_KEY, _n as activityChartsHtml, mi as boardPageSkeleton, je as boundedPreference, vi as catalogEmptyHtml, _i as catalogSuggestions, li as clampPage, _t as cleanupSkeletonHtml, ht as cloudLocations, gt as cloudPreferenceLocations, $r as createReviewSelection, dn as creatorSankeyHtml, Ie as distributionChart, gi as emptyCatalogLayout, pi as entitySkeletonHtml, lt as followJobProgress, ni as groupReviewRows, Zr as identityEvidenceHtml, Tt as initBoardControls, Ni as islandMounted, Ai as islandNames, Di as javImageKind, Fe as jobProgressHtml, di as matchesFaceSource, Ct as mountBoardStatePreview, Mi as mountIsland, Ne as mountNumberSetting, fi as nativeImageFit, Ei as normalizeJavImage, wi as normalizeJavLayout, Ti as normalizeJavPreferences, ci as pageCount, ui as paginationHtml, ke as preferredDirection, Re as radarChart, mn as radialCardHtml, Le as rankedChart, Jr as refreshStore, Ci as resourceScanHtml, Xr as reviewImageHtml, yi as sidebarHasCatalogContent, bn as sidebarSectionHtml, xi as sidebarTagCounts, Pe as statCardBody, qr as storeNames, wt as syncBoardRange, Oi as syncJavImages, Me as syncNumberSetting, bi as syncSidebarSurface, vt as tasteHistoryGuideHtml, Cn as transitionTheme, Pi as unmountIsland, ei as updateReviewSticky, ct as watchJob, vn as wireActivityCharts, fn as wireCreatorSankey, At as wireExpandableRanks, kt as wireGrowingCharts, hn as wireRadialCards, Qr as wireReviewPictures, oi as wireReviewSelection, xn as wireSidebarGroups, bt as wireTasteHistoryGuide };

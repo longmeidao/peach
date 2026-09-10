@@ -34,6 +34,7 @@
 /* 窄屏断点写在这一段之后：和上面同优先级，写在前面会被原样盖掉。 */
 @media (max-width:640px){
   .photowall{column-count:2;column-gap:8px}
+  .photowall[data-size="big"]{column-count:1}
   .photozoom input{width:72px}.photozoom b{display:none}
   .photolight .photomain .swiper-zoom-container{padding:12px 12px 70px}
   .photolight.has-strip .photomain .swiper-zoom-container{padding-bottom:136px}

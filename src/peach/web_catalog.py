@@ -251,6 +251,15 @@ def catalog_filter(contract: WebContract, args):
     return where, par
 
 
+def seeded_order(seed) -> str:
+    """按种子打散的 ORDER BY 片段，列名固定是 `a.id`。
+
+    同一粒种子顺序固定，翻页不重不漏；换一粒就是「换一批」。拼进 SQL 的是算出来的
+    整数，不是请求里的原文。"""
+    sd = int(seed or 1) % 99991 or 7
+    return f"((a.id * {sd}) % 99991), a.id"
+
+
 def q_items(contract: WebContract, args):
     where, par = catalog_filter(contract, args)
     sort_key = str(args.get("sort") or "")
@@ -259,8 +268,7 @@ def q_items(contract: WebContract, args):
     order = column.format(d=direction) if column else ("RANDOM()" if sort_key == "rand" else None)
     if order is None:
         if args.get("sort") == "seed":
-            sd = int(args.get("seed") or 1) % 99991 or 7
-            order = f"((a.id * {sd}) % 99991), a.id"
+            order = seeded_order(args.get("seed"))
         elif args.get("sort") == "daily" or not args.get("sort"):
             # 每日轮换：用当天日期做种子打散，同一天顺序固定，隔天自动换一批。
             # 不用 RANDOM() —— 那样每次刷新都不同，翻页还会重复/漏掉。
@@ -872,13 +880,17 @@ def state_clause(state: str) -> str:
 TOPS_POOL_FACTOR = 4
 
 
-def q_tops(contract: WebContract, n=28, jav=False, seed="", state=""):
+def q_tops(contract: WebContract, n=28, jav=False, seed="", state="", page=0):
     """顶部三层用的数据：女优圆头像 / 厂牌 / 内容标签。
 
     缓存的人物肖像由前端优先使用；缺失时才回退到代表作接触印相裁切。
 
     `state` 跟作品列表同一份口径：在「已标记」这类页面上，上面这排头像
-    只应该出现真的有已标记作品的人，否则点进去是空的。"""
+    只应该出现真的有已标记作品的人，否则点进去是空的。
+
+    `page` 给横滚续接用。第一页那 n 个是从数量前 `n * TOPS_POOL_FACTOR` 里抽的，
+    续页要是再回到那一段就会把同一个人给两次，所以那一段归第一页独占，续页从它的
+    末尾往后按数量数下去。库里六百多位女优，一排给到头才是「滚到底还能接着滚」。"""
     with contract.read_connection() as c:
         scope = (JAV_ASSET_CLAUSE if jav else "") + state_clause(state)
         base = (
@@ -889,14 +901,20 @@ def q_tops(contract: WebContract, n=28, jav=False, seed="", state=""):
             "FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
             "JOIN asset a ON a.id=ae.asset_id "
             "WHERE a.medium='video' AND e.kind=? " + scope +
-            "GROUP BY e.id,e.canonical_name ORDER BY n DESC LIMIT ?"
+            "GROUP BY e.id,e.canonical_name ORDER BY n DESC LIMIT ? OFFSET ?"
         )
+        first_page_span = n * TOPS_POOL_FACTOR if seed else n
+
+        def read(kind, limit, skip):
+            return [{"id": entity_id, "k": k, "n": cnt, "rep": representative}
+                    for entity_id, k, cnt, representative
+                    in c.execute(base, (kind, limit, skip))]
 
         def pick(kind):
             """按数量取候选池，再按种子确定性抽样。种子为空时退回严格前 N。"""
-            pool = [{"id": entity_id, "k": k, "n": cnt, "rep": representative}
-                    for entity_id, k, cnt, representative
-                    in c.execute(base, (kind, n * TOPS_POOL_FACTOR if seed else n))]
+            if page:
+                return read(kind, n, first_page_span + (page - 1) * n)
+            pool = read(kind, first_page_span, 0)
             if not seed or len(pool) <= n:
                 return pool[:n]
             # 同一个种子必须给出同一批人：翻页和重绘之间不能抖动。
@@ -1001,7 +1019,9 @@ def q_facets(
             for r in rows
             if r["k"] not in LENGTH_TAGS
         ]
-        out["tags"] = [r for r in classified if r["cat"] != "meta"][:44]
+        # 标签条横着滚到底还要接着滚，侧栏那组摊开也读的是这一份：截到几十条，
+        # 两处都在库里还剩一百多个标签时说「没有了」。
+        out["tags"] = [r for r in classified if r["cat"] != "meta"][:200]
         out["tech"] = [r for r in classified if r["cat"] == "meta"][:16]
         out["tagperformers"] = [dict(r) for r in c.execute(
             "SELECT e.canonical_name AS k,count(DISTINCT ae.asset_id) AS n "

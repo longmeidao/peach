@@ -25,9 +25,9 @@
   display:flex;flex-direction:column;align-items:center;gap:16px}
 .tokstage.wide .tokbtns{left:auto;right:12px;bottom:18px}
 .tokaction{display:flex;flex-direction:column;align-items:center;gap:6px;color:#f1f1f1}
-.tokbtns button{position:relative;transition:transform .14s,background .14s}
-.tokbtns button:hover{transform:scale(1.05);border-color:rgba(255,255,255,.5)}
-.tokbtns button:active{transform:scale(.96)}
+.tokbtns button{position:relative;transition:scale calc(var(--spring-press-ms) * 1ms) var(--spring-press),background .14s}
+.tokbtns button:hover{scale:1.05;border-color:rgba(255,255,255,.5)}
+.tokbtns button:active{scale:.96;transition:scale .06s ease-out}
 .tokbtns button:focus-visible{outline:2px solid var(--tungsten);outline-offset:3px}
 .toklabel{font-size:var(--fs-xs);font-weight:500;line-height:1.25;white-space:nowrap}.toklabel b{font:inherit}
 /* 进度条。可见部分只有 4px，但命中区得够高——屏幕最下沿的 4px 是鼠标最难瑞的
@@ -277,11 +277,11 @@ body:has(#batchbar:not([hidden])) #stage{padding-bottom:180px}
 /* 版式按钮嵌在排序行里，必须比 `.sorts button` 更具体，否则那条规则的内边距和
    行高会把图标顶偏。图标按钮不设左右内边距，靠 grid 居中。 */
 /* `flex:none` 是必须的，不是保险。`.sorts` 是不换行的横向滚动条，里面的项默认可收缩，
-   而 `.javlayout` 自己带着 `min-width:0`（fieldset 需要它才不撑破容器）——两条合起来
+   而 `.iconswitch` 自己带着 `min-width:0`（fieldset 需要它才不撑破容器）——两条合起来
    允许它被压到内容宽度以下。窄屏上排序按钮一多，三个 34 px 的版式按钮就会叠在一起，
    还压住旁边的「发行时间」。`.sorts button` 早就有 `flex:0 0 auto`，但 fieldset 不是
-   button，那条规则选不到它。 */
-.sorts .javlayout{display:inline-flex;gap:2px;margin:0 6px;flex:none}
+   button，那条规则选不到它。照片那一排的大小开关是同一个控件，走同一条。 */
+.sorts .iconswitch{display:inline-flex;gap:2px;margin:0 6px;flex:none}
 
 
 .review:has(.reviewidentityevidence){--review-fieldset-height:560px}

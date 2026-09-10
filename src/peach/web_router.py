@@ -102,9 +102,11 @@ def _get_tops(contract, args):
     jav = args.get("jav") == "1"
     seed = str(args.get("seed", ""))[:32]
     state = str(args.get("state", ""))
+    # 横滚续接一页一页地要，页号必须进缓存键：不进的话第二页拿回的是第一页的答案。
+    page = max(int(args.get("page", "0")), 0)
     return contract.cached(
-        f"tops{n}{'-jav' if jav else ''}:{seed}:{state}",
-        lambda: q_tops(contract, n, jav=jav, seed=seed, state=state),
+        f"tops{n}p{page}{'-jav' if jav else ''}:{seed}:{state}",
+        lambda: q_tops(contract, n, jav=jav, seed=seed, state=state, page=page),
     )
 
 

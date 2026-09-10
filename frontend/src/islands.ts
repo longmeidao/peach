@@ -135,6 +135,12 @@ export async function mountIsland<N extends IslandName>(
   render(h(island.component, attrs), el);
 }
 
+/** 这个容器上是不是已经挂着一个 island。
+ *
+ *  遗留层据此判断要不要重挂。`mountIsland` 开头就把容器卸干净，而卸载会把画过的
+ *  内容清掉：内容根本没变时，那一下只是一次白白的布局塌陷。 */
+export const islandMounted = (el: Element | null): boolean => !!el && mounted.has(el);
+
 /** 卸载容器上的 island：中止在途取数并清空自己画过的内容。没挂过的容器是空操作。 */
 export function unmountIsland(el: Element): void {
   const mount = mounted.get(el);

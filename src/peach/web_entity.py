@@ -20,6 +20,7 @@ from .web_catalog import (
     COST,
     VISIBLE_CATALOG_ASSET,
     attach_avatar_availability,
+    seeded_order,
     tag_is_not_a_performer_name,
     tag_not_hidden,
 )
@@ -238,6 +239,9 @@ def q_entity_photos(contract: WebContract, args):
     try:
         limit = max(1, min(int(args.get("limit") or 120), 600))
         offset = max(0, int(args.get("offset") or 0))
+        # 带种子是「换一批」；不带就按目录、文件名排，一套图的编号顺序不被打乱。
+        seed = str(args.get("seed") or "")
+        order = seeded_order(seed) if seed else "dir,a.name,a.id"
     except (TypeError, ValueError):
         return {"error": "invalid pagination"}
     with contract.read_connection() as c:
@@ -277,24 +281,27 @@ def q_entity_photos(contract: WebContract, args):
                      " AND a.medium='image' AND a.name IS NOT NULL "
                      "AND (a.disposal IS NULL OR a.disposal<>'trash') "
                      f"GROUP BY a.id,a.name,a.size,a.location,{PHOTO_DIR} "
-                     "ORDER BY dir,a.name,a.id LIMIT ? OFFSET ?",
+                     f"ORDER BY {order} LIMIT ? OFFSET ?",
                      (row["id"], limit, offset),
                  )]
         return {
             "kind": kind, "name": row["canonical_name"], "entity_id": row["id"],
-            "sets": sets, "total": total, "items": items,
+            "sets": sets, "total": total, "items": items, "seed": seed,
             "has_more": offset + len(items) < total,
         }
 
 
 def q_photo_set(contract: WebContract, args):
-    """一个图集里的图片。按文件名排，`001.jpg` 这类编号才不会乱序。"""
+    """一个图集里的图片。默认按文件名排，`001.jpg` 这类编号才不会乱序；带种子时按种子
+    打散，那是「换一批」，翻页沿用同一粒。"""
     try:
         set_id = int(args.get("id", ""))
     except (TypeError, ValueError):
         return {"error": "invalid id"}
     limit = max(1, min(int(args.get("limit") or 120), 600))
     offset = max(0, int(args.get("offset") or 0))
+    seed = str(args.get("seed") or "")
+    order = seeded_order(seed) if seed else "a.name,a.id"
     with contract.read_connection() as c:
         anchor = c.execute(
             "SELECT id,location,path,name FROM asset "
@@ -315,13 +322,13 @@ def q_photo_set(contract: WebContract, args):
                      f"SELECT a.id,a.name,a.size,a.location FROM asset a WHERE a.medium='image' "
                      f"AND a.name IS NOT NULL AND {PHOTO_DIR}=? AND a.location=? "
                      "AND (a.disposal IS NULL OR a.disposal<>'trash') "
-                     "ORDER BY a.name,a.id LIMIT ? OFFSET ?",
+                     f"ORDER BY {order} LIMIT ? OFFSET ?",
                      (*par, limit, offset),
                  )]
         return {
             "id": anchor["id"], "title": photo_set_title(directory),
             "location": anchor["location"], "cost": COST.get(anchor["location"], "metered"),
-            "total": total, "items": items, "has_more": offset + len(items) < total,
+            "total": total, "items": items, "seed": seed, "has_more": offset + len(items) < total,
         }
 
 

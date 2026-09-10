@@ -1,8 +1,14 @@
 /* ── 常驻筛选层：原位保持透明，只在真正吸顶后加磨砂黑底 ── */
 .tagbar{position:sticky;top:var(--topH);z-index:61;height:var(--filterH);padding:9px 16px;
   border-bottom:1px solid transparent;background:transparent;
-  display:flex;gap:7px;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;align-items:center}
-.tagbar::-webkit-scrollbar{display:none}
+  display:flex;gap:7px;overflow:hidden;align-items:center}
+/* 横滚只发生在右半截。左边那四枚是视图，四选一、恒有一枚生效，读的是「这一屏现在
+   在看什么」；右边的标签才是可加可不加的筛选。读数跟着筛选一起滚走的话，滚到一半
+   这条上就没有任何东西说明现在看的是哪一档了。 */
+.viewpills{display:flex;gap:7px;flex:none;align-items:center}
+.tagscroll{display:flex;gap:7px;flex:1;min-width:0;align-items:center;
+  overflow-x:auto;overflow-y:hidden;scrollbar-width:none}
+.tagscroll::-webkit-scrollbar{display:none}
 /* 选中药丸和生效筛选共用高亮填充。 */
 .pill{flex:none;height:var(--filterItemH);padding:0 20px;border:1px solid var(--field-ring);
   border-radius:var(--pill-radius);background:transparent;display:inline-flex;align-items:center;justify-content:center;
@@ -26,16 +32,25 @@
 .sep{flex:none;width:1px;height:19px;background:var(--field-ring-hover);margin:0 3px}
 
 /* 多标签交集筛选条 */
-.combo{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:0 0 10px}
+/* 这一条从无到有会把底下整块推下四十像素。留着空位等它是另一种代价——一屏没有任何
+   筛选时头顶白占一条。所以让它自己长出来：高度从 0 走到 auto，二百来毫秒，推的过程
+   看得见就不叫跳。`interpolate-size` 是这段动画的前提，缺了它高度直接跳到终值。 */
+.combo{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:0 0 10px;
+  overflow:hidden;interpolate-size:allow-keywords;height:auto;
+  transition:height .22s cubic-bezier(0,0,.2,1),margin-bottom .22s cubic-bezier(0,0,.2,1)}
 /* 一条也没有时不占位：高度是 0，那 10px 下边距却照留，成了下面那块浮层头顶的一段空白。 */
-.combo:empty{margin-bottom:0}
-/* 交集条上的每一颗都是已经生效的筛选。 */
-.combo .cb{min-height:36px;box-sizing:border-box;display:inline-flex;align-items:center;gap:7px;padding:0 9px 0 12px;
-  border-radius:var(--tag-radius);border:1px solid var(--field-ring);color:var(--ink-2);
-  background:var(--picked);font-size:var(--fs-xs)}
-.combo .cb b{cursor:pointer;opacity:.7;font-weight:400}
-.combo .cb b:hover{opacity:1}
-.combo .clr{min-height:36px;display:inline-flex;align-items:center;padding:0 8px;background:none;border:0;color:var(--muted);cursor:pointer;font-size:var(--fs-xs);text-decoration:none}
+.combo:empty{height:0;margin-bottom:0}
+@media(prefers-reduced-motion:reduce){.combo{transition:none}}
+/* 交集条上的每一颗都是一个标签，跟详情面板里那一颗是同一样东西：名字加一颗撤掉它的
+   键。所以照那一颗画——同一档圆角、一圈线、一样的身量和一样的移除键，只把面换成
+   --picked，因为这一颗说的是「已经加上去了」。差别留给状态，形状不参与表意。 */
+.combo .cb{box-sizing:border-box;display:inline-flex;align-items:center;min-height:30px;padding:0 0 0 11px;
+  border:1px solid var(--line);border-radius:var(--tag-radius);overflow:hidden;
+  background:var(--picked);color:var(--ink-2);font-size:var(--fs-md);line-height:20px}
+.combo .cb b{display:grid;place-items:center;width:28px;height:28px;margin-left:5px;
+  cursor:pointer;color:var(--muted);font-size:var(--fs-xs);font-weight:400}
+.combo .cb b:hover{color:var(--drop);background:color-mix(in srgb,var(--drop) 12%,transparent)}
+.combo .clr{min-height:28px;display:inline-flex;align-items:center;padding:0 6px;background:none;border:0;color:var(--muted);cursor:pointer;font-size:var(--fs-xs);text-decoration:none}
 /* 管理页标题下的说明只用这一种字形和间距；不要再让统计容器或吸顶计数栏各画一份。 */
 .pagelede{margin:0 0 16px;color:var(--muted);font-size:var(--fs-sm);line-height:1.5}
 .pagelede[hidden]{display:none}
