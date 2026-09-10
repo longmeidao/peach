@@ -209,6 +209,28 @@ Radial Chart Card、Bar List Card、Heatmap 与 Sankey 的 Pro 源码**未取得
 | 复核队列分页 | Pagination：nav 两端对齐 `gap-2`；Previous／Next 是 32px 次级小键（圆角 8、内边距 6/8、带箭头）；页码 `size-8 rounded-lg` Body Medium，当前页 border-button 描边 + primary 底 + xs 阴影并标 `aria-current="page"`，其余次文字色、悬停 secondary-hover；两侧折成「…」各留一个邻页；一页时不渲染；没有过渡 | 尺寸与颜色照抄；分页做在前端，一页 20 张（接口 4.6 MB 本机读 0.1 秒，卡的是一次画 1300 张卡）；箭头用雪碧图的 `chevron-left/right`，文案「上一页／下一页」；分组与筛选按整条队列算、卡片只画本页；换分类／分组／筛选回第 1 页 |
 | 数据管理页 | dashboard／finance 模板：顶上一排 plain stat card（132px、圆角 16、secondary 底、p 16；32px 图标格 + 20px 字形；标签 Body Medium 次文字色；读数 title-1-medium 24/34；`grid-cols-2 lg:grid-cols-4 gap-4`），下面是图表卡与数据表 | 五张读数卡一行（1120 内），窄了折两列、再折一列；整张卡是入口按钮，悬停抬主文字色 6% 底（上游卡不可点）；读数下一行 Caption 是同一份 payload 的分项；扫描与采集、空文件夹各占一整行，左说明右按钮；链接管理与资源同步不动 |
 
+## 首次设置 Auth Card
+
+Button 取证（2026-09-10）：对照官网 `/components/button` 与保存的
+`board-reference/button.json`。选择文件夹为 medium 纯图标 secondary，添加媒体库为
+带前置图标的 secondary，完成设置为 primary；高度 36px、图标 20px、圆角 10px。
+主按钮渐变使用官网实测色值，hover 叠层以 150ms 淡入；按下缩放至 0.98，
+按下 220ms、释放 420ms，曲线为 `cubic-bezier(.4,0,.2,1)`，减少动态效果时关闭。
+按钮保留原动作、键盘焦点、忙态防重复与禁用语义，不写入预览配置。
+
+Checkbox 动效取证（2026-09-10）：项目保存的 `board-reference/checkbox.json` 中
+`checkbox-glyph.tsx` 使用 16px SVG、`pathLength=1` 与 `animate-check-draw`。
+实时 `/components/checkbox` CSS 确认为 200ms `cubic-bezier(.65,0,.35,1)`，
+`stroke-dashoffset` 从 `1px` 到 `0`；减少动态效果时立即显示完整勾线。
+150ms 只负责背景、边框和阴影过渡，不能用它代替描线动画。
+setup 使用同一勾线形状、蓝色渐变及这两组状态规则。
+
+2026-09-10 使用内置浏览器核对 `/components/auth-card`，复用已登记的
+`boardui-auth-card.json`：集中式标题、Logo、表单与底部主按钮，24px 圆角、
+24/32px 内边距和轻阴影。Peach 的媒体来源表单采用 560px 上限；保留目录增删、
+来源选择、可选密码、高级设置、扫描及历史导入。390px 下单列，无横向溢出。
+独立只读预览为 18985；不提交真实配置、不启动扫描，生产未切换。
+
 ## 验证记录
 
 侧栏采用 AI chat 公开变体的分组标题、展开叶项与尾部计数；分组箭头位于右侧，标题高 36px，展开复用共享 Collapse。媒体库入口适配公开 `DashboardUserMenu`：265px 面板、16px 圆角、10px 内边距，桌面右侧 8px、手机下方展开，150ms ease-out 淡入、缩放 .95 与 2px 模糊。独立按钮控制侧栏展开；媒体库图标打开选择面板，展开面板时入口显示轮廓。首页使用 20px 槽位的 Peach logo，按透明边距校准可见轮廓及文字起点，收起态按钮为 36px 正方形。媒体库与导航图标统一 20px、1.7px 线宽，无图标底色。设置固定在底部，与明暗开关并排；收起时明暗开关只显示目标主题图标。主题动画参考公开 `https://www.boardui.com/r/theme-toggle.json`：200ms 滑块与 820ms 柔边扩散，缓动 `cubic-bezier(.16,1,.3,1)`，减少动态效果时直接切换。

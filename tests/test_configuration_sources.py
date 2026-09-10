@@ -85,7 +85,7 @@ class MediaConfigurationTests(unittest.TestCase):
             self.assertIn('name="media_root"', html)
             self.assertIn('value="B:/"', html)
 
-    def test_cloud_only_completion_page_shows_its_mount_and_scan_command(self):
+    def test_completion_page_keeps_runtime_details_collapsed(self):
         from peach.routes_pages import setup_done_page
         with tempfile.TemporaryDirectory() as directory:
             base = Path(directory).resolve()
@@ -95,12 +95,18 @@ class MediaConfigurationTests(unittest.TestCase):
                                    ca_cert=None, ca_error='unavailable', token_path=base / 'token')
             with patch('peach.distribution.standalone', return_value=False):
                 html = setup_done_page(SimpleNamespace(config=config, tree=tree), windows=False, scan_requested=False)
-            self.assertIn('/Volumes/115', html)
-            self.assertIn('peach scan configured', html)
-            self.assertNotIn('peach scan local', html)
-            self.assertIn('<a class="geist-button primary" href=', html)
+            self.assertNotIn('/Volumes/115', html)
+            self.assertNotIn('peach scan configured', html)
+            self.assertNotIn('本机 CA', html)
+            self.assertNotIn('已应用 0 个迁移', html)
+            self.assertIn('稍后在配置页开始扫描媒体库', html)
+            self.assertIn('<details><summary><span>运行信息</span>', html)
+            self.assertNotIn('<details open', html)
+            self.assertIn('<a class="setup-enter" href=', html)
             with patch('peach.distribution.standalone', return_value=True):
                 packaged = setup_done_page(SimpleNamespace(config=config, tree=tree), windows=True,
                                            scan_requested=False, history_guide=True)
-            self.assertIn('<a class="geist-button primary" href=', packaged)
+            self.assertIn('<a class="setup-enter" href=', packaged)
             self.assertIn('>导入浏览器历史记录</a>', packaged)
+            self.assertIn('<details><summary><span>运行信息</span>', packaged)
+            self.assertNotIn('<details open', packaged)

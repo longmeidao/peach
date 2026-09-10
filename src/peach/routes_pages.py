@@ -130,6 +130,7 @@ button[type=submit]:hover{background:color-mix(in srgb,var(--ink) 88%,var(--grou
    grid 的空轨道会留下一段 gap。 */
 .dir{display:flex;flex-wrap:wrap;gap:10px;padding:16px;border:1px solid var(--line-soft);border-radius:var(--control-radius);margin-top:16px}
 .dir:first-child{margin-top:0}.dir .bad{flex-basis:100%;margin:0}
+.entry-input{display:contents}
 .dir input[type=text]{flex:1 1 auto;width:auto;min-width:0}
 .dir > input[type=text]{flex:1 1 0;width:0}
 .sourcefields{flex-basis:100%;display:grid;gap:8px;min-width:0}
@@ -167,7 +168,7 @@ _SETUP_HEAD = ('<!doctype html>\n<html lang="zh-CN"><head><meta charset="utf-8">
 #: 这里只决定同一道题在浏览器里怎么称呼：命令行那份题面要把可选值写进去，页面用控件表达。
 _SETUP_COPY = {
     "data_root": ("数据目录", "Peach 数据库、缓存和设置文件都放在这里。"),
-    "media_dir": ("媒体文件夹", "Peach 从这些文件夹读取视频和图片。可以是外置硬盘上的文件夹，但必须已经存在。"),
+    "media_dir": ("媒体库", "Peach 从媒体库读取视频和图片。请选择已存在的文件夹，也可以使用外置硬盘。"),
     "host": ("谁可以访问", ""),
     "port": ("端口", "浏览器地址里冒号后面的数字，一般不用改。"),
     "mdns_name": ("局域网访问地址", "选了「同一局域网的设备」之后，其他设备在浏览器里输入这个地址就能打开 Peach。"),
@@ -255,9 +256,10 @@ _SETUP_SCRIPT = """<script>
 })();
 </script>"""
 
-#: 与站内共用勾选框相同的字形（lucide `check`）。这一页不加载站内脚本，所以内联一份。
-_CHECK_SVG = ('<svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round">'
-              '<path d="M20 6 9 17l-5-5"/></svg>')
+#: Board CheckboxGlyph 的归一化勾线；来源见 docs/BOARD_UI.md。
+_CHECK_SVG = ('<svg viewBox="0 0 16 16" fill="none">'
+              '<path d="M4 7.7002L6.64645 10.3466C6.84171 10.5419 7.15829 10.5419 7.35355 10.3466L12 5.7002" '
+              'stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" pathLength="1"/></svg>')
 #: 移除一行媒体文件夹的字形（lucide `x`）。
 _X_SVG = '<svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg>'
 #: 「选择文件夹」（lucide `folder-search`）：弹系统对话框去挑一个文件夹。`folder-open` 归
@@ -326,8 +328,13 @@ def _document(title: str, body: str) -> str:
     # 页内脚本对两张页面都生效：找不到对应控件时它什么也不做。
     index = (PROJECT_ROOT / "web/index.html").read_text(encoding="utf-8")
     symbols = ''.join(re.findall(r'<symbol id="i-(?:check|chevron-down|hard-drive)"[^>]*>.*?</symbol>', index))
+    facts_css = ''
+    if 'class="configfacts"' in body:
+        configuration_css = (PROJECT_ROOT / 'web/css/23-configuration.css').read_text(encoding='utf-8')
+        facts_css = '\n'.join(line for line in configuration_css.splitlines()
+                              if line.startswith(('.configfacts', '@media(max-width:560px){.configfacts')))
     return (f"{_SETUP_HEAD}<title>{title}</title><style>{_theme_tokens()}{_scrollbar_rules()}</style>"
-            f'{_SETUP_STYLE}<style>{_button_rules()}</style>{board_entry_style()}</head><body><svg width="0" height="0" aria-hidden="true" style="position:absolute">{symbols}</svg><main>{body}</main>{_SETUP_SCRIPT}{_SHARED_SCRIPT}</body></html>\n')
+            f'{_SETUP_STYLE}<style>{_button_rules()}</style>{board_entry_style()}<style>{facts_css}</style></head><body><svg width="0" height="0" aria-hidden="true" style="position:absolute">{symbols}</svg><main>{body}</main>{_SETUP_SCRIPT}{_SHARED_SCRIPT}</body></html>\n')
 
 
 def board_entry_style() -> str:
@@ -380,12 +387,15 @@ def dependency_link(url: str, label: str) -> str:
             '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg></a>')
 
 
-def runtime_facts_html(config) -> str:
-    return ("<h2>运行信息</h2><dl>"
-            + "".join(f'<dt>{escape(row["term"])}</dt><dd class="help">{escape(row["value"])}'
+def runtime_facts_html(config, *, collapsible: bool = False) -> str:
+    content = ('<dl class="configfacts">'
+            + "".join(f'<dt>{escape(row["term"])}</dt><dd>{escape(row["value"])}'
                       + (' ' + dependency_link(row["download_url"], row["download_label"]) if row.get("download_url") else '')
                       + '</dd>' for row in runtime_fact_entries(config))
             + "</dl>")
+    if collapsible:
+        return '<details><summary><span>运行信息</span>' + _CHEVRON_SVG + '</summary>' + content + '</details>'
+    return '<h2>运行信息</h2>' + content
 
 
 def _copy_for(key: str, fallback: str) -> tuple[str, str]:
@@ -397,12 +407,12 @@ def _media_dir_row(value: str, error: str, *, first: bool, location: str = "loca
     source = '<select name="media_location" aria-label="媒体来源">' + ''.join(
         f'<option value="{key}"{" selected" if key == location else ""}>{label}</option>'
         for key, label in SOURCE_OPTIONS) + '</select>'
-    mapping = (f'<label>Windows 中的对应路径<input name="media_root" type="text" aria-label="Windows 中的对应路径" '
-               f'placeholder="例如 B:\\" value="{escape(root, quote=True)}"></label>') if not windows else ''
-    attrs = ' id="f-media_dir" required' if first else ' aria-label="媒体文件夹"'
-    return (f'<div class="dir"><input name="media_dir" type="text"{attrs} autocomplete="off" '
+    mapping = (f'<label>Windows 中的对应路径<span class="entry-input"><input name="media_root" type="text" aria-label="Windows 中的对应路径" '
+               f'placeholder="例如 B:\\" value="{escape(root, quote=True)}"></span></label>') if not windows else ''
+    attrs = ' id="f-media_dir" required' if first else ' aria-label="媒体库"'
+    return (f'<div class="dir"><span class="entry-input"><input name="media_dir" type="text"{attrs} autocomplete="off" '
             f'spellcheck="false" aria-invalid="{"true" if error else "false"}" '
-            f'value="{escape(value, quote=True)}">'
+            f'value="{escape(value, quote=True)}"></span>'
             f'<button type="button" class="pick" aria-label="选择文件夹" hidden>{_FOLDER_SVG}</button>'
             f'<button type="button" class="rm" aria-label="移除这个文件夹" hidden>{_X_SVG}</button>'
             + (f'<p class="bad" role="alert">{escape(error)}</p>' if error else "")
@@ -416,7 +426,7 @@ def _media_dirs_html(values: Sequence[str], errors: Sequence[str], note: str, *,
     两个按不动的键，不如只给一个输入框。第一行必填，后面的行留空就当没填；错误写在
     出错的那一行底下。首次运行页与配置页共用这一段。
     """
-    title, help_text = _copy_for("media_dir", "媒体文件夹")
+    title, help_text = _copy_for("media_dir", "媒体库")
     rows = list(values) or [""]
     body = "".join(
         _media_dir_row(value, errors[index] if index < len(errors) else "", first=index == 0,
@@ -427,7 +437,7 @@ def _media_dirs_html(values: Sequence[str], errors: Sequence[str], note: str, *,
         '<div class="field">'
         f'<label for="f-media_dir">{escape(title)}<span class="req" aria-hidden="true">*</span></label>'
         f'<div class="dirs" id="dirs">{body}</div>'
-        '<button type="button" class="add" id="add-dir" hidden>添加文件夹</button>'
+        '<button type="button" class="add" id="add-dir" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>添加媒体库</button>'
         f'<template id="dir-row">{_media_dir_row("", "", first=False, windows=windows)}</template>'
         '<p class="help" id="cloudHelp" hidden>先在 CloudDrive 登录网盘并完成挂载。'
         '<a href="https://www.clouddrive2.com/help.html" target="_blank" rel="noreferrer">挂载帮助'
@@ -474,6 +484,8 @@ def _field_html(question, value: str, error: str, note: str) -> str:
                    f'value="{escape(value, quote=True)}">')
         if question.key == "mdns_name":
             control = f'<div class="affix"><span>https://</span>{control}<span>.local</span></div>'
+        else:
+            control = f'<span class="entry-input">{control}</span>'
         label = f'<label for="f-{key}">{escape(title)}{star}</label>'
     tail = "".join(
         f'<p class="help">{escape(line)}</p>' for line in (help_text, note) if line)
@@ -517,15 +529,15 @@ def setup_page(
                   + "".join(advanced) + "</details>")
     access_error = str(errors.get("access_password", ""))
     fields.insert(1, '<div class="field"><label for="access-password">访问密码<span class="optional">可选</span></label>'
-                  '<input id="access-password" name="access_password" type="password" maxlength="256" '
+                  '<span class="entry-input"><input id="access-password" name="access_password" type="password" maxlength="256" '
                   f'aria-invalid="{"true" if access_error else "false"}" '
-                  'autocomplete="new-password" aria-describedby="access-help">'
+                  'autocomplete="new-password" aria-describedby="access-help"></span>'
                   + (f'<p class="bad" id="access-help" role="alert">{escape(access_error)}</p>' if access_error
                      else '<p class="help" id="access-help">留空即可直接访问；设置密码需至少 8 个字符。</p>')
                   + '<p class="help">未设置密码时，能连接到 Peach 的设备可直接进入。</p>'
-                  '<label for="access-confirm">确认访问密码</label><input id="access-confirm" '
+                  '<label for="access-confirm">确认访问密码</label><span class="entry-input"><input id="access-confirm" '
                   f'aria-invalid="{"true" if access_error else "false"}" '
-                  'name="access_confirm" type="password" maxlength="256" autocomplete="new-password"></div>')
+                  'name="access_confirm" type="password" maxlength="256" autocomplete="new-password"></span></div>')
     filled = [path for path in media_dirs if path]
     if not filled:
         scan_text = "完成设置后扫描并补全资料"
@@ -534,62 +546,39 @@ def setup_page(
     else:
         scan_text = f"完成设置后扫描这 {len(filled)} 个文件夹并补全资料"
     body = (
-        '<header><img class="mark" src="/peach-logo.png" alt="" width="40" height="40">'
+        '<section class="setup-auth-card"><header><img class="mark" src="/peach-logo.png" alt="" width="40" height="40">'
         "<h1>欢迎使用 Peach</h1>"
-        '<p class="lede">选一个媒体文件夹，开始整理你的馆藏。</p></header>'
+        '<p class="lede">添加媒体库，开始整理你的馆藏。</p></header>'
         '<form method="post" action="/setup">'
         + "".join(fields)
+        + '<section class="setup-options" aria-label="完成设置后">'
         + _check_html("scan_now", scan_text, checked=scan_now)
         + '<p class="help">读取已有 NFO 和封面，采集缺失资料。进度可在设置中查看，资料候选在复核后应用。</p>'
         + '<section class="history-guide-choice"><h2>浏览器历史记录<span class="optional">可选</span></h2>'
         + _check_html("history_guide", "接下来导入浏览器历史记录", checked=values.get("history_guide") == "y")
         + '<p class="help">用于生成口味分析。完成设置后选择读取这台电脑，或导入其他设备的记录；也可稍后从「口味」进入。</p></section>'
-        + '<button type="submit">完成设置</button></form>'
+        + '</section><button type="submit">完成设置</button></form></section>'
     )
     return _document("Peach · 首次运行", body)
 
 
 def setup_done_page(applied, *, windows: bool, scan_requested: bool, history_guide: bool = False) -> str:
     """成功页：接下来会自动发生什么，以及口令在哪。口令本身不显示在页面上。"""
-    tree = applied.tree
     config = applied.config
     destination = escape(_normal_url(config) + ('taste?onboarding=1' if history_guide else ''), quote=True)
     destination_label = '导入浏览器历史记录' if history_guide else '进入 Peach'
-    if distribution.standalone():
-        scan = "首次扫描已排队。" if scan_requested else "你可以稍后在配置界面开始扫描。"
-        return _document("Peach · 设置完成",
-                         '<h1>设置完成</h1><p class="lede">正在启动你的馆藏。' + scan + '</p>'
-                         f'<p><a class="geist-button primary" href="{destination}">{destination_label}</a></p>'
-                         f'<meta http-equiv="refresh" content="8;url={destination}">'
-                         + runtime_facts_html(config))
-    ledger = (f"Peach 数据库已存在，没有动它：{tree.database}" if tree.ledger_existed
-              else f"Peach 数据库：{tree.database}（已应用 {tree.migrations} 个迁移）")
-    ca = (f"本机 CA：{tree.ca_cert}" if tree.ca_cert is not None
-          else f"未生成本机 CA（{tree.ca_error}）；装好 openssl 后跑 "
-               "<code>peach init --force</code> 补上。局域网设备要装这份 CA 才不报证书错。"
-               + ('<span class="help">' + dependency_link('https://openssl-library.org/source/', '下载 OpenSSL') + '</span>'
-                  if not shutil.which('openssl') and (windows or not Path('/usr/bin/openssl').is_file()) else ''))
-    scan = ("<li>首次扫描已排队，托盘会在服务起来之后在后台跑，期间页面照常能用。</li>"
-            if scan_requested else
-            "<li>没有请求首次扫描；要扫就跑 <code>peach scan configured</code>。</li>")
-    from .media_configuration import rows
-    mounts = ("" if windows else '<dl class="facts">' + ''.join(
-        f'<dt>{escape(row["location"])} · {escape(row["root"])}</dt><dd>{escape(row["path"])}</dd>'
-        for row in rows(config, windows=False)) + '</dl>')
+    scan = ("首次扫描已排队，将在后台整理媒体库。你可以继续使用 Peach。" if scan_requested
+            else "你可以稍后在配置页开始扫描媒体库。")
     body = (
-        "<h1>设置完成</h1>"
-        "<p>托盘正在停掉这条引导服务，改用正常的 Peach 服务；这个页面几秒后就会连不上，"
-        f"届时打开 <code>{escape(_normal_url(config))}</code> 即可。</p>"
-        "<ul>"
-        f"<li>{escape(ledger)}</li>"
-        f"<li>{ca}</li>"
-        "<li>访问密码可在配置页设置、修改或关闭。</li>"
-        f"{scan}"
-        "</ul>"
-        f"{mounts}"
-        + f'<p><a class="geist-button primary" href="{destination}">{destination_label}</a></p>'
-        + runtime_facts_html(config)
+        '<section class="setup-auth-card"><header><img class="mark" src="/peach-logo.png" alt="" width="40" height="40">'
+        '<h1>设置完成</h1><p class="lede">正在启动你的馆藏。</p></header>'
+        f'<p>{scan}</p>'
+        + f'<p><a class="setup-enter" href="{destination}">{destination_label}</a></p>'
+        + runtime_facts_html(config, collapsible=True)
+        + '</section>'
     )
+    if distribution.standalone():
+        body += f'<meta http-equiv="refresh" content="8;url={destination}">'
     return _document("Peach · 设置完成", body)
 
 
