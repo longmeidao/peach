@@ -378,7 +378,14 @@ body :is(#manageTitle,#manageCrumb,#manageLede){max-width:var(--board-content);w
 /* 首页那条整理提示是正文列里的一条 Note，上下两条线是它自己的收口。少了这个空当，
    两条线一边挨着身份行、一边挨着筛选浮层，看着像三块东西粘在一起。下面照浮层那个数
    留一样宽（上面由 `.tiers` 收尾与 `main` 上沿凑够）。 */
+/* 要不要画这一条，得等 `/api/library-processing` 回话才知道，而它一出现就把底下整块
+   推下六十来像素。跟交集条同一个处理：高度从 0 走到 auto，二百来毫秒，推的过程看得见
+   就不叫跳。那趟任务跑完它自己会消失，缩回去同样是走的。 */
+#libraryProcessingNotice{overflow:hidden;interpolate-size:allow-keywords;height:auto;
+  transition:height .22s cubic-bezier(0,0,.2,1),margin-bottom .22s cubic-bezier(0,0,.2,1)}
+#libraryProcessingNotice:empty{height:0}
 #libraryProcessingNotice:not(:empty){margin:0 0 22px}
+@media(prefers-reduced-motion:reduce){#libraryProcessingNotice{transition:none}}
 .board-card-icon{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border:1px solid var(--line-soft);background:var(--surface);border-radius:10px;margin-right:10px;vertical-align:middle;color:var(--ink-2)}
 .board-card-icon svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .configfieldset{border:1px solid var(--line);border-radius:16px;box-shadow:0 1px 2px #00000003}

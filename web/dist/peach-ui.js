@@ -4472,7 +4472,7 @@ var ki = {
 async function Mi(e, t, n, r = {}) {
 	let i = ki[e];
 	if (!i) throw Error(`未注册的 island：${String(e)}`);
-	Ni(t);
+	Pi(t);
 	let a = {
 		controller: new AbortController(),
 		painted: !1
@@ -4503,9 +4503,10 @@ async function Mi(e, t, n, r = {}) {
 	};
 	Oe(ae(i.component, s), t);
 }
-function Ni(e) {
+var Ni = (e) => !!e && ji.has(e);
+function Pi(e) {
 	let t = ji.get(e);
 	t && (t.controller.abort(), ji.delete(e), t.painted && Oe(null, e));
 }
 //#endregion
-export { yt as TASTE_GUIDE_KEY, _n as activityChartsHtml, mi as boardPageSkeleton, je as boundedPreference, vi as catalogEmptyHtml, _i as catalogSuggestions, li as clampPage, _t as cleanupSkeletonHtml, ht as cloudLocations, gt as cloudPreferenceLocations, $r as createReviewSelection, dn as creatorSankeyHtml, Ie as distributionChart, gi as emptyCatalogLayout, pi as entitySkeletonHtml, lt as followJobProgress, ni as groupReviewRows, Zr as identityEvidenceHtml, Tt as initBoardControls, Ai as islandNames, Di as javImageKind, Fe as jobProgressHtml, di as matchesFaceSource, Ct as mountBoardStatePreview, Mi as mountIsland, Ne as mountNumberSetting, fi as nativeImageFit, Ei as normalizeJavImage, wi as normalizeJavLayout, Ti as normalizeJavPreferences, ci as pageCount, ui as paginationHtml, ke as preferredDirection, Re as radarChart, mn as radialCardHtml, Le as rankedChart, Jr as refreshStore, Ci as resourceScanHtml, Xr as reviewImageHtml, yi as sidebarHasCatalogContent, bn as sidebarSectionHtml, xi as sidebarTagCounts, Pe as statCardBody, qr as storeNames, wt as syncBoardRange, Oi as syncJavImages, Me as syncNumberSetting, bi as syncSidebarSurface, vt as tasteHistoryGuideHtml, Cn as transitionTheme, Ni as unmountIsland, ei as updateReviewSticky, ct as watchJob, vn as wireActivityCharts, fn as wireCreatorSankey, At as wireExpandableRanks, kt as wireGrowingCharts, hn as wireRadialCards, Qr as wireReviewPictures, oi as wireReviewSelection, xn as wireSidebarGroups, bt as wireTasteHistoryGuide };
+export { yt as TASTE_GUIDE_KEY, _n as activityChartsHtml, mi as boardPageSkeleton, je as boundedPreference, vi as catalogEmptyHtml, _i as catalogSuggestions, li as clampPage, _t as cleanupSkeletonHtml, ht as cloudLocations, gt as cloudPreferenceLocations, $r as createReviewSelection, dn as creatorSankeyHtml, Ie as distributionChart, gi as emptyCatalogLayout, pi as entitySkeletonHtml, lt as followJobProgress, ni as groupReviewRows, Zr as identityEvidenceHtml, Tt as initBoardControls, Ni as islandMounted, Ai as islandNames, Di as javImageKind, Fe as jobProgressHtml, di as matchesFaceSource, Ct as mountBoardStatePreview, Mi as mountIsland, Ne as mountNumberSetting, fi as nativeImageFit, Ei as normalizeJavImage, wi as normalizeJavLayout, Ti as normalizeJavPreferences, ci as pageCount, ui as paginationHtml, ke as preferredDirection, Re as radarChart, mn as radialCardHtml, Le as rankedChart, Jr as refreshStore, Ci as resourceScanHtml, Xr as reviewImageHtml, yi as sidebarHasCatalogContent, bn as sidebarSectionHtml, xi as sidebarTagCounts, Pe as statCardBody, qr as storeNames, wt as syncBoardRange, Oi as syncJavImages, Me as syncNumberSetting, bi as syncSidebarSurface, vt as tasteHistoryGuideHtml, Cn as transitionTheme, Pi as unmountIsland, ei as updateReviewSticky, ct as watchJob, vn as wireActivityCharts, fn as wireCreatorSankey, At as wireExpandableRanks, kt as wireGrowingCharts, hn as wireRadialCards, Qr as wireReviewPictures, oi as wireReviewSelection, xn as wireSidebarGroups, bt as wireTasteHistoryGuide };

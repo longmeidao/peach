@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { islandNames, mountIsland, unmountIsland } from '../src/islands';
+import { islandMounted, islandNames, mountIsland, unmountIsland } from '../src/islands';
 import { resetStores } from '../src/state';
 
 import { deferredFetch, goal, legacyProps, payload, seedGoals } from './helpers';
@@ -113,6 +113,23 @@ describe('unmountIsland', () => {
     const el = container();
     unmountIsland(el);
     expect(el.querySelector('[data-skeleton]')).not.toBeNull();
+  });
+
+  it('容器上挂没挂着，遗留层问得出来', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: true, status: 200, json: async () => payload([goal()]),
+    })));
+    const el = container();
+    expect(islandMounted(el)).toBe(false);
+    // 取数还没回来也算挂着：这段时间里再挂一次会把在途那次作废，白等一趟。
+    const mounting = mountIsland('quality-goals', el, legacyProps());
+    expect(islandMounted(el)).toBe(true);
+    await mounting;
+    expect(islandMounted(el)).toBe(true);
+    unmountIsland(el);
+    expect(islandMounted(el)).toBe(false);
+    // 遗留层拿到的可能是个空引用——那时页面上根本没有这个容器。
+    expect(islandMounted(null)).toBe(false);
   });
 
   it('卸载之后共享状态再变也不重画：订阅要跟着组件一起走', async () => {

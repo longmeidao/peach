@@ -5984,6 +5984,29 @@ class WebUiSourceTests(unittest.TestCase):
                       "margin-bottom .22s cubic-bezier(0,0,.2,1)}", base)
         self.assertIn("@media(prefers-reduced-motion:reduce){.combo{transition:none}}", base)
 
+    def test_the_processing_notice_stays_put_while_the_list_underneath_changes(self):
+        """整理提示讲的是库里那趟后台任务，换一条筛选不该让它塌一下再撑回来。
+
+        它跟着每次取数卸了再挂：卸载会把画过的内容清掉，重挂又要一整趟请求才画得回来。
+        实测点一枚标签，底下整块先往上跳 62px，二十来毫秒后落回原处——那一下比它要说
+        的那句话显眼得多。目录页之间它一直挂着，自己在轮询库那边的进度；离开目录页才
+        收起，那些页面本来就不该有它。
+
+        真该出现的那一次仍是从无到有：要不要画得等 `/api/library-processing` 回话。
+        所以照交集条那样长出来，高度从 0 走到 auto。
+        """
+        self.assertPageContains("  if(!isCatalogPath(path))unmountIsland($('#libraryProcessingNotice'));")
+        self.assertCode(
+            "  if(reset&&isCatalogPath(location.pathname)&&!islandMounted($('#libraryProcessingNotice')))\n"
+            "    void mountIsland('library-processing',$('#libraryProcessingNotice'),"
+            "{toast,mode:'notice'},{isCurrent:()=>surfaceCurrent(surface)});")
+        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
+        self.assertIn("#libraryProcessingNotice{overflow:hidden;interpolate-size:allow-keywords;height:auto;",
+                      board)
+        self.assertIn("#libraryProcessingNotice:empty{height:0}", board)
+        self.assertIn("@media(prefers-reduced-motion:reduce){#libraryProcessingNotice{transition:none}}",
+                      board)
+
     def test_untagged_detail_uses_home_tags_only_in_the_top_discovery_bar(self):
         # 作品没有内容标签时，顶部发现栏回退首页口径；详情抽屉仍使用作品 scoped facets。
         self.assertPageContains("if(context.type==='item'&&!topTags.length)")
