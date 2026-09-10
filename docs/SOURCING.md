@@ -76,6 +76,24 @@ Windows 空数据预览的项目 CA HTTPS、合成 Cookie 保存／撤销、DMM 
 无元数据缓存的 ABW-232 POC 取得 1024×690，16 次请求、775899 字节。即时 r18 厂牌证据与
 本机快照使用同一来源路由，Prestige 与 MGS 都参加候选比较；原始图片没有派生降采样。
 
+## 无番号视频的联网识别
+
+`scripts/scrape_codes.py` 只认番号；没有番号的视频（`B:\xxr`、PikPak 里的推特与
+Telegram 资源）走 `scripts/identify_resources.py` 的两段式流程，识别结果仍进
+`/review` 的「资料字段」，批准才写真相字段：
+
+1. `worklist` 只读账本，按文件名生成搜索写法（原样名、摘推广头尾、分隔符换空格、
+   无空格英文按大小写拆词、剥尾部画质标签）并标出同目录配套图片，可直接作海报；
+2. 智能体或人联网核对后按 `asset_id,field,value,source_url,confidence,note` 填回 CSV；
+3. `ingest` 合并进 `generated/library-metadata-field-candidates.csv`，候选来源
+   `websearch`、`asset_path` 钉住具体文件，无番号资产的复核与落库靠这条路径。
+
+字段限于 title／original_title／performers／studio／series／release_date；有番号的
+视频仍走 `scrape_codes.py` 的 JAV 来源。网页搜索在智能体侧执行，脚本不发请求、
+不写账本。2026-09-10 对 `B:\xxr\0208 (23)\梓怡-…mp4` 的只读 POC 取得标题
+「背着老公和合租室友的狂欢」、女优「梓怡」、厂牌「麻豆传媒」，来源 madou.io 与
+av911.tv，三条候选已进复核队列。
+
 ## 采集判据
 
 本文件保存「从外部站点取得身份与标识」这件事的判据细节：脚本分工、实测反例、判词含义和不能走的路。
