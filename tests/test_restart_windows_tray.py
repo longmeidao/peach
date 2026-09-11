@@ -262,6 +262,24 @@ class RestartEntryTests(unittest.TestCase):
             self.assertEqual(entry.main(["--source"]), 0)
         ghost.assert_not_called()
 
+    def test_asking_to_swap_a_package_into_the_source_tray_is_refused(self):
+        """源码托盘没有生产入口可换，这两个开关同用是笔误。
+
+        放行的话命令照样退出 0、照样打印重启成功，而那个暂存包一动没动——
+        下一次开机跑起来的还是旧代码，而部署这一步看上去是成功的。
+        """
+        entry = load_entry()
+        with (
+            mock.patch.object(entry, "restart_source_tray") as source,
+            mock.patch.object(entry, "restart_tray") as packaged,
+            contextlib.redirect_stderr(io.StringIO()) as complaint,
+        ):
+            with self.assertRaises(SystemExit):
+                entry.main(["--source", "--swap-from", "staged.exe"])
+        source.assert_not_called()
+        packaged.assert_not_called()
+        self.assertIn("--source 不能与 --swap-from 同用", complaint.getvalue())
+
 
 if __name__ == "__main__":
     unittest.main()
