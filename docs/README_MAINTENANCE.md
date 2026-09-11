@@ -40,6 +40,34 @@ README 改动必须包含两种语言；`updated` 必须对应两份实际差异
 无需定时任务、账号专属 hook 或额外模型调用。Python 下限、文案和快照校验继续复用现有测试。
 结构或品牌调整时重读已登记的参考快照，上游变化只作为参考，计划功能不得写成已实现。
 
+## 演示数据集
+
+README、教程与网站的截图一律取自合成的 SFW 演示库，不取自真实馆藏，也不用分类模型从
+真实馆藏里筛「看起来无害」的帧：筛出来的多是黑场与标题卡，卡片上的番号、姓名与厂牌
+照样泄露来源，封面与抽帧也是他人作品。
+
+生成器是 `scripts/demo_dataset.py`，只写目标目录，不碰任何账本：
+
+```powershell
+& .\.venv\Scripts\python.exe -X utf8 scripts\demo_dataset.py --output <目录> --count 24
+```
+
+画面是 FFmpeg lavfi 的渐变、测试图与分形，海报是 Pillow 画的几何图，作品、厂牌、系列、
+出演者与标签全部虚构；`tests/test_demo_dataset.py` 把守词表与 `catalog_rules` 成人词表
+不相交、目录布局符合 `library_nfo` 的边车规则、`process_library` 跑完没有发过外部请求。
+`--seed` 固定内容，`--video stub` 用占位字节代替编码，给性能基准的规模档用。
+
+三种形状对应三条产品路径：番号型（`<番号>/<番号>.mp4` 配 NFO 与 `-poster.jpg`，部分带
+`P/` 图集）走本地资料入库；创作者型（`<创作者>/<标题>.mp4` 配 PNG 与无番号 NFO）走
+`posters/<id>_4.jpg` 本地海报；裸文件演示「未识别到番号」。让 Peach 看见它：`peach init`
+建演示数据根，在设置文件 `[media.locations]` 声明这个目录，`peach scan local`、
+`peach process local`，候选在复核页全选通过或用 `scripts/apply_metadata_tags.py --source local_nfo`
+按字段落地；要九宫格再跑 `scripts/probe.py` 与 `scripts/sheets.py`。生成器结束时会把这几步连同
+当前平台的设置行一起打印出来。
+
+新库的实体只来自复核落地，扫描本身不派生创作者，也不把图片挂到实体上，因此演示库的
+创作者页与实体图集为空；这是产品现状，不是数据集缺项。
+
 ## 参考依据
 
 - **README 结构（2026-09-06）**：依据聊天「寻找README范例」并取得 Immich、Bruno、Hoppscotch
