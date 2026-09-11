@@ -3190,26 +3190,20 @@ const viewPillsHtml=filterState=>VIEW_PILLS.map(v=>
    新建：换了元素，动画就从头开始，看到的只是瞬移。节点由 `viewGlides` 按排持有。
    点下去要立刻动。切换视图会重新取数，`buildBars` 约一秒后才把 `aria-pressed` 写成
    新值，等它就等于点完先僵一下再跳。 */
-/* 这块玻璃落在那一排最近的一层「会裁掉越界内容」的祖先里，找不到就落在外框上。
-   两件事一起解决：它跟着那一层的内容走，所以那一层横滚时不用自己去减滚动量；越界的
-   部分跟按钮一起被裁，不会在滚动区外面露出半块白。
-   窄屏时那一层就是横滚的 `.filterscroll`；宽屏时那一排根本不滚，这一层是整条筛选条或
-   外框，跳到头一枚的那下回弹尽管冲出那一排的边沿，也没有人切它——这正是玻璃不住在
-   `#viewPills` 里的原因，它和它的邻居都开着 `overflow`。
-   那一层得自己是定位元素，否则它不在 `offsetParent` 链上，位置就无从算起；静态的退回
-   外框，宁可不跟着滚，也不要一个算错的坐标。 */
-function glideHost(pill){
-  const frame=pill.closest('.board-filter-frame');if(!frame)return null;
-  let host=frame;
-  for(let n=pill.parentElement;n&&n!==frame;n=n.parentElement){
-    if(getComputedStyle(n).overflowX!=='visible'){host=n;break}
-  }
-  return getComputedStyle(host).position==='static'?frame:host;
-}
+/* 动画层由外框承载，允许回弹与阴影越过内容边沿。横滚只裁剪按钮内容；
+   玻璃坐标扣除祖先滚动量，目标完全滚出可视区域时收起。 */
 function viewGlideGeometry(pill){
-  const host=glideHost(pill);if(!host)return null;
+  const host=pill.closest('.board-filter-frame');if(!host)return null;
   let x=0,y=0;
   for(let n=pill;n&&n!==host;n=n.offsetParent){x+=n.offsetLeft;y+=n.offsetTop}
+  const rect=pill.getBoundingClientRect();
+  for(let n=pill.parentElement;n&&n!==host;n=n.parentElement){
+    x-=n.scrollLeft;y-=n.scrollTop;
+    if(n.scrollWidth>n.clientWidth&&getComputedStyle(n).overflowX!=='visible'){
+      const viewport=n.getBoundingClientRect();
+      if(rect.right<=viewport.left||rect.left>=viewport.right)return null;
+    }
+  }
   return {host,x,w:pill.offsetWidth,y,h:pill.offsetHeight};
 }
 /* 首页和资料页各有一排四选一，玻璃是同一块：在人眼里这两排就是同一个控件，「跟着指针
@@ -3246,6 +3240,8 @@ function viewPillsRow(kind){
 function wireViewGlideRow(row,pills,kind='views'){
   pills.forEach(b=>b.onpointerenter=e=>{if(e.pointerType!=='touch')syncViewGlide(true,b,kind)});
   row.onpointerleave=e=>{if(e.pointerType!=='touch')syncViewGlide(true,null,kind)};
+  const scroller=row.closest('.filterscroll');
+  if(scroller)scroller.onscroll=()=>syncViewGlide(false,null,kind);
   syncViewGlide(false,null,kind);
 }
 /* 每排各存自己那块玻璃和它上一次的落点。键取那一排的用途，不取那一排的元素：资料页
@@ -3258,7 +3254,7 @@ function syncViewGlide(animate,target,kind='views'){
   let glide=viewGlides.get(kind);
   if(!active){if(glide)glide.pane.hidden=true;return}
   const box=viewGlideGeometry(active);
-  if(!box||!box.w)return;
+  if(!box||!box.w){if(glide)glide.pane.hidden=true;return}
   if(!glide){
     const pane=document.createElement('span');
     pane.className=`viewglide${GLIDE_ROWS[kind].className?` ${GLIDE_ROWS[kind].className}`:''}`;
