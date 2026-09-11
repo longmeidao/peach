@@ -26,6 +26,11 @@ r"""女优高清头像缺口审计：只产候选与缓存证据，不写 ledger
 - 外部图只进入候选专用内容寻址缓存，不写 `generated/avatars`；
 - 判定写入审计、`/review` 候选与来源健康 CSV；`--resume` 跳过已判定行，
   重试 error 和缺少 P2 缓存/provenance 的旧版 ok 行。
+
+索引缓存的四条语义：判定不联网（索引一次性载入内存，逐人匹配纯离线）、按 mtime
+计龄过期（`INDEX_MAX_AGE_SECONDS`）、取不到新索引时退回旧缓存并告警、写缓存用
+临时文件加 `os.replace`。退回旧缓存那一轮的「未收录」记 error 不记 no_match，
+理由见 `audit_missing`。
 """
 from __future__ import annotations
 
@@ -89,7 +94,7 @@ CANDIDATE_FIELDS = (
 )
 HEALTH_FIELDS = (
     "source", "profile", "policy_version", "index_cache_reused", "index_cache_stale",
-    "index_fetched",
+    "index_cache_fallback", "index_fetched",
     "attempted", "snapshot_reused", "fetched", "succeeded", "no_match",
     "rejected", "duplicates", "errors", "bytes_fetched", "elapsed_ms",
     "last_error_kind", "last_error_status", "last_error_message",
@@ -138,7 +143,8 @@ class SourceHealth:
         self.row: dict[str, object] = {
             "source": "gfriends", "profile": "external_fallback",
             "policy_version": POLICY_VERSION,
-            "index_cache_reused": 0, "index_cache_stale": 0, "index_fetched": 0,
+            "index_cache_reused": 0, "index_cache_stale": 0,
+            "index_cache_fallback": 0, "index_fetched": 0,
             "attempted": 0,
             "snapshot_reused": 0, "fetched": 0, "succeeded": 0,
             "no_match": 0, "rejected": 0, "duplicates": 0, "errors": 0,
@@ -166,6 +172,7 @@ class SourceHealth:
 
 
 def parse_gfriends(body: bytes) -> dict[str, list[tuple[str, str]]]:
+    """Filetree.json 字节 -> 日文名映射到 [(来源目录, 文件名)]，按质量档位排序，最优在前。"""
     content = json.loads(body)["Content"]
     index: dict[str, list[tuple[str, str]]] = {}
     for category, items in content.items():
@@ -176,18 +183,6 @@ def parse_gfriends(body: bytes) -> dict[str, list[tuple[str, str]]]:
     for key in index:
         index[key].sort(key=lambda pair: quality_key(*pair))
     return index
-
-
-def load_gfriends(transport: HttpTransport) -> dict[str, list[tuple[str, str]]]:
-    """日文名 -> [(来源目录, 文件名)]，按质量档位排序，最优在前。"""
-    response = transport(
-        HttpRequest("GET", GFRIENDS_RAW + "Filetree.json",
-                    {"Accept": "application/json"}),
-        60, 32 * 1024 * 1024,
-    )
-    if response.status != 200:
-        raise RuntimeError(f"Gfriends 索引不可用：HTTP {response.status}")
-    return parse_gfriends(response.body)
 
 
 #: 索引缓存的保鲜期。Gfriends 是持续增补的图库，缓存不能永不过期：只要文件在就一直
@@ -208,7 +203,13 @@ def _index_cache_age(cache_path: Path) -> float | None:
 
 def load_gfriends_cached(
     transport: HttpTransport, cache_dir: Path, refresh: bool, health: SourceHealth,
-) -> dict[str, list[tuple[str, str]]]:
+) -> tuple[dict[str, list[tuple[str, str]]], bool]:
+    """返回 (索引, 是否是取不到新索引后退回的旧缓存)。
+
+    第二个值不是统计口径而是本轮结论的有效范围：拿旧索引跑出来的 `no_match` 只说明
+    「快照那天没有这个人」，不说明现在没有。调用方据此把那些行降级成可重试，
+    并在输出里说出来——旧缓存兜住的是流程，不是结论。
+    """
     cache_path = cache_dir / "gfriends-filetree.json"
     age = _index_cache_age(cache_path)
     stale = age is None or age > INDEX_MAX_AGE_SECONDS
@@ -216,7 +217,7 @@ def load_gfriends_cached(
         try:
             index = parse_gfriends(cache_path.read_bytes())
             health.add("index_cache_reused")
-            return index
+            return index, False
         except (OSError, KeyError, TypeError, ValueError):
             health.error("invalid_index_cache", message=str(cache_path))
     if stale and cache_path.is_file():
@@ -237,10 +238,12 @@ def load_gfriends_cached(
         except (KeyError, TypeError, ValueError) as error:
             health.error("index_payload", status=200, message=str(error))
         else:
+            # 临时文件加 os.replace：换索引这一步没有中间态，别的进程读到的要么是
+            # 上一份完整索引，要么是这一份，不会是半个 JSON。
             atomic_write(cache_path, response.body)
             health.add("index_fetched")
             health.add("bytes_fetched", len(response.body))
-            return index
+            return index, False
     elif response is not None:
         health.error("index_http", status=response.status,
                      message=f"Gfriends index HTTP {response.status}")
@@ -248,7 +251,8 @@ def load_gfriends_cached(
         try:
             index = parse_gfriends(cache_path.read_bytes())
             health.add("index_cache_reused")
-            return index
+            health.add("index_cache_fallback")
+            return index, True
         except (OSError, KeyError, TypeError, ValueError):
             pass
     raise RuntimeError("Gfriends 索引不可用，且没有有效本地缓存")
@@ -409,6 +413,7 @@ def audit_skipped(record: dict) -> dict:
 def audit_missing(
     record: dict, index: dict, transport: HttpTransport, args: argparse.Namespace,
     cache: AvatarCandidateCache | None = None, health: SourceHealth | None = None,
+    stale_index: bool = False,
 ) -> dict:
     row = {field: "" for field in FIELDS}
     row["section"] = "missing"
@@ -427,6 +432,15 @@ def audit_missing(
             entries = candidate
             break
     if not entries:
+        if stale_index:
+            # 索引这一轮没取到，手上只有旧缓存。「旧索引里没有这个人」不是结论，
+            # 写成 no_match 会被 --resume 当成已判定，从此再没有重新问一次的时机——
+            # 釈アリス 就是这么被固化过一次的。按网络失败处理，下一轮重试。
+            row["verdict"] = "error"
+            row["note"] = "Gfriends 索引为过期缓存，本轮未收录不算结论"
+            if health is not None:
+                health.error("stale_index_no_match", message=row["current_name"])
+            return row
         row["verdict"] = "no_match"
         row["note"] = "Gfriends 未收录该名字链上的任何写法"
         if health is not None:
@@ -646,7 +660,8 @@ def run(args: argparse.Namespace, transport: HttpTransport | None = None) -> int
     try:
         print("拉取 Gfriends 索引…", flush=True)
         try:
-            index = load_gfriends_cached(client, args.cache_dir, args.refresh, health)
+            index, stale_index = load_gfriends_cached(
+                client, args.cache_dir, args.refresh, health)
         except RuntimeError as error:
             health.error("index_unavailable", message=str(error))
             write_health(args.health, health)
@@ -654,6 +669,12 @@ def run(args: argparse.Namespace, transport: HttpTransport | None = None) -> int
             print(f"来源健康 → {args.health}", flush=True)
             return 2
         print(f"索引就绪：{len(index)} 个名字键", flush=True)
+        if stale_index:
+            # 一行也不能省：旧缓存和新索引跑出来的 CSV 看起来一模一样，不说就没人知道
+            # 这一轮的「找不到」只代表快照那天。
+            age = _index_cache_age(args.cache_dir / "gfriends-filetree.json") or 0
+            print(f"告警：未取到最新 Gfriends 索引，改用 {round(age / 3600)} 小时前的"
+                  f"本地缓存；本轮未收录一律记 error，网络恢复后重跑", flush=True)
 
         connection = open_readonly(args.db)
         targets = missing_targets(connection, args.avatars, 0)
@@ -685,7 +706,8 @@ def run(args: argparse.Namespace, transport: HttpTransport | None = None) -> int
         finished = 0
 
         def process_one(record: dict) -> dict:
-            return audit_missing(record, index, client, args, cache, health)
+            return audit_missing(record, index, client, args, cache, health,
+                                 stale_index)
 
         with futures.ThreadPoolExecutor(max(1, args.workers)) as pool:
             for row in pool.map(process_one, targets):

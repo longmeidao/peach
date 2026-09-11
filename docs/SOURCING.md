@@ -223,6 +223,19 @@ av911.tv，三条候选已进复核队列。
   Cloudflare 拦，njav 有验证墙，jav321 无独立女优字段。被 Cloudflare 拦的站一律放弃，不绕过机器人检测。
   javdb.com 抓得到，但它自己按出口 IP 封速率（2026-09-04 封 3～7 日），只能小批量慢跑，见下文。
   Gfriends 只按 `Filetree.json` 和单张 raw 媒体当外部 Provider 用，不克隆图库、不把图片放进 Git。
+  索引缓存按 mtime 计龄（一天），取不到新索引就退回旧缓存并在输出里告警；那一轮的「未收录」
+  记 error 不记 no_match，否则 `--resume` 会把一次网络失败固化成永久答案。
+- **DMM 女优一览页可达，但它的头像只有 125×125，对头像缺口没有用（2026-09-11 实测）。**
+  `https://www.dmm.co.jp/mono/dvd/-/actress/=/keyword=<假名行>/` 经 Peach 的 `dmm` 来源设置
+  回 200、125 KB 的完整列表页（一页 120 位，带站内 actress id 与括号里的旧艺名），没有出现
+  区域拦截那句「このページはお住まいの地域からご利用になることができません」；
+  `pics.dmm.co.jp/mono/actjpgs/<罗马字>.jpg` 不带 Referer 也回 200，确认无防盗链。
+  问题在尺寸：`actjpgs/<名>.jpg` 是 125×125、`actjpgs/medium/<名>.jpg` 是 100×100，长边 ≥500、
+  短边 ≥300 的候选门槛和 320px 的显示门槛都过不了。而且这批图 Gfriends 已经整批收着——
+  `z-DMM(步)` 7011 条、`z-DMM(骑)` 14596 条，就排在质量档位的最后一档。所以不为它另起 provider：
+  同一个来源接第二遍，还少了档位排序和 AI 修复版。取证与重放脚本在仓库外的
+  `attic/evidence/20260911-dmm-actress-probe/`。这个页面真正有价值的是名字不是头像：
+  一页 120 位日文名带旧艺名和站内 ID，要用就用在名字链与消歧上。
 - javdatabase 的入口必须是账本里的番号，不能按名字拼 slug。它一个艺名一页，slug 与人不是一对一：
   `/idols/rin-natsuki/` 打开的是 `Rin Oka` 的资料页；站内搜索也不给 idol 页，只回作品列表。链路固定为
   番号 → `/movies/<code>/` → 页面上给出的 idol 链接 → 名字，每一步都由上一步的页面给出
