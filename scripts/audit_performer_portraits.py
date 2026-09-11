@@ -56,7 +56,6 @@ from peach.avatar_provider import (
     POLICY_VERSION,
     AvatarCandidateCache,
     acceptable_avatar,
-    atomic_write,
     inspect_avatar,
     installed_avatar_hashes,
     mark_duplicate_candidates,
@@ -64,6 +63,7 @@ from peach.avatar_provider import (
 )
 from peach.catalog_rules import is_jav_code
 from peach.config import DATABASE_PATH, GENERATED_DIR
+from peach.fsutil import atomic_write_bytes
 from peach.gfriends import (
     GFRIENDS_RAW,
     INDEX_MAX_AGE_SECONDS,
@@ -217,7 +217,7 @@ def load_gfriends_cached(
         else:
             # 临时文件加 os.replace：换索引这一步没有中间态，别的进程读到的要么是
             # 上一份完整索引，要么是这一份，不会是半个 JSON。
-            atomic_write(cache_path, response.body)
+            atomic_write_bytes(cache_path, response.body)
             health.add("index_fetched")
             health.add("bytes_fetched", len(response.body))
             return index, False

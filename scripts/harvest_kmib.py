@@ -43,12 +43,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from PIL import Image  # noqa: E402
 
 from peach.avatar_provider import (  # noqa: E402
-    AvatarCandidateCache, acceptable_avatar, atomic_write, inspect_avatar,
+    AvatarCandidateCache, acceptable_avatar, inspect_avatar,
     provenance_now as avatar_provenance,
 )
 from peach.catalog_rules import (  # noqa: E402
     is_korean_mib_code, normalise_code_key, release_code_from_filename,
 )
+from peach.fsutil import atomic_write_bytes  # noqa: E402
 from peach.config import DATABASE_PATH, GENERATED_DIR, SOURCES_DIR  # noqa: E402
 from peach.entities import normalize_entity_name  # noqa: E402
 from peach.genre_decisions import load_genre_decisions  # noqa: E402
@@ -214,7 +215,7 @@ def fetch_snapshot(snapshot: Path, fetcher: Fetcher, *, refresh: bool,
         if body is None:
             stats["failed"].append(url)
             continue
-        atomic_write(target, body)
+        atomic_write_bytes(target, body)
         stats["images"] += 1
     return stats
 
@@ -409,8 +410,8 @@ def install_cover(snapshot: Path, cover_root: Path, release: dict) -> str:
                 data = buffer.getvalue()
     except Exception:
         return "无法解码"
-    atomic_write(target, data)
-    atomic_write(target.with_suffix(".scraping.json"), json.dumps({
+    atomic_write_bytes(target, data)
+    atomic_write_bytes(target.with_suffix(".scraping.json"), json.dumps({
         "source": SOURCE, "source_url": release["cover_url"], "width": size[0],
         "height": size[1], "raw_sha256": hashlib.sha256(data).hexdigest(),
         "checked_at": time.time(),

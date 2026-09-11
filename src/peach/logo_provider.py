@@ -4,13 +4,14 @@ from __future__ import annotations
 import hashlib
 import io
 import json
-import os
 import threading
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
 from PIL import Image, UnidentifiedImageError
+
+from .fsutil import atomic_write_bytes
 
 
 POLICY_VERSION = "studio-logo-provider-v1"
@@ -73,17 +74,6 @@ def inspect_logo(data: bytes) -> LogoRaster | None:
     )
 
 
-def atomic_write(path: Path, data: bytes) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
-    try:
-        temporary.write_bytes(data)
-        os.replace(temporary, path)
-    except BaseException:
-        temporary.unlink(missing_ok=True)
-        raise
-
-
 class LogoCandidateCache:
     def __init__(self, root: Path):
         self.root = root
@@ -106,14 +96,14 @@ class LogoCandidateCache:
         object_path = self.root / "objects" / f"{raster.sha256}{raster.extension}"
         with self._lock:
             if not object_path.is_file():
-                atomic_write(object_path, data)
+                atomic_write_bytes(object_path, data)
             request = {
                 "url": url, "sha256": raster.sha256,
                 "object_name": object_path.name, "mime_type": raster.mime_type,
                 "width": raster.width, "height": raster.height,
                 "perceptual_hash": raster.perceptual_hash,
             }
-            atomic_write(
+            atomic_write_bytes(
                 self._request_path(url),
                 (json.dumps(request, ensure_ascii=False, indent=2) + "\n").encode("utf-8"),
             )
@@ -124,7 +114,7 @@ class LogoCandidateCache:
         path = self.root / "evidence" / f"{key}-{record.sha256}.json"
         with self._lock:
             if not path.is_file():
-                atomic_write(
+                atomic_write_bytes(
                     path,
                     (json.dumps(asdict(record), ensure_ascii=False, indent=2) + "\n").encode(
                         "utf-8"
