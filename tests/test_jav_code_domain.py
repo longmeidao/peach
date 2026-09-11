@@ -11,6 +11,9 @@ r"""转载站水印域名不得被当成番号。
 
 所以这里同时钉住两侧：名单命中的标识一律不是番号，而真番号里同样没有分隔符的那些
 （`IPX219C`、`MEYD911`、`476MLA-179`）必须继续被认出来——形态分不开，只有名单能分。
+
+分隔符本身也是身份的一部分，这里一并钉住：素人系日期式番号里，一本道用 `_`、
+加勒比用 `-`，同一天同一序号是两部不同影片，归一化与查询都不许把它们折叠成一个。
 """
 import importlib.util
 import sqlite3
@@ -21,13 +24,18 @@ from pathlib import Path
 
 from peach.catalog_rules import (
     REPOST_SITE_LABELS,
+    code_query_variants,
     compact_label,
     is_jav_asset,
     is_jav_code,
     is_repost_site_label,
+    is_uncensored_code,
+    jav_fallback_title,
     normalise_code_key,
     release_code_from_filename,
     release_code_from_text,
+    release_identity,
+    same_release_code,
 )
 from peach import scripting
 from peach.migrations import upgrade
@@ -114,6 +122,57 @@ class ExtractionTests(unittest.TestCase):
     def test_labels_and_domains_extract_to_nothing(self):
         for text in ("HHD800", "hhd800.com", "www.98t.la", "AAVV333", "bei88"):
             self.assertIsNone(release_code_from_text(text), text)
+
+
+class DatedCodeSeparatorTests(unittest.TestCase):
+    """日期式番号的 `_` 与 `-` 是两个片商，归一化、查询和身份都不得折叠。"""
+
+    def test_each_separator_keeps_its_own_key(self):
+        self.assertEqual(normalise_code_key("092415_001"), "092415_001")
+        self.assertEqual(normalise_code_key("092415-001"), "092415-001")
+        self.assertEqual(normalise_code_key(" 092415_001 "), "092415_001")
+
+    def test_the_two_separators_are_two_different_releases(self):
+        self.assertFalse(same_release_code("092415_001", "092415-001"))
+        self.assertFalse(same_release_code("092416-001", "092415-001"))
+        self.assertTrue(same_release_code("092415_001", "092415_001"))
+
+    def test_queries_never_swap_the_separator(self):
+        # 用错分隔符搜到的是别的片商的另一部片，不是同一发行的另一种写法。
+        self.assertEqual(code_query_variants("092415_001"), ("092415_001",))
+        self.assertEqual(code_query_variants("092415-001"), ("092415-001",))
+
+    def test_a_separatorless_source_id_matches_either_maker(self):
+        # 来源只给数字时分隔符无从得知；缺一个字符不是「这是另一部片」的证据。
+        self.assertEqual(release_identity("040221001"), "040221001")
+        self.assertTrue(same_release_code("040221001", "040221-001"))
+        self.assertTrue(same_release_code("040221001", "040221_001"))
+        self.assertFalse(same_release_code("040221001", "040222-001"))
+
+    def test_filenames_hand_over_the_separator_they_carry(self):
+        self.assertEqual(release_code_from_filename("1pondo-092415_001-FHD.mp4"),
+                         "092415_001")
+        self.assertEqual(release_code_from_filename("1pon-092415-001-fhd1_(new).mp4"),
+                         "092415-001")
+        self.assertEqual(release_code_from_text("092415_001"), "092415_001")
+
+    def test_titles_still_strip_a_code_written_the_other_way(self):
+        # 身份认分隔符，野生文件名的写法却会漂移：账本 asset 6118 与 6149 是同一部
+        # 一本道，一个写 `1pon-092415-001-fhd1`，一个写 `1pondo-092415_001-FHD`。
+        self.assertEqual(jav_fallback_title("1pon-092415-001-fhd1_(new).mp4",
+                                            "092415_001"), "")
+
+    def test_other_shapes_still_fold_their_underscore(self):
+        self.assertEqual(normalise_code_key("ABW_232"), "ABW-232")
+        self.assertEqual(normalise_code_key("300MIUM_1239"), "300MIUM-1239")
+        self.assertEqual(normalise_code_key("fc2_ppv_802296"), "FC2-PPV-802296")
+
+    def test_one_shared_shape_decides_dated_and_uncensored(self):
+        for value in ("092415_001", "092415-001", "040221-0012"):
+            self.assertTrue(is_jav_code(value), value)
+            self.assertTrue(is_uncensored_code(value), value)
+        for value in ("09241-001", "0924150-001", "092415-1", "ABW-232"):
+            self.assertFalse(is_uncensored_code(value), value)
 
 
 class AuditScriptTests(unittest.TestCase):

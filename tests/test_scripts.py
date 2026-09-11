@@ -562,6 +562,16 @@ class OperationalScriptTests(unittest.TestCase):
             propose("raikun325.mp4", "RAIKUN325"), "raikun325.mp4",
             "没有分隔符的账号名不能先补成番号再改文件名",
         )
+        self.assertEqual(
+            propose("1pondo 092415 001 FHD.mp4", "092415_001"),
+            "1pondo 092415_001 FHD.mp4",
+            "日期式番号缺分隔符的写法按 ledger 补齐",
+        )
+        self.assertEqual(
+            propose("1pon-092415-001-fhd1.mp4", "092415_001"),
+            "1pon-092415-001-fhd1.mp4",
+            "日期式番号的另一种分隔符属于别的片商，不改写",
+        )
 
     def test_filename_cleanup_keeps_collision_media_with_a_numbered_suffix(self):
         rows = [

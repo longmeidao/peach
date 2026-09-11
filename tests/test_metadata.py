@@ -51,6 +51,12 @@ class MetadataProviderTests(unittest.TestCase):
             with self.subTest(unsafe=unsafe), self.assertRaises(ValueError):
                 validate_provider_code(unsafe)
 
+    def test_the_gate_passes_both_separators_of_a_dated_code(self):
+        # `_` 是一本道等片商的标识（`catalog_rules._CODE_DATE`）。这道闸拦的是路径、
+        # URL 和任意文本；连分隔符一起拦，这些片就一部都查不了。
+        self.assertEqual(validate_provider_code("092415_001"), "092415_001")
+        self.assertEqual(validate_provider_code("092415-001"), "092415-001")
+
     def test_structured_error_is_preserved(self):
         def runner(command, **kwargs):
             return subprocess.CompletedProcess(command, 1, json.dumps({"error": {

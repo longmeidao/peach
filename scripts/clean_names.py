@@ -103,7 +103,7 @@ def _normalise_code_in_name(name: str, code: str | None,
         )
     else:
         amateur = re.fullmatch(r"(\d{3})?([A-Z]+)-(\d+)", canonical)
-        dated = re.fullmatch(r"(\d{6})-(\d{2,4})", canonical)
+        dated = re.fullmatch(r"(\d{6})([-_])(\d{2,4})", canonical)
         if amateur:
             prefix, letters, digits = amateur.groups()
             number = str(int(digits))
@@ -112,9 +112,13 @@ def _normalise_code_in_name(name: str, code: str | None,
                 rf"[-_ ]?0*{re.escape(number)}(?!\d)", re.I,
             )
         elif dated:
-            left, right = dated.groups()
+            left, separator, right = dated.groups()
+            # 只补齐缺分隔符或用空格分隔的写法。日期式番号的 `-` 与 `_` 是两个片商
+            # （`catalog_rules._CODE_DATE`），把文件名里的另一种改写成 ledger 这一种，
+            # 就是拿一部片的名字盖掉另一部的证据。
             pattern = re.compile(
-                rf"(?<!\d){re.escape(left)}[-_ ]?{re.escape(right)}(?!\d)", re.I,
+                rf"(?<!\d){re.escape(left)}(?:{re.escape(separator)}| )?"
+                rf"{re.escape(right)}(?!\d)",
             )
         else:
             return name

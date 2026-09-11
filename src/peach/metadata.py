@@ -25,7 +25,10 @@ from .entities import (
 
 
 JAVINIZER_GO_VERSION = "1.5.1"
-_SAFE_CODE = re.compile(r"^(?:FC2-PPV-\d{5,}|\d{3}[A-Z]{2,6}-\d{2,5}|[A-Z]{2,8}-\d{2,5}|\d{6}-\d{2,4})$")
+#: 日期式那一支两种分隔符都放行：`_` 是一本道等片商的标识，不是可替换的写法
+#: （`catalog_rules._CODE_DATE`）。这里拦的是路径、URL 和任意文本，不是分隔符。
+_SAFE_CODE = re.compile(
+    r"^(?:FC2-PPV-\d{5,}|\d{3}[A-Z]{2,6}-\d{2,5}|[A-Z]{2,8}-\d{2,5}|\d{6}[-_]\d{2,4})$")
 CATALOG_EVIDENCE_FIELDS = (
     "title", "original_title", "runtime", "director", "label",
     "poster_url", "cover_url", "screenshot_urls", "trailer_url",
