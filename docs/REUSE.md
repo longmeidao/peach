@@ -48,7 +48,7 @@ JAV 默认封面（官方封面／预览图）与默认大小（大图／小图�
 
 ## 复用决策门槛
 
-- Python 安装与构建复用 [uv 0.12.12](https://github.com/astral-sh/uv/releases/tag/0.12.12) 和官方 setup-uv 10.0.1，Astral 持续维护，许可证分别为 MIT/Apache-2.0 与 MIT。
+- Python 安装与构建复用 [uv 0.12.13](https://github.com/astral-sh/uv/releases/tag/0.12.13) 和官方 setup-uv 10.0.1，Astral 持续维护，许可证分别为 MIT/Apache-2.0 与 MIT。
   使用 uv 项目接口、`uv.lock` 和 `uv sync --locked`；Dependabot 使用官方 `uv` 生态维护锁文件。
   开发与构建在隔离工作树创建环境，生产 venv 不参与精确同步。直接依赖精确固定，传递依赖由锁文件复现；动态项目版本无需修改锁文件。
   测试数据库复用当前树与 Git 历史中的 `tests/support/ledger.py`，迁移生成模板后复制独立临时库；真实迁移测试仍执行迁移。重试测试复用已有 sleeper 注入点。
