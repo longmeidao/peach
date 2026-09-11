@@ -1,7 +1,8 @@
-"""共享 HTTP transport：连接池、超时、有界读取与可注入测试边界。"""
+"""共享 HTTP transport：连接池、超时、有界读取、字符集解码与可注入测试边界。"""
 from __future__ import annotations
 from .user_agent import USER_AGENT
 
+import re
 from dataclasses import dataclass
 from typing import Mapping, Protocol
 
@@ -36,6 +37,62 @@ class HttpTransport(Protocol):
         timeout: float,
         max_bytes: int,
     ) -> HttpResponse: ...
+
+
+#: 从响应开头扫多少字节找 `<meta>` 里的字符集声明。
+#: 参考实现（NeoAVDC `src/main/net/httpClient.ts` 的 `bodyToText`）只扫 1 KB；这里取
+#: 4 KiB，因为 seesaawiki 的声明落在 1 KB 之后——`metadata_seesaa` 此前自己扫前 3000
+#: 字节才认得出 UTF-8 页，扫 1 KB 会把那些页全部按回落编码解。
+META_SNIFF_BYTES = 4096
+
+_CHARSET_IN_HEADER = re.compile(r"charset\s*=\s*[\"']?\s*([\w.:-]+)", re.IGNORECASE)
+#: `<meta charset="euc-jp">` 与 `<meta http-equiv="Content-Type" content="...; charset=euc-jp">`
+#: 两种写法都认。在字节上匹配，免得为了找编码先猜一次编码。
+_CHARSET_IN_META = re.compile(rb"""<meta[^>]+charset\s*=\s*["']?\s*([\w.:-]+)""", re.IGNORECASE)
+
+
+def _declared_encodings(body: bytes, headers: Mapping[str, str] | None) -> list[str]:
+    """站点自己声明的字符集，按可信度排序：响应头在前，页面内的 `<meta>` 在后。"""
+    found: list[str] = []
+    for key, value in (headers or {}).items():
+        if key.lower() != "content-type":
+            continue
+        matched = _CHARSET_IN_HEADER.search(str(value))
+        if matched:
+            found.append(matched.group(1))
+    matched = _CHARSET_IN_META.search(body[:META_SNIFF_BYTES])
+    if matched:
+        found.append(matched.group(1).decode("ascii", "ignore"))
+    return [name for name in dict.fromkeys(found) if name]
+
+
+def body_text(body: bytes, headers: Mapping[str, str] | None = None, *,
+              default: str = "utf-8") -> str:
+    """按站点自己声明的字符集把响应体解成文本。
+
+    顺序和浏览器一致：先 `Content-Type` 的 charset，再响应开头的 `<meta>` 声明，
+    都没有才用 `default`。硬写 utf-8 的代价不是报错而是静默损坏——日站里 EUC-JP 与
+    Shift_JIS 仍占相当比例，`errors="replace"` 会把整行标题变成 U+FFFD，而「标题里
+    没有这个厂牌名」这条判定会据此误杀掉真官网。
+
+    `default` 留给已知编码的单站：seesaawiki 的页面不声明时就是 EUC-JP。声明的编码
+    Python 不认（`x-sjis` 这类站内写法）或者用它解不动，就退到下一个候选；全都不成
+    才用 `default` 加 `errors="replace"` 兜底，宁可留几个替换字符也不抛异常。
+    """
+    for encoding in (*_declared_encodings(body, headers), default):
+        try:
+            return body.decode(encoding)
+        except (UnicodeDecodeError, LookupError):
+            continue
+    try:
+        return body.decode(default, errors="replace")
+    except LookupError:
+        return body.decode("utf-8", errors="replace")
+
+
+def response_text(response: "HttpResponse", *, default: str = "utf-8") -> str:
+    """`body_text` 的响应版：响应头已经在手里，不必让每个调用方自己拆出来。"""
+    return body_text(response.body, response.headers, default=default)
 
 
 #: 跟这些状态的 Location。与 httpx 自己的判据一致。

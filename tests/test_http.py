@@ -4,7 +4,8 @@ from pathlib import Path
 
 import httpx
 
-from peach.http import CurlCffiTransport, HttpRequest, HttpxTransport
+from peach.http import (CurlCffiTransport, HttpRequest, HttpResponse, HttpxTransport,
+                        body_text, response_text)
 from peach.user_agent import USER_AGENT
 
 
@@ -32,6 +33,53 @@ class UserAgentTests(unittest.TestCase):
                             if isinstance(key, ast.Constant) and str(key.value).lower() == 'user-agent' and isinstance(value, ast.Constant):
                                 offenders.append(str(path.relative_to(root)))
         self.assertEqual(offenders, [])
+
+
+class BodyTextTests(unittest.TestCase):
+    """字节到文本按站点自己的声明解，不按调用方的假设解。"""
+
+    JAPANESE = "架空の作品"
+
+    def test_the_content_type_header_decides_the_encoding(self):
+        body = self.JAPANESE.encode("euc_jp")
+        self.assertEqual(
+            body_text(body, {"Content-Type": "text/html; charset=EUC-JP"}), self.JAPANESE)
+
+    def test_a_meta_declaration_decides_it_when_the_header_is_silent(self):
+        for markup in (b'<meta charset="shift_jis">',
+                       b'<meta http-equiv="Content-Type" content="text/html; charset=shift_jis">'):
+            with self.subTest(markup=markup):
+                body = b"<html><head>" + markup + self.JAPANESE.encode("shift_jis")
+                self.assertIn(self.JAPANESE, body_text(body, {"Content-Type": "text/html"}))
+
+    def test_nothing_declared_falls_back_to_the_caller_default(self):
+        body = self.JAPANESE.encode("euc_jp")
+        self.assertEqual(body_text(body, default="euc_jp"), self.JAPANESE)
+        # 默认值是 utf-8，所以同一份 EUC-JP 字节在没有声明也没有默认值时只能替换字符。
+        self.assertNotIn(self.JAPANESE, body_text(body))
+
+    def test_the_header_wins_over_a_contradicting_meta(self):
+        body = b'<meta charset="utf-8">' + self.JAPANESE.encode("euc_jp")
+        self.assertTrue(
+            body_text(body, {"content-type": "text/html;charset=euc-jp"}).endswith(self.JAPANESE))
+
+    def test_an_unusable_declaration_falls_through_instead_of_raising(self):
+        """站内写法 Python 不认、或者声明本身就是错的，都要退到下一个候选。"""
+        body = self.JAPANESE.encode("euc_jp")
+        self.assertEqual(body_text(body, {"Content-Type": "text/html; charset=x-euc-jp"},
+                                   default="euc_jp"), self.JAPANESE)
+        self.assertEqual(body_text(body, {"Content-Type": "text/html; charset=utf-8"},
+                                   default="euc_jp"), self.JAPANESE)
+        self.assertIn("�", body_text(b"\xff\xfe", default="not-a-codec"))
+
+    def test_the_declaration_is_only_looked_for_near_the_start(self):
+        body = b"<!--" + b"x" * 5000 + b'--><meta charset="euc-jp">' + self.JAPANESE.encode("euc_jp")
+        self.assertNotIn(self.JAPANESE, body_text(body))
+
+    def test_a_response_carries_its_own_headers_into_the_decoder(self):
+        response = HttpResponse(200, {"content-type": "text/html; charset=euc-jp"},
+                                self.JAPANESE.encode("euc_jp"))
+        self.assertEqual(response_text(response), self.JAPANESE)
 
 
 class _CurlResponse:

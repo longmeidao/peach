@@ -11,7 +11,7 @@ from bs4 import BeautifulSoup
 import httpx
 
 from .catalog_rules import normalise_code_key, same_release_code
-from .http import HttpRequest, HttpxTransport
+from .http import HttpRequest, HttpxTransport, body_text
 from .metadata import MetadataProviderError, validate_provider_code
 from .scripting import HostLimiter
 
@@ -32,9 +32,9 @@ def page_url(url: str) -> str:
 def parse_page(body: bytes, url: str) -> list[dict]:
     """只从带列名的作品表格取字段；推荐、评论与演员履历不作整片出演证据。"""
     url = page_url(url)
-    text = body.decode('utf-8' if b'charset="utf-8"' in body[:3000].lower()
-                       else 'euc_jp', errors='replace')
-    soup = BeautifulSoup(text, 'html.parser')
+    # 这个 Wiki 两种编码的页面并存，声明写在页面自己的 `<meta>` 里；不声明的按
+    # EUC-JP 解（站点的历史编码）。判据走共享的 `body_text`，不在这里另写一份。
+    soup = BeautifulSoup(body_text(body, default='euc_jp'), 'html.parser')
     area = soup.select_one('#page-body .user-area')
     if area is None:
         return []
@@ -182,7 +182,7 @@ class SeesaaProvider:
         if match:
             return match
         search_url = ROOT + 'search?' + urlencode({'keywords': code})
-        soup = BeautifulSoup(self._fetch(search_url).decode('euc_jp', errors='replace'), 'html.parser')
+        soup = BeautifulSoup(body_text(self._fetch(search_url), default='euc_jp'), 'html.parser')
         links = []
         for anchor in soup.select('.result-box .body h3 a[href]'):
             try:
@@ -197,7 +197,7 @@ class SeesaaProvider:
             self.records[url] = parse_page(body, url)
             if self._match(code):
                 return self._match(code)
-            person = BeautifulSoup(body.decode('euc_jp', errors='replace'), 'html.parser')
+            person = BeautifulSoup(body_text(body, default='euc_jp'), 'html.parser')
             for anchor in person.select('#page-body .user-area a[href]'):
                 if 'レーベル一覧' not in anchor.get_text():
                     continue
