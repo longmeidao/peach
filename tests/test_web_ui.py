@@ -4714,15 +4714,35 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_note_and_info_surfaces_reuse_the_photo_detail_info_icon(self):
         self.assertPageContains('<symbol id="i-info" viewBox="0 0 24 24">')
-        self.assertPageContains('<div class="runtimegate">${icon(\'info\')}<span>${esc(mirrorText)}</span>')
-        self.assertPageContains('<div class="runtimegate">${icon(\'info\')}<span>${esc(followRuntime.ledger_read_only_message')
         self.assertPageContains("${icon('info')}<div><p><b>${exhausted.length} 个来源没有更多内容</b>")
         self.assertPageContains('aria-label="凭据存放位置说明">${icon(\'info\')}</button>')
         self.assertPageContains('aria-label="图片详情" title="图片详情">${icon(\'info\')}</button>')
-        self.assertPageContains('.runtimegate{display:grid;grid-template-columns:16px minmax(0,1fr) auto;align-items:center;gap:12px')
-        self.assertPageContains('.runtimegate>svg{width:16px;height:16px;flex:none;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}')
         self.assertPageContains('.geist-note>svg{width:16px;height:24px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}')
-        self.assertPageContains('.runtimegate a{grid-column:2/-1}')
+
+    def test_the_ledger_gate_is_a_note_and_keeps_its_own_tone(self):
+        # 账本只读那一条是 Note：色调由 --feedback-color 一处给出，底色、图标和正文
+        # 出自同一个色调。自画一只框的写法会让底色说「注意」、字说「普通说明」。
+        self.assertPageContains("function ledgerGateNote(runtime,message,actionLabel,actionHref){")
+        self.assertPageContains("variant:runtime?.ledger_sync==='conflict'?'warning':'secondary'")
+        self.assertPageContains("className:'runtimegate',actionLabel:actionHref?actionLabel:'',actionHref}")
+        self.assertPageContains("ledgerGateNote(reviewRuntime,mirrorText,'前往写入端复核',writer)")
+        self.assertPageContains("ledgerGateNote(followRuntime,followRuntime.ledger_read_only_message||'本机当前只能浏览',")
+        self.assertPageContains('.geist-note.runtimegate{margin:0 0 12px}')
+        # 这个类名只剩定位：框、字形和颜色再出现一份就又能和 Note 走散。
+        self.assertPageLacks('.runtimegate{display:grid')
+        self.assertPageLacks('.runtimegate a{')
+        self.assertPageLacks('<div class="runtimegate">')
+        # 四个色调各自给出前景与背景，前景既是文字色也是图标色（currentColor）。
+        self.assertPageContains('.geist-note{--feedback-color:var(--muted);')
+        self.assertPageContains('background:color-mix(in srgb,var(--feedback-color) 8%,var(--ground));color:var(--feedback-color)')
+        self.assertPageContains('.geist-note-warning{--feedback-color:var(--meter);')
+        self.assertPageContains('.geist-note-error{--feedback-color:var(--drop);')
+        self.assertPageContains('.geist-note-success{--feedback-color:var(--feedback-success);')
+        # 恢复动作在另一台机器上时是链接；两种形态占同一个格子。
+        self.assertPageContains(
+            '<a class="geist-button" href="${esc(actionHref)}" data-note-action>${esc(actionLabel)}</a>')
+        self.assertPageContains(
+            '<button type="button" class="geist-button primary" data-note-action>${esc(actionLabel)}</button>')
         # 横幅是第四个装这两枚字形的容器。圆点是长度 .01 的路径，缺了圆头就渲染成
         # 看不见的薄片，警告只剩上半截竖杠。选择器认直接子元素：带进度时横幅里那一枚
         # 圆环归 `.geist-gauge`，它的端点是弧的两头而不是字形笔画。
@@ -9686,7 +9706,8 @@ class WebUiSourceTests(unittest.TestCase):
         那种写法 Geist 没有。工具行没有上方空间，图标又足够把下拉框和普通按钮区分开。
         """
         self.assertPageContains(
-            """<span class="fmanagesort">${icon('sort')}${selectFieldHtml(FOLLOW_SORT_OPTIONS,followManageSort,""")
+            """<span class="fmanagesort" data-collapse-field title="关注列表排序">"""
+            """${icon('sort')}${selectFieldHtml(FOLLOW_SORT_OPTIONS,followManageSort,""")
         self.assertPageContains('id="i-sort"')
         self.assertPageContains(".fmanagesort{position:relative;display:inline-flex;align-items:center")
         self.assertPageContains(".fmanagesort>svg{position:absolute;z-index:1;left:9px;width:16px;height:16px")

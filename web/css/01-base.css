@@ -358,6 +358,26 @@ body.settings-open>.ovtrack.page,body.photolight-open>.ovtrack.page{display:none
 .popmenu.gselectmenu button[aria-selected="true"]{background:var(--hover);color:var(--ink)}
 .popmenu.gselectmenu button[aria-selected="true"]>svg{visibility:visible}
 
+/* 工具行收窄：宽度不够时，带图标又带文字的按钮和下拉只留图标，而不是把半排控件
+   推到第二行去——一行控件断成两行以后，读的人要先认出哪几个原本是一组的。
+
+   判据是这一行自己的宽度，不是视口：同一个视口下侧栏收起与展开留给这行的宽度差
+   两百像素，按视口断点会在一边早早折掉、在另一边照样超框。容器查询量的是内容宽，
+   740px 是这一行所有控件加间隔的实测占位（646px 控件 + 7 道 12px 间隔）再留一档。
+
+   收哪几件由控件自己声明，不按位置猜：同排还有纯图标键和分段控件（本来就没有字），
+   以及只有文字的按钮（收起来是一排认不出的空框）。收起后名字全靠 title 与
+   aria-label，所以文字只许 display:none，不能连可访问名字一起藏掉。 */
+[data-collapse-toolbar]{container-type:inline-size}
+@container (max-width:740px){
+  [data-collapse-toolbar] [data-collapse-label]{display:none}
+  [data-collapse-toolbar] :is(.fbtn,.geist-button):has(>[data-collapse-label]){width:var(--control-h);padding:0}
+  /* 下拉收掉的是当前值和那枚 chevron，框内左侧的前缀图标移到正中，成为它唯一的字形。 */
+  [data-collapse-toolbar] [data-collapse-field] .gselectfield{width:var(--control-h);padding:0}
+  [data-collapse-toolbar] [data-collapse-field] .gselectfield>*{display:none}
+  [data-collapse-toolbar] [data-collapse-field]>svg{left:50%;transform:translateX(-50%)}
+}
+
 /* Geist Split Button：一个明确的主动作，右边一档收起同一类的做法。实测
    https://vercel.com/geist/split-button（2026-09-07）：两颗按钮拼成一个盒子，主动作占左半、
    右侧两角不倒角，触发档占右半、左侧两角不倒角，中间靠一条 1px 竖线分开，触发档里只有一枚

@@ -120,7 +120,6 @@ body:has(#batchbar:not([hidden])) #stage{padding-bottom:180px}
   .managebar-menu{display:none;margin-top:8px;padding:6px;border:1px solid var(--line-soft);border-radius:var(--floating-radius);
     background:var(--ground);grid-template-columns:repeat(2,minmax(0,1fr));gap:4px}
   .managebar.is-open .managebar-menu{display:grid}
-  .runtimegate a{grid-column:2/-1}
   .managebar-menu button{width:100%;min-height:42px;justify-content:flex-start;padding:9px 11px}
   .cleanupgrid{grid-template-columns:minmax(0,1fr)}
   /* 说明行右端的动作在手机上要够手指点：桌面 32px 是 Geist 的控件高度，触摸区按本项目

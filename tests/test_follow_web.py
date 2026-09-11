@@ -2349,6 +2349,39 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains(".fsechead .fmanagedir{width:var(--control-h);padding:0}")
         self.assertPageContains(".fsechead .fmanagedir svg{width:16px;height:16px}")
 
+    def test_the_list_toolbar_collapses_to_icons_before_it_breaks_into_two_rows(self):
+        """放不下时带文字的按钮与下拉只留图标，名字交给 title 与 aria-label。
+
+        判据是这一行自己的宽度：同一个视口下侧栏收起与展开留给它的宽度差两百像素，
+        视口断点会在一边早折、在另一边照样超框。
+        """
+        self.assertPageContains('<div class="fsechead" data-collapse-toolbar>')
+        self.assertPageContains("[data-collapse-toolbar]{container-type:inline-size}")
+        self.assertPageContains("@container (max-width:740px){")
+        self.assertPageContains("[data-collapse-toolbar] [data-collapse-label]{display:none}")
+        self.assertPageContains(
+            "[data-collapse-toolbar] :is(.fbtn,.geist-button):has(>[data-collapse-label])"
+            "{width:var(--control-h);padding:0}")
+        # 下拉收掉当前值和 chevron，框内前缀图标移到正中成为它唯一的字形。
+        self.assertPageContains(
+            "[data-collapse-toolbar] [data-collapse-field] .gselectfield{width:var(--control-h);padding:0}")
+        self.assertPageContains(
+            "[data-collapse-toolbar] [data-collapse-field] .gselectfield>*{display:none}")
+        self.assertPageContains(
+            "[data-collapse-toolbar] [data-collapse-field]>svg{left:50%;transform:translateX(-50%)}")
+        # 收起后名字只剩这两样，所以文字标签只许 display:none。
+        self.assertPageContains('<span class="funreadrange" data-collapse-field title="未看范围">')
+        self.assertPageContains('<span class="fmanagesort" data-collapse-field title="关注列表排序">')
+        self.assertPageContains('title="检查全部" aria-label="检查全部"')
+        self.assertPageContains('<span data-collapse-label>检查全部</span>')
+        self.assertPageContains('title="去看更新" aria-label="去看更新"')
+        self.assertPageContains('<span data-collapse-label>去看更新</span>')
+        # 忙态换上的那句也是可收的文字；少了标记，检查中的按钮比同排宽一截。
+        self.assertPageContains("'<span data-collapse-label>检查中…</span>'")
+        # 收哪一行也要声明：全站只有这一条工具行接进来。纯图标键和分段控件本来就没有
+        # 字可收，只有文字的按钮（复核页那条批量工具条）收起来是一排认不出的空框。
+        self.assertEqual(self.page.count(" data-collapse-toolbar>"), 1)
+
     def test_alias_count_badge_is_neutral_metadata(self):
         """「3 组」只是计数，不是待处理提醒：徽章走 Geist gray badge 的中性灰。
 
