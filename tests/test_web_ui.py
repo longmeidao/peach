@@ -8316,6 +8316,9 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('<div class="cleanuppage"><div class="cleanupstats">')
         self.assertPageLacks('cleanup-workspace-switch')
         self.assertPageContains('</div><div class="cleanupgrid">${cleanupCards.scraping}${cleanupCards.empty}</div>')
+        # 样式也一起走：没有使用者的选择器留在 board.css 里，下一个人会当它是现役版式去改。
+        self.assertNotIn("cleanup-workspace-switch",
+                         (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8"))
         for entry in ("['review','人工复核','square-check-big']", "['trash','回收站','trash']", "['quality','高清版','sparkles']"):
             self.assertPageContains(entry)
         root = Path(__file__).resolve().parents[1]

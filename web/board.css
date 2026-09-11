@@ -1350,11 +1350,6 @@ body .batchbar button[hidden],body .batchbar button.danger[hidden]{display:none}
 .follow-workspace-switch button{position:relative;z-index:1;display:inline-flex;flex:none;align-items:center;gap:6px;height:auto;min-height:28px;margin:0;padding:4px 10px;border:0;border-radius:6px;background:none;box-shadow:none;color:var(--color-text-secondary);font:var(--board-body-medium);white-space:nowrap;cursor:pointer;transition:color .2s cubic-bezier(.4,0,.2,1)}
 .follow-workspace-switch button:hover{background:none;color:var(--color-text-primary)}
 .follow-workspace-switch button[aria-selected=true]{background:none;color:var(--color-text-primary);box-shadow:none}
-.cleanup-workspace-switch{display:flex;gap:4px;overflow-x:auto;margin:0 0 20px;padding:4px;background:var(--ground);border-radius:var(--control-radius)}
-.cleanup-workspace-switch a{display:inline-flex;align-items:center;gap:8px;padding:8px 14px;border-radius:var(--control-radius);color:var(--muted);font:var(--board-body-medium);text-decoration:none;white-space:nowrap}
-.cleanup-workspace-switch a:hover{background:var(--hover);color:var(--ink)}
-.cleanup-workspace-switch a[aria-selected=true]{background:var(--surface);color:var(--ink)}
-.cleanup-workspace-switch svg{width:16px;height:16px}
 .followmanage .fmain>[data-follow-workspace-panel][hidden]{display:none}
 .fmanageoverview>div{display:grid;gap:12px;padding:20px 24px;background:var(--ground);border-radius:var(--surface-radius);min-width:0}
 .fmanageoverview span{font:var(--board-body-medium);color:var(--muted)}
