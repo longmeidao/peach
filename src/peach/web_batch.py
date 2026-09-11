@@ -34,7 +34,7 @@ from .web_state import WebContract
 ASSET_REFERENCE_TABLES = (
     "asset_tag", "media_binding", "activity_event", "asset_entity",
     "watch_queue", "asset_preference", "asset_tag_preference", "asset_quality_goal",
-    "playlist_item",
+    "playlist_item", "asset_subtitle",
 )
 
 # 只认联系方式与站点形态的推广套话。「微信」「成人游戏」这类词单独出现不算：

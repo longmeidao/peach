@@ -24,7 +24,7 @@ class MigrationTests(unittest.TestCase):
         backup = self.root / "before.db"
         done = upgrade(self.db, MIGRATIONS, backup)
         self.assertEqual([m.version for m in done],
-                         ["0000", "0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012", "0013", "0014", "0015", "0016", "0017", "0018", "0019", "0020", "0021", "0022", "0023", "0024", "0025", "0026"])
+                         ["0000", "0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012", "0013", "0014", "0015", "0016", "0017", "0018", "0019", "0020", "0021", "0022", "0023", "0024", "0025", "0026", "0027"])
         self.assertTrue(backup.exists())
         con = sqlite3.connect(self.db)
         tables = {row[0] for row in con.execute(
@@ -40,8 +40,8 @@ class MigrationTests(unittest.TestCase):
                          "entity_search_term", "watch_queue", "asset_preference", "asset_quality_goal",
                          "playlist", "playlist_item",
                          "asset_tag_preference", "asset_search", "follow_playback",
-                         "genre_decision", "schema_migration"} <= tables)
-        self.assertEqual(versions, ["0000", "0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012", "0013", "0014", "0015", "0016", "0017", "0018", "0019", "0020", "0021", "0022", "0023", "0024", "0025", "0026"])
+                         "genre_decision", "asset_subtitle", "schema_migration"} <= tables)
+        self.assertEqual(versions, ["0000", "0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012", "0013", "0014", "0015", "0016", "0017", "0018", "0019", "0020", "0021", "0022", "0023", "0024", "0025", "0026", "0027"])
         self.assertEqual(upgrade(self.db, MIGRATIONS), [])
         self.assertEqual(plan(self.db, MIGRATIONS)[1], [])
 
@@ -427,6 +427,7 @@ EXPECTED_DELETE_RULES = {
     ("activity_event", "profile_id"): ("profile", "SET NULL"),
     ("asset_tag_preference", "profile_id"): ("profile", "CASCADE"),
     ("follow_playback", "profile_id"): ("profile", "CASCADE"),
+    ("asset_subtitle", "asset_id"): ("asset", "CASCADE"),
 }
 NO_ACTION_ALLOWED = {("profile", "user_id")}
 
@@ -642,6 +643,64 @@ class ForeignKeyDeleteRuleTests(unittest.TestCase):
             "FROM asset_tag GROUP BY source ORDER BY count(*) DESC"))
         self.assertIn("idx_asset_tag_source_asset", sources)
         connection.close()
+
+
+class AssetSubtitleTableTests(unittest.TestCase):
+    """0027：字幕 sidecar 表的形状由 schema 自己守住。"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name).resolve()
+        self.db = self.root / "ledger.db"
+        sqlite3.connect(self.db).close()
+        upgrade(self.db, MIGRATIONS)
+        self.connection = sqlite3.connect(self.db)
+        self.connection.isolation_level = None
+        self.addCleanup(self.connection.close)
+        self.connection.execute(
+            "INSERT INTO asset(id,location,path,name,medium,first_seen,last_seen) "
+            r"VALUES(1,'local','R:\media\x\a.mp4','a.mp4','video','2026-09-01','2026-09-01')")
+
+    def _insert(self, **overrides):
+        row = {"asset_id": 1, "location": "local", "path": r"R:\media\x\a.srt",
+               "name": "a.srt", "language": "zh-Hans", "format": "srt", "size": 40,
+               "mtime": "2026-09-01", "pairing": "exact",
+               "first_seen": "2026-09-01", "last_seen": "2026-09-01"}
+        row.update(overrides)
+        columns = ",".join(row)
+        self.connection.execute(
+            f"INSERT INTO asset_subtitle({columns}) "
+            f"VALUES({','.join('?' * len(row))})", tuple(row.values()))
+
+    def test_the_same_path_can_only_be_registered_once_per_location(self):
+        self._insert()
+        with self.assertRaises(sqlite3.IntegrityError):
+            self._insert(name="别名.srt")
+
+    def test_an_unpaired_row_must_declare_itself_orphan(self):
+        self._insert(asset_id=None, pairing="orphan")
+        with self.assertRaises(sqlite3.IntegrityError):
+            self._insert(asset_id=None, pairing="exact", path=r"R:\media\x\b.srt")
+
+    def test_an_unknown_pairing_name_is_refused(self):
+        with self.assertRaises(sqlite3.IntegrityError):
+            self._insert(pairing="差不多")
+
+    def test_deleting_the_asset_takes_its_subtitle_rows(self):
+        self._insert()
+        self.connection.execute("PRAGMA foreign_keys=ON")
+        self.connection.execute("DELETE FROM asset WHERE id=1")
+        self.assertEqual(self.connection.execute(
+            "SELECT count(*) FROM asset_subtitle").fetchone()[0], 0)
+        self.assertEqual(
+            self.connection.execute("PRAGMA foreign_key_check").fetchall(), [])
+
+    def test_the_index_carries_the_listing_query(self):
+        plan = " ".join(row[3] for row in self.connection.execute(
+            "EXPLAIN QUERY PLAN SELECT id,name FROM asset_subtitle "
+            "WHERE asset_id=1 ORDER BY name COLLATE NOCASE, id"))
+        self.assertIn("idx_asset_subtitle_asset", plan)
 
 
 if __name__ == "__main__":

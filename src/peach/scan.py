@@ -12,6 +12,9 @@
   就是要遍历的目录；macOS 上遍历的是挂载点，写进账本的仍是 `声明根\\相对路径`，这样
   读取侧的 `platform.translate_ledger_path` 才翻得回同一个文件。
 
+字幕 sidecar 顺带在这里登记：遍历时每个目录的文件名已经在手上，配对判据只看同目录，
+`subtitles.py` 负责判定，本模块只负责把结论落进 `asset_subtitle`。
+
 `peach init` 的首次扫描与 `peach scan` 都调这里，
 声明根和挂载表由调用方传入而不是读进程缓存：`init` 刚写完设置文件时缓存还是旧的。
 """
@@ -24,6 +27,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path, PureWindowsPath
 
+from . import subtitles
 from .platform import is_windows_path, resolve_location, resolve_root
 
 VIDEO = {".mp4", ".m4v", ".mkv", ".avi", ".wmv", ".mov", ".ts", ".flv", ".rmvb", ".mpg",
@@ -134,11 +138,15 @@ class ScanResult:
     seconds: float
     #: 该来源里本次没扫到的行数（`last_seen` 落后于本次）。
     gone: int
+    #: 本次登记的字幕 sidecar 条数，其中配不到视频的那部分。
+    subtitles: int = 0
+    orphan_subtitles: int = 0
 
     def summary(self) -> str:
         return (f"✓ {self.location}: {self.files:,} 文件 / "
                 f"{self.total_bytes / 1024 ** 4:.2f} TB / 耗时 {self.seconds:.0f}s；"
-                f"清单中已消失 {self.gone:,} 个")
+                f"清单中已消失 {self.gone:,} 个；"
+                f"字幕 {self.subtitles:,} 条（孤立 {self.orphan_subtitles:,} 条）")
 
 
 def scan_location(
@@ -160,11 +168,15 @@ def scan_location(
     files = 0
     total = 0
     batch: list[tuple] = []
+    # 字幕要等正片的行落库之后才能按 `(location, path)` 查到 asset_id，所以先攒着，
+    # 遍历完再一次登记。sidecar 按定义与正片同目录，配对只看当前这一个目录。
+    sidecars: list[subtitles.Sidecar] = []
     connection = sqlite3.connect(db_path)
     try:
         connection.execute("PRAGMA journal_mode=WAL")
         for directory, _subdirs, names in os.walk(walk_root, onerror=lambda _error: None):
             relative = Path(directory).relative_to(walk_root).parts
+            here: dict[str, tuple[int, str]] = {}
             for name in names:
                 try:
                     stat = os.stat(os.path.join(directory, name))
@@ -172,6 +184,7 @@ def scan_location(
                     continue
                 ledger_path = str(ledger_root.joinpath(*relative, name))
                 mtime = time.strftime("%Y-%m-%d", time.localtime(stat.st_mtime))
+                here[name] = (stat.st_size, mtime)
                 batch.append((location, ledger_path, name, medium_of(name),
                               stat.st_size, mtime, now, now))
                 files += 1
@@ -182,14 +195,20 @@ def scan_location(
                     batch.clear()
                     report(f"  {time.time() - started:5.0f}s  {files:,} 文件  "
                            f"{total / 1024 ** 4:.2f} TB")
+            sidecars.extend(subtitles.directory_sidecars(
+                ledger_root.joinpath(*relative), here,
+                [name for name in here if medium_of(name) == "video"]))
         if batch:
             connection.executemany(_UPSERT, batch)
+        connection.commit()
+        tracks, orphans = subtitles.record(connection, location, sidecars, now)
         connection.commit()
         gone = connection.execute(
             "SELECT COUNT(*) FROM asset WHERE location=? AND last_seen<?",
             (location, now)).fetchone()[0]
     finally:
         connection.close()
-    result = ScanResult(location, root, files, total, time.time() - started, gone)
+    result = ScanResult(location, root, files, total, time.time() - started, gone,
+                        tracks, orphans)
     report(result.summary())
     return result

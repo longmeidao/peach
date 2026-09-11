@@ -1960,6 +1960,19 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('mountDetailPlayer(item,followVideo,appSettings.detailAutoplay,{')
         self.assertPageContains('class="ptoggle" type="checkbox" id="detailAutoplaySetting"')
 
+    def test_local_assets_get_their_sidecar_subtitles_as_closed_text_tracks(self):
+        """外挂字幕挂成 text track，一条都不预先打开。
+
+        同一部片常有简体、繁体、日语三条，自动打开某一条等于替用户选了语言；
+        Video.js 的字幕菜单只在有轨时出现，让它自己出现就够了。关注条目没有 sidecar，
+        那条路径不发这一次请求。
+        """
+        self.assertPageContains("if(!options.source)mountPlayerSubtitles(detailPlayer,it.id);")
+        self.assertPageContains("api(`/api/assets/${assetId}/subtitles`)")
+        self.assertPageContains("(payload?.subtitles||[]).filter(track=>track.playable)")
+        self.assertPageContains("kind:'subtitles',src:track.src,srclang:track.language||''")
+        self.assertPageContains("label:track.label,default:false},true);")
+
     def test_entity_links_have_no_external_arrow(self):
         # `target="_blank"` 已经是外链，箭头只是重复；一排链接里它还会挤掉本就不多的
         # 横向空间。整条 CSS 一并删掉，别留下没人用的类名。
