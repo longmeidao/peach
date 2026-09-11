@@ -53,6 +53,31 @@ process.stdout.write(JSON.stringify(results));
 
 @unittest.skipUnless(NODE, "没装 Node，纯模块的行为验收跳过")
 class WebJsBehaviourTests(unittest.TestCase):
+    def test_search_glass_morph_has_geometry_and_stays_in_the_viewport(self):
+        css = (ROOT / "web/board.css").read_text(encoding="utf-8")
+        easing = css.split("--spring-pane:", 1)[1].split(";", 1)[0]
+        for viewport in (320, 390, 760):
+            expanded = dict(left=48, top=14, width=viewport-56, height=36)
+            compact = dict(left=viewport-124, top=14, width=36, height=36)
+            interrupted = dict(left=80, top=12, width=180, height=40)
+            for start, end in ((compact, expanded), (expanded, compact), (interrupted, compact)):
+                with self.subTest(viewport=viewport, start=start):
+                    frames = self.run_js([("search-morph.js", "searchMorphFrames",
+                                          [start, end, expanded, 7, 16, easing, viewport])])[0]
+                    self.assertGreater(len(frames), 2)
+                    self.assertAlmostEqual(float(frames[0]["width"][:-2]), start["width"])
+                    self.assertAlmostEqual(float(frames[-1]["width"][:-2]), end["width"])
+                    self.assertGreater(max(float(frame["height"][:-2]) for frame in frames), 36)
+                    for frame in frames:
+                        x, y = (float(value[:-2]) for value in frame["translate"].split())
+                        left = expanded["left"] + x
+                        width = float(frame["width"][:-2])
+                        height = float(frame["height"][:-2])
+                        self.assertGreaterEqual(left, 8)
+                        self.assertLessEqual(left + width, viewport - 8 + .001)
+                        self.assertAlmostEqual(expanded["top"] + y + height/2, 32)
+                        self.assertNotIn("opacity", frame)
+
     @classmethod
     def setUpClass(cls):
         cls._tmp = tempfile.TemporaryDirectory()

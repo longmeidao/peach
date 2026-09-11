@@ -4,7 +4,9 @@
 
 2026-09-11 核对 [liquid-gooey spring.ts](https://github.com/Jakubantalik/Libraries/blob/422180dd7a5ac646c85deedc65500c4a74339127/packages/liquid-gooey/src/spring.ts)，MIT，源码 SHA-256 `9dc0d5e9dd269000d95743572320039404982803d1b2da9977e717b5956d5481`。
 
-Peach 复用已采样的短程弹簧（208ms，stiffness 3600、damping 68、mass 1），以 CSS 裁切和透明度衔接开合；搜索建议在展开完成后解除裁切。控件固定 36px 高度，按顶栏实际高度居中，右侧按钮依次为搜索、沉浸、多选。
+形变证据来自同一 revision 的 `LiquidItem.tsx`：`morph.shape` 将尺寸变化描述为弹性形变、过冲和软胶回落；`observer.ts`（SHA-256 `5e44c076e50ceb707572cd7b4e083f835a5d454cc21fb405f5c7dd3ff3ef4865`）分别驱动位置、尺寸和圆角。此前记录的裁切与透明度方案未满足用户要求的图标形变，不能作为形变验收证据。 <!-- copy-lint-disable-line -->
+
+Peach 使用现有 313ms 玻璃弹簧（stiffness 1700、damping 46、mass 1），从图标真实矩形变为搜索框，轮廓中途鼓起、回落，反向操作从当前可见矩形接续。关键帧限制在视口内，玻璃全程可见，文字不横向缩放。尺寸动画只作用于绝对定位的搜索层，建议面板在动画结束后显示；起止同高 36px、共用顶栏中心线。右侧按钮依次为搜索、沉浸、多选。
 
 未新增依赖；上游未作为完整搜索组件复刻。上游搜索交互与本轮浏览器实测未取得，本轮按用户要求不调用浏览器工具。
 
