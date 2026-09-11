@@ -14,6 +14,10 @@ r"""转载站水印域名不得被当成番号。
 
 分隔符本身也是身份的一部分，这里一并钉住：素人系日期式番号里，一本道用 `_`、
 加勒比用 `-`，同一天同一序号是两部不同影片，归一化与查询都不许把它们折叠成一个。
+
+同一层还管另外四件事，样本一律取自本机账本的真实文件名：Tokyo-Hot 的 `n1234` 没有
+字母段，西片是「厂牌／系列 + 发行日」而不是番号，停用词与手机录像的日期串一律不产出
+番号，推广域名剥掉之后才轮到番号主体。
 """
 import importlib.util
 import sqlite3
@@ -23,9 +27,11 @@ import unittest
 from pathlib import Path
 
 from peach.catalog_rules import (
+    CODE_BODY_STOPWORDS,
     REPOST_SITE_LABELS,
     code_query_variants,
     compact_label,
+    is_code_body_stopword,
     is_jav_asset,
     is_jav_code,
     is_repost_site_label,
@@ -36,6 +42,8 @@ from peach.catalog_rules import (
     release_code_from_text,
     release_identity,
     same_release_code,
+    tokyo_hot_code,
+    western_release_identity,
 )
 from peach import scripting
 from peach.migrations import upgrade
@@ -173,6 +181,194 @@ class DatedCodeSeparatorTests(unittest.TestCase):
             self.assertTrue(is_uncensored_code(value), value)
         for value in ("09241-001", "0924150-001", "092415-1", "ABW-232"):
             self.assertFalse(is_uncensored_code(value), value)
+
+
+class TokyoHotShapeTests(unittest.TestCase):
+    """Tokyo-Hot 的编号没有厂牌字母段，规范写法是小写。
+
+    样本是本机账本里全部 9 条 Tokyo-Hot 视频的文件名。`k` 与 `red` 两支账本里一条
+    没有，按同一发行体系一并认。
+    """
+
+    def test_the_canonical_form_is_lowercase_and_zero_padded(self):
+        self.assertEqual(tokyo_hot_code("N0646"), "n0646")
+        self.assertEqual(tokyo_hot_code("n646"), "n0646")
+        self.assertEqual(tokyo_hot_code("K1234"), "k1234")
+        self.assertEqual(tokyo_hot_code("RED123"), "red-123")
+        self.assertEqual(tokyo_hot_code("red_123"), "red-123")
+        self.assertEqual(tokyo_hot_code("ABW-132"), "")
+
+    def test_the_key_the_identity_and_the_shape_gate_agree(self):
+        self.assertEqual(normalise_code_key("N0646"), "n0646")
+        self.assertEqual(release_identity("N0646"), "n0646")
+        self.assertTrue(same_release_code("n646", "N0646"))
+        self.assertTrue(is_jav_code("n0646"))
+        self.assertTrue(is_uncensored_code("n0646"))
+        self.assertEqual(code_query_variants("N0646"), ("n0646",))
+
+    def test_a_bare_number_is_read_only_at_the_head_of_the_name(self):
+        self.assertEqual(release_code_from_filename("n1032.mkv"), "n1032")
+        self.assertEqual(release_code_from_filename("n0762.mkv"), "n0762")
+        self.assertEqual(
+            release_code_from_filename("n1025_rena_yamamoto_ss_n_fhd.wmv"), "n1025")
+        self.assertEqual(
+            release_code_from_filename("n0890_mary_jane_lee_tb_n {ThePornGarage}.mp4"),
+            "n0890")
+
+    def test_the_site_name_licenses_a_number_further_in(self):
+        self.assertEqual(release_code_from_filename("Tokyo-Hot n0646 HD.wmv"), "n0646")
+        self.assertEqual(
+            release_code_from_filename("Tokyo Hot (n1042)(Rena Yamamoto)[1080p].wmv"),
+            "n1042")
+        self.assertIsNone(release_code_from_filename("Tokyo-Hot.mp4"))
+
+    def test_lookalikes_without_the_site_stay_out(self):
+        # 编号只有一个字母，形态本身挡不住任何东西：`no0037_01` 是论坛整合包的分卷，
+        # `k12` 位数不够，名字中段的 `n1042` 没有站名替它作证。
+        self.assertIsNone(release_code_from_filename("no0037_01.wmv"))
+        self.assertIsNone(release_code_from_filename("k12.mp4"))
+        self.assertIsNone(release_code_from_filename("Rena n1042 clip.mp4"))
+
+    def test_the_number_is_stripped_out_of_the_fallback_title(self):
+        self.assertEqual(jav_fallback_title("Tokyo-Hot n0646 HD.wmv", "n0646"), "")
+        self.assertEqual(
+            jav_fallback_title("n1025_rena_yamamoto_ss_n_fhd.wmv", "n1025"),
+            "rena yamamoto ss n")
+
+
+class WesternDateShapeTests(unittest.TestCase):
+    """西片是「厂牌／系列 + 发行日」，没有番号。
+
+    样本取自本机账本里带这一形态的文件名。身份进 `release_identity` 是因为同一场景在
+    不同发布组手里写成两位和四位年份，收敛成一个身份才判得了重；它带句点和四位年份，
+    和任何番号都不会撞上。
+    """
+
+    def test_the_identity_is_the_series_and_the_release_day(self):
+        self.assertEqual(
+            western_release_identity(
+                "DorcelClub.24.12.02.Christy.White.XXX.1080p.HEVC.x265.PRT.mp4"),
+            "DORCELCLUB.2024-12-02")
+        self.assertEqual(
+            western_release_identity("Vixen.2026.05.07.Scene.XXX.1080p.mp4"),
+            "VIXEN.2026-05-07")
+        self.assertEqual(
+            western_release_identity(
+                "E081. Shinaryen.19.11.08.Sexy.Babe.Suck.Big.Cock.Boyfriend "
+                "And Rough Sex After Reading A Porn Story -【Shinaryen】.mp4"),
+            "SHINARYEN.2019-11-08")
+
+    def test_two_year_writings_of_one_scene_are_one_identity(self):
+        self.assertTrue(same_release_code("Vixen.26.05.07", "Vixen.2026.05.07"))
+        self.assertFalse(same_release_code("Vixen.26.05.07", "Vixen.26.05.08"))
+
+    def test_no_jav_code_is_mined_out_of_a_western_name(self):
+        for name in (
+            "DorcelClub.24.12.02.Christy.White.XXX.1080p.HEVC.x265.PRT.mp4",
+            "Vixen.2026.05.07.Scene.XXX.1080p.mp4",
+            "E115. LIFESELECOTR.20.10.03.Shinaryen.My.Hot.Girlfriend -【Shinaryen】.mp4",
+        ):
+            self.assertIsNone(release_code_from_filename(name), name)
+            self.assertFalse(is_jav_code(western_release_identity(name)), name)
+
+    def test_a_date_inside_the_title_does_not_invent_a_series(self):
+        # 日期在标题中段、系列名写在方括号里：从 token 中段搜会把 `Sex` 当成系列。
+        self.assertEqual(
+            western_release_identity(
+                "E078. Redhead.Sucking.Big.Cock.And.Hard.Sex.2019.10.15 -【Shinaryen】.mp4"),
+            "")
+        self.assertEqual(
+            western_release_identity(
+                "E097. Gamer Girl Teen Fucked While She Plays（20.03.22）.mp4"), "")
+
+    def test_an_impossible_month_or_day_is_not_a_release_date(self):
+        self.assertEqual(western_release_identity("Series.24.13.02.Scene.mp4"), "")
+        self.assertEqual(western_release_identity("Series.24.12.32.Scene.mp4"), "")
+
+
+class CodeBodyStopwordTests(unittest.TestCase):
+    """只说明「这是什么文件」的词不是番号主体。
+
+    四个词各自对应本机账本里一批被当成番号的创作者素材与整合包分卷。
+    """
+
+    def test_the_camera_and_structure_words_yield_nothing(self):
+        self.assertIsNone(release_code_from_filename("IMG_3092 (2).mp4"))
+        self.assertIsNone(release_code_from_filename("IMG_7195 (2).mov"))
+        self.assertIsNone(release_code_from_filename("video_2025-09-02_20-07-50.mp4"))
+        self.assertIsNone(release_code_from_filename("no0037_01.wmv"))
+        self.assertIsNone(release_code_from_filename("part 18.mp4"))
+
+    def test_a_phone_capture_is_not_a_dated_release(self):
+        # 月日都成立时日期形状拦不住，只有「开头写着这是一段录像」能。
+        self.assertIsNone(release_code_from_filename("VID_20241015_071039_730.mp4"))
+        self.assertIsNone(release_code_from_filename("VID_20220818_125735_816.mp4"))
+
+    def test_an_impossible_month_or_day_is_not_a_dated_code(self):
+        self.assertFalse(is_jav_code("135735_816"))
+        self.assertFalse(is_uncensored_code("125745_816"))
+        self.assertIsNone(release_code_from_text("125735_816"))
+
+    def test_the_real_dated_releases_still_parse(self):
+        self.assertEqual(release_code_from_filename("1pondo-092415_001-FHD.mp4"),
+                         "092415_001")
+        self.assertEqual(release_code_from_filename("040221-001-carib-1080p.mp4"),
+                         "040221-001")
+        self.assertEqual(release_code_from_filename("122614_001-1pon-whole1_hd.avi"),
+                         "122614_001")
+
+    def test_a_maker_code_that_starts_with_a_stopword_is_kept(self):
+        # 判据是整段字母，不是前缀：按前缀一刀切会把 MIB 的 `NOAH-101` 一起拦掉。
+        self.assertEqual(release_code_from_filename("[K-MIB]NOAH-101(NOAH)(1).mp4"),
+                         "NOAH-101")
+        self.assertFalse(is_code_body_stopword("NOAH-101"))
+        self.assertTrue(is_code_body_stopword("IMG_3092"))
+
+    def test_a_stopword_already_stored_in_the_ledger_is_not_a_jav_code(self):
+        # 提取器不再产出这些值，账本里却存着 58 条，而 `JAV_ASSET_PREDICATE` 通过
+        # SQLite 自定义函数直接调 `is_jav_code`。
+        for stored in ("VIDEO-2022", "VIDEO-2025", "IMG-3092"):
+            self.assertFalse(is_jav_code(stored), stored)
+            self.assertFalse(is_jav_asset(stored, "S1 NO.1 STYLE"), stored)
+        self.assertTrue(is_jav_code("NOAH-101"))
+
+    def test_a_stored_date_code_with_an_impossible_day_is_not_a_jav_code(self):
+        self.assertFalse(is_jav_code("125735-816"))
+        self.assertFalse(is_jav_code("131454-967"))
+        self.assertTrue(is_jav_code("092415-001"))
+
+    def test_the_table_holds_upper_case_letters_only(self):
+        # 比较前先把非字母抹掉再转大写；小写或带数字的条目永远命不中。
+        for word in CODE_BODY_STOPWORDS:
+            self.assertEqual(word, word.upper(), word)
+            self.assertTrue(word.isalpha(), word)
+
+
+class PromoDomainStrippingTests(unittest.TestCase):
+    """推广域名剥在番号前面：头、尾、方括号三种位置共用 `strip_promo_markers`。"""
+
+    def test_a_domain_in_front_of_the_code_is_dropped(self):
+        self.assertEqual(release_code_from_filename("www.98T.la@ABW-358-U.mp4"),
+                         "ABW-358")
+        self.assertEqual(release_code_from_filename("www.xxx.com@ABC-123.mp4"),
+                         "ABC-123")
+        self.assertEqual(release_code_from_filename("[xxx.cc]ABC-123.mp4"), "ABC-123")
+
+    def test_a_domain_behind_the_code_is_dropped(self):
+        self.assertEqual(release_code_from_filename("ABC-123@xxx.net.mp4"), "ABC-123")
+        self.assertEqual(release_code_from_filename("ABP-762-fuckbe.com.mp4"), "ABP-762")
+        self.assertEqual(release_code_from_filename("259LUXU-1004-fuckbe.com.mp4"),
+                         "259LUXU-1004")
+        self.assertEqual(
+            release_code_from_filename("WAAA-415-UNCENSORED-nyap2p.com.mp4"), "WAAA-415")
+
+    def test_an_fc2_id_behind_a_domain_is_still_an_fc2_id(self):
+        self.assertEqual(release_code_from_filename("www.98T.la@FC2-1292985.mp4"),
+                         "FC2-PPV-1292985")
+
+    def test_a_bare_watermark_is_still_not_a_code(self):
+        for text in ("hhd800.com", "www.98t.la", "HHD800"):
+            self.assertIsNone(release_code_from_text(text), text)
 
 
 class AuditScriptTests(unittest.TestCase):

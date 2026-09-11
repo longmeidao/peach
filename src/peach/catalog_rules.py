@@ -73,7 +73,27 @@ _CODE_AMATEUR = re.compile(r"^\d{3}[A-Z]{2,8}-\d{2,5}$")
 #: （`attic/evidence/20260911-javdb-api-probe/probe-result.json`）。
 #: 所以归一化只统一大小写，绝不把 `_` 转写成 `-`，查询也不生成另一种分隔符的变体：
 #: 用错分隔符搜到的是别的片。
-_CODE_DATE = re.compile(r"^\d{6}[-_]\d{2,4}$")
+#: 日期式番号的六位是 `MMDDYY`，月日必须成立。不校验的话，手机录像
+#: `VID_20220818_125735_816.mp4` 里的 `125735_816`（12 月 57 日）就是一条一本道番号；
+#: 2026-09-12 在本机账本 26265 条 video 上只读盘点，这样的名字有 91 条。
+_MMDDYY = r"(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01])\d{2}"
+_CODE_DATE = re.compile(rf"^{_MMDDYY}[-_]\d{{2,4}}$")
+
+#: Tokyo-Hot 的编号没有厂牌字母段：`n1234`／`k1234` 是本编，`red-123` 是 Red Hot 支线。
+#: 规范写法取小写，不跟着别的番号大写——javbus 的作品页地址就是 `/n1234`，NeoAVDC
+#: （MIT，`attic/tools/20260911-参考项目/NeoAVDC/src/main/number/parseNumber.ts` 的
+#: `TOKYOHOT_NUM_RE`）同样输出小写 `n####`。本机账本里只有 `n` 系 9 条，`k` 与 `red`
+#: 属同一发行体系一并认，它们在 javdb／javbus 上的写法**未取得**本机实证。
+_TOKYO_HOT_BODY = re.compile(r"^(?:([nk])(\d{3,5})|red[-_]?(\d{2,4}))$", re.I)
+#: Tokyo-Hot 站名。编号本身没有字母段，只靠形态会把 `no0037_01`、`part 18` 一起认走，
+#: 所以站名出现时才允许在名字中段搜编号。
+_TOKYO_HOT_SITE_TOKEN = r"tokyo[-_. ]?hot"
+_TOKYO_HOT_SITE = re.compile(rf"(?i)(?<![a-z0-9]){_TOKYO_HOT_SITE_TOKEN}(?![a-z0-9])")
+#: 名字开头就是编号的写法（`n1025_rena_yamamoto_ss_n_fhd.wmv`）。本编固定四位，
+#: 放宽到三位就会把 `no0037`、`k12` 这类一起收进来。
+_TOKYO_HOT_HEAD = re.compile(r"^(?:[nk]\d{4}|red[-_]\d{3})(?![0-9])", re.I)
+_TOKYO_HOT_INLINE = re.compile(
+    r"(?<![a-z0-9])((?:[nk]\d{3,5}|red[-_]?\d{2,4}))(?![a-z0-9])", re.I)
 
 #: 字母段 → 搜索扩展前缀。这里只生成查询词，不断言两种编号属于同一发行。
 #:
@@ -87,8 +107,8 @@ MAKER_NUMBER_PREFIX = {
     "MLA": "476", "NTK": "300", "NTR": "348", "ORETD": "230", "OTIM": "393",
     "SIMM": "345", "SUKE": "428",
 }
-#: 日期式番号被抹掉分隔符后剩下的纯数字串，片商无从判断。
-_DATED_COMPACT = re.compile(r"^\d{6}\d{2,4}$")
+#: 日期式番号被抹掉分隔符后剩下的纯数字串，片商无从判断。月日与 `_CODE_DATE` 同一把尺。
+_DATED_COMPACT = re.compile(rf"^{_MMDDYY}\d{{2,4}}$")
 _CODE_MAKER_PREFIXED = re.compile(r"^(\d{3})([A-Z]{2,8})-(\d{2,5})$")
 #: 数字前缀单独保留；`h_` 是 DMM content_id 的 label 标记。
 _RELEASE_ID = re.compile(r"^(\d{1,4})?([A-Z]{2,8})0*(\d{1,5})([A-Z]?)$")
@@ -143,7 +163,7 @@ _QUALITY_HEAD = re.compile(r"^(?:hd|fhd|sd|uhd|4k|2160p?|1080p?|720p?)[-_. ]+", 
 VERSION_TAIL_TOKENS = ("ch", "sub", "uc", "fhd", "4k", "hd", "c", "u")
 VERSION_TAIL = re.compile(r"[-_. ]?(?:" + "|".join(VERSION_TAIL_TOKENS) + r")$", re.I)
 #: 一本道、加勒比是「日期+序号」体系，没有字母番号主体。分隔符进捕获组，原样带出去。
-_DATE_CODE = re.compile(r"(?<!\d)(\d{6})([-_])(\d{3})(?!\d)")
+_DATE_CODE = re.compile(rf"(?<!\d)({_MMDDYY})([-_])(\d{{3}})(?!\d)")
 #: UUID 首段长得像番号（`DCE7230C-730E-…` 会被拆成 `DCE`+`7230`），按整串形态排除。
 _UUID_LIKE = re.compile(
     r"[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}", re.I)
@@ -156,6 +176,40 @@ _FILE_NOISE = re.compile(
     r"|[-_. ]\d{1,2}|\(\d{1,2}\)|[a-z])+$", re.I)
 #: 番号主体：可选的三位素人前缀 + 字母厂牌 + 序号。
 _CODE_BODY = re.compile(r"^(?:\d{3})?[A-Za-z]{2,8}[-_. ]?\d{2,5}$")
+
+#: 只说明「这是什么文件」的词，形态与番号主体一模一样，但没有一个是厂牌代号。
+#: 不拦的话，`IMG_3092 (2).mp4` 会给出 `IMG-3092`、`video_2025-09-02_20-07-50.mp4` 给出
+#: `VIDEO-2025`、`no0037_01.wmv` 给出 `NO-037`、`part 18.mp4` 给出 `PART-018`；
+#: 2026-09-12 在本机账本 26265 条 video 上只读盘点，这四种名字分别有 90、83、13、1 条，
+#: 分别住在 `R:\Media\` 的创作者目录、`A:\创作者\` 和论坛整合包里，没有一条是发行物。
+#:
+#: 画质词和转载站标识不重复登记在这里：前者归 `_QUALITY_HEAD`，后者归
+#: `REPOST_SITE_LABELS`，三份名单各管一类噪声，`release_code_from_text` 依次过一遍。
+#: 新增条目同样先用 `build/parse_shapes_audit.py stems` 在真实账本上取误判证据，
+#: 别按印象加词——创作者昵称（`sumwall95`、`retsu_dao`）同样会撞上这个形态，
+#: 把它们逐个塞进名单只会得到一张永不收敛的表。
+CODE_BODY_STOPWORDS = frozenset({"IMG", "NO", "PART", "VID", "VIDEO"})
+#: 停用词落在名字开头时，后面跟的数字串同样不是番号：`VID_20241015_071039_730.mp4` 里的
+#: `071039_730` 月日都成立，光靠日期形状拦不住，只有「这是一段手机录像」能。
+#: 后视断言挡住 `NOAH-101`、`VIDEOMAN-12` 这类以停用词起头的真厂牌代号。
+#: 排序固定成「长的在前、同长按字母」：`frozenset` 的遍历顺序随进程变，
+#: 编出来的正则每次都不一样，比对与排错就没有稳定的东西可看。
+_STOPWORD_HEAD = re.compile(
+    r"^(?:" + "|".join(sorted(CODE_BODY_STOPWORDS, key=lambda word: (-len(word), word)))
+    + r")(?![A-Za-z])", re.I)
+
+#: 西片按「厂牌／系列 + 发行日」命名，没有番号：`DorcelClub.24.12.02.Christy.White.XXX.1080p`、
+#: `LIFESELECOTR.20.10.03.Shinaryen.My.Hot.Girlfriend`。年份两位四位都有，月日必须成立。
+#:
+#: 只在 token 开头认，不在 token 中间搜：账本里的
+#: `E078. Redhead.Sucking.Big.Cock.And.Hard.Sex.2019.10.15` 中间搜会得到系列名 `Sex`，
+#: 而这一批的真系列写在方括号里。NeoAVDC（MIT，同上）的 `WESTERN_RE` 在 token 内任意
+#: 位置匹配且只认两位年份，这里收紧成 token 开头并同时认四位年份。
+_WESTERN_DATE = re.compile(
+    r"^([A-Za-z][A-Za-z0-9]{1,23})\.(\d{4}|\d{2})\."
+    r"(0[1-9]|1[0-2])\.(0[1-9]|[12]\d|3[01])(?![0-9])")
+#: 分词只按空白与各类括号切，句点留给日期本身。
+_WESTERN_TOKEN_SEP = re.compile(r"[\s_@\[\]【】()（）]+")
 _FC2_ID = re.compile(r"^FC2(?:[-_. ]?PPV)?[-_. ]?(\d{5,})$", re.I)
 
 #: 能证明「这是一次公开发行」的实体类型。`tag` 不在其中：口味标签谁都能挂，
@@ -237,13 +291,59 @@ def is_repost_site_label(value: str | None) -> bool:
     return compact_label(text) in REPOST_SITE_LABELS
 
 
+def tokyo_hot_code(value: str | None) -> str:
+    """Tokyo-Hot 编号的规范写法；不是这一形态返回空串。
+
+    补零到发行方自己的位数（本编四位、Red Hot 三位），大小写一律折成小写。
+    形态判据与小写这一点的出处见 `_TOKYO_HOT_BODY`。
+    """
+    shape = _TOKYO_HOT_BODY.match(str(value or "").strip())
+    if not shape:
+        return ""
+    if shape.group(3):
+        return f"red-{int(shape.group(3)):03d}"
+    return f"{shape.group(1).lower()}{int(shape.group(2)):04d}"
+
+
+def is_code_body_stopword(value: str | None) -> bool:
+    """True 表示这段文字的字母只是文件类型标记，不能当番号主体（见 `CODE_BODY_STOPWORDS`）。"""
+    return re.sub(r"[^A-Za-z]", "", str(value or "")).upper() in CODE_BODY_STOPWORDS
+
+
+def western_release_identity(value: str | None) -> str:
+    """西片的「厂牌／系列 + 发行日」身份；不是这一形态返回空串。
+
+    返回 `DORCELCLUB.2024-12-02` 这样的写法。它不是番号，也不会和番号撞上——番号里
+    没有句点，也没有四位年份。两位年份按 70 分界展开（`69` → 2069，`70` → 1970）：
+    这个语料里的西片全是 2010 年之后的，分界点取在哪都不影响现有条目，写死一个是为了
+    同一个文件名永远给出同一个身份。
+
+    同一场景在不同发布组手里会写成 `Vixen.26.05.07` 和 `Vixen.2026.05.07`，收敛成一个
+    身份才能判重；这也是它进 `release_identity` 的理由。
+    """
+    stem = _ASSET_EXTENSION.sub("", str(value or "").strip())
+    for token in _WESTERN_TOKEN_SEP.split(stem):
+        shape = _WESTERN_DATE.match(token)
+        if not shape:
+            continue
+        series, year, month, day = shape.groups()
+        if len(year) == 2:
+            year = f"20{year}" if int(year) < 70 else f"19{year}"
+        return f"{series.upper()}.{year}-{month}-{day}"
+    return ""
+
+
 def normalise_code_key(code: str | None) -> str:
     """Normalize a release code into the stable cover-cache key.
 
     日期式番号（`_CODE_DATE`）例外：分隔符是片商标识，归一化原样保留，
     `092415_001` 与 `092415-001` 各算一个键、各存一张封面。
+    Tokyo-Hot 同样例外，它的规范写法是小写（见 `_TOKYO_HOT_BODY`）。
     """
     raw = (code or "").upper().strip()
+    tokyo = tokyo_hot_code(raw)
+    if tokyo:
+        return tokyo
     if _CODE_DATE.match(raw):
         return raw
     value = raw.replace("_", "-").replace(" ", "-").strip()
@@ -263,9 +363,14 @@ def normalise_code_key(code: str | None) -> str:
 
 
 def is_jav_code(code: str | None) -> bool:
-    """Recognize only code shapes whose original value keeps its separator."""
+    """Recognize only code shapes whose original value keeps its separator.
+
+    停用词在这里也要拦。提取器不再产出 `VIDEO-2022` 这样的值，但账本里存着 58 条
+    （2026-09-12 只读盘点：`VIDEO-2022` 34 条、`VIDEO-2025` 3 条、`IMG-nnnn` 21 条），
+    而 `JAV_ASSET_PREDICATE` 是通过 SQLite 自定义函数直接调本函数判的。
+    """
     value = (code or "").upper().strip()
-    if not value or is_repost_site_label(value):
+    if not value or is_repost_site_label(value) or is_code_body_stopword(value):
         return False
     if value.startswith("FC2"):
         return bool(re.search(r"\d{5,}", value))
@@ -273,6 +378,7 @@ def is_jav_code(code: str | None) -> bool:
         _CODE_STUDIO.match(value)
         or _CODE_AMATEUR.match(value)
         or _CODE_DATE.match(value)
+        or tokyo_hot_code(value)
     )
 
 
@@ -327,10 +433,17 @@ def release_identity(code: str | None) -> str:
     搜索结果不该和任何番号算成同一部。
     """
     raw = _DMM_LABEL_PREFIX.sub("", str(code or "").upper().strip())
+    tokyo = tokyo_hot_code(raw)
+    if tokyo:
+        return tokyo
     if _CODE_DATE.match(raw):
         # 日期式番号带着分隔符进身份：抹掉它就等于断言一本道的 `092415_001` 和
         # 加勒比的 `092415-001` 是同一部（见 `_CODE_DATE`）。
         return raw
+    western = western_release_identity(raw)
+    if western:
+        # 西片不走番号体系，但同一场景的两种年份写法要收敛成一个身份。
+        return western
     value = re.sub(r"[\s._\-]+", "", raw)
     if not value:
         return ""
@@ -426,31 +539,59 @@ def release_code_from_text(value: str | None) -> str | None:
 
     `HHD800` 这类转载站标签一律返回 None：它形态上完全符合「字母+数字」，只有名单能
     把它和 `MEYD911` 分开。
+
+    噪声分三层，顺序固定：先按名单认出整串就是水印的情况，再摘掉头尾的推广域名
+    （`www.98t.la@ABW-358-U`、`[xxx.cc]ABC-123`、`ABP-762-fuckbe.com`），最后剥画质
+    前缀与版次后缀。域名这一层交给 `strip_promo_markers`，番号提取和目录判重共用它，
+    否则同一个 `[98t.tv][98t.tv]` 会在两处各剥一半。
+
+    西片是「厂牌／系列 + 发行日」，不产出番号：它没有番号可给，而剥掉尾部噪声后日期会
+    散架，从剩下的半截里一定能抠出一个不存在的番号来。
     """
     text = str(value or "").strip()
     if not text or _UUID_LIKE.search(text):
         return None
     text = _ASSET_EXTENSION.sub("", text)
-    if is_repost_site_label(text):
+    if is_repost_site_label(text) or western_release_identity(text):
         return None
+    text = strip_promo_markers(text)
     fc2 = _FC2_ID.match(text)
     if fc2:
         return normalise_code_key(f"FC2-PPV-{fc2.group(1)}")
+    tokyo = _tokyo_hot_from_text(text)
+    if tokyo:
+        return tokyo
+    if _STOPWORD_HEAD.match(text):
+        return None
     date = _DATE_CODE.search(text)
     if date:
         return f"{date.group(1)}{date.group(2)}{date.group(3)}"
     body = VERSION_TAIL.sub("", _QUALITY_HEAD.sub("", text))
-    if not _CODE_BODY.match(body):
+    if not _CODE_BODY.match(body) or is_code_body_stopword(body):
         return None
     canonical = normalise_code_key(body)
     return canonical if is_jav_code(canonical) else None
 
 
+def _tokyo_hot_from_text(text: str) -> str:
+    """Tokyo-Hot 编号只在两个位置上认：名字开头，或站名已经写在名字里。"""
+    head = _TOKYO_HOT_HEAD.match(text)
+    if head:
+        return tokyo_hot_code(head.group(0))
+    if _TOKYO_HOT_SITE.search(text):
+        inline = _TOKYO_HOT_INLINE.search(text)
+        if inline:
+            return tokyo_hot_code(inline.group(1))
+    return ""
+
+
 def release_code_from_filename(name: str | None) -> str | None:
     """文件名带分卷、画质和重复计数，剥掉噪声后再解析。"""
     stem = _ASSET_EXTENSION.sub("", str(name or "").strip())
+    if western_release_identity(stem):
+        return None
     code = release_code_from_text(stem) or release_code_from_text(
-        _FILE_NOISE.sub("", stem))
+        _FILE_NOISE.sub("", strip_promo_markers(stem)))
     if code:
         return code
     mib = _KOREAN_MIB_FILENAME.match(stem)
@@ -472,6 +613,12 @@ def _jav_code_pattern(code: str | None) -> str:
             rf"{re.escape(prefix or '')}{re.escape(letters)}"
             rf"[-_ ]*0*{re.escape(str(int(digits)))}"
         )
+    tokyo = _TOKYO_HOT_BODY.fullmatch(canonical)
+    if tokyo:
+        # 文件名里补零位数会漂移（`n646`／`n0646`），两种都放行。
+        if tokyo.group(3):
+            return rf"red[-_ ]*0*{int(tokyo.group(3))}"
+        return rf"{tokyo.group(1)}0*{int(tokyo.group(2))}"
     dated = re.fullmatch(r"(\d{6})[-_](\d{2,4})", canonical)
     if dated:
         # 匹配文件名时两种分隔符都放行：身份认分隔符，野生文件名的写法却会漂移
@@ -481,18 +628,18 @@ def _jav_code_pattern(code: str | None) -> str:
 
 
 #: 无码厂商自己的编号法：Caribbeancom／1Pondo／10musume／Pacopacomama 走日期式
-#: （形状与分隔符含义见 `_CODE_DATE`，同一份实现），HEYZO 用 `HEYZO-1380`。
-#: 有码厂商不用这两种形状。
+#: （形状与分隔符含义见 `_CODE_DATE`，同一份实现），HEYZO 用 `HEYZO-1380`，
+#: Tokyo-Hot 用 `n1234`（见 `_TOKYO_HOT_BODY`）。有码厂商不用这三种形状。
 UNCENSORED_CODE_SHAPES = (
     _CODE_DATE,
     re.compile(r"^HEYZO-\d{2,5}$", re.I),
+    _TOKYO_HOT_BODY,
 )
-#: 文件名里的发行站标记。番号形状认不出来时（例如 Tokyo-Hot 的 `n1234`），
-#: 这是另一条本机就能核验的证据。
+#: 文件名里的发行站标记。番号形状认不出来时，这是另一条本机就能核验的证据。
 _UNCENSORED_SITE = re.compile(
     r"(?i)(?<![A-Z0-9])(?:"
     r"carib(?:bean(?:com)?(?:pr)?)?|1pon(?:do)?|10mu(?:sume)?|heyzo|"
-    r"pacopacomama|paco|muramura|tokyo[-_]?hot"
+    r"pacopacomama|paco|muramura|" + _TOKYO_HOT_SITE_TOKEN +
     r")(?![A-Z0-9])"
 )
 #: 版次标记有时和番号粘在一起，中间没有分隔符：`PPPD-937CH.mp4`、`MIDV-751CH.mp4`。
@@ -616,7 +763,7 @@ def promo_free_key(name: str | None) -> str:
 _RELEASE_NOISE = re.compile(
     r"(?i)(?<![A-Z0-9])(?:"
     r"carib(?:bean(?:com)?(?:pr)?)?|1pon(?:do)?|10mu(?:sume)?|heyzo|"
-    r"pacopacomama|paco|muramura|tokyo[-_]?hot|xxx[-_]?av|"
+    r"pacopacomama|paco|muramura|" + _TOKYO_HOT_SITE_TOKEN + r"|xxx[-_]?av|"
     r"\d{3,4}p|[0-9]?[fu]?hd\d*|sd|4k|2k|whole\d*|part\d*|full|lt|ch\d*"
     r")(?![A-Z0-9])"
 )
