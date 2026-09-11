@@ -32,6 +32,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--swap-from", type=Path, default=None,
                         help="旧托盘退出后把这个暂存包换上生产入口，失败自动回退")
     args = parser.parse_args(argv)
+    # 源码托盘没有生产入口可换，`--swap-from` 在这条路上无处可去。默默忽略它的话，
+    # 命令照样退出 0、照样打印 ok，而那个包根本没换上——换包失败最不能是静默的。
+    if args.source and args.swap_from:
+        parser.error("--source 不能与 --swap-from 同用：源码托盘没有可换的生产入口")
 
     if not args.source and find_tray_windows(args.target):
         result = restart_tray(args.target, timeout=max(1.0, args.timeout),
