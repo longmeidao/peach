@@ -129,7 +129,12 @@
 .top .search.search.search{--glass-optic:blur(22px)}
 /* 快照里的玻璃使用实底承接光晕；实时页面恢复后再采样背景。 */
 html[data-theme-snapshot] :is(.board-filter-frame,.entitytagbar,.entitycollectionhead,.drawer,.edge,.search,.top>.ib,.board-library-menu,.viewglide,.navglide,.selectiondock,.reviewcontrols,.reviewgroupbar,.reviewbulktoolbar,.batchbar,.tagselection),
-html[data-theme-snapshot] .review.review-is-stuck::before{backdrop-filter:none!important;-webkit-backdrop-filter:none!important;background-color:var(--ground)!important}
+html[data-theme-snapshot] .review.review-is-stuck::before{backdrop-filter:none!important;-webkit-backdrop-filter:none!important;background-color:var(--ground)!important;transition:none!important}
+/* 快照撤掉那一下，材质要淡回来：揭示动画刚停，浮层从实底「啪」地跳成毛玻璃，读起来
+   像主题又切了第二次。过渡只写在常态上——进快照那一下正在拍旧状态的快照，拍到一半
+   路上的颜色就会闪，所以上面那条规则自己把过渡关掉。 */
+.board-filter-frame.board-filter-frame,.entitytagbar.entitytagbar,.entitycollectionhead.entitycollectionhead,.board-library-menu.board-library-menu{
+  transition:background-color .28s ease,backdrop-filter .28s ease,-webkit-backdrop-filter .28s ease}
 .board-filter-frame.board-filter-frame{border-radius:22px;isolation:isolate;color:var(--glass-text);overflow:visible}
 .entitytagbar.entitytagbar.entitytagbar,
 .entitycollectionhead.entitycollectionhead.entitycollectionhead{border-radius:22px;color:var(--glass-text)}
@@ -492,7 +497,8 @@ body::before{display:none}
    上面这 22px 改不动（两处都是别的页面共用的），所以自己不再加，下面照同一个数写。 */
 .board-filter-frame{position:sticky;top:calc(var(--topH) + 8px);z-index:60;border:0;border-radius:16px;background:var(--ground);margin:0 0 22px;box-shadow:0 2px 14px #00000014}
 @media(max-width:760px){
-  .board-filter-frame.board-filter-frame{transition:top var(--board-motion)}
+  /* 窄屏这条要把材质那两样带上：同权重、排在后面，整条 `transition` 会把上面那份换掉。 */
+  .board-filter-frame.board-filter-frame{transition:top var(--board-motion),background-color .28s ease,backdrop-filter .28s ease,-webkit-backdrop-filter .28s ease}
   .board-filter-frame.board-filter-frame.mobile-filter-free{top:var(--filter-free-top)}
 }
 /* 首页那块住在 `body` 底下，两侧没有任何东西给它留白，22px 的圆角直接切在屏幕边沿上；
@@ -938,10 +944,14 @@ body button.danger:not(.frowicon):hover:not(:disabled){background:linear-gradien
 .board-home-logo{width:20px;height:20px}.drawer:not(.open) .dnav button:has(.board-home-logo){padding:8px}
 .drawer.drawer .dnav button:not([aria-pressed=true]),.edge.edge button:not([aria-pressed=true]),.board-sidebar-head #brandHome .mark{color:var(--color-text-secondary)}
 .board-library-menu.board-library-menu{background:var(--glass-drift-a),var(--glass-drift-b),linear-gradient(125deg,var(--glass-sheen),transparent 42%,var(--glass-low)),var(--glass-fill);background-size:200% 200%,200% 200%,auto;border:1px solid var(--glass-low);border-radius:22px;color:var(--glass-text);backdrop-filter:blur(22px) saturate(160%) var(--glass-lume);-webkit-backdrop-filter:blur(22px) saturate(160%) var(--glass-lume);box-shadow:inset 0 1px 0 var(--glass-rim),var(--glass-shadow)}
-.board-library-menu .board-library-rows button{color:var(--glass-text)}
-.board-library-menu .board-library-rows button:is(:hover,[aria-pressed=true]){background:linear-gradient(180deg,var(--glass-sheen),transparent 62%),var(--glass-pick-fill);box-shadow:inset 0 0 0 1px var(--glass-rim)}
+/* 这一列的填充由那块滑过去的玻璃提供，行自己只管文字色：两边都铺的话，静止态是一块
+   不透明的底压在玻璃上面，滑动的那块从头到尾被盖住，看到的只有当前项换了个地方亮起来。
+   玻璃住在这一列里，所以这一列是它的定位宿主；行要压在它上面，否则滑过去时字被盖住。 */
+.board-library-menu .board-library-rows{position:relative}
+.board-library-menu .board-library-rows button{position:relative;color:color-mix(in srgb,var(--glass-text) 66%,transparent)}
+.board-library-menu .board-library-rows button:is(:hover,[aria-pressed=true]){background:none;box-shadow:none;color:var(--glass-text)}
+.board-library-menu .board-library-rows>.viewglide{border-radius:10px}
 .board-library-menu footer{border-color:var(--glass-low)}
-.board-library-menu footer button{background:var(--glass-pick-fill);color:var(--glass-text);border-color:var(--glass-low)}
 @media(max-width:760px){.settingscard.settingscard .settingsscroll{padding-top:16px}}
 .board-sidebar-head #brandHome:hover{background:var(--color-background-primary-hover);border-radius:var(--pill-radius)}
 .drawer .sec[data-sidebar-group]>.board-section-toggle{box-sizing:border-box;display:flex;width:100%;min-height:36px;margin:0 0 4px;padding:8px 10px;gap:8px;border-radius:8px;list-style:none;color:var(--color-text-secondary);font:var(--board-caption)}
@@ -963,11 +973,14 @@ body :is(.dual-range input,.photozoom input,.vjs-peach-speed-range)::-moz-range-
 body :is(.photozoom input,.vjs-peach-speed-range)::-webkit-slider-runnable-track{height:6px;border-radius:999px;background:linear-gradient(90deg,#3986ff var(--board-range-value,var(--peach-speed-percent,0%)),var(--color-background-tertiary-default) 0);box-shadow:inset 0 1px 1px #0000000f}
 body :is(.photozoom input,.vjs-peach-speed-range)::-webkit-slider-thumb{margin-top:-7px}
 body :is(.photozoom input,.vjs-peach-speed-range)::-moz-range-track{height:6px;border-radius:999px;background:linear-gradient(90deg,#3986ff var(--board-range-value,var(--peach-speed-percent,0%)),var(--color-background-tertiary-default) 0)}
-.board-range-tip{position:absolute;z-index:1;bottom:calc(100% + 4px);transform:translateX(-50%);padding:4px 8px;border:1px solid var(--color-border-button-default);border-radius:8px;background:var(--color-background-primary-default);color:var(--color-text-primary);font:var(--board-caption);white-space:nowrap;box-shadow:0 1px 2px #0000000d;pointer-events:none}
+/* 气泡对准手柄居中，越过轨道两端的那一截由 `--range-tip-shift` 收回来（`syncBoardRange`
+   量出来的实际溢出）：侧栏只比轨道宽出一点点，伸出去的半截会被侧栏裁掉，读数就只剩
+   一半。两端各钉一种对齐只在正好 0% 和 100% 时成立，中间任何位置照样出界。 */
+.board-range-tip{position:absolute;z-index:1;bottom:calc(100% + 4px);transform:translateX(calc(-50% + var(--range-tip-shift,0px)));padding:4px 8px;border:1px solid var(--color-border-button-default);border-radius:8px;background:var(--color-background-primary-default);color:var(--color-text-primary);font:var(--board-caption);white-space:nowrap;box-shadow:0 1px 2px #0000000d;pointer-events:none}
 /* 刚动过的那枚压在另一枚上面：两端拖到一起时它们会叠，底下那枚报的是自己停下的位置。 */
 .board-range-tip[data-range-active]{z-index:2}
 /* 两端都常显：这里是唯一报数的地方，藏起来的话不碰滑块就看不出当前筛的是哪一段。 */
-.dual-range{margin-top:36px}.dual-range .board-range-tip[data-range-end=max]{transform:translateX(-100%)}.dual-range .board-range-tip[data-range-end=min]{transform:none}
+.dual-range{margin-top:36px}
 .toast{position:relative;align-items:center;gap:12px;width:min(400px,calc(100vw - 32px));padding:16px 44px 16px 16px;border-radius:16px;background:var(--color-background-primary-default);border-color:var(--color-border-button-default);color:var(--color-text-primary);font:var(--board-body);box-shadow:0 12px 24px -4px #0000001a,0 4px 8px -2px #0000000d;overflow:hidden}
 .toast.warn{border-color:var(--color-border-button-default)}.toast .board-notification-icon{display:grid;place-items:center;width:40px;height:40px;flex:none;border-radius:50%;background:color-mix(in srgb,#3986ff 12%,var(--color-background-primary-default));color:#1760ef}.toast.warn .board-notification-icon{background:color-mix(in srgb,#f04452 12%,var(--color-background-primary-default));color:var(--drop)}/* 这枚字形是描边件：不写 `fill:none` 就按 `fill` 的初值涂黑，一个勾会糊成实心箭头。 */
 .board-notification-icon svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2}.toast p{margin:0}.toast .tclose{position:absolute;right:12px;top:12px}.toast .tact{align-self:center;font-weight:500;color:var(--tungsten)}
@@ -997,7 +1010,7 @@ body .fsource.frow b>a.fsourcelink{display:inline}
 body .fsource.frow b>a.fsourcelink .externalmark{width:1.15em;height:1.15em;margin-left:2px;vertical-align:-0.15em}
 body :is(.sbadge,.faliasbadge,.tasteconfidence,.board-chip,.badge){display:inline-flex;align-items:center;justify-content:center;gap:4px;padding:4px 6px;min-height:24px;box-sizing:border-box;border:0;border-radius:6px;background:var(--color-background-tertiary-default);color:var(--color-text-secondary);font:var(--board-caption);white-space:nowrap}
 body :is(.sbadge.ok,.board-chip.success){background:color-mix(in srgb,#84cc16 16%,var(--color-background-primary-default));color:#4d7c0f}body :is(.sbadge.error,.board-chip.error){background:color-mix(in srgb,#f43f5e 12%,var(--color-background-primary-default));color:#e11d48}.sbadge i,.tasteconfidence i{display:none}
-.fprovider{display:flex;align-items:center;gap:6px;flex-wrap:wrap}.fprovider .sbadge{flex:none}.followmanage .fsource.frow{grid-template-columns:20px minmax(120px,1fr) minmax(100px,auto) auto auto}.followmanage .fchannelcheck{align-self:start;margin-top:2px}
+.fprovider{display:flex;align-items:center;gap:6px;flex-wrap:wrap}.fprovider .sbadge{flex:none}.followmanage .fsource.frow{grid-template-columns:20px minmax(120px,1fr) minmax(100px,auto) auto auto}
 .board-sankey-card :is([data-flow-node],[data-flow-source]){outline:none}.board-sankey-card :is([data-flow-node],[data-flow-source]):focus-visible{outline:2px solid var(--color-border-focus-ring);outline-offset:3px}
 .board-button-group{display:inline-flex;align-items:center;overflow:hidden;border:1px solid var(--color-border-button-default);border-radius:10px;background:var(--color-background-primary-default);box-shadow:0 1px 2px #0000000d}.board-button-group>button{height:34px;padding:0 12px;border:0;border-radius:0;box-shadow:none;background:transparent;color:var(--color-text-secondary);font:var(--board-body)}.board-button-group>button+button{border-left:1px solid var(--color-border-button-default)}.board-button-group>button:is(:hover,[aria-pressed=true]){background:var(--color-background-primary-hover);color:var(--color-text-primary)}
 .followmanage .fpickactions .fbtn{height:36px;min-height:36px;padding:8px 12px}

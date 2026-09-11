@@ -674,11 +674,13 @@ async function saveFollowSchedule(minutes){
   }catch(error){state.textContent=error.message||'保存失败'}
   finally{const status=followScheduleStatus;syncNumberSetting($('#followScheduleSetting'),status?(status.enabled?status.interval_minutes:0):null,status?!status.available:false)}
 }
-/* 来源图标：品牌使用已缓存的官方资产；通用操作图标统一使用本地 Lucide 子集。 */
+/* 来源图标：品牌使用已缓存的官方资产；通用操作图标统一使用本地 Lucide 子集。
+   115 与 PikPak 都取 `MEDIA_SOURCE_ICONS` 里那份官方站标（取证
+   follow-source-icons-measured.md）：来源角标、媒体库切换器和配置页问的是同一件事
+   「这是哪个网盘」，同一个答案不该因为取图入口不同而长成两枚不一样的图形。 */
 const SRCICON={
   local:icon('hard-drive'),
-  '115':'<img class="source-icon" src="/logo?studio=115&variant=icon" alt="" data-drop="self">',
-  // PikPak 官方触屏图标（取证 follow-source-icons-measured.md）；/logo 的生成 logo 不对版。
+  '115':`<img class="source-icon" src="${MEDIA_SOURCE_ICONS['115']}" alt="">`,
   pikpak:`<img class="source-icon" src="${MEDIA_SOURCE_ICONS.pikpak}" alt="">`,
   online:icon('rss'),
 };
@@ -6317,9 +6319,7 @@ function renderFollowManage(credentials){
             followSortLabel()}">${icon(followManageDir==='asc'?'arrow-up':'arrow-down')}</button>
           ${followLayoutButtons()}
           <button class="fbtn" data-follow-check="" title="检查全部" aria-label="检查全部"${sources.length?'':' disabled'}>${
-            icon('refresh-cw')}<span data-collapse-label>检查全部</span></button>
-          <button class="fbtn" data-follow-view title="去看更新" aria-label="去看更新">${
-            icon('rss')}<span data-collapse-label>去看更新</span></button></div>
+            icon('refresh-cw')}<span data-collapse-label>检查全部</span></button></div>
         ${followCheckReport?followCheckFailNote(followCheckReport):''}
         ${sources.length?`<div class="board-follow-selection"><label>${checkboxHtml('data-follow-select-all aria-label="全选来源"')}全选</label><span data-follow-selected-count>已选 0</span><button class="fbtn" data-follow-check="" data-follow-sources="" data-follow-selection-action disabled>检查所选</button><button class="fbtn" data-follow-selection-enabled="true" data-follow-selection-action disabled>启用</button><button class="fbtn" data-follow-selection-enabled="false" data-follow-selection-action disabled>暂停</button><button class="fbtn danger" data-follow-selection-remove data-follow-selection-action disabled>删除</button></div>`:''}
         ${sources.length?`<div class="frows fsources" data-layout="${followListLayout()}">${sourceList}</div>
@@ -6685,10 +6685,6 @@ function wireFollowManage(creds=[]){
     }catch(error){setActionBusy(button,false);throw error}
   }});
   });
-  root.querySelectorAll('[data-follow-view]').forEach(button=>
-    button.onclick=()=>openFollow());
-
-
 }
 
 /* 查找结果先摆出来由人勾选，不自动登记：发现要联网，结果也可能不止一个，
@@ -10072,7 +10068,28 @@ boardBrand.setAttribute('aria-haspopup','dialog');boardBrand.setAttribute('aria-
 boardBrand.insertAdjacentHTML('beforeend','<svg class="board-library-chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="m5 6 3-3 3 3M5 10l3 3 3-3"/></svg>');
 boardBrand.onclick=event=>{event.preventDefault()};
 const libraryFloating=wireAnchoredMenu(document.querySelector('#drawer'),boardBrand,libraryPicker,{side:true});
-libraryPicker.addEventListener('toggle',event=>{if(event.newState==='open')libraryPicker.querySelector('button')?.focus()});
+/* 媒体库这一列跟侧栏导航那一列、筛选条那一排是同一件事：标出「当前是哪一个」，指到
+   哪儿就滑到哪儿，指针离开这一列再滑回真正选中的那一项。所以走同一块玻璃、同一段
+   位移，不在这里另写一份选中底色——那样这一处的手感会自己漂移成第四种。
+   `aria-pressed` 全程不动：移过去不是选中，读屏和键盘那边不该跟着变。
+   菜单收起时量不到尺寸（`offsetHeight` 是 0），玻璃先收起来，开的时候再落位。 */
+let libraryGlide=null,libraryGlideBox=null;
+function syncLibraryGlide(animate,target){
+  const rows=libraryPicker.querySelector('.board-library-rows');
+  const active=(target&&target.isConnected?target:null)
+    ||rows?.querySelector('button[aria-pressed="true"]');
+  if(!rows||!active?.offsetHeight){if(libraryGlide)libraryGlide.hidden=true;libraryGlideBox=null;return}
+  if(!libraryGlide||libraryGlide.parentElement!==rows){
+    libraryGlide=document.createElement('span');libraryGlide.className='viewglide';
+    libraryGlide.setAttribute('aria-hidden','true');rows.prepend(libraryGlide);libraryGlideBox=null;
+  }
+  libraryGlide.hidden=false;
+  const box={x:active.offsetLeft,y:active.offsetTop,w:active.offsetWidth,h:active.offsetHeight};
+  const from=libraryGlideBox;libraryGlideBox=box;
+  moveGlidePane(libraryGlide,animate?from:null,box,'y');
+}
+libraryPicker.addEventListener('toggle',event=>{if(event.newState==='open'){
+  libraryPicker.querySelector('button')?.focus();syncLibraryGlide(false)}});
 libraryPicker.addEventListener('keydown',event=>{if(event.key==='Escape'){event.stopPropagation();libraryFloating.setOpen(false);boardBrand.focus()}});
 api('/api/libraries').then(data=>{
   const choices=[['','全部媒体库','database'],...data.libraries.map(row=>[row.id,row.name,row.icon||'database'])];
@@ -10083,9 +10100,22 @@ api('/api/libraries').then(data=>{
   const libraryMark=glyph=>MEDIA_SOURCE_ICONS[glyph]?.startsWith('data:')?`<img src="${MEDIA_SOURCE_ICONS[glyph]}" alt="">`:icon(glyph==='local'?'hard-drive':glyph);
   const mark=document.createElement('span');mark.className='mark';mark.setAttribute('aria-hidden','true');
   mark.innerHTML=libraryMark(choices.find(row=>row[0]===current)?.[2]||'database');boardBrand.querySelector('.mark').replaceWith(mark);
-  libraryPicker.innerHTML=`<p>媒体库</p><div class="board-library-rows">${choices.map(([id,name,glyph])=>`<button type="button" data-library="${esc(id)}" aria-pressed="${id===current}"><span class="board-library-avatar">${libraryMark(glyph)}</span><span>${esc(name)}</span></button>`).join('')}</div><footer><button type="button" class="geist-button" data-library-manage>管理媒体库</button></footer>`;
+  libraryPicker.innerHTML=`<p>媒体库</p><div class="board-library-rows">${choices.map(([id,name,glyph])=>`<button type="button" data-library="${esc(id)}" aria-pressed="${id===current}"><span class="board-library-avatar">${libraryMark(glyph)}</span><span>${esc(name)}</span></button>`).join('')}</div><footer><button type="button" class="geist-button primary" data-library-manage>管理媒体库</button></footer>`;
   libraryPicker.querySelectorAll('[data-library]').forEach(button=>button.onclick=()=>{sessionStorage.setItem('peach.library',button.dataset.library);location.assign('/')});
   libraryPicker.querySelector('[data-library-manage]').onclick=()=>{libraryFloating.setOpen(false);openDrawer(false);location.assign('/configuration')};
+  /* 委托在这一列上，不挂在每个按钮身上：菜单每次取回媒体库都整块重画。
+     `pointerover`／`pointerout` 而不是 enter／leave，后两个不冒泡，委托接不到。 */
+  const libraryRows=libraryPicker.querySelector('.board-library-rows');
+  libraryRows.addEventListener('pointerover',event=>{
+    if(event.pointerType==='touch')return;
+    const button=event.target.closest?.('button[data-library]');
+    if(button)syncLibraryGlide(true,button);
+  });
+  libraryRows.addEventListener('pointerout',event=>{
+    if(event.pointerType==='touch')return;
+    if(!libraryRows.contains(event.relatedTarget))syncLibraryGlide(true);
+  });
+  syncLibraryGlide(false);
 }).catch(()=>{libraryPicker.hidden=true});
 const boardToggle=document.querySelector('#filterBtn'),toggleHome=document.createComment('sidebar toggle');boardToggle.before(toggleHome);
 const boardFoot=document.createElement('div');boardFoot.className='board-sidebar-foot';

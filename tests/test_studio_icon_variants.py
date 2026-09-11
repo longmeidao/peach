@@ -349,15 +349,29 @@ class PageSourceTests(unittest.TestCase):
 
     def test_every_small_surface_asks_for_the_icon(self):
         for snippet in (
-            '/logo?studio=115&variant=icon',
             '/logo?studio=${encodeURIComponent(x.k)}&variant=icon',
             '/logo?studio=${encodeURIComponent(item.name)}&variant=icon',
         ):
-            # 小位只有这三处；`.entityfavicon` 的模板不写 `data-studio`，图片回退是
-            # 声明式的，不存在按 `img.dataset.studio` 换图的第四处。「不许漏 variant」
+            # 小位只有这两处厂牌标识；网盘来源角标走 `MEDIA_SOURCE_ICONS` 那份站标，
+            # 不进这条链。`.entityfavicon` 的模板不写 `data-studio`，图片回退是
+            # 声明式的，不存在按 `img.dataset.studio` 换图的第三处。「不许漏 variant」
             # 由下面那条按行扫描的断言守。
             with self.subTest(snippet=snippet):
                 self.assertIn(snippet, self.source)
+
+    def test_one_disk_has_one_mark_wherever_it_shows_up(self):
+        """网盘的图形只有一份，不因为取图入口不同而长成两枚。
+
+        来源角标、侧栏的来源筛选、媒体库切换器和配置页问的是同一件事「这是哪个网盘」。
+        其中一处改走 `/logo?studio=115`，同一块屏上就会同时出现站标和官方字标两枚 115，
+        读出来像两个来源；而厂牌那条取图链本来就不认网盘，115 能从那里取到只是名字
+        碰巧撞上了一个厂牌文件名。
+        """
+        self.assertIn('\'115\':`<img class="source-icon" src="${MEDIA_SOURCE_ICONS[\'115\']}" alt="">`,',
+                      self.source)
+        self.assertIn('pikpak:`<img class="source-icon" src="${MEDIA_SOURCE_ICONS.pikpak}" alt="">`,',
+                      self.source)
+        self.assertNotIn("studio=115", self.source)
 
     def test_no_logo_request_is_left_without_a_variant(self):
         """漏掉一处就会在那个位置继续显示补白字标，而且没人会注意到。"""

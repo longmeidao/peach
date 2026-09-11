@@ -1668,6 +1668,11 @@ class FollowWebSourceTests(unittest.TestCase):
         # 管理区身份同理：`section` 写在路由表上，`openManage('follow')` 按它查表。
         self.assertPageContains("{match:'/follow-manage',section:'follow',title:'关注管理',refresh:'skip',")
         self.assertPageContains("open:(params,push)=>openFollowManage(push)},")
+        # 管理页的工具条不再挂一枚回「看」那一屏的按钮：左栏那条常驻入口一直在，
+        # 同一个去处在一屏里摆两个只是把工具条上真正的动作挤窄。检查完那一下的
+        # Toast 仍然给「去看更新」，因为那时人刚做完一件事、下一步确实在另一屏。
+        self.assertPageLacks("data-follow-view")
+        self.assertPageContains("action:{label:'去看更新',run:()=>openFollow()}")
 
     def test_follow_routes_restore_on_reload(self):
         # 恢复只有一个派发点：路径匹配到哪条路由，就打开那一屏。
@@ -1814,6 +1819,10 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("{action:'enabled',id:Number(control.dataset.followEnabled),enabled}")
         # 框本身归共用的 .pcheck，.fchannelcheck 只剩这一行在行里的摆放。
         self.assertPageContains(".fchannelcheck{display:grid;place-items:center;align-self:center}")
+        # 行是 grid 且整行居中，框跟着走。Board 层再压一句「贴顶再推两像素」的话，
+        # 框会比同一行的名字高出半个身位——对齐的是行的上沿，不是它标着的那行字。
+        board = (ROOT / "web" / "board.css").read_text(encoding="utf-8")
+        self.assertNotIn(".followmanage .fchannelcheck{align-self:start", board)
         self.assertPageContains(".pcheck input{position:absolute;width:1px;height:1px;opacity:0")
         # Geist Checkbox 选中态实测：框底不变，勾是墨色；不再用蓝底。
         self.assertPageContains(".pcheck input:checked+span{border-color:var(--ink-2);color:var(--ink)}")
@@ -2374,8 +2383,6 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains('<span class="fmanagesort" data-collapse-field title="关注列表排序">')
         self.assertPageContains('title="检查全部" aria-label="检查全部"')
         self.assertPageContains('<span data-collapse-label>检查全部</span>')
-        self.assertPageContains('title="去看更新" aria-label="去看更新"')
-        self.assertPageContains('<span data-collapse-label>去看更新</span>')
         # 忙态换上的那句也是可收的文字；少了标记，检查中的按钮比同排宽一截。
         self.assertPageContains("'<span data-collapse-label>检查中…</span>'")
         # 收哪一行也要声明：全站只有这一条工具行接进来。纯图标键和分段控件本来就没有
@@ -2855,7 +2862,7 @@ class FollowWebSourceTests(unittest.TestCase):
 
         裸蓝字链接和旁边的计数文本混在一行里，看起来像一句说明文字；
         分不清哪半句是统计、哪半句可以点。改成 .fbtn 次级按钮——与本页
-        「检查全部／去看更新」同一套控件语言——按钮的边界让「这会改状态」
+        「检查全部」同一套控件语言——按钮的边界让「这会改状态」
         在点击之前就看得见。
         """
         self.assertPageContains('<button class="fbtn" data-follow-bulk="seen">全部标记已看</button>')
