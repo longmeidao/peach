@@ -1,6 +1,7 @@
 import { resourceScanHtml, boundedPreference, mountNumberSetting, syncNumberSetting, statCardBody, rankedChart, radarChart, distributionChart, jobActivityHtml, sidebarSectionHtml, wireSidebarGroups, transitionTheme } from './dist/peach-ui.js';
 import {$, ENTITY_ROUTES, LOC, ROUTE_ENTITIES, ROUTE_STATES, SITE_FAVICONS, STATE_LABELS, STATE_ROUTES, api, isAbort, mapLimit, brandIcon, entityPath, esc, faviconFallbackUrl, faviconUrl, linkHost, linkMarkUrl, fmtClock, fmtDur, fmtSize, foldName, icon, isCatalogPath, realDuration} from './js/core.js';
 import { faceFrame } from './js/face-frame.js';
+import { searchMorphFrames } from './js/search-morph.js';
 import { selectRange, selectionSummary, selectGroup, syncSelectionToolbar } from './dist/peach-ui.js';
 import { MEDIA_SOURCE_ICONS } from './js/media-source-icons.js';
 import { boardPageSkeleton, initBoardControls, syncBoardRange, wireExpandableRanks, creatorSankeyHtml, wireCreatorSankey } from './dist/peach-ui.js';
@@ -16,7 +17,7 @@ import { javImageKind, normalizeJavImage, normalizeJavLayout, normalizeJavPrefer
 import {
   attachOverlayScrollbar, breadcrumbHtml, checkboxHtml, collectionSummaryHtml, closeAnchoredMenu, confirmModal, dismissMenu, emptyStateHtml, fieldsetTitle,
   fillSkeletonTier, fitSkeleton, formModal, iconSwitchHtml, indexSkeletonHtml, loadingDotsHtml,
-  mediaViewButtonsHtml, mountFilterFrame, filterChipHtml, moveGlidePane, sortControlsHtml, collectionHeaderHtml, wireHorizontalScroller, noteHtml, presentMenu, progressHtml, gaugeHtml, scrollerHtml, searchInputHtml, selectFieldHtml,
+  mediaViewButtonsHtml, mountFilterFrame, filterChipHtml, moveGlidePane, glideEase, sortControlsHtml, collectionHeaderHtml, wireHorizontalScroller, noteHtml, presentMenu, progressHtml, gaugeHtml, scrollerHtml, searchInputHtml, selectFieldHtml,
   setActionBusy, skeletonHtml, spinnerHtml, wireAnchoredMenu, wireBusyActions, wireCollapse, wireDragReorder,
   wireIconSwitch, wireOverlayScrollbars, wireScrollers, wireSelectField, wireContextCard, configurationSkeletonHtml, wireLoadMore,
 } from './js/ui-components.js';
@@ -9501,20 +9502,44 @@ async function tokNext(d){
 }
 $('#immerseBtn').onclick=()=>openTok();
 
+let searchMorph=null;
+/* 玻璃轮廓与内容使用同一时间轴，位置和宽度从当前可见矩形接续。
+   绝对定位层只在自身内部排版，字形不随玻璃宽度被压扁。 */
+function finishSearchMorph(){
+  searchMorph?.cancel();searchMorph=null;
+  $('.search').classList.remove('search-morphing');
+}
 function setNarrowSearchOpen(open){
-  const search=$('.search');
-  if(search.classList.contains('search-ready')){
-    search.classList.remove('search-ready');
-    void search.offsetWidth;
-  }
+  const search=$('.search'),button=$('#searchBtn');
+  if(search.classList.contains('open')===open)return;
+  const interrupted=!!searchMorph;
+  const current=search.getBoundingClientRect();
+  const currentPadding=parseFloat(getComputedStyle(search).paddingLeft);
+  finishSearchMorph();
+  search.classList.remove('open');
+  const anchor=button.getBoundingClientRect();
   search.classList.toggle('open',open);
   $('#searchBtn').setAttribute('aria-expanded',String(open));
-  if(open&&matchMedia('(prefers-reduced-motion:reduce)').matches)search.classList.add('search-ready');
+  if(innerWidth>760||matchMedia('(prefers-reduced-motion:reduce)').matches)return;
+  const expanded=search.getBoundingClientRect(),css=getComputedStyle(search);
+  const padding=parseFloat(css.paddingLeft);
+  const iconWidth=search.querySelector('svg').getBoundingClientRect().width;
+  const compactPadding=Math.max(0,(anchor.width-iconWidth)/2-parseFloat(css.borderLeftWidth));
+  const from=interrupted?current:open?anchor:expanded,to=open?expanded:anchor;
+  const ease=glideEase();
+  search.classList.add('search-morphing');
+  const motion=search.animate(searchMorphFrames(from,to,expanded,
+    interrupted?currentPadding:open?compactPadding:padding,open?padding:compactPadding,
+    ease.easing,innerWidth),{duration:ease.duration,easing:'linear',fill:'both'});
+  searchMorph=motion;
+  motion.onfinish=()=>{if(searchMorph===motion)finishSearchMorph()};
 }
-$('.search').addEventListener('transitionend',event=>{
-  if(event.target===$('.search')&&event.propertyName==='clip-path'&&$('.search').classList.contains('open'))
-    $('.search').classList.add('search-ready');
-});
+let searchMorphViewport=innerWidth;
+addEventListener('resize',()=>{
+  if(innerWidth===searchMorphViewport)return;
+  searchMorphViewport=innerWidth;finishSearchMorph();
+},{passive:true});
+matchMedia('(prefers-reduced-motion:reduce)').addEventListener('change',finishSearchMorph);
 $('#searchBtn').onclick=()=>{setNarrowSearchOpen(true);$('#q').focus()};
 /* 窄屏退出搜索。失焦那条 140ms 的兜底只在输入框为空时才收起搜索栏，
    输入过内容就没有出口了；返回按钮无条件收起，并清掉下拉栏。 */

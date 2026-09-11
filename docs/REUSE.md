@@ -2,6 +2,8 @@
 
 ## Board 界面与数值设置
 
+- 搜索玻璃复用 `glideEase()` 的采样弹簧；`web/js/search-morph.js` 只负责视口边界与轮廓关键帧，证据与差异见 `BOARD_UI.md`，无新增依赖。
+
 - 浮层筛选由 `web/js/ui-components.js` 的 `mountFilterFrame()` 承载：首页与实体资料页共用视图、标签、读数、控件四个槽位。外框负责玻璃与吸顶，页面负责查询状态和事件；视频、照片与名册更新只替换底行。复用现有 Board 控件及原生 DOM，不新增依赖；身份与观看状态的组合沿用 `/api/items`。
 
 - 组件映射、官方公开注册表证据与许可证见 [Board 界面](BOARD_UI.md)。`web/board.css` 共用正式页面结构，设置可关闭该视觉层；登录和首启页共用 `board_entry_style()`。

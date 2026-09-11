@@ -2510,11 +2510,13 @@ class WebUiSourceTests(unittest.TestCase):
         board = (root / "web/board.css").read_text(encoding="utf-8")
         self.assertLess(html.index('id="searchBtn"'), html.index('id="immerseBtn"'))
         self.assertLess(html.index('id="immerseBtn"'), html.index('id="selectMode"'))
-        self.assertIn("transition:clip-path calc(var(--spring-press-ms) * 1ms) var(--spring-press)", board)
-        self.assertIn(".top .search.search-ready{clip-path:none}", board)
+        self.assertIn(".top .search.search-morphing{contain:layout;overflow:hidden}", board)
+        self.assertPageContains("const anchor=button.getBoundingClientRect();")
+        self.assertPageContains("const from=interrupted?current:open?anchor:expanded,to=open?expanded:anchor;")
+        self.assertPageContains("motion.onfinish=()=>{if(searchMorph===motion)finishSearchMorph()};")
         self.assertPageContains("if(document.activeElement===$('#q'))return;")
         self.assertPageContains("$('#searchBtn').setAttribute('aria-expanded',String(open));")
-        self.assertPageContains("if(open&&matchMedia('(prefers-reduced-motion:reduce)').matches)")
+        self.assertPageContains("if(innerWidth>760||matchMedia('(prefers-reduced-motion:reduce)').matches)return;")
 
     def test_unlinked_identity_does_not_look_clickable(self):
         """渲染成 `<span>` 的归属不能长得像链接。

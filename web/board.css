@@ -532,16 +532,14 @@ body>.board-filter-frame{margin-inline:16px}
 .drawer #brandHome .mark{width:28px;height:28px}.drawer #brandHome h1{font-size:20px;letter-spacing:.02em}.drawer #brandHome .sub{display:none}
 .edge::before{content:'';width:28px;height:28px;background:url('/peach-logo.png') center/contain no-repeat;padding:0;margin:4px 0 16px}
 .top .search{max-width:none;flex:1 1 0;min-width:0;margin-left:0;margin-right:0}
-/* 搜索沿横向展开，复用短程玻璃弹簧；文字与控件高度保持固定。 */
+/* 搜索玻璃从图标的实际矩形形变，建议面板在轮廓收稳后显示。 */
 @media(max-width:760px){
-  .top .search{display:flex;visibility:hidden;pointer-events:none;opacity:0;
-    clip-path:inset(0 80px 0 max(0px,calc(100% - 116px)) round 18px);
-    transition:clip-path calc(var(--spring-press-ms) * 1ms) var(--spring-press),
-      opacity calc(var(--spring-press-ms) * 1ms),visibility 0s calc(var(--spring-press-ms) * 1ms)}
-  .top .search.open{visibility:visible;pointer-events:auto;opacity:1;
-    clip-path:inset(0 0 0 0 round 18px);transition-delay:0s}
-  .top .search.search-ready{clip-path:none}
-  .top .search:not(.search-ready) .searchmenu{visibility:hidden}
+  .top .search{display:flex;visibility:hidden;pointer-events:none}
+  .top .search.open,.top .search.search-morphing{visibility:visible;pointer-events:auto}
+  .top .search.search-morphing{contain:layout;overflow:hidden}
+  .top .search.search-morphing .searchmenu{visibility:hidden}
+  .top:has(.search.search-morphing){overflow:visible}
+  .top:has(.search.search-morphing) #searchBtn{opacity:0}
 }
 .board-filter-frame #tagbar{height:48px;gap:6px;padding:8px 12px}
 .board-filter-frame #tagbar .pill{height:30px;padding:0 10px;font-size:13px;line-height:20px;border-radius:8px;border:1px solid transparent}
