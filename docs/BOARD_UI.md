@@ -1,5 +1,9 @@
 # BoardUI 适配
 
+## 窄屏筛选框滚动
+
+760px 及以下，首页与实体资料页的共享筛选框向下滚时随页面离开顶部，向上滚时恢复吸顶。方向累计 8px 才切换，使用现有 `--board-motion` 过渡顶部约束，文档占位保持不变；减少动态效果时即时切换。页面顶端、键盘焦点、输入与展开菜单保持筛选可见，桌面维持吸顶。原生 sticky 与滚动事件足够覆盖此交互，不新增依赖；浏览器视觉验收未取得。
+
 ## 窄屏搜索玻璃动效
 
 2026-09-11 核对 [liquid-gooey spring.ts](https://github.com/Jakubantalik/Libraries/blob/422180dd7a5ac646c85deedc65500c4a74339127/packages/liquid-gooey/src/spring.ts)，MIT，源码 SHA-256 `9dc0d5e9dd269000d95743572320039404982803d1b2da9977e717b5956d5481`。

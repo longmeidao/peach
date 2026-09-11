@@ -2518,6 +2518,15 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("$('#searchBtn').setAttribute('aria-expanded',String(open));")
         self.assertPageContains("if(innerWidth>760||matchMedia('(prefers-reduced-motion:reduce)').matches)return;")
 
+    def test_mobile_filter_frame_scroll_keeps_its_document_space(self):
+        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
+        self.assertPageContains("document.querySelectorAll('[data-filter-frame]')")
+        self.assertPageContains("const active=frames.find(frame=>frame.offsetParent!==null);")
+        self.assertPageContains("mobileFilterScroll=filterScrollState(mobileFilterScroll,y,innerWidth<=760,hold);")
+        self.assertIn(".board-filter-frame.board-filter-frame{transition:top var(--board-motion)}", board)
+        self.assertIn(".board-filter-frame.board-filter-frame.mobile-filter-free{top:var(--filter-free-top)}", board)
+        self.assertPageContains("document.documentElement.scrollHeight-innerHeight")
+
     def test_unlinked_identity_does_not_look_clickable(self):
         """渲染成 `<span>` 的归属不能长得像链接。
 
