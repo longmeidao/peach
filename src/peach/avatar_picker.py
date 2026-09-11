@@ -1,0 +1,263 @@
+"""换头像：列出这个人可选的图，取来其中一张，装上去。
+
+自动挑选按来源优先级走（`gfriends.quality_key`），而那个顺序回答的是「先试哪一张」，
+不是「哪一张适合当头像」。实测两类偏差都真实存在：葵つかさ排第一的是一张压着书名的
+写真封面，而她的经纪事务所那张正脸原图排第六；横宫七海更直接——她的头像是作品封面
+兜底装上的，gfriends 里那 9 张人像因为「文件已存在」从来没被看过一眼。
+
+所以这里的立场是：自动挑一张先用着，人随时能换成别的。可换的来源有三种——图库里
+同名的其他候选、本机的图片文件、一个 https 地址。
+
+**换过的图都留着。** 每一张取到的图都按内容哈希进候选缓存，换回去只是再装一次，
+不重新下载；被顶下来的那张也在里面，不会因为换了一次就永远找不回来。
+"""
+from __future__ import annotations
+
+import hashlib
+import json
+import sqlite3
+import urllib.parse
+from dataclasses import dataclass
+from pathlib import Path
+
+from . import gfriends
+from .avatar_provider import (
+    AvatarCandidateCache, InspectedAvatar, POLICY_VERSION, inspect_avatar,
+    install_entity_avatar, provenance_now,
+)
+from .http import HttpRequest, HttpTransport, public_https_url, resolves_publicly
+
+#: 一次最多给页面列这么多张。同名候选最多的人有十几张，再多就不是选图而是翻图册了。
+MAX_CHOICES = 40
+#: 候选缓存按来源分目录（`gfriends/`、`social/`、`babepedia/`……），各有自己的
+#: `objects/`、`requests/` 与 `evidence/`。取过的图要跨目录找：同一个人的几张图
+#: 常常来自不同来源。图库索引和图库对象同处 `gfriends/`。
+GFRIENDS_CACHE = "gfriends"
+#: 下载一张头像的上限。图库里最大的一张 3 MB 上下，留足余量即可；这个数同时是
+#: 「别人给的地址指向一个 4 GB 文件」时我们停下来的地方。
+MAX_IMAGE_BYTES = 16 * 1024 * 1024
+FETCH_TIMEOUT = 30
+
+
+class PickerError(RuntimeError):
+    """这一次换不成，原因可以直接给用户看。"""
+
+
+@dataclass(frozen=True)
+class Choice:
+    """一个可选项。`ref` 是前端唯一回递的东西。"""
+
+    ref: str
+    source: str
+    label: str
+    width: int = 0
+    height: int = 0
+    detail: str = ""
+    current: bool = False
+
+    def as_dict(self) -> dict:
+        return {"ref": self.ref, "source": self.source, "label": self.label,
+                "width": self.width, "height": self.height,
+                "detail": self.detail, "current": self.current}
+
+
+def name_chain(connection: sqlite3.Connection, entity_id: int) -> list[str]:
+    """查图库用的名字，按匹配次序：规范名在前，别名在后。
+
+    别名不是锦上添花：大陆简体与日文字体在图库里是两个不同的键（`横宫七海` 与
+    `横宮七海`），只拿规范名去查，汉字简化过的那些人一个也找不到。
+    """
+    names: list[str] = []
+    row = connection.execute("SELECT canonical_name FROM entity WHERE id=?",
+                             (int(entity_id),)).fetchone()
+    if row and row[0]:
+        names.append(str(row[0]))
+    names += [str(alias) for (alias,) in connection.execute(
+        "SELECT alias FROM entity_alias WHERE entity_id=?", (int(entity_id),))
+        if alias]
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for name in names:
+        key = gfriends.normalized(name)
+        if key and key not in seen:
+            seen.add(key)
+            ordered.append(name)
+    return ordered
+
+
+def installed_digest(avatar_root: Path, kind: str, entity_id: int) -> str:
+    """当前装着那张图的哈希，用来在候选里把它标出来。读不到就是空。"""
+    from .previews import entity_image_key
+
+    path = avatar_root / f"{entity_image_key(kind, int(entity_id))}.img"
+    try:
+        with path.open("rb") as handle:
+            return hashlib.file_digest(handle, "sha256").hexdigest()
+    except OSError:
+        return ""
+
+
+def _history(providers_root: Path, entity_id: int, current: str) -> list[Choice]:
+    """这个人取过的图。证据文件按 `performer-<id>-<sha>.json` 存，天然是一份历史。
+
+    这里给的是「换回去不用重下」的那一批：装过又被顶掉的、批处理下过但没装的，
+    都在候选缓存里按内容寻址躺着。跨来源目录找——取过的图未必都来自图库。
+    """
+    out: list[Choice] = []
+    for path in sorted(providers_root.glob(
+            f"*/evidence/performer-{int(entity_id)}-*.json")):
+        try:
+            record = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        digest = str(record.get("sha256") or "")
+        if not digest:
+            continue
+        where = str(record.get("external_id") or record.get("provider") or "已取过")
+        out.append(Choice(
+            ref=f"sha256:{digest}", source="history", label=where,
+            width=int(record.get("width") or 0), height=int(record.get("height") or 0),
+            detail=str(record.get("upstream_url") or ""),
+            current=digest == current))
+    return out
+
+
+def choices(connection: sqlite3.Connection, providers_root: Path,
+            avatar_root: Path, kind: str, entity_id: int) -> dict:
+    """页面要展示的一切：图库同名候选、取过的历史、当前装着的是哪一张。
+
+    索引只读本地缓存。联网补索引是批处理的事——为一次点击同步拉 6 MB，页面会卡在
+    那里，而卡住的理由用户完全看不见。
+    """
+    index_dir = providers_root / GFRIENDS_CACHE
+    names = name_chain(connection, entity_id)
+    index = gfriends.load_index(index_dir)
+    matched, found = gfriends.candidates(index, names)
+    current = installed_digest(avatar_root, kind, entity_id)
+    seen: set[str] = set()
+    items: list[Choice] = []
+    for category, filename in found:
+        ref = f"gfriends:{category}/{filename}"
+        items.append(Choice(ref=ref, source="gfriends", label=category,
+                            detail=filename))
+        seen.add(ref)
+    for choice in _history(providers_root, entity_id, current):
+        if choice.ref not in seen:
+            seen.add(choice.ref)
+            items.append(choice)
+    age = gfriends.index_age(index_dir)
+    return {
+        "kind": kind, "entity_id": int(entity_id),
+        "names": names, "matched_name": matched,
+        "choices": [choice.as_dict() for choice in items[:MAX_CHOICES]],
+        "index_age_hours": round(age / 3600, 1) if age is not None else None,
+        "index_stale": age is None or age > gfriends.INDEX_MAX_AGE_SECONDS,
+    }
+
+
+def _cached_object(providers_root: Path, digest: str) -> bytes:
+    """按内容哈希在各来源目录里找那张图。路径可能过期，内容不会。"""
+    for path in providers_root.glob(f"*/objects/{digest}.*"):
+        try:
+            body = path.read_bytes()
+        except OSError:
+            continue
+        if hashlib.sha256(body).hexdigest() == digest:
+            return body
+    raise PickerError("这张图不在本机缓存里了")
+
+
+def fetch_image(transport: HttpTransport, url: str) -> bytes:
+    """取一张图。`url` 必须已经过 `allowed_source` 或由我们自己拼出来。"""
+    try:
+        response = transport(
+            HttpRequest("GET", url, {"Accept": "image/*"}),
+            FETCH_TIMEOUT, MAX_IMAGE_BYTES)
+    except Exception as error:  # noqa: BLE001 — 网络层什么都可能抛
+        raise PickerError(f"取不到这张图：{error}") from error
+    if response is None or response.status != 200:
+        status = "无响应" if response is None else f"HTTP {response.status}"
+        raise PickerError(f"取不到这张图：{status}")
+    return response.body
+
+
+def allowed_source(url: str) -> bool:
+    """用户手填的地址能不能让 Peach 去取。
+
+    Peach 跑在用户自己的机器上，它能访问路由器后台、NAS、局域网里别的服务和本机
+    各个端口。「你给地址我去下」如果不设边界，就是一个替人发请求的跳板：填
+    `http://127.0.0.1:8080/admin` 进来，Peach 会替人去访问，再把结果当图片存下。
+    判据与追更代理共用一份（`http.public_https_url` 加 `http.resolves_publicly`）：
+    必须 https、必须是公网域名、不能是 IP 字面量、解析出来的每一个地址都得是公网的。
+    """
+    if not public_https_url(url):
+        return False
+    return resolves_publicly(urllib.parse.urlsplit(url).hostname or "")
+
+
+def accept_image(body: bytes) -> InspectedAvatar:
+    """确认这堆字节真是一张能用的图。格式由解码结果定，不看扩展名也不信响应头。"""
+    if len(body) > MAX_IMAGE_BYTES:
+        raise PickerError("图太大了")
+    inspected = inspect_avatar(body)
+    if inspected is None:
+        raise PickerError("这不是一张能识别的 JPEG 或 PNG 图片")
+    return inspected
+
+
+def resolve(ref: str, connection: sqlite3.Connection, providers_root: Path,
+            entity_id: int,
+            transport: HttpTransport | None) -> tuple[bytes, dict]:
+    """把页面回递的 `ref` 换成图片字节和一份来源记录。
+
+    `ref` 只认这里自己刚枚举出来的那些：图库候选要在索引里真的存在，历史候选要在
+    缓存里真的有对象。页面递不进任意地址——手填地址是另一条路，它有自己的边界。
+    """
+    if ref.startswith("sha256:"):
+        digest = ref.split(":", 1)[1].strip().lower()
+        body = _cached_object(providers_root, digest)
+        return body, {"source": "avatar picker", "provider": "history",
+                      "external_id": digest[:12]}
+    if not ref.startswith("gfriends:"):
+        raise PickerError("认不出这个候选")
+    category, _, filename = ref.split(":", 1)[1].partition("/")
+    index = gfriends.load_index(providers_root / GFRIENDS_CACHE)
+    matched, found = gfriends.candidates(index, name_chain(connection, entity_id))
+    if (category, filename) not in found:
+        raise PickerError("这个候选不在当前索引里")
+    url = gfriends.image_url(category, filename)
+    cache = AvatarCandidateCache(providers_root / GFRIENDS_CACHE)
+    body = cache.lookup(url)
+    if body is None:
+        if transport is None:
+            raise PickerError("这张图还没下载过，而这一次不允许联网")
+        body = fetch_image(transport, url)
+    return body, {"source": "avatar picker", "provider": "gfriends",
+                  "gfriends_category": category, "gfriends_file": filename,
+                  "matched_name": matched, "name_source": "picker",
+                  "external_id": f"{category}/{filename}", "upstream_url": url}
+
+
+def install(providers_root: Path, avatar_root: Path, kind: str,
+            entity_id: int, body: bytes, origin: dict) -> dict:
+    """装上去，同时把这张图连同证据留在候选缓存里——换回来时就不必再取一次。"""
+    inspected = accept_image(body)
+    cache = AvatarCandidateCache(
+        providers_root / str(origin.get("provider") or "picker"))
+    url = str(origin.get("upstream_url") or f"peach:picker/{inspected.sha256}")
+    cache.store(url, body, inspected)
+    cache.store_provenance(provenance_now(
+        entity_id=int(entity_id), provider=str(origin.get("provider") or "picker"),
+        source_kind="user_selected", matched_name=str(origin.get("matched_name") or ""),
+        name_source=str(origin.get("name_source") or "picker"),
+        external_id=str(origin.get("external_id") or ""), upstream_url=url,
+        width=inspected.width, height=inspected.height,
+        mime_type=inspected.mime_type, sha256=inspected.sha256,
+        cache_path=f"objects/{inspected.sha256}{inspected.extension}"))
+    install_entity_avatar(avatar_root, kind, int(entity_id), body,
+                          inspected.mime_type,
+                          {**origin, "sha256": inspected.sha256,
+                           "width": inspected.width, "height": inspected.height,
+                           "policy_version": POLICY_VERSION})
+    return {"sha256": inspected.sha256, "width": inspected.width,
+            "height": inspected.height, "mime_type": inspected.mime_type}

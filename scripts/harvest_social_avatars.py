@@ -62,6 +62,7 @@ from peach.avatar_provider import (   # noqa: E402
     POLICY_VERSION,
     AvatarCandidateCache,
     inspect_avatar,
+    install_entity_avatar,
     provenance_now,
 )
 from peach.config import (   # noqa: E402
@@ -771,37 +772,23 @@ def install_avatar(avatar_dir: Path, kind: str, entity_id: int, winner: dict) ->
     """赢家直接落盘到 /entity-image 真正读的目录，带 .ct、provenance 与取景 sidecar。"""
     if source_tier(winner) == COVER_TIER:
         raise ValueError("作品封面只作为候选留档，不安装为人物头像")
-    destination = avatar_dir / f"{kind}-{entity_id}.img"
-    avatar_dir.mkdir(parents=True, exist_ok=True)
     data = winner["object_path"].read_bytes()
     if hashlib.sha256(data).hexdigest() != winner["sha256"]:
         raise ValueError("缓存对象与竞选记录的哈希不一致，拒绝安装")
-    staging = destination.with_name(f"{destination.name}.{uuid.uuid4().hex}.tmp")
-    staging.write_bytes(data)
-    os.replace(staging, destination)
-    Path(f"{destination}.ct").write_text(winner["mime_type"], encoding="utf-8")
-    Path(f"{destination}.provenance.json").write_text(json.dumps({
-        "source": "social avatar harvest",
-        "provider": winner["provider"],
-        "source_url": winner["source_url"],
-        "external_id": winner["external_id"],
-        "matched_name": winner.get("matched") or "",
-        "name_source": winner.get("name_source") or "",
-        "sha256": winner["sha256"],
-        "width": winner["width"],
-        "height": winner["height"],
-        "policy_version": POLICY_VERSION,
-        "imported_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "purpose": "local performer identity cache",
-    }, ensure_ascii=False, indent=2), encoding="utf-8")
-    # sidecar 必须跟着图一起换。留着上一张图的脸框，页面会拿它给这一张取景、放大到
-    # 一个空位置上，而这在界面上与「这张图本来就该这么显示」看不出区别。
-    record = winner.get("face_record")
-    if record:
-        write_sidecar(destination, record)
-    else:
-        drop_sidecar(destination)
-    return destination
+    # 脸在竞选时就检过了（`measure_faces`），同一张图不必再跑一次模型。
+    return install_entity_avatar(
+        avatar_dir, kind, entity_id, data, winner["mime_type"], {
+            "source": "social avatar harvest",
+            "provider": winner["provider"],
+            "source_url": winner["source_url"],
+            "external_id": winner["external_id"],
+            "matched_name": winner.get("matched") or "",
+            "name_source": winner.get("name_source") or "",
+            "sha256": winner["sha256"],
+            "width": winner["width"],
+            "height": winner["height"],
+            "policy_version": POLICY_VERSION,
+        }, winner.get("face_record"), probe_face=False)
 
 
 def provenance_for(cache: AvatarCandidateCache, entity_id: int, candidate: dict):

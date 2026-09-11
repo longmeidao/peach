@@ -1,14 +1,79 @@
-"""共享 HTTP transport：连接池、超时、有界读取、字符集解码与可注入测试边界。"""
+"""共享 HTTP transport：连接池、超时、有界读取、字符集解码与可注入测试边界。
+
+还有一份「这个地址能不能让 Peach 替人去取」的判据。它属于这里而不是某一条具体链路：
+Peach 跑在用户自己的机器上，能访问路由器后台、NAS、局域网里别的服务和本机的各个
+端口——任何一处「你给地址我去下」的入口都是一个替人发请求的跳板。判据只写一份，
+新入口直接用，不要各自再写一遍宽严不一的版本。
+"""
 from __future__ import annotations
 from .user_agent import USER_AGENT
 
+import ipaddress
 import re
+import socket
+import urllib.parse
 from dataclasses import dataclass
 from typing import Mapping, Protocol
 
 import httpx
 from curl_cffi import requests as curl_requests
 from curl_cffi.requests.exceptions import CurlError
+
+#: 只在本机或局域网里有意义的名字后缀。外面递进来的地址落到它们上，只可能是想让
+#: Peach 替人去探内网。
+LOCAL_NAME_SUFFIXES = ("localhost", "local", "internal", "intranet", "lan", "home.arpa")
+
+
+def public_https_url(url: str) -> bool:
+    """字面判据：https、公网域名、不带用户信息。
+
+    IP 字面量一律不算——内网地址正是用字面量写的，而公网服务都有域名。域名解析到
+    哪里由 `resolves_publicly` 在真正连接前再查一次，这里只看字面。
+    """
+    try:
+        parsed = urllib.parse.urlsplit(url)
+    except ValueError:
+        return False
+    host = (parsed.hostname or "").casefold().rstrip(".")
+    if parsed.scheme != "https" or not host or parsed.username or parsed.password:
+        return False
+    try:
+        ipaddress.ip_address(host)
+    except ValueError:
+        pass
+    else:
+        return False
+    if "." not in host:
+        return False
+    return not any(host == suffix or host.endswith("." + suffix)
+                   for suffix in LOCAL_NAME_SUFFIXES)
+
+
+def host_addresses(host: str) -> tuple[str, ...]:
+    """主机名解析到的全部地址；解析不了就是空。测试只替换这一个函数。"""
+    try:
+        infos = socket.getaddrinfo(host, 443, proto=socket.IPPROTO_TCP)
+    except (socket.gaierror, UnicodeError, OSError):
+        return ()
+    return tuple(str(info[4][0]) for info in infos)
+
+
+def resolves_publicly(host: str) -> bool:
+    """最后一道：字面上像公网的域名，解析出来也必须**全部**是公网地址。
+
+    全部而不是任意一个：一个名字可以同时解析到公网和内网地址，只要放行一条，
+    连接落到哪一条就不由我们说了算。
+    """
+    addresses = host_addresses(host)
+    if not addresses:
+        return False
+    for address in addresses:
+        try:
+            if not ipaddress.ip_address(address).is_global:
+                return False
+        except ValueError:
+            return False
+    return True
 
 
 @dataclass(frozen=True)

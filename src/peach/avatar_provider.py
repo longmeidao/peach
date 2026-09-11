@@ -6,11 +6,15 @@ import io
 import json
 import os
 import threading
+import time
+import uuid
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
 from PIL import Image, UnidentifiedImageError
+
+from .avatar_face import FaceProbe, drop_sidecar, write_sidecar
 
 
 POLICY_VERSION = "performer-avatar-provider-v1"
@@ -89,6 +93,46 @@ def atomic_write(path: Path, data: bytes) -> None:
     except BaseException:
         temporary.unlink(missing_ok=True)
         raise
+
+
+def install_entity_avatar(avatar_root: Path, kind: str, entity_id: int, body: bytes,
+                          content_type: str, provenance: dict,
+                          face: dict | None = None, *, probe_face: bool = True) -> Path:
+    """把一张图装成 `{kind}-{id}.img` 那一套四个文件，`/entity-image` 真正读的位置。
+
+    四样东西必须一起换，少换一样都在界面上表现成别的毛病：图本身、`.ct` 里的 MIME、
+    `.provenance.json` 里这张图打哪来、`.face.json` 里的取景。取景那一样最容易漏——
+    留着上一张图的脸框，页面会拿它给这一张取景、放大到一个空位置上，而那在界面上
+    和「这张图本来就该这么显示」看不出区别。所以检不出脸时是**删掉** sidecar，
+    不是留着不动。
+
+    `probe_face=False` 给已经检过脸的调用方：挑图时按脸宽比过一轮的批处理，没有
+    理由为同一张图再跑一次模型。
+    """
+    from .previews import entity_image_key
+
+    avatar_root.mkdir(parents=True, exist_ok=True)
+    destination = avatar_root / f"{entity_image_key(kind, entity_id)}.img"
+    staging = destination.with_name(f"{destination.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        staging.write_bytes(body)
+        os.replace(staging, destination)
+    except BaseException:
+        staging.unlink(missing_ok=True)
+        raise
+    Path(f"{destination}.ct").write_text(content_type, encoding="utf-8")
+    record = FaceProbe()(destination) if probe_face and face is None else face
+    if record:
+        write_sidecar(destination, record)
+    else:
+        drop_sidecar(destination)
+    Path(f"{destination}.provenance.json").write_text(
+        json.dumps({**provenance,
+                    "imported_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                    "purpose": "local performer identity cache"},
+                   ensure_ascii=False, indent=2),
+        encoding="utf-8")
+    return destination
 
 
 class AvatarCandidateCache:

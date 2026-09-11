@@ -27,8 +27,8 @@ from fastapi.responses import (
 from starlette.staticfiles import StaticFiles
 
 from . import (
-    follow_assets, link_marks, scraping_access, site_icons, subtitles,
-    taste_history, web_settings,
+    avatar_picker, avatar_provider, follow_assets, link_marks,
+    scraping_access, site_icons, subtitles, taste_history, web_settings,
 )
 from .config import GENERATED_DIR
 from .follow import FollowSourceError
@@ -733,3 +733,110 @@ def entity_image(request: Request, kind: str, id: int, args: dict[str, str] = De
     except PreviewUnavailable:
         return JSONResponse({"error": "unavailable"}, status_code=404)
     return _image_response(request, path, media_type=content_type)
+
+
+def _picker_roots(state) -> tuple[Path, Path]:
+    """(候选缓存按来源分的根, 装头像的目录)。"""
+    return (state.candidate_root / "provider-cache" / "performer-avatars",
+            state.avatar_root)
+
+
+def _picker_kind(kind: str) -> str:
+    return kind if kind in {"performer", "creator"} else "performer"
+
+
+@router.get("/api/avatar-choices")
+def avatar_choices(request: Request, kind: str = "performer", id: int = 0,
+                   args: dict[str, str] = Depends(require_auth)):
+    """这个人还能换成哪些图。只读，不联网，不写盘。"""
+    state = request.app.state.web_contract
+    providers_root, avatar_root = _picker_roots(state)
+    with state.read_connection() as connection:
+        return JSONResponse(avatar_picker.choices(
+            connection, providers_root, avatar_root, _picker_kind(kind), id))
+
+
+@router.api_route("/avatar-choice", methods=["GET", "HEAD"])
+def avatar_choice(request: Request, kind: str = "performer", id: int = 0,
+                  ref: str = "", args: dict[str, str] = Depends(require_auth)):
+    """候选的预览图。
+
+    页面只递 `ref`，地址由服务端按索引拼——这一层的规矩在文件开头：接受前端递过来的
+    URL 就等于开了一个任意地址抓取的口子。取过一次就进内容寻址缓存，翻第二遍不出网。
+    """
+    state = request.app.state.web_contract
+    providers_root, _ = _picker_roots(state)
+    with state.read_connection() as connection:
+        try:
+            body, origin = avatar_picker.resolve(
+                ref, connection, providers_root, id,
+                request.app.state.http_transport)
+        except avatar_picker.PickerError as error:
+            return JSONResponse({"error": str(error)}, status_code=404)
+    inspected = avatar_provider.inspect_avatar(body)
+    if inspected is None:
+        return JSONResponse({"error": "这不是一张能识别的图片"}, status_code=415)
+    if str(origin.get("provider")) == "gfriends":
+        cache = avatar_provider.AvatarCandidateCache(
+            providers_root / avatar_picker.GFRIENDS_CACHE)
+        cache.store(str(origin.get("upstream_url") or ""), body, inspected)
+    result = Response(b"" if request.method == "HEAD" else body,
+                      media_type=inspected.mime_type)
+    result.headers["Cache-Control"] = f"private, max-age={AVATAR_CACHE_SECONDS}"
+    return result
+
+
+@router.post("/api/avatar-pick")
+async def avatar_pick(request: Request, args: dict[str, str] = Depends(require_auth)):
+    """换头像。三种来源共用这一个出口，区别只在字节从哪来。
+
+    - `ref`：服务端自己列出来的候选（图库同名图，或这个人取过的图）
+    - `url`：用户手填的地址，必须过 `allowed_source` 那道公网判据
+    - 请求体直接是图片字节：用户从本机选的文件，浏览器原样发过来
+
+    被顶下来的那张不删也不搬：它按内容哈希躺在候选缓存里，下次出现在候选列表的
+    「用过的」那一组，换回去只是再装一次。
+    """
+    state = request.app.state.web_contract
+    providers_root, avatar_root = _picker_roots(state)
+    content_type = (request.headers.get("content-type") or "").split(";")[0].strip()
+    if content_type == "application/json":
+        sent = await request.json()
+        payload = sent if isinstance(sent, dict) else {}
+        body = b""
+    else:
+        payload = dict(request.query_params)
+        body = await request.body()
+    try:
+        entity_id = int(payload.get("id") or 0)
+    except (TypeError, ValueError):
+        entity_id = 0
+    if entity_id <= 0:
+        return JSONResponse({"error": "缺少实体 id"}, status_code=400)
+    kind = _picker_kind(str(payload.get("kind") or "performer"))
+    ref, url = str(payload.get("ref") or ""), str(payload.get("url") or "")
+    try:
+        if ref:
+            with state.read_connection() as connection:
+                body, origin = avatar_picker.resolve(
+                    ref, connection, providers_root, entity_id,
+                    request.app.state.http_transport)
+        elif url:
+            if not avatar_picker.allowed_source(url):
+                return JSONResponse(
+                    {"error": "只接受指向公网的 https 地址"}, status_code=400)
+            body = avatar_picker.fetch_image(request.app.state.http_transport, url)
+            origin = {"source": "avatar picker", "provider": "url",
+                      "external_id": "", "upstream_url": url}
+        elif body:
+            origin = {"source": "avatar picker", "provider": "upload",
+                      "external_id": str(payload.get("name") or "")}
+        else:
+            return JSONResponse({"error": "没有可用的图片"}, status_code=400)
+        result = avatar_picker.install(providers_root, avatar_root, kind,
+                                       entity_id, body, origin)
+    except avatar_picker.PickerError as error:
+        return JSONResponse({"error": str(error)}, status_code=400)
+    # 页面按这份索引决定「出 `<img>` 还是首字母垫底」，换完不失效就看不到新图。
+    state.cache_bust()
+    return JSONResponse({"ok": True, "kind": kind, "id": entity_id, **result})

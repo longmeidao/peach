@@ -5883,8 +5883,8 @@ class WebUiSourceTests(unittest.TestCase):
             "box.style.setProperty('--markbg',small?`url(\"${src}\")`:'none');")
         # 用到它的两个容器自己声明意图，JS 只负责量。
         self.assertPageContains("data-fit-native=\"${company?'mark':'portrait'}\"")
-        self.assertPageContains('"entityportrait ${kind===\'performer\'||kind===\'creator\'?'
-                                '\'\':\'square\'}" data-fit-native="${company?\'mark\':\'portrait\'}"')
+        self.assertPageContains('"entityportrait ${people?\'\':\'square\'}" '
+                                'data-fit-native="${company?\'mark\':\'portrait\'}"')
         # 两处容器各自写着 width:100% 和 object-fit:cover，选择器压不过它们就白改。
         # 尺寸不写 auto：还没度量过的图按 auto 是 0×0，`loading="lazy"` 见到 0×0 就
         # 认定它不在视口里、永远不去取，图不来就没有 load，两边互相等着。缺省铺满。
@@ -7867,7 +7867,11 @@ class WebUiSourceTests(unittest.TestCase):
     def test_every_end_truncation_selector_is_explicitly_reviewed(self):
         """新增 CSS 省略必须先决定它是语义文本，还是应改用 MiddleTruncate。"""
         reviewed_end_selectors = {
-            ".alphatag span:first-of-type", ".av .nm", ".entitylinklabel",
+            ".alphatag span:first-of-type", ".av .nm",
+            # 候选格底下那行是来源名（`S1`、`用过的`），一格只有 80 像素宽。它是语义
+            # 文本不是标识符：中间截断会把「Hand-Storage」切成看不出是哪来的两截。
+            ".avatarpick-cell span",
+            ".entitylinklabel",
             ".fauthor .fsource.frow>b", ".fauthorhead b",
             # 四段计数按重要性从左排（未看在最前），尾部省略切掉的正是最不影响判断的那几段；
             # 它不是标识符，中间截断只会把「未看 3」也切开。

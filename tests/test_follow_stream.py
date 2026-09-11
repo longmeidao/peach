@@ -4,7 +4,7 @@ from unittest import mock
 
 import httpx
 
-from peach import follow_stream
+from peach import follow_stream, http as peach_http
 from peach.follow_stream import (
     MAX_PROXY_REDIRECTS, FollowMediaResolver, FollowMediaUnavailable,
     FollowProxyError, ResolvedFollowMedia, open_upstream, proxy_request_headers,
@@ -342,7 +342,7 @@ class ProxyUpstreamTests(unittest.TestCase):
                                   headers={"content-type": "image/jpeg"})
 
         target = ResolvedFollowMedia("https://jpg5.su/a.jpg", public_hosts=True)
-        with mock.patch.object(follow_stream, "_host_addresses", return_value=("93.184.216.34",)):
+        with mock.patch.object(peach_http, "host_addresses", return_value=("93.184.216.34",)):
             upstream = open_upstream(self._client(handler), "GET", target, incoming={})
         self.addCleanup(upstream.close)
         self.assertEqual(upstream.read(), b"pixels")
@@ -358,12 +358,12 @@ class ProxyUpstreamTests(unittest.TestCase):
                 "location": "https://169.254.169.254/admin.png"})
 
         target = ResolvedFollowMedia("https://jpg5.su/a.jpg", public_hosts=True)
-        with mock.patch.object(follow_stream, "_host_addresses", return_value=("93.184.216.34",)):
+        with mock.patch.object(peach_http, "host_addresses", return_value=("93.184.216.34",)):
             with self.assertRaises(FollowProxyError):
                 open_upstream(self._client(to_lan), "GET", target, incoming={})
         self.assertEqual([str(request.url) for request in seen], ["https://jpg5.su/a.jpg"])
         for addresses in ((), ("127.0.0.1",), ("93.184.216.34", "fd00::1")):
-            with mock.patch.object(follow_stream, "_host_addresses", return_value=addresses):
+            with mock.patch.object(peach_http, "host_addresses", return_value=addresses):
                 with self.assertRaises(FollowProxyError, msg=str(addresses)):
                     open_upstream(self._client(lambda request: self.fail("不该发出请求")),
                                   "GET", target, incoming={})

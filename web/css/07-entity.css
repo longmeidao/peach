@@ -1,5 +1,8 @@
 .entityhero{display:grid;grid-template-columns:160px minmax(0,1fr);gap:24px;padding:10px 0 24px;
   border:0;background:transparent;margin-bottom:0;align-items:center;min-width:0;max-width:100%}
+/* 圆框外面这一层只为换头像那枚加号存在：圆框自己是 `overflow:hidden`（图要被裁成
+   圆的），贴在它边上的按钮放进去就没了。 */
+.entityportraitwrap{position:relative;width:max-content;max-width:100%}
 /* `position:relative` 是给人脸放大留的包含块：放大后的 img 转成绝对定位，偏移必须
    相对这个圆框算，否则会挂到最近的定位祖先上去。见 app.js 的 avatarFrame。 */
 .entityportrait{width:160px;aspect-ratio:1;border-radius:50%;overflow:hidden;background:var(--overlay-5);
@@ -107,3 +110,34 @@
    `.entitybatch`。 */
 .photoback{display:flex;align-items:center;gap:4px;height:28px;padding:0 10px 0 6px;border:1px solid var(--line);
   border-radius:var(--control-radius);background:transparent;color:var(--ink-2);font-size:var(--fs-xs);cursor:pointer}
+
+/* 换头像。加号压在圆框右下角那一圈上——它属于这张头像，离得远了就成了页面上一个
+   不知道管什么的按钮。 */
+.avatarpick-open{position:absolute;right:4px;bottom:4px;width:32px;height:32px;display:grid;
+  place-items:center;border:0;border-radius:50%;background:var(--ground);color:var(--ink-2);
+  box-shadow:0 0 0 1px var(--line);cursor:pointer;z-index:2}
+.avatarpick-open:hover{color:var(--ink);box-shadow:0 0 0 1px var(--ink-2)}
+.avatarpick-open svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;
+  stroke-linecap:round}
+/* 弹层本体是 `.geist-modal`，这里只把它放宽到能摆下一排候选。 */
+.avatarpick-popover{width:min(720px,calc(100vw - 20px));max-width:min(720px,calc(100vw - 20px))}
+.avatarpick-note{margin:8px 0 0;color:var(--muted);font-size:var(--fs-xs)}
+.avatarpick-error{margin:8px 0 0;color:var(--drop);font-size:var(--fs-xs)}
+/* 一行四张，格子按 3:4 竖构图——头像源基本都是竖的，方格会把人裁成一条。 */
+.avatarpick-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;
+  margin-top:14px;max-height:52dvh;overflow:auto;overscroll-behavior:contain;padding:2px}
+.avatarpick-cell{position:relative;display:grid;gap:4px;padding:0 0 4px;
+  border:1px solid var(--border-10);border-radius:var(--surface-radius);background:var(--overlay-5);
+  color:var(--muted);font-size:var(--fs-xs);cursor:pointer;overflow:hidden;text-align:center}
+.avatarpick-cell:hover:not(:disabled){border-color:var(--field-ring-hover);color:var(--ink)}
+.avatarpick-cell:disabled{cursor:progress;opacity:.6}
+.avatarpick-cell.current{border-color:var(--field-ring-focus);background:var(--picked)}
+.avatarpick-cell img{width:100%;aspect-ratio:3/4;object-fit:cover;display:block;background:var(--overlay-5)}
+.avatarpick-cell span{padding:0 4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.avatarpick-cell b{position:absolute;top:4px;left:4px;padding:1px 6px;border-radius:var(--badge-radius);
+  background:var(--picked);color:var(--ink);font-weight:400;font-size:var(--fs-xs)}
+.avatarpick-manual{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:16px;
+  padding-top:16px;border-top:1px solid var(--line-soft)}
+.avatarpick-url{display:flex;flex:1 1 260px;gap:8px;min-width:0}
+.avatarpick-url input{flex:1 1 auto;min-width:0}
+@media (max-width:640px){.avatarpick-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}

@@ -7915,7 +7915,9 @@ async function openEntity(kind,name,push=true){
           data-namepick-name="${esc(option)}" aria-checked="${option===d.canonical_name}"
           >${icon('check')}<span>${esc(option)}</span></button>`).join('')}</div></div>`:'';
   $('#index').dataset.entityKind=kind;$('#index').dataset.entityName=name;
-  $('#index').innerHTML=`<div class="entityhero"><div class="entityportrait ${kind==='performer'||kind==='creator'?'':'square'}" data-fit-native="${company?'mark':'portrait'}">${image}<span>${esc(name.slice(0,1))}</span></div>
+  const people=kind==='performer'||kind==='creator';
+  $('#index').innerHTML=`<div class="entityhero"><div class="entityportraitwrap"><div class="entityportrait ${people?'':'square'}" data-fit-native="${company?'mark':'portrait'}">${image}<span>${esc(name.slice(0,1))}</span></div>${
+    people?'<span data-avatar-picker></span>':''}</div>
       <div><div class="entitytitle"><h2>${esc(d.canonical_name)}</h2>${namePick}</div>
         <div class="alias">${(d.display_aliases||[]).length?`${d.display_aliases.map(esc).join(' / ')} · `:''}<b>${d.asset_count.toLocaleString()}</b> 个视频${memberHtml}${agencyHtml}</div>
         ${links?`<div class="entitylinks">${links}</div>`:''}</div></div>
@@ -7923,6 +7925,13 @@ async function openEntity(kind,name,push=true){
     <div class="combo entitycombo"></div>
     <section class="entitytagbar" aria-label="媒体与标签">${mediaToggle}${mediaToggle?'<span class="sep" aria-hidden="true"></span>':''}<div class="filterscroll"><div class="viewpills entityviews" role="group" aria-label="观看状态">${VIEW_PILLS.map(v=>`<button type="button" class="pill" data-entity-state="${v.k}" aria-pressed="${(filters.state||'')===v.k}">${v.label}</button>`).join('')}<span class="sep" aria-hidden="true"></span></div><div class="tagscroll entitytags">${tags}</div></div></section>
     <div class="entitysection"></div>`;
+  /* 圆框角上那个加号。自动挑的那张按来源优先级来，而那个顺序回答的是「先试哪一张」，
+     不是「哪一张适合当头像」：图库排第一的常是写真封面，同一个人往下翻几张就有片商的
+     正脸原图。换完重进这一页——头像索引在服务端已经失效过一次，重画才读得到新图。 */
+  const pickerHost=$('#index').querySelector('[data-avatar-picker]');
+  if(pickerHost&&d.id)import('/dist/peach-ui.js').then(ui=>ui.mountAvatarPicker(pickerHost,{
+    kind,id:Number(d.id),name:d.canonical_name||name,
+    onPicked:()=>openEntity(kind,name,false)}));
   // 资料页的标签和顶部标签条是同一个开关，读的写的都是这一页的筛选。
   $('#index').querySelectorAll('[data-entity-tag]').forEach(b=>b.onclick=()=>
     toggleTag(b.dataset.entityTag));
