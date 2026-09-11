@@ -157,11 +157,10 @@ body:has(#batchbar:not([hidden])) #stage{padding-bottom:180px}
   .ib svg{width:19px;height:19px}
   /* 展开的搜索栏不铺满整条：左边留出返回按钮，和 YouTube 手机版一致——
      否则进了搜索就没有退出的入口，只能靠失焦或 Esc。 */
-  /* 间距统一到顶栏自己的口径：左右留白 8（`.top` 的 padding），返回键与搜索框之间
-     4（`.top` 的 gap），两者同高 36（`.ib` 的窄屏尺寸），纵向各留 (52-36)/2=8。
+  /* 左右留白 8、返回键与搜索框间距 4、控件同高 36，按顶栏实际高度垂直居中。
      不用 transform 居中——`.searchmenu` 在窄屏是 position:fixed，祖先一有 transform
      就会改成相对它定位，下拉栏会整个跑偏。 */
-  .search{position:absolute;left:48px;right:8px;top:8px;height:36px;padding:0 14px;
+  .search{position:absolute;left:48px;right:8px;top:calc(50% - 18px);height:36px;padding:0 14px;
     max-width:none;margin:0;display:none;z-index:5;background:var(--surface)}
   .search.open{display:flex}
   /* 展开搜索时整条顶栏让位：筛选、品牌和右侧动作全部收起，只留返回箭头和输入框。
@@ -172,7 +171,7 @@ body:has(#batchbar:not([hidden])) #stage{padding-bottom:180px}
   .top:has(.search.open) #immerseBtn,
   .top:has(.search.open) #selectMode,
   .top:has(.search.open) #settingsBtn{display:none!important}
-  .top:has(.search.open) .searchback{display:inline-flex;position:absolute;left:8px;top:8px;z-index:6}
+  .top:has(.search.open) .searchback{display:inline-flex;position:absolute;left:8px;top:calc(50% - 18px);z-index:6}
   .searchmenu{position:fixed;left:8px;right:8px;top:56px;max-height:70vh;overflow:auto;overscroll-behavior:contain}
   #searchBtn{display:inline-flex!important}
   /* 移动端不需要密度切换和筛选抽屉按钮挤在一起 */
@@ -180,7 +179,7 @@ body:has(#batchbar:not([hidden])) #stage{padding-bottom:180px}
   /* 宽屏靠 `.search{flex:1}` 把动作按钮顶到右边；窄屏搜索框收成绝对定位后脱离
      了流，没有东西再撑开中间，按钮会全部挤在品牌名右侧、右半条留空。
      动作组的第一个按钮吃掉剩余空间，整组回到右边。 */
-  #immerseBtn{margin-left:auto}
+  #searchBtn{margin-left:auto}
   /* 窄屏改成单列居中，头像在名字上方——参考 beeg 的资料页。
      左像右文那套是给宽屏的：手机上 92 px 头像旁边只剩两百多像素，别名和链接被挤成
      两三行，头像下面又空着一大片。居中之后名字和链接都拿到整行宽度。 */

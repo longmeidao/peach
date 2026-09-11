@@ -1552,6 +1552,15 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertCode('</div>\n    <div class="settingsscroll">')
         self.assertPageContains("@media(max-width:600px){.settingsscroll{padding:0 17px 17px}")
 
+    def test_sidebar_glide_tracks_layout_and_resets_hover_on_toggle(self):
+        self.assertPageContains("const navGlideResize=new ResizeObserver(resizeNavGlide);")
+        self.assertPageContains("navGlideResize.observe($('#drawer'));")
+        self.assertPageContains("navGlideResize.observe($('#drawerScroll'));")
+        self.assertPageContains("syncNavGlide(false,navGlideTarget);")
+        self.assertPageContains("document.addEventListener('board:sidebar',()=>{\n"
+                                "  navGlideTarget=null;\n"
+                                "  if(navGlideTick)cancelAnimationFrame(navGlideTick);")
+
     def test_studio_metadata_is_not_compiled_as_inline_javascript(self):
         self.assertPageLacks('onerror="this.parentNode.innerHTML=')
         self.assertPageLacks('onload="if(this.naturalWidth')
@@ -2306,7 +2315,7 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_narrow_top_bar_keeps_the_actions_on_the_right(self):
         """窄屏下搜索框绝对定位后脱离了流，动作按钮会挤在品牌名右侧、右半条留空。"""
-        self.assertPageContains("#immerseBtn{margin-left:auto}")
+        self.assertPageContains("#searchBtn{margin-left:auto}")
 
     def test_deleting_one_search_record_keeps_the_menu_open(self):
         """删除按钮不能抢焦点，也不能整段重建下拉栏。
@@ -2491,9 +2500,21 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".top:has(.search.open) #filterBtn,")
         self.assertPageContains(".top:has(.search.open) .searchback{display:inline-flex")
         # 搜索框不铺满：左边留出返回按钮的位置。
-        # 左右 8、两者间距 4、同高 36、纵向各 8——全部取自 `.top` 自己的 padding/gap。
-        self.assertPageContains(".search{position:absolute;left:48px;right:8px;top:8px;height:36px")
-        self.assertPageContains(".searchback{display:inline-flex;position:absolute;left:8px;top:8px")
+        # 搜索和返回键共享顶栏中心线。
+        self.assertPageContains(".search{position:absolute;left:48px;right:8px;top:calc(50% - 18px);height:36px")
+        self.assertPageContains(".searchback{display:inline-flex;position:absolute;left:8px;top:calc(50% - 18px)")
+
+    def test_narrow_search_order_and_interruptible_glass_transition(self):
+        root = Path(__file__).resolve().parents[1]
+        html = (root / "web/index.html").read_text(encoding="utf-8")
+        board = (root / "web/board.css").read_text(encoding="utf-8")
+        self.assertLess(html.index('id="searchBtn"'), html.index('id="immerseBtn"'))
+        self.assertLess(html.index('id="immerseBtn"'), html.index('id="selectMode"'))
+        self.assertIn("transition:clip-path calc(var(--spring-press-ms) * 1ms) var(--spring-press)", board)
+        self.assertIn(".top .search.search-ready{clip-path:none}", board)
+        self.assertPageContains("if(document.activeElement===$('#q'))return;")
+        self.assertPageContains("$('#searchBtn').setAttribute('aria-expanded',String(open));")
+        self.assertPageContains("if(open&&matchMedia('(prefers-reduced-motion:reduce)').matches)")
 
     def test_unlinked_identity_does_not_look_clickable(self):
         """渲染成 `<span>` 的归属不能长得像链接。

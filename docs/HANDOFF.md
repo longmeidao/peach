@@ -71,7 +71,7 @@
 
 ## 参考产品证据登记
 
-- [Board 取证](BOARD_UI.md#数据整理子页)。
+- [Board 与搜索动效取证](BOARD_UI.md)。
 
 - [Geist 控件](reference-snapshots/vercel-geist-controls-measured.md)；[复核操作](reference-snapshots/vercel-review-actions.md)；[README 维护](README_MAINTENANCE.md)。
 

@@ -3325,6 +3325,19 @@ function syncNavGlide(animate,target){
 /* 侧栏纵滚时玻璃原地跟上：容器滚走了它不动就会脱开对准的那一格。一帧只算一次——
    每次都要量位置，逐个滚动事件地量等于把滚动这件事拖回主线程排队。 */
 let navGlideTick=0;
+/* 开合与响应式布局都按实际尺寸同步；开合后悬停目标归回当前导航项。 */
+function resizeNavGlide(){
+  navGlide?.getAnimations().forEach(animation=>animation.cancel());
+  syncNavGlide(false,navGlideTarget);
+}
+const navGlideResize=new ResizeObserver(resizeNavGlide);
+navGlideResize.observe($('#drawer'));
+navGlideResize.observe($('#drawerScroll'));
+document.addEventListener('board:sidebar',()=>{
+  navGlideTarget=null;
+  if(navGlideTick)cancelAnimationFrame(navGlideTick);
+  navGlideTick=requestAnimationFrame(()=>{navGlideTick=0;syncNavGlide(false)});
+});
 $('#drawerScroll').addEventListener('scroll',()=>{
   if(navGlideTick)return;
   navGlideTick=requestAnimationFrame(()=>{navGlideTick=0;syncNavGlide(false)});
@@ -9488,16 +9501,34 @@ async function tokNext(d){
 }
 $('#immerseBtn').onclick=()=>openTok();
 
-$('#searchBtn').onclick=()=>{const s=$('.search');s.classList.toggle('open');
-  if(s.classList.contains('open'))$('#q').focus()};
+function setNarrowSearchOpen(open){
+  const search=$('.search');
+  if(search.classList.contains('search-ready')){
+    search.classList.remove('search-ready');
+    void search.offsetWidth;
+  }
+  search.classList.toggle('open',open);
+  $('#searchBtn').setAttribute('aria-expanded',String(open));
+  if(open&&matchMedia('(prefers-reduced-motion:reduce)').matches)search.classList.add('search-ready');
+}
+$('.search').addEventListener('transitionend',event=>{
+  if(event.target===$('.search')&&event.propertyName==='clip-path'&&$('.search').classList.contains('open'))
+    $('.search').classList.add('search-ready');
+});
+$('#searchBtn').onclick=()=>{setNarrowSearchOpen(true);$('#q').focus()};
 /* 窄屏退出搜索。失焦那条 140ms 的兜底只在输入框为空时才收起搜索栏，
    输入过内容就没有出口了；返回按钮无条件收起，并清掉下拉栏。 */
 $('#searchBack').onclick=()=>{
-  $('.search').classList.remove('open');
+  setNarrowSearchOpen(false);
   hideSearchMenu();
   $('#q').blur();
+  $('#searchBtn').focus();
 };
-$('#q').addEventListener('blur',()=>setTimeout(()=>{if(!$('#q').value&&!$('#searchMenu').matches(':hover'))$('.search').classList.remove('open');hideSearchMenu()},140));
+$('#q').addEventListener('blur',()=>setTimeout(()=>{
+  if(document.activeElement===$('#q'))return;
+  if(!$('#q').value&&!$('#searchMenu').matches(':hover'))setNarrowSearchOpen(false);
+  hideSearchMenu();
+},140));
 /* 收起下拉栏不能只有失焦这一条路：焦点未必在输入框上，而下拉栏照样开着。
    落在 `.search` 之外的第一下按压一律收起，这条判据不问焦点在哪儿。走捕获期
    的 pointerdown，是因为被点的那个东西自己可能吃掉事件或立刻把自己从页面里
