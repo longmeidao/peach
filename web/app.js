@@ -3726,6 +3726,17 @@ function renderCombo(){
 }
 
 /* ── 统计与管理 ── */
+/* 账本只读时铺在复核页与关注管理页顶上的那一条，用的就是 Note，不另画一只框：
+   图标、文字和底色要出自同一个色调，自己描一圈暖色边再把字写成 --ink 的话，
+   背景说的是「注意」、字说的是「普通说明」，两句话对不上。
+
+   色调跟着成因走：另一台机器持有写入权是正常分工，只是说明现状，走中性档；
+   冲突要人照日志处理，属于必须先被看见的故障，走 warning。恢复动作在另一台
+   机器上，所以是链接不是按钮。 */
+function ledgerGateNote(runtime,message,actionLabel,actionHref){
+  return noteHtml(message,{variant:runtime?.ledger_sync==='conflict'?'warning':'secondary',
+    className:'runtimegate',actionLabel:actionHref?actionLabel:'',actionHref});
+}
 /* 整页视图接管页面主体。
 
    这段六行的显隐此前在八个入口里各抄了一份，每份还带着随手的小差异：空格、顺序、
@@ -4059,7 +4070,7 @@ function wireResourceApplyProgress(){
   return wireOperationProgress({host:$('#resource-sync'),path:'/api/resource-sync/apply',key:'peach-resource-apply-job',title:'正在检查文件并清理…',
     busy:running=>{const button=$('#resourceApply');if(button){setActionBusy(button,running);if(!running)button.textContent='清理失效记录与缓存'}},
     complete:out=>{const failed=out.cache_blocked||[];
-      $('#resourceSyncResult').innerHTML=noteHtml(`已把 ${out.moved_to_trash} 项记录移入回收站，清理 ${out.cache_removed} 个缓存，释放 ${fmtSize(out.bytes_reclaimed||0)}。${failed.length?`${failed.length} 个缓存未能清理，请重新检查后重试。`:''}`,{label:failed.length?'部分完成':'清理结果',variant:failed.length?'warning':'default'});
+      $('#resourceSyncResult').innerHTML=noteHtml(`已把 ${out.moved_to_trash} 项记录移入回收站，清理 ${out.cache_removed} 个缓存，释放 ${fmtSize(out.bytes_reclaimed||0)}。${failed.length?`${failed.length} 个缓存未能清理，请重新检查后重试。`:''}`,{label:failed.length?'部分完成':'清理结果',variant:failed.length?'warning':'success'});
       if(!failed.length)actionReceipt('已清理失效记录与缓存')}});
 }
 /* 旧直达 URL 仍然可用，落点跟着面板一起搬到数据管理。 */
@@ -4785,8 +4796,7 @@ async function openReview(push=true){
       :mirror?.error||reviewRuntime.ledger_read_only_message||'';
     const value=row=>row.tags||row.japanese_name||row.path||row.suggested_query||'';
      $('#stats').innerHTML=`<div class="review review-workspace">
-      ${locked?`<div class="runtimegate">${icon('info')}<span>${esc(mirrorText)}</span>${writer
-        ?`<a href="${esc(writer)}">前往写入端复核</a>`:''}</div>`:''}${
+      ${locked?ledgerGateNote(reviewRuntime,mirrorText,'前往写入端复核',writer):''}${
       /* 收录 genre 时的候选词表。给的是静态表已经投影到的那批内容标签，一份挂在整页上：
          每张卡各写一遍的话，同一百来个 option 会在 DOM 里重复几十份。 */
       (reviewData.genre_tags||[]).length?`<datalist id="reviewgenretags">${
@@ -6265,8 +6275,8 @@ function renderFollowManage(credentials){
   const writer=followRuntime?.ledger_writer_origin
     ?new URL('/follow-manage',followRuntime.ledger_writer_origin).href:'';
   $('#stats').innerHTML=`<div class="follow followmanage">
-    ${locked?`<div class="runtimegate">${icon('info')}<span>${esc(followRuntime.ledger_read_only_message||'本机当前只能浏览')}</span>${writer
-      ?`<a href="${esc(writer)}">前往写入端管理关注</a>`:''}</div>`:''}
+    ${locked?ledgerGateNote(followRuntime,followRuntime.ledger_read_only_message||'本机当前只能浏览',
+      '前往写入端管理关注',writer):''}
     <div class="fmanageoverview" aria-label="关注概览">
       <div><span>关注作者</span><b>${groups.length}<small> 位</small></b></div>
       <div><span>启用来源</span><b>${sources.filter(source=>source.enabled).length}<small> / ${sources.length}</small></b></div>

@@ -167,13 +167,18 @@ export function collectionSummaryHtml(label,value,detail=''){
   return `<header class="collection-summary"><div><span>${esc(label)}</span><strong>${esc(value)}</strong></div>${detail?`<p>${esc(detail)}</p>`:''}</header>`;
 }
 
-/** Inline, persistent context beside the field/card/section it describes. */
-export function noteHtml(message,{variant='secondary',label='',className='',size='medium',filled=false,actionLabel='',details=null}={}){
+/* Inline, persistent context beside the field/card/section it describes.
+   恢复动作有两种形态：留在本页执行的走按钮，要离开本页才做得成的走链接。
+   两者占同一个格子、同一枚 `data-note-action`，Note 的版式不因为它是 <a> 改变。 */
+export function noteHtml(message,{variant='secondary',label='',className='',size='medium',filled=false,actionLabel='',actionHref='',details=null}={}){
   const kind=NOTE_VARIANTS.has(variant)?variant:'secondary';
   const symbol=kind==='secondary'?'info':kind==='success'?'check':'alert';
   const role=kind==='error'?' role="alert"':' role="note"';
+  const action=!actionLabel?''
+    :actionHref?`<a class="geist-button" href="${esc(actionHref)}" data-note-action>${esc(actionLabel)}</a>`
+    :`<button type="button" class="geist-button primary" data-note-action>${esc(actionLabel)}</button>`;
   return `<div class="geist-note geist-note-${kind}${className?` ${esc(className)}`:''}${size==='small'?' geist-note-small':''}${filled?' geist-note-filled':''}"${role}>
-    ${icon(symbol)}<p>${label?`<b>${esc(label)}</b>`:''}<span>${esc(kind==='error'?requestErrorMessage(message):message)}</span></p>${actionLabel?`<button type="button" class="geist-button primary" data-note-action>${esc(actionLabel)}</button>`:''}${details?noteDetailsHtml(details):''}</div>`;
+    ${icon(symbol)}<p>${label?`<b>${esc(label)}</b>`:''}<span>${esc(kind==='error'?requestErrorMessage(message):message)}</span></p>${action}${details?noteDetailsHtml(details):''}</div>`;
 }
 
 const PROJECT_BANNER_CLASSES={gray:'project-banner-gray',success:'project-banner-success',warning:'project-banner-warning',error:'project-banner-error'};

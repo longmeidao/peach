@@ -48,6 +48,8 @@ export declare function noteHtml(
     className?: string;
     size?: 'small' | 'medium';
     actionLabel?:string; filled?: boolean;
+    /** 恢复动作要离开本页才做得成时给出目标地址，动作由按钮换成同格子的链接。 */
+    actionHref?: string;
     /** 逐条明细，收在 Note 里默认折叠的 details；`hint` 放路径这类次要标注。 */
     details?: {
       label: string;
