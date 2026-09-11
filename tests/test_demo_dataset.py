@@ -19,6 +19,7 @@ from unittest.mock import Mock
 
 from peach import catalog_rules
 from peach.ffmpeg import FFmpegResolver
+from peach.field_owners import review_owner
 from peach.library_nfo import local_art, read_nfo, sidecars
 from peach.library_processing import process_library
 from peach.review_csv import read_rows
@@ -152,7 +153,8 @@ class DemoDatasetTests(unittest.TestCase):
         self.assertEqual(candidate["source"], "local_nfo")
         with closing(sqlite3.connect(db)) as connection, connection:
             connection.row_factory = sqlite3.Row
-            self.assertEqual(_apply_metadata_candidate(connection, studio_row, candidate, "2026-09-11"), 1)
+            self.assertEqual(_apply_metadata_candidate(
+                connection, studio_row, candidate, "2026-09-11", review_owner("local_nfo")), 1)
             self.assertEqual(connection.execute(
                 "SELECT canonical_name FROM entity WHERE kind='studio'").fetchone()[0], coded[0].studio)
 

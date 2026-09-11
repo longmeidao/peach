@@ -18,6 +18,13 @@ from unittest import mock
 
 from peach import web_contract as rm_web
 from peach import web_review as rm_review
+from peach.field_owners import (
+    EXPECTED_REVISION_FIELD,
+    USER_MANUAL,
+    RevisionConflict,
+    owner_of,
+    write_owned_fields,
+)
 
 from support.ledger import fresh_ledger
 
@@ -306,6 +313,107 @@ class ReviewQueueTests(unittest.TestCase):
         # 规则名要留下来源级别，否则日后回溯不出哪些值是 community 源补的。
         self.assertEqual(json.loads(note)["rule"],
                          "adr-0018-empty-field-single-community-source")
+
+    def test_auto_apply_records_the_source_as_the_field_owner(self):
+        self._asset(96, "EEE-5", "EEE-5.mp4")
+        self.write_metadata_rows([
+            {"item_key": "EEE", "field": "release_date", "current": "",
+             "candidates": ["2015-02-20"], "code": "EEE-5", "source": "javdb"},
+        ])
+        self.assertEqual(self._auto()["applied"], 1)
+        con = sqlite3.connect(self.db_path)
+        try:
+            owners, revision = con.execute(
+                "SELECT field_owners,mutation_revision FROM asset WHERE id=96").fetchone()
+        finally:
+            con.close()
+        self.assertEqual(owner_of(owners, "release_date"), "auto:javdb")
+        self.assertEqual(revision, 1)
+
+    def test_auto_apply_leaves_a_field_the_user_decided_alone(self):
+        """用户可以把一个字段判成空，那也是判断，不该被免复核落库当成无主的空位。"""
+        self._asset(97, "FFF-6", "FFF-6.mp4")
+        con = sqlite3.connect(self.db_path)
+        with con:
+            write_owned_fields(con, [97], {"release_date": None}, USER_MANUAL)
+        con.close()
+        self.write_metadata_rows([
+            {"item_key": "FFF", "field": "release_date", "current": "",
+             "candidates": ["2015-02-20"], "code": "FFF-6"},
+        ])
+        self.assertEqual(self._auto()["applied"], 0)
+        con = sqlite3.connect(self.db_path)
+        try:
+            self.assertIsNone(
+                con.execute("SELECT release_date FROM asset WHERE id=97").fetchone()[0])
+        finally:
+            con.close()
+        self.assertEqual(self.queue_keys("metadata_fields"), ["FFF"])
+
+    def test_approval_writes_the_reviewed_source_as_the_owner(self):
+        self._asset(98, "GGG-7", "GGG-7.mp4")
+        self.write_metadata_rows([
+            {"item_key": "GGG-7:release_date", "field": "release_date", "current": "",
+             "candidates": ["2015-02-20"], "code": "GGG-7", "source": "javbus"},
+        ])
+        result = rm_review.w_review_decision(self.contract, {
+            "category": "metadata_fields", "item_key": "GGG-7:release_date",
+            "status": "approved", "candidate_key": "GGG-7:release_date:0"})
+        self.assertEqual(result["applied_assets"], 1)
+        con = sqlite3.connect(self.db_path)
+        try:
+            owners = con.execute(
+                "SELECT field_owners FROM asset WHERE id=98").fetchone()[0]
+        finally:
+            con.close()
+        self.assertEqual(owner_of(owners, "release_date"), "review:javbus")
+
+    def test_a_stale_expected_revision_refuses_the_approval(self):
+        """乐观并发：客户端手上的取值过期时整次批准不落地，`review_decision` 也不留。"""
+        self._asset(99, "HHH-8", "HHH-8.mp4")
+        con = sqlite3.connect(self.db_path)
+        with con:
+            write_owned_fields(con, [99], {"studio": "先写的"}, USER_MANUAL)
+        con.close()
+        self.write_metadata_rows([
+            {"item_key": "HHH-8:release_date", "field": "release_date", "current": "",
+             "candidates": ["2015-02-20"], "code": "HHH-8", "source": "javbus"},
+        ])
+        body = {"category": "metadata_fields", "item_key": "HHH-8:release_date",
+                "status": "approved", "candidate_key": "HHH-8:release_date:0",
+                EXPECTED_REVISION_FIELD: 0}
+        with self.assertRaises(RevisionConflict) as caught:
+            rm_review.w_review_decision(self.contract, body)
+        self.assertEqual(caught.exception.revisions, {99: 1})
+        con = sqlite3.connect(self.db_path)
+        try:
+            self.assertIsNone(
+                con.execute("SELECT release_date FROM asset WHERE id=99").fetchone()[0])
+            self.assertEqual(con.execute(
+                "SELECT count(*) FROM review_decision WHERE item_key=?",
+                ("HHH-8:release_date",)).fetchone()[0], 0)
+        finally:
+            con.close()
+        # 拿到现值再来一次就通过。
+        body[EXPECTED_REVISION_FIELD] = 1
+        self.assertEqual(
+            rm_review.w_review_decision(self.contract, body)["applied_assets"], 1)
+
+    def test_the_card_says_who_owns_the_value_it_is_asking_about(self):
+        self._asset(100, "III-9", "III-9.mp4")
+        con = sqlite3.connect(self.db_path)
+        with con:
+            write_owned_fields(con, [100], {"studio": "用户写的"}, USER_MANUAL)
+        con.close()
+        self.write_metadata_rows([
+            {"item_key": "III-9:studio", "field": "studio", "current": "用户写的",
+             "candidates": ["别家厂牌"], "code": "III-9", "source": "javbus"},
+        ])
+        rows, _source, _skipped = rm_review._review_rows(self.contract, "metadata_fields")
+        row = next(item for item in rows if item["item_key"] == "III-9:studio")
+        self.assertEqual(row["current_owner"], USER_MANUAL)
+        self.assertEqual(row["asset_mutation_revision"], 1)
+        self.assertIn("（你填的）", rm_review._review_evidence("metadata_fields", row))
 
     def test_two_sources_saying_the_same_thing_land_without_review(self):
         """数取值，不数候选条数。

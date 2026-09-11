@@ -5,7 +5,7 @@ description: 在用户说迁移、migrate、--apply、合并实体、merge_entit
 
 # 真实 ledger 写入流程
 
-最后复核：2026-08-21
+最后复核：2026-09-11
 证据来源：`docs/HANDOFF.md`「数据安全」「身份合并与来源分工」、ADR-0005、ADR-0015、ADR-0017。
 
 真实库：当前写入者本机 `PEACH_DATA_ROOT/database/ledger.db`（WAL）。绝不能把共享传输副本或
@@ -27,6 +27,11 @@ description: 在用户说迁移、migrate、--apply、合并实体、merge_entit
 
 ## 真相字段写入
 
+- `asset` 的真相字段（`catalog_title`、`original_title`、`release_date`、`studio`、`series`、
+  `creator`、`code`）只经 `peach.field_owners.write_owned_fields` 写，写入者用归属串署名：
+  `user:manual`、`review:<来源>`、`auto:<来源>`、`scan:filename`、`script:<脚本名>`。自己拼
+  `UPDATE asset SET <字段>` 会绕过覆盖规则，让自动写入者悄悄改掉用户的判断，事后也答不出
+  是谁写的。`mutation_revision` 是乐观并发的凭据，写入端点收 `expected_revision`。
 - 改写 `entity.canonical_name` 与迁移同级：`--apply` 必须同时给 `--backup`。
 - AI 与刮削结果只能作为带来源和置信度的候选，不直接改写真相字段。
 - 运维脚本默认 dry-run：`scrape_codes.py` 默认只写复核 CSV，`clean_names.py` 默认只生成

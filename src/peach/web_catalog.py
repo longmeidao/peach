@@ -26,6 +26,7 @@ from .catalog_rules import (
     tag_cat,
 )
 from .entities import normalize_entity_name, upsert_asset_entity
+from .field_owners import parse_owners
 from .metadata_policy import SOURCE_SPECS
 from .web_activity import DEFAULT_PROFILE_ID
 from .web_state import WebContract
@@ -665,7 +666,7 @@ def q_item(contract: WebContract, aid):
     with contract.read_connection() as c:
         r = c.execute(
             "SELECT id,location,path,name,catalog_title,original_title,creator,studio,code,"
-            "release_date,size,duration,width,height,"
+            "release_date,size,duration,width,height,field_owners,mutation_revision,"
             "ctx_length,ctx_orient,snapshot_path,play_count,leave_ratio,feedback,disposal,"
             "rating,o_count,play_seconds,max_reached,seek_count,"
             "COALESCE((SELECT p.liked FROM asset_preference p WHERE p.asset_id=asset.id "
@@ -681,6 +682,10 @@ def q_item(contract: WebContract, aid):
         if not r:
             return {"error": "not found"}
         d = dict(r)
+        # 真相字段的字段级归属随详情一起下发：页面要显示某个值是谁写的、还能不能
+        # 被自动写入者改，`mutation_revision` 则是编辑时回传的乐观并发凭据。
+        d["field_owners"] = parse_owners(d.get("field_owners"))
+        d["mutation_revision"] = int(d.get("mutation_revision") or 0)
         # 在线资产的 `path` 是来源作品页，不是可播地址；能播的那条代理在
         # `/follow-stream?id=<follow_item>`。保存时写的是 `follow_item.asset_id`，
         # 反查一次就能让馆藏详情自己播，不必先跳回关注页。

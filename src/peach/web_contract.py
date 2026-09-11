@@ -28,6 +28,17 @@ from .catalog_rules import (
     part_marker,
 )
 from .entities import normalize_entity_name
+#: 真相字段的字段级归属，以及写入端点的乐观并发约定。写入端点用请求体字段
+#: `expected_revision`（`EXPECTED_REVISION_FIELD`）带上客户端读到的
+#: `mutation_revision`；对不上时 `/api/*` 回 409，body 带 `revisions`。
+#: 不用 `If-Match`：契约派发只把 body 交给处理器，请求头到不了那一层。
+from .field_owners import (
+    EXPECTED_REVISION_FIELD,
+    OWNED_FIELDS,
+    RevisionConflict,
+    parse_owners,
+    write_owned_fields,
+)
 # 卡片上的 `poster_box` 字段由这两个名字定形：框由 `portrait_crop_box` 算，
 # 端点侧由 `WebContract.poster_box` 从边车读出来。字段的形状写在
 # `jav_poster_crop.projection` 的文档串里——源图像素坐标加源图尺寸，
@@ -125,6 +136,8 @@ from .web_stats import (
 __all__ = [
     "POSTER_ASPECT", "portrait_crop_box",
     "AD_DIRPACK", "AD_DOMAIN", "ASSET_REFERENCE_TABLES", "BUNDLE_DIR_ASSETS", "CACHE_TTL",
+    "EXPECTED_REVISION_FIELD", "OWNED_FIELDS", "RevisionConflict", "parse_owners",
+    "write_owned_fields",
     "CARD_PERFORMERS", "CONTENT_BYTES", "COST", "ContractRouteNotFound", "EDITION_ORDER",
     "FAVICON",
     "GET_HANDLERS", "INTERNET_SHORTCUT_SUFFIXES", "JAV_ASSET_CLAUSE",

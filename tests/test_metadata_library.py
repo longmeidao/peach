@@ -11,6 +11,7 @@ from contextlib import closing
 
 from filelock import FileLock
 
+from peach.field_owners import owner_of, review_owner
 from peach.library_nfo import read_nfo, sidecars, local_art
 from peach.library_processing import (STALL_AFTER_SECONDS, decorate, issues_path,
                                       process_library, snapshot, state_path, _fields)
@@ -99,11 +100,17 @@ class LibraryNfoTests(unittest.TestCase):
             connection.row_factory = sqlite3.Row
             self.assertIsNone(connection.execute('SELECT catalog_title FROM asset WHERE medium="video"').fetchone()[0])
             candidate = json.loads(title['candidates_json'])[0]
-            self.assertEqual(_apply_metadata_candidate(connection, title, candidate, '2026-09-06'), 1)
-            self.assertEqual(connection.execute('SELECT catalog_title FROM asset WHERE medium="video"').fetchone()[0], 'Local title')
+            owner = review_owner('local_nfo')
+            self.assertEqual(
+                _apply_metadata_candidate(connection, title, candidate, '2026-09-06', owner), 1)
+            written = connection.execute(
+                'SELECT catalog_title,field_owners FROM asset WHERE medium="video"').fetchone()
+            self.assertEqual(written['catalog_title'], 'Local title')
+            # 批准写下的值要答得出是谁写的，否则下一轮自动落库分不清该不该覆盖它。
+            self.assertEqual(owner_of(written['field_owners'], 'catalog_title'), owner)
             title['asset_path'] = 'moved.mp4'
             with self.assertRaises(ValueError):
-                _apply_metadata_candidate(connection, title, candidate, '2026-09-06')
+                _apply_metadata_candidate(connection, title, candidate, '2026-09-06', owner)
         self.assertEqual(snapshot(config)['status'], 'complete')
 
     def test_status_reads_do_not_start_processing(self):

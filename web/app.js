@@ -4931,7 +4931,12 @@ async function openReview(push=true){
        const row=rows.find(x=>String(x.item_key)===item.dataset.reviewKey);
        const selectedIds=[...item.querySelectorAll('[data-review-asset][aria-pressed="true"]')].map(cell=>+cell.dataset.reviewAsset);
        const candidateKey=item.querySelector('[name^="metadata-"]:checked')?.value||'';
-       return {category,item_key:item.dataset.reviewKey,status,candidate_key:candidateKey,creator:row.creator,tags:row.tags,studio:row.studio,entity_id:row.entity_id,avatar_url:row.avatar_url,selected_ids:selectedIds};
+       /* 乐观并发只在这张卡钉死了一条资产时带上：按番号命中多条的组没有单一
+          revision 可报，硬报一个只会在同番号分卷上换来一串假冲突。对不上时
+          服务端回 409，页面重取队列再让人重判。 */
+       const pinned=row.asset_path&&row.asset_mutation_revision!=null;
+       return {category,item_key:item.dataset.reviewKey,status,candidate_key:candidateKey,creator:row.creator,tags:row.tags,studio:row.studio,entity_id:row.entity_id,avatar_url:row.avatar_url,selected_ids:selectedIds,
+         ...(pinned?{expected_revision:row.asset_mutation_revision}:{})};
     };
     const removeReviewed=key=>{
       if(!current())return;
