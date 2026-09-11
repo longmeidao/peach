@@ -8214,7 +8214,10 @@ function javActive(){
 }
 /* 发行时间只对有正式发行证据的番号列表有意义。普通馆藏继续使用入库时间，
    避免把大量空日期的创作者作品挂上一个看似可用、实际无值的排序。 */
-function sortOptions(){return javActive()?[JAV_RELEASE_SORT,...SORTS]:SORTS}
+function sortOptions(){
+  const ordered=SORTS.filter(([key])=>key!=='seed');
+  return javActive()?[JAV_RELEASE_SORT,...ordered]:ordered;
+}
 /* 方向只画在选中的那一枚上：箭头既是当前方向，也是「再点一次能翻」的唯一提示。
    未选中项不画箭头——那会变成八个方向按钮，其中七个的方向此刻不生效。
    箭头对辅助技术隐藏（`icon()` 自带 aria-hidden），无障碍名称播报的是「点下去会得到
