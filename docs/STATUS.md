@@ -11,7 +11,7 @@
 - 设置与反馈已部署；自动更新设置未部署。
 
 - 女优头像 545 张，脸宽中位数 320px，37 张带水印待复核；被顶掉的整套留在 `avatars-superseded/`，判据见 `SOURCING.md`。
-- 小图、资料骨架、官网图标与自动播放开关已实现；请求共用 Chrome UA。资料页的社媒标记覆盖 Phosphor 有字形的七家（X、Instagram、Threads、TikTok、YouTube、Facebook、Linktree），各取自家场色；其余主机走 `/link-mark`。厂牌标识 198 张随仓库分发（ADR-0026）。
+- 小图、资料骨架、官网图标、社媒品牌色与自动播放开关已实现；请求共用 Chrome UA。厂牌标识 198 张随仓库分发（ADR-0026）。
 - Eightman 与 SO MODEL AGENT 已合为 8662，成员与关联作品保留，旧名仍可解析。
 
 - Windows 是 ledger writer，入口 `dist\Peach\Peach.exe`；代码与数据在内置盘，外置盘只提供 `R:\media`。
@@ -29,7 +29,7 @@
 - 代码任何一处都不再连 Stash，媒体解析只有 `FilesystemBackend` 一条路径（ADR-0021）；Stash 遗留的数据缺陷与许可证边界见 `docs/STASH.md`。
 - 前端按 ADR-0022 以 Preact island 逐岛迁往 `frontend/`（Vite + TypeScript），产物 `web/dist/peach-ui.js` 进 Git、经 `/dist/{name}` 提供，`/quality-goals` 已迁；改前端需 Node 24+，见 `docs/FRONTEND.md`。
 - 本机运行 Python 3.14；`requires-python` 下限 3.12，GitHub Actions 同时测 3.12 与 3.14；Windows FFmpeg/ffprobe 位于 `peach-data/tools/ffmpeg`，macOS 走 PATH。
-- 发行名 `peach`，目录名 `peach-app`；Windows venv 已按发行名重装。macOS 落后 master 一组有顺序的操作（待办「待执行的操作」第 30 条），做完之前别重启菜单栏：没有口令的 `peach serve --host 0.0.0.0` 会拒绝启动。
+- 发行名 `peach`，目录名 `peach-app`。macOS 落后 master 一组有顺序的操作（待办「待执行的操作」第 30 条），做完之前别重启菜单栏：没有口令的 `peach serve --host 0.0.0.0` 会拒绝启动。
 - 扫描与采集显示当前项目、动作与等待时长；无进展 120 秒页面预警，单项外部动作（资料 90 秒、封面 240 秒）超预算只跳过该项并计入可重试；「重试未完成项」按原任务失败集合重试。完整问题写入 `state/library-processing-<job_id>.issues.jsonl`，每条带标题与路径，接口按 `job_id` 分页读取；页面把前 20 条与日志地址收在错误提示的折叠里。已部署核对。
 
 ## 批处理进度

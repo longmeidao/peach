@@ -2110,7 +2110,27 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(
             ".entityhero{grid-template-columns:minmax(0,1fr);gap:12px;padding:8px 0 18px;"
             "justify-items:center;text-align:center}")
-        self.assertPageContains(".entityhero .entitylinks{justify-content:center")
+        self.assertPageContains(".entityhero .entitylinks{justify-content:safe center")
+
+    def test_the_profile_link_row_scrolls_sideways_on_phones(self):
+        """十条外链在 390px 下换行要堆四行，把作品列表推到折线以外。
+
+        收成一行加横滑，跟筛选条一个做法。居中必须是 `safe center`：普通 `center`
+        在溢出时把前半排推到滚动起点之前，那几条够不着。竖直方向被 `overflow-x`
+        连带压成 hidden，焦点环靠上下各 4px 的内边距留位置、再由负外边距收回。
+        """
+        self.assertPageContains(
+            ".entityhero .entitylinks{justify-content:safe center;flex-wrap:nowrap;")
+        self.assertPageContains(
+            "margin-top:9px;margin-bottom:-4px;padding-block:4px;")
+        self.assertPageContains(
+            "overflow-x:auto;overflow-y:hidden;scrollbar-width:none;"
+            "overscroll-behavior-inline:contain}")
+        self.assertPageContains(".entityhero .entitylinks::-webkit-scrollbar{display:none}")
+        self.assertPageContains(".entityhero .entitylinks>*{flex:none}")
+        self.assertPageLacks(
+            ".entityhero .entitylinks{justify-content:center",
+            "溢出的那半会落在滚动起点之前，滑不到")
 
     def test_the_switch_centers_its_icon_instead_of_the_line_box(self):
         """svg 默认是 inline，行盒底下留着基线以下的空档。
@@ -4052,7 +4072,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn('align-items:center', note)
         self.assertIn('background:color-mix(in srgb,var(--feedback-color) 8%,var(--ground))', note)
         self.assertPageContains('.geist-note.geist-note>p{margin:0;color:inherit;font:inherit;align-self:center}')
-        self.assertIn('body a:is(.externallink,[target=_blank]):not(.cardlink):hover{background:transparent;text-decoration:underline;box-shadow:none}', board)
+        self.assertIn('body a:is(.externallink,[target=_blank]):not(:has(.entitylinkicon)):not(.cardlink):hover'
+                      '{background:transparent;text-decoration:underline;box-shadow:none}', board)
         self.assertIn('.board-link-button:hover{background:transparent;text-decoration:underline;box-shadow:none}', board)
         release = (Path(__file__).resolve().parents[1] / 'frontend/src/islands/release-updates.tsx').read_text(encoding='utf-8')
         self.assertNotIn('geist-button externallink', release)
