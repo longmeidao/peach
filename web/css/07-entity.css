@@ -70,8 +70,10 @@
 .entitytagbar{position:sticky;top:var(--topH);z-index:61;display:flex;align-items:center;
   height:var(--filterH);margin:0 -16px;padding:9px 16px;background:transparent;
   border-bottom:1px solid transparent}
-.entitytagbar .entitytags{min-width:0;flex:1 1 auto;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;
-  overscroll-behavior-inline:contain}.entitytagbar .entitytags::-webkit-scrollbar{display:none}
+/* 这一格在筛选条里就是首页那条的标签区，横滚、滚动条和窄屏让位都归 `.tagscroll`。
+   这里只补一件这一页独有的事：标签不折行，装不下的滑出去。`.entitytags` 这个类名
+   在骨架里单独用到，所以它自己那份摆法留着。 */
+.entitytagbar .entitytags{flex-wrap:nowrap}
 .entitytags{display:flex;align-items:center;flex-wrap:wrap;gap:7px}.entitytags .pill{flex:none}
 /* 这条是横向滚动行，里面每一项都得拒绝被压扁——挤瘪的开关点不准，也读不出图标。 */
 .entitytags .iconswitch{flex:none}

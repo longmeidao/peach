@@ -64,5 +64,6 @@ it('排序空选项可用，标签内容与属性均转义', () => {
   expect(sortControlsHtml()).toContain('aria-label="换一批"');
   const node=document.createElement('div');node.innerHTML=filterChipHtml('<script>',{attr:'data-tag',value:'"<',selected:true,count:0});
   expect(node.querySelector('script')).toBeNull();expect(node.querySelector('button')?.dataset.tag).toBe('"<');
-  expect(node.textContent).toBe('<script> 0');
+  // 计数前不写空格：`.pill` 是 flex 容器，纯空白文本节点不参与布局，间隔归 `.pill .n` 的外边距。
+  expect(node.textContent).toBe('<script>0');
 });

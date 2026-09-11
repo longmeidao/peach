@@ -132,8 +132,9 @@
 .board-filter-frame>[data-filter-row]::before,.board-filter-frame>[data-filter-row]::after{display:none}
 .board-filter-frame .entityviews{display:flex;flex:none;gap:6px}
 .board-filter-frame .entityviews[hidden]{display:none}
-.board-filter-frame .entitytagbar{overflow-x:auto;scrollbar-width:none;overscroll-behavior-x:contain}
-.board-filter-frame .entitytagbar .entitytags{overflow:visible;flex:0 0 auto}
+/* 玻璃层只把这三格之间的间距收一档，不动它们谁滚谁不滚：整条一起滚的话左端那一档
+   也跟着走，而它正是这条筛选条上唯一离开就读不懂的东西。 */
+.board-filter-frame .entitytagbar .filterscroll{gap:6px}
 .board-filter-frame .entityviews .pill{height:30px;padding:0 10px;font-size:13px;white-space:nowrap}
 /* 复核页那两条还是各做一块：上面那条的高度不是定值，从下面往上够不到。吸顶时整块由
    `.review-is-stuck::before` 画，这里管的只是没吸顶的时候。那道 125° 高光和漂移光斑
@@ -144,26 +145,45 @@ body .review .reviewbulktoolbar,body .review .reviewgroupbar{
 body .review .reviewbulktoolbar{clip-path:inset(-48px -48px 0 -48px)}
 .entitytagbar .pill,.entitycollectionhead h3{color:var(--glass-text)}
 .entitytagbar .pill[data-tag]:not([aria-pressed="true"]){border-color:var(--glass-low)}
+/* 标签后面那个数在这块玻璃上要自己降一档。flat 层那条降的是 --muted，而在这一层里
+   --muted 和 --ink-2 都映射到 --color-text-secondary，是同一个值——照搬过来，计数
+   和标签仍然一样亮。按这一排自己的文字色降档，口径跟未选中的视图胶囊那一档同源。
+   13px 的标签配 11px 的数：差一档能看出来，再小就不是附注而是难以辨认了。 */
+.board-filter-frame.board-filter-frame .pill .n{margin-left:6px;font-size:11px;
+  color:color-mix(in srgb,var(--glass-text) 55%,transparent)}
+.board-filter-frame.board-filter-frame .pill:hover .n,
+.board-filter-frame.board-filter-frame .pill[aria-pressed="true"] .n{
+  color:color-mix(in srgb,var(--glass-text) 80%,transparent)}
 /* 这块玻璃回答的是「你在哪儿」：侧栏的当前项、四枚视图里生效的那一枚、实体页正在看
    的那一档媒体，都是位置。白填充垫底、在已经合成好的底子上再提一档亮度、整圈 rim
    描边。铺一层墨色灰是另一种东西——它在亮内容上是块脏斑，浅色下又是整条里唯一发灰的
    地方。 */
-.entitytagbar.entitytagbar .pill[aria-pressed="true"],
-.entitytagbar.entitytagbar .mediaviewbutton[aria-pressed="true"]{
+.entitytagbar.entitytagbar .pill[aria-pressed="true"]{
   background:linear-gradient(180deg,var(--glass-sheen),transparent 62%),var(--glass-pick-fill);
   backdrop-filter:var(--glass-pick);-webkit-backdrop-filter:var(--glass-pick);
   color:var(--glass-text);border-color:transparent;
   box-shadow:inset 0 0 0 1px var(--glass-rim),var(--glass-pick-shadow)}
-/* 上面那条对四枚视图不适用：这一排的填充由 `.viewglide` 那块滑过去的玻璃给，跟首页
-   那四枚是同一块。两边都铺的话，静止态是一块不透明的填充压在玻璃上面，切换时也只看
-   得见它瞬间换位置，滑动的那块从头到尾被盖在下面。选中和悬停都只提字色。 */
+/* 上面那条对四枚视图和左端那一档媒体类型都不适用：这两排的填充各由一块 `.viewglide`
+   滑过去的玻璃给，四枚视图那块跟首页是同一块。两边都铺的话，静止态是一块不透明的
+   填充压在玻璃上面，切换时也只看得见它瞬间换位置，滑动的那块从头到尾被盖在下面。
+   选中和悬停都只提字色。 */
 .entitytagbar.entitytagbar .pill[data-entity-state],
 .entitytagbar.entitytagbar .pill[data-entity-state]:hover,
-.entitytagbar.entitytagbar .pill[data-entity-state][aria-pressed="true"]{
+.entitytagbar.entitytagbar .pill[data-entity-state][aria-pressed="true"],
+.entitytagbar.entitytagbar .mediaviewbutton,
+.entitytagbar.entitytagbar .mediaviewbutton:hover,
+.entitytagbar.entitytagbar .mediaviewbutton[aria-pressed="true"]{
   border:0;background:none;backdrop-filter:none;-webkit-backdrop-filter:none;box-shadow:none}
-.entitytagbar.entitytagbar .pill[data-entity-state]{color:color-mix(in srgb,var(--glass-text) 60%,transparent)}
+.entitytagbar.entitytagbar .pill[data-entity-state],
+.entitytagbar.entitytagbar .mediaviewbutton{color:color-mix(in srgb,var(--glass-text) 60%,transparent)}
 .entitytagbar.entitytagbar .pill[data-entity-state]:hover,
-.entitytagbar.entitytagbar .pill[data-entity-state][aria-pressed="true"]{color:var(--glass-text)}
+.entitytagbar.entitytagbar .pill[data-entity-state][aria-pressed="true"],
+.entitytagbar.entitytagbar .mediaviewbutton:hover,
+.entitytagbar.entitytagbar .mediaviewbutton[aria-pressed="true"]{color:var(--glass-text)}
+/* 那两枚字形要压在玻璃上面，不然滑过去的时候被盖住一路暗过去——跟首页四枚视图同一条。 */
+.entitytagbar.entitytagbar .mediaviewbutton{position:relative;z-index:1}
+/* 照片视图下这条只剩左端那一组，后面没有东西可隔；分隔线留着就是一条指向空白的竖线。 */
+.entitytagbar[data-media-only] .sep{display:none}
 /* 版式、大小这类分段开关问的也是「你在哪儿」。滑块的位置和几何归分段器自己管，这里
    只换材质与配色：那一套是给 flat 面配的，一块灰底衬一枚不透明的白滑块，摆到浮层上
    就是整条里唯一一块实心的面，读起来像贴上去的另一个控件；字色取的也是 flat 面的
@@ -218,7 +238,7 @@ body .review .reviewbulktoolbar{clip-path:inset(-48px -48px 0 -48px)}
    代价是描边和圆角跟着缩放变形——被拉长的那一瞬圆角扁一点、边细一点。这一下恰好就是
    要的：一块软东西被拽着走，本来就该在跑的方向上抻开。
    缩放的原点留在正中，两端一起外扩；位移写在 `translate` 属性上，不看这个原点。 */
-.board-filter-frame.board-filter-frame>.viewglide,.drawer.drawer>.navglide{position:absolute;left:0;top:0;z-index:0;pointer-events:none;
+.viewglide.viewglide,.drawer.drawer>.navglide{position:absolute;left:0;top:0;z-index:0;pointer-events:none;
   border-radius:8px;will-change:translate,scale;
   /* 高光从上往下，不走那道 125° 对角线：对角线是按盒子自己的长边铺的，在一枚
      三十来像素高的药丸上，转折点正好落在中间，静止看是左右两块拼起来的。 */
@@ -229,7 +249,9 @@ body .review .reviewbulktoolbar{clip-path:inset(-48px -48px 0 -48px)}
      落影按这块的尺寸缩过：整条筛选条那三层是给一块二十几像素圆角的板算的，原样套到
      一枚三十来像素高的药丸上，最远那层比药丸本身还大一圈，看着是它在发光而不是浮起。 */
   box-shadow:inset 0 0 0 1px var(--glass-rim),var(--glass-pick-shadow)}
-.board-filter-frame.board-filter-frame>.viewglide[hidden],.drawer.drawer>.navglide[hidden]{display:none}
+.viewglide.viewglide[hidden],.drawer.drawer>.navglide[hidden]{display:none}
+/* 媒体那一档的按钮是正圆，这块跟着它走：方玻璃扣在圆按钮上，四个角先露出来。 */
+.viewglide.viewglide-round{border-radius:50%}
 /* 侧栏那一列是竖排，圆角照按钮自己的 10px 走，不跟着那一排药丸的 8px。
    它住在滚动容器外面、抽屉这块玻璃里面，`z-index:-1` 把它压回内容底下：抽屉自己带
    `backdrop-filter`，那一层已经是个层叠上下文，负层号只会落到抽屉的面之上、那一列
@@ -445,8 +467,13 @@ body :is(#manageTitle,#manageCrumb,#manageLede){max-width:var(--board-content);w
 .iconswitch[data-board-segments]{position:relative;display:inline-flex;align-items:center;gap:2px;padding:4px;border:0;border-radius:10px;background:var(--color-background-tertiary-default)}
 .iconswitch[data-board-segments]>label{position:relative;z-index:1;border:0;border-radius:6px}
 .iconswitch[data-board-segments]>label:has(input:checked){background:transparent;box-shadow:none}
-.board-segment-thumb{position:absolute;left:0;top:0;pointer-events:none;border-radius:6px;background:var(--color-background-primary-default);box-shadow:0 1px 2px #0000000d}
-.board-segments-ready>.board-segment-thumb{transition:transform 200ms ease,width 200ms ease,height 200ms ease}
+/* 换位走 `translate`，由 `moveGlidePane` 给同一段弹簧动作——这块底板和筛选条上那块
+   玻璃说的是同一件事，动法也只有一种。留给这里的只有尺寸：那是布局属性，交给过渡
+   平滑就够，跟着位移一起过冲会让它在停下之前先胖出去一圈。 */
+.board-segment-thumb{position:absolute;left:0;top:0;pointer-events:none;border-radius:6px;
+  will-change:translate,scale;background:var(--color-background-primary-default);box-shadow:0 1px 2px #0000000d}
+.board-segments-ready>.board-segment-thumb{
+  transition:width calc(var(--spring-pane-ms,200) * 1ms) ease,height calc(var(--spring-pane-ms,200) * 1ms) ease}
 @media(prefers-reduced-motion:reduce){.board-segments-ready>.board-segment-thumb{transition:none}}
 .reviewitem,.followtask{border-color:var(--line);border-radius:16px}
 :root[data-theme="dark"]{--page:#111;--ground:#1c1c1c;--surface:#232323;--sunk:#171717;--ink:#fafafa;--ink-2:#d4d4d4;--muted:#a3a3a3;--line:#383838;--line-soft:#303030;--inset:#303030;--picked:#303030;--hover:rgba(255,255,255,.07);--tungsten:#60a5fa}
@@ -981,7 +1008,12 @@ body .gselectmenu [role=option][aria-selected=true],body .popmenu [aria-checked=
 /* 切换器展开时自己带一圈 2px 描边，导航列表首项又会抬起 hover 底：两者之间留 4px
    的话这两块底色是挨着的，读起来像切换器压在第一项上。 */
 .drawer .board-sidebar-head{margin-bottom:0!important}.drawer .dnav{margin-top:12px;gap:4px}.drawer #brandHome{height:36px;min-height:36px;box-sizing:border-box}.drawer .dnav button{height:36px;min-height:36px}
-[data-board-tabs]{position:relative!important}[data-board-tabs]::before{content:'';position:absolute;bottom:0;left:0;width:var(--tab-width,0px);height:2px;background:var(--tungsten);transform:translateX(var(--tab-x,0px));pointer-events:none;z-index:1}[data-board-tabs].board-tabs-ready::before{transition:transform 200ms ease,width 200ms ease}
+[data-board-tabs]{position:relative!important}[data-board-tabs]::before{content:'';position:absolute;bottom:0;left:0;width:var(--tab-width,0px);height:2px;background:var(--tungsten);transform:translateX(var(--tab-x,0px));pointer-events:none;z-index:1}/* 这条指示条也是「当前落在哪一个」，位移跟着同一条弹簧走。它是伪元素，没法像那几块
+   底板一样再挂一段独立的形变——冲过落点再荡回来这一下有，抻开那一下没有。
+   宽度另走匀速：跟着弹簧过冲的话，它会在停下之前先抻出邻居的边界。 */
+[data-board-tabs].board-tabs-ready::before{
+  transition:transform calc(var(--spring-pane-ms,200) * 1ms) var(--spring-pane,ease),
+             width calc(var(--spring-pane-ms,200) * 1ms) ease}
 body [data-board-tabs] button[aria-selected=true],body .managebar [data-board-tabs] button[aria-pressed=true]{border-bottom-color:transparent}
 @media(prefers-reduced-motion:reduce){[data-board-tabs].board-tabs-ready::before{transition:none}}
 .followmanage .fsource:has([data-follow-select]){background:var(--color-background-primary-default)}

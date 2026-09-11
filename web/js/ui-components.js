@@ -5,7 +5,10 @@ const NOTE_VARIANTS=new Set(['secondary','warning','error','success']);
 
 /** 标签含义、计数口径和查询由页面提供。 */
 export function filterChipHtml(label,{attr,value,selected=false,count,className='',countClass='n mono'}={}){
-  return `<button type="button" class="pill${className?' '+esc(className):''}" ${attr}="${esc(value)}" aria-pressed="${selected}">${esc(label)}${count==null?'':` <span class="${esc(countClass)}">${esc(count)}</span>`}</button>`;
+  /* 计数前不写空格。`.pill` 是 flex 容器，纯空白的文本节点不参与布局，写了也量不出
+     一个像素——间隔归 `.pill .n` 的 margin，写在两处就是两份真相，而其中一份从来
+     没生效过。 */
+  return `<button type="button" class="pill${className?' '+esc(className):''}" ${attr}="${esc(value)}" aria-pressed="${selected}">${esc(label)}${count==null?'':`<span class="${esc(countClass)}">${esc(count)}</span>`}</button>`;
 }
 export function sortControlsHtml({items=[],renderItem=String,extra='',shuffleId='',shuffleClass='entitybatch'}={}){
   return `<span class="sorts"><button class="batchaction ${esc(shuffleClass)}"${shuffleId?` id="${esc(shuffleId)}"`:''} type="button" title="换一批" aria-label="换一批">${icon('shuffle')}</button>${extra}${items.map(renderItem).join('')}</span>`;
@@ -40,6 +43,50 @@ export function wireHorizontalScroller(el,{drag=false,fade=true}={}){
   horizontalControls.set(el,control);
   if(!horizontalCleanup){horizontalCleanup=new MutationObserver(()=>{for(const [node,item] of horizontalControls)if(!node.isConnected)item.destroy()});horizontalCleanup.observe(document.body,{childList:true,subtree:true})}
   update();return control;
+}
+
+/* 一排里标出「当前是哪一个」的那块底板，全站只有这一种动法：滑过去、冲过落点、荡回来。
+   筛选条上那块玻璃、抽屉那一列、分段控件里那块白底，在人眼里是同一件事，各写一段就会
+   各自漂移成三种手感。
+   弹簧曲线和它的时长都写在 `board.css` 的 `--spring-pane` 上，这里只读一次：那串数是一次
+   弹簧模拟的采样结果，抄第二份就没人再改得动它。 */
+let paneSpring=null;
+export function glideEase(){
+  if(!paneSpring){
+    const css=getComputedStyle(document.documentElement);
+    paneSpring={easing:css.getPropertyValue('--spring-pane').trim()||'ease',
+      duration:parseFloat(css.getPropertyValue('--spring-pane-ms'))||300};
+  }
+  return paneSpring;
+}
+/* 位移走 `translate`、形变走 `scale`，两个独立属性各挂一段动画，不挤进同一条
+   `transform`：一条属性上只放得下一段，而这两下的时间形状不是同一条曲线——位移冲过
+   落点再荡回来，抻开是中途最大、两头归一。分开写，两段仍然都在合成线程上。
+   都不碰 `width`：宽度是布局属性，逐帧改它等于让整份文档重新排版一遍，合成线程碰不
+   到它，主线程一忙这块底板就跟着卡住。
+   `from` 给 null 就只落位不动画：第一次出现的那块不该从别处飞进来。 */
+export function moveGlidePane(pane,from,box,axis='x'){
+  pane.style.width=`${box.w}px`;pane.style.height=`${box.h}px`;
+  const span=axis==='y'?'h':'w',head=axis==='y'?'y':'x';
+  const settled=`${box.x}px ${box.y}px`;
+  if(from&&from[head]!==box[head]&&!matchMedia('(prefers-reduced-motion:reduce)').matches){
+    const ease=glideEase();
+    /* 先撤掉还在跑的那两段：一块上叠着两段位移，晚建的那段从头起跑，先建的还在往它
+       自己的终点走，合出来的位置两边都不是。 */
+    pane.getAnimations().forEach(a=>a.cancel());
+    pane.animate([{translate:axis==='y'?`${box.x}px ${from.y}px`:`${from.x}px ${box.y}px`},
+      {translate:settled}],{duration:ease.duration,easing:ease.easing,fill:'none'});
+    /* 一块被拽着走的软东西，跑起来在跑的方向上抻开，停下来收回去。抻多少按这一跳跨了
+       自己几个身位算，封在一个半身位：再远也不该更长，那时候读起来不是被拉长的同一
+       块，是换上来的另一块。峰值压在前三成——加速那一段才拉得动它。
+       形变只在这一排排布的方向上：另一根轴的尺寸是这一排给定的，在那儿拉扯会让它看
+       起来不是这一排里的东西。 */
+    const reach=Math.min(Math.abs(box[head]-from[head])/box[span],1.5),grow=1+reach*.12;
+    pane.animate([{scale:'1 1',offset:0},
+      {scale:axis==='y'?`1 ${grow}`:`${grow} 1`,offset:.3},{scale:'1 1',offset:1}],
+      {duration:ease.duration,easing:'ease-in-out',fill:'none'});
+  }
+  pane.style.translate=settled;
 }
 
 const incrementalControls=new Map();

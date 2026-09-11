@@ -1,3 +1,5 @@
+import { moveGlidePane } from '@peach/legacy/ui';
+
 /** Board 控件的共享展示层；范围输入保留浏览器原生键盘语义。 */
 export function syncBoardRange(input: HTMLInputElement) {
   const min=Number(input.min)||0,max=Number(input.max)||100,value=Number(input.value);
@@ -63,6 +65,7 @@ export function wireBoardTabs(root:ParentNode){
   });
 }
 
+const segmentPositions=new Map<string,{x:number;y:number;w:number;h:number}>();
 /** 原生 radio 保留方向键语义，选中底板按实际尺寸滑动。
     面板切换那几组是 `role=tablist`：滑块换成按 `aria-selected` 找当前项，ARIA 仍然是 Tabs
     控制 tabpanel，不为了长得像分段控件就把它写成 radiogroup。 */
@@ -74,10 +77,18 @@ export function wireBoardSegments(root:ParentNode) {
     if(group.hasAttribute('data-board-segments'))return;
     group.dataset.boardSegments='true';
     const thumb=document.createElement('span');thumb.className='board-segment-thumb';thumb.setAttribute('aria-hidden','true');group.prepend(thumb);
+    /* 底板换位跟筛选条上那块玻璃是同一件事——「当前是这一个」从一处挪到另一处——所以
+       走同一段动作：滑过去、冲过落点、荡回来。
+       上一次停在哪儿按这一组的身份记，不按节点记：点一下往往把整块重画一遍，拿节点
+       记等于每次都是一块新出现的底板，只落位不动画，一路点下来它一次都没动过。
+       真正头一次出现时没有上一次，那一下不动画——新出现的底板不该从别处飞进来。 */
+    const key=group.className+(group.getAttribute('aria-label')??'');
+    let from=segmentPositions.get(key)??null;
     const measure=()=>{
       const selected=group.querySelector<HTMLElement>('label:has(input:checked),button[aria-selected=true]');if(!selected||!selected.offsetWidth)return;
-      thumb.style.transform=`translate(${selected.offsetLeft}px,${selected.offsetTop}px)`;
-      thumb.style.width=`${selected.offsetWidth}px`;thumb.style.height=`${selected.offsetHeight}px`;
+      const box={x:selected.offsetLeft,y:selected.offsetTop,w:selected.offsetWidth,h:selected.offsetHeight};
+      moveGlidePane(thumb,from,box,'x');
+      from=box;segmentPositions.set(key,box);
     };
     group.addEventListener('change',measure);
     const mutation=new MutationObserver(measure);mutation.observe(group,{subtree:true,attributes:true,attributeFilter:['aria-selected']});

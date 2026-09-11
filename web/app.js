@@ -16,7 +16,7 @@ import { javImageKind, normalizeJavImage, normalizeJavLayout, normalizeJavPrefer
 import {
   attachOverlayScrollbar, breadcrumbHtml, checkboxHtml, collectionSummaryHtml, closeAnchoredMenu, confirmModal, dismissMenu, emptyStateHtml, fieldsetTitle,
   fillSkeletonTier, fitSkeleton, formModal, iconSwitchHtml, indexSkeletonHtml, loadingDotsHtml,
-  mediaViewButtonsHtml, mountFilterFrame, filterChipHtml, sortControlsHtml, collectionHeaderHtml, wireHorizontalScroller, noteHtml, presentMenu, progressHtml, gaugeHtml, scrollerHtml, searchInputHtml, selectFieldHtml,
+  mediaViewButtonsHtml, mountFilterFrame, filterChipHtml, moveGlidePane, sortControlsHtml, collectionHeaderHtml, wireHorizontalScroller, noteHtml, presentMenu, progressHtml, gaugeHtml, scrollerHtml, searchInputHtml, selectFieldHtml,
   setActionBusy, skeletonHtml, spinnerHtml, wireAnchoredMenu, wireBusyActions, wireCollapse, wireDragReorder,
   wireIconSwitch, wireOverlayScrollbars, wireScrollers, wireSelectField, wireContextCard, configurationSkeletonHtml, wireLoadMore,
 } from './js/ui-components.js';
@@ -3184,58 +3184,31 @@ const VIEW_PILLS=[{k:'',label:'全部'},{k:'fresh',label:'没看过'},
 const viewPillsHtml=filterState=>VIEW_PILLS.map(v=>
     `<a class="pill" href="${v.k?STATE_ROUTES[v.k]:'/'}" data-state="${v.k}" aria-pressed="${
       filterState.state===v.k}">${v.label}</a>`).join('')+`<span class="sep"></span>`;
-/* 视图之间移动的那块玻璃。它是一个常驻节点，`#tagbar` 每次重画都把同一个节点挪回去
-   而不是新建：换了元素，动画就从头开始，看到的只是瞬移。
+/* 视图之间移动的那块玻璃是常驻节点，`#tagbar` 每次重画都把同一个节点挪回去而不是
+   新建：换了元素，动画就从头开始，看到的只是瞬移。节点由 `viewGlides` 按排持有。
    点下去要立刻动。切换视图会重新取数，`buildBars` 约一秒后才把 `aria-pressed` 写成
    新值，等它就等于点完先僵一下再跳。 */
-let viewGlide=null,viewGlideBox=null;
-/* 弹簧曲线和它的时长都写在 `board.css` 的 `--spring-pane` 上，这里只读一次。两处各写
-   一份数就会各改各的，而那串数是一次弹簧模拟的采样结果，不是能随手对齐的东西。 */
-let glideSpring=null;
-function glideEase(){
-  if(!glideSpring){
-    const css=getComputedStyle(document.documentElement);
-    glideSpring={easing:css.getPropertyValue('--spring-pane').trim()||'ease',
-      duration:parseFloat(css.getPropertyValue('--spring-pane-ms'))||300};
+/* 这块玻璃落在那一排最近的一层「会裁掉越界内容」的祖先里，找不到就落在外框上。
+   两件事一起解决：它跟着那一层的内容走，所以那一层横滚时不用自己去减滚动量；越界的
+   部分跟按钮一起被裁，不会在滚动区外面露出半块白。
+   窄屏时那一层就是横滚的 `.filterscroll`；宽屏时那一排根本不滚，这一层是整条筛选条或
+   外框，跳到头一枚的那下回弹尽管冲出那一排的边沿，也没有人切它——这正是玻璃不住在
+   `#viewPills` 里的原因，它和它的邻居都开着 `overflow`。
+   那一层得自己是定位元素，否则它不在 `offsetParent` 链上，位置就无从算起；静态的退回
+   外框，宁可不跟着滚，也不要一个算错的坐标。 */
+function glideHost(pill){
+  const frame=pill.closest('.board-filter-frame');if(!frame)return null;
+  let host=frame;
+  for(let n=pill.parentElement;n&&n!==frame;n=n.parentElement){
+    if(getComputedStyle(n).overflowX!=='visible'){host=n;break}
   }
-  return glideSpring;
+  return getComputedStyle(host).position==='static'?frame:host;
 }
-/* 位移走 `translate`、形变走 `scale`，两个独立属性各挂一段动画，不挤进同一条
-   `transform`：一条属性上只放得下一段，而这两下的时间形状不是同一条曲线——位移冲过
-   落点再荡回来，抻开是中途最大、两头归一。分开写，两段仍然都在合成线程上。
-   都不碰 `width`：宽度是布局属性，逐帧改它等于让整份文档重新排版一遍，合成线程碰不
-   到它，主线程一忙这块玻璃就跟着卡住。 */
-function moveGlidePane(pane,from,box,axis){
-  pane.style.width=`${box.w}px`;pane.style.height=`${box.h}px`;
-  const span=axis==='y'?'h':'w',head=axis==='y'?'y':'x';
-  const settled=`${box.x}px ${box.y}px`;
-  if(from&&from[head]!==box[head]&&!reduceMotion()){
-    const ease=glideEase();
-    /* 先撤掉还在跑的那两段：一枚上叠着两段位移，晚建的那段从头起跑，先建的还在往它
-       自己的终点走，合出来的位置两边都不是。 */
-    pane.getAnimations().forEach(a=>a.cancel());
-    pane.animate([{translate:axis==='y'?`${box.x}px ${from.y}px`:`${from.x}px ${box.y}px`},
-      {translate:settled}],{duration:ease.duration,easing:ease.easing,fill:'none'});
-    /* 一块被拽着走的软东西，跑起来在跑的方向上抻开，停下来收回去。抻多少按这一跳跨了
-       自己几个身位算，封在一个半身位：再远也不该更长，那时候读起来不是被拉长的同一
-       块，是换上来的另一块。峰值压在前三成——加速那一段才拉得动它。
-       形变只在这一列排布的方向上：另一根轴的尺寸是这一排给定的，在那儿拉扯会让它看
-       起来不是这一排里的东西。 */
-    const reach=Math.min(Math.abs(box[head]-from[head])/box[span],1.5),grow=1+reach*.12;
-    pane.animate([{scale:'1 1',offset:0},
-      {scale:axis==='y'?`1 ${grow}`:`${grow} 1`,offset:.3},{scale:'1 1',offset:1}],
-      {duration:ease.duration,easing:'ease-in-out',fill:'none'});
-  }
-  pane.style.translate=settled;
-}
-/* 坐标基准是 `.board-filter-frame`，不是那一排本身：这块玻璃住在框外一层，才能弹出
-   那一排的边沿——`#viewPills` 与它的邻居都开着 `overflow`，住在里面弹多少都在框沿被
-   切平。代价是几何要把那一排自己的位置补回来。四枚视图不横滚，它们的偏移量就是最终
-   位置，不必再减一次滚动量。 */
-function viewGlideGeometry(tagbar,pill){
-  const frame=tagbar.closest('.board-filter-frame');if(!frame)return null;
-  return {frame,x:tagbar.offsetLeft+pill.offsetLeft,w:pill.offsetWidth,
-    y:tagbar.offsetTop+pill.offsetTop,h:pill.offsetHeight};
+function viewGlideGeometry(pill){
+  const host=glideHost(pill);if(!host)return null;
+  let x=0,y=0;
+  for(let n=pill;n&&n!==host;n=n.offsetParent){x+=n.offsetLeft;y+=n.offsetTop}
+  return {host,x,w:pill.offsetWidth,y,h:pill.offsetHeight};
 }
 /* 首页和资料页各有一排四选一，玻璃是同一块：在人眼里这两排就是同一个控件，「跟着指针
    滑过去」没有理由只在其中一页成立。两边的 DOM 对不上——首页那排是 `#viewPills` 里的
@@ -3244,35 +3217,56 @@ function viewGlideGeometry(tagbar,pill){
    判据是「此刻量得出宽度」，不是「存在」也不是自己那个 `hidden`：两排在同一份文档里
    一直都在，资料页开着的时候首页那排只是被祖先收起来了，`hidden` 上看不出来。零宽度
    把这一种连同 `display:none` 和资料页照片视图下那一排自己的 `hidden` 一起挡住——玻璃
-   留在一排收起来的按钮上，就是在一块空玻璃上亮着。 */
-function viewPillsRow(){
-  for(const row of document.querySelectorAll('#viewPills,.entityviews')){
-    if(!row.offsetWidth)continue;
-    const tagbar=row.closest('#tagbar,.entitytagbar');
-    if(tagbar)return{row,tagbar};
+   留在一排收起来的按钮上，就是在一块空玻璃上亮着。
+
+   资料页那条上有两排都在回答「你在哪儿」：左端那一档媒体类型，和四枚观看状态。它们
+   问的不是同一件事，所以各有一块玻璃——共用一块的话，点一下照片，玻璃从「没看过」那儿
+   飞过来，读出来是这两排在抢同一个当前项。 */
+const GLIDE_ROWS={
+  views:{selector:'#viewPills,.entityviews',
+         pressed:'[data-state][aria-pressed="true"],[data-entity-state][aria-pressed="true"]'},
+  /* 媒体那两枚是圆的，玻璃跟着它们的圆角走：一块 8px 圆角的方玻璃扣在一枚圆按钮上，
+     四个角先露出来，读起来是玻璃底下还垫着别的东西。 */
+  media:{selector:'.entitymediaview',pressed:'[data-media-view][aria-pressed="true"]',
+         className:'viewglide-round'},
+};
+function viewPillsRow(kind){
+  for(const row of document.querySelectorAll(GLIDE_ROWS[kind].selector)){
+    if(row.offsetWidth&&row.closest('.board-filter-frame'))return row;
   }
   return null;
 }
 /* 悬停跟随和离开归位这两下两页是同一回事，接法也只有一种。用属性赋值而不是
    `addEventListener`：资料页每换一次筛选都会把这一排重新接一遍，叠加式的接法会让
-   同一枚按钮上攒下越来越多份同样的监听。点击各自接——那一下要做的事两页不一样。 */
-function wireViewGlideRow(tagbar,pills){
-  pills.forEach(b=>b.onpointerenter=e=>{if(e.pointerType!=='touch')syncViewGlide(true,b)});
-  tagbar.onpointerleave=e=>{if(e.pointerType!=='touch')syncViewGlide(true)};
-  syncViewGlide(false);
+   同一枚按钮上攒下越来越多份同样的监听。点击各自接——那一下要做的事两页不一样。
+   离开归位挂在那一排自己身上，不挂整条筛选条：两排共用一条 `pointerleave` 的话，
+   指针从媒体那组挪到视图那组就算「离开」，媒体那块玻璃会先弹回去再被下一个悬停接住。 */
+function wireViewGlideRow(row,pills,kind='views'){
+  pills.forEach(b=>b.onpointerenter=e=>{if(e.pointerType!=='touch')syncViewGlide(true,b,kind)});
+  row.onpointerleave=e=>{if(e.pointerType!=='touch')syncViewGlide(true,null,kind)};
+  syncViewGlide(false,null,kind);
 }
-function syncViewGlide(animate,target){
-  const found=viewPillsRow();
-  const active=found&&(target||found.row.querySelector(
-    '[data-state][aria-pressed="true"],[data-entity-state][aria-pressed="true"]'));
-  if(!active){if(viewGlide)viewGlide.hidden=true;return}
-  const box=viewGlideGeometry(found.tagbar,active);
+/* 每排各存自己那块玻璃和它上一次的落点。键取那一排的用途，不取那一排的元素：资料页
+   每换一次筛选就把整条重画一遍，拿节点当键等于每重画一次就新建一块玻璃，动画从头
+   起跑，看到的只是瞬移。 */
+const viewGlides=new Map();
+function syncViewGlide(animate,target,kind='views'){
+  const row=viewPillsRow(kind);
+  const active=row&&(target||row.querySelector(GLIDE_ROWS[kind].pressed));
+  let glide=viewGlides.get(kind);
+  if(!active){if(glide)glide.pane.hidden=true;return}
+  const box=viewGlideGeometry(active);
   if(!box||!box.w)return;
-  if(!viewGlide){viewGlide=document.createElement('span');viewGlide.className='viewglide';viewGlide.setAttribute('aria-hidden','true');viewGlideBox=null}
-  if(viewGlide.parentElement!==box.frame)box.frame.prepend(viewGlide);
-  viewGlide.hidden=false;
-  const from=viewGlideBox;viewGlideBox=box;
-  moveGlidePane(viewGlide,animate?from:null,box,'x');
+  if(!glide){
+    const pane=document.createElement('span');
+    pane.className=`viewglide${GLIDE_ROWS[kind].className?` ${GLIDE_ROWS[kind].className}`:''}`;
+    pane.setAttribute('aria-hidden','true');
+    glide={pane,box:null};viewGlides.set(kind,glide);
+  }
+  if(glide.pane.parentElement!==box.host)box.host.prepend(glide.pane);
+  glide.pane.hidden=false;
+  const from=glide.box;glide.box=box;
+  moveGlidePane(glide.pane,animate?from:null,box,'x');
 }
 /* 抽屉那一列跟筛选条那一排是同一块玻璃，只是换了根轴。它挂在 `#drawer` 上而不是那
    一列里：切页会把 `#drawerScroll` 整块重画，住在里面的话玻璃跟着一起没，动画在第
@@ -3351,7 +3345,7 @@ $('#drawer').addEventListener('pointerout',event=>{
   if(column&&!column.contains(event.relatedTarget))syncNavGlide(true);
 });
 function wireViewPills(){
-  const tagbar=$('#tagbar'),pills=[...$('#viewPills').querySelectorAll('[data-state]')];
+  const row=$('#viewPills'),pills=[...row.querySelectorAll('[data-state]')];
   pills.forEach(b=>b.onclick=e=>{
     e.preventDefault();state.state=b.dataset.state;
     pills.forEach(p=>p.setAttribute('aria-pressed',String(p===b)));syncViewGlide(true,b);
@@ -3359,7 +3353,7 @@ function wireViewPills(){
   /* 玻璃跟着指针走，不等点击：指到哪一枚就滑过去，指针离开这一排再回到真正选中的
      那枚。这一排是四选一，滑过去等于先把这一下的结果比划出来，点不点是下一步的事。
      `aria-pressed` 全程不动——移过去不是选中，读屏和键盘那边不该跟着变。 */
-  wireViewGlideRow(tagbar,pills);
+  wireViewGlideRow(row,pills);
 }
 // 宽度是一组定值而不是随机数：随机会让同一次冷启动在两台机器上长得不一样，也没法测。
 function renderBarsLoading(filterState){
@@ -3522,7 +3516,12 @@ async function buildBars(){
   const tagPool=topTags.filter(row=>!appliedKeys.includes(row.k));
   const pickedTags=seededSample(tagPool,TAGS_FIRST,`tags:${state.seed||''}`);
   const pickedKeys=new Set(pickedTags.map(row=>row.k));
-  const tagPillHtml=t=>filterChipHtml(tagLabel(t.k),{attr:'data-tag',value:t.k,selected:tagPressed(filterState.tag,t.k)});
+  /* 标签后面带上这个标签下有多少，跟资料页那条筛选条同一个口径：这一排每一枚都是
+     可加可不加的筛选，加上去还剩几屏，点之前就该看得到。
+     `appliedTags` 里可能只有一个键——生效的标签不一定在这一批抽样里，那时不印数字。
+     印 0 会说成「这个标签下什么都没有」，而它此刻正筛着一屏内容。 */
+  const tagPillHtml=t=>filterChipHtml(tagLabel(t.k),{attr:'data-tag',value:t.k,
+    selected:tagPressed(filterState.tag,t.k),count:t.n==null?undefined:t.n.toLocaleString()});
   $('#tagScroll').innerHTML=(emptyLayout?.tags||'')
     +appliedTags.concat(pickedTags).map(tagPillHtml).join('');
   wireViewPills();
@@ -7111,9 +7110,10 @@ function syncEntityFilterFrame(){
   mountFilterFrame(top,bottom,{views:top.querySelector('.entityviews'),
     tags:top.querySelector('.entitytags'),readout:bottom.querySelector('h3'),
     controls:bottom.querySelector('.sorts')});
-  /* 玻璃的坐标基准是这块外框，所以要等框搭好才量得到位置。这一排本身在框搭好之前就
+  /* 玻璃的坐标基准是这块外框，所以要等框搭好才量得到位置。两排本身在框搭好之前就
      接过了，那一次量到的是 null。 */
   syncViewGlide(false);
+  syncViewGlide(false,null,'media');
   scheduleStickySurfaces();
 }
 function syncEntityStateControls(kind,name,filters){
@@ -7129,7 +7129,7 @@ function syncEntityStateControls(kind,name,filters){
       updateEntityCollection(kind,name,{...filters,state:button.dataset.entityState},true);
     };
   });
-  wireViewGlideRow(controls.closest('.entitytagbar')||controls,buttons);
+  wireViewGlideRow(controls,buttons);
 }
 /* 资料页作品集的表头与首页计数行同源：排序条由 filters 决定，`视频 · N` 由响应决定。 */
 const entityCollectionSortsHtml=filters=>sortControlsHtml({extra:javActive()?javLayoutButtons():'',items:sortOptions(),
@@ -7252,11 +7252,20 @@ function renderEntityMediaToggle(kind,name,filters){
   syncEntityStateControls(kind,name,filters);
   const controls=$('#index').querySelector('.entitymediaview');if(!controls)return;
   const now=entityViewNow(kind);
-  controls.querySelectorAll('[data-media-view]').forEach(button=>{
+  const buttons=[...controls.querySelectorAll('[data-media-view]')];
+  buttons.forEach(button=>{
     const media=button.dataset.mediaView;
     button.setAttribute('aria-pressed',String(now===media));
-    button.onclick=()=>switchEntityMedia(kind,name,filters,media);
+    /* 按下去那一下玻璃就滑过去，不等换视图的活干完：切到照片要取一次图墙，反馈跟着
+       等就是点完先僵一下再亮。`aria-pressed` 由这里当场改齐——`switchEntityMedia`
+       末尾会重画这一排再对一次，中间那段空档没人写它，玻璃会被下一次同步拽回原处。 */
+    button.onclick=()=>{
+      buttons.forEach(other=>other.setAttribute('aria-pressed',String(other===button)));
+      syncViewGlide(true,button,'media');
+      switchEntityMedia(kind,name,filters,media);
+    };
   });
+  wireViewGlideRow(controls,buttons,'media');
   /* 那排标签数的是视频，照片和名册上一个都对不上——「痴女 23」在这一屏指的是二十三个
      视频，而屏幕上摆着的是照片。点下去也不留在这儿：标签是作品筛选，`toggleTag` 会把
      视图拨回视频。一排点了就走人、数字又对不上当前内容的东西，摆在这儿只会让人以为
@@ -7766,7 +7775,12 @@ async function openEntity(kind,name,push=true){
   const photoCount=photos&&!photos.error?(photos.total||0):0;
   /* 艺人名册和视频、照片是这一页的三个互斥视图，共用一组按钮：它们回答的是同一个
      问题，摆成两个控件只会各说各的。切换只重画下面那块，不重开这一页——名册已经随
-     资料下来了，视频那一半本来也要请求。 */
+     资料下来了，视频那一半本来也要请求。
+
+     这一组排在整条筛选条的最左端，隔一道竖杠再是四枚观看状态、再一道才是标签。三段
+     由粗到细：先定这一页现在摆的是哪一类东西，再定这一类里看哪一档，最后才是可加可
+     不加的筛选。夹在视图和标签中间时它读起来像标签那排的第一枚，而它换掉的是整页
+     内容，不是给当前这批加一条筛选。 */
   const mediaToggle=(photoCount||roster.length)?mediaViewButtonsHtml({
     active:entityViewNow(kind),
     peopleValue:roster.length?'people':'',peopleCount:roster.length,
@@ -7814,7 +7828,7 @@ async function openEntity(kind,name,push=true){
         ${links?`<div class="entitylinks">${links}</div>`:''}</div></div>
     ${related?`<div class="entitymeta"><section aria-label="同台艺人"><div class="relatedpeople">${related}</div></section></div>`:''}
     <div class="combo entitycombo"></div>
-    <section class="entitytagbar" aria-label="媒体与标签"><div class="entityviews" role="group" aria-label="观看状态">${VIEW_PILLS.map(v=>`<button type="button" class="pill" data-entity-state="${v.k}" aria-pressed="${(filters.state||'')===v.k}">${v.label}</button>`).join('')}</div><div class="entitytags">${mediaToggle}${tags}</div></section>
+    <section class="entitytagbar" aria-label="媒体与标签">${mediaToggle}${mediaToggle?'<span class="sep" aria-hidden="true"></span>':''}<div class="filterscroll"><div class="viewpills entityviews" role="group" aria-label="观看状态">${VIEW_PILLS.map(v=>`<button type="button" class="pill" data-entity-state="${v.k}" aria-pressed="${(filters.state||'')===v.k}">${v.label}</button>`).join('')}<span class="sep" aria-hidden="true"></span></div><div class="tagscroll entitytags">${tags}</div></div></section>
     <div class="entitysection"></div>`;
   // 资料页的标签和顶部标签条是同一个开关，读的写的都是这一页的筛选。
   $('#index').querySelectorAll('[data-entity-tag]').forEach(b=>b.onclick=()=>
@@ -7829,7 +7843,11 @@ async function openEntity(kind,name,push=true){
      够不着。全站横向行的那套拖动加滚轮映射就是为这个写的，登记上即可。 */
   wireDrag($('#index').querySelector('.relatedpeople'));
   wireDrag($('#index').querySelector('.entitytags'));
+  /* 窄屏下滚的不是标签那一格而是它外面那层——四枚观看状态那时也跟着一起走。两层都
+     登记：登记在不滚的那一层上是空转，`wireHorizontalScroller` 量得出没有溢出就不接
+     滚轮，而少登记一层就会在某一个宽度上滚不动。 */
   wireHorizontalScroller($('#index').querySelector('.entitytags'));
+  wireHorizontalScroller($('#index').querySelector('.entitytagbar .filterscroll'));
   if(namePick)wireNamePicker(kind,d.canonical_name);
   entityPhotos=photos&&!photos.error?photos:null;
   if(entityMediaView.media==='photos'&&!photoTotalOf())entityMediaView=emptyMediaView();
@@ -8360,7 +8378,11 @@ window.addEventListener('scroll',()=>{
   releaseHoverPreviews();
   clearTimeout(scrollT); scrollT=setTimeout(()=>{window.__scrolling=false},180);
 },{passive:true});
-window.addEventListener('resize',()=>{scheduleStickySurfaces();alignFollowImageControls()},{passive:true});
+/* 换了宽度就把两块玻璃各自重新落一次位：过了那道断点，这一排是不是住在横滚容器里
+   会变，玻璃该落在哪一层跟着变，量出来的位置也跟着变。不重落的话它留在旧的那一层上，
+   坐标还是按旧的算的，停在离按钮几百像素远的地方。 */
+window.addEventListener('resize',()=>{scheduleStickySurfaces();alignFollowImageControls();
+  syncViewGlide(false);syncViewGlide(false,null,'media')},{passive:true});
 
 $('#scrim').onclick=()=>openDrawer(false);
 
@@ -9710,7 +9732,7 @@ $('#censorSetting').onchange=e=>{
 function wireDrag(el){return wireHorizontalScroller(el,{drag:true})}
 /* `#count` 一起登记：窄屏下排序筛选整行由 `.count` 自己横向滚动，而它没有滚动条，
    不接拖动和滚轮就只剩看得见够不着的半个按钮。 */
-function wireAllDrag(){['#tagScroll','#nrow','#count'].forEach(s=>wireDrag($(s)));
+function wireAllDrag(){['#tagScroll','#tagbar .filterscroll','#nrow','#count'].forEach(s=>wireDrag($(s)));
   document.querySelectorAll('.tier,.srow').forEach(wireDrag)}
 
 /* 目录页（首页 + 四个筛选态）：筛选全部从 URL 读，路径只决定初始筛选态。

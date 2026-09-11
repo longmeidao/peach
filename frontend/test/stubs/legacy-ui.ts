@@ -32,6 +32,17 @@ export const wireSelectField = (root: HTMLElement) => {
   return root as HTMLElement & { value: string; disabled: boolean };
 };
 export const wireCollapse = (_root: ParentNode, _selector: string, _idPrefix: string): void => {};
+/* 只落位，不动画：jsdom 没有布局，量出来处处是零，那段弹簧也就没有什么可跑的。
+   动作本身由 `tests/test_web_ui.py` 对 `web/js/ui-components.js` 直接断言。 */
+export const moveGlidePane = (
+  pane: HTMLElement,
+  _from: unknown,
+  box: { x: number; y: number; w: number; h: number },
+): void => {
+  pane.style.width = `${box.w}px`;
+  pane.style.height = `${box.h}px`;
+  pane.style.translate = `${box.x}px ${box.y}px`;
+};
 
 export const setActionBusy = (control: Element | null, busy = true): void => {
   if (!control) return;
