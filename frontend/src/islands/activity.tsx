@@ -4,11 +4,16 @@
  * 刚跑完的那些怎么样。三段共用 `/api/tasks` 一次请求的结果——分三次取会出现
  * 「在跑那段是新的、完成那段是旧的」这种自相矛盾的一屏。
  *
+ * 每一轮是一张管理区通用的 Geist Fieldset（`.cleanupfieldset`，扫描与采集、刮削设置
+ * 用的是同一个），状态用来源行那枚 `.sbadge`，结束原因落在 fieldset 底部的说明区。
+ * 这一屏没有自己的卡片、徽章和文字色：同一个语义在两处各画一遍，迟早走样。
+ *
  * 轮询间隔跟着内容走：有东西在跑就两秒一次（和进度写库的节流同一个数），
  * 全是终态时十秒一次。页面停在后台时不该每两秒敲一次库。 */
+import type { ComponentChildren } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { apiGet, errorMessage } from '../api';
-import { badgeHtml, emptyStateHtml, fieldsetTitle, loadingDotsHtml, noteHtml, progressHtml }
+import { emptyStateHtml, fieldsetTitle, loadingDotsHtml, noteHtml, progressHtml }
   from '@peach/legacy/ui';
 import type { IslandState } from '../islands';
 
@@ -57,6 +62,12 @@ const STATUS_LABELS: Record<string, string> = {
 /** 状态的中文名。表里的状态集是封闭的，认不出来只可能是表先改了，那就原样显示。 */
 const statusLabel = (status: string): string => STATUS_LABELS[status] || status;
 
+/* 状态徽章的档位就是关注来源那三档（`.sbadge` 的 ok / error / paused），
+   没有第四种颜色：成功是绿、失败是红、被叫停与被打断是黄，其余留中性底。 */
+const BADGE_TONES: Record<string, string> = {
+  succeeded: 'ok', failed: 'error', cancelled: 'paused', interrupted: 'paused',
+};
+
 /* 摘要里的键来自各域自己的状态字典，是英文标识；能认出来的翻成中文，认不出的原样
    显示——瞎猜一个中文名比留着英文键更难查。 */
 const SUMMARY_LABELS: Record<string, string> = {
@@ -95,9 +106,37 @@ export function summaryText(summary: Record<string, unknown>): string {
     .join(' · ');
 }
 
-function RunMeta({ run, when }: { run: TaskRunPayload; when: string }) {
-  const parts = [TRIGGER_LABELS[run.trigger] || run.trigger, when].filter(Boolean);
-  return <p class="activity-meta">{parts.join(' · ')}</p>;
+/** 状态徽章。用关注来源行那一枚，`<i>` 是它在遗留层里的圆点，Board 层把它收起来。 */
+function StatusBadge({ status }: { status: string }) {
+  const tone = BADGE_TONES[status];
+  return <span class={tone ? `sbadge ${tone}` : 'sbadge'}>
+    <i aria-hidden="true" />{statusLabel(status)}
+  </span>;
+}
+
+/** 一张任务卡的框：管理区通用的 Geist Fieldset，正文在上、说明区在下。 */
+function RunCard(
+  { run, meta, children, footer }:
+  { run: TaskRunPayload; meta: string; children?: ComponentChildren; footer?: string },
+) {
+  return <li>
+    <section class="cleanupfieldset activity-run" data-geist-fieldset
+             data-status={run.status} data-task-key={run.task_key}>
+      <div class="geist-fieldset-content">
+        <div class="activity-run-head">
+          {/* 用 strong 不用 h3：`.cleanupfieldset` 里的 h3 会被 Board 层配上卡片图标，
+              那套图标只认数据管理那七张卡的标题，任务名逐个对不上。 */}
+          <strong>{run.task_label}</strong>
+          <StatusBadge status={run.status} />
+        </div>
+        <p class="cleanupmeta">{meta}</p>
+        {children}
+      </div>
+      {/* 结束原因进底部说明区：失败时整张卡的框线换成 danger 色，不给这行字上色——
+          一屏十几行里逐行读红字，比看一眼哪张卡的框是红的慢得多。 */}
+      {footer ? <div class="geist-fieldset-footer"><p>{footer}</p></div> : null}
+    </section>
+  </li>;
 }
 
 function RunningRun({ run }: { run: TaskRunPayload }) {
@@ -105,35 +144,26 @@ function RunningRun({ run }: { run: TaskRunPayload }) {
   const current = run.progress_current || 0;
   const label = run.progress_label || '正在进行';
   const elapsed = elapsedText(run.elapsed_seconds);
-  return <li class="activity-run" data-task-key={run.task_key}>
-    <div class="activity-run-head">
-      <h3>{run.task_label}</h3>
-      <span dangerouslySetInnerHTML={{ __html: badgeHtml(statusLabel(run.status)) }} />
-    </div>
-    <RunMeta run={run} when={elapsed ? `已跑 ${elapsed}` : ''} />
+  const meta = [TRIGGER_LABELS[run.trigger] || run.trigger, elapsed && `已跑 ${elapsed}`]
+    .filter(Boolean).join(' · ');
+  return <RunCard run={run} meta={meta}>
     {total > 0
       ? <div class="activity-progress">
           <div dangerouslySetInnerHTML={{ __html: progressHtml(label, current, total) }} />
-          <p class="activity-progress-readout">{label} · {current} / {total} 项</p>
+          <p class="cleanupmeta">{label} · {current} / {total} 项</p>
         </div>
       : <div dangerouslySetInnerHTML={{ __html: loadingDotsHtml(label) }} />}
-  </li>;
+  </RunCard>;
 }
 
 function SettledRun({ run }: { run: TaskRunPayload }) {
   const summary = summaryText(run.result_summary);
   const elapsed = elapsedText(run.elapsed_seconds);
-  const when = [momentText(run.finished_at), elapsed && `用时 ${elapsed}`]
-    .filter(Boolean).join(' · ');
-  return <li class="activity-run" data-status={run.status} data-task-key={run.task_key}>
-    <div class="activity-run-head">
-      <h3>{run.task_label}</h3>
-      <span dangerouslySetInnerHTML={{ __html: badgeHtml(statusLabel(run.status)) }} />
-    </div>
-    <RunMeta run={run} when={when} />
-    {summary && <p class="activity-summary">{summary}</p>}
-    {run.error && <p class="activity-error">{run.error}</p>}
-  </li>;
+  const meta = [TRIGGER_LABELS[run.trigger] || run.trigger, momentText(run.finished_at),
+                elapsed && `用时 ${elapsed}`].filter(Boolean).join(' · ');
+  return <RunCard run={run} meta={meta} footer={run.error}>
+    {summary ? <p class="cleanupmeta">{summary}</p> : null}
+  </RunCard>;
 }
 
 export function Activity({ data, error, preview }: ActivityProps & IslandState<ActivityData>) {
@@ -183,7 +213,8 @@ export function Activity({ data, error, preview }: ActivityProps & IslandState<A
             ? <ul class="activity-runs" aria-live="polite">
                 {running.map(run => <RunningRun key={run.id} run={run} />)}
               </ul>
-            : <p class="activity-quiet">没有任务在跑。</p>}
+            : <div dangerouslySetInnerHTML={{ __html:
+                noteHtml('没有任务在跑。', { variant: 'secondary', size: 'small' }) }} />}
         </section>
         {!!skipped.length && <section class="activitysection" aria-labelledby="activitySkipped">
           <div dangerouslySetInnerHTML={{ __html: fieldsetTitle('activitySkipped', '被挡下的') }} />

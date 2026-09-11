@@ -7473,14 +7473,15 @@ class WebUiSourceTests(unittest.TestCase):
         # 一条一条的记录，跟数据管理同一条 812px 窄列。
         self.assertPageContains(
             ".activitypage{width:min(812px,100%);margin:0 auto;display:grid;gap:32px}")
+        # 卡片、底部说明区与元信息全用管理区那一份 Geist Fieldset，本页不另起一套。
+        self.assertPageContains(".activity-run>.geist-fieldset-content{display:grid;gap:6px}")
+        # 失败：整框的线换成 danger，配方与 Note 的错误态同一条，不写新色值；
+        # 被挡下、被叫停、被打断都是正常终止，框线不变。
         self.assertPageContains(
-            '.activity-run[data-status="failed"]{border-left:2px solid var(--drop)}')
-        # 被挡下、被叫停、被打断都是正常终止：原因照写，但不进红色。
-        self.assertPageContains(
-            '.activity-error{margin:0;font-size:var(--fs-sm);color:var(--muted);'
-            'overflow-wrap:anywhere}')
-        self.assertPageContains(
-            '.activity-run[data-status="failed"] .activity-error{color:var(--drop)}')
+            '.activity-run[data-status="failed"]'
+            '{border-color:color-mix(in srgb,var(--drop) 30%,var(--ground))}')
+        self.assertPageLacks(".activity-error{")
+        self.assertPageLacks(".activity-meta,")
 
     def test_the_configuration_page_is_an_island_inside_the_management_shell(self):
         """这台电脑的媒体文件夹与端口是主站里的一屏，不是另一套独立页面。
