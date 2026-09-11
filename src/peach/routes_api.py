@@ -25,13 +25,15 @@ from browserexport.common import BrowserexportError
 from fastapi import APIRouter, Body, Depends, Request
 from fastapi.responses import JSONResponse
 
-from . import web_contract
+from . import web_contract, web_tasks
 from .config import LOCATION_ROOT_DECLARATIONS
 from .field_owners import RevisionConflict
 from .interaction import reveal_path
+from .jobs import TaskRunConflict
 from .platform import is_unmapped, root_online, translate_ledger_path
 from .providers import ProviderUnavailable
 from .routes_auth import require_auth
+from .task_runs import task_label
 from .taste_history import analyze_history, import_history_exports, write_manifest
 
 router = APIRouter()
@@ -206,6 +208,33 @@ async def taste_import(
         return JSONResponse({"error": str(exc)}, status_code=400)
 
 
+@router.get("/api/tasks/{run_id}")
+def task_run_detail(request: Request, run_id: int,
+                    _args: dict[str, str] = Depends(require_auth)):
+    """任务中心里的某一轮。带路径参数，所以进不了 `web_router` 那两张精确匹配的表。"""
+    try:
+        return web_tasks.q_task(request.app.state.web_contract, run_id)
+    except KeyError as exc:
+        # `str(KeyError(...))` 会把消息连引号一起带出来，取 args 才是那句话本身。
+        return JSONResponse({"error": str(exc.args[0])}, status_code=404)
+
+
+def _conflict(error: TaskRunConflict) -> JSONResponse:
+    """手动触发撞上在跑的那一轮：409，并带上挡路那一轮的 id。
+
+    不用 500 也不用 200：这不是故障，用户的请求也没有生效。前端拿 `blocking_run_id`
+    直接跳到活动页上的那一行，比一句「已有任务在进行」有用得多。
+
+    `message` 是给人看的那句话，所以在这里用 `task_label` 翻一次：异常自己住在 `jobs`
+    里，那一层在 `task_runs` 下面，拿不到中文名表。
+    """
+    return JSONResponse(
+        {"error": "task already running", "task_key": error.task_key,
+         "blocking_run_id": error.blocking_run_id,
+         "message": f"{task_label(error.task_key)}已有一轮在进行，等它跑完再试"},
+        status_code=409)
+
+
 @router.get("/api/{route:path}")
 def api_get(request: Request, route: str, args: dict[str, str] = Depends(require_auth)):
     state = request.app.state
@@ -216,6 +245,8 @@ def api_get(request: Request, route: str, args: dict[str, str] = Depends(require
         if route == "review" and sync is not None and sync.read_only:
             payload = state.review_mirror.resolve(payload)
         return payload
+    except TaskRunConflict as exc:
+        return _conflict(exc)
     except KeyError:
         return JSONResponse({"error": "not found"}, status_code=404)
     except (TypeError, ValueError) as exc:
@@ -250,6 +281,8 @@ def api_post(
     try:
         return web_contract.dispatch_api_post(
             request.app.state.web_contract, route_path, body)
+    except TaskRunConflict as exc:
+        return _conflict(exc)
     except KeyError:
         return JSONResponse({"error": "not found"}, status_code=404)
     except RevisionConflict as exc:

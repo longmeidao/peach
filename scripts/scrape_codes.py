@@ -33,6 +33,7 @@ from peach.config import DATABASE_PATH, GENERATED_DIR, LOG_DIR, SOURCES_DIR, STA
 from peach.genre_decisions import load_genre_decisions
 from peach.genre_taxonomy import CONTENT_GENRES, map_genres
 from peach.jobs import DiskGuard, JobPolicyError
+from peach.task_runs import cli_run
 from peach.metadata import (
     CATALOG_EVIDENCE_FIELDS,
     JAVINIZER_GO_VERSION,
@@ -447,8 +448,22 @@ def _write_health(path: Path, rows: dict[str, dict[str, object]]) -> None:
 
 
 def main(argv: list[str] | None = None, *, provider: JavinizerGoProvider | None = None) -> int:
+    """入口只负责把这一趟登记进任务中心，正文在 `_scrape` 里。
+
+    退出码非 0 是「提前收工」（磁盘触线、来源熔断），不是崩溃：记成 `cancelled`
+    并把退出码写进摘要，活动页据此和真正的失败分开显示。
+    """
     parser = build_parser()
     args = parser.parse_args(argv)
+    with cli_run("scrape-codes", args.db, label="番号资料刮削") as handle:
+        code = _scrape(parser, args, handle, provider=provider)
+        if code:
+            handle.finish("cancelled", summary={"exit_code": code},
+                          error=f"提前收工，退出码 {code}")
+        return code
+
+
+def _scrape(parser, args, handle, *, provider: JavinizerGoProvider | None = None) -> int:
     try:
         policy = resolve_policy(profile=args.profile, sources=args.sources)
     except ValueError as error:
@@ -677,6 +692,7 @@ def main(argv: list[str] | None = None, *, provider: JavinizerGoProvider | None 
             _write_unmapped(unmapped_path, unmapped_genres)
             if index % 25 == 0:
                 log(f"{index}/{len(codes)}：已落 {groups_written} 个字段组，错误 {errors_written}")
+            handle.progress(index, len(codes), f"{query}")
     connection.close()
     if wiki is not None:
         wiki.close()

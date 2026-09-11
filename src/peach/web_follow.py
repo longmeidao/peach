@@ -804,7 +804,10 @@ def w_follow_check(contract, body) -> dict:
             raise
         finally:
             finished.set()
+    # 自动轮询和用户点一下是同一件事的两种发起方式，任务中心按 `trigger` 分开记：
+    # 轮询撞上在跑的那一轮记成跳过，手动撞上外部占用则由 API 回 409。
     started = contract.follow_job.start(work, restart=True,
+        trigger="scheduled" if body.get("automatic") else "manual",
         initial={"ok": True, "checked": 0, "total": 0, "results": [],
                  "request_id": request_id, "older": bool(body.get("older")), "current": None})
     if body.get("background"):

@@ -28,8 +28,14 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Iterator
 
-from .jobs import process_alive
+from .jobs import TaskRunConflict, process_alive
 from .repository import LedgerDatabase
+
+__all__ = [
+    "ACTIVE_STATUSES", "DEFAULT_KEEP", "LEASE_SECONDS", "PROGRESS_INTERVAL",
+    "TASK_LABELS", "TERMINAL_STATUSES", "TRIGGERS", "TaskRun", "TaskRunConflict",
+    "TaskRunHandle", "TaskRunStore", "cli_run", "stamp", "task_label",
+]
 
 #: 未结束的两种状态。部分唯一索引和每一条 CAS 的 WHERE 都用这一份。
 ACTIVE_STATUSES = ("pending", "running")
@@ -66,8 +72,18 @@ TASK_LABELS = {
 }
 
 
+#: 触发方式的中文名。跳过原因是给人看的一句话，里面不留英文枚举值。
+TRIGGER_LABELS = {
+    "manual": "手动", "scheduled": "定时", "startup": "启动", "cli": "命令行",
+}
+
+
 def task_label(task_key: str) -> str:
     return TASK_LABELS.get(task_key, task_key)
+
+
+def trigger_label(trigger: str) -> str:
+    return TRIGGER_LABELS.get(trigger, trigger)
 
 
 def stamp(moment: datetime | None = None) -> str:
@@ -83,19 +99,6 @@ def _parse(value: str | None) -> datetime | None:
         return datetime.fromisoformat(value.replace("Z", "+00:00"))
     except ValueError:
         return None
-
-
-class TaskRunConflict(RuntimeError):
-    """手动触发撞上了正在跑的同一把锁。
-
-    `blocking_run_id` 必须带出去：只说「已有任务在跑」的话，用户既不知道是哪一轮，
-    也没有可以点进去看的东西。API 把它翻成 409。
-    """
-
-    def __init__(self, task_key: str, blocking_run_id: int | None):
-        super().__init__(f"{task_label(task_key)}已有一轮在进行")
-        self.task_key = task_key
-        self.blocking_run_id = blocking_run_id
 
 
 @dataclass(frozen=True)
@@ -187,6 +190,19 @@ class TaskRunStore:
         #: run_id → 上一次写进度的单调时钟。节流只看这一份，不查库。
         self._last_write: dict[int, float] = {}
 
+    def available(self) -> bool:
+        """这本账本上有没有 `task_run` 表。
+
+        迁移不是服务启动时自动跑的（`peach migrate --apply` 是单独一步），所以升级
+        之后第一次启动完全可能撞上没有这张表的账本。那时候不能让每个按钮都炸成 500：
+        调用方据此把整个任务中心关掉，各域的任务照常能跑，只是这一轮不留记录。
+        """
+        try:
+            self.query(limit=1)
+            return True
+        except sqlite3.OperationalError:
+            return False
+
     # -- 写入 --------------------------------------------------------------
 
     def start(self, task_key: str, *, trigger: str, mutex_key: str | None = None,
@@ -232,7 +248,7 @@ class TaskRunStore:
     def _record_skip(self, task_key: str, trigger: str, mutex_key: str,
                      blocking: TaskRun | None) -> None:
         """把一次静默跳过写成终态记录。它没有 `started_at`——这一轮从没开跑。"""
-        reason = (f"与第 {blocking.id} 轮（{blocking.trigger}）冲突，本次跳过"
+        reason = (f"与第 {blocking.id} 轮（{trigger_label(blocking.trigger)}触发）冲突，本次跳过"
                   if blocking else "已有一轮在进行，本次跳过")
         summary = json.dumps({"blocked_by": blocking.id if blocking else None},
                              ensure_ascii=False)
@@ -429,6 +445,39 @@ class TaskRunStore:
         finally:
             if run is not None:
                 self.prune(task_key, keep)
+
+
+def inert_handle() -> "TaskRunHandle":
+    """一个什么都不登记的句柄。给「这一趟不进任务中心」和默认参数用。"""
+    return TaskRunHandle(TaskRunStore(Path("."), enabled=False), None)
+
+
+@contextmanager
+def cli_run(task_key: str, db_path: Path | str | None, *, label: str = "",
+            mutex_key: str | None = None) -> Iterator["TaskRunHandle"]:
+    """命令行脚本的一段式接线：账本上记一轮，异常时记成失败。
+
+    账本还没建、或者还没跑到 0028 时不记录，只在标准输出上说一句。批处理是无人值守
+    跑的，因为「这一趟没法登记」就整个不跑，代价比不登记大得多；而静默跳过又会让人
+    以为记上了，所以那一句必须打出来。
+
+    脚本被强杀时这里什么也做不了，那一行会停在 `running`：服务下次启动的
+    `recover_interrupted` 按 PID 把它收成 `interrupted`，两处判据是同一个。
+    """
+    store = None
+    if db_path is not None and Path(db_path).is_file():
+        candidate = TaskRunStore(Path(db_path))
+        try:
+            candidate.query(limit=1)
+            store = candidate
+        except sqlite3.OperationalError:
+            print(f"[task-run] {db_path} 没有 task_run 表，本趟不登记进任务中心")
+    if store is None:
+        yield TaskRunHandle(TaskRunStore(Path(db_path or ":memory:"), enabled=False), None)
+        return
+    with store.track(task_key, trigger="cli", mutex_key=mutex_key,
+                     conflict="skip", label=label) as handle:
+        yield handle
 
 
 @dataclass

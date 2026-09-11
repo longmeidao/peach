@@ -163,6 +163,10 @@ def create_app(
         available=sync is None or not sync.read_only,
     )
     contract.follow_scheduler = follow_scheduler
+    # 只读端不写任务中心：`task_run` 也在账本里，reader 往里写会造成无法自动合并的
+    # 分叉。活动页在只读端照常能看——读不受影响，只是看到的是写入端那台的记录。
+    contract.task_runs.enabled = (
+        (sync is None or not sync.read_only) and contract.task_runs.available())
     from .automatic_updates import AutomaticUpdates
     from .routes_configuration import managed_configuration
     automatic_updates = AutomaticUpdates(
@@ -172,6 +176,13 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
+        # 上一次服务是被强杀的话，表里会留下几行永远停在 `running` 的记录，它们还占着
+        # 互斥键——不先收掉，这一次开机后那几类任务一按就是 409。判据是 pid 还在不在
+        # 与心跳有没有过期，两样都不满足才算被打断。
+        recovered = contract.task_runs.recover_interrupted()
+        if recovered:
+            logging.getLogger(__name__).info(
+                "task center recovered %s interrupted run(s)", len(recovered))
         follow_scheduler.start()
         automatic_updates.start()
         if mdns is not None:

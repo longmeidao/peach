@@ -151,6 +151,10 @@ class FollowUpdateScheduler:
             self._last_error = None
         skipped = False
         try:
+            # 这一轮在 `task_run` 里的记录由 `run_check` 那条路上的 BackgroundJob 落下
+            # （`w_follow_check` 按 `automatic` 传 `trigger="scheduled"`），开始、进度、
+            # 结束三样都在里面。这里不再记第二条：轮询和手动检查是同一件事的两种发起
+            # 方式，各记一条在活动页上就成了两轮。
             result = self.run_check()
             if result.get("busy"):
                 # 锁被另一次检查占着是互斥的正常结果，不是故障：手动检查正在跑的
