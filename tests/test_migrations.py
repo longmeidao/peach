@@ -25,7 +25,7 @@ class MigrationTests(unittest.TestCase):
         backup = self.root / "before.db"
         done = upgrade(self.db, MIGRATIONS, backup)
         self.assertEqual([m.version for m in done],
-                         ["0000", "0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012", "0013", "0014", "0015", "0016", "0017", "0018", "0019", "0020", "0021", "0022", "0023", "0024", "0025", "0026", "0027", "0029"])
+                         ["0000", "0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012", "0013", "0014", "0015", "0016", "0017", "0018", "0019", "0020", "0021", "0022", "0023", "0024", "0025", "0026", "0027", "0028", "0029"])
         self.assertTrue(backup.exists())
         con = sqlite3.connect(self.db)
         tables = {row[0] for row in con.execute(
@@ -41,8 +41,8 @@ class MigrationTests(unittest.TestCase):
                          "entity_search_term", "watch_queue", "asset_preference", "asset_quality_goal",
                          "playlist", "playlist_item",
                          "asset_tag_preference", "asset_search", "follow_playback",
-                         "genre_decision", "asset_subtitle", "schema_migration"} <= tables)
-        self.assertEqual(versions, ["0000", "0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012", "0013", "0014", "0015", "0016", "0017", "0018", "0019", "0020", "0021", "0022", "0023", "0024", "0025", "0026", "0027", "0029"])
+                         "genre_decision", "asset_subtitle", "task_run", "schema_migration"} <= tables)
+        self.assertEqual(versions, ["0000", "0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012", "0013", "0014", "0015", "0016", "0017", "0018", "0019", "0020", "0021", "0022", "0023", "0024", "0025", "0026", "0027", "0028", "0029"])
         self.assertEqual(upgrade(self.db, MIGRATIONS), [])
         self.assertEqual(plan(self.db, MIGRATIONS)[1], [])
 
@@ -748,6 +748,70 @@ class AssetSubtitleTableTests(unittest.TestCase):
             "EXPLAIN QUERY PLAN SELECT id,name FROM asset_subtitle "
             "WHERE asset_id=1 ORDER BY name COLLATE NOCASE, id"))
         self.assertIn("idx_asset_subtitle_asset", plan)
+
+
+class TaskRunTableTests(unittest.TestCase):
+    """0028：任务中心那张表的约束由数据库守，不靠服务层自觉。"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.db = Path(self.tmp.name).resolve() / "ledger.db"
+        sqlite3.connect(self.db).close()
+        upgrade(self.db, MIGRATIONS)
+        self.connection = sqlite3.connect(self.db)
+        self.addCleanup(self.connection.close)
+
+    def _insert(self, **fields):
+        fields.setdefault("task_key", "demo")
+        fields.setdefault("trigger", "manual")
+        fields.setdefault("status", "running")
+        columns = ",".join(fields)
+        marks = ",".join("?" * len(fields))
+        cursor = self.connection.execute(
+            f"INSERT INTO task_run({columns}) VALUES({marks})", list(fields.values()))
+        self.connection.commit()
+        return cursor.lastrowid
+
+    def test_one_active_run_per_mutex_key(self):
+        self._insert(mutex_key="follow-check", started_at="2026-09-11T00:00:00.000Z")
+        with self.assertRaises(sqlite3.IntegrityError):
+            self._insert(mutex_key="follow-check", started_at="2026-09-11T00:01:00.000Z")
+
+    def test_finished_runs_release_the_mutex_key_without_losing_it(self):
+        """终态行不占索引位，但 `mutex_key` 留着——「上次是谁挡的」还查得到。"""
+        for _ in range(3):
+            self._insert(mutex_key="follow-check", status="succeeded",
+                         finished_at="2026-09-11T00:00:00.000Z")
+        self._insert(mutex_key="follow-check", started_at="2026-09-11T00:02:00.000Z")
+        kept = self.connection.execute(
+            "SELECT count(*) FROM task_run WHERE mutex_key='follow-check'").fetchone()
+        self.assertEqual(kept[0], 4)
+
+    def test_runs_without_a_mutex_key_never_block_each_other(self):
+        for _ in range(3):
+            self._insert(started_at="2026-09-11T00:00:00.000Z")
+        self.assertEqual(self.connection.execute(
+            "SELECT count(*) FROM task_run WHERE status='running'").fetchone()[0], 3)
+
+    def test_terminal_status_and_finished_at_agree(self):
+        with self.assertRaises(sqlite3.IntegrityError):
+            self._insert(status="succeeded")
+        with self.assertRaises(sqlite3.IntegrityError):
+            self._insert(status="running", finished_at="2026-09-11T00:00:00.000Z")
+
+    def test_unknown_status_and_trigger_are_rejected(self):
+        with self.assertRaises(sqlite3.IntegrityError):
+            self._insert(status="done", finished_at="2026-09-11T00:00:00.000Z")
+        with self.assertRaises(sqlite3.IntegrityError):
+            self._insert(trigger="webhook")
+
+    def test_recent_runs_of_one_task_use_their_index(self):
+        plan_rows = " ".join(row[3] for row in self.connection.execute(
+            "EXPLAIN QUERY PLAN SELECT id FROM task_run WHERE task_key='demo' "
+            "ORDER BY id DESC LIMIT 20"))
+        self.assertIn("idx_task_run_key_recent", plan_rows)
+
 
 
 if __name__ == "__main__":

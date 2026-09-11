@@ -804,7 +804,10 @@ def w_follow_check(contract, body) -> dict:
             raise
         finally:
             finished.set()
+    # 自动轮询和用户点一下是同一件事的两种发起方式，任务中心按 `trigger` 分开记：
+    # 轮询撞上在跑的那一轮记成跳过，手动撞上外部占用则由 API 回 409。
     started = contract.follow_job.start(work, restart=True,
+        trigger="scheduled" if body.get("automatic") else "manual",
         initial={"ok": True, "checked": 0, "total": 0, "results": [],
                  "request_id": request_id, "older": bool(body.get("older")), "current": None})
     if body.get("background"):
@@ -812,6 +815,12 @@ def w_follow_check(contract, body) -> dict:
     if started["request_id"] != request_id:
         return {"ok": False, "busy": True, "checked": 0, "results": []}
     finished.wait()
+    # `finished` 只说正文跑完了；线程回到 `BackgroundJob` 之后还要给这一轮结算。
+    # 同步调用等它落完再回话：否则端点已经答复而账本还在写，紧跟着读活动页会看到
+    # 一轮停在「进行中」的检查，关停时也会误判成被打断。
+    worker = contract.follow_job.thread
+    if worker is not None and worker is not threading.current_thread():
+        worker.join(5)
     if "error" in outcome:
         raise outcome["error"]
     return outcome["result"]

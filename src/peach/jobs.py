@@ -29,6 +29,23 @@ class JobAlreadyRunning(JobPolicyError):
     exit_code = 0
 
 
+class TaskRunConflict(JobAlreadyRunning):
+    """手动触发撞上了已经占着同一把互斥键的那一轮（`task_runs` 里的记录）。
+
+    住在这里而不是 `task_runs`：它与 `JobAlreadyRunning` 是同一件事的两种载体
+    （pid 锁文件与账本里的一行），退出码语义也一样——已有实例在跑不是失败。
+    `task_runs` 在低一层被 `jobs` 反向依赖，异常放那边会成环。
+
+    `blocking_run_id` 必须带出去：只说「已有任务在跑」的话，用户既不知道是哪一轮，
+    也没有可以点进去看的东西。API 把它翻成 409。
+    """
+
+    def __init__(self, task_key: str, blocking_run_id: int | None):
+        super().__init__(f"{task_key} 已有一轮在进行")
+        self.task_key = task_key
+        self.blocking_run_id = blocking_run_id
+
+
 @dataclass(frozen=True)
 class SourceAccessPolicy:
     metered_locations: frozenset[str] = frozenset({"pikpak", "online"})
@@ -109,61 +126,72 @@ class DiskGuard:
         return free_gb
 
 
-class PidFileLock:
-    """进程级独占锁；只清理确认已经不存在的旧 PID。"""
+def process_alive(pid: int) -> bool:
+    """这个 PID 现在还是一个活进程吗。
 
-    def __init__(self, path: Path | str):
-        self.path = Path(path)
-        self._acquired = False
-
-    @staticmethod
-    def _running(pid: int) -> bool:
-        if pid <= 0:
-            return False
-        if os.name == "nt":
-            return PidFileLock._running_windows(pid)
-        try:
-            os.kill(pid, 0)
-        except ProcessLookupError:
-            return False
-        except PermissionError:
-            return True
-        except OverflowError:
-            # 锁文件可能是 Windows 那台写的，PID 会超出 POSIX 的 pid_t 范围。
-            # 超界的 PID 一定不是本机活进程，按「已死」清理，而不是让整轮任务崩掉。
-            return False
+    pid 锁靠它判断锁文件里那个进程还在不在，`task_runs.recover_interrupted` 靠它判断
+    停在 `running` 的那一行是不是上一个进程留下的。两处问的是同一件事，而它在
+    Windows 上的正确写法有一个会当场打断自己的陷阱（见 `_process_alive_windows`），
+    散成两份只会有一份是对的。
+    """
+    if pid <= 0:
+        return False
+    if os.name == "nt":
+        return _process_alive_windows(pid)
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
         return True
+    except OverflowError:
+        # 锁文件可能是 Windows 那台写的，PID 会超出 POSIX 的 pid_t 范围。
+        # 超界的 PID 一定不是本机活进程，按「已死」清理，而不是让整轮任务崩掉。
+        return False
+    return True
 
-    @staticmethod
-    def _running_windows(pid: int) -> bool:
-        """用 OpenProcess 查存活，绝不能用 `os.kill(pid, 0)`。
+
+def _process_alive_windows(pid: int) -> bool:
+    """用 OpenProcess 查存活，绝不能用 `os.kill(pid, 0)`。
 
         Windows 上 `signal.CTRL_C_EVENT == 0`，所以 Unix 那个探测存活的经典写法
         `os.kill(pid, 0)` 实际会调用 `GenerateConsoleCtrlEvent(CTRL_C_EVENT, ...)`，
         把 Ctrl+C 发给整个控制台进程组——包括调用者自己。锁里写的又是自己的 PID，
         于是「检查锁是否还活着」会当场把自己打断：在真实控制台里跑批处理或测试时
         表现为毫无征兆的 KeyboardInterrupt；重定向、无控制台的环境反而不复现，
-        因为控制台事件无处投递。
-        """
-        import ctypes
-        from ctypes import wintypes
+    因为控制台事件无处投递。
+    """
+    import ctypes
+    from ctypes import wintypes
 
-        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
-        ERROR_ACCESS_DENIED = 5
-        STILL_ACTIVE = 259
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+    ERROR_ACCESS_DENIED = 5
+    STILL_ACTIVE = 259
 
-        handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
-        if not handle:
-            # 拒绝访问说明进程存在但不归我们管；其余错误一律视为已消失。
-            return ctypes.get_last_error() == ERROR_ACCESS_DENIED
-        try:
-            code = wintypes.DWORD()
-            if not kernel32.GetExitCodeProcess(handle, ctypes.byref(code)):
-                return True
-            return code.value == STILL_ACTIVE
-        finally:
-            kernel32.CloseHandle(handle)
+    handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+    if not handle:
+        # 拒绝访问说明进程存在但不归我们管；其余错误一律视为已消失。
+        return ctypes.get_last_error() == ERROR_ACCESS_DENIED
+    try:
+        code = wintypes.DWORD()
+        if not kernel32.GetExitCodeProcess(handle, ctypes.byref(code)):
+            return True
+        return code.value == STILL_ACTIVE
+    finally:
+        kernel32.CloseHandle(handle)
+
+
+class PidFileLock:
+    """进程级独占锁；只清理确认已经不存在的旧 PID。"""
+
+    #: 存活判据与任务中心共用一份（`process_alive`）。这里保留这个名字，是因为
+    #: `windows_restart` 与托盘测试按它做判断和打桩。
+    _running = staticmethod(process_alive)
+
+    def __init__(self, path: Path | str):
+        self.path = Path(path)
+        self._acquired = False
 
     def acquire(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -219,15 +247,33 @@ class BackgroundJob:
     JSON 形态的数据，拷贝很便宜。
     """
 
-    def __init__(self, name: str, *, id_key: str = "job_id"):
+    #: 结算时不往 `result_summary` 里带的键：它们要么是明细（一整份结果列表、问题
+    #: 预览），要么是每一轮都会变的内部游标。摘要是给活动页一眼看完的一行。
+    BULKY_STATE_KEYS = frozenset({
+        "results", "rows", "issues", "issue_preview", "retryable_asset_ids",
+        "current", "progress_seq", "last_progress_at", "issues_log",
+    })
+
+    def __init__(self, name: str, *, id_key: str = "job_id",
+                 task_key: str = "", runs=None, mutex_key: str | None = None):
         #: 线程名，出现在崩溃栈和进程视图里，所以取和端点一致的名字。
         self.name = name
         #: 状态字典里存任务 id 的键名。域模块的公开投影直接下发它，所以沿用各域原有的
         #: 名字（`check_id`／`scan_id`）而不是统一改名——那是前端契约。
         self.id_key = id_key
+        #: 这一类任务在 `task_run` 表里的名字，和活动页上显示的名字一一对应。
+        self.task_key = task_key or name
+        #: `task_runs.TaskRunStore`；为 None 时这个任务不进任务中心（测试里的裸实例）。
+        self.runs = runs
+        #: 默认按任务自己互斥：同一个 BackgroundJob 本来就只跑一轮，写进表里之后，
+        #: 命令行和调度器也能看见这把锁。
+        self.mutex_key = mutex_key if mutex_key is not None else self.task_key
         self.lock = threading.Lock()
         self.state: dict | None = None
         self.thread: threading.Thread | None = None
+        #: job_id → task_run id。结算读这一份而不是读状态：状态可能已经被下一轮顶掉，
+        #: 而被顶掉的那一轮同样要有人给它收尾。
+        self._run_ids: dict[str, int] = {}
 
     def snapshot(self) -> dict | None:
         """当前状态的深拷贝；一次都没跑过返回 None。"""
@@ -248,34 +294,133 @@ class BackgroundJob:
 
         进度是往列表里追加、给计数加一，不都是整字段替换，所以除了 `update` 还要
         有这个原地改的入口。
+
+        退出时把进度同步进 `task_run`，写库在锁外：那一步要拿数据库的写锁，套在本类
+        的锁里面就多了一组取锁顺序，而进度本来不需要和状态原子。节流由 store 做。
         """
         with self.lock:
             state = self.state
-            yield state if state is not None and state[self.id_key] == job_id else None
+            current = state if state is not None and state[self.id_key] == job_id else None
+            yield current
+            observed = copy.copy(current) if current is not None else None
+        if observed is not None:
+            self._report_progress(job_id, observed)
+
+    def _report_progress(self, job_id: str, state: dict) -> None:
+        """把域自己的计数投影成 `task_run` 的进度。写不进去（已终态）就算了。"""
+        if self.runs is None:
+            return
+        run_id = self._run_ids.get(job_id)
+        if run_id is None:
+            return
+        current = state.get("checked")
+        total = state.get("total")
+        counts = (int(current) if isinstance(current, (int, float)) else None,
+                  int(total) if isinstance(total, (int, float)) else None)
+        label = self._progress_label(state) or None
+        if counts == (None, None) and label is None:
+            # 这一次改的是别的字段（`run_id` 本身就是一例），没有进度可报。不往下走：
+            # 空写一次会白占掉节流窗口，真正的第一份计数要等两秒才进得去表。
+            return
+        self.runs.progress(run_id, current=counts[0], total=counts[1], label=label)
+
+    @staticmethod
+    def _progress_label(state: dict) -> str:
+        """一行「此刻在做什么」。域各有各的字段名，这里按可读性从具体到笼统取第一个。"""
+        current = state.get("current")
+        if isinstance(current, dict):
+            for key in ("label", "provider"):
+                if current.get(key):
+                    return str(current[key])[:120]
+        for key in ("stage", "message", "step"):
+            if state.get(key):
+                return str(state[key])[:120]
+        return ""
+
+    def _summary(self, state: dict) -> dict:
+        """结算摘要：只留标量，明细留在各域自己的状态与日志里。"""
+        summary: dict[str, object] = {}
+        for key, value in state.items():
+            if key in self.BULKY_STATE_KEYS or key == self.id_key:
+                continue
+            if isinstance(value, bool) or isinstance(value, (int, float)):
+                summary[key] = value
+            elif isinstance(value, str) and 0 < len(value) <= 200:
+                summary[key] = value
+        return summary
 
     def start(self, fn: Callable[[str], None], *, initial: dict | None = None,
-              restart: bool = False) -> dict:
+              restart: bool = False, trigger: str = "manual") -> dict:
         """跑一轮，返回启动后（或原有）状态的深拷贝。
 
         已经在跑，或者已经有结果而调用方没要求 `restart`，都原样返回现状——重复点击
         不该把一轮跑到一半的检查丢掉。`fn` 收到本轮的任务 id，自己负责把 `status`
         推到 `complete`：完成时要落什么结果字段是域的事。
+
+        `trigger` 进 `task_run`。手动触发撞上表里还占着同一把互斥键的那一轮时抛
+        `TaskRunConflict`（API 翻成 409）：那一轮不是这个进程开的——命令行脚本，或者
+        上一个进程留下的——所以本类自己的锁看不见它，只有表看得见。
         """
         thread = None
+        job_id = ""
         with self.lock:
             state = self.state
+            previous = state
             if state is None or (restart and state["status"] != "running"):
                 job_id = uuid.uuid4().hex
-                state = {self.id_key: job_id, "status": "running",
+                state = {self.id_key: job_id, "status": "running", "run_id": None,
                          "started_at": time.time(), "error": "", **(initial or {})}
                 self.state = state
                 thread = threading.Thread(target=self._run, args=(fn, job_id),
                                           daemon=True, name=self.name)
                 self.thread = thread
             snapshot = copy.deepcopy(state)
-        if thread is not None:
-            thread.start()
-        return snapshot
+        if thread is None:
+            # 没开新一轮。对定时触发来说这就是一次跳过，要留下记录——「刚才那轮为什么
+            # 没跑」只有这一条答案。手动触发拿回的是在跑的那一轮本身，不是跳过。
+            if (self.runs is not None and trigger != "manual"
+                    and snapshot.get("status") == "running"):
+                self.runs.start(self.task_key, trigger=trigger,
+                                mutex_key=self.mutex_key, conflict="skip")
+            return snapshot
+        # 开 task_run 与起线程都在锁外：前者要拿数据库的写锁，后者是这个类的老约定。
+        # 先给被顶掉的那一轮收尾再开新的：它占着同一把互斥键，不收就是新的一轮开不了，
+        # 而它自己的线程要等到 `fn` 返回才走到结算，那可能是几分钟以后。
+        if previous is not None and previous[self.id_key] != job_id:
+            self._settle_from(previous[self.id_key], previous, superseded=True)
+        try:
+            self._open_run(job_id, trigger, snapshot)
+        except TaskRunConflict:
+            # 线程还没起，这一轮什么都没做过，撤干净再把冲突交出去。
+            with self.lock:
+                if self.state is not None and self.state[self.id_key] == job_id:
+                    self.state = None
+                    self.thread = None
+            raise
+        thread.start()
+        return self.snapshot() or snapshot
+
+    def _open_run(self, job_id: str, trigger: str, state: dict) -> None:
+        if self.runs is None:
+            return
+        total = state.get("total")
+        run = self.runs.start(
+            self.task_key, trigger=trigger, mutex_key=self.mutex_key,
+            conflict="raise" if trigger == "manual" else "skip",
+            total=int(total) if isinstance(total, (int, float)) else None,
+            label=self._progress_label(state))
+        if run is None:
+            return
+        self._run_ids[job_id] = run.id
+        self.update(job_id, run_id=run.id)
+
+    def _close_run(self, job_id: str, status: str, *, error: str = "",
+                   summary: dict | None = None) -> None:
+        run_id = self._run_ids.pop(job_id, None)
+        if self.runs is None or run_id is None:
+            return
+        self.runs.finish(run_id, status, summary=summary, error=error)
+        self.runs.prune(self.task_key)
 
     def stop(self, timeout: float | None = 2.0) -> None:
         """丢掉状态并等线程收工，用于服务关停。
@@ -284,11 +429,18 @@ class BackgroundJob:
         拿锁时发现自己已被顶掉，从而安静返回，而不是在解释器拆卸期间继续查库、
         往一个没人读的状态里写进度。等不到就不等——一次外部 HTTP 探测可以是十几秒，
         关停不该被它拖住。
+
+        在途那一轮在表里记成 `cancelled`：进程是有序退出的，不是被打断，下次启动的
+        租约恢复也就不该再把它算成一次故障。
         """
         with self.lock:
+            state = self.state
+            job_id = state[self.id_key] if state is not None else ""
             self.state = None
             thread = self.thread
             self.thread = None
+        if job_id and state is not None and state["status"] == "running":
+            self._close_run(job_id, "cancelled", error="服务关停，这一轮没有跑完")
         if thread is not None and thread.is_alive():
             thread.join(timeout)
 
@@ -308,6 +460,42 @@ class BackgroundJob:
             self.update(job_id, status="failed",
                         error=f"{type(error).__name__}: {error}",
                         completed_at=time.time())
+        finally:
+            self._settle(job_id)
+
+    def _settle(self, job_id: str) -> None:
+        """按域自己落下的终态结算 `task_run`。
+
+        读的是这一轮自己的状态：被下一轮顶掉之后 `snapshot()` 讲的是别人的事，而
+        被顶掉的这一轮同样要有人给它收尾，否则它会在表里一直挂着 `running`，
+        把互斥键一起堵死到下次服务重启。
+        """
+        state = self.snapshot() or {}
+        if state.get(self.id_key) != job_id:
+            # 已经被 `start` 在顶替的那一刻收过尾了，这里再收一次是空操作。
+            self._close_run(job_id, "cancelled", error="这一轮已被新的任务顶替")
+            return
+        self._settle_from(job_id, state)
+
+    def _settle_from(self, job_id: str, state: dict, *,
+                     superseded: bool = False) -> None:
+        """按给定的那份状态结算。`superseded` 是「被下一轮顶替」的那条路。
+
+        顶替发生在 `start` 里，那时旧状态已经被换掉，`snapshot()` 讲的是新一轮的事，
+        所以这里收的是调用方手上那一份，不重新读。
+        """
+        status = state.get("status")
+        if status == "failed":
+            self._close_run(job_id, "failed", error=str(state.get("error") or "任务失败"),
+                            summary=self._summary(state))
+            return
+        if superseded and status == "running":
+            # 还在跑就被顶掉：它的结果没人要了，记成取消而不是成功。
+            self._close_run(job_id, "cancelled", error="这一轮已被新的任务顶替")
+            return
+        # `fn` 正常返回就是跑完了。域没有把状态推到 `complete` 只说明它不靠状态报结果
+        # （`w_links` 这类直接返回 payload），不代表这一轮失败。
+        self._close_run(job_id, "succeeded", summary=self._summary(state))
 
 
 def job_main(build_parser, run, argv: list[str] | None = None) -> int:

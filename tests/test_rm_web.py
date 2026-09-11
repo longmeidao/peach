@@ -853,6 +853,7 @@ class WebDataTests(unittest.TestCase):
 
     def test_contract_handler_registries_are_complete_and_unknown_routes_fail(self):
         self.assertEqual(set(rm_web.GET_HANDLERS), {
+            "/api/tasks",
             "/api/library-processing",
             "/api/library-processing/issues",
             "/api/scraping", "/api/scraping/cover",

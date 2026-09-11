@@ -59,6 +59,7 @@ from peach.scripting import HostLimiter
 from peach.scraping_access import SourceTransport
 from peach.config import SECRETS_DIR
 from peach.jobs import DiskGuard, JobPolicyError
+from peach.task_runs import TaskRunHandle, cli_run, inert_handle
 from peach.platform import system_volume
 from peach.catalog_rules import (
     code_letter_stem,
@@ -856,7 +857,9 @@ def _replace_log_row(rows: list[dict], code: str, replacement: dict) -> None:
     rows.append({field: replacement.get(field, "") for field in FIELDS})
 
 
-def run(args: argparse.Namespace) -> int:
+def run(args: argparse.Namespace, handle: TaskRunHandle | None = None) -> int:
+    """跑一趟封面抓取。`handle` 是任务中心的句柄，缺省时这一趟不登记。"""
+    handle = handle or inert_handle()
     if args.audit:
         print(json.dumps(audit_state(args.db, args.out, args.log),
                          ensure_ascii=False, indent=2))
@@ -937,6 +940,7 @@ def run(args: argparse.Namespace) -> int:
     stopped: JobPolicyError | None = None
     try:
         for index, code in enumerate(todo, 1):
+            handle.progress(index, len(todo), code)
             try:
                 guard.check()
             except JobPolicyError as exc:
@@ -1021,11 +1025,26 @@ def run(args: argparse.Namespace) -> int:
     else:
         print(f"\n取得 {stats['ok']}，未取得 {stats['miss']} → {args.out}")
     print(f"逐条记录 → {args.log}")
-    return stopped.exit_code if stopped is not None else 0
+    summary = dict(stats, planned=len(todo))
+    if stopped is not None:
+        # 磁盘闸门把这一趟拦下来了：活儿没干完，但也不是故障。活动页上要看得出
+        # 是「被叫停」而不是「跑完了」，否则下次没人知道还有剩下的番号没抓。
+        handle.finish("cancelled", summary=summary, error=str(stopped))
+        return stopped.exit_code
+    handle.finish("succeeded", summary=summary)
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:
-    return run(build_parser().parse_args(argv))
+    """入口只负责把这一趟登记进任务中心，正文在 `run` 里。"""
+    args = build_parser().parse_args(argv)
+    with cli_run("jav-covers", args.db, label="封面批量抓取") as handle:
+        code = run(args, handle)
+        if code:
+            # 参数自检这类提前收工走不到 `run` 结尾的结算，在这里补上。
+            handle.finish("cancelled", summary={"exit_code": code},
+                          error=f"提前收工，退出码 {code}")
+        return code
 
 
 if __name__ == "__main__":

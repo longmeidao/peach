@@ -63,6 +63,7 @@ from .web_review import q_review, w_review_auto_apply, w_review_decision, w_revi
 from .web_settings import q_settings, w_settings
 from .web_scraping import q_scraping, w_scraping_settings, w_scraping_check, w_scraping_cover
 from .web_state import WebContract
+from .web_tasks import q_tasks
 from .web_stats import (
     q_quality_goals,
     q_search_history,
@@ -199,6 +200,7 @@ def _post_empty_trash(contract, _body):
 
 
 GET_HANDLERS = {
+    "/api/tasks": q_tasks,
     "/api/library-processing": q_library_processing,
     "/api/library-processing/issues": q_library_processing_issues,
     "/api/scraping": q_scraping,

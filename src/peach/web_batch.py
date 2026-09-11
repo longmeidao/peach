@@ -22,10 +22,18 @@ from typing import Sequence
 from .catalog_rules import duration_clusters, is_jav_code, normalise_code_key
 from .config import LOCATION_ROOT_DECLARATIONS
 from .platform import is_unmapped, root_online, translate_ledger_path, within_root
+from .task_runs import TaskRunHandle
 from .web_activity import DEFAULT_PROFILE_ID
 from .web_catalog import COST, attach_card_performers
 from .web_resource_sync import clean_resource_orphans
 from .web_state import WebContract
+
+#: 批量操作在活动页上的名字。表里存 `operation`，人看的是这一列。
+BATCH_LABELS = {
+    "like": "批量标记喜欢", "seen": "批量标记看过", "later": "批量加入稍后看",
+    "dispose": "批量移入回收站", "restore": "批量还原", "delete": "批量永久删除",
+    "dismiss-junk": "批量确认不是垃圾", "reconsider-junk": "批量重新判定垃圾",
+}
 
 
 # 清空回收站时要一并清掉的资产引用表，物理删除的边界只写在这一处。
@@ -634,6 +642,12 @@ def w_batch(contract: WebContract, body):
     marks = ",".join("?" * len(ids))
     contract.cache_bust()
     purge_outcome = None
+    # 批量是一次写、几秒就完的事，但删除那一支会真的动磁盘：事后「刚才那一批到底
+    # 删了多少、有没有半路失败」只有这条记录答得出。不声明互斥——两批不同的资产
+    # 各改各的，互斥只会把正常的连续操作挡住。
+    run = contract.task_runs.start("batch", trigger="manual", total=len(ids),
+                                   label=BATCH_LABELS.get(operation, operation))
+    handle = TaskRunHandle(contract.task_runs, run.id if run else None)
     try:
         with contract.write_transaction() as connection:
             found = connection.execute(
@@ -692,14 +706,19 @@ def w_batch(contract: WebContract, body):
                     "updated_at=excluded.updated_at",
                     [(asset_id,) for asset_id in valid_ids],
                 )
-    except BaseException:
+    except BaseException as error:
         if purge_outcome is not None:
             _restore_staged_media(purge_outcome["_staged"])
+        handle.finish("failed", error=f"{type(error).__name__}: {error}")
         raise
     if purge_outcome is not None:
         result = {"ok": True, "operation": operation, **_finish_purge(purge_outcome)}
         result.update(clean_resource_orphans(contract))
+        handle.finish("succeeded", summary={"operation": operation,
+                                            "changed": len(valid_ids)})
         return result
+    handle.finish("succeeded", summary={"operation": operation,
+                                        "changed": len(valid_ids)})
     return {"ok": True, "operation": operation, "changed": len(valid_ids)}
 
 

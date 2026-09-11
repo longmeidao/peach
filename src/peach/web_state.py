@@ -39,6 +39,7 @@ from .media import normalized_path
 # 规则必须和 `/logo` 用的是同一个函数，否则可用性判定迟早和取图对不上。
 from .previews import ENTITY_IMAGE_KINDS, LOGO_VARIANTS, entity_image_key, logo_key
 from .repository import LedgerDatabase
+from .task_runs import TaskRunStore
 
 
 class AvatarRootIndex(NamedTuple):
@@ -173,20 +174,29 @@ class WebContract:
         #: 每次 cache_bust 递增。在途计算据此判断自己出发后缓存是否失效过。
         self.cache_generation = 0
         self.follow_check_lock = threading.Lock()
-        self.follow_job = BackgroundJob("PeachFollowCheckJob")
-        self.follow_resolve_job = BackgroundJob("PeachFollowResolveJob")
-        self.taste_refresh_job = BackgroundJob("PeachTasteRefreshJob")
-        self.link_prune_job = BackgroundJob("PeachLinkPruneJob")
-        self.scraping_cover_job = BackgroundJob("PeachScrapingCoverJob")
-        self.library_processing_job = BackgroundJob("PeachLibraryProcessingJob")
-        self.resource_apply_job = BackgroundJob("PeachResourceApplyJob")
+        #: 任务中心。每个后台任务的开始、进度与结束都写这一张表，`/activity` 只读它。
+        #: 只读端由 `api` 关掉写入：那边的账本是复制来的，写一行就是一处合不回去的分叉。
+        self.task_runs = TaskRunStore(self.database)
+        self.follow_job = self._job("PeachFollowCheckJob", "follow-check")
+        self.follow_resolve_job = self._job("PeachFollowResolveJob", "follow-resolve")
+        self.taste_refresh_job = self._job("PeachTasteRefreshJob", "taste-refresh")
+        self.link_prune_job = self._job("PeachLinkPruneJob", "link-prune")
+        self.scraping_cover_job = self._job("PeachScrapingCoverJob", "scraping-cover")
+        self.library_processing_job = self._job(
+            "PeachLibraryProcessingJob", "library-processing")
+        self.resource_apply_job = self._job("PeachResourceApplyJob", "resource-apply")
         self.follow_scheduler = None
         # 两块后台任务的锁、状态和线程都归 BackgroundJob 管，契约上只留这两个字段。
         # 任务 id 的键名沿用各自原有的名字：它随公开投影下发，是前端契约。
-        self.resource_scan = BackgroundJob("PeachResourceScanJob", id_key="scan_id")
-        self.link_check = BackgroundJob("PeachLinkCheckJob", id_key="check_id")
+        self.resource_scan = self._job(
+            "PeachResourceScanJob", "resource-scan", id_key="scan_id")
+        self.link_check = self._job("PeachLinkCheckJob", "link-check", id_key="check_id")
         self._fts_available: bool | None = None
         self.database.after_commit = self.cache_bust
+
+    def _job(self, name: str, task_key: str, *, id_key: str = "job_id") -> BackgroundJob:
+        """建一个后台任务并接进任务中心。task_key 就是它在活动页上的身份。"""
+        return BackgroundJob(name, id_key=id_key, task_key=task_key, runs=self.task_runs)
 
     def cached(self, key, fn):
         """带 TTL 的读缓存。`fn` 刻意在锁外算——它会读 CSV、查库，拿着锁算会把
