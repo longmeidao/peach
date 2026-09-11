@@ -5,9 +5,11 @@ from peach.genre_taxonomy import (
     CONTENT_GENRES,
     NON_CONTENT_GENRES,
     NON_CONTENT_PATTERNS,
+    genres_in_warning,
     is_non_content_genre,
     map_genres,
     normalise_genre,
+    unmapped_genre_warning,
 )
 
 
@@ -156,6 +158,42 @@ class GenreTaxonomyTests(unittest.TestCase):
         # javbus 会混进画质与演员编成，同样按非内容排除。
         self.assertTrue(all(is_non_content_genre(v)
                             for v in ("1080p", "60fps", "AV女優", "超VIP", "オリジナル動画")))
+
+
+class UserDecisionTests(unittest.TestCase):
+    """复核页收录下来的那批，和静态表一起参与查表。"""
+
+    def test_a_recorded_genre_stops_coming_back_as_unmapped(self):
+        decisions = {normalise_genre("初裏"): "初次无码"}
+        tags, unmapped = map_genres(["中出し", "初裏", "69"], decisions)
+        self.assertEqual(tags, ["中出内射", "初次无码"])
+        self.assertEqual(unmapped, ["69"], "还没决定的那个仍要回来问")
+
+    def test_a_genre_judged_non_content_is_excluded_not_asked_again(self):
+        tags, unmapped = map_genres(["初裏", "巨乳"], {normalise_genre("初裏"): None})
+        self.assertEqual(tags, ["巨乳"])
+        self.assertEqual(unmapped, [], "排除也是结论；再问一遍等于没记下来")
+
+    def test_the_written_form_does_not_split_one_decision_into_several(self):
+        # 键已规范化，所以全角、半角和大小写写法命中同一条决定。
+        decisions = {normalise_genre("Kiss"): "接吻"}
+        self.assertEqual(map_genres(["ＫＩＳＳ"], decisions)[0], ["接吻"])
+        self.assertEqual(map_genres([" kiss "], decisions)[0], ["接吻"])
+
+    def test_a_decision_outranks_both_static_tables(self):
+        """用户刚说过的话不该被发版时写下的默认盖掉。"""
+        self.assertEqual(map_genres(["中出し"], {normalise_genre("中出し"): "内射"})[0], ["内射"])
+        # `単体作品` 静态表判为非内容；用户改主意就该按他说的收录。
+        self.assertEqual(map_genres(["単体作品"], {normalise_genre("単体作品"): "单体作品"})[0],
+                         ["单体作品"])
+
+    def test_the_warning_line_can_be_read_back_into_the_words(self):
+        """2026-09-11 之前的候选文件只有那句话，复核页要能在它们身上继续收录。"""
+        line = unmapped_genre_warning(["69", "初裏"])
+        self.assertEqual(line, "来源还有 2 个未收录 genre：69、初裏")
+        self.assertEqual(genres_in_warning(line), ["69", "初裏"])
+        self.assertEqual(genres_in_warning("来源值含重复片段，已规范化：A → B"), [])
+        self.assertEqual(genres_in_warning(""), [])
 
 
 if __name__ == "__main__":

@@ -51,6 +51,7 @@ from peach.catalog_rules import (  # noqa: E402
 )
 from peach.config import DATABASE_PATH, GENERATED_DIR, SOURCES_DIR  # noqa: E402
 from peach.entities import normalize_entity_name  # noqa: E402
+from peach.genre_decisions import load_genre_decisions  # noqa: E402
 from peach.genre_taxonomy import map_genres  # noqa: E402
 from peach.http import HttpRequest, HttpxTransport  # noqa: E402
 from peach.images import REJECT, bake_square, classify  # noqa: E402
@@ -266,6 +267,8 @@ def metadata_candidate_rows(connection, releases: list[dict], stars: list[dict],
     """账本已有番号的字段候选。item_key 带来源后缀：这批番号的 `<番号>:<字段>` 早被
     JAV 错配候选的拒绝决定占着，沿用同一个键会让官网候选一出现就算「已判」。"""
     by_name = star_index(stars)
+    # 用户在复核页收录过的 genre 这一批就当已知词，不再作为未收录回来问一遍。
+    genre_decisions = load_genre_decisions(connection)
     output = []
     for release in releases:
         if release["partner"]:
@@ -275,7 +278,7 @@ def metadata_candidate_rows(connection, releases: list[dict], stars: list[dict],
         if not assets:
             continue
         current = _current_values(connection, code, assets)
-        fields = extract_peach_fields(release)
+        fields = extract_peach_fields(release, genre_decisions)
         evidence = extract_catalog_evidence(release)
         if "performers" in fields:
             for person in fields["performers"]["value"]:
@@ -314,9 +317,10 @@ def metadata_candidate_rows(connection, releases: list[dict], stars: list[dict],
 def catalog_rows(connection, releases: list[dict]) -> list[dict]:
     rows = []
     listed = set()
+    genre_decisions = load_genre_decisions(connection)
     for release in releases:
         listed.add(release["id"])
-        tags, unmapped = map_genres(release["genres"])
+        tags, unmapped = map_genres(release["genres"], genre_decisions)
         rows.append({
             "code": release["id"], "result": "取得", "maker": release["maker"],
             "partner": release["partner"], "title": release["title"],

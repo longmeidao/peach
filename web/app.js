@@ -194,6 +194,20 @@ const followSkeletonHtml=(label='正在读取关注内容')=>`<div class="follow
   <div class="tier followauthors" data-skeleton-tier="av"></div>
   <div class="tagbar followfilters" data-skeleton-tier="pill"></div>
   ${pageSkeletonHtml(label,{cards:true,className:'follow-content-skeleton postercard-skeleton'})}</div>`;
+/* 分类名是静态文案，骨架和复核页各要一份，所以它排在骨架前面而不是跟着复核页那段代码。 */
+const REVIEW_LABELS={metadata_fields:'元数据字段',creator_tags:'创作者标签',studio_logos:'厂牌 Logo',performer_avatars:'女优头像',western_identity:'西方身份回配',code_creators:'番号目录存疑',fc2_markings:'FC2 评论标记',fc2_similarity:'FC2 跨号相似',video_endcards:'片尾/出处证据',media_failure:'媒体失败'};
+/* 复核页是左边一列分类、右边工具条加一格一格 Fieldset，骨架就用最终容器的那几个类名，
+   分栏、列宽和卡高全由页面自己那套规则给：读完数据只是把占位换成内容，版面一格不挪。
+   分类名和「复核分类」这两样与数据无关，直接写出来；等的是每类多少条，所以只有计数
+   那一枚是占位。工具条上那三件——分组方式、分类筛选、全选本页——要等队列回来才知道
+   选项和条数，三枚占位一件对一件。 */
+const reviewSkeletonHtml=(label='正在读取复核队列')=>`<div class="review review-workspace review-skeleton" data-skeleton="review" aria-busy="true" aria-label="${esc(label)}">
+  <div class="reviewcontrols"><h2 class="review-category-title">复核分类</h2>
+    <div class="reviewtabs">${Object.values(REVIEW_LABELS).map(text=>
+      `<button type="button" disabled>${esc(text)}<span class="skeleton reviewcountskeleton" aria-hidden="true"></span></button>`).join('')}</div></div>
+  <div class="reviewbulkbar reviewbulktoolbar" aria-hidden="true">${'<span class="skeleton reviewtoolskeleton"></span>'.repeat(3)}</div>
+  <section class="reviewsection"><div class="reviewlist">${
+    '<div class="skeletoncard" aria-hidden="true"><i></i><b></b><em></em></div>'.repeat(6)}</div></section></div>`;
 $('#loadSentinel').innerHTML=loadingDotsHtml('继续载入中…');
 $('#tokLoader').insertAdjacentHTML('afterbegin',spinnerHtml('媒体加载中'));
 /* 筛选条只由当前 state 决定，这次加载不会改变它，所以它现在就能画成最终样子。
@@ -259,10 +273,7 @@ const MANAGEMENT_PLACEHOLDERS={
   // /resource-sync 只是数据管理页上的一个锚点，启动时占位也该是数据管理那张。
   '/resource-sync':()=>MANAGEMENT_PLACEHOLDERS['/data-cleanup'](),
   '/duplicates':()=>pageSkeletonHtml('正在比对重复内容',{cards:true}),
-  /* 复核是一排分类 tab 加一格一格 440px 高的 Fieldset，不是海报网格：骨架照
-     .reviewlist 的列宽和 .reviewitem 的轮廓画，顶上留出 tab 那一条。 */
-  '/review':()=>`<div class="review">${pageSkeletonHtml('正在读取复核队列',
-    {cards:true,count:6,fill:false,className:'review-skeleton'})}</div>`,
+  '/review':()=>reviewSkeletonHtml(),
   '/quality-goals':()=>pageSkeletonHtml('正在读取高清版目标',{cards:true}),
   '/playlists':()=>pageSkeletonHtml('正在读取播放列表',{cards:true}),
   // 关注管理是三个大区（添加关注、关注列表、凭据），不是一屏同质卡片：
@@ -286,6 +297,9 @@ const hideDiscoveryBars=()=>{$('#tiers').style.display='none';$('#tagbar').style
 const wantsDiscoveryBars=()=>$('#tiers').style.display!=='none';
 function renderInitialSurfaceLoading(){
   const path=decodeURIComponent(location.pathname);
+  /* 骨架画的就是这个表面，所以先把 `data-surface` 写上：深链冷启动时 `restoreRoute()`
+     排在这一步后面，等它写的话骨架会先按默认版式铺一遍，数据到货再跳成分栏。 */
+  document.body.dataset.surface=location.pathname;
   if(path==='/junk-files'){
     /* 垃圾文件是一屏同质卡片，等的是内容结构不是后台进度：Loading Dots 说的是
        「还在跑」，这里要说的是「等下会出现几张什么形状的卡」，所以用目录骨架。 */
@@ -708,7 +722,10 @@ const toast=(message,{timeout=6000,warn=false,action=null}={})=>{
     item.classList.add('leaving');setTimeout(()=>item.remove(),200)};
   const arm=()=>{if(timeout&&!hovered&&!focused&&timer===null){started=Date.now();timer=setTimeout(close,remaining)}};
   const pause=()=>{if(timer!==null){clearTimeout(timer);timer=null;remaining=Math.max(0,remaining-(Date.now()-started))}};
-  const progress=()=>{if(board&&timeout){const bar=document.createElement('span');bar.className='board-notification-timer';bar.setAttribute('aria-hidden','true');bar.style.setProperty('--notification-duration',`${timeout}ms`);item.append(bar)}};
+  /* 倒计时条只看这条 toast 会不会自己消失，判据到此为止。这一行排在 `root.prepend`
+     前面：再搭一个标识符上去，它哪天没了定义就是 ReferenceError，整条 toast 连挂都挂
+     不上去——症状是写操作成功了，页面上什么都不出现。 */
+  const progress=()=>{if(timeout){const bar=document.createElement('span');bar.className='board-notification-timer';bar.setAttribute('aria-hidden','true');bar.style.setProperty('--notification-duration',`${timeout}ms`);item.append(bar)}};
   /* 结果就写在同一条 toast 上。「关掉回执 + 另发一条已撤销」会让两条在同一个
      底部对齐的栈里一进一出，看上去就是整块跳了一下。 */
   item.replaceMessage=(body,{warn:alert=false,timeout:next=4000}={})=>{
@@ -4460,7 +4477,6 @@ const REVIEW_PAGE_SIZE=20;
 let reviewPage=1,reviewPageView='';
 /* 主体是实体而不是单条作品的复核分类。值就是实体 kind。 */
 const ENTITY_REVIEW_CATEGORIES={creator_tags:'creator',western_identity:'creator'};
-const REVIEW_LABELS={metadata_fields:'元数据字段',creator_tags:'创作者标签',studio_logos:'厂牌 Logo',performer_avatars:'女优头像',western_identity:'西方身份回配',code_creators:'番号目录存疑',fc2_markings:'FC2 评论标记',fc2_similarity:'FC2 跨号相似',video_endcards:'片尾/出处证据',media_failure:'媒体失败'};
 
 /* 数据管理是「库里已经有的东西怎么收拾」的唯一入口：广告、重复、空目录，
    加上复核队列、回收站和高清版。它们此前散在管理菜单和统计页两处，
@@ -4738,7 +4754,11 @@ async function openReview(push=true){
     const value=row=>row.tags||row.japanese_name||row.path||row.suggested_query||'';
      $('#stats').innerHTML=`<div class="review review-workspace">
       ${locked?`<div class="runtimegate">${icon('info')}<span>${esc(mirrorText)}</span>${writer
-        ?`<a href="${esc(writer)}">前往写入端复核</a>`:''}</div>`:''}
+        ?`<a href="${esc(writer)}">前往写入端复核</a>`:''}</div>`:''}${
+      /* 收录 genre 时的候选词表。给的是静态表已经投影到的那批内容标签，一份挂在整页上：
+         每张卡各写一遍的话，同一百来个 option 会在 DOM 里重复几十份。 */
+      (reviewData.genre_tags||[]).length?`<datalist id="reviewgenretags">${
+        reviewData.genre_tags.map(tag=>`<option value="${esc(tag)}"></option>`).join('')}</datalist>`:''}
       <div class="reviewcontrols"><h2 class="review-category-title">复核分类</h2><div class="reviewtabs" role="tablist" aria-label="复核分类" aria-orientation="vertical">${Object.entries(REVIEW_LABELS).map(([key,label])=>{
         /* Geist Tabs（vercel.com/geist/tabs）：计数走独立徽标，为 0 时整枚去掉，不留一个
            「0」占位；tabindex 只留在选中项上，方向键负责在同一条里移动焦点。 */
@@ -4751,7 +4771,12 @@ async function openReview(push=true){
         const key=row.item_key,decision=row.decision||'pending';
         const metadata=reviewCategory==='metadata_fields',candidates=row.candidates||[];
         const tags=String(row.tags||'').split('|').filter(Boolean).map(tag=>`<span>${esc(tag)}</span>`).join('');
-        const titleText=metadata?`${row.query||row.code} · ${row.field_label||row.field}`:(row.creator||row.studio||row.current_name||row.name||key);
+        /* 字段名是这张卡在问的问题（「这个作品的创作者填什么」），作品标识只是它问
+           的对象。写在标题末尾的话，一条无番号视频的文件名会先把它挤出省略号，卡上
+           就只剩一串文件名和一个候选值，读不出这一票投给的是哪个字段。 */
+        const fieldName=metadata?String(row.field_label||row.field||'').trim():'';
+        const subjectText=metadata?String(row.query||row.code||''):(row.creator||row.studio||row.current_name||row.name||key);
+        const titleText=fieldName?`${subjectText} · ${fieldName}`:subjectText;
         const evidence=row.reason||row.evidence||row.note||row.decision_note||'';
         const canApprove=metadata?candidates.length>0:(reviewCategory!=='creator_tags'||String(row.status||'').trim()==='candidate');
          const approveLabel=canApprove?'通过':'已跳过';
@@ -4788,15 +4813,20 @@ async function openReview(push=true){
          const candidateEvidence=candidate=>{
            const rows=Object.entries(candidate.catalog_evidence||{}).filter(([,item])=>item&&item.display_value);
            return rows.length?`<dl class="metadataevidence">${rows.map(([field,item])=>`<div><dt>${esc(evidenceLabels[field]||field)}</dt><dd>${esc(item.display_value)}</dd>${(item.warnings||[]).map(warning=>`<small>${esc(warning)}</small>`).join('')}</div>`).join('')}</dl>`:''};
-         const candidateBody=candidate=>`<b>${esc(candidate.source)}${candidate.official?' · 官方优先':''}${candidate.content_id||candidate.provider_id?` · ID ${esc(candidate.content_id||candidate.provider_id)}`:''}</b>`
+         /* 一张卡上下两段读的是两件事：上段是这个来源给的那个值，也就是选中它就会写
+            进账本的东西；下段是同一来源顺带交回来的其它字段，只作判断依据。两段各自
+            铺底色并由一条线隔开，选哪一段能改账本就不用猜。 */
+         const candidateBody=candidate=>`<span class="metadatacandidatevalue"><b>${esc(candidate.source)}${candidate.official?' · 官方优先':''}${candidate.content_id||candidate.provider_id?` · ID ${esc(candidate.content_id||candidate.provider_id)}`:''}</b>`
            +`<span>${esc(candidate.display_value||'')}</span>`
-           +(candidate.warnings||[]).map(warning=>`<i>${esc(warning)}</i>`).join('')
+           +(candidate.warnings||[]).map(warning=>`<i>${esc(warning)}</i>`).join('')+'</span>'
            +candidateEvidence(candidate);
          const preview=metadata
            ? (candidates.length===1
              ? `<div class="metadatasole"><input type="radio" name="metadata-${esc(key)}" value="${esc(candidates[0].candidate_key)}" checked>
-                 <span>${candidateBody(candidates[0])}</span></div>`
-             : `<div class="metadatacandidates">${candidates.map(candidate=>`<label class="metadatacandidate"><input type="radio" name="metadata-${esc(key)}" value="${esc(candidate.candidate_key)}"><span>${candidateBody(candidate)}</span></label>`).join('')}</div>`)
+                 ${candidateBody(candidates[0])}</div>`
+             /* 一组互斥的来源值照 boardui Radio card 画：整卡可点、圆点在右、同名 radio
+                自带方向键漫游，所以容器只补 `radiogroup` 这个名字，不另写一套键盘逻辑。 */
+             : `<div class="metadatacandidates" role="radiogroup" aria-label="${esc(fieldName||'候选')}的来源">${candidates.map(candidate=>`<label class="metadatacandidate">${candidateBody(candidate)}<input type="radio" name="metadata-${esc(key)}" value="${esc(candidate.candidate_key)}"></label>`).join('')}</div>`)
            : reviewCategory==='creator_tags'
            ? (assets.length?`<div class="reviewpick"><div class="reviewpickhead"><span class="mono" data-picked-count></span>
                <button type="button" data-pick-all>全选</button><button type="button" data-pick-none>清空</button></div>
@@ -4814,10 +4844,28 @@ async function openReview(push=true){
             候选表单和身份证据那两类不进框：它们每一项自己就是一个框，再套一层就是框中框。
             候选表单的当前信息另有去处——它贴在卡底不跟着滚，那一句读的是「现在是什么」，
             不是这一屏证据的一部分。 */
-         const heading=subjectKind&&subjectName?origin:`<h4>${esc(titleText)}</h4>`;
+         const heading=subjectKind&&subjectName?origin
+           :fieldName?`<h4 class="reviewfieldhead"><b class="reviewfieldname">${esc(fieldName)}</b><span title="${esc(subjectText)}">${esc(subjectText)}</span></h4>`
+           :`<h4>${esc(titleText)}</h4>`;
          const currentInfo=metadata?`<div class="reviewcurrentinfo" role="region" aria-label="当前信息" tabindex="0"><p>${esc(evidence)}</p></div>`:'';
          const framed=!metadata&&reviewCategory!=='western_identity';
-         const stage=`<div class="reviewstage"${framed?' data-framed=""':''}>${preview}${
+         /* 未收录 genre 是这张卡上唯一一件不判候选的事：来源给了值，Peach 还没决定它算
+            哪个标签，于是那句「来源还有 2 个未收录 genre」每批都原样再来一次。收录一次
+            是对整张词表说的，不属于其中某一个来源，所以单列一块摆在候选下面。给中文名
+            就是收录成那个标签，判「不是内容」就是永久排除——两种结论都要能记下来，
+            只能记「是什么」的话，排除项会在下一批候选里重新冒出来。 */
+         const pendingGenres=metadata?[...new Set(candidates.flatMap(candidate=>candidate.unmapped_genres||[]))]:[];
+         const genres=pendingGenres.length?`<div class="reviewgenres" role="group" aria-label="未收录 genre">
+           <h5>未收录 genre · ${pendingGenres.length}</h5>${pendingGenres.map(genre=>`<div class="reviewgenre" data-review-genre="${esc(genre)}">
+             <b lang="ja">${esc(genre)}</b>
+             <input type="text" list="reviewgenretags" maxlength="40" placeholder="中文标签" autocomplete="off"
+               aria-label="「${esc(genre)}」收录成的中文标签"${locked?' disabled':''}>
+             ${/* 两个结论都是次级键：这张卡上的主动作是「通过」，把词收进表里只是让那一步
+                  有得可选。收录挂上 primary 的话，同一张卡上会有两个蓝底键在抢「按这里」。 */''
+             }<button type="button" class="geist-button" data-genre-accept${locked?' disabled':''}>收录</button>
+             <button type="button" class="geist-button" data-genre-exclude${locked?' disabled':''}>不是内容</button>
+             <p class="reviewstate" aria-live="polite"></p></div>`).join('')}</div>`:'';
+         const stage=`<div class="reviewstage"${framed?' data-framed=""':''}>${preview}${genres}${
            !metadata&&evidence?`<p class="reviewevidence">${esc(evidence)}</p>`:''}</div>`;
          const body=`${
            // 账本规范名当标题，抓取来源给的写法（多为罗马音）留作副标题。
@@ -4870,6 +4918,37 @@ async function openReview(push=true){
       payload:decisionPayload,submit:payload=>api('/api/review/decision',{method:'POST',body:JSON.stringify(payload)}),
       applied:removeReviewed,active:current,refresh:render,notify:actionReceipt});
     syncHeaderActions();
+    /* 收录一个 genre 改的是词表，不是这条候选：服务端按新词表重新折一遍整条队列
+       （`_fold_genre_decisions`），所以这里重新取一次队列而不是在前端自己折。同一份
+       判据写两遍迟早对不上，而对不上的表现是「页面上标签多了一个，批准写下去的还是旧的」。 */
+    const reloadReview=async()=>{
+      const next=await surfaceApi(surface,'/api/review');
+      if(!next||!current())return;
+      reviewData=next;render();
+    };
+    $('#stats').querySelectorAll('.reviewgenre').forEach(box=>{
+      const input=box.querySelector('input'),state=box.querySelector('.reviewstate'),genre=box.dataset.reviewGenre;
+      const record=async(button,tag)=>{
+        state.textContent='';setActionBusy(button);
+        try{
+          const result=await api('/api/review/genre',{method:'POST',body:JSON.stringify({genre,tag})});
+          if(!result.ok){state.textContent=result.error||'服务端拒绝了这次收录';return}
+          actionReceipt(tag?`已把「${genre}」收录为标签「${tag}」`:`已把「${genre}」判为非内容标签`);
+          await reloadReview();
+        }catch(error){state.textContent=error.message||'收录失败，请重试'}
+        finally{setActionBusy(button,false)}
+      };
+      box.querySelector('[data-genre-accept]').onclick=event=>{
+        const tag=input.value.trim();
+        if(!tag){state.textContent='先给它一个中文标签';input.focus();return}
+        record(event.currentTarget,tag);
+      };
+      box.querySelector('[data-genre-exclude]').onclick=event=>record(event.currentTarget,'');
+      input.onkeydown=event=>{
+        if(event.key!=='Enter'||event.isComposing)return;
+        event.preventDefault();box.querySelector('[data-genre-accept]').click();
+      };
+    });
     $('#stats').querySelectorAll('[data-review-status]').forEach(button=>button.onclick=async()=>{
       if(selection.busy)return;
       const item=button.closest('[data-review-key]');button.disabled=true;selection.busy=true;

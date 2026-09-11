@@ -243,6 +243,20 @@ Radial Chart Card、Bar List Card、Heatmap 与 Sankey 的 Pro 源码**未取得
 | 复核队列分页 | Pagination：nav 两端对齐 `gap-2`；Previous／Next 是 32px 次级小键（圆角 8、内边距 6/8、带箭头）；页码 `size-8 rounded-lg` Body Medium，当前页 border-button 描边 + primary 底 + xs 阴影并标 `aria-current="page"`，其余次文字色、悬停 secondary-hover；两侧折成「…」各留一个邻页；一页时不渲染；没有过渡 | 尺寸与颜色照抄；分页做在前端，一页 20 张（接口 4.6 MB 本机读 0.1 秒，卡的是一次画 1300 张卡）；箭头用雪碧图的 `chevron-left/right`，文案「上一页／下一页」；分组与筛选按整条队列算、卡片只画本页；换分类／分组／筛选回第 1 页 |
 | 数据管理页 | dashboard／finance 模板：顶上一排 plain stat card（132px、圆角 16、secondary 底、p 16；32px 图标格 + 20px 字形；标签 Body Medium 次文字色；读数 title-1-medium 24/34；`grid-cols-2 lg:grid-cols-4 gap-4`），下面是图表卡与数据表 | 五张读数卡一行（1120 内），窄了折两列、再折一列；整张卡是入口按钮，悬停抬主文字色 6% 底（上游卡不可点）；读数下一行 Caption 是同一份 payload 的分项；扫描与采集、空文件夹各占一整行，左说明右按钮；链接管理与资源同步不动 |
 
+### 复核卡的候选、未收录 genre 与骨架（2026-09-11）
+
+Radio card 沿用 2026-09-08 取得的 `r/checkbox-card.json`（`checkbox-card.tsx`），本轮未新取证据：
+上游只有 CheckboxCard 一件，Radio 版是同一只卡换控件类型。
+
+| 位置 | 上游 | Peach |
+| --- | --- | --- |
+| 元数据候选 | CheckboxCard：整卡可点、10px 圆角、1px `border-button-default`、悬停 primary-hover，选中沿用焦点环色的边 | 一组候选是 `role="radiogroup"`，每张卡整块可点、圆点在右；卡内上半是这条来源给的值、下半是证据行，证据沉一档底色并加一道 `border-top`——两段一个颜色时看不出哪句是值、哪句是佐证 |
+| 候选卡标题 | 无对应 | 卡上先写它在问哪个字段（`梓怡 · 女优`），来源与取证说明留在下面；此前标题只有主语，末尾省略号一截，看不出这条候选要替换什么 |
+| 未收录 genre | 无对应 | 候选卡下挂一块 `--surface` 的收录区：原文在左、中文标签输入在中、「收录」与「不是内容」在右。它定的是「这个词以后算什么」，和候选卡的「这条记录写什么」不是一件事，所以不混进候选列 |
+| 玻璃框的边 | 无对应 | 工具条与分组条各描一圈 `inset` 的 `--glass-rim`／`--glass-low`，接缝那条边不描（上面不画底边、下面不画顶边），两条合起来仍是一圈。暗色下这块玻璃的底和页面一样黑，没有这一圈就只剩一块黑方块 |
+| 复核骨架 | Skeleton 只是占位形状 | 骨架直接用最终容器的类名（`.review-workspace`、`.reviewcontrols`、`.reviewbulktoolbar`、`.reviewlist`），分栏、列宽、卡高全由复核页自己那套规则给；`renderInitialSurfaceLoading()` 先写 `data-surface` 才画，否则深链冷启动会先按默认版式铺一遍再跳。分类名是静态文案直接显示，只有计数和三件工具条控件是占位 |
+| 骨架里的悬浮框 | 无对应 | 骨架没有分组条可接，工具条自己封口：四角都圆、四边都描，也不吸顶——`updateReviewSticky` 要等数据到货才有东西可量 |
+
 ## 首次设置 Auth Card
 
 Button 取证（2026-09-10）：对照官网 `/components/button` 与保存的

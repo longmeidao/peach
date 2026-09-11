@@ -5777,6 +5777,16 @@ class WebUiSourceTests(unittest.TestCase):
                       "border-width .18s ease-out,opacity .18s ease-out,transform .18s ease-out,filter .18s ease-out}", board)
         self.assertPageContains("item.classList.add('leaving');setTimeout(()=>item.remove(),200)")
 
+    def test_the_countdown_bar_only_asks_whether_the_toast_expires(self):
+        """倒计时条的判据只有一个：这条 toast 会不会自己消失。
+
+        这一行排在 `root.prepend` 前面，所以它是整条 toast 的单点。判据里多搭一个
+        标识符，那个标识符哪天没了定义就是 ReferenceError，回执连挂上去都挂不上去：
+        写操作成功了、页面上什么都不出现，看起来像调用点忘了发回执。
+        """
+        self.assertPageContains("const progress=()=>{if(timeout){"
+                                "const bar=document.createElement('span');")
+
     def test_anchored_menu_closes_on_page_scroll_but_not_on_its_own(self):
         # 菜单装不下时本来就要在内部滚；捕获阶段的 scroll 连它自己的也收得到。
         self.assertCode(
@@ -7440,6 +7450,8 @@ class WebUiSourceTests(unittest.TestCase):
             ".pickrowtext b",
             ".playerstats dd", ".playerstatsmetric>span",
             ".relatedperson .nm", ".reviewentity b",
+            # 字段名是这张卡在问的问题，不许被省略；省略号只吃它后面那个作品标识。
+            ".reviewfieldhead>span",
             ".reviewitem h4", ".reviewpickname", ".searchoption span",
             ".sgrid.mixgrid>.mixqueue .mixqueuehead span", ".sidebarorderlabel>b",
             ".insightrankrow>span:nth-child(2)", ".metricstrip small,.tastesummary>small",
@@ -7754,17 +7766,20 @@ class WebUiSourceTests(unittest.TestCase):
         语言里就成了两种东西。框里的控件照那块浮层留 12px，不贴着 20px 的圆角。
         """
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
-        # 两条横条不描自己的边：那圈 inset 会在工具条和分组条的接缝上画出一道线，
-        # 一块玻璃就被切成两块。边界交给 `.review::before` 那一层，横条只留落影。
+        # 那圈 inset 是玻璃的边：静止态底色和页面同样黑，只留落影的话整条读成一块黑方块。
+        # 接缝处不描，上面那条不画底边、下面那条不画顶边，两条合起来仍是一圈。
         self.assertIn("body .review .reviewbulktoolbar{position:sticky;top:var(--topH);z-index:60;width:auto;"
                       "margin-inline:0;padding:12px;border-radius:20px 20px 0 0;\n"
-                      "  box-shadow:var(--glass-shadow)}", board)
+                      "  box-shadow:inset 0 1px 0 var(--glass-rim),inset 1px 0 0 var(--glass-low),"
+                      "inset -1px 0 0 var(--glass-low),var(--glass-shadow)}", board)
         self.assertIn("body .review .reviewgroupbar{border:0;border-radius:0 0 20px 20px;padding:8px 12px;\n"
-                      "  box-shadow:var(--glass-shadow)}", board)
+                      "  box-shadow:inset 1px 0 0 var(--glass-low),inset -1px 0 0 var(--glass-low),"
+                      "inset 0 -1px 0 var(--glass-low),var(--glass-shadow)}", board)
         # 下面那些分组各自成框：上一个可见分组和它之间隔着一整屏卡片。
         self.assertIn("body .review .reviewgroup:not([hidden])~.reviewgroup:not([hidden])"
                       ">.reviewgroupbar{border-radius:20px;\n"
-                      "  box-shadow:var(--glass-shadow)}", board)
+                      "  box-shadow:inset 0 1px 0 var(--glass-rim),inset 1px 0 0 var(--glass-low),"
+                      "inset -1px 0 0 var(--glass-low),inset 0 -1px 0 var(--glass-low),var(--glass-shadow)}", board)
         # 复核页那排标签跟标题、面包屑和下面那块浮层同一条左边。往外挪 12px 能让第一个
         # 标签的字顶到那条线上，代价是选中那块底色比整页任何东西都往左出去一截。
         self.assertIn(".reviewtabs{margin-inline:0}", board)
@@ -9951,7 +9966,8 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_entity_cards_do_not_print_the_name_twice(self):
         """创作者入口里已经写了名字，卡片顶上再来一个 h4 就是同一行字上下两遍。"""
-        self.assertPageContains("subjectKind&&subjectName?origin:`<h4>${esc(titleText)}</h4>`")
+        self.assertPageContains("const heading=subjectKind&&subjectName?origin")
+        self.assertPageContains(":`<h4>${esc(titleText)}</h4>`;")
         # 作品数同理：创作者入口里已经写了「115 部作品」，上面不该再来一行「样本/资产：115」。
         self.assertPageContains("subjectKind&&subjectName?'':`<p>${esc(row.board||row.assets")
         # 卡片里只有这一个主体，衬底和居中只会把它推离左边缘，和下面的样本网格对不齐。
@@ -9959,6 +9975,72 @@ class WebUiSourceTests(unittest.TestCase):
             ".reviewentity{display:grid;grid-template-columns:132px minmax(0,1fr)")
         self.assertPageContains("justify-content:start}")
         self.assertPageContains(".reviewentityface{position:relative;width:44px;height:44px;justify-self:start")
+
+    def test_the_review_card_names_the_field_it_is_asking_about(self):
+        """字段名是这张卡在问的问题，作品标识只是它问的对象。
+
+        写在标题末尾的话，一条无番号视频的文件名会先把它挤出省略号，卡上就只剩
+        一串文件名和一个候选值，读不出这一票投给的是哪个字段。
+        """
+        self.assertPageContains('<h4 class="reviewfieldhead"><b class="reviewfieldname">')
+        self.assertPageContains("const fieldName=metadata?String(row.field_label||row.field||'').trim():'';")
+        # 省略号只许吃作品标识那一半，字段名不参与收缩。
+        self.assertPageContains(".reviewfieldname{flex:none;")
+        self.assertPageContains(".reviewfieldhead>span{min-width:0;overflow:hidden;text-overflow:ellipsis")
+
+    def test_source_values_are_radio_cards_and_the_two_halves_are_told_apart(self):
+        """一张候选卡上下两段读的是两件事，选哪一段能改账本不该靠猜。
+
+        上段是这个来源给的那个值——选中它就会写进账本；下段是同一来源顺带交回来的
+        其它字段，只作判断依据。上段留在卡面、下段沉一档并由一条线隔开。
+        """
+        self.assertPageContains('<div class="metadatacandidates" role="radiogroup"')
+        self.assertPageContains('<span class="metadatacandidatevalue">')
+        # 圆点在右、整卡可点、选中沿用焦点环色的边（boardui Radio card 与 CheckboxCard 同面）。
+        self.assertPageContains(".metadatacandidate>input{grid-column:2;grid-row:1;align-self:center;")
+        self.assertPageContains(".metadatacandidate:has(input:checked){border-color:var(--field-ring-focus)}")
+        self.assertPageContains(".metadataevidence{grid-column:1/-1;display:grid;gap:4px;margin:0;"
+                                "padding:10px 16px;border-top:1px solid var(--line-soft);"
+                                "background:var(--surface)")
+
+    def test_the_review_skeleton_is_built_from_the_real_page_containers(self):
+        """骨架用最终容器的类名，分栏和列宽就都由页面自己那套规则给。
+
+        两处各抄一份同样的数字，迟早有一处改了另一处没改，表现是读完数据整片版面跳一下。
+        """
+        self.assertPageContains('class="review review-workspace review-skeleton" data-skeleton="review"')
+        self.assertPageContains('<div class="reviewcontrols"><h2 class="review-category-title">复核分类</h2>')
+        self.assertPageContains('<div class="reviewbulkbar reviewbulktoolbar" aria-hidden="true">')
+        self.assertPageContains("'/review':()=>reviewSkeletonHtml(),")
+        # 分类名是静态文案，等的只是每类多少条。
+        self.assertPageContains('<span class="skeleton reviewcountskeleton" aria-hidden="true">')
+        # 深链冷启动时 `restoreRoute()` 排在骨架后面，`data-surface` 要提前写上。
+        self.assertPageContains("document.body.dataset.surface=location.pathname;")
+        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
+        # 骨架里没有分组条，上面那条玻璃自己封口，也不吸顶。
+        self.assertIn("body .review-skeleton .reviewbulktoolbar{position:static;border-radius:20px;", board)
+        # 占位卡和到货的卡圆角同一档，不然读完数据整片网格会跳一下。
+        self.assertIn(".review-skeleton .skeletoncard{border:1px solid var(--line-soft);"
+                      "border-radius:var(--surface-radius);", board)
+
+    def test_unmapped_genres_come_with_a_way_to_record_them(self):
+        """来源给了值、Peach 还没决定它算哪个标签，这件事要有出口。
+
+        只写一句「来源还有 2 个未收录 genre」的话，同一句话每批候选都原样再来一次，
+        而 `map_genres` 说的「不允许长期停在『不知道』」在界面上没有出口。
+        """
+        self.assertPageContains('<div class="reviewgenres" role="group" aria-label="未收录 genre">')
+        self.assertPageContains("candidates.flatMap(candidate=>candidate.unmapped_genres||[])")
+        # 收录成一个中文标签，或者判它不是内容：两种结论都要能记下来。
+        self.assertPageContains("data-genre-exclude")
+        # 两个结论都是次级键：这张卡的主动作是「通过」，收录只是让那一步有得可选。
+        self.assertPageContains('<button type="button" class="geist-button" data-genre-accept')
+        self.assertPageContains("api('/api/review/genre',{method:'POST'")
+        # 候选词表一份挂在整页上，不是每张卡各写一遍那一百来个 option。
+        self.assertPageContains('<datalist id="reviewgenretags">')
+        self.assertPageContains('list="reviewgenretags"')
+        # 收录改的是词表，服务端按新词表重新折一遍整条队列，前端不自己折一份。
+        self.assertPageContains("const next=await surfaceApi(surface,'/api/review');")
 
     def test_sole_metadata_candidate_is_shown_not_offered_as_a_choice(self):
         """只有一个候选时没什么可选的，单选圈会让人以为还有别的选项。

@@ -53,6 +53,7 @@ if str(SRC_DIR) not in sys.path:
 from peach.catalog_rules import normalise_code_key
 from peach.config import SECRETS_DIR
 from peach.scraping_access import client_for, cookie_jar, values_for
+from peach.genre_decisions import load_genre_decisions
 from peach.genre_taxonomy import map_genres
 from peach.review_csv import read_rows, write_rows
 from peach.scripting import USER_AGENT, open_readonly
@@ -308,13 +309,14 @@ def _candidate_key(code: str, field: str, value: object) -> str:
     return f"{code}:{field}:fc2:{digest}"
 
 
-def translated_tags(raw: str) -> list[str]:
+def translated_tags(raw: str, genre_decisions=None) -> list[str]:
     """Conservatively project archived FC2 labels into Peach's reviewed taxonomy.
 
     词表和 JAV 官方来源共用 `peach.genre_taxonomy`：同一个日文标签在 FC2 和
-    dmm/mgstage 上必须投影到同一个 Peach 标签，两份表迟早会漂移。
+    dmm/mgstage 上必须投影到同一个 Peach 标签，两份表迟早会漂移。用户在复核页
+    收录下来的那批也共用，不然收录一次只对其中一条抓取链生效。
     """
-    return map_genres(str(raw or "").split())[0]
+    return map_genres(str(raw or "").split(), genre_decisions)[0]
 
 
 def metadata_candidate_rows(rows: list[dict], database: Path, *, raw_snapshot: Path,
@@ -323,6 +325,8 @@ def metadata_candidate_rows(rows: list[dict], database: Path, *, raw_snapshot: P
     connection = open_readonly(database)
     output = []
     try:
+        # 用户在复核页收录过的 genre 这一批就当已知词，不再作为未收录回来问一遍。
+        genre_decisions = load_genre_decisions(connection)
         for row in rows:
             if row.get("result") != "取得":
                 continue
@@ -355,7 +359,7 @@ def metadata_candidate_rows(rows: list[dict], database: Path, *, raw_snapshot: P
                 values.append(("title", "标题", title, title,
                                next((str(item["catalog_title"] or "").strip()
                                      for item in assets if item["catalog_title"]), "")))
-            tags = translated_tags(str(row.get("tags") or ""))
+            tags = translated_tags(str(row.get("tags") or ""), genre_decisions)
             if tags:
                 values.append(("tags", "内容标签", tags, "、".join(tags),
                                "、".join(current_tags)))

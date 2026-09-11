@@ -30,6 +30,7 @@ from peach.catalog_rules import (code_query_variants, is_jav_code, normalise_cod
                                  same_release_code)
 from peach.scripting import open_readonly
 from peach.config import DATABASE_PATH, GENERATED_DIR, LOG_DIR, SOURCES_DIR, STATE_DIR
+from peach.genre_decisions import load_genre_decisions
 from peach.genre_taxonomy import CONTENT_GENRES, map_genres
 from peach.jobs import DiskGuard, JobPolicyError
 from peach.metadata import (
@@ -486,6 +487,8 @@ def main(argv: list[str] | None = None, *, provider: JavinizerGoProvider | None 
         adapter = JavinizerGoProvider.create(args.binary, args.config)
 
     connection = open_readonly(args.db)
+    # 用户在复核页收录过的 genre 这一批就当已知词，不再作为未收录回来问一遍。
+    genre_decisions = load_genre_decisions(connection)
     codes = [
         (str(row[0]).strip(), float(row[1]), int(row[2]))
         for row in connection.execute(
@@ -598,9 +601,9 @@ def main(argv: list[str] | None = None, *, provider: JavinizerGoProvider | None 
                         time.sleep(args.delay + random.uniform(0, min(0.4, args.delay / 3)))
                     continue
                 consecutive_failures[source] = 0
-                extracted_fields = extract_peach_fields(payload)
+                extracted_fields = extract_peach_fields(payload, genre_decisions)
                 catalog_evidence = extract_catalog_evidence(payload)
-                for genre in map_genres(payload.get("genres") or [])[1]:
+                for genre in map_genres(payload.get("genres") or [], genre_decisions)[1]:
                     entry = unmapped_genres.setdefault((source, genre), [0, code])
                     entry[0] += 1
                 source_health["succeeded"] += 1

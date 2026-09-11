@@ -16,6 +16,7 @@ from PIL import Image
 from .catalog_rules import is_korean_mib_code, release_code_from_filename, same_release_code
 from .jav_cover_fetch import DeadlineExceeded
 from .library_nfo import read_nfo, sidecars, local_art
+from .genre_decisions import load_genre_decisions
 from .metadata import extract_catalog_evidence, extract_peach_fields, identifies_code, validate_provider_code
 from .platform import root_online, translate_ledger_path
 from .review_csv import read_rows, write_rows
@@ -175,8 +176,8 @@ def _local_poster(video, code, cover_root, payload=None):
     return True
 
 
-def _fields(payload):
-    fields = extract_peach_fields(payload)
+def _fields(payload, genre_decisions=None):
+    fields = extract_peach_fields(payload, genre_decisions)
     evidence = extract_catalog_evidence(payload)
     for key in ('title', 'original_title'):
         if key in evidence:
@@ -301,6 +302,8 @@ def process_library(config, db_path, candidate_root, cover_root, *, location='co
                 rows = [dict(row) for row in connection.execute(query, parameters)
                         if row['location'] in locations
                         and any(translate_ledger_path(row['path']).resolve().is_relative_to(root) for root in online_roots)]
+                # 用户在复核页收录过的 genre 从这一批起就是已知词，不该再作为未收录回来问一遍。
+                genre_decisions = load_genre_decisions(connection)
             output = candidate_root / 'library-metadata-field-candidates.csv'
             groups = {row['item_key']: row for row in read_rows(output, missing_ok=True)}
             for index, row in enumerate(rows):
@@ -406,7 +409,7 @@ def process_library(config, db_path, candidate_root, cover_root, *, location='co
                 update(stage='保存资料候选', current_action='writing_candidates',
                        current_started_at=time.time(), current_deadline_at=None)
                 for source, document, evidence_path in entries:
-                    for field, value in _fields(document).items():
+                    for field, value in _fields(document, genre_decisions).items():
                         key = f'{target_key}:{field}'
                         identity = hashlib.sha256(json.dumps([source, value['value']], ensure_ascii=False, sort_keys=True).encode()).hexdigest()
                         candidate = dict(candidate_key=identity, source=source, provider='local-nfo' if source == 'local_nfo' else 'r18-json',
@@ -415,6 +418,9 @@ def process_library(config, db_path, candidate_root, cover_root, *, location='co
                                          source_url=document.get('source_url', ''), raw_snapshot=str(evidence_path),
                                          source_kind='local' if source == 'local_nfo' else 'official_mirror', official=False,
                                          catalog_evidence=extract_catalog_evidence(document))
+                        # 只有 tags 字段有未收录原文；别的字段挂一个空列表只是让每条候选都胖一圈。
+                        if value.get('unmapped_genres'):
+                            candidate['unmapped_genres'] = value['unmapped_genres']
                         group = groups.get(key, dict(item_key=key, code=code or '', query=code or row['name'],
                             asset_id=row['id'], asset_path=row['path'], field=field,
                             field_label=LABELS[field], current_value=row.get({'title': 'catalog_title'}.get(field, field)) or '',

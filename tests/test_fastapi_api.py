@@ -83,6 +83,9 @@ CREATE TABLE review_decision(
   category TEXT NOT NULL,item_key TEXT NOT NULL,status TEXT NOT NULL,
   reviewer TEXT NOT NULL DEFAULT 'local-default',note TEXT NOT NULL DEFAULT '',updated_at TEXT NOT NULL,
   PRIMARY KEY(category,item_key));
+CREATE TABLE genre_decision(
+  source_genre TEXT PRIMARY KEY, raw_genre TEXT NOT NULL, peach_tag TEXT, decided_at TEXT NOT NULL,
+  CHECK(peach_tag IS NULL OR length(trim(peach_tag))>0));
 CREATE TABLE profile(
   id TEXT PRIMARY KEY, user_id TEXT NOT NULL, name TEXT NOT NULL, is_default INTEGER NOT NULL DEFAULT 0,
   settings_json TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
@@ -774,6 +777,95 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
             ("颜射", 0.9, "javinizer:r18dev:tag"),
         ])
         connection.close()
+
+    async def _tags_candidate_with_unmapped_genres(self, candidate: dict) -> None:
+        fields = ["item_key", "code", "query", "field", "field_label", "current_value",
+                  "candidates_json", "source_count", "status", "size_gb", "videos", "fetched_at"]
+        path = self.candidate_root / "metadata-field-candidates-20260911.csv"
+        with path.open("w", encoding="utf-8-sig", newline="") as handle:
+            writer = csv.DictWriter(handle, fieldnames=fields)
+            writer.writeheader(); writer.writerow({
+                "item_key": "CARIB-001:tags", "code": "CARIB-001", "query": "CARIB-001",
+                "field": "tags", "field_label": "标签", "current_value": "",
+                "candidates_json": json.dumps([candidate], ensure_ascii=False), "source_count": "1",
+                "status": "candidate", "size_gb": "1", "videos": "1", "fetched_at": "now",
+            })
+
+    async def _review_tags_candidate(self) -> dict:
+        queue = await self.client.get("/api/review?t=secret")
+        self.assertEqual(queue.status_code, 200, queue.text)
+        row = next(row for row in queue.json()["sections"]["metadata_fields"]
+                   if row["item_key"] == "CARIB-001:tags")
+        return row["candidates"][0]
+
+    async def test_a_recorded_genre_joins_the_candidate_and_is_written_on_approval(self):
+        """收录一个 genre 之后，队列里那条候选当场就多出这个标签，批准写下去的也是它。"""
+        with closing(sqlite3.connect(self.db)) as connection:
+            connection.execute("UPDATE asset SET code='CARIB-001' WHERE id=1")
+            connection.commit()
+        await self._tags_candidate_with_unmapped_genres({
+            "candidate_key": "CARIB-001:tags:caribbeancom:abc", "source": "caribbeancom",
+            "source_url": "https://example.invalid/carib", "confidence": 0.9,
+            "provider_id": "CARIB-001", "value": ["中出内射"], "display_value": "中出内射",
+            "unmapped_genres": ["69", "初裏"], "warnings": ["来源还有 2 个未收录 genre：69、初裏"],
+        })
+        before = await self._review_tags_candidate()
+        self.assertEqual(before["unmapped_genres"], ["69", "初裏"])
+        self.assertEqual(before["warnings"], [], "未决的词挪进结构化字段，不再只是一句话")
+
+        recorded = await self.client.post("/api/review/genre?t=secret",
+                                          json={"genre": "初裏", "tag": "初次无码"})
+        self.assertEqual(recorded.status_code, 200, recorded.text)
+        excluded = await self.client.post("/api/review/genre?t=secret", json={"genre": "69", "tag": ""})
+        self.assertEqual(excluded.status_code, 200, excluded.text)
+
+        after = await self._review_tags_candidate()
+        self.assertEqual(after["value"], ["中出内射", "初次无码"])
+        self.assertEqual(after["display_value"], "中出内射、初次无码")
+        self.assertEqual(after["unmapped_genres"], [], "两个都有了结论，不该再回来问")
+
+        approved = await self.client.post("/api/review/decision?t=secret", json={
+            "category": "metadata_fields", "item_key": "CARIB-001:tags",
+            "candidate_key": "CARIB-001:tags:caribbeancom:abc", "status": "approved",
+        })
+        self.assertEqual(approved.status_code, 200, approved.text)
+        with closing(sqlite3.connect(self.db)) as connection:
+            self.assertEqual([row[0] for row in connection.execute(
+                "SELECT tag FROM asset_tag WHERE asset_id=1 AND tag IN ('中出内射','初次无码') "
+                "ORDER BY tag")],
+                ["中出内射", "初次无码"], "页面上多出来的那个标签必须真的落库")
+
+    async def test_an_old_candidate_carries_its_unmapped_genres_in_the_warning_only(self):
+        """2026-09-11 之前写下的候选文件没有结构化那一份，收录按钮同样要能出现。"""
+        with closing(sqlite3.connect(self.db)) as connection:
+            connection.execute("UPDATE asset SET code='CARIB-001' WHERE id=1")
+            connection.commit()
+        await self._tags_candidate_with_unmapped_genres({
+            "candidate_key": "CARIB-001:tags:caribbeancom:old", "source": "caribbeancom",
+            "source_url": "https://example.invalid/carib", "confidence": 0.9,
+            "provider_id": "CARIB-001", "value": ["中出内射"], "display_value": "中出内射",
+            "warnings": ["来源还有 1 个未收录 genre：初裏"],
+        })
+        self.assertEqual((await self._review_tags_candidate())["unmapped_genres"], ["初裏"])
+
+    async def test_the_genre_tag_answers_to_the_same_rules_as_any_other_tag(self):
+        """这里收录的名字和作品页加的标签进同一套词表，判据不能各写一套。"""
+        performer = await self.client.post("/api/review/genre?t=secret",
+                                           json={"genre": "初裏", "tag": "演员:桃子"})
+        self.assertEqual(performer.status_code, 400, performer.text)
+        long_name = await self.client.post("/api/review/genre?t=secret",
+                                           json={"genre": "初裏", "tag": "初" * 81})
+        self.assertEqual(long_name.status_code, 400, long_name.text)
+        blank = await self.client.post("/api/review/genre?t=secret", json={"genre": "  ", "tag": "x"})
+        self.assertEqual(blank.status_code, 400, blank.text)
+        # 两头的空格是笔误，不是另一个标签：收下来并按去掉空格的写法存。
+        trimmed = await self.client.post("/api/review/genre?t=secret",
+                                         json={"genre": "初裏", "tag": " 初次无码 "})
+        self.assertEqual(trimmed.status_code, 200, trimmed.text)
+        with closing(sqlite3.connect(self.db)) as connection:
+            self.assertEqual(connection.execute(
+                "SELECT peach_tag FROM genre_decision WHERE source_genre='初裏'").fetchone(),
+                ("初次无码",))
 
     async def test_catalog_keeps_missing_performers_separate_from_release_code(self):
         with closing(sqlite3.connect(self.db)) as con:

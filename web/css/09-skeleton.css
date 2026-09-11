@@ -64,14 +64,16 @@
 .cleanup-skeleton .skeletoncard b{width:26%;height:16px;margin:12px 20px 20px}
 .cleanup-skeleton .skeletoncard em{width:100%;height:var(--fieldset-bar-h);margin:0;
   border-radius:0;border-top:1px solid var(--border-10);background:var(--overlay-5)}
-/* 人工复核是一排分类 tab 加一格一格等高的 Fieldset：列宽取 .reviewlist 的
-   minmax(360px,1fr)，卡高取 .reviewitem 的 --review-fieldset-height，底部那条是
-   判定操作条的位置。tab 那一条画在网格前面，宽度按七枚分类估。
-   框体（操作条）不参与微光，它不是待填的内容。 */
-.review-skeleton>div{grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:14px;align-items:start}
-.review-skeleton>div::before{content:'';grid-column:1/-1;width:min(100%,760px);height:32px;
-  border-radius:var(--control-radius);background:var(--hover)}
-.review-skeleton .skeletoncard{gap:0;box-sizing:border-box;height:var(--review-fieldset-height);
+/* 人工复核是左边一列分类、右边工具条加一格一格等高的 Fieldset。骨架直接用最终容器
+   那几个类名（`.review-workspace`、`.reviewcontrols`、`.reviewbulktoolbar`、`.reviewlist`），
+   分栏、列宽和间距就都由页面自己那套规则给，这里只补占位件的尺寸——版面从占位到到货
+   一格不挪，靠的是两边根本是同一套规则，不是两处抄同样的数字。
+   分类名是静态文案，直接显示；等的是每类多少条，所以只有计数是占位。
+   框体（工具条、操作条）不参与微光，它不是待填的内容。 */
+.reviewcountskeleton{flex:none;width:28px;height:14px}
+.reviewtoolskeleton{width:120px;height:36px}
+.review-skeleton .reviewtabs button{color:var(--muted)}
+.review-skeleton .skeletoncard{display:grid;gap:0;box-sizing:border-box;height:var(--review-fieldset-height);
   grid-template-rows:auto minmax(0,1fr) auto;overflow:hidden;border:1px solid var(--field-ring);
   border-radius:var(--floating-radius);background:var(--ground)}
 .review-skeleton .skeletoncard i{aspect-ratio:auto;width:56%;height:22px;margin:20px 20px 0}

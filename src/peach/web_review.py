@@ -33,6 +33,8 @@ from .entities import (
     upsert_asset_entity,
 )
 from .fsutil import atomic_write_bytes
+from .genre_decisions import load_genre_decisions, record_genre_decision
+from .genre_taxonomy import CONTENT_GENRES, genres_in_warning, normalise_genre
 from .metadata import identifies_code
 from .metadata_policy import FIELD_SOURCE_ORDER, SOURCE_SPECS
 from .previews import entity_image_key, logo_key
@@ -362,6 +364,53 @@ def _metadata_decision_is_stale(decision: dict, row: dict) -> bool:
     return bool(keys) and approved_key not in keys
 
 
+def _unmapped_genres(candidate: dict) -> list[str]:
+    """候选里那批未收录原文。
+
+    `unmapped_genres` 是结构化的那份。2026-09-11 之前写下的候选文件只有 `warnings`
+    里那句中文提示，而复核页要能在它们身上就把 genre 收录进来——让用户先重抓一遍全库
+    才有按钮可点，等于这个功能对现有队列不存在。反解只认 `genre_taxonomy` 自己拼出
+    的那个格式，两边写在同一个文件里。
+    """
+    structured = [str(item).strip() for item in candidate.get("unmapped_genres") or []]
+    if any(structured):
+        return [item for item in structured if item]
+    for warning in candidate.get("warnings") or []:
+        recovered = genres_in_warning(warning)
+        if recovered:
+            return recovered
+    return []
+
+
+def _fold_genre_decisions(field: str, candidate: dict, decided: dict[str, str | None]) -> dict:
+    """把用户已经收录的 genre 折进这条候选，剩下的以结构化形式交给页面。
+
+    候选文件是抓取那一刻的产物，收录一个 genre 不重抓全库；判定要写进账本的也是折过
+    之后的这份值，否则页面上标签已经多出一个、批准写下去的还是旧的那几个。
+    未决的那些从 `warnings` 里那句话挪到 `unmapped_genres`：页面要拿它们做按钮，
+    留一句「来源还有 2 个未收录 genre」只能读，读完还是没有出口。
+    """
+    if field != "tags":
+        return candidate
+    unmapped = _unmapped_genres(candidate)
+    if not unmapped:
+        return candidate
+    values = [str(value) for value in candidate.get("value") or []]
+    remaining: list[str] = []
+    for genre in unmapped:
+        key = normalise_genre(genre)
+        if key not in decided:
+            remaining.append(genre)
+            continue
+        tag = decided[key]
+        if tag and tag not in values:
+            values.append(tag)
+    return {**candidate, "value": values, "display_value": "、".join(values),
+            "unmapped_genres": remaining,
+            "warnings": [warning for warning in candidate.get("warnings") or []
+                         if not genres_in_warning(warning)]}
+
+
 def _review_rows(contract: ReviewContract, category: str) -> tuple[list[dict], str | None, int]:
     rows, source, skipped = read_candidates(category, contract.candidate_root)
     rows = [row for row in rows if _needs_review(category, row)]
@@ -383,12 +432,14 @@ def _review_rows(contract: ReviewContract, category: str) -> tuple[list[dict], s
                 row["preview_assets"] = previews.get(name, [])
                 row["entity_id"] = entities.get(name, row.get("entity_id", ""))
         elif category == "metadata_fields":
+            decided = load_genre_decisions(connection)
             for row in rows:
                 try:
                     candidates = json.loads(str(row.get("candidates_json") or "[]"))
                 except (TypeError, ValueError):
                     candidates = []
-                row["candidates"] = [candidate for candidate in candidates
+                row["candidates"] = [_fold_genre_decisions(str(row.get("field") or ""), candidate, decided)
+                                     for candidate in candidates
                                      if isinstance(candidate, dict)
                                      and str(candidate.get("candidate_key") or "").strip()]
             # 和账本已有的值比一遍，只把真差异留在队列里。实测 43 条候选里 24 条
@@ -850,7 +901,10 @@ def q_review(contract: ReviewContract):
     sections["media_failure"] = failures
     sources["media_failure"] = "ledger"
     # 候选文件缺失和主键缺失都要说出来。静默的空列表会被读成「没有待复核项」。
+    # `genre_tags` 是收录 genre 时的候选词表。给的是静态表已经投影到的那百来个内容标签，
+    # 不是账本里全部 5508 个标签实体：后者大半来自文件名，拿它当建议只会把噪声接着抄下去。
     return {"sections": sections, "sources": sources, "skipped_rows": skipped,
+            "genre_tags": sorted(set(CONTENT_GENRES.values())),
             "counts": {key: len(value) for key, value in sections.items()}}
 
 
@@ -1236,6 +1290,7 @@ def w_review_auto_apply(contract: ReviewContract, _body=None):
     with contract.write_transaction() as connection:
         decided = {row["item_key"] for row in connection.execute(
             "SELECT item_key FROM review_decision WHERE category='metadata_fields'")}
+        genres = load_genre_decisions(connection)
         now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         for row in rows:
             item_key = str(row.get("item_key") or "").strip()
@@ -1248,7 +1303,8 @@ def w_review_auto_apply(contract: ReviewContract, _body=None):
             except (TypeError, ValueError):
                 continue
             row = dict(row)
-            row["candidates"] = [c for c in parsed if isinstance(c, dict)
+            row["candidates"] = [_fold_genre_decisions(str(row.get("field") or ""), c, genres)
+                                 for c in parsed if isinstance(c, dict)
                                  and str(c.get("candidate_key") or "").strip()]
             candidate = metadata_auto_apply_candidate(connection, row)
             if candidate is None:
@@ -1317,6 +1373,9 @@ def w_review_decision(contract: ReviewContract, body):
             if not candidate_key:
                 raise ValueError("批准字段候选时必须选择一个来源值")
             group, candidate = _selected_metadata_candidate(contract, item_key, candidate_key)
+            # 页面上显示的是折过收录决定的那份值，写下去的也必须是它。
+            candidate = _fold_genre_decisions(str(group.get("field") or ""), candidate,
+                                              load_genre_decisions(connection))
             applied = _apply_metadata_candidate(connection, group, candidate, now)
             provenance_note = json.dumps({
                 "candidate_key": candidate_key, "source": candidate.get("source"),
@@ -1403,3 +1462,24 @@ def w_review_decision(contract: ReviewContract, body):
             applied = _install_performer_avatar(contract, item_key)
     contract.cache_bust()   # 标签写完，聚合缓存必须失效，否则 facets 最多 90 秒还是旧数
     return {"ok": True, "category": category, "item_key": item_key, "status": status, "applied_assets": applied}
+
+
+def w_review_genre(contract: ReviewContract, body):
+    """收录一个来源 genre：给它一个中文标签，或者判它不是内容标签。
+
+    `tag` 留空就是后者。这里只写映射规则，不碰任何作品的标签——已经在队列里的候选
+    由 `_fold_genre_decisions` 当场折进去，落库仍然要用户按那张卡上的「通过」。
+    """
+    genre = str(body.get("genre", "")).strip()
+    tag = str(body.get("tag", "")).strip()
+    if not genre:
+        raise ValueError("要收录的 genre 是空的")
+    # 标签名进的是和账本同一套词表，判据照 `w_item_tag` 那条：长度上限一致，
+    # `演员:` 是出演者标记不是标签。两处各写一套的话，同一个名字这边收得进、那边加不上。
+    if tag and (len(tag) > 80 or tag.startswith("演员:")):
+        raise ValueError("标签名须为 1 到 80 个字符，且不能是出演者标记")
+    now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    with contract.write_transaction() as connection:
+        key = record_genre_decision(connection, genre, tag or None, now)
+    contract.cache_bust()
+    return {"ok": True, "genre": genre, "source_genre": key, "tag": tag}
