@@ -1721,12 +1721,17 @@ async function On(e, t) {
 	}
 	let n = e.getBoundingClientRect(), r = n.left + n.width / 2, i = n.top + n.height / 2, a = Math.hypot(Math.max(r, innerWidth - r), Math.max(i, innerHeight - i)) * 2.5, o = document.createElement("style");
 	o.textContent = `::view-transition-old(root){animation:none}::view-transition-new(root){mix-blend-mode:normal;mask-image:radial-gradient(circle closest-side,#000 78%,#0006 88%,transparent);mask-repeat:no-repeat;will-change:mask-position,mask-size;animation:peach-theme-reveal 560ms cubic-bezier(.16,1,.3,1) both}@keyframes peach-theme-reveal{from{mask-position:${r}px ${i}px;mask-size:0px 0px}to{mask-position:${r - a / 2}px ${i - a / 2}px;mask-size:${a}px ${a}px}}`, Dn = !0, document.head.append(o);
+	let s = document.documentElement;
+	s.dataset.themeSnapshot = "true";
+	let c = !1, l = () => {
+		c || (c = !0, t());
+	};
 	try {
-		await document.startViewTransition(t).finished;
+		await document.startViewTransition(l).finished;
 	} catch {
-		t();
+		l();
 	} finally {
-		o.remove(), Dn = !1;
+		delete s.dataset.themeSnapshot, o.remove(), Dn = !1;
 	}
 }
 //#endregion
@@ -4584,15 +4589,17 @@ function Ri(e, t, n, r, i = 1) {
 }
 //#endregion
 //#region src/entity-skeleton.ts
-function zi(e, t) {
+function zi(e, t, n) {
 	return `<section data-skeleton="entity/${e}" role="status" aria-label="正在读取资料">
     <span class="sr-only">正在读取资料</span><div aria-hidden="true">
     <div class="entityhero"><div class="entityportrait ${e === "studio" || e === "agency" ? "square " : ""}skeleton"></div>
       <div class="entityskeletontext"><div class="entitytitle"><h2 class="skeleton">&nbsp;</h2></div>
       <div class="alias"><span class="skeleton"></span></div>
       <div class="entitylinks"><span class="skeleton"></span></div></div></div>
-    <section class="entitytagbar"><div class="entitytags"><span class="skeleton entitymediaskeleton"></span><span class="skeleton entitymediaskeleton"></span></div></section>
-    <div class="entitysection">${t}</div></div></section>`;
+    <div class="board-filter-frame" data-filter-frame>
+      <section class="entitytagbar" data-filter-row="top"><div class="entitytags"><span class="skeleton entitymediaskeleton"></span><span class="skeleton entitymediaskeleton"></span></div></section>
+      ${t}</div>
+    <div class="entitysection">${n}</div></div></section>`;
 }
 //#endregion
 //#region src/board-skeleton.ts
