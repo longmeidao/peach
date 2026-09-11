@@ -17,7 +17,7 @@
 - Windows 是 ledger writer，入口 `dist\Peach\Peach.exe`；代码与数据在内置盘，外置盘只提供 `R:\media`。
 - 托盘必须以普通权限启动：提升权限后的令牌看不到 CloudDrive 的 `A:` / `B:`，会把 PikPak 和 115 误报为脱盘。
 - Windows HTTP 为 `0.0.0.0:80`，HTTPS 为当前 LAN IPv4 的 443，mDNS 名见 `[server].mdns_name`；线上版本 `0.27.1`、`ledger_sync=writer`，项目 CA 严格校验的 `/healthz` 通过。
-- Web `d9c1cafb` 已重启；HTTPS 通过，视觉未验收。
+- CSS `5513dbf3` 刷新加载；HTTPS 通过，视觉未验收。
 - 本机经正式域名访问时 `/healthz` 返回 `configurable=true`；配置读取、保存与选文件夹共用本机连接判据。托盘负责配置重载，正式 HTTPS 地址与端口保持托盘管理。
 - 首启和配置页按系统显示缺失依赖下载：CloudDrive、挂载驱动、FFmpeg/ffprobe、OpenSSL；Windows 已识别 CloudDrive 与 WinFsp。
 - 文件检查覆盖本地与网盘，来源等分；确认使用共享弹层。CloudDrive 分档建议共用首启与配置入口；来源接口需登录（401）。
