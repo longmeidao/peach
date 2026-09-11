@@ -6304,19 +6304,22 @@ function renderFollowManage(credentials){
         ${followAliasManager(followData.author_aliases,followData.alias_suggestions)}
       </section>
       <section class="fsec" data-follow-workspace-panel="list">
-        <div class="fsechead"><h3>关注列表</h3>
-          <span class="funreadrange">${icon('clock')}${selectFieldHtml(FOLLOW_UNREAD_RANGE_OPTIONS,
+        <!-- 这一行放得下七件控件，放不下时按 data-collapse-* 收成图标（见 01-base.css）。
+             收起后名字由每件控件自己的 title 与 aria-label 承担。 -->
+        <div class="fsechead" data-collapse-toolbar><h3>关注列表</h3>
+          <span class="funreadrange" data-collapse-field title="未看范围">${icon('clock')}${selectFieldHtml(FOLLOW_UNREAD_RANGE_OPTIONS,
             String(appSettings.unreadDays),{label:'未看范围',attr:'data-follow-unread-days'})}</span>
           <span class="fmeta">${sources.length} 个来源${
             counts.new?` · <b>${counts.new}</b> 条未看`:''}</span>
-          <span class="fmanagesort">${icon('sort')}${selectFieldHtml(FOLLOW_SORT_OPTIONS,followManageSort,
+          <span class="fmanagesort" data-collapse-field title="关注列表排序">${icon('sort')}${selectFieldHtml(FOLLOW_SORT_OPTIONS,followManageSort,
             {label:'关注列表排序',attr:'data-follow-sort'})}</span>
           <button class="fbtn fmanagedir" type="button" data-follow-dir aria-label="${
             followSortLabel()}">${icon(followManageDir==='asc'?'arrow-up':'arrow-down')}</button>
           ${followLayoutButtons()}
-          <button class="fbtn" data-follow-check=""${sources.length?'':' disabled'}>${
-            icon('refresh-cw')}检查全部</button>
-          <button class="fbtn" data-follow-view>${icon('rss')}去看更新</button></div>
+          <button class="fbtn" data-follow-check="" title="检查全部" aria-label="检查全部"${sources.length?'':' disabled'}>${
+            icon('refresh-cw')}<span data-collapse-label>检查全部</span></button>
+          <button class="fbtn" data-follow-view title="去看更新" aria-label="去看更新">${
+            icon('rss')}<span data-collapse-label>去看更新</span></button></div>
         ${followCheckReport?followCheckFailNote(followCheckReport):''}
         ${sources.length?`<div class="board-follow-selection"><label>${checkboxHtml('data-follow-select-all aria-label="全选来源"')}全选</label><span data-follow-selected-count>已选 0</span><button class="fbtn" data-follow-check="" data-follow-sources="" data-follow-selection-action disabled>检查所选</button><button class="fbtn" data-follow-selection-enabled="true" data-follow-selection-action disabled>启用</button><button class="fbtn" data-follow-selection-enabled="false" data-follow-selection-action disabled>暂停</button><button class="fbtn danger" data-follow-selection-remove data-follow-selection-action disabled>删除</button></div>`:''}
         ${sources.length?`<div class="frows fsources" data-layout="${followListLayout()}">${sourceList}</div>
@@ -6571,7 +6574,7 @@ function wireFollowManage(creds=[]){
     const oldButton=button.innerHTML;
     setActionBusy(button);button.title='检查中…';
     button.setAttribute('aria-label','检查中…');
-    button.innerHTML=`${spinnerHtml('检查中')}${button.matches('.frowicon')?'':'<span>检查中…</span>'}`;
+    button.innerHTML=`${spinnerHtml('检查中')}${button.matches('.frowicon')?'':'<span data-collapse-label>检查中…</span>'}`;
     try{
       const id=button.dataset.followCheck;
       const sources=button.dataset.followSources?.split(',').filter(Boolean).map(Number);

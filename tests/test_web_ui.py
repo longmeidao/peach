@@ -9706,7 +9706,8 @@ class WebUiSourceTests(unittest.TestCase):
         那种写法 Geist 没有。工具行没有上方空间，图标又足够把下拉框和普通按钮区分开。
         """
         self.assertPageContains(
-            """<span class="fmanagesort">${icon('sort')}${selectFieldHtml(FOLLOW_SORT_OPTIONS,followManageSort,""")
+            """<span class="fmanagesort" data-collapse-field title="关注列表排序">"""
+            """${icon('sort')}${selectFieldHtml(FOLLOW_SORT_OPTIONS,followManageSort,""")
         self.assertPageContains('id="i-sort"')
         self.assertPageContains(".fmanagesort{position:relative;display:inline-flex;align-items:center")
         self.assertPageContains(".fmanagesort>svg{position:absolute;z-index:1;left:9px;width:16px;height:16px")
