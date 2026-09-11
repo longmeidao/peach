@@ -25,6 +25,13 @@ export declare function selectFieldHtml(items: string[][], current: string,
   options?: { label?: string; attr?: string; className?: string }): string;
 export declare function wireSelectField(root: Element): HTMLElement & { value: string; disabled: boolean };
 export declare function wireCollapse(root: ParentNode, selector: string, idPrefix: string, triggerSelector?: string): void;
+/** 一排里标出「当前是哪一个」的那块底板换位；`from` 给 null 只落位不动画。 */
+export declare function moveGlidePane(
+  pane: HTMLElement,
+  from: { x: number; y: number; w: number; h: number } | null,
+  box: { x: number; y: number; w: number; h: number },
+  axis?: 'x' | 'y',
+): void;
 export declare const MEDIA_SOURCE_ICONS: Record<string, string>;
 export declare function selectOptionIconHtml(mark?: string): string;
 

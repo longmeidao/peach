@@ -4746,23 +4746,40 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("flex:1 0 240px;min-width:240px;overflow:hidden")
 
     def test_the_view_pills_hold_still_while_only_the_tags_scroll(self):
-        """筛选条左边那四枚视图钉住不动，横滚只发生在右半截的标签上。
+        """筛选条左边钉住不动，横滚只发生在右半截；窄到手机宽度钉住的只剩最左那一档。
 
         四枚视图是四选一、恒有一枚生效，读的是「这一屏现在在看什么」；右边的标签才是
         可加可不加的筛选。两者装进同一个滚动容器时，往右翻几个标签就把读数推出视野，
         这条上再没有任何东西说明当前在哪一档。
-        关注那一条整条照旧横滚：它没有这种分工，一整排都是可加可不加的筛选，钉住开头
-        几枚只会占掉本来就不宽的一行。
+        窄屏另算：四枚视图在 375 上要占掉两百多像素，钉住它们就没有一枚标签露得出来，
+        那条看着满满一行，其实一枚可点的筛选都够不着。所以滚动整段上提到 `.filterscroll`，
+        视图跟着标签一起走，只留最左那一档还钉着——资料页的媒体类型定的是这一页现在摆
+        的是视频还是照片，滑走了余下的筛选就没有上下文，而它一共才六十来像素。
+        关注那一条不在其列：它一整排都是可加可不加的筛选，没有这种分工，钉住开头几枚
+        只会占掉本来就不宽的一行。
         """
-        self.assertPageContains('<div class="tagbar" id="tagbar">'
+        self.assertPageContains('<div class="tagbar" id="tagbar"><div class="filterscroll">'
                                 '<div class="viewpills" id="viewPills"></div>'
-                                '<div class="tagscroll" id="tagScroll"></div></div>')
+                                '<div class="tagscroll" id="tagScroll"></div></div></div>')
         self.assertPageContains("  display:flex;gap:7px;overflow:hidden;align-items:center}")
+        # 这一层定位不为自己，是给那块滑动玻璃当落脚点：窄屏时它就是横滚的那一层。
+        self.assertPageContains(".filterscroll{display:flex;gap:7px;flex:1;min-width:0;"
+                                "align-items:center;position:relative}")
         self.assertPageContains(".viewpills{display:flex;gap:7px;flex:none;align-items:center}")
         self.assertPageContains(".tagscroll{display:flex;gap:7px;flex:1;min-width:0;align-items:center;\n"
-                                "  overflow-x:auto;overflow-y:hidden;scrollbar-width:none}")
+                                "  overflow-x:auto;overflow-y:hidden;scrollbar-width:none;"
+                                "overscroll-behavior-inline:contain}")
+        self.assertPageContains("@media(max-width:760px){\n"
+                                "  .filterscroll{overflow-x:auto;overflow-y:hidden;scrollbar-width:none;"
+                                "overscroll-behavior-inline:contain}")
+        self.assertPageContains("  .filterscroll>.tagscroll{flex:0 0 auto;min-width:auto;overflow:visible}")
         self.assertPageContains("  padding:9px 0 8px;border-bottom-color:transparent;"
                                 "overflow-x:auto;overflow-y:hidden;")
+        # 玻璃层只收间距，不改谁滚谁不滚：整条一起滚的话左端那一档也跟着走，而它正是
+        # 这条上唯一离开就读不懂的东西。
+        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
+        self.assertIn(".board-filter-frame .entitytagbar .filterscroll{gap:6px}", board)
+        self.assertNotIn(".board-filter-frame .entitytagbar{overflow-x:auto", board)
 
     def test_review_selection_uses_default_checkboxes_and_a_separate_toolbar(self):
         self.assertPageContains('class="batchbar selectiondock"')
@@ -5247,7 +5264,7 @@ class WebUiSourceTests(unittest.TestCase):
     def test_entity_profile_hides_home_facets_and_renders_context(self):
         self.assertPageContains("body.entity-open #tiers,body.entity-open #tagbar,")
         self.assertPageContains("logo:company&&d.has_logo?d.canonical_name:'',")
-        self.assertPageContains('class="entitytags"')
+        self.assertPageContains('class="tagscroll entitytags"')
         self.assertPageContains("filterChipHtml(tagLabel(x.k),{attr:'data-entity-tag'")
         self.assertPageContains('class="relatedpeople"')
         self.assertPageContains("data-related-performer")
@@ -5255,7 +5272,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertLess(profile.index("<div class=\"entityhero\">"),
                         profile.index('class="relatedpeople"'))
         self.assertLess(profile.index('class="relatedpeople"'),
-                        profile.index('class="entitytags"'))
+                        profile.index('class="tagscroll entitytags"'))
         self.assertPageContains('class="entitytagbar" aria-label="媒体与标签"')
         self.assertPageContains("body.entity-open .index{overflow-x:visible}")
         self.assertNotIn("关联艺人", profile)
@@ -6115,6 +6132,44 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("const tagPool=topTags.filter(row=>!appliedKeys.includes(row.k));")
         self.assertPageContains("+appliedTags.concat(pickedTags).map(tagPillHtml).join('');")
 
+    def test_every_filter_row_tells_how_much_is_behind_each_tag(self):
+        """标签后面带上这个标签下有多少，首页和资料页同一个口径。
+
+        这一排每一枚都是可加可不加的筛选。加上去还剩几屏，是点之前就该看得到的——
+        没有这个数，一排词读起来全都一样重，点进去才知道其中一半只剩三五条。
+
+        生效的标签不一定在这一批抽样里，那时只有键、没有行，不印数字：印 0 会说成
+        「这个标签下什么都没有」，而它此刻正筛着一屏内容。
+        """
+        self.assertPageContains("const tagPillHtml=t=>filterChipHtml(tagLabel(t.k),{attr:'data-tag',value:t.k,\n"
+                                "    selected:tagPressed(filterState.tag,t.k),"
+                                "count:t.n==null?undefined:t.n.toLocaleString()});")
+        self.assertPageContains("filterChipHtml(tagLabel(x.k),{attr:'data-entity-tag',value:x.k,"
+                                "selected:tagPressed(filters.tag,x.k),count:x.n.toLocaleString()})")
+
+    def test_the_count_behind_a_tag_reads_as_a_footnote_not_part_of_the_name(self):
+        """计数与标签之间要有间隔，字号和颜色也各降一档。
+
+        同字号同色贴在一起时「巨乳63」读成一个词，那个数看着像这条标签自己就叫这个
+        名字。间隔只能由 CSS 给：`.pill` 是 flex 容器，标签与计数之间写一个空格文本
+        节点不参与布局，量出来仍然是零——所以模板里也不留那个空格，免得两处各存一份
+        真相而其中一份从来没生效过。
+
+        玻璃那一层要自己降档。flat 层降的是 `--muted`，而在 Board 里 `--muted` 和
+        `--ink-2` 都映射到 `--color-text-secondary`，是同一个值；照搬过去，计数和标签
+        仍然一样亮。
+        """
+        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
+        self.assertPageContains('aria-pressed="${selected}">${esc(label)}${count==null?\'\':'
+                                '`<span class="${esc(countClass)}">${esc(count)}</span>`}')
+        self.assertPageContains(".pill .n{margin-left:7px;color:var(--muted);font-size:var(--fs-xs);"
+                                "font-variant-numeric:tabular-nums}")
+        self.assertPageContains('.pill[aria-pressed="true"] .n,.pill:hover .n{color:var(--ink-2)}')
+        self.assertIn(".board-filter-frame.board-filter-frame .pill .n{margin-left:6px;font-size:11px;\n"
+                      "  color:color-mix(in srgb,var(--glass-text) 55%,transparent)}", board)
+        self.assertPageLacks(".followfilters .pill .n{margin-left:5px;color:inherit}",
+                             "跟着标签同色同字号就是没有区分，而且只管关注页一处")
+
     def test_the_refresh_key_keeps_redrawing_until_the_bars_land_too(self):
         """忙态动效归「换一批」这一层，不挂在计数行上。
 
@@ -6353,8 +6408,10 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("flex:0 0 auto;white-space:nowrap")
         self.assertPageContains(".count .sorts button{min-height:36px}")
         # 这些行都没有滚动条（scrollbar-width:none），不登记拖动就只剩看得见够不着的半个按钮。
-        # 登记的必须是真正在滚的那一层：筛选条里横滚的是右半截的标签，`#tagbar` 自己不滚。
-        self.assertPageContains("['#tagScroll','#nrow','#count'].forEach(s=>wireDrag($(s)))")
+        # 筛选条里滚的那一层随宽度换：宽屏是右半截的标签，窄屏是连视图一起的 `.filterscroll`。
+        # 两层都登记，少一层就会在某一个宽度上滚不动；登记在不滚的那层上是空转。
+        self.assertPageContains("['#tagScroll','#tagbar .filterscroll','#nrow','#count']"
+                                ".forEach(s=>wireDrag($(s)))")
         self.assertPageContains("document.querySelectorAll('.tier,.srow').forEach(wireDrag)")
         # 同一个元素宽屏不溢出、窄屏才溢出，不判溢出就会在宽屏抢走滚轮和拖动。
         self.assertPageContains("event.button!==0||el.scrollWidth-el.clientWidth<=1")
@@ -7520,8 +7577,13 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertCode("const mediaToggle=(photoCount||roster.length)?mediaViewButtonsHtml({\n"
                         "    active:entityViewNow(kind),")
         self.assertPageContains("videoCount:d.asset_count,imageCount:photoCount,")
-        self.assertPageContains('<section class="entitytagbar" aria-label="媒体与标签">')
-        self.assertPageContains('<div class="entitytags">${mediaToggle}${tags}</div></section>')
+        # 这一组排在整条最左，隔一道竖杠再是四枚观看状态：它换掉的是整页内容，
+        # 夹在视图和标签中间会被读成标签那排的第一枚。它也是整条上唯一住在滚动层外面
+        # 的东西——余下两格用的就是首页那两个类名，同一份摆法两页共一处。
+        self.assertPageContains('<section class="entitytagbar" aria-label="媒体与标签">${mediaToggle}'
+                                """${mediaToggle?'<span class="sep" aria-hidden="true"></span>':''}"""
+                                '<div class="filterscroll"><div class="viewpills entityviews"')
+        self.assertPageContains('<div class="tagscroll entitytags">${tags}</div></div></section>')
         self.assertPageContains("button.dataset.mediaView")
         self.assertPageContains(".mediaviewbuttons .mediaviewbutton{display:grid;place-items:center;flex:0 0 var(--filterItemH);width:var(--filterItemH);height:var(--filterItemH);padding:0;")
         self.assertPageContains(".mediaviewbuttons .mediaviewbutton svg{width:20px;height:20px")
@@ -7814,17 +7876,19 @@ class WebUiSourceTests(unittest.TestCase):
         # 选中那枚的填充只有一处，就是那块玻璃自己。
         self.assertNotIn('.board-filter-frame #tagbar .pill[data-state][aria-pressed="true"]{'
                          'background:var(--picked)', board)
-        self.assertIn(".board-filter-frame.board-filter-frame>.viewglide,.drawer.drawer>.navglide{"
+        self.assertIn(".viewglide.viewglide,.drawer.drawer>.navglide{"
                       "position:absolute;left:0;top:0;z-index:0;pointer-events:none;", board)
         self.assertIn("backdrop-filter:var(--glass-pick);", board)
         self.assertIn("pills.forEach(b=>b.onpointerenter=e=>"
-                      "{if(e.pointerType!=='touch')syncViewGlide(true,b)});", app)
-        self.assertIn("tagbar.onpointerleave=e=>{if(e.pointerType!=='touch')syncViewGlide(true)};", app)
+                      "{if(e.pointerType!=='touch')syncViewGlide(true,b,kind)});", app)
+        # 归位挂在那一排自己身上，不挂整条筛选条：两排共用一条 `pointerleave` 的话，
+        # 指针从媒体那组挪到视图那组就算离开，媒体那块会先弹回去再被下一个悬停接住。
+        self.assertIn("row.onpointerleave=e=>{if(e.pointerType!=='touch')syncViewGlide(true,null,kind)};", app)
         # 位移和形变各占一个独立属性：一条属性上只放得下一段动画，而这两下的时间
         # 形状不是同一条曲线。
-        self.assertIn("pane.animate([{translate:axis==='y'?`${box.x}px ${from.y}px`"
-                      ":`${from.x}px ${box.y}px`},", app)
-        self.assertIn("{translate:settled}],{duration:ease.duration,easing:ease.easing,fill:'none'});", app)
+        self.assertPageContains("pane.animate([{translate:axis==='y'?`${box.x}px ${from.y}px`"
+                                ":`${from.x}px ${box.y}px`},")
+        self.assertPageContains("{translate:settled}],{duration:ease.duration,easing:ease.easing,fill:'none'});")
         # 顶栏这一条本身不铺任何底，中间那片空处直接通到内容。
         self.assertIn(".top.top,body.board-scrolled .top.top{background:transparent;box-shadow:none;"
                       "backdrop-filter:none;border:0}", board)
@@ -7848,23 +7912,80 @@ class WebUiSourceTests(unittest.TestCase):
         尾被盖在下面。首页那四枚是同一个写法。
         """
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
-        self.assertPageContains("for(const row of document.querySelectorAll('#viewPills,.entityviews')){")
-        self.assertPageContains("if(!row.offsetWidth)continue;")
-        self.assertPageContains("const tagbar=row.closest('#tagbar,.entitytagbar');")
+        self.assertPageContains("views:{selector:'#viewPills,.entityviews',")
+        self.assertPageContains("if(row.offsetWidth&&row.closest('.board-filter-frame'))return row;")
         self.assertPageContains(
             "'[data-state][aria-pressed=\"true\"],[data-entity-state][aria-pressed=\"true\"]'")
         # 两页共用同一段接线；玻璃要等外框搭好才量得到位置。
-        self.assertPageContains("function wireViewGlideRow(tagbar,pills){")
-        self.assertPageContains("wireViewGlideRow(controls.closest('.entitytagbar')||controls,buttons);")
-        self.assertPageContains("  syncViewGlide(false);\n  scheduleStickySurfaces();")
+        self.assertPageContains("function wireViewGlideRow(row,pills,kind='views'){")
+        self.assertPageContains("wireViewGlideRow(controls,buttons);")
+        self.assertPageContains("  syncViewGlide(false);\n  syncViewGlide(false,null,'media');")
         self.assertPageLacks("const tagbar=$('#tagbar'),views=$('#viewPills');if(!tagbar||!views)return;",
                              "写死首页那两个 id 就是资料页没有玻璃的原因")
-        # 资料页那四枚不再自己铺底，选中和悬停都只提字色。
+        # 资料页那四枚和左端那一档媒体都不自己铺底，选中和悬停都只提字色。
         self.assertIn('.entitytagbar.entitytagbar .pill[data-entity-state],\n'
                       '.entitytagbar.entitytagbar .pill[data-entity-state]:hover,\n'
-                      '.entitytagbar.entitytagbar .pill[data-entity-state][aria-pressed="true"]{\n'
+                      '.entitytagbar.entitytagbar .pill[data-entity-state][aria-pressed="true"],\n'
+                      '.entitytagbar.entitytagbar .mediaviewbutton,\n'
+                      '.entitytagbar.entitytagbar .mediaviewbutton:hover,\n'
+                      '.entitytagbar.entitytagbar .mediaviewbutton[aria-pressed="true"]{\n'
                       '  border:0;background:none;backdrop-filter:none;'
                       '-webkit-backdrop-filter:none;box-shadow:none}', board)
+
+    def test_the_media_row_gets_its_own_pane_instead_of_sharing_the_view_one(self):
+        """左端那一档媒体类型自己一块玻璃，不跟四枚观看状态共用。
+
+        两排问的不是同一件事：一排定这一页摆的是哪一类东西，一排定这一类里看哪一档。
+        共用一块的话，点一下照片，玻璃从「没看过」那儿飞过来，读出来是这两排在抢同一个
+        当前项——而那一刻两排都各自有一个生效值。
+
+        玻璃按用途存，不按元素存：资料页每换一次筛选就把整条重画一遍，拿节点当键等于
+        每重画一次就新建一块，动画从头起跑，看到的只是瞬移。
+
+        圆角跟着按钮走。那两枚是正圆，一块 8px 圆角的方玻璃扣上去，四个角先露出来。
+        """
+        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
+        self.assertPageContains("media:{selector:'.entitymediaview',"
+                                "pressed:'[data-media-view][aria-pressed=\"true\"]',")
+        self.assertPageContains("className:'viewglide-round'")
+        self.assertPageContains("const viewGlides=new Map();")
+        self.assertPageContains("function syncViewGlide(animate,target,kind='views'){")
+        self.assertPageContains("let glide=viewGlides.get(kind);")
+        # 按下去那一下玻璃就滑过去，不等换视图的活干完。
+        self.assertPageContains("syncViewGlide(true,button,'media');\n"
+                                "      switchEntityMedia(kind,name,filters,media);")
+        self.assertPageContains("wireViewGlideRow(controls,buttons,'media');")
+        self.assertIn('.viewglide.viewglide-round{border-radius:50%}', board)
+        # 照片视图下这条只剩左端那一组，分隔线没有东西可隔。
+        self.assertIn('.entitytagbar[data-media-only] .sep{display:none}', board)
+
+    def test_every_current_item_slab_slides_with_the_same_spring(self):
+        """标出「当前是哪一个」的那几块底板，动法只有一份。
+
+        筛选条上那块玻璃、抽屉那一列、分段控件里那块白底，在人眼里是同一件事：一排里
+        说明此刻落在哪一个。各写各的位移就会各自漂移成几种手感——这边冲过头再荡回来，
+        那边两百毫秒匀速滑过去，同一个界面上读出来是两套做工。
+        所以那段动作住在共享层里，谁要用谁取：曲线和时长仍只有 `board.css` 那一份，
+        JS 读它。
+        分段控件那块底板只把位移交出去，尺寸留给过渡：宽高是布局属性，跟着位移一起
+        过冲的话，它会在停下之前先胖出去一圈。
+        """
+        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
+        controls = (Path(__file__).resolve().parents[1]
+                    / "frontend/src/board-controls.ts").read_text(encoding="utf-8")
+        self.assertPageContains("export function moveGlidePane(pane,from,box,axis='x'){")
+        self.assertPageContains("export function glideEase(){")
+        self.assertIn("import { moveGlidePane } from '@peach/legacy/ui';", controls)
+        self.assertIn("moveGlidePane(thumb,from,box,'x');", controls)
+        self.assertNotIn("thumb.style.transform", controls)
+        self.assertIn("will-change:translate,scale;background:var(--color-background-primary-default)", board)
+        self.assertIn(".board-segments-ready>.board-segment-thumb{\n"
+                      "  transition:width calc(var(--spring-pane-ms,200) * 1ms) ease,"
+                      "height calc(var(--spring-pane-ms,200) * 1ms) ease}", board)
+        # 管理导航那条指示条是伪元素，挂不上第二段独立形变；位移那一下仍走同一条弹簧。
+        self.assertIn("  transition:transform calc(var(--spring-pane-ms,200) * 1ms) var(--spring-pane,ease),\n"
+                      "             width calc(var(--spring-pane-ms,200) * 1ms) ease}", board)
+        self.assertNotIn("transition:transform 200ms ease", board)
 
     def test_every_glass_panel_casts_three_layers_and_the_pane_overshoots_by_distance(self):
         """玻璃的落影分三层，选中那块玻璃冲过头的距离跟着这一跳的跨度走。
@@ -7901,20 +8022,27 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertNotIn("transparent 62%),color-mix(in srgb,var(--ink) 12%,transparent);", board)
         # 描边走满一圈，不只压上缘那一道；外影取主题给的那一档。
         self.assertIn("box-shadow:inset 0 0 0 1px var(--glass-rim),var(--glass-pick-shadow)}", board)
-        # 几何相对筛选条算，那一排自己的位置要补回来。四枚视图不横滚，偏移量就是最终
-        # 位置，不必再减一次滚动量，也不会滚出可视范围。
-        self.assertIn("return {frame,x:tagbar.offsetLeft+pill.offsetLeft,w:pill.offsetWidth,", app)
-        self.assertNotIn("tagbar.scrollLeft", app)
+        # 玻璃落在那一排最近的那层会裁内容的祖先里，几何就相对它算：那一层横滚时玻璃
+        # 跟着内容走，越界的部分跟按钮一起被裁，不会在滚动区外面露出半块白。那一层得
+        # 自己是定位元素，否则它不在 `offsetParent` 链上；静态的退回外框。
+        self.assertIn("if(getComputedStyle(n).overflowX!=='visible'){host=n;break}", app)
+        self.assertIn("return getComputedStyle(host).position==='static'?frame:host;", app)
+        self.assertIn("for(let n=pill;n&&n!==host;n=n.offsetParent){x+=n.offsetLeft;y+=n.offsetTop}", app)
+        self.assertIn("if(glide.pane.parentElement!==box.host)box.host.prepend(glide.pane);", app)
+        # 过了断点那一层会换，玻璃得重新落一次位，否则留在旧的那一层上按旧坐标停着。
+        self.assertIn("syncViewGlide(false);syncViewGlide(false,null,'media')},{passive:true});", app)
         # 冲过落点再弹回：那条曲线是一次弹簧模拟的采样，峰值 1.103、313ms 收住。
         self.assertIn("--spring-pane:linear(0,0.1515,", board)
         self.assertIn(",1.0477,1.096,1.1029,1.0901,1.0641,", board)
         self.assertIn("--spring-pane-ms:313}", board)
         # 曲线和它的时长只有 CSS 那一份，JS 读它，不各写各的。
-        self.assertIn("glideSpring={easing:css.getPropertyValue('--spring-pane').trim()||'ease',", app)
-        self.assertIn("duration:parseFloat(css.getPropertyValue('--spring-pane-ms'))||300};", app)
-        self.assertIn("if(from&&from[head]!==box[head]&&!reduceMotion()){", app)
+        self.assertPageContains("paneSpring={easing:css.getPropertyValue('--spring-pane').trim()||'ease',")
+        self.assertPageContains("duration:parseFloat(css.getPropertyValue('--spring-pane-ms'))||300};")
+        self.assertPageContains(
+            "if(from&&from[head]!==box[head]&&!matchMedia('(prefers-reduced-motion:reduce)').matches){")
         # 抻开按这一跳跨了自己几个身位算，封在一个半身位。
-        self.assertIn("const reach=Math.min(Math.abs(box[head]-from[head])/box[span],1.5),grow=1+reach*.12;", app)
+        self.assertPageContains(
+            "const reach=Math.min(Math.abs(box[head]-from[head])/box[span],1.5),grow=1+reach*.12;")
 
     def test_a_pressed_control_snaps_down_at_once_and_springs_back_on_release(self):
         """手指直接拨的控件按下即时缩一档，松手按弹簧弹回去。
@@ -8014,8 +8142,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn("  syncNavGlide(true);\n}", app)
         # 换的是轴，不是另一套动画：竖排缩 Y，走的还是那一块的搬运函数。
         self.assertIn("moveGlidePane(navGlide,animate?from:null,box,'y');", app)
-        self.assertIn("moveGlidePane(viewGlide,animate?from:null,box,'x');", app)
-        self.assertIn("{scale:axis==='y'?`1 ${grow}`:`${grow} 1`,offset:.3},{scale:'1 1',offset:1}],", app)
+        self.assertIn("moveGlidePane(glide.pane,animate?from:null,box,'x');", app)
+        self.assertPageContains("{scale:axis==='y'?`1 ${grow}`:`${grow} 1`,offset:.3},{scale:'1 1',offset:1}],")
         self.assertIn("wireNavigationDrag($('#drawer').querySelector('.dnav'));\n  syncNavGlide(false);", app)
 
     def test_the_sidebar_pane_lands_on_the_layout_that_settles_not_the_one_mid_flight(self):
@@ -8084,10 +8212,12 @@ class WebUiSourceTests(unittest.TestCase):
     def test_the_glass_pane_marks_a_place_and_sort_keys_speak_by_weight(self):
         """那块玻璃标的是位置，排序键靠字自己说当前值。
 
-        资料页的标签、媒体视图那两个图标钮和侧栏、视图那几处一样，回答的都是「你在
-        哪儿」，坐在同一材质的浮层上；选中态只要还是一层墨色 `color-mix`，同一块玻璃
-        上就会同时出现两种「被选中」——一处是提亮的白玻璃，一处是压暗的灰片。墨色那层
-        在亮封面上是块脏斑，浅色主题下又成了整条里唯一发灰的地方。
+        资料页的标签和侧栏、视图那几处一样，回答的都是「你在哪儿」，坐在同一材质的
+        浮层上；选中态只要还是一层墨色 `color-mix`，同一块玻璃上就会同时出现两种
+        「被选中」——一处是提亮的白玻璃，一处是压暗的灰片。墨色那层在亮封面上是块脏斑，
+        浅色主题下又成了整条里唯一发灰的地方。
+        媒体视图那两个图标钮同属这一类，但填充由它们自己那块滑动玻璃给，不在这条规则
+        里铺——两边都铺，静止态就是一块不透明的填充压在玻璃上面。
         白填充不能省：`brightness()` 乘的是零时那块玻璃跟着背景一起黑，得有东西垫着，
         而垫的必须是白——白往上加是加光，跟提亮同向。
 
@@ -8097,8 +8227,7 @@ class WebUiSourceTests(unittest.TestCase):
         一点。
         """
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
-        self.assertIn('.entitytagbar.entitytagbar .pill[aria-pressed="true"],\n'
-                      '.entitytagbar.entitytagbar .mediaviewbutton[aria-pressed="true"]{\n'
+        self.assertIn('.entitytagbar.entitytagbar .pill[aria-pressed="true"]{\n'
                       "  background:linear-gradient(180deg,var(--glass-sheen),transparent 62%),"
                       "var(--glass-pick-fill);\n"
                       "  backdrop-filter:var(--glass-pick);-webkit-backdrop-filter:var(--glass-pick);\n"
@@ -8649,9 +8778,12 @@ class WebUiSourceTests(unittest.TestCase):
         不渐隐的话，浮层圆角那儿最后一个标签被直角硬切掉半个字，也看不出右边还有。
         """
         self.assertPageContains("function wireHorizontalScroller(el,")
+        self.assertPageContains("wireDrag($('#index').querySelector('.entitytags'));")
+        # 窄屏下滚的是外面那层，四枚观看状态跟着标签一起走；两层都登记，登记在不滚的
+        # 那层上是空转，少登记一层就会在某一个宽度上滚不动。
         self.assertPageContains(
-            "wireDrag($('#index').querySelector('.entitytags'));"
-            "\n  wireHorizontalScroller($('#index').querySelector('.entitytags'));")
+            "wireHorizontalScroller($('#index').querySelector('.entitytags'));"
+            "\n  wireHorizontalScroller($('#index').querySelector('.entitytagbar .filterscroll'));")
         self.assertPageContains(
             "if(filterFrame)[boardTagbar,countbar.querySelector('.sorts')].forEach(el=>wireHorizontalScroller(el));")
 
