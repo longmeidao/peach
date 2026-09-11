@@ -1,3 +1,4 @@
+import contextlib
 import csv
 import os
 import importlib.util
@@ -255,8 +256,7 @@ class PerformerPortraitAuditTests(unittest.TestCase):
             "0-Hand-Storage": {"篠田ゆう.jpg": "AI-Fix-篠田ゆう.jpg?t=2"},
             "7-S1": {"篠田ゆう.jpg": "篠田ゆう.jpg?t=3"},
         }}
-        transport = FakeTransport({"Filetree.json": payload(tree)})
-        index = module.load_gfriends(transport)
+        index = module.parse_gfriends(payload(tree).body)
         categories = [entry[0] for entry in index["篠田ゆう"]]
         self.assertEqual(categories, ["0-Hand-Storage", "7-S1", "z-DMM(骑)"])
         # 键是展示名、值才是真实文件名，二者可以不同。
@@ -268,7 +268,7 @@ class PerformerPortraitAuditTests(unittest.TestCase):
             "?Future": {"Remu Suzumori.jpg": "future.jpg?t=1"},
             "7-S1": {"remu suzumori.jpg": "known.jpg?t=2"},
         }}
-        index = module.load_gfriends(FakeTransport({"Filetree.json": payload(tree)}))
+        index = module.parse_gfriends(payload(tree).body)
         self.assertEqual(index["remu suzumori"],
                          [("7-S1", "known.jpg"), ("?Future", "future.jpg")])
 
@@ -393,6 +393,73 @@ class PerformerPortraitAuditTests(unittest.TestCase):
             health = next(csv.DictReader(handle))
         self.assertEqual(health.get("index_cache_stale"), "1",
                          "过期重取要和「本来就没缓存」在健康报告里分得开")
+
+    def _run_on_stale_fallback(self, db: Path) -> str:
+        """先跑一轮建好缓存，再把缓存放旧、让索引取不到，返回第二轮的输出。"""
+        module = self.module
+        first = FakeTransport({
+            "Filetree.json": payload(GFRIENDS_TREE),
+            "AI-Fix": FakeResponse(200, jpeg_bytes(500, 600)),
+        })
+        self.assertEqual(module.run(self.args(db), transport=first), 0)
+        cache = next(self.tmp.rglob("gfriends-filetree.json"))
+        aged = time.time() - module.INDEX_MAX_AGE_SECONDS - 60
+        os.utime(cache, (aged, aged))
+
+        printed = io.StringIO()
+        with contextlib.redirect_stdout(printed):
+            self.assertEqual(module.run(self.args(db), transport=FakeTransport({})), 0)
+        return printed.getvalue()
+
+    def test_falling_back_to_a_stale_index_is_announced_and_counted(self):
+        """取不到新索引而用旧缓存，必须当场说出来，健康报告也要与正常复用分开。
+
+        两种情况产出的 CSV 长得一模一样：同一批人、同一批判定。不声明的话，一次
+        GitHub 抖动就会让「这一轮的结论只代表快照那天」这件事无人知晓。
+        """
+        db = self.tmp / "ledger.db"
+        make_ledger(db, [{"id": 1, "canonical": "立花美涼", "metadata": {}}], aliases=[])
+        output = self._run_on_stale_fallback(db)
+        self.assertIn("告警", output)
+        self.assertIn("本地缓存", output)
+        with self.health.open(encoding="utf-8-sig", newline="") as handle:
+            health = next(csv.DictReader(handle))
+        self.assertEqual(health["index_cache_fallback"], "1")
+        self.assertEqual(health["index_cache_stale"], "1")
+        # 已经缓存过的图不再出网，旧索引照样能把命中那位判成 ok。
+        rows = {row["entity_id"]: row for row in self.rows() if row["section"] == "missing"}
+        self.assertEqual(rows["1"]["verdict"], "ok")
+
+    def test_a_stale_index_fallback_does_not_freeze_no_match(self):
+        """旧索引里没有这个人，只说明快照那天没有，不能当成结论写进 CSV。
+
+        no_match 是终态，`--resume` 见到就永远跳过。索引取不到时照写 no_match，
+        等于把一次网络失败变成一个再也不会被重新审视的答案——釈アリス 那次就是
+        这么固化的，区别只在于上一次的原因是缓存不过期，这一次是兜底缓存。
+        """
+        module = self.module
+        db = self.tmp / "ledger.db"
+        make_ledger(db, [
+            {"id": 1, "canonical": "立花美涼", "metadata": {}},
+            {"id": 2, "canonical": "釈アリス", "metadata": {}},
+        ], aliases=[])
+        self._run_on_stale_fallback(db)
+        rows = {row["entity_id"]: row for row in self.rows() if row["section"] == "missing"}
+        self.assertEqual(rows["2"]["verdict"], "error")
+        self.assertIn("过期缓存", rows["2"]["note"])
+
+        # 索引恢复后续跑：那一行必须被重新问一次，而不是被 --resume 跳过。
+        grown = dict(GFRIENDS_TREE["Content"])
+        grown["0-Hand-Storage"] = dict(grown["0-Hand-Storage"])
+        grown["0-Hand-Storage"]["釈アリス.jpg"] = "AI-Fix-釈アリス.jpg?t=3"
+        healthy = FakeTransport({
+            "Filetree.json": payload({"Content": grown}),
+            # 与 1 号那张不同的字节，否则会被同图去重判成 duplicate 而不是 ok。
+            "AI-Fix": FakeResponse(200, jpeg_bytes(520, 620)),
+        })
+        self.assertEqual(module.run(self.args(db, resume=True), transport=healthy), 0)
+        rows = {row["entity_id"]: row for row in self.rows() if row["section"] == "missing"}
+        self.assertEqual(rows["2"]["verdict"], "ok")
 
     def test_exact_duplicate_image_is_evidence_but_not_a_review_candidate(self):
         module = self.module
