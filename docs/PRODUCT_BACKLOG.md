@@ -73,7 +73,7 @@
 
 合计：**31 项开放需求**，其中 7 项已有骨架，24 项尚未实现。已完成的需求不在这里留痕，去 Git 历史查。
 
-## 待执行的操作（38 项）
+## 待执行的操作（39 项）
 
 需要另行授权、外部条件或人工判断才能做的具体操作与复核批次，比上面的需求细一层；做完就删，不在这里留痕。待办只放这一处：`docs/STATUS.md` 每次会话开头都要读，队列不该常驻在那种入口文件里。
 
@@ -125,3 +125,9 @@
 36. 域映射门槛只覆盖 `web/` 与 `frontend/`。同一个漏洞在别的前缀上照样成立：`tests/test_babepedia_match.py` 读 `scripts/match_babepedia_creators.py` 却只登记在 metadata 域，改那个脚本时 `auto` 选的是 tooling；`tests/test_frontend_build.py` 读 `docs/CLOUDDRIVE.md`，而 `.md` 一律归 checks。按 `test_runner.repository_paths_read_by` 全树扫一遍，`scripts/`、`docs/`、`.github/`、`resources/` 四类共约三十处。要补的是 `AUTO_SCOPE_PREFIXES` 本身——把逐个脚本映射到它真正的域，像 `scripts/localize_performer_names.py` 那两条那样——补完再把 `tests/test_test_planning.py` 那条门槛的前缀白名单去掉。
 37. 归一后要用户判的 10 张厂牌标识：AttractiveLLC ×3、C-more_Entertainment ×3、Bambi_Promotion ×2、Deep_s、Tameike_Goro。补到内容外接圆这条规则在「设计上就出血到边」的标识上会把内容推离边缘，逐张判词在 `peach-data/review/refit-review-20260908.csv`，原图在 `peach-data/archive/logos-pre-refit-20260908/`，对比页 `build/logo_compare.html` 的第一节。占宽和圆外损失都分不开 C-more（0.98／0.97）与 MARRION（0.95／0.94），所以没加窄化条件——先由用户定还原哪几张，再按定下来的形状写判据和测试。
 38. 补底到 64 的 7 张还没落盘：`normalize_studio_logos.py --apply` 要用户自己跑（DorcelClub.img、Flower 三张、LINX.img、HEYZO.icon、Prestige.icon，逐张前后见对比页第三节）。
+39. 头像去水印的人工复核与执行：`scripts/scrub_avatar_watermarks.py` 已跑完 620 张的检出，候选在
+    `peach-data/generated/watermark-candidates.csv`，左右对照的标注图在同目录 `watermark-review/`。
+    23 张待处理（16 张纯裁切、1 张裁切加修补、6 张只能修补），看图确认后带 `--apply` 执行；检出器
+    抓不到半透明水印（`NUBILES.NET`、`MATTIEDOLL.DEVIANTART.COM` 那几张），漏的往 `--marks` 的 CSV
+    里补 `file,x,y,w,h`。另有 14 张检出超过 4 处被判为画面文字放过，它们是第 34 项那批封面误装，
+    去水印不适用，要的是换源。
