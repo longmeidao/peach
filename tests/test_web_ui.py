@@ -3978,6 +3978,21 @@ class WebUiSourceTests(unittest.TestCase):
             rule = self.css[start:self.css.index("}", start)]
             self.assertIn("background:rgba(0,0,0,.6)", rule, f"{selector} 和同屏的悬浮件不是一档黑")
 
+    def test_filter_random_action_and_glass_polish(self):
+        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
+        self.assertPageContains("const ordered=SORTS.filter(([key])=>key!=='seed');")
+        self.assertPageContains("return javActive()?[JAV_RELEASE_SORT,...ordered]:ordered;")
+        self.assertPageContains("state.sort='seed';state.dir='';state.seed=rollSeed();")
+        self.assertPageContains("['defaultSortSetting','默认排序',[['seed','随机']")
+        self.assertIn('@media(max-width:760px){.settingscard.settingscard .settingsscroll{padding-top:16px}}', board)
+        self.assertIn(':root[data-theme="light"]{--glass-drift-a:', board)
+        self.assertIn('#6686b833,#6686b814 42%,transparent 72%', board)
+        self.assertIn('#c69d7329,#c69d7310 44%,transparent 74%', board)
+        menu = board.split('.board-library-menu.board-library-menu{', 1)[1].split('}', 1)[0]
+        self.assertIn('var(--glass-fill)', menu)
+        self.assertIn('backdrop-filter:blur(22px) saturate(160%) var(--glass-lume)', menu)
+        self.assertIn('var(--glass-shadow)', menu)
+
     def test_card_hover_and_view_glide_can_extend_outside_content(self):
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
         self.assertIn(".card{overflow:visible;border-radius:var(--surface-radius)}", board)
@@ -5386,7 +5401,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("p.set('sort',filters.sort||'new')")
         self.assertPageContains("if(filters.sort==='seed')p.set('seed',state.seed)")
         self.assertPageContains("const JAV_RELEASE_SORT=['release','发行时间']")
-        self.assertPageContains("javActive()?[JAV_RELEASE_SORT,...SORTS]:SORTS")
+        self.assertPageContains("javActive()?[JAV_RELEASE_SORT,...ordered]:ordered")
         self.assertPageContains("items:sortOptions()")
         self.assertPageContains("renderItem:([key,label])=>sortButtonHtml")
         self.assertPageContains("renderItem:([k,l])=>sortButtonHtml")
