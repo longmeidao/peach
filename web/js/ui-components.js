@@ -13,8 +13,10 @@ export function filterChipHtml(label,{attr,value,selected=false,count,className=
 export function sortControlsHtml({items=[],renderItem=String,extra='',shuffleId='',shuffleClass='entitybatch'}={}){
   return `<span class="sorts"><button class="batchaction ${esc(shuffleClass)}"${shuffleId?` id="${esc(shuffleId)}"`:''} type="button" title="换一批" aria-label="换一批">${icon('shuffle')}</button>${extra}${items.map(renderItem).join('')}</span>`;
 }
-export function collectionHeaderHtml({readout='',controls='',before='',className='',loading=false}={}){
-  return `<div class="entitycollectionhead${className?' '+esc(className):''}">${before}<h3${loading?' class="skeleton"':''}>${readout}</h3>${controls}</div>`;
+/* `filterRow` 只给等待态用：那时浮层还是一段字符串，`mountFilterFrame` 没得跑，
+   槽位标记得跟着 HTML 一起生成，否则这一条会自己画成第二块浮层。 */
+export function collectionHeaderHtml({readout='',controls='',before='',className='',loading=false,filterRow=''}={}){
+  return `<div class="entitycollectionhead${className?' '+esc(className):''}"${filterRow?` data-filter-row="${esc(filterRow)}"`:''}>${before}<h3${loading?' class="skeleton"':''}>${readout}</h3>${controls}</div>`;
 }
 
 const horizontalControls=new Map();
@@ -481,11 +483,18 @@ const OVERLAY_SCROLLERS=[
   '.settingsscroll','.sidecontent','.tagpickbody','.mixlist','.playlistpicklist','.playerstats',
   '.vjs-peach-settings-menu','.geist-scroller-container','.metricstrip','.tastesummaries',
   '.insighttabs','.insightstorage','.skeletondashstrip','.followpagination','.linktablewrap',
-  '.reviewtabs','.junkfilters','.ftablewrap',
+  '.reviewtabs','.junkfilters','.ftablewrap','.board-local-nav','.managebar-menu',
+  '.follow-workspace-switch','.fmanagenav','.board-heat-scroll','.board-sankey-scroll',
+  '.cloudguide-tablewrap',
 ].join(',');
 /* Board 层里会超宽的横向滚动层：两端按滚动位置渐隐说明「那边还有」，鼠标停在上面时竖向
-   滚轮转成横向。边线留给外层框，渐隐只落在这一层。 */
-const BOARD_EDGE_SCROLLERS='.reviewtabs,.ftablewrap';
+   滚轮转成横向。边线留给外层框，渐隐只落在这一层。
+   这里登记的都是 `frontend/` 或 board.css 画出来的层，它们不经过 `wireAllDrag` 那份按 id
+   点名的清单，漏登记就是「看得见、够不着」：设置弹层那排分区在 390px 下溢出 244px，
+   /taste 的两张图溢出 44px 与 322px，实测都是既没有渐隐也不接滚轮。组件自己量溢出，
+   不溢出的宽度上登记等于空转，所以按可能溢出的层登记，不按某一个断点登记。 */
+const BOARD_EDGE_SCROLLERS='.reviewtabs,.ftablewrap,.board-local-nav,.managebar-menu,'
+  +'.follow-workspace-switch,.fmanagenav,.board-heat-scroll,.board-sankey-scroll,.cloudguide-tablewrap';
 
 /**
  * 覆盖式滚动条：滑块浮在内容上，一列宽度都不占。

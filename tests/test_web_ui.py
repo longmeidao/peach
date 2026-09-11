@@ -2021,28 +2021,81 @@ class WebUiSourceTests(unittest.TestCase):
                       ".taste-history-guide-content a svg{", ".confighelp a svg{"):
             self.assertNotIn(stale, css, f"{stale} 已由 .externalmark 接管")
 
-    def test_the_x_mark_is_a_full_disc_that_takes_the_current_ink(self):
-        """圆盘吃 currentColor，字形从圆里挖掉，两个主题下分量一样重。
+    def test_each_social_mark_wears_its_own_brand_colour(self):
+        """七枚社媒标记是各家自己的场色圆盘加白字形，不吃 currentColor。
 
-        固定色的板子在其中一档上必然失手：同一块黑在浅色页面上压过周围，在深色页面
-        上糊进底色，只剩一个悬空的字形。圆盘取墨色就没有这一档差别。
-        字形按 .5 缩在圆内，靠的是缩放而不是外圈的 `overflow:hidden`——社媒标记是
-        拿来认牌子的，裁掉一角就不是那个牌子了。网站 favicon 不在此列，那些是方图。
+        认出是哪一家靠的正是颜色：X 黑底白字、Instagram 那道粉紫、YouTube 正红。场色
+        和白字形都是人家标识的一部分，不是界面 token，跟着主题变就认不出了。深色主题
+        下黑盘也不悬空——它画在 `.entitylinks a` 那圈药丸里，药丸自带边和底。
+        字形按 24×.5/256 缩在圆内，靠的是缩放而不是外圈的 `overflow:hidden`：社媒标记
+        是拿来认牌子的，裁掉一角就不是那个牌子了。网站 favicon 不在此列，那些是方图。
         """
-        self.assertPageContains('<symbol id="i-brand-x" viewBox="0 0 24 24">')
+        fields = {
+            "brand-x": '"#000000"', "brand-threads": '"#000000"', "brand-tiktok": '"#000000"',
+            "brand-youtube": '"#FF0000"', "brand-facebook": '"#0866FF"',
+            "brand-linktree": '"#43E660"',
+            "brand-instagram": '"url(#brand-instagram-field)"',
+        }
+        for symbol, field in fields.items():
+            self.assertPageContains(f'<symbol id="i-{symbol}" viewBox="0 0 24 24">')
+            self.assertPageContains(
+                f'<circle cx="12" cy="12" r="12" stroke="none" fill={field}/>'
+                '<g fill="#fff" stroke="none" transform="translate(12 12) '
+                'scale(.046875) translate(-128 -128)">')
+        # Instagram 的场是渐变不是单色，那条 linearGradient 就住在它自己的 symbol 里。
         self.assertPageContains(
-            '<circle cx="12" cy="12" r="12" fill="currentColor" stroke="none" '
-            'mask="url(#brand-x-knockout)"/>')
-        self.assertPageContains(
-            'transform="translate(12 12) scale(.5) translate(-12 -12)"')
-        # Instagram 同一只圆盘：Phosphor 的 256 视口字形按 24×.5/256 缩进去。
-        self.assertPageContains('<symbol id="i-brand-instagram" viewBox="0 0 24 24">')
-        self.assertPageContains(
-            'transform="translate(12 12) scale(.046875) translate(-128 -128)"')
-        self.assertPageContains("[['instagram.com'],'brand-instagram']")
-        self.assertPageLacks('fill="#000" stroke="none"', "品牌标记不写死板子的颜色")
+            '<linearGradient id="brand-instagram-field" x1="2" y1="22" x2="22" y2="2"'
+            ' gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#FFDD55"/>'
+            '<stop offset=".45" stop-color="#FF543E"/>'
+            '<stop offset="1" stop-color="#C837AB"/></linearGradient>')
+        for hosts in ("[['instagram.com'],'brand-instagram']",
+                      "[['threads.com','threads.net'],'brand-threads']",
+                      "[['tiktok.com'],'brand-tiktok']",
+                      "[['youtube.com','youtu.be'],'brand-youtube']",
+                      "[['facebook.com','fb.com'],'brand-facebook']",
+                      "[['linktr.ee','linktree.com'],'brand-linktree']"):
+            self.assertPageContains(hosts)
+        self.assertPageLacks("knockout", "字形是白色实体，不是从圆盘里挖掉的洞")
         self.assertPageContains(
             '.entitylinkicon.brand svg{width:100%;height:100%;stroke:none;filter:none}')
+
+    def test_only_the_profile_link_row_is_exempt_from_the_flat_external_link(self):
+        """一句话那种外链是无边无底的蓝字；资料页那排外链是一圈药丸。
+
+        豁免判的是那枚圆盘 `.entitylinkicon`，不是「这条链接里有没有 `<img>`」。社媒标记
+        是内联 `<svg>`，按后一个判据会被当成文字外链，药丸的边和底被抹平，同一排里只有
+        它们几个没有圈；而按 `<img>` 豁免又会把别处任何包着图的外链一起放走，那些本来
+        就该是平的。判据一并消失时整排药丸都被抹平，所以三种写法都要钉。
+        """
+        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
+        for rule in (
+            "body a:is(.externallink,[target=_blank])"
+            ":not(:has(.entitylinkicon)):not(.cardlink){",
+            "body a:is(.externallink,[target=_blank])"
+            ":not(:has(.entitylinkicon)):not(.cardlink):hover{",
+        ):
+            self.assertIn(rule, board)
+        for weaker in (":not(:has(img)):not(.cardlink){", ":not(:has(img)):hover{",
+                       ":not(:has(img,.entitylinkicon))",
+                       "body a:is(.externallink,[target=_blank]):not(.cardlink){"):
+            self.assertNotIn(weaker, board)
+
+    def test_the_waiting_filter_frame_is_one_slab_not_two(self):
+        """等待态的筛选条和作品抬头共用一块浮层，和内容回来之后是同一个形状。
+
+        这两条各自带着玻璃材质和 22px 圆角，`mountFilterFrame` 在运行时把它们收进外框；
+        骨架是一段字符串，进不了那条路径，外框和两个槽位的标记必须写在 HTML 里，
+        否则等的那几秒钟里它们是上下两块独立浮层，中间一道缝。
+        """
+        source = (Path(__file__).resolve().parents[1]
+                  / "frontend/src/entity-skeleton.ts").read_text(encoding="utf-8")
+        self.assertIn('<div class="board-filter-frame" data-filter-frame>', source)
+        self.assertIn('<section class="entitytagbar" data-filter-row="top">', source)
+        self.assertIn("entitySkeletonHtml(kind: string, head: string, body: string)", source)
+        self.assertPageContains(
+            "collectionHeaderHtml({readout:'&nbsp;',loading:true,filterRow:'bottom'})")
+        self.assertPageContains(
+            '${filterRow?` data-filter-row="${esc(filterRow)}"`:\'\'}')
 
     def test_the_link_icon_disc_carries_no_plate_of_its_own(self):
         """内联品牌标记直接画在药丸上。垫一层 `--sunk` 会让它比周围暗一档，看着像
@@ -2057,7 +2110,27 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(
             ".entityhero{grid-template-columns:minmax(0,1fr);gap:12px;padding:8px 0 18px;"
             "justify-items:center;text-align:center}")
-        self.assertPageContains(".entityhero .entitylinks{justify-content:center")
+        self.assertPageContains(".entityhero .entitylinks{justify-content:safe center")
+
+    def test_the_profile_link_row_scrolls_sideways_on_phones(self):
+        """十条外链在 390px 下换行要堆四行，把作品列表推到折线以外。
+
+        收成一行加横滑，跟筛选条一个做法。居中必须是 `safe center`：普通 `center`
+        在溢出时把前半排推到滚动起点之前，那几条够不着。竖直方向被 `overflow-x`
+        连带压成 hidden，焦点环靠上下各 4px 的内边距留位置、再由负外边距收回。
+        """
+        self.assertPageContains(
+            ".entityhero .entitylinks{justify-content:safe center;flex-wrap:nowrap;")
+        self.assertPageContains(
+            "margin-top:9px;margin-bottom:-4px;padding-block:4px;")
+        self.assertPageContains(
+            "overflow-x:auto;overflow-y:hidden;scrollbar-width:none;"
+            "overscroll-behavior-inline:contain}")
+        self.assertPageContains(".entityhero .entitylinks::-webkit-scrollbar{display:none}")
+        self.assertPageContains(".entityhero .entitylinks>*{flex:none}")
+        self.assertPageLacks(
+            ".entityhero .entitylinks{justify-content:center",
+            "溢出的那半会落在滚动起点之前，滑不到")
 
     def test_the_switch_centers_its_icon_instead_of_the_line_box(self):
         """svg 默认是 inline，行盒底下留着基线以下的空档。
@@ -3999,7 +4072,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn('align-items:center', note)
         self.assertIn('background:color-mix(in srgb,var(--feedback-color) 8%,var(--ground))', note)
         self.assertPageContains('.geist-note.geist-note>p{margin:0;color:inherit;font:inherit;align-self:center}')
-        self.assertIn('body a:is(.externallink,[target=_blank]):not(.cardlink):hover{background:transparent;text-decoration:underline;box-shadow:none}', board)
+        self.assertIn('body a:is(.externallink,[target=_blank]):not(:has(.entitylinkicon)):not(.cardlink):hover'
+                      '{background:transparent;text-decoration:underline;box-shadow:none}', board)
         self.assertIn('.board-link-button:hover{background:transparent;text-decoration:underline;box-shadow:none}', board)
         release = (Path(__file__).resolve().parents[1] / 'frontend/src/islands/release-updates.tsx').read_text(encoding='utf-8')
         self.assertNotIn('geist-button externallink', release)
@@ -5533,6 +5607,11 @@ class WebUiSourceTests(unittest.TestCase):
         """同台艺人和标签这两行没有滚动条，不接拖动就是看得见够不着。"""
         self.assertPageContains("wireDrag($('#index').querySelector('.relatedpeople'));")
         self.assertPageContains("wireDrag($('#index').querySelector('.entitytags'));")
+        # 外链那排窄屏下横滚，作品集表头窄屏下整条横滚，两处都是同一件事。390px 实测
+        # 分别溢出 667px 与 338px，不登记就只有滚动条被藏掉、滚轮又是竖向的那种死局。
+        self.assertPageContains("wireDrag($('#index').querySelector('.entitylinks'));")
+        self.assertPageContains("wireDrag(section.closest('.entitycollectionhead')"
+                                "||section.querySelector('.entitycollectionhead'));")
         # 横向滚动行里的开关不能被压扁。
         self.assertPageContains(".entitytags .iconswitch{flex:none}")
 
@@ -8868,6 +8947,25 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(
             "if(filterFrame)[boardTagbar,countbar.querySelector('.sorts')].forEach(el=>wireHorizontalScroller(el));")
 
+    def test_the_board_layer_rows_that_can_overflow_are_all_registered(self):
+        """board.css 与 `frontend/` 画出来的横滚层走名单，不走按 id 点名的那份清单。
+
+        漏登记的表现全站一个样：滚动条被藏掉、滚轮是竖向的、两端也不渐隐，于是那边
+        还有多少内容既看不出也够不着。390px 实测设置弹层那排分区溢出 244px、`/taste`
+        的两张图分别溢出 44px 与 322px，三处都要靠这份名单才拿得到提示。
+        """
+        page = self.page
+        overlay = page.split("const OVERLAY_SCROLLERS=[", 1)[1].split("].join(',')", 1)[0]
+        edge = page.split("const BOARD_EDGE_SCROLLERS=", 1)[1].split(";", 1)[0]
+        for selector in (".board-local-nav", ".managebar-menu", ".follow-workspace-switch",
+                         ".fmanagenav", ".board-heat-scroll", ".board-sankey-scroll",
+                         ".cloudguide-tablewrap"):
+            self.assertIn(selector, edge, f"{selector} 会横向溢出，要按横滚层登记")
+        # 扫描只看前一份名单，只写进后一份等于没登记。
+        scanned = set(re.findall(r"'(\.[a-z0-9-]+)'", overlay))
+        unscanned = [s for s in re.findall(r"\.[a-z0-9-]+", edge) if s not in scanned]
+        self.assertEqual(unscanned, [], "横滚层也要进 OVERLAY_SCROLLERS 才会被扫到")
+
     def test_the_tidy_up_notice_keeps_the_panels_gap_below_it(self):
         """首页那条整理提示下面留和浮层一样宽的空当。
 
@@ -9813,7 +9911,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("toggleAttribute('data-media-only',now!=='videos')")
         self.assertPageContains(".entitytagbar[data-media-only] .entitytags .pill{display:none}")
         self.assertPageContains(
-            "const head=collectionHeaderHtml({readout:'&nbsp;',loading:true});")
+            "const head=collectionHeaderHtml({readout:'&nbsp;',loading:true,filterRow:'bottom'});")
 
     def test_the_filter_panel_is_two_rows_on_a_phone(self):
         """手机上这块浮层是两行，两侧也留出跟内容一样的白。

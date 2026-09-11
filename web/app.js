@@ -7152,6 +7152,11 @@ function wireEntityCollectionHead(section,kind,name,filters){
   section.querySelectorAll('[data-entity-sort]').forEach(button=>button.onclick=()=>{
     const next=nextSortState(button.dataset.entitySort,filters.sort||'new',filters.dir);
     if(next)updateEntityCollection(kind,name,{...filters,...next},true)});
+  /* 窄屏下这一整条自己横滚（board.css 的 760px 断点），跟首页那条 `#count` 是同一件事，
+     登记的也是同一套。390px 实测溢出 338px，不登记就是最后两枚排序键露半个在右边、
+     鼠标够不着。每次重画都要重登记：`.sorts` 是整块 outerHTML 换掉的。
+     两个调用点传进来的一个是这一条本身、一个是它外面的 `.entitysection`。 */
+  wireDrag(section.closest('.entitycollectionhead')||section.querySelector('.entitycollectionhead'));
 }
 /* 换列和翻方向此刻就已确定，用不着等一次请求才在界面上生效：先把排序条重画成
    最终样子，只让会变的 `视频 · N` 换成骨架。标题、标签条和已经铺好的网格不动。 */
@@ -7694,11 +7699,11 @@ function wireNamePicker(kind,current){
 /* 等着的这一下浮层也得是整块的：下半要到列表回来才画的话，上半的下沿在等的那几秒里
    留着两个直角，读起来是这块浮层缺了一半。这一页的作品多时那几秒不算短。 */
 function showEntityLoading(kind){
-  const head=collectionHeaderHtml({readout:'&nbsp;',loading:true});
-  const body=head+(kind==='agency'
+  const head=collectionHeaderHtml({readout:'&nbsp;',loading:true,filterRow:'bottom'});
+  const body=kind==='agency'
     ?indexSkeletonHtml({kind:'performers',layout:peopleIndexLayout()})
-    :pageSkeletonHtml('正在读取作品',{cards:true}));
-  const placeholder=entitySkeletonHtml(kind,body);
+    :pageSkeletonHtml('正在读取作品',{cards:true});
+  const placeholder=entitySkeletonHtml(kind,head,body);
   if($('#index').firstElementChild?.dataset.skeleton!==`entity/${kind}`){
     $('#index').innerHTML=placeholder;fitSkeleton($('#index'));
   }
@@ -7849,11 +7854,13 @@ async function openEntity(kind,name,push=true){
   // 站内跳转走同一个 SPA 入口，不让浏览器整页重载。
   $('#index').querySelectorAll('[data-agency]').forEach(a=>a.onclick=event=>{
     event.preventDefault();openEntity('agency',a.dataset.agency)});
-  /* 同台艺人和标签这两行都是 `overflow-x:auto` 加隐藏滚动条：能滚，但鼠标没有一个
-     够得着的入口——滚轮是竖向的，滚动条不画出来，于是第 8 位之后的人和标签看得见
-     够不着。全站横向行的那套拖动加滚轮映射就是为这个写的，登记上即可。 */
+  /* 同台艺人、标签和窄屏那排外链都是 `overflow-x:auto` 加隐藏滚动条：能滚，但鼠标没有
+     一个够得着的入口——滚轮是竖向的，滚动条不画出来，于是第 8 位之后的人和标签看得见
+     够不着。全站横向行的那套拖动加滚轮映射就是为这个写的，登记上即可。外链那排宽屏下
+     是换行的，不溢出时组件自己量得出来，既不接滚轮也不画两端的渐隐。 */
   wireDrag($('#index').querySelector('.relatedpeople'));
   wireDrag($('#index').querySelector('.entitytags'));
+  wireDrag($('#index').querySelector('.entitylinks'));
   /* 窄屏下滚的不是标签那一格而是它外面那层——四枚观看状态那时也跟着一起走。两层都
      登记：登记在不滚的那一层上是空转，`wireHorizontalScroller` 量得出没有溢出就不接
      滚轮，而少登记一层就会在某一个宽度上滚不动。 */

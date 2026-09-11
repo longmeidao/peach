@@ -65,7 +65,7 @@ copyPackageFiles({
     ["swiper-bundle.min.js", "swiper-bundle.min.js"],
     ["swiper-bundle.min.css", "swiper-bundle.min.css"],
   ],
-  note: "Peach 自托管固定版本，不依赖 CDN。只有照片灯箱按需加载 Thumbs、Keyboard 与 Zoom；瀑布流不经过 Swiper。",
+  note: "Peach 自托管固定版本，不依赖 CDN。只有照片灯箱按需加载 Thumbs、Keyboard 与 Zoom；图片墙不经过 Swiper。",
 });
 
 const lucideIcons = new Map([
@@ -134,8 +134,7 @@ const lucideIcons = new Map([
 // 零件不带那个前缀，也就不进这张名单。
 const handDrawnIcons = new Set([
   "shuffle", // 两条带 pathLength 的动画路径由 Peach 维护。
-  "alert", "pics", "jav", "theater-enter", "theater-exit", "brand-x",
-  "brand-instagram", // 字形来自 Phosphor regular instagram-logo（MIT），套进与 brand-x 同一只墨色圆盘。
+  "alert", "pics", "jav", "theater-enter", "theater-exit",
   // 「换一批」：Lucide shuffle 的线条拆成 strand-a／strand-b 两条 path 供忙态逐条画出，
   // 上游一刷新就会把两条并回五条，所以由手工维护。
   "shuffle",
@@ -171,6 +170,54 @@ for (const [symbol, { icon, viewBox }] of phosphorIcons) {
   const pattern = new RegExp(`<symbol id="i-${symbol}" ${attrs.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}>[\\s\\S]*?<\\/symbol>`);
   if (!pattern.test(index)) throw new Error(`缺少 Phosphor symbol：${symbol}`);
   index = index.replace(pattern, `<symbol id="i-${symbol}" ${attrs}>${inner}</symbol>`);
+}
+
+// 社媒品牌标记：各家自己的场色圆盘，字形留白。
+//
+// 一枚牌子的形状不是我们能设计的东西，所以不自己画；同一套图标库出的七枚，笔画粗细和
+// 圆角风格本来就是一致的，各站点自己的 favicon 拼不出这种一致。颜色同理：X 是黑底白字、
+// Instagram 是那道粉紫，认出是哪一家靠的正是这个，跟着界面主题变反而认不出。场色和白
+// 字形都是人家标识的一部分，不是界面 token，所以写死在这里、不吃 currentColor。
+// 深色主题下黑盘不悬空：它画在 `.entitylinks a` 那圈药丸里，药丸自带 1px 边和
+// `--overlay-5` 底，盘与页面之间始终隔着一条边界，白字形本身也一直看得见。
+//
+// 字形按 24×.5/256 缩到圆心，占直径的一半，所以圆的边沿到字形之间总有一圈呼吸空间，
+// 靠的是缩放而不是外面那层 `overflow:hidden`：社媒标记是拿来认牌子的，裁掉一角就不是
+// 那个牌子了。缩放写在一层 `<g>` 上而不是逐条 path 上——上游哪天把一个 logo 拆成两条
+// 路径或补一个 `<circle>`，包在外面这一层照样把它们一起缩进圆里。
+//
+// Instagram 的场是渐变不是单色，写成 symbol 内部一条 `linearGradient`。放在 symbol 里
+// 而不是雪碧图顶层：`<use>` 克隆整棵子树，引用在它自己那份影子树里就解析得到。
+//
+// 覆盖范围是「图标库里有的常见社媒」。库里没有的（lit.link、pub.linx.live、livedoor、
+// ameblo 这类）继续走 `/link-mark`，那边按站点自己的图标合成。
+const GRADIENT_FIELD = "gradient";
+const brandDiscs = new Map([
+  ["brand-x", ["x-logo", "#000000"]],
+  ["brand-instagram", ["instagram-logo", GRADIENT_FIELD]],
+  ["brand-threads", ["threads-logo", "#000000"]],
+  ["brand-tiktok", ["tiktok-logo", "#000000"]],
+  ["brand-youtube", ["youtube-logo", "#FF0000"]],
+  ["brand-facebook", ["facebook-logo", "#0866FF"]],
+  ["brand-linktree", ["linktree-logo", "#43E660"]],
+]);
+const GLYPH_TRANSFORM = "translate(12 12) scale(.046875) translate(-128 -128)";
+// Instagram 的场从左下走到右上，三停取自它自己那枚 glyph 的用色。
+const GRADIENT_STOPS = [["0", "#FFDD55"], [".45", "#FF543E"], ["1", "#C837AB"]];
+for (const [symbol, [icon, field]] of brandDiscs) {
+  const inner = svgInner(text("node_modules", "@phosphor-icons/core", "assets", "regular", `${icon}.svg`));
+  const graded = field === GRADIENT_FIELD;
+  const defs = graded
+    ? `<linearGradient id="${symbol}-field" x1="2" y1="22" x2="22" y2="2" gradientUnits="userSpaceOnUse">`
+      + GRADIENT_STOPS.map(([at, color]) => `<stop offset="${at}" stop-color="${color}"/>`).join("")
+      + "</linearGradient>"
+    : "";
+  const disc = defs
+    + `<circle cx="12" cy="12" r="12" stroke="none" fill="${graded ? `url(#${symbol}-field)` : field}"/>`
+    + `<g fill="#fff" stroke="none" transform="${GLYPH_TRANSFORM}">${inner}</g>`;
+  const pattern = new RegExp(`<symbol id="i-${symbol}" viewBox="0 0 24 24">[\\s\\S]*?<\\/symbol>`);
+  if (!pattern.test(index)) throw new Error(`缺少品牌标记 symbol：${symbol}`);
+  index = index.replace(pattern, `<symbol id="i-${symbol}" viewBox="0 0 24 24">${disc}</symbol>`);
 }
 
 const healthInner = svgInner(text("node_modules", "healthicons", "public", "icons", "svg", "outline-24px", "contraceptives", "sperm.svg"));
@@ -225,9 +272,11 @@ stage("web/vendor/phosphor-ORIGIN.md",
   `- npm 包：\`@phosphor-icons/core@${versions["@phosphor-icons/core"]}\`\n` +
   `- npm lock integrity：\`${integrity("@phosphor-icons/core")}\`\n` +
   `- 许可证：MIT；原文见 \`phosphor-LICENSE.txt\`\n` +
-  `- 消费者：\`web/index.html\` 内联的 ${phosphorIcons.size} 个 regular 权重 symbol\n\n` +
+  `- 消费者：\`web/index.html\` 内联的 ${phosphorIcons.size} 个 regular 权重 symbol，`
+  + `外加 ${brandDiscs.size} 枚社媒品牌标记（${[...brandDiscs.values()].map(([icon]) => icon).join("、")}）\n\n` +
   "只在描边画法说不清那件事时才用这一套：`text-aa` 是字母表，`playlist` 是播放列表。\n" +
-  "填充声明写在 symbol 上，压住全局的 `stroke:currentColor;fill:none`。\n");
+  "填充声明写在 symbol 上，压住全局的 `stroke:currentColor;fill:none`。\n" +
+  "品牌标记另走一条路：字形留白、压在各家自己那块场色的圆盘上，缩放写在外面一层 `<g>` 上。\n");
 stage("web/vendor/healthicons-LICENSE.txt", lfText("node_modules", "healthicons", "LICENSE"));
 stage("web/vendor/healthicons-ORIGIN.md",
   `# Health Icons ${versions.healthicons}\n\n` +
@@ -240,7 +289,7 @@ stage("web/vendor/healthicons-ORIGIN.md",
 // 换 Lucide 版本时不跟着刷新，也没人看得出它是自绘的还是忘了纳管。
 const spriteSymbols = [...index.matchAll(/id="i-([a-z0-9-]+)"/g)].map(m => m[1]);
 const owned = new Set([...lucideIcons.keys(), ...phosphorIcons.keys(),
-  ...handDrawnIcons, "sperm"]);
+  ...brandDiscs.keys(), ...handDrawnIcons, "sperm"]);
 const orphans = spriteSymbols.filter(
   name => !name.startsWith("player-") && !owned.has(name));
 if (orphans.length) {
