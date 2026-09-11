@@ -3,7 +3,7 @@ name: peach-jav-cover-workflow
 description: 在用户说 JAV 封面、高清封面、缺封面、封面刮削、重探、来源比较或继续抓取时使用。
 ---
 
-最后复核：2026-09-03
+最后复核：2026-09-11
 证据来源：`scripts/fetch_jav_covers.py`、`scripts/detect_cover_faces.py`、`tests/test_jav_covers.py`、`docs/REUSE.md` 与 ABW-232 官方来源实测。
 
 # JAV 封面获取流程
@@ -59,9 +59,21 @@ description: 在用户说 JAV 封面、高清封面、缺封面、封面刮削�
 - 已算过的默认跳过，`--redo` 才重算；954 张实测检出 885 张，未检出的页面居中。
 - sidecar 的 `cx` 和 `cy` 都要留着。用哪个轴由容器比例决定：`object-fit:cover`
   一次只裁一个轴，16:9 官方剧照在大图版式里裁的是横向，纵向锚点在那里不生效。
-- 版式判据（1.2 / 1.65 两个分界）在脚本和 `web/app.js` 的 `coverAnchor` 里各有
-  一份，改一处必须改两处：对不上就会出现「脚本按封套丢掉左半边的脸、页面按剧照
-  用那张脸取景」。
+- 版式判据（1.2 / 1.65 两个分界）的真相在 `peach.jav_poster_crop`，`web/app.js`
+  的 `coverAnchor` 里另有一份，改一处必须改两处：对不上就会出现「脚本按封套丢掉
+  左半边的脸、页面按剧照用那张脸取景」。
+
+竖海报要的是另一样东西——横版封套里 2:3 那一块的坐标，同目录写 `<番号>.poster.json`：
+
+```powershell
+& .\.venv\Scripts\python.exe .\scripts\poster_crop_boxes.py
+& .\.venv\Scripts\python.exe .\scripts\poster_crop_boxes.py --apply
+```
+
+- 判据在 `peach.jav_poster_crop`：Sobel 列梯度找书脊折痕，找不到退回右半居中，
+  HEYZO／FC2／六位日期／韩国 MIB／16:9 剧照不裁。原图一个字节都不动。
+- 默认只算边车缺失、算法版本落后或源图尺寸对不上的封面，所以重探换上更大的图之后
+  再跑一遍就会重算；`--redo` 才无条件全算。
 
 ## 正式批次
 

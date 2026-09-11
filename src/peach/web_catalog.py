@@ -352,6 +352,9 @@ def q_items(contract: WebContract, args):
         attach_jav_display_fields(r, r.get("tags", ()), r.pop("_entity_kinds", ()))
         if r["has_cover"]:
             r["cover_frame"] = contract.cover_frame(r.get("code"))
+            # 竖版位置要的是一个框，不是锚点：横版封套里 2:3 那一块由离线脚本算好
+            # 写在边车里，没算过或本来就不该裁就是 null，版式退回整张封面。
+            r["poster_box"] = contract.poster_box(r.get("code"))
         r.pop("snapshot_path", None)
         r.pop("path", None)                     # 路径不外发，串流走 id
     attach_saved_follow_cards(contract, rows)
@@ -835,6 +838,7 @@ def q_related(contract: WebContract, aid, limit=24):
         )
         if d["has_cover"]:
             d["cover_frame"] = contract.cover_frame(d.get("code"))
+            d["poster_box"] = contract.poster_box(d.get("code"))
         d.pop("release_date", None)
         d.pop("snapshot_path", None)
     return {"items": picked[:limit]}

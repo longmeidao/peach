@@ -32,6 +32,7 @@ from .config import (
     STATE_DIR,
 )
 from . import brand_marks
+from . import jav_poster_crop
 from .jobs import BackgroundJob
 from .media import normalized_path
 # `previews` 是取图那一侧，不是 web 域处理器：依赖方向仍然只有一个走法。落盘名的
@@ -280,8 +281,12 @@ class WebContract:
         path = self.cover_root / f"{key}.jpg"
         return path if path.is_file() else None
 
-    def cover_index(self) -> dict[str, dict | None]:
-        """封面目录扫一遍的索引：casefold(归一番号) → 取景 `{"cx": …, "cy": …}` 或 None。
+    def cover_index(self) -> dict[str, dict]:
+        """封面目录扫一遍的索引：casefold(归一番号) → 两份取景提示。
+
+        值的形状是 `{"frame": 人脸中心或 None, "poster": 竖海报框或 None}`。两份
+        边车各描述一件事，一次目录扫描一起收齐：`.face.json` 说脸在哪，
+        `.poster.json` 说 2:3 竖框在哪。
 
         卡片列表逐行问「有封面吗」「取景是多少」，一页 60 行就是 120+ 次 stat 加
         读文件；封面目录一次 scandir 就覆盖全部番号，结果走 `cached()` 的 TTL。
@@ -292,16 +297,20 @@ class WebContract:
         """
         return self.cached("cover-index", self._scan_cover_root)
 
-    def _scan_cover_root(self) -> dict[str, dict | None]:
-        """一次目录扫描同时收集封面存在性和 sidecar 取景。目录不存在就是空索引。"""
-        scanned: dict[str, dict | None] = {}
+    def _scan_cover_root(self) -> dict[str, dict]:
+        """一次目录扫描同时收集封面存在性和两份 sidecar。目录不存在就是空索引。"""
+        scanned: dict[str, dict] = {}
         try:
             with os.scandir(self.cover_root) as entries:
                 for entry in entries:
                     if not entry.name.endswith(".jpg"):
                         continue
-                    scanned[entry.name[:-len(".jpg")].casefold()] = self._cover_focus(
-                        entry.path[:-len(".jpg")] + ".face.json")
+                    stem = entry.path[:-len(".jpg")]
+                    scanned[entry.name[:-len(".jpg")].casefold()] = {
+                        "frame": self._cover_focus(stem + ".face.json"),
+                        "poster": self._poster_box(
+                            stem + jav_poster_crop.SIDECAR_SUFFIX),
+                    }
         except OSError:
             return {}
         return scanned
@@ -322,6 +331,19 @@ class WebContract:
             return None
         focus = {axis: face[axis] for axis in ("cx", "cy") if axis in face}
         return focus or None
+
+    @staticmethod
+    def _poster_box(sidecar: str) -> dict | None:
+        """sidecar 里那个 2:3 竖海报框。算法版本落后、判定为不裁、读不出都是 None。
+
+        校验和形状判据都在 `jav_poster_crop.projection` 一处，这里只负责把文件读
+        进来：页面拿到的框必须和算它的那份代码是同一套判据。
+        """
+        try:
+            with open(sidecar, encoding="utf-8") as handle:
+                return jav_poster_crop.projection(json.load(handle))
+        except (OSError, ValueError):
+            return None
 
     def has_cover(self, code: str | None) -> bool:
         key = normalise_code_key(code)
@@ -461,6 +483,17 @@ class WebContract:
         横向只用在 16:9 官方剧照上——那种图在大图容器里只会横向裁，写死的居中会把
         偏在一侧的人整个切掉。取不到时前端退回固定取景，不影响显示。
         """
+        return (self._cover_entry(code) or {}).get("frame")
+
+    def poster_box(self, code: str | None) -> dict | None:
+        """封面里那块 2:3 竖海报的取景框，源图像素坐标加源图尺寸。
+
+        没算过、算法版本落后、或这个番号的封面本来就不该裁（`jav_poster_crop`
+        的 `none` 一档）都返回 None，竖版位置退回整张封面。
+        """
+        return (self._cover_entry(code) or {}).get("poster")
+
+    def _cover_entry(self, code: str | None) -> dict | None:
         key = normalise_code_key(code)
         return self.cover_index().get(key.casefold()) if key else None
 
