@@ -10467,10 +10467,10 @@ class IndexHtmlTagBalanceTests(unittest.TestCase):
 
 
 class CoverSleeveThresholdTests(unittest.TestCase):
-    def test_the_page_and_the_face_script_share_the_sleeve_thresholds(self):
-        """脚本按封套丢掉左半边的脸，页面按同一对阈值决定取景；两边的数必须是同一对。"""
+    def test_the_page_and_the_module_share_the_sleeve_thresholds(self):
+        """页面按这对阈值决定取景，模块按它分档竖海报；两边的数必须是同一对。"""
         root = Path(__file__).resolve().parents[1]
-        source = (root / "scripts" / "detect_cover_faces.py").read_text(encoding="utf-8")
+        source = (root / "src" / "peach" / "jav_poster_crop.py").read_text(encoding="utf-8")
         low = float(re.search(r"^SLEEVE_RATIO_MIN = ([\d.]+)", source, re.M).group(1))
         high = float(re.search(r"^SLEEVE_RATIO_MAX = ([\d.]+)", source, re.M).group(1))
         page = (root / "web" / "app.js").read_text(encoding="utf-8")
@@ -10478,6 +10478,15 @@ class CoverSleeveThresholdTests(unittest.TestCase):
         self.assertIsNotNone(anchor, "coverAnchor 的封套判定不见了")
         self.assertEqual((low, high), (float(anchor.group(2)), float(anchor.group(1))))
         self.assertLess(low, high)
+
+    def test_the_face_script_takes_the_thresholds_from_the_module(self):
+        """脚本按封套丢掉左半边的脸，用的必须是模块里那一份，不是自己抄的一份。"""
+        root = Path(__file__).resolve().parents[1]
+        source = (root / "scripts" / "detect_cover_faces.py").read_text(encoding="utf-8")
+        self.assertIn(
+            "from peach.jav_poster_crop import SLEEVE_RATIO_MAX, SLEEVE_RATIO_MIN", source)
+        self.assertIsNone(re.search(r"^SLEEVE_RATIO_M(?:IN|AX) = ", source, re.M),
+                          "阈值抄成第二份就会和页面漂开")
 
 
 class BoardStyleIsolationTests(unittest.TestCase):

@@ -16,6 +16,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Callable, Protocol, Sequence
 
+from . import jav_poster_crop
 from .catalog_rules import dir_expr, normalise_code_key, photo_set_title
 from .config import LOCATION_ROOT_DECLARATIONS
 from .jobs import BackgroundJob
@@ -256,9 +257,13 @@ def _resource_orphan_plan(contract: ResourceSyncContract, excluded_ids: Sequence
             and contract.cover_root.is_dir()):
         for path in contract.cover_root.iterdir():
             key = ""
-            if path.name.endswith(".face.json"):
-                key = path.name[:-10]
-            elif path.suffix.lower() == ".jpg":
+            # 边车跟着它描述的那张封面一起走，否则封面被清掉之后目录里会留下一批
+            # 指向不存在的图的框和脸。
+            for suffix in (".face.json", jav_poster_crop.SIDECAR_SUFFIX):
+                if path.name.endswith(suffix):
+                    key = path.name[:-len(suffix)]
+                    break
+            if not key and path.suffix.lower() == ".jpg":
                 key = path.stem
             if key and normalise_code_key(key) not in active_codes and path.is_file():
                 _cache_file(path, "covers", files)

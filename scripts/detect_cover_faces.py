@@ -34,12 +34,11 @@ if str(SRC_DIR) not in sys.path:
 
 from peach.config import COVER_DIR
 from peach.face_detect import FaceDetector, FaceModelUnavailable, main_face
+#: 长封套的宽高比区间。判据只有一份，住在 `peach.jav_poster_crop`：竖海报取景框、
+#: 这里的左半剧照剔除、`web/app.js` 的 `coverAnchor` 都按同一对值分档，各写一份
+#: 就会出现「脚本按封套丢掉左半边的脸、页面按剧照用那张脸取景」。
+from peach.jav_poster_crop import SLEEVE_RATIO_MAX, SLEEVE_RATIO_MIN
 
-#: 长封套的宽高比下限。低于它按竖版正封处理（整张就是正封，没有剧照区）。
-SLEEVE_RATIO_MIN = 1.2
-#: 上限之外是 16:9 官方剧照。这个值和 `web/app.js` 的 `coverAnchor` 必须是同一个，
-#: 否则脚本按封套丢掉左半边的脸，页面却拿这张图当剧照按人脸取景，两边对不上。
-SLEEVE_RATIO_MAX = 1.65
 #: 长封套上正封的起始横向位置。左边是剧照拼贴，检出必然是假阳性。
 FRONT_START = 0.468
 #: 纵向取景的合理区间。超出这个范围的检出多半不是主体人物。
