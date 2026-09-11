@@ -158,6 +158,25 @@ av911.tv，三条候选已进复核队列。
   变体——用错分隔符搜到的是别的片；只有来源给出不带分隔符的纯数字串时两种才都算命中，缺一个字符不是反证。
   野生文件名的写法会漂移（同一部一本道既有 `1pon-092415-001-fhd1`，也有 `1pondo-092415_001-FHD`），
   所以剥番号显示标题时两种分隔符都放行，落进 `code` 的值则保留文件名给出的那一个。
+- 日期式番号的六位是 `MMDDYY`，月日必须成立才算这一形态。只看位数的话，手机录像
+  `VID_20220818_125735_816.mp4` 里的 `125735_816`（12 月 57 日）就是一条一本道番号。
+- Tokyo-Hot 的编号没有厂牌字母段，规范写法是小写：本编 `n1234`／`k1234` 补零到四位，Red Hot 支线
+  写成 `red-123`。javbus 的作品页地址就是 `/n1234`，参考实现 NeoAVDC（MIT，
+  `attic/tools/20260911-参考项目/NeoAVDC/src/main/number/parseNumber.ts` 的 `TOKYOHOT_NUM_RE`）同样
+  输出小写 `n####`；`k` 与 `red` 两支在本机账本里一条没有，它们在 javdb／javbus 上的写法**未取得**实证。
+  编号只有一个字母，形态挡不住 `no0037_01` 这类名字，所以只在两个位置上认它：名字开头，或名字里
+  已经写着 `tokyo-hot`。
+- 西片按「厂牌／系列 + 发行日」命名（`DorcelClub.24.12.02.Christy.White.XXX.1080p`），这是身份不是番号：
+  `catalog_rules.western_release_identity` 给出 `DORCELCLUB.2024-12-02`，`release_identity` 认它，
+  番号提取一律返回空。两位年份按 70 分界展开，四位年份原样。只在 token 开头认，不在 token 中段搜——
+  账本里的 `E078. Redhead.Sucking.Big.Cock.And.Hard.Sex.2019.10.15` 中段搜会得到系列名 `Sex`。
+- 只说明「这是什么文件」的词（`IMG`、`VID`、`VIDEO`、`NO`、`PART`）与番号主体同形，集中在
+  `catalog_rules.CODE_BODY_STOPWORDS`；画质词归 `_QUALITY_HEAD`、转载站标识归 `REPOST_SITE_LABELS`，
+  三份名单各管一类，提取时依次过一遍。新增条目先用 `build/parse_shapes_audit.py stems` 在真实账本上取
+  误判证据；创作者昵称（`sumwall95`、`retsu_dao`）同样撞这个形态，逐个塞进名单只会得到一张不收敛的表。
+- 推广域名在番号的头、尾和方括号三种位置都出现（`www.98t.la@ABW-358-U`、`ABP-762-fuckbe.com`、
+  `[xxx.cc]ABC-123`），番号提取与目录判重共用 `strip_promo_markers` 这一层，各剥一半会让叠了两层的
+  `[98t.tv][98t.tv]ABW-251` 在其中一处漏网。
 - 来源返回的番号必须和查询的番号比对过才算命中。javbus 一侧是拿番号做关键词搜索取首个结果，搜不到就
   返回近似的别人（`SA-104 → AVSA-104`、`CHU-101 → CHUC-101`、`AR-301 → STAR-3016`），2026-09-02 实测
   68 次匹配 58 次番号根本不对，整个 `B:\MVP\MIB\`（韩国内容）因此被写上日本厂牌、系列和标题，还靠这些
