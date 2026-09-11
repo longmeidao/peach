@@ -66,7 +66,14 @@ POSITION_TAGS = {
 
 _CODE_STUDIO = re.compile(r"^[A-Z]{2,8}-\d{2,5}$")
 _CODE_AMATEUR = re.compile(r"^\d{3}[A-Z]{2,8}-\d{2,5}$")
-_CODE_DATE = re.compile(r"^\d{6}-\d{2,4}$")
+#: 素人系无码番号 `MMDDYY-NNN` / `MMDDYY_NNN`。**分隔符是片商标识，属于身份的一部分**：
+#: 一本道、パコパコママ、カリビアンコムPR 用 `_`，カリビアンコム 用 `-`，同一天同一序号
+#: 是两部不同影片。JavDB 自己也分开保存——搜 `092415-001` 首位返回的是一本道的
+#: `092415_001`，`092416-001`、`092015-001` 才是加勒比那几部
+#: （`attic/evidence/20260911-javdb-api-probe/probe-result.json`）。
+#: 所以归一化只统一大小写，绝不把 `_` 转写成 `-`，查询也不生成另一种分隔符的变体：
+#: 用错分隔符搜到的是别的片。
+_CODE_DATE = re.compile(r"^\d{6}[-_]\d{2,4}$")
 
 #: 字母段 → 搜索扩展前缀。这里只生成查询词，不断言两种编号属于同一发行。
 #:
@@ -80,6 +87,8 @@ MAKER_NUMBER_PREFIX = {
     "MLA": "476", "NTK": "300", "NTR": "348", "ORETD": "230", "OTIM": "393",
     "SIMM": "345", "SUKE": "428",
 }
+#: 日期式番号被抹掉分隔符后剩下的纯数字串，片商无从判断。
+_DATED_COMPACT = re.compile(r"^\d{6}\d{2,4}$")
 _CODE_MAKER_PREFIXED = re.compile(r"^(\d{3})([A-Z]{2,8})-(\d{2,5})$")
 #: 数字前缀单独保留；`h_` 是 DMM content_id 的 label 标记。
 _RELEASE_ID = re.compile(r"^(\d{1,4})?([A-Z]{2,8})0*(\d{1,5})([A-Z]?)$")
@@ -133,8 +142,8 @@ _QUALITY_HEAD = re.compile(r"^(?:hd|fhd|sd|uhd|4k|2160p?|1080p?|720p?)[-_. ]+", 
 #: 的话，哪天多认一个版次标记，字幕就配不上那一批文件。
 VERSION_TAIL_TOKENS = ("ch", "sub", "uc", "fhd", "4k", "hd", "c", "u")
 VERSION_TAIL = re.compile(r"[-_. ]?(?:" + "|".join(VERSION_TAIL_TOKENS) + r")$", re.I)
-#: 一本道、加勒比是「日期+序号」体系，没有字母番号主体。
-_DATE_CODE = re.compile(r"(?<!\d)(\d{6})[-_](\d{3})(?!\d)")
+#: 一本道、加勒比是「日期+序号」体系，没有字母番号主体。分隔符进捕获组，原样带出去。
+_DATE_CODE = re.compile(r"(?<!\d)(\d{6})([-_])(\d{3})(?!\d)")
 #: UUID 首段长得像番号（`DCE7230C-730E-…` 会被拆成 `DCE`+`7230`），按整串形态排除。
 _UUID_LIKE = re.compile(
     r"[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}", re.I)
@@ -229,8 +238,15 @@ def is_repost_site_label(value: str | None) -> bool:
 
 
 def normalise_code_key(code: str | None) -> str:
-    """Normalize a release code into the stable cover-cache key."""
-    value = (code or "").upper().replace("_", "-").replace(" ", "-").strip()
+    """Normalize a release code into the stable cover-cache key.
+
+    日期式番号（`_CODE_DATE`）例外：分隔符是片商标识，归一化原样保留，
+    `092415_001` 与 `092415-001` 各算一个键、各存一张封面。
+    """
+    raw = (code or "").upper().strip()
+    if _CODE_DATE.match(raw):
+        return raw
+    value = raw.replace("_", "-").replace(" ", "-").strip()
     if not value:
         return ""
     if is_repost_site_label(value):
@@ -280,6 +296,9 @@ def code_query_variants(code: str | None) -> tuple[str, ...]:
 
     去前缀仅生成搜索词；补前缀只对 `MAKER_NUMBER_PREFIX` 登记过的字母段做。
     消费者必须按原始编号另行核验返回作品，不能用扩展查询词代替发行身份。
+
+    日期式番号只回它自己：换一种分隔符搜到的是别的片商的另一部片，不是同一发行的
+    另一种写法（见 `_CODE_DATE`）。
     """
     primary = normalise_code_key(code)
     if not primary:
@@ -308,6 +327,10 @@ def release_identity(code: str | None) -> str:
     搜索结果不该和任何番号算成同一部。
     """
     raw = _DMM_LABEL_PREFIX.sub("", str(code or "").upper().strip())
+    if _CODE_DATE.match(raw):
+        # 日期式番号带着分隔符进身份：抹掉它就等于断言一本道的 `092415_001` 和
+        # 加勒比的 `092415-001` 是同一部（见 `_CODE_DATE`）。
+        return raw
     value = re.sub(r"[\s._\-]+", "", raw)
     if not value:
         return ""
@@ -316,9 +339,10 @@ def release_identity(code: str | None) -> str:
         # 一段 `21812235`，和 `FC2-PPV-1812235` 算成两部不同的作品。
         digits = re.search(r"(\d{5,})", value[3:])
         return f"FC2-{int(digits.group(1))}" if digits else value
-    dated = re.fullmatch(r"(\d{6})(\d{2,4})", value)
-    if dated:
-        return f"{dated.group(1)}-{dated.group(2)}"
+    if _DATED_COMPACT.fullmatch(value):
+        # 来源只给一串数字时分隔符无从得知，原样留着数字，别替它挑一个片商。
+        # 与带分隔符那一侧的比对交给 `same_release_code`。
+        return value
     shape = _RELEASE_ID.fullmatch(value)
     if shape:
         prefix, letters, number, suffix = shape.groups()
@@ -336,6 +360,15 @@ def same_release_code(left: str | None, right: str | None) -> bool:
         return False
     if first == second:
         return True
+    # 日期式番号的紧凑写法（`040221001`）没带分隔符，认不出片商，两种分隔符都算命中：
+    # 缺一个字符不构成「这是另一部片」的证据，拒掉只会把对的元数据一起丢了。
+    compact = next((value for value in (first, second)
+                    if _DATED_COMPACT.fullmatch(value)), "")
+    if compact:
+        dated = first if second == compact else second
+        if (_CODE_DATE.match(dated)
+                and re.sub(r"[-_]", "", dated) == compact):
+            return True
     # FC2 的来源 id 是裸数字（`FC2-PPV-1812235` → `1812235`）。裸数字自己不是番号
     # 形态，所以这条不放进 `release_identity`：只有另一侧确实是 FC2 才按数字比。
     fc2 = next((value for value in (first, second) if value.startswith("FC2-")), "")
@@ -405,7 +438,7 @@ def release_code_from_text(value: str | None) -> str | None:
         return normalise_code_key(f"FC2-PPV-{fc2.group(1)}")
     date = _DATE_CODE.search(text)
     if date:
-        return f"{date.group(1)}-{date.group(2)}"
+        return f"{date.group(1)}{date.group(2)}{date.group(3)}"
     body = VERSION_TAIL.sub("", _QUALITY_HEAD.sub("", text))
     if not _CODE_BODY.match(body):
         return None
@@ -439,16 +472,19 @@ def _jav_code_pattern(code: str | None) -> str:
             rf"{re.escape(prefix or '')}{re.escape(letters)}"
             rf"[-_ ]*0*{re.escape(str(int(digits)))}"
         )
-    dated = re.fullmatch(r"(\d{6})-(\d{2,4})", canonical)
+    dated = re.fullmatch(r"(\d{6})[-_](\d{2,4})", canonical)
     if dated:
+        # 匹配文件名时两种分隔符都放行：身份认分隔符，野生文件名的写法却会漂移
+        # （账本里同一部一本道既有 `1pon-092415-001-fhd1`，也有 `1pondo-092415_001-FHD`）。
         return rf"{re.escape(dated.group(1))}[-_ ]*{re.escape(dated.group(2))}"
     return ""
 
 
-#: 无码厂商自己的编号法：Caribbeancom／1Pondo／10musume／Pacopacomama 用
-#: `MMDDYY-nnn`，HEYZO 用 `HEYZO-1380`。有码厂商不用这两种形状。
+#: 无码厂商自己的编号法：Caribbeancom／1Pondo／10musume／Pacopacomama 走日期式
+#: （形状与分隔符含义见 `_CODE_DATE`，同一份实现），HEYZO 用 `HEYZO-1380`。
+#: 有码厂商不用这两种形状。
 UNCENSORED_CODE_SHAPES = (
-    re.compile(r"^\d{6}-\d{2,4}$"),
+    _CODE_DATE,
     re.compile(r"^HEYZO-\d{2,5}$", re.I),
 )
 #: 文件名里的发行站标记。番号形状认不出来时（例如 Tokyo-Hot 的 `n1234`），

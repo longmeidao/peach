@@ -46,8 +46,10 @@ class CodeShapeTests(unittest.TestCase):
         self.assertEqual(audit.canonical_code("IPVR00296"), "IPVR-296")
 
     def test_date_code_systems(self):
+        # 分隔符是片商标识：加勒比写 `-`、一本道写 `_`，同日同序号是两部不同影片，
+        # 目录名给的是哪一个就留哪一个。
         self.assertEqual(audit.canonical_code("Carib-040221-001-FHD"), "040221-001")
-        self.assertEqual(audit.canonical_code("1pondo-071213_625-HD"), "071213-625")
+        self.assertEqual(audit.canonical_code("1pondo-071213_625-HD"), "071213_625")
 
     def test_names_that_are_not_codes(self):
         for name in ("涼森れむ", "suzuq", "Timepasserby", "MyElla"):
