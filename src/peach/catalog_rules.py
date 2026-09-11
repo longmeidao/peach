@@ -129,7 +129,10 @@ REPOST_SITE_LABELS = frozenset({
 #: 画质标记落在番号前面，剥掉才露出番号主体（`HD-abp-758` → `abp-758`）。
 _QUALITY_HEAD = re.compile(r"^(?:hd|fhd|sd|uhd|4k|2160p?|1080p?|720p?)[-_. ]+", re.I)
 #: 版本标记：`-C`/`-CH` 是中文字幕版，`-UC` 是无码流出，画质词也可能落在词尾。
-_VERSION_TAIL = re.compile(r"[-_. ]?(?:ch|sub|uc|fhd|4k|hd|c|u)$", re.I)
+#: token 单独列成一份，字幕 sidecar 配对要剥掉同一批后缀（`subtitles.py`）；各写一份
+#: 的话，哪天多认一个版次标记，字幕就配不上那一批文件。
+VERSION_TAIL_TOKENS = ("ch", "sub", "uc", "fhd", "4k", "hd", "c", "u")
+VERSION_TAIL = re.compile(r"[-_. ]?(?:" + "|".join(VERSION_TAIL_TOKENS) + r")$", re.I)
 #: 一本道、加勒比是「日期+序号」体系，没有字母番号主体。
 _DATE_CODE = re.compile(r"(?<!\d)(\d{6})[-_](\d{3})(?!\d)")
 #: UUID 首段长得像番号（`DCE7230C-730E-…` 会被拆成 `DCE`+`7230`），按整串形态排除。
@@ -403,7 +406,7 @@ def release_code_from_text(value: str | None) -> str | None:
     date = _DATE_CODE.search(text)
     if date:
         return f"{date.group(1)}-{date.group(2)}"
-    body = _VERSION_TAIL.sub("", _QUALITY_HEAD.sub("", text))
+    body = VERSION_TAIL.sub("", _QUALITY_HEAD.sub("", text))
     if not _CODE_BODY.match(body):
         return None
     canonical = normalise_code_key(body)

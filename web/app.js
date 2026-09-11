@@ -1980,6 +1980,21 @@ const ensureVideojs=()=>{
     /* 失败要把 loader 清空，否则一次网络抖动之后这一整页都再也挂不上播放器了。 */
     .catch(error=>{videojsLoader=null;throw error}));
 };
+/* 本机资产的外挂字幕。服务端已经把 srt/ass/ssa 换成 WebVTT，这里只把它挂成 text track。
+   一律不设 default：自动打开某一条等于替用户选了语言，而同一部片常有简体、繁体、日语
+   三条。要看就从 Video.js 自己的字幕菜单里点，菜单只在有轨的时候才出现。
+   manualCleanup 传 true：播放出错回退到直连片源时会重新 src()，自动清理会把字幕一起带走。
+   关注条目没有 sidecar，调用点按 options.source 判断，不多发这一次请求。 */
+function mountPlayerSubtitles(player,assetId){
+  api(`/api/assets/${assetId}/subtitles`).then(payload=>{
+    if(!player||player.isDisposed())return;
+    (payload?.subtitles||[]).filter(track=>track.playable).forEach(track=>{
+      player.addRemoteTextTrack({
+        kind:'subtitles',src:track.src,srclang:track.language||'',
+        label:track.label,default:false},true);
+    });
+  }).catch(()=>{});
+}
 async function mountDetailPlayer(it,video,autoplay,options={}){
   if(detailPlayer)return detailPlayer;
   /* 从小窗展开回来或带 `?t=` 深链进来时从记下的时刻接着放；展开时如果正在放，回来也接着放。 */
@@ -2108,6 +2123,7 @@ async function mountDetailPlayer(it,video,autoplay,options={}){
     mountPlayerSeekPreview(detailPlayer,it,{thumbnail:!options.source});
     mountPlayerMediaSession(detailPlayer,it);
     mountPlayerSpinner(detailPlayer);
+    if(!options.source)mountPlayerSubtitles(detailPlayer,it.id);
     if(statsButton)statsButton.hidden=false
   });
   if(statsButton&&statsPanel){

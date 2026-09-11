@@ -77,6 +77,11 @@ CREATE TABLE media_binding(
   asset_id INTEGER,backend TEXT,external_id TEXT,metadata_json TEXT,last_synced_at TEXT,
   PRIMARY KEY(asset_id,backend),UNIQUE(backend,external_id));
 CREATE TABLE activity_event(id INTEGER PRIMARY KEY,asset_id INTEGER,kind TEXT,created_at TEXT);
+CREATE TABLE asset_subtitle(
+  id INTEGER PRIMARY KEY,asset_id INTEGER,location TEXT NOT NULL,path TEXT NOT NULL,
+  name TEXT NOT NULL,language TEXT NOT NULL DEFAULT '',format TEXT NOT NULL,
+  size INTEGER,mtime TEXT,pairing TEXT NOT NULL,first_seen TEXT NOT NULL,last_seen TEXT NOT NULL,
+  UNIQUE(location,path));
 CREATE TABLE search_history(
   query TEXT PRIMARY KEY, used_count INTEGER NOT NULL DEFAULT 1, last_used_at TEXT NOT NULL);
 CREATE TABLE review_decision(
