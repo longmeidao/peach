@@ -118,6 +118,16 @@ def auth_wall_reason(*, status_code: int = 0, final_url: str = "",
     return ""
 
 
+def reason_blames_credentials(reason: str) -> bool:
+    """这条理由有没有把成因锁死在凭据上。
+
+    消费方要按这个分叉给出不同的下一步（去官网登录，还是先看站点要不要登录再决定
+    换凭据还是等），判据就不能是各自到 `reason` 里找字眼——措辞改一次，找字眼的那
+    几处会一起静默失准。
+    """
+    return bool(reason) and CREDENTIAL_ADVICE in reason
+
+
 def auth_error(source: str, reason: str, *, status_code: int = 0) -> MetadataProviderError:
     """把一次鉴权失败包成 `kind="auth"` 的错误。措辞只有这一处。"""
     return MetadataProviderError(

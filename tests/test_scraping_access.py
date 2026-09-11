@@ -91,25 +91,29 @@ class ScrapingAccessTests(unittest.TestCase):
         self.assertFalse(result["results"][0]["ok"])
 
     def test_the_check_tells_a_login_wall_apart_from_an_unreachable_source(self):
-        """「要登录」和「站点挂了」在页面上要分得开：前者要人去官网，后者只要等。
+        """页面上要分得开三种结果，因为用户的下一步各不相同。
 
-        登录墙不一定回 403。跟完重定向落在登录页的那次响应是 200，旧判据只看状态码，
-        于是把一次「其实什么都没取到」报成可连接。
+        登录墙不一定回 403。跟完重定向落在登录页的那次响应是 200，只看状态码的判据
+        会把一次「其实什么都没取到」报成可连接。反过来，只剩状态码可看的 403 也不许
+        报成登录墙：`docs/SOURCING.md` 记着那些 403 多半是出口 IP 被封，去官网登录
+        白做一场，正确动作是等或换出口。措辞与元数据来源同源，页面不另写一份。
         """
         contract = SimpleNamespace(follow_secrets_root=self.root)
         login = "https://fc2cmadb.com/"
-        cases = ((HttpResponse(403, {}, b"", login), "auth", False),
+        cases = ((HttpResponse(403, {}, b"", login), "auth", False, "出口 IP", "请在官网"),
                  (HttpResponse(200, {}, b"<html>login</html>",
-                               "https://fc2cmadb.com/users/sign_in"), "auth", False),
-                 (HttpResponse(503, {}, b"", login), "unavailable", False),
-                 (HttpResponse(200, {}, b"<html>ok</html>", login), "ok", True))
-        for response, kind, ok in cases:
+                               "https://fc2cmadb.com/users/sign_in"), "auth", False,
+                  "请在官网完成登录后重试", "出口 IP"),
+                 (HttpResponse(503, {}, b"", login), "unavailable", False, "稍后重试", "登录"),
+                 (HttpResponse(200, {}, b"<html>ok</html>", login), "ok", True, "", "登录"))
+        for response, kind, ok, says, avoids in cases:
             with self.subTest(status=response.status, url=response.url), \
                     patch("peach.web_scraping.SourceTransport") as factory:
                 factory.return_value.return_value = response
                 result = w_scraping_check(contract, {"source": "fc2cmadb"})["results"][0]
             self.assertEqual((result["kind"], result["ok"]), (kind, ok))
-            self.assertEqual("登录" in result.get("message", ""), kind == "auth")
+            self.assertIn(says, result.get("message", ""))
+            self.assertNotIn(avoids, result.get("message", ""))
 
     def test_transport_ownership_is_explicit(self):
         for owned in (True, False):

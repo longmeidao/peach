@@ -134,7 +134,7 @@ def w_scraping_settings(contract, body):
 
 
 def w_scraping_check(contract, body):
-    from .metadata import auth_wall_reason
+    from .metadata import auth_wall_reason, reason_blames_credentials
     source = str(body.get("source", ""))
     if source not in SOURCES:
         raise ValueError("未知采集来源")
@@ -162,8 +162,13 @@ def w_scraping_check(contract, body):
                     with Image.open(io.BytesIO(response.body)) as image:
                         result["width"], result["height"] = image.size
                 if not result["ok"]:
-                    result["message"] = ("来源要求登录或验证，请在官网完成后重试。"
-                                         if reason else "来源暂不可用，请稍后重试。")
+                    # 成因锁死在凭据上才让人去登录。只剩状态码可看的 403 直接把
+                    # `auth_wall_reason` 那句原样给用户：出口 IP 被封时登录是白做，
+                    # 页面上再手写一份「请去登录」等于把人引去做错事。
+                    if reason_blames_credentials(reason):
+                        result["message"] = "来源要求登录或验证，请在官网完成登录后重试。"
+                    else:
+                        result["message"] = f"{reason}。" if reason else "来源暂不可用，请稍后重试。"
             except Exception as exc:
                 result.update(ok=False, kind="unavailable",
                               message="连接未取得；此来源可能需要代理，请检查来源连接方式。",
