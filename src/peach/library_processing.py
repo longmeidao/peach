@@ -14,6 +14,7 @@ from filelock import FileLock, Timeout
 from PIL import Image
 
 from .catalog_rules import is_korean_mib_code, release_code_from_filename, same_release_code
+from .field_owners import SCAN_FILENAME, write_owned_fields
 from .jav_cover_fetch import DeadlineExceeded
 from .library_nfo import read_nfo, sidecars, local_art
 from .genre_decisions import load_genre_decisions
@@ -347,7 +348,8 @@ def process_library(config, db_path, candidate_root, cover_root, *, location='co
                         continue
                 if code and not row['code']:
                     with closing(sqlite3.connect(db_path, timeout=30)) as connection, connection:
-                        connection.execute("UPDATE asset SET code=? WHERE id=? AND (code IS NULL OR code='')", (code, row['id']))
+                        write_owned_fields(connection, [row['id']], {'code': code},
+                                           SCAN_FILENAME, require_empty=True)
                     state['identified'] += 1
                 try:
                     poster_root = cover_root if code else config.directory('generated') / 'posters'

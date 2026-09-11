@@ -29,9 +29,14 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from peach.config import DATABASE_PATH
+from peach.field_owners import script_owner
 from peach.migrations import sqlite_backup
 from peach.review_csv import read_rows
 from peach.web_review import _apply_metadata_candidate
+
+#: 这一批写入在账本里的署名。用户当轮授权的批量写入仍然是脚本写的，记成
+#: `review:<来源>` 会让日后回溯以为有人在 `/review` 上逐条点过。
+OWNER = script_owner("apply_metadata_tags")
 
 
 def select_candidate(row: dict, source: str) -> dict | None:
@@ -136,7 +141,8 @@ def run(args: argparse.Namespace) -> int:
         with connection:
             for group, candidate in selected:
                 try:
-                    assets += _apply_metadata_candidate(connection, group, candidate, now)
+                    assets += _apply_metadata_candidate(
+                        connection, group, candidate, now, OWNER)
                 except ValueError as error:
                     # 逐组失败不该拖垮整批：番号已清库、候选值不规范都是常态。
                     failures.append(f"{group.get('item_key')}: {error}")

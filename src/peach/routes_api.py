@@ -27,6 +27,7 @@ from fastapi.responses import JSONResponse
 
 from . import web_contract
 from .config import LOCATION_ROOT_DECLARATIONS
+from .field_owners import RevisionConflict
 from .interaction import reveal_path
 from .platform import is_unmapped, root_online, translate_ledger_path
 from .providers import ProviderUnavailable
@@ -251,6 +252,18 @@ def api_post(
             request.app.state.web_contract, route_path, body)
     except KeyError:
         return JSONResponse({"error": "not found"}, status_code=404)
+    except RevisionConflict as exc:
+        # 客户端手上的取值已经不是账本现在这一个。回 409 并带上现值，页面据此刷新
+        # 再让人重判；当成 400 的话，「你填错了」和「有人先改了」读起来一模一样。
+        return JSONResponse(
+            {
+                "error": "field revision conflict",
+                "message": str(exc),
+                "expected_revision": exc.expected,
+                "revisions": {str(key): value for key, value in exc.revisions.items()},
+            },
+            status_code=409,
+        )
     except (TypeError, ValueError) as exc:
         return JSONResponse({"error": f"{type(exc).__name__}: {exc}"}, status_code=400)
     except Exception:

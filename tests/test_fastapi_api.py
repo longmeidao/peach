@@ -37,6 +37,7 @@ CREATE TABLE asset(
   o_count INTEGER, watch_ratio REAL, stash_scene_id INTEGER, snapshot_path TEXT, first_seen TEXT,
   feedback TEXT, disposal TEXT, leave_ratio REAL, play_seconds REAL,
   feedback_at REAL, seek_count INTEGER, max_reached REAL,
+  field_owners TEXT, mutation_revision INTEGER NOT NULL DEFAULT 0,
   UNIQUE(location,path));
 CREATE TABLE asset_tag(asset_id INTEGER,tag TEXT,confidence REAL DEFAULT 1.0,source TEXT,
                        UNIQUE(asset_id,tag));
@@ -744,6 +745,49 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
             "SELECT e.canonical_name FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
             "WHERE ae.asset_id=1 AND ae.source='javinizer:r18dev:studio'"
         ).fetchall(), [("Studio B",)])
+        connection.close()
+
+    async def test_approving_against_a_stale_revision_answers_409_with_the_current_one(self):
+        connection = sqlite3.connect(self.db)
+        connection.execute("UPDATE asset SET code='ABC-001' WHERE id=1")
+        connection.commit(); connection.close()
+        candidate = {
+            "candidate_key": "ABC-001:studio:r18dev:abc", "source": "r18dev",
+            "source_url": "https://r18.dev/example", "confidence": 0.9,
+            "provider_id": "ABC-001",
+            "value": "Studio B", "display_value": "Studio B", "warnings": [],
+            "raw_snapshot": "/evidence.json",
+        }
+        fields = ["item_key", "code", "query", "field", "field_label", "current_value",
+                  "candidates_json", "source_count", "status", "size_gb", "videos", "fetched_at"]
+        path = self.candidate_root / "metadata-field-candidates-20260822.csv"
+        with path.open("w", encoding="utf-8-sig", newline="") as handle:
+            writer = csv.DictWriter(handle, fieldnames=fields)
+            writer.writeheader(); writer.writerow({
+                "item_key": "ABC-001:studio", "code": "ABC-001", "query": "ABC-001",
+                "field": "studio", "field_label": "厂牌", "current_value": "Studio A",
+                "candidates_json": json.dumps([candidate]), "source_count": "1",
+                "status": "candidate", "size_gb": "1", "videos": "1", "fetched_at": "now",
+            })
+        body = {
+            "category": "metadata_fields", "item_key": "ABC-001:studio",
+            "candidate_key": candidate["candidate_key"], "status": "approved",
+        }
+        stale = await self.client.post("/api/review/decision?t=secret",
+                                       json={**body, "expected_revision": 7})
+        self.assertEqual(stale.status_code, 409, stale.text)
+        self.assertEqual(stale.json()["expected_revision"], 7)
+        self.assertEqual(list(stale.json()["revisions"].values()), [0])
+        connection = sqlite3.connect(self.db)
+        self.assertEqual(connection.execute(
+            "SELECT studio FROM asset WHERE id=1").fetchone()[0], "Studio A")
+        connection.close()
+        fresh = await self.client.post("/api/review/decision?t=secret",
+                                       json={**body, "expected_revision": 0})
+        self.assertEqual(fresh.status_code, 200, fresh.text)
+        connection = sqlite3.connect(self.db)
+        self.assertEqual(connection.execute(
+            "SELECT studio,mutation_revision FROM asset WHERE id=1").fetchone(), ("Studio B", 1))
         connection.close()
 
     async def test_metadata_tag_approval_promotes_an_existing_tag_to_official_source(self):

@@ -32,6 +32,16 @@ from .entities import (
     resolve_entity,
     upsert_asset_entity,
 )
+from .field_owners import (
+    EXPECTED_REVISION_FIELD,
+    auto_owner,
+    check_revision,
+    is_protected,
+    owner_label,
+    owner_of,
+    review_owner,
+    write_owned_fields,
+)
 from .fsutil import atomic_write_bytes
 from .genre_decisions import load_genre_decisions, record_genre_decision
 from .genre_taxonomy import CONTENT_GENRES, genres_in_warning, normalise_genre
@@ -265,7 +275,8 @@ def _attach_review_asset_context(connection, rows: list[dict]) -> None:
     if codes:
         marks = ",".join("?" * len(codes))
         sql = (
-            "SELECT id,name,code,snapshot_path FROM asset WHERE medium='video' "
+            "SELECT id,name,code,snapshot_path,field_owners,mutation_revision "
+            "FROM asset WHERE medium='video' "
             "AND (disposal IS NULL OR disposal<>'trash') AND (code IN (" + marks + ")"
         )
         params: list[object] = list(codes)
@@ -282,8 +293,8 @@ def _attach_review_asset_context(connection, rows: list[dict]) -> None:
     if entity_ids:
         marks = ",".join("?" * len(entity_ids))
         for asset in connection.execute(
-            "SELECT ae.entity_id,a.id,a.name,a.code,a.snapshot_path "
-            "FROM asset_entity ae JOIN asset a ON a.id=ae.asset_id "
+            "SELECT ae.entity_id,a.id,a.name,a.code,a.snapshot_path,a.field_owners,"
+            "a.mutation_revision FROM asset_entity ae JOIN asset a ON a.id=ae.asset_id "
             f"WHERE ae.entity_id IN ({marks}) AND a.medium='video' "
             "AND (a.disposal IS NULL OR a.disposal<>'trash') "
             "ORDER BY (a.snapshot_path IS NULL),a.id",
@@ -305,7 +316,8 @@ def _attach_review_asset_context(connection, rows: list[dict]) -> None:
     if requested_ids:
         marks = ",".join("?" * len(requested_ids))
         for asset in connection.execute(
-            f"SELECT id,name,code,snapshot_path FROM asset WHERE id IN ({marks})",
+            "SELECT id,name,code,snapshot_path,field_owners,mutation_revision "
+            f"FROM asset WHERE id IN ({marks})",
             sorted(requested_ids),
         ):
             comparison_assets[asset["id"]] = dict(asset)
@@ -331,6 +343,12 @@ def _attach_review_asset_context(connection, rows: list[dict]) -> None:
             row["asset_name"] = asset["name"]
             row["asset_code"] = asset.get("code") or code
             row["asset_has_snapshot"] = bool(asset.get("snapshot_path"))
+            # 这张卡在问某个字段该填什么，那就得先说清现在这个值是谁填的：批准
+            # 一个来源去覆盖用户自己写过的值，和覆盖一个刮削补上的值，是两件事。
+            row["current_owner"] = owner_of(
+                asset.get("field_owners"),
+                METADATA_FIELD_COLUMNS.get(str(row.get("field") or "").strip()))
+            row["asset_mutation_revision"] = int(asset.get("mutation_revision") or 0)
         row["comparison_assets"] = [
             comparison_assets[int(value)]
             for value in (row.get("left_asset_id"), row.get("right_asset_id"))
@@ -797,14 +815,22 @@ def metadata_auto_apply_candidate(connection, row: dict) -> dict | None:
     # 官网时才放行：官网按番号列出的就是这部片本身。
     if is_korean_mib_code(code) and not _only_mib_official(row):
         return None
-    names = [r["name"] for r in connection.execute(
-        "SELECT name FROM asset WHERE medium='video' AND (upper(trim(code))=upper(?) "
-        "OR upper(trim(code))=upper(?)) AND (disposal IS NULL OR disposal<>'trash')",
-        (code, query))]
-    if not names:
+    targets = list(connection.execute(
+        "SELECT name,field_owners FROM asset WHERE medium='video' "
+        "AND (upper(trim(code))=upper(?) OR upper(trim(code))=upper(?)) "
+        "AND (disposal IS NULL OR disposal<>'trash')",
+        (code, query)))
+    if not targets:
         return None
     folded = code.casefold()
-    if not all(folded in str(name or "").casefold() for name in names):
+    if not all(folded in str(target["name"] or "").casefold() for target in targets):
+        return None
+    # 归属是用户判断的字段不走自动落库。ADR-0018 第 1 条只看取值空不空，而用户可以
+    # 把一个字段判成空——那也是判断。没有这一道，「清空再等自动补回来」就成了
+    # 用户无法表达的意思。
+    column = METADATA_FIELD_COLUMNS.get(field)
+    if column and any(is_protected(owner_of(target["field_owners"], column))
+                      for target in targets):
         return None
     return {**_normalised_candidate(field, candidate), "agreed_sources": len(candidates)}
 
@@ -831,7 +857,10 @@ def _review_evidence(category: str, row: dict) -> str:
     if category == "metadata_fields":
         current = str(row.get("current_value") or "").strip() or "尚无"
         target = '匹配资产' if row.get('asset_path') else '同番号资产'
-        return (f"当前值：{current}；{row.get('videos') or 0} 个{target}；"
+        owner = owner_label(str(row.get("current_owner") or ""))
+        return (f"当前值：{current}"
+                + (f"（{owner}）" if owner else "")
+                + f"；{row.get('videos') or 0} 个{target}；"
                 f"{len(row.get('candidates') or [])} 个来源候选")
     if category == "western_identity":
         overlap = row.get("token_overlap") or "0"
@@ -938,7 +967,24 @@ def _approved_entity_name(value: object, kind: str) -> str:
     return cleaned
 
 
-def _apply_metadata_candidate(connection, group: dict, candidate: dict, now: str) -> int:
+#: 复核字段名 → `asset` 的真相字段列。`performers` 与 `tags` 不在这里：它们落在
+#: `asset_tag` / `asset_entity` 的多值行上，不是 `asset` 的一列，归属由那两张表
+#: 自己的 `source` 列承担。
+METADATA_FIELD_COLUMNS = {
+    "title": "catalog_title", "original_title": "original_title",
+    "release_date": "release_date", "studio": "studio", "series": "series",
+}
+
+
+def _apply_metadata_candidate(
+    connection, group: dict, candidate: dict, now: str, owner: str, *,
+    expected_revision: int | None = None,
+) -> int:
+    """把一个候选的取值写进真相字段，`owner` 是本次写入者的归属串。
+
+    `owner` 没有默认值：写入者是谁属于调用点的事实，给个默认就等于让下一个
+    调用点默默继承别人的身份，而这一层留痕正是 ADR-0005 要保住的东西。
+    """
     field = str(group.get("field") or "").strip()
     if field not in {
         "title", "original_title", "performers", "studio", "series", "release_date", "tags",
@@ -963,6 +1009,8 @@ def _apply_metadata_candidate(connection, group: dict, candidate: dict, now: str
         raise ValueError("当前 ledger 已没有匹配的可用资产")
     if len(asset_ids) > REVIEW_APPLY_LIMIT:
         raise ValueError(f"同番号资产 {len(asset_ids)} 条，超过单次批准上限 {REVIEW_APPLY_LIMIT}")
+    # 乐观并发的凭据在写任何一张表之前验，多值字段那两条分支才同样受它保护。
+    check_revision(connection, asset_ids, expected_revision)
     source = str(candidate.get("source") or "").strip()
     candidate_key = str(candidate.get("candidate_key") or "").strip()
     if not re.fullmatch(r"[a-z0-9_-]+", source) or not candidate_key:
@@ -1003,10 +1051,8 @@ def _apply_metadata_candidate(connection, group: dict, candidate: dict, now: str
         if (not value or len(value) > 1000
                 or any(ord(char) < 32 for char in raw_value)):
             raise ValueError("标题候选为空、过长或含控制字符")
-        column = "catalog_title" if field == "title" else "original_title"
-        connection.execute(
-            f"UPDATE asset SET {column}=? WHERE id IN ({marks})", (value, *asset_ids),
-        )
+        write_owned_fields(
+            connection, asset_ids, {METADATA_FIELD_COLUMNS[field]: value}, owner)
         return len(asset_ids)
 
     if field == "release_date":
@@ -1017,16 +1063,14 @@ def _apply_metadata_candidate(connection, group: dict, candidate: dict, now: str
             time.strptime(value, "%Y-%m-%d")
         except ValueError as exc:
             raise ValueError("发行日期候选无效") from exc
-        connection.execute(
-            f"UPDATE asset SET release_date=? WHERE id IN ({marks})", (value, *asset_ids),
-        )
+        write_owned_fields(
+            connection, asset_ids, {"release_date": value}, owner)
         return len(asset_ids)
 
     if field in {"studio", "series"}:
         name = _approved_entity_name(candidate.get("value"), field)
-        connection.execute(
-            f"UPDATE asset SET {field}=? WHERE id IN ({marks})", (name, *asset_ids),
-        )
+        write_owned_fields(
+            connection, asset_ids, {field: name}, owner)
         connection.execute(
             f"DELETE FROM asset_entity WHERE asset_id IN ({marks}) AND role=? "
             "AND source LIKE 'javinizer:%'",
@@ -1311,7 +1355,9 @@ def w_review_auto_apply(contract: ReviewContract, _body=None):
                 skipped += 1
                 continue
             try:
-                count = _apply_metadata_candidate(connection, row, candidate, now)
+                count = _apply_metadata_candidate(
+                    connection, row, candidate, now,
+                    auto_owner(str(candidate.get("source") or "")))
             except ValueError:
                 # 落库条件在这一刻不成立（例如资产已删）：回到人工，不记决定。
                 skipped += 1
@@ -1361,6 +1407,13 @@ def w_review_decision(contract: ReviewContract, body):
         raise ValueError("invalid review decision")
     now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     note = str(body.get("note", "")).strip()[:2000]
+    # 乐观并发是可选的：带上就按它验，不带就按「我是唯一写者」处理。前端只在候选钉死
+    # 一条资产（`asset_path`）时带，按番号命中多条的那种组没有单一 revision 可报。
+    raw_revision = body.get(EXPECTED_REVISION_FIELD)
+    try:
+        expected_revision = None if raw_revision in (None, "") else int(raw_revision)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{EXPECTED_REVISION_FIELD} 必须是整数") from exc
     with contract.write_transaction() as connection:
         connection.execute(
             "INSERT INTO review_decision(category,item_key,status,note,updated_at) VALUES(?,?,?,?,?) "
@@ -1376,7 +1429,10 @@ def w_review_decision(contract: ReviewContract, body):
             # 页面上显示的是折过收录决定的那份值，写下去的也必须是它。
             candidate = _fold_genre_decisions(str(group.get("field") or ""), candidate,
                                               load_genre_decisions(connection))
-            applied = _apply_metadata_candidate(connection, group, candidate, now)
+            applied = _apply_metadata_candidate(
+                connection, group, candidate, now,
+                review_owner(str(candidate.get("source") or "")),
+                expected_revision=expected_revision)
             provenance_note = json.dumps({
                 "candidate_key": candidate_key, "source": candidate.get("source"),
                 "user_note": note,
