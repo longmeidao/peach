@@ -68,7 +68,8 @@ ERROR_FIELDS = ["code", "query", "source", "kind", "status_code", "retryable", "
 UNMAPPED_FIELDS = ["genre", "source", "occurrences", "sample_code"]
 HEALTH_FIELDS = [
     "source", "profile", "attempted", "snapshot_reused", "fetched", "succeeded",
-    "empty", "errors", "retryable_errors", "cooldown_skips", "blocked", "elapsed_ms",
+    "empty", "errors", "retryable_errors", "cooldown_skips", "auth_skips",
+    "blocked", "elapsed_ms",
     *dict.fromkeys((*PEACH_FIELDS, *CATALOG_EVIDENCE_FIELDS)),
     "last_error_kind", "last_error_status", "last_error_message",
 ]
@@ -245,6 +246,11 @@ def _read_snapshot(path: Path, code: str) -> dict | None:
 #: `scraper "mgstage" is not enabled`，本机配置问题被冻结成来源判决，之后
 #: 每次续跑都直接跳过，10 个番号再也没被问过。
 SETTLED_ERROR_KINDS = frozenset({"not_found"})
+
+#: 鉴权失败这一档。它比冷却更早也更硬：冷却是「先歇 300 秒再说」，这里是「本批
+#: 不再向这个来源发请求」。判据不同——限流会自己过去，凭据不会。2026-09-01 的补抓
+#: 里，一把过期 Cookie 让同一个来源在 122 个番号上各撞一次墙，全部写成同一条错误。
+AUTH_ERROR_KIND = "auth"
 
 #: 连续多少次可重试失败才让来源进冷却，以及冷却多久（秒）。
 #: 2026-09-01 的官方 tag 补抓实测：mgstage 在中途超时一次，旧逻辑当场把它
@@ -429,7 +435,7 @@ def _health_rows(policy: MetadataPolicy) -> dict[str, dict[str, object]]:
     return {source: {
         "source": source, "profile": policy.profile, "attempted": 0,
         "snapshot_reused": 0, "fetched": 0, "succeeded": 0, "empty": 0,
-        "errors": 0, "retryable_errors": 0, "cooldown_skips": 0,
+        "errors": 0, "retryable_errors": 0, "cooldown_skips": 0, "auth_skips": 0,
         "blocked": 0, "elapsed_ms": 0,
         **{field: 0 for field in (*PEACH_FIELDS, *CATALOG_EVIDENCE_FIELDS)},
         "last_error_kind": "", "last_error_status": "", "last_error_message": "",
@@ -514,6 +520,8 @@ def main(argv: list[str] | None = None, *, provider: JavinizerGoProvider | None 
 
     cooldown_until: dict[str, float] = {}
     consecutive_failures: dict[str, int] = {}
+    #: 本批已判定鉴权失败的来源 → 第一条说明。进了这张表就不再对它发请求。
+    auth_blocked: dict[str, str] = {}
     groups_written = errors_written = 0
     stopped: JobPolicyError | None = None
     # 流式写：两个文件同时开着，行在长循环里边跑边落盘，中途还有 guard.check()
@@ -542,6 +550,9 @@ def main(argv: list[str] | None = None, *, provider: JavinizerGoProvider | None 
             for source in policy.sources_for_code(query):
                 source_health = health[source]
                 source_health["attempted"] += 1
+                if source in auth_blocked:
+                    source_health["auth_skips"] += 1
+                    continue
                 if time.monotonic() < cooldown_until.get(source, 0.0):
                     source_health["cooldown_skips"] += 1
                     continue
@@ -563,8 +574,9 @@ def main(argv: list[str] | None = None, *, provider: JavinizerGoProvider | None 
                         if attempt != query:
                             log(f"{query} 在 {source} 改用 {attempt} 命中")
                         break
-                    # 限流、封禁和网络抖动与写法无关，换个写法只是再撞一次墙。
+                    # 限流、封禁、鉴权和网络抖动与写法无关，换个写法只是再撞一次墙。
                     if error is not None and (error.retryable
+                                              or error.kind == AUTH_ERROR_KIND
                                               or error.status_code in {403, 429, 503}):
                         break
                 source_health["elapsed_ms"] += round((time.perf_counter() - started) * 1000)
@@ -585,7 +597,15 @@ def main(argv: list[str] | None = None, *, provider: JavinizerGoProvider | None 
                         cooldown_until[source] = float('inf')
                         source_health['blocked'] += 1
                         log('sougouwiki 本批联网停止；已取得的候选已保留')
-                    if error.retryable or error.status_code in {403, 429, 503}:
+                    if error.kind == AUTH_ERROR_KIND:
+                        auth_blocked[source] = str(error)
+                        consecutive_failures[source] = 0
+                        source_health["blocked"] += 1
+                        # 下一步由错误消息自己带着：判据明确就说换凭据，只剩状态码
+                        # 可看的 403 则不替用户断成因。这里再补一句通用建议会盖掉那份
+                        # 区分，把撞上 IP 封禁的人引去反复换 Cookie。
+                        log(f"{source} 鉴权失败，本批不再向它发请求：{error}")
+                    elif error.retryable or error.status_code in {403, 429, 503}:
                         consecutive_failures[source] = consecutive_failures.get(source, 0) + 1
                         if consecutive_failures[source] >= COOLDOWN_AFTER_FAILURES:
                             cooldown_until[source] = time.monotonic() + COOLDOWN_SECONDS
@@ -667,6 +687,11 @@ def main(argv: list[str] | None = None, *, provider: JavinizerGoProvider | None 
     log(f"未收录 genre {len(unmapped_genres)} 种 → {unmapped_path}")
     if errors_written:
         log(f"来源错误 {errors_written} 条 → {errors_path}")
+    # 鉴权失败单列。混在错误总数里看不出「这一批有几家其实一条都没问到」，
+    # 而它决定的是下一步做什么：补凭据重跑，而不是等限流过去。
+    if auth_blocked:
+        log(f"鉴权失败的来源 {len(auth_blocked)} 家，本批已停止请求；按各自的说明处理后重跑："
+            + "；".join(f"{source}（{detail}）" for source, detail in auth_blocked.items()))
     close_log()
     return stopped.exit_code if stopped is not None else 0
 

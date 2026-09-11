@@ -31,6 +31,8 @@ import json
 import re
 from urllib.parse import urljoin, urlsplit
 
+from .http import body_text
+
 #: 声明里没有尺寸时给的保守估计。favicon.ico 历史上就是 16，别按它去赢过 apple-touch-icon。
 DEFAULT_SIZE = 16
 #: SVG 没有像素尺寸。给一个高于任何现实位图的分数，让它无条件排在最前。
@@ -326,7 +328,9 @@ def discover(url: str, fetch) -> list[Candidate]:
     candidates = list(overrides_for(url))
     page = fetch(base)
     if page is not None:
-        html = page[0].decode("utf-8", "replace")
+        # `fetch` 连内容类型一起给了，声明里的 charset 就在手边：日站首页仍有相当
+        # 一部分是 Shift_JIS，按 utf-8 硬解会把 `<title>` 与 `rel` 文本变成替换字符。
+        html = body_text(page[0], {"content-type": page[1]})
         candidates += link_candidates(html, base)
         manifest = manifest_url(html, base)
         if manifest:

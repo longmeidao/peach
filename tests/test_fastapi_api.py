@@ -18,7 +18,10 @@ ROOT = Path(__file__).resolve().parents[1]
 HAS_DEPS = all(importlib.util.find_spec(name) for name in ("fastapi", "httpx"))
 if HAS_DEPS:
     import httpx
+    from fastapi.routing import APIRoute
+    from starlette.routing import Mount
     from peach import api as api_module
+    from peach import routes_auth
     from peach.api import create_app
     from peach.follow_covers import PLACEHOLDER_CONTENT_TYPE
     from peach.config import PeachSettings
@@ -1782,6 +1785,98 @@ class UnconfiguredMachineTests(unittest.IsolatedAsyncioTestCase):
             transport=httpx.ASGITransport(app=app), base_url="http://test",
         ) as client:
             self.assertTrue((await client.get("/healthz")).json()["configured"])
+
+
+#: 不挂鉴权依赖的路由，以及每一条为什么必须公开。每一项都逐条核实过，新加的路由
+#: 默认要带鉴权：漏挂时在这里红，而不是等有人从局域网外面发现它。
+#: 键是 `(方法集合, 路径)`，方法也要对上——同一条路径的 GET 公开不等于 POST 也公开。
+PUBLIC_ROUTES = {
+    # 健康检查。托盘与 uptime 工具要在没有口令时探到服务活着，返回里只有本机
+    # 运行态，没有任何媒体内容或馆藏数据。
+    ("GET,HEAD", "/healthz"),
+    # 登录页自己。要口令才能打开输入口令的那一页，就没有人能登录了。
+    ("GET", "/login"),
+    ("POST", "/login"),
+    # 首次运行表单的提交端点。这台机器那时还没有口令可验；它自己有三道守卫：
+    # 已配置过就 404、非回环调用方 403、设置文件已存在 409。
+    ("POST", "/setup"),
+    # 登录页在拿到会话之前就要出图，书签与历史记录也从这三个固定路径取图标。
+    # 它们发的是随仓库分发的品牌资源，不读账本。
+    ("GET,HEAD", "/favicon.ico"),
+    ("GET,HEAD", "/favicon.svg"),
+    ("GET,HEAD", "/peach-logo.png"),
+}
+
+
+def _api_routes(routes):
+    """铺平 FastAPI 的路由表。
+
+    FastAPI 0.141 起 `include_router` 往 `app.routes` 里放的是一个包装对象，
+    真正的路由在它的 `original_router` 上；只遍历 `app.routes` 会看见一条
+    `/healthz` 就以为全站只有一个端点。
+    """
+    for route in routes:
+        if isinstance(route, APIRoute):
+            yield route
+        elif hasattr(route, "original_router"):
+            yield from _api_routes(route.original_router.routes)
+        elif hasattr(route, "routes"):
+            yield from _api_routes(route.routes)
+
+
+@unittest.skipUnless(HAS_DEPS, "fastapi/httpx not installed")
+class RouteAuthContractTests(unittest.TestCase):
+    """每条路由都要挂上鉴权依赖，例外只能出自上面那张逐条核实过的白名单。
+
+    Peach 的闸门是依赖注入（`routes_auth` 的三个 `require_*`），不是中间件：新加
+    一条路由时忘记写 `Depends(require_auth)`，服务照常起、测试照常绿，那条路径就
+    此对局域网敞开。这是「只改了自己测试的那条路径」在鉴权面上的形态。
+    """
+
+    GUARD_NAMES = ("require_auth", "require_page_auth", "require_asset_auth")
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.TemporaryDirectory()
+        root = Path(cls.tmp.name).resolve()
+        cls.app = create_app(PeachSettings(
+            configured=True, db_path=root / "ledger.db",
+            follow_state_root=root / "state"))
+        cls.guards = {getattr(routes_auth, name) for name in cls.GUARD_NAMES}
+        cls.routes = {(",".join(sorted(route.methods)), route.path):
+                      {dependency.call for dependency in route.dependant.dependencies}
+                      for route in _api_routes(cls.app.routes)}
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.app.state.http_transport.close()
+        cls.tmp.cleanup()
+
+    def test_the_route_table_is_actually_visible_to_this_test(self):
+        """铺平失败时这个契约会静默变成空断言，所以先钉住「看得见路由」。"""
+        self.assertGreater(len(self.routes), 60, "没有遍历到路由表，下面的断言全是空的")
+        self.assertIn(("GET,HEAD", "/healthz"), self.routes)
+
+    def test_every_route_is_gated_unless_it_is_on_the_public_list(self):
+        unguarded = sorted(key for key, dependencies in self.routes.items()
+                           if not dependencies & self.guards and key not in PUBLIC_ROUTES)
+        self.assertEqual(unguarded, [],
+                         "新路由没挂 routes_auth 的 require_* 依赖；确实该公开就写进 "
+                         "PUBLIC_ROUTES 并注明理由")
+
+    def test_the_public_list_has_no_entry_that_stopped_existing(self):
+        """路径改名或删掉时白名单要跟着收，否则它会一直替一条不存在的路由背书。"""
+        stale = sorted(key for key in PUBLIC_ROUTES if key not in self.routes)
+        self.assertEqual(stale, [])
+        still_gated = sorted(key for key in PUBLIC_ROUTES
+                             if self.routes.get(key, set()) & self.guards)
+        self.assertEqual(still_gated, [], "这些路由已经挂上鉴权了，从白名单里删掉")
+
+    def test_the_only_unguarded_mount_is_the_vendored_frontend(self):
+        """挂载不是路由，遍历看不到它；再挂一个就必须有人重新判断它该不该公开。"""
+        self.assertEqual(
+            sorted(route.path for route in self.app.routes if isinstance(route, Mount)),
+            ["/vendor"])
 
 
 if __name__ == "__main__":
