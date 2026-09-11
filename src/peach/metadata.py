@@ -17,6 +17,8 @@ from urllib.parse import urlsplit
 from .config import STATE_DIR, TOOLS_DIR
 from .catalog_rules import same_release_code, code_query_variants, normalise_code_key
 from .genre_taxonomy import map_genres, unmapped_genre_warning
+from .http import body_text
+from .javdb import LOGIN as JAVDB_LOGIN_PAGE
 from .entities import (
     canonicalize_entity_name,
     collapse_repeated_entity_name,
@@ -37,6 +39,18 @@ MAX_EVIDENCE_URLS = 24
 
 
 class MetadataProviderError(RuntimeError):
+    """来源没给出结果的原因。`kind` 是分类，不是措辞。
+
+    `auth` 单列一档：登录墙、Cookie 过期和 401/403 与「这次没问出结果」不是一回事，
+    和「这部片不存在」更不是。混在 `unavailable` 里的代价有两样：一是每个番号都要为
+    同一把锁再付一次往返，本批几百次请求全部注定失败；二是批处理按 `unavailable` 退让
+    几百秒后又回来重试，而凭据不换，重试多少次都是同一个结果。
+
+    `auth` 固定 `retryable=False`（同一份凭据再问一次不会变）、`temporary=True`
+    （换一份 Cookie 就能继续，所以不能作为定论冻进快照——`SETTLED_ERROR_KINDS`
+    只收 `not_found`）。
+    """
+
     def __init__(
         self, message: str, *, kind: str = "unknown", status_code: int = 0,
         retryable: bool = False, temporary: bool = False,
@@ -46,6 +60,52 @@ class MetadataProviderError(RuntimeError):
         self.status_code = status_code
         self.retryable = retryable
         self.temporary = temporary
+
+
+#: 站方在 HTTP 上直说「你没有通行证」的两个状态码。
+AUTH_STATUS_CODES = frozenset({401, 403})
+
+#: 重定向终点落在这些路径上就是登录墙或年龄闸。站方不一定回 401：javdb 对未登录
+#: 用户访问部分详情页直接 302 到 `/login`，DMM 把未过年龄闸的请求送去
+#: `/age_check/`，跟完重定向拿到的都是一页 200。按状态码判会读成「取到了」，
+#: 按正文判会读成「查无此片」，只有最终地址能把它认出来（NeoAVDC 的
+#: `JavDbSource.ts` 用的也是这一条）。
+LOGIN_LOCATIONS = re.compile(
+    r"/(?:login|signin|sign_in|users/sign_in|account/login|auth/login|age_?check)(?:[/?.]|$)",
+    re.IGNORECASE,
+)
+
+#: 站方自己给出的登录页标记。只认页面身份这种固定结构，不按「正文里出现登录二字」
+#: 猜——搜索结果页和页脚都会出现那两个字。javdb 那条判据留在 `peach.javdb`，
+#: 采集脚本按页判「这一页是不是登录墙」用的是同一份。
+_AUTH_PAGE_MARKERS = ((JAVDB_LOGIN_PAGE, "javdb 登录页"),)
+
+
+def auth_wall_reason(*, status_code: int = 0, final_url: str = "",
+                     body: bytes | str = b"") -> str:
+    """这次响应是不是「要登录才给看」。是就返回写进错误消息的理由，否则空串。
+
+    三条判据各自对应真实存在的一种形态，缺一条就有来源漏判：明确的 401/403、
+    跟完重定向后落在登录页或年龄闸、以及状态 200 但正文就是登录页。
+    """
+    if status_code in AUTH_STATUS_CODES:
+        return f"来源返回 {status_code}"
+    path = urlsplit(str(final_url or "")).path
+    if path and LOGIN_LOCATIONS.search(path):
+        return f"重定向终点落在 {path}"
+    text = body_text(body) if isinstance(body, bytes) else str(body)
+    for pattern, label in _AUTH_PAGE_MARKERS:
+        if pattern.search(text):
+            return label
+    return ""
+
+
+def auth_error(source: str, reason: str, *, status_code: int = 0) -> MetadataProviderError:
+    """把一次鉴权失败包成 `kind="auth"` 的错误。措辞只有这一处。"""
+    return MetadataProviderError(
+        f"{source} 需要登录或已被拒绝：{reason}", kind="auth",
+        status_code=status_code, retryable=False, temporary=True,
+    )
 
 
 def _platform_tool_path() -> Path | None:
@@ -220,10 +280,19 @@ class JavinizerGoProvider:
             raise MetadataProviderError(f"Javinizer-Go 返回了非 JSON 输出：{detail}") from exc
         if isinstance(payload, dict) and isinstance(payload.get("error"), dict):
             error = payload["error"]
+            status = int(error.get("status_code") or 0)
+            message = str(error.get("message") or "Javinizer-Go query failed")
+            # Javinizer-Go 不分鉴权这一档，它把 401/403 和登录页一起归进自己的
+            # 通用错误。状态码和最终地址它照实给了，所以这道判定放在适配器这一侧：
+            # 不改上游，也不让「站点把我们挡在门外」继续伪装成「这次没问到」。
+            reason = auth_wall_reason(status_code=status,
+                                      final_url=str(error.get("url") or ""))
+            if reason or str(error.get("kind") or "") == "auth":
+                raise auth_error(scraper, reason or message, status_code=status)
             raise MetadataProviderError(
-                str(error.get("message") or "Javinizer-Go query failed"),
+                message,
                 kind=str(error.get("kind") or "unknown"),
-                status_code=int(error.get("status_code") or 0),
+                status_code=status,
                 retryable=bool(error.get("retryable")),
                 temporary=bool(error.get("temporary")),
             )

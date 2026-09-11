@@ -195,6 +195,58 @@ class OperationalScriptTests(unittest.TestCase):
                     ], provider=provider)
             self.assertEqual(len(provider.calls), 6, "冷却过期后必须继续问剩下的番号")
 
+    def test_an_authentication_failure_stops_that_source_for_the_whole_run(self):
+        """凭据不会自己恢复：撞上鉴权墙的来源本批不再问，别的来源照常跑完。
+
+        冷却那一档是「先歇 300 秒再说」，对限流成立，对过期 Cookie 只是把同一次
+        失败重复几百遍。摘要里单列鉴权失败的来源，因为下一步不同：补凭据重跑，
+        而不是等。
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            db = root / "ledger.db"
+            sqlite3.connect(db).close(); upgrade(db, MIGRATIONS)
+            connection = sqlite3.connect(db)
+            connection.executemany(
+                "INSERT INTO asset(id,location,path,name,medium,code,size) "
+                "VALUES(?,'local',?,?,'video',?,?)",
+                [(i, f"{i}.mp4", f"{i}.mp4", f"AAA-{i:03d}", 1_000) for i in range(1, 6)],
+            )
+            connection.commit(); connection.close()
+
+            from peach.metadata import auth_error
+            error = self.scrape_codes.MetadataProviderError
+
+            class Walled:
+                def __init__(self): self.calls = []
+                def query(self, code, source):
+                    self.calls.append((source, code))
+                    if source == "javbus":
+                        raise auth_error("javbus", "来源返回 403", status_code=403)
+                    raise error("no such code", kind="not_found")
+
+            provider = Walled()
+            health = root / "health.csv"
+            with redirect_stdout(io.StringIO()) as printed:
+                self.scrape_codes.main([
+                    "--db", str(db), "--out", str(root / "c.csv"),
+                    "--health", str(health), "--raw-dir", str(root / "raw"),
+                    "--log-dir", str(root / "logs"), "--delay", "0",
+                    "--min-free", "0", "--sources", "javbus,r18dev",
+                ], provider=provider)
+            asked = [source for source, _ in provider.calls]
+            self.assertEqual(asked.count("javbus"), 1, "鉴权失败后不该再问这个来源")
+            self.assertEqual(asked.count("r18dev"), 5, "别的来源不受牵连")
+            rows = {}
+            with health.open(encoding="utf-8-sig", newline="") as handle:
+                for row in csv.DictReader(handle):
+                    rows[row["source"]] = row
+            self.assertEqual(rows["javbus"]["last_error_kind"], "auth")
+            self.assertEqual(rows["javbus"]["auth_skips"], "4")
+            self.assertEqual(rows["javbus"]["blocked"], "1")
+            self.assertEqual(rows["r18dev"]["auth_skips"], "0")
+            self.assertIn("鉴权失败的来源", printed.getvalue())
+
     def test_only_not_found_counts_as_a_settled_source_verdict(self):
         # 本机 javinizer 没启用某个 scraper 时返回的是 unknown 错误。把它当定论
         # 复用，会让配置问题被冻结成来源判决，续跑再也不问这个番号。

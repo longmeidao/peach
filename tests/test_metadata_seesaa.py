@@ -96,6 +96,30 @@ class SeesaaMetadataTests(unittest.TestCase):
                 provider.query('ABC-007')
             self.assertEqual(caught.exception.kind, 'size_limit')
 
+    def test_authentication_walls_are_told_apart_from_missing_pages(self):
+        """401、403 与跳到登录页都是 auth；404 仍然是「这次没取到」，不许混成一档。
+
+        混成一档的代价是批处理按网络抖动退让几百秒后回来重试，而凭据没换，
+        重试多少次都是同一个结果。
+        """
+        page = ROOT+'d/Label'
+        cases = ((HttpResponse(401, {}, b''), 'auth', 401),
+                 (HttpResponse(403, {}, b''), 'auth', 403),
+                 (HttpResponse(200, {}, b'<html>login</html>',
+                               'https://seesaawiki.jp/auth/login'), 'auth', 200),
+                 (HttpResponse(404, {}, b''), 'unavailable', 404))
+        for response, kind, status in cases:
+            with self.subTest(status=response.status, url=response.url), \
+                    tempfile.TemporaryDirectory() as tmp:
+                provider = self.provider(Path(tmp).resolve(), Mock(return_value=response))
+                with self.assertRaises(MetadataProviderError) as caught:
+                    provider.load_page(page)
+                self.assertEqual(caught.exception.kind, kind)
+                self.assertEqual(caught.exception.status_code, status)
+                self.assertEqual(caught.exception.retryable, kind != 'auth')
+                # auth 是「换凭据就能继续」，不是定论，所以不会被冻进错误快照复用。
+                self.assertEqual(caught.exception.temporary, kind == 'auth')
+
     def test_conflicting_rows_and_neighbor_codes_are_not_selected(self):
         with tempfile.TemporaryDirectory() as tmp:
             provider = self.provider(Path(tmp).resolve(), Mock())

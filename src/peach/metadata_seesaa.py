@@ -12,7 +12,8 @@ import httpx
 
 from .catalog_rules import normalise_code_key, same_release_code
 from .http import HttpRequest, HttpxTransport, body_text
-from .metadata import MetadataProviderError, validate_provider_code
+from .metadata import (MetadataProviderError, auth_error, auth_wall_reason,
+                       validate_provider_code)
 from .scripting import HostLimiter
 
 ROOT = "https://seesaawiki.jp/w/sougouwiki/"
@@ -140,6 +141,12 @@ class SeesaaProvider:
             raise MetadataProviderError('Wiki 网络请求未取得', kind='unavailable', retryable=True) from error
         if response.status in {403, 429}:
             self.blocked = True
+        # 鉴权失败先判：401/403 与「跳到登录页」都是同一把锁，本批再问多少次都是它。
+        # 判成 unavailable 的话它会被当成网络抖动，几百个番号各自再撞一次。
+        reason = auth_wall_reason(status_code=response.status, final_url=response.url)
+        if reason:
+            self.blocked = True
+            raise auth_error('sougouwiki', reason, status_code=response.status)
         if response.status != 200:
             raise MetadataProviderError('Wiki HTTP 请求未取得', kind='unavailable',
                                         status_code=response.status, retryable=True)

@@ -9,6 +9,8 @@ from peach.metadata import (
     CATALOG_EVIDENCE_FIELDS,
     JavinizerGoProvider,
     MetadataProviderError,
+    auth_error,
+    auth_wall_reason,
     collapse_repeated_phrase,
     extract_catalog_evidence,
     extract_peach_fields,
@@ -71,6 +73,48 @@ class MetadataProviderTests(unittest.TestCase):
                 provider.query("IPX-535", "r18dev")
         self.assertEqual(caught.exception.status_code, 429)
         self.assertTrue(caught.exception.retryable)
+
+    def test_an_authentication_wall_is_its_own_error_kind(self):
+        """401、403 与「跳到登录页」都判成 auth，别的失败不许蹭这一档。"""
+        self.assertEqual(auth_wall_reason(status_code=401), "来源返回 401")
+        self.assertEqual(auth_wall_reason(status_code=403), "来源返回 403")
+        self.assertIn("/login", auth_wall_reason(
+            status_code=200, final_url="https://javdb.com/login?next=/v/abc"))
+        self.assertIn("/age_check", auth_wall_reason(
+            status_code=200, final_url="https://www.dmm.co.jp/age_check/=/declared=yes/"))
+        self.assertEqual(auth_wall_reason(
+            status_code=200, body="<title> 登入 | JavDB</title>".encode()), "javdb 登录页")
+        for benign in (dict(status_code=404),
+                       dict(status_code=200, final_url="https://javdb.com/v/loginbait"),
+                       dict(status_code=503),
+                       dict(status_code=200, body=b"<title>ABW-220</title>")):
+            with self.subTest(benign=benign):
+                self.assertEqual(auth_wall_reason(**benign), "")
+
+    def test_an_auth_error_is_not_retryable_and_not_a_verdict(self):
+        """同一份凭据再问一次还是这个结果，所以不重试；换一份就能继续，所以不是定论。"""
+        error = auth_error("mgstage", "来源返回 403", status_code=403)
+        self.assertEqual((error.kind, error.status_code), ("auth", 403))
+        self.assertFalse(error.retryable)
+        self.assertTrue(error.temporary)
+        self.assertIn("mgstage", str(error))
+
+    def test_the_adapter_promotes_an_upstream_401_to_the_auth_kind(self):
+        """Javinizer-Go 没有鉴权这一档，把 401/403 混在自己的通用错误里。"""
+        def runner(command, **kwargs):
+            return subprocess.CompletedProcess(command, 1, json.dumps({"error": {
+                "kind": "request_failed", "message": "unexpected status",
+                "status_code": 401, "retryable": True, "temporary": True,
+            }}), "")
+        with tempfile.TemporaryDirectory() as tmp:
+            provider = JavinizerGoProvider(
+                Path("/bin/javinizer"), Path(tmp) / "config.yaml", runner=runner,
+            )
+            with self.assertRaises(MetadataProviderError) as caught:
+                provider.query("IPX-535", "javdb")
+        self.assertEqual(caught.exception.kind, "auth")
+        self.assertFalse(caught.exception.retryable)
+        self.assertIn("javdb", str(caught.exception))
 
     def test_repeated_performer_is_collapsed_before_candidate_creation(self):
         self.assertEqual(collapse_repeated_phrase("木村さん 木村さん"), ("木村さん", True))

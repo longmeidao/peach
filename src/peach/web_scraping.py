@@ -134,6 +134,7 @@ def w_scraping_settings(contract, body):
 
 
 def w_scraping_check(contract, body):
+    from .metadata import auth_wall_reason
     source = str(body.get("source", ""))
     if source not in SOURCES:
         raise ValueError("未知采集来源")
@@ -147,16 +148,25 @@ def w_scraping_check(contract, body):
             result = {"label": label, "ok": False}
             try:
                 response = transport(HttpRequest("GET", url, {"Range": "bytes=0-65535"}), 10, 65536)
+                # 鉴权失败与「站点挂了」是两件事，页面上要分得开：前者要人去官网登录
+                # 或换一份 Cookie，后者只要等。判据和元数据来源共用一份；重定向终点
+                # 只在真的跳转过时才算数，否则配置里本身就指向登录页的来源会自判失败。
+                reason = auth_wall_reason(
+                    status_code=response.status, body=response.body,
+                    final_url=response.url if response.url and response.url != url else "")
                 result.update(status=response.status, bytes=len(response.body),
-                              ok=response.status in {200, 206})
+                              ok=response.status in {200, 206} and not reason,
+                              kind="ok" if response.status in {200, 206} and not reason
+                              else "auth" if reason else "unavailable")
                 if label == "高清图片 CDN" and result["ok"]:
                     with Image.open(io.BytesIO(response.body)) as image:
                         result["width"], result["height"] = image.size
                 if not result["ok"]:
                     result["message"] = ("来源要求登录或验证，请在官网完成后重试。"
-                                         if response.status in {401, 403} else "来源暂不可用，请稍后重试。")
+                                         if reason else "来源暂不可用，请稍后重试。")
             except Exception as exc:
-                result.update(ok=False, message="连接未取得；此来源可能需要代理，请检查来源连接方式。",
+                result.update(ok=False, kind="unavailable",
+                              message="连接未取得；此来源可能需要代理，请检查来源连接方式。",
                               error_type=type(exc).__name__)
             results.append(result)
     finally:

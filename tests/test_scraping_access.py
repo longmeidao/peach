@@ -90,6 +90,27 @@ class ScrapingAccessTests(unittest.TestCase):
         self.assertNotIn("password", json.dumps(result))
         self.assertFalse(result["results"][0]["ok"])
 
+    def test_the_check_tells_a_login_wall_apart_from_an_unreachable_source(self):
+        """「要登录」和「站点挂了」在页面上要分得开：前者要人去官网，后者只要等。
+
+        登录墙不一定回 403。跟完重定向落在登录页的那次响应是 200，旧判据只看状态码，
+        于是把一次「其实什么都没取到」报成可连接。
+        """
+        contract = SimpleNamespace(follow_secrets_root=self.root)
+        login = "https://fc2cmadb.com/"
+        cases = ((HttpResponse(403, {}, b"", login), "auth", False),
+                 (HttpResponse(200, {}, b"<html>login</html>",
+                               "https://fc2cmadb.com/users/sign_in"), "auth", False),
+                 (HttpResponse(503, {}, b"", login), "unavailable", False),
+                 (HttpResponse(200, {}, b"<html>ok</html>", login), "ok", True))
+        for response, kind, ok in cases:
+            with self.subTest(status=response.status, url=response.url), \
+                    patch("peach.web_scraping.SourceTransport") as factory:
+                factory.return_value.return_value = response
+                result = w_scraping_check(contract, {"source": "fc2cmadb"})["results"][0]
+            self.assertEqual((result["kind"], result["ok"]), (kind, ok))
+            self.assertEqual("登录" in result.get("message", ""), kind == "auth")
+
     def test_transport_ownership_is_explicit(self):
         for owned in (True, False):
             client = httpx.Client()
