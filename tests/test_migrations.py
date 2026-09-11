@@ -1,3 +1,4 @@
+import json
 import sqlite3
 import shutil
 import tempfile
@@ -24,7 +25,7 @@ class MigrationTests(unittest.TestCase):
         backup = self.root / "before.db"
         done = upgrade(self.db, MIGRATIONS, backup)
         self.assertEqual([m.version for m in done],
-                         ["0000", "0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012", "0013", "0014", "0015", "0016", "0017", "0018", "0019", "0020", "0021", "0022", "0023", "0024", "0025", "0026", "0027"])
+                         ["0000", "0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012", "0013", "0014", "0015", "0016", "0017", "0018", "0019", "0020", "0021", "0022", "0023", "0024", "0025", "0026", "0027", "0029"])
         self.assertTrue(backup.exists())
         con = sqlite3.connect(self.db)
         tables = {row[0] for row in con.execute(
@@ -41,7 +42,7 @@ class MigrationTests(unittest.TestCase):
                          "playlist", "playlist_item",
                          "asset_tag_preference", "asset_search", "follow_playback",
                          "genre_decision", "asset_subtitle", "schema_migration"} <= tables)
-        self.assertEqual(versions, ["0000", "0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012", "0013", "0014", "0015", "0016", "0017", "0018", "0019", "0020", "0021", "0022", "0023", "0024", "0025", "0026", "0027"])
+        self.assertEqual(versions, ["0000", "0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012", "0013", "0014", "0015", "0016", "0017", "0018", "0019", "0020", "0021", "0022", "0023", "0024", "0025", "0026", "0027", "0029"])
         self.assertEqual(upgrade(self.db, MIGRATIONS), [])
         self.assertEqual(plan(self.db, MIGRATIONS)[1], [])
 
@@ -430,6 +431,52 @@ EXPECTED_DELETE_RULES = {
     ("asset_subtitle", "asset_id"): ("asset", "CASCADE"),
 }
 NO_ACTION_ALLOWED = {("profile", "user_id")}
+
+
+class AssetFieldOwnerColumnTests(unittest.TestCase):
+    """0029：真相字段的归属列与乐观并发计数。"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name).resolve()
+        self.db = self.root / "ledger.db"
+        sqlite3.connect(self.db).close()
+        upgrade(self.db, MIGRATIONS)
+
+    def test_asset_gains_field_owners_and_a_revision_counter(self):
+        connection = sqlite3.connect(self.db)
+        self.addCleanup(connection.close)
+        columns = {row[1]: (row[2], row[3], row[4])
+                   for row in connection.execute("PRAGMA table_info(asset)")}
+        self.assertEqual(columns["field_owners"][0], "TEXT")
+        declaration, not_null, default = columns["mutation_revision"]
+        self.assertEqual(declaration, "INTEGER")
+        self.assertEqual((not_null, default), (1, "0"))
+
+    def test_existing_rows_start_unowned_at_revision_zero(self):
+        """归属不回填：谁写的答不出来时，留空比猜一个写入者诚实。"""
+        connection = sqlite3.connect(self.db)
+        self.addCleanup(connection.close)
+        connection.execute(
+            "INSERT INTO asset(id,location,path,name,medium,studio) "
+            "VALUES(1,'local','R:\\\\a.mp4','a.mp4','video','某厂牌')")
+        row = connection.execute(
+            "SELECT field_owners,mutation_revision FROM asset WHERE id=1").fetchone()
+        self.assertEqual(row, (None, 0))
+
+    def test_sqlite_has_the_json_functions_the_owner_map_needs(self):
+        """`json_extract` / `json_patch` 是归属写入唯一的实现手段，先确认它们在。"""
+        connection = sqlite3.connect(self.db)
+        self.addCleanup(connection.close)
+        merged = connection.execute(
+            "SELECT json_patch('{\"a\":\"scan:filename\"}','{\"b\":\"user:manual\"}')"
+        ).fetchone()[0]
+        self.assertEqual(json.loads(merged),
+                         {"a": "scan:filename", "b": "user:manual"})
+        self.assertEqual(connection.execute(
+            "SELECT json_extract('{\"studio\":\"user:manual\"}','$.\"studio\"')"
+        ).fetchone()[0], "user:manual")
 
 
 class ForeignKeyDeleteRuleTests(unittest.TestCase):
