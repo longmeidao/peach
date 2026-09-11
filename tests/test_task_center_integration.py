@@ -174,10 +174,15 @@ class ContractWiringTests(unittest.TestCase):
         self.assertEqual(len({job.task_key for job in jobs}), len(jobs))
 
     def test_a_batch_operation_leaves_one_row(self):
-        with sqlite3.connect(self.db) as connection:
-            connection.execute(
-                "INSERT INTO asset(id,location,path,name,medium) "
-                "VALUES(1,'local','R:\\Media\\a.mp4','a.mp4','video')")
+        # `with` 只提交，不关连接：Windows 上那个还开着的句柄会让临时目录删不掉。
+        connection = sqlite3.connect(self.db)
+        try:
+            with connection:
+                connection.execute(
+                    "INSERT INTO asset(id,location,path,name,medium) "
+                    "VALUES(1,'local','R:\\Media\\a.mp4','a.mp4','video')")
+        finally:
+            connection.close()
         web_contract.w_batch(self.contract, {"ids": [1], "operation": "like"})
         run = self.contract.task_runs.query(task_key="batch")[0]
         self.assertEqual(run.status, "succeeded")

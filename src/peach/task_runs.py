@@ -241,8 +241,8 @@ class TaskRunStore:
                     task_key, blocking.id if blocking else None) from None
             self._record_skip(task_key, trigger, mutex_key, blocking)
             return None
-        with self._lock:
-            self._last_write[run_id] = time.monotonic()
+        # 这里刻意不给节流打时间戳：开工那一刻还不知道要做多少件，第一次进度报上来的
+        # 才是真正能看的那一行。把它一起节流掉，活动页开头两秒只有一句「进行中」。
         return self.get(run_id)
 
     def _record_skip(self, task_key: str, trigger: str, mutex_key: str,
@@ -309,11 +309,10 @@ class TaskRunStore:
         return done
 
     def _due(self, run_id: int, throttle: float) -> bool:
-        if throttle <= 0:
-            return True
+        """节流闸门。放行的那一次也记时间——不记的话下一次拿 0 当基准，节流形同虚设。"""
         now = time.monotonic()
         with self._lock:
-            if now - self._last_write.get(run_id, 0.0) < throttle:
+            if throttle > 0 and now - self._last_write.get(run_id, 0.0) < throttle:
                 return False
             self._last_write[run_id] = now
         return True

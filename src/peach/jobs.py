@@ -315,11 +315,14 @@ class BackgroundJob:
             return
         current = state.get("checked")
         total = state.get("total")
-        self.runs.progress(
-            run_id,
-            current=int(current) if isinstance(current, (int, float)) else None,
-            total=int(total) if isinstance(total, (int, float)) else None,
-            label=self._progress_label(state) or None)
+        counts = (int(current) if isinstance(current, (int, float)) else None,
+                  int(total) if isinstance(total, (int, float)) else None)
+        label = self._progress_label(state) or None
+        if counts == (None, None) and label is None:
+            # 这一次改的是别的字段（`run_id` 本身就是一例），没有进度可报。不往下走：
+            # 空写一次会白占掉节流窗口，真正的第一份计数要等两秒才进得去表。
+            return
+        self.runs.progress(run_id, current=counts[0], total=counts[1], label=label)
 
     @staticmethod
     def _progress_label(state: dict) -> str:
@@ -362,6 +365,7 @@ class BackgroundJob:
         job_id = ""
         with self.lock:
             state = self.state
+            previous = state
             if state is None or (restart and state["status"] != "running"):
                 job_id = uuid.uuid4().hex
                 state = {self.id_key: job_id, "status": "running", "run_id": None,
@@ -380,6 +384,10 @@ class BackgroundJob:
                                 mutex_key=self.mutex_key, conflict="skip")
             return snapshot
         # 开 task_run 与起线程都在锁外：前者要拿数据库的写锁，后者是这个类的老约定。
+        # 先给被顶掉的那一轮收尾再开新的：它占着同一把互斥键，不收就是新的一轮开不了，
+        # 而它自己的线程要等到 `fn` 返回才走到结算，那可能是几分钟以后。
+        if previous is not None and previous[self.id_key] != job_id:
+            self._settle_from(previous[self.id_key], previous, superseded=True)
         try:
             self._open_run(job_id, trigger, snapshot)
         except TaskRunConflict:
@@ -464,12 +472,26 @@ class BackgroundJob:
         """
         state = self.snapshot() or {}
         if state.get(self.id_key) != job_id:
+            # 已经被 `start` 在顶替的那一刻收过尾了，这里再收一次是空操作。
             self._close_run(job_id, "cancelled", error="这一轮已被新的任务顶替")
             return
+        self._settle_from(job_id, state)
+
+    def _settle_from(self, job_id: str, state: dict, *,
+                     superseded: bool = False) -> None:
+        """按给定的那份状态结算。`superseded` 是「被下一轮顶替」的那条路。
+
+        顶替发生在 `start` 里，那时旧状态已经被换掉，`snapshot()` 讲的是新一轮的事，
+        所以这里收的是调用方手上那一份，不重新读。
+        """
         status = state.get("status")
         if status == "failed":
             self._close_run(job_id, "failed", error=str(state.get("error") or "任务失败"),
                             summary=self._summary(state))
+            return
+        if superseded and status == "running":
+            # 还在跑就被顶掉：它的结果没人要了，记成取消而不是成功。
+            self._close_run(job_id, "cancelled", error="这一轮已被新的任务顶替")
             return
         # `fn` 正常返回就是跑完了。域没有把状态推到 `complete` 只说明它不靠状态报结果
         # （`w_links` 这类直接返回 payload），不代表这一轮失败。
