@@ -122,7 +122,7 @@ class SeesaaMetadataTests(unittest.TestCase):
             root = Path(tmp).resolve()
             db = root/'ledger.db'
             with sqlite3.connect(db) as c:
-                c.executescript("CREATE TABLE asset(id INTEGER, medium TEXT, code TEXT, size INTEGER, catalog_title TEXT, original_title TEXT, studio TEXT, series TEXT, release_date TEXT); CREATE TABLE entity(id INTEGER, kind TEXT, canonical_name TEXT); CREATE TABLE asset_entity(asset_id INTEGER, entity_id INTEGER, role TEXT); INSERT INTO asset VALUES(1,'video','ABC-007',1,NULL,NULL,NULL,NULL,NULL);")
+                c.executescript("CREATE TABLE asset(id INTEGER, medium TEXT, code TEXT, size INTEGER, catalog_title TEXT, original_title TEXT, studio TEXT, series TEXT, release_date TEXT); CREATE TABLE entity(id INTEGER, kind TEXT, canonical_name TEXT); CREATE TABLE asset_entity(asset_id INTEGER, entity_id INTEGER, role TEXT); CREATE TABLE genre_decision(source_genre TEXT PRIMARY KEY, raw_genre TEXT NOT NULL, peach_tag TEXT, decided_at TEXT NOT NULL); INSERT INTO asset VALUES(1,'video','ABC-007',1,NULL,NULL,NULL,NULL,NULL);")
             c.close()
             before = db.read_bytes()
             pages = root/'pages.txt'

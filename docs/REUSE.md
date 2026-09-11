@@ -197,6 +197,7 @@ CloudDrive 为外部应用，本项目不捆绑其二进制或依赖其管理 AP
 - `/api/related` 用 Tag IDF 加 MMR 排序并缓存；搜索使用 FTS5 trigram，短查询回退 LIKE 并覆盖规范名、别名和检索词，搜索历史在 reader 写入被拒时降级到页面内存。
 - 复核页覆盖元数据、创作者标签、Logo、头像、身份、番号目录、FC2 证据和媒体失败；抓取与 AI 结果仍是候选，批准后才写真相字段，元数据候选保留 MetaTube 目录证据且不下载 URL。
 - 外部来源 genre 只在 `peach.genre_taxonomy` 投影，日英来源词共用一套既有词表，非内容分类排除、未收录原文回传登记。
+- 未收录的 genre 在复核卡上就地收录：`genre_decision`（迁移 0026）存「规范化来源词 → 中文标签」，标签留空即判它不是内容词。这张表是静态词表可变的那一半，`peach.genre_decisions` 只管读写、映射仍全在 `genre_taxonomy.map_genres`；收录一次之后 `extract_peach_fields` 与 `scrape_codes.py`、`harvest_kmib.py`、`fetch_fc2_metadata.py` 都当它是已知词，已经排在队列里的候选由 `web_review._fold_genre_decisions` 当场折进值里（读队列、人工批准、自动落库三处同一个函数）。收录只改词表，落库仍要用户按那张卡上的「通过」。页面给的候选词表是静态表已投影到的那批中文标签，不是账本里全部标签实体——后者大半来自文件名，拿它当建议只会把噪声接着抄下去。2026-09-11 之前写下的候选文件只有 `warnings` 里那句中文提示，`genres_in_warning` 按同一处拼出的格式把原文反解回来，旧队列不必先重抓全库才有按钮可点。
 - 补抓按番号发行面分流来源，要求来源认得出所查番号、冷却按连败触发且会过期；无码发行站的片与粘连的版次标记也给得出徽章。
 - reader 的 `/review` 通过严格 Peach CA HTTPS 读取 writer 的归一化 JSON 并原子缓存；决定按钮和所有关注写操作仍锁定。
 - macOS Ledger 同步在共享根判为 `offline` 时先经 NetFS 挂载 `peach-sync` 再重判，挂载失败才保留离线结果，不弹阻塞认证框。

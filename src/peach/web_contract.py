@@ -38,7 +38,7 @@ from .web_activity import (
     w_watch_later,
 )
 from .web_playlists import q_playlists, w_playlist
-from .web_review import w_review_decision
+from .web_review import w_review_decision, w_review_genre
 from .web_batch import (
     AD_DIRPACK,
     AD_DOMAIN,
@@ -139,6 +139,6 @@ __all__ = [
     "q_tops", "state_clause", "state_predicate", "tag_is_not_a_performer_name",
     "tag_not_hidden", "w_activity", "w_batch", "w_cleanup_empty_directories",
     "w_empty_trash", "w_feedback", "w_item_tag", "w_playlist", "w_preference",
-    "w_quality_goal", "w_review_decision", "w_search_history", "w_taste_refresh",
+    "w_quality_goal", "w_review_decision", "w_review_genre", "w_search_history", "w_taste_refresh",
     "w_taste_source", "w_watch_later",
 ]

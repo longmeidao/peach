@@ -14,12 +14,16 @@ dlgetchu 这些**日文官方来源**在 policy 里排在 tag 字段第一位，
   演员编成，不是内容。**明确排除**，不进候选也不算遗漏。
 - 两边都不命中：`map_genres` 把原文回传给调用方登记。未收录不等于非内容，
   要么补进表里，要么补进排除表，不允许长期停在「不知道」。
+
+第三类的出口在复核页：用户当场给一个中文标签，或者判它不是内容，结论落进
+`genre_decision`（迁移 0026）。这个模块仍然不碰数据库——决定由调用方读出来，
+按 `decisions` 参数传进 `map_genres`，查表时排在两张静态表前面。
 """
 from __future__ import annotations
 
 import re
 import unicodedata
-from typing import Iterable
+from typing import Iterable, Mapping
 
 
 #: 来源原文 -> Peach 标签。只投影到 `catalog_rules` 已有的词表，不凭翻译造新标签。
@@ -216,20 +220,33 @@ def is_non_content_genre(raw: object) -> bool:
     return any(pattern.search(key) for pattern in NON_CONTENT_PATTERNS)
 
 
-def map_genres(genres: Iterable[object]) -> tuple[list[str], list[str]]:
+def map_genres(genres: Iterable[object],
+               decisions: Mapping[str, str | None] | None = None) -> tuple[list[str], list[str]]:
     """返回 (Peach 标签, 未收录原文)。已判定为非内容的原文两边都不出现。
 
     标签按首次出现去重保序；未收录原文原样回传，供调用方登记后补表。
+
+    `decisions` 是用户在复核页当场定下的那批，键已规范化，值是中文标签或 `None`
+    （判为非内容）。它排在两张静态表前面：用户刚说过的话不该被发版时写下的默认
+    盖掉，而把同一个词收录成别的标签正是他改主意的方式。
     """
     tags: list[str] = []
     unmapped: list[str] = []
     seen_tags: set[str] = set()
     seen_unmapped: set[str] = set()
+    decided = decisions or {}
     for genre in genres or []:
         key = normalise_genre(genre)
-        if not key or is_non_content_genre(key):
+        if not key:
             continue
-        tag = _CONTENT_INDEX.get(key)
+        if key in decided:
+            tag = decided[key]
+            if tag is None:
+                continue
+        elif is_non_content_genre(key):
+            continue
+        else:
+            tag = _CONTENT_INDEX.get(key)
         if tag is None:
             if key not in seen_unmapped:
                 seen_unmapped.add(key)
@@ -239,3 +256,22 @@ def map_genres(genres: Iterable[object]) -> tuple[list[str], list[str]]:
             seen_tags.add(tag)
             tags.append(tag)
     return tags, unmapped
+
+
+#: 未收录原文在候选文件里的两种存法。`unmapped_genres` 是结构化的那份，`warnings`
+#: 里那句话是给人读的。两样由同一个地方产出，反解也放在这里：2026-09-11 之前写下的
+#: 候选文件只有那句话，而复核页要在它们上面就能把 genre 收录进来，不能等重抓一遍。
+_UNMAPPED_GENRE_PREFIX = "来源还有 "
+_UNMAPPED_GENRE_INFIX = " 个未收录 genre："
+
+
+def unmapped_genre_warning(unmapped: list[str]) -> str:
+    return f"{_UNMAPPED_GENRE_PREFIX}{len(unmapped)}{_UNMAPPED_GENRE_INFIX}" + "、".join(unmapped)
+
+
+def genres_in_warning(text: object) -> list[str]:
+    """从那句话里取回未收录原文；不是那句话就返回空。"""
+    line = str(text or "")
+    if not line.startswith(_UNMAPPED_GENRE_PREFIX) or _UNMAPPED_GENRE_INFIX not in line:
+        return []
+    return [part.strip() for part in line.split(_UNMAPPED_GENRE_INFIX, 1)[1].split("、") if part.strip()]

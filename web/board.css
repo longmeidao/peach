@@ -845,7 +845,7 @@ body,.disp{font-family:var(--board-font);letter-spacing:0}body{font:var(--board-
 
 /* 每类骨架保留实际内容的列宽、轮廓和留白。 */
 .board-page-skeleton{max-width:var(--board-content);width:100%;margin:auto}.board-page-skeleton>div{display:grid;gap:24px}.board-skeleton-row{display:flex;align-items:center;justify-content:space-between;gap:16px;min-height:48px}.board-skeleton-row .skeleton{height:14px;margin:0}.board-skeleton-section{display:grid;gap:16px;border-radius:16px;padding:24px;background:var(--ground)}.board-skeleton-input{height:40px}.board-skeleton-metrics{margin:0;gap:16px}.board-skeleton-metrics .tastesummary{height:152px;margin:0;gap:16px}.board-skeleton-metrics .skeleton{margin-left:16px;height:20px}.board-skeleton-metrics b.skeleton{width:45%;height:34px}.board-skeleton-metrics .board-stat-footer .skeleton{margin:0;height:14px}.board-skeleton-chart{display:grid;grid-template-columns:36% minmax(0,1fr);min-height:330px;gap:24px;align-items:center;padding:24px;border-radius:16px;background:var(--ground)}.board-skeleton-ring{width:160px;height:160px;border-radius:50%;margin:auto;mask:radial-gradient(circle,transparent 50%,#000 51%)}
-.skeleton,.skeletoncard i,.skeletoncard b,.skeletoncard em,.skeletoncard s,.skeletoncard u{background:var(--color-background-tertiary-default);border-radius:8px}.skeletoncard i{border-radius:12px}.postercard-skeleton .skeletoncard{gap:6px 12px}.postercard-skeleton .skeletoncard s{border-radius:50%}.skeleton-cards>div{gap:24px 16px}.cleanup-skeleton .skeletoncard,.review-skeleton .skeletoncard{border:0;border-radius:16px}.cleanup-skeleton .skeletoncard i,.review-skeleton .skeletoncard i{border-radius:8px}.index-skeleton .icell .ring{border-radius:50%}.entityskeletontext .skeleton{height:20px;border-radius:8px}.entityportrait.skeleton{border-radius:16px}.follow-content-skeleton .skeletoncard{padding-bottom:16px}.skeletondashstrip{border:0;gap:16px;background:none}.skeletondashstrip>span{border:0;border-radius:16px;background:var(--ground);min-height:152px}.skeletondashhero,.skeletondashpanel{border:0;border-radius:16px}
+.skeleton,.skeletoncard i,.skeletoncard b,.skeletoncard em,.skeletoncard s,.skeletoncard u{background:var(--color-background-tertiary-default);border-radius:8px}.skeletoncard i{border-radius:12px}.postercard-skeleton .skeletoncard{gap:6px 12px}.postercard-skeleton .skeletoncard s{border-radius:50%}.skeleton-cards>div{gap:24px 16px}.cleanup-skeleton .skeletoncard{border:0;border-radius:16px}.cleanup-skeleton .skeletoncard i,.review-skeleton .skeletoncard i{border-radius:8px}.index-skeleton .icell .ring{border-radius:50%}.entityskeletontext .skeleton{height:20px;border-radius:8px}.entityportrait.skeleton{border-radius:16px}.follow-content-skeleton .skeletoncard{padding-bottom:16px}.skeletondashstrip{border:0;gap:16px;background:none}.skeletondashstrip>span{border:0;border-radius:16px;background:var(--ground);min-height:152px}.skeletondashhero,.skeletondashpanel{border:0;border-radius:16px}
 @media(max-width:760px){.board-skeleton-chart{grid-template-columns:minmax(0,1fr)}.board-skeleton-section{padding:16px}.board-skeleton-row{gap:12px}.board-skeleton-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}}
 
 /* Board secondary：实体细边框、轻阴影和统一的三档控件尺寸。 */
@@ -1223,12 +1223,15 @@ body .review .reviewcontrols{position:static;z-index:auto;padding-block:0;displa
    框里的控件照首页那块浮层留 12px，不贴着 20px 的圆角。玻璃静止时就在——首页那块
    浮层从进页面起就是玻璃，这边等吸顶才变，同一套语言里就成了两种东西；粘住之后由
    `.review::before` 那一层接管，两条横条让出底色。 */
+/* 那圈 inset 是这块玻璃的边，不是把它切成两半的线：暗色下底色和页面一样黑，没有
+   这一圈就只剩一块黑方块。接缝处不描——上面那条不画底边、下面那条不画顶边，两条
+   合起来仍是一圈。 */
 body .review .reviewbulktoolbar{position:sticky;top:var(--topH);z-index:60;width:auto;margin-inline:0;padding:12px;border-radius:20px 20px 0 0;
-  box-shadow:var(--glass-shadow)}
+  box-shadow:inset 0 1px 0 var(--glass-rim),inset 1px 0 0 var(--glass-low),inset -1px 0 0 var(--glass-low),var(--glass-shadow)}
 body .review .reviewgroupbar{border:0;border-radius:0 0 20px 20px;padding:8px 12px;
-  box-shadow:var(--glass-shadow)}
+  box-shadow:inset 1px 0 0 var(--glass-low),inset -1px 0 0 var(--glass-low),inset 0 -1px 0 var(--glass-low),var(--glass-shadow)}
 body .review .reviewgroup:not([hidden])~.reviewgroup:not([hidden])>.reviewgroupbar{border-radius:20px;
-  box-shadow:var(--glass-shadow)}
+  box-shadow:inset 0 1px 0 var(--glass-rim),inset 1px 0 0 var(--glass-low),inset -1px 0 0 var(--glass-low),inset 0 -1px 0 var(--glass-low),var(--glass-shadow)}
 /* 悬浮起来的是一块玻璃，不是两块叠在一起。每块玻璃只糊自己身后那一段页面，两块
    上下相接就会在接缝处显出两种颜色——工具条身后是卡片，分组条身后是另一排卡片。
    所以玻璃由页面自己画一层，铺满当前粘住的那几行；两条横条只留内容，不带底。
@@ -1257,6 +1260,15 @@ body[data-surface="/review"] .review-workspace:has(>.runtimegate)>.reviewcontrol
 body[data-surface="/review"] .reviewitem{border:1px solid var(--line-soft);border-radius:var(--surface-radius);background:var(--color-background-primary-default)}
 body[data-surface="/review"] :is(.reviewlist:not(.reviewgroups),.reviewgroupitems){grid-template-columns:repeat(auto-fill,minmax(min(100%,340px),1fr));gap:20px}
 body[data-surface="/review"] .reviewitem .reviewactions{border-radius:0 0 var(--surface-radius) var(--surface-radius)}
+/* 骨架卡跟着上面那条 .reviewitem 走，不跟别的骨架页共用 16px 圆角：占位和到货的卡
+   差一档圆角，读完数据整片网格会跳一下。 */
+.review-skeleton .skeletoncard{border:1px solid var(--line-soft);border-radius:var(--surface-radius);background:var(--color-background-primary-default)}
+.review-skeleton .skeletoncard em{background:var(--color-background-secondary-default)}
+/* 骨架里没有分组条，上面那条只开口朝下的圆角和缺一道的边就没有东西接。这块玻璃
+   自己封口：四角都圆，四边都描。它也不吸顶——`updateReviewSticky` 要等数据到货才
+   有东西可量，粘住一块空壳只会把顶栏下面糊上一层。 */
+body .review-skeleton .reviewbulktoolbar{position:static;border-radius:20px;
+  box-shadow:inset 0 1px 0 var(--glass-rim),inset 1px 0 0 var(--glass-low),inset -1px 0 0 var(--glass-low),inset 0 -1px 0 var(--glass-low),var(--glass-shadow)}
 body[data-surface="/duplicates"] #manageLede{display:none}
 body[data-surface="/duplicates"] .dupactions{padding:16px 20px;border-radius:var(--surface-radius);background:var(--color-background-primary-default);flex-wrap:wrap}
 body[data-surface="/duplicates"] .dupgroup{margin-bottom:24px;border-color:var(--line-soft);background:var(--color-background-primary-default)}

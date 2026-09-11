@@ -158,6 +158,10 @@ class MetadataCandidateTest(unittest.TestCase):
                   catalog_title TEXT,disposal TEXT
                 );
                 CREATE TABLE asset_tag(asset_id INTEGER,tag TEXT);
+                CREATE TABLE genre_decision(
+                  source_genre TEXT PRIMARY KEY,raw_genre TEXT NOT NULL,
+                  peach_tag TEXT,decided_at TEXT NOT NULL
+                );
                 INSERT INTO asset VALUES(1,'video','FC2-PPV-3701252',1500000000,NULL,NULL);
             """)
             connection.commit(); connection.close()

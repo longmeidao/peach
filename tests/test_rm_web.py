@@ -874,7 +874,7 @@ class WebDataTests(unittest.TestCase):
             "/api/playlist",
             "/api/preference", "/api/quality-goal", "/api/item-tag", "/api/batch",
             "/api/search-history", "/api/trash/empty", "/api/data-cleanup/empty-folders",
-            "/api/review/decision",
+            "/api/review/decision", "/api/review/genre",
             "/api/purge-missing", "/api/review/auto-apply",
             "/api/links/check", "/api/links/prune",
             "/api/resource-sync/scan", "/api/resource-sync/apply",
