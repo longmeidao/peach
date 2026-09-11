@@ -60,6 +60,13 @@ class MetadataProviderTests(unittest.TestCase):
         self.assertEqual(validate_provider_code("092415_001"), "092415_001")
         self.assertEqual(validate_provider_code("092415-001"), "092415-001")
 
+    def test_the_gate_keeps_tokyo_hot_lowercase(self):
+        # Tokyo-Hot 的规范写法是小写（`catalog_rules._TOKYO_HOT_BODY`）；跟着别的番号
+        # 转大写，拿去查的就是来源不认的写法，这些片一部都查不了。
+        self.assertEqual(validate_provider_code("N0646"), "n0646")
+        self.assertEqual(validate_provider_code("n646"), "n0646")
+        self.assertEqual(validate_provider_code("RED123"), "red-123")
+
     def test_structured_error_is_preserved(self):
         def runner(command, **kwargs):
             return subprocess.CompletedProcess(command, 1, json.dumps({"error": {
