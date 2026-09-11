@@ -2059,22 +2059,24 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(
             '.entitylinkicon.brand svg{width:100%;height:100%;stroke:none;filter:none}')
 
-    def test_an_icon_link_keeps_its_pill_whether_the_mark_is_an_img_or_an_svg(self):
-        """一句话那种外链才是无边无底的蓝字；带图标的外链是一圈药丸。
+    def test_only_the_profile_link_row_is_exempt_from_the_flat_external_link(self):
+        """一句话那种外链是无边无底的蓝字；资料页那排外链是一圈药丸。
 
-        判据写成「这条链接里有没有那枚圆盘」，不是「有没有 `<img>`」：社媒标记是内联
-        `<svg>`，按后一个判据会被当成文字外链，药丸的边和底被抹平，同一排里只有它们
-        几个没有圈。判据缺席时连带图标的那几枚也会被抹平，所以两条都要钉。
+        豁免判的是那枚圆盘 `.entitylinkicon`，不是「这条链接里有没有 `<img>`」。社媒标记
+        是内联 `<svg>`，按后一个判据会被当成文字外链，药丸的边和底被抹平，同一排里只有
+        它们几个没有圈；而按 `<img>` 豁免又会把别处任何包着图的外链一起放走，那些本来
+        就该是平的。判据一并消失时整排药丸都被抹平，所以三种写法都要钉。
         """
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
         for rule in (
             "body a:is(.externallink,[target=_blank])"
-            ":not(:has(img,.entitylinkicon)):not(.cardlink){",
+            ":not(:has(.entitylinkicon)):not(.cardlink){",
             "body a:is(.externallink,[target=_blank])"
-            ":not(:has(img,.entitylinkicon)):not(.cardlink):hover{",
+            ":not(:has(.entitylinkicon)):not(.cardlink):hover{",
         ):
             self.assertIn(rule, board)
         for weaker in (":not(:has(img)):not(.cardlink){", ":not(:has(img)):hover{",
+                       ":not(:has(img,.entitylinkicon))",
                        "body a:is(.externallink,[target=_blank]):not(.cardlink){"):
             self.assertNotIn(weaker, board)
 
