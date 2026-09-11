@@ -353,7 +353,7 @@ class WebUiSourceTests(unittest.TestCase):
         ".geist-progress", ".watchprogress", ".vjs-play-progress", ".vjs-progress-holder",
         ".trace .bar", ".tokbar",  # 进度与数据
         ".ptoggle:checked",  # Toggle 开态：Geist Toggle 实测轨道 rgb(0,112,243)
-        ".entitylink", ".flink", ".fsourcelink", ".fcred a", ".tokauthor>a", ".confighelp a", ".taste-history-guide-content a", ".geist-text-link",  # 真正的链接
+        ".entitylink", ".flink", ".fsourcelink", ".fcred a", ".tokauthor>a", ".confighelp a", ".taste-history-guide-content a", ".scraping-url",  # 真正的链接
     )
 
     def test_tungsten_is_reserved_for_focus_links_progress_and_toggle(self):
@@ -3986,12 +3986,23 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("['defaultSortSetting','默认排序',[['seed','随机']")
         self.assertIn('@media(max-width:760px){.settingscard.settingscard .settingsscroll{padding-top:16px}}', board)
         self.assertIn(':root[data-theme="light"]{--glass-drift-a:', board)
-        self.assertIn('#6686b833,#6686b814 42%,transparent 72%', board)
-        self.assertIn('#c69d7329,#c69d7310 44%,transparent 74%', board)
+        self.assertIn('#6686b84d,#6686b829 42%,transparent 72%', board)
+        self.assertIn('#c69d7340,#c69d7324 44%,transparent 74%', board)
         menu = board.split('.board-library-menu.board-library-menu{', 1)[1].split('}', 1)[0]
         self.assertIn('var(--glass-fill)', menu)
         self.assertIn('backdrop-filter:blur(22px) saturate(160%) var(--glass-lume)', menu)
         self.assertIn('var(--glass-shadow)', menu)
+
+    def test_notes_and_navigation_links_keep_their_own_presentation(self):
+        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
+        note = self.css.split('.geist-note{', 1)[1].split('}', 1)[0]
+        self.assertIn('align-items:center', note)
+        self.assertIn('background:color-mix(in srgb,var(--feedback-color) 8%,var(--ground))', note)
+        self.assertPageContains('.geist-note.geist-note>p{margin:0;color:inherit;font:inherit;align-self:center}')
+        self.assertIn('body a:is(.externallink,[target=_blank]):not(.cardlink):hover{background:transparent;text-decoration:underline;box-shadow:none}', board)
+        self.assertIn('.board-link-button:hover{background:transparent;text-decoration:underline;box-shadow:none}', board)
+        release = (Path(__file__).resolve().parents[1] / 'frontend/src/islands/release-updates.tsx').read_text(encoding='utf-8')
+        self.assertNotIn('geist-button externallink', release)
 
     def test_card_hover_and_view_glide_can_extend_outside_content(self):
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
@@ -4403,8 +4414,8 @@ class WebUiSourceTests(unittest.TestCase):
         # 站标和地址之间那 4px 挂在站标身上，行内的 gap 只管地址与外链标之间的 2px。
         self.assertPageContains('.scraping-fields .scraping-url{display:inline-flex;align-items:center;gap:2px;')
         self.assertPageContains('.scraping-fields .scraping-url img{flex:none;margin-inline-end:4px;')
-        # 悬停只升亮，不划线：这一行本身就在标题下方单占一行，划线会和上面的标题挤在一起。
-        self.assertPageContains('.scraping-fields .scraping-url:hover{color:var(--ink);text-decoration:none}')
+        # 来源地址使用链接蓝，悬停通过下划线反馈。
+        self.assertPageContains('.scraping-fields .scraping-url:hover{color:var(--tungsten);text-decoration:underline;text-underline-offset:3px}')
         self.assertPageContains('.scraping-fields .scraping-cover-form{display:flex;align-items:center;')
         source = (Path(__file__).resolve().parents[1] / 'frontend/src/islands/scraping.tsx').read_text(encoding='utf-8')
         self.assertIn('wireSelectField(root.firstElementChild!)', source)

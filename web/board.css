@@ -87,8 +87,8 @@
 :root[data-theme="dark"]{--glass-fill:rgba(24,27,33,.24);--glass-rim:rgba(255,255,255,.2);--glass-low:rgba(255,255,255,.05);--glass-text:#eceef3;--glass-shadow:0 1px 2px #00000047,0 10px 22px #00000038,0 28px 56px #0000002b;--glass-lift:0 2px 4px #00000052,0 14px 30px #00000047,0 34px 68px #00000038;--glass-sheen:rgba(230,239,255,.1);--glass-lume:brightness(.5) contrast(1.1);--glass-pick:brightness(1.7) saturate(1.15);--glass-pick-fill:rgba(255,255,255,.13);--glass-pick-shadow:0 1px 2px #00000024,0 6px 14px #0000001f}
 @media(prefers-color-scheme:dark){:root:not([data-theme]){--glass-fill:rgba(24,27,33,.24);--glass-rim:rgba(255,255,255,.2);--glass-low:rgba(255,255,255,.05);--glass-text:#eceef3;--glass-shadow:0 1px 2px #00000047,0 10px 22px #00000038,0 28px 56px #0000002b;--glass-lift:0 2px 4px #00000052,0 14px 30px #00000047,0 34px 68px #00000038;--glass-sheen:rgba(230,239,255,.1);--glass-lume:brightness(.5) contrast(1.1);--glass-pick:brightness(1.7) saturate(1.15);--glass-pick-fill:rgba(255,255,255,.13);--glass-pick-shadow:0 1px 2px #00000024,0 6px 14px #0000001f}}
 /* 亮色玻璃用冷暖反光建立色差，白色页面上也能辨认移动的光斑。 */
-:root[data-theme="light"]{--glass-drift-a:radial-gradient(20% 20% at 50% 50%,#6686b833,#6686b814 42%,transparent 72%);--glass-drift-b:radial-gradient(26% 26% at 50% 50%,#c69d7329,#c69d7310 44%,transparent 74%)}
-@media(prefers-color-scheme:light){:root:not([data-theme]){--glass-drift-a:radial-gradient(20% 20% at 50% 50%,#6686b833,#6686b814 42%,transparent 72%);--glass-drift-b:radial-gradient(26% 26% at 50% 50%,#c69d7329,#c69d7310 44%,transparent 74%)}}
+:root[data-theme="light"]{--glass-drift-a:radial-gradient(32% 32% at 50% 50%,#6686b84d,#6686b829 42%,transparent 72%);--glass-drift-b:radial-gradient(38% 38% at 50% 50%,#c69d7340,#c69d7324 44%,transparent 74%)}
+@media(prefers-color-scheme:light){:root:not([data-theme]){--glass-drift-a:radial-gradient(32% 32% at 50% 50%,#6686b84d,#6686b829 42%,transparent 72%);--glass-drift-b:radial-gradient(38% 38% at 50% 50%,#c69d7340,#c69d7324 44%,transparent 74%)}}
 /* 光斑铺在一张两倍大的画布上，靠 `background-position` 推着走：画布只有元素两倍大时，
    位置从 0% 到 100% 正好把光斑中心从元素的右下角推到左上角，`-10%` 和 `110%` 那两档
    是让它探出框外一点——真实的光斑不会老老实实待在板子里。半径写 20% 是画布的比例，
@@ -973,8 +973,12 @@ body :is(.photozoom input,.vjs-peach-speed-range)::-moz-range-track{height:6px;b
 body :is(.popmenu,.gselectmenu,.cardmenupanel){box-sizing:border-box;padding:10px;border:1px solid var(--color-border-button-default);border-radius:16px;background:var(--color-background-primary-default);color:var(--color-text-primary);box-shadow:0 12px 24px -4px #0000001a,0 4px 8px -2px #0000000d}
 body :is(.popmenu,.gselectmenu,.cardmenupanel)>:is(button,[role=option],[role=menuitem]){min-height:36px;padding:8px;gap:8px;border:0;border-radius:10px;background:transparent;color:var(--color-text-secondary);font:var(--board-body);box-shadow:none}
 body :is(.popmenu,.gselectmenu,.cardmenupanel)>:is(button,[role=option],[role=menuitem]):is(:hover,:focus-visible,[aria-selected=true]){background:var(--color-background-primary-hover);color:var(--color-text-primary)}
-body a:is(.externallink,[target=_blank]):not(:has(img)):not(.cardlink){display:inline-flex;align-items:center;gap:4px;min-height:20px;padding:0;border:0;border-radius:4px;background:transparent;box-shadow:none;color:var(--tungsten);font-weight:500;text-decoration:none;text-underline-offset:3px}
-body a:is(.externallink,[target=_blank]):not(:has(img)):hover{background:transparent;text-decoration:underline;box-shadow:none}.externallink .externalmark{width:18px;height:18px;flex:none}
+body a:is(.externallink,[target=_blank]):not(.cardlink){display:inline-flex;align-items:center;gap:4px;min-height:20px;padding:0;border:0;border-radius:4px;background:transparent;box-shadow:none;color:var(--tungsten);font-weight:500;text-decoration:none;text-underline-offset:3px}
+body a:is(.externallink,[target=_blank]):not(.cardlink):hover{background:transparent;text-decoration:underline;box-shadow:none}.externallink .externalmark{width:18px;height:18px;flex:none}
+.board-link-button{display:inline-flex;align-items:center;justify-content:center;justify-self:start;gap:4px;max-width:100%;padding:0;border:0;border-radius:4px;background:transparent;box-shadow:none;color:var(--tungsten);font:inherit;font-weight:500;text-decoration:none;text-underline-offset:3px;transition:color .15s ease}
+.board-link-button:hover{background:transparent;text-decoration:underline;box-shadow:none}
+.board-link-button:focus-visible{outline:2px solid var(--tungsten);outline-offset:3px}
+.board-link-button>svg{width:20px;height:20px;flex:none;fill:none;stroke:currentColor;stroke-width:2;transform:rotate(90deg)}
 /* 来源名链接在会换行的行里（作者卡窄容器 white-space:normal）：inline-flex 把
    外链标钉在锚点整体右缘，标题两行时它悬在半空，跟不上文字。改回行内排版，
    标按 1.15em 的比例缩，靠基线跟在最后一个字后面。*/

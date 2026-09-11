@@ -534,6 +534,7 @@ def best_cover(transport: HttpTransport, code: str, delay: float, *,
                known_sizes: dict[str, tuple[int, int]] | None = None,
                minimum_pixels: int = 0,
                deadline: float | None = None,
+               diagnostics: dict[str, int] | None = None,
                ) -> tuple[Candidate, tuple[int, int], bytes]:
     # 韩国 MIB 的编号在 JAV 目录站上要么不存在、要么撞上番号相同的日本作品：
     # `HA-101`、`MY-102` 取回的都是那部日本片的封套，番号核验拦不住，因为番号本来
@@ -578,16 +579,26 @@ def best_cover(transport: HttpTransport, code: str, delay: float, *,
     if not candidates:
         raise Unavailable("所有渠道都没有候选")
 
+    diagnostics = diagnostics if diagnostics is not None else {}
+    def record(key):
+        diagnostics[key] = diagnostics.get(key, 0) + 1
+
     measured: list[tuple[int, Candidate, tuple[int, int]]] = []
     for candidate in candidates:
         try:
             width, height = probe_size(transport, candidate, deadline=deadline)
-        except (Unavailable, UnidentifiedImageError, OSError, httpx.TransportError):
+        except (Unavailable, httpx.TransportError):
+            record("probe_failed")
+            continue
+        except (UnidentifiedImageError, OSError):
+            record("invalid_image")
             continue
         finally:
             _sleep_within(delay, deadline)
         if width >= MIN_WIDTH:
             measured.append((width * height, candidate, (width, height)))
+        else:
+            record("too_small")
     if not measured:
         raise Unavailable("候选都不是可用封套")
 
@@ -596,14 +607,17 @@ def best_cover(transport: HttpTransport, code: str, delay: float, *,
             data = _fetch(transport, winner.url, referer=winner.referer,
                           limit=16 * 1024 * 1024, deadline=deadline)
         except (Unavailable, httpx.TransportError):
+            record("download_failed")
             continue
         try:
             with Image.open(io.BytesIO(data)) as image:
                 image.load()
                 actual_size = image.size
         except (OSError, ValueError, Image.DecompressionBombError):
+            record("invalid_image")
             continue
         if actual_size != size or actual_size[0] < MIN_WIDTH:
+            record("dimension_mismatch")
             continue
         if actual_size[0] * actual_size[1] <= minimum_pixels:
             continue

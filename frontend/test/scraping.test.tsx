@@ -23,10 +23,11 @@ it('保存后清空秘密输入，状态只表示保存且撤销可操作', asyn
   const heading = host.querySelector('.geist-fieldset-heading')!;
   expect(heading.querySelector('.geist-fieldset-title')?.textContent?.trim()).toBe(source.label);
   expect(heading.querySelector('a')?.href).toBe(source.login);
-  const proxyLink = host.querySelector<HTMLAnchorElement>('.geist-text-link')!;
+  const proxyLink = host.querySelector<HTMLAnchorElement>('.board-link-button')!;
   expect(proxyLink.getAttribute('href')).toBe('/configuration#peachProxy');
   expect(proxyLink.textContent).toBe('配置 Peach 代理');
   expect(proxyLink.target).toBe('');
+  expect(proxyLink.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
   const input = host.querySelector<HTMLInputElement>('input[type=password]')!;
   await act(async () => { input.value = 'session=fixture'; input.dispatchEvent(new Event('input', { bubbles: true })); });
   await act(async () => {

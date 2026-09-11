@@ -20,14 +20,18 @@ describe('侧栏内容范围', () => {
     expect(drawer.querySelector('.sec')).toBeNull();
   });
 
-  it('相同页面保留筛选，查询变化清除旧集合', () => {
+  it('同一页面切换来源和标签保留筛选控件', () => {
     const drawer = document.createElement('aside');
     syncSidebarSurface(drawer, '/?tag=a');
     drawer.innerHTML = '<div class="dnav"></div><div class="sec">a</div>';
     expect(syncSidebarSurface(drawer, '/?tag=a')).toBe(false);
     expect(drawer.querySelector('.sec')).not.toBeNull();
-    expect(syncSidebarSurface(drawer, '/?tag=b')).toBe(true);
-    expect(drawer.querySelector('.sec')).toBeNull();
+    const section = drawer.querySelector('.sec');
+    for (const key of ['/?tag=b', '/?loc=pikpak', '/?loc=115', '/?loc=local', '/?loc=online']) {
+      expect(syncSidebarSurface(drawer, key)).toBe(false);
+      expect(drawer.querySelector('.sec')).toBe(section);
+      expect(drawer.dataset.surface).toBe(key);
+    }
   });
 
   it('只计当前内容的标签，空内容没有标签', () => {

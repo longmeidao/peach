@@ -4,11 +4,12 @@ import hashlib
 import json
 import time
 import threading
+import httpx
 
 from PIL import Image
 
 from .http import HttpRequest
-from .scraping_access import SOURCES, SourceTransport, describe, save
+from .scraping_access import SOURCES, SourcePaused, SourceTransport, describe, save
 
 _COVER_LOCK = threading.Lock()
 
@@ -37,30 +38,42 @@ def _fetch_cover(contract, code):
         previous = json.loads(sidecar.read_text(encoding="utf-8"))
         if (time.time() - float(previous["checked_at"]) < 86400 and target.is_file()
                 and hashlib.sha256(target.read_bytes()).hexdigest() == previous["raw_sha256"]):
-            return {"ok": True, "code": code, "result": "已复用本机封面", **{
+            return {"ok": True, "code": code, "result": f"已复用 24 小时内核验的本机封面（{previous['width']} × {previous['height']}），本次未重复请求来源。", **{
                 key: previous[key] for key in ("width", "height", "raw_sha256")}}
     except (OSError, ValueError, KeyError, TypeError):
         pass
     raw = SourceTransport(contract.follow_secrets_root, max_requests=80,
                           max_bytes=32 * 1024 * 1024, max_seconds=180)
     transport = HostLimitedTransport(raw, 1.5)
+    statuses = set()
+    diagnostics = {}
+    network_failed = False
+
+    def observed(request, timeout, limit):
+        nonlocal network_failed
+        try:
+            response = transport(request, timeout, limit)
+        except httpx.TransportError:
+            network_failed = True
+            raise
+        statuses.add(response.status)
+        return response
+
     try:
-        minimum = 0
-        if target.is_file():
-            with Image.open(target) as image:
-                minimum = image.width * image.height
         fc2 = fc2_cover_candidates(contract.candidate_root / "fc2-candidate-log.csv").get(code)
         log = contract.candidate_root / "cover-fetch-log.csv"
         previous = logged_success_evidence(read_rows(log), code) if log.is_file() else None
         prior = tuple(item for item in (fc2, previous[0] if previous else None) if item)
-        candidate, size, data = best_cover(transport, code, 0, minimum_pixels=minimum,
+        candidate, size, data = best_cover(observed, code, 0, diagnostics=diagnostics,
                                           prior_candidates=prior,
                                           metadata_root=contract.follow_sources_root / "metadata" / "javinizer-go")
         with _COVER_LOCK:
             if target.is_file():
                 with Image.open(target) as image:
                     if image.width * image.height >= size[0] * size[1]:
-                        return {"ok": True, "code": code, "result": "已保留更清晰的本机封面"}
+                        suffix = "部分来源连接失败，未能完成全部来源比较。" if network_failed or any(s >= 400 and s != 404 for s in statuses) else "本次未找到更大尺寸的可用封面。"
+                        return {"ok": True, "code": code, "reason": "kept_existing",
+                                "result": f"本机封面 {image.width} × {image.height}，本次取得的最大可用封面 {size[0]} × {size[1]}；保留本机封面。{suffix}"}
             target.parent.mkdir(parents=True, exist_ok=True)
             temporary = target.with_suffix(".scraping.tmp")
             try:
@@ -76,10 +89,35 @@ def _fetch_cover(contract, code):
             sidecar.write_text(json.dumps(evidence, ensure_ascii=False), encoding="utf-8")
         return {"ok": True, "code": code, "result": "高清封面已保存", "width": size[0],
                 "height": size[1], "requests": raw.requests, "bytes": raw.bytes}
-    except Unavailable:
-        return {"ok": False, "code": code, "error": "未取得可升级封面，已有图片保留。高清来源可能需要代理。"}
+    except Unavailable as exc:
+        if network_failed:
+            reason, message = "network", "来源连接失败，未能完成封面比较；请检查来源连接设置。"
+        elif statuses & {401, 403}:
+            codes = "/".join(str(s) for s in sorted(statuses & {401, 403}))
+            reason, message = "access_denied", f"来源拒绝访问（HTTP {codes}），请检查登录或来源验证状态。"
+        elif any(s >= 500 for s in statuses):
+            reason, message = "source_error", "来源服务异常（HTTP 5xx），请稍后重试。"
+        elif str(exc) == "所有渠道都没有候选":
+            reason, message = "no_candidate", "本次来源未返回匹配该番号的封面候选，无法判断是否还有高清版。"
+        elif str(exc) == "候选都不是可用封套":
+            reason, message = "unusable_candidate", "候选封面未通过检查：图片未取得、无法解码或宽度不足 700px。"
+        else:
+            reason, message = "download_failed", "候选封面完整下载或图片校验失败，未取得可保存的图片。"
+        labels = {"probe_failed": "图片头请求失败", "invalid_image": "图片无法解码",
+                  "too_small": "图片宽度不足 700px", "download_failed": "完整下载失败",
+                  "dimension_mismatch": "完整图片尺寸与探测结果不一致"}
+        details = "；".join(f"{label} {diagnostics[key]} 张" for key, label in labels.items() if diagnostics.get(key))
+        if details:
+            message = ("候选封面未通过检查。" if reason == "unusable_candidate" else message) + details + "。"
+        return {"ok": False, "code": code, "reason": reason, "error": message + "已有图片保留。"}
+    except SourcePaused as exc:
+        return {"ok": False, "code": code, "reason": "paused", "error": str(exc)}
+    except httpx.TransportError:
+        return {"ok": False, "code": code, "reason": "network", "error": "来源连接失败，请检查来源连接设置；已有图片保留。"}
+    except OSError:
+        return {"ok": False, "code": code, "reason": "local_file", "error": "本机封面读取或保存失败，请检查封面目录权限与磁盘空间。"}
     except Exception as exc:
-        return {"ok": False, "code": code, "error": "采集未取得，已有图片保留。请检查来源连接与冷却状态。",
+        return {"ok": False, "code": code, "reason": "processing_error", "error": f"封面处理失败（{type(exc).__name__}），未能完成比较；请查看服务日志。",
                 "error_type": type(exc).__name__}
     finally:
         transport.close()
