@@ -601,8 +601,10 @@ def main(argv: list[str] | None = None, *, provider: JavinizerGoProvider | None 
                         auth_blocked[source] = str(error)
                         consecutive_failures[source] = 0
                         source_health["blocked"] += 1
-                        log(f"{source} 鉴权失败，本批不再向它发请求："
-                            f"{error}。换一份凭据后重跑即可继续")
+                        # 下一步由错误消息自己带着：判据明确就说换凭据，只剩状态码
+                        # 可看的 403 则不替用户断成因。这里再补一句通用建议会盖掉那份
+                        # 区分，把撞上 IP 封禁的人引去反复换 Cookie。
+                        log(f"{source} 鉴权失败，本批不再向它发请求：{error}")
                     elif error.retryable or error.status_code in {403, 429, 503}:
                         consecutive_failures[source] = consecutive_failures.get(source, 0) + 1
                         if consecutive_failures[source] >= COOLDOWN_AFTER_FAILURES:
@@ -688,7 +690,7 @@ def main(argv: list[str] | None = None, *, provider: JavinizerGoProvider | None 
     # 鉴权失败单列。混在错误总数里看不出「这一批有几家其实一条都没问到」，
     # 而它决定的是下一步做什么：补凭据重跑，而不是等限流过去。
     if auth_blocked:
-        log(f"鉴权失败的来源 {len(auth_blocked)} 家，本批已停止请求；补好凭据后重跑："
+        log(f"鉴权失败的来源 {len(auth_blocked)} 家，本批已停止请求；按各自的说明处理后重跑："
             + "；".join(f"{source}（{detail}）" for source, detail in auth_blocked.items()))
     close_log()
     return stopped.exit_code if stopped is not None else 0

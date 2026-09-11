@@ -62,8 +62,20 @@ class MetadataProviderError(RuntimeError):
         self.temporary = temporary
 
 
-#: 站方在 HTTP 上直说「你没有通行证」的两个状态码。
-AUTH_STATUS_CODES = frozenset({401, 403})
+#: 站方在 HTTP 上直说「这份凭据不认」的状态码。401 的语义只有这一种。
+CREDENTIAL_STATUS_CODES = frozenset({401})
+
+#: 成因不止一种的状态码。403 在本项目的实测里多半不是凭据问题而是出口 IP 被封：
+#: `docs/SOURCING.md` 记着 javbus 与 minnano-av 都发生过，javdb 那次封了 3～7 日，
+#: 页面直接建议换节点。换 Cookie 对这一半没有用，只能等或换出口。响应本身分不开
+#: 这两种成因，所以措辞不替用户下结论——「本批停止该来源」这个动作对两种都对，
+#: 「换一份凭据」这句话只对其中一种。
+AMBIGUOUS_AUTH_STATUS_CODES = frozenset({403})
+
+AUTH_STATUS_CODES = CREDENTIAL_STATUS_CODES | AMBIGUOUS_AUTH_STATUS_CODES
+
+#: 判据明确时给出的下一步。措辞只有这一处。
+CREDENTIAL_ADVICE = "换一份凭据后重跑"
 
 #: 重定向终点落在这些路径上就是登录墙或年龄闸。站方不一定回 401：javdb 对未登录
 #: 用户访问部分详情页直接 302 到 `/login`，DMM 把未过年龄闸的请求送去
@@ -85,18 +97,24 @@ def auth_wall_reason(*, status_code: int = 0, final_url: str = "",
                      body: bytes | str = b"") -> str:
     """这次响应是不是「要登录才给看」。是就返回写进错误消息的理由，否则空串。
 
-    三条判据各自对应真实存在的一种形态，缺一条就有来源漏判：明确的 401/403、
-    跟完重定向后落在登录页或年龄闸、以及状态 200 但正文就是登录页。
+    四条判据各自对应真实存在的一种形态，缺一条就有来源漏判：明确的 401、跟完重定向
+    后落在登录页或年龄闸、状态 200 但正文就是登录页，以及只剩状态码可看的 403。
+
+    顺序不是随手排的：403 排在最后，因为同一次响应如果还带着登录页的地址或正文，
+    那就不必按「成因不明」措辞了，直接说换凭据。
     """
-    if status_code in AUTH_STATUS_CODES:
-        return f"来源返回 {status_code}"
+    if status_code in CREDENTIAL_STATUS_CODES:
+        return f"来源返回 {status_code}，{CREDENTIAL_ADVICE}"
     path = urlsplit(str(final_url or "")).path
     if path and LOGIN_LOCATIONS.search(path):
-        return f"重定向终点落在 {path}"
+        return f"重定向终点落在 {path}，{CREDENTIAL_ADVICE}"
     text = body_text(body) if isinstance(body, bytes) else str(body)
     for pattern, label in _AUTH_PAGE_MARKERS:
         if pattern.search(text):
-            return label
+            return f"{label}，{CREDENTIAL_ADVICE}"
+    if status_code in AMBIGUOUS_AUTH_STATUS_CODES:
+        return (f"来源返回 {status_code}：可能是凭据失效，也可能是出口 IP 被封，"
+                "先看站点是否要求登录再决定换凭据还是等")
     return ""
 
 

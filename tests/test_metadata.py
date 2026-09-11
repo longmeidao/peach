@@ -7,6 +7,7 @@ from pathlib import Path
 from peach.metadata import (
     identifies_code,
     CATALOG_EVIDENCE_FIELDS,
+    CREDENTIAL_ADVICE,
     JavinizerGoProvider,
     MetadataProviderError,
     auth_error,
@@ -76,20 +77,41 @@ class MetadataProviderTests(unittest.TestCase):
 
     def test_an_authentication_wall_is_its_own_error_kind(self):
         """401、403 与「跳到登录页」都判成 auth，别的失败不许蹭这一档。"""
-        self.assertEqual(auth_wall_reason(status_code=401), "来源返回 401")
-        self.assertEqual(auth_wall_reason(status_code=403), "来源返回 403")
+        self.assertIn("401", auth_wall_reason(status_code=401))
+        self.assertIn("403", auth_wall_reason(status_code=403))
         self.assertIn("/login", auth_wall_reason(
             status_code=200, final_url="https://javdb.com/login?next=/v/abc"))
         self.assertIn("/age_check", auth_wall_reason(
             status_code=200, final_url="https://www.dmm.co.jp/age_check/=/declared=yes/"))
-        self.assertEqual(auth_wall_reason(
-            status_code=200, body="<title> 登入 | JavDB</title>".encode()), "javdb 登录页")
+        self.assertIn("javdb 登录页", auth_wall_reason(
+            status_code=200, body="<title> 登入 | JavDB</title>".encode()))
         for benign in (dict(status_code=404),
                        dict(status_code=200, final_url="https://javdb.com/v/loginbait"),
                        dict(status_code=503),
                        dict(status_code=200, body=b"<title>ABW-220</title>")):
             with self.subTest(benign=benign):
                 self.assertEqual(auth_wall_reason(**benign), "")
+
+    def test_a_bare_403_does_not_tell_the_user_to_swap_credentials(self):
+        """403 的成因不止一种，措辞就不许替用户断成因。
+
+        `docs/SOURCING.md` 记着 javbus 与 minnano-av 的实测：那些 403 是出口 IP 被封，
+        javdb 那次封了 3～7 日，换 Cookie 一点用没有。「本批停止该来源」这个动作对两种
+        403 都对，「换一份凭据」这句话只对其中一种，说出口就是把人引去做错事。
+        判据明确的那三种没有这个歧义，仍然直说。
+        """
+        bare = auth_wall_reason(status_code=403)
+        self.assertIn("出口 IP", bare)
+        self.assertNotIn(CREDENTIAL_ADVICE, bare)
+        for confident in (dict(status_code=401),
+                          dict(status_code=200, final_url="https://javdb.com/login"),
+                          dict(status_code=200, body="<title>登入 | JavDB</title>".encode()),
+                          # 403 也带着登录页的地址，成因就不含糊了。
+                          dict(status_code=403, final_url="https://javdb.com/login")):
+            with self.subTest(confident=confident):
+                reason = auth_wall_reason(**confident)
+                self.assertIn(CREDENTIAL_ADVICE, reason)
+                self.assertNotIn("出口 IP", reason)
 
     def test_an_auth_error_is_not_retryable_and_not_a_verdict(self):
         """同一份凭据再问一次还是这个结果，所以不重试；换一份就能继续，所以不是定论。"""
