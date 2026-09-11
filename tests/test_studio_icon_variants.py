@@ -71,9 +71,11 @@ class VariantResolutionTests(unittest.TestCase):
         root = Path(self.tmp.name).resolve()
         self.logos = root / "logos"
         self.logos.mkdir(parents=True)
+        # `marks_root` 和 `logo_root` 一样必须显式给：默认是仓库里随发行分发的那 198 个
+        # 标识（ADR-0026），落进来就会把「这个厂牌没装图」的场景变成「装了」。
         self.service = PreviewService(
             SimpleNamespace(), SimpleNamespace(), root / "snapshots", root / "posters",
-            root / "avatars", self.logos)
+            root / "avatars", self.logos, marks_root=root / "marks")
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -185,12 +187,16 @@ class LogoAvailabilityTests(unittest.TestCase):
         root = Path(self.tmp.name).resolve()
         self.logos = root / "logos"
         self.logos.mkdir(parents=True)
+        # `marks_root` 和 `logo_root` 一样必须显式给：默认是仓库里随发行分发的那 198 个
+        # 标识（ADR-0026），落进来就会把「这个厂牌没装图」的场景变成「装了」。
         self.service = PreviewService(
             SimpleNamespace(), SimpleNamespace(), root / "snapshots", root / "posters",
-            root / "avatars", self.logos)
-        # 库文件不必存在：可用性判定只扫目录，一个字节都不查库。但 `logo_root` 必须
-        # 显式给临时目录，默认值是本机真实的 generated 树。
-        self.contract = WebContract(root / "ledger.db", logo_root=self.logos)
+            root / "avatars", self.logos, marks_root=root / "marks")
+        # 库文件不必存在：可用性判定只扫目录，一个字节都不查库。但 `logo_root` 和
+        # `marks_root` 必须显式给临时目录，默认值分别是本机真实的 generated 树和仓库
+        # 里随发行分发的那批标识。
+        self.contract = WebContract(root / "ledger.db", logo_root=self.logos,
+                                    marks_root=root / "marks")
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -290,12 +296,30 @@ class LogoAvailabilityTests(unittest.TestCase):
             with self.subTest(studio=studio):
                 self.assertFalse(self.contract.has_logo(studio))
 
-    def test_a_missing_logo_directory_is_an_empty_index(self):
-        """目录还没建（新机器、干净数据目录）时全部退回首字母，不是报错。"""
+    def test_a_missing_logo_directory_without_bundled_marks_is_an_empty_index(self):
+        """两个目录都没有时全部退回首字母，不是报错。"""
         root = Path(self.tmp.name).resolve()
-        contract = WebContract(root / "ledger.db", logo_root=root / "nowhere")
+        contract = WebContract(root / "ledger.db", logo_root=root / "nowhere",
+                               marks_root=root / "marks")
         self.assertEqual(contract.logo_index(), frozenset())
         self.assertFalse(contract.has_logo("Fitch"))
+
+    def test_bundled_marks_cover_a_clean_data_directory(self):
+        """干净数据目录靠随仓库分发的那批显示图标，这是 ADR-0026 收录它们的理由。
+
+        取图和可用性判定必须一起认内置资源：只改取图那一侧，页面判「没图」就不出
+        `<img>`，收进仓库的 198 个一张也不会显示，而且不报错。
+        """
+        root = Path(self.tmp.name).resolve()
+        marks = root / "bundled"
+        marks.mkdir()
+        (marks / "Fitch.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+        (marks / "Attackers.icon.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+        contract = WebContract(root / "ledger.db", logo_root=root / "nowhere",
+                               marks_root=marks)
+        self.assertTrue(contract.has_logo("Fitch"))
+        self.assertTrue(contract.has_logo("Attackers"), "变体后缀要剥掉再判")
+        self.assertFalse(contract.has_logo("NotBundled"))
 
     def test_a_newly_installed_logo_shows_up_after_the_review_cache_bust(self):
         """索引带 TTL，但复核批准会 `cache_bust()`：用户自己装上的图立刻可见。"""

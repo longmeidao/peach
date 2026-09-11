@@ -8,6 +8,7 @@ from pathlib import Path
 
 from PIL import Image, ImageOps
 
+from . import brand_marks
 from .ffmpeg import FFmpegResolver
 from .fsutil import atomic_path
 from .media import normalized_path
@@ -85,13 +86,19 @@ def _generate_lock(destination: Path) -> threading.Lock:
 
 class PreviewService:
     def __init__(self, repository: LedgerRepository, resolver: FFmpegResolver,
-                 snapshot_root: Path, poster_root: Path, avatar_root: Path, logo_root: Path):
+                 snapshot_root: Path, poster_root: Path, avatar_root: Path, logo_root: Path,
+                 marks_root: Path | None = None):
         self.repository = repository
         self.resolver = resolver
         self.snapshot_root = snapshot_root.resolve()
         self.poster_root = poster_root.resolve()
         self.avatar_root = avatar_root.resolve()
         self.logo_root = logo_root.resolve()
+        #: 随仓库分发的标识目录（ADR-0026）。按实例配置而不是读模块常量：常量会让
+        #: 每个用临时 `logo_root` 造「这个厂牌没有图」的测试都撞上真实仓库里那 198 个，
+        #: 而失败形态是「明明没装却说有」——测不出的那天就是它在生产上说反话的那天。
+        self.marks_root = (brand_marks.STUDIOS_DIR if marks_root is None
+                           else marks_root.resolve())
         #: 标识清晰度按 (路径, mtime, 字节数) 记住，换了文件自然算新键。大位每格一次
         #: 请求，不缓存就是一屏一百多次开图读头。
         self._logo_sharpness: dict[tuple[str, int, int], tuple[int, int]] = {}
@@ -197,13 +204,21 @@ class PreviewService:
         raise PreviewUnavailable("logo unavailable")
 
     def _logo_file(self, listing: list[Path], name: str) -> Path | None:
-        """标识目录里叫这个名字的文件；大小写不敏感，取不到返回 None。"""
+        """叫这个名字的标识；本机缓存找不到才回落到随仓库分发的那份（ADR-0026）。
+
+        顺序不能颠倒：本机这份是用户自己重探或复核批准装下的，比发行版里的新。内置
+        优先的话，每次发版都会把用户的批准结果盖回去。
+
+        大小写不敏感，取不到返回 None。
+        """
         candidates = [self.logo_root / name]
         candidates.extend(path for path in listing if path.name.lower() == name.lower())
         for path in candidates:
             if path.is_file():
                 return path
-        return None
+        # 内置资源带真实扩展名（`Attackers.png`），缓存名是 `Attackers.img`，所以按主名找。
+        stem = name[:-len(".img")] if name.endswith(".img") else name
+        return brand_marks.find(stem, self.marks_root)
 
     def _logo_content_type(self, path: Path) -> str:
         """落盘时记在 `.ct` 边车里的类型；没有边车按 ico 处理，和加边车之前一致。"""
@@ -212,6 +227,9 @@ class PreviewService:
             detected = sidecar.read_text(encoding="utf-8").strip().split(";")[0]
             if detected:
                 return detected
+        # 内置资源不带 `.ct`：扩展名是落盘时按字节嗅探定的，反查得到的类型和字节一致。
+        if path.suffix.lower() in brand_marks.CONTENT_TYPES:
+            return brand_marks.content_type(path)
         return "image/x-icon"
 
     def _logo_clarity(self, path: Path) -> tuple[int, int]:
