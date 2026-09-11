@@ -4066,6 +4066,16 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn('backdrop-filter:blur(22px) saturate(160%) var(--glass-lume)', menu)
         self.assertIn('var(--glass-shadow)', menu)
 
+    def test_glass_compositing_covers_search_snapshots_and_disposed_panels(self):
+        board = (Path(__file__).resolve().parents[1] / 'web/board.css').read_text(encoding='utf-8')
+        self.assertIn('.top .search.search.search{--glass-optic:blur(22px)}', board)
+        snapshot = board.split('html[data-theme-snapshot] :is(', 1)[1].split('}', 1)[0]
+        for surface in ('.board-library-menu', '.board-filter-frame', '.search', '.drawer'):
+            self.assertIn(surface, snapshot)
+        self.assertIn('background-color:var(--ground)!important', snapshot)
+        self.assertIn('backdrop-filter:none!important', snapshot)
+        self.assertPageContains('observer.disconnect();filter.remove();attached.delete(node)')
+
     def test_notes_and_navigation_links_keep_their_own_presentation(self):
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
         note = self.css.split('.geist-note{', 1)[1].split('}', 1)[0]

@@ -10087,9 +10087,9 @@ if(/Chrome|Chromium|Edg\//.test(navigator.userAgent)){
   const ns='http://www.w3.org/2000/svg';
   const svg=document.createElementNS(ns,'svg');svg.setAttribute('width','0');svg.setAttribute('height','0');svg.setAttribute('aria-hidden','true');svg.style.position='fixed';svg.style.pointerEvents='none';
   const defs=document.createElementNS(ns,'defs');svg.append(defs);document.body.append(svg);
-  const attached=new WeakSet();let sequence=0;
+  const attached=new Map();let sequence=0;
   function attach(node){
-    if(attached.has(node))return;attached.add(node);
+    if(attached.has(node))return;
     const id=`peach-optic-${++sequence}`;const filter=document.createElementNS(ns,'filter');filter.id=id;filter.setAttribute('filterUnits','userSpaceOnUse');filter.setAttribute('color-interpolation-filters','sRGB');
     const map=document.createElementNS(ns,'feImage');map.setAttribute('result','edge-map');map.setAttribute('preserveAspectRatio','none');
     const displacement=document.createElementNS(ns,'feDisplacementMap');displacement.setAttribute('in','SourceGraphic');displacement.setAttribute('in2','edge-map');displacement.setAttribute('xChannelSelector','R');displacement.setAttribute('yChannelSelector','G');displacement.setAttribute('scale','24');filter.append(map,displacement);defs.append(filter);
@@ -10112,9 +10112,15 @@ if(/Chrome|Chromium|Edg\//.test(navigator.userAgent)){
          反过来先位移再糊，折射出来的亮边会被第二步抹平，只剩一块均匀磨砂。 */
       node.style.setProperty('--glass-optic',`blur(14px) url("#${id}")`);node.dataset.opticGlass='true';
     };
-    new ResizeObserver(draw).observe(node);draw();
+    const observer=new ResizeObserver(draw);observer.observe(node);
+    attached.set(node,{observer,filter});draw();
   }
-  const sync=()=>document.querySelectorAll('.board-filter-frame,.top .search,.top>.ib,.edge,.drawer,.selectiondock,.reviewcontrols,.reviewgroupbar').forEach(attach);
+  const sync=()=>{
+    for(const [node,{observer,filter}] of attached){
+      if(!node.isConnected){observer.disconnect();filter.remove();attached.delete(node)}
+    }
+    document.querySelectorAll('.board-filter-frame,.top>.ib,.edge,.drawer,.selectiondock,.reviewcontrols,.reviewgroupbar').forEach(attach);
+  };
   new MutationObserver(sync).observe(document.querySelector('#main'),{childList:true,subtree:true});sync();
 }
 
