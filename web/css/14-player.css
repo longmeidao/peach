@@ -293,6 +293,7 @@
   display:none;align-items:center;padding:5px 9px;border-radius:var(--surface-radius);background:rgba(0,0,0,.6);
   backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);color:#fff;white-space:nowrap;
   font-size:var(--fs-sm);font-weight:500;line-height:15px;text-shadow:0 0 2px #000;pointer-events:none}
+.vjs-peach-tooltip,.vjs-volume-tooltip{--surface-radius:8px;--badge-radius:4px}
 .vjs-peach-tooltip kbd{display:flex;justify-content:center;align-items:center;min-width:11px;margin-left:4px;padding:0 2px;
   border:1px solid rgba(255,255,255,.3);border-radius:var(--badge-radius);color:#fff;font:inherit}
 .vjs-peach-tooltip kbd[hidden]{display:none}

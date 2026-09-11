@@ -3978,6 +3978,19 @@ class WebUiSourceTests(unittest.TestCase):
             rule = self.css[start:self.css.index("}", start)]
             self.assertIn("background:rgba(0,0,0,.6)", rule, f"{selector} 和同屏的悬浮件不是一档黑")
 
+    def test_player_tooltips_keep_theme_independent_youtube_style(self):
+        board_css = (Path(__file__).resolve().parents[1] / "web" / "board.css").read_text(encoding="utf-8")
+        self.assertNotIn(".vjs-peach-tooltip", board_css)
+        self.assertNotIn(".vjs-volume-tooltip", board_css)
+        self.assertIn(
+            ".vjs-peach-tooltip,.vjs-volume-tooltip{--surface-radius:8px;--badge-radius:4px}",
+            self.css)
+        for selector in (".vjs-peach-tooltip{", ".vjs-volume-tooltip{"):
+            start = self.css.index(selector)
+            rule = self.css[start:self.css.index("}", start)]
+            for declaration in ("color:#fff", "white-space:nowrap", "padding:5px 9px", "backdrop-filter:blur(16px)", "font-size:var(--fs-sm)"):
+                self.assertIn(declaration, rule)
+
     def test_narrow_settings_keep_the_toggle_on_the_title_row(self):
         """窄屏那条单列是给 select 留的：148px 的下拉配上标题和说明挤不下。
 

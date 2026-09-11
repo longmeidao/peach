@@ -286,8 +286,8 @@ YouTube 那套（含快捷键）。浏览器面板打不开 youtube.com——文
   让出那段宽度。Peach 的控制条比 YouTube 窄，留着空位在 528 以下会重新超框。
 - 门槛用 `ResizeObserver` 观察 `player.el()` 而不是媒体查询：同一个视口下影院模式和
   普通视图的播放器宽度差一大截，用视口判据会在影院模式下白折叠、在普通视图下继续超框。
-- 提示的圆角与字号取 Peach 自己的 `--surface-radius`（8px）、`--badge-radius`（4px）与
-  `--fs-sm`（13px），数值与 YouTube 一致但走本项目的词汇表。
+- 提示在组件内固定 `--surface-radius`（8px）、`--badge-radius`（4px），字号使用 `--fs-sm`（13px），
+  数值与 YouTube 一致；按钮和音量提示独立于 Board 通用 tooltip，明暗主题均使用深色底、白字和单行排版。
 
 ### 报错文案与统计面板重叠（同轮）
 
