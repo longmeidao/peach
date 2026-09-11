@@ -1,5 +1,13 @@
 # BoardUI 适配
 
+## 窄屏搜索玻璃动效
+
+2026-09-11 核对 [liquid-gooey spring.ts](https://github.com/Jakubantalik/Libraries/blob/422180dd7a5ac646c85deedc65500c4a74339127/packages/liquid-gooey/src/spring.ts)，MIT，源码 SHA-256 `9dc0d5e9dd269000d95743572320039404982803d1b2da9977e717b5956d5481`。
+
+Peach 复用已采样的短程弹簧（208ms，stiffness 3600、damping 68、mass 1），以 CSS 裁切和透明度衔接开合；搜索建议在展开完成后解除裁切。控件固定 36px 高度，按顶栏实际高度居中，右侧按钮依次为搜索、沉浸、多选。
+
+未新增依赖；上游未作为完整搜索组件复刻。上游搜索交互与本轮浏览器实测未取得，本轮按用户要求不调用浏览器工具。
+
 ## 数据整理子页
 
 2026-09-09 使用内置浏览器读取组件目录及 Dashboard 侧栏的八个模板。线上 CSS 资源版本为
