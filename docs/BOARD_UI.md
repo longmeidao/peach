@@ -271,6 +271,22 @@ Radio card 沿用 2026-09-08 取得的 `r/checkbox-card.json`（`checkbox-card.t
 | 复核骨架 | Skeleton 只是占位形状 | 骨架直接用最终容器的类名（`.review-workspace`、`.reviewcontrols`、`.reviewbulktoolbar`、`.reviewlist`），分栏、列宽、卡高全由复核页自己那套规则给；`renderInitialSurfaceLoading()` 先写 `data-surface` 才画，否则深链冷启动会先按默认版式铺一遍再跳。分类名是静态文案直接显示，只有计数和三件工具条控件是占位 |
 | 骨架里的悬浮框 | 无对应 | 骨架没有分组条可接，工具条自己封口：四角都圆、四边都描，也不吸顶——`updateReviewSticky` 要等数据到货才有东西可量 |
 
+### 艺人／厂牌资料页与关注页（2026-09-12）
+
+证据在 `attic/evidence/20260912-boardui-profile-tabs/`：`tabs.json`（SHA-256
+`feab9789b17008436597b51e52b90de5cff6180924f2a7c8bef14a2136d3a240`，13612 B）、`avatar.json`
+（`614f2a38…b28aec`）、`chip.json`（`d2b0dd38…e282de`）、`badge.json`（`264755bb…9aec6`）。
+`card`、`page-header`、`profile-card` 三个注册表条目 404，未取得：资料卡的形沿用 2026-09-08
+取得的关注管理页那只 `.fsec`，不另补猜测。
+
+| 位置 | 上游 | Peach |
+| --- | --- | --- |
+| 资料卡 | 未取得（card／profile-card 404）；卡形沿用 `.fsec`：secondary 底、18px 圆角、不描边、卡脚 `--board-card-foot` | `<section class="entityhero">`：`.entityprofile` 里 120px 头像加身份三行——名字 Title 3（24/32、500）、别名·视频数·事务所、外链排成 36px／10px 圆角的 secondary Button；同台艺人收进卡脚 `.entityfoot` 那条带，它是这个人的附注，不是正文；事务所的名册是正文，走 Tabs 里那一档。窄屏卡不变，只有卡里正文那一格改成单列居中、头像 96px |
+| 视频／照片／艺人切换 | `tabs.tsx`：tab `px 10 / py 8`、gap 4、Body 1 14/20，容器 `border-b border-separator-border`；指示条 `h-0.5 bg-accent-600 transition-[transform,width] duration-200`；计数徽标 `rounded-sm px-1 py-px text-caption-1-medium`，选中 `bg-tab-count-selected-background text-accent-600`，未选 `bg-black/10 text-text-primary opacity-50` | `boardTabsHtml()` 出 `.board-local-nav.entitytabs`（`role=tablist`＋`aria-selected`），排在资料卡下、筛选浮层上；蓝线由 `wireBoardTabs` 观察 `aria-selected` 去挪，点下去当场改属性、不等图墙回来；只有多于一档时才出。筛选条左端不放媒体圆键，也没有那块圆玻璃（`viewglide-round`）——这排换的是整页内容，是导航，不是筛选 |
+| 资料页筛选条 | 无对应 | 只剩四枚观看状态和标签，`aria-label` 改「观看状态与标签」；照片、名册视图下整条收起，浮层只剩下面那排抬头 |
+| 关注页 | 无对应（上游没有更新流页） | 对齐首页而不是另起一套：作者行是 `.tier`，筛选条 `.tagbar` 与读数 `.count` 收进同一块 `mountFilterFrame` 浮层。五枚状态是首页四枚视图的同一个控件，共用那块滑动玻璃（`GLIDE_ROWS.views` 多认 `.followviews`）；来源图标与标签在右半截横滚，来源类型的着色只在选中时上色。下排读数照首页写「N 项更新 · 显示 M」，右端是视频／图片两枚圆键，选中那枚铺选中态玻璃。「管理关注」降为次级按钮，蓝色留给空态里的「添加关注」；底部「加载更多」旁不再重复读数 |
+| 两页骨架 | Skeleton 只是占位形状 | 都把 `.board-filter-frame` 外框和上下两排的 `data-filter-row` 写全，否则等的那几秒钟是两块各带圆角的浮层；资料页骨架用 `.entityprofile`／`.entityidentity` 的真实类名，筛选条那排用 `data-skeleton-tier="pill"` 铺药丸 |
+
 ## 首次设置 Auth Card
 
 Button 取证（2026-09-10）：对照官网 `/components/button` 与保存的

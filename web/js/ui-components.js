@@ -428,6 +428,25 @@ export function mediaViewButtonsHtml({
     ${imageValue?control(imageValue,imageLabel,imageCount,'pics','image'):''}</div>`;
 }
 
+/**
+ * Board 下划线 Tabs（boardui tabs.tsx）：一排互斥的「这一页现在摆的是哪一组东西」。
+ *
+ * 资料页用它切视频／照片／名册，关注页用它切全部／未看／已看／已保存／已忽略。它回答的
+ * 是页面层级的「在哪一组」，不是给当前这批加一条筛选——筛选归玻璃条上的药丸。
+ * 每一枚都是 `role=tab`，当前项写 `aria-selected`；滑动的 2px 蓝线由 `board-local-nav`
+ * 那条共用规则和 `wireBoardTabs` 提供，这里只出 DOM。计数是可选的尾随徽标，口径由调用方
+ * 给：Tabs 自己不算数。
+ */
+export function boardTabsHtml(items,{active='',attr='data-tab',label='页面视图',className='',panel=''}={}){
+  const tabs=items.map(({value,label:text,count})=>{
+    const selected=String(value)===String(active);
+    const badge=count==null?'':`<span class="board-tab-count">${esc(Number(count).toLocaleString())}</span>`;
+    return `<button type="button" role="tab" ${attr}="${esc(value)}" aria-selected="${selected}"${
+      panel?` aria-controls="${esc(panel)}"`:''}>${esc(text)}${badge}</button>`;
+  }).join('');
+  return `<div class="board-local-nav board-tabs${className?` ${esc(className)}`:''}" role="tablist" aria-label="${esc(label)}">${tabs}</div>`;
+}
+
 /** Geist Empty State: icon tile, title and explanatory copy stay one semantic unit. */
 export function emptyStateHtml(iconName,title,description,{className='',actions=''}={}){
   return `<div class="emptystate${className?` ${esc(className)}`:''}" data-geist-empty-state role="status">

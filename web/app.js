@@ -18,7 +18,7 @@ import { javImageKind, normalizeJavImage, normalizeJavLayout, normalizeJavPrefer
 import {
   attachOverlayScrollbar, breadcrumbHtml, checkboxHtml, collectionSummaryHtml, closeAnchoredMenu, confirmModal, dismissMenu, emptyStateHtml, fieldsetTitle,
   fillSkeletonTier, fitSkeleton, formModal, iconSwitchHtml, indexSkeletonHtml, loadingDotsHtml,
-  mediaViewButtonsHtml, mountFilterFrame, filterChipHtml, moveGlidePane, glideEase, sortControlsHtml, collectionHeaderHtml, wireHorizontalScroller, noteHtml, presentMenu, progressHtml, gaugeHtml, scrollerHtml, searchInputHtml, selectFieldHtml,
+  mediaViewButtonsHtml, boardTabsHtml, mountFilterFrame, filterChipHtml, moveGlidePane, glideEase, sortControlsHtml, collectionHeaderHtml, wireHorizontalScroller, noteHtml, presentMenu, progressHtml, gaugeHtml, scrollerHtml, searchInputHtml, selectFieldHtml,
   setActionBusy, skeletonHtml, spinnerHtml, wireAnchoredMenu, wireBusyActions, wireCollapse, wireDragReorder,
   wireIconSwitch, wireOverlayScrollbars, wireScrollers, wireSelectField, wireContextCard, configurationSkeletonHtml, wireLoadMore,
 } from './js/ui-components.js';
@@ -192,12 +192,16 @@ const pageSkeletonHtml=(label,{cards=false,className='',variant='',count,fill}={
   skeletonHtml(label,{variant:variant||(cards?'cards':'panel'),className,
     ...(count?{count}:{}),...(fill===undefined?{}:{fill})});
 /* 关注页的骨架跟首页共用海报卡那套几何：网格算式、卡内每一格都一样，只有归属行
-   高一点（`.followitem .meta .s` 有 min-height）。上面两条是它自己的作者行和筛选
-   行，形状取 `.tier`/`.tagbar` 本身，所以和首页顶栏是同一枚，不必另画一套。 */
+   高一点（`.followitem .meta .s` 有 min-height）。上面是它自己的作者行和那块两排的
+   玻璃浮层，形状取 `.tier`、`.tagbar`、`.count` 本身，所以和首页顶栏是同一枚。外框
+   要自己写全：`mountFilterFrame` 是运行时才建的，骨架进不了那条路径，少了它上下两排
+   会被画成两块各带圆角的浮层，等内容回来又并成一块。 */
 const followSkeletonHtml=(label='正在读取关注内容')=>`<div class="follow">
   <div class="followhead"><h2 class="pagetitle">关注</h2></div>
   <div class="tier followauthors" data-skeleton-tier="av"></div>
-  <div class="tagbar followfilters" data-skeleton-tier="pill"></div>
+  <div class="board-filter-frame" data-filter-frame>
+    <div class="tagbar followfilters" data-filter-row="top" data-skeleton-tier="pill"></div>
+    <div class="count followcount" data-filter-row="bottom"><span class="mono"><span class="countskeleton"></span></span></div></div>
   ${pageSkeletonHtml(label,{cards:true,className:'follow-content-skeleton postercard-skeleton'})}</div>`;
 /* 分类名是静态文案，骨架和复核页各要一份，所以它排在骨架前面而不是跟着复核页那段代码。 */
 const REVIEW_LABELS={metadata_fields:'元数据字段',creator_tags:'创作者标签',studio_logos:'厂牌 Logo',performer_avatars:'女优头像',western_identity:'西方身份回配',code_creators:'番号目录存疑',fc2_markings:'FC2 评论标记',fc2_similarity:'FC2 跨号相似',video_endcards:'片尾/出处证据',media_failure:'媒体失败'};
@@ -3276,16 +3280,11 @@ function viewGlideGeometry(pill){
    把这一种连同 `display:none` 和资料页照片视图下那一排自己的 `hidden` 一起挡住——玻璃
    留在一排收起来的按钮上，就是在一块空玻璃上亮着。
 
-   资料页那条上有两排都在回答「你在哪儿」：左端那一档媒体类型，和四枚观看状态。它们
-   问的不是同一件事，所以各有一块玻璃——共用一块的话，点一下照片，玻璃从「没看过」那儿
-   飞过来，读出来是这两排在抢同一个当前项。 */
+   关注页那排状态是同一个控件的第三处：五枚里恒有一枚生效，选中记在 `data-follow-filter`
+   上。资料页切视频、照片、名册的那一排不在这里——它换的是整页内容，走的是下划线 Tabs。 */
 const GLIDE_ROWS={
-  views:{selector:'#viewPills,.entityviews',
-         pressed:'[data-state][aria-pressed="true"],[data-entity-state][aria-pressed="true"]'},
-  /* 媒体那两枚是圆的，玻璃跟着它们的圆角走：一块 8px 圆角的方玻璃扣在一枚圆按钮上，
-     四个角先露出来，读起来是玻璃底下还垫着别的东西。 */
-  media:{selector:'.entitymediaview',pressed:'[data-media-view][aria-pressed="true"]',
-         className:'viewglide-round'},
+  views:{selector:'#viewPills,.entityviews,.followviews',
+         pressed:'[data-state][aria-pressed="true"],[data-entity-state][aria-pressed="true"],[data-follow-filter][aria-pressed="true"]'},
 };
 function viewPillsRow(kind){
   for(const row of document.querySelectorAll(GLIDE_ROWS[kind].selector)){
@@ -5799,19 +5798,26 @@ function renderFollow(){
   const providerPills=[...providers].map(([key,label])=>
     `<button class="pill sourcepill" data-follow-provider="${esc(key)}" aria-pressed="${followProviders.has(key)}"
       title="${esc(label)}" aria-label="来源：${esc(label)}">${sourceIcon(key)}</button>`).join('');
+  const total=followFilter?counts[followFilter]||0:allCount;
+  const mediaControl=followMediaControl(mediaCounts);
+  const extraFilters=providerPills+(providerPills&&topTags.length?'<span class="sep" aria-hidden="true"></span>':'')
+    +topTags.map(([key,label,n])=>
+      filterChipHtml(label,{attr:'data-follow-tag',value:key,selected:followTags.has(key),count:n||undefined,className:'r34-'+groupTagType(groups,key)})).join('');
+  /* 筛选条跟首页是同一块玻璃浮层，分工也照那边：上排左端五枚状态五选一、恒有一枚
+     生效，答的是「现在看的哪一档」，滑动的那块玻璃跟着它走；隔一道竖线之后的来源和
+     标签才是可加可不加的筛选。下排读数照首页那条写，右端是这一页自己的那一档——视频
+     还是图片。观看状态在首页、资料页和这里三处是同一个控件，画成三种样子就得学三遍。
+     「管理关注」是去另一页的入口，不是这一页的主动作，蓝色留给空态里那枚「添加关注」。 */
   $('#stats').innerHTML=`<div class="follow">
     <div class="followhead"><h2 class="disp pagetitle">关注</h2>
-      <button class="fbtn primary fcheck" data-follow-manage>${icon('settings')}管理关注</button></div>
+      <button class="fbtn fcheck" data-follow-manage>${icon('settings')}管理关注</button></div>
     ${authors.size?`<div class="tier followauthors" aria-label="按作者筛选">${randomizedAuthors.map(([key,author])=>
       `<button class="av" data-follow-author="${esc(key)}" aria-pressed="${followAuthors.has(key)}">
         <span class="ring">${followAuthorAvatar(author.sources)}</span><span class="nm">${esc(author.name)}</span></button>`
       ).join('')}</div>`:''}
-    <div class="tagbar followfilters" aria-label="关注筛选">${followMediaControl(mediaCounts)}${FOLLOW_FILTERS.map(([key,label])=>
-      filterChipHtml(label,{attr:'data-follow-filter',value:key,selected:key===followFilter,count:key?counts[key]||0:allCount})).join('')}
-      ${providerPills?`<span class="sep" aria-hidden="true"></span>${providerPills}`:''}
-      ${topTags.length?`<span class="sep" aria-hidden="true"></span>`+
-        topTags.map(([key,label,n])=>
-          filterChipHtml(label,{attr:'data-follow-tag',value:key,selected:followTags.has(key),count:n||undefined,className:'r34-'+groupTagType(groups,key)})).join(''):''}</div>
+    <div class="tagbar followfilters" aria-label="关注筛选"><div class="filterscroll"><div class="viewpills followviews" role="group" aria-label="状态">${FOLLOW_FILTERS.map(([key,label])=>
+      filterChipHtml(label,{attr:'data-follow-filter',value:key,selected:key===followFilter,count:key?counts[key]||0:allCount})).join('')}${extraFilters?'<span class="sep" aria-hidden="true"></span>':''}</div><div class="tagscroll followtags">${extraFilters}</div></div></div>
+    <div class="count followcount"><span class="mono">${total.toLocaleString()} 项更新 · 显示 ${visible.length.toLocaleString()}</span>${mediaControl?`<div class="sorts">${mediaControl}</div>`:''}</div>
     ${broken.length
       ?`<div class="geist-note geist-note-error fwarn" role="alert">${icon('alert')}<span>${broken.length} 个来源上次检查失败，去<button class="flink" data-follow-manage>管理关注</button>看原因。</span></div>`:''}
     <div class="followlist${followMediaView==='images'?' followphotowall':''}">${visible.length?visible.map(group=>{
@@ -5821,9 +5827,7 @@ function renderFollow(){
       :sources.length?emptyState('rss','没有符合条件的更新','切换状态或来源筛选后再试。')
       :emptyState('rss','还没有关注任何来源','添加作者或订阅来源后，更新会集中显示在这里。',{actions:'<button class="fbtn primary" data-follow-manage>添加关注</button>'})}</div>
     ${followData.has_more||sources.some(source=>source.can_backfill)?`<div class="followpagination">
-      ${followData.has_more?`<span class="followpageaction"><button class="fbtn" data-follow-more>${icon('chevron-down')}加载更多</button>
-        <span class="fmeta">已显示 ${visible.length.toLocaleString()} / ${
-        (followFilter?counts[followFilter]||0:allCount).toLocaleString()} 项</span></span>`:''}
+      ${followData.has_more?`<span class="followpageaction"><button class="fbtn" data-follow-more>${icon('chevron-down')}加载更多</button></span>`:''}
       ${sources.some(source=>source.can_backfill)?`<span class="followpageaction"><button class="fbtn" data-follow-older>${icon('history')}抓更早的一页</button>
         <span class="fmeta">${esc(followBackfillState(sources))}</span></span>`:''}</div>`:''}</div>`;
   const more=$('#stats').querySelector('[data-follow-more]');
@@ -5837,15 +5841,26 @@ function renderFollow(){
   wireFollowItems();
   wireFollowOlder();
   void wireFollowProgress();
+  /* 上下两排收进同一块外框，材质与吸顶归外框；玻璃的坐标基准也是它，所以先搭框再量。 */
+  const filterRow=$('#stats').querySelector('.followfilters'),countRow=$('#stats').querySelector('.followcount');
+  mountFilterFrame(filterRow,countRow,{views:filterRow.querySelector('.followviews'),
+    tags:filterRow.querySelector('.followtags'),readout:countRow.querySelector('.mono'),
+    controls:countRow.querySelector('.sorts')});
   wireDrag($('#stats').querySelector('.followauthors'));
-  wireDrag($('#stats').querySelector('.followfilters'));
+  wireDrag(filterRow.querySelector('.filterscroll'));wireDrag(filterRow.querySelector('.tagscroll'));
+  wireHorizontalScroller(filterRow.querySelector('.tagscroll'));
+  const statusPills=[...filterRow.querySelectorAll('[data-follow-filter]')];
+  wireViewGlideRow(filterRow.querySelector('.followviews'),statusPills);
+  scheduleStickySurfaces();
   paintSelection();
   /* 一律先把新状态写进 URL 再重取：openFollow 现在照 URL 推导，不先写就会被
      推回旧值。前进后退也因此天然可用。 */
   const applyFollowView=()=>{route(followViewPath());openFollow(false)};
-  $('#stats').querySelectorAll('[data-follow-filter]').forEach(button=>button.onclick=()=>{
+  statusPills.forEach(button=>button.onclick=()=>{
+    /* 玻璃先走，数据后到：等服务端回来再动，点完先僵一下再跳。 */
+    statusPills.forEach(p=>p.setAttribute('aria-pressed',String(p===button)));syncViewGlide(true,button);
     followFilter=button.dataset.followFilter;applyFollowView()});
-  $('#stats').querySelectorAll('.followfilters [data-media-view]').forEach(button=>button.onclick=()=>{
+  $('#stats').querySelectorAll('.followcount [data-media-view]').forEach(button=>button.onclick=()=>{
     // 媒体类型是纯前端的分组，不影响服务端取哪些条目，所以只重画不重取。
     followMediaView=button.dataset.mediaView;
     route(followViewPath());renderFollow()});
@@ -7241,7 +7256,6 @@ function syncEntityFilterFrame(){
   /* 玻璃的坐标基准是这块外框，所以要等框搭好才量得到位置。两排本身在框搭好之前就
      接过了，那一次量到的是 null。 */
   syncViewGlide(false);
-  syncViewGlide(false,null,'media');
   scheduleStickySurfaces();
 }
 function syncEntityStateControls(kind,name,filters){
@@ -7383,22 +7397,20 @@ function entityViewNow(kind){return kind==='agency'&&agencyRosterView==='people'
 
 function renderEntityMediaToggle(kind,name,filters){
   syncEntityStateControls(kind,name,filters);
-  const controls=$('#index').querySelector('.entitymediaview');if(!controls)return;
+  const controls=$('#index').querySelector('.entitytabs');if(!controls)return;
   const now=entityViewNow(kind);
   const buttons=[...controls.querySelectorAll('[data-media-view]')];
   buttons.forEach(button=>{
     const media=button.dataset.mediaView;
-    button.setAttribute('aria-pressed',String(now===media));
-    /* 按下去那一下玻璃就滑过去，不等换视图的活干完：切到照片要取一次图墙，反馈跟着
-       等就是点完先僵一下再亮。`aria-pressed` 由这里当场改齐——`switchEntityMedia`
-       末尾会重画这一排再对一次，中间那段空档没人写它，玻璃会被下一次同步拽回原处。 */
+    button.setAttribute('aria-selected',String(now===media));
+    /* 按下去那一下蓝线就滑过去，不等换视图的活干完：切到照片要取一次图墙，反馈跟着
+       等就是点完先僵一下再亮。`aria-selected` 由这里当场改齐，`wireBoardTabs` 观察着
+       这个属性，改了就量位置、挪指示条。 */
     button.onclick=()=>{
-      buttons.forEach(other=>other.setAttribute('aria-pressed',String(other===button)));
-      syncViewGlide(true,button,'media');
+      buttons.forEach(other=>other.setAttribute('aria-selected',String(other===button)));
       switchEntityMedia(kind,name,filters,media);
     };
   });
-  wireViewGlideRow(controls,buttons,'media');
   /* 那排标签数的是视频，照片和名册上一个都对不上——「痴女 23」在这一屏指的是二十三个
      视频，而屏幕上摆着的是照片。点下去也不留在这儿：标签是作品筛选，`toggleTag` 会把
      视图拨回视频。一排点了就走人、数字又对不上当前内容的东西，摆在这儿只会让人以为
@@ -7948,20 +7960,21 @@ async function openEntity(kind,name,push=true){
          style:facePos(x.avatar_focus),focus:x.avatar_focus})}</span>
       <span class="nm">${esc(x.k)}</span></button>`).join('');
   const photoCount=photos&&!photos.error?(photos.total||0):0;
-  /* 艺人名册和视频、照片是这一页的三个互斥视图，共用一组按钮：它们回答的是同一个
-     问题，摆成两个控件只会各说各的。切换只重画下面那块，不重开这一页——名册已经随
-     资料下来了，视频那一半本来也要请求。
+  /* 艺人名册、视频、照片是这一页的三个互斥视图，共用一排 Board 下划线 Tabs：它们回答的
+     是同一个问题，摆成两个控件只会各说各的。切换只重画下面那块，不重开这一页——名册
+     已经随资料下来了，视频那一半本来也要请求。
 
-     这一组排在整条筛选条的最左端，隔一道竖杠再是四枚观看状态、再一道才是标签。三段
-     由粗到细：先定这一页现在摆的是哪一类东西，再定这一类里看哪一档，最后才是可加可
-     不加的筛选。夹在视图和标签中间时它读起来像标签那排的第一枚，而它换掉的是整页
-     内容，不是给当前这批加一条筛选。 */
-  const mediaToggle=(photoCount||roster.length)?mediaViewButtonsHtml({
-    active:entityViewNow(kind),
-    peopleValue:roster.length?'people':'',peopleCount:roster.length,
-    imageValue:photoCount?'photos':'',imageLabel:'照片',
-    videoCount:d.asset_count,imageCount:photoCount,
-    label:roster.length?'页面视图':'媒体类型',className:'entitymediaview'}):'';
+     这一排排在资料卡下面、玻璃筛选条上面，三层由粗到细：Tabs 先定这一页现在摆的是哪一类
+     东西，四枚观看状态定这一类里看哪一档，标签才是可加可不加的筛选。它换掉的是整页内容，
+     不是给当前这批加一条筛选，所以不住在筛选条里。只有一类东西时不出这一排：一枚孤零零
+     的 Tab 没有可切的对象。 */
+  const views=[
+    ...(roster.length?[{value:'people',label:'艺人',count:roster.length}]:[]),
+    {value:'videos',label:'视频',count:d.asset_count},
+    ...(photoCount?[{value:'photos',label:'照片',count:photoCount}]:[]),
+  ];
+  const mediaTabs=views.length>1?boardTabsHtml(views,{active:entityViewNow(kind),
+    attr:'data-media-view',label:'页面视图',className:'entitytabs',panel:'entitySection'}):'';
   /* 统称由用户自己定。同一个人在库里常有中文、日文、罗马字几种写法，哪一个该顶在
      标题上是他的偏好，账本里没有能推出答案的字段。菜单只列这条实体名下已有的写法：
      换统称是换显示的那一个，不是改名——改名要有来源和证据，不该由一次点击完成。
@@ -8004,15 +8017,21 @@ async function openEntity(kind,name,push=true){
           >${icon('plus')}<span>添加别名…</span></button></div></div>`;
   $('#index').dataset.entityKind=kind;$('#index').dataset.entityName=name;
   const people=kind==='performer'||kind==='creator';
-  $('#index').innerHTML=`<div class="entityhero"><div class="entityportraitwrap"><div class="entityportrait ${people?'':'square'}" data-fit-native="${company?'mark':'portrait'}">${image}<span>${esc(name.slice(0,1))}</span></div>${
-    people?'<span data-avatar-picker></span>':''}</div>
-      <div><div class="entitytitle"><h2>${esc(d.canonical_name)}</h2>${namePick}</div>
+  /* 资料卡按 Board 的 profile 卡排：一块 secondary 底、18px 圆角的卡，正文是头像加身份三行
+     （名字、别名与归属、外链），同台艺人收进卡底那条色阶带——那是这个人的附注，不是这一页
+     的正文；事务所的名册是正文，走下面 Tabs 里那一档。卡外面依次是 Tabs、交集条、玻璃筛选条
+     和内容区，顶到底一条线。 */
+  $('#index').innerHTML=`<section class="entityhero" aria-label="资料">
+      <div class="entityprofile"><div class="entityportraitwrap"><div class="entityportrait ${people?'':'square'}" data-fit-native="${company?'mark':'portrait'}">${image}<span>${esc(name.slice(0,1))}</span></div>${
+        people?'<span data-avatar-picker></span>':''}</div>
+      <div class="entityidentity"><div class="entitytitle"><h2>${esc(d.canonical_name)}</h2>${namePick}</div>
         <div class="alias">${(d.display_aliases||[]).length?`${d.display_aliases.map(esc).join(' / ')} · `:''}<b>${d.asset_count.toLocaleString()}</b> 个视频${memberHtml}${agencyHtml}</div>
         ${links?`<div class="entitylinks">${links}</div>`:''}</div></div>
-    ${related?`<div class="entitymeta"><section aria-label="同台艺人"><div class="relatedpeople">${related}</div></section></div>`:''}
+      ${related?`<div class="entityfoot" aria-label="同台艺人"><span class="entityfootlabel">同台艺人</span><div class="relatedpeople">${related}</div></div>`:''}</section>
+    ${mediaTabs}
     <div class="combo entitycombo"></div>
-    <section class="entitytagbar" aria-label="媒体与标签">${mediaToggle}${mediaToggle?'<span class="sep" aria-hidden="true"></span>':''}<div class="filterscroll"><div class="viewpills entityviews" role="group" aria-label="观看状态">${VIEW_PILLS.map(v=>`<button type="button" class="pill" data-entity-state="${v.k}" aria-pressed="${(filters.state||'')===v.k}">${v.label}</button>`).join('')}<span class="sep" aria-hidden="true"></span></div><div class="tagscroll entitytags">${tags}</div></div></section>
-    <div class="entitysection"></div>`;
+    <section class="entitytagbar" aria-label="观看状态与标签"><div class="filterscroll"><div class="viewpills entityviews" role="group" aria-label="观看状态">${VIEW_PILLS.map(v=>`<button type="button" class="pill" data-entity-state="${v.k}" aria-pressed="${(filters.state||'')===v.k}">${v.label}</button>`).join('')}<span class="sep" aria-hidden="true"></span></div><div class="tagscroll entitytags">${tags}</div></div></section>
+    <div class="entitysection" id="entitySection"></div>`;
   /* 圆框角上那个加号。自动挑的那张按来源优先级来，而那个顺序回答的是「先试哪一张」，
      不是「哪一张适合当头像」：图库排第一的常是写真封面，同一个人往下翻几张就有片商的
      正脸原图。换完重进这一页——头像索引在服务端已经失效过一次，重画才读得到新图。 */
@@ -8596,11 +8615,11 @@ window.addEventListener('scroll',()=>{
   releaseHoverPreviews();
   clearTimeout(scrollT); scrollT=setTimeout(()=>{window.__scrolling=false},180);
 },{passive:true});
-/* 换了宽度就把两块玻璃各自重新落一次位：过了那道断点，这一排是不是住在横滚容器里
+/* 换了宽度就把那块玻璃重新落一次位：过了那道断点，这一排是不是住在横滚容器里
    会变，玻璃该落在哪一层跟着变，量出来的位置也跟着变。不重落的话它留在旧的那一层上，
    坐标还是按旧的算的，停在离按钮几百像素远的地方。 */
 window.addEventListener('resize',()=>{scheduleStickySurfaces();alignFollowImageControls();
-  syncViewGlide(false);syncViewGlide(false,null,'media')},{passive:true});
+  syncViewGlide(false)},{passive:true});
 
 $('#scrim').onclick=()=>openDrawer(false);
 

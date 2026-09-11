@@ -204,21 +204,11 @@ body .review .reviewbulktoolbar{clip-path:inset(-48px -48px 0 -48px)}
    选中和悬停都只提字色。 */
 .entitytagbar.entitytagbar .pill[data-entity-state],
 .entitytagbar.entitytagbar .pill[data-entity-state]:hover,
-.entitytagbar.entitytagbar .pill[data-entity-state][aria-pressed="true"],
-.entitytagbar.entitytagbar .mediaviewbutton,
-.entitytagbar.entitytagbar .mediaviewbutton:hover,
-.entitytagbar.entitytagbar .mediaviewbutton[aria-pressed="true"]{
+.entitytagbar.entitytagbar .pill[data-entity-state][aria-pressed="true"]{
   border:0;background:none;backdrop-filter:none;-webkit-backdrop-filter:none;box-shadow:none}
-.entitytagbar.entitytagbar .pill[data-entity-state],
-.entitytagbar.entitytagbar .mediaviewbutton{color:color-mix(in srgb,var(--glass-text) 60%,transparent)}
+.entitytagbar.entitytagbar .pill[data-entity-state]{color:color-mix(in srgb,var(--glass-text) 60%,transparent)}
 .entitytagbar.entitytagbar .pill[data-entity-state]:hover,
-.entitytagbar.entitytagbar .pill[data-entity-state][aria-pressed="true"],
-.entitytagbar.entitytagbar .mediaviewbutton:hover,
-.entitytagbar.entitytagbar .mediaviewbutton[aria-pressed="true"]{color:var(--glass-text)}
-/* 那两枚字形要压在玻璃上面，不然滑过去的时候被盖住一路暗过去——跟首页四枚视图同一条。 */
-.entitytagbar.entitytagbar .mediaviewbutton{position:relative;z-index:1}
-/* 照片视图下这条只剩左端那一组，后面没有东西可隔；分隔线留着就是一条指向空白的竖线。 */
-.entitytagbar[data-media-only] .sep{display:none}
+.entitytagbar.entitytagbar .pill[data-entity-state][aria-pressed="true"]{color:var(--glass-text)}
 /* 版式、大小这类分段开关问的也是「你在哪儿」。滑块的位置和几何归分段器自己管，这里
    只换材质与配色：那一套是给 flat 面配的，一块灰底衬一枚不透明的白滑块，摆到浮层上
    就是整条里唯一一块实心的面，读起来像贴上去的另一个控件；字色取的也是 flat 面的
@@ -254,7 +244,7 @@ body .review .reviewbulktoolbar{clip-path:inset(-48px -48px 0 -48px)}
 .board-filter-frame.board-filter-frame .tagbar{border-radius:22px 22px 0 0}
 .board-filter-frame.board-filter-frame .count{border-radius:0 0 22px 22px}
 .board-filter-frame.board-filter-frame .pill{color:var(--glass-text)}
-.board-filter-frame.board-filter-frame #tagbar .pill[data-tag]:not([aria-pressed="true"]){border-color:var(--glass-low)}
+.board-filter-frame.board-filter-frame .tagbar .pill:is([data-tag],[data-follow-tag],[data-follow-provider]):not([aria-pressed="true"]){border-color:var(--glass-low)}
 /* 四枚视图之间只有一块玻璃在移动，不是四块各自亮灭：Apple 把同一层里的玻璃先合成
    再形变（`GlassEffectContainer` 的 "fluidly morphing Liquid Glass shapes into each
    other"），落到这一排就是先拉长盖住起点和终点、再收拢到新的那一枚。
@@ -294,7 +284,7 @@ body .review .reviewbulktoolbar{clip-path:inset(-48px -48px 0 -48px)}
    的字之下。写 0 的话它是这层里唯一的定位元素，整块盖住下面所有的字。 */
 .drawer.drawer>.navglide{border-radius:10px;z-index:-1}
 /* 文字要压在那块玻璃上面，否则滑过去的时候字被盖住一路暗过去。 */
-.board-filter-frame.board-filter-frame #tagbar .pill[data-state]{position:relative;z-index:1}
+.board-filter-frame.board-filter-frame .tagbar .pill:is([data-state],[data-follow-filter]){position:relative;z-index:1}
 /* 按下去那一下归手，弹回来那一下归弹簧。按住立刻缩到 96%——这一步要跟手，隔两百
    毫秒才动读成的是「点了没反应」；松开才交给弹簧，冲过原尺寸一点点再收住，手指离开
    以后那块东西还自己动了一下，捏着的是软的不是一张贴纸。
@@ -544,7 +534,6 @@ body>.board-filter-frame{margin-inline:16px}
 :root{--board-filterH:48px}
 .entitytagbar{position:sticky;top:calc(var(--topH) + 8px);margin:0;height:var(--board-filterH);gap:6px;padding:8px 12px}
 .entitytagbar .entitytags{gap:6px}
-.entitytagbar .mediaviewbuttons .mediaviewbutton{flex:0 0 30px;width:30px;height:30px}
 .entitycollectionhead{position:sticky;top:calc(var(--topH) + 8px);margin:0 0 22px;padding:8px 12px;min-height:var(--board-filterH);gap:12px}
 .entitycollectionhead.is-stuck::after{content:'';position:absolute;inset:0;z-index:-1;border-radius:inherit;
   box-shadow:0 0 24px 4px #00000038,0 8px 20px #00000026;pointer-events:none}
@@ -587,20 +576,27 @@ body>.board-filter-frame{margin-inline:16px}
   .top:has(.search.search-morphing){overflow:visible}
   .top:has(.search.search-morphing) #searchBtn{opacity:0}
 }
-.board-filter-frame #tagbar{height:48px;gap:6px;padding:8px 12px}
-.board-filter-frame #tagbar .pill{height:30px;padding:0 10px;font-size:13px;line-height:20px;border-radius:8px;border:1px solid transparent}
-/* 四枚视图自己不铺底，选中那一枚的填充由 `.viewglide` 那块滑过去的玻璃提供：
+/* 首页的 `#tagbar` 和关注页的 `.followfilters` 是同一条筛选条，规则按类名写、两页共用：
+   左端几枚视图记在 `data-state`／`data-follow-filter` 上，右半截的标签记在
+   `data-tag`／`data-follow-tag`，来源图标键是 `data-follow-provider`。 */
+.board-filter-frame .tagbar{height:48px;gap:6px;padding:8px 12px}
+.board-filter-frame .tagbar .pill{height:30px;padding:0 10px;font-size:13px;line-height:20px;border-radius:8px;border:1px solid transparent}
+/* 几枚视图自己不铺底，选中那一枚的填充由 `.viewglide` 那块滑过去的玻璃提供：
    两边都铺，静止态就是一块不透明的 `--picked` 压在玻璃上面，切换时也只能看见它
    瞬间换位置，滑动的那块从头到尾被盖住。 */
-.board-filter-frame #tagbar .pill[data-state]{border:0;background:none;color:color-mix(in srgb,var(--glass-text) 60%,transparent)}
-.board-filter-frame #tagbar .pill[data-state]:hover,
-.board-filter-frame #tagbar .pill[data-state][aria-pressed="true"]{background:none;color:var(--glass-text)}
-.board-filter-frame #tagbar .pill[data-tag]:not([aria-pressed="true"]){border:1px solid var(--line);background:transparent}
-/* 右半截这些是标签，圆角从标签那个 token 取，跟卡片、详情面板、交集条一起走；左边四枚
+.board-filter-frame .tagbar .pill:is([data-state],[data-follow-filter]){border:0;background:none;color:color-mix(in srgb,var(--glass-text) 60%,transparent)}
+.board-filter-frame .tagbar .pill:is([data-state],[data-follow-filter]):hover,
+.board-filter-frame .tagbar .pill:is([data-state],[data-follow-filter])[aria-pressed="true"]{background:none;color:var(--glass-text)}
+.board-filter-frame .tagbar .pill:is([data-tag],[data-follow-tag],[data-follow-provider]):not([aria-pressed="true"]){border:1px solid var(--line);background:transparent}
+/* 右半截这些是标签，圆角从标签那个 token 取，跟卡片、详情面板、交集条一起走；左边几枚
    是分段器，形状归它自己那一排。线画满两态：填充说的是这条加没加上去，那一圈线说的是
    「这是一颗标签」，两句话不能合成一句讲。玻璃上取 --glass-low、flat 面上取 --line，
    同一个角色各按自己的底选值。 */
-.board-filter-frame.board-filter-frame #tagbar .pill[data-tag]{border-radius:var(--tag-radius);border-color:var(--glass-low)}
+.board-filter-frame.board-filter-frame .tagbar .pill:is([data-tag],[data-follow-tag],[data-follow-provider]){border-radius:var(--tag-radius);border-color:var(--glass-low)}
+/* 关注页的标签按来源类型着色，选中那一档的线和填充都取那个色：这是它们在卡片上的样子，
+   筛选条上不换一套。 */
+.board-filter-frame.board-filter-frame .followfilters .pill[class*="r34-"][aria-pressed="true"]{
+  border-color:color-mix(in srgb,var(--r34-tag) 72%,transparent);background:color-mix(in srgb,var(--r34-tag) 22%,transparent)}
 /* 资料页的标签跟首页筛选条上的标签是同一个控件，只是换了个位置：那边 30px 高、13px
    字，这边还留着 40px 高的大药丸，同一个人的标签在两页上大一圈小一圈。
    计数跟着缩到 Caption。 */
@@ -608,6 +604,30 @@ body>.board-filter-frame{margin-inline:16px}
 .entitytags .pill small{margin-left:5px;font:var(--board-caption)}
 .board-filter-frame .count{padding:8px 12px;min-height:46px;gap:12px}
 .board-filter-frame .sorts{gap:4px}.board-filter-frame .sorts button{height:30px;min-height:30px;font-size:12px;padding:0 8px;border:0;border-radius:7px;background:transparent}
+/* 关注页下排右端那两枚是视频／图片：它答的是「现在摆的是哪一类」，是一个位置，所以选中
+   那一枚铺选中态那块玻璃，跟排序键只靠字重说话不同。 */
+.board-filter-frame .sorts .mediaviewbuttons{gap:2px}
+.board-filter-frame .sorts .mediaviewbutton{flex:0 0 30px;width:30px;height:30px;border-radius:7px;color:color-mix(in srgb,var(--glass-text) 60%,transparent)}
+.board-filter-frame .sorts .mediaviewbutton:hover{color:var(--glass-text)}
+.board-filter-frame .sorts .mediaviewbutton[aria-pressed="true"]{color:var(--glass-text);
+  background:linear-gradient(180deg,var(--glass-sheen),transparent 62%),var(--glass-pick-fill);
+  backdrop-filter:var(--glass-pick);-webkit-backdrop-filter:var(--glass-pick);
+  box-shadow:inset 0 0 0 1px var(--glass-rim),var(--glass-pick-shadow)}
+/* 资料卡照 Board 的卡排：secondary 底、18px 圆角、不描边，卡底那条带取卡脚那一档色阶。
+   标题是 Title 3（24/32、500），别名行 Body 1，外链是 36px 的 secondary Button。 */
+.entityhero{border-radius:18px;background:var(--ground);box-shadow:none}
+.entityfoot{background:var(--board-card-foot);border-top-color:var(--line-soft)}
+.entityhero h2{font-size:24px;font-weight:500;line-height:32px}
+.entityhero .alias{font-size:14px;line-height:20px}
+.entitylinks a,.entitylinks .private{height:36px;border-radius:10px;border-color:var(--line);font-size:13px}
+.entitylinks a.iconlink{border-radius:10px}
+/* 资料页切视频、照片、名册的那一排是 Board 的下划线 Tabs；跟浮层留同样的 22px。
+   计数徽标照 tabs.tsx：`rounded-sm px-1 py-px text-caption-1-medium`，未选中黑 10% 底半透明，
+   选中换成强调色 12% 底、强调色字。 */
+.entitytabs{margin:0 0 22px}
+.board-tab-count{display:inline-block;margin-left:6px;padding:1px 4px;border-radius:4px;font:var(--board-caption);font-weight:500;line-height:16px;
+  background:color-mix(in srgb,var(--ink) 10%,transparent);color:var(--ink);opacity:.5;vertical-align:1px}
+.board-local-nav button[aria-selected="true"] .board-tab-count{background:color-mix(in srgb,var(--tungsten) 12%,transparent);color:var(--tungsten);opacity:1}
 #grid.gridstack{border:0;background:transparent;padding:0;box-shadow:none;border-radius:0}
 #grid.gridstack>.grid{border:0;background:transparent;padding:0;box-shadow:none;border-radius:0}
 /* 竖屏带靠底色和网格区分，不再描一圈线：它嵌在两段无边框的网格中间，一条线反而

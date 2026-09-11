@@ -4787,12 +4787,12 @@ function Ui(e) {
 function Wi(e, t, n) {
 	return `<section data-skeleton="entity/${e}" role="status" aria-label="正在读取资料">
     <span class="sr-only">正在读取资料</span><div aria-hidden="true">
-    <div class="entityhero"><div class="entityportrait ${e === "studio" || e === "agency" ? "square " : ""}skeleton"></div>
-      <div class="entityskeletontext"><div class="entitytitle"><h2 class="skeleton">&nbsp;</h2></div>
+    <section class="entityhero"><div class="entityprofile"><div class="entityportrait ${e === "studio" || e === "agency" ? "square " : ""}skeleton"></div>
+      <div class="entityidentity entityskeletontext"><div class="entitytitle"><h2 class="skeleton">&nbsp;</h2></div>
       <div class="alias"><span class="skeleton"></span></div>
-      <div class="entitylinks"><span class="skeleton"></span></div></div></div>
+      <div class="entitylinks"><span class="skeleton"></span></div></div></div></section>
     <div class="board-filter-frame" data-filter-frame>
-      <section class="entitytagbar" data-filter-row="top"><div class="entitytags"><span class="skeleton entitymediaskeleton"></span><span class="skeleton entitymediaskeleton"></span></div></section>
+      <section class="entitytagbar" data-filter-row="top"><div class="filterscroll" data-skeleton-tier="pill"></div></section>
       ${t}</div>
     <div class="entitysection">${n}</div></div></section>`;
 }

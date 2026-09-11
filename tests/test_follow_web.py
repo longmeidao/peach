@@ -2571,9 +2571,12 @@ class FollowWebSourceTests(unittest.TestCase):
 
     def test_follow_horizontal_rails_are_wired_after_each_render(self):
         self.assertPageContains("wireDrag($('#stats').querySelector('.followauthors'))")
-        self.assertPageContains("wireDrag($('#stats').querySelector('.followfilters'))")
+        # 筛选条挂进首页那块浮层之后，横滚的是里面的 `.filterscroll`／`.tagscroll`，不是整条。
+        self.assertPageContains("wireDrag(filterRow.querySelector('.filterscroll'));wireDrag(filterRow.querySelector('.tagscroll'))")
+        self.assertPageContains("wireHorizontalScroller(filterRow.querySelector('.tagscroll'))")
         self.assertPageContains(".followauthors{padding:3px 0 10px")
-        self.assertPageContains(".followfilters::-webkit-scrollbar{display:none}")
+        self.assertPageContains(".tagscroll::-webkit-scrollbar{display:none}")
+        self.assertPageLacks(".followfilters{position:relative")
 
     def test_credentials_are_typed_into_the_page_not_into_a_file_by_hand(self):
         self.assertPageContains('data-cred-form=')
@@ -3053,14 +3056,15 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("const preferredKind=followMediaView==='images'?'image':'video'")
         watch = self.page.split("function renderFollow(){", 1)[1].split(
             "function followBackfillState", 1)[0]
+        # 上排左端是五枚状态，媒体类型不在这一排：它住在浮层下排右端。
         self.assertIn(
-            'class="tagbar followfilters" aria-label="关注筛选">${followMediaControl(mediaCounts)}${FOLLOW_FILTERS.map',
+            'class="tagbar followfilters" aria-label="关注筛选"><div class="filterscroll">'
+            '<div class="viewpills followviews" role="group" aria-label="状态">${FOLLOW_FILTERS.map',
             watch,
         )
-        self.assertNotIn(
-            '<span class="sep" aria-hidden="true"></span>${followMediaControl(mediaCounts)}',
-            watch,
-        )
+        self.assertIn("const mediaControl=followMediaControl(mediaCounts);", watch)
+        self.assertIn("mountFilterFrame(filterRow,countRow,{views:filterRow.querySelector('.followviews'),", watch)
+        self.assertNotIn("${followMediaControl(mediaCounts)}${FOLLOW_FILTERS", watch)
         self.assertPageContains("followMediaView==='images'?' followphotowall':''")
         self.assertPageContains(".followlist.followphotowall{grid-template-columns:repeat(5,minmax(0,1fr))")
         self.assertPageLacks(".followlist.followphotowall>.stage{column-span:all}")
@@ -3157,7 +3161,9 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains('@media (max-width:640px){.followhead{align-items:center}')
 
     def test_manage_follow_is_a_geist_action_not_a_filter_pill(self):
-        self.assertPageContains('class="fbtn primary fcheck" data-follow-manage')
+        # 它是去另一页的入口，不是这一页的主动作：蓝色留给空态里那枚「添加关注」。
+        self.assertPageContains('class="fbtn fcheck" data-follow-manage')
+        self.assertPageLacks('class="fbtn primary fcheck"')
         rule = self.page[self.page.index(".follow .fcheck{"):
                          self.page.index("}", self.page.index(".follow .fcheck{"))]
         self.assertNotIn("--pill-radius", rule)
