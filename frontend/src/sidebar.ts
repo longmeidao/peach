@@ -7,7 +7,8 @@ export function sidebarHasCatalogContent(path: string): boolean {
 }
 
 export function syncSidebarSurface(drawer: HTMLElement, key: string): boolean {
-  if (drawer.dataset.surface === key && drawer.querySelector('.dnav')) return false;
+  const samePage = drawer.dataset.surface?.split('?')[0] === key.split('?')[0];
+  if (samePage && drawer.querySelector('.dnav')) { drawer.dataset.surface = key; return false; }
   drawer.dataset.surface = key;
   drawer.replaceChildren();
   return true;

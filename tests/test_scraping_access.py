@@ -141,4 +141,32 @@ class ScrapingAccessTests(unittest.TestCase):
         )):
             result = _fetch_cover(contract, "ABW-232")
         self.assertTrue(result["ok"])
+        self.assertEqual(result["reason"], "kept_existing")
+        self.assertIn("2000 × 1400", result["result"])
+        self.assertIn("800 × 600", result["result"])
         self.assertEqual(target.read_bytes(), original)
+
+    def test_cover_failure_explains_observed_cause_without_exposing_urls(self):
+        from peach.web_scraping import _fetch_cover
+        from peach.jav_cover_fetch import Unavailable
+        contract = SimpleNamespace(cover_root=self.root, candidate_root=self.root,
+                                   follow_secrets_root=self.root / "secrets", follow_sources_root=self.root)
+        cases = [(403, "access_denied"), (503, "source_error"), (404, "no_candidate"), (None, "network")]
+        for status, reason in cases:
+            def fetch(transport, *args, **kwargs):
+                try:
+                    transport(HttpRequest("GET", "https://example.test/private?token=secret", {}), 1, 100)
+                except httpx.TransportError:
+                    pass
+                raise Unavailable("所有渠道都没有候选")
+            with self.subTest(reason=reason), patch("peach.jav_cover_fetch.best_cover", side_effect=fetch), \
+                    patch("peach.web_scraping.SourceTransport") as factory:
+                if status is None:
+                    factory.return_value.side_effect = httpx.ConnectError("private?token=secret")
+                else:
+                    factory.return_value.return_value = HttpResponse(status, {}, b"")
+                result = _fetch_cover(contract, "ABW-232")
+            self.assertFalse(result["ok"])
+            self.assertEqual(result["reason"], reason)
+            self.assertNotIn("secret", json.dumps(result))
+            self.assertNotIn("可能需要代理", result["error"])

@@ -32,6 +32,18 @@ class _Response:
 
 
 class FetchRetryTests(unittest.TestCase):
+    def test_cover_rejections_report_measured_sizes_and_decode_failures(self):
+        candidate = covers.Candidate("test", "https://example.test/cover.jpg")
+        for size, expected in [((600, 400), "too_small"), ((1600, 1000), "invalid_image")]:
+            diagnostics = {}
+            with patch.object(covers, "cached_metadata", return_value=covers.MetadataEvidence()), \
+                    patch.object(covers, "probe_size", return_value=size), \
+                    patch.object(covers, "_fetch", return_value=b"invalid"):
+                with self.assertRaises(covers.Unavailable):
+                    covers.best_cover(lambda *args: None, "FC2-PPV-123456", 0,
+                                      prior_candidates=(candidate,), diagnostics=diagnostics)
+            self.assertEqual(diagnostics, {expected: 1})
+
     def test_full_download_dimensions_must_match_probe_and_exceed_existing_image(self):
         candidate = covers.Candidate("test", "https://example.test/large.jpg")
         with patch.object(covers, "cached_metadata", return_value=covers.MetadataEvidence()), \

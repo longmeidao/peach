@@ -3,6 +3,7 @@ import { apiGet, apiSend, errorMessage } from '../api';
 import { fieldsetTitle, noteHtml, projectBannerHtml, setActionBusy } from '@peach/legacy/ui';
 import { jobActivityHtml, watchJob } from '../jobs';
 import type { JobState } from '../jobs';
+import { LinkButton } from '../link-button';
 import type { IslandState } from '../islands';
 
 export interface LibraryProcessingIssue { asset_id: number | null; title?: string; path?: string; message: string }
@@ -110,8 +111,8 @@ export function LibraryProcessing({ data, error, toast, onComplete, mode, monito
           jobActivityHtml(state.total ? `${currentLine(state)} · ${state.checked || 0} / ${state.total} 个视频` : currentLine(state), state.checked, state.total) }} />}
       </div>
       <footer class="geist-fieldset-footer" data-geist-fieldset-footer>
-        <a class="geist-button" href="/scraping">采集来源</a>
-        {!!state.candidates && <a class="geist-button" href="/review">复核资料</a>}
+        <LinkButton href="/scraping">采集来源</LinkButton>
+        {!!state.candidates && <LinkButton href="/review">复核资料</LinkButton>}
         {(state.status !== 'failed' || !retryable) && <button ref={button} type="button" class="geist-button primary" onClick={start}>扫描并补全资料</button>}
       </footer>
     </section>

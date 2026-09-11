@@ -4,6 +4,7 @@ import { noteHtml, fieldsetTitle, loadingDotsHtml, setActionBusy, selectFieldHtm
 import { faviconUrl } from '@peach/legacy/core';
 import type { IslandState } from '../islands';
 import { watchJob } from '../jobs';
+import { LinkButton } from '../link-button';
 import type { JobState } from '../jobs';
 
 interface Source {
@@ -88,7 +89,7 @@ function SourceForm({ source, toast }: { source: Source } & ScrapingProps) {
         </a>
         </div>
         <div class="scraping-label">连接方式<NetworkSelect value={network} onChange={setNetwork} /></div>
-        {network === 'peach' && <a class="geist-text-link" href="/configuration#peachProxy">配置 Peach 代理</a>}
+        {network === 'peach' && <LinkButton href="/configuration#peachProxy">配置 Peach 代理</LinkButton>}
         {source.accepts_cookie && <>
           <p>{saved.cookie_saved ? 'Cookie 已保存，登录是否有效请在抓取时确认。' : '需要登录时，任选一种方式提供 Cookie。'}</p>
           <div class="insightswitch scraping-cookie-method" role="radiogroup" aria-label="提供 Cookie 的方式（二选一）">
@@ -136,6 +137,7 @@ export function Scraping({ data, error, toast }: ScrapingProps & IslandState<Scr
   const [code, setCode] = useState('');
   const [running, setRunning] = useState(false);
   const [problem, setProblem] = useState('');
+  const [result, setResult] = useState('');
   const submit = useRef<HTMLButtonElement>(null);
   useLayoutEffect(() => setActionBusy(submit.current, running), [running]);
   const lifetime = useRef(new AbortController());
@@ -149,7 +151,7 @@ export function Scraping({ data, error, toast }: ScrapingProps & IslandState<Scr
         setRunning(state.status === 'running');
         if (state.status === 'running') resume = false;
         if (state.status === 'failed' && !resume) setProblem(state.error || '采集未取得');
-        if (state.status === 'complete' && !resume) toast(state.result || '封面采集完成');
+        if (state.status === 'complete' && !resume) { setResult(state.result || '封面采集完成'); toast(state.result || '封面采集完成'); }
       },
       disconnected: () => setProblem('连接中断，正在重新读取后台进度'),
     });
@@ -158,7 +160,7 @@ export function Scraping({ data, error, toast }: ScrapingProps & IslandState<Scr
   async function fetchCover() {
     if (running) return;
     generation.current++;
-    setRunning(true); setProblem('');
+    setRunning(true); setProblem(''); setResult('');
     try {
       await apiSend('/api/scraping/cover', { code }, 'POST', lifetime.current.signal);
       await followJob();
@@ -181,6 +183,7 @@ export function Scraping({ data, error, toast }: ScrapingProps & IslandState<Scr
             关掉页面它照样在跑，回来能接上，所以状态得留在页面上，而不是只让按钮转一下。 */}
         {running && <div aria-live="polite" dangerouslySetInnerHTML={{ __html: loadingDotsHtml('正在抓取封面') }} />}
         {problem && <div role="alert" dangerouslySetInnerHTML={{ __html: noteHtml(problem, { variant: 'error' }) }} />}
+        {result && <div role="status" dangerouslySetInnerHTML={{ __html: noteHtml(result) }} />}
       </div>
     </section>
     {data?.sources.map(source => <SourceForm key={source.source} source={source} toast={toast} />)}

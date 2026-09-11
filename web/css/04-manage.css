@@ -163,9 +163,6 @@
 .stats h2{margin:0 0 4px;font-size:var(--fs-2xl)}
 .stats .sub{color:var(--muted);margin:0}
 /* 采集来源表单复用管理页 Fieldset。 */
-.geist-text-link{color:var(--tungsten);text-decoration:none;justify-self:start}
-.geist-text-link:hover{text-decoration:underline;text-underline-offset:3px}
-.geist-text-link:focus-visible{outline:2px solid var(--tungsten);outline-offset:4px}
 .scraping-page{width:min(812px,100%);margin:0 auto;display:grid;gap:20px}
 .scraping-page>h1,.scraping-page p{margin:0}
 .scraping-fields .scraping-cover-form{display:flex;align-items:center;gap:8px;min-width:0}
@@ -175,8 +172,8 @@
 .scraping-fields .geist-fieldset-title{margin:0}
 .scraping-fields label,.scraping-label{display:grid;gap:8px;min-width:0}
 .scraping-fields input:not([type=radio]):not([type=file]){width:100%;min-width:0;min-height:var(--control-h);box-sizing:border-box}
-.scraping-fields .scraping-url{display:inline-flex;align-items:center;gap:2px;align-self:start;min-width:0;text-decoration:none;color:var(--muted);overflow-wrap:anywhere;font-size:var(--fs-md)}
-.scraping-fields .scraping-url:hover{color:var(--ink);text-decoration:none}
+.scraping-fields .scraping-url{display:inline-flex;align-items:center;gap:2px;align-self:start;min-width:0;text-decoration:none;color:var(--tungsten);overflow-wrap:anywhere;font-size:var(--fs-md)}
+.scraping-fields .scraping-url:hover{color:var(--tungsten);text-decoration:underline;text-underline-offset:3px}
 .scraping-fields .scraping-url img{flex:none;margin-inline-end:4px;width:16px;height:16px;border-radius:var(--badge-radius);object-fit:contain}
 .scraping-fields .scraping-url>span{min-width:0;overflow-wrap:anywhere}
 .scraping-network,.scraping-network .gselect{width:100%;min-width:0}
