@@ -47,7 +47,13 @@ class LedgerDatabase:
             connection.close()
 
     @contextmanager
-    def write_transaction(self):
+    def write_transaction(self, *, notify: bool = True):
+        """写事务。`notify=False` 的写入不触发 `after_commit`。
+
+        `after_commit` 在服务里是清聚合缓存。任务中心的心跳与进度每两秒写一行
+        `task_run`，它和馆藏数据没有任何关系；跟着清一次缓存，等于让首页、统计和
+        复核页在每个长任务运行期间全程失去缓存。
+        """
         with self.write_lock:
             connection = self.connect(write=True)
             try:
@@ -57,7 +63,8 @@ class LedgerDatabase:
                 raise
             else:
                 connection.commit()
-                self.after_commit()
+                if notify:
+                    self.after_commit()
             finally:
                 connection.close()
 

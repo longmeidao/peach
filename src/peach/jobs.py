@@ -109,61 +109,72 @@ class DiskGuard:
         return free_gb
 
 
-class PidFileLock:
-    """进程级独占锁；只清理确认已经不存在的旧 PID。"""
+def process_alive(pid: int) -> bool:
+    """这个 PID 现在还是一个活进程吗。
 
-    def __init__(self, path: Path | str):
-        self.path = Path(path)
-        self._acquired = False
-
-    @staticmethod
-    def _running(pid: int) -> bool:
-        if pid <= 0:
-            return False
-        if os.name == "nt":
-            return PidFileLock._running_windows(pid)
-        try:
-            os.kill(pid, 0)
-        except ProcessLookupError:
-            return False
-        except PermissionError:
-            return True
-        except OverflowError:
-            # 锁文件可能是 Windows 那台写的，PID 会超出 POSIX 的 pid_t 范围。
-            # 超界的 PID 一定不是本机活进程，按「已死」清理，而不是让整轮任务崩掉。
-            return False
+    pid 锁靠它判断锁文件里那个进程还在不在，`task_runs.recover_interrupted` 靠它判断
+    停在 `running` 的那一行是不是上一个进程留下的。两处问的是同一件事，而它在
+    Windows 上的正确写法有一个会当场打断自己的陷阱（见 `_process_alive_windows`），
+    散成两份只会有一份是对的。
+    """
+    if pid <= 0:
+        return False
+    if os.name == "nt":
+        return _process_alive_windows(pid)
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
         return True
+    except OverflowError:
+        # 锁文件可能是 Windows 那台写的，PID 会超出 POSIX 的 pid_t 范围。
+        # 超界的 PID 一定不是本机活进程，按「已死」清理，而不是让整轮任务崩掉。
+        return False
+    return True
 
-    @staticmethod
-    def _running_windows(pid: int) -> bool:
-        """用 OpenProcess 查存活，绝不能用 `os.kill(pid, 0)`。
+
+def _process_alive_windows(pid: int) -> bool:
+    """用 OpenProcess 查存活，绝不能用 `os.kill(pid, 0)`。
 
         Windows 上 `signal.CTRL_C_EVENT == 0`，所以 Unix 那个探测存活的经典写法
         `os.kill(pid, 0)` 实际会调用 `GenerateConsoleCtrlEvent(CTRL_C_EVENT, ...)`，
         把 Ctrl+C 发给整个控制台进程组——包括调用者自己。锁里写的又是自己的 PID，
         于是「检查锁是否还活着」会当场把自己打断：在真实控制台里跑批处理或测试时
         表现为毫无征兆的 KeyboardInterrupt；重定向、无控制台的环境反而不复现，
-        因为控制台事件无处投递。
-        """
-        import ctypes
-        from ctypes import wintypes
+    因为控制台事件无处投递。
+    """
+    import ctypes
+    from ctypes import wintypes
 
-        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
-        ERROR_ACCESS_DENIED = 5
-        STILL_ACTIVE = 259
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+    ERROR_ACCESS_DENIED = 5
+    STILL_ACTIVE = 259
 
-        handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
-        if not handle:
-            # 拒绝访问说明进程存在但不归我们管；其余错误一律视为已消失。
-            return ctypes.get_last_error() == ERROR_ACCESS_DENIED
-        try:
-            code = wintypes.DWORD()
-            if not kernel32.GetExitCodeProcess(handle, ctypes.byref(code)):
-                return True
-            return code.value == STILL_ACTIVE
-        finally:
-            kernel32.CloseHandle(handle)
+    handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+    if not handle:
+        # 拒绝访问说明进程存在但不归我们管；其余错误一律视为已消失。
+        return ctypes.get_last_error() == ERROR_ACCESS_DENIED
+    try:
+        code = wintypes.DWORD()
+        if not kernel32.GetExitCodeProcess(handle, ctypes.byref(code)):
+            return True
+        return code.value == STILL_ACTIVE
+    finally:
+        kernel32.CloseHandle(handle)
+
+
+class PidFileLock:
+    """进程级独占锁；只清理确认已经不存在的旧 PID。"""
+
+    #: 存活判据与任务中心共用一份（`process_alive`）。这里保留这个名字，是因为
+    #: `windows_restart` 与托盘测试按它做判断和打桩。
+    _running = staticmethod(process_alive)
+
+    def __init__(self, path: Path | str):
+        self.path = Path(path)
+        self._acquired = False
 
     def acquire(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
