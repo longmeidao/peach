@@ -2021,29 +2021,41 @@ class WebUiSourceTests(unittest.TestCase):
                       ".taste-history-guide-content a svg{", ".confighelp a svg{"):
             self.assertNotIn(stale, css, f"{stale} 已由 .externalmark 接管")
 
-    def test_the_x_mark_is_a_full_disc_that_takes_the_current_ink(self):
-        """圆盘吃 currentColor，字形从圆里挖掉，两个主题下分量一样重。
+    def test_each_social_mark_wears_its_own_brand_colour(self):
+        """七枚社媒标记是各家自己的场色圆盘加白字形，不吃 currentColor。
 
-        固定色的板子在其中一档上必然失手：同一块黑在浅色页面上压过周围，在深色页面
-        上糊进底色，只剩一个悬空的字形。圆盘取墨色就没有这一档差别。
-        字形按 .5 缩在圆内，靠的是缩放而不是外圈的 `overflow:hidden`——社媒标记是
-        拿来认牌子的，裁掉一角就不是那个牌子了。网站 favicon 不在此列，那些是方图。
+        认出是哪一家靠的正是颜色：X 黑底白字、Instagram 那道粉紫、YouTube 正红。场色
+        和白字形都是人家标识的一部分，不是界面 token，跟着主题变就认不出了。深色主题
+        下黑盘也不悬空——它画在 `.entitylinks a` 那圈药丸里，药丸自带边和底。
+        字形按 24×.5/256 缩在圆内，靠的是缩放而不是外圈的 `overflow:hidden`：社媒标记
+        是拿来认牌子的，裁掉一角就不是那个牌子了。网站 favicon 不在此列，那些是方图。
         """
-        self.assertPageContains('<symbol id="i-brand-x" viewBox="0 0 24 24">')
-        self.assertPageContains(
-            '<circle cx="12" cy="12" r="12" fill="currentColor" stroke="none" '
-            'mask="url(#brand-x-knockout)"/>')
-        self.assertPageContains(
-            'transform="translate(12 12) scale(.5) translate(-12 -12)"')
-        # Instagram 与 Threads 同一只圆盘：Phosphor 的 256 视口字形按 24×.5/256 缩进去。
-        for symbol in ("brand-instagram", "brand-threads"):
+        fields = {
+            "brand-x": '"#000000"', "brand-threads": '"#000000"', "brand-tiktok": '"#000000"',
+            "brand-youtube": '"#FF0000"', "brand-facebook": '"#0866FF"',
+            "brand-linktree": '"#43E660"',
+            "brand-instagram": '"url(#brand-instagram-field)"',
+        }
+        for symbol, field in fields.items():
             self.assertPageContains(f'<symbol id="i-{symbol}" viewBox="0 0 24 24">')
-            self.assertPageContains(f'mask="url(#{symbol}-knockout)"/>')
+            self.assertPageContains(
+                f'<circle cx="12" cy="12" r="12" stroke="none" fill={field}/>'
+                '<g fill="#fff" stroke="none" transform="translate(12 12) '
+                'scale(.046875) translate(-128 -128)">')
+        # Instagram 的场是渐变不是单色，那条 linearGradient 就住在它自己的 symbol 里。
         self.assertPageContains(
-            'transform="translate(12 12) scale(.046875) translate(-128 -128)"')
-        self.assertPageContains("[['instagram.com'],'brand-instagram']")
-        self.assertPageContains("[['threads.com','threads.net'],'brand-threads']")
-        self.assertPageLacks('fill="#000" stroke="none"', "品牌标记不写死板子的颜色")
+            '<linearGradient id="brand-instagram-field" x1="2" y1="22" x2="22" y2="2"'
+            ' gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#FFDD55"/>'
+            '<stop offset=".45" stop-color="#FF543E"/>'
+            '<stop offset="1" stop-color="#C837AB"/></linearGradient>')
+        for hosts in ("[['instagram.com'],'brand-instagram']",
+                      "[['threads.com','threads.net'],'brand-threads']",
+                      "[['tiktok.com'],'brand-tiktok']",
+                      "[['youtube.com','youtu.be'],'brand-youtube']",
+                      "[['facebook.com','fb.com'],'brand-facebook']",
+                      "[['linktr.ee','linktree.com'],'brand-linktree']"):
+            self.assertPageContains(hosts)
+        self.assertPageLacks("knockout", "字形是白色实体，不是从圆盘里挖掉的洞")
         self.assertPageContains(
             '.entitylinkicon.brand svg{width:100%;height:100%;stroke:none;filter:none}')
 

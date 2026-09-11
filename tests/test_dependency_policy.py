@@ -115,8 +115,13 @@ class DependencyPolicyTests(unittest.TestCase):
             # Map 的第二项是上游名字，只取键；否则 sort-desc 这类上游名会混进来。
             return set(re.findall(r'\["([a-z0-9-]+)"', body(block)))
 
+        # 品牌标记的第二项是「上游名字加场色」的数组，键在每行行首那对方括号里。
+        brand_keys = set(re.findall(r'^\s*\["([a-z0-9-]+)", \[',
+                                    body("const brandDiscs = new Map(["), re.M))
+        self.assertIn("brand-x", brand_keys)
         owned = (map_keys("const lucideIcons = new Map([")
                  | map_keys("const phosphorIcons = new Map([")
+                 | brand_keys
                  | set(re.findall(r'"([a-z0-9-]+)"',
                                   body("const handDrawnIcons = new Set([")))
                  | {"sperm"})

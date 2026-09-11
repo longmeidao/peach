@@ -90,18 +90,20 @@ const linkHost=url=>{try{return new URL(url).hostname.replace(/^www\./,'').toUpp
    传的是链接 id 而不是地址。跟 `/follow-stream` 同一条规矩：服务端只取账本里已有的
    地址，绝不去取前端递过来的任意 URL——那等于开一个任意地址抓取的口子。 */
 const linkMarkUrl=link=>`/link-mark?id=${encodeURIComponent(link.link_id ?? '')}`;
-/* 有品牌标记的主机连 favicon 都不取。
+/* 图标库里有的常见社媒走内联品牌标记，连 favicon 都不取。
 
-   favicon 是别人服务器上的一张小位图：X 直接挡掉爬取（资料页那个空白白圆就是它），
-   取到的也多是 16×16，放进 32 px 的圆里必然糊。内联 SVG 没有这两个问题，还省一次
-   跨站请求。x.com 一家就占了账本里 793 条外链中的 378 条；Instagram 的 favicon 同样被挡，
-   资料页上只剩一只地球，这两个是按量进来的。
-   Threads 是另一种理由：它给得出图，给的是 iOS 应用图标那种圆角方图，四边一圈高光是
-   照着方角画的，裁成圆之后沿着圆周露出一道白。这种图 `/link-mark` 只能原样用——那圈
-   高光是人家设计的一部分，抠不掉。
-   其余继续走 favicon：字形图标合成出来的品牌色圆底本来就好看，不为个位数的链接各配一枚。 */
+   favicon 是别人服务器上的一张小位图：X 和 Instagram 直接挡掉爬取，资料页上只剩一只
+   地球；取得到的也多是 16×16，放进 32 px 的圆里必然糊。站点自己给的大图又是另一种坏
+   法——Threads、TikTok 给的是 iOS 应用图标那种圆角方图，四边一圈高光照着方角画，裁成圆
+   之后沿圆周露出一道白，而那圈高光是人家设计的一部分，`/link-mark` 抠不掉。内联 SVG
+   两样都没有，还省一次跨站请求，场色是品牌自己的那块、不跟着主题走。
+   名单按图标库的覆盖面定，不按链接条数：Phosphor 有这七家的字形，一家一枚配齐；库里
+   没有的（livedoor、ameblo、lit.link、pub.linx.live 这类）继续走 `/link-mark`，那边按
+   站点自己的图标合成品牌色圆底。 */
 const BRAND_ICONS=[[['x.com','twitter.com'],'brand-x'],[['instagram.com'],'brand-instagram'],
-  [['threads.com','threads.net'],'brand-threads']];
+  [['threads.com','threads.net'],'brand-threads'],[['tiktok.com'],'brand-tiktok'],
+  [['youtube.com','youtu.be'],'brand-youtube'],[['facebook.com','fb.com'],'brand-facebook'],
+  [['linktr.ee','linktree.com'],'brand-linktree']];
 const brandIcon=url=>{try{
   const host=new URL(url).hostname.replace(/^www\./,'').toLowerCase();
   return BRAND_ICONS.find(([hosts])=>hosts.some(d=>host===d||host.endsWith('.'+d)))?.[1]||'';

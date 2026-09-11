@@ -321,19 +321,25 @@ class WebJsBehaviourTests(unittest.TestCase):
             self.assertNotIn("url=", url, "外链图标端点不得接受前端给的地址")
 
     def test_brand_marks_cover_the_host_and_its_subdomains_only(self):
-        # x.com 一家就占了账本里 793 条外链中的 378 条，只给它一个内联标记就覆盖将近一半，
-        # 还省一次跨站请求。其余继续走 favicon，不为个位数的链接各配图标。
+        # 名单按图标库的覆盖面定，不按链接条数：Phosphor 有字形的常见社媒一家一枚配齐，
+        # 库里没有的（livedoor、ameblo、lit.link 这类）才走 `/link-mark` 按站点图标合成。
         self.assertJsResults([
             ("core.js", "brandIcon", ["https://x.com/remu"], "brand-x"),
             ("core.js", "brandIcon", ["https://www.twitter.com/remu"], "brand-x"),
             ("core.js", "brandIcon", ["https://mobile.x.com/remu"], "brand-x"),
-            # Instagram 的 favicon 同样取不到，给它自己的标记。
             ("core.js", "brandIcon", ["https://www.instagram.com/arina_hashimoto1215"], "brand-instagram"),
-            # Threads 给得出图，给的是 iOS 应用图标那种带高光的圆角方图，裁成圆露白边。
             ("core.js", "brandIcon", ["https://www.threads.com/@remu"], "brand-threads"),
             ("core.js", "brandIcon", ["https://www.threads.net/@remu"], "brand-threads"),
+            ("core.js", "brandIcon", ["https://www.tiktok.com/@remu"], "brand-tiktok"),
+            ("core.js", "brandIcon", ["https://www.youtube.com/@remu"], "brand-youtube"),
+            ("core.js", "brandIcon", ["https://youtu.be/abc"], "brand-youtube"),
+            ("core.js", "brandIcon", ["https://www.facebook.com/remu"], "brand-facebook"),
+            ("core.js", "brandIcon", ["https://linktr.ee/remu"], "brand-linktree"),
             # 只认后缀边界：`notx.com` 不是 `x.com` 的子域。
             ("core.js", "brandIcon", ["https://notx.com/remu"], ""),
+            # 图标库里没有这几家，它们继续走 `/link-mark`。
+            ("core.js", "brandIcon", ["https://blog.livedoor.jp/remu"], ""),
+            ("core.js", "brandIcon", ["https://lit.link/remu"], ""),
             ("core.js", "brandIcon", ["https://example.com/a"], ""),
             # 坏地址返回空串而不是抛异常——资料页的链接来自刮削，什么都可能有。
             ("core.js", "brandIcon", ["不是网址"], ""),
