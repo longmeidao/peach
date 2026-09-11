@@ -5607,6 +5607,11 @@ class WebUiSourceTests(unittest.TestCase):
         """同台艺人和标签这两行没有滚动条，不接拖动就是看得见够不着。"""
         self.assertPageContains("wireDrag($('#index').querySelector('.relatedpeople'));")
         self.assertPageContains("wireDrag($('#index').querySelector('.entitytags'));")
+        # 外链那排窄屏下横滚，作品集表头窄屏下整条横滚，两处都是同一件事。390px 实测
+        # 分别溢出 667px 与 338px，不登记就只有滚动条被藏掉、滚轮又是竖向的那种死局。
+        self.assertPageContains("wireDrag($('#index').querySelector('.entitylinks'));")
+        self.assertPageContains("wireDrag(section.closest('.entitycollectionhead')"
+                                "||section.querySelector('.entitycollectionhead'));")
         # 横向滚动行里的开关不能被压扁。
         self.assertPageContains(".entitytags .iconswitch{flex:none}")
 
@@ -8941,6 +8946,25 @@ class WebUiSourceTests(unittest.TestCase):
             "\n  wireHorizontalScroller($('#index').querySelector('.entitytagbar .filterscroll'));")
         self.assertPageContains(
             "if(filterFrame)[boardTagbar,countbar.querySelector('.sorts')].forEach(el=>wireHorizontalScroller(el));")
+
+    def test_the_board_layer_rows_that_can_overflow_are_all_registered(self):
+        """board.css 与 `frontend/` 画出来的横滚层走名单，不走按 id 点名的那份清单。
+
+        漏登记的表现全站一个样：滚动条被藏掉、滚轮是竖向的、两端也不渐隐，于是那边
+        还有多少内容既看不出也够不着。390px 实测设置弹层那排分区溢出 244px、`/taste`
+        的两张图分别溢出 44px 与 322px，三处都要靠这份名单才拿得到提示。
+        """
+        page = self.page
+        overlay = page.split("const OVERLAY_SCROLLERS=[", 1)[1].split("].join(',')", 1)[0]
+        edge = page.split("const BOARD_EDGE_SCROLLERS=", 1)[1].split(";", 1)[0]
+        for selector in (".board-local-nav", ".managebar-menu", ".follow-workspace-switch",
+                         ".fmanagenav", ".board-heat-scroll", ".board-sankey-scroll",
+                         ".cloudguide-tablewrap"):
+            self.assertIn(selector, edge, f"{selector} 会横向溢出，要按横滚层登记")
+        # 扫描只看前一份名单，只写进后一份等于没登记。
+        scanned = set(re.findall(r"'(\.[a-z0-9-]+)'", overlay))
+        unscanned = [s for s in re.findall(r"\.[a-z0-9-]+", edge) if s not in scanned]
+        self.assertEqual(unscanned, [], "横滚层也要进 OVERLAY_SCROLLERS 才会被扫到")
 
     def test_the_tidy_up_notice_keeps_the_panels_gap_below_it(self):
         """首页那条整理提示下面留和浮层一样宽的空当。

@@ -2294,7 +2294,7 @@ class FollowWebSourceTests(unittest.TestCase):
             "{background:color-mix(in srgb,var(--tungsten) 8%,var(--color-background-primary-default));border-color:var(--color-separator-border);box-shadow:none}")
         # 表格滚动层与复核页标签条同一份接线：两端渐隐、鼠标停在上面时竖向滚轮转横向。
         components = (ROOT / "web" / "js" / "ui-components.js").read_text(encoding="utf-8")
-        self.assertIn("const BOARD_EDGE_SCROLLERS='.reviewtabs,.ftablewrap';", components)
+        self.assertIn("const BOARD_EDGE_SCROLLERS='.reviewtabs,.ftablewrap,", components)
         self.assertIn("if(el.matches(BOARD_EDGE_SCROLLERS)){", components)
         self.assertIn("'.reviewtabs','.junkfilters','.ftablewrap',", components)
         self.assertBoardContains(
