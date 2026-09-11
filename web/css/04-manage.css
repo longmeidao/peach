@@ -102,6 +102,25 @@
 /* 数据管理整页收进一条窄列（vercel.com/geist/fieldset 实测示例块宽 812px），
    fieldset 一行一个，不再拼三列。 */
 .cleanuppage{width:min(812px,100%);margin:0 auto;display:grid;gap:32px}
+/* 活动页和数据管理同一条 812px 窄列：内容是一条一条的任务记录，不是卡片网格，
+   拉满整屏之后每一行的元信息会离任务名十几厘米远。 */
+.activitypage{width:min(812px,100%);margin:0 auto;display:grid;gap:32px}
+.activitysection{display:grid;gap:12px;min-width:0}
+.activitysection .geist-fieldset-title{margin:0}
+.activity-runs{list-style:none;margin:0;padding:0;display:grid;gap:12px;min-width:0}
+.activity-run{display:grid;gap:6px;min-width:0;padding:16px;
+  border:1px solid var(--border-15);border-radius:var(--surface-radius);background:var(--ground)}
+.activity-run-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0}
+.activity-run-head h3{margin:0;font-size:var(--fs-md);font-weight:600;overflow-wrap:anywhere}
+.activity-meta,.activity-summary,.activity-quiet{margin:0;font-size:var(--fs-sm);color:var(--muted);overflow-wrap:anywhere}
+/* 结束的原因默认是中性的：被挡下、被叫停、被打断都是正常终止，红色留给真的失败。
+   一屏里过半行都红的话，那一行真正需要去查的反而找不出来。 */
+.activity-error{margin:0;font-size:var(--fs-sm);color:var(--muted);overflow-wrap:anywhere}
+.activity-run[data-status="failed"] .activity-error{color:var(--drop)}
+.activity-progress{display:grid;gap:6px;min-width:0}
+.activity-progress-readout{margin:0;font-size:var(--fs-sm);color:var(--muted)}
+/* 失败那条的左边缘立起来一条：一屏十几行里，颜色只在文字上时要逐行读才找得到。 */
+.activity-run[data-status="failed"]{border-left:2px solid var(--drop)}
 .cleanupgrid{display:grid;grid-template-columns:minmax(0,1fr);gap:20px}
 /* Geist Fieldset：全框只有一条线，在底部操作条上方。标题是正文区的第一行，
    底下不划线（证据：vercel.com/geist/fieldset 的 Multiple Fieldsets 示例）。

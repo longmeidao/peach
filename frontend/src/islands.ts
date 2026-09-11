@@ -33,6 +33,8 @@ import { Scraping, loadScraping } from './islands/scraping';
 import type { ScrapingData, ScrapingProps } from './islands/scraping';
 import { LibraryProcessing, loadLibraryProcessing } from './islands/library-processing';
 import type { LibraryProcessingData, LibraryProcessingProps } from './islands/library-processing';
+import { Activity, loadActivity } from './islands/activity';
+import type { ActivityData, ActivityProps } from './islands/activity';
 
 /* 跨岛共享状态的入口一起从这里出去。遗留层拿到的是一个 bundle，它有两种用法：
  * `mountIsland` 挂一屏，`refreshStore` 告诉已经挂着的那屏「数据变了」。
@@ -64,6 +66,7 @@ export interface IslandContracts {
   'scraping': { props: ScrapingProps; data: ScrapingData };
   'quality-goals': { props: QualityGoalsProps; data: QualityGoalsData };
   configuration: { props: ConfigurationProps; data: ConfigurationData };
+  activity: { props: ActivityProps; data: ActivityData };
 }
 
 export type IslandName = keyof IslandContracts;
@@ -81,6 +84,7 @@ const REGISTRY: { [N in IslandName]: IslandDefinition<N> } = {
   'scraping': { load: loadScraping, component: Scraping },
   'quality-goals': { load: loadQualityGoals, component: QualityGoals },
   configuration: { load: loadConfiguration, component: Configuration },
+  activity: { load: loadActivity, component: Activity },
 };
 
 /** 已注册的 island 名字。遗留层与测试用它核对路由表，不必知道注册表结构。 */

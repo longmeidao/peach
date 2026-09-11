@@ -4315,15 +4315,19 @@ class WebUiSourceTests(unittest.TestCase):
 
         它们和垃圾文件、重复文件、空文件夹是同一件事的不同步骤。身份注册表仍然
         保留全部页面：URL 要能直达，用户也仍可把其中任何一个钉到顶层侧栏。
+
+        活动页是菜单里的例外：它横跨扫描、追更、批量这几页，从其中任何一页进都会
+        像是那一页的下一步，所以它只能和统计、口味一样自己占一行。
         """
         sections = self.page.split("const MANAGE_SECTIONS=[", 1)[1].split("];", 1)[0]
         order = [line.split("'")[1] for line in sections.splitlines() if line.strip().startswith("['")]
         self.assertEqual(
-            order, ["stats", "taste", "review", "cleanup", "trash", "follow", "quality", "configuration"],
+            order, ["stats", "taste", "review", "cleanup", "trash", "follow", "quality",
+                    "activity", "configuration"],
             "身份注册表保留全部管理页，删掉哪一个就等于让它的标题和直达 URL 一起失效",
         )
         self.assertPageContains(
-            "const MANAGE_MENU_SECTIONS=['stats','taste','cleanup','follow'];")
+            "const MANAGE_MENU_SECTIONS=['stats','taste','cleanup','follow','activity'];")
         self.assertPageContains("manageMenuSections().map(([k,label,ic])=>")
 
     def test_this_computers_configuration_lives_in_the_settings_modal(self):
@@ -4824,7 +4828,7 @@ class WebUiSourceTests(unittest.TestCase):
                       '/item/:id', '/follow/item/:id', '/performers', '/creators', '/tags',
                       '/stats', '/taste', '/review', '/data-cleanup', '/duplicates',
                       '/resource-sync', '/quality-goals', '/follow', '/follow-manage',
-                      '/configuration', '/immerse'):
+                      '/configuration', '/activity', '/immerse'):
             self.route_entry(match)
         # 目录页四态和四种实体页由既有的映射生成：两边各写一份就会出现
         # 「路由认得、isCatalogPath 不认得」这种半死路径。
@@ -6781,7 +6785,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("const managementPlaceholder=path=>")
         for path in ("'/stats'", "'/taste'", "'/data-cleanup'", "'/duplicates'",
                      "'/review'", "'/quality-goals'", "'/playlists'", "'/follow-manage'",
-                     "'/configuration'"):
+                     "'/configuration'", "'/activity'"):
             self.assertPageContains(f"  {path}:()=>", "占位没有收进唯一那份定义")
             self.assertPageContains(f"managementPlaceholder({path})", "路由没有取那份定义")
         # /resource-sync 只是数据管理页的锚点，启动占位得是数据管理那张。
@@ -7447,6 +7451,36 @@ class WebUiSourceTests(unittest.TestCase):
             "{isCurrent:()=>surfaceCurrent(surface)})")
         self.assertPageContains("const props={openItem,javTitleHtml,javDisplayName,srcBadge}")
         self.assertPageLacks("data-quality-open")
+
+    def test_the_activity_page_is_the_one_place_that_shows_every_task(self):
+        """任务中心的界面：谁在跑、谁被挡下了、刚跑完的怎么样，一屏三段。
+
+        它是 island（ADR-0022），遗留层只铺骨架、交容器；数据契约由 `/api/tasks`
+        与 frontend/test/activity.test.tsx 各自守着。入口进管理菜单而不是挂在某一页
+        下面：扫描、追更、批量都会出现在它上面，从其中任何一页进都像是那一页的下一步。
+        """
+        self.assertRoute('/activity', "section:'activity'", "title:'活动'",
+                         "openActivity(push)")
+        self.assertPageContains("async function openActivity(push=true)")
+        self.assertPageContains(
+            "await ui.mountIsland('activity',$('#stats'),{},"
+            "{isCurrent:()=>surfaceCurrent(surface)})")
+        self.assertPageContains("['activity','活动','history'],")
+        self.assertPageContains("quality:'quality',activity:'activity'}")
+        # 深链冷启动要铺的是这一页自己的骨架，不是默认那张。
+        self.assertPageContains("'/activity':()=>pageSkeletonHtml('正在读取任务活动',")
+        self.assertPageContains("'/configuration','/activity']);")
+        # 一条一条的记录，跟数据管理同一条 812px 窄列。
+        self.assertPageContains(
+            ".activitypage{width:min(812px,100%);margin:0 auto;display:grid;gap:32px}")
+        self.assertPageContains(
+            '.activity-run[data-status="failed"]{border-left:2px solid var(--drop)}')
+        # 被挡下、被叫停、被打断都是正常终止：原因照写，但不进红色。
+        self.assertPageContains(
+            '.activity-error{margin:0;font-size:var(--fs-sm);color:var(--muted);'
+            'overflow-wrap:anywhere}')
+        self.assertPageContains(
+            '.activity-run[data-status="failed"] .activity-error{color:var(--drop)}')
 
     def test_the_configuration_page_is_an_island_inside_the_management_shell(self):
         """这台电脑的媒体文件夹与端口是主站里的一屏，不是另一套独立页面。

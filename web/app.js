@@ -175,6 +175,9 @@ const ROUTES=[
   // 这台电脑的媒体文件夹与端口。页面是 island，数据走 /api/configuration。
   {match:'/configuration',section:'configuration',title:'配置',refresh:'reopen',
     open:(params,push)=>openConfiguration(push)},
+  // 任务中心的界面：谁在跑、谁被挡下了、刚跑完的怎么样。数据走 /api/tasks。
+  {match:'/activity',section:'activity',title:'活动',refresh:'reopen',
+    open:(params,push)=>openActivity(push)},
   {match:'/immerse',nav:'immerse',title:'沉浸模式',
     open:(params,push)=>openTok(immerseStartId(),push)},
 ];
@@ -277,6 +280,9 @@ const MANAGEMENT_PLACEHOLDERS={
   '/duplicates':()=>pageSkeletonHtml('正在比对重复内容',{cards:true}),
   '/review':()=>reviewSkeletonHtml(),
   '/quality-goals':()=>pageSkeletonHtml('正在读取高清版目标',{cards:true}),
+  // 活动页是三段纵向排开的清单，不是同质卡片网格：骨架画三块窄条。
+  '/activity':()=>pageSkeletonHtml('正在读取任务活动',
+    {cards:true,count:3,fill:false,className:'activity-skeleton'}),
   '/playlists':()=>pageSkeletonHtml('正在读取播放列表',{cards:true}),
   // 关注管理是三个大区（添加关注、关注列表、凭据），不是一屏同质卡片：
   // 骨架照 .fsec 的轮廓画三块，六张 16:9 占位说的是另一个页面的结构。
@@ -309,7 +315,7 @@ function renderInitialSurfaceLoading(){
     return;
   }
   const management=new Set(['/stats','/taste','/review','/data-cleanup','/duplicates','/quality-goals','/scraping',
-    '/playlists','/resource-sync','/follow','/follow-manage','/configuration']);
+    '/playlists','/resource-sync','/follow','/follow-manage','/configuration','/activity']);
   if(management.has(path)||path.startsWith('/follow/item/')){
     hideDiscoveryBars();
     const stats=$('#stats');stats.hidden=false;$('#grid').innerHTML='';
@@ -5026,6 +5032,17 @@ async function openQualityGoals(push=true){
   await ui.mountIsland('quality-goals',$('#stats'),props,{isCurrent:()=>surfaceCurrent(surface)});
   if(surfaceCurrent(surface))window.scrollTo({top:0,behavior:'smooth'});
 }
+/* 活动页（任务中心）也是 island。它自己按内容决定轮询快慢，遗留层不给它任何助手：
+   这一屏只显示 /api/tasks 的结果，不打开条目、不发起任务。 */
+async function openActivity(push=true){
+  releaseHoverPreviews();disposeStage(false);enterManagementSurface();
+  if(push)route('/activity');
+  const surface=claimSurface('/activity');
+  showManagementBody({placeholder:managementPlaceholder('/activity')});
+  const ui=await import('/dist/peach-ui.js');
+  await ui.mountIsland('activity',$('#stats'),{},{isCurrent:()=>surfaceCurrent(surface)});
+  if(surfaceCurrent(surface))window.scrollTo({top:0,behavior:'smooth'});
+}
 /* 配置页（这台电脑的媒体文件夹与端口）同样是 island。它只在运行 Peach 的这台电脑上
    有意义：服务端按回环地址与独立包两道门放行，手机上的管理菜单也不列它
    （见 runtimeConfigurable）。保存成功的回执由遗留层的 Toast 发，island 只管表单。 */
@@ -7974,13 +7991,18 @@ const MANAGE_SECTIONS=[
   // `/follow`。两处都叫「关注」时，管理菜单和页标题都在说一个它去不到的地方。
   ['follow','关注管理','rss'],
   ['quality','高清版','sparkles'],
+  // 任务中心：扫描、追更、批量和命令行批处理各跑了哪几轮。字形取「往回看的记录」
+  // 那一枚，和观看记录、搜索记录同一个意思——这一页的正文就是一份按时间排的记录。
+  ['activity','活动','history'],
   // 这台电脑的媒体文件夹与端口，字形是一个待配置的文件夹；`settings` 归右上角的设置弹层。
   ['configuration','配置','folder-cog'],
 ];
-/* 管理菜单只留四项。人工复核、回收站、高清版都是「收拾库里已有的东西」，
+/* 管理菜单只留五项。人工复核、回收站、高清版都是「收拾库里已有的东西」，
    和垃圾文件、重复文件、空文件夹是同一件事的不同步骤，统一从数据管理进；
-   统计页也因此不再挂链接管理和资源同步这两块跟统计无关的面板。 */
-const MANAGE_MENU_SECTIONS=['stats','taste','cleanup','follow'];
+   统计页也因此不再挂链接管理和资源同步这两块跟统计无关的面板。
+   活动页进这张菜单：它横跨所有这些页面（扫描、追更、批量都在它上面出现），
+   从其中任何一页进都会像是那一页的下一步，而它不是。 */
+const MANAGE_MENU_SECTIONS=['stats','taste','cleanup','follow','activity'];
 /* 「配置」不在管理菜单里，它是设置弹层的最后一格（见 syncMachineSettings）：那一页讲的
    是这台电脑怎么跑 Peach，和「我的界面偏好」是同一类东西，不是库里的一堆内容。
    `runtimeConfigurable` 仍要问，馆藏空态按它决定是给「去配置媒体文件夹」还是给一句解释。 */
@@ -7996,7 +8018,7 @@ const OPTIONAL_EDGE_ICONS=MANAGE_SECTIONS.filter(([key])=>key!=='configuration')
   key==='follow'?['follow-manage',label,ic]
     :key==='cleanup'?['data-cleanup',label,ic]:[key,label,ic]);
 const NAV_CATALOG=[...EDGE_ICONS,...OPTIONAL_EDGE_ICONS];
-const DIRECT_MANAGE_NAV={stats:'stats',review:'review','data-cleanup':'cleanup',trash:'trash','follow-manage':'follow',quality:'quality'};
+const DIRECT_MANAGE_NAV={stats:'stats',review:'review','data-cleanup':'cleanup',trash:'trash','follow-manage':'follow',quality:'quality',activity:'activity'};
 function orderedEdgeIcons(){
   const byKey=new Map(NAV_CATALOG.map(item=>[item[0],item]));
   return appSettings.sidebarOrder.map(key=>byKey.get(key)).filter(Boolean);
