@@ -3978,6 +3978,18 @@ class WebUiSourceTests(unittest.TestCase):
             rule = self.css[start:self.css.index("}", start)]
             self.assertIn("background:rgba(0,0,0,.6)", rule, f"{selector} 和同屏的悬浮件不是一档黑")
 
+    def test_card_hover_and_view_glide_can_extend_outside_content(self):
+        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
+        self.assertIn(".card{overflow:visible;border-radius:var(--surface-radius)}", board)
+        self.assertIn(".gridstack .card:not(.junkcard) .pic{border-radius:12px;overflow:hidden}", board)
+        self.assertIn(".card:hover .pic::after,.card.selected .pic::after{box-sizing:border-box;border-radius:inherit}", board)
+        self.assertIn(".board-filter-frame.board-filter-frame{border-radius:22px;isolation:isolate;color:var(--glass-text);overflow:visible}", board)
+        self.assertPageContains("const host=pill.closest('.board-filter-frame');if(!host)return null;")
+        self.assertPageContains("x-=n.scrollLeft;y-=n.scrollTop;")
+        self.assertPageContains("if(rect.right<=viewport.left||rect.left>=viewport.right)return null;")
+        self.assertPageContains("if(scroller)scroller.onscroll=()=>syncViewGlide(false,null,kind);")
+        self.assertPageContains("if(!box||!box.w){if(glide)glide.pane.hidden=true;return}")
+
     def test_player_tooltips_keep_theme_independent_youtube_style(self):
         board_css = (Path(__file__).resolve().parents[1] / "web" / "board.css").read_text(encoding="utf-8")
         self.assertNotIn(".vjs-peach-tooltip", board_css)
@@ -8067,14 +8079,12 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertNotIn("transparent 62%),color-mix(in srgb,var(--ink) 12%,transparent);", board)
         # 描边走满一圈，不只压上缘那一道；外影取主题给的那一档。
         self.assertIn("box-shadow:inset 0 0 0 1px var(--glass-rim),var(--glass-pick-shadow)}", board)
-        # 玻璃落在那一排最近的那层会裁内容的祖先里，几何就相对它算：那一层横滚时玻璃
-        # 跟着内容走，越界的部分跟按钮一起被裁，不会在滚动区外面露出半块白。那一层得
-        # 自己是定位元素，否则它不在 `offsetParent` 链上；静态的退回外框。
-        self.assertIn("if(getComputedStyle(n).overflowX!=='visible'){host=n;break}", app)
-        self.assertIn("return getComputedStyle(host).position==='static'?frame:host;", app)
+        # 玻璃由外框承载，几何扣除横滚量，回弹和阴影允许溢出内容边沿。
+        self.assertIn("const host=pill.closest('.board-filter-frame');if(!host)return null;", app)
+        self.assertIn("x-=n.scrollLeft;y-=n.scrollTop;", app)
         self.assertIn("for(let n=pill;n&&n!==host;n=n.offsetParent){x+=n.offsetLeft;y+=n.offsetTop}", app)
         self.assertIn("if(glide.pane.parentElement!==box.host)box.host.prepend(glide.pane);", app)
-        # 过了断点那一层会换，玻璃得重新落一次位，否则留在旧的那一层上按旧坐标停着。
+        # 视口变化时按按钮的新位置重新落位。
         self.assertIn("syncViewGlide(false);syncViewGlide(false,null,'media')},{passive:true});", app)
         # 冲过落点再弹回：那条曲线是一次弹簧模拟的采样，峰值 1.103、313ms 收住。
         self.assertIn("--spring-pane:linear(0,0.1515,", board)

@@ -122,7 +122,7 @@
   backdrop-filter:var(--glass-optic,blur(22px)) saturate(160%) var(--glass-lume);-webkit-backdrop-filter:var(--glass-optic,blur(22px)) saturate(160%) var(--glass-lume);
   border:0;box-shadow:inset 0 1px 0 var(--glass-rim),inset 1px 0 0 var(--glass-low),inset -1px 0 0 var(--glass-low),inset 0 -1px 0 var(--glass-low),var(--glass-shadow);
 }
-.board-filter-frame.board-filter-frame{border-radius:22px;isolation:isolate;color:var(--glass-text)}
+.board-filter-frame.board-filter-frame{border-radius:22px;isolation:isolate;color:var(--glass-text);overflow:visible}
 .entitytagbar.entitytagbar.entitytagbar,
 .entitycollectionhead.entitycollectionhead.entitycollectionhead{border-radius:22px;color:var(--glass-text)}
 /* 浮层材质与吸顶归外框，槽位只负责排列内容。 */
@@ -636,7 +636,7 @@ body>.board-filter-frame{margin-inline:16px}
 .iconswitch{padding:3px;background:var(--surface);border:1px solid var(--line-soft);border-radius:10px}
 .iconswitch label{border-radius:8px}
 .iconswitch label:has(input:checked){background:var(--ground);box-shadow:0 1px 3px #0002}
-.card{overflow:clip;border-radius:var(--surface-radius)}
+.card{overflow:visible;border-radius:var(--surface-radius)}
 .card .pic{border-radius:var(--surface-radius)}
 .card .info{background:transparent}
 @media(max-width:760px){.sidecontent{padding:16px}.stage{border-radius:12px}.stage .side{border-left:0;border-top:1px solid var(--line-soft)}}
