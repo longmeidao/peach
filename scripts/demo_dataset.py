@@ -297,11 +297,11 @@ def generate(output: Path, *, count: int, seed: int, video: str, duration: int,
 def next_steps(output: Path) -> str:
     """接下来怎么让 Peach 看见这套库。按当前平台给出设置文件里要写的行。"""
     resolved = output.resolve()
+    # TOML 单引号字面串不转义，Windows 路径里的反斜杠照原样写一个。
     if sys.platform == "win32":
-        location = str(resolved).replace("\\", "\\\\")
-        settings = [f"[media.locations]", f"local = '{location}'"]
+        settings = ["[media.locations]", f"local = '{resolved}'"]
     else:
-        settings = ["[media.locations]", "local = 'R:\\\\peach-demo'", "", "[media.mounts]",
+        settings = ["[media.locations]", "local = 'R:\\peach-demo'", "", "[media.mounts]",
                     f"local = '{resolved.as_posix()}'"]
     return "\n".join([
         "下一步：",
