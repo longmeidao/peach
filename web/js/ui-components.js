@@ -13,8 +13,10 @@ export function filterChipHtml(label,{attr,value,selected=false,count,className=
 export function sortControlsHtml({items=[],renderItem=String,extra='',shuffleId='',shuffleClass='entitybatch'}={}){
   return `<span class="sorts"><button class="batchaction ${esc(shuffleClass)}"${shuffleId?` id="${esc(shuffleId)}"`:''} type="button" title="换一批" aria-label="换一批">${icon('shuffle')}</button>${extra}${items.map(renderItem).join('')}</span>`;
 }
-export function collectionHeaderHtml({readout='',controls='',before='',className='',loading=false}={}){
-  return `<div class="entitycollectionhead${className?' '+esc(className):''}">${before}<h3${loading?' class="skeleton"':''}>${readout}</h3>${controls}</div>`;
+/* `filterRow` 只给等待态用：那时浮层还是一段字符串，`mountFilterFrame` 没得跑，
+   槽位标记得跟着 HTML 一起生成，否则这一条会自己画成第二块浮层。 */
+export function collectionHeaderHtml({readout='',controls='',before='',className='',loading=false,filterRow=''}={}){
+  return `<div class="entitycollectionhead${className?' '+esc(className):''}"${filterRow?` data-filter-row="${esc(filterRow)}"`:''}>${before}<h3${loading?' class="skeleton"':''}>${readout}</h3>${controls}</div>`;
 }
 
 const horizontalControls=new Map();

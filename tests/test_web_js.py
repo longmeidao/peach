@@ -321,14 +321,17 @@ class WebJsBehaviourTests(unittest.TestCase):
             self.assertNotIn("url=", url, "外链图标端点不得接受前端给的地址")
 
     def test_brand_marks_cover_the_host_and_its_subdomains_only(self):
-        # 416 条社媒链接里 372 条是 x.com／twitter.com，只给它一个内联标记就覆盖
-        # 89%，还省一次跨站请求。其余继续走 favicon，不为个位数的链接各配图标。
+        # x.com 一家就占了账本里 793 条外链中的 378 条，只给它一个内联标记就覆盖将近一半，
+        # 还省一次跨站请求。其余继续走 favicon，不为个位数的链接各配图标。
         self.assertJsResults([
             ("core.js", "brandIcon", ["https://x.com/remu"], "brand-x"),
             ("core.js", "brandIcon", ["https://www.twitter.com/remu"], "brand-x"),
             ("core.js", "brandIcon", ["https://mobile.x.com/remu"], "brand-x"),
             # Instagram 的 favicon 同样取不到，给它自己的标记。
             ("core.js", "brandIcon", ["https://www.instagram.com/arina_hashimoto1215"], "brand-instagram"),
+            # Threads 给得出图，给的是 iOS 应用图标那种带高光的圆角方图，裁成圆露白边。
+            ("core.js", "brandIcon", ["https://www.threads.com/@remu"], "brand-threads"),
+            ("core.js", "brandIcon", ["https://www.threads.net/@remu"], "brand-threads"),
             # 只认后缀边界：`notx.com` 不是 `x.com` 的子域。
             ("core.js", "brandIcon", ["https://notx.com/remu"], ""),
             ("core.js", "brandIcon", ["https://example.com/a"], ""),

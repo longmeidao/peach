@@ -7694,11 +7694,11 @@ function wireNamePicker(kind,current){
 /* 等着的这一下浮层也得是整块的：下半要到列表回来才画的话，上半的下沿在等的那几秒里
    留着两个直角，读起来是这块浮层缺了一半。这一页的作品多时那几秒不算短。 */
 function showEntityLoading(kind){
-  const head=collectionHeaderHtml({readout:'&nbsp;',loading:true});
-  const body=head+(kind==='agency'
+  const head=collectionHeaderHtml({readout:'&nbsp;',loading:true,filterRow:'bottom'});
+  const body=kind==='agency'
     ?indexSkeletonHtml({kind:'performers',layout:peopleIndexLayout()})
-    :pageSkeletonHtml('正在读取作品',{cards:true}));
-  const placeholder=entitySkeletonHtml(kind,body);
+    :pageSkeletonHtml('正在读取作品',{cards:true});
+  const placeholder=entitySkeletonHtml(kind,head,body);
   if($('#index').firstElementChild?.dataset.skeleton!==`entity/${kind}`){
     $('#index').innerHTML=placeholder;fitSkeleton($('#index'));
   }

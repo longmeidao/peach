@@ -2035,14 +2035,53 @@ class WebUiSourceTests(unittest.TestCase):
             'mask="url(#brand-x-knockout)"/>')
         self.assertPageContains(
             'transform="translate(12 12) scale(.5) translate(-12 -12)"')
-        # Instagram 同一只圆盘：Phosphor 的 256 视口字形按 24×.5/256 缩进去。
-        self.assertPageContains('<symbol id="i-brand-instagram" viewBox="0 0 24 24">')
+        # Instagram 与 Threads 同一只圆盘：Phosphor 的 256 视口字形按 24×.5/256 缩进去。
+        for symbol in ("brand-instagram", "brand-threads"):
+            self.assertPageContains(f'<symbol id="i-{symbol}" viewBox="0 0 24 24">')
+            self.assertPageContains(f'mask="url(#{symbol}-knockout)"/>')
         self.assertPageContains(
             'transform="translate(12 12) scale(.046875) translate(-128 -128)"')
         self.assertPageContains("[['instagram.com'],'brand-instagram']")
+        self.assertPageContains("[['threads.com','threads.net'],'brand-threads']")
         self.assertPageLacks('fill="#000" stroke="none"', "品牌标记不写死板子的颜色")
         self.assertPageContains(
             '.entitylinkicon.brand svg{width:100%;height:100%;stroke:none;filter:none}')
+
+    def test_an_icon_link_keeps_its_pill_whether_the_mark_is_an_img_or_an_svg(self):
+        """一句话那种外链才是无边无底的蓝字；带图标的外链是一圈药丸。
+
+        判据写成「这条链接里有没有那枚圆盘」，不是「有没有 `<img>`」：社媒标记是内联
+        `<svg>`，按后一个判据会被当成文字外链，药丸的边和底被抹平，同一排里只有它们
+        几个没有圈。判据缺席时连带图标的那几枚也会被抹平，所以两条都要钉。
+        """
+        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
+        for rule in (
+            "body a:is(.externallink,[target=_blank])"
+            ":not(:has(img,.entitylinkicon)):not(.cardlink){",
+            "body a:is(.externallink,[target=_blank])"
+            ":not(:has(img,.entitylinkicon)):not(.cardlink):hover{",
+        ):
+            self.assertIn(rule, board)
+        for weaker in (":not(:has(img)):not(.cardlink){", ":not(:has(img)):hover{",
+                       "body a:is(.externallink,[target=_blank]):not(.cardlink){"):
+            self.assertNotIn(weaker, board)
+
+    def test_the_waiting_filter_frame_is_one_slab_not_two(self):
+        """等待态的筛选条和作品抬头共用一块浮层，和内容回来之后是同一个形状。
+
+        这两条各自带着玻璃材质和 22px 圆角，`mountFilterFrame` 在运行时把它们收进外框；
+        骨架是一段字符串，进不了那条路径，外框和两个槽位的标记必须写在 HTML 里，
+        否则等的那几秒钟里它们是上下两块独立浮层，中间一道缝。
+        """
+        source = (Path(__file__).resolve().parents[1]
+                  / "frontend/src/entity-skeleton.ts").read_text(encoding="utf-8")
+        self.assertIn('<div class="board-filter-frame" data-filter-frame>', source)
+        self.assertIn('<section class="entitytagbar" data-filter-row="top">', source)
+        self.assertIn("entitySkeletonHtml(kind: string, head: string, body: string)", source)
+        self.assertPageContains(
+            "collectionHeaderHtml({readout:'&nbsp;',loading:true,filterRow:'bottom'})")
+        self.assertPageContains(
+            '${filterRow?` data-filter-row="${esc(filterRow)}"`:\'\'}')
 
     def test_the_link_icon_disc_carries_no_plate_of_its_own(self):
         """内联品牌标记直接画在药丸上。垫一层 `--sunk` 会让它比周围暗一档，看着像
@@ -9813,7 +9852,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("toggleAttribute('data-media-only',now!=='videos')")
         self.assertPageContains(".entitytagbar[data-media-only] .entitytags .pill{display:none}")
         self.assertPageContains(
-            "const head=collectionHeaderHtml({readout:'&nbsp;',loading:true});")
+            "const head=collectionHeaderHtml({readout:'&nbsp;',loading:true,filterRow:'bottom'});")
 
     def test_the_filter_panel_is_two_rows_on_a_phone(self):
         """手机上这块浮层是两行，两侧也留出跟内容一样的白。

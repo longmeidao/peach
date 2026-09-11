@@ -94,10 +94,14 @@ const linkMarkUrl=link=>`/link-mark?id=${encodeURIComponent(link.link_id ?? '')}
 
    favicon 是别人服务器上的一张小位图：X 直接挡掉爬取（资料页那个空白白圆就是它），
    取到的也多是 16×16，放进 32 px 的圆里必然糊。内联 SVG 没有这两个问题，还省一次
-   跨站请求。只覆盖真正占量的主机——416 条社媒链接里 372 条是 x.com／twitter.com；
-   Instagram 的 favicon 同样被挡，资料页上只剩一只地球，所以也给它一枚；
-   其余继续走 favicon，不为个位数的链接各配一个图标。 */
-const BRAND_ICONS=[[['x.com','twitter.com'],'brand-x'],[['instagram.com'],'brand-instagram']];
+   跨站请求。x.com 一家就占了账本里 793 条外链中的 378 条；Instagram 的 favicon 同样被挡，
+   资料页上只剩一只地球，这两个是按量进来的。
+   Threads 是另一种理由：它给得出图，给的是 iOS 应用图标那种圆角方图，四边一圈高光是
+   照着方角画的，裁成圆之后沿着圆周露出一道白。这种图 `/link-mark` 只能原样用——那圈
+   高光是人家设计的一部分，抠不掉。
+   其余继续走 favicon：字形图标合成出来的品牌色圆底本来就好看，不为个位数的链接各配一枚。 */
+const BRAND_ICONS=[[['x.com','twitter.com'],'brand-x'],[['instagram.com'],'brand-instagram'],
+  [['threads.com','threads.net'],'brand-threads']];
 const brandIcon=url=>{try{
   const host=new URL(url).hostname.replace(/^www\./,'').toLowerCase();
   return BRAND_ICONS.find(([hosts])=>hosts.some(d=>host===d||host.endsWith('.'+d)))?.[1]||'';

@@ -1,6 +1,6 @@
 import { LOC as e, esc as t, faviconUrl as n, fmtDur as r, fmtSize as i, icon as a, requestErrorMessage as o } from "/js/core.js";
 import { MEDIA_SOURCE_ICONS as s, checkboxHtml as c, collectionSummaryHtml as l, confirmModal as u, emptyStateHtml as d, fieldsetTitle as f, loadingDotsHtml as p, moveGlidePane as m, noteHtml as h, progressHtml as g, projectBannerHtml as _, selectFieldHtml as v, selectOptionIconHtml as y, setActionBusy as b, wireCollapse as x, wireSelectField as S } from "/js/ui-components.js";
-//#region node_modules/preact/dist/preact.module.js
+//#region ../../../peach-app/frontend/node_modules/preact/dist/preact.module.js
 var C, w, T, E, D, O, k, A, j, M, N, P, ee, F, te, ne = {}, re = [], ie = /acit|ex(?:s|g|n|p|$)|rph|grid|ows|mnc|ntw|ine[ch]|zoo|^ord|itera/i, ae = Array.isArray;
 function I(e, t) {
 	for (var n in t) e[n] = t[n];
@@ -399,7 +399,7 @@ function Be(e, t) {
 	return `<svg class="board-radar" viewBox="0 0 320 280" role="img" aria-label="${R(t)}"><title>${R(n.map((e) => `${e.name} ${e.score}`).join("，"))}</title>${s}<polygon points="${o((e) => n[e].score / r * 100)}" class="board-radar-value"/>${c}</svg>`;
 }
 //#endregion
-//#region node_modules/preact/hooks/dist/hooks.module.js
+//#region ../../../peach-app/frontend/node_modules/preact/hooks/dist/hooks.module.js
 var Ve, z, He, Ue, We = 0, Ge = [], B = w, Ke = B.__b, qe = B.__r, Je = B.diffed, Ye = B.__c, Xe = B.unmount, Ze = B.__;
 function Qe(e, t) {
 	B.__h && B.__h(z, e, We || t), We = 0;
@@ -636,7 +636,7 @@ function ft(e) {
 	});
 }
 //#endregion
-//#region node_modules/preact/jsx-runtime/dist/jsxRuntime.module.js
+//#region ../../../peach-app/frontend/node_modules/preact/jsx-runtime/dist/jsxRuntime.module.js
 var pt = 0;
 Array.isArray;
 function J(e, t, n, r, i, a) {
@@ -1175,7 +1175,7 @@ function Ft(e) {
 	});
 }
 //#endregion
-//#region node_modules/d3-array/src/max.js
+//#region ../../../peach-app/frontend/node_modules/d3-array/src/max.js
 function It(e, t) {
 	let n;
 	if (t === void 0) for (let t of e) t != null && (n < t || n === void 0 && t >= t) && (n = t);
@@ -1186,7 +1186,7 @@ function It(e, t) {
 	return n;
 }
 //#endregion
-//#region node_modules/d3-array/src/min.js
+//#region ../../../peach-app/frontend/node_modules/d3-array/src/min.js
 function Lt(e, t) {
 	let n;
 	if (t === void 0) for (let t of e) t != null && (n > t || n === void 0 && t >= t) && (n = t);
@@ -1197,7 +1197,7 @@ function Lt(e, t) {
 	return n;
 }
 //#endregion
-//#region node_modules/d3-array/src/sum.js
+//#region ../../../peach-app/frontend/node_modules/d3-array/src/sum.js
 function Rt(e, t) {
 	let n = 0;
 	if (t === void 0) for (let t of e) (t = +t) && (n += t);
@@ -1208,19 +1208,19 @@ function Rt(e, t) {
 	return n;
 }
 //#endregion
-//#region node_modules/d3-sankey/src/align.js
+//#region ../../../peach-app/frontend/node_modules/d3-sankey/src/align.js
 function zt(e, t) {
 	return e.sourceLinks.length ? e.depth : t - 1;
 }
 //#endregion
-//#region node_modules/d3-sankey/src/constant.js
+//#region ../../../peach-app/frontend/node_modules/d3-sankey/src/constant.js
 function Bt(e) {
 	return function() {
 		return e;
 	};
 }
 //#endregion
-//#region node_modules/d3-sankey/src/sankey.js
+//#region ../../../peach-app/frontend/node_modules/d3-sankey/src/sankey.js
 function Vt(e, t) {
 	return Ut(e.source, t.source) || e.index - t.index;
 }
@@ -1440,7 +1440,7 @@ function Xt() {
 	return m;
 }
 //#endregion
-//#region node_modules/d3-path/src/path.js
+//#region ../../../peach-app/frontend/node_modules/d3-path/src/path.js
 var Zt = Math.PI, Qt = 2 * Zt, $t = 1e-6, en = Qt - $t;
 function tn() {
 	this._x0 = this._y0 = this._x1 = this._y1 = null, this._ = "";
@@ -1492,14 +1492,14 @@ tn.prototype = nn.prototype = {
 	}
 };
 //#endregion
-//#region node_modules/d3-shape/src/constant.js
+//#region ../../../peach-app/frontend/node_modules/d3-shape/src/constant.js
 function rn(e) {
 	return function() {
 		return e;
 	};
 }
 //#endregion
-//#region node_modules/d3-shape/src/point.js
+//#region ../../../peach-app/frontend/node_modules/d3-shape/src/point.js
 function an(e) {
 	return e[0];
 }
@@ -1507,10 +1507,10 @@ function on(e) {
 	return e[1];
 }
 //#endregion
-//#region node_modules/d3-shape/src/array.js
+//#region ../../../peach-app/frontend/node_modules/d3-shape/src/array.js
 var sn = Array.prototype.slice;
 //#endregion
-//#region node_modules/d3-shape/src/link/index.js
+//#region ../../../peach-app/frontend/node_modules/d3-shape/src/link/index.js
 function cn(e) {
 	return e.source;
 }
@@ -1542,7 +1542,7 @@ function fn() {
 	return un(dn);
 }
 //#endregion
-//#region node_modules/d3-sankey/src/sankeyLinkHorizontal.js
+//#region ../../../peach-app/frontend/node_modules/d3-sankey/src/sankeyLinkHorizontal.js
 function pn(e) {
 	return [e.source.x1, e.y0];
 }
@@ -3161,7 +3161,7 @@ function ir({ receipt: e, data: t, error: n }) {
 	});
 }
 //#endregion
-//#region node_modules/@preact/signals-core/dist/signals-core.module.js
+//#region ../../../peach-app/frontend/node_modules/@preact/signals-core/dist/signals-core.module.js
 var ar = Symbol.for("preact-signals");
 function or() {
 	if (Z > 1) Z--;
@@ -3410,7 +3410,7 @@ function Dr(e, t) {
 	return r[Symbol.dispose] = r, r;
 }
 //#endregion
-//#region node_modules/@preact/signals/dist/signals.module.js
+//#region ../../../peach-app/frontend/node_modules/@preact/signals/dist/signals.module.js
 var Or, kr, Ar = typeof window < "u" && !!window.__PREACT_SIGNALS_DEVTOOLS__, jr = [];
 Dr(function() {
 	Or = this.N;
@@ -4386,15 +4386,17 @@ function wi(e, t, n, r, i = 1) {
 }
 //#endregion
 //#region src/entity-skeleton.ts
-function Ti(e, t) {
+function Ti(e, t, n) {
 	return `<section data-skeleton="entity/${e}" role="status" aria-label="正在读取资料">
     <span class="sr-only">正在读取资料</span><div aria-hidden="true">
     <div class="entityhero"><div class="entityportrait ${e === "studio" || e === "agency" ? "square " : ""}skeleton"></div>
       <div class="entityskeletontext"><div class="entitytitle"><h2 class="skeleton">&nbsp;</h2></div>
       <div class="alias"><span class="skeleton"></span></div>
       <div class="entitylinks"><span class="skeleton"></span></div></div></div>
-    <section class="entitytagbar"><div class="entitytags"><span class="skeleton entitymediaskeleton"></span><span class="skeleton entitymediaskeleton"></span></div></section>
-    <div class="entitysection">${t}</div></div></section>`;
+    <div class="board-filter-frame" data-filter-frame>
+      <section class="entitytagbar" data-filter-row="top"><div class="entitytags"><span class="skeleton entitymediaskeleton"></span><span class="skeleton entitymediaskeleton"></span></div></section>
+      ${t}</div>
+    <div class="entitysection">${n}</div></div></section>`;
 }
 //#endregion
 //#region src/board-skeleton.ts
