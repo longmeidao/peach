@@ -10,8 +10,8 @@
 
 - 设置与反馈已部署；自动更新设置未部署。
 
-- 女优头像 545 张：2026-09-06 经用户批准换上 54 张 Gfriends 正脸照，脸宽中位数 148px → 320px；被顶掉的整套留在 `avatars-superseded/`，挑图与换源判据见 `SOURCING.md`。
-- 小图、资料骨架、官网图标、X 原色与自动播放开关已实现；请求共用 Chrome UA。
+- 女优头像 545 张，脸宽中位数 320px；被顶掉的整套留在 `avatars-superseded/`，挑图与换源判据见 `SOURCING.md`。
+- 小图、资料骨架、官网图标、X 原色与自动播放开关已实现；请求共用 Chrome UA。厂牌标识 198 张随仓库分发（ADR-0026）。
 - Eightman 与 SO MODEL AGENT 已合为 8662，成员与关联作品保留，旧名仍可解析。
 
 - Windows 是 ledger writer，入口 `dist\Peach\Peach.exe`；代码与数据在内置盘，外置盘只提供 `R:\media`。

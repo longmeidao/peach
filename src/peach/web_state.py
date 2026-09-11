@@ -31,6 +31,7 @@ from .config import (
     SOURCES_DIR,
     STATE_DIR,
 )
+from . import brand_marks
 from .jobs import BackgroundJob
 from .media import normalized_path
 # `previews` 是取图那一侧，不是 web 域处理器：依赖方向仍然只有一个走法。落盘名的
@@ -103,6 +104,7 @@ class WebContract:
                  cover_root: Path | None = None,
                  avatar_root: Path | None = None,
                  logo_root: Path | None = None,
+                 marks_root: Path | None = None,
                  poster_root: Path | None = None,
                  photo_root: Path | None = None,
                  transcode_root: Path | None = None,
@@ -122,6 +124,10 @@ class WebContract:
         self.avatar_root = Path(avatar_root) if avatar_root is not None else GENERATED_DIR / "avatars"
         # `/logo` 就是从这里读；批准候选等于把图装进这个目录。
         self.logo_root = Path(logo_root) if logo_root is not None else GENERATED_DIR / "logos"
+        # 随仓库分发的标识（ADR-0026）。和上面同一个道理：读模块常量的话，用临时
+        # `logo_root` 造「没装图」的测试会撞上仓库里那 198 个，判定于是说反话。
+        self.marks_root = (Path(marks_root) if marks_root is not None
+                           else brand_marks.STUDIOS_DIR)
         self.poster_root = Path(poster_root) if poster_root is not None else GENERATED_DIR / "posters"
         self.photo_root = Path(photo_root) if photo_root is not None else GENERATED_DIR / "photo-thumbs"
         self.transcode_root = (Path(transcode_root) if transcode_root is not None
@@ -340,8 +346,14 @@ class WebContract:
         return self.cached("logo-index", self._scan_logo_root)
 
     def _scan_logo_root(self) -> frozenset[str]:
-        """一次目录扫描收齐已装标识。目录不存在就是空集合，页面全部退回首字母。"""
-        keys: set[str] = set()
+        """一次目录扫描收齐已装标识，并入随仓库分发的那批（ADR-0026）。
+
+        内置那批不进这份索引的话，`/logo` 取得回图而页面判「没图」，厂牌位永远停在
+        首字母——两边判据不一致的后果不是报错，是安静地少显示一批图。
+
+        本机目录不存在时仍然保留内置那批：干净数据目录正是内置资源要顶上的场景。
+        """
+        keys: set[str] = set(brand_marks.installed_stems(LOGO_VARIANTS, self.marks_root))
         try:
             with os.scandir(self.logo_root) as entries:
                 for entry in entries:
@@ -357,7 +369,7 @@ class WebContract:
                     if stem:
                         keys.add(stem)
         except OSError:
-            return frozenset()
+            return frozenset(keys)
         return frozenset(keys)
 
     def has_logo(self, studio: str | None) -> bool:

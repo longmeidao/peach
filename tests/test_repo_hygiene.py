@@ -124,6 +124,37 @@ class BuiltInWorktreeTests(unittest.TestCase):
         )
 
 
+class BundledImageTests(unittest.TestCase):
+    """图像二进制只许出现在 `resources/` 下。
+
+    ADR-0024 的验收清单里一直有这一条，没有实现。ADR-0026 划出「法人实体标识」这条窄
+    例外之后它更要有：例外一旦开口，下一张图进来时挡住它的只能是门槛，不是那份 ADR
+    的措辞。`resources/` 之内由 `test_brand_marks` 逐条查判据，这里只管边界。
+    """
+
+    #: 判扩展名而不判字节：仓库里没有无扩展名的图，而读全部文件去嗅探要慢两个数量级。
+    IMAGE_SUFFIXES = frozenset({
+        ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".avif", ".ico", ".icns", ".tiff",
+    })
+
+    def test_images_live_only_under_resources(self):
+        done = subprocess.run(["git", "ls-files", "-z"], cwd=REPO, capture_output=True,
+                              text=True, encoding="utf-8", errors="replace", check=False)
+        if done.returncode != 0:
+            self.skipTest(f"git 不可用或不是仓库：{done.stderr.strip()}")
+        stray = sorted(
+            name for name in done.stdout.split("\0")
+            if name and pathlib.PurePosixPath(name).suffix.lower() in self.IMAGE_SUFFIXES
+            and not name.startswith("resources/")
+        )
+        self.assertEqual(
+            stray, [],
+            "图像二进制只进 resources/：应用自身品牌资产直接放 resources/，"
+            "厂牌与站点标识走 scripts/sync_brand_marks.py 收进 resources/marks/（ADR-0026），"
+            "其余图片是本机派生产物，留在 peach-data/generated/",
+        )
+
+
 class BacklogSelfConsistencyTests(unittest.TestCase):
     """产品待办自己报的数必须和它列的条目对得上。
 
