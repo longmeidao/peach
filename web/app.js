@@ -2,6 +2,7 @@ import { resourceScanHtml, boundedPreference, mountNumberSetting, syncNumberSett
 import {$, ENTITY_ROUTES, LOC, ROUTE_ENTITIES, ROUTE_STATES, SITE_FAVICONS, STATE_LABELS, STATE_ROUTES, api, isAbort, mapLimit, brandIcon, entityPath, esc, faviconFallbackUrl, faviconUrl, linkHost, linkMarkUrl, fmtClock, fmtDur, fmtSize, foldName, icon, isCatalogPath, realDuration} from './js/core.js';
 import { faceFrame } from './js/face-frame.js';
 import { searchMorphFrames } from './js/search-morph.js';
+import { filterScrollState } from './js/filter-scroll.js';
 import { selectRange, selectionSummary, selectGroup, syncSelectionToolbar } from './dist/peach-ui.js';
 import { MEDIA_SOURCE_ICONS } from './js/media-source-icons.js';
 import { boardPageSkeleton, initBoardControls, syncBoardRange, wireExpandableRanks, creatorSankeyHtml, wireCreatorSankey } from './dist/peach-ui.js';
@@ -8370,7 +8371,23 @@ function buildEdge(){
    每次都新建 video 并发起 /stream 请求，直接把页面拖垮。 */
 window.__scrolling=false; let scrollT=null;
 let stickyFrame=0;
+let mobileFilterScroll=null,mobileFilterHost=null,mobileFilterPath='';
+function updateMobileFilterScroll(){
+  const frames=[...document.querySelectorAll('[data-filter-frame]')];
+  const active=frames.find(frame=>frame.offsetParent!==null);
+  if(active!==mobileFilterHost||location.pathname!==mobileFilterPath)mobileFilterScroll=null;
+  mobileFilterHost=active;mobileFilterPath=location.pathname;
+  const y=Math.max(0,Math.min(scrollY,document.documentElement.scrollHeight-innerHeight));
+  const hold=!!active?.querySelector(':focus-visible,input:focus,select:focus,textarea:focus,[aria-expanded="true"]');
+  mobileFilterScroll=filterScrollState(mobileFilterScroll,y,innerWidth<=760,hold);
+  for(const frame of frames){
+    const free=frame===active&&mobileFilterScroll.free;
+    if(free)frame.style.setProperty('--filter-free-top',`${-frame.offsetHeight-12}px`);
+    frame.classList.toggle('mobile-filter-free',free);
+  }
+}
 function updateStickySurfaces(){
+  updateMobileFilterScroll();
   updateReviewSticky($('.review'));
   ['.board-filter-frame','#tagbar','#count','.entitytagbar','.entitycollectionhead'].forEach(selector=>{
     const el=$(selector),css=el&&getComputedStyle(el),top=css?parseFloat(css.top):NaN;
@@ -8384,6 +8401,8 @@ function scheduleStickySurfaces(){
   if(stickyFrame)return;
   stickyFrame=requestAnimationFrame(()=>{stickyFrame=0;updateStickySurfaces()});
 }
+document.addEventListener('focusin',scheduleStickySurfaces);
+document.addEventListener('focusout',scheduleStickySurfaces);
 window.addEventListener('scroll',()=>{
   scheduleStickySurfaces();
   window.__scrolling=true;

@@ -53,6 +53,25 @@ process.stdout.write(JSON.stringify(results));
 
 @unittest.skipUnless(NODE, "没装 Node，纯模块的行为验收跳过")
 class WebJsBehaviourTests(unittest.TestCase):
+    def test_mobile_filter_scroll_has_direction_hysteresis_and_visible_resets(self):
+        down = dict(y=120, origin=100, direction=1, free=True)
+        jitter = dict(y=117, origin=120, direction=-1, free=True)
+        cases = [
+            [None, 100, True],
+            [dict(y=100, origin=100, direction=0, free=False), 108, True],
+            [down, 117, True],
+            [jitter, 112, True],
+            [down, 120, True],
+            [down, -4, True],
+            [down, 130, False],
+            [down, 130, True, True],
+        ]
+        results = self.run_js([("filter-scroll.js", "filterScrollState", args) for args in cases])
+        self.assertEqual([result["free"] for result in results],
+                         [False, True, True, False, True, False, False, False])
+        self.assertEqual(results[2]["origin"], 120)
+        self.assertEqual(results[5]["y"], 0)
+
     def test_search_glass_morph_has_geometry_and_stays_in_the_viewport(self):
         css = (ROOT / "web/board.css").read_text(encoding="utf-8")
         easing = css.split("--spring-pane:", 1)[1].split(";", 1)[0]
