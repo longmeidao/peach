@@ -70,7 +70,7 @@ naming = ["opencc==1.4.2"]
 package-dir = {"" = "src"}
 
 [tool.uv]
-required-version = "==0.12.12"
+required-version = "==0.12.13"
 cache-keys = [{file = "pyproject.toml"}, {file = "setup.py"}, {file = "src/peach/__init__.py"}, {file = "README.md"}]
 
 [tool.setuptools.dynamic]
