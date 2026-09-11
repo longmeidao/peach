@@ -134,7 +134,7 @@
 .sbadge.ok i{background:var(--success)}
 .sbadge.error i{background:var(--drop)}
 /* 批量动作是 2292 条级别的操作，不是行内文字链接：按钮的边界让「这会改状态」
-   在点击前就看得见，也和本页其他 .fbtn（检查全部／去看更新）同一套语言。 */
+   在点击前就看得见，也和本页其他 .fbtn（检查全部）同一套语言。 */
 .fbulk{display:inline-flex;gap:8px;margin-left:auto;flex:none}
 /* 底部这条和分区标题行是同一种行：一行里唯一可以缩的是说明文字，两个动作键要完整读出来。
    允许换行的话，窄屏上四段计数加两个键一定放不下，于是键被甩到第二行、底栏长出一截。

@@ -2297,7 +2297,7 @@ class WebUiSourceTests(unittest.TestCase):
         # 某一项失败只记下原因，不中断整批。
         self.assertPageContains("catch(error){results[index]={ok:false,error}}")
         bulk = self.app_js.split("root.querySelectorAll('[data-follow-bulk]')", 1)[1]
-        bulk = bulk.split("root.querySelectorAll('[data-follow-view]')", 1)[0]
+        bulk = bulk.split("/* 查找结果先摆出来", 1)[0]
         self.assertIn("await mapLimit(ids,6,id=>", bulk)
         # 撤销那两处仍是单条 POST，不该被这条契约波及。
         self.assertNotIn("for(const id of ids)", bulk)
@@ -2609,7 +2609,11 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("document.querySelectorAll('[data-filter-frame]')")
         self.assertPageContains("const active=frames.find(frame=>frame.offsetParent!==null);")
         self.assertPageContains("mobileFilterScroll=filterScrollState(mobileFilterScroll,y,innerWidth<=760,hold);")
-        self.assertIn(".board-filter-frame.board-filter-frame{transition:top var(--board-motion)}", board)
+        # 窄屏这条和主题切换那条材质过渡同权重、又排在后面，`top` 得和材质写在一起，
+        # 否则它把材质那条整个顶掉，浮层在明暗之间又变回一刀切。
+        self.assertIn(".board-filter-frame.board-filter-frame{transition:top var(--board-motion),"
+                      "background-color .28s ease,backdrop-filter .28s ease,"
+                      "-webkit-backdrop-filter .28s ease}", board)
         self.assertIn(".board-filter-frame.board-filter-frame.mobile-filter-free{top:var(--filter-free-top)}", board)
         self.assertPageContains("document.documentElement.scrollHeight-innerHeight")
 
@@ -4074,10 +4078,32 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn(':root[data-theme="light"]{--glass-drift-a:', board)
         self.assertIn('#6686b84d,#6686b829 42%,transparent 72%', board)
         self.assertIn('#c69d7340,#c69d7324 44%,transparent 74%', board)
-        menu = board.split('.board-library-menu.board-library-menu{', 1)[1].split('}', 1)[0]
+        # 这个双写的选择器在表里出现两次：靠前那处是主题切换那条材质过渡，玻璃本体在后面。
+        menu = board.rsplit('.board-library-menu.board-library-menu{', 1)[1].split('}', 1)[0]
         self.assertIn('var(--glass-fill)', menu)
         self.assertIn('backdrop-filter:blur(22px) saturate(160%) var(--glass-lume)', menu)
         self.assertIn('var(--glass-shadow)', menu)
+
+    def test_the_library_menu_marks_the_current_one_with_the_same_glass(self):
+        """媒体库菜单标「当前是哪一个」也走那块会滑的玻璃，不自己再涂一层底。
+
+        这张菜单本身就是玻璃，选中项再铺一层半透白等于白上加白：亮色下那块底和菜单
+        底几乎同一个亮度，一排四个库看不出落在哪一个。共用 `.viewglide` 一起带来的
+        是提亮、落影和那段位移——换库时玻璃从上一项滑过去，而不是在新的一行凭空亮起。
+        选中既然由玻璃承担，按钮自己的填充和内描边就得撤掉，否则玻璃底下透出第二个
+        选中态；未选中项压暗文字色，让玻璃盖住的那一行成为唯一的全黑字。
+        底下那枚是这张菜单唯一的动作，用高亮实底，不套玻璃覆盖。
+        """
+        board = (Path(__file__).resolve().parents[1] / 'web/board.css').read_text(encoding='utf-8')
+        self.assertIn('.board-library-menu .board-library-rows{position:relative}', board)
+        self.assertIn('.board-library-menu .board-library-rows button:is(:hover,[aria-pressed=true])'
+                      '{background:none;box-shadow:none;color:var(--glass-text)}', board)
+        self.assertIn('.board-library-menu .board-library-rows>.viewglide{border-radius:10px}', board)
+        self.assertNotIn('.board-library-menu footer button{background:var(--glass-pick-fill)', board)
+        self.assertPageContains("libraryGlide=document.createElement('span');libraryGlide.className='viewglide';")
+        self.assertPageContains("moveGlidePane(libraryGlide,animate?from:null,box,'y');")
+        self.assertPageContains('<footer><button type="button" class="geist-button primary" '
+                                'data-library-manage>管理媒体库</button></footer>')
 
     def test_glass_compositing_covers_search_snapshots_and_disposed_panels(self):
         board = (Path(__file__).resolve().parents[1] / 'web/board.css').read_text(encoding='utf-8')
@@ -4088,6 +4114,26 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn('background-color:var(--ground)!important', snapshot)
         self.assertIn('backdrop-filter:none!important', snapshot)
         self.assertPageContains('observer.disconnect();filter.remove();attached.delete(node)')
+
+    def test_a_theme_switch_does_not_flash_a_solid_slab_on_the_way_to_glass(self):
+        """浮层从实底回到毛玻璃这一下是渐变的，不是一刀切。
+
+        主题切换走 View Transition，而快照里采不到背景，浮层只能临时换成实底顶替；
+        切换结束撤掉那个标记时，一整块底色瞬间变成透明玻璃，读出来像主题又切了第二次。
+        所以过渡写在常态上，快照态那条规则自己把过渡关掉——正在拍旧状态的快照时，
+        路上的中间色会被拍进去。
+        窄屏那条给筛选浮层改 `top` 的规则同权重且在后，材质过渡要在那里一并写上，
+        否则它把这条整个顶掉。
+        """
+        board = (Path(__file__).resolve().parents[1] / 'web/board.css').read_text(encoding='utf-8')
+        self.assertIn('.board-filter-frame.board-filter-frame,.entitytagbar.entitytagbar,'
+                      '.entitycollectionhead.entitycollectionhead,.board-library-menu.board-library-menu{\n'
+                      '  transition:background-color .28s ease,backdrop-filter .28s ease,'
+                      '-webkit-backdrop-filter .28s ease}', board)
+        snapshot_rule = board.split('html[data-theme-snapshot] .review.review-is-stuck::before{', 1)[1]
+        self.assertIn('transition:none!important', snapshot_rule.split('}', 1)[0])
+        self.assertIn('transition:top var(--board-motion),background-color .28s ease,'
+                      'backdrop-filter .28s ease,-webkit-backdrop-filter .28s ease', board)
 
     def test_notes_and_navigation_links_keep_their_own_presentation(self):
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
@@ -6925,12 +6971,8 @@ class WebUiSourceTests(unittest.TestCase):
         `/logo` 的 404 那条响应不可缓存，每次重绘再打一整轮。判据 `has_logo` 由
         `/api/tops`、`/api/item`、`/api/entity` 随身份一起下发，和取图共用
         `previews.logo_key`。
-
-        `studio=115` 那处例外：它取的是来源角标那份固定资产，不按厂牌名找图。
         """
         for match in re.finditer(r'src="/logo\?studio=([^"]*)"', self.page):
-            if match.group(1).startswith("115&"):
-                continue
             preceding = self.page[max(0, match.start() - 240):match.start()]
             with self.subTest(url=match.group(0)):
                 self.assertIn(
@@ -8820,6 +8862,28 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn("tip.textContent=value>=max&&end==='max'?'不限':`${value} 分钟`;", controls)
         for gone in ("durMinText", "durMaxText", "duration-readout"):
             self.assertPageLacks(gone, "时长读数只由手柄上那两枚气泡承担")
+
+    def test_a_range_readout_never_hangs_off_the_rail_it_reports_for(self):
+        """读数气泡越过轨道两端的那一截按实测收回来，不靠两端各写一个固定对齐。
+
+        这一排住在侧栏里，侧栏只比轨道宽出一点点：气泡对着手柄居中，手柄推到端点时
+        伸出去的半截会被侧栏裁掉，屏幕上只剩半个数。按端点写死 `translateX(-100%)`
+        又会让气泡在中段偏出手柄一整个身位——两端对齐的是轨道，正在报数的却是手柄。
+        量之前先把上一次的位移清掉，否则量到的是已经收过一次的位置，越拖越偏。
+        """
+        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
+        self.assertIn("transform:translateX(calc(-50% + var(--range-tip-shift,0px)))", board)
+        for pinned in (".dual-range .board-range-tip[data-range-end=max]{transform:translateX(-100%)}",
+                       ".board-range-tip[data-range-end=min]{transform:none}"):
+            self.assertNotIn(pinned, board)
+        controls = (Path(__file__).resolve().parents[1]
+                    / "frontend/src/board-controls.ts").read_text(encoding="utf-8")
+        self.assertIn("  tip.style.setProperty('--range-tip-shift','0px');\n"
+                      "  const bounds=group.getBoundingClientRect(),box=tip.getBoundingClientRect();\n"
+                      "  const shift=box.right>bounds.right?bounds.right-box.right\n"
+                      "    :box.left<bounds.left?bounds.left-box.left:0;\n"
+                      "  if(shift)tip.style.setProperty('--range-tip-shift',`${Math.round(shift)}px`);",
+                      controls)
 
     def test_a_chart_legend_tile_is_the_inlaid_surface_itself(self):
         """图例小卡自己就是那层凹片，不是摆在一块托盘上的另一张卡。
