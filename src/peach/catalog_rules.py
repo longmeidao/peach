@@ -10,6 +10,7 @@ web 层——`repository`（数据层）取 `is_jav_code`，`taste_history` 取 
 from __future__ import annotations
 
 import re
+from pathlib import PureWindowsPath
 
 
 LENGTH_TAGS = {"短片-2分内", "中片-10分内", "长片-30分内", "超长片-30分上"}
@@ -990,7 +991,40 @@ def duration_clusters(items: list[dict]) -> list[list[dict]]:
         else:
             clusters.append([item])
     clusters.extend([item] for item in items if not (item.get("duration") or 0) > 0)
-    return clusters
+    return _merged_by_filename(clusters)
+
+
+def _merged_by_filename(clusters: list[list[dict]]) -> list[list[dict]]:
+    """同番号下文件名一样的那些，并回同一组。
+
+    时长是唯一判据时，同一版的两份会被分开：一份原盘一份转码，容器里写的时长
+    差出十几秒就超了容差；一份根本没探过时长，那更是自己单独一组。两组各只有
+    一个，重复清单于是一条都不提示——而这两份恰恰是最该提示的那种。
+
+    番号已经把范围收在同一发行上，这一层只看文件名：同番号下名字一样的就是同
+    一版。分卷不受影响，`ABC-001-A` 和 `ABC-001-B` 本来就不同名。
+    """
+    home = list(range(len(clusters)))
+
+    def root(index: int) -> int:
+        while home[index] != index:
+            home[index] = home[home[index]]
+            index = home[index]
+        return index
+
+    first: dict[str, int] = {}
+    for index, cluster in enumerate(clusters):
+        for item in cluster:
+            stem = PureWindowsPath(str(item.get("name") or "")).stem.casefold()
+            if not stem:
+                continue
+            known = first.setdefault(stem, index)
+            if root(known) != root(index):
+                home[root(index)] = root(known)
+    merged: dict[int, list[dict]] = {}
+    for index, cluster in enumerate(clusters):
+        merged.setdefault(root(index), []).extend(cluster)
+    return [merged[key] for key in sorted(merged)]
 
 
 def dir_expr(alias: str = "a.") -> str:

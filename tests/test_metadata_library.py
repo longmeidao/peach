@@ -6,6 +6,7 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 from contextlib import closing
 
@@ -401,6 +402,81 @@ class LibraryWatchdogTests(unittest.TestCase):
         self.assertEqual(retried['total'], 1)
         self.assertEqual(retried['checked'], 1)
         self.assertEqual(retried['status'], 'complete')
+
+    def test_scanning_alone_registers_the_files_and_asks_no_source(self):
+        """只扫描那一段登记完文件就收工，不读本地资料也不联网。
+
+        新盘刚接上时要的就是这个：几万个文件进了馆藏就能用，采集可以留到夜里。
+        """
+        media = self.root / 'media'
+        media.mkdir()
+        (media / 'ABW-203.mp4').write_bytes(b'video')
+        db = fresh_ledger(self.root)
+        provider = self._provider()
+        state = process_library(self._config(media), db, self.root / 'generated',
+                                self.root / 'covers', stage='scan',
+                                provider_factory=lambda: provider)
+        self.assertEqual(state['status'], 'complete')
+        self.assertEqual(state['scanned'], 1)
+        self.assertEqual(state['checked'], 0)
+        self.assertEqual(state['candidates'], 0)
+        provider.query.assert_not_called()
+        with closing(sqlite3.connect(db)) as connection:
+            self.assertEqual(connection.execute('SELECT count(*) FROM asset').fetchone()[0], 1,
+                             "文件要进馆藏，只是没往下走采集")
+
+    def test_collecting_alone_walks_the_library_without_touching_the_disk_again(self):
+        """只采集那一段不再扫一遍来源目录，处理的仍是整个馆藏。
+
+        采集被网络拖住时重跑的就是它：几万个文件的目录遍历没有必要再走一趟。
+        """
+        media = self.root / 'media'
+        media.mkdir()
+        (media / 'ABW-204.mp4').write_bytes(b'video')
+        db = fresh_ledger(self.root)
+        config = self._config(media)
+        provider = self._provider()
+        process_library(config, db, self.root / 'generated', self.root / 'covers',
+                        stage='scan', provider_factory=lambda: provider)
+        with patch('peach.library_processing.scan_location') as scan:
+            state = process_library(config, db, self.root / 'generated', self.root / 'covers',
+                                    stage='collect', provider_factory=lambda: provider)
+        scan.assert_not_called()
+        self.assertEqual(state['status'], 'complete')
+        self.assertEqual(state['total'], 1)
+        self.assertEqual(state['checked'], 1)
+
+    def test_the_stage_asked_for_is_the_stage_that_runs(self):
+        """页面点哪一段就跑哪一段，不认识的段数拒绝掉。
+
+        段名要一路传到管线里。只拿它换一句提示文字的话，按钮看着分了工、跑起来
+        全是同一件事，而且页面上看不出区别。
+        """
+        from peach.web_library_processing import w_library_processing
+        contract = SimpleNamespace(
+            db_path=Path(self.root / 'database' / 'ledger.db'),
+            candidate_root=self.root / 'generated', cover_root=self.root / 'covers',
+            cache_bust=lambda: None,
+            library_processing_job=SimpleNamespace(
+                snapshot=lambda: None,
+                start=lambda work, restart, initial: (work('job'), initial)[1],
+                update=lambda job_id, **values: None))
+        media = self.root / 'media'
+        media.mkdir()
+        (self.root / 'database').mkdir(exist_ok=True)
+        fresh_ledger(self.root / 'database')
+        config = self._config(media)
+        with patch('peach.web_library_processing.settings_file.active', return_value=config), \
+             patch('peach.web_library_processing.process_library') as run:
+            run.return_value = {'job_id': 'job', 'status': 'complete'}
+            initial = w_library_processing(contract, {'stage': 'collect'})
+            self.assertEqual(run.call_args.kwargs['stage'], 'collect')
+            self.assertEqual(initial['requested_stage'], 'collect')
+            self.assertEqual(initial['stage'], '准备采集资料')
+            w_library_processing(contract, {})
+            self.assertEqual(run.call_args.kwargs['stage'], 'all')
+            with self.assertRaises(ValueError):
+                w_library_processing(contract, {'stage': 'thumbnails'})
 
     def test_retry_request_accepts_only_the_previous_failure_set(self):
         from peach.web_library_processing import _retry_ids

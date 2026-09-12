@@ -969,6 +969,16 @@ class Rule34VideoConnector(_BaseConnector):
     DEFAULT_MAX_PROBES = 24
 
     @classmethod
+    def visual_model_count(cls, models) -> int:
+        """这份署名里有几位画面作者。配音与音效署名不计。
+
+        采集时按它挡合辑，读取关注列表时按它补挡历史条目——两处必须是同一次
+        计数，否则「抓的时候留下了、看的时候又没了」，或者反过来。
+        """
+        return sum(1 for value in models or []
+                   if value and not cls._CREDIT_ROLE_RE.search(str(value)))
+
+    @classmethod
     def parse_url(cls, provider: str, parsed: urllib.parse.SplitResult,
                   host: str) -> "ParsedSource":
         matched = _R34V_PATH_RE.match(parsed.path or "/")
@@ -1118,8 +1128,6 @@ class Rule34VideoConnector(_BaseConnector):
         tags = list(dict.fromkeys(value for value in tags if value))
         categories = list(dict.fromkeys(value for value in categories if value))
         models = list(dict.fromkeys(value for value in models if value))
-        visual_models = [value for value in models
-                         if not cls._CREDIT_ROLE_RE.search(value)]
         if not video and not tags and not categories and not models:
             return {}
         tag_types = {tag: "general" for tag in tags}
@@ -1144,7 +1152,7 @@ class Rule34VideoConnector(_BaseConnector):
                 "categories": categories,
                 "models": models,
                 "model_count": len(models),
-                "visual_model_count": len(visual_models),
+                "visual_model_count": cls.visual_model_count(models),
                 "tag_types": tag_types,
             },
         }
@@ -2209,8 +2217,10 @@ class FanboxConnector(_BaseConnector):
             candidate,
             partial=False,
             # 正文里的首图比列表封面准：封面是作者选的展示图，不一定是这篇的内容。
-            thumb_url=(str(direct_media[0].get("thumb_url")
-                           or direct_media[0].get("url"))
+            # FANBOX 视频通常没有 `thumbnailUrl`。此时不能把视频地址当
+            # 图片 poster；保留列表接口提供的 cover，关注页才能显示缩略图。
+            thumb_url=(str(direct_media[0].get("thumb_url") or "")
+                       or candidate.thumb_url
                        if direct_media else candidate.thumb_url),
             summary=detail["summary"] or candidate.summary,
             extra={**candidate.extra, "links": links, "media_items": media_items,

@@ -2,7 +2,8 @@
 import json
 
 from . import settings_file
-from .library_processing import decorate, issues_path, process_library, snapshot
+from .library_processing import (ALL_STAGES, COLLECT_STAGE, SCAN_STAGE, STAGES,
+                                decorate, issues_path, process_library, snapshot)
 
 
 def _current(contract):
@@ -75,16 +76,23 @@ def w_library_processing(contract, body):
     if previous.get('status') == 'running':
         return previous
     retry_ids = _retry_ids(previous, body)
+    stage = str((body or {}).get('stage') or ALL_STAGES)
+    if stage not in STAGES:
+        raise ValueError('处理阶段无效')
     if retry_ids is not None and not retry_ids:
         return previous
     def work(job_id):
         try:
             result = process_library(config, contract.db_path, contract.candidate_root, contract.cover_root,
-                job_id=job_id, retry_ids=retry_ids,
+                job_id=job_id, retry_ids=retry_ids, stage=stage,
                 active=lambda: (contract.library_processing_job.snapshot() or {}).get('job_id') == job_id,
                 report=lambda state: contract.library_processing_job.update(job_id, **{
                     key: value for key, value in state.items() if key != 'job_id'}))
             contract.library_processing_job.update(job_id, **{key: value for key, value in result.items() if key != 'job_id'})
         finally:
             contract.cache_bust()
-    return contract.library_processing_job.start(work, restart=True, initial={'stage': '准备处理'})
+    # 起步那行字按这一趟真正要做的事写：点了「只扫描」却看到「读取本地资料」，
+    # 人会以为点错了。
+    labels = {ALL_STAGES: '准备处理', SCAN_STAGE: '准备扫描文件', COLLECT_STAGE: '准备采集资料'}
+    return contract.library_processing_job.start(
+        work, restart=True, initial={'stage': labels[stage], 'requested_stage': stage})

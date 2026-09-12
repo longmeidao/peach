@@ -30,9 +30,9 @@ from .follow_secrets import (
 )
 from .follow_stream import proxyable
 from .follow_sources import (
-    CONNECTORS, KemonoConnector, build_connector, canonical_source_ref,
-    display_thumb_url, f95_attachment_media_items, is_history_end_error,
-    parse_source_url, resource_links,
+    CONNECTORS, KemonoConnector, Rule34VideoConnector, build_connector,
+    canonical_source_ref, display_thumb_url, f95_attachment_media_items,
+    is_history_end_error, parse_source_url, resource_links,
 )
 from .follow_store import (
     FollowStore, ReleaseGroup, author_display_text, normalized_author_name,
@@ -88,6 +88,9 @@ _NON_CONTENT_FOLLOW_TAG_RE = re.compile(
 
 _IMAGE_MEDIA_RE = re.compile(r"\.(?:avif|gif|jpe?g|png|webp)(?:$|[?#])", re.I)
 _VIDEO_MEDIA_RE = re.compile(r"\.(?:m4v|mov|mp4|og[gv]|webm)(?:/)?(?:$|[?#])", re.I)
+#: 音乐剪辑合辑的两种写法。前后不接字母，标题里的 `PMV`、标签里的 `hmv` 都算，
+#: 而 `pmvideo` 这种撞进去的词不算。
+_MUSIC_EDIT_RE = re.compile(r"(?<![a-z])(?:pmv|hmv)(?![a-z])")
 
 
 def _item_all_tags(item) -> list[str]:
@@ -648,6 +651,21 @@ def _f95_has_resource(media_url: str | None, metadata: dict) -> bool:
 def _excluded_item(item) -> bool:
     if item.external_id in _EXCLUDED_EXTERNAL_IDS.get(item.provider, frozenset()):
         return True
+    # 音乐剪辑合辑（PMV / HMV）是把许多人的片段剪到一首曲子上，按谁的作品都算不上。
+    # 标题和标签一起看，独立词才算：`Dope Track PMV` 命中，`pmvideo` 不命中。
+    text = " ".join((str(item.title or ""), " ".join(_item_all_tags(item)))).casefold()
+    if _MUSIC_EDIT_RE.search(text):
+        return True
+    # 采集端按画面作者数挡合辑，但门槛读的是 `visual_model_count`：历史条目落库时
+    # 还没有这个字段，超出探测上限没取到详情的也没有，门槛在它们身上从未生效。
+    # 这里按同一份判据和同一个上限回算一次，不改 ledger。
+    if item.provider == Rule34VideoConnector.provider:
+        metadata = item.metadata if isinstance(item.metadata, dict) else {}
+        counted = metadata.get("visual_model_count")
+        if not isinstance(counted, int):
+            counted = Rule34VideoConnector.visual_model_count(metadata.get("models"))
+        if counted > Rule34VideoConnector.MAX_COLLECTION_MODELS:
+            return True
     # 旧版曾把纯讨论和图片表情包写进候选。读取时隐藏，不改 ledger；真正的
     # 文件附件与文件站链接仍保留，下一次检查会按当前证据重新归类。
     return (item.provider == "f95zone"
