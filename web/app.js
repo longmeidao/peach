@@ -6101,7 +6101,7 @@ function followAuthorBlock(group){
         ? group.map(source=>sourceIcon(source.provider)).join('')
         : sourceIcon(group[0].provider)+esc(group[0].provider_label)}</span>
       ${bad?`<span class="fmeta warn">${bad} 个失败</span>`:''}
-      <span class="board-author-actions"><button type="button" class="fbtn small" data-follow-author-select aria-pressed="false" aria-label="全选 ${esc(name)} 的来源">全选该作者</button><button type="button" class="frowicon board-author-toggle" data-follow-author-toggle="${esc(key)}" aria-controls="follow-author-${group[0].id}" aria-expanded="${!collapsed}" aria-label="${collapsed?'展开':'收起'} ${esc(name)} 的来源">${icon('chevron-down')}</button></span>
+      <span class="board-author-actions"><button type="button" class="fbtn small" data-follow-author-select aria-pressed="false" aria-label="全选 ${esc(name)} 的来源">全选</button><button type="button" class="frowicon board-author-toggle" data-follow-author-toggle="${esc(key)}" aria-controls="follow-author-${group[0].id}" aria-expanded="${!collapsed}" aria-label="${collapsed?'展开':'收起'} ${esc(name)} 的来源">${icon('chevron-down')}</button></span>
     </summary>
     ${sources}</details>`;
 }
@@ -6474,7 +6474,7 @@ function wireFollowManage(creds=[]){
     selectable.forEach(field=>field.closest('.fsource').classList.toggle('selected',field.checked));
     root.querySelectorAll('[data-follow-author-select]').forEach(button=>{
       const fields=[...button.closest('.fauthor').querySelectorAll('[data-follow-select]')],count=fields.filter(field=>field.checked).length;
-      button.textContent=count===fields.length?'取消全选':'全选该作者';button.setAttribute('aria-pressed',count===fields.length?'true':count?'mixed':'false');
+      button.textContent=count===fields.length?'取消全选':'全选';button.setAttribute('aria-pressed',count===fields.length?'true':count?'mixed':'false');
     });
   };
   selectable.forEach(field=>field.onchange=()=>{const id=Number(field.dataset.followSelect);if(field.checked)followSourceSelection.add(id);else followSourceSelection.delete(id);syncSelection()});
@@ -10002,6 +10002,39 @@ function installUISetting(){
   contrast.onchange=()=>{localStorage.setItem('peach.high-contrast',String(contrast.checked));document.documentElement.classList.toggle('board-high-contrast',contrast.checked)};
 }
 let tabSequence=0;
+/* 设置弹层左栏的当前项由一块滑过去的玻璃标出来，跟左侧抽屉是同一件事的两种形态，
+   所以用的也是同一块 `.navglide`——只是宿主换成左栏自己。抽屉那份要把纵滚补回来，
+   这里不用：左栏既是定位宿主也是滚动容器，玻璃当它的子元素就跟着内容一起滚。
+   坐标取 `offsetTop` 不取屏幕坐标，理由和抽屉那份一样——弹层开合自带一段缩放动画，
+   量屏幕坐标会把正在走的那一下吃进来，玻璃于是在一次开合里连着起跑好几段。
+
+   管理区那份配置页也走 `localTabs`，但它是横排的下划线式页签，不在这里加玻璃：
+   判据取 `.settingscard` 祖先，不取排列方向——方向由媒体查询改，窄屏下左栏也横过来，
+   那时它仍然该有玻璃。 */
+const localNavGlides=new WeakMap();
+function syncLocalNavGlide(nav,active,animate){
+  if(!nav.closest('.settingscard'))return;
+  let glide=localNavGlides.get(nav);
+  /* 玻璃和那个观察器先建起来，再判落点量不量得到。反过来先判的话，`choose(0)` 跑在
+     面板还收着的时候——那一栏零尺寸，一进来就返回，观察器永远挂不上，玻璃也就再没有
+     第二次出现的机会。 */
+  if(!glide||glide.pane.parentElement!==nav){
+    const pane=document.createElement('span');pane.className='navglide';
+    pane.setAttribute('aria-hidden','true');pane.hidden=true;nav.prepend(pane);
+    glide={pane,box:null};localNavGlides.set(nav,glide);
+    /* 面板收着时这一栏是零尺寸，`choose(0)` 那一次量不到落点。等它露出来那一帧再对
+       一次；宽度跟着窄屏断点变时也是这一条把玻璃带过去。 */
+    new ResizeObserver(()=>{
+      const current=nav.querySelector('[role=tab][aria-selected=true]');
+      if(current)syncLocalNavGlide(nav,current,false);
+    }).observe(nav);
+  }
+  if(!active||!active.offsetHeight){glide.pane.hidden=true;return}
+  glide.pane.hidden=false;
+  const box={x:active.offsetLeft,y:active.offsetTop,w:active.offsetWidth,h:active.offsetHeight};
+  const from=glide.box;glide.box=box;
+  moveGlidePane(glide.pane,animate?from:null,box,'y');
+}
 /* 左栏按分区分块：一个小标题带一组条目。形状照 BoardUI 的设置弹层
    （boardui.com/components/settings-modal 的组件页只写了怎么装，量不到间距与字号，
    未取得；小标题用本站自己那一档：13px、`--muted`）。
@@ -10014,6 +10047,7 @@ function localTabs(root,sections,host=root){
   const nav=document.createElement('div');nav.className='board-local-nav';nav.setAttribute('role','tablist');nav.setAttribute('aria-label',host===root?'配置分区':'设置分区');
   const buttons=[];let active=0;
   const choose=index=>{
+    const moved=active!==index;
     active=index;
     if(host!==root){const heading=host.querySelector('.settingshead h2');if(heading)heading.textContent=items[index].title;root.scrollTop=0}
     /* 先全清再点亮当前这一条。同一个节点可能挂在好几条下面（「这台电脑」那一格的外壳
@@ -10021,6 +10055,7 @@ function localTabs(root,sections,host=root){
     items.forEach(item=>item.nodes.forEach(node=>node.classList.remove('board-group-active')));
     items[index].nodes.forEach(node=>node.classList.add('board-group-active'));
     buttons.forEach((button,i)=>{button.setAttribute('aria-selected',String(i===index));button.tabIndex=i===index?0:-1});
+    syncLocalNavGlide(nav,buttons[index],moved);
   };
   sections.forEach(section=>{
     if(section.caption){const caption=document.createElement('p');caption.className='board-local-nav-caption';caption.setAttribute('role','presentation');caption.textContent=section.caption;nav.append(caption)}
@@ -10246,7 +10281,10 @@ if(/Chrome|Chromium|Edg\//.test(navigator.userAgent)){
     for(const [node,{observer,filter}] of attached){
       if(!node.isConnected){observer.disconnect();filter.remove();attached.delete(node)}
     }
-    document.querySelectorAll('.board-filter-frame,.top>.ib,.edge,.drawer,.selectiondock,.reviewcontrols,.reviewgroupbar').forEach(attach);
+    /* 设置弹层那一栏也在名单里。它挂在 `<body>` 上、不在 `#main` 里，所以下面那个
+       观察器看不到它开合——但它从头到尾都在 DOM 里，初次 `sync` 就能接上；面板收着时
+       宽高是零，`draw` 直接返回，等 `ResizeObserver` 在它露出来那一帧再画一次贴图。 */
+    document.querySelectorAll('.board-filter-frame,.top>.ib,.edge,.drawer,.selectiondock,.reviewcontrols,.reviewgroupbar,.settingscard>.board-local-nav').forEach(attach);
   };
   new MutationObserver(sync).observe(document.querySelector('#main'),{childList:true,subtree:true});sync();
 }

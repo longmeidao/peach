@@ -20,7 +20,7 @@ import urllib.parse
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import gfriends
+from . import gfriends, images
 from .avatar_provider import (
     AvatarCandidateCache, InspectedAvatar, POLICY_VERSION, inspect_avatar,
     install_entity_avatar, provenance_now,
@@ -37,6 +37,20 @@ GFRIENDS_CACHE = "gfriends"
 #: 「别人给的地址指向一个 4 GB 文件」时我们停下来的地方。
 MAX_IMAGE_BYTES = 16 * 1024 * 1024
 FETCH_TIMEOUT = 30
+#: 证据里的 `provider` 是采集路线的代号，摆到格子底下要换成来源本身的名字：
+#: `jae:actress.html#joyu117` 这种串回答的是「批处理怎么再找到它」，不是「这张图哪来的」。
+#: 表里没有的按代号原样显示——新来源接进来时先露一个代号，好过盖成一个含混的
+#: 「其他」：看到代号的人才知道该来这里补一行。
+SOURCE_NAMES = {
+    "gfriends": "图库",
+    "jae": "展会名录",
+    "social-web": "社交主页",
+    "cover": "作品封面",
+    "cover-fallback": "作品封面",
+    "babepedia": "Babepedia",
+    "kmib": "官网",
+    "picker": "自己挑的",
+}
 
 
 class PickerError(RuntimeError):
@@ -102,8 +116,13 @@ def _history(providers_root: Path, entity_id: int, current: str) -> list[Choice]
 
     这里给的是「换回去不用重下」的那一批：装过又被顶掉的、批处理下过但没装的，
     都在候选缓存里按内容寻址躺着。跨来源目录找——取过的图未必都来自图库。
+
+    两种记录不列出来：对象已经不在缓存里的（列了也只能点出一句「不在本机缓存里」），
+    和整张只有一个颜色的（`images.is_flat`）。后者是来源取不到人像时给的占位底色，
+    尺寸格式都合规，摆进候选里就是一块白格子。
     """
     out: list[Choice] = []
+    seen: set[str] = set()
     for path in sorted(providers_root.glob(
             f"*/evidence/performer-{int(entity_id)}-*.json")):
         try:
@@ -111,11 +130,17 @@ def _history(providers_root: Path, entity_id: int, current: str) -> list[Choice]
         except (OSError, ValueError):
             continue
         digest = str(record.get("sha256") or "")
-        if not digest:
+        # 同一张图可能在几个来源目录里各留了一份证据——摆出来是两个一模一样的格子。
+        if not digest or digest in seen:
             continue
-        where = str(record.get("external_id") or record.get("provider") or "已取过")
+        seen.add(digest)
+        body = _object_bytes(providers_root, digest)
+        if body is None or images.is_flat(body):
+            continue
+        provider = str(record.get("provider") or "")
         out.append(Choice(
-            ref=f"sha256:{digest}", source="history", label=where,
+            ref=f"sha256:{digest}", source="history",
+            label=SOURCE_NAMES.get(provider, provider or "取过的图"),
             width=int(record.get("width") or 0), height=int(record.get("height") or 0),
             detail=str(record.get("upstream_url") or ""),
             current=digest == current))
@@ -134,17 +159,28 @@ def choices(connection: sqlite3.Connection, providers_root: Path,
     index = gfriends.load_index(index_dir)
     matched, found = gfriends.candidates(index, names)
     current = installed_digest(avatar_root, kind, entity_id)
-    seen: set[str] = set()
+    cache = AvatarCandidateCache(index_dir)
+    #: 图库候选里已经取过的那些，按内容哈希记下来。取过的图会同时以「图库某个分类」
+    #: 和「这个人取过的图」两种身份出现，摆在一起就是两个一模一样的格子。留图库那
+    #: 一边：`S1`、`GRAPHIS` 说得出是谁家的图，「图库」只说得出它从哪个路子来。
+    taken: set[str] = set()
     items: list[Choice] = []
     for category, filename in found:
-        ref = f"gfriends:{category}/{filename}"
-        items.append(Choice(ref=ref, source="gfriends", label=category,
-                            detail=filename))
-        seen.add(ref)
+        shot = cache.describe(gfriends.image_url(category, filename)) or {}
+        digest = str(shot.get("sha256") or "")
+        if digest:
+            taken.add(digest)
+        items.append(Choice(
+            ref=f"gfriends:{category}/{filename}", source="gfriends",
+            label=gfriends.category_label(category), detail=filename,
+            width=int(shot.get("width") or 0), height=int(shot.get("height") or 0),
+            current=bool(digest) and digest == current))
     for choice in _history(providers_root, entity_id, current):
-        if choice.ref not in seen:
-            seen.add(choice.ref)
+        if choice.ref.split(":", 1)[1] not in taken:
             items.append(choice)
+    # 在用的那张排第一。它是这一屏唯一的参照物——别的候选好不好，是跟它比出来的；
+    # 排在第十二个就得先把它找出来才能开始比。排序是稳定的，其余顺序不动。
+    items.sort(key=lambda choice: not choice.current)
     age = gfriends.index_age(index_dir)
     return {
         "kind": kind, "entity_id": int(entity_id),
@@ -155,8 +191,11 @@ def choices(connection: sqlite3.Connection, providers_root: Path,
     }
 
 
-def _cached_object(providers_root: Path, digest: str) -> bytes:
-    """按内容哈希在各来源目录里找那张图。路径可能过期，内容不会。"""
+def _object_bytes(providers_root: Path, digest: str) -> bytes | None:
+    """按内容哈希在各来源目录里找那张图的字节；找不到或读不出就是 None。
+
+    列举候选和真正装上去都要这一步，差别只在读不到时怎么办：列举跳过，安装报错。
+    """
     for path in providers_root.glob(f"*/objects/{digest}.*"):
         try:
             body = path.read_bytes()
@@ -164,7 +203,15 @@ def _cached_object(providers_root: Path, digest: str) -> bytes:
             continue
         if hashlib.sha256(body).hexdigest() == digest:
             return body
-    raise PickerError("这张图不在本机缓存里了")
+    return None
+
+
+def _cached_object(providers_root: Path, digest: str) -> bytes:
+    """按内容哈希取那张图。路径可能过期，内容不会。"""
+    body = _object_bytes(providers_root, digest)
+    if body is None:
+        raise PickerError("这张图不在本机缓存里了")
+    return body
 
 
 def fetch_image(transport: HttpTransport, url: str) -> bytes:

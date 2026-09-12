@@ -44,6 +44,17 @@ def quality_key(category: str, filename: str) -> tuple[int, str, str]:
     return (rank if rank >= 0 else len(QUALITY_ORDER), category, filename)
 
 
+def category_label(category: str) -> str:
+    """目录名去掉排序前缀后的样子，给人看。
+
+    前缀那一位是图库自己的优先级记号（`quality_key` 读的就是它），对着屏幕选图的人
+    读不出意思：剩下的 `S1`、`GRAPHIS`、`Attackers` 才是图源本身的名字。
+    去掉前缀后为空的（目录名就那一位）退回原样，不给一个空标签。
+    """
+    trimmed = re.sub(r"^[0-9a-z]-", "", (category or "").strip(), flags=re.IGNORECASE)
+    return trimmed or (category or "").strip()
+
+
 def image_url(category: str, filename: str) -> str:
     return (GFRIENDS_RAW + "Content/" + urllib.parse.quote(category)
             + "/" + urllib.parse.quote(filename))

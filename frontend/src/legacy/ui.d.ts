@@ -35,6 +35,17 @@ export declare function moveGlidePane(
 export declare const MEDIA_SOURCE_ICONS: Record<string, string>;
 export declare function selectOptionIconHtml(mark?: string): string;
 
+/** 全站那条覆盖式滚动条：滑块浮在内容上，一列宽度都不占。
+ *
+ * 轨道是滚动容器的兄弟，挂在它父元素上，所以那个父元素得只裹着这一个滚动容器。
+ * 容器自己的尺寸与子树变化它盯着，返回的函数留给「两者都没变但要重算」的情形。
+ * 遗留层那份按名单批量挂的是 `wireOverlayScrollbars`；island 自己画的 DOM 不在
+ * 那份名单的扫描范围里，挂到哪一层由 island 自己说。 */
+export declare function attachOverlayScrollbar(
+  container: Element | null,
+  options?: { variant?: string },
+): (() => void) | null;
+
 /** 用户触发的动作等待结果时的忙态：`aria-busy` 与 `aria-disabled` 一起写，控件仍可聚焦，
  *  重复触发由遗留层的 `wireBusyActions` 拦住。请求等待期不许改用原生 `disabled`。 */
 export declare function setActionBusy(control: Element | null, busy?: boolean): void;

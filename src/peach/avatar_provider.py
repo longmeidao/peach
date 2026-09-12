@@ -157,6 +157,21 @@ class AvatarCandidateCache:
         except (OSError, KeyError, TypeError, ValueError):
             return None
 
+    def describe(self, url: str) -> dict | None:
+        """这个地址取过什么：内容哈希、尺寸和类型，不打开图片本体。
+
+        「这两个候选是不是同一张图」「它是不是正装着的那张」都只要哈希，而列一屏
+        候选要问几十遍——每问一遍读一张几百 KB 的图，代价全落在点开弹层那一下。
+        对象已经不在了就当没取过：记录还在不等于图还在。
+        """
+        try:
+            request = json.loads(self._request_path(url).read_text(encoding="utf-8"))
+            if not (self.root / "objects" / request["object_name"]).is_file():
+                return None
+            return request
+        except (OSError, KeyError, TypeError, ValueError):
+            return None
+
     def store(self, url: str, data: bytes, avatar: InspectedAvatar) -> Path:
         object_path = self.root / "objects" / f"{avatar.sha256}{avatar.extension}"
         request_path = self._request_path(url)

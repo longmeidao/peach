@@ -119,13 +119,67 @@
 .avatarpick-open:hover{color:var(--ink);box-shadow:0 0 0 1px var(--ink-2)}
 .avatarpick-open svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;
   stroke-linecap:round}
-/* 弹层本体是 `.geist-modal`，这里只把它放宽到能摆下一排候选。 */
-.avatarpick-popover{width:min(720px,calc(100vw - 20px));max-width:min(720px,calc(100vw - 20px))}
+/* 弹层本体是 `.geist-modal`，这里接管三件事：放宽到能摆下一排候选、把它切成
+   「头部 / 网格 / 操作」三层，以及换成设置弹层那套开合动画。
+   三层是为了只留一条滚动条：`.geist-modal` 自己 `overflow:hidden auto`，网格再自己
+   滚一次，同一屏里就有两条并排的竖条，滚哪条都只动一半内容。 */
+.avatarpick-popover{width:min(720px,calc(100vw - 20px));max-width:min(720px,calc(100vw - 20px));
+  max-height:min(760px,86dvh);display:flex;flex-direction:column;overflow:hidden}
+/* 整张卡片一个面，跟设置弹层的卡片走同一个 token。用 --page 而不是 `.geist-modal`
+   自己铺的 --surface：board.css 把面色重排过，--surface 在浅色是 #fff、暗色是 #262626，
+   两档扮演的角色正好相反——拿它当卡片面，暗色里这张卡会比它盖住的页面还亮一档。
+   --page 在两档里都是「最靠那一端的那个面」，设置弹层的卡片用的也是它。
+   BoardUI 的 Pro access 卡片把中间一整块沉一档（2026-09-12 实测 boardui.com/components/
+   composer：浅色白卡配 rgb(247,247,247)、暗色 rgb(23,23,23) 配 rgb(38,38,38)），
+   这里按用户要求不跟：那张卡片的中间放的是两行文字步骤，靠沉下去的底才分得出段；
+   这一屏中间放的是一格一格的候选图，图本身就是边界，再沉一层只是多一圈框。 */
+.avatarpick-popover{background:var(--page)}
+/* 开合动画跟设置弹层同一份口径（`board-dialog-in`／`--board-dialog-motion`）：
+   0.85 起手、4px 模糊、300ms。这里写成 transition 而不是复用那两个 keyframes——
+   `<dialog>` 的关闭要靠 `overlay`／`display` 的 allow-discrete 才等得到动画播完，
+   而 keyframes 版只在开的那一下播，关是立刻消失。数值两边必须一样。 */
+.avatarpick-popover{transform:scale(.85);filter:blur(4px);
+  transition:opacity var(--board-dialog-motion),transform var(--board-dialog-motion),
+    filter var(--board-dialog-motion),overlay var(--board-dialog-motion) allow-discrete,
+    display var(--board-dialog-motion) allow-discrete}
+.avatarpick-popover[open]{transform:scale(1);filter:blur(0)}
+@starting-style{.avatarpick-popover[open]{opacity:0;transform:scale(.85);filter:blur(4px)}}
+.avatarpick-popover::backdrop{transition:opacity .3s ease-out,
+  overlay .3s ease-out allow-discrete,display .3s ease-out allow-discrete}
+/* 头部照 BoardUI 的 Pro access 卡片：左边 56×56 的图标槽，右边标题加一句说明。
+   间距按实测的 20px 内边距、16px 间隔。
+   BoardUI 把徽章绝对定位到卡片右上角，Peach 这里右上角归关闭键——弹层跟那张卡片
+   差着一件事，卡片是页面里的一块，弹层要能关掉，而右上角是所有弹层放关闭键的地方。
+   徽章因此跟到标题后面：它说的本来就是这个标题下有多少张图，挨着读反而更直接。 */
+.avatarpick-head{display:flex;align-items:flex-start;gap:16px;flex:none;padding:20px}
+.avatarpick-mark{display:grid;place-items:center;flex:none;width:56px;height:56px;
+  border:1px solid var(--border-10);border-radius:var(--floating-radius);
+  background:var(--overlay-5);color:var(--ink-2)}
+.avatarpick-mark svg{width:26px;height:26px;fill:none;stroke:currentColor;stroke-width:2}
+.avatarpick-headtext{flex:1;min-width:0}
+.avatarpick-title{display:flex;align-items:center;flex-wrap:wrap;gap:8px}
+.avatarpick-headtext h3{margin:0;font-size:var(--fs-xl);line-height:26px;font-weight:600;color:var(--ink)}
+.avatarpick-headtext p{margin:8px 0 0;font-size:var(--fs-md);line-height:20px;color:var(--ink-2)}
 .avatarpick-note{margin:8px 0 0;color:var(--muted);font-size:var(--fs-xs)}
 .avatarpick-error{margin:8px 0 0;color:var(--drop);font-size:var(--fs-xs)}
-/* 一行四张，格子按 3:4 竖构图——头像源基本都是竖的，方格会把人裁成一条。 */
-.avatarpick-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;
-  margin-top:14px;max-height:52dvh;overflow:auto;overscroll-behavior:contain;padding:2px}
+/* 关闭键的长相不写在这儿：它跟设置弹层是同一颗，样式并在 16-settings.css 与
+   board.css 里那两份选择器上，这里只说它在头部里怎么站——跟图标槽和标题一样
+   顶着上沿，说明有两行时也不往下飘。 */
+.avatarpick-close{flex:none;align-self:flex-start}
+/* 头部之下那块，网格和底下那排操作都在里面。它不自己画面，用的就是卡片那一面：
+   候选图本身已经是一格一格的方块，外面再套一个沉下去的底加一圈描边，等于给同一件事
+   画了两层边界，格子反而被挤窄。上下两段之间留一条发丝线就够说清头部到这儿为止。 */
+.avatarpick-panel{display:flex;flex-direction:column;flex:1;min-height:0;
+  border-top:1px solid var(--line-soft)}
+/* 轨道得是滚动容器的兄弟，所以网格要有一层只裹着它自己的定位父级。 */
+.avatarpick-gridwrap{position:relative;flex:1;min-height:0;display:flex}
+/* 一行四张，格子按 3:4 竖构图——头像源基本都是竖的，方格会把人裁成一条。
+   右边留出滑块那一列：覆盖式滑块不占宽度，压在最后一列图上却照样挡脸。
+   行高必须写死成 max-content：格子是 `<button>`，而 button 的自动最小尺寸是 0，
+   行高交给 auto 就会按剩下的高度平分，图照原比例画、底下那行来源标签被裁成 0 高。 */
+.avatarpick-grid{flex:1;min-width:0;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:8px;grid-auto-rows:max-content;align-content:start;
+  overflow:auto;overscroll-behavior:contain;padding:16px 20px 0}
 .avatarpick-cell{position:relative;display:grid;gap:4px;padding:0 0 4px;
   border:1px solid var(--border-10);border-radius:var(--surface-radius);background:var(--overlay-5);
   color:var(--muted);font-size:var(--fs-xs);cursor:pointer;overflow:hidden;text-align:center}
@@ -136,8 +190,14 @@
 .avatarpick-cell span{padding:0 4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .avatarpick-cell b{position:absolute;top:4px;left:4px;padding:1px 6px;border-radius:var(--badge-radius);
   background:var(--picked);color:var(--ink);font-weight:400;font-size:var(--fs-xs)}
-.avatarpick-manual{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:16px;
-  padding-top:16px;border-top:1px solid var(--line-soft)}
-.avatarpick-url{display:flex;flex:1 1 260px;gap:8px;min-width:0}
+/* 手填地址和本机文件同处固定的那一排：它们跟候选是并列的三条路，摆在网格后面的话，
+   候选一多就被推到滚不到的地方。四边都是 20px，跟网格、头部对齐到同一条边。
+   这一排上方那道留白整份由它自己出，网格的 `padding-bottom` 归零：交给网格的话，
+   那一档留白只在滚到底时才露出来——网格没滚到底时最后一行图正被下沿裁着，紧接着
+   就是这一排，上面看着只剩几个像素，下面却是满的 20px。 */
+.avatarpick-actions{display:flex;flex:none;flex-wrap:wrap;align-items:center;gap:8px 16px;
+  padding:20px}
+.avatarpick-url{display:flex;flex:1 1 220px;gap:8px;min-width:0}
 .avatarpick-url input{flex:1 1 auto;min-width:0}
-@media (max-width:640px){.avatarpick-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media (max-width:640px){.avatarpick-grid{grid-template-columns:repeat(3,minmax(0,1fr));
+  padding:12px 16px 0}.avatarpick-head{padding:16px}.avatarpick-actions{padding:16px}}

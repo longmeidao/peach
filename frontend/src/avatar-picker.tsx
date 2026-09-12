@@ -4,10 +4,16 @@
  * 当头像」——图库里排第一的常常是压着书名的写真封面，同一个人往下翻几张就有片商的
  * 正脸原图。所以这里不做更聪明的自动挑选，只把候选摊开让人看一眼就能换。
  *
+ * 弹层照 BoardUI 的 Pro access 卡片摆（2026-09-12 实测 boardui.com/components/composer）：
+ * 左边一个方图标槽、右边标题加一句说明、右上角一枚徽章。这一屏要回答的是「换成哪一
+ * 张」，所以候选网格占掉中间全部高度，头部和底下那排操作固定不动，只有网格滚。
+ *
  * 候选图走 `/avatar-choice?ref=`：页面只递服务端自己列出来的 ref，地址由服务端按
  * 索引拼。手填地址那一条是唯一的例外，它在服务端有自己的公网判据。 */
 import { render } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
+
+import { attachOverlayScrollbar } from '@peach/legacy/ui';
 
 import { apiGet, apiSend, errorMessage } from './api';
 
@@ -46,6 +52,7 @@ const SOURCE_LABELS: Record<string, string> = {
 
 function Picker({ kind, id, name, onPicked }: PickerProps) {
   const popup = useRef<HTMLDialogElement>(null);
+  const grid = useRef<HTMLDivElement>(null);
   const file = useRef<HTMLInputElement>(null);
   const [data, setData] = useState<AvatarChoices | null>(null);
   const [error, setError] = useState('');
@@ -60,6 +67,10 @@ function Picker({ kind, id, name, onPicked }: PickerProps) {
       .then(setData).catch(cause => { if (!control.signal.aborted) setError(errorMessage(cause)) });
     return () => control.abort();
   }, [open, data, kind, id]);
+
+  /* 网格是这一屏唯一会滚的层，滑块用全站那条覆盖式的。`attachOverlayScrollbar`
+     自己认已挂过的容器，候选到齐后重画一次也只挂一遍。 */
+  useEffect(() => { attachOverlayScrollbar(grid.current) }, [open, data]);
 
   const show = () => { setOpen(true); popup.current?.showModal() };
   const close = () => { setOpen(false); popup.current?.close() };
@@ -97,38 +108,64 @@ function Picker({ kind, id, name, onPicked }: PickerProps) {
   }, 'file');
 
   const choices = data?.choices || [];
+  /* 说明只留一句：这一屏已经用图说清了在选什么，多一行字就是多一行要读的东西。
+     按哪个名字找到的要说——找错人是这里唯一会出的大错，而名字是唯一的线索。 */
+  const note = !data ? '正在找可用的图…'
+    : data.matched_name && data.matched_name !== name
+      ? `${name}：图库里按「${data.matched_name}」找到的。`
+      : choices.length ? `${name}：换上的那张留在本机，随时能换回来。`
+        : `${name}：图库里没有这个名字，用下面两种方式换。`;
+  const stale = !!data && data.index_stale
+    && !choices.some(one => one.source === 'gfriends');
+
   return <div class="avatarpick">
     <button type="button" class="avatarpick-open" onClick={show}
       aria-haspopup="dialog" aria-label={`更换${name}的头像`} title="更换头像">
       <svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-plus" /></svg>
     </button>
-    {/* 弹层沿用全站的 `.geist-modal`：进出动画、遮罩和层级都在那一份里。 */}
+    {/* 弹层沿用全站的 `.geist-modal`：遮罩、层级和圆角都在那一份里，这里只接管
+        开合动画（跟设置弹层同一套）和「头部固定、网格滚」的竖向分栏。 */}
     <dialog ref={popup} class="geist-modal avatarpick-popover" aria-label="更换头像"
       onCancel={close} onClick={event => { if (event.target === popup.current) close() }}>
-      <div class="geist-modal-body">
-        <h3>更换头像</h3>
-        <p class="avatarpick-note">{name}</p>
-        {error && <p class="avatarpick-error" role="alert">{error}</p>}
-        {data && data.index_stale && choices.some(one => one.source === 'gfriends') === false
-          && <p class="avatarpick-note">图库索引还没取过，只能从用过的图里选。</p>}
-        {data && data.matched_name && data.matched_name !== name
-          && <p class="avatarpick-note">图库里按「{data.matched_name}」找到的。</p>}
-        {!data && !error && <p class="avatarpick-note">正在找可用的图…</p>}
-        {!!choices.length && <div class="avatarpick-grid" role="listbox" aria-label="候选头像">
-          {choices.map(choice => <button type="button" key={choice.ref} role="option"
-            aria-selected={choice.current} disabled={!!busy}
-            class={`avatarpick-cell${choice.current ? ' current' : ''}`}
-            title={`${SOURCE_LABELS[choice.source] || choice.source} · ${choice.label}`}
-            onClick={() => pick(choice)}>
-            <img loading="lazy" alt=""
-              src={`/avatar-choice?kind=${kind}&id=${id}&ref=${encodeURIComponent(choice.ref)}`} />
-            <span>{choice.label}</span>
-            {choice.current && <b>在用</b>}
-          </button>)}
-        </div>}
-        {data && !choices.length && !error
-          && <p class="avatarpick-note">图库里没有这个名字，用下面两种方式换。</p>}
-        <div class="avatarpick-manual">
+      <div class="avatarpick-head">
+        <span class="avatarpick-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><use href="#i-user-round" /></svg>
+        </span>
+        <div class="avatarpick-headtext">
+          <div class="avatarpick-title">
+            <h3>更换头像</h3>
+            {!!choices.length && <span class="geist-badge">{choices.length} 张可选</span>}
+          </div>
+          <p>{note}</p>
+          {stale && <p class="avatarpick-note">图库索引还没取过，只能从用过的图里选。</p>}
+          {error && <p class="avatarpick-error" role="alert">{error}</p>}
+        </div>
+        {/* 关闭键跟设置弹层是同一个：样式并在那一份选择器里，不另画一遍。 */}
+        <button type="button" class="avatarpick-close" onClick={close} aria-label="关闭">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-x" /></svg>
+        </button>
+      </div>
+      {/* 头部之下沉一档的那块内嵌区，网格和手填那一排都在里面——照 BoardUI 卡片：
+          上面一层是卡片本身的面，中间整块沉下去，候选卡再浮回卡片的面上。 */}
+      <div class="avatarpick-panel">
+        <div class="avatarpick-gridwrap">
+          <div class="avatarpick-grid" role="listbox" aria-label="候选头像" ref={grid}>
+            {choices.map(choice => <button type="button" key={choice.ref} role="option"
+              aria-selected={choice.current} disabled={!!busy}
+              class={`avatarpick-cell${choice.current ? ' current' : ''}`}
+              title={`${SOURCE_LABELS[choice.source] || choice.source} · ${choice.label}`
+                + (choice.width ? ` · ${choice.width}×${choice.height}` : '')}
+              onClick={() => pick(choice)}>
+              <img loading="lazy" alt=""
+                src={`/avatar-choice?kind=${kind}&id=${id}&ref=${encodeURIComponent(choice.ref)}`} />
+              <span>{choice.label}</span>
+              {choice.current && <b>在用</b>}
+            </button>)}
+          </div>
+        </div>
+        {/* 手填地址和本机文件跟候选是并列的三条路，不是候选看完之后的补充，所以摆在
+            固定的那一排里：网格再长也不会把它们推到看不见的地方。 */}
+        <div class="avatarpick-actions">
           <button type="button" class="geist-button" disabled={!!busy}
             onClick={() => file.current?.click()}>从本机选图片</button>
           <input ref={file} type="file" accept="image/png,image/jpeg" hidden
@@ -145,10 +182,6 @@ function Picker({ kind, id, name, onPicked }: PickerProps) {
               onClick={fromUrl}>用这个地址</button>
           </div>
         </div>
-      </div>
-      <div class="geist-modal-footer">
-        <div />
-        <div><button type="button" class="geist-button" onClick={close}>关闭</button></div>
       </div>
     </dialog>
   </div>;

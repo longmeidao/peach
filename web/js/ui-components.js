@@ -536,10 +536,23 @@ export function attachOverlayScrollbar(container,{variant=''}={}){
     host.append(track);
     return {axis,track,thumb};
   });
+  /* 容器在宿主里的偏移，只能按布局盒子量。`getBoundingClientRect()` 给的是变换后的
+     几何，而下面要拿它跟 `clientWidth` 这类布局值相减——弹层开合动画正把卡片按
+     `scale(.85)` 缩着的那 300ms 里，两者不在同一个坐标系，算出来的轨道位置会落进
+     容器内部。实测设置弹层首帧右边距 41px（应为 0），直到滚一下触发重算才跳回右
+     边缘，看着像「滚动条从左边跑到右边」。`offsetLeft`/`offsetTop` 不受变换影响，
+     沿 offsetParent 链累加到宿主为止；走不到宿主（宿主不是定位祖先）才退回量 rect。 */
+  const offsetWithin=()=>{
+    let left=0,top=0,node=container;
+    while(node&&node!==host){left+=node.offsetLeft;top+=node.offsetTop;node=node.offsetParent}
+    if(node===host)return {left,top};
+    const hostRect=host.getBoundingClientRect(),rect=container.getBoundingClientRect();
+    return {left:rect.left-hostRect.left-host.clientLeft,
+      top:rect.top-hostRect.top-host.clientTop};
+  };
   const place=({axis,track})=>{
     if(root)return;
-    const hostRect=host.getBoundingClientRect(),rect=container.getBoundingClientRect();
-    const left=rect.left-hostRect.left-host.clientLeft,top=rect.top-hostRect.top-host.clientTop;
+    const {left,top}=offsetWithin();
     if(axis==='y'){
       track.style.top=`${top+8}px`;
       track.style.height=`${Math.max(0,container.clientHeight-16)}px`;
@@ -675,6 +688,10 @@ export function wireCollapse(root,selector,idPrefix,triggerSelector='summary'){
     let expanded=details.open,transitionRun=0;
     body.id=`${idPrefix}-${index}`;
     body.inert=!expanded;
+    /* 高度过渡要 `overflow:hidden`，可展开着不动时它还在裁——里面最后那一行卡片的落影
+       正好落在下沿外，被切掉半条，读出来是这一列没排完。过渡跑完（或一开始就是展开的）
+       就摘掉那道裁边；收起那一下先装回去，否则内容会在高度收到 0 的过程中一直露在外面。 */
+    if(expanded)body.classList.add('fcollapse-settled');
     summary.setAttribute('aria-controls',body.id);
     summary.setAttribute('aria-expanded',String(expanded));
     const settle=(run,fn)=>{
@@ -698,9 +715,9 @@ export function wireCollapse(root,selector,idPrefix,triggerSelector='summary'){
         details.open=true;
         body.style.height=start+'px';body.getBoundingClientRect();
         body.style.height=body.scrollHeight+'px';
-        settle(run,()=>{body.style.height='auto'});
+        settle(run,()=>{body.style.height='auto';body.classList.add('fcollapse-settled')});
       }else{
-        body.inert=true;
+        body.inert=true;body.classList.remove('fcollapse-settled');
         body.style.height=body.getBoundingClientRect().height+'px';body.getBoundingClientRect();
         body.style.height='0px';
         settle(run,()=>{details.open=false;body.style.height=''});

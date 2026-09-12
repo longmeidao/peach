@@ -11,7 +11,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from PIL import Image
+from PIL import Image, ImageDraw
 
 from peach import avatar_picker, gfriends, http as peach_http
 from peach.avatar_face import sidecar_path
@@ -34,6 +34,22 @@ LIBRARY_REF = "gfriends:7-S1/葵つかさ.jpg"
 
 
 def picture(width: int = 40, height: int = 60, colour: str = "red") -> bytes:
+    """一张有内容的图：底色之上压一块对比色。
+
+    `images.is_flat` 把整张一个颜色的当成「来源取不到图时给的一块底色」挡在候选之外，
+    所以拿来当人像用的固定件必须有起伏。压一块矩形就够——这些用例问的是「哪些候选
+    列出来、排第几」，不是像素长什么样；`colour` 仍然决定内容哈希，各用例互不串图。
+    """
+    buffer = io.BytesIO()
+    image = Image.new("RGB", (width, height), colour)
+    ImageDraw.Draw(image).rectangle(
+        (0, 0, width, height // 2), fill="black" if colour != "black" else "white")
+    image.save(buffer, format="JPEG")
+    return buffer.getvalue()
+
+
+def flat_picture(width: int = 40, height: int = 60, colour: str = "white") -> bytes:
+    """整张一个颜色——`is_flat` 要挡住的正是这种。"""
     buffer = io.BytesIO()
     Image.new("RGB", (width, height), colour).save(buffer, format="JPEG")
     return buffer.getvalue()
@@ -152,12 +168,16 @@ class PickerFixture(unittest.TestCase):
         self.face.return_value.return_value = None
         self.addCleanup(mock.patch.stopall)
 
-    def remember(self, body: bytes, provider: str = "social",
-                 external_id: str = "old") -> str:
-        """把一张图放进候选缓存并留下证据，等同「这个人取过这张」。"""
+    def remember(self, body: bytes, provider: str = "social-web",
+                 external_id: str = "old", url: str = "") -> str:
+        """把一张图放进候选缓存并留下证据，等同「这个人取过这张」。
+
+        `url` 给显式值是为了造「同一张图既在图库里、也在取过的图里」那一幕：跨来源
+        认同一张图靠的是缓存记录里的地址，不是证据文件自己说了算。
+        """
         cache = AvatarCandidateCache(self.providers / provider)
         inspected = inspect_avatar(body)
-        url = f"https://{provider}.example/{external_id}.jpg"
+        url = url or f"https://{provider}.example/{external_id}.jpg"
         cache.store(url, body, inspected)
         cache.store_provenance(provenance_now(
             entity_id=7792, provider=provider, source_kind="official_profile",
@@ -190,14 +210,56 @@ class ChoiceTests(PickerFixture):
         history = [one for one in self.listed()["choices"]
                    if one["source"] == "history"]
         self.assertEqual([one["ref"] for one in history], [f"sha256:{digest}"])
-        self.assertEqual(history[0]["label"], "old")
 
-    def test_the_one_on_disk_right_now_is_marked(self):
+    def test_every_label_reads_as_where_the_picture_came_from(self):
+        """格子底下写来源，不写取图时用的那串代号。
+
+        `x:aoi_tsukasa8`、`jae:actress.html#joyu117` 回答的是「批处理怎么再找到它」，
+        对着屏幕选图的人读不出意思。图库那一侧同理：目录名首字母是图库自己的优先级
+        记号（`quality_key` 读的就是它），`S1`、`Minnano` 才说得出这张图出自谁家。
+        """
+        self.remember(picture(colour="blue"), external_id="x:aoi_tsukasa8")
+        out = self.listed()["choices"]
+        self.assertEqual([one["label"] for one in out if one["source"] == "gfriends"],
+                         ["Hand-Storage", "S1", "Minnano"])
+        self.assertEqual([one["label"] for one in out if one["source"] == "history"],
+                         ["社交主页"])
+
+    def test_a_picture_with_one_colour_never_reaches_the_grid(self):
+        """整张一个颜色的不是人像，是来源取不到图时给的一块底色。
+
+        X 取不到头像时回的那张是 143×143 纯白：尺寸过得了短边下限、格式是正经图片，
+        只有看像素才分得出来。摆出来就是一块白格子，而点下去真的会把它装成头像。
+        """
+        self.remember(flat_picture(), external_id="blank")
+        self.assertEqual([one for one in self.listed()["choices"]
+                          if one["source"] == "history"], [])
+
+    def test_the_one_on_disk_right_now_is_marked_and_comes_first(self):
+        """在用的那张是这一屏唯一的参照物——别的候选好不好，是跟它比出来的。"""
         body = picture(colour="green")
         digest = self.remember(body, external_id="now")
         (self.avatars / "performer-7792.img").write_bytes(body)
-        marked = [one["ref"] for one in self.listed()["choices"] if one["current"]]
-        self.assertEqual(marked, [f"sha256:{digest}"])
+        out = self.listed()["choices"]
+        self.assertEqual([one["ref"] for one in out if one["current"]],
+                         [f"sha256:{digest}"])
+        self.assertEqual(out[0]["ref"], f"sha256:{digest}")
+
+    def test_one_picture_is_one_choice_even_when_two_routes_found_it(self):
+        """图库里的图取过之后，它同时也是「这个人取过的图」。
+
+        两个格子长得一模一样、点哪个结果也一样，只有标签不同。留图库那一边：`S1`
+        说得出这张图是谁家的，「图库」只说得出它是从哪条路子来的。尺寸也一并从缓存
+        记录里补上——判一张图多大用不着把它读出来。
+        """
+        digest = self.remember(picture(colour="blue"), provider="gfriends",
+                               external_id="7-S1/葵つかさ.jpg",
+                               url=gfriends.image_url("7-S1", "葵つかさ.jpg"))
+        out = self.listed()["choices"]
+        self.assertEqual([one["ref"] for one in out].count(LIBRARY_REF), 1)
+        self.assertNotIn(f"sha256:{digest}", [one["ref"] for one in out])
+        listed = next(one for one in out if one["ref"] == LIBRARY_REF)
+        self.assertEqual((listed["width"], listed["height"]), (40, 60))
 
     def test_a_stale_index_is_reported_rather_than_refreshed(self):
         """页面不为一次点击同步拉 6 MB；过期就说出来，补索引是批处理的事。"""
