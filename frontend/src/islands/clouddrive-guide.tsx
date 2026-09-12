@@ -19,7 +19,10 @@ export function CloudDriveGuide() {
         <table class="cloudguide-table">
           <thead><tr><th scope="col">缓存所在硬盘</th><th scope="col">缓存上限</th><th scope="col">读取长度（默认 / 最小）</th><th scope="col">同时处理视频</th></tr></thead>
           <tbody>{CLOUDDRIVE_PROFILES.map(profile => <tr key={profile.name}>
-            <th scope="row">{profile.name}</th><td>{profile.cache}</td><td>{profile.read}</td><td>{profile.task}</td>
+            <th scope="row">{profile.name}</th>
+            <td data-label="缓存上限">{profile.cache}</td>
+            <td data-label="读取长度（默认 / 最小）">{profile.read}</td>
+            <td data-label="同时处理视频">{profile.task}</td>
           </tr>)}</tbody>
         </table>
       </div>
