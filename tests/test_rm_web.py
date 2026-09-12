@@ -884,7 +884,7 @@ class WebDataTests(unittest.TestCase):
             "/api/follow/source", "/api/follow/resolve", "/api/follow/credential",
             "/api/follow/author-alias", "/api/follow/schedule",
             "/api/taste/refresh", "/api/taste/source", "/api/settings",
-            "/api/entity-name",
+            "/api/entity-name", "/api/entity-alias",
         })
         with self.assertRaises(rm_web.ContractRouteNotFound):
             rm_web.dispatch_api_get(self.contract, "/api/typo", {})
@@ -1618,6 +1618,71 @@ class WebDataTests(unittest.TestCase):
         self.assertEqual(
             con.execute("SELECT series FROM asset WHERE id=1").fetchone()[0], "Night Safari")
         con.close()
+
+    def test_an_alias_typed_in_by_hand_becomes_one_of_this_entitys_names(self):
+        """手敲的别名是身份补充：这个人还用过这个写法，账本此前不知道。
+
+        它跟刮削来的别名进同一张表，所以头像图库按名字找图时立刻算数；随后要把它顶到
+        标题上，走的仍是在已有名字里挑统称那一步。
+        """
+        self._performer_with_two_names()
+        result = rm_web.w_entity_alias(self.contract, {
+            "kind": "performer", "name": "飯岡かなこ", "alias": "桥本有菜"})
+        self.assertTrue(result["added"])
+
+        entity = rm_web.q_entity(self.contract, {"kind": "performer", "name": "飯岡かなこ"})
+        self.assertIn("桥本有菜", entity["aliases"])
+        # 界面只在自己添的这几个上给撤销，所以它们单独报一遍。
+        self.assertEqual(entity["user_aliases"], ["桥本有菜"])
+        self.assertEqual(self._names_of()[1]["桥本有菜"], "user:alias")
+
+        promoted = rm_web.w_entity_name(self.contract, {
+            "kind": "performer", "name": "飯岡かなこ", "canonical": "桥本有菜"})
+        self.assertEqual(promoted["canonical_name"], "桥本有菜")
+
+    def test_adding_a_name_the_entity_already_has_writes_nothing(self):
+        self._performer_with_two_names()
+        again = rm_web.w_entity_alias(self.contract, {
+            "kind": "performer", "name": "飯岡かなこ", "alias": "森泽佳奈"})
+        self.assertFalse(again["added"])
+        itself = rm_web.w_entity_alias(self.contract, {
+            "kind": "performer", "name": "飯岡かなこ", "alias": "飯岡かなこ"})
+        self.assertFalse(itself["added"])
+        self.assertEqual(sorted(self._names_of()[1]), ["森泽佳奈"])
+
+    def test_only_the_aliases_added_by_hand_can_be_taken_back(self):
+        """刮削和合并留下的别名是这条实体当初被认成这个人的依据，不给一次点击删掉。"""
+        self._performer_with_two_names()
+        rm_web.w_entity_alias(self.contract, {
+            "kind": "performer", "name": "飯岡かなこ", "alias": "桥本有菜"})
+        gone = rm_web.w_entity_alias(self.contract, {
+            "kind": "performer", "name": "飯岡かなこ", "alias": "桥本有菜", "remove": True})
+        self.assertTrue(gone["removed"])
+        self.assertEqual(sorted(self._names_of()[1]), ["森泽佳奈"])
+
+        with self.assertRaises(ValueError):
+            rm_web.w_entity_alias(self.contract, {
+                "kind": "performer", "name": "飯岡かなこ", "alias": "森泽佳奈", "remove": True})
+        self.assertIn("森泽佳奈", self._names_of()[1])
+
+    def test_a_name_that_already_belongs_to_another_entity_is_refused(self):
+        """撞上另一条实体的统称时只报冲突：那是该合并还是同名不同人，得人来判。"""
+        self._performer_with_two_names()
+        con = sqlite3.connect(self.db_path)
+        con.execute(
+            "INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at)"
+            " VALUES(23,'performer','三上悠亜','三上悠亜','2026-01-01','2026-01-01')")
+        con.commit(); con.close()
+        with self.assertRaises(ValueError):
+            rm_web.w_entity_alias(self.contract, {
+                "kind": "performer", "name": "飯岡かなこ", "alias": "三上悠亜"})
+        self.assertEqual(sorted(self._names_of()[1]), ["森泽佳奈"])
+
+    def test_an_empty_alias_is_refused(self):
+        self._performer_with_two_names()
+        with self.assertRaises(ValueError):
+            rm_web.w_entity_alias(self.contract, {
+                "kind": "performer", "name": "飯岡かなこ", "alias": "   "})
 
     def test_entity_filter_and_video_sort_compose_in_one_items_query(self):
         con = sqlite3.connect(self.db_path)

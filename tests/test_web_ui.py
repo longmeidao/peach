@@ -6044,11 +6044,25 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertCode("const nameChoices=[d.canonical_name,...(d.aliases||[])]")
         self.assertCode(
             ".filter((option,index,all)=>option&&all.indexOf(option)===index);")
-        # 只有一种写法时没有可选的东西，控件不出。
-        self.assertCode("const namePick=nameChoices.length>1?")
         self.assertPageContains('data-namepick-toggle aria-haspopup="menu"')
         self.assertPageContains('role="menuitemradio"')
         self.assertPageContains('aria-checked="${option===d.canonical_name}"')
+
+    def test_entity_name_picker_is_there_even_for_someone_with_one_name(self):
+        """只剩一个名字的人最需要补一个：图库按名字存图，少一个写法就少一批图。
+
+        菜单恒在，末尾那一项才是添别名的入口；它不在「挑一个当统称」之列，所以是
+        `menuitem` 而不是 `menuitemradio`。
+        """
+        self.assertCode('const namePick=`<div class="namepick" data-namepick>')
+        self.assertPageContains('role="menuitem" data-namepick-alias')
+        self.assertCode("menu.querySelector('[data-namepick-alias]').onclick=async()=>{")
+        # 添别名写的是 `entity_alias`，跟在已有名字里挑统称是两个端点。
+        self.assertCode("const alias=payload=>api('/api/entity-alias',")
+        self.assertCode("onConfirm:()=>alias({alias:field.value.trim()})});")
+        # 撤销只给自己添的那几个，服务端按来源守这条线。
+        self.assertCode("form.dialog.querySelectorAll('[data-alias-drop]')")
+        self.assertCode("wireNamePicker(kind,d.canonical_name,d.user_aliases||[]);")
 
     def test_entity_name_picker_reuses_the_shared_anchored_menu(self):
         self.assertPageContains("const anchored=wireAnchoredMenu(mount,toggle,menu);")
