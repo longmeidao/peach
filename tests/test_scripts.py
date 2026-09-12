@@ -1718,12 +1718,13 @@ class OperationalScriptTests(unittest.TestCase):
                     "stderr": b"[swscale] Unsupported color primaries: reserved",
                 })()
 
-            original = sheets.subprocess.run
-            sheets.subprocess.run = fake_run
+            capture = sheets.frame_capture
+            original = capture.subprocess.run
+            capture.subprocess.run = fake_run
             try:
                 ok, reason = sheets.make_sheet("ffmpeg", "reserved.mp4", 600.0, dest, 9)
             finally:
-                sheets.subprocess.run = original
+                capture.subprocess.run = original
             self.assertTrue(ok, reason)
             self.assertEqual(
                 sum(1 for c in calls if "bt709" in c), 9,
