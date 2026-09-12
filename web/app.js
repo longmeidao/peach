@@ -5797,8 +5797,12 @@ function renderFollow(){
   const randomizedAuthors=followRandomOrder([...authors],row=>row[0]);
   /* 作者行下面这一排是题材，位置和形状对着首页那排厂牌：那边第二排答的是「这是谁出的」，
      这边答的是「这是哪部作品」，都是先认出一个名字再决定看不看。只收来源自己记成
-     copyright 的标签，词形猜不得——角色名和画师手柄在字面上跟作品名没有区别。 */
-  const workRows=(facets.works||[]).slice(0,ROW_FIRST);
+     copyright 的标签，词形猜不得——角色名和画师手柄在字面上跟作品名没有区别。
+
+     取样也跟着首页走：那两排按本次访问的种子随机取，进一次换一批。按条数取前 24 的话，
+     八十来个题材里永远只露出同样那二十几个，剩下的没有任何一条路径会把它们摆到眼前——
+     这排回答的是「接下来看什么」，不是「哪个最多」。作者行和标签行早就是这么取的。 */
+  const workRows=followRandomOrder(facets.works||[],row=>row[0]).slice(0,ROW_FIRST);
   followWorks.forEach(key=>{
     if(!workRows.some(row=>row[0]===key))workRows.push([key,key,0]);
   });

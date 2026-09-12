@@ -5266,7 +5266,11 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('<div class="tier followworks" aria-label="按题材筛选">')
         self.assertPageContains('<button class="brandpill" data-follow-work="${esc(key)}"')
         self.assertPageContains('<div class="tier followworks" data-skeleton-tier="brandpill"></div>')
-        self.assertPageContains("const workRows=(facets.works||[]).slice(0,ROW_FIRST);")
+        # 取样也对着首页：那两排按本次访问的种子随机取，进一次换一批。按条数取前 24
+        # 的话，八十来个题材里永远只露出同样那二十几个。作者行和标签行本来就这么取。
+        self.assertPageContains(
+            "const workRows=followRandomOrder(facets.works||[],row=>row[0]).slice(0,ROW_FIRST);")
+        self.assertPageContains("const randomizedAuthors=followRandomOrder([...authors],row=>row[0]);")
         self.assertPageContains("toggle(followWorks,button.dataset.followWork);applyFollowView()});")
         self.assertPageContains("+(followWorks.size?`&work=${encodeURIComponent([...followWorks].join(','))}`:'');")
         self.assertPageContains("if(followWorks.size)params.set('work',[...followWorks].join(','));")
