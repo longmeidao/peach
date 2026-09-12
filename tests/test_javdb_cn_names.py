@@ -8,8 +8,10 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from urllib.parse import quote
 
 from peach import javdb
+from peach.entities import normalize_entity_name
 
 REPO = Path(__file__).resolve().parents[1]
 
@@ -227,6 +229,257 @@ class TargetTests(unittest.TestCase):
         chain = next(row["chain"] for row in self.module.targets(self.con)
                      if row["name"] == "深田えいみ")
         self.assertEqual(chain, ["深田えいみ", "天海こころ"])
+
+    def test_a_chinese_name_is_a_target_when_the_scope_is_all(self):
+        """补别名要找的恰恰是已经有中文规范名的人：她们的第二个写法一个都没进过账本。"""
+        found = {row["name"] for row in self.module.targets(self.con, "all")}
+        self.assertEqual(found, {"深田えいみ", "三上悠亚", "河合あすな"})
+
+    def test_a_named_performer_is_looked_up_whatever_the_scope_says(self):
+        """起点常常是「我看着这一位，觉得少个名字」。被范围挡下的正是最该查的一位。"""
+        for named in ("三上悠亚", "2", "天海こころ"):
+            found = [row["name"] for row in self.module.targets(self.con, "kana", [named])]
+            self.assertEqual(len(found), 1, named)
+
+    def test_naming_nobody_leaves_the_scope_in_charge(self):
+        self.assertEqual({row["name"] for row in self.module.targets(self.con, "kana", [])},
+                         {"深田えいみ", "河合あすな"})
+
+    def test_a_performer_without_release_metadata_is_out_of_scope_either_way(self):
+        """账号型 performer 不是女优，放开范围也不查。"""
+        for scope in ("kana", "all"):
+            names = {row["name"] for row in self.module.targets(self.con, scope)}
+            self.assertNotIn("MattieDoll", names)
+
+
+class AliasCandidateTests(unittest.TestCase):
+    """页面上账本还没有的中文写法。
+
+    `桥本有菜` 这种名字在账本里一个字都没有：刮削源给日文与罗马字，译名那条路每人只
+    给一个中文名，改统称时降为别名的又是日文原规范名。旧艺名的中译正是从这一栏来的。
+    """
+
+    def setUp(self):
+        self.module = load_module()
+        self.record = {"entity_id": 1, "name": "新有菜", "assets": 15,
+                       "chain": ["新有菜", "新ありな"]}
+
+    def candidates(self, current, former="", owners=None):
+        return self.module.alias_candidates(
+            self.record, page(current, former), "https://javdb.com/actors/RJM8",
+            owners or {})
+
+    def test_a_chinese_writing_in_the_former_name_field_is_a_candidate(self):
+        rows = self.candidates("新有菜, 新ありな", "橋本有菜, 橋本ありな")
+        self.assertEqual([(row["alias"], row["origin"], row["verdict"]) for row in rows],
+                         [("桥本有菜", "别名栏", "ok")])
+
+    def test_a_nickname_in_that_field_is_offered_like_any_other_writing(self):
+        """站上不标这一栏放的是什么，`傻梦` 是爱称。认不认得归复核的人，解析层不猜。"""
+        self.record.update(entity_id=7746, name="凉森玲梦", chain=["凉森玲梦", "涼森れむ"])
+        rows = self.candidates("涼森玲夢, 涼森れむ", "傻梦")
+        self.assertEqual([(row["alias"], row["origin"]) for row in rows], [("傻梦", "别名栏")])
+
+    def test_the_writing_on_the_page_is_kept_next_to_the_converted_one(self):
+        """复核件要看得出转了什么，也要指得回是哪一页。"""
+        row = self.candidates("新有菜, 新ありな", "橋本有菜")[0]
+        self.assertEqual(row["alias_zh_tw"], "橋本有菜")
+        self.assertEqual(row["actor_id"], "RJM8")
+
+    def test_a_writing_the_ledger_already_has_is_not_a_candidate(self):
+        """查过、没查出东西，和还没轮到她是两件事。"""
+        self.assertEqual([row["verdict"] for row in self.candidates("新有菜, 新ありな")],
+                         ["无新写法"])
+
+    def test_the_same_name_in_traditional_characters_is_not_a_new_writing(self):
+        self.record["chain"] = ["新有菜", "桥本有菜"]
+        self.assertEqual(
+            [row["verdict"] for row in self.candidates("新有菜, 新ありな", "橋本有菜")],
+            ["无新写法"])
+
+    def test_a_japanese_or_latin_writing_is_not_a_chinese_alias(self):
+        """`JULIA` 是艺名本体，`きみかわ結衣` 掺着假名。两个都不是中文写法。"""
+        self.assertEqual(
+            [row["verdict"] for row in self.candidates("JULIA, 京香じゅりあ", "きみかわ結衣")],
+            ["无新写法"])
+
+    def test_one_writing_listed_in_both_fields_is_offered_once(self):
+        rows = self.candidates("新有菜, 橋本有菜", "橋本有菜")
+        self.assertEqual([(row["alias"], row["origin"]) for row in rows],
+                         [("桥本有菜", "现名栏")])
+
+    def test_a_writing_that_belongs_to_someone_else_is_flagged_not_offered(self):
+        """要么两条该合并、要么真有两位重名，都得人判。"""
+        owners = {self.module.key("橋本有菜"): (99, "桥本有菜")}
+        row = self.candidates("新有菜, 新ありな", "橋本有菜", owners)[0]
+        self.assertEqual(row["verdict"], "占用（另一条实体已有这个名字）")
+        self.assertIn("99", row["evidence"])
+
+
+def box(path: str, title: str) -> str:
+    return f'<div class="box actor-box"><a href="{path}" title="{title}"></a></div>'
+
+
+class FakeSite:
+    """按地址发页的假站。没登记的地址抛错：取页失败要落进 CSV，不是静默的空页。"""
+
+    def __init__(self, pages: dict):
+        self.pages = dict(pages)
+        self.asked: list[str] = []
+
+    def get(self, url: str) -> str:
+        self.asked.append(url)
+        if url not in self.pages:
+            raise LookupError(f"没有这一页 {url}")
+        return self.pages[url]
+
+
+class HarvestTests(unittest.TestCase):
+    """一趟走完两份产物。分两个脚本就要按 5 秒一页把同一批资料页再走一遍。"""
+
+    def setUp(self):
+        self.module = load_module()
+        self.tmp = tempfile.TemporaryDirectory()
+        self.con = sqlite3.connect(Path(self.tmp.name).resolve() / "ledger.db")
+        self.con.executescript(
+            "CREATE TABLE entity(id INTEGER PRIMARY KEY, kind TEXT, canonical_name TEXT);"
+            "CREATE TABLE entity_alias(entity_id INTEGER, alias TEXT);"
+            "CREATE TABLE asset_entity(asset_id INTEGER, entity_id INTEGER, source TEXT);")
+        self.con.executemany(
+            "INSERT INTO entity(id,kind,canonical_name) VALUES(?,'performer',?)",
+            [(1, "深田えいみ"), (2, "三上悠亚")])
+        self.con.executemany(
+            "INSERT INTO asset_entity(asset_id,entity_id,source) VALUES(?,?,'r18:performer')",
+            [(10, 1), (11, 2)])
+        self.con.execute("INSERT INTO entity_alias VALUES(1,'天海こころ')")
+        self.con.commit()
+
+    def tearDown(self):
+        self.con.close()
+        self.tmp.cleanup()
+
+    @staticmethod
+    def search(name: str) -> str:
+        return javdb.SEARCH.format(quote(name))
+
+    def test_one_page_feeds_both_sheets(self):
+        site = FakeSite({
+            self.search("深田えいみ"): box("/actors/BBB", "深田詠美, 深田えいみ"),
+            "https://javdb.com/actors/BBB": page("深田詠美, 深田えいみ", "天海こころ")})
+        names, aliases = self.module.harvest(self.con, site, 0)
+        self.assertEqual([row["verdict"] for row in names], ["ok"])
+        self.assertEqual([(row["alias"], row["origin"]) for row in aliases],
+                         [("深田咏美", "现名栏")])
+
+    def test_two_pages_for_one_name_yield_no_alias_candidate(self):
+        """别名进的是身份。配错了人，比缺一个写法更难查回来。"""
+        site = FakeSite({
+            self.search("深田えいみ"): box("/actors/BBB", "深田詠美, 深田えいみ"),
+            "https://javdb.com/actors/BBB": page("深田詠美, 深田えいみ"),
+            self.search("三上悠亚"): (box("/actors/AAA", "三上悠亞, 三上悠亜")
+                                     + box("/actors/CCC", "三上悠亞, 三上悠亜"))})
+        names, aliases = self.module.harvest(self.con, site, 0, "all")
+        crowded = [row for row in aliases if row["current_name"] == "三上悠亚"]
+        self.assertEqual([row["verdict"] for row in crowded],
+                         ["多页（同名两位，分不清是哪一页）"])
+        self.assertNotIn("https://javdb.com/actors/AAA", site.asked)
+
+    def test_the_name_sheet_keeps_to_the_performers_still_named_in_kana(self):
+        """`--scope all` 放开的只是别名那一份。中文规范名不需要再定一次规范名。"""
+        site = FakeSite({
+            self.search("深田えいみ"): box("/actors/BBB", "深田詠美, 深田えいみ"),
+            "https://javdb.com/actors/BBB": page("深田詠美, 深田えいみ"),
+            self.search("三上悠亚"): box("/actors/AAA", "三上悠亞, 三上悠亜"),
+            "https://javdb.com/actors/AAA": page("三上悠亞, 三上悠亜")})
+        names, aliases = self.module.harvest(self.con, site, 0, "all")
+        self.assertEqual({row["current_name"] for row in names}, {"深田えいみ"})
+        self.assertEqual({row["current_name"] for row in aliases},
+                         {"深田えいみ", "三上悠亚"})
+
+    def test_a_performer_the_site_does_not_have_is_recorded_in_both_sheets(self):
+        site = FakeSite({self.search("深田えいみ"): "", self.search("天海こころ"): ""})
+        names, aliases = self.module.harvest(self.con, site, 1)
+        self.assertEqual([row["verdict"] for row in names], ["未取得"])
+        self.assertEqual([row["verdict"] for row in aliases], ["未取得"])
+
+    def test_a_failed_fetch_lands_in_the_sheets_instead_of_stopping_the_batch(self):
+        site = FakeSite({})
+        names, aliases = self.module.harvest(self.con, site, 1)
+        self.assertEqual([row["verdict"] for row in names], ["取页失败"])
+        self.assertIn("LookupError", str(aliases[0]["evidence"]))
+
+
+class ApplyAliasTests(unittest.TestCase):
+    """候选写进 `entity_alias` 的那一步。四种不写，每种都要留下为什么。"""
+
+    def setUp(self):
+        self.module = load_script("apply_alias_candidates")
+        self.tmp = tempfile.TemporaryDirectory()
+        self.con = sqlite3.connect(Path(self.tmp.name).resolve() / "ledger.db")
+        self.con.executescript(
+            "CREATE TABLE entity(id INTEGER PRIMARY KEY, kind TEXT,"
+            " canonical_name TEXT, normalized_name TEXT);"
+            "CREATE TABLE entity_alias(entity_id INTEGER, alias TEXT,"
+            " normalized_alias TEXT, source TEXT, confidence REAL);")
+        for entity_id, name in ((1, "桥本有菜"), (2, "三上悠亚")):
+            self.con.execute(
+                "INSERT INTO entity VALUES(?,'performer',?,?)",
+                (entity_id, name, normalize_entity_name(name)))
+        self.con.commit()
+
+    def tearDown(self):
+        self.con.close()
+        self.tmp.cleanup()
+
+    def candidate(self, **over):
+        row = {"entity_id": 1, "current_name": "桥本有菜", "alias": "新有菜",
+               "origin": "别名栏", "verdict": "ok", "url": "https://javdb.com/actors/RJM8"}
+        row.update(over)
+        return row
+
+    def plan(self, **over):
+        return self.module.plan(self.con, [self.candidate(**over)])[0]
+
+    def aliases_of(self, entity_id: int):
+        return [(row[0], row[1]) for row in self.con.execute(
+            "SELECT alias,source FROM entity_alias WHERE entity_id=?", (entity_id,))]
+
+    def test_a_new_writing_is_written_with_the_page_as_its_source(self):
+        rows = self.module.plan(self.con, [self.candidate()])
+        self.assertEqual(rows[0]["action"], "写入")
+        self.assertEqual(self.module.apply_rows(self.con, rows), 1)
+        self.assertEqual(self.aliases_of(1), [("新有菜", javdb.ALIAS_SOURCE)])
+
+    def test_a_writing_the_entity_already_has_is_left_alone(self):
+        self.con.execute("INSERT INTO entity_alias VALUES(1,'新有菜',?,'javdb-actor-page',1.0)",
+                         (normalize_entity_name("新有菜"),))
+        self.assertEqual(self.plan()["action"], "已有")
+
+    def test_the_canonical_name_is_not_added_to_its_own_alias_list(self):
+        self.assertEqual(self.plan(alias="桥本有菜")["action"], "已有")
+
+    def test_a_writing_that_belongs_to_another_performer_is_refused(self):
+        """静默写下去只会给后面的合并判定多送一个假信号。"""
+        self.con.execute("INSERT INTO entity_alias VALUES(2,'新有菜',?,'javdb-actor-page',1.0)",
+                         (normalize_entity_name("新有菜"),))
+        row = self.plan()
+        self.assertEqual(row["action"], "占用")
+        self.assertIn("三上悠亚", row["detail"])
+
+    def test_a_row_whose_entity_was_renamed_after_the_harvest_is_not_written(self):
+        """CSV 是某一刻的快照。统称变过说明这个人后来被动过，该重抓一遍再看。"""
+        row = self.plan(current_name="新ありな")
+        self.assertEqual(row["action"], "已变")
+        self.assertIn("桥本有菜", row["detail"])
+
+    def test_a_row_pointing_at_nobody_is_not_written(self):
+        self.assertEqual(self.plan(entity_id=404)["action"], "查无此人")
+
+    def test_only_the_verdicts_named_on_the_command_line_are_taken(self):
+        rows = [self.candidate(), self.candidate(verdict="占用（另一条实体已有这个名字）"),
+                self.candidate(alias="")]
+        self.assertEqual(len(self.module.accepted(rows, ["ok"])), 1)
+        self.assertEqual(len(self.module.accepted(rows, ["ok", "占用（另一条实体已有这个名字）"])), 2)
 
 
 class MappingCsvTests(unittest.TestCase):

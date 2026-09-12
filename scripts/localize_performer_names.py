@@ -33,6 +33,7 @@ SRC_DIR = PROJECT_ROOT / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
+from peach import javdb
 from peach.config import DATA_ROOT, GENERATED_DIR
 from peach.entities import merge_entity, normalize_entity_name
 from peach.kanji import JP_KANJI_TO_SIMPLIFIED, simplify_kanji   # noqa: F401 - 供测试与脚本共用
@@ -46,8 +47,8 @@ RELEASE_SOURCES = frozenset({
 })
 ALIAS_SOURCE_PREFIX = "avdb-actor-mapping"
 #: javdb 资料页那一份。两份映射的别名来源必须分得开：回溯「这个中文名是谁写的」
-#: 时，来源前缀是唯一留着这个区别的地方。
-JAVDB_ALIAS_SOURCE = "javdb-actor-page"
+#: 时，来源前缀是唯一留着这个区别的地方。字面量在 `peach.javdb`，别名写入不止这一处。
+JAVDB_ALIAS_SOURCE = javdb.ALIAS_SOURCE
 MERGE_ALIAS_SOURCE = "merge:performer-localization"
 KANJI_ALIAS_SOURCE = "kanji-simplification"
 KANJI_ONLY_REVISION = "kanji-only"
