@@ -15,7 +15,8 @@ from typing import Callable
 from urllib.parse import urlsplit
 
 from .config import STATE_DIR, TOOLS_DIR
-from .catalog_rules import same_release_code, code_query_variants, normalise_code_key
+from .catalog_rules import (
+    same_release_code, code_query_variants, normalise_code_key, tokyo_hot_code)
 from .genre_taxonomy import map_genres, unmapped_genre_warning
 from .http import body_text
 from .javdb import LOGIN as JAVDB_LOGIN_PAGE
@@ -167,7 +168,13 @@ def resolve_javinizer_binary(explicit: str | Path | None = None) -> Path:
 
 
 def validate_provider_code(code: str) -> str:
-    value = str(code or "").strip().upper()
+    raw = str(code or "").strip()
+    tokyo = tokyo_hot_code(raw)
+    if tokyo:
+        # Tokyo-Hot 的规范写法是小写（`catalog_rules._TOKYO_HOT_BODY`），
+        # 跟着别的番号转大写就等于拿一个来源不认的写法去查。
+        return tokyo
+    value = raw.upper()
     if not _SAFE_CODE.fullmatch(value):
         raise ValueError("metadata provider 只接受规范化番号，不接受路径、URL 或任意文本")
     return value
