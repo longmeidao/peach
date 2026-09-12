@@ -57,6 +57,9 @@ class DesktopSettingsTests(unittest.TestCase):
         (self.program / 'Peach.exe').touch()
         self.config = SimpleNamespace(data_root=self.data, path=self.data / 'config.toml', locations={'local': (str(self.root / 'media'),)}, mounts={},
                                       directory=lambda key: self.data / key)
+        # 读到的快捷方式状态是模块级的，跨用例留着会让「起了几个进程」数不准。
+        desktop_startup._READ_CACHE.clear()
+        self.addCleanup(desktop_startup._READ_CACHE.clear)
 
     def test_uninstall_plan_keeps_media_and_can_preserve_all_data(self):
         keep = desktop_uninstall.plan(self.config, delete_data=False, program=self.program)
@@ -245,6 +248,60 @@ class DesktopSettingsTests(unittest.TestCase):
         except (UnicodeEncodeError, LookupError):
             self.skipTest(f'系统 ANSI 码页 cp{codepage} 表示不了「{name}」，WScript.Shell 存不下')
         self._shortcut_round_trip(name)
+
+    def test_the_startup_entry_state_is_warmed_up_before_anyone_opens_settings(self):
+        """服务起来时后台先问一遍启动项，别把那 2.5 秒留给点开设置的那一下。
+
+        条件跟 `configurable` 的前两条对齐：不是托盘管的、或还没过首次配置，这一格本来
+        就出不来，没有值得预热的东西，起一个 `powershell.exe` 只是白耗。预热失败也不许
+        影响服务起不起得来——配置页自己现问一遍就是了。
+        """
+        api = (Path(__file__).resolve().parents[1] / 'src/peach/api.py').read_text(encoding='utf-8')
+        self.assertIn('if not (managed_configuration() and settings.configured):\n            return', api)
+        self.assertIn('await asyncio.to_thread(desktop_startup.snapshot)', api)
+        self.assertIn('warmup = asyncio.create_task(warm_startup_entries())', api)
+        self.assertIn('warmup.cancel()', api)
+        # 起服务这一步不等它：预热要是同步跑，省下的那 2.5 秒只是挪到了开机时。
+        self.assertNotIn('await warm_startup_entries()', api)
+
+    @unittest.skipUnless(os.name == 'nt', 'Windows 原生快捷方式')
+    def test_reading_shortcuts_spends_a_powershell_process_only_when_it_has_to(self):
+        """读 `.lnk` 是配置页首屏唯一一件慢事，两道近路都要成立。
+
+        起一个 `powershell.exe` 要 0.8–1.7 秒，配置页那一格最多读三个快捷方式，加起来
+        2.5 秒，正好挡在用户点开设置之后。所以文件不在就不起进程（脚本对这一支本来也
+        只回一句「没有」），真存在的按 `(mtime, size)` 记住结论。
+
+        指纹一变必须重读：快捷方式被改写之后还报旧的目标，配置页上那个开关就会一直
+        显示成用户没设过的那一档。
+        """
+        program = str(self.program / 'Peach.exe')
+        path = self.root / 'cached fixture.lnk'
+        calls = []
+        real = subprocess.run
+
+        def counted(*args, **kwargs):
+            calls.append(args[0])
+            return real(*args, **kwargs)
+
+        with patch.object(desktop_startup.subprocess, 'run', counted):
+            missing = desktop_startup.shortcut('read', self.root / '从来没有过.lnk')
+            self.assertEqual(missing, {'ok': True, 'enabled': False, 'target': '', 'arguments': ''})
+            self.assertEqual(calls, [])
+            desktop_startup.shortcut('write', path, target=program, arguments='--silent',
+                                     directory=str(self.program))
+            written = len(calls)
+            first = desktop_startup.shortcut('read', path)
+            self.assertEqual(len(calls), written + 1)
+            self.assertEqual(desktop_startup.shortcut('read', path), first)
+            self.assertEqual(len(calls), written + 1, '同一个快捷方式读第二遍不该再起一个进程')
+            other = self.program / 'Other.exe'
+            other.touch()
+            desktop_startup.shortcut('write', path, target=str(other), arguments='--show',
+                                     directory=str(self.program), expected=first['target'])
+            again = desktop_startup.shortcut('read', path)
+        self.assertEqual(Path(again['target']).resolve(), other.resolve())
+        self.assertEqual(again['arguments'], '--show')
 
     @unittest.skipUnless(os.name == 'nt', 'Windows 原生快捷方式')
     def test_a_failed_shortcut_call_reports_what_powershell_said(self):

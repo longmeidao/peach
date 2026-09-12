@@ -771,28 +771,35 @@ const actionFailure=(message,error)=>toast(
 /* 设置弹层最后一格装的是配置页：媒体文件夹、端口、代理、更新，讲的都是跑着 Peach
    的那台电脑，不是这个浏览器。别的设备打开设置照样看得见这一格，里面换成一句话说清
    在哪儿改——判据是 `/healthz` 的 `configurable`（服务由托盘管、已完成配置、请求来自
-   本机三条同时成立）。整格藏起来只会让人以为设置少了一块，还得再找一遍。
+   本机三条同时成立）。
+   这一格到底是「四个分区」还是「一句话」，得等服务端回话才知道，所以它一开始就 hidden
+   （见 index.html），知道了再一次性列出来。先摆一条占位再改写的话，左栏那一列会先长出
+   一条「这台电脑」、随后又变成四条，整个弹层跟着跳一次高度。
    写在这儿是因为它要用上面那两个模块级绑定；`openSettings` 靠函数声明提升调到它。 */
 let machineSettingsMounted=false;
-/* 左栏由 Board 外壳那段（`buildSettingsTabs`）画，它在自己的闭包里。配置页挂上来之后
-   那一列要从一条「这台电脑」变成四条，得让它重画一遍，所以留这个口子。 */
+/* 左栏由 Board 外壳那段（`buildSettingsTabs`）画，它在自己的闭包里。这一格列出来之后
+   左栏要多一块，得让它重画一遍，所以留这个口子。 */
 let refreshSettingsTabs=null;
 async function syncMachineSettings(){
-  const host=$('#machineSettings');
+  const host=$('#machineSettings'),group=$('#machineGroup');
   if(!host||machineSettingsMounted)return;
   const open=()=>!$('#settingsPanel').hidden;
-  if(!host.childElementCount)host.innerHTML=loadingDotsHtml('正在读取这台电脑的配置');
+  const list=()=>{if(group)group.hidden=false;refreshSettingsTabs?.()};
   const runtime=await api('/healthz').catch(()=>null);
   if(!open())return;
   if(runtime)runtimeConfigurable=!!runtime.configurable;
   if(!runtime||!runtimeConfigurable){
     host.innerHTML=noteHtml('媒体文件夹、端口、代理与更新属于运行 Peach 服务的设备；在该设备的浏览器打开设置进行修改。',
       {label:'该配置需在服务端设备修改'});
+    list();
     return;
   }
   machineSettingsMounted=true;
   await mountIsland('configuration',host,{receipt:message=>actionReceipt(message)},{isCurrent:open});
-  refreshSettingsTabs?.();
+  /* 挂到一半用户把弹层关了：island 认出自己过期，不会画，这一格里一样东西都没有。
+     退回未挂状态让下次重来，别留一条点开是空白的「这台电脑」。 */
+  if(!open()){machineSettingsMounted=false;return}
+  list();
 }
 
 /* 随机排序每次进入首页都换种子；同一次访问继续复用该种子，保证筛选和分页
@@ -10048,16 +10055,18 @@ function buildSettingsTabs(){
       node.classList.remove('board-group-active');node.removeAttribute('role');node.removeAttribute('aria-labelledby')});
   }
   const keep=settingsTabs?settingsTabs.index:0;
-  const groups=[...settings.querySelectorAll(':scope > .settinggroup')];
+  /* `[hidden]` 的那一格不进这一列。「这台电脑」在服务端回话之前就是这个状态：算进来会
+     先画出一条，等回话再改画成四条，等于让左栏跳两次。 */
+  const groups=[...settings.querySelectorAll(':scope > .settinggroup:not([hidden])')];
   const machine=groups.find(node=>node.querySelector(':scope > .machinesettings'));
   const item=node=>{const title=node.querySelector('h3').textContent.trim();return{title,icon:SETTINGS_TAB_ICONS[title],nodes:[node]}};
   const sections=[{caption:'设置',items:groups.filter(node=>node!==machine).map(item)}];
   if(machine){
     const page=machine.querySelector('.configpage');
     const parts=page?configTabItems(page).map(part=>({...part,icon:SETTINGS_TAB_ICONS[part.title]})):null;
-    /* 配置页挂上来了才单独起一块，小标题是「这台电脑」。挂不上来（别的设备、或还在读）
-       时里面只有一句话，那就仍旧排在上面那一列的末尾——小标题和它下面唯一那一条同名，
-       等于把一句话说两遍。 */
+    /* 配置页挂上来了才单独起一块，小标题是「这台电脑」。挂不上来（别的设备）时里面只有
+       一句话，那就仍旧排在上面那一列的末尾——小标题和它下面唯一那一条同名，等于把一句话
+       说两遍。 */
     if(parts?.length)sections.push({caption:machine.querySelector('h3').textContent.trim(),items:parts});
     else sections[0].items.push({...item(machine),nodes:[machine.querySelector('.machinesettings')]});
   }
