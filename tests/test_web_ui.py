@@ -2569,11 +2569,11 @@ class WebUiSourceTests(unittest.TestCase):
         1.48，就变成纵向裁切、整张封套原样铺满——这正是旧版式「只是撑满画布」的原因。
         所以裁切必须由容器比例决定，不能只靠 object-position。
         """
-        self.assertPageContains("const COVER_FRONT_RATIO=0.7;")
+        self.assertPageContains("const COVER_FRONT_RATIO=0.75;")
         self.assertPageContains("(jav&&layout==='big'?COVER_FRONT_RATIO:16/9)")
         self.assertPageContains(
-            '.poster.cover.front[data-frame="sleeve"]{object-position:var(--poster-x,100%)',
-            "算过取景框的封套按框取景，没算过的退回最右边缘")
+            '.poster.cover.front[data-frame="sleeve"]{object-position:100%',
+            "没有折痕数据的封套贴最右边缘")
         self.assertPageContains("r>=1.65?'still':r>1.2?'sleeve':'front'",
                                 "16:9 官方剧照不能当成双页封套裁到最右侧")
         # 判据是 `jav` 不是 `useCover`：缺封面的卡片也要拉长，用 16:9 预览图上下留黑边，
@@ -2582,26 +2582,52 @@ class WebUiSourceTests(unittest.TestCase):
         # 旧键要继续认，设置存在浏览器里，改名不能让用户的选择静默回落。
         self.assertPageContains("return normalizeJavLayout(appSettings.javLayout);")
 
-    def test_front_cover_anchor_uses_the_offline_crop_box(self):
-        """正封的横向锚点来自离线算好的 `poster_box`，取不到才退回最右边缘。
+    def test_front_cover_shows_only_the_panel_right_of_the_fold(self):
+        """大图只摆折痕右边那块正封，封底一个像素都不露。
 
-        贴最右边缘只在正面正好顶到封套右缘时才对；折痕位置每张封套都不一样，
-        接口已经把框发过来了，页面不读它就等于把一份算好的取景扔掉。
-        换算本身是纯函数，`frontend/test/jav-artwork.test.ts` 按数值验收；这里守的是
-        「框有没有送到元素上、锚点有没有写回去」这条链路。
+        正封的宽高比从 0.600 到 0.802 都有，而一行卡片必须等高，容器只能取一个数。
+        `object-fit:cover` 做不到这件事：它总把图片铺满容器，容器比正封宽时多出来的
+        那截只能由封底来填。改成按卡片高度铺满加 `clip-path`，容器宽出来的部分就成了
+        留白，交给模糊背景。几何换算是纯函数，`frontend/test/jav-artwork.test.ts`
+        按数值验收；这里守的是「框有没有送到元素上、算出来的值有没有写回去」这条链路。
         """
         self.assertPageContains("const pb=it.poster_box;")
         self.assertPageContains(' data-posterbox="')
         # 换回官方封面时换的是同一个 <img>，框必须跟着元素走，不能只贴在封面那份 HTML 上。
         self.assertPageContains('/ data-(?:c[xy]|posterbox)="[^"]*"/g')
-        self.assertPageContains("posterAnchor(img,car);")
-        self.assertPageContains("const pct=posterBoxAnchor({x0,px:[imgW,imgH]},ratio);")
-        self.assertPageContains("img.style.setProperty('--poster-x',`${pct}%`);")
-        # 没有框就一个字都不写，CSS 里那份回退照旧生效。
-        self.assertPageContains("if(pct==null)return;")
+        self.assertPageContains("posterPanel(img,car);")
+        self.assertPageContains("const frame=panelFrame({x0,px:[imgW,imgH]},ratio);")
+        self.assertPageContains("img.style.setProperty('--panel-clip',`${frame.clip}%`);")
+        self.assertPageContains("img.style.setProperty('--panel-left',`${frame.left}%`);")
+        self.assertPageContains(
+            ".poster.cover.front.panel{inset:0 auto auto var(--panel-left,0%)",
+            "正封的位置靠元素自身定位，不是 object-position")
+        self.assertPageContains("clip-path:inset(0 0 0 var(--panel-clip,0%))")
+        # 只有整张封套才有正封可切；竖版正封和 16:9 剧照走各自那条 object-position。
+        self.assertPageContains("if(img.dataset.frame!=='sleeve')return;")
+        # 没有框就一个字都不写，CSS 里那份贴右缘的回退照旧生效。
+        self.assertPageContains("if(!frame)return;")
         # 框按那一版源图算；封面被更大的那张换掉之后，它描述的是另一张图。
         self.assertPageContains(
             "if(!matchesFaceSource(img.naturalWidth,img.naturalHeight,imgW,imgH))return;")
+
+    def test_narrow_front_cover_fills_the_gap_with_a_blurred_backdrop(self):
+        """正封窄于卡片时两侧的留白垫同一张封面的模糊放大版，不留黑边也不露封底。
+
+        模糊层挂在 `.pic` 上而不是图片上：图片那时已经被 `clip-path` 切成正封那一块，
+        铺不到留白处。换成预览图时它必须跟着撤，`removeAttribute('style')` 够不着
+        另一个元素上的自定义属性，所以 `syncJavImages` 里单写了一句。
+        """
+        self.assertPageContains(
+            "img.closest('.pic')?.style.setProperty('--cover-blur',"
+            "`url(\"${img.currentSrc||img.src}\")`);")
+        self.assertPageContains(
+            ".pic::before{content:\"\";position:absolute;inset:-8%;pointer-events:none;")
+        self.assertPageContains("background:var(--cover-blur,none) center/cover no-repeat;"
+                                "filter:blur(26px) brightness(.5)}")
+        # 待删卡片整块压暗，只有留白还亮着会很显眼；`filter` 不叠加，只能重写一遍 blur。
+        self.assertPageContains(
+            ".card.pending-delete .pic::before{filter:blur(26px) grayscale(.9) brightness(.27)")
 
     def test_wide_stills_frame_on_the_detected_face_instead_of_dead_centre(self):
         """16:9 官方剧照在大图容器里只会横向裁，横向锚点必须跟着人走。
@@ -6924,7 +6950,7 @@ class WebUiSourceTests(unittest.TestCase):
         当场换掉；按类名把封面排掉又等于这两种版式整个没有悬停预览——连 `.previewing`
         都不进，快退快进那三颗跟着永远不出现。叠一层对三种版式是同一条路。
 
-        几何和本地视频的 `.hv` 逐字一致：不透明黑底加 contain。大图版式的容器是 0.7
+        几何和本地视频的 `.hv` 逐字一致：不透明黑底加 contain。大图版式的容器是 0.75
         竖比例，16:9 的接触印相格子于是居中、上下留黑，这就是那一版式的预览外观。
         """
         self.assertPageContains("layer.className='hvframes';layer.alt=''")

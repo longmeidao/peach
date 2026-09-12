@@ -14,7 +14,7 @@ import { initMiddleTruncate } from './js/middle-truncate.js';
 import { tagLabel } from './js/tags.js';
 import { mountIsland, unmountIsland, islandMounted, createReviewSelection, wireReviewSelection, updateReviewSticky, groupReviewRows, paginationHtml, pageCount, clampPage, identityEvidenceHtml, reviewImageHtml, wireReviewPictures, preferredDirection } from './dist/peach-ui.js';
 import { catalogSuggestions, catalogEmptyHtml, emptyCatalogLayout, syncSidebarSurface, sidebarTagCounts, sidebarHasCatalogContent, cleanupSkeletonHtml, cloudLocations, cloudPreferenceLocations, tasteHistoryGuideHtml, wireTasteHistoryGuide, TASTE_GUIDE_KEY } from './dist/peach-ui.js';
-import { javImageKind, normalizeJavImage, normalizeJavLayout, normalizeJavPreferences, posterBoxAnchor, syncJavImages, nativeImageFit, matchesFaceSource, entitySkeletonHtml } from './dist/peach-ui.js';
+import { javImageKind, normalizeJavImage, normalizeJavLayout, normalizeJavPreferences, panelFrame, syncJavImages, nativeImageFit, matchesFaceSource, entitySkeletonHtml } from './dist/peach-ui.js';
 import {
   attachOverlayScrollbar, breadcrumbHtml, checkboxHtml, collectionSummaryHtml, closeAnchoredMenu, confirmModal, dismissMenu, emptyStateHtml, fieldsetTitle,
   fillSkeletonTier, fitSkeleton, formModal, iconSwitchHtml, indexSkeletonHtml, loadingDotsHtml,
@@ -2296,7 +2296,7 @@ function wireHover(el,it){
        版式里画面就是封面本身（`.poster.cover`），改它的 src 等于把封面当场换掉；
        按类名把封面排掉又等于这两种版式整个没有悬停预览，连 `.longhover` 都不进，
        快退快进那三颗也跟着永远不出现。叠一层对三种版式是同一条路。
-       这一层用 contain 加黑底：大图版式的容器是 0.7 的竖比例，16:9 的接触印相格子
+       这一层用 contain 加黑底：大图版式的容器是 0.75 的竖比例，16:9 的接触印相格子
        在里面居中、上下留黑，和本地视频的 `.hv` 同一个口径。 */
     if(!it.has_thumb)return;        // 没有接触印相就没有可扫的格子
     let t=null,i=4,layer=null;
@@ -2494,20 +2494,27 @@ function coverAnchor(img){
   };
   center('--cover-x',coverFace(img,'cx'),car/r);
   center('--cover-y',coverFace(img,'cy'),r/car);
-  posterAnchor(img,car);
+  posterPanel(img,car);
 }
-/* 正封那一块的横向锚点。离线算好的框在 `data-posterbox` 里，换算要的容器比例只有
-   页面知道，所以两边在这里才凑齐。没有框（本机 1014 张封面里 331 张判定为不裁，
-   永远拿不到）就一个字都不写，CSS 里那份贴最右边缘的回退照旧生效。 */
-function posterAnchor(img,ratio){
+/* 只把折痕右边那块正封摆进卡片，封底一个像素都不露。折痕位置在 `data-posterbox` 里，
+   换算要的容器比例只有页面知道，两边在这里才凑齐。只有整张封套才有正封可切；没有框
+   （本机 1014 张封面里 331 张判定为不裁，永远拿不到）就一个字都不写，CSS 里那份贴
+   右缘的回退照旧生效。 */
+function posterPanel(img,ratio){
+  if(img.dataset.frame!=='sleeve')return;
   const [x0,imgW,imgH]=String(img.dataset.posterbox||'').split(' ').map(Number);
   /* 框是按那一版源图的像素算的，而封面会被更大的那张原子替换。尺寸对不上就说明
      框描述的是另一张图，落在这张上是一块错位的区域——而错位在页面上和「本来就该
      这么取景」看不出区别，所以宁可退回回退值。 */
   if(!matchesFaceSource(img.naturalWidth,img.naturalHeight,imgW,imgH))return;
-  const pct=posterBoxAnchor({x0,px:[imgW,imgH]},ratio);
-  if(pct==null)return;
-  img.style.setProperty('--poster-x',`${pct}%`);
+  const frame=panelFrame({x0,px:[imgW,imgH]},ratio);
+  if(!frame)return;
+  img.classList.add('panel');
+  img.style.setProperty('--panel-clip',`${frame.clip}%`);
+  img.style.setProperty('--panel-left',`${frame.left}%`);
+  /* 正封比卡片窄时左右各留一条，垫的是同一张封面的模糊放大版。挂在卡片上而不是
+     图片上：图片那时已经被 `clip-path` 切成正封那一块，铺不到留白处。 */
+  img.closest('.pic')?.style.setProperty('--cover-blur',`url("${img.currentSrc||img.src}")`);
 }
 /* 容器比例只有 `.pic` 的 `--card-ratio` 知道：竖屏开关、JAV 大图和普通卡片各写一个
    值，在这里按 layout 重算迟早会和它分叉。自定义属性会继承，直接从图片上读；
@@ -2560,10 +2567,13 @@ function refitNativeImages(root){
   });
 }
 window.addEventListener('resize',()=>refitNativeImages($('#index')),{passive:true});
-/* 整张封套里右侧正封占的宽高比。裁切靠的是容器比例而不是 CSS 裁剪：`object-fit:cover`
-   只在容器比图片更「竖」时才会横向裁；容器一旦宽过 1.48 就变成纵向裁、整张封套原样
-   铺满，「大图」于是只撑满画布而取不到右侧。 */
-const COVER_FRONT_RATIO=0.7;
+/* 大图卡片的容器比例。本机 1014 张封面实测，683 张判定有正封，正封自己的宽高比
+   从 0.600 到 0.802 都有，中位数 0.706、99% 分位 0.747——一行卡片必须等高，容器
+   只能取一个数，所以它对不上其中大多数。0.75 覆盖到 99% 分位：683 张里只有 5 张
+   的正封比卡片还宽、要从左边切掉最多 6.5%，其余装得下的居中摆，两侧留白交给
+   `--cover-blur` 那层模糊背景。
+   取 0.70 会让 624 张被切（中位数 0.9%），取 0.80 则让留白宽到每边 5.9%，像画框。 */
+const COVER_FRONT_RATIO=0.75;
 /* 竖屏一律用同一个比例，不按每条视频的实际宽高。竖屏素材从 0.5 到 0.9 都有，
    按各自比例渲染会让竖屏条和竖屏网格高低不齐；比例不同的用 contain 上下留黑边
    （`.poster` 本来就是 contain + 黑底）。 */

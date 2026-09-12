@@ -34,27 +34,29 @@ export interface PosterBox {
   px: number[];
 }
 
-/** 正封那一块的横向 `object-position` 百分比；没有框或横向本来就不裁时返回 null，
- *  调用方原样退回 CSS 里那份回退值。
+/** 正封在卡片里的摆法：`clip` 是从图片左缘切掉的比例（折痕以左是封底），`left` 是
+ *  图片左缘相对卡片宽度的偏移，两个都是百分数。没有框时返回 null，调用方原样退回
+ *  CSS 里那份贴右缘的回退。
  *
- *  框是源图像素，`object-position` 要的是「图片上这个点对齐可见窗口的同一个百分比
- *  位置」，两者之间隔着一次 `object-fit:cover` 的缩放，所以不能拿容器宽直接当分母。
- *  cover 先把图缩到盖住容器，缩放由紧的那一边决定；可见窗口换算回源图像素是
- *  `容器宽 / max(容器宽/源图宽, 容器高/源图高)`，化简掉容器的绝对尺寸之后只剩
- *  `min(源图宽, 源图高 × 容器宽高比)`——页面这一侧只需要知道容器的比例，不必去量它。
+ *  图片按卡片高度铺满、宽度随原始比例走，于是渲染宽度是卡片宽的
+ *  `源图宽 / 源图高 / 容器比例` 倍——页面这一侧只需要知道容器的比例，不必去量它。
+ *  正封占其中 `1 − 折痕比例`：装得下就居中，两侧各留一条交给模糊背景；装不下只能
+ *  贴右缘从左边切，因为标题、女优名和角标都压在正封右侧。
  *
- *  源图比容器更竖时缩放改由宽度决定，整幅宽度都可见：那一轴没有余量可推，
- *  百分比在那里是死值，分母也正好是 0，两件事是同一件事。 */
-export function posterBoxAnchor(box: Partial<PosterBox> | null | undefined, ratio: number): number | null {
+ *  纵向一个像素都不裁：图片高度正好等于卡片高度，所以这一档没有纵向锚点可写。 */
+export function panelFrame(box: Partial<PosterBox> | null | undefined, ratio: number): { clip: number; left: number } | null {
   const width = Number(box?.px?.[0]);
   const height = Number(box?.px?.[1]);
   const x0 = Number(box?.x0);
   if (!(width > 0 && height > 0 && ratio > 0) || !Number.isFinite(x0)) return null;
-  const visible = Math.min(width, height * ratio);
-  const room = width - visible;
-  if (!(room > 0)) return null;
-  // 夹回 0–100：框贴着源图右缘时窗口已经顶到边，再往外推只会把图片外面推进来。
-  return Math.round(Math.min(100, Math.max(0, x0 / room * 100)) * 100) / 100;
+  // 夹回 0–1：框落在图片外面是数据坏了，按整幅可见处理比按负宽度算下去安全。
+  const fold = Math.min(1, Math.max(0, x0 / width));
+  const wide = width / height / ratio;
+  const visible = (1 - fold) * wide;
+  if (!(visible > 0)) return null;
+  const left = visible <= 1 ? (1 - visible) / 2 - fold * wide : 1 - wide;
+  const percent = (value: number) => Math.round(value * 10000) / 100;
+  return { clip: percent(fold), left: percent(left) };
 }
 
 /** 原地换图，保留列表顺序、滚动位置和正在播放的媒体。 */
@@ -67,7 +69,11 @@ export function syncJavImages(root: ParentNode, preference: unknown): void {
     img.classList.toggle('cover', useCover);
     img.classList.toggle('whole', useCover && img.dataset.javImageLayout !== 'big');
     img.classList.toggle('front', useCover && img.dataset.javImageLayout === 'big');
+    /* 取景是按上一张图算的，换图之后一律作废，由 `coverAnchor` 在新图加载完重算。
+       模糊背景挂在卡片上而不是图片上，`removeAttribute('style')` 够不着它。 */
+    img.classList.remove('panel');
     img.removeAttribute('style');
+    (img.closest('.pic') as HTMLElement | null)?.style.removeProperty('--cover-blur');
     if (src && img.getAttribute('src') !== src) img.src = src;
   });
 }
