@@ -10,6 +10,7 @@ from scripts.agent_worktree import (
     WorkspaceError, _git, _lines, create, integrate, prune, ready,
 )
 from scripts.version_bump import read_version
+from support.gitrepo import seed_repository
 
 #: 仓库里版本化的 git hook，测试原样装进临时仓库。
 HOOKS = Path(__file__).resolve().parents[1] / agent_worktree.HOOKS_PATH
@@ -59,20 +60,12 @@ class _WorktreeCase(unittest.TestCase):
         # 临时目录是别名（macOS /var 软链到 /private/var，Windows 的 RUNNER~1 短名展开
         # 成 runneradmin）。拿未 resolve 的路径去比对，本机全绿、CI 全红。
         self.root = Path(self.tmp.name).resolve()
-        self.repo = self.root / "repo"
-        self.repo.mkdir()
-        subprocess.run(["git", "init", "-b", "master", str(self.repo)], check=True,
-                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        _git(self.repo, "config", "user.email", "test@example.invalid")
-        _git(self.repo, "config", "user.name", "Peach Test")
-        (self.repo / ".gitignore").write_text("build/\n", encoding="utf-8")
-        _git(self.repo, "add", ".gitignore")
-        (self.repo / "tracked.txt").write_text("base\n", encoding="utf-8")
-        (self.repo / "worker.txt").write_text("base\n", encoding="utf-8")
-        (self.repo / "src" / "peach").mkdir(parents=True)
-        (self.repo / "src" / "peach" / "__init__.py").write_bytes(VERSION_SEED)
-        _git(self.repo, "add", "src/peach/__init__.py")
-        commit(self.repo, "base")
+        self.repo = seed_repository(self.root / "repo", {
+            ".gitignore": "build/\n",
+            "tracked.txt": "base\n",
+            "worker.txt": "base\n",
+            "src/peach/__init__.py": VERSION_SEED,
+        }, "base")
 
     def tearDown(self):
         self.tmp.cleanup()

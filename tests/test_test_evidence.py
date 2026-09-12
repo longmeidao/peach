@@ -14,6 +14,7 @@ from unittest import mock
 from scripts import agent_worktree as coordinator
 from scripts import test_evidence as evidence
 from scripts import test_runner as runner
+from support.gitrepo import seed_repository
 
 
 class VerificationTests(unittest.TestCase):
@@ -21,17 +22,11 @@ class VerificationTests(unittest.TestCase):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         self.root = Path(temporary.name).resolve()
-        self.repo = self.root / "repo"
-        self.repo.mkdir()
-        self.git("init", "-b", "master")
-        self.git("config", "user.name", "Peach Test")
-        self.git("config", "user.email", "test@example.invalid")
-        (self.repo / ".gitignore").write_text("build/\n", encoding="utf-8")
-        (self.repo / "README.md").write_text("内容\n", encoding="utf-8")
-        (self.repo / "src/peach").mkdir(parents=True)
-        (self.repo / "src/peach/__init__.py").write_text('__version__ = "0.7.30"\n')
-        self.git("add", ".gitignore", "README.md", "src/peach/__init__.py")
-        self.git("commit", "-m", "seed")
+        self.repo = seed_repository(self.root / "repo", {
+            ".gitignore": "build/\n",
+            "README.md": "内容\n",
+            "src/peach/__init__.py": '__version__ = "0.7.30"\n',
+        }, "seed")
 
     def git(self, *args):
         return evidence.git(self.repo, *args)
