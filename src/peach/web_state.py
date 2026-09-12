@@ -472,14 +472,24 @@ class WebContract:
         key = normalise_code_key(code)
         return self.cover_index().get(key.casefold()) if key else None
 
-    def avatar_focus(self, kind: str, entity_id: int) -> dict | None:
+    def avatar_focus(self, kind: str, entity_id) -> dict | None:
         """实体图的取景提示：人脸中心换算成的 object-position，加上脸框的像素尺寸。
 
         sidecar 由 `scripts/detect_avatar_faces.py` 离线写入，与封面取景同一
         约定；没算过、读不出或没检出都返回 None，页面维持几何居中。取值与校验在
         `avatar_face.focus_hint`，关注页的题材圆标读的是同一份判据。
+
+        身份 id 和 `has_entity_image` 一样按不可信对待：复核队列和榜单里的行有的
+        根本没有实体（扁平标签那一批，`entity_id` 是空串或 None），拿它去算落盘名
+        会当场抛出来，整页跟着 500。没有身份就是没有取景。
         """
-        path = self.avatar_root / f"{kind}-{int(entity_id)}.face.json"
+        if entity_id is None:
+            return None
+        try:
+            key = entity_image_key(kind, entity_id)
+        except (TypeError, ValueError):
+            return None
+        path = self.avatar_root / f"{key}.face.json"
         if not path.is_file():
             return None
         try:

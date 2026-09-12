@@ -94,7 +94,8 @@ class WebDataTests(unittest.TestCase):
     def test_creator_card_and_detail_share_available_entity_image(self):
         (self.avatars / f"{entity_image_key('creator', 12)}.img").write_bytes(b"image")
         row = rm_web.q_items(self.contract, {"limit": "10"})["items"][0]
-        ref = {"id": 12, "name": "Canonical Creator", "has_image": True}
+        ref = {"id": 12, "name": "Canonical Creator", "has_image": True,
+               "avatar_focus": None}
         self.assertEqual(row["creator_entity"], ref)
         self.assertEqual(row["creator"], ref["name"])
         self.assertEqual(rm_web.q_item(self.contract, row["id"])["entity_refs"]["creator"][0], ref)
@@ -445,6 +446,38 @@ class WebDataTests(unittest.TestCase):
             {"top_image": [True], "top_avatar": [True], "card": [True],
              "cell": [True], "hero_image": True, "hero_avatar": True},
             "装上实体图、印相也在盘上之后，四处都必须说有")
+
+    def test_the_identity_reference_carries_the_face_focus(self):
+        """取景跟着身份引用走，理由和 `has_image` 一样：读它的位置拿不到第二份数据。
+
+        卡片署名、详情页身份格、顶栏署名圈、播放列表卡的脸都只拿得到这一份引用。
+        缺了取景它们只能几何居中，而人脸落在画面顶上的那批（`focus.pct` 为 0）正好
+        被裁掉脑袋——出镜者那一排实测五个人有四个是这样。
+        """
+        def focuses():
+            item = rm_web.q_item(self.contract, 1)
+            cards = rm_web.q_items(self.contract, {"limit": "5", "offset": "0"})["items"]
+            return {
+                "card": [ref.get("avatar_focus") for row in cards
+                         for ref in row["performer_entities"]],
+                "cell": [ref.get("avatar_focus")
+                         for ref in item["entity_refs"]["performer"]],
+            }
+
+        key = entity_image_key("performer", 11)
+        (self.avatars / f"{key}.img").write_bytes(b"x")
+        self.contract.cache_bust()
+        self.assertEqual(focuses(), {"card": [None], "cell": [None]},
+                         "装了图却没算过取景时，键在、值是 None，页面据此维持几何居中")
+
+        (self.avatars / f"{key}.face.json").write_text(
+            '{"ratio":0.667,"face":{"cx":0.5,"cy":0.08},'
+            '"focus":{"axis":"y","pct":0}}', encoding="utf-8")
+        self.contract.cache_bust()
+        self.assertEqual(focuses(),
+                         {"card": [{"axis": "y", "pct": 0}],
+                          "cell": [{"axis": "y", "pct": 0}]},
+                         "脸贴在图最顶上时两处都要拿到 pct 0，几何居中会把头裁掉")
 
     def test_a_representative_without_its_snapshot_is_not_an_avatar(self):
         """账本记着印相路径、盘上却没有那个文件时，`/avatar` 一样取不到。

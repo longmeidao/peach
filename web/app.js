@@ -2394,23 +2394,34 @@ function entityFaceImg({kind='performer',id=null,hasImage=false,rep=null,mark=nu
   // 人脸取景是按实体图算出来的，回落图是另一张照片，脸不在同一位置：只贴给第一环。
   const framed=useEntity&&!useLogo;
   const faceBox=framed?faceBoxAttrs(focus):'';
+  /* 挪和放大是同一份 sidecar 的两半，这里替调用点把挪那一半补上：给了 `focus` 却
+     没给 `style` 的，按同一个换算自己算。分开传时漏掉 `style` 不会报错也看不出来
+     ——图照样出，只是几何居中，脸落在画面顶上的那些正好被裁掉脑袋。 */
+  const framedStyle=style||facePos(focus);
   /* 贴了脸框就一定要能撤 style：放大是 avatarFrame 写进 img 内联 style 的，回落时
      不撤，那几个百分比会按上一张图的尺寸套在这一张上。调用点不必记得开这个开关——
      忘了开的代价是页面上一张明显错位的图，而它只在回落发生时才现形。 */
-  return `<img src="${src}" alt="${alt}"${lazy?' loading="lazy"':''}${framed?style:''} `+
-    `${faceBox}${imageFallbackAttrs({dropStyle:(dropStyle||!!faceBox)&&framed,fallbacks})}>`;
+  return `<img src="${src}" alt="${alt}"${lazy?' loading="lazy"':''}${framed?framedStyle:''} `+
+    `${faceBox}${imageFallbackAttrs({dropStyle:(dropStyle||!!faceBox||!!framedStyle)&&framed,
+                                     fallbacks})}>`;
 }
 /* 头像内层：先垫首字母，再叠真实图。
 
    `has_image` 缺席按「没图」处理，和 entityFaceImg 的默认值一致：每一个调用点的
    ref 都由服务端带着标志下发（卡片署名、索引页、口味榜、复核卡片、沉浸模式），
-   宽容缺席只会让下一个忘了挂标志的端点悄悄退回「无条件出图、等 404 再摘」。 */
-function avatarInner(name,ref,repId,kind='performer',markId=null,logoName='',logoVariant='icon',focus=null){
+   宽容缺席只会让下一个忘了挂标志的端点悄悄退回「无条件出图、等 404 再摘」。
+
+   取景反过来：不传就从 ref 上取。它和 `has_image` 出自同一份下发，分开传的代价是
+   七个调用点要各记一次，而漏掉不报错也不掉图，只是几何居中——这种错只有对着页面
+   一个个看才发现得了。公司那一格要的是「明确不取景」，传 `null` 覆盖掉。 */
+function avatarInner(name,ref,repId,kind='performer',markId=null,logoName='',logoVariant='icon',
+                     focus=undefined){
   // 这一层大多是小圆框和窄格子，厂牌标识在那里要方形图标而不是横着的字标；索引页的
   // 厂牌大格是同一个模板里的例外，由调用方点名要 `large`。
+  const hint=focus===undefined?(ref&&ref.avatar_focus)||null:focus;
   return `<span class="ini">${esc((name||'?').slice(0,1))}</span>`+
     entityFaceImg({kind,id:ref&&ref.id,hasImage:!!(ref&&ref.has_image),rep:repId,mark:markId,
-                   logo:logoName,logoVariant,focus});
+                   logo:logoName,logoVariant,focus:hint});
 }
 /* 人脸取景：资料页圆框按检出的人脸中心取景（/api/entity 的 avatar_focus）。
    没检出或没算过返回空串维持几何居中；换回落图时必须撤掉——那是另一张照片，
@@ -4178,7 +4189,8 @@ const tasteRankRows=(rows,kind,empty='暂无足够证据',visual='')=>rows.lengt
       ?`${row.web_visits?`浏览 ${row.web_visits}`:''}${row.web_visits&&row.peach_items?' · ':''}${row.peach_items?`Peach ${row.peach_items}`:''}`
       :`${Number(row.score||row.visits||0).toLocaleString()}`;
     // 两级图都由 `/api/taste` 说了算：实体图看 `has_image`，代表作头像看 `has_avatar`。
-    const ref=row.entity_id?{id:row.entity_id,has_image:row.has_image}:null,
+    const ref=row.entity_id?{id:row.entity_id,has_image:row.has_image,
+                             avatar_focus:row.avatar_focus}:null,
       rep=row.has_avatar?row.representative_asset_id||null:null;
     const sourceDomain=String(row.source_domain||'');
     const media=visual==='domain'
@@ -4899,7 +4911,7 @@ async function openReview(push=true){
          const origin=comparisonOrigin||subjectKind&&subjectName?comparisonOrigin||`<div class="reviewentity">
              <button class="reviewentityface" data-entity-kind="${subjectKind}" data-entity-name="${esc(subjectName)}"
                aria-label="打开创作者页：${esc(subjectName)}">${avatarInner(subjectName,
-                 row.entity_id?{id:row.entity_id,has_image:row.has_image}:null,null,subjectKind)}</button>
+                 row.entity_id?{id:row.entity_id,has_image:row.has_image,avatar_focus:row.avatar_focus}:null,null,subjectKind)}</button>
              <div><b><button type="button" class="reviewentityname" data-entity-kind="${subjectKind}" data-entity-name="${esc(subjectName)}">${esc(subjectName)}</button></b>
                ${works?`<small class="mono">${works.toLocaleString()} 部作品</small>`:''}</div></div>`
            :row.asset_id?`<div class="revieworigin">
@@ -9455,7 +9467,7 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
     // 和顶栏圆头像同一条判据：没装实体图就不出 `<img>`。这一格没有代表作头像可退，
     // 取不到就是首字母垫底。
     ? `<span>${esc(item.name.slice(0,1))}</span>${entityFaceImg(
-        {id:item.id,hasImage:item.has_image})}`
+        {id:item.id,hasImage:item.has_image,focus:item.avatar_focus})}`
     : kind==='studio'
       // 和顶栏小圆片同一条判据：没装标识就不出 `<img>`，不再靠 404 把图摘掉。
       ? `<span>${esc(item.name.slice(0,2))}</span>${item.has_logo?`<img src="/logo?studio=${encodeURIComponent(item.name)}&variant=icon" alt="" loading="lazy" data-drop="self">`:''}`
