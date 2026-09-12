@@ -13,6 +13,9 @@ dist/
 !.env.example
 .claude/settings.local.json
 .claude/worktrees/
+# Codex 每次在这台机器上开工都会重写这份环境描述，它记的是本机怎么起项目，
+# 不是项目本身的约定。`.codex/hooks.json` 是约定，留在仓库里。
+.codex/environments/
 *.log
 *.bak
 
