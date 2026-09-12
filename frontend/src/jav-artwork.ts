@@ -23,8 +23,9 @@ export function javImageKind(item: { is_jav?: boolean; code?: string; has_cover?
 }
 
 /** 接口 `poster_box` 的形状：`x0/y0/x1/y1` 是源图像素坐标，`px` 是源图尺寸，
- *  `method` 记着这个框是沿折痕（`fold`）还是按右半居中（`ratio`）定出来的。
- *  不该裁、没算过、算法版本落后的封面拿到的是 null。 */
+ *  `method` 记着这个框是沿折痕（`fold`）还是按正封宽高比的先验（`ratio`）定出来的。
+ *  框就是正封本身，`x0` 即折痕所在的列。不该裁、没算过、算法版本落后的封面拿到的
+ *  是 null。 */
 export interface PosterBox {
   x0: number;
   y0: number;

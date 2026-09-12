@@ -2070,15 +2070,15 @@ class JavModeAndCoverTests(unittest.TestCase):
         (self.covers / "ABW-232.jpg").write_bytes(b"x")
         (self.covers / "ABW-232.poster.json").write_text(json.dumps({
             "version": jav_poster_crop.ALGORITHM_VERSION, "px": [800, 540],
-            "box": {"x0": 429, "y0": 0, "x1": 789, "y1": 540, "method": method},
+            "box": {"x0": 419, "y0": 0, "x1": 800, "y1": 540, "method": method},
         }), encoding="utf-8")
         self.contract.cache_bust()
 
-    def test_the_card_carries_the_portrait_crop_box_when_it_has_been_computed(self):
-        """竖版位置要的是一个框，不是锚点：2:3 那一块由离线脚本算好写在边车里。"""
+    def test_the_card_carries_the_front_panel_box_when_it_has_been_computed(self):
+        """正封位置要的是一个框，不是锚点：折痕在哪由离线脚本算好写在边车里。"""
         self.install_poster_sidecar()
         self.assertEqual(self.contract.poster_box("ABW-232"),
-                         {"x0": 429, "y0": 0, "x1": 789, "y1": 540,
+                         {"x0": 419, "y0": 0, "x1": 800, "y1": 540,
                           "method": "fold", "px": [800, 540]})
         rows = {row["id"]: row for row in
                 rm_web.q_items(self.contract, {"jav": "1", "limit": "20"})["items"]}
@@ -2098,20 +2098,20 @@ class JavModeAndCoverTests(unittest.TestCase):
         self.assertIsNone(self.contract.poster_box("ABW-232"))
         (self.covers / "ABW-232.poster.json").write_text(json.dumps({
             "version": "poster-crop-v0", "px": [800, 540],
-            "box": {"x0": 429, "y0": 0, "x1": 789, "y1": 540, "method": "fold"},
+            "box": {"x0": 419, "y0": 0, "x1": 800, "y1": 540, "method": "fold"},
         }), encoding="utf-8")
         self.contract.cache_bust()
         self.assertIsNone(self.contract.poster_box("ABW-232"))
 
     def test_the_two_cover_sidecars_do_not_shadow_each_other(self):
-        """脸和竖框各描述一件事，同一次目录扫描一起收齐，缺一份不影响另一份。"""
+        """脸和正封框各描述一件事，同一次目录扫描一起收齐，缺一份不影响另一份。"""
         self.install_poster_sidecar()
         (self.covers / "ABW-232.face.json").write_text(
             '{"ratio":1.49,"face":{"cx":0.82,"cy":0.19}}', encoding="utf-8")
         self.contract.cache_bust()
         self.assertEqual(self.contract.cover_frame("ABW-232"),
                          {"cx": 0.82, "cy": 0.19})
-        self.assertEqual(self.contract.poster_box("ABW-232")["x0"], 429)
+        self.assertEqual(self.contract.poster_box("ABW-232")["x0"], 419)
         self.assertTrue(self.contract.has_cover("ABW-232"))
 
 

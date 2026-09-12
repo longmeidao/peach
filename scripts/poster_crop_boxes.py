@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-r"""给已落盘的封面算 2:3 竖海报的取景框，写进边车。
+r"""给已落盘的封面算正封的取景框，写进边车。
 
 用法（默认只看不写）：
 
@@ -9,7 +9,7 @@ r"""给已落盘的封面算 2:3 竖海报的取景框，写进边车。
     python scripts/poster_crop_boxes.py --apply --redo
 
 判据全在 `peach.jav_poster_crop`：番号形态决定该不该裁，Sobel 列梯度决定书脊折痕
-在哪，找不到折痕就退回右半居中。这里只负责遍历、统计和落盘。
+在哪，找不到折痕就按正封宽高比的先验从右缘量回去。这里只负责遍历、统计和落盘。
 
 **原图一个字节都不动。** 产物是 `<番号>.poster.json`，和人脸取景的
 `<番号>.face.json` 同目录、同命名风格，各描述一件事。
@@ -66,7 +66,7 @@ def pending(covers: list[Path], redo: bool) -> list[tuple[Path, tuple[int, int]]
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="给封面算 2:3 竖海报取景框")
+    parser = argparse.ArgumentParser(description="给封面算正封取景框")
     parser.add_argument("--covers", type=Path, default=COVER_DIR)
     parser.add_argument("--redo", action="store_true",
                         help="无条件重算，不看边车是否还作数")

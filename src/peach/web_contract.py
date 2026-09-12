@@ -39,11 +39,11 @@ from .field_owners import (
     parse_owners,
     write_owned_fields,
 )
-# 卡片上的 `poster_box` 字段由这两个名字定形：框由 `portrait_crop_box` 算，
+# 卡片上的 `poster_box` 字段由这两个名字定形：框由 `front_panel_box` 算，
 # 端点侧由 `WebContract.poster_box` 从边车读出来。字段的形状写在
 # `jav_poster_crop.projection` 的文档串里——源图像素坐标加源图尺寸，
 # 不该裁、没算过与读不出一律 null。
-from .jav_poster_crop import POSTER_ASPECT, portrait_crop_box
+from .jav_poster_crop import PANEL_ASPECT, front_panel_box
 # 这几个处理器本来就住在别的域模块里，旧 `web_contract` 只是把它们又摊了一遍。
 # tests 里三十多处按 `web_contract.X` 调用，所以再导出留着；新代码请直接 import 那边。
 from .web_activity import (
@@ -134,7 +134,7 @@ from .web_stats import (
 )
 
 __all__ = [
-    "POSTER_ASPECT", "portrait_crop_box",
+    "PANEL_ASPECT", "front_panel_box",
     "AD_DIRPACK", "AD_DOMAIN", "ASSET_REFERENCE_TABLES", "BUNDLE_DIR_ASSETS", "CACHE_TTL",
     "EXPECTED_REVISION_FIELD", "OWNED_FIELDS", "RevisionConflict", "parse_owners",
     "write_owned_fields",

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""横版封套里那块 2:3 竖海报取景框的判据。
+"""横版封套里正封取景框的判据。
 
 图都是 Pillow 当场合成的，不依赖真实封面：折痕是一条画上去的竖线，位置已知，
 所以「找到的那一列对不对」有确定答案可比。
@@ -73,31 +73,32 @@ def batch_script():
 
 
 class CropShapeTests(unittest.TestCase):
-    """框的形状：严格 2:3，落在源图里，不越出正面那一块。"""
+    """框的形状：从折痕一路到源图的右下角，满高，中间不另取子区域。"""
 
-    def assert_two_by_three(self, box: dict, width: int, height: int):
-        self.assertEqual((box["x1"] - box["x0"]) * 3, (box["y1"] - box["y0"]) * 2,
-                         f"框不是 2:3：{box}")
+    def assert_reaches_the_corner(self, box: dict, width: int, height: int):
+        self.assertEqual((box["x1"], box["y0"], box["y1"]), (width, 0, height),
+                         f"框不是「折痕到右缘、满高」：{box}")
+        self.assertGreater(box["x1"], box["x0"])
         self.assertGreaterEqual(box["x0"], 0)
-        self.assertGreaterEqual(box["y0"], 0)
-        self.assertLessEqual(box["x1"], width)
-        self.assertLessEqual(box["y1"], height)
 
-    def test_the_box_stays_exactly_two_by_three_at_every_sleeve_size(self):
+    def test_the_box_runs_from_the_fold_to_the_bottom_right_corner(self):
         for width, height in ((800, 539), (2184, 1464), (1000, 674), (760, 600)):
             with self.subTest(size=(width, height)):
-                box = jav_poster_crop.portrait_crop_box(width, height)
+                box = jav_poster_crop.front_panel_box(width, height)
                 self.assertEqual(box["method"], RATIO)
-                self.assert_two_by_three(box, width, height)
+                self.assert_reaches_the_corner(box, width, height)
 
-    def test_the_box_shrinks_instead_of_reaching_past_the_front_panel(self):
-        """正面窄到放不下满高的 2:3 时，框按正面宽度收，不往折痕左边借。"""
-        box = jav_poster_crop.portrait_crop_box(1000, 700, [0.0] * 1000)
-        self.assertGreaterEqual(box["x0"], 500)
-        self.assert_two_by_three(box, 1000, 700)
+    def test_the_prior_puts_the_fold_where_the_front_panel_has_its_real_shape(self):
+        """没有梯度可用时，正封的形状就是先验本身——按高度从右缘量回去。"""
+        for width, height in ((800, 539), (2184, 1464)):
+            with self.subTest(size=(width, height)):
+                box = jav_poster_crop.front_panel_box(width, height, [0.0] * width)
+                self.assertEqual(box["method"], RATIO)
+                self.assertAlmostEqual((box["x1"] - box["x0"]) / height,
+                                       jav_poster_crop.PANEL_ASPECT, places=2)
 
     def test_a_degenerate_size_gives_an_empty_box_and_no_method(self):
-        self.assertEqual(jav_poster_crop.portrait_crop_box(0, 0),
+        self.assertEqual(jav_poster_crop.front_panel_box(0, 0),
                          {"x0": 0, "y0": 0, "x1": 0, "y1": 0, "method": NONE})
 
 
@@ -109,73 +110,71 @@ class MethodTests(unittest.TestCase):
         width, height, fold = 800, 540, 420
         profile = gradient_of(sleeve(width, height, fold))
         self.assertIsNotNone(profile)
-        found = jav_poster_crop.fold_column(width, profile)
+        found = jav_poster_crop.fold_column(width, height, profile)
         self.assertIsNotNone(found, "画上去的折痕没被找到")
         self.assertLessEqual(abs(found - fold), 2, found)
-        box = jav_poster_crop.portrait_crop_box(width, height, profile)
+        box = jav_poster_crop.front_panel_box(width, height, profile)
         self.assertEqual(box["method"], FOLD)
-        self.assertGreaterEqual(box["x0"], fold)
-        self.assertEqual((box["x1"] - box["x0"]) * 3, (box["y1"] - box["y0"]) * 2)
+        self.assertEqual((box["x0"], box["x1"], box["y0"], box["y1"]),
+                         (found, width, 0, height))
 
     @unittest.skipUnless(opencv_available(), "缺 vision 依赖组")
-    def test_without_a_spine_the_front_falls_back_to_the_right_half(self):
+    def test_without_a_spine_the_front_falls_back_to_the_prior_shape(self):
         width, height = 800, 540
         profile = gradient_of(edge_left(width, height))
-        self.assertIsNone(jav_poster_crop.fold_column(width, profile))
-        box = jav_poster_crop.portrait_crop_box(width, height, profile)
+        self.assertIsNone(jav_poster_crop.fold_column(width, height, profile))
+        box = jav_poster_crop.front_panel_box(width, height, profile)
         self.assertEqual(box["method"], RATIO)
-        self.assertGreaterEqual(box["x0"], width // 2)
+        self.assertEqual(box["x0"],
+                         round(width - jav_poster_crop.PANEL_ASPECT * height))
 
-    def test_a_missing_gradient_falls_back_to_the_right_half(self):
+    def test_a_missing_gradient_falls_back_to_the_prior_shape(self):
         """OpenCV 不在时取景仍然给得出框，只是退化成先验几何。"""
-        box = jav_poster_crop.portrait_crop_box(800, 540, None)
+        box = jav_poster_crop.front_panel_box(800, 540, None)
         self.assertEqual(box["method"], RATIO)
 
     def test_a_portrait_or_square_image_is_not_cropped(self):
         for width, height in ((600, 900), (800, 800), (900, 800)):
             with self.subTest(size=(width, height)):
-                box = jav_poster_crop.portrait_crop_box(width, height)
+                box = jav_poster_crop.front_panel_box(width, height)
                 self.assertEqual(box, {"x0": 0, "y0": 0, "x1": width, "y1": height,
                                        "method": NONE})
 
     def test_a_sixteen_by_nine_still_is_not_cropped(self):
-        """整幅都是画面的官方剧照没有「正面那一块」，右半居中会裁出半张背景。"""
-        box = jav_poster_crop.portrait_crop_box(1920, 1080)
+        """整幅都是画面的官方剧照没有「正面那一块」，按先验切会裁出半张背景。"""
+        box = jav_poster_crop.front_panel_box(1920, 1080)
         self.assertEqual(box["method"], NONE)
 
-    def test_the_band_peak_must_be_a_real_cliff(self):
-        """带里总有一个最大值，它不够陡就只是噪声的最高点，按它切会切进画面。"""
+    def test_the_window_peak_must_be_a_real_cliff(self):
+        """窗里总有一个最大值，它不够陡就只是噪声的最高点，按它切会切进画面。"""
         profile = [0.0] * 800
         profile[80] = 1.0
         profile[425] = 0.1
-        self.assertIsNone(jav_poster_crop.fold_column(800, profile))
+        self.assertIsNone(jav_poster_crop.fold_column(800, 540, profile))
         profile[425] = 0.9
-        self.assertEqual(jav_poster_crop.fold_column(800, profile), 425)
+        self.assertEqual(jav_poster_crop.fold_column(800, 540, profile), 425)
 
-    def test_a_symmetric_pair_around_the_centre_is_accepted(self):
-        """折痕压在中线上时两条边离中线一样远，这是另一条采信路径。"""
+    def test_a_stronger_edge_outside_the_window_never_wins(self):
+        """窗外那道边正是误判的来路：画面里的强边、书脊的另一条边都在窗外。"""
         profile = [0.0] * 800
-        profile[396] = 1.0
-        profile[404] = 1.0
-        self.assertEqual(jav_poster_crop.fold_column(800, profile), 404)
+        profile[330] = 1.0                      # 正封会连着整条书脊
+        profile[470] = 1.0                      # 切进正封，大标题被削掉一截
+        self.assertIsNone(jav_poster_crop.fold_column(800, 539, profile))
+        profile[418] = 0.5
+        self.assertEqual(jav_poster_crop.fold_column(800, 539, profile), 418)
 
-    def test_a_peak_far_from_both_priors_is_rejected(self):
-        profile = [0.0] * 800
-        profile[330] = 1.0
-        profile[510] = 1.0
-        self.assertIsNone(jav_poster_crop.fold_column(800, profile))
-
-    def test_the_spine_prior_scales_with_width(self):
-        """先验偏移是全宽的 2.5%，在高清封套上是五十多像素而不是二十像素。"""
-        for width in (800, 2184):
-            with self.subTest(width=width):
+    def test_the_window_is_measured_off_the_height_not_the_width(self):
+        """同一个正封形状在低清和高清封套上都要认得出，尽管像素位置差着上千。"""
+        for width, height in ((800, 539), (2184, 1464)):
+            with self.subTest(size=(width, height)):
+                fold = round(width - 0.71 * height)
                 profile = [0.0] * width
-                profile[round(width * 0.525)] = 1.0
-                self.assertEqual(jav_poster_crop.fold_column(width, profile),
-                                 round(width * 0.525))
+                profile[fold] = 1.0
+                self.assertEqual(jav_poster_crop.fold_column(width, height, profile),
+                                 fold)
 
     def test_a_profile_that_does_not_match_the_image_is_ignored(self):
-        self.assertIsNone(jav_poster_crop.fold_column(800, [1.0] * 400))
+        self.assertIsNone(jav_poster_crop.fold_column(800, 540, [1.0] * 400))
 
 
 class CodeShapeTests(unittest.TestCase):
@@ -264,8 +263,8 @@ class ProjectionTests(unittest.TestCase):
         projected = jav_poster_crop.projection(record)
         self.assertEqual(projected["px"], [800, 540])
         self.assertEqual(projected["method"], RATIO)
-        self.assertEqual((projected["x1"] - projected["x0"]) * 3,
-                         (projected["y1"] - projected["y0"]) * 2)
+        self.assertEqual((projected["x1"], projected["y0"], projected["y1"]),
+                         (800, 0, 540))
 
     def test_everything_unusable_projects_to_none(self):
         for record in (None, {}, {"version": "poster-crop-v0"},
