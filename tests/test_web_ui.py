@@ -9289,6 +9289,38 @@ class WebUiSourceTests(unittest.TestCase):
                         if row.startswith("html.board-high-contrast .settingscard.settingscard>"))
         self.assertIn("animation:none", contrast, "高对比下那层漂移的光晕要停")
 
+    def test_the_settings_column_glass_follows_the_pointer_like_the_filter_row(self):
+        """设置弹层左栏那块玻璃跟着指针走，跟筛选条那排药丸是同一条连线。
+
+        一列里只有当前那格铺着面，鼠标停在哪一条得靠字色那一档去读，扫下来分不出自己停在
+        了第几条。指针离开这一列就滑回当前那格；触点没有「悬停」，碰一下就滑过去等于替
+        用户点了一次。
+        """
+        app = (Path(__file__).resolve().parents[1] / "web/app.js").read_text(encoding="utf-8")
+        self.assertIn("buttons.forEach(button=>{button.onpointerenter=event=>{\n"
+                      "    if(event.pointerType!=='touch')syncLocalNavGlide(nav,button,true)}});", app)
+        self.assertIn("nav.onpointerleave=event=>{\n"
+                      "    if(event.pointerType==='touch')return;\n"
+                      "    const current=nav.querySelector('[role=tab][aria-selected=true]');\n"
+                      "    if(current)syncLocalNavGlide(nav,current,true);\n"
+                      "  };", app)
+        # 配置页那一份没有玻璃，连线挂上去也不动任何东西。
+        self.assertIn("if(!nav.closest('.settingscard'))return", app)
+
+    def test_the_settings_column_drops_the_top_rim_the_floating_glass_keeps(self):
+        """设置弹层左栏不留顶边那道高光：它嵌在卡片里，上边贴的是卡片自己的圆角。
+
+        那道高光是给浮在页面上的玻璃打边用的，落在这一栏就是一条白线横在「设置」上面，
+        读起来像卡片被切成了上下两截。其余三面的内描边和落影照旧。
+        """
+        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
+        self.assertIn(".settingscard.settingscard.settingscard>.board-local-nav{\n"
+                      "  box-shadow:inset 1px 0 0 var(--glass-low),inset -1px 0 0 var(--glass-low),"
+                      "inset 0 -1px 0 var(--glass-low),var(--glass-shadow)}", board)
+        glass = next(line for line in board.splitlines()
+                     if line.startswith("  border:0;box-shadow:inset 0 1px 0 var(--glass-rim),"))
+        self.assertIn("var(--glass-shadow)", glass, "浮层那几块玻璃照旧带顶边高光")
+
     def test_the_settings_drawer_column_marks_the_current_item_with_glass(self):
         """左栏当前项的填充由一块滑过去的玻璃给，跟抽屉那一列、筛选条那四枚同一套做法。
 
