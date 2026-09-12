@@ -16,6 +16,7 @@ import logging
 import re
 from functools import partial
 from pathlib import Path
+from typing import Iterable
 from urllib.parse import quote, urlsplit
 
 import httpx
@@ -527,7 +528,23 @@ _WORK_FACE_PROBE = avatar_face.FaceProbe()
 _WORK_ICON_FACE_SHARE = follow_assets.FACE_PX_IN_STORE / follow_assets.ICON_SIDE
 
 
-def _pick_work_icon(client, targets: list[str]) -> tuple[bytes | None, dict | None]:
+def _work_icon_targets(state, local: list[str], tag: str):
+    """这个题材可以拿来当代表图的地址，本库那几张在前。
+
+    后半截是生成器，本库这几张里挑得出脸就一个字节都不出网：`_pick_work_icon` 一找到
+    够大的脸就返回，站点那一趟根本不会被求值。走到那里的只有「本库这几张全都看不清」
+    ——那多半是这个题材在库里只有一两条更新，而站上同一个标签下有成千上万帖。
+    """
+    yield from local
+    seen = set(local)
+    for url in web_follow.work_icon_search_urls(state.web_contract, tag,
+                                                transport=state.http_transport):
+        if url not in seen:
+            seen.add(url)
+            yield url
+
+
+def _pick_work_icon(client, targets: Iterable[str]) -> tuple[bytes | None, dict | None]:
     """按热度顺着候选找第一张看得清脸的图，返回落盘用的字节和人脸记录。
 
     只取最热那一张的话，圆标里有一半是身体特写——最热的帖子常常就是特写。
@@ -611,8 +628,10 @@ def work_icon(request: Request, work: str = "",
     def fetch():
         nonlocal picked, replaced
         with state.database.read_connection() as connection:
-            targets = web_follow.work_icon_urls(FollowStore(lambda: connection), root)
-        body, picked = _pick_work_icon(client, targets)
+            store = FollowStore(lambda: connection)
+            targets = web_follow.work_icon_urls(store, root)
+            tag = web_follow.work_icon_tag(store, root)
+        body, picked = _pick_work_icon(client, _work_icon_targets(state, targets, tag))
         replaced = bool(body)
         return body
 

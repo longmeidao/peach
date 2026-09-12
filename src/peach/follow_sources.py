@@ -1196,11 +1196,14 @@ class Rule34XxxConnector(_BaseConnector):
                     f"{matched.group(1)}/{matched.group(2)}.jpg")
         return str(item.thumb_url or "") or None
 
-    def fetch(self, ref: str, *, etag: str | None = None,
-              last_modified: str | None = None, page: int = 0) -> SourceFetch:
-        tag = (ref or "").strip()
-        if not self._TAG_RE.match(tag):
-            raise FollowSourceError(f"rule34xxx 的 ref 必须是单个标签，收到：{ref!r}")
+    def _dapi(self, tags: str, *, limit: int, page: int = 0,
+              etag: str | None = None, last_modified: str | None = None,
+              ) -> tuple[dict[str, object], HttpResponse | None]:
+        """问一次 dapi。凭据、地址形状和脱敏都只有这一处。
+
+        `tags` 原样交给站点：dapi 的标签之间用空格分隔，`sort:score` 这类元标签也
+        走同一个参数，所以这里不解析它，只负责把它编码进查询串。
+        """
         if self.credential is None:
             raise CredentialError(
                 "rule34xxx 需要 user_id 与 api_key；请把它们写进 "
@@ -1209,7 +1212,7 @@ class Rule34XxxConnector(_BaseConnector):
         # `pid` 是 0 起的页号，页大小就是 `limit`。
         parameters = {
             "page": "dapi", "s": "post", "q": "index", "json": "1",
-            "limit": str(min(self.max_items, 1000)), "tags": tag,
+            "limit": str(min(limit, 1000)), "tags": tags,
             "user_id": user_id, "api_key": api_key,
         }
         if page:
@@ -1217,14 +1220,15 @@ class Rule34XxxConnector(_BaseConnector):
         query = urllib.parse.urlencode(parameters)
         url = f"https://api.rule34.xxx/index.php?{query}"
         safe_url = (f"https://api.rule34.xxx/index.php?page=dapi&s=post&q=index"
-                    f"&tags={tag}" + (f"&pid={page}" if page else ""))
+                    f"&tags={tags}" + (f"&pid={page}" if page else ""))
         # request_url 传脱敏版：真实 url 的查询串里带 api_key，绝不能落进证据。
-        common, response = self._request(url, ref=tag, etag=etag,
-                                         last_modified=last_modified, page=page,
-                                         headers={"Accept": "application/json"},
-                                         request_url=safe_url)
-        if response is None:
-            return SourceFetch(not_modified=True, **common)
+        return self._request(url, ref=tags, etag=etag,
+                             last_modified=last_modified, page=page,
+                             headers={"Accept": "application/json"},
+                             request_url=safe_url)
+
+    def _dapi_posts(self, response: HttpResponse) -> list[dict]:
+        """一次 dapi 响应里的帖子。"""
         body = response.body.decode("utf-8", errors="replace").strip()
         if body.startswith('"') and "authentication" in body.lower():
             raise CredentialError("rule34xxx 拒绝了 user_id/api_key")
@@ -1234,8 +1238,37 @@ class Rule34XxxConnector(_BaseConnector):
         posts = payload.get("post", []) if isinstance(payload, dict) else payload
         if not isinstance(posts, list):
             raise FollowSourceError("rule34xxx 的帖子列表格式不符")
-        listed = [self._candidate(post, tag) for post in posts[: self.max_items]
-                  if isinstance(post, dict)]
+        return [post for post in posts if isinstance(post, dict)]
+
+    def search(self, tags: str, *, limit: int = 8) -> tuple[FollowCandidate, ...]:
+        """按一段标签表达式问站方要帖子，不落库、不进第二阶段。
+
+        `fetch()` 抓的是一条订阅：单个标签、要条件请求、要补标签分类。这里问的是
+        一次性的「这个题材最热的几张图」，两件事共用的只是 dapi 那一半，所以分两个
+        入口而不是给 `fetch()` 加开关——订阅那条路上的条件请求和第二阶段额度，在这
+        里全是白花的请求。
+        """
+        expression = " ".join(str(tags or "").split())
+        if not expression:
+            return ()
+        _, response = self._dapi(expression, limit=limit)
+        if response is None:
+            return ()
+        subject = expression.split(" ", 1)[0]
+        return tuple(self._candidate(post, subject)
+                     for post in self._dapi_posts(response)[:limit])
+
+    def fetch(self, ref: str, *, etag: str | None = None,
+              last_modified: str | None = None, page: int = 0) -> SourceFetch:
+        tag = (ref or "").strip()
+        if not self._TAG_RE.match(tag):
+            raise FollowSourceError(f"rule34xxx 的 ref 必须是单个标签，收到：{ref!r}")
+        common, response = self._dapi(tag, limit=self.max_items, page=page,
+                                      etag=etag, last_modified=last_modified)
+        if response is None:
+            return SourceFetch(not_modified=True, **common)
+        listed = [self._candidate(post, tag)
+                  for post in self._dapi_posts(response)[: self.max_items]]
         # 第二阶段：标签分类只有帖子详情页给，列表的 dapi 只给一串扁平标签。
         candidates, probed = self.enrich(listed)
         if page and not candidates:

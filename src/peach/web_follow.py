@@ -405,25 +405,38 @@ def _work_icon_candidate(item) -> str:
     return url if urllib.parse.urlsplit(url).netloc in _WORK_ICON_HOSTS else ""
 
 
-def _work_icon_table(store) -> dict[str, list[str]]:
-    """题材 → 按热度排好的几个候选图。带 `3d` 标签的排在前面。
+def _work_icon_table(store) -> dict[str, dict]:
+    """题材 → 本库现成的几个候选图，加它在站上的标签写法。
 
-    用户要的是这个题材最有代表性的一张。rule34 的 score 是站点自己的热度排序，
-    本库里现成存着——不必再按 `sort:score` 去站点查一遍，查回来的还多半是他根本
-    没关注的作者。`3d` 优先是因为这一排要的是 3D 作品，不是同人画。
+    候选按热度排，带 `3d` 标签的排在前面：用户要的是这个题材最有代表性的一张，
+    rule34 的 score 是站点自己的热度排序，本库里现成存着；`3d` 优先是因为这一排要的
+    是 3D 作品，不是同人画。
 
     给几个而不是一个：最热的那张常常是个身体特写，圆标里于是一张脸都没有。取图那
-    一端会顺着这个次序找出第一张看得见脸的，实测最热那张只有一半带脸。
+    一端会顺着这个次序找出第一张看得清脸的，实测最热那张只有一半带脸。
 
     给的是站点那张封面而不是正片：封面实测 30–370 KB，而同一条的正片可能是一张几
     MB 的动图，超过 `follow_assets.MAX_BYTES` 反而一张都存不下。
+
+    标签写法要按本库记下的那个，不能拿归一化后的题材身份去站上查：身份是把
+    `the_witcher_(series)`、`dbd`、`clair_obscur:_expedition_33` 抹平之后的结果，
+    照着它拼出来的 `dead_by_daylight` 在站上是零命中。只认 rule34xxx 条目记下的写法
+    ——别的站把同一部作品写成 `Dead or Alive`，那不是 rule34 的标签。
     """
     ranked: dict[str, list[tuple[tuple[int, int, int], str]]] = {}
+    spellings: dict[str, dict[str, int]] = {}
     for item in store.items(limit=_ALL_ITEMS):
+        if _excluded_item(item):
+            continue
+        works = _item_works(item)
+        if item.provider == "rule34xxx":
+            for tag in works:
+                seen = spellings.setdefault(_work_root(tag), {})
+                seen[tag] = seen.get(tag, 0) + 1
         url = _work_icon_candidate(item)
         if not url:
             continue
-        roots = {_work_root(tag) for tag in _item_works(item)}
+        roots = {_work_root(tag) for tag in works}
         if not roots:
             continue
         try:
@@ -437,11 +450,24 @@ def _work_icon_table(store) -> dict[str, list[str]]:
             row.append((rank, url))
             row.sort(key=lambda pair: pair[0], reverse=True)
             del row[_WORK_ICON_CANDIDATES:]
-    return {root: [url for _, url in row] for root, row in ranked.items()}
+    table: dict[str, dict] = {}
+    for root in set(ranked) | set(spellings):
+        counted = spellings.get(root) or {}
+        # 同一个题材在站上常有几个写法（`nier:_automata` 与 `nier`），用得最多的
+        # 那个才是这个库实际在追的那条线；并列时取字典序，好让两次扫库给出同一个答案。
+        tag = max(sorted(counted), key=counted.get, default="")
+        table[root] = {"urls": [url for _, url in ranked.get(root) or ()],
+                       "tag": _site_tag(tag or root)}
+    return table
 
 
-def _work_icons(store) -> dict[str, list[str]]:
-    """题材 → 候选图，整张表一起算再存一分钟。
+def _site_tag(tag: str) -> str:
+    """rule34 的标签形态：空格换成下划线。"""
+    return re.sub(r"\s+", "_", str(tag or "").strip())
+
+
+def _work_icons(store) -> dict[str, dict]:
+    """题材 → 候选图与标签写法，整张表一起算再存一分钟。
 
     判据见 `_WORK_ICON_MEMO_SECONDS`。筛选条和 `/work-icon` 读的是同一份表，所以
     那一排说「这枚有图」和端点真的取得到图不会各说各话。落盘那份图另有自己的保鲜期，
@@ -458,7 +484,55 @@ def _work_icons(store) -> dict[str, list[str]]:
 
 def work_icon_urls(store, root: str) -> list[str]:
     """题材头像的候选图，按热度从高到低；一张都挑不出时是空列表。"""
-    return list(_work_icons(store).get(root) or ())
+    return list((_work_icons(store).get(root) or {}).get("urls") or ())
+
+
+def work_icon_tag(store, root: str) -> str:
+    """这个题材在 rule34 上的标签写法。本库没记下写法时按身份拼一个。"""
+    return str((_work_icons(store).get(root) or {}).get("tag") or _site_tag(root))
+
+
+#: 去站点问一次最多要回几张。本库那几张挑不出脸才会走到这里，而这一趟的代价是一次
+#: JSON 加最多这么多张封面；给多了是在一枚 28px 的圆标上花几兆流量。
+_WORK_ICON_REMOTE = 8
+#: 问站点的次序。先只要 3D——这一排要的是 3D 作品；那个标签下一张都没有时再问一次
+#: 不限形式的，总好过让这一枚空着。
+_WORK_ICON_QUERIES = ("{tag} 3d sort:score", "{tag} sort:score")
+
+
+def work_icon_search_urls(contract, tag: str, *,
+                          transport=None, limit: int = _WORK_ICON_REMOTE) -> list[str]:
+    """去 rule34 问这个题材最热的几张封面，返回能当代表图的地址。
+
+    本库现成的那几张全都看不清脸时才走这一趟：库里存的是用户关注的那几位作者发的
+    东西，一个题材常常只有一两条，而那一两条未必有正脸。站上同一个标签下有成千上万
+    帖，按热度往下找总能找到一张。
+
+    白名单照旧（`_WORK_ICON_HOSTS`）：地址来自站点回的 JSON，不能让它把任意主机带进
+    出网路径。取不到凭据、站点报错或网络不通一律返回空——圆标退回首字母，不是 500。
+    """
+    tag = _site_tag(tag)
+    if not tag:
+        return []
+    credential = _credential_store(contract).load("rule34xxx")
+    if credential is None:
+        return []
+    try:
+        connector = build_connector("rule34xxx", transport=transport,
+                                    credential=credential, max_items=limit,
+                                    enrich_budget=0)
+        for query in _WORK_ICON_QUERIES:
+            urls: list[str] = []
+            for candidate in connector.search(query.format(tag=tag), limit=limit):
+                url = str(candidate.thumb_url or "")
+                if (url not in urls
+                        and urllib.parse.urlsplit(url).netloc in _WORK_ICON_HOSTS):
+                    urls.append(url)
+            if urls:
+                return urls
+    except (FollowSourceError, CredentialError, OSError):
+        return []
+    return []
 
 
 def work_icon_root(contract) -> Path:

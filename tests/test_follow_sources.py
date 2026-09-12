@@ -9,6 +9,7 @@ import os
 import stat
 import tempfile
 import unittest
+import urllib.parse
 from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
@@ -1321,6 +1322,39 @@ class Rule34XxxConnectorTests(unittest.TestCase):
         connector = Rule34XxxConnector(transport=_transport(record=seen))
         with self.assertRaises(CredentialError):
             connector.fetch("lazyprocrastinator")
+        self.assertEqual(seen, [])
+
+    def test_a_search_asks_dapi_once_and_skips_the_subscription_machinery(self):
+        """一段标签表达式换一次请求，整串原样进 `tags`。
+
+        题材圆标在本库那几张里挑不出脸时走这一趟：要的是「这个题材最热的几张」，
+        `sort:score` 这类元标签和主标签共用同一个参数。它不落库，也就不需要订阅那
+        条路上的条件请求和逐条打详情页——那些在这里全是白花的请求。
+        """
+        seen = []
+        candidates = self._connector(record=seen).search("stellar_blade 3d sort:score",
+                                                         limit=3)
+        self.assertEqual(len(seen), 1, "一次搜索就是一次请求，不再逐条打详情页")
+        query = urllib.parse.parse_qs(urllib.parse.urlsplit(seen[0].url).query)
+        self.assertEqual(query["tags"], ["stellar_blade 3d sort:score"])
+        self.assertEqual(query["limit"], ["3"])
+        self.assertNotIn("pid", query, "一次性的搜索只要第一页")
+        self.assertEqual(len(candidates), 3)
+        self.assertEqual(candidates[0].thumb_url,
+                         "https://api-cdn.rule34.xxx/images/1232/3df1.jpg",
+                         "圆标要的是 sample 那一层，不是 250px 的 preview")
+
+    def test_a_search_without_credentials_fails_before_the_request(self):
+        seen = []
+        connector = Rule34XxxConnector(transport=_transport(record=seen))
+        with self.assertRaises(CredentialError):
+            connector.search("stellar_blade sort:score")
+        self.assertEqual(seen, [])
+
+    def test_an_empty_search_expression_never_reaches_the_site(self):
+        """标签是空的就不出网：一个没有标签的 dapi 查询回的是整站最新，不是这个题材。"""
+        seen = []
+        self.assertEqual(self._connector(record=seen).search("   "), ())
         self.assertEqual(seen, [])
 
     def test_an_empty_success_response_means_the_tag_has_no_posts(self):

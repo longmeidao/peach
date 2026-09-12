@@ -11,6 +11,7 @@ import stat
 import tempfile
 import threading
 import unittest
+import urllib.parse
 from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
@@ -23,6 +24,7 @@ from peach.follow_discovery import Discovery, ExternalSearch
 from peach.follow_secrets import CredentialError
 from peach.follow_sources import FollowCandidate, SourceFetch
 from peach.follow_store import FollowStore
+from peach.http import HttpResponse
 from support.ledger import fresh_ledger
 from peach.web_contract import WebContract, dispatch_api_get, dispatch_api_post
 from peach.web_follow import _credential_store
@@ -1032,17 +1034,16 @@ class FollowContractTests(unittest.TestCase):
             self._scored(2, 9, ("miside", "3d"), None, f"{host}/thumbnails/2/b.jpg"),
         ))
         table = web_follow._work_icon_table(store)
-        self.assertEqual(table["stellar blade"], [f"{host}/samples/1/a.jpg"])
-        self.assertEqual(table["miside"], [f"{host}/thumbnails/2/b.jpg"])
+        self.assertEqual(table["stellar blade"]["urls"], [f"{host}/samples/1/a.jpg"])
+        self.assertEqual(table["miside"]["urls"], [f"{host}/thumbnails/2/b.jpg"])
 
     def test_the_work_icon_candidates_are_this_librarys_hottest_3d_clips(self):
         """题材头像的候选是本库里这个题材热度最高的几条，带 `3d` 的优先。
 
-        rule34 的 score 是站点自己的热度排序，本库里现成存着，不必再按 `sort:score`
-        去站点查一遍——查回来的还多半是用户没关注的作者。给的是一串而不是一条：最热
-        那张常常是身体特写，取图那一端要顺着往下找第一张看得见脸的。地址只认登记过
-        的图床主机：它来自来源记录，而记录里存的是站点回的 JSON，不该把任意主机带进
-        出网路径。
+        rule34 的 score 是站点自己的热度排序，本库里现成存着，先用它：这几张属于用户
+        关注的那几位作者，不出网就能拿到。给的是一串而不是一条：最热那张常常是身体
+        特写，取图那一端要顺着往下找第一张看得见脸的。地址只认登记过的图床主机：它
+        来自来源记录，而记录里存的是站点回的 JSON，不该把任意主机带进出网路径。
         """
         host = "https://api-cdn.rule34.xxx/thumbnails/1"
         store = SimpleNamespace(items=lambda **kwargs: (
@@ -1054,10 +1055,10 @@ class FollowContractTests(unittest.TestCase):
             self._scored(5, 999, ("zenless zone zero", "3d"), f"{host}/other.jpg"),
         ))
         table = web_follow._work_icon_table(store)
-        self.assertEqual(table["stellar blade"],
+        self.assertEqual(table["stellar blade"]["urls"],
                          [f"{host}/spatial.jpg", f"{host}/quiet.jpg",
                           f"{host}/flat.jpg"])
-        self.assertEqual(table["zenless zone zero"], [f"{host}/other.jpg"])
+        self.assertEqual(table["zenless zone zero"]["urls"], [f"{host}/other.jpg"])
         self.assertNotIn("miside", table,
                          "本库里没有这个题材时不编一张图出来，那一排退回首字母")
 
@@ -1071,7 +1072,7 @@ class FollowContractTests(unittest.TestCase):
         store = SimpleNamespace(items=lambda **kwargs: tuple(
             self._scored(index, index, ("stellar blade", "3d"), f"{host}/{index}.jpg")
             for index in range(1, 40)))
-        self.assertEqual(len(web_follow._work_icon_table(store)["stellar blade"]),
+        self.assertEqual(len(web_follow._work_icon_table(store)["stellar blade"]["urls"]),
                          web_follow._WORK_ICON_CANDIDATES)
 
     def test_the_work_icon_follows_the_merged_series_not_one_installment(self):
@@ -1086,7 +1087,7 @@ class FollowContractTests(unittest.TestCase):
             self._scored(2, 700, ("final fantasy vii remake", "3d"),
                          f"{host}/remake.jpg"),
         ))
-        self.assertEqual(web_follow._work_icon_table(store)["final fantasy"],
+        self.assertEqual(web_follow._work_icon_table(store)["final fantasy"]["urls"],
                          [f"{host}/remake.jpg", f"{host}/series.jpg"])
 
     def test_one_scan_answers_every_work_icon_asked_for_in_the_same_minute(self):
@@ -1113,6 +1114,104 @@ class FollowContractTests(unittest.TestCase):
             self.assertEqual(len(scans), 1)
         finally:
             web_follow._work_icon_memo = (0.0, {})
+
+    def test_the_site_tag_is_the_spelling_this_library_recorded_not_the_identity(self):
+        """去站上查用的是本库记下的那个写法。
+
+        题材身份是把 `the_witcher_(series)` 这类写法抹平之后的结果，照着它拼出来的
+        标签在站上是零命中。同一个题材记着几种写法时取用得最多的那个：它才是这个库
+        实际在追的那条线。
+        """
+        host = "https://api-cdn.rule34.xxx/thumbnails/5"
+        store = SimpleNamespace(items=lambda **kwargs: (
+            self._scored(1, 9, ("the witcher (series)", "3d"), f"{host}/a.jpg"),
+            self._scored(2, 8, ("the witcher (series)", "3d"), f"{host}/b.jpg"),
+            self._scored(3, 7, ("the witcher", "3d"), f"{host}/c.jpg"),
+        ))
+        self.assertEqual(web_follow._work_icon_table(store)["the witcher"]["tag"],
+                         "the_witcher_(series)")
+
+    def test_a_work_the_library_never_recorded_falls_back_to_its_own_name(self):
+        """本库没记下写法时按题材身份拼一个，总好过不去问。"""
+        web_follow._work_icon_memo = (0.0, {})
+        self.addCleanup(setattr, web_follow, "_work_icon_memo", (0.0, {}))
+        store = SimpleNamespace(items=lambda **kwargs: ())
+        self.assertEqual(web_follow.work_icon_tag(store, "stellar blade"),
+                         "stellar_blade")
+
+    def _rule34_credential(self):
+        self._post("/api/follow/credential", {
+            "provider": "rule34xxx", "values": {"user_id": "42", "api_key": "sekret"}})
+
+    @staticmethod
+    def _posts(*urls):
+        return json.dumps([{"id": index, "image": f"{index}.jpg",
+                            "tags": "the_witcher_(series) 3d", "sample_url": url}
+                           for index, url in enumerate(urls, 1)]).encode()
+
+    def test_a_work_with_no_usable_cover_here_asks_the_site_for_one(self):
+        """本库那几张都看不清脸时，去站上问这个题材最热的几张。
+
+        库里存的是用户关注的那几位作者发的东西，一个题材常常只有一两条，那一两条
+        未必有正脸；站上同一个标签下有成千上万帖，按热度往下找总能找到一张。先只要
+        3D——这一排要的是 3D 作品。地址仍只认登记过的图床主机：它来自站点回的 JSON，
+        不该把任意主机带进出网路径。
+        """
+        self._rule34_credential()
+        seen = []
+
+        def transport(request, timeout, max_bytes):
+            seen.append(request.url)
+            return HttpResponse(200, {}, self._posts(
+                "https://api-cdn.rule34.xxx/images/1/a.jpg",
+                "https://images.example.invalid/b.jpg"))
+
+        urls = web_follow.work_icon_search_urls(
+            self.contract, "the_witcher_(series)", transport=transport, limit=4)
+        self.assertEqual(urls, ["https://api-cdn.rule34.xxx/images/1/a.jpg"])
+        self.assertEqual(len(seen), 1, "3D 那一问有结果就不再问第二遍")
+        query = urllib.parse.parse_qs(urllib.parse.urlsplit(seen[0]).query)
+        self.assertEqual(query["tags"], ["the_witcher_(series) 3d sort:score"])
+        self.assertEqual(query["limit"], ["4"])
+
+    def test_a_work_with_nothing_tagged_3d_asks_again_without_that_tag(self):
+        """`3d` 下一张都没有时再问一次不限形式的，总好过让这一枚空着。"""
+        self._rule34_credential()
+        seen = []
+
+        def transport(request, timeout, max_bytes):
+            seen.append(request.url)
+            # rule34.xxx 的零命中响应是 HTTP 200 加空正文，不是 JSON `[]`。
+            if "3d" in request.url:
+                return HttpResponse(200, {}, b" \r\n")
+            return HttpResponse(200, {}, self._posts(
+                "https://api-cdn.rule34.xxx/images/2/c.jpg"))
+
+        urls = web_follow.work_icon_search_urls(
+            self.contract, "the_witcher_(series)", transport=transport)
+        self.assertEqual(urls, ["https://api-cdn.rule34.xxx/images/2/c.jpg"])
+        self.assertEqual(len(seen), 2)
+
+    def test_without_a_rule34_credential_the_icon_never_reaches_the_site(self):
+        seen = []
+
+        def transport(request, timeout, max_bytes):
+            seen.append(request.url)
+            return HttpResponse(200, {}, b"[]")
+
+        self.assertEqual(web_follow.work_icon_search_urls(
+            self.contract, "the_witcher_(series)", transport=transport), [])
+        self.assertEqual(seen, [], "没有凭据就不出网，圆标退回首字母")
+
+    def test_the_site_being_unreachable_leaves_the_icon_to_the_letter(self):
+        """站点报错或网络不通时返回空——这一枚退回首字母，不是一个 500。"""
+        self._rule34_credential()
+
+        def transport(request, timeout, max_bytes):
+            raise OSError("网络不通")
+
+        self.assertEqual(web_follow.work_icon_search_urls(
+            self.contract, "the_witcher_(series)", transport=transport), [])
 
     def test_counts_are_whole_library_while_groups_are_one_page(self):
         """计数是全库口径，列表只有一页——界面并排显示这两个数时看起来像自相矛盾。

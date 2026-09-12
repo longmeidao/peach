@@ -24,6 +24,7 @@ if HAS_DEPS:
     from peach import routes_auth
     from peach.api import create_app
     from peach.follow_covers import PLACEHOLDER_CONTENT_TYPE
+    from peach.follow_secrets import credential_store_for
     from peach.config import PeachSettings
 
 
@@ -265,6 +266,14 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         )
         self.profile_patch.start()
         self.addCleanup(self.profile_patch.stop)
+        # 凭据仓库落在临时目录：夹具不该读到这台机器上真实的 api_key，结论也不该
+        # 因为某个 provider 在本机配没配过而变。要用凭据的用例自己往这里写一份。
+        self.secrets_root = self.root / "secrets"
+        self.credentials = credential_store_for(self.secrets_root, shared_root=None)
+        credentials_patch = patch("peach.web_follow._credential_store",
+                                  return_value=self.credentials)
+        credentials_patch.start()
+        self.addCleanup(credentials_patch.stop)
         self.assertIs(
             self.app.state.web_contract.database,
             self.app.state.repository.database,
@@ -518,12 +527,15 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(denied.status_code, 401)
         with patch("peach.routes_media.web_follow.work_icon_urls",
                    return_value=list(covers)) as urls:
-            with patch.object(routes_media._WORK_FACE_PROBE, "on_bytes",
-                              side_effect=seen.get):
-                response = await self.client.get("/work-icon?t=secret&work=stellar+blade")
+            with patch("peach.routes_media.web_follow.work_icon_search_urls") as search:
+                with patch.object(routes_media._WORK_FACE_PROBE, "on_bytes",
+                                  side_effect=seen.get):
+                    response = await self.client.get(
+                        "/work-icon?t=secret&work=stellar+blade")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.content, second, "服务的是看得清脸的那一张")
         self.assertEqual(hits, list(covers)[:2], "脸够大就停，后面的候选不再出网")
+        search.assert_not_called()
         urls.assert_called_once()
         self.assertEqual(urls.call_args.args[1], "stellar blade")
         cached = follow_assets.cache_path(
@@ -575,6 +587,50 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
             self.candidate_root / follow_assets.ROOT_NAME, "works", "miside")
         written = json.loads(cached.with_suffix(".face.json").read_text(encoding="utf-8"))
         self.assertEqual(written["face"]["w"], 0.05)
+
+    async def test_when_nothing_here_shows_a_face_the_icon_comes_from_the_site(self):
+        """本库那几张都看不清脸时，圆标取站上这个题材最热的那几张。
+
+        库里存的是用户关注的那几位作者发的东西，一个题材常常只有一两条，那一两条未必
+        有正脸；站上同一个标签下有成千上万帖。站点那一趟排在本库之后，而且用的是本库
+        记下的标签写法——照归一化后的题材身份拼出来的标签在站上是零命中。
+        """
+        from peach import follow_assets, routes_media
+
+        local = "https://api-cdn.rule34.xxx/samples/9/c.jpg"
+        remote = "https://api-cdn.rule34.xxx/images/9/d.jpg"
+        covers = {local: tiny_jpeg(20), remote: tiny_jpeg(25)}
+        hits = []
+
+        def upstream(request):
+            hits.append(str(request.url))
+            return httpx.Response(200, content=covers[str(request.url)], request=request,
+                                  headers={"content-type": "image/jpeg"})
+        self._swap_http_client(upstream)
+
+        def probe(payload):
+            if payload != covers[remote]:
+                return None
+            return {"ratio": 1.0, "px": [1000, 1000],
+                    "face": {"cx": 0.5, "cy": 0.3, "w": 0.3, "h": 0.3, "score": 0.9}}
+
+        with patch("peach.routes_media.web_follow.work_icon_urls",
+                   return_value=[local]):
+            with patch("peach.routes_media.web_follow.work_icon_tag",
+                       return_value="the_witcher_(series)"):
+                with patch("peach.routes_media.web_follow.work_icon_search_urls",
+                           return_value=[remote]) as search:
+                    with patch.object(routes_media._WORK_FACE_PROBE, "on_bytes",
+                                      side_effect=probe):
+                        response = await self.client.get(
+                            "/work-icon?t=secret&work=the+witcher")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.content, covers[remote])
+        self.assertEqual(hits, [local, remote], "本库那张先取，站点那一趟排在它后面")
+        self.assertEqual(search.call_args.args[1], "the_witcher_(series)")
+        cached = follow_assets.cache_path(
+            self.candidate_root / follow_assets.ROOT_NAME, "works", "the witcher")
+        self.assertEqual(cached.read_bytes(), covers[remote])
 
     async def test_a_work_with_no_face_anywhere_still_gets_a_cover(self):
         """一张都检不出脸时用第一张取得到的：没有脸的代表图仍然好过一个空圆。
