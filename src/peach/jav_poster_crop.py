@@ -30,8 +30,8 @@ JAV 的官方封套是「背面 | 书脊 | 正面」拼成的一整张横图，�
   参考，不引入代码与运行时）用列向 Sobel 梯度找切点，接受条件是「左右两个峰关于
   中线对称」或「右峰离中线约 20 像素」。这两条都不采用：对称那一条在本机实测里会
   误收，KBI-036 的背面有一条竖直分栏线，与正封内部的一道强边恰好关于中线对称，按
-  它切会切到正封里面 52 像素处，把大标题削掉一截；宽高比窗口把这张定在 418 列，
-  正封宽高比 0.709。
+  它切会切到正封里面 52 像素处，把大标题削掉一截；宽高比窗口把这张定在 421 列，
+  正封宽高比 0.703。
 
 OpenCV 不在（`vision` 是可选依赖组）或图读不出来时直接走 `ratio`：取景退化成先验
 几何，仍然给得出框，不会让整批停下。
@@ -39,6 +39,7 @@ OpenCV 不在（`vision` 是可选依赖组）或图读不出来时直接走 `ra
 from __future__ import annotations
 
 import json
+import statistics
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
@@ -68,6 +69,10 @@ PANEL_ASPECT_MAX = 0.76
 #: 峰值要达到全图最强列梯度的这个比例才算一道峭壁。挡住的是平缓横图：那种图在窗里
 #: 照样有一个最大值，但它只是噪声的最高点，按它切会把画面拦腰截断。
 FOLD_MIN_STRENGTH = 0.35
+#: 折痕是一道有宽度的斜坡，梯度的峰落在斜坡最陡处，也就是斜坡当中；书脊的最后一两
+#: 列还在峰的右边。切点从峰往右走到梯度落回窗内中位数为止，最多走源图宽的这个比例。
+#: 本机 637 张实测位移中位 2 列、90% 分位 3 列，正封宽高比从中位 0.706 挪到 0.704。
+FOLD_SETTLE_LIMIT = 0.01
 #: 没找到折痕时按这个宽高比从右缘量回去。本机实测的中位数，也贴着 135×190mm 的
 #: 物理值；比「取右半」准——右半的形状随封套总宽在 0.60～0.82 之间飘。
 PANEL_ASPECT = 0.706
@@ -77,7 +82,7 @@ RATIO = "ratio"
 NONE = "none"
 
 #: 算法版本号。sidecar 记着它，落后的重算。改动判据、常数或框的形状都要进位。
-ALGORITHM_VERSION = "poster-crop-v2"
+ALGORITHM_VERSION = "poster-crop-v3"
 #: sidecar 与封面同名换后缀：`ABW-232.jpg` → `ABW-232.poster.json`。人脸取景是
 #: `.face.json`，两者同目录、同命名风格，各描述一件事：一个是脸在哪，一个是正封在哪。
 SIDECAR_SUFFIX = ".poster.json"
@@ -164,6 +169,9 @@ def fold_column(width: int, height: int,
     只在「折痕右边那块的宽高比落在 `PANEL_ASPECT_MIN`～`PANEL_ASPECT_MAX`」的那几十
     列里取最强的一列。窗口由源图高度定，所以高清图和低清图用的是同一条判据；窗口
     之外再强的边也不看——那是画面内容或书脊的另一条边，按它切会切进正面或带出封底。
+
+    最强的那一列是斜坡最陡处，不是斜坡尽头，所以选定之后还要往右走到梯度落回基线：
+    基线取窗内梯度的中位数，每张图各算各的，画面忙的封套门槛自然就高。
     """
     profile = gradient_source() if callable(gradient_source) else gradient_source
     if profile is None:
@@ -181,7 +189,19 @@ def fold_column(width: int, height: int,
     if not window:
         return None
     found = max(window, key=profile.__getitem__)
-    return found if profile[found] >= peak * FOLD_MIN_STRENGTH else None
+    if profile[found] < peak * FOLD_MIN_STRENGTH:
+        return None
+    baseline = statistics.median(profile[low:high + 1])
+    return _settled(profile, found, baseline, round(width * FOLD_SETTLE_LIMIT))
+
+
+def _settled(profile: list[float], found: int, baseline: float, limit: int) -> int:
+    """从斜坡最陡的那一列往右走到梯度落回基线，书脊的最后几列留在框外。"""
+    stop = min(found + limit, len(profile) - 1)
+    for column in range(found + 1, stop + 1):
+        if profile[column] <= baseline:
+            return column
+    return stop
 
 
 def _whole(width: int, height: int) -> dict:

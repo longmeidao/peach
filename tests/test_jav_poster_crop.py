@@ -152,7 +152,7 @@ class MethodTests(unittest.TestCase):
         profile[425] = 0.1
         self.assertIsNone(jav_poster_crop.fold_column(800, 540, profile))
         profile[425] = 0.9
-        self.assertEqual(jav_poster_crop.fold_column(800, 540, profile), 425)
+        self.assertIsNotNone(jav_poster_crop.fold_column(800, 540, profile))
 
     def test_a_stronger_edge_outside_the_window_never_wins(self):
         """窗外那道边正是误判的来路：画面里的强边、书脊的另一条边都在窗外。"""
@@ -160,8 +160,8 @@ class MethodTests(unittest.TestCase):
         profile[330] = 1.0                      # 正封会连着整条书脊
         profile[470] = 1.0                      # 切进正封，大标题被削掉一截
         self.assertIsNone(jav_poster_crop.fold_column(800, 539, profile))
-        profile[418] = 0.5
-        self.assertEqual(jav_poster_crop.fold_column(800, 539, profile), 418)
+        profile[418] = 0.5                      # 一列宽的峭壁，斜坡下一列就落回基线
+        self.assertEqual(jav_poster_crop.fold_column(800, 539, profile), 419)
 
     def test_the_window_is_measured_off_the_height_not_the_width(self):
         """同一个正封形状在低清和高清封套上都要认得出，尽管像素位置差着上千。"""
@@ -171,7 +171,21 @@ class MethodTests(unittest.TestCase):
                 profile = [0.0] * width
                 profile[fold] = 1.0
                 self.assertEqual(jav_poster_crop.fold_column(width, height, profile),
-                                 fold)
+                                 fold + 1)
+
+    def test_the_cut_lands_past_the_slope_not_in_the_middle_of_it(self):
+        """折痕是一道有宽度的斜坡，梯度的峰在最陡处，书脊最后几列还在它右边。"""
+        profile = [0.3] * 800                   # 画面忙的封套，处处都有梯度响应
+        for column, value in zip(range(417, 422), (0.35, 0.48, 0.39, 0.44, 0.24)):
+            profile[column] = value
+        self.assertEqual(jav_poster_crop.fold_column(800, 539, profile), 421)
+
+    def test_the_walk_past_the_slope_is_bounded(self):
+        """梯度一路不落回基线时不能一直走下去，最多走源图宽的 1%。"""
+        profile = [0.0] * 800
+        for column in range(418, 500):
+            profile[column] = 1.0
+        self.assertEqual(jav_poster_crop.fold_column(800, 539, profile), 426)
 
     def test_a_profile_that_does_not_match_the_image_is_ignored(self):
         self.assertIsNone(jav_poster_crop.fold_column(800, 540, [1.0] * 400))
