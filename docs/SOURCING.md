@@ -351,6 +351,19 @@ av911.tv，三条候选已进复核队列。
   **不下载清单**，没下过就是少一组。站上那份走 `api.rule34.xxx/autocomplete.php?q=`，同一条路径挂在
   主域名下被 Cloudflare 拦成 403，只有 `api.` 子域回 200 JSON；它回的是标签不是作者名录（`lewdga` 给出
   `lewdgatta`／`lewdgazer`／`lewdgala`），所以界面要写明这一组是标签。两者都不需要凭据。
+- **rule34.xxx 上谁是作者只有站方的分类说得准，而那要凭据。** 补全只回名字和帖子数，按词形猜会错：
+  2026-09-12 实测 `lewd`（8548 帖）是 general、`lewd_dorky` 是 character、`lewdtuber` 是 metadata，而名字里
+  带 `artist` 的 `lewdchuu_(artist)` 是巧合。分类在 `index.php?page=dapi&s=tag&q=index&name=`，不带
+  `user_id`＋`api_key` 回的是 `"Missing authentication"`。三个坑：`json=1` 被忽略只回 XML；`names=`
+  不被识别，它会忽略过滤吐一批无关标签；`name_pattern=` 是两边通配的子串匹配且按 id 截断，`lewdga%`
+  能带回 `gustav3lewdgallery`，`lewd%` 取满 1000 条里一条真前缀都没有，`orderby` 也不生效——所以只能
+  按精确名逐条问。每条 0.32 秒，并发八路后十条 0.70 秒；分类是站上改一次就定的事实，问过就记住。
+- **gelbooru 不是 rule34.xxx 的超集，不能拿它替换或前置。** 两站同源但各收各的：实测 `lewd` 在
+  rule34.xxx 是 `lewdrex`／`lewdiboo`，在 gelbooru 是 `lewdamone`／`lewdkuma`，同名标签的帖数也差一截
+  （`lewdgatta` 380 对 74）。gelbooru 的 `index.php?page=autocomplete2&term=` 确实公开且自带 `category`，
+  但 `limit` 不生效、恒回 10 条，拿它的前缀结果给 rule34.xxx 的候选标分类只覆盖 0/10（`lewd`）到
+  2/10（`ria`）；改成逐条精确问也只认出 2/10，还要 1.66 秒。候选名单必须来自 rule34.xxx——Peach 在那
+  一站建订阅，给出它没有的名字就是误导。
 - **F95zone 的站内搜索按整词匹配，半个名字要靠尾部通配。** 2026-09-12 实测 `strauz` 命中 0 条，而
   `strauzek`、`Mr_Strauz` 与 `strauz*` 都命中同样 3 条，所以各种写法都空手之后补一轮 `词*`；四个字符
   以上才加，三个字母加通配等于把半个站搜回来，命中一屏也认不出是哪个作者。

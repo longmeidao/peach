@@ -17,7 +17,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
-from peach import avatar_face, follow_assets, follow_store, web_follow, web_stats
+from peach import (avatar_face, follow_assets, follow_discovery, follow_store,
+                   web_follow, web_stats)
 from peach.follow import FollowHistoryEnd
 from peach.follow import FollowSourceError
 from peach.follow_discovery import Discovery, ExternalSearch
@@ -1967,16 +1968,42 @@ class FollowSourceAddTests(FollowContractTests):
 
 
 class FollowSuggestTests(FollowContractTests):
-    """添加框敲字时的建议。三组各自独立成败，任何一组缺席都不影响别的组。"""
+    """添加框敲字时的建议。每组各自独立成败，任何一组缺席都不影响别的组。"""
 
     TAGS = json.dumps([{"label": "lewdgatta (380)", "value": "lewdgatta"},
                        {"label": "lewdgazer (237)", "value": "lewdgazer"}]).encode()
+    #: 1 是 artist、4 是 character。dapi 的 tag 接口只回 XML。
+    TAG_TYPES = {
+        "lewdgatta": b'<tags type="array"><tag type="1" count="380" name="lewdgatta"/></tags>',
+        "lewdgazer": b'<tags type="array"><tag type="4" count="237" name="lewdgazer"/></tags>',
+    }
+
+    def setUp(self):
+        super().setUp()
+        # 分类缓存是模块级的，留到下一个用例里就会让它凭空少打几次请求。
+        follow_discovery._TAG_TYPES.clear()
+        self.addCleanup(follow_discovery._TAG_TYPES.clear)
 
     def _tag_transport(self, body=None):
         def call(_request, _timeout, _max_bytes):
             return HttpResponse(200, {"content-type": "text/html"},
                                 self.TAGS if body is None else body)
         return call
+
+    def _typed_transport(self):
+        def call(request, _timeout, _max_bytes):
+            if "autocomplete.php" in request.url:
+                return HttpResponse(200, {}, self.TAGS)
+            name = urllib.parse.parse_qs(
+                urllib.parse.urlsplit(request.url).query)["name"][0]
+            return HttpResponse(200, {}, self.TAG_TYPES[name])
+        return call
+
+    def _write_credential(self):
+        path = self.contract.follow_secrets_root / "follow" / "rule34xxx.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"user_id": "1", "api_key": "k"}),
+                        encoding="utf-8")
 
     def _write_creator_index(self, provider, rows):
         path = self.contract.follow_state_root / "follow" / f"creators-{provider}.json"
@@ -2005,11 +2032,41 @@ class FollowSuggestTests(FollowContractTests):
         self._seed(label="lewdgazer")
         self._write_creator_index("kemono", [
             {"id": "1", "name": "lewdgamesdev", "service": "fanbox"}])
-        payload = self._suggest("lewdga", transport=self._tag_transport())
+        self._write_credential()
+        payload = self._suggest("lewdga", transport=self._typed_transport())
         self.assertEqual([group["kind"] for group in payload["groups"]],
-                         ["followed", "archive", "tag"])
+                         ["followed", "archive", "tag_artist", "tag"])
         self.assertEqual([group["label"] for group in payload["groups"]],
-                         ["已关注", "归档站的创作者", "Rule34.xxx 标签"])
+                         ["已关注", "归档站的创作者",
+                          "Rule34.xxx 的作者", "Rule34.xxx 标签"])
+
+    def test_the_site_authors_are_split_out_from_the_plain_tags(self):
+        """rule34.xxx 上作者本来就是一个标签，差别只在站方给它的分类。
+
+        `lewdgatta` 是 artist、`lewdgazer` 在这批数据里是 character，两条挨着躺在
+        同一组时没人分得出哪个是人。留在标签组的那条要照实写出它是什么。
+        """
+        self._write_credential()
+        groups = {group["kind"]: group["items"]
+                  for group in self._suggest(
+                      "lewdga", transport=self._typed_transport())["groups"]}
+        self.assertEqual([row["value"] for row in groups["tag_artist"]], ["lewdgatta"])
+        self.assertEqual([(row["value"], row["matched"]) for row in groups["tag"]],
+                         [("lewdgazer", "角色")])
+        # 作者组里逐条再标一次「作者」是同一个词并排两次，组名已经说过了。
+        self.assertEqual(groups["tag_artist"][0]["matched"], "")
+
+    def test_without_a_credential_nobody_is_called_an_author(self):
+        """分类接口要凭据。问不出来时全落在标签组里，照实说不知道谁是作者。
+
+        按名字猜会错：实测 `lewdchuu_(artist)` 名字里带 `artist` 只是巧合，
+        `lewdtuber` 是 metadata。
+        """
+        payload = self._suggest("lewdga", transport=self._tag_transport())
+        groups = {group["kind"]: group["items"] for group in payload["groups"]}
+        self.assertNotIn("tag_artist", groups)
+        self.assertEqual([(row["value"], row["matched"]) for row in groups["tag"]],
+                         [("lewdgatta", ""), ("lewdgazer", "")])
 
     def test_someone_already_followed_is_not_offered_twice(self):
         self._seed(label="lewdgazer")
@@ -3316,6 +3373,22 @@ class FollowWebSourceTests(unittest.TestCase):
         # 结构与样式沿用顶栏搜索的补全，不另起一套。
         self.assertPageContains('class="searchoption" data-search-value=')
         self.assertIn("presentMenu(menu);else dismissMenu(menu)", page)
+
+    def test_the_dropdown_says_it_is_working_while_the_site_answers(self):
+        """站上那一路要问补全再问分类，实测一秒上下，这段时间必须看得出在做事。
+
+        空着像是敲了没反应；挂着上一个字的结果更糟——那看着就是新结果，而它属于
+        另一个词。所以忙态是一行独立的 Spinner，把旧结果换掉。
+        """
+        page = self.page
+        self.assertPageContains('<div class="searchbusy">${spinnerHtml(\'正在查找建议\')}')
+        busy = page[page.index("function presentFollowSuggestBusy("):]
+        busy = busy[:busy.index("\n}")]
+        self.assertIn("presentMenu(menu)", busy)
+        # 忙态那一行不是候选：上下键和回车这时不该选中一个「正在问站点…」。
+        self.assertNotIn("data-search-value", busy)
+        rule = page[page.index(".searchbusy{"):]
+        self.assertIn("display:flex", rule[:rule.index("}")])
 
     def test_typing_fast_sends_one_request_and_ignores_the_stale_answer(self):
         """联网那一路每敲一下打一枪就是拿站点当键盘缓冲；先回的旧答案还会盖掉新的。"""

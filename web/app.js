@@ -6332,6 +6332,14 @@ function renderFollowAddMenu(menu,query){
   menu.dataset.active='-1';
   if(menu.innerHTML)presentMenu(menu);else dismissMenu(menu);
 }
+/* 站上那一路要先问补全、再逐条问分类，实测一秒上下。这段时间里下拉既不能空着
+   （看不出在做事，像是敲了没反应），也不能挂着上一个字的结果（看着就像是新结果，
+   而它属于另一个词）。 */
+function presentFollowSuggestBusy(menu){
+  menu.dataset.active='-1';
+  menu.innerHTML=`<div class="searchbusy">${spinnerHtml('正在查找建议')}<span>正在问站点…</span></div>`;
+  presentMenu(menu);
+}
 function followSuggestOptions(menu){
   return menu&&!menu.hidden?[...menu.querySelectorAll('[data-search-value]')]:[];
 }
@@ -6822,10 +6830,14 @@ function wireFollowManage(creds=[]){
     clearTimeout(followSuggestTimer);
     const query=box.value.trim();
     if(!query){followSuggestFor='';followSuggestGroups=[];closeAddSuggest();return}
-    followSuggestTimer=setTimeout(()=>loadFollowSuggestions(query).then(()=>{
-      /* 回来时焦点可能已经不在输入框上：失焦那条兜底先把下拉收了，晚到的 then
-         再把它掀开，而这一刻没有焦点，也就再不会有第二次失焦来收场。 */
-      if(document.activeElement===box)renderFollowAddMenu(addMenu,query)}),FOLLOW_SUGGEST_DEBOUNCE);
+    followSuggestTimer=setTimeout(()=>{
+      /* 焦点可能已经不在输入框上：失焦那条兜底先把下拉收了，晚到的回调再把它掀开，
+         而这一刻没有焦点，也就再不会有第二次失焦来收场。忙态和结果都要过这一关。 */
+      if(document.activeElement!==box)return;
+      presentFollowSuggestBusy(addMenu);
+      loadFollowSuggestions(query).then(()=>{
+        if(document.activeElement===box)renderFollowAddMenu(addMenu,query)});
+    },FOLLOW_SUGGEST_DEBOUNCE);
   };
   if(box){
     box.addEventListener('input',event=>{if(!event.isComposing)refreshAddSuggest()});

@@ -1245,6 +1245,7 @@ def _sorted_groups(groups: tuple, sort: str, direction: str) -> tuple:
 FOLLOW_SUGGEST_GROUPS = (
     ("followed", "已关注"),
     ("archive", "归档站的创作者"),
+    ("tag_artist", "Rule34.xxx 的作者"),
     ("tag", "Rule34.xxx 标签"),
 )
 
@@ -1277,11 +1278,15 @@ def _followed_names(rows, alias_groups) -> dict[str, str]:
 
 def q_follow_suggest(contract, q: str, limit: int = MAX_SUGGESTIONS,
                      *, transport=None) -> dict:
-    """添加框敲字时的建议：本机见过的写法、本机清单里的创作者、站上的标签。
+    """添加框敲字时的建议：本机见过的写法、本机清单里的创作者、站上的作者与标签。
 
-    三组各自独立成败，和 `discover` 一个道理：清单没下过、站点挂了都只是少一组。
+    每组各自独立成败，和 `discover` 一个道理：清单没下过、站点挂了都只是少一组。
     这条路**不下载任何整站清单**——清单是「查找」那一步顺带下的，敲字只读已经在
     硬盘上的那份。
+
+    rule34.xxx 那边作者本来就是一个标签，差别只在站方给它的分类。分得出来就分成
+    两组，分不出来（没凭据、接口没答）就全落在「标签」一组里——那时照实说不知道
+    谁是作者，不按名字猜。
 
     选中一条只是把名字填进查找框。真正逐站问、几十秒那一步仍然由人按回车触发，
     建议不替他决定要关注谁。
@@ -1306,11 +1311,15 @@ def q_follow_suggest(contract, q: str, limit: int = MAX_SUGGESTIONS,
                         query, state_root=contract.follow_state_root, limit=per_group)
                     # 已经关注的人不在这一组里再出现一次。
                     if row.value.casefold() not in known],
-        "tag": [{"value": row.value, "n": row.count, "matched": ""}
-                for row in tag_suggestions(
-                    query, transport=transport, limit=per_group,
-                    credential=_credential_store(contract).load("rule34xxx"))],
     }
+    tags = tag_suggestions(query, transport=transport, limit=per_group,
+                           credential=_credential_store(contract).load("rule34xxx"))
+    # 归到「作者」那一组的条目不再逐条标一次「作者」——组名已经说过了。留在标签组
+    # 的才标，`角色`／`作品` 之间的差别正是这一列存在的理由。
+    buckets["tag_artist"] = [{"value": row.value, "n": row.count, "matched": ""}
+                             for row in tags if row.tag_type == "artist"]
+    buckets["tag"] = [{"value": row.value, "n": row.count, "matched": row.matched}
+                      for row in tags if row.tag_type != "artist"]
     return {"q": query, "groups": [
         {"kind": kind, "label": label, "items": buckets[kind]}
         for kind, label in FOLLOW_SUGGEST_GROUPS if buckets[kind]

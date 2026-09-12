@@ -7,13 +7,14 @@ import unittest
 import urllib.parse
 from pathlib import Path
 
+from peach import follow_discovery
 from peach.follow import FollowSourceError
 from peach.follow_discovery import (
     CREATOR_INDEX_TTL_SECONDS, DEFAULT_PROVIDERS, MAX_TERM_LENGTH, CreatorIndex,
     archive_suggestions, discover, discovery_plan, forum_queries, identity_key,
     search_variants, spelling_variants, suggest_term, tag_suggestions,
 )
-from peach.follow_secrets import CredentialError
+from peach.follow_secrets import Credential, CredentialError
 from peach.http import HttpResponse
 
 
@@ -524,6 +525,81 @@ class ArchiveSuggestionTests(unittest.TestCase):
 class TagSuggestionTests(unittest.TestCase):
     ROWS = json.dumps([{"label": "lewdgatta (380)", "value": "lewdgatta"},
                        {"label": "lewdgazer (237)", "value": "lewdgazer"}]).encode()
+    #: dapi 的 tag 接口只回 XML，`json=1` 实测被忽略。1 是 artist、0 是 general。
+    TYPES = {
+        "lewdgatta": b'<?xml version="1.0"?><tags type="array">'
+                     b'<tag type="1" count="380" name="lewdgatta" id="1"/></tags>',
+        "lewdgazer": b'<?xml version="1.0"?><tags type="array">'
+                     b'<tag type="0" count="237" name="lewdgazer" id="2"/></tags>',
+    }
+
+    def setUp(self):
+        # 分类缓存是模块级的，留到下一个用例里就会让它凭空少打几次请求。
+        follow_discovery._TAG_TYPES.clear()
+        self.addCleanup(follow_discovery._TAG_TYPES.clear)
+        self.credential = Credential("rule34xxx", {"user_id": "1", "api_key": "k"})
+
+    def _transport(self, seen=None):
+        def call(request, _timeout, _max_bytes):
+            if seen is not None:
+                seen.append(request.url)
+            if "autocomplete.php" in request.url:
+                return HttpResponse(200, {"content-type": "text/html"}, self.ROWS)
+            name = urllib.parse.parse_qs(
+                urllib.parse.urlsplit(request.url).query)["name"][0]
+            return HttpResponse(200, {"content-type": "text/xml"}, self.TYPES[name])
+        return call
+
+    def test_the_site_taxonomy_decides_who_is_an_author(self):
+        """谁是作者由站方的分类说了算，不由名字的样子说了算。
+
+        实测 `lewdchuu_(artist)` 名字里带 `artist` 只是巧合，`lewdtuber` 是
+        metadata，而 `lewd`（8548 帖）是普通标签——按词形猜会三条全错。
+        """
+        found = tag_suggestions("lewdga", transport=self._transport(),
+                                credential=self.credential)
+        self.assertEqual([(row.value, row.tag_type, row.matched) for row in found],
+                         [("lewdgatta", "artist", "作者"),
+                          ("lewdgazer", "general", "标签")])
+
+    def test_without_a_credential_the_class_is_left_unknown(self):
+        """分类接口要凭据，没有就只报名字——空的 `tag_type` 是「没问出来」。
+
+        它和「问出来是普通标签」不是一回事，所以不能拿去分组。
+        """
+        seen = []
+        found = tag_suggestions("lewdga", transport=self._transport(seen))
+        self.assertEqual([(row.value, row.tag_type) for row in found],
+                         [("lewdgatta", ""), ("lewdgazer", "")])
+        self.assertEqual(seen, ["https://api.rule34.xxx/autocomplete.php?q=lewdga"])
+
+    def test_a_class_asked_once_is_not_asked_again(self):
+        """前缀越敲越长，后几下要问的名字前一下刚问过。
+
+        站方额度是每 60 秒 60 次，一组八条就用掉八次；不记住的话光敲一个词就能
+        把额度打满。
+        """
+        seen = []
+        transport = self._transport(seen)
+        tag_suggestions("lewdga", transport=transport, credential=self.credential)
+        types = [url for url in seen if "s=tag" in url]
+        seen.clear()
+        tag_suggestions("lewdga", transport=transport, credential=self.credential)
+        self.assertEqual(len(types), 2)
+        self.assertEqual([url for url in seen if "s=tag" in url], [])
+
+    def test_one_tag_that_will_not_answer_keeps_the_rest(self):
+        # 一条问不出来只是它自己没有分类，别的条目照常分组。
+        def call(request, _timeout, _max_bytes):
+            if "autocomplete.php" in request.url:
+                return HttpResponse(200, {}, self.ROWS)
+            if "lewdgazer" in request.url:
+                raise OSError("connection reset")
+            return HttpResponse(200, {}, self.TYPES["lewdgatta"])
+
+        found = tag_suggestions("lewdga", transport=call, credential=self.credential)
+        self.assertEqual([(row.value, row.tag_type) for row in found],
+                         [("lewdgatta", "artist"), ("lewdgazer", "")])
 
     def test_the_public_autocomplete_answers_without_a_credential(self):
         """2026-09-12 实测 `lewdga` 回 `lewdgatta`(380)、`lewdgazer`(237)、`lewdgala`(3)。

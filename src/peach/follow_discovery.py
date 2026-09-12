@@ -13,6 +13,7 @@ import json
 import re
 import time
 import urllib.parse
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -513,6 +514,17 @@ MAX_SUGGESTIONS = 8
 MIN_SUGGEST_LENGTH = 2
 #: 本机清单按这个顺序问。kemono 收的创作者最全，排在前面的先占名额。
 SUGGEST_ARCHIVES = ("kemono", "pawchive", "coomer")
+#: 同时问几个标签的分类。每条 0.32 秒，一组八条串行就是 2.6 秒——下拉等不起；
+#: 2026-09-12 实测并发八路后十条 0.70 秒。站方额度是每 60 秒 60 次，一次敲字用掉
+#: 八次，配上分类缓存后连着敲同一个词的后几下基本不再花钱。
+TAG_TYPE_WORKERS = 8
+#: 标签分类的进程内缓存。分类是站上改一次就定下来的事实，一天问一次都嫌多；
+#: 而敲字时前缀越敲越长，后面几下要问的名字前一下刚问过，缓存省掉的就是这些。
+#: 问不出来的也记（空串），免得每敲一下都为同一个名字再赌一次网络。
+_TAG_TYPES: dict[str, str] = {}
+#: 分类给人看的说法。站方的 `general` 落回「标签」——那一档就是「不是人」。
+TAG_TYPE_LABELS = {"artist": "作者", "character": "角色", "copyright": "作品",
+                   "metadata": "元数据", "general": "标签"}
 
 
 @dataclass(frozen=True)
@@ -525,6 +537,9 @@ class Suggestion:
     count: int = 0
     #: 这个写法是在哪儿见到的，界面照实显示，不替用户断言就是他。
     matched: str = ""
+    #: 站上把它归成哪一类（`artist`、`character`…）。空串是「没问出来」，
+    #: 和「问出来是普通标签」不是一回事：前者不能拿去分组。
+    tag_type: str = ""
 
 
 def suggest_term(term: str) -> str:
@@ -578,13 +593,16 @@ def archive_suggestions(prefix: str, *, state_root: Path,
 def tag_suggestions(prefix: str, *, transport=None,
                     credential: Credential | None = None,
                     limit: int = MAX_SUGGESTIONS) -> tuple[Suggestion, ...]:
-    """rule34.xxx 站上以这一段开头的标签，带作品数。
+    """rule34.xxx 站上以这一段开头的标签，带作品数和分类。
 
-    这是站方的公开补全，不需要凭据（凭据仍然是**抓取**那条订阅的前提）。它回的是
-    标签，不是作者名录：`lewd` 这种普通标签和作者手柄混在一起，所以界面要写明这一组
-    是标签，不能当成「站上的作者」。
+    站方的补全是公开的、不要凭据，但它只回名字和帖子数，认不出哪个是作者：实测
+    `lewd`（8548 帖）是普通标签、`lewd_dorky` 是角色、`lewdrex` 才是作者。分类只有
+    dapi 的 tag 接口给，而那个要凭据，所以这里分两档——有凭据就逐条问出分类，
+    没凭据就只报名字。**认不出来时不按词形猜**：`lewdchuu_(artist)` 名字里带
+    `artist` 是巧合，`lewdtuber` 实测是 metadata。
 
     站点挂了、超时、改版都只是没有这一组，别的组照常出——建议本来就是锦上添花。
+    分类那一轮更是如此：问不出来就是没有分类，名字照给。
     """
     if len(str(prefix or "").strip()) < MIN_SUGGEST_LENGTH:
         return ()
@@ -594,5 +612,32 @@ def tag_suggestions(prefix: str, *, transport=None,
         rows = connector.autocomplete(prefix)
     except (FollowSourceError, CredentialError, OSError):
         return ()
-    return tuple(Suggestion("rule34xxx", tag, count, "站内标签")
+    types = _tag_types(connector, [tag for tag, _count in rows[:limit]])
+    return tuple(Suggestion("rule34xxx", tag, count,
+                            TAG_TYPE_LABELS.get(types.get(tag, ""), ""),
+                            types.get(tag, ""))
                  for tag, count in rows[:limit])
+
+
+def _tag_types(connector, names: list[str]) -> dict[str, str]:
+    """这一批标签各自的分类，缓存里有的不再问站点。
+
+    并发问：串行是每条 0.32 秒累加，八条就把下拉拖到两秒半以上。一条问不出来
+    只影响它自己那一条，整批不受牵连。
+    """
+    if connector.credential is None:
+        return {}
+    pending = [name for name in names if name not in _TAG_TYPES]
+
+    def ask(name: str) -> None:
+        try:
+            _TAG_TYPES[name] = connector.tag_type(name)
+        except (FollowSourceError, CredentialError, OSError):
+            # 只有这一条没有分类，缓存不记——下次还值得再问一次。
+            pass
+
+    if pending:
+        with ThreadPoolExecutor(max_workers=min(TAG_TYPE_WORKERS,
+                                                len(pending))) as pool:
+            list(pool.map(ask, pending))
+    return {name: _TAG_TYPES[name] for name in names if name in _TAG_TYPES}
