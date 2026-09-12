@@ -58,9 +58,12 @@ export function AccessSettings({ initial, receipt }: { initial: AccessState; rec
     });
   };
   return <SettingsSection titleId="accessTitle" title="访问密码" warning={disable} onSubmit={submit} noValidate formRef={form} error={error}
-    help={state.mode === 'open' ? '未设置密码，能连接到 Peach 的设备可直接访问。' : state.mode === 'legacy' ? '当前使用系统生成的访问口令。你可以设置自己的密码，或关闭登录要求。' : state.mode === 'locked' ? '访问设置无法读取，请在本机检查配置文件。' : '已设置密码。新设备需要登录，保持登录时间在登录页选择。'}
+    help={state.mode === 'legacy' ? '当前使用系统生成的访问口令。你可以设置自己的密码，或关闭登录要求。' : state.mode === 'locked' ? '访问设置无法读取，请在本机检查配置文件。' : state.mode === 'password' ? '已设置密码。新设备需要登录，保持登录时间在登录页选择。' : undefined}
     footer={state.mode !== 'locked' && <><p>保存后立即生效。</p><button class="geist-button primary" type="submit" ref={button}>保存配置</button></>}>
-      {state.mode === 'password' || state.mode === 'legacy' ? <label class="configcheck"><span class="pcheck"><input type="checkbox" checked={disable} onChange={(event) => setDisable(event.currentTarget.checked)} /><span aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#i-check" /></svg></span></span><span>关闭访问密码，允许能连接到 Peach 的设备直接访问</span></label> : null}
+      {/* 没有密码是这台机器当前的状态，不是填表时的一句说明：同一个局域网里任何一台
+          设备打开地址就进馆藏。灰色小字和其他字段的提示长得一样，扫一眼会滑过去。 */}
+      {state.mode === 'open' ? <div dangerouslySetInnerHTML={{__html:noteHtml('能连接到 Peach 的设备打开地址就能看馆藏，不需要登录。',{variant:'warning',label:'未设置访问密码'})}} /> : null}
+      {state.mode === 'password' || state.mode === 'legacy' ?<label class="configcheck"><span class="pcheck"><input type="checkbox" checked={disable} onChange={(event) => setDisable(event.currentTarget.checked)} /><span aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#i-check" /></svg></span></span><span>关闭访问密码，允许能连接到 Peach 的设备直接访问</span></label> : null}
       {state.mode === 'password' ? <PasswordField id="access-current" label="当前访问密码" value={current} onInput={setCurrent} error={fields.current_password} current /> : null}
       {state.mode !== 'locked' ? <>
         <PasswordField id="access-password" label={state.mode === 'password' ? '新访问密码' : '设置访问密码'} value={password} onInput={setPassword} disabled={disable} error={disable ? undefined : fields.password} help={disable ? '关闭访问密码时无需填写。' : '至少 8 个字符。保存后其他设备需要重新登录。'} />
