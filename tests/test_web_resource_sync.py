@@ -113,7 +113,7 @@ class PurgeMissingTests(unittest.TestCase):
     def test_full_sync_scans_all_online_assets_and_cleans_only_rebuildable_caches(self):
         roots = {}
         for name in ("snapshots", "posters", "photo-thumbs", "transcodes",
-                     "stream-segments", "avatars", "covers"):
+                     "stream-segments", "timeline", "avatars", "covers"):
             roots[name] = self.root / name
             roots[name].mkdir()
         cache_files = [
@@ -122,12 +122,19 @@ class PurgeMissingTests(unittest.TestCase):
             roots["photo-thumbs"] / "2.jpg",
             roots["transcodes"] / "2-10-20.mp4",
             roots["stream-segments"] / "2" / "10-20-6" / "0.ts",
+            # 时间轴预览按 `<id 末两位>/<id>/` 分桶。一部三小时的片子按 10 秒一帧是
+            # 1080 张，片子没了还留着的话，是本机产物里单部占得最多的一类。
+            roots["timeline"] / "02" / "2" / "000.jpg",
+            roots["timeline"] / "02" / "2" / "meta.json",
             roots["avatars"] / "2.jpg",
             roots["covers"] / "hey-002.jpg",
         ]
         for path in cache_files:
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(b"cache")
+        kept = roots["timeline"] / "04" / "4" / "000.jpg"
+        kept.parent.mkdir(parents=True)
+        kept.write_bytes(b"cache")
         evidence = self.root / "candidate.csv"
         evidence.write_text("review evidence", encoding="utf-8")
         con = sqlite3.connect(self.db_path)
@@ -139,6 +146,7 @@ class PurgeMissingTests(unittest.TestCase):
         self.contract.photo_root = roots["photo-thumbs"]
         self.contract.transcode_root = roots["transcodes"]
         self.contract.stream_root = roots["stream-segments"]
+        self.contract.timeline_root = roots["timeline"]
         self.contract.avatar_root = roots["avatars"]
         self.contract.cover_root = roots["covers"]
         self.contract.resource_cleanup_enabled = True
@@ -156,6 +164,7 @@ class PurgeMissingTests(unittest.TestCase):
         self.assertEqual(result["moved_to_trash"], 2)
         self.assertEqual(result["cache_removed"], len(cache_files))
         self.assertTrue(all(not path.exists() for path in cache_files))
+        self.assertTrue(kept.is_file(), "账本里还在的片子，它那套时间轴图不算孤儿")
         self.assertTrue(evidence.is_file(), "候选证据不属于可删除缓存")
         con = sqlite3.connect(self.db_path)
         try:

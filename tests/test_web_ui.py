@@ -3691,7 +3691,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("const nextCell=Math.min(8,Math.floor(ratio*9))")
         self.assertPageContains("image.src=`/poster?id=${encodeURIComponent(it.id)}&c=${nextCell}`")
         self.assertPageContains("mountPlayerSeekPreview(detailPlayer,it,{thumbnail:!options.source})")
-        self.assertPageContains(".vjs-peach-seek-preview img{width:240px;aspect-ratio:16/9")
+        self.assertPageContains(".vjs-peach-seek-frame{position:relative;width:240px;aspect-ratio:16/9")
 
     def test_the_player_has_exactly_one_center_feedback_circle(self):
         """画面中心只有 `.vjs-peach-bezel` 这一块 78px 提示圆。
@@ -7763,6 +7763,38 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".settingsscroll{flex:1;min-height:0;overflow-y:auto")
         self.assertPageContains("document.dispatchEvent(new CustomEvent('peachambientchange'")
         self.assertPageContains(".settingrow .gselect{min-width:148px}")
+
+    def test_the_thumbnail_density_is_this_machines_state_not_this_browsers(self):
+        """档位跟着服务端走。跑的是这台机器上的一条长任务，从另一台设备打开设置要看到
+        的是它正在按什么密度采集，所以这一行既不进 `appSettings` 也不进 localStorage。
+        """
+        self.assertPageContains('id="videoThumbnailSetting"')
+        self.assertPageContains('id="videoThumbnailState" aria-live="polite"')
+        self.assertPageLacks("appSettings.videoThumbnailMode")
+        self.assertPageContains("['videoThumbnailSetting','视频缩略图采集',"
+                                "[['off','关闭'],['precise','精准'],['coarse','粗略']],")
+        self.assertPageContains("()=>'off',value=>saveVideoThumbnailMode(value)]")
+        self.assertPageContains("const status=await api('/api/thumbnail-jobs');")
+        self.assertPageContains("api('/api/thumbnail-jobs',{method:'POST',body:JSON.stringify({mode})})")
+        self.assertPageContains("if(status.status==='running')void watchVideoThumbnailJob(request)")
+        # 采集只覆盖本机磁盘上的片子，网盘上的每张都要回源拉一次。这一条是功能范围，
+        # 说明里必须写出来，否则页面上「视频缩略图采集」读起来是全库。
+        self.assertPageContains("只采集本机磁盘上的片子")
+
+    def test_the_seek_preview_prefers_frames_that_match_where_the_pointer_is(self):
+        """指到哪一秒就看到哪一秒。九宫格那九格是全片九等分，两小时的片子格与格之间
+        隔着十几分钟，指的位置和看到的画面对不上；采集任务铺好了时间轴图就改用它，
+        没铺到的退回九宫格。
+        """
+        self.assertPageContains("api(`/api/timeline?id=${encodeURIComponent(it.id)}`)")
+        self.assertPageContains("if(meta&&meta.frames>0&&meta.interval>0)sheets=meta")
+        self.assertPageContains("if(sheets){showSheetFrame(duration*ratio);return}")
+        self.assertPageContains("const index=Math.min(sheets.frames-1,"
+                                "Math.max(0,Math.floor(seconds/sheets.interval)))")
+        self.assertPageContains("const sheet=Math.floor(index/per),slot=index%per")
+        # 末张通常不满 10 行，行数按它自己剩下那几帧反算；按满行铺会把格子挪到图外面。
+        self.assertPageContains("const rows=Math.ceil(Math.min(per,sheets.frames-sheet*per)/columns)")
+        self.assertPageContains("image.src=`/poster?id=${encodeURIComponent(it.id)}&c=${nextCell}`")
 
     def test_theme_is_a_three_way_choice_that_defaults_to_the_system(self):
         """主题三档：跟随系统、浅色、深色。

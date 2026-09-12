@@ -51,6 +51,8 @@ SCOPES: dict[str, tuple[str, ...]] = {
     # 接线的两端，改哪一端都要两边一起验。
     "media": ("test_runtime_consistency.py", "test_endcard.py", "test_fastapi_api.py", "test_jobs.py",
               "test_task_runs.py", "test_task_center_integration.py",
+              "test_frame_capture.py", "test_timeline_sheets.py",
+              "test_web_timeline_thumbnails.py",
               "test_interaction.py", "test_media.py", "test_previews.py",
               "test_providers.py", "test_segments.py", "test_streaming.py",
               "test_subtitles.py", "test_transcodes.py"),

@@ -5,10 +5,8 @@ from __future__ import annotations
 import argparse
 import hashlib
 import queue
-import re
 import shutil
 import sqlite3
-import subprocess
 import tempfile
 import threading
 import time
@@ -21,6 +19,7 @@ SRC_DIR = PROJECT_ROOT / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
+from peach import frame_capture
 from peach.config import DATABASE_PATH, FFMPEG_DIR, GENERATED_DIR, LOG_DIR, STATE_DIR
 from peach.ffmpeg import FFmpegResolver
 from peach.jobs import (
@@ -71,35 +70,20 @@ def output_path(output_root: Path, location: str, path: str) -> Path:
     return directory / f"{digest}.jpg"
 
 
-COLOR_OVERRIDE = ["-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709"]
-
-# 只有坏色彩元数据才值得用 bt709 覆盖重试。无条件重试会让网盘超时这类必然失败的文件
-# 每帧都白跑第二次：单帧最坏耗时从 45 秒翻到 90 秒，9 帧就是 13.5 分钟。
-COLOR_METADATA_ERROR = re.compile(
-    r"(reserved|unsupported|invalid)[^\n]{0,60}(color|primaries|trc|space)"
-    r"|(color|primaries|trc|space)[^\n]{0,60}(reserved|unsupported|invalid)",
-    re.IGNORECASE,
-)
+COLOR_OVERRIDE = frame_capture.COLOR_OVERRIDE
+COLOR_METADATA_ERROR = frame_capture.COLOR_METADATA_ERROR
 
 
 def _capture_frame(ffmpeg: str, path: str, timestamp: float, destination: Path,
                    color_override: bool) -> tuple[bool, str]:
-    """抽一帧，返回（是否成功, stderr）。stderr 用于判断值不值得重试。"""
-    command = [ffmpeg, "-y", "-v", "error", "-rw_timeout", "8000000"]
-    if color_override:
-        # 部分网盘视频把色彩原色写成 reserved（非法值），swscale 会拒绝缩放；
-        # 声明为 bt709 只是覆盖坏的元数据，不改动像素。
-        command += COLOR_OVERRIDE
-    command += [
-        "-ss", f"{timestamp:.2f}", "-i", path, "-frames:v", "1",
-        "-vf", "scale=480:-1", "-q:v", "4", str(destination),
-    ]
-    try:
-        completed = subprocess.run(command, capture_output=True, timeout=45)
-    except subprocess.TimeoutExpired:
-        return False, "ffmpeg timeout"
-    ok = destination.is_file() and destination.stat().st_size > 1024
-    return ok, (completed.stderr or b"").decode("utf-8", "replace")
+    """抽一帧，返回（是否成功, stderr）。stderr 用于判断值不值得重试。
+
+    命令本身在 `peach.frame_capture`，时间轴预览走的是同一条。色彩元数据那条重试判据
+    只写一处：分成两份之后，坏元数据的那批片子会只在其中一份里被认出来，而失败形态是
+    「这些片子没有图」，看不出是哪一份少了一条。
+    """
+    return frame_capture.capture_frame(ffmpeg, path, timestamp, destination,
+                                       width=480, color_override=color_override)
 
 
 def make_sheet(ffmpeg: str, path: str, duration: float, destination: Path,
@@ -131,16 +115,8 @@ def make_sheet(ffmpeg: str, path: str, duration: float, destination: Path,
             if frame != target:
                 frame.replace(target)
         rows = (len(captured) + 2) // 3
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        subprocess.run(
-            [
-                ffmpeg, "-y", "-v", "error", "-i", str(temporary / "s%02d.jpg"),
-                "-filter_complex", f"tile=3x{rows}", "-q:v", "4", str(destination),
-            ],
-            capture_output=True,
-            timeout=60,
-        )
-        if destination.is_file() and destination.stat().st_size > 4096:
+        if frame_capture.tile_frames(ffmpeg, str(temporary / "s%02d.jpg"), 3, rows,
+                                     destination):
             return True, ""
         return False, "tile_failed"
     finally:

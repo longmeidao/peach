@@ -112,6 +112,7 @@ def create_app(
         avatar_root=settings.avatar_root,
         logo_root=settings.logo_root,
         poster_root=settings.poster_root,
+        timeline_root=settings.timeline_root,
         photo_root=settings.photo_root,
         transcode_root=settings.transcode_root,
         stream_root=settings.stream_root,
