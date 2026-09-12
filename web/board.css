@@ -6,7 +6,9 @@
 .board-optional-number{display:flex;align-items:center;gap:12px;flex-direction:row-reverse}.board-number-fields[hidden]{display:none}
 .board-number-control input::-webkit-inner-spin-button,.board-number-control input::-webkit-outer-spin-button{appearance:none;margin:0}.board-number-control input{appearance:textfield;-moz-appearance:textfield}
 .settingspanel.settingspanel{background:rgba(0,0,0,.7);backdrop-filter:none}
-.settingscard.settingscard{width:871px;max-width:calc(100vw - 32px);height:614px;max-height:calc(100dvh - 32px);border-radius:24px;grid-template-columns:274px minmax(0,1fr);grid-template-rows:auto minmax(0,1fr);overflow:clip;background:var(--page)}
+/* `--settings-gap` 是标题和第一行之间那段留白，也是那道影子的门槛：它长在滚动区的上
+   内边距上，所以滚掉它就等于两块重合。CSS 和 `app.js` 的判据都读这一个值。 */
+.settingscard.settingscard{--settings-gap:16px;width:871px;max-width:calc(100vw - 32px);height:614px;max-height:calc(100dvh - 32px);border-radius:24px;grid-template-columns:274px minmax(0,1fr);grid-template-rows:auto minmax(0,1fr);overflow:clip;background:var(--page)}
 .settingscard.settingscard>.board-local-nav{position:relative;grid-column:1;grid-row:1/3;display:flex;flex-direction:column;align-items:stretch;padding:10px;gap:4px;background:var(--ground);border:0}
 /* 左栏分块：一个小标题带一组条目。第一块贴着栏顶，后面每块自己往上让 12px 断开。 */
 .settingscard.settingscard>.board-local-nav .board-local-nav-caption{margin:12px 0 0;font-size:13px;color:var(--muted);padding:4px 8px 8px}
@@ -37,15 +39,16 @@
 .settingscard .settingshead h2{font-size:20px;font-weight:500;line-height:28px}
 .settingscard .settingshead button,.avatarpick-close{width:24px;height:24px;border-radius:50%;background:var(--surface)}
 .settingscard .settingshead button svg,.avatarpick-close svg{width:16px;height:16px}
-.settingscard.settingscard .settingsscroll{padding:0 32px 32px;min-height:0;overflow-y:auto}
-.settingscard .settingsscroll>.settinggroup{background:var(--ground);border-radius:16px;padding:0 0 0 12px}
+.settingscard.settingscard .settingsscroll{padding:var(--settings-gap) 32px 32px;min-height:0;overflow-y:auto}
+/* 右侧这一栏从标题一路到底连成一片，开关行不套在自己的一块底上：亮色的 `--page` 是
+   纯白、`--ground` 是 #f5f5f5，两块拼起来就是一条硬边界横在标题下面，而暗色那两个值
+   只差 5/255，同一条规则在两个主题上读出来是两回事。行与行由 `--line-soft` 那道分隔线
+   断开，够用。 */
+.settingscard .settingsscroll>.settinggroup{background:none;padding:0}
 .settingscard .settingsscroll>.settinggroup>h3{display:none}
-/* 「这台电脑」那一格装的是整张配置页，不是一列开关行。上面那圈 `--ground` 底和左边
-   12px 是给开关行留的：套在配置卡片外面，卡片和它同色就看不出边，还只有左边缩进、
-   右边贴齐。这一格自己不画底，卡片各画各的。
-   它的外壳不是面板，面板是里面那几段配置；里面没有一段亮着，就是用户在看左栏上半段的
-   某一项，这时整个外壳都不该占位置。 */
-.settingscard .settingsscroll>.settinggroup:has(>.machinesettings){background:none;border-radius:0;padding:0}
+/* 「这台电脑」那一格装的是整张配置页，不是一列开关行；它的外壳不是面板，面板是里面
+   那几段配置。里面没有一段亮着，就是用户在看左栏上半段的某一项，这时整个外壳都不该
+   占位置。 */
 .settingscard .settingsscroll>.settinggroup:has(>.machinesettings):not(:has(.board-group-active)){display:none}
 /* 框里的输入件照配置页那边抬一档底色。那条规则挂在 `body.configuration-layout` 上，
    弹层不带这个类，控件就落回 `--surface`，压在同一张卡上几乎看不出边。 */
@@ -60,7 +63,7 @@
 .settingscard .settingsscroll .gselect{min-width:90px;min-height:32px;height:32px;padding:6px 8px;font-size:13px;border-radius:8px}
 .settingscard .board-number-control{gap:5px;font-size:12px}.settingscard .board-number-control input{width:64px;height:32px;padding:6px;border-radius:8px;font-size:13px}
 .settingscard .board-number-control button{min-height:32px;padding:4px 8px;font-size:12px}
-@media(max-width:760px){.settingscard.settingscard{display:flex;flex-direction:column;width:calc(100vw - 24px);max-width:calc(100vw - 24px)}.settingscard.settingscard>.board-local-nav{flex-direction:row;flex-shrink:0;overflow-x:auto;border-right:0}.settingscard.settingscard>.board-local-nav .board-local-nav-caption{margin:0;padding:0 4px 0 8px;align-self:center;white-space:nowrap}.settingscard.settingscard>.board-local-nav .board-local-nav-caption:first-child{padding-left:0}.settingscard.settingscard .settingshead{padding:16px 20px 12px}.settingscard.settingscard .settingsscroll{padding:0 20px 20px;flex:1}}
+@media(max-width:760px){.settingscard.settingscard{display:flex;flex-direction:column;width:calc(100vw - 24px);max-width:calc(100vw - 24px)}.settingscard.settingscard>.board-local-nav{flex-direction:row;flex-shrink:0;overflow-x:auto;border-right:0}.settingscard.settingscard>.board-local-nav .board-local-nav-caption{margin:0;padding:0 4px 0 8px;align-self:center;white-space:nowrap}.settingscard.settingscard>.board-local-nav .board-local-nav-caption:first-child{padding-left:0}.settingscard.settingscard .settingshead{padding:16px 20px 12px}.settingscard.settingscard .settingsscroll{padding:var(--settings-gap) 20px 20px;flex:1}}
 /* Translucent navigation experiment, using browser-native backdrop compositing. */
 /* 底色薄到能看见身后的东西在动，可读性交给 `--glass-lume`：Apple 的 regular 变体
    「blurs and adjusts the luminosity of background content」，压暗（暗色）或提亮（浅色）
@@ -720,9 +723,12 @@ button,input,select,textarea{font-family:inherit}
    抽屉是全站导航、这一栏是设置内部的导航，同一件事的两种形态不该有两种光学。 */
 html.board-high-contrast .settingscard.settingscard{background:var(--page)}
 html.board-high-contrast .settingscard.settingscard>.board-local-nav{background:var(--ground);backdrop-filter:none;-webkit-backdrop-filter:none;animation:none}
-.settingscard .settingshead{position:relative;z-index:2}
-.settingscard .settingshead::after{content:'';position:absolute;top:100%;left:0;right:0;height:40px;background:linear-gradient(var(--page),transparent);pointer-events:none;opacity:0;transition:opacity .2s ease-out}
-.settingscard.board-settings-scrolled .settingshead::after{opacity:1}
+/* 标题下那道影子跟左栏那块玻璃是同一份 `--glass-shadow`。裁剪不能省：那三层各带十几到
+   几十像素的模糊，往上会糊在标题自己头上、往左会糊到左栏那一列上，要的只是往下那一半。
+   它也只在内容压上来时才点亮——这一栏滚到头时标题和第一行之间留着 `--settings-gap`，
+   影子出现在那时候就是凭空多了一条线。 */
+.settingscard .settingshead{position:relative;z-index:2;clip-path:inset(0 0 -96px 0);transition:box-shadow .2s ease-out}
+.settingscard.board-settings-scrolled .settingshead{box-shadow:var(--glass-shadow)}
 .settingscard .settingshead h2{line-height:26px}
 .drawer .board-sidebar-head #drawerClose{display:none}
 .drawer .board-sidebar-head #filterBtn{display:grid;place-items:center;padding:0;width:36px;height:36px;flex:none;border-radius:8px;background:transparent}

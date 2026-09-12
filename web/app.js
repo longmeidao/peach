@@ -10148,7 +10148,16 @@ function decorate(){
   if(config&&!config.querySelector(':scope > .board-local-nav'))localTabs(config,[{items:configTabItems(config)}]);
   const settings=document.querySelector('.settingsscroll');
   if(settings){if(!settingsTabs)buildSettingsTabs();
-    if(!settings.dataset.boardScroll){settings.dataset.boardScroll='true';const fade=()=>settings.parentElement.classList.toggle('board-settings-scrolled',settings.scrollTop>0);settings.addEventListener('scroll',fade,{passive:true});fade()}}
+    /* 标题下那道影子的门槛是那段留白自己：它长在这一栏的上内边距上，滚掉它就等于两块
+       重合，差 4px 时点亮。一滚就亮的话，那段留白还整个摊在眼前，影子却已经在说上面
+       那层浮起来了。留白的值只写在 `--settings-gap` 一处，这里读它。 */
+    if(!settings.dataset.boardScroll){settings.dataset.boardScroll='true';
+      const card=settings.parentElement;
+      const fade=()=>{
+        const gap=parseFloat(getComputedStyle(card).getPropertyValue('--settings-gap'))||0;
+        card.classList.toggle('board-settings-scrolled',settings.scrollTop>Math.max(gap-4,0));
+      };
+      settings.addEventListener('scroll',fade,{passive:true});fade()}}
   const icons={'人工复核':'square-check-big','高清版':'sparkles','重复文件':'file-stack','垃圾文件':'file-archive','空文件夹':'folder','回收站':'trash','扫描与采集':'hard-drive'};
   document.querySelectorAll('.cleanupfieldset h2,.cleanupfieldset h3').forEach(heading=>{
     if(heading.querySelector('.board-card-icon'))return;
