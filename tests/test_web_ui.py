@@ -4420,13 +4420,13 @@ class WebUiSourceTests(unittest.TestCase):
 
         管理菜单因此不再列它，判断也就不必再摊到菜单上。`/configuration` 这条 URL 留着：
         媒体库选单和首次配置引导都指向它，身份注册表也保留这一项。
-        别的设备打开设置照样看得见这一格，里面换成一句话说清在哪儿改——整格藏起来只会
-        让人以为设置少了一块，还得再找一遍。判据是 `/healthz` 的 `configurable`。
+        别的设备打开设置照样看得见这一格，里面换成一句话说清在哪儿改——服务端回过话之后
+        它一定在列里，只是内容不同。判据是 `/healthz` 的 `configurable`。
         """
         self.assertPageContains("['configuration','配置','folder-cog'],")
         self.assertPageContains(
             "const manageMenuSections=()=>MANAGE_SECTIONS.filter(([key])=>MANAGE_MENU_SECTIONS.includes(key));")
-        self.assertPageContains('<section class="settinggroup"><h3>这台电脑</h3>')
+        self.assertPageContains('<section class="settinggroup" id="machineGroup" hidden><h3>这台电脑</h3>')
         self.assertPageContains('<div id="machineSettings" class="machinesettings"></div>')
         # 每次打开都重新问一遍：这一格的答案随「从哪台设备打开」变，缓存下来就会骗人。
         self.assertPageContains("syncSettingsPanel();void syncMachineSettings();")
@@ -4447,6 +4447,31 @@ class WebUiSourceTests(unittest.TestCase):
             "const OPTIONAL_EDGE_ICONS=MANAGE_SECTIONS.filter(([key])=>key!=='configuration')")
         self.assertPageLacks('href="/configuration"')
         self.assertPageLacks("媒体文件夹与服务配置")
+
+    def test_this_computer_joins_the_rail_once_and_never_as_a_placeholder(self):
+        """「这台电脑」在服务端回话之前不占位，回话之后一次性列出它最终的样子。
+
+        它是「四个分区」还是「一句话」由服务端决定。先摆一条占位再改写的话，左栏那一列
+        会先长出一条「这台电脑」、随后变成四条，弹层跟着跳一次高度——用户看到的是一次
+        无缘无故的重排，而那一刻并没有任何新东西可读。
+
+        两处配合：这一格开局就是 `hidden`，左栏只收不带 `hidden` 的那几格。少一边都不行——
+        只藏内容而左栏照收，那一条就成了点不开的空壳。
+        """
+        self.assertPageContains('<section class="settinggroup" id="machineGroup" hidden>')
+        self.assertPageContains(
+            "const host=$('#machineSettings'),group=$('#machineGroup');")
+        self.assertPageContains(
+            "const list=()=>{if(group)group.hidden=false;refreshSettingsTabs?.()};")
+        self.assertPageContains(
+            "const groups=[...settings.querySelectorAll(':scope > .settinggroup:not([hidden])')];")
+        # 两条分支各自列出来：读不到服务端时那一句话也得有人能看见。
+        self.assertPageContains("{label:'该配置需在服务端设备修改'}")
+        self.assertPageContains("    list();\n    return;\n  }")
+        # 挂到一半被关掉的那次不算数，否则留下的是一条点开什么都没有的「这台电脑」。
+        self.assertPageContains("if(!open()){machineSettingsMounted=false;return}")
+        # 等待期间不铺占位文案：整格不在列里，没有地方放它。
+        self.assertPageLacks("正在读取这台电脑的配置")
 
     def test_the_settings_rail_is_split_into_captioned_sections(self):
         """左栏按分区分块：一个小标题带一组条目，「设置」在上、「这台电脑」在下。
@@ -4860,6 +4885,25 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("state={...state,creator:'',studio:'',tag:'',tag_match:'all'")
         self.assertPageContains("function enterManagementSurface()")
         self.assertPageContains("loadRequestSeq++;listLoading=false;$('#combo').innerHTML=''")
+
+    def test_the_media_source_select_stands_on_the_same_line_as_its_neighbours(self):
+        """「媒体来源」那一格和同一网格里的输入框同高、同起点、同间距。
+
+        `.gselect` 在配置页只是个定位外壳，尺寸归里面的 `.gselectfield`。设置开关行那份
+        `.gselect` 尺寸在那边成立——外壳就是控件本身——套到配置页就错三样：外壳 32px 而
+        按钮 `--control-h` 是 36px，按钮往下探出 10px 把它和下面那条分隔线的间距吃掉；
+        6px/8px 的内边距把按钮左边缘推右 8px，跟上面那个输入框对不上一条竖线；那 6px 还
+        叠在 `.configsourcelabel` 自己的 8px 上，标题到控件比隔壁远一截。
+        """
+        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
+        self.assertIn(".settingscard .settingsscroll .machinesettings .gselect"
+                      "{min-width:0;min-height:0;height:auto;padding:0}", board)
+        # 压平那一条必须排在给开关行写的那条后面，同权重比它高一级才压得住。
+        self.assertGreater(board.index(".settingscard .settingsscroll .machinesettings .gselect"),
+                           board.index(".settingscard .settingsscroll .gselect{min-width:90px;"))
+        # 高度的唯一出处仍是 --control-h，两个控件不各写一个像素数。
+        self.assertIn(".configsource input.geist-input,.configsource .gselectfield"
+                      "{height:var(--control-h);min-height:var(--control-h);box-sizing:border-box}", board)
 
     def test_sidebar_add_row_wears_the_shared_input_and_primary_button(self):
         """这一行有三条判据：颜色只走 token、高度只引用 --control-h、主次动作分得开。
@@ -5484,6 +5528,20 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".cleanuppage{width:min(812px,100%);margin:0 auto;display:grid;gap:32px}")
         self.assertPageContains(
             ".cleanup-layout .geist-breadcrumb,.cleanup-layout .managetitle,.cleanup-layout .pagelede")
+
+    def test_every_management_page_body_shares_the_title_column(self):
+        """管理区每一页的正文和它的标题一条中线，宽度都由 `--board-content` 说了算。
+
+        Board 层把 `#manageTitle` 钉在 1120 上，正文各自声明的 812 窄列比它每边窄 154px：
+        在宽屏上就是标题顶着左边、正文整块往右缩一截。四页写在同一条规则里，往管理区新加
+        一页时照抄这一行，不要在页面自己的 CSS 里另定一个数。
+        """
+        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
+        self.assertIn(".cleanuppage,.configpage,.scraping-page,.activitypage"
+                      "{width:100%;max-width:var(--board-content)}", board)
+        self.assertIn("body :is(#manageTitle,#manageCrumb,#manageLede)"
+                      "{max-width:var(--board-content);width:100%;margin-left:auto;margin-right:auto}", board)
+        self.assertIn(":root{--railW:88px;--board-content:1120px}", board)
 
     def test_returning_home_from_any_surface_moves_the_highlight(self):
         """Logo、侧栏和沉浸关闭都必须清掉隐藏筛选，不能让 `/` 继续请求 JAV。"""

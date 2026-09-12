@@ -407,7 +407,10 @@ body :is(#manageTitle,#manageCrumb,#manageLede){max-width:var(--board-content);w
 #manageTitle{font-size:26px;line-height:34px;margin-bottom:24px}
 
 /* Task entry cards and editing panels have different information density. */
-.cleanuppage,.configpage{width:100%;max-width:var(--board-content)}
+/* 管理区每一页的正文跟标题走同一条中线。标题由上面那条 `#manageTitle` 钉在 1120 上，
+   正文也得钉到同一个数：`.scraping-page` 和 `.activitypage` 自己声明的 812 窄列比标题
+   每边窄 154px，读起来就是正文整块往右缩了一截。 */
+.cleanuppage,.configpage,.scraping-page,.activitypage{width:100%;max-width:var(--board-content)}
 .cleanupgrid{gap:16px}
 .cleanupfieldset{border:1px solid var(--line);border-radius:16px;box-shadow:0 1px 2px #00000003}
 .cleanupfieldset>.geist-fieldset-content{padding:20px 20px 16px;min-height:120px}
@@ -1081,7 +1084,12 @@ body .reviewactions button.warning,body [data-follow-bulk],body [data-follow-sta
 .reviewtabs{overflow-x:auto!important;overflow-y:hidden;scrollbar-width:none!important;touch-action:pan-x pan-y;overscroll-behavior-x:contain}.reviewtabs::-webkit-scrollbar{display:none!important}.reviewtabs .os-scrollbar{display:none!important}
 .settingsscroll .settingrow{margin-right:16px}.settingsscroll .settinggroup{border-bottom:0}
 .iconswitch.themeswitch[data-board-segments]{padding:4px;border:0;border-radius:24px;background:var(--picked);gap:4px}.iconswitch.themeswitch[data-board-segments]>label{width:32px;height:32px;border-radius:50%}.themeswitch .board-segment-thumb{border-radius:50%;background:var(--ground)}
-.configsource{align-items:start}.configsource input.geist-input,.configsource .gselectfield{height:var(--control-h);min-height:var(--control-h);box-sizing:border-box}.configpage .configcheck{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 20px 12px 16px;border:1px solid var(--color-border-button-default);border-radius:10px;background:var(--color-background-primary-default);cursor:pointer}.configpage .configcheck>.pcheck{order:2}.configpage .configcheck:hover{background:var(--color-background-primary-hover)}
+.configsource{align-items:start}.configsource input.geist-input,.configsource .gselectfield{height:var(--control-h);min-height:var(--control-h);box-sizing:border-box}
+/* 配置页的下拉由里面那枚按钮定尺寸，`.gselect` 只是它的定位外壳。上面给设置开关行写的
+   那份 `.gselect` 尺寸（32px 高、6px/8px 内边距）在这儿不成立：那边外壳就是控件本身，
+   这边按钮是 `--control-h`（36px），比外壳高 4px 往下探出 10px，左边缘还被内边距推右
+   8px——同一格里它和上面那个输入框既不同高、也不从同一条竖线起。 */
+.settingscard .settingsscroll .machinesettings .gselect{min-width:0;min-height:0;height:auto;padding:0}.configpage .configcheck{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 20px 12px 16px;border:1px solid var(--color-border-button-default);border-radius:10px;background:var(--color-background-primary-default);cursor:pointer}.configpage .configcheck>.pcheck{order:2}.configpage .configcheck:hover{background:var(--color-background-primary-hover)}
 body .reviewactions button.primary:not(:disabled){background:var(--board-blue);color:#fff;border-color:transparent}body .reviewactions button.error:not(:disabled){background:linear-gradient(180deg,#ff3347,#e60012);color:#fff;border-color:transparent}body .reviewactions button.error:hover:not(:disabled){background:linear-gradient(180deg,#ff6471,#ff3347)}
 .card .pic>.badge{padding:4px;border-radius:10px;background:var(--glass-fill);box-shadow:inset 0 1px 0 var(--glass-rim),var(--glass-shadow);backdrop-filter:blur(16px) saturate(145%)}.card .pic>.badge .src{background:transparent;padding:0;width:20px;height:20px}
 body .selectiondock{border:0;border-radius:22px;background:var(--glass-drift-a),var(--glass-drift-b),linear-gradient(125deg,var(--glass-sheen),transparent 42%,var(--glass-low)),var(--glass-fill);background-size:200% 200%,200% 200%,auto;background-repeat:no-repeat,no-repeat,repeat;background-position:50% 20%,80% 70%,0 0;animation:glassdriftx 41s linear infinite,glassdrifty 67s linear infinite;backdrop-filter:var(--glass-optic,blur(22px)) saturate(145%);box-shadow:inset 0 1px 0 var(--glass-rim),inset 1px 0 0 var(--glass-low),inset -1px 0 0 var(--glass-low),inset 0 -1px 0 var(--glass-low),var(--glass-shadow)}
