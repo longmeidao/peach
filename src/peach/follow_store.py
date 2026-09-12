@@ -665,7 +665,7 @@ class FollowStore:
         canonical_key = normalized_author_name(canonical_name)
         alias_key = normalized_author_name(alias_name)
         if not canonical_key or not alias_key:
-            raise ValueError("规范作者名和平台别名都不能为空")
+            raise ValueError("规范创作者名和平台别名都不能为空")
         if canonical_key == alias_key:
             raise ValueError("这两个名字归一化后相同，不需要维护别名")
 
@@ -728,7 +728,7 @@ class FollowStore:
             (alias_key,),
         ).fetchone()
         if row is None:
-            raise ValueError("这个作者别名不存在")
+            raise ValueError("这个创作者别名不存在")
         if str(row["canonical_key"]) == alias_key:
             raise ValueError("规范名不能作为别名移除")
         connection.execute(

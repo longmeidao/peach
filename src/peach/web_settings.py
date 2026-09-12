@@ -38,10 +38,12 @@ SIDEBAR_KEY_ALIASES = {"ads": "data-cleanup", "dupes": "data-cleanup"}
 #: 机器就由哪台机器取），所以它必须落在账本里让服务端读得到，浏览器本地那份只是镜像。
 METADATA_REFRESH_DAYS = (0, 7, 30, 90)
 DEFAULT_METADATA_REFRESH_DAYS = 30
+FOLLOW_INITIAL_DAYS = (0, 7, 30, 90)
+DEFAULT_FOLLOW_INITIAL_DAYS = 30
 
 #: 只有这些键跟着账本走。白名单而不是黑名单：将来往设置里加字段的人必须显式表态
 #: 它该不该跨机同步，而不是默认就同步过去。
-SYNCED_SETTING_KEYS = frozenset({"sidebarOrder", "metadataRefreshDays"})
+SYNCED_SETTING_KEYS = frozenset({"sidebarOrder", "metadataRefreshDays", "followInitialDays"})
 
 
 class SettingsContract(Protocol):
@@ -88,6 +90,21 @@ def metadata_refresh_seconds(contract: SettingsContract) -> int | None:
     return days * 24 * 3600 or None
 
 
+def normalise_follow_initial_days(raw) -> int:
+    """首次采集的历史天数；0 表示不限时间。"""
+    if isinstance(raw, bool):
+        return DEFAULT_FOLLOW_INITIAL_DAYS
+    try:
+        days = int(raw)
+    except (TypeError, ValueError):
+        return DEFAULT_FOLLOW_INITIAL_DAYS
+    return days if days in FOLLOW_INITIAL_DAYS else DEFAULT_FOLLOW_INITIAL_DAYS
+
+
+def follow_initial_days(contract: SettingsContract) -> int:
+    return normalise_follow_initial_days(_stored(contract).get("followInitialDays"))
+
+
 def _stored(contract: SettingsContract) -> dict:
     with contract.read_connection() as connection:
         row = connection.execute(
@@ -110,6 +127,7 @@ def q_settings(contract: SettingsContract, _args=None) -> dict:
         "sidebarOrder": normalise_sidebar_order(payload.get("sidebarOrder")),
         "metadataRefreshDays": normalise_metadata_refresh_days(
             payload.get("metadataRefreshDays")),
+        "followInitialDays": normalise_follow_initial_days(payload.get("followInitialDays")),
     }
 
 
@@ -133,6 +151,8 @@ def w_settings(contract: SettingsContract, body) -> dict:
     if "metadataRefreshDays" in body:
         merged["metadataRefreshDays"] = normalise_metadata_refresh_days(
             body["metadataRefreshDays"])
+    if "followInitialDays" in body:
+        merged["followInitialDays"] = normalise_follow_initial_days(body["followInitialDays"])
     stamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     with contract.write_transaction() as connection:
         updated = connection.execute(

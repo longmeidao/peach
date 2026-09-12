@@ -4,6 +4,7 @@ Web 与命令行各写一遍必然不等价：其中一份会漏掉往回翻页�
 重取、不学官方渠道的作者别名。这里锁住「同一句检查更新在两处做同样的事」。
 """
 import contextlib
+import json
 import sqlite3
 import tempfile
 import unittest
@@ -289,6 +290,59 @@ class RunCheckTests(_CheckCase):
                                 author="Initiala"),))))
         self.assertIsNone(result.author_alias_learned)
         self.assertEqual(self.store.author_aliases(), ({}, []))
+
+
+class InitialHistoryTests(_CheckCase):
+    def candidates(self):
+        return tuple(FollowCandidate(provider='fanbox', external_id=key, title=key,
+                                     published_at=date) for key, date in (
+            ('old', '2026-01-01T00:00:00Z'),
+            ('boundary', '2026-08-04T00:00:00Z'),
+            ('new', '2026-09-02T00:00:00Z'), ('undated', None)))
+
+    def test_first_check_keeps_recent_and_undated_items_and_pins_the_boundary(self):
+        source = self._register()
+        connector = _Connector(_fetch(candidates=self.candidates()))
+        result = self._run(source, connector, initial_days=30)
+        self.assertEqual(result.history_skipped, 1)
+        self.assertEqual({item.external_id for item in self.store.items(source_id=source)},
+                         {'boundary', 'new', 'undated'})
+        boundary = json.loads(self._row(source)['metadata_json'])['initial_history_after']
+        result = self._run(source, connector, initial_days=0)
+        self.assertEqual(result.history_skipped, 1)
+        self.assertEqual(json.loads(self._row(source)['metadata_json'])['initial_history_after'], boundary)
+        self._run(source, connector, older=True, initial_days=30)
+        self.assertIn('old', {item.external_id for item in self.store.items(source_id=source)})
+        self.assertEqual(connector.calls[-1]['page'], 0)
+        self.assertIsNone(connector.calls[-1]['etag'])
+        self._run(source, connector, older=True, initial_days=30)
+        self.assertEqual(connector.calls[-1]['page'], 1)
+
+    def test_failed_first_check_retries_with_the_same_history_boundary(self):
+        source = self._register()
+        self._run(source, _Connector(error=FollowSourceError('offline')), initial_days=30)
+        result = self._run(source, _Connector(_fetch(candidates=self.candidates())), initial_days=0)
+        self.assertEqual(result.history_skipped, 1)
+
+    def test_existing_sources_and_unlimited_initial_checks_keep_all_dates(self):
+        source = self._register()
+        self.store.record(source, _fetch(), moment=MOMENT)
+        result = self._run(source, _Connector(_fetch(candidates=self.candidates())), initial_days=7)
+        self.assertEqual(result.history_skipped, 0)
+        source = self._register(ref='another')
+        result = self._run(source, _Connector(_fetch(ref='another', candidates=self.candidates())), initial_days=0)
+        self.assertEqual(result.history_skipped, 0)
+
+    def test_old_list_entries_do_not_spend_detail_requests(self):
+        from peach.follow_sources import _BaseConnector
+        connector = _BaseConnector(enrich_budget=10)
+        connector.history_after = datetime(2026, 8, 4, tzinfo=timezone.utc)
+        visited = []
+        connector._enrich_one = lambda candidate: visited.append(candidate.external_id) or candidate
+        candidates, probed = connector.enrich(self.candidates())
+        self.assertEqual(visited, ['boundary', 'new', 'undated'])
+        self.assertEqual(probed, 3)
+        self.assertEqual(connector.history_skipped, 1)
 
 
 if __name__ == "__main__":

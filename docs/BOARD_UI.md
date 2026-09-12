@@ -2,6 +2,8 @@
 
 ## 作者别名与扫描操作
 
+创作者别名区域依次提供「手动添加别名」、待合并与已保存列表。关注设置中的「首次采集历史范围」默认最近 30 天，可选 7 天、90 天或不限时间；按发布时间排除较早内容，无日期条目仍保留。每个新来源首次采集时固定边界，重试和自动更新沿用；已有来源不追溯处理，手动历史分页先补回首页被跳过的内容，再向前翻页。列表统计包含全部已导入的未看条目。
+
 2026-09-13 核对 [Table](https://www.boardui.com/components/table) 和 [Data Table](https://www.boardui.com/components/data-table)。实时表格使用 `role="grid"`，单元格为 14px、内边距 10px 12px；页面 CSS 部署标识为 `dpl_QqDLotDUMyvoaXmnBoPEK5tSk8mc`。官方 `https://www.boardui.com/r/table.json` 的 SHA-256 为 `fc12a8f2f4012d9e983e0b9bbb10f9fe3288d74046566d2623d60e7056c50d88`。
 
 作者别名复用现有 Table 样式，待合并按规范作者、平台别名、依据和操作分列，已保存别名独立成表；支持逐条合并、全部合并、手动添加和移除。全部合并先列出归属关系，失败时保留未完成项供重试。Peach 保留原生表格与既有 API，没有引入 React Aria 或 TanStack Table。
