@@ -6,9 +6,9 @@
 
 ## 运行态
 
-- 页面骨架已核验，未部署。
+- 页面骨架、别名与扫描菜单已部署。
 
-- BoardUI：状态演示 `/state-preview`；生产未切换，验收见 `BOARD_UI.md`。
+- BoardUI：状态演示 `/state-preview`；验收见 `BOARD_UI.md`。
 
 - 设置与反馈已部署；自动更新设置未部署。
 
