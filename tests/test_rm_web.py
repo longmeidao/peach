@@ -2458,6 +2458,31 @@ class DuplicateDetectionTests(unittest.TestCase):
         self.assertEqual(result["total"], 1)
         self.assertEqual(result["groups"][0]["count"], 2)
 
+    def test_two_files_with_the_same_name_are_one_duplicate_whatever_the_clock_says(self):
+        """同番号下同名的两份是同一版，时长差多少都算重复。
+
+        一份原盘一份转码，容器里写的时长能差出十几秒，超出容差就各成一组，
+        两组各只有一个，清单上一条都不提示——而这正是最该提示的那种。探时长
+        失败的那份（`duration` 为空）同理。
+        """
+        kept = self.add("SSIS-001", 7200, 9_000_000_000, name="SSIS-001.mp4")
+        drifted = self.add("SSIS-001", 7380, 4_000_000_000, drive="R", name="SSIS-001.mp4")
+        unprobed = self.add("SSIS-001", None, 3_000_000_000, drive="A", name="SSIS-001.mp4")
+        result = self.groups()
+        self.assertEqual(result["total"], 1)
+        self.assertEqual({item["id"] for item in result["groups"][0]["files"]},
+                         {kept, drifted, unprobed})
+
+    def test_a_shared_name_does_not_drag_in_the_other_parts(self):
+        """并的是同名那几份，别的簇不跟着合。"""
+        self.add("PPT-019", 6000, 5_000_000_000, name="PPT-019-A.mp4")
+        self.add("PPT-019", 6000, 4_000_000_000, drive="R", name="PPT-019-A.mp4")
+        self.add("PPT-019", 9000, 5_000_000_000, name="PPT-019-B.mp4")
+        self.add("PPT-019", 9000, 4_000_000_000, drive="R", name="PPT-019-B.mp4")
+        result = self.groups()
+        self.assertEqual(result["total"], 2)
+        self.assertTrue(all(group["count"] == 2 for group in result["groups"]))
+
     def test_multi_part_releases_never_collapse_into_one_cluster(self):
         # PPT-018 实测：109.2/175.2/196.4 分各两份。按番号只留最大会删掉两个部分。
         for minutes in (109.2, 175.2, 196.4):
