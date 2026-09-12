@@ -16,10 +16,10 @@ JAV 的官方封套是「背面 | 书脊 | 正面」拼成的一整张横图，�
 - `none`：这张图不该裁。整图框原样返回，页面维持现有的封面取景。
 
 折痕的判据是「切出来的正封形状对不对」，不是「折痕落在全宽的百分之几」：DVD 封套
-正面印刷面 135×190mm，宽高比 0.711；本机 637 张实测中位数 0.706、1% 分位 0.686、
-99% 分位 0.757，比折痕在全宽里的位置稳得多——后者还要受背面留白与书脊厚度影响。
+正面印刷面 135×190mm，宽高比 0.711；本机 637 张实测中位数 0.704、1% 分位 0.684、
+99% 分位 0.725，比折痕在全宽里的位置稳得多——后者还要受背面留白与书脊厚度影响。
 所以只在「切出来的正封落在 `PANEL_ASPECT_MIN`～`PANEL_ASPECT_MAX` 之间」的那几十
-列里找最强的峭壁。
+列里找峭壁，窗里够强的边不止一条时按形状定夺，不按谁更强。
 
 外部实现的实测值登记在 `docs/REUSE.md`，这里留作来路：
 
@@ -61,28 +61,34 @@ SLEEVE_RATIO_MIN = 1.2
 SLEEVE_RATIO_MAX = 1.65
 
 #: 正封宽高比的可信区间，折痕只在切出这个形状的那几十列里找。区间取自本机 637 张
-#: 实测（1% 分位 0.686、中位 0.706、99% 分位 0.757）并向外各留一点余量，上界压在
-#: 0.76 是因为书脊自己有两条边：放到 0.78 就会把书脊左缘也圈进来，那条边往往更强，
-#: 切出来的「正封」会连着整条书脊。
+#: 实测（1% 分位 0.684、中位 0.704、99% 分位 0.725）并向外各留出余量：书脊厚的封套
+#: 两条边都要落在窗里，`FOLD_RIVAL_RATIO` 那一关才看得见它们、才挑得出右边那条。
 PANEL_ASPECT_MIN = 0.68
 PANEL_ASPECT_MAX = 0.76
 #: 峰值要达到全图最强列梯度的这个比例才算一道峭壁。挡住的是平缓横图：那种图在窗里
 #: 照样有一个最大值，但它只是噪声的最高点，按它切会把画面拦腰截断。
 FOLD_MIN_STRENGTH = 0.35
+#: 强度达到窗内最强边这个比例的列都算候选折痕。书脊有左右两条边，窗口装得下一整条
+#: 书脊时两条都在候选里，而左边那条常常更强：它挨着封底的留白，右边那条挨着正封的
+#: 画面。谁更强不说明哪条是折痕，所以候选之间按「切出来的正封形状」定夺。
+FOLD_RIVAL_RATIO = 0.7
+#: 候选按相邻归并成边：一道边在梯度上响应好几列，相距不超过源图宽这个比例的算一条。
+FOLD_EDGE_SPAN = 0.005
 #: 折痕是一道有宽度的斜坡，梯度的峰落在斜坡最陡处，也就是斜坡当中；书脊的最后一两
 #: 列还在峰的右边。切点从峰往右走到梯度落回窗内中位数为止，最多走源图宽的这个比例。
-#: 本机 637 张实测位移中位 2 列、90% 分位 3 列，正封宽高比从中位 0.706 挪到 0.704。
+#: 本机 637 张实测位移中位 2 列、90% 分位 3 列。
 FOLD_SETTLE_LIMIT = 0.01
-#: 没找到折痕时按这个宽高比从右缘量回去。本机实测的中位数，也贴着 135×190mm 的
-#: 物理值；比「取右半」准——右半的形状随封套总宽在 0.60～0.82 之间飘。
-PANEL_ASPECT = 0.706
+#: 没找到折痕时按这个宽高比从右缘量回去，也是候选之间定夺用的形状。本机 637 张命中
+#: 折痕的封套实测中位数，贴着 135×190mm 的物理值；比「取右半」准——右半的形状随
+#: 封套总宽在 0.60～0.82 之间飘。
+PANEL_ASPECT = 0.704
 
 FOLD = "fold"
 RATIO = "ratio"
 NONE = "none"
 
 #: 算法版本号。sidecar 记着它，落后的重算。改动判据、常数或框的形状都要进位。
-ALGORITHM_VERSION = "poster-crop-v3"
+ALGORITHM_VERSION = "poster-crop-v4"
 #: sidecar 与封面同名换后缀：`ABW-232.jpg` → `ABW-232.poster.json`。人脸取景是
 #: `.face.json`，两者同目录、同命名风格，各描述一件事：一个是脸在哪，一个是正封在哪。
 SIDECAR_SUFFIX = ".poster.json"
@@ -167,11 +173,14 @@ def fold_column(width: int, height: int,
     """列梯度里那道书脊折痕所在的列；不成立返回 None。
 
     只在「折痕右边那块的宽高比落在 `PANEL_ASPECT_MIN`～`PANEL_ASPECT_MAX`」的那几十
-    列里取最强的一列。窗口由源图高度定，所以高清图和低清图用的是同一条判据；窗口
-    之外再强的边也不看——那是画面内容或书脊的另一条边，按它切会切进正面或带出封底。
+    列里找。窗口由源图高度定，所以高清图和低清图用的是同一条判据；窗口之外再强的边
+    也不看——那是画面内容，按它切会切进正面或带出封底。
 
-    最强的那一列是斜坡最陡处，不是斜坡尽头，所以选定之后还要往右走到梯度落回基线：
-    基线取窗内梯度的中位数，每张图各算各的，画面忙的封套门槛自然就高。
+    窗里够强的边不止一条时，取切出来的正封最贴近 `PANEL_ASPECT` 的那条，不是最强的
+    那条：书脊厚到两条边都落进窗里时，左边那条往往更强，按它切整条书脊都在框里。
+
+    选中的那一列是斜坡最陡处，不是斜坡尽头，所以还要往右走到梯度落回基线：基线取窗
+    内梯度的中位数，每张图各算各的，画面忙的封套门槛自然就高。
     """
     profile = gradient_source() if callable(gradient_source) else gradient_source
     if profile is None:
@@ -188,11 +197,27 @@ def fold_column(width: int, height: int,
     window = range(low, high + 1)
     if not window:
         return None
-    found = max(window, key=profile.__getitem__)
-    if profile[found] < peak * FOLD_MIN_STRENGTH:
+    top = max(window, key=profile.__getitem__)
+    if profile[top] < peak * FOLD_MIN_STRENGTH:
         return None
+    edges = _rival_edges(profile, window, profile[top],
+                         round(width * FOLD_EDGE_SPAN))
+    found = min(edges, key=lambda column: abs((width - column) / height - PANEL_ASPECT))
     baseline = statistics.median(profile[low:high + 1])
     return _settled(profile, found, baseline, round(width * FOLD_SETTLE_LIMIT))
+
+
+def _rival_edges(profile: list[float], window: range, top: float,
+                 span: int) -> list[int]:
+    """窗里强度和最强边相当的那几条边，一条边只留最强的那一列。"""
+    ranked = sorted((column for column in window
+                     if profile[column] >= top * FOLD_RIVAL_RATIO),
+                    key=profile.__getitem__, reverse=True)
+    kept: list[int] = []
+    for column in ranked:
+        if all(abs(column - other) > span for other in kept):
+            kept.append(column)
+    return kept
 
 
 def _settled(profile: list[float], found: int, baseline: float, limit: int) -> int:

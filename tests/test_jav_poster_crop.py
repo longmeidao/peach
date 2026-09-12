@@ -183,9 +183,24 @@ class MethodTests(unittest.TestCase):
     def test_the_walk_past_the_slope_is_bounded(self):
         """梯度一路不落回基线时不能一直走下去，最多走源图宽的 1%。"""
         profile = [0.0] * 800
-        for column in range(418, 500):
-            profile[column] = 1.0
+        profile[418] = 1.0
+        for column in range(419, 500):
+            profile[column] = 0.5               # 斜坡右边一直不落回基线
         self.assertEqual(jav_poster_crop.fold_column(800, 539, profile), 426)
+
+    def test_a_thick_spine_puts_both_of_its_edges_in_the_window(self):
+        """书脊厚到两条边都落进窗里时按形状挑：左边那条更强，右边那条才是折痕。"""
+        profile = [0.0] * 3762
+        profile[1939] = 0.57                    # 书脊左缘，挨着封底的留白
+        profile[1978] = 0.46                    # 书脊右缘，正封从这里开始
+        self.assertEqual(jav_poster_crop.fold_column(3762, 2535, profile), 1979)
+
+    def test_an_edge_too_weak_to_be_a_rival_never_gets_to_vote(self):
+        """形状更像正封不足以让一条弱边胜出：强度差太多的根本不进候选。"""
+        profile = [0.0] * 3762
+        profile[1939] = 0.57
+        profile[1978] = 0.20                    # 不到窗内最强边的七成
+        self.assertEqual(jav_poster_crop.fold_column(3762, 2535, profile), 1940)
 
     def test_a_profile_that_does_not_match_the_image_is_ignored(self):
         self.assertIsNone(jav_poster_crop.fold_column(800, 540, [1.0] * 400))
