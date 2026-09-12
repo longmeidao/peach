@@ -266,8 +266,10 @@ def run(args: argparse.Namespace) -> int:
         connection = sqlite3.connect(args.db, timeout=60)
         buffer = []
         while any(thread.is_alive() for thread in threads) or not results.empty():
+            # 等待要短：循环条件看到线程还活着、下一刻线程就退出的话，这一次 get 要等满
+            # 超时才回来。等 2 秒的话每次收尾都白站 2 秒，一次一张的重拍尤其明显。
             try:
-                buffer.append(results.get(timeout=2))
+                buffer.append(results.get(timeout=0.25))
             except queue.Empty:
                 pass
             if len(buffer) >= 50:
