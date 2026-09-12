@@ -271,8 +271,10 @@ body:has(#batchbar:not([hidden])) #stage{padding-bottom:180px}
 .poster.cover{width:100%;height:100%;object-fit:cover;display:block}
 /* --cover-x / --cover-y 都由人脸检出写入。哪个轴生效取决于容器和图片谁更竖：
    `object-fit:cover` 只裁一个轴，另一个轴的锚点是死值。 */
-/* 右侧正封贴着封套右边缘，横向锚点就取最右；容器比例已经把可见窗口收成正封那一块。 */
-.poster.cover.front[data-frame="sleeve"]{object-position:100% var(--cover-y,22%)}
+/* 正封的横向锚点优先用离线算好的取景框：`--poster-x` 由 `posterAnchor` 按 `poster_box`
+   写入，折痕位置每张封套都不一样，贴最右边缘只在正封正好顶到右缘时才对。
+   没有框的封面（判定为不裁的那些）回退到最右边缘，与算框之前一致。 */
+.poster.cover.front[data-frame="sleeve"]{object-position:var(--poster-x,100%) var(--cover-y,22%)}
 .poster.cover.front[data-frame="front"]{object-position:50% var(--cover-y,22%)}
 /* 剧照比大图容器宽得多，裁的是横向，所以横向锚点必须跟着人走。没检出时回落
    居中：那是取不到人脸时唯一站得住的猜测。 */

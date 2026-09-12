@@ -2485,7 +2485,9 @@ class WebUiSourceTests(unittest.TestCase):
         """
         self.assertPageContains("const COVER_FRONT_RATIO=0.7;")
         self.assertPageContains("(jav&&layout==='big'?COVER_FRONT_RATIO:16/9)")
-        self.assertPageContains('.poster.cover.front[data-frame="sleeve"]{object-position:100%')
+        self.assertPageContains(
+            '.poster.cover.front[data-frame="sleeve"]{object-position:var(--poster-x,100%)',
+            "算过取景框的封套按框取景，没算过的退回最右边缘")
         self.assertPageContains("r>=1.65?'still':r>1.2?'sleeve':'front'",
                                 "16:9 官方剧照不能当成双页封套裁到最右侧")
         # 判据是 `jav` 不是 `useCover`：缺封面的卡片也要拉长，用 16:9 预览图上下留黑边，
@@ -2493,6 +2495,27 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks("useCover&&layout==='big'")
         # 旧键要继续认，设置存在浏览器里，改名不能让用户的选择静默回落。
         self.assertPageContains("return normalizeJavLayout(appSettings.javLayout);")
+
+    def test_front_cover_anchor_uses_the_offline_crop_box(self):
+        """正封的横向锚点来自离线算好的 `poster_box`，取不到才退回最右边缘。
+
+        贴最右边缘只在正面正好顶到封套右缘时才对；折痕位置每张封套都不一样，
+        接口已经把框发过来了，页面不读它就等于把一份算好的取景扔掉。
+        换算本身是纯函数，`frontend/test/jav-artwork.test.ts` 按数值验收；这里守的是
+        「框有没有送到元素上、锚点有没有写回去」这条链路。
+        """
+        self.assertPageContains("const pb=it.poster_box;")
+        self.assertPageContains(' data-posterbox="')
+        # 换回官方封面时换的是同一个 <img>，框必须跟着元素走，不能只贴在封面那份 HTML 上。
+        self.assertPageContains('/ data-(?:c[xy]|posterbox)="[^"]*"/g')
+        self.assertPageContains("posterAnchor(img,car);")
+        self.assertPageContains("const pct=posterBoxAnchor({x0,px:[imgW,imgH]},ratio);")
+        self.assertPageContains("img.style.setProperty('--poster-x',`${pct}%`);")
+        # 没有框就一个字都不写，CSS 里那份回退照旧生效。
+        self.assertPageContains("if(pct==null)return;")
+        # 框按那一版源图算；封面被更大的那张换掉之后，它描述的是另一张图。
+        self.assertPageContains(
+            "if(!matchesFaceSource(img.naturalWidth,img.naturalHeight,imgW,imgH))return;")
 
     def test_wide_stills_frame_on_the_detected_face_instead_of_dead_centre(self):
         """16:9 官方剧照在大图容器里只会横向裁，横向锚点必须跟着人走。
