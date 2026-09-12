@@ -381,14 +381,22 @@ def con_entities(contract: WebContract, ids, qm):
 
 
 def entity_ref(contract: WebContract, kind: str, entity_id, name: str) -> dict:
-    """身份引用：id、名字，加上「实体图取不取得到」。
+    """身份引用：id、名字，加上「实体图取不取得到」和这张图的取景。
 
     卡片头像、详情页身份格和沉浸模式的署名圈都读这一份，所以标志跟着引用走，不由
     各处自己再问一遍。缺了它，这些位置只能无条件出 `<img>`、等 `/entity-image` 回
     404 再把图摘掉——一个作品详情页实测就是 5 个这样的 404，而那条响应不带缓存头。
+
+    取景和标志是同一个道理，而且更急：读这份引用的位置全都拿不到第二份数据，没有
+    它就只能几何居中。人脸落在画面顶上的那批（`focus.pct` 为 0）在这些圆框里正好
+    被裁掉脑袋——出镜者那一排实测五个人有四个是这样。没装图就没有 sidecar，那时
+    不去问盘。
     """
-    return {"id": entity_id, "name": name,
-            "has_image": contract.has_entity_image(kind, entity_id)}
+    has_image = contract.has_entity_image(kind, entity_id)
+    ref = {"id": entity_id, "name": name, "has_image": has_image}
+    if has_image:
+        ref["avatar_focus"] = contract.avatar_focus(kind, entity_id)
+    return ref
 
 
 def attach_avatar_availability(contract: WebContract, rows, key="rep",

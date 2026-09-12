@@ -78,6 +78,9 @@ def _attach_taste_face_availability(contract: WebContract, rankings: dict) -> No
             continue
         for row in rows:
             row["has_image"] = contract.has_entity_image(kind, row.get("entity_id"))
+            #: 榜上那颗 30 px 的圆头像和别处同一份 sidecar、同一个换算。框越小，几何
+            #: 居中切掉脸的代价越大——这一格除了脸没有别的东西能认人。
+            row["avatar_focus"] = contract.avatar_focus(kind, row.get("entity_id"))
         attach_avatar_availability(contract, rows, key="representative_asset_id")
 
 

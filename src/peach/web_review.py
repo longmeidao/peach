@@ -527,6 +527,9 @@ def _review_rows(contract: ReviewContract, category: str) -> tuple[list[dict], s
     if face_kind:
         for row in rows:
             row["has_image"] = contract.has_entity_image(face_kind, row.get("entity_id"))
+            #: 取景与索引页、资料页同一份 sidecar、同一个换算。这张脸是复核时认人的
+            #: 唯一线索，几何居中把脑袋裁掉就等于没有这一格。
+            row["avatar_focus"] = contract.avatar_focus(face_kind, row.get("entity_id"))
     return _pending_first(rows), source, skipped
 
 

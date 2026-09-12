@@ -1844,14 +1844,14 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("if(!src)return '';")
         # kind 参数化后，创作者复核卡片也能走同一条链；默认仍是 performer，
         # 既有调用点不受影响。标识变体同理默认 icon：小圆框和窄格子是多数。
-        self.assertPageContains(
+        self.assertCode(
             "function avatarInner(name,ref,repId,kind='performer',markId=null,logoName='',"
-            "logoVariant='icon',focus=null)")
+            "logoVariant='icon',focus=undefined)")
         # 兜底链声明在模板里，行为归 image-fallback 那条委托监听。
         self.assertCode("const fallbacks=useLogo?[entitySrc,avatarSrc].filter(Boolean)\n"
                         "    :(useEntity&&avatarSrc?[avatarSrc]:[]);")
         self.assertPageContains(
-            "imageFallbackAttrs({dropStyle:(dropStyle||!!faceBox)&&framed,fallbacks})")
+            "imageFallbackAttrs({dropStyle:(dropStyle||!!faceBox||!!framedStyle)&&framed,")
 
     def test_no_face_image_is_emitted_before_the_server_says_it_can_be_fetched(self):
         """先问再出图：没有可用性标志兜住的 `/entity-image`／`/avatar` 一处都不许有。
@@ -1892,7 +1892,7 @@ class WebUiSourceTests(unittest.TestCase):
             "x.has_avatar&&!company?x.rep:null, kind, x.mark, x.has_logo?x.k:'',")
         # 口味榜（`/api/taste`）：两列直接长在榜行上，判据仍是同一对。
         self.assertPageContains(
-            "const ref=row.entity_id?{id:row.entity_id,has_image:row.has_image}:null,")
+            "const ref=row.entity_id?{id:row.entity_id,has_image:row.has_image,")
         self.assertPageContains("rep=row.has_avatar?row.representative_asset_id||null:null;")
         # 沉浸模式署名圈读 `/api/item` 的 entity_refs，标志随引用一起来；代表作那一侧
         # 读 REP，入表时已经按 has_avatar 筛过。
@@ -1955,9 +1955,9 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(
             "style:company?'':facePos(d.avatar_focus),focus:company?null:d.avatar_focus,")
         # 取景是按实体图算出来的，所以内联 style 和 data-drop-style 只贴给第一环。
-        self.assertPageContains("${framed?style:''}")
+        self.assertPageContains("${framed?framedStyle:''}")
         self.assertPageContains(
-            "imageFallbackAttrs({dropStyle:(dropStyle||!!faceBox)&&framed,fallbacks})")
+            "imageFallbackAttrs({dropStyle:(dropStyle||!!faceBox||!!framedStyle)&&framed,")
         self.assertPageContains("if ('dropStyle' in image.dataset) image.removeAttribute('style');")
 
     def test_every_avatar_slot_hands_the_face_box_to_the_page(self):
@@ -1972,11 +1972,35 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("focus:company?null:d.avatar_focus,")
         self.assertPageContains("style:facePos(x.avatar_focus),focus:x.avatar_focus}")
         self.assertPageContains("bigMark?'large':'icon', company?null:x.avatar_focus)")
-        self.assertPageContains("logo:logoName,logoVariant,focus}")
+        self.assertPageContains("logo:logoName,logoVariant,focus:hint}")
         # 五个数挤一个属性，回落时只要摘一样东西。
         self.assertPageContains(
             "data-facebox=\"${[b.cx,b.cy,b.faceW,b.imgW,b.imgH].map(Number).join(' ')}\"")
         self.assertPageContains("else if(img.dataset.facebox)avatarFrame(img);")
+
+    def test_a_slot_that_only_has_the_focus_still_gets_the_shift(self):
+        """给了取景就一定挪。`style` 是另一个参数，漏掉它不报错也不掉图。
+
+        挪和放大是同一份 sidecar 的两半，换算只有 `facePos` 这一份，所以它落在出图
+        这一处：调用点给了 `focus` 就够。漏掉挪那一半的后果在页面上和「这个人没算过
+        取景」一模一样——图照出，只是几何居中，而人脸落在画面顶上的（`focus.pct`
+        为 0）正好被裁掉脑袋。
+        """
+        self.assertPageContains("const framedStyle=style||facePos(focus);")
+        # 挪出来的内联 style 也必须能撤：回落那张是另一张照片，脸不在同一位置。
+        self.assertPageContains(
+            "imageFallbackAttrs({dropStyle:(dropStyle||!!faceBox||!!framedStyle)&&framed,")
+
+    def test_a_slot_that_only_has_the_ref_still_gets_the_focus(self):
+        """取景不传就从 ref 上取：它和 `has_image` 出自服务端同一份下发。
+
+        七个调用点各记一次的代价实测就是漏掉六个——播放详情的出镜者、卡片署名、
+        顶栏、口味榜、播放列表、复核卡片全是几何居中。公司那一格要的是「明确不取景」，
+        传 `null` 压过默认。
+        """
+        self.assertPageContains("const hint=focus===undefined?(ref&&ref.avatar_focus)||null:focus;")
+        # 详情页的出镜者格子不走 avatarInner，自己把取景递进去。
+        self.assertPageContains("{id:item.id,hasImage:item.has_image,focus:item.avatar_focus})}")
 
     def test_an_unlaid_out_frame_is_waited_for_instead_of_measured_as_zero(self):
         """图加载完时框还没布局，`load` 不会再来第二次。
@@ -3349,7 +3373,7 @@ class WebUiSourceTests(unittest.TestCase):
         # 人物格走和顶栏圆头像同一个 entityFaceImg；这一格没有代表作头像可退，
         # 装了实体图才出 `<img>`，否则就是首字母垫底。
         self.assertPageContains("? `<span>${esc(item.name.slice(0,1))}</span>${entityFaceImg(")
-        self.assertPageContains("{id:item.id,hasImage:item.has_image})}")
+        self.assertPageContains("{id:item.id,hasImage:item.has_image,focus:item.avatar_focus})}")
         self.assertPageContains(
             '${item.has_logo?`<img src="/logo?studio=${encodeURIComponent(item.name)}&variant=icon"')
 
@@ -6040,7 +6064,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(
             "const src=useLogo?`/logo?studio=${encodeURIComponent(logo)}&variant=${logoVariant}`")
         # 变体由调用点决定：小圆框和窄格子要方形图标，索引页那格要 large。
-        self.assertPageContains("logo:logoName,logoVariant,focus}")
+        self.assertPageContains("logo:logoName,logoVariant,focus:hint}")
         self.assertPageContains("bigMark?'large':'icon', company?null:x.avatar_focus)")
         # 取不到标识就退回实体图、再退到头像，和资料页大位同一条链。
         self.assertPageContains("const fallbacks=useLogo?[entitySrc,avatarSrc].filter(Boolean)")
@@ -11235,8 +11259,9 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("const works=Number(row.video_count||row.videos||0)")
         self.assertPageContains("部作品")
         # 头像走同一条链，装了实体图才出 `<img>`，取不到就是首字母。
-        self.assertPageContains(
-            "row.entity_id?{id:row.entity_id,has_image:row.has_image}:null,null,subjectKind)")
+        self.assertCode(
+            "row.entity_id?{id:row.entity_id,has_image:row.has_image,"
+            "avatar_focus:row.avatar_focus}:null,null,subjectKind)")
         # 复核页没有全局委托，必须自己接线，否则入口点了没反应。
         self.assertPageContains(
             "$('#stats').querySelectorAll('[data-entity-kind]').forEach(button=>button.onclick=()=>")
