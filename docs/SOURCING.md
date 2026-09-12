@@ -465,10 +465,13 @@ av911.tv，三条候选已进复核队列。
   别名进的是身份，配错了人比缺一个写法更难查回来。撞上另一条实体名下的写法记 `占用`，那是两条该不该
   合并的问题，不由采集这一步决定。页面上没有新写法的也留一行 `无新写法`：查过没查出东西，和还没轮到
   她是两件事。
-- 落库是另一个脚本、另一次授权：`apply_alias_candidates.py --candidates <csv> --apply --backup`。
-  来源统一记 `peach.javdb.ALIAS_SOURCE`（`javdb-actor-page`），与界面上可撤销的 `user:alias` 分得开。
-  四种不写：这条实体已有这个写法、写法归另一条实体、账本里的统称已经不是 CSV 里那个（快照过期，
-  该重抓）、实体不在或不是 performer。
+- 落库是另一个脚本、另一次授权：
+  `apply_alias_candidates.py --candidates <csv> --revision <批次> --apply --backup`。
+  来源记 `javdb-actor-page@<批次>`（`peach.javdb.ALIAS_SOURCE` 是那个前缀），与
+  `localize_performer_names.py` 写的 `javdb-actor-page@javdb-202609` 同一形状，也与界面上可撤销的
+  `user:alias` 分得开。批次号必须在命令行里给：解析判错时，认得出批次才能按 `source` 把那一趟整批
+  撤回。四种不写：这条实体已有这个写法、写法归另一条实体、账本里的统称已经不是 CSV 里那个
+  （快照过期，该重抓）、实体不在或不是 performer。
 
 ## 厂牌名与厂牌标识
 

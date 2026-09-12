@@ -19,9 +19,12 @@ r"""把 javdb 别名候选写进账本。
    这个人后来被动过，候选该重新抓一遍再看。记 `已变`。
 4. **实体不在了**，或者已经不是 performer。记 `查无此人`。
 
-来源统一记 `peach.javdb.ALIAS_SOURCE`，和资料页取回的其他名字一样。界面上能撤销的
-只有 `user:alias` 那一类，这里写的不在其中：它是「这个名字在 javdb 的资料页上」的
-记录，不给一次点击删掉。
+来源记 `peach.javdb.ALIAS_SOURCE@<--revision>`，与 `localize_performer_names.py` 写的那些
+同一个形状。批次号不是装饰：解析判错时，认得出批次才能按 `source` 把那一趟整批撤回，
+而写进去的名字混在一个裸来源里就只能一条条看。所以它必须在命令行里给。
+
+界面上能撤销的只有 `user:alias` 那一类，这里写的不在其中：它是「这个名字在 javdb 的
+资料页上」的记录，不给一次点击删掉。
 """
 from __future__ import annotations
 
@@ -48,12 +51,18 @@ WRITE, HAVE, TAKEN, STALE, GONE, BAD = "写入", "已有", "占用", "已变", "
 FIELDS = ("entity_id", "current_name", "alias", "origin", "verdict", "url",
           "action", "detail")
 
-#: 本脚本自己关心的口径；基础计数由 `scripting.counts_of` 给。
+#: 本脚本自己关心的口径；基础计数由 `scripting.counts_of` 给。前缀比对而不是相等：
+#: 每一趟的来源都带自己的批次号，按相等数永远是 0。
 EXTRA_COUNTS = {
     "performer": "SELECT count(*) FROM entity WHERE kind='performer'",
-    "javdb_alias": ("SELECT count(*) FROM entity_alias WHERE source="
-                    f"'{javdb.ALIAS_SOURCE}'"),
+    "javdb_alias": ("SELECT count(*) FROM entity_alias WHERE source LIKE "
+                    f"'{javdb.ALIAS_SOURCE}%'"),
 }
+
+
+def source_for(revision: str) -> str:
+    """这一趟写进 `entity_alias.source` 的串。"""
+    return f"{javdb.ALIAS_SOURCE}@{revision}"
 
 
 def accepted(rows: list[dict], verdicts: list[str]) -> list[dict]:
@@ -111,7 +120,7 @@ def plan(connection: sqlite3.Connection, rows: list[dict]) -> list[dict]:
     return out
 
 
-def apply_rows(connection: sqlite3.Connection, rows: list[dict]) -> int:
+def apply_rows(connection: sqlite3.Connection, rows: list[dict], revision: str) -> int:
     """写判成 `写入` 的那些行。返回真正落下去的条数。"""
     written = 0
     for row in rows:
@@ -121,7 +130,8 @@ def apply_rows(connection: sqlite3.Connection, rows: list[dict]) -> int:
         connection.execute(
             "INSERT INTO entity_alias(entity_id,alias,normalized_alias,source,confidence)"
             " VALUES(?,?,?,?,1.0)",
-            (int(row["entity_id"]), alias, normalize_entity_name(alias), javdb.ALIAS_SOURCE))
+            (int(row["entity_id"]), alias, normalize_entity_name(alias),
+             source_for(revision)))
         written += connection.execute("SELECT changes()").fetchone()[0]
     return written
 
@@ -133,6 +143,8 @@ def build_parser() -> argparse.ArgumentParser:
                         help="`harvest_javdb_cn_names.py --aliases` 产出的 CSV")
     parser.add_argument("--accept", default="ok",
                         help="逗号分隔的判定名，照抄 CSV 的 verdict 列；默认只收 ok")
+    parser.add_argument("--revision", required=True,
+                        help="这一趟的批次号，写进来源串；认得出批次才撤得回整批")
     parser.add_argument("--review-csv", type=Path,
                         default=GENERATED_DIR / "javdb-alias-apply.csv")
     return parser
@@ -159,10 +171,10 @@ def run(args: argparse.Namespace) -> int:
         print(f"  已备份到 {args.backup}")
         before = counts_of(connection, EXTRA_COUNTS)
         with connection:
-            written = apply_rows(connection, rows)
+            written = apply_rows(connection, rows, args.revision)
         after = counts_of(connection, EXTRA_COUNTS)
         integrity, foreign_keys = verify_after_write(connection)
-        print(f"  写入别名 {written} 条")
+        print(f"  写入别名 {written} 条，来源 {source_for(args.revision)}")
         for name in before:
             print(f"    {name}: {before[name]} -> {after[name]}")
         print(f"  integrity_check={integrity}；foreign_key_check={foreign_keys}")
