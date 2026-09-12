@@ -1,6 +1,8 @@
-import source from '../../web/app.js?raw';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { afterEach, expect, it, vi } from 'vitest';
 
+const source=readFileSync(resolve(process.cwd(),'../web/app.js'),'utf8');
 const manager=source.slice(source.indexOf('function followAliasManager('),source.indexOf('const CRED_STATE='));
 const handlers=source.slice(source.indexOf('  const saveAuthorAlias='),source.indexOf("  root.querySelectorAll('[data-follow-guess]')"));
 const esc=(value:unknown)=>String(value).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('"','&quot;');
