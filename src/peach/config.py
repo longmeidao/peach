@@ -102,6 +102,8 @@ class PeachSettings:
     allowed_media_roots: tuple[Path, ...] = translate_roots(MEDIA_ROOT_DECLARATIONS)
     snapshot_root: Path = GENERATED_DIR / "snapshots"
     poster_root: Path = GENERATED_DIR / "posters"
+    # 时间轴预览的接触印相，由采集任务铺，悬停时整张取回来按格子换位置。
+    timeline_root: Path = GENERATED_DIR / "timeline"
     avatar_root: Path = GENERATED_DIR / "avatars"
     logo_root: Path = GENERATED_DIR / "logos"
     # 图片资产的缓存缩略图。云盘原图一张就有几 MB，回源一次之后图片墙只读这里。

@@ -73,6 +73,7 @@ class WebContract:
                  logo_root: Path | None = None,
                  marks_root: Path | None = None,
                  poster_root: Path | None = None,
+                 timeline_root: Path | None = None,
                  photo_root: Path | None = None,
                  transcode_root: Path | None = None,
                  stream_root: Path | None = None,
@@ -96,6 +97,10 @@ class WebContract:
         self.marks_root = (Path(marks_root) if marks_root is not None
                            else brand_marks.STUDIOS_DIR)
         self.poster_root = Path(poster_root) if poster_root is not None else GENERATED_DIR / "posters"
+        # 时间轴预览的接触印相。和上面几个不一样，它不是取不到就现做的缓存：一张图要抽
+        # 一百帧，只能靠采集任务提前铺好，没铺到的片子悬停时退回九宫格。
+        self.timeline_root = (Path(timeline_root) if timeline_root is not None
+                              else GENERATED_DIR / "timeline")
         self.photo_root = Path(photo_root) if photo_root is not None else GENERATED_DIR / "photo-thumbs"
         self.transcode_root = (Path(transcode_root) if transcode_root is not None
                                else GENERATED_DIR / "transcodes")
@@ -149,6 +154,8 @@ class WebContract:
         self.scraping_cover_job = self._job("PeachScrapingCoverJob", "scraping-cover")
         self.library_processing_job = self._job(
             "PeachLibraryProcessingJob", "library-processing")
+        self.thumbnail_job = self._job(
+            "PeachTimelineThumbnailJob", "timeline-thumbnails")
         self.resource_apply_job = self._job("PeachResourceApplyJob", "resource-apply")
         self.follow_scheduler = None
         # 两块后台任务的锁、状态和线程都归 BackgroundJob 管，契约上只留这两个字段。
@@ -223,6 +230,7 @@ class WebContract:
         self.follow_job.stop()
         self.scraping_cover_job.stop()
         self.library_processing_job.stop()
+        self.thumbnail_job.stop()
         self.follow_resolve_job.stop()
         self.taste_refresh_job.stop()
         self.link_prune_job.stop()

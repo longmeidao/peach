@@ -33,6 +33,7 @@ class ResourceSyncContract(Protocol):
     poster_root: Path
     avatar_root: Path
     photo_root: Path
+    timeline_root: Path
     stream_root: Path
     transcode_root: Path
     resource_cleanup_enabled: bool
@@ -245,6 +246,24 @@ def _resource_orphan_plan(contract: ResourceSyncContract, excluded_ids: Sequence
             for path in directory.rglob("*"):
                 if path.is_file():
                     _cache_file(path, "stream-segments", files)
+
+    # 时间轴预览按 `<id 末两位>/<id>/` 分桶，一部片子一个目录、里面几十张图。判据和
+    # 分片一样是目录名，只是外面多一层桶：一部三小时的片子按 10 秒一帧就是 1080 张，
+    # 片子没了而这些还留着，是本机产物里单部占得最多的一类。
+    if (_managed_cache_root(contract, contract.timeline_root)
+            and contract.timeline_root.is_dir()):
+        for bucket in contract.timeline_root.iterdir():
+            if not bucket.is_dir():
+                continue
+            for directory in bucket.iterdir():
+                if not directory.is_dir() or not directory.name.isdigit():
+                    continue
+                if int(directory.name) in active_ids:
+                    continue
+                cleanup_dirs.add(directory)
+                for path in directory.rglob("*"):
+                    if path.is_file():
+                        _cache_file(path, "timeline", files)
 
     if (_managed_cache_root(contract, contract.avatar_root)
             and contract.avatar_root.is_dir()):

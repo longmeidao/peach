@@ -68,6 +68,7 @@ from .web_settings import q_settings, w_settings
 from .web_scraping import q_scraping, w_scraping_settings, w_scraping_check, w_scraping_cover
 from .web_state import WebContract
 from .web_tasks import q_tasks
+from .web_timeline_thumbnails import q_thumbnail_jobs, q_timeline, w_thumbnail_jobs
 from .web_stats import (
     q_quality_goals,
     q_search_history,
@@ -226,6 +227,8 @@ GET_HANDLERS = {
     "/api/tasks": q_tasks,
     "/api/library-processing": q_library_processing,
     "/api/library-processing/issues": q_library_processing_issues,
+    "/api/thumbnail-jobs": q_thumbnail_jobs,
+    "/api/timeline": q_timeline,
     "/api/scraping": q_scraping,
     "/api/scraping/cover": lambda contract, args: contract.scraping_cover_job.snapshot() or {"status": "idle"},
     "/api/settings": q_settings,
@@ -266,6 +269,7 @@ GET_HANDLERS = {
 
 POST_HANDLERS = {
     "/api/library-processing": w_library_processing,
+    "/api/thumbnail-jobs": w_thumbnail_jobs,
     "/api/scraping/settings": w_scraping_settings,
     "/api/scraping/cover": w_scraping_cover,
     "/api/scraping/check": w_scraping_check,

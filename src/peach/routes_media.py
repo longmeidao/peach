@@ -29,8 +29,8 @@ from starlette.staticfiles import StaticFiles
 
 from . import (
     avatar_face, avatar_picker, avatar_provider, follow_assets, link_marks,
-    scraping_access, site_icons, subtitles, taste_history, web_follow,
-    web_settings,
+    scraping_access, site_icons, subtitles, taste_history, timeline_sheets,
+    web_follow, web_settings,
 )
 from .config import GENERATED_DIR
 from .follow import FollowSourceError
@@ -420,6 +420,20 @@ def poster(request: Request, id: int, c: int = 4, args: dict[str, str] = Depends
     try:
         path = request.app.state.preview_service.poster(id, c)
     except PreviewUnavailable:
+        return JSONResponse({"error": "unavailable"}, status_code=404)
+    return _image_response(request, path, media_type="image/jpeg")
+
+
+@router.api_route("/timeline", methods=["GET", "HEAD"])
+def timeline(request: Request, id: int, s: int = 0, args: dict[str, str] = Depends(require_auth)):
+    """时间轴预览的一张接触印相。只发已经铺好的，这里不现抽。
+
+    `/poster` 那条取不到会当场抽一帧，因为九宫格只要九张。这里一张图是一百帧，现抽要
+    几分钟，悬停的人早走了；没铺到就回 404，页面退回九宫格。
+    """
+    contract = request.app.state.web_contract
+    path = timeline_sheets.sheet_path(contract.timeline_root, id, s)
+    if id <= 0 or s < 0 or not path.is_file():
         return JSONResponse({"error": "unavailable"}, status_code=404)
     return _image_response(request, path, media_type="image/jpeg")
 
