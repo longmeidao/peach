@@ -1282,6 +1282,45 @@ class WebUiSourceTests(unittest.TestCase):
             self.assertPageContains(prefix + "::-webkit-details-marker{display:none}")
             self.assertPageContains(prefix + "{cursor:pointer;", "标题自己是 flex 容器")
 
+    def test_a_config_card_cell_never_widens_past_the_card(self):
+        """配置卡正文里的格子收回 0 宽，撑不宽卡片。
+
+        网盘建议表按 520px 起画。卡片比它窄时，grid 的格子按内容的最小宽度撑开，
+        整条轨道跟着变宽，而卡片是 clip：表格右边、下面那段说明文字和底部操作条
+        一起被裁在卡片外，既看不见也够不着。560px 视口实测溢出 12px。格子收回 0，
+        表格自己那层 `overflow-x:auto` 才接得住。
+        """
+        self.assertIn(".configfieldset>.geist-fieldset-content>*{min-width:0}", self.css)
+
+    def test_the_cache_table_stacks_under_its_own_column_names(self):
+        """卡片放不下四列时网盘建议表一行一块，每格左边跟着自己的列名。
+
+        判据按容器不按视口：同一个视口里，侧栏收没收、卡片落在哪一栏，留给这张表的
+        宽度能差出两百多像素，按视口写会在该堆叠的时候不堆叠。堆叠之后列名由
+        `data-label` 画出来，那几串字必须和表头是同一份，否则同一张表在宽窄两种
+        卡片里说的话不一样。
+        """
+        self.assertIn(".cloudguide{min-width:0;container-type:inline-size}", self.css)
+        self.assertIn("@container(max-width:520px){", self.css)
+        guide = (Path(__file__).resolve().parents[1]
+                 / "frontend/src/islands/clouddrive-guide.tsx").read_text(encoding="utf-8")
+        heads = re.findall(r'<th scope="col">([^<]+)</th>', guide)[1:]
+        labels = re.findall(r'<td data-label="([^"]+)"', guide)
+        self.assertEqual(labels, heads, "堆叠时的列名要和表头写的是同一串字")
+        self.assertIn(".cloudguide-table tbody td::before{content:attr(data-label)", self.css)
+
+    def test_having_no_access_password_is_stated_as_a_warning(self):
+        """没设访问密码画成警示 Note，不是一行灰色小字。
+
+        这说的是这台机器当前的状态：同一个网里任何一台设备打开地址就进了馆藏。
+        灰色小字和旁边「至少 8 个字符」那种填表提示长得一模一样，扫一眼就滑过去。
+        """
+        access = (Path(__file__).resolve().parents[1]
+                  / "frontend/src/islands/access-settings.tsx").read_text(encoding="utf-8")
+        note = access[access.index("state.mode === 'open' ?"):][:400]
+        self.assertIn("variant:'warning'", note)
+        self.assertIn("未设置访问密码", note)
+
     def test_a_spinner_announces_the_work_and_not_the_button_it_sits_in(self):
         """`spinnerHtml()` 的名字说正在做什么，不复读按钮自己的名字。
 
@@ -7882,10 +7921,16 @@ class WebUiSourceTests(unittest.TestCase):
         两条渲染出来是同一块 `--drop` 加白字，鼠标压上去一点变化都没有。同一颗键的两个
         状态分写在两处、值又相同，是这类缺陷的固定形状——所以红收回 `.danger`，页面只
         留几何。`border-color` 在 `border:0` 之后也是死声明，一并收掉。
+
+        几何这一份也要压得过 board 那层：那边给普通按钮钉了 36px 定高，特指度比只写
+        两个 class 高，而它的 `:not()` 放过 `danger`。只写两个 class 的话，窄屏
+        `--control-h` 是 44px，同一行两枚按钮一个 44 一个 36，挨着 44px 的输入框
+        一高一矮。
         """
         # 标记本身在 island 包里，由 test_frontend_build 的岛屿产物断言守；这里只管样式。
-        self.assertPageContains(".configrm.geist-button,.configpick.geist-button"
-                                "{width:var(--control-h);height:var(--control-h);flex:none;padding:0}")
+        self.assertPageContains("body .configpage :is(.configrm,.configpick).geist-button"
+                                "{width:var(--control-h);height:var(--control-h)"
+                                ";min-height:var(--control-h);flex:none;padding:0}")
         self.assertPageContains(".configpick.geist-button{color:var(--muted)}")
         css = stylesheet_source()
         for stale in (".configrm.geist-button{color:var(--drop)}",

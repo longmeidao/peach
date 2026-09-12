@@ -24,7 +24,7 @@ it('系统口令可直接转为可选密码且关闭需要明确提交', async (
   host.querySelector('form')!.dispatchEvent(new Event('submit', { cancelable: true })); await settle();
   expect(JSON.parse((fetcher.mock.calls[0] as unknown as [string, RequestInit])[1].body as string)).toMatchObject({ action: 'disable', confirm_disable: true });
   expect(receipt).toHaveBeenCalledWith('已关闭访问密码');
-  expect(host.textContent).toContain('未设置密码');
+  expect(host.querySelector('.geist-note-warning')?.textContent).toContain('未设置访问密码');
 });
 
 it('关闭选项位于输入上方且保留草稿并要求当前密码验证', async () => {
@@ -77,7 +77,9 @@ it('长度提示紧贴字段且提交不合法内容时变为字段错误', asyn
   const fetcher = vi.fn(); vi.stubGlobal('fetch', fetcher);
   render(<AccessSettings initial={{ mode: 'open', revision: 'one' }} receipt={vi.fn()} />, host);
   expect(host.querySelector('.configfieldset-heading #accessTitle')).not.toBeNull();
-  expect(host.querySelector('.configfieldset-heading > .confighelp')?.textContent).toContain('未设置密码');
+  // 没有密码是当前状态，画成警示 Note；标题下那行灰色小字只留给填表提示。
+  expect(host.querySelector('.geist-note-warning')?.textContent).toContain('未设置访问密码');
+  expect(host.querySelector('.configfieldset-heading > .confighelp')).toBeNull();
   const field = host.querySelector<HTMLInputElement>('#access-password')!;
   expect(field.nextElementSibling?.textContent).toContain('至少 8 个字符');
   host.querySelector('form')!.dispatchEvent(new Event('submit', { cancelable: true })); await settle();

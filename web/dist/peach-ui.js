@@ -1911,7 +1911,7 @@ function Pn({ initial: e, receipt: t }) {
 		noValidate: !0,
 		formRef: m,
 		error: v,
-		help: n.mode === "open" ? "未设置密码，能连接到 Peach 的设备可直接访问。" : n.mode === "legacy" ? "当前使用系统生成的访问口令。你可以设置自己的密码，或关闭登录要求。" : n.mode === "locked" ? "访问设置无法读取，请在本机检查配置文件。" : "已设置密码。新设备需要登录，保持登录时间在登录页选择。",
+		help: n.mode === "legacy" ? "当前使用系统生成的访问口令。你可以设置自己的密码，或关闭登录要求。" : n.mode === "locked" ? "访问设置无法读取，请在本机检查配置文件。" : n.mode === "password" ? "已设置密码。新设备需要登录，保持登录时间在登录页选择。" : void 0,
 		footer: n.mode !== "locked" && /* @__PURE__ */ q(F, { children: [/* @__PURE__ */ q("p", { children: "保存后立即生效。" }), /* @__PURE__ */ q("button", {
 			class: "geist-button primary",
 			type: "submit",
@@ -1919,6 +1919,10 @@ function Pn({ initial: e, receipt: t }) {
 			children: "保存配置"
 		})] }),
 		children: [
+			n.mode === "open" ? /* @__PURE__ */ q("div", { dangerouslySetInnerHTML: { __html: g("能连接到 Peach 的设备打开地址就能看馆藏，不需要登录。", {
+				variant: "warning",
+				label: "未设置访问密码"
+			}) } }) : null,
 			n.mode === "password" || n.mode === "legacy" ? /* @__PURE__ */ q("label", {
 				class: "configcheck",
 				children: [/* @__PURE__ */ q("span", {
@@ -2559,15 +2563,28 @@ function Gn() {
 							scope: "row",
 							children: e.name
 						}),
-						/* @__PURE__ */ q("td", { children: e.cache }),
-						/* @__PURE__ */ q("td", { children: e.read }),
-						/* @__PURE__ */ q("td", { children: e.task })
+						/* @__PURE__ */ q("td", {
+							"data-label": "缓存上限",
+							children: e.cache
+						}),
+						/* @__PURE__ */ q("td", {
+							"data-label": "读取长度（默认 / 最小）",
+							children: e.read
+						}),
+						/* @__PURE__ */ q("td", {
+							"data-label": "同时处理视频",
+							children: e.task
+						})
 					] }, e.name)) })]
 				})
 			}),
 			/* @__PURE__ */ q("ul", {
 				class: "cloudguide-notes",
-				children: [/* @__PURE__ */ q("li", { children: "缓存上限和清理方式填在 CloudDrive「设置」里，清理方式选 LRU。上限不要填 0，系统盘至少留 40 GiB；填完重开设置页确认存住了。" }), /* @__PURE__ */ q("li", { children: "读取长度和下载线程填在每个网盘各自的下载设置里，线程都从 2 开始。" })]
+				children: [
+					/* @__PURE__ */ q("li", { children: "缓存上限和清理方式填在 CloudDrive「设置」里，清理方式选 LRU。上限不要填 0，系统盘至少留 40 GiB；填完重开设置页确认存住了。" }),
+					/* @__PURE__ */ q("li", { children: "读取长度和下载线程填在每个网盘各自的下载设置里，线程都从 2 开始。" }),
+					/* @__PURE__ */ q("li", { children: "Buffer Cache 占内存，磁盘缓存和文件夹缓存占硬盘，改一个管不住另外两个。" })
+				]
 			}),
 			/* @__PURE__ */ q("p", {
 				class: "confighelp",
