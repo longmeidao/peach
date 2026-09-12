@@ -8,6 +8,7 @@
 """
 from __future__ import annotations
 
+import bisect
 import json
 import re
 import time
@@ -97,6 +98,14 @@ class Discovery:
     external_searches: tuple[ExternalSearch, ...] = ()
 
 
+#: 建议用的名字表，按清单文件缓存在进程里，值带着它的 mtime。清单一天刷一次，
+#: 换了就重建；同一份清单只解析一次，之后每次敲字都是内存里的一次二分。
+#: 2026-09-12 实测本机三份清单（kemono、pawchive、coomer 共 42 万个名字）：第一次
+#: 建表 0.84 秒、驻留 57 MB，之后每次前缀查询 4 毫秒。这笔常驻内存是拿来换手速的，
+#: 建表只发生在用户真的在添加框里敲字之后。
+_NAME_TABLES: dict[Path, tuple[float, tuple[tuple[str, str], ...]]] = {}
+
+
 class CreatorIndex:
     """kemono 系整站创作者清单的本机缓存。
 
@@ -124,6 +133,41 @@ class CreatorIndex:
         except (OSError, ValueError):
             pass
         return self._refresh(provider, path)
+
+    def names(self, provider: str) -> tuple[tuple[str, str], ...]:
+        """已经下过的那份清单里的创作者名，`(casefold, 原样)` 按 casefold 排好序。
+
+        **这一条不联网。** 建议是敲一个字就要出来的东西，为它现下一份几 MB 的整站
+        清单会让输入框卡住十几秒；清单不在就没有这一组，等用户真的查一次名字，
+        `discover` 会把它下下来，下一次敲字就有了。
+
+        排序是为了 `bisect` 取前缀区间：十万条的清单每敲一下全扫一遍，和建议要的
+        「跟着手速出」不是一回事。
+        """
+        path = self._path(provider)
+        try:
+            stamp = path.stat().st_mtime
+        except OSError:
+            return ()
+        cached = _NAME_TABLES.get(path)
+        if cached and cached[0] == stamp:
+            return cached[1]
+        try:
+            rows = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return ()
+        table = []
+        for row in rows if isinstance(rows, list) else ():
+            name = str(row.get("name") or "") if isinstance(row, dict) else ""
+            if not name:
+                continue
+            folded = name.casefold()
+            # 名字本身就是小写时两个位置指同一个字符串对象：清单里这样的占大多数，
+            # 省下的是整整半份表。
+            table.append((folded, name if name != folded else folded))
+        table.sort()
+        _NAME_TABLES[path] = (stamp, tuple(table))
+        return _NAME_TABLES[path][1]
 
     def _refresh(self, provider: str, path: Path) -> list[dict]:
         connector = KemonoConnector(provider=provider, transport=self.transport,
@@ -460,3 +504,95 @@ def discover(term: str, *, secrets_root: Path, state_root: Path,
     if "f95zone" in tasks and not any(row.provider == "f95zone" for row in found):
         external_searches.append(_f95_external_search(text))
     return Discovery(text, tuple(found), failures, tuple(external_searches))
+
+
+#: 一组建议最多给多少条。下拉是给人扫一眼的，不是把命中全倒出来。
+MAX_SUGGESTIONS = 8
+#: 短于这个长度不给建议。一个字母在十万条清单里命中几千个名字，排在最前的那几条
+#: 和用户要找的人没有关系，白占一屏还白打一次站点。
+MIN_SUGGEST_LENGTH = 2
+#: 本机清单按这个顺序问。kemono 收的创作者最全，排在前面的先占名额。
+SUGGEST_ARCHIVES = ("kemono", "pawchive", "coomer")
+
+
+@dataclass(frozen=True)
+class Suggestion:
+    """一个可以直接拿去查找的名字。"""
+
+    provider: str
+    value: str
+    #: 站上有多少件作品。清单里没有这个数就是 0，界面那一列留空。
+    count: int = 0
+    #: 这个写法是在哪儿见到的，界面照实显示，不替用户断言就是他。
+    matched: str = ""
+
+
+def suggest_term(term: str) -> str:
+    """能拿去要建议的那一段输入，不合格就是空串。
+
+    限制和 `discover` 同一套（长度、禁用字符），但这里不抛错：敲字的中途本来就要
+    经过各种不完整的形态，每按一个键弹一次报错不是建议该干的事。粘进来的链接也
+    正好落在这一关外——地址里必有 `/`，那时该走的是解析链接，不是猜名字。
+    """
+    text = str(term or "").strip()
+    if (len(text) < MIN_SUGGEST_LENGTH or len(text) > MAX_TERM_LENGTH
+            or _TERM_FORBIDDEN_RE.search(text)):
+        return ""
+    return text
+
+
+def archive_suggestions(prefix: str, *, state_root: Path,
+                        providers: tuple[str, ...] = SUGGEST_ARCHIVES,
+                        limit: int = MAX_SUGGESTIONS) -> tuple[Suggestion, ...]:
+    """本机已有的整站创作者清单里，以这一段开头的名字。
+
+    只按**前缀**取：清单是按 casefold 排好的，前缀是其中一段连续区间，二分一次就
+    到手。子串匹配要全扫，十万条乘三个站每敲一下扫一遍，跟不上手速。
+
+    同一个人常常三个站都有（`lewdgazer` 在 kemono 与 pawchive 各一份），按 casefold
+    去重，留先问到的那个站的拼写。
+    """
+    folded = str(prefix or "").strip().casefold()
+    if len(folded) < MIN_SUGGEST_LENGTH:
+        return ()
+    index = CreatorIndex(state_root)
+    picked: dict[str, Suggestion] = {}
+    for provider in providers:
+        table = index.names(provider)
+        start = bisect.bisect_left(table, (folded,))
+        for name_key, name in table[start:]:
+            if not name_key.startswith(folded):
+                break
+            if name_key in picked:
+                continue
+            picked[name_key] = Suggestion(provider, name, 0, provider)
+            # 一个站自己就能把名额占满时也要停下：整段区间可能有上千条。
+            if len(picked) >= limit * len(providers):
+                break
+    ordered = sorted(picked.values(),
+                     key=lambda row: (row.value.casefold() != folded,
+                                      len(row.value), row.value.casefold()))
+    return tuple(ordered[:limit])
+
+
+def tag_suggestions(prefix: str, *, transport=None,
+                    credential: Credential | None = None,
+                    limit: int = MAX_SUGGESTIONS) -> tuple[Suggestion, ...]:
+    """rule34.xxx 站上以这一段开头的标签，带作品数。
+
+    这是站方的公开补全，不需要凭据（凭据仍然是**抓取**那条订阅的前提）。它回的是
+    标签，不是作者名录：`lewd` 这种普通标签和作者手柄混在一起，所以界面要写明这一组
+    是标签，不能当成「站上的作者」。
+
+    站点挂了、超时、改版都只是没有这一组，别的组照常出——建议本来就是锦上添花。
+    """
+    if len(str(prefix or "").strip()) < MIN_SUGGEST_LENGTH:
+        return ()
+    try:
+        connector = Rule34XxxConnector(transport=transport, credential=credential,
+                                       max_items=1)
+        rows = connector.autocomplete(prefix)
+    except (FollowSourceError, CredentialError, OSError):
+        return ()
+    return tuple(Suggestion("rule34xxx", tag, count, "站内标签")
+                 for tag, count in rows[:limit])

@@ -6302,23 +6302,47 @@ function followAuthorName(group){
   return names.reduce((best,name)=>caps(name)>caps(best)?name:best,names[0]);
 }
 
-/* 添加框的输入提示：这台机器上已经见过的每一种写法——作者名、实体规范名、已确认的
-   别名，以及首楼名片上的手柄。同一个人常有两个写法（`strauzek` 与 `Mr_Strauz`），
-   记得住哪个是随机的，提示里两个都在就不必猜。纯本地匹配，敲字不联网；提示到的名字
-   仍然要点查找才会去各站问。 */
-function followKnownNamesDatalist(sources,aliasGroups){
-  const names=new Set();
-  const add=value=>{const text=String(value||'').trim();if(text)names.add(text)};
-  (sources||[]).forEach(source=>{
-    add(source.entity_name);add(source.author_name);
-    (source.profile_handles||[]).forEach(add);
-  });
-  (aliasGroups||[]).forEach(group=>{
-    add(group.canonical_name);(group.aliases||[]).forEach(alias=>add(alias.name))});
-  if(!names.size)return '';
-  return `<datalist id="followKnownNames">${[...names]
-    .sort((a,b)=>a.localeCompare(b,'zh-CN'))
-    .map(name=>`<option value="${esc(name)}"></option>`).join('')}</datalist>`;
+/* 添加框的建议下拉。分组、顺序和每组的名字都由 `/api/follow/suggest` 给出，这里
+   照抄——两侧各排一次的话，改了一侧就会出现「服务端认为最该先看的组显示在第三位」。
+   结构和样式与顶栏搜索的补全是同一套 `.searchmenu`。
+
+   防抖比顶栏那个长：这一路要打一次 rule34.xxx 的公开补全，250ms 让连着敲的人停手
+   之后才打一枪。 */
+const FOLLOW_SUGGEST_DEBOUNCE=250;
+let followSuggestGroups=[],followSuggestFor='',followSuggestRequest=0,followSuggestTimer=0;
+async function loadFollowSuggestions(query){
+  const request=++followSuggestRequest;
+  try{
+    const data=await api('/api/follow/suggest?q='+encodeURIComponent(query));
+    /* 慢的旧响应不许盖掉新的：连敲两个字时先发的那次完全可能后回来，盖回去就是
+       下拉里挂着上一个字的建议，而输入框里已经是下一个字了。 */
+    if(request!==followSuggestRequest)return;
+    followSuggestFor=data.q||'';followSuggestGroups=data.groups||[];
+  }catch(e){if(request===followSuggestRequest){followSuggestFor=query;followSuggestGroups=[]}}
+}
+function followSuggestRow(item){
+  return `<div class="searchoption" data-search-value="${esc(item.value)}"><span>${esc(item.value)}</span>${
+    item.matched?`<span class="matched">${esc(item.matched)}</span>`:''}${
+    item.n?`<span class="n">${item.n.toLocaleString()}</span>`:''}</div>`;
+}
+function renderFollowAddMenu(menu,query){
+  const groups=query&&followSuggestFor===query?followSuggestGroups:[];
+  menu.innerHTML=groups.map(group=>`<section class="searchgroup"><h3>${esc(group.label)}</h3>${
+    group.items.map(followSuggestRow).join('')}</section>`).join('');
+  menu.dataset.active='-1';
+  if(menu.innerHTML)presentMenu(menu);else dismissMenu(menu);
+}
+function followSuggestOptions(menu){
+  return menu&&!menu.hidden?[...menu.querySelectorAll('[data-search-value]')]:[];
+}
+function moveFollowSuggest(menu,step){
+  const options=followSuggestOptions(menu);
+  if(!options.length)return false;
+  const now=(Number(menu.dataset.active||-1)+step+options.length)%options.length;
+  menu.dataset.active=String(now);
+  options.forEach((option,index)=>option.classList.toggle('active',index===now));
+  options[now].scrollIntoView({block:'nearest'});
+  return true;
 }
 
 const collapsedFollowAuthors=new Set();
@@ -6569,10 +6593,11 @@ function renderFollowManage(credentials){
       <section class="fsec" data-follow-workspace-panel="add">
         <div class="fsechead"><h3>添加关注</h3></div>
         <form class="faddform" id="followAdd">
-          ${searchInputHtml({name:'line',label:'来源链接、名字或 id',
-            placeholder:'粘贴来源链接，或输入作者名、id…',
-            attrs:'required list="followKnownNames"'})}
-          ${followKnownNamesDatalist(sources,followData.author_aliases)}
+          <div class="faddfield">
+            ${searchInputHtml({name:'line',label:'来源链接、名字或 id',
+              placeholder:'粘贴来源链接，或输入作者名、id…',attrs:'required'})}
+            <div class="searchmenu" id="followAddMenu" hidden></div>
+          </div>
           <div class="fsrcfilter" id="followSrcFilter"></div>
         </form>
         <p class="fnote" data-follow-add-state aria-live="polite"></p>
@@ -6788,12 +6813,54 @@ function wireFollowManage(creds=[]){
   wireCollapse(root,'details.faliasmanager','follow-alias-collapse');
   wireCollapse(root,'details.fcred','follow-cred-collapse');
   const box=form&&form.querySelector('input[name="line"]');
+  const addMenu=form&&form.querySelector('#followAddMenu');
+  const closeAddSuggest=()=>{if(addMenu){dismissMenu(addMenu);addMenu.dataset.active='-1'}};
+  /* 每一下输入都排一次建议，但只发一次请求：250ms 内继续敲就换掉上一次的排期。
+     地址不进这条路——`suggest_term` 认得出它里面的 `/`，那时该做的是解析链接。 */
+  const refreshAddSuggest=()=>{
+    if(!addMenu||!box)return;
+    clearTimeout(followSuggestTimer);
+    const query=box.value.trim();
+    if(!query){followSuggestFor='';followSuggestGroups=[];closeAddSuggest();return}
+    followSuggestTimer=setTimeout(()=>loadFollowSuggestions(query).then(()=>{
+      /* 回来时焦点可能已经不在输入框上：失焦那条兜底先把下拉收了，晚到的 then
+         再把它掀开，而这一刻没有焦点，也就再不会有第二次失焦来收场。 */
+      if(document.activeElement===box)renderFollowAddMenu(addMenu,query)}),FOLLOW_SUGGEST_DEBOUNCE);
+  };
+  if(box){
+    box.addEventListener('input',event=>{if(!event.isComposing)refreshAddSuggest()});
+    box.addEventListener('compositionend',refreshAddSuggest);
+    box.addEventListener('blur',()=>setTimeout(closeAddSuggest,140));
+  }
+  if(addMenu){
+    /* 按下就 preventDefault，不让下拉把焦点从输入框抢走：抢走会触发 blur，那条
+       140ms 的兜底把菜单收掉，click 就落到空处，点一条建议什么也不会发生。 */
+    addMenu.onmousedown=event=>event.preventDefault();
+    addMenu.onclick=event=>{
+      const row=event.target.closest('[data-search-value]');
+      if(!row||!box)return;
+      box.value=row.dataset.searchValue;closeAddSuggest();form.requestSubmit();
+    };
+  }
   /* 回车自己接管，不靠隐式提交：没有提交按钮时浏览器只在「表单里仅有一个文本字段」
      才替你提交，而来源筛选的那串复选框就住在同一个 <form> 里。实测按下去什么也不发生。
-     isComposing 是给中文输入法的——选字那一下的回车不是提交。 */
+     isComposing 是给中文输入法的——选字那一下的回车不是提交，方向键也在挑候选字。 */
   if(box)box.addEventListener('keydown',event=>{
-    if(event.key!=='Enter'||event.isComposing)return;
-    event.preventDefault();form.requestSubmit();
+    if(event.isComposing)return;
+    if(event.key==='Escape'&&addMenu&&!addMenu.hidden){
+      closeAddSuggest();event.preventDefault();return;
+    }
+    if(event.key==='ArrowDown'||event.key==='ArrowUp'){
+      if(moveFollowSuggest(addMenu,event.key==='ArrowDown'?1:-1))event.preventDefault();
+      return;
+    }
+    if(event.key!=='Enter')return;
+    event.preventDefault();
+    /* 选中一条建议再回车，等于把那个名字填进来再查找。查找只是列出候选、不写任何
+       东西，所以选中即查找是安全的——真正登记仍然要在候选里点。 */
+    const picked=followSuggestOptions(addMenu)[Number(addMenu?.dataset.active||-1)];
+    if(picked)box.value=picked.dataset.searchValue;
+    closeAddSuggest();form.requestSubmit();
   });
   if(form)form.onsubmit=async event=>{
     event.preventDefault();

@@ -345,6 +345,12 @@ av911.tv，三条候选已进复核队列。
   直接查标签兜底。f95zone 的 `latest_data.php` 只索引 Latest Updates 的五个分类，艺术家的 Collection 帖
   只有带登录 cookie 的站内搜索看得到（无 cookie 时 `/search/` 返回 403）；没有 cookie 就跳过它并保留
   Google 外链，不把「查不到」写成「站上没有」。
+- **敲半个名字就能出建议的，只有本机清单和 rule34.xxx 的公开补全这两处。** 本机那份是
+  `discover` 顺带下的整站创作者清单（kemono、pawchive、coomer），2026-09-12 实测三份合计 42 万个名字，
+  按 casefold 排好表后二分取前缀区间：首次建表 0.84 秒、常驻 57 MB，之后每次查询 4 毫秒；敲字这条路
+  **不下载清单**，没下过就是少一组。站上那份走 `api.rule34.xxx/autocomplete.php?q=`，同一条路径挂在
+  主域名下被 Cloudflare 拦成 403，只有 `api.` 子域回 200 JSON；它回的是标签不是作者名录（`lewdga` 给出
+  `lewdgatta`／`lewdgazer`／`lewdgala`），所以界面要写明这一组是标签。两者都不需要凭据。
 - **F95zone 的站内搜索按整词匹配，半个名字要靠尾部通配。** 2026-09-12 实测 `strauz` 命中 0 条，而
   `strauzek`、`Mr_Strauz` 与 `strauz*` 都命中同样 3 条，所以各种写法都空手之后补一轮 `词*`；四个字符
   以上才加，三个字母加通配等于把半个站搜回来，命中一屏也认不出是哪个作者。

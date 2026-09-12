@@ -10,6 +10,7 @@
 """
 from __future__ import annotations
 
+from .follow_discovery import MAX_SUGGESTIONS, MAX_TERM_LENGTH
 from .web_activity import (
     w_activity,
     w_feedback,
@@ -45,6 +46,7 @@ from .web_follow import (
     q_follow_check,
     q_follow_credentials,
     q_follow_schedule,
+    q_follow_suggest,
     q_follow_tags,
     w_follow_activity,
     w_follow_author_alias,
@@ -174,6 +176,25 @@ def _get_suggest(contract, args):
         f"suggest:{limit}:{query}", lambda: q_suggest(contract, query, limit))
 
 
+def _get_follow_suggest(contract, args):
+    """关注添加框的建议，同样每敲一下来一次，同样走 LRU。
+
+    这一路会打一次 rule34.xxx 的公开补全，缓存住的正是它：退格再敲回同一段前缀
+    不该让站点多挨一枪。
+    """
+    query = str(args.get("q") or "").strip()[:MAX_TERM_LENGTH]
+    try:
+        limit = min(max(int(args.get("limit", str(MAX_SUGGESTIONS))), 1),
+                    MAX_SUGGESTIONS * 2)
+    except (TypeError, ValueError):
+        limit = MAX_SUGGESTIONS
+    if not query:
+        return {"q": "", "groups": []}
+    return contract.cached_lru(
+        f"follow-suggest:{limit}:{query}",
+        lambda: q_follow_suggest(contract, query, limit))
+
+
 def _get_search_history(contract, args):
     return q_search_history(contract, int(args.get("limit", "10")))
 
@@ -214,6 +235,7 @@ GET_HANDLERS = {
     "/api/follow/authors": q_follow_authors,
     "/api/follow/schedule": q_follow_schedule,
     "/api/follow/check": q_follow_check,
+    "/api/follow/suggest": _get_follow_suggest,
     "/api/follow/resolve": lambda contract, args: contract.follow_resolve_job.snapshot() or {"status": "idle"},
     "/api/taste/refresh": lambda contract, args: contract.taste_refresh_job.snapshot() or {"status": "idle"},
     "/api/links/prune": lambda contract, args: contract.link_prune_job.snapshot() or {"status": "idle"},

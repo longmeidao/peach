@@ -21,7 +21,10 @@ from pathlib import Path
 from . import avatar_face, follow_assets, follow_providers
 from .follow import FollowSourceError
 from .follow_check import plan_check, run_check
-from .follow_discovery import discover, discovery_plan
+from .follow_discovery import (
+    MAX_SUGGESTIONS, archive_suggestions, discover, discovery_plan, suggest_term,
+    tag_suggestions,
+)
 from .follow_secrets import (
     CREDENTIAL_GUIDE, CredentialError, CredentialStore, credential_store_for,
 )
@@ -928,11 +931,6 @@ def _source_payload(row, aliases: dict[str, str] | None = None) -> dict:
         # 很远（`Strauzek Collection [2026-09-04] [Mr_Strauz]` vs `Mr_Strauz`），
         # 而怎么推是站点知识，页面自己再推一遍迟早和这里漂移。
         "author_name": _author_display_name(row),
-        # 这个人在别处的写法。页面拿它做输入提示：记得住 `strauzek` 的人不一定
-        # 记得住线程标题上的 `Mr_Strauz`，反过来也一样。
-        "profile_handles": [str(link.get("handle") or "")
-                            for link in _source_metadata(row).get("official_links") or ()
-                            if isinstance(link, dict) and link.get("handle")],
         "author_key": author_key(row, aliases),
         "official_avatar_url": _official_avatar_url(row),
         "avatar_url": _avatar_url(row["provider"], row["ref"]),
@@ -1240,6 +1238,83 @@ def _sorted_groups(groups: tuple, sort: str, direction: str) -> tuple:
     return tuple(sorted(groups,
                         key=lambda group: (_item_rank(group.primary, sort), group.primary.id),
                         reverse=direction == "desc"))
+
+
+#: 建议分组的名字与先后。顺序在这里定，页面照抄——两侧各排一次的话，改了一侧就会
+#: 出现「服务端认为最该先看的组显示在第三位」。
+FOLLOW_SUGGEST_GROUPS = (
+    ("followed", "已关注"),
+    ("archive", "归档站的创作者"),
+    ("tag", "Rule34.xxx 标签"),
+)
+
+
+def _followed_names(rows, alias_groups) -> dict[str, str]:
+    """这台机器已经见过的每一种写法：`casefold → 原样`。
+
+    关注来源上的实体名和作者名、已确认的别名，以及首楼名片上的手柄。同一个人
+    常有两个写法（`strauzek` 与 `Mr_Strauz`），记得住哪个是随机的，都摆出来就不必猜。
+    """
+    names: dict[str, str] = {}
+
+    def add(value) -> None:
+        text = str(value or "").strip()
+        if text and text.casefold() not in names:
+            names[text.casefold()] = text
+
+    for row in rows:
+        add(row["entity_name"])
+        add(_author_display_name(row))
+        for link in _source_metadata(row).get("official_links") or ():
+            if isinstance(link, dict):
+                add(link.get("handle"))
+    for group in alias_groups:
+        add(group.get("canonical_name"))
+        for alias in group.get("aliases") or ():
+            add(alias.get("name"))
+    return names
+
+
+def q_follow_suggest(contract, q: str, limit: int = MAX_SUGGESTIONS,
+                     *, transport=None) -> dict:
+    """添加框敲字时的建议：本机见过的写法、本机清单里的创作者、站上的标签。
+
+    三组各自独立成败，和 `discover` 一个道理：清单没下过、站点挂了都只是少一组。
+    这条路**不下载任何整站清单**——清单是「查找」那一步顺带下的，敲字只读已经在
+    硬盘上的那份。
+
+    选中一条只是把名字填进查找框。真正逐站问、几十秒那一步仍然由人按回车触发，
+    建议不替他决定要关注谁。
+    """
+    query = suggest_term(q)
+    if not query:
+        return {"q": str(q or "").strip(), "groups": []}
+    per_group = max(1, min(int(limit), MAX_SUGGESTIONS * 2))
+    folded = query.casefold()
+    with contract.database.read_connection() as connection:
+        store = _store(contract, connection)
+        _alias_map, alias_groups = store.author_aliases()
+        known = _followed_names(store.sources(), alias_groups)
+    followed = [text for key, text in sorted(
+        ((key, text) for key, text in known.items() if folded in key),
+        key=lambda pair: (not pair[0].startswith(folded), len(pair[1]), pair[0]),
+    )][:per_group]
+    buckets = {
+        "followed": [{"value": text, "n": 0, "matched": ""} for text in followed],
+        "archive": [{"value": row.value, "n": 0, "matched": row.matched}
+                    for row in archive_suggestions(
+                        query, state_root=contract.follow_state_root, limit=per_group)
+                    # 已经关注的人不在这一组里再出现一次。
+                    if row.value.casefold() not in known],
+        "tag": [{"value": row.value, "n": row.count, "matched": ""}
+                for row in tag_suggestions(
+                    query, transport=transport, limit=per_group,
+                    credential=_credential_store(contract).load("rule34xxx"))],
+    }
+    return {"q": query, "groups": [
+        {"kind": kind, "label": label, "items": buckets[kind]}
+        for kind, label in FOLLOW_SUGGEST_GROUPS if buckets[kind]
+    ]}
 
 
 def q_follow(contract, args) -> dict:
