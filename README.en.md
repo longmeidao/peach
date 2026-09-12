@@ -40,6 +40,8 @@ Follow sources include FANBOX, Patreon, SubscribeStar, Kemono, Pawchive, Coomer,
 
 Interface preferences are saved in the current browser and live under Settings: default sort, official covers or preview images for JAV works, autoplay when details open, and SFW mode, which blurs, desaturates and dims images and video and stops hover previews.
 
+“Video thumbnail capture”, in the same place, belongs to the computer running Peach rather than to each browser: pick precise (a frame every 10 seconds) or coarse (every 30 seconds) and it captures frames in the background, so dragging the progress bar shows the picture at that point in time. It is off by default and only covers videos on local disks; every frame from a mounted cloud drive costs one fetch from the source. The images are cleaned up together with the video on the data management page.
+
 The interface uses Board styling. “Increase contrast” in Settings disables navigation transparency and refraction. Numeric preferences accept custom values within their supported ranges, with switches for optional features.
 
 Choose a media library at the top of the sidebar; theme and settings controls are fixed at the bottom. Set library names and icons in Configuration; matching names group folders into one library. Library selection filters work lists and facets. Cloud libraries use locally served provider icons by default.
