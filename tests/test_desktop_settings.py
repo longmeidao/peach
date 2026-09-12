@@ -23,8 +23,17 @@ class DesktopSettingsTests(unittest.TestCase):
         page = configuration[configuration.index('export function Configuration('):]
         self.assertEqual(sorted(names, key=page.index), names)
         css = (root / 'web/css/23-configuration.css').read_text(encoding='utf-8')
-        self.assertIn('[data-fieldset-type="error"]{border-color:var(--drop)}', css)
-        self.assertGreater(css.index('[data-fieldset-type="error"]>:is('), css.index('.configfieldset>.geist-fieldset-footer{'))
+        # 危险区那副面在 `board.css` 末尾：给卡描边、给底栏铺面的通用规则有五六条，都在
+        # Board 那一层按自己的面色重写过一遍，色写在这一层会被它们逐条盖掉。
+        board = (root / 'web/board.css').read_text(encoding='utf-8')
+        self.assertIn('[data-geist-fieldset][data-fieldset-type=error]{border:1px solid var(--board-red-line)}', board)
+        self.assertIn('[data-fieldset-type=error]>:is(.geist-fieldset-footer,.resourceapplyrow)'
+                      '{border-top:1px solid var(--board-red-line);background:var(--board-red-wash)}', board)
+        self.assertIn('[data-fieldset-type=error]>:is(.geist-fieldset-footer,.resourceapplyrow)>p'
+                      '{color:var(--board-red-text)}', board)
+        for generic in ('.geist-fieldset,.configfieldset,', '.geist-fieldset-footer,.configfieldset>.geist-fieldset-footer{'):
+            self.assertGreater(board.index('[data-geist-fieldset][data-fieldset-type=error]'), board.index(generic),
+                               '危险区那几条要排在通用面色之后，同特指度时在后面的才算数')
         self.assertIn('.configselect{width:min(320px,100%)}', css)
         self.assertIn('.configdirectories .fcollapsebody{padding:12px 4px 4px}', css)
 

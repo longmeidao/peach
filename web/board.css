@@ -359,7 +359,7 @@ html.board-high-contrast .board-filter-frame.board-filter-frame.board-filter-fra
 .followmanage .fmain>.fsec>.fsechead{background:transparent;padding:20px 24px 8px;border:0;border-radius:18px 18px 0 0;min-height:56px}
 .followmanage .fsechead h3{font-size:16px;font-weight:500;letter-spacing:0;line-height:24px}
 .followmanage .fmain>.fsec>.fsecfoot,.followmanage .fmain>.fsec>.fdesc,.followmanage .fmain>.fsec>.falias{background:var(--board-card-foot);border-top:1px solid var(--line-soft);border-radius:0 0 17px 17px;padding:16px 24px;margin:0}
-.configfieldset.configfieldset>.geist-fieldset-footer,.cleanupfieldset.cleanupfieldset>.geist-fieldset-footer{background:var(--board-card-foot)}
+.configfieldset.configfieldset:not([data-fieldset-type])>.geist-fieldset-footer,.cleanupfieldset.cleanupfieldset>.geist-fieldset-footer{background:var(--board-card-foot)}
 .followmanage .fmain>.fsec>.frows{padding:8px 24px}
 @media(max-width:760px){.followmanage .fmain>.fsec>.fsechead{padding:16px}.followmanage .fmain>.fsec>.frows{padding:8px 16px}.followmanage .fmain>.fsec>.fsecfoot,.followmanage .fmain>.fsec>.fdesc,.followmanage .fmain>.fsec>.falias{padding:14px 16px}}
 .gridstack .card:not(.junkcard) .pic{border-radius:12px;overflow:hidden}
@@ -926,9 +926,9 @@ html.board-high-contrast .settingscard.settingscard>.board-local-nav{background:
 @media(max-width:760px){body #manageTitle{width:100%}.board-watch-entry,.board-source-list,.tasteleads .insightpanelbody,.tasteranks,.tasteranks-tags,.tasteranks-visual,.tastesources .insightpanelbody>div{grid-template-columns:minmax(0,1fr)}.board-watch-entry{gap:8px}.tasteleads>header{padding:20px 16px 12px}.tasteleads .insightpanelbody{padding:8px 16px 20px}.followmanage .fmain>.fsec:has(.fcred)>.frows{grid-template-columns:minmax(0,1fr)}.followmanage .fauthor{padding:16px}.followmanage .fsechead{gap:8px}.followmanage .fmanagesort{margin-left:0}}
 
 /* Board 的语义色与复合字阶；图表和业务状态独立于交互强调色。 */
-:root,:root[data-theme="light"]{--color-text-primary:#0a0a0a;--color-text-secondary:#737373;--color-text-tertiary:#a3a3a3;--color-background-full:#fff;--color-background-primary-default:#fff;--color-background-primary-hover:#f5f5f5;--color-background-secondary-default:#f5f5f5;--color-background-tertiary-default:#e5e5e5;--color-border-button-default:#e5e5e5;--color-border-button-hover:#d4d4d4;--color-border-button-active:#a3a3a3;--color-separator-border:#e5e5e5;--color-border-focus-ring:#3b82f6;--color-text-white:#fff;--color-text-disabled:#d4d4d4;--board-blue:linear-gradient(180deg,#2b7fff,#155dfc);--board-blue-hover:linear-gradient(180deg,#3392ff,#2b7fff);--board-blue-active:linear-gradient(180deg,#155dfc,#1447e6)}
-:root[data-theme="dark"]{--color-text-primary:#fafafa;--color-text-secondary:#737373;--color-text-tertiary:#525252;--color-background-full:#121212;--color-background-primary-default:#262626;--color-background-primary-hover:#40404099;--color-background-secondary-default:#171717;--color-background-tertiary-default:#262626;--color-border-button-default:#404040;--color-border-button-hover:#737373;--color-border-button-active:#525252;--color-separator-border:#262626;--color-text-disabled:#262626}
-@media(prefers-color-scheme:dark){:root:not([data-theme]){--color-text-primary:#fafafa;--color-text-secondary:#a3a3a3;--color-text-tertiary:#737373;--color-background-full:#121212;--color-background-primary-default:#262626;--color-background-primary-hover:#40404099;--color-background-secondary-default:#171717;--color-background-tertiary-default:#262626;--color-border-button-default:#404040;--color-border-button-hover:#737373;--color-border-button-active:#525252;--color-separator-border:#262626;--color-text-disabled:#525252}}
+:root,:root[data-theme="light"]{--color-text-primary:#0a0a0a;--color-text-secondary:#737373;--color-text-tertiary:#a3a3a3;--color-background-full:#fff;--color-background-primary-default:#fff;--color-background-primary-hover:#f5f5f5;--color-background-secondary-default:#f5f5f5;--color-background-tertiary-default:#e5e5e5;--color-border-button-default:#e5e5e5;--color-border-button-hover:#d4d4d4;--color-border-button-active:#a3a3a3;--color-separator-border:#e5e5e5;--color-border-focus-ring:#3b82f6;--color-text-white:#fff;--color-text-disabled:#d4d4d4;--board-blue:linear-gradient(180deg,#2b7fff,#155dfc);--board-blue-hover:linear-gradient(180deg,#3392ff,#2b7fff);--board-blue-active:linear-gradient(180deg,#155dfc,#1447e6);--board-red:linear-gradient(180deg,#fb2c36,#e7000b);--board-red-hover:linear-gradient(180deg,#ff6467,#fb2c36);--board-red-active:linear-gradient(180deg,#e7000b,#c10007);--board-red-line:#fb2c36;--board-red-wash:#ffe2e2;--board-red-text:#c10007}
+:root[data-theme="dark"]{--color-text-primary:#fafafa;--color-text-secondary:#737373;--color-text-tertiary:#525252;--color-background-full:#121212;--color-background-primary-default:#262626;--color-background-primary-hover:#40404099;--color-background-secondary-default:#171717;--color-background-tertiary-default:#262626;--color-border-button-default:#404040;--color-border-button-hover:#737373;--color-border-button-active:#525252;--color-separator-border:#262626;--color-text-disabled:#262626;--board-red-line:#ff6467;--board-red-wash:color-mix(in srgb,#460809 60%,transparent);--board-red-text:#ffa2a2}
+@media(prefers-color-scheme:dark){:root:not([data-theme]){--color-text-primary:#fafafa;--color-text-secondary:#a3a3a3;--color-text-tertiary:#737373;--color-background-full:#121212;--color-background-primary-default:#262626;--color-background-primary-hover:#40404099;--color-background-secondary-default:#171717;--color-background-tertiary-default:#262626;--color-border-button-default:#404040;--color-border-button-hover:#737373;--color-border-button-active:#525252;--color-separator-border:#262626;--color-text-disabled:#525252;--board-red-line:#ff6467;--board-red-wash:color-mix(in srgb,#460809 60%,transparent);--board-red-text:#ffa2a2}}
 :root{--page:var(--color-background-full);--ground:var(--color-background-secondary-default);--surface:var(--color-background-primary-default);--sunk:var(--color-background-secondary-default);--ink:var(--color-text-primary);--ink-2:var(--color-text-secondary);--muted:var(--color-text-secondary);--line:var(--color-border-button-default);--line-soft:var(--color-separator-border);--picked:var(--color-background-tertiary-default);--inset:var(--color-background-tertiary-default);--hover:var(--color-background-primary-hover);--tungsten:var(--color-border-focus-ring);--chart-0:#2dd4bf;--chart-1:#a3e635;--chart-2:#f472b6;--chart-3:#38bdf8;--board-font:'Inter Variable','Inter','Segoe UI','Microsoft YaHei UI','PingFang SC',sans-serif;--board-body:400 14px/20px var(--board-font);--board-body-medium:500 14px/20px var(--board-font);--board-compact:400 13px/18px var(--board-font);--board-caption:400 12px/16px var(--board-font);--board-heading:500 20px/26px var(--board-font);--board-title:500 32px/44px var(--board-font);--board-figure:500 24px/34px var(--board-font)}
 :root[data-theme]{--page:var(--color-background-full);--ground:var(--color-background-secondary-default);--surface:var(--color-background-primary-default);--sunk:var(--color-background-secondary-default);--ink:var(--color-text-primary);--ink-2:var(--color-text-secondary);--muted:var(--color-text-secondary);--line:var(--color-border-button-default);--line-soft:var(--color-separator-border);--picked:var(--color-background-tertiary-default);--inset:var(--color-background-tertiary-default);--hover:var(--color-background-primary-hover);--tungsten:var(--color-border-focus-ring)}
 /* 次级按钮压上去时换的那一面。`--hover` 不够用：它照搬 BoardUI 的 `background-primary-hover`，
@@ -991,8 +991,16 @@ body :is(.geist-button,.fbtn,.resourceaction,.tagselection button,.reviewactions
 body :is(.geist-button,.fbtn,.resourceaction,.tagselection button,.reviewactions button,.fcredactions button,.fpickactions button).primary:not(:disabled):hover::before{opacity:1}
 body :is(.geist-button,.fbtn,.resourceaction,.tagselection button,.reviewactions button,.fcredactions button,.fpickactions button).primary:not(:disabled):active{background:var(--board-blue-active)}
 body :is(.geist-button,.fbtn,.resourceaction,.tagselection button,.reviewactions button,.fcredactions button,.fpickactions button).primary:not(:disabled):active::before{opacity:0}
-body button.danger:not(.frowicon):not(:disabled){background:linear-gradient(180deg,#ff3347,#e60012);border:1px solid transparent;color:#fff;box-shadow:0 1px 2px #0000000d;transition:filter .15s ease}
-body button.danger:not(.frowicon):hover:not(:disabled){background:linear-gradient(180deg,#ff6471,#ff3347);filter:none;color:#fff}
+/* 危险档跟强调档同一副做法，照 `boardui.com/components/button` 的 `.bg-button-danger`
+   （2026-09-12 实测，与 `.bg-button-primary` 逐字同构）：静止 red-500→600、悬停
+   400→500、按下 600→700，悬停那一档铺在 `::before` 上淡入。
+   批量条和复核那一排此前各写死过同一对红，一并并到这份 token 上——同一种「删掉就回不来」
+   在不同页面读出两种红，用户无从判断哪一种更重。 */
+body :is(button.danger:not(.frowicon),.reviewactions button.error,.batchbar button.danger):not(:disabled){position:relative;isolation:isolate;background:var(--board-red);border:0;color:#fff;box-shadow:0 1px 2px #0000000d;transition:box-shadow .15s ease,color .15s ease}
+body :is(button.danger:not(.frowicon),.reviewactions button.error,.batchbar button.danger):not(:disabled)::before{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;border-radius:inherit;background:var(--board-red-hover);opacity:0;transition:opacity .15s ease}
+body :is(button.danger:not(.frowicon),.reviewactions button.error,.batchbar button.danger):not(:disabled):hover::before{opacity:1}
+body :is(button.danger:not(.frowicon),.reviewactions button.error,.batchbar button.danger):not(:disabled):active{background:var(--board-red-active)}
+body :is(button.danger:not(.frowicon),.reviewactions button.error,.batchbar button.danger):not(:disabled):active::before{opacity:0}
 .followmanage .fbtn.fmanagedir{width:36px;padding:0}.followmanage .faliasform :is(input,.fbtn){height:36px;min-height:36px}.followmanage .frowicon{width:32px;height:32px;border:1px solid var(--line);border-radius:8px;background:var(--surface);box-shadow:0 1px 2px #0000000d}
 :root{--board-card-foot:color-mix(in srgb,var(--ground) 98%,var(--ink))}
 .board-sidebar-head #brandHome .mark{color:var(--glass-text)}
@@ -1177,7 +1185,6 @@ body .reviewactions button.warning,body [data-follow-bulk],body [data-follow-sta
    这边按钮是 `--control-h`（36px），比外壳高 4px 往下探出 10px，左边缘还被内边距推右
    8px——同一格里它和上面那个输入框既不同高、也不从同一条竖线起。 */
 .settingscard .settingsscroll .machinesettings .gselect{min-width:0;min-height:0;height:auto;padding:0}.configpage .configcheck{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 20px 12px 16px;border:1px solid var(--color-border-button-default);border-radius:10px;background:var(--color-background-primary-default);cursor:pointer}.configpage .configcheck>.pcheck{order:2}.configpage .configcheck:hover{background:var(--color-background-primary-hover)}
-body .reviewactions button.error:not(:disabled){background:linear-gradient(180deg,#ff3347,#e60012);color:#fff;border-color:transparent}body .reviewactions button.error:hover:not(:disabled){background:linear-gradient(180deg,#ff6471,#ff3347);color:#fff}
 .card .pic>.badge{padding:4px;border-radius:10px;background:var(--glass-fill);box-shadow:inset 0 1px 0 var(--glass-rim),var(--glass-shadow);backdrop-filter:blur(16px) saturate(145%)}.card .pic>.badge .src{background:transparent;padding:0;width:20px;height:20px}
 body .selectiondock{border:0;border-radius:22px;background:var(--glass-drift-a),var(--glass-drift-b),linear-gradient(125deg,var(--glass-sheen),transparent 42%,var(--glass-low)),var(--glass-fill);background-size:200% 200%,200% 200%,auto;background-repeat:no-repeat,no-repeat,repeat;background-position:50% 20%,80% 70%,0 0;animation:glassdriftx 41s linear infinite,glassdrifty 67s linear infinite;backdrop-filter:var(--glass-optic,blur(22px)) saturate(145%);box-shadow:inset 0 1px 0 var(--glass-rim),inset 1px 0 0 var(--glass-low),inset -1px 0 0 var(--glass-low),inset 0 -1px 0 var(--glass-low),var(--glass-shadow)}
 html.board-high-contrast :is(.selectiondock,.reviewcontrols.is-stuck,.reviewgroupbar.is-stuck,.batchbar,.tagselection,.card .badge){background:var(--ground);backdrop-filter:none;-webkit-backdrop-filter:none;animation:none}
@@ -1497,8 +1504,8 @@ body[data-surface="/junk-files"] .junkactions{padding:12px;background:var(--colo
  body[data-surface="/review"] .board-pagination>.geist-button{max-width:calc(50% - 4px);overflow:hidden}
 }
 /* 批量条：隐藏的键真的隐藏（Board 的 inline-flex 曾压过 hidden）；「加入回收站」用 error 按钮的红色渐变。 */
-body .batchbar button.danger{box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;gap:4px;height:36px;min-height:36px;padding:8px 12px;border:1px solid transparent;border-radius:10px;background:linear-gradient(180deg,#ff3347,#e60012);color:#fff;font:var(--board-body-medium);transition:background-color .15s ease}
-body .batchbar button.danger:hover{background:linear-gradient(180deg,#ff6471,#ff3347);color:#fff}
+/* 批量条上那颗只是不在上面那份尺寸名单里，面色跟站内每一颗危险键同一份。 */
+body .batchbar button.danger{box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;gap:4px;height:36px;min-height:36px;padding:8px 12px;border-radius:10px;font:var(--board-body-medium)}
 body .batchbar button.danger svg{margin-right:0}
 body .batchbar button[hidden],body .batchbar button.danger[hidden]{display:none}
 /* 关注行里的刷新与删除键：线宽与列表其它图标一致。 */
@@ -1568,3 +1575,18 @@ body .batchbar button[hidden],body .batchbar button.danger[hidden]{display:none}
   .followmanage [data-follow-panel=sources] .fsource.frow{padding:12px 8px}
   .followmanage [data-follow-panel=credentials] .fcred{padding:16px}
 }
+
+/* 危险区和警告区。形态照 Vercel 的 Error Fieldset（`vercel.com/geist/fieldset`，
+   2026-09-12 实测）：红只上框线和底栏那一条，正文那一格仍是普通底色——整卡铺红会把
+   「这段要读」和「这个动作要小心」混成一件事，而要小心的只有底栏右边那一颗。
+   色阶取 BoardUI 的红：框线和底色就是它的 `--color-border-error-default` 与
+   `--color-background-tertiary-error`；底栏那行字 Vercel 取的是 red-900，即「压在这块底上
+   还读得动的那一档红」，在 BoardUI 的 100–950 里对应 red-700，暗色一档反过来取 red-300。
+   这几条排在最后，是因为上面给卡描边、给底栏铺面的通用规则有五六条，各自带着自己的
+   特指度散在前面；挨条去排除它们要改五处，而这一块本来就是「别的都不算数」的意思。 */
+[data-geist-fieldset][data-fieldset-type=error]{border:1px solid var(--board-red-line)}
+[data-geist-fieldset][data-fieldset-type=warning]{border:1px solid var(--meter)}
+[data-fieldset-type=error]>:is(.geist-fieldset-footer,.resourceapplyrow){border-top:1px solid var(--board-red-line);background:var(--board-red-wash)}
+[data-fieldset-type=error]>:is(.geist-fieldset-footer,.resourceapplyrow)>p{color:var(--board-red-text)}
+[data-fieldset-type=warning]>:is(.geist-fieldset-footer,.resourceapplyrow){border-top:1px solid var(--meter);background:color-mix(in srgb,var(--meter) 7%,var(--ground))}
+[data-fieldset-type=warning]>:is(.geist-fieldset-footer,.resourceapplyrow)>p{color:var(--meter)}

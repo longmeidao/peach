@@ -6135,7 +6135,9 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn(".closestage,.closestage:hover{background:rgba(0,0,0,.6);color:#fff}", board)
         self.assertIn("body .batchbar button[hidden],body .batchbar button.danger[hidden]{display:none}", board)
         self.assertIn("body .batchbar button.danger{", board)
-        self.assertIn("background:linear-gradient(180deg,#ff3347,#e60012);color:#fff;font:var(--board-body-medium);", board)
+        # 这一颗只是不在上面那份尺寸名单里，面色跟站内每一颗危险键同一份，见
+        # `test_the_danger_tier_has_one_face_and_crossfades_into_its_hover`。
+        self.assertIn("height:36px;min-height:36px;padding:8px 12px;border-radius:10px;font:var(--board-body-medium)}", board)
         self.assertIn(".board-sidebar-head #brandHome::before{content:'';position:absolute;inset:-5px -6px;border:2px solid var(--color-border-button-default);border-radius:999px;", board)
         self.assertIn(".board-sidebar-head #brandHome .mark{width:32px;height:32px;border-radius:50%;background:var(--color-background-tertiary-default)}", board)
         self.assertIn(".drawer .board-sidebar-head #filterBtn{width:20px;height:20px;padding:0;background:none;box-shadow:none}", board)
@@ -9266,6 +9268,32 @@ class WebUiSourceTests(unittest.TestCase):
             selector = rule.partition("{")[0].strip()
             self.assertNotIn(":hover", selector, f"强调档的悬停不写在这一层：{selector}")
             self.assertNotIn(":active", selector, f"强调档的按下不写在这一层：{selector}")
+
+    def test_the_danger_tier_has_one_face_and_crossfades_into_its_hover(self):
+        """危险档全站一副面，做法跟强调档同一份，色阶换成 BoardUI 的红。
+
+        照 `boardui.com/components/button` 的 `.bg-button-danger`（2026-09-12 实测，与
+        `.bg-button-primary` 逐字同构）：静止 red-500→600、悬停 400→500、按下 600→700，
+        悬停那一档铺在 `::before` 上淡入。
+
+        「同一副面」不是整洁问题。批量条、复核那一排和卸载区都在说「按下去就回不来了」，
+        此前各写死过一对红；同一句话在三个页面上读出三种红，用户要判断的是哪一次更重，
+        而这个差别是没有意思的。
+        """
+        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
+        roster = ("body :is(button.danger:not(.frowicon),.reviewactions button.error,"
+                  ".batchbar button.danger):not(:disabled)")
+        self.assertIn(roster + "{position:relative;isolation:isolate;background:var(--board-red);"
+                      "border:0;color:#fff;box-shadow:0 1px 2px #0000000d;", board)
+        self.assertIn(roster + "::before{content:\"\";position:absolute;inset:0;z-index:-1;"
+                      "pointer-events:none;border-radius:inherit;background:var(--board-red-hover);"
+                      "opacity:0;transition:opacity .15s ease}", board)
+        for suffix, body in ((":hover::before", "{opacity:1}"),
+                             (":active", "{background:var(--board-red-active)}"),
+                             (":active::before", "{opacity:0}")):
+            self.assertIn(roster + suffix + body, board)
+        for stale in ("#ff3347", "#e60012", "#ff6471"):
+            self.assertNotIn(stale, board, f"危险档的红只从 token 来，{stale} 是第二份")
 
     def test_the_entry_pages_primary_button_is_the_one_from_inside_the_app(self):
         """错误页、登录页和首启页的主按钮跟站内是同一颗规则，不是抄一份色值。
