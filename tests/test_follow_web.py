@@ -790,6 +790,87 @@ class FollowContractTests(unittest.TestCase):
         self.assertEqual([row["k"] for row in last["items"]], ["pov"])
         self.assertFalse(last["has_more"])
 
+    def _clip(self, external_id, *, duration=None, score=None, published_at=None):
+        extra = {"tags": ["anal"], "tag_types": {"anal": "general"}}
+        if score is not None:
+            extra["score"] = score
+        return FollowCandidate(
+            provider="rule34video", external_id=external_id, title=f"Clip {external_id}",
+            url=f"https://rule34video.com/video/{external_id}/x/",
+            duration=duration, published_at=published_at, extra=extra)
+
+    def test_the_feed_sorts_by_the_requested_column_all_the_way_to_the_groups(self):
+        """排序要一直排到摆出来的那一批，不只是「取哪些条目」。
+
+        `store.group()` 结尾无条件按 newest_at 倒序，那是它自己的默认次序。只在条目那
+        一层排的话，选「时长」看到的确实是一页长片，但页面上它们内部照旧按更新时间排，
+        用户看到的就是「点了没反应」。
+        """
+        self._seed(candidates=(
+            self._clip("s1", duration=10.0, score=300, published_at="2026-01-03T00:00:00Z"),
+            self._clip("s2", duration=90.0, score=100, published_at="2026-01-02T00:00:00Z"),
+            self._clip("s3", duration=50.0, score=200, published_at="2026-01-01T00:00:00Z"),
+        ))
+        titles = lambda page: [group["primary"]["title"] for group in page["groups"]]
+        self.assertEqual(titles(self._get(sort="dur")), ["Clip s2", "Clip s3", "Clip s1"])
+        self.assertEqual(titles(self._get(sort="dur", dir="asc")),
+                         ["Clip s1", "Clip s3", "Clip s2"])
+        # 热度取来源自己的分数；没有这个字段的来源一律并列垫底，不按别的东西悄悄排。
+        self.assertEqual(titles(self._get(sort="hot")), ["Clip s1", "Clip s3", "Clip s2"])
+        self.assertEqual(titles(self._get(sort="new")), ["Clip s1", "Clip s2", "Clip s3"])
+        self.assertEqual(titles(self._get(sort="new", dir="asc")),
+                         ["Clip s3", "Clip s2", "Clip s1"])
+
+    def test_an_unknown_sort_or_direction_falls_back_without_an_error(self):
+        """地址栏里存着的旧参数不该报错，也不该悄悄换成另一种排序。"""
+        self._seed(candidates=(self._clip("u1", duration=10.0),))
+        page = self._get(sort="size", dir="sideways")
+        self.assertEqual((page["sort"], page["dir"]), ("new", "desc"))
+
+    def test_the_online_roster_lists_follow_authors_with_the_follow_page_count(self):
+        """艺人页「在线」那一档列的是关注来源里的人，每格那个数跟关注页读数同源。
+
+        点开一位作者去关注页，那里写着多少项更新，名册上就得是同一个数；两处各按各的
+        口径数（一边数发布组、一边数条目），用户看到的是两个都对、却对不上的数字。
+        """
+        self._seed(ref="a", label="Author A", candidates=(
+            self._clip("a1", duration=10.0), self._clip("a2", duration=20.0)))
+        self._seed(ref="b", label="Author B", candidates=(self._clip("b1", duration=30.0),))
+        page = self._get("/api/follow/authors")
+        self.assertEqual(page["kind"], "performers")
+        self.assertEqual(page["scope"], "online")
+        self.assertEqual([(row["k"], row["n"]) for row in page["items"]],
+                         [("Author A", 2), ("Author B", 1)])
+        key = next(row["key"] for row in page["items"] if row["k"] == "Author A")
+        self.assertEqual(sum(self._get(author=key)["counts"].values()), 2)
+
+    def test_the_online_roster_folds_one_persons_sources_into_one_row(self):
+        """同一个人在两个站点上是两条来源、一行——身份口径跟关注页筛选条完全一样。"""
+        self._seed(provider="rule34video", ref="lazyprocrastinator",
+                   label="LazyProcrastinator", candidates=(self._clip("x1"),))
+        self._seed(provider="rule34xxx", ref="lazyprocrastinator",
+                   label="lazyprocrastinator", candidates=(FollowCandidate(
+                       provider="rule34xxx", external_id="x2", title="Clip x2",
+                       url="https://rule34.xxx/index.php?page=post&s=view&id=2"),))
+        page = self._get("/api/follow/authors")
+        self.assertEqual(len(page["items"]), 1)
+        row = page["items"][0]
+        self.assertEqual(row["n"], 2)
+        # 同名的几种写法里取大写最多的那个：那更像作者自己写的名字。
+        self.assertEqual(row["k"], "LazyProcrastinator")
+        self.assertEqual(sorted(row["providers"]), ["rule34video", "rule34xxx"])
+
+    def test_the_online_roster_supports_search_and_paging(self):
+        """形状与 /api/index 一致：艺人页的分页、过滤和「载入更多」换个地址就能用。"""
+        self._seed(ref="a", label="Author A", candidates=(self._clip("a1"),))
+        self._seed(ref="b", label="Bravo", candidates=(self._clip("b1"),))
+        self.assertEqual([row["k"] for row in
+                          self._get("/api/follow/authors", q="brav")["items"]], ["Bravo"])
+        first = self._get("/api/follow/authors", limit=1)
+        self.assertEqual(len(first["items"]), 1)
+        self.assertTrue(first["has_more"])
+        self.assertFalse(self._get("/api/follow/authors", limit=1, offset=1)["has_more"])
+
     def test_online_tag_index_exposes_recorded_rule34_types_and_filters_them(self):
         candidate = FollowCandidate(
             provider="rule34xxx", external_id="typed", title="Typed",
@@ -3264,11 +3345,18 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains('data-follow-queue-item="${item.id}"')
         self.assertPageContains("openFollowDetail(+button.dataset.followCollection)")
 
-    def test_follow_reuses_entity_media_buttons_at_the_far_left_without_separator(self):
+    def test_follow_puts_the_media_buttons_at_the_top_row_left_behind_a_separator(self):
+        """媒体类型在上排最左，隔一道竖线才是状态——跟资料页那条同一个次序。
+
+        它问的是「这一页现在摆的是哪一类东西」，比右边那五枚粗一级：视频和图片各是
+        一整批内容，状态是在这一批里再挑一档。摆在下排右端的话，它挨着的是排序键和
+        动作键，读起来像给当前这批加的又一个条件，而它换掉的是整页内容。
+        """
         self.assertPageContains("const followMediaKinds=group=>")
         self.assertPageContains("function followItemMediaKinds(item)")
         self.assertPageContains("const item=followItemForMedia(group)")
-        self.assertPageContains("return mediaViewButtonsHtml({active:followMediaView,videoCount:counts.videos,imageCount:counts.images})")
+        self.assertPageContains("return mediaViewButtonsHtml({active:followMediaView,videoCount:counts.videos,imageCount:counts.images,\n"
+                                "    className:'followmediaview'});")
         self.assertPageContains("button.dataset.mediaView")
         self.assertPageLacks('class="insightswitch followmediaswitch"')
         self.assertPageLacks("params.set('media-ui','switch')")
@@ -3282,12 +3370,18 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("const preferredKind=followMediaView==='images'?'image':'video'")
         watch = self.page.split("function renderFollow(){", 1)[1].split(
             "function followBackfillState", 1)[0]
-        # 上排左端是五枚状态，媒体类型不在这一排：它住在浮层下排右端。
+        # 媒体那两枚在最左、自己一段；竖线之后才是横滚那一截里的五枚状态。
         self.assertIn(
-            'class="tagbar followfilters" aria-label="关注筛选"><div class="filterscroll">'
+            '''class="tagbar followfilters" aria-label="${mediaControl?'媒体与关注筛选':'关注筛选'}">'''
+            '''${mediaControl}${mediaControl?'<span class="sep" aria-hidden="true"></span>':''}'''
+            '<div class="filterscroll">'
             '<div class="viewpills followviews" role="group" aria-label="状态">${FOLLOW_FILTERS.map',
             watch,
         )
+        # 媒体那一档另有一块滑过去的玻璃，跟状态那五枚不共用：共用的话点一下图片，
+        # 玻璃会从「未看」那儿飞过来。
+        self.assertIn("const mediaRow=filterRow.querySelector('.followmediaview');", watch)
+        self.assertIn("if(mediaRow)wireViewGlideRow(mediaRow,[...mediaRow.querySelectorAll('[data-media-view]')],'media');", watch)
         self.assertIn("const mediaControl=followMediaControl(mediaCounts);", watch)
         self.assertIn("mountFilterFrame(filterRow,countRow,{views:filterRow.querySelector('.followviews'),", watch)
         self.assertNotIn("${followMediaControl(mediaCounts)}${FOLLOW_FILTERS", watch)

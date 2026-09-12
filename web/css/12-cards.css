@@ -87,9 +87,11 @@ body.refreshing #batchAction svg,
   stroke-linecap:round;stroke-linejoin:round}
 /* 这一排里的批量键是强调档，面色连同悬停归 `board.css` 一处：那一层按这条工具带的形状
    重排过它们，在这里再写一份，算出来生效的仍是那一层。 */
-.count .sorts .batchaction,.entitycollectionhead .sorts .batchaction{font-weight:600;padding-inline:14px}
-.count .sorts #batchAction,.entitycollectionhead .sorts .entitybatch{width:36px;padding:0;display:inline-grid;place-items:center}
-.count .sorts #batchAction svg,.entitycollectionhead .sorts .entitybatch svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2}
+/* 形状按类写，不按 id：这一排在首页、资料页和关注页各有一枚同样的换一批键，挂在 id 上
+   的话每多一页就要在这里补一个选择器，而漏掉的那一页不是报错——是图标算出 0×0，
+   按钮变成一块纯色方块。 */
+.count .sorts .batchaction,.entitycollectionhead .sorts .batchaction{font-weight:600;width:36px;padding:0;display:inline-grid;place-items:center}
+.count .sorts .batchaction svg,.entitycollectionhead .sorts .batchaction svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2}
 /* 目录列表是一叠卡：连续的一段视频合成一个 `.grid`，竖屏带插进来时把那一段从行边界
    剪开，上下两半于是各自成为一张独立的卡。`#grid` 本身只是这叠卡的容器，不再是网格。 */
 .gridstack{display:flex;flex-direction:column;gap:16px}

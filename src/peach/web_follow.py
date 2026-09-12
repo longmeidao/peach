@@ -1007,6 +1007,94 @@ def q_follow_tags(contract, args) -> dict:
             "categories": categories}
 
 
+def q_follow_authors(contract, args) -> dict:
+    """在线作者索引，供艺人页那一档「在线」列出关注来源里的人。
+
+    和 `q_follow_tags` 同一个道理：形状对着 `/api/index`（`items` 加 `has_more`），
+    艺人页现成的分页、过滤和「载入更多」换个地址就能用。
+
+    身份口径不在这里另算一份——`author_key` 加别名表，跟关注页筛选条、跟管理页那份
+    名册是同一套判定。同一个人在 Kemono 和 Rule34 上的两条来源在这里是一行，不是两行。
+
+    每一格上那个数跟关注页的读数同一个口径——数的是条目，不是折叠后的发布组。点开一位
+    作者去关注页，那里写着「1,294 项更新」，名册上就得是同一个 1,294；两处各按各的口径
+    数，用户看到的是两个都对、却对不上的数字。
+    头像给的是来源那两条地址，官方优先、归档兜底，跟关注页作者行完全一样。
+    """
+    query = str(args.get("q") or "").strip().casefold()
+    try:
+        limit = max(1, min(int(args.get("limit") or 120), 2000))
+    except (TypeError, ValueError):
+        limit = 120
+    try:
+        offset = max(0, int(args.get("offset") or 0))
+    except (TypeError, ValueError):
+        offset = 0
+    with contract.database.read_connection() as connection:
+        store = _store(contract, connection)
+        source_rows = store.sources()
+        alias_map, aliases = store.author_aliases()
+        canonical = {f"name:{row['canonical_key']}": str(row["canonical_name"] or "")
+                     for row in aliases}
+        enabled = {int(row["id"]) for row in source_rows if row["enabled"]}
+        by_source = {int(row["id"]): row for row in source_rows}
+        items = tuple(item for item in store.items(limit=_ALL_ITEMS)
+                      if item.source_id in enabled and not _excluded_item(item))
+        counts: dict[str, int] = {}
+        for item in items:
+            row = by_source.get(item.source_id)
+            key = author_key(row, alias_map) if row is not None else ""
+            if key:
+                counts[key] = counts.get(key, 0) + 1
+        grouped: dict[str, dict] = {}
+        for row in source_rows:
+            key = author_key(row, alias_map)
+            if not key or key not in counts:
+                continue
+            entry = grouped.setdefault(key, {"k": "", "key": key, "n": counts[key],
+                                             "avatar": "", "avatar_fallback": "",
+                                             "providers": [], "_entity": "",
+                                             "_official": "", "_labels": []})
+            if row["entity_id"] and row["entity_name"]:
+                entry["_entity"] = str(row["entity_name"])
+            name = _author_display_name(row)
+            official = _official_avatar_url(row["provider"], row["ref"])
+            mirror = _avatar_url(row["provider"], row["ref"])
+            if official:
+                if not entry["avatar"]:
+                    entry["avatar"] = official
+                if name and not entry["_official"]:
+                    entry["_official"] = name
+            if mirror and not entry["avatar_fallback"]:
+                entry["avatar_fallback"] = mirror
+            if name:
+                entry["_labels"].append(name)
+            provider = str(row["provider"] or "")
+            if provider and provider not in entry["providers"]:
+                entry["providers"].append(provider)
+        rows = []
+        for key, entry in grouped.items():
+            # 挑名字的次序跟关注页那一份分组标题一致：实体名最可靠，其次是别名表定的
+            # 规范名，再次是有官方主页那条来源的写法；都没有才在各条标签里选大写最多的
+            # 那个——`LazyProcrastinator` 比 `lazyprocrastinator` 更像作者自己写的名字。
+            labels, entity, official = (entry.pop("_labels"), entry.pop("_entity"),
+                                        entry.pop("_official"))
+            best = max(labels, key=lambda text: sum(ch.isupper() for ch in text),
+                       default="")
+            entry["k"] = entity or canonical.get(key) or official or best or key
+            if entry["avatar_fallback"] == entry["avatar"]:
+                entry["avatar_fallback"] = ""
+            if not entry["avatar"]:
+                entry["avatar"], entry["avatar_fallback"] = entry["avatar_fallback"], ""
+            rows.append(entry)
+        rows.sort(key=lambda row: (-row["n"], row["k"].casefold()))
+        rows = [row for row in rows if not query or query in row["k"].casefold()]
+    return {"kind": "performers", "scope": "online",
+            "items": rows[offset:offset + limit],
+            "total": len(rows),
+            "has_more": offset + limit < len(rows)}
+
+
 def _csv_values(value) -> tuple[str, ...]:
     """逗号分隔的查询值，去空、去重、保持顺序。"""
     seen: list[str] = []
@@ -1015,6 +1103,69 @@ def _csv_values(value) -> tuple[str, ...]:
         if part and part not in seen:
             seen.append(part)
     return tuple(seen)
+
+
+#: 关注页那一排能按什么排。`new` 是这一页的默认，也就是 store 给的那个次序。
+#:
+#: 只有三档，因为只有这三样在每条更新上都成立。观看次数、体积、评分那几列问的是本机
+#: 文件，而这一页上的东西多数还没下载；拿一列全空的数字去排序，得到的是原顺序加一次
+#: 无意义的洗牌。
+FOLLOW_SORTS = ("new", "hot", "dur")
+
+
+def _item_rank(item, key: str) -> float:
+    """这一条在某一列上的值。取不到就是 0，排在那一列的末尾。
+
+    热度取来源自己的分数（rule34 的 `score`）：站点已经按它排过一次热门，本库里
+    现成存着。没有这个字段的来源（f95zone 等）一律 0——这一列上它们并列垫底，而不是
+    被悄悄按别的东西排了一遍。
+    """
+    if key == "hot":
+        value = item.metadata.get("score")
+    elif key == "dur":
+        value = item.duration
+    else:
+        return 0.0
+    try:
+        return float(value or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _sorted_items(items: tuple, sort: str, direction: str) -> tuple:
+    """按选中的那一列重排整批条目。
+
+    排在分页之前，也排在分组之前：先分页再排等于只排了当前这一屏，翻一页顺序就换
+    一套；而 `store.group` 按给进去的次序归并，分完组再排会把同一个作品的几个版本
+    拆开。
+
+    `new` 那一档不自己排：store 的 `ORDER BY published_at DESC, id DESC` 已经是它，
+    再排一遍只会把并列条目的相对位置打乱。翻转就是倒着读同一串。
+    """
+    if sort not in FOLLOW_SORTS:
+        return items
+    if sort == "new":
+        return items if direction == "desc" else tuple(reversed(items))
+    # id 兜底与 store 同一个道理：并列值在两次请求间不许换位置，否则翻页会重复或漏掉。
+    return tuple(sorted(items, key=lambda item: (_item_rank(item, sort), item.id),
+                        reverse=direction == "desc"))
+
+
+def _sorted_groups(groups: tuple, sort: str, direction: str) -> tuple:
+    """分完组再排一次。
+
+    `store.group()` 结尾无条件按 `newest_at` 倒序——那是它自己的默认次序，不是这一页
+    要的次序。少了这一步，条目那一层的排序就只决定「哪些条目进这一页」，页面上摆出来
+    的仍是按时间：选「时长」看到的是一页长片，但它们内部照旧按更新时间排，看着像没生效。
+    两层共用同一个 `_item_rank`，否则同一批东西在选页和摆页时会有两种顺序。
+    """
+    if sort not in FOLLOW_SORTS:
+        return groups
+    if sort == "new":
+        return groups if direction == "desc" else tuple(reversed(groups))
+    return tuple(sorted(groups,
+                        key=lambda group: (_item_rank(group.primary, sort), group.primary.id),
+                        reverse=direction == "desc"))
 
 
 def q_follow(contract, args) -> dict:
@@ -1041,6 +1192,11 @@ def q_follow(contract, args) -> dict:
     # 题材跟作者、来源一样是「任一」：两部作品同时成立的条目几乎没有，取交集等于
     # 点第二枚就清空列表。标签那一维仍是交集，见下面 `_matches`。
     wanted_works = frozenset(_work_root(value) for value in _csv_values(args.get("work")))
+    sort = str(args.get("sort") or "new")
+    if sort not in FOLLOW_SORTS:
+        sort = "new"
+    # 认不出的方向按这一列的常态读：时间、热度、时长问的都是「最靠前的先看」。
+    direction = "asc" if str(args.get("dir") or "") == "asc" else "desc"
     try:
         unread_days = max(0, min(int(args.get("unread_days") or 0), 3650))
     except (TypeError, ValueError):
@@ -1084,7 +1240,8 @@ def q_follow(contract, args) -> dict:
 
         everything = tuple(item for item in store.items(source_id=source_id, limit=_ALL_ITEMS)
                            if item.source_id in enabled_source_ids and not _excluded_item(item))
-        counted = tuple(item for item in everything if _matches(item))
+        counted = _sorted_items(
+            tuple(item for item in everything if _matches(item)), sort, direction)
         if item_id is not None:
             items = tuple(item for item in store.items_for_item(item_id)
                           if item.source_id in enabled_source_ids and not _excluded_item(item))
@@ -1096,7 +1253,7 @@ def q_follow(contract, args) -> dict:
             has_more = len(page) > offset + limit
             items = tuple(page[offset:offset + limit])
         groups = [_group_payload(group, credential_providers)
-                  for group in store.group(items)]
+                  for group in _sorted_groups(store.group(items), sort, direction)]
         facets = _follow_facets(store, everything, by_source, alias_map,
                                 work_icon_root(contract))
         # counts 与列表同源，两边都从 `counted` 出发：筛选怎么变，数字就怎么变，
@@ -1124,6 +1281,9 @@ def q_follow(contract, args) -> dict:
         "groups": groups,
         "counts": {status: int(counts.get(status, 0)) for status in _STATUSES},
         "unread_days": unread_days,
+        # 排序回一份：页面是从 URL 读的，两边对不上时以服务端这份为准。
+        "sort": sort,
+        "dir": direction,
         "facets": facets,
         # counts 是全库口径，groups 只是这一页——两个数并排显示过，看起来像自相矛盾。
         "offset": offset,

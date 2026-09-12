@@ -10,6 +10,8 @@ export function filterChipHtml(label,{attr,value,selected=false,count,className=
      没生效过。 */
   return `<button type="button" class="pill${className?' '+esc(className):''}" ${attr}="${esc(value)}" aria-pressed="${selected}">${esc(label)}${count==null?'':`<span class="${esc(countClass)}">${esc(count)}</span>`}</button>`;
 }
+/* `extra` 排在换一批与排序键之间。那个位置放的是版式、大小这类「这批东西怎么摆」的
+   开关，以及跟换一批同类的动作键；排序键一律排在最末，挨着它说明的那批内容。 */
 export function sortControlsHtml({items=[],renderItem=String,extra='',shuffleId='',shuffleClass='entitybatch'}={}){
   return `<span class="sorts"><button class="batchaction ${esc(shuffleClass)}"${shuffleId?` id="${esc(shuffleId)}"`:''} type="button" title="换一批" aria-label="换一批">${icon('shuffle')}</button>${extra}${items.map(renderItem).join('')}</span>`;
 }

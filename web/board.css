@@ -618,15 +618,24 @@ body>.board-filter-frame{margin-inline:16px}
 .entitytags .pill small{margin-left:5px;font:var(--board-caption)}
 .board-filter-frame .count{padding:8px 12px;min-height:46px;gap:12px}
 .board-filter-frame .sorts{gap:4px}.board-filter-frame .sorts button{height:30px;min-height:30px;font-size:12px;padding:0 8px;border:0;border-radius:7px;background:transparent}
-/* 关注页下排右端那两枚是视频／图片：它答的是「现在摆的是哪一类」，是一个位置，所以选中
-   那一枚铺选中态那块玻璃，跟排序键只靠字重说话不同。 */
-.board-filter-frame .sorts .mediaviewbuttons{gap:2px}
-.board-filter-frame .sorts .mediaviewbutton{flex:0 0 30px;width:30px;height:30px;border-radius:7px;color:color-mix(in srgb,var(--glass-text) 60%,transparent)}
-.board-filter-frame .sorts .mediaviewbutton:hover{color:var(--glass-text)}
-.board-filter-frame .sorts .mediaviewbutton[aria-pressed="true"]{color:var(--glass-text);
-  background:linear-gradient(180deg,var(--glass-sheen),transparent 62%),var(--glass-pick-fill);
-  backdrop-filter:var(--glass-pick);-webkit-backdrop-filter:var(--glass-pick);
-  box-shadow:inset 0 0 0 1px var(--glass-rim),var(--glass-pick-shadow)}
+/* 关注页上排最左那两枚是视频／图片，跟资料页那一组同形：自己不铺底，选中那一枚的填充
+   由 media 那块滑过去的玻璃给。两边都铺的话，静止态是一块不透明的面压在玻璃上面，
+   切换时也只看得见它瞬间换位置。字形要压在玻璃上面，不然滑过去时一路被盖暗。 */
+.board-filter-frame .followmediaview{gap:2px}
+.board-filter-frame.board-filter-frame .followmediaview .mediaviewbutton{
+  flex:0 0 30px;width:30px;height:30px;border-radius:7px;position:relative;z-index:1;
+  border:0;background:none;backdrop-filter:none;-webkit-backdrop-filter:none;box-shadow:none;
+  color:color-mix(in srgb,var(--glass-text) 60%,transparent)}
+.board-filter-frame.board-filter-frame .followmediaview .mediaviewbutton:hover,
+.board-filter-frame.board-filter-frame .followmediaview .mediaviewbutton[aria-pressed="true"]{color:var(--glass-text)}
+/* 「去问一遍来源」紧挨着「换一批」：两枚都是动作键，同高同圆角。它不是选项，所以
+   没有 `aria-pressed` 那一档填充——静止态比排序键淡一级，悬停才提到玻璃上的常规字色。 */
+.board-filter-frame .sorts .followrecheck{
+  flex:0 0 30px;width:30px;padding:0;display:inline-grid;place-items:center;
+  color:color-mix(in srgb,var(--glass-text) 60%,transparent)}
+.board-filter-frame .sorts .followrecheck:hover{color:var(--glass-text)}
+.board-filter-frame .sorts .followrecheck svg{
+  width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2}
 /* 资料卡照 Board 的卡排：secondary 底、18px 圆角、不描边，卡底那条带取卡脚那一档色阶。
    标题是 Title 3（24/32、500），别名行 Body 1，外链是 36px 的 secondary Button。 */
 .entityhero{border-radius:18px;background:var(--ground);box-shadow:none}

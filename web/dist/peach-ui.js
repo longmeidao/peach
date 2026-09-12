@@ -4847,14 +4847,22 @@ async function Ji(e, t) {
 }
 function Yi({ kind: e = "catalog", filtered: t = !1, jav: n = !1, configurable: r = !1, online: i = !1 } = {}) {
 	let a = r ? "<a class=\"geist-button primary\" href=\"/configuration\">添加内容</a>" : "", o = "<a class=\"geist-button\" href=\"/follow-manage\">添加来源</a>";
-	return t || n ? f("search", n ? "还没有符合条件的 JAV 作品" : "没有符合条件的内容", n ? "已扫描但尚未补充发行资料的视频可在全部内容中查看。" : "清除筛选或搜索条件后查看全部内容。", { actions: "<a class=\"geist-button primary\" href=\"/?loc=&thumb=0\">查看全部内容</a>" }) : e === "catalog" ? f("play", "还没有视频", "添加媒体文件夹或关注来源，开始建立你的馆藏。", { actions: a + o }) : f(e === "tags" ? "tags" : "user-round", "还没有" + ({
-		tags: "标签",
-		performers: "艺人",
-		creators: "创作者",
-		studios: "厂牌",
-		agencies: "事务所",
-		series: "系列"
-	}[e] || "资料"), i ? "添加关注来源并获取内容后，这里会显示对应标签。" : "添加内容并补充资料后，这里会显示对应信息。", { actions: i ? o : a + o });
+	if (t || n) return f("search", n ? "还没有符合条件的 JAV 作品" : "没有符合条件的内容", n ? "已扫描但尚未补充发行资料的视频可在全部内容中查看。" : "清除筛选或搜索条件后查看全部内容。", { actions: "<a class=\"geist-button primary\" href=\"/?loc=&thumb=0\">查看全部内容</a>" });
+	if (e !== "catalog") {
+		let t = (i ? {
+			tags: "标签",
+			performers: "作者"
+		}[e] : "") || {
+			tags: "标签",
+			performers: "艺人",
+			creators: "创作者",
+			studios: "厂牌",
+			agencies: "事务所",
+			series: "系列"
+		}[e] || "资料";
+		return f(e === "tags" ? "tags" : "user-round", "还没有" + t, i ? "添加关注来源并获取内容后，这里会显示来源上的" + t + "。" : "添加内容并补充资料后，这里会显示对应信息。", { actions: i ? o : a + o });
+	}
+	return f("play", "还没有视频", "添加媒体文件夹或关注来源，开始建立你的馆藏。", { actions: a + o });
 }
 //#endregion
 //#region src/sidebar.ts

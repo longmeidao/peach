@@ -865,7 +865,7 @@ class WebDataTests(unittest.TestCase):
             "/api/follow", "/api/follow/credentials", "/api/follow/schedule",
             "/api/follow/check", "/api/follow/resolve", "/api/taste/refresh",
             "/api/links/prune", "/api/resource-sync/apply",
-            "/api/follow/tags",
+            "/api/follow/tags", "/api/follow/authors",
             "/api/taste", "/api/settings", "/api/links",
         })
         self.assertEqual(set(rm_web.POST_HANDLERS), {
