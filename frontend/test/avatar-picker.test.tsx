@@ -14,13 +14,14 @@ const choice = (overrides: Partial<AvatarChoice> = {}): AvatarChoice => ({
   width: 0,
   height: 0,
   detail: '葵つかさ.jpg',
+  found_by: '',
   current: false,
   ...overrides,
 });
 
 const listing = (choices: AvatarChoice[], extra: Record<string, unknown> = {}) => ({
   kind: 'performer', entity_id: 7792, names: ['葵司', '葵つかさ'],
-  matched_name: '葵つかさ', choices, index_age_hours: 2, index_stale: false, ...extra,
+  matched_names: ['葵つかさ'], choices, index_age_hours: 2, index_stale: false, ...extra,
 });
 
 type Call = [string, RequestInit];
@@ -81,6 +82,20 @@ it('图库里的名字与页面上的不同名时说清按谁找到的', async (
   expect(root.textContent).toContain('图库里按「葵つかさ」找到的');
 });
 
+it('好几个名字各带回一批图时，每一格说清自己是按哪个名字找到的', async () => {
+  // 找错人是这一屏唯一会出的大错，而名字是唯一的线索：整屏只报一句「图库里找到的」，
+  // 一张同名不同人的图就没有任何能让人起疑的地方。
+  server(listing(
+    [choice({ found_by: '葵つかさ' }),
+     choice({ ref: 'gfriends:3-Prestige/葵ツカサ.jpg', label: '3-Prestige', found_by: '葵ツカサ' })],
+    { matched_names: ['葵つかさ', '葵ツカサ'] }));
+  await openPicker();
+  expect(root.textContent).toContain('图库里按「葵つかさ」「葵ツカサ」找到的');
+  const cells = [...root.querySelectorAll('.avatarpick-cell')];
+  expect(cells[0]!.getAttribute('title')).toContain('按「葵つかさ」找到');
+  expect(cells[1]!.getAttribute('title')).toContain('按「葵ツカサ」找到');
+});
+
 it('点一张就提交，换完关掉弹层并让宿主重画', async () => {
   const calls = server(listing([choice()]));
   const { picked, popup } = await openPicker();
@@ -134,7 +149,7 @@ it('换不成时弹层留在原地，原因写在里面', async () => {
 });
 
 it('图库索引还没取过时只剩手填那两条路', async () => {
-  server(listing([], { matched_name: '', index_age_hours: null, index_stale: true }));
+  server(listing([], { matched_names: [], index_age_hours: null, index_stale: true }));
   await openPicker();
   expect(root.querySelectorAll('.avatarpick-cell')).toHaveLength(0);
   expect(root.textContent).toContain('图库索引还没取过');

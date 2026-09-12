@@ -24,6 +24,8 @@ export interface AvatarChoice {
   width: number;
   height: number;
   detail: string;
+  /** 这一格是按哪个名字从图库里找到的。只有一个名字命中时是空串。 */
+  found_by: string;
   current: boolean;
 }
 
@@ -31,7 +33,8 @@ export interface AvatarChoices {
   kind: string;
   entity_id: number;
   names: string[];
-  matched_name: string;
+  /** 名字链里在图库中真有图的那几个，按链上的先后。 */
+  matched_names: string[];
   choices: AvatarChoice[];
   index_age_hours: number | null;
   index_stale: boolean;
@@ -110,9 +113,10 @@ function Picker({ kind, id, name, onPicked }: PickerProps) {
   const choices = data?.choices || [];
   /* 说明只留一句：这一屏已经用图说清了在选什么，多一行字就是多一行要读的东西。
      按哪个名字找到的要说——找错人是这里唯一会出的大错，而名字是唯一的线索。 */
+  const elsewhere = (data?.matched_names || []).filter(one => one !== name);
   const note = !data ? '正在找可用的图…'
-    : data.matched_name && data.matched_name !== name
-      ? `${name}：图库里按「${data.matched_name}」找到的。`
+    : elsewhere.length
+      ? `${name}：图库里按「${elsewhere.join('」「')}」找到的。`
       : choices.length ? `${name}：换上的那张留在本机，随时能换回来。`
         : `${name}：图库里没有这个名字，用下面两种方式换。`;
   const stale = !!data && data.index_stale
@@ -154,7 +158,8 @@ function Picker({ kind, id, name, onPicked }: PickerProps) {
               aria-selected={choice.current} disabled={!!busy}
               class={`avatarpick-cell${choice.current ? ' current' : ''}`}
               title={`${SOURCE_LABELS[choice.source] || choice.source} · ${choice.label}`
-                + (choice.width ? ` · ${choice.width}×${choice.height}` : '')}
+                + (choice.width ? ` · ${choice.width}×${choice.height}` : '')
+                + (choice.found_by ? ` · 按「${choice.found_by}」找到` : '')}
               onClick={() => pick(choice)}>
               <img loading="lazy" alt=""
                 src={`/avatar-choice?kind=${kind}&id=${id}&ref=${encodeURIComponent(choice.ref)}`} />

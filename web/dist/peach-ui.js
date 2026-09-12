@@ -4637,7 +4637,7 @@ function Vi({ kind: e, id: t, name: n, onPicked: r }) {
 			let e = await r.json().catch(() => null);
 			throw Error(e?.error || `请求失败（${r.status}）`);
 		}
-	}, "file"), w = s?.choices || [], T = s ? s.matched_name && s.matched_name !== n ? `${n}：图库里按「${s.matched_name}」找到的。` : w.length ? `${n}：换上的那张留在本机，随时能换回来。` : `${n}：图库里没有这个名字，用下面两种方式换。` : "正在找可用的图…", E = !!s && s.index_stale && !w.some((e) => e.source === "gfriends");
+	}, "file"), w = s?.choices || [], T = (s?.matched_names || []).filter((e) => e !== n), E = s ? T.length ? `${n}：图库里按「${T.join("」「")}」找到的。` : w.length ? `${n}：换上的那张留在本机，随时能换回来。` : `${n}：图库里没有这个名字，用下面两种方式换。` : "正在找可用的图…", D = !!s && s.index_stale && !w.some((e) => e.source === "gfriends");
 	return /* @__PURE__ */ q("div", {
 		class: "avatarpick",
 		children: [/* @__PURE__ */ q("button", {
@@ -4681,8 +4681,8 @@ function Vi({ kind: e, id: t, name: n, onPicked: r }) {
 									children: [w.length, " 张可选"]
 								})]
 							}),
-							/* @__PURE__ */ q("p", { children: T }),
-							E && /* @__PURE__ */ q("p", {
+							/* @__PURE__ */ q("p", { children: E }),
+							D && /* @__PURE__ */ q("p", {
 								class: "avatarpick-note",
 								children: "图库索引还没取过，只能从用过的图里选。"
 							}),
@@ -4720,7 +4720,7 @@ function Vi({ kind: e, id: t, name: n, onPicked: r }) {
 							"aria-selected": n.current,
 							disabled: !!f,
 							class: `avatarpick-cell${n.current ? " current" : ""}`,
-							title: `${Bi[n.source] || n.source} · ${n.label}` + (n.width ? ` · ${n.width}×${n.height}` : ""),
+							title: `${Bi[n.source] || n.source} · ${n.label}` + (n.width ? ` · ${n.width}×${n.height}` : "") + (n.found_by ? ` · 按「${n.found_by}」找到` : ""),
 							onClick: () => x(n),
 							children: [
 								/* @__PURE__ */ q("img", {

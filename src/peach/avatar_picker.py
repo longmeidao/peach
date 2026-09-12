@@ -67,12 +67,15 @@ class Choice:
     width: int = 0
     height: int = 0
     detail: str = ""
+    #: 这一格是按哪个名字从图库里找到的。只有一个名字命中时留空。
+    found_by: str = ""
     current: bool = False
 
     def as_dict(self) -> dict:
         return {"ref": self.ref, "source": self.source, "label": self.label,
                 "width": self.width, "height": self.height,
-                "detail": self.detail, "current": self.current}
+                "detail": self.detail, "found_by": self.found_by,
+                "current": self.current}
 
 
 def name_chain(connection: sqlite3.Connection, entity_id: int) -> list[str]:
@@ -157,7 +160,7 @@ def choices(connection: sqlite3.Connection, providers_root: Path,
     index_dir = providers_root / GFRIENDS_CACHE
     names = name_chain(connection, entity_id)
     index = gfriends.load_index(index_dir)
-    matched, found = gfriends.candidates(index, names)
+    match = gfriends.candidates(index, names)
     current = installed_digest(avatar_root, kind, entity_id)
     cache = AvatarCandidateCache(index_dir)
     #: 图库候选里已经取过的那些，按内容哈希记下来。取过的图会同时以「图库某个分类」
@@ -165,7 +168,11 @@ def choices(connection: sqlite3.Connection, providers_root: Path,
     #: 一边：`S1`、`GRAPHIS` 说得出是谁家的图，「图库」只说得出它从哪个路子来。
     taken: set[str] = set()
     items: list[Choice] = []
-    for category, filename in found:
+    # 好几个名字都命中时，每一格得说得出自己是按哪个名字找来的：找错人是这一屏唯一
+    # 会出的大错，而一屏里混着两个人的图时，名字是唯一能看出来的线索。只有一个名字
+    # 命中就不必说——那句话对每一格都一样，等于没说。
+    tell_finder = len(match.names) > 1
+    for category, filename in match.items:
         shot = cache.describe(gfriends.image_url(category, filename)) or {}
         digest = str(shot.get("sha256") or "")
         if digest:
@@ -173,6 +180,7 @@ def choices(connection: sqlite3.Connection, providers_root: Path,
         items.append(Choice(
             ref=f"gfriends:{category}/{filename}", source="gfriends",
             label=gfriends.category_label(category), detail=filename,
+            found_by=match.finder.get((category, filename), "") if tell_finder else "",
             width=int(shot.get("width") or 0), height=int(shot.get("height") or 0),
             current=bool(digest) and digest == current))
     for choice in _history(providers_root, entity_id, current):
@@ -184,7 +192,7 @@ def choices(connection: sqlite3.Connection, providers_root: Path,
     age = gfriends.index_age(index_dir)
     return {
         "kind": kind, "entity_id": int(entity_id),
-        "names": names, "matched_name": matched,
+        "names": names, "matched_names": list(match.names),
         "choices": [choice.as_dict() for choice in items[:MAX_CHOICES]],
         "index_age_hours": round(age / 3600, 1) if age is not None else None,
         "index_stale": age is None or age > gfriends.INDEX_MAX_AGE_SECONDS,
@@ -269,9 +277,11 @@ def resolve(ref: str, connection: sqlite3.Connection, providers_root: Path,
         raise PickerError("认不出这个候选")
     category, _, filename = ref.split(":", 1)[1].partition("/")
     index = gfriends.load_index(providers_root / GFRIENDS_CACHE)
-    matched, found = gfriends.candidates(index, name_chain(connection, entity_id))
-    if (category, filename) not in found:
+    match = gfriends.candidates(index, name_chain(connection, entity_id))
+    if (category, filename) not in match.finder:
         raise PickerError("这个候选不在当前索引里")
+    # 证据里记的是找到这一张的那个名字，不是整条链：事后要答的是「这张图凭什么算他」。
+    matched = match.finder[(category, filename)]
     url = gfriends.image_url(category, filename)
     cache = AvatarCandidateCache(providers_root / GFRIENDS_CACHE)
     body = cache.lookup(url)
