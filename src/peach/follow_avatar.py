@@ -31,36 +31,27 @@ def resolve_official_profile(service: str, user_id: str, *,
                              transport: HttpTransport | None = None) -> OfficialProfile:
     """Return the verified official profile behind one archive identity.
 
-    FANBOX archive sources expose the Pixiv numeric user id.  The official creator
-    page maps it to the public creator id; ``creator.get`` then returns the current
-    name and ``user.iconUrl``.  Hosts and returned identity are fixed here so a client
-    cannot turn discovery or the avatar endpoint into an SSRF/open redirect.
+    ``user_id`` accepts either identity FANBOX publishes.  Archive sources expose the
+    Pixiv numeric user id, and the official creator page maps it to the public creator
+    id.  A forum profile link only carries that creator id (``jul3dnsfw.fanbox.cc``),
+    which ``creator.get`` already accepts, so that shape skips the lookup page.  Either
+    way ``creator.get`` returns the current name and ``user.iconUrl``.  Hosts and the
+    returned identity are fixed here so a client cannot turn discovery or the avatar
+    endpoint into an SSRF/open redirect.
     """
-    if service != "fanbox" or not _USER_ID_RE.fullmatch(str(user_id or "")):
+    identity = str(user_id or "")
+    if service != "fanbox":
         raise FollowSourceError("不支持这个官方头像来源")
     request = transport or HttpxTransport()
-    profile_url = f"https://www.pixiv.net/fanbox/creator/{user_id}"
-    page = request(
-        HttpRequest("GET", profile_url, {
-            "Accept": "text/html", "User-Agent": USER_AGENT,
-        }),
-        15.0,
-        MAX_PROFILE_BYTES,
-    )
-    if page.status != 200:
-        raise FollowSourceError(f"FANBOX 官方页面返回 HTTP {page.status}")
-    try:
-        soup = BeautifulSoup(page.body, "html.parser")
-        metadata_node = soup.find("meta", attrs={"name": "metadata"})
-        metadata = json.loads(str(metadata_node.get("content"))) if metadata_node else {}
-        creator_id = str(
-            (((metadata.get("urlContext") or {}).get("host") or {}).get("creatorId"))
-            or ""
-        )
-    except (AttributeError, TypeError, ValueError, json.JSONDecodeError) as error:
-        raise FollowSourceError("FANBOX 官方页面没有可用的创作者资料") from error
-    if not _CREATOR_ID_RE.fullmatch(creator_id):
-        raise FollowSourceError("FANBOX 官方页面没有可用的创作者 id")
+    if _USER_ID_RE.fullmatch(identity):
+        expected_user_id = identity
+        creator_id = _creator_id_for_user(identity, request)
+    elif _CREATOR_ID_RE.fullmatch(identity):
+        # 创作者 id 这条路没有可核对的数字 id，身份就以 `creator.get` 回的为准。
+        expected_user_id = ""
+        creator_id = identity
+    else:
+        raise FollowSourceError("不支持这个官方头像来源")
 
     creator_origin = f"https://{creator_id}.fanbox.cc"
     api_url = "https://api.fanbox.cc/creator.get?" + urllib.parse.urlencode(
@@ -85,13 +76,42 @@ def resolve_official_profile(service: str, user_id: str, *,
     except (UnicodeDecodeError, TypeError, ValueError, json.JSONDecodeError) as error:
         raise FollowSourceError("FANBOX 官方资料格式不符") from error
     parsed = urllib.parse.urlsplit(avatar)
-    if (returned_user_id != user_id or parsed.scheme != "https"
+    if ((expected_user_id and returned_user_id != expected_user_id)
+            or not _USER_ID_RE.fullmatch(returned_user_id)
+            or parsed.scheme != "https"
             or parsed.hostname != "pixiv.pximg.net"):
         raise FollowSourceError("FANBOX 官方资料没有可信的头像地址")
     return OfficialProfile(
-        user_id=user_id, creator_id=creator_id, name=name,
+        user_id=returned_user_id, creator_id=creator_id, name=name,
         url=creator_origin + "/", avatar_url=avatar,
     )
+
+
+def _creator_id_for_user(user_id: str, request: HttpTransport) -> str:
+    """Map a Pixiv numeric user id to the public FANBOX creator id."""
+    profile_url = f"https://www.pixiv.net/fanbox/creator/{user_id}"
+    page = request(
+        HttpRequest("GET", profile_url, {
+            "Accept": "text/html", "User-Agent": USER_AGENT,
+        }),
+        15.0,
+        MAX_PROFILE_BYTES,
+    )
+    if page.status != 200:
+        raise FollowSourceError(f"FANBOX 官方页面返回 HTTP {page.status}")
+    try:
+        soup = BeautifulSoup(page.body, "html.parser")
+        metadata_node = soup.find("meta", attrs={"name": "metadata"})
+        metadata = json.loads(str(metadata_node.get("content"))) if metadata_node else {}
+        creator_id = str(
+            (((metadata.get("urlContext") or {}).get("host") or {}).get("creatorId"))
+            or ""
+        )
+    except (AttributeError, TypeError, ValueError, json.JSONDecodeError) as error:
+        raise FollowSourceError("FANBOX 官方页面没有可用的创作者资料") from error
+    if not _CREATOR_ID_RE.fullmatch(creator_id):
+        raise FollowSourceError("FANBOX 官方页面没有可用的创作者 id")
+    return creator_id
 
 
 def resolve_official_avatar(service: str, user_id: str, *,

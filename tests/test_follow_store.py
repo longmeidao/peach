@@ -9,7 +9,8 @@ from pathlib import Path
 from peach.follow import FollowSourceError
 from peach.follow_sources import FollowCandidate, SourceFetch
 from peach.follow_store import (
-    FollowStore, ReleaseGroup, author_display_text, normalized_author_name,
+    FollowStore, ReleaseGroup, author_display_text, f95_author_handles,
+    f95_author_name, normalized_author_name,
 )
 from support.ledger import fresh_ledger
 
@@ -68,6 +69,26 @@ class RegistrationTests(_StoreCase):
         rows = self.store.sources()
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["label"], "Lazy P")
+
+    def test_merging_metadata_keeps_the_keys_it_does_not_mention(self):
+        """名片是登记之后才解析出来的，补它不能抹掉登记时写下的 author_key。"""
+        source_id = self._source(metadata={"author_key": "mrstrauz"})
+        self.store.merge_source_metadata(
+            source_id, {"official_links": [{"service": "twitter",
+                                            "handle": "Mr_Strauz"}]},
+            moment=MOMENT)
+        stored = json.loads(self.store.sources()[0]["metadata_json"])
+        self.assertEqual(stored["author_key"], "mrstrauz")
+        self.assertEqual([link["handle"] for link in stored["official_links"]],
+                         ["Mr_Strauz"])
+
+    def test_an_empty_profile_list_is_recorded_as_an_answer(self):
+        # 「问过了，他没留主页」要留得下来，否则每次检查都要再问一遍。
+        source_id = self._source()
+        self.store.merge_source_metadata(source_id, {"official_links": []},
+                                         moment=MOMENT)
+        stored = json.loads(self.store.sources()[0]["metadata_json"])
+        self.assertEqual(stored["official_links"], [])
 
     def test_rule34_case_variants_are_the_same_source(self):
         first = self._source(provider="rule34xxx", ref="LazyProcrastinator")
@@ -582,6 +603,50 @@ class AuthorIdentityTests(_StoreCase):
         self.assertEqual(normalized_author_name("LazyProcrastinator · fanbox"),
                          normalized_author_name("lazyprocrastinator"))
         self.assertEqual(author_display_text("Billyhhyb · patreon"), "Billyhhyb")
+
+    def test_the_f95_author_sits_in_the_last_bracket(self):
+        """站点的标题约定是 `作品名 [版本或日期] [作者]`。"""
+        self.assertEqual(
+            author_display_text("Strauzek Collection [2026-09-04] [Mr_Strauz]",
+                                provider="f95zone"), "Mr_Strauz")
+        self.assertEqual(
+            author_display_text("Some Game [v1.2] [Final] [DevName]",
+                                provider="f95zone"), "DevName")
+
+    def test_a_title_without_an_author_bracket_falls_back_to_its_stem(self):
+        # `[Collection Request]` 是版块标签，`Complete Collection` 是容器措辞，
+        # 剥掉之后剩下的才是这个人。
+        self.assertEqual(
+            author_display_text(
+                "[Collection Request] Suzutaru 3D - Complete Collection",
+                provider="f95zone"), "Suzutaru 3D")
+        self.assertEqual(
+            author_display_text("Memz3D Models Collection", provider="f95zone"),
+            "Memz3D")
+
+    def test_both_handles_in_the_author_bracket_are_kept(self):
+        # 一个人常在作者位上写两个手柄，第一个当显示名，另一个够格做别名候选。
+        self.assertEqual(
+            f95_author_handles(
+                "Lazy Procrastinator Collection [2026-06-28]"
+                " [LazyProcrastinator/LazyProcrast]"),
+            ("LazyProcrastinator", "LazyProcrast"))
+        self.assertEqual(
+            f95_author_name(
+                "Lazy Procrastinator Collection [2026-06-28]"
+                " [LazyProcrastinator/LazyProcrast]"), "LazyProcrastinator")
+
+    def test_the_bracket_rule_is_only_for_f95(self):
+        # 别的站上方括号可能真是标签的一部分，不能拿 F95 的约定去套。
+        self.assertEqual(
+            author_display_text("Strauzek Collection [2026-09-04] [Mr_Strauz]"),
+            "Strauzek Collection [2026-09-04] [Mr_Strauz]")
+
+    def test_the_f95_author_key_matches_the_name_on_the_other_sites(self):
+        self.assertEqual(
+            normalized_author_name("Strauzek Collection [2026-09-04] [Mr_Strauz]",
+                                   provider="f95zone"),
+            normalized_author_name("mr_strauz"))
 
     def test_a_manual_alias_maps_both_names_to_one_canonical_key(self):
         self.store.upsert_author_alias("Initiala", "ffxivinitiala", source="manual",

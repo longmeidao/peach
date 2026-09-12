@@ -88,6 +88,9 @@ from .user_agent import USER_AGENT
 #: 文件名里不能出现的字符，按 Windows 的最严口径取——落盘的那台多半是它。
 _UNSAFE_FILENAME = re.compile('[\\/:*?"<>|]+|[\x00-\x1f]+')
 
+#: FANBOX 官方身份的两种写法：pixiv 数字 user id，或 FANBOX 创作者 id。
+_FANBOX_IDENTITY_RE = re.compile(r"[A-Za-z0-9_-]{1,80}")
+
 LOGGER = logging.getLogger(__name__)
 
 
@@ -474,7 +477,10 @@ def follow_avatar(request: Request, service: str = "", id: str = "",
         def fetch():
             return follow_assets.fetch_image(client, target)
     else:
-        if service != "fanbox" or not id.isdigit():
+        # 官方身份有两种写法：归档 ref 带的 pixiv 数字 id，和论坛名片链接里的
+        # FANBOX 创作者 id（`jul3dnsfw.fanbox.cc`）。两种的合法形状都由
+        # `resolve_official_avatar` 把关，这里只挡住明显不是身份的串。
+        if service != "fanbox" or not _FANBOX_IDENTITY_RE.fullmatch(id):
             return _asset_response(request, None)
         key = f"official:{service}:{id}"
 

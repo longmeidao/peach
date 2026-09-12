@@ -335,7 +335,8 @@ def _author_display_name(row) -> str:
     """
     if row["entity_id"] and row["entity_name"]:
         return str(row["entity_name"])
-    return author_display_text(row["label"] or row["ref"] or "")
+    return author_display_text(row["label"] or row["ref"] or "",
+                               provider=str(row["provider"] or ""))
 
 
 def _source_metadata(row) -> dict:
@@ -374,8 +375,60 @@ def author_key(row, aliases: dict[str, str] | None = None) -> str:
     return f"source:{row['id']}"
 
 
+#: 一次最多提议多少条别名。这是给人一条条看的清单，不是批处理。
+MAX_ALIAS_SUGGESTIONS = 12
+#: 名片手柄不值得提议成别名的服务。论坛账号名常常是搬运工自己的账号，
+#: 而 pixiv 的身份是一串数字，当别名只会在列表里多出一个数字「作者」。
+_ALIAS_SKIP_SERVICES = frozenset({"pixiv", "f95zone", "simpcity"})
+
+
+def _profile_link_suggestions(rows, aliases: dict[str, str]) -> list[dict]:
+    """首楼名片上的手柄与这条来源的作者名不一致时，提议合并。
+
+    证据比字符串包含硬：`Strauzek Collection [2026-09-04] [Mr_Strauz]` 的首楼上同时
+    挂着 `twitter.com/strauzek` 和 `twitter.com/Mr_Strauz`，两个写法是同一个人在
+    同一张名片上自己写的。仍然只是**提议**——合不合由人点。
+    """
+    suggestions: list[dict] = []
+    seen: set[tuple[str, str]] = set()
+    for row in rows:
+        if row["entity_id"]:
+            continue
+        canonical = _author_display_name(row)
+        canonical_key = normalized_author_name(canonical)
+        if not canonical_key:
+            continue
+        for link in _source_metadata(row).get("official_links") or ():
+            if not isinstance(link, dict):
+                continue
+            service = str(link.get("service") or "")
+            handle = str(link.get("handle") or "").strip()
+            alias_key = normalized_author_name(handle)
+            if service in _ALIAS_SKIP_SERVICES or not alias_key:
+                continue
+            if aliases.get(alias_key, alias_key) == aliases.get(
+                    canonical_key, canonical_key):
+                continue
+            pair = (canonical_key, alias_key)
+            if pair in seen:
+                continue
+            seen.add(pair)
+            suggestions.append({
+                "canonical": canonical,
+                "alias": handle,
+                "evidence": f"{PROVIDER_LABELS.get(row['provider'], row['provider'])}"
+                            f" 首楼的作者主页链接指向 {service}/{handle}",
+            })
+            if len(suggestions) >= MAX_ALIAS_SUGGESTIONS:
+                return suggestions
+    return suggestions
+
+
 def _follow_alias_suggestions(rows, aliases: dict[str, str]) -> list[dict]:
     """Suggest conservative cross-platform aliases; never merge automatically."""
+    suggestions = _profile_link_suggestions(rows, aliases)
+    if len(suggestions) >= MAX_ALIAS_SUGGESTIONS:
+        return suggestions
     identities: dict[str, dict] = {}
     for row in rows:
         if row["entity_id"]:
@@ -391,7 +444,8 @@ def _follow_alias_suggestions(rows, aliases: dict[str, str]) -> list[dict]:
         if candidate_name and len(candidate_name) < len(identity["name"]):
             identity["name"] = candidate_name
 
-    suggestions = []
+    known = {(normalized_author_name(row["canonical"]),
+              normalized_author_name(row["alias"])) for row in suggestions}
     values = sorted(identities.values(), key=lambda item: item["key"])
     for index, left in enumerate(values):
         for right in values[index + 1:]:
@@ -401,12 +455,14 @@ def _follow_alias_suggestions(rows, aliases: dict[str, str]) -> list[dict]:
             shorter, longer = sorted((left, right), key=lambda item: len(item["key"]))
             if len(shorter["key"]) < 5 or shorter["key"] not in longer["key"]:
                 continue
+            if (shorter["key"], longer["key"]) in known:
+                continue
             suggestions.append({
                 "canonical": shorter["name"],
                 "alias": longer["name"],
                 "evidence": "规范化名称存在包含关系，仅供人工确认",
             })
-            if len(suggestions) >= 12:
+            if len(suggestions) >= MAX_ALIAS_SUGGESTIONS:
                 return suggestions
     return suggestions
 
@@ -422,19 +478,42 @@ def _avatar_url(provider: str, ref: str) -> str | None:
     return "/follow-avatar?" + urllib.parse.urlencode({"provider": provider, "ref": ref})
 
 
-def _official_avatar_url(provider: str, ref: str) -> str | None:
+def _official_fanbox_identity(metadata: dict) -> str:
+    """名片链接里那个能换到官方头像的 FANBOX 身份，没有就回空串。
+
+    FANBOX 的创作者 id 直接就是 `creator.get` 的参数，一个请求到头像；pixiv 的数字
+    id 还要先过一次官方页换算，所以排在后面。别的服务（Patreon、X、SubscribeStar）
+    没有不带凭据就能读的头像接口，**未取得**——那几条只当身份证据用。
+    """
+    links = metadata.get("official_links")
+    if not isinstance(links, list):
+        return ""
+    handles = {str(link.get("service") or ""): str(link.get("handle") or "")
+               for link in links if isinstance(link, dict)}
+    return handles.get("fanbox") or handles.get("pixiv") or ""
+
+
+def _official_avatar_url(row) -> str | None:
     """Local resolver for an avatar from the creator's official profile.
 
     FANBOX archive refs carry the Pixiv user id, which is enough for Peach's fixed-host
     resolver to locate the public FANBOX profile and its official ``user.iconUrl``.
-    Other services have no verified resolver yet, so they keep the archive fallback.
+    A forum source has no such ref, so it goes through the profile links parsed out of
+    the opening post instead.  Services without a verified resolver keep the archive
+    fallback, and sources with neither fall back to the author initial.
     """
-    if provider not in KemonoConnector.HOSTS:
+    provider = str(row["provider"] or "")
+    if provider in KemonoConnector.HOSTS:
+        service, _, user = str(row["ref"] or "").partition("/")
+        if service != "fanbox" or not user.isdigit():
+            return None
+        return "/follow-avatar?" + urllib.parse.urlencode(
+            {"service": service, "id": user})
+    identity = _official_fanbox_identity(_source_metadata(row))
+    if not identity:
         return None
-    service, _, user = str(ref or "").partition("/")
-    if service != "fanbox" or not user.isdigit():
-        return None
-    return "/follow-avatar?" + urllib.parse.urlencode({"service": service, "id": user})
+    return "/follow-avatar?" + urllib.parse.urlencode(
+        {"service": "fanbox", "id": identity})
 
 
 def _source_payload(row, aliases: dict[str, str] | None = None) -> dict:
@@ -445,8 +524,17 @@ def _source_payload(row, aliases: dict[str, str] | None = None) -> dict:
         "provider_label": PROVIDER_LABELS.get(row["provider"], row["provider"]),
         "ref": row["ref"],
         "label": row["label"],
+        # 标签是这条来源在站上的名字，作者名是从它推出来的人名。两者在论坛上差得
+        # 很远（`Strauzek Collection [2026-09-04] [Mr_Strauz]` vs `Mr_Strauz`），
+        # 而怎么推是站点知识，页面自己再推一遍迟早和这里漂移。
+        "author_name": _author_display_name(row),
+        # 这个人在别处的写法。页面拿它做输入提示：记得住 `strauzek` 的人不一定
+        # 记得住线程标题上的 `Mr_Strauz`，反过来也一样。
+        "profile_handles": [str(link.get("handle") or "")
+                            for link in _source_metadata(row).get("official_links") or ()
+                            if isinstance(link, dict) and link.get("handle")],
         "author_key": author_key(row, aliases),
-        "official_avatar_url": _official_avatar_url(row["provider"], row["ref"]),
+        "official_avatar_url": _official_avatar_url(row),
         "avatar_url": _avatar_url(row["provider"], row["ref"]),
         "url": row["url"],
         "semantics": row["semantics"],
@@ -849,6 +937,24 @@ def _check_writer(contract):
     return writer
 
 
+def _backfill_profile_links(row, credentials, writer) -> None:
+    """在这条来源的一次常规检查里顺带补上它的名片，只补一次。
+
+    名片是登记时解析的，比它早登记的来源身上没有，而用户不会为了一张头像把
+    关注重加一遍。判据是 metadata 里有没有 `official_links` 这个**键**：解析过
+    但什么都没找到会写下空清单，那是「问过了，他没留主页」，不该每次检查再问一遍。
+    """
+    provider = str(row["provider"] or "")
+    if provider != "f95zone" or "official_links" in _source_metadata(row):
+        return
+    links = _profile_links(provider, str(row["ref"] or ""),
+                           credentials.load(provider))
+    if links is None:
+        return
+    with writer() as store:
+        store.merge_source_metadata(row["id"], {"official_links": links})
+
+
 def _check_payload(result) -> dict:
     """把一次检查结果摊成界面用的载荷。
 
@@ -912,6 +1018,7 @@ def _run_follow_check(contract, body, job_id=None) -> dict:
                 contract.follow_job.update(job_id, total=len(rows), checked=len(results),
                     results=results.copy(), current={**current, **fields})
         progress(attempt=1, max_attempts=5, retry_in=0)
+        _backfill_profile_links(row, credentials, writer)
         result = _check_payload(run_check(
             row, credentials=credentials, writer=writer,
             connector_factory=build_connector, older=older, progress=progress))
@@ -960,6 +1067,28 @@ def _resolve_label(contract, parsed, credential) -> str:
     return f"{name} · {service}" if name else parsed.label
 
 
+def _profile_links(provider: str, ref: str, credential) -> list[dict] | None:
+    """论坛来源首楼上那张名片；**没能问到**时是 `None`，问到了没有才是空清单。
+
+    线程标题只给一个手柄，首楼才写着这个人在哪几个平台上：头像和别名都指着它。
+    但名片是锦上添花——缺 cookie、版块对游客关闭、页面改版都不该让登记本身失败，
+    所以这里把失败吞掉。两种空必须分开：空清单会被记进 metadata 当成「问过了，
+    他没留主页」，此后不再问；缺 cookie 记成空清单的话，用户后来配好 cookie 也
+    永远等不到那张头像了。
+    """
+    if provider != "f95zone":
+        return None
+    try:
+        connector = build_connector(provider, credential=credential)
+        # 读首楼是论坛连接器才有的能力，判据是这个方法在不在，不是站名清单。
+        reader = getattr(connector, "thread_profile", None)
+        if reader is None:
+            return None
+        return list(reader(ref)["links"])
+    except (FollowSourceError, CredentialError, OSError):
+        return None
+
+
 def w_follow_source(contract, body) -> dict:
     """粘一条来源链接就登记，并立刻检查一次。
 
@@ -996,7 +1125,11 @@ def w_follow_source(contract, body) -> dict:
         contract, parsed, credential)
     author_hint = str(body.get("author") or "").strip()
     author_hint = normalized_author_name(author_hint) if author_hint else ""
-    metadata = {"author_key": author_hint} if author_hint else None
+    metadata = {"author_key": author_hint} if author_hint else {}
+    links = _profile_links(parsed.provider, parsed.ref, credential)
+    if links is not None:
+        metadata["official_links"] = links
+    metadata = metadata or None
     with contract.database.write_transaction() as connection:
         source_id = _store(contract, connection).register(
             provider=parsed.provider, ref=parsed.ref, label=label, url=parsed.url,

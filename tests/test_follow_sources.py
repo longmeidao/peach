@@ -109,6 +109,22 @@ F95_SEARCH_RESULTS = b"""<html><body><div class="block"><div class="block-contai
 </div></div></li>
 </ol></div></div></body></html>"""
 
+# 2026-09-12 实测 `63802` 的首楼：发帖人是搬运工，作者本人的地址写在正文的链接区
+# 里，同一个人在 X 上两个账号并列。
+F95_OPENING_POST = b"""<html><head><title>Strauzek | F95zone</title></head><body>
+<h1 class="p-title-value"><span class="label">Collection</span><span class="label">Pinup</span>
+Strauzek Collection [2026-09-04] [Mr_Strauz]</h1>
+<article class="message" data-content="post-4085963" data-author="equalizzoR">
+  <div class="message-userContent"><div class="bbWrapper">
+    <a href="https://attachments.f95zone.to/2023/11/3109313_1.gif">banner</a>
+    <a href="https://www.patreon.com/strauzek">Patreon</a>
+    <a href="https://twitter.com/strauzek">Twitter</a>
+    <a href="https://twitter.com/Mr_Strauz">Twitter</a>
+    <a href="https://f95zone.to/members/strauzek.1881751/">F95</a>
+    <a href="https://f95zone.to/threads/strauzek-models-collection.234481/">Models</a>
+  </div></div>
+</article></body></html>"""
+
 F95_HTML = b"""<html><head><title>Collection - Video - Lazy | F95zone</title></head><body>
 <h1 class="p-title-value"><span class="label">Collection</span><span class="label">Video</span>
 Lazy Procrastinator Collection [2026-06-28] [LazyProcrastinator/LazyProcrast]</h1>
@@ -1137,6 +1153,71 @@ class F95ZoneConnectorTests(unittest.TestCase):
         rows = F95ZoneConnector(transport=_transport(body=body)).thread_index(
             "animations", "lazy procrastinator")
         self.assertEqual(rows[0]["thread_id"], 50685)
+
+    def _profile_connector(self, record=None):
+        return F95ZoneConnector(
+            transport=_transport(body=F95_OPENING_POST, record=record),
+            credential=Credential("f95zone", {"cookie": "xf_user=1"}))
+
+    def test_the_opening_post_gives_the_authors_own_pages(self):
+        """首楼是作者的名片，`/latest` 里没有它。"""
+        seen = []
+        profile = self._profile_connector(seen).thread_profile("63802")
+        self.assertEqual(seen[0].url, "https://f95zone.to/threads/63802/")
+        self.assertEqual(profile["title"],
+                         "Strauzek Collection [2026-09-04] [Mr_Strauz]")
+        self.assertEqual([(row["service"], row["handle"]) for row in profile["links"]],
+                         [("patreon", "strauzek"), ("twitter", "strauzek"),
+                          ("twitter", "Mr_Strauz"), ("f95zone", "strauzek")])
+
+    def test_two_handles_on_one_service_are_both_kept(self):
+        # 同一个人两个 X 账号正是「这两个名字是同一个人」的证据，不能去重掉一个。
+        links = self._profile_connector().thread_profile("63802")["links"]
+        self.assertEqual([row["handle"] for row in links if row["service"] == "twitter"],
+                         ["strauzek", "Mr_Strauz"])
+
+    def test_attachments_and_other_threads_are_not_identities(self):
+        links = self._profile_connector().thread_profile("63802")["links"]
+        self.assertNotIn("attachments", [row["service"] for row in links])
+        self.assertNotIn("threads", [row["handle"] for row in links])
+
+    def test_reading_the_opening_post_without_a_cookie_says_so(self):
+        # 游客态站点把站外链接全换成 `/login/`，空清单会被误读成「他没留主页」。
+        connector = F95ZoneConnector(transport=_transport(body=F95_OPENING_POST))
+        with self.assertRaises(CredentialError):
+            connector.thread_profile("63802")
+
+
+class ProfileLinkTests(unittest.TestCase):
+    """哪些链接算作者身份。主机写死，论坛正文里别人贴的地址不算。"""
+
+    def test_a_fanbox_subdomain_is_the_creator_id(self):
+        self.assertEqual(
+            follow_sources.profile_link_identity("https://lazyprocrast.fanbox.cc/"),
+            ("fanbox", "lazyprocrast"))
+
+    def test_a_pixiv_profile_is_the_numeric_user_id(self):
+        self.assertEqual(
+            follow_sources.profile_link_identity(
+                "https://www.pixiv.net/en/users/30917150"),
+            ("pixiv", "30917150"))
+
+    def test_a_function_page_is_not_a_handle(self):
+        self.assertIsNone(
+            follow_sources.profile_link_identity("https://www.patreon.com/login"))
+
+    def test_an_unlisted_host_is_not_an_identity(self):
+        # 正文里贴的图床、网盘和随便什么站都不说明作者是谁。
+        self.assertIsNone(
+            follow_sources.profile_link_identity("https://gofile.io/d/oOdYTK"))
+
+    def test_the_forum_member_page_counts_only_for_its_own_forum(self):
+        self.assertEqual(
+            follow_sources.profile_link_identity(
+                "https://f95zone.to/members/strauzek.1881751/",
+                forum_host="f95zone.to"), ("f95zone", "strauzek"))
+        self.assertIsNone(follow_sources.profile_link_identity(
+            "https://f95zone.to/members/strauzek.1881751/"))
 
 
 class Rule34XxxConnectorTests(unittest.TestCase):

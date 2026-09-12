@@ -264,6 +264,11 @@ p.fnote .followtask{color:var(--ink-2)}
 .fauthor .fsource.frow{padding-left:0px;display:grid;
   grid-template-columns:22px minmax(0,1fr) auto auto auto auto;gap:10px;flex-wrap:nowrap}
 .fauthor .fsource.frow>b{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 只出 favicon 的站名：文字照样写在 DOM 里，按 sr-only 的写法夹起来给读屏。图标取不到
+   时 image-fallback 摘掉 <img>，这条相邻兄弟选择器随之落空，站名就在原位显出来。 */
+.fprovider.iconly .ficon{margin-right:0}
+.fprovider.iconly .ficon+span{position:absolute;width:1px;height:1px;margin:-1px;padding:0;
+  overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 .fsource.disabled{opacity:.62}
 .fchannelcheck{display:grid;place-items:center;align-self:center}
 .fsourceactions{display:flex;gap:4px;white-space:nowrap}

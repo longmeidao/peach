@@ -6065,9 +6065,10 @@ function followAliasAvatar(group){
   return `<span class="favatar none" title="没有可用头像">${esc(initial)}</span>`;
 }
 
-/* 分组标题要用作者本人的名字，不是某一条来源的标签。`LazyProcrastinator · fanbox`
-   里「· fanbox」只说明他在哪个平台连载——四条来源合成一组之后还挂着其中一条的
-   平台后缀，等于说这一组只属于 fanbox，那正是这次要消掉的误读。
+/* 分组标题要用作者本人的名字，不是某一条来源的标签。哪一段标签是人名由服务端一处
+   判定（`author_name`）：`LazyProcrastinator · fanbox` 的「· fanbox」只说明他在哪个
+   平台连载，F95 的 `Strauzek Collection [2026-09-04] [Mr_Strauz]` 则整串都是线程标题，
+   作者在末尾的方括号里。这里只在同一个人的几种写法之间挑一个，不再自己解析标签。
    同名的几种写法里取大写最多的那个：`LazyProcrastinator` 比 `lazyprocrastinator`
    更像作者自己写的名字。 */
 function followAuthorName(group){
@@ -6075,6 +6076,7 @@ function followAuthorName(group){
   const clean=value=>String(value||'')
     .replace(/\s*[·|]\s*[A-Za-z0-9_-]+\s*$/,'')
     .replace(/\s+collections?\s*$/i,'').trim();
+  const authored=source=>String(source.author_name||'').trim()||clean(source.label);
   const entity=group.find(source=>source.entity_name);
   if(entity)return entity.entity_name;
   const aliasGroup=(followData.author_aliases||[]).find(
@@ -6084,14 +6086,32 @@ function followAuthorName(group){
   // `Lazy Procrastinator Collection` 会因为大写字母更多而抢成分组标题。
   const official=group.find(source=>source.official_avatar_url);
   if(official){
-    const officialName=clean(official.label);
+    const officialName=authored(official);
     if(officialName)return officialName;
   }
-  const names=group.map(source=>clean(source.label))
-    .filter(Boolean);
+  const names=group.map(authored).filter(Boolean);
   if(!names.length)return group[0].label||group[0].ref||'';
   const caps=text=>(text.match(/[A-Z]/g)||[]).length;
   return names.reduce((best,name)=>caps(name)>caps(best)?name:best,names[0]);
+}
+
+/* 添加框的输入提示：这台机器上已经见过的每一种写法——作者名、实体规范名、已确认的
+   别名，以及首楼名片上的手柄。同一个人常有两个写法（`strauzek` 与 `Mr_Strauz`），
+   记得住哪个是随机的，提示里两个都在就不必猜。纯本地匹配，敲字不联网；提示到的名字
+   仍然要点查找才会去各站问。 */
+function followKnownNamesDatalist(sources,aliasGroups){
+  const names=new Set();
+  const add=value=>{const text=String(value||'').trim();if(text)names.add(text)};
+  (sources||[]).forEach(source=>{
+    add(source.entity_name);add(source.author_name);
+    (source.profile_handles||[]).forEach(add);
+  });
+  (aliasGroups||[]).forEach(group=>{
+    add(group.canonical_name);(group.aliases||[]).forEach(alias=>add(alias.name))});
+  if(!names.size)return '';
+  return `<datalist id="followKnownNames">${[...names]
+    .sort((a,b)=>a.localeCompare(b,'zh-CN'))
+    .map(name=>`<option value="${esc(name)}"></option>`).join('')}</datalist>`;
 }
 
 const collapsedFollowAuthors=new Set();
@@ -6100,6 +6120,9 @@ function followAuthorBlock(group){
   const key=String(group[0].author_key||group[0].id);
   const collapsed=collapsedFollowAuthors.has(key);
   const bad=group.filter(s=>s.last_status==='error'||s.last_status==='unauthorized').length;
+  /* 站点在这一行只出图标：名字已经在每条来源自己那一行上写着，标题栏再写一遍
+     就是同一个词并排两次，还把作者名挤窄。站名交给 title 和读屏用的那一段。 */
+  const providers=[...new Set(group.map(source=>source.provider_label||source.provider))].join('、');
   const sourceRows=group.map(source=>followSourceRow(source,true)).join('');
   const sources=`<div class="fauthorsources" id="follow-author-${group[0].id}" aria-label="${esc(name)} 的关注来源">${sourceRows}</div>`;
   return `<details class="fauthor${bad?' bad':''}"${collapsed?'':' open'}>
@@ -6107,9 +6130,9 @@ function followAuthorBlock(group){
       <b>${esc(name)}</b>
       <button type="button" class="frowicon" data-follow-check="" data-follow-sources="${group.filter(s=>s.enabled).map(s=>s.id).join(',')}"
         ${group.some(s=>s.enabled)?'':'disabled'} title="检查此作者" aria-label="检查 ${esc(name)} 的全部来源">${icon('refresh-cw')}</button>
-      <span class="fmeta"${group.length>1?` title="${group.length} 个来源"`:''}>${group.length>1
-        ? group.map(source=>sourceIcon(source.provider)).join('')
-        : sourceIcon(group[0].provider)+esc(group[0].provider_label)}</span>
+      <span class="fmeta" title="${esc(providers)}">${
+        group.map(source=>sourceIcon(source.provider)).join('')
+        }<span class="sr-only">来源：${esc(providers)}</span></span>
       ${bad?`<span class="fmeta warn">${bad} 个失败</span>`:''}
       <span class="board-author-actions"><button type="button" class="fbtn small" data-follow-author-select aria-pressed="false" aria-label="全选 ${esc(name)} 的来源">全选</button><button type="button" class="frowicon board-author-toggle" data-follow-author-toggle="${esc(key)}" aria-controls="follow-author-${group[0].id}" aria-expanded="${!collapsed}" aria-label="${collapsed?'展开':'收起'} ${esc(name)} 的来源">${icon('chevron-down')}</button></span>
     </summary>
@@ -6131,7 +6154,12 @@ function followSourceCells(source,selectable=false){
       +` aria-label="${source.enabled?'暂停':'启用'} ${esc(source.label)} 的更新检查"`)}</label>`;
   const name=`<b><a class="fsourcelink externallink" href="${esc(source.url)}" target="_blank"
       rel="noreferrer noopener" title="打开原来源">${esc(source.label)}${icon('external-link','externalmark')}</a></b>`;
-  const provider=extra=>`<span class="fmeta fprovider" title="${esc(source.provider_label)}">${sourceIcon(source.provider)
+  /* 站名默认只出 favicon：作者卡里它紧挨着作者名和状态徽章，多这两三个字会把
+     那一行挤成三段文字。表格视图的「站点」是独立一列，列头就叫这个名字，那里
+     `withText` 才为真。两种形态的站名都写在 DOM 里，`.iconly` 只是把它按 sr-only
+     的写法夹起来：图标取不到时 <img> 被摘掉，那条规则跟着失效，露出来的仍是站名。 */
+  const provider=(extra='',withText=false)=>`<span class="fmeta fprovider${
+      withText?'':' iconly'}" title="${esc(source.provider_label)}">${sourceIcon(source.provider)
       }<span>${esc(source.provider_label)}</span>${extra}</span>`;
   const checked=`<span class="fmeta fchecked">${source.last_checked_at?localTimeHtml(source.last_checked_at):'未检查'}</span>`;
   const actions=`<span class="fsourceactions">
@@ -6182,7 +6210,7 @@ function followSourceTable(groups,selectable){
         <td class="ftcheck">${cell.check}</td>
         <td class="ftauthor"><span class="ftauthorcell">${followAuthorAvatar(group)}<span>${esc(name)}</span></span></td>
         <td class="ftname">${cell.name}${cell.error}</td>
-        <td class="ftprovider">${cell.provider('')}</td>
+        <td class="ftprovider">${cell.provider('',true)}</td>
         <td class="ftstatus">${cell.status}</td>
         <td class="ftchecked">${cell.checked}</td>
         <td class="ftactions">${cell.actions}</td></tr>`;
@@ -6335,7 +6363,9 @@ function renderFollowManage(credentials){
         <div class="fsechead"><h3>添加关注</h3></div>
         <form class="faddform" id="followAdd">
           ${searchInputHtml({name:'line',label:'来源链接、名字或 id',
-            placeholder:'粘贴来源链接，或输入作者名、id…',attrs:'required'})}
+            placeholder:'粘贴来源链接，或输入作者名、id…',
+            attrs:'required list="followKnownNames"'})}
+          ${followKnownNamesDatalist(sources,followData.author_aliases)}
           <div class="fsrcfilter" id="followSrcFilter"></div>
         </form>
         <p class="fnote" data-follow-add-state aria-live="polite"></p>
