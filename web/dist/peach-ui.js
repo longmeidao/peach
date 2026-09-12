@@ -2421,9 +2421,10 @@ function Un({ uninstall: e }) {
 			}
 		});
 	}
+	let o = r || e.message;
 	return /* @__PURE__ */ q("section", {
 		id: "uninstallPeach",
-		class: "configfieldset configdanger",
+		class: "configfieldset",
 		"data-geist-fieldset": !0,
 		"data-fieldset-type": "error",
 		children: [/* @__PURE__ */ q("div", {
@@ -2442,27 +2443,21 @@ function Un({ uninstall: e }) {
 					disabled: !e.full_available || !!r,
 					change: n
 				}),
-				/* @__PURE__ */ q(Hn, { data: e }),
-				e.message && /* @__PURE__ */ q("p", {
-					class: "confighelp",
-					children: e.message
-				}),
-				r && /* @__PURE__ */ q("p", {
-					class: "confighelp",
-					role: "status",
-					children: r
-				})
+				/* @__PURE__ */ q(Hn, { data: e })
 			]
 		}), /* @__PURE__ */ q("footer", {
 			class: "geist-fieldset-footer",
 			"data-geist-fieldset-footer": !0,
-			children: /* @__PURE__ */ q("button", {
+			children: [o && /* @__PURE__ */ q("p", {
+				role: r ? "status" : void 0,
+				children: o
+			}), /* @__PURE__ */ q("button", {
 				type: "button",
 				class: "geist-button danger",
 				disabled: !e.available || !!r,
 				onClick: () => void a(),
 				children: "卸载 Peach"
-			})
+			})]
 		})]
 	});
 }

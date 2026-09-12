@@ -79,7 +79,11 @@ export function UninstallSettings({ uninstall }: { uninstall: UninstallState }) 
       setAccepted(result.message);
     }});
   }
-  return <section id="uninstallPeach" class="configfieldset configdanger" data-geist-fieldset data-fieldset-type="error">
+  // 底栏那一行照 Vercel 的 Error Fieldset：左边一句说这颗按钮此刻意味着什么，右边才是按钮。
+  // 拦住卸载的理由（源码安装、更新还在跑）和按下去之后的回执是同一个位置上的同一件事——
+  // 都在答「这颗现在能不能按」，摆在正文末尾就得先读完整段说明才找得到答案。
+  const status = accepted || uninstall.message;
+  return <section id="uninstallPeach" class="configfieldset" data-geist-fieldset data-fieldset-type="error">
       <div class="geist-fieldset-content">
         <div class="configfieldset-heading">
         <div dangerouslySetInnerHTML={{__html:fieldsetTitle('uninstallTitle','卸载 Peach')}} />
@@ -87,9 +91,9 @@ export function UninstallSettings({ uninstall }: { uninstall: UninstallState }) 
         </div>
         <SettingCheck label="完全卸载：同时删除设置、本地数据库、观看记录、凭据和缓存" checked={removeData} disabled={!uninstall.full_available || !!accepted} change={setRemoveData} />
         <DataDirectories data={uninstall} />
-        {uninstall.message && <p class="confighelp">{uninstall.message}</p>}
-        {accepted && <p class="confighelp" role="status">{accepted}</p>}
       </div>
-      <footer class="geist-fieldset-footer" data-geist-fieldset-footer><button type="button" class="geist-button danger" disabled={!uninstall.available || !!accepted} onClick={()=>void remove()}>卸载 Peach</button></footer>
+      <footer class="geist-fieldset-footer" data-geist-fieldset-footer>
+        {status && <p role={accepted ? 'status' : undefined}>{status}</p>}
+        <button type="button" class="geist-button danger" disabled={!uninstall.available || !!accepted} onClick={()=>void remove()}>卸载 Peach</button></footer>
     </section>;
 }
