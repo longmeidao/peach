@@ -940,8 +940,9 @@ class StandaloneConfigurationTests(_Case):
             # 和站内是同一份规则，不是照着抄的第二份色值，站内改一次渐变这里跟着走。
             board_rules = _board_button_rules()
             self.assertIn('.primary:not(:disabled){background:var(--board-blue);', board_rules)
-            self.assertIn('.primary:not(:disabled):hover{background:var(--board-blue-hover)}',
-                          board_rules)
+            self.assertIn(
+                '.primary:not(:disabled):hover{background:var(--board-blue-hover);color:#fff}',
+                board_rules)
             self.assertIn('--board-blue:linear-gradient(', board_rules)
             self.assertIn(board_rules, missing.text)
             data = client.get("/refuse", headers={"Accept": "application/json"})
