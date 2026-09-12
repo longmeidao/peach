@@ -577,6 +577,11 @@ const SETTING_SELECTS=[
   ['seekSecondsSetting','快进 / 快退',[['5','5 秒'],['10','10 秒'],['30','30 秒']],
     ()=>appSettings.seekSeconds,
     value=>{appSettings.seekSeconds=+value||10;saveSettings()}],
+  /* 档位跟着这台机器走（/api/thumbnail-jobs），不存在本地：跑的是这台机器上的一条
+     长任务，从另一台设备打开设置要看到的是它正在按什么密度采，不是那台设备上次选的。
+     初值写 off，真值由 `loadVideoThumbnailSetting` 读回来填。 */
+  ['videoThumbnailSetting','视频缩略图采集',[['off','关闭'],['precise','精准'],['coarse','粗略']],
+    ()=>'off',value=>saveVideoThumbnailMode(value)],
   ['relatedLimitSetting','相关推荐',[['12','12 个'],['20','20 个'],['30','30 个']],
     ()=>appSettings.relatedLimit,
     value=>{appSettings.relatedLimit=+value;saveSettings()}],
@@ -623,6 +628,7 @@ function syncSettingsPanel(){
   renderJavImageSetting();
   renderSidebarOrderSetting();
   loadFollowScheduleSetting();
+  void loadVideoThumbnailSetting();
 }
 let settingsReturnFocus=null,settingsTransition=0;
 function openSettings(open=true){
@@ -697,6 +703,64 @@ async function saveFollowSchedule(minutes){
     state.textContent=followScheduleCopy(status);
   }catch(error){state.textContent=error.message||'保存失败'}
   finally{const status=followScheduleStatus;syncNumberSetting($('#followScheduleSetting'),status?(status.enabled?status.interval_minutes:0):null,status?!status.available:false)}
+}
+/* 视频缩略图采集。档位和进度都在服务端，这一整段只负责把它读回来画在设置行上；
+   同一个 `videoThumbnailRequest` 兼作过期判据，面板关掉或又点了一次就丢弃在途的那一轮。 */
+let videoThumbnailRequest=0;
+function videoThumbnailField(){return $('#videoThumbnailSetting .gselect')}
+function videoThumbnailCopy(status){
+  const counts=`${status.done||0} / ${status.total||0} 部 · 新生成 ${status.made||0} · 已有 ${status.skipped||0} · 未取得 ${status.failed||0}`;
+  if(status.status==='running')return `正在采集：${counts}`;
+  if(status.status==='failed')return `采集停在 ${counts}：${status.stopped||'原因未取得'}`;
+  if(status.status==='complete')return status.stopped?`已按停：${counts}`:`采集完成：${counts}`;
+  return status.mode==='off'
+    ?'关闭时不采集；已经生成的图留在盘上，清理走数据管理页。'
+    :'选定档位后从最近看过的片子开始采集。';
+}
+function applyVideoThumbnailStatus(status){
+  const field=videoThumbnailField(),state=$('#videoThumbnailState');
+  if(field){field.disabled=false;field.value=status.mode||'off'}
+  if(state)state.textContent=videoThumbnailCopy(status);
+}
+async function watchVideoThumbnailJob(request){
+  const ui=await import('/dist/peach-ui.js');
+  await ui.watchJob({
+    active:()=>request===videoThumbnailRequest&&!$('#settingsPanel').hidden,
+    read:signal=>api('/api/thumbnail-jobs',{signal}),
+    render:status=>applyVideoThumbnailStatus(status),
+    disconnected:()=>{const state=$('#videoThumbnailState');if(state)state.textContent='状态未取得，正在重试…'}});
+}
+async function loadVideoThumbnailSetting(){
+  const state=$('#videoThumbnailState');if(!state)return;
+  const request=++videoThumbnailRequest,field=videoThumbnailField();
+  if(field)field.disabled=true;
+  state.innerHTML=loadingDotsHtml('正在读取状态');
+  try{
+    const status=await api('/api/thumbnail-jobs');
+    if(request!==videoThumbnailRequest)return;
+    applyVideoThumbnailStatus(status);
+    if(status.status==='running')void watchVideoThumbnailJob(request);
+  }catch(error){
+    if(request!==videoThumbnailRequest)return;
+    if(field)field.disabled=false;
+    state.textContent=`状态未取得：${error.message||error}`;
+  }
+}
+async function saveVideoThumbnailMode(mode){
+  const state=$('#videoThumbnailState'),field=videoThumbnailField();
+  const request=++videoThumbnailRequest;
+  if(field)field.disabled=true;
+  if(state)state.innerHTML=`${spinnerHtml('保存中')}<span>正在保存…</span>`;
+  try{
+    const status=await api('/api/thumbnail-jobs',{method:'POST',body:JSON.stringify({mode})});
+    if(request!==videoThumbnailRequest)return;
+    applyVideoThumbnailStatus(status);
+    if(status.status==='running')void watchVideoThumbnailJob(request);
+  }catch(error){
+    if(request!==videoThumbnailRequest)return;
+    if(field)field.disabled=false;
+    if(state)state.textContent=error.message||'保存失败';
+  }
 }
 /* 来源图标：品牌使用已缓存的官方资产；通用操作图标统一使用本地 Lucide 子集。
    115 与 PikPak 都取 `MEDIA_SOURCE_ICONS` 里那份官方站标（取证
@@ -1930,9 +1994,31 @@ function mountPlayerSeekPreview(player,it,options={}){
   const hasThumbnail=options.thumbnail!==false;
   const preview=document.createElement('div');
   preview.className='vjs-peach-seek-preview';preview.dataset.playerSeekPreview='';preview.hidden=true;
-  preview.innerHTML=`${hasThumbnail?'<img alt="" hidden>':''}<span class="mono">0:00</span>`;
+  preview.innerHTML=`${hasThumbnail?'<i class="vjs-peach-seek-frame" hidden><img alt=""></i>':''}<span class="mono">0:00</span>`;
   progress.append(preview);
+  const frame=preview.querySelector('.vjs-peach-seek-frame');
   const image=preview.querySelector('img'),label=preview.querySelector('span');
+  /* 采集任务铺好了时间轴接触印相就按它走：每 10 或 30 秒一帧，指到哪一秒看到的就是
+     那一秒。取不到退回九宫格那九格——那是全片九等分，两小时的片子格与格之间隔着
+     十几分钟，指的位置和看到的画面对不上，但比没有画面强。 */
+  let sheets=null,shown='';
+  if(frame&&it.id)api(`/api/timeline?id=${encodeURIComponent(it.id)}`)
+    .then(meta=>{if(meta&&meta.frames>0&&meta.interval>0)sheets=meta}).catch(()=>{});
+  const showSheetFrame=seconds=>{
+    const columns=sheets.columns||10,per=columns*(sheets.rows||10);
+    const index=Math.min(sheets.frames-1,Math.max(0,Math.floor(seconds/sheets.interval)));
+    const sheet=Math.floor(index/per),slot=index%per;
+    // 末张通常不满 10 行，行数按它自己那几帧反算：按满行去铺，格子会落到图外面的空白上。
+    const rows=Math.ceil(Math.min(per,sheets.frames-sheet*per)/columns);
+    const source=`/timeline?id=${encodeURIComponent(it.id)}&s=${sheet}`;
+    if(source!==shown){shown=source;image.src=source}
+    frame.hidden=false;
+    // 取景框按片源比例，图按格子铺满：两边比例一致，`fill` 才既不裁也不拉。
+    if(it.width&&it.height)frame.style.aspectRatio=`${it.width} / ${it.height}`;
+    image.style.objectFit='fill';
+    image.style.width=`${columns*100}%`;image.style.height=`${rows*100}%`;
+    image.style.left=`${-(slot%columns)*100}%`;image.style.top=`${-Math.floor(slot/columns)*100}%`;
+  };
   let cell=-1;
   const move=event=>{
     if(event.pointerType==='touch')return;
@@ -1940,16 +2026,18 @@ function mountPlayerSeekPreview(player,it,options={}){
     if(!duration)return;
     const rect=progress.getBoundingClientRect();
     const ratio=Math.min(1,Math.max(0,(event.clientX-rect.left)/rect.width));
-    const width=image?Math.min(240,Math.max(160,rect.width*.28)):76;
+    const width=frame?Math.min(240,Math.max(160,rect.width*.28)):76;
     const x=Math.min(rect.width-width/2,Math.max(width/2,event.clientX-rect.left));
     preview.style.left=`${x}px`;preview.hidden=false;label.textContent=fmtClock(duration*ratio);
-    if(image){
-      const nextCell=Math.min(8,Math.floor(ratio*9));
-      if(nextCell!==cell){cell=nextCell;image.hidden=false;image.src=`/poster?id=${encodeURIComponent(it.id)}&c=${nextCell}`}
-    }
+    if(!frame)return;
+    if(sheets){showSheetFrame(duration*ratio);return}
+    const nextCell=Math.min(8,Math.floor(ratio*9));
+    if(nextCell===cell)return;
+    cell=nextCell;frame.hidden=false;image.removeAttribute('style');
+    image.src=`/poster?id=${encodeURIComponent(it.id)}&c=${nextCell}`;
   };
   const hide=()=>{preview.hidden=true};
-  if(image)image.onerror=()=>{image.hidden=true};
+  if(image)image.onerror=()=>{frame.hidden=true};
   progress.addEventListener('pointermove',move);progress.addEventListener('pointerleave',hide);
   player.on('dispose',()=>{progress.removeEventListener('pointermove',move);progress.removeEventListener('pointerleave',hide)});
 }
