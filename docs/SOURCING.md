@@ -345,6 +345,23 @@ av911.tv，三条候选已进复核队列。
   直接查标签兜底。f95zone 的 `latest_data.php` 只索引 Latest Updates 的五个分类，艺术家的 Collection 帖
   只有带登录 cookie 的站内搜索看得到（无 cookie 时 `/search/` 返回 403）；没有 cookie 就跳过它并保留
   Google 外链，不把「查不到」写成「站上没有」。
+- **F95zone 的站内搜索按整词匹配，半个名字要靠尾部通配。** 2026-09-12 实测 `strauz` 命中 0 条，而
+  `strauzek`、`Mr_Strauz` 与 `strauz*` 都命中同样 3 条，所以各种写法都空手之后补一轮 `词*`；四个字符
+  以上才加，三个字母加通配等于把半个站搜回来，命中一屏也认不出是哪个作者。
+- **线程标题的作者在末尾方括号里。** 站点的约定是 `作品名 [版本或日期] [作者]`：
+  `Strauzek Collection [2026-09-04] [Mr_Strauz]` 的作者是 `Mr_Strauz`，整串当作者名会让关注列表上
+  顶着一行线程标题。从右往左找第一个不像版本号、日期和 `Completed`／`Unity` 这类站点标签的方括号段；
+  作者位里并列两个手柄（`[LazyProcrastinator/LazyProcrast]`）时第一个当显示名，其余是别名候选。
+  没有可用方括号时才退回主体，剥掉 `[Collection Request]` 这类前缀标签和 `Models Collection` 这类
+  容器措辞（`follow_store.f95_author_name`）。
+- **作者的头像与别处身份只在首楼，而且要登录才看得见。** 首楼的发帖人是搬运工不是作者（实测 `63802`
+  是 `equalizzoR`、`50685` 是 `thesuperfatcat`），XenForo 的发帖人头像因此不能当作者头像。正文的链接区
+  才是名片：带 cookie 时 `63802` 给出 `patreon/strauzek`、`twitter/strauzek`、`twitter/Mr_Strauz` 和
+  F95 会员页，游客态这三条站外链接全被换成 `/login/`，有的版块对游客整个关闭（`189698` 回登录页）。
+  名片里有 FANBOX 创作者 id 或 pixiv 数字 id 才拿得到头像（实测 `50685`、`87212`、`295303` 三条有），
+  只有 Patreon 和 X 的**未取得**——那两家没有不带凭据就能读的头像接口。认哪些主机算身份写死在
+  `follow_sources.profile_link_identity`：论坛正文是谁都能贴链接的地方，放开主机等于把别人贴的地址
+  当成作者。
 - **jae.tokyo 的女优名录是第三个来源**（用户 2026-09-04 指定，同一站的厂牌名录见下一节）。三届的资料页
   各不相同：2014 是 `jae2014/actress/NNN.html`，社媒和博客混在正文的 `<a>` 里；2015 是
   `jae2015/actress.html` 的 `offActress` 弹层，`actressLinkBtn` 一个按钮一条链接；2017 是

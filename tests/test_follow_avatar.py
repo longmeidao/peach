@@ -60,10 +60,29 @@ class OfficialAvatarTests(unittest.TestCase):
                 "fanbox", "30917150", transport=_Transport(
                     self._responses(icon="https://example.test/avatar.jpg")))
 
-    def test_only_verified_fanbox_numeric_ids_are_accepted(self):
-        for service, user in (("patreon", "30917150"), ("fanbox", "../secret")):
+    def test_only_verified_fanbox_identities_are_accepted(self):
+        for service, user in (("patreon", "30917150"), ("fanbox", "../secret"),
+                              ("fanbox", "")):
             with self.assertRaises(FollowSourceError):
                 resolve_official_avatar(service, user, transport=_Transport([]))
+
+    def test_a_creator_id_skips_the_lookup_page(self):
+        """论坛名片上只有 `jul3dnsfw.fanbox.cc` 这一个身份，没有 pixiv 的数字 id。
+
+        `creator.get` 本来就收创作者 id，那一步换算可以省掉。
+        """
+        transport = _Transport(self._responses()[1:])
+        avatar = resolve_official_avatar("fanbox", "lazyprocrast",
+                                         transport=transport)
+        self.assertEqual(avatar, "https://pixiv.pximg.net/c/160x160/icon.jpeg")
+        self.assertEqual(len(transport.requests), 1)
+        self.assertIn("creatorId=lazyprocrast", transport.requests[0].url)
+
+    def test_a_creator_id_still_needs_a_real_user_behind_it(self):
+        # 没有可核对的数字 id 时，身份以官方资料回的为准；回不出就是没有头像。
+        with self.assertRaises(FollowSourceError):
+            resolve_official_avatar("fanbox", "lazyprocrast", transport=_Transport(
+                self._responses(user_id="")[1:]))
 
 
 if __name__ == "__main__":

@@ -1663,6 +1663,83 @@ def _xenforo_search_threads(connector: "_BaseConnector", host: str, query: str, 
     return tuple(rows)
 
 
+#: 帖子正文里那些确实说明「作者本人在哪」的站点，以及从地址里取手柄的方式。
+#: 主机写死在这里：论坛正文是任何人都能编辑的地方，放开主机等于把别人随手贴的
+#: 地址当成作者身份，头像和别名都会跟着错。
+_PROFILE_LINK_HOSTS = {
+    "twitter.com": "twitter", "x.com": "twitter",
+    "patreon.com": "patreon",
+    "subscribestar.adult": "subscribestar", "subscribestar.com": "subscribestar",
+    "deviantart.com": "deviantart",
+    "instagram.com": "instagram",
+    "gumroad.com": "gumroad",
+}
+#: 这些站点的第一段路径是功能页而不是名字，取到了也不是手柄。
+_PROFILE_PATH_STOPWORDS = frozenset({
+    "about", "c", "checkout", "cw", "discover", "explore", "help", "home", "join",
+    "login", "posts", "search", "settings", "signup", "user", "users", "watch",
+})
+_PROFILE_HANDLE_RE = re.compile(r"^[A-Za-z0-9._-]{2,64}$")
+_PIXIV_USER_RE = re.compile(r"(?:^|/)users/(\d{1,20})(?:$|/)")
+_XENFORO_MEMBER_RE = re.compile(r"^members/([^/.]+)\.(\d{1,20})/?$")
+
+
+def profile_link_identity(url: str, *, forum_host: str = "") -> tuple[str, str] | None:
+    """一条链接指向哪个服务上的哪个手柄，认不出就返回 None。
+
+    `forum_host` 传进来时，论坛自己的 `/members/<name>.<id>/` 也算一个身份：
+    作者本人在站上有账号时，正文里贴的就是这个地址。
+    """
+    parsed = urllib.parse.urlsplit(str(url or "").strip())
+    if parsed.scheme not in ("http", "https"):
+        return None
+    host = (parsed.hostname or "").lower().removeprefix("www.")
+    path = (parsed.path or "").strip("/")
+    first = path.split("/")[0] if path else ""
+    if host.endswith(".fanbox.cc"):
+        handle = host.removesuffix(".fanbox.cc")
+        return ("fanbox", handle) if _PROFILE_HANDLE_RE.match(handle) else None
+    if host == "fanbox.cc" and first.startswith("@"):
+        handle = first[1:]
+        return ("fanbox", handle) if _PROFILE_HANDLE_RE.match(handle) else None
+    if host == "pixiv.net":
+        matched = _PIXIV_USER_RE.search(path)
+        return ("pixiv", matched.group(1)) if matched else None
+    if forum_host and host == forum_host.lower().removeprefix("www."):
+        matched = _XENFORO_MEMBER_RE.match(path)
+        return (forum_host.split(".")[0], matched.group(1)) if matched else None
+    service = _PROFILE_LINK_HOSTS.get(host)
+    if service is None or first.casefold() in _PROFILE_PATH_STOPWORDS:
+        return None
+    return (service, first) if _PROFILE_HANDLE_RE.match(first) else None
+
+
+#: 一段正文里最多认多少个身份。作者的链接区就那么几行，比这还多的多半是
+#: 别人在回复里贴的一串，不是这个人的名片。
+MAX_PROFILE_LINKS = 8
+
+
+def official_profile_links(body, *, forum_host: str = "") -> tuple[dict, ...]:
+    """一段帖子正文里指向作者官方主页的链接，逐个给出服务与手柄。
+
+    同一个服务下的**不同手柄**都要留：2026-09-12 实测 `63802` 的首楼同时挂着
+    `twitter.com/strauzek` 和 `twitter.com/Mr_Strauz`，这正是「同一个人两个写法」
+    的可复现证据，也是别名候选的依据。重复的同一个地址只留一条——作者常把同一个
+    Patreon 贴三遍（文字、按钮图、签名各一次）。
+    """
+    found: dict[tuple[str, str], dict] = {}
+    for node in (body.select("a[href]") if body is not None else ()):
+        identity = profile_link_identity(node.get("href") or "", forum_host=forum_host)
+        if identity is None:
+            continue
+        service, handle = identity
+        found.setdefault(identity, {"service": service, "handle": handle,
+                                    "url": str(node.get("href"))})
+        if len(found) >= MAX_PROFILE_LINKS:
+            break
+    return tuple(found.values())
+
+
 class F95ZoneConnector(_BaseConnector):
     """f95zone.to 的线程追更。
 
@@ -1895,6 +1972,35 @@ class F95ZoneConnector(_BaseConnector):
                 "peach-data/secrets/follow/f95zone.json")
         return _xenforo_search_threads(self, "f95zone.to", query,
                                        cookie=cookie, title_only=title_only)
+
+    def thread_profile(self, thread: str) -> dict:
+        """线程首楼里的标题与作者自己留下的官方主页链接。
+
+        **需要登录。** 2026-09-12 实测游客态打得开首楼，但站外链接全被站点换成了
+        `/login/`：`63802` 无 cookie 只剩三个登录跳转，带 cookie 才看得到
+        `patreon.com/strauzek`、`twitter.com/strauzek` 与 `twitter.com/Mr_Strauz`。
+        有的版块对游客整个关闭（`189698` 游客态回登录页）。所以缺 cookie 时直接说
+        缺凭据，不要拿一个空清单冒充「这个作者没留主页」。
+
+        读的是线程根页的第一楼，不是 `fetch` 那个 `/latest`——名片在首楼，
+        最近回复里没有。
+        """
+        thread = (thread or "").strip()
+        if not self._THREAD_RE.match(thread):
+            raise FollowSourceError(f"f95zone 的 ref 必须是线程 id，收到：{thread!r}")
+        cookie = self.credential.values.get("cookie") if self.credential else None
+        if not cookie:
+            raise CredentialError(
+                "读 f95zone 首楼的作者主页链接需要登录 cookie；请把它写进 "
+                "peach-data/secrets/follow/f95zone.json")
+        response = self._get(f"https://f95zone.to/threads/{thread}/",
+                             headers={"Accept": "text/html", "Cookie": cookie})
+        self._check_status(response)
+        soup = BeautifulSoup(response.body, "html.parser")
+        opening = soup.select_one("article.message")
+        body = opening.select_one(".message-userContent") if opening else None
+        return {"title": _xenforo_thread_title(soup) or "",
+                "links": official_profile_links(body, forum_host="f95zone.to")}
 
 
 class FanboxConnector(_BaseConnector):

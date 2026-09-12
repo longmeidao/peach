@@ -271,6 +271,28 @@ def search_variants(term: str) -> tuple[str, ...]:
     return tuple(variants)
 
 
+#: 加尾部通配符的最短词长。三个字母加通配等于把半个站搜回来，
+#: 命中一屏反而帮不了人认出是哪个作者。
+MIN_WILDCARD_TERM_LENGTH = 4
+
+
+def forum_queries(term: str) -> tuple[str, ...]:
+    """XenForo 站内搜索按顺序要试的几个查询，通配那一轮排在最后。
+
+    站内搜索按**整词**匹配：2026-09-12 实测 `strauz` 命中 0 条，而 `strauzek`、
+    `Mr_Strauz` 与 `strauz*` 都命中同样 3 条（含
+    `Strauzek Collection [2026-09-04] [Mr_Strauz]`）。人手边常常只有名字的开头，
+    所以各种写法都空手之后再补一轮尾部通配；它排在最后，精确写法有命中就用不上。
+    """
+    queries = list(search_variants(term))
+    text = term.strip()
+    if len(text) >= MIN_WILDCARD_TERM_LENGTH and "*" not in text:
+        wildcard = f"{text}*"
+        if wildcard not in queries:
+            queries.append(wildcard)
+    return tuple(queries)
+
+
 def _f95_external_search(term: str) -> ExternalSearch:
     """Google 由浏览器打开；Peach 不抓结果页，也不绕验证码。"""
     query = f"{term} f95zone"
@@ -292,7 +314,8 @@ def _forum_candidates(provider: str, host: str, term: str, connector) -> list[Ca
     """
     picked: list[Candidate] = []
     seen: set[str] = set()
-    for query in search_variants(term):
+    for query in forum_queries(term):
+        how = "按标题开头命中" if query.endswith("*") else "按标题命中"
         for row in connector.search_threads(query):
             thread = str(row.get("thread_id") or "")
             if not thread or thread in seen:
@@ -302,7 +325,7 @@ def _forum_candidates(provider: str, host: str, term: str, connector) -> list[Ca
             picked.append(Candidate(
                 provider, thread, f"https://{host}/threads/{thread}/",
                 str(row.get("title") or f"线程 {thread}"), "release",
-                f"站内搜索按标题命中「{query}」" + (f"，版块标签 {labels}" if labels else "")))
+                f"站内搜索{how}「{query}」" + (f"，版块标签 {labels}" if labels else "")))
             if len(picked) >= MAX_CANDIDATES_PER_SOURCE:
                 return picked
         if picked:

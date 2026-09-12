@@ -39,6 +39,67 @@ _LABEL_SERVICE_RE = re.compile(r"\s*[·|]\s*[A-Za-z0-9_\-]+\s*$")
 _AUTHOR_NOISE_RE = re.compile(r"[^0-9a-z一-鿿]+")
 _F95_TITLE_SUFFIX_RE = re.compile(r"\s+collections?\s*$", re.IGNORECASE)
 
+#: F95 线程标题里的每一个方括号段。站点的标题约定是
+#: `作品名 [版本或日期] [作者]`，末尾那一个是作者位。
+_F95_BRACKET_RE = re.compile(r"\[([^\[\]]*)\]")
+#: 方括号里长得像版本号或日期的那些：`v1.2`、`0.9.5b`、`2026-09-04`、`Ch.5`。
+_F95_VERSION_RE = re.compile(r"^(?:v|ch|ep|part|episode)?\.?\s*\d[\w.\-]*$", re.IGNORECASE)
+#: 方括号里的完成状态、引擎、语言和体裁标记。这些占着作者位时那一段不是人名。
+#: 词表只收 F95 的固定标签，不收泛词——收多了会把 `[3D Artist]` 这类真名误判掉。
+_F95_LABEL_WORDS = frozenset({
+    "abandoned", "collection", "collection request", "completed", "complete",
+    "eng", "english", "final", "flash", "html", "java", "onhold", "on hold",
+    "ongoing", "others", "qsp", "rags", "renpy", "ren'py", "request", "rpgm",
+    "unity", "unreal engine", "uncen", "uncensored", "censored", "vn", "wt",
+})
+#: 作者位里并列几个手柄时的分隔符：`[LazyProcrastinator/LazyProcrast]`。
+_F95_HANDLE_SPLIT_RE = re.compile(r"\s*[/|]\s*")
+#: 主体末尾那截说明容器而不是作者的措辞：`Memz3D Models Collection` 的作者是
+#: `Memz3D`，`Models Collection` 只说明这个线程装的是什么。
+_F95_CONTAINER_SUFFIX_RE = re.compile(
+    r"\s*[-–—]?\s*(?:complete\s+)?"
+    r"(?:models?|arts?|assets?|packs?|mega|renders?|animations?)?"
+    r"\s*collections?\s*$", re.IGNORECASE)
+
+
+def f95_author_handles(title: str) -> tuple[str, ...]:
+    """F95 线程标题的作者位上列出的全部手柄，按标题里的顺序。
+
+    站点的标题约定把作者放在末尾的方括号里：真实数据
+    `Strauzek Collection [2026-09-04] [Mr_Strauz]` 的作者是 `Mr_Strauz`，中间那个
+    方括号是更新日期。所以从右往左找第一个不像版本号、日期和站点标签的方括号段。
+
+    一个人常在那里写上两个手柄——`[LazyProcrastinator/LazyProcrast]`——两个都要，
+    第一个当显示名，其余是同一个人在别处的写法，够格做别名候选。
+    """
+    text = str(title or "").strip()
+    for segment in reversed(_F95_BRACKET_RE.findall(text)):
+        candidate = segment.strip()
+        if not candidate or _F95_VERSION_RE.match(candidate):
+            continue
+        if candidate.casefold() in _F95_LABEL_WORDS:
+            continue
+        handles = tuple(part for part in _F95_HANDLE_SPLIT_RE.split(candidate) if part)
+        return handles or (candidate,)
+    return ()
+
+
+def f95_author_name(title: str) -> str:
+    """从一个 F95 线程标题里取作者名，取不到时回空串。
+
+    作者位在就用它的第一个手柄；没有可用的方括号时才退回主体：剥掉全部方括号再
+    剥掉容器措辞，`[Collection Request] Suzutaru 3D - Complete Collection` 得到
+    `Suzutaru 3D`。两条路都取不到东西时回空串，由调用方决定拿原标题顶上——
+    宁可显示整个标题，也不要把一个猜出来的名字当成作者。
+    """
+    handles = f95_author_handles(title)
+    if handles:
+        return handles[0]
+    text = str(title or "").strip()
+    stem = re.sub(r"\s+", " ", _F95_BRACKET_RE.sub(" ", text)).strip(" -–—·|")
+    return _F95_CONTAINER_SUFFIX_RE.sub("", stem).strip(" -–—·|")
+
+
 #: 作者显示名与头像可信的官方渠道；归档站只作回退。
 _OFFICIAL_IDENTITY_PROVIDERS = follow_providers.official_identity_providers()
 
@@ -101,13 +162,21 @@ def normalized_author_name(value: str, *, provider: str = "") -> str:
         # F95 的线程标题说的是一个容器而不是另一个作者：真实数据是
         # `Lazy Procrastinator Collection`，而每一条作者来源都是
         # `LazyProcrastinator`，留着这个通用后缀会凭空多出一个分组。
-        stripped = _F95_TITLE_SUFFIX_RE.sub("", stripped)
+        stripped = f95_author_name(stripped) or stripped
     return _AUTHOR_NOISE_RE.sub("", stripped.casefold())
 
 
-def author_display_text(value: str) -> str:
-    """去掉不属于作者名的容器与服务名措辞，保留原始拼写。"""
+def author_display_text(value: str, *, provider: str = "") -> str:
+    """去掉不属于作者名的容器与服务名措辞，保留原始拼写。
+
+    F95 的线程标题另有自己的约定（作者在末尾方括号里），所以那一家单独走
+    `f95_author_name`；别的来源的标签就是作者写法本身，只剥掉容器措辞。
+    """
     stripped = _LABEL_SERVICE_RE.sub("", str(value or "").strip())
+    if provider == "f95zone":
+        picked = f95_author_name(stripped)
+        if picked:
+            return picked
     return _F95_TITLE_SUFFIX_RE.sub("", stripped).strip()
 
 
@@ -214,6 +283,22 @@ class FollowStore:
             "SELECT id FROM follow_source WHERE provider=? AND ref=?", (provider, ref)
         ).fetchone()
         return int(row[0])
+
+    def merge_source_metadata(self, source_id: int, patch: dict,
+                              moment: datetime | None = None) -> None:
+        """把几个键并进一条来源的 metadata，其余键原样留着。
+
+        `register` 的 metadata 是整块替换，用它补一个后来才会解析的字段会把登记时
+        写下的 `author_key` 一起抹掉。这里走 `json_patch`，所以补齐旧来源和重跑
+        都是安全的。
+        """
+        if not patch:
+            return
+        self._connect().execute(
+            "UPDATE follow_source SET metadata_json=json_patch(metadata_json,?),"
+            " updated_at=? WHERE id=?",
+            (json.dumps(patch, ensure_ascii=False), _now_text(moment), source_id),
+        )
 
     def set_enabled(self, source_id: int, enabled: bool,
                     moment: datetime | None = None) -> None:

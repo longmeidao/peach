@@ -1710,7 +1710,7 @@ class FollowWebSourceTests(unittest.TestCase):
         # 输入框本体是共用的 Search Input（见 web/js/ui-components.js），
         # 关注页这里只交名字、无障碍名称和 required。
         self.assertIn("searchInputHtml({name:'line',label:'来源链接、名字或 id',", form)
-        self.assertIn("attrs:'required'", form)
+        self.assertIn("attrs:'required list=\"followKnownNames\"'", form)
         self.assertNotIn("textarea", form)
         self.assertNotIn('type="submit"', form)
         # 忙态没有按钮可以变灰，就落在表单自己身上：前缀图标原位换 Spinner。
@@ -1835,18 +1835,19 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("followAliasManager(followData.author_aliases,followData.alias_suggestions)")
         self.assertPageContains("'/api/follow/author-alias'")
 
-    def test_a_multi_source_author_head_shows_only_favicons(self):
-        """图标已经说清是哪几个来源，再补一句「N 个来源」就要和它们抢同一行。
+    def test_the_author_head_shows_its_sites_as_favicons(self):
+        """作者卡这一行只出图标：站名在下面每条来源自己那一行上都写着。
 
-        窄卡片里那句话先把图标挤到贴脸，再把作者名压没。数量本来就能数出来，
-        真要确认就读 title。
+        写进标题栏就是同一个词并排两次，窄卡片里它先把图标挤到贴脸，再把作者名压没。
+        站名落在 title 和读屏读的那一段里，真要确认的人读得到。
         """
         page = self.page
         block = page[page.index('function followAuthorBlock('):]
         block = block[:block.index("${sources}")]
-        self.assertIn("? group.map(source=>sourceIcon(source.provider)).join('')", block)
+        self.assertIn("group.map(source=>sourceIcon(source.provider)).join('')", block)
         self.assertNotIn("个来源`", block)
-        self.assertIn('title="${group.length} 个来源"', block)
+        self.assertIn('title="${esc(providers)}"', block)
+        self.assertIn('<span class="sr-only">来源：${esc(providers)}</span>', block)
         rule = page[page.index(".fauthorhead .fmeta{"):]
         self.assertIn("flex:0 1 auto;min-width:0", rule[:rule.index("}")])
 
@@ -2257,15 +2258,15 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("return `<tr class=\"${cell.className}\">")
         self.assertPageContains('<td class="ftcheck">${cell.check}</td>')
         self.assertPageContains('<td class="ftname">${cell.name}${cell.error}</td>')
-        self.assertPageContains('<td class="ftprovider">${cell.provider(\'\')}</td>')
+        self.assertPageContains('<td class="ftprovider">${cell.provider(\'\',true)}</td>')
         self.assertPageContains('<td class="ftstatus">${cell.status}</td>')
         self.assertPageContains('<td class="ftactions">${cell.actions}</td></tr>')
         self.assertPageContains("selectable.forEach(field=>field.closest('.fsource').classList.toggle('selected',field.checked))")
         # 时间格两边同一个写法，<i> 只是包一层，不是排版意图。
         self.assertPageContains('<i class="fyear">${esc(text.slice(0,5))}</i>${esc(text.slice(5))}')
         self.assertPageContains(".fsource .fchecked .fyear{font-style:normal}")
-        self.assertPageContains(
-            '<span class="fmeta fprovider" title="${esc(source.provider_label)}">')
+        self.assertPageContains('<span class="fmeta fprovider${')
+        self.assertPageContains('title="${esc(source.provider_label)}">')
         self.assertPageContains("function sourceIcon(provider){return SOURCE_ICON_PROVIDERS.has(provider)")
 
     def test_the_table_view_follows_the_boardui_data_table(self):
@@ -2759,6 +2760,56 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertEqual(follow_store.author_display_text("Billyhhyb · patreon"),
                          "Billyhhyb")
 
+    def test_the_thread_title_is_not_the_author_name(self):
+        """F95 的标签是整个线程标题，作者在它末尾的方括号里。
+
+        用户看到的是关注列表上一整串 `Strauzek Collection [2026-09-04] [Mr_Strauz]`
+        顶着作者那一行。
+        """
+        row = {"entity_id": None, "entity_name": None, "provider": "f95zone",
+               "ref": "63802", "label": "Strauzek Collection [2026-09-04] [Mr_Strauz]"}
+        self.assertEqual(web_follow._author_display_name(row), "Mr_Strauz")
+        # 页面不再自己解析标签，那份口径只在服务端一处。
+        self.assertPageContains("source.author_name")
+
+    def test_the_card_in_the_opening_post_suggests_the_other_spelling(self):
+        """`strauzek` 与 `Mr_Strauz` 是同一张名片上并列的两个写法。
+
+        证据比字符串包含硬，但仍然只是提议：合不合由人点。
+        """
+        rows = [{
+            "id": 1, "entity_id": None, "entity_name": None, "provider": "f95zone",
+            "ref": "63802", "label": "Strauzek Collection [2026-09-04] [Mr_Strauz]",
+            "metadata_json": json.dumps({"official_links": [
+                {"service": "twitter", "handle": "strauzek"},
+                {"service": "f95zone", "handle": "strauzek"},
+                {"service": "pixiv", "handle": "1881751"}]}),
+        }]
+        suggestions = web_follow._profile_link_suggestions(rows, {})
+        self.assertEqual([(row["canonical"], row["alias"]) for row in suggestions],
+                         [("Mr_Strauz", "strauzek")])
+        # 论坛账号名常是搬运工自己的，pixiv 的身份是一串数字：都不当别名提。
+        self.assertEqual(
+            web_follow._profile_link_suggestions(rows, {"strauzek": "mrstrauz"}), [])
+
+    def test_the_add_box_suggests_names_this_machine_already_knows(self):
+        # 记得住 `strauzek` 的人不一定记得住 `Mr_Strauz`，反过来也一样。
+        self.assertPageContains('list="followKnownNames"')
+        self.assertPageContains("function followKnownNamesDatalist(")
+        self.assertPageContains("source.profile_handles")
+
+    def test_the_source_row_shows_the_site_as_an_icon_only(self):
+        """作者卡里站名紧挨着作者名和状态徽章，写出来就是同一个词并排两次。
+
+        表格视图的「站点」是独立一列，列头就叫这个名字，那里出文字。站名两种形态
+        都写在 DOM 里：`.iconly` 只把它夹起来，图标取不到时这条规则落空，站名显出来。
+        """
+        self.assertPageContains("cell.provider('',true)")
+        self.assertPageContains("withText?'':' iconly'}")
+        self.assertPageContains("<span>${esc(source.provider_label)}</span>")
+        rule = self.page[self.page.index(".fprovider.iconly .ficon+span{"):]
+        self.assertIn("clip:rect(0,0,0,0)", rule[:rule.index("}")])
+
     def test_avatars_are_local_urls_and_only_for_providers_that_serve_one(self):
         """头像是元数据，经 Peach 落盘再给页面：两个字段都是本机地址，浏览器不碰对方站点。
 
@@ -2769,10 +2820,35 @@ class FollowWebSourceTests(unittest.TestCase):
                          "/follow-avatar?provider=kemono&ref=fanbox%2F30917150")
         self.assertEqual(web_follow._avatar_url("pawchive", "fanbox/30917150"),
                          "/follow-avatar?provider=pawchive&ref=fanbox%2F30917150")
+        def source_row(provider, ref, metadata="{}"):
+            return {"provider": provider, "ref": ref, "metadata_json": metadata}
+
         self.assertEqual(
-            web_follow._official_avatar_url("kemono", "fanbox/30917150"),
+            web_follow._official_avatar_url(
+                source_row("kemono", "fanbox/30917150")),
             "/follow-avatar?service=fanbox&id=30917150",
         )
+        # 论坛来源没有这种 ref，身份只能来自首楼名片：FANBOX 的创作者 id 一步到位，
+        # pixiv 的数字 id 要多绕一次官方页，所以排在后面。
+        self.assertEqual(
+            web_follow._official_avatar_url(source_row(
+                "f95zone", "87212",
+                '{"official_links":[{"service":"patreon","handle":"jul3dnsfw"},'
+                '{"service":"fanbox","handle":"jul3dnsfw"}]}')),
+            "/follow-avatar?service=fanbox&id=jul3dnsfw",
+        )
+        self.assertEqual(
+            web_follow._official_avatar_url(source_row(
+                "f95zone", "50685",
+                '{"official_links":[{"service":"pixiv","handle":"30917150"}]}')),
+            "/follow-avatar?service=fanbox&id=30917150",
+        )
+        # 名片上只有 X 和 Patreon 时没有不带凭据就能读的头像接口，**未取得**。
+        self.assertIsNone(web_follow._official_avatar_url(source_row(
+            "f95zone", "189698",
+            '{"official_links":[{"service":"twitter","handle":"Memz3D"}]}')))
+        self.assertIsNone(web_follow._official_avatar_url(
+            source_row("f95zone", "63802")))
         for provider, ref in (("rule34video", "1290582"),
                               ("rule34xxx", "lazyprocrastinator"),
                               ("f95zone", "50685"),

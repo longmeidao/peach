@@ -3,12 +3,14 @@ import json
 import tempfile
 import time
 import unittest
+import urllib.parse
 from pathlib import Path
 
 from peach.follow import FollowSourceError
 from peach.follow_discovery import (
     CREATOR_INDEX_TTL_SECONDS, DEFAULT_PROVIDERS, CreatorIndex, discover,
-    discovery_plan, identity_key, search_variants, spelling_variants,
+    discovery_plan, forum_queries, identity_key, search_variants,
+    spelling_variants,
 )
 from peach.follow_secrets import CredentialError
 from peach.http import HttpResponse
@@ -29,6 +31,7 @@ F95_SEARCH_FORM = b"""<html><body><input type="hidden" name="_xfToken" value="1,
 F95_SEARCH_RESULTS = b"""<html><body><h3 class="contentRow-title">
 <a href="/threads/ria-collection-2026-08-03-ria_neearts.146348/"><span class="label">Collection</span>Ria Collection [2026-08-03] [<em class="textHighlight">Ria_neearts</em>]</a>
 </h3></body></html>"""
+F95_SEARCH_NOTHING = b"""<html><body><div class="blockMessage">No results found.</div></body></html>"""
 SIMPCITY_SEARCH_FORM = b"""<html><body><input type="hidden" name="_xfToken" value="1,s" /></body></html>"""
 # 2026-09-08 实测 `solazola`：资源线程和讨论帖各一条，标题前的版块标签是分辨两者的依据。
 SIMPCITY_SEARCH_RESULTS = b"""<html><body>
@@ -97,6 +100,17 @@ class SearchVariantTests(unittest.TestCase):
         # 手柄写作 `Ria_neearts`，rule34.xxx 上的标签是 `ria-neearts`。
         self.assertEqual(spelling_variants("Ria_neearts"),
                          ("Ria_neearts", "Ria-neearts", "Rianeearts", "Ria neearts"))
+
+    def test_the_forum_search_ends_with_a_prefix_wildcard(self):
+        # 2026-09-12 实测：`strauz` 站内命中 0 条，`strauz*` 与全名一样命中 3 条。
+        self.assertEqual(forum_queries("strauz"), ("strauz", "strauz*"))
+
+    def test_a_short_term_is_not_widened(self):
+        # 三个字母加通配等于把半个站搜回来，命中一屏也认不出是哪个作者。
+        self.assertEqual(forum_queries("ria"), ("ria",))
+
+    def test_a_term_that_already_has_a_wildcard_is_left_alone(self):
+        self.assertEqual(forum_queries("strauz*"), ("strauz*",))
 
 
 class DiscoveryPlanTests(unittest.TestCase):
@@ -294,6 +308,49 @@ class DiscoverTests(_DiscoveryCase):
         self.assertEqual(found.candidates[0].label,
                          "Ria Collection [2026-08-03] [Ria_neearts]")
         self.assertEqual(found.external_searches, ())
+
+    def test_half_a_name_is_retried_as_a_prefix(self):
+        """站内搜索按整词匹配，半个名字要靠尾部通配才找得到。
+
+        2026-09-12 实测 `strauz` 命中 0 条，`strauz*` 命中三条，其中就有
+        `Strauzek Collection [2026-09-04] [Mr_Strauz]`。
+        """
+        self._write_credential("f95zone", {"cookie": "xf_user=1"})
+        queries = []
+
+        def call(request, timeout, max_bytes):
+            if "latest_data.php" in request.url:
+                return HttpResponse(200, {}, F95_MISS)
+            if "/search/search" not in request.url:
+                return HttpResponse(200, {}, F95_SEARCH_FORM)
+            body = urllib.parse.parse_qs((request.body or b"").decode("utf-8"))
+            query = body.get("keywords", [""])[0]
+            queries.append(query)
+            return HttpResponse(200, {}, F95_SEARCH_RESULTS if query.endswith("*")
+                                else F95_SEARCH_NOTHING)
+
+        found = discover("strauz", secrets_root=self.secrets, state_root=self.state,
+                         transport=call, providers=("f95zone",))
+        self.assertEqual(queries, ["strauz", "strauz*"])
+        self.assertEqual([c.ref for c in found.candidates], ["146348"])
+        self.assertIn("按标题开头命中「strauz*」", found.candidates[0].evidence)
+
+    def test_an_exact_hit_never_reaches_the_wildcard_round(self):
+        self._write_credential("f95zone", {"cookie": "xf_user=1"})
+        queries = []
+
+        def call(request, timeout, max_bytes):
+            if "latest_data.php" in request.url:
+                return HttpResponse(200, {}, F95_MISS)
+            if "/search/search" not in request.url:
+                return HttpResponse(200, {}, F95_SEARCH_FORM)
+            queries.append(urllib.parse.parse_qs(
+                (request.body or b"").decode("utf-8")).get("keywords", [""])[0])
+            return HttpResponse(200, {}, F95_SEARCH_RESULTS)
+
+        discover("strauzek", secrets_root=self.secrets, state_root=self.state,
+                 transport=call, providers=("f95zone",))
+        self.assertEqual(queries, ["strauzek"])
 
     def test_without_a_cookie_the_forum_search_is_skipped_not_guessed(self):
         calls = []
