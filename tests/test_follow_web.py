@@ -26,6 +26,7 @@ from peach.follow_secrets import CredentialError
 from peach.follow_sources import FollowCandidate, SourceFetch
 from peach.follow_store import FollowStore
 from peach.http import HttpResponse
+from support.backoff import no_real_backoff
 from support.ledger import fresh_ledger
 from peach.web_contract import WebContract, dispatch_api_get, dispatch_api_post
 from peach.web_follow import _credential_store
@@ -1209,14 +1210,15 @@ class FollowContractTests(unittest.TestCase):
         self.assertEqual(seen, [], "没有凭据就不出网，圆标退回首字母")
 
     def test_the_site_being_unreachable_leaves_the_icon_to_the_letter(self):
-        """站点报错或网络不通时返回空——这一枚退回首字母，不是一个 500。"""
+        """站点报错或网络不通时立刻返回空——这一枚退回首字母，不是一个 500，也不等退避。"""
         self._rule34_credential()
 
         def transport(request, timeout, max_bytes):
             raise OSError("网络不通")
 
-        self.assertEqual(web_follow.work_icon_search_urls(
-            self.contract, "the_witcher_(series)", transport=transport), [])
+        with no_real_backoff():
+            self.assertEqual(web_follow.work_icon_search_urls(
+                self.contract, "the_witcher_(series)", transport=transport), [])
 
     def test_counts_are_whole_library_while_groups_are_one_page(self):
         """计数是全库口径，列表只有一页——界面并排显示这两个数时看起来像自相矛盾。
@@ -2156,11 +2158,13 @@ class FollowSuggestTests(FollowContractTests):
         self.assertEqual(calls, [])
 
     def test_a_dead_site_still_leaves_the_local_groups(self):
+        # 站点挂了只少它那一组，而且是立刻少：联想不等连接器的退避。
         def call(_request, _timeout, _max_bytes):
             raise OSError("connection reset")
 
         self._seed(label="lewdgazer")
-        payload = self._suggest("lewdga", transport=call)
+        with no_real_backoff():
+            payload = self._suggest("lewdga", transport=call)
         self.assertEqual([group["kind"] for group in payload["groups"]], ["followed"])
 
     def test_the_endpoint_is_a_read_and_needs_no_credential(self):

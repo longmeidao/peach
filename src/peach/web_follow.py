@@ -22,8 +22,8 @@ from . import avatar_face, follow_assets, follow_providers
 from .follow import FollowSourceError
 from .follow_check import plan_check, run_check
 from .follow_discovery import (
-    MAX_SUGGESTIONS, archive_suggestions, discover, discovery_plan, suggest_term,
-    tag_suggestions,
+    MAX_SUGGESTIONS, archive_suggestions, discover, discovery_plan, no_backoff,
+    suggest_term, tag_suggestions,
 )
 from .follow_secrets import (
     CREDENTIAL_GUIDE, CredentialError, CredentialStore, credential_store_for,
@@ -526,7 +526,7 @@ def work_icon_search_urls(contract, tag: str, *,
     try:
         connector = build_connector("rule34xxx", transport=transport,
                                     credential=credential, max_items=limit,
-                                    enrich_budget=0)
+                                    enrich_budget=0, sleeper=no_backoff)
         for query in _WORK_ICON_QUERIES:
             urls: list[str] = []
             for candidate in connector.search(query.format(tag=tag), limit=limit):
@@ -1740,7 +1740,9 @@ def _resolve_label(contract, parsed, credential) -> str:
     """
     if parsed.provider not in KemonoConnector.HOSTS:
         return parsed.label
-    connector = KemonoConnector(provider=parsed.provider, credential=credential)
+    # 走 `build_connector` 而不是直接构造：登记这条路上的连接器全从同一个工厂出来，
+    # 测试替换掉工厂就替换掉了全部出网点，不会有一处漏网去真的问 kemono。
+    connector = build_connector(parsed.provider, credential=credential)
     service, _, user = parsed.ref.partition("/")
     try:
         response = connector.probe(

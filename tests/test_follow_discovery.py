@@ -16,6 +16,7 @@ from peach.follow_discovery import (
 )
 from peach.follow_secrets import Credential, CredentialError
 from peach.http import HttpResponse
+from support.backoff import no_real_backoff
 
 
 CREATORS = json.dumps([
@@ -597,7 +598,8 @@ class TagSuggestionTests(unittest.TestCase):
                 raise OSError("connection reset")
             return HttpResponse(200, {}, self.TYPES["lewdgatta"])
 
-        found = tag_suggestions("lewdga", transport=call, credential=self.credential)
+        with no_real_backoff():
+            found = tag_suggestions("lewdga", transport=call, credential=self.credential)
         self.assertEqual([(row.value, row.tag_type) for row in found],
                          [("lewdgatta", "artist"), ("lewdgazer", "")])
 
@@ -618,11 +620,17 @@ class TagSuggestionTests(unittest.TestCase):
         self.assertEqual(seen, ["https://api.rule34.xxx/autocomplete.php?q=lewdga"])
 
     def test_a_site_that_is_down_only_costs_its_own_group(self):
-        # 建议是锦上添花：站点挂了不该让本机那两组跟着消失。
+        """建议是锦上添花：站点挂了不该让本机那两组跟着消失，也不该让人等退避。
+
+        连接器对 GET 失败的退避累计 15 秒，那是抓取任务的节奏；敲一下字问一次的路径
+        站点一挂就该立刻回空。这里把真实的 sleep 换成一炸就红的桩，退避一旦回来
+        就在这条上露出来。
+        """
         def call(_request, _timeout, _max_bytes):
             raise OSError("connection reset")
 
-        self.assertEqual(tag_suggestions("lewdga", transport=call), ())
+        with no_real_backoff():
+            self.assertEqual(tag_suggestions("lewdga", transport=call), ())
 
     def test_a_term_too_short_never_reaches_the_site(self):
         calls = []
