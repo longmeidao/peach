@@ -4727,6 +4727,12 @@ function $i(e, t) {
 	return e.is_jav && e.code && e.has_cover && (Qi(t) === "cover" || !e.has_thumb) ? "cover" : e.has_thumb ? "thumbnail" : "";
 }
 function ea(e, t) {
+	let n = Number(e?.px?.[0]), r = Number(e?.px?.[1]), i = Number(e?.x0);
+	if (!(n > 0 && r > 0 && t > 0) || !Number.isFinite(i)) return null;
+	let a = n - Math.min(n, r * t);
+	return a > 0 ? Math.round(Math.min(100, Math.max(0, i / a * 100)) * 100) / 100 : null;
+}
+function ta(e, t) {
 	e.querySelectorAll("img[data-jav-image]").forEach((e) => {
 		let n = e.dataset.javCover || "", r = e.dataset.javThumb || "", i = !!(n && (Qi(t) === "cover" || !r)), a = i ? n : r;
 		e.classList.toggle("cover", i), e.classList.toggle("whole", i && e.dataset.javImageLayout !== "big"), e.classList.toggle("front", i && e.dataset.javImageLayout === "big"), e.removeAttribute("style"), a && e.getAttribute("src") !== a && (e.src = a);
@@ -4734,7 +4740,7 @@ function ea(e, t) {
 }
 //#endregion
 //#region src/islands.ts
-var ta = {
+var na = {
 	"library-processing": {
 		load: gt,
 		component: yt
@@ -4755,16 +4761,16 @@ var ta = {
 		load: ei,
 		component: pi
 	}
-}, na = () => Object.keys(ta), ra = /* @__PURE__ */ new Map();
-async function ia(e, t, n, r = {}) {
-	let i = ta[e];
+}, ra = () => Object.keys(na), ia = /* @__PURE__ */ new Map();
+async function aa(e, t, n, r = {}) {
+	let i = na[e];
 	if (!i) throw Error(`未注册的 island：${String(e)}`);
-	oa(t);
+	sa(t);
 	let a = {
 		controller: new AbortController(),
 		painted: !1
 	};
-	ra.set(t, a);
+	ia.set(t, a);
 	let o;
 	try {
 		o = {
@@ -4778,9 +4784,9 @@ async function ia(e, t, n, r = {}) {
 			error: W(e)
 		};
 	}
-	if (ra.get(t) !== a) return;
+	if (ia.get(t) !== a) return;
 	if (r.isCurrent && !r.isCurrent()) {
-		ra.delete(t);
+		ia.delete(t);
 		return;
 	}
 	t.textContent = "", a.painted = !0;
@@ -4790,10 +4796,10 @@ async function ia(e, t, n, r = {}) {
 	};
 	je(le(i.component, s), t);
 }
-var aa = (e) => !!e && ra.has(e);
-function oa(e) {
-	let t = ra.get(e);
-	t && (t.controller.abort(), ra.delete(e), t.painted && je(null, e));
+var oa = (e) => !!e && ia.has(e);
+function sa(e) {
+	let t = ia.get(e);
+	t && (t.controller.abort(), ia.delete(e), t.painted && je(null, e));
 }
 //#endregion
-export { wt as TASTE_GUIDE_KEY, Sn as activityChartsHtml, Bi as boardPageSkeleton, Pe as boundedPreference, Wi as catalogEmptyHtml, Ui as catalogSuggestions, Fi as clampPage, St as cleanupSkeletonHtml, bt as cloudLocations, xt as cloudPreferenceLocations, Ti as createReviewSelection, gn as creatorSankeyHtml, ze as distributionChart, Hi as emptyCatalogLayout, zi as entitySkeletonHtml, pt as followJobProgress, Oi as groupReviewRows, yi as identityEvidenceHtml, At as initBoardControls, aa as islandMounted, na as islandNames, $i as javImageKind, dt as jobActivityHtml, Re as jobProgressHtml, Li as matchesFaceSource, Ot as mountBoardStatePreview, ia as mountIsland, Ie as mountNumberSetting, Ri as nativeImageFit, Qi as normalizeJavImage, Xi as normalizeJavLayout, Zi as normalizeJavPreferences, Pi as pageCount, Ii as paginationHtml, Me as preferredDirection, Ve as radarChart, yn as radialCardHtml, Be as rankedChart, gi as refreshStore, Yi as resourceScanHtml, vi as reviewImageHtml, Ci as selectGroup, xi as selectRange, Si as selectionSummary, Gi as sidebarHasCatalogContent, Tn as sidebarSectionHtml, qi as sidebarTagCounts, Le as statCardBody, hi as storeNames, kt as syncBoardRange, ea as syncJavImages, Fe as syncNumberSetting, wi as syncSelectionToolbar, Ki as syncSidebarSurface, Ct as tasteHistoryGuideHtml, On as transitionTheme, oa as unmountIsland, Ei as updateReviewSticky, ft as watchJob, Cn as wireActivityCharts, _n as wireCreatorSankey, It as wireExpandableRanks, Ft as wireGrowingCharts, bn as wireRadialCards, bi as wireReviewPictures, Mi as wireReviewSelection, En as wireSidebarGroups, Tt as wireTasteHistoryGuide };
+export { wt as TASTE_GUIDE_KEY, Sn as activityChartsHtml, Bi as boardPageSkeleton, Pe as boundedPreference, Wi as catalogEmptyHtml, Ui as catalogSuggestions, Fi as clampPage, St as cleanupSkeletonHtml, bt as cloudLocations, xt as cloudPreferenceLocations, Ti as createReviewSelection, gn as creatorSankeyHtml, ze as distributionChart, Hi as emptyCatalogLayout, zi as entitySkeletonHtml, pt as followJobProgress, Oi as groupReviewRows, yi as identityEvidenceHtml, At as initBoardControls, oa as islandMounted, ra as islandNames, $i as javImageKind, dt as jobActivityHtml, Re as jobProgressHtml, Li as matchesFaceSource, Ot as mountBoardStatePreview, aa as mountIsland, Ie as mountNumberSetting, Ri as nativeImageFit, Qi as normalizeJavImage, Xi as normalizeJavLayout, Zi as normalizeJavPreferences, Pi as pageCount, Ii as paginationHtml, ea as posterBoxAnchor, Me as preferredDirection, Ve as radarChart, yn as radialCardHtml, Be as rankedChart, gi as refreshStore, Yi as resourceScanHtml, vi as reviewImageHtml, Ci as selectGroup, xi as selectRange, Si as selectionSummary, Gi as sidebarHasCatalogContent, Tn as sidebarSectionHtml, qi as sidebarTagCounts, Le as statCardBody, hi as storeNames, kt as syncBoardRange, ta as syncJavImages, Fe as syncNumberSetting, wi as syncSelectionToolbar, Ki as syncSidebarSurface, Ct as tasteHistoryGuideHtml, On as transitionTheme, sa as unmountIsland, Ei as updateReviewSticky, ft as watchJob, Cn as wireActivityCharts, _n as wireCreatorSankey, It as wireExpandableRanks, Ft as wireGrowingCharts, bn as wireRadialCards, bi as wireReviewPictures, Mi as wireReviewSelection, En as wireSidebarGroups, Tt as wireTasteHistoryGuide };

@@ -14,7 +14,7 @@ import { initMiddleTruncate } from './js/middle-truncate.js';
 import { tagLabel } from './js/tags.js';
 import { mountIsland, unmountIsland, islandMounted, createReviewSelection, wireReviewSelection, updateReviewSticky, groupReviewRows, paginationHtml, pageCount, clampPage, identityEvidenceHtml, reviewImageHtml, wireReviewPictures, preferredDirection } from './dist/peach-ui.js';
 import { catalogSuggestions, catalogEmptyHtml, emptyCatalogLayout, syncSidebarSurface, sidebarTagCounts, sidebarHasCatalogContent, cleanupSkeletonHtml, cloudLocations, cloudPreferenceLocations, tasteHistoryGuideHtml, wireTasteHistoryGuide, TASTE_GUIDE_KEY } from './dist/peach-ui.js';
-import { javImageKind, normalizeJavImage, normalizeJavLayout, normalizeJavPreferences, syncJavImages, nativeImageFit, matchesFaceSource, entitySkeletonHtml } from './dist/peach-ui.js';
+import { javImageKind, normalizeJavImage, normalizeJavLayout, normalizeJavPreferences, posterBoxAnchor, syncJavImages, nativeImageFit, matchesFaceSource, entitySkeletonHtml } from './dist/peach-ui.js';
 import {
   attachOverlayScrollbar, breadcrumbHtml, checkboxHtml, collectionSummaryHtml, closeAnchoredMenu, confirmModal, dismissMenu, emptyStateHtml, fieldsetTitle,
   fillSkeletonTier, fitSkeleton, formModal, iconSwitchHtml, indexSkeletonHtml, loadingDotsHtml,
@@ -2487,6 +2487,20 @@ function coverAnchor(img){
   };
   center('--cover-x',coverFace(img,'cx'),car/r);
   center('--cover-y',coverFace(img,'cy'),r/car);
+  posterAnchor(img,car);
+}
+/* 正封那一块的横向锚点。离线算好的框在 `data-posterbox` 里，换算要的容器比例只有
+   页面知道，所以两边在这里才凑齐。没有框（本机 1014 张封面里 331 张判定为不裁，
+   永远拿不到）就一个字都不写，CSS 里那份贴最右边缘的回退照旧生效。 */
+function posterAnchor(img,ratio){
+  const [x0,imgW,imgH]=String(img.dataset.posterbox||'').split(' ').map(Number);
+  /* 框是按那一版源图的像素算的，而封面会被更大的那张原子替换。尺寸对不上就说明
+     框描述的是另一张图，落在这张上是一块错位的区域——而错位在页面上和「本来就该
+     这么取景」看不出区别，所以宁可退回回退值。 */
+  if(!matchesFaceSource(img.naturalWidth,img.naturalHeight,imgW,imgH))return;
+  const pct=posterBoxAnchor({x0,px:[imgW,imgH]},ratio);
+  if(pct==null)return;
+  img.style.setProperty('--poster-x',`${pct}%`);
 }
 /* 容器比例只有 `.pic` 的 `--card-ratio` 知道：竖屏开关、JAV 大图和普通卡片各写一个
    值，在这里按 layout 重算迟早会和它分叉。自定义属性会继承，直接从图片上读；
@@ -2556,9 +2570,13 @@ function coverImage(it,layout,eager){
   // 纵向夹在 5%–60%：脸不会长在图片下半截，落在那儿是检出跑偏而不是构图。
   const face=[f.cx!=null?` data-cx="${f.cx}"`:'',
     f.cy!=null?` data-cy="${Math.min(0.6,Math.max(0.05,f.cy))}"`:''].join('');
+  /* 正封那一块的取景框，源图像素坐标加源图尺寸，由 `posterAnchor` 在加载后换算成
+     百分比。`map(Number)` 既是校验也是转义：进到属性里的一定是数字。 */
+  const pb=it.poster_box;
+  const box=pb?` data-posterbox="${[pb.x0,(pb.px||[])[0],(pb.px||[])[1]].map(Number).join(' ')}"`:'';
   // 小图看整张（含剧照拼贴），大图只取右侧正封。
   return `<img class="poster cover ${layout==='small'?'whole':'front'}" src="${src}"
-    alt="" loading="${eager?'eager':'lazy'}"${face} data-drop="self">`;
+    alt="" loading="${eager?'eager':'lazy'}"${face}${box} data-drop="self">`;
 }
 function javArtwork(it,layout,eager=false){
   const kind=javImageKind(it,appSettings.javImage);
@@ -2566,7 +2584,9 @@ function javArtwork(it,layout,eager=false){
   const cover=it.has_cover&&it.code?`/cover?code=${encodeURIComponent(it.code)}`:'';
   const thumb=(it.has_thumb||it.has_local_poster)?`/poster?id=${it.id}&c=4`:'';
   const coverHtml=coverImage(it,layout==='big'?'big':'small',eager);
-  const frame=(coverHtml.match(/ data-c[xy]="[^"]*"/g)||[]).join('');
+  // 取景数据要跟着元素走：换回官方封面时 `syncJavImages` 换的是同一个 <img>，
+  // 只贴在封面那份 HTML 上的话，从预览图切回来就取不到框。
+  const frame=(coverHtml.match(/ data-(?:c[xy]|posterbox)="[^"]*"/g)||[]).join('');
   const image=kind==='cover'?coverHtml
     :`<img class="poster" src="${thumb}" alt="" loading="${eager?'eager':'lazy'}"${frame}>`;
   return image.replace('<img ',`<img data-jav-image="${it.id}" data-jav-cover="${esc(cover)}" data-jav-thumb="${esc(thumb)}" data-jav-image-layout="${layout}" `);
