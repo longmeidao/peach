@@ -28,6 +28,12 @@ from .social_links import name_key
 BASE = "https://javdb.com/"
 SEARCH = BASE + "search?f=actor&q={}"
 
+#: 从资料页取来的名字写进 `entity_alias` 时记的来源。两个脚本都往这里写
+#: （`localize_performer_names.py` 写降级下来的旧规范名，`apply_alias_candidates.py`
+#: 写页面上的新写法），来源串必须是同一个：回溯「这个名字是谁写的」时，它是唯一
+#: 留着这个区别的地方，两处各写一份字面量就等于埋着一次静默的分叉。
+ALIAS_SOURCE = "javdb-actor-page"
+
 #: 搜索结果里的演员卡。`title` 一栏就是这个人在站上的全部写法，不必先点进去。
 BOX = re.compile(r'class="box actor-box">\s*<a href="(/actors/[^"]+)" title="([^"]*)"', re.S)
 NAME = re.compile(r'class="actor-section-name">([^<]*)<')
@@ -73,7 +79,11 @@ def current_names(html: str) -> list[str]:
 
 
 def former_names(html: str) -> list[str]:
-    """旧艺名。影片数那一条不算。"""
+    """现名底下那一栏：这个人的其他叫法。影片数那一条不算。
+
+    站上不给这一栏任何标签，旧艺名与昵称混在一起（`RJM8` 是四个真艺名，`KxPb`
+    只有一个爱称 `傻梦`）。解析层分不开也不猜，判它是不是艺名归调用方。
+    """
     return _names(META.findall(html))
 
 

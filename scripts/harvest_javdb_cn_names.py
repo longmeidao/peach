@@ -30,8 +30,19 @@ r"""从 javdb 资料页取女优的中文写法，产出可喂给 `localize_perf
 `愛音麻里亞` 仍是繁体）。所以不带这个参数——带上只会让缓存键变一套、把已经取回的
 页面再取一遍——繁转简由 opencc 做，它已经是本项目声明的依赖。
 
-只产出映射 CSV，不写账本。落库走 `localize_performer_names.py --mapping-csv`，
-那边有重名冲突判定、旧名保留和演员标签改写。
+同一趟还顺带取**别名候选**（`--aliases`）：页面上这个人的中文写法里，账本还没有的
+那几个。这两件事查的是同一批页面，分成两个脚本就要按 5 秒一页把站再走一遍。
+
+别名是另一个问题，不是规范名的副产品。一个人在账本里只有一个中文名：刮削源给的是
+日文与罗马字，译名那条路每人只给一个 `zh_cn`，而改统称时降为别名的是**日文原规范名**。
+所以旧艺名的中译一个字也没进过账本——`橋本ありな` 在，`桥本有菜` 不在，按后者搜不到人。
+资料页现名底下那一栏正是这个写法的出处（旧艺名与昵称混放，站上不标，这一步也不筛：
+认不认得这个昵称是人的事），取候选要连它一起看，范围也要放开到已经有中文
+规范名的人（`--scope all`）：她们才是缺第二个中文名的那一批。整批要走 300 多页、近一个
+钟头；起点是某一位的资料页时用 `--only` 点名，两次请求就能出结论。
+
+只产出复核 CSV，不写账本。规范名落库走 `localize_performer_names.py --mapping-csv`，
+别名落库走 `apply_alias_candidates.py`，两边各有自己的冲突判定与备份门槛。
 """
 from __future__ import annotations
 
@@ -40,6 +51,7 @@ import re
 import sqlite3
 import sys
 from collections import Counter
+from collections.abc import Sequence
 from functools import lru_cache
 from pathlib import Path
 from urllib.parse import quote, urljoin
@@ -79,6 +91,24 @@ KANJI_HEAD = re.compile(r"[㐀-䶿一-鿿]+")
 FIELDS = ("entity_id", "current_name", "assets", "actor_id", "url",
           "jp", "zh_cn", "zh_tw", "adopt", "keywords", "verdict", "evidence")
 
+#: 别名那一份。`alias` 是简体，`alias_zh_tw` 是站上原样——复核时要看得出转了什么。
+#: `origin` 记这个写法出自哪一栏：别名栏那些正是账本缺的一批，也是最需要人认一眼的
+#: 一批，两栏分开记，落库时才按得住各自的把握。
+ALIAS_FIELDS = ("entity_id", "current_name", "assets", "actor_id", "url",
+                "alias", "alias_zh_tw", "origin", "verdict", "evidence")
+
+#: 现名底下那一栏站上没给标签，放的是这个人的其他叫法：旧艺名、昵称都在里面
+#: （`RJM8` 是 `橋本ありな、上乃木まな、岩谷志季、橋本有菜`，`KxPb` 只有一个爱称 `傻梦`）。
+#: 站上不给这一栏任何标签，解析层照样不给：判它是不是艺名要靠人认得这个人。
+CURRENT_ROW, OTHER_ROW = "现名栏", "别名栏"
+#: 搜到两页同名的人。规范名那一份把两页都记下来让人挑，别名这一份一个都不产：
+#: 别名进的是身份，配错了人比缺一个写法更难查回来。
+CROWDED = "多页（同名两位，分不清是哪一页）"
+#: 这个写法已经挂在另一条实体名下。那是两条实体该不该合并的问题，不是补别名。
+TAKEN = "占用（另一条实体已有这个名字）"
+#: 页面上的中文写法账本都有了。这一行留着是为了证明这个人查过。
+NOTHING = "无新写法"
+
 
 @lru_cache(maxsize=1)
 def _simplify():
@@ -108,7 +138,7 @@ def key(name: str) -> str:
 def same_person(zh: str, jp: str) -> bool:
     """中日两种写法是不是同一个名字。
 
-    javdb 的现名栏可能并排放着两个不同的艺名（`一之瀨亞美莉, 美空あやか`，旧名栏里
+    javdb 的现名栏可能并排放着两个不同的艺名（`一之瀨亞美莉, 美空あやか`，别名栏里
     还另有 `一ノ瀬アメリ`），不是同一个名字的两种写法。判据是姓：日文写法开头那一串
     汉字必须原样出现在中文写法里。`美空` 不在 `一之濑亚美莉` 里，那就是配到了别人。
     共用单个字不算数——`美空` 与 `亞美莉` 都有 `美`，按字取交集会把这一对放过去。
@@ -119,9 +149,39 @@ def same_person(zh: str, jp: str) -> bool:
     return not head or head.group(0) in fold(zh)
 
 
-def targets(connection: sqlite3.Connection) -> list[dict]:
-    """规范名还带假名、且有发行来源的 performer，连它的名字链。"""
+def name_owners(connection: sqlite3.Connection) -> dict[str, tuple[int, str]]:
+    """全库 performer 的名字索引：折叠键 → （实体，规范名）。
+
+    别名候选撞上别人的名字时不能当新写法加进去。要么是同一个人在账本里裂成了两条，
+    要么是真有两位重名——两种都得人来判，而两种都不是「给这条实体补一个写法」。
+    """
     connection.row_factory = sqlite3.Row
+    out: dict[str, tuple[int, str]] = {}
+    for row in connection.execute(
+            "SELECT e.id,e.canonical_name,a.alias FROM entity e"
+            " LEFT JOIN entity_alias a ON a.entity_id=e.id"
+            " WHERE e.kind='performer' ORDER BY e.id"):
+        owner = (int(row["id"]), str(row["canonical_name"]))
+        for name in (row["canonical_name"], row["alias"]):
+            if name:
+                out.setdefault(key(str(name)), owner)
+    return out
+
+
+def targets(connection: sqlite3.Connection, scope: str = "kana",
+            only: Sequence[str] = ()) -> list[dict]:
+    """有发行来源的 performer，连它的名字链。
+
+    `kana` 只要规范名还带假名的那些——那是「中文名缺席」的判据。`all` 覆盖全部，
+    补别名要找的恰恰是已经有中文规范名的人：她们的第二个中文写法一个都没进过账本。
+
+    `only` 按实体 id 或名字链上任一写法点名几位，两道筛选都让位给它。整批要走 300
+    多页、近一个钟头，而真正的起点常常是「我看着这一位的资料页，觉得少个名字」。
+    点名的人被范围挡在外面就没法查，那正是最需要查的一位。
+    """
+    connection.row_factory = sqlite3.Row
+    named = {str(value).strip() for value in only if str(value).strip()}
+    named_keys = {key(value) for value in named}
     aliases: dict[int, list[str]] = {}
     for row in connection.execute(
             "SELECT entity_id,alias FROM entity_alias ORDER BY entity_id,alias"):
@@ -136,18 +196,32 @@ def targets(connection: sqlite3.Connection) -> list[dict]:
     ):
         name = str(row["canonical_name"])
         sources = set(filter(None, str(row["sources"] or "").split(",")))
-        if not KANA.search(name) or not sources.intersection(RELEASE_SOURCES):
-            continue
         chain = list(dict.fromkeys([name, *aliases.get(int(row["id"]), [])]))
+        if named:
+            if (str(row["id"]) not in named
+                    and not named_keys.intersection(key(value) for value in chain)):
+                continue
+        elif scope == "kana" and not KANA.search(name):
+            continue
+        elif not sources.intersection(RELEASE_SOURCES):
+            continue
         out.append({"entity_id": int(row["id"]), "name": name,
                     "assets": int(row["n"]), "chain": chain})
     return out
 
 
+def chinese_writings(names: list[str]) -> list[str]:
+    """一栏名字里的中文写法：整名汉字、无假名无拉丁的那些。
+
+    掺一个假名就是日文写法（`きみかわ結衣`），掺一个拉丁字母就是艺名本体（`JULIA`）。
+    """
+    return [value for value in names
+            if HAN.search(value) and not KANA.search(value) and not LATIN.search(value)]
+
+
 def chinese_name(current: list[str]) -> tuple[str, str]:
-    """现名那一栏里的中文写法与判据。整名汉字、无假名无拉丁的才算。"""
-    han = [value for value in current
-           if HAN.search(value) and not KANA.search(value) and not LATIN.search(value)]
+    """现名那一栏里的中文写法与判据。只认唯一那一个。"""
+    han = chinese_writings(current)
     if len(han) == 1:
         return han[0], ""
     if not han:
@@ -193,9 +267,74 @@ def judge(record: dict, html: str, url: str) -> dict:
     return row
 
 
-def harvest(connection: sqlite3.Connection, site, limit: int) -> list[dict]:
+def _note(record: dict, url: str, verdict: str, evidence: str) -> dict:
+    """两份 CSV 共用的那几列。取页失败、要登录、搜不到都只有这几列可填。"""
+    return {"entity_id": record["entity_id"], "current_name": record["name"],
+            "assets": record["assets"], "url": url,
+            "verdict": verdict, "evidence": evidence}
+
+
+def alias_candidates(record: dict, html: str, url: str,
+                     owners: dict[str, tuple[int, str]]) -> list[dict]:
+    """这一页上账本还没有的中文写法。
+
+    现名栏与别名栏都算。同一页上的名字都是这个人的，站方自己这么归的——这也正是
+    别名栏能用在这里、却不能用来定规范名的原因：作为**别名**它只需要「确实是她用过
+    的写法」，而定规范名还要判「现在该叫哪个」，后者是人的事。别名栏里混着昵称
+    （`傻梦`），这一步也不筛：站上没标，判它是不是艺名要靠人认得这个人。
+
+    一个新写法都没有时也回一行。「查过，没查出东西」和「还没轮到她」在复核件里必须
+    分得开，否则下一趟不知道该从哪儿接着跑。
+    """
+    convert = _simplify()
+    have = {key(value) for value in record["chain"]}
+    actor = javdb.actor_id(html)
     rows: list[dict] = []
-    for record in targets(connection)[:limit] if limit else targets(connection):
+    seen: set[str] = set()
+    for names, origin in ((javdb.current_names(html), CURRENT_ROW),
+                          (javdb.former_names(html), OTHER_ROW)):
+        for written in chinese_writings(names):
+            folded = key(written)
+            if folded in have or folded in seen:
+                continue
+            seen.add(folded)
+            row = {"entity_id": record["entity_id"], "current_name": record["name"],
+                   "assets": record["assets"], "actor_id": actor, "url": url,
+                   "alias": convert(written), "alias_zh_tw": written, "origin": origin,
+                   "verdict": OK, "evidence": f"资料页{origin}写着 {written}"}
+            owner = owners.get(folded)
+            if owner and owner[0] != record["entity_id"]:
+                row.update(verdict=TAKEN,
+                           evidence=f"{owner[1]}（实体 {owner[0]}）已经用着这个写法")
+            rows.append(row)
+    if not rows:
+        row = _note(record, url, NOTHING,
+                    f"页面上的写法 {'、'.join(javdb.all_names(html)) or '未取得'}，"
+                    "没有一个是账本以外的中文写法")
+        row["actor_id"] = actor
+        rows.append(row)
+    return rows
+
+
+def harvest(connection: sqlite3.Connection, site, limit: int,
+            scope: str = "kana", only: Sequence[str] = ()) -> tuple[list[dict], list[dict]]:
+    """走一趟站，两份候选一起出：规范名的与别名的。
+
+    分成两个脚本就要按 5 秒一页把同一批资料页再走一遍。规范名那一份始终只收规范名
+    带假名的人，`--scope all` 放开的只是别名那一份的范围。
+    """
+    owners = name_owners(connection)
+    records = targets(connection, scope, only)
+    rows: list[dict] = []
+    alias_rows: list[dict] = []
+
+    def note(record: dict, url: str, verdict: str, evidence: str) -> None:
+        row = _note(record, url, verdict, evidence)
+        if KANA.search(record["name"]):
+            rows.append(row)
+        alias_rows.append(dict(row))
+
+    for record in records[:limit] if limit else records:
         wanted = {key(value) for value in record["chain"]}
         hits: list[str] = []
         search = ""
@@ -210,31 +349,37 @@ def harvest(connection: sqlite3.Connection, site, limit: int) -> list[dict]:
             if hits:
                 break
         if error:
-            rows.append({"entity_id": record["entity_id"], "current_name": record["name"],
-                         "assets": record["assets"], "url": search, "verdict": FAILED,
-                         "evidence": error})
+            note(record, search, FAILED, error)
             continue
         if not hits:
-            rows.append({"entity_id": record["entity_id"], "current_name": record["name"],
-                         "assets": record["assets"], "url": search, "verdict": MISSING,
-                         "evidence": f"搜过名字链的 {len(record['chain'])} 个写法，站上没有这个人"})
+            note(record, search, MISSING,
+                 f"搜过名字链的 {len(record['chain'])} 个写法，站上没有这个人")
+            continue
+        crowded = len(hits) > 1
+        if crowded and not KANA.search(record["name"]):
+            # 这一位只为别名候选而来，而别名候选在多页时一个都不产。那就别把这几页
+            # 取回来了——每页 5 秒，取回来也只是再写一遍同一句「分不清是哪一页」。
+            alias_rows.append(_note(record, search, CROWDED,
+                                    f"搜到 {len(hits)} 页同名的人"))
             continue
         for path in hits:
             url = urljoin(javdb.BASE, path)
             try:
                 html = site.get(url)
             except Exception as exc:   # noqa: BLE001
-                rows.append({"entity_id": record["entity_id"], "current_name": record["name"],
-                             "assets": record["assets"], "url": url, "verdict": FAILED,
-                             "evidence": f"{type(exc).__name__}: {exc}"})
+                note(record, url, FAILED, f"{type(exc).__name__}: {exc}")
                 continue
             if javdb.LOGIN.search(html):
-                rows.append({"entity_id": record["entity_id"], "current_name": record["name"],
-                             "assets": record["assets"], "url": url, "verdict": LOGIN,
-                             "evidence": "这一页要登录才给，不注册账号"})
+                note(record, url, LOGIN, "这一页要登录才给，不注册账号")
                 continue
-            rows.append(judge(record, html, url))
-    return rows
+            if KANA.search(record["name"]):
+                rows.append(judge(record, html, url))
+            if crowded:
+                alias_rows.append(_note(record, url, CROWDED,
+                                        f"搜到 {len(hits)} 页同名的人"))
+                continue
+            alias_rows.extend(alias_candidates(record, html, url, owners))
+    return rows, alias_rows
 
 
 def localize(rows: list[dict]) -> list[dict]:
@@ -255,6 +400,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="从 javdb 资料页取女优中文名，产出映射 CSV")
     parser.add_argument("--db", type=Path, required=True)
     parser.add_argument("--out", type=Path, required=True)
+    parser.add_argument("--aliases", type=Path,
+                        help="别名候选 CSV：页面上账本还没有的中文写法")
+    parser.add_argument("--scope", choices=("kana", "all"), default="kana",
+                        help="kana 只查规范名还带假名的人；all 查全部有发行来源的人")
+    parser.add_argument("--only", action="append", default=[],
+                        help="只查点名的这几位：实体 id 或她名字链上的任一写法，"
+                             "逗号分隔，可重复给；给了就不受 --scope 限制")
     parser.add_argument("--limit", type=int, default=0)
     # javdb 按出口 IP 自己封速率。5 秒是 `harvest_directory_links.SOURCE_INTERVAL`
     # 定下的那一档，两处必须一致：换个脚本就换个速度等于没有速度约束。
@@ -269,11 +421,16 @@ def build_parser() -> argparse.ArgumentParser:
 def run(args: argparse.Namespace) -> int:
     from peach.page_cache import Site
 
+    if args.scope == "all" and not args.aliases:
+        raise SystemExit("--scope all 放开的是别名候选的范围，请一并给 --aliases <路径>")
+    only = [part.strip() for value in args.only for part in str(value).split(",")
+            if part.strip()]
     site = Site(args.cache_dir / "javdb", max(args.interval, 5.0), args.timeout,
                 refresh=args.refresh, via_proxy=True)
     connection = sqlite3.connect(f"file:{args.db}?mode=ro", uri=True)
     try:
-        rows = localize(harvest(connection, site, args.limit))
+        rows, alias_rows = harvest(connection, site, args.limit, args.scope, only)
+        rows = localize(rows)
     finally:
         connection.close()
     write_rows(args.out, FIELDS, rows, fill_missing=True)
@@ -284,6 +441,15 @@ def run(args: argparse.Namespace) -> int:
         if row.get("adopt"):
             print(f"    [{row['verdict']}] {row['current_name']} -> {row['adopt']}"
                   f"  ({row['evidence']})")
+    if args.aliases:
+        write_rows(args.aliases, ALIAS_FIELDS, alias_rows, fill_missing=True)
+        fresh = [row for row in alias_rows if row.get("verdict") == OK]
+        print(f"javdb 别名候选 {len(alias_rows)} 行（新写法 {len(fresh)} 个），"
+              f"CSV：{args.aliases}")
+        print("  判定分布：", dict(Counter(str(row.get("verdict")) for row in alias_rows)))
+        for row in fresh:
+            print(f"    [{row['origin']}] {row['current_name']} + {row['alias']}"
+                  f"  ({row['url']})")
     return 0
 
 
