@@ -751,7 +751,7 @@ function bt({ data: e, error: t, toast: n, onComplete: r, mode: i, monitor: a, p
 			class: "geist-fieldset-content library-processing",
 			children: [
 				/* @__PURE__ */ q("div", { dangerouslySetInnerHTML: { __html: p("cleanupScrapingTitle", "扫描与采集") } }),
-				/* @__PURE__ */ q("p", { children: "扫描媒体文件夹，导入已有资料，采集缺失信息。" }),
+				/* @__PURE__ */ q("p", { children: "扫描媒体文件夹，导入已有资料，采集缺失信息。两段也可以分开跑：新盘刚接上时先只扫描，几万个文件登记完就能用；采集被网络拖住时只重跑采集，不必再扫一遍磁盘。" }),
 				s.status === "running" && /* @__PURE__ */ q("div", {
 					"aria-live": "polite",
 					dangerouslySetInnerHTML: { __html: ft(s.total ? `${yt(s)} · ${s.checked || 0} / ${s.total} 个视频` : yt(s), s.checked, s.total) }
@@ -769,12 +769,31 @@ function bt({ data: e, error: t, toast: n, onComplete: r, mode: i, monitor: a, p
 					href: "/review",
 					children: "复核资料"
 				}),
-				(s.status !== "failed" || !k) && /* @__PURE__ */ q("button", {
-					ref: S,
-					type: "button",
-					class: "geist-button primary",
-					onClick: E,
-					children: "扫描并补全资料"
+				(s.status !== "failed" || !k) && /* @__PURE__ */ q("div", {
+					class: "board-button-group",
+					role: "group",
+					"aria-label": "扫描与采集",
+					children: [
+						/* @__PURE__ */ q("button", {
+							type: "button",
+							class: "geist-button",
+							onClick: () => void T({ stage: "scan" }),
+							children: "只扫描"
+						}),
+						/* @__PURE__ */ q("button", {
+							type: "button",
+							class: "geist-button",
+							onClick: () => void T({ stage: "collect" }),
+							children: "只采集"
+						}),
+						/* @__PURE__ */ q("button", {
+							ref: S,
+							type: "button",
+							class: "geist-button primary",
+							onClick: E,
+							children: "扫描并补全资料"
+						})
+					]
 				})
 			]
 		})]
@@ -2509,10 +2528,10 @@ function Gn() {
 				viewBox: "0 0 24 24",
 				"aria-hidden": "true",
 				children: /* @__PURE__ */ q("use", { href: "#i-chevron-right" })
-			}), "CloudDrive 速度与缓存建议"] }),
+			}), "CloudDrive 缓存建议"] }),
 			/* @__PURE__ */ q("p", {
 				class: "confighelp",
-				children: "看缓存放在哪块硬盘上，照那一行填。表里是起步值，先保证播放不卡，再拿同一个视频比较打开速度、拖动和流量；填得越大不一定越快。"
+				children: "看缓存放在哪块硬盘上，照那一行填。这是起步值，填得越大不一定越快。"
 			}),
 			/* @__PURE__ */ q("div", {
 				class: "cloudguide-tablewrap",
@@ -2548,17 +2567,12 @@ function Gn() {
 			}),
 			/* @__PURE__ */ q("ul", {
 				class: "cloudguide-notes",
-				children: [
-					/* @__PURE__ */ q("li", { children: "缓存上限和清理方式填在 CloudDrive「设置」里，清理方式选 LRU。上限不要填 0，系统盘至少留 40 GiB。" }),
-					/* @__PURE__ */ q("li", { children: "读取长度和下载线程填在每个网盘各自的下载设置里，线程都从 2 开始。看高码率视频还是缓冲就试 512 / 256 KB，打开速度、拖动和流量都没改善就调回去。" }),
-					/* @__PURE__ */ q("li", { children: "Buffer Cache 占内存，磁盘缓存和文件夹缓存占硬盘，三处是分开的设置，改一个管不住另外两个。" }),
-					/* @__PURE__ */ q("li", { children: "填完重新打开 CloudDrive 的设置页确认存住了，再看硬盘实际少了多少。播放期间先暂停批量抽帧、关掉不用的播放页。" })
-				]
+				children: [/* @__PURE__ */ q("li", { children: "缓存上限和清理方式填在 CloudDrive「设置」里，清理方式选 LRU。上限不要填 0，系统盘至少留 40 GiB；填完重开设置页确认存住了。" }), /* @__PURE__ */ q("li", { children: "读取长度和下载线程填在每个网盘各自的下载设置里，线程都从 2 开始。" })]
 			}),
 			/* @__PURE__ */ q("p", {
 				class: "confighelp",
 				children: [
-					"三处缓存分别管什么、码率和速度怎么换算、线程上限与直链代理怎么取舍，以及这些起步值的来源，都在",
+					"三处缓存分别管什么、这几个值怎么往上调、码率和速度怎么换算、线程上限与直链代理怎么取舍，以及这些起步值的来源，都在",
 					/* @__PURE__ */ q("a", {
 						class: "externallink",
 						href: "https://github.com/longmeidao/peach/blob/master/docs/CLOUDDRIVE.md",

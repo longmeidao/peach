@@ -33,6 +33,10 @@ LABELS = dict(title='标题', original_title='原标题', performers='演员', s
 #: 状态里最多保留这么多条问题；完整问题写在任务专属 JSONL 里，接口分页读取。
 ISSUE_PREVIEW_LIMIT = 20
 
+#: 这条链能分开跑的两段，和一次跑完。名字进接口也进页面，改这里就是改契约。
+SCAN_STAGE, COLLECT_STAGE, ALL_STAGES = 'scan', 'collect', 'all'
+STAGES = (ALL_STAGES, SCAN_STAGE, COLLECT_STAGE)
+
 #: 没有动作截止时间的阶段（本地读取）超过这么久没有心跳就在页面上预警。
 STALL_AFTER_SECONDS = 120.0
 
@@ -194,11 +198,16 @@ def _fields(payload, genre_decisions=None):
 
 def process_library(config, db_path, candidate_root, cover_root, *, location='configured',
                     report=lambda state: None, provider_factory=None, job_id=None,
-                    retry_ids=None, active=lambda: True):
+                    retry_ids=None, active=lambda: True, stage=ALL_STAGES):
     """登记文件与确定的番号，外部资料保留为可复核候选。
 
     `retry_ids` 为 `None` 时处理整个馆藏；给定时只处理这些项目（上一任务记录的
     可重试失败），不重新扫描来源目录，已有候选与封面照常复用。
+
+    `stage` 把这条链分两段跑：`scan` 只走一遍来源目录把文件登记进馆藏，`collect`
+    跳过那一遍、直接读本地资料并采集缺失的。新盘刚接上时要的是前者——几万个
+    文件登记完就能用，不必等采集；采集被网络拖住时要的是后者，重跑不必再扫一遍
+    磁盘。缺省两段都跑。
     """
     def require_writer():
         if config.replication.enabled:
@@ -285,10 +294,16 @@ def process_library(config, db_path, candidate_root, cover_root, *, location='co
                         issue(None, f'{source} 来源离线', action='reading_local')
                         continue
                     online_roots.append(translate_ledger_path(root).resolve())
-                    if not retrying:
+                    if not retrying and stage != COLLECT_STAGE:
                         result = scan_location(db_path, source, root, declared_roots=config.locations,
                                                mounts=mounts, report=lambda line: update(stage='扫描文件'))
                         state['scanned'] += result.files
+            if stage == SCAN_STAGE:
+                update(status='failed' if state['issue_count'] else 'complete',
+                       stage='处理结束', completed_at=time.time(),
+                       error=f"{state['issue_count']} 项需要处理，请查看详情并重试。"
+                             if state['issue_count'] else '')
+                return state
             if retrying:
                 placeholders = ','.join('?' * len(chosen_ids))
                 query = (f"SELECT * FROM asset WHERE id IN ({placeholders}) AND medium='video' "

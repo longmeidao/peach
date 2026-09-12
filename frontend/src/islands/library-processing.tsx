@@ -106,14 +106,18 @@ export function LibraryProcessing({ data, error, toast, onComplete, mode, monito
     <section class="cleanupfieldset" data-geist-fieldset aria-labelledby="cleanupScrapingTitle">
       <div class="geist-fieldset-content library-processing">
         <div dangerouslySetInnerHTML={{ __html: fieldsetTitle('cleanupScrapingTitle', '扫描与采集') }} />
-        <p>扫描媒体文件夹，导入已有资料，采集缺失信息。</p>
+        <p>扫描媒体文件夹，导入已有资料，采集缺失信息。两段也可以分开跑：新盘刚接上时先只扫描，几万个文件登记完就能用；采集被网络拖住时只重跑采集，不必再扫一遍磁盘。</p>
         {state.status === 'running' && <div aria-live="polite" dangerouslySetInnerHTML={{ __html:
           jobActivityHtml(state.total ? `${currentLine(state)} · ${state.checked || 0} / ${state.total} 个视频` : currentLine(state), state.checked, state.total) }} />}
       </div>
       <footer class="geist-fieldset-footer" data-geist-fieldset-footer>
         <LinkButton href="/scraping">采集来源</LinkButton>
         {!!state.candidates && <LinkButton href="/review">复核资料</LinkButton>}
-        {(state.status !== 'failed' || !retryable) && <button ref={button} type="button" class="geist-button primary" onClick={start}>扫描并补全资料</button>}
+        {(state.status !== 'failed' || !retryable) && <div class="board-button-group" role="group" aria-label="扫描与采集">
+          <button type="button" class="geist-button" onClick={()=>void submit({stage:'scan'})}>只扫描</button>
+          <button type="button" class="geist-button" onClick={()=>void submit({stage:'collect'})}>只采集</button>
+          <button ref={button} type="button" class="geist-button primary" onClick={start}>扫描并补全资料</button>
+        </div>}
       </footer>
     </section>
     <div class="library-processing-outcome" aria-live="polite">
