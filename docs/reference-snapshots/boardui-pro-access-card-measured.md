@@ -72,7 +72,7 @@ BoardUI 的 76 个组件里没有图片网格或 gallery 控件，只有 carouse
 
 | 档 | 静止 | 悬停 | 类名要点 |
 | --- | --- | --- | --- |
-| primary | 渐变 `rgb(43,127,255)`→`rgb(21,93,252)`，白字，`shadow-xs`，无边 | **逐项不变** | `bg-button-primary text-text-white shadow-xs`，没有任何 `hover:` 类 |
+| primary | 渐变 `rgb(43,127,255)`→`rgb(21,93,252)`，白字，`shadow-xs`，无边 | 渐变提一档到 `rgb(51,146,255)`→`rgb(43,127,255)`，铺在 `::before` 上淡入 | `bg-button-primary text-text-white shadow-xs`，三档全长在 `.bg-button-primary` 这个类里 |
 | ghost | 浅色底 `rgb(219,234,254)` 字 `rgb(20,71,230)`；暗色底 `rgb(28,57,142)` | 浅色 `rgb(190,219,255)`、暗色 `rgb(25,60,184)`，**全程没有边** | `hover:bg-button-ghost-hover active:bg-button-ghost-active` |
 | secondary | 白底 + `#ebebeb` 边 + `shadow-xs` | 底 `#f7f7f7`、边 `#d4d4d4` | `hover:bg-background-primary-hover hover:border-border-button-hover` |
 
@@ -85,27 +85,36 @@ BoardUI 的 76 个组件里没有图片网格或 gallery 控件，只有 carouse
 `color-mix(in srgb, lab(27.036%) 60%, transparent)`——即 60% 的 #404040，Peach 映射成的
 `#40404099` 是忠实的，两边算出来都只比 #262626 亮几个色阶。
 
-### primary 没有悬停态：三条独立证据
+### primary 的三档：`.bg-button-primary` 规则原文
 
-同一天在同一页上分三条路取，结论一致。这一条被单独记下来，是因为
-`docs/BOARD_UI.md` 的 Auth Card 那节此前按「hover 叠层 150ms 淡入」写过一版实现。
+```css
+.bg-button-primary{isolation:isolate;background-image:var(--gradient-button-primary-default);position:relative}
+.bg-button-primary::before{content:"";z-index:-1;pointer-events:none;border-radius:inherit;
+  background-image:var(--gradient-button-primary-hover);opacity:0;
+  transition:opacity var(--button-transition-ms) ease;position:absolute;inset:0}
+.bg-button-primary:hover:not(:disabled):not([aria-disabled="true"])::before{opacity:1}
+.bg-button-primary:active:not(:disabled):not([aria-disabled="true"]){background-image:var(--gradient-button-primary-active)}
+.bg-button-primary:active:not(:disabled):not([aria-disabled="true"])::before{opacity:0}
+.bg-button-primary:disabled,.bg-button-primary[aria-disabled="true"]{background-image:var(--gradient-button-primary-disabled)}
+.bg-button-primary:disabled::before,.bg-button-primary[aria-disabled="true"]::before{display:none}
+```
 
-1. **DOM**：页面上 10 颗 `bg-button-primary` 的 `className` 里没有任何 `hover:` 或
-   `active:` 类。
-2. **真鼠标悬停**：`isHovered:true` 时读 computed，
-   `linear-gradient(lab(54.1736 13.3369 -74.6839), lab(44.0605 29.0279 -86.0352))`、
-   `rgba(0,0,0,.05) 0 1px 2px`、`filter:none`、`transform:none`、`color:#fff`，
-   与静止逐项相同。
-3. **注册表**：`https://www.boardui.com/r/button.json`（HTTP 200，10110 字节）里只有两处
-   悬停声明——secondary 的 `hover:bg-background-primary-hover hover:border-border-button-hover`
-   与 ghost 的 `hover:bg-button-ghost-hover active:bg-button-ghost-active`；primary 那一行是
-   `bg-button-primary text-text-white shadow-xs`。上游的 token 表里也没有
-   `--color-button-primary-hover`。
+`--button-transition-ms` 是 .15s。三档渐变都是 180deg 两停点，按色阶排 default
+`accent-500→600`、hover `400→500`、active `600→700`；canvas 取像素得
+300=`#8ec5ff`、400=`#3392ff`、500=`#2b7fff`、600=`#155dfc`、700=`#1447e6`。
+其余 computed：`height:36px`、`padding:8px`、`border:0px`、`border-radius:10px`、
+`box-shadow:rgba(0,0,0,.05) 0 1px 2px`、`color:#fff`、`font:500 14px/20px Inter`、
+`background-origin:padding-box`、
+`transition:background-color .15s, border-color .15s, box-shadow .15s, color .15s, transform .42s`。
+按下另有 0.98 缩放（`button-press-motion`），键盘是 `focus-visible:ring-2`。
 
-强调档的反馈全在别处：`active` 那一下的 0.98 缩放（`button-press-motion`）和键盘的
-`focus-visible:ring-2`。primary 的过渡只列
-`background-color .15s, border-color .15s, box-shadow .15s, color .15s` 加
-`transform .42s cubic-bezier(.4,0,.2,1)`。
+**纠正（2026-09-12）**：这一节此前记的是「primary 没有悬停态：三条独立证据」，同日取到上面
+这段原文后作废。三条证据全落在同一个盲点上——那一层挂在 `::before` 上：① 读 `className`
+看不到，悬停不是 Tailwind 的 `hover:` 类；② 真鼠标悬停读 computed 也看不到，读的是元素自己的
+`background-image`，变的是伪元素的 `opacity`，`getComputedStyle(el)` 不传第二个参数就取不到；
+③ 注册表 `/r/button.json` 的 primary 那一行确实只有 `bg-button-primary text-text-white shadow-xs`，
+因为三档全长在那个类的 CSS 里，注册表只列类名。结论涉及「某个状态没有样式」时，
+`::before` 和 `::after` 两个都要显式读一遍再下判断。
 
 ### Button Group（2026-09-12）
 
@@ -120,12 +129,15 @@ BoardUI 的 76 个组件里没有图片网格或 gallery 控件，只有 carouse
 
 ## Peach 采用与差异（Button 与 Button Group）
 
-- 强调档全站一条规则，按下与焦点环照上游；面色写在 `web/board.css` 的
+- 强调档全站一副面，三档渐变、`::before` 的交叉淡入和 `border:0` 都照上游；token 是
+  `--board-blue`、`--board-blue-hover`、`--board-blue-active`，规则写在 `web/board.css` 的
   `body :is(…).primary:not(:disabled)`，错误页、登录页和首启页由
-  `routes_pages._board_button_rules()` 取同一条过去，不抄第二份色值。
-- **悬停是 Peach 的主动差异**：上游的 primary 压上去逐项不变，Peach 按用户要求换一份
-  提亮一档的渐变（`--board-blue-hover`，blue-400→blue-600），边和阴影不动。判据是
-  一排按钮里压着的那颗要读得出来。
+  `routes_pages._board_button_rules()` 取同一份过去，不抄第二份色值。
+- `border:0` 不是省事：补一圈透明边在 `box-sizing:border-box` 下会把内容盒压掉 2px，而
+  `background-origin` 是 padding-box，渐变被压到 34px 再延展回 36px，色标跟上游错开一像素。
+- **`padding` 是 Peach 的主动差异**：取 `8px 12px` 而不是上游四边 `8px`，中文字比拉丁字宽，
+  四边等距时两侧字贴着边。上游 `active` 那一下的 0.98 缩放（`transform .42s`）没有跟，
+  按下换渐变已经读得出来。
 - 分体按钮的分隔线按上游的做法交给右半的 `border-left`，上下顶满；两半的悬停走 Peach 自己的
   `--control-hover`（浅色 #e5e5e5、暗色 #404040）而不是上游的 `background-primary-hover`，
   理由与次级按钮那一条相同，见上一节。

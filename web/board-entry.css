@@ -9,8 +9,11 @@ input[type=text],input[type=password],input[type=number],select,.affix{backgroun
 /* 主按钮那一颗不写在这里：`routes_pages._board_button_rules()` 把 `board.css` 里的
    Board primary 连同它用到的 token 一起内联进这三页，站内改一次渐变这里跟着走。
    表单里那些没带 `.geist-button primary` 的提交键还是要自己接上同一副盒子。 */
-button[type=submit],form>button{height:36px;background:var(--board-blue);color:#fff;border:1px solid transparent;box-shadow:0 1px 2px #0000000d;border-radius:10px}
-button[type=submit]:hover:not(:disabled),form>button:hover:not(:disabled){background:var(--board-blue-hover);color:#fff}
+button[type=submit],form>button{position:relative;isolation:isolate;height:36px;background:var(--board-blue);color:#fff;border:0;box-shadow:0 1px 2px #0000000d;border-radius:10px}
+button[type=submit]::before,form>button::before{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;border-radius:inherit;background:var(--board-blue-hover);opacity:0;transition:opacity .15s ease}
+button[type=submit]:hover:not(:disabled)::before,form>button:hover:not(:disabled)::before{opacity:1}
+button[type=submit]:active:not(:disabled),form>button:active:not(:disabled){background:var(--board-blue-active)}
+button[type=submit]:active:not(:disabled)::before,form>button:active:not(:disabled)::before{opacity:0}
 .switch label:has(input:checked){background:var(--ground);box-shadow:0 1px 3px #0002}
 @media(max-width:480px){main{padding:20px}}
 /* Auth Card：单行登录偏好。 */
@@ -107,13 +110,16 @@ main:has(.setup-auth-card){width:100%;max-width:560px;padding:32px;box-shadow:0 
 .setup-auth-card :is(.pick,.add){background:var(--ground);border:1px solid var(--button-border);color:var(--ink)}
 .setup-auth-card :is(.pick,.add):hover:not(:disabled):not([aria-disabled=true]){background:var(--button-hover);border-color:var(--button-border-hover)}
 .setup-auth-card :is(.pick,.add):active:not(:disabled):not([aria-disabled=true]){background:var(--button-active);border-color:var(--button-border-active)}
-/* 首启和登录的提交键跟错误页那颗、跟站内每一颗主按钮同一张面：静止取 `--board-blue`，
-   悬停取 `--board-blue-hover`，两个 token 都由 `routes_pages._board_button_rules()` 从
-   `board.css` 送进来。按下那一下照旧：压深一档配 0.98 的缩放，那是上游
+/* 首启和登录的提交键跟错误页那颗、跟站内每一颗主按钮同一张面：三档渐变都是
+   `--board-blue` `--board-blue-hover` `--board-blue-active`，由
+   `routes_pages._board_button_rules()` 从 `board.css` 送进来。悬停那一档同样铺在
+   `::before` 上淡入，不直接换 `background`。按下那一下照旧配 0.98 的缩放，那是上游
    `button-press-motion` 那一份。 */
-.setup-auth-card :is(button[type=submit],.setup-enter){border:0;color:#fff;background:var(--board-blue)}
-.setup-auth-card :is(button[type=submit],.setup-enter):hover:not(:disabled):not([aria-disabled=true]){background:var(--board-blue-hover);color:#fff}
-.setup-auth-card :is(button[type=submit],.setup-enter):active:not(:disabled):not([aria-disabled=true]){background:linear-gradient(180deg,lab(44.0605% 29.0279 -86.0352),lab(36.9089% 35.0961 -85.6872))}
+.setup-auth-card :is(button[type=submit],.setup-enter){position:relative;isolation:isolate;border:0;color:#fff;background:var(--board-blue)}
+.setup-auth-card :is(button[type=submit],.setup-enter)::before{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;border-radius:inherit;background:var(--board-blue-hover);opacity:0;transition:opacity .15s ease}
+.setup-auth-card :is(button[type=submit],.setup-enter):hover:not(:disabled):not([aria-disabled=true])::before{opacity:1}
+.setup-auth-card :is(button[type=submit],.setup-enter):active:not(:disabled):not([aria-disabled=true]){background:var(--board-blue-active)}
+.setup-auth-card :is(button[type=submit],.setup-enter):active:not(:disabled):not([aria-disabled=true])::before{opacity:0}
 .setup-auth-card :is(.pick,.add,button[type=submit],.setup-enter):active:not(:disabled):not([aria-disabled=true]){transform:scale(.98);transition-duration:.15s,.15s,.15s,.15s,.22s}
 .setup-auth-card :is(.pick,.add,button[type=submit],.setup-enter):is(:disabled,[aria-disabled=true]){cursor:not-allowed;color:var(--muted);box-shadow:none;transform:none;background:var(--surface);border-color:var(--button-border)}
 .setup-auth-card :is(button[type=submit],.setup-enter):is(:disabled,[aria-disabled=true]){background:var(--button-disabled)}

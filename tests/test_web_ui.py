@@ -493,7 +493,7 @@ class WebUiSourceTests(unittest.TestCase):
                         "border:0;border-radius:var(--control-radius);"
                         "background:var(--ground);color:var(--ink);display:inline-flex;")
         self.assertPageContains(f".geist-button:hover:not(:disabled){{{secondary_hover}}}")
-        # 强调档那一面只有 `board.css` 一处（`test_the_primary_tier_has_one_face_and_one_hover`）。
+        # 强调档那一面只有 `board.css` 一处（`test_the_primary_tier_has_one_face_and_crossfades_into_its_hover`）。
         # 这一层再写一份的话，它的 `:hover:not(:disabled)` 比 Board 那条静止规则重一个类，
         # 同一颗按钮的静止和悬停就分别由两处给出。
         self.assertNotIn(".geist-button.primary{", css)
@@ -1172,7 +1172,7 @@ class WebUiSourceTests(unittest.TestCase):
             rule = css[start:css.index("}", start)]
             self.assertIn(ring, rule, f"{name} 次级档要有那一圈 1px 环")
         # 实心档自己的填充就是边界，再挂环会在实底外面描出第二道轮廓。强调档不在这一层：
-        # 它那一面连同 `box-shadow` 由 `board.css` 一处给（`test_the_primary_tier_has_one_face_and_one_hover`）。
+        # 它那一面连同 `box-shadow` 由 `board.css` 一处给（`test_the_primary_tier_has_one_face_and_crossfades_into_its_hover`）。
         for solid in (".geist-button.error{background:#da2f35;color:#fff;box-shadow:none}",
                       ".geist-button.warning{background:#ff990a;color:#000;box-shadow:none}"):
             self.assertPageContains(solid, "实心档不挂环")
@@ -9213,14 +9213,19 @@ class WebUiSourceTests(unittest.TestCase):
         # 边不动之后悬停还得剩点东西：玻璃条上的药丸提文字色。
         self.assertIn(".board-filter-frame.board-filter-frame .pill:hover{color:var(--ink)}", board)
 
-    def test_the_primary_tier_has_one_face_and_one_hover(self):
-        """强调档全站一颗：静止和悬停各一条规则，都在 board.css，悬停只提亮渐变。
+    def test_the_primary_tier_has_one_face_and_crossfades_into_its_hover(self):
+        """强调档全站一颗：三档渐变都在 board.css，悬停那一档铺在 `::before` 上淡入。
 
-        悬停这一档是 Peach 的主动差异。2026-09-12 在 boardui.com/components/button
-        取证：上游的 primary 没有悬停态——页面上 10 颗里没有一颗带 `hover:` 的类，注册表
-        `/r/button.json` 只在 secondary 和 ghost 上声明悬停，真鼠标悬停时渐变、阴影、
-        滤镜、位移和字色逐项与静止相同。按用户要求补上，做法跟危险档那两条一样：换一份
-        提亮一档的渐变，边和阴影不动。
+        照 `boardui.com/components/button` 的 `.bg-button-primary`（2026-09-12 实测）：
+        静止 accent-500→600、悬停 400→500、按下 600→700，悬停那一层是宿主的 `::before`
+        改 opacity 交叉淡入。不直接换 `background` 是因为渐变是 background-image，它没有
+        插值可言，直接换就是硬切一下；按下那一下换回 `background` 并把那层压回 0，于是
+        悬停着按下去也是一档一档地走。
+
+        不带边：上游那颗是 `border:0`，补一圈透明边在 `box-sizing:border-box` 下会把内容盒
+        压掉 2px，而 `background-origin` 是 padding-box，渐变被压到 34px 再延展到 36px，
+        色标跟上游错开一像素——这就是用户看到的「偏移」。宿主要 `isolation:isolate`，
+        不然 `z-index:-1` 会把那一层送到按钮所在层叠上下文的底下，铺到卡片背面去。
 
         面色分在两层写的后果不是「多一条规则」：`web/css/` 那一层的
         `.geist-button.primary:hover:not(:disabled)` 是四个类，比 Board 那条静止规则
@@ -9234,24 +9239,29 @@ class WebUiSourceTests(unittest.TestCase):
             return [rule for rule in rule_re.findall(source)
                     if ".primary" in re.sub(r":not\([^)]*\)", "", rule.partition("{")[0])]
 
-        face = [rule for rule in primary_rules(board)
-                if "background:var(--board-blue)" in rule.partition("{")[2]]
+        rules = primary_rules(board)
+        face = [rule for rule in rules if "background:var(--board-blue)" in rule.partition("{")[2]]
         self.assertEqual(len(face), 1, "强调档那一面只该有一条规则")
-        for declaration in ("border:1px solid transparent", "color:#fff",
-                            "box-shadow:0 1px 2px #0000000d"):
+        for declaration in ("border:0", "color:#fff", "box-shadow:0 1px 2px #0000000d",
+                            "position:relative", "isolation:isolate"):
             self.assertIn(declaration, face[0])
-        hover = [rule for rule in primary_rules(board) if ":hover" in rule.partition("{")[0]]
-        self.assertEqual(len(hover), 1, "强调档的悬停也只该有一条规则")
-        self.assertIn("background:var(--board-blue-hover)", hover[0])
-        # 文字色自己写一份：靠静止那条压过更宽的通用悬停是算出来的巧合，见
-        # `test_a_solid_tier_hover_spells_out_its_own_text_colour`。
-        self.assertIn("color:#fff", hover[0])
-        for name in ("border", "box-shadow", "filter", "transform"):
-            self.assertNotIn(name, hover[0].partition("{")[2],
-                             f"悬停只换渐变，{name} 不动")
-        self.assertEqual(
-            face[0].partition("{")[0].strip() + ":hover", hover[0].partition("{")[0].strip(),
-            "两条的选择器要同一份名单，否则有的按钮压上去没反应")
+        for rule in rules:
+            self.assertNotIn("border:1px solid transparent", rule,
+                             "强调档不补透明边，它会把渐变的色标挤开一像素")
+        layer = [rule for rule in rules
+                 if "background:var(--board-blue-hover)" in rule.partition("{")[2]]
+        self.assertEqual(len(layer), 1, "悬停那一层底只该铺一次")
+        for declaration in ("content:\"\"", "position:absolute", "inset:0", "z-index:-1",
+                            "pointer-events:none", "border-radius:inherit", "opacity:0",
+                            "transition:opacity .15s ease"):
+            self.assertIn(declaration, layer[0])
+        roster = face[0].partition("{")[0].strip()
+        # 四条都得挂在同一份名单上，否则有的按钮压上去没反应、有的按下去不回弹。
+        self.assertEqual(layer[0].partition("{")[0].strip(), roster + "::before")
+        for suffix, body in ((":hover::before", "{opacity:1}"),
+                             (":active", "{background:var(--board-blue-active)}"),
+                             (":active::before", "{opacity:0}")):
+            self.assertIn(roster + suffix + body, board)
         for rule in primary_rules(stylesheet_source()):
             selector = rule.partition("{")[0].strip()
             self.assertNotIn(":hover", selector, f"强调档的悬停不写在这一层：{selector}")
@@ -9277,13 +9287,18 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn(f"--board-blue:{gradient}", rules, "入口页那份渐变要跟站内逐字相同")
         primary = rules[rules.index(".primary:not(:disabled){"):]
         primary = primary[:primary.index("}")]
-        for declaration in ("background:var(--board-blue)", "border:1px solid transparent",
-                            "color:#fff", "box-shadow:0 1px 2px #0000000d"):
+        for declaration in ("background:var(--board-blue)", "border:0",
+                            "color:#fff", "box-shadow:0 1px 2px #0000000d",
+                            "isolation:isolate"):
             self.assertIn(declaration, primary)
         self.assertIn("height:36px", rules, "尺寸那条也一起取过去")
-        self.assertIn(".primary:not(:disabled):hover{background:var(--board-blue-hover);color:#fff}",
-                      rules, "悬停那条也要跟过去，否则这三页的按钮压上去没反应")
+        # 悬停铺的是 `::before` 那层底，淡入靠改 opacity：三条少一条这三页的按钮就要么
+        # 压上去没反应，要么亮着不退。
+        for suffix in (".primary:not(:disabled)::before{", ".primary:not(:disabled):hover::before{",
+                       ".primary:not(:disabled):active{", ".primary:not(:disabled):active::before{"):
+            self.assertIn(suffix, rules, "悬停和按下那几条也要跟过去")
         self.assertIn("--board-blue-hover:linear-gradient(", rules)
+        self.assertIn("--board-blue-active:linear-gradient(", rules)
 
     def test_the_settings_drawer_column_is_the_same_glass_as_the_sidebar(self):
         """设置弹层左栏和左侧抽屉是同一件事的两种形态，玻璃并在同一条规则上。
