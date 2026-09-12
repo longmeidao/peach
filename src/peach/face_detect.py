@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import hashlib
 import urllib.request
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from .config import TOOLS_DIR
@@ -43,9 +43,21 @@ MODEL_PATH = TOOLS_DIR / "yunet" / "face_detection_yunet_2023mar.onnx"
 DEFAULT_SCORE = 0.6
 #: NMS 阈值沿用 opencv_zoo 示例的默认值。
 DEFAULT_NMS = 0.3
-#: 送进网络前的长边上限。YuNet 是定尺寸输入，超大图先缩再检更快且不掉召回；
-#: 坐标按缩放比还原回原图。
-MAX_SIDE = 1280
+#: 送进网络的几个长边，坐标按各自的缩放比还原回原图。
+#:
+#: 只检一个尺度不够：YuNet 是定尺寸输入，同一张脸在不同尺度上的分数能差出一倍还多。
+#: 实测题材 `xenoblade` 那张竖图里的正脸——长边 320 得 0.63、640 得 0.70，到 1280 只
+#: 剩 0.27；同一张图上罩在躯干的误检反过来，320 上根本没有，1280 上涨到 0.65。于是
+#: 「只在最大那一档检一次」把这张图判成了「脸在躯干上」。分数在这里不是脸的属性，
+#: 是「这张脸在这个尺度上有多像脸」的一次读数，几次读数合起来才是它的分（见 `detect`）。
+#:
+#: 只往下缩不往上放：放大不会凭空多出细节，却会让暗部噪点和布料褶皱变成够大的「脸」。
+DETECT_SIDES = (320, 640, 1280)
+#: 两个框重叠到这个程度，就当成同一张脸在两个尺度上的两次读数，而不是两张脸。
+SAME_FACE_IOU = 0.35
+#: 单次读数低于这个分数不算「在这个尺度上认得出」。收读数的门比留脸的门低一截：
+#: 一张脸在三个尺度上读 0.9、0.85、0.3，中位数是 0.85，那个 0.3 也是一次读数。
+READ_FLOOR = 0.2
 #: 挑主角时，分数落后最好那张这么多的框不参与「取最大」。
 SCORE_MARGIN = 0.1
 #: 送检前的最小长边。图标常常只有 32×32、64×64，YuNet 在这个尺寸上几乎检不出东西——
@@ -80,6 +92,10 @@ def main_face(faces: list[Face], margin: float = SCORE_MARGIN) -> Face | None:
     600×1000 人像）：YuNet 给了两个框，脸是 0.202×0.170 分 0.928，另一个大一倍多、
     罩在胸口，分 0.798——圆头像于是取景在胸口。只按分数挑则会被背景里那张小而清晰的
     脸抢走。两个都用一次，各挡住对方的失败例。
+
+    这道 margin 挡不住「大而勉强」里分数够近的那一类：封面 `200GANA-2156` 上罩在胯
+    下的框 0.80、脸 0.89，差不到 0.1，面积大七成。那一类由 `detect` 的中位数挡——
+    它们在别的尺度上读数塌下来，根本进不到这里。
     """
     if not faces:
         return None
@@ -175,24 +191,65 @@ class FaceDetector:
         if create is None:                       # pragma: no cover - 依赖版本兜底
             raise FaceModelUnavailable(
                 "当前 OpenCV 没有 FaceDetectorYN；需要 4.5.4 以上")
-        self._detector = create(str(self.model_path), "", (320, 320), score, nms, 5000)
+        # 模型那道门只管「算不算一次读数」，留不留这张脸由 `detect` 按中位数判。
+        self._detector = create(str(self.model_path), "", (320, 320),
+                                min(score, READ_FLOOR), nms, 5000)
 
     def detect(self, image) -> list[Face]:
         """返回归一化坐标的人脸，按面积从大到小。
 
-        送进网络前按长边缩到 `MAX_SIDE`：YuNet 的输入尺寸是现设的，超大图直接喂
-        既慢又不涨召回。坐标先在缩放图上算，再按同一个比例还原——归一化之后
-        缩放比自然抵消，所以只要保证宽高用的是同一张图的。
+        `DETECT_SIDES` 里的每一档各检一次，重叠到 `SAME_FACE_IOU` 的框算同一张脸在
+        几个尺度上的几次读数。框取读数最高的那一次——坐标不去平均，平均出来的框哪一
+        次都不是。分数取几次读数的中位数，某一档上认不出就记 0，所以一张脸要被算数，
+        得在过半的尺度上都认得出。
+
+        取中位数而不是最高分：误检的框往往只在一个尺度上高。实测封面 `SRN-104`，
+        罩住整个身体的那个框在长边 320 上得 0.85，到 640、1280 只剩 0.31 和 0.49；
+        同一张图上真正的脸是 0.66、0.89、0.88。取最高分两个框打平，取中位数差出一倍。
+
+        同一张图在几个档上可能缩成同一个尺寸（原图比某一档还小时按原样送检），
+        那种重复只检一次，缺的那次不算漏检——补 0 会把小图上的脸全判掉。
         """
-        cv2 = self._cv2
         height, width = image.shape[:2]
         if not height or not width:
             return []
-        scale = min(1.0, MAX_SIDE / max(height, width))
+        groups: list[list[Face]] = []
+        seen: set[tuple[int, int]] = set()
+        for side in DETECT_SIDES:
+            for face in self._detect_at(image, side, seen):
+                for group in groups:
+                    if _overlap(group[0], face) >= SAME_FACE_IOU:
+                        group.append(face)
+                        break
+                else:
+                    groups.append([face])
+        faces = []
+        for group in groups:
+            best = max(group, key=lambda face: face.score)
+            reads = sorted((face.score for face in group), reverse=True)
+            reads += [0.0] * (len(seen) - len(reads))
+            score = reads[len(reads) // 2]
+            if score >= self.score:
+                faces.append(replace(best, score=round(score, 3)))
+        faces.sort(key=lambda face: face.area, reverse=True)
+        return faces
+
+    def _detect_at(self, image, side: int, seen: set[tuple[int, int]]) -> list[Face]:
+        """把图缩到这一档的长边再检一次；坐标按缩放比还原回原图。
+
+        归一化之后缩放比自然抵消，所以只要保证宽高用的是同一张图的。只往下缩：
+        原图比这一档还小时按原样送检。
+        """
+        cv2 = self._cv2
+        height, width = image.shape[:2]
+        scale = min(1.0, side / max(height, width))
         source = (cv2.resize(image, (max(1, int(width * scale)),
                                      max(1, int(height * scale))))
                   if scale < 1.0 else image)
         rows, cols = source.shape[:2]
+        if (cols, rows) in seen:
+            return []
+        seen.add((cols, rows))
         self._detector.setInputSize((cols, rows))
         _, raw = self._detector.detect(source)
         if raw is None:
@@ -201,7 +258,7 @@ class FaceDetector:
         for row in raw:
             x, y, w, h, *_rest = row.tolist()
             confidence = float(row[-1])
-            if confidence < self.score or w <= 0 or h <= 0:
+            if confidence < min(self.score, READ_FLOOR) or w <= 0 or h <= 0:
                 continue
             faces.append(Face(
                 cx=round(min(1.0, max(0.0, (x + w / 2) / cols)), 3),
@@ -210,5 +267,15 @@ class FaceDetector:
                 height=round(min(1.0, h / rows), 3),
                 score=round(confidence, 3),
             ))
-        faces.sort(key=lambda face: face.area, reverse=True)
         return faces
+
+
+def _overlap(one: Face, other: Face) -> float:
+    """两个框的交并比。判的是「这是不是同一张脸的两次读数」。"""
+    left = max(one.cx - one.width / 2, other.cx - other.width / 2)
+    right = min(one.cx + one.width / 2, other.cx + other.width / 2)
+    top = max(one.cy - one.height / 2, other.cy - other.height / 2)
+    bottom = min(one.cy + one.height / 2, other.cy + other.height / 2)
+    inner = max(0.0, right - left) * max(0.0, bottom - top)
+    union = one.area + other.area - inner
+    return inner / union if union > 0 else 0.0
