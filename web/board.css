@@ -1024,9 +1024,41 @@ body,.disp{font-family:var(--board-font);letter-spacing:0}body{font:var(--board-
 @media(max-width:760px){.pagetitle,.listtitle,body #manageTitle,.index .ihead h2,.indexheading{font:var(--board-figure)}input.geist-input,.configfield input,.geist-search input{font-size:16px}}
 
 /* 每类骨架保留实际内容的列宽、轮廓和留白。 */
-.board-page-skeleton{max-width:var(--board-content);width:100%;margin:auto}.board-page-skeleton>div{display:grid;gap:24px}.board-skeleton-row{display:flex;align-items:center;justify-content:space-between;gap:16px;min-height:48px}.board-skeleton-row .skeleton{height:14px;margin:0}.board-skeleton-section{display:grid;gap:16px;border-radius:16px;padding:24px;background:var(--ground)}.board-skeleton-input{height:40px}.board-skeleton-metrics{margin:0;gap:16px}.board-skeleton-metrics .tastesummary{height:152px;margin:0;gap:16px}.board-skeleton-metrics .skeleton{margin-left:16px;height:20px}.board-skeleton-metrics b.skeleton{width:45%;height:34px}.board-skeleton-metrics .board-stat-footer .skeleton{margin:0;height:14px}.board-skeleton-chart{display:grid;grid-template-columns:36% minmax(0,1fr);min-height:330px;gap:24px;align-items:center;padding:24px;border-radius:16px;background:var(--ground)}.board-skeleton-ring{width:160px;height:160px;border-radius:50%;margin:auto;mask:radial-gradient(circle,transparent 50%,#000 51%)}
+.board-page-skeleton{max-width:var(--board-content);width:100%;margin:auto}
+.skeleton-lines{display:grid;gap:12px;min-width:0}
+.skeleton-tabs{display:flex;gap:20px;align-items:center;min-height:48px;overflow-x:auto;white-space:nowrap;border-bottom:1px solid var(--line-soft)}
+.skeleton-setting{display:flex;justify-content:space-between;align-items:center;min-height:64px}
+.skeleton-toggle{width:40px;height:24px;border-radius:var(--pill-radius)}
+.skeleton-rings{display:grid;place-items:center}
+.skeleton.skeleton-ring{width:min(70%,260px);height:auto;aspect-ratio:1;border-radius:50%;mask:radial-gradient(circle,transparent 50%,#000 51%)}
+.skeleton-radar{width:100%;height:260px;clip-path:polygon(50% 0,95% 25%,95% 75%,50% 100%,5% 75%,5% 25%)}
+.board-page-skeleton .tastesummary{height:152px}
+.board-page-skeleton .tastesummary>b .skeleton{height:34px}
+.board-page-skeleton .fmanageoverview b .skeleton{height:32px}
+.board-page-skeleton .follow-workspace-switch>span{padding:4px 10px;min-height:28px;font:var(--board-body-medium);white-space:nowrap}
+.board-page-skeleton .configpage{display:grid;gap:40px}
+.board-page-skeleton .qualitycover,.board-page-skeleton .pic{height:auto}
+.board-page-skeleton .dupcover{height:auto;min-height:0}
+.board-page-skeleton .playlistcreate{min-width:200px}
+.board-page-skeleton .mixcopy{flex:1}
+.board-page-skeleton .mav{width:38px;height:38px;border-radius:50%}
+.skeleton-detail-media{height:auto;aspect-ratio:16/9;min-width:0;max-height:76vh}
+.follow-content-skeleton>.followphotowall .skeletoncard i{aspect-ratio:4/3}
+.related-skeleton{flex:none;width:100%;min-height:0}
+.related-skeleton>div{display:flex;gap:11px}
+.related-skeleton .skeletoncard{flex:0 0 216px}
+.postercard-skeleton>div{gap:24px 16px}
+.postercard-skeleton .skeletoncard{column-gap:10px;row-gap:3px}
+body[data-density="dense"] .catalog-skeleton .skeletoncard{padding-top:7px}
+body[data-density="dense"] .postercard-skeleton .skeletoncard b{height:1.35em}
+body[data-density="dense"] .postercard-skeleton .skeletoncard em{height:1.35em}
+body[data-density="dense"] .postercard-skeleton .skeletoncard u{height:30px}
+body:is([data-surface="/junk-files"],[data-surface="/trash"]) .catalog-skeleton>div{grid-template-columns:repeat(auto-fill,minmax(min(100%,280px),1fr));gap:20px}
+body:is([data-surface="/junk-files"],[data-surface="/trash"]) .catalog-skeleton .skeletoncard{border:1px solid var(--line-soft);border-radius:var(--surface-radius);overflow:hidden;background:var(--ground);padding-bottom:20px}
+body[data-surface="/junk-files"] .catalog-skeleton .skeletoncard{grid-template-columns:minmax(0,1fr)}
+body[data-surface="/junk-files"] .catalog-skeleton .skeletoncard s{display:none}
+body[data-surface="/junk-files"] .catalog-skeleton .skeletoncard :is(b,em,u){grid-column:1;margin-inline:12px;width:calc(100% - 24px)}
 .skeleton,.skeletoncard i,.skeletoncard b,.skeletoncard em,.skeletoncard s,.skeletoncard u{background:var(--color-background-tertiary-default);border-radius:8px}.skeletoncard i{border-radius:12px}.postercard-skeleton .skeletoncard{gap:6px 12px}.postercard-skeleton .skeletoncard s{border-radius:50%}.skeleton-cards>div{gap:24px 16px}.cleanup-skeleton .skeletoncard{border:0;border-radius:16px}.cleanup-skeleton .skeletoncard i,.review-skeleton .skeletoncard i{border-radius:8px}.index-skeleton .icell .ring{border-radius:50%}.entityskeletontext .skeleton{height:20px;border-radius:8px}.entityportrait.skeleton{border-radius:16px}.follow-content-skeleton .skeletoncard{padding-bottom:16px}.skeletondashstrip{border:0;gap:16px;background:none}.skeletondashstrip>span{border:0;border-radius:16px;background:var(--ground);min-height:152px}.skeletondashhero,.skeletondashpanel{border:0;border-radius:16px}
-@media(max-width:760px){.board-skeleton-chart{grid-template-columns:minmax(0,1fr)}.board-skeleton-section{padding:16px}.board-skeleton-row{gap:12px}.board-skeleton-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}}
 
 /* Board secondary：实体细边框、轻阴影和统一的三档控件尺寸。
    悬停只换填充，那圈线一动不动——按用户要求跟 BoardUI 的强调档对齐（2026-09-12 实测

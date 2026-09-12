@@ -5,7 +5,7 @@ import { searchMorphFrames } from './js/search-morph.js';
 import { filterScrollState } from './js/filter-scroll.js';
 import { selectRange, selectionSummary, selectGroup, syncSelectionToolbar } from './dist/peach-ui.js';
 import { MEDIA_SOURCE_ICONS } from './js/media-source-icons.js';
-import { boardPageSkeleton, initBoardControls, syncBoardRange, wireExpandableRanks, creatorSankeyHtml, wireCreatorSankey } from './dist/peach-ui.js';
+import { boardPageSkeleton, detailSkeletonHtml, initBoardControls, syncBoardRange, wireExpandableRanks, creatorSankeyHtml, wireCreatorSankey } from './dist/peach-ui.js';
 import { radialCardHtml, wireRadialCards, activityChartsHtml, wireActivityCharts } from './dist/peach-ui.js';
 import { imageFallbackAttrs, wireImageFallbacks } from './js/image-fallback.js';
 import { javDisplayName, javTitleHtml } from './js/jav-title.js';
@@ -197,6 +197,7 @@ window.peachRegisterRoute=registerRoute;
 
 const pageSkeletonHtml=(label,{cards=false,className='',variant='',count,fill}={})=>
   skeletonHtml(label,{variant:variant||(cards?'cards':'panel'),className,
+    gridClass:className.includes('follow-content-skeleton')&&new URLSearchParams(location.search).get('media')==='images'?'followlist followphotowall':'',
     ...(count?{count}:{}),...(fill===undefined?{}:{fill})});
 /* 关注页的骨架跟首页共用海报卡那套几何：网格算式、卡内每一格都一样，只有归属行
    高一点（`.followitem .meta .s` 有 min-height）。上面是它自己的作者行、题材行和那块
@@ -310,6 +311,11 @@ const MANAGEMENT_PLACEHOLDERS={
 const managementPlaceholder=path=>
   boardPageSkeleton(path)||
   (MANAGEMENT_PLACEHOLDERS[path]||(()=>pageSkeletonHtml('正在读取页面')))();
+function showDetailLoading(){
+  const stage=$('#stage');
+  if(!stage.querySelector('[data-skeleton="detail"]'))stage.innerHTML=detailSkeletonHtml();
+  stage.hidden=false;document.body.classList.add('detail-open');
+}
 /* 顶部三层只属于首页。深链启动时先画一遍再由路由收起来，等于向管理页和索引页
    承诺了三条永远不会到货的横条。 */
 const hideDiscoveryBars=()=>{$('#tiers').style.display='none';$('#tagbar').style.display='none'};
@@ -321,6 +327,9 @@ function renderInitialSurfaceLoading(){
   /* 骨架画的就是这个表面，所以先把 `data-surface` 写上：深链冷启动时 `restoreRoute()`
      排在这一步后面，等它写的话骨架会先按默认版式铺一遍，数据到货再跳成分栏。 */
   document.body.dataset.surface=location.pathname;
+  if(/^\/(item\/\d+|(?:mix|parts|editions|playlists)\/\d+\/\d+)$/.test(path)){
+    hideDiscoveryBars();showDetailLoading();return;
+  }
   if(path==='/junk-files'){
     /* 垃圾文件是一屏同质卡片，等的是内容结构不是后台进度：Loading Dots 说的是
        「还在跑」，这里要说的是「等下会出现几张什么形状的卡」，所以用目录骨架。 */
@@ -332,7 +341,7 @@ function renderInitialSurfaceLoading(){
   if(management.has(path)||path.startsWith('/follow/item/')){
     hideDiscoveryBars();
     const stats=$('#stats');stats.hidden=false;$('#grid').innerHTML='';
-    stats.innerHTML=path.startsWith('/follow')&&path!=='/follow-manage'
+    stats.innerHTML=path.startsWith('/follow/item/')?detailSkeletonHtml():path.startsWith('/follow')&&path!=='/follow-manage'
       ?followSkeletonHtml('正在读取关注内容')
       :managementPlaceholder(path);
     fitSkeleton(stats);
@@ -6163,7 +6172,7 @@ async function openFollow(push=true,renderForDetail=false){
   const list=$('#stats').querySelector('.follow .followlist');
   const partial=!!list&&!renderForDetail;
   showManagementBody({manage:false,
-    placeholder:partial?'':followSkeletonHtml('正在读取关注内容')});
+    placeholder:partial?'':renderForDetail?detailSkeletonHtml():followSkeletonHtml('正在读取关注内容')});
   if(partial){
     list.outerHTML=pageSkeletonHtml('正在读取关注内容',
       {cards:true,className:'follow-content-skeleton postercard-skeleton'});
@@ -8260,7 +8269,7 @@ function showEntityLoading(kind){
   const head=collectionHeaderHtml({readout:'&nbsp;',loading:true,filterRow:'bottom'});
   const body=kind==='agency'
     ?indexSkeletonHtml({kind:'performers',layout:peopleIndexLayout()})
-    :pageSkeletonHtml('正在读取作品',{cards:true});
+    :pageSkeletonHtml('正在读取作品',{cards:true,className:'catalog-skeleton postercard-skeleton'});
   const placeholder=entitySkeletonHtml(kind,head,body);
   if($('#index').firstElementChild?.dataset.skeleton!==`entity/${kind}`){
     $('#index').innerHTML=placeholder;fitSkeleton($('#index'));
@@ -9383,7 +9392,7 @@ function hasReturnSurface(){
    会把刚打开的这一屏详情一起收掉。 */
 function fillIdleCatalog(){
   const grid=$('#grid');
-  if(!grid.querySelector('.catalog-skeleton'))return;
+  if(!grid.querySelector('.catalog-skeleton')&&!$('#stage').querySelector('[data-skeleton="detail"]'))return;
   grid.innerHTML='';
   const count=$('#count');count.removeAttribute('aria-busy');count.removeAttribute('aria-label');
   offset=0;
@@ -9424,9 +9433,10 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
   activeQueue=queueContext;
   if(push&&!queueContext)route('/item/'+id);
   const detailSurface=surfaceToken(surfacePath());
+  showDetailLoading();
   const it=await surfaceApi(detailSurface,'/api/item?id='+id);
   if(!surfaceCurrent(detailSurface))return;
-  if(it.error)return;
+  if(it.error){disposeStage(false);return}
   if(it.location==='online'&&it.follow_item_id){
     followDetailReturnPath=detailReturnPath||'/';
     await openFollowDetail(it.follow_item_id,false,null,true);
