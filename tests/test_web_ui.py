@@ -5265,6 +5265,7 @@ class WebUiSourceTests(unittest.TestCase):
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
         self.assertPageContains('<div class="tier followworks" aria-label="按题材筛选">')
         self.assertPageContains('<button class="brandpill" data-follow-work="${esc(key)}"')
+        self.assertPageContains('<div class="tier followworks" data-skeleton-tier="brandpill"></div>')
         self.assertPageContains("const workRows=(facets.works||[]).slice(0,ROW_FIRST);")
         self.assertPageContains("toggle(followWorks,button.dataset.followWork);applyFollowView()});")
         self.assertPageContains("+(followWorks.size?`&work=${encodeURIComponent([...followWorks].join(','))}`:'');")
@@ -5276,8 +5277,30 @@ class WebUiSourceTests(unittest.TestCase):
                       "flex-direction:column;align-items:center;gap:6px;width:76px;", board)
         self.assertIn("#tiers .av .ring,:is(.followauthors,.followworks) .av .ring"
                       "{width:48px;height:48px;", board)
-        self.assertIn(":is(.followauthors,.followworks) .av .ring .favatar"
+        self.assertIn(".followauthors .av .ring .favatar"
                       "{width:100%;height:100%;border-radius:0;object-fit:cover}", board)
+        self.assertIn("#tiers .brandpill,:is(.followauthors,.followworks) .brandpill"
+                      "{display:inline-flex;", board)
+        self.assertIn("#tiers .brandpill .mk,:is(.followauthors,.followworks) .brandpill .mk"
+                      "{width:28px;height:28px;", board)
+
+    def test_the_work_row_asks_the_server_for_a_cover_and_never_hands_it_an_address(self):
+        """题材头像的地址不经过页面。
+
+        `/work-icon?work=` 递过去的是题材的身份，服务端自己在账本里挑评分最高的
+        那一条、核对图床主机再存在本机。页面能递地址的话这里就是一个任意地址抓取的
+        口子，浏览器也会直接向对方站点暴露正在看什么。挑不出图的题材由 facet 那一行
+        的第四位说了算，直接出两个字母，不出一个注定 404 的 `<img>`——404 不可缓存，
+        每次重绘都要再打一轮。
+        """
+        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
+        self.assertPageContains("function followWorkPill([key,label,,icon]){")
+        self.assertPageContains(
+            'const mark=icon?`<img src="/work-icon?work=${encodeURIComponent(key)}"'
+            ' alt="" loading="lazy">`:fallback;')
+        self.assertPageContains('<span class="mk" data-fallback="${fallback}">${mark}</span>')
+        # 圆标里是作品图不是烤好边距的厂牌标识，正中裁会切掉脸。
+        self.assertIn(".followworks .brandpill .mk img{object-position:50% 25%}", board)
 
     def test_review_selection_uses_default_checkboxes_and_a_separate_toolbar(self):
         self.assertPageContains('class="batchbar selectiondock"')

@@ -13,6 +13,7 @@ import threading
 import unittest
 from datetime import datetime, timezone
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 from peach import follow_store, web_follow, web_stats
@@ -807,11 +808,14 @@ class FollowContractTests(unittest.TestCase):
         self.assertEqual(sum(self._get(tag="artist_name")["counts"].values()), 1,
                          "在线索引里的非 general 标签点入后必须能筛到原条目")
 
-    def _typed(self, external_id, tag_types):
+    def _typed(self, external_id, tag_types, preview=""):
+        extra = {"tags": list(tag_types), "tag_types": dict(tag_types)}
+        if preview:
+            extra["preview_url"] = preview
         return FollowCandidate(
             provider="rule34xxx", external_id=external_id, title=f"Clip {external_id}",
             url=f"https://rule34.xxx/index.php?page=post&s=view&id={external_id}",
-            extra={"tags": list(tag_types), "tag_types": dict(tag_types)})
+            extra=extra)
 
     def test_the_works_row_only_lists_what_the_source_typed_as_a_work(self):
         """题材那一排收的是来源记成 copyright 的标签，不按词形猜。
@@ -826,12 +830,51 @@ class FollowContractTests(unittest.TestCase):
                               "tifa_lockhart": "character",
                               "lazyprocrastinator": "artist",
                               "animated": "metadata", "pov": "general"}),
-            self._typed("2", {"zenless_zone_zero": "copyright"}),
+            self._typed("2", {"zenless_zone_zero": "copyright"},
+                        preview="https://api-cdn.rule34.xxx/thumbnails/9/z.jpg"),
             self._typed("3", {"zenless zone zero": "copyright"}),
         ))
         works = self._get()["facets"]["works"]
-        self.assertEqual(works, [["zenless zone zero", "Zenless Zone Zero", 2],
-                                 ["final fantasy vii", "Final Fantasy VII", 1]])
+        # 末位说这一枚挑不挑得出代表图，页面据它决定出不出 `<img>`。
+        self.assertEqual(works, [["zenless zone zero", "Zenless Zone Zero", 2, 1],
+                                 ["final fantasy", "Final Fantasy", 1, 0]])
+
+    def test_one_series_is_one_pill_however_the_source_spells_each_installment(self):
+        """一个系列在那一排上只占一枚。
+
+        来源给每一代都发一个 copyright 标签，`Final Fantasy VII`、`FFXIV`、
+        `Stranger of Paradise: Final Fantasy Origin` 各占一格时，那一排读起来是
+        版本号列表而不是题材。一条更新同时带系列名和代号也只算一次。
+        """
+        self._seed(provider="rule34xxx", ref="typed", candidates=(
+            self._typed("1", {"final_fantasy": "copyright",
+                              "final_fantasy_vii": "copyright"}),
+            self._typed("2", {"final fantasy xiv": "copyright"}),
+            self._typed("3", {"ffxiv": "copyright"}),
+            self._typed("4", {"stranger of paradise: final fantasy origin":
+                              "copyright"}),
+        ))
+        self.assertEqual(self._get()["facets"]["works"],
+                         [["final fantasy", "Final Fantasy", 4, 0]])
+        self.assertEqual(sum(self._get(work="final fantasy")["counts"].values()), 4)
+        self.assertEqual(sum(self._get(work="final fantasy vii")["counts"].values()), 4,
+                         "书签里存着的旧写法要落在合并后的同一枚上")
+
+    def test_publishers_holidays_and_placeholders_never_reach_the_works_row(self):
+        """发行商、节庆和占位词不是题材。
+
+        来源把它们和作品名一样记成 copyright，形态上分不出来，只能按名单剔。
+        留着的话那一排头几格会被 Square Enix 和 Christmas 占掉。
+        """
+        self._seed(provider="rule34xxx", ref="typed", candidates=(
+            self._typed("1", {"stellar blade": "copyright",
+                              "shift up": "copyright"}),
+            self._typed("2", {"square enix": "copyright"}),
+            self._typed("3", {"christmas": "copyright", "original": "copyright"}),
+            self._typed("4", {"iwara": "copyright"}),
+        ))
+        self.assertEqual(self._get()["facets"]["works"],
+                         [["stellar blade", "Stellar Blade", 1, 0]])
 
     def test_a_work_filters_every_spelling_and_two_works_mean_either(self):
         """按题材筛是「任一」，而且两种写法都要筛得到。
@@ -848,12 +891,83 @@ class FollowContractTests(unittest.TestCase):
         self.assertEqual(sum(self._get(work="zenless zone zero")["counts"].values()), 2,
                          "两种写法是同一部作品，必须一起筛到")
         self.assertEqual(
-            sum(self._get(work="zenless zone zero,final fantasy vii")["counts"].values()), 3,
+            sum(self._get(work="zenless zone zero,final fantasy")["counts"].values()), 3,
             "选两部作品是两部都看，不是只看同时占两部的")
         self.assertEqual(
             sorted(self._get()["facets"]["works"]),
-            sorted(self._get(work="final fantasy vii")["facets"]["works"]),
+            sorted(self._get(work="final fantasy")["facets"]["works"]),
             "选中一部作品后另一部不能从那一排上消失，否则换不了题材")
+
+    def _scored(self, item_id, score, tags, preview, thumb=None):
+        return SimpleNamespace(
+            id=item_id, provider="rule34xxx", external_id=str(item_id),
+            media_url=None, thumb_url=thumb,
+            metadata={"score": score, "preview_url": preview,
+                      "tags": list(tags),
+                      "tag_types": {tag: ("general" if tag == "3d" else "copyright")
+                                    for tag in tags}})
+
+    def test_the_work_icon_is_the_top_rated_3d_clip_already_in_this_library(self):
+        """题材头像取本库里这个题材评分最高的那一条，带 `3d` 的优先。
+
+        rule34 的 score 是站点自己的热度排序，本库里现成存着，不必再按 `sort:score`
+        去站点查一遍——查回来的还多半是用户没关注的作者。地址只认登记过的图床主机：
+        它来自来源记录，而记录里存的是站点回的 JSON，不该把任意主机带进出网路径。
+        """
+        host = "https://api-cdn.rule34.xxx/thumbnails/1"
+        store = SimpleNamespace(items=lambda **kwargs: (
+            self._scored(1, 900, ("stellar blade",), f"{host}/flat.jpg"),
+            self._scored(2, 40, ("stellar blade", "3d"), f"{host}/spatial.jpg"),
+            self._scored(3, 5, ("stellar blade", "3d"), f"{host}/quiet.jpg"),
+            self._scored(4, 999, ("stellar blade", "3d"),
+                         "https://images.example.invalid/best.jpg"),
+            self._scored(5, 999, ("zenless zone zero", "3d"), f"{host}/other.jpg"),
+        ))
+        table = web_follow._work_icon_table(store)
+        self.assertEqual(table["stellar blade"], f"{host}/spatial.jpg")
+        self.assertEqual(table["zenless zone zero"], f"{host}/other.jpg")
+        self.assertNotIn("miside", table,
+                         "本库里没有这个题材时不编一张图出来，那一排退回首字母")
+
+    def test_the_work_icon_follows_the_merged_series_not_one_installment(self):
+        """题材头像跟着合并后的系列走。
+
+        `Final Fantasy VII` 那一枚已经并进 `Final Fantasy`，头像要在整个系列里挑
+        最高分的那一条，而不是只看恰好写着系列名的那几条。
+        """
+        host = "https://api-cdn.rule34.xxx/thumbnails/2"
+        store = SimpleNamespace(items=lambda **kwargs: (
+            self._scored(1, 10, ("final fantasy", "3d"), f"{host}/series.jpg"),
+            self._scored(2, 700, ("final fantasy vii remake", "3d"),
+                         f"{host}/remake.jpg"),
+        ))
+        self.assertEqual(web_follow._work_icon_table(store)["final fantasy"],
+                         f"{host}/remake.jpg")
+
+    def test_one_scan_answers_every_work_icon_asked_for_in_the_same_minute(self):
+        """整排头像同时到期时只扫一遍库。
+
+        那一排二十几枚，浏览器会并排发来同样多个 `/work-icon`；每个都从头扫一遍
+        全库、把几千条 metadata 重解析一次的话，服务在这段时间里干不了别的。
+        """
+        host = "https://api-cdn.rule34.xxx/thumbnails/3"
+        scans = []
+
+        def items(**kwargs):
+            scans.append(1)
+            return (self._scored(1, 5, ("stellar blade", "3d"), f"{host}/a.jpg"),
+                    self._scored(2, 5, ("miside", "3d"), f"{host}/b.jpg"))
+
+        web_follow._work_icon_memo = (0.0, {})
+        try:
+            store = SimpleNamespace(items=items)
+            self.assertEqual(web_follow.work_icon_url(store, "stellar blade"),
+                             f"{host}/a.jpg")
+            self.assertEqual(web_follow.work_icon_url(store, "miside"),
+                             f"{host}/b.jpg")
+            self.assertEqual(len(scans), 1)
+        finally:
+            web_follow._work_icon_memo = (0.0, {})
 
     def test_counts_are_whole_library_while_groups_are_one_page(self):
         """计数是全库口径，列表只有一页——界面并排显示这两个数时看起来像自相矛盾。

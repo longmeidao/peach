@@ -1416,13 +1416,13 @@ body .reviewactions button:disabled{opacity:.5;cursor:not-allowed}
 #tiers .av:hover .ring,#tiers .av[aria-pressed="true"] .ring,
 :is(.followauthors,.followworks) .av:hover .ring,:is(.followauthors,.followworks) .av[aria-pressed="true"] .ring{box-shadow:none}
 #tiers .av .nm,:is(.followauthors,.followworks) .av .nm{display:block;max-width:100%;font:var(--board-caption);color:inherit;text-align:center;overflow:hidden;text-overflow:ellipsis}
-/* 题材那一排只有名字：厂牌那一枚左边的圆标识装的是官网 logo，作品名没有这样一张图，
-   拿首字母凑一个圆框出来，一排里七枚都写着「Fi」，认的还是后面那行字。 */
-.followworks .brandpill{padding:6px 14px}
 /* 关注页的头像是张外站图，自己带着 64px 的身量；圆头像的尺寸归上面那一格，它只负责
    把那一格填满。 */
-:is(.followauthors,.followworks) .av .ring .favatar{width:100%;height:100%;border-radius:0;object-fit:cover}
-:is(.followauthors,.followworks) .av .ring .favatar.none{display:flex;align-items:center;justify-content:center;background:none;font:inherit;color:inherit}
+.followauthors .av .ring .favatar{width:100%;height:100%;border-radius:0;object-fit:cover}
+.followauthors .av .ring .favatar.none{display:flex;align-items:center;justify-content:center;background:none;font:inherit;color:inherit}
+/* 题材那一枚圆标装的是这个题材下最热的一张作品图，不是烤好边距的厂牌标识：人物的头
+   多半落在画面上四分之一处，按正中裁一个 28px 的圆出来常常只剩一截身子。 */
+.followworks .brandpill .mk img{object-position:50% 25%}
 :is(.followauthors,.followworks){gap:4px;align-items:center}
 .followworks{padding:0 0 10px;margin:0 0 2px;overscroll-behavior-inline:contain}
 @media(prefers-reduced-motion:reduce){.board-ranked-chart .board-rank-fill,.tasteranks .taste-rank-track i,.board-radar .board-radar-value{animation:none;transform:none;opacity:1}}

@@ -175,18 +175,174 @@ def _work_key(tag: str) -> str:
     return re.sub(r"[\s_]+", " ", html.unescape(str(tag or ""))).strip().casefold()
 
 
+#: 作品名里保持小写的虚词。整串套首字母大写会读成「Angels Of Delusion」，
+#: 而作品自己写的是 `Angels of Delusion`。首词不在此列，它总要大写。
+_WORK_MINOR_WORDS = frozenset((
+    "a", "an", "and", "at", "for", "in", "no", "of", "on", "or", "the",
+    "to", "vs", "x",
+))
+
+
 def _work_label(tag: str) -> str:
     """题材的显示名：下划线换空格，整串全小写时每个词提首字母。
 
     `final_fantasy_vii` 直接摆在筛选条上读的是文件名不是作品名。罗马数字整词大写，
-    否则这一串作品名要读成「Final Fantasy Vii」。来源自己写成 `Genshin Impact` 的
-    照原样留着——它已经是人写的形态，再套一遍规则只会改坏。
+    否则这一串作品名要读成「Final Fantasy Vii」；只认末词那一个，否则 `spy x family`
+    中间那个连接词也要被当成十。来源自己写成 `Genshin Impact` 的照原样留着——它
+    已经是人写的形态，再套一遍规则只会改坏。
     """
     text = re.sub(r"[\s_]+", " ", html.unescape(str(tag or ""))).strip()
     if not text or text != text.lower():
         return text
-    return " ".join(word.upper() if word in _ROMAN_NUMERALS
-                    else word[:1].upper() + word[1:] for word in text.split(" "))
+    words = text.split(" ")
+    last = len(words) - 1
+    return " ".join(
+        word.upper() if index == last and word in _ROMAN_NUMERALS
+        else word if index and word in _WORK_MINOR_WORDS
+        else word[:1].upper() + word[1:]
+        for index, word in enumerate(words))
+
+
+#: 题材那一排要的是作品或 IP。发行商、工作室、平台、节庆和「Original」这类占位
+#: 同样被来源记成 copyright，形态上跟作品名没有任何区别，只能一条条列。
+_NON_WORK_TAGS = frozenset({
+    "774 inc.", "atlus", "bandai namco", "bethesda softworks", "bioware",
+    "blizzard entertainment", "brave group", "capcom", "cd projekt red",
+    "disney", "electronic arts", "fromsoftware", "hoyoverse", "koei tecmo",
+    "larian studios", "mihoyo", "mihoyo technology (shanghai) co. ltd.",
+    "nanashi inc.", "naughty dog", "netease games", "netherrealm studios",
+    "nintendo", "platinum games", "riot games", "sandfall interactive",
+    "sega", "shift up", "snk", "square enix", "team cherry", "tecmo",
+    "valve", "wizards of the coast",
+    "instagram", "iwara", "mmd", "patreon", "tenga", "twitter", "vr chat",
+    "christmas", "halloween", "holidays", "new year", "new year 2026",
+    "the game awards", "valentines day",
+    "1", "asian mythology", "hentai", "indie virtual youtuber",
+    "japanese mythology", "joi", "mythology", "original", "religion", "tmp",
+})
+
+#: 系列名到它在筛选条上的写法。以其中一条开头的题材全部并进这一条：用户要的是
+#: 「Final Fantasy」，不是 VII、XIV、XV、VII Remake 各占一格把整排挤满。值必须
+#: 显式写，撇号、内部大小写和官方写法没法从归一后的键还原。
+_WORK_SERIES = {
+    "atelier": "Atelier",
+    "baldurs gate": "Baldur's Gate",
+    "brown dust": "Brown Dust",
+    "cyberpunk": "Cyberpunk",
+    "darkstalkers": "Darkstalkers",
+    "dc": "DC",
+    "dead by daylight": "Dead by Daylight",
+    "dead or alive": "Dead or Alive",
+    "devil may cry": "Devil May Cry",
+    "drag-on dragoon": "Drag-On Dragoon",
+    "dragon age": "Dragon Age",
+    "drakengard": "Drakengard",
+    "fatal frame": "Fatal Frame",
+    "fatal fury": "Fatal Fury",
+    "fate": "Fate",
+    "final fantasy": "Final Fantasy",
+    "fire emblem": "Fire Emblem",
+    "five nights at freddys": "Five Nights at Freddy's",
+    "granblue fantasy": "Granblue Fantasy",
+    "half-life": "Half-Life",
+    "hollow knight": "Hollow Knight",
+    "hololive": "hololive",
+    "honkai": "Honkai",
+    "king of fighters": "The King of Fighters",
+    "kingdom hearts": "Kingdom Hearts",
+    "league of legends": "League of Legends",
+    "marvel": "Marvel",
+    "mass effect": "Mass Effect",
+    "metro": "Metro",
+    "monster hunter": "Monster Hunter",
+    "mortal kombat": "Mortal Kombat",
+    "nier": "NieR",
+    "ninja gaiden": "Ninja Gaiden",
+    "nioh": "Nioh",
+    "overwatch": "Overwatch",
+    "persona": "Persona",
+    "pretty cure": "Pretty Cure",
+    "resident evil": "Resident Evil",
+    "soul calibur": "Soul Calibur",
+    "street fighter": "Street Fighter",
+    "tekken": "Tekken",
+    "the elder scrolls": "The Elder Scrolls",
+    "the last of us": "The Last of Us",
+    "the legend of heroes": "The Legend of Heroes",
+    "the witcher": "The Witcher",
+    "tomb raider": "Tomb Raider",
+    "valkyria chronicles": "Valkyria Chronicles",
+    "warcraft": "Warcraft",
+    "xenoblade": "Xenoblade",
+}
+
+#: 长的先试：将来添了互为前缀的两个系列时，`final fantasy vii` 不能被
+#: `final fantasy` 先吃掉。
+_WORK_SERIES_KEYS = tuple(sorted(_WORK_SERIES, key=len, reverse=True))
+
+#: 同一个系列的另一种叫法：日文原名、缩写，以及副标题排在系列名前面的外传。
+#: 这些形态上认不出来，只能一条条认。
+_WORK_ALIASES = {
+    "ao no kiseki": "the legend of heroes",
+    "biohazard": "resident evil",
+    "crisis core final fantasy vii": "final fantasy",
+    "dark stalkers": "darkstalkers",
+    "dbd": "dead by daylight",
+    "dc comics": "dc",
+    "drag-on dragoon": "drakengard",
+    "dragonflight": "warcraft",
+    "eiyuu densetsu": "the legend of heroes",
+    "ffxiv": "final fantasy",
+    "futari wa precure": "pretty cure",
+    "garou mark of the wolves": "fatal fury",
+    "hajimari no kiseki": "the legend of heroes",
+    "holoforce": "hololive",
+    "holox": "hololive",
+    "k da all out series": "league of legends",
+    "k da series": "league of legends",
+    "kiseki": "the legend of heroes",
+    "marvel comics": "marvel",
+    "precure": "pretty cure",
+    "senjou no valkyria": "valkyria chronicles",
+    "skyrim": "the elder scrolls",
+    "stranger of paradise final fantasy origin": "final fantasy",
+    "world of warcraft": "warcraft",
+    "zero no kiseki": "the legend of heroes",
+}
+
+
+def _work_root(tag: str) -> str:
+    """题材的规范身份：同一系列的各代、各写法归到同一枚。
+
+    `Final Fantasy VII Remake` 和 `FFXIV` 各占一格时，那一排读起来是版本号列表
+    而不是题材。先把竖线并列的别名、`(series)` 后缀、冒号副标题和撇号这些纯写法
+    差别抹平，查一次别名，再看它是不是某个系列名开头；系列名本身也可能是别名
+    （`Drag-On Dragoon` 就是 `Drakengard`），所以最后再查一次。
+    """
+    text = _work_key(tag).split("|", 1)[0]
+    text = re.sub(r"\s*\([^()]*\)\s*$", "", text)
+    text = re.sub(r"\s+", " ", text.replace(":", " ").replace("/", " ")
+                  .replace("'", "").replace("’", "")).strip()
+    if not text:
+        return ""
+    text = _WORK_ALIASES.get(text, text)
+    for series in _WORK_SERIES_KEYS:
+        if text == series or text.startswith(series + " "):
+            text = series
+            break
+    return _WORK_ALIASES.get(text, text)
+
+
+def _work_display(root: str, spellings: dict[str, int]) -> str:
+    """题材在筛选条上的写法。
+
+    系列照表写，`NieR` 和 `hololive` 的大小写是作品自己的，推不出来。其余用来源
+    里出现最多的那种拼法：它比归一后的键更接近人写的形态，冒号和撇号都还在。
+    """
+    if root in _WORK_SERIES:
+        return _WORK_SERIES[root]
+    spelling = max(spellings.items(), key=lambda pair: (pair[1], pair[0]))[0]
+    return _work_label(spelling)
 
 
 def _item_works(item) -> list[str]:
@@ -194,17 +350,101 @@ def _item_works(item) -> list[str]:
 
     按词形猜会把角色名和画师手柄摆进题材那一排：`tifa_lockhart` 和
     `lazyprocrastinator` 在字面上跟作品名没有区别，区别只写在来源的类型里。
+
+    同一系列的各代在这里已经并成一枚，所以同时带 `final fantasy` 和
+    `final fantasy vii` 的一条更新只留一个写法。
     """
     seen, works = set(), []
     for tag in _item_all_tags(item):
-        key = _work_key(tag)
-        if (not key or key in seen
+        root = _work_root(tag)
+        if (not root or root in seen or root in _NON_WORK_TAGS
                 or _recorded_tag_type(item, tag) != "copyright"
                 or _NON_CONTENT_FOLLOW_TAG_RE.fullmatch(tag.strip())):
             continue
-        seen.add(key)
+        seen.add(root)
         works.append(tag)
     return works
+
+
+#: 题材头像只认这一个图床。地址来自来源记录而不是固定表，这道白名单就是那个闸：
+#: 记录里存的是站点回的 JSON，不能让它把任意主机带进出网路径。
+_WORK_ICON_HOSTS = frozenset({"api-cdn.rule34.xxx"})
+
+
+def work_root(tag: str) -> str:
+    """题材的规范身份。`/work-icon` 按它认题材，所以要能从模块外调用。"""
+    return _work_root(tag)
+
+
+#: 一次扫库算出的全部题材代表图能用多久。整排头像同时过期时浏览器会并排发来
+#: 二十几个 `/work-icon`，每个都从头扫一遍全库，而结果是同一份表。
+_WORK_ICON_MEMO_SECONDS = 60
+_work_icon_memo: tuple[float, dict[str, str]] = (0.0, {})
+_work_icon_lock = threading.Lock()
+
+
+def _work_icon_candidate(item) -> str:
+    """这一条能给题材当代表图吗：能就是那个缩略图地址，不能是空串。
+
+    地址来自来源记录而不是固定表，白名单就是那道闸：记录里存的是站点回的 JSON，
+    不能让它把任意主机带进出网路径。
+    """
+    if item.provider != "rule34xxx" or _excluded_item(item):
+        return ""
+    url = str(item.metadata.get("preview_url") or item.thumb_url or "")
+    return url if urllib.parse.urlsplit(url).netloc in _WORK_ICON_HOSTS else ""
+
+
+def _work_icon_table(store) -> dict[str, str]:
+    """题材 → 代表图地址。挑评分最高的那一条，带 `3d` 标签的优先。
+
+    用户要的是这个题材最有代表性的一张。rule34 的 score 是站点自己的热度排序，
+    本库里现成存着——不必再按 `sort:score` 去站点查一遍，查回来的还多半是他根本
+    没关注的作者。`3d` 优先是因为这一排要的是 3D 作品，不是同人画。
+
+    取站点的缩略图而不是正片：一枚头像显示出来不过几十像素，150 的缩略图已经是
+    三倍图，而同一条的正片可能是一张几 MB 的动图，超过 `follow_assets.MAX_BYTES`
+    反而一张都存不下。
+    """
+    best: dict[str, tuple[tuple[int, int, int], str]] = {}
+    for item in store.items(limit=_ALL_ITEMS):
+        url = _work_icon_candidate(item)
+        if not url:
+            continue
+        roots = {_work_root(tag) for tag in _item_works(item)}
+        if not roots:
+            continue
+        try:
+            score = int(item.metadata.get("score") or 0)
+        except (TypeError, ValueError):
+            score = 0
+        spatial = 1 if "3d" in {tag.casefold() for tag in _item_all_tags(item)} else 0
+        rank = (spatial, score, item.id)
+        for root in roots:
+            if root not in best or rank > best[root][0]:
+                best[root] = (rank, url)
+    return {root: url for root, (_, url) in best.items()}
+
+
+def _work_icons(store) -> dict[str, str]:
+    """题材 → 代表图地址，整张表一起算再存一分钟。
+
+    判据见 `_WORK_ICON_MEMO_SECONDS`。筛选条和 `/work-icon` 读的是同一份表，所以
+    那一排说「这枚有图」和端点真的取得到图不会各说各话。落盘那份图另有自己的保鲜期，
+    这里只挡住「同一秒里把全库扫二十几遍」。
+    """
+    global _work_icon_memo
+    with _work_icon_lock:
+        stamp, table = _work_icon_memo
+        if time.time() - stamp >= _WORK_ICON_MEMO_SECONDS:
+            table = _work_icon_table(store)
+            _work_icon_memo = (time.time(), table)
+    return table
+
+
+def work_icon_url(store, root: str) -> str | None:
+    """题材头像取哪一张，取不到就是 None。"""
+    return _work_icons(store).get(root)
 
 
 def _media_kind(item) -> str:
@@ -635,17 +875,23 @@ def _follow_facets(store, items, by_source, alias_map) -> dict:
             providers.add(str(row["provider"] or ""))
         for tag in _item_tags(group.primary):
             tags[tag] = tags.get(tag, 0) + 1
+        # 末位是「这个题材挑得出代表图吗」。页面据它决定出不出 `<img>`：无条件出图、
+        # 靠 `/work-icon` 回 404 换回字母的话，那条响应不可缓存，每次重绘再打一轮。
+        icon = 1 if _work_icon_candidate(group.primary) else 0
         for tag in _item_works(group.primary):
-            row_work = works.setdefault(_work_key(tag),
-                                        {"label": _work_label(tag), "n": 0})
+            row_work = works.setdefault(_work_root(tag),
+                                        {"spellings": {}, "n": 0, "icon": 0})
             row_work["n"] += 1
+            row_work["icon"] = max(row_work["icon"], icon)
+            row_work["spellings"][tag] = row_work["spellings"].get(tag, 0) + 1
     return {
         "authors": sorted(authors),
         "providers": sorted(providers),
         "tags": sorted(tags.items(), key=lambda pair: (-pair[1], pair[0])),
-        # 题材那一排：键是归一后的身份，标签是给人看的写法，数目按发布组算。
-        "works": [[key, row["label"], row["n"]] for key, row in
-                  sorted(works.items(), key=lambda pair: (-pair[1]["n"], pair[0]))],
+        # 题材那一排：键是归并后的系列身份，标签是给人看的写法，数目按发布组算。
+        "works": [[root, _work_display(root, row["spellings"]), row["n"], row["icon"]]
+                  for root, row in sorted(works.items(),
+                                          key=lambda pair: (-pair[1]["n"], pair[0]))],
     }
 
 
@@ -754,7 +1000,7 @@ def q_follow(contract, args) -> dict:
     wanted_tags = _csv_values(args.get("tag"))
     # 题材跟作者、来源一样是「任一」：两部作品同时成立的条目几乎没有，取交集等于
     # 点第二枚就清空列表。标签那一维仍是交集，见下面 `_matches`。
-    wanted_works = frozenset(_work_key(value) for value in _csv_values(args.get("work")))
+    wanted_works = frozenset(_work_root(value) for value in _csv_values(args.get("work")))
     try:
         unread_days = max(0, min(int(args.get("unread_days") or 0), 3650))
     except (TypeError, ValueError):
@@ -791,7 +1037,7 @@ def q_follow(contract, args) -> dict:
                 tags = set(_item_all_tags(item))
                 if not all(tag in tags for tag in wanted_tags):
                     return False
-            if wanted_works and not any(_work_key(tag) in wanted_works
+            if wanted_works and not any(_work_root(tag) in wanted_works
                                         for tag in _item_works(item)):
                 return False
             return True

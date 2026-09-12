@@ -28,7 +28,8 @@ from starlette.staticfiles import StaticFiles
 
 from . import (
     avatar_picker, avatar_provider, follow_assets, link_marks,
-    scraping_access, site_icons, subtitles, taste_history, web_settings,
+    scraping_access, site_icons, subtitles, taste_history, web_follow,
+    web_settings,
 )
 from .config import GENERATED_DIR
 from .follow import FollowSourceError
@@ -506,6 +507,31 @@ def source_icon(request: Request, provider: str = "", args: dict[str, str] = Dep
     path = follow_assets.cached_image(
         _asset_root(state), "icons", provider, _metadata_ttl(state),
         lambda: follow_assets.fetch_image(client, target))
+    return _asset_response(request, path)
+
+
+@router.api_route("/work-icon", methods=["GET", "HEAD"])
+def work_icon(request: Request, work: str = "",
+              args: dict[str, str] = Depends(require_auth)):
+    """题材的代表图。
+
+    `work` 只是题材的身份，不是地址：服务端按它在账本里挑评分最高的那一条，再核对
+    图床主机是不是 `web_follow` 登记的那个。挑这一步在缓存回调里做，本机那份还新鲜
+    时一行账本都不读；取回的字节照样要先能认成图片才落盘。
+    """
+    state = request.app.state
+    root = web_follow.work_root(work)
+    if not root:
+        return _asset_response(request, None)
+    client = state.http_transport.client
+
+    def fetch():
+        with state.database.read_connection() as connection:
+            target = web_follow.work_icon_url(FollowStore(lambda: connection), root)
+        return follow_assets.fetch_image(client, target) if target else None
+
+    path = follow_assets.cached_image(_asset_root(state), "works", root,
+                                      _metadata_ttl(state), fetch)
     return _asset_response(request, path)
 
 

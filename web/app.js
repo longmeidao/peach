@@ -192,13 +192,15 @@ const pageSkeletonHtml=(label,{cards=false,className='',variant='',count,fill}={
   skeletonHtml(label,{variant:variant||(cards?'cards':'panel'),className,
     ...(count?{count}:{}),...(fill===undefined?{}:{fill})});
 /* 关注页的骨架跟首页共用海报卡那套几何：网格算式、卡内每一格都一样，只有归属行
-   高一点（`.followitem .meta .s` 有 min-height）。上面是它自己的作者行和那块两排的
-   玻璃浮层，形状取 `.tier`、`.tagbar`、`.count` 本身，所以和首页顶栏是同一枚。外框
+   高一点（`.followitem .meta .s` 有 min-height）。上面是它自己的作者行、题材行和那块
+   两排的玻璃浮层，形状取 `.tier`、`.tagbar`、`.count` 本身，所以和首页顶栏那两排是
+   同一枚：作者行铺 `av`、题材行铺 `brandpill`，跟内容回来之后的形状一致。外框
    要自己写全：`mountFilterFrame` 是运行时才建的，骨架进不了那条路径，少了它上下两排
    会被画成两块各带圆角的浮层，等内容回来又并成一块。 */
 const followSkeletonHtml=(label='正在读取关注内容')=>`<div class="follow">
   <div class="followhead"><h2 class="pagetitle">关注</h2></div>
   <div class="tier followauthors" data-skeleton-tier="av"></div>
+  <div class="tier followworks" data-skeleton-tier="brandpill"></div>
   <div class="board-filter-frame" data-filter-frame>
     <div class="tagbar followfilters" data-filter-row="top" data-skeleton-tier="pill"></div>
     <div class="count followcount" data-filter-row="bottom"><span class="mono"><span class="countskeleton"></span></span></div></div>
@@ -5838,9 +5840,8 @@ function renderFollow(){
       `<button class="av" data-follow-author="${esc(key)}" aria-pressed="${followAuthors.has(key)}">
         <span class="ring">${followAuthorAvatar(author.sources)}</span><span class="nm">${esc(author.name)}</span></button>`
       ).join('')}</div>`:''}
-    ${workRows.length?`<div class="tier followworks" aria-label="按题材筛选">${workRows.map(([key,label])=>
-      `<button class="brandpill" data-follow-work="${esc(key)}" aria-pressed="${followWorks.has(key)}">${esc(label)}</button>`
-      ).join('')}</div>`:''}
+    ${workRows.length?`<div class="tier followworks" aria-label="按题材筛选">${workRows.map(row=>
+      followWorkPill(row)).join('')}</div>`:''}
     <div class="tagbar followfilters" aria-label="关注筛选"><div class="filterscroll"><div class="viewpills followviews" role="group" aria-label="状态">${FOLLOW_FILTERS.map(([key,label])=>
       filterChipHtml(label,{attr:'data-follow-filter',value:key,selected:key===followFilter})).join('')}${extraFilters?'<span class="sep" aria-hidden="true"></span>':''}</div><div class="tagscroll followtags">${extraFilters}</div></div></div>
     <div class="count followcount"><span class="mono">${total.toLocaleString()} 项更新 · 显示 ${visible.length.toLocaleString()}</span>${mediaControl?`<div class="sorts">${mediaControl}</div>`:''}</div>
@@ -6098,6 +6099,17 @@ function followAuthorAvatar(group){
     loading="lazy" referrerpolicy="no-referrer" ${imageFallbackAttrs({
       drop:'initial',dropClass:'favatar none',initial,fallbacks:[fallback]})}>`;
   return `<span class="favatar none" title="没有可用头像">${esc(initial)}</span>`;
+}
+
+/* 题材那一枚跟首页的厂牌药丸同形：28px 圆标识加作品名。圆里装的是这个题材下评分最高
+   的那一条的缩略图，服务端按 `work` 这个身份自己去挑再存在本机，页面递不进地址。
+   挑不出图的题材（facet 那一行的第四位说了算）直接出两个字母，不出 `<img>`：无条件
+   出图、靠 404 换回字母的代价是每次重绘都再打一轮，而 404 那条响应不可缓存。 */
+function followWorkPill([key,label,,icon]){
+  const fallback=esc(String(label||'').slice(0,2));
+  const mark=icon?`<img src="/work-icon?work=${encodeURIComponent(key)}" alt="" loading="lazy">`:fallback;
+  return `<button class="brandpill" data-follow-work="${esc(key)}" aria-pressed="${followWorks.has(key)}">
+    <span class="mk" data-fallback="${fallback}">${mark}</span>${esc(label)}</button>`;
 }
 
 /* 别名组只带规范名，头像在这位作者的来源上：按 author_key 找回来源再走同一个头像函数，
