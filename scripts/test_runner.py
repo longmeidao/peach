@@ -59,6 +59,7 @@ SCOPES: dict[str, tuple[str, ...]] = {
                  "test_avatar_provider.py", "test_avatar_face.py",
                  "test_face_detect.py", "test_performer*.py",
                  "test_avatar_watermark.py", "test_avatar_picker.py",
+                 "test_portrait_gaps.py",
                  "test_social_avatar_harvest.py",
                  "test_series_localization.py",
                  "test_duplicate_identity_merge.py", "test_entity_merge.py",
