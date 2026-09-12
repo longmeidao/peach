@@ -4,6 +4,20 @@ import { act } from 'preact/test-utils';
 import { LibraryProcessing } from '../src/islands/library-processing';
 
 let host: HTMLDivElement;
+it('三种扫描采集方式使用分体菜单并提交对应阶段', async () => {
+  const bodies: object[] = [];
+  vi.stubGlobal('fetch', vi.fn(async (_url: string, init?: RequestInit) => {
+    if (init?.method === 'POST') bodies.push(JSON.parse(String(init.body)));
+    return {ok:true,json:async()=>({status:'complete'})};
+  }));
+  host=document.createElement('div');document.body.append(host);
+  await act(async()=>render(h(LibraryProcessing,{data:{status:'idle'},error:'',toast:vi.fn()}),host));
+  expect(host.querySelector('.splitmain')?.textContent).toBe(host.querySelector('[role=menuitem]')?.textContent);
+  const items=host.querySelectorAll<HTMLButtonElement>('[role=menuitem]');
+  for (const item of items) await act(async()=>{item.click();await new Promise(resolve=>setTimeout(resolve,0));});
+  expect(bodies).toEqual([{}, {stage:'scan'}, {stage:'collect'}]);
+  expect(host.querySelector('a[href="/scraping"]')?.textContent).toContain('来源和凭证');
+});
 it('演示运行态与失败重试都不请求真实任务', async()=>{
   const fetch=vi.fn();vi.stubGlobal('fetch',fetch);
   host=document.createElement('div');document.body.append(host);
@@ -81,7 +95,7 @@ it('失败项都不可重试时仍能重新发起整批任务', async () => {
     issue_preview:[{asset_id:1,message:'未识别到番号'}],retryable_asset_ids:[]};
   await act(async()=>{render(h(LibraryProcessing,{data,error:'',toast:vi.fn()}),host)});
   expect(host.querySelector('[data-note-action]')).toBeNull();
-  expect(host.querySelector('.geist-fieldset-footer .geist-button.primary')?.textContent).toBe('扫描并补全资料');
+  expect(host.querySelector('.geist-fieldset-footer .splitmain')?.textContent).toBe('扫描并补全资料');
 });
 it('首页从空闲发现后台任务，完成后收起并在卸载后停止查询', async () => {
   vi.useFakeTimers();

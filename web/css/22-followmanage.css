@@ -322,11 +322,6 @@ p.fnote .followtask{color:var(--ink-2)}
   border:1px solid var(--border-15);border-radius:var(--control-radius);background:var(--overlay-5);color:var(--muted);
   font-size:var(--fs-xs);font-weight:400;font-variant-numeric:tabular-nums}
 .faliasmanager .fcollapsebody{padding:4px 16px 16px}
-.faliassuggestions,.faliasrows{display:grid;gap:6px;margin-top:10px}
-.faliassuggest,.faliasrow{display:flex;align-items:center;gap:10px;min-width:0}
-.faliassuggest>span:not(.favatar),.faliasrow>span:not(.favatar){display:flex;align-items:center;gap:7px;min-width:0;flex:1;flex-wrap:wrap}
-.faliassuggest i{font-style:normal;color:var(--muted)}
-.faliassuggest small{color:var(--muted)}
 .faliasform{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;gap:7px;margin-top:10px}
 .faliasform .fbtn{height:38px;min-height:38px}
 .faliaschip{display:inline-flex;align-items:center;gap:3px;color:var(--ink-2)}
@@ -334,6 +329,16 @@ p.fnote .followtask{color:var(--ink-2)}
   display:grid;place-items:center;cursor:pointer}
 .faliaschip button:hover{color:var(--drop)}
 .faliaschip svg{width:14px;height:14px;stroke:currentColor;fill:none}
+.faliasheading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:20px 0 10px}
+.faliasheading h4{margin:0;font-size:var(--fs-sm);font-weight:500}
+.faliasheading>span,.faliasevidence{color:var(--muted)}
+.faliastable{width:100%;min-width:0;table-layout:fixed}
+.faliastable th,.faliastable td{white-space:normal;overflow-wrap:anywhere}
+.faliastable th:last-child:nth-child(4){width:80px}
+.faliasidentity{display:flex;align-items:center;gap:10px;min-width:0}
+.faliasidentity>.favatar{flex:none}
+.faliastable .faliaschip{margin:3px 10px 3px 0;max-width:100%;overflow-wrap:anywhere}
+@media(max-width:640px){.faliastable{min-width:540px}.faliassaved{min-width:0}.faliasidentity>b{min-width:0;overflow-wrap:anywhere}.faliasform{grid-template-columns:minmax(0,1fr)}.faliasform .fbtn{justify-self:end}}
 
 /* summary 是 .frow 的 flex 子项，默认 flex:0 1 auto 不撑满整行——于是有折叠体的那几行
    状态贴在名字后面，没折叠体的却靠右，同一列两种对齐。让它占满，状态就统一在右边。 */

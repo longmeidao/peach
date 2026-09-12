@@ -1,9 +1,10 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import { apiGet, apiSend, errorMessage } from '../api';
-import { fieldsetTitle, noteHtml, projectBannerHtml, setActionBusy } from '@peach/legacy/ui';
+import { fieldsetTitle, noteHtml, projectBannerHtml } from '@peach/legacy/ui';
 import { jobActivityHtml, watchJob } from '../jobs';
 import type { JobState } from '../jobs';
 import { LinkButton } from '../link-button';
+import { SplitAction } from '../split-action';
 import type { IslandState } from '../islands';
 
 export interface LibraryProcessingIssue { asset_id: number | null; title?: string; path?: string; message: string }
@@ -37,9 +38,7 @@ export function LibraryProcessing({ data, error, toast, onComplete, mode, monito
   const lifetime = useRef(new AbortController());
   const generation = useRef(0);
   const previousStatus = useRef(state.status);
-  const button = useRef<HTMLButtonElement>(null);
   const busy = submitting || state.status === 'running';
-  useLayoutEffect(() => setActionBusy(button.current, busy), [busy]);
   async function follow() {
     const epoch = ++generation.current;
     await watchJob<LibraryProcessingData>({
@@ -111,13 +110,13 @@ export function LibraryProcessing({ data, error, toast, onComplete, mode, monito
           jobActivityHtml(state.total ? `${currentLine(state)} · ${state.checked || 0} / ${state.total} 个视频` : currentLine(state), state.checked, state.total) }} />}
       </div>
       <footer class="geist-fieldset-footer" data-geist-fieldset-footer>
-        <LinkButton href="/scraping">采集来源</LinkButton>
+        <LinkButton href="/scraping">来源和凭证</LinkButton>
         {!!state.candidates && <LinkButton href="/review">复核资料</LinkButton>}
-        {(state.status !== 'failed' || !retryable) && <div class="board-button-group" role="group" aria-label="扫描与采集">
-          <button type="button" class="geist-button" onClick={()=>void submit({stage:'scan'})}>只扫描</button>
-          <button type="button" class="geist-button" onClick={()=>void submit({stage:'collect'})}>只采集</button>
-          <button ref={button} type="button" class="geist-button primary" onClick={start}>扫描并补全资料</button>
-        </div>}
+        {(state.status !== 'failed' || !retryable) && <SplitAction id="libraryProcessingMenu" label="更多扫描与采集方式" busy={busy} actions={[
+          {label:'扫描并补全资料',icon:'database',run:start},
+          {label:'只扫描',icon:'hard-drive',run:()=>void submit({stage:'scan'})},
+          {label:'只采集',icon:'globe',run:()=>void submit({stage:'collect'})},
+        ]} />}
       </footer>
     </section>
     <div class="library-processing-outcome" aria-live="polite">

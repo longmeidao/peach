@@ -1518,7 +1518,7 @@ body.configuration-layout .configpage :is(.gselectfield,.geist-input,input.geist
 body .followmanage .fcheckreport,body .followmanage .fwarn{margin:0 0 12px}
 body .library-processing [role=alert]>.geist-note{margin-top:12px}
 /* 别名行前面是作者头像，与来源列表里同一个人同一张脸。 */
-.faliasrow>.favatar{width:24px;height:24px;font-size:var(--fs-xs)}
+.faliasidentity>.favatar{width:24px;height:24px;font-size:var(--fs-xs)}
 /* 复核页与别的管理页同宽；标签条不悬浮，悬浮的是工具条这一层，分组条贴在它下面合成一个玻璃框。 */
 body .review{width:100%;max-width:var(--board-content);margin:0 auto;box-sizing:border-box}
 body .review .reviewcontrols{position:static;z-index:auto;padding-block:0;display:block;border-radius:0}

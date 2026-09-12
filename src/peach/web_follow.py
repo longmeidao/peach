@@ -2087,6 +2087,7 @@ def q_follow_credentials(contract, _args) -> dict:
         providers.append({
             **described,
             "provider_label": PROVIDER_LABELS.get(provider, provider),
+            "followable": provider in CONNECTORS,
             "requirement": guide["requirement"],
             "needs": fields,
             "missing": [name for name in fields if name not in described["fields"]],

@@ -1,5 +1,15 @@
 # BoardUI 适配
 
+## 作者别名与扫描操作
+
+2026-09-13 核对 [Table](https://www.boardui.com/components/table) 和 [Data Table](https://www.boardui.com/components/data-table)。实时表格使用 `role="grid"`，单元格为 14px、内边距 10px 12px；页面 CSS 部署标识为 `dpl_QqDLotDUMyvoaXmnBoPEK5tSk8mc`。官方 `https://www.boardui.com/r/table.json` 的 SHA-256 为 `fc12a8f2f4012d9e983e0b9bbb10f9fe3288d74046566d2623d60e7056c50d88`。
+
+作者别名复用现有 Table 样式，待合并按规范作者、平台别名、依据和操作分列，已保存别名独立成表；支持逐条合并、全部合并、手动添加和移除。全部合并先列出归属关系，失败时保留未完成项供重试。Peach 保留原生表格与既有 API，没有引入 React Aria 或 TanStack Table。
+
+扫描与采集复用口味页的 Split Button 外观和共享菜单定位：默认扫描并补全资料，菜单提供同名主动作、只扫描、只采集。图标使用固定版 Lucide 的 `database`、`hard-drive`、`globe`，分别指资料、本地磁盘和外部来源，无新增依赖。
+
+隔离内存样例已验证全部合并、来源筛选、手动添加与菜单键盘焦点。1280px 桌面和 390×844 手机页面无横向溢出；待合并表格在自身区域横向滚动，已保存表格与添加表单在手机换行。
+
 ## 窄屏筛选框滚动
 
 760px 及以下，首页与实体资料页的共享筛选框向下滚时随页面离开顶部，向上滚时恢复吸顶。方向累计 8px 才切换，使用现有 `--board-motion` 过渡顶部约束，文档占位保持不变；减少动态效果时即时切换。页面顶端、键盘焦点、输入与展开菜单保持筛选可见，桌面维持吸顶。原生 sticky 与滚动事件足够覆盖此交互，不新增依赖；浏览器视觉验收未取得。

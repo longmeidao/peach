@@ -4799,7 +4799,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertNotIn("resourceSyncMarkup()", stats)
 
     def test_scraping_uses_shared_controls_and_source_links(self):
-        self.assertPageContains("'/scraping':'采集来源'")
+        self.assertPageContains("'/scraping':'来源和凭证'")
         self.assertPageContains('id="libraryProcessing"')
         processing = (Path(__file__).resolve().parents[1] / 'frontend/src/islands/library-processing.tsx').read_text(encoding='utf-8')
         self.assertIn('href="/scraping"', processing)
@@ -9179,8 +9179,7 @@ class WebUiSourceTests(unittest.TestCase):
         别名行里头像和别名组都是直接子 `span`，同一条规则把两者都摊成 `flex:1`，
         兜底头像于是被拉成一颗药丸；有图那一枚是 `<img>`，所以只在取不到时才露馅。
         """
-        self.assertIn(".faliassuggest>span:not(.favatar),.faliasrow>span:not(.favatar)"
-                      "{display:flex;align-items:center;gap:7px;min-width:0;flex:1;flex-wrap:wrap}", self.css)
+        self.assertIn(".faliasidentity>.favatar{flex:none}", self.css)
 
     def test_a_finished_chart_does_not_grow_again_when_its_tab_comes_back(self):
         """长完的图表钉住终态，切回这个 tab 不重放。

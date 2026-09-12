@@ -2,6 +2,8 @@
 
 ## Board 界面与数值设置
 
+- 作者别名管理复用 `.ftable` 和既有别名 API；Board Table 的公开结构与固定资源见 `BOARD_UI.md`。Data Table 的排序、分页在当前别名规模下不需要，未引入其 React Aria 与 TanStack 依赖。`frontend/src/split-action.tsx` 复用口味页分体按钮外观、共享菜单定位和键盘行为，扫描三种方式使用已有 Lucide 图标，无新增依赖。
+
 - 窄屏筛选框共用 `filterScrollState()`、现有滚动帧调度和原生 sticky；同一方向累计 8px 再切换吸顶，保留文档占位与键盘可达性，无新增依赖。
 
 - 搜索玻璃复用 `glideEase()` 的采样弹簧；`web/js/search-morph.js` 只负责视口边界与轮廓关键帧，证据与差异见 `BOARD_UI.md`，无新增依赖。

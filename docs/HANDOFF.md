@@ -70,6 +70,8 @@
 
 ## 参考产品证据登记
 
+- **作者别名表格（2026-09-13）**：核对 `https://www.boardui.com/components/table` 的实时 DOM/CSS 与官方 `https://www.boardui.com/r/table.json`；资源 SHA-256、单元格数值和适配范围见 `BOARD_UI.md`「作者别名与扫描操作」。复用现有表格，不引入上游 React 运行时；批量合并确认与失败重试沿用 Peach 的写入边界。
+
 - [Board、Link Button 与搜索动效取证](BOARD_UI.md)。
 
 - [Geist 控件](reference-snapshots/vercel-geist-controls-measured.md)；[复核操作](reference-snapshots/vercel-review-actions.md)；[README 维护](README_MAINTENANCE.md)。
