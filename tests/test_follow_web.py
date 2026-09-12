@@ -1015,10 +1015,11 @@ class FollowContractTests(unittest.TestCase):
             sorted(self._get(work="final fantasy")["facets"]["works"]),
             "选中一部作品后另一部不能从那一排上消失，否则换不了题材")
 
-    def _scored(self, item_id, score, tags, cover, preview=None):
+    def _scored(self, item_id, score, tags, cover, preview=None, title=""):
         return SimpleNamespace(
             id=item_id, provider="rule34xxx", external_id=str(item_id),
-            media_url=None, thumb_url=cover,
+            # 标题参与读取端的排除判据（音乐剪辑不当题材圆标），库里的行都有这一列。
+            title=title, media_url=None, thumb_url=cover,
             metadata={"score": score, "preview_url": preview,
                       "tags": list(tags),
                       "tag_types": {tag: ("general" if tag == "3d" else "copyright")
@@ -1614,6 +1615,60 @@ class FollowContractTests(unittest.TestCase):
         self.assertTrue(older["media_needs_credential"])
         self.assertEqual(older["author"], "Jkhomie1198")
         self.assertEqual(older["summary"], "New batch up Gofile")
+
+
+class FollowFeedExclusionTests(unittest.TestCase):
+    """读取关注流时挡掉的几类，判据和采集端、清退脚本是同一份。"""
+
+    # 借夹具不继承：继承会把上面那一整套契约用例再跑一遍，这一组只要临时库和
+    # 一份种子数据。
+    setUp = FollowContractTests.setUp
+    _seed = FollowContractTests._seed
+    _get = FollowContractTests._get
+
+    def _listed(self, *candidates):
+        self._seed(candidates=candidates)
+        return {row["external_id"] for group in self._get()["groups"]
+                for row in (group["primary"], *group["variants"])}
+
+    @staticmethod
+    def _candidate(external_id, title, models=(), **extra):
+        return FollowCandidate(
+            provider="rule34video", external_id=external_id, title=title,
+            url=f"https://rule34video.com/video/{external_id}/x/",
+            extra={"models": list(models), "model_count": len(models), **extra})
+
+    def test_a_music_edit_is_kept_out_by_its_title(self):
+        """PMV、HMV 是把许多人的片段剪到一首曲子上，署名数量拦不住也要挡。"""
+        self.assertEqual(
+            self._listed(self._candidate("1", "Fuck Track / Futa PMV / Dope Track"),
+                         self._candidate("2", "Ahri pmvideo review")),
+            {"2"}, "独立词才算，`pmvideo` 里的那三个字母不是")
+
+    def test_a_pack_saved_before_the_count_existed_is_recounted_on_read(self):
+        """历史条目的 metadata 里只有 `models`，按同一份判据当场数一遍。
+
+        采集端的门槛读 `visual_model_count`，库里有一批行没有这个字段：超出探测
+        上限、详情没取到的那些。门槛在它们身上不生效，读取时就得自己数。
+        """
+        self.assertEqual(
+            self._listed(self._candidate("3", "Resident Evil - The Fallen Saga",
+                                         [f"M{n}" for n in range(14)])),
+            set())
+
+    def test_voice_and_audio_credits_do_not_make_a_work_a_pack(self):
+        """配音和音效记在同一份 Artist 名单里，只数画面作者。
+
+        门槛是超过 3 位：复核 623 条的结论是普通作品剔掉配音后剩 1 到 2 位。
+        收到「超过 1 位就算」会把两个人合作的普通作品一起扫掉。
+        """
+        self.assertEqual(
+            self._listed(self._candidate(
+                "4", "Yunara Showing Ahri Some Discipline",
+                ["Iidssm", "Adaline (VA)", "GeminiStarsign1 (VA)",
+                 "Huntress___ (Audio/SFX)", "HentAudio (Audio)"]),
+                self._candidate("5", "Two artists, one scene", ["Iidssm", "Adaline"])),
+            {"4", "5"})
 
 
 class FollowSourceAddTests(FollowContractTests):

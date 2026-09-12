@@ -884,14 +884,13 @@ class FollowStore:
                 credits = json.loads(payload or "{}").get("models") or []
             except json.JSONDecodeError:
                 continue
-            visual = [name for name in credits
-                      if not Rule34VideoConnector._CREDIT_ROLE_RE.search(str(name))]
-            if len(visual) <= Rule34VideoConnector.MAX_COLLECTION_MODELS:
+            visual = Rule34VideoConnector.visual_model_count(credits)
+            if visual <= Rule34VideoConnector.MAX_COLLECTION_MODELS:
                 continue
             found.append(CompilationRow(
                 item_id=int(item_id), external_id=str(external_id), title=str(title),
                 status=str(status), source_ref=str(ref),
-                credited=len(credits), visual=len(visual)))
+                credited=len(credits), visual=visual))
         return tuple(sorted(found, key=lambda row: -row.visual))
 
     def purge_compilations(self, rows, *, confirm: bool = False) -> int:

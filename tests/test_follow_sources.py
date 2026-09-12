@@ -163,6 +163,14 @@ FANBOX_JSON = json.dumps({"body": {"posts": [
      "publishedDatetime": "2026-08-20T00:00:00+09:00", "isRestricted": True},
 ]}}).encode()
 
+#: 视频帖的正文只有一个 file 块，`fileMap` 里没有 `thumbnailUrl`——FANBOX 不给
+#: 视频出图。列表接口那张 cover 是这篇唯一能显示的缩略图。
+FANBOX_VIDEO_DETAIL_JSON = json.dumps({"body": {"post": {"type": "file", "body": {
+    "blocks": [{"type": "file", "fileId": "clip"}],
+    "fileMap": {"clip": {"id": "clip", "name": "scene", "extension": "mp4",
+                         "url": "https://downloads.fanbox.cc/scene.mp4", "size": 9991}},
+}}}}).encode()
+
 FANBOX_DETAIL_JSON = json.dumps({"body": {"post": {"type": "article", "body": {
     "blocks": [
         {"type": "p", "text": "gofile - https://gofile.io/d/OS2Qz9"},
@@ -307,6 +315,21 @@ class OfficialConnectorTests(unittest.TestCase):
         self.assertEqual(result.candidates[0].extra["video_count"], 0)
         self.assertEqual(result.candidates[0].extra["file_count"], 0)
         self.assertEqual(result.probed, 1)
+
+    def test_a_fanbox_video_post_keeps_the_cover_as_its_thumbnail(self):
+        """视频帖的缩略图退回列表封面，不拿视频地址当图。
+
+        FANBOX 的 `fileMap` 只给视频本体，没有 `thumbnailUrl`。把 mp4 地址填进
+        `thumb_url`，关注页那张 `<img>` 就指着一个视频文件——浏览器拉完几百兆也
+        画不出东西，卡片上是一片空白。
+        """
+        def route(request):
+            return HttpResponse(200, {}, FANBOX_VIDEO_DETAIL_JSON if "post.info" in request.url
+                                else FANBOX_JSON)
+        candidate = FanboxConnector(transport=_routed(route)).fetch("ffxivinitiala").candidates[0]
+        self.assertEqual(candidate.extra["media_items"][0]["media_kind"], "video")
+        self.assertIsNone(candidate.extra["media_items"][0]["thumb_url"])
+        self.assertEqual(candidate.thumb_url, "https://img.test/cover.jpg")
 
     def test_fanbox_routes_only_post_info_through_the_browser_transport(self):
         list_seen = []
