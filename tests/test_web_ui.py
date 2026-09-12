@@ -4649,15 +4649,12 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn("body.photolight-open{overflow:hidden}", photos)
 
     def test_the_this_computer_group_is_a_page_not_a_row_list(self):
-        """「这台电脑」那一格装的是整张配置页，外面不套开关行那圈底。
+        """「这台电脑」那一格装的是整张配置页，外壳自己不是面板。
 
-        `.settinggroup` 的 `--ground` 底和左边 12px 是给开关行留的：套在配置卡片外面，
-        卡片和它同色就看不出边，还只有左边缩进、右边贴齐。外壳自己不是面板，面板是里面
-        那几段配置；里面没有一段亮着就说明用户在看上半列的某一项，这时整个外壳不占位置。
+        面板是里面那几段配置；里面没有一段亮着就说明用户在看上半列的某一项，这时整个
+        外壳都不该占位置。
         """
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
-        self.assertIn(".settingscard .settingsscroll>.settinggroup:has(>.machinesettings)"
-                      "{background:none;border-radius:0;padding:0}", board)
         self.assertIn(".settingscard .settingsscroll>.settinggroup:has(>.machinesettings)"
                       ":not(:has(.board-group-active)){display:none}", board)
         # 控件底色照配置页那边抬一档：那条规则挂在 `body.configuration-layout` 上，
@@ -9314,6 +9311,48 @@ class WebUiSourceTests(unittest.TestCase):
         contrast = next(row for row in board.splitlines()
                         if row.startswith("html.board-high-contrast .settingscard.settingscard>"))
         self.assertIn("animation:none", contrast, "高对比下那层漂移的光晕要停")
+
+    def test_the_settings_panel_reads_as_one_sheet_from_the_title_down(self):
+        """设置弹层右侧从标题一路到底是同一张底，开关行不套在自己的一块底上。
+
+        亮色的 `--page` 是纯白、`--ground` 是 #f5f5f5，两块拼起来就是一条硬边界横在标题
+        下面；暗色那两个值只差 5/255，同一条规则在两个主题上读出来是两回事。行与行由
+        `--line-soft` 那道分隔线断开。
+        """
+        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
+        self.assertIn(".settingscard .settingsscroll>.settinggroup{background:none;padding:0}", board)
+        self.assertIn(".settingscard.settingscard>.settingshead,"
+                      ".settingscard.settingscard>.settingsscroll{background:var(--page)}", board)
+        self.assertIn(".settingscard .settingsscroll .settingrow{min-height:52px;"
+                      "padding:10px 10px 10px 0;gap:16px;border-top:0;"
+                      "border-bottom:1px solid var(--line-soft)}", board)
+
+    def test_the_settings_title_casts_the_sidebar_shadow_once_the_gap_is_scrolled_away(self):
+        """标题下那道影子跟左栏那块玻璃同一份，滚掉那段留白才点亮。
+
+        那三层各带十几到几十像素的模糊，往上会糊在标题自己头上、往左会糊到左栏那一列
+        上，要的只是往下那一半，所以裁掉另外三边。留白的值只写在 `--settings-gap` 一处，
+        滚动量过了它减 4px 就算两块重合。
+        """
+        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
+        app = (Path(__file__).resolve().parents[1] / "web/app.js").read_text(encoding="utf-8")
+        self.assertIn(".settingscard .settingshead{position:relative;z-index:2;"
+                      "clip-path:inset(0 0 -96px 0);transition:box-shadow .2s ease-out}", board)
+        self.assertIn(".settingscard.board-settings-scrolled .settingshead"
+                      "{box-shadow:var(--glass-shadow)}", board)
+        # 那段留白长在滚动区的上内边距上，滚掉它就等于两块重合。
+        self.assertIn(".settingscard.settingscard{--settings-gap:16px;", board)
+        self.assertIn(".settingscard.settingscard .settingsscroll"
+                      "{padding:var(--settings-gap) 32px 32px;min-height:0;overflow-y:auto}", board)
+        self.assertIn(".settingscard.settingscard .settingsscroll"
+                      "{padding:var(--settings-gap) 20px 20px;flex:1}", board)
+        # 影子不再是一段从页底色渐隐的带子，两种做法并存就是两道。
+        self.assertNotIn("background:linear-gradient(var(--page),transparent);"
+                         "pointer-events:none;opacity:0", board)
+        self.assertIn("const gap=parseFloat(getComputedStyle(card)"
+                      ".getPropertyValue('--settings-gap'))||0;", app)
+        self.assertIn("card.classList.toggle('board-settings-scrolled',"
+                      "settings.scrollTop>Math.max(gap-4,0));", app)
 
     def test_the_settings_column_glass_follows_the_pointer_like_the_filter_row(self):
         """设置弹层左栏那块玻璃跟着指针走，跟筛选条那排药丸是同一条连线。
