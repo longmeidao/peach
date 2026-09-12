@@ -807,6 +807,54 @@ class FollowContractTests(unittest.TestCase):
         self.assertEqual(sum(self._get(tag="artist_name")["counts"].values()), 1,
                          "在线索引里的非 general 标签点入后必须能筛到原条目")
 
+    def _typed(self, external_id, tag_types):
+        return FollowCandidate(
+            provider="rule34xxx", external_id=external_id, title=f"Clip {external_id}",
+            url=f"https://rule34.xxx/index.php?page=post&s=view&id={external_id}",
+            extra={"tags": list(tag_types), "tag_types": dict(tag_types)})
+
+    def test_the_works_row_only_lists_what_the_source_typed_as_a_work(self):
+        """题材那一排收的是来源记成 copyright 的标签，不按词形猜。
+
+        `tifa_lockhart` 是角色、`lazyprocrastinator` 是画师，字面上跟作品名没有
+        区别，猜一次就会把两样东西摆进作品那一排。写法差别不算两部作品：
+        `zenless_zone_zero` 和 `zenless zone zero` 归到同一枚，键是归一后的身份，
+        显示名把下划线换成空格、罗马数字整词大写。
+        """
+        self._seed(provider="rule34xxx", ref="typed", candidates=(
+            self._typed("1", {"final_fantasy_vii": "copyright",
+                              "tifa_lockhart": "character",
+                              "lazyprocrastinator": "artist",
+                              "animated": "metadata", "pov": "general"}),
+            self._typed("2", {"zenless_zone_zero": "copyright"}),
+            self._typed("3", {"zenless zone zero": "copyright"}),
+        ))
+        works = self._get()["facets"]["works"]
+        self.assertEqual(works, [["zenless zone zero", "Zenless Zone Zero", 2],
+                                 ["final fantasy vii", "Final Fantasy VII", 1]])
+
+    def test_a_work_filters_every_spelling_and_two_works_mean_either(self):
+        """按题材筛是「任一」，而且两种写法都要筛得到。
+
+        作者、来源也是任一；只有标签是交集。题材取交集的话，点第二枚列表就空了——
+        同时属于两部作品的条目本来就几乎没有。
+        """
+        self._seed(provider="rule34xxx", ref="typed", candidates=(
+            self._typed("1", {"zenless_zone_zero": "copyright"}),
+            self._typed("2", {"zenless zone zero": "copyright"}),
+            self._typed("3", {"final_fantasy_vii": "copyright"}),
+            self._typed("4", {"pov": "general"}),
+        ))
+        self.assertEqual(sum(self._get(work="zenless zone zero")["counts"].values()), 2,
+                         "两种写法是同一部作品，必须一起筛到")
+        self.assertEqual(
+            sum(self._get(work="zenless zone zero,final fantasy vii")["counts"].values()), 3,
+            "选两部作品是两部都看，不是只看同时占两部的")
+        self.assertEqual(
+            sorted(self._get()["facets"]["works"]),
+            sorted(self._get(work="final fantasy vii")["facets"]["works"]),
+            "选中一部作品后另一部不能从那一排上消失，否则换不了题材")
+
     def test_counts_are_whole_library_while_groups_are_one_page(self):
         """计数是全库口径，列表只有一页——界面并排显示这两个数时看起来像自相矛盾。
 

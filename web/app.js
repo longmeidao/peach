@@ -79,7 +79,7 @@ const FOLLOW_UNREAD_RANGE_OPTIONS=[['0','不限时间'],['7','最近 7 天'],['3
 /* 同 `sortButtonHtml`：这枚键的无障碍名称说的是点下去会得到什么，所以取反方向的词。 */
 const followSortLabel=()=>`按${FOLLOW_SORT_LABELS[followManageSort]||'关注列表'}${
   (FOLLOW_SORT_DIR_WORDS[followManageSort]||[])[followManageDir==='asc'?0:1]||''}排序`;
-let followAuthors=new Set(),followProviders=new Set(),followTags=new Set(),followMediaView='videos',followGroupByItemId=new Map(),followItemsById=new Map(),followDetailReturnPath='/follow';
+let followAuthors=new Set(),followProviders=new Set(),followTags=new Set(),followWorks=new Set(),followMediaView='videos',followGroupByItemId=new Map(),followItemsById=new Map(),followDetailReturnPath='/follow';
 const selectedIndexTags=new Set();
 let entityPhotos=null,entityMediaView=emptyMediaView(),photoWallItems=[];
 /* 事务所页看的是它签了谁，所以进页面先摆艺人。视频照样在，只是换一个开关的距离：
@@ -5157,7 +5157,8 @@ const followPageUrl=offset=>
   +(followFilter?`&status=${followFilter}`:'')
   +(followAuthors.size?`&author=${encodeURIComponent([...followAuthors].join(','))}`:'')
   +(followProviders.size?`&provider=${encodeURIComponent([...followProviders].join(','))}`:'')
-  +(followTags.size?`&tag=${encodeURIComponent([...followTags].join(','))}`:'');
+  +(followTags.size?`&tag=${encodeURIComponent([...followTags].join(','))}`:'')
+  +(followWorks.size?`&work=${encodeURIComponent([...followWorks].join(','))}`:'');
 /* 分组在取回之后做，所以同一个作品可能被这一页的边界切开：
    前 300 条里有它的一个变体，后 300 条里有另一个。按 release_key 合并，
    不然界面上会出现两张长得几乎一样的卡。 */
@@ -5178,7 +5179,10 @@ let followCredentialProviders=new Set();
    一次闪烁——他的原话是「完全没返回任何结果」。接口其实每条来源都回了
    added/updated/not_modified/error，是界面把它们全丢了。 */
 let followCheckReport=null;
-const FOLLOW_FILTERS=[['','全部'],['new','未看'],['seen','已看'],['saved','已保存'],['ignored','已忽略']];
+/* 这一排是「现在看的哪一档」。已看那一档不摆出来：看过就归档，要再翻出来是「全部」
+   的事，而一枚常年指向十几条的筛选占的是这一排最值钱的横向空间。状态本身照旧记，
+   卡片和详情面板上都还能把一条标成已看。 */
+const FOLLOW_FILTERS=[['','全部'],['new','未看'],['saved','已保存'],['ignored','已忽略']];
 
 /* 账本里一律存 UTC（ISO 带 Z），界面要按看的人所在时区显示。
    直接把那串字面量印出来的话，UTC+8 的人看到的每个时间都早 8 小时。 */
@@ -5734,6 +5738,7 @@ function followViewPath(){
   if(followAuthors.size)params.set('author',[...followAuthors].join(','));
   if(followProviders.size)params.set('provider',[...followProviders].join(','));
   if(followTags.size)params.set('tag',[...followTags].join(','));
+  if(followWorks.size)params.set('work',[...followWorks].join(','));
   if(followFilter)params.set('status',followFilter);
   if(followMediaView==='images')params.set('media','images');
   const search=params.toString();return '/follow'+(search?'?'+search:'');
@@ -5744,8 +5749,11 @@ function readFollowView(){
   followAuthors=csv('author');
   followProviders=csv('provider');
   followTags=csv('tag');
+  followWorks=csv('work');
   const status=params.get('status');
-  followFilter=(status===null||status==='all')?'':status;
+  // 这一排上没有的那一档按「全部」读：旧链接里的 `status=seen` 落在这一条上，
+  // 否则页面停在一个没有任何药丸按下去的筛选里，看不出自己正被什么筛着。
+  followFilter=FOLLOW_FILTERS.some(([key])=>key&&key===status)?status:'';
   followMediaView=params.get('media')==='images'?'images':'videos';
 }
 /* 作者、来源两行是多选：按下的算「只看这些」，一个都不按就是全部；标签行是「同时具备」的
@@ -5785,6 +5793,13 @@ function renderFollow(){
     name:followAuthorName(list),sources:list,
   }]));
   const randomizedAuthors=followRandomOrder([...authors],row=>row[0]);
+  /* 作者行下面这一排是题材，位置和形状对着首页那排厂牌：那边第二排答的是「这是谁出的」，
+     这边答的是「这是哪部作品」，都是先认出一个名字再决定看不看。只收来源自己记成
+     copyright 的标签，词形猜不得——角色名和画师手柄在字面上跟作品名没有区别。 */
+  const workRows=(facets.works||[]).slice(0,ROW_FIRST);
+  followWorks.forEach(key=>{
+    if(!workRows.some(row=>row[0]===key))workRows.push([key,key,0]);
+  });
   const allCount=Object.values(counts).reduce((total,count)=>total+(+count||0),0);
   const topTagRows=followRandomOrder([...tagCounts],row=>row[0]).slice(0,20);
   followTags.forEach(tag=>{
@@ -5823,8 +5838,11 @@ function renderFollow(){
       `<button class="av" data-follow-author="${esc(key)}" aria-pressed="${followAuthors.has(key)}">
         <span class="ring">${followAuthorAvatar(author.sources)}</span><span class="nm">${esc(author.name)}</span></button>`
       ).join('')}</div>`:''}
+    ${workRows.length?`<div class="tier followworks" aria-label="按题材筛选">${workRows.map(([key,label])=>
+      `<button class="brandpill" data-follow-work="${esc(key)}" aria-pressed="${followWorks.has(key)}">${esc(label)}</button>`
+      ).join('')}</div>`:''}
     <div class="tagbar followfilters" aria-label="关注筛选"><div class="filterscroll"><div class="viewpills followviews" role="group" aria-label="状态">${FOLLOW_FILTERS.map(([key,label])=>
-      filterChipHtml(label,{attr:'data-follow-filter',value:key,selected:key===followFilter,count:key?counts[key]||0:allCount})).join('')}${extraFilters?'<span class="sep" aria-hidden="true"></span>':''}</div><div class="tagscroll followtags">${extraFilters}</div></div></div>
+      filterChipHtml(label,{attr:'data-follow-filter',value:key,selected:key===followFilter})).join('')}${extraFilters?'<span class="sep" aria-hidden="true"></span>':''}</div><div class="tagscroll followtags">${extraFilters}</div></div></div>
     <div class="count followcount"><span class="mono">${total.toLocaleString()} 项更新 · 显示 ${visible.length.toLocaleString()}</span>${mediaControl?`<div class="sorts">${mediaControl}</div>`:''}</div>
     ${broken.length
       ?`<div class="geist-note geist-note-error fwarn" role="alert">${icon('alert')}<span>${broken.length} 个来源上次检查失败，去<button class="flink" data-follow-manage>管理关注</button>看原因。</span></div>`:''}
@@ -5855,6 +5873,7 @@ function renderFollow(){
     tags:filterRow.querySelector('.followtags'),readout:countRow.querySelector('.mono'),
     controls:countRow.querySelector('.sorts')});
   wireDrag($('#stats').querySelector('.followauthors'));
+  wireDrag($('#stats').querySelector('.followworks'));
   wireDrag(filterRow.querySelector('.filterscroll'));wireDrag(filterRow.querySelector('.tagscroll'));
   wireHorizontalScroller(filterRow.querySelector('.tagscroll'));
   const statusPills=[...filterRow.querySelectorAll('[data-follow-filter]')];
@@ -5879,6 +5898,9 @@ function renderFollow(){
     toggle(followProviders,button.dataset.followProvider);applyFollowView()});
   $('#stats').querySelectorAll('[data-follow-tag]').forEach(button=>button.onclick=()=>{
     toggle(followTags,button.dataset.followTag);applyFollowView()});
+  /* 题材跟作者、来源一样是「任一」：按下两枚是这两部作品都看，不是只看同时占两部的。 */
+  $('#stats').querySelectorAll('[data-follow-work]').forEach(button=>button.onclick=()=>{
+    toggle(followWorks,button.dataset.followWork);applyFollowView()});
   $('#stats').querySelectorAll('[data-follow-manage]').forEach(button=>
     button.onclick=()=>openFollowManage());
 
@@ -9479,7 +9501,7 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
     /* 直接进「已保存」这一档。openFollow(true) 会 route 回干净的 /follow 再照 URL
        推导，所以状态要先写进 URL，光设全局会被推回未看。 */
     $('#openSavedFollow').onclick=()=>{
-      followAuthors=new Set();followProviders=new Set();followTags=new Set();followMediaView='videos';
+      followAuthors=new Set();followProviders=new Set();followTags=new Set();followWorks=new Set();followMediaView='videos';
       followFilter='saved';route(followViewPath());openFollow(false)};
   }
   else if(g)g.onclick=async()=>{vv.hidden=false;g.remove();const mounted=await mountDetailPlayer(it,vv,true);stopAmbient=mountPlayerAmbient(vv);mounted?.one?.('dispose',stopAmbient)};

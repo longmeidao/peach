@@ -158,6 +158,55 @@ def _item_tag_types(item, tags: list[str]) -> dict[str, str]:
             if (tag_type := _recorded_tag_type(item, tag))}
 
 
+#: 作品名里的罗马数字。写成名单而不是通用式：通用式会把 `mix`、`did` 这类英文词
+#: 也判成数字，而作品名里实际用到的就这十几个。
+_ROMAN_NUMERALS = frozenset((
+    "ii", "iii", "iv", "v", "vi", "vii", "viii", "ix", "x",
+    "xi", "xii", "xiii", "xiv", "xv", "xvi", "xvii", "xviii", "xix", "xx",
+))
+
+
+def _work_key(tag: str) -> str:
+    """题材的身份。
+
+    同一部作品被不同来源写成 `zenless_zone_zero` 和 `zenless zone zero`，下划线
+    和大小写是写法差别不是两部作品。归一到一个键，它们才是筛选条上的同一枚。
+    """
+    return re.sub(r"[\s_]+", " ", html.unescape(str(tag or ""))).strip().casefold()
+
+
+def _work_label(tag: str) -> str:
+    """题材的显示名：下划线换空格，整串全小写时每个词提首字母。
+
+    `final_fantasy_vii` 直接摆在筛选条上读的是文件名不是作品名。罗马数字整词大写，
+    否则这一串作品名要读成「Final Fantasy Vii」。来源自己写成 `Genshin Impact` 的
+    照原样留着——它已经是人写的形态，再套一遍规则只会改坏。
+    """
+    text = re.sub(r"[\s_]+", " ", html.unescape(str(tag or ""))).strip()
+    if not text or text != text.lower():
+        return text
+    return " ".join(word.upper() if word in _ROMAN_NUMERALS
+                    else word[:1].upper() + word[1:] for word in text.split(" "))
+
+
+def _item_works(item) -> list[str]:
+    """条目所属的题材，只认来源记成 `copyright` 的那一类。
+
+    按词形猜会把角色名和画师手柄摆进题材那一排：`tifa_lockhart` 和
+    `lazyprocrastinator` 在字面上跟作品名没有区别，区别只写在来源的类型里。
+    """
+    seen, works = set(), []
+    for tag in _item_all_tags(item):
+        key = _work_key(tag)
+        if (not key or key in seen
+                or _recorded_tag_type(item, tag) != "copyright"
+                or _NON_CONTENT_FOLLOW_TAG_RE.fullmatch(tag.strip())):
+            continue
+        seen.add(key)
+        works.append(tag)
+    return works
+
+
 def _media_kind(item) -> str:
     recorded = str(item.metadata.get("media_kind") or "")
     if recorded in {"video", "image"}:
@@ -576,6 +625,7 @@ def _follow_facets(store, items, by_source, alias_map) -> dict:
     authors: set[str] = set()
     providers: set[str] = set()
     tags: dict[str, int] = {}
+    works: dict[str, dict] = {}
     for group in store.group(items):
         row = by_source.get(group.primary.source_id)
         if row is not None:
@@ -585,10 +635,17 @@ def _follow_facets(store, items, by_source, alias_map) -> dict:
             providers.add(str(row["provider"] or ""))
         for tag in _item_tags(group.primary):
             tags[tag] = tags.get(tag, 0) + 1
+        for tag in _item_works(group.primary):
+            row_work = works.setdefault(_work_key(tag),
+                                        {"label": _work_label(tag), "n": 0})
+            row_work["n"] += 1
     return {
         "authors": sorted(authors),
         "providers": sorted(providers),
         "tags": sorted(tags.items(), key=lambda pair: (-pair[1], pair[0])),
+        # 题材那一排：键是归一后的身份，标签是给人看的写法，数目按发布组算。
+        "works": [[key, row["label"], row["n"]] for key, row in
+                  sorted(works.items(), key=lambda pair: (-pair[1]["n"], pair[0]))],
     }
 
 
@@ -695,6 +752,9 @@ def q_follow(contract, args) -> dict:
     authors = frozenset(_csv_values(args.get("author")))
     providers = frozenset(_csv_values(args.get("provider")))
     wanted_tags = _csv_values(args.get("tag"))
+    # 题材跟作者、来源一样是「任一」：两部作品同时成立的条目几乎没有，取交集等于
+    # 点第二枚就清空列表。标签那一维仍是交集，见下面 `_matches`。
+    wanted_works = frozenset(_work_key(value) for value in _csv_values(args.get("work")))
     try:
         unread_days = max(0, min(int(args.get("unread_days") or 0), 3650))
     except (TypeError, ValueError):
@@ -731,6 +791,9 @@ def q_follow(contract, args) -> dict:
                 tags = set(_item_all_tags(item))
                 if not all(tag in tags for tag in wanted_tags):
                     return False
+            if wanted_works and not any(_work_key(tag) in wanted_works
+                                        for tag in _item_works(item)):
+                return False
             return True
 
         everything = tuple(item for item in store.items(source_id=source_id, limit=_ALL_ITEMS)

@@ -5224,7 +5224,7 @@ class WebUiSourceTests(unittest.TestCase):
                                 "  .filterscroll{overflow-x:auto;overflow-y:hidden;scrollbar-width:none;"
                                 "overscroll-behavior-inline:contain}")
         self.assertPageContains("  .filterscroll>.tagscroll{flex:0 0 auto;min-width:auto;overflow:visible}")
-        # 关注页那条也是同一个分工：五枚状态钉在左边，来源图标与标签在右半截横滚。
+        # 关注页那条也是同一个分工：几枚状态钉在左边，来源图标与标签在右半截横滚。
         self.assertPageContains('<div class="tagbar followfilters" aria-label="关注筛选">'
                                 '<div class="filterscroll"><div class="viewpills followviews"')
         self.assertPageContains('<div class="tagscroll followtags">${extraFilters}</div></div></div>')
@@ -5234,6 +5234,50 @@ class WebUiSourceTests(unittest.TestCase):
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
         self.assertIn(".board-filter-frame .entitytagbar .filterscroll{gap:6px}", board)
         self.assertNotIn(".board-filter-frame .entitytagbar{overflow-x:auto", board)
+
+    def test_the_follow_states_are_four_plain_pills_without_counts(self):
+        """关注页的状态只有全部、未看、已保存、已忽略，后面不挂数字。
+
+        已看那一档不摆出来：看过就归档，要再翻出来是「全部」的事。状态本身照旧记，
+        卡片和详情面板上都还能把一条标成已看，所以 `status=seen` 这类旧链接要落回
+        全部，否则页面停在一个没有任何药丸按下去的筛选里。
+        数字也不挂在药丸上：同一屏下排已经写着「N 项更新 · 显示 M」，一枚药丸上再写
+        一个全库口径的数，两个数并排就是在问哪个才算数。
+        """
+        self.assertPageContains(
+            "const FOLLOW_FILTERS=[['','全部'],['new','未看'],['saved','已保存'],['ignored','已忽略']];")
+        self.assertPageContains(
+            "filterChipHtml(label,{attr:'data-follow-filter',value:key,selected:key===followFilter})")
+        self.assertPageContains(
+            "followFilter=FOLLOW_FILTERS.some(([key])=>key&&key===status)?status:'';")
+        # 状态本身没被删：卡片和详情面板照旧能把一条标成已看。
+        self.assertPageContains('data-follow-detail-status="seen"')
+        self.assertPageContains('data-follow-status="${item.id}" data-to="seen"')
+
+    def test_the_follow_page_carries_the_home_two_rows_with_works_in_place_of_studios(self):
+        """关注页顶上两排对着首页那两排：作者对女优，题材对厂牌。
+
+        题材只收来源记成 copyright 的标签，不按词形猜——角色名和画师手柄在字面上跟
+        作品名没有区别。按下是「任一」，跟作者、来源一样；标签那一维仍是交集。
+        两页的头像和药丸共用 board.css 里同一份规则，只按 `#tiers` 写的话关注页会
+        落回 flat 层那份 64px 头像加一圈描边，同一个人在两页大小都不一样。
+        """
+        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
+        self.assertPageContains('<div class="tier followworks" aria-label="按题材筛选">')
+        self.assertPageContains('<button class="brandpill" data-follow-work="${esc(key)}"')
+        self.assertPageContains("const workRows=(facets.works||[]).slice(0,ROW_FIRST);")
+        self.assertPageContains("toggle(followWorks,button.dataset.followWork);applyFollowView()});")
+        self.assertPageContains("+(followWorks.size?`&work=${encodeURIComponent([...followWorks].join(','))}`:'');")
+        self.assertPageContains("if(followWorks.size)params.set('work',[...followWorks].join(','));")
+        self.assertPageContains("followWorks=csv('work');")
+        self.assertPageContains("wireDrag($('#stats').querySelector('.followworks'));")
+        # 两排的形归 board.css 同一份规则，关注页那两排跟着一起写进选择器。
+        self.assertIn("#tiers .av,:is(.followauthors,.followworks) .av{display:flex;"
+                      "flex-direction:column;align-items:center;gap:6px;width:76px;", board)
+        self.assertIn("#tiers .av .ring,:is(.followauthors,.followworks) .av .ring"
+                      "{width:48px;height:48px;", board)
+        self.assertIn(":is(.followauthors,.followworks) .av .ring .favatar"
+                      "{width:100%;height:100%;border-radius:0;object-fit:cover}", board)
 
     def test_review_selection_uses_default_checkboxes_and_a_separate_toolbar(self):
         self.assertPageContains('class="batchbar selectiondock"')
@@ -6287,11 +6331,12 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn(".idface:not(:has(img)){background:color-mix(in srgb,var(--color-text-primary) 10%,var(--color-background-primary-default));", board)
         self.assertIn(".cleanupgrid>.board-processing-skeleton>.geist-fieldset-footer{background:none}", board)
         # 首页顶上两排：女优是竖排人像格（48px 圆头像在上、名字在下），厂牌是 40px 的灰 Pill（28px 圆标识在左）。
-        self.assertIn("#tiers .av{display:flex;flex-direction:column;align-items:center;gap:6px;width:76px;max-width:none;height:auto;padding:6px 4px;border-radius:12px;text-align:center}", board)
-        self.assertIn("#tiers .brandpill{display:inline-flex;align-items:center;gap:8px;width:auto;max-width:none;height:40px;padding:6px 12px 6px 6px;border-radius:12px;text-align:left}", board)
-        self.assertIn("#tiers .av .ring{width:48px;height:48px;", board)
-        self.assertIn("#tiers .brandpill .mk{width:28px;height:28px;", board)
-        self.assertIn("#tiers .av .nm{display:block;max-width:100%;font:var(--board-caption);", board)
+        # 关注页那两排是同一个控件，所以每条规则都把它们一起写进选择器。
+        self.assertIn("#tiers .av,:is(.followauthors,.followworks) .av{display:flex;flex-direction:column;align-items:center;gap:6px;width:76px;max-width:none;height:auto;padding:6px 4px;border-radius:12px;text-align:center}", board)
+        self.assertIn("#tiers .brandpill,:is(.followauthors,.followworks) .brandpill{display:inline-flex;align-items:center;gap:8px;width:auto;max-width:none;height:40px;padding:6px 12px 6px 6px;border-radius:12px;text-align:left}", board)
+        self.assertIn("#tiers .av .ring,:is(.followauthors,.followworks) .av .ring{width:48px;height:48px;", board)
+        self.assertIn("#tiers .brandpill .mk,:is(.followauthors,.followworks) .brandpill .mk{width:28px;height:28px;", board)
+        self.assertIn("#tiers .av .nm,:is(.followauthors,.followworks) .av .nm{display:block;max-width:100%;font:var(--board-caption);", board)
         self.assertPageContains("const list=d.items.filter(x=>x.cost!=='metered' && x.duration && !sourceOffline(x.location));")
 
     def test_toasts_leave_like_a_boardui_notification(self):
@@ -8692,7 +8737,10 @@ class WebUiSourceTests(unittest.TestCase):
                       "var(--spring-press),background .12s}", board)
         self.assertIn(".dnav button:active,.pill:active,.sorts button:active,.edge button:active{"
                       "scale:.96;transition:scale .06s ease-out}", board)
-        self.assertIn("#tiers .av:active,#tiers .brandpill:active{scale:.96;transition:scale .06s ease-out}", board)
+        self.assertIn("#tiers .av:active,#tiers .brandpill:active,\n"
+                      ":is(.followauthors,.followworks) .av:active,"
+                      ":is(.followauthors,.followworks) .brandpill:active"
+                      "{scale:.96;transition:scale .06s ease-out}", board)
         self.assertIn("cursor:grab;transition:scale calc(var(--spring-press-ms) * 1ms) "
                       "var(--spring-press),box-shadow .15s}", board)
         self.assertIn(":active::-webkit-slider-thumb{scale:1.18;transition:scale .06s ease-out}", board)
@@ -10330,15 +10378,15 @@ class WebUiSourceTests(unittest.TestCase):
         """
         writer = self._js_function("followViewPath")
         reader = self._js_function("readFollowView")
-        for key in ("author", "provider", "tag", "status", "media"):
+        for key in ("author", "provider", "tag", "work", "status", "media"):
             self.assertIn("'" + key + "'", writer,
                           "followViewPath 没把 " + key + " 写进 URL")
             self.assertIn("'" + key + "'", reader,
                           "readFollowView 没从 URL 读回 " + key)
-        # 「全部」现在是默认视图，缺省即全部，所以它不写进 URL；只有收窄到某个
-        # 状态才落 status。旧链接里的 status=all 仍按全部读回。
+        # 「全部」是默认视图，缺省即全部，所以它不写进 URL；只有收窄到某个状态才落
+        # status。这一排上没有的那一档按全部读回，`status=all` 与 `status=seen` 都在内。
         self.assertIn("if(followFilter)params.set('status',followFilter);", writer)
-        self.assertIn("(status===null||status==='all')?'':status", reader)
+        self.assertIn("followFilter=FOLLOW_FILTERS.some(([key])=>key&&key===status)?status:'';", reader)
 
     def test_entering_follow_afresh_derives_state_from_the_url(self):
         entry = self._js_function("openFollow")
