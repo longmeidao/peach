@@ -324,6 +324,29 @@ def _button_rules() -> str:
     return '\n'.join(re.findall(r'^\.(?:geist-button|gselect|popmenu)[^{}]*\{[^}]*\}', base, re.M))
 
 
+def _board_button_rules() -> str:
+    """入口页的主按钮就是站内那一颗：规则和 token 都从 `board.css` 原样取。
+
+    错误页、登录页和首启页都是没登录时看到的 Peach，按钮换一种蓝就等于说这是另一个
+    产品。把值抄进 `board-entry.css` 也能画成一样，但那是第二份色值——站内改一次渐变，
+    这三页就悄悄留在旧的那一版上。
+
+    只取主按钮那三条（静止、悬停、尺寸）和它们用到的 token：`board.css` 的 `:root` 里
+    还有一份把 `--page` `--ground` 按 Board 的角色重排的映射，整块搬过来会把入口页
+    自己的面色对调。
+    """
+    board = (PROJECT_ROOT / "web/board.css").read_text(encoding="utf-8")
+    palettes = re.findall(
+        r'^(?:@media\(prefers-color-scheme:dark\)\{)?:root[^{]*\{--color-text-primary:[^}]*\}\}?',
+        board, re.M)
+    switches = re.findall(r'^:root[^{]*\{--control-hover:[^}]*\}', board, re.M)
+    fonts = [f'{name}:{value}' for name in ("--board-font", "--board-body-medium")
+             for value in re.findall(rf'{name}:([^;]+);', board)[:1]]
+    rules = re.findall(
+        r'^body :is\([^)]*\)\.primary(?::not\(:disabled\))?(?::hover)?\{[^}]*\}', board, re.M)
+    return ''.join(palettes) + ''.join(switches) + ':root{' + ';'.join(fonts) + '}' + ''.join(rules)
+
+
 def _document(title: str, body: str) -> str:
     # 页内脚本对两张页面都生效：找不到对应控件时它什么也不做。
     index = (PROJECT_ROOT / "web/index.html").read_text(encoding="utf-8")
@@ -334,7 +357,8 @@ def _document(title: str, body: str) -> str:
         facts_css = '\n'.join(line for line in configuration_css.splitlines()
                               if line.startswith(('.configfacts', '@media(max-width:560px){.configfacts')))
     return (f"{_SETUP_HEAD}<title>{title}</title><style>{_theme_tokens()}{_scrollbar_rules()}</style>"
-            f'{_SETUP_STYLE}<style>{_button_rules()}</style>{board_entry_style()}<style>{facts_css}</style></head><body><svg width="0" height="0" aria-hidden="true" style="position:absolute">{symbols}</svg><main>{body}</main>{_SETUP_SCRIPT}{_SHARED_SCRIPT}</body></html>\n')
+            f'{_SETUP_STYLE}<style>{_button_rules()}</style>{board_entry_style()}'
+            f'<style>{_board_button_rules()}</style><style>{facts_css}</style></head><body><svg width="0" height="0" aria-hidden="true" style="position:absolute">{symbols}</svg><main>{body}</main>{_SETUP_SCRIPT}{_SHARED_SCRIPT}</body></html>\n')
 
 
 def board_entry_style() -> str:

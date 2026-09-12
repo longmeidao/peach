@@ -64,13 +64,20 @@ from peach.avatar_provider import (
 )
 from peach.catalog_rules import is_jav_code
 from peach.config import DATABASE_PATH, GENERATED_DIR
+from peach.gfriends import (
+    GFRIENDS_RAW,
+    INDEX_MAX_AGE_SECONDS,
+    INDEX_NAME,
+    image_url as gfriends_url,
+    index_age,
+    normalized,
+    parse_filetree as parse_gfriends,
+    quality_key,
+)
 from peach.http import HttpRequest, HttpTransport, HttpxTransport
 from peach.review_csv import read_rows, write_rows
 from peach.scripting import HostLimiter, USER_AGENT, open_readonly
 
-GFRIENDS_RAW = "https://raw.githubusercontent.com/gfriends/gfriends/master/"
-# 目录名首字符即质量档位；0 最优，z（DMM 官方小图）最次。
-QUALITY_ORDER = "0123456789abcdefghijklmnopqrstuvwxyz"
 AVATAR_FILE_RE = re.compile(r"^performer-(\d+)\.img$")
 _LIMITER: "HostLimiter | None" = None
 
@@ -171,36 +178,6 @@ class SourceHealth:
         return row
 
 
-def parse_gfriends(body: bytes) -> dict[str, list[tuple[str, str]]]:
-    """Filetree.json 字节 -> 日文名映射到 [(来源目录, 文件名)]，按质量档位排序，最优在前。"""
-    content = json.loads(body)["Content"]
-    index: dict[str, list[tuple[str, str]]] = {}
-    for category, items in content.items():
-        for display_name, stored in items.items():
-            # 键是展示名（可能是别名），值才是实际文件；两者未必相同。
-            key = normalized(display_name.rsplit(".", 1)[0])
-            index.setdefault(key, []).append((category, stored.split("?")[0]))
-    for key in index:
-        index[key].sort(key=lambda pair: quality_key(*pair))
-    return index
-
-
-#: 索引缓存的保鲜期。Gfriends 是持续增补的图库，缓存不能永不过期：只要文件在就一直
-#: 复用的话，快照那天没收录的人会被判成 `no_match`，此后每次重跑都照抄同一个结论，
-#: 没有任何时机被重新审视。实测：2026-08-25 的缓存里没有「釈アリス」，当天之后
-#: Gfriends 加了她（两份索引正好差这一条），但本地怎么跑都还是找不到。
-#:
-#: 一天是个折中：图库按天更新，而这个脚本是长跑批处理，不该每次启动都拉 6 MB。
-INDEX_MAX_AGE_SECONDS = 24 * 3600
-
-
-def _index_cache_age(cache_path: Path) -> float | None:
-    try:
-        return max(0.0, time.time() - cache_path.stat().st_mtime)
-    except OSError:
-        return None
-
-
 def load_gfriends_cached(
     transport: HttpTransport, cache_dir: Path, refresh: bool, health: SourceHealth,
 ) -> tuple[dict[str, list[tuple[str, str]]], bool]:
@@ -210,8 +187,8 @@ def load_gfriends_cached(
     「快照那天没有这个人」，不说明现在没有。调用方据此把那些行降级成可重试，
     并在输出里说出来——旧缓存兜住的是流程，不是结论。
     """
-    cache_path = cache_dir / "gfriends-filetree.json"
-    age = _index_cache_age(cache_path)
+    cache_path = cache_dir / INDEX_NAME
+    age = index_age(cache_dir)
     stale = age is None or age > INDEX_MAX_AGE_SECONDS
     if not refresh and not stale and cache_path.is_file():
         try:
@@ -258,18 +235,6 @@ def load_gfriends_cached(
     raise RuntimeError("Gfriends 索引不可用，且没有有效本地缓存")
 
 
-def gfriends_url(category: str, filename: str) -> str:
-    return (GFRIENDS_RAW + "Content/" + urllib.parse.quote(category)
-            + "/" + urllib.parse.quote(filename))
-
-
-def quality_key(category: str, filename: str) -> tuple[int, str, str]:
-    """已知质量档按约定排序；未知或空目录放最后，不能因 find=-1 抢到最前。"""
-    prefix = category[:1].lower()
-    rank = QUALITY_ORDER.find(prefix)
-    return (rank if rank >= 0 else len(QUALITY_ORDER), category, filename)
-
-
 def fetch(transport: HttpTransport, url: str, accept: str,
           timeout: float = 30, max_bytes: int = 4 * 1024 * 1024):
     """联网取一次；任何网络层异常都降级为 None，不让单条 TLS 抖动打断整批。"""
@@ -302,10 +267,6 @@ def inspect_image(data: bytes) -> tuple[tuple[int, int], str] | None:
 def acceptable(size: tuple[int, int], min_long: int, min_short: int) -> bool:
     """头像是竖构图，宽度天然小；用长短边分别判定，不能套方图的短边门槛。"""
     return max(size) >= min_long and min(size) >= min_short
-
-
-def normalized(value: str) -> str:
-    return re.sub(r"\s+", " ", value or "").strip().lower()
 
 
 # ---------------------------------------------------------------- ledger（只读）
@@ -672,7 +633,7 @@ def run(args: argparse.Namespace, transport: HttpTransport | None = None) -> int
         if stale_index:
             # 一行也不能省：旧缓存和新索引跑出来的 CSV 看起来一模一样，不说就没人知道
             # 这一轮的「找不到」只代表快照那天。
-            age = _index_cache_age(args.cache_dir / "gfriends-filetree.json") or 0
+            age = index_age(args.cache_dir) or 0
             print(f"告警：未取到最新 Gfriends 索引，改用 {round(age / 3600)} 小时前的"
                   f"本地缓存；本轮未收录一律记 error，网络恢复后重跑", flush=True)
 

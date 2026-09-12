@@ -933,9 +933,17 @@ class StandaloneConfigurationTests(_Case):
             self.assertNotIn('<p class="lede">', missing.text)
             self.assertNotIn("这个地址下没有页面。", missing.text)
             self.assertIn('<a class="geist-button primary" href="/">返回首页</a>', missing.text)
-            from peach.routes_pages import _button_rules
-            self.assertIn('.geist-button.primary{', _button_rules())
+            from peach.routes_pages import _board_button_rules, _button_rules
+            self.assertIn('.geist-button{', _button_rules())
             self.assertIn(_button_rules(), missing.text)
+            # 主按钮那一颗连同它用到的 token 从 board.css 原样取：这三张页面上的强调档
+            # 和站内是同一份规则，不是照着抄的第二份色值，站内改一次渐变这里跟着走。
+            board_rules = _board_button_rules()
+            self.assertIn('.primary:not(:disabled){background:var(--board-blue);', board_rules)
+            self.assertIn('.primary:not(:disabled):hover{background:var(--board-blue-hover)}',
+                          board_rules)
+            self.assertIn('--board-blue:linear-gradient(', board_rules)
+            self.assertIn(board_rules, missing.text)
             data = client.get("/refuse", headers={"Accept": "application/json"})
             self.assertEqual(data.status_code, 409)
             self.assertEqual(data.json(), {"error": "请先完成首次设置"})

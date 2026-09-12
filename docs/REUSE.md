@@ -200,6 +200,7 @@ CloudDrive 为外部应用，本项目不捆绑其二进制或依赖其管理 AP
 - 关注检查分两阶段：列表阶段落 partial 行，详情补全按 provider 额度只补新行和未补齐行。
 - `/api/related` 用 Tag IDF 加 MMR 排序并缓存；搜索使用 FTS5 trigram，短查询回退 LIKE 并覆盖规范名、别名和检索词，搜索历史在 reader 写入被拒时降级到页面内存。
 - 复核页覆盖元数据、创作者标签、Logo、头像、身份、番号目录、FC2 证据和媒体失败；抓取与 AI 结果仍是候选，批准后才写真相字段，元数据候选保留 MetaTube 目录证据且不下载 URL。
+- 女优与创作者资料页的头像圆框角上有换头像入口：候选来自图库里同名的其他图和这个人取过的每一张图，另外两条路是本机文件与一个 https 地址。每一张取到的图都按内容哈希进候选缓存，被顶下来的那张留在里面，换回去不重新下载。页面只回递服务端自己列出来的 `ref`，图片地址由服务端按索引拼；手填地址是唯一的例外，它过 `http.public_https_url` 那道公网判据。
 - 外部来源 genre 只在 `peach.genre_taxonomy` 投影，日英来源词共用一套既有词表，非内容分类排除、未收录原文回传登记。
 - 未收录的 genre 在复核卡上就地收录：`genre_decision`（迁移 0026）存「规范化来源词 → 中文标签」，标签留空即判它不是内容词。这张表是静态词表可变的那一半，`peach.genre_decisions` 只管读写、映射仍全在 `genre_taxonomy.map_genres`；收录一次之后 `extract_peach_fields` 与 `scrape_codes.py`、`harvest_kmib.py`、`fetch_fc2_metadata.py` 都当它是已知词，已经排在队列里的候选由 `web_review._fold_genre_decisions` 当场折进值里（读队列、人工批准、自动落库三处同一个函数）。收录只改词表，落库仍要用户按那张卡上的「通过」。页面给的候选词表是静态表已投影到的那批中文标签，不是账本里全部标签实体——后者大半来自文件名，拿它当建议只会把噪声接着抄下去。2026-09-11 之前写下的候选文件只有 `warnings` 里那句中文提示，`genres_in_warning` 按同一处拼出的格式把原文反解回来，旧队列不必先重抓全库才有按钮可点。
 - 补抓按番号发行面分流来源，要求来源认得出所查番号、冷却按连败触发且会过期；无码发行站的片与粘连的版次标记也给得出徽章。
@@ -225,6 +226,9 @@ CloudDrive 为外部应用，本项目不捆绑其二进制或依赖其管理 AP
 | 相关推荐 | OpenAver `dca4c0c368ea0c2db9cf15e48977de2fc75e7077` 的 Tag IDF + 系列／片商／出演者规则只作固定算法参考（MIT） | 独立实现规范实体评分、MMR 多样性、稳定 seed、解释原因与负反馈边界；不复制上游 UI／源码 |
 | 女优姓名对照 | `li-peifeng/Jav-Actors-Mapping` 的固定 revision，仅作私有输入（仓库未声明许可证，不随 Peach 分发） | 精确匹配、冲突复核、别名、来源与真实 ledger 写入 |
 | 女优头像候选 | Gfriends 的 GitHub raw 索引与单张媒体（只作外部 Provider，不克隆图库） | 名字链、质量档位、格式/尺寸/SHA-256 门槛、候选缓存、provenance、健康统计和人工复核 |
+| Gfriends 索引读法 | `src/peach/gfriends.py` | 页面与批处理共用这一份：`Filetree.json` 解析、名字链匹配、`quality_key` 排序、raw 地址拼接与本地缓存的保鲜期。**目录前缀是来源优先级，不是清晰度**——上游 README 写成「质量升序」，逐个来源核下来是小而精在前（`0-` 网友投稿、`1-`～`8-` 写真机构与片商官方、`8-` 往后是收录上万但原图两三百像素的大型数据库），所以排第一的是「最该先试的一张」，不是「最好看的一张」；`AI-Fix-` 前缀是上游自己做的放大与去水印，去掉前缀取未处理原件 |
+| 「这个地址能不能让 Peach 替人去取」 | `src/peach/http.py` 的 `public_https_url` + `resolves_publicly` | 追更的图片代理与换头像的手填地址共用同一道判据：必须 https、必须公网域名、不收 IP 字面量与用户信息、解析出来的每一个地址都要 `is_global`。Peach 跑在用户自己的机器上，能访问路由器后台、NAS 和本机各个端口，「你给地址我去下」不设边界就是一个替人发请求的跳板 |
+| 头像落盘 | `src/peach/avatar_provider.install_entity_avatar` | 采集脚本、复核页与换头像共用这一份：`.img` 经临时文件原子替换，`.ct`、`.provenance.json` 与人脸 `.face.json` 四件套一起换。检不出脸要删 sidecar 而不是留着——上一张图的脸框会被页面拿去给这一张取景，放大到一个空位置上，而这在界面上与「本来就该这么显示」看不出区别 |
 | 厂牌 Logo 候选 | 厂牌官网确认的社交 handle → unavatar URL 解析 → 平台 CDN 单图 | handle 归属、内容缓存、方形归一、精确/感知哈希、provenance、健康统计与变化复核 |
 | 厂牌字标名录 | 发行平台自己的厂牌名录：MGStage `/ppv/makers.php` 十一页 351 家（`harvest_mgstage_makers.py`），jae.tokyo 展会名录 26 家 | slug↔账本对账（四路判据、空罗马字形当不可比）、烤方、两位共用、复核 CSV 与安装闸门。不推导 URL、不猜名字：名录给什么用什么 |
 | JAV 元数据查询 | Javinizer-Go v1.5.1 单来源 JSON CLI（MIT）；MetaTube SDK `6a5e6128c725187aeaf921d48ed7d9cd9f30671b`（Apache-2.0）只作来源身份与丰富字段模型参考 | 只发送规范番号；Peach 管 source profile、`provider_id`／`content_id`、逐字段优先级、原始证据、丰富目录证据、健康统计、候选复核与批准后的 ledger 投影 |

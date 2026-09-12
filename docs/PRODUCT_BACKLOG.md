@@ -39,7 +39,7 @@
 6. **口味证据持续刷新**：ledger 已实时记录搜索、播放、高潮、喜欢/理由、不合口味和稍后看；浏览器历史现可用 SQLite 一致性副本增量进入私有源库，并生成不含 URL/标题的 creator/tag candidate 与聚合报告。旧 2026-08-13 原始包已确认不在 Windows 外置盘；仍需在 Mac 开启 iCloud Safari、完成首次导入，并把两端每周刷新装成系统计划任务。AI 结论不得直接改真相字段。
 7. **扫描与采集任务的参数标定**：无进展预警的 120 秒与单项动作预算（资料 90 秒、封面 240 秒）目前按最坏请求时长取的保守值；等一轮真实任务记录各阶段实测耗时后标定，同时确定完整问题文件的保留周期。
 
-## 尚未实现（31 项）
+## 尚未实现（32 项）
 
 1. AI Provider 的真实调用、能力协商、Credential Manager 凭据和候选审核 UI。
 2. 剩余单一创作者风格板复核、无标签内容补标。
@@ -50,7 +50,7 @@
 7. 开源通用化的发布准备（ADR-0023 第 4 阶段）：清扫 `docs/` 与 `.claude/skills/` 里的局域网地址、主机名、账号名、备份文件名与个人目录，把只对一台机器成立的运行态移出仓库，并把 `tests/test_repo_hygiene.py` 的个人字面量门槛从 `src/peach/` 扩到文档与技能。许可证、贡献与安全说明、issue/PR 模板在仓库里；设置层、来源挂载点 ID 与可整体关闭的复制链路在 Windows 生效，macOS 待跑 `peach init --from-existing --mount local=<落点>`。
    - 公开分发：待项目相对稳定，安装、升级、数据迁移及跨平台回归稳定后，同批推进 PyPI 包发布和 WinGet 登记；现阶段仅记录计划，不上传或登记。发布前确认发行名，调整禁止上传标记，完善自动构建、版本发布与两端安装验收。
    - 名称候选：首选 `peach-media`，备选 `peach-library`、`peach-shelf`、`longmeidao-peach`；WinGet 应用 ID 建议 `longmeidao.Peach`。名称尚未定案或注册，发布时复核可用性；产品显示名继续使用 Peach。
-8. 女优高清头像的写入侧：`scripts/audit_performer_portraits.py` 已能出候选与实测证据，仍缺按复核结果复制头像文件那一步，以及实体合并后孤立头像的 relink（如 `8022 <- 8168`：只有旧 ID 的 provenance 名唯一命中当前实体、当前目标又不存在时才算候选，不覆盖、不删除旧文件）。
+8. 女优高清头像的写入侧：`scripts/audit_performer_portraits.py` 已能出候选与实测证据，资料页上人可以逐个换掉任何一张（图库同名候选、用过的图、本机文件、https 地址）；仍缺按复核结果批量替换那一步，以及实体合并后孤立头像的 relink（如 `8022 <- 8168`：只有旧 ID 的 provenance 名唯一命中当前实体、当前目标又不存在时才算候选，不覆盖、不删除旧文件）。
 9. 文件名与网盘目录整理的落地：`scripts/clean_names.py` 与目录计划只出 dry-run CSV。真正改名要独立维护窗口——停同类任务、确认本机是 writer、SQLite backup、逐条同目录 rename 并同步账本 path/name、失败时文件名回滚，最后跑完整性、外键与路径存在性检查；不跨盘移动，也不按文件夹名猜创作者。
 10. 来源与默认值通用化（ADR-0023 第 5 阶段候选）：`peach init` 的问答已按本机路径只声明 `local`，非交互路径写出的 `DEFAULT_LOCATION_ROOTS`（`R:\media`、`B:/`、`A:/`）仍是维护者的示例盘符。剩两件事：来源用「本地 / 远端挂载」类型字段代替代码里按 `local`/`115`/`pikpak` 名字点名（`web_resource_sync.py` 的 SQL、`media.py` 的 HLS 规则）；复制链路支持 win↔win、mac↔mac 与任意一台当写者，目前只验证过 Windows 写者 + macOS 读者。
 11. 非 editable 安装的跨平台验收：wheel 资源与 Windows 基础依赖、仓库外 CLI 冒烟已就绪，仍需取得 macOS、Python 3.12 消费任务结果。
@@ -79,7 +79,10 @@
 30. **内封字幕轨**：外挂 sidecar 已随 `asset_subtitle` 落库并挂进播放器，内封的字幕流则完全没登记——`scripts/probe.py` 只探 `v:0` 一路，`transcodes.py` 挑流时只认 video 与 audio。要支持得给探测加 `-select_streams s` 一路、把语言与编码落进同一张表（`pairing` 加一档 `embedded`），播放侧转 WebVTT 需要 FFmpeg 子进程抽流，与外挂那条纯 Python 路径不同，按需求出现再做。
 31. **创作者昵称撞番号形态，判据待定**：`catalog_rules` 的番号提取已按 `CODE_BODY_STOPWORDS`、`_QUALITY_HEAD`、`REPOST_SITE_LABELS` 三层名单剥噪声，剩下的一类没有名单能覆盖——「昵称 + 数字」和厂牌番号完全同形。2026-09-12 在本机账本 26265 条 video 上只读盘点，`sumwall95 long sex video_18.mp4` → `SUMWALL-095` 19 条、`marie 2409a.mp4` 这类「角色名 + YYMM + 卷号」约 80 条、`dao01(1).mp4` → `DAO-001`、`wen66s.mp4` → `WEN-066`、`UWFr85dczsVeysGg.mp4` → `UWFR-085` 各若干。它们全部住在 `A:\创作者\`、`B:\云下载\` 和 `R:\Media\` 下，`is_jav_asset` 的发行证据门槛拦住了它们进 JAV 视图，但 `asset.code` 这一列仍然是个假值。逐个昵称进名单不收敛，可选判据是「所在目录已被判定为创作者」——需要把目录级判定接进解析层，接口边界未定，先不做。
 
-合计：**38 项开放需求**，其中 7 项已有骨架，31 项尚未实现。已完成的需求不在这里留痕，去 Git 历史查。
+32. **系统清理与瘦身**（用户 2026-09-11 提出）：一个统一入口，先按类别列出各自占多少、删掉会失去什么，再由用户挑着清。可清的有头像与 Logo 的候选缓存（`provider-cache/` 下的 `objects/`、`requests/`）、抽帧与九宫格、HLS 分片与转码产物、复核 CSV 与标注图、日志与 state 快照。分档判据是「删了之后要重做一遍什么」：请求快照删了只是下次重取，`evidence/` 是「这个人用过哪些图」的历史、删了换头像就再也找不回旧图，两者不能同档。账本、真实媒体、备份和 `avatars-superseded/` 不在清理范围内。
+    起因是换头像功能把取到的每一张图都留在候选缓存里，盘上只增不减；但入口本身要按上面整张清单做，不是只清头像。
+
+合计：**39 项开放需求**，其中 7 项已有骨架，32 项尚未实现。已完成的需求不在这里留痕，去 Git 历史查。
 
 ## 待执行的操作（43 项）
 
@@ -119,7 +122,7 @@
     2026-09-06 核对 wish-promotion.jp 已是其他内容站，不能作为现官网。15 条现官网链接使用共用 Chrome UA 重查，13 条返回 200；Cruse Group 证书链与 Prime Agency TLS 连接仍未取得。
 32. `install_entity_links.py` 的可达性门槛按「非 200 就跳过」执行，而同文件的 `is_gone()` 明确写着 403／5xx／连接错误不能当「页面没了」。首批 703 条里 137 条因此没装，其中 31 条 twitter.com、23 条 t-powers.co.jp。把跳过分成「确证没了」和「这次没取到」两档：后者留进待复查队列，配合 `rediscover_entity_links.py` 对 t-powers／nax-pro／mines-pro 这些已经搬家的域名上溯找新锚，再装一次。
 33. 托盘自重建被测试记录门槛卡住：2026-09-05 22:54 托盘为 0.8.5 起的那次「同步开发进度」全量 3181 个用例全绿，`scripts/test_runner.py` 却因验证前后主检出的内容或依赖快照不一致判本次记录无效、退出码 1，托盘按测试失败处理，没有打包也没有换 EXE，并且同一 HEAD 不再重试；同一时段两次 `auto` 记录也是空的 `validated`。第二次（23:14 起，HEAD 5a4b37f8）跑到一半，协调者于 23:17:42 把 0.8.6 合进了同一个主检出，全量因此 6 个用例失败、记录再次无效；失败用例名未取得，第三次尝试一开始就把日志覆盖了。机制已确认：托盘在主检出跑全量，`integrate` 的 `integration.lock` 与全量的 `full-suite.lock` 互不排斥，任何一次集成都会改掉正在验证的树。要做三件事：集成前等主检出里正在跑的全量结束（或让两把锁互斥），并把「记录无效」和「用例失败」在退出码或输出上分开，让托盘对前者重试而不是放弃；托盘的日志只写 stderr，没有落盘，22:43 那次托盘连同两个服务一起消失的原因也因此未取得，给托盘补一份 `logs/tray.log`。现场：线上服务 0.8.5 正常，托盘 EXE 仍是 21:08 打的 0.8.1，`pyproject.toml` 与 `windows_update.py` 的改动没进 EXE。
-34. 封面来源头像逐条复核：37 张仍来自 `cover-fallback`，完整初始清单位于 `attic/reviews/20260906-portrait-agency/remaining-cover-avatars.csv`。41 张被封面覆盖的 Gfriends 人像已从备份恢复，包括日向真凛，恢复记录见同目录 `cover-restore-result.json`。采集器将封面保留为未验证候选，安装函数拒绝把封面写成人物头像。DMM 女优一览页已排除为换源候选：头像只有 125×125，且同批图 Gfriends 已收在最后一档（2026-09-11 实测，结论与取证位置见 `docs/SOURCING.md`）。
+34. 封面来源头像逐条复核：37 张仍来自 `cover-fallback`，其中 3 人在图库里本来就有人像，资料页上一点就能换掉；完整初始清单位于 `attic/reviews/20260906-portrait-agency/remaining-cover-avatars.csv`。41 张被封面覆盖的 Gfriends 人像已从备份恢复，包括日向真凛，恢复记录见同目录 `cover-restore-result.json`。采集器将封面保留为未验证候选，安装函数拒绝把封面写成人物头像。DMM 女优一览页已排除为换源候选：头像只有 125×125，且同批图 Gfriends 已收在最后一档（2026-09-11 实测，结论与取证位置见 `docs/SOURCING.md`）。
 35. 首要原则审查（2026-09-07，George Pickett 的 prompt，覆盖整个 `peach-app`）的剩余清理项。零风险的删除已随分支 `agent/claude/provider-registry-review` 落地，完整报告与判断依据在顶层 `attic/reviews/20260907-first-principles/review.md`；下面每条独立，可单独派工作树：
     - follow：`connector_headers` 形参、`blocked_reason` 基类钩子、`FollowCandidate.version` 输入字段只有测试在用；`KemonoConnector.HOSTS`／`SubscribeStarConnector.HOSTS` 与登记表 `url_hosts` 是同一份主机表的第二份；Rule34Video 自带的探测循环可并入 `enrich()`；425／429 进 `_send` 的可重试集后两段手写重试可删。
     - follow 弱假设：ETag／304 机制 2026-09-08 只读核查：45 条来源 `etag` 全空、`last_status` 从未出现 `not_modified`，只有 f95zone 的 7 条存下 `last_modified`——条件头有站点在回、304 没有站点回过，机制保留，不再列为待删。六处「读时修旧行」兼容层（`archive_file_url`、`_legacy_history_end`、`_f95_has_resource`、`split_posts`、`author_display_text` 修正、`f95_attachment_media_items`）换成一次带备份的迁移，需 ledger 写授权。

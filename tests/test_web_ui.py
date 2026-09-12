@@ -474,10 +474,11 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn('<section class="followtask" data-geist-fieldset aria-label="任务进度">', jobs)
 
     def test_buttons_keep_two_tiers_a_solid_primary_and_a_bright_secondary(self):
-        """按钮只有两档：主动作实底墨色，次级是比容器亮一档的实面；两档都不描边。
+        """按钮只有两档：次级是比容器亮一档的实面，强调档那一面由 `board.css` 一处给；
+        两档都不描边。
 
-        2026-09-05 实测 vercel.com 的仪表盘工具行，两档同屏并排：主动作 `#171717` 底
-        白字，次级 `#FFFFFF` 底 `#171717` 字。次级不是透明的——压在 `#FAFAFA` 的操作条上，
+        2026-09-05 实测 vercel.com 的仪表盘工具行，两档同屏并排，次级是 `#FFFFFF` 底
+        `#171717` 字。次级不是透明的——压在 `#FAFAFA` 的操作条上，
         透明会让按钮和条子连成一片。Geist 给次级另挂的那圈 `box-shadow:0 0 0 1px` 这里
         不画：描边档与实心档并排看着一大一小，差的是「一个是块面、一个是个框」，
         而次级只出现在操作条上，比条子亮一档本身就是边界。
@@ -492,7 +493,10 @@ class WebUiSourceTests(unittest.TestCase):
                         "border:0;border-radius:var(--control-radius);"
                         "background:var(--ground);color:var(--ink);display:inline-flex;")
         self.assertPageContains(f".geist-button:hover:not(:disabled){{{secondary_hover}}}")
-        self.assertPageContains(".geist-button.primary{background:var(--ink);color:var(--ground);box-shadow:none}")
+        # 强调档那一面只有 `board.css` 一处（`test_the_primary_tier_has_one_face_and_one_hover`）。
+        # 这一层再写一份的话，它的 `:hover:not(:disabled)` 比 Board 那条静止规则重一个类，
+        # 同一颗按钮的静止和悬停就分别由两处给出。
+        self.assertNotIn(".geist-button.primary{", css)
         # 找的是这三条基样式本身，不是别处以同名结尾的派生规则（`.fsecfoot .fbtn{`
         # 也以 `.fbtn{` 收尾），所以选择器前面必须是上一条规则的边界。
         for name in (".cleanupfieldset button:where(:not(.gselectfield)){",
@@ -832,18 +836,19 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertEqual(offenders, [],
                          f"这些 hover 在提亮边框，请改成只抬 background：{offenders}")
 
-    def test_the_primary_hover_spells_out_its_own_text_colour(self):
-        """主动作的悬停规则必须自己写 `color`，不能指望静止态那条留下来。
+    def test_an_ink_filled_action_hover_spells_out_its_own_text_colour(self):
+        """墨色实底那一档的悬停规则必须自己写 `color`，不能指望静止态那条留下来。
 
         `:hover` 只声明 background 时，同一组里更宽的通用悬停（`.fpickactions
         button:hover`、`.tagselection button:hover` 都是）会把文字提到 `--ink`：
-        它的选择器更弱，可 `color` 在主动作这条里没有对手，于是浅色实底上落成
-        白字白底，鼠标一压按钮上的字就没了。2026-09-04 用户在关注管理页的
-        「添加选中」上第二次遇到同一个坑。
+        它的选择器更弱，可 `color` 在这一档自己这条里没有对手，于是浅色实底上落成
+        白字白底，鼠标一压按钮上的字就没了。2026-09-04 用户在关注管理页第二次遇到
+        同一个坑。
 
-        取值只能是静止态那个 `--ground`：Geist Button 的 primary 悬停只把 #EDEDED
+        取值只能是静止态那个 `--ground`：Geist Button 的实心档悬停只把 #EDEDED
         掉一档到 #ccc，文字色不动（`vercel-geist-semantics-measured.md`
-        「Button 全变体与状态」）。
+        「Button 全变体与状态」）。全站的强调档不在这条的辖区——它的悬停只提亮渐变、
+        文字色一动不动，见 `test_the_primary_tier_has_one_face_and_one_hover`。
         """
         css = re.sub(r"/\*.*?\*/", "", stylesheet_source(), flags=re.S)
         primary_hover = "background:color-mix(in srgb,var(--ink) 88%,var(--ground))"
@@ -858,7 +863,7 @@ class WebUiSourceTests(unittest.TestCase):
                 offenders.append(leaf)
         self.assertEqual(offenders, [],
                          f"主动作悬停请补 color:var(--ground)，别把文字交给通用 hover：{offenders}")
-        self.assertGreaterEqual(seen, 6, "主动作悬停规则少于预期，检查断言是否还找得到它们")
+        self.assertGreaterEqual(seen, 1, "墨色主动作的悬停规则找不到了，检查断言是否还匹配得上")
 
     # 悬停允许照旧抬填充的两类控件。孤立开关：没有并排的同类邻居，鼠标压着的那颗
     # 就是你正在问的那颗，看不出「按没按」不构成误读。侧栏导航：Geist 自己就把分工
@@ -1130,9 +1135,14 @@ class WebUiSourceTests(unittest.TestCase):
         for selector in (".srctools button:disabled", ".frowicon:disabled"):
             self.assertPageContains(selector + ringed)
         for selector in (".geist-button:disabled", ".fbtn:disabled",
-                         ".fcredactions button:disabled", ".resourceaction:disabled",
+                         ".resourceaction:disabled",
                          ".tagselection button:disabled", ".fpickactions button:disabled"):
             self.assertPageContains(selector + flat)
+        # 凭据那一组两颗都是实心档（强调档的「保存」、危险档的「清除」），静止态自己没有
+        # 环可留；停用后跟 `.geist-button.primary:disabled` 同形，灰面上补一圈。
+        self.assertPageContains(".fcredactions button:disabled{background:var(--sunk);"
+                                "color:var(--muted);box-shadow:0 0 0 1px var(--line-soft);"
+                                "cursor:not-allowed}")
 
     def test_the_secondary_tier_keeps_a_one_pixel_ring_so_it_reads_on_its_own_ground(self):
         """次级按钮挂一圈 1px 环，实心的三档不挂。
@@ -1157,13 +1167,10 @@ class WebUiSourceTests(unittest.TestCase):
             start = found.end() - len(name)
             rule = css[start:css.index("}", start)]
             self.assertIn(ring, rule, f"{name} 次级档要有那一圈 1px 环")
-        # 实心档自己的填充就是边界，再挂环会在实底外面描出第二道轮廓。
-        for solid in (".geist-button.primary{background:var(--ink);color:var(--ground);"
-                      "box-shadow:none}",
-                      ".geist-button.error{background:#da2f35;color:#fff;box-shadow:none}",
-                      ".geist-button.warning{background:#ff990a;color:#000;box-shadow:none}",
-                      ".fbtn.primary{background:var(--ink);color:var(--ground);font-weight:500;"
-                      "box-shadow:none}"):
+        # 实心档自己的填充就是边界，再挂环会在实底外面描出第二道轮廓。强调档不在这一层：
+        # 它那一面连同 `box-shadow` 由 `board.css` 一处给（`test_the_primary_tier_has_one_face_and_one_hover`）。
+        for solid in (".geist-button.error{background:#da2f35;color:#fff;box-shadow:none}",
+                      ".geist-button.warning{background:#ff990a;color:#000;box-shadow:none}"):
             self.assertPageContains(solid, "实心档不挂环")
         # 禁用把所有档收成同一块灰面，环要跟回来，否则禁用的主动作连轮廓都没有。
         for restored in (".geist-button.primary:disabled{background:var(--sunk);"
@@ -1442,7 +1449,7 @@ class WebUiSourceTests(unittest.TestCase):
         css = stylesheet_source()
         # 播放列表那几个弹层没有自己的关闭键：它们穿 Geist Modal，退出走操作条左端的
         # 取消、Escape 和点遮罩，右上角不再另摆一个叉。
-        for selector in (".mixqueuehead button{", ".settingshead button{"):
+        for selector in (".mixqueuehead button{", ".settingshead button,.avatarpick-close{"):
             start = css.index(selector)
             rule = css[start:css.index("}", start)]
             self.assertIn("var(--control-radius)", rule,
@@ -1455,8 +1462,82 @@ class WebUiSourceTests(unittest.TestCase):
         media_close = media_close[:media_close.index("}")]
         self.assertIn("border-radius:50%", media_close,
                       "全屏媒体关闭钮属于圆形媒体操作，不沿用普通 Dialog 关闭钮")
-        self.assertIn(".settingshead button:hover{background:var(--hover);color:var(--ink)}",
-                      css)
+        self.assertIn(
+            ".settingshead button:hover,.avatarpick-close:hover"
+            "{background:var(--hover);color:var(--ink)}", css)
+        # 换头像弹层右上角那颗跟设置弹层是同一颗：并在同一条选择器上，不另画一遍。
+        # 同时要进纯图标按钮那条名单——`<button>` 的 UA 样式带 `padding:1px 6px`，
+        # 24px 的键只剩 12px 内容宽，16px 的图标挤到一边，看着就是那个叉没居中。
+        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
+        self.assertIn(".settingscard .settingshead button,.avatarpick-close{", board)
+        icon_only = [line for line in board.splitlines()
+                     if line.startswith(":is(.settingshead button,.avatarpick-close,")]
+        self.assertTrue(icon_only, "换头像的关闭键不在纯图标按钮那条名单里")
+        self.assertIn("padding:0", icon_only[0])
+
+    def test_the_avatar_picker_puts_the_grid_straight_on_the_card(self):
+        """换头像弹层一张面到底：候选网格不另外套底色、描边或圆角。
+
+        候选图本身就是一格一格的方块，外面再套一个沉下去的底加一圈框，等于给同一件事
+        画了两层边界。卡片面用 --page 而不是 `.geist-modal` 自己的 --surface：board.css
+        把面色重排过，--surface 浅色是 #fff、暗色是 #262626，拿它当卡片面，暗色里这张
+        卡会比它盖住的页面还亮一档。
+        """
+        css = stylesheet_source()
+        self.assertIn(".avatarpick-popover{background:var(--page)}", css)
+        panel = css[css.index(".avatarpick-panel{"):]
+        panel = panel[:panel.index("}")]
+        self.assertIn("border-top:1px solid var(--line-soft)", panel)
+        self.assertNotIn("background:", panel)
+        wrap = css[css.index(".avatarpick-gridwrap{"):]
+        wrap = wrap[:wrap.index("}")]
+        for absent in ("background:", "border:", "border-radius:"):
+            self.assertNotIn(absent, wrap, "网格外面不再套一层框")
+
+    def test_an_open_collapse_stops_cropping_what_is_inside_it(self):
+        """展开着不动时那道裁边摘掉：高度过渡需要它，展开完就只剩副作用。
+
+        关注列表里最后一张来源卡的落影正好落在下沿外，留着裁边就被切掉半条，读出来是
+        这一列没排完。收起那一下先装回去，否则内容会在高度收到 0 的过程中一直露在外面。
+        """
+        css = stylesheet_source()
+        self.assertIn(".fcollapse.fcollapse-settled{overflow:visible}", css)
+        components = (Path(__file__).resolve().parents[1]
+                      / "web/js/ui-components.js").read_text(encoding="utf-8")
+        self.assertIn("body.style.height='auto';body.classList.add('fcollapse-settled')", components)
+        self.assertIn("body.inert=true;body.classList.remove('fcollapse-settled')", components)
+        self.assertIn("if(expanded)body.classList.add('fcollapse-settled')", components,
+                      "一开始就展开的那些没有过渡可等")
+
+    def test_an_author_row_lines_its_site_marks_up_with_the_buttons(self):
+        """站标和失败数靠右起排，跟「全选」「展开」在同一条竖线上。
+
+        作者名长短不一，站标跟着名字走就每行一个位置，一列扫下来得逐行找。按钮上的字只写
+        「全选」——它就在这位作者那一行里，说到底选的是谁由所在的行回答；完整的表述留在
+        `aria-label` 上，读屏那边脱离了行的上下文。
+        """
+        app = (Path(__file__).resolve().parents[1] / "web/app.js").read_text(encoding="utf-8")
+        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
+        self.assertIn('aria-label="全选 ${esc(name)} 的来源">全选</button>', app)
+        self.assertIn("count===fields.length?'取消全选':'全选'", app)
+        self.assertIn(".fauthorhead>.fmeta{margin-left:auto}", board)
+        self.assertIn(".fauthorhead>.fmeta~.fmeta,.fauthorhead>.fmeta~.board-author-actions"
+                      "{margin-left:0}", board, "撑开的空当只交给第一个 .fmeta")
+
+    def test_the_avatar_picker_leaves_the_same_gap_above_and_below_its_actions(self):
+        """底下那排手填地址上下各留 20px，跟网格滚到哪儿无关。
+
+        上方那道留白整份由这一排自己出。交给网格的 `padding-bottom` 的话，它只在滚到底时
+        才露出来——没滚到底时最后一行图正被下沿裁着，紧接着就是这一排，上面看着只剩几个
+        像素，下面却是满的。
+        """
+        css = stylesheet_source()
+        grid = css[css.index(".avatarpick-grid{"):]
+        grid = grid[:grid.index("}")]
+        self.assertIn("padding:16px 20px 0", grid, "网格自己不留下边距")
+        actions = css[css.index(".avatarpick-actions{"):]
+        actions = actions[:actions.index("}")]
+        self.assertIn("padding:20px", actions)
 
     def test_history_actions_are_one_split_button_with_the_primary_mirrored(self):
         """读取本机浏览记录和导入历史文件是同一件事的两种做法，合成一个 Split Button。
@@ -1482,10 +1563,12 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn("border-radius:var(--control-radius) 0 0 var(--control-radius)",
                       main_rule[:main_rule.index("}")])
         toggle_rule = css[css.index(".splitbutton>.splittoggle{"):]
+        toggle_rule = toggle_rule[:toggle_rule.index("}")]
         self.assertIn("border-radius:0 var(--control-radius) var(--control-radius) 0",
-                      toggle_rule[:toggle_rule.index("}")])
-        divider = css[css.index(".splitbutton>.splittoggle::before{"):]
-        self.assertIn("width:1px", divider[:divider.index("}")])
+                      toggle_rule)
+        # 交界那条线是右半自己的左边界，上下顶满：一根浮在上面、两端各收进去几像素的竖线，
+        # 压上左半时填充铺到交界，线的两端就各露出一截没被铺到的底色。
+        self.assertIn("border-left:1px solid var(--border-15)", toggle_rule)
 
     def test_the_progress_bar_can_be_grabbed_well_above_the_coloured_line(self):
         """彩条 6px，命中区 18px，多出来的 12px 全在条上方。
@@ -2390,7 +2473,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("setActionBusy(btn)")
         self.assertPageContains("spinnerHtml('正在提交喜爱理由')")
         self.assertPageContains("setActionBusy(btn,false);btn.innerHTML='<span>提交</span>'")
-        self.assertPageContains('.geist-button.primary{background:var(--ink);color:var(--ground);box-shadow:none}')
         self.assertPageContains('.preference-foot>span{margin-right:auto')
         self.assertPageLacks('aria-label="保存喜爱理由">${icon(\'check\')}</button>')
         self.assertPageLacks("仅保存在本机")
@@ -5883,8 +5965,8 @@ class WebUiSourceTests(unittest.TestCase):
             "box.style.setProperty('--markbg',small?`url(\"${src}\")`:'none');")
         # 用到它的两个容器自己声明意图，JS 只负责量。
         self.assertPageContains("data-fit-native=\"${company?'mark':'portrait'}\"")
-        self.assertPageContains('"entityportrait ${kind===\'performer\'||kind===\'creator\'?'
-                                '\'\':\'square\'}" data-fit-native="${company?\'mark\':\'portrait\'}"')
+        self.assertPageContains('"entityportrait ${people?\'\':\'square\'}" '
+                                'data-fit-native="${company?\'mark\':\'portrait\'}"')
         # 两处容器各自写着 width:100% 和 object-fit:cover，选择器压不过它们就白改。
         # 尺寸不写 auto：还没度量过的图按 auto 是 0×0，`loading="lazy"` 见到 0×0 就
         # 认定它不在视口里、永远不去取，图不来就没有 load，两边互相等着。缺省铺满。
@@ -7867,7 +7949,11 @@ class WebUiSourceTests(unittest.TestCase):
     def test_every_end_truncation_selector_is_explicitly_reviewed(self):
         """新增 CSS 省略必须先决定它是语义文本，还是应改用 MiddleTruncate。"""
         reviewed_end_selectors = {
-            ".alphatag span:first-of-type", ".av .nm", ".entitylinklabel",
+            ".alphatag span:first-of-type", ".av .nm",
+            # 候选格底下那行是来源名（`S1`、`用过的`），一格只有 80 像素宽。它是语义
+            # 文本不是标识符：中间截断会把「Hand-Storage」切成看不出是哪来的两截。
+            ".avatarpick-cell span",
+            ".entitylinklabel",
             ".fauthor .fsource.frow>b", ".fauthorhead b",
             # 四段计数按重要性从左排（未看在最前），尾部省略切掉的正是最不影响判断的那几段；
             # 它不是标识符，中间截断只会把「未看 3」也切开。
@@ -8255,7 +8341,7 @@ class WebUiSourceTests(unittest.TestCase):
         # 选中那枚的填充只有一处，就是那块玻璃自己。
         self.assertNotIn('.board-filter-frame #tagbar .pill[data-state][aria-pressed="true"]{'
                          'background:var(--picked)', board)
-        self.assertIn(".viewglide.viewglide,.drawer.drawer>.navglide{"
+        self.assertIn(".viewglide.viewglide,.drawer.drawer>.navglide,.board-local-nav>.navglide{"
                       "position:absolute;left:0;top:0;z-index:0;pointer-events:none;", board)
         self.assertIn("backdrop-filter:var(--glass-pick);", board)
         self.assertIn("pills.forEach(b=>b.onpointerenter=e=>"
@@ -9066,21 +9152,164 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn(".insighttabs button::after,.insighttabs button[aria-selected=\"true\"]::after"
                       "{content:none}", board)
 
-    def test_hovering_a_button_raises_the_fill_and_leaves_its_outline_alone(self):
-        """悬停只抬填充。按钮静止态已经带一圈 1px，悬停再把它加深就是一排边框忽明忽暗。
+    def test_hovering_a_button_lights_the_fill_and_never_the_outline(self):
+        """次级按钮悬停只换填充，那圈线一动不动，全站只有一条规则说这件事。
 
-        药丸、标签和外链卡的边各有自己的颜色来源，所以逐类钉回静止值；它们和按钮同一条。
+        照 BoardUI 的强调档（2026-09-12 实测 boardui.com/components/button，记在
+        `docs/reference-snapshots/boardui-pro-access-card-measured.md`）：primary 悬停逐项
+        不变，ghost 只把底色换深一档、全程没有边。它那档 secondary 是填充加描边一起变，
+        Peach 不跟——上游的悬停填充在暗色里只是 60% 的 #404040 压上去，差几个色阶，
+        才要靠边来补；`--control-hover` 直接给到下一档实色，边就不必跟着闪。
+        实心的几档不参加：它们自己的填充就是边界，选择器里的
+        `:not(.primary,.danger,.error,.warning)` 管这件事。
+
+        药丸、标签和外链卡同样不改边：它们是一排并列的选项，不是一颗要按的键。
         """
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
+        hover = [line for line in board.splitlines()
+                 if ":not(.primary,.danger,.error,.warning):hover:not(:disabled,"
+                 "[aria-disabled=true]){" in line]
+        self.assertEqual(len(hover), 1, "次级按钮的悬停只该有一条规则")
+        self.assertIn("background:var(--control-hover)", hover[0])
+        self.assertNotIn("border-color", hover[0])
+        self.assertIn(":root,:root[data-theme=light]{--control-hover:"
+                      "var(--color-background-tertiary-default)}", board)
+        self.assertIn(":root[data-theme=dark]{--control-hover:"
+                      "var(--color-border-button-default)}", board)
         for rule in re.findall(r"[^\n{}]*:hover[^\n{}]*\{[^}]*\}", board):
             selector, _, body = rule.partition("{")
-            if not re.search(r"\.geist-button|\.fbtn|\.resourceaction|\.pill|\.brandpill|\.tg\b", selector):
+            if not re.search(r"\.pill|\.brandpill|\.tg\b", selector):
                 continue
             self.assertNotIn("--color-border-button-hover", body,
-                             f"悬停不改按钮那圈线：{selector.strip()}")
+                             f"悬停不改药丸那圈线：{selector.strip()}")
         self.assertIn("body .pill:hover,body .brandpill:hover{border-color:var(--field-ring)}", board)
         # 边不动之后悬停还得剩点东西：玻璃条上的药丸提文字色。
         self.assertIn(".board-filter-frame.board-filter-frame .pill:hover{color:var(--ink)}", board)
+
+    def test_the_primary_tier_has_one_face_and_one_hover(self):
+        """强调档全站一颗：静止和悬停各一条规则，都在 board.css，悬停只提亮渐变。
+
+        悬停这一档是 Peach 的主动差异。2026-09-12 在 boardui.com/components/button
+        取证：上游的 primary 没有悬停态——页面上 10 颗里没有一颗带 `hover:` 的类，注册表
+        `/r/button.json` 只在 secondary 和 ghost 上声明悬停，真鼠标悬停时渐变、阴影、
+        滤镜、位移和字色逐项与静止相同。按用户要求补上，做法跟危险档那两条一样：换一份
+        提亮一档的渐变，边和阴影不动。
+
+        面色分在两层写的后果不是「多一条规则」：`web/css/` 那一层的
+        `.geist-button.primary:hover:not(:disabled)` 是四个类，比 Board 那条静止规则
+        重一个类，于是同一颗按钮的静止由一处给、悬停由另一处给，鼠标一压就换成另一套配色。
+        """
+        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
+        rule_re = re.compile(r"[^\n{}]*\.primary[^\n{}]*\{[^}]*\}")
+
+        def primary_rules(source: str) -> list[str]:
+            # `:not(.primary,.danger,…)` 是次级档在排除强调档，不是在给强调档写样式。
+            return [rule for rule in rule_re.findall(source)
+                    if ".primary" in re.sub(r":not\([^)]*\)", "", rule.partition("{")[0])]
+
+        face = [rule for rule in primary_rules(board)
+                if "background:var(--board-blue)" in rule.partition("{")[2]]
+        self.assertEqual(len(face), 1, "强调档那一面只该有一条规则")
+        for declaration in ("border:1px solid transparent", "color:#fff",
+                            "box-shadow:0 1px 2px #0000000d"):
+            self.assertIn(declaration, face[0])
+        hover = [rule for rule in primary_rules(board) if ":hover" in rule.partition("{")[0]]
+        self.assertEqual(len(hover), 1, "强调档的悬停也只该有一条规则")
+        self.assertIn("background:var(--board-blue-hover)", hover[0])
+        for name in ("border", "box-shadow", "filter", "transform"):
+            self.assertNotIn(name, hover[0].partition("{")[2],
+                             f"悬停只换渐变，{name} 不动")
+        self.assertEqual(
+            face[0].partition("{")[0].strip() + ":hover", hover[0].partition("{")[0].strip(),
+            "两条的选择器要同一份名单，否则有的按钮压上去没反应")
+        for rule in primary_rules(stylesheet_source()):
+            selector = rule.partition("{")[0].strip()
+            self.assertNotIn(":hover", selector, f"强调档的悬停不写在这一层：{selector}")
+            self.assertNotIn(":active", selector, f"强调档的按下不写在这一层：{selector}")
+
+    def test_the_entry_pages_primary_button_is_the_one_from_inside_the_app(self):
+        """错误页、登录页和首启页的主按钮跟站内是同一颗规则，不是抄一份色值。
+
+        这三张页面是没登录时看到的 Peach，按钮换一种蓝就等于说这是另一个产品。它们的
+        样式内联在页面里，`routes_pages._board_button_rules()` 把 board.css 的强调档连同
+        它用到的 token 一起取过去，站内改一次渐变这三页跟着走。
+        """
+        root = Path(__file__).resolve().parents[1]
+        board = (root / "web/board.css").read_text(encoding="utf-8")
+        entry = (root / "web/board-entry.css").read_text(encoding="utf-8")
+        self.assertNotIn(".geist-button.primary{", entry, "入口页不留第二份强调档色值")
+        self.assertNotIn("--board-blue:", entry, "那条渐变只在 board.css 声明")
+        from peach.routes_pages import _board_button_rules
+        rules = _board_button_rules()
+        # board.css 里这个 token 声明了两遍，Board 那一层的映射排在后面、也是实际生效的
+        # 那一份；取过去的要是最后一处。
+        gradient = re.findall(r"--board-blue:(linear-gradient\([^;}]+\))", board)[-1]
+        self.assertIn(f"--board-blue:{gradient}", rules, "入口页那份渐变要跟站内逐字相同")
+        primary = rules[rules.index(".primary:not(:disabled){"):]
+        primary = primary[:primary.index("}")]
+        for declaration in ("background:var(--board-blue)", "border:1px solid transparent",
+                            "color:#fff", "box-shadow:0 1px 2px #0000000d"):
+            self.assertIn(declaration, primary)
+        self.assertIn("height:36px", rules, "尺寸那条也一起取过去")
+        self.assertIn(".primary:not(:disabled):hover{background:var(--board-blue-hover)}", rules,
+                      "悬停那条也要跟过去，否则这三页的按钮压上去没反应")
+        self.assertIn("--board-blue-hover:linear-gradient(", rules)
+
+    def test_the_settings_drawer_column_is_the_same_glass_as_the_sidebar(self):
+        """设置弹层左栏和左侧抽屉是同一件事的两种形态，玻璃并在同一条规则上。
+
+        自己另配一份模糊和底色的结果是两块玻璃看着就不是一种材质。降级的三条路——
+        不支持 backdrop-filter、用户要求减少透明度、高对比——也要一起覆盖到，否则那一栏
+        会在这些环境里留着一块动个不停的半透明。
+
+        卡片仍旧自己铺 --page：弹层底下压着一层 70% 的黑遮罩，透过去模糊出来的是被压暗的
+        页面，浅色主题下整栏发灰、那一列的字读不出来。
+        """
+        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
+        glass = next(line for line in board.splitlines()
+                     if line.startswith(".board-filter-frame.board-filter-frame.board-filter-frame,")
+                     and ".drawer.drawer," in line)
+        self.assertIn(".settingscard.settingscard>.board-local-nav", glass)
+        self.assertIn(".settingscard.settingscard{background:var(--page)}", board)
+        self.assertNotIn("backdrop-filter:saturate(1.8) blur(20px)", board,
+                         "左栏不再自己配一份模糊")
+        for guard in ("@supports not (backdrop-filter:blur(1px))",
+                      "@media(prefers-reduced-transparency:reduce)"):
+            line = next(row for row in board.splitlines() if row.startswith(guard))
+            self.assertIn(".settingscard.settingscard.settingscard>.board-local-nav", line,
+                          f"{guard} 这一路要把左栏一起降级")
+        contrast = next(row for row in board.splitlines()
+                        if row.startswith("html.board-high-contrast .settingscard.settingscard>"))
+        self.assertIn("animation:none", contrast, "高对比下那层漂移的光晕要停")
+
+    def test_the_settings_drawer_column_marks_the_current_item_with_glass(self):
+        """左栏当前项的填充由一块滑过去的玻璃给，跟抽屉那一列、筛选条那四枚同一套做法。
+
+        两边都铺的话，静止态就是一块不透明的 --picked 压在玻璃上面，切换时只看得见它
+        瞬间换位置，滑动的那块从头到尾被盖住。
+        """
+        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
+        app = (Path(__file__).resolve().parents[1] / "web/app.js").read_text(encoding="utf-8")
+        self.assertIn(".board-local-nav>.navglide", board, "那块玻璃要吃到 .navglide 的长相")
+        selected = next(line for line in board.splitlines()
+                        if line.startswith(".settingscard.settingscard>.board-local-nav "
+                                           "button[aria-selected=true]{"))
+        self.assertIn("background:none", selected, "当前项自己不铺底")
+        self.assertIn("syncLocalNavGlide(nav,buttons[index],moved)", app,
+                      "切分区时那块玻璃要跟过去")
+        self.assertIn("if(!nav.closest('.settingscard'))return", app,
+                      "管理区那份横排页签不加玻璃")
+
+    def test_an_empty_activity_panel_keeps_the_room_the_charts_had(self):
+        """浏览活跃没有数据时，那句话上下仍留着有图时那两道 20px。
+
+        有图时外边距长在 `.board-activity-charts` 上，空态没有那层外壳，得自己出——
+        不然它和上下两段贴在一起。
+        """
+        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
+        self.assertIn(".board-activity-empty{margin:20px 0}", board)
+        self.assertIn(".board-activity-empty>h3{margin:0", board)
+        self.assertIn(".board-activity-empty>p{margin:8px 0 0", board)
         self.assertIn("body .entitylinks a:hover{border-color:var(--line)}", board)
 
     def test_the_shuffle_key_sits_as_flat_as_the_sort_keys_beside_it(self):

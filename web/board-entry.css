@@ -6,8 +6,11 @@ body{background:var(--page)}
 main{background:var(--ground);border:1px solid var(--line);border-radius:24px;padding:28px;box-shadow:0 4px 16px #00000008}
 h1{font-weight:500}
 input[type=text],input[type=password],input[type=number],select,.affix{background:var(--field);border-radius:10px}
-button[type=submit],form>button,.geist-button.primary{background:linear-gradient(#3986ff,#1760ef);color:#fff;border:1px solid #3986ff;box-shadow:inset 0 1px 1px #ffffff60;border-radius:10px}
-button[type=submit]:hover,form>button:hover,.geist-button.primary:hover{background:linear-gradient(#2879fa,#1459df);color:#fff}
+/* 主按钮那一颗不写在这里：`routes_pages._board_button_rules()` 把 `board.css` 里的
+   Board primary 连同它用到的 token 一起内联进这三页，站内改一次渐变这里跟着走。
+   表单里那些没带 `.geist-button primary` 的提交键还是要自己接上同一副盒子。 */
+button[type=submit],form>button{height:36px;background:var(--board-blue);color:#fff;border:1px solid transparent;box-shadow:0 1px 2px #0000000d;border-radius:10px}
+button[type=submit]:hover:not(:disabled),form>button:hover:not(:disabled){background:var(--board-blue-hover)}
 .switch label:has(input:checked){background:var(--ground);box-shadow:0 1px 3px #0002}
 @media(max-width:480px){main{padding:20px}}
 /* Auth Card：单行登录偏好。 */
@@ -104,14 +107,15 @@ main:has(.setup-auth-card){width:100%;max-width:560px;padding:32px;box-shadow:0 
 .setup-auth-card :is(.pick,.add){background:var(--ground);border:1px solid var(--button-border);color:var(--ink)}
 .setup-auth-card :is(.pick,.add):hover:not(:disabled):not([aria-disabled=true]){background:var(--button-hover);border-color:var(--button-border-hover)}
 .setup-auth-card :is(.pick,.add):active:not(:disabled):not([aria-disabled=true]){background:var(--button-active);border-color:var(--button-border-active)}
-.setup-auth-card :is(button[type=submit],.setup-enter){position:relative;isolation:isolate;overflow:hidden;border:0;color:#fff;background:linear-gradient(180deg,lab(54.1736% 13.3369 -74.6839),lab(44.0605% 29.0279 -86.0352))}
-.setup-auth-card :is(button[type=submit],.setup-enter)::before{content:'';position:absolute;inset:0;z-index:-1;border-radius:inherit;pointer-events:none;background:linear-gradient(180deg,#3392ff,lab(54.1736% 13.3369 -74.6839));opacity:0;transition:opacity .15s ease}
-.setup-auth-card :is(button[type=submit],.setup-enter):hover:not(:disabled):not([aria-disabled=true])::before{opacity:1}
+/* 首启和登录的提交键跟错误页那颗、跟站内每一颗主按钮同一张面：静止取 `--board-blue`，
+   悬停取 `--board-blue-hover`，两个 token 都由 `routes_pages._board_button_rules()` 从
+   `board.css` 送进来。按下那一下照旧：压深一档配 0.98 的缩放，那是上游
+   `button-press-motion` 那一份。 */
+.setup-auth-card :is(button[type=submit],.setup-enter){border:0;color:#fff;background:var(--board-blue)}
+.setup-auth-card :is(button[type=submit],.setup-enter):hover:not(:disabled):not([aria-disabled=true]){background:var(--board-blue-hover)}
 .setup-auth-card :is(button[type=submit],.setup-enter):active:not(:disabled):not([aria-disabled=true]){background:linear-gradient(180deg,lab(44.0605% 29.0279 -86.0352),lab(36.9089% 35.0961 -85.6872))}
-.setup-auth-card :is(button[type=submit],.setup-enter):active::before{opacity:0}
 .setup-auth-card :is(.pick,.add,button[type=submit],.setup-enter):active:not(:disabled):not([aria-disabled=true]){transform:scale(.98);transition-duration:.15s,.15s,.15s,.15s,.22s}
 .setup-auth-card :is(.pick,.add,button[type=submit],.setup-enter):is(:disabled,[aria-disabled=true]){cursor:not-allowed;color:var(--muted);box-shadow:none;transform:none;background:var(--surface);border-color:var(--button-border)}
 .setup-auth-card :is(button[type=submit],.setup-enter):is(:disabled,[aria-disabled=true]){background:var(--button-disabled)}
-.setup-auth-card :is(button[type=submit],.setup-enter):is(:disabled,[aria-disabled=true])::before{display:none}
-@media(prefers-reduced-motion:reduce){.setup-auth-card :is(.pick,.add,button[type=submit],.setup-enter),.setup-auth-card :is(.pick,.add,button[type=submit],.setup-enter):active{transition:none;transform:none}.setup-auth-card :is(button[type=submit],.setup-enter)::before{transition:none}}
+@media(prefers-reduced-motion:reduce){.setup-auth-card :is(.pick,.add,button[type=submit],.setup-enter),.setup-auth-card :is(.pick,.add,button[type=submit],.setup-enter):active{transition:none;transform:none}}
 @media(max-width:600px){body:has(.setup-auth-card){padding:24px 16px}main:has(.setup-auth-card){padding:24px}.setup-auth-card input[type=password]{font-size:16px}}

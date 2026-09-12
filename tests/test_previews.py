@@ -15,7 +15,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
-from peach import previews, web_review
+from peach import previews
+from peach.avatar_provider import install_entity_avatar
 from peach.previews import PreviewService, PreviewUnavailable, entity_image_key
 from peach.repository import MediaAsset
 from peach.web_state import WebContract
@@ -234,8 +235,18 @@ class EntityImageAvailabilityTests(unittest.TestCase):
         self.assertTrue(self.contract.has_entity_image("performer", 11))
 
     def test_the_install_path_and_the_resolver_share_one_key_rule(self):
-        """批准落地写的文件名和取图找的文件名只能有一份实现。"""
-        self.assertIs(web_review.entity_image_key, entity_image_key)
+        """落地写的文件名和取图找的文件名只能有一份实现。
+
+        复核批准、采集脚本和页面上换头像三条路都经 `install_entity_avatar`，所以这里
+        直接让它装一张，再拿可用性判定和取图去对：名字规则各留一份的后果不是报错，
+        是「装上了却取不到」。
+        """
+        install_entity_avatar(self.avatars, "creator", 12, b"x", "image/jpeg",
+                              {"source": "test"}, probe_face=False)
+        self.contract.cache_bust()
+        self.assertTrue(self.assertAgrees("creator", 12))
+        self.assertEqual(
+            (self.avatars / f"{entity_image_key('creator', 12)}.img").read_bytes(), b"x")
 
 
 class AvatarAvailabilityTests(unittest.TestCase):

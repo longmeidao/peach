@@ -20,12 +20,15 @@ import xml.etree.ElementTree as ElementTree
 from collections import Counter
 from math import ceil, hypot
 
-from PIL import Image, ImageChops, ImageDraw
+from PIL import Image, ImageChops, ImageDraw, ImageStat
 
 # 长边/短边在这个值以内视为「已经够方」，直接用原图。
 MAX_ASPECT = 1.35
 # 缩到方框里仍然清晰的最小短边。低于这个值补白也救不回来。
 MIN_SHORT_EDGE = 128
+# 整张图的色彩起伏低于这个值就当它只有一个颜色。不取 0 是给 JPEG 的压缩噪声留余量；
+# 取 2.0 不会误伤人像——最平的那张真实候选三个通道也在 56 以上。
+FLAT_STDDEV = 2.0
 
 SQUARE = "square"
 PAD = "pad"
@@ -100,6 +103,25 @@ def measure_image_size(payload: bytes) -> tuple[int, int] | None:
             return image.size
     except Exception:
         return None
+
+
+def is_flat(payload: bytes) -> bool:
+    """整张图只有一个颜色——装进圆框就是一块底色，不是一张人像。
+
+    取不到人像时回一块占位底色的来源不止一家：X 给的那张是 143×143 纯白，尺寸过得了
+    `MIN_SHORT_EDGE`、格式也是正经 PNG，只有看像素才分得出来。先缩到 64×64 再统计：
+    判「有没有内容」用不着原分辨率，而候选列表一次要过几十张图。
+    解析不了的按「不是纯色」放行——这个函数只负责挑出确定没有内容的那些，
+    「这堆字节是不是一张图」由 `inspect_avatar` 回答。
+    """
+    try:
+        with Image.open(io.BytesIO(payload)) as opened:
+            image = opened.convert("RGB")
+            image.thumbnail((64, 64))
+            spread = ImageStat.Stat(image).stddev
+    except Exception:
+        return False
+    return all(value < FLAT_STDDEV for value in spread)
 
 
 def classify(width: int, height: int) -> tuple[str, float, str]:

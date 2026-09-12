@@ -6,9 +6,7 @@ Rule34Video's expiring signed URL is resolved only when the user explicitly pres
 from __future__ import annotations
 
 import html
-import ipaddress
 import re
-import socket
 import threading
 import time
 import urllib.parse
@@ -21,7 +19,7 @@ from . import follow_providers
 from .follow_sources import USER_AGENT, archive_file_url, f95_attachment_media_items
 from .follow_secrets import Credential
 from .follow_store import FollowItemRow
-from .http import HttpRequest, HttpTransport
+from .http import HttpRequest, HttpTransport, public_https_url, resolves_publicly
 
 
 class FollowMediaUnavailable(RuntimeError):
@@ -50,8 +48,8 @@ class ResolvedFollowMedia:
     allowed_hosts: tuple[str, ...] = ()
     #: 允许落到任意公网主机。给帖子里贴的第三方图床用：图站有几十家，白名单追不上；
     #: 这类媒体不带凭据取，跳到哪个公网主机都泄露不了什么，所以它与 `headers` 互斥。
-    #: 边界由 `_public_https_host` 与 `_resolves_publicly` 守：明文、IP 字面量、本机与
-    #: 局域网名字、解析到内网地址的主机仍然拒收。
+    #: 边界由 `http.public_https_url` 与 `http.resolves_publicly` 守：明文、IP 字面量、
+    #: 本机与局域网名字、解析到内网地址的主机仍然拒收。
     public_hosts: bool = False
 
     def __post_init__(self) -> None:
@@ -63,9 +61,6 @@ class ResolvedFollowMedia:
 _PROVIDER_HOSTS = follow_providers.hosts()
 #: 直链媒体放行任意公网主机的来源，同样投影自 follow_providers。
 _PUBLIC_MEDIA_PROVIDERS = follow_providers.public_media_hosts()
-#: 公网模式下仍然拒绝的主机名后缀：这些名字只在本机或局域网里有意义，帖子里出现
-#: 它们只可能是想让 Peach 替人去探内网。
-_LOCAL_NAME_SUFFIXES = ("localhost", "local", "internal", "intranet", "lan", "home.arpa")
 #: rule34video 把每一档清晰度写成独立字段：`video_url` 是最低档，
 #: `video_alt_url`、`video_alt_url2`、`video_alt_url3` 依次更高。
 #: 2026-08-31 实测 video/4564733 给出 360 / 480p / 720p / 1080p 四档；
@@ -89,54 +84,6 @@ def _pick_quality(resolved: ResolvedFollowMedia, height: int | None) -> Resolved
             return replace(resolved, url=url)
     return resolved
 
-def _public_https_host(url: str) -> bool:
-    """帖子里贴的第三方图床：只要求 https、公网域名、不带用户信息。
-
-    IP 字面量和本机／局域网专用后缀一律不算；域名解析到哪里由 `_resolves_publicly`
-    在真正连接前再查一次，这里只看字面。
-    """
-    try:
-        parsed = urllib.parse.urlsplit(url)
-    except ValueError:
-        return False
-    host = (parsed.hostname or "").casefold().rstrip(".")
-    if parsed.scheme != "https" or not host or parsed.username or parsed.password:
-        return False
-    try:
-        ipaddress.ip_address(host)
-    except ValueError:
-        pass
-    else:
-        return False
-    if "." not in host:
-        return False
-    return not any(host == suffix or host.endswith("." + suffix)
-                   for suffix in _LOCAL_NAME_SUFFIXES)
-
-
-def _host_addresses(host: str) -> tuple[str, ...]:
-    """主机名解析到的全部地址；解析不了就是空。测试只替换这一个函数。"""
-    try:
-        infos = socket.getaddrinfo(host, 443, proto=socket.IPPROTO_TCP)
-    except (socket.gaierror, UnicodeError, OSError):
-        return ()
-    return tuple(str(info[4][0]) for info in infos)
-
-
-def _resolves_publicly(host: str) -> bool:
-    """公网模式的最后一道：域名字面上像公网，解析出来也必须全是公网地址。"""
-    addresses = _host_addresses(host)
-    if not addresses:
-        return False
-    for address in addresses:
-        try:
-            if not ipaddress.ip_address(address).is_global:
-                return False
-        except ValueError:
-            return False
-    return True
-
-
 def _allowed(provider: str, url: str) -> bool:
     try:
         parsed = urllib.parse.urlsplit(url)
@@ -148,7 +95,7 @@ def _allowed(provider: str, url: str) -> bool:
     if any(host == suffix or host.endswith("." + suffix)
            for suffix in _PROVIDER_HOSTS.get(provider, ())):
         return True
-    return provider in _PUBLIC_MEDIA_PROVIDERS and _public_https_host(url)
+    return provider in _PUBLIC_MEDIA_PROVIDERS and public_https_url(url)
 
 
 def proxyable(provider: str, media_url: str | None) -> bool:
@@ -308,9 +255,9 @@ def _hop_allowed(target: ResolvedFollowMedia, url: str) -> bool:
     地址可能躺了几个月，域名早已换主。"""
     if _allowed_resource(url, tuple(target.allowed_hosts)):
         return True
-    if not target.public_hosts or not _public_https_host(url):
+    if not target.public_hosts or not public_https_url(url):
         return False
-    return _resolves_publicly(urllib.parse.urlsplit(url).hostname or "")
+    return resolves_publicly(urllib.parse.urlsplit(url).hostname or "")
 
 
 #: 代理层允许跟几跳重定向。归档站的主域会 302 到实际取文件的节点（2026-08-30 实测

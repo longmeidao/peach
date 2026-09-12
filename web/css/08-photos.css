@@ -78,4 +78,8 @@ body.photolight-open{overflow:hidden}
 .photozoom .photoscale{width:30px}
 .photozoom .photooriginal{width:38px;border-radius:var(--control-radius);font-size:var(--fs-xs)}
 
+/* 展开着不动时那道裁边要摘掉：高度过渡需要它，展开完就只剩副作用——里面最后一张卡片
+   的落影正好落在下沿外，被切掉半条。`wireCollapse` 在过渡跑完时挂上这个类，收起那一下
+   先摘掉。 */
 .fcollapse{overflow:hidden;transition:height .2s ease-in-out}
+.fcollapse.fcollapse-settled{overflow:visible}

@@ -276,9 +276,26 @@ Radio card 沿用 2026-09-08 取得的 `r/checkbox-card.json`（`checkbox-card.t
 Button 取证（2026-09-10）：对照官网 `/components/button` 与保存的
 `board-reference/button.json`。选择文件夹为 medium 纯图标 secondary，添加媒体库为
 带前置图标的 secondary，完成设置为 primary；高度 36px、图标 20px、圆角 10px。
-主按钮渐变使用官网实测色值，hover 叠层以 150ms 淡入；按下缩放至 0.98，
+主按钮渐变使用官网实测色值；按下缩放至 0.98，
 按下 220ms、释放 420ms，曲线为 `cubic-bezier(.4,0,.2,1)`，减少动态效果时关闭。
 按钮保留原动作、键盘焦点、忙态防重复与禁用语义，不写入预览配置。
+
+纠正（2026-09-12）：这一段此处记过「hover 叠层以 150ms 淡入」，同日三条证据一起推翻它。
+① `/components/button` 上 10 颗 `bg-button-primary` 的 `className` 里没有任何 `hover:` 或
+`active:` 类；② 真鼠标悬停（`isHovered:true`）时渐变
+`linear-gradient(lab(54.1736 13.3369 -74.6839),lab(44.0605 29.0279 -86.0352))`、阴影
+`rgba(0,0,0,.05) 0 1px 2px`、`filter:none`、`transform:none`、`color:#fff` 与静止逐项相同；
+③ 注册表 `/r/button.json`（HTTP 200，10110 字节）只在 secondary
+（`hover:bg-background-primary-hover hover:border-border-button-hover`）与 ghost
+（`hover:bg-button-ghost-hover active:bg-button-ghost-active`）上声明悬停，primary 那一行只有
+`bg-button-primary text-text-white shadow-xs`，上游也没有 `--color-button-primary-hover` 这个
+token。上游的强调档靠 `active` 那一下的缩放和键盘焦点环。
+
+Peach 在这一档上有主动差异：强调档的悬停换一份提亮一档的渐变
+（`--board-blue-hover`，blue-400→blue-600），边和阴影不动，写法与危险档那两条相同。
+用户要的是压上去看得出鼠标停在哪一颗，一排按钮里毫无反应读不出来。规则连同 token
+只在 `web/board.css` 一处，错误页、登录页和首启页由 `routes_pages._board_button_rules()`
+取同一份过去；判据写在 `test_the_primary_tier_has_one_face_and_one_hover`。
 
 Checkbox 动效取证（2026-09-10）：项目保存的 `board-reference/checkbox.json` 中
 `checkbox-glyph.tsx` 使用 16px SVG、`pathLength=1` 与 `animate-check-draw`。

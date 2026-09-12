@@ -17,7 +17,7 @@ from pathlib import Path, PurePosixPath
 from typing import Protocol
 from urllib.parse import quote
 
-from .avatar_face import FaceProbe, drop_sidecar, write_sidecar
+from .avatar_provider import install_entity_avatar
 from .catalog_rules import (
     collapse_superseded_taste_tags,
     is_korean_mib_code,
@@ -47,7 +47,7 @@ from .genre_decisions import load_genre_decisions, record_genre_decision
 from .genre_taxonomy import CONTENT_GENRES, genres_in_warning, normalise_genre
 from .metadata import identifies_code
 from .metadata_policy import FIELD_SOURCE_ORDER, SOURCE_SPECS
-from .previews import entity_image_key, logo_key
+from .previews import logo_key
 from .review_csv import read_rows
 
 
@@ -1237,29 +1237,12 @@ def _install_performer_avatar(contract: ReviewContract, entity_id: str) -> int:
     if hashlib.sha256(body).hexdigest() != digest:
         raise ValueError("缓存对象与候选记录的哈希不一致，拒绝装载")
     content_type = str(candidate.get("mime_type") or "").strip() or "image/jpeg"
-    contract.avatar_root.mkdir(parents=True, exist_ok=True)
     with contract.read_connection() as connection:
         kind_row = connection.execute(
             "SELECT kind FROM entity WHERE id=?", (int(entity_id),)).fetchone()
     kind = (kind_row[0] if kind_row and kind_row[0] in {"performer", "creator"}
             else "performer")
-    # 落盘名归 `previews.entity_image_key`：取图、可用性判定和这里的批准落地必须
-    # 同一套，各留一份 f-string 迟早变成「装上了却取不到」。
-    destination = contract.avatar_root / f"{entity_image_key(kind, entity_id)}.img"
-    # 原子替换：中途失败不会留下半张图被 `/entity-image` 读到。
-    atomic_write_bytes(destination, body)
-    Path(f"{destination}.ct").write_text(content_type, encoding="utf-8")
-    # 取景 sidecar 必须跟着图一起换，判据与 `harvest_social_avatars.install_avatar`
-    # 同一条：112px 的圆框按 sidecar 里那张脸摆位，没有 sidecar 就几何居中，而半身
-    # 竖构图的几何中心通常落在脖子以下。检不出脸时把 sidecar 删掉——留着上一张图的
-    # 脸框最糟，页面会拿它给这一张取景、放大到一个空位置上，界面上与「这张图本来就
-    # 该这么显示」看不出区别。
-    face = FaceProbe()(destination)
-    if face:
-        write_sidecar(destination, face)
-    else:
-        drop_sidecar(destination)
-    Path(f"{destination}.provenance.json").write_text(json.dumps({
+    install_entity_avatar(contract.avatar_root, kind, int(entity_id), body, content_type, {
         "source": "performer avatar review",
         "provider": candidate.get("provider") or "",
         "source_url": candidate.get("source_url") or "",
@@ -1270,9 +1253,7 @@ def _install_performer_avatar(contract: ReviewContract, entity_id: str) -> int:
         "width": candidate.get("width") or "",
         "height": candidate.get("height") or "",
         "policy_version": candidate.get("policy_version") or "",
-        "imported_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "purpose": "local performer identity cache",
-    }, ensure_ascii=False, indent=2), encoding="utf-8")
+    })
     return 1
 
 
