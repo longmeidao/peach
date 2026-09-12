@@ -294,9 +294,9 @@ class WebContract:
     def cover_index(self) -> dict[str, dict]:
         """封面目录扫一遍的索引：casefold(归一番号) → 两份取景提示。
 
-        值的形状是 `{"frame": 人脸中心或 None, "poster": 竖海报框或 None}`。两份
+        值的形状是 `{"frame": 人脸中心或 None, "poster": 正封框或 None}`。两份
         边车各描述一件事，一次目录扫描一起收齐：`.face.json` 说脸在哪，
-        `.poster.json` 说 2:3 竖框在哪。
+        `.poster.json` 说正封那一块在哪。
 
         卡片列表逐行问「有封面吗」「取景是多少」，一页 60 行就是 120+ 次 stat 加
         读文件；封面目录一次 scandir 就覆盖全部番号，结果走 `cached()` 的 TTL。
@@ -344,7 +344,7 @@ class WebContract:
 
     @staticmethod
     def _poster_box(sidecar: str) -> dict | None:
-        """sidecar 里那个 2:3 竖海报框。算法版本落后、判定为不裁、读不出都是 None。
+        """sidecar 里那个正封框。算法版本落后、判定为不裁、读不出都是 None。
 
         校验和形状判据都在 `jav_poster_crop.projection` 一处，这里只负责把文件读
         进来：页面拿到的框必须和算它的那份代码是同一套判据。
@@ -496,7 +496,7 @@ class WebContract:
         return (self._cover_entry(code) or {}).get("frame")
 
     def poster_box(self, code: str | None) -> dict | None:
-        """封面里那块 2:3 竖海报的取景框，源图像素坐标加源图尺寸。
+        """封面里正封那一块的取景框，源图像素坐标加源图尺寸。
 
         没算过、算法版本落后、或这个番号的封面本来就不该裁（`jav_poster_crop`
         的 `none` 一档）都返回 None，竖版位置退回整张封面。
