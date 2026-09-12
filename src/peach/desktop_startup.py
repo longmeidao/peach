@@ -62,7 +62,36 @@ try {
 """
 
 
+#: 读到的快捷方式状态，键是路径，值是 `(指纹, 结论)`。指纹见 `_fingerprint`。
+_READ_CACHE: dict[str, tuple[tuple, dict]] = {}
+
+
+def _fingerprint(path: Path) -> tuple:
+    """这个 `.lnk` 的当前身份。文件不在就是 `()`，内容变了指纹一定跟着变。"""
+    try:
+        stat = path.stat()
+    except OSError:
+        return ()
+    return (stat.st_mtime_ns, stat.st_size)
+
+
 def shortcut(action: str, path: Path, *, target: str = "", arguments: str = "", directory: str = "", expected: str = "") -> dict:
+    """对一个 `.lnk` 读、写或删，结论由 PowerShell 的一行 JSON 给出。
+
+    读是配置页首屏的同步路径上唯一一件慢事：起一个 `powershell.exe` 要 0.8–1.7 秒，而
+    这一页最多读三个快捷方式。所以读走两道近路，写和删一律照直执行——它们要落盘。
+
+    文件不在就不起进程：脚本对 `read` 的这一支本来也只回一句「没有」。剩下真存在的那几个
+    按 `(mtime, size)` 记住结论，`.lnk` 一被改写指纹就变，缓存自然作废。
+    """
+    mark = ()
+    if action == "read":
+        mark = _fingerprint(path)
+        if not mark:
+            return {"ok": True, "enabled": False, "target": "", "arguments": ""}
+        hit = _READ_CACHE.get(str(path))
+        if hit and hit[0] == mark:
+            return hit[1]
     encoded = base64.b64encode(_SHORTCUT_SCRIPT.encode("utf-16-le")).decode("ascii")
     # 和 folder_picker 相同：发行包使用 Windows 自带的 PowerShell，不要求用户安装 pwsh。
     shell = Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32/WindowsPowerShell/v1.0/powershell.exe"
@@ -81,6 +110,13 @@ def shortcut(action: str, path: Path, *, target: str = "", arguments: str = "", 
         # 校验不通过在消息里长得一模一样，谁都没法往下查。
         raise OSError("启动项未能保存，请检查当前用户的启动文件夹权限"
                       f"（PowerShell：{_shortcut_reason(payload, result)}）")
+    if action == "read":
+        # 记的是读之前那次指纹。这一趟里文件正好被换掉的话，它与之后 stat 出来的对不上，
+        # 下次就重读一遍；记读完那次则相反——旧结论会配上新指纹，从此一直命中错的。
+        _READ_CACHE[str(path)] = (mark, payload)
+    else:
+        # 写和删都改了这个路径上的东西，旧结论当场作废，不等下次 stat 去发现。
+        _READ_CACHE.pop(str(path), None)
     return payload
 
 

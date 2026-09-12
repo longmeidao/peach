@@ -174,6 +174,22 @@ def create_app(
         available=managed_configuration() and bool(settings.configured),
     )
 
+    async def warm_startup_entries():
+        """配置页首屏要的开机启动项状态，先在后台问一遍。
+
+        那一格是 `/api/configuration` 同步路径上唯一一件慢事：读一个 `.lnk` 得起一个
+        `powershell.exe`，本机三个快捷方式加起来 2.5 秒，而它正好挡在用户点开设置之后。
+        这里先问一次，`desktop_startup` 按 `.lnk` 的指纹留着结论，等用户真点开时是现成的。
+        """
+        if not (managed_configuration() and settings.configured):
+            return
+        from . import desktop_startup
+        try:
+            await asyncio.to_thread(desktop_startup.snapshot)
+        except Exception:
+            # 预热失败不该影响服务起不起得来，配置页照旧自己现问一遍。
+            logging.getLogger(__name__).debug("startup entry warmup failed", exc_info=True)
+
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
         # 上一次服务是被强杀的话，表里会留下几行永远停在 `running` 的记录，它们还占着
@@ -185,6 +201,7 @@ def create_app(
                 "task center recovered %s interrupted run(s)", len(recovered))
         follow_scheduler.start()
         automatic_updates.start()
+        warmup = asyncio.create_task(warm_startup_entries())
         if mdns is not None:
             try:
                 await asyncio.to_thread(mdns.start)
@@ -194,6 +211,7 @@ def create_app(
         try:
             yield
         finally:
+            warmup.cancel()
             follow_scheduler.stop()
             automatic_updates.stop()
             # 死链检查和资源对账的后台线程是 daemon，本来挡不住进程退出；这里显式收
