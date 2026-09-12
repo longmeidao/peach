@@ -521,14 +521,19 @@ def _pick_work_icon(client, targets: list[str]) -> tuple[bytes | None, dict | No
     只取最热那一张的话，圆标里有一半是身体特写——最热的帖子常常就是特写。一张都
     没检出脸时退回第一张取得到的图：没有脸的代表图仍然好过一个空圆。
 
-    检脸看的是站点那张高清封面，落盘的是缩到 `ICON_SIDE` 的那份：两件事要的尺寸
-    不是一个数——250px 的缩略图里一张脸只剩十几个像素，而显示出来只有 28px。
+    检脸看的是站点那张高清封面，落盘的是缩过的那份：两件事要的尺寸不是一个数——
+    250px 的缩略图里一张脸只剩十几个像素，而显示出来只有 28px。
+
+    黑边在这三步之前就裁掉。站点上的 3D 封面常把 21:9 的画面压进 16:9 的帧里，上下
+    各留一道纯黑；那两道黑边跟着进圆标，圆里直接露出黑条，还把画面撑高、让 cover 把
+    脸缩得更小。裁完再检脸，坐标才落在这张图自己的坐标系里。
     """
     first: tuple[bytes | None, dict | None] = (None, None)
     for target in targets:
         body = follow_assets.fetch_image(client, target)
         if not body:
             continue
+        body = follow_assets.trim_letterbox(body)
         record = _WORK_FACE_PROBE.on_bytes(body)
         if record and record.get("face"):
             return _stored_icon(body, record)
@@ -539,13 +544,16 @@ def _pick_work_icon(client, targets: list[str]) -> tuple[bytes | None, dict | No
 
 
 def _stored_icon(body: bytes, record: dict | None) -> tuple[bytes, dict | None]:
-    """缩到圆标尺寸，并把记录里的源图像素换成落盘那张的。
+    """缩到圆标那一档，并把记录里的源图像素换成落盘那张的。
+
+    存多大由 `icon_side` 按这张脸占画面多少来定，不是一个固定值：页面能放大到多少，
+    上限之一就是落盘那张里脸框有几个像素。
 
     记录必须描述图旁边那个文件：页面拿 `naturalWidth` 核对脸框说的是不是同一张图，
     对不上就退回几何居中。脸框本身是归一化的，比例缩放不动它；「这张脸有多少像素」
     问的则是浏览器手里那张图，答案也只能是缩完之后的那个数。
     """
-    small = follow_assets.shrink_image(body)
+    small = follow_assets.shrink_image(body, follow_assets.icon_side(record))
     size = follow_assets.image_size(small) if record else None
     if size:
         record = {**record, "px": [size[0], size[1]]}

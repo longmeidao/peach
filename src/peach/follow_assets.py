@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import hashlib
+import math
 import os
 import time
 from pathlib import Path
@@ -136,6 +137,95 @@ def fetch_image(client: httpx.Client, url: str) -> bytes | None:
 #: 代表图，脸框在 256px 那份里只剩 19～30px，而 28px 的圆在双倍屏上要 26px——正好
 #: 卡在天花板上，放大被这一条压住。翻一倍就都过线了，整排也不过一两兆。
 ICON_SIDE = 512
+
+#: 落盘那张图里脸框该有的最少像素。28px 的圆 × 双倍屏 × 脸最多占六成 = 33.6，取整。
+#: 到了这个数，页面那条「不许上采样」的线就不再是瓶颈，放大由构图上限说了算。
+FACE_PX_IN_STORE = 34
+
+#: 落盘长边的上限。远景全身图里一张脸只占画面百分之三四，按上面那条算要两千像素——
+#: 那是一枚两百 KB 的圆标。到这里就停，剩下的交给「放不大就不放」。
+MAX_ICON_SIDE = 1024
+
+#: 判定黑边的两条线：这一行的平均亮度和最亮的那个像素。只有两条都低才算黑边。
+#: 只看平均值会把夜景整片暗部当黑边裁掉，只看最大值则会被一颗噪点挡住。
+_LETTERBOX_MEAN, _LETTERBOX_PEAK = 6, 24
+
+#: 裁到只剩这么少就不裁了。真的是黑边的话裁不掉多少；裁掉一大半只说明判据认错了东西。
+_LETTERBOX_KEEP = 0.4
+
+
+def icon_side(record: object) -> int:
+    """按人脸记录算这张图该存多大。没有脸就走 `ICON_SIDE` 那一档。
+
+    判据只有一条：落盘那张里脸框得有 `FACE_PX_IN_STORE` 个像素。脸在画面里占得越
+    小，要留住同样多的脸像素就得存得越大——一张 16:9 远景图里脸只占宽的 4.5%，存成
+    512px 时脸框只剩 23px，页面想放大到看得清就撞上采样那条线了。
+    """
+    if not isinstance(record, dict):
+        return ICON_SIDE
+    face = record.get("face")
+    size = record.get("px")
+    if not isinstance(face, dict) or not isinstance(size, (list, tuple)) or len(size) != 2:
+        return ICON_SIDE
+    try:
+        width = float(face.get("w") or 0)
+        image_width, image_height = int(size[0]), int(size[1])
+    except (TypeError, ValueError):
+        return ICON_SIDE
+    face_pixels = width * image_width
+    if not (face_pixels > 0 and image_width > 0 and image_height > 0):
+        return ICON_SIDE
+    # `side` 说的是长边，脸框宽却是按宽度归一化的：竖图要先把两者换算到同一根轴上。
+    longest = max(image_width, image_height)
+    need = FACE_PX_IN_STORE * longest / face_pixels
+    return int(min(MAX_ICON_SIDE, max(ICON_SIDE, math.ceil(need))))
+
+
+def trim_letterbox(payload: bytes) -> bytes:
+    """裁掉图自己带的黑边；没有黑边、裁不动或解不开就原样返回。
+
+    站点上的 3D 作品封面常是 21:9 的画面压进 16:9 的帧里，上下各留一道纯黑。那两道
+    黑边跟着进圆标是两重损失：圆里直接露出黑条，而且它们把画面撑高、让 cover 把脸缩
+    得更小。裁在检脸之前——脸的坐标是归一化的，裁完再检才落在这张图自己的坐标系里。
+    """
+    try:
+        import numpy
+
+        from .face_detect import decode
+
+        image = decode(payload)
+        if image is None:
+            return payload
+        height, width = image.shape[:2]
+        grey = image if image.ndim == 2 else image.max(axis=2)
+        rows = _content_span(grey, height, axis=1)
+        columns = _content_span(grey, width, axis=0)
+        if rows is None or columns is None:
+            return payload
+        top, bottom = rows
+        left, right = columns
+        if (bottom - top) == height and (right - left) == width:
+            return payload
+        if (bottom - top) < height * _LETTERBOX_KEEP or (right - left) < width * _LETTERBOX_KEEP:
+            return payload
+        import cv2
+
+        ok, buffer = cv2.imencode(".jpg", numpy.ascontiguousarray(image[top:bottom, left:right]),
+                                  [int(cv2.IMWRITE_JPEG_QUALITY), 92])
+        return bytes(buffer) if ok else payload
+    except Exception:               # 缺 OpenCV／numpy、解不开的图：原样存总好过不存
+        return payload
+
+
+def _content_span(grey, length: int, axis: int) -> tuple[int, int] | None:
+    """沿一根轴找出「不是黑边」的那一段，返回半开区间；整幅都黑就是 None。"""
+    means = grey.mean(axis=axis)
+    peaks = grey.max(axis=axis)
+    lit = (means > _LETTERBOX_MEAN) | (peaks > _LETTERBOX_PEAK)
+    found = [index for index, value in enumerate(lit) if value]
+    if not found:
+        return None
+    return found[0], min(length, found[-1] + 1)
 
 
 def image_size(payload: bytes) -> tuple[int, int] | None:

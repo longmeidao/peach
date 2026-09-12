@@ -196,6 +196,103 @@ class ShrinkImageTests(unittest.TestCase):
         self.assertEqual(follow_assets.shrink_image(HTML), HTML)
 
 
+class IconSideTests(unittest.TestCase):
+    """存多大由「这张脸占画面多少」定：页面能放大到哪，上限之一就是落盘那份还剩多少脸像素。"""
+
+    def test_a_face_that_fills_the_frame_needs_no_more_than_the_base_size(self):
+        record = {"face": {"w": 0.33}, "px": [1920, 1920]}
+        self.assertEqual(follow_assets.icon_side(record), follow_assets.ICON_SIDE)
+
+    def test_a_far_shot_is_stored_larger_so_the_face_survives_the_shrink(self):
+        """脸占画面宽 4.5% 的 16:9 封面，存成 512px 时脸框只剩 23px。
+
+        28px 的圆在双倍屏上放到六成要 33.6px 的脸——差这一截，页面就只能在「放不大」
+        和「放糊」之间选一个。存大一点是唯一不牺牲画质的解法。
+        """
+        record = {"face": {"w": 0.045}, "px": [1920, 1080]}
+        side = follow_assets.icon_side(record)
+        self.assertGreater(side, follow_assets.ICON_SIDE)
+        self.assertGreaterEqual(0.045 * side, follow_assets.FACE_PX_IN_STORE)
+
+    def test_a_portrait_converts_between_the_two_axes(self):
+        """脸框宽按图宽归一化，`side` 说的是长边：竖图不换算就会存得不够大。
+
+        9:16 那张脸占宽的 8%，不换算算出来是 425px、还不到基准档，于是存成 512px、
+        脸框只剩 23px；换算过来要 756px，脸框才够 34px。
+        """
+        record = {"face": {"w": 0.08}, "px": [1080, 1920]}
+        side = follow_assets.icon_side(record)
+        self.assertGreater(side, follow_assets.ICON_SIDE)
+        self.assertGreaterEqual(0.08 * side * 1080 / 1920, follow_assets.FACE_PX_IN_STORE)
+
+    def test_a_speck_of_a_face_stops_at_the_ceiling(self):
+        """画面里只有一点点脸的图按算式要存到两千像素，那是一枚两百 KB 的圆标。"""
+        self.assertEqual(follow_assets.icon_side({"face": {"w": 0.01}, "px": [1920, 1080]}),
+                         follow_assets.MAX_ICON_SIDE)
+
+    def test_records_without_a_face_take_the_base_size(self):
+        for record in (None, {}, {"face": {}}, {"face": {"w": 0.045}},
+                       {"face": {"w": 0}, "px": [1920, 1080]}, "nonsense"):
+            self.assertEqual(follow_assets.icon_side(record), follow_assets.ICON_SIDE, record)
+
+
+class TrimLetterboxTests(unittest.TestCase):
+    """站点上的 3D 封面常把 21:9 的画面压进 16:9 的帧里，上下各留一道纯黑。"""
+
+    def _framed(self, width, height, bar):
+        import cv2
+        import numpy
+
+        canvas = numpy.zeros((height, width, 3), dtype=numpy.uint8)
+        canvas[bar:height - bar, :] = (40, 110, 210)
+        ok, buffer = cv2.imencode(".jpg", canvas)
+        self.assertTrue(ok)
+        return bytes(buffer)
+
+    def _size(self, payload):
+        from peach.face_detect import decode
+
+        image = decode(payload)
+        height, width = image.shape[:2]
+        return width, height
+
+    def test_the_black_bars_come_off_and_the_picture_does_not(self):
+        """黑边跟着进圆标是两重损失：圆里露出黑条，画面还被撑高、脸被 cover 缩得更小。"""
+        trimmed = follow_assets.trim_letterbox(self._framed(512, 288, 40))
+        width, height = self._size(trimmed)
+        self.assertEqual(width, 512)
+        self.assertAlmostEqual(height, 288 - 80, delta=4)
+
+    def test_an_image_without_bars_is_handed_back_untouched(self):
+        """没有黑边就一个字节都不动：重编码一次只会掉画质。"""
+        payload = self._framed(512, 288, 0)
+        self.assertIs(follow_assets.trim_letterbox(payload), payload)
+
+    def test_an_all_black_image_is_left_alone(self):
+        """整幅都黑的话「黑边」这个判据认不出任何东西，裁下去就只剩一条线。"""
+        import cv2
+        import numpy
+
+        ok, buffer = cv2.imencode(".jpg", numpy.zeros((288, 512, 3), dtype=numpy.uint8))
+        self.assertTrue(ok)
+        payload = bytes(buffer)
+        self.assertIs(follow_assets.trim_letterbox(payload), payload)
+
+    def test_a_mostly_dark_picture_is_not_mistaken_for_bars(self):
+        """夜景和暗调渲染整片都压得很暗，按平均亮度一刀切会把画面当黑边裁掉。"""
+        import cv2
+        import numpy
+
+        canvas = numpy.full((288, 512, 3), 14, dtype=numpy.uint8)
+        ok, buffer = cv2.imencode(".jpg", canvas)
+        self.assertTrue(ok)
+        payload = bytes(buffer)
+        self.assertIs(follow_assets.trim_letterbox(payload), payload)
+
+    def test_something_that_will_not_decode_is_passed_through(self):
+        self.assertEqual(follow_assets.trim_letterbox(HTML), HTML)
+
+
 class MirrorAvatarTests(unittest.TestCase):
     def test_avatars_only_come_from_providers_that_actually_serve_one(self):
         """按 peach-reference-evidence：实测拿得到才给，取不到写「未取得」。
