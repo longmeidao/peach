@@ -1,5 +1,5 @@
 import { resourceScanHtml, boundedPreference, mountNumberSetting, syncNumberSetting, statCardBody, rankedChart, radarChart, distributionChart, jobActivityHtml, sidebarSectionHtml, wireSidebarGroups, transitionTheme } from './dist/peach-ui.js';
-import {$, ENTITY_ROUTES, LOC, ROUTE_ENTITIES, ROUTE_STATES, SITE_FAVICONS, STATE_LABELS, STATE_ROUTES, api, isAbort, mapLimit, brandIcon, entityPath, esc, faviconFallbackUrl, faviconUrl, linkHost, linkMarkUrl, fmtClock, fmtDur, fmtSize, foldName, icon, isCatalogPath, realDuration} from './js/core.js';
+import {$, ENTITY_ROUTES, LOC, ROUTE_ENTITIES, ROUTE_STATES, STATE_LABELS, STATE_ROUTES, api, isAbort, mapLimit, brandIcon, entityPath, esc, linkHost, linkMarkUrl, siteMarkUrl, fmtClock, fmtDur, fmtSize, foldName, icon, isCatalogPath, realDuration} from './js/core.js';
 import { faceFrame } from './js/face-frame.js';
 import { searchMorphFrames } from './js/search-morph.js';
 import { filterScrollState } from './js/filter-scroll.js';
@@ -4104,13 +4104,16 @@ function tasteCacheSet(window,dashboard){
 }
 const tasteDate=value=>value?new Date(value).toLocaleDateString('zh-CN'):'—';
 const tasteHours=seconds=>seconds>=3600?(seconds/3600).toFixed(1)+' 小时':Math.round(seconds/60)+' 分钟';
-/* 站点头像：先垫首字母，再叠 favicon；站点自己的 favicon 取不到就换 Google 的
-   代理图，两条都取不到才把 <img> 拿掉，露出底下的首字母。 */
+/* 站点头像：先垫首字母，再叠服务端那枚圆标；取不到就把 <img> 拿掉，露出首字母。
+
+   圆标走 `/site-mark`：浏览器不向对方站点、也不向任何第三方图标代理发请求——那种
+   请求逐个报出这一列里的每一个站，换回来的只是一枚 16px 位图。服务端认得的域名
+   之外不出图，首字母本来就够认。 */
 function siteAvatar(name,domain,title=''){
   return `<span class="tasteavatar tastesite"${title?` title="${esc(title)}"`:''}>`+
     `<span class="ini">${esc(String(name).slice(0,1).toUpperCase())}</span>`+
-    `<img src="${esc(faviconUrl('https://'+domain))}" alt="" loading="lazy" referrerpolicy="no-referrer" `+
-    `${imageFallbackAttrs({fallbacks:[faviconFallbackUrl(domain)]})}></span>`;
+    `<img src="${esc(siteMarkUrl({domain}))}" alt="" loading="lazy" `+
+    `${imageFallbackAttrs({})}></span>`;
 }
 const tasteRankRows=(rows,kind,empty='暂无足够证据',visual='')=>rows.length?rows.map((row,index)=>{
     const clickable=kind&&row.peach_items>0;

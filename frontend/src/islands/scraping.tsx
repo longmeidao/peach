@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { apiGet, apiSend, errorMessage } from '../api';
 import { noteHtml, fieldsetTitle, loadingDotsHtml, setActionBusy, selectFieldHtml, wireSelectField } from '@peach/legacy/ui';
-import { faviconUrl } from '@peach/legacy/core';
+import { siteMarkUrl } from '@peach/legacy/core';
 import type { IslandState } from '../islands';
 import { watchJob } from '../jobs';
 import { LinkButton } from '../link-button';
@@ -79,10 +79,11 @@ function SourceForm({ source, toast }: { source: Source } & ScrapingProps) {
         <div dangerouslySetInnerHTML={{ __html: fieldsetTitle(`scraping-${source.source}`, source.label) }} />
         {/* 前面是站点自己的图标（指对象），后面是外链箭头（指形态）——两枚都在
             `vercel-geist-button-icons.md` 的「加图标」那一侧，中间的地址不重复说这两件事。
-            图标直接取对方站点的 `/favicon.ico`：这一页配置的就是与这些站的连接，
-            浏览器本来就要连它们，不必绕服务端。取不到时把 `<img>` 摘掉，不留破图。 */}
+            图标走服务端的 `/site-mark`：这一页确实本来就要连这些站，但浏览器直连
+            只拿得到 `/favicon.ico` 那一枚 16px，站点自己备好的 apple-touch-icon 和 SVG
+            问都不问；需要代理才通的来源更是常年空着。取不到时把 `<img>` 摘掉，不留破图。 */}
         <a class="scraping-url externallink" href={source.login} target="_blank" rel="noopener noreferrer">
-          <img src={faviconUrl(source.login)} alt="" width="16" height="16" loading="lazy"
+          <img src={siteMarkUrl({ source: source.source })} alt="" width="16" height="16" loading="lazy"
             onError={event => event.currentTarget.remove()} />
           <span>{source.login}</span>
           <svg class="externalmark" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-external-link" /></svg>

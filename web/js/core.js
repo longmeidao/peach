@@ -72,14 +72,6 @@ const ENTITY_ROUTES={performer:'performers',studio:'studios',creator:'creators',
 const ROUTE_ENTITIES={performers:'performer',studios:'studio',creators:'creator',series:'series',agencies:'agency'};
 const entityPath=(kind,name)=>`/${ENTITY_ROUTES[kind]||kind}/${encodeURIComponent(name)}`;
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const SITE_FAVICONS={
-  'kemono.cr':'https://kemono.cr/assets/favicon-CPB6l7kH.ico',
-  'simpcity.cr':'https://simpcity.cr/data/assets/logo/favicon.png',
-  'hanime1.me':'https://vdownload.hembed.com/image/icon/tab_logo.png?secure=EJYLwnrDlidVi_wFp3DaGw==,4867726124',
-};
-const faviconUrl=url=>{try{const parsed=new URL(url),host=parsed.hostname.replace(/^www\./,'');
-  return SITE_FAVICONS[host]||new URL('/favicon.ico',parsed).href}catch{return ''}};
-const faviconFallbackUrl=domain=>`https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=64`;
 /* 域名当名字：厂牌页的官网链接直接显示它，比一枚小图标说得清楚。大写跟着 beeg 的
    资料页写法，`www.` 去掉——它不携带信息，只占宽度。 */
 const linkHost=url=>{try{return new URL(url).hostname.replace(/^www\./,'').toUpperCase()}catch{return ''}};
@@ -90,6 +82,9 @@ const linkHost=url=>{try{return new URL(url).hostname.replace(/^www\./,'').toUpp
    传的是链接 id 而不是地址。跟 `/follow-stream` 同一条规矩：服务端只取账本里已有的
    地址，绝不去取前端递过来的任意 URL——那等于开一个任意地址抓取的口子。 */
 const linkMarkUrl=link=>`/link-mark?id=${encodeURIComponent(link.link_id ?? '')}`;
+/* 采集来源和口味排行里那些站点的圆标，同一条规矩的另一个入口：递的是服务端已经
+   知道的键——采集来源键，或口味域名白名单里的那条后缀——不是地址。 */
+const siteMarkUrl=params=>`/site-mark?${new URLSearchParams(params)}`;
 /* 图标库里有的常见社媒走内联品牌标记，连 favicon 都不取。
 
    favicon 是别人服务器上的一张小位图：X 和 Instagram 直接挡掉爬取，资料页上只剩一只
@@ -141,12 +136,10 @@ export {
   ROUTE_ENTITIES,
   entityPath,
   esc,
-  SITE_FAVICONS,
   brandIcon,
-  faviconUrl,
   linkHost,
   linkMarkUrl,
-  faviconFallbackUrl,
+  siteMarkUrl,
   foldName,
   fmtDur,
   fmtClock,

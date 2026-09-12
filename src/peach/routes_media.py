@@ -26,7 +26,10 @@ from fastapi.responses import (
 )
 from starlette.staticfiles import StaticFiles
 
-from . import follow_assets, link_marks, site_icons, subtitles, web_settings
+from . import (
+    follow_assets, link_marks, scraping_access, site_icons, subtitles,
+    taste_history, web_settings,
+)
 from .config import GENERATED_DIR
 from .follow import FollowSourceError
 from .follow_avatar import resolve_official_avatar
@@ -641,23 +644,13 @@ def logo(request: Request, studio: str = "", variant: str = "",
     return response
 
 
-@router.api_route("/link-mark", methods=["GET", "HEAD"])
-def link_mark(request: Request, id: int = 0, args: dict[str, str] = Depends(require_auth)):
-    """资料页外链的圆标：站点自己最好的那份图标资产，能上色就上色。
+def _site_mark_response(state, url: str, root: Path):
+    """站点圆标的取图、挑图、合成与缓存；调用方负责先把地址查出来。
 
-    地址只从账本按链接 id 解析，绝不接受前端递过来的 URL——和 `/follow-stream`
-    同一条规矩，否则这就是一个任意地址抓取的口子。取哪一份交给 `site_icons`：
-    先读首页声明的 apple-touch-icon / SVG / manifest，都没有才落到 favicon.ico。
+    地址一律由服务端自己从某张表或账本解析，函数本身不判断来路——但它是唯一会
+    真的去连对方站点的地方，所以每个调用方都得先说清自己的地址从哪来。
     """
-    state = request.app.state
-    with state.database.read_connection() as connection:
-        row = connection.execute(
-            "SELECT url FROM entity_link WHERE id=?", (id,)).fetchone()
-    if row is None:
-        return JSONResponse({"error": "no such link"}, status_code=404)
-
-    root = GENERATED_DIR / "link-marks"
-    cached = link_marks.cached_path(root, row["url"])
+    cached = link_marks.cached_path(root, url)
     if cached is None:
         return JSONResponse({"error": "unavailable"}, status_code=404)
     if not link_marks.is_fresh(cached, ttl=_metadata_ttl(state)):
@@ -673,7 +666,7 @@ def link_mark(request: Request, id: int = 0, args: dict[str, str] = Depends(requ
             return upstream.content, upstream.headers.get("content-type", "")
 
         # 两条通道都不适用时退回原样缩图：糊一点也好过露出地球图标。
-        made = site_icons.best_mark(row["url"], fetch, link_marks.render_mark,
+        made = site_icons.best_mark(url, fetch, link_marks.render_mark,
                                     fallback=link_marks.plain_mark)
         if made:
             root.mkdir(parents=True, exist_ok=True)
@@ -684,6 +677,53 @@ def link_mark(request: Request, id: int = 0, args: dict[str, str] = Depends(requ
     result = FileResponse(cached, media_type="image/png")
     result.headers["Cache-Control"] = "public, no-cache"
     return result
+
+
+@router.api_route("/link-mark", methods=["GET", "HEAD"])
+def link_mark(request: Request, id: int = 0, args: dict[str, str] = Depends(require_auth)):
+    """资料页外链的圆标：站点自己最好的那份图标资产，能上色就上色。
+
+    地址只从账本按链接 id 解析，绝不接受前端递过来的 URL——和 `/follow-stream`
+    同一条规矩，否则这就是一个任意地址抓取的口子。取哪一份交给 `site_icons`：
+    先读首页声明的 apple-touch-icon / SVG / manifest，都没有才落到 favicon.ico。
+    """
+    state = request.app.state
+    with state.database.read_connection() as connection:
+        row = connection.execute(
+            "SELECT url FROM entity_link WHERE id=?", (id,)).fetchone()
+    if row is None:
+        return JSONResponse({"error": "no such link"}, status_code=404)
+    return _site_mark_response(state, row["url"], GENERATED_DIR / "link-marks")
+
+
+@router.api_route("/site-mark", methods=["GET", "HEAD"])
+def site_mark(request: Request, source: str = "", domain: str = "",
+              args: dict[str, str] = Depends(require_auth)):
+    """采集来源与口味排行的站点圆标。
+
+    两个参数都不是地址，是键：`source` 查 `scraping_access.SOURCES`，`domain` 查
+    `taste_history.TASTE_DOMAIN_SUFFIXES`，都不在表里就是 404。和 `/link-mark`
+    同一条规矩——服务端只取自己已经知道的地址，绝不取前端递来的任意 URL。
+
+    图标由服务端取有三样浏览器拿不到的东西：`site_icons` 会问站点自己声明的
+    apple-touch-icon、SVG 和 manifest，而直连只够拿一枚 16px 的 `/favicon.ico`；
+    要代理才通的站点在这里照样有图；浏览器不必向对方站点发请求，也就不必按站
+    报出「在看哪些站」。
+
+    `domain` 只认白名单里那条后缀本身，不认它的子域：子域是浏览历史里带进来的
+    任意值，放行等于按前端给的主机名去连——正是上面那条规矩要挡的。
+    """
+    if source:
+        spec = scraping_access.SOURCES.get(source)
+        if spec is None:
+            return JSONResponse({"error": "no such source"}, status_code=404)
+        target = spec["login"]
+    else:
+        host = domain.casefold().strip().removeprefix("www.").rstrip(".")
+        if host not in taste_history.TASTE_DOMAIN_SUFFIXES:
+            return JSONResponse({"error": "no such site"}, status_code=404)
+        target = f"https://{host}/"
+    return _site_mark_response(request.app.state, target, GENERATED_DIR / "site-marks")
 
 
 @router.api_route("/entity-image", methods=["GET", "HEAD"])

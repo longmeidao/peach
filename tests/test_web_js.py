@@ -354,18 +354,17 @@ class WebJsBehaviourTests(unittest.TestCase):
             ("core.js", "linkHost", ["不是网址"], ""),
         ])
 
-    def test_favicon_urls_prefer_the_pinned_ones_and_fail_soft(self):
+    def test_a_site_mark_carries_a_key_and_never_a_url(self):
+        """站点圆标的地址里只出现服务端认得的键，任何一段都不是对方站点的地址。
+
+        拼出对方站点的地址就等于让浏览器自己去连它：那既拿不到站点备好的大图标，
+        又把「正在看哪些站」这件事按站分发出去。参数值该转义的照转，`a b.com`
+        这种进来也只能是查询串里的一个值，越不出 `/site-mark` 这个路径。
+        """
         self.assertJsResults([
-            # 几个站点的 favicon 路径是固定住的，取不到默认那张。
-            ("core.js", "faviconUrl", ["https://kemono.cr/user/1"],
-             "https://kemono.cr/assets/favicon-CPB6l7kH.ico"),
-            ("core.js", "faviconUrl", ["https://www.kemono.cr/user/1"],
-             "https://kemono.cr/assets/favicon-CPB6l7kH.ico"),
-            ("core.js", "faviconUrl", ["https://example.com/deep/page"],
-             "https://example.com/favicon.ico"),
-            ("core.js", "faviconUrl", ["不是网址"], ""),
-            ("core.js", "faviconFallbackUrl", ["a b.com"],
-             "https://www.google.com/s2/favicons?domain=a%20b.com&sz=64"),
+            ("core.js", "siteMarkUrl", [{"source": "mgstage"}], "/site-mark?source=mgstage"),
+            ("core.js", "siteMarkUrl", [{"domain": "kemono.cr"}], "/site-mark?domain=kemono.cr"),
+            ("core.js", "siteMarkUrl", [{"domain": "a b.com"}], "/site-mark?domain=a+b.com"),
         ])
 
     def test_entity_paths_are_semantic_and_survive_slashes_in_names(self):
