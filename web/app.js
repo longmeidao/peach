@@ -10071,6 +10071,18 @@ function localTabs(root,sections,host=root){
       buttons.push(button);nav.append(button);
     });
   });
+  /* 那块玻璃跟着指针走，跟筛选条那排药丸是同一条连线（`wireViewGlideRow`）：一列里只有
+     当前那格铺着面，鼠标停在哪一条得靠字色那一档去读，扫下来分不出自己停在了第几条。
+     指针离开这一列就滑回当前那格。触点没有「悬停」，碰一下就滑过去等于替用户点了一次，
+     所以跟那边一样把 touch 挡在外面。配置页那一份没有玻璃，`syncLocalNavGlide` 自己在
+     第一行就返回了。 */
+  buttons.forEach(button=>{button.onpointerenter=event=>{
+    if(event.pointerType!=='touch')syncLocalNavGlide(nav,button,true)}});
+  nav.onpointerleave=event=>{
+    if(event.pointerType==='touch')return;
+    const current=nav.querySelector('[role=tab][aria-selected=true]');
+    if(current)syncLocalNavGlide(nav,current,true);
+  };
   host===root?root.prepend(nav):host.insertBefore(nav,root);
   choose(0);
   return {nav,select:index=>choose(Math.min(Math.max(index,0),items.length-1)),get index(){return active}};

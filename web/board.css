@@ -25,6 +25,11 @@
 /* 这块玻璃扣在一条 10px 圆角的按钮上，跟着它走；`.navglide` 的默认 8px 是给筛选条上
    那排药丸的。 */
 .settingscard.settingscard>.board-local-nav>.navglide{border-radius:10px}
+/* 顶边那道高光不要：它是给浮在页面上的玻璃打边用的，而这一栏嵌在卡片里、上边贴着卡片
+   自己的圆角，那道白线横在「设置」上面，读起来像卡片被切成了上下两截。其余三面的内描边
+   和落影照旧。 */
+.settingscard.settingscard.settingscard>.board-local-nav{
+  box-shadow:inset 1px 0 0 var(--glass-low),inset -1px 0 0 var(--glass-low),inset 0 -1px 0 var(--glass-low),var(--glass-shadow)}
 /* 标题和下面那一组之间留 24px：这一栏没有分隔线也不吸顶，标题与内容之间只剩这一段
    留白在说「上面那行是这一页的名字」。12px 和组内两行之间的间距是同一个量级，读下来
    标题像是第一行设置。 */
