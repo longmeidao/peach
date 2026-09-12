@@ -8,7 +8,7 @@
 .index-skeleton .alphatag::before{background:var(--hover)}
 .index-skeleton .alphatag .skeleton:first-of-type{width:65%;height:1.3em}
 .index-skeleton .alphatag .n{width:24px;height:1.3em}
-.indexletterskeleton{width:48px;height:28px;margin:14px 0 10px}
+.indexletterskeleton{display:block;width:48px;height:28px;margin:0 0 10px}
 .index-skeleton .tagwall .tg{height:auto;border-color:transparent;background:var(--hover)}
 .skeleton{display:block;height:18px;border-radius:var(--control-radius);background:var(--hover)}
 .cleanup-count-skeleton{height:1.45em;width:12em;max-width:70%}

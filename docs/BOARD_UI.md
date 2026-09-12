@@ -286,6 +286,9 @@ Radio card 沿用 2026-09-08 取得的 `r/checkbox-card.json`（`checkbox-card.t
 | 资料页筛选条 | 无对应 | 只剩四枚观看状态和标签，`aria-label` 改「观看状态与标签」；照片、名册视图下整条收起，浮层只剩下面那排抬头 |
 | 关注页 | 无对应（上游没有更新流页） | 对齐首页而不是另起一套：作者行是 `.tier`，筛选条 `.tagbar` 与读数 `.count` 收进同一块 `mountFilterFrame` 浮层。五枚状态是首页四枚视图的同一个控件，共用那块滑动玻璃（`GLIDE_ROWS.views` 多认 `.followviews`）；来源图标与标签在右半截横滚，来源类型的着色只在选中时上色。下排读数照首页写「N 项更新 · 显示 M」，右端是视频／图片两枚圆键，选中那枚铺选中态玻璃。「管理关注」降为次级按钮，蓝色留给空态里的「添加关注」；底部「加载更多」旁不再重复读数 |
 | 两页骨架 | Skeleton 只是占位形状 | 都把 `.board-filter-frame` 外框和上下两排的 `data-filter-row` 写全，否则等的那几秒钟是两块各带圆角的浮层；资料页骨架用 `.entityprofile`／`.entityidentity` 的真实类名，筛选条那排用 `data-skeleton-tier="pill"` 铺药丸 |
+| 外链图标 | `avatar.tsx` 只有圆形；站标那一档无对应 | 资料卡外链按钮里的 favicon 与社媒标记 `.entitylinkicon` 收成 `--badge-radius` 的圆角方框，跟 20px 的图标位同形；外链一律 `target="_blank" rel="noreferrer"` |
+| 艺人／厂牌／事务所索引（`/performers`、`/studios`、`/agencies`、`/creators`） | 索引网格无对应；卡形取 `stat-card`（secondary 底、16px 圆角、p16 收成 p12）、名字 Body Medium 14/20 500、计数 Caption | `.icell` 是一张卡，悬停抬 6% 主文字色；大图版式头像 10px 圆角、文字左对齐；「载入更多」是 36px／10px 圆角的 secondary Button。厂牌与事务所是两条地址，页头下那排 `boardTabsHtml()` 的下划线 Tabs（`data-index-kind`，带对象图标）切页，不是筛选 |
+| 标签页（`/tags`） | 字母表无对应；分组卡取 `stat-card` 形，行取 bar-list 的 36px／8px | 本地／在线是页面级的 Tabs（`data-tag-scope`）。类型药丸、读数、按首字跳转、标签云／字母表切换收进首页那块玻璃浮层 `tagFilterFrameHtml()`：上排 `.tagcategories` 药丸带类型色点，下排读数＋`.alphajump`＋`iconSwitchHtml`；浮层住在 `#indexFilters` 里，那个父级只有浮层那么高，sticky 会被卡死，`display:contents` 让它退出盒树。字母表 `.alphagroup` 每个首字一张卡，字头旁挂 `.board-tab-count` 徽标，`scroll-margin-top` 给吸顶浮层让位 |
 
 ## 首次设置 Auth Card
 

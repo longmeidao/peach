@@ -628,6 +628,32 @@ body>.board-filter-frame{margin-inline:16px}
 .board-tab-count{display:inline-block;margin-left:6px;padding:1px 4px;border-radius:4px;font:var(--board-caption);font-weight:500;line-height:16px;
   background:color-mix(in srgb,var(--ink) 10%,transparent);color:var(--ink);opacity:.5;vertical-align:1px}
 .board-local-nav button[aria-selected="true"] .board-tab-count{background:color-mix(in srgb,var(--tungsten) 12%,transparent);color:var(--tungsten);opacity:1}
+/* 索引页页头下面那排 Tabs（厂牌／事务所、本地／在线）跟资料页那排同一份；前置字形 16px。 */
+.indextabs{margin:0 0 22px}
+.board-tabs button svg{width:16px;height:16px;margin-right:6px;vertical-align:-3px;stroke:currentColor;fill:none;stroke-width:2}
+/* 索引格照 Board 的卡排：secondary 底、16px 圆角、不描边，名字 Body 1 Medium、读数 Caption。
+   大图版式里图铺满卡宽、文字靠左；紧凑版式是圆头像居中那一屏。 */
+.igrid{gap:12px}
+.icell{gap:8px;padding:12px;border-radius:16px;background:var(--ground)}
+.icell:hover{background:color-mix(in srgb,var(--ink) 6%,var(--ground))}
+.icell .nm{font-size:14px;line-height:20px;font-weight:500}
+.icell .n{font:var(--board-caption);color:var(--muted)}
+.igrid[data-layout="big"] .icell{align-items:stretch;padding:12px}
+.igrid[data-layout="big"] .icell .ring{border-radius:10px}
+.igrid[data-layout="big"] .icell .nm,.igrid[data-layout="big"] .icell .n{text-align:left}
+.igrid[data-layout="big"] .icell .nm{font-size:14px}
+/* 字母表的分组卡与卡头：Heading 20/26；一行一枚标签是排名行那一档（36px、圆角 8）。 */
+.alphagroup{border-radius:16px;box-shadow:none}
+.alphagroup h3{font-size:20px;line-height:26px;font-weight:500}
+.alphatag{border-radius:8px}
+/* 标签页浮层上排的类型药丸：玻璃上的线取 --glass-low，选中那一枚的色由类型色给。 */
+.board-filter-frame .tagcategories .pill{border:1px solid var(--glass-low);background:transparent}
+.board-filter-frame .tagcategories .pill[aria-pressed="true"]{border-color:color-mix(in srgb,var(--tag-color,var(--ink)) 45%,transparent);
+  background:color-mix(in srgb,var(--tag-color,var(--ink)) 12%,transparent)}
+.board-filter-frame .alphajump button{color:color-mix(in srgb,var(--glass-text) 60%,transparent);border-radius:7px}
+.board-filter-frame .alphajump button:hover{color:var(--glass-text)}
+/* 「载入更多」是 Board 的 secondary Button：36px、圆角 10、Body Medium。 */
+.indexmore,.entitymore{min-height:36px;height:36px;padding:0 12px;border-radius:10px;border-color:var(--line);font-size:14px;font-weight:500;color:var(--ink)}
 #grid.gridstack{border:0;background:transparent;padding:0;box-shadow:none;border-radius:0}
 #grid.gridstack>.grid{border:0;background:transparent;padding:0;box-shadow:none;border-radius:0}
 /* 竖屏带靠底色和网格区分，不再描一圈线：它嵌在两段无边框的网格中间，一条线反而
@@ -717,7 +743,7 @@ button,input,select,textarea{font-family:inherit}
 .index .ihead{padding:4px;gap:12px;min-width:0;flex-wrap:wrap}
 .index .ihead .geist-search{min-width:140px;margin-right:0}
 .index .ihead h2,#manageTitle{font-size:24px;line-height:34px;font-weight:500}
-.indexheading{font-size:24px;line-height:34px}.indexheading svg{width:24px;height:24px}
+.indexheading{font-size:24px;line-height:34px}
 .index .ihead .geist-search input{font-size:14px;line-height:20px}
 .insighttoolbar,.tastehead{gap:16px}
 /* 进场用 backwards 而不是 both：终点帧本来就是元素的自然状态，保留它只多留下一个

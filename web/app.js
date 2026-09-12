@@ -7052,23 +7052,43 @@ function personCellHtml(x,kind,countText){
 /* 场记板归厂牌，公文包归事务所：一个出片、一个带人，字形各说各的那一件事。
    办公楼那类字形两边都对得上，也就等于两边都没说清是哪一种公司。 */
 const MAKER_INDEX_KINDS=[['studios','厂牌','clapperboard'],['agencies','事务所','briefcase']];
+/* 两条索引地址是两页，所以这一排是 Board 的下划线 Tabs，跟资料页切视频、照片、名册的
+   那一排是同一个控件：它答的是「现在摆的是哪一页」，不是给当前这批加一条筛选。 */
 function makerModeHtml(kind){
-  return `<div class="viewmodes">`+MAKER_INDEX_KINDS.map(([key,label,symbol])=>
-    `<button data-index-kind="${key}" aria-pressed="${kind===key}">${icon(symbol)}${label}</button>`
-    ).join('')+`</div>`;
+  return boardTabsHtml(MAKER_INDEX_KINDS.map(([value,label,symbol])=>({value,label,symbol})),
+    {active:kind,attr:'data-index-kind',label:'公司类型',className:'indextabs'});
 }
+/* 本地与在线是两套词表——计数口径、类别划分和点开去哪儿都不同，所以也是页面级的 Tabs。 */
+const TAG_SCOPES=[['local','本地','hard-drive'],['online','在线','rss']];
+function tagScopeTabsHtml(){
+  return boardTabsHtml(TAG_SCOPES.map(([value,label,symbol])=>({value,label,symbol})),
+    {active:tagIndexScope,attr:'data-tag-scope',label:'词表',className:'indextabs'});
+}
+const TAG_VIEW_MODES=[['cloud','标签云','tags'],['alphabet','字母表','text-aa']];
+/* 标签页的筛选浮层跟首页同一块玻璃：上排是类型药丸，下排是读数、按首字跳转和视图切换。
+   外框直接写成带槽位标记的 HTML，不走 `mountFilterFrame`：这一段随每次筛选整块重画，
+   外框跟着一起出生，省得事后再包一层。 */
+function tagFilterFrameHtml(categories,readout,groups){
+  const pills=categories.map(([key,label])=>filterChipHtml(label,
+    {attr:'data-tag-category',value:key,selected:tagIndexCategory===key,className:key})).join('');
+  const jump=groups.length>1?`<nav class="alphajump" aria-label="按首字跳转">${groups.map(([letter],i)=>
+    `<button type="button" data-alpha-jump="${i}">${esc(letter)}</button>`).join('')}</nav>`:'';
+  const view=iconSwitchHtml('tag-view','标签视图',TAG_VIEW_MODES,tagIndexMode,{attr:'data-tag-view'});
+  return `<div class="board-filter-frame" data-filter-frame>
+    <div class="tagbar tagcategories" data-filter-row="top" aria-label="标签类型"><div class="filterscroll"><div class="tagscroll" data-filter-slot="tags">${pills}</div></div></div>
+    <div class="count tagcount" data-filter-row="bottom"><span class="mono" id="indexCount" data-filter-slot="readout">${readout}</span>${jump}<div class="sorts" data-filter-slot="controls">${view}</div></div></div>`;
+}
+/* 页头只剩标题、读数、版式切换和过滤框；页面级的切换（厂牌／事务所、本地／在线）
+   是页头下面那排 Tabs。标签页的读数住在浮层下排，页头不再重复一遍。 */
 function indexHeaderHtml(kind,q,countText){
   const title=INDEX_TITLES[kind]||'标签',people=kind!=='tags';
-  const onlineTags=tagIndexScope==='online';
   return `<div class="ihead">
-      <h2 class="disp indexheading">${kind==='tags'?icon('tags'):''}${title}</h2>
-      <span class="mono" id="indexCount">${countText}</span>
-      ${kind==='tags'?`<div class="viewmodes"><button data-tag-scope="local" aria-pressed="${!onlineTags}">${icon('hard-drive')}本地</button><button data-tag-scope="online" aria-pressed="${onlineTags}">${icon('rss')}在线</button></div>
-      <div class="viewmodes"><button data-tag-view="cloud" aria-pressed="${tagIndexMode==='cloud'}">${icon('tags')}标签云</button><button data-tag-view="alphabet" aria-pressed="${tagIndexMode==='alphabet'}">${icon('text-aa')}字母表</button></div>`:''}
-      ${MAKER_INDEX_KINDS.some(([key])=>key===kind)?makerModeHtml(kind):''}
+      <h2 class="disp indexheading">${title}</h2>
+      ${people?`<span class="mono" id="indexCount">${countText}</span>`:''}
       ${people?peopleLayoutButtons(kind):''}
       ${searchInputHtml({id:'iq',label:'过滤'+title,value:q||''})}
-    </div>`;
+    </div>
+    ${kind==='tags'?tagScopeTabsHtml():MAKER_INDEX_KINDS.some(([key])=>key===kind)?makerModeHtml(kind):''}`;
 }
 function wireIndexControls(kind){
   const iq=$('#iq');let it2;
@@ -7083,23 +7103,33 @@ function wireIndexControls(kind){
   iq.onkeydown=e=>{if(e.isComposing||e.key!=='Enter')return;
     e.preventDefault();clearTimeout(it2);openIndex(kind,iq.value.trim(),true,true)};
   wireIconSwitch($('#index'),'data-people-layout',setPeopleIndexLayout);
+  /* Tabs 的蓝线按下去当场就挪：`wireBoardTabs` 观察着 `aria-selected`。换词表时骨架键
+     不变、页头不重画，不在这里改属性的话那条线就停在旧的一档上。 */
+  const selectTab=button=>button.closest('[role="tablist"]')?.querySelectorAll('[role="tab"]')
+    .forEach(tab=>tab.setAttribute('aria-selected',String(tab===button)));
   /* 厂牌与事务所各有自己的地址，所以这个开关走的是 openIndex 的另一条 kind，
      不是在同一批数据上再筛一次。过滤词跟着走：它问的是同一个问题。 */
   $('#index').querySelectorAll('[data-index-kind]').forEach(b=>b.onclick=()=>{
     if(kind===b.dataset.indexKind)return;
+    selectTab(b);
     openIndex(b.dataset.indexKind,$('#iq').value.trim(),true)});
   $('#index').querySelectorAll('[data-tag-scope]').forEach(b=>b.onclick=()=>{
     if(tagIndexScope===b.dataset.tagScope)return;
+    selectTab(b);
     tagIndexScope=b.dataset.tagScope;
     // 在线标签全是英文，字母表才是它的形态；切过去时顺手换上，不必用户再点一次。
     if(tagIndexScope==='online')tagIndexMode='alphabet';
     tagIndexCategory='all';
     selectedIndexTags.clear();
     openIndex('tags',$('#iq').value.trim(),true)});
-  $('#index').querySelectorAll('[data-tag-view]').forEach(b=>b.onclick=()=>{
-    tagIndexMode=b.dataset.tagView;openIndex('tags',$('#iq').value.trim(),true)});
+  wireIconSwitch($('#index'),'data-tag-view',value=>{
+    tagIndexMode=value;openIndex('tags',$('#iq').value.trim(),true)});
   $('#index').querySelectorAll('[data-tag-category]').forEach(b=>b.onclick=()=>{
     tagIndexCategory=b.dataset.tagCategory;openIndex('tags',$('#iq').value.trim(),true)});
+  /* 分组卡有 `scroll-margin-top` 给吸顶的浮层让位，所以对齐到卡的上沿就够。 */
+  $('#index').querySelectorAll('[data-alpha-jump]').forEach(b=>b.onclick=()=>{
+    $('#index').querySelector(`[data-alpha-group="${b.dataset.alphaJump}"]`)
+      ?.scrollIntoView({block:'start',behavior:'smooth'})});
 }
 function showIndexLoading(label,kind='',q=''){
   $('#stats').hidden=true;$('#index').hidden=false;$('#grid').innerHTML='';$('#combo').innerHTML='';
@@ -7153,14 +7183,17 @@ async function openIndex(kind,q,push=true,refine=false){
   $('#loadSentinel').hidden=true;
   const title=INDEX_TITLES[kind]||'标签';
   const tagItems=[...d.items];
-  const tagGroups=items=>{
+  const tagGroupEntries=items=>{
     const groups={};[...items].sort((a,b)=>a.k.localeCompare(b.k,'zh-CN',{numeric:true,sensitivity:'base'})).forEach(x=>{
       const ch=tagLabel(x.k).normalize('NFKC').trim().charAt(0).toUpperCase();
       const key=/[A-Z]/.test(ch)?ch:(/[0-9]/.test(ch)?'#':(/[\u3400-\u9fff]/.test(ch)?'中文':'其他'));
       (groups[key]||(groups[key]=[])).push(x)});
-    return Object.entries(groups).sort(([a],[b])=>a.localeCompare(b,'zh-CN')).map(([letter,items])=>
-      `<section class="alphagroup"><h3>${letter}</h3><div class="alphalist">${items.map(x=>
-        `<button class="alphatag ${onlineTags?'r34-'+(x.cat||'unknown'):(x.cat||'general')}" data-k="${esc(x.k)}" aria-pressed="${selectedIndexTags.has(x.k)}"><span>${esc(tagLabel(x.k))}</span><span class="n">${x.n.toLocaleString()}</span></button>`).join('')}</div></section>`).join('')};
+    return Object.entries(groups).sort(([a],[b])=>a.localeCompare(b,'zh-CN'))};
+  /* 每个首字一张卡：字头是卡的标题，右边挂这一组有几个；一行一枚标签，36px 高、8px 圆角，
+     取的是 Board 排名行那一档身量。`data-alpha-group` 是浮层下排那排跳转键的落点。 */
+  const tagGroups=items=>tagGroupEntries(items).map(([letter,items],i)=>
+      `<section class="alphagroup" data-alpha-group="${i}"><h3>${letter}<span class="board-tab-count">${items.length.toLocaleString()}</span></h3><div class="alphalist">${items.map(x=>
+        `<button class="alphatag ${onlineTags?'r34-'+(x.cat||'unknown'):(x.cat||'general')}" data-k="${esc(x.k)}" aria-pressed="${selectedIndexTags.has(x.k)}"><span>${esc(tagLabel(x.k))}</span><span class="n">${x.n.toLocaleString()}</span></button>`).join('')}</div></section>`).join('');
   const peopleHtml=items=>items.map(x=>
     /* 事务所数的是人：它名下那 N 个视频是成员拍的，只报视频数会让「这家有几个人」
        这个它唯一独有的读数消失。数字带单位，否则 411 读不出是人还是片。 */
@@ -7177,27 +7210,29 @@ async function openIndex(kind,q,push=true,refine=false){
     peopleIndexLayout()}">${peopleHtml(d.items)}</div>`:tagHtml(tagItems);
   const categoryOptions=onlineTags?ONLINE_TAG_CATEGORIES:TAG_CATEGORIES;
   const visibleTagCategories=categoryOptions.filter(([key])=>key==='all'||Number(d.categories?.[key]||0)>0);
-  const categoryFilters=kind==='tags'?`<div class="tagfilters" aria-label="标签类型">${visibleTagCategories.map(([key,label])=>
-    `<button class="${key}" data-tag-category="${key}" aria-pressed="${tagIndexCategory===key}">${label}</button>`).join('')}</div>
-    `:'';
+  const countText=`${tagItems.length}${d.has_more?'+':''} 项`;
   /* 多选面板拼的是目录筛选，只在本地范围出现；在线分类来自上游 booru tag_type。 */
-  const filters=categoryFilters+(kind==='tags'&&!onlineTags?`
+  const tagFilters=()=>tagFilterFrameHtml(visibleTagCategories,`${tagItems.length}${d.has_more?'+':''} 项`,
+      tagIndexMode==='alphabet'&&tagItems.length?tagGroupEntries(tagItems):[])
+    +(onlineTags?'':`
     <div class="tagselection selectiondock" data-tag-selection role="group" aria-label="所选标签操作" hidden>
       <label>${checkboxHtml(`data-tag-match-any ${tagIndexMatch==='any'?'checked':''}`)}<span><b>广泛匹配</b><small>开启后匹配任一所选标签；关闭后必须同时包含全部标签。</small></span></label>
       <span class="selectiondockcount" data-tag-selected>已选 0 个标签</span>
       <button type="button" data-tag-clear>清空</button>
       <button type="button" class="primary" data-tag-apply disabled>显示结果</button>
-    </div>`:'');
-  const countText=`${tagItems.length}${d.has_more?'+':''} 项`;
+    </div>`);
+  const filters=kind==='tags'?tagFilters():'';
   /* 筛选重跑不重画表头：输入框是同一个节点，焦点、光标位置和中文输入法正在组的字
-     才不会在 300 ms 后被换掉。表头里随查询变的只有计数一处，单独改它。 */
+     才不会在 300 ms 后被换掉。表头里随查询变的只有计数一处，单独改它；标签页的读数
+     住在浮层里，跟着浮层一起重画。 */
   if($('#indexFilters')){
-    $('#indexCount').textContent=countText;
     $('#indexFilters').innerHTML=filters;
+    if(people)$('#indexCount').textContent=countText;
     $('#indexBody').innerHTML=body;
     $('#indexMore').hidden=!d.has_more;
   }else $('#index').innerHTML=indexHeaderHtml(kind,q,countText)+`<div id="indexFilters">${filters}</div><div id="indexBody">${body}</div><button class="indexmore" id="indexMore" type="button" ${d.has_more?'':'hidden'}>载入更多</button>`;
   wireIndexControls(kind);
+  scheduleStickySurfaces();
   const wireIndexEntries=root=>root.querySelectorAll('[data-k]').forEach(b=>b.onclick=()=>{
     if(people){openEntity(b.dataset.kind,b.dataset.k);return}
     /* 在线标签只在关注页有意义——它标注的是还没入库的在线更新，拿去筛目录必然
@@ -7225,8 +7260,10 @@ async function openIndex(kind,q,push=true,refine=false){
       indexOffset+=next.items.length;d.has_more=next.has_more;
       if(people){d.items.push(...next.items);const grid=$('#indexBody .igrid');
         grid.insertAdjacentHTML('beforeend',peopleHtml(next.items));wireIndexEntries(grid)}
-      else{d.items.push(...next.items);tagItems.push(...next.items);$('#indexBody').innerHTML=tagHtml(tagItems);wireIndexEntries($('#indexBody'));paintTagIndexSelection()}
-      $('#indexCount').textContent=indexOffset+(next.has_more?'+':'')+' 项';more.hidden=!next.has_more}
+      else{d.items.push(...next.items);tagItems.push(...next.items);$('#indexBody').innerHTML=tagHtml(tagItems);wireIndexEntries($('#indexBody'));
+        /* 分组多了几个首字，跳转那一排要跟上；浮层整块重画，读数也在里面。 */
+        $('#indexFilters').innerHTML=tagFilters();wireIndexControls(kind);paintTagIndexSelection()}
+      if(people)$('#indexCount').textContent=indexOffset+(next.has_more?'+':'')+' 项';more.hidden=!next.has_more}
     finally{if(requestSeq===indexRequestSeq)more.disabled=false}};
 }
 
@@ -8027,7 +8064,7 @@ async function openEntity(kind,name,push=true){
       <div class="entityidentity"><div class="entitytitle"><h2>${esc(d.canonical_name)}</h2>${namePick}</div>
         <div class="alias">${(d.display_aliases||[]).length?`${d.display_aliases.map(esc).join(' / ')} · `:''}<b>${d.asset_count.toLocaleString()}</b> 个视频${memberHtml}${agencyHtml}</div>
         ${links?`<div class="entitylinks">${links}</div>`:''}</div></div>
-      ${related?`<div class="entityfoot" aria-label="同台艺人"><span class="entityfootlabel">同台艺人</span><div class="relatedpeople">${related}</div></div>`:''}</section>
+      ${related?`<div class="entityfoot" aria-label="同台艺人"><div class="relatedpeople">${related}</div></div>`:''}</section>
     ${mediaTabs}
     <div class="combo entitycombo"></div>
     <section class="entitytagbar" aria-label="观看状态与标签"><div class="filterscroll"><div class="viewpills entityviews" role="group" aria-label="观看状态">${VIEW_PILLS.map(v=>`<button type="button" class="pill" data-entity-state="${v.k}" aria-pressed="${(filters.state||'')===v.k}">${v.label}</button>`).join('')}<span class="sep" aria-hidden="true"></span></div><div class="tagscroll entitytags">${tags}</div></div></section>

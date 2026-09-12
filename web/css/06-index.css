@@ -4,9 +4,12 @@
 body.entity-open .index{overflow-x:visible}
 .index .ihead{display:flex;align-items:center;gap:12px;margin-bottom:20px}
 .index .ihead h2{margin:0}
-.indexheading{display:inline-flex;align-items:center;gap:9px}.indexheading svg{width:25px;height:25px;stroke:currentColor;fill:none;stroke-width:2}
+.indexheading{display:inline-flex;align-items:center}
 .index .ihead .geist-search{flex:1;max-width:320px;margin-left:auto}
 #indexCount{color:var(--muted)}
+/* 浮层住在 `#indexFilters` 里方便整块重画，但 sticky 只能在父级的高度里吸住，而这个父级
+   就只有浮层自己那么高。`display:contents` 让它退出盒树，浮层的边界改由整页 `.index` 给。 */
+#indexFilters{display:contents}
 .igrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:16px 10px}
 .icell{display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer;
   background:none;border:0;color:inherit;padding:8px 4px;border-radius:var(--surface-radius)}
@@ -32,23 +35,21 @@ body.entity-open .index{overflow-x:visible}
 .igrid[data-cells="company"][data-layout="big"] .icell .ring{aspect-ratio:1}
 .index .ihead .iconswitch{flex:none}
 .tagwall{display:flex;flex-wrap:wrap;gap:7px}
-/* 页头这几组控件并排站着，得是同一块板：底色和 `--ground` 只差四级灰的话，剩下能看见的
-   只有那圈边框，读起来是凭空多出来的一条线，而邻座 `.iconswitch` 是有填充的一块。
-   高度也钉成和它一样的 36px（28 + 3 padding + 1 border），并排才谈得上底部对齐。 */
-.viewmodes{display:flex;gap:4px;padding:3px;border:1px solid var(--line-soft);border-radius:var(--surface-radius);background:var(--overlay-5)}
-.viewmodes button{border:0;border-radius:var(--control-radius);background:transparent;color:var(--muted);height:28px;padding:0 10px;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
-.viewmodes button svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2}
-/* 「Aa」是 1.4:1 的字形，宽高都锁 15px 只能按宽缩，画出来比邻座矮一截。 */
-.viewmodes button svg.iconwide{width:auto}
-.viewmodes button:hover{color:var(--ink)}
-.viewmodes button[aria-pressed="true"]{background:var(--picked);color:var(--ink)}
-.tagfilters{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 18px}
-.tagfilters button{height:34px;padding:0 13px;border-radius:var(--pill-radius);border:1px solid var(--line-soft);
-  background:transparent;color:var(--muted);cursor:pointer;display:inline-flex;align-items:center;gap:7px}
-.tagfilters button::before,.alphatag::before{content:"";width:7px;height:7px;border-radius:50%;
+/* 标签页的类型药丸住在首页那块玻璃浮层的上排，是同一枚 `.pill`，只多一个说类型的色点；
+   选中那一枚的线和填充取自己的类型色，跟标签在卡片上的着色一致。 */
+.tagcategories .pill{gap:7px}
+.tagcategories .pill::before,.alphatag::before{content:"";width:7px;height:7px;border-radius:50%;
   background:var(--tag-color,var(--muted));flex:none}
-.tagfilters button[aria-pressed="true"]{color:var(--ink);border-color:color-mix(in srgb,var(--tag-color,var(--ink)) 45%,transparent);
+.tagcategories .pill[aria-pressed="true"]{color:var(--ink);border-color:color-mix(in srgb,var(--tag-color,var(--ink)) 45%,transparent);
   background:color-mix(in srgb,var(--tag-color,var(--ink)) 12%,transparent)}
+/* 浮层下排：读数、按首字跳转、视图切换。跳转那一排按首字排开，放不下就横滚。 */
+.tagcount .alphajump{display:flex;gap:2px;min-width:0;overflow-x:auto;scrollbar-width:none}
+.tagcount .alphajump::-webkit-scrollbar{display:none}
+.alphajump button{flex:none;height:30px;min-width:30px;padding:0 6px;border:0;border-radius:var(--control-radius);
+  background:transparent;color:var(--muted);font-size:var(--fs-xs);cursor:pointer}
+.alphajump button:hover{color:var(--ink)}
+/* 「Aa」是 1.4:1 的字形，宽高都锁死只能按宽缩，画出来比邻座矮一截。 */
+.tagcount .iconswitch svg.iconwide{width:auto}
 .tagselection{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 18px;padding:12px 14px;
   border:1px solid var(--line-soft);border-radius:var(--floating-radius);background:var(--ground)}
 .tagselection[hidden]{display:none}.tagselection label{display:flex;align-items:center;gap:9px;margin-right:auto;cursor:pointer}
@@ -59,24 +60,24 @@ body.entity-open .index{overflow-x:visible}
 /* 强调档那一面归 `board.css` 的 Board primary 一处；这里再写一份 Geist 的墨色实底，
    它的 `:hover` 比 Board 那条静止规则重一个类，压上去就跳回墨色。 */
 .tagselection button:disabled{background:var(--sunk);color:var(--muted);cursor:not-allowed}
-.tagfilters .all::before{background:linear-gradient(135deg,#55A7FF,#D783FF)}
+.tagcategories .all::before{background:linear-gradient(135deg,#55A7FF,#D783FF)}
 .index-tags .tg,.alphatag{--tag-color:#7A91A8}
-.index-tags .tg.r34-general,.alphatag.r34-general,.tagfilters .general{--tag-color:#55A7FF;--r34-tag:#55A7FF}
-.index-tags .tg.r34-artist,.alphatag.r34-artist,.tagfilters .artist{--tag-color:#E36C6C;--r34-tag:#E36C6C}
-.index-tags .tg.r34-character,.alphatag.r34-character,.tagfilters .character{--tag-color:#68C76F;--r34-tag:#68C76F}
-.index-tags .tg.r34-copyright,.alphatag.r34-copyright,.tagfilters .copyright{--tag-color:#D675D6;--r34-tag:#D675D6}
-.index-tags .tg.r34-metadata,.alphatag.r34-metadata,.tagfilters .metadata{--tag-color:#F5A24A;--r34-tag:#F5A24A}
+.index-tags .tg.r34-general,.alphatag.r34-general,.tagcategories .general{--tag-color:#55A7FF;--r34-tag:#55A7FF}
+.index-tags .tg.r34-artist,.alphatag.r34-artist,.tagcategories .artist{--tag-color:#E36C6C;--r34-tag:#E36C6C}
+.index-tags .tg.r34-character,.alphatag.r34-character,.tagcategories .character{--tag-color:#68C76F;--r34-tag:#68C76F}
+.index-tags .tg.r34-copyright,.alphatag.r34-copyright,.tagcategories .copyright{--tag-color:#D675D6;--r34-tag:#D675D6}
+.index-tags .tg.r34-metadata,.alphatag.r34-metadata,.tagcategories .metadata{--tag-color:#F5A24A;--r34-tag:#F5A24A}
 .index-tags .tg.r34-unknown,.alphatag.r34-unknown{--tag-color:var(--muted);--r34-tag:var(--muted)}
 /* 抽屉里的关注标签沿用同一个青色，让「这是在线那套词表」在两处一致。 */
-.chip.online{border-color:color-mix(in srgb,#5AC8D8 42%,transparent);background:color-mix(in srgb,#5AC8D8 10%,transparent)}.tg.general,.alphatag.general,.tagfilters .general{--tag-color:#55A7FF}
-.index-tags .tg.artist,.alphatag.artist,.tagfilters .artist{--tag-color:#F1A454}
-.index-tags .tg.meta,.alphatag.meta,.tagfilters .meta{--tag-color:#7F909E}
-.index-tags .tg.relationship,.alphatag.relationship,.tagfilters .relationship{--tag-color:#F1A454}
-.index-tags .tg.role,.alphatag.role,.tagfilters .role{--tag-color:#ED78AF}
-.index-tags .tg.appearance,.alphatag.appearance,.tagfilters .appearance{--tag-color:#A989F5}
-.index-tags .tg.scene,.alphatag.scene,.tagfilters .scene{--tag-color:#53B8A4}
-.index-tags .tg.story,.alphatag.story,.tagfilters .story{--tag-color:#E19A5B}
-.index-tags .tg.position,.alphatag.position,.tagfilters .position{--tag-color:#D66E8D}
+.chip.online{border-color:color-mix(in srgb,#5AC8D8 42%,transparent);background:color-mix(in srgb,#5AC8D8 10%,transparent)}.tg.general,.alphatag.general,.tagcategories .general{--tag-color:#55A7FF}
+.index-tags .tg.artist,.alphatag.artist,.tagcategories .artist{--tag-color:#F1A454}
+.index-tags .tg.meta,.alphatag.meta,.tagcategories .meta{--tag-color:#7F909E}
+.index-tags .tg.relationship,.alphatag.relationship,.tagcategories .relationship{--tag-color:#F1A454}
+.index-tags .tg.role,.alphatag.role,.tagcategories .role{--tag-color:#ED78AF}
+.index-tags .tg.appearance,.alphatag.appearance,.tagcategories .appearance{--tag-color:#A989F5}
+.index-tags .tg.scene,.alphatag.scene,.tagcategories .scene{--tag-color:#53B8A4}
+.index-tags .tg.story,.alphatag.story,.tagcategories .story{--tag-color:#E19A5B}
+.index-tags .tg.position,.alphatag.position,.tagcategories .position{--tag-color:#D66E8D}
 /* 标签云里的标签比卡片上的大一档：这一页它们是主体，不是附注。这三行原先写在
    openIndex 的模板里当内联 style，于是同一个控件的外观有两个来源，改一次要
    两处都记得。 */
@@ -86,22 +87,30 @@ body.entity-open .index{overflow-x:visible}
 .index .index-tags .tg:hover{border-color:color-mix(in srgb,var(--tag-color) 62%,transparent);
   background:color-mix(in srgb,var(--tag-color) 13%,transparent)}
 .index .index-tags .tg.selected,.alphatag.selected{background:var(--picked);color:var(--ink)}
-.alphabet{display:grid;gap:22px}.alphagroup{border-top:1px solid var(--line-soft);padding-top:14px}
-.alphagroup:first-child{border-top:0}.alphagroup h3{margin:0 0 10px;font-size:var(--fs-xl);color:var(--ink-2)}
-.alphalist{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:5px 18px}
-.alphatag{display:flex;align-items:center;justify-content:flex-start;gap:9px;border:0;background:transparent;
-  color:var(--ink-2);padding:7px 8px;border-radius:var(--control-radius);text-align:left;cursor:pointer;min-width:0}
-.alphatag:hover{background:color-mix(in srgb,var(--tag-color) 9%,transparent);color:var(--ink)}/* nowrap 是省略号的前提：少了它 text-overflow 永远不触发，长标签改成折行，
+/* 字母表：每个首字一张卡，字头是卡的标题，右边挂这一组有几个。卡顶给吸顶的浮层让出
+   位置，浮层下排那排跳转键滚过来时卡的上沿正好落在浮层下面。 */
+.alphabet{display:grid;gap:16px}
+.alphagroup{padding:16px 20px 12px;border-radius:var(--floating-radius);background:var(--ground);
+  scroll-margin-top:calc(var(--topH) + 124px)}
+.alphagroup h3{display:flex;align-items:center;margin:0 0 8px;font-size:var(--fs-xl);color:var(--ink)}
+.alphalist{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:2px 16px}
+/* 一行一枚标签：36px 高、控件圆角，悬停抬主文字色 6% 的薄底，取的是排名行那一档身量。 */
+.alphatag{display:flex;align-items:center;justify-content:flex-start;gap:9px;height:36px;border:0;background:transparent;
+  color:var(--ink-2);padding:0 10px;border-radius:var(--control-radius);text-align:left;cursor:pointer;min-width:0}
+.alphatag:hover{background:color-mix(in srgb,var(--ink) 6%,transparent);color:var(--ink)}/* nowrap 是省略号的前提：少了它 text-overflow 永远不触发，长标签改成折行，
    同一行里的其它标签跟着被拉高，两列各行高度还对不齐。 */
 .alphatag span:first-of-type{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
 .alphatag .n{color:var(--muted);font-size:var(--fs-xs);flex:none}
-/* 表头一行放不下五样东西：标题、计数、两组开关、过滤框。挤在一行时每样都被压到
+/* 表头一行放不下四样东西：标题、计数、版式开关、过滤框。挤在一行时每样都被压到
    竖排两行，过滤框直接被压成 0 宽。窄屏改成标题与过滤框一行、开关另起一行；
-   开关自己 flex:none，宁可整组换行也不把「标签云」拆成两行。 */
+   开关自己 flex:none，宁可整组换行也不把它拆成两行。 */
 @media (max-width:760px){
   .index .ihead{flex-wrap:wrap}
-  .indexheading,#indexCount,.viewmodes button{white-space:nowrap}
+  .indexheading,#indexCount{white-space:nowrap}
   .index .ihead .geist-search{order:1}
   .index .ihead::after{content:"";order:2;flex-basis:100%;height:0}
-  .index .ihead .viewmodes,.index .ihead .iconswitch{order:3;flex:none}
+  .index .ihead .iconswitch{order:3;flex:none}
+  /* 公司格放宽一档是给标识换宽度，手机上 343px 只装得下一列，整块卡横着铺满，
+     标识却还是那 70px：这一档换不来更大的标识，只换来一屏三家。收回人格那一档，两列。 */
+  .igrid[data-cells="company"]{grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}
 }

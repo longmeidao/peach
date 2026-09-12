@@ -57,7 +57,7 @@
 .entitylinks .private{color:var(--muted);border-style:dashed}
 /* 圆盘本身不垫底色。X 这类内联品牌标记直接画在按钮上，垫一层 `--sunk` 只会让它比
    周围暗一档，看着像这条链接被禁用了——而图标要说的是「去哪」，不是「能不能点」。 */
-.entitylinkicon{width:20px;height:20px;border-radius:50%;background:transparent;display:grid;place-items:center;
+.entitylinkicon{width:20px;height:20px;border-radius:var(--badge-radius);background:transparent;display:grid;place-items:center;
   overflow:hidden;position:relative;flex:none}.entitylinkicon svg{width:16px;height:16px;stroke:currentColor;fill:none;
   stroke-width:2}
 /* favicon 是别人服务器上的位图，取不到时 `onerror` 会把 img 摘掉、露出下面的地球。
@@ -79,10 +79,9 @@
 [data-skeleton^="entity/"] .entitycollectionhead .skeleton{width:90px;height:20px}
 @media(max-width:600px){.entityskeletontext .alias .skeleton{margin-inline:auto}}
 .entitylinklabel{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-/* 卡底那条带：左边一枚小标签说这一排是谁，右边是横滚的同台艺人轨道。 */
+/* 卡底那条带：横滚的同台艺人轨道，这一排是谁由 aria-label 说，不另写一枚小标签。 */
 .entityfoot{display:flex;align-items:center;gap:16px;min-width:0;padding:12px 20px;
   border-top:1px solid var(--line-soft);background:var(--overlay-5)}
-.entityfootlabel{flex:none;font-size:var(--fs-xs);color:var(--muted)}
 .entitytagbar{position:sticky;top:var(--topH);z-index:61;display:flex;align-items:center;
   height:var(--filterH);margin:0 -16px;padding:9px 16px;background:transparent;
   border-bottom:1px solid transparent}
