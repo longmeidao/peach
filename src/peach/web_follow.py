@@ -21,6 +21,7 @@ from pathlib import Path
 from . import avatar_face, follow_assets, follow_providers
 from .follow import FollowSourceError
 from .follow_check import plan_check, run_check
+from .web_settings import follow_initial_days
 from .follow_discovery import (
     MAX_SUGGESTIONS, archive_suggestions, discover, discovery_plan, no_backoff,
     suggest_term, tag_suggestions,
@@ -838,7 +839,7 @@ def _profile_link_suggestions(rows, aliases: dict[str, str]) -> list[dict]:
                 "canonical": canonical,
                 "alias": handle,
                 "evidence": f"{PROVIDER_LABELS.get(row['provider'], row['provider'])}"
-                            f" 首楼的作者主页链接指向 {service}/{handle}",
+                            f" 首楼的创作者主页链接指向 {service}/{handle}",
             })
             if len(suggestions) >= MAX_ALIAS_SUGGESTIONS:
                 return suggestions
@@ -1263,7 +1264,7 @@ def _sorted_groups(groups: tuple, sort: str, direction: str) -> tuple:
 FOLLOW_SUGGEST_GROUPS = (
     ("followed", "已关注"),
     ("archive", "归档站的创作者"),
-    ("tag_artist", "Rule34.xxx 的作者"),
+    ("tag_artist", "Rule34.xxx 的创作者"),
     ("tag", "Rule34.xxx 标签"),
 )
 
@@ -1373,11 +1374,6 @@ def q_follow(contract, args) -> dict:
         sort = "new"
     # 认不出的方向按这一列的常态读：时间、热度、时长问的都是「最靠前的先看」。
     direction = "asc" if str(args.get("dir") or "") == "asc" else "desc"
-    try:
-        unread_days = max(0, min(int(args.get("unread_days") or 0), 3650))
-    except (TypeError, ValueError):
-        unread_days = 0
-    unread_cutoff = time.time() - unread_days * 86400 if unread_days else None
     credential_store = _credential_store(contract)
     credential_providers = frozenset(
         provider for provider in CREDENTIAL_GUIDE
@@ -1439,13 +1435,6 @@ def q_follow(contract, args) -> dict:
         counts: dict[str, int] = {}
         for item in counted:
             status = str(item.status)
-            if status == "new" and unread_cutoff is not None:
-                stamp = item.published_at or item.first_seen_at
-                try:
-                    if stamp and __import__('datetime').datetime.fromisoformat(str(stamp).replace('Z', '+00:00')).timestamp() < unread_cutoff:
-                        continue
-                except (TypeError, ValueError, OverflowError):
-                    pass
             counts[status] = counts.get(status, 0) + 1
     suggestions = _suggestions(contract, sources)
     return {
@@ -1456,7 +1445,6 @@ def q_follow(contract, args) -> dict:
         "suggestions": suggestions,
         "groups": groups,
         "counts": {status: int(counts.get(status, 0)) for status in _STATUSES},
-        "unread_days": unread_days,
         # 排序回一份：页面是从 URL 读的，两边对不上时以服务端这份为准。
         "sort": sort,
         "dir": direction,
@@ -1669,6 +1657,7 @@ def _check_payload(result) -> dict:
         # 就是因为界面从来没说过这类数字。
         "skipped": fetch.skipped,
         "skipped_compilations": fetch.skipped_compilations,
+        "history_skipped": result.history_skipped,
         # 列表判不出来、额外抓了详情页的条数。这是唯一会放大请求数的路径。
         "probed": fetch.probed,
         # 证据没存下来不算检查失败，但界面必须说出来，不能悄悄少一份原始响应。
@@ -1686,6 +1675,7 @@ def _run_follow_check(contract, body, job_id=None) -> dict:
     # （rule34video 的作者页一页 24 条，实际 61 页）。用户点一次，往前挪一页。
     older = bool(body.get("older"))
     credentials = _credential_store(contract)
+    initial_days = follow_initial_days(contract.database)
     with contract.database.read_connection() as connection:
         rows = plan_check(_store(contract, connection), credentials,
                           source_id=source_id, older=older,
@@ -1707,7 +1697,8 @@ def _run_follow_check(contract, body, job_id=None) -> dict:
         _backfill_profile_links(row, credentials, writer)
         result = _check_payload(run_check(
             row, credentials=credentials, writer=writer,
-            connector_factory=build_connector, older=older, progress=progress))
+            connector_factory=build_connector, older=older, progress=progress,
+            initial_days=initial_days))
         result["author"] = _author_display_name(row)
         results.append(result)
         progress()

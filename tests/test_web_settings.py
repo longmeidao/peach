@@ -93,7 +93,8 @@ class SettingsRoundTripTests(unittest.TestCase):
     def test_an_unset_profile_reads_the_default_order(self):
         self.assertEqual(q_settings(self.contract),
                          {"sidebarOrder": list(DEFAULT_SIDEBAR_ORDER),
-                          "metadataRefreshDays": web_settings.DEFAULT_METADATA_REFRESH_DAYS})
+                          "metadataRefreshDays": web_settings.DEFAULT_METADATA_REFRESH_DAYS,
+                          "followInitialDays": 30})
 
     def test_the_metadata_refresh_period_round_trips_and_rejects_odd_values(self):
         """这个数直接决定服务端要不要出网重取头像，坏载荷不能把它变成 1 秒或 1 天。"""
@@ -116,9 +117,19 @@ class SettingsRoundTripTests(unittest.TestCase):
         order = ["", "follow", "tags", "trash"]
         self.assertEqual(w_settings(self.contract, {"sidebarOrder": order}),
                          {"ok": True, "sidebarOrder": order,
-                          "metadataRefreshDays": web_settings.DEFAULT_METADATA_REFRESH_DAYS})
+                          "metadataRefreshDays": web_settings.DEFAULT_METADATA_REFRESH_DAYS,
+                          "followInitialDays": 30})
         self.assertEqual(q_settings(self.contract)["sidebarOrder"], order)
         self.assertEqual(self._stored_json()["sidebarOrder"], order)
+
+    def test_initial_history_range_is_persisted_without_changing_other_preferences(self):
+        w_settings(self.contract, {"sidebarOrder": ["", "tags"]})
+        for days in (0, 7, 30, 90):
+            self.assertEqual(w_settings(self.contract, {"followInitialDays": days})['followInitialDays'], days)
+            self.assertEqual(web_settings.follow_initial_days(self.contract), days)
+        self.assertEqual(q_settings(self.contract)['sidebarOrder'], ['', 'tags'])
+        for invalid in (-1, True, None, 'invalid', 3650):
+            self.assertEqual(w_settings(self.contract, {"followInitialDays": invalid})['followInitialDays'], 30)
 
     def test_a_write_normalises_before_it_lands(self):
         """坏载荷不能进账本——存进去之后每次读都要再挡一遍。"""
@@ -220,6 +231,19 @@ class ContractRegistrationTests(unittest.TestCase):
         html = (Path(__file__).resolve().parents[1] / "web" / "index.html").read_text(encoding="utf-8")
         self.assertIn('<b>头像与站点图标刷新</b>', html)
         self.assertIn('id="metadataRefreshSetting"', html)
+
+    def test_initial_history_choices_are_in_settings_and_match_the_server(self):
+        import re
+        root = Path(__file__).resolve().parents[1]
+        page = (root / 'web/app.js').read_text(encoding='utf-8')
+        options = re.search(r'const FOLLOW_INITIAL_RANGE_OPTIONS=\[(.*?)\];', page, re.S).group(1)
+        self.assertEqual(tuple(int(value) for value in re.findall(r"\['(\d+)',", options)),
+                         web_settings.FOLLOW_INITIAL_DAYS)
+        self.assertIn('body:JSON.stringify({followInitialDays:value})', page)
+        self.assertNotIn('data-follow-unread-days', page)
+        html = (root / 'web/index.html').read_text(encoding='utf-8')
+        self.assertIn('<b>首次采集历史范围</b>', html)
+        self.assertIn('id="followInitialDaysSetting"', html)
 
 if __name__ == "__main__":
     unittest.main()

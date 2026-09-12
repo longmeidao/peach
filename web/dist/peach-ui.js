@@ -4907,14 +4907,14 @@ function ea(e) {
 		"私有导出"
 	], "tastesummaries")}<section class="tastehero"><div class="insightcopy"><span>浏览器画像</span><div class="skeleton skeleton-radar"></div></div><div class="tastebars skeleton-lines">${$(Ji(), 4)}</div></section>${Qi("口味分析")}<div class="board-activity-charts">${Qi("浏览活动")}${Qi("时间分布")}</div>${Qi("标签")}</div>`;
 	else if (e === "/follow-manage") t = `<div class="follow followmanage"><div class="fmanageoverview">${[
-		"关注作者",
+		"关注创作者",
 		"启用来源",
 		"检查失败",
 		"未看更新"
 	].map((e) => `<div><span>${e}</span><b>${Q()}</b></div>`).join("")}</div>${Xi([
 		"关注列表",
 		"添加关注",
-		"来源管理"
+		"来源和凭证"
 	], "follow-workspace-switch")}<div class="fmain"><section class="fsec" data-follow-panel="sources"><div class="fsechead"><h3>关注列表</h3>${Q("30%")}</div><div class="board-follow-selection">${Q("45%")}</div><div class="frows fsources" data-layout="default"><div class="board-follow-list">${$(`<article class="fauthor"><div class="fauthorhead">${Q("40%")}</div><div class="skeleton-lines">${$(Ji(), 2)}</div></article>`, 4)}</div></div></section></div></div>`;
 	else if (e === "/configuration") t = `<div class="configpage">${Xi([
 		"通用",
@@ -4978,7 +4978,7 @@ function ia({ kind: e = "catalog", filtered: t = !1, jav: n = !1, configurable: 
 	if (e !== "catalog") {
 		let t = (i ? {
 			tags: "标签",
-			performers: "作者"
+			performers: "创作者"
 		}[e] : "") || {
 			tags: "标签",
 			performers: "艺人",

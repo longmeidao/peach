@@ -9,13 +9,14 @@ Web 与命令行共用这一份。各写一遍必然分岔：其中一份漏掉�
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import datetime, timezone
+import json
+from dataclasses import dataclass, replace
+from datetime import datetime, timedelta, timezone
 from typing import Mapping
 
 from .follow import FollowHistoryEnd, FollowSourceError
 from .follow_secrets import CredentialError
-from .follow_sources import SourceFetch, enrichment_mark
+from .follow_sources import SourceFetch, enrichment_mark, within_history
 from .follow_store import RecordOutcome
 
 
@@ -41,6 +42,7 @@ class CheckResult:
     fetch: SourceFetch | None = None
     outcome: RecordOutcome | None = None
     author_alias_learned: dict | None = None
+    history_skipped: int = 0
 
 
 def plan_check(store, credentials, *, source_id: int | None = None,
@@ -87,7 +89,7 @@ def build_connector_for(provider: str, credentials, connector_factory, *,
 
 def run_check(row: Mapping, *, credentials, writer, connector_factory,
               older: bool = False, moment: datetime | None = None,
-              progress=None) -> CheckResult:
+              progress=None, initial_days: int = 0) -> CheckResult:
     """检查一条来源。
 
     `row` 是 `plan_check` 给出的那种字典。`writer` 是零参可调用对象，返回一个产出
@@ -97,13 +99,26 @@ def run_check(row: Mapping, *, credentials, writer, connector_factory,
     source_id = int(row["id"])
     provider, ref = str(row["provider"]), str(row["ref"])
     page = (int(row["backfill_page"] or 0) + 1) if older else 0
+    metadata = json.loads(row.get("metadata_json") or '{}')
+    replay_first = older and bool(metadata.get('initial_history_first_page_pending'))
+    if replay_first:
+        page = 0
     base = {"source_id": source_id, "provider": provider, "ref": ref,
             "label": str(row["label"] or ""), "page": page, "older": older}
-    force = bool(row.get("force_media_reparse"))
+    force = bool(row.get("force_media_reparse")) or replay_first
+    history_after = metadata.get('initial_history_after')
+    if 'initial_history_after' not in metadata and not row.get('last_checked_at'):
+        history_after = ((moment - timedelta(days=initial_days)).isoformat()
+                         if initial_days and not older else '')
+        with writer() as store:
+            store.merge_source_metadata(source_id, {'initial_history_after': history_after}, moment)
+    cutoff = datetime.fromisoformat(history_after) if history_after and not older else None
     try:
         connector = build_connector_for(
             provider, credentials, connector_factory,
             enrich_skip=frozenset(row.get("enrich_skip") or ()))
+        connector.history_after = cutoff
+        connector.history_skipped = 0
         if progress is not None:
             connector.progress = progress
         fetch = connector.fetch(
@@ -120,14 +135,22 @@ def run_check(row: Mapping, *, credentials, writer, connector_factory,
         return _record_failure(writer, base, error, moment, "unauthorized")
     except FollowSourceError as error:
         return _record_failure(writer, base, error, moment, "error")
+    candidates = tuple(candidate for candidate in fetch.candidates if within_history(candidate, cutoff))
+    history_skipped = getattr(connector, 'history_skipped', 0) + len(fetch.candidates) - len(candidates)
+    fetch = replace(fetch, candidates=candidates)
     with writer() as store:
+        if not fetch.not_modified:
+            if replay_first:
+                store.merge_source_metadata(source_id, {'initial_history_first_page_pending': False}, moment)
+            elif history_skipped and page == 0 and 'initial_history_first_page_pending' not in metadata:
+                store.merge_source_metadata(source_id, {'initial_history_first_page_pending': True}, moment)
         outcome = store.record(
             source_id, fetch,
             creator_aliases=store.creator_aliases(row["entity_id"]),
             moment=moment, page=page)
         learned = store.learn_official_author_alias(provider, ref, fetch.candidates)
     return CheckResult(**base, fetch=fetch, outcome=outcome,
-                       author_alias_learned=learned)
+                       author_alias_learned=learned, history_skipped=history_skipped)
 
 
 def _record_failure(writer, base: dict, error: Exception, moment: datetime,

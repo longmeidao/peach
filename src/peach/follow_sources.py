@@ -168,6 +168,19 @@ class SourceFetch:
     raw_body: bytes | None = field(default=None, repr=False, compare=False)
 
 
+def within_history(candidate: FollowCandidate, after: datetime | None) -> bool:
+    """有限历史范围只排除日期明确且早于边界的条目。"""
+    if after is None or not candidate.published_at:
+        return True
+    try:
+        stamp = datetime.fromisoformat(str(candidate.published_at).replace('Z', '+00:00'))
+    except (TypeError, ValueError, OverflowError):
+        return True
+    if stamp.tzinfo is None:
+        stamp = stamp.replace(tzinfo=timezone.utc)
+    return stamp >= after
+
+
 def _iso_utc(value: datetime) -> str:
     if value.tzinfo is None:
         value = value.replace(tzinfo=timezone.utc)
@@ -409,6 +422,14 @@ class _BaseConnector:
         #: 可断言又不真的把测试拖成几十秒。
         self.sleeper = sleeper
         self.progress = None
+        self.history_after = None
+        self.history_skipped = 0
+
+    def within_history(self, candidate: FollowCandidate) -> bool:
+        accepted = within_history(candidate, self.history_after)
+        if not accepted:
+            self.history_skipped += 1
+        return accepted
 
     def _headers(self) -> dict[str, str]:
         return {"User-Agent": USER_AGENT}
@@ -575,6 +596,7 @@ class _BaseConnector:
         """
         limit = self.enrich_budget
         skipped = self.enrich_skip
+        candidates = tuple(candidate for candidate in candidates if self.within_history(candidate))
         if not limit:
             return tuple(candidates), 0
         spent = 0
@@ -751,6 +773,8 @@ class KemonoConnector(_BaseConnector):
         kept, skipped, probed = [], 0, 0
         for post in posts[: self.max_items]:
             if not isinstance(post, dict):
+                continue
+            if not self.within_history(self._candidate(post, service, user)):
                 continue
             verdict = self._delivers_resource(post)
             if verdict is None and probed < self.max_probes:
@@ -1035,6 +1059,8 @@ class Rule34VideoConnector(_BaseConnector):
         candidates: list[FollowCandidate] = []
         skipped_compilations = probed = 0
         for candidate in listed:
+            if not self.within_history(candidate):
+                continue
             enriched = candidate
             if probed < self.max_probes and candidate.url:
                 probed += 1
@@ -1886,6 +1912,8 @@ class F95ZoneConnector(_BaseConnector):
                 "f95zone 线程页没有解析出任何回复：可能需要登录，或页面结构已变")
         enriched = []
         for candidate in candidates:
+            if not self.within_history(candidate):
+                continue
             links = [str(value) for value in candidate.extra.get("links", [])]
             image_items = f95_attachment_media_items(candidate.extra)
             media_items = tuple(image_items) + self._gofile_media(links)

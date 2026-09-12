@@ -3167,7 +3167,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('<span class="fstate" aria-live="polite"></span></article>`;')
         self.assertPageContains('.followitem .meta .s{min-height:21px}')
         # 真实页面就是这两个类名与这张网格，骨架照抄才可能不位移。
-        self.assertPageContains('<div class="tier followauthors" aria-label="按作者筛选">')
+        self.assertPageContains('<div class="tier followauthors" aria-label="按创作者筛选">')
         self.assertPageContains('''<div class="tagbar followfilters" aria-label="${mediaControl?'媒体与关注筛选':'关注筛选'}">''')
         self.assertPageContains(
             ".followlist{display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--tile),1fr));"

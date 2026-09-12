@@ -63,18 +63,18 @@ let barsFacets=null,barsScopedCreators=[];
 let adsBatch=null,loadRequestSeq=0,listLoading=false;
 let followData=null,followRuntime=null,followCredentials=null,followFilter='',followBusy=false,
   followManageSort='checked',followManageDir='desc';
-/* 关注列表四列各自的方向词与默认方向。作者名称是文本列，「从多到少」在它身上
+/* 关注列表四列各自的方向词与默认方向。创作者名称是文本列，「从多到少」在它身上
    不成立，只说正倒。 */
-const FOLLOW_SORT_LABELS={checked:'检查时间',added:'添加时间',name:'作者名称',sources:'来源数量'};
+const FOLLOW_SORT_LABELS={checked:'检查时间',added:'添加时间',name:'创作者名称',sources:'来源数量'};
 const FOLLOW_SORT_DIR_WORDS={checked:['从近到远','从远到近'],added:['从近到远','从远到近'],
   name:['倒序','正序'],sources:['从多到少','从少到多']};
 const FOLLOW_SORT_DEFAULT_DIR={checked:'desc',added:'desc',name:'asc',sources:'desc',source:'asc',provider:'asc',status:'asc'};
-/* 工具栏下拉与表格表头是同一份维度：前四个按作者分组比，后三个按单条来源比。 */
-const FOLLOW_SORT_OPTIONS=[['checked','检查时间'],['added','添加时间'],['name','作者名称'],['sources','来源数量'],
+/* 工具栏下拉与表格表头是同一份维度：前四个按创作者分组比，后三个按单条来源比。 */
+const FOLLOW_SORT_OPTIONS=[['checked','检查时间'],['added','添加时间'],['name','创作者名称'],['sources','来源数量'],
   ['source','来源名称'],['provider','站点'],['status','状态']];
 /* 值是天数，`0` 表示不限。选项文本自己说清量的是时间：这一行不挂文字标签，收起时
    框里只剩当前这一项，「全部」放在时钟图标旁边读不出是全部什么。 */
-const FOLLOW_UNREAD_RANGE_OPTIONS=[['0','不限时间'],['7','最近 7 天'],['30','最近 30 天'],
+const FOLLOW_INITIAL_RANGE_OPTIONS=[['0','不限时间'],['7','最近 7 天'],['30','最近 30 天'],
   ['90','最近 90 天']];
 /* 同 `sortButtonHtml`：这枚键的无障碍名称说的是点下去会得到什么，所以取反方向的词。 */
 const followSortLabel=()=>`按${FOLLOW_SORT_LABELS[followManageSort]||'关注列表'}${
@@ -200,9 +200,9 @@ const pageSkeletonHtml=(label,{cards=false,className='',variant='',count,fill}={
     gridClass:className.includes('follow-content-skeleton')&&new URLSearchParams(location.search).get('media')==='images'?'followlist followphotowall':'',
     ...(count?{count}:{}),...(fill===undefined?{}:{fill})});
 /* 关注页的骨架跟首页共用海报卡那套几何：网格算式、卡内每一格都一样，只有归属行
-   高一点（`.followitem .meta .s` 有 min-height）。上面是它自己的作者行、题材行和那块
+   高一点（`.followitem .meta .s` 有 min-height）。上面是它自己的创作者行、题材行和那块
    两排的玻璃浮层，形状取 `.tier`、`.tagbar`、`.count` 本身，所以和首页顶栏那两排是
-   同一枚：作者行铺 `av`、题材行铺 `brandpill`，跟内容回来之后的形状一致。外框
+   同一枚：创作者行铺 `av`、题材行铺 `brandpill`，跟内容回来之后的形状一致。外框
    要自己写全：`mountFilterFrame` 是运行时才建的，骨架进不了那条路径，少了它上下两排
    会被画成两块各带圆角的浮层，等内容回来又并成一块。 */
 const followSkeletonHtml=(label='正在读取关注内容')=>`<div class="follow">
@@ -478,7 +478,7 @@ const THEME_OPTIONS=[['system','跟随系统','monitor'],['light','浅色','sun'
 const DEFAULT_SETTINGS={batchSize:60,defaultSort:'seed',sortDefaultsVersion:3,hoverDelaySeconds:5,seekSeconds:10,searchHistoryLimit:10,relatedLimit:20,javLayout:'big',javImage:'cover',followLayout:'default',peopleLayout:'big',photoSize:'small',ambientMode:true,miniplayer:true,theaterMode:false,theme:'system',groupCollapse:true,sidebarOrder:DEFAULT_SIDEBAR_ORDER};
 let appSettings={...DEFAULT_SETTINGS};
 try{appSettings={...DEFAULT_SETTINGS,...JSON.parse(localStorage.getItem(SETTINGS_KEY)||'{}')}}catch(_e){}
-appSettings.unreadDays=Number.isFinite(+appSettings.unreadDays)?Math.max(0,+appSettings.unreadDays):0;
+appSettings.followInitialDays=[0,7,30,90].includes(+appSettings.followInitialDays)?+appSettings.followInitialDays:30;
 const allowedSetting=(value,allowed,fallback)=>allowed.includes(value)?value:fallback;
 delete appSettings.rotateMinutes;
 /* 迁移只碰默认值本身：把界面上已经不存在的键换成当前键，用户主动选过的排序不动。
@@ -592,6 +592,8 @@ const SETTING_SELECTS=[
     ['180','每 3 小时'],['360','每 6 小时'],['720','每 12 小时'],['1440','每天']],
     ()=>'0',value=>saveFollowSchedule(+value)],
   /* 服务端按这个数决定要不要重取，所以它跟着账本走（/api/settings），本地那份只是镜像。 */
+  ['followInitialDaysSetting','首次采集历史范围',FOLLOW_INITIAL_RANGE_OPTIONS,
+    ()=>appSettings.followInitialDays,value=>saveFollowInitialDays(+value)],
   ['metadataRefreshSetting','头像与站点图标刷新',[['7','每周'],['30','每月'],['90','每季'],['0','从不']],
     ()=>appSettings.metadataRefreshDays,
     value=>{appSettings.metadataRefreshDays=allowedSetting(+value,METADATA_REFRESH_DAYS,30);saveSettings();
@@ -628,6 +630,7 @@ function syncSettingsPanel(){
   renderJavImageSetting();
   renderSidebarOrderSetting();
   loadFollowScheduleSetting();
+  void loadSyncedSettings();
   void loadVideoThumbnailSetting();
 }
 let settingsReturnFocus=null,settingsTransition=0;
@@ -855,6 +858,18 @@ const actionReceipt=(message,{undo=null,timeout=undo?8000:6000}={})=>{
 };
 const actionFailure=(message,error)=>toast(
   {text:`${message}失败：${error?.message||'请重试'}`},{warn:true});
+
+async function saveFollowInitialDays(value){
+  const field=$('#followInitialDaysSetting .gselect'),state=$('#followInitialDaysState');
+  if(field.getAttribute('aria-busy')==='true')return;
+  setActionBusy(field);state.textContent='正在保存…';
+  try{
+    const saved=await api('/api/settings',{method:'POST',body:JSON.stringify({followInitialDays:value})});
+    appSettings.followInitialDays=saved.followInitialDays;saveSettings();
+    state.textContent='已保存，适用于尚未开始采集的来源。';actionReceipt('已保存首次采集历史范围');
+  }catch(error){field.value=String(appSettings.followInitialDays);state.textContent=error.message;actionFailure('保存首次采集历史范围',error)}
+  finally{setActionBusy(field,false)}
+}
 
 /* 设置弹层最后一格装的是配置页：媒体文件夹、端口、代理、更新，讲的都是跑着 Peach
    的那台电脑，不是这个浏览器。别的设备打开设置照样看得见这一格，里面换成一句话说清
@@ -5275,9 +5290,9 @@ const fsrcProviders=new Set(),fsrcUnchecked=new Set();
 /* 关注页一次取一屏。counts 是全库口径（「未看 2292」），groups 只有这一页——
    两个数并排显示时看起来像自相矛盾，实际是两个口径，所以列表底部要能继续加载。 */
 const FOLLOW_PAGE=300;
-/* 作者、来源和标签一起交给服务端。只让状态走服务端、这三个在浏览器里筛的话，
+/* 创作者、来源和标签一起交给服务端。只让状态走服务端、这三个在浏览器里筛的话，
    药丸上的数字（全库口径）和列表（筛过的这几页）就是两套口径，换个筛选条件
-   数字纹丝不动；而且选个冷门作者，一页 300 条里可能只剩两条，得反复点加载更多。 */
+   数字纹丝不动；而且选个冷门创作者，一页 300 条里可能只剩两条，得反复点加载更多。 */
 const followPageUrl=offset=>
   `/api/follow?limit=${FOLLOW_PAGE}&offset=${offset}`
   +(followFilter?`&status=${followFilter}`:'')
@@ -5575,7 +5590,7 @@ async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=fals
   const badges=followBadges({primary:item,variants:[],duplicates:[],has_wip:item.variant_kind==='wip'});
   // 卡片只消费 general 内容投影；详情保留来源记录的全部类型，并按类型着色。
   const tags=followDetailTags(item).map(tag=>followTagChip(item,tag,'button')).join('');
-  const author=followAuthorName(authorSources)||item.author||item.source_label||'作者未取得';
+  const author=followAuthorName(authorSources)||item.author||item.source_label||'创作者未取得';
   const postedBy=item.author&&foldName(item.author)!==foldName(author)?item.author:'';
   const mediaIssue=followMediaIssue(item);
   /* 舞台就近展开：插在被点击那张卡片所在的一行之后，而不是整个列表之前。
@@ -5787,7 +5802,7 @@ function followCard(group,authorSources=[]){
         <button data-follow-status="${item.id}" data-to="ignored" title="忽略" aria-label="忽略"${item.status==='ignored'?' disabled':''}>${icon('eye-off')}</button>
         ${item.status==='seen'||item.status==='ignored'?`<button data-follow-status="${item.id}" data-to="new" title="恢复未看" aria-label="恢复未看">${icon('rotate-ccw')}</button>`:''}
       </div></div></div>
-    <div class="meta"><span class="mav fsourceavatar" title="作者头像">${followAuthorAvatar(authorSources)}</span>
+    <div class="meta"><span class="mav fsourceavatar" title="创作者头像">${followAuthorAvatar(authorSources)}</span>
       <div class="mtext"><button class="t cardtitle" data-follow-detail="${item.id}">${esc(item.title)}</button>
         <div class="s mono"><span>${followWhen(item)}</span>${badges?`<span class="fbadges">${badges}</span>`:''}</div>
         ${tags?`<div class="ctags">${tags}</div>`:''}${mediaIssue?`<span class="fnote followmediaissue">${esc(mediaIssue)}</span>`:''}</div></div>
@@ -5806,13 +5821,15 @@ function followCheckBits(report){
   const quiet=rows.filter(r=>r.ok&&!r.added&&!r.updated).length;
   const skipped=rows.reduce((n,r)=>n+(r.skipped||0),0);
   const compilations=rows.reduce((n,r)=>n+(r.skipped_compilations||0),0);
+  const history=rows.reduce((n,r)=>n+(r.history_skipped||0),0);
   const bits=[];
   if(added)bits.push(`新增 <b>${added}</b> 条`);
   if(updated)bits.push(`更新 <b>${updated}</b> 条`);
   // 过滤掉多少也要说：不然用户只看到条目变少，分不清是被过滤了还是根本没抓到。
   if(skipped-compilations)bits.push(`跳过 <b>${skipped-compilations}</b> 条无资源`);
   if(compilations)bits.push(`排除 <b>${compilations}</b> 个超大合集`);
-  // 回查是唯一会放大请求数的路径，报出来才看得出某个作者是不是每帖都要多打一次站点。
+  if(history)bits.push(`跳过 <b>${history}</b> 条超出首次采集范围的历史内容`);
+  // 回查是唯一会放大请求数的路径，报出来才看得出某个创作者是不是每帖都要多打一次站点。
   const probed=rows.reduce((n,r)=>n+(r.probed||0),0);
   if(probed)bits.push(`回查 <b>${probed}</b> 条`);
   if(quiet)bits.push(`${quiet} 个来源没有更新`);
@@ -5893,7 +5910,7 @@ function readFollowView(){
   followSort=FOLLOW_FEED_SORTS.some(([key])=>key===sort)?sort:'new';
   followDir=params.get('dir')==='asc'?'asc':'desc';
 }
-/* 作者、来源两行是多选：按下的算「只看这些」，一个都不按就是全部；标签行是「同时具备」的
+/* 创作者、来源两行是多选：按下的算「只看这些」，一个都不按就是全部；标签行是「同时具备」的
    交集（服务端如此判）。这一页是浏览用的，不配批量选择键，想回到不筛就把按下的几个抬起来。 */
 /* 这一档排在筛选条最左端，跟资料页那一组同一个位置、同一块玻璃：它答的是「这一页现在
    摆的是哪一类东西」，比它右边那些「这一类里看哪些」粗一级。摆到下排右端的话，它挨着
@@ -5906,11 +5923,11 @@ function followMediaControl(counts){
 }
 /* 当前按下的筛选条件，四个维度收成一张清单。这几排药丸是横滚的，按下去的那几枚常常
    被滚到看不见的地方——「怎么只剩三条更新」的答案就藏在那儿。顺序照筛选条从粗到细：
-   作者、来源、题材、标签。 */
+   创作者、来源、题材、标签。 */
 function followConditions({authors,providers,works}={}){
   const rows=[];
   const push=(set,kind,key,label)=>rows.push({set,kind,key,label:String(label||key)});
-  followAuthors.forEach(key=>push(followAuthors,'作者',key,(authors&&authors.get(key)||{}).name));
+  followAuthors.forEach(key=>push(followAuthors,'创作者',key,(authors&&authors.get(key)||{}).name));
   followProviders.forEach(key=>push(followProviders,'来源',key,providers&&providers.get(key)));
   followWorks.forEach(key=>push(followWorks,'题材',key,works&&works.get(key)));
   followTags.forEach(key=>push(followTags,'标签',key,key));
@@ -5930,7 +5947,7 @@ function followComboHtml(conditions){
 }
 /* 下排右端那一组：换一批、去问一遍来源，再是几枚排序键。
 
-   「换一批」在这里换的是上面那三排：作者、题材、标签都按本次访问的种子随机取，这一枚
+   「换一批」在这里换的是上面那三排：创作者、题材、标签都按本次访问的种子随机取，这一枚
    重掷种子再画一遍，不联网。要联网的是它右边那枚：去问一遍每个来源有没有新东西。
    两件事各一枚键——共用一枚的话，只想换一批看的人会顺手发起一轮抓取。两枚都是动作键，
    所以并排站在一起，中间不隔竖线：竖线分的是「动作」和「这批怎么摆」，不是每两枚都分。 */
@@ -5965,7 +5982,7 @@ function wireFollowRecheck(button){
     }
   };
 }
-/* 撤一条要重取：作者、来源、标签、题材都在服务端筛。四个维度各有自己的 Set，所以
+/* 撤一条要重取：创作者、来源、标签、题材都在服务端筛。四个维度各有自己的 Set，所以
    按键上带着 kind——同一个字符串在两个维度里都可能出现，只认 key 会撤错那一边。 */
 function wireFollowConditions(root,apply){
   if(!root)return;
@@ -5995,7 +6012,7 @@ function renderFollow(){
   const byId=new Map(sources.map(source=>[source.id,source]));
   const sourceOf=group=>byId.get(group.primary&&group.primary.source_id);
   /* 筛选条上能选什么来自服务端的全库口径 facets，不是这一页的 groups。按 groups 算
-     的话，选中一个作者之后服务端只回他的条目，作者栏就只剩他一个人，再也切不回去。 */
+     的话，选中一个创作者之后服务端只回他的条目，创作者栏就只剩他一个人，再也切不回去。 */
   const facets=followData.facets||{};
   const activeAuthors=new Set(facets.authors||[]);
   const providerLabels=new Map(sources.map(source=>[source.provider,source.provider_label]));
@@ -6011,13 +6028,13 @@ function renderFollow(){
     name:followAuthorName(list),sources:list,
   }]));
   const randomizedAuthors=followRandomOrder([...authors],row=>row[0]);
-  /* 作者行下面这一排是题材，位置和形状对着首页那排厂牌：那边第二排答的是「这是谁出的」，
+  /* 创作者行下面这一排是题材，位置和形状对着首页那排厂牌：那边第二排答的是「这是谁出的」，
      这边答的是「这是哪部作品」，都是先认出一个名字再决定看不看。只收来源自己记成
      copyright 的标签，词形猜不得——角色名和画师手柄在字面上跟作品名没有区别。
 
      取样也跟着首页走：那两排按本次访问的种子随机取，进一次换一批。按条数取前 24 的话，
      八十来个题材里永远只露出同样那二十几个，剩下的没有任何一条路径会把它们摆到眼前——
-     这排回答的是「接下来看什么」，不是「哪个最多」。作者行和标签行早就是这么取的。 */
+     这排回答的是「接下来看什么」，不是「哪个最多」。创作者行和标签行早就是这么取的。 */
   const workRows=followRandomOrder(facets.works||[],row=>row[0]).slice(0,ROW_FIRST);
   followWorks.forEach(key=>{
     if(!workRows.some(row=>row[0]===key))workRows.push([key,key,0]);
@@ -6033,7 +6050,7 @@ function renderFollow(){
   followProviders=new Set([...followProviders].filter(key=>providers.has(key)));
   // artist/character/copyright/metadata 不进入 general facets，但从在线标签索引点入后
   // 仍是有效筛选，不能因为顶部筛选条的口径更窄就把它从 URL 和界面删掉。
-  // 作者、来源和标签都已在服务端筛过，这里不再筛第二遍——两份同义的判定必然漂移。
+  // 创作者、来源和标签都已在服务端筛过，这里不再筛第二遍——两份同义的判定必然漂移。
   const mediaCounts={videos:0,images:0};
   groups.forEach(group=>followMediaKinds(group).forEach(kind=>
     mediaCounts[kind==='image'?'images':'videos']++));
@@ -6065,7 +6082,7 @@ function renderFollow(){
   $('#stats').innerHTML=`<div class="follow">
     <div class="followhead"><h2 class="disp pagetitle">关注</h2>
       <button class="fbtn fcheck" data-follow-manage>${icon('settings')}管理关注</button></div>
-    ${authors.size?`<div class="tier followauthors" aria-label="按作者筛选">${randomizedAuthors.map(([key,author])=>
+    ${authors.size?`<div class="tier followauthors" aria-label="按创作者筛选">${randomizedAuthors.map(([key,author])=>
       `<button class="av" data-follow-author="${esc(key)}" aria-pressed="${followAuthors.has(key)}">
         <span class="ring">${followAuthorAvatar(author.sources)}</span><span class="nm">${esc(author.name)}</span></button>`
       ).join('')}</div>`:''}
@@ -6080,9 +6097,9 @@ function renderFollow(){
     <div class="followlist${followMediaView==='images'?' followphotowall':''}">${visible.length?visible.map(group=>{
       const source=sourceOf(group),siblings=source&&authorSources.get(source.author_key)||[];
       return followCard(group,siblings)}).join('')
-      :groups.length?emptyState('search-x','当前筛选下没有更新','切换媒体类型、作者、来源或标签后再试。')
+      :groups.length?emptyState('search-x','当前筛选下没有更新','切换媒体类型、创作者、来源或标签后再试。')
       :sources.length?emptyState('rss','没有符合条件的更新','切换状态或来源筛选后再试。')
-      :emptyState('rss','还没有关注任何来源','添加作者或订阅来源后，更新会集中显示在这里。',{actions:'<button class="fbtn primary" data-follow-manage>添加关注</button>'})}</div>
+      :emptyState('rss','还没有关注任何来源','添加创作者或订阅来源后，更新会集中显示在这里。',{actions:'<button class="fbtn primary" data-follow-manage>添加关注</button>'})}</div>
     ${followData.has_more||sources.some(source=>source.can_backfill)?`<div class="followpagination">
       ${followData.has_more?`<span class="followpageaction"><button class="fbtn" data-follow-more>${icon('chevron-down')}加载更多</button></span>`:''}
       ${sources.some(source=>source.can_backfill)?`<span class="followpageaction"><button class="fbtn" data-follow-older>${icon('history')}抓更早的一页</button>
@@ -6146,7 +6163,7 @@ function renderFollow(){
     toggle(followProviders,button.dataset.followProvider);applyFollowView()});
   $('#stats').querySelectorAll('[data-follow-tag]').forEach(button=>button.onclick=()=>{
     toggle(followTags,button.dataset.followTag);applyFollowView()});
-  /* 题材跟作者、来源一样是「任一」：按下两枚是这两部作品都看，不是只看同时占两部的。 */
+  /* 题材跟创作者、来源一样是「任一」：按下两枚是这两部作品都看，不是只看同时占两部的。 */
   $('#stats').querySelectorAll('[data-follow-work]').forEach(button=>button.onclick=()=>{
     toggle(followWorks,button.dataset.followWork);applyFollowView()});
   $('#stats').querySelectorAll('[data-follow-manage]').forEach(button=>
@@ -6252,7 +6269,7 @@ async function openFollow(push=true,renderForDetail=false){
   if(push)route('/follow');
   if(location.pathname==='/follow')readFollowView();
   const surface=claimSurface(renderForDetail?surfacePath():'/follow');
-  /* 已经在这一页上、只是换了一档筛选或排序的话，骨架只盖浮层下面那块列表。页头、作者
+  /* 已经在这一页上、只是换了一档筛选或排序的话，骨架只盖浮层下面那块列表。页头、创作者
      行、题材行和那块玻璃此刻就能给出最终样子，它们从来没在等：整块铺骨架的代价是浮层
      连同上面两排一起先消失再出现——换一次排序，屏幕上大半的东西都闪一遍，而真正在等
      的只有列表里摆哪些东西。列表整个换掉而不是往里塞：`.followlist` 自己是网格容器，
@@ -6295,7 +6312,7 @@ const FOLLOW_SOURCE_SORTS={
   status:(a,b)=>followStatusRank(a)-followStatusRank(b)||bySourceLabel(a,b),
 };
 
-/* 同一个作者在不同站点上是多条来源、一个人。用户截图里 `LazyProcrastinator · fanbox`
+/* 同一个创作者在不同站点上是多条来源、一个人。用户截图里 `LazyProcrastinator · fanbox`
    出现两次（Kemono / Pawchive）、`lazyprocrastinator` 出现两次（Rule34Video /
    Rule34.xxx），四行读起来像四个人。归组用后端给的 `author_key`——那是实体 id
    或归一化后的名字，不在前端二次猜。
@@ -6314,12 +6331,12 @@ function followAuthorGroups(sources){
   const checked=group=>Math.max(...group.map(source=>Date.parse(source.last_checked_at||'')||0));
   const added=group=>Math.max(...group.map(source=>Date.parse(source.created_at||'')||0));
   /* 每条比较器写的都是该列的默认方向，`flip` 只在方向偏离默认时取反：写成
-     「asc 就取反」的话，作者名称默认本来就是正序，一进页面就被翻成倒序。
+     「asc 就取反」的话，创作者名称默认本来就是正序，一进页面就被翻成倒序。
      同值回退始终按名字正序，不跟着翻——否则「来源数量」里数量相同的那几个人
      每换一次方向就整段倒序一遍，看着像列表在乱跳。 */
   const flip=followManageDir===(FOLLOW_SORT_DEFAULT_DIR[followManageSort]||'desc')?1:-1;
   const byName=(a,b)=>name(a).localeCompare(name(b),'zh-CN',{numeric:true});
-  /* 按单条来源比的维度：先排每位作者名下的来源，作者之间再按各自排在最前的那条比。 */
+  /* 按单条来源比的维度：先排每位创作者名下的来源，创作者之间再按各自排在最前的那条比。 */
   const bySource=FOLLOW_SOURCE_SORTS[followManageSort];
   if(bySource){
     groups.forEach(group=>group.sort((a,b)=>flip*bySource(a,b)));
@@ -6347,8 +6364,8 @@ function followAvatarInitial(group){
   return (ascii?ascii[0]:Array.from(name)[0]||'?').toUpperCase();
 }
 
-/* 同一作者的官方来源优先提供头像，归档来源只回退。都取不到时明确用作者首字母，
-   不再从某条来源的中文显示标签切出“初”“一”之类与作者无关的字。 */
+/* 同一创作者的官方来源优先提供头像，归档来源只回退。都取不到时明确用创作者首字母，
+   不再从某条来源的中文显示标签切出“初”“一”之类与创作者无关的字。 */
 function followAuthorAvatar(group){
   const official=group.find(source=>source.official_avatar_url);
   const mirror=group.find(source=>source.avatar_url);
@@ -6377,7 +6394,7 @@ function followWorkPill([key,label,,icon,focus]){
     <span class="mk" data-fallback="${fallback}">${mark}</span>${esc(label)}</button>`;
 }
 
-/* 别名组只带规范名，头像在这位作者的来源上：按 author_key 找回来源再走同一个头像函数，
+/* 别名组只带规范名，头像在这位创作者的来源上：按 author_key 找回来源再走同一个头像函数，
    一条来源都没有时用规范名首字母。 */
 function followAliasAvatar(group){
   const sources=(followData?.sources||[]).filter(source=>source.author_key===`name:${group.canonical_key}`);
@@ -6387,12 +6404,12 @@ function followAliasAvatar(group){
   return `<span class="favatar none" title="没有可用头像">${esc(initial)}</span>`;
 }
 
-/* 分组标题要用作者本人的名字，不是某一条来源的标签。哪一段标签是人名由服务端一处
+/* 分组标题要用创作者本人的名字，不是某一条来源的标签。哪一段标签是人名由服务端一处
    判定（`author_name`）：`LazyProcrastinator · fanbox` 的「· fanbox」只说明他在哪个
    平台连载，F95 的 `Strauzek Collection [2026-09-04] [Mr_Strauz]` 则整串都是线程标题，
-   作者在末尾的方括号里。这里只在同一个人的几种写法之间挑一个，不再自己解析标签。
+   创作者在末尾的方括号里。这里只在同一个人的几种写法之间挑一个，不再自己解析标签。
    同名的几种写法里取大写最多的那个：`LazyProcrastinator` 比 `lazyprocrastinator`
-   更像作者自己写的名字。 */
+   更像创作者自己写的名字。 */
 function followAuthorName(group){
   if(!group.length)return '';
   const clean=value=>String(value||'')
@@ -6404,7 +6421,7 @@ function followAuthorName(group){
   const aliasGroup=(followData.author_aliases||[]).find(
     item=>`name:${item.canonical_key}`===group[0]?.author_key);
   if(aliasGroup)return clean(aliasGroup.canonical_name);
-  // 官方主页来源不只优先提供头像，也优先提供作者写法；否则 F95 的线程标题
+  // 官方主页来源不只优先提供头像，也优先提供创作者写法；否则 F95 的线程标题
   // `Lazy Procrastinator Collection` 会因为大写字母更多而抢成分组标题。
   const official=group.find(source=>source.official_avatar_url);
   if(official){
@@ -6475,7 +6492,7 @@ function followAuthorBlock(group){
   const collapsed=collapsedFollowAuthors.has(key);
   const bad=group.filter(s=>s.last_status==='error'||s.last_status==='unauthorized').length;
   /* 站点在这一行只出图标：名字已经在每条来源自己那一行上写着，标题栏再写一遍
-     就是同一个词并排两次，还把作者名挤窄。站名交给 title 和读屏用的那一段。 */
+     就是同一个词并排两次，还把创作者名挤窄。站名交给 title 和读屏用的那一段。 */
   const providers=[...new Set(group.map(source=>source.provider_label||source.provider))].join('、');
   const sourceRows=group.map(source=>followSourceRow(source,true)).join('');
   const sources=`<div class="fauthorsources" id="follow-author-${group[0].id}" aria-label="${esc(name)} 的关注来源">${sourceRows}</div>`;
@@ -6483,7 +6500,7 @@ function followAuthorBlock(group){
     <summary class="fauthorhead">${followAuthorAvatar(group)}
       <b>${esc(name)}</b>
       <button type="button" class="frowicon" data-follow-check="" data-follow-sources="${group.filter(s=>s.enabled).map(s=>s.id).join(',')}"
-        ${group.some(s=>s.enabled)?'':'disabled'} title="检查此作者" aria-label="检查 ${esc(name)} 的全部来源">${icon('refresh-cw')}</button>
+        ${group.some(s=>s.enabled)?'':'disabled'} title="检查此创作者" aria-label="检查 ${esc(name)} 的全部来源">${icon('refresh-cw')}</button>
       <span class="fmeta" title="${esc(providers)}">${
         group.map(source=>sourceIcon(source.provider)).join('')
         }<span class="sr-only">来源：${esc(providers)}</span></span>
@@ -6495,7 +6512,7 @@ function followAuthorBlock(group){
 
 const followSourceSelection=new Set();
 /* 一条来源在两种视图里是同一批格子：勾选、名字、站点、状态、上次检查、动作和错误。
-   默认视图把它们排成作者卡里的一行，表格视图把每格放进一个 <td>；勾选、检查、移除
+   默认视图把它们排成创作者卡里的一行，表格视图把每格放进一个 <td>；勾选、检查、移除
    的 data 属性两边一样，接线不分视图。 */
 function followSourceCells(source,selectable=false){
   const state=source.last_status||'未检查';
@@ -6508,7 +6525,7 @@ function followSourceCells(source,selectable=false){
       +` aria-label="${source.enabled?'暂停':'启用'} ${esc(source.label)} 的更新检查"`)}</label>`;
   const name=`<b><a class="fsourcelink externallink" href="${esc(source.url)}" target="_blank"
       rel="noreferrer noopener" title="打开原来源">${esc(source.label)}${icon('external-link','externalmark')}</a></b>`;
-  /* 站名默认只出 favicon：作者卡里它紧挨着作者名和状态徽章，多这两三个字会把
+  /* 站名默认只出 favicon：创作者卡里它紧挨着创作者名和状态徽章，多这两三个字会把
      那一行挤成三段文字。表格视图的「站点」是独立一列，列头就叫这个名字，那里
      `withText` 才为真。两种形态的站名都写在 DOM 里，`.iconly` 只是把它按 sr-only
      的写法夹起来：图标取不到时 <img> 被摘掉，那条规则跟着失效，露出来的仍是站名。 */
@@ -6539,11 +6556,11 @@ function followSourceRow(source,selectable=false){
 }
 
 /* 表格视图照 boardui.com/components/data-table（取证见 docs/BOARD_UI.md）：一行一条来源，
-   作者列每行都写，表头两列能点，点的是工具栏里已有的那两种排序。它有而这里不要的三样：
+   创作者列每行都写，表头两列能点，点的是工具栏里已有的那两种排序。它有而这里不要的三样：
    页码——列表本来就是全量；表尾的密度档——视图开关自己就是；表头里的全选——全选连着
    批量动作留在上面那条选择栏，两个全选框会互相打架。排序方向沿用工具栏那对箭头字形。
-   五列都能点：作者、上次检查按作者分组比，来源、站点、状态按单条来源比，此时表格按
-   那一列拉平排，不再按作者聚在一起。 */
+   五列都能点：创作者、上次检查按创作者分组比，来源、站点、状态按单条来源比，此时表格按
+   那一列拉平排，不再按创作者聚在一起。 */
 const FOLLOW_TABLE_SORT={author:'name',source:'source',provider:'provider',status:'status',checked:'checked'};
 function followTableHeader(key,label){
   const sort=FOLLOW_TABLE_SORT[key],active=followManageSort===sort;
@@ -6572,7 +6589,7 @@ function followSourceTable(groups,selectable){
   // 外框只管边线与圆角，里层只管横向滚动：渐隐遮罩落在里层，右边线才不会跟着内容一起淡掉。
   return `<div class="ftableframe"><div class="ftablewrap"><table class="ftable"><thead><tr>
     <th scope="col"><span class="sr-only">${selectable?'选择':'启用'}</span></th>
-    ${followTableHeader('author','作者')}
+    ${followTableHeader('author','创作者')}
     ${followTableHeader('source','来源')}${followTableHeader('provider','站点')}${followTableHeader('status','状态')}
     ${followTableHeader('checked','上次检查')}
     <th scope="col"><span class="sr-only">操作</span></th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
@@ -6593,17 +6610,18 @@ function followAliasManager(groups,suggestions){
         title="移除别名" aria-label="移除别名 ${esc(alias.name)}">${icon('x')}</button></span>`).join('')}
   </td></tr>`).join('');
   return `<details class="faliasmanager"${suggestions.length?' open':''}>
-    <summary>${icon('chevron-right')}作者别名${suggestions.length?`<span class="faliasbadge">${suggestions.length} 组待合并</span>`
+    <summary>${icon('chevron-right')}创作者别名${suggestions.length?`<span class="faliasbadge">${suggestions.length} 组待合并</span>`
       :groups.length?`<span class="faliasbadge">${groups.length} 组</span>`:''}</summary>
-    ${detected?`<div class="faliasheading"><h4>待合并</h4><button type="button" class="fbtn" data-follow-alias-all>全部合并（${suggestions.length}）</button></div>
-      <div class="ftableframe"><div class="ftablewrap"><table class="ftable faliastable" aria-label="待合并作者别名"><thead><tr><th scope="col">规范作者</th><th scope="col">平台别名</th><th scope="col">依据</th><th scope="col">操作</th></tr></thead><tbody>${detected}</tbody></table></div></div>`:''}
-    <div class="faliasheading"><h4>已保存别名</h4><span>${groups.length} 组</span></div>
-    ${saved?`<div class="ftableframe"><div class="ftablewrap"><table class="ftable faliastable faliassaved" aria-label="已保存作者别名"><thead><tr><th scope="col">规范作者</th><th scope="col">平台别名</th></tr></thead><tbody>${saved}</tbody></table></div></div>`:emptyState('users','还没有保存作者别名','填写规范作者名和平台别名以添加。',{className:'compact'})}
+    <div class="faliasheading"><h4>手动添加别名</h4></div>
     <form class="faliasform" id="followAliasAdd">
-      <input class="geist-input" name="canonical" required placeholder="规范作者名" aria-label="规范作者名">
+      <input class="geist-input" name="canonical" required placeholder="规范创作者名" aria-label="规范创作者名">
       <input class="geist-input" name="alias" required placeholder="平台别名" aria-label="平台别名">
       <button class="fbtn" type="submit">保存别名</button>
     </form>
+    ${detected?`<div class="faliasheading"><h4>待合并</h4><button type="button" class="fbtn" data-follow-alias-all>全部合并（${suggestions.length}）</button></div>
+      <div class="ftableframe"><div class="ftablewrap"><table class="ftable faliastable" aria-label="待合并创作者别名"><thead><tr><th scope="col">规范创作者</th><th scope="col">平台别名</th><th scope="col">依据</th><th scope="col">操作</th></tr></thead><tbody>${detected}</tbody></table></div></div>`:''}
+    <div class="faliasheading"><h4>已保存别名</h4><span>${groups.length} 组</span></div>
+    ${saved?`<div class="ftableframe"><div class="ftablewrap"><table class="ftable faliastable faliassaved" aria-label="已保存创作者别名"><thead><tr><th scope="col">规范创作者</th><th scope="col">平台别名</th></tr></thead><tbody>${saved}</tbody></table></div></div>`:emptyState('users','还没有保存创作者别名','填写规范创作者名和平台别名以添加。',{className:'compact'})}
   </details>`;
 }
 
@@ -6659,7 +6677,7 @@ function followCredentialRow(row){
     </summary>${body}</details>`;
 }
 
-/* 关注列表的两种视图共用同一份来源集合、作者顺序和勾选：默认视图按作者分卡，
+/* 关注列表的两种视图共用同一份来源集合、创作者顺序和勾选：默认视图按创作者分卡，
    表格视图一行一条来源。 */
 const FOLLOW_LAYOUTS=[['default','默认视图','layout-grid'],['table','表格视图','table']];
 function followListLayout(){
@@ -6674,7 +6692,7 @@ function setFollowListLayout(value){
   saveSettings();
   // 两种视图的 DOM 不同，但换的只有列表本身：只重画 `.fsources`，页头那枚开关留在原地，
   // 滑块才有得滑。拿手里这份 followData 重画，不重取接口、不换骨架；勾选记在
-  // followSourceSelection 里，收起的作者记在 collapsedFollowAuthors 里，重画后都还在。
+  // followSourceSelection 里，收起的创作者记在 collapsedFollowAuthors 里，重画后都还在。
   const list=document.querySelector('#stats .fsources');
   if(!list){renderFollowManage(followCredentials||{});return}
   list.dataset.layout=value;
@@ -6706,7 +6724,7 @@ function renderFollowManage(credentials){
     ${locked?ledgerGateNote(followRuntime,followRuntime.ledger_read_only_message||'本机当前只能浏览',
       '前往写入端管理关注',writer):''}
     <div class="fmanageoverview" aria-label="关注概览">
-      <div><span>关注作者</span><b>${groups.length}<small> 位</small></b></div>
+      <div><span>关注创作者</span><b>${groups.length}<small> 位</small></b></div>
       <div><span>启用来源</span><b>${sources.filter(source=>source.enabled).length}<small> / ${sources.length}</small></b></div>
       <div><span>检查失败</span><b>${broken.length}<small> 个来源</small></b></div>
       <div><span>未看更新</span><b>${counts.new||0}<small> 条</small></b></div>
@@ -6722,7 +6740,7 @@ function renderFollowManage(credentials){
         <form class="faddform" id="followAdd">
           <div class="faddfield">
             ${searchInputHtml({name:'line',label:'来源链接、名字或 id',
-              placeholder:'粘贴来源链接，或输入作者名、id…',attrs:'required'})}
+              placeholder:'粘贴来源链接，或输入创作者名、id…',attrs:'required'})}
             <div class="searchmenu" id="followAddMenu" hidden></div>
           </div>
           <div class="fsrcfilter" id="followSrcFilter"></div>
@@ -6738,8 +6756,6 @@ function renderFollowManage(credentials){
         <!-- 这一行放得下七件控件，放不下时按 data-collapse-* 收成图标（见 01-base.css）。
              收起后名字由每件控件自己的 title 与 aria-label 承担。 -->
         <div class="fsechead" data-collapse-toolbar><h3>关注列表</h3>
-          <span class="funreadrange" data-collapse-field title="未看范围">${icon('clock')}${selectFieldHtml(FOLLOW_UNREAD_RANGE_OPTIONS,
-            String(appSettings.unreadDays),{label:'未看范围',attr:'data-follow-unread-days'})}</span>
           <span class="fmeta">${sources.length} 个来源${
             counts.new?` · <b>${counts.new}</b> 条未看`:''}</span>
           <span class="fmanagesort" data-collapse-field title="关注列表排序">${icon('sort')}${selectFieldHtml(FOLLOW_SORT_OPTIONS,followManageSort,
@@ -6811,7 +6827,7 @@ async function openFollowManage(push=true){
   const surface=claimSurface('/follow-manage');
   showManagementBody({placeholder:managementPlaceholder('/follow-manage')});
   const [data,credentials,runtime]=await Promise.all([
-    surfaceApi(surface,'/api/follow?limit=1&unread_days='+encodeURIComponent(appSettings.unreadDays)),surfaceApi(surface,'/api/follow/credentials'),
+    surfaceApi(surface,'/api/follow?limit=1'),surfaceApi(surface,'/api/follow/credentials'),
     surfaceApi(surface,'/healthz')]);
   if(!surfaceCurrent(surface))return;
   followData=data;followRuntime=runtime;followCredentials=credentials;
@@ -6853,9 +6869,6 @@ function wireFollowItems(){
 function wireFollowManage(creds=[]){
   void wireResolveProgress();
   const root=$('#stats'),form=root.querySelector('#followAdd');
-  const unreadRange=root.querySelector('[data-follow-unread-days]');
-  if(unreadRange)wireSelectField(unreadRange).addEventListener('change',()=>{
-    appSettings.unreadDays=+unreadRange.value||0;saveSettings();openFollowManage(false)});
   wireCollapse(root,'details.fauthor','follow-author-collapse','[data-follow-author-toggle]');
   root.querySelectorAll('[data-follow-author-toggle]').forEach(button=>button.onclick=event=>{
     event.stopPropagation();
@@ -6936,7 +6949,7 @@ function wireFollowManage(creds=[]){
   const tooltipTrigger=root.querySelector('[data-fdesc-tooltip]');
   const tooltip=root.querySelector('#follow-credential-tooltip');
   if(tooltipTrigger&&tooltip)wireContextCard(tooltipTrigger.closest('.fdesc'),tooltipTrigger,tooltip);
-  /* 作者别名和凭据行都走 Geist Collapse，两处同一份实现。凭据行的 `details.fcred`
+  /* 创作者别名和凭据行都走 Geist Collapse，两处同一份实现。凭据行的 `details.fcred`
      必须是 block：flex 行布局接不上 Collapse 的高度过渡。 */
   wireCollapse(root,'details.faliasmanager','follow-alias-collapse');
   wireCollapse(root,'details.fcred','follow-cred-collapse');
@@ -7079,18 +7092,18 @@ function wireFollowManage(creds=[]){
     try{
       await api('/api/follow/author-alias',{method:'POST',body:JSON.stringify(
         {action:'add',canonical,alias})});
-      await openFollowManage(false);actionReceipt('已合并作者别名',{undo:async()=>{
+      await openFollowManage(false);actionReceipt('已合并创作者别名',{undo:async()=>{
         await api('/api/follow/author-alias',{method:'POST',body:JSON.stringify({action:'remove',alias})});
         await openFollowManage(false);
       }});
-    }catch(error){setActionBusy(button,false);actionFailure('合并作者别名',error)}
+    }catch(error){setActionBusy(button,false);actionFailure('合并创作者别名',error)}
   };
   const mergeAll=root.querySelector('[data-follow-alias-all]');
   if(mergeAll)mergeAll.onclick=()=>{
     const pending=[...root.querySelectorAll('[data-follow-alias-add]')].map(button=>({
       canonical:button.dataset.canonical,alias:button.dataset.alias,button}));
-    return confirmModal({title:'合并全部作者别名',
-      body:`将合并以下 ${pending.length} 组作者：${pending.map(item=>`「${item.alias}」归入「${item.canonical}」`).join('；')}。`,
+    return confirmModal({title:'合并全部创作者别名',
+      body:`将合并以下 ${pending.length} 组创作者：${pending.map(item=>`「${item.alias}」归入「${item.canonical}」`).join('；')}。`,
       confirmLabel:'合并全部别名',onConfirm:async()=>{
         setActionBusy(mergeAll);
         try{
@@ -7099,7 +7112,7 @@ function wireFollowManage(creds=[]){
             await api('/api/follow/author-alias',{method:'POST',body:JSON.stringify({action:'add',canonical:item.canonical,alias:item.alias})});
             pending.shift();item.button.closest('tr')?.remove();
           }
-          await openFollowManage(false);actionReceipt('已合并全部作者别名');
+          await openFollowManage(false);actionReceipt('已合并全部创作者别名');
         }catch(error){throw new Error(`还有 ${pending.length} 组未合并：${error.message}`)}
         finally{setActionBusy(mergeAll,false)}
       }});
@@ -7114,12 +7127,12 @@ function wireFollowManage(creds=[]){
   };
   root.querySelectorAll('[data-follow-alias-remove]').forEach(button=>button.onclick=async()=>{
     const alias=button.dataset.followAliasRemove;
-    return confirmModal({title:'移除作者别名',body:`将移除别名「${alias}」，对应来源恢复为独立作者组。`,confirmLabel:'移除作者别名',danger:false,onConfirm:async()=>{
+    return confirmModal({title:'移除创作者别名',body:`将移除别名「${alias}」，对应来源恢复为独立创作者组。`,confirmLabel:'移除创作者别名',danger:false,onConfirm:async()=>{
     setActionBusy(button);
     try{
       await api('/api/follow/author-alias',{method:'POST',body:JSON.stringify(
         {action:'remove',alias})});
-      await openFollowManage(false);actionReceipt('已移除作者别名',{undo:async()=>{
+      await openFollowManage(false);actionReceipt('已移除创作者别名',{undo:async()=>{
         await api('/api/follow/author-alias',{method:'POST',body:JSON.stringify(
           {action:'add',canonical:button.dataset.canonical,alias})});
         await openFollowManage(false);
@@ -7372,14 +7385,14 @@ function wireReviewAssets(root){
    互相说谎，所以用范围切换分开。字母表对在线那套正合适——实测 3582 个标签全是
    ASCII；本地全是中文，做字母表只会得到一个「中文」分组。 */
 let tagIndexMode='alphabet',tagIndexCategory='all',tagIndexScope='local',indexRequestSeq=0;
-/* 艺人页同样有两套名册：本地是账本里绑了实体的人，在线是关注来源里的作者。两边数的
+/* 艺人页同样有两套名册：本地是账本里绑了实体的人，在线是关注来源里的创作者。两边数的
    不是同一样东西（本机片数 / 还没下载的更新数），点开去的也不是同一页，所以跟标签页
    一样用页面级的切换分开，而不是在同一列里混着排。 */
 let performerIndexScope='local';
 const TAG_CATEGORIES=[['all','全部'],['meta','影片属性'],['relationship','人物关系'],
   ['role','角色设定'],['appearance','外貌身材'],['scene','情境场所'],['story','故事剧情'],
   ['position','性交体位'],['general','其他内容']];
-const ONLINE_TAG_CATEGORIES=[['all','全部'],['general','通用'],['artist','作者'],
+const ONLINE_TAG_CATEGORIES=[['all','全部'],['general','通用'],['artist','创作者'],
   ['character','角色'],['copyright','作品'],['metadata','元数据']];
 let tagIndexMatch='any';
 function paintTagIndexSelection(){
@@ -7485,10 +7498,10 @@ function tagScopeTabsHtml(){return scopeTabsHtml(tagIndexScope,'data-tag-scope',
 function performerScopeTabsHtml(){
   return scopeTabsHtml(performerIndexScope,'data-performer-scope','名册');
 }
-/* 在线作者这一格跟本地艺人同形，差别只在圆里那张图从哪儿来：本地走 `/entity-image`
+/* 在线创作者这一格跟本地艺人同形，差别只在圆里那张图从哪儿来：本地走 `/entity-image`
    那条自家链，在线只有来源站点给的地址，官方主页优先、归档兜底，两条都取不到就落回
-   首字母——跟关注页的作者行同一套判据。这一格不带实体 id：这个人还没进账本，`data-k`
-   上挂的是关注页那套作者键，点开去的也是关注页而不是资料页。 */
+   首字母——跟关注页的创作者行同一套判据。这一格不带实体 id：这个人还没进账本，`data-k`
+   上挂的是关注页那套创作者键，点开去的也是关注页而不是资料页。 */
 function onlineAuthorCellHtml(x){
   const initial=(String(x.k||'').match(/[A-Za-z0-9]/)||[Array.from(String(x.k||''))[0]||'?'])[0].toUpperCase();
   const image=x.avatar?`<img src="${esc(x.avatar)}" alt="" loading="lazy" referrerpolicy="no-referrer" ${
@@ -8700,6 +8713,11 @@ function saveSidebarSetting(){
 async function loadSyncedSettings(){
   let remote=null;
   try{remote=await api('/api/settings')}catch(_e){return}
+  const initial=remote&&remote.followInitialDays;
+  if([0,7,30,90].includes(initial)){
+    appSettings.followInitialDays=initial;saveSettings();
+    const field=$('#followInitialDaysSetting .gselect');if(field&&field.getAttribute('aria-busy')!=='true')field.value=String(initial);
+  }
   const days=remote&&remote.metadataRefreshDays;
   if(METADATA_REFRESH_DAYS.includes(days)&&days!==appSettings.metadataRefreshDays){
     appSettings.metadataRefreshDays=days;saveSettings();

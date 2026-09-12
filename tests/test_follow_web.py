@@ -2098,7 +2098,7 @@ class FollowSuggestTests(FollowContractTests):
                          ["followed", "archive", "tag_artist", "tag"])
         self.assertEqual([group["label"] for group in payload["groups"]],
                          ["已关注", "归档站的创作者",
-                          "Rule34.xxx 的作者", "Rule34.xxx 标签"])
+                          "Rule34.xxx 的创作者", "Rule34.xxx 标签"])
 
     def test_the_site_authors_are_split_out_from_the_plain_tags(self):
         """rule34.xxx 上作者本来就是一个标签，差别只在站方给它的分类。
@@ -2683,7 +2683,7 @@ class FollowWebSourceTests(unittest.TestCase):
         form = body[body.index('<form class="faddform"'):body.index("</form>")]
         hint = form[form.index("placeholder:'") + len("placeholder:'"):]
         hint = hint[:hint.index("'")]
-        self.assertEqual(hint, "粘贴来源链接，或输入作者名、id…")
+        self.assertEqual(hint, "粘贴来源链接，或输入创作者名、id…")
         self.assertNotIn("${", hint, "占位文字不许由数据拼出来——那就是把推荐塞进去了")
         # 这一段里只有一处写死的占位文字。骨架那处 `placeholder:managementPlaceholder(…)`
         # 是路由占位结构，不是输入框里的字，用带引号的形式把两者分开数。
@@ -2867,8 +2867,8 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertBoardContains('.followmanage .frowicon svg{stroke-width:2}')
         self.assertBoardContains('.faliasidentity>.favatar{width:24px;height:24px;font-size:var(--fs-xs)}')
         self.assertPageContains('<div class="faliasidentity">${followAliasAvatar(group)}<b>${esc(group.canonical_name)}</b>')
-        self.assertPageContains('aria-label="待合并作者别名"')
-        self.assertPageContains('aria-label="已保存作者别名"')
+        self.assertPageContains('aria-label="待合并创作者别名"')
+        self.assertPageContains('aria-label="已保存创作者别名"')
         self.assertPageContains('data-follow-alias-all')
         self.assertPageContains("confirmLabel:'合并全部别名'")
         self.assertPageContains("const sources=(followData?.sources||[]).filter(source=>source.author_key===`name:${group.canonical_key}`);")
@@ -2948,7 +2948,7 @@ class FollowWebSourceTests(unittest.TestCase):
         方向字形沿用工具栏那对箭头。状态正序是「先看要处理的」：失败、暂停、未检查、正常。
         """
         self.assertPageContains("const FOLLOW_TABLE_SORT={author:'name',source:'source',provider:'provider',status:'status',checked:'checked'};")
-        self.assertPageContains("${followTableHeader('author','作者')}")
+        self.assertPageContains("${followTableHeader('author','创作者')}")
         self.assertPageContains("${followTableHeader('checked','上次检查')}")
         self.assertPageContains("const bySource=FOLLOW_SOURCE_SORTS[followManageSort];")
         self.assertPageContains("groups.forEach(group=>group.sort((a,b)=>flip*bySource(a,b)));")
@@ -3010,7 +3010,7 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains(
             "[data-collapse-toolbar] [data-collapse-field]>svg{left:50%;transform:translateX(-50%)}")
         # 收起后名字只剩这两样，所以文字标签只许 display:none。
-        self.assertPageContains('<span class="funreadrange" data-collapse-field title="未看范围">')
+        self.assertNotIn('data-follow-unread-days', self.page)
         self.assertPageContains('<span class="fmanagesort" data-collapse-field title="关注列表排序">')
         self.assertPageContains('title="检查全部" aria-label="检查全部"')
         self.assertPageContains('<span data-collapse-label>检查全部</span>')
@@ -3075,7 +3075,7 @@ class FollowWebSourceTests(unittest.TestCase):
 
     def test_follow_cards_use_author_avatars_and_open_details_inside_peach(self):
         self.assertPageContains("return followCard(group,siblings)")
-        self.assertPageContains('title="作者头像">${followAuthorAvatar(authorSources)}')
+        self.assertPageContains('title="创作者头像">${followAuthorAvatar(authorSources)}')
         self.assertNotIn(
             'class="mav fsourceavatar" title="${esc(item.provider_label)}">${sourceIcon(item.provider)}',
             self.page,
@@ -3786,7 +3786,7 @@ class FollowWebSourceTests(unittest.TestCase):
     def test_follow_management_list_has_routed_sorting(self):
         self.assertPageContains("{label:'关注列表排序',attr:'data-follow-sort'}")
         self.assertPageContains(
-            "const FOLLOW_SORT_OPTIONS=[['checked','检查时间'],['added','添加时间'],['name','作者名称'],['sources','来源数量'],\n"
+            "const FOLLOW_SORT_OPTIONS=[['checked','检查时间'],['added','添加时间'],['name','创作者名称'],['sources','来源数量'],\n"
             "  ['source','来源名称'],['provider','站点'],['status','状态']];")
         self.assertPageContains("followManageSort=FOLLOW_SORT_OPTIONS.some(([key])=>key===requested)?requested:'checked'")
         self.assertPageContains("const added=group=>Math.max(...group.map(source=>Date.parse(source.created_at||'')||0))")

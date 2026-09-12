@@ -26,6 +26,9 @@ it('别名表格保留依据、添加和移除，全部合并等待确认',async
   expect(root.querySelectorAll('table')).toHaveLength(2);
   expect(root.querySelector('[data-follow-alias-remove]')).not.toBeNull();
   expect(root.querySelector('#followAliasAdd')).not.toBeNull();
+  expect(root.querySelector('.faliasheading h4')?.textContent).toBe('手动添加别名');
+  expect(root.querySelector('summary')?.textContent).toContain('创作者别名');
+  expect(root.querySelector('#followAliasAdd')!.compareDocumentPosition(root.querySelector('table')!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   root.querySelector<HTMLButtonElement>('[data-follow-alias-all]')!.click();
   expect(api).not.toHaveBeenCalled();
   expect(confirmModal.mock.calls[0]![0].body).toContain('「别名 A」归入「作者 A」');
