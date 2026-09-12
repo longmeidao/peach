@@ -491,8 +491,8 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(missing.headers["content-type"], PLACEHOLDER_CONTENT_TYPE, query)
         self.assertEqual(len(hits), 1)
 
-    async def test_the_work_icon_walks_the_candidates_until_one_shows_a_face(self):
-        """题材圆标顺着候选往下取，停在第一张检得出脸的那里，取景写在图旁边。
+    async def test_the_work_icon_walks_the_candidates_until_one_shows_a_clear_face(self):
+        """题材圆标顺着候选往下取，停在第一张脸够大的那里，取景写在图旁边。
 
         只取最热那一张的话，圆标里有一半是身体特写——最热的帖子常常就是特写。停下来
         之后不再往下取：后面那几张既不该出网，也不该留在缓存目录里。
@@ -511,7 +511,7 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         second = covers["https://api-cdn.rule34.xxx/samples/2/c.jpg"]
         self.assertNotEqual(second, covers["https://api-cdn.rule34.xxx/samples/1/c.jpg"])
         seen = {second: {"ratio": 0.563, "px": [1080, 1920],
-                         "face": {"cx": 0.5, "cy": 0.18, "w": 0.1, "h": 0.09,
+                         "face": {"cx": 0.5, "cy": 0.18, "w": 0.3, "h": 0.17,
                                   "score": 0.93},
                          "focus": {"axis": "y", "pct": 18}}}
         denied = await self.client.get("/work-icon?work=stellar+blade")
@@ -522,8 +522,8 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
                               side_effect=seen.get):
                 response = await self.client.get("/work-icon?t=secret&work=stellar+blade")
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.content, second, "服务的是检出了脸的那一张")
-        self.assertEqual(hits, list(covers)[:2], "检出脸就停，后面的候选不再出网")
+        self.assertEqual(response.content, second, "服务的是看得清脸的那一张")
+        self.assertEqual(hits, list(covers)[:2], "脸够大就停，后面的候选不再出网")
         urls.assert_called_once()
         self.assertEqual(urls.call_args.args[1], "stellar blade")
         cached = follow_assets.cache_path(
@@ -535,6 +535,46 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(written["px"], [64, 48])
         self.assertEqual(len(list(cached.parent.glob("*.img"))), 1,
                          "落选的候选一个文件都不留")
+
+    async def test_a_face_too_small_to_see_keeps_looking_and_takes_the_biggest(self):
+        """检出了脸不算数，脸得在画面里占到看得清的那一档，不够就继续看下一张。
+
+        YuNet 在远景图上会给出一个占长边百分之二、分数照样过线的框，罩在肩背的纹身
+        上；圆标正是按这个框取景放大的，于是圆里是一小块皮肤。都不够大时取其中脸最大
+        的那张——它仍然是这几张里最接近一张头像的。
+        """
+        from peach import follow_assets, routes_media
+
+        covers = {f"https://api-cdn.rule34.xxx/samples/{n}/c.jpg": tiny_jpeg(n * 30)
+                  for n in (4, 5, 6)}
+        hits = []
+
+        def upstream(request):
+            hits.append(str(request.url))
+            return httpx.Response(200, content=covers[str(request.url)], request=request,
+                                  headers={"content-type": "image/jpeg"})
+        self._swap_http_client(upstream)
+        first, _, third = (covers[url] for url in covers)
+
+        def probe(payload):
+            share = {first: 0.02, third: 0.05}.get(payload)
+            if share is None:
+                return None
+            return {"ratio": 1.0, "px": [1000, 1000],
+                    "face": {"cx": 0.4, "cy": 0.3, "w": share, "h": share,
+                             "score": 0.82}}
+        with patch("peach.routes_media.web_follow.work_icon_urls",
+                   return_value=list(covers)):
+            with patch.object(routes_media._WORK_FACE_PROBE, "on_bytes",
+                              side_effect=probe):
+                response = await self.client.get("/work-icon?t=secret&work=miside")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(hits, list(covers), "一张都不够大时候选要走完")
+        self.assertEqual(response.content, third, "退回这几张里脸最大的那一张")
+        cached = follow_assets.cache_path(
+            self.candidate_root / follow_assets.ROOT_NAME, "works", "miside")
+        written = json.loads(cached.with_suffix(".face.json").read_text(encoding="utf-8"))
+        self.assertEqual(written["face"]["w"], 0.05)
 
     async def test_a_work_with_no_face_anywhere_still_gets_a_cover(self):
         """一张都检不出脸时用第一张取得到的：没有脸的代表图仍然好过一个空圆。

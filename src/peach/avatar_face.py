@@ -69,6 +69,23 @@ def face_px_width(record: dict | None) -> int:
         return 0
 
 
+def face_share(record: dict | None) -> float:
+    """那张脸的宽占画面长边多少。没有脸、没有记录都是 0。
+
+    比「脸有多少像素」多回答一件事：圆标里落下的是不是脸。像素数说的是清晰度，占比
+    说的是构图——一张脸只占长边百分之四的图，存多大都改不了「圆里只是画面上的一小
+    块」，而那一小块在这个库里多半根本不是脸，是肩背上的纹身或一团暗部。
+
+    按长边而不是按宽：`face["w"]` 是按图宽归一化的，同样一张脸在竖图里算出来大一截。
+    """
+    px = (record or {}).get("px") or [0, 0]
+    try:
+        longest = max(int(px[0]), int(px[1]))
+    except (TypeError, ValueError, IndexError):
+        return 0.0
+    return face_px_width(record) / longest if longest > 0 else 0.0
+
+
 def write_sidecar(image_path: Path, record: dict) -> Path:
     path = sidecar_path(image_path)
     path.write_text(json.dumps(record, ensure_ascii=False), encoding="utf-8")

@@ -7,8 +7,8 @@ import unittest.mock
 from pathlib import Path
 
 from peach.avatar_face import (
-    FaceProbe, drop_sidecar, face_px_width, read_sidecar, sidecar_path,
-    write_sidecar,
+    FaceProbe, drop_sidecar, face_px_width, face_share, read_sidecar,
+    sidecar_path, write_sidecar,
 )
 
 
@@ -58,6 +58,23 @@ class FacePixelWidthTests(unittest.TestCase):
                         {"px": [640, 960], "face": {"w": "大"}}):
             with self.subTest(payload=payload):
                 self.assertEqual(face_px_width(payload), 0)
+
+
+class FaceShareTests(unittest.TestCase):
+    def test_the_share_is_measured_against_the_longest_side(self):
+        """脸框宽是按图宽归一化的，同一张脸在竖图里算出来会大一截。
+
+        占比回答的是构图——圆标里落下的是不是一张脸——所以两种取向必须是同一把尺。
+        """
+        self.assertAlmostEqual(face_share(record(1920, 1080, 0.1)), 0.1, places=3)
+        self.assertAlmostEqual(face_share(record(1080, 1920, 0.1)), 0.056, places=3)
+
+    def test_everything_unmeasurable_is_zero(self):
+        for payload in (None, {}, {"px": [640, 960], "face": None},
+                        {"px": [0, 0], "face": {"w": 0.3}},
+                        {"px": ["宽", "高"], "face": {"w": 0.3}}):
+            with self.subTest(payload=payload):
+                self.assertEqual(face_share(payload), 0.0)
 
 
 class FaceProbeTests(unittest.TestCase):

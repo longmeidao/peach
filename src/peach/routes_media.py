@@ -515,11 +515,30 @@ def source_icon(request: Request, provider: str = "", args: dict[str, str] = Dep
 _WORK_FACE_PROBE = avatar_face.FaceProbe()
 
 
-def _pick_work_icon(client, targets: list[str]) -> tuple[bytes | None, dict | None]:
-    """按热度顺着候选找第一张看得见脸的图，返回落盘用的字节和人脸记录。
+#: 脸框至少要占画面长边这么多，才算这张图里看得见是谁。
+#:
+#: 数是从落盘那一档反推的：`icon_side()` 要求落盘的图里脸框有 `FACE_PX_IN_STORE` 个
+#: 像素，而默认存 `ICON_SIDE` 那么大——脸占到长边这个比例，正好一条线。低于它的图不
+#: 是「存小了」，是脸在画面里本来就只有那么点，存多大都改不了圆标里露出的是别的东西。
+#:
+#: 实测本库 74 个题材代表图，按这条线分开的两边正是「一眼认得出」和「认不出」：低于
+#: 它的六张，圆标里是一团暗部、一个后脑勺、一小块暗处的皮肤，和三张在暗红光里糊到认
+#: 不出的脸；高于它的没有一张落在人脸之外。检出分数挡不住这一类——那个后脑勺是 0.83。
+_WORK_ICON_FACE_SHARE = follow_assets.FACE_PX_IN_STORE / follow_assets.ICON_SIDE
 
-    只取最热那一张的话，圆标里有一半是身体特写——最热的帖子常常就是特写。一张都
-    没检出脸时退回第一张取得到的图：没有脸的代表图仍然好过一个空圆。
+
+def _pick_work_icon(client, targets: list[str]) -> tuple[bytes | None, dict | None]:
+    """按热度顺着候选找第一张看得清脸的图，返回落盘用的字节和人脸记录。
+
+    只取最热那一张的话，圆标里有一半是身体特写——最热的帖子常常就是特写。
+
+    「检出了脸」这一关太松，收下的常常不是脸：YuNet 在一张 3072×4096 的远景图上会给
+    出一个占长边百分之五、分数 0.69 的框，罩在肩背的纹身上，而圆标正是按这个框取景放
+    大的，于是圆里是一小块皮肤。所以判据是 `_WORK_ICON_FACE_SHARE`：脸得在画面里占到
+    那么大，不够就继续看下一张候选，不停在第一张。
+
+    全部候选都不够时退回其中脸最大的那张——它仍然是这几张里最接近一张头像的；连一张
+    脸都没检出才退回第一张取得到的图：没有脸的代表图仍然好过一个空圆。
 
     检脸看的是站点那张高清封面，落盘的是缩过的那份：两件事要的尺寸不是一个数——
     250px 的缩略图里一张脸只剩十几个像素，而显示出来只有 28px。
@@ -529,17 +548,21 @@ def _pick_work_icon(client, targets: list[str]) -> tuple[bytes | None, dict | No
     脸缩得更小。裁完再检脸，坐标才落在这张图自己的坐标系里。
     """
     first: tuple[bytes | None, dict | None] = (None, None)
+    best: tuple[float, bytes | None, dict | None] = (0.0, None, None)
     for target in targets:
         body = follow_assets.fetch_image(client, target)
         if not body:
             continue
         body = follow_assets.trim_letterbox(body)
         record = _WORK_FACE_PROBE.on_bytes(body)
-        if record and record.get("face"):
+        share = avatar_face.face_share(record)
+        if share >= _WORK_ICON_FACE_SHARE:
             return _stored_icon(body, record)
+        if share > best[0]:
+            best = (share, body, record)
         if first[0] is None:
             first = (body, record)
-    body, record = first
+    body, record = (best[1], best[2]) if best[1] is not None else first
     return _stored_icon(body, record) if body else (None, record)
 
 
@@ -569,9 +592,10 @@ def work_icon(request: Request, work: str = "",
     再核对图床主机是不是 `web_follow` 登记的那个。排这一步在缓存回调里做，本机那份
     还新鲜时一行账本都不读；取回的字节照样要先能认成图片才落盘。
 
-    候选顺着往下取，停在第一张看得见脸的。人脸记录跟着落盘的那张图写在旁边，页面据
-    它把取景挪到脸上、按脸框放大：圆标只有 28px，按几何中心裁一张全身图出来常常只剩
-    一截身子，而挪到哪、放多大都要看这张图里脸在哪、有多少像素，猜不出来。
+    候选顺着往下取，停在第一张看得清脸的，判据见 `_pick_work_icon`。人脸记录跟着落盘
+    的那张图写在旁边，页面据它把取景挪到脸上、按脸框放大：圆标只有 28px，按几何中心
+    裁一张全身图出来常常只剩一截身子，而挪到哪、放多大都要看这张图里脸在哪、有多少
+    像素，猜不出来。
     """
     state = request.app.state
     root = web_follow.work_root(work)
