@@ -7750,10 +7750,12 @@ async function openPhotoLightbox(index,source=null){
   document.addEventListener('keydown',photoLightKeys,true);
 }
 
-/* 统称选择器的行为。换统称改的是 `entity.canonical_name` 这个真相字段，所以只在
-   服务端换完之后才重画这一页；撤销同样是一次真实写回，不在本地把标题改回去当成功。
+/* 名字下拉的行为：在已有的名字里挑一个当统称，或者添一个新的。换统称改的是
+   `entity.canonical_name` 这个真相字段，所以只在服务端换完之后才重画这一页；撤销
+   同样是一次真实写回，不在本地把标题改回去当成功。添别名写的是 `entity_alias`，
+   两者分成两个端点：一个是身份补充、有自己的冲突判定，一个只在本条实体的名字里选。
    页面重画会把菜单连同这里绑的处理器一起换掉，每次渲染重新绑一遍。 */
-function wireNamePicker(kind,current){
+function wireNamePicker(kind,current,mine){
   const mount=$('#index').querySelector('[data-namepick]');
   if(!mount)return;
   const toggle=mount.querySelector('[data-namepick-toggle]');
@@ -7761,6 +7763,46 @@ function wireNamePicker(kind,current){
   const anchored=wireAnchoredMenu(mount,toggle,menu);
   const rename=(from,to)=>api('/api/entity-name',
     {method:'POST',body:JSON.stringify({kind,name:from,canonical:to})});
+  const alias=payload=>api('/api/entity-alias',
+    {method:'POST',body:JSON.stringify({kind,name:current,...payload})});
+  menu.querySelector('[data-namepick-alias]').onclick=async()=>{
+    anchored.setOpen(false);
+    /* 添别名只往这条实体上加一个写法，不改任何已有断言，所以不再问一遍；撤销摆在
+       同一个弹层里，添和撤是一件事的两头。写回来的名字随后就出现在这个菜单里，
+       要把它提成统称再点一次即可——那一步有它自己的代价，仍走确认。 */
+    const form=formModal({
+      title:'添加别名',
+      description:'图库按名字存图，多记一个写法就多一批候选；这里添的名字也能提为统称。',
+      body:`<label class="modalfield"><span>别名</span>
+          <input class="geist-input" name="alias" maxlength="80" autocomplete="off"
+            placeholder="另一种写法，或另一个艺名"></label>`
+        +(mine.length?`<div class="modalfield"><span>自己添过的</span>
+          <div class="aliaschips">${mine.map(one=>`<span class="aliaschip">${esc(one)}
+            <button type="button" data-alias-drop="${esc(one)}"
+              aria-label="撤销别名 ${esc(one)}">${icon('x')}</button></span>`).join('')}</div></div>`:''),
+      confirmLabel:'添加别名',
+      confirmDisabled:true,
+      onConfirm:()=>alias({alias:field.value.trim()})});
+    const field=form.dialog.querySelector('[name=alias]');
+    field.oninput=()=>{form.confirmButton.disabled=!field.value.trim()};
+    /* 撤销只认自己添的那几个：刮削和合并留下的别名是这条实体当初被认成这个人的依据，
+       一次点击删不得。服务端按来源守这条线，这里只列它报回来的那几个。 */
+    form.dialog.querySelectorAll('[data-alias-drop]').forEach(chip=>chip.onclick=async()=>{
+      const gone=chip.dataset.aliasDrop;
+      form.close();
+      try{await alias({alias:gone,remove:true})}
+      catch(error){actionFailure('撤销别名',error);return}
+      actionReceipt(`已撤销别名 ${gone}`,{undo:async()=>{
+        await alias({alias:gone});await openEntity(kind,current)}});
+      await openEntity(kind,current);
+    });
+    const {confirmed,result}=await form.done;
+    if(!confirmed)return;
+    if(result?.added)actionReceipt(`已添加别名 ${result.alias}`,{undo:async()=>{
+      await alias({alias:result.alias,remove:true});await openEntity(kind,current)}});
+    else actionReceipt(`${result?.alias} 已经是这条实体的名字`);
+    await openEntity(kind,current);
+  };
   menu.querySelectorAll('[data-namepick-name]').forEach(item=>item.onclick=async()=>{
     const chosen=item.dataset.namepickName;
     anchored.setOpen(false);
@@ -7916,14 +7958,20 @@ async function openEntity(kind,name,push=true){
     ?` · <b>${(d.member_count||0).toLocaleString()}</b> 位艺人`:'';
   const nameChoices=[d.canonical_name,...(d.aliases||[])]
     .filter((option,index,all)=>option&&all.indexOf(option)===index);
-  const namePick=nameChoices.length>1?`<div class="namepick" data-namepick>
+  /* 这枚下拉恒在。只有一个名字时整块不画的话，「她还叫过别的」这件事在页面上就没有
+     入口，而恰恰是只剩一个名字的人最需要补——图库按名字存图，少一个写法就少一批图。
+     选统称仍只在已有的名字里挑；添别名是另一件事，隔一条线摆在末尾。 */
+  const namePick=`<div class="namepick" data-namepick>
       <button type="button" class="npbtn" data-namepick-toggle aria-haspopup="menu"
         aria-expanded="false" aria-controls="entity-name-menu"
-        aria-label="选择统称" title="选择统称">${icon('chevron-down')}</button>
+        aria-label="名字与别名" title="名字与别名">${icon('chevron-down')}</button>
       <div class="popmenu npmenu" id="entity-name-menu" role="menu" data-namepick-menu hidden>${
         nameChoices.map(option=>`<button type="button" role="menuitemradio"
           data-namepick-name="${esc(option)}" aria-checked="${option===d.canonical_name}"
-          >${icon('check')}<span>${esc(option)}</span></button>`).join('')}</div></div>`:'';
+          >${icon('check')}<span>${esc(option)}</span></button>`).join('')}
+        <hr aria-hidden="true">
+        <button type="button" role="menuitem" data-namepick-alias
+          >${icon('plus')}<span>添加别名…</span></button></div></div>`;
   $('#index').dataset.entityKind=kind;$('#index').dataset.entityName=name;
   const people=kind==='performer'||kind==='creator';
   $('#index').innerHTML=`<div class="entityhero"><div class="entityportraitwrap"><div class="entityportrait ${people?'':'square'}" data-fit-native="${company?'mark':'portrait'}">${image}<span>${esc(name.slice(0,1))}</span></div>${
@@ -7962,7 +8010,7 @@ async function openEntity(kind,name,push=true){
      滚轮，而少登记一层就会在某一个宽度上滚不动。 */
   wireHorizontalScroller($('#index').querySelector('.entitytags'));
   wireHorizontalScroller($('#index').querySelector('.entitytagbar .filterscroll'));
-  if(namePick)wireNamePicker(kind,d.canonical_name);
+  wireNamePicker(kind,d.canonical_name,d.user_aliases||[]);
   entityPhotos=photos&&!photos.error?photos:null;
   if(entityMediaView.media==='photos'&&!photoTotalOf())entityMediaView=emptyMediaView();
   renderEntityMediaToggle(kind,name,filters);

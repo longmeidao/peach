@@ -36,6 +36,10 @@
   stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .npmenu button[aria-checked="true"]{background:var(--hover);color:var(--ink)}
 .npmenu button[aria-checked="true"] svg{visibility:visible}
+/* 末尾那一项不在这几个名字之列，隔一条线。它那枚加号要显出来——上一条为了让勾对齐
+   把菜单里的图标一律藏了，而这一行本来就没有勾可言。 */
+.npmenu hr{margin:4px 1px;border:0;border-top:1px solid var(--border-10)}
+.npmenu button[role="menuitem"] svg{visibility:visible}
 .entityhero .alias{color:var(--muted);
   font-size:var(--fs-md);line-height:1.45;margin-bottom:14px;overflow-wrap:anywhere}
 .entitylinks{display:flex;flex-wrap:wrap;gap:8px;margin-top:17px;max-width:100%}

@@ -36,6 +36,7 @@ from .web_entity import (
     q_index,
     q_photo_set,
     q_suggest,
+    w_entity_alias,
     w_entity_name,
 )
 from .web_follow import (
@@ -278,6 +279,7 @@ POST_HANDLERS = {
     "/api/review/genre": w_review_genre,
     "/api/settings": w_settings,
     "/api/entity-name": w_entity_name,
+    "/api/entity-alias": w_entity_alias,
 }
 
 

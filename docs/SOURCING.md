@@ -137,6 +137,11 @@ av911.tv，三条候选已进复核队列。
 - 判断「账本已经有这个名字」要连罗马字一起看，不能用 `peach.entities.name_chain`。那个链按设计剔掉罗马字
   （拿罗马字去日文站查是白跑），但拿它当「已有」判据会把 `entity_alias` 里明摆着的 `Rin Natsuki` 再报一遍
   新别名。要全量就直接读 `canonical_name` 加 `entity_alias`。
+- 别名按来源分三类，界面上只有用户自己敲的那一类可撤销（`user:alias`，写入端点 `/api/entity-alias`）：
+  刮削（`r18:performer` 等）和合并（`merge:*`、`avdb-actor-mapping@<rev>`）留下的是这条实体当初为什么
+  长这样的记录，不给一次点击删掉。自由文本进的是别名表而不是 `canonical_name`——那是真相字段，
+  只在这条实体已有的名字里挑（`/api/entity-name`）。头像图库按整条名字链逐个查并取并集，所以少一行
+  别名就少一批候选：同一个人常按好几种写法各存一批，命中即停会让排在后面那几个名下的图整批出不来。
 - 上游名字里的零宽字符在 `canonicalize_entity_name` 一处剥掉，不在各脚本里各修一遍。
   `str.strip()` 不认它们是空白，`normalized_name` 于是带着一个看不见的字符：界面上和普通名字
   一模一样，但 `upsert_asset_entity` 按 `normalized_name` 找不到已有实体，同一个人存成两条，

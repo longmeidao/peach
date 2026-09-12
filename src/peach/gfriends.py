@@ -18,6 +18,7 @@ import json
 import re
 import time
 import urllib.parse
+from dataclasses import dataclass, field
 from pathlib import Path
 
 #: 图库的 raw 根。索引和图片都挂在它下面。
@@ -93,16 +94,50 @@ def load_index(cache_dir: Path) -> dict[str, list[tuple[str, str]]]:
         return {}
 
 
-def candidates(index: dict[str, list[tuple[str, str]]],
-               names: list[str]) -> tuple[str, list[tuple[str, str]]]:
-    """按名字链依次查索引，返回 (命中的名字, 候选)。一个都不命中就是 ("", [])。
+@dataclass(frozen=True)
+class Match:
+    """名字链在图库里的全部落点。
 
-    次序即匹配次序：先 canonical、再别名、最后本地化写法，第一个命中的就定下来。
+    `names` 是命中的那几个名字，按名字链的先后；`items` 是去重后的候选；
+    `finder` 答的是「这一张是被哪个名字找到的」——装图时要把它写进证据，
+    一张图的来路不能记成整条名字链。
+    """
+
+    names: tuple[str, ...] = ()
+    items: tuple[tuple[str, str], ...] = ()
+    finder: dict[tuple[str, str], str] = field(default_factory=dict)
+
+    def __bool__(self) -> bool:
+        return bool(self.items)
+
+
+def candidates(index: dict[str, list[tuple[str, str]]], names: list[str]) -> Match:
+    """按名字链查索引，命中的全部并起来。
+
     大陆简体与日文字体是两个不同的键（`横宫七海` 与 `横宮七海`），所以名字链必须
     带上别名——只拿规范名去查，汉字简化过的那些人一个也找不到。
+
+    并起来而不是命中即停：同一个人在图库里常按好几种写法各存一批，停在第一个命中的
+    名字上，排在它后面那几个名下的图整批出不来。实测 `新有菜` 那条链，`新ありな`
+    命中 1 张、`橋本ありな` 命中 11 张，而前者排在前面——停下来就只剩一张可选，
+    那 11 张一次也没机会露面。
+
+    同一个文件可能被两个名字同时指到（键不同、落到同一条记录），按 (来源目录, 文件名)
+    去重，先指到它的那个名字算它的来路。并完之后整体重排一次：挑图看的是哪张该先试，
+    不是它由链上第几个名字找到的。
     """
+    found: list[tuple[str, str]] = []
+    hit_names: list[str] = []
+    finder: dict[tuple[str, str], str] = {}
     for name in names:
-        found = index.get(normalized(name))
-        if found:
-            return name, list(found)
-    return "", []
+        rows = index.get(normalized(name))
+        if not rows:
+            continue
+        hit_names.append(name)
+        for pair in rows:
+            if pair in finder:
+                continue
+            finder[pair] = name
+            found.append(pair)
+    found.sort(key=lambda pair: quality_key(*pair))
+    return Match(tuple(hit_names), tuple(found), finder)

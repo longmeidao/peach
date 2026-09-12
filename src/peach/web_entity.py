@@ -86,6 +86,12 @@ def q_entity(contract: WebContract, args):
         # 只会像名称没有本地化。展示契约单独收窄，身份契约 `aliases` 保持完整。
         d["display_aliases"] = _display_entity_aliases(
             d["canonical_name"], d["aliases"])
+        # 自己敲进来的那几个单独报一遍：界面只在这些名字上给撤销，刮削和合并留下的
+        # 是来源记录，不给一次点击删掉。
+        d["user_aliases"] = [r[0] for r in c.execute(
+            "SELECT alias FROM entity_alias WHERE entity_id=? AND source=? ORDER BY alias",
+            (d["id"], USER_ALIAS_SOURCE),
+        )]
         links = []
         for link in c.execute(
             "SELECT id AS link_id,link_kind,label,url,hostname,is_sensitive,metadata_json "
@@ -591,13 +597,77 @@ def q_suggest(contract: WebContract, q: str, limit: int = SUGGEST_GROUP_LIMIT):
 #: 用户在资料页选定统称时，被换下的旧规范名记这个来源。合并留的是 `merge:*`，
 #: 刮削留的是站点名；分得开才答得出「这个名字是谁定的」。
 PREFERRED_NAME_SOURCE = "user:preferred-name"
+#: 用户自己敲进来的别名记这个来源。它是唯一允许在界面上删掉的一类——刮削和合并留下的
+#: 那些是这个人真的用过的名字，删掉就问不出这条实体当初为什么长这样。
+USER_ALIAS_SOURCE = "user:alias"
+
+
+def w_entity_alias(contract: WebContract, body):
+    """给这条实体添一个别名，或撤掉一个自己添过的。
+
+    别名是身份的一部分：搜索、头像图库和合并判定读的都是它。刮削给的那几种写法常常
+    只有日文或罗马字，而图库、片商和用户自己记得的写法可以是第四种——账本里没有那一
+    行，这个人在那几条路上就等于不存在。所以这里收自由文本，`entity.canonical_name`
+    那边不收：添别名是补一条「他还被这么叫过」，改统称是改真相字段。
+
+    只拦一种：这个写法已经是另一条实体的统称。那说明要么两条该合并、要么是同名不同
+    人，两种都得人来判，而这里静默写下去只会让后面的合并判定多一个假信号。
+
+    撤销只认自己添的那些（`user:alias`）。刮削和合并留下的别名是来源记录，不给界面
+    上的一次点击删掉。
+    """
+    contract.cache_bust()
+    kind = str(body.get("kind", "")).strip()
+    name = str(body.get("name", "")).strip()
+    alias = str(body.get("alias", "")).strip()
+    remove = bool(body.get("remove"))
+    if kind not in PROFILE_KINDS or not name:
+        raise ValueError("kind must be a known entity kind and name is required")
+    if not alias:
+        raise ValueError("alias is required")
+    alias_key = normalize_entity_name(alias)
+    if not alias_key:
+        raise ValueError("alias is required")
+    with contract.write_transaction() as c:
+        row = resolve_entity(c, kind, name)
+        if not row:
+            raise ValueError("entity not found")
+        entity_id, canonical = int(row["id"]), str(row["canonical_name"])
+        if remove:
+            removed = c.execute(
+                "DELETE FROM entity_alias WHERE entity_id=? AND normalized_alias=? AND source=?",
+                (entity_id, alias_key, USER_ALIAS_SOURCE)).rowcount
+            if not removed:
+                raise ValueError("only aliases you added here can be removed")
+            return {"ok": True, "alias": alias, "removed": True}
+        if alias_key == normalize_entity_name(canonical):
+            # 统称本来就是这个写法，添进别名表只会让下拉里并排出现两个一样的名字。
+            return {"ok": True, "alias": canonical, "added": False}
+        taken = c.execute(
+            "SELECT canonical_name FROM entity WHERE kind=? AND normalized_name=? AND id<>?",
+            (kind, alias_key, entity_id)).fetchone()
+        if taken:
+            raise ValueError(f"another {kind} is already named {taken[0]}")
+        existing = c.execute(
+            "SELECT alias FROM entity_alias WHERE entity_id=? AND normalized_alias=?",
+            (entity_id, alias_key)).fetchone()
+        if existing:
+            return {"ok": True, "alias": str(existing[0]), "added": False}
+        c.execute(
+            "INSERT INTO entity_alias(entity_id,alias,normalized_alias,source,confidence)"
+            " VALUES(?,?,?,?,1.0)",
+            (entity_id, alias, alias_key, USER_ALIAS_SOURCE))
+        return {"ok": True, "alias": alias, "added": True}
+
 
 def w_entity_name(contract: WebContract, body):
     """把这个实体已有的某个名字提为统称，旧规范名转成别名。
 
     统称就是 `entity.canonical_name`，它是真相字段。所以这里只做「换一个已经在
     这条实体名下的名字」：候选必须是现在的规范名或它的别名之一，不收自由文本——
-    自由文本是改名，那要有来源和证据，不是一次点击该干的事。
+    自由文本是改名，那要有来源和证据，不是一次点击该干的事。要把一个全新的写法提成
+    统称，先用 `w_entity_alias` 把它记成这条实体的别名，那一步是身份补充、有自己的
+    冲突判定；这一步只在已经属于这条实体的名字里挑。
 
     规范名唯一（`entity(kind, normalized_name)`），选中的名字若已经是另一条实体的
     规范名，这里只报冲突。那种情况要么是两条该合并，要么是同名不同人，都得人来判。

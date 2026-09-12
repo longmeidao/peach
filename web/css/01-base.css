@@ -433,6 +433,17 @@ body.settings-open>.ovtrack.page,body.photolight-open>.ovtrack.page{display:none
 .geist-modal-fields:empty{display:none}
 .modalfield{display:grid;gap:8px}
 .modalfield>span{color:var(--muted);font-size:var(--fs-xs)}
+/* 一排能撤掉的名牌。整块不是命中区，能点的只有每块右边那一枚——名字本身在这里
+   没有别的动作，让整行可点只会让人以为点了会发生什么。 */
+.aliaschips{display:flex;flex-wrap:wrap;gap:6px}
+.aliaschip{display:inline-flex;align-items:center;gap:2px;min-height:28px;padding:0 2px 0 10px;
+  border:1px solid var(--border-10);border-radius:var(--pill-radius);background:var(--overlay-5);
+  color:var(--ink-2);font-size:var(--fs-sm);overflow-wrap:anywhere}
+.aliaschip button{display:grid;place-items:center;width:24px;height:24px;flex:none;padding:0;border:0;
+  border-radius:50%;background:transparent;color:var(--muted);cursor:pointer}
+.aliaschip button:hover{background:var(--hover);color:var(--drop)}
+.aliaschip svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2;
+  stroke-linecap:round;stroke-linejoin:round}
 /* 勾选一行等于选中它，所以整行都是命中区，勾选框在行首。 */
 .picklist{display:grid;gap:6px;max-height:280px;overflow-y:auto;overscroll-behavior:contain}
 .pickrow{display:flex;align-items:center;gap:11px;min-height:44px;padding:0 12px;

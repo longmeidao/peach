@@ -28,6 +28,8 @@ FILETREE = {
         "7-S1": {"葵つかさ.jpg": "葵つかさ.jpg?t=2"},
         "y-Minnano": {"葵つかさ.jpg": "AI-Fix-葵つかさ.jpg?t=3"},
         "8-GRAPHIS": {"別人.jpg": "別人.jpg?t=4"},
+        # 同一个人按另一种写法另存的一批。图库里这是常态，而它跟上面三张一个键也不共用。
+        "3-Prestige": {"葵ツカサ.jpg": "葵ツカサ.jpg?t=5"},
     }
 }
 LIBRARY_REF = "gfriends:7-S1/葵つかさ.jpg"
@@ -107,12 +109,31 @@ class IndexTests(unittest.TestCase):
             self.assertEqual(gfriends.load_index(Path(folder)), {})
             self.assertIsNone(gfriends.index_age(Path(folder)))
 
-    def test_the_first_name_that_hits_decides_the_candidates(self):
+    def test_every_name_on_the_chain_brings_its_own_pictures(self):
+        """并起来，不是停在第一个命中的名字上。
+
+        同一个人在图库里常按好几种写法各存一批，停下来就只剩其中一批——实测「新有菜」
+        那条链，先命中的那个名下 1 张、后面那个名下 11 张。
+        """
         index = gfriends.parse_filetree(json.dumps(FILETREE).encode("utf-8"))
-        matched, found = gfriends.candidates(index, ["葵司", "葵つかさ"])
-        self.assertEqual(matched, "葵つかさ")
-        self.assertEqual(len(found), 3)
-        self.assertEqual(gfriends.candidates(index, ["谁都不是"]), ("", []))
+        match = gfriends.candidates(index, ["葵司", "葵つかさ", "葵ツカサ"])
+        self.assertEqual(match.names, ("葵つかさ", "葵ツカサ"))
+        # 并完之后整体重排：挑图看的是哪张该先试，不是它由链上第几个名字找到的。
+        self.assertEqual([category for category, _ in match.items],
+                         ["0-Hand-Storage", "3-Prestige", "7-S1", "y-Minnano"])
+        # 一张图的来路记的是找到它的那个名字，不能记成整条链。
+        self.assertEqual(match.finder[("3-Prestige", "葵ツカサ.jpg")], "葵ツカサ")
+
+    def test_a_picture_two_names_both_point_at_is_listed_once(self):
+        index = {"甲": [("7-S1", "a.jpg")], "乙": [("7-S1", "a.jpg")]}
+        match = gfriends.candidates(index, ["甲", "乙"])
+        self.assertEqual(match.items, (("7-S1", "a.jpg"),))
+        # 先指到它的那个名字算它的来路。
+        self.assertEqual(match.finder[("7-S1", "a.jpg")], "甲")
+
+    def test_a_chain_that_hits_nothing_is_falsy(self):
+        index = gfriends.parse_filetree(json.dumps(FILETREE).encode("utf-8"))
+        self.assertFalse(gfriends.candidates(index, ["谁都不是"]))
 
 
 class SourceBoundaryTests(unittest.TestCase):
@@ -197,12 +218,30 @@ class ChoiceTests(PickerFixture):
         """规范名是简体，图库里只有日文写法；不查别名一张也列不出来。"""
         out = self.listed()
         self.assertEqual(out["names"], ["葵司", "葵つかさ"])
-        self.assertEqual(out["matched_name"], "葵つかさ")
+        self.assertEqual(out["matched_names"], ["葵つかさ"])
         self.assertEqual([one["ref"] for one in out["choices"]], [
             "gfriends:0-Hand-Storage/葵つかさ.jpg",
             LIBRARY_REF,
             "gfriends:y-Minnano/AI-Fix-葵つかさ.jpg",
         ])
+        # 只有一个名字找得到时不必说是哪一个：那一屏上写着的就是她。
+        self.assertEqual({one["found_by"] for one in out["choices"]}, {""})
+
+    def test_a_second_writing_of_her_name_brings_its_own_pictures(self):
+        """两种写法在图库里是两批图，而屏幕上要说清哪一张是按哪个名字找到的。
+
+        找错人是这里唯一会出的大错，名字是唯一的线索：只报「图库里找到的」，一张
+        同名不同人的图就没有任何能让人起疑的地方。
+        """
+        with self.connection:
+            self.connection.execute(
+                "INSERT INTO entity_alias(entity_id,alias,normalized_alias,source,"
+                "confidence) VALUES(7792,'葵ツカサ','葵ツカサ','user:alias',1.0)")
+        out = self.listed()
+        self.assertEqual(out["matched_names"], ["葵つかさ", "葵ツカサ"])
+        found = {one["ref"]: one["found_by"] for one in out["choices"]}
+        self.assertEqual(found["gfriends:3-Prestige/葵ツカサ.jpg"], "葵ツカサ")
+        self.assertEqual(found[LIBRARY_REF], "葵つかさ")
 
     def test_pictures_taken_before_show_up_as_their_own_group(self):
         """换回去不该再下一次：取过的图按内容哈希躺在候选缓存里。"""
@@ -408,7 +447,7 @@ class AvatarPickerRouteTests(unittest.TestCase):
     def test_the_choices_endpoint_lists_the_library_candidates(self):
         out = self.client.get(
             "/api/avatar-choices?kind=performer&id=7792&t=secret").json()
-        self.assertEqual(out["matched_name"], "葵つかさ")
+        self.assertEqual(out["matched_names"], ["葵つかさ"])
         self.assertIn(LIBRARY_REF, [one["ref"] for one in out["choices"]])
 
     def test_a_preview_serves_the_picture_and_a_bad_reference_404s(self):
