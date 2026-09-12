@@ -1132,7 +1132,7 @@ def q_follow_authors(contract, args) -> dict:
             if row["entity_id"] and row["entity_name"]:
                 entry["_entity"] = str(row["entity_name"])
             name = _author_display_name(row)
-            official = _official_avatar_url(row["provider"], row["ref"])
+            official = _official_avatar_url(row)
             mirror = _avatar_url(row["provider"], row["ref"])
             if official:
                 if not entry["avatar"]:
