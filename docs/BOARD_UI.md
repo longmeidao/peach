@@ -280,22 +280,36 @@ Button 取证（2026-09-10）：对照官网 `/components/button` 与保存的
 按下 220ms、释放 420ms，曲线为 `cubic-bezier(.4,0,.2,1)`，减少动态效果时关闭。
 按钮保留原动作、键盘焦点、忙态防重复与禁用语义，不写入预览配置。
 
-纠正（2026-09-12）：这一段此处记过「hover 叠层以 150ms 淡入」，同日三条证据一起推翻它。
-① `/components/button` 上 10 颗 `bg-button-primary` 的 `className` 里没有任何 `hover:` 或
-`active:` 类；② 真鼠标悬停（`isHovered:true`）时渐变
-`linear-gradient(lab(54.1736 13.3369 -74.6839),lab(44.0605 29.0279 -86.0352))`、阴影
-`rgba(0,0,0,.05) 0 1px 2px`、`filter:none`、`transform:none`、`color:#fff` 与静止逐项相同；
-③ 注册表 `/r/button.json`（HTTP 200，10110 字节）只在 secondary
-（`hover:bg-background-primary-hover hover:border-border-button-hover`）与 ghost
-（`hover:bg-button-ghost-hover active:bg-button-ghost-active`）上声明悬停，primary 那一行只有
-`bg-button-primary text-text-white shadow-xs`，上游也没有 `--color-button-primary-hover` 这个
-token。上游的强调档靠 `active` 那一下的缩放和键盘焦点环。
+纠正（2026-09-12）：这一段此处一度记过「上游 primary 没有悬停态」，同日取到规则原文后作废。
+当时那三条证据全落在同一个盲点上——悬停那一层挂在伪元素上。① 读 `className` 看不到：悬停
+不是 Tailwind 的 `hover:` 类，写在样式表里；② 真鼠标悬停读 computed 也看不到：读的是元素
+自己的 `background-image`，变的是 `::before` 的 `opacity`，`getComputedStyle(el)` 不传第二个
+参数就取不到那一层；③ 注册表 `/r/button.json` 的 primary 那一行确实只有
+`bg-button-primary text-text-white shadow-xs`，因为三档全长在 `.bg-button-primary` 这个类里。
+取证结论涉及「某个状态没有样式」时，伪元素两个都要显式读一遍再下判断。
 
-Peach 在这一档上有主动差异：强调档的悬停换一份提亮一档的渐变
-（`--board-blue-hover`，blue-400→blue-600），边和阴影不动，写法与危险档那两条相同。
-用户要的是压上去看得出鼠标停在哪一颗，一排按钮里毫无反应读不出来。规则连同 token
-只在 `web/board.css` 一处，错误页、登录页和首启页由 `routes_pages._board_button_rules()`
-取同一份过去；判据写在 `test_the_primary_tier_has_one_face_and_one_hover`。
+`.bg-button-primary` 的规则原文（2026-09-12 实测）：类自身 `isolation:isolate` 加
+`background-image:var(--gradient-button-primary-default)`；`::before` 是 `inset:0`、
+`z-index:-1`、`pointer-events:none`、`border-radius:inherit`，铺
+`var(--gradient-button-primary-hover)`、`opacity:0`、`transition:opacity var(--button-transition-ms) ease`
+（该 token 为 .15s），`:hover:not(:disabled):not([aria-disabled=true])::before` 把它抬到 1；
+`:active` 换成 `var(--gradient-button-primary-active)` 并把那层压回 0；`:disabled` 换
+`--gradient-button-primary-disabled` 且 `::before{display:none}`。三档渐变都是 180deg 两停点，
+按色阶排 default `accent-500→600`、hover `400→500`、active `600→700`，实测像素
+400=`#3392ff`、500=`#2b7fff`、600=`#155dfc`、700=`#1447e6`。其余 computed：`height:36px`、
+`padding:8px`、`border:0px`、`border-radius:10px`、`box-shadow:rgba(0,0,0,.05) 0 1px 2px`、
+`color:#fff`、`font:500 14px/20px Inter`。
+
+Peach 照抄这一副面，包括 `::before` 的交叉淡入和 `border:0`——补一圈透明边会在
+`box-sizing:border-box` 下把内容盒压掉 2px，而 `background-origin` 是 padding-box，渐变被压到
+34px 再延展回 36px，色标就跟上游错开一像素。三档 token 是 `--board-blue`、`--board-blue-hover`、
+`--board-blue-active`，连同规则只在 `web/board.css` 一处，错误页、登录页和首启页由
+`routes_pages._board_button_rules()` 取同一份过去；判据写在
+`test_the_primary_tier_has_one_face_and_crossfades_into_its_hover`。
+
+Peach 在这一档上的主动差异有两项：`padding` 取 `8px 12px` 而不是上游的四边 `8px`，中文字比
+拉丁字宽，四边等距时两侧字贴着边；上游 `active` 那一下的 0.98 缩放（`transform .42s`）没有跟，
+按下换渐变已经读得出来。
 
 Checkbox 动效取证（2026-09-10）：项目保存的 `board-reference/checkbox.json` 中
 `checkbox-glyph.tsx` 使用 16px SVG、`pathLength=1` 与 `animate-check-draw`。

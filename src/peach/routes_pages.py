@@ -331,9 +331,9 @@ def _board_button_rules() -> str:
     产品。把值抄进 `board-entry.css` 也能画成一样，但那是第二份色值——站内改一次渐变，
     这三页就悄悄留在旧的那一版上。
 
-    只取主按钮那三条（静止、悬停、尺寸）和它们用到的 token：`board.css` 的 `:root` 里
-    还有一份把 `--page` `--ground` 按 Board 的角色重排的映射，整块搬过来会把入口页
-    自己的面色对调。
+    只取主按钮那几条（静止、悬停铺的那层底、按下、尺寸）和它们用到的 token：`board.css`
+    的 `:root` 里还有一份把 `--page` `--ground` 按 Board 的角色重排的映射，整块搬过来
+    会把入口页自己的面色对调。
     """
     board = (PROJECT_ROOT / "web/board.css").read_text(encoding="utf-8")
     palettes = re.findall(
@@ -343,7 +343,8 @@ def _board_button_rules() -> str:
     fonts = [f'{name}:{value}' for name in ("--board-font", "--board-body-medium")
              for value in re.findall(rf'{name}:([^;]+);', board)[:1]]
     rules = re.findall(
-        r'^body :is\([^)]*\)\.primary(?::not\(:disabled\))?(?::hover)?\{[^}]*\}', board, re.M)
+        r'^body :is\([^)]*\)\.primary(?::not\(:disabled\))?'
+        r'(?::hover|:active)?(?:::before)?\{[^}]*\}', board, re.M)
     return ''.join(palettes) + ''.join(switches) + ':root{' + ';'.join(fonts) + '}' + ''.join(rules)
 
 
