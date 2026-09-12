@@ -14,6 +14,7 @@ from unittest import mock
 from scripts import agent_worktree as coordinator
 from scripts import test_evidence as evidence
 from scripts import test_runner as runner
+from support.gitrepo import seed_repository
 
 
 class VerificationTests(unittest.TestCase):
@@ -21,17 +22,11 @@ class VerificationTests(unittest.TestCase):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         self.root = Path(temporary.name).resolve()
-        self.repo = self.root / "repo"
-        self.repo.mkdir()
-        self.git("init", "-b", "master")
-        self.git("config", "user.name", "Peach Test")
-        self.git("config", "user.email", "test@example.invalid")
-        (self.repo / ".gitignore").write_text("build/\n", encoding="utf-8")
-        (self.repo / "README.md").write_text("内容\n", encoding="utf-8")
-        (self.repo / "src/peach").mkdir(parents=True)
-        (self.repo / "src/peach/__init__.py").write_text('__version__ = "0.7.30"\n')
-        self.git("add", ".gitignore", "README.md", "src/peach/__init__.py")
-        self.git("commit", "-m", "seed")
+        self.repo = seed_repository(self.root / "repo", {
+            ".gitignore": "build/\n",
+            "README.md": "内容\n",
+            "src/peach/__init__.py": '__version__ = "0.7.30"\n',
+        }, "seed")
 
     def git(self, *args):
         return evidence.git(self.repo, *args)
@@ -254,6 +249,27 @@ class VerificationTests(unittest.TestCase):
             build.side_effect = failing
             self.assertEqual(runner.main(["--scope", "checks", "--fresh"]), 1)
             self.assertFalse(evidence.covers(evidence.read(self.repo, evidence.key(self.repo)), ("checks",)))
+
+    def test_a_parallel_run_signs_one_record_from_the_merged_shards(self):
+        """并行时父进程不自己跑用例，只按分片汇总签一份记录；一片红就没有记录。"""
+        with redirect_stderr(io.StringIO()), redirect_stdout(io.StringIO()), \
+                mock.patch.object(runner, "ROOT", self.repo), \
+                mock.patch.object(runner, "build_suite", side_effect=AssertionError("父进程不该自己跑")), \
+                mock.patch.object(runner, "run_shards", return_value=(True, 3, [(0.5, "x"), (0.1, "y")])) as shards:
+            self.assertEqual(runner.main(["--scope", "checks", "--jobs", "2"]), 0)
+        shards.assert_called_once()
+        self.assertEqual(shards.call_args.args, (("checks",),))
+        self.assertEqual(shards.call_args.kwargs["jobs"], 2)
+        self.assertGreater(shards.call_args.kwargs["shard_count"], 1)
+        record = evidence.read(self.repo, evidence.key(self.repo))
+        self.assertTrue(evidence.covers(record, ("checks",)))
+        self.assertEqual(record["count"], 3)
+        self.assertEqual(record["slowest"][0], [0.5, "x"])
+        with redirect_stderr(io.StringIO()), redirect_stdout(io.StringIO()), \
+                mock.patch.object(runner, "ROOT", self.repo), \
+                mock.patch.object(runner, "run_shards", return_value=(False, 3, [])):
+            self.assertEqual(runner.main(["--scope", "checks", "--jobs", "2", "--fresh"]), 1)
+        self.assertFalse(evidence.covers(evidence.read(self.repo, evidence.key(self.repo)), ("checks",)))
 
     def test_full_baseline_requires_only_new_scopes_without_extending_its_age(self):
         original = self.certify(self.repo, ("full",))

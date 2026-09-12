@@ -527,6 +527,15 @@ TAG_TYPE_LABELS = {"artist": "作者", "character": "角色", "copyright": "作�
                    "metadata": "元数据", "general": "标签"}
 
 
+def no_backoff(_seconds: float) -> None:
+    """交互路径的退避：不等。
+
+    连接器对 GET 失败按 0、1、2、4、8 秒退避，累计 15 秒，那是抓取任务的节奏。输入框
+    联想和圆标补全是敲一下字就问一次的路径，站点一挂让人等 15 秒才回「没有」，不如
+    立刻回空——建议本来就是锦上添花。
+    """
+
+
 @dataclass(frozen=True)
 class Suggestion:
     """一个可以直接拿去查找的名字。"""
@@ -608,7 +617,7 @@ def tag_suggestions(prefix: str, *, transport=None,
         return ()
     try:
         connector = Rule34XxxConnector(transport=transport, credential=credential,
-                                       max_items=1)
+                                       max_items=1, sleeper=no_backoff)
         rows = connector.autocomplete(prefix)
     except (FollowSourceError, CredentialError, OSError):
         return ()

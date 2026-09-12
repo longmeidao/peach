@@ -12,6 +12,7 @@ from pathlib import Path
 from unittest import mock
 
 from scripts import release_due
+from support.gitrepo import seed_repository
 
 #: 版本号的唯一来源在测试仓库里的最小复刻。
 VERSION_SEED = '"""Peach application package."""\n\n__version__ = "0.7.14"\n'
@@ -37,18 +38,9 @@ class ReleaseDueCase(unittest.TestCase):
         # 先 resolve：CI runner 的临时目录都是别名，git 报回来的是真实路径，拿未
         # resolve 的路径去比对会本机全绿、CI 全红。
         self.root = Path(self.tmp.name).resolve()
-        self.repo = self.root / "repo"
-        self.repo.mkdir()
         self.latch = self.root / "state" / "release-due.json"
-        subprocess.run(["git", "init", "-b", "master", str(self.repo)], check=True,
-                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        git(self.repo, "config", "user.email", "test@example.invalid")
-        git(self.repo, "config", "user.name", "Peach Test")
-        package = self.repo / "src" / "peach"
-        package.mkdir(parents=True)
-        (package / "__init__.py").write_text(VERSION_SEED, encoding="utf-8")
-        git(self.repo, "add", "src/peach/__init__.py")
-        git(self.repo, "commit", "-m", "chore: 起底")
+        self.repo = seed_repository(self.root / "repo",
+                                    {"src/peach/__init__.py": VERSION_SEED}, "chore: 起底")
 
     def pile_up_user_facing_work(self, count: int = 10) -> None:
         """攒够「不必等满周期」那道判据要的条目数。"""

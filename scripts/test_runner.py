@@ -4,9 +4,13 @@ from __future__ import annotations
 import argparse
 import fnmatch
 import importlib
+import json
+import os
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
 import time
 import tomllib
 import unittest
@@ -353,22 +357,105 @@ class TimedResult(unittest.TextTestResult):
         super().stopTest(test)
 
 
+#: 本机并行的上限。全量里最重的是 git 与 PowerShell 子进程型的 tooling 用例，四路已经
+#: 把它们摊开；再多只是让每个子进程各自 import 一遍 peach 的固定开销变多。
+MAX_JOBS = 4
+#: 最多切多少片。CI 两片是因为每片一台 runner；本机每片只是一个子进程，切细一点
+#: 才能让重文件（`test_agent_worktree.py` 一个就 80 秒）不把整片拖成长尾。
+MAX_SHARDS = 16
+
+
+def resolve_jobs(value: str) -> int:
+    """`--jobs` 的取值：正整数照收，`auto` 按核数定、不超过 `MAX_JOBS`。"""
+    if value == "auto":
+        return max(1, min(MAX_JOBS, (os.cpu_count() or 1) // 2))
+    try:
+        jobs = int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError("--jobs 只接受正整数或 auto") from None
+    if jobs < 1:
+        raise argparse.ArgumentTypeError("--jobs 至少为 1")
+    return jobs
+
+
+def shard_command(scopes: tuple[str, ...], index: int, count: int, timings: Path) -> list[str]:
+    return [sys.executable, str(ROOT / "scripts" / "test_runner.py"),
+            *(item for scope in scopes for item in ("--scope", scope)),
+            "--shard-index", str(index), "--shard-count", str(count),
+            "--timings", str(timings)]
+
+
+def run_shards(scopes: tuple[str, ...], *, jobs: int, shard_count: int,
+               spawn=subprocess.Popen) -> tuple[bool, int, list]:
+    """把选中的文件按 CI 同一套稳定分片切开，同时最多 `jobs` 个子进程各跑一片。
+
+    每片是一次 `--shard-count` 子进程：它自己从不签发记录，只把成败、用例数和逐个
+    用例的耗时写进 `--timings` 那个文件，父进程汇总后签发一份记录，口径与串行相同。
+    片数比并发数多，是为了让先跑完的进程接着领下一片，重文件不至于把墙钟拖成它
+    一家的长度。子进程的输出各自落盘，哪片结束就整段打印哪片，不交错。
+    """
+    folder = Path(tempfile.mkdtemp(prefix="peach-shards-"))
+    pending = list(range(shard_count))
+    running: dict[int, tuple[object, object]] = {}
+    passed, count, timings = True, 0, []
+    try:
+        while pending or running:
+            while pending and len(running) < jobs:
+                index = pending.pop(0)
+                log = open(folder / f"{index}.log", "w+", encoding="utf-8", errors="replace")
+                process = spawn(shard_command(scopes, index, shard_count, folder / f"{index}.json"),
+                                stdout=log, stderr=subprocess.STDOUT, cwd=str(ROOT))
+                running[index] = (process, log)
+            finished = [index for index, (process, _) in running.items()
+                        if process.poll() is not None]
+            if not finished:
+                time.sleep(0.2)
+                continue
+            for index in finished:
+                process, log = running.pop(index)
+                log.flush()
+                log.seek(0)
+                sys.stdout.write(log.read())
+                log.close()
+                report_path = folder / f"{index}.json"
+                report = json.loads(report_path.read_text(encoding="utf-8")) \
+                    if report_path.is_file() else {"success": False, "count": 0, "timings": []}
+                ok = process.returncode == 0 and bool(report.get("success"))
+                passed = passed and ok
+                count += int(report.get("count", 0))
+                timings.extend(tuple(item) for item in report.get("timings", []))
+                print(f"分片 {index + 1}/{shard_count} {'通过' if ok else '失败'}"
+                      f"（{report.get('count', 0)} 个用例）", flush=True)
+    finally:
+        shutil.rmtree(folder, ignore_errors=True)
+    return passed, count, timings
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--scope", choices=("full", "auto", *SCOPES), default="auto")
+    # `--scope` 可重复：本机并行的父进程把 `auto` 算出来的几个域原样交给每个分片子进程。
+    parser.add_argument("--scope", action="append", dest="scopes",
+                        choices=("full", "auto", *SCOPES))
     parser.add_argument("--fresh", action="store_true", help="实际重跑，不复用本机记录")
     parser.add_argument("--base", default="master", help="CI 选测的已验证 Git 基线")
     parser.add_argument("--shard-index", type=int, default=0)
     parser.add_argument("--shard-count", type=int, default=1)
+    parser.add_argument("--timings", type=Path, default=None,
+                        help="分片子进程把成败与逐用例耗时写到这个文件，供父进程汇总")
+    parser.add_argument("--jobs", type=resolve_jobs, default=1,
+                        help="本机同时跑几个分片子进程；auto 按核数定。默认串行，正式入口传 auto")
     parser.add_argument("--list-scopes", action="store_true")
     args = parser.parse_args(argv)
-    if not 1 <= args.shard_count <= 4 or not 0 <= args.shard_index < args.shard_count:
-        parser.error("分片总数为 1～4，编号从 0 开始且小于总数")
+    if not 1 <= args.shard_count <= MAX_SHARDS or not 0 <= args.shard_index < args.shard_count:
+        parser.error(f"分片总数为 1～{MAX_SHARDS}，编号从 0 开始且小于总数")
     if args.list_scopes:
         print("\n".join(("full", "auto", *SCOPES)))
         return 0
-    scopes: tuple[str, ...] = (args.scope,)
-    if args.scope == "auto":
+    requested: tuple[str, ...] = tuple(dict.fromkeys(args.scopes or ("auto",)))
+    if "auto" in requested and len(requested) > 1:
+        parser.error("auto 不能与别的域同时指定")
+    scopes = requested
+    if requested == ("auto",):
         if args.base == "master":
             scopes, explanation = resolve_auto_scope()
         else:
@@ -381,18 +468,22 @@ def main(argv: list[str] | None = None) -> int:
         # CI 的每片独立 runner；局部分片绝不签发本机全量证明。
         result = unittest.TextTestRunner(verbosity=2, resultclass=TimedResult).run(
             build_suite(*scopes, shard_index=args.shard_index, shard_count=args.shard_count))
-        return 0 if result.wasSuccessful() and result.testsRun > 0 else 1
+        success = result.wasSuccessful() and result.testsRun > 0
+        if args.timings is not None:
+            args.timings.write_text(json.dumps({"success": success, "count": result.testsRun,
+                                                "timings": result.timings}), encoding="utf-8")
+        return 0 if success else 1
     context = test_evidence.inputs(ROOT)
     state = context["state"]
     try:
         with test_evidence.run_lock(ROOT, state, scope=" ".join(scopes), root=str(ROOT)):
-            if not args.fresh and args.scope != "full" and test_evidence.covers(
+            if not args.fresh and "full" not in requested and test_evidence.covers(
                     test_evidence.read(ROOT, state), scopes):
                 print("复用本机测试记录：代码、依赖环境和范围匹配（24 小时内）。", flush=True)
                 return 0
             previous = test_evidence.read(ROOT, state)
             baseline = None
-            if args.scope == "auto" and not args.fresh and not previous:
+            if requested == ("auto",) and not args.fresh and not previous:
                 choices = []
                 for record, delta, version_only in test_evidence.baselines(ROOT, context):
                     needed, _ = scopes_for_changes(delta)
@@ -412,13 +503,26 @@ def main(argv: list[str] | None = None) -> int:
             with full_lock:
                 (folder / f"{state}.json").unlink(missing_ok=True)
                 started = time.monotonic()
-                result = unittest.TextTestRunner(verbosity=2, resultclass=TimedResult).run(build_suite(*scopes))
+                chosen = {path for scope in scopes for path in selected_files(scope)}
+                if args.jobs > 1 and len(chosen) > 1:
+                    # 片数取并发数的四倍：八片时最长一片 154 秒、最短 15 秒，墙钟被
+                    # 最重那片拖住；切细后先完成的进程接着领，长尾才摊得开。
+                    shard_count = min(len(chosen), 4 * args.jobs, MAX_SHARDS)
+                    print(f"本机并行：{shard_count} 片、同时 {min(args.jobs, shard_count)} 个子进程",
+                          flush=True)
+                    passed, count, timings = run_shards(scopes, jobs=args.jobs,
+                                                        shard_count=shard_count)
+                else:
+                    result = unittest.TextTestRunner(verbosity=2, resultclass=TimedResult).run(
+                        build_suite(*scopes))
+                    passed, count, timings = (result.wasSuccessful() and result.testsRun > 0,
+                                              result.testsRun, result.timings)
             stable = state == test_evidence.key(ROOT)
-            success = result.wasSuccessful() and stable and result.testsRun > 0
-            slowest = sorted(result.timings, reverse=True)[:20]
+            success = passed and stable
+            slowest = sorted(timings, reverse=True)[:20]
             test_evidence.write(ROOT, state, scopes, success=success, previous=previous,
                                 context=context, baseline=baseline,
-                                elapsed=time.monotonic() - started, slowest=slowest, count=result.testsRun)
+                                elapsed=time.monotonic() - started, slowest=slowest, count=count)
             for seconds, name in slowest[:5]:
                 print(f"慢测试 {seconds:.3f}s：{name}", flush=True)
             if not stable:
