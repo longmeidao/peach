@@ -548,12 +548,13 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(list(cached.parent.glob("*.img"))), 1,
                          "落选的候选一个文件都不留")
 
-    async def test_a_face_too_small_to_see_keeps_looking_and_takes_the_biggest(self):
+    async def test_a_face_too_small_to_see_keeps_looking_and_then_shows_the_whole_frame(self):
         """检出了脸不算数，脸得在画面里占到看得清的那一档，不够就继续看下一张。
 
         YuNet 在远景图上会给出一个占长边百分之二、分数照样过线的框，罩在肩背的纹身
-        上；圆标正是按这个框取景放大的，于是圆里是一小块皮肤。都不够大时取其中脸最大
-        的那张——它仍然是这几张里最接近一张头像的。
+        上；圆标正是按这个框取景放大的，于是圆里是一小块皮肤。一张都过不了这一关的
+        题材按「没有头」处理：整张封面摆出来，不写人脸记录。把画面里最大的那块皮肤
+        放大成一枚认不出的圆，还不如一张认得出是哪部作品的全身。
         """
         from peach import follow_assets, routes_media
 
@@ -582,11 +583,50 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
                 response = await self.client.get("/work-icon?t=secret&work=miside")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(hits, list(covers), "一张都不够大时候选要走完")
-        self.assertEqual(response.content, third, "退回这几张里脸最大的那一张")
+        self.assertEqual(response.content, first, "退回第一张取得到的，摆整张")
+        cached = follow_assets.cache_path(
+            self.candidate_root / follow_assets.ROOT_NAME, "works", "miside")
+        self.assertFalse(cached.with_suffix(".face.json").exists(),
+                         "没有一张脸够格，就不该留下一份让页面照着放大的记录")
+
+    async def test_a_face_with_too_few_pixels_is_passed_over_for_a_sharper_one(self):
+        """脸在画面里占得住还不够，它得有足够多的像素撑到放大到头。
+
+        实测本库五枚圆标栽在这里：那几条没有封面，候选只能退回站点那层 250px 的缩略
+        图，脸在里面只剩十几二十个像素。占比这一关它们全过，可页面按脸放大时不许上采
+        样，于是脸最多只能占到圆的三成，剩下七成是身上和背景——看起来就是一张糊图。
+        """
+        from peach import follow_assets, routes_media
+
+        covers = {f"https://api-cdn.rule34.xxx/samples/{n}/c.jpg": tiny_jpeg(n * 20)
+                  for n in (1, 2)}
+        hits = []
+
+        def upstream(request):
+            hits.append(str(request.url))
+            return httpx.Response(200, content=covers[str(request.url)], request=request,
+                                  headers={"content-type": "image/jpeg"})
+        self._swap_http_client(upstream)
+        blurry, sharp = (covers[url] for url in covers)
+        # 两张的脸占比一样，差别只在源图有多大：250px 那张的脸只有 24 个像素。
+        sizes = {blurry: [250, 141], sharp: [1920, 1080]}
+
+        def probe(payload):
+            return {"ratio": 0.5625, "px": sizes[payload],
+                    "face": {"cx": 0.5, "cy": 0.3, "w": 0.096, "h": 0.17,
+                             "score": 0.88}}
+        with patch("peach.routes_media.web_follow.work_icon_urls",
+                   return_value=list(covers)):
+            with patch.object(routes_media._WORK_FACE_PROBE, "on_bytes",
+                              side_effect=probe):
+                response = await self.client.get("/work-icon?t=secret&work=miside")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(hits, list(covers), "糊的那张不算数，得往下看")
+        self.assertEqual(response.content, sharp)
         cached = follow_assets.cache_path(
             self.candidate_root / follow_assets.ROOT_NAME, "works", "miside")
         written = json.loads(cached.with_suffix(".face.json").read_text(encoding="utf-8"))
-        self.assertEqual(written["face"]["w"], 0.05)
+        self.assertEqual(written["face"]["w"], 0.096)
 
     async def test_when_nothing_here_shows_a_face_the_icon_comes_from_the_site(self):
         """本库那几张都看不清脸时，圆标取站上这个题材最热的那几张。

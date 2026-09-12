@@ -528,6 +528,26 @@ _WORK_FACE_PROBE = avatar_face.FaceProbe()
 _WORK_ICON_FACE_SHARE = follow_assets.FACE_PX_IN_STORE / follow_assets.ICON_SIDE
 
 
+def _usable_face(record: dict | None) -> bool:
+    """这张脸够不够撑起一枚圆标：构图上占得住，像素上放得大。
+
+    两条线问的是两件事，缺一条就漏一类。占比（`_WORK_ICON_FACE_SHARE`）问的是圆里落
+    下的到底是不是脸；像素（`FACE_PX_IN_STORE`）问的是这张脸放得大放不大——页面按脸
+    框放大时不许上采样，源图里那张脸有多少像素就是放大的天花板。
+
+    实测本库 74 枚圆标，占比这一关全过、却仍旧看不清的有五枚：它们的源图是站点那层
+    250px 的缩略图（那一条没有封面，候选只能退回 preview），脸在里面只剩 18～24 个像
+    素，放到头也只占圆的三成，剩下七成是身上和背景。`FACE_PX_IN_STORE` 正是「脸要填
+    满圆标那六成得有多少像素」，所以这条线不是新定的数，是那一档的定义本身。
+
+    两关合起来也保证了落盘那份够用：占比过关意味着 `icon_side()` 算出来就是
+    `ICON_SIDE`，缩完脸仍有 `ICON_SIDE × 占比` ≥ `FACE_PX_IN_STORE` 个像素；源图比
+    `ICON_SIDE` 还小的时候根本不缩，像素这一关直接就是落盘那份的读数。
+    """
+    return (avatar_face.face_share(record) >= _WORK_ICON_FACE_SHARE
+            and avatar_face.face_px_width(record) >= follow_assets.FACE_PX_IN_STORE)
+
+
 def _work_icon_targets(state, local: list[str], tag: str):
     """这个题材可以拿来当代表图的地址，本库那几张在前。
 
@@ -551,11 +571,13 @@ def _pick_work_icon(client, targets: Iterable[str]) -> tuple[bytes | None, dict 
 
     「检出了脸」这一关太松，收下的常常不是脸：YuNet 在一张 3072×4096 的远景图上会给
     出一个占长边百分之五、分数 0.69 的框，罩在肩背的纹身上，而圆标正是按这个框取景放
-    大的，于是圆里是一小块皮肤。所以判据是 `_WORK_ICON_FACE_SHARE`：脸得在画面里占到
-    那么大，不够就继续看下一张候选，不停在第一张。
+    大的，于是圆里是一小块皮肤。判据因此是 `_usable_face`：脸得在画面里占得住，还得
+    有足够多的像素撑到放大到头，两条都过才停，否则继续看下一张候选。
 
-    全部候选都不够时退回其中脸最大的那张——它仍然是这几张里最接近一张头像的；连一张
-    脸都没检出才退回第一张取得到的图：没有脸的代表图仍然好过一个空圆。
+    一张都过不了这两关的题材按「没有头」处理：退回第一张取得到的图，不写人脸记录，
+    页面于是按样式表里的默认取景显示整张封面。这类题材多半真的给不出正脸——顶着头发
+    的背影、非人形的主角，或者站上那个标签下本来就只有远景。与其把画面里最大的那块
+    皮肤放大成一枚认不出的圆，不如老实摆一张全身：它至少还认得出是哪部作品。
 
     检脸看的是站点那张高清封面，落盘的是缩过的那份：两件事要的尺寸不是一个数——
     250px 的缩略图里一张脸只剩十几个像素，而显示出来只有 28px。
@@ -564,23 +586,18 @@ def _pick_work_icon(client, targets: Iterable[str]) -> tuple[bytes | None, dict 
     各留一道纯黑；那两道黑边跟着进圆标，圆里直接露出黑条，还把画面撑高、让 cover 把
     脸缩得更小。裁完再检脸，坐标才落在这张图自己的坐标系里。
     """
-    first: tuple[bytes | None, dict | None] = (None, None)
-    best: tuple[float, bytes | None, dict | None] = (0.0, None, None)
+    first: bytes | None = None
     for target in targets:
         body = follow_assets.fetch_image(client, target)
         if not body:
             continue
         body = follow_assets.trim_letterbox(body)
         record = _WORK_FACE_PROBE.on_bytes(body)
-        share = avatar_face.face_share(record)
-        if share >= _WORK_ICON_FACE_SHARE:
+        if _usable_face(record):
             return _stored_icon(body, record)
-        if share > best[0]:
-            best = (share, body, record)
-        if first[0] is None:
-            first = (body, record)
-    body, record = (best[1], best[2]) if best[1] is not None else first
-    return _stored_icon(body, record) if body else (None, record)
+        if first is None:
+            first = body
+    return _stored_icon(first, None) if first is not None else (None, None)
 
 
 def _stored_icon(body: bytes, record: dict | None) -> tuple[bytes, dict | None]:
