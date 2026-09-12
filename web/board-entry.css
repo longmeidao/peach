@@ -10,7 +10,7 @@ input[type=text],input[type=password],input[type=number],select,.affix{backgroun
    Board primary 连同它用到的 token 一起内联进这三页，站内改一次渐变这里跟着走。
    表单里那些没带 `.geist-button primary` 的提交键还是要自己接上同一副盒子。 */
 button[type=submit],form>button{height:36px;background:var(--board-blue);color:#fff;border:1px solid transparent;box-shadow:0 1px 2px #0000000d;border-radius:10px}
-button[type=submit]:hover:not(:disabled),form>button:hover:not(:disabled){background:var(--board-blue-hover)}
+button[type=submit]:hover:not(:disabled),form>button:hover:not(:disabled){background:var(--board-blue-hover);color:#fff}
 .switch label:has(input:checked){background:var(--ground);box-shadow:0 1px 3px #0002}
 @media(max-width:480px){main{padding:20px}}
 /* Auth Card：单行登录偏好。 */
@@ -112,7 +112,7 @@ main:has(.setup-auth-card){width:100%;max-width:560px;padding:32px;box-shadow:0 
    `board.css` 送进来。按下那一下照旧：压深一档配 0.98 的缩放，那是上游
    `button-press-motion` 那一份。 */
 .setup-auth-card :is(button[type=submit],.setup-enter){border:0;color:#fff;background:var(--board-blue)}
-.setup-auth-card :is(button[type=submit],.setup-enter):hover:not(:disabled):not([aria-disabled=true]){background:var(--board-blue-hover)}
+.setup-auth-card :is(button[type=submit],.setup-enter):hover:not(:disabled):not([aria-disabled=true]){background:var(--board-blue-hover);color:#fff}
 .setup-auth-card :is(button[type=submit],.setup-enter):active:not(:disabled):not([aria-disabled=true]){background:linear-gradient(180deg,lab(44.0605% 29.0279 -86.0352),lab(36.9089% 35.0961 -85.6872))}
 .setup-auth-card :is(.pick,.add,button[type=submit],.setup-enter):active:not(:disabled):not([aria-disabled=true]){transform:scale(.98);transition-duration:.15s,.15s,.15s,.15s,.22s}
 .setup-auth-card :is(.pick,.add,button[type=submit],.setup-enter):is(:disabled,[aria-disabled=true]){cursor:not-allowed;color:var(--muted);box-shadow:none;transform:none;background:var(--surface);border-color:var(--button-border)}

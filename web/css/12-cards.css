@@ -85,11 +85,11 @@ body.refreshing #batchAction svg,
    同一排里的批量键是 36px 方形图标键，那条规则会给它的图标也加上左边距。 */
 .sortdir{width:14px;height:14px;flex:none;margin-left:5px;stroke:currentColor;fill:none;stroke-width:2;
   stroke-linecap:round;stroke-linejoin:round}
-.count .sorts .batchaction,.entitycollectionhead .sorts .batchaction{background:var(--ink);border-color:var(--ink);color:var(--ground);
-  font-weight:600;padding-inline:14px}
+/* 这一排里的批量键是强调档，面色连同悬停归 `board.css` 一处：那一层按这条工具带的形状
+   重排过它们，在这里再写一份，算出来生效的仍是那一层。 */
+.count .sorts .batchaction,.entitycollectionhead .sorts .batchaction{font-weight:600;padding-inline:14px}
 .count .sorts #batchAction,.entitycollectionhead .sorts .entitybatch{width:36px;padding:0;display:inline-grid;place-items:center}
 .count .sorts #batchAction svg,.entitycollectionhead .sorts .entitybatch svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2}
-.count .sorts .batchaction:hover,.entitycollectionhead .sorts .batchaction:hover{background:color-mix(in srgb,var(--ink) 88%,var(--ground));border-color:color-mix(in srgb,var(--ink) 88%,var(--ground));color:var(--ground)}
 /* 目录列表是一叠卡：连续的一段视频合成一个 `.grid`，竖屏带插进来时把那一段从行边界
    剪开，上下两半于是各自成为一张独立的卡。`#grid` 本身只是这叠卡的容器，不再是网格。 */
 .gridstack{display:flex;flex-direction:column;gap:16px}

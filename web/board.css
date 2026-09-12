@@ -231,12 +231,13 @@ body .review .reviewbulktoolbar{clip-path:inset(-48px -48px 0 -48px)}
 /* 排序键回答的是「这一列按什么排」——一个参数的当前值，不是一个位置，所以不占那块
    玻璃：同一种材质担两种语义，这一排读起来就成了另一组导航。当前值由字自己说：整排
    八九个候选都退到六成，生效的那枚回到满值再加半档字重。只差字重不够——一排等亮度的
-   字里，扫一眼看不出哪个粗一点。 */
-.entitycollectionhead.entitycollectionhead .sorts button,
-.board-filter-frame.board-filter-frame .sorts button{
+   字里，扫一眼看不出哪个粗一点。这一排里的「换一批」不在其中：它是动作不是参数，走下面
+   那条强调档，字色由它自己给。 */
+.entitycollectionhead.entitycollectionhead .sorts button:not(.batchaction),
+.board-filter-frame.board-filter-frame .sorts button:not(.batchaction){
   color:color-mix(in srgb,var(--glass-text) 62%,transparent)}
-.entitycollectionhead.entitycollectionhead .sorts button:hover,
-.board-filter-frame.board-filter-frame .sorts button:hover{color:var(--glass-text)}
+.entitycollectionhead.entitycollectionhead .sorts button:not(.batchaction):hover,
+.board-filter-frame.board-filter-frame .sorts button:not(.batchaction):hover{color:var(--glass-text)}
 .entitycollectionhead.entitycollectionhead .sorts button[aria-pressed="true"],
 .board-filter-frame.board-filter-frame .sorts button[aria-pressed="true"]{
   background:none;backdrop-filter:none;-webkit-backdrop-filter:none;
@@ -295,9 +296,10 @@ body .review .reviewbulktoolbar{clip-path:inset(-48px -48px 0 -48px)}
 .dnav button,.pill,.sorts button{transition:scale calc(var(--spring-press-ms) * 1ms) var(--spring-press)}
 .edge button{transition:scale calc(var(--spring-press-ms) * 1ms) var(--spring-press),background .12s}
 .dnav button:active,.pill:active,.sorts button:active,.edge button:active{scale:.96;transition:scale .06s ease-out}
-/* 换一批跟同一条上的排序键一样平：给它单独铺一层面加一圈线，静止态就在一排透明
-   按钮里露出一块灰片，看着像图标背后还垫了个东西。选中态归排序键，它只有悬停。 */
-.board-filter-frame.board-filter-frame .sorts #batchAction,.entitycollectionhead .sorts .entitybatch{color:var(--ink);background:none;border:0;border-radius:7px;box-shadow:none}
+/* 换一批和实体批量键走强调档：这一排其余的是排序开关，它们只是同一份列表的看法，
+   而这两枚是动作。面色取全站那两个 token，压上去跟每一颗主按钮一样提亮一档；圆角随这
+   一条上的按钮取 7px，不取强调档那副文字键的盒子。选中态归排序键，这两枚只有悬停。 */
+.board-filter-frame.board-filter-frame .sorts .batchaction,.entitycollectionhead.entitycollectionhead .sorts .batchaction{color:#fff;background:var(--board-blue);border:0;border-radius:7px;box-shadow:0 1px 2px #0000000d}
 .top.top,body.board-scrolled .top.top{background:transparent;box-shadow:none;backdrop-filter:none;border:0}
 /* 顶栏这一条本身不铺任何底：玻璃是搜索框和右边那几个图标钮各自一块，它们中间的空处
    直接通到内容。往那片空处垫一条压制带能让滚上来的字不那么碎，代价是整条顶栏成了一块
@@ -835,7 +837,7 @@ html.board-high-contrast .settingscard.settingscard>.board-local-nav{background:
 .sidecontent .obtn svg{width:20px;height:20px;color:#ff669d}
 .sidecontent .obtn b{font-size:12px;line-height:18px;padding:1px 6px;border-radius:5px;background:var(--picked);font-weight:500}
 .sidecontent .obtn:hover{background:var(--hover)}
-.board-filter-frame.board-filter-frame .sorts #batchAction:hover,.entitycollectionhead .sorts .entitybatch:hover{background:var(--hover);color:var(--ink)}
+.board-filter-frame.board-filter-frame .sorts .batchaction:hover,.entitycollectionhead.entitycollectionhead .sorts .batchaction:hover{background:var(--board-blue-hover);color:#fff}
 :root{--chart-0:#60a5fa;--chart-1:#a78bfa;--chart-2:#34d399;--chart-3:#fbbf24}
 .board-distribution{width:100%;max-width:240px;align-self:center;margin:auto;min-height:200px}
 .board-distribution text{fill:var(--ink-2);font-family:inherit;font-size:12px}
@@ -971,7 +973,7 @@ body :is(.geist-button,.fbtn,.resourceaction,.fcredactions button,.fpickactions 
    没有悬停态（10 颗里没有一颗带 `hover:` 的类，注册表只在 secondary 和 ghost 上声明
    悬停），但一排按钮里压着的那颗毫无反应，鼠标停在哪颗就读不出来。 */
 body :is(.geist-button,.fbtn,.resourceaction,.tagselection button,.reviewactions button,.fcredactions button,.fpickactions button).primary:not(:disabled){background:var(--board-blue);border:1px solid transparent;color:#fff;box-shadow:0 1px 2px #0000000d;transition:background-color .15s ease,border-color .15s ease,box-shadow .15s ease,color .15s ease}
-body :is(.geist-button,.fbtn,.resourceaction,.tagselection button,.reviewactions button,.fcredactions button,.fpickactions button).primary:not(:disabled):hover{background:var(--board-blue-hover)}
+body :is(.geist-button,.fbtn,.resourceaction,.tagselection button,.reviewactions button,.fcredactions button,.fpickactions button).primary:not(:disabled):hover{background:var(--board-blue-hover);color:#fff}
 body button.danger:not(.frowicon):not(:disabled){background:linear-gradient(180deg,#ff3347,#e60012);border:1px solid transparent;color:#fff;box-shadow:0 1px 2px #0000000d;transition:filter .15s ease}
 body button.danger:not(.frowicon):hover:not(:disabled){background:linear-gradient(180deg,#ff6471,#ff3347);filter:none;color:#fff}
 .followmanage .fbtn.fmanagedir{width:36px;padding:0}.followmanage .faliasform :is(input,.fbtn){height:36px;min-height:36px}.followmanage .frowicon{width:32px;height:32px;border:1px solid var(--line);border-radius:8px;background:var(--surface);box-shadow:0 1px 2px #0000000d}
@@ -1158,7 +1160,7 @@ body .reviewactions button.warning,body [data-follow-bulk],body [data-follow-sta
    这边按钮是 `--control-h`（36px），比外壳高 4px 往下探出 10px，左边缘还被内边距推右
    8px——同一格里它和上面那个输入框既不同高、也不从同一条竖线起。 */
 .settingscard .settingsscroll .machinesettings .gselect{min-width:0;min-height:0;height:auto;padding:0}.configpage .configcheck{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 20px 12px 16px;border:1px solid var(--color-border-button-default);border-radius:10px;background:var(--color-background-primary-default);cursor:pointer}.configpage .configcheck>.pcheck{order:2}.configpage .configcheck:hover{background:var(--color-background-primary-hover)}
-body .reviewactions button.error:not(:disabled){background:linear-gradient(180deg,#ff3347,#e60012);color:#fff;border-color:transparent}body .reviewactions button.error:hover:not(:disabled){background:linear-gradient(180deg,#ff6471,#ff3347)}
+body .reviewactions button.error:not(:disabled){background:linear-gradient(180deg,#ff3347,#e60012);color:#fff;border-color:transparent}body .reviewactions button.error:hover:not(:disabled){background:linear-gradient(180deg,#ff6471,#ff3347);color:#fff}
 .card .pic>.badge{padding:4px;border-radius:10px;background:var(--glass-fill);box-shadow:inset 0 1px 0 var(--glass-rim),var(--glass-shadow);backdrop-filter:blur(16px) saturate(145%)}.card .pic>.badge .src{background:transparent;padding:0;width:20px;height:20px}
 body .selectiondock{border:0;border-radius:22px;background:var(--glass-drift-a),var(--glass-drift-b),linear-gradient(125deg,var(--glass-sheen),transparent 42%,var(--glass-low)),var(--glass-fill);background-size:200% 200%,200% 200%,auto;background-repeat:no-repeat,no-repeat,repeat;background-position:50% 20%,80% 70%,0 0;animation:glassdriftx 41s linear infinite,glassdrifty 67s linear infinite;backdrop-filter:var(--glass-optic,blur(22px)) saturate(145%);box-shadow:inset 0 1px 0 var(--glass-rim),inset 1px 0 0 var(--glass-low),inset -1px 0 0 var(--glass-low),inset 0 -1px 0 var(--glass-low),var(--glass-shadow)}
 html.board-high-contrast :is(.selectiondock,.reviewcontrols.is-stuck,.reviewgroupbar.is-stuck,.batchbar,.tagselection,.card .badge){background:var(--ground);backdrop-filter:none;-webkit-backdrop-filter:none;animation:none}

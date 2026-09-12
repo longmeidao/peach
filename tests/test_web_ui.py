@@ -836,34 +836,38 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertEqual(offenders, [],
                          f"这些 hover 在提亮边框，请改成只抬 background：{offenders}")
 
-    def test_an_ink_filled_action_hover_spells_out_its_own_text_colour(self):
-        """墨色实底那一档的悬停规则必须自己写 `color`，不能指望静止态那条留下来。
+    def test_a_solid_tier_hover_spells_out_its_own_text_colour(self):
+        """把填充换成实心一档的悬停规则必须自己写 `color`，不能指望静止那条留下来。
 
         `:hover` 只声明 background 时，同一组里更宽的通用悬停（`.fpickactions
         button:hover`、`.tagselection button:hover` 都是）会把文字提到 `--ink`：
-        它的选择器更弱，可 `color` 在这一档自己这条里没有对手，于是浅色实底上落成
-        白字白底，鼠标一压按钮上的字就没了。2026-09-04 用户在关注管理页第二次遇到
-        同一个坑。
-
-        取值只能是静止态那个 `--ground`：Geist Button 的实心档悬停只把 #EDEDED
-        掉一档到 #ccc，文字色不动（`vercel-geist-semantics-measured.md`
-        「Button 全变体与状态」）。全站的强调档不在这条的辖区——它的悬停只提亮渐变、
-        文字色一动不动，见 `test_the_primary_tier_has_one_face_and_one_hover`。
+        它的选择器更弱，可 `color` 在实心档自己这条里没有对手，于是深色实底上落成
+        深字深底，鼠标一压按钮上的字就没了。2026-09-04 用户在关注管理页第二次遇到
+        同一个坑；靠「静止那条特指度更高」挡着不算数，那是算出来的巧合，加一条更宽的
+        悬停就翻。
         """
-        css = re.sub(r"/\*.*?\*/", "", stylesheet_source(), flags=re.S)
-        primary_hover = "background:color-mix(in srgb,var(--ink) 88%,var(--ground))"
+        sources = [stylesheet_source(),
+                   (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8"),
+                   (Path(__file__).resolve().parents[1] / "web/board-entry.css").read_text(encoding="utf-8")]
+        # 只看换成实心强调档或危险档的那几条：次级档的悬停压的是同一块面上的 8% 墨，
+        # 文字色本来就不该跟着动。
+        filled = re.compile(r"background:(var\(--board-blue-hover\)|linear-gradient\()")
         offenders = []
         seen = 0
-        for match in re.finditer(r"([^{}]+)\{([^{}]*)\}", css):
-            leaf, body = match.group(1).strip().split("{")[-1], match.group(2)
-            if ":hover" not in leaf or primary_hover not in body:
-                continue
-            seen += 1
-            if not re.search(r"(?<![-\w])color:var\(--ground\)", body):
-                offenders.append(leaf)
+        for source in sources:
+            css = re.sub(r"/\*.*?\*/", "", source, flags=re.S)
+            for match in re.finditer(r"([^{}]+)\{([^{}]*)\}", css):
+                leaf, body = match.group(1).strip().split("{")[-1], match.group(2)
+                if ":hover" not in leaf or not filled.search(body):
+                    continue
+                if ".pcheck" in leaf:
+                    continue  # 勾选框里是一根勾线，没有字要保。
+                seen += 1
+                if not re.search(r"(?<![-\w])color:", body):
+                    offenders.append(leaf)
         self.assertEqual(offenders, [],
-                         f"主动作悬停请补 color:var(--ground)，别把文字交给通用 hover：{offenders}")
-        self.assertGreaterEqual(seen, 1, "墨色主动作的悬停规则找不到了，检查断言是否还匹配得上")
+                         f"实心档悬停请自己写 color，别把文字交给通用 hover：{offenders}")
+        self.assertGreaterEqual(seen, 3, "实心档的悬停规则找不到了，检查断言是否还匹配得上")
 
     # 悬停允许照旧抬填充的两类控件。孤立开关：没有并排的同类邻居，鼠标压着的那颗
     # 就是你正在问的那颗，看不出「按没按」不构成误读。侧栏导航：Geist 自己就把分工
@@ -8696,8 +8700,8 @@ class WebUiSourceTests(unittest.TestCase):
                       "  backdrop-filter:var(--glass-pick);-webkit-backdrop-filter:var(--glass-pick);\n"
                       "  color:var(--glass-text);border-color:transparent;\n"
                       "  box-shadow:inset 0 0 0 1px var(--glass-rim),var(--glass-pick-shadow)}", board)
-        self.assertIn(".entitycollectionhead.entitycollectionhead .sorts button,\n"
-                      ".board-filter-frame.board-filter-frame .sorts button{\n"
+        self.assertIn(".entitycollectionhead.entitycollectionhead .sorts button:not(.batchaction),\n"
+                      ".board-filter-frame.board-filter-frame .sorts button:not(.batchaction){\n"
                       "  color:color-mix(in srgb,var(--glass-text) 62%,transparent)}", board)
         self.assertIn('.entitycollectionhead.entitycollectionhead .sorts button[aria-pressed="true"],\n'
                       '.board-filter-frame.board-filter-frame .sorts button[aria-pressed="true"]{\n'
@@ -9216,6 +9220,9 @@ class WebUiSourceTests(unittest.TestCase):
         hover = [rule for rule in primary_rules(board) if ":hover" in rule.partition("{")[0]]
         self.assertEqual(len(hover), 1, "强调档的悬停也只该有一条规则")
         self.assertIn("background:var(--board-blue-hover)", hover[0])
+        # 文字色自己写一份：靠静止那条压过更宽的通用悬停是算出来的巧合，见
+        # `test_a_solid_tier_hover_spells_out_its_own_text_colour`。
+        self.assertIn("color:#fff", hover[0])
         for name in ("border", "box-shadow", "filter", "transform"):
             self.assertNotIn(name, hover[0].partition("{")[2],
                              f"悬停只换渐变，{name} 不动")
@@ -9251,8 +9258,8 @@ class WebUiSourceTests(unittest.TestCase):
                             "color:#fff", "box-shadow:0 1px 2px #0000000d"):
             self.assertIn(declaration, primary)
         self.assertIn("height:36px", rules, "尺寸那条也一起取过去")
-        self.assertIn(".primary:not(:disabled):hover{background:var(--board-blue-hover)}", rules,
-                      "悬停那条也要跟过去，否则这三页的按钮压上去没反应")
+        self.assertIn(".primary:not(:disabled):hover{background:var(--board-blue-hover);color:#fff}",
+                      rules, "悬停那条也要跟过去，否则这三页的按钮压上去没反应")
         self.assertIn("--board-blue-hover:linear-gradient(", rules)
 
     def test_the_settings_drawer_column_is_the_same_glass_as_the_sidebar(self):
@@ -9312,14 +9319,26 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn(".board-activity-empty>p{margin:8px 0 0", board)
         self.assertIn("body .entitylinks a:hover{border-color:var(--line)}", board)
 
-    def test_the_shuffle_key_sits_as_flat_as_the_sort_keys_beside_it(self):
-        """换一批和排序键同一条，静止态一样平：单独铺一层面就是一排透明按钮里露出一块灰片。"""
+    def test_the_shuffle_key_is_the_accent_tier_among_the_sort_keys_beside_it(self):
+        """换一批走强调档：这一排其余的是排序开关，只有它是动作。
+
+        面色取全站那两个 token，压上去提亮一档；圆角随这一条上的按钮取 7px。排序键那条
+        字色规则要把它排除掉，否则首页那枚读到白、资料页那枚读到六成的玻璃字色。
+        """
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
-        self.assertIn(".sorts #batchAction,.entitycollectionhead .sorts .entitybatch"
-                      "{color:var(--ink);background:none;border:0;border-radius:7px;box-shadow:none}", board)
+        self.assertIn(".board-filter-frame.board-filter-frame .sorts .batchaction,"
+                      ".entitycollectionhead.entitycollectionhead .sorts .batchaction"
+                      "{color:#fff;background:var(--board-blue);border:0;border-radius:7px;"
+                      "box-shadow:0 1px 2px #0000000d}", board)
         # 选中态归排序键，换一批只有悬停。
-        self.assertIn(".sorts #batchAction:hover,.entitycollectionhead .sorts .entitybatch:hover"
-                      "{background:var(--hover);color:var(--ink)}", board)
+        self.assertIn(".board-filter-frame.board-filter-frame .sorts .batchaction:hover,"
+                      ".entitycollectionhead.entitycollectionhead .sorts .batchaction:hover"
+                      "{background:var(--board-blue-hover);color:#fff}", board)
+        for selector in (".entitycollectionhead.entitycollectionhead .sorts button:not(.batchaction),",
+                         ".board-filter-frame.board-filter-frame .sorts button:not(.batchaction){",
+                         ".entitycollectionhead.entitycollectionhead .sorts button:not(.batchaction):hover,",
+                         ".board-filter-frame.board-filter-frame .sorts button:not(.batchaction):hover{"):
+            self.assertIn(selector, board, "排序键的字色不能再盖到换一批身上")
 
     def test_profile_tags_are_the_same_pill_as_the_ones_on_the_home_filter_bar(self):
         """资料页的标签跟首页筛选条上的标签是同一个控件，只是换了个位置。
