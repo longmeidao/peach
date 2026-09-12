@@ -3281,10 +3281,18 @@ function viewGlideGeometry(pill){
    留在一排收起来的按钮上，就是在一块空玻璃上亮着。
 
    关注页那排状态是同一个控件的第三处：五枚里恒有一枚生效，选中记在 `data-follow-filter`
-   上。资料页切视频、照片、名册的那一排不在这里——它换的是整页内容，走的是下划线 Tabs。 */
+   上。
+
+   资料页那条上有两排都在回答「你在哪儿」：左端那一档媒体类型，和四枚观看状态。它们
+   问的不是同一件事，所以各有一块玻璃——共用一块的话，点一下照片，玻璃从「没看过」那儿
+   飞过来，读出来是这两排在抢同一个当前项。 */
 const GLIDE_ROWS={
   views:{selector:'#viewPills,.entityviews,.followviews',
          pressed:'[data-state][aria-pressed="true"],[data-entity-state][aria-pressed="true"],[data-follow-filter][aria-pressed="true"]'},
+  /* 媒体那几枚是圆的，玻璃跟着它们的圆角走：一块 8px 圆角的方玻璃扣在一枚圆按钮上，
+     四个角先露出来，读起来是玻璃底下还垫着别的东西。 */
+  media:{selector:'.entitymediaview',pressed:'[data-media-view][aria-pressed="true"]',
+         className:'viewglide-round'},
 };
 function viewPillsRow(kind){
   for(const row of document.querySelectorAll(GLIDE_ROWS[kind].selector)){
@@ -7052,8 +7060,8 @@ function personCellHtml(x,kind,countText){
 /* 场记板归厂牌，公文包归事务所：一个出片、一个带人，字形各说各的那一件事。
    办公楼那类字形两边都对得上，也就等于两边都没说清是哪一种公司。 */
 const MAKER_INDEX_KINDS=[['studios','厂牌','clapperboard'],['agencies','事务所','briefcase']];
-/* 两条索引地址是两页，所以这一排是 Board 的下划线 Tabs，跟资料页切视频、照片、名册的
-   那一排是同一个控件：它答的是「现在摆的是哪一页」，不是给当前这批加一条筛选。 */
+/* 两条索引地址是两页，所以这一排是 Board 的下划线 Tabs：它答的是「现在摆的是哪一页」，
+   不是给当前这批加一条筛选——筛选归玻璃浮层上的药丸。 */
 function makerModeHtml(kind){
   return boardTabsHtml(MAKER_INDEX_KINDS.map(([value,label,symbol])=>({value,label,symbol})),
     {active:kind,attr:'data-index-kind',label:'公司类型',className:'indextabs'});
@@ -7434,20 +7442,22 @@ function entityViewNow(kind){return kind==='agency'&&agencyRosterView==='people'
 
 function renderEntityMediaToggle(kind,name,filters){
   syncEntityStateControls(kind,name,filters);
-  const controls=$('#index').querySelector('.entitytabs');if(!controls)return;
+  const controls=$('#index').querySelector('.entitymediaview');if(!controls)return;
   const now=entityViewNow(kind);
   const buttons=[...controls.querySelectorAll('[data-media-view]')];
   buttons.forEach(button=>{
     const media=button.dataset.mediaView;
-    button.setAttribute('aria-selected',String(now===media));
-    /* 按下去那一下蓝线就滑过去，不等换视图的活干完：切到照片要取一次图墙，反馈跟着
-       等就是点完先僵一下再亮。`aria-selected` 由这里当场改齐，`wireBoardTabs` 观察着
-       这个属性，改了就量位置、挪指示条。 */
+    button.setAttribute('aria-pressed',String(now===media));
+    /* 按下去那一下玻璃就滑过去，不等换视图的活干完：切到照片要取一次图墙，反馈跟着
+       等就是点完先僵一下再亮。`aria-pressed` 由这里当场改齐——`switchEntityMedia`
+       末尾会重画这一排再对一次，中间那段空档没人写它，玻璃会被下一次同步拽回原处。 */
     button.onclick=()=>{
-      buttons.forEach(other=>other.setAttribute('aria-selected',String(other===button)));
+      buttons.forEach(other=>other.setAttribute('aria-pressed',String(other===button)));
+      syncViewGlide(true,button,'media');
       switchEntityMedia(kind,name,filters,media);
     };
   });
+  wireViewGlideRow(controls,buttons,'media');
   /* 那排标签数的是视频，照片和名册上一个都对不上——「痴女 23」在这一屏指的是二十三个
      视频，而屏幕上摆着的是照片。点下去也不留在这儿：标签是作品筛选，`toggleTag` 会把
      视图拨回视频。一排点了就走人、数字又对不上当前内容的东西，摆在这儿只会让人以为
@@ -7997,21 +8007,20 @@ async function openEntity(kind,name,push=true){
          style:facePos(x.avatar_focus),focus:x.avatar_focus})}</span>
       <span class="nm">${esc(x.k)}</span></button>`).join('');
   const photoCount=photos&&!photos.error?(photos.total||0):0;
-  /* 艺人名册、视频、照片是这一页的三个互斥视图，共用一排 Board 下划线 Tabs：它们回答的
-     是同一个问题，摆成两个控件只会各说各的。切换只重画下面那块，不重开这一页——名册
-     已经随资料下来了，视频那一半本来也要请求。
+  /* 艺人名册、视频、照片是这一页的三个互斥视图，共用一组圆键：它们回答的是同一个
+     问题，摆成两个控件只会各说各的。切换只重画下面那块，不重开这一页——名册已经随
+     资料下来了，视频那一半本来也要请求。
 
-     这一排排在资料卡下面、玻璃筛选条上面，三层由粗到细：Tabs 先定这一页现在摆的是哪一类
-     东西，四枚观看状态定这一类里看哪一档，标签才是可加可不加的筛选。它换掉的是整页内容，
-     不是给当前这批加一条筛选，所以不住在筛选条里。只有一类东西时不出这一排：一枚孤零零
-     的 Tab 没有可切的对象。 */
-  const views=[
-    ...(roster.length?[{value:'people',label:'艺人',count:roster.length}]:[]),
-    {value:'videos',label:'视频',count:d.asset_count},
-    ...(photoCount?[{value:'photos',label:'照片',count:photoCount}]:[]),
-  ];
-  const mediaTabs=views.length>1?boardTabsHtml(views,{active:entityViewNow(kind),
-    attr:'data-media-view',label:'页面视图',className:'entitytabs',panel:'entitySection'}):'';
+     这一组排在整条筛选条的最左端，隔一道竖杠再是四枚观看状态、再一道才是标签。三段
+     由粗到细：先定这一页现在摆的是哪一类东西，再定这一类里看哪一档，最后才是可加可
+     不加的筛选。夹在视图和标签中间时它读起来像标签那排的第一枚，而它换掉的是整页
+     内容，不是给当前这批加一条筛选。只有一类东西时不出这一组：一枚孤零零的键没有可切的对象。 */
+  const mediaToggle=(photoCount||roster.length)?mediaViewButtonsHtml({
+    active:entityViewNow(kind),
+    peopleValue:roster.length?'people':'',peopleCount:roster.length,
+    imageValue:photoCount?'photos':'',imageLabel:'照片',
+    videoCount:d.asset_count,imageCount:photoCount,
+    label:roster.length?'页面视图':'媒体类型',className:'entitymediaview'}):'';
   /* 统称由用户自己定。同一个人在库里常有中文、日文、罗马字几种写法，哪一个该顶在
      标题上是他的偏好，账本里没有能推出答案的字段。菜单只列这条实体名下已有的写法：
      换统称是换显示的那一个，不是改名——改名要有来源和证据，不该由一次点击完成。
@@ -8056,7 +8065,7 @@ async function openEntity(kind,name,push=true){
   const people=kind==='performer'||kind==='creator';
   /* 资料卡按 Board 的 profile 卡排：一块 secondary 底、18px 圆角的卡，正文是头像加身份三行
      （名字、别名与归属、外链），同台艺人收进卡底那条色阶带——那是这个人的附注，不是这一页
-     的正文；事务所的名册是正文，走下面 Tabs 里那一档。卡外面依次是 Tabs、交集条、玻璃筛选条
+     的正文；事务所的名册是正文，走筛选条左端圆键里那一档。卡外面依次是交集条、玻璃筛选条
      和内容区，顶到底一条线。 */
   $('#index').innerHTML=`<section class="entityhero" aria-label="资料">
       <div class="entityprofile"><div class="entityportraitwrap"><div class="entityportrait ${people?'':'square'}" data-fit-native="${company?'mark':'portrait'}">${image}<span>${esc(name.slice(0,1))}</span></div>${
@@ -8065,10 +8074,9 @@ async function openEntity(kind,name,push=true){
         <div class="alias">${(d.display_aliases||[]).length?`${d.display_aliases.map(esc).join(' / ')} · `:''}<b>${d.asset_count.toLocaleString()}</b> 个视频${memberHtml}${agencyHtml}</div>
         ${links?`<div class="entitylinks">${links}</div>`:''}</div></div>
       ${related?`<div class="entityfoot" aria-label="同台艺人"><div class="relatedpeople">${related}</div></div>`:''}</section>
-    ${mediaTabs}
     <div class="combo entitycombo"></div>
-    <section class="entitytagbar" aria-label="观看状态与标签"><div class="filterscroll"><div class="viewpills entityviews" role="group" aria-label="观看状态">${VIEW_PILLS.map(v=>`<button type="button" class="pill" data-entity-state="${v.k}" aria-pressed="${(filters.state||'')===v.k}">${v.label}</button>`).join('')}<span class="sep" aria-hidden="true"></span></div><div class="tagscroll entitytags">${tags}</div></div></section>
-    <div class="entitysection" id="entitySection"></div>`;
+    <section class="entitytagbar" aria-label="媒体与标签">${mediaToggle}${mediaToggle?'<span class="sep" aria-hidden="true"></span>':''}<div class="filterscroll"><div class="viewpills entityviews" role="group" aria-label="观看状态">${VIEW_PILLS.map(v=>`<button type="button" class="pill" data-entity-state="${v.k}" aria-pressed="${(filters.state||'')===v.k}">${v.label}</button>`).join('')}<span class="sep" aria-hidden="true"></span></div><div class="tagscroll entitytags">${tags}</div></div></section>
+    <div class="entitysection"></div>`;
   /* 圆框角上那个加号。自动挑的那张按来源优先级来，而那个顺序回答的是「先试哪一张」，
      不是「哪一张适合当头像」：图库排第一的常是写真封面，同一个人往下翻几张就有片商的
      正脸原图。换完重进这一页——头像索引在服务端已经失效过一次，重画才读得到新图。 */

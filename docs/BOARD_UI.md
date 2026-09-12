@@ -282,8 +282,8 @@ Radio card 沿用 2026-09-08 取得的 `r/checkbox-card.json`（`checkbox-card.t
 | 位置 | 上游 | Peach |
 | --- | --- | --- |
 | 资料卡 | 未取得（card／profile-card 404）；卡形沿用 `.fsec`：secondary 底、18px 圆角、不描边、卡脚 `--board-card-foot` | `<section class="entityhero">`：`.entityprofile` 里 120px 头像加身份三行——名字 Title 3（24/32、500）、别名·视频数·事务所、外链排成 36px／10px 圆角的 secondary Button；同台艺人收进卡脚 `.entityfoot` 那条带，它是这个人的附注，不是正文；事务所的名册是正文，走 Tabs 里那一档。窄屏卡不变，只有卡里正文那一格改成单列居中、头像 96px |
-| 视频／照片／艺人切换 | `tabs.tsx`：tab `px 10 / py 8`、gap 4、Body 1 14/20，容器 `border-b border-separator-border`；指示条 `h-0.5 bg-accent-600 transition-[transform,width] duration-200`；计数徽标 `rounded-sm px-1 py-px text-caption-1-medium`，选中 `bg-tab-count-selected-background text-accent-600`，未选 `bg-black/10 text-text-primary opacity-50` | `boardTabsHtml()` 出 `.board-local-nav.entitytabs`（`role=tablist`＋`aria-selected`），排在资料卡下、筛选浮层上；蓝线由 `wireBoardTabs` 观察 `aria-selected` 去挪，点下去当场改属性、不等图墙回来；只有多于一档时才出。筛选条左端不放媒体圆键，也没有那块圆玻璃（`viewglide-round`）——这排换的是整页内容，是导航，不是筛选 |
-| 资料页筛选条 | 无对应 | 只剩四枚观看状态和标签，`aria-label` 改「观看状态与标签」；照片、名册视图下整条收起，浮层只剩下面那排抬头 |
+| 视频／照片／艺人切换 | `tabs.tsx` 是页面级导航的形；这一组按用户口味留在筛选浮层上，不取 Tabs | 浮层最左端的一组媒体圆键（`mediaViewButtonsHtml`，`aria-pressed`），选中那枚由圆玻璃 `viewglide-round` 滑过去标出，跟四枚观看状态各一块玻璃；隔一道竖杠再是观看状态、再一道才是标签。`boardTabsHtml()` 的下划线 Tabs 只给索引页切地址用 |
+| 资料页筛选条 | 无对应 | 媒体圆键、四枚观看状态、标签三段由粗到细，`aria-label`「媒体与标签」；照片、名册视图下标签收起、竖杠隐去，圆键留着 |
 | 关注页 | 无对应（上游没有更新流页） | 对齐首页而不是另起一套：作者行是 `.tier`，筛选条 `.tagbar` 与读数 `.count` 收进同一块 `mountFilterFrame` 浮层。五枚状态是首页四枚视图的同一个控件，共用那块滑动玻璃（`GLIDE_ROWS.views` 多认 `.followviews`）；来源图标与标签在右半截横滚，来源类型的着色只在选中时上色。下排读数照首页写「N 项更新 · 显示 M」，右端是视频／图片两枚圆键，选中那枚铺选中态玻璃。「管理关注」降为次级按钮，蓝色留给空态里的「添加关注」；底部「加载更多」旁不再重复读数 |
 | 两页骨架 | Skeleton 只是占位形状 | 都把 `.board-filter-frame` 外框和上下两排的 `data-filter-row` 写全，否则等的那几秒钟是两块各带圆角的浮层；资料页骨架用 `.entityprofile`／`.entityidentity` 的真实类名，筛选条那排用 `data-skeleton-tier="pill"` 铺药丸 |
 | 外链图标 | `avatar.tsx` 只有圆形；站标那一档无对应 | 资料卡外链按钮里的 favicon 与社媒标记 `.entitylinkicon` 收成 `--badge-radius` 的圆角方框，跟 20px 的图标位同形；外链一律 `target="_blank" rel="noreferrer"` |

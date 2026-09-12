@@ -5746,7 +5746,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('<div class="entityfoot" aria-label="同台艺人">'
                                 '<div class="relatedpeople">${related}</div></div>')
         self.assertPageLacks("entityfootlabel")
-        self.assertPageContains('class="entitytagbar" aria-label="观看状态与标签"')
+        self.assertPageContains('class="entitytagbar" aria-label="媒体与标签"')
         self.assertPageContains("body.entity-open .index{overflow-x:visible}")
         self.assertNotIn("关联艺人", profile)
         self.assertNotIn("相关标签", profile)
@@ -5909,16 +5909,16 @@ class WebUiSourceTests(unittest.TestCase):
                                 'repeat(auto-fill,minmax(150px,1fr))}\n}')
 
     def test_the_roster_and_the_media_keys_are_one_button_group(self):
-        """三个键问的是同一件事——这一页现在显示什么，所以在同一排 Tabs 里、同一个尺寸。"""
-        self.assertPageContains(
-            "    ...(roster.length?[{value:'people',label:'艺人',count:roster.length}]:[]),\n"
-            "    {value:'videos',label:'视频',count:d.asset_count},\n")
-        # 当前视图只有一个来源，选中哪一档、下面画什么都读它。
+        """三个键问的是同一件事——这一页现在显示什么，所以在同一组里、同一个尺寸。"""
+        self.assertCode(
+            "${peopleValue?control(peopleValue,peopleLabel,peopleCount,'user-round','people'):''}")
+        self.assertPageContains("peopleValue:roster.length?'people':'',peopleCount:roster.length,")
+        # 当前视图只有一个来源，按下哪个键、下面画什么都读它。
         self.assertPageContains("function entityViewNow(kind){return kind==='agency'"
                                 "&&agencyRosterView==='people'&&agencyRoster.length")
-        self.assertCode("button.setAttribute('aria-selected',String(now===media));")
-        # 没有照片的实体不出照片档，不是出一个按下去什么都不显示的档。
-        self.assertPageContains("    ...(photoCount?[{value:'photos',label:'照片',count:photoCount}]:[]),")
+        self.assertCode("button.setAttribute('aria-pressed',String(now===media));")
+        # 没有照片的实体不出照片键，不是出一个按下去什么都不显示的键。
+        self.assertPageContains("imageValue:photoCount?'photos':'',imageLabel:'照片',")
         # 标签筛的是作品，点了就回到视频视图，否则开关和内容各说各的。
         self.assertCode("agencyRosterView='videos';")
 
@@ -5939,7 +5939,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertCode("const MAKER_INDEX_KINDS=[['studios','厂牌','clapperboard'],"
                         "['agencies','事务所','briefcase']];")
         self.assertPageContains("function makerModeHtml(kind){")
-        # 两条地址是两页，所以这一排是 Board 的下划线 Tabs，跟资料页切视图那一排同一个控件。
+        # 两条地址是两页，所以这一排是 Board 的下划线 Tabs；切的是地址，不是给这一批加筛选。
         self.assertCode("  return boardTabsHtml(MAKER_INDEX_KINDS.map(([value,label,symbol])=>({value,label,symbol})),\n"
                         "    {active:kind,attr:'data-index-kind',label:'公司类型',className:'indextabs'});")
         self.assertCode("$('#index').querySelectorAll('[data-index-kind]').forEach(b=>b.onclick=()=>{")
@@ -8115,12 +8115,13 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks('id="iClose"', "顶栏入口本身就是返回路径")
         self.assertPageLacks("$('#iClose').onclick")
 
-    def test_the_profile_switches_media_with_board_tabs_and_follow_keeps_the_round_buttons(self):
-        """资料页切视频、照片、名册走 Board 的下划线 Tabs；关注页切视频、图片仍是那两枚圆键。
+    def test_entity_and_follow_pages_share_round_video_image_buttons(self):
+        """资料页切视频、照片、名册和关注页切视频、图片是同一组圆键。
 
-        资料页那一排换掉的是整页内容，是导航，所以是 Tabs，排在资料卡下面、筛选浮层上面，
-        只有多于一档时才出——一枚孤零零的 Tab 没有可切的对象。关注页那两枚是浮层下排右端
-        的控件，答的是「现在摆的是哪一类」，跟首页下排右端的排序键同一个位置。
+        资料页那一组住在筛选浮层最左端，隔一道竖杠再是四枚观看状态：它换掉的是整页内容，
+        夹在视图和标签中间会被读成标签那排的第一枚。只有多于一档时才出——一枚孤零零的键
+        没有可切的对象。关注页那两枚是浮层下排右端的控件，跟首页下排右端的排序键同一个位置。
+        索引页的下划线 Tabs 是另一个控件，切的是地址。
         """
         self.assertPageContains('id="i-pics" viewBox="-1.6 -1.6 19.2 19.2" fill="currentColor" stroke="none"')
         self.assertPageContains('export function mediaViewButtonsHtml({')
@@ -8128,17 +8129,15 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("export function boardTabsHtml(items,{active='',attr='data-tab',label='页面视图',className='',panel=''}={}){")
         self.assertPageContains('<span class="board-tab-count">${esc(Number(count).toLocaleString())}</span>')
         self.assertPageContains('<div class="board-local-nav board-tabs${className?` ${esc(className)}`:\'\'}" role="tablist" aria-label="${esc(label)}">')
-        self.assertCode("const mediaTabs=views.length>1?boardTabsHtml(views,{active:entityViewNow(kind),\n"
-                        "    attr:'data-media-view',label:'页面视图',className:'entitytabs',panel:'entitySection'}):'';")
-        self.assertPageContains("{value:'videos',label:'视频',count:d.asset_count},")
-        self.assertPageContains("...(photoCount?[{value:'photos',label:'照片',count:photoCount}]:[]),")
-        self.assertPageContains("...(roster.length?[{value:'people',label:'艺人',count:roster.length}]:[]),")
-        self.assertPageContains('<div class="entitysection" id="entitySection"></div>')
-        # 筛选条上只剩观看状态和标签，两格用的就是首页那两个类名，同一份摆法两页共一处。
-        self.assertPageContains('<section class="entitytagbar" aria-label="观看状态与标签">'
+        self.assertCode("const mediaToggle=(photoCount||roster.length)?mediaViewButtonsHtml({\n"
+                        "    active:entityViewNow(kind),")
+        self.assertPageContains("videoCount:d.asset_count,imageCount:photoCount,")
+        self.assertPageLacks("entitytabs")
+        # 这一组是整条上唯一住在滚动层外面的东西——余下两格用的就是首页那两个类名，同一份摆法两页共一处。
+        self.assertPageContains('<section class="entitytagbar" aria-label="媒体与标签">${mediaToggle}'
+                                """${mediaToggle?'<span class="sep" aria-hidden="true"></span>':''}"""
                                 '<div class="filterscroll"><div class="viewpills entityviews"')
         self.assertPageContains('<div class="tagscroll entitytags">${tags}</div></div></section>')
-        self.assertPageLacks("mediaViewButtonsHtml({\n    active:entityViewNow(kind)")
         # 关注页的读数照首页那条写，右端是媒体类型。
         self.assertPageContains('<div class="count followcount"><span class="mono">${total.toLocaleString()} 项更新 · 显示 ${visible.length.toLocaleString()}</span>'
                                 "${mediaControl?`<div class=\"sorts\">${mediaControl}</div>`:''}</div>")
@@ -8540,19 +8539,23 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("  syncViewGlide(false);\n  scheduleStickySurfaces();")
         self.assertPageLacks("const tagbar=$('#tagbar'),views=$('#viewPills');if(!tagbar||!views)return;",
                              "写死首页那两个 id 就是资料页没有玻璃的原因")
-        # 资料页那四枚不自己铺底，选中和悬停都只提字色。
+        # 资料页那四枚跟左端两枚媒体圆键都不自己铺底，选中和悬停都只提字色。
         self.assertIn('.entitytagbar.entitytagbar .pill[data-entity-state],\n'
                       '.entitytagbar.entitytagbar .pill[data-entity-state]:hover,\n'
-                      '.entitytagbar.entitytagbar .pill[data-entity-state][aria-pressed="true"]{\n'
+                      '.entitytagbar.entitytagbar .pill[data-entity-state][aria-pressed="true"],\n'
+                      '.entitytagbar.entitytagbar .mediaviewbutton,\n'
+                      '.entitytagbar.entitytagbar .mediaviewbutton:hover,\n'
+                      '.entitytagbar.entitytagbar .mediaviewbutton[aria-pressed="true"]{\n'
                       '  border:0;background:none;backdrop-filter:none;'
                       '-webkit-backdrop-filter:none;box-shadow:none}', board)
 
     def test_the_view_pane_is_the_only_pane_and_the_follow_row_rides_it_too(self):
-        """滑动的玻璃只有一块，管的是观看状态那一排；关注页那五枚是同一个控件的第三处。
+        """观看状态那一排的玻璃是一块，首页、资料页、关注页三处共用；资料页左端那一组
+        媒体圆键另有一块圆的。
 
-        资料页切视频、照片、名册那一排不再是筛选条左端的圆键，而是资料卡下面的下划线
-        Tabs：它换的是整页内容，蓝线由 `wireBoardTabs` 观察 `aria-selected` 去挪。
-        媒体那块圆玻璃随之没有了使用者，连同它的圆角规则一起撤掉。
+        两排问的不是同一件事，共用一块的话点一下照片，玻璃从「没看过」那儿飞过来，读出来
+        是两排在抢同一个当前项。圆角跟着按钮走：那几枚是正圆，一块 8px 圆角的方玻璃扣上去，
+        四个角先露出来。
 
         玻璃按用途存，不按元素存：资料页每换一次筛选就把整条重画一遍，拿节点当键等于
         每重画一次就新建一块，动画从头起跑，看到的只是瞬移。
@@ -8561,23 +8564,26 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("views:{selector:'#viewPills,.entityviews,.followviews',")
         self.assertPageContains("pressed:'[data-state][aria-pressed=\"true\"],[data-entity-state][aria-pressed=\"true\"],"
                                 "[data-follow-filter][aria-pressed=\"true\"]'},")
-        self.assertPageLacks("media:{selector:'.entitymediaview',")
-        self.assertPageLacks("viewglide-round")
-        self.assertNotIn('.viewglide-round', board)
+        self.assertPageContains("media:{selector:'.entitymediaview',"
+                                "pressed:'[data-media-view][aria-pressed=\"true\"]',")
+        self.assertPageContains("className:'viewglide-round'")
+        self.assertIn('.viewglide.viewglide-round{border-radius:50%}', board)
         self.assertPageContains("const viewGlides=new Map();")
         self.assertPageContains("function syncViewGlide(animate,target,kind='views'){")
         self.assertPageContains("let glide=viewGlides.get(kind);")
-        # 按下去那一下蓝线就滑过去，不等换视图的活干完。
-        self.assertPageContains("buttons.forEach(other=>other.setAttribute('aria-selected',String(other===button)));\n"
+        # 按下去那一下玻璃就滑过去，不等换视图的活干完。
+        self.assertPageContains("syncViewGlide(true,button,'media');\n"
                                 "      switchEntityMedia(kind,name,filters,media);")
-        self.assertPageContains("const controls=$('#index').querySelector('.entitytabs');if(!controls)return;")
+        self.assertPageContains("wireViewGlideRow(controls,buttons,'media');")
+        self.assertPageContains("const controls=$('#index').querySelector('.entitymediaview');if(!controls)return;")
+        # 照片视图下这条只剩左端那一组，分隔线没有东西可隔。
+        self.assertIn('.entitytagbar[data-media-only] .sep{display:none}', board)
         # 关注页：先搭外框再量玻璃，点下去玻璃先走、数据后到。
         self.assertPageContains("wireViewGlideRow(filterRow.querySelector('.followviews'),statusPills);")
         self.assertPageContains("statusPills.forEach(p=>p.setAttribute('aria-pressed',String(p===button)));syncViewGlide(true,button);")
         # 计数徽标照 tabs.tsx：未选中黑 10% 底半透明，选中换成强调色。
         self.assertIn('.board-tab-count{display:inline-block;margin-left:6px;padding:1px 4px;border-radius:4px;', board)
         self.assertIn('.board-local-nav button[aria-selected="true"] .board-tab-count{background:color-mix(in srgb,var(--tungsten) 12%,transparent);color:var(--tungsten);opacity:1}', board)
-        self.assertIn('.entitytabs{margin:0 0 22px}', board)
 
     def test_every_current_item_slab_slides_with_the_same_spring(self):
         """标出「当前是哪一个」的那几块底板，动法只有一份。
@@ -10664,7 +10670,7 @@ class WebUiSourceTests(unittest.TestCase):
             '  .photowall[data-size="big"]{grid-template-columns:repeat(1,minmax(0,1fr))}')
         # 标签只在视频视图里露面。
         self.assertPageContains("toggleAttribute('data-media-only',now!=='videos')")
-        self.assertPageContains(".entitytagbar[data-media-only]{display:none}")
+        self.assertPageContains(".entitytagbar[data-media-only] .entitytags .pill{display:none}")
         self.assertPageContains(
             "const head=collectionHeaderHtml({readout:'&nbsp;',loading:true,filterRow:'bottom'});")
 

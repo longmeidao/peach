@@ -179,7 +179,8 @@ body .review .reviewbulktoolbar,body .review .reviewgroupbar{
   background-image:none;background-color:var(--glass-fill);animation:none}
 body .review .reviewbulktoolbar{clip-path:inset(-48px -48px 0 -48px)}
 .entitytagbar .pill,.entitycollectionhead h3{color:var(--glass-text)}
-.entitytagbar .pill[data-tag]:not([aria-pressed="true"]){border-color:var(--glass-low)}
+.entitytagbar .pill[data-tag]:not([aria-pressed="true"]){border-color:var(--glass-low);border-style:dashed}
+.entitytagbar .pill[data-tag]:not([aria-pressed="true"]):hover{border-style:solid}
 /* 标签后面那个数在这块玻璃上要自己降一档。flat 层那条降的是 --muted，而在这一层里
    --muted 和 --ink-2 都映射到 --color-text-secondary，是同一个值——照搬过来，计数
    和标签仍然一样亮。按这一排自己的文字色降档，口径跟未选中的视图胶囊那一档同源。
@@ -204,11 +205,21 @@ body .review .reviewbulktoolbar{clip-path:inset(-48px -48px 0 -48px)}
    选中和悬停都只提字色。 */
 .entitytagbar.entitytagbar .pill[data-entity-state],
 .entitytagbar.entitytagbar .pill[data-entity-state]:hover,
-.entitytagbar.entitytagbar .pill[data-entity-state][aria-pressed="true"]{
+.entitytagbar.entitytagbar .pill[data-entity-state][aria-pressed="true"],
+.entitytagbar.entitytagbar .mediaviewbutton,
+.entitytagbar.entitytagbar .mediaviewbutton:hover,
+.entitytagbar.entitytagbar .mediaviewbutton[aria-pressed="true"]{
   border:0;background:none;backdrop-filter:none;-webkit-backdrop-filter:none;box-shadow:none}
-.entitytagbar.entitytagbar .pill[data-entity-state]{color:color-mix(in srgb,var(--glass-text) 60%,transparent)}
+.entitytagbar.entitytagbar .pill[data-entity-state],
+.entitytagbar.entitytagbar .mediaviewbutton{color:color-mix(in srgb,var(--glass-text) 60%,transparent)}
 .entitytagbar.entitytagbar .pill[data-entity-state]:hover,
-.entitytagbar.entitytagbar .pill[data-entity-state][aria-pressed="true"]{color:var(--glass-text)}
+.entitytagbar.entitytagbar .pill[data-entity-state][aria-pressed="true"],
+.entitytagbar.entitytagbar .mediaviewbutton:hover,
+.entitytagbar.entitytagbar .mediaviewbutton[aria-pressed="true"]{color:var(--glass-text)}
+/* 那几枚字形要压在玻璃上面，不然滑过去的时候被盖住一路暗过去——跟首页四枚视图同一条。 */
+.entitytagbar.entitytagbar .mediaviewbutton{position:relative;z-index:1}
+/* 照片视图下这条只剩左端那一组，后面没有东西可隔；分隔线留着就是一条指向空白的竖线。 */
+.entitytagbar[data-media-only] .sep{display:none}
 /* 版式、大小这类分段开关问的也是「你在哪儿」。滑块的位置和几何归分段器自己管，这里
    只换材质与配色：那一套是给 flat 面配的，一块灰底衬一枚不透明的白滑块，摆到浮层上
    就是整条里唯一一块实心的面，读起来像贴上去的另一个控件；字色取的也是 flat 面的
@@ -534,6 +545,7 @@ body>.board-filter-frame{margin-inline:16px}
 :root{--board-filterH:48px}
 .entitytagbar{position:sticky;top:calc(var(--topH) + 8px);margin:0;height:var(--board-filterH);gap:6px;padding:8px 12px}
 .entitytagbar .entitytags{gap:6px}
+.entitytagbar .mediaviewbuttons .mediaviewbutton{flex:0 0 30px;width:30px;height:30px}
 .entitycollectionhead{position:sticky;top:calc(var(--topH) + 8px);margin:0 0 22px;padding:8px 12px;min-height:var(--board-filterH);gap:12px}
 .entitycollectionhead.is-stuck::after{content:'';position:absolute;inset:0;z-index:-1;border-radius:inherit;
   box-shadow:0 0 24px 4px #00000038,0 8px 20px #00000026;pointer-events:none}
@@ -587,7 +599,9 @@ body>.board-filter-frame{margin-inline:16px}
 .board-filter-frame .tagbar .pill:is([data-state],[data-follow-filter]){border:0;background:none;color:color-mix(in srgb,var(--glass-text) 60%,transparent)}
 .board-filter-frame .tagbar .pill:is([data-state],[data-follow-filter]):hover,
 .board-filter-frame .tagbar .pill:is([data-state],[data-follow-filter])[aria-pressed="true"]{background:none;color:var(--glass-text)}
-.board-filter-frame .tagbar .pill:is([data-tag],[data-follow-tag],[data-follow-provider]):not([aria-pressed="true"]){border:1px solid var(--line);background:transparent}
+/* 可加可不加的筛选没生效时是虚线，悬停拉成实线；判据与 flat 层那条同一份，见 03-filterbar.css。 */
+.board-filter-frame .tagbar .pill:is([data-tag],[data-follow-tag],[data-follow-provider]):not([aria-pressed="true"]){border:1px dashed var(--line);background:transparent}
+.board-filter-frame .tagbar .pill:is([data-tag],[data-follow-tag],[data-follow-provider]):not([aria-pressed="true"]):hover{border-style:solid}
 /* 右半截这些是标签，圆角从标签那个 token 取，跟卡片、详情面板、交集条一起走；左边几枚
    是分段器，形状归它自己那一排。线画满两态：填充说的是这条加没加上去，那一圈线说的是
    「这是一颗标签」，两句话不能合成一句讲。玻璃上取 --glass-low、flat 面上取 --line，
@@ -621,14 +635,12 @@ body>.board-filter-frame{margin-inline:16px}
 .entityhero .alias{font-size:14px;line-height:20px}
 .entitylinks a,.entitylinks .private{height:36px;border-radius:10px;border-color:var(--line);font-size:13px}
 .entitylinks a.iconlink{border-radius:10px}
-/* 资料页切视频、照片、名册的那一排是 Board 的下划线 Tabs；跟浮层留同样的 22px。
-   计数徽标照 tabs.tsx：`rounded-sm px-1 py-px text-caption-1-medium`，未选中黑 10% 底半透明，
-   选中换成强调色 12% 底、强调色字。 */
-.entitytabs{margin:0 0 22px}
+/* 计数徽标照 tabs.tsx：`rounded-sm px-1 py-px text-caption-1-medium`，未选中黑 10% 底半透明，
+   选中换成强调色 12% 底、强调色字。字母表分组卡的字头旁挂的也是这一枚。 */
 .board-tab-count{display:inline-block;margin-left:6px;padding:1px 4px;border-radius:4px;font:var(--board-caption);font-weight:500;line-height:16px;
   background:color-mix(in srgb,var(--ink) 10%,transparent);color:var(--ink);opacity:.5;vertical-align:1px}
 .board-local-nav button[aria-selected="true"] .board-tab-count{background:color-mix(in srgb,var(--tungsten) 12%,transparent);color:var(--tungsten);opacity:1}
-/* 索引页页头下面那排 Tabs（厂牌／事务所、本地／在线）跟资料页那排同一份；前置字形 16px。 */
+/* 索引页页头下面那排 Tabs（厂牌／事务所、本地／在线）跟浮层留同样的 22px；前置字形 16px。 */
 .indextabs{margin:0 0 22px}
 .board-tabs button svg{width:16px;height:16px;margin-right:6px;vertical-align:-3px;stroke:currentColor;fill:none;stroke-width:2}
 /* 索引格照 Board 的卡排：secondary 底、16px 圆角、不描边，名字 Body 1 Medium、读数 Caption。
@@ -646,8 +658,10 @@ body>.board-filter-frame{margin-inline:16px}
 .alphagroup{border-radius:16px;box-shadow:none}
 .alphagroup h3{font-size:20px;line-height:26px;font-weight:500}
 .alphatag{border-radius:8px}
-/* 标签页浮层上排的类型药丸：玻璃上的线取 --glass-low，选中那一枚的色由类型色给。 */
+/* 标签页浮层上排的类型药丸：玻璃上的线取 --glass-low，没选中的是虚线，选中那一枚的色由类型色给。 */
 .board-filter-frame .tagcategories .pill{border:1px solid var(--glass-low);background:transparent}
+.board-filter-frame .tagcategories .pill:not([aria-pressed="true"]){border-style:dashed}
+.board-filter-frame .tagcategories .pill:not([aria-pressed="true"]):hover{border-style:solid}
 .board-filter-frame .tagcategories .pill[aria-pressed="true"]{border-color:color-mix(in srgb,var(--tag-color,var(--ink)) 45%,transparent);
   background:color-mix(in srgb,var(--tag-color,var(--ink)) 12%,transparent)}
 .board-filter-frame .alphajump button{color:color-mix(in srgb,var(--glass-text) 60%,transparent);border-radius:7px}

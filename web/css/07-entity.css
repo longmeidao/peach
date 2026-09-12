@@ -93,10 +93,9 @@
 /* 这条是横向滚动行，里面每一项都得拒绝被压扁——挤瘪的开关点不准，也读不出图标。 */
 .entitytags .iconswitch{flex:none}
 .entitytags small{color:var(--muted);margin-left:4px}
-/* 那排标签和四枚观看状态数的都是视频。看照片或名册时它们一个都对不上屏幕上摆着的
-   东西，点下去还会把视图拨回视频，所以那两档整条收起，浮层只剩下面那排抬头。切回
-   视频它照旧在。 */
-.entitytagbar[data-media-only]{display:none}
+/* 那排标签数的是视频。看照片或名册时它们一个都对不上屏幕上摆着的东西，点下去还会把
+   视图拨回视频，所以那两档只留媒体开关。切回视频它们照旧在。 */
+.entitytagbar[data-media-only] .entitytags .pill{display:none}
 /* 交集条列的也是作品筛选，照片视图下同样不成立。 */
 .entitycombo:has(+.board-filter-frame .entitytagbar[data-media-only]){display:none}
 .mediaviewbuttons{display:inline-flex;align-items:center;gap:2px;flex:none}
