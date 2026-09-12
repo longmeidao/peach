@@ -182,9 +182,10 @@ body:has(#batchbar:not([hidden])) #stage{padding-bottom:180px}
   /* 窄屏改成单列居中，头像在名字上方——参考 beeg 的资料页。
      左像右文那套是给宽屏的：手机上 92 px 头像旁边只剩两百多像素，别名和链接被挤成
      两三行，头像下面又空着一大片。居中之后名字和链接都拿到整行宽度。 */
-  .entityhero{grid-template-columns:minmax(0,1fr);gap:12px;padding:8px 0 18px;justify-items:center;text-align:center}
-  .entityportrait{width:112px}.entityhero h2{font-size:var(--fs-xl)}
-  .entityhero>div:last-child{width:100%}
+  .entityprofile{grid-template-columns:minmax(0,1fr);gap:12px;padding:16px;justify-items:center;text-align:center}
+  .entityportrait{width:96px}.entityhero h2{font-size:var(--fs-xl)}
+  .entityidentity{width:100%}
+  .entityfoot{padding:10px 16px}
   /* 标题行是 flex，`text-align:center` 管不到它，得自己居中。 */
   .entitytitle{justify-content:center}
   /* 这枚开关紧挨着名字，画成 44px 的方块就比名字本身还重一档，一屏里最先看见的

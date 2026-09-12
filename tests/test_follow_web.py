@@ -11,17 +11,20 @@ import stat
 import tempfile
 import threading
 import unittest
+import urllib.parse
 from datetime import datetime, timezone
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
-from peach import follow_store, web_follow, web_stats
+from peach import avatar_face, follow_assets, follow_store, web_follow, web_stats
 from peach.follow import FollowHistoryEnd
 from peach.follow import FollowSourceError
 from peach.follow_discovery import Discovery, ExternalSearch
 from peach.follow_secrets import CredentialError
 from peach.follow_sources import FollowCandidate, SourceFetch
 from peach.follow_store import FollowStore
+from peach.http import HttpResponse
 from support.ledger import fresh_ledger
 from peach.web_contract import WebContract, dispatch_api_get, dispatch_api_post
 from peach.web_follow import _credential_store
@@ -138,7 +141,10 @@ class FollowContractTests(unittest.TestCase):
         self.contract = WebContract(
             self.db, follow_sources_root=self.root / "sources",
             follow_secrets_root=self.root / "secrets",
-            follow_shared_root=self.root / "shared")
+            follow_shared_root=self.root / "shared",
+            # 题材圆标的取景从这个目录下的 sidecar 读。不给临时目录的话，判据变成
+            # 「这台机器上碰巧缓存过哪些题材图」，同一份代码换台机器就是另一个结果。
+            candidate_root=self.root / "generated")
 
     def _seed(self, candidates=None, provider="rule34video", ref="lazyprocrastinator",
               semantics="work", label="LazyProcrastinator"):
@@ -786,6 +792,87 @@ class FollowContractTests(unittest.TestCase):
         self.assertEqual([row["k"] for row in last["items"]], ["pov"])
         self.assertFalse(last["has_more"])
 
+    def _clip(self, external_id, *, duration=None, score=None, published_at=None):
+        extra = {"tags": ["anal"], "tag_types": {"anal": "general"}}
+        if score is not None:
+            extra["score"] = score
+        return FollowCandidate(
+            provider="rule34video", external_id=external_id, title=f"Clip {external_id}",
+            url=f"https://rule34video.com/video/{external_id}/x/",
+            duration=duration, published_at=published_at, extra=extra)
+
+    def test_the_feed_sorts_by_the_requested_column_all_the_way_to_the_groups(self):
+        """排序要一直排到摆出来的那一批，不只是「取哪些条目」。
+
+        `store.group()` 结尾无条件按 newest_at 倒序，那是它自己的默认次序。只在条目那
+        一层排的话，选「时长」看到的确实是一页长片，但页面上它们内部照旧按更新时间排，
+        用户看到的就是「点了没反应」。
+        """
+        self._seed(candidates=(
+            self._clip("s1", duration=10.0, score=300, published_at="2026-01-03T00:00:00Z"),
+            self._clip("s2", duration=90.0, score=100, published_at="2026-01-02T00:00:00Z"),
+            self._clip("s3", duration=50.0, score=200, published_at="2026-01-01T00:00:00Z"),
+        ))
+        titles = lambda page: [group["primary"]["title"] for group in page["groups"]]
+        self.assertEqual(titles(self._get(sort="dur")), ["Clip s2", "Clip s3", "Clip s1"])
+        self.assertEqual(titles(self._get(sort="dur", dir="asc")),
+                         ["Clip s1", "Clip s3", "Clip s2"])
+        # 热度取来源自己的分数；没有这个字段的来源一律并列垫底，不按别的东西悄悄排。
+        self.assertEqual(titles(self._get(sort="hot")), ["Clip s1", "Clip s3", "Clip s2"])
+        self.assertEqual(titles(self._get(sort="new")), ["Clip s1", "Clip s2", "Clip s3"])
+        self.assertEqual(titles(self._get(sort="new", dir="asc")),
+                         ["Clip s3", "Clip s2", "Clip s1"])
+
+    def test_an_unknown_sort_or_direction_falls_back_without_an_error(self):
+        """地址栏里存着的旧参数不该报错，也不该悄悄换成另一种排序。"""
+        self._seed(candidates=(self._clip("u1", duration=10.0),))
+        page = self._get(sort="size", dir="sideways")
+        self.assertEqual((page["sort"], page["dir"]), ("new", "desc"))
+
+    def test_the_online_roster_lists_follow_authors_with_the_follow_page_count(self):
+        """艺人页「在线」那一档列的是关注来源里的人，每格那个数跟关注页读数同源。
+
+        点开一位作者去关注页，那里写着多少项更新，名册上就得是同一个数；两处各按各的
+        口径数（一边数发布组、一边数条目），用户看到的是两个都对、却对不上的数字。
+        """
+        self._seed(ref="a", label="Author A", candidates=(
+            self._clip("a1", duration=10.0), self._clip("a2", duration=20.0)))
+        self._seed(ref="b", label="Author B", candidates=(self._clip("b1", duration=30.0),))
+        page = self._get("/api/follow/authors")
+        self.assertEqual(page["kind"], "performers")
+        self.assertEqual(page["scope"], "online")
+        self.assertEqual([(row["k"], row["n"]) for row in page["items"]],
+                         [("Author A", 2), ("Author B", 1)])
+        key = next(row["key"] for row in page["items"] if row["k"] == "Author A")
+        self.assertEqual(sum(self._get(author=key)["counts"].values()), 2)
+
+    def test_the_online_roster_folds_one_persons_sources_into_one_row(self):
+        """同一个人在两个站点上是两条来源、一行——身份口径跟关注页筛选条完全一样。"""
+        self._seed(provider="rule34video", ref="lazyprocrastinator",
+                   label="LazyProcrastinator", candidates=(self._clip("x1"),))
+        self._seed(provider="rule34xxx", ref="lazyprocrastinator",
+                   label="lazyprocrastinator", candidates=(FollowCandidate(
+                       provider="rule34xxx", external_id="x2", title="Clip x2",
+                       url="https://rule34.xxx/index.php?page=post&s=view&id=2"),))
+        page = self._get("/api/follow/authors")
+        self.assertEqual(len(page["items"]), 1)
+        row = page["items"][0]
+        self.assertEqual(row["n"], 2)
+        # 同名的几种写法里取大写最多的那个：那更像作者自己写的名字。
+        self.assertEqual(row["k"], "LazyProcrastinator")
+        self.assertEqual(sorted(row["providers"]), ["rule34video", "rule34xxx"])
+
+    def test_the_online_roster_supports_search_and_paging(self):
+        """形状与 /api/index 一致：艺人页的分页、过滤和「载入更多」换个地址就能用。"""
+        self._seed(ref="a", label="Author A", candidates=(self._clip("a1"),))
+        self._seed(ref="b", label="Bravo", candidates=(self._clip("b1"),))
+        self.assertEqual([row["k"] for row in
+                          self._get("/api/follow/authors", q="brav")["items"]], ["Bravo"])
+        first = self._get("/api/follow/authors", limit=1)
+        self.assertEqual(len(first["items"]), 1)
+        self.assertTrue(first["has_more"])
+        self.assertFalse(self._get("/api/follow/authors", limit=1, offset=1)["has_more"])
+
     def test_online_tag_index_exposes_recorded_rule34_types_and_filters_them(self):
         candidate = FollowCandidate(
             provider="rule34xxx", external_id="typed", title="Typed",
@@ -806,6 +893,325 @@ class FollowContractTests(unittest.TestCase):
                          [("artist_name", "artist")])
         self.assertEqual(sum(self._get(tag="artist_name")["counts"].values()), 1,
                          "在线索引里的非 general 标签点入后必须能筛到原条目")
+
+    def _typed(self, external_id, tag_types, preview=""):
+        extra = {"tags": list(tag_types), "tag_types": dict(tag_types)}
+        if preview:
+            extra["preview_url"] = preview
+        return FollowCandidate(
+            provider="rule34xxx", external_id=external_id, title=f"Clip {external_id}",
+            url=f"https://rule34.xxx/index.php?page=post&s=view&id={external_id}",
+            extra=extra)
+
+    def test_the_works_row_only_lists_what_the_source_typed_as_a_work(self):
+        """题材那一排收的是来源记成 copyright 的标签，不按词形猜。
+
+        `tifa_lockhart` 是角色、`lazyprocrastinator` 是画师，字面上跟作品名没有
+        区别，猜一次就会把两样东西摆进作品那一排。写法差别不算两部作品：
+        `zenless_zone_zero` 和 `zenless zone zero` 归到同一枚，键是归一后的身份，
+        显示名把下划线换成空格、罗马数字整词大写。
+        """
+        self._seed(provider="rule34xxx", ref="typed", candidates=(
+            self._typed("1", {"final_fantasy_vii": "copyright",
+                              "tifa_lockhart": "character",
+                              "lazyprocrastinator": "artist",
+                              "animated": "metadata", "pov": "general"}),
+            self._typed("2", {"zenless_zone_zero": "copyright"},
+                        preview="https://api-cdn.rule34.xxx/thumbnails/9/z.jpg"),
+            self._typed("3", {"zenless zone zero": "copyright"}),
+        ))
+        works = self._get()["facets"]["works"]
+        # 第四位说这一枚挑不挑得出代表图，页面据它决定出不出 `<img>`；第五位是那张图
+        # 检出的取景，还没取过图时是 None。
+        self.assertEqual(works,
+                         [["zenless zone zero", "Zenless Zone Zero", 2, 1, None],
+                          ["final fantasy", "Final Fantasy", 1, 0, None]])
+
+    def test_the_works_row_hands_the_page_the_framing_of_the_cover_it_has(self):
+        """取过图的题材带上那张图的取景：挪到哪，还有那张脸有多少像素。
+
+        圆标只有 28px，而圆里是一整张作品图不是烤好边距的头像：只挪不放大的话，脸在
+        图里占多少、在这枚圆里就占多少。两样都按实体图那套 sidecar 的形状给，页面于是
+        走同一个放大函数。
+        """
+        self._seed(provider="rule34xxx", ref="typed", candidates=(
+            self._typed("1", {"stellar blade": "copyright"},
+                        preview="https://api-cdn.rule34.xxx/thumbnails/9/s.jpg"),
+        ))
+        cached = follow_assets.cache_path(
+            self.contract.candidate_root / follow_assets.ROOT_NAME, "works",
+            "stellar blade")
+        cached.parent.mkdir(parents=True, exist_ok=True)
+        avatar_face.write_sidecar(cached, {
+            "ratio": 0.563, "px": [144, 256],
+            "face": {"cx": 0.5, "cy": 0.2, "w": 0.2, "h": 0.18, "score": 0.9},
+            "focus": {"axis": "y", "pct": 17}})
+        self.assertEqual(
+            self._get()["facets"]["works"],
+            [["stellar blade", "Stellar Blade", 1, 1,
+              {"axis": "y", "pct": 17,
+               "box": {"cx": 0.5, "cy": 0.2, "faceW": 29, "imgW": 144, "imgH": 256}}]])
+
+    def test_one_series_is_one_pill_however_the_source_spells_each_installment(self):
+        """一个系列在那一排上只占一枚。
+
+        来源给每一代都发一个 copyright 标签，`Final Fantasy VII`、`FFXIV`、
+        `Stranger of Paradise: Final Fantasy Origin` 各占一格时，那一排读起来是
+        版本号列表而不是题材。一条更新同时带系列名和代号也只算一次。
+        """
+        self._seed(provider="rule34xxx", ref="typed", candidates=(
+            self._typed("1", {"final_fantasy": "copyright",
+                              "final_fantasy_vii": "copyright"}),
+            self._typed("2", {"final fantasy xiv": "copyright"}),
+            self._typed("3", {"ffxiv": "copyright"}),
+            self._typed("4", {"stranger of paradise: final fantasy origin":
+                              "copyright"}),
+        ))
+        self.assertEqual(self._get()["facets"]["works"],
+                         [["final fantasy", "Final Fantasy", 4, 0, None]])
+        self.assertEqual(sum(self._get(work="final fantasy")["counts"].values()), 4)
+        self.assertEqual(sum(self._get(work="final fantasy vii")["counts"].values()), 4,
+                         "书签里存着的旧写法要落在合并后的同一枚上")
+
+    def test_publishers_holidays_and_placeholders_never_reach_the_works_row(self):
+        """发行商、节庆和占位词不是题材。
+
+        来源把它们和作品名一样记成 copyright，形态上分不出来，只能按名单剔。
+        留着的话那一排头几格会被 Square Enix 和 Christmas 占掉。
+        """
+        self._seed(provider="rule34xxx", ref="typed", candidates=(
+            self._typed("1", {"stellar blade": "copyright",
+                              "shift up": "copyright"}),
+            self._typed("2", {"square enix": "copyright"}),
+            self._typed("3", {"christmas": "copyright", "original": "copyright"}),
+            self._typed("4", {"iwara": "copyright"}),
+        ))
+        self.assertEqual(self._get()["facets"]["works"],
+                         [["stellar blade", "Stellar Blade", 1, 0, None]])
+
+    def test_a_work_filters_every_spelling_and_two_works_mean_either(self):
+        """按题材筛是「任一」，而且两种写法都要筛得到。
+
+        作者、来源也是任一；只有标签是交集。题材取交集的话，点第二枚列表就空了——
+        同时属于两部作品的条目本来就几乎没有。
+        """
+        self._seed(provider="rule34xxx", ref="typed", candidates=(
+            self._typed("1", {"zenless_zone_zero": "copyright"}),
+            self._typed("2", {"zenless zone zero": "copyright"}),
+            self._typed("3", {"final_fantasy_vii": "copyright"}),
+            self._typed("4", {"pov": "general"}),
+        ))
+        self.assertEqual(sum(self._get(work="zenless zone zero")["counts"].values()), 2,
+                         "两种写法是同一部作品，必须一起筛到")
+        self.assertEqual(
+            sum(self._get(work="zenless zone zero,final fantasy")["counts"].values()), 3,
+            "选两部作品是两部都看，不是只看同时占两部的")
+        self.assertEqual(
+            sorted(self._get()["facets"]["works"]),
+            sorted(self._get(work="final fantasy")["facets"]["works"]),
+            "选中一部作品后另一部不能从那一排上消失，否则换不了题材")
+
+    def _scored(self, item_id, score, tags, cover, preview=None):
+        return SimpleNamespace(
+            id=item_id, provider="rule34xxx", external_id=str(item_id),
+            media_url=None, thumb_url=cover,
+            metadata={"score": score, "preview_url": preview,
+                      "tags": list(tags),
+                      "tag_types": {tag: ("general" if tag == "3d" else "copyright")
+                                    for tag in tags}})
+
+    def test_the_work_icon_takes_the_cover_not_the_250px_thumbnail(self):
+        """候选取的是卡片上那张高清封面，不是 250px 的缩略图。
+
+        圆标只有 28px，两层看起来一样；差别在检脸——250px 里一张脸只剩十几个像素。
+        实测本库 77 个题材，高清那层检出 58 张脸，缩略那层 49 张。没有封面的旧行才
+        退回缩略图，那也好过这一枚圆标空着。
+        """
+        host = "https://api-cdn.rule34.xxx"
+        store = SimpleNamespace(items=lambda **kwargs: (
+            self._scored(1, 9, ("stellar blade", "3d"), f"{host}/samples/1/a.jpg",
+                         f"{host}/thumbnails/1/a.jpg"),
+            self._scored(2, 9, ("miside", "3d"), None, f"{host}/thumbnails/2/b.jpg"),
+        ))
+        table = web_follow._work_icon_table(store)
+        self.assertEqual(table["stellar blade"]["urls"], [f"{host}/samples/1/a.jpg"])
+        self.assertEqual(table["miside"]["urls"], [f"{host}/thumbnails/2/b.jpg"])
+
+    def test_the_work_icon_candidates_are_this_librarys_hottest_3d_clips(self):
+        """题材头像的候选是本库里这个题材热度最高的几条，带 `3d` 的优先。
+
+        rule34 的 score 是站点自己的热度排序，本库里现成存着，先用它：这几张属于用户
+        关注的那几位作者，不出网就能拿到。给的是一串而不是一条：最热那张常常是身体
+        特写，取图那一端要顺着往下找第一张看得见脸的。地址只认登记过的图床主机：它
+        来自来源记录，而记录里存的是站点回的 JSON，不该把任意主机带进出网路径。
+        """
+        host = "https://api-cdn.rule34.xxx/thumbnails/1"
+        store = SimpleNamespace(items=lambda **kwargs: (
+            self._scored(1, 900, ("stellar blade",), f"{host}/flat.jpg"),
+            self._scored(2, 40, ("stellar blade", "3d"), f"{host}/spatial.jpg"),
+            self._scored(3, 5, ("stellar blade", "3d"), f"{host}/quiet.jpg"),
+            self._scored(4, 999, ("stellar blade", "3d"),
+                         "https://images.example.invalid/best.jpg"),
+            self._scored(5, 999, ("zenless zone zero", "3d"), f"{host}/other.jpg"),
+        ))
+        table = web_follow._work_icon_table(store)
+        self.assertEqual(table["stellar blade"]["urls"],
+                         [f"{host}/spatial.jpg", f"{host}/quiet.jpg",
+                          f"{host}/flat.jpg"])
+        self.assertEqual(table["zenless zone zero"]["urls"], [f"{host}/other.jpg"])
+        self.assertNotIn("miside", table,
+                         "本库里没有这个题材时不编一张图出来，那一排退回首字母")
+
+    def test_a_work_offers_a_few_candidates_not_the_whole_library(self):
+        """候选就那么几个。
+
+        热门题材本库里有上千条，全排出来既是白排，也意味着一枚圆标最坏要去站点取
+        上千次才停——一张都检不出脸时，下一张的收益早就没了。
+        """
+        host = "https://api-cdn.rule34.xxx/thumbnails/4"
+        store = SimpleNamespace(items=lambda **kwargs: tuple(
+            self._scored(index, index, ("stellar blade", "3d"), f"{host}/{index}.jpg")
+            for index in range(1, 40)))
+        self.assertEqual(len(web_follow._work_icon_table(store)["stellar blade"]["urls"]),
+                         web_follow._WORK_ICON_CANDIDATES)
+
+    def test_the_work_icon_follows_the_merged_series_not_one_installment(self):
+        """题材头像跟着合并后的系列走。
+
+        `Final Fantasy VII` 那一枚已经并进 `Final Fantasy`，头像要在整个系列里挑
+        最热的那几条，而不是只看恰好写着系列名的那几条。
+        """
+        host = "https://api-cdn.rule34.xxx/thumbnails/2"
+        store = SimpleNamespace(items=lambda **kwargs: (
+            self._scored(1, 10, ("final fantasy", "3d"), f"{host}/series.jpg"),
+            self._scored(2, 700, ("final fantasy vii remake", "3d"),
+                         f"{host}/remake.jpg"),
+        ))
+        self.assertEqual(web_follow._work_icon_table(store)["final fantasy"]["urls"],
+                         [f"{host}/remake.jpg", f"{host}/series.jpg"])
+
+    def test_one_scan_answers_every_work_icon_asked_for_in_the_same_minute(self):
+        """整排头像同时到期时只扫一遍库。
+
+        那一排二十几枚，浏览器会并排发来同样多个 `/work-icon`；每个都从头扫一遍
+        全库、把几千条 metadata 重解析一次的话，服务在这段时间里干不了别的。
+        """
+        host = "https://api-cdn.rule34.xxx/thumbnails/3"
+        scans = []
+
+        def items(**kwargs):
+            scans.append(1)
+            return (self._scored(1, 5, ("stellar blade", "3d"), f"{host}/a.jpg"),
+                    self._scored(2, 5, ("miside", "3d"), f"{host}/b.jpg"))
+
+        web_follow._work_icon_memo = (0.0, {})
+        try:
+            store = SimpleNamespace(items=items)
+            self.assertEqual(web_follow.work_icon_urls(store, "stellar blade"),
+                             [f"{host}/a.jpg"])
+            self.assertEqual(web_follow.work_icon_urls(store, "miside"),
+                             [f"{host}/b.jpg"])
+            self.assertEqual(len(scans), 1)
+        finally:
+            web_follow._work_icon_memo = (0.0, {})
+
+    def test_the_site_tag_is_the_spelling_this_library_recorded_not_the_identity(self):
+        """去站上查用的是本库记下的那个写法。
+
+        题材身份是把 `the_witcher_(series)` 这类写法抹平之后的结果，照着它拼出来的
+        标签在站上是零命中。同一个题材记着几种写法时取用得最多的那个：它才是这个库
+        实际在追的那条线。
+        """
+        host = "https://api-cdn.rule34.xxx/thumbnails/5"
+        store = SimpleNamespace(items=lambda **kwargs: (
+            self._scored(1, 9, ("the witcher (series)", "3d"), f"{host}/a.jpg"),
+            self._scored(2, 8, ("the witcher (series)", "3d"), f"{host}/b.jpg"),
+            self._scored(3, 7, ("the witcher", "3d"), f"{host}/c.jpg"),
+        ))
+        self.assertEqual(web_follow._work_icon_table(store)["the witcher"]["tag"],
+                         "the_witcher_(series)")
+
+    def test_a_work_the_library_never_recorded_falls_back_to_its_own_name(self):
+        """本库没记下写法时按题材身份拼一个，总好过不去问。"""
+        web_follow._work_icon_memo = (0.0, {})
+        self.addCleanup(setattr, web_follow, "_work_icon_memo", (0.0, {}))
+        store = SimpleNamespace(items=lambda **kwargs: ())
+        self.assertEqual(web_follow.work_icon_tag(store, "stellar blade"),
+                         "stellar_blade")
+
+    def _rule34_credential(self):
+        self._post("/api/follow/credential", {
+            "provider": "rule34xxx", "values": {"user_id": "42", "api_key": "sekret"}})
+
+    @staticmethod
+    def _posts(*urls):
+        return json.dumps([{"id": index, "image": f"{index}.jpg",
+                            "tags": "the_witcher_(series) 3d", "sample_url": url}
+                           for index, url in enumerate(urls, 1)]).encode()
+
+    def test_a_work_with_no_usable_cover_here_asks_the_site_for_one(self):
+        """本库那几张都看不清脸时，去站上问这个题材最热的几张。
+
+        库里存的是用户关注的那几位作者发的东西，一个题材常常只有一两条，那一两条
+        未必有正脸；站上同一个标签下有成千上万帖，按热度往下找总能找到一张。先只要
+        3D——这一排要的是 3D 作品。地址仍只认登记过的图床主机：它来自站点回的 JSON，
+        不该把任意主机带进出网路径。
+        """
+        self._rule34_credential()
+        seen = []
+
+        def transport(request, timeout, max_bytes):
+            seen.append(request.url)
+            return HttpResponse(200, {}, self._posts(
+                "https://api-cdn.rule34.xxx/images/1/a.jpg",
+                "https://images.example.invalid/b.jpg"))
+
+        urls = web_follow.work_icon_search_urls(
+            self.contract, "the_witcher_(series)", transport=transport, limit=4)
+        self.assertEqual(urls, ["https://api-cdn.rule34.xxx/images/1/a.jpg"])
+        self.assertEqual(len(seen), 1, "3D 那一问有结果就不再问第二遍")
+        query = urllib.parse.parse_qs(urllib.parse.urlsplit(seen[0]).query)
+        self.assertEqual(query["tags"], ["the_witcher_(series) 3d sort:score"])
+        self.assertEqual(query["limit"], ["4"])
+
+    def test_a_work_with_nothing_tagged_3d_asks_again_without_that_tag(self):
+        """`3d` 下一张都没有时再问一次不限形式的，总好过让这一枚空着。"""
+        self._rule34_credential()
+        seen = []
+
+        def transport(request, timeout, max_bytes):
+            seen.append(request.url)
+            # rule34.xxx 的零命中响应是 HTTP 200 加空正文，不是 JSON `[]`。
+            if "3d" in request.url:
+                return HttpResponse(200, {}, b" \r\n")
+            return HttpResponse(200, {}, self._posts(
+                "https://api-cdn.rule34.xxx/images/2/c.jpg"))
+
+        urls = web_follow.work_icon_search_urls(
+            self.contract, "the_witcher_(series)", transport=transport)
+        self.assertEqual(urls, ["https://api-cdn.rule34.xxx/images/2/c.jpg"])
+        self.assertEqual(len(seen), 2)
+
+    def test_without_a_rule34_credential_the_icon_never_reaches_the_site(self):
+        seen = []
+
+        def transport(request, timeout, max_bytes):
+            seen.append(request.url)
+            return HttpResponse(200, {}, b"[]")
+
+        self.assertEqual(web_follow.work_icon_search_urls(
+            self.contract, "the_witcher_(series)", transport=transport), [])
+        self.assertEqual(seen, [], "没有凭据就不出网，圆标退回首字母")
+
+    def test_the_site_being_unreachable_leaves_the_icon_to_the_letter(self):
+        """站点报错或网络不通时返回空——这一枚退回首字母，不是一个 500。"""
+        self._rule34_credential()
+
+        def transport(request, timeout, max_bytes):
+            raise OSError("网络不通")
+
+        self.assertEqual(web_follow.work_icon_search_urls(
+            self.contract, "the_witcher_(series)", transport=transport), [])
 
     def test_counts_are_whole_library_while_groups_are_one_page(self):
         """计数是全库口径，列表只有一页——界面并排显示这两个数时看起来像自相矛盾。
@@ -2571,9 +2977,12 @@ class FollowWebSourceTests(unittest.TestCase):
 
     def test_follow_horizontal_rails_are_wired_after_each_render(self):
         self.assertPageContains("wireDrag($('#stats').querySelector('.followauthors'))")
-        self.assertPageContains("wireDrag($('#stats').querySelector('.followfilters'))")
+        # 筛选条挂进首页那块浮层之后，横滚的是里面的 `.filterscroll`／`.tagscroll`，不是整条。
+        self.assertPageContains("wireDrag(filterRow.querySelector('.filterscroll'));wireDrag(filterRow.querySelector('.tagscroll'))")
+        self.assertPageContains("wireHorizontalScroller(filterRow.querySelector('.tagscroll'))")
         self.assertPageContains(".followauthors{padding:3px 0 10px")
-        self.assertPageContains(".followfilters::-webkit-scrollbar{display:none}")
+        self.assertPageContains(".tagscroll::-webkit-scrollbar{display:none}")
+        self.assertPageLacks(".followfilters{position:relative")
 
     def test_credentials_are_typed_into_the_page_not_into_a_file_by_hand(self):
         self.assertPageContains('data-cred-form=')
@@ -3035,11 +3444,18 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains('data-follow-queue-item="${item.id}"')
         self.assertPageContains("openFollowDetail(+button.dataset.followCollection)")
 
-    def test_follow_reuses_entity_media_buttons_at_the_far_left_without_separator(self):
+    def test_follow_puts_the_media_buttons_at_the_top_row_left_behind_a_separator(self):
+        """媒体类型在上排最左，隔一道竖线才是状态——跟资料页那条同一个次序。
+
+        它问的是「这一页现在摆的是哪一类东西」，比右边那五枚粗一级：视频和图片各是
+        一整批内容，状态是在这一批里再挑一档。摆在下排右端的话，它挨着的是排序键和
+        动作键，读起来像给当前这批加的又一个条件，而它换掉的是整页内容。
+        """
         self.assertPageContains("const followMediaKinds=group=>")
         self.assertPageContains("function followItemMediaKinds(item)")
         self.assertPageContains("const item=followItemForMedia(group)")
-        self.assertPageContains("return mediaViewButtonsHtml({active:followMediaView,videoCount:counts.videos,imageCount:counts.images})")
+        self.assertPageContains("return mediaViewButtonsHtml({active:followMediaView,videoCount:counts.videos,imageCount:counts.images,\n"
+                                "    className:'followmediaview'});")
         self.assertPageContains("button.dataset.mediaView")
         self.assertPageLacks('class="insightswitch followmediaswitch"')
         self.assertPageLacks("params.set('media-ui','switch')")
@@ -3053,14 +3469,21 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("const preferredKind=followMediaView==='images'?'image':'video'")
         watch = self.page.split("function renderFollow(){", 1)[1].split(
             "function followBackfillState", 1)[0]
+        # 媒体那两枚在最左、自己一段；竖线之后才是横滚那一截里的五枚状态。
         self.assertIn(
-            'class="tagbar followfilters" aria-label="关注筛选">${followMediaControl(mediaCounts)}${FOLLOW_FILTERS.map',
+            '''class="tagbar followfilters" aria-label="${mediaControl?'媒体与关注筛选':'关注筛选'}">'''
+            '''${mediaControl}${mediaControl?'<span class="sep" aria-hidden="true"></span>':''}'''
+            '<div class="filterscroll">'
+            '<div class="viewpills followviews" role="group" aria-label="状态">${FOLLOW_FILTERS.map',
             watch,
         )
-        self.assertNotIn(
-            '<span class="sep" aria-hidden="true"></span>${followMediaControl(mediaCounts)}',
-            watch,
-        )
+        # 媒体那一档另有一块滑过去的玻璃，跟状态那五枚不共用：共用的话点一下图片，
+        # 玻璃会从「未看」那儿飞过来。
+        self.assertIn("const mediaRow=filterRow.querySelector('.followmediaview');", watch)
+        self.assertIn("if(mediaRow)wireViewGlideRow(mediaRow,[...mediaRow.querySelectorAll('[data-media-view]')],'media');", watch)
+        self.assertIn("const mediaControl=followMediaControl(mediaCounts);", watch)
+        self.assertIn("mountFilterFrame(filterRow,countRow,{views:filterRow.querySelector('.followviews'),", watch)
+        self.assertNotIn("${followMediaControl(mediaCounts)}${FOLLOW_FILTERS", watch)
         self.assertPageContains("followMediaView==='images'?' followphotowall':''")
         self.assertPageContains(".followlist.followphotowall{grid-template-columns:repeat(5,minmax(0,1fr))")
         self.assertPageLacks(".followlist.followphotowall>.stage{column-span:all}")
@@ -3157,7 +3580,9 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains('@media (max-width:640px){.followhead{align-items:center}')
 
     def test_manage_follow_is_a_geist_action_not_a_filter_pill(self):
-        self.assertPageContains('class="fbtn primary fcheck" data-follow-manage')
+        # 它是去另一页的入口，不是这一页的主动作：蓝色留给空态里那枚「添加关注」。
+        self.assertPageContains('class="fbtn fcheck" data-follow-manage')
+        self.assertPageLacks('class="fbtn primary fcheck"')
         rule = self.page[self.page.index(".follow .fcheck{"):
                          self.page.index("}", self.page.index(".follow .fcheck{"))]
         self.assertNotIn("--pill-radius", rule)

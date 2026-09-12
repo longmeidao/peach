@@ -41,6 +41,7 @@ from .web_entity import (
 )
 from .web_follow import (
     q_follow,
+    q_follow_authors,
     q_follow_check,
     q_follow_credentials,
     q_follow_schedule,
@@ -210,6 +211,7 @@ GET_HANDLERS = {
     "/api/follow": q_follow,
     "/api/follow/credentials": q_follow_credentials,
     "/api/follow/tags": q_follow_tags,
+    "/api/follow/authors": q_follow_authors,
     "/api/follow/schedule": q_follow_schedule,
     "/api/follow/check": q_follow_check,
     "/api/follow/resolve": lambda contract, args: contract.follow_resolve_job.snapshot() or {"status": "idle"},

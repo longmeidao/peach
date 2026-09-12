@@ -41,8 +41,11 @@ export function catalogEmptyHtml({ kind = 'catalog', filtered = false, jav = fal
     { actions: '<a class="geist-button primary" href="/?loc=&thumb=0">查看全部内容</a>' });
   if (kind !== 'catalog') {
     const labels: Record<string, string> = { tags: '标签', performers: '艺人', creators: '创作者', studios: '厂牌', agencies: '事务所', series: '系列' };
-    return emptyStateHtml(kind === 'tags' ? 'tags' : 'user-round', '还没有' + (labels[kind] || '资料'),
-      online ? '添加关注来源并获取内容后，这里会显示对应标签。' : '添加内容并补充资料后，这里会显示对应信息。',
+    // 在线那一档数的是来源上的东西，名字也跟着来源的说法：艺人页在线摆的是关注来源里的作者。
+    const onlineLabels: Record<string, string> = { tags: '标签', performers: '作者' };
+    const label = (online ? onlineLabels[kind] : '') || labels[kind] || '资料';
+    return emptyStateHtml(kind === 'tags' ? 'tags' : 'user-round', '还没有' + label,
+      online ? '添加关注来源并获取内容后，这里会显示来源上的' + label + '。' : '添加内容并补充资料后，这里会显示对应信息。',
       { actions: online ? follow : add + follow });
   }
   return emptyStateHtml('play', '还没有视频', '添加媒体文件夹或关注来源，开始建立你的馆藏。', { actions: add + follow });

@@ -179,7 +179,8 @@ body .review .reviewbulktoolbar,body .review .reviewgroupbar{
   background-image:none;background-color:var(--glass-fill);animation:none}
 body .review .reviewbulktoolbar{clip-path:inset(-48px -48px 0 -48px)}
 .entitytagbar .pill,.entitycollectionhead h3{color:var(--glass-text)}
-.entitytagbar .pill[data-tag]:not([aria-pressed="true"]){border-color:var(--glass-low)}
+.entitytagbar .pill[data-tag]:not([aria-pressed="true"]){border-color:var(--glass-low);border-style:dashed}
+.entitytagbar .pill[data-tag]:not([aria-pressed="true"]):hover{border-style:solid}
 /* 标签后面那个数在这块玻璃上要自己降一档。flat 层那条降的是 --muted，而在这一层里
    --muted 和 --ink-2 都映射到 --color-text-secondary，是同一个值——照搬过来，计数
    和标签仍然一样亮。按这一排自己的文字色降档，口径跟未选中的视图胶囊那一档同源。
@@ -215,7 +216,7 @@ body .review .reviewbulktoolbar{clip-path:inset(-48px -48px 0 -48px)}
 .entitytagbar.entitytagbar .pill[data-entity-state][aria-pressed="true"],
 .entitytagbar.entitytagbar .mediaviewbutton:hover,
 .entitytagbar.entitytagbar .mediaviewbutton[aria-pressed="true"]{color:var(--glass-text)}
-/* 那两枚字形要压在玻璃上面，不然滑过去的时候被盖住一路暗过去——跟首页四枚视图同一条。 */
+/* 那几枚字形要压在玻璃上面，不然滑过去的时候被盖住一路暗过去——跟首页四枚视图同一条。 */
 .entitytagbar.entitytagbar .mediaviewbutton{position:relative;z-index:1}
 /* 照片视图下这条只剩左端那一组，后面没有东西可隔；分隔线留着就是一条指向空白的竖线。 */
 .entitytagbar[data-media-only] .sep{display:none}
@@ -254,7 +255,7 @@ body .review .reviewbulktoolbar{clip-path:inset(-48px -48px 0 -48px)}
 .board-filter-frame.board-filter-frame .tagbar{border-radius:22px 22px 0 0}
 .board-filter-frame.board-filter-frame .count{border-radius:0 0 22px 22px}
 .board-filter-frame.board-filter-frame .pill{color:var(--glass-text)}
-.board-filter-frame.board-filter-frame #tagbar .pill[data-tag]:not([aria-pressed="true"]){border-color:var(--glass-low)}
+.board-filter-frame.board-filter-frame .tagbar .pill:is([data-tag],[data-follow-tag],[data-follow-provider]):not([aria-pressed="true"]){border-color:var(--glass-low)}
 /* 四枚视图之间只有一块玻璃在移动，不是四块各自亮灭：Apple 把同一层里的玻璃先合成
    再形变（`GlassEffectContainer` 的 "fluidly morphing Liquid Glass shapes into each
    other"），落到这一排就是先拉长盖住起点和终点、再收拢到新的那一枚。
@@ -294,7 +295,7 @@ body .review .reviewbulktoolbar{clip-path:inset(-48px -48px 0 -48px)}
    的字之下。写 0 的话它是这层里唯一的定位元素，整块盖住下面所有的字。 */
 .drawer.drawer>.navglide{border-radius:10px;z-index:-1}
 /* 文字要压在那块玻璃上面，否则滑过去的时候字被盖住一路暗过去。 */
-.board-filter-frame.board-filter-frame #tagbar .pill[data-state]{position:relative;z-index:1}
+.board-filter-frame.board-filter-frame .tagbar .pill:is([data-state],[data-follow-filter]){position:relative;z-index:1}
 /* 按下去那一下归手，弹回来那一下归弹簧。按住立刻缩到 96%——这一步要跟手，隔两百
    毫秒才动读成的是「点了没反应」；松开才交给弹簧，冲过原尺寸一点点再收住，手指离开
    以后那块东西还自己动了一下，捏着的是软的不是一张贴纸。
@@ -587,20 +588,29 @@ body>.board-filter-frame{margin-inline:16px}
   .top:has(.search.search-morphing){overflow:visible}
   .top:has(.search.search-morphing) #searchBtn{opacity:0}
 }
-.board-filter-frame #tagbar{height:48px;gap:6px;padding:8px 12px}
-.board-filter-frame #tagbar .pill{height:30px;padding:0 10px;font-size:13px;line-height:20px;border-radius:8px;border:1px solid transparent}
-/* 四枚视图自己不铺底，选中那一枚的填充由 `.viewglide` 那块滑过去的玻璃提供：
+/* 首页的 `#tagbar` 和关注页的 `.followfilters` 是同一条筛选条，规则按类名写、两页共用：
+   左端几枚视图记在 `data-state`／`data-follow-filter` 上，右半截的标签记在
+   `data-tag`／`data-follow-tag`，来源图标键是 `data-follow-provider`。 */
+.board-filter-frame .tagbar{height:48px;gap:6px;padding:8px 12px}
+.board-filter-frame .tagbar .pill{height:30px;padding:0 10px;font-size:13px;line-height:20px;border-radius:8px;border:1px solid transparent}
+/* 几枚视图自己不铺底，选中那一枚的填充由 `.viewglide` 那块滑过去的玻璃提供：
    两边都铺，静止态就是一块不透明的 `--picked` 压在玻璃上面，切换时也只能看见它
    瞬间换位置，滑动的那块从头到尾被盖住。 */
-.board-filter-frame #tagbar .pill[data-state]{border:0;background:none;color:color-mix(in srgb,var(--glass-text) 60%,transparent)}
-.board-filter-frame #tagbar .pill[data-state]:hover,
-.board-filter-frame #tagbar .pill[data-state][aria-pressed="true"]{background:none;color:var(--glass-text)}
-.board-filter-frame #tagbar .pill[data-tag]:not([aria-pressed="true"]){border:1px solid var(--line);background:transparent}
-/* 右半截这些是标签，圆角从标签那个 token 取，跟卡片、详情面板、交集条一起走；左边四枚
+.board-filter-frame .tagbar .pill:is([data-state],[data-follow-filter]){border:0;background:none;color:color-mix(in srgb,var(--glass-text) 60%,transparent)}
+.board-filter-frame .tagbar .pill:is([data-state],[data-follow-filter]):hover,
+.board-filter-frame .tagbar .pill:is([data-state],[data-follow-filter])[aria-pressed="true"]{background:none;color:var(--glass-text)}
+/* 可加可不加的筛选没生效时是虚线，悬停拉成实线；判据与 flat 层那条同一份，见 03-filterbar.css。 */
+.board-filter-frame .tagbar .pill:is([data-tag],[data-follow-tag],[data-follow-provider]):not([aria-pressed="true"]){border:1px dashed var(--line);background:transparent}
+.board-filter-frame .tagbar .pill:is([data-tag],[data-follow-tag],[data-follow-provider]):not([aria-pressed="true"]):hover{border-style:solid}
+/* 右半截这些是标签，圆角从标签那个 token 取，跟卡片、详情面板、交集条一起走；左边几枚
    是分段器，形状归它自己那一排。线画满两态：填充说的是这条加没加上去，那一圈线说的是
    「这是一颗标签」，两句话不能合成一句讲。玻璃上取 --glass-low、flat 面上取 --line，
    同一个角色各按自己的底选值。 */
-.board-filter-frame.board-filter-frame #tagbar .pill[data-tag]{border-radius:var(--tag-radius);border-color:var(--glass-low)}
+.board-filter-frame.board-filter-frame .tagbar .pill:is([data-tag],[data-follow-tag],[data-follow-provider]){border-radius:var(--tag-radius);border-color:var(--glass-low)}
+/* 关注页的标签按来源类型着色，选中那一档的线和填充都取那个色：这是它们在卡片上的样子，
+   筛选条上不换一套。 */
+.board-filter-frame.board-filter-frame .followfilters .pill[class*="r34-"][aria-pressed="true"]{
+  border-color:color-mix(in srgb,var(--r34-tag) 72%,transparent);background:color-mix(in srgb,var(--r34-tag) 22%,transparent)}
 /* 资料页的标签跟首页筛选条上的标签是同一个控件，只是换了个位置：那边 30px 高、13px
    字，这边还留着 40px 高的大药丸，同一个人的标签在两页上大一圈小一圈。
    计数跟着缩到 Caption。 */
@@ -608,6 +618,65 @@ body>.board-filter-frame{margin-inline:16px}
 .entitytags .pill small{margin-left:5px;font:var(--board-caption)}
 .board-filter-frame .count{padding:8px 12px;min-height:46px;gap:12px}
 .board-filter-frame .sorts{gap:4px}.board-filter-frame .sorts button{height:30px;min-height:30px;font-size:12px;padding:0 8px;border:0;border-radius:7px;background:transparent}
+/* 关注页上排最左那两枚是视频／图片，跟资料页那一组同形：自己不铺底，选中那一枚的填充
+   由 media 那块滑过去的玻璃给。两边都铺的话，静止态是一块不透明的面压在玻璃上面，
+   切换时也只看得见它瞬间换位置。字形要压在玻璃上面，不然滑过去时一路被盖暗。 */
+.board-filter-frame .followmediaview{gap:2px}
+.board-filter-frame.board-filter-frame .followmediaview .mediaviewbutton{
+  flex:0 0 30px;width:30px;height:30px;border-radius:7px;position:relative;z-index:1;
+  border:0;background:none;backdrop-filter:none;-webkit-backdrop-filter:none;box-shadow:none;
+  color:color-mix(in srgb,var(--glass-text) 60%,transparent)}
+.board-filter-frame.board-filter-frame .followmediaview .mediaviewbutton:hover,
+.board-filter-frame.board-filter-frame .followmediaview .mediaviewbutton[aria-pressed="true"]{color:var(--glass-text)}
+/* 「去问一遍来源」紧挨着「换一批」：两枚都是动作键，同高同圆角。它不是选项，所以
+   没有 `aria-pressed` 那一档填充——静止态比排序键淡一级，悬停才提到玻璃上的常规字色。 */
+.board-filter-frame .sorts .followrecheck{
+  flex:0 0 30px;width:30px;padding:0;display:inline-grid;place-items:center;
+  color:color-mix(in srgb,var(--glass-text) 60%,transparent)}
+.board-filter-frame .sorts .followrecheck:hover{color:var(--glass-text)}
+.board-filter-frame .sorts .followrecheck svg{
+  width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2}
+/* 资料卡照 Board 的卡排：secondary 底、18px 圆角、不描边，卡底那条带取卡脚那一档色阶。
+   标题是 Title 3（24/32、500），别名行 Body 1，外链是 36px 的 secondary Button。 */
+.entityhero{border-radius:18px;background:var(--ground);box-shadow:none}
+.entityfoot{background:var(--board-card-foot);border-top-color:var(--line-soft)}
+.entityhero h2{font-size:24px;font-weight:500;line-height:32px}
+.entityhero .alias{font-size:14px;line-height:20px}
+.entitylinks a,.entitylinks .private{height:36px;border-radius:10px;border-color:var(--line);font-size:13px}
+.entitylinks a.iconlink{border-radius:10px}
+/* 计数徽标照 tabs.tsx：`rounded-sm px-1 py-px text-caption-1-medium`，未选中黑 10% 底半透明，
+   选中换成强调色 12% 底、强调色字。字母表分组卡的字头旁挂的也是这一枚。 */
+.board-tab-count{display:inline-block;margin-left:6px;padding:1px 4px;border-radius:4px;font:var(--board-caption);font-weight:500;line-height:16px;
+  background:color-mix(in srgb,var(--ink) 10%,transparent);color:var(--ink);opacity:.5;vertical-align:1px}
+.board-local-nav button[aria-selected="true"] .board-tab-count{background:color-mix(in srgb,var(--tungsten) 12%,transparent);color:var(--tungsten);opacity:1}
+/* 索引页页头下面那排 Tabs（厂牌／事务所、本地／在线）跟浮层留同样的 22px；前置字形 16px。 */
+.indextabs{margin:0 0 22px}
+.board-tabs button svg{width:16px;height:16px;margin-right:6px;vertical-align:-3px;stroke:currentColor;fill:none;stroke-width:2}
+/* 索引格照 Board 的卡排：secondary 底、16px 圆角、不描边，名字 Body 1 Medium、读数 Caption。
+   大图版式里图铺满卡宽、文字靠左；紧凑版式是圆头像居中那一屏。 */
+.igrid{gap:12px}
+.icell{gap:8px;padding:12px;border-radius:16px;background:var(--ground)}
+.icell:hover{background:color-mix(in srgb,var(--ink) 6%,var(--ground))}
+.icell .nm{font-size:14px;line-height:20px;font-weight:500}
+.icell .n{font:var(--board-caption);color:var(--muted)}
+.igrid[data-layout="big"] .icell{align-items:stretch;padding:12px}
+.igrid[data-layout="big"] .icell .ring{border-radius:10px}
+.igrid[data-layout="big"] .icell .nm,.igrid[data-layout="big"] .icell .n{text-align:left}
+.igrid[data-layout="big"] .icell .nm{font-size:14px}
+/* 字母表的分组卡与卡头：Heading 20/26；一行一枚标签是排名行那一档（36px、圆角 8）。 */
+.alphagroup{border-radius:16px;box-shadow:none}
+.alphagroup h3{font-size:20px;line-height:26px;font-weight:500}
+.alphatag{border-radius:8px}
+/* 标签页浮层上排的类型药丸：玻璃上的线取 --glass-low，没选中的是虚线，选中那一枚的色由类型色给。 */
+.board-filter-frame .tagcategories .pill{border:1px solid var(--glass-low);background:transparent}
+.board-filter-frame .tagcategories .pill:not([aria-pressed="true"]){border-style:dashed}
+.board-filter-frame .tagcategories .pill:not([aria-pressed="true"]):hover{border-style:solid}
+.board-filter-frame .tagcategories .pill[aria-pressed="true"]{border-color:color-mix(in srgb,var(--tag-color,var(--ink)) 45%,transparent);
+  background:color-mix(in srgb,var(--tag-color,var(--ink)) 12%,transparent)}
+.board-filter-frame .alphajump button{color:color-mix(in srgb,var(--glass-text) 60%,transparent);border-radius:7px}
+.board-filter-frame .alphajump button:hover{color:var(--glass-text)}
+/* 「载入更多」是 Board 的 secondary Button：36px、圆角 10、Body Medium。 */
+.indexmore,.entitymore{min-height:36px;height:36px;padding:0 12px;border-radius:10px;border-color:var(--line);font-size:14px;font-weight:500;color:var(--ink)}
 #grid.gridstack{border:0;background:transparent;padding:0;box-shadow:none;border-radius:0}
 #grid.gridstack>.grid{border:0;background:transparent;padding:0;box-shadow:none;border-radius:0}
 /* 竖屏带靠底色和网格区分，不再描一圈线：它嵌在两段无边框的网格中间，一条线反而
@@ -697,7 +766,7 @@ button,input,select,textarea{font-family:inherit}
 .index .ihead{padding:4px;gap:12px;min-width:0;flex-wrap:wrap}
 .index .ihead .geist-search{min-width:140px;margin-right:0}
 .index .ihead h2,#manageTitle{font-size:24px;line-height:34px;font-weight:500}
-.indexheading{font-size:24px;line-height:34px}.indexheading svg{width:24px;height:24px}
+.indexheading{font-size:24px;line-height:34px}
 .index .ihead .geist-search input{font-size:14px;line-height:20px}
 .insighttoolbar,.tastehead{gap:16px}
 /* 进场用 backwards 而不是 both：终点帧本来就是元素的自然状态，保留它只多留下一个
@@ -1334,18 +1403,38 @@ body .reviewactions button:disabled{opacity:.5;cursor:not-allowed}
     border-radius:0 var(--floating-radius) var(--floating-radius) 0}
   .shorts-inline .srow{margin-left:calc(-1 * (var(--railW) + 32px));padding-left:calc(var(--railW) + 32px)}
 }
-#tiers .av,#tiers .brandpill{flex:none;border:0;background:transparent;color:var(--color-text-secondary);font:var(--board-body-medium);white-space:nowrap;transition:scale calc(var(--spring-press-ms) * 1ms) var(--spring-press),background-color .2s ease-out,color .2s ease-out}
-#tiers .av:active,#tiers .brandpill:active{scale:.96;transition:scale .06s ease-out}
-#tiers .av{display:flex;flex-direction:column;align-items:center;gap:6px;width:76px;max-width:none;height:auto;padding:6px 4px;border-radius:12px;text-align:center}
-#tiers .brandpill{display:inline-flex;align-items:center;gap:8px;width:auto;max-width:none;height:40px;padding:6px 12px 6px 6px;border-radius:12px;text-align:left}
-#tiers .av:hover,#tiers .brandpill:hover{background:var(--color-background-primary-hover);color:var(--color-text-primary);border-color:transparent}
-#tiers .av[aria-pressed="true"],#tiers .brandpill[aria-pressed="true"]{background:var(--color-background-tertiary-default);color:var(--color-text-primary);border-color:transparent}
-#tiers .av .ring,#tiers .brandpill .mk{position:relative;flex:none;margin:0;border-radius:50%;overflow:hidden;background:color-mix(in srgb,var(--color-text-primary) 10%,var(--color-background-primary-default));color:var(--color-text-secondary)}
-#tiers .av .ring{width:48px;height:48px;font:600 18px/24px var(--board-font)}
-#tiers .brandpill .mk{width:28px;height:28px;font:600 12px/16px var(--board-font)}
-#tiers .av .ring .ini{font:inherit;color:inherit}
-#tiers .av:hover .ring,#tiers .av[aria-pressed="true"] .ring{box-shadow:none}
-#tiers .av .nm{display:block;max-width:100%;font:var(--board-caption);color:inherit;text-align:center;overflow:hidden;text-overflow:ellipsis}
+/* 关注页顶上那两排跟首页这两排是同一个控件，所以规则一份写全：那边是「谁出的」加
+   「哪个厂牌」，这边是「谁发的」加「哪部作品」，人在两页看到的该是同一种东西。它们
+   住在 `#stats` 里而不是 `#tiers` 里，只按 id 写的话关注页拿不到这一整套，落回 flat
+   层那份 64px 头像加一圈描边，同一个人在两页大小和选中样子都不一样。 */
+#tiers .av,#tiers .brandpill,
+:is(.followauthors,.followworks) .av,:is(.followauthors,.followworks) .brandpill{flex:none;border:0;background:transparent;color:var(--color-text-secondary);font:var(--board-body-medium);white-space:nowrap;transition:scale calc(var(--spring-press-ms) * 1ms) var(--spring-press),background-color .2s ease-out,color .2s ease-out}
+#tiers .av:active,#tiers .brandpill:active,
+:is(.followauthors,.followworks) .av:active,:is(.followauthors,.followworks) .brandpill:active{scale:.96;transition:scale .06s ease-out}
+#tiers .av,:is(.followauthors,.followworks) .av{display:flex;flex-direction:column;align-items:center;gap:6px;width:76px;max-width:none;height:auto;padding:6px 4px;border-radius:12px;text-align:center}
+#tiers .brandpill,:is(.followauthors,.followworks) .brandpill{display:inline-flex;align-items:center;gap:8px;width:auto;max-width:none;height:40px;padding:6px 12px 6px 6px;border-radius:12px;text-align:left}
+#tiers .av:hover,#tiers .brandpill:hover,
+:is(.followauthors,.followworks) .av:hover,:is(.followauthors,.followworks) .brandpill:hover{background:var(--color-background-primary-hover);color:var(--color-text-primary);border-color:transparent}
+#tiers .av[aria-pressed="true"],#tiers .brandpill[aria-pressed="true"],
+:is(.followauthors,.followworks) .av[aria-pressed="true"],:is(.followauthors,.followworks) .brandpill[aria-pressed="true"]{background:var(--color-background-tertiary-default);color:var(--color-text-primary);border-color:transparent}
+#tiers .av .ring,#tiers .brandpill .mk,
+:is(.followauthors,.followworks) .av .ring,:is(.followauthors,.followworks) .brandpill .mk{position:relative;flex:none;margin:0;border-radius:50%;overflow:hidden;background:color-mix(in srgb,var(--color-text-primary) 10%,var(--color-background-primary-default));color:var(--color-text-secondary)}
+#tiers .av .ring,:is(.followauthors,.followworks) .av .ring{width:48px;height:48px;font:600 18px/24px var(--board-font)}
+#tiers .brandpill .mk,:is(.followauthors,.followworks) .brandpill .mk{width:28px;height:28px;font:600 12px/16px var(--board-font)}
+#tiers .av .ring .ini,:is(.followauthors,.followworks) .av .ring .ini{font:inherit;color:inherit}
+#tiers .av:hover .ring,#tiers .av[aria-pressed="true"] .ring,
+:is(.followauthors,.followworks) .av:hover .ring,:is(.followauthors,.followworks) .av[aria-pressed="true"] .ring{box-shadow:none}
+#tiers .av .nm,:is(.followauthors,.followworks) .av .nm{display:block;max-width:100%;font:var(--board-caption);color:inherit;text-align:center;overflow:hidden;text-overflow:ellipsis}
+/* 关注页的头像是张外站图，自己带着 64px 的身量；圆头像的尺寸归上面那一格，它只负责
+   把那一格填满。 */
+.followauthors .av .ring .favatar{width:100%;height:100%;border-radius:0;object-fit:cover}
+.followauthors .av .ring .favatar.none{display:flex;align-items:center;justify-content:center;background:none;font:inherit;color:inherit}
+/* 题材那一枚圆标装的是这个题材下最热的一张作品图，不是烤好边距的厂牌标识：按正中裁
+   一个 28px 的圆出来常常只剩一截身子。检出了脸的图由服务端把取景写进 img 自己的
+   style，这里这一档只管没检出脸的那些——上四分之一是人像里头最常落的位置。 */
+.followworks .brandpill .mk img{object-position:50% 25%}
+:is(.followauthors,.followworks){gap:4px;align-items:center}
+.followworks{padding:0 0 10px;margin:0 0 2px;overscroll-behavior-inline:contain}
 @media(prefers-reduced-motion:reduce){.board-ranked-chart .board-rank-fill,.tasteranks .taste-rank-track i,.board-radar .board-radar-value{animation:none;transform:none;opacity:1}}
 
 /* ── 关注列表整段进框，与「添加关注」同一只卡：头 20/24/8，选择栏与列表左右 24，脚是卡片脚 ──

@@ -448,30 +448,92 @@ class WebJsBehaviourTests(unittest.TestCase):
     SMALL_FACE = {"cx": 0.439, "cy": 0.224, "faceW": 67, "imgW": 640, "imgH": 960}
     #: 539 张里四分之三长这样：脸框已占框宽四成以上，一放大就切头顶。
     CLOSE_UP = {"cx": 0.5, "cy": 0.42, "faceW": 280, "imgW": 640, "imgH": 896}
+    #: 关注页题材圆标的代表图，`/work-icon` 落盘那一份：512 px 见方，脸框 170 px。
+    #: `Final Fantasy` 那枚，脸在画面上方 0.211 处——半张图都在脸下面。
+    WORK_ICON = {"cx": 0.508, "cy": 0.211, "faceW": 170, "imgW": 512, "imgH": 512}
+    #: `Tekken` 那枚：脸挤在右上角，两根轴都离边缘很近。
+    WORK_ICON_CORNER = {"cx": 0.889, "cy": 0.134, "faceW": 110,
+                        "imgW": 512, "imgH": 512}
+
+    def test_a_tiny_ring_asks_for_a_bigger_share_than_the_ratio_alone(self):
+        """28 px 的圆标按 32% 算，脸只有 9 px——认不出是谁，也就白放了。
+
+        比例这一档是给 120 px 的资料页框定的，那里 32% 是 38 px 的脸。框小到一定
+        程度，同一个比例给出的像素就不够看了，于是改由像素下限说话：28 px 的框要的
+        是 46%，而 48 px 的作者头像上像素下限算出来只有 27%，仍走比例那一档。
+        """
+        # 两张脸都在画面正中，「摆正」那一档算出来正好是 1 倍：这里只剩下限和比例
+        # 在竞争，才看得出是哪一条在说话。
+        icon = {**self.WORK_ICON, "cx": 0.5, "cy": 0.5}
+        mid = {"cx": 0.5, "cy": 0.5, "faceW": 187, "imgW": 640, "imgH": 960}
+        # 期望值照 `faceZoom` 的算式逐步写，不写小数字面量：手抄一个四舍五入过的数
+        # 只会把断言变成「和上次跑出来的一样」，看不出哪一条上限在说话。
+        icon_zoom = (13 / 28) * 28 / (170 * max(28 / 512, 28 / 512))
+        mid_zoom = 0.32 * 48 / (187 * max(48 / 640, 48 / 960))
+        self.assertJsResults([
+            ("face-frame.js", "faceZoom", [icon, {"w": 28, "h": 28}, 2], icon_zoom),
+            ("face-frame.js", "faceZoom", [mid, {"w": 48, "h": 48}, 2], mid_zoom),
+        ])
+
+    def test_a_face_off_to_one_side_is_zoomed_until_it_can_reach_the_middle(self):
+        """脸够大不等于摆得正：图不够大时，脸只能被顶在框的边上。
+
+        `Final Fantasy` 那枚量出来是 13 px、占框 46%，看着却小——脸心在画面上方
+        0.211 处，把它拉到框心要的下移会让图顶上露白，于是被夹回 0，脸贴着圆的上沿，
+        下面三分之二是身体。所以「摆正」本身也得是放大的理由，再由构图上限刹住：
+        脸框只覆盖眼鼻嘴，占到 60% 时整颗头刚好填满框。
+        """
+        ceiling = lambda face: 0.6 * 28 / (face["faceW"] * max(28 / 512, 28 / 512))
+        self.assertJsResults([
+            ("face-frame.js", "faceZoom", [self.WORK_ICON, {"w": 28, "h": 28}, 2],
+             ceiling(self.WORK_ICON)),
+            # 两根轴都靠边时取更紧的那根。这一枚要 4.5 倍才摆得正，构图上限先到。
+            ("face-frame.js", "faceZoom", [self.WORK_ICON_CORNER, {"w": 28, "h": 28}, 2],
+             ceiling(self.WORK_ICON_CORNER)),
+            # 已经在正中的特写一个像素都不动：摆正那一档对它算出来就是 1 倍。
+            ("face-frame.js", "faceZoom", [self.CLOSE_UP, {"w": 160, "h": 160}, 2], 1),
+        ])
 
     def test_zoom_is_capped_by_whichever_limit_binds_first(self):
         small, close = self.SMALL_FACE, self.CLOSE_UP
+        wanted = lambda side: 0.32 * side / (67 * max(side / 640, side / 960))
         self.assertJsResults([
             # 资料页 160 px 圆框、2 倍屏：无损上限先到。脸有 67 px，这个框要 33.5 个
             # 设备像素，正好还得起 2 倍；再往上就是拿插值出来的像素冒充清晰度。
             ("face-frame.js", "faceZoom", [small, {"w": 160, "h": 160}, 2], 2),
             # 同一张图、同一块屏，换到顶栏 64 px 圆框：无损上限升到 5 倍，于是改由
-            # 构图上限说话。判据没变，结论差一倍多——所以倍数只能在页面这一侧算。
-            ("face-frame.js", "faceZoom", [small, {"w": 64, "h": 64}, 2], 3),
-            # 1 倍屏要的设备像素少一半，无损上限跟着翻倍到 4，仍由构图上限压住。
-            ("face-frame.js", "faceZoom", [small, {"w": 160, "h": 160}, 1], 3),
+            # 目标占比说话。判据没变，结论差一倍多——所以倍数只能在页面这一侧算。
+            ("face-frame.js", "faceZoom", [small, {"w": 64, "h": 64}, 2], wanted(64)),
+            # 1 倍屏要的设备像素少一半，无损上限跟着翻倍到 4，仍由目标占比压住。
+            ("face-frame.js", "faceZoom", [small, {"w": 160, "h": 160}, 1], wanted(160)),
             # 已经是特写的那些一个像素都不动：目标占比先到，算出来不足 1 倍。
             ("face-frame.js", "faceZoom", [close, {"w": 160, "h": 160}, 2], 1),
             ("face-frame.js", "faceFrame", [close, {"w": 160, "h": 160}, 2], None),
         ])
 
+    def test_a_far_shot_is_zoomed_past_the_old_three_times_ceiling(self):
+        """远景全身图要放到五倍开外才看得清脸，压住它的只该是「会不会糊」。
+
+        `Clair Obscur: Expedition 33` 那张 16:9 封面，脸占画面宽的 4.5%，cover 进
+        28 px 的圆里只剩 2.2 px。倍数上限对它毫无意义：3 倍之后脸才 6.7 px，而源图
+        本来还有 5.1 倍的余量没用。倍数答不了构图的问题，这里由无损上限接手。
+        """
+        far = {"cx": 0.532, "cy": 0.196, "faceW": 0.045 * 512,
+               "imgW": 512, "imgH": 288}
+        lossless = far["faceW"] / (far["faceW"] * max(28 / 512, 28 / 288) * 2)
+        self.assertJsResults([
+            ("face-frame.js", "faceZoom", [far, {"w": 28, "h": 28}, 2], lossless),
+        ])
+
     def test_a_zoomed_avatar_covers_the_frame_and_centres_the_face(self):
         square = {"cx": 0.5, "cy": 0.3, "faceW": 150, "imgW": 1000, "imgH": 1000}
         self.assertJsResults([
+            # 脸在画面上方 0.181 处：放大到脸心刚好够得着框心，`top` 于是正正好是 0，
+            # 不是被「不许露白」夹出来的 0。这两种 0 在页面上分不出，差别全在脸的位置。
             ("face-frame.js", "faceFrame", [{"cx": .736, "cy": .181,
               "faceW": 234, "imgW": 2184, "imgH": 1468}, {"w": 160, "h": 160}, 2],
-             {"zoom": 2.008, "width": 298.67, "height": 200.75,
-              "left": -169.82, "top": 0}),
+             {"zoom": 2.762, "width": 410.98, "height": 276.24,
+              "left": -252.48, "top": 0}),
             # 图撑到 200%×300%，负偏移把脸心拉向框心。宽高都不小于 100%，圆框里
             # 一丝白边都不会露——那是「放大」和「换一张构图」的分界。
             ("face-frame.js", "faceFrame", [self.SMALL_FACE, {"w": 160, "h": 160}, 2],

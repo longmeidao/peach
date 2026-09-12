@@ -40,7 +40,9 @@
 .pill .n{margin-left:7px;color:var(--muted);font-size:var(--fs-xs);font-variant-numeric:tabular-nums}
 .pill[aria-pressed="true"] .n,.pill:hover .n{color:var(--ink-2)}
 
-/* 虚线只画在首页筛选条右半截的标签药丸上，别处一律实线。
+/* 虚线只画在「可加可不加、此刻还没加上去」的筛选药丸上：首页筛选条右半截的标签是这一条；
+   关注页的标签与来源、资料页的标签、标签页的类型药丸都住在 Board 的玻璃浮层里，
+   同一判据由 board.css 那几条写。视图那几枚恒有一枚生效，一律实线。
    2026-09-05 实测 vercel.com/<team>/~/deployments 的筛选令牌，两端是这样的：
    未生效 `background:rgba(0,0,0,0)` + `1px dashed rgba(0,0,0,.21)`；
    已生效 `background:#FFFFFF` + `1px solid rgba(0,0,0,.08)`。两个数就是 Peach 的

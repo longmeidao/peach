@@ -16,7 +16,9 @@ import threading
 import uuid
 import urllib.parse
 
-from . import follow_assets, follow_providers
+from pathlib import Path
+
+from . import avatar_face, follow_assets, follow_providers
 from .follow import FollowSourceError
 from .follow_check import plan_check, run_check
 from .follow_discovery import discover, discovery_plan
@@ -156,6 +158,404 @@ def _item_tags(item) -> list[str]:
 def _item_tag_types(item, tags: list[str]) -> dict[str, str]:
     return {tag: tag_type for tag in tags
             if (tag_type := _recorded_tag_type(item, tag))}
+
+
+#: 作品名里的罗马数字。写成名单而不是通用式：通用式会把 `mix`、`did` 这类英文词
+#: 也判成数字，而作品名里实际用到的就这十几个。
+_ROMAN_NUMERALS = frozenset((
+    "ii", "iii", "iv", "v", "vi", "vii", "viii", "ix", "x",
+    "xi", "xii", "xiii", "xiv", "xv", "xvi", "xvii", "xviii", "xix", "xx",
+))
+
+
+def _work_key(tag: str) -> str:
+    """题材的身份。
+
+    同一部作品被不同来源写成 `zenless_zone_zero` 和 `zenless zone zero`，下划线
+    和大小写是写法差别不是两部作品。归一到一个键，它们才是筛选条上的同一枚。
+    """
+    return re.sub(r"[\s_]+", " ", html.unescape(str(tag or ""))).strip().casefold()
+
+
+#: 作品名里保持小写的虚词。整串套首字母大写会读成「Angels Of Delusion」，
+#: 而作品自己写的是 `Angels of Delusion`。首词不在此列，它总要大写。
+_WORK_MINOR_WORDS = frozenset((
+    "a", "an", "and", "at", "for", "in", "no", "of", "on", "or", "the",
+    "to", "vs", "x",
+))
+
+
+def _work_label(tag: str) -> str:
+    """题材的显示名：下划线换空格，整串全小写时每个词提首字母。
+
+    `final_fantasy_vii` 直接摆在筛选条上读的是文件名不是作品名。罗马数字整词大写，
+    否则这一串作品名要读成「Final Fantasy Vii」；只认末词那一个，否则 `spy x family`
+    中间那个连接词也要被当成十。来源自己写成 `Genshin Impact` 的照原样留着——它
+    已经是人写的形态，再套一遍规则只会改坏。
+    """
+    text = re.sub(r"[\s_]+", " ", html.unescape(str(tag or ""))).strip()
+    if not text or text != text.lower():
+        return text
+    words = text.split(" ")
+    last = len(words) - 1
+    return " ".join(
+        word.upper() if index == last and word in _ROMAN_NUMERALS
+        else word if index and word in _WORK_MINOR_WORDS
+        else word[:1].upper() + word[1:]
+        for index, word in enumerate(words))
+
+
+#: 题材那一排要的是作品或 IP。发行商、工作室、平台、节庆和「Original」这类占位
+#: 同样被来源记成 copyright，形态上跟作品名没有任何区别，只能一条条列。
+_NON_WORK_TAGS = frozenset({
+    "774 inc.", "atlus", "bandai namco", "bethesda softworks", "bioware",
+    "blizzard entertainment", "brave group", "capcom", "cd projekt red",
+    "disney", "electronic arts", "fromsoftware", "hoyoverse", "koei tecmo",
+    "larian studios", "mihoyo", "mihoyo technology (shanghai) co. ltd.",
+    "nanashi inc.", "naughty dog", "netease games", "netherrealm studios",
+    "nintendo", "platinum games", "riot games", "sandfall interactive",
+    "sega", "shift up", "snk", "square enix", "team cherry", "tecmo",
+    "valve", "wizards of the coast",
+    "instagram", "iwara", "mmd", "patreon", "tenga", "twitter", "vr chat",
+    "christmas", "halloween", "holidays", "new year", "new year 2026",
+    "the game awards", "valentines day",
+    "1", "asian mythology", "hentai", "indie virtual youtuber",
+    "japanese mythology", "joi", "mythology", "original", "religion", "tmp",
+})
+
+#: 系列名到它在筛选条上的写法。以其中一条开头的题材全部并进这一条：用户要的是
+#: 「Final Fantasy」，不是 VII、XIV、XV、VII Remake 各占一格把整排挤满。值必须
+#: 显式写，撇号、内部大小写和官方写法没法从归一后的键还原。
+_WORK_SERIES = {
+    "atelier": "Atelier",
+    "baldurs gate": "Baldur's Gate",
+    "brown dust": "Brown Dust",
+    "cyberpunk": "Cyberpunk",
+    "darkstalkers": "Darkstalkers",
+    "dc": "DC",
+    "dead by daylight": "Dead by Daylight",
+    "dead or alive": "Dead or Alive",
+    "devil may cry": "Devil May Cry",
+    "drag-on dragoon": "Drag-On Dragoon",
+    "dragon age": "Dragon Age",
+    "drakengard": "Drakengard",
+    "fatal frame": "Fatal Frame",
+    "fatal fury": "Fatal Fury",
+    "fate": "Fate",
+    "final fantasy": "Final Fantasy",
+    "fire emblem": "Fire Emblem",
+    "five nights at freddys": "Five Nights at Freddy's",
+    "granblue fantasy": "Granblue Fantasy",
+    "half-life": "Half-Life",
+    "hollow knight": "Hollow Knight",
+    "hololive": "hololive",
+    "honkai": "Honkai",
+    "king of fighters": "The King of Fighters",
+    "kingdom hearts": "Kingdom Hearts",
+    "league of legends": "League of Legends",
+    "marvel": "Marvel",
+    "mass effect": "Mass Effect",
+    "metro": "Metro",
+    "monster hunter": "Monster Hunter",
+    "mortal kombat": "Mortal Kombat",
+    "nier": "NieR",
+    "ninja gaiden": "Ninja Gaiden",
+    "nioh": "Nioh",
+    "overwatch": "Overwatch",
+    "persona": "Persona",
+    "pretty cure": "Pretty Cure",
+    "resident evil": "Resident Evil",
+    "soul calibur": "Soul Calibur",
+    "street fighter": "Street Fighter",
+    "tekken": "Tekken",
+    "the elder scrolls": "The Elder Scrolls",
+    "the last of us": "The Last of Us",
+    "the legend of heroes": "The Legend of Heroes",
+    "the witcher": "The Witcher",
+    "tomb raider": "Tomb Raider",
+    "valkyria chronicles": "Valkyria Chronicles",
+    "warcraft": "Warcraft",
+    "xenoblade": "Xenoblade",
+}
+
+#: 长的先试：将来添了互为前缀的两个系列时，`final fantasy vii` 不能被
+#: `final fantasy` 先吃掉。
+_WORK_SERIES_KEYS = tuple(sorted(_WORK_SERIES, key=len, reverse=True))
+
+#: 同一个系列的另一种叫法：日文原名、缩写，以及副标题排在系列名前面的外传。
+#: 这些形态上认不出来，只能一条条认。
+_WORK_ALIASES = {
+    "ao no kiseki": "the legend of heroes",
+    "biohazard": "resident evil",
+    "crisis core final fantasy vii": "final fantasy",
+    "dark stalkers": "darkstalkers",
+    "dbd": "dead by daylight",
+    "dc comics": "dc",
+    "drag-on dragoon": "drakengard",
+    "dragonflight": "warcraft",
+    "eiyuu densetsu": "the legend of heroes",
+    "ffxiv": "final fantasy",
+    "futari wa precure": "pretty cure",
+    "garou mark of the wolves": "fatal fury",
+    "hajimari no kiseki": "the legend of heroes",
+    "holoforce": "hololive",
+    "holox": "hololive",
+    "k da all out series": "league of legends",
+    "k da series": "league of legends",
+    "kiseki": "the legend of heroes",
+    "marvel comics": "marvel",
+    "precure": "pretty cure",
+    "senjou no valkyria": "valkyria chronicles",
+    "skyrim": "the elder scrolls",
+    "stranger of paradise final fantasy origin": "final fantasy",
+    "world of warcraft": "warcraft",
+    "zero no kiseki": "the legend of heroes",
+}
+
+
+def _work_root(tag: str) -> str:
+    """题材的规范身份：同一系列的各代、各写法归到同一枚。
+
+    `Final Fantasy VII Remake` 和 `FFXIV` 各占一格时，那一排读起来是版本号列表
+    而不是题材。先把竖线并列的别名、`(series)` 后缀、冒号副标题和撇号这些纯写法
+    差别抹平，查一次别名，再看它是不是某个系列名开头；系列名本身也可能是别名
+    （`Drag-On Dragoon` 就是 `Drakengard`），所以最后再查一次。
+    """
+    text = _work_key(tag).split("|", 1)[0]
+    text = re.sub(r"\s*\([^()]*\)\s*$", "", text)
+    text = re.sub(r"\s+", " ", text.replace(":", " ").replace("/", " ")
+                  .replace("'", "").replace("’", "")).strip()
+    if not text:
+        return ""
+    text = _WORK_ALIASES.get(text, text)
+    for series in _WORK_SERIES_KEYS:
+        if text == series or text.startswith(series + " "):
+            text = series
+            break
+    return _WORK_ALIASES.get(text, text)
+
+
+def _work_display(root: str, spellings: dict[str, int]) -> str:
+    """题材在筛选条上的写法。
+
+    系列照表写，`NieR` 和 `hololive` 的大小写是作品自己的，推不出来。其余用来源
+    里出现最多的那种拼法：它比归一后的键更接近人写的形态，冒号和撇号都还在。
+    """
+    if root in _WORK_SERIES:
+        return _WORK_SERIES[root]
+    spelling = max(spellings.items(), key=lambda pair: (pair[1], pair[0]))[0]
+    return _work_label(spelling)
+
+
+def _item_works(item) -> list[str]:
+    """条目所属的题材，只认来源记成 `copyright` 的那一类。
+
+    按词形猜会把角色名和画师手柄摆进题材那一排：`tifa_lockhart` 和
+    `lazyprocrastinator` 在字面上跟作品名没有区别，区别只写在来源的类型里。
+
+    同一系列的各代在这里已经并成一枚，所以同时带 `final fantasy` 和
+    `final fantasy vii` 的一条更新只留一个写法。
+    """
+    seen, works = set(), []
+    for tag in _item_all_tags(item):
+        root = _work_root(tag)
+        if (not root or root in seen or root in _NON_WORK_TAGS
+                or _recorded_tag_type(item, tag) != "copyright"
+                or _NON_CONTENT_FOLLOW_TAG_RE.fullmatch(tag.strip())):
+            continue
+        seen.add(root)
+        works.append(tag)
+    return works
+
+
+#: 题材头像只认这一个图床。地址来自来源记录而不是固定表，这道白名单就是那个闸：
+#: 记录里存的是站点回的 JSON，不能让它把任意主机带进出网路径。
+_WORK_ICON_HOSTS = frozenset({"api-cdn.rule34.xxx"})
+
+
+def work_root(tag: str) -> str:
+    """题材的规范身份。`/work-icon` 按它认题材，所以要能从模块外调用。"""
+    return _work_root(tag)
+
+
+#: 一次扫库算出的全部题材代表图能用多久。整排头像同时过期时浏览器会并排发来
+#: 二十几个 `/work-icon`，每个都从头扫一遍全库，而结果是同一份表。
+_WORK_ICON_MEMO_SECONDS = 60
+#: 每个题材备几个候选。取图那一端顺着热度往下找第一张看得见脸的，五张缩略图合起来
+#: 也就几十 KB，而多备一张挡住的是「圆标里是一截身子」。
+_WORK_ICON_CANDIDATES = 5
+_work_icon_memo: tuple[float, dict[str, list[str]]] = (0.0, {})
+_work_icon_lock = threading.Lock()
+
+
+def _work_icon_candidate(item) -> str:
+    """这一条能给题材当代表图吗：能就是那张封面的地址，不能是空串。
+
+    取的是卡片上那张高清封面（`thumb_url`，实测 1280×720 到 4096×2304、30–370 KB），
+    不是 250px 的 `preview_url`。圆标只有 28px，光看显示尺寸两层都够用，差别在检脸：
+    250px 里一张脸只剩十几个像素，YuNet 看到的已经是一团糊。2026-09-12 对本库 77 个
+    题材各走一遍候选，高清那层检出 58，缩略那层 49。没有封面的旧行退回缩略图。
+
+    地址来自来源记录而不是固定表，白名单就是那道闸：记录里存的是站点回的 JSON，
+    不能让它把任意主机带进出网路径。
+    """
+    if item.provider != "rule34xxx" or _excluded_item(item):
+        return ""
+    url = str(item.thumb_url or item.metadata.get("preview_url") or "")
+    return url if urllib.parse.urlsplit(url).netloc in _WORK_ICON_HOSTS else ""
+
+
+def _work_icon_table(store) -> dict[str, dict]:
+    """题材 → 本库现成的几个候选图，加它在站上的标签写法。
+
+    候选按热度排，带 `3d` 标签的排在前面：用户要的是这个题材最有代表性的一张，
+    rule34 的 score 是站点自己的热度排序，本库里现成存着；`3d` 优先是因为这一排要的
+    是 3D 作品，不是同人画。
+
+    给几个而不是一个：最热的那张常常是个身体特写，圆标里于是一张脸都没有。取图那
+    一端会顺着这个次序找出第一张看得清脸的，实测最热那张只有一半带脸。
+
+    给的是站点那张封面而不是正片：封面实测 30–370 KB，而同一条的正片可能是一张几
+    MB 的动图，超过 `follow_assets.MAX_BYTES` 反而一张都存不下。
+
+    标签写法要按本库记下的那个，不能拿归一化后的题材身份去站上查：身份是把
+    `the_witcher_(series)`、`dbd`、`clair_obscur:_expedition_33` 抹平之后的结果，
+    照着它拼出来的 `dead_by_daylight` 在站上是零命中。只认 rule34xxx 条目记下的写法
+    ——别的站把同一部作品写成 `Dead or Alive`，那不是 rule34 的标签。
+    """
+    ranked: dict[str, list[tuple[tuple[int, int, int], str]]] = {}
+    spellings: dict[str, dict[str, int]] = {}
+    for item in store.items(limit=_ALL_ITEMS):
+        if _excluded_item(item):
+            continue
+        works = _item_works(item)
+        if item.provider == "rule34xxx":
+            for tag in works:
+                seen = spellings.setdefault(_work_root(tag), {})
+                seen[tag] = seen.get(tag, 0) + 1
+        url = _work_icon_candidate(item)
+        if not url:
+            continue
+        roots = {_work_root(tag) for tag in works}
+        if not roots:
+            continue
+        try:
+            score = int(item.metadata.get("score") or 0)
+        except (TypeError, ValueError):
+            score = 0
+        spatial = 1 if "3d" in {tag.casefold() for tag in _item_all_tags(item)} else 0
+        rank = (spatial, score, item.id)
+        for root in roots:
+            row = ranked.setdefault(root, [])
+            row.append((rank, url))
+            row.sort(key=lambda pair: pair[0], reverse=True)
+            del row[_WORK_ICON_CANDIDATES:]
+    table: dict[str, dict] = {}
+    for root in set(ranked) | set(spellings):
+        counted = spellings.get(root) or {}
+        # 同一个题材在站上常有几个写法（`nier:_automata` 与 `nier`），用得最多的
+        # 那个才是这个库实际在追的那条线；并列时取字典序，好让两次扫库给出同一个答案。
+        tag = max(sorted(counted), key=counted.get, default="")
+        table[root] = {"urls": [url for _, url in ranked.get(root) or ()],
+                       "tag": _site_tag(tag or root)}
+    return table
+
+
+def _site_tag(tag: str) -> str:
+    """rule34 的标签形态：空格换成下划线。"""
+    return re.sub(r"\s+", "_", str(tag or "").strip())
+
+
+def _work_icons(store) -> dict[str, dict]:
+    """题材 → 候选图与标签写法，整张表一起算再存一分钟。
+
+    判据见 `_WORK_ICON_MEMO_SECONDS`。筛选条和 `/work-icon` 读的是同一份表，所以
+    那一排说「这枚有图」和端点真的取得到图不会各说各话。落盘那份图另有自己的保鲜期，
+    这里只挡住「同一秒里把全库扫二十几遍」。
+    """
+    global _work_icon_memo
+    with _work_icon_lock:
+        stamp, table = _work_icon_memo
+        if time.time() - stamp >= _WORK_ICON_MEMO_SECONDS:
+            table = _work_icon_table(store)
+            _work_icon_memo = (time.time(), table)
+    return table
+
+
+def work_icon_urls(store, root: str) -> list[str]:
+    """题材头像的候选图，按热度从高到低；一张都挑不出时是空列表。"""
+    return list((_work_icons(store).get(root) or {}).get("urls") or ())
+
+
+def work_icon_tag(store, root: str) -> str:
+    """这个题材在 rule34 上的标签写法。本库没记下写法时按身份拼一个。"""
+    return str((_work_icons(store).get(root) or {}).get("tag") or _site_tag(root))
+
+
+#: 去站点问一次最多要回几张。本库那几张挑不出脸才会走到这里，而这一趟的代价是一次
+#: JSON 加最多这么多张封面；给多了是在一枚 28px 的圆标上花几兆流量。
+_WORK_ICON_REMOTE = 8
+#: 问站点的次序。先只要 3D——这一排要的是 3D 作品；那个标签下一张都没有时再问一次
+#: 不限形式的，总好过让这一枚空着。
+_WORK_ICON_QUERIES = ("{tag} 3d sort:score", "{tag} sort:score")
+
+
+def work_icon_search_urls(contract, tag: str, *,
+                          transport=None, limit: int = _WORK_ICON_REMOTE) -> list[str]:
+    """去 rule34 问这个题材最热的几张封面，返回能当代表图的地址。
+
+    本库现成的那几张全都看不清脸时才走这一趟：库里存的是用户关注的那几位作者发的
+    东西，一个题材常常只有一两条，而那一两条未必有正脸。站上同一个标签下有成千上万
+    帖，按热度往下找总能找到一张。
+
+    白名单照旧（`_WORK_ICON_HOSTS`）：地址来自站点回的 JSON，不能让它把任意主机带进
+    出网路径。取不到凭据、站点报错或网络不通一律返回空——圆标退回首字母，不是 500。
+    """
+    tag = _site_tag(tag)
+    if not tag:
+        return []
+    credential = _credential_store(contract).load("rule34xxx")
+    if credential is None:
+        return []
+    try:
+        connector = build_connector("rule34xxx", transport=transport,
+                                    credential=credential, max_items=limit,
+                                    enrich_budget=0)
+        for query in _WORK_ICON_QUERIES:
+            urls: list[str] = []
+            for candidate in connector.search(query.format(tag=tag), limit=limit):
+                url = str(candidate.thumb_url or "")
+                if (url not in urls
+                        and urllib.parse.urlsplit(url).netloc in _WORK_ICON_HOSTS):
+                    urls.append(url)
+            if urls:
+                return urls
+    except (FollowSourceError, CredentialError, OSError):
+        return []
+    return []
+
+
+def work_icon_root(contract) -> Path:
+    """题材头像落盘的目录。
+
+    `/work-icon` 写图和 sidecar、这里读 sidecar，两端必须算出同一个路径——不然
+    取景永远是几何居中，而界面上这和「这张图本来就该这么摆」看不出区别。
+    """
+    return Path(contract.candidate_root) / follow_assets.ROOT_NAME
+
+
+def _work_icon_focus(cache_root: Path | None, root: str) -> dict | None:
+    """题材头像的取景提示：挪到脸上的 object-position 加脸框像素，没有就是 None。
+
+    记录由 `/work-icon` 取回图之后写在图旁边，和实体图那套 sidecar 同一个约定
+    （`avatar_face.focus_hint`），页面因此也走头像那套放大。没检出脸、还没取过图、
+    模型不可用都返回 None，那时圆标按样式表里的默认取景摆——不拿一个猜出来的位置
+    冒充检出结果。
+    """
+    if cache_root is None:
+        return None
+    return avatar_face.focus_hint(
+        avatar_face.read_sidecar(follow_assets.cache_path(cache_root, "works", root)))
 
 
 def _media_kind(item) -> str:
@@ -566,7 +966,7 @@ def _legacy_history_end(row) -> bool:
                                 str(row["last_error"] or ""))
 
 
-def _follow_facets(store, items, by_source, alias_map) -> dict:
+def _follow_facets(store, items, by_source, alias_map, icon_root=None) -> dict:
     """筛选条上能选什么。
 
     必须按全库算而不是按筛后结果——否则选中一个作者之后，作者栏里就只剩他自己，
@@ -576,6 +976,7 @@ def _follow_facets(store, items, by_source, alias_map) -> dict:
     authors: set[str] = set()
     providers: set[str] = set()
     tags: dict[str, int] = {}
+    works: dict[str, dict] = {}
     for group in store.group(items):
         row = by_source.get(group.primary.source_id)
         if row is not None:
@@ -585,10 +986,25 @@ def _follow_facets(store, items, by_source, alias_map) -> dict:
             providers.add(str(row["provider"] or ""))
         for tag in _item_tags(group.primary):
             tags[tag] = tags.get(tag, 0) + 1
+        # 末位是「这个题材挑得出代表图吗」。页面据它决定出不出 `<img>`：无条件出图、
+        # 靠 `/work-icon` 回 404 换回字母的话，那条响应不可缓存，每次重绘再打一轮。
+        icon = 1 if _work_icon_candidate(group.primary) else 0
+        for tag in _item_works(group.primary):
+            row_work = works.setdefault(_work_root(tag),
+                                        {"spellings": {}, "n": 0, "icon": 0})
+            row_work["n"] += 1
+            row_work["icon"] = max(row_work["icon"], icon)
+            row_work["spellings"][tag] = row_work["spellings"].get(tag, 0) + 1
     return {
         "authors": sorted(authors),
         "providers": sorted(providers),
         "tags": sorted(tags.items(), key=lambda pair: (-pair[1], pair[0])),
+        # 题材那一排：键是归并后的系列身份，标签是给人看的写法，数目按发布组算，
+        # 第四位说挑不挑得出代表图，第五位是那张图检出的人脸取景。
+        "works": [[root, _work_display(root, row["spellings"]), row["n"], row["icon"],
+                   _work_icon_focus(icon_root, root)]
+                  for root, row in sorted(works.items(),
+                                          key=lambda pair: (-pair[1]["n"], pair[0]))],
     }
 
 
@@ -648,7 +1064,8 @@ def q_follow_tags(contract, args) -> dict:
         by_source = {int(row["id"]): row for row in source_rows}
         items = tuple(item for item in store.items(limit=_ALL_ITEMS)
                       if item.source_id in enabled and not _excluded_item(item))
-        facets = _follow_facets(store, items, by_source, alias_map)
+        facets = _follow_facets(store, items, by_source, alias_map,
+                                work_icon_root(contract))
         rows = (_follow_tag_index(store, items) if include_types else
                 [{"k": tag, "n": count, "cat": "general"}
                  for tag, count in facets["tags"]])
@@ -664,6 +1081,94 @@ def q_follow_tags(contract, args) -> dict:
             "categories": categories}
 
 
+def q_follow_authors(contract, args) -> dict:
+    """在线作者索引，供艺人页那一档「在线」列出关注来源里的人。
+
+    和 `q_follow_tags` 同一个道理：形状对着 `/api/index`（`items` 加 `has_more`），
+    艺人页现成的分页、过滤和「载入更多」换个地址就能用。
+
+    身份口径不在这里另算一份——`author_key` 加别名表，跟关注页筛选条、跟管理页那份
+    名册是同一套判定。同一个人在 Kemono 和 Rule34 上的两条来源在这里是一行，不是两行。
+
+    每一格上那个数跟关注页的读数同一个口径——数的是条目，不是折叠后的发布组。点开一位
+    作者去关注页，那里写着「1,294 项更新」，名册上就得是同一个 1,294；两处各按各的口径
+    数，用户看到的是两个都对、却对不上的数字。
+    头像给的是来源那两条地址，官方优先、归档兜底，跟关注页作者行完全一样。
+    """
+    query = str(args.get("q") or "").strip().casefold()
+    try:
+        limit = max(1, min(int(args.get("limit") or 120), 2000))
+    except (TypeError, ValueError):
+        limit = 120
+    try:
+        offset = max(0, int(args.get("offset") or 0))
+    except (TypeError, ValueError):
+        offset = 0
+    with contract.database.read_connection() as connection:
+        store = _store(contract, connection)
+        source_rows = store.sources()
+        alias_map, aliases = store.author_aliases()
+        canonical = {f"name:{row['canonical_key']}": str(row["canonical_name"] or "")
+                     for row in aliases}
+        enabled = {int(row["id"]) for row in source_rows if row["enabled"]}
+        by_source = {int(row["id"]): row for row in source_rows}
+        items = tuple(item for item in store.items(limit=_ALL_ITEMS)
+                      if item.source_id in enabled and not _excluded_item(item))
+        counts: dict[str, int] = {}
+        for item in items:
+            row = by_source.get(item.source_id)
+            key = author_key(row, alias_map) if row is not None else ""
+            if key:
+                counts[key] = counts.get(key, 0) + 1
+        grouped: dict[str, dict] = {}
+        for row in source_rows:
+            key = author_key(row, alias_map)
+            if not key or key not in counts:
+                continue
+            entry = grouped.setdefault(key, {"k": "", "key": key, "n": counts[key],
+                                             "avatar": "", "avatar_fallback": "",
+                                             "providers": [], "_entity": "",
+                                             "_official": "", "_labels": []})
+            if row["entity_id"] and row["entity_name"]:
+                entry["_entity"] = str(row["entity_name"])
+            name = _author_display_name(row)
+            official = _official_avatar_url(row)
+            mirror = _avatar_url(row["provider"], row["ref"])
+            if official:
+                if not entry["avatar"]:
+                    entry["avatar"] = official
+                if name and not entry["_official"]:
+                    entry["_official"] = name
+            if mirror and not entry["avatar_fallback"]:
+                entry["avatar_fallback"] = mirror
+            if name:
+                entry["_labels"].append(name)
+            provider = str(row["provider"] or "")
+            if provider and provider not in entry["providers"]:
+                entry["providers"].append(provider)
+        rows = []
+        for key, entry in grouped.items():
+            # 挑名字的次序跟关注页那一份分组标题一致：实体名最可靠，其次是别名表定的
+            # 规范名，再次是有官方主页那条来源的写法；都没有才在各条标签里选大写最多的
+            # 那个——`LazyProcrastinator` 比 `lazyprocrastinator` 更像作者自己写的名字。
+            labels, entity, official = (entry.pop("_labels"), entry.pop("_entity"),
+                                        entry.pop("_official"))
+            best = max(labels, key=lambda text: sum(ch.isupper() for ch in text),
+                       default="")
+            entry["k"] = entity or canonical.get(key) or official or best or key
+            if entry["avatar_fallback"] == entry["avatar"]:
+                entry["avatar_fallback"] = ""
+            if not entry["avatar"]:
+                entry["avatar"], entry["avatar_fallback"] = entry["avatar_fallback"], ""
+            rows.append(entry)
+        rows.sort(key=lambda row: (-row["n"], row["k"].casefold()))
+        rows = [row for row in rows if not query or query in row["k"].casefold()]
+    return {"kind": "performers", "scope": "online",
+            "items": rows[offset:offset + limit],
+            "total": len(rows),
+            "has_more": offset + limit < len(rows)}
+
+
 def _csv_values(value) -> tuple[str, ...]:
     """逗号分隔的查询值，去空、去重、保持顺序。"""
     seen: list[str] = []
@@ -672,6 +1177,69 @@ def _csv_values(value) -> tuple[str, ...]:
         if part and part not in seen:
             seen.append(part)
     return tuple(seen)
+
+
+#: 关注页那一排能按什么排。`new` 是这一页的默认，也就是 store 给的那个次序。
+#:
+#: 只有三档，因为只有这三样在每条更新上都成立。观看次数、体积、评分那几列问的是本机
+#: 文件，而这一页上的东西多数还没下载；拿一列全空的数字去排序，得到的是原顺序加一次
+#: 无意义的洗牌。
+FOLLOW_SORTS = ("new", "hot", "dur")
+
+
+def _item_rank(item, key: str) -> float:
+    """这一条在某一列上的值。取不到就是 0，排在那一列的末尾。
+
+    热度取来源自己的分数（rule34 的 `score`）：站点已经按它排过一次热门，本库里
+    现成存着。没有这个字段的来源（f95zone 等）一律 0——这一列上它们并列垫底，而不是
+    被悄悄按别的东西排了一遍。
+    """
+    if key == "hot":
+        value = item.metadata.get("score")
+    elif key == "dur":
+        value = item.duration
+    else:
+        return 0.0
+    try:
+        return float(value or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _sorted_items(items: tuple, sort: str, direction: str) -> tuple:
+    """按选中的那一列重排整批条目。
+
+    排在分页之前，也排在分组之前：先分页再排等于只排了当前这一屏，翻一页顺序就换
+    一套；而 `store.group` 按给进去的次序归并，分完组再排会把同一个作品的几个版本
+    拆开。
+
+    `new` 那一档不自己排：store 的 `ORDER BY published_at DESC, id DESC` 已经是它，
+    再排一遍只会把并列条目的相对位置打乱。翻转就是倒着读同一串。
+    """
+    if sort not in FOLLOW_SORTS:
+        return items
+    if sort == "new":
+        return items if direction == "desc" else tuple(reversed(items))
+    # id 兜底与 store 同一个道理：并列值在两次请求间不许换位置，否则翻页会重复或漏掉。
+    return tuple(sorted(items, key=lambda item: (_item_rank(item, sort), item.id),
+                        reverse=direction == "desc"))
+
+
+def _sorted_groups(groups: tuple, sort: str, direction: str) -> tuple:
+    """分完组再排一次。
+
+    `store.group()` 结尾无条件按 `newest_at` 倒序——那是它自己的默认次序，不是这一页
+    要的次序。少了这一步，条目那一层的排序就只决定「哪些条目进这一页」，页面上摆出来
+    的仍是按时间：选「时长」看到的是一页长片，但它们内部照旧按更新时间排，看着像没生效。
+    两层共用同一个 `_item_rank`，否则同一批东西在选页和摆页时会有两种顺序。
+    """
+    if sort not in FOLLOW_SORTS:
+        return groups
+    if sort == "new":
+        return groups if direction == "desc" else tuple(reversed(groups))
+    return tuple(sorted(groups,
+                        key=lambda group: (_item_rank(group.primary, sort), group.primary.id),
+                        reverse=direction == "desc"))
 
 
 def q_follow(contract, args) -> dict:
@@ -695,6 +1263,14 @@ def q_follow(contract, args) -> dict:
     authors = frozenset(_csv_values(args.get("author")))
     providers = frozenset(_csv_values(args.get("provider")))
     wanted_tags = _csv_values(args.get("tag"))
+    # 题材跟作者、来源一样是「任一」：两部作品同时成立的条目几乎没有，取交集等于
+    # 点第二枚就清空列表。标签那一维仍是交集，见下面 `_matches`。
+    wanted_works = frozenset(_work_root(value) for value in _csv_values(args.get("work")))
+    sort = str(args.get("sort") or "new")
+    if sort not in FOLLOW_SORTS:
+        sort = "new"
+    # 认不出的方向按这一列的常态读：时间、热度、时长问的都是「最靠前的先看」。
+    direction = "asc" if str(args.get("dir") or "") == "asc" else "desc"
     try:
         unread_days = max(0, min(int(args.get("unread_days") or 0), 3650))
     except (TypeError, ValueError):
@@ -731,11 +1307,15 @@ def q_follow(contract, args) -> dict:
                 tags = set(_item_all_tags(item))
                 if not all(tag in tags for tag in wanted_tags):
                     return False
+            if wanted_works and not any(_work_root(tag) in wanted_works
+                                        for tag in _item_works(item)):
+                return False
             return True
 
         everything = tuple(item for item in store.items(source_id=source_id, limit=_ALL_ITEMS)
                            if item.source_id in enabled_source_ids and not _excluded_item(item))
-        counted = tuple(item for item in everything if _matches(item))
+        counted = _sorted_items(
+            tuple(item for item in everything if _matches(item)), sort, direction)
         if item_id is not None:
             items = tuple(item for item in store.items_for_item(item_id)
                           if item.source_id in enabled_source_ids and not _excluded_item(item))
@@ -747,8 +1327,9 @@ def q_follow(contract, args) -> dict:
             has_more = len(page) > offset + limit
             items = tuple(page[offset:offset + limit])
         groups = [_group_payload(group, credential_providers)
-                  for group in store.group(items)]
-        facets = _follow_facets(store, everything, by_source, alias_map)
+                  for group in _sorted_groups(store.group(items), sort, direction)]
+        facets = _follow_facets(store, everything, by_source, alias_map,
+                                work_icon_root(contract))
         # counts 与列表同源，两边都从 `counted` 出发：筛选怎么变，数字就怎么变，
         # 扣减逻辑也只写一份。写成一句全库 SQL 再逐条减掉被隐藏的 rule34video 和
         # 无资源的 f95zone 的话，同一套排除规则要维护两份，而且它不看作者、来源和
@@ -774,6 +1355,9 @@ def q_follow(contract, args) -> dict:
         "groups": groups,
         "counts": {status: int(counts.get(status, 0)) for status in _STATUSES},
         "unread_days": unread_days,
+        # 排序回一份：页面是从 URL 读的，两边对不上时以服务端这份为准。
+        "sort": sort,
+        "dir": direction,
         "facets": facets,
         # counts 是全库口径，groups 只是这一页——两个数并排显示过，看起来像自相矛盾。
         "offset": offset,

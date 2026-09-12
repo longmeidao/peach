@@ -11,8 +11,12 @@
    源图 1:1，再放大就是上采样；在顶栏 64 px 圆框上放到 3 倍仍有余量。判据一样，
    结论差一倍多，只有在页面这一侧、拿到框的真实尺寸时才算得出来。
 
-   夹持顺序固定：先算「要多大才看得清」，再用「放到多大就开始虚」压住，最后卡构图上限。
-   `zoom` 为 1 时只挪不放大，已经够大的那 395 张走的就是这条路。 */
+   夹持顺序固定：先算「要多大才看得清、才摆得正」，用构图上限刹住，最后由「放到多大
+   就开始虚」压死。`zoom` 为 1 时只挪不放大，已经够大的那 395 张走的就是这条路。
+
+   没有一条上限是倍数：倍数答不了任何一个问题。同样 3 倍，特写被放成五官大头，远景
+   全身图的脸却还只有 6 px。问的是脸放完有多大（`FACE_CEILING`）和源图还剩多少像素
+   （无损上限），两条都用得着框的真实尺寸和设备像素比，所以只能在页面这一侧算。 */
 
 /** 脸框宽占框短边这个比例就算看得清是谁，不再往上放。
  *
@@ -20,9 +24,23 @@
  *  往上调会让本来就偏紧的特写被这一档"救"进放大，那些图不需要。 */
 export const FACE_TARGET = 0.32;
 
-/** 放大上限。源图再清楚也不越过这条线：脸框之外还有头顶、下巴和肩，
- *  按脸框放到满框等于把这些全裁掉，剩下一张认不出是谁的五官特写。 */
-export const MAX_ZOOM = 3;
+/** 脸框在框里至少要有这么多 CSS 像素宽。
+ *
+ *  比例这一档回答不了小圆标的问题：32% 在 120 px 的资料页框里是 38 px 的脸，在
+ *  28 px 的题材圆标里只有 9 px，而 9 px 宽的眼鼻嘴认不出是谁——这排圆标存在的理由
+ *  正是让人一眼认出题材。像素下限只在框小到这个比例不够用时才接管（28 px 框要 46%、
+ *  48 px 框算出来低于 32% 就仍走比例那一档），大框上一个数都不动。 */
+export const MIN_FACE_PX = 13;
+
+/** 构图上限：脸框最多占框短边这么多。
+ *
+ *  脸框只覆盖眼鼻嘴：60% 时整颗头刚好填满框，再往上就开始切头顶和下巴。
+ *
+ *  这条问的是「放完之后脸有多大」，不问放大了几倍：倍数答不了构图的问题——同样
+ *  3 倍，特写被放成五官大头，远景全身图的脸却还只有 6 px。
+ *  实测那张 16:9 的 `Clair Obscur` 封面，脸占画面宽的 4.5%，cover 进 28 px 的圆里
+ *  只剩 2.2 px——它要 5.8 倍才够看，而无损上限本来就还有 5.1 倍的余量。 */
+export const FACE_CEILING = 0.6;
 
 /** 人脸数据齐不齐。缺一样就没法算，调用方只挪不放大。
  *
@@ -37,20 +55,30 @@ export function hasFaceBox(face) {
 
 /** 放大多少倍。`frame` 是框的 CSS 像素尺寸，`dpr` 是设备像素比。
  *
- *  三个上限都必须在：只有目标会把小脸图放到糊，只有无损上限会把已经够大的图
- *  也推到 3 倍，只有构图上限则对着一张 4096 px 高的图能放到二十几倍。 */
+ *  推着它往上的有两样：脸要够大（`wanted`），脸还要摆得正（`centred`）；
+ *  压着它的有两样：脸放完不许超过构图上限，源图剩下的像素不许被上采样。 */
 export function faceZoom(face, frame, dpr = 1,
-                         target = FACE_TARGET, maxZoom = MAX_ZOOM) {
+                         target = FACE_TARGET, ceiling = FACE_CEILING) {
   if (!hasFaceBox(face) || !(frame && frame.w > 0 && frame.h > 0)) return 1;
   const ratio = dpr > 0 ? dpr : 1;
   // cover 的基础缩放：图缩到刚好盖住框，紧的那一边说话。
   const base = Math.max(frame.w / face.imgW, frame.h / face.imgH);
   const shown = face.faceW * base;
   if (!(shown > 0)) return 1;
-  const wanted = target * Math.min(frame.w, frame.h) / shown;
+  const side = Math.min(frame.w, frame.h);
+  // 两档取宽的那一档：比例管大框，像素下限管小到比例不够用的框。
+  const wanted = Math.max(target, MIN_FACE_PX / side) * side / shown;
+  /* 摆正也要放大。脸心拉到框心的前提是图比框大得够多——不许露白，图不够大时脸只能
+     被顶在框的边上，量出来是够大的，看着却是「小而偏」。脸离画面边缘越近，把它拉到
+     框心要的放大越多，所以判据是「更近的那一边到中线的距离」，两根轴各算一次取紧的。 */
+  const centred = Math.max(
+    frame.w / (2 * Math.min(face.cx, 1 - face.cx) * face.imgW * base),
+    frame.h / (2 * Math.min(face.cy, 1 - face.cy) * face.imgH * base));
   // 脸的源像素 ÷ 现在这个框要的设备像素。等于 1 就是已经 1:1，再放大就是上采样。
   const lossless = face.faceW / (shown * ratio);
-  return Math.max(1, Math.min(wanted, lossless, maxZoom));
+  return Math.max(1, Math.min(
+    Math.max(wanted, Math.min(centred, ceiling * side / shown)),
+    lossless));
 }
 
 /** 取景结果，四个值都是相对框的百分比。
@@ -59,8 +87,8 @@ export function faceZoom(face, frame, dpr = 1,
  *  百分比让 CSS 自己跟随。`zoom` 按加载时的框尺寸算一次就够——框变大只会让
  *  放大倍数偏保守，不会突然越过无损上限。 */
 export function faceFrame(face, frame, dpr = 1,
-                          target = FACE_TARGET, maxZoom = MAX_ZOOM) {
-  const zoom = faceZoom(face, frame, dpr, target, maxZoom);
+                          target = FACE_TARGET, ceiling = FACE_CEILING) {
+  const zoom = faceZoom(face, frame, dpr, target, ceiling);
   if (zoom <= 1 || !hasFaceBox(face)) return null;
   const scale = Math.max(frame.w / face.imgW, frame.h / face.imgH) * zoom;
   const width = face.imgW * scale;

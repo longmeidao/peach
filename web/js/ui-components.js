@@ -10,6 +10,8 @@ export function filterChipHtml(label,{attr,value,selected=false,count,className=
      没生效过。 */
   return `<button type="button" class="pill${className?' '+esc(className):''}" ${attr}="${esc(value)}" aria-pressed="${selected}">${esc(label)}${count==null?'':`<span class="${esc(countClass)}">${esc(count)}</span>`}</button>`;
 }
+/* `extra` 排在换一批与排序键之间。那个位置放的是版式、大小这类「这批东西怎么摆」的
+   开关，以及跟换一批同类的动作键；排序键一律排在最末，挨着它说明的那批内容。 */
 export function sortControlsHtml({items=[],renderItem=String,extra='',shuffleId='',shuffleClass='entitybatch'}={}){
   return `<span class="sorts"><button class="batchaction ${esc(shuffleClass)}"${shuffleId?` id="${esc(shuffleId)}"`:''} type="button" title="换一批" aria-label="换一批">${icon('shuffle')}</button>${extra}${items.map(renderItem).join('')}</span>`;
 }
@@ -351,7 +353,8 @@ export function indexSkeletonHtml({kind,layout='big',mode='alphabet'}={}){
   const body=!people&&mode==='cloud'
     ?`<div class="tagwall index-tags">${Array.from({length:60},(_,i)=>
       `<span class="tg skeleton" style="width:${[92,128,76,108,144][i%5]}px">&nbsp;</span>`).join('')}</div>`
-    :`${!people?'<span class="indexletterskeleton skeleton"></span>':''}<div class="${grid}">${cell.repeat(12)}</div>`;
+    :people?`<div class="${grid}">${cell.repeat(12)}</div>`
+    :`<section class="alphagroup"><span class="indexletterskeleton skeleton"></span><div class="${grid}">${cell.repeat(12)}</div></section>`;
   const label='正在读取索引';
   return `<div class="skeletonpanel index-skeleton" data-skeleton="index/${esc(kind)}/${esc(layout)}/${esc(mode)}"${people||mode!=='cloud'?' data-fill=""':''}
     role="status" aria-label="${label}"><span class="sr-only">${label}</span><section aria-hidden="true">${body}</section></div>`;
@@ -426,6 +429,26 @@ export function mediaViewButtonsHtml({
     ${peopleValue?control(peopleValue,peopleLabel,peopleCount,'user-round','people'):''}
     ${videoValue?control(videoValue,videoLabel,videoCount,'play','video'):''}
     ${imageValue?control(imageValue,imageLabel,imageCount,'pics','image'):''}</div>`;
+}
+
+/**
+ * Board 下划线 Tabs（boardui tabs.tsx）：一排互斥的「这一页现在摆的是哪一组东西」。
+ *
+ * 索引页用它切厂牌／事务所与本地／在线两套词表：两档各是一条地址。它回答的是页面层级的
+ * 「在哪一页」，不是给当前这批加一条筛选——筛选归玻璃条上的药丸。
+ * 每一枚都是 `role=tab`，当前项写 `aria-selected`；滑动的 2px 蓝线由 `board-local-nav`
+ * 那条共用规则和 `wireBoardTabs` 提供，这里只出 DOM。计数是可选的尾随徽标，口径由调用方
+ * 给：Tabs 自己不算数。前置字形也是可选的，只在它指向对象（厂牌、事务所、本地、订阅源）
+ * 时出现。
+ */
+export function boardTabsHtml(items,{active='',attr='data-tab',label='页面视图',className='',panel=''}={}){
+  const tabs=items.map(({value,label:text,count,symbol})=>{
+    const selected=String(value)===String(active);
+    const badge=count==null?'':`<span class="board-tab-count">${esc(Number(count).toLocaleString())}</span>`;
+    return `<button type="button" role="tab" ${attr}="${esc(value)}" aria-selected="${selected}"${
+      panel?` aria-controls="${esc(panel)}"`:''}>${symbol?icon(symbol):''}${esc(text)}${badge}</button>`;
+  }).join('');
+  return `<div class="board-local-nav board-tabs${className?` ${esc(className)}`:''}" role="tablist" aria-label="${esc(label)}">${tabs}</div>`;
 }
 
 /** Geist Empty State: icon tile, title and explanatory copy stay one semantic unit. */

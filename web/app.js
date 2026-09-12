@@ -18,7 +18,7 @@ import { javImageKind, normalizeJavImage, normalizeJavLayout, normalizeJavPrefer
 import {
   attachOverlayScrollbar, breadcrumbHtml, checkboxHtml, collectionSummaryHtml, closeAnchoredMenu, confirmModal, dismissMenu, emptyStateHtml, fieldsetTitle,
   fillSkeletonTier, fitSkeleton, formModal, iconSwitchHtml, indexSkeletonHtml, loadingDotsHtml,
-  mediaViewButtonsHtml, mountFilterFrame, filterChipHtml, moveGlidePane, glideEase, sortControlsHtml, collectionHeaderHtml, wireHorizontalScroller, noteHtml, presentMenu, progressHtml, gaugeHtml, scrollerHtml, searchInputHtml, selectFieldHtml,
+  mediaViewButtonsHtml, boardTabsHtml, mountFilterFrame, filterChipHtml, moveGlidePane, glideEase, sortControlsHtml, collectionHeaderHtml, wireHorizontalScroller, noteHtml, presentMenu, progressHtml, gaugeHtml, scrollerHtml, searchInputHtml, selectFieldHtml,
   setActionBusy, skeletonHtml, spinnerHtml, wireAnchoredMenu, wireBusyActions, wireCollapse, wireDragReorder,
   wireIconSwitch, wireOverlayScrollbars, wireScrollers, wireSelectField, wireContextCard, configurationSkeletonHtml, wireLoadMore,
 } from './js/ui-components.js';
@@ -79,7 +79,14 @@ const FOLLOW_UNREAD_RANGE_OPTIONS=[['0','不限时间'],['7','最近 7 天'],['3
 /* 同 `sortButtonHtml`：这枚键的无障碍名称说的是点下去会得到什么，所以取反方向的词。 */
 const followSortLabel=()=>`按${FOLLOW_SORT_LABELS[followManageSort]||'关注列表'}${
   (FOLLOW_SORT_DIR_WORDS[followManageSort]||[])[followManageDir==='asc'?0:1]||''}排序`;
-let followAuthors=new Set(),followProviders=new Set(),followTags=new Set(),followMediaView='videos',followGroupByItemId=new Map(),followItemsById=new Map(),followDetailReturnPath='/follow';
+let followAuthors=new Set(),followProviders=new Set(),followTags=new Set(),followWorks=new Set(),followMediaView='videos',followGroupByItemId=new Map(),followItemsById=new Map(),followDetailReturnPath='/follow';
+/* 看的那一页按什么排。只有这三档在每条更新上都成立：观看次数、体积那几列问的是本机
+   文件，而这一页上的东西多数还没下载。词跟着列走，`desc` 在时间上是「从新到旧」，
+   在时长上是「从长到短」，写成通用的「降序」等于让界面解释 SQL。 */
+const FOLLOW_FEED_SORTS=[['new','更新时间'],['hot','热度'],['dur','时长']];
+const FOLLOW_FEED_DIR_WORDS={new:['从新到旧','从旧到新'],hot:['从高到低','从低到高'],
+  dur:['从长到短','从短到长']};
+let followSort='new',followDir='desc';
 const selectedIndexTags=new Set();
 let entityPhotos=null,entityMediaView=emptyMediaView(),photoWallItems=[];
 /* 事务所页看的是它签了谁，所以进页面先摆艺人。视频照样在，只是换一个开关的距离：
@@ -192,12 +199,18 @@ const pageSkeletonHtml=(label,{cards=false,className='',variant='',count,fill}={
   skeletonHtml(label,{variant:variant||(cards?'cards':'panel'),className,
     ...(count?{count}:{}),...(fill===undefined?{}:{fill})});
 /* 关注页的骨架跟首页共用海报卡那套几何：网格算式、卡内每一格都一样，只有归属行
-   高一点（`.followitem .meta .s` 有 min-height）。上面两条是它自己的作者行和筛选
-   行，形状取 `.tier`/`.tagbar` 本身，所以和首页顶栏是同一枚，不必另画一套。 */
+   高一点（`.followitem .meta .s` 有 min-height）。上面是它自己的作者行、题材行和那块
+   两排的玻璃浮层，形状取 `.tier`、`.tagbar`、`.count` 本身，所以和首页顶栏那两排是
+   同一枚：作者行铺 `av`、题材行铺 `brandpill`，跟内容回来之后的形状一致。外框
+   要自己写全：`mountFilterFrame` 是运行时才建的，骨架进不了那条路径，少了它上下两排
+   会被画成两块各带圆角的浮层，等内容回来又并成一块。 */
 const followSkeletonHtml=(label='正在读取关注内容')=>`<div class="follow">
   <div class="followhead"><h2 class="pagetitle">关注</h2></div>
   <div class="tier followauthors" data-skeleton-tier="av"></div>
-  <div class="tagbar followfilters" data-skeleton-tier="pill"></div>
+  <div class="tier followworks" data-skeleton-tier="brandpill"></div>
+  <div class="board-filter-frame" data-filter-frame>
+    <div class="tagbar followfilters" data-filter-row="top" data-skeleton-tier="pill"></div>
+    <div class="count followcount" data-filter-row="bottom"><span class="mono"><span class="countskeleton"></span></span></div></div>
   ${pageSkeletonHtml(label,{cards:true,className:'follow-content-skeleton postercard-skeleton'})}</div>`;
 /* 分类名是静态文案，骨架和复核页各要一份，所以它排在骨架前面而不是跟着复核页那段代码。 */
 const REVIEW_LABELS={metadata_fields:'元数据字段',creator_tags:'创作者标签',studio_logos:'厂牌 Logo',performer_avatars:'女优头像',western_identity:'西方身份回配',code_creators:'番号目录存疑',fc2_markings:'FC2 评论标记',fc2_similarity:'FC2 跨号相似',video_endcards:'片尾/出处证据',media_failure:'媒体失败'};
@@ -439,8 +452,10 @@ const SORT_DIR_WORDS={rating:['从高到低','从低到高'],o:['从多到少','
 /* 旧键沿用：地址栏、书签和设置里存着把方向写进键名的值。方向现在单独由 `dir` 表达，
    两个时长键收敛成一个 dur；认不出旧键的后果不是报错，是静默换成另一种排序。 */
 const SORT_ALIASES={big:['size','desc'],short:['dur','asc'],long:['dur','desc']};
-const sortDirWord=(key,dir)=>(SORT_DIR_WORDS[key]||[])[dir==='asc'?1:0]||'';
-const defaultSortDir=key=>SORT_DIR_WORDS[key]?'desc':'';
+/* 词表可换：关注页排的是在线更新，列不一样（热度那一列只有它有），但「点未选中项换列、
+   点选中项翻方向」和箭头怎么画两页完全相同。传表进来，那三枚函数就不必各写一份。 */
+const sortDirWord=(key,dir,words=SORT_DIR_WORDS)=>(words[key]||[])[dir==='asc'?1:0]||'';
+const defaultSortDir=(key,words=SORT_DIR_WORDS)=>words[key]?'desc':'';
 /* 主题三档，键名与 <html> 上的 data-theme 同一套写法：web/css/01-base.css 的色板
    已经按 `prefers-color-scheme` 和 `[data-theme]` 两条路径写好，这里只负责选哪一条。
    跟随系统是默认档，选它等于不写属性。 */
@@ -3276,15 +3291,18 @@ function viewGlideGeometry(pill){
    把这一种连同 `display:none` 和资料页照片视图下那一排自己的 `hidden` 一起挡住——玻璃
    留在一排收起来的按钮上，就是在一块空玻璃上亮着。
 
+   关注页那排状态是同一个控件的第三处：五枚里恒有一枚生效，选中记在 `data-follow-filter`
+   上。
+
    资料页那条上有两排都在回答「你在哪儿」：左端那一档媒体类型，和四枚观看状态。它们
    问的不是同一件事，所以各有一块玻璃——共用一块的话，点一下照片，玻璃从「没看过」那儿
    飞过来，读出来是这两排在抢同一个当前项。 */
 const GLIDE_ROWS={
-  views:{selector:'#viewPills,.entityviews',
-         pressed:'[data-state][aria-pressed="true"],[data-entity-state][aria-pressed="true"]'},
-  /* 媒体那两枚是圆的，玻璃跟着它们的圆角走：一块 8px 圆角的方玻璃扣在一枚圆按钮上，
+  views:{selector:'#viewPills,.entityviews,.followviews',
+         pressed:'[data-state][aria-pressed="true"],[data-entity-state][aria-pressed="true"],[data-follow-filter][aria-pressed="true"]'},
+  /* 媒体那几枚是圆的，玻璃跟着它们的圆角走：一块 8px 圆角的方玻璃扣在一枚圆按钮上，
      四个角先露出来，读起来是玻璃底下还垫着别的东西。 */
-  media:{selector:'.entitymediaview',pressed:'[data-media-view][aria-pressed="true"]',
+  media:{selector:'.entitymediaview,.followmediaview',pressed:'[data-media-view][aria-pressed="true"]',
          className:'viewglide-round'},
 };
 function viewPillsRow(kind){
@@ -5150,7 +5168,12 @@ const followPageUrl=offset=>
   +(followFilter?`&status=${followFilter}`:'')
   +(followAuthors.size?`&author=${encodeURIComponent([...followAuthors].join(','))}`:'')
   +(followProviders.size?`&provider=${encodeURIComponent([...followProviders].join(','))}`:'')
-  +(followTags.size?`&tag=${encodeURIComponent([...followTags].join(','))}`:'');
+  +(followTags.size?`&tag=${encodeURIComponent([...followTags].join(','))}`:'')
+  +(followWorks.size?`&work=${encodeURIComponent([...followWorks].join(','))}`:'')
+  /* 排序也归服务端，理由同上：分页在它那一侧。浏览器只拿到当前这几页，在这里排
+     等于每加载一页就把先后顺序重算一次，越往下翻越乱。 */
+  +(followSort!=='new'?`&sort=${followSort}`:'')
+  +(followDir!=='desc'?`&dir=${followDir}`:'');
 /* 分组在取回之后做，所以同一个作品可能被这一页的边界切开：
    前 300 条里有它的一个变体，后 300 条里有另一个。按 release_key 合并，
    不然界面上会出现两张长得几乎一样的卡。 */
@@ -5171,7 +5194,10 @@ let followCredentialProviders=new Set();
    一次闪烁——他的原话是「完全没返回任何结果」。接口其实每条来源都回了
    added/updated/not_modified/error，是界面把它们全丢了。 */
 let followCheckReport=null;
-const FOLLOW_FILTERS=[['','全部'],['new','未看'],['seen','已看'],['saved','已保存'],['ignored','已忽略']];
+/* 这一排是「现在看的哪一档」。已看那一档不摆出来：看过就归档，要再翻出来是「全部」
+   的事，而一枚常年指向十几条的筛选占的是这一排最值钱的横向空间。状态本身照旧记，
+   卡片和详情面板上都还能把一条标成已看。 */
+const FOLLOW_FILTERS=[['','全部'],['new','未看'],['saved','已保存'],['ignored','已忽略']];
 
 /* 账本里一律存 UTC（ISO 带 Z），界面要按看的人所在时区显示。
    直接把那串字面量印出来的话，UTC+8 的人看到的每个时间都早 8 小时。 */
@@ -5727,8 +5753,12 @@ function followViewPath(){
   if(followAuthors.size)params.set('author',[...followAuthors].join(','));
   if(followProviders.size)params.set('provider',[...followProviders].join(','));
   if(followTags.size)params.set('tag',[...followTags].join(','));
+  if(followWorks.size)params.set('work',[...followWorks].join(','));
   if(followFilter)params.set('status',followFilter);
   if(followMediaView==='images')params.set('media','images');
+  // 默认那一档不写进地址：`/follow` 本身就是「按更新时间从新到旧」。
+  if(followSort!=='new')params.set('sort',followSort);
+  if(followDir!=='desc')params.set('dir',followDir);
   const search=params.toString();return '/follow'+(search?'?'+search:'');
 }
 function readFollowView(){
@@ -5737,15 +5767,103 @@ function readFollowView(){
   followAuthors=csv('author');
   followProviders=csv('provider');
   followTags=csv('tag');
+  followWorks=csv('work');
   const status=params.get('status');
-  followFilter=(status===null||status==='all')?'':status;
+  // 这一排上没有的那一档按「全部」读：旧链接里的 `status=seen` 落在这一条上，
+  // 否则页面停在一个没有任何药丸按下去的筛选里，看不出自己正被什么筛着。
+  followFilter=FOLLOW_FILTERS.some(([key])=>key&&key===status)?status:'';
   followMediaView=params.get('media')==='images'?'images':'videos';
+  // 认不出的键退回默认那一档，同上一条的道理：不能停在一个没有任何键按下去的排序上。
+  const sort=params.get('sort');
+  followSort=FOLLOW_FEED_SORTS.some(([key])=>key===sort)?sort:'new';
+  followDir=params.get('dir')==='asc'?'asc':'desc';
 }
 /* 作者、来源两行是多选：按下的算「只看这些」，一个都不按就是全部；标签行是「同时具备」的
    交集（服务端如此判）。这一页是浏览用的，不配批量选择键，想回到不筛就把按下的几个抬起来。 */
+/* 这一档排在筛选条最左端，跟资料页那一组同一个位置、同一块玻璃：它答的是「这一页现在
+   摆的是哪一类东西」，比它右边那些「这一类里看哪些」粗一级。摆到下排右端的话，它挨着
+   的是排序键和动作键，读起来像给当前这批加的又一个条件，而它换掉的是整页内容。
+   只有视频时不出这一组：一枚孤零零的键没有可切的对象。 */
 function followMediaControl(counts){
   if(!counts.images&&followMediaView!=='images')return '';
-  return mediaViewButtonsHtml({active:followMediaView,videoCount:counts.videos,imageCount:counts.images});
+  return mediaViewButtonsHtml({active:followMediaView,videoCount:counts.videos,imageCount:counts.images,
+    className:'followmediaview'});
+}
+/* 当前按下的筛选条件，四个维度收成一张清单。这几排药丸是横滚的，按下去的那几枚常常
+   被滚到看不见的地方——「怎么只剩三条更新」的答案就藏在那儿。顺序照筛选条从粗到细：
+   作者、来源、题材、标签。 */
+function followConditions({authors,providers,works}={}){
+  const rows=[];
+  const push=(set,kind,key,label)=>rows.push({set,kind,key,label:String(label||key)});
+  followAuthors.forEach(key=>push(followAuthors,'作者',key,(authors&&authors.get(key)||{}).name));
+  followProviders.forEach(key=>push(followProviders,'来源',key,providers&&providers.get(key)));
+  followWorks.forEach(key=>push(followWorks,'题材',key,works&&works.get(key)));
+  followTags.forEach(key=>push(followTags,'标签',key,key));
+  return rows;
+}
+/* 生效的筛选摊在浮层正下方，跟首页和资料页同一条交集筛选条：同一颗 `.cb`、同一枚撤销
+   键、同一个「全部清除」。三页问的是同一件事——现在这一屏被哪几个条件框住了——画成
+   三种样子就得认三遍。标签那一档不写前缀，跟首页一致：标签名自己就说明了它是什么。
+
+   位置也照首页：这一条从无到有会把它下面的东西整块推下四十像素，放在浮层上面的话，
+   被推的是那块吸顶的玻璃和它上面的两排头像——按一枚标签，半屏东西跟着挪。放在下面
+   推的只有列表，而列表本来就要重画。 */
+function followComboHtml(conditions){
+  if(!conditions.length)return '';
+  return conditions.map(row=>`<span class="cb">${row.kind==='标签'?'':esc(row.kind)+' '}${esc(row.label)}<b data-follow-drop="${esc(row.key)}" data-follow-drop-kind="${esc(row.kind)}">✕</b></span>`).join('')
+    +`<button class="clr" type="button">全部清除</button>`;
+}
+/* 下排右端那一组：换一批、去问一遍来源，再是几枚排序键。
+
+   「换一批」在这里换的是上面那三排：作者、题材、标签都按本次访问的种子随机取，这一枚
+   重掷种子再画一遍，不联网。要联网的是它右边那枚：去问一遍每个来源有没有新东西。
+   两件事各一枚键——共用一枚的话，只想换一批看的人会顺手发起一轮抓取。两枚都是动作键，
+   所以并排站在一起，中间不隔竖线：竖线分的是「动作」和「这批怎么摆」，不是每两枚都分。 */
+function followFeedControlsHtml(){
+  return sortControlsHtml({
+    shuffleId:'followShuffle',shuffleClass:'',items:FOLLOW_FEED_SORTS,
+    renderItem:([key,label])=>sortButtonHtml(key,label,followSort,followDir,'data-follow-sort',FOLLOW_FEED_DIR_WORDS),
+    extra:`<button type="button" class="followrecheck" data-follow-recheck title="检查更新"
+      aria-label="检查全部来源的更新">${icon('refresh-cw')}</button>`});
+}
+/* 看的那一页上唯一一次联网：去问每个来源有没有新东西。管理页那几枚按的是同一条路径，
+   区别在它还要把失败详情摊进那一页的报告块；这一页上没有放报告的地方，失败只留一条
+   Toast，原因去管理页看。进度由 `wireFollowProgress` 那条统一接管——它本来就在这一页上
+   盯着这个任务，两处各盯一份的话，抓完会重取两遍。 */
+function wireFollowRecheck(button){
+  if(!button)return;
+  button.onclick=async()=>{
+    if(followBusy)return;
+    followBusy=true;let started=false;const old=button.innerHTML;
+    setActionBusy(button);button.innerHTML=spinnerHtml('检查中');
+    try{
+      const job=await api('/api/follow/check',{method:'POST',body:JSON.stringify({background:true})});
+      sessionStorage.setItem('peach-follow-job',job.job_id);
+      followCheckReport=null;started=true;
+      if(button.isConnected)void wireFollowProgress();
+    }catch(error){
+      followCheckReport={results:[{ok:false,error:error.message}]};
+      followCheckToast(followCheckReport);
+    }finally{
+      if(button.isConnected)followBusy=started;
+      setActionBusy(button,started);button.innerHTML=old;
+    }
+  };
+}
+/* 撤一条要重取：作者、来源、标签、题材都在服务端筛。四个维度各有自己的 Set，所以
+   按键上带着 kind——同一个字符串在两个维度里都可能出现，只认 key 会撤错那一边。 */
+function wireFollowConditions(root,apply){
+  if(!root)return;
+  root.querySelectorAll('[data-follow-drop]').forEach(button=>button.onclick=()=>{
+    const row=followConditions().find(item=>item.key===button.dataset.followDrop
+      &&item.kind===button.dataset.followDropKind);
+    if(!row)return;
+    row.set.delete(row.key);apply();
+  });
+  const clear=root.querySelector('.clr');
+  if(clear)clear.onclick=()=>{
+    followAuthors.clear();followProviders.clear();followTags.clear();followWorks.clear();apply();
+  };
 }
 function groupTagType(groups,tag){
   for(const group of groups){
@@ -5778,6 +5896,17 @@ function renderFollow(){
     name:followAuthorName(list),sources:list,
   }]));
   const randomizedAuthors=followRandomOrder([...authors],row=>row[0]);
+  /* 作者行下面这一排是题材，位置和形状对着首页那排厂牌：那边第二排答的是「这是谁出的」，
+     这边答的是「这是哪部作品」，都是先认出一个名字再决定看不看。只收来源自己记成
+     copyright 的标签，词形猜不得——角色名和画师手柄在字面上跟作品名没有区别。
+
+     取样也跟着首页走：那两排按本次访问的种子随机取，进一次换一批。按条数取前 24 的话，
+     八十来个题材里永远只露出同样那二十几个，剩下的没有任何一条路径会把它们摆到眼前——
+     这排回答的是「接下来看什么」，不是「哪个最多」。作者行和标签行早就是这么取的。 */
+  const workRows=followRandomOrder(facets.works||[],row=>row[0]).slice(0,ROW_FIRST);
+  followWorks.forEach(key=>{
+    if(!workRows.some(row=>row[0]===key))workRows.push([key,key,0]);
+  });
   const allCount=Object.values(counts).reduce((total,count)=>total+(+count||0),0);
   const topTagRows=followRandomOrder([...tagCounts],row=>row[0]).slice(0,20);
   followTags.forEach(tag=>{
@@ -5799,19 +5928,38 @@ function renderFollow(){
   const providerPills=[...providers].map(([key,label])=>
     `<button class="pill sourcepill" data-follow-provider="${esc(key)}" aria-pressed="${followProviders.has(key)}"
       title="${esc(label)}" aria-label="来源：${esc(label)}">${sourceIcon(key)}</button>`).join('');
+  const total=followFilter?counts[followFilter]||0:allCount;
+  const mediaControl=followMediaControl(mediaCounts);
+  const extraFilters=providerPills+(providerPills&&topTags.length?'<span class="sep" aria-hidden="true"></span>':'')
+    +topTags.map(([key,label,n])=>
+      filterChipHtml(label,{attr:'data-follow-tag',value:key,selected:followTags.has(key),count:n||undefined,className:'r34-'+groupTagType(groups,key)})).join('');
+  /* 名字从全量 facets 取，不从那一排随机露出的二十几枚取：按下的题材常常不在这一批里，
+     拿那一批当词表的话，清单上写的会是账本里那个小写的键。 */
+  const conditions=followConditions({authors,providers,
+    works:new Map((facets.works||[]).map(row=>[row[0],row[1]]))});
+  /* 筛选条跟首页是同一块玻璃浮层，分工也照那边。上排三段由粗到细，和资料页那条同一个
+     次序：最左端是视频／图片——这一页现在摆的是哪一类东西；隔一道竖线是五枚状态，
+     五选一、恒有一枚生效，答的是这一类里看哪一档，滑动的那块玻璃跟着它走；再隔一道
+     才是来源和标签这些可加可不加的筛选。观看状态在首页、资料页和这里三处是同一个控件，
+     画成三种样子就得学三遍。
+
+     下排左端读数照首页那条写，右端那一组也照首页：两枚动作键——换一批、去问一遍来源，
+     然后是几枚排序键。生效的筛选不挤进这一排，它在浮层正下方那条交集筛选条上，跟首页
+     和资料页同一个位置。「管理关注」是去另一页的入口，不是这一页的主动作，蓝色留给
+     「换一批」那一枚。 */
   $('#stats').innerHTML=`<div class="follow">
     <div class="followhead"><h2 class="disp pagetitle">关注</h2>
-      <button class="fbtn primary fcheck" data-follow-manage>${icon('settings')}管理关注</button></div>
+      <button class="fbtn fcheck" data-follow-manage>${icon('settings')}管理关注</button></div>
     ${authors.size?`<div class="tier followauthors" aria-label="按作者筛选">${randomizedAuthors.map(([key,author])=>
       `<button class="av" data-follow-author="${esc(key)}" aria-pressed="${followAuthors.has(key)}">
         <span class="ring">${followAuthorAvatar(author.sources)}</span><span class="nm">${esc(author.name)}</span></button>`
       ).join('')}</div>`:''}
-    <div class="tagbar followfilters" aria-label="关注筛选">${followMediaControl(mediaCounts)}${FOLLOW_FILTERS.map(([key,label])=>
-      filterChipHtml(label,{attr:'data-follow-filter',value:key,selected:key===followFilter,count:key?counts[key]||0:allCount})).join('')}
-      ${providerPills?`<span class="sep" aria-hidden="true"></span>${providerPills}`:''}
-      ${topTags.length?`<span class="sep" aria-hidden="true"></span>`+
-        topTags.map(([key,label,n])=>
-          filterChipHtml(label,{attr:'data-follow-tag',value:key,selected:followTags.has(key),count:n||undefined,className:'r34-'+groupTagType(groups,key)})).join(''):''}</div>
+    ${workRows.length?`<div class="tier followworks" aria-label="按题材筛选">${workRows.map(row=>
+      followWorkPill(row)).join('')}</div>`:''}
+    <div class="tagbar followfilters" aria-label="${mediaControl?'媒体与关注筛选':'关注筛选'}">${mediaControl}${mediaControl?'<span class="sep" aria-hidden="true"></span>':''}<div class="filterscroll"><div class="viewpills followviews" role="group" aria-label="状态">${FOLLOW_FILTERS.map(([key,label])=>
+      filterChipHtml(label,{attr:'data-follow-filter',value:key,selected:key===followFilter})).join('')}${extraFilters?'<span class="sep" aria-hidden="true"></span>':''}</div><div class="tagscroll followtags">${extraFilters}</div></div></div>
+    <div class="count followcount"><span class="mono">${total.toLocaleString()} 项更新 · 显示 ${visible.length.toLocaleString()}</span>${followFeedControlsHtml()}</div>
+    <div class="combo followcombo">${followComboHtml(conditions)}</div>
     ${broken.length
       ?`<div class="geist-note geist-note-error fwarn" role="alert">${icon('alert')}<span>${broken.length} 个来源上次检查失败，去<button class="flink" data-follow-manage>管理关注</button>看原因。</span></div>`:''}
     <div class="followlist${followMediaView==='images'?' followphotowall':''}">${visible.length?visible.map(group=>{
@@ -5821,9 +5969,7 @@ function renderFollow(){
       :sources.length?emptyState('rss','没有符合条件的更新','切换状态或来源筛选后再试。')
       :emptyState('rss','还没有关注任何来源','添加作者或订阅来源后，更新会集中显示在这里。',{actions:'<button class="fbtn primary" data-follow-manage>添加关注</button>'})}</div>
     ${followData.has_more||sources.some(source=>source.can_backfill)?`<div class="followpagination">
-      ${followData.has_more?`<span class="followpageaction"><button class="fbtn" data-follow-more>${icon('chevron-down')}加载更多</button>
-        <span class="fmeta">已显示 ${visible.length.toLocaleString()} / ${
-        (followFilter?counts[followFilter]||0:allCount).toLocaleString()} 项</span></span>`:''}
+      ${followData.has_more?`<span class="followpageaction"><button class="fbtn" data-follow-more>${icon('chevron-down')}加载更多</button></span>`:''}
       ${sources.some(source=>source.can_backfill)?`<span class="followpageaction"><button class="fbtn" data-follow-older>${icon('history')}抓更早的一页</button>
         <span class="fmeta">${esc(followBackfillState(sources))}</span></span>`:''}</div>`:''}</div>`;
   const more=$('#stats').querySelector('[data-follow-more]');
@@ -5837,18 +5983,47 @@ function renderFollow(){
   wireFollowItems();
   wireFollowOlder();
   void wireFollowProgress();
+  /* 上下两排收进同一块外框，材质与吸顶归外框；玻璃的坐标基准也是它，所以先搭框再量。 */
+  const filterRow=$('#stats').querySelector('.followfilters'),countRow=$('#stats').querySelector('.followcount');
+  mountFilterFrame(filterRow,countRow,{views:filterRow.querySelector('.followviews'),
+    tags:filterRow.querySelector('.followtags'),readout:countRow.querySelector('.mono'),
+    controls:countRow.querySelector('.sorts')});
   wireDrag($('#stats').querySelector('.followauthors'));
-  wireDrag($('#stats').querySelector('.followfilters'));
+  wireDrag($('#stats').querySelector('.followworks'));
+  wireDrag(filterRow.querySelector('.filterscroll'));wireDrag(filterRow.querySelector('.tagscroll'));
+  wireHorizontalScroller(filterRow.querySelector('.tagscroll'));
+  const statusPills=[...filterRow.querySelectorAll('[data-follow-filter]')];
+  wireViewGlideRow(filterRow.querySelector('.followviews'),statusPills);
+  /* 媒体那一档另有一块玻璃，跟资料页同一个道理：它和四枚状态问的不是同一件事，共用
+     一块的话，点一下图片，玻璃会从「未看」那儿飞过来。 */
+  const mediaRow=filterRow.querySelector('.followmediaview');
+  if(mediaRow)wireViewGlideRow(mediaRow,[...mediaRow.querySelectorAll('[data-media-view]')],'media');
+  scheduleStickySurfaces();
   paintSelection();
   /* 一律先把新状态写进 URL 再重取：openFollow 现在照 URL 推导，不先写就会被
      推回旧值。前进后退也因此天然可用。 */
   const applyFollowView=()=>{route(followViewPath());openFollow(false)};
-  $('#stats').querySelectorAll('[data-follow-filter]').forEach(button=>button.onclick=()=>{
+  statusPills.forEach(button=>button.onclick=()=>{
+    /* 玻璃先走，数据后到：等服务端回来再动，点完先僵一下再跳。 */
+    statusPills.forEach(p=>p.setAttribute('aria-pressed',String(p===button)));syncViewGlide(true,button);
     followFilter=button.dataset.followFilter;applyFollowView()});
   $('#stats').querySelectorAll('.followfilters [data-media-view]').forEach(button=>button.onclick=()=>{
     // 媒体类型是纯前端的分组，不影响服务端取哪些条目，所以只重画不重取。
     followMediaView=button.dataset.mediaView;
     route(followViewPath());renderFollow()});
+  /* 排序归服务端，所以点完要重取；玻璃那一套不适用——这几枚靠字重和箭头说话。
+     点未选中的换列并用那一列的默认方向，点选中的翻方向，跟首页同一份 `nextSortState`。 */
+  countRow.querySelectorAll('[data-follow-sort]').forEach(button=>button.onclick=()=>{
+    const next=nextSortState(button.dataset.followSort,followSort,followDir,FOLLOW_FEED_DIR_WORDS);
+    if(!next)return;
+    followSort=next.sort;followDir=next.dir;applyFollowView()});
+  /* 换一批只动种子：三排的取样都读它，重画一遍就是新的一批。不重取——列表本身没变，
+     换的是上面那三排露出谁。 */
+  const shuffle=countRow.querySelector('#followShuffle');
+  if(shuffle)shuffle.onclick=()=>{
+    followDiscoverySeed=Math.floor(Math.random()*0xffffffff);renderFollow()};
+  wireFollowRecheck(countRow.querySelector('[data-follow-recheck]'));
+  wireFollowConditions($('#stats').querySelector('.followcombo'),applyFollowView);
   const toggle=(set,key)=>{if(set.has(key))set.delete(key);else set.add(key)};
   $('#stats').querySelectorAll('[data-follow-author]').forEach(button=>button.onclick=()=>{
     toggle(followAuthors,button.dataset.followAuthor);applyFollowView()});
@@ -5856,6 +6031,9 @@ function renderFollow(){
     toggle(followProviders,button.dataset.followProvider);applyFollowView()});
   $('#stats').querySelectorAll('[data-follow-tag]').forEach(button=>button.onclick=()=>{
     toggle(followTags,button.dataset.followTag);applyFollowView()});
+  /* 题材跟作者、来源一样是「任一」：按下两枚是这两部作品都看，不是只看同时占两部的。 */
+  $('#stats').querySelectorAll('[data-follow-work]').forEach(button=>button.onclick=()=>{
+    toggle(followWorks,button.dataset.followWork);applyFollowView()});
   $('#stats').querySelectorAll('[data-follow-manage]').forEach(button=>
     button.onclick=()=>openFollowManage());
 
@@ -5886,7 +6064,8 @@ async function wireFollowProgress(){
   ui.followJobProgress({host:marker,active:()=>surfaceCurrent(surface),
     read:signal=>api('/api/follow/check',{signal}),
     busy:running=>{followBusy=running;
-      host.querySelectorAll('[data-follow-check],[data-follow-older]').forEach(button=>setActionBusy(button,running))},
+      host.querySelectorAll('[data-follow-check],[data-follow-recheck],[data-follow-older]')
+        .forEach(button=>setActionBusy(button,running))},
     complete:report=>{followCheckReport=report.status==='failed'
       ?{results:[{ok:false,error:report.error}]}:report;
       followCheckToast(followCheckReport);
@@ -5958,8 +6137,20 @@ async function openFollow(push=true,renderForDetail=false){
   if(push)route('/follow');
   if(location.pathname==='/follow')readFollowView();
   const surface=claimSurface(renderForDetail?surfacePath():'/follow');
+  /* 已经在这一页上、只是换了一档筛选或排序的话，骨架只盖浮层下面那块列表。页头、作者
+     行、题材行和那块玻璃此刻就能给出最终样子，它们从来没在等：整块铺骨架的代价是浮层
+     连同上面两排一起先消失再出现——换一次排序，屏幕上大半的东西都闪一遍，而真正在等
+     的只有列表里摆哪些东西。列表整个换掉而不是往里塞：`.followlist` 自己是网格容器，
+     骨架有自己的算式，套在里面就成了网格里的一个单元格。 */
+  const list=$('#stats').querySelector('.follow .followlist');
+  const partial=!!list&&!renderForDetail;
   showManagementBody({manage:false,
-    placeholder:followSkeletonHtml('正在读取关注内容')});
+    placeholder:partial?'':followSkeletonHtml('正在读取关注内容')});
+  if(partial){
+    list.outerHTML=pageSkeletonHtml('正在读取关注内容',
+      {cards:true,className:'follow-content-skeleton postercard-skeleton'});
+    fitSkeleton($('#stats'));
+  }
   const [data,credentials]=await Promise.all([
     surfaceApi(surface,followPageUrl(0)),
     surfaceApi(surface,'/api/follow/credentials').catch(()=>({providers:[]})),
@@ -6053,6 +6244,22 @@ function followAuthorAvatar(group){
     loading="lazy" referrerpolicy="no-referrer" ${imageFallbackAttrs({
       drop:'initial',dropClass:'favatar none',initial,fallbacks:[fallback]})}>`;
   return `<span class="favatar none" title="没有可用头像">${esc(initial)}</span>`;
+}
+
+/* 题材那一枚跟首页的厂牌药丸同形：28px 圆标识加作品名。圆里装的是这个题材下最热的
+   那几条里第一张看得见脸的封面，服务端按 `work` 这个身份自己去挑再存在本机，页面
+   递不进地址。挑不出图的题材（facet 那一行的第四位说了算）直接出两个字母，不出
+   `<img>`：无条件出图、靠 404 换回字母的代价是每次重绘都再打一轮，而 404 那条响应
+   不可缓存。
+   第五位是服务端对那张图检出的取景，和实体图同一个形状，所以挪和放大都走资料页那
+   两个函数。放大在这里不是锦上添花：圆标只有 28px，而这是一整张作品图不是烤好边距
+   的头像，只挪不放大的话脸在图里占多少、在这枚圆里就占多少，一排看下来仍是身体。
+   没检出脸就两样都不写，圆标按样式表里的默认取景摆。 */
+function followWorkPill([key,label,,icon,focus]){
+  const fallback=esc(String(label||'').slice(0,2));
+  const mark=icon?`<img src="/work-icon?work=${encodeURIComponent(key)}" alt="" loading="lazy"${facePos(focus)}${faceBoxAttrs(focus)}>`:fallback;
+  return `<button class="brandpill" data-follow-work="${esc(key)}" aria-pressed="${followWorks.has(key)}">
+    <span class="mk" data-fallback="${fallback}">${mark}</span>${esc(label)}</button>`;
 }
 
 /* 别名组只带规范名，头像在这位作者的来源上：按 author_key 找回来源再走同一个头像函数，
@@ -6946,6 +7153,10 @@ function wireReviewAssets(root){
    互相说谎，所以用范围切换分开。字母表对在线那套正合适——实测 3582 个标签全是
    ASCII；本地全是中文，做字母表只会得到一个「中文」分组。 */
 let tagIndexMode='alphabet',tagIndexCategory='all',tagIndexScope='local',indexRequestSeq=0;
+/* 艺人页同样有两套名册：本地是账本里绑了实体的人，在线是关注来源里的作者。两边数的
+   不是同一样东西（本机片数 / 还没下载的更新数），点开去的也不是同一页，所以跟标签页
+   一样用页面级的切换分开，而不是在同一列里混着排。 */
+let performerIndexScope='local';
 const TAG_CATEGORIES=[['all','全部'],['meta','影片属性'],['relationship','人物关系'],
   ['role','角色设定'],['appearance','外貌身材'],['scene','情境场所'],['story','故事剧情'],
   ['position','性交体位'],['general','其他内容']];
@@ -7037,23 +7248,62 @@ function personCellHtml(x,kind,countText){
 /* 场记板归厂牌，公文包归事务所：一个出片、一个带人，字形各说各的那一件事。
    办公楼那类字形两边都对得上，也就等于两边都没说清是哪一种公司。 */
 const MAKER_INDEX_KINDS=[['studios','厂牌','clapperboard'],['agencies','事务所','briefcase']];
+/* 两条索引地址是两页，所以这一排是 Board 的下划线 Tabs：它答的是「现在摆的是哪一页」，
+   不是给当前这批加一条筛选——筛选归玻璃浮层上的药丸。 */
 function makerModeHtml(kind){
-  return `<div class="viewmodes">`+MAKER_INDEX_KINDS.map(([key,label,symbol])=>
-    `<button data-index-kind="${key}" aria-pressed="${kind===key}">${icon(symbol)}${label}</button>`
-    ).join('')+`</div>`;
+  return boardTabsHtml(MAKER_INDEX_KINDS.map(([value,label,symbol])=>({value,label,symbol})),
+    {active:kind,attr:'data-index-kind',label:'公司类型',className:'indextabs'});
 }
+/* 本地与在线是两套词表——计数口径、类别划分和点开去哪儿都不同，所以也是页面级的 Tabs。
+   艺人页那一排问的是同一件事（这一屏摆的是本机的还是来源上的），所以共用这份定义：
+   两页各写一份的话，哪天换了字形就只会换掉其中一页，用户看到两个说法。 */
+const INDEX_SCOPES=[['local','本地','hard-drive'],['online','在线','rss']];
+function scopeTabsHtml(active,attr,label){
+  return boardTabsHtml(INDEX_SCOPES.map(([value,text,symbol])=>({value,label:text,symbol})),
+    {active,attr,label,className:'indextabs'});
+}
+function tagScopeTabsHtml(){return scopeTabsHtml(tagIndexScope,'data-tag-scope','词表')}
+function performerScopeTabsHtml(){
+  return scopeTabsHtml(performerIndexScope,'data-performer-scope','名册');
+}
+/* 在线作者这一格跟本地艺人同形，差别只在圆里那张图从哪儿来：本地走 `/entity-image`
+   那条自家链，在线只有来源站点给的地址，官方主页优先、归档兜底，两条都取不到就落回
+   首字母——跟关注页的作者行同一套判据。这一格不带实体 id：这个人还没进账本，`data-k`
+   上挂的是关注页那套作者键，点开去的也是关注页而不是资料页。 */
+function onlineAuthorCellHtml(x){
+  const initial=(String(x.k||'').match(/[A-Za-z0-9]/)||[Array.from(String(x.k||''))[0]||'?'])[0].toUpperCase();
+  const image=x.avatar?`<img src="${esc(x.avatar)}" alt="" loading="lazy" referrerpolicy="no-referrer" ${
+    imageFallbackAttrs({fallbacks:[x.avatar_fallback||'']})}>`:'';
+  return `<button class="icell" data-follow-author="${esc(x.key)}" data-kind="performer">
+      <span class="ring" data-fit-native="portrait"><span class="ini">${esc(initial)}</span>${image}</span>
+      <span class="nm">${esc(x.k)}</span><span class="n">${x.n.toLocaleString()} 项更新</span></button>`;
+}
+const TAG_VIEW_MODES=[['cloud','标签云','tags'],['alphabet','字母表','text-aa']];
+/* 标签页的筛选浮层跟首页同一块玻璃：上排是类型药丸，下排是读数、按首字跳转和视图切换。
+   外框直接写成带槽位标记的 HTML，不走 `mountFilterFrame`：这一段随每次筛选整块重画，
+   外框跟着一起出生，省得事后再包一层。 */
+function tagFilterFrameHtml(categories,readout,groups){
+  const pills=categories.map(([key,label])=>filterChipHtml(label,
+    {attr:'data-tag-category',value:key,selected:tagIndexCategory===key,className:key})).join('');
+  const jump=groups.length>1?`<nav class="alphajump" aria-label="按首字跳转">${groups.map(([letter],i)=>
+    `<button type="button" data-alpha-jump="${i}">${esc(letter)}</button>`).join('')}</nav>`:'';
+  const view=iconSwitchHtml('tag-view','标签视图',TAG_VIEW_MODES,tagIndexMode,{attr:'data-tag-view'});
+  return `<div class="board-filter-frame" data-filter-frame>
+    <div class="tagbar tagcategories" data-filter-row="top" aria-label="标签类型"><div class="filterscroll"><div class="tagscroll" data-filter-slot="tags">${pills}</div></div></div>
+    <div class="count tagcount" data-filter-row="bottom"><span class="mono" id="indexCount" data-filter-slot="readout">${readout}</span>${jump}<div class="sorts" data-filter-slot="controls">${view}</div></div></div>`;
+}
+/* 页头只剩标题、读数、版式切换和过滤框；页面级的切换（厂牌／事务所、本地／在线）
+   是页头下面那排 Tabs。标签页的读数住在浮层下排，页头不再重复一遍。 */
 function indexHeaderHtml(kind,q,countText){
   const title=INDEX_TITLES[kind]||'标签',people=kind!=='tags';
-  const onlineTags=tagIndexScope==='online';
   return `<div class="ihead">
-      <h2 class="disp indexheading">${kind==='tags'?icon('tags'):''}${title}</h2>
-      <span class="mono" id="indexCount">${countText}</span>
-      ${kind==='tags'?`<div class="viewmodes"><button data-tag-scope="local" aria-pressed="${!onlineTags}">${icon('hard-drive')}本地</button><button data-tag-scope="online" aria-pressed="${onlineTags}">${icon('rss')}在线</button></div>
-      <div class="viewmodes"><button data-tag-view="cloud" aria-pressed="${tagIndexMode==='cloud'}">${icon('tags')}标签云</button><button data-tag-view="alphabet" aria-pressed="${tagIndexMode==='alphabet'}">${icon('text-aa')}字母表</button></div>`:''}
-      ${MAKER_INDEX_KINDS.some(([key])=>key===kind)?makerModeHtml(kind):''}
+      <h2 class="disp indexheading">${title}</h2>
+      ${people?`<span class="mono" id="indexCount">${countText}</span>`:''}
       ${people?peopleLayoutButtons(kind):''}
       ${searchInputHtml({id:'iq',label:'过滤'+title,value:q||''})}
-    </div>`;
+    </div>
+    ${kind==='tags'?tagScopeTabsHtml():kind==='performers'?performerScopeTabsHtml()
+      :MAKER_INDEX_KINDS.some(([key])=>key===kind)?makerModeHtml(kind):''}`;
 }
 function wireIndexControls(kind){
   const iq=$('#iq');let it2;
@@ -7068,27 +7318,55 @@ function wireIndexControls(kind){
   iq.onkeydown=e=>{if(e.isComposing||e.key!=='Enter')return;
     e.preventDefault();clearTimeout(it2);openIndex(kind,iq.value.trim(),true,true)};
   wireIconSwitch($('#index'),'data-people-layout',setPeopleIndexLayout);
+  /* Tabs 的蓝线按下去当场就挪：`wireBoardTabs` 观察着 `aria-selected`。换词表时骨架键
+     不变、页头不重画，不在这里改属性的话那条线就停在旧的一档上。 */
+  const selectTab=button=>button.closest('[role="tablist"]')?.querySelectorAll('[role="tab"]')
+    .forEach(tab=>tab.setAttribute('aria-selected',String(tab===button)));
   /* 厂牌与事务所各有自己的地址，所以这个开关走的是 openIndex 的另一条 kind，
      不是在同一批数据上再筛一次。过滤词跟着走：它问的是同一个问题。 */
   $('#index').querySelectorAll('[data-index-kind]').forEach(b=>b.onclick=()=>{
     if(kind===b.dataset.indexKind)return;
+    selectTab(b);
     openIndex(b.dataset.indexKind,$('#iq').value.trim(),true)});
   $('#index').querySelectorAll('[data-tag-scope]').forEach(b=>b.onclick=()=>{
     if(tagIndexScope===b.dataset.tagScope)return;
+    selectTab(b);
     tagIndexScope=b.dataset.tagScope;
     // 在线标签全是英文，字母表才是它的形态；切过去时顺手换上，不必用户再点一次。
     if(tagIndexScope==='online')tagIndexMode='alphabet';
     tagIndexCategory='all';
     selectedIndexTags.clear();
     openIndex('tags',$('#iq').value.trim(),true)});
-  $('#index').querySelectorAll('[data-tag-view]').forEach(b=>b.onclick=()=>{
-    tagIndexMode=b.dataset.tagView;openIndex('tags',$('#iq').value.trim(),true)});
+  /* 在线那一档摆的是还没进账本的人，选择模式拼的是目录批量操作，对它一条都不成立。 */
+  $('#index').querySelectorAll('[data-performer-scope]').forEach(b=>b.onclick=()=>{
+    if(performerIndexScope===b.dataset.performerScope)return;
+    selectTab(b);
+    performerIndexScope=b.dataset.performerScope;
+    if(performerIndexScope==='online')setSelectMode(false,false);
+    openIndex('performers',$('#iq').value.trim(),true)});
+  wireIconSwitch($('#index'),'data-tag-view',value=>{
+    tagIndexMode=value;openIndex('tags',$('#iq').value.trim(),true)});
   $('#index').querySelectorAll('[data-tag-category]').forEach(b=>b.onclick=()=>{
     tagIndexCategory=b.dataset.tagCategory;openIndex('tags',$('#iq').value.trim(),true)});
+  /* 分组卡有 `scroll-margin-top` 给吸顶的浮层让位，所以对齐到卡的上沿就够。 */
+  $('#index').querySelectorAll('[data-alpha-jump]').forEach(b=>b.onclick=()=>{
+    $('#index').querySelector(`[data-alpha-group="${b.dataset.alphaJump}"]`)
+      ?.scrollIntoView({block:'start',behavior:'smooth'})});
 }
+/* 已经在这一页上、只是换了一档的话，骨架只盖下面那块内容。页头和筛选浮层此刻就能
+   给出最终样子，它们从来没在等：整块重画的代价是过滤框连同里面的字和焦点一起被换掉，
+   Tabs 那条蓝线从头起跑，浮层先消失再出现——换一次词表，上面两条全闪一遍。
+   判据要两样都成立：外壳记的是同一个 kind，而且那块内容还在。资料页会把 `#index`
+   整个换掉，只看记号的话会往一个已经不存在的节点里塞骨架。 */
 function showIndexLoading(label,kind='',q=''){
   $('#stats').hidden=true;$('#index').hidden=false;$('#grid').innerHTML='';$('#combo').innerHTML='';
   $('#count').textContent='';$('#loadSentinel').hidden=true;
+  const body=kind&&$('#index').dataset.indexShell===kind?$('#indexBody'):null;
+  if(body){
+    const next=indexSkeletonHtml({kind,layout:peopleIndexLayout(),mode:tagIndexMode});
+    if(skeletonKeyOf(body.innerHTML)!==skeletonKeyOf(next)){body.innerHTML=next;fitSkeleton(body)}
+    return;
+  }
   const placeholder=kind?indexHeaderHtml(kind,q,'<span class="countskeleton"></span>')+
     `<div id="indexFilters"></div><div id="indexBody">${indexSkeletonHtml({kind,layout:peopleIndexLayout(),mode:tagIndexMode})}</div><button class="indexmore" id="indexMore" type="button" hidden>载入更多</button>`
     :pageSkeletonHtml(label,{cards:true});
@@ -7096,6 +7374,7 @@ function showIndexLoading(label,kind='',q=''){
   if($('#index').querySelector('[data-skeleton]')?.dataset.skeleton!==next){
     $('#index').innerHTML=placeholder;fitSkeleton($('#index'));
   }
+  $('#index').dataset.indexShell=kind;
   if(kind)wireIndexControls(kind);
 }
 /* refine=true 表示这一次是筛选框自己重跑，不是一次页面进入：既不铺骨架，也不重画表头。 */
@@ -7110,10 +7389,12 @@ async function openIndex(kind,q,push=true,refine=false){
   const indexLimit=people?120:180;
   const indexQuery=new URLSearchParams();if(q)indexQuery.set('q',q);
   const onlineTags=kind==='tags'&&tagIndexScope==='online';
+  const onlineAuthors=kind==='performers'&&performerIndexScope==='online';
   if(kind==='tags'){
     indexQuery.set('view',tagIndexMode);
     if(onlineTags)indexQuery.set('scope','online');
     if(tagIndexCategory!=='all')indexQuery.set('category',tagIndexCategory)}
+  if(onlineAuthors)indexQuery.set('scope','online');
   if(push)route('/'+kind+(indexQuery.size?'?'+indexQuery:''),!!q);
   showHomeSurfaces();
   // 必须在 showHomeSurfaces 之后加：它会清掉这两个类并恢复顶部横条，
@@ -7129,6 +7410,9 @@ async function openIndex(kind,q,push=true,refine=false){
     ?'/api/follow/tags?types=all&limit='+indexLimit+'&offset='+offset+
       (tagIndexCategory!=='all'?'&type='+encodeURIComponent(tagIndexCategory):'')+
       (q?'&q='+encodeURIComponent(q):'')
+    :onlineAuthors
+    ?'/api/follow/authors?limit='+indexLimit+'&offset='+offset+
+      (q?'&q='+encodeURIComponent(q):'')
     :'/api/index?kind='+kind+'&limit='+indexLimit+'&offset='+offset+
       (q?'&q='+encodeURIComponent(q):'')+
       (kind==='tags'&&tagIndexCategory!=='all'?'&category='+encodeURIComponent(tagIndexCategory):'');
@@ -7138,15 +7422,18 @@ async function openIndex(kind,q,push=true,refine=false){
   $('#loadSentinel').hidden=true;
   const title=INDEX_TITLES[kind]||'标签';
   const tagItems=[...d.items];
-  const tagGroups=items=>{
+  const tagGroupEntries=items=>{
     const groups={};[...items].sort((a,b)=>a.k.localeCompare(b.k,'zh-CN',{numeric:true,sensitivity:'base'})).forEach(x=>{
       const ch=tagLabel(x.k).normalize('NFKC').trim().charAt(0).toUpperCase();
       const key=/[A-Z]/.test(ch)?ch:(/[0-9]/.test(ch)?'#':(/[\u3400-\u9fff]/.test(ch)?'中文':'其他'));
       (groups[key]||(groups[key]=[])).push(x)});
-    return Object.entries(groups).sort(([a],[b])=>a.localeCompare(b,'zh-CN')).map(([letter,items])=>
-      `<section class="alphagroup"><h3>${letter}</h3><div class="alphalist">${items.map(x=>
-        `<button class="alphatag ${onlineTags?'r34-'+(x.cat||'unknown'):(x.cat||'general')}" data-k="${esc(x.k)}" aria-pressed="${selectedIndexTags.has(x.k)}"><span>${esc(tagLabel(x.k))}</span><span class="n">${x.n.toLocaleString()}</span></button>`).join('')}</div></section>`).join('')};
-  const peopleHtml=items=>items.map(x=>
+    return Object.entries(groups).sort(([a],[b])=>a.localeCompare(b,'zh-CN'))};
+  /* 每个首字一张卡：字头是卡的标题，右边挂这一组有几个；一行一枚标签，36px 高、8px 圆角，
+     取的是 Board 排名行那一档身量。`data-alpha-group` 是浮层下排那排跳转键的落点。 */
+  const tagGroups=items=>tagGroupEntries(items).map(([letter,items],i)=>
+      `<section class="alphagroup" data-alpha-group="${i}"><h3>${letter}<span class="board-tab-count">${items.length.toLocaleString()}</span></h3><div class="alphalist">${items.map(x=>
+        `<button class="alphatag ${onlineTags?'r34-'+(x.cat||'unknown'):(x.cat||'general')}" data-k="${esc(x.k)}" aria-pressed="${selectedIndexTags.has(x.k)}"><span>${esc(tagLabel(x.k))}</span><span class="n">${x.n.toLocaleString()}</span></button>`).join('')}</div></section>`).join('');
+  const peopleHtml=items=>onlineAuthors?items.map(onlineAuthorCellHtml).join(''):items.map(x=>
     /* 事务所数的是人：它名下那 N 个视频是成员拍的，只报视频数会让「这家有几个人」
        这个它唯一独有的读数消失。数字带单位，否则 411 读不出是人还是片。 */
     personCellHtml(x,entityKind,entityKind==='agency'
@@ -7157,33 +7444,46 @@ async function openIndex(kind,q,push=true,refine=false){
   /* 公司格和人格在大图版式下要的形状不一样：竖幅是给脸留的，方标进去左右各被裁掉
      一截。这一格里装的是什么，只有这里知道，所以在这里写进 DOM。 */
   const cells=entityKind==='studio'||entityKind==='agency'?'company':'people';
-  const body=!d.items.length?catalogEmptyHtml({kind,filtered:!!q||(kind==='tags'&&tagIndexCategory!=='all'),configurable:runtimeConfigurable,online:onlineTags})
+  const body=!d.items.length?catalogEmptyHtml({kind,filtered:!!q||(kind==='tags'&&tagIndexCategory!=='all'),configurable:runtimeConfigurable,online:onlineTags||onlineAuthors})
     :people?`<div class="igrid" data-cells="${cells}" data-layout="${
     peopleIndexLayout()}">${peopleHtml(d.items)}</div>`:tagHtml(tagItems);
   const categoryOptions=onlineTags?ONLINE_TAG_CATEGORIES:TAG_CATEGORIES;
   const visibleTagCategories=categoryOptions.filter(([key])=>key==='all'||Number(d.categories?.[key]||0)>0);
-  const categoryFilters=kind==='tags'?`<div class="tagfilters" aria-label="标签类型">${visibleTagCategories.map(([key,label])=>
-    `<button class="${key}" data-tag-category="${key}" aria-pressed="${tagIndexCategory===key}">${label}</button>`).join('')}</div>
-    `:'';
+  const countText=`${tagItems.length}${d.has_more?'+':''} 项`;
   /* 多选面板拼的是目录筛选，只在本地范围出现；在线分类来自上游 booru tag_type。 */
-  const filters=categoryFilters+(kind==='tags'&&!onlineTags?`
+  const tagFilters=()=>tagFilterFrameHtml(visibleTagCategories,`${tagItems.length}${d.has_more?'+':''} 项`,
+      tagIndexMode==='alphabet'&&tagItems.length?tagGroupEntries(tagItems):[])
+    +(onlineTags?'':`
     <div class="tagselection selectiondock" data-tag-selection role="group" aria-label="所选标签操作" hidden>
       <label>${checkboxHtml(`data-tag-match-any ${tagIndexMatch==='any'?'checked':''}`)}<span><b>广泛匹配</b><small>开启后匹配任一所选标签；关闭后必须同时包含全部标签。</small></span></label>
       <span class="selectiondockcount" data-tag-selected>已选 0 个标签</span>
       <button type="button" data-tag-clear>清空</button>
       <button type="button" class="primary" data-tag-apply disabled>显示结果</button>
-    </div>`:'');
-  const countText=`${tagItems.length}${d.has_more?'+':''} 项`;
+    </div>`);
+  const filters=kind==='tags'?tagFilters():'';
   /* 筛选重跑不重画表头：输入框是同一个节点，焦点、光标位置和中文输入法正在组的字
-     才不会在 300 ms 后被换掉。表头里随查询变的只有计数一处，单独改它。 */
+     才不会在 300 ms 后被换掉。表头里随查询变的只有计数一处，单独改它；标签页的读数
+     住在浮层里，跟着浮层一起重画。 */
   if($('#indexFilters')){
-    $('#indexCount').textContent=countText;
     $('#indexFilters').innerHTML=filters;
+    if(people)$('#indexCount').textContent=countText;
     $('#indexBody').innerHTML=body;
     $('#indexMore').hidden=!d.has_more;
   }else $('#index').innerHTML=indexHeaderHtml(kind,q,countText)+`<div id="indexFilters">${filters}</div><div id="indexBody">${body}</div><button class="indexmore" id="indexMore" type="button" ${d.has_more?'':'hidden'}>载入更多</button>`;
+  // 外壳记号跟着内容走：下一次换档时靠它判断页头和浮层还在不在，值不对就整块重画。
+  $('#index').dataset.indexShell=kind;
   wireIndexControls(kind);
-  const wireIndexEntries=root=>root.querySelectorAll('[data-k]').forEach(b=>b.onclick=()=>{
+  scheduleStickySurfaces();
+  /* 在线这一档的人还没进账本，没有资料页可去：他名下那批东西全在关注页上，所以点开
+     等于「关注 · 这个人」，跟在线标签那一档同一条去路。其余条件一并清空——从名册点进来
+     问的是这个人的全部更新，不是「这个人 且 上次留在筛选条上的那几个标签」。 */
+  const wireIndexEntries=root=>{
+  root.querySelectorAll('[data-follow-author]').forEach(b=>b.onclick=()=>{
+    followTags=new Set();followProviders=new Set();followWorks=new Set();
+    followMediaView='videos';followFilter='';
+    followAuthors=new Set([b.dataset.followAuthor]);
+    $('#index').hidden=true;route(followViewPath());openFollow(false)});
+  root.querySelectorAll('[data-k]').forEach(b=>b.onclick=()=>{
     if(people){openEntity(b.dataset.kind,b.dataset.k);return}
     /* 在线标签只在关注页有意义——它标注的是还没入库的在线更新，拿去筛目录必然
        一条不中。所以直接进「关注 · 这个标签」，并且绕过多选：多选拼的是目录筛选。 */
@@ -7193,6 +7493,7 @@ async function openIndex(kind,q,push=true,refine=false){
       $('#index').hidden=true;route(followViewPath());openFollow(false);return}
     if(selectMode){const key=b.dataset.k;selectedIndexTags.has(key)?selectedIndexTags.delete(key):selectedIndexTags.add(key);paintTagIndexSelection();return}
     $('#index').hidden=true;state={...state,state:'',tag:b.dataset.k,tag_match:'all'};route(homePath());buildBars();load(true)});
+  };
   wireIndexEntries($('#indexBody'));
   if(kind==='tags'&&!onlineTags){
     const panel=$('#index').querySelector('[data-tag-selection]');
@@ -7210,8 +7511,10 @@ async function openIndex(kind,q,push=true,refine=false){
       indexOffset+=next.items.length;d.has_more=next.has_more;
       if(people){d.items.push(...next.items);const grid=$('#indexBody .igrid');
         grid.insertAdjacentHTML('beforeend',peopleHtml(next.items));wireIndexEntries(grid)}
-      else{d.items.push(...next.items);tagItems.push(...next.items);$('#indexBody').innerHTML=tagHtml(tagItems);wireIndexEntries($('#indexBody'));paintTagIndexSelection()}
-      $('#indexCount').textContent=indexOffset+(next.has_more?'+':'')+' 项';more.hidden=!next.has_more}
+      else{d.items.push(...next.items);tagItems.push(...next.items);$('#indexBody').innerHTML=tagHtml(tagItems);wireIndexEntries($('#indexBody'));
+        /* 分组多了几个首字，跳转那一排要跟上；浮层整块重画，读数也在里面。 */
+        $('#indexFilters').innerHTML=tagFilters();wireIndexControls(kind);paintTagIndexSelection()}
+      if(people)$('#indexCount').textContent=indexOffset+(next.has_more?'+':'')+' 项';more.hidden=!next.has_more}
     finally{if(requestSeq===indexRequestSeq)more.disabled=false}};
 }
 
@@ -7241,7 +7544,6 @@ function syncEntityFilterFrame(){
   /* 玻璃的坐标基准是这块外框，所以要等框搭好才量得到位置。两排本身在框搭好之前就
      接过了，那一次量到的是 null。 */
   syncViewGlide(false);
-  syncViewGlide(false,null,'media');
   scheduleStickySurfaces();
 }
 function syncEntityStateControls(kind,name,filters){
@@ -7948,14 +8250,14 @@ async function openEntity(kind,name,push=true){
          style:facePos(x.avatar_focus),focus:x.avatar_focus})}</span>
       <span class="nm">${esc(x.k)}</span></button>`).join('');
   const photoCount=photos&&!photos.error?(photos.total||0):0;
-  /* 艺人名册和视频、照片是这一页的三个互斥视图，共用一组按钮：它们回答的是同一个
+  /* 艺人名册、视频、照片是这一页的三个互斥视图，共用一组圆键：它们回答的是同一个
      问题，摆成两个控件只会各说各的。切换只重画下面那块，不重开这一页——名册已经随
      资料下来了，视频那一半本来也要请求。
 
      这一组排在整条筛选条的最左端，隔一道竖杠再是四枚观看状态、再一道才是标签。三段
      由粗到细：先定这一页现在摆的是哪一类东西，再定这一类里看哪一档，最后才是可加可
      不加的筛选。夹在视图和标签中间时它读起来像标签那排的第一枚，而它换掉的是整页
-     内容，不是给当前这批加一条筛选。 */
+     内容，不是给当前这批加一条筛选。只有一类东西时不出这一组：一枚孤零零的键没有可切的对象。 */
   const mediaToggle=(photoCount||roster.length)?mediaViewButtonsHtml({
     active:entityViewNow(kind),
     peopleValue:roster.length?'people':'',peopleCount:roster.length,
@@ -8004,12 +8306,17 @@ async function openEntity(kind,name,push=true){
           >${icon('plus')}<span>添加别名…</span></button></div></div>`;
   $('#index').dataset.entityKind=kind;$('#index').dataset.entityName=name;
   const people=kind==='performer'||kind==='creator';
-  $('#index').innerHTML=`<div class="entityhero"><div class="entityportraitwrap"><div class="entityportrait ${people?'':'square'}" data-fit-native="${company?'mark':'portrait'}">${image}<span>${esc(name.slice(0,1))}</span></div>${
-    people?'<span data-avatar-picker></span>':''}</div>
-      <div><div class="entitytitle"><h2>${esc(d.canonical_name)}</h2>${namePick}</div>
+  /* 资料卡按 Board 的 profile 卡排：一块 secondary 底、18px 圆角的卡，正文是头像加身份三行
+     （名字、别名与归属、外链），同台艺人收进卡底那条色阶带——那是这个人的附注，不是这一页
+     的正文；事务所的名册是正文，走筛选条左端圆键里那一档。卡外面依次是交集条、玻璃筛选条
+     和内容区，顶到底一条线。 */
+  $('#index').innerHTML=`<section class="entityhero" aria-label="资料">
+      <div class="entityprofile"><div class="entityportraitwrap"><div class="entityportrait ${people?'':'square'}" data-fit-native="${company?'mark':'portrait'}">${image}<span>${esc(name.slice(0,1))}</span></div>${
+        people?'<span data-avatar-picker></span>':''}</div>
+      <div class="entityidentity"><div class="entitytitle"><h2>${esc(d.canonical_name)}</h2>${namePick}</div>
         <div class="alias">${(d.display_aliases||[]).length?`${d.display_aliases.map(esc).join(' / ')} · `:''}<b>${d.asset_count.toLocaleString()}</b> 个视频${memberHtml}${agencyHtml}</div>
         ${links?`<div class="entitylinks">${links}</div>`:''}</div></div>
-    ${related?`<div class="entitymeta"><section aria-label="同台艺人"><div class="relatedpeople">${related}</div></section></div>`:''}
+      ${related?`<div class="entityfoot" aria-label="同台艺人"><div class="relatedpeople">${related}</div></div>`:''}</section>
     <div class="combo entitycombo"></div>
     <section class="entitytagbar" aria-label="媒体与标签">${mediaToggle}${mediaToggle?'<span class="sep" aria-hidden="true"></span>':''}<div class="filterscroll"><div class="viewpills entityviews" role="group" aria-label="观看状态">${VIEW_PILLS.map(v=>`<button type="button" class="pill" data-entity-state="${v.k}" aria-pressed="${(filters.state||'')===v.k}">${v.label}</button>`).join('')}<span class="sep" aria-hidden="true"></span></div><div class="tagscroll entitytags">${tags}</div></div></section>
     <div class="entitysection"></div>`;
@@ -8409,18 +8716,18 @@ function sortOptions(){
    箭头对辅助技术隐藏（`icon()` 自带 aria-hidden），无障碍名称播报的是「点下去会得到
    什么」而不是当前状态：Geist Table 的可排序表头就是这么分工的，当前状态由
    `aria-pressed` 和这枚箭头各自表达，名称留给下一步动作。 */
-function sortButtonHtml(key,label,current,dir,attr){
-  const on=current===key,next=nextSortState(key,current,dir);
-  const word=on?sortDirWord(key,dir):'';
+function sortButtonHtml(key,label,current,dir,attr,words=SORT_DIR_WORDS){
+  const on=current===key,next=nextSortState(key,current,dir,words);
+  const word=on?sortDirWord(key,dir,words):'';
   return `<button type="button" ${attr}="${key}" aria-pressed="${on}"${
-    next?` aria-label="按${label}${next.dir?sortDirWord(next.sort,next.dir):''}排序"`:''}>${label}${
+    next?` aria-label="按${label}${next.dir?sortDirWord(next.sort,next.dir,words):''}排序"`:''}>${label}${
     word?icon(dir==='asc'?'arrow-up':'arrow-down','sortdir'):''}</button>`;
 }
 /* 点未选中项＝换列并用该列的默认方向；点选中项＝翻方向。随机没有方向，重复点它
    什么都不做——换一批是它旁边那枚按钮的事。 */
-function nextSortState(key,current,dir){
-  if(key!==current)return{sort:key,dir:defaultSortDir(key)};
-  if(!SORT_DIR_WORDS[key])return null;
+function nextSortState(key,current,dir,words=SORT_DIR_WORDS){
+  if(key!==current)return{sort:key,dir:defaultSortDir(key,words)};
+  if(!words[key])return null;
   return{sort:key,dir:dir==='asc'?'desc':'asc'};
 }
 function javLayout(){
@@ -8596,11 +8903,11 @@ window.addEventListener('scroll',()=>{
   releaseHoverPreviews();
   clearTimeout(scrollT); scrollT=setTimeout(()=>{window.__scrolling=false},180);
 },{passive:true});
-/* 换了宽度就把两块玻璃各自重新落一次位：过了那道断点，这一排是不是住在横滚容器里
+/* 换了宽度就把那块玻璃重新落一次位：过了那道断点，这一排是不是住在横滚容器里
    会变，玻璃该落在哪一层跟着变，量出来的位置也跟着变。不重落的话它留在旧的那一层上，
    坐标还是按旧的算的，停在离按钮几百像素远的地方。 */
 window.addEventListener('resize',()=>{scheduleStickySurfaces();alignFollowImageControls();
-  syncViewGlide(false);syncViewGlide(false,null,'media')},{passive:true});
+  syncViewGlide(false)},{passive:true});
 
 $('#scrim').onclick=()=>openDrawer(false);
 
@@ -9415,7 +9722,7 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
     /* 直接进「已保存」这一档。openFollow(true) 会 route 回干净的 /follow 再照 URL
        推导，所以状态要先写进 URL，光设全局会被推回未看。 */
     $('#openSavedFollow').onclick=()=>{
-      followAuthors=new Set();followProviders=new Set();followTags=new Set();followMediaView='videos';
+      followAuthors=new Set();followProviders=new Set();followTags=new Set();followWorks=new Set();followMediaView='videos';
       followFilter='saved';route(followViewPath());openFollow(false)};
   }
   else if(g)g.onclick=async()=>{vv.hidden=false;g.remove();const mounted=await mountDetailPlayer(it,vv,true);stopAmbient=mountPlayerAmbient(vv);mounted?.one?.('dispose',stopAmbient)};
@@ -10029,6 +10336,7 @@ function openIndexRoute(kind,push,q=null){
   if(push){setSelectMode(false,true);return openIndex(kind)}
   const params=new URLSearchParams(location.search);
   if(kind==='tags')readTagIndexRoute(params);
+  if(kind==='performers')performerIndexScope=params.get('scope')==='online'?'online':'local';
   return openIndex(kind,q??(params.get('q')||''),false);
 }
 function readTagIndexRoute(params){

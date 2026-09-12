@@ -16,6 +16,7 @@ import logging
 import re
 from functools import partial
 from pathlib import Path
+from typing import Iterable
 from urllib.parse import quote, urlsplit
 
 import httpx
@@ -27,8 +28,9 @@ from fastapi.responses import (
 from starlette.staticfiles import StaticFiles
 
 from . import (
-    avatar_picker, avatar_provider, follow_assets, link_marks,
-    scraping_access, site_icons, subtitles, taste_history, web_settings,
+    avatar_face, avatar_picker, avatar_provider, follow_assets, link_marks,
+    scraping_access, site_icons, subtitles, taste_history, web_follow,
+    web_settings,
 )
 from .config import GENERATED_DIR
 from .follow import FollowSourceError
@@ -506,6 +508,141 @@ def source_icon(request: Request, provider: str = "", args: dict[str, str] = Dep
     path = follow_assets.cached_image(
         _asset_root(state), "icons", provider, _metadata_ttl(state),
         lambda: follow_assets.fetch_image(client, target))
+    return _asset_response(request, path)
+
+
+#: 题材头像的人脸探针。YuNet 的模型是个 232 KB 的 ONNX，首次用到时才去取；取不到就
+#: 一直回 None，那时圆标退回样式表里的默认取景——没网不该等于这一排一张图都没有。
+_WORK_FACE_PROBE = avatar_face.FaceProbe()
+
+
+#: 脸框至少要占画面长边这么多，才算这张图里看得见是谁。
+#:
+#: 数是从落盘那一档反推的：`icon_side()` 要求落盘的图里脸框有 `FACE_PX_IN_STORE` 个
+#: 像素，而默认存 `ICON_SIDE` 那么大——脸占到长边这个比例，正好一条线。低于它的图不
+#: 是「存小了」，是脸在画面里本来就只有那么点，存多大都改不了圆标里露出的是别的东西。
+#:
+#: 实测本库 74 个题材代表图，按这条线分开的两边正是「一眼认得出」和「认不出」：低于
+#: 它的六张，圆标里是一团暗部、一个后脑勺、一小块暗处的皮肤，和三张在暗红光里糊到认
+#: 不出的脸；高于它的没有一张落在人脸之外。检出分数挡不住这一类——那个后脑勺是 0.83。
+_WORK_ICON_FACE_SHARE = follow_assets.FACE_PX_IN_STORE / follow_assets.ICON_SIDE
+
+
+def _work_icon_targets(state, local: list[str], tag: str):
+    """这个题材可以拿来当代表图的地址，本库那几张在前。
+
+    后半截是生成器，本库这几张里挑得出脸就一个字节都不出网：`_pick_work_icon` 一找到
+    够大的脸就返回，站点那一趟根本不会被求值。走到那里的只有「本库这几张全都看不清」
+    ——那多半是这个题材在库里只有一两条更新，而站上同一个标签下有成千上万帖。
+    """
+    yield from local
+    seen = set(local)
+    for url in web_follow.work_icon_search_urls(state.web_contract, tag,
+                                                transport=state.http_transport):
+        if url not in seen:
+            seen.add(url)
+            yield url
+
+
+def _pick_work_icon(client, targets: Iterable[str]) -> tuple[bytes | None, dict | None]:
+    """按热度顺着候选找第一张看得清脸的图，返回落盘用的字节和人脸记录。
+
+    只取最热那一张的话，圆标里有一半是身体特写——最热的帖子常常就是特写。
+
+    「检出了脸」这一关太松，收下的常常不是脸：YuNet 在一张 3072×4096 的远景图上会给
+    出一个占长边百分之五、分数 0.69 的框，罩在肩背的纹身上，而圆标正是按这个框取景放
+    大的，于是圆里是一小块皮肤。所以判据是 `_WORK_ICON_FACE_SHARE`：脸得在画面里占到
+    那么大，不够就继续看下一张候选，不停在第一张。
+
+    全部候选都不够时退回其中脸最大的那张——它仍然是这几张里最接近一张头像的；连一张
+    脸都没检出才退回第一张取得到的图：没有脸的代表图仍然好过一个空圆。
+
+    检脸看的是站点那张高清封面，落盘的是缩过的那份：两件事要的尺寸不是一个数——
+    250px 的缩略图里一张脸只剩十几个像素，而显示出来只有 28px。
+
+    黑边在这三步之前就裁掉。站点上的 3D 封面常把 21:9 的画面压进 16:9 的帧里，上下
+    各留一道纯黑；那两道黑边跟着进圆标，圆里直接露出黑条，还把画面撑高、让 cover 把
+    脸缩得更小。裁完再检脸，坐标才落在这张图自己的坐标系里。
+    """
+    first: tuple[bytes | None, dict | None] = (None, None)
+    best: tuple[float, bytes | None, dict | None] = (0.0, None, None)
+    for target in targets:
+        body = follow_assets.fetch_image(client, target)
+        if not body:
+            continue
+        body = follow_assets.trim_letterbox(body)
+        record = _WORK_FACE_PROBE.on_bytes(body)
+        share = avatar_face.face_share(record)
+        if share >= _WORK_ICON_FACE_SHARE:
+            return _stored_icon(body, record)
+        if share > best[0]:
+            best = (share, body, record)
+        if first[0] is None:
+            first = (body, record)
+    body, record = (best[1], best[2]) if best[1] is not None else first
+    return _stored_icon(body, record) if body else (None, record)
+
+
+def _stored_icon(body: bytes, record: dict | None) -> tuple[bytes, dict | None]:
+    """缩到圆标那一档，并把记录里的源图像素换成落盘那张的。
+
+    存多大由 `icon_side` 按这张脸占画面多少来定，不是一个固定值：页面能放大到多少，
+    上限之一就是落盘那张里脸框有几个像素。
+
+    记录必须描述图旁边那个文件：页面拿 `naturalWidth` 核对脸框说的是不是同一张图，
+    对不上就退回几何居中。脸框本身是归一化的，比例缩放不动它；「这张脸有多少像素」
+    问的则是浏览器手里那张图，答案也只能是缩完之后的那个数。
+    """
+    small = follow_assets.shrink_image(body, follow_assets.icon_side(record))
+    size = follow_assets.image_size(small) if record else None
+    if size:
+        record = {**record, "px": [size[0], size[1]]}
+    return small, record
+
+
+@router.api_route("/work-icon", methods=["GET", "HEAD"])
+def work_icon(request: Request, work: str = "",
+              args: dict[str, str] = Depends(require_auth)):
+    """题材的代表图。
+
+    `work` 只是题材的身份，不是地址：服务端按它在账本里排出按热度排好的几个候选，
+    再核对图床主机是不是 `web_follow` 登记的那个。排这一步在缓存回调里做，本机那份
+    还新鲜时一行账本都不读；取回的字节照样要先能认成图片才落盘。
+
+    候选顺着往下取，停在第一张看得清脸的，判据见 `_pick_work_icon`。人脸记录跟着落盘
+    的那张图写在旁边，页面据它把取景挪到脸上、按脸框放大：圆标只有 28px，按几何中心
+    裁一张全身图出来常常只剩一截身子，而挪到哪、放多大都要看这张图里脸在哪、有多少
+    像素，猜不出来。
+    """
+    state = request.app.state
+    root = web_follow.work_root(work)
+    if not root:
+        return _asset_response(request, None)
+    client = state.http_transport.client
+    cache_root = _asset_root(state)
+    cached = follow_assets.cache_path(cache_root, "works", root)
+
+    picked: dict | None = None
+    replaced = False
+
+    def fetch():
+        nonlocal picked, replaced
+        with state.database.read_connection() as connection:
+            store = FollowStore(lambda: connection)
+            targets = web_follow.work_icon_urls(store, root)
+            tag = web_follow.work_icon_tag(store, root)
+        body, picked = _pick_work_icon(client, _work_icon_targets(state, targets, tag))
+        replaced = bool(body)
+        return body
+
+    path = follow_assets.cached_image(cache_root, "works", root,
+                                      _metadata_ttl(state), fetch)
+    if replaced:
+        # 换了图，旧的脸记录必须一起换：留着它页面会拿上一张的脸心给这一张取景，
+        # 而那在界面上和「这张图本来就该这么摆」看不出区别。
+        avatar_face.drop_sidecar(cached)
+        if path is not None and picked is not None:
+            avatar_face.write_sidecar(path, picked)
     return _asset_response(request, path)
 
 
