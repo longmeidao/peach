@@ -141,10 +141,19 @@ body.select-mode .selectionMark,.card.selected .selectionMark{display:grid}
 .card.pending-delete .deleteMark{display:flex}
 .card.pending-delete .poster,.card.pending-delete .hv,
 .card.pending-delete .hvframes{filter:grayscale(.9) brightness(.54);opacity:.68}
+/* 模糊层要跟着一起暗下去，否则待删卡片上只有两条留白还是亮的。这条自带 blur()，
+   `filter` 不能继承也不能叠加，只能把三个函数写在一起。 */
+.card.pending-delete .pic::before{filter:blur(26px) grayscale(.9) brightness(.27);opacity:.68}
 .card.pending-delete .meta{opacity:.58}
 .card.pending-delete:hover .meta{opacity:.76}
 .pic{position:relative;aspect-ratio:var(--card-ratio,16/9);background:#000;border-radius:var(--badge-radius);
   overflow:hidden;display:flex;align-items:center;justify-content:center}
+/* 正封窄于卡片时两侧的留白，垫的是同一张封面的模糊放大版；`--cover-blur` 由
+   `posterPanel` 在图片加载完写进来，没写就是 `none`，这层什么都不画。
+   伪元素排在所有子元素之前，不用 z-index 就压在封面底下。往外扩一圈是因为
+   `blur()` 会让边缘向内淡出，留白那两条正好贴着边——扩出去的部分由 `overflow` 切掉。 */
+.pic::before{content:"";position:absolute;inset:-8%;pointer-events:none;
+  background:var(--cover-blur,none) center/cover no-repeat;filter:blur(26px) brightness(.5)}
 /* 预览图：单格，contain 放进固定 16:9 框 —— 不拉伸、不裁切、不改框体大小 */
 .poster{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;
   display:block;background:#000}
@@ -154,7 +163,7 @@ body.select-mode .selectionMark,.card.selected .selectionMark{display:grid}
   opacity:0;transition:opacity .2s}
 .hv.on{opacity:1}
 /* 远端源的悬停扫视层。几何和 `.hv` 逐字一致：不透明黑底盖掉下面的封面，接触印相
-   的格子在里面 contain。大图版式的容器是 0.7 竖比例，16:9 的格子于是居中、上下留黑。
+   的格子在里面 contain。大图版式的容器是 0.75 竖比例，16:9 的格子于是居中、上下留黑。
    不写 z-index，和 `.hv` 一样靠 DOM 次序压在 `.poster` 之上。 */
 img.hvframes{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;
   background:#000;display:block}

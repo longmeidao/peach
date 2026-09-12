@@ -4927,13 +4927,18 @@ function ia(e, t) {
 function aa(e, t) {
 	let n = Number(e?.px?.[0]), r = Number(e?.px?.[1]), i = Number(e?.x0);
 	if (!(n > 0 && r > 0 && t > 0) || !Number.isFinite(i)) return null;
-	let a = n - Math.min(n, r * t);
-	return a > 0 ? Math.round(Math.min(100, Math.max(0, i / a * 100)) * 100) / 100 : null;
+	let a = Math.min(1, Math.max(0, i / n)), o = n / r / t, s = (1 - a) * o;
+	if (!(s > 0)) return null;
+	let c = s <= 1 ? (1 - s) / 2 - a * o : 1 - o, l = (e) => Math.round(e * 1e4) / 100;
+	return {
+		clip: l(a),
+		left: l(c)
+	};
 }
 function oa(e, t) {
 	e.querySelectorAll("img[data-jav-image]").forEach((e) => {
 		let n = e.dataset.javCover || "", r = e.dataset.javThumb || "", i = !!(n && (ra(t) === "cover" || !r)), a = i ? n : r;
-		e.classList.toggle("cover", i), e.classList.toggle("whole", i && e.dataset.javImageLayout !== "big"), e.classList.toggle("front", i && e.dataset.javImageLayout === "big"), e.removeAttribute("style"), a && e.getAttribute("src") !== a && (e.src = a);
+		e.classList.toggle("cover", i), e.classList.toggle("whole", i && e.dataset.javImageLayout !== "big"), e.classList.toggle("front", i && e.dataset.javImageLayout === "big"), e.classList.remove("panel"), e.removeAttribute("style"), e.closest(".pic")?.style.removeProperty("--cover-blur"), a && e.getAttribute("src") !== a && (e.src = a);
 	});
 }
 //#endregion
@@ -5000,4 +5005,4 @@ function fa(e) {
 	t && (t.controller.abort(), la.delete(e), t.painted && Me(null, e));
 }
 //#endregion
-export { Tt as TASTE_GUIDE_KEY, Cn as activityChartsHtml, Gi as boardPageSkeleton, Fe as boundedPreference, Yi as catalogEmptyHtml, Ji as catalogSuggestions, Ii as clampPage, Ct as cleanupSkeletonHtml, xt as cloudLocations, St as cloudPreferenceLocations, Ei as createReviewSelection, _n as creatorSankeyHtml, Be as distributionChart, qi as emptyCatalogLayout, Wi as entitySkeletonHtml, mt as followJobProgress, ki as groupReviewRows, bi as identityEvidenceHtml, jt as initBoardControls, da as islandMounted, ca as islandNames, ia as javImageKind, ft as jobActivityHtml, ze as jobProgressHtml, Ri as matchesFaceSource, Hi as mountAvatarPicker, kt as mountBoardStatePreview, ua as mountIsland, Le as mountNumberSetting, zi as nativeImageFit, ra as normalizeJavImage, ta as normalizeJavLayout, na as normalizeJavPreferences, Fi as pageCount, Li as paginationHtml, aa as posterBoxAnchor, Ne as preferredDirection, He as radarChart, bn as radialCardHtml, Ve as rankedChart, _i as refreshStore, ea as resourceScanHtml, yi as reviewImageHtml, wi as selectGroup, Si as selectRange, Ci as selectionSummary, Xi as sidebarHasCatalogContent, En as sidebarSectionHtml, Qi as sidebarTagCounts, Re as statCardBody, gi as storeNames, At as syncBoardRange, oa as syncJavImages, Ie as syncNumberSetting, Ti as syncSelectionToolbar, Zi as syncSidebarSurface, wt as tasteHistoryGuideHtml, kn as transitionTheme, Ui as unmountAvatarPicker, fa as unmountIsland, Di as updateReviewSticky, pt as watchJob, wn as wireActivityCharts, vn as wireCreatorSankey, Lt as wireExpandableRanks, It as wireGrowingCharts, xn as wireRadialCards, xi as wireReviewPictures, Ni as wireReviewSelection, Dn as wireSidebarGroups, Et as wireTasteHistoryGuide };
+export { Tt as TASTE_GUIDE_KEY, Cn as activityChartsHtml, Gi as boardPageSkeleton, Fe as boundedPreference, Yi as catalogEmptyHtml, Ji as catalogSuggestions, Ii as clampPage, Ct as cleanupSkeletonHtml, xt as cloudLocations, St as cloudPreferenceLocations, Ei as createReviewSelection, _n as creatorSankeyHtml, Be as distributionChart, qi as emptyCatalogLayout, Wi as entitySkeletonHtml, mt as followJobProgress, ki as groupReviewRows, bi as identityEvidenceHtml, jt as initBoardControls, da as islandMounted, ca as islandNames, ia as javImageKind, ft as jobActivityHtml, ze as jobProgressHtml, Ri as matchesFaceSource, Hi as mountAvatarPicker, kt as mountBoardStatePreview, ua as mountIsland, Le as mountNumberSetting, zi as nativeImageFit, ra as normalizeJavImage, ta as normalizeJavLayout, na as normalizeJavPreferences, Fi as pageCount, Li as paginationHtml, aa as panelFrame, Ne as preferredDirection, He as radarChart, bn as radialCardHtml, Ve as rankedChart, _i as refreshStore, ea as resourceScanHtml, yi as reviewImageHtml, wi as selectGroup, Si as selectRange, Ci as selectionSummary, Xi as sidebarHasCatalogContent, En as sidebarSectionHtml, Qi as sidebarTagCounts, Re as statCardBody, gi as storeNames, At as syncBoardRange, oa as syncJavImages, Ie as syncNumberSetting, Ti as syncSelectionToolbar, Zi as syncSidebarSurface, wt as tasteHistoryGuideHtml, kn as transitionTheme, Ui as unmountAvatarPicker, fa as unmountIsland, Di as updateReviewSticky, pt as watchJob, wn as wireActivityCharts, vn as wireCreatorSankey, Lt as wireExpandableRanks, It as wireGrowingCharts, xn as wireRadialCards, xi as wireReviewPictures, Ni as wireReviewSelection, Dn as wireSidebarGroups, Et as wireTasteHistoryGuide };
