@@ -48,7 +48,7 @@ export { paginationHtml, pageCount, clampPage } from './pagination';
 export { nativeImageFit, matchesFaceSource } from './native-image';
 export { mountAvatarPicker, unmountAvatarPicker } from './avatar-picker';
 export { entitySkeletonHtml } from './entity-skeleton';
-export { boardPageSkeleton } from './board-skeleton';
+export { boardPageSkeleton, detailSkeletonHtml } from './board-skeleton';
 export { catalogSuggestions, catalogEmptyHtml, emptyCatalogLayout } from './catalog-onboarding';
 export { syncSidebarSurface, sidebarTagCounts, sidebarHasCatalogContent } from './sidebar';
 export { cleanupSkeletonHtml, cloudLocations, cloudPreferenceLocations, tasteHistoryGuideHtml, wireTasteHistoryGuide, TASTE_GUIDE_KEY } from './management';

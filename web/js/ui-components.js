@@ -318,7 +318,7 @@ export function loadingDotsHtml(label='正在处理', {className=''}={}){
 /** Geist Skeleton: reserve a large content region while its structure is loading. */
 /* `count` 只对 cards 生效：块数是骨架说出口的结构预告，六块对上的是海报网格，
    而行政界面往往只有两三个大区。多画的块加载完就消失，那不是占位是误报。 */
-export function skeletonHtml(label='正在读取内容',{className='',variant='panel',count=6,fill=true}={}){
+export function skeletonHtml(label='正在读取内容',{className='',variant='panel',count=6,fill=true,gridClass=''}={}){
   const kind=new Set(['panel','cards','dashboard']).has(variant)?variant:'panel';
   const body=kind==='cards'
     ?Array.from({length:Math.max(1,count)},
@@ -340,7 +340,7 @@ export function skeletonHtml(label='正在读取内容',{className='',variant='p
   return `<div class="skeletonpanel skeleton-${kind}${className?` ${esc(className)}`:''}"
     data-skeleton="${esc(kind)}${className?`/${esc(className)}`:''}"${kind==='cards'&&fill?' data-fill=""':''}
     role="status" aria-label="${esc(label)}"><span class="sr-only">${esc(label)}</span>
-    <div aria-hidden="true">${body}</div></div>`;
+    <div${gridClass?` class="${esc(gridClass)}"`:''} aria-hidden="true">${body}</div></div>`;
 }
 
 /** 索引占位复用最终网格、头像和词表的尺寸。 */

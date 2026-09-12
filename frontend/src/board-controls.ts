@@ -82,7 +82,7 @@ export function wireBoardSegments(root:ParentNode) {
   const groups=[...root.querySelectorAll<HTMLElement>(selector)];
   if(root instanceof HTMLElement&&root.matches(selector))groups.push(root);
   groups.forEach(group=>{
-    if(group.hasAttribute('data-board-segments'))return;
+    if(group.hasAttribute('data-board-segments')||group.closest('[data-skeleton]'))return;
     group.dataset.boardSegments='true';
     const thumb=document.createElement('span');thumb.className='board-segment-thumb';thumb.setAttribute('aria-hidden','true');group.prepend(thumb);
     /* 底板换位跟筛选条上那块玻璃是同一件事——「当前是这一个」从一处挪到另一处——所以

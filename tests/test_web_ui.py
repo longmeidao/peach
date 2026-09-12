@@ -3185,8 +3185,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(
             "  loadRequestSeq++;listLoading=false;$('#combo').innerHTML='';\n"
             "  hideDiscoveryBars();")
-        self.assertEqual(self.page.count("hideDiscoveryBars();"), 4,
-                         "管理页、索引列表、实体资料页和中央清理函数各调一次，收起动作本身只写一处")
+        self.assertEqual(self.page.count("hideDiscoveryBars();"), 5,
+                         "管理页、索引列表、实体资料页、详情页和中央清理函数各调一次，收起动作本身只写一处")
 
     def test_a_narrow_state_falls_back_to_the_whole_library_for_the_top_tiers(self):
         """状态页收窄到聚合为空时，顶部三层退回全库口径，不整块消失。
@@ -7246,7 +7246,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('<div class="followhead"><h2 class="pagetitle">关注</h2></div>')
         # 第一次进这一页铺整张骨架；已经在页上、只是换一档筛选或排序的话，骨架只盖
         # 浮层下面那块列表——页头、两排头像和玻璃此刻就能给出最终样子，它们没在等。
-        self.assertPageContains("placeholder:partial?'':followSkeletonHtml('正在读取关注内容')})")
+        self.assertPageContains("placeholder:partial?'':renderForDetail?detailSkeletonHtml():followSkeletonHtml('正在读取关注内容')})")
         self.assertPageContains("const list=$('#stats').querySelector('.follow .followlist');\n"
                                 "  const partial=!!list&&!renderForDetail;")
         self.assertPageContains("list.outerHTML=pageSkeletonHtml('正在读取关注内容',\n"
@@ -7299,7 +7299,7 @@ class WebUiSourceTests(unittest.TestCase):
             self.assertPageContains(f"managementPlaceholder({path})", "路由没有取那份定义")
         # /resource-sync 只是数据管理页的锚点，启动占位得是数据管理那张。
         self.assertPageContains("'/resource-sync':()=>MANAGEMENT_PLACEHOLDERS['/data-cleanup']()")
-        self.assertPageContains("stats.innerHTML=path.startsWith('/follow')&&path!=='/follow-manage'")
+        self.assertPageContains("stats.innerHTML=path.startsWith('/follow/item/')?detailSkeletonHtml():path.startsWith('/follow')&&path!=='/follow-manage'")
         self.assertCode('''data-skeleton="${esc(kind)}${className?`/${esc(className)}`:''}"''')
         self.assertPageContains(
             "const painted=$('#stats').querySelector('[data-skeleton]')?.dataset.skeleton||''")
@@ -7324,7 +7324,7 @@ class WebUiSourceTests(unittest.TestCase):
             "const pageSkeletonHtml=(label,{cards=false,className='',variant='',count,fill}={})=>")
         self.assertPageContains("skeletonHtml(label,{variant:variant||(cards?'cards':'panel'),className,")
         self.assertPageContains(
-            "export function skeletonHtml(label='正在读取内容',{className='',variant='panel',count=6,fill=true}={})")
+            "export function skeletonHtml(label='正在读取内容',{className='',variant='panel',count=6,fill=true,gridClass=''}={})")
         self.assertPageContains("?Array.from({length:Math.max(1,count)},")
         # 版式：一列对上 .followmanage，宽度也跟它一样是 812px 居中。
         self.assertPageContains(
@@ -10430,7 +10430,7 @@ class WebUiSourceTests(unittest.TestCase):
         会把刚打开的这一屏详情一起收掉。
         """
         self.assertPageContains("function fillIdleCatalog()")
-        self.assertPageContains("if(!grid.querySelector('.catalog-skeleton'))return;")
+        self.assertPageContains("if(!grid.querySelector('.catalog-skeleton')&&!$('#stage').querySelector('[data-skeleton=\"detail\"]'))return;")
         self.assertPageContains("void load(false);")
         self.assertPageContains("if(!returnSurfaceReady)fillIdleCatalog();")
         self.assertPageContains("if(reset){barsContext={type:'home',filters:state};"
