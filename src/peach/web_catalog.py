@@ -353,7 +353,7 @@ def q_items(contract: WebContract, args):
         attach_jav_display_fields(r, r.get("tags", ()), r.pop("_entity_kinds", ()))
         if r["has_cover"]:
             r["cover_frame"] = contract.cover_frame(r.get("code"))
-            # 竖版位置要的是一个框，不是锚点：横版封套里 2:3 那一块由离线脚本算好
+            # 竖版位置要的是一个框，不是锚点：横版封套里正封那一块由离线脚本算好
             # 写在边车里，没算过或本来就不该裁就是 null，版式退回整张封面。
             r["poster_box"] = contract.poster_box(r.get("code"))
         r.pop("snapshot_path", None)
