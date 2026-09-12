@@ -6244,7 +6244,7 @@ function followCredentialRow(row){
     :`<p>${esc(row.why)}${row.where?` <a class="fcredget externallink" href="${esc(row.where)}" target="_blank" rel="noreferrer noopener">去取${icon('external-link','externalmark')}</a>`:''}</p>
       ${row.howto?`<p>${esc(row.howto)}</p>`:''}
       <form class="fcredform" data-cred-form="${esc(row.provider)}">${fields}
-        <div class="fcredactions"><button type="submit">保存</button>
+        <div class="fcredactions"><button type="submit" class="primary">保存</button>
           ${configured?`<button type="button" class="danger" data-cred-clear="${esc(row.provider)}">清除</button>`:''}
           <span data-cred-state aria-live="polite"></span></div></form>
       ${(row.shared_fields||[]).length?`<p class="fnote">${esc(row.shared_fields.join('、'))} 是从共享副本回填的，本机没有单独存。清除会把两边一起删。</p>`:''}
@@ -6808,7 +6808,7 @@ function renderFollowPicks(results){
   const total=results.reduce((n,row)=>n+(row.candidates||[])
     .filter(c=>!c.known && srcChecked(c.provider_label||'')).length,0);
   box.innerHTML=`<div class="fpicks"><div class="fpickhead"><h3>查找结果</h3></div>${blocks}
-    ${total?`<div class="fpickactions"><button data-pick-add>添加选中</button>
+    ${total?`<div class="fpickactions"><button class="primary" data-pick-add>添加选中</button>
       <button data-pick-cancel>取消</button><span data-pick-state aria-live="polite"></span></div>`
       :'<div class="fpickactions"><button data-pick-cancel>关闭</button></div>'}</div>`;
   box.scrollIntoView({block:'nearest',behavior:'smooth'});

@@ -2,7 +2,11 @@
 .insightpage,.tastepage{width:min(1100px,100%);margin:0 auto;padding:0 0 48px;min-width:0}.statsdashboard{display:grid;gap:16px}
 .insighttoolbar,.tastehead{min-height:40px;display:flex;align-items:center;justify-content:space-between;gap:10px 14px;flex-wrap:wrap}
 .insighttoolbar p{margin:0;color:var(--muted);font-size:var(--fs-xs)}
-.tasteactions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-left:auto}.tasteactions>.gselect>.gselectfield{height:36px;border:1px solid var(--field-ring);border-radius:var(--control-radius);background:var(--ground);color:var(--ink);padding:0 11px;font:inherit;font-size:var(--fs-sm)}
+/* 这枚下拉不自己挑面色、边色和字号：站内所有输入类控件的那一面由 Board 那一层一处给出，
+   白面配 `--line` 的线、正文字号。这一页的底是 `--page`，自己填 `--ground` 就是白底上摆
+   一块灰，而同一排右边「读取浏览器历史」是白的——两颗并排的控件，一颗看着能按，一颗
+   看着停用；字号小一档也是同一回事，两颗一起读时先注意到的是它们不一样。 */
+.tasteactions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-left:auto}.tasteactions>.gselect>.gselectfield{height:36px;color:var(--ink);padding:0 11px}
 .insightswitch{display:inline-flex;padding:3px;border:1px solid var(--line-soft);border-radius:var(--surface-radius);background:var(--ground)}.insightswitch label{cursor:pointer}.insightswitch input{position:absolute;opacity:0;pointer-events:none}.insightswitch span{height:30px;display:grid;place-items:center;padding:0 12px;border-radius:var(--control-radius);color:var(--muted);font-size:var(--fs-sm)}.insightswitch input:checked+span{background:var(--picked);color:var(--ink);font-weight:500}.insightswitch input:focus-visible+span{outline:2px solid var(--tungsten);outline-offset:-2px}
 /* 下限按内容实测取：一格里最宽的是 24px 的数字和那行 12px 的补充说明，加左右
    各 16px 内边距是 140px。四格因此到 645px 视口仍是一整条，再窄由下面的手机

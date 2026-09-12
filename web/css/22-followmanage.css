@@ -161,8 +161,10 @@
   white-space:nowrap;transition:color .15s ease-in-out,background-color .15s ease-in-out}
 .fbtn:hover:not(:disabled){background:color-mix(in srgb,var(--ink) 8%,var(--ground))}
 .fbtn:disabled{background:var(--sunk);color:var(--muted);cursor:not-allowed}
-.fbtn.primary{background:var(--ink);color:var(--ground);font-weight:500;box-shadow:none}
-.fbtn.primary:hover:not(:disabled){background:color-mix(in srgb,var(--ink) 88%,var(--ground));border-color:color-mix(in srgb,var(--ink) 88%,var(--ground));color:var(--ground)}
+/* 强调档那一面归 `board.css` 的 Board primary 一处，跟 `.geist-button.primary` 一样不在
+   这里另写：留一份 Geist 的墨色实底，它的 `:hover:not(:disabled)` 比 Board 那条静止规则
+   还重一个类，压上去整颗跳成墨色、还描一圈同色的边——「管理关注」上那道黑边就是它。 */
+.fbtn.primary{font-weight:500}
 /* 去边框那一条只针对动作按钮。这两枚不是动作：一枚点开是来源筛选菜单，一枚是排序
    方向的开关，它们跟旁边的下拉触发器是同一组控件，共用输入框那圈线。少了线，
    「全部来源」在白面上只剩一行字，升降序那枚只剩一个箭头浮在页面上。 */
@@ -353,14 +355,16 @@ details.fcred{display:block;min-width:0}
 .fcredfield input:focus-visible{outline:0;box-shadow:inset 0 0 0 2px var(--color-border-button-active)}
 /* 「去取」指向站外的凭据页，后缀那枚外链箭头说明这一下会离开 Peach。 */
 .fcredactions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:0}
-.fcredactions button{height:32px;box-sizing:border-box;padding:0 14px;border-radius:var(--control-radius);
-  border:0;background:var(--ink);color:var(--ground);font-size:var(--fs-md);font-weight:500;
-  font-family:inherit;cursor:pointer;
-  transition:background-color .15s ease-in-out,color .15s ease-in-out}
-.fcredactions button:hover:not(:disabled){background:color-mix(in srgb,var(--ink) 88%,var(--ground));color:var(--ground)}
-.fcredactions button:disabled{background:var(--sunk);color:var(--muted);cursor:not-allowed}
-/* 上面三条是「保存」那颗主动作。「清除」会连着共享副本一起删，它走 `.danger`：
-   红、悬停深一档和禁用灰全部来自危险档，这里不给它写第二份。 */
+/* 盒子要留在这里：强调档和次级档的那副盒子由 Board 那一层按类名发，`.danger` 两档都不在
+   它的名单上，这条一撤，「清除」就掉回浏览器默认的尺寸和字体，跟旁边的「保存」不同高。 */
+.fcredactions button{box-sizing:border-box;height:36px;padding:0 12px;border:0;border-radius:var(--control-radius);font-family:inherit;font-size:var(--fs-md);font-weight:500;cursor:pointer}
+/* 停用档跟 `.geist-button.primary:disabled` 逐项相同：一块灰面加一圈 1px 环。环不能省，
+   那一面和它坐着的卡片都是 `--sunk` 一类的灰，没有环就连轮廓都读不出来。 */
+.fcredactions button:disabled{background:var(--sunk);color:var(--muted);box-shadow:0 0 0 1px var(--line-soft);cursor:not-allowed}
+/* 「保存」带 `.primary`，那一面和站内每一颗主按钮同一条规则。「清除」会连着共享副本
+   一起删，它走 `.danger`：红、悬停深一档和禁用灰全部来自危险档。两档都不在这里
+   写第二份面色——这一层的 `:hover` 比 Board 那条静止规则重一个类，写了就是静止一套、
+   悬停另一套。 */
 .fcredactions [data-cred-state]{font-size:var(--fs-xs);color:var(--muted)}
 
 @media (max-width:640px){
@@ -429,12 +433,10 @@ details.fcred{display:block;min-width:0}
 .fpickactions{display:flex;gap:8px;align-items:center;flex-wrap:nowrap;min-width:0;margin-top:10px}
 .fpickactions button{border:0;border-radius:var(--control-radius);box-shadow:0 0 0 1px var(--line-soft);background:var(--ground);color:var(--ink-2);padding:6px 14px;font-size:var(--fs-xs);cursor:pointer}
 .fpickactions button:hover:not(:disabled){background:var(--hover);color:var(--ink)}
-.fpickactions [data-pick-add]{background:var(--ink);color:var(--ground);box-shadow:none}
-/* 主动作的悬停必须自己写文字色：同一组里更宽的 `.fpickactions button:hover` 把
-   文字提到 --ink，而它的 color 在这条只声明 background 的规则里没有对手，浅色
-   实底上就落成白字白底。Geist Button 的 primary 悬停只把 #EDEDED 掉一档到 #ccc，
-   文字色不动。 */
-.fpickactions [data-pick-add]:hover:not(:disabled){background:color-mix(in srgb,var(--ink) 88%,var(--ground));color:var(--ground)}
+/* 「添加选中」带 `.primary`，那一面和站内每一颗主按钮同一条规则，压上去不变样。
+   在这里另写一份实底加悬停的话，悬停那条比 Board 的静止规则重一个类，同一颗按钮的
+   静止和悬停就分别由两处给出；而上面那条更宽的 `.fpickactions button:hover` 还会把
+   文字提到 --ink，实底上落成白字白底。 */
 .fpickactions button:disabled{background:var(--sunk);color:var(--muted);cursor:not-allowed}
 .fpickactions [data-pick-state]{display:flex;align-items:center;min-width:0;overflow:hidden;
   white-space:nowrap;text-overflow:ellipsis;font-size:var(--fs-xs);color:var(--muted)}

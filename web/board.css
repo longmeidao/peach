@@ -25,7 +25,10 @@
 /* 这块玻璃扣在一条 10px 圆角的按钮上，跟着它走；`.navglide` 的默认 8px 是给筛选条上
    那排药丸的。 */
 .settingscard.settingscard>.board-local-nav>.navglide{border-radius:10px}
-.settingscard.settingscard .settingshead{grid-column:2;grid-row:1;padding:32px 32px 12px;background:transparent;border:0}
+/* 标题和下面那一组之间留 24px：这一栏没有分隔线也不吸顶，标题与内容之间只剩这一段
+   留白在说「上面那行是这一页的名字」。12px 和组内两行之间的间距是同一个量级，读下来
+   标题像是第一行设置。 */
+.settingscard.settingscard .settingshead{grid-column:2;grid-row:1;padding:32px 32px 24px;background:transparent;border:0}
 .settingscard .settingshead h2{font-size:20px;font-weight:500;line-height:28px}
 .settingscard .settingshead button,.avatarpick-close{width:24px;height:24px;border-radius:50%;background:var(--surface)}
 .settingscard .settingshead button svg,.avatarpick-close svg{width:16px;height:16px}
@@ -374,8 +377,9 @@ body{background:var(--page)}
 .settingscard,.drawer{box-shadow:0 12px 40px #0000000d}
 .settingscard{border:1px solid var(--line)}
 .gridstack .card:not(.junkcard){background:transparent}
-.geist-button.primary:not(:disabled),.tagselection button.primary:not(:disabled){background:var(--board-blue);color:#fff;border:1px solid #2563eb;box-shadow:inset 0 1px 1px #ffffff50,0 1px 2px #00000016}
-.geist-button.primary:hover:not(:disabled),.tagselection button.primary:hover:not(:disabled){background:#2563eb;color:#fff}
+/* 强调档不写在这一段：它那一面连同悬停归 `body :is(…).primary` 一处。在这里再写一份
+   的话，静止那条会被后面那条压掉、悬停那条却比它重一个类，一颗按钮的静止和悬停就由
+   两处规则分别给出。 */
 .geist-input,.geist-select,.configfield input,.search{box-shadow:0 1px 2px #00000004}
 .configfieldset,[data-geist-fieldset]{border-radius:var(--surface-radius);overflow:hidden}
 @media(prefers-color-scheme:dark){:root:not([data-theme]){--page:#111;--ground:#1c1c1c;--surface:#232323;--sunk:#171717;--ink:#fafafa;--ink-2:#d4d4d4;--muted:#a3a3a3;--line:#383838;--line-soft:#303030;--inset:#303030;--picked:#303030;--hover:rgba(255,255,255,.07)}}
@@ -933,7 +937,7 @@ body,.disp{font-family:var(--board-font);letter-spacing:0}body{font:var(--board-
 /* 悬停只抬填充，那圈线一步不动：按钮静止态已经带一圈 1px，悬停再把它加深，
    鼠标扫过一排次级键就是一排边框忽明忽暗，而键本身并没有变化。 */
 .geist-button:hover:not(:disabled),.fbtn:hover:not(:disabled),.resourceaction:hover:not(:disabled){background-color:var(--color-background-primary-hover);color:var(--color-text-primary)}
-.geist-button.primary,.geist-button.primary:hover:not(:disabled),.tagselection button.primary,.tagselection button.primary:hover:not(:disabled){background:var(--board-blue);color:var(--color-text-white);transition:filter .15s ease}.geist-button.primary:hover:not(:disabled),.tagselection button.primary:hover:not(:disabled){filter:brightness(1.08)}
+/* 强调档那一面连同悬停只在下面 `body :is(…).primary` 一处给出。 */
 .geist-button.danger:hover:not(:disabled),.fbtn.danger:hover:not(:disabled),.resourceaction.danger:hover:not(:disabled){background:var(--drop);color:#fff}
 @media(max-width:760px){.pagetitle,.listtitle,body #manageTitle,.index .ihead h2,.indexheading{font:var(--board-figure)}input.geist-input,.configfield input,.geist-search input{font-size:16px}}
 
@@ -961,8 +965,13 @@ body .pill:hover,body .brandpill:hover{border-color:var(--field-ring)}
 body .index .index-tags .tg:hover{border-color:color-mix(in srgb,var(--tag-color) 32%,transparent)}
 body .entitylinks a:hover{border-color:var(--line)}
 body :is(.geist-button,.fbtn,.resourceaction,.fcredactions button,.fpickactions button,.batchbar button,.reviewpickhead button,.tagselection button):not(.primary,.danger,.error,.warning):is(:disabled,[aria-disabled=true]){background:var(--ground);border-color:var(--line);color:var(--muted);box-shadow:none}
-body :is(.geist-button,.fbtn,.resourceaction,.tagselection button).primary:not(:disabled){background:var(--board-blue);border:1px solid transparent;color:#fff;box-shadow:0 1px 2px #0000000d;transition:filter .15s ease}
-body :is(.geist-button,.fbtn,.resourceaction,.tagselection button).primary:hover:not(:disabled){background:var(--board-blue);color:#fff;filter:brightness(1.08)}
+/* 强调档全站一副面：渐变、透明边、shadow-xs、白字，尺寸归下面那条。压上去把渐变提亮
+   一档（blue-400→blue-600），边和阴影一动不动——跟危险档那两条是同一个写法。这一档是
+   Peach 的主动差异：2026-09-12 在 boardui.com/components/button 实测，上游的 primary
+   没有悬停态（10 颗里没有一颗带 `hover:` 的类，注册表只在 secondary 和 ghost 上声明
+   悬停），但一排按钮里压着的那颗毫无反应，鼠标停在哪颗就读不出来。 */
+body :is(.geist-button,.fbtn,.resourceaction,.tagselection button,.reviewactions button,.fcredactions button,.fpickactions button).primary:not(:disabled){background:var(--board-blue);border:1px solid transparent;color:#fff;box-shadow:0 1px 2px #0000000d;transition:background-color .15s ease,border-color .15s ease,box-shadow .15s ease,color .15s ease}
+body :is(.geist-button,.fbtn,.resourceaction,.tagselection button,.reviewactions button,.fcredactions button,.fpickactions button).primary:not(:disabled):hover{background:var(--board-blue-hover)}
 body button.danger:not(.frowicon):not(:disabled){background:linear-gradient(180deg,#ff3347,#e60012);border:1px solid transparent;color:#fff;box-shadow:0 1px 2px #0000000d;transition:filter .15s ease}
 body button.danger:not(.frowicon):hover:not(:disabled){background:linear-gradient(180deg,#ff6471,#ff3347);filter:none;color:#fff}
 .followmanage .fbtn.fmanagedir{width:36px;padding:0}.followmanage .faliasform :is(input,.fbtn){height:36px;min-height:36px}.followmanage .frowicon{width:32px;height:32px;border:1px solid var(--line);border-radius:8px;background:var(--surface);box-shadow:0 1px 2px #0000000d}
@@ -1059,7 +1068,7 @@ body :is(.sbadge,.faliasbadge,.tasteconfidence,.board-chip,.badge){display:inlin
 body :is(.sbadge.ok,.board-chip.success){background:color-mix(in srgb,#84cc16 16%,var(--color-background-primary-default));color:#4d7c0f}body :is(.sbadge.error,.board-chip.error){background:color-mix(in srgb,#f43f5e 12%,var(--color-background-primary-default));color:#e11d48}.sbadge i,.tasteconfidence i{display:none}
 .fprovider{display:flex;align-items:center;gap:6px;flex-wrap:wrap}.fprovider .sbadge{flex:none}.followmanage .fsource.frow{grid-template-columns:20px minmax(120px,1fr) minmax(100px,auto) auto auto}
 .board-sankey-card :is([data-flow-node],[data-flow-source]){outline:none}.board-sankey-card :is([data-flow-node],[data-flow-source]):focus-visible{outline:2px solid var(--color-border-focus-ring);outline-offset:3px}
-.board-button-group{display:inline-flex;align-items:center;overflow:hidden;border:1px solid var(--color-border-button-default);border-radius:10px;background:var(--color-background-primary-default);box-shadow:0 1px 2px #0000000d}.board-button-group>button{height:34px;padding:0 12px;border:0;border-radius:0;box-shadow:none;background:transparent;color:var(--color-text-secondary);font:var(--board-body)}.board-button-group>button+button{border-left:1px solid var(--color-border-button-default)}.board-button-group>button:is(:hover,[aria-pressed=true]){background:var(--color-background-primary-hover);color:var(--color-text-primary)}
+.board-button-group{display:inline-flex;align-items:center;overflow:hidden;border:1px solid var(--color-border-button-default);border-radius:10px;background:var(--color-background-primary-default);box-shadow:0 1px 2px #0000000d}.board-button-group>button{height:34px;padding:0 12px;border:0;border-radius:0;box-shadow:none;background:transparent;color:var(--color-text-secondary);font:var(--board-body)}.board-button-group>button+button{border-left:1px solid var(--color-border-button-default)}.board-button-group>button:is(:hover,[aria-pressed=true]){background:var(--control-hover);color:var(--color-text-primary)}
 .followmanage .fpickactions .fbtn{height:36px;min-height:36px;padding:8px 12px}
 .photolight .photonav{width:36px;height:36px;border:1px solid var(--color-border-button-default);border-radius:10px;background:var(--color-background-primary-default);color:var(--color-text-secondary);box-shadow:0 1px 2px #0000000d}.photolight .photonav:hover{background:var(--color-background-primary-hover)}.photolight .photonav svg{width:20px;height:20px}.photolight .photonav.swiper-button-disabled{opacity:.4;pointer-events:none}
 .board-carousel-pagination{display:flex;align-items:center;justify-content:center;gap:8px;max-width:160px;margin-inline:auto;overflow:hidden;height:28px}.board-carousel-pagination .swiper-pagination-bullet{width:6px;height:6px;flex:none;margin:0!important;border:0;padding:0;border-radius:999px;background:#a3a3a3;opacity:1;transition:width .2s ease-out,background .2s ease-out}.board-carousel-pagination .swiper-pagination-bullet-active{width:16px;background:#fafafa}
@@ -1125,8 +1134,13 @@ body [data-board-tabs] button[aria-selected=true],body .managebar [data-board-ta
 .followmanage .fsource:has([data-follow-select]){background:var(--color-background-primary-default)}
 .followmanage .fsource.selected:has([data-follow-select]){border-color:var(--color-border-focus-ring)}
 .board-icon-trigger{width:100%;gap:8px;justify-content:flex-start!important;min-height:var(--control-h);height:var(--control-h)!important}.board-icon-trigger>span:first-child,.board-icon-grid label>span{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;flex:none}.board-icon-trigger svg,.board-icon-grid svg{display:block;width:20px;height:20px;stroke-width:2}.board-icon-trigger img,.board-icon-grid img{display:block;width:20px;height:20px;margin:0}
+/* 两半之间那条线交给右半的左边界，跟这一组里 `button+button` 的分隔线是同一条规则，
+   上下顶满。四角与外圈仍归外框：两半各自带边和圆角的话，交界处是两条线叠着。 */
 .splitbutton.board-button-group>.splitmain,.splitbutton.board-button-group>.splittoggle{border:0;border-radius:0;box-shadow:none}
-.splitbutton.board-button-group>.splittoggle::before{width:1px;left:0;top:6px;bottom:6px;background:var(--color-border-button-default)}
+.splitbutton.board-button-group>.splittoggle{border-left:1px solid var(--color-border-button-default)}
+/* 这两半压上去换的那一面跟站内其他次级按钮是同一个 token。基线那条按 `--inset` 填，
+   特指度还比这一组的规则高，两处今天算出来是同一个值，改其中一个就会分家。 */
+.splitbutton.board-button-group>button:hover:not(:disabled){background:var(--control-hover)}
 body [data-cleanup-empty][hidden]{display:none}
 dialog.board-icon-popover{position:fixed;inset:auto;margin:0;width:min(360px,calc(100vw - 16px));max-height:calc(100dvh - 16px);box-sizing:border-box;padding:8px;border:0;border-radius:24px;background:var(--color-background-secondary-default);color:var(--ink);box-shadow:0 12px 40px #00000024;overflow:auto}
 .board-icon-popover::backdrop{background:transparent}.board-icon-panel{padding:12px;border-radius:20px;background:var(--color-background-primary-default);box-shadow:0 1px 2px #0000000d}.board-icon-panel h3{font:var(--board-body-medium);margin:0 0 10px;padding:0 4px}.board-icon-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}.board-icon-grid label{position:relative;display:grid;place-items:center;height:40px;border-radius:8px;cursor:pointer}.board-icon-grid label:hover{background:var(--color-background-primary-hover)}.board-icon-grid label.selected{background:var(--picked);color:var(--tungsten)}.board-icon-grid input{position:absolute;opacity:0;width:1px;height:1px}.board-icon-grid label:focus-within{outline:2px solid var(--tungsten)}.board-icon-popover footer{display:flex;justify-content:flex-end;gap:8px;padding:8px 4px 0}
@@ -1144,7 +1158,7 @@ body .reviewactions button.warning,body [data-follow-bulk],body [data-follow-sta
    这边按钮是 `--control-h`（36px），比外壳高 4px 往下探出 10px，左边缘还被内边距推右
    8px——同一格里它和上面那个输入框既不同高、也不从同一条竖线起。 */
 .settingscard .settingsscroll .machinesettings .gselect{min-width:0;min-height:0;height:auto;padding:0}.configpage .configcheck{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 20px 12px 16px;border:1px solid var(--color-border-button-default);border-radius:10px;background:var(--color-background-primary-default);cursor:pointer}.configpage .configcheck>.pcheck{order:2}.configpage .configcheck:hover{background:var(--color-background-primary-hover)}
-body .reviewactions button.primary:not(:disabled){background:var(--board-blue);color:#fff;border-color:transparent}body .reviewactions button.error:not(:disabled){background:linear-gradient(180deg,#ff3347,#e60012);color:#fff;border-color:transparent}body .reviewactions button.error:hover:not(:disabled){background:linear-gradient(180deg,#ff6471,#ff3347)}
+body .reviewactions button.error:not(:disabled){background:linear-gradient(180deg,#ff3347,#e60012);color:#fff;border-color:transparent}body .reviewactions button.error:hover:not(:disabled){background:linear-gradient(180deg,#ff6471,#ff3347)}
 .card .pic>.badge{padding:4px;border-radius:10px;background:var(--glass-fill);box-shadow:inset 0 1px 0 var(--glass-rim),var(--glass-shadow);backdrop-filter:blur(16px) saturate(145%)}.card .pic>.badge .src{background:transparent;padding:0;width:20px;height:20px}
 body .selectiondock{border:0;border-radius:22px;background:var(--glass-drift-a),var(--glass-drift-b),linear-gradient(125deg,var(--glass-sheen),transparent 42%,var(--glass-low)),var(--glass-fill);background-size:200% 200%,200% 200%,auto;background-repeat:no-repeat,no-repeat,repeat;background-position:50% 20%,80% 70%,0 0;animation:glassdriftx 41s linear infinite,glassdrifty 67s linear infinite;backdrop-filter:var(--glass-optic,blur(22px)) saturate(145%);box-shadow:inset 0 1px 0 var(--glass-rim),inset 1px 0 0 var(--glass-low),inset -1px 0 0 var(--glass-low),inset 0 -1px 0 var(--glass-low),var(--glass-shadow)}
 html.board-high-contrast :is(.selectiondock,.reviewcontrols.is-stuck,.reviewgroupbar.is-stuck,.batchbar,.tagselection,.card .badge){background:var(--ground);backdrop-filter:none;-webkit-backdrop-filter:none;animation:none}
@@ -1349,7 +1363,7 @@ body .tastesource>button{width:36px;height:36px;border:0;border-radius:10px;back
 body .tastesource>button:hover{background:color-mix(in srgb,var(--color-text-primary) 6%,transparent);color:var(--drop);transform:none}
 body .tastesource>button svg{width:20px;height:20px}
 /* 主按钮与旁边的 Board 按钮同一副盒子：36px、10px 圆角、Body Medium。复核底部工具条里所有控件都压到 --control-h，主按钮跟着。 */
-body :is(.geist-button,.fbtn,.resourceaction,.tagselection button,.reviewpickhead button,.geist-fieldset-footer>a,.geist-fieldset-footer>button).primary{box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;gap:4px;height:36px;min-height:36px;padding:8px 12px;border-radius:10px;font:var(--board-body-medium);white-space:nowrap}
+body :is(.geist-button,.fbtn,.resourceaction,.tagselection button,.reviewpickhead button,.fcredactions button,.fpickactions button,.geist-fieldset-footer>a,.geist-fieldset-footer>button).primary{box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;gap:4px;height:36px;min-height:36px;padding:8px 12px;border-radius:10px;font:var(--board-body-medium);white-space:nowrap}
 body .reviewdock .geist-button.primary{height:var(--control-h);min-height:0}
 /* 灰卡上的控件用 primary 白底：secondary 底上再放 secondary 控件就看不出框。 */
 body.configuration-layout .configpage :is(.gselectfield,.geist-input,input.geist-input,.board-icon-trigger),body .followmanage .faddform .geist-search input{background:var(--color-background-primary-default)}

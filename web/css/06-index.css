@@ -56,8 +56,8 @@ body.entity-open .index{overflow-x:visible}
 .tagselection label small{color:var(--muted);font-size:var(--fs-xs)}
 .tagselection button{height:34px;padding:0 13px;border:0;border-radius:var(--control-radius);box-shadow:0 0 0 1px var(--line-soft);background:var(--ground);color:var(--ink-2);cursor:pointer}
 .tagselection button:hover:not(:disabled){background:var(--hover);color:var(--ink)}
-.tagselection button.primary{background:var(--ink);color:var(--ground);box-shadow:none}
-.tagselection button.primary:hover:not(:disabled){background:color-mix(in srgb,var(--ink) 88%,var(--ground));color:var(--ground)}
+/* 强调档那一面归 `board.css` 的 Board primary 一处；这里再写一份 Geist 的墨色实底，
+   它的 `:hover` 比 Board 那条静止规则重一个类，压上去就跳回墨色。 */
 .tagselection button:disabled{background:var(--sunk);color:var(--muted);cursor:not-allowed}
 .tagfilters .all::before{background:linear-gradient(135deg,#55A7FF,#D783FF)}
 .index-tags .tg,.alphatag{--tag-color:#7A91A8}
