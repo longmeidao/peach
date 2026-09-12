@@ -131,6 +131,54 @@ def fetch_image(client: httpx.Client, url: str) -> bytes | None:
     return body if sniff(body) else None
 
 
+#: 圆标落盘时的长边。28px 的圆在三倍屏上也只要 84px，留到这个数是给放大留的余量；
+#: 再往上是纯浪费——那一排八十多枚，每枚多 100 KB 就是首屏多十兆。
+ICON_SIDE = 256
+
+
+def image_size(payload: bytes) -> tuple[int, int] | None:
+    """一串图片字节的宽高；解不开就是 None。"""
+    try:
+        from .face_detect import decode
+
+        image = decode(payload)
+        if image is None:
+            return None
+        height, width = image.shape[:2]
+        return int(width), int(height)
+    except Exception:               # 缺 OpenCV、解不开的图
+        return None
+
+
+def shrink_image(payload: bytes, side: int = ICON_SIDE) -> bytes:
+    """把一张图缩到长边不超过 `side` 的 JPEG；已经够小或缩不动就原样返回。
+
+    取图和显示图要的尺寸不是一个数：题材圆标的代表图取的是站点的高清封面，因为
+    250px 里一张脸只剩十几个像素、检不出来；而显示出来只有 28px。落盘的那份按显示
+    尺寸存，检脸看到的仍是高清那张——归一化的取景跟着比例走，缩放不影响它。
+    """
+    try:
+        import cv2
+
+        from .face_detect import decode
+
+        image = decode(payload)
+        if image is None:
+            return payload
+        height, width = image.shape[:2]
+        longest = max(height, width)
+        if not longest or longest <= side:
+            return payload
+        scale = side / longest
+        small = cv2.resize(image, (max(1, round(width * scale)),
+                                   max(1, round(height * scale))),
+                           interpolation=cv2.INTER_AREA)
+        ok, buffer = cv2.imencode(".jpg", small, [int(cv2.IMWRITE_JPEG_QUALITY), 88])
+        return bytes(buffer) if ok else payload
+    except Exception:               # 缺 OpenCV、解不开的图：存原图总好过不存
+        return payload
+
+
 def cached_image(root: Path, kind: str, key: str, ttl: int | None,
                  fetch: Callable[[], bytes | None], now: float | None = None) -> Path | None:
     """本地那份能用就用；到期了先重取，取不到继续用旧的；从没取到过才是 None。

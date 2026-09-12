@@ -6101,13 +6101,18 @@ function followAuthorAvatar(group){
   return `<span class="favatar none" title="没有可用头像">${esc(initial)}</span>`;
 }
 
-/* 题材那一枚跟首页的厂牌药丸同形：28px 圆标识加作品名。圆里装的是这个题材下评分最高
-   的那一条的缩略图，服务端按 `work` 这个身份自己去挑再存在本机，页面递不进地址。
-   挑不出图的题材（facet 那一行的第四位说了算）直接出两个字母，不出 `<img>`：无条件
-   出图、靠 404 换回字母的代价是每次重绘都再打一轮，而 404 那条响应不可缓存。 */
-function followWorkPill([key,label,,icon]){
+/* 题材那一枚跟首页的厂牌药丸同形：28px 圆标识加作品名。圆里装的是这个题材下最热的
+   那几条里第一张看得见脸的封面，服务端按 `work` 这个身份自己去挑再存在本机，页面
+   递不进地址。挑不出图的题材（facet 那一行的第四位说了算）直接出两个字母，不出
+   `<img>`：无条件出图、靠 404 换回字母的代价是每次重绘都再打一轮，而 404 那条响应
+   不可缓存。
+   第五位是服务端对那张图检出的取景，和实体图同一个形状，所以挪和放大都走资料页那
+   两个函数。放大在这里不是锦上添花：圆标只有 28px，而这是一整张作品图不是烤好边距
+   的头像，只挪不放大的话脸在图里占多少、在这枚圆里就占多少，一排看下来仍是身体。
+   没检出脸就两样都不写，圆标按样式表里的默认取景摆。 */
+function followWorkPill([key,label,,icon,focus]){
   const fallback=esc(String(label||'').slice(0,2));
-  const mark=icon?`<img src="/work-icon?work=${encodeURIComponent(key)}" alt="" loading="lazy">`:fallback;
+  const mark=icon?`<img src="/work-icon?work=${encodeURIComponent(key)}" alt="" loading="lazy"${facePos(focus)}${faceBoxAttrs(focus)}>`:fallback;
   return `<button class="brandpill" data-follow-work="${esc(key)}" aria-pressed="${followWorks.has(key)}">
     <span class="mk" data-fallback="${fallback}">${mark}</span>${esc(label)}</button>`;
 }

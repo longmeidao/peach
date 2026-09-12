@@ -27,7 +27,7 @@ from fastapi.responses import (
 from starlette.staticfiles import StaticFiles
 
 from . import (
-    avatar_picker, avatar_provider, follow_assets, link_marks,
+    avatar_face, avatar_picker, avatar_provider, follow_assets, link_marks,
     scraping_access, site_icons, subtitles, taste_history, web_follow,
     web_settings,
 )
@@ -510,28 +510,88 @@ def source_icon(request: Request, provider: str = "", args: dict[str, str] = Dep
     return _asset_response(request, path)
 
 
+#: 题材头像的人脸探针。YuNet 的模型是个 232 KB 的 ONNX，首次用到时才去取；取不到就
+#: 一直回 None，那时圆标退回样式表里的默认取景——没网不该等于这一排一张图都没有。
+_WORK_FACE_PROBE = avatar_face.FaceProbe()
+
+
+def _pick_work_icon(client, targets: list[str]) -> tuple[bytes | None, dict | None]:
+    """按热度顺着候选找第一张看得见脸的图，返回落盘用的字节和人脸记录。
+
+    只取最热那一张的话，圆标里有一半是身体特写——最热的帖子常常就是特写。一张都
+    没检出脸时退回第一张取得到的图：没有脸的代表图仍然好过一个空圆。
+
+    检脸看的是站点那张高清封面，落盘的是缩到 `ICON_SIDE` 的那份：两件事要的尺寸
+    不是一个数——250px 的缩略图里一张脸只剩十几个像素，而显示出来只有 28px。
+    """
+    first: tuple[bytes | None, dict | None] = (None, None)
+    for target in targets:
+        body = follow_assets.fetch_image(client, target)
+        if not body:
+            continue
+        record = _WORK_FACE_PROBE.on_bytes(body)
+        if record and record.get("face"):
+            return _stored_icon(body, record)
+        if first[0] is None:
+            first = (body, record)
+    body, record = first
+    return _stored_icon(body, record) if body else (None, record)
+
+
+def _stored_icon(body: bytes, record: dict | None) -> tuple[bytes, dict | None]:
+    """缩到圆标尺寸，并把记录里的源图像素换成落盘那张的。
+
+    记录必须描述图旁边那个文件：页面拿 `naturalWidth` 核对脸框说的是不是同一张图，
+    对不上就退回几何居中。脸框本身是归一化的，比例缩放不动它；「这张脸有多少像素」
+    问的则是浏览器手里那张图，答案也只能是缩完之后的那个数。
+    """
+    small = follow_assets.shrink_image(body)
+    size = follow_assets.image_size(small) if record else None
+    if size:
+        record = {**record, "px": [size[0], size[1]]}
+    return small, record
+
+
 @router.api_route("/work-icon", methods=["GET", "HEAD"])
 def work_icon(request: Request, work: str = "",
               args: dict[str, str] = Depends(require_auth)):
     """题材的代表图。
 
-    `work` 只是题材的身份，不是地址：服务端按它在账本里挑评分最高的那一条，再核对
-    图床主机是不是 `web_follow` 登记的那个。挑这一步在缓存回调里做，本机那份还新鲜
-    时一行账本都不读；取回的字节照样要先能认成图片才落盘。
+    `work` 只是题材的身份，不是地址：服务端按它在账本里排出按热度排好的几个候选，
+    再核对图床主机是不是 `web_follow` 登记的那个。排这一步在缓存回调里做，本机那份
+    还新鲜时一行账本都不读；取回的字节照样要先能认成图片才落盘。
+
+    候选顺着往下取，停在第一张看得见脸的。人脸记录跟着落盘的那张图写在旁边，页面据
+    它把取景挪到脸上、按脸框放大：圆标只有 28px，按几何中心裁一张全身图出来常常只剩
+    一截身子，而挪到哪、放多大都要看这张图里脸在哪、有多少像素，猜不出来。
     """
     state = request.app.state
     root = web_follow.work_root(work)
     if not root:
         return _asset_response(request, None)
     client = state.http_transport.client
+    cache_root = _asset_root(state)
+    cached = follow_assets.cache_path(cache_root, "works", root)
+
+    picked: dict | None = None
+    replaced = False
 
     def fetch():
+        nonlocal picked, replaced
         with state.database.read_connection() as connection:
-            target = web_follow.work_icon_url(FollowStore(lambda: connection), root)
-        return follow_assets.fetch_image(client, target) if target else None
+            targets = web_follow.work_icon_urls(FollowStore(lambda: connection), root)
+        body, picked = _pick_work_icon(client, targets)
+        replaced = bool(body)
+        return body
 
-    path = follow_assets.cached_image(_asset_root(state), "works", root,
+    path = follow_assets.cached_image(cache_root, "works", root,
                                       _metadata_ttl(state), fetch)
+    if replaced:
+        # 换了图，旧的脸记录必须一起换：留着它页面会拿上一张的脸心给这一张取景，
+        # 而那在界面上和「这张图本来就该这么摆」看不出区别。
+        avatar_face.drop_sidecar(cached)
+        if path is not None and picked is not None:
+            avatar_face.write_sidecar(path, picked)
     return _asset_response(request, path)
 
 

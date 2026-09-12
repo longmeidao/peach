@@ -16,7 +16,9 @@ import threading
 import uuid
 import urllib.parse
 
-from . import follow_assets, follow_providers
+from pathlib import Path
+
+from . import avatar_face, follow_assets, follow_providers
 from .follow import FollowSourceError
 from .follow_check import plan_check, run_check
 from .follow_discovery import discover, discovery_plan
@@ -379,34 +381,44 @@ def work_root(tag: str) -> str:
 #: 一次扫库算出的全部题材代表图能用多久。整排头像同时过期时浏览器会并排发来
 #: 二十几个 `/work-icon`，每个都从头扫一遍全库，而结果是同一份表。
 _WORK_ICON_MEMO_SECONDS = 60
-_work_icon_memo: tuple[float, dict[str, str]] = (0.0, {})
+#: 每个题材备几个候选。取图那一端顺着热度往下找第一张看得见脸的，五张缩略图合起来
+#: 也就几十 KB，而多备一张挡住的是「圆标里是一截身子」。
+_WORK_ICON_CANDIDATES = 5
+_work_icon_memo: tuple[float, dict[str, list[str]]] = (0.0, {})
 _work_icon_lock = threading.Lock()
 
 
 def _work_icon_candidate(item) -> str:
-    """这一条能给题材当代表图吗：能就是那个缩略图地址，不能是空串。
+    """这一条能给题材当代表图吗：能就是那张封面的地址，不能是空串。
+
+    取的是卡片上那张高清封面（`thumb_url`，实测 1280×720 到 4096×2304、30–370 KB），
+    不是 250px 的 `preview_url`。圆标只有 28px，光看显示尺寸两层都够用，差别在检脸：
+    250px 里一张脸只剩十几个像素，YuNet 看到的已经是一团糊。2026-09-12 对本库 77 个
+    题材各走一遍候选，高清那层检出 58，缩略那层 49。没有封面的旧行退回缩略图。
 
     地址来自来源记录而不是固定表，白名单就是那道闸：记录里存的是站点回的 JSON，
     不能让它把任意主机带进出网路径。
     """
     if item.provider != "rule34xxx" or _excluded_item(item):
         return ""
-    url = str(item.metadata.get("preview_url") or item.thumb_url or "")
+    url = str(item.thumb_url or item.metadata.get("preview_url") or "")
     return url if urllib.parse.urlsplit(url).netloc in _WORK_ICON_HOSTS else ""
 
 
-def _work_icon_table(store) -> dict[str, str]:
-    """题材 → 代表图地址。挑评分最高的那一条，带 `3d` 标签的优先。
+def _work_icon_table(store) -> dict[str, list[str]]:
+    """题材 → 按热度排好的几个候选图。带 `3d` 标签的排在前面。
 
     用户要的是这个题材最有代表性的一张。rule34 的 score 是站点自己的热度排序，
     本库里现成存着——不必再按 `sort:score` 去站点查一遍，查回来的还多半是他根本
     没关注的作者。`3d` 优先是因为这一排要的是 3D 作品，不是同人画。
 
-    取站点的缩略图而不是正片：一枚头像显示出来不过几十像素，150 的缩略图已经是
-    三倍图，而同一条的正片可能是一张几 MB 的动图，超过 `follow_assets.MAX_BYTES`
-    反而一张都存不下。
+    给几个而不是一个：最热的那张常常是个身体特写，圆标里于是一张脸都没有。取图那
+    一端会顺着这个次序找出第一张看得见脸的，实测最热那张只有一半带脸。
+
+    给的是站点那张封面而不是正片：封面实测 30–370 KB，而同一条的正片可能是一张几
+    MB 的动图，超过 `follow_assets.MAX_BYTES` 反而一张都存不下。
     """
-    best: dict[str, tuple[tuple[int, int, int], str]] = {}
+    ranked: dict[str, list[tuple[tuple[int, int, int], str]]] = {}
     for item in store.items(limit=_ALL_ITEMS):
         url = _work_icon_candidate(item)
         if not url:
@@ -421,13 +433,15 @@ def _work_icon_table(store) -> dict[str, str]:
         spatial = 1 if "3d" in {tag.casefold() for tag in _item_all_tags(item)} else 0
         rank = (spatial, score, item.id)
         for root in roots:
-            if root not in best or rank > best[root][0]:
-                best[root] = (rank, url)
-    return {root: url for root, (_, url) in best.items()}
+            row = ranked.setdefault(root, [])
+            row.append((rank, url))
+            row.sort(key=lambda pair: pair[0], reverse=True)
+            del row[_WORK_ICON_CANDIDATES:]
+    return {root: [url for _, url in row] for root, row in ranked.items()}
 
 
-def _work_icons(store) -> dict[str, str]:
-    """题材 → 代表图地址，整张表一起算再存一分钟。
+def _work_icons(store) -> dict[str, list[str]]:
+    """题材 → 候选图，整张表一起算再存一分钟。
 
     判据见 `_WORK_ICON_MEMO_SECONDS`。筛选条和 `/work-icon` 读的是同一份表，所以
     那一排说「这枚有图」和端点真的取得到图不会各说各话。落盘那份图另有自己的保鲜期，
@@ -442,9 +456,32 @@ def _work_icons(store) -> dict[str, str]:
     return table
 
 
-def work_icon_url(store, root: str) -> str | None:
-    """题材头像取哪一张，取不到就是 None。"""
-    return _work_icons(store).get(root)
+def work_icon_urls(store, root: str) -> list[str]:
+    """题材头像的候选图，按热度从高到低；一张都挑不出时是空列表。"""
+    return list(_work_icons(store).get(root) or ())
+
+
+def work_icon_root(contract) -> Path:
+    """题材头像落盘的目录。
+
+    `/work-icon` 写图和 sidecar、这里读 sidecar，两端必须算出同一个路径——不然
+    取景永远是几何居中，而界面上这和「这张图本来就该这么摆」看不出区别。
+    """
+    return Path(contract.candidate_root) / follow_assets.ROOT_NAME
+
+
+def _work_icon_focus(cache_root: Path | None, root: str) -> dict | None:
+    """题材头像的取景提示：挪到脸上的 object-position 加脸框像素，没有就是 None。
+
+    记录由 `/work-icon` 取回图之后写在图旁边，和实体图那套 sidecar 同一个约定
+    （`avatar_face.focus_hint`），页面因此也走头像那套放大。没检出脸、还没取过图、
+    模型不可用都返回 None，那时圆标按样式表里的默认取景摆——不拿一个猜出来的位置
+    冒充检出结果。
+    """
+    if cache_root is None:
+        return None
+    return avatar_face.focus_hint(
+        avatar_face.read_sidecar(follow_assets.cache_path(cache_root, "works", root)))
 
 
 def _media_kind(item) -> str:
@@ -855,7 +892,7 @@ def _legacy_history_end(row) -> bool:
                                 str(row["last_error"] or ""))
 
 
-def _follow_facets(store, items, by_source, alias_map) -> dict:
+def _follow_facets(store, items, by_source, alias_map, icon_root=None) -> dict:
     """筛选条上能选什么。
 
     必须按全库算而不是按筛后结果——否则选中一个作者之后，作者栏里就只剩他自己，
@@ -888,8 +925,10 @@ def _follow_facets(store, items, by_source, alias_map) -> dict:
         "authors": sorted(authors),
         "providers": sorted(providers),
         "tags": sorted(tags.items(), key=lambda pair: (-pair[1], pair[0])),
-        # 题材那一排：键是归并后的系列身份，标签是给人看的写法，数目按发布组算。
-        "works": [[root, _work_display(root, row["spellings"]), row["n"], row["icon"]]
+        # 题材那一排：键是归并后的系列身份，标签是给人看的写法，数目按发布组算，
+        # 第四位说挑不挑得出代表图，第五位是那张图检出的人脸取景。
+        "works": [[root, _work_display(root, row["spellings"]), row["n"], row["icon"],
+                   _work_icon_focus(icon_root, root)]
                   for root, row in sorted(works.items(),
                                           key=lambda pair: (-pair[1]["n"], pair[0]))],
     }
@@ -951,7 +990,8 @@ def q_follow_tags(contract, args) -> dict:
         by_source = {int(row["id"]): row for row in source_rows}
         items = tuple(item for item in store.items(limit=_ALL_ITEMS)
                       if item.source_id in enabled and not _excluded_item(item))
-        facets = _follow_facets(store, items, by_source, alias_map)
+        facets = _follow_facets(store, items, by_source, alias_map,
+                                work_icon_root(contract))
         rows = (_follow_tag_index(store, items) if include_types else
                 [{"k": tag, "n": count, "cat": "general"}
                  for tag, count in facets["tags"]])
@@ -1057,7 +1097,8 @@ def q_follow(contract, args) -> dict:
             items = tuple(page[offset:offset + limit])
         groups = [_group_payload(group, credential_providers)
                   for group in store.group(items)]
-        facets = _follow_facets(store, everything, by_source, alias_map)
+        facets = _follow_facets(store, everything, by_source, alias_map,
+                                work_icon_root(contract))
         # counts 与列表同源，两边都从 `counted` 出发：筛选怎么变，数字就怎么变，
         # 扣减逻辑也只写一份。写成一句全库 SQL 再逐条减掉被隐藏的 rule34video 和
         # 无资源的 f95zone 的话，同一套排除规则要维护两份，而且它不看作者、来源和

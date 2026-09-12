@@ -88,6 +88,35 @@ class FaceProbeTests(unittest.TestCase):
                 self.assertIsNone(probe(Path("/tmp/a.img")))
         self.assertEqual(probe.unavailable, "")
 
+    def test_a_candidate_still_in_memory_is_checked_without_writing_it_down(self):
+        """几个候选里挑一张时检的是字节，落选的那几张一个文件都不留。
+
+        题材圆标要在五个候选里找出第一张看得见脸的。先写盘再检的话，四张落选的图会
+        各自在缓存目录里留一份，还得反过来再删一次。
+        """
+        probe = FaceProbe()
+        with unittest.mock.patch("peach.avatar_face.FaceDetector"):
+            with unittest.mock.patch("peach.avatar_face.face_detect.decode",
+                                     return_value=object()):
+                with unittest.mock.patch("peach.avatar_face.face_record_of",
+                                         return_value=record()) as checked:
+                    self.assertEqual(probe.on_bytes(b"\xff\xd8\xff"), record())
+        self.assertEqual(checked.call_count, 1)
+
+    def test_bytes_that_are_not_an_image_read_as_no_record(self):
+        """解不开的候选跳过就是了：站点回的质询页不该让整排圆标停下。"""
+        probe = FaceProbe()
+        with unittest.mock.patch("peach.avatar_face.FaceDetector"):
+            self.assertIsNone(probe.on_bytes(b"<!doctype html>"))
+        self.assertEqual(probe.unavailable, "")
+
+    def test_without_a_model_bytes_get_no_record_either(self):
+        probe = FaceProbe()
+        with unittest.mock.patch("peach.avatar_face.FaceDetector",
+                                 side_effect=RuntimeError("模型未取得")):
+            self.assertIsNone(probe.on_bytes(b"\xff\xd8\xff"))
+        self.assertEqual(probe.unavailable, "模型未取得")
+
 
 if __name__ == "__main__":
     unittest.main()

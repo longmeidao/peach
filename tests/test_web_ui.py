@@ -5287,19 +5287,21 @@ class WebUiSourceTests(unittest.TestCase):
     def test_the_work_row_asks_the_server_for_a_cover_and_never_hands_it_an_address(self):
         """题材头像的地址不经过页面。
 
-        `/work-icon?work=` 递过去的是题材的身份，服务端自己在账本里挑评分最高的
-        那一条、核对图床主机再存在本机。页面能递地址的话这里就是一个任意地址抓取的
-        口子，浏览器也会直接向对方站点暴露正在看什么。挑不出图的题材由 facet 那一行
-        的第四位说了算，直接出两个字母，不出一个注定 404 的 `<img>`——404 不可缓存，
-        每次重绘都要再打一轮。
+        `/work-icon?work=` 递过去的是题材的身份，服务端自己在账本里挑最热的那几条、
+        核对图床主机再存在本机。页面能递地址的话这里就是一个任意地址抓取的口子，
+        浏览器也会直接向对方站点暴露正在看什么。挑不出图的题材由 facet 那一行的第四位
+        说了算，直接出两个字母，不出一个注定 404 的 `<img>`——404 不可缓存，每次重绘
+        都要再打一轮。第五位是服务端在那张图上检出的取景，和实体图同一个形状，所以挪
+        走 `facePos`、放大走 `faceBoxAttrs` 递给 `avatarFrame` 的那条路：圆标只有
+        28px，而这是一整张作品图，只挪不放大的话一排看下来仍是身体。
         """
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
-        self.assertPageContains("function followWorkPill([key,label,,icon]){")
+        self.assertPageContains("function followWorkPill([key,label,,icon,focus]){")
         self.assertPageContains(
             'const mark=icon?`<img src="/work-icon?work=${encodeURIComponent(key)}"'
-            ' alt="" loading="lazy">`:fallback;')
+            ' alt="" loading="lazy"${facePos(focus)}${faceBoxAttrs(focus)}>`:fallback;')
         self.assertPageContains('<span class="mk" data-fallback="${fallback}">${mark}</span>')
-        # 圆标里是作品图不是烤好边距的厂牌标识，正中裁会切掉脸。
+        # 检不出脸的那些没有 focus，落在样式表这一档：上四分之一是人像里头最常落的位置。
         self.assertIn(".followworks .brandpill .mk img{object-position:50% 25%}", board)
 
     def test_review_selection_uses_default_checkboxes_and_a_separate_toolbar(self):

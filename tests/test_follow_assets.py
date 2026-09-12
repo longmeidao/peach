@@ -155,6 +155,46 @@ class FetchImageTests(unittest.TestCase):
             self.assertIsNone(follow_assets.fetch_image(client, "https://icons.test/a"))
 
 
+class ShrinkImageTests(unittest.TestCase):
+    """取图和显示图要的尺寸不是一个数：高清那份只用来检脸，落盘的按圆标存。"""
+
+    def _jpeg(self, width, height):
+        import cv2
+        import numpy
+
+        canvas = numpy.zeros((height, width, 3), dtype=numpy.uint8)
+        canvas[:, :] = (30, 90, 200)
+        ok, buffer = cv2.imencode(".jpg", canvas)
+        self.assertTrue(ok)
+        return bytes(buffer)
+
+    def _size(self, payload):
+        from peach.face_detect import decode
+
+        image = decode(payload)
+        height, width = image.shape[:2]
+        return width, height
+
+    def test_a_cover_is_stored_at_icon_size_with_its_shape_kept(self):
+        """一张 4096 宽的封面按 28px 的圆标存，长宽比不动。
+
+        存原图的话那一排八十多枚就是首屏几十兆，而它们显示出来只有 28px；比例要留住，
+        取景是按比例算的，压扁一次脸就挪到别处去了。
+        """
+        small = follow_assets.shrink_image(self._jpeg(4096, 2304))
+        self.assertEqual(follow_assets.sniff(small), "image/jpeg")
+        self.assertEqual(self._size(small), (follow_assets.ICON_SIDE, 144))
+
+    def test_an_image_already_small_enough_is_stored_as_it_came(self):
+        """本来就够小的不再编码一遍：重压一次只会掉画质。"""
+        payload = self._jpeg(250, 141)
+        self.assertIs(follow_assets.shrink_image(payload), payload)
+
+    def test_something_that_will_not_decode_is_passed_through(self):
+        """解不开的字节原样返回，由 `sniff` 那道闸去拦，不在这里判图片真假。"""
+        self.assertEqual(follow_assets.shrink_image(HTML), HTML)
+
+
 class MirrorAvatarTests(unittest.TestCase):
     def test_avatars_only_come_from_providers_that_actually_serve_one(self):
         """按 peach-reference-evidence：实测拿得到才给，取不到写「未取得」。

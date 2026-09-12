@@ -107,6 +107,19 @@ def _box(kind: bytes, payload: bytes) -> bytes:
     return struct.pack(">I", len(payload) + 8) + kind + payload
 
 
+def tiny_jpeg(tone: int, width: int = 64, height: int = 48) -> bytes:
+    """一张真的能解开的小图。
+
+    题材圆标那条路径会把取回的封面解开缩一次，喂假字节只能让 OpenCV 在测试输出里
+    刷一屏解码错误——那时验的也不再是这段代码。
+    """
+    import cv2
+    import numpy
+
+    canvas = numpy.full((height, width, 3), tone, dtype=numpy.uint8)
+    return bytes(cv2.imencode(".jpg", canvas)[1])
+
+
 def minimal_mp4(*, timescale: int, sample_delta: int, samples: int, keyframe_every: int) -> bytes:
     """只含时间表的最小 MP4：够 peach.mp4index 解析关键帧，不含真实媒体数据。"""
     mdhd = _box(b"mdhd", struct.pack(">4sIIII HH", bytes(4), 0, 0, timescale,
@@ -477,6 +490,81 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(missing.status_code, 404, query)
             self.assertEqual(missing.headers["content-type"], PLACEHOLDER_CONTENT_TYPE, query)
         self.assertEqual(len(hits), 1)
+
+    async def test_the_work_icon_walks_the_candidates_until_one_shows_a_face(self):
+        """题材圆标顺着候选往下取，停在第一张检得出脸的那里，取景写在图旁边。
+
+        只取最热那一张的话，圆标里有一半是身体特写——最热的帖子常常就是特写。停下来
+        之后不再往下取：后面那几张既不该出网，也不该留在缓存目录里。
+        """
+        from peach import follow_assets, routes_media
+
+        covers = {f"https://api-cdn.rule34.xxx/samples/{n}/c.jpg": tiny_jpeg(n * 40)
+                  for n in (1, 2, 3)}
+        hits = []
+
+        def upstream(request):
+            hits.append(str(request.url))
+            return httpx.Response(200, content=covers[str(request.url)], request=request,
+                                  headers={"content-type": "image/jpeg"})
+        self._swap_http_client(upstream)
+        second = covers["https://api-cdn.rule34.xxx/samples/2/c.jpg"]
+        self.assertNotEqual(second, covers["https://api-cdn.rule34.xxx/samples/1/c.jpg"])
+        seen = {second: {"ratio": 0.563, "px": [1080, 1920],
+                         "face": {"cx": 0.5, "cy": 0.18, "w": 0.1, "h": 0.09,
+                                  "score": 0.93},
+                         "focus": {"axis": "y", "pct": 18}}}
+        denied = await self.client.get("/work-icon?work=stellar+blade")
+        self.assertEqual(denied.status_code, 401)
+        with patch("peach.routes_media.web_follow.work_icon_urls",
+                   return_value=list(covers)) as urls:
+            with patch.object(routes_media._WORK_FACE_PROBE, "on_bytes",
+                              side_effect=seen.get):
+                response = await self.client.get("/work-icon?t=secret&work=stellar+blade")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.content, second, "服务的是检出了脸的那一张")
+        self.assertEqual(hits, list(covers)[:2], "检出脸就停，后面的候选不再出网")
+        urls.assert_called_once()
+        self.assertEqual(urls.call_args.args[1], "stellar blade")
+        cached = follow_assets.cache_path(
+            self.candidate_root / follow_assets.ROOT_NAME, "works", "stellar blade")
+        self.assertEqual(cached.read_bytes(), second)
+        written = json.loads(cached.with_suffix(".face.json").read_text(encoding="utf-8"))
+        self.assertEqual(written["focus"], {"axis": "y", "pct": 18})
+        # 记录说的必须是落盘那张图：页面拿 naturalWidth 核对，对不上就退回几何居中。
+        self.assertEqual(written["px"], [64, 48])
+        self.assertEqual(len(list(cached.parent.glob("*.img"))), 1,
+                         "落选的候选一个文件都不留")
+
+    async def test_a_work_with_no_face_anywhere_still_gets_a_cover(self):
+        """一张都检不出脸时用第一张取得到的：没有脸的代表图仍然好过一个空圆。
+
+        那时不写 sidecar，页面退回样式表里的默认取景——留一份旧记录的话，圆标会拿
+        上一张图的脸心给这一张取景，而这在界面上看不出和「本来就该这么摆」的区别。
+        """
+        from peach import follow_assets, routes_media
+
+        covers = {f"https://api-cdn.rule34.xxx/samples/{n}/c.jpg": tiny_jpeg(n * 30)
+                  for n in (7, 8)}
+
+        def upstream(request):
+            return httpx.Response(200, content=covers[str(request.url)], request=request,
+                                  headers={"content-type": "image/jpeg"})
+        self._swap_http_client(upstream)
+        cache_root = self.candidate_root / follow_assets.ROOT_NAME
+        cached = follow_assets.cache_path(cache_root, "works", "miside")
+        cached.parent.mkdir(parents=True, exist_ok=True)
+        cached.with_suffix(".face.json").write_text('{"focus":{"axis":"x","pct":90}}',
+                                                    encoding="utf-8")
+        with patch("peach.routes_media.web_follow.work_icon_urls",
+                   return_value=list(covers)):
+            with patch.object(routes_media._WORK_FACE_PROBE, "on_bytes",
+                              return_value=None):
+                response = await self.client.get("/work-icon?t=secret&work=miside")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.content, covers[list(covers)[0]])
+        self.assertFalse(cached.with_suffix(".face.json").exists(),
+                         "换了图就不能留着上一张的脸记录")
 
     async def test_source_icons_are_served_from_disk_and_only_from_the_table(self):
         """来源图标同样经 Peach 落盘；地址只认 follow_assets.SOURCE_ICON_URLS 那张表。"""

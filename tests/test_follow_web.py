@@ -16,7 +16,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
-from peach import follow_store, web_follow, web_stats
+from peach import avatar_face, follow_assets, follow_store, web_follow, web_stats
 from peach.follow import FollowHistoryEnd
 from peach.follow import FollowSourceError
 from peach.follow_discovery import Discovery, ExternalSearch
@@ -139,7 +139,10 @@ class FollowContractTests(unittest.TestCase):
         self.contract = WebContract(
             self.db, follow_sources_root=self.root / "sources",
             follow_secrets_root=self.root / "secrets",
-            follow_shared_root=self.root / "shared")
+            follow_shared_root=self.root / "shared",
+            # 题材圆标的取景从这个目录下的 sidecar 读。不给临时目录的话，判据变成
+            # 「这台机器上碰巧缓存过哪些题材图」，同一份代码换台机器就是另一个结果。
+            candidate_root=self.root / "generated")
 
     def _seed(self, candidates=None, provider="rule34video", ref="lazyprocrastinator",
               semantics="work", label="LazyProcrastinator"):
@@ -835,9 +838,36 @@ class FollowContractTests(unittest.TestCase):
             self._typed("3", {"zenless zone zero": "copyright"}),
         ))
         works = self._get()["facets"]["works"]
-        # 末位说这一枚挑不挑得出代表图，页面据它决定出不出 `<img>`。
-        self.assertEqual(works, [["zenless zone zero", "Zenless Zone Zero", 2, 1],
-                                 ["final fantasy", "Final Fantasy", 1, 0]])
+        # 第四位说这一枚挑不挑得出代表图，页面据它决定出不出 `<img>`；第五位是那张图
+        # 检出的取景，还没取过图时是 None。
+        self.assertEqual(works,
+                         [["zenless zone zero", "Zenless Zone Zero", 2, 1, None],
+                          ["final fantasy", "Final Fantasy", 1, 0, None]])
+
+    def test_the_works_row_hands_the_page_the_framing_of_the_cover_it_has(self):
+        """取过图的题材带上那张图的取景：挪到哪，还有那张脸有多少像素。
+
+        圆标只有 28px，而圆里是一整张作品图不是烤好边距的头像：只挪不放大的话，脸在
+        图里占多少、在这枚圆里就占多少。两样都按实体图那套 sidecar 的形状给，页面于是
+        走同一个放大函数。
+        """
+        self._seed(provider="rule34xxx", ref="typed", candidates=(
+            self._typed("1", {"stellar blade": "copyright"},
+                        preview="https://api-cdn.rule34.xxx/thumbnails/9/s.jpg"),
+        ))
+        cached = follow_assets.cache_path(
+            self.contract.candidate_root / follow_assets.ROOT_NAME, "works",
+            "stellar blade")
+        cached.parent.mkdir(parents=True, exist_ok=True)
+        avatar_face.write_sidecar(cached, {
+            "ratio": 0.563, "px": [144, 256],
+            "face": {"cx": 0.5, "cy": 0.2, "w": 0.2, "h": 0.18, "score": 0.9},
+            "focus": {"axis": "y", "pct": 17}})
+        self.assertEqual(
+            self._get()["facets"]["works"],
+            [["stellar blade", "Stellar Blade", 1, 1,
+              {"axis": "y", "pct": 17,
+               "box": {"cx": 0.5, "cy": 0.2, "faceW": 29, "imgW": 144, "imgH": 256}}]])
 
     def test_one_series_is_one_pill_however_the_source_spells_each_installment(self):
         """一个系列在那一排上只占一枚。
@@ -855,7 +885,7 @@ class FollowContractTests(unittest.TestCase):
                               "copyright"}),
         ))
         self.assertEqual(self._get()["facets"]["works"],
-                         [["final fantasy", "Final Fantasy", 4, 0]])
+                         [["final fantasy", "Final Fantasy", 4, 0, None]])
         self.assertEqual(sum(self._get(work="final fantasy")["counts"].values()), 4)
         self.assertEqual(sum(self._get(work="final fantasy vii")["counts"].values()), 4,
                          "书签里存着的旧写法要落在合并后的同一枚上")
@@ -874,7 +904,7 @@ class FollowContractTests(unittest.TestCase):
             self._typed("4", {"iwara": "copyright"}),
         ))
         self.assertEqual(self._get()["facets"]["works"],
-                         [["stellar blade", "Stellar Blade", 1, 0]])
+                         [["stellar blade", "Stellar Blade", 1, 0, None]])
 
     def test_a_work_filters_every_spelling_and_two_works_mean_either(self):
         """按题材筛是「任一」，而且两种写法都要筛得到。
@@ -898,21 +928,40 @@ class FollowContractTests(unittest.TestCase):
             sorted(self._get(work="final fantasy")["facets"]["works"]),
             "选中一部作品后另一部不能从那一排上消失，否则换不了题材")
 
-    def _scored(self, item_id, score, tags, preview, thumb=None):
+    def _scored(self, item_id, score, tags, cover, preview=None):
         return SimpleNamespace(
             id=item_id, provider="rule34xxx", external_id=str(item_id),
-            media_url=None, thumb_url=thumb,
+            media_url=None, thumb_url=cover,
             metadata={"score": score, "preview_url": preview,
                       "tags": list(tags),
                       "tag_types": {tag: ("general" if tag == "3d" else "copyright")
                                     for tag in tags}})
 
-    def test_the_work_icon_is_the_top_rated_3d_clip_already_in_this_library(self):
-        """题材头像取本库里这个题材评分最高的那一条，带 `3d` 的优先。
+    def test_the_work_icon_takes_the_cover_not_the_250px_thumbnail(self):
+        """候选取的是卡片上那张高清封面，不是 250px 的缩略图。
+
+        圆标只有 28px，两层看起来一样；差别在检脸——250px 里一张脸只剩十几个像素。
+        实测本库 77 个题材，高清那层检出 58 张脸，缩略那层 49 张。没有封面的旧行才
+        退回缩略图，那也好过这一枚圆标空着。
+        """
+        host = "https://api-cdn.rule34.xxx"
+        store = SimpleNamespace(items=lambda **kwargs: (
+            self._scored(1, 9, ("stellar blade", "3d"), f"{host}/samples/1/a.jpg",
+                         f"{host}/thumbnails/1/a.jpg"),
+            self._scored(2, 9, ("miside", "3d"), None, f"{host}/thumbnails/2/b.jpg"),
+        ))
+        table = web_follow._work_icon_table(store)
+        self.assertEqual(table["stellar blade"], [f"{host}/samples/1/a.jpg"])
+        self.assertEqual(table["miside"], [f"{host}/thumbnails/2/b.jpg"])
+
+    def test_the_work_icon_candidates_are_this_librarys_hottest_3d_clips(self):
+        """题材头像的候选是本库里这个题材热度最高的几条，带 `3d` 的优先。
 
         rule34 的 score 是站点自己的热度排序，本库里现成存着，不必再按 `sort:score`
-        去站点查一遍——查回来的还多半是用户没关注的作者。地址只认登记过的图床主机：
-        它来自来源记录，而记录里存的是站点回的 JSON，不该把任意主机带进出网路径。
+        去站点查一遍——查回来的还多半是用户没关注的作者。给的是一串而不是一条：最热
+        那张常常是身体特写，取图那一端要顺着往下找第一张看得见脸的。地址只认登记过
+        的图床主机：它来自来源记录，而记录里存的是站点回的 JSON，不该把任意主机带进
+        出网路径。
         """
         host = "https://api-cdn.rule34.xxx/thumbnails/1"
         store = SimpleNamespace(items=lambda **kwargs: (
@@ -924,16 +973,31 @@ class FollowContractTests(unittest.TestCase):
             self._scored(5, 999, ("zenless zone zero", "3d"), f"{host}/other.jpg"),
         ))
         table = web_follow._work_icon_table(store)
-        self.assertEqual(table["stellar blade"], f"{host}/spatial.jpg")
-        self.assertEqual(table["zenless zone zero"], f"{host}/other.jpg")
+        self.assertEqual(table["stellar blade"],
+                         [f"{host}/spatial.jpg", f"{host}/quiet.jpg",
+                          f"{host}/flat.jpg"])
+        self.assertEqual(table["zenless zone zero"], [f"{host}/other.jpg"])
         self.assertNotIn("miside", table,
                          "本库里没有这个题材时不编一张图出来，那一排退回首字母")
+
+    def test_a_work_offers_a_few_candidates_not_the_whole_library(self):
+        """候选就那么几个。
+
+        热门题材本库里有上千条，全排出来既是白排，也意味着一枚圆标最坏要去站点取
+        上千次才停——一张都检不出脸时，下一张的收益早就没了。
+        """
+        host = "https://api-cdn.rule34.xxx/thumbnails/4"
+        store = SimpleNamespace(items=lambda **kwargs: tuple(
+            self._scored(index, index, ("stellar blade", "3d"), f"{host}/{index}.jpg")
+            for index in range(1, 40)))
+        self.assertEqual(len(web_follow._work_icon_table(store)["stellar blade"]),
+                         web_follow._WORK_ICON_CANDIDATES)
 
     def test_the_work_icon_follows_the_merged_series_not_one_installment(self):
         """题材头像跟着合并后的系列走。
 
         `Final Fantasy VII` 那一枚已经并进 `Final Fantasy`，头像要在整个系列里挑
-        最高分的那一条，而不是只看恰好写着系列名的那几条。
+        最热的那几条，而不是只看恰好写着系列名的那几条。
         """
         host = "https://api-cdn.rule34.xxx/thumbnails/2"
         store = SimpleNamespace(items=lambda **kwargs: (
@@ -942,7 +1006,7 @@ class FollowContractTests(unittest.TestCase):
                          f"{host}/remake.jpg"),
         ))
         self.assertEqual(web_follow._work_icon_table(store)["final fantasy"],
-                         f"{host}/remake.jpg")
+                         [f"{host}/remake.jpg", f"{host}/series.jpg"])
 
     def test_one_scan_answers_every_work_icon_asked_for_in_the_same_minute(self):
         """整排头像同时到期时只扫一遍库。
@@ -961,10 +1025,10 @@ class FollowContractTests(unittest.TestCase):
         web_follow._work_icon_memo = (0.0, {})
         try:
             store = SimpleNamespace(items=items)
-            self.assertEqual(web_follow.work_icon_url(store, "stellar blade"),
-                             f"{host}/a.jpg")
-            self.assertEqual(web_follow.work_icon_url(store, "miside"),
-                             f"{host}/b.jpg")
+            self.assertEqual(web_follow.work_icon_urls(store, "stellar blade"),
+                             [f"{host}/a.jpg"])
+            self.assertEqual(web_follow.work_icon_urls(store, "miside"),
+                             [f"{host}/b.jpg"])
             self.assertEqual(len(scans), 1)
         finally:
             web_follow._work_icon_memo = (0.0, {})
