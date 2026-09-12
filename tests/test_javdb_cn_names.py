@@ -447,8 +447,20 @@ class ApplyAliasTests(unittest.TestCase):
     def test_a_new_writing_is_written_with_the_page_as_its_source(self):
         rows = self.module.plan(self.con, [self.candidate()])
         self.assertEqual(rows[0]["action"], "写入")
-        self.assertEqual(self.module.apply_rows(self.con, rows), 1)
-        self.assertEqual(self.aliases_of(1), [("新有菜", javdb.ALIAS_SOURCE)])
+        self.assertEqual(self.module.apply_rows(self.con, rows, "javdb-20260912"), 1)
+        self.assertEqual(self.aliases_of(1),
+                         [("新有菜", f"{javdb.ALIAS_SOURCE}@javdb-20260912")])
+
+    def test_the_batch_is_named_in_the_source_so_it_can_be_taken_back_whole(self):
+        """解析判错时，认得出批次才能按 `source` 把那一趟整批撤回。"""
+        self.module.apply_rows(self.con, self.module.plan(self.con, [self.candidate()]),
+                               "javdb-20260912")
+        self.module.apply_rows(self.con, self.module.plan(
+            self.con, [self.candidate(alias="岩谷志季")]), "javdb-20261001")
+        gone = self.con.execute("DELETE FROM entity_alias WHERE source=?",
+                                (self.module.source_for("javdb-20261001"),)).rowcount
+        self.assertEqual(gone, 1)
+        self.assertEqual([alias for alias, _ in self.aliases_of(1)], ["新有菜"])
 
     def test_a_writing_the_entity_already_has_is_left_alone(self):
         self.con.execute("INSERT INTO entity_alias VALUES(1,'新有菜',?,'javdb-actor-page',1.0)",
