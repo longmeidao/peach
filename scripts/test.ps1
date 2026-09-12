@@ -5,7 +5,9 @@ param(
     [switch]$Fresh,
     [string]$Base = 'master',
     [int]$ShardIndex = 0,
-    [int]$ShardCount = 1
+    [int]$ShardCount = 1,
+    # 本机同时跑几个分片子进程：auto 按核数定；-Jobs 1 退回串行。CI 分片模式下运行器忽略它。
+    [string]$Jobs = 'auto'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -60,7 +62,7 @@ try {
     Write-Host "Peach source: $LoadedPath"
     $PeachTestExtra = @()
     if ($Fresh) { $PeachTestExtra += '--fresh' }
-    & $Python scripts\test_runner.py --scope $Scope --base $Base --shard-index $ShardIndex --shard-count $ShardCount @PeachTestExtra
+    & $Python scripts\test_runner.py --scope $Scope --base $Base --shard-index $ShardIndex --shard-count $ShardCount --jobs $Jobs @PeachTestExtra
     exit $LASTEXITCODE
 } finally {
     Pop-Location

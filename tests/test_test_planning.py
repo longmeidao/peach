@@ -2,6 +2,7 @@
 from pathlib import Path
 import contextlib
 import io
+import json
 import sqlite3
 import subprocess
 import sys
@@ -85,6 +86,72 @@ class TestPlanningTests(unittest.TestCase):
         with patch.object(runner, 'build_suite', return_value=unittest.TestSuite([unittest.FunctionTestCase(lambda: None)])), \
              patch.object(runner.test_evidence, 'inputs', side_effect=AssertionError('分片不能签发证据')):
             self.assertEqual(runner.main(['--scope', 'full', '--shard-count', '2']), 0)
+
+    def test_a_shard_writes_its_outcome_for_the_parent_to_merge(self):
+        """分片子进程不签记录，只把成败、用例数和逐用例耗时写给父进程；域可以给多个。"""
+        with tempfile.TemporaryDirectory() as directory:
+            report = Path(directory) / 'shard.json'
+            suite = unittest.TestSuite([unittest.FunctionTestCase(lambda: None)])
+            with patch.object(runner, 'build_suite', return_value=suite) as build, \
+                 patch.object(runner.test_evidence, 'inputs', side_effect=AssertionError('分片不能签发证据')), \
+                 contextlib.redirect_stderr(io.StringIO()), contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(runner.main(['--scope', 'follow', '--scope', 'tooling',
+                                              '--shard-index', '1', '--shard-count', '2',
+                                              '--timings', str(report)]), 0)
+            build.assert_called_once_with('follow', 'tooling', shard_index=1, shard_count=2)
+            payload = json.loads(report.read_text(encoding='utf-8'))
+            self.assertTrue(payload['success'])
+            self.assertEqual(payload['count'], 1)
+            self.assertEqual(len(payload['timings']), 1)
+
+    def test_parallel_shards_are_merged_and_one_red_shard_fails_the_run(self):
+        """父进程只汇总：每片的结论来自子进程写的文件，片数比并发多时先完成的接着领。"""
+        class Done:
+            def __init__(self, code):
+                self.returncode = code
+
+            def poll(self):
+                return self.returncode
+
+        def launcher(failing: int | None):
+            launched = []
+
+            def spawn(command, *, stdout, stderr, cwd):
+                launched.append(command)
+                index = int(command[command.index('--shard-index') + 1])
+                report = Path(command[command.index('--timings') + 1])
+                report.write_text(json.dumps({'success': index != failing, 'count': 10 + index,
+                                              'timings': [[0.5, f'test_{index}']]}), encoding='utf-8')
+                stdout.write(f'分片 {index} 的输出\n')
+                return Done(0 if index != failing else 1)
+            return launched, spawn
+
+        launched, spawn = launcher(failing=None)
+        with contextlib.redirect_stdout(io.StringIO()) as output:
+            passed, count, timings = runner.run_shards(('follow', 'tooling'), jobs=2, shard_count=3, spawn=spawn)
+        self.assertTrue(passed)
+        self.assertEqual(count, 10 + 11 + 12)
+        self.assertEqual(sorted(name for _, name in timings), ['test_0', 'test_1', 'test_2'])
+        self.assertEqual(sorted(int(c[c.index('--shard-index') + 1]) for c in launched), [0, 1, 2])
+        for command in launched:
+            self.assertEqual(command[:2], [sys.executable, str(runner.ROOT / 'scripts' / 'test_runner.py')])
+            self.assertEqual(command[2:6], ['--scope', 'follow', '--scope', 'tooling'])
+            self.assertEqual(command[command.index('--shard-count') + 1], '3')
+        for index in range(3):
+            self.assertIn(f'分片 {index} 的输出', output.getvalue())
+
+        _, spawn = launcher(failing=2)
+        with contextlib.redirect_stdout(io.StringIO()):
+            passed, count, _ = runner.run_shards(('checks',), jobs=4, shard_count=3, spawn=spawn)
+        self.assertFalse(passed)
+        self.assertEqual(count, 10 + 11 + 12, '失败那片的用例数也要算进总数，记录里的 count 才是实跑数')
+
+    def test_jobs_accepts_auto_or_a_positive_integer(self):
+        self.assertEqual(runner.resolve_jobs('3'), 3)
+        self.assertTrue(1 <= runner.resolve_jobs('auto') <= runner.MAX_JOBS)
+        for bad in ('0', '-1', 'many'):
+            with self.subTest(bad=bad), self.assertRaises(runner.argparse.ArgumentTypeError):
+                runner.resolve_jobs(bad)
 
     def test_a_test_reading_a_web_source_runs_when_that_source_changes(self):
         """断言 `web/`、`frontend/` 文件的测试，必须登记在改那个文件会选到的域里。

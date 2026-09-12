@@ -12,6 +12,12 @@ case "$SCOPE" in
         exit 2
         ;;
 esac
+# 本机默认并行：没显式给 `--jobs` 就传 auto，运行器按核数定并发；CI 分片模式下它被忽略。
+# `${1+$*}` 是 bash 3.2 在 `set -u` 下读全部参数的写法，没有参数时安全地展开成空。
+JOBS=(--jobs auto)
+case " ${1+$*} " in
+    *" --jobs "*) JOBS=() ;;
+esac
 EXTRA=("${@:2}")
 # 展开必须写成 `${EXTRA[@]+...}`。macOS 自带的是 bash 3.2，`set -u` 下它把空数组的
 # `"${EXTRA[@]}"` 当未绑定变量报错（bash 4.4 起才不报），于是不带额外参数直接跑
@@ -54,4 +60,4 @@ if [[ "$LOADED_MODULE" != "$SOURCE_ROOT/"* ]]; then
 fi
 
 echo "Peach source: $LOADED_MODULE"
-exec "$PYTHON" scripts/test_runner.py --scope "$SCOPE" ${EXTRA[@]+"${EXTRA[@]}"}
+exec "$PYTHON" scripts/test_runner.py --scope "$SCOPE" ${JOBS[@]+"${JOBS[@]}"} ${EXTRA[@]+"${EXTRA[@]}"}

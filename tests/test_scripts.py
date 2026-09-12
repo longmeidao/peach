@@ -334,8 +334,9 @@ class OperationalScriptTests(unittest.TestCase):
         """
         source = (ROOT / "scripts" / "test.sh").read_text(encoding="utf-8")
         self.assertIn("set -euo pipefail", source)
-        self.assertIn('scripts/test_runner.py --scope "$SCOPE" ${EXTRA[@]+"${EXTRA[@]}"}', source)
-        self.assertNotIn('--scope "$SCOPE" "${EXTRA[@]}"', source)
+        self.assertIn('scripts/test_runner.py --scope "$SCOPE" ${JOBS[@]+"${JOBS[@]}"} ${EXTRA[@]+"${EXTRA[@]}"}',
+                      source)
+        self.assertNotIn(' "${EXTRA[@]}"', source)
 
         # 真实脚本后半段要定位 venv 并跑整个测试套件，直接执行会递归。只取参数处理那一段，
         # 把 exec 的目标换成一个回显 argv 的桩，其余保持逐字一致。
@@ -375,11 +376,13 @@ class OperationalScriptTests(unittest.TestCase):
                 shells.append(path)
         self.assertTrue(shells)
         for shell in dict.fromkeys(shells):
+            # 没显式给 `--jobs` 就补 auto，本机默认并行；给了就原样透传，不再补。
             for argv, expected in (
-                    ([], ["--scope", "auto"]),
-                    (["auto"], ["--scope", "auto"]),
+                    ([], ["--scope", "auto", "--jobs", "auto"]),
+                    (["auto"], ["--scope", "auto", "--jobs", "auto"]),
                     (["web", "--fresh", "--base", "a b"],
-                     ["--scope", "web", "--fresh", "--base", "a b"]),
+                     ["--scope", "web", "--jobs", "auto", "--fresh", "--base", "a b"]),
+                    (["web", "--jobs", "1"], ["--scope", "web", "--jobs", "1"]),
             ):
                 with self.subTest(shell=shell, argv=argv):
                     done = subprocess.run(
