@@ -1,4 +1,4 @@
-import { LOC as e, esc as t, faviconUrl as n, fmtDur as r, fmtSize as i, icon as a, requestErrorMessage as o } from "/js/core.js";
+import { LOC as e, esc as t, fmtDur as n, fmtSize as r, icon as i, requestErrorMessage as a, siteMarkUrl as o } from "/js/core.js";
 import { MEDIA_SOURCE_ICONS as s, checkboxHtml as c, collectionSummaryHtml as l, confirmModal as u, emptyStateHtml as d, fieldsetTitle as f, loadingDotsHtml as p, moveGlidePane as m, noteHtml as h, progressHtml as g, projectBannerHtml as _, selectFieldHtml as v, selectOptionIconHtml as y, setActionBusy as b, wireCollapse as x, wireSelectField as S } from "/js/ui-components.js";
 //#region node_modules/preact/dist/preact.module.js
 var C, w, T, E, D, O, k, A, ee, j, M, te, ne, N, re, ie = {}, ae = [], oe = /acit|ex(?:s|g|n|p|$)|rph|grid|ows|mnc|ntw|ine[ch]|zoo|^ord|itera/i, se = Array.isArray;
@@ -540,7 +540,7 @@ var lt = class extends Error {
 	status;
 	body;
 	constructor(e, t, n = null) {
-		super(o(e, t)), this.name = "ApiError", this.status = t, this.body = n;
+		super(a(e, t)), this.name = "ApiError", this.status = t, this.body = n;
 	}
 }, ut = (e) => {
 	if (!e || typeof e != "object") return "";
@@ -554,7 +554,7 @@ var lt = class extends Error {
 		if (typeof n == "string" && n) return n;
 	}
 	return "";
-}, W = (e) => o(e);
+}, W = (e) => a(e);
 async function G(e, t) {
 	let n = await fetch(e, {
 		headers: { Accept: "application/json" },
@@ -2395,8 +2395,8 @@ function Vn({ data: e }) {
 	return H(() => {
 		let n = t.current, r = document.createElement("details");
 		r.className = "configdirectories";
-		let i = document.createElement("summary");
-		i.innerHTML = a("chevron-right") + "<span>数据目录</span>", r.append(i);
+		let a = document.createElement("summary");
+		a.innerHTML = i("chevron-right") + "<span>数据目录</span>", r.append(a);
 		for (let t of [.../* @__PURE__ */ new Set([e.data_root, ...e.directories])]) {
 			let e = document.createElement("p");
 			e.className = "confighelp", e.textContent = t, r.append(e);
@@ -3619,7 +3619,7 @@ async function Kr(e) {
 //#endregion
 //#region src/islands/quality-goals.tsx
 var qr = (e, t) => Kr(t), Jr = (e) => e.has_cover ? `/cover?code=${encodeURIComponent(e.code ?? "")}` : `/poster?id=${e.id}&c=4`;
-function Yr({ openItem: t, javTitleHtml: n, javDisplayName: a, srcBadge: o }) {
+function Yr({ openItem: t, javTitleHtml: i, javDisplayName: a, srcBadge: o }) {
 	let { data: s, error: c } = Wr.value;
 	if (c) return /* @__PURE__ */ q("div", {
 		class: "qualitylist",
@@ -3658,7 +3658,7 @@ function Yr({ openItem: t, javTitleHtml: n, javDisplayName: a, srcBadge: o }) {
 								type: "button",
 								"data-middle-truncate": !0,
 								onClick: () => t(s.id),
-								dangerouslySetInnerHTML: { __html: n(s) }
+								dangerouslySetInnerHTML: { __html: i(s) }
 							}) }),
 							/* @__PURE__ */ q("p", {
 								class: "mono",
@@ -3668,8 +3668,8 @@ function Yr({ openItem: t, javTitleHtml: n, javDisplayName: a, srcBadge: o }) {
 										dangerouslySetInnerHTML: { __html: o(s.location, s.cost) }
 									}),
 									/* @__PURE__ */ q("span", { children: e[s.location] ?? s.location }),
-									/* @__PURE__ */ q("span", { children: r(s.duration) }),
-									/* @__PURE__ */ q("span", { children: i(s.size ?? 0) })
+									/* @__PURE__ */ q("span", { children: n(s.duration) }),
+									/* @__PURE__ */ q("span", { children: r(s.size ?? 0) })
 								]
 							}),
 							s.reason ? /* @__PURE__ */ q("p", {
@@ -3713,7 +3713,7 @@ function Zr({ value: e, onChange: t }) {
 	});
 }
 function Qr({ source: e, toast: t }) {
-	let [r, i] = B(e), [a, o] = B(e.network), [s, c] = B(""), [l, u] = B(""), [d, p] = B("paste"), [m, g] = B(""), [_, v] = B(!1), [y, x] = B(""), [S, C] = B([]), w = U(null), T = U(null);
+	let [n, r] = B(e), [i, a] = B(e.network), [s, c] = B(""), [l, u] = B(""), [d, p] = B("paste"), [m, g] = B(""), [_, v] = B(!1), [y, x] = B(""), [S, C] = B([]), w = U(null), T = U(null);
 	H(() => {
 		T.current?.querySelectorAll("footer button").forEach((e) => b(e, _));
 	}, [_]);
@@ -3727,14 +3727,14 @@ function Qr({ source: e, toast: t }) {
 					let t = await K("/api/scraping/check", { source: e.source }, "POST", E.current.signal);
 					E.current.signal.aborted || C(t.results);
 				} else {
-					let r = await K("/api/scraping/settings", {
+					let a = await K("/api/scraping/settings", {
 						source: e.source,
-						network: a,
+						network: i,
 						cookie: s,
 						cookies_text: l,
 						revoke: n === "revoke"
 					}, "POST", E.current.signal);
-					E.current.signal.aborted || (i(r.saved), c(""), u(""), g(""), w.current && (w.current.value = ""), t(n === "revoke" ? "Cookie 已撤销" : "来源设置已保存"));
+					E.current.signal.aborted || (r(a.saved), c(""), u(""), g(""), w.current && (w.current.value = ""), t(n === "revoke" ? "Cookie 已撤销" : "来源设置已保存"));
 				}
 			} catch (e) {
 				E.current.signal.aborted || x(W(e));
@@ -3764,7 +3764,7 @@ function Qr({ source: e, toast: t }) {
 							rel: "noopener noreferrer",
 							children: [
 								/* @__PURE__ */ q("img", {
-									src: n(e.login),
+									src: o({ source: e.source }),
 									alt: "",
 									width: "16",
 									height: "16",
@@ -3784,16 +3784,16 @@ function Qr({ source: e, toast: t }) {
 					/* @__PURE__ */ q("div", {
 						class: "scraping-label",
 						children: ["连接方式", /* @__PURE__ */ q(Zr, {
-							value: a,
-							onChange: o
+							value: i,
+							onChange: a
 						})]
 					}),
-					a === "peach" && /* @__PURE__ */ q(ht, {
+					i === "peach" && /* @__PURE__ */ q(ht, {
 						href: "/configuration#peachProxy",
 						children: "配置 Peach 代理"
 					}),
 					e.accepts_cookie && /* @__PURE__ */ q(F, { children: [
-						/* @__PURE__ */ q("p", { children: r.cookie_saved ? "Cookie 已保存，登录是否有效请在抓取时确认。" : "需要登录时，任选一种方式提供 Cookie。" }),
+						/* @__PURE__ */ q("p", { children: n.cookie_saved ? "Cookie 已保存，登录是否有效请在抓取时确认。" : "需要登录时，任选一种方式提供 Cookie。" }),
 						/* @__PURE__ */ q("div", {
 							class: "insightswitch scraping-cookie-method",
 							role: "radiogroup",
@@ -3871,7 +3871,7 @@ function Qr({ source: e, toast: t }) {
 				class: "geist-fieldset-footer",
 				"data-geist-fieldset-footer": !0,
 				children: [
-					e.accepts_cookie && r.cookie_saved && /* @__PURE__ */ q("button", {
+					e.accepts_cookie && n.cookie_saved && /* @__PURE__ */ q("button", {
 						class: "geist-button",
 						type: "button",
 						onClick: () => void D("revoke"),

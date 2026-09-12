@@ -515,6 +515,42 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
             sorted(p.name for p in (self.candidate_root / "follow-assets" / "icons").iterdir()
                    if p.suffix in (".img", ".failed")))
 
+    async def test_site_marks_only_ever_resolve_a_key_the_server_already_knows(self):
+        """站点圆标的地址由服务端查表得到，前端递的是键。
+
+        判据是「这个键在不在表里」，不是「这个地址看着像不像那个站」——收地址就是开一个
+        任意地址抓取的口子。白名单里那条后缀的子域同样不认：子域是浏览历史带进来的
+        任意值，`sub.kemono.cr` 和 `kemono.cr` 在这里是两件事。
+        """
+        from peach import routes_media
+
+        self.addCleanup(setattr, routes_media, "GENERATED_DIR", routes_media.GENERATED_DIR)
+        routes_media.GENERATED_DIR = self.root / "site-marks"
+        png = (b"\x89PNG\r\n\x1a\n" + b"\x00" * 8 + b"IHDR" + b"\x00" * 8)
+        hosts = []
+
+        def upstream(request):
+            hosts.append(request.url.host)
+            return httpx.Response(200, content=png, request=request,
+                                  headers={"content-type": "image/png"})
+        self._swap_http_client(upstream)
+
+        denied = await self.client.get("/site-mark?source=mgstage")
+        self.assertEqual(denied.status_code, 401)
+        await self.client.get("/site-mark?t=secret&source=mgstage")
+        self.assertTrue(hosts, "表里的采集来源要真的去问对方站点")
+        self.assertTrue(all(host.endswith("mgstage.com") for host in hosts), hosts)
+
+        reached = len(hosts)
+        for query in ("source=evil.example", "domain=evil.example",
+                      "domain=sub.kemono.cr", "domain="):
+            refused = await self.client.get(f"/site-mark?t=secret&{query}")
+            self.assertEqual(refused.status_code, 404, query)
+        self.assertEqual(len(hosts), reached, "表外的键一次网都不出")
+
+        await self.client.get("/site-mark?t=secret&domain=kemono.cr")
+        self.assertTrue(any(host.endswith("kemono.cr") for host in hosts[reached:]), hosts)
+
     async def test_unauthorized_keeps_three_shapes_grouped_by_route_class(self):
         """401 三种形态按路由类分组，收敛到 Depends 之后也不许并成一种。
 

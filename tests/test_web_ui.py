@@ -1915,12 +1915,27 @@ class WebUiSourceTests(unittest.TestCase):
         # 现在更进一步：图标由本机 `/link-mark` 提供，浏览器根本不再向对方站点发请求，
         # 也就无从泄露。referrerpolicy 仍然留着——它守的是这条约束本身。
         self.assertPageContains('class="entityfavicon" src="${esc(linkMarkUrl(x))}"')
-        self.assertPageLacks('src="${esc(faviconUrl(x.url))}"',
-                             "外链图标不应再直接指向对方站点")
+        self.assertPageLacks("faviconUrl(", "外链图标不应再直接指向对方站点")
         anchor = self.app_js.index('class="entityfavicon"')
         self.assertIn('referrerpolicy="no-referrer"',
                       self.app_js[anchor:anchor + 260],
                       "资料页外链 favicon 必须带 no-referrer")
+
+    def test_no_site_icon_is_fetched_by_the_browser_from_the_site_itself(self):
+        """站点图标全部由本机给：浏览器不向对方站点要图，也不问第三方图标代理。
+
+        第三方代理那一跳把这一列里的每个站逐个报出去，换回来的只是一枚 16px 位图；
+        直连对方站点则只够拿到 `/favicon.ico`，站点自己备好的 apple-touch-icon 和
+        SVG 问都不问，要代理才通的来源干脆空着。采集页和口味页同走 `/site-mark`，
+        和资料页外链圆标是同一套挑图、合成与缓存。
+        """
+        self.assertPageContains('<img src="${esc(siteMarkUrl({domain}))}" alt="" loading="lazy" ')
+        for gone in ("google.com/s2/favicons", "faviconFallbackUrl", "SITE_FAVICONS"):
+            self.assertPageLacks(gone, "站点图标不得由浏览器向站外取")
+        scraping = (Path(__file__).resolve().parents[1]
+                    / "frontend/src/islands/scraping.tsx").read_text(encoding="utf-8")
+        self.assertIn("<img src={siteMarkUrl({ source: source.source })}", scraping)
+        self.assertNotIn("faviconUrl", scraping)
 
     def test_no_caller_ever_hands_the_link_mark_endpoint_a_url(self):
         # 让前端把地址递给服务端去取，等于开一个任意地址抓取的口子。和 `/follow-stream`
@@ -1928,6 +1943,7 @@ class WebUiSourceTests(unittest.TestCase):
         # test_web_js.test_the_link_mark_endpoint_only_ever_carries_an_id 验收；
         # 这里守的是「没人绕过它另写一个带地址的调用」。
         self.assertPageLacks("/link-mark?url=", "外链图标端点不得接受前端给的地址")
+        self.assertPageLacks("/site-mark?url=", "站点圆标端点同样只认键")
 
     def test_social_links_show_only_the_platform_mark_not_the_handle(self):
         # handle 是网址的一部分，写出来只是把 URL 抄一遍：`X @remu19971203` 里真正有
@@ -4676,9 +4692,9 @@ class WebUiSourceTests(unittest.TestCase):
         # 「来源：<域名>」，转义在 siteAvatar 里做一次。
         self.assertPageContains("siteAvatar(row.name,sourceDomain,`来源：${sourceDomain}`)")
         self.assertPageContains('title?` title="${esc(title)}"`')
-        self.assertPageContains("'simpcity.cr':'https://simpcity.cr/data/assets/logo/favicon.png'")
-        self.assertPageContains("'hanime1.me':'https://vdownload.hembed.com/image/icon/tab_logo.png")
-        self.assertPageContains("'kemono.cr':'https://kemono.cr/assets/favicon-CPB6l7kH.ico'")
+        # 哪个站点给哪张图，由服务端按 `/site-mark` 去问站点自己，页面不带这张清单：
+        # 手写死的路径会随对方改版静默失效，而页面这边看不出它已经指向 404。
+        self.assertPageContains("siteMarkUrl({domain})")
         self.assertPageLacks("negative_tags")
         self.assertPageContains(".tastehero{margin-bottom:16px}")
         self.assertPageContains(".tasteranks{display:grid;grid-template-columns:repeat(3")
