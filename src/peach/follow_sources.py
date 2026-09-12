@@ -1321,6 +1321,45 @@ class Rule34XxxConnector(_BaseConnector):
             rows.append((tag, int(matched.group(1).replace(",", "")) if matched else 0))
         return tuple(rows)
 
+    #: dapi 的 tag 接口用数字表示分类。名字取站方自己在详情页 `#tag-sidebar` 上用的
+    #: 那套（`_detail_tag_types` 读的就是它），两条路认出来的类型才是同一个词。
+    _TAG_TYPE_NAMES = {0: "general", 1: "artist", 3: "copyright",
+                       4: "character", 5: "metadata"}
+    #: dapi 的 tag 接口只回 XML，`json=1` 实测被忽略。
+    _TAG_ROW_RE = re.compile(
+        r'<tag\s+type="(\d+)"\s+count="(\d+)"\s+name="([^"]*)"', re.IGNORECASE)
+
+    def tag_type(self, name: str) -> str:
+        """这个标签在站上是什么分类，问不出来就是空串。
+
+        补全接口只回名字和帖子数，认不出哪个是作者：`lewd`（8548 帖）是普通标签、
+        `lewd_dorky` 是角色、`lewdrex` 才是作者，名字本身看不出区别。分类只有
+        dapi 的 tag 接口给，而它要 `user_id` + `api_key`——没凭据时实测回的是
+        `"Missing authentication"`，那时认不出就是认不出，不按词形猜。
+
+        只接受精确名：`name_pattern` 实测是两边通配的子串匹配，而且按 id 截断——
+        `lewd%` 取满 1000 条里一条真前缀都没有，`orderby` 也不生效。
+        """
+        tag = (name or "").strip()
+        if not tag or self.credential is None:
+            return ""
+        user_id, api_key = self.credential.require("user_id", "api_key")
+        query = urllib.parse.urlencode({
+            "page": "dapi", "s": "tag", "q": "index", "name": tag,
+            "user_id": user_id, "api_key": api_key,
+        })
+        # 查询串里带 api_key，和 `fetch` 一样绝不落进日志或证据。
+        response = self._get(f"https://api.rule34.xxx/index.php?{query}",
+                             headers={"Accept": "application/xml"})
+        self._check_status(response)
+        body = response.body.decode("utf-8", errors="replace")
+        if body.lstrip().startswith('"') and "authentication" in body.lower():
+            raise CredentialError("rule34xxx 拒绝了 user_id/api_key")
+        for code, _count, found in self._TAG_ROW_RE.findall(body):
+            if html.unescape(found).strip().casefold() == tag.casefold():
+                return self._TAG_TYPE_NAMES.get(int(code), "")
+        return ""
+
     #: 拼可读标签时跳过的词：作者手柄、媒体类型和评级，留下的才是内容。
     _TITLE_TAG_STOPWORDS = frozenset({
         "video", "sound", "animated", "mp4", "webm", "3d", "hd", "60fps",

@@ -179,6 +179,12 @@
 .fbtn svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2}
 
 .faddform{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:start}
+/* 建议下拉是绝对定位的浮层，挂在输入框这一格上：定位父级不给到这里，`.searchmenu`
+   的 `top:calc(100% + 8px)` 就相对整个页面算，下拉会飞到别处去。 */
+.faddfield{position:relative;min-width:0}
+/* 建议还在路上时下拉里站着这一行。行高和一条建议看齐，出结果时下拉不会跳一下。 */
+.searchbusy{display:flex;align-items:center;gap:8px;padding:8px 10px;
+  color:var(--muted);font-size:var(--fs-xs)}
 /* 没有按钮可以变灰，查找中的唯一凭据就是前缀位上的 Spinner——输入框自己必须还能改。 */
 .faddform[aria-busy="true"] input[type="search"]{color:var(--muted)}
 
@@ -380,7 +386,7 @@ details.fcred{display:block;min-width:0}
   .faliasmanager{margin-left:-13px;margin-right:-13px;margin-bottom:-14px}
   .faliasmanager>summary{padding:2px 13px}
   .faliasmanager .fcollapsebody{padding:4px 13px 14px}
-  .faddform>.geist-search{grid-column:1/-1}
+  .faddform>.faddfield{grid-column:1/-1}
   .faddform>.fsrcfilter{justify-self:start}
   .frow{gap:8px}
   .fsources{grid-template-columns:1fr}

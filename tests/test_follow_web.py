@@ -17,7 +17,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
-from peach import avatar_face, follow_assets, follow_store, web_follow, web_stats
+from peach import (avatar_face, follow_assets, follow_discovery, follow_store,
+                   web_follow, web_stats)
 from peach.follow import FollowHistoryEnd
 from peach.follow import FollowSourceError
 from peach.follow_discovery import Discovery, ExternalSearch
@@ -144,7 +145,10 @@ class FollowContractTests(unittest.TestCase):
             follow_shared_root=self.root / "shared",
             # 题材圆标的取景从这个目录下的 sidecar 读。不给临时目录的话，判据变成
             # 「这台机器上碰巧缓存过哪些题材图」，同一份代码换台机器就是另一个结果。
-            candidate_root=self.root / "generated")
+            candidate_root=self.root / "generated",
+            # 状态根同理：创作者清单在那里，不给就会读到这台机器上的 42 万个名字，
+            # 快慢和结果都由本机状态决定。
+            follow_state_root=self.root / "state")
 
     def _seed(self, candidates=None, provider="rule34video", ref="lazyprocrastinator",
               semantics="work", label="LazyProcrastinator"):
@@ -1963,6 +1967,160 @@ class FollowSourceAddTests(FollowContractTests):
                 self._post("/api/follow/author-alias", body)
 
 
+class FollowSuggestTests(FollowContractTests):
+    """添加框敲字时的建议。每组各自独立成败，任何一组缺席都不影响别的组。"""
+
+    TAGS = json.dumps([{"label": "lewdgatta (380)", "value": "lewdgatta"},
+                       {"label": "lewdgazer (237)", "value": "lewdgazer"}]).encode()
+    #: 1 是 artist、4 是 character。dapi 的 tag 接口只回 XML。
+    TAG_TYPES = {
+        "lewdgatta": b'<tags type="array"><tag type="1" count="380" name="lewdgatta"/></tags>',
+        "lewdgazer": b'<tags type="array"><tag type="4" count="237" name="lewdgazer"/></tags>',
+    }
+
+    def setUp(self):
+        super().setUp()
+        # 分类缓存是模块级的，留到下一个用例里就会让它凭空少打几次请求。
+        follow_discovery._TAG_TYPES.clear()
+        self.addCleanup(follow_discovery._TAG_TYPES.clear)
+
+    def _tag_transport(self, body=None):
+        def call(_request, _timeout, _max_bytes):
+            return HttpResponse(200, {"content-type": "text/html"},
+                                self.TAGS if body is None else body)
+        return call
+
+    def _typed_transport(self):
+        def call(request, _timeout, _max_bytes):
+            if "autocomplete.php" in request.url:
+                return HttpResponse(200, {}, self.TAGS)
+            name = urllib.parse.parse_qs(
+                urllib.parse.urlsplit(request.url).query)["name"][0]
+            return HttpResponse(200, {}, self.TAG_TYPES[name])
+        return call
+
+    def _write_credential(self):
+        path = self.contract.follow_secrets_root / "follow" / "rule34xxx.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"user_id": "1", "api_key": "k"}),
+                        encoding="utf-8")
+
+    def _write_creator_index(self, provider, rows):
+        path = self.contract.follow_state_root / "follow" / f"creators-{provider}.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(rows), encoding="utf-8")
+
+    def _suggest(self, query, **kwargs):
+        return web_follow.q_follow_suggest(self.contract, query, **kwargs)
+
+    def test_half_a_name_suggests_the_creator_behind_it(self):
+        """打 `lewdga` 要出 `lewdgazer`：这是建议存在的全部理由。
+
+        名字从没关注过也要出得来——本机见过的那一组只认识已经关注的人。
+        """
+        self._write_creator_index("kemono", [
+            {"id": "1", "name": "lewdgazer", "service": "fanbox"}])
+        payload = self._suggest("lewdga", transport=self._tag_transport())
+        self.assertEqual(payload["q"], "lewdga")
+        self.assertEqual([(group["kind"], [item["value"] for item in group["items"]])
+                          for group in payload["groups"]],
+                         [("archive", ["lewdgazer"]),
+                          ("tag", ["lewdgatta", "lewdgazer"])])
+
+    def test_the_group_order_is_decided_here_not_in_the_page(self):
+        # 两侧各排一次的话，改了一侧就会有一组显示在它不该在的位置上。
+        self._seed(label="lewdgazer")
+        self._write_creator_index("kemono", [
+            {"id": "1", "name": "lewdgamesdev", "service": "fanbox"}])
+        self._write_credential()
+        payload = self._suggest("lewdga", transport=self._typed_transport())
+        self.assertEqual([group["kind"] for group in payload["groups"]],
+                         ["followed", "archive", "tag_artist", "tag"])
+        self.assertEqual([group["label"] for group in payload["groups"]],
+                         ["已关注", "归档站的创作者",
+                          "Rule34.xxx 的作者", "Rule34.xxx 标签"])
+
+    def test_the_site_authors_are_split_out_from_the_plain_tags(self):
+        """rule34.xxx 上作者本来就是一个标签，差别只在站方给它的分类。
+
+        `lewdgatta` 是 artist、`lewdgazer` 在这批数据里是 character，两条挨着躺在
+        同一组时没人分得出哪个是人。留在标签组的那条要照实写出它是什么。
+        """
+        self._write_credential()
+        groups = {group["kind"]: group["items"]
+                  for group in self._suggest(
+                      "lewdga", transport=self._typed_transport())["groups"]}
+        self.assertEqual([row["value"] for row in groups["tag_artist"]], ["lewdgatta"])
+        self.assertEqual([(row["value"], row["matched"]) for row in groups["tag"]],
+                         [("lewdgazer", "角色")])
+        # 作者组里逐条再标一次「作者」是同一个词并排两次，组名已经说过了。
+        self.assertEqual(groups["tag_artist"][0]["matched"], "")
+
+    def test_without_a_credential_nobody_is_called_an_author(self):
+        """分类接口要凭据。问不出来时全落在标签组里，照实说不知道谁是作者。
+
+        按名字猜会错：实测 `lewdchuu_(artist)` 名字里带 `artist` 只是巧合，
+        `lewdtuber` 是 metadata。
+        """
+        payload = self._suggest("lewdga", transport=self._tag_transport())
+        groups = {group["kind"]: group["items"] for group in payload["groups"]}
+        self.assertNotIn("tag_artist", groups)
+        self.assertEqual([(row["value"], row["matched"]) for row in groups["tag"]],
+                         [("lewdgatta", ""), ("lewdgazer", "")])
+
+    def test_someone_already_followed_is_not_offered_twice(self):
+        self._seed(label="lewdgazer")
+        self._write_creator_index("kemono", [
+            {"id": "1", "name": "LewdGazer", "service": "fanbox"}])
+        groups = {group["kind"]: [item["value"] for item in group["items"]]
+                  for group in self._suggest(
+                      "lewdga", transport=self._tag_transport(b"[]"))["groups"]}
+        self.assertEqual(groups, {"followed": ["lewdgazer"]})
+
+    def test_the_tag_group_carries_the_post_count(self):
+        # 标签下有多少件作品是判断「是不是他」的依据，照实给。
+        items = {group["kind"]: group["items"] for group in self._suggest(
+            "lewdga", transport=self._tag_transport())["groups"]}["tag"]
+        self.assertEqual([(row["value"], row["n"]) for row in items],
+                         [("lewdgatta", 380), ("lewdgazer", 237)])
+
+    def test_a_pasted_link_asks_nobody(self):
+        """地址不进建议这条路：那时该做的是解析链接，不是猜名字。
+
+        判据在 `follow_discovery.suggest_term` 一处，这里只确认没有绕过它。
+        """
+        calls = []
+
+        def call(request, _timeout, _max_bytes):
+            calls.append(request.url)
+            return HttpResponse(200, {}, self.TAGS)
+
+        for query in ("https://kemono.cr/fanbox/user/1", "l", ""):
+            payload = self._suggest(query, transport=call)
+            self.assertEqual(payload["groups"], [], query)
+        self.assertEqual(calls, [])
+
+    def test_a_dead_site_still_leaves_the_local_groups(self):
+        def call(_request, _timeout, _max_bytes):
+            raise OSError("connection reset")
+
+        self._seed(label="lewdgazer")
+        payload = self._suggest("lewdga", transport=call)
+        self.assertEqual([group["kind"] for group in payload["groups"]], ["followed"])
+
+    def test_the_endpoint_is_a_read_and_needs_no_credential(self):
+        """建议不写任何东西，也不为它下载整站清单。
+
+        rule34.xxx 那一组走的是站方的公开补全；凭据仍然是**抓取**那条订阅的前提。
+        """
+        self._seed(label="lewdgazer")
+        with mock.patch.object(web_follow, "tag_suggestions", return_value=()):
+            payload = self._get("/api/follow/suggest", q="lewdga")
+        self.assertEqual([item["value"] for item in payload["groups"][0]["items"]],
+                         ["lewdgazer"])
+        self.assertEqual(self._get("/api/follow/suggest", q="")["groups"], [])
+
+
 def _source_row(**kwargs):
     row = {"id": 7, "provider": "kemono", "ref": "fanbox/1", "label": "L",
             "url": "https://kemono.cr/fanbox/user/1", "semantics": "work",
@@ -2116,7 +2274,7 @@ class FollowWebSourceTests(unittest.TestCase):
         # 输入框本体是共用的 Search Input（见 web/js/ui-components.js），
         # 关注页这里只交名字、无障碍名称和 required。
         self.assertIn("searchInputHtml({name:'line',label:'来源链接、名字或 id',", form)
-        self.assertIn("attrs:'required list=\"followKnownNames\"'", form)
+        self.assertIn("attrs:'required'", form)
         self.assertNotIn("textarea", form)
         self.assertNotIn('type="submit"', form)
         # 忙态没有按钮可以变灰，就落在表单自己身上：前缀图标原位换 Spinner。
@@ -2128,8 +2286,8 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertNotIn("setActionBusy", handler)
         # 隐式提交在这个表单上不成立：来源筛选的复选框和输入框住在同一个 <form> 里，
         # 浏览器只在「仅有一个文本字段」时才替你提交。回车必须自己接管。
-        self.assertPageContains("if(event.key!=='Enter'||event.isComposing)return;")
-        self.assertPageContains("event.preventDefault();form.requestSubmit();")
+        self.assertPageContains("if(event.key!=='Enter')return;")
+        self.assertPageContains("closeAddSuggest();form.requestSubmit();")
         # 单行以后不再有拆行与自增高。
         self.assertNotIn("box.style.height", page)
         self.assertIn("const lines=[line];", handler)
@@ -3201,11 +3359,64 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertEqual(
             web_follow._profile_link_suggestions(rows, {"strauzek": "mrstrauz"}), [])
 
-    def test_the_add_box_suggests_names_this_machine_already_knows(self):
-        # 记得住 `strauzek` 的人不一定记得住 `Mr_Strauz`，反过来也一样。
-        self.assertPageContains('list="followKnownNames"')
-        self.assertPageContains("function followKnownNamesDatalist(")
-        self.assertPageContains("source.profile_handles")
+    def test_the_add_box_suggests_names_while_you_type(self):
+        """敲半个名字就要有下拉，而且分组和排序由服务端说了算。
+
+        记得住 `strauzek` 的人不一定记得住 `Mr_Strauz`，从没关注过的 `lewdgazer`
+        更是只有站点那边知道——所以这里问的是接口，不是页面自己手里那份列表。
+        """
+        page = self.page
+        self.assertPageContains('<div class="searchmenu" id="followAddMenu" hidden>')
+        self.assertPageContains("'/api/follow/suggest?q='+encodeURIComponent(query)")
+        # 分组的名字和次序照服务端回的来，页面不自己排。
+        self.assertPageContains("<section class=\"searchgroup\"><h3>${esc(group.label)}</h3>")
+        # 结构与样式沿用顶栏搜索的补全，不另起一套。
+        self.assertPageContains('class="searchoption" data-search-value=')
+        self.assertIn("presentMenu(menu);else dismissMenu(menu)", page)
+
+    def test_the_dropdown_says_it_is_working_while_the_site_answers(self):
+        """站上那一路要问补全再问分类，实测一秒上下，这段时间必须看得出在做事。
+
+        空着像是敲了没反应；挂着上一个字的结果更糟——那看着就是新结果，而它属于
+        另一个词。所以忙态是一行独立的 Spinner，把旧结果换掉。
+        """
+        page = self.page
+        self.assertPageContains('<div class="searchbusy">${spinnerHtml(\'正在查找建议\')}')
+        busy = page[page.index("function presentFollowSuggestBusy("):]
+        busy = busy[:busy.index("\n}")]
+        self.assertIn("presentMenu(menu)", busy)
+        # 忙态那一行不是候选：上下键和回车这时不该选中一个「正在问站点…」。
+        self.assertNotIn("data-search-value", busy)
+        rule = page[page.index(".searchbusy{"):]
+        self.assertIn("display:flex", rule[:rule.index("}")])
+
+    def test_typing_fast_sends_one_request_and_ignores_the_stale_answer(self):
+        """联网那一路每敲一下打一枪就是拿站点当键盘缓冲；先回的旧答案还会盖掉新的。"""
+        page = self.page
+        self.assertPageContains("const FOLLOW_SUGGEST_DEBOUNCE=250;")
+        self.assertIn("clearTimeout(followSuggestTimer);", page)
+        self.assertIn(",FOLLOW_SUGGEST_DEBOUNCE);", page)
+        self.assertIn("const request=++followSuggestRequest;", page)
+        self.assertIn("if(request!==followSuggestRequest)return;", page)
+        # 焦点已经走了就不要再掀开：那时不会再有第二次失焦来收场。
+        self.assertIn("if(document.activeElement===box)renderFollowAddMenu(addMenu,query)", page)
+
+    def test_a_suggestion_can_be_taken_by_keyboard_or_by_mouse(self):
+        """下拉两种拿法都要通，而且拿到的名字直接进查找框。
+
+        鼠标那一路先 `preventDefault` 才行：让下拉抢走焦点就会触发失焦，菜单被收掉，
+        click 落到空处。
+        """
+        page = self.page
+        self.assertIn("addMenu.onmousedown=event=>event.preventDefault();", page)
+        self.assertIn("box.value=row.dataset.searchValue;closeAddSuggest();", page)
+        self.assertIn("moveFollowSuggest(addMenu,event.key==='ArrowDown'?1:-1)", page)
+        self.assertIn("if(picked)box.value=picked.dataset.searchValue;", page)
+        # 选字中的回车和方向键归输入法，不归这里。
+        self.assertIn("if(event.isComposing)return;", page)
+        # 下拉要贴着输入框定位，不能贴到整个表单上——那样会落在筛选复选框下面。
+        rule = page[page.index(".faddfield{"):]
+        self.assertIn("position:relative", rule[:rule.index("}")])
 
     def test_the_source_row_shows_the_site_as_an_icon_only(self):
         """作者卡里站名紧挨着作者名和状态徽章，写出来就是同一个词并排两次。
