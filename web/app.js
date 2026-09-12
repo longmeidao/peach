@@ -2314,7 +2314,7 @@ function wireHover(el,it){
        这一层用 contain 加黑底：大图版式的容器是 0.75 的竖比例，16:9 的接触印相格子
        在里面居中、上下留黑，和本地视频的 `.hv` 同一个口径。 */
     if(!it.has_thumb)return;        // 没有接触印相就没有可扫的格子
-    let t=null,i=4,layer=null;
+    let t=null,i=4,layer=null,loading=false;
     el.addEventListener('mouseenter',()=>{
       if(selectMode||censorOn())return;armLong();
       if(!layer){
@@ -2324,7 +2324,13 @@ function wireHover(el,it){
         pic.appendChild(layer);
       }
       clearInterval(t);
-      t=setInterval(()=>{i=(i+1)%9;layer.src=`/poster?id=${it.id}&c=${i}`},430);
+      t=setInterval(()=>{
+        if(!layer||loading)return;
+        const next=(i+1)%9, pre=new Image(); loading=true;
+        pre.onload=()=>{if(layer){layer.src=pre.src;i=next}loading=false};
+        pre.onerror=()=>{loading=false};
+        pre.src=`/poster?id=${it.id}&c=${next}`;
+      },430);
     });
     const stop=()=>{clearLong();clearInterval(t);t=null;
       if(layer){layer.remove();layer=null}i=4};

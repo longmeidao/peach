@@ -7125,6 +7125,17 @@ class WebUiSourceTests(unittest.TestCase):
         # 待删卡片的灰化要连这一层一起，否则悬停时整卡「复活」成正常色。
         self.assertIn(".card.pending-delete .hvframes{", css)
 
+    def test_the_next_frame_is_loaded_before_it_is_shown(self):
+        """下一格先拉到手再换上去，没拉到就停在当前这格。
+
+        直接把 src 指过去，图片在解码完成前是空的：网盘那边一格要几百毫秒，
+        430 毫秒一跳的节奏下，看到的是一连串黑白闪烁。慢的时候少跳一格，比跳
+        过去闪一下好。取图失败也要把闸放开，否则一次 404 之后这张卡再也不动。
+        """
+        self.assertPageContains("if(!layer||loading)return;")
+        self.assertPageContains("pre.onload=()=>{if(layer){layer.src=pre.src;i=next}loading=false}")
+        self.assertPageContains("pre.onerror=()=>{loading=false}")
+
     def test_detail_close_returns_to_the_collection_that_opened_it(self):
         self.assertPageContains("detailReturnPath='/'")
         self.assertPageContains("if(push)detailReturnPath=location.pathname+location.search")
