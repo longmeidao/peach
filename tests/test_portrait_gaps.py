@@ -108,7 +108,8 @@ class PortraitGapTests(unittest.TestCase):
             ["--db", str(self.database), "--avatar-root", str(self.avatars),
              "--providers-root", str(self.providers),
              "--out", str(self.root / "gaps.csv"),
-             "--sheet", str(self.root / "sheet"), *extra])
+             "--sheet", str(self.root / "sheet"),
+             "--base-url", "http://localhost:9999", *extra])
 
     def run_script(self, *extra, size: tuple[int, int] = (600, 900)):
         import peach.http as peach_http
@@ -170,7 +171,7 @@ class PortraitGapTests(unittest.TestCase):
         connection.close()
         self.run_script("--apply")
         page = (self.root / "sheet" / "index.html").read_text(encoding="utf-8")
-        self.assertIn("https://peach-win.local/item/41", page)
+        self.assertIn("http://localhost:9999/item/41", page)
         self.assertIn("ABC-001", page)
 
     def test_someone_who_already_has_a_portrait_is_not_a_target(self):
@@ -183,6 +184,11 @@ class PortraitGapTests(unittest.TestCase):
         finally:
             connection.close()
         self.assertNotIn("吉良いろは", names)
+
+    def test_the_entry_hands_job_main_everything_it_takes(self):
+        """`job_main` 要用 `--lock` 把 pid 锁包住整个 run。缺了它是启动就崩。"""
+        args = self.module.build_parser().parse_args(["--sheet", "s"])
+        self.assertTrue(args.lock)
 
     def test_the_people_with_the_most_works_come_first(self):
         """对照表要人一个个认，排在前面的该是库里真出现过几次的那些。"""

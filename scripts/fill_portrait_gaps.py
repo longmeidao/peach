@@ -38,7 +38,8 @@ if str(SRC_DIR) not in sys.path:
 
 from peach import avatar_picker   # noqa: E402
 from peach.avatar_provider import acceptable_avatar   # noqa: E402
-from peach.config import DATABASE_PATH, GENERATED_DIR   # noqa: E402
+from peach.config import (DATABASE_PATH, GENERATED_DIR, SERVE_PORT,   # noqa: E402
+                          STATE_DIR)
 from peach.jobs import job_main   # noqa: E402
 from peach.previews import entity_image_key   # noqa: E402
 from peach.review_csv import write_rows   # noqa: E402
@@ -246,12 +247,13 @@ def build_parser() -> argparse.ArgumentParser:
                         default=GENERATED_DIR / "portrait-gaps.csv")
     parser.add_argument("--sheet", type=Path, required=True,
                         help="对照表目录，候选图存在它下面的 candidates/")
-    parser.add_argument("--base-url", default="https://peach-win.local",
+    parser.add_argument("--base-url", default=f"http://localhost:{SERVE_PORT}",
                         help="对照表里链接指向的实例")
     parser.add_argument("--limit", type=int, default=0)
     parser.add_argument("--min-long-side", type=int, default=MIN_LONG_SIDE)
     parser.add_argument("--min-short-side", type=int, default=MIN_SHORT_SIDE)
     parser.add_argument("--apply", action="store_true", help="真的装图；默认只看不装")
+    parser.add_argument("--lock", type=Path, default=STATE_DIR / ".portrait-gaps.lock")
     return parser
 
 
