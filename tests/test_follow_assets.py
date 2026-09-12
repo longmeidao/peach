@@ -176,14 +176,15 @@ class ShrinkImageTests(unittest.TestCase):
         return width, height
 
     def test_a_cover_is_stored_at_icon_size_with_its_shape_kept(self):
-        """一张 4096 宽的封面按 28px 的圆标存，长宽比不动。
+        """一张 4096 宽的封面按圆标那一档存，长宽比不动。
 
-        存原图的话那一排八十多枚就是首屏几十兆，而它们显示出来只有 28px；比例要留住，
-        取景是按比例算的，压扁一次脸就挪到别处去了。
+        存原图的话那一排八十多枚就是首屏几十兆。比例要留住：取景是按比例算的，
+        压扁一次脸就挪到别处去了。
         """
         small = follow_assets.shrink_image(self._jpeg(4096, 2304))
         self.assertEqual(follow_assets.sniff(small), "image/jpeg")
-        self.assertEqual(self._size(small), (follow_assets.ICON_SIDE, 144))
+        self.assertEqual(self._size(small),
+                         (follow_assets.ICON_SIDE, follow_assets.ICON_SIDE * 9 // 16))
 
     def test_an_image_already_small_enough_is_stored_as_it_came(self):
         """本来就够小的不再编码一遍：重压一次只会掉画质。"""

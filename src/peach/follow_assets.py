@@ -131,9 +131,11 @@ def fetch_image(client: httpx.Client, url: str) -> bytes | None:
     return body if sniff(body) else None
 
 
-#: 圆标落盘时的长边。28px 的圆在三倍屏上也只要 84px，留到这个数是给放大留的余量；
-#: 再往上是纯浪费——那一排八十多枚，每枚多 100 KB 就是首屏多十兆。
-ICON_SIDE = 256
+#: 圆标落盘时的长边。定这个数的不是圆标有多大，是圆标里那张脸能放大到多少：页面按
+#: 人脸取景放大，上限之一是「源图里那张脸有多少像素」，越过去就是上采样。实测本库的
+#: 代表图，脸框在 256px 那份里只剩 19～30px，而 28px 的圆在双倍屏上要 26px——正好
+#: 卡在天花板上，放大被这一条压住。翻一倍就都过线了，整排也不过一两兆。
+ICON_SIDE = 512
 
 
 def image_size(payload: bytes) -> tuple[int, int] | None:
@@ -153,9 +155,9 @@ def image_size(payload: bytes) -> tuple[int, int] | None:
 def shrink_image(payload: bytes, side: int = ICON_SIDE) -> bytes:
     """把一张图缩到长边不超过 `side` 的 JPEG；已经够小或缩不动就原样返回。
 
-    取图和显示图要的尺寸不是一个数：题材圆标的代表图取的是站点的高清封面，因为
-    250px 里一张脸只剩十几个像素、检不出来；而显示出来只有 28px。落盘的那份按显示
-    尺寸存，检脸看到的仍是高清那张——归一化的取景跟着比例走，缩放不影响它。
+    题材圆标的代表图取的是站点的高清封面——250px 的缩略图里一张脸只剩十几个像素、
+    检不出来。检脸看到的始终是那张高清的；归一化的取景跟着比例走，缩放不动它。
+    落盘这一份按页面放大到头时需要多少像素定（`ICON_SIDE`），不是按圆标那 28px 定。
     """
     try:
         import cv2

@@ -24,6 +24,14 @@ export const FACE_TARGET = 0.32;
  *  按脸框放到满框等于把这些全裁掉，剩下一张认不出是谁的五官特写。 */
 export const MAX_ZOOM = 3;
 
+/** 脸框在框里至少要有这么多 CSS 像素宽。
+ *
+ *  比例这一档回答不了小圆标的问题：32% 在 120 px 的资料页框里是 38 px 的脸，在
+ *  28 px 的题材圆标里只有 9 px，而 9 px 宽的眼鼻嘴认不出是谁——这排圆标存在的理由
+ *  正是让人一眼认出题材。像素下限只在框小到这个比例不够用时才接管（28 px 框要 46%、
+ *  48 px 框算出来低于 32% 就仍走比例那一档），大框上一个数都不动。 */
+export const MIN_FACE_PX = 13;
+
 /** 人脸数据齐不齐。缺一样就没法算，调用方只挪不放大。
  *
  *  `faceW` 是脸框宽的**源图像素**，不是归一化值：无损上限问的就是「有多少像素可用」，
@@ -47,7 +55,9 @@ export function faceZoom(face, frame, dpr = 1,
   const base = Math.max(frame.w / face.imgW, frame.h / face.imgH);
   const shown = face.faceW * base;
   if (!(shown > 0)) return 1;
-  const wanted = target * Math.min(frame.w, frame.h) / shown;
+  const side = Math.min(frame.w, frame.h);
+  // 两档取宽的那一档：比例管大框，像素下限管小到比例不够用的框。
+  const wanted = Math.max(target, MIN_FACE_PX / side) * side / shown;
   // 脸的源像素 ÷ 现在这个框要的设备像素。等于 1 就是已经 1:1，再放大就是上采样。
   const lossless = face.faceW / (shown * ratio);
   return Math.max(1, Math.min(wanted, lossless, maxZoom));

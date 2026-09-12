@@ -448,6 +448,27 @@ class WebJsBehaviourTests(unittest.TestCase):
     SMALL_FACE = {"cx": 0.439, "cy": 0.224, "faceW": 67, "imgW": 640, "imgH": 960}
     #: 539 张里四分之三长这样：脸框已占框宽四成以上，一放大就切头顶。
     CLOSE_UP = {"cx": 0.5, "cy": 0.42, "faceW": 280, "imgW": 640, "imgH": 896}
+    #: 关注页题材圆标的代表图，`/work-icon` 落盘那一份：512 px 见方，脸框 170 px。
+    WORK_ICON = {"cx": 0.508, "cy": 0.211, "faceW": 170, "imgW": 512, "imgH": 512}
+
+    def test_a_tiny_ring_asks_for_a_bigger_share_than_the_ratio_alone(self):
+        """28 px 的圆标按 32% 算，脸只有 9 px——认不出是谁，也就白放了。
+
+        比例这一档是给 120 px 的资料页框定的，那里 32% 是 38 px 的脸。框小到一定
+        程度，同一个比例给出的像素就不够看了，于是改由像素下限说话：28 px 的框要的
+        是 46%，而 48 px 的作者头像上像素下限算出来只有 27%，仍走比例那一档。
+        """
+        # 48 px 框、脸框 187 px：比例档给 1.1 倍上下。像素下限若接管会算出不足 1 倍，
+        # 也就是不放大——两档取宽的那一档，这里是比例赢。
+        mid = {"cx": 0.5, "cy": 0.3, "faceW": 187, "imgW": 640, "imgH": 960}
+        # 期望值照 `faceZoom` 的算式逐步写，不写小数字面量：手抄一个四舍五入过的数
+        # 只会把断言变成「和上次跑出来的一样」，看不出哪一条上限在说话。
+        icon_zoom = (13 / 28) * 28 / (170 * max(28 / 512, 28 / 512))
+        mid_zoom = 0.32 * 48 / (187 * max(48 / 640, 48 / 960))
+        self.assertJsResults([
+            ("face-frame.js", "faceZoom", [self.WORK_ICON, {"w": 28, "h": 28}, 2], icon_zoom),
+            ("face-frame.js", "faceZoom", [mid, {"w": 48, "h": 48}, 2], mid_zoom),
+        ])
 
     def test_zoom_is_capped_by_whichever_limit_binds_first(self):
         small, close = self.SMALL_FACE, self.CLOSE_UP
