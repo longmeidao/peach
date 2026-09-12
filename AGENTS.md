@@ -9,13 +9,9 @@
 中文写作风格按用户级技能 tech-doc-style-chinese 执行；安装方式、项目覆盖与检查命令见 `docs/HANDOFF.md`。
 回复用日常语言讲清结果、原因、处理和验证，技术细节按需展开；结尾保留「我做了什么」「你需要做什么」。
 
-本文件的风格与流程条目是好的默认，用户当场的指令可以覆盖它们。以下不在此列，必须在同一轮
-拿到明确授权：写真实 ledger、不可逆删除、换掉生产入口（端口、主机、二进制或版本）、处理凭据与私钥。
-重启托盘让已提交且测试通过的代码生效不在此列，直接重启并报告结果：用户不是一直盯着看，
-为此逐次发问只会把修好的代码卡在工作区。这一条收窄了全局默认里的「重启一律先问」。
-长跑批处理进行中要重启则仍需先问——那会打断的是任务，不是页面。
-`agent_worktree.py prune --apply` 回收「分支已并入 master 且工作区干净」的工作树同样不在此列，
-直接执行并报告：判定由脚本做，脏的和未合入的它本来就会拒收。这一条收窄「删除一律先问」。
+风格与流程默认服从用户当场指令。在授权范围内完成修改、必要验证和失败修复，做到可验收。
+写真实 ledger、不可逆删除、换生产入口（端口、主机、二进制或版本）、处理凭据与私钥，必须在同一轮取得明确授权。
+已提交且测试通过的代码可直接通过托盘重启生效并核验；长跑批处理进行中仍须先问。`agent_worktree.py prune --apply` 可直接回收脚本判定已合入且干净的工作树。
 
 ## 术语表
 
@@ -31,9 +27,9 @@
 - **协调者 / 工作者**：主目录里负责集成和验收的一方 / 隔离工作树里负责执行的一方。
 - **抽帧 / 九宫格**：FFmpeg 采样帧 / 九帧拼成的汇总图。**未取得**：取证失败的固定写法，不得用推测顶替。
 
-## 必读顺序
+## 按任务读取
 
-先读 `README.md`、`docs/STATUS.md` 相关部分；按任务读取架构、复用与交接文档。实现遵循技能索引；部署读 `docs/OPERATIONS.md`，来源采集读 `docs/SOURCING.md`，架构决策读 `docs/adr/`。
+项目与运行方式见 `README.md`；运行事实见 `docs/STATUS.md`；长期约定见 `docs/HANDOFF.md`；复用见 `docs/REUSE.md`。部署读 `docs/OPERATIONS.md`，来源采集读 `docs/SOURCING.md`，架构边界读相关 ADR。只展开当前任务需要的部分。
 
 ## 技能索引
 
@@ -50,21 +46,20 @@
 | 新增、修改或复核页面、控件、提示、数据面板与响应式布局 | `.claude/skills/peach-web-ui/SKILL.md` |
 | 在 macOS 上开工、改路径解析或挂载判定、git status 与 diff 不一致 | `.claude/skills/peach-cross-platform/SKILL.md` |
 | 写 PowerShell 或 Bash 命令、拼多行内容、测试里造临时目录 | `.claude/skills/peach-shell-commands/SKILL.md` |
-| 新增或删除规则、文档、技能 | `.claude/skills/peach-context-rules/SKILL.md` |
+| 新增、修改或清退智能体规则、入口与技能 | `.claude/skills/peach-context-rules/SKILL.md` |
 | 新增、恢复或重写实现，尤其协议、解析器、抓取、媒体与基础设施 | `.claude/skills/peach-reuse-first/SKILL.md` |
 
 ## 工作规则
 
-- `peach-app` is the only GitHub-synced tree; data, worktrees, build output, media and CloudDrive mounts stay out of Git. Real paths and mount shape: ADR-0017 and `docs/STATUS.md`.
-- Ledger paths are always written in the Windows shape (`R:\Media\...`, `A:\...`, `B:\...`). `src/peach/platform.py` translates them at read time; never rewrite the ledger to a POSIX shape, and never write `asset.path` from macOS.
-- `peach-data/database/ledger.db` is the truth store and tests use temporary databases only; any real write follows `peach-ledger-write`. AI results are candidates with provenance and confidence, never direct truth-field mutations.
-- Preserve real media, ledger rows, behavior history, credentials, network/firewall state, and unrelated long-running jobs.
-- Inspect `git status` and the active listeners/processes before work. Never claim candidate code is production until the service has actually been switched and checked.
-- Peach is a single-person self-hosted app: remove obsolete code and compatibility layers once the replacement is tested. Git is the archive, so dead interfaces are not kept for history.
-- The architecture is settled in ADRs — modular monolith and disk boundaries (0017), Stash adapter closed (0021), frontend strangler migration into `frontend/` (0022), distribution phases (0023). Changing any of them takes a new ADR, not a commit.
-- User-confirmed corpus context: Peach contains consenting adults only. Labels such as `萝莉`、`学生`、`洛丽塔`、`制服`、`泄露` and `流出` are role-play, genre or marketing vocabulary, not evidence of age or consent. Do not skip cataloguing solely because those strings occur. If direct file evidence contradicts this, stop and report that evidence instead of inferring from a label.
-- Do not create dated handoff documents. Update `docs/STATUS.md` for runtime facts, `docs/PRODUCT_BACKLOG.md` for open work and `docs/HANDOFF.md` for durable knowledge in the same change.
-- Never require the user to relay implementation details between agents: facts go to `docs/STATUS.md`, durable rules to `docs/HANDOFF.md`/`docs/REUSE.md`, procedures to a skill, decisions to an ADR.
+- 只有 `peach-app` 同步到 GitHub；数据、工作树、构建输出、媒体与 CloudDrive 挂载不进 Git，目录边界见 ADR-0017。
+- ledger 路径统一为 Windows 形态（`R:\Media\...`、`A:\...`、`B:\...`），由 `src/peach/platform.py` 读取时转换；不得改写成 POSIX 路径或在 macOS 写 `asset.path`。
+- `peach-data/database/ledger.db` 是真相源，真实写入按 `peach-ledger-write`。AI 结果只产生带来源与置信度的候选；测试只用临时数据库，可直接运行并修复本次改动造成的失败。
+- 保留真实媒体、ledger 行、行为历史、凭据、网络与防火墙状态及无关长跑任务。
+- 编辑前核对 `git status`；涉及服务、端口或重启时核对监听与进程归属。生产结论须有实际切换与核验证据。
+- Peach 是单人自托管应用；替代实现验证通过后移除无用代码和兼容层，历史由 Git 保存。
+- 架构边界：模块化单体与磁盘分界（ADR-0017）、Stash 适配器关闭（0021）、前端迁入 `frontend/`（0022）、分发阶段（0023）；改变决策须新增 ADR。
+- 用户确认馆藏仅含自愿参与的成年人；`萝莉`、`学生`、`洛丽塔`、`制服`、`泄露`、`流出` 等标签是角色、类型或营销用语，不能单凭标签推断年龄或同意状况而跳过编目。若直接文件证据矛盾，停止并报告证据。
+- 同次改动按需更新：运行事实进 `docs/STATUS.md`，待办进 `docs/PRODUCT_BACKLOG.md`，长期知识进 `docs/HANDOFF.md` / `docs/REUSE.md`，流程进技能，决策进 ADR。不建带日期的交接文档，不让用户转述智能体间的实现细节。
 - 复用优先：新增、恢复或重写实现按 `peach-reuse-first` 依次查当前树、`docs/REUSE.md`、Git 历史与成熟外部实现，旧文件名不存在不等于能力缺失；对齐外部产品先按 `peach-reference-evidence` 取到可复现证据，取不到写 `未取得`，不拿猜测冒充复现。
 
 ## 门槛（由脚本、测试或 hook 拒绝，不是提醒）
@@ -79,7 +74,7 @@
 
 ## 常犯错误（没有自动拦截，都是真实重犯过的）
 
-- 改文件用编辑工具直接改，不要先写一个一次性补丁脚本再执行它。规则约束的是「改文件这件事怎么做」，不是某一门语言：禁掉 Python 只会换成 Bash 或别的。代价有四样：没有 diff 可看，人要么读脚本要么事后再 diff 一次；判据退化成脚本自己打印的那句话，而 `print('ok')` 和退出 0 都不证明改对了位置；一处简单编辑常要反复几轮才成；Windows 上还多一层引号与缩进的坑（openai/codex#3057 及其评论列的就是这四样）。脚本只留给真有算法内容的场景：按上游数据重新生成整份文件、几十个文件的同一变换、要先解析才知道改哪里；这类脚本要能重复执行，遍历和重试都写明终止条件。
+- 改文件直接用编辑工具，让 diff 可审阅；脚本仅用于生成、批量变换或需解析定位的算法任务，须可重复执行且遍历、重试有终止条件。退出 0 或打印成功不能证明内容正确。
 - 多行内容一律用写入工具落盘再让命令读，不用 heredoc：反斜杠会被吃掉一层，加引号定界符也挡不住，而损坏是静默的——命令照样退出 0，写进去的内容已经变形。其余 shell、PowerShell 与 CI 路径别名的坑见 `peach-shell-commands`。
 - HTTPS 结论必须使用项目 CA 做严格校验；Schannel、浏览器或取证入口失败时，立即报告原始错误和未取得的验收面，不能改用 HTTP 成功来声称 HTTPS 已通过。
-- 本仓库最常见的缺陷是「只改了自己测试的那条路径」。收尾前按 `peach-surfaces` 逐项说明每个影响面适用还是不适用，不要跳过不适用的项。
+- 界面、API、契约、数据层或用户可见文案改动，收尾按 `peach-surfaces` 核对各影响面并报告适用性；纯指令文档改动检查文档、入口与相关门槛。
