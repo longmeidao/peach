@@ -173,7 +173,7 @@ const ROUTES=[
   {match:'/resource-sync',title:'数据管理',open:(params,push)=>openResourceSync(push)},
   {match:'/quality-goals',section:'quality',title:'高清版',refresh:'reopen',
     open:(params,push)=>openQualityGoals(push)},
-  {match:'/scraping',section:'cleanup',title:'采集来源',refresh:'reopen',
+  {match:'/scraping',section:'cleanup',title:'来源和凭证',refresh:'reopen',
     open:(params,push)=>openScraping(push)},
   {match:'/follow',nav:'follow',title:'关注',refresh:'skip',
     open:(params,push)=>openFollow(push),reload:()=>openFollow(false)},
@@ -6492,28 +6492,30 @@ function followSourceTable(groups,selectable){
 
 function followAliasManager(groups,suggestions){
   groups=groups||[];suggestions=suggestions||[];
-  const detected=suggestions.map(item=>`<div class="faliassuggest">
-    <span><b>${esc(item.canonical)}</b><i>+</i><b>${esc(item.alias)}</b>
-      <small>${esc(item.evidence)}</small></span>
-    <button class="fbtn small" data-follow-alias-add
-      data-canonical="${esc(item.canonical)}" data-alias="${esc(item.alias)}">合并</button>
-  </div>`).join('');
-  const saved=groups.map(group=>`<div class="faliasrow">${followAliasAvatar(group)}<b>${esc(group.canonical_name)}</b>
-    <span>${group.aliases.map(alias=>`<span class="faliaschip">${esc(alias.name)}
+  const detected=suggestions.map(item=>`<tr>
+    <td><b>${esc(item.canonical)}</b></td><td>${esc(item.alias)}</td>
+    <td class="faliasevidence">${esc(item.evidence)}</td>
+    <td><button class="fbtn small" data-follow-alias-add
+      data-canonical="${esc(item.canonical)}" data-alias="${esc(item.alias)}">合并</button></td>
+  </tr>`).join('');
+  const saved=groups.map(group=>`<tr><td><div class="faliasidentity">${followAliasAvatar(group)}<b>${esc(group.canonical_name)}</b></div></td>
+    <td>${group.aliases.map(alias=>`<span class="faliaschip">${esc(alias.name)}
       <button type="button" data-follow-alias-remove="${esc(alias.name)}"
         data-canonical="${esc(group.canonical_name)}"
-        title="移除别名" aria-label="移除别名 ${esc(alias.name)}">${icon('x')}</button></span>`).join('')}</span>
-  </div>`).join('');
+        title="移除别名" aria-label="移除别名 ${esc(alias.name)}">${icon('x')}</button></span>`).join('')}
+  </td></tr>`).join('');
   return `<details class="faliasmanager"${suggestions.length?' open':''}>
     <summary>${icon('chevron-right')}作者别名${suggestions.length?`<span class="faliasbadge">${suggestions.length} 组待合并</span>`
       :groups.length?`<span class="faliasbadge">${groups.length} 组</span>`:''}</summary>
-    ${detected?`<div class="faliassuggestions">${detected}</div>`:''}
+    ${detected?`<div class="faliasheading"><h4>待合并</h4><button type="button" class="fbtn" data-follow-alias-all>全部合并（${suggestions.length}）</button></div>
+      <div class="ftableframe"><div class="ftablewrap"><table class="ftable faliastable" aria-label="待合并作者别名"><thead><tr><th scope="col">规范作者</th><th scope="col">平台别名</th><th scope="col">依据</th><th scope="col">操作</th></tr></thead><tbody>${detected}</tbody></table></div></div>`:''}
+    <div class="faliasheading"><h4>已保存别名</h4><span>${groups.length} 组</span></div>
+    ${saved?`<div class="ftableframe"><div class="ftablewrap"><table class="ftable faliastable faliassaved" aria-label="已保存作者别名"><thead><tr><th scope="col">规范作者</th><th scope="col">平台别名</th></tr></thead><tbody>${saved}</tbody></table></div></div>`:emptyState('users','还没有保存作者别名','填写规范作者名和平台别名以添加。',{className:'compact'})}
     <form class="faliasform" id="followAliasAdd">
       <input class="geist-input" name="canonical" required placeholder="规范作者名" aria-label="规范作者名">
       <input class="geist-input" name="alias" required placeholder="平台别名" aria-label="平台别名">
       <button class="fbtn" type="submit">保存别名</button>
     </form>
-    ${saved?`<div class="faliasrows">${saved}</div>`:'<p class="fnote">还没有保存作者别名。</p>'}
   </details>`;
 }
 
@@ -6600,7 +6602,9 @@ function followSourceListHtml(groups){
    要避开卡片套卡片、用边框补救层级、成排通栏空条、
    细小灰字加随意字号。所以这里不再用嵌套卡片盒子——分组靠标题和一条发丝分隔线，
    行与行之间也只用分隔线，不各自套框。控件尺寸按实测 Geist：32px 高、6px 圆角、14px。 */
+let followManageWorkspace='list';
 function renderFollowManage(credentials){
+  const workspace=followManageWorkspace;
   const sources=followData.sources||[],counts=followData.counts||{};
   const groups=followAuthorGroups(sources);
   const sourceList=followSourceListHtml(groups);
@@ -6622,7 +6626,7 @@ function renderFollowManage(credentials){
     <div class="follow-workspace-switch" role="tablist" aria-label="关注管理区域">
       <button type="button" role="tab" aria-selected="true" data-follow-workspace="list">关注列表</button>
       <button type="button" role="tab" aria-selected="false" data-follow-workspace="add">添加关注</button>
-      <button type="button" role="tab" aria-selected="false" data-follow-workspace="source">来源管理</button>
+      <button type="button" role="tab" aria-selected="false" data-follow-workspace="source">来源和凭证</button>
     </div>
     <div class="fmain">
       <section class="fsec" data-follow-workspace-panel="add">
@@ -6667,7 +6671,7 @@ function renderFollowManage(credentials){
           :emptyState('rss','还没有关注来源','关注来源及其检查状态会显示在这里。',{className:'compact'})}
       </section>
       <section class="fsec" data-follow-workspace-panel="source">
-        <div class="fsechead"><h3>来源管理</h3>
+        <div class="fsechead"><h3>来源和凭证</h3>
           ${needCred.length?`<span class="fmeta warn">${needCred.length} 个待配置</span>`:''}</div>
         <div class="frows">${creds.map(followCredentialRow).join('')}</div>
         <div class="fdesc"><b>这些账号信息存在哪里
@@ -6679,13 +6683,14 @@ function renderFollowManage(credentials){
     </div></div>`;
   wireFollowManage(creds);
   const tabs=[...$('#stats').querySelectorAll('[data-follow-workspace]')],panels=[...$('#stats').querySelectorAll('[data-follow-workspace-panel]')];
-  tabs.forEach(tab=>tab.onclick=()=>{const key=tab.dataset.followWorkspace;tabs.forEach(t=>t.setAttribute('aria-selected',String(t===tab)));panels.forEach(panel=>panel.hidden=panel.dataset.followWorkspacePanel!==key)});
-  panels.forEach(panel=>panel.hidden=panel.dataset.followWorkspacePanel!=='list');
+  tabs.forEach(tab=>tab.onclick=()=>{const key=tab.dataset.followWorkspace;followManageWorkspace=key;tabs.forEach(t=>t.setAttribute('aria-selected',String(t===tab)));panels.forEach(panel=>panel.hidden=panel.dataset.followWorkspacePanel!==key)});
+  tabs.forEach(tab=>tab.setAttribute('aria-selected',String(tab.dataset.followWorkspace===workspace)));
+  panels.forEach(panel=>panel.hidden=panel.dataset.followWorkspacePanel!==workspace);
   void wireFollowProgress();
   if(locked)$('#stats').querySelectorAll(
     '#followAdd input,#followAdd button,[data-follow-remove],[data-follow-check],'+
     '[data-follow-enabled],[data-follow-selection-enabled],[data-follow-selection-remove],'+
-    '[data-follow-bulk],[data-follow-guess],[data-follow-alias-add],'+
+    '[data-follow-bulk],[data-follow-guess],[data-follow-alias-add],[data-follow-alias-all],'+
     '[data-follow-alias-remove],#followAliasAdd input,#followAliasAdd button,[data-cred-form] input,'+
     '[data-cred-form] button,[data-cred-clear]'
   ).forEach(control=>{control.disabled=true});
@@ -6981,7 +6986,8 @@ function wireFollowManage(creds=[]){
       else button.setAttribute('aria-label',oldAria)}
   });
   const saveAuthorAlias=async(canonical,alias,button)=>{
-    button.disabled=true;
+    if(button.getAttribute('aria-busy')==='true')return;
+    setActionBusy(button);
     try{
       await api('/api/follow/author-alias',{method:'POST',body:JSON.stringify(
         {action:'add',canonical,alias})});
@@ -6989,7 +6995,26 @@ function wireFollowManage(creds=[]){
         await api('/api/follow/author-alias',{method:'POST',body:JSON.stringify({action:'remove',alias})});
         await openFollowManage(false);
       }});
-    }catch(error){button.disabled=false;actionFailure('合并作者别名',error)}
+    }catch(error){setActionBusy(button,false);actionFailure('合并作者别名',error)}
+  };
+  const mergeAll=root.querySelector('[data-follow-alias-all]');
+  if(mergeAll)mergeAll.onclick=()=>{
+    const pending=[...root.querySelectorAll('[data-follow-alias-add]')].map(button=>({
+      canonical:button.dataset.canonical,alias:button.dataset.alias,button}));
+    return confirmModal({title:'合并全部作者别名',
+      body:`将合并以下 ${pending.length} 组作者：${pending.map(item=>`「${item.alias}」归入「${item.canonical}」`).join('；')}。`,
+      confirmLabel:'合并全部别名',onConfirm:async()=>{
+        setActionBusy(mergeAll);
+        try{
+          while(pending.length){
+            const item=pending[0];
+            await api('/api/follow/author-alias',{method:'POST',body:JSON.stringify({action:'add',canonical:item.canonical,alias:item.alias})});
+            pending.shift();item.button.closest('tr')?.remove();
+          }
+          await openFollowManage(false);actionReceipt('已合并全部作者别名');
+        }catch(error){throw new Error(`还有 ${pending.length} 组未合并：${error.message}`)}
+        finally{setActionBusy(mergeAll,false)}
+      }});
   };
   root.querySelectorAll('[data-follow-alias-add]').forEach(button=>button.onclick=()=>
     saveAuthorAlias(button.dataset.canonical,button.dataset.alias,button));
@@ -7077,7 +7102,7 @@ function wireFollowManage(creds=[]){
 function renderFollowSrcFilter(mount,credentials=[]){
   if(!mount)return;
   closeAnchoredMenu();
-  const sources=[...credentials,...(followData?.sources||[])];
+  const sources=credentials.filter(source=>source.followable);
   const providers=[...new Set(sources
     .map(source=>source.provider_label).filter(Boolean))];
   /* 下拉里的每一行带上该来源的 favicon：label 只是展示名，图标要靠 provider
@@ -8738,7 +8763,7 @@ const MANAGE_CRUMB_PAGES={
   '/review':'人工复核',
   '/trash':'回收站',
   '/quality-goals':'高清版',
-  '/scraping':'采集来源',
+  '/scraping':'来源和凭证',
 };
 //: 数据管理这一支里正文是 812px 窄列的页面，标题与面包屑要跟着居中。
 const CENTERED_CLEANUP_PAGES=new Set(['/data-cleanup','/scraping']);

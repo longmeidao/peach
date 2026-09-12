@@ -204,7 +204,7 @@ class LibraryNfoTests(unittest.TestCase):
         root = Path(__file__).resolve().parents[1]
         source = (root / 'web/app.js').read_text(encoding='utf-8')
         self.assertIn('wireFollowManage(creds)', source)
-        self.assertIn('const sources=[...credentials,...(followData?.sources||[])];', source)
+        self.assertIn('const sources=credentials.filter(source=>source.followable);', source)
         self.assertIn('data-srcfilter-config=', source)
         self.assertNotIn("if(!providers.length){mount.innerHTML='';return}", source)
         self.assertIn("needsAttention?' open':''", source)

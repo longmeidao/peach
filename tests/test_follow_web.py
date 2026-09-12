@@ -1372,6 +1372,9 @@ class FollowContractTests(unittest.TestCase):
         self.assertTrue(by_provider["fanbox"]["path"].endswith("fanbox.json"))
         self.assertEqual(by_provider["gofile"]["requirement"], "optional")
         self.assertEqual(by_provider["gofile"]["needs"], ["api_token"])
+        self.assertFalse(by_provider["gofile"]["followable"])
+        self.assertTrue(by_provider["fanbox"]["followable"])
+        self.assertTrue(by_provider["f95zone"]["followable"])
         self.assertTrue(by_provider["gofile"]["path"].endswith("gofile.json"))
         self.assertEqual(by_provider["simpcity"]["requirement"], "required")
         self.assertEqual(by_provider["simpcity"]["needs"], ["cookie"])
@@ -2606,11 +2609,11 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains(
             "document.body.classList.toggle('follow-manage-layout',"
             "decodeURIComponent(location.pathname)==='/follow-manage')")
-        # 凭据是主列里的第三块，标题是「来源管理」，凭据行就渲染在它里面。
+        # 凭据位于「来源和凭证」分区。
         body = page[page.index("function renderFollowManage("):
                     page.index("function wireFollowManage(")]
-        self.assertLess(body.index("<h3>关注列表</h3>"), body.index("<h3>来源管理</h3>"))
-        credentials = body[body.index("<h3>来源管理</h3>"):]
+        self.assertLess(body.index("<h3>关注列表</h3>"), body.index("<h3>来源和凭证</h3>"))
+        credentials = body[body.index("<h3>来源和凭证</h3>"):]
         self.assertIn("creds.map(followCredentialRow)", credentials)
 
     def test_sections_have_a_frame_but_their_rows_do_not(self):
@@ -2862,8 +2865,12 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertNotIn('.followmanage .board-follow-list .fsource.frow+.fsource.frow{border-top:',
                          (ROOT / 'web' / 'board.css').read_text(encoding='utf-8'))
         self.assertBoardContains('.followmanage .frowicon svg{stroke-width:2}')
-        self.assertBoardContains('.faliasrow>.favatar{width:24px;height:24px;font-size:var(--fs-xs)}')
-        self.assertPageContains('<div class="faliasrow">${followAliasAvatar(group)}<b>${esc(group.canonical_name)}</b>')
+        self.assertBoardContains('.faliasidentity>.favatar{width:24px;height:24px;font-size:var(--fs-xs)}')
+        self.assertPageContains('<div class="faliasidentity">${followAliasAvatar(group)}<b>${esc(group.canonical_name)}</b>')
+        self.assertPageContains('aria-label="待合并作者别名"')
+        self.assertPageContains('aria-label="已保存作者别名"')
+        self.assertPageContains('data-follow-alias-all')
+        self.assertPageContains("confirmLabel:'合并全部别名'")
         self.assertPageContains("const sources=(followData?.sources||[]).filter(source=>source.author_key===`name:${group.canonical_key}`);")
 
     def test_both_views_render_the_same_source_cells(self):

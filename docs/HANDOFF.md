@@ -70,6 +70,8 @@
 
 ## 参考产品证据登记
 
+- [作者别名表格取证](BOARD_UI.md#作者别名与扫描操作)。
+
 - [Board、Link Button 与搜索动效取证](BOARD_UI.md)。
 
 - [Geist 控件](reference-snapshots/vercel-geist-controls-measured.md)；[复核操作](reference-snapshots/vercel-review-actions.md)；[README 维护](README_MAINTENANCE.md)。

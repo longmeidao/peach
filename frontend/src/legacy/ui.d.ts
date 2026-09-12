@@ -49,6 +49,7 @@ export declare function attachOverlayScrollbar(
 /** 用户触发的动作等待结果时的忙态：`aria-busy` 与 `aria-disabled` 一起写，控件仍可聚焦，
  *  重复触发由遗留层的 `wireBusyActions` 拦住。请求等待期不许改用原生 `disabled`。 */
 export declare function setActionBusy(control: Element | null, busy?: boolean): void;
+export declare function wireAnchoredMenu(mount: Element, toggle: Element, menu: Element): {setOpen(open: boolean): void; isOpen(): boolean};
 
 /** Geist Note：字段、卡片、分区旁的持久反馈。 */
 export declare function noteHtml(
