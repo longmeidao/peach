@@ -860,6 +860,26 @@ class FollowContractTests(unittest.TestCase):
         self.assertEqual(titles(self._get(sort="new", dir="asc")),
                          ["Clip s3", "Clip s2", "Clip s1"])
 
+    def test_shuffle_orders_the_feed_by_a_seed_that_holds_across_pages(self):
+        """「换一批」是 `sort=rand` 加一粒种子：同一粒种子翻页不重不漏，换一粒才换一批。
+
+        排到分组那一层，跟别的列一样；种子不是数字时按 1，手敲的地址少了它也能开。
+        """
+        self._seed(candidates=tuple(
+            self._clip(f"r{index}", duration=float(index), published_at=f"2026-01-{index:02d}T00:00:00Z")
+            for index in range(1, 8)))
+        titles = lambda page: [group["primary"]["title"] for group in page["groups"]]
+        first = self._get(sort="rand", seed="60000")
+        self.assertEqual((first["sort"], first["seed"]), ("rand", 60000))
+        self.assertEqual(titles(first), titles(self._get(sort="rand", seed="60000")))
+        self.assertEqual(sorted(titles(first)), sorted(titles(self._get(sort="new"))))
+        self.assertNotEqual(titles(first), titles(self._get(sort="new")))
+        paged = [title for offset in ("0", "3", "6")
+                 for title in titles(self._get(sort="rand", seed="60000", limit="3", offset=offset))]
+        self.assertEqual(paged, titles(first))
+        self.assertNotEqual(titles(self._get(sort="rand", seed="77777")), titles(first))
+        self.assertEqual(self._get(sort="rand", seed="abc")["seed"], 1)
+
     def test_an_unknown_sort_or_direction_falls_back_without_an_error(self):
         """地址栏里存着的旧参数不该报错，也不该悄悄换成另一种排序。"""
         self._seed(candidates=(self._clip("u1", duration=10.0),))
@@ -3888,7 +3908,7 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains('@media (max-width:640px){.followhead{align-items:center}')
 
     def test_manage_follow_is_a_geist_action_not_a_filter_pill(self):
-        # 它是去另一页的入口，不是这一页的主动作：蓝色留给空态里那枚「添加关注」。
+        # 它是去另一页的入口，不是这一页的主动作：蓝色留给它右边那枚「检查更新」。
         self.assertPageContains('class="fbtn fcheck" data-follow-manage')
         self.assertPageLacks('class="fbtn primary fcheck"')
         rule = self.page[self.page.index(".follow .fcheck{"):

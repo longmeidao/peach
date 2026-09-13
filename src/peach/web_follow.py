@@ -1223,10 +1223,24 @@ def _csv_values(value) -> tuple[str, ...]:
 
 #: 关注页那一排能按什么排。`new` 是这一页的默认，也就是 store 给的那个次序。
 #:
-#: 只有三档，因为只有这三样在每条更新上都成立。观看次数、体积、评分那几列问的是本机
-#: 文件，而这一页上的东西多数还没下载；拿一列全空的数字去排序，得到的是原顺序加一次
-#: 无意义的洗牌。
-FOLLOW_SORTS = ("new", "hot", "dur")
+#: 三列加一档随机。只有这三列，因为只有这三样在每条更新上都成立。观看次数、体积、评分
+#: 那几列问的是本机文件，而这一页上的东西多数还没下载；拿一列全空的数字去排序，得到
+#: 的是原顺序加一次无意义的洗牌。`rand` 是页面上「换一批」按出来的那一档：按种子打散，
+#: 同一粒种子翻页不重不漏，换一粒就是换一批，跟首页 `seeded_order` 同一个算法。
+FOLLOW_SORTS = ("new", "hot", "dur", "rand")
+
+
+def _seed_key(seed: int):
+    """按种子打散的排序键，跟 `web_catalog.seeded_order` 同一个式子，只是在 Python 里算。"""
+    scale = int(seed or 1) % 99991 or 7
+    return lambda item_id: ((item_id * scale) % 99991, item_id)
+
+
+def _seed_arg(raw) -> int:
+    """随机那一档的种子。不是数字就按 1：页面每次「换一批」都自己掷一粒带过来，
+    手敲的地址少了它也能开，只是开出来的是哪一批不保证。"""
+    text = str(raw or "")
+    return int(text) if text.isdigit() else 1
 
 
 def _item_rank(item, key: str) -> float:
@@ -1248,7 +1262,7 @@ def _item_rank(item, key: str) -> float:
         return 0.0
 
 
-def _sorted_items(items: tuple, sort: str, direction: str) -> tuple:
+def _sorted_items(items: tuple, sort: str, direction: str, seed: int = 1) -> tuple:
     """按选中的那一列重排整批条目。
 
     排在分页之前，也排在分组之前：先分页再排等于只排了当前这一屏，翻一页顺序就换
@@ -1262,12 +1276,15 @@ def _sorted_items(items: tuple, sort: str, direction: str) -> tuple:
         return items
     if sort == "new":
         return items if direction == "desc" else tuple(reversed(items))
+    if sort == "rand":
+        rank = _seed_key(seed)
+        return tuple(sorted(items, key=lambda item: rank(item.id)))
     # id 兜底与 store 同一个道理：并列值在两次请求间不许换位置，否则翻页会重复或漏掉。
     return tuple(sorted(items, key=lambda item: (_item_rank(item, sort), item.id),
                         reverse=direction == "desc"))
 
 
-def _sorted_groups(groups: tuple, sort: str, direction: str) -> tuple:
+def _sorted_groups(groups: tuple, sort: str, direction: str, seed: int = 1) -> tuple:
     """分完组再排一次。
 
     `store.group()` 结尾无条件按 `newest_at` 倒序——那是它自己的默认次序，不是这一页
@@ -1279,6 +1296,9 @@ def _sorted_groups(groups: tuple, sort: str, direction: str) -> tuple:
         return groups
     if sort == "new":
         return groups if direction == "desc" else tuple(reversed(groups))
+    if sort == "rand":
+        rank = _seed_key(seed)
+        return tuple(sorted(groups, key=lambda group: rank(group.primary.id)))
     return tuple(sorted(groups,
                         key=lambda group: (_item_rank(group.primary, sort), group.primary.id),
                         reverse=direction == "desc"))
@@ -1397,6 +1417,7 @@ def q_follow(contract, args) -> dict:
     sort = str(args.get("sort") or "new")
     if sort not in FOLLOW_SORTS:
         sort = "new"
+    seed = _seed_arg(args.get("seed"))
     # 认不出的方向按这一列的常态读：时间、热度、时长问的都是「最靠前的先看」。
     direction = "asc" if str(args.get("dir") or "") == "asc" else "desc"
     credential_store = _credential_store(contract)
@@ -1438,7 +1459,7 @@ def q_follow(contract, args) -> dict:
         everything = tuple(item for item in store.items(source_id=source_id, limit=_ALL_ITEMS)
                            if item.source_id in enabled_source_ids and not _excluded_item(item))
         counted = _sorted_items(
-            tuple(item for item in everything if _matches(item)), sort, direction)
+            tuple(item for item in everything if _matches(item)), sort, direction, seed)
         if item_id is not None:
             items = tuple(item for item in store.items_for_item(item_id)
                           if item.source_id in enabled_source_ids and not _excluded_item(item))
@@ -1450,7 +1471,7 @@ def q_follow(contract, args) -> dict:
             has_more = len(page) > offset + limit
             items = tuple(page[offset:offset + limit])
         groups = [_group_payload(group, credential_providers)
-                  for group in _sorted_groups(store.group(items), sort, direction)]
+                  for group in _sorted_groups(store.group(items), sort, direction, seed)]
         facets = _follow_facets(store, everything, by_source, alias_map,
                                 work_icon_root(contract))
         # counts 与列表同源，两边都从 `counted` 出发：筛选怎么变，数字就怎么变，
@@ -1473,6 +1494,7 @@ def q_follow(contract, args) -> dict:
         # 排序回一份：页面是从 URL 读的，两边对不上时以服务端这份为准。
         "sort": sort,
         "dir": direction,
+        "seed": seed,
         "facets": facets,
         # counts 是全库口径，groups 只是这一页——两个数并排显示过，看起来像自相矛盾。
         "offset": offset,

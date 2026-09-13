@@ -621,14 +621,16 @@ body>.board-filter-frame{margin-inline:16px}
   color:color-mix(in srgb,var(--glass-text) 60%,transparent)}
 .board-filter-frame.board-filter-frame .followmediaview .mediaviewbutton:hover,
 .board-filter-frame.board-filter-frame .followmediaview .mediaviewbutton[aria-pressed="true"]{color:var(--glass-text)}
-/* 「去问一遍来源」紧挨着「换一批」：两枚都是动作键，同高同圆角。它不是选项，所以
-   没有 `aria-pressed` 那一档填充——静止态比排序键淡一级，悬停才提到玻璃上的常规字色。 */
-.board-filter-frame .sorts .followrecheck{
-  flex:0 0 30px;width:30px;padding:0;display:inline-grid;place-items:center;
-  color:color-mix(in srgb,var(--glass-text) 60%,transparent)}
-.board-filter-frame .sorts .followrecheck:hover{color:var(--glass-text)}
-.board-filter-frame .sorts .followrecheck svg{
-  width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2}
+/* 图片墙上的「仅显示图片」跟「换一批」同一副身量：同宽同高同圆角、同一枚 16px 字形。
+   它是开关不是动作，开着才铺强调档那块蓝；关着退成玻璃上那档淡字，悬停提到常规字色，
+   跟这一排其它未选中的键一个规矩。排序键那条「按下即去底」的规则按属性选择器胜过
+   `.batchaction`，所以开着那档要在这里点名铺蓝。 */
+.board-filter-frame.board-filter-frame .sorts .followimagesonly[aria-pressed="true"]{
+  background:var(--board-blue);color:#fff;font-weight:600}
+.board-filter-frame.board-filter-frame .sorts .followimagesonly[aria-pressed="true"]:hover{background:var(--board-blue-hover);color:#fff}
+.board-filter-frame.board-filter-frame .sorts .followimagesonly[aria-pressed="false"]{
+  background:transparent;box-shadow:none;color:color-mix(in srgb,var(--glass-text) 60%,transparent)}
+.board-filter-frame.board-filter-frame .sorts .followimagesonly[aria-pressed="false"]:hover{color:var(--glass-text)}
 /* 资料卡照 Board 的卡排：secondary 底、18px 圆角、不描边，卡底那条带取卡脚那一档色阶。
    标题是 Title 3（24/32、500），别名行 Body 1，外链是 36px 的 secondary Button。 */
 .entityhero{border-radius:18px;background:var(--ground);box-shadow:none}

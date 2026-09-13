@@ -2,6 +2,7 @@
 .follow{padding:4px 0 42px}
 .followhead{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:20px}
 .followhead .pagetitle{margin:0}
+.fheadactions{display:inline-flex;align-items:center;gap:8px;flex:none}
 .follow .fcheck{font-weight:500}
 .follow .fcheck svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2}
 .followauthors{padding:3px 0 10px;margin:0 0 2px;overscroll-behavior-inline:contain}
