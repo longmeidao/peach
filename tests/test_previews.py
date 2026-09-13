@@ -137,7 +137,9 @@ class ParallelGenerationTests(unittest.TestCase):
         锁内那次判断缺了的话，`_run` 就会多跑一次，判据不靠时序。
         """
         calls = []
-        destination = self.poster_root / f"{self.LEFT}_4.jpg"
+        # 路径取服务自己那份：`PreviewService` 把根目录 `resolve()` 过，而 macOS 的临时目录
+        # `/var/folders/...` 是 `/private/var/folders/...` 的软链，拿未解析的那份比会在 macOS 上假红。
+        destination = self.service.poster_root / f"{self.LEFT}_4.jpg"
 
         @contextlib.contextmanager
         def lock_that_lands_the_target(target: Path):
