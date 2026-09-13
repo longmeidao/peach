@@ -446,6 +446,70 @@ class LibraryWatchdogTests(unittest.TestCase):
         self.assertEqual(state['total'], 1)
         self.assertEqual(state['checked'], 1)
 
+    def test_a_row_with_nothing_left_to_collect_never_touches_the_disk(self):
+        """番号已落库、字段都有着落、封面在位的行，采集连 stat 都不做。
+
+        重跑「只采集」时这是绝大多数行；网盘上每行一次 stat 加一次列目录就是两趟往返。
+        文件在扫描后被删掉，任务仍然一条问题都不报，就是没碰磁盘的证据。
+        """
+        from peach.library_processing import FIELDS
+        from peach.review_csv import write_rows
+        media = self.root / 'media'
+        media.mkdir()
+        (media / 'ABW-205.mp4').write_bytes(b'video')
+        db = fresh_ledger(self.root)
+        config = self._config(media)
+        provider = self._provider()
+        process_library(config, db, self.root / 'generated', self.root / 'covers',
+                        stage='scan', provider_factory=lambda: provider)
+        with closing(sqlite3.connect(db)) as connection, connection:
+            asset_id = connection.execute("UPDATE asset SET code='ABW-205', catalog_title='t', studio='s', "
+                                          "release_date='2024-01-01' RETURNING id").fetchone()[0]
+        (self.root / 'covers').mkdir()
+        (self.root / 'covers' / 'ABW-205.jpg').write_bytes(b'jpg')
+        blank = {field: '' for field in FIELDS}
+        write_rows(self.root / 'generated' / 'library-metadata-field-candidates.csv', FIELDS,
+                   [dict(blank, item_key=f'asset:{asset_id}:{field}') for field in ('performers', 'tags')])
+        (media / 'ABW-205.mp4').unlink()
+        with patch('peach.library_processing.sidecars') as listing:
+            state = process_library(config, db, self.root / 'generated', self.root / 'covers',
+                                    stage='collect', provider_factory=lambda: provider)
+        listing.assert_not_called()
+        provider.query.assert_not_called()
+        self.assertEqual((state['status'], state['checked'], state['issue_count']), ('complete', 1, 0))
+
+    def test_one_directory_is_listed_once_for_all_the_videos_in_it(self):
+        """同一个文件夹里的片子共用一次目录列表，找 NFO 和找海报也不各列一遍。"""
+        from peach import library_nfo
+        media = self.root / 'media'
+        media.mkdir()
+        for name in ('ABW-206.mp4', 'ABW-207.mp4', 'ABW-208.mp4'):
+            (media / name).write_bytes(b'video')
+        db = fresh_ledger(self.root)
+        provider = self._provider()
+        with patch('peach.library_processing.directory_files', wraps=library_nfo.directory_files) as listed:
+            state = process_library(self._config(media), db, self.root / 'generated', self.root / 'covers',
+                                    provider_factory=lambda: provider)
+        self.assertEqual(state['checked'], 3)
+        self.assertEqual(listed.call_count, 1)
+
+    def test_candidates_are_written_once_for_a_short_batch_not_once_per_asset(self):
+        """候选 CSV 按时间节流落盘，结束时写全；三条资产不该重写三遍整份文件。"""
+        from peach import review_csv
+        media = self.root / 'media'
+        media.mkdir()
+        for name in ('ABW-209.mp4', 'ABW-210.mp4', 'ABW-211.mp4'):
+            (media / name).write_bytes(b'video')
+        db = fresh_ledger(self.root)
+        provider = self._provider()
+        with patch('peach.library_processing.write_rows', wraps=review_csv.write_rows) as written:
+            state = process_library(self._config(media), db, self.root / 'generated', self.root / 'covers',
+                                    provider_factory=lambda: provider)
+        self.assertEqual(state['status'], 'complete')
+        self.assertEqual(written.call_count, 1)
+        rows = read_rows(self.root / 'generated' / 'library-metadata-field-candidates.csv')
+        self.assertEqual(len({row['asset_id'] for row in rows}), 3)
+
     def test_the_stage_asked_for_is_the_stage_that_runs(self):
         """页面点哪一段就跑哪一段，不认识的段数拒绝掉。
 
