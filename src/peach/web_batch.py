@@ -21,7 +21,9 @@ from typing import Sequence
 
 from .catalog_rules import duration_clusters, is_jav_code, normalise_code_key
 from .config import LOCATION_ROOT_DECLARATIONS
+from .field_owners import USER_MANUAL, write_owned_fields
 from .platform import is_unmapped, root_online, translate_ledger_path, within_root
+from .regions import normalize_region
 from .task_runs import TaskRunHandle
 from .web_activity import DEFAULT_PROFILE_ID
 from .web_catalog import COST, attach_card_performers
@@ -33,6 +35,7 @@ BATCH_LABELS = {
     "like": "批量标记喜欢", "seen": "批量标记看过", "later": "批量加入稍后看",
     "dispose": "批量移入回收站", "restore": "批量还原", "delete": "批量永久删除",
     "dismiss-junk": "批量确认不是垃圾", "reconsider-junk": "批量重新判定垃圾",
+    "region": "批量判定产地",
 }
 
 
@@ -625,6 +628,29 @@ def w_cleanup_empty_directories(_contract: WebContract, _body):
 
 
 
+def _batch_region_value(body) -> str | None:
+    """批量判定产地要写进真相字段的值；`None` 表示退回未判定。
+
+    `none` 是「撤回这个判定」。认不出的写法一律拒绝，而不是按 `normalize_region`
+    的习惯当成未判定——那会把一次拼错的批量操作变成一次静默的清空。
+    """
+    requested = str(body.get("region") or "").strip().lower()
+    value = normalize_region(requested)
+    if not value and requested != "none":
+        raise ValueError("unsupported region")
+    return value or None
+
+
+def _reject_ineligible_targets(operation: str, rows) -> None:
+    """选中集合与操作对不上就拒绝整批，不做部分生效。"""
+    if operation in {"restore", "delete"} and any(row["disposal"] != "trash" for row in rows):
+        raise ValueError("restore/delete is only allowed for recycle-bin assets")
+    if operation in {"dismiss-junk", "reconsider-junk"} and any(
+            row["location"] not in {"local", "115", "pikpak"}
+            or row["disposal"] is not None for row in rows):
+        raise ValueError("junk decisions are only allowed for active physical assets")
+
+
 def w_batch(contract: WebContract, body):
     """Apply one explicit, reversible marker to a bounded selected set."""
     raw_ids = body.get("ids")
@@ -636,9 +662,11 @@ def w_batch(contract: WebContract, body):
     operation = body.get("operation")
     if operation not in {
         "like", "seen", "later", "dispose", "restore", "delete",
-        "dismiss-junk", "reconsider-junk",
+        "dismiss-junk", "reconsider-junk", "region",
     }:
         raise ValueError("unsupported batch operation")
+    # 产地的取值在这里就要认出来，别等到写库那一步才发现拼错了。
+    region_value = _batch_region_value(body) if operation == "region" else None
     marks = ",".join("?" * len(ids))
     contract.cache_bust()
     purge_outcome = None
@@ -656,12 +684,7 @@ def w_batch(contract: WebContract, body):
             valid_ids = [row["id"] for row in found]
             if not valid_ids:
                 raise ValueError("assets not found")
-            if operation in {"restore", "delete"} and any(row["disposal"] != "trash" for row in found):
-                raise ValueError("restore/delete is only allowed for recycle-bin assets")
-            if operation in {"dismiss-junk", "reconsider-junk"} and any(
-                    row["location"] not in {"local", "115", "pikpak"}
-                    or row["disposal"] is not None for row in found):
-                raise ValueError("junk decisions are only allowed for active physical assets")
+            _reject_ineligible_targets(operation, found)
             now = time.time()
             if operation == "restore":
                 placeholders = ",".join("?" * len(valid_ids))
@@ -692,6 +715,11 @@ def w_batch(contract: WebContract, body):
                     f"UPDATE asset SET {column}=?,feedback_at=? WHERE id IN ({placeholders})",
                     [value, now, *valid_ids],
                 )
+            elif operation == "region":
+                # 走 `write_owned_fields` 而不是直接 UPDATE：产地是真相字段，用户这一
+                # 笔要压得住后面每一轮刮削与推断，归属列是它唯一的凭据。
+                write_owned_fields(connection, valid_ids,
+                                   {"region": region_value}, USER_MANUAL)
             elif operation == "later":
                 connection.executemany(
                     "INSERT OR IGNORE INTO watch_queue(profile_id,asset_id,added_at,source) "

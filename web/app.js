@@ -964,6 +964,7 @@ state={loc:initialParams.get('loc')??'local,115',creator:initialParam('creator')
   owner:initialParam('owner')==='none'?'none':'',
   tag:cleanTagFilter(initialParam('tag')),len:initialParam('len')||'',dur_min:initialParam('dur_min')||'',dur_max:initialParam('dur_max')||'',
   tag_match:initialParam('tag_match')==='any'?'any':'all',orient:initialParam('orient')||'',
+  region:initialParam('region')||'',
   state:ROUTE_STATES[decodeURIComponent(location.pathname)]||initialParam('state')||'',
   ...resolveSort(initialParam('sort'),initialParam('dir')),
   seed:initialParam('seed')||rollSeed(),q:initialParam('q')||'',jav:initialParam('jav')||'',thumb:initialParam('thumb')||'0'};
@@ -976,7 +977,7 @@ function dropOfflineFromDefaultLoc(){
   const kept=state.loc.split(',').filter(Boolean).filter(k=>sourceOnline[k]!==false);
   if(kept.length&&kept.length!==state.loc.split(',').filter(Boolean).length)state.loc=kept.join(',');
 }
-const HOME_QUERY_KEYS=['loc','creator','studio','owner','tag','tag_match','len','dur_min','dur_max','orient','sort','dir','q','jav'];
+const HOME_QUERY_KEYS=['loc','creator','studio','owner','tag','tag_match','len','dur_min','dur_max','orient','region','sort','dir','q','jav'];
 function homePath(filters=state){
   const path=STATE_ROUTES[filters.state]||'/';
   const params=new URLSearchParams();
@@ -997,7 +998,7 @@ let barsContext={type:'home',filters:state},detailReturnBarsContext=null;
    于是四枚视图胶囊一枚都不亮，首页看上去像谁都没选中。 */
 function resetHomeState(){
   state={loc:state.loc,creator:'',studio:'',owner:'',tag:'',tag_match:'all',len:'',dur_min:'',dur_max:'',
-    orient:'',state:'',sort:appSettings.defaultSort,dir:preferredDirection(appSettings.defaultSort,appSettings.defaultSort,appSettings.defaultSortDirection),
+    orient:'',region:'',state:'',sort:appSettings.defaultSort,dir:preferredDirection(appSettings.defaultSort,appSettings.defaultSort,appSettings.defaultSortDirection),
     seed:rollSeed(),q:'',jav:'',thumb:'0'};
   barsContext={type:'home',filters:state};detailReturnBarsContext=null;
   barsDataCache=null;barsDataPromise=null;
@@ -1007,6 +1008,13 @@ function resetHomeState(){
    顶栏芯片指的就是同一份列表。 */
 function openUnowned(){
   resetHomeState();state.owner='none';
+  $('#q').value='';disposeStage(false);showHomeSurfaces();
+  route(homePath());buildEdge();buildBars();load(true);
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+/* 详情页那枚产地和未归属同一种东西：它标的不是一句说明，是馆藏里一个能筛的集合。 */
+function openRegion(region){
+  resetHomeState();state.region=region||'none';
   $('#q').value='';disposeStage(false);showHomeSurfaces();
   route(homePath());buildEdge();buildBars();load(true);
   window.scrollTo({top:0,behavior:'smooth'});
@@ -2295,7 +2303,7 @@ function paintSelection(){
   $('#batchbar').querySelectorAll('[data-batch]').forEach(button=>button.hidden=followPage||junkPage);
   $('#batchbar').querySelectorAll('[data-follow-batch]').forEach(button=>button.hidden=!followPage);
   $('#batchbar').querySelectorAll('[data-trash-only]').forEach(button=>button.hidden=followPage||junkPage||state.state!=='trash');
-  $('#batchbar').querySelectorAll('[data-batch="like"],[data-batch="seen"],[data-batch="later"],[data-batch="dispose"]').forEach(button=>button.hidden=followPage||junkPage||state.state==='trash');
+  $('#batchbar').querySelectorAll('[data-batch="like"],[data-batch="seen"],[data-batch="later"],[data-batch="dispose"],[data-batch-region]').forEach(button=>button.hidden=followPage||junkPage||state.state==='trash');
   $('#batchbar').querySelectorAll('[data-junk-batch]').forEach(button=>{
     const operation=button.dataset.junkBatch;
     button.hidden=!junkPage||(operation==='dismiss-junk'&&junkView==='dismissed')
@@ -2339,6 +2347,40 @@ $('#batchbar').querySelectorAll('[data-batch]').forEach(button=>button.onclick=a
   finally{setActionBusy(button,false);paintSelection()}
   }});
 });
+/* 产地是选中这一批的共同判断，不是逐条编辑，所以入口和「喜欢」「看过」并列在选择栏。
+   药丸做单选：筛选面板里的产地已经是这个样子，弹层里换一套控件只会让人重新认一遍。
+   「撤回判定」和那四类并列——加了「进入某状态」就得有「退出」，否则判错的片只能改成
+   另一个错的产地，回不到未判定。 */
+const REGION_CHOICES=[['jp','日本'],['kr','韩国'],['cn','国产'],['west','欧美'],
+  ['other','其他'],['none','撤回判定']];
+$('#batchbar').querySelector('[data-batch-region]').onclick=async()=>{
+  const ids=[...selected];if(!ids.length)return;
+  const modal=formModal({
+    title:'判定产地',
+    description:`选中的 ${ids.length} 项归为同一个产地。这是你的判断，之后的刮削和自动推断都不会改写它。`,
+    body:`<div class="chips" role="group" aria-label="产地">`+REGION_CHOICES.map(([key,label])=>
+      `<button type="button" class="chip" aria-pressed="false" data-region-pick="${key}">
+        <span class="chip-label">${label}</span></button>`).join('')+`</div>`,
+    confirmLabel:'判定产地',
+    confirmDisabled:true,
+    onConfirm:async()=>{
+      const picked=modal.dialog.querySelector('[data-region-pick][aria-pressed="true"]');
+      if(!picked)throw new Error('先选一个产地');
+      await api('/api/batch',{method:'POST',
+        body:JSON.stringify({ids,operation:'region',region:picked.dataset.regionPick})});
+      return {region:picked.dataset.regionPick,label:picked.textContent.trim()};
+    }});
+  modal.dialog.querySelectorAll('[data-region-pick]').forEach(chip=>chip.onclick=()=>{
+    modal.dialog.querySelectorAll('[data-region-pick]').forEach(other=>
+      other.setAttribute('aria-pressed',String(other===chip)));
+    modal.confirmButton.disabled=false;
+  });
+  const {confirmed,result}=await modal.done;
+  if(!confirmed)return;
+  setSelectMode(false,true);await reloadCurrentSurface();
+  actionReceipt(result.region==='none'
+    ? `已撤回 ${ids.length} 项的产地判定` : `已判为${result.label}：${ids.length} 项`);
+};
 $('#batchbar').querySelectorAll('[data-follow-batch]').forEach(button=>button.onclick=async()=>{
   const action=button.dataset.followBatch,items=[...followSelected];if(!items.length)return;
   const labels={save:'保存到账本',seen:'标记已看',ignored:'忽略'};
@@ -3305,7 +3347,7 @@ async function getBarsData(context=barsContext){
   if(context.type==='home'&&state.state)facetParams.set('state',state.state);
   if(context.type!=='item'){
     const filters=activeFilterState();
-    ['loc','creator','studio','tag','tag_match','len','dur_min','dur_max','orient','q','thumb'].forEach(key=>{
+    ['loc','creator','studio','tag','tag_match','len','dur_min','dur_max','orient','region','q','thumb'].forEach(key=>{
       if(filters[key])facetParams.set(key,filters[key]);
     });
   }
@@ -3366,7 +3408,8 @@ async function refreshFacetCounts(context){
   barsFacets=facetData;
   if(context.type==='home')facets=facetData;
   const counts=new Map();
-  [['loc',facetData.locations],['orient',facetData.orientations],['creator',facetData.creators],
+  [['loc',facetData.locations],['orient',facetData.orientations],['region',facetData.regions],
+   ['creator',facetData.creators],
    ['tag',facetData.tags],['tag',facetData.tech]].forEach(([key,rows])=>
     (rows||[]).forEach(row=>counts.set(key+'\n'+row.k,row.n)));
   $('#drawer').querySelectorAll('.chip[data-key] .n').forEach(el=>{
@@ -3794,6 +3837,9 @@ async function buildBars(){
       <div class="dual-range" id="durationRange"><span class="range-base"></span><span class="range-fill"></span>
         <input id="durMin" type="range" min="0" max="180" step="5" value="${filterState.dur_min?Math.min(180,+filterState.dur_min/60):0}" aria-label="最短时长（分钟）">
         <input id="durMax" type="range" min="0" max="180" step="5" value="${filterState.dur_max?Math.min(180,+filterState.dur_max/60):180}" aria-label="最长时长（分钟）"></div></div>`:'','','meta')
+    /* 产地紧挨着来源：两者回答的都是「这批片打哪来」，一个说存储，一个说发行体系。
+       可多选——想一次看完日韩两边的片，不该逼人点两趟。 */
+    +sec('产地',chips(facetData.regions,'region',true),'','general')
     +sec('画幅',chips(facetData.orientations,'orient'),'','meta')
     /* 展开键接在名单末尾，它说的是「这张名单还没完」——那句话要跟名单断掉的地方在
        一起。挂在组名那一行时，人得先把这一列读到底、再抬头回到标题去找它。
@@ -4498,7 +4544,7 @@ function renderTaste(d){
 }
 async function openTaste(push=true){
   releaseHoverPreviews();disposeStage(false);enterManagementSurface();
-  state={...state,creator:'',studio:'',tag:'',tag_match:'all',len:'',dur_min:'',dur_max:'',orient:'',state:'',q:'',jav:''};
+  state={...state,creator:'',studio:'',tag:'',tag_match:'all',len:'',dur_min:'',dur_max:'',orient:'',region:'',state:'',q:'',jav:''};
   $('#q').value='';
   if(push)route('/taste');
   const surface=claimSurface('/taste');
@@ -9710,7 +9756,10 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
       <div class="smeta mono">
         <span class="detailmetaitem">${icon('monitor')}<span>${it.width||'?'}×${it.height||'?'}</span></span>
         <span class="detailmetaitem">${icon('hard-drive')}<span>${fmtSize(it.size||0)}</span></span>
-        ${it.release_date?`<span class="detailmetaitem">${icon('calendar')}<span>${esc(it.release_date)}</span></span>`:''}</div>
+        ${it.release_date?`<span class="detailmetaitem">${icon('calendar')}<span>${esc(it.release_date)}</span></span>`:''}
+        ${it.region_label?`<button class="detailmetaitem regionlink" type="button" data-open-region="${esc(it.region)}"
+          title="${it.region_settled?'你判定的产地；打开同产地的作品':'按番号或厂牌推断的产地，选中它批量判定后不再变；打开同产地的作品'}"
+          >${icon('globe')}<span>${esc(it.region_label)}${it.region_settled?'':'（推断）'}</span></button>`:''}</div>
       <div class="detailidentity">${identityRows}</div>
       <div class="stags" id="detailTags"></div>
       <div class="trace"><div class="trace-metric"><div class="lab mono"><span>离开位置</span><span id="ratioTxt">0%</span></div>
@@ -9908,6 +9957,7 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
   $('#stage').querySelectorAll('[data-entity-kind]').forEach(b=>b.onclick=()=>
     openEntity(b.dataset.entityKind,b.dataset.entityName));
   $('#stage').querySelectorAll('[data-open-unowned]').forEach(b=>b.onclick=()=>openUnowned());
+  $('#stage').querySelectorAll('[data-open-region]').forEach(b=>b.onclick=()=>openRegion(b.dataset.openRegion));
   const paintLater=value=>{it.watch_later=value;const button=$('#stageLater');if(!button)return;
     button.setAttribute('aria-pressed',value);button.innerHTML=value?icon('check'):icon('bookmark-plus')};
   $('#stageLater').onclick=async()=>{const button=$('#stageLater');setActionBusy(button);

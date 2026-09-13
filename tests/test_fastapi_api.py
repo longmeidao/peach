@@ -38,13 +38,13 @@ CREATE TABLE asset(
   o_count INTEGER, watch_ratio REAL, stash_scene_id INTEGER, snapshot_path TEXT, first_seen TEXT,
   feedback TEXT, disposal TEXT, leave_ratio REAL, play_seconds REAL,
   feedback_at REAL, seek_count INTEGER, max_reached REAL,
-  field_owners TEXT, mutation_revision INTEGER NOT NULL DEFAULT 0,
+  field_owners TEXT, mutation_revision INTEGER NOT NULL DEFAULT 0, region TEXT,
   UNIQUE(location,path));
 CREATE TABLE asset_tag(asset_id INTEGER,tag TEXT,confidence REAL DEFAULT 1.0,source TEXT,
                        UNIQUE(asset_id,tag));
 CREATE TABLE entity(
   id INTEGER PRIMARY KEY,kind TEXT,canonical_name TEXT,normalized_name TEXT,
-  metadata_json TEXT DEFAULT '{}',created_at TEXT,updated_at TEXT,
+  metadata_json TEXT DEFAULT '{}',created_at TEXT,updated_at TEXT,region TEXT,
   UNIQUE(kind,normalized_name));
 CREATE TABLE entity_alias(
   entity_id INTEGER,alias TEXT,normalized_alias TEXT,source TEXT,confidence REAL DEFAULT 1.0);

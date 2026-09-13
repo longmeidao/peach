@@ -4968,6 +4968,7 @@ var na = [
 	"dur_min",
 	"dur_max",
 	"orient",
+	"region",
 	"state",
 	"jav",
 	"thumb"

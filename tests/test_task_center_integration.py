@@ -11,6 +11,7 @@ import tempfile
 import threading
 import types
 import unittest
+import unittest.mock
 from pathlib import Path
 
 from peach import web_contract, web_tasks

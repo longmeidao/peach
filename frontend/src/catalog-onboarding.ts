@@ -1,7 +1,7 @@
 import { emptyStateHtml } from '@peach/legacy/ui';
 
 type Request = (url: string) => Promise<any>;
-const FILTERS = ['loc', 'creator', 'performer', 'studio', 'series', 'agency', 'tag', 'tag_match', 'len', 'dur_min', 'dur_max', 'orient', 'state', 'jav', 'thumb'];
+const FILTERS = ['loc', 'creator', 'performer', 'studio', 'series', 'agency', 'tag', 'tag_match', 'len', 'dur_min', 'dur_max', 'orient', 'region', 'state', 'jav', 'thumb'];
 
 /** 空馆藏占位沿横向内容轨道铺开，由容器裁切到可用宽度。 */
 export function emptyCatalogLayout(): { tiers: string; tags: string } {

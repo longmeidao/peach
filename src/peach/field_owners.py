@@ -33,7 +33,7 @@ from dataclasses import dataclass
 #: 归属写在一个谁也不会去读的键上。
 OWNED_FIELDS: tuple[str, ...] = (
     "catalog_title", "original_title", "release_date", "studio", "series",
-    "creator", "code",
+    "creator", "code", "region",
 )
 
 #: 用户在界面上直接编辑。这是最高一级，任何自动写入者都覆盖不掉它。

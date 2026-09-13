@@ -33,6 +33,7 @@ SCOPES: dict[str, tuple[str, ...]] = {
                "test_complexity_ratchet.py"),
     "follow": ("test_follow*.py", "test_http.py", "test_migrations.py"),
     "catalog": ("test_ad_judgement.py", "test_composite_name_split.py", "test_media_libraries.py",
+                "test_content_region.py",
                 "test_duplicate_identity_merge.py",
                 "test_entity_merge.py", "test_fastapi_api.py", "test_field_owners.py",
                 "test_migrations.py",
@@ -184,6 +185,9 @@ AUTO_SCOPE_PREFIXES: tuple[tuple[str, str | tuple[str, ...]], ...] = (
     ("src/peach/mdns.py", "sync"),
     ("src/peach/netwatch.py", "sync"),
     ("src/peach/certs.py", "sync"),
+    # 产地的判据住在 `regions.py`，验它的测试叫 `test_content_region.py`：
+    # 模块名与测试文件名对不上，按名字推不出来，只能在这里指明。
+    ("src/peach/regions.py", "catalog"),
     ("src/peach/web_", "catalog"),
     ("src/peach/routes_", "catalog"),
     ("web/", "web"),

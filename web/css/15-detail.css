@@ -31,6 +31,10 @@
 .smeta{display:flex;gap:9px;flex-wrap:wrap;color:var(--muted);margin-bottom:18px}
 .detailmetaitem{display:inline-flex;align-items:center;gap:5px}.detailmetaitem svg{width:15px;height:15px;
   flex:none;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+/* 产地那一条是能点开的集合，其余几条是读数。按钮只脱掉浏览器默认外观，
+   位置、字号和颜色仍由 .detailmetaitem 给，两者在同一行上不能高低不齐。 */
+.regionlink{border:0;background:transparent;padding:0;font:inherit;color:inherit;cursor:pointer}
+.regionlink:hover{color:var(--ink)}
 .stags{position:relative;display:flex;flex-wrap:wrap;align-items:center;gap:7px;margin:0 0 18px}
 .detailtag{display:inline-flex;align-items:center;border:1px solid var(--line);border-radius:var(--tag-radius);
   background:var(--tag-fill);overflow:hidden;min-height:30px}
