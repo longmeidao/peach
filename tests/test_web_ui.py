@@ -5349,8 +5349,8 @@ class WebUiSourceTests(unittest.TestCase):
     def test_the_follow_page_carries_the_home_two_rows_with_works_in_place_of_studios(self):
         """关注页顶上两排对着首页那两排：作者对女优，题材对厂牌。
 
-        题材只收来源记成 copyright 的标签，不按词形猜——角色名和画师手柄在字面上跟
-        作品名没有区别。按下是「任一」，跟作者、来源一样；标签那一维仍是交集。
+        题材收来源记成 copyright 的作品与记成 character 的人物，不按词形猜——画师手柄
+        在字面上跟作品名没有区别。按下是「任一」，跟作者、来源一样；标签那一维仍是交集。
         两页的头像和药丸共用 board.css 里同一份规则，只按 `#tiers` 写的话关注页会
         落回 flat 层那份 64px 头像加一圈描边，同一个人在两页大小都不一样。
         """

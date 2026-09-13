@@ -961,12 +961,12 @@ class FollowContractTests(unittest.TestCase):
             extra=extra)
 
     def test_the_works_row_only_lists_what_the_source_typed_as_a_work(self):
-        """题材那一排收的是来源记成 copyright 的标签，不按词形猜。
+        """题材那一排收的是来源记成 copyright 的作品和记成 character 的人物，不按词形猜。
 
-        `tifa_lockhart` 是角色、`lazyprocrastinator` 是画师，字面上跟作品名没有
-        区别，猜一次就会把两样东西摆进作品那一排。写法差别不算两部作品：
-        `zenless_zone_zero` 和 `zenless zone zero` 归到同一枚，键是归一后的身份，
-        显示名把下划线换成空格、罗马数字整词大写。
+        `lazyprocrastinator` 是画师，字面上跟作品名没有区别，猜一次就会把它摆进
+        题材那一排；`tifa_lockhart` 是人物，跟作品同排——用户追的常常是这一个人。
+        写法差别不算两部作品：`zenless_zone_zero` 和 `zenless zone zero` 归到同一枚，
+        键是归一后的身份，显示名把下划线换成空格、罗马数字整词大写。
         """
         self._seed(provider="rule34xxx", ref="typed", candidates=(
             self._typed("1", {"final_fantasy_vii": "copyright",
@@ -982,7 +982,43 @@ class FollowContractTests(unittest.TestCase):
         # 检出的取景，还没取过图时是 None。
         self.assertEqual(works,
                          [["zenless zone zero", "Zenless Zone Zero", 2, 1, None],
-                          ["final fantasy", "Final Fantasy", 1, 0, None]])
+                          ["final fantasy", "Final Fantasy", 1, 0, None],
+                          ["tifa lockhart", "Tifa Lockhart", 1, 0, None]])
+
+    def test_characters_sit_on_the_works_row_in_their_own_spelling(self):
+        """人物跟作品同排，显示名按人写的形态提：`d.va` 是 D.Va，`yorha_2b` 是 Yorha 2B。
+
+        站上末尾的括号是消歧不是名字，可能叠几层：`raven_(stellar_blade)` 摆出来是
+        Raven，跟 `raven` 归到同一枚，`mona_(genshin_impact)_(cosplay)` 是 Mona。来源
+        写成 `megami Tensei` 时按词提首字母，不因为后一个词带大写就整串放行；已经是
+        人写形态的 `Genshin Impact` 原样留着；名字里的介词和连字符后的敬称保持小写。
+        占位词和被记成 character 的种族不是人物。
+        """
+        self._seed(provider="rule34xxx", ref="typed", candidates=(
+            self._typed("1", {"d.va": "character", "chun-li": "character",
+                              "hyur": "character", "original_character": "character",
+                              "you": "character"}),
+            self._typed("2", {"yorha_2b": "character", "megami Tensei": "copyright",
+                              "hasshaku-sama": "character"}),
+            self._typed("3", {"raven_(stellar_blade)": "character",
+                              "mona_(genshin_impact)_(cosplay)": "character"}),
+            self._typed("4", {"raven": "character", "Genshin Impact": "copyright",
+                              "emilie_de_rochefort": "character"}),
+        ))
+        self.assertEqual(self._get()["facets"]["works"], [
+            ["raven", "Raven", 2, 0, None],
+            ["chun-li", "Chun-Li", 1, 0, None],
+            ["d.va", "D.Va", 1, 0, None],
+            ["emilie de rochefort", "Emilie de Rochefort", 1, 0, None],
+            ["genshin impact", "Genshin Impact", 1, 0, None],
+            ["hasshaku-sama", "Hasshaku-sama", 1, 0, None],
+            ["megami tensei", "Megami Tensei", 1, 0, None],
+            ["mona", "Mona", 1, 0, None],
+            ["yorha 2b", "Yorha 2B", 1, 0, None],
+        ])
+        self.assertEqual(sum(self._get(work="raven")["counts"].values()), 2,
+                         "带消歧括号和不带的是同一个人，按下要一起筛到")
+        self.assertEqual(sum(self._get(work="d.va")["counts"].values()), 1)
 
     def test_the_works_row_hands_the_page_the_framing_of_the_cover_it_has(self):
         """取过图的题材带上那张图的取景：挪到哪，还有那张脸有多少像素。
@@ -1033,8 +1069,10 @@ class FollowContractTests(unittest.TestCase):
     def test_publishers_holidays_and_placeholders_never_reach_the_works_row(self):
         """发行商、节庆和占位词不是题材。
 
-        来源把它们和作品名一样记成 copyright，形态上分不出来，只能按名单剔。
-        留着的话那一排头几格会被 Square Enix 和 Christmas 占掉。
+        来源把它们和作品名一样记成 copyright。带法人后缀或以 Entertainment、
+        Interactive、Studios、Pictures 收尾的按形态认，不用等它出现了再进名单；
+        Tencent、Sonnori 这类裸名字形态上分不出来，只能按名单剔。留着的话那一排
+        头几格会被 Square Enix 和 Christmas 占掉。
         """
         self._seed(provider="rule34xxx", ref="typed", candidates=(
             self._typed("1", {"stellar blade": "copyright",
@@ -1042,6 +1080,10 @@ class FollowContractTests(unittest.TestCase):
             self._typed("2", {"square enix": "copyright"}),
             self._typed("3", {"christmas": "copyright", "original": "copyright"}),
             self._typed("4", {"iwara": "copyright"}),
+            self._typed("5", {"tencent": "copyright", "sonnori": "copyright"}),
+            self._typed("6", {"sony_interactive_entertainment": "copyright",
+                              "tencent_pictures": "copyright", "netflix": "copyright",
+                              "some_studio_co._ltd.": "copyright"}),
         ))
         self.assertEqual(self._get()["facets"]["works"],
                          [["stellar blade", "Stellar Blade", 1, 0, None]])

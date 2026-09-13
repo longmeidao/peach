@@ -189,45 +189,94 @@ def _work_key(tag: str) -> str:
 _WORK_MINOR_WORDS = frozenset((
     "a", "an", "and", "at", "for", "in", "no", "of", "on", "or", "the",
     "to", "vs", "x",
+    "de", "del", "di", "du", "la", "le", "van", "von",
 ))
 
 
-def _work_label(tag: str) -> str:
-    """题材的显示名：下划线换空格，整串全小写时每个词提首字母。
+#: 数字打头的短代号，`2b`、`9s` 这种：字母整个大写。
+_CODE_WORD_RE = re.compile(r"\d+[a-z]{1,2}")
+#: 词内的分段符：`chun-li`、`d.va`、`k/da` 各段都要提首字母。
+_WORD_SEGMENT_RE = re.compile(r"([-./])")
+#: 连字符后面的敬称保持小写：`hasshaku-sama` 不是 `Hasshaku-Sama`。
+_LOWER_SEGMENTS = frozenset(("chan", "dono", "kun", "sama", "san", "senpai", "sensei"))
+#: 末尾的消歧括号，可能叠几层：`mona_(genshin_impact)_(cosplay)`。
+_TRAILING_QUALIFIERS_RE = re.compile(r"(?:\s*\([^()]*\))+\s*$")
 
-    `final_fantasy_vii` 直接摆在筛选条上读的是文件名不是作品名。罗马数字整词大写，
-    否则这一串作品名要读成「Final Fantasy Vii」；只认末词那一个，否则 `spy x family`
-    中间那个连接词也要被当成十。来源自己写成 `Genshin Impact` 的照原样留着——它
-    已经是人写的形态，再套一遍规则只会改坏。
+
+def _work_label(tag: str) -> str:
+    """题材的显示名：下划线换空格，去掉末尾括号里的消歧，全小写的词提首字母。
+
+    `final_fantasy_vii` 直接摆在筛选条上读的是文件名不是作品名。按词判不按整串判：
+    来源写成 `megami Tensei` 时只有后一个词是人写的形态，前一个照样要提；已经带
+    大小写的词（`NieR`、`Genshin Impact`）原样留着，再套一遍规则只会改坏。
+    `raven_(stellar_blade)` 末尾那个括号是站上的消歧，不是名字。
     """
     text = re.sub(r"[\s_]+", " ", html.unescape(str(tag or ""))).strip()
-    if not text or text != text.lower():
-        return text
+    text = _TRAILING_QUALIFIERS_RE.sub("", text) or text
     words = text.split(" ")
     last = len(words) - 1
-    return " ".join(
-        word.upper() if index == last and word in _ROMAN_NUMERALS
-        else word if index and word in _WORK_MINOR_WORDS
-        else word[:1].upper() + word[1:]
-        for index, word in enumerate(words))
+    return " ".join(_label_word(word, index == 0, index == last)
+                    for index, word in enumerate(words))
 
 
-#: 题材那一排要的是作品或 IP。发行商、工作室、平台、节庆和「Original」这类占位
-#: 同样被来源记成 copyright，形态上跟作品名没有任何区别，只能一条条列。
+def _label_word(word: str, first: bool, last: bool) -> str:
+    """一个词在显示名里的写法。
+
+    罗马数字整词大写，否则要读成「Final Fantasy Vii」；只认末词那一个，否则
+    `spy x family` 中间那个连接词也要被当成十。
+    """
+    if word != word.lower():
+        return word
+    if last and word in _ROMAN_NUMERALS:
+        return word.upper()
+    if not first and word in _WORK_MINOR_WORDS:
+        return word
+    if _CODE_WORD_RE.fullmatch(word):
+        return word.upper()
+    segments = _WORD_SEGMENT_RE.split(word)
+    return "".join(segment if index and segment in _LOWER_SEGMENTS
+                   else segment[:1].upper() + segment[1:]
+                   for index, segment in enumerate(segments))
+
+
+#: 题材那一排要的是作品、IP 或人物。发行商、工作室、平台、节庆和「Original」这类占位
+#: 同样被来源记成 copyright。带法人后缀或以 Entertainment、Studios 这类词收尾的按
+#: `_COMPANY_TAG_RE` 认；剩下的裸名字形态上跟作品名没有任何区别，只能一条条列。
 _NON_WORK_TAGS = frozenset({
-    "774 inc.", "atlus", "bandai namco", "bethesda softworks", "bioware",
-    "blizzard entertainment", "brave group", "capcom", "cd projekt red",
-    "disney", "electronic arts", "fromsoftware", "hoyoverse", "koei tecmo",
-    "larian studios", "mihoyo", "mihoyo technology (shanghai) co. ltd.",
-    "nanashi inc.", "naughty dog", "netease games", "netherrealm studios",
-    "nintendo", "platinum games", "riot games", "sandfall interactive",
-    "sega", "shift up", "snk", "square enix", "team cherry", "tecmo",
-    "valve", "wizards of the coast",
-    "instagram", "iwara", "mmd", "patreon", "tenga", "twitter", "vr chat",
+    "activision", "arc system works", "atlus", "bandai namco", "bioware", "capcom",
+    "cd projekt red", "crunchyroll", "cygames", "disney", "electronic arts", "epic games",
+    "fromsoftware", "gust", "hoyoverse", "hypergryph", "kadokawa", "kakao games", "koei",
+    "koei tecmo", "konami", "krafton", "kuro games", "level-5", "microsoft", "mihoyo",
+    "namco", "naughty dog", "ncsoft", "netease games", "netflix", "netmarble", "nexon",
+    "nintendo", "papergames", "pearl abyss", "platinum games", "playstation", "riot games",
+    "rockstar games", "sega", "shift up", "smilegate", "snk", "sonnori", "sony",
+    "spike chunsoft", "square enix", "team cherry", "tecmo", "tencent", "tencent games",
+    "type-moon", "ubisoft", "valve", "wizards of the coast", "xbox", "yostar",
+    "brave group", "cover corp", "nanashi inc.", "774 inc.",
+    "discord", "fanbox", "fantia", "gumroad", "instagram", "iwara", "mmd", "onlyfans",
+    "patreon", "pixiv", "steam", "subscribestar", "tenga", "tiktok", "twitter", "vr chat",
+    "youtube",
     "christmas", "halloween", "holidays", "new year", "new year 2026",
     "the game awards", "valentines day",
     "1", "asian mythology", "hentai", "indie virtual youtuber",
     "japanese mythology", "joi", "mythology", "original", "religion", "tmp",
+})
+
+#: 公司名按形态认的那一半：法人后缀，或以 Entertainment、Interactive、Studios、
+#: Software、Pictures 这类词收尾。`Games` 不在此列——《The Hunger Games》是作品。
+_COMPANY_TAG_RE = re.compile(
+    r".*\b(?:inc|co|corp|corporation|ltd|llc|entertainment|interactive|studios?|"
+    r"software|softworks|pictures|holdings)\.?")
+
+#: 人物那一类里不是人物的：占位词，以及 FF14、LoL、Mass Effect 被来源记成 character 的种族。
+_NON_CHARACTER_TAGS = frozenset({
+    "adventurer", "anon", "anonymous", "anonymous character", "anonymous female",
+    "anonymous male", "avatar", "background character", "background characters",
+    "faceless female", "faceless male", "hunter", "npc", "oc", "original character",
+    "original characters", "player character", "tig ol bitties", "y n", "you",
+    "asari", "au ra", "demon", "drow", "elezen", "elvaan", "hrothgar", "hyur", "krogan",
+    "lalafell", "miqote", "mutant", "orc", "padjal", "raen", "roegadyn", "viera",
+    "vastaya", "xaela", "yordle",
 })
 
 #: 系列名到它在筛选条上的写法。以其中一条开头的题材全部并进这一条：用户要的是
@@ -329,7 +378,7 @@ def _work_root(tag: str) -> str:
     （`Drag-On Dragoon` 就是 `Drakengard`），所以最后再查一次。
     """
     text = _work_key(tag).split("|", 1)[0]
-    text = re.sub(r"\s*\([^()]*\)\s*$", "", text)
+    text = _TRAILING_QUALIFIERS_RE.sub("", text)
     text = re.sub(r"\s+", " ", text.replace(":", " ").replace("/", " ")
                   .replace("'", "").replace("’", "")).strip()
     if not text:
@@ -354,20 +403,33 @@ def _work_display(root: str, spellings: dict[str, int]) -> str:
     return _work_label(spelling)
 
 
-def _item_works(item) -> list[str]:
-    """条目所属的题材，只认来源记成 `copyright` 的那一类。
+#: 题材那一排收两类：来源记成 copyright 的作品，和记成 character 的人物。
+_WORK_TAG_TYPES = frozenset({"copyright", "character"})
 
-    按词形猜会把角色名和画师手柄摆进题材那一排：`tifa_lockhart` 和
-    `lazyprocrastinator` 在字面上跟作品名没有区别，区别只写在来源的类型里。
+
+def _not_a_subject(root: str, tag_type: str) -> bool:
+    """这枚身份不该上题材那一排：公司、平台、节庆、占位词，人物那类里还有种族。"""
+    return (root in _NON_WORK_TAGS or _COMPANY_TAG_RE.fullmatch(root) is not None
+            or (tag_type == "character" and root in _NON_CHARACTER_TAGS))
+
+
+def _item_works(item) -> list[str]:
+    """条目所属的题材：来源记成 `copyright` 的作品和记成 `character` 的人物。
+
+    按词形猜会把画师手柄摆进题材那一排：`lazyprocrastinator` 在字面上跟作品名没有
+    区别，区别只写在来源的类型里。人物跟作品同排：用户追的常常是 2B、D.Va 这一个人，
+    不是整部作品。
 
     同一系列的各代在这里已经并成一枚，所以同时带 `final fantasy` 和
     `final fantasy vii` 的一条更新只留一个写法。
     """
     seen, works = set(), []
     for tag in _item_all_tags(item):
+        tag_type = _recorded_tag_type(item, tag)
+        if tag_type not in _WORK_TAG_TYPES:
+            continue
         root = _work_root(tag)
-        if (not root or root in seen or root in _NON_WORK_TAGS
-                or _recorded_tag_type(item, tag) != "copyright"
+        if (not root or root in seen or _not_a_subject(root, tag_type)
                 or _NON_CONTENT_FOLLOW_TAG_RE.fullmatch(tag.strip())):
             continue
         seen.add(root)
