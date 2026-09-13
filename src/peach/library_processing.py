@@ -244,6 +244,19 @@ def _merge_candidates(groups, row, code, source, document, evidence_path, genre_
         groups[key] = group
 
 
+def _remote_sources(code):
+    """这个番号要不要问外部资料、要不要问外部封面。
+
+    韩国 MIB 的编号不在 JAV 目录站上，两样都不问：番号相同的日本作品会原样通过
+    番号核验，取回来的是别的片。FC2 只问封面不问资料：r18.dev 没有 FC2（2026-09-13
+    真实账本 85 条问了 85 条落空，每条白等一次主机间隔），资料走 `fetch_fc2_metadata`；
+    封面在 `best_cover` 里有 FC2 自己的证据来源。
+    """
+    if not code or is_korean_mib_code(code):
+        return False, False
+    return not code.upper().startswith('FC2'), True
+
+
 def _missing_fields(row, target_key, groups, local_fields=()):
     """这一行还缺、本地资料没给、候选表里也还没有的字段。"""
     return [field for field in COLLECTED_FIELDS
@@ -481,10 +494,8 @@ def process_library(config, db_path, candidate_root, cover_root, *, location='co
                     entries.append(('local_nfo', payload, evidence_path))
                 local_fields = _fields(payload) if payload else {}
                 missing = _missing_fields(row, target_key, groups, local_fields)
-                # 韩国 MIB 的编号不在 JAV 目录站上，资料与封面都不问：番号相同的日本作品
-                # 会原样通过番号核验，取回来的是别的片。
-                jav_catalog = bool(code) and not is_korean_mib_code(code)
-                if missing and jav_catalog:
+                asks_metadata, jav_catalog = _remote_sources(code)
+                if missing and asks_metadata:
                     budget = ACTION_BUDGETS['querying_metadata']
                     update(stage='采集缺失资料', current_action='querying_metadata',
                            current_started_at=time.time(),
