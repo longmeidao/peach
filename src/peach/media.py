@@ -20,11 +20,17 @@ from .segments import HLS_SEGMENT_SECONDS
 
 
 def normalized_path(path: Path | str) -> Path:
-    """Windows 离线/云盘可能让 realpath 失败；仍保留绝对路径安全边界。
+    """账本路径翻译成本机可开的绝对路径，越界判断以它为准。
 
-    账本里的盘符路径先按本机挂载点翻译，macOS 上才不会被当成当前目录下的相对路径。
+    Windows 只做 `abspath`，不做 `resolve()`：PikPak 的 A: 是 WinFsp 映射的网络驱动器，
+    `resolve()` 会逐级向重定向器问最终路径，一条文件路径要 7 秒，得到的还是
+    `\\\\CloudDrive-…\\Pikpak\\…` 这种 UNC 形态，之后每次 stat 或 open 再各花 7 到 14 秒，
+    而同一个文件走盘符只要 1 毫秒。盘符路径本身就是绝对路径，`..` 由 `abspath` 折掉。
+    macOS 仍要 `resolve()`：`/var` 是 `/private/var` 的软链，挂载点的大小写也靠它对齐。
     """
     candidate = translate_ledger_path(path)
+    if os.name == "nt":
+        return Path(os.path.abspath(os.fspath(candidate)))
     try:
         return candidate.resolve()
     except OSError:

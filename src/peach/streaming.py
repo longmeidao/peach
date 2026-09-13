@@ -91,8 +91,18 @@ class StreamSessionRegistry:
             return len(self._active.get(session, ()))
 
 
-class CancellableFileResponse(FileResponse):
-    """FileResponse whose active ASGI task can be cancelled by a session id."""
+class BufferedFileResponse(FileResponse):
+    """按 1 MiB 读文件再发。
+
+    Starlette 默认每次读 64 KiB，浏览器缓冲一段 Range 要向 CloudDrive 发几十次小读；
+    读大一点只是少跑几趟挂载层，Range 语义不变。
+    """
+
+    chunk_size = 1 << 20
+
+
+class CancellableFileResponse(BufferedFileResponse):
+    """能按会话取消正在发送任务的 FileResponse。"""
 
     def __init__(
         self,

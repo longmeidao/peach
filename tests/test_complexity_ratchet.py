@@ -56,7 +56,6 @@ BASELINE: dict[str, int] = {
     "scripts/merge_duplicate_identities.py:collect_repeated_projections": 34,
     "src/peach/fc2_similarity.py:media_evidence": 34,
     "scripts/clean_names.py:run": 33,
-    "src/peach/transcodes.py:TranscodeService.browser_path": 33,
     "scripts/harvest_studio_icons.py:icon_row": 32,
     "scripts/smoke_desktop.py:main": 32,
     "src/peach/follow_check.py:run_check": 32,

@@ -85,6 +85,14 @@ class MediaEngineTests(unittest.TestCase):
             path = normalized_path(Path("B:/"))
         self.assertTrue(path.is_absolute())
 
+    @unittest.skipUnless(os.name == "nt", "只有 Windows 的盘符路径跳过 resolve")
+    def test_windows_ledger_paths_are_not_resolved_through_the_redirector(self):
+        """PikPak 的 A: 是 WinFsp 网络驱动器：`resolve()` 一条文件路径要 7 秒，还换成 UNC 形态，
+        之后每次 stat 再花 7 到 14 秒；盘符路径本身就是绝对路径，只需要折掉 `..`。"""
+        with patch.object(Path, "resolve", side_effect=AssertionError("resolve() 走了网络重定向器")):
+            path = normalized_path(r"A:\番号\..\番号\clip.mp4")
+        self.assertEqual(path, Path(r"A:\番号\clip.mp4"))
+
     def test_filesystem_backend_matches_case_insensitively_on_sensitive_mounts(self):
         """CloudDrive 大小写敏感：账本 `abw-118.mp4` 对磁盘 `ABW-118.mp4` 必须救回。"""
         with tempfile.TemporaryDirectory() as tmp:

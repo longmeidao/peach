@@ -35,7 +35,7 @@ class _FakeTranscode:
         return b"", b""
 
 
-def _media_process(commands, profile, fail=None):
+def _media_process(commands, profile, fail=None, duration=None):
     class Process:
         def __init__(self, command, **_kwargs):
             self.command = list(command)
@@ -44,7 +44,10 @@ def _media_process(commands, profile, fail=None):
 
         def communicate(self, timeout=None):
             if Path(self.command[0]).stem.lower() == "ffprobe":
-                return json.dumps({"streams": profile}).encode(), b""
+                report = {"streams": profile}
+                if duration is not None:
+                    report["format"] = {"duration": duration}
+                return json.dumps(report).encode(), b""
             if fail is not None and fail(self.command):
                 self.returncode = 1
                 return b"", b"hardware unavailable"
@@ -98,6 +101,30 @@ class TranscodeServiceTests(unittest.TestCase):
         service = TranscodeService(_Resolver(None), Path("cache"))
         with self.assertRaises(TranscodeUnavailable):
             service.browser_path(1, Path("movie.avi"))
+
+    def test_probe_reports_the_container_duration_for_slicing(self):
+        """账本没记时长的片源按 ffprobe 报的时长切片；同一个文件只探测一次，探测不到给 0。"""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp).resolve()
+            source = root / "movie.mp4"
+            source.write_bytes(b"source")
+            service = TranscodeService(
+                _Resolver(root / "ffmpeg.exe", root / "ffprobe.exe"),
+                root / "cache", prefer_hardware=False,
+            )
+            commands = []
+            streams = [
+                {"codec_type": "video", "codec_name": "hevc", "pix_fmt": "yuv420p"},
+                {"codec_type": "audio", "codec_name": "mp3"},
+            ]
+            with patch("peach.transcodes.subprocess.Popen",
+                       side_effect=_media_process(commands, streams, duration="2543.416667")):
+                self.assertTrue(service.requires_conversion(source))
+                self.assertAlmostEqual(service.media_duration(source), 2543.417, places=3)
+            self.assertEqual(sum("ffprobe" in c[0] for c in commands), 1)
+            self.assertIn("format=duration", commands[0][commands[0].index("-show_entries") + 1])
+            self.assertEqual(service.media_duration(root / "missing.mp4"), 0.0)
+            self.assertEqual(TranscodeService(_Resolver(None), root / "cache").media_duration(source), 0.0)
 
     def test_avi_is_transcoded_once_and_cached(self):
         with tempfile.TemporaryDirectory() as tmp:

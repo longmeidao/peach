@@ -48,7 +48,7 @@ from .platform import within_root
 from .previews import PreviewUnavailable
 from .routes_auth import require_auth
 from .segments import SegmentCancelled, SegmentUnavailable, build_hls_playlist
-from .streaming import CancellableFileResponse
+from .streaming import BufferedFileResponse, CancellableFileResponse
 from .transcodes import TranscodeCancelled, TranscodeUnavailable
 
 router = APIRouter()
@@ -128,18 +128,25 @@ def _attachment_disposition(title: str, url: str) -> str:
 
 
 def _hls_plan(state, asset_id: int, session: str = ""):
-    """解析 HLS 的片源路径与关键帧分片计划；任何一步不成立就返回 None 走 Range。"""
+    """解析 HLS 的片源路径与分片计划；任何一步不成立就返回 None 走 Range。
+
+    要重编码的片源按固定 6 秒切，时长先看账本，账本没记或记成负数就用 ffprobe 报的；
+    探测也拿不到才放弃，否则浏览器只能退回 `/stream`，那条路要先把整部片转完才出第一个字节。
+    原样封装的 HLS 仍要账本时长与关键帧表。
+    """
     asset = state.media_engine.asset(asset_id)
     # 播放列表和分片端点本身就是 HLS 路径，按 ADR-0016 显式要计划，不受默认值影响。
     choice = state.media_engine.stream_plan(asset_id, mode="hls")
-    if not asset.duration:
-        return None
     source = state.media_engine.filesystem.file_for(asset, thumbnail=False)
+    duration = asset.duration if asset.duration and asset.duration > 0 else 0.0
     if state.transcode_service.requires_conversion(source, session=session, registry=state.stream_sessions):
-        return asset, source, state.hls_service.conversion_plan(asset.duration), True
-    if choice.protocol != "hls":
+        duration = duration or state.transcode_service.media_duration(
+            source, session=session, registry=state.stream_sessions)
+        plan = state.hls_service.conversion_plan(duration) if duration > 0 else []
+        return (asset, source, plan, True) if plan else None
+    if choice.protocol != "hls" or duration <= 0:
         return None
-    plan = state.hls_service.plan(source, asset.duration)
+    plan = state.hls_service.plan(source, duration)
     return None if not plan else (asset, source, plan, False)
 
 
@@ -162,7 +169,7 @@ def stream(request: Request, id: int, session: str = "", args: dict[str, str] = 
         CancellableFileResponse(
             path, session=session, registry=state.stream_sessions, media_type=media_type,
         )
-        if session else FileResponse(path, media_type=media_type)
+        if session else BufferedFileResponse(path, media_type=media_type)
     )
     if transcoded:
         response.headers["X-Peach-Transcoded"] = "1"
@@ -189,7 +196,7 @@ def stream_plan(request: Request, id: int, session: str = "", mode: str = "", ar
             "id": id,
             "protocol": "hls",
             "mime_type": "application/vnd.apple.mpegurl",
-            "duration": asset.duration,
+            "duration": round(sum(length for _, length in resolved[2]), 3),
             "segment_seconds": plan.segment_seconds,
             "segments": len(resolved[2]),
             "src": f"/stream/hls/{id}/index.m3u8?session={quote(session, safe='')}",
