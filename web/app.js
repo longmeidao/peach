@@ -57,6 +57,8 @@ wireImageFallbacks(document.body);
    不再落在 TDZ 里。 */
 let state;
 let barsRequestSeq=0,barsDataCache=null,barsDataAt=0,barsDataPromise=null;
+// 顶部三层与抽屉上一次画的是哪一份：口径加数据，两样都没变就不必再画一遍。
+let barsRendered='';
 /* 侧栏「更多」摊开时要照最新那份 facets 重画那一列。挂在 buildBars 的闭包上就只能是
    画那一遍时的那份——中途改过筛选，摊开看到的是一列旧数字。 */
 let barsFacets=null,barsScopedCreators=[];
@@ -1120,9 +1122,29 @@ function bindOutsideClose(anchor,inside,close){
   unregister=onStageDispose(detach);
   return detach;
 }
+/* 详情浮窗的退场跟设置弹层同一条：`closing` 让 `board-dialog-out` 和遮罩淡出演完，
+   再走 disposeStage。顺序不能倒过来——拆解那一步要先把舞台放回 #main 的固定槽位，
+   之后重画列表才不会把 #stage 一起删掉，所以动画只往拆解前面插一段等待，拆解和重画
+   自身的次序原样不动。等待有上限：`animation` 被别的规则关掉时 animationend 不会来。 */
+function stageExit(){
+  const stage=$('#stage');
+  if(!stage.open||stage.classList.contains('closing')
+    ||matchMedia('(prefers-reduced-motion: reduce)').matches)return Promise.resolve();
+  stage.classList.add('closing');
+  return new Promise(resolve=>{
+    let timer=0;
+    const done=()=>{clearTimeout(timer);stage.removeEventListener('animationend',onEnd);resolve()};
+    // 浮窗里的控件也会冒泡出 animationend，只认目标就是舞台本身的那一条。
+    const onEnd=event=>{if(event.target===stage)done()};
+    stage.addEventListener('animationend',onEnd);
+    timer=setTimeout(done,380);
+  });
+}
 function disposeStage(push=false,preserveInlineOrigin=false,{miniplayer=true}={}){
   const stage=$('#stage');
   closePlayerMenu();
+  // 没演完就被别的路径拆掉时把类摘干净，否则下一次开详情一上来就是退场那一帧。
+  stage.classList.remove('closing');
   if(stage.open)stage.close();
   // 关注详情会把舞台插到头像和筛选条之后。离开详情前先放回 main 的固定槽位，
   // 否则下一次重绘 #stats 会连同 #stage 一起删掉，后续所有详情都打不开。
@@ -1490,7 +1512,8 @@ function presentItemDetail(){
   stage.oncancel=event=>{
     event.preventDefault();const close=$('#closeStage');
     if(close)close.click();
-    else{disposeStage(false,false,{miniplayer:false});route(detailReturnPath||'/');restoreRoute()}
+    else stageExit().then(()=>{
+      disposeStage(false,false,{miniplayer:false});route(detailReturnPath||'/');restoreRoute()});
   };
   if(!stage.open)stage.showModal();
 }
@@ -3640,6 +3663,8 @@ function wireViewPills(){
 // 宽度是一组定值而不是随机数：随机会让同一次冷启动在两台机器上长得不一样，也没法测。
 function renderBarsLoading(filterState){
   const tiers=$('#tiers'),tagbar=$('#tagbar'),views=$('#viewPills'),tags=$('#tagScroll');
+  // 铺了骨架就必须有一次真的绘制来顶掉它，哪怕取回的数据跟上一次一模一样。
+  if(!tiers.innerHTML||!views.innerHTML)barsRendered='';
   if(!tiers.innerHTML){
     tiers.hidden=false;tiers.setAttribute('aria-busy','true');
     tiers.innerHTML=`<div class="tier" data-skeleton-tier="av"></div>
@@ -3712,27 +3737,27 @@ async function buildBars(){
   const requestSeq=++barsRequestSeq;
   buildDrawerNavigation();
   if(!sidebarHasCatalogContent(location.pathname))return;
+  /* 详情浮窗是盖住整页的模态：两排头像、标签条和抽屉在它开着的时候一格都看不见。
+     为它们另取一趟这一部作品口径的聚合，换来的只是把列表那份缓存挤掉——关掉详情时
+     整排头像连 `<img>` 一起重建，人看到的就是「点进去又退出来，页面自己刷新了一次」。
+     所以详情不碰表面的条，列表的口径和那份缓存原样留着等他回来。 */
+  if(barsContext.type==='item')return;
   const context=barsContext,filterState=activeFilterState();
+  const signature=JSON.stringify([context,filterState,state.state||'',state.seed||'',javActive()]);
   renderBarsLoading(filterState);
   // 两个聚合查询互不依赖。冷启动各需约 1 秒，串行会让手机首屏白等；
   // 并行取回后再一次性绘制顶部与抽屉。
   const [facetData,tops]=await getBarsData(context);
   if(requestSeq!==barsRequestSeq)return;
+  /* 口径和数据都和上一次一样时，画出来的是同一串 HTML。照样赋一次 innerHTML 只换来
+     整排头像连 `<img>` 一起重建、重解一遍码，屏幕上就是白闪一下——这一排每一个都是
+     一张图。比数据不比时间：详情看上十分钟再回来，取回的多半还是同一份。 */
+  const rendered=signature+'\n'+JSON.stringify([facetData,tops]);
+  if(rendered===barsRendered)return;
+  barsRendered=rendered;
   const followTagRows=facetData.follow_tags||[];
   if(context.type==='home')facets=facetData;
-  // 详情抽屉继续只展示当前作品的真实标签；作品没有内容标签时，顶部发现栏
-  // 回退到返回首页的推荐口径，避免把全库标签伪装成作品元数据。
-  let topTags=facetData.tags||[];
-  if(context.type==='item'&&!topTags.length){
-    const recommendationParams=new URLSearchParams();
-    if(javActive())recommendationParams.set('jav','1');
-    if(detailReturnBarsContext?.type==='home'&&state.state)
-      recommendationParams.set('state',state.state);
-    const recommendationScope=recommendationParams.toString();
-    const recommendationFacets=await api('/api/facets'+(recommendationScope?'?'+recommendationScope:''));
-    if(requestSeq!==barsRequestSeq)return;
-    topTags=recommendationFacets.tags||[]
-  }
+  const topTags=facetData.tags||[];
 
   // 顶部三层：女优圆头像 / 厂牌 / 内容标签
   /* REP 表只收真能取到头像的代表作：卡片署名圈回落时读的就是它，取不到的进了表
@@ -5689,6 +5714,7 @@ async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=fals
      取回第一页——「加载更多」出来的条目会连同索引一起消失，那些卡片的详情随后
      就打不开了。列表数据还在 followData 里，直接重画。 */
   const closeDetail=async()=>{
+    await stageExit();
     disposeStage(false,false,{miniplayer:false});
     route(followDetailReturnPath||'/follow');
     if(location.pathname!=='/follow'){await restoreRoute();return}
@@ -9892,6 +9918,7 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
 
   const closeDetail=async()=>{const restore=cloneBarsContext(detailReturnBarsContext);
     const returnPath=detailReturnPath||'/',restoreSurface=detailReturnNeedsRestore;
+    await stageExit();
     disposeStage(false,false,{miniplayer:false});detailReturnBarsContext=null;
     barsContext=restore||{type:'home',filters:state};
     route(returnPath);

@@ -772,11 +772,14 @@ button,input,select,textarea{font-family:inherit}
 .settingspanel.closing .settingscard.settingscard{animation:board-dialog-out var(--board-dialog-motion) both}
 @keyframes board-dialog-in{from{opacity:0;transform:scale(.85);filter:blur(4px)}to{opacity:1;transform:scale(1);filter:blur(0)}}
 @keyframes board-dialog-out{from{opacity:1;transform:scale(1);filter:blur(0)}to{opacity:0;transform:scale(.85);filter:blur(4px)}}
-/* 作品详情浮窗进场跟设置弹层同一组关键帧、同一个时长 token，遮罩也是同一条淡入：
+/* 作品详情浮窗进出场跟设置弹层同一组关键帧、同一个时长 token，遮罩也是同一条淡入淡出：
    两个都是盖住整页的弹层，一个缩放着淡进来、另一个直接闪出来的话，读起来像两种东西。
-   `backwards` 的理由同上，这里更要紧——`.stage .side` 自己就带 backdrop-filter。 */
+   `backwards` 的理由同上，这里更要紧——`.stage .side` 自己就带 backdrop-filter。
+   退场期间收掉指针：浮窗已经在缩小，关闭键和播放器控件还能点到就会收到第二次触发。 */
 .stage{animation:board-dialog-in var(--board-dialog-motion) backwards}
 .stage::backdrop{animation:settings-backdrop-in .35s cubic-bezier(.4,0,.2,1) both}
+.stage.closing{animation:board-dialog-out var(--board-dialog-motion) both;pointer-events:none}
+.stage.closing::backdrop{animation:settings-backdrop-out .35s cubic-bezier(.4,0,.2,1) both}
 /* 设置弹层左栏跟左侧抽屉走同一张面：两者是同一件事的两种形态——抽屉是全站导航，
    这一栏是设置内部的导航，抽屉上的液态玻璃没有理由进了弹层就换成一块实色。
    整张卡片仍旧自己铺 --page，让那一栏的 backdrop 采样到的是这块实色而不是身后的页面：
