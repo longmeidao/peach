@@ -7327,7 +7327,7 @@ class WebUiSourceTests(unittest.TestCase):
             "const pageSkeletonHtml=(label,{cards=false,className='',variant='',count,fill}={})=>")
         self.assertPageContains("skeletonHtml(label,{variant:variant||(cards?'cards':'panel'),className,")
         self.assertPageContains(
-            "export function skeletonHtml(label='正在读取内容',{className='',variant='panel',count=6,fill=true,gridClass=''}={})")
+            "export function skeletonHtml(label='正在读取内容',{className='',variant='panel',count=6,fill=true,gridClass='',gridSize=''}={})")
         self.assertPageContains("?Array.from({length:Math.max(1,count)},")
         # 版式：一列对上 .followmanage，宽度也跟它一样是 812px 居中。
         self.assertPageContains(
@@ -8265,6 +8265,8 @@ class WebUiSourceTests(unittest.TestCase):
             ".avatarpick-cell span",
             ".entitylinklabel",
             ".fauthor .fsource.frow>b", ".fauthorhead b",
+            # 作者是展示名，尾部省略；完整身份保留在 title。
+            ".followbyline .followauthor",
             # 四段计数按重要性从左排（未看在最前），尾部省略切掉的正是最不影响判断的那几段；
             # 它不是标识符，中间截断只会把「未看 3」也切开。
             ".fbulkcounts",
@@ -8466,7 +8468,7 @@ class WebUiSourceTests(unittest.TestCase):
                         "  return sortControlsHtml({\n"
                         "    shuffleId:'followShuffle',shuffleClass:'',items:FOLLOW_FEED_SORTS,")
         self.assertPageContains('''    extra:`<button type="button" class="followrecheck" data-follow-recheck title="检查更新"''')
-        self.assertPageContains('''aria-label="检查全部来源的更新">${icon('refresh-cw')}</button>`});''')
+        self.assertPageContains('''aria-label="检查全部来源的更新">${icon('refresh-cw')}</button>`+(followMediaView==='images'?photoControlsHtml():'')});''')
         # 槽位只剩 extra 一个：排序键一律排在最末，挨着它说明的那批内容。
         self.assertPageContains("export function sortControlsHtml({items=[],renderItem=String,extra='',"
                                 "shuffleId='',shuffleClass='entitybatch'}={}){")
@@ -10915,21 +10917,7 @@ class WebUiSourceTests(unittest.TestCase):
             ".photowall{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px}")
 
     def test_photo_wall_columns_all_start_at_the_top_before_any_thumbnail_arrives(self):
-        """每格先占好位置，分栏不再取决于哪几张图先到。
-
-        账本没有图片宽高，缩略图带 `loading="lazy"`，到达之前每格高度是 0。多列流式排版
-        按分栏那一刻的高度摊格子：一屏 240 个零高的格子会被整批摊进最后一列，前几列只
-        留下已经加载出来的十几张，右边几列从顶上就空着，390 宽的手机上收成半幅一列。
-        实测 1440×900 那一屏是 12/12/12/12/192，最后一列一个人扛下 192 格。
-
-        齐平还顺带修掉一件事：墙塌成零高时「载入更多」一开页就在视口里，自动翻页会连着
-        触发，一进来就是 240 项。
-
-        固定比例的格子与加载顺序无关。关注页的图片墙同样是从多列换成网格才稳住的，
-        那边的判据在 `tests/test_follow_web.py`。方框配 cover 是因为这个库横竖两种取景
-        各占一半（805 张已缓存缩略图里 415 横 381 竖），任何一种长框都会把另一半压成
-        一条；点开灯箱仍是全图。
-        """
+        """固定比例格子和瀑布流图片都在懒加载前占位，防止零高分栏和连续自动翻页。"""
         self.assertPageContains(
             ".photowall{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px}")
         self.assertPageContains(
@@ -10944,7 +10932,6 @@ class WebUiSourceTests(unittest.TestCase):
         for lacking, why in (
             (".photowall{column-count:5;column-gap:10px}", "多列流式排版会按零高摊格子"),
             (".photowall{column-count:2;column-gap:8px}", "窄屏那两列同样不能靠图片撑高"),
-            ("break-inside:avoid", "网格里没有需要避免的断栏"),
             (".photocell img{width:100%;height:auto", "高度得由格子给，不能等图片撑"),
         ):
             self.assertPageLacks(lacking, why)
@@ -10977,7 +10964,7 @@ class WebUiSourceTests(unittest.TestCase):
         照片视图下收起来。等着的那一下骨架也带着下半，浮层不会缺一截。"""
         self.assertPageContains("const photoHeadHtml=(data,{back=false}={})=>collectionHeaderHtml({className:'photohead'")
         self.assertPageContains(
-            "controls:sortControlsHtml({extra:iconSwitchHtml('photo-size','照片大小',PHOTO_SIZES,photoSize(),")
+            "controls:sortControlsHtml({extra:photoControlsHtml()")
         self.assertPageLacks("photorefresh")
         self.assertPageContains("shufflePhotos(kind,name,filters,entityWide?0:data.id,event.currentTarget)")
         # 换过一批，后面几页沿用同一粒种子。
@@ -10985,7 +10972,11 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("offset=${photoWallItems.length}${seed}`")
         # 大小：存进设置，改的只是那面墙上的一个属性。
         self.assertPageContains("photoSize:'small',")
-        self.assertPageContains("if(wall)wall.dataset.size=appSettings.photoSize;")
+        self.assertPageContains("wall.dataset.size=photoSize();wall.dataset.layout=wall.closest('.skeletonpanel')?'fixed':photoLayout()")
+        self.assertPageContains("setPhotoSize(photoSize()==='big'?'small':'big')")
+        self.assertPageContains("wirePhotoControls(countRow);syncPhotoWalls()")
+        self.assertPageContains("[data-layout=\"masonry\"]>.photocell img{height:auto;aspect-ratio:auto 1}")
+        self.assertPageContains("break-inside:avoid;margin:0 0 14px")
         self.assertPageContains(
             '.photowall[data-size="big"]{grid-template-columns:repeat(3,minmax(0,1fr))}')
         self.assertPageContains(

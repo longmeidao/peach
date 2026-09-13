@@ -19,7 +19,7 @@
 .fauthorhead .ficon{margin-right:2px}
 .followlist{display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--tile),1fr));gap:16px 8px}
 .followlist.followphotowall{grid-template-columns:repeat(5,minmax(0,1fr));gap:14px 10px;align-items:start}
-/* 固定媒体框在懒加载前就占好高度；多栏会随图片天然高度反复重新分栏，造成滚动位移。 */
+/* 固定比例视图的媒体框在懒加载前占好高度。 */
 @media (max-width:1400px){.followlist.followphotowall{grid-template-columns:repeat(4,minmax(0,1fr))}}
 @media (max-width:1000px){.followlist.followphotowall{grid-template-columns:repeat(3,minmax(0,1fr))}}
 .followitem{min-width:0}
@@ -47,6 +47,9 @@
 .followitem .r34-metadata,.followdetailtags .r34-metadata,.followfilters .r34-metadata{--r34-tag:#F5A24A}
 .followdetailtags .r34-unknown{--r34-tag:var(--muted)}
 .followitem .meta .s{min-height:21px}.fbadges{display:flex;flex-wrap:nowrap;gap:5px;min-width:0;overflow:hidden}
+.followitem .meta .followbyline{display:flex;flex-wrap:nowrap;gap:6px;min-width:0;overflow:hidden}
+.followbyline .followauthor{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.followbyline time{flex:none;white-space:nowrap}
 .fbadge{padding:2px 8px;border:1px solid var(--border-15);border-radius:var(--badge-radius);font-size:var(--fs-xs);color:var(--ink-2)}
 .fbadge.wip{border-color:var(--meter);color:var(--meter)}
 /* 「含 WIP」说的是同组里还有一条半成品，这一条本身不是；配色要弱于 WIP 本体。 */
@@ -95,3 +98,20 @@
   .followdetailmedia{--follow-image-arrow-inset:10px}.followimagearrow{width:44px;height:44px}.followimagedots{bottom:12px}
 }
 
+/* 图片墙共用列数与布局；未加载图片由备用比例占位，加载后使用天然比例。 */
+:is(.photowall,.followlist.followphotowall)[data-size]{--photo-columns:5;grid-template-columns:repeat(var(--photo-columns),minmax(0,1fr))}
+:is(.photowall,.followlist.followphotowall)[data-size="big"]{--photo-columns:3}
+@media(max-width:1400px){:is(.photowall,.followlist.followphotowall)[data-size]{--photo-columns:4}
+  :is(.photowall,.followlist.followphotowall)[data-size="big"]{--photo-columns:2}}
+@media(max-width:1000px){:is(.photowall,.followlist.followphotowall)[data-size]{--photo-columns:3}
+  :is(.photowall,.followlist.followphotowall)[data-size="big"]{--photo-columns:1}}
+@media(max-width:640px){:is(.photowall,.followlist.followphotowall)[data-size]{--photo-columns:2}
+  :is(.photowall,.followlist.followphotowall)[data-size="big"]{--photo-columns:1}}
+:is(.photowall,.followlist.followphotowall)[data-layout="masonry"]{display:block;column-count:var(--photo-columns);column-gap:10px}
+[data-layout="masonry"]>.emptystate{column-span:all}
+[data-layout="masonry"]>.photocell,[data-layout="masonry"]>.followitem.imagecard{break-inside:avoid;margin:0 0 14px}
+[data-layout="masonry"]>.photocell{aspect-ratio:auto}
+[data-layout="masonry"]>.photocell img{height:auto;aspect-ratio:auto 1}
+[data-layout="masonry"] .followitem.imagecard .pic{aspect-ratio:1}
+[data-layout="masonry"] .followitem.imagecard .pic:has(>img){aspect-ratio:auto}
+[data-layout="masonry"] .followitem.imagecard .followvisual .pic>img{position:static;height:auto;aspect-ratio:auto 1}

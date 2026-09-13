@@ -64,11 +64,19 @@ class FollowCoverService:
         self._slots = threading.BoundedSemaphore(2)
 
     def cover(self, item: FollowItemRow) -> Path:
-        if (item.provider != "rule34paheal"
+        media_index = None
+        if item.provider == "fanbox":
+            media_index = next((index for index, media in enumerate(
+                item.metadata.get("media_items") or []) if isinstance(media, dict)
+                and media.get("media_kind") == "video"
+                and media.get("resource_provider") == "fanbox"), None)
+        if not (item.provider == "fanbox" and media_index is not None) and (
+                item.provider != "rule34paheal"
                 or str(item.metadata.get("media_kind") or "") != "video"):
             raise FollowCoverUnavailable("该条目不需要生成视频封面")
         try:
-            target = self.media_resolver.resolve(item)
+            target = (self.media_resolver.resolve(item, media_index)
+                      if media_index is not None else self.media_resolver.resolve(item))
         except FollowMediaUnavailable as exc:
             raise FollowCoverUnavailable(str(exc)) from exc
         choice = self.resolver.ffmpeg()
@@ -90,13 +98,14 @@ class FollowCoverService:
                 f"{destination.stem}.{os.getpid()}.{threading.get_ident()}.tmp.jpg")
             command = [
                 str(choice.path), "-y", "-v", "error",
+                "-threads", "2", "-filter_threads", "1",
                 "-rw_timeout", "15000000", "-user_agent", USER_AGENT,
             ]
             if target.referer:
                 command.extend(("-referer", target.referer))
             command.extend((
                 "-t", str(FOLLOW_COVER_SCAN_SECONDS), "-i", target.url,
-                "-frames:v", "1", "-vf", FOLLOW_COVER_FILTER, "-update", "1",
+                "-frames:v", "1", "-threads", "2", "-vf", FOLLOW_COVER_FILTER, "-update", "1",
                 "-q:v", "4", str(temporary),
             ))
             try:

@@ -198,6 +198,7 @@ window.peachRegisterRoute=registerRoute;
 const pageSkeletonHtml=(label,{cards=false,className='',variant='',count,fill}={})=>
   skeletonHtml(label,{variant:variant||(cards?'cards':'panel'),className,
     gridClass:className.includes('follow-content-skeleton')&&new URLSearchParams(location.search).get('media')==='images'?'followlist followphotowall':'',
+    gridSize:className.includes('follow-content-skeleton')?photoSize():'',
     ...(count?{count}:{}),...(fill===undefined?{}:{fill})});
 /* 关注页的骨架跟首页共用海报卡那套几何：网格算式、卡内每一格都一样，只有归属行
    高一点（`.followitem .meta .s` 有 min-height）。上面是它自己的创作者行、题材行和那块
@@ -473,6 +474,7 @@ const JAV_LAYOUTS=[['big','大图','maximize'],['small','小图','layout-grid']]
 /* 图片墙是等宽网格，改的是列数。默认小图——一套图几十上百张，先看得见全貌，挑中
    哪一张再点开看大的。 */
 const PHOTO_SIZES=[['big','大图','maximize'],['small','小图','layout-grid']];
+const PHOTO_LAYOUTS=[['fixed','固定比例','layout-grid'],['masonry','瀑布流','columns-2']];
 /* 显示器用于跟随系统主题和详情页的画面分辨率。 */
 const THEME_OPTIONS=[['system','跟随系统','monitor'],['light','浅色','sun'],['dark','深色','moon']];
 const DEFAULT_SETTINGS={batchSize:60,defaultSort:'seed',sortDefaultsVersion:3,hoverDelaySeconds:5,seekSeconds:10,searchHistoryLimit:10,relatedLimit:20,javLayout:'big',javImage:'cover',followLayout:'default',peopleLayout:'big',photoSize:'small',ambientMode:true,miniplayer:true,theaterMode:false,theme:'system',groupCollapse:true,sidebarOrder:DEFAULT_SIDEBAR_ORDER};
@@ -2395,7 +2397,9 @@ function applyDensity(){document.documentElement.style.setProperty('--tile',TILE
   document.body.dataset.density=density;
   $('#density').setAttribute('aria-pressed',density==='dense');
   $('#density').title='当前：'+(density==='big'?'大图':'密集')}
-$('#density').onclick=()=>{density=density==='big'?'dense':'big';
+$('#density').onclick=()=>{if(photoViewActive()){
+    setPhotoSize(photoSize()==='big'?'small':'big');return}
+  density=density==='big'?'dense':'big';
   localStorage.setItem('density',density);applyDensity()};
 applyDensity();
 
@@ -5789,6 +5793,9 @@ function followCard(group,authorSources=[]){
     .filter(entry=>!imageView||entry.media_kind==='image')
     .map(entry=>entry.thumb_url)].filter(Boolean))].slice(0,MIX_FLIP_FACES):[];
   const badges=followBadges(group);
+  const author=followAuthorName(authorSources)||item.author||item.source_label||'创作者未取得';
+  const when=followWhen(item),compactWhen=/^\d{4}-/.test(when)
+    ?(when.startsWith(String(new Date().getFullYear()))?when.slice(5,10):when.slice(0,10)):when;
   const tags=followCardTags(item).slice(0,3).map(tag=>followTagChip(item,tag)).join('');
   const mediaIssue=followMediaIssue(item);
   const open=`<button class="cardopenhit" data-follow-detail="${item.id}" aria-label="打开 ${esc(item.title)} 详情"></button>`;
@@ -5806,7 +5813,8 @@ function followCard(group,authorSources=[]){
       </div></div></div>
     <div class="meta"><span class="mav fsourceavatar" title="创作者头像">${followAuthorAvatar(authorSources)}</span>
       <div class="mtext"><button class="t cardtitle" data-follow-detail="${item.id}">${esc(item.title)}</button>
-        <div class="s mono"><span>${followWhen(item)}</span>${badges?`<span class="fbadges">${badges}</span>`:''}</div>
+        <div class="s followbyline"><span class="followauthor" title="${esc(author)}">${esc(author)}</span><time class="mono" datetime="${esc(item.published_at||'')}" title="${esc(when)}">${esc(compactWhen)}</time></div>
+        ${badges?`<div class="fbadges">${badges}</div>`:''}
         ${tags?`<div class="ctags">${tags}</div>`:''}${mediaIssue?`<span class="fnote followmediaissue">${esc(mediaIssue)}</span>`:''}</div></div>
     <span class="fstate" aria-live="polite"></span></article>`;
 }
@@ -5958,7 +5966,7 @@ function followFeedControlsHtml(){
     shuffleId:'followShuffle',shuffleClass:'',items:FOLLOW_FEED_SORTS,
     renderItem:([key,label])=>sortButtonHtml(key,label,followSort,followDir,'data-follow-sort',FOLLOW_FEED_DIR_WORDS),
     extra:`<button type="button" class="followrecheck" data-follow-recheck title="检查更新"
-      aria-label="检查全部来源的更新">${icon('refresh-cw')}</button>`});
+      aria-label="检查全部来源的更新">${icon('refresh-cw')}</button>`+(followMediaView==='images'?photoControlsHtml():'')});
 }
 /* 看的那一页上唯一一次联网：去问每个来源有没有新东西。管理页那几枚按的是同一条路径，
    区别在它还要把失败详情摊进那一页的报告块；这一页上没有放报告的地方，失败只留一条
@@ -6119,6 +6127,7 @@ function renderFollow(){
   void wireFollowProgress();
   /* 上下两排收进同一块外框，材质与吸顶归外框；玻璃的坐标基准也是它，所以先搭框再量。 */
   const filterRow=$('#stats').querySelector('.followfilters'),countRow=$('#stats').querySelector('.followcount');
+  wirePhotoControls(countRow);syncPhotoWalls();
   mountFilterFrame(filterRow,countRow,{views:filterRow.querySelector('.followviews'),
     tags:filterRow.querySelector('.followtags'),readout:countRow.querySelector('.mono'),
     controls:countRow.querySelector('.sorts')});
@@ -7990,6 +7999,25 @@ async function shufflePhotos(kind,name,filters,setId,button){
 function photoSize(){
   return allowedSetting(appSettings.photoSize,PHOTO_SIZES.map(([key])=>key),'small');
 }
+function photoLayout(){return allowedSetting(appSettings.photoLayout,['fixed','masonry'],'masonry')}
+function photoViewActive(){return [...document.querySelectorAll('.photowall,.followphotowall')]
+  .some(wall=>wall.getClientRects().length>0)}
+function photoControlsHtml(){return iconSwitchHtml('photo-size','照片大小',PHOTO_SIZES,photoSize(),
+  {attr:'data-photo-size',className:'photosize'})+iconSwitchHtml('photo-layout','图片布局',PHOTO_LAYOUTS,photoLayout(),
+  {attr:'data-photo-layout',className:'photolayout'})}
+function syncPhotoWalls(){
+  document.querySelectorAll('.photowall,.followphotowall').forEach(wall=>{
+    wall.dataset.size=photoSize();wall.dataset.layout=wall.closest('.skeletonpanel')?'fixed':photoLayout()});
+  if(photoViewActive()){
+    $('#density').setAttribute('aria-pressed',String(photoSize()==='small'));
+    $('#density').title='当前：'+(photoSize()==='big'?'大图':'小图');
+  }else applyDensity();
+}
+function wirePhotoControls(root){
+  wireIconSwitch(root,'data-photo-size',setPhotoSize);
+  wireIconSwitch(root,'data-photo-layout',value=>{
+    appSettings.photoLayout=allowedSetting(value,['fixed','masonry'],'masonry');saveSettings();syncPhotoWalls()});
+}
 /* 换大小一次请求都不发，也不重拼这面墙：列数是 CSS 的事，重画只会把已经取回的缩略图
    丢掉再要一遍，还把人滚到的位置带走。 */
 function setPhotoSize(value){
@@ -7997,8 +8025,7 @@ function setPhotoSize(value){
   saveSettings();
   document.querySelectorAll('[data-photo-size]').forEach(input=>{
     input.checked=input.value===appSettings.photoSize});
-  const wall=$('#index').querySelector('.photowall');
-  if(wall)wall.dataset.size=appSettings.photoSize;
+  syncPhotoWalls();
 }
 const photoCell=(item,index)=>`<button class="photocell" data-photo-index="${index}" title="${esc(item.name)}">
     <img src="/photo-thumb?id=${item.id}" alt="${esc(item.name)}" loading="lazy"
@@ -8015,8 +8042,7 @@ const photoCell=(item,index)=>`<button class="photocell" data-photo-index="${ind
 const photoHeadHtml=(data,{back=false}={})=>collectionHeaderHtml({className:'photohead',
   before:back?`<button class="photoback" type="button">${icon('chevron-left')}<span>全部照片</span></button>`:'',
   readout:`${back?esc(data.title)+' · ':'照片 · '}${(data.total||0).toLocaleString()} 张`,
-  controls:sortControlsHtml({extra:iconSwitchHtml('photo-size','照片大小',PHOTO_SIZES,photoSize(),
-    {attr:'data-photo-size',className:'photosize'})+(back?sourceTools(data.id):'')})});
+  controls:sortControlsHtml({extra:photoControlsHtml()+(back?sourceTools(data.id):'')})});
 function renderPhotoWall(kind,name,filters,data,append=false){
   const section=$('#index').querySelector('.entitysection');if(!section)return;
   const entityWide=!data.id;
@@ -8026,7 +8052,7 @@ function renderPhotoWall(kind,name,filters,data,append=false){
       +`<div class="photowall" data-size="${photoSize()}"></div>
         <button class="entitymore" type="button">载入更多</button>`;
     const head=section.querySelector('.photohead');
-    wireIconSwitch(head,'data-photo-size',setPhotoSize);
+    wirePhotoControls(head);syncPhotoWalls();
     head.querySelector('.entitybatch').onclick=event=>
       shufflePhotos(kind,name,filters,entityWide?0:data.id,event.currentTarget);
     if(!entityWide){
@@ -9078,6 +9104,7 @@ function syncHeaderActions(){
   const canSelect=catalog||entity||path==='/tags'||path==='/follow';
   const canDensity=catalog||entity||path==='/follow';
   $('#selectMode').hidden=!canSelect;$('#density').hidden=!canDensity;
+  syncPhotoWalls();
   if(!canSelect&&selectMode)setSelectMode(false,true);
 }
 function buildEdge(){
