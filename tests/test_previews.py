@@ -51,9 +51,11 @@ class ParallelGenerationTests(unittest.TestCase):
     """
 
     def setUp(self):
-        import tempfile
         self.tmp = tempfile.TemporaryDirectory()
-        root = Path(self.tmp.name)
+        # 先 resolve：`PreviewService` 把两个根目录 `resolve()` 过，而它只接落在 `snapshot_root`
+        # 底下的快照。CI runner 的临时目录是别名（Windows 的短名、macOS 的 `/var` 软链），
+        # 拿未解析的那份当快照路径，包含关系就不成立，`poster()` 直接抛 PreviewUnavailable。
+        root = Path(self.tmp.name).resolve()
         self.snapshot_root = root / "snapshots"
         self.snapshot_root.mkdir()
         self.poster_root = root / "posters"
@@ -137,8 +139,6 @@ class ParallelGenerationTests(unittest.TestCase):
         锁内那次判断缺了的话，`_run` 就会多跑一次，判据不靠时序。
         """
         calls = []
-        # 路径取服务自己那份：`PreviewService` 把根目录 `resolve()` 过，而 macOS 的临时目录
-        # `/var/folders/...` 是 `/private/var/folders/...` 的软链，拿未解析的那份比会在 macOS 上假红。
         destination = self.service.poster_root / f"{self.LEFT}_4.jpg"
 
         @contextlib.contextmanager
