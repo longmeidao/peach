@@ -110,7 +110,7 @@ class ContextBudgetTests(unittest.TestCase):
             (root / "AGENTS.md").write_text("字" * budget, encoding="utf-8")
             self.assertEqual(
                 self.checker.check_line_budgets(root),
-                ["docs/HANDOFF.md: 文件缺失"],
+                ["docs/HANDOFF.md: 文件缺失", "CLAUDE.md: 文件缺失"],
             )
             problems = self.checker.check_byte_budgets(root)
         self.assertTrue(

@@ -24,6 +24,7 @@ ROOT = Path(__file__).resolve().parents[1]
 # 改这里等于取消闸门，只有在官方值变化时才动。
 MAX_EVER = {
     "AGENTS.md": 200,
+    "CLAUDE.md": 200,
     "docs/HANDOFF.md": 260,
     "SKILL.md": 500,
     "description": 1024,
@@ -41,6 +42,11 @@ BUDGET_CHANGES = {
     "docs/HANDOFF.md": [
         (260, "2026-08-17", "初始值"),
         (180, "2026-08-27", "清退外部快照、旧测试数字与已下沉到技能或状态文档的重复内容"),
+    ],
+    # Claude 专有入口：一行 `@AGENTS.md` 加几句只对 Claude 成立的话。ADR-0015 把它和
+    # AGENTS.md 一起算入口文件，天花板同为 200 行；预算给到 20 行，够写两三条专有规则。
+    "CLAUDE.md": [
+        (20, "2026-09-13", "初始值"),
     ],
 }
 
