@@ -125,25 +125,61 @@ SCOPE_TEST_IDS: dict[str, tuple[str, ...]] = {
     ),
 }
 
-# `auto` 域按改动文件选域：每个文件按下面这张「路径前缀 → 域」表取第一个命中的前缀，
-# 多个文件取并集。表里没有的 `tests/test_*.py` 直接按文件名归域，`src/peach/` 下的
-# 其余模块按「模块名 ↔ 测试文件名」推断（`media.py` → `test_media.py` → media）。
-# 仓库根的 Markdown 归 tooling：入口文件、README 与待办的门槛都在那个域里。
-AUTO_SCOPE_PREFIXES: tuple[tuple[str, str], ...] = (
+# `auto` 域按改动文件选域：每个文件先查 `AUTO_SCOPE_FILES` 的整路径，再按
+# `AUTO_SCOPE_PREFIXES` 取第一个命中的前缀，多个文件取并集。表里没有的
+# `tests/test_*.py` 直接按文件名归域，`src/peach/` 下的其余模块按「模块名 ↔ 测试文件名」
+# 推断（`media.py` → `test_media.py` → media）。Markdown 归 checks。
+#
+# 一个文件可以落到多个域：读它的测试登记在哪个域，改它就得跑到哪个域。
+# `tests/test_test_planning.py` 按测试源码里真实读到的路径反查这两张表，漏一条本地就红。
+AUTO_SCOPE_FILES: dict[str, tuple[str, ...]] = {
+    # 路由页面同时被目录、工具与前端三个域的测试读源码。
+    "src/peach/routes_pages.py": ("catalog", "tooling", "web"),
+    # 托盘既是 sync 域的服务编排，也被版本与桌面设置那些 tooling 测试读源码。
+    "src/peach/tray.py": ("sync", "tooling"),
+    "src/peach/jav_poster_crop.py": ("metadata", "web"),
+    # 入口页共用件的测试住在首启与配置来源那两份 tooling 测试里。
+    "src/peach/web_entry.py": ("catalog", "tooling", "web"),
+    # 这几份文档有测试在读它们的正文：改文档也要跑到那条测试。
+    "README.md": ("checks", "tooling"),
+    "README.en.md": ("checks", "tooling"),
+    "docs/STATUS.md": ("checks", "tooling"),
+    "docs/CLOUDDRIVE.md": ("checks", "web"),
+    "docs/OPERATIONS.md": ("checks", "web"),
+    ".github/dependabot.yml": ("tooling", "web"),
+}
+
+# 脚本默认归 tooling；有自己领域测试的脚本两边都跑：领域测试验它的判据，
+# tooling 里的脚本策略门槛验它的形态。
+AUTO_SCOPE_PREFIXES: tuple[tuple[str, str | tuple[str, ...]], ...] = (
     ("src/peach/media.py", "media"),
     ("src/peach/desktop_startup.py", "tooling"),
     ("src/peach/desktop_uninstall.py", "tooling"),
     ("src/peach/peach_proxy.py", "tooling"),
     ("src/peach/gfriends.py", "metadata"),
-    ("scripts/localize_performer_names.py", "metadata"),
-    ("scripts/localize_series_names.py", "metadata"),
+    ("scripts/localize_performer_names.py", ("metadata", "tooling")),
+    ("scripts/localize_series_names.py", ("metadata", "tooling")),
+    ("scripts/localize_studio_names.py", ("metadata", "tooling")),
+    ("scripts/match_babepedia_creators.py", ("metadata", "tooling")),
+    ("scripts/audit_code_creators.py", ("metadata", "tooling")),
+    ("scripts/audit_fc2_similarity.py", ("metadata", "tooling")),
+    ("scripts/poster_crop_boxes.py", ("metadata", "tooling")),
+    ("scripts/rediscover_entity_links.py", ("metadata", "tooling")),
+    ("scripts/fetch_studio_avatar_candidates.py", ("metadata", "tooling")),
+    ("scripts/scrape_codes.py", ("metadata", "tooling")),
+    ("scripts/merge_studio_name_variants.py", ("metadata", "tooling")),
+    ("scripts/harvest_", ("metadata", "tooling")),
+    ("scripts/sync_brand_marks.py", ("catalog", "tooling")),
+    ("scripts/detect_cover_faces.py", ("web", "tooling")),
+    ("scripts/vendor_web_dependencies.mjs", ("web", "tooling")),
+    ("scripts/audit_video_endcards.py", ("media", "tooling")),
+    ("scripts/setup_macos_port80.sh", ("sync", "tooling")),
     ("src/peach/follow", "follow"),
     ("src/peach/fanbox.py", "follow"),
     ("src/peach/web_follow.py", "follow"),
     ("src/peach/sync", "sync"),
     ("src/peach/platform.py", "sync"),
     ("src/peach/mount.py", "sync"),
-    ("src/peach/tray.py", "sync"),
     ("src/peach/mdns.py", "sync"),
     ("src/peach/netwatch.py", "sync"),
     ("src/peach/certs.py", "sync"),
@@ -274,16 +310,16 @@ def scopes_for_changes(paths: Iterable[str], *, contents: dict | None = None) ->
             full_reasons.append(f"{path} 属于必须 full 的面")
             continue
         scopes: tuple[str, ...] = ()
-        if path.startswith("tests/test_") and path.endswith(".py"):
+        if path in AUTO_SCOPE_FILES:
+            scopes = AUTO_SCOPE_FILES[path]
+        elif path.startswith("tests/test_") and path.endswith(".py"):
             scopes = scopes_of_test_file(name)
         elif path.endswith(".md"):
             scopes = ("checks",)
-        elif path == "src/peach/routes_pages.py":
-            scopes = ("catalog", "tooling", "web")
         else:
             for prefix, scope in AUTO_SCOPE_PREFIXES:
                 if path.startswith(prefix):
-                    scopes = (scope,)
+                    scopes = (scope,) if isinstance(scope, str) else scope
                     break
             if not scopes and path.startswith("src/peach/") and path.endswith(".py"):
                 scopes = scopes_of_module(name.removesuffix(".py"))
