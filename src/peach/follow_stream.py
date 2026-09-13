@@ -175,10 +175,12 @@ class FollowMediaResolver:
                     url, item.url, {"Authorization": f"Bearer {token}"},
                     allowed_hosts=("gofile.io",))
             if resource_provider == "fanbox":
-                if not _allowed_resource(url, ("fanbox.cc",)):
+                # 正文图在 downloads.fanbox.cc；封面在 pixiv.pximg.net——pixiv 官方
+                # CDN，fanbox 封面都从它出，与 fanbox.cc 同属一个运营方。
+                if not _allowed_resource(url, ("fanbox.cc", "pixiv.pximg.net")):
                     raise FollowMediaUnavailable("FANBOX 返回了不受信任的图片地址")
                 return ResolvedFollowMedia(url, item.url,
-                                           allowed_hosts=("fanbox.cc",))
+                                           allowed_hosts=("fanbox.cc", "pixiv.pximg.net"))
             if resource_provider == "f95zone":
                 if not _allowed_resource(url, ("attachments.f95zone.to",)):
                     raise FollowMediaUnavailable("F95 返回了不受信任的图片地址")
