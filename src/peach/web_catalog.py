@@ -28,6 +28,7 @@ from .catalog_rules import (
 from .entities import normalize_entity_name, upsert_asset_entity
 from .field_owners import parse_owners
 from .metadata_policy import SOURCE_SPECS
+from .regions import infer_region, normalize_region, region_label
 from .web_activity import DEFAULT_PROFILE_ID
 from .web_state import WebContract
 
@@ -60,8 +61,20 @@ SORT_COLUMNS = {
 
 def attach_jav_display_fields(row: dict, tags=(), entity_kinds=()) -> None:
     """Add one canonical display projection while retaining raw file identity fields."""
+    # 产地取查询算好的那一列。取不到时退到番号推断——比直接读 `a.region` 强：那一列
+    # 绝大多数行是空的，读它等于说「全都没判过」，韩国片又会原样回到 JAV 版式上。
+    # 退化路径拿不到实体那一层，所以列表与详情的查询都把 `effective_region` 选出来。
+    stored = normalize_region(row.get("region"))
+    region = normalize_region(row.get("effective_region"))
+    if not region:
+        region = infer_region(row.get("code"), row.get("name"))
+    row["region"] = region
+    row["region_label"] = region_label(region)
+    # 详情页要能分开「这条是你定的」和「这是按番号猜的」，后者才需要请人确认。
+    row["region_settled"] = bool(stored)
     row["is_jav"] = is_jav_asset(
         row.get("code"), row.get("studio"), row.get("release_date"), entity_kinds,
+        region,
     )
     if row["is_jav"]:
         row.update(jav_display_metadata(row.get("name"), row.get("code"), tags))
@@ -131,6 +144,33 @@ AGENCY_SEARCH_CLAUSE = (
 #: 共用这一份。各写各的后果是补全会补出回收站里的作品——那一条点开是已经删掉的片，
 #: 而列表本身从来不显示它，所以只会在补全这一个表面上露出来。
 VISIBLE_CATALOG_ASSET = "a.medium='video' AND (a.disposal IS NULL OR a.disposal <> 'trash')"
+
+
+def region_filter(value, trash: bool) -> tuple[list[str], list[str]]:
+    """产地筛选的条件与参数；回收站和空参数都返回空。
+
+    产地和时长、画幅一样是内容条件，回收站不带。`none` 是「还没判过产地」那一批，
+    它得能筛出来：判产地是件要人一条条过的活，没有这个入口就看不到还剩多少。
+    """
+    if trash or not value:
+        return [], []
+    picked = sorted({
+        "" if item.strip().lower() == "none" else normalize_region(item)
+        for item in str(value).split(",") if item.strip()
+    })
+    if not picked:
+        return [], []
+    return [f"{EFFECTIVE_REGION_SQL} IN ({','.join('?' * len(picked))})"], picked
+
+
+def region_facet_rows(rows) -> list[dict]:
+    """产地筛选项，连未判定那一档一起给。
+
+    判产地是人一条条过的活，看不见还剩多少就没人会去过。未判定在筛选参数里写作
+    `none`，空串到不了查询串里。
+    """
+    return [{**dict(row), "k": row["k"] or "none",
+             "label": region_label(row["k"]) or "未判定"} for row in rows]
 
 
 def catalog_filter(contract: WebContract, args):
@@ -203,6 +243,9 @@ def catalog_filter(contract: WebContract, args):
         where.append("a.ctx_orient = ?"); par.append(args["orient"])
     elif not trash and args.get("exclude_vertical") == "1":
         where.append("(a.ctx_orient IS NULL OR a.ctx_orient <> '竖屏')")
+    region_where, region_par = region_filter(args.get("region"), trash)
+    where += region_where
+    par += region_par
     if not trash and args.get("jav") == "1":
         # 只有番号形态还不够：JI-103 这类 creator clip 没有任何发行证据。
         where.append(JAV_ASSET_PREDICATE)
@@ -285,7 +328,8 @@ def q_items(contract: WebContract, args):
            "a.creator,a.studio,a.code,a.release_date,a.size,"
            "a.duration,a.width,a.height,a.ctx_length,a.ctx_orient,a.snapshot_path,"
            "a.play_count,a.leave_ratio,a.feedback,a.disposal,a.rating,a.o_count,"
-           "a.play_seconds,a.max_reached,a.seek_count,"
+           "a.play_seconds,a.max_reached,a.seek_count,a.region,"
+           f"{EFFECTIVE_REGION_SQL} AS effective_region,"
            "EXISTS(SELECT 1 FROM watch_queue w WHERE w.asset_id=a.id "
            f"AND w.profile_id='{DEFAULT_PROFILE_ID}') AS watch_later "
            "FROM asset a WHERE " + " AND ".join(where) + f" ORDER BY {order} LIMIT ? OFFSET ?")
@@ -676,7 +720,8 @@ def q_item(contract: WebContract, aid):
             "SELECT id,location,path,name,catalog_title,original_title,creator,studio,code,"
             "release_date,size,duration,width,height,field_owners,mutation_revision,"
             "ctx_length,ctx_orient,snapshot_path,play_count,leave_ratio,feedback,disposal,"
-            "rating,o_count,play_seconds,max_reached,seek_count,"
+            "rating,o_count,play_seconds,max_reached,seek_count,region,"
+            f"{effective_region_sql('asset')} AS effective_region,"
             "COALESCE((SELECT p.liked FROM asset_preference p WHERE p.asset_id=asset.id "
             f"AND p.profile_id='{DEFAULT_PROFILE_ID}'),0) AS liked,"
             "COALESCE((SELECT p.reason FROM asset_preference p WHERE p.asset_id=asset.id "
@@ -800,7 +845,9 @@ def q_related(contract: WebContract, aid, limit=24):
         source_entity_ids = [row[0] for row in source_entities]
         source_marks = ",".join("?" * len(source_entity_ids))
         candidate_rows = [dict(row) for row in c.execute(
-            f"SELECT {COLS},a.release_date FROM asset a JOIN asset_entity shared "
+            f"SELECT {COLS},a.release_date,a.region,"
+            f"{EFFECTIVE_REGION_SQL} AS effective_region "
+            "FROM asset a JOIN asset_entity shared "
             "ON shared.asset_id=a.id WHERE a.medium='video' AND a.id<>? "
             "AND (a.feedback IS NULL OR a.feedback<>'dislike') AND a.disposal IS NULL "
             f"AND shared.entity_id IN ({source_marks}) GROUP BY a.id "
@@ -856,10 +903,39 @@ def q_related(contract: WebContract, aid, limit=24):
         d.pop("snapshot_path", None)
     return {"items": picked[:limit]}
 
+#: 一条资产实际算哪个产地，按三层依次取第一个有值的：资产自己判定的
+#: `asset.region`、它名下厂牌或创作者实体的 `entity.region`、番号推断。
+#:
+#: 这段表达式是产地的唯一口径。页面上标的产地、筛选器筛出来的那批、JAV 页收不收
+#: 一部片，全读它算出来的同一列——`regions.py` 讲了为什么推断不直接写进账本，而
+#: 只要推断结果不进账本，它就必须在每次查询时算，那就只能有一处算法。
+#:
+#: 实体那一层按 `studio` 优先于 `creator`：一部片同时挂着厂牌和创作者时，发行体系
+#: 由厂牌定——转载这部片的创作者可能是另一个国家的人。
+def effective_region_sql(alias: str = "a") -> str:
+    """产地表达式，`alias` 是查询里 `asset` 那张表的写法（详情页没起别名）。"""
+    return (
+        f"COALESCE(NULLIF(trim(COALESCE({alias}.region,'')),''),"
+        "(SELECT NULLIF(trim(COALESCE(region_e.region,'')),'') "
+        "FROM asset_entity region_ae JOIN entity region_e ON region_e.id=region_ae.entity_id "
+        f"WHERE region_ae.asset_id={alias}.id AND region_e.kind IN ('studio','creator') "
+        "AND NULLIF(trim(COALESCE(region_e.region,'')),'') IS NOT NULL "
+        "ORDER BY CASE region_e.kind WHEN 'studio' THEN 0 ELSE 1 END LIMIT 1),"
+        f"infer_region({alias}.code,{alias}.name),'')"
+    )
+
+
+EFFECTIVE_REGION_SQL = effective_region_sql()
+
 #: JAV 语境下的资产过滤片段。历史缺连字符编号先规范化，但仍必须再有发行证据；
 #: 否则 RAIKUN325 这类账号和 JI-103 creator clip 会混入。FC2 单独保留。
+#:
+#: 产地判过且不是日本的一概排除。韩国 MIB 与国产厂牌的番号和日本番号同形，下面那几条
+#: 发行证据它们全都满足——`B:\MVP\MIB\` 那 381 条里已经有 115 条靠 k-mib 官网刮回来的
+#: 厂牌和发行日把自己坐实成了 JAV。空串是「还没判过」，照旧按番号与发行证据收。
 JAV_ASSET_PREDICATE = (
-    "a.code IS NOT NULL AND a.code<>'' AND is_jav_code(normalise_code_key(a.code)) AND ("
+    "a.code IS NOT NULL AND a.code<>'' AND is_jav_code(normalise_code_key(a.code)) AND "
+    f"{EFFECTIVE_REGION_SQL} IN ('','jp') AND ("
     "upper(trim(a.code)) LIKE 'FC2%' OR COALESCE(trim(a.studio),'')<>'' "
     "OR COALESCE(trim(a.release_date),'')<>'' OR EXISTS("
     "SELECT 1 FROM asset_entity jav_ae JOIN entity jav_e ON jav_e.id=jav_ae.entity_id "
@@ -1017,6 +1093,10 @@ def q_facets(
             "SELECT a.ctx_orient AS k,count(*) AS n FROM asset a "
             "WHERE a.medium='video' AND a.ctx_orient IS NOT NULL AND a.ctx_orient<>'' " + scope +
             "GROUP BY a.ctx_orient ORDER BY n DESC", scope_params)]
+        out["regions"] = region_facet_rows(c.execute(
+            f"SELECT {EFFECTIVE_REGION_SQL} AS k,count(*) AS n FROM asset a "
+            "WHERE a.medium='video' " + scope + "GROUP BY k ORDER BY n DESC",
+            scope_params))
         out["creators"] = [dict(r) for r in c.execute(
             "SELECT e.canonical_name AS k,count(DISTINCT ae.asset_id) AS n "
             "FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "

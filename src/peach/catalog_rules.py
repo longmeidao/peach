@@ -506,16 +506,29 @@ def code_letter_stem(code: str | None) -> str:
     return re.sub(r"[^A-Z]", "", value.split("-", 1)[0]).lower()
 
 
+#: 日本的产地码。取值集合与标签在 `regions.py`，这里只认这一个：本函数要回答的是
+#: 「是不是日本发行物」，而 `regions` 反过来要用本模块的番号判据，写成 import 就成环。
+JAPAN_REGION = "jp"
+
+
 def is_jav_asset(code: str | None, studio: str | None = None,
                  release_date: str | None = None,
-                 entity_kinds: tuple[str, ...] | list[str] = ()) -> bool:
+                 entity_kinds: tuple[str, ...] | list[str] = (),
+                 region: str | None = None) -> bool:
     """Require release evidence in addition to a code-shaped string.
 
     Creator clips such as ``JI-103`` can look exactly like a studio code. They
     stay in ordinary browsing until a studio, performer, series, or release
     date ties them to a published JAV release. FC2 IDs are an explicit release
     system and do not need those projections.
+
+    `region` 是已经判定的产地，判过且不是日本就一概不是 JAV——韩国 MIB 与国产厂牌的
+    番号和日本番号同形，发行证据那几条它们全都满足，只有产地分得开。未判定（空串）
+    维持原有口径：这一列绝大多数行还是空的，拿「没判过」当「不是日本」会把整个 JAV
+    页清空。
     """
+    if str(region or "").strip() not in ("", JAPAN_REGION):
+        return False
     # 历史 ledger 里有 PBD390、IPVR00296 这类缺连字符但带片商／出演者证据的真发行物。
     # 裸 `RAIKUN325` 仍不能单凭形态升级；只有规范化后像番号且同时有发行证据才接受。
     normalized = normalise_code_key(code)

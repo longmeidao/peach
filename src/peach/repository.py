@@ -8,6 +8,7 @@ from pathlib import Path
 
 from .catalog_rules import is_jav_code, normalise_code_key
 from .entities import normalize_entity_name
+from .regions import infer_region
 
 
 class LedgerDatabase:
@@ -31,6 +32,10 @@ class LedgerDatabase:
         connection.create_function("is_jav_code", 1, is_jav_code, deterministic=True)
         connection.create_function(
             "normalise_code_key", 1, normalise_code_key, deterministic=True)
+        # 产地推断要和 Python 侧同一份实现。SQL 里重写一遍前缀名单的话，账本筛出来的
+        # 那批片和页面上标着的产地会从某一次改名单开始悄悄分家。
+        connection.create_function(
+            "infer_region", 2, infer_region, deterministic=True)
         # 标签归一化必须两边同一份。SQLite 自带的 lower() 只认 ASCII：西里尔、
         # 罗马数字 Ⅱ 这类字符它原样放过，而写入时用的是 Python 的 casefold，
         # 于是「隐藏这个标签」写进去的值和查询时算出的值对不上，隐藏静默失效。
