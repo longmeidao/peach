@@ -91,14 +91,43 @@ class StreamSessionRegistry:
             return len(self._active.get(session, ()))
 
 
+async def _wait_for_disconnect(receive: Receive) -> None:
+    """等到客户端断开。请求体读完后 uvicorn 的 receive() 只会在断开时再返回一次。"""
+    while True:
+        message = await receive()
+        if message["type"] == "http.disconnect":
+            return
+
+
 class BufferedFileResponse(FileResponse):
-    """按 1 MiB 读文件再发。
+    """按 1 MiB 读文件再发，客户端一断开就停止读。
 
     Starlette 默认每次读 64 KiB，浏览器缓冲一段 Range 要向 CloudDrive 发几十次小读；
     读大一点只是少跑几趟挂载层，Range 语义不变。
+
+    浏览器拖动进度条时会掐掉旧的开区间 Range 请求。uvicorn 在连接断开后 send() 只是静默
+    返回，Starlette 的 FileResponse 又不监听断开事件，读文件的循环会一直跑到文件末尾：
+    一部 5 GB 的片子每拖一次就多一个幽灵读者，通过挂载把剩下的几 GB 全拉一遍，新位置那
+    一块只能排在它们后面（2026-09-13 实测，断开后 15 秒继续下行 221 MB 直到文件结束）。
+    所以这里自己盯 http.disconnect，收到就取消发送任务，最多多读一块。
     """
 
     chunk_size = 1 << 20
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await super().__call__(scope, receive, send)
+            return
+        respond = asyncio.ensure_future(super().__call__(scope, receive, send))
+        watch = asyncio.ensure_future(_wait_for_disconnect(receive))
+        try:
+            await asyncio.wait({respond, watch}, return_when=asyncio.FIRST_COMPLETED)
+        finally:
+            respond.cancel()
+            watch.cancel()
+            await asyncio.gather(respond, watch, return_exceptions=True)
+        if not respond.cancelled():
+            respond.result()
 
 
 class CancellableFileResponse(BufferedFileResponse):
