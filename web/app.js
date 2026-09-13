@@ -10635,14 +10635,14 @@ addEventListener('resize',()=>{
   searchMorphViewport=innerWidth;finishSearchMorph();
 },{passive:true});
 matchMedia('(prefers-reduced-motion:reduce)').addEventListener('change',finishSearchMorph);
-$('#searchBtn').onclick=()=>{setNarrowSearchOpen(true);$('#q').focus()};
+$('#searchBtn').onclick=()=>{setNarrowSearchOpen(true);$('#q').focus({preventScroll:true})};
 /* 窄屏退出搜索。失焦那条 140ms 的兜底只在输入框为空时才收起搜索栏，
    输入过内容就没有出口了；返回按钮无条件收起，并清掉下拉栏。 */
 $('#searchBack').onclick=()=>{
   setNarrowSearchOpen(false);
   hideSearchMenu();
   $('#q').blur();
-  $('#searchBtn').focus();
+  $('#searchBtn').focus({preventScroll:true});
 };
 $('#q').addEventListener('blur',()=>setTimeout(()=>{
   if(document.activeElement===$('#q'))return;

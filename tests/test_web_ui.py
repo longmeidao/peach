@@ -4554,6 +4554,10 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("findIndex(item=>item.title===settingsRequestedSection)")
         self.assertPageContains("settingsTabs?.select(requested>=0?requested:keep);")
 
+    def test_mobile_search_focus_preserves_page_scroll(self):
+        self.assertPageContains("$('#searchBtn').onclick=()=>{setNarrowSearchOpen(true);$('#q').focus({preventScroll:true})};")
+        self.assertPageContains("$('#searchBtn').focus({preventScroll:true});")
+
     def test_glass_compositing_covers_search_snapshots_and_disposed_panels(self):
         board = (Path(__file__).resolve().parents[1] / 'web/board.css').read_text(encoding='utf-8')
         self.assertIn('.top .search.search.search{--glass-optic:blur(22px)}', board)
