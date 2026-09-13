@@ -83,6 +83,7 @@ const lucideIcons = new Map([
   ["clapperboard", "clapperboard"], ["briefcase", "briefcase"],
   ["home", "home"], ["panel-left", "panel-left"], ["search", "search"],
   ["layout-grid", "layout-grid"], ["square-check-big", "square-check-big"],
+  ["columns-2", "columns-2"],
   ["refresh-cw", "refresh-cw"], ["user-round", "user-round"], ["tags", "tags"],
   ["list-filter", "list-filter"], ["chart", "chart-no-axes-column"],
   ["settings", "settings"], ["gauge", "gauge"],

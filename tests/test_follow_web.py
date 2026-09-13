@@ -559,6 +559,19 @@ class FollowContractTests(unittest.TestCase):
                          f"/follow-stream?id={items['image']['id']}")
         self.assertNotIn("r34i.paheal-cdn.net", json.dumps(items))
 
+    def test_fanbox_video_poster_uses_cover_when_missing_or_a_video_url(self):
+        video = "https://downloads.fanbox.cc/files/example.mp4"
+        image = "https://downloads.fanbox.cc/images/example.jpeg"
+        self._seed(candidates=tuple(FollowCandidate(
+            provider="fanbox", external_id=str(index), title=f"Clip {index}",
+            url=f"https://creator.fanbox.cc/posts/{index}", thumb_url=thumb,
+            extra={"media_items": [{"media_kind": "video", "resource_provider": "fanbox", "url": video}]},
+        ) for index, thumb in enumerate((None, video, image), 1)), provider="fanbox", ref="creator")
+        items = {group["primary"]["external_id"]: group["primary"] for group in self._get()["groups"]}
+        for key in ("1", "2"):
+            self.assertEqual(items[key]["thumb_url"], f"/follow-cover?id={items[key]['id']}")
+        self.assertEqual(items["3"]["thumb_url"], image)
+
     def test_named_large_collection_is_hidden_but_not_deleted(self):
         self._seed(candidates=(FollowCandidate(
             provider="rule34video", external_id="4533145", title="Large collection",

@@ -2,13 +2,8 @@
    按默认的 fill:black/stroke:none 画成黑块——深色底上等于看不见。 */
 .photoback svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2}
 .photoback:hover{background:var(--overlay-5);color:var(--ink)}
-/* 等宽网格，每格先占好位置再等图。账本没有图片宽高，缩略图在懒加载前高度是 0，而多列
-   流式排版是按分栏那一刻的高度摊的：一屏 240 个零高的格子会被整批摊进最后一列，前几列
-   只留下已经加载出来的那十几张，右边几列从顶上就空着，窄屏则收成半幅一列。固定比例的
-   格子与加载顺序无关，各列自然齐平；关注页的图片墙同样是从多列换成网格才稳住的。
-   方框配 cover：这个库横竖两种取景各占一半，长框总有一半图要被压成一条，方框对两种各
-   裁四分之一，点开就是全图。大小就是列数。窄屏两档一起收，但大图那档始终比小图少两列
-   ——收成同一个数等于这个开关在这块屏幕上不起作用，而按钮上还亮着人上一次点的那一档。 */
+/* 固定比例视图使用方框和 cover；瀑布流、响应式列数与关注图片墙共用 21-online.css。
+   两种视图在缩略图懒加载前都有非零高度，灯箱使用全图。 */
 .photowall{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px}
 .photowall[data-size="big"]{grid-template-columns:repeat(3,minmax(0,1fr))}
 @media (max-width:1400px){.photowall{grid-template-columns:repeat(4,minmax(0,1fr))}

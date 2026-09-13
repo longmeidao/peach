@@ -111,7 +111,26 @@ class FollowCoverServiceTests(unittest.TestCase):
         self.assertLess(green, 80)
         self.assertLess(blue, 80)
 
-    def test_only_paheal_videos_enter_the_generator(self):
+    def test_fanbox_uses_first_video_after_images_and_caches_it(self):
+        item = self._item("fanbox")
+        item.metadata = {"media_items": [
+            {"media_kind": "image", "resource_provider": "fanbox"},
+            {"media_kind": "video", "resource_provider": "fanbox"},
+        ]}
+        resolver = mock.Mock()
+        resolver.resolve.return_value = ResolvedFollowMedia(
+            "https://downloads.fanbox.cc/files/video.mp4", item.url)
+        service = FollowCoverService(_FFmpeg(), resolver, self.root)
+        def run(command, **kwargs):
+            Path(command[-1]).write_bytes(b"jpeg")
+            return subprocess.CompletedProcess(command, 0, b"", b"")
+        with mock.patch("peach.follow_covers.subprocess.run", side_effect=run) as ffmpeg:
+            first = service.cover(item)
+            self.assertEqual(service.cover(item), first)
+        resolver.resolve.assert_called_with(item, 1)
+        self.assertEqual(ffmpeg.call_count, 1)
+
+    def test_only_supported_videos_enter_the_generator(self):
         for provider, kind in (("rule34xxx", "video"),
                                ("rule34paheal", "image")):
             with self.subTest(provider=provider, kind=kind):

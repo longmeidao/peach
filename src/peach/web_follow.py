@@ -623,6 +623,15 @@ def _thumb_url(item) -> str | None:
     /follow-cover 抽首帧并缓存。这两条是 Peach 自己的路由决定，所以留在这一层；
     其余全是「这个站的缩略图 URL 长什么样」，那是站点知识，实现在各连接器里。
     """
+    if item.provider == "fanbox":
+        thumb = display_thumb_url(item)
+        media_items = item.metadata.get("media_items") or []
+        videos = [media for media in media_items if isinstance(media, dict)
+                  and media.get("media_kind") == "video"
+                  and media.get("resource_provider") == "fanbox"]
+        if videos and (not thumb or thumb in {media.get("url") for media in videos}
+                       or urllib.parse.urlsplit(thumb).path.lower().endswith((".mp4", ".webm", ".mov", ".m4v"))):
+            return f"/follow-cover?id={item.id}"
     if item.provider == "rule34paheal" and item.media_url:
         kind = _media_kind(item)
         if kind == "image":
