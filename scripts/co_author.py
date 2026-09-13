@@ -11,6 +11,7 @@ from .check_readme_impact import git
 VENDORS = {
     "Claude Code": "noreply@anthropic.com",
     "Codex": "noreply@openai.com",
+    "Delta": "noreply@zed.dev",
     "opencode": "noreply@opencode.ai",
 }
 
