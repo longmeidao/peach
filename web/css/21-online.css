@@ -121,5 +121,8 @@
 [data-layout="masonry"]>.photocell{aspect-ratio:auto}
 [data-layout="masonry"]>.photocell img{height:auto;aspect-ratio:auto 1}
 [data-layout="masonry"] .followitem.imagecard .pic{aspect-ratio:1}
-[data-layout="masonry"] .followitem.imagecard .pic:has(>img){aspect-ratio:auto}
-[data-layout="masonry"] .followitem.imagecard .followvisual .pic>img{position:static;height:auto;aspect-ratio:auto 1}
+/* 只有带 width/height 属性的图才放开高度按固有比例占位：瀑布流按卡片高度分列，
+   图没加载完高度未知时放手，每张加载完都会把整墙的列再平衡一遍，卡片在列间跳。
+   没有尺寸的图保持 1:1 占位框，图在框内 contain——列从首帧起就是稳定的。 */
+[data-layout="masonry"] .followitem.imagecard .pic:has(>img[width][height]){aspect-ratio:auto}
+[data-layout="masonry"] .followitem.imagecard .followvisual .pic>img[width][height]{position:static;height:auto;aspect-ratio:auto 1}

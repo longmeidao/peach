@@ -688,6 +688,24 @@ class FollowContractTests(unittest.TestCase):
         item = self._get()["groups"][0]["primary"]
         self.assertEqual([media_["index"] for media_ in item["media_items"]], [0])
 
+    def test_media_projection_carries_intrinsic_dimensions(self):
+        self._seed(candidates=(FollowCandidate(
+            provider="fanbox", external_id="1", title="Post",
+            url="https://lazyprocrast.fanbox.cc/posts/1",
+            extra={"media_items": [
+                {"id": "art", "media_kind": "image", "resource_provider": "fanbox",
+                 "url": "https://downloads.fanbox.cc/images/post/1/art.png",
+                 "thumb_url": "https://downloads.fanbox.cc/images/post/1/w/1200/art.jpeg",
+                 "width": 1920, "height": 1080},
+                {"id": "mystery", "media_kind": "image", "resource_provider": "fanbox",
+                 "url": "https://downloads.fanbox.cc/images/post/1/m.png"},
+            ]}),), provider="fanbox", ref="lazyprocrast")
+        item = self._get()["groups"][0]["primary"]
+        self.assertEqual(item["media_items"][0]["width"], 1920)
+        self.assertEqual(item["media_items"][0]["height"], 1080)
+        self.assertIsNone(item["media_items"][1]["width"])
+        self.assertIsNone(item["media_items"][1]["height"])
+
     def test_hidden_media_leaves_the_feed_and_the_card_thumb(self):
         chart = "https://downloads.fanbox.cc/images/post/1/w/1200/chart.jpeg"
         art = "https://downloads.fanbox.cc/images/post/1/w/1200/art.jpeg"

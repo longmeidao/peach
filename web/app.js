@@ -5920,8 +5920,14 @@ function followCard(group,authorSources=[]){
   const imageView=followMediaView==='images';
   const selectedMedia=imageView?(item.media_items||[]).find(media=>media.media_kind==='image'):null;
   const thumbUrl=selectedMedia?.thumb_url||item.thumb_url;
+  /* width/height 属性让浏览器在图片落地前就按固有比例占位：瀑布流按卡片高度
+     分列，没有这两个属性时未加载的图高度是零，每一张加载完都把整墙的列重新
+     平衡一遍，卡片就在列间跳。没有可靠尺寸的来源不硬猜，走无尺寸占位那套。 */
+  const dims=selectedMedia&&selectedMedia.thumb_url===thumbUrl
+    &&selectedMedia.width>0&&selectedMedia.height>0
+    ?` width="${selectedMedia.width}" height="${selectedMedia.height}"`:'';
   const thumb=thumbUrl
-    ? `<img src="${esc(thumbUrl)}" alt="" loading="lazy" referrerpolicy="no-referrer" data-drop="self">`
+    ? `<img${dims} src="${esc(thumbUrl)}" alt="" loading="lazy" referrerpolicy="no-referrer" data-drop="self">`
     : `<span class="fnothumb">${sourceIcon(item.resource_provider||item.provider)}</span>`;
   const videos=followMediaView==='videos'?followVideoItems(group):[],embedded=item.media_items||[];
   const groupedOwner=followMediaView==='videos'?followGroupedMediaOwner(group):null;
