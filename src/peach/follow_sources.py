@@ -78,6 +78,23 @@ def resource_links(text: str | None) -> list[str]:
     return found
 
 
+# 用户逐张确认的讨论表情附件；按附件身份判断，不按 GIF 格式排除作品。
+_F95_DISCUSSION_ATTACHMENTS = frozenset({
+    "6453006_IMG_2124.jpeg", "6456143_attachment-3.gif",
+})
+
+
+def f95_discussion_image(value: object) -> bool:
+    """已确认的 F95 讨论插图不参与封面和媒体投影。"""
+    try:
+        parsed = urllib.parse.urlsplit(str(value or ""))
+    except ValueError:
+        return False
+    return (parsed.hostname == "attachments.f95zone.to"
+            and urllib.parse.unquote(parsed.path.rsplit("/", 1)[-1])
+            in _F95_DISCUSSION_ATTACHMENTS)
+
+
 def f95_attachment_media_items(metadata: Mapping[str, object]) -> list[dict[str, object]]:
     """Project F95 image attachments, including rows saved before galleries existed."""
     attachments = metadata.get("attachments")
@@ -90,7 +107,7 @@ def f95_attachment_media_items(metadata: Mapping[str, object]) -> list[dict[str,
             parsed = urllib.parse.urlsplit(url)
         except ValueError:
             continue
-        if (parsed.scheme != "https" or parsed.hostname != "attachments.f95zone.to"
+        if (f95_discussion_image(url) or parsed.scheme != "https" or parsed.hostname != "attachments.f95zone.to"
                 or not _IMAGE_URL_RE.search(url)):
             continue
         name = urllib.parse.unquote(parsed.path.rsplit("/", 1)[-1]) or f"image-{index + 1}"
@@ -1937,10 +1954,11 @@ class F95ZoneConnector(_BaseConnector):
                 if str(node.get("href", "")).startswith("http")
             ]
             media_links, needs_credential = self._media_links(links)
-            attachment_urls = self._attachment_urls(body)
+            attachment_urls = [url for url in self._attachment_urls(body)
+                               if not f95_discussion_image(url)]
             # F95 会把正文里粘贴的 GIF / meme 也存到 attachments.f95zone.to。
             # 它们只是讨论插图，不是作者交付的资源；单凭一张内嵌图片不能让楼层
-            # 进入追更。非图片附件仍保留，带文件站链接的楼层也保留全部预览图。
+            # 进入追更。非图片附件仍保留，正文图片按已确认的讨论附件身份过滤。
             downloadable_attachments = [
                 url for url in attachment_urls if not self._INLINE_IMAGE_RE.search(url)
             ]

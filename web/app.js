@@ -316,6 +316,7 @@ function showDetailLoading(){
   const stage=$('#stage');
   if(!stage.querySelector('[data-skeleton="detail"]'))stage.innerHTML=detailSkeletonHtml();
   stage.hidden=false;document.body.classList.add('detail-open');
+  presentItemDetail();
 }
 /* 顶部三层只属于首页。深链启动时先画一遍再由路由收起来，等于向管理页和索引页
    承诺了三条永远不会到货的横条。 */
@@ -1109,6 +1110,8 @@ function bindOutsideClose(anchor,inside,close){
 }
 function disposeStage(push=false,preserveInlineOrigin=false,{miniplayer=true}={}){
   const stage=$('#stage');
+  closePlayerMenu();
+  if(stage.open)stage.close();
   // 关注详情会把舞台插到头像和筛选条之后。离开详情前先放回 main 的固定槽位，
   // 否则下一次重绘 #stats 会连同 #stage 一起删掉，后续所有详情都打不开。
   const main=$('#main'),combo=$('#combo');
@@ -1378,6 +1381,8 @@ wireMiniplayer();
 let playerMenuCleanup=null;
 function closePlayerMenu(){
   const menu=$('#playerMenu');
+  if(menu?.matches(':popover-open'))menu.hidePopover();
+  if(menu&&menu.parentElement!==document.body)document.body.append(menu);
   if(menu)dismissMenu(menu,()=>{menu.innerHTML=''});
   if(playerMenuCleanup){playerMenuCleanup();playerMenuCleanup=null}
 }
@@ -1416,13 +1421,16 @@ function playerMenuItems(player){
 function openPlayerMenu(player,x,y){
   const menu=$('#playerMenu');if(!menu)return;
   closePlayerMenu();
+  const stage=$('#stage');
+  if(stage.open)stage.append(menu);
+  menu.setAttribute('popover','manual');
   const items=playerMenuItems(player);
   menu.innerHTML=items.map((item,index)=>{
     const checkable='checked' in item;
     return `<button type="button" class="playermenuitem" role="${checkable?'menuitemcheckbox':'menuitem'}"${checkable?` aria-checked="${item.checked}"`:''} data-player-menu="${index}">${
       icon(item.icon,item.fill?'playermenufill':'')}<span>${esc(item.label)}</span>${checkable?icon('check','playermenucheck'):''}</button>`;
   }).join('');
-  presentMenu(menu);
+  presentMenu(menu);menu.showPopover();
   // 量 offsetWidth／offsetHeight：进场动画起手是 scale(.95)，getBoundingClientRect 量到的是缩过的框。
   menu.style.left=`${Math.max(8,Math.min(x,innerWidth-menu.offsetWidth-8))}px`;
   menu.style.top=`${Math.max(8,Math.min(y,innerHeight-menu.offsetHeight-8))}px`;
@@ -1461,46 +1469,22 @@ function wirePlayerContextMenu(player){
 
 function placeItemDetail(anchor,above=false){
   const stage=$('#stage'),main=$('#main'),combo=$('#combo');
-  if(!anchor?.isConnected){main.insertBefore(stage,combo);return}
-  const card=anchor.closest('[data-id],[data-mix-seed]')||anchor;
-  const container=card.parentElement;
-  if(container&&getComputedStyle(container).display==='grid'){
-    const top=card.getBoundingClientRect().top;
-    const siblings=[...container.children].filter(item=>item!==stage&&!item.hidden);
-    const row=siblings.filter(item=>Math.abs(item.getBoundingClientRect().top-top)<2);
-    const edge=above?row[0]:row[row.length-1];
-    if(edge)container.insertBefore(stage,above?edge:edge.nextSibling);
-    else container.append(stage);
-    return;
-  }
-  const block=card.closest('.shorts-inline,.srow,.nrow,section')||card;
-  const parent=block.parentElement;
-  if(parent)parent.insertBefore(stage,above?block:block.nextSibling);
-  else main.insertBefore(stage,combo);
+  if(stage.parentElement!==main)main.insertBefore(stage,combo);
 }
 
-function itemDetailStickyOffset(){
+function presentItemDetail(){
   const stage=$('#stage');
-  /* 玻璃筛选条把 `#tagbar` 与 `#count` 收进 `.board-filter-frame` 之后，粘住的是外面这一层，
-     里面两条成了 `position:relative`。只按里面两个名字量就只剩顶栏那 64px：详情停在 144px，
-     筛选条底边却在 168px，最上面 24px 连同关闭键一起压在它下面。 */
-  return ['.top','.board-filter-frame','#tagbar','#count','.entitytagbar','.entitycollectionhead'].reduce((bottom,selector)=>{
-    const el=$(selector),css=el&&getComputedStyle(el);
-    const beforeStage=!!el&&(el.compareDocumentPosition(stage)&Node.DOCUMENT_POSITION_FOLLOWING);
-    if(!beforeStage||el.offsetParent===null||css.position!=='sticky')return bottom;
-    const top=parseFloat(css.top);
-    return Number.isFinite(top)?Math.max(bottom,top+el.getBoundingClientRect().height):bottom;
-  },0);
+  if(stage.hidden)return;
+  stage.oncancel=event=>{
+    event.preventDefault();const close=$('#closeStage');
+    if(close)close.click();
+    else{disposeStage(false,false,{miniplayer:false});route(detailReturnPath||'/');restoreRoute()}
+  };
+  if(!stage.open)stage.showModal();
 }
 
 function scrollItemDetailIntoView(){
-  const stage=$('#stage');
-  /* `html` 的 `scroll-padding-top` 已经替顶栏留了一段，它和 `scroll-margin-top` 是叠加的：
-     把顶栏那 72px 再算一遍，落点就比要的位置低整整一个顶栏。扣掉它之后这个数只负责
-     顶栏以外还粘着的东西，也就是筛选条那一层。 */
-  const paved=parseFloat(getComputedStyle(document.documentElement).scrollPaddingTop)||0;
-  stage.style.scrollMarginTop=`${Math.max(0,itemDetailStickyOffset()+8-paved)}px`;
-  stage.scrollIntoView({behavior:'auto',block:'start'});
+  presentItemDetail();
   scheduleStickySurfaces();
 }
 function bufferedAhead(video){
@@ -3124,30 +3108,56 @@ const reduceMotion=()=>matchMedia('(prefers-reduced-motion:reduce)').matches;
    缩略图，两处共用同一套时序和门槛，不各写一份动效。 */
 function wireStackFlip(el,loadFaces){
   const box=el.querySelector('[data-mix-faces]');if(!box)return;
-  let armed=null,lead=null,cycle=null,faces=[],index=0,live=false;
+  let armed=null,lead=null,cycle=null,faces=[],index=0,live=false,generation=0;
+  const pending=new Set(),cleanups=new Set();
   const stop=()=>{
-    live=false;clearTimeout(armed);armed=null;clearTimeout(lead);lead=null;
+    live=false;generation++;clearTimeout(armed);armed=null;clearTimeout(lead);lead=null;
     clearInterval(cycle);cycle=null;
+    pending.forEach(cancel=>cancel());cleanups.forEach(clearTimeout);cleanups.clear();
     box.hidden=true;box.innerHTML='';faces=[];index=0;
   };
+  const readyImage=img=>new Promise(resolve=>{
+    let settled=false;
+    const finish=ok=>{if(settled)return;settled=true;clearTimeout(timeout);
+      img.removeEventListener('load',loaded);img.removeEventListener('error',failed);
+      pending.delete(cancel);resolve(ok)};
+    const cancel=()=>finish(false),failed=()=>finish(false);
+    const loaded=()=>{if(!img.naturalWidth){finish(false);return}
+      if(typeof img.decode==='function')img.decode().then(()=>finish(true),failed);
+      else finish(true)};
+    const timeout=setTimeout(failed,5000);
+    pending.add(cancel);img.addEventListener('load',loaded);img.addEventListener('error',failed);
+    if(img.complete)loaded();
+  });
   const step=()=>{
+    if(!live||faces.length<2)return;
     const out=faces[index],next=faces[(index+1)%faces.length];
     out.classList.remove('on');out.classList.add('off');
     next.classList.remove('off');next.classList.add('on');
     // 翻出去的那张得先演完才能卸掉 off，否则会当场弹回原位。
-    setTimeout(()=>{if(out!==next)out.classList.remove('off')},MIX_FLIP_MS-120);
+    const cleanup=setTimeout(()=>{out.classList.remove('off');cleanups.delete(cleanup)},MIX_FLIP_MS-120);
+    cleanups.add(cleanup);
     index=(index+1)%faces.length;
   };
   const start=async()=>{
     if(selectMode||censorOn()||window.__scrolling||reduceMotion())return;
-    live=true;
+    if(live)return;
+    live=true;const current=++generation;
     let pool=[];
     try{pool=await loadFaces()}catch(_e){return}
-    if(!live||selectMode||censorOn())return;
+    if(!live||current!==generation||selectMode||censorOn())return;
     if(pool.length<2)return;
-    box.innerHTML=pool.map((face,i)=>`<div class="mixface${i?'':' on'}">${face}</div>`).join('');
-    syncJavImages(box,appSettings.javImage);
-    faces=[...box.children];index=0;box.hidden=false;
+    const staging=document.createElement('div');
+    staging.innerHTML=pool.map(face=>`<div class="mixface">${face}</div>`).join('');
+    syncJavImages(staging,appSettings.javImage);
+    const candidates=[...staging.children];
+    const ready=await Promise.all(candidates.map(async face=>{
+      const images=[...face.querySelectorAll('img')];
+      return images.length>0&&(await Promise.all(images.map(readyImage))).every(Boolean)}));
+    if(!live||current!==generation||selectMode||censorOn()||window.__scrolling)return;
+    faces=candidates.filter((_face,i)=>ready[i]);
+    if(faces.length<2)return;
+    faces[0].classList.add('on');box.replaceChildren(...faces);index=0;box.hidden=false;
     lead=setTimeout(()=>{step();cycle=setInterval(step,MIX_FLIP_MS)},MIX_FLIP_LEAD_MS);
   };
   el.addEventListener('mouseenter',()=>{clearTimeout(armed);armed=setTimeout(start,340)});
@@ -5589,7 +5599,7 @@ async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=fals
       ?`<img class="followdetailposter" src="${src}" alt="${esc(item.title)}">`
       :item.thumb_url
         ?`<img class="followdetailposter" src="${esc(item.thumb_url)}" alt="${esc(item.title)}" referrerpolicy="no-referrer">`
-        :`<div class="followdetailplaceholder">${sourceIcon(item.provider)}<span>没有可用预览</span></div>`;
+        :`<div class="followdetailplaceholder">${sourceIcon(item.resource_provider||item.provider)}<span>没有可用预览</span></div>`;
   const imageControls=imageCarousel?`<button class="media-circle media-overlay followimagearrow prev" data-follow-image-step="-1" aria-label="上一张图片" title="上一张">${icon('chevron-left')}</button>
     <button class="media-circle media-overlay followimagearrow next" data-follow-image-step="1" aria-label="下一张图片" title="下一张">${icon('chevron-right')}</button>
     <div class="followimagedots" role="group" aria-label="${imageMedia.length} 张图片">${imageMedia.map((image,index)=>`<button data-follow-image-item="${image.index}" aria-current="${index===imagePosition}" aria-label="第 ${index+1} 张，共 ${imageMedia.length} 张" title="第 ${index+1} 张"></button>`).join('')}</div>`:'';
@@ -5599,31 +5609,7 @@ async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=fals
   const author=followAuthorName(authorSources)||item.author||item.source_label||'创作者未取得';
   const postedBy=item.author&&foldName(item.author)!==foldName(author)?item.author:'';
   const mediaIssue=followMediaIssue(item);
-  /* 舞台就近展开：插在被点击那张卡片所在的一行之后，而不是整个列表之前。
-     插在列表前等于永远回到页面顶部——翻了几屏点开一条，视线要被拽回最上面，
-     关掉后还得再翻回来。首页的详情早就是就近展开的，关注页一直没跟上。
-
-     按行插入而不是紧跟卡片：列表是网格，插在某张卡片正后面会把它那一行截断。
-     行的判定用 offsetTop——同一行的卡片顶边相同。 */
-  const followList=$('#stats').querySelector('.followlist');
-  const clicked=followList&&followList.querySelector(`[data-follow-item="${item.id}"]`);
-  if(followList?.classList.contains('followphotowall')){
-    /* 图片墙是稳定网格；详情独立放在墙前，避免成为网格子项并改变所有行的排列。 */
-    followList.before($('#stage'));
-  }else if(clicked){
-    const cards=[...followList.children];
-    const row=clicked.offsetTop;
-    // 同一行里最后一张卡片：它之后就是插入点。
-    let last=clicked;
-    for(const card of cards){
-      if(Math.abs(card.offsetTop-row)<2)last=card;
-    }
-    last.after($('#stage'));
-  }else if(followList){
-    followList.before($('#stage'));
-  }else{
-    placeItemDetail(detailOriginAnchor,detailOriginAbove);
-  }
+  placeItemDetail(detailOriginAnchor,detailOriginAbove);
   $('#stage').hidden=false;document.body.classList.add('detail-open');
   $('#stage').innerHTML=`<div class="sgrid followdetailgrid${collection||embeddedQueue?' mixgrid':''}">
     <div class="vwrap followdetailmedia${selectedKind==='image'?' image':''}">${selectedKind==='video'?'<canvas class="ambientcanvas" width="32" height="18"></canvas>':''}<button class="closestage" id="closeStage" title="关闭" aria-label="关闭">${icon('x')}</button>${selectedKind==='video'?playerStatsOverlayHtml():''}${media}${imageControls}</div>
@@ -5655,7 +5641,7 @@ async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=fals
     disposeStage(false,false,{miniplayer:false});
     route(followDetailReturnPath||'/follow');
     if(location.pathname!=='/follow'){await restoreRoute();return}
-    if(followData)renderFollow();else await openFollow(false);
+    if(!$('#stats .followlist')){if(followData)renderFollow();else await openFollow(false)}
   };
   $('#closeStage').onclick=closeDetail;
   $('#stage').querySelectorAll('[data-follow-queue-close]').forEach(button=>button.onclick=closeDetail);
@@ -5777,7 +5763,7 @@ function followCard(group,authorSources=[]){
   const thumbUrl=selectedMedia?.thumb_url||item.thumb_url;
   const thumb=thumbUrl
     ? `<img src="${esc(thumbUrl)}" alt="" loading="lazy" referrerpolicy="no-referrer" data-drop="self">`
-    : `<span class="fnothumb">${esc(item.provider_label)}</span>`;
+    : `<span class="fnothumb">${sourceIcon(item.resource_provider||item.provider)}</span>`;
   const videos=followMediaView==='videos'?followVideoItems(group):[],embedded=item.media_items||[];
   const groupedOwner=followMediaView==='videos'?followGroupedMediaOwner(group):null;
   const groupedVideos=(groupedOwner?.media_items||[]).filter(media=>media.media_kind==='video');
@@ -5966,7 +5952,7 @@ function followFeedControlsHtml(){
     shuffleId:'followShuffle',shuffleClass:'',items:FOLLOW_FEED_SORTS,
     renderItem:([key,label])=>sortButtonHtml(key,label,followSort,followDir,'data-follow-sort',FOLLOW_FEED_DIR_WORDS),
     extra:`<button type="button" class="followrecheck" data-follow-recheck title="检查更新"
-      aria-label="检查全部来源的更新">${icon('refresh-cw')}</button>`+(followMediaView==='images'?photoControlsHtml():'')});
+      aria-label="检查全部来源的更新">${icon('refresh-cw')}</button>`+(followMediaView==='images'?photoControlsHtml({follow:true}):'')});
 }
 /* 看的那一页上唯一一次联网：去问每个来源有没有新东西。管理页那几枚按的是同一条路径，
    区别在它还要把失败详情摊进那一页的报告块；这一页上没有放报告的地方，失败只留一条
@@ -8002,19 +7988,23 @@ function photoSize(){
 function photoLayout(){return allowedSetting(appSettings.photoLayout,['fixed','masonry'],'masonry')}
 function photoViewActive(){return [...document.querySelectorAll('.photowall,.followphotowall')]
   .some(wall=>wall.getClientRects().length>0)}
-function photoControlsHtml(){return iconSwitchHtml('photo-size','照片大小',PHOTO_SIZES,photoSize(),
-  {attr:'data-photo-size',className:'photosize'})+iconSwitchHtml('photo-layout','图片布局',PHOTO_LAYOUTS,photoLayout(),
-  {attr:'data-photo-layout',className:'photolayout'})}
+function photoControlsHtml({follow=false}={}){return iconSwitchHtml('photo-layout','图片布局',PHOTO_LAYOUTS,photoLayout(),
+  {attr:'data-photo-layout',className:'photolayout'})+(follow?`<button type="button" data-follow-images-only aria-pressed="${!!appSettings.followImagesOnly}">仅显示图片</button>`:'')}
 function syncPhotoWalls(){
   document.querySelectorAll('.photowall,.followphotowall').forEach(wall=>{
     wall.dataset.size=photoSize();wall.dataset.layout=wall.closest('.skeletonpanel')?'fixed':photoLayout()});
+  document.querySelectorAll('.followphotowall').forEach(wall=>{
+    wall.dataset.imagesOnly=String(!!appSettings.followImagesOnly)});
   if(photoViewActive()){
     $('#density').setAttribute('aria-pressed',String(photoSize()==='small'));
     $('#density').title='当前：'+(photoSize()==='big'?'大图':'小图');
   }else applyDensity();
 }
 function wirePhotoControls(root){
-  wireIconSwitch(root,'data-photo-size',setPhotoSize);
+  const imagesOnly=root?.querySelector('[data-follow-images-only]');
+  if(imagesOnly)imagesOnly.onclick=()=>{
+    appSettings.followImagesOnly=!appSettings.followImagesOnly;saveSettings();syncPhotoWalls();
+    imagesOnly.setAttribute('aria-pressed',String(appSettings.followImagesOnly))};
   wireIconSwitch(root,'data-photo-layout',value=>{
     appSettings.photoLayout=allowedSetting(value,['fixed','masonry'],'masonry');saveSettings();syncPhotoWalls()});
 }
@@ -8023,8 +8013,6 @@ function wirePhotoControls(root){
 function setPhotoSize(value){
   appSettings.photoSize=allowedSetting(value,PHOTO_SIZES.map(([key])=>key),'small');
   saveSettings();
-  document.querySelectorAll('[data-photo-size]').forEach(input=>{
-    input.checked=input.value===appSettings.photoSize});
   syncPhotoWalls();
 }
 const photoCell=(item,index)=>`<button class="photocell" data-photo-index="${index}" title="${esc(item.name)}">
@@ -8191,7 +8179,7 @@ function wirePhotoZoom(box, main){
   const slider=box.querySelector('.photozoom input');
   const label=box.querySelector('.photozoom b');
   let target='fit';
-  const image=()=>main.slides[main.activeIndex]?.querySelector('img');
+  const image=()=>main.slides?.[main.activeIndex]?.querySelector('img');
   const fitPercent=()=>{
     const img=image();
     if(!img?.naturalWidth||!img.naturalHeight)return 100;
@@ -8199,6 +8187,7 @@ function wirePhotoZoom(box, main){
   };
   const show=percent=>{const value=Math.round(percent);slider.value=value;label.textContent=value+'%';syncBoardRange(slider)};
   const apply=raw=>{
+    if(main.destroyed||!box.isConnected)return;
     const fit=fitPercent();
     const percent=raw==='fit'?fit:Math.min(PHOTO_ZOOM_MAX,Math.max(PHOTO_ZOOM_MIN,Number(raw)||fit));
     target=raw==='fit'?'fit':percent;show(percent);
@@ -8268,7 +8257,7 @@ function closePhotoLightbox(){
   activeLightbox.detail?.dismiss();
   activeLightbox.resize?.disconnect();
   activeLightbox.main.destroy(true,true);activeLightbox.strip.destroy(true,true);
-  activeLightbox.box.remove();activeLightbox=null;
+  activeLightbox.box.close();activeLightbox.box.remove();activeLightbox=null;
   document.body.classList.remove('photolight-open');
 }
 async function openPhotoLightbox(index,source=null){
@@ -8278,7 +8267,8 @@ async function openPhotoLightbox(index,source=null){
   try{SwiperCtor=await loadSwiper()}
   catch(_e){window.open(items[index].src,'_blank','noopener');return}
   closePhotoLightbox();
-  const box=document.createElement('div');
+  const box=document.createElement('dialog');
+  box.setAttribute('aria-label','图片浏览');
   box.className='photolight'+(items.length>1?' has-strip':'');
   box.innerHTML=`<button class="media-circle media-overlay photoclose" type="button" aria-label="关闭">${icon('x')}</button>
     <div class="swiper photomain" role="region" aria-roledescription="轮播" aria-label="图片浏览"><div class="swiper-wrapper">${items.map(item=>
@@ -8308,6 +8298,8 @@ async function openPhotoLightbox(index,source=null){
     <div class="swiper photostrip"><div class="swiper-wrapper">${items.map(item=>
       `<div class="swiper-slide"><img src="${esc(item.thumb)}" alt="" loading="lazy" referrerpolicy="no-referrer"></div>`).join('')}</div></div>`;
   document.body.appendChild(box);
+  box.showModal();
+  box.oncancel=event=>{event.preventDefault();closePhotoLightbox()};
   document.body.classList.add('photolight-open');
   const counter=box.querySelector('.photocount');
   const strip=new SwiperCtor(box.querySelector('.photostrip'),{
