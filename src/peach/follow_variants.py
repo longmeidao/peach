@@ -5,9 +5,11 @@
 
 两条刻意保守的边界：
 
-- **括号只在命中已知标记、创作者别名或版本模式时才剥离。** 例如
+- **括号只在命中已知标记、创作者别名、版本模式或日期模式时才剥离。** 例如
   `Episode 5 [Anilingus, Light BDSM]` 的括号是标签列表，不是变体标记，保留在
-  `release_key` 里。误合两个不同作品比多出一张卡片糟糕得多。
+  `release_key` 里。误合两个不同作品比多出一张卡片糟糕得多。日期括号
+  （`[2026-09-01]`）剥掉但不当版本：它是合集的更新批次标签，放进版本位会被
+  读成卡片上的第二个发布日期。
 - **标题末尾的裸数字算作品序号，不算版本。** `Sayuri - Cowgirl 2` 与
   `Sayuri - Cowgirl` 是两个作品；只有显式的 `v2`/`version 2` 才判为同一作品的另一版。
 """
@@ -77,14 +79,16 @@ def _bare_marker_allowed(label: str) -> bool:
     return label in _BARE_MARKERS or _BARE_SHAPES.fullmatch(label) is not None
 
 # `release` 语义下从标题里摘出的版本；`work` 语义下不识别，交给 alt 标记处理。
+# 日期不算版本：`[2026-09-01]` 是合集的更新批次标签，不是 `v2` 那种版本号，
+# 显示在版本位会被读成卡片上的第二个发布日期。日期括号由 `_DATE_RE` 单独剥离。
 _VERSION_PATTERNS: tuple[str, ...] = (
-    r"\d{4}[-/.]\d{2}[-/.]\d{2}",
     r"v(?:er(?:sion)?[\s\-.]?)?\d+(?:\.\d+)*[a-z]?",
     r"r\d+(?:\.\d+)*",
     r"(?:build|rev)[\s\-.]?\d+(?:\.\d+)*",
     r"ch(?:apter)?[\s\-.]?\d+(?:\.\d+)*",
     r"(?:final|complete|full)[\s\-]?(?:version|release)",
 )
+_DATE_RE = re.compile(r"\d{4}[-/.]\d{2}[-/.]\d{2}")
 
 _BRACKETS: tuple[tuple[str, str], ...] = (("[", "]"), ("(", ")"), ("{", "}"), ("【", "】"))
 _BRACKET_RE = re.compile(r"[\[\(\{【]([^\[\]\(\)\{\}【】]*)[\]\)\}】]")
@@ -176,6 +180,35 @@ def _normalize_key(text: str) -> str:
     return " ".join(tokens)
 
 
+def _bracket_verdict(inner: str, aliases: frozenset[str],
+                     semantics: str) -> tuple[str | None, str | None,
+                                              list[str], list[str]]:
+    """一个括号组的处置。
+
+    返回（替换文本或 None, 摘出的版本, WIP 标记, alt 标记）。替换文本为 None
+    表示整组保留在标题里；摘出的版本至多一个。
+    """
+    if _is_alias_group(inner, aliases):
+        return " ", None, [], []
+    if semantics == "release" and _DATE_RE.fullmatch(inner.strip()):
+        return " ", None, [], []
+    if semantics == "release" and (candidate := _match_version(inner)):
+        return " ", candidate, [], []
+    wip, alt = _match_markers(inner)
+    # 逗号分隔的括号组逐段再试一次，`(nude, 4k)` 这类才拆得开。
+    if not wip and not alt and "," in inner:
+        for piece in inner.split(","):
+            piece_wip, piece_alt = _match_markers(piece)
+            wip.extend(piece_wip)
+            alt.extend(piece_alt)
+        if len(wip) + len(alt) != len([p for p in inner.split(",") if p.strip()]):
+            # 只要有一段不是标记，整组就当作品名的一部分保留。
+            return None, None, [], []
+    if not wip and not alt:
+        return None, None, [], []
+    return " ", None, wip, alt
+
+
 def classify(
     title: str,
     *,
@@ -200,28 +233,13 @@ def classify(
     found_version = (version or "").strip() or None
 
     def _take_bracket(match: re.Match[str]) -> str:
-        inner = match.group(1)
-        if _is_alias_group(inner, aliases):
-            return " "
-        if semantics == "release" and (candidate := _match_version(inner)):
-            nonlocal found_version
-            found_version = found_version or candidate
-            return " "
-        wip, alt = _match_markers(inner)
-        # 逗号分隔的括号组逐段再试一次，`(nude, 4k)` 这类才拆得开。
-        if not wip and not alt and "," in inner:
-            for piece in inner.split(","):
-                piece_wip, piece_alt = _match_markers(piece)
-                wip.extend(piece_wip)
-                alt.extend(piece_alt)
-            if len(wip) + len(alt) != len([p for p in inner.split(",") if p.strip()]):
-                # 只要有一段不是标记，整组就当作品名的一部分保留。
-                return match.group(0)
-        if not wip and not alt:
-            return match.group(0)
+        nonlocal found_version
+        replacement, extracted, wip, alt = _bracket_verdict(
+            match.group(1), aliases, semantics)
+        found_version = found_version or extracted
         wip_markers.extend(wip)
         alt_markers.extend(alt)
-        return " "
+        return replacement if replacement is not None else match.group(0)
 
     stripped = _BRACKET_RE.sub(_take_bracket, title)
 

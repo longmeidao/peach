@@ -435,7 +435,8 @@ class GroupingTests(_StoreCase):
         self.assertTrue(all(group.variants == () for group in groups))
         # 最新楼层排在前面，但不会把较早的资源楼层吞成「动态」。
         self.assertEqual(groups[0].primary.external_id, "21394555")
-        self.assertEqual(groups[0].primary.version, "2026-06-28")
+        # 标题里的日期是批次标签，不是版本：`[2026-06-28]` 不进版本位。
+        self.assertIsNone(groups[0].primary.version)
 
 
 class SaveAssetTests(_StoreCase):
