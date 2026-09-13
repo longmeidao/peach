@@ -2921,7 +2921,7 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_sort_direction_travels_in_the_url_and_the_stored_default(self):
         """方向进地址栏与设置：等于该列默认值时不写，旧默认值迁移到当前键。"""
-        self.assertPageContains("'orient','sort','dir','q','jav']")
+        self.assertPageContains("'orient','region','sort','dir','q','jav']")
         self.assertPageContains("!(key==='dir'&&value===defaultSortDir(filters.sort))")
         self.assertPageContains("&&!(key==='dir'&&filters[key]===defaultSortDir(filters.sort))")
         self.assertPageContains("if(filters.dir)p.set('dir',filters.dir);")

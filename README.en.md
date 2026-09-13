@@ -28,6 +28,7 @@ Peach is a single-user, local-first media system. Search, play and organize medi
 | Capability | What it does |
 | --- | --- |
 | Browse and search | Find videos and photo collections by work, performer, studio, creator, series or tag; the search bar completes identities and works from your library as you type; works with nobody credited form an Unassigned group |
+| Region split | Japan, Korea, mainland China and the West each form their own class; filter by one or several, or list the ones still undecided. Release codes that can be recognised are classified automatically; for the rest you decide once per batch, and automatic results never overwrite that |
 | Play and save | Play local and mounted media; keep watch-later items, viewing state, Mixes and playlists, and let a video keep going in a corner miniplayer after you leave its details |
 | Scan and enrich | Scan folders, detect existing NFO files and local posters, fetch missing metadata and write it to the catalog after review |
 | Follow updates | Register official or archive sources, explicitly check updates, view and save content inside Peach |
