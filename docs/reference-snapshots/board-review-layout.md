@@ -2,7 +2,7 @@
 
 取证日期：2026-09-13。参考：https://www.boardui.com/components/breadcrumb 。
 
-本记录不登记到可变上游快照表：布局证据是用户截图，网页文本读取仅确认页面身份和内容，未取得上游布局源码。
+本记录不登记进 `docs/reference-sources.json`：布局证据是用户截图，网页文本读取仅确认页面身份和内容，未取得上游布局源码。
 截图文件名为 codex-clipboard-2f2b0fd0-e7ee-4751-a497-1617d6787e1a.png，SHA-256 为
 `154463DB5E13D6A533E61F2E97132B171F6E9C40D9E88AE6A7F28D8E27B8EEB9`。
 
