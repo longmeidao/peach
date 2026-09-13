@@ -19,6 +19,7 @@ from peach.library_processing import (STALL_AFTER_SECONDS, decorate, issues_path
 from peach.review_csv import read_rows
 from peach.settings_file import PeachConfig
 from peach.web_review import _apply_metadata_candidate
+from support.conditions import windows_ledger_roots
 from support.ledger import fresh_ledger
 
 
@@ -82,7 +83,7 @@ class LibraryNfoTests(unittest.TestCase):
         self.assertIsNone(local_art(folder / 'film.mp4', {'local_art': '../outside.jpg'}))
         self.assertIsNone(local_art(folder / 'film.mp4', {'local_art': 'https://example.com/poster.jpg'}))
 
-    @unittest.skipUnless(os.name == 'nt', '真实声明根使用 Windows 盘符')
+    @windows_ledger_roots
     def test_scan_import_and_explicit_review_use_exact_asset(self):
         media = self.root / 'media'
         media.mkdir()
@@ -123,7 +124,7 @@ class LibraryNfoTests(unittest.TestCase):
             self.assertEqual(q_library_processing(contract, {})['job_id'], 'one')
             worker.assert_not_called()
 
-    @unittest.skipUnless(os.name == 'nt', '真实声明根使用 Windows 盘符')
+    @windows_ledger_roots
     def test_no_code_video_pairs_with_its_sibling_image_without_nfo(self):
         """无番号、无 NFO 的视频也拿同目录图片当海报，落在 `{id}_4.jpg`。"""
         from PIL import Image
@@ -151,7 +152,7 @@ class LibraryNfoTests(unittest.TestCase):
         self.assertFalse((self.root / 'generated').exists())
         self.assertFalse((self.root / 'ledger.db').exists())
 
-    @unittest.skipUnless(os.name == 'nt', '真实声明根使用 Windows 盘符')
+    @windows_ledger_roots
     def test_local_metadata_remote_completion_and_repeat_are_one_pipeline(self):
         from PIL import Image
         media = self.root / 'media'
@@ -182,6 +183,7 @@ class LibraryNfoTests(unittest.TestCase):
         self.assertEqual(second['candidates'], result['candidates'])
         provider.query.assert_called_once()
 
+    @windows_ledger_roots
     def test_korean_mib_codes_ask_no_jav_source_for_metadata_or_cover(self):
         """`HA-101` 是 MIB 的编号，也是一部日本片的番号：问了就取回那部日本片。"""
         media = self.root / 'media'
@@ -200,6 +202,7 @@ class LibraryNfoTests(unittest.TestCase):
         self.assertEqual([item.args[0] for item in provider.query.call_args_list], ['ABW-001'])
         self.assertEqual([item.args[0] for item in provider.cover.call_args_list], ['ABW-001'])
 
+    @windows_ledger_roots
     def test_fc2_codes_ask_no_r18_metadata_but_still_try_a_cover(self):
         """r18.dev 没有 FC2，问一次就是白等一次主机间隔；封面另有 FC2 自己的来源。"""
         media = self.root / 'media'
@@ -219,6 +222,7 @@ class LibraryNfoTests(unittest.TestCase):
                          ['ABW-001', 'FC2-PPV-1239052'])
         self.assertEqual(result['issue_count'], 0)
 
+    @windows_ledger_roots
     def test_files_without_a_code_are_registered_but_not_reported(self):
         """账本里两万多行创作者作品本来就没有番号，逐行报问题只会淹掉真正要处理的几十条。"""
         media = self.root / 'media'
@@ -235,6 +239,7 @@ class LibraryNfoTests(unittest.TestCase):
         self.assertEqual((result['status'], result['issue_count'], result['checked']), ('complete', 0, 1))
         self.assertTrue((self.root / 'generated' / 'posters' / '1_4.jpg').is_file(), '本地海报照常登记')
 
+    @windows_ledger_roots
     def test_a_source_that_said_no_is_not_asked_again_for_a_week(self):
         """r18.dev 不认识的番号每轮都重问、每条卡一次 2 秒的主机间隔，答案永远一样。
 
@@ -325,7 +330,7 @@ class LibraryWatchdogTests(unittest.TestCase):
         provider.cover.return_value = False
         return provider
 
-    @unittest.skipUnless(os.name == 'nt', '真实声明根使用 Windows 盘符')
+    @windows_ledger_roots
     def test_reports_carry_current_asset_action_and_rising_sequence(self):
         media = self.root / 'media'
         media.mkdir()
@@ -349,7 +354,7 @@ class LibraryWatchdogTests(unittest.TestCase):
         self.assertIsNone(result['current_asset_id'])
         self.assertEqual(result['current_action'], '')
 
-    @unittest.skipUnless(os.name == 'nt', '真实声明根使用 Windows 盘符')
+    @windows_ledger_roots
     def test_issue_preview_is_capped_while_the_log_keeps_every_row(self):
         media = self.root / 'media'
         media.mkdir()
@@ -388,7 +393,7 @@ class LibraryWatchdogTests(unittest.TestCase):
         with patch('peach.web_library_processing.settings_file.active', return_value=config):
             self.assertEqual(q_library_processing(contract, {})['issues_log'], str(log))
 
-    @unittest.skipUnless(os.name == 'nt', '真实声明根使用 Windows 盘符')
+    @windows_ledger_roots
     def test_each_issue_names_the_item_its_path_and_where_the_full_log_is(self):
         """一句「NFO 无法解析」加一个链接，是哪个文件得逐个点开才知道；改名或去磁盘上
         确认时要用的是路径。完整清单的地址跟着状态一起给出，不让人按 job_id 自己去拼。
@@ -450,7 +455,7 @@ class LibraryWatchdogTests(unittest.TestCase):
                          {'asset_id': 1, 'title': '', 'path': '', 'message': '未识别到番号'})
         self.assertTrue(state['issues_truncated'])
 
-    @unittest.skipUnless(os.name == 'nt', '真实声明根使用 Windows 盘符')
+    @windows_ledger_roots
     def test_deadline_skips_one_asset_and_keeps_processing(self):
         from peach.jav_cover_fetch import DeadlineExceeded
         media = self.root / 'media'
@@ -470,7 +475,7 @@ class LibraryWatchdogTests(unittest.TestCase):
         self.assertEqual(provider.query.call_count, 2)
         self.assertEqual(provider.reset.call_count, 1)
 
-    @unittest.skipUnless(os.name == 'nt', '真实声明根使用 Windows 盘符')
+    @windows_ledger_roots
     def test_retry_skips_rescan_and_touches_only_listed_assets(self):
         media = self.root / 'media'
         media.mkdir()
@@ -494,6 +499,7 @@ class LibraryWatchdogTests(unittest.TestCase):
         self.assertEqual(retried['checked'], 1)
         self.assertEqual(retried['status'], 'complete')
 
+    @windows_ledger_roots
     def test_scanning_alone_registers_the_files_and_asks_no_source(self):
         """只扫描那一段登记完文件就收工，不读本地资料也不联网。
 
@@ -516,6 +522,7 @@ class LibraryWatchdogTests(unittest.TestCase):
             self.assertEqual(connection.execute('SELECT count(*) FROM asset').fetchone()[0], 1,
                              "文件要进馆藏，只是没往下走采集")
 
+    @windows_ledger_roots
     def test_collecting_alone_walks_the_library_without_touching_the_disk_again(self):
         """只采集那一段不再扫一遍来源目录，处理的仍是整个馆藏。
 
@@ -537,6 +544,7 @@ class LibraryWatchdogTests(unittest.TestCase):
         self.assertEqual(state['total'], 1)
         self.assertEqual(state['checked'], 1)
 
+    @windows_ledger_roots
     def test_a_row_with_nothing_left_to_collect_never_touches_the_disk(self):
         """番号已落库、字段都有着落、封面在位的行，采集连 stat 都不做。
 
@@ -569,6 +577,7 @@ class LibraryWatchdogTests(unittest.TestCase):
         provider.query.assert_not_called()
         self.assertEqual((state['status'], state['checked'], state['issue_count']), ('complete', 1, 0))
 
+    @windows_ledger_roots
     def test_one_directory_is_listed_once_for_all_the_videos_in_it(self):
         """同一个文件夹里的片子共用一次目录列表，找 NFO 和找海报也不各列一遍。"""
         from peach import library_nfo
@@ -584,6 +593,7 @@ class LibraryWatchdogTests(unittest.TestCase):
         self.assertEqual(state['checked'], 3)
         self.assertEqual(listed.call_count, 1)
 
+    @windows_ledger_roots
     def test_candidates_are_written_once_for_a_short_batch_not_once_per_asset(self):
         """候选 CSV 按时间节流落盘，结束时写全；三条资产不该重写三遍整份文件。"""
         from peach import review_csv
