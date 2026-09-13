@@ -1899,6 +1899,10 @@ def _run_follow_check(contract, body, job_id=None) -> dict:
     # 因为追更关心的是增量；但那也意味着每个来源只有第一页那点内容
     # （rule34video 的作者页一页 24 条，实际 61 页）。用户点一次，往前挪一页。
     older = bool(body.get("older"))
+    # rewind：从第 1 页重走一遍。回填游标是单向的（record 只进不退），走到尽头
+    # 之后再想全量重抓就得把起点拨回页首；ledger 里的游标由 record 的 max() 守着，
+    # 不会因为重走而倒退。补齐标记缺键的行在重走时各自重探一次详情。
+    rewind = bool(body.get("rewind"))
     credentials = _credential_store(contract)
     initial_days = follow_initial_days(contract.database)
     with contract.database.read_connection() as connection:
@@ -1907,6 +1911,9 @@ def _run_follow_check(contract, body, job_id=None) -> dict:
                           backfill_providers=_BACKFILL_PROVIDERS)
     if "sources" in body:
         rows = [row for row in rows if row["id"] in body["sources"]]
+    if rewind and older:
+        for row in rows:
+            row["backfill_page"] = 0
     writer = _check_writer(contract)
     results = []
     for row in rows:

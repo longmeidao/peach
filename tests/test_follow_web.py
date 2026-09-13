@@ -321,6 +321,42 @@ class FollowContractTests(unittest.TestCase):
                 (self._get()["groups"][0]["primary"]["source_id"],)).fetchone()[0]
         self.assertEqual(state, 3)
 
+    def test_rewind_walks_from_the_first_page_again(self):
+        self._seed()
+        pages = []
+
+        class _Paged:
+            provider, semantics = "rule34video", "work"
+
+            def fetch(self, ref, *, etag=None, last_modified=None, page=0):
+                pages.append(page)
+                if page > 2:
+                    raise FollowHistoryEnd("没有更多历史内容")
+                return SourceFetch(provider="rule34video", ref=ref,
+                                   request_url="https://rule34video.test/x",
+                                   semantics="work", candidates=(), raw_body=b"<html/>")
+
+        original = web_follow.build_connector
+        web_follow.build_connector = lambda provider, **kwargs: _Paged()
+        self.addCleanup(setattr, web_follow, "build_connector", original)
+
+        # 游标已经走到尽头（backfill_page=3）；rewind 把起点拨回页首重走一遍，
+        # ledger 里的游标由 record 的 max() 守着，不倒退。
+        source_id = self._get()["groups"][0]["primary"]["source_id"]
+        with self.contract.database.write_transaction() as connection:
+            connection.execute("UPDATE follow_source SET backfill_page=3 WHERE id=?",
+                               (source_id,))
+
+        result = self._post("/api/follow/check",
+                            {"older": True, "backfill_all": True, "rewind": True})
+        self.assertEqual(pages, [1, 2, 3])
+        self.assertTrue(result["results"][0]["exhausted"])
+        with self.contract.database.read_connection() as connection:
+            state = connection.execute(
+                "SELECT backfill_page FROM follow_source WHERE id=?", (source_id,)
+            ).fetchone()[0]
+        self.assertEqual(state, 3)
+
     def test_history_end_is_a_neutral_success_and_does_not_advance_cursor(self):
         source_id = self._seed()
 
