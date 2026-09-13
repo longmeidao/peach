@@ -695,7 +695,7 @@ function vt({ id: e, label: t, actions: n, busy: r }) {
 	};
 	return /* @__PURE__ */ q("div", {
 		ref: i,
-		class: "splitbutton board-button-group",
+		class: "splitbutton board-button-group primary",
 		onClickCapture: (e) => {
 			r && (e.preventDefault(), e.stopPropagation());
 		},
@@ -712,13 +712,13 @@ function vt({ id: e, label: t, actions: n, busy: r }) {
 		children: [
 			/* @__PURE__ */ q("button", {
 				type: "button",
-				class: "splitmain geist-button",
+				class: "splitmain geist-button primary",
 				onClick: () => s(n[0]),
 				children: [o(n[0].icon), n[0].label]
 			}),
 			/* @__PURE__ */ q("button", {
 				type: "button",
-				class: "splittoggle",
+				class: "splittoggle geist-button primary",
 				"aria-label": t,
 				"aria-haspopup": "menu",
 				"aria-expanded": "false",
@@ -924,7 +924,7 @@ function Tt() {
       <section class="cleanupfieldset board-processing-skeleton" data-geist-fieldset aria-labelledby="cleanup-loading-scan">
         <div class="geist-fieldset-content"><h3 class="geist-fieldset-title" id="cleanup-loading-scan">扫描与采集</h3>
           <p>扫描媒体文件夹，导入已有资料，采集缺失信息。</p></div>
-        <footer class="geist-fieldset-footer" data-geist-fieldset-footer><a class="board-link-button" href="/scraping"><span>来源和凭证</span><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-arrow-up"></use></svg></a><div class="splitbutton board-button-group"><button type="button" class="splitmain geist-button" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-database"></use></svg>扫描并补全资料</button><button type="button" class="splittoggle" disabled aria-label="更多扫描与采集方式"><svg aria-hidden="true"><use href="#i-chevron-down"></use></svg></button></div></footer>
+        <footer class="geist-fieldset-footer" data-geist-fieldset-footer><a class="board-link-button" href="/scraping"><span>来源和凭证</span><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-arrow-up"></use></svg></a><div class="splitbutton board-button-group primary"><button type="button" class="splitmain geist-button primary" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-database"></use></svg>扫描并补全资料</button><button type="button" class="splittoggle geist-button primary" disabled aria-label="更多扫描与采集方式"><svg aria-hidden="true"><use href="#i-chevron-down"></use></svg></button></div></footer>
       </section>
       <section class="cleanupfieldset cleanupemptyfolders" data-geist-fieldset aria-labelledby="cleanup-loading-empty">
         <div class="geist-fieldset-content"><h3 class="geist-fieldset-title" id="cleanup-loading-empty">空文件夹</h3>
@@ -942,14 +942,14 @@ function Tt() {
 		"作品资料站",
 		"资料出处"
 	].map((e) => `<div><span>${e}</span><b>${t}</b></div>`).join("")}</div></div></div>
-        <div class="resourcesyncfooter geist-fieldset-footer" data-geist-fieldset-footer><button class="resourceaction" type="button" disabled>检查死链</button></div>
+        <div class="resourcesyncfooter geist-fieldset-footer" data-geist-fieldset-footer><button class="resourceaction primary" type="button" disabled>检查死链</button></div>
       </div></section>
     <section class="resourcesync" aria-labelledby="cleanup-loading-sync">
       <h2 id="cleanup-loading-sync">资源同步</h2>
       <div class="resourcesyncbox" data-geist-fieldset>
         <div class="resourcesyncbody geist-fieldset-content"><h3 class="geist-fieldset-title">文件与记录核对</h3>
           <p>${t}</p></div>
-        <div class="resourcesyncfooter geist-fieldset-footer" data-geist-fieldset-footer><button class="resourceaction" type="button" disabled>检查文件</button></div>
+        <div class="resourcesyncfooter geist-fieldset-footer" data-geist-fieldset-footer><button class="resourceaction primary" type="button" disabled>检查文件</button></div>
       </div></section></div>`;
 }
 function Et(e, t = !1, n = !1) {
@@ -5069,44 +5069,43 @@ var pa = (e = 0) => Number(e).toLocaleString(), ma = {
 	local: "本地磁盘",
 	115: "115",
 	pikpak: "PikPak"
-};
-function ha(e, t) {
+}, ha = (e) => b(s[e] ?? "database"), ga = (e, t, n) => `<article class="board-plain-stat resourcestat">
+    <span class="board-plain-stat-head">${e}</span>
+    <strong>${t}</strong>
+    <span class="cleanupmeta">${n}</span></article>`;
+function _a(e, t) {
 	let n = e.cache || {
 		files: 0,
 		bytes: 0
 	}, r = !!(e.missing || n.files);
-	return `<div class="resourcepanel" data-geist-fieldset><div class="resourcesources">${(e.sources || []).map((e) => `<article>
-    <div class="resourcesourcetitle"><b>${ma[e.location] || "媒体来源"}</b><span class="${e.online ? "online" : "offline"}">${e.online ? "可访问" : "离线，已跳过"}</span></div>
-    <strong>${e.online ? `${pa(e.missing)} 项` : "—"}</strong>
-    <small>${e.online ? `找不到文件 · 已检查 ${pa(e.checked)} 项` : `馆藏中有 ${pa(e.total)} 项`}</small>
-    ${e.unreadable ? `<small>${pa(e.unreadable)} 项读取失败，已跳过</small>` : ""}</article>`).join("")}</div>
-    <div class="resourcecache"><div><span>可清理的缓存</span><b>${pa(n.files)} 个</b><small>${t(n.bytes)}</small></div>
-    <div><span>待移入回收站</span><b>${pa(e.missing)} 项</b></div></div>
+	return `<div class="cleanupstats resourcestats">${(e.sources || []).map((e) => ga(`<span class="board-stat-tile resourcestat-tile">${ha(e.location)}</span>${ma[e.location] || "媒体来源"}<span class="resourcestat-state ${e.online ? "online" : "offline"}">${e.online ? "可访问" : "离线，已跳过"}</span>`, e.online ? `${pa(e.missing)} 项` : "—", [e.online ? `找不到文件 · 已检查 ${pa(e.checked)} 项` : `馆藏中有 ${pa(e.total)} 项`, e.unreadable ? `${pa(e.unreadable)} 项读取失败，已跳过` : ""].filter(Boolean).join(" · "))).join("")}
+    ${ga("待移入回收站", `${pa(e.missing)} 项`, "")}
+    ${ga("可清理的缓存", `${pa(n.files)} 个`, n.files ? t(n.bytes) : "")}</div>
     ${r ? g(`将把找不到文件的 ${pa(e.missing)} 项馆藏记录移入回收站，并清理 ${pa(n.files)} 个闲置缓存。`, { label: "清理内容" }) : ""}
-    <div class="resourceapplyrow geist-fieldset-footer" data-geist-fieldset-footer>${r ? "<button class=\"geist-button primary\" type=\"button\" id=\"resourceApply\">清理失效记录与缓存</button>" : "<p class=\"resourcesyncok\">已检查可访问的来源，没有待清理的记录或缓存。</p>"}</div></div>`;
+    <div class="resourceapplyrow geist-fieldset-footer" data-geist-fieldset-footer>${r ? "<button class=\"geist-button primary\" type=\"button\" id=\"resourceApply\">清理失效记录与缓存</button>" : "<p class=\"resourcesyncok\">已检查可访问的来源，没有待清理的记录或缓存。</p>"}</div>`;
 }
 //#endregion
 //#region src/jav-artwork.ts
-function ga(e) {
+function va(e) {
 	return [
 		"small",
 		"sleeve",
 		"preview"
 	].includes(String(e)) ? "small" : "big";
 }
-function _a(e) {
+function ya(e) {
 	return {
-		javLayout: ga(e.javLayout),
-		javImage: va(e.javLayout === "preview" ? "thumbnail" : e.javImage)
+		javLayout: va(e.javLayout),
+		javImage: ba(e.javLayout === "preview" ? "thumbnail" : e.javImage)
 	};
 }
-function va(e) {
+function ba(e) {
 	return e === "thumbnail" ? "thumbnail" : "cover";
 }
-function ya(e, t) {
-	return e.is_jav && e.code && e.has_cover && (va(t) === "cover" || !e.has_thumb) ? "cover" : e.has_thumb ? "thumbnail" : "";
+function xa(e, t) {
+	return e.is_jav && e.code && e.has_cover && (ba(t) === "cover" || !e.has_thumb) ? "cover" : e.has_thumb ? "thumbnail" : "";
 }
-function ba(e, t) {
+function Sa(e, t) {
 	let n = Number(e?.px?.[0]), r = Number(e?.px?.[1]), i = Number(e?.x0);
 	if (!(n > 0 && r > 0 && t > 0) || !Number.isFinite(i)) return null;
 	let a = Math.min(1, Math.max(0, i / n)), o = n / r / t, s = (1 - a) * o;
@@ -5117,15 +5116,15 @@ function ba(e, t) {
 		left: l(c)
 	};
 }
-function xa(e, t) {
+function Ca(e, t) {
 	e.querySelectorAll("img[data-jav-image]").forEach((e) => {
-		let n = e.dataset.javCover || "", r = e.dataset.javThumb || "", i = !!(n && (va(t) === "cover" || !r)), a = i ? n : r;
+		let n = e.dataset.javCover || "", r = e.dataset.javThumb || "", i = !!(n && (ba(t) === "cover" || !r)), a = i ? n : r;
 		e.classList.toggle("cover", i), e.classList.toggle("whole", i && e.dataset.javImageLayout !== "big"), e.classList.toggle("front", i && e.dataset.javImageLayout === "big"), e.classList.remove("panel"), e.removeAttribute("style"), e.closest(".pic")?.style.removeProperty("--cover-blur"), a && e.getAttribute("src") !== a && (e.src = a);
 	});
 }
 //#endregion
 //#region src/islands.ts
-var Sa = {
+var wa = {
 	"library-processing": {
 		load: yt,
 		component: St
@@ -5146,16 +5145,16 @@ var Sa = {
 		load: ii,
 		component: _i
 	}
-}, Ca = () => Object.keys(Sa), wa = /* @__PURE__ */ new Map();
-async function Ta(e, t, n, r = {}) {
-	let i = Sa[e];
+}, Ta = () => Object.keys(wa), Ea = /* @__PURE__ */ new Map();
+async function Da(e, t, n, r = {}) {
+	let i = wa[e];
 	if (!i) throw Error(`未注册的 island：${String(e)}`);
-	Da(t);
+	ka(t);
 	let a = {
 		controller: new AbortController(),
 		painted: !1
 	};
-	wa.set(t, a);
+	Ea.set(t, a);
 	let o;
 	try {
 		o = {
@@ -5169,9 +5168,9 @@ async function Ta(e, t, n, r = {}) {
 			error: W(e)
 		};
 	}
-	if (wa.get(t) !== a) return;
+	if (Ea.get(t) !== a) return;
 	if (r.isCurrent && !r.isCurrent()) {
-		wa.delete(t);
+		Ea.delete(t);
 		return;
 	}
 	t.textContent = "", a.painted = !0;
@@ -5181,10 +5180,10 @@ async function Ta(e, t, n, r = {}) {
 	};
 	Ne(ue(i.component, s), t);
 }
-var Ea = (e) => !!e && wa.has(e);
-function Da(e) {
-	let t = wa.get(e);
-	t && (t.controller.abort(), wa.delete(e), t.painted && Ne(null, e));
+var Oa = (e) => !!e && Ea.has(e);
+function ka(e) {
+	let t = Ea.get(e);
+	t && (t.controller.abort(), Ea.delete(e), t.painted && Ne(null, e));
 }
 //#endregion
-export { Dt as TASTE_GUIDE_KEY, En as activityChartsHtml, aa as boardPageSkeleton, Ie as boundedPreference, la as catalogEmptyHtml, ca as catalogSuggestions, zi as clampPage, Tt as cleanupSkeletonHtml, Ct as cloudLocations, wt as cloudPreferenceLocations, ki as createReviewSelection, bn as creatorSankeyHtml, ia as detailSkeletonHtml, Ve as distributionChart, sa as emptyCatalogLayout, qi as entitySkeletonHtml, ht as followJobProgress, Mi as groupReviewRows, Ci as identityEvidenceHtml, Nt as initBoardControls, Ea as islandMounted, Ca as islandNames, ya as javImageKind, pt as jobActivityHtml, Be as jobProgressHtml, Vi as matchesFaceSource, Gi as mountAvatarPicker, jt as mountBoardStatePreview, Ta as mountIsland, Re as mountNumberSetting, Hi as nativeImageFit, va as normalizeJavImage, ga as normalizeJavLayout, _a as normalizeJavPreferences, Ri as pageCount, Bi as paginationHtml, ba as panelFrame, Pe as preferredDirection, Ue as radarChart, Cn as radialCardHtml, He as rankedChart, bi as refreshStore, ha as resourceScanHtml, Si as reviewImageHtml, Di as selectGroup, Ti as selectRange, Ei as selectionSummary, ua as sidebarHasCatalogContent, kn as sidebarSectionHtml, fa as sidebarTagCounts, ze as statCardBody, yi as storeNames, Mt as syncBoardRange, xa as syncJavImages, Le as syncNumberSetting, Oi as syncSelectionToolbar, da as syncSidebarSurface, Et as tasteHistoryGuideHtml, Mn as transitionTheme, Ki as unmountAvatarPicker, Da as unmountIsland, Ai as updateReviewSticky, mt as watchJob, Dn as wireActivityCharts, xn as wireCreatorSankey, zt as wireExpandableRanks, Rt as wireGrowingCharts, wn as wireRadialCards, wi as wireReviewPictures, Ii as wireReviewSelection, An as wireSidebarGroups, Ot as wireTasteHistoryGuide };
+export { Dt as TASTE_GUIDE_KEY, En as activityChartsHtml, aa as boardPageSkeleton, Ie as boundedPreference, la as catalogEmptyHtml, ca as catalogSuggestions, zi as clampPage, Tt as cleanupSkeletonHtml, Ct as cloudLocations, wt as cloudPreferenceLocations, ki as createReviewSelection, bn as creatorSankeyHtml, ia as detailSkeletonHtml, Ve as distributionChart, sa as emptyCatalogLayout, qi as entitySkeletonHtml, ht as followJobProgress, Mi as groupReviewRows, Ci as identityEvidenceHtml, Nt as initBoardControls, Oa as islandMounted, Ta as islandNames, xa as javImageKind, pt as jobActivityHtml, Be as jobProgressHtml, Vi as matchesFaceSource, Gi as mountAvatarPicker, jt as mountBoardStatePreview, Da as mountIsland, Re as mountNumberSetting, Hi as nativeImageFit, ba as normalizeJavImage, va as normalizeJavLayout, ya as normalizeJavPreferences, Ri as pageCount, Bi as paginationHtml, Sa as panelFrame, Pe as preferredDirection, Ue as radarChart, Cn as radialCardHtml, He as rankedChart, bi as refreshStore, _a as resourceScanHtml, Si as reviewImageHtml, Di as selectGroup, Ti as selectRange, Ei as selectionSummary, ua as sidebarHasCatalogContent, kn as sidebarSectionHtml, fa as sidebarTagCounts, ze as statCardBody, yi as storeNames, Mt as syncBoardRange, Ca as syncJavImages, Le as syncNumberSetting, Oi as syncSelectionToolbar, da as syncSidebarSurface, Et as tasteHistoryGuideHtml, Mn as transitionTheme, Ki as unmountAvatarPicker, ka as unmountIsland, Ai as updateReviewSticky, mt as watchJob, Dn as wireActivityCharts, xn as wireCreatorSankey, zt as wireExpandableRanks, Rt as wireGrowingCharts, wn as wireRadialCards, wi as wireReviewPictures, Ii as wireReviewSelection, An as wireSidebarGroups, Ot as wireTasteHistoryGuide };

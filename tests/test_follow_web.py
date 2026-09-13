@@ -2733,6 +2733,10 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains('<div class="fauthorsources" id="follow-author-${group[0].id}"'
                                 ' aria-label="${esc(name)} 的关注来源">${sourceRows}</div>')
         self.assertBoardContains(".followmanage .fauthorsources{height:auto;max-height:none;overflow:visible}")
+        # 末位作者卡与批量条之间隔着分页条，卡的四角都圆回去，不再与底条做拼角。
+        self.assertBoardContains(".followmanage .fmain>.fsec:has(>.fsecfoot)>.frows,.followmanage "
+                                 ".fmain>.fsec:has(>.fsecfoot) .board-follow-list{border-bottom-left-radius:0;border-bottom-right-radius:0}")
+        self.assertPageLacks(".fmain>.fsec:has(>.fsecfoot) .fauthor:last-child")
 
     def test_source_actions_are_icon_only_and_stay_on_one_row(self):
         row = self.page[self.page.index("function followSourceCells(source,selectable=false)"):]
@@ -3871,9 +3875,11 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("followCheckReport=report.status==='failed'")
         self.assertPageContains("${followCheckReport?followCheckFailNote(followCheckReport):''}")
         for needle in ("新增 <b>", "更新 <b>", "个来源没有更新", "没有任何更新",
-                       "个失败", "fcheckfail", "没有更多历史内容",
-                       "geist-note"):
+                       "个失败", "fcheckfail", "geist-note",
+                       # 「没有更多内容」的摘要只跟着右下角回执走，页内不铺它的明细条。
+                       "个没有更多内容"):
             self.assertPageContains(needle)
+        self.assertPageLacks("没有更多历史内容")
         # 失败要说清是哪个站，不能让用户去猜 `rule34xxx` 是什么。
         self.assertPageContains("row.provider_label||row.provider")
         # 回执带一个具名的后续动作：光摆数字会让人去点「…条详情」那半句，

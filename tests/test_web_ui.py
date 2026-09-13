@@ -3121,6 +3121,104 @@ class WebUiSourceTests(unittest.TestCase):
             '.entitycollectionhead[aria-busy="true"] .entitybatch svg{\n'
             "  --strand-dash:100;--strand-cycle:2.2s}")
 
+    def test_data_page_scan_buttons_animate_their_own_glyphs_while_busy(self):
+        """「扫一遍」的两枚键各自适配忙态，不统一转圈。
+
+        检查文件的 git-compare 照 lucide-animated 的 GitCompare 逐笔描画（右下圆→两条
+        枝→左上圆，画完停住再一起淡出）；扫描空文件夹的 scan-search 四角按对角两拍
+        轮流亮，放大镜保持不动。动效只能挂在 symbol 自己的零件上：`<use>` 的影子树
+        里选不到外层的忙态标记，继承的自定义属性进得去，所以忙态把动画名和周期传
+        下去，空闲时名字是 none。这些标注上游不会带，补丁必须住在 vendor 脚本里，
+        否则换版本一刷新就被抹掉。
+        """
+        self.assertPageContains(
+            '<circle class="gc-part gc-end-a" pathLength="100" cx="18" cy="18" r="3"/>')
+        self.assertPageContains(
+            '<path class="gc-part gc-line-a" pathLength="100" d="M13 6h3a2 2 0 0 1 2 2v7"/>')
+        self.assertPageContains(
+            '<circle class="gc-part gc-end-b" pathLength="100" cx="6" cy="6" r="3"/>')
+        self.assertPageContains(
+            '<path class="scan-corner scan-corner-a" d="M3 7V5a2 2 0 0 1 2-2h2"/>')
+        self.assertPageContains(
+            '<path class="scan-corner scan-corner-b" d="M17 3h2a2 2 0 0 1 2 2v2"/>')
+        self.assertPageContains(
+            "@keyframes peach-gc-draw-a{\n"
+            "  0%{stroke-dashoffset:100;opacity:1}\n"
+            "  17%,86%{stroke-dashoffset:0;opacity:1}\n"
+            "  100%{stroke-dashoffset:0;opacity:0}}")
+        self.assertPageContains(
+            "@keyframes peach-scan-corner-a{\n"
+            "  0%,40%{opacity:1}\n"
+            "  50%,90%{opacity:.25}\n"
+            "  100%{opacity:1}}")
+        self.assertPageContains(
+            "#i-git-compare .gc-part{stroke-dasharray:var(--gc-dash,none);\n"
+            "  animation-name:var(--gc-anim,none);animation-duration:var(--gc-cycle,1.8s);\n"
+            "  animation-timing-function:linear;animation-iteration-count:infinite}")
+        self.assertPageContains(
+            "#i-git-compare .gc-line-a,#i-git-compare .gc-line-b{animation-name:var(--gc-anim-b,none)}")
+        self.assertPageContains(
+            "#i-git-compare .gc-end-b{animation-name:var(--gc-anim-c,none)}")
+        self.assertPageContains(
+            "#i-scan-search .scan-corner{animation-name:var(--scan-anim,none);\n"
+            "  animation-duration:var(--scan-cycle,1.2s);animation-timing-function:ease-in-out;animation-iteration-count:infinite}")
+        self.assertPageContains(
+            '#resourceScan[aria-busy="true"] svg,[data-cleanup-empty-scan][aria-busy="true"] svg{\n'
+            "  --gc-dash:100;--gc-anim:peach-gc-draw-a;--gc-anim-b:peach-gc-draw-b;--gc-anim-c:peach-gc-draw-c;\n"
+            "  --scan-anim:peach-scan-corner-a;--scan-anim-b:peach-scan-corner-b}")
+        vendor = (Path(__file__).resolve().parents[1] / "scripts/vendor_web_dependencies.mjs").read_text(encoding="utf-8")
+        self.assertIn('if (symbol === "git-compare") inner = inner', vendor)
+        self.assertIn('if (symbol === "scan-search") inner = inner', vendor)
+
+    def test_resource_sync_sources_share_the_official_marks_and_board_stat_cards(self):
+        """数据管理页「这是哪个网盘」的答案只有一份，结果照 Board 的 stat cards 排。
+
+        115 与 PikPak 取 `MEDIA_SOURCE_ICONS` 的官方站标，不是 globe 字形：来源角标、
+        媒体库切换器和配置页问的是同一件事，同一个答案不该因为取图入口不同而长成
+        两枚图形（SRCICON 的注释）。结果读数和数据管理顶上一排同一副卡片，三个来源
+        带站标 tile，缓存与回收站两张读数凑成同一行；清理内容 Note 与操作行独立成层。
+        空文件夹卡片的来源行取同一份站标，扫描结果与失败都落在 Note 里。操作键统一
+        Board primary，销毁键维持 danger 实底红；顶栏密度键与筛选框的版式开关问同一
+        件事「现在是哪种排法」，字形取同一份 PHOTO_SIZES 映射，按下去换成当前状态的图标。
+        """
+        renderer = (Path(__file__).resolve().parents[1] / "frontend/src/resource-sync.ts").read_text(encoding="utf-8")
+        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
+        self.assertIn("selectOptionIconHtml(MEDIA_SOURCE_ICONS[location] ?? 'database')", renderer)
+        self.assertNotIn("'globe'", renderer,
+                         "115/PikPak 用官方站标，不退回 globe 字形")
+        self.assertIn('class="board-plain-stat resourcestat"', renderer)
+        self.assertIn('class="resourcestat-state', renderer)
+        self.assertIn(".resourcestat-tile img{width:20px;height:20px;object-fit:contain}", board)
+        self.assertIn(".resourcestat-state.online{color:var(--success)}", board)
+        # 扫描中的环形进度独居在结果槽里，自己带框才和链接检查里住在面板中的进度一个形状。
+        self.assertPageContains(
+            "#resourceSyncResult>.board-job-progress{margin:0;padding:14px 16px;border:1px solid var(--line-soft);border-radius:var(--control-radius)}")
+        # 空文件夹来源行取同一份站标；扫描结果与失败提示是 Note，不是裸文本。
+        self.assertPageContains(
+            'const sourceBadge=source=>`<span class="cleanupsourcemark">'
+            "${selectOptionIconHtml(MEDIA_SOURCE_ICONS[source.location]||'database')}"
+            '${sourceName(source)}</span>`;')
+        self.assertIn(".cleanupsourcemark{display:inline-flex;align-items:center;gap:6px}", board)
+        self.assertPageContains("status.innerHTML=noteHtml(`已检查 ${Number(result.scanned||0).toLocaleString()} 个目录，发现 ${Number(result.empty||0).toLocaleString()} 个空文件夹")
+        self.assertPageContains("status.innerHTML=noteHtml(error.message,{variant:'error',label:'扫描失败'})")
+        # 检查结果 Note 在空文件夹卡里顶满左右，状态容器也得是能装 Note 的块级元素。
+        self.assertPageContains('<div class="cleanupstate" aria-live="polite"></div>')
+        self.assertIn(".cleanupgrid>.cleanupemptyfolders .cleanupstate .geist-note{margin-inline:-24px;border-inline:0;border-radius:0}", board)
+        # 操作键统一 Board primary；销毁键另有一副实底红，不掺进来。
+        for needle in (
+                'id="linkCheck">',
+                'id="linkRetryPicked" disabled>',
+                'id="linkRetryAll">',
+                'id="resourceScan">'):
+            self.assertIn(f'class="resourceaction primary" type="button" {needle}', self.app_js)
+        self.assertIn('class="geist-button primary" data-cleanup-empty-scan', self.app_js)
+        self.assertIn('class="danger" data-cleanup-empty hidden', self.app_js)
+        self.assertIn("body .splitbutton.primary{border:0;box-shadow:none}", board)
+        # 顶栏密度键跟筛选框的版式开关取同一份字形映射。
+        self.assertPageContains("const glyph=PHOTO_SIZES.find(([key])=>key===size)?.[2];if(!glyph)return;")
+        self.assertPageContains("syncDensityIcon(density==='big'?'big':'small')}")
+        self.assertPageContains("  }else applyDensity();")
+
     def test_skeletons_shimmer_by_sweeping_instead_of_breathing(self):
         """微光是横向扫光，不是整块呼吸。
 
@@ -5120,7 +5218,9 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("noteHtml(error.message,{variant:'error',label:'扫描失败'})")
         self.assertPageContains("noteHtml(error.message||'分析未取得',{variant:'error',label:'分析未取得'})")
         self.assertPageContains('class="geist-note geist-note-error fcheckreport" role="alert"')
-        self.assertPageContains('class="geist-note geist-note-secondary fcheckreport" role="note"')
+        # 「没有更多内容」的抓取完摘要跟着检查完成的右下角 notification 走，页内只剩失败与取证缺档。
+        self.assertPageLacks('class="geist-note geist-note-secondary fcheckreport" role="note"')
+        self.assertPageLacks('个来源没有更多内容</b>')
         # 每一条失败都进 Note，没有第二套「红字一行」的写法：红色文字既没有图标
         # 也没有边框，在暗色底上和普通说明文字只差一个色相，扫读时整条会被跳过。
         self.assertPageContains('class="geist-note geist-note-error fwarn" role="alert"')
@@ -5133,7 +5233,6 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_note_and_info_surfaces_reuse_the_photo_detail_info_icon(self):
         self.assertPageContains('<symbol id="i-info" viewBox="0 0 24 24">')
-        self.assertPageContains("${icon('info')}<div><p><b>${exhausted.length} 个来源没有更多内容</b>")
         self.assertPageContains('aria-label="凭据存放位置说明">${icon(\'info\')}</button>')
         self.assertPageContains('aria-label="图片详情" title="图片详情">${icon(\'info\')}</button>')
         self.assertPageContains('.geist-note>svg{width:16px;height:24px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}')
@@ -6569,6 +6668,10 @@ class WebUiSourceTests(unittest.TestCase):
         # test_the_stats_and_taste_dimensions_switch_as_a_segmented_control 与
         # test_the_review_categories_look_like_a_secondary_menu。
         self.assertIn(".insighttabs button[aria-selected=\"true\"]{background:none;color:var(--color-text-primary);font:var(--board-body-medium)}", board)
+        # 统计维度的轨道不裁剪：滑块冲过落点的那一下要能超出轨道，跟其他分段器同一个动法。
+        self.assertIn(".insighttabs{position:relative;display:inline-flex;align-items:center;gap:2px;width:auto;"
+                      "max-width:100%;min-height:0;margin:0;padding:4px;border:0;border-radius:10px;"
+                      "background:var(--color-background-tertiary-default);overflow:visible}", board)
         self.assertIn(".insightpanel>header h3,.insightcopy>span{margin:0;font:var(--board-heading);color:var(--color-text-primary)}", board)
         self.assertIn("body .tasterank:is(button):hover,body .board-rank-list .tasterank:hover{border-color:transparent;"
                       "background:transparent}", board)
@@ -8335,10 +8438,10 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn("`占用 ${fmtSize(data.bytes||0)}`", counts, "回收站要说清空能腾出多少")
         self.assertPageContains(".cleanupmeta:empty{display:none}")
         # 三个「· 在线」徽章换成一行来源名：在线与否是资源同步那块的读数，
-        # 在空文件夹卡上只有离线时才改变结论。
+        # 在空文件夹卡上只有离线时才改变结论。来源行带官方站标，离线的归到同一枚标记后。
         self.assertPageLacks("class=\"cleanupsource\"")
         self.assertPageLacks(".cleanupsources{")
-        self.assertIn("`${offline.map(sourceName).join(' · ')} 离线`", cleanup)
+        self.assertIn("offline.length?`${offline.map(sourceBadge).join('')}<span class=\"cleanupsourcemark cleanupsourcelost\">离线</span>`", cleanup)
         self.assertIn("<strong>${online.length.toLocaleString()} 个来源可扫描</strong>", cleanup)
         # 单列布局里高度由内容决定，和同页「网盘与账本」一致；三列时的对齐地板
         # 到了单列只剩下把每张卡撑出一段空白。
@@ -11078,7 +11181,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn('<div class="fsrcfilter" id="followSrcFilter"></div>', form)
         # 别名表单那个提交键是活的，别顺手一起删。
         self.assertPageContains(".faliasform .fbtn{height:38px;min-height:38px}")
-        self.assertPageContains('<button class="fbtn" type="submit">保存别名</button>')
+        self.assertPageContains('<button class="fbtn primary" type="submit">保存别名</button>')
 
     def test_follow_filter_buttons_write_the_url_before_refetching(self):
         """先写 URL 再重取。反过来的话 openFollow 会照旧 URL 把状态推回去。"""
@@ -11703,9 +11806,12 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('class="resourcepanel"')
         self.assertPageContains('class="resourceapplyrow"')
         self.assertPageContains(".resourceaction{box-sizing:border-box;height:36px")
-        self.assertPageContains("@media(max-width:640px){.resourcesync .resourcesources{grid-auto-flow:row;grid-template-columns:1fr}")
+        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
         self.assertPageContains(".resourcesyncbox,.resourcepanel{overflow:clip;border:1px solid var(--field-ring);border-radius:var(--floating-radius)")
-        self.assertPageContains(".resourcesources article+article{border-left:1px solid var(--line-soft)}")
+        self.assertIn(".resourcestat{cursor:default}", board,
+                      "结果读数卡不是入口，不接悬停抬色")
+        self.assertIn("#resourceSyncResult>.resourceapplyrow{margin:16px 0 0;min-height:0;border:0;background:none;padding:0}", board,
+                      "读数卡、Note 与操作行各是独立一层，不再共享一只面板框")
         self.assertPageContains(".resourceapplyrow .resourcesyncok{color:var(--success)}")
         self.assertPageContains(".resourcesync{scroll-margin-top:calc(var(--topH) + 18px);display:grid;gap:16px}")
         self.assertPageLacks(".resourcesync{scroll-margin-top:calc(var(--topH) + 18px);display:grid;gap:16px;margin-top:32px;padding-top:24px;border-top:1px solid var(--line-soft)}")

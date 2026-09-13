@@ -89,9 +89,6 @@ body .configpage :is(.configrm,.configpick).geist-button{width:var(--control-h);
 .configtoggle{display:flex;align-items:center;justify-content:space-between;gap:16px;min-height:32px;font-size:var(--fs-sm);cursor:pointer}
 .configtoggle:has(:disabled),.configcheck:has(:disabled){cursor:not-allowed;color:var(--muted)}
 .configtoggle>span{min-width:0}
-/* 危险区和警告区那一副面写在 `board.css` 末尾：这一层里给卡描边和给底栏铺面的通用规则
-   有好几条，随后都被 Board 那一层按自己的面色重写过一遍，色写在这里会被逐条盖掉。 */
-.resourcepanel>.geist-note{margin:16px 20px}
 .configfacts{margin:0;display:grid;grid-template-columns:max-content minmax(0,1fr);gap:10px 24px;align-items:baseline}
 .configfacts dt{color:var(--muted);font-size:var(--fs-sm)}.configfacts dd{margin:0;overflow-wrap:anywhere}
 .configfacts dt .gselectmark{vertical-align:-3px;margin-inline-end:8px}

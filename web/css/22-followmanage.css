@@ -481,7 +481,6 @@ details.fcred{display:block;min-width:0}
 .linkstats b{font-size:var(--fs-xl);font-variant-numeric:tabular-nums}
 .linkstats small{color:var(--muted);font-size:var(--fs-xs)}
 .linkhosts{margin-top:16px}.linkhosts b{font-weight:500;font-size:var(--fs-sm);overflow-wrap:anywhere}
-.linksummary .resourcecache b{font-size:var(--fs-lg)}
 .linkgroup{padding:16px;border-top:1px solid var(--line-soft)}.linkgroup:first-child{border-top:0}
 .linkgroup h4{margin:0 0 4px;font-size:var(--fs-md);font-weight:600}
 .linkgroup h4 b{margin-left:6px;color:var(--muted);font-weight:inherit;font-variant-numeric:tabular-nums}

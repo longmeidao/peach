@@ -157,6 +157,18 @@ for (const [symbol, icon] of lucideIcons) {
   let inner = svgInner(text("node_modules", "lucide-static", "icons", `${icon}.svg`));
   if (symbol === "rss") inner = inner.replace('<circle cx="5" cy="19" r="1" />', '<circle cx="5" cy="19" r="1" fill="currentColor" stroke="none"/>');
   if (symbol === "grip-vertical") inner = inner.replaceAll(' r="1" />', ' r="1" fill="currentColor" stroke="none"/>');
+  /* 忙态动画的挂点：class 与 pathLength 只服务 dasharray 动画，静止时没有任何效果。
+     上游不会带这些标注，换版本一刷新就会被抹掉，所以和 shuffle 的 strand 一样在这里补。 */
+  if (symbol === "git-compare") inner = inner
+    .replace('<circle cx="18" cy="18" r="3" />', '<circle class="gc-part gc-end-a" pathLength="100" cx="18" cy="18" r="3"/>')
+    .replace('<path d="M13 6h3a2 2 0 0 1 2 2v7" />', '<path class="gc-part gc-line-a" pathLength="100" d="M13 6h3a2 2 0 0 1 2 2v7"/>')
+    .replace('<path d="M11 18H8a2 2 0 0 1-2-2V9" />', '<path class="gc-part gc-line-b" pathLength="100" d="M11 18H8a2 2 0 0 1-2-2V9"/>')
+    .replace('<circle cx="6" cy="6" r="3" />', '<circle class="gc-part gc-end-b" pathLength="100" cx="6" cy="6" r="3"/>');
+  if (symbol === "scan-search") inner = inner
+    .replace('<path d="M3 7V5a2 2 0 0 1 2-2h2" />', '<path class="scan-corner scan-corner-a" d="M3 7V5a2 2 0 0 1 2-2h2"/>')
+    .replace('<path d="M17 3h2a2 2 0 0 1 2 2v2" />', '<path class="scan-corner scan-corner-b" d="M17 3h2a2 2 0 0 1 2 2v2"/>')
+    .replace('<path d="M21 17v2a2 2 0 0 1-2 2h-2" />', '<path class="scan-corner scan-corner-a" d="M21 17v2a2 2 0 0 1-2 2h-2"/>')
+    .replace('<path d="M7 21H5a2 2 0 0 1-2-2v-2" />', '<path class="scan-corner scan-corner-b" d="M7 21H5a2 2 0 0 1-2-2v-2"/>');
   const pattern = new RegExp(`<symbol id="i-${symbol}" viewBox="0 0 24 24">[\\s\\S]*?<\\/symbol>`);
   if (!pattern.test(index)) throw new Error(`缺少 Lucide symbol：${symbol}`);
   index = index.replace(pattern, `<symbol id="i-${symbol}" viewBox="0 0 24 24">${inner}</symbol>`);

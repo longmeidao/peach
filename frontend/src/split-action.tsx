@@ -16,7 +16,7 @@ export function SplitAction({ id, label, actions, busy }: { id: string; label: s
   }, [busy]);
   const glyph = (name: string) => <svg viewBox="0 0 24 24" aria-hidden="true"><use href={`#i-${name}`} /></svg>;
   const run = (action: Action) => { if (busy) return; floating.current?.setOpen(false); action.run(); };
-  return <div ref={root} class="splitbutton board-button-group" onClickCapture={event => {if(busy){event.preventDefault();event.stopPropagation();}}} onKeyDown={event => {
+  return <div ref={root} class="splitbutton board-button-group primary" onClickCapture={event => {if(busy){event.preventDefault();event.stopPropagation();}}} onKeyDown={event => {
     const items = Array.from(root.current!.querySelectorAll<HTMLButtonElement>('[role=menuitem]'));
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
       event.preventDefault(); if (busy) return;
@@ -28,8 +28,8 @@ export function SplitAction({ id, label, actions, busy }: { id: string; label: s
     }
     if (event.key === 'Tab') floating.current?.setOpen(false);
   }}>
-    <button type="button" class="splitmain geist-button" onClick={() => run(actions[0])}>{glyph(actions[0].icon)}{actions[0].label}</button>
-    <button type="button" class="splittoggle" aria-label={label} aria-haspopup="menu" aria-expanded="false" aria-controls={id}>{glyph('chevron-down')}</button>
+    <button type="button" class="splitmain geist-button primary" onClick={() => run(actions[0])}>{glyph(actions[0].icon)}{actions[0].label}</button>
+    <button type="button" class="splittoggle geist-button primary" aria-label={label} aria-haspopup="menu" aria-expanded="false" aria-controls={id}>{glyph('chevron-down')}</button>
     <div class="popmenu cardmenupanel" id={id} role="menu" hidden>
       {actions.map(action => <button key={action.label} type="button" role="menuitem" onClick={() => run(action)}>{glyph(action.icon)}<span>{action.label}</span></button>)}
     </div>

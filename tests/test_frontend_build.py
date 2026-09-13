@@ -272,10 +272,13 @@ class VitestTests(unittest.TestCase):
             capture_output=True, text=True, encoding="utf-8", errors="replace",
             cwd=str(FRONTEND), check=False)
         output = f"{completed.stdout}\n{completed.stderr}"
+        # vitest 的着色随宿主终端能力漂移，计数断言只认去码后的纯文本；
+        # 退出码与用例数两道判据不受着色影响。
+        plain = re.sub(r"\x1b\[[0-9;]*m", "", output)
         self.assertEqual(completed.returncode, 0, output)
-        self.assertRegex(output, r"Tests\s+\d+ passed", output)
-        self.assertNotRegex(output, r"Tests\s+0 passed", "vitest 一个用例都没跑")
-        counted = re.search(r"Tests\s+(\d+) passed", output)
+        self.assertRegex(plain, r"Tests\s+\d+ passed", output)
+        self.assertNotRegex(plain, r"Tests\s+0 passed", "vitest 一个用例都没跑")
+        counted = re.search(r"Tests\s+(\d+) passed", plain)
         assert counted is not None
         self.assertGreaterEqual(int(counted.group(1)), 10, output)
 
