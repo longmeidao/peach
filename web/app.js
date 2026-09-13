@@ -548,6 +548,7 @@ function renderJavImageSetting(){
     appSettings.javImage=normalizeJavImage(choice);saveSettings();
     syncJavImages(document,appSettings.javImage);
     document.querySelectorAll('img[data-jav-image].cover').forEach(coverAnchor);
+    repaintDetailPoster();
   });
   const size=$('#javSizeSetting');
   size.innerHTML=iconSwitchHtml('jav-size','JAV 封面默认大小',
@@ -2177,6 +2178,15 @@ function mountPlayerSubtitles(player,assetId){
     });
   }).catch(()=>{});
 }
+/* 换「JAV 默认封面」时，开着的详情把海报位跟同一张图一起换：挂载了走 player 的
+   海报层，脚本还在路上时改元素上的原生 poster，否则下一次开播前看到的还是旧
+   那张。详情没开（current 为空）或这条没有可用的本地图时不动。 */
+function repaintDetailPoster(){
+  const poster=current?detailPosterUrl(current):'';
+  if(!poster)return;
+  if(detailPlayer&&!detailPlayer.isDisposed())detailPlayer.poster(poster);
+  else $('#vid')?.setAttribute('poster',poster);
+}
 async function mountDetailPlayer(it,video,autoplay,options={}){
   if(detailPlayer)return detailPlayer;
   /* 从小窗展开回来或带 `?t=` 深链进来时从记下的时刻接着放；展开时如果正在放，回来也接着放。 */
@@ -2193,6 +2203,9 @@ async function mountDetailPlayer(it,video,autoplay,options={}){
   }
   detailPlayer=globalThis.videojs(video,{
     controls:true,preload:'metadata',language:'zh-CN',responsive:true,
+    /* video.js 只认 options 里的海报，不读 video 元素上的 poster 属性；不传，
+       开播前那层本地封面就在挂载那一刻被丢掉。 */
+    poster:options.poster||detailPosterUrl(it),
     controlBar:{
       pictureInPictureToggle:true,currentTimeDisplay:true,timeDivider:true,
       durationDisplay:true,remainingTimeDisplay:false
@@ -2827,6 +2840,16 @@ function javArtwork(it,layout,eager=false){
   const image=kind==='cover'?coverHtml
     :`<img class="poster" src="${thumb}" alt="" loading="${eager?'eager':'lazy'}"${frame}>`;
   return image.replace('<img ',`<img data-jav-image="${it.id}" data-jav-cover="${esc(cover)}" data-jav-thumb="${esc(thumb)}" data-jav-image-layout="${layout}" `);
+}
+/* 详情开场给播放器的海报位：video.js 的脚本还在下载、流源还没接上时，画面先给本地
+   封面，不留一块黑。选哪张与卡片同一份判据，番号作品跟随「JAV 默认封面」设置——
+   官方封套或预览图；其它媒体退到本地预览格。返回空串表示这条没有可用的本地图，
+   播放器照旧从黑场开始。 */
+function detailPosterUrl(it){
+  const thumb=(it.has_thumb||it.has_local_poster)?`/poster?id=${it.id}&c=4`:'';
+  if(!it.is_jav)return thumb;
+  return javImageKind(it,appSettings.javImage)==='cover'
+    ?`/cover?code=${encodeURIComponent(it.code||'')}`:thumb;
 }
 /* 卡片署名。版次队列要和「接着看」长得一样，就必须用同一份身份推导——各算各的
    迟早会在同名 creator/performer 那 35 组上分叉，同一条作品在两处指向两个实体。
@@ -5796,6 +5819,7 @@ async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=fals
       source:{src,type:selectedMedia?.media_type||item.media_type||'video/mp4'},
       checkSourceStatus:false,
       size:selectedMedia?.size,
+      poster:item.thumb_url,
       mediaPromise
     });
     const stopFollowAmbient=mountPlayerAmbient(followVideo);
@@ -10198,7 +10222,8 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
   };
   $('#likeBtn').onclick=()=>savePreference({liked:$('#likeBtn').getAttribute('aria-pressed')!=='true'});
   $('#savePreference').onclick=savePreference;
-  const vv=$('#vid');
+  const vv=$('#vid'),poster=detailPosterUrl(it);
+  if(poster)vv.poster=poster;
   vv.addEventListener('play',()=>{if(!$('#stage').dataset.c){$('#stage').dataset.c='1';
     api('/api/play',{method:'POST',body:JSON.stringify({id:it.id})})}});
   if(it.play_seconds&&realDuration(it.duration)){

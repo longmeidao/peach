@@ -3690,6 +3690,41 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('/vendor/videojs/8.24.0/video.min.js')
         self.assertPageContains('/vendor/videojs/8.24.0/video-js.min.css')
 
+    def test_detail_opens_with_the_local_cover_before_the_video_loads(self):
+        """详情开场先把本地封面挂上海报位。
+
+        video.js 按需加载，流源又是一趟解析往返：这中间画面不该是黑的。移除
+        交给播放器自己：挂载前是 `<video>` 的原生 poster，挂载后是 video.js 的
+        海报层，开播即收，详情侧不另写一套收尾逻辑。
+        """
+        self.assertPageContains("function detailPosterUrl(it){")
+        self.assertPageContains("const vv=$('#vid'),poster=detailPosterUrl(it);")
+        self.assertPageContains("poster:options.poster||detailPosterUrl(it)")
+
+    def test_detail_poster_follows_the_jav_image_preference(self):
+        body = self.app_js.split('function detailPosterUrl(it){', 1)[1].split('\n}', 1)[0]
+        self.assertIn("javImageKind(it,appSettings.javImage)==='cover'", body)
+        self.assertIn("`/cover?code=${encodeURIComponent(it.code||'')}`", body)
+        self.assertIn("/poster?id=${it.id}&c=4", body)
+
+    def test_changing_the_jav_image_preference_repaints_the_open_detail(self):
+        cover_body = self.app_js.split("wireIconSwitch(mount,'data-jav-image-choice',choice=>{", 1)[1].split('});', 1)[0]
+        self.assertIn("repaintDetailPoster();", cover_body)
+        repaint = self.app_js.split('function repaintDetailPoster(){', 1)[1].split('\n}', 1)[0]
+        self.assertIn("detailPlayer.poster(poster)", repaint)
+        self.assertIn("$('#vid')?.setAttribute('poster',poster)", repaint)
+        # 海报层属于详情播放器，函数就排在它前面；开场判据里 current 是详情独有的状态。
+        self.assertLess(self.app_js.index('function repaintDetailPoster(){'),
+                        self.app_js.index('async function mountDetailPlayer('))
+
+    def test_follow_detail_poster_survives_the_player_mount(self):
+        """video.js 只认 options 里的海报，不读元素上的 poster 属性。
+
+        关注视频的缩略图已经写在元素上，挂载那一刻却被丢掉：开播前又剩黑场。
+        同一条 poster 递进 options，挂载前后看到的才是同一张图。
+        """
+        self.assertPageContains("poster:item.thumb_url")
+
     def test_the_player_script_is_fetched_on_demand_instead_of_in_the_first_paint(self):
         """video.js 676KB，只有开始看片才用得上，和 Swiper 同一口径不进首屏。
 

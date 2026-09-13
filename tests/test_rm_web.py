@@ -2128,6 +2128,18 @@ class JavModeAndCoverTests(unittest.TestCase):
         self.assertTrue(rows[1]["has_cover"])
         self.assertFalse(rows[2]["has_cover"])
 
+    def test_item_detail_also_reports_whether_a_cover_is_on_disk(self):
+        """详情开场也要能照「JAV 默认封面」设置选海报位。
+
+        单条详情漏发这一格，播放器就只能永远落在预览图那一档：同一部作品在卡片
+        上是封套、进详情却换了一张，两处各自一份判据迟早分叉。
+        """
+        (self.covers / "ABW-232.jpg").write_bytes(b"x")
+        self.assertTrue(rm_web.q_item(self.contract, 1)["has_cover"])
+        self.contract.cache_bust()
+        (self.covers / "ABW-232.jpg").unlink()
+        self.assertFalse(rm_web.q_item(self.contract, 1)["has_cover"])
+
     def test_missing_cover_resolves_to_none_not_a_broken_path(self):
         self.assertIsNone(self.contract.cover_path("ABW-232"))
         self.assertIsNone(self.contract.cover_path(None))
