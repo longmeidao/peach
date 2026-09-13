@@ -52,7 +52,9 @@ class StreamSessionRegistryTests(unittest.IsolatedAsyncioTestCase):
             messages: list[dict] = []
 
             async def receive() -> dict:
-                return {"type": "http.request", "body": b"", "more_body": False}
+                # 服务器的 receive() 在请求体读完后就一直挂着，直到客户端断开。
+                await asyncio.Event().wait()
+                return {"type": "http.disconnect"}
 
             async def send(message: dict) -> None:
                 messages.append(message)
@@ -70,6 +72,52 @@ class StreamSessionRegistryTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(headers["content-range"], "bytes 0-63/64")
         self.assertEqual(headers["content-length"], "64")
         self.assertEqual(body, bytes(range(64)))
+        self.assertEqual(registry.active_count("detail-2"), 0)
+
+    async def test_client_disconnect_stops_reading_the_rest_of_the_file(self):
+        """拖动进度条掐掉旧 Range 请求后，服务端不能把文件剩下的部分读到末尾。
+
+        uvicorn 断开后 send() 静默返回，所以这里的 send 也照单全收；能证明停下来的
+        只有「断开后发出的块数」：8 块的文件，断在第 1 块之后，读到的块数必须远少于 8。
+        """
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "remote.mp4"
+            chunk = 1024
+            path.write_bytes(bytes(range(256)) * 4 * 8)
+            registry = StreamSessionRegistry()
+            response = CancellableFileResponse(
+                path, session="detail-3", registry=registry,
+            )
+            response.chunk_size = chunk
+            bodies: list[bytes] = []
+            disconnected = asyncio.Event()
+
+            async def receive() -> dict:
+                await disconnected.wait()
+                return {"type": "http.disconnect"}
+
+            async def send(message: dict) -> None:
+                if message["type"] != "http.response.body":
+                    return
+                bodies.append(message["body"])
+                if len(bodies) == 1:
+                    disconnected.set()
+                    # 让监听断开的任务先跑起来，模拟浏览器在这一块发出后关闭连接。
+                    await asyncio.sleep(0)
+
+            scope = {
+                "type": "http", "method": "GET", "path": "/stream",
+                "headers": [(b"range", b"bytes=0-")],
+            }
+            await response(scope, receive, send)
+
+        self.assertGreaterEqual(len(bodies), 1)
+        self.assertLess(len(bodies), 4, "断开后仍把文件读到了末尾")
+        self.assertEqual(bodies[0], bytes(range(256)) * 4)
+        self.assertEqual(registry.active_count("detail-3"), 0)
 
     def test_range_bodies_are_read_one_mebibyte_at_a_time(self):
         """Starlette 默认 64 KiB 一读，浏览器缓冲一段 Range 要跑几十趟 CloudDrive 挂载层。"""
