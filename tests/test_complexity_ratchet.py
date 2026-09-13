@@ -62,7 +62,6 @@ BASELINE: dict[str, int] = {
     "src/peach/jav_cover_fetch.py:best_cover": 32,
     "scripts/find_ads.py:find_candidates": 31,
     "scripts/rehome_unknown_jav.py:build_plan": 31,
-    "src/peach/follow_variants.py:classify": 31,
     "src/peach/media_configuration.py:validate": 30,
     "src/peach/resource_identification.py:ingest_results": 30,
 }

@@ -650,13 +650,27 @@ def _video_media_type(value: object) -> str:
     return "video/mp4"
 
 
-def _media_items(item) -> list[dict]:
-    """给浏览器媒体序号和展示字段；真实上游 URL 仍只留在服务端 metadata。"""
+def _media_key(media: dict) -> str:
+    """一条媒体跨抓取稳定的标识：`id` 优先、`url` 兜底。隐藏状态按它记。"""
+    return str(media.get("id") or media.get("url") or "")
+
+
+def _raw_media_items(item) -> list:
     raw = item.metadata.get("media_items")
     if not isinstance(raw, list) or not raw:
-        raw = f95_attachment_media_items(item.metadata) if item.provider == "f95zone" else []
-    result = []
-    for index, media in enumerate(raw):
+        return f95_attachment_media_items(item.metadata) if item.provider == "f95zone" else []
+    return raw
+
+
+def _media_projection(item) -> tuple[list[dict], list[dict]]:
+    """把 media_items 投影成浏览器字段，按用户隐藏的键拆成（可见，已隐藏）两份。
+
+    `index` 保持原始清单里的序号不重排：`/follow-stream?media=N` 按同一份原始
+    清单解析，投影一旦重新编号，点开第 N 张就会拿到另一张。
+    """
+    hidden = frozenset(item.hidden_media or ())
+    visible, concealed = [], []
+    for index, media in enumerate(_raw_media_items(item)):
         if not isinstance(media, dict):
             continue
         if item.provider == "f95zone" and f95_discussion_image(media.get("url") or media.get("thumb_url")):
@@ -665,7 +679,7 @@ def _media_items(item) -> list[dict]:
         if kind not in {"video", "image"}:
             continue
         thumb = str(media.get("thumb_url") or "")
-        result.append({
+        projected = {
             "index": index,
             "name": str(media.get("name") or f"{kind} {index + 1}"),
             "media_kind": kind,
@@ -676,8 +690,14 @@ def _media_items(item) -> list[dict]:
             "resource_provider": str(media.get("resource_provider") or ""),
             "resource_group": str(media.get("resource_group") or "") or None,
             "resource_group_label": str(media.get("resource_group_label") or "") or None,
-        })
-    return result
+        }
+        (concealed if _media_key(media) in hidden else visible).append(projected)
+    return visible, concealed
+
+
+def _media_items(item) -> list[dict]:
+    """给浏览器媒体序号和展示字段；真实上游 URL 仍只留在服务端 metadata。"""
+    return _media_projection(item)[0]
 
 
 def _thumb_url(item) -> str | None:
@@ -704,7 +724,24 @@ def _thumb_url(item) -> str | None:
             return f"/follow-stream?id={item.id}"
         if kind == "video":
             return f"/follow-cover?id={item.id}"
-    return display_thumb_url(item)
+    return _unhide_thumb(item, display_thumb_url(item))
+
+
+def _unhide_thumb(item, thumb: str | None) -> str | None:
+    """缩略图落在被隐藏的媒体上时，改用第一张可见媒体的缩略图。
+
+    卡片缩略图存的是抓取时的正文首图；用户把那张图藏起来之后，卡面还挂着它
+    就等于隐藏没生效。
+    """
+    hidden = frozenset(item.hidden_media or ())
+    if not hidden or not thumb:
+        return thumb
+    hidden_thumbs = {str(media.get("thumb_url") or "") for media in _raw_media_items(item)
+                     if isinstance(media, dict) and _media_key(media) in hidden}
+    if thumb not in hidden_thumbs:
+        return thumb
+    return next((media["thumb_url"] for media in _media_items(item) if media["thumb_url"]),
+                thumb)
 
 
 def _f95_has_resource(media_url: str | None, metadata: dict) -> bool:
@@ -752,7 +789,7 @@ def _item_payload(item, credential_providers: frozenset[str] = frozenset()) -> d
     tags = _item_tags(item)
     detail_tags = _item_all_tags(item)
     media_kind = _media_kind(item)
-    media_items = _media_items(item)
+    media_items, hidden_media = _media_projection(item)
     if media_items:
         media_kind = media_items[0]["media_kind"]
     elif item.provider == "f95zone" and f95_discussion_image(item.thumb_url):
@@ -812,6 +849,7 @@ def _item_payload(item, credential_providers: frozenset[str] = frozenset()) -> d
         # 前者整体锁死；详情继续复用同一条 /follow-stream 媒体代理路径。
         "playable": playable,
         "media_items": media_items,
+        "hidden_media": hidden_media,
         # 只投影连接器已验证过的文件页域名；原始媒体 URL 仍不进入 feed。
         "resource_urls": safe_resource_urls,
         "tags": tags,
@@ -1618,6 +1656,31 @@ def w_follow_status(contract, body) -> dict:
     if len(item_ids) == 1:
         result["item"] = item_ids[0]
     return result
+
+
+def w_follow_media_hide(contract, body) -> dict:
+    """隐藏或恢复一张媒体。
+
+    界面只报它在投影里看到的 `media` 序号；这里换算成跨抓取稳定的媒体键再落库，
+    作者中途增删图片也不会让隐藏错位到别的图上。
+    """
+    item_id = int(body["item"])
+    index = int(body["media"])
+    hidden = bool(body.get("hidden", True))
+    with contract.database.write_transaction() as connection:
+        store = _store(contract, connection)
+        item = store.item(item_id)
+        if item is None:
+            raise ValueError(f"no such follow item: {item_id}")
+        raw = _raw_media_items(item)
+        if not 0 <= index < len(raw) or not isinstance(raw[index], dict):
+            raise ValueError(f"media index out of range: {index}")
+        key = _media_key(raw[index])
+        if not key:
+            raise ValueError("this media has no stable identity to hide by")
+        hidden_keys = store.set_media_hidden(item_id, key, hidden)
+    contract.cache_bust()
+    return {"ok": True, "item": item_id, "hidden_media": list(hidden_keys)}
 
 
 def w_follow_play(contract, body) -> dict:

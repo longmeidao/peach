@@ -5712,6 +5712,11 @@ async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=fals
   const author=followAuthorName(authorSources)||item.author||item.source_label||'创作者未取得';
   const postedBy=item.author&&foldName(item.author)!==foldName(author)?item.author:'';
   const mediaIssue=followMediaIssue(item);
+  // 被隐藏的图退到这条恢复带上：缩略图加一枚撤销键，点了就回到轮播。
+  // 不占媒体队列，也不进角标数——它们已经是「不在看」的那部分。
+  const hiddenStrip=(item.hidden_media||[]).length?`<div class="followhiddenmedia">
+    <span class="followhiddenlabel">已隐藏 ${item.hidden_media.length} 张</span>
+    <div class="followhiddenthumbs">${item.hidden_media.map(media=>`<button data-follow-media-restore="${media.index}" title="恢复显示 ${esc(media.name||'')}" aria-label="恢复显示 ${esc(media.name||'')}">${media.thumb_url?`<img src="${esc(media.thumb_url)}" alt="" loading="lazy" referrerpolicy="no-referrer" data-drop="self">`:icon('image-off')}<i>${icon('rotate-ccw')}</i></button>`).join('')}</div></div>`:'';
   placeItemDetail(detailOriginAnchor,detailOriginAbove);
   $('#stage').hidden=false;document.body.classList.add('detail-open');
   $('#stage').innerHTML=`<div class="sgrid followdetailgrid${collection||embeddedQueue?' mixgrid':''}">
@@ -5730,8 +5735,10 @@ async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=fals
         <button class="seen" data-follow-detail-status="seen" aria-label="标记已看" title="标记已看" aria-pressed="${item.status==='seen'}">${icon('eye')}</button>
         <button class="dislike" data-follow-detail-status="ignored" aria-label="忽略" title="忽略" aria-pressed="${item.status==='ignored'}">${icon('eye-off')}</button>
         ${item.status==='seen'||item.status==='ignored'?`<button data-follow-detail-status="new" aria-label="恢复未看" title="恢复未看">${icon('rotate-ccw')}</button>`:''}
+        ${selectedKind==='image'&&selectedMedia?`<button class="dislike" data-follow-media-hide="${selectedMedia.index}" aria-label="隐藏这张图" title="隐藏这张图">${icon('image-off')}</button>`:''}
         ${src?`<a class="fdownload" href="${esc(src)}${src.includes('?')?'&':'?'}download=1" download
           aria-label="下载到本地" title="下载到本地">${icon('download')}</a>`:''}</div>
+      ${hiddenStrip}
       <span class="fstate" aria-live="polite"></span>
       ${tags?`<div class="stags followdetailtags">${tags}</div>`:''}
     </div></div></div>`;
@@ -5827,6 +5834,24 @@ async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=fals
       $('#stage').querySelectorAll('[data-follow-detail-status]').forEach(control=>
         control.setAttribute('aria-pressed',String(control.dataset.followDetailStatus===before)));
     }:null});
+  });
+  /* 隐藏与恢复都换掉整份媒体清单，重开详情是最短的同步路径：条目从索引里摘掉，
+     下一次读取走单条查询，服务端投影自然给出新的可见集合与缩略图。 */
+  const reopenAfterMediaChange=async mediaIndex=>{
+    followItemsById.delete(item.id);
+    await openFollowDetail(item.id,false,mediaIndex,true);
+  };
+  $('#stage').querySelectorAll('[data-follow-media-hide]').forEach(button=>button.onclick=()=>{
+    const index=+button.dataset.followMediaHide;
+    const rest=(item.media_items||[]).filter(media=>media.index!==index);
+    const next=rest.find(media=>media.media_kind==='image');
+    write(button,'/api/follow/media/hide',{item:item.id,media:index,hidden:true},()=>{
+      reopenAfterMediaChange(next?next.index:null)},{message:'已隐藏这张图'});
+  });
+  $('#stage').querySelectorAll('[data-follow-media-restore]').forEach(button=>button.onclick=()=>{
+    const index=+button.dataset.followMediaRestore;
+    write(button,'/api/follow/media/hide',{item:item.id,media:index,hidden:false},()=>{
+      reopenAfterMediaChange(index)},{message:'已恢复显示'});
   });
   alignFollowImageControls();
   // 滚到舞台本身，不是页面头部——就近展开的意义就在于视线不被拽走。

@@ -56,6 +56,39 @@ class FanboxNormalizerTests(unittest.TestCase):
             "https://downloads.fanbox.cc/source.zip",
         ])
 
+    def test_cover_image_joins_media_after_the_body(self):
+        cover = ("https://pixiv.pximg.net/c/1200x630_90_a2_g5/fanbox/public/images/"
+                 "post/12565427/cover/1iVQFUYcuQvxD6oVZRBcy1Cm.jpeg")
+        content = normalize_fanbox_post({
+            "type": "image", "coverImageUrl": cover,
+            "body": {"images": [
+                {"id": "one", "originalUrl": "https://downloads.fanbox.cc/one.jpg",
+                 "thumbnailUrl": "https://downloads.fanbox.cc/one-thumb.jpg"},
+            ]},
+        })
+
+        self.assertEqual([item["id"] for item in content.media_items], ["one", "cover"])
+        tail = content.media_items[-1]
+        self.assertEqual(tail["name"], "封面")
+        self.assertEqual(tail["url"], cover)
+        self.assertEqual(tail["thumb_url"], cover)
+        self.assertEqual(tail["media_kind"], "image")
+        self.assertEqual(content.image_count, 2)
+
+    def test_cover_image_is_skipped_when_absent_or_already_present(self):
+        cover = "https://pixiv.pximg.net/fanbox/public/images/post/1/cover/abc.jpeg"
+        again = normalize_fanbox_post({
+            "type": "image",
+            "body": {"images": [{"id": "one", "originalUrl": cover}]},
+        })
+        self.assertEqual([item["id"] for item in again.media_items], ["one"])
+        none = normalize_fanbox_post({
+            "type": "image",
+            "coverImageUrl": cover,
+            "body": {"images": [{"id": "one", "originalUrl": cover}]},
+        })
+        self.assertEqual([item["id"] for item in none.media_items], ["one"])
+
     def test_image_post_exposes_a_switchable_gallery(self):
         content = normalize_fanbox_post({"type": "image", "body": {"images": [
             {"id": "one", "originalUrl": "https://downloads.fanbox.cc/one.jpg",

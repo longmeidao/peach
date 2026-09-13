@@ -78,7 +78,22 @@ class ClassifyTests(unittest.TestCase):
             creator_aliases=ALIASES, semantics="release",
         )
         self.assertEqual(verdict.release_key, "lazy procrastinator collection")
-        self.assertEqual(verdict.version, "2026-06-28")
+        self.assertIsNone(verdict.version)
+
+    def test_dated_collection_batches_are_not_versions(self):
+        june = classify("Billyhhyb Collection [2026-06-28] [Billyhhyb]",
+                        creator_aliases=ALIASES, semantics="release")
+        july = classify("Billyhhyb Collection [2026-07-15] [Billyhhyb]",
+                        creator_aliases=ALIASES, semantics="release")
+        self.assertEqual(june.release_key, july.release_key)
+        self.assertIsNone(june.version)
+        self.assertIsNone(july.version)
+
+    def test_work_semantics_keeps_date_brackets_in_the_key(self):
+        june = self._key("Pack [2026-06-28]")
+        july = self._key("Pack [2026-07-15]")
+        self.assertNotEqual(june.release_key, july.release_key)
+        self.assertIsNone(june.version)
 
     def test_release_semantics_group_successive_versions(self):
         june = classify("Lazy Procrastinator Collection", creator_aliases=ALIASES,

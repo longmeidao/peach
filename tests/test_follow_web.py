@@ -591,6 +591,68 @@ class FollowContractTests(unittest.TestCase):
             self.assertEqual(items[key]["thumb_url"], f"/follow-cover?id={items[key]['id']}")
         self.assertEqual(items["3"]["thumb_url"], image)
 
+    def test_hidden_media_leaves_the_feed_and_the_card_thumb(self):
+        chart = "https://downloads.fanbox.cc/images/post/1/w/1200/chart.jpeg"
+        art = "https://downloads.fanbox.cc/images/post/1/w/1200/art.jpeg"
+        self._seed(candidates=(FollowCandidate(
+            provider="fanbox", external_id="12565427", title="Poll Results",
+            url="https://lazyprocrast.fanbox.cc/posts/12565427", thumb_url=chart,
+            extra={"media_items": [
+                {"id": "chart", "media_kind": "image", "resource_provider": "fanbox",
+                 "url": "https://downloads.fanbox.cc/images/post/1/chart.png",
+                 "thumb_url": chart},
+                {"id": "art", "media_kind": "image", "resource_provider": "fanbox",
+                 "url": "https://downloads.fanbox.cc/images/post/1/art.png",
+                 "thumb_url": art},
+            ]}),), provider="fanbox", ref="lazyprocrast")
+        item = self._get()["groups"][0]["primary"]
+        self.assertEqual(item["thumb_url"], chart)
+
+        result = self._post("/api/follow/media/hide",
+                            {"item": item["id"], "media": 0, "hidden": True})
+
+        self.assertEqual(result["hidden_media"], ["chart"])
+        item = self._get()["groups"][0]["primary"]
+        # 序号不重排：剩下的那张仍报它在原始清单里的 1，`/follow-stream?media=1` 才不会错位。
+        self.assertEqual([media["index"] for media in item["media_items"]], [1])
+        self.assertEqual([media["index"] for media in item["hidden_media"]], [0])
+        self.assertEqual(item["thumb_url"], art)
+
+        self._post("/api/follow/media/hide",
+                   {"item": item["id"], "media": 0, "hidden": False})
+        item = self._get()["groups"][0]["primary"]
+        self.assertEqual([media["index"] for media in item["media_items"]], [0, 1])
+        self.assertEqual(item["hidden_media"], [])
+        self.assertEqual(item["thumb_url"], chart)
+
+    def test_media_hidden_state_survives_a_refetch(self):
+        candidate = FollowCandidate(
+            provider="fanbox", external_id="12565427", title="Poll Results",
+            url="https://lazyprocrast.fanbox.cc/posts/12565427",
+            extra={"media_items": [
+                {"id": "chart", "media_kind": "image", "resource_provider": "fanbox",
+                 "url": "https://downloads.fanbox.cc/images/post/1/chart.png"},
+                {"id": "art", "media_kind": "image", "resource_provider": "fanbox",
+                 "url": "https://downloads.fanbox.cc/images/post/1/art.png"},
+            ]})
+        self._seed(candidates=(candidate,), provider="fanbox", ref="lazyprocrast")
+        item = self._get()["groups"][0]["primary"]
+        self._post("/api/follow/media/hide", {"item": item["id"], "media": 0, "hidden": True})
+
+        # 下一轮检查更新把整行重写一遍（完整候选走全量 SET）；
+        # 用户按掉的隐藏状态在独立的列里，不在被重写的 metadata 里。
+        self._seed(candidates=(candidate,), provider="fanbox", ref="lazyprocrast")
+
+        item = self._get()["groups"][0]["primary"]
+        self.assertEqual([media["index"] for media in item["media_items"]], [1])
+        self.assertEqual([media["index"] for media in item["hidden_media"]], [0])
+
+    def test_media_hide_rejects_an_out_of_range_index(self):
+        self._seed()
+        item = self._get()["groups"][0]["primary"]
+        with self.assertRaises(ValueError):
+            self._post("/api/follow/media/hide", {"item": item["id"], "media": 9})
+
     def test_named_large_collection_is_hidden_but_not_deleted(self):
         self._seed(candidates=(FollowCandidate(
             provider="rule34video", external_id="4533145", title="Large collection",

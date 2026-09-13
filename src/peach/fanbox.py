@@ -100,6 +100,28 @@ def _embed_url(node: Mapping[str, object]) -> str | None:
     return None
 
 
+def _add_cover(post: Mapping[str, object], media: list[dict],
+               media_urls: set[str]) -> None:
+    """封面追加到媒体清单末尾。
+
+    封面也是这篇的图，收进媒体清单；排在正文之后，卡片缩略图仍然落在正文首图上。
+    站点给的是 1200x630 的展示裁切版，不是原画质。
+    """
+    cover = _https_url(post.get("coverImageUrl"))
+    if not cover or cover in media_urls:
+        return
+    media_urls.add(cover)
+    media.append({
+        "id": "cover",
+        "name": "封面",
+        "url": cover,
+        "thumb_url": cover,
+        "media_kind": "image",
+        "size": None,
+        "resource_provider": "fanbox",
+    })
+
+
 def normalize_fanbox_post(post: Mapping[str, object]) -> FanboxContent:
     """Return ordered text, links and playable media from one public post."""
     post_type = str(post.get("type") or "image").casefold()
@@ -221,6 +243,8 @@ def normalize_fanbox_post(post: Mapping[str, object]) -> FanboxContent:
         file_count += 1
         add_link(node.get("url"))
         add_media(node, item_id=f"file-{index}", fallback_name=f"文件 {file_count}")
+
+    _add_cover(post, media, media_urls)
 
     video = body.get("video")
     add_link(video)
