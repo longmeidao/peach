@@ -270,51 +270,68 @@ class PruneTests(_WorktreeCase):
                       "注册还在就是没回收成，分支不能删")
 
 
-class BuiltinLeftoverTests(_WorktreeCase):
-    """清掉 `.claude/worktrees/` 里已经不登记的残留目录。
+class UnregisteredLeftoverTests(_WorktreeCase):
+    """清掉两个工作树落点里已经不登记的残留目录。
 
-    Claude Code 内置的工作树机制建在主检出里，分支集成后目录不会自己收。它不在
+    `create` 的落点和 Claude Code 内置的落点都会留下这种目录：它不在
     `git worktree list` 里，所以按登记项遍历的那轮回收永远碰不到它；人却会走进去当
-    工作树用，而在里面跑 git 全部作用于主检出的 master。
+    工作树用，而在里面跑 git 全部作用于主检出的 master。两处同一条规则，只盖其中
+    一处的话，另一处的残留就只能靠人想起来。
     """
 
-    def leftover(self, name: str) -> Path:
-        path = self.repo / ".claude" / "worktrees" / name
+    def roots(self) -> tuple[Path, ...]:
+        """`create` 建在主检出旁边，Claude Code 建在主检出里。"""
+        return (self.repo.parent / agent_worktree.WORKTREE_ROOT,
+                self.repo / agent_worktree.BUILTIN_WORKTREES)
+
+    def leftover(self, root: Path, name: str) -> Path:
+        path = root / name
         path.mkdir(parents=True)
         return path
 
     def test_an_unregistered_empty_leftover_is_swept(self):
-        empty = self.leftover("distracted-lamarr")
-        report = prune(self.repo, apply=True)
-        self.assertEqual(report["swept"], [str(empty)])
-        self.assertFalse(empty.exists())
+        for root in self.roots():
+            with self.subTest(root=root.name):
+                empty = self.leftover(root, "distracted-lamarr")
+                report = prune(self.repo, apply=True)
+                self.assertEqual(report["swept"], [str(empty)])
+                self.assertFalse(empty.exists())
 
     def test_reporting_lists_the_leftover_without_deleting_it(self):
-        empty = self.leftover("reportable-leftover")
-        report = prune(self.repo)
-        self.assertEqual(report["swept"], [str(empty)])
-        self.assertTrue(empty.is_dir(), "没给 --apply 就不该动手")
+        for root in self.roots():
+            with self.subTest(root=root.name):
+                empty = self.leftover(root, "reportable-leftover")
+                report = prune(self.repo)
+                self.assertEqual(report["swept"], [str(empty)])
+                self.assertTrue(empty.is_dir(), "没给 --apply 就不该动手")
+                shutil.rmtree(empty)
 
     def test_a_leftover_that_still_holds_files_is_left_alone(self):
         """空目录才扫。里面还有文件就可能是别人正开着的检出或没提交的东西。"""
-        used = self.leftover("sweet-newton")
-        (used / "worker.txt").write_text("别人正在用\n", encoding="utf-8")
-        report = prune(self.repo, apply=True)
-        self.assertEqual(report["swept"], [])
-        self.assertTrue(used.is_dir())
-        self.assertEqual([row["path"] for row in report["kept"]], [str(used)])
+        for root in self.roots():
+            with self.subTest(root=root.name):
+                used = self.leftover(root, "sweet-newton")
+                (used / "worker.txt").write_text("别人正在用\n", encoding="utf-8")
+                report = prune(self.repo, apply=True)
+                self.assertEqual(report["swept"], [])
+                self.assertTrue(used.is_dir())
+                self.assertEqual([row["path"] for row in report["kept"]], [str(used)])
+                shutil.rmtree(used)
 
-    def test_a_registered_worktree_under_that_directory_is_not_swept(self):
-        """登记着的工作树归上面那轮按分支状态处理，扫残留这步不许碰。"""
-        result = create(self.repo, "Claude", "in-place",
-                        self.repo / ".claude" / "worktrees")
-        worker = Path(result["path"])
-        (worker / "worker.txt").write_text("还在做\n", encoding="utf-8")
-        commit(worker, "in place wip")
-        report = prune(self.repo, apply=True)
-        self.assertEqual(report["swept"], [])
-        self.assertTrue(worker.is_dir())
-        self.assertEqual([row["branch"] for row in report["kept"]], ["agent/claude/in-place"])
+    def test_a_registered_worktree_under_either_root_is_not_swept(self):
+        """登记着的工作树归上面那轮按分支状态处理，扇残留这步不许碰。"""
+        for index, root in enumerate(self.roots()):
+            with self.subTest(root=root.name):
+                task = f"in-place-{index}"
+                result = create(self.repo, "Claude", task, root)
+                worker = Path(result["path"])
+                (worker / "worker.txt").write_text("还在做\n", encoding="utf-8")
+                commit(worker, f"{task} wip")
+                report = prune(self.repo, apply=True)
+                self.assertEqual(report["swept"], [])
+                self.assertTrue(worker.is_dir())
+                self.assertIn(f"agent/claude/{task}",
+                              [row["branch"] for row in report["kept"]])
 
 
 class IntegrationVersionTests(_WorktreeCase):

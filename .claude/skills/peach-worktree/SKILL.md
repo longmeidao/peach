@@ -5,7 +5,7 @@ description: 在用户说并行、工作树、暂存、提交、ready、集成�
 
 # 并行 worktree 与提交边界
 
-最后复核：2026-09-08
+最后复核：2026-09-14
 证据来源：`docs/HANDOFF.md`「并行智能体与 Git 工作树」、`README.md`、ADR-0015、ADR-0017。
 
 ## 何时使用
@@ -97,10 +97,10 @@ description: 在用户说并行、工作树、暂存、提交、ready、集成�
 脏的一律拒收并单独列出：分支已合入不等于工作区
 里没东西，实测就有工作树的分支早已并入 master、里面却躺着一份成形的未提交改动。
 
-一个工作树失败不影响其它工作树。Windows 上目录句柄常被别的进程占着，`git worktree remove`
-报 Permission denied，而 git 已经把文件删光、注册也摘掉了：这种只按 `residue` 列出来等人清，
-分支照样删；注册还在才进 `failed`，分支保留。看完 JSON 里的 `residue` 再手工 `rmdir`
-那几个空目录。一失败就中止整轮的话，连跑 5 次才摘完 5 个工作树、分支一条没删（2026-09-01）。 <!-- copy-lint-disable-line -->
+一个工作树失败不影响其它工作树：`residue` 是连脚本也删不掉的目录（多半有进程占着句柄），
+按它报的路径手工清，分支照样删；`failed` 是注册还没摘掉，分支保留。未登记的目录归 `swept`：`peach-worktrees/`
+与 `.claude/worktrees/` 两处都扫，只删空的，有文件的进 `kept` 等人确认——那种目录和真
+工作树长得一模一样，在里面跑 git 全作用于主检出的 master，门槛在 `tests/test_repo_hygiene.py`。
 
 `prune` 保留锁定的活动工作树。不要手动解锁正在编辑的工作树；任务中止时先核对任务归属、
 改动与提交，再决定是否解锁回收。
