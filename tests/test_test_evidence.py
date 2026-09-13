@@ -42,7 +42,7 @@ class VerificationTests(unittest.TestCase):
                      "Co-Authored-By: Codex (GPT-5.5) <noreply@openai.com>")
         return worker, item["branch"]
 
-    def certify(self, worker, scopes=("checks",), success=True):
+    def certify(self, worker, scopes=("checks", "tooling"), success=True):
         state = evidence.key(worker)
         evidence.write(worker, state, scopes, success=success, elapsed=1, slowest=[], count=1)
         return state
@@ -281,7 +281,7 @@ class VerificationTests(unittest.TestCase):
                 mock.patch.object(runner, "build_suite", return_value=unittest.TestSuite([
                     unittest.FunctionTestCase(lambda: None)])) as build:
             self.assertEqual(runner.main(["--scope", "auto"]), 0)
-        build.assert_called_once_with("checks")
+        build.assert_called_once_with("checks", "tooling")
         record = evidence.read(self.repo, evidence.key(self.repo))
         self.assertEqual(record["baseline"], original)
         self.assertEqual(record["validated"]["full"], stamp)

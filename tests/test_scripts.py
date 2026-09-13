@@ -440,11 +440,11 @@ class OperationalScriptTests(unittest.TestCase):
         pick = runner.scopes_for_changes
         # 前缀表：多个文件取并集，反斜杠路径也认。
         self.assertEqual(pick(["src/peach/follow_store.py", "web/app.js"])[0], ("follow", "web"))
-        self.assertEqual(pick(["src\\peach\\tray.py"])[0], ("sync",))
+        self.assertEqual(pick(["src\\peach\\tray.py"])[0], ("sync", "tooling"))
         self.assertEqual(pick(["scripts/probe.py", "pyproject.toml", ".github/workflows/test.yml"])[0],
                          ("full",))
         self.assertEqual(pick(["README.md", "docs/STATUS.md", ".claude/skills/x/SKILL.md"])[0],
-                         ("checks",))
+                         ("checks", "tooling"))
         self.assertEqual(pick(["src/peach/web_entity.py", "src/peach/routes_pages.py"])[0],
                          ("catalog", "tooling", "web"))
         self.assertEqual(pick(["src/peach/web_follow.py"])[0], ("follow",))

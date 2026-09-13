@@ -11684,7 +11684,7 @@ class BoardStyleIsolationTests(unittest.TestCase):
         root = Path(__file__).resolve().parents[1]
         html = (root / "web/index.html").read_text(encoding="utf-8")
         self.assertIn('<link rel="stylesheet" href="/board.css">', html)
-        entry = (root / "src/peach/routes_pages.py").read_text(encoding="utf-8")
+        entry = (root / "src/peach/web_entry.py").read_text(encoding="utf-8")
         self.assertIn("return f'<style id=\"boardEntryStyles\">{css}</style>'", entry)
         for path in sorted((root / "web").rglob("*")):
             if path.suffix not in {".js", ".css", ".html"} or "dist" in path.parts:

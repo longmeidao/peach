@@ -69,7 +69,6 @@ def close_log() -> None:
 
 
 TLD = r"(?:com|net|la|xyz|cc|me|top|vip|club|info|org|tv|app|co|pw|gg|cn)"
-VIDEO_EXT = {"mp4", "mkv", "avi", "wmv", "mov", "ts", "m4v", "flv", "rmvb"}
 
 # 站点前缀：域名后面常跟 @ - _ 空格，或直接连着广告语
 RE_PREFIX = re.compile(

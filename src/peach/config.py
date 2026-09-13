@@ -22,8 +22,6 @@ _SETTINGS = settings_file.active()
 #: 服务照常启动、`/healthz` 报 `configured=false`、页面提示去初始化，不因为缺目录崩。
 #: `SETTINGS_ERROR` 非空表示文件在但读不出来（语法错、编码错、类型错），此时上面这份
 #: 配置是退回的内建默认，CLI 必须拒绝提供服务而不是拿它去跑。
-SETTINGS_PATH: Path = _SETTINGS.path
-SETTINGS_PRESENT: bool = _SETTINGS.present
 CONFIGURED: bool = _SETTINGS.configured
 SETTINGS_ERROR: SettingsFileError | None = settings_file.error()
 

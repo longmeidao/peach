@@ -27,7 +27,6 @@ from .settings_file import PROJECT_ROOT
 MARKS_ROOT = PROJECT_ROOT / "resources" / "marks"
 MANIFEST = MARKS_ROOT / "manifest.json"
 STUDIOS_DIR = MARKS_ROOT / "studios"
-SITES_DIR = MARKS_ROOT / "sites"
 
 #: 扩展名 → MIME。落盘时扩展名由字节嗅探（`follow_assets.sniff`）决定，所以这里反查
 #: 得到的类型和字节一致，不是靠文件名猜的。

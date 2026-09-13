@@ -48,7 +48,9 @@ class TestPlanningTests(unittest.TestCase):
         rows = ci_plan.plan('pull_request', ['src/peach/follow_store.py'])['matrix']['include']
         self.assertTrue(any(r['scope'] == 'auto' for r in rows))
         self.assertFalse(any(r['scope'] == 'full' for r in rows))
-        self.assertEqual(runner.scopes_for_changes(['scripts/localize_performer_names.py'])[0], ('metadata',))
+        self.assertEqual(runner.scopes_for_changes(['scripts/localize_performer_names.py'])[0],
+                         ('metadata', 'tooling'))
+        self.assertEqual(runner.scopes_for_changes(['README.md'])[0], ('checks', 'tooling'))
 
     def test_missing_git_base_selects_wide_matrix(self):
         with patch.object(sys, 'argv', ['ci_plan.py', '--event', 'push', '--base', 'missing']), \
@@ -153,21 +155,21 @@ class TestPlanningTests(unittest.TestCase):
             with self.subTest(bad=bad), self.assertRaises(runner.argparse.ArgumentTypeError):
                 runner.resolve_jobs(bad)
 
-    def test_a_test_reading_a_web_source_runs_when_that_source_changes(self):
-        """断言 `web/`、`frontend/` 文件的测试，必须登记在改那个文件会选到的域里。
+    def test_a_test_reading_a_repository_file_runs_when_that_file_changes(self):
+        """读了仓库里某个文件的测试，必须登记在改那个文件会选到的域里。
 
         域表是人手维护的，漏登记不会报错，只会在 CI 上红：`tests/test_follow_web.py` 读
         `web/app.js`，却只登记在 follow 域，于是改了 `web/app.js` 跑 `auto` 时它根本不在
         选中的文件里。这一条按测试源码里真实存在的路径拼接反查，把漏登记变成本地就红。
 
-        判据只覆盖这两个前缀：域表对它们是按目录映射的，除此以外没有第二条路让测试被选
-        中。`src/peach/` 有按模块名的推断，`scripts/`、`docs/` 那些落在 tooling 与 checks
-        的兜底上，同一个漏洞在那边也成立，但要补的是域表本身，不在本条范围内。
+        判据覆盖整棵树。同一个漏洞在 `scripts/` 与 `docs/` 上一样成立：`test_babepedia_match.py`
+        读 `scripts/match_babepedia_creators.py` 却只登记在 metadata 域，改那个脚本时 `auto`
+        选的是 tooling。补法是 `AUTO_SCOPE_FILES` 与 `AUTO_SCOPE_PREFIXES` 让一个文件落到多个域，
+        而不是把测试重复登记到不相干的域里。
         """
-        watched = ('web/', 'frontend/')
         for path in sorted((runner.ROOT / 'tests').glob('test_*.py')):
             read = [item for item in runner.repository_paths_read_by(path.read_text(encoding='utf-8'))
-                    if item.startswith(watched)
+                    if not item.startswith('tests/')
                     and not any(item.startswith(prefix) for prefix in runner.FULL_ONLY_PREFIXES)]
             for item in read:
                 scopes, why = runner.scopes_for_changes([item])

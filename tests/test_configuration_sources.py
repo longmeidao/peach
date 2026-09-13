@@ -11,7 +11,7 @@ from peach import media_configuration as media_config, onboarding, settings_file
 
 class MediaConfigurationTests(unittest.TestCase):
     def test_setup_mapping_fields_follow_the_server_operating_system(self):
-        from peach import routes_pages
+        from peach import routes_pages, web_entry
         with tempfile.TemporaryDirectory() as directory:
             config = settings_file.load_config(environ={"PEACH_DATA_ROOT": str(Path(directory).resolve())})
             windows = routes_pages.setup_page(config, windows=True)
@@ -23,7 +23,7 @@ class MediaConfigurationTests(unittest.TestCase):
             self.assertIn('new MutationObserver(enhance)', windows)
             self.assertIn('id="i-chevron-down"', windows)
             self.assertIn('.help a:hover{text-decoration:underline;', windows)
-            facts = dict(routes_pages.runtime_facts(config))
+            facts = dict(web_entry.runtime_facts(config))
             self.assertIn('操作系统', facts)
             self.assertIn('设置文件', facts)
 

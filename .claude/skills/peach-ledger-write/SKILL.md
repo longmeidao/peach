@@ -6,7 +6,7 @@ description: 在用户说迁移、migrate、--apply、合并实体、merge_entit
 # 真实 ledger 写入流程
 
 最后复核：2026-09-11
-证据来源：`docs/HANDOFF.md`「数据安全」「身份合并与来源分工」、ADR-0005、ADR-0015、ADR-0017。
+证据来源：`docs/HANDOFF.md`「数据安全」「身份、来源与标识采集」、ADR-0005、ADR-0015、ADR-0017。
 
 真实库：当前写入者本机 `PEACH_DATA_ROOT/database/ledger.db`（WAL）。绝不能把共享传输副本或
 另一台机器的副本当当前真实库；测试只用临时 SQLite 与临时媒体。

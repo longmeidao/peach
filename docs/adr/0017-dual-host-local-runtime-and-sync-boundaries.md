@@ -73,8 +73,8 @@ Peach 的目标是 Windows 与 macOS 各自拥有内置盘上的代码、运行�
 
 - GitHub 同步范围保持小而可审查；worktree、venv 和运行态问题不再跨机器污染。
 - Windows 内置盘克隆、venv、运行数据播种、默认路径、共享同步点和托盘入口已切换完成。
-- `src/peach/config.py` 的 Windows 数据根和共享根已改为内置盘；`peach.sync` 已实现显式
-  writer/reader 角色、手动同步、显式接管和 SMB immutable 快照拉取。
+- 数据根与共享根由设置文件提供（`settings_file`，`config.py` 只读它，没有内置盘符）；
+  `peach.sync` 已实现显式 writer/reader 角色、手动同步、显式接管和 SMB immutable 快照拉取。
 - artifact 拆分前不启用 `peach-data` 整体同步；外置盘上的旧目录保留为只读迁移来源和备份，
   直到两端独立运行验收完成后再单独决定清退。
 

@@ -691,7 +691,8 @@ class StandaloneConfigurationTests(_Case):
                 self.assertEqual(client.get(f"/api/configuration/{path}",headers={"X-Token":"test-token"}).status_code,403)
 
     def test_missing_media_tools_have_download_links_in_json_and_setup_facts(self):
-        from peach.routes_pages import runtime_fact_entries, runtime_facts_html
+        from peach.routes_pages import runtime_facts_html
+        from peach.web_entry import runtime_fact_entries
         for missing_ffmpeg, missing_probe in ((True, True), (False, True), (False, False)):
             with self.subTest(ffmpeg=missing_ffmpeg, probe=missing_probe), mock.patch(
                     "peach.ffmpeg.FFmpegResolver.ffmpeg", return_value=None if missing_ffmpeg else object()), mock.patch(

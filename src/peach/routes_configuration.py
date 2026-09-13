@@ -20,8 +20,8 @@ from fastapi.responses import JSONResponse
 from filelock import FileLock, Timeout
 
 from . import access, distribution, folder_picker, onboarding, settings_file, media_configuration
-from .routes_auth import require_auth
-from .routes_pages import runtime_fact_entries
+from .routes_auth import require_auth, same_origin
+from .web_entry import runtime_fact_entries
 from . import release_updates, standalone_update, peach_proxy, desktop_startup, desktop_uninstall
 
 router = APIRouter()
@@ -265,13 +265,6 @@ def _validate(body: dict[str, Any], config) -> tuple[dict[str, Any], dict[str, A
     except ValueError as exc:
         errors["port"] = str(exc)
     return errors, validated
-
-
-def same_origin(request: Request) -> None:
-    """浏览器发来的写请求必须来自 Peach 自己的页面：带了别处的 Origin 就拒。"""
-    origin = request.headers.get("origin")
-    if request.headers.get("sec-fetch-site") == "cross-site" or (origin and origin.rstrip("/") != str(request.base_url).rstrip("/")):
-        raise HTTPException(403, "请从 Peach 配置页提交")
 
 
 @router.post("/api/configuration/access")
