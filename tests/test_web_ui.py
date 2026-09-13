@@ -693,9 +693,28 @@ class WebUiSourceTests(unittest.TestCase):
             "matchMedia('(prefers-reduced-motion: reduce)').matches)return Promise.resolve()")
         self.assertEqual(2, self.app_js.count("await stageExit();"),
                          "作品与关注两个 closeDetail 各等一次退场")
-        self.assertPageContains("else stageExit().then(()=>{\n"
-                                "      disposeStage(false,false,{miniplayer:false});",
-                                "没有关闭键时由 Escape 兜底的那条也要演完退场")
+        self.assertPageContains("  stageExit().then(()=>{\n"
+                                "    disposeStage(false,false,{miniplayer:false});",
+                                "关闭键还没画出来时走的兜底那条也要演完退场")
+
+    def test_clicking_outside_the_detail_overlay_leaves_it(self):
+        """点浮窗外面退出详情，和关闭键、Escape 走同一条路。
+
+        每个表面自己那份 `closeDetail` 挂在关闭键上，按它一下就把该还原的列表、筛选
+        和路径一并带回去；退出另写一份必然漏掉其中一样，所以三个入口都按那一下。
+
+        判「外面」取坐标不取事件 target：原生模态里遮罩归 dialog 自己，落在遮罩上的
+        target 就是它本人，而浮窗 `overflow:auto` 的滚动条也长在它身上，按 target 判
+        会把拖一下滚动条也算成点了外面。按下那一刻也要在外面——详情里进度条、音量条和
+        队列都能拖，从控件上拖出边界再松手同样会收到一次 click。
+        """
+        self.assertPageContains("stage.oncancel=event=>{event.preventDefault();dismissStage()};")
+        self.assertPageContains("stage.onpointerdown=event=>{stageDismissArmed=outside(event)};")
+        self.assertPageContains(
+            "stage.onclick=event=>{if(stageDismissArmed&&outside(event))dismissStage()};")
+        self.assertPageContains("const box=stage.getBoundingClientRect();")
+        self.assertPageContains("stage.classList.remove('closing');stageDismissArmed=false;",
+                                "拆解舞台时把武装状态一并清掉")
 
     def test_opening_a_detail_leaves_the_surface_bars_where_they_were(self):
         """详情不重画顶部三层、标签条和抽屉；回到列表时数据没变也不重画。
@@ -7295,8 +7314,8 @@ class WebUiSourceTests(unittest.TestCase):
     def test_detail_dialog_uses_top_layer_and_preserves_list_position(self):
         """原生模态浮窗提供顶层、焦点与退出行为，列表不参与详情布局。"""
         self.assertPageContains("if(!stage.open)stage.showModal();")
-        self.assertPageContains("else stageExit().then(()=>{\n"
-                                "      disposeStage(false,false,{miniplayer:false});"
+        self.assertPageContains("  stageExit().then(()=>{\n"
+                                "    disposeStage(false,false,{miniplayer:false});"
                                 "route(detailReturnPath||'/');restoreRoute()});")
         self.assertPageContains("if(stage.open)stage.close();")
         self.assertPageContains("box.showModal();")
