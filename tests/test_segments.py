@@ -206,6 +206,93 @@ class SegmentCommandTests(unittest.TestCase):
             self.assertGreater(end, start)
             self.assertAlmostEqual(end, round(index * 9.993, 3) + 9.993, places=2)
 
+    def test_concurrent_requests_generate_one_copy_of_the_same_segment(self):
+        """播放器预取与重连会同时要同一段：同目标只许一个 FFmpeg，其余等它写完直接用缓存。"""
+        calls = 0
+        release = None
+
+        class _Process:
+            returncode = 0
+
+            async def communicate(self):
+                await release.wait()
+                return b"", b""
+
+        async def fake_exec(*command, **_kwargs):
+            nonlocal calls
+            calls += 1
+            Path(command[-1]).write_bytes(b"segment")
+            return _Process()
+
+        async def drive():
+            nonlocal release
+            release = asyncio.Event()
+            with tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                source = root / "clip.mp4"
+                source.write_bytes(bytes(1024))
+                service = HlsSegmentService(
+                    resolver=mock.Mock(ffmpeg=lambda: type("C", (), {"path": "ffmpeg"})),
+                    work_root=root / "cache",
+                )
+                registry = StreamSessionRegistry()
+                with mock.patch("asyncio.create_subprocess_exec", fake_exec):
+                    tasks = [asyncio.create_task(service.generate(
+                        source, 0, 6, asset_id=6562, index=0, session=f"s{n}", registry=registry,
+                    )) for n in range(3)]
+                    await asyncio.sleep(0)
+                    release.set()
+                    results = await asyncio.gather(*tasks)
+                self.assertEqual(len({str(item) for item in results}), 1)
+                self.assertEqual(results[0].read_bytes(), b"segment")
+                self.assertEqual(service._generation_locks, {}, "锁在没人用时要从字典里消失")
+
+        asyncio.run(drive())
+        self.assertEqual(calls, 1)
+
+    def test_hardware_encode_failure_falls_back_to_libx264_for_the_slice(self):
+        """没有 NVENC 的机器分片不能缺席：CUDA 解码、软件解码两条 NVENC 路都失败后走 libx264。"""
+        captured: list[list[str]] = []
+
+        class _Process:
+            def __init__(self, returncode):
+                self.returncode = returncode
+
+            async def communicate(self):
+                return b"", (b"nvenc unavailable" if self.returncode else b"")
+
+        async def fake_exec(*command, **_kwargs):
+            captured.append(list(command))
+            if "h264_nvenc" in command:
+                return _Process(1)
+            Path(command[-1]).write_bytes(b"segment")
+            return _Process(0)
+
+        async def drive():
+            with tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                source = root / "clip.mp4"
+                source.write_bytes(bytes(1024))
+                service = HlsSegmentService(
+                    resolver=mock.Mock(ffmpeg=lambda: type("C", (), {"path": "ffmpeg"})),
+                    work_root=root / "cache", prefer_hardware=True,
+                )
+                with mock.patch("asyncio.create_subprocess_exec", fake_exec):
+                    target = await service.generate(
+                        source, 12.0, 6.0, asset_id=6562, index=2, session="s",
+                        registry=StreamSessionRegistry(), transcode=True,
+                    )
+                self.assertEqual(target.read_bytes(), b"segment")
+
+        asyncio.run(drive())
+        self.assertEqual([c[c.index("-c:v") + 1] for c in captured], ["h264_nvenc", "h264_nvenc", "libx264"])
+        self.assertIn("-hwaccel", captured[0])
+        self.assertNotIn("-hwaccel", captured[1])
+        for command in captured:
+            self.assertEqual(command[command.index("-output_ts_offset") + 1], "12.000")
+            self.assertEqual(command[command.index("-t") + 1], "6.000")
+            self.assertEqual(command[command.index("-f") + 1], "mpegts")
+
 
 class PlanCacheTests(unittest.TestCase):
     """计划缓存一满就 clear() 等于没有缓存；改成 LRU 后热条目要能活下来。"""

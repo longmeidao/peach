@@ -71,6 +71,13 @@ class StreamSessionRegistryTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(headers["content-length"], "64")
         self.assertEqual(body, bytes(range(64)))
 
+    def test_range_bodies_are_read_one_mebibyte_at_a_time(self):
+        """Starlette 默认 64 KiB 一读，浏览器缓冲一段 Range 要跑几十趟 CloudDrive 挂载层。"""
+        from peach.streaming import BufferedFileResponse
+
+        self.assertEqual(BufferedFileResponse.chunk_size, 1 << 20)
+        self.assertEqual(CancellableFileResponse.chunk_size, 1 << 20)
+
     def test_hls_playlist_is_time_addressable_without_full_file_ranges(self):
         # 分片边界由真实关键帧决定，不再按固定秒数等分（见 tests/test_segments.py）。
         plan = segment_plan([0.0, 6.0, 12.0], 13.5, 6)

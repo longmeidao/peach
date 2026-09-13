@@ -57,15 +57,21 @@ class HlsSegmentService:
         segment_seconds: int = HLS_SEGMENT_SECONDS,
         max_concurrent: int | None = None,
         cache_bytes: int = DEFAULT_CACHE_BYTES,
+        prefer_hardware: bool = False,
     ):
         self.resolver = resolver
         self.work_root = work_root
         self.segment_seconds = segment_seconds
         self.cache_bytes = cache_bytes
+        # 重编码的分片先试 NVENC，失败再退回 libx264；与整片转码用同一个偏好。
+        self.prefer_hardware = prefer_hardware
         # 每个分片请求都会起一个 FFmpeg；播放器本身就并发预取，多设备同看能把机器打满。
         self._limit = max_concurrent or max(1, (os.cpu_count() or 4) // 2)
         self._semaphore: asyncio.Semaphore | None = None
         self._plans: OrderedDict[tuple, list[tuple[float, float]]] = OrderedDict()
+        # 同一分片常被并发请求：播放器预取、重连、多设备同看都会撞上同一个目标文件。
+        # 同目标只放一个生成者，后到者等它完事后直接用缓存，不再各起一个 FFmpeg 重读网盘。
+        self._generation_locks: dict[Path, asyncio.Lock] = {}
 
     def _gate(self) -> asyncio.Semaphore:
         if self._semaphore is None:
@@ -141,90 +147,116 @@ class HlsSegmentService:
         if target.is_file() and target.stat().st_size:
             os.utime(target, None)      # 命中即续期，淘汰按最后访问时间
             return target
+        lock = self._generation_locks.setdefault(target, asyncio.Lock())
+        try:
+            async with lock:
+                # 等到锁的可能是排在生成者后面的请求，先看缓存再决定要不要自己跑。
+                if target.is_file() and target.stat().st_size:
+                    os.utime(target, None)
+                    return target
+                return await self._generate_uncached(
+                    source, start, duration, target,
+                    session=session, registry=registry, transcode=transcode,
+                )
+        finally:
+            if not lock.locked():
+                self._generation_locks.pop(target, None)
+
+    async def _generate_uncached(
+        self, source: Path, start: float, duration: float, target: Path, *,
+        session: str, registry: StreamSessionRegistry, transcode: bool,
+    ) -> Path:
         choice = self.resolver.ffmpeg()
         if choice is None:
             raise SegmentUnavailable("ffmpeg unavailable")
         if registry.is_cancelled(session):
             raise SegmentCancelled(session)
-
         target.parent.mkdir(parents=True, exist_ok=True)
-        temporary = target.with_name(f"{uuid.uuid4().hex}.tmp.ts")
-        command = [
-            str(choice.path), "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
-            # 终点必须写成绝对时间戳。-copyts 保留原始时间轴后，-t 会被当成绝对结束时刻
-            # 而不是片段时长，于是除了开头那一两段，每段的 -t 都早已过期，ffmpeg 以
-            # 退出码 0、空 stderr 写出 0 字节，服务端只能报一句没有内容的 ffmpeg failed。
-            "-ss", f"{start:.3f}", "-i", str(source), "-to", f"{start + duration:.3f}",
-            "-map", "0:v:0", "-map", "0:a:0?", "-sn", "-dn", "-c", "copy",
-            # 保留原始时间戳，让每段接着上一段走。用 -avoid_negative_ts make_zero
-            # 把每段归零的话，每段都自称从 0 秒开始，拖动进度条时容易跳错位置。
-            "-copyts", "-muxdelay", "0", "-muxpreload", "0",
-            "-f", "mpegts", str(temporary),
-        ]
-        if transcode:
-            command = [
-                str(choice.path), "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
-                "-ss", f"{start:.3f}", "-i", str(source), "-t", f"{duration:.3f}",
-                "-map", "0:v:0", "-map", "0:a:0?", "-sn", "-dn",
-                "-c:v", "libx264", "-preset", "veryfast", "-crf", "21",
-                "-pix_fmt", "yuv420p", "-threads", "2", "-c:a", "aac", "-b:a", "160k",
-                "-output_ts_offset", f"{start:.3f}", "-muxdelay", "0", "-muxpreload", "0",
-                "-f", "mpegts", str(temporary),
-            ]
-        creationflags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
-        process = None
-        successful = False
+        detail = ""
         async with self._gate():
-            try:
+            for name, build in self._attempts(choice.path, source, start, duration, transcode):
+                temporary = target.with_name(f"{uuid.uuid4().hex}.tmp.ts")
                 try:
-                    process = await asyncio.create_subprocess_exec(
-                        *command,
-                        stdin=subprocess.DEVNULL,
-                        stdout=subprocess.DEVNULL,
-                        stderr=asyncio.subprocess.PIPE,
-                        creationflags=creationflags,
-                    )
-                except OSError as exc:
-                    raise SegmentUnavailable("ffmpeg failed to start") from exc
-
-                if not registry.register_process(session, process):
-                    _kill_process(process)
-                    await process.communicate()
-                    raise SegmentCancelled(session)
-
-                try:
-                    _, stderr = await process.communicate()
-                finally:
-                    registry.unregister_process(session, process)
-                if (process.returncode != 0 or not temporary.is_file()
-                        or not temporary.stat().st_size):
-                    detail = (stderr or b"").decode("utf-8", "replace")[-1000:]
+                    returncode, stderr = await self._run(build(temporary), session, registry)
+                    if returncode == 0 and temporary.is_file() and temporary.stat().st_size:
+                        temporary.replace(target)
+                        self._evict()
+                        return target
                     if registry.is_cancelled(session):
                         raise SegmentCancelled(session)
+                    detail = stderr.decode("utf-8", "replace")[-1000:]
                     if not detail:
                         # FFmpeg 可以退出码 0、stderr 全空却写出 0 字节（时间窗取错就是
                         # 这样）。此时光报 "ffmpeg failed" 等于没报，把能观测到的都说出来。
                         size = temporary.stat().st_size if temporary.is_file() else None
                         detail = (
-                            f"ffmpeg wrote no data: returncode={process.returncode} "
+                            f"ffmpeg wrote no data: returncode={returncode} "
                             f"bytes={'缺文件' if size is None else size} "
                             f"ss={start:.3f} to={start + duration:.3f}"
                         )
-                    raise SegmentUnavailable(detail)
-                # 同一片段可能被并发请求各生成一次；原子改名让后到的覆盖同样内容即可。
-                temporary.replace(target)
-                successful = True
-                self._evict()
-                return target
-            except asyncio.CancelledError:
-                if process is not None:
-                    _kill_process(process)
-                    await process.communicate()
-                    registry.unregister_process(session, process)
-                raise
-            finally:
-                if not successful:
+                    detail = f"{name}: {detail}"
+                finally:
                     temporary.unlink(missing_ok=True)
+        raise SegmentUnavailable(detail)
+
+    def _attempts(self, ffmpeg: Path, source: Path, start: float, duration: float, transcode: bool):
+        """依次尝试的命令，每项是 (名字, 接收临时文件路径的构造函数)。
+
+        封装复制只有一种。重编码与整片转码用同一条链：CUDA 解码加 NVENC、软件解码加 NVENC、
+        最后 libx264；没有显卡的机器只是多失败两次，不会没有分片。
+        """
+        prefix = [str(ffmpeg), "-hide_banner", "-loglevel", "error", "-nostdin", "-y"]
+        mapping = ["-map", "0:v:0", "-map", "0:a:0?", "-sn", "-dn"]
+        mux = ["-muxdelay", "0", "-muxpreload", "0", "-f", "mpegts"]
+        if not transcode:
+            # 终点必须写成绝对时间戳。-copyts 保留原始时间轴后，-t 会被当成绝对结束时刻
+            # 而不是片段时长，于是除了开头那一两段，每段的 -t 都早已过期，ffmpeg 以
+            # 退出码 0、空 stderr 写出 0 字节，服务端只能报一句没有内容的 ffmpeg failed。
+            # 保留原始时间戳，让每段接着上一段走。用 -avoid_negative_ts make_zero
+            # 把每段归零的话，每段都自称从 0 秒开始，拖动进度条时容易跳错位置。
+            window = ["-ss", f"{start:.3f}", "-i", str(source), "-to", f"{start + duration:.3f}"]
+            return [("copy", lambda out: prefix + window + mapping + ["-c", "copy", "-copyts"] + mux + [str(out)])]
+        window = ["-ss", f"{start:.3f}", "-i", str(source), "-t", f"{duration:.3f}"]
+        audio = ["-c:a", "aac", "-b:a", "160k", "-output_ts_offset", f"{start:.3f}"]
+        nvenc = ["-c:v", "h264_nvenc", "-preset", "p1", "-tune", "hq", "-rc", "vbr", "-cq", "21", "-b:v", "0"]
+        attempts = []
+        if self.prefer_hardware:
+            cuda = ["-hwaccel", "cuda", "-hwaccel_output_format", "cuda"]
+            attempts.append(("cuda-nvenc", lambda out: prefix + cuda + window + mapping
+                             + ["-vf", "scale_cuda=format=nv12"] + nvenc + audio + mux + [str(out)]))
+            attempts.append(("nvenc", lambda out: prefix + window + mapping
+                             + nvenc + ["-pix_fmt", "yuv420p"] + audio + mux + [str(out)]))
+        attempts.append(("libx264", lambda out: prefix + window + mapping + [
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", "21", "-pix_fmt", "yuv420p", "-threads", "2",
+        ] + audio + mux + [str(out)]))
+        return attempts
+
+    async def _run(self, command: list[str], session: str, registry: StreamSessionRegistry) -> tuple[int, bytes]:
+        """跑一次 FFmpeg 并把进程登记到会话，取消时能被杀掉。返回 (退出码, stderr)。"""
+        creationflags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+        try:
+            process = await asyncio.create_subprocess_exec(
+                *command,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=asyncio.subprocess.PIPE,
+                creationflags=creationflags,
+            )
+        except OSError as exc:
+            raise SegmentUnavailable("ffmpeg failed to start") from exc
+        if not registry.register_process(session, process):
+            _kill_process(process)
+            await process.communicate()
+            raise SegmentCancelled(session)
+        try:
+            _, stderr = await process.communicate()
+        except asyncio.CancelledError:
+            _kill_process(process)
+            await process.communicate()
+            raise
+        finally:
+            registry.unregister_process(session, process)
+        return process.returncode, stderr or b""
 
 
 def _kill_process(process) -> None:

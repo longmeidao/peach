@@ -144,7 +144,9 @@ def create_app(
     hls_plan_executor = ThreadPoolExecutor(
         max_workers=2, thread_name_prefix="PeachHlsPlan",
     )
-    hls_service = HlsSegmentService(resolver, settings.stream_root)
+    hls_service = HlsSegmentService(
+        resolver, settings.stream_root, prefer_hardware=transcode_service.prefer_hardware,
+    )
     mdns = create_mdns_publisher(
         settings.mdns_name, settings.mdns_port, secure=settings.tls_enabled,
         address=settings.mdns_address,
