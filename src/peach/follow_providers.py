@@ -64,9 +64,11 @@ PROVIDERS: dict[str, ProviderSpec] = {
     spec.key: spec
     for spec in (
         # 官方渠道：只读公开免费发布，身份可信，所以优先做主条目；媒体走各自详情接口，
-        # 不经本地代理，因此没有 hosts。
+        # 不经本地代理，因此没有 hosts。fanbox 的站点分页是 `post.paginateCreator`
+        # 给出的游标页清单，能稳定走完整个创作者，所以同样可回填。
         ProviderSpec("fanbox", "FANBOX", source_url="https://{ref}.fanbox.cc/",
-                     url_hosts=("fanbox.cc",), priority=1, official_identity=True),
+                     url_hosts=("fanbox.cc",), priority=1, official_identity=True,
+                     backfill=True),
         ProviderSpec("subscribestar", "SubscribeStar", source_url="https://{ref}",
                      url_hosts=("subscribestar.adult", "subscribestar.com"),
                      priority=2, official_identity=True),
