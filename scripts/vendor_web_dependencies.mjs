@@ -134,6 +134,7 @@ const lucideIcons = new Map([
 // 这张名单只收 `i-` 开头、能被 `<use>` 引用的图标；symbol 内部的遮罩、渐变一类
 // 零件不带那个前缀，也就不进这张名单。
 const handDrawnIcons = new Set([
+  "check-check-outline", // 叠勾的空心状态，由用户指定保持勾形轮廓。
   "shuffle", // 两条带 pathLength 的动画路径由 Peach 维护。
   "alert", "pics", "jav", "theater-enter", "theater-exit",
   // 「换一批」：Lucide shuffle 的线条拆成 strand-a／strand-b 两条 path 供忙态逐条画出，

@@ -156,6 +156,11 @@ def decorate(state, *, now=None):
     return state
 
 
+def _issue_classification(message, retryable):
+    informational = message in MISS_MESSAGES.values()
+    return informational, 'info' if informational else 'error', retryable and not informational
+
+
 def snapshot(config):
     try:
         state = json.loads(state_path(config).read_text(encoding='utf-8'))
@@ -173,6 +178,27 @@ def snapshot(config):
                                  completed_at=state.get('last_progress_at') or time.time())
                     _save(state_path(config), state)
         except Timeout:
+            pass
+    if 'error_count' not in state and state.get('status') in ('complete', 'failed') and state.get('job_id'):
+        try:
+            count, errors, retryable = 0, 0, set()
+            with issues_path(config, state['job_id']).open(encoding='utf-8') as handle:
+                for line in handle:
+                    item = json.loads(line)
+                    count += 1
+                    if item.get('message') not in MISS_MESSAGES.values():
+                        errors += 1
+                        if item.get('retryable') and item.get('asset_id') is not None:
+                            retryable.add(item['asset_id'])
+            if count == state.get('issue_count'):
+                state['error_count'] = errors
+                state['retryable_asset_ids'] = sorted(retryable)
+                for item in state.get('issue_preview', []):
+                    item['severity'] = 'info' if item.get('message') in MISS_MESSAGES.values() else 'error'
+                if state.get('error') == f'{count} 项需要处理，请查看详情并重试。':
+                    state['status'] = 'failed' if errors else 'complete'
+                    state['error'] = f'{errors} 项需要处理，请查看详情并重试。' if errors else ''
+        except (OSError, ValueError, TypeError):
             pass
     return decorate(state)
 
@@ -425,7 +451,7 @@ def process_library(config, db_path, candidate_root, cover_root, *, location='co
         state = dict(job_id=job_id or uuid.uuid4().hex, status='running',
                      stage='读取本地资料' if retrying else '扫描文件',
                      checked=0, total=0, scanned=0, identified=0, candidates=0, covers=0,
-                     issue_count=0, issue_preview=[], issues_truncated=False,
+                     issue_count=0, error_count=0, issue_preview=[], issues_truncated=False,
                      retryable_asset_ids=[],
                      last_progress_at=time.time(), progress_seq=0,
                      current_asset_id=None, current_asset_name='', current_action='',
@@ -466,14 +492,16 @@ def process_library(config, db_path, candidate_root, cover_root, *, location='co
             asset_id = asset.get('id')
             title = str(asset.get('catalog_title') or '') or Path(str(asset.get('name') or '')).name
             asset_path = str(asset.get('path') or '')
+            informational, severity, retryable = _issue_classification(message, retryable)
             with open(log_path, 'a', encoding='utf-8') as handle:
                 handle.write(json.dumps({'asset_id': asset_id, 'title': title, 'path': asset_path,
-                    'message': message, 'failed_action': action, 'retryable': retryable,
+                    'message': message, 'severity': severity, 'failed_action': action, 'retryable': retryable,
                     'last_failed_at': time.time()}, ensure_ascii=False) + '\n')
             state['issue_count'] += 1
+            state['error_count'] += not informational
             if len(state['issue_preview']) < ISSUE_PREVIEW_LIMIT:
                 state['issue_preview'].append(dict(asset_id=asset_id, title=title,
-                                                   path=asset_path, message=message))
+                                                   path=asset_path, message=message, severity=severity))
             else:
                 state['issues_truncated'] = True
             if retryable and asset_id is not None and asset_id not in state['retryable_asset_ids']:
@@ -629,9 +657,9 @@ def process_library(config, db_path, candidate_root, cover_root, *, location='co
                        current_asset_id=None, current_asset_name='', current_action='',
                        current_started_at=None, current_deadline_at=None)
             flush_candidates(force=True)
-            update(status='failed' if state['issue_count'] else 'complete', stage='处理结束',
+            update(status='failed' if state['error_count'] else 'complete', stage='处理结束',
                    checked=len(rows),
-                   error=f"{state['issue_count']} 项需要处理，请查看详情并重试。" if state['issue_count'] else '',
+                   error=f"{state['error_count']} 项需要处理，请查看详情并重试。" if state['error_count'] else '',
                    completed_at=time.time(), current_asset_id=None, current_asset_name='',
                    current_action='', current_started_at=None, current_deadline_at=None)
         except Exception:
@@ -643,4 +671,3 @@ def process_library(config, db_path, candidate_root, cover_root, *, location='co
             flush_candidates(force=True)
             remote.close()
         return state
-

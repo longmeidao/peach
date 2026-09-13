@@ -3009,7 +3009,8 @@ class FollowWebSourceTests(unittest.TestCase):
         """
         self.assertPageContains(
             '<div class="ftableframe"><div class="ftablewrap"><table class="ftable"><thead><tr>')
-        self.assertPageContains('<th scope="col"><span class="sr-only">${selectable?\'选择\':\'启用\'}</span></th>')
+        self.assertPageContains('data-follow-select-all aria-label="全选本页来源"')
+        self.assertPageContains('<th scope="col" class="ftcheck">')
         self.assertPageContains("${followTableHeader('source','来源')}${followTableHeader('provider','站点')}${followTableHeader('status','状态')}")
         self.assertPageContains('<th scope="col"><span class="sr-only">操作</span></th></tr></thead><tbody>${rows}</tbody></table></div></div>')
         self.assertPageContains(".ftablewrap{overflow-x:auto;overscroll-behavior-x:contain}")

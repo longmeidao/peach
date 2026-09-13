@@ -267,11 +267,20 @@ class LibraryNfoTests(unittest.TestCase):
         self.assertEqual(provider.cover.call_count, 2, '封面上次是来源故障，这次照问')
         self.assertEqual([row['message'] for row in second['issue_preview']],
                          ['外部来源没有这部片的资料，7 天内不再问', '外部来源没有这部片的封面，7 天内不再问'])
-        self.assertEqual(second['retryable_asset_ids'], [1])
+        self.assertEqual(second['retryable_asset_ids'], [])
+        self.assertEqual((second['status'], second['error_count']), ('complete', 0))
+        self.assertTrue(all(row['severity'] == 'info' for row in second['issue_preview']))
+        self.assertEqual((first['status'], first['error_count']), ('failed', 1))
+        stored = dict(second, status='failed', error='2 项需要处理，请查看详情并重试。')
+        stored.pop('error_count')
+        state_path(config).write_text(json.dumps(stored), encoding='utf-8')
+        self.assertEqual(snapshot(config)['status'], 'complete')
+        self.assertEqual(json.loads(state_path(config).read_text(encoding='utf-8'))['status'], 'failed')
 
         third = run()
         self.assertEqual((provider.query.call_count, provider.cover.call_count), (1, 2))
         self.assertEqual(third['issue_count'], 2)
+        self.assertEqual((third['status'], third['retryable_asset_ids']), ('complete', []))
 
         run(retry_ids=[1])
         self.assertEqual((provider.query.call_count, provider.cover.call_count), (2, 3), '重试未完成项不看记忆')

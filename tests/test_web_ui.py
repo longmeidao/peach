@@ -1630,6 +1630,9 @@ class WebUiSourceTests(unittest.TestCase):
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
         self.assertIn('aria-label="全选 ${esc(name)} 的来源">${icon(\'check-check\')}<span data-author-select-label>全选</span></button>', app)
         self.assertIn("count===fields.length?'取消全选':'全选'", app)
+        self.assertIn("icon(count===fields.length?'check-check-outline':'check-check')", app)
+        self.assertIn("icon(collapsed?'chevron-down':'chevron-up')", app)
+        self.assertIn('class="followtoolbaractions"', app)
         self.assertIn(".fauthorhead>.fmeta{margin-left:auto}", board)
         self.assertIn(".fauthorhead>.fmeta~.fmeta,.fauthorhead>.fmeta~.board-author-actions"
                       "{margin-left:0}", board, "撑开的空当只交给第一个 .fmeta")
@@ -5456,7 +5459,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".reviewbulktoolbar{padding-block:0;margin-bottom:0}")
         self.assertPageContains('class="reviewcontrols"')
         self.assertPageContains("updateReviewSticky($('.review'))")
-        self.assertPageContains('.reviewgroupbar.is-stuck h3{margin-right:0}')
+        self.assertPageContains('.reviewgroupbar.is-stuck h3{margin-right:auto}')
         self.assertPageContains('.reviewcontrols.is-stuck,.reviewgroupbar.is-stuck{background:var(--ground);border-bottom-color:var(--line-soft)}')
         self.assertPageContains('top:calc(var(--topH) + var(--review-controls-height,0px))')
         self.assertPageContains('class="reviewitemheader">${heading}</header>')
@@ -8365,7 +8368,7 @@ class WebUiSourceTests(unittest.TestCase):
             ".relatedperson .nm", ".reviewentity b",
             # 字段名是这张卡在问的问题，不许被省略；省略号只吃它后面那个作品标识。
             ".reviewfieldhead>span",
-            ".reviewitem h4", ".reviewpickname", ".searchoption span",
+            ".reviewitem h4", ".reviewpickname", ".reviewpickname>span", ".searchoption span",
             ".sgrid.mixgrid>.mixqueue .mixqueuehead span", ".sidebarorderlabel>b",
             ".insightrankrow>span:nth-child(2)", ".metricstrip small,.tastesummary>small",
             ".gselectfield>span",
@@ -9365,7 +9368,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('<section class="cleanupfieldset" data-geist-fieldset aria-labelledby="cleanupScrapingTitle">')
         island = (Path(__file__).resolve().parents[1]
                   / "frontend" / "src" / "islands" / "library-processing.tsx").read_text(encoding="utf-8")
-        self.assertIn('<div class="library-processing-outcome" aria-live="polite">', island)
+        self.assertIn('<div class="library-processing-outcome" aria-live="polite" ref={outcome}>', island)
         head, outcome = island.split('<div class="library-processing-outcome"', 1)
         self.assertIn("jobActivityHtml(", head.split("return <>", 1)[1])
         for banner in ("noteHtml(problem", "library-processing-result"):
@@ -9391,7 +9394,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn("footnote: state.issues_log ? `完整记录：${state.issues_log}` : '',", island)
         self.assertPageContains('<details class="geist-note-details"><summary>${esc(label)}</summary>')
         self.assertPageContains(".geist-note-details{grid-column:2/-1;")
-        self.assertPageContains(".geist-note-details>ul{box-sizing:border-box;display:grid;gap:8px;max-height:min(40vh,520px);")
+        self.assertPageContains(".geist-note-details ul{box-sizing:border-box;display:grid;gap:8px;max-height:min(40vh,520px);")
+        self.assertIn("wireCollapse(outcome.current,'.geist-note-details','library-issues')", island)
 
     def test_the_pinned_review_bars_share_one_pane_of_glass(self):
         """粘住的工具条和分组条是一块玻璃，中间没有接缝。

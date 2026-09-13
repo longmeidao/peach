@@ -32,8 +32,8 @@ it('表格按来源总数分页并传递范围',()=>{
 
 it('表格先按来源全量排序，再截取页内行',()=>{
   const tableSource=source.slice(source.indexOf('function followSourceTable('),source.indexOf('function followAliasManager('));
-  const render=new Function('FOLLOW_SOURCE_SORTS','followManageSort','followManageDir','FOLLOW_SORT_DEFAULT_DIR','followAuthorName','followSourceCells','followTableHeader','followAuthorAvatar','esc',`${tableSource};return followSourceTable;`)(
-    {source:(a:{id:number},b:{id:number})=>a.id-b.id},'source','asc',{source:'asc'},()=>'',(row:{id:number})=>({className:'fsource',check:'',name:String(row.id),error:'',provider:()=>'',status:'',checked:'',actions:''}),()=>'',()=>'',String,
+  const render=new Function('FOLLOW_SOURCE_SORTS','followManageSort','followManageDir','FOLLOW_SORT_DEFAULT_DIR','followAuthorName','followSourceCells','followTableHeader','followAuthorAvatar','esc','checkboxHtml',`${tableSource};return followSourceTable;`)(
+    {source:(a:{id:number},b:{id:number})=>a.id-b.id},'source','asc',{source:'asc'},()=>'',(row:{id:number})=>({className:'fsource',check:'',name:String(row.id),error:'',provider:()=>'',status:'',checked:'',actions:''}),()=>'',()=>'',String,()=>'<input type="checkbox" data-follow-select-all>',
   );
   const root=document.createElement('div');root.innerHTML=render([[{id:4},{id:1}],[{id:3},{id:2}]],true,2,2);
   expect([...root.querySelectorAll('.ftname')].map(cell=>cell.textContent)).toEqual(['3','4']);
@@ -41,10 +41,10 @@ it('表格先按来源全量排序，再截取页内行',()=>{
 
 it('跨页选择用于批量动作，本页全选只作用于当前行，取消选择清空全部',()=>{
   const root=document.createElement('div');document.body.append(root);
-  root.innerHTML='<label><input type="checkbox" data-follow-select-all></label><div class="fsource"><input type="checkbox" data-follow-select="2"></div><div class="followselectiondock"><span data-follow-selected-count></span><button data-follow-selection-action data-follow-check></button><button data-follow-selection-clear></button></div>';
+  root.innerHTML='<label data-follow-page-selection><input type="checkbox" data-follow-select-all></label><div class="fsource"><input type="checkbox" data-follow-select="2"></div><div class="followselectiondock"><span data-follow-selected-count></span><button data-follow-selection-action data-follow-check></button><button data-follow-selection-clear></button></div>';
   const selection=new Set([1]);
   const segment=source.slice(source.indexOf('  const selectable=[...root.querySelectorAll(\'[data-follow-select]\')]'),source.indexOf('  wireScrollers(root);',source.indexOf('function wireFollowManage(')));
-  new Function('root','followData','followSourceSelection','followRuntime','selectionSummary','syncSelectionToolbar','selectGroup',segment)(root,{sources:[{id:1},{id:2}]},selection,{},selectionSummary,syncSelectionToolbar,selectGroup);
+  new Function('root','followData','followSourceSelection','followRuntime','selectionSummary','syncSelectionToolbar','selectGroup','followListLayout',segment)(root,{sources:[{id:1},{id:2}]},selection,{},selectionSummary,syncSelectionToolbar,selectGroup,()=> 'default');
   const all=root.querySelector<HTMLInputElement>('[data-follow-select-all]')!;
   const action=root.querySelector<HTMLButtonElement>('[data-follow-check]')!;
   expect(all.checked).toBe(false);

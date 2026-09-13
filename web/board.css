@@ -1723,6 +1723,13 @@ body .batchbar button[hidden],body .batchbar button.danger[hidden]{display:none}
 .followmanage .board-follow-list .fauthorhead>.fmeta{overflow:hidden}
 .followmanage .board-follow-list .board-author-actions{width:auto;flex:none}
 .board-author-actions [data-follow-author-select]>svg{width:16px;height:16px;flex:none}
+.followmanage .followcheckall{margin-left:auto}
+.followtoolbaractions{display:flex;align-items:center;gap:8px;margin-left:auto;max-width:100%;flex-wrap:nowrap}
+.followmanage .fsechead .fmanagesort{margin-left:0}
+.followmanage [data-follow-collapse-all]{flex:none}
+.followmanage [data-follow-collapse-all][hidden]{display:none}
+.followmanage .board-follow-selection[hidden]{display:none}
+.geist-note-details a{color:var(--ink)}
 @container(max-width:460px){.board-author-actions [data-author-select-label]{display:none}.followmanage .board-follow-list .board-author-actions [data-follow-author-select]{width:var(--control-h);height:var(--control-h);padding:0;justify-content:center}}
 .followmanage .board-follow-list .fauthor .fsource.frow{grid-template-columns:20px minmax(0,1fr) auto auto auto;gap:8px;align-items:center}
 .followmanage .board-follow-list .fsource.frow>b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
