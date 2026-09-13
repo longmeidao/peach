@@ -8,8 +8,8 @@
 要不要输出 `<img>`，这两个判据和 `PreviewService` 真正的取图必须在同一个目录上给出
 同一个答案，所以这里把两边摆在一处对照着测。
 """
+import contextlib
 import tempfile
-import threading
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -115,27 +115,43 @@ class ParallelGenerationTests(unittest.TestCase):
             left.release()
 
     def test_the_same_asset_is_generated_only_once(self):
-        """同一个资产并发请求两次，只跑一次 ffmpeg：持锁后要再看一眼文件在不在。"""
+        """同一个资产请求两次，只跑一次 ffmpeg：第二次拿的是第一次落盘的那张。"""
         calls = []
-        entered = threading.Event()
 
         def fake_run(command):
             calls.append(command[-1])
-            entered.set()
             Path(command[-1]).write_bytes(b"jpg")
 
         with mock.patch.object(PreviewService, "_run", staticmethod(fake_run)):
-            workers = [
-                threading.Thread(
-                    target=lambda: self.service.poster(self.LEFT), daemon=True)
-                for _ in range(2)
-            ]
-            for worker in workers:
-                worker.start()
-            for worker in workers:
-                worker.join(8)
+            first = self.service.poster(self.LEFT)
+            second = self.service.poster(self.LEFT)
 
+        self.assertEqual(first, second)
         self.assertEqual(len(calls), 1, f"同一目标只该生成一次，实际 {len(calls)} 次")
+
+    def test_a_target_that_landed_while_waiting_for_the_lock_is_not_generated_again(self):
+        """持锁后要再看一眼文件在不在：等锁的那段时间里，别人可能已经把它生成好了。
+
+        让「拿到锁」这件事自己把目标文件写出来，等价于等锁期间另一个请求已经落盘；
+        拿两个真线程去撞这个交错要调度器配合，满载机器上那是一次抛硬币（见上面那条的说明）。
+        锁内那次判断缺了的话，`_run` 就会多跑一次，判据不靠时序。
+        """
+        calls = []
+        destination = self.poster_root / f"{self.LEFT}_4.jpg"
+
+        @contextlib.contextmanager
+        def lock_that_lands_the_target(target: Path):
+            self.assertEqual(target, destination)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(b"jpg")
+            yield
+
+        with mock.patch.object(previews, "_generate_lock", lock_that_lands_the_target), \
+                mock.patch.object(PreviewService, "_run",
+                                  staticmethod(lambda command: calls.append(command[-1]))):
+            self.assertEqual(self.service.poster(self.LEFT), destination)
+
+        self.assertEqual(calls, [], "锁内那次判断要挡住重复生成")
 
 
 if __name__ == "__main__":
