@@ -1,6 +1,6 @@
 # Peach 当前状态
 
-最后核验：2026-09-12
+最后核验：2026-09-13
 
 索引：`PRODUCT_BACKLOG.md`、`REUSE.md`、`HANDOFF.md`。
 
@@ -25,7 +25,7 @@
 - 可选密码已上线：首启可跳过；配置页可修改、关闭；登录可记住设备。旧安装保留口令。
 - macOS 是 reader，代码与 `peach-data` 都在内置盘；`peach.local` 经 8900/8443 和 pf 提供 80/443，GET 正常、写入端点返回 409。
 - 两端各用本机 CA，私钥与凭据不跨机同步；代码走 Git、账本走单写者复制、图片产物走 Syncthing，三条链路互不兜底。本机坐标在 `<数据根>/config.toml`；ADR-0023 第 1～3 阶段已合入并在 Windows 生效。
-- Windows 真实 ledger 为 `peach-data/database/ledger.db`，2026-09-12 已应用到 `0029`；`asset_subtitle` 195 行（孤立 19），175 部带字幕轨。同日修掉 `local` 路径大小写重复，`asset` 80,760 行。
+- Windows 真实 ledger 为 `peach-data/database/ledger.db`，2026-09-13 已应用到 `0030`；`asset_subtitle` 195 行（孤立 19），175 部带字幕轨。09-12 修掉 `local` 路径大小写重复，`asset` 80,761 行。
 - Mac ledger 已授权从共享副本显式拉取并恢复 `in-sync`；`sources` 已迁到内置盘，`archive`、`tools` 仍可指向外置盘。
 - 媒体仅用 `FilesystemBackend`（ADR-0021）；Stash 已停用，遗留问题见 `docs/STASH.md`。
 - 前端按 ADR-0022 以 Preact island 逐岛迁往 `frontend/`（Vite + TypeScript），产物 `web/dist/peach-ui.js` 进 Git、经 `/dist/{name}` 提供，`/quality-goals` 已迁；改前端需 Node 24+，见 `docs/FRONTEND.md`。
