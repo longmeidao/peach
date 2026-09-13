@@ -73,7 +73,20 @@ class FanboxNormalizerTests(unittest.TestCase):
         self.assertEqual(tail["url"], cover)
         self.assertEqual(tail["thumb_url"], cover)
         self.assertEqual(tail["media_kind"], "image")
+        # 裁切尺寸写在封面地址里，解析出来给界面占位。
+        self.assertEqual((tail["width"], tail["height"]), (1200, 630))
         self.assertEqual(content.image_count, 2)
+
+    def test_body_images_carry_their_intrinsic_dimensions(self):
+        content = normalize_fanbox_post({"type": "image", "body": {"images": [
+            {"id": "one", "originalUrl": "https://downloads.fanbox.cc/one.png",
+             "thumbnailUrl": "https://downloads.fanbox.cc/w/1200/one.jpeg",
+             "width": 1920, "height": 1080},
+            {"id": "two", "originalUrl": "https://downloads.fanbox.cc/two.png"},
+        ]}})
+        self.assertEqual((content.media_items[0]["width"],
+                          content.media_items[0]["height"]), (1920, 1080))
+        self.assertIsNone(content.media_items[1]["width"])
 
     def test_cover_image_is_skipped_when_absent_or_already_present(self):
         cover = "https://pixiv.pximg.net/fanbox/public/images/post/1/cover/abc.jpeg"

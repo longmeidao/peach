@@ -2139,10 +2139,10 @@ class FanboxConnector(_BaseConnector):
     provider = "fanbox"
     #: 2026-08-27 实测公开接口单页 10 条，整页都能补上。
     DEFAULT_ENRICH_BUDGET = 10
-    #: 详情补齐一轮的标记：补全阶段在 extra 里写 `cover_harvested`。拿新键当判据，
-    #: 按 `post_type` 判成已补齐的旧行缺这一个键，下一轮检查会各重探一次详情——
-    #: 封面是这次才收进媒体清单的，旧行只有重探才能拿到。
-    ENRICHED_MARK = "cover_harvested"
+    #: 详情补齐一轮的标记：补全阶段在 extra 里写 `media_dims`。拿新键当判据，
+    #: 缺键的行下一轮检查会各重探一次详情。媒体清单现在是带封面和固有宽高的
+    #: 完整形状，按旧键判成已补齐的行只有重探才能拿到这个形状。
+    ENRICHED_MARK = "media_dims"
     _CREATOR_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
     @classmethod
@@ -2298,7 +2298,7 @@ class FanboxConnector(_BaseConnector):
             summary=detail["summary"] or candidate.summary,
             extra={**candidate.extra, "links": links, "media_items": media_items,
                    "media_error": None,
-                   "cover_harvested": True,
+                   "media_dims": True,
                    "post_type": detail.get("post_type"),
                    "image_count": detail.get("image_count", 0),
                    "video_count": detail.get("video_count", 0),
