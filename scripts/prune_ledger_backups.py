@@ -1,8 +1,8 @@
 """清退旧的账本备份 `ledger.pre-*.db`。默认只列计划，`--apply` 才删。
 
 保留规则在 `peach.ledger_backups`：最近几份、还没满 24 小时、比当前账本更新的都留；
-当前账本 `integrity_check` 不是 ok 时拒绝清退。托盘每次启动按同一规则自动跑一遍，
-这个脚本给手动与排障用。
+当前账本 `integrity_check` 不是 ok 时拒绝清退。主文件已经不在的 `-wal`／`-shm` 一并扫掉。
+托盘每次启动按同一规则自动跑一遍，这个脚本给手动与排障用。
 """
 from __future__ import annotations
 
@@ -41,6 +41,7 @@ def main(argv: list[str] | None = None) -> int:
             "refused": decided.refused,
             "keep": [path.name for path in decided.keep],
             "remove": [path.name for path in decided.remove],
+            "orphans": [path.name for path in decided.orphans],
             "removable_bytes": decided.removable_bytes,
         }, ensure_ascii=False, indent=2))
     else:
@@ -49,7 +50,10 @@ def main(argv: list[str] | None = None) -> int:
             print(f"保留  {path.name}")
         for path in decided.remove:
             print(f"{verb}  {path.name}")
-        print(f"{verb} {len(decided.remove)} 份，约 {decided.removable_bytes / 1_048_576:.0f} MB")
+        for path in decided.orphans:
+            print(f"{verb}  {path.name}（主文件已不在）")
+        print(f"{verb} {len(decided.remove)} 份加 {len(decided.orphans)} 个无主副文件，"
+              f"约 {decided.removable_bytes / 1_048_576:.0f} MB")
         if decided.refused:
             print(f"拒绝清退：{decided.refused}")
     return 2 if decided.refused else 0

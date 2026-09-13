@@ -6,15 +6,12 @@
 
 ## 运行态
 
-- 页面骨架、别名与扫描菜单已部署。
-
 - BoardUI：状态演示 `/state-preview`；验收见 `BOARD_UI.md`。
-
-- 设置与反馈已部署；自动更新设置未部署。
 
 - 女优头像 545 张，脸宽中位数 320px，37 张带水印待复核；被顶掉的整套留在 `avatars-superseded/`，判据见 `SOURCING.md`。
 - 小图、资料骨架、官网图标、社媒品牌色与自动播放开关已实现；请求共用 Chrome UA。厂牌标识 198 张随仓库分发（ADR-0026）。
 - Eightman 与 SO MODEL AGENT 已合为 8662，成员与关联作品保留，旧名仍可解析。
+- 产地是独立维度，JAV 是它的投影：`region` 为空时按厂牌、创作者、番号逐层推断，不落库；韩国 MIB 已不算 JAV。
 
 - Windows 是 ledger writer，入口 `dist\Peach\Peach.exe`；代码与数据在内置盘，外置盘只提供 `R:\media`。
 - 托盘必须以普通权限启动：提升权限后的令牌看不到 CloudDrive 的 `A:` / `B:`，会把 PikPak 和 115 误报为脱盘。
