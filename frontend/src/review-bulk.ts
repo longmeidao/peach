@@ -10,7 +10,7 @@ type Payload = Record<string, unknown>;
 
 export function updateReviewSticky(root: HTMLElement | null) {
   const controls = root?.querySelector<HTMLElement>('.reviewbulktoolbar');
-  if (!root || !controls || controls.offsetParent === null) return;
+  if (!root || root.classList.contains('review-skeleton') || !controls || controls.offsetParent === null) return;
   root.style.setProperty('--review-controls-height', `${controls.getBoundingClientRect().height}px`);
   const bars = [controls, ...root.querySelectorAll<HTMLElement>('.reviewgroupbar')];
   for (const bar of bars) {

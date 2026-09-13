@@ -4358,7 +4358,7 @@ var ki = () => ({
 });
 function Ai(e) {
 	let t = e?.querySelector(".reviewbulktoolbar");
-	if (!e || !t || t.offsetParent === null) return;
+	if (!e || e.classList.contains("review-skeleton") || !t || t.offsetParent === null) return;
 	e.style.setProperty("--review-controls-height", `${t.getBoundingClientRect().height}px`);
 	let n = [t, ...e.querySelectorAll(".reviewgroupbar")];
 	for (let e of n) {

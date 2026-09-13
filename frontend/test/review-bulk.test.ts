@@ -2,6 +2,16 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { applyReviewSelection, groupReviewRows, selectReviewRange, commonReviewSources, createReviewSelection, wireReviewSelection, reviewGroupingOptions, updateReviewSticky } from '../src/review-bulk';
 
 afterEach(() => { document.body.innerHTML = ''; });
+it('加载骨架的玻璃随工具条布局，不创建固定定位玻璃', () => {
+  document.body.innerHTML = '<div class="review review-skeleton"><div class="reviewbulktoolbar"></div></div>';
+  const root = document.querySelector<HTMLElement>('.review')!;
+  const toolbar = root.firstElementChild as HTMLElement;
+  Object.defineProperty(toolbar, 'offsetParent', { get: () => root });
+  updateReviewSticky(root);
+  expect(root.classList.contains('review-has-pane')).toBe(false);
+  expect(toolbar.classList.contains('review-pane-member')).toBe(false);
+  expect(root.style.getPropertyValue('--review-pane-left')).toBe('');
+});
 it('静止与吸顶的复核横条共用玻璃且不包住远处的分组', () => {
   document.body.innerHTML = '<div class="review"><div class="reviewbulktoolbar"></div><div class="reviewgroupbar"></div><div class="reviewgroupbar"></div></div>';
   const root = document.querySelector<HTMLElement>('.review')!;
