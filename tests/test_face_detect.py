@@ -88,6 +88,110 @@ class DetectorContractTests(unittest.TestCase):
         self.assertIsInstance(detector, face_detect.FaceDetector)
 
 
+class _Model:
+    """假的 YuNet：按送检尺寸回不同的框，用来看几个尺度的读数怎么合成一个分。
+
+    `reads` 的键是送检时的长边，值是 `(cx, cy, w, h, score)`，坐标按那一档的像素给。
+    """
+
+    def __init__(self, reads):
+        self._reads = reads
+        self._size = None
+
+    def setInputSize(self, size):                    # noqa: N802 - 对齐 OpenCV 的拼法
+        self._size = size
+
+    def detect(self, _image):
+        import numpy
+
+        cols, rows = self._size
+        rows_out = []
+        for box in self._reads.get(max(cols, rows), []):
+            cx, cy, width, height, score = box
+            rows_out.append([cx - width / 2, cy - height / 2, width, height]
+                            + [0.0] * 10 + [score])
+        if not rows_out:
+            return 1, None
+        return 1, numpy.array(rows_out, dtype="float32")
+
+
+class _Cv2:
+    """只提供 `detect` 用得到的那一个函数。"""
+
+    @staticmethod
+    def resize(image, size):
+        import numpy
+
+        cols, rows = size
+        return numpy.zeros((rows, cols, 3), dtype=image.dtype)
+
+
+def _detector_over(reads, *, score=face_detect.DEFAULT_SCORE):
+    import numpy
+
+    detector = face_detect.FaceDetector.__new__(face_detect.FaceDetector)
+    detector._cv2 = _Cv2()
+    detector.score = score
+    detector._detector = _Model(reads)
+    return detector, numpy.zeros((1440, 2560, 3), dtype="uint8")
+
+
+class DetectAcrossScalesTests(unittest.TestCase):
+    """一张脸的分是它在几个尺度上读数的中位数，不是最高的那一次。"""
+
+    def test_a_face_read_on_every_scale_keeps_its_middling_score(self):
+        detector, image = _detector_over({
+            320: [(160, 90, 40, 50, 0.90)],
+            640: [(320, 180, 80, 100, 0.85)],
+            1280: [(640, 360, 160, 200, 0.30)],
+        })
+        faces = detector.detect(image)
+        self.assertEqual(len(faces), 1)
+        self.assertEqual(faces[0].score, 0.85)
+        self.assertAlmostEqual(faces[0].cx, 0.5, places=2)
+
+    def test_a_box_that_only_one_scale_believes_is_dropped(self):
+        """实测封面 `SRN-104`：罩住整个身体的框在 320 上 0.85，另两档只有 0.31、0.49。
+
+        取最高分它和真正的脸打平，再按面积一比就赢了；取中位数它根本进不了名单。
+        """
+        detector, image = _detector_over({
+            320: [(160, 90, 150, 160, 0.85)],
+            640: [(320, 180, 300, 320, 0.31)],
+            1280: [(640, 360, 600, 640, 0.49)],
+        })
+        self.assertEqual(detector.detect(image), [])
+
+    def test_a_face_missing_from_one_scale_still_counts(self):
+        detector, image = _detector_over({
+            320: [(160, 90, 40, 50, 0.88)],
+            640: [(320, 180, 80, 100, 0.91)],
+        })
+        faces = detector.detect(image)
+        self.assertEqual(len(faces), 1)
+        self.assertEqual(faces[0].score, 0.88)
+
+    def test_a_small_image_is_only_sent_once(self):
+        """三档都缩不下去时只检一次，那一次的读数就是分——补 0 会把小图的脸全判掉。"""
+        import numpy
+
+        detector = face_detect.FaceDetector.__new__(face_detect.FaceDetector)
+        detector._cv2 = _Cv2()
+        detector.score = face_detect.DEFAULT_SCORE
+        detector._detector = _Model({200: [(100, 60, 40, 50, 0.72)]})
+        faces = detector.detect(numpy.zeros((120, 200, 3), dtype="uint8"))
+        self.assertEqual([face.score for face in faces], [0.72])
+
+    def test_two_faces_side_by_side_stay_two_faces(self):
+        detector, image = _detector_over({
+            320: [(80, 90, 40, 50, 0.80), (240, 90, 40, 50, 0.70)],
+            640: [(160, 180, 80, 100, 0.82), (480, 180, 80, 100, 0.74)],
+            1280: [(320, 360, 160, 200, 0.81), (960, 360, 160, 200, 0.72)],
+        })
+        faces = detector.detect(image)
+        self.assertEqual(sorted(face.score for face in faces), [0.72, 0.81])
+
+
 class MainFaceTests(unittest.TestCase):
     """挑主角那张脸：分数先卡一道，再在剩下的里取最大。"""
 
