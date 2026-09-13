@@ -99,7 +99,7 @@ const lucideIcons = new Map([
   ["unlink", "unlink"], ["git-compare", "git-compare"],
   ["compass", "compass"], ["folder-sync", "folder-sync"], ["expand", "expand"],
   ["zoom-in", "zoom-in"], ["zoom-out", "zoom-out"],
-  ["plus", "plus"], ["minus", "minus"], ["check", "check"],
+  ["plus", "plus"], ["minus", "minus"], ["check", "check"], ["check-check", "check-check"],
   ["rotate-ccw", "rotate-ccw"], ["rotate-cw", "rotate-cw"], ["maximize", "maximize"],
   ["chevron-left", "chevron-left"], ["chevron-right", "chevron-right"],
   ["chevron-up", "chevron-up"], ["chevron-down", "chevron-down"], ["heart", "heart"],

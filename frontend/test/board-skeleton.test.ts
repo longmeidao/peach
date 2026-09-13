@@ -1,6 +1,11 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { boardPageSkeleton, detailSkeletonHtml } from '../src/board-skeleton';
 import { wireBoardSegments } from '../src/board-controls';
+
+vi.mock('@peach/legacy/core', async importOriginal => ({
+  ...await importOriginal<object>(),
+  icon: (name: string) => `<svg aria-hidden="true" data-icon="${name}"></svg>`,
+}));
 
 describe('Board 页面骨架', () => {
   it.each(['/stats', '/taste', '/follow-manage', '/configuration', '/activity', '/duplicates', '/quality-goals', '/playlists'])('为 %s 提供单一等待语义', path => {
@@ -8,7 +13,10 @@ describe('Board 页面骨架', () => {
     root.innerHTML = boardPageSkeleton(path);
     expect(root.querySelectorAll('[role="status"]')).toHaveLength(1);
     expect(root.querySelector('[aria-hidden="true"]')).not.toBeNull();
-    expect(root.querySelectorAll('button, input, a')).toHaveLength(0);
+    expect(root.querySelector('[aria-hidden="true"][inert]')).not.toBeNull();
+    for (const control of root.querySelectorAll('button, input, a, summary')) {
+      expect(control.closest('[inert]')).not.toBeNull();
+    }
   });
   it('统计预留四张指标卡，未知页面交给自身骨架', () => {
     const root = document.createElement('div');
@@ -45,6 +53,14 @@ describe('Board 页面骨架', () => {
     expect(root.querySelector('.board-segment-thumb')).toBeNull();
     expect(root.querySelector('.skeleton-segment-selected')?.textContent).toBe('关注列表');
     expect(root.querySelectorAll('.skeleton-segments > span')).toHaveLength(3);
+    expect(root.querySelector('[data-follow-workspace-panel="list"]')).not.toBeNull();
+    expect(root.querySelector('[data-follow-panel="sources"]')).toBeNull();
+    expect(root.querySelectorAll('.board-follow-list .fauthor')).toHaveLength(4);
+    expect(root.querySelectorAll('.fauthorsources .fsource.frow')).toHaveLength(12);
+    expect(root.querySelectorAll('.fsource.frow > *')).toHaveLength(60);
+    expect(root.querySelectorAll('.board-follow-selection button')).toHaveLength(1);
+    expect(root.querySelector('.followpagefooter')).not.toBeNull();
+    expect(root.querySelector('.selectiondock')).toBeNull();
   });
   it('口味骨架保留分段背景与状态行间距', () => {
     const root = document.createElement('div');
@@ -53,5 +69,12 @@ describe('Board 页面骨架', () => {
     expect(root.querySelector('.skeleton-segment-selected')?.textContent).toBe('浏览器记录');
     expect(root.querySelector('.tastehead + .tastestate + .tastesummaries')).not.toBeNull();
     expect(root.querySelector('.tastehead .skeleton-tabs')).toBeNull();
+  });
+  it('关注表格视图预留表头与来源行',()=>{
+    const root=document.createElement('div');root.innerHTML=boardPageSkeleton('/follow-manage',{followLayout:'table'});
+    expect(root.querySelector('.fsources[data-layout="table"]')).not.toBeNull();
+    expect(root.querySelectorAll('thead th')).toHaveLength(7);
+    expect(root.querySelectorAll('tbody tr')).toHaveLength(6);
+    expect(root.querySelector('.fauthor')).toBeNull();
   });
 });
