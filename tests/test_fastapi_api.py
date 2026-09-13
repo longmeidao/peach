@@ -1816,6 +1816,35 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(playlist.status_code, 200)
             self.assertIn('#EXTINF:0.280', playlist.text)
 
+    async def test_unknown_ledger_duration_still_slices_by_the_probed_duration(self):
+        """账本没记时长（或记成 -1）的 HEVC MP4 也按片切：时长取 ffprobe 报的，不走整片转码。"""
+        from peach.transcodes import _MediaProfile
+        con = sqlite3.connect(self.db)
+        con.execute("UPDATE asset SET duration=-1 WHERE id=1")
+        con.commit()
+        con.close()
+        with patch.object(self.app.state.transcode_service, "_probe",
+                          return_value=_MediaProfile("hevc", "yuv420p", "mp3", duration=13.5)), \
+                patch.object(self.app.state.transcode_service, "browser_path",
+                             side_effect=AssertionError("whole movie conversion")):
+            plan = (await self.client.get("/api/stream-plan?id=1&session=s&t=secret")).json()
+            self.assertEqual((plan["protocol"], plan["segments"], plan["duration"]), ("hls", 3, 13.5))
+            playlist = await self.client.get("/stream/hls/1/index.m3u8?session=s&t=secret")
+        self.assertEqual(playlist.status_code, 200)
+        self.assertEqual(playlist.text.count("#EXTINF:"), 3)
+
+    async def test_unprobeable_file_without_duration_gets_range_and_a_404_playlist(self):
+        """moov 缺失的文件 ffprobe 读不出、账本也没时长：计划回 Range，播放列表回 404，不是 500。"""
+        con = sqlite3.connect(self.db)
+        con.execute("UPDATE asset SET duration=-1 WHERE id=1")
+        con.commit()
+        con.close()
+        with patch.object(self.app.state.transcode_service, "_probe", return_value=None):
+            plan = (await self.client.get("/api/stream-plan?id=1&session=s&t=secret")).json()
+            playlist = await self.client.get("/stream/hls/1/index.m3u8?session=s&t=secret")
+        self.assertEqual(plan["protocol"], "range")
+        self.assertEqual(playlist.status_code, 404)
+
     async def test_hls_segment_is_generated_for_one_requested_time_slice(self):
         con = sqlite3.connect(self.db)
         con.execute("UPDATE asset SET location='115', duration=13.5, path=? WHERE id=1",

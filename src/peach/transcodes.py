@@ -24,6 +24,8 @@ class _MediaProfile:
     video_codec: str
     pixel_format: str
     audio_codec: str
+    #: 容器报的总时长（秒）；探测不到时为 0，切片计划据此决定能不能按时间切。
+    duration: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -71,6 +73,21 @@ class TranscodeService:
             return True
         if self.resolver.ffprobe() is None:
             return False
+        profile = self._profile_for(source, session, registry)
+        return profile is None or not self._browser_compatible(source, profile)
+
+    def media_duration(self, source: Path, *, session: str = "", registry=None) -> float:
+        """ffprobe 报的总时长（秒）；账本没记时长的片源靠它切片。探测不到返回 0。"""
+        if self.resolver.ffprobe() is None:
+            return 0.0
+        try:
+            profile = self._profile_for(source, session, registry)
+        except OSError:
+            return 0.0
+        return profile.duration if profile is not None else 0.0
+
+    def _profile_for(self, source: Path, session: str, registry) -> _MediaProfile | None:
+        """按 (路径, 大小, mtime) 缓存探测结果；同一个文件只问 ffprobe 一次。"""
         stat = source.stat()
         key = (str(source), stat.st_size, stat.st_mtime_ns)
         with self._locks_guard:
@@ -83,7 +100,7 @@ class TranscodeService:
                     if len(self._native_profiles) >= 512:
                         self._native_profiles.pop(next(iter(self._native_profiles)))
                     self._native_profiles[key] = profile
-        return profile is None or not self._browser_compatible(source, profile)
+        return profile
 
     def browser_path(
         self, asset_id: int, source: Path, *, session: str = "", registry=None,
@@ -93,20 +110,9 @@ class TranscodeService:
             if self.resolver.ffprobe() is None:
                 return source, False
             try:
-                stat = source.stat()
+                profile = self._profile_for(source, session, registry)
             except OSError as exc:
                 raise TranscodeUnavailable("source unavailable") from exc
-            key = (str(source), stat.st_size, stat.st_mtime_ns)
-            with self._locks_guard:
-                profile = self._native_profiles.get(key)
-            if profile is None:
-                profile = self._probe(source, session, registry,
-                                      time.monotonic() + PROBE_TIMEOUT_SECONDS)
-                if profile is not None:
-                    with self._locks_guard:
-                        if len(self._native_profiles) >= 512:
-                            self._native_profiles.pop(next(iter(self._native_profiles)))
-                        self._native_profiles[key] = profile
             if profile is not None and self._browser_compatible(source, profile):
                 return source, False
 
@@ -192,7 +198,7 @@ class TranscodeService:
             return None
         command = (
             str(choice.path), "-v", "error", "-show_entries",
-            "stream=codec_type,codec_name,pix_fmt", "-of", "json", str(source),
+            "stream=codec_type,codec_name,pix_fmt:format=duration", "-of", "json", str(source),
         )
         try:
             returncode, stdout, _stderr = self._execute(
@@ -210,7 +216,8 @@ class TranscodeService:
         if returncode:
             return None
         try:
-            streams = json.loads(stdout.decode("utf-8", "replace")).get("streams", ())
+            report = json.loads(stdout.decode("utf-8", "replace"))
+            streams = report.get("streams", ())
         except (AttributeError, json.JSONDecodeError):
             return None
         video = next((item for item in streams if item.get("codec_type") == "video"), {})
@@ -218,10 +225,15 @@ class TranscodeService:
         codec = str(video.get("codec_name") or "").lower()
         if not codec:
             return None
+        try:
+            duration = float((report.get("format") or {}).get("duration") or 0.0)
+        except (TypeError, ValueError):
+            duration = 0.0
         return _MediaProfile(
             video_codec=codec,
             pixel_format=str(video.get("pix_fmt") or "").lower(),
             audio_codec=str(audio.get("codec_name") or "").lower(),
+            duration=max(0.0, duration),
         )
 
     def _attempts(
