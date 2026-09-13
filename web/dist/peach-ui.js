@@ -4367,10 +4367,10 @@ function Ai(e) {
 	}
 	let r = n.filter((e) => e.classList.contains("is-stuck"));
 	e.classList.toggle("review-is-stuck", r.length > 0);
-	let i = r[0], a = r.at(-1);
-	if (!i || !a) return;
+	let i = t, a = n.slice(1).find((e) => e.offsetParent !== null && Math.abs(e.getBoundingClientRect().top - t.getBoundingClientRect().bottom) <= 2) || t;
+	e.classList.add("review-has-pane"), n.forEach((e) => e.classList.toggle("review-pane-member", e === i || e === a));
 	let o = i.getBoundingClientRect(), s = a.getBoundingClientRect();
-	e.style.setProperty("--review-pane-left", `${o.left}px`), e.style.setProperty("--review-pane-width", `${o.width}px`), e.style.setProperty("--review-pane-height", `${s.bottom - o.top}px`);
+	e.style.setProperty("--review-pane-top", `${o.top}px`), e.style.setProperty("--review-pane-left", `${o.left}px`), e.style.setProperty("--review-pane-width", `${o.width}px`), e.style.setProperty("--review-pane-height", `${s.bottom - o.top}px`);
 }
 function ji(e, t) {
 	let n = [[

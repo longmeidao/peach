@@ -151,7 +151,7 @@
 .top .search.search.search{--glass-optic:blur(22px)}
 /* 快照里的玻璃使用实底承接光晕；实时页面恢复后再采样背景。 */
 html[data-theme-snapshot] :is(.board-filter-frame,.entitytagbar,.entitycollectionhead,.drawer,.edge,.search,.top>.ib,.board-library-menu,.viewglide,.navglide,.settingscard>.board-local-nav,.selectiondock,.reviewcontrols,.reviewgroupbar,.reviewbulktoolbar,.batchbar,.tagselection),
-html[data-theme-snapshot] .review.review-is-stuck::before{backdrop-filter:none!important;-webkit-backdrop-filter:none!important;background-color:var(--ground)!important;transition:none!important}
+html[data-theme-snapshot] .review.review-has-pane::before{backdrop-filter:none!important;-webkit-backdrop-filter:none!important;background-color:var(--ground)!important;transition:none!important}
 /* 快照撤掉那一下，材质要淡回来：揭示动画刚停，浮层从实底「啪」地跳成毛玻璃，读起来
    像主题又切了第二次。过渡只写在常态上——进快照那一下正在拍旧状态的快照，拍到一半
    路上的颜色就会闪，所以上面那条规则自己把过渡关掉。 */
@@ -171,13 +171,7 @@ html[data-theme-snapshot] .review.review-is-stuck::before{backdrop-filter:none!i
    也跟着走，而它正是这条筛选条上唯一离开就读不懂的东西。 */
 .board-filter-frame .entitytagbar .filterscroll{gap:6px}
 .board-filter-frame .entityviews .pill{height:30px;padding:0 10px;font-size:13px;white-space:nowrap}
-/* 复核页那两条还是各做一块：上面那条的高度不是定值，从下面往上够不到。吸顶时整块由
-   `.review-is-stuck::before` 画，这里管的只是没吸顶的时候。那道 125° 高光和漂移光斑
-   都按盒子自己的尺寸铺，两半各铺一遍会在接缝处断开，所以不铺；上面那条的外阴影往下
-   不露，不然正好落在下面那条的顶上，接缝多出一条暗带。 */
-body .review .reviewbulktoolbar,body .review .reviewgroupbar{
-  background-image:none;background-color:var(--glass-fill);animation:none}
-body .review .reviewbulktoolbar{clip-path:inset(-48px -48px 0 -48px)}
+/* 相接的复核横条由页面的单层玻璃承接；独立横条和骨架使用共享玻璃材质。 */
 .entitytagbar .pill,.entitycollectionhead h3{color:var(--glass-text)}
 .entitytagbar .pill[data-tag]:not([aria-pressed="true"]){border-color:var(--glass-low);border-style:dashed}
 .entitytagbar .pill[data-tag]:not([aria-pressed="true"]):hover{border-style:solid}
@@ -1545,11 +1539,11 @@ body .review .reviewgroup:not([hidden])~.reviewgroup:not([hidden])>.reviewgroupb
    所以玻璃由页面自己画一层，铺满当前粘住的那几行；两条横条只留内容，不带底。
    矩形由 `updateReviewSticky` 逐帧量出来，写进 `--review-pane-*`。 */
 body .review{position:relative}
-body .review.review-is-stuck::before{content:"";position:fixed;top:var(--topH);left:var(--review-pane-left,0);width:var(--review-pane-width,0);height:var(--review-pane-height,0);z-index:58;pointer-events:none;border-radius:20px;background:var(--glass-drift-a),var(--glass-drift-b),var(--glass-fill);background-size:200% 200%,200% 200%;background-repeat:no-repeat;background-position:50% 20%,80% 70%;animation:glassdriftx 41s linear infinite,glassdrifty 67s linear infinite;backdrop-filter:var(--glass-optic,blur(22px)) saturate(145%);-webkit-backdrop-filter:var(--glass-optic,blur(22px)) saturate(145%);box-shadow:inset 0 1px 0 var(--glass-rim),var(--glass-shadow)}
-body .review :is(.reviewbulktoolbar,.reviewgroupbar).is-stuck{background:transparent;backdrop-filter:none;-webkit-backdrop-filter:none;border:0;box-shadow:none}
-html.board-high-contrast .review.review-is-stuck::before{background:var(--ground);backdrop-filter:none;-webkit-backdrop-filter:none;animation:none}
-@media(prefers-reduced-transparency:reduce){body .review.review-is-stuck::before{background:var(--ground);backdrop-filter:none;-webkit-backdrop-filter:none;animation:none}}
-@media(prefers-reduced-motion:reduce){body .review.review-is-stuck::before{animation:none}}
+body .review.review-has-pane::before{content:"";position:fixed;top:var(--review-pane-top,var(--topH));left:var(--review-pane-left,0);width:var(--review-pane-width,0);height:var(--review-pane-height,0);z-index:58;pointer-events:none;border-radius:20px;background:var(--glass-drift-a),var(--glass-drift-b),var(--glass-fill);background-size:200% 200%,200% 200%;background-repeat:no-repeat;background-position:50% 20%,80% 70%;animation:glassdriftx 41s linear infinite,glassdrifty 67s linear infinite;backdrop-filter:var(--glass-optic,blur(22px)) saturate(145%);-webkit-backdrop-filter:var(--glass-optic,blur(22px)) saturate(145%);box-shadow:inset 0 1px 0 var(--glass-rim),var(--glass-shadow)}
+body .review :is(.reviewbulktoolbar,.reviewgroupbar).review-pane-member{background:transparent;backdrop-filter:none;-webkit-backdrop-filter:none;border:0;box-shadow:none}
+html.board-high-contrast .review.review-has-pane::before{background:var(--ground);backdrop-filter:none;-webkit-backdrop-filter:none;animation:none}
+@media(prefers-reduced-transparency:reduce){body .review.review-has-pane::before{background:var(--ground);backdrop-filter:none;-webkit-backdrop-filter:none;animation:none}}
+@media(prefers-reduced-motion:reduce){body .review.review-has-pane::before{animation:none}}
 
 /* 数据管理子页：结果标题、证据区域和操作栏各有固定归属。 */
 .collection-summary{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;padding:20px 24px;margin-bottom:20px;border-radius:var(--surface-radius);background:var(--color-background-primary-default)}
@@ -1557,12 +1551,15 @@ html.board-high-contrast .review.review-is-stuck::before{background:var(--ground
 .collection-summary span{font:var(--board-body);color:var(--color-text-secondary)}
 .collection-summary strong{font:var(--board-title);color:var(--color-text-primary);font-variant-numeric:tabular-nums}
 .collection-summary p{margin:0;color:var(--color-text-secondary);font:var(--board-body)}
-body[data-surface="/review"] .review-workspace{display:grid;grid-template-columns:184px minmax(0,1fr);column-gap:24px;align-items:start}
-body[data-surface="/review"] .review-workspace>.reviewcontrols{grid-column:1;grid-row:1 / span 4;position:sticky;top:var(--topH);padding:16px 8px;background:var(--color-background-primary-default);border-radius:var(--surface-radius)}
+body[data-surface="/review"] .review-workspace{display:grid;grid-template-columns:minmax(0,1fr) 184px;column-gap:24px;align-items:start}
+body[data-surface="/review"] .review-workspace>.reviewcontrols{grid-column:2;grid-row:1 / span 4;position:sticky;top:var(--topH);padding:16px 8px;background:var(--color-background-primary-default);border-radius:var(--surface-radius)}
 body[data-surface="/review"] .review-category-title{font:var(--board-caption);color:var(--muted);margin:0 12px 12px}
 body[data-surface="/review"] .reviewtabs{display:flex;flex-direction:column;gap:4px;align-items:stretch;white-space:normal}
 body[data-surface="/review"] .reviewtabs button{height:auto;min-height:40px;text-align:left;justify-content:space-between;padding:10px 12px;white-space:normal}
-body[data-surface="/review"] .review-workspace>:is(.reviewsection,.reviewbulktoolbar,.board-pagination){grid-column:2;min-width:0}
+body[data-surface="/review"] .review-workspace>:is(.reviewsection,.reviewbulktoolbar,.board-pagination){grid-column:1;min-width:0}
+@media(min-width:901px){
+ body[data-surface="/review"] :is(#managebar,#manageTitle,#manageCrumb,#manageLede){width:calc(min(100%,var(--board-content)) - 208px);margin-left:max(0px,calc((100% - var(--board-content))/2));margin-right:0}
+}
 body[data-surface="/review"] .review-workspace>.runtimegate{grid-column:1/-1;grid-row:1}
 body[data-surface="/review"] .review-workspace:has(>.runtimegate)>.reviewcontrols{grid-row:2 / span 4}
 body[data-surface="/review"] .reviewitem{border:1px solid var(--line-soft);border-radius:var(--surface-radius);background:var(--color-background-primary-default)}
@@ -1576,6 +1573,7 @@ body[data-surface="/review"] .reviewitem .reviewactions{border-radius:0 0 var(--
    自己封口：四角都圆，四边都描。它也不吸顶——`updateReviewSticky` 要等数据到货才
    有东西可量，粘住一块空壳只会把顶栏下面糊上一层。 */
 body .review-skeleton .reviewbulktoolbar{position:static;border-radius:20px;
+  margin-bottom:20px;
   box-shadow:inset 0 1px 0 var(--glass-rim),inset 1px 0 0 var(--glass-low),inset -1px 0 0 var(--glass-low),inset 0 -1px 0 var(--glass-low),var(--glass-shadow)}
 body[data-surface="/duplicates"] #manageLede{display:none}
 body[data-surface="/duplicates"] .dupactions{padding:16px 20px;border-radius:var(--surface-radius);background:var(--color-background-primary-default);flex-wrap:wrap}

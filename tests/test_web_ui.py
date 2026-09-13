@@ -4358,7 +4358,7 @@ class WebUiSourceTests(unittest.TestCase):
                       '.entitycollectionhead.entitycollectionhead,.board-library-menu.board-library-menu{\n'
                       '  transition:background-color .28s ease,backdrop-filter .28s ease,'
                       '-webkit-backdrop-filter .28s ease}', board)
-        snapshot_rule = board.split('html[data-theme-snapshot] .review.review-is-stuck::before{', 1)[1]
+        snapshot_rule = board.split('html[data-theme-snapshot] .review.review-has-pane::before{', 1)[1]
         self.assertIn('transition:none!important', snapshot_rule.split('}', 1)[0])
         self.assertIn('transition:top var(--board-motion),background-color .28s ease,'
                       'backdrop-filter .28s ease,-webkit-backdrop-filter .28s ease', board)
@@ -9297,21 +9297,22 @@ class WebUiSourceTests(unittest.TestCase):
         只剩内容，不带底也不带影。
         """
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
-        self.assertIn('body .review.review-is-stuck::before{content:"";position:fixed;top:var(--topH);'
+        self.assertIn('body .review.review-has-pane::before{content:"";position:fixed;top:var(--review-pane-top,var(--topH));'
                       "left:var(--review-pane-left,0);width:var(--review-pane-width,0);"
                       "height:var(--review-pane-height,0);z-index:58;pointer-events:none;border-radius:20px;"
                       "background:var(--glass-drift-a),var(--glass-drift-b),var(--glass-fill);", board)
-        self.assertIn("body .review :is(.reviewbulktoolbar,.reviewgroupbar).is-stuck{background:transparent;"
+        self.assertIn("body .review :is(.reviewbulktoolbar,.reviewgroupbar).review-pane-member{background:transparent;"
                       "backdrop-filter:none;-webkit-backdrop-filter:none;border:0;box-shadow:none}", board)
         # 玻璃压在两条横条底下：58 低于分组条的 59 和工具条的 60。
         self.assertPageContains(".reviewgroupbar{position:sticky;top:calc(var(--topH) + var(--review-controls-height,0px));z-index:59;")
-        for fallback in ("html.board-high-contrast .review.review-is-stuck::before{background:var(--ground)",
-                         "@media(prefers-reduced-transparency:reduce){body .review.review-is-stuck::before{background:var(--ground)"):
+        for fallback in ("html.board-high-contrast .review.review-has-pane::before{background:var(--ground)",
+                         "@media(prefers-reduced-transparency:reduce){body .review.review-has-pane::before{background:var(--ground)"):
             self.assertIn(fallback, board)
         bulk = (Path(__file__).resolve().parents[1] / "frontend" / "src" / "review-bulk.ts").read_text(encoding="utf-8")
         self.assertIn("root.classList.toggle('review-is-stuck', stuck.length > 0);", bulk)
         # 玻璃的两端取自首尾两条粘住的横条；下面三行 setProperty 才是它铺多大。
-        self.assertIn("const first = stuck[0], last = stuck.at(-1);", bulk)
+        self.assertIn("root.classList.add('review-has-pane');", bulk)
+        self.assertIn("const last = next || controls;", bulk)
         self.assertIn("const head = first.getBoundingClientRect(), foot = last.getBoundingClientRect();", bulk)
         for name, edge in (("left", "head.left"), ("width", "head.width"), ("height", "foot.bottom - head.top")):
             self.assertIn(f"root.style.setProperty('--review-pane-{name}', `${{{edge}}}px`);", bulk)
@@ -9983,8 +9984,7 @@ class WebUiSourceTests(unittest.TestCase):
         主选择器一起长：漏掉哪一条，那些用户看到的就是没有底色的一块。
         """
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
-        self.assertIn("body .review .reviewbulktoolbar,body .review .reviewgroupbar{\n"
-                      "  background-image:none;background-color:var(--glass-fill);animation:none}", board)
+        self.assertNotIn("background-image:none;background-color:var(--glass-fill);animation:none}", board)
         sheen = board.split("\n  background:var(--glass-drift-a),var(--glass-drift-b),"
                             "linear-gradient(125deg,var(--glass-sheen)", 1)[0].rsplit("}", 1)[1]
         for selector in (".board-filter-frame.board-filter-frame.board-filter-frame",
@@ -11033,9 +11033,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("state:button.dataset.entityState")
         self.assertNotIn(".entitytagbar.is-stuck::before{", board)
         self.assertNotIn(".entitytagbar.entitytagbar.entitytagbar,body .review .reviewbulktoolbar{", board)
-        self.assertIn("body .review .reviewbulktoolbar{clip-path:inset(-48px -48px 0 -48px)}", board)
-        self.assertIn("body .review .reviewbulktoolbar,body .review .reviewgroupbar{\n"
-                      "  background-image:none;background-color:var(--glass-fill);animation:none}", board)
+        self.assertNotIn("body .review .reviewbulktoolbar{clip-path:", board)
+        self.assertNotIn("background-image:none;background-color:var(--glass-fill);animation:none}", board)
         # 窄屏上这一排仍是一行，判据在 test_the_filter_panel_is_two_rows_on_a_phone。
         self.assertIn("--glass-pick-shadow:0 1px 2px #1118270f,0 4px 10px #11182714;", board)
         self.assertIn("--glass-pick-shadow:0 1px 2px #00000024,0 6px 14px #0000001f}", board)

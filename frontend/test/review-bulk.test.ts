@@ -1,7 +1,30 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import { applyReviewSelection, groupReviewRows, selectReviewRange, commonReviewSources, createReviewSelection, wireReviewSelection, reviewGroupingOptions } from '../src/review-bulk';
+import { applyReviewSelection, groupReviewRows, selectReviewRange, commonReviewSources, createReviewSelection, wireReviewSelection, reviewGroupingOptions, updateReviewSticky } from '../src/review-bulk';
 
 afterEach(() => { document.body.innerHTML = ''; });
+it('静止与吸顶的复核横条共用玻璃且不包住远处的分组', () => {
+  document.body.innerHTML = '<div class="review"><div class="reviewbulktoolbar"></div><div class="reviewgroupbar"></div><div class="reviewgroupbar"></div></div>';
+  const root = document.querySelector<HTMLElement>('.review')!;
+  const bars = [...root.children] as HTMLElement[];
+  let top = 240;
+  bars.forEach((bar, index) => {
+    Object.defineProperty(bar, 'offsetParent', { configurable: true, get: () => root });
+    bar.style.top = index ? '120px' : '80px';
+    bar.getBoundingClientRect = () => ({ top: top + (index === 2 ? 600 : index * 40), bottom: top + (index === 2 ? 640 : (index + 1) * 40), left: 100, width: 720, height: 40 } as DOMRect);
+  });
+  updateReviewSticky(root);
+  expect(root.classList.contains('review-has-pane')).toBe(true);
+  expect(root.style.getPropertyValue('--review-pane-top')).toBe('240px');
+  expect(root.style.getPropertyValue('--review-pane-height')).toBe('80px');
+  expect(bars.map(bar => bar.classList.contains('review-pane-member'))).toEqual([true, true, false]);
+  top = 80;
+  updateReviewSticky(root);
+  expect(root.style.getPropertyValue('--review-pane-top')).toBe('80px');
+  expect(root.style.getPropertyValue('--review-pane-height')).toBe('80px');
+  Object.defineProperty(bars[1], 'offsetParent', { configurable: true, get: () => null });
+  updateReviewSticky(root);
+  expect(root.style.getPropertyValue('--review-pane-height')).toBe('40px');
+});
 it('逐项采用保留失败项，重试仅提交失败项', async () => {
   const items = ['one', 'two', 'three'].map(key => ({ key, payload: { item_key: key, candidate_key: `${key}-nfo`, selected_ids: [2] } }));
   const submit = vi.fn(async payload => { if (payload.item_key === 'two') throw new Error('来源不可达'); return { ok: true }; });
