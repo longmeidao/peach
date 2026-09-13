@@ -809,6 +809,9 @@ def q_item(contract: WebContract, aid):
     d["cost"] = COST.get(d["location"], "metered")
     d["has_thumb"] = contract.has_snapshot(d["snapshot_path"])
     d['has_local_poster'] = (contract.poster_root / f"{d['id']}_4.jpg").is_file()
+    # 详情开场把本地封面挂到播放器海报位，选哪张跟着「JAV 默认封面」设置走：
+    # 不知道封套在不在盘上，这条详情就只能永远落在预览图那一档。
+    d["has_cover"] = contract.has_cover(d.get("code"))
     # 身份格的厂牌位和顶栏小圆片同一条判据：没装标识就不输出 `<img>`。规范厂牌走
     # `entity_refs`，非规范的那条只有扁平 `studio` 字段，两边都要有标志，否则
     # 后者会从「本来能取到图」退化成永远首字母。
