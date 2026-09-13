@@ -662,6 +662,18 @@ def _raw_media_items(item) -> list:
     return raw
 
 
+#: 个别作者把非作品图固定贴在正文首位，按「作者 + 标题」直接不投影：
+#: `lazyprocrast` 标题带 Poll 的帖子，第一张正文图必是投票结果图表。
+_FANBOX_POLL_CHART_AUTHOR = "lazyprocrast"
+_FANBOX_POLL_CHART_TITLE_RE = re.compile(r"\bpoll\b", re.IGNORECASE)
+
+
+def _skips_poll_chart(item) -> bool:
+    return (item.provider == "fanbox"
+            and str(item.ref or "") == _FANBOX_POLL_CHART_AUTHOR
+            and _FANBOX_POLL_CHART_TITLE_RE.search(str(item.title or "")) is not None)
+
+
 def _media_projection(item) -> tuple[list[dict], list[dict]]:
     """把 media_items 投影成浏览器字段，按用户隐藏的键拆成（可见，已隐藏）两份。
 
@@ -670,6 +682,7 @@ def _media_projection(item) -> tuple[list[dict], list[dict]]:
     """
     hidden = frozenset(item.hidden_media or ())
     visible, concealed = [], []
+    skip_poll_chart = _skips_poll_chart(item)
     for index, media in enumerate(_raw_media_items(item)):
         if not isinstance(media, dict):
             continue
@@ -677,6 +690,8 @@ def _media_projection(item) -> tuple[list[dict], list[dict]]:
             continue
         kind = str(media.get("media_kind") or "")
         if kind not in {"video", "image"}:
+            continue
+        if skip_poll_chart and index == 0 and kind == "image":
             continue
         thumb = str(media.get("thumb_url") or "")
         projected = {
@@ -710,7 +725,7 @@ def _thumb_url(item) -> str | None:
     if item.provider == "f95zone" and f95_discussion_image(item.thumb_url):
         return next((media["thumb_url"] for media in _media_items(item) if media["thumb_url"]), None)
     if item.provider == "fanbox":
-        thumb = display_thumb_url(item)
+        thumb = _fanbox_card_thumb(item) or display_thumb_url(item)
         media_items = item.metadata.get("media_items") or []
         videos = [media for media in media_items if isinstance(media, dict)
                   and media.get("media_kind") == "video"
@@ -718,6 +733,8 @@ def _thumb_url(item) -> str | None:
         if videos and (not thumb or thumb in {media.get("url") for media in videos}
                        or urllib.parse.urlsplit(thumb).path.lower().endswith((".mp4", ".webm", ".mov", ".m4v"))):
             return f"/follow-cover?id={item.id}"
+        if thumb:
+            return thumb
     if item.provider == "rule34paheal" and item.media_url:
         kind = _media_kind(item)
         if kind == "image":
@@ -725,6 +742,30 @@ def _thumb_url(item) -> str | None:
         if kind == "video":
             return f"/follow-cover?id={item.id}"
     return _unhide_thumb(item, display_thumb_url(item))
+
+
+def _fanbox_card_thumb(item) -> str | None:
+    """fanbox 的卡面：作者挑的封面优先，其次正文里第一张没被隐藏的图。
+
+    封面是作者给这篇选的展示图；它收在媒体清单里（`id=cover`），从那里认，
+    未补齐正文的行没有清单，退回存的缩略图（列表阶段就是封面）。
+    """
+    hidden = frozenset(item.hidden_media or ())
+    fallback = None
+    for index, media in enumerate(_raw_media_items(item)):
+        if not isinstance(media, dict) or media.get("media_kind") != "image":
+            continue
+        if _media_key(media) in hidden:
+            continue
+        if index == 0 and _skips_poll_chart(item):
+            continue
+        thumb = str(media.get("thumb_url") or "")
+        if not thumb.startswith("https://"):
+            continue
+        if media.get("id") == "cover":
+            return thumb
+        fallback = fallback or thumb
+    return fallback
 
 
 def _unhide_thumb(item, thumb: str | None) -> str | None:

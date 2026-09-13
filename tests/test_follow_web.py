@@ -620,11 +620,79 @@ class FollowContractTests(unittest.TestCase):
             self.assertEqual(items[key]["thumb_url"], f"/follow-cover?id={items[key]['id']}")
         self.assertEqual(items["3"]["thumb_url"], image)
 
+    def test_fanbox_card_thumb_prefers_the_author_cover(self):
+        chart = "https://downloads.fanbox.cc/images/post/1/w/1200/chart.jpeg"
+        art = "https://downloads.fanbox.cc/images/post/1/w/1200/art.jpeg"
+        cover = ("https://pixiv.pximg.net/c/1200x630_90_a2_g5/fanbox/public/"
+                 "images/post/1/cover/abc.jpeg")
+        self._seed(candidates=(FollowCandidate(
+            provider="fanbox", external_id="1", title="Post",
+            url="https://lazyprocrast.fanbox.cc/posts/1", thumb_url=chart,
+            extra={"media_items": [
+                {"id": "chart", "media_kind": "image", "resource_provider": "fanbox",
+                 "url": "https://downloads.fanbox.cc/images/post/1/chart.png",
+                 "thumb_url": chart},
+                {"id": "art", "media_kind": "image", "resource_provider": "fanbox",
+                 "url": "https://downloads.fanbox.cc/images/post/1/art.png",
+                 "thumb_url": art},
+                {"id": "cover", "media_kind": "image", "resource_provider": "fanbox",
+                 "url": cover, "thumb_url": cover},
+            ]}),), provider="fanbox", ref="lazyprocrast")
+        item = self._get()["groups"][0]["primary"]
+        self.assertEqual(item["thumb_url"], cover)
+
+        self._post("/api/follow/media/hide", {"item": item["id"], "media": 2, "hidden": True})
+        item = self._get()["groups"][0]["primary"]
+        # 封面被隐藏后卡面退回正文首图。
+        self.assertEqual(item["thumb_url"], chart)
+
+    def test_poll_post_drops_the_leading_chart_for_its_author(self):
+        chart = "https://downloads.fanbox.cc/images/post/1/w/1200/chart.jpeg"
+        art = "https://downloads.fanbox.cc/images/post/1/w/1200/art.jpeg"
+        cover = ("https://pixiv.pximg.net/c/1200x630_90_a2_g5/fanbox/public/"
+                 "images/post/1/cover/abc.jpeg")
+        media = [
+            {"id": "chart", "media_kind": "image", "resource_provider": "fanbox",
+             "url": "https://downloads.fanbox.cc/images/post/1/chart.png",
+             "thumb_url": chart},
+            {"id": "art", "media_kind": "image", "resource_provider": "fanbox",
+             "url": "https://downloads.fanbox.cc/images/post/1/art.png",
+             "thumb_url": art},
+            {"id": "cover", "media_kind": "image", "resource_provider": "fanbox",
+             "url": cover, "thumb_url": cover},
+        ]
+        self._seed(candidates=(FollowCandidate(
+            provider="fanbox", external_id="1", title="Poll Results + Scheduling Talk",
+            url="https://lazyprocrast.fanbox.cc/posts/1", thumb_url=chart,
+            extra={"media_items": media}),), provider="fanbox", ref="lazyprocrast")
+        item = self._get()["groups"][0]["primary"]
+        # 首位图表不投影；序号保持原始下标，卡面用作者封面。
+        self.assertEqual([media_["index"] for media_ in item["media_items"]], [1, 2])
+        self.assertEqual(item["thumb_url"], cover)
+
+        self._post("/api/follow/media/hide", {"item": item["id"], "media": 2, "hidden": True})
+        item = self._get()["groups"][0]["primary"]
+        # 封面被隐藏后卡面跳过首位的图表，落在正文第二张。
+        self.assertEqual(item["thumb_url"], art)
+
+    def test_poll_leading_chart_stays_for_other_creators(self):
+        chart = "https://downloads.fanbox.cc/images/post/1/w/1200/chart.jpeg"
+        self._seed(candidates=(FollowCandidate(
+            provider="fanbox", external_id="2", title="Poll Results",
+            url="https://someoneelse.fanbox.cc/posts/2", thumb_url=chart,
+            extra={"media_items": [
+                {"id": "chart", "media_kind": "image", "resource_provider": "fanbox",
+                 "url": "https://downloads.fanbox.cc/images/post/1/chart.png",
+                 "thumb_url": chart},
+            ]}),), provider="fanbox", ref="someoneelse")
+        item = self._get()["groups"][0]["primary"]
+        self.assertEqual([media_["index"] for media_ in item["media_items"]], [0])
+
     def test_hidden_media_leaves_the_feed_and_the_card_thumb(self):
         chart = "https://downloads.fanbox.cc/images/post/1/w/1200/chart.jpeg"
         art = "https://downloads.fanbox.cc/images/post/1/w/1200/art.jpeg"
         self._seed(candidates=(FollowCandidate(
-            provider="fanbox", external_id="12565427", title="Poll Results",
+            provider="fanbox", external_id="12565427", title="Public Release Notes",
             url="https://lazyprocrast.fanbox.cc/posts/12565427", thumb_url=chart,
             extra={"media_items": [
                 {"id": "chart", "media_kind": "image", "resource_provider": "fanbox",
@@ -656,7 +724,7 @@ class FollowContractTests(unittest.TestCase):
 
     def test_media_hidden_state_survives_a_refetch(self):
         candidate = FollowCandidate(
-            provider="fanbox", external_id="12565427", title="Poll Results",
+            provider="fanbox", external_id="12565427", title="Public Release Notes",
             url="https://lazyprocrast.fanbox.cc/posts/12565427",
             extra={"media_items": [
                 {"id": "chart", "media_kind": "image", "resource_provider": "fanbox",
