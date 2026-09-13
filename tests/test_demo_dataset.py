@@ -25,6 +25,7 @@ from peach.library_processing import process_library
 from peach.review_csv import read_rows
 from peach.settings_file import PeachConfig
 from peach.web_review import _apply_metadata_candidate
+from support.conditions import windows_ledger_roots
 from support.ledger import fresh_ledger
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -116,6 +117,7 @@ class DemoDatasetTests(unittest.TestCase):
         self.assertEqual(payload["id"], "")
         self.assertEqual(payload["title"], made.title)
 
+    @windows_ledger_roots
     def test_scan_and_process_consume_the_tree_without_any_network_call(self):
         media, items = self._generate("media")
         db = fresh_ledger(self.root)

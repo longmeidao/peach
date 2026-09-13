@@ -1823,7 +1823,12 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         con.execute("UPDATE asset SET duration=-1 WHERE id=1")
         con.commit()
         con.close()
-        with patch.object(self.app.state.transcode_service, "_probe",
+        # 探测结果由 `_probe` 给，但“走不走探测”由 `resolver.ffprobe()` 定：它返回 None 时判据
+        # 在探测之前就退回 Range。两个都接手，这条用例才在装与不装 ffmpeg 的机器上讲同一件事。
+        from peach.ffmpeg import BinaryChoice
+        with patch.object(self.app.state.transcode_service.resolver, "ffprobe",
+                          return_value=BinaryChoice(Path("ffprobe"), "test")), \
+                patch.object(self.app.state.transcode_service, "_probe",
                           return_value=_MediaProfile("hevc", "yuv420p", "mp3", duration=13.5)), \
                 patch.object(self.app.state.transcode_service, "browser_path",
                              side_effect=AssertionError("whole movie conversion")):
