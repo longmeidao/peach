@@ -654,12 +654,13 @@ class WebUiSourceTests(unittest.TestCase):
             rule = css[start:css.index("}", start)]
             self.assertNotIn("backdrop-filter", rule, f"{name} 不带模糊")
 
-    def test_the_detail_overlay_enters_on_the_same_motion_as_the_settings_dialog(self):
-        """作品详情浮窗和设置弹层用同一组进场关键帧、同一个时长 token。
+    def test_the_detail_overlay_moves_on_the_same_motion_as_the_settings_dialog(self):
+        """作品详情浮窗和设置弹层用同一组进出场关键帧、同一个时长 token。
 
-        一个缩放着淡进来、另一个直接闪出来的话，读起来像两种东西。遮罩也同一条淡入。
+        一个缩放着淡进来、另一个直接闪出来的话，读起来像两种东西。遮罩也同一条淡入淡出。
         进场填充用 `backwards` 不用 `both`：终点帧留下的 `filter:blur(0)` 会另起一个
         backdrop root，浮窗里任何 `backdrop-filter` 从此只采样得到浮窗自己的内容。
+        退场那条要 `both`，它的终点（透明）不是元素的自然状态。
         """
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
         self.assertIn(".stage{animation:board-dialog-in var(--board-dialog-motion) backwards}", board)
@@ -669,6 +670,48 @@ class WebUiSourceTests(unittest.TestCase):
                       ".35s cubic-bezier(.4,0,.2,1) both}", board)
         self.assertIn(".settingspanel:not([hidden]){animation:settings-backdrop-in "
                       ".35s cubic-bezier(.4,0,.2,1) both}", stylesheet_source())
+        self.assertIn(".stage.closing{animation:board-dialog-out var(--board-dialog-motion) both;"
+                      "pointer-events:none}", board)
+        self.assertIn(".stage.closing::backdrop{animation:settings-backdrop-out "
+                      ".35s cubic-bezier(.4,0,.2,1) both}", board)
+        self.assertIn(".settingspanel.closing .settingscard.settingscard{"
+                      "animation:board-dialog-out var(--board-dialog-motion) both}", board)
+
+    def test_closing_the_detail_overlay_waits_for_its_exit_before_tearing_it_down(self):
+        """显式关闭详情的每条路径都先 `stageExit()` 演完退场，再拆解舞台。
+
+        次序是硬的：拆解那一步把 `#stage` 放回 `#main` 的固定槽位，之后重画列表才不会
+        把它一起删掉。所以动画只插在拆解前面，拆解与重画自身的先后原样不动。
+
+        等待有上限，`animation` 被 reduced motion 一类的规则关掉时 animationend 不会来；
+        拆解入口无条件摘掉 `closing`，被别的路径中途拆掉的浮窗下一次仍从进场那一帧起。
+        """
+        self.assertPageContains("stage.classList.add('closing')")
+        self.assertPageContains("stage.classList.remove('closing')")
+        self.assertPageContains("timer=setTimeout(done,380)")
+        self.assertPageContains(
+            "matchMedia('(prefers-reduced-motion: reduce)').matches)return Promise.resolve()")
+        self.assertEqual(2, self.app_js.count("await stageExit();"),
+                         "作品与关注两个 closeDetail 各等一次退场")
+        self.assertPageContains("else stageExit().then(()=>{\n"
+                                "      disposeStage(false,false,{miniplayer:false});",
+                                "没有关闭键时由 Escape 兜底的那条也要演完退场")
+
+    def test_opening_a_detail_leaves_the_surface_bars_where_they_were(self):
+        """详情不重画顶部三层、标签条和抽屉；回到列表时数据没变也不重画。
+
+        浮窗是盖住整页的模态，那几条在它开着的时候一格都看不见。为它们另取一趟这一部
+        作品口径的聚合，换来的只是把列表那份缓存挤掉；关掉时整排头像连 `<img>` 一起
+        重建、重解一遍码，人看到的就是「点进去又退出来，页面自己刷新了一次」。
+
+        回来那一次比的是数据不是时间：详情看上十分钟再回来，取回的多半还是同一份。
+        铺过骨架的那一次例外，骨架必须由一次真的绘制顶掉。
+        """
+        self.assertPageContains("if(barsContext.type==='item')return;",
+                                "详情不碰表面的条")
+        self.assertPageContains("const rendered=signature+'\\n'+JSON.stringify([facetData,tops]);")
+        self.assertPageContains("if(rendered===barsRendered)return;")
+        self.assertPageContains("if(!tiers.innerHTML||!views.innerHTML)barsRendered='';")
 
     def test_the_page_recedes_so_chrome_and_boxes_can_float_on_it(self):
         """页面底是退到后面那张面，顶栏、窄栏和页面上的盒子填浮在它上面那张。
@@ -6750,13 +6793,17 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn("@media(prefers-reduced-motion:reduce){#libraryProcessingNotice{transition:none}}",
                       board)
 
-    def test_untagged_detail_uses_home_tags_only_in_the_top_discovery_bar(self):
-        # 作品没有内容标签时，顶部发现栏回退首页口径；详情抽屉仍使用作品 scoped facets。
-        self.assertPageContains("if(context.type==='item'&&!topTags.length)")
-        self.assertPageContains("const recommendationFacets=await api('/api/facets'")
-        self.assertCode("if(requestSeq!==barsRequestSeq)return;\n    topTags=recommendationFacets.tags||[]")
+    def test_the_top_discovery_bar_and_the_drawer_read_one_scope(self):
+        """顶部发现栏按「换一批」的种子抽样，抽屉那一列读同一份 facets。
+
+        口径只有一个，就是当前这张表面的。详情浮窗不另取一趟作品口径：它盖住整页，
+        那两排头像、标签条和抽屉在它开着的时候一格都看不见，取回来只把列表那份缓存
+        挤掉，关掉时整排头像连 `<img>` 一起重建。
+        """
         self.assertPageContains("const pickedTags=seededSample(tagPool,TAGS_FIRST,`tags:${state.seed||''}`);")
         self.assertPageContains("+sec('内容标签',chips(facetData.tags,'tag',false,30)")
+        self.assertPageLacks("if(context.type==='item'&&!topTags.length)")
+        self.assertPageLacks("const recommendationFacets=await api('/api/facets'")
 
     def test_a_truncated_sidebar_list_says_so_at_its_own_end(self):
         """侧栏名单没列完时，末尾那枚箭头接着摊开，再按一下把整组放回去。
@@ -7239,7 +7286,9 @@ class WebUiSourceTests(unittest.TestCase):
     def test_detail_dialog_uses_top_layer_and_preserves_list_position(self):
         """原生模态浮窗提供顶层、焦点与退出行为，列表不参与详情布局。"""
         self.assertPageContains("if(!stage.open)stage.showModal();")
-        self.assertPageContains("else{disposeStage(false,false,{miniplayer:false});route(detailReturnPath||'/');restoreRoute()}")
+        self.assertPageContains("else stageExit().then(()=>{\n"
+                                "      disposeStage(false,false,{miniplayer:false});"
+                                "route(detailReturnPath||'/');restoreRoute()});")
         self.assertPageContains("if(stage.open)stage.close();")
         self.assertPageContains("box.showModal();")
         self.assertPageContains("if(stage.open)stage.append(menu);")
