@@ -115,6 +115,14 @@ class Unavailable(RuntimeError):
     pass
 
 
+class NotFound(Unavailable):
+    """来源明确答复没有这个番号。
+
+    与网络故障、来源限流、下载失败分开：后者下次再问可能就好了，前者短期内问多少次
+    答案都一样，采集任务据此把它记住一阵子。
+    """
+
+
 class DeadlineExceeded(RuntimeError):
     """动作预算已用尽：调用方记录当前项目后继续下一项。"""
 
@@ -206,6 +214,8 @@ def _fetch(transport: HttpTransport, url: str, *, referer: str,
             if attempt == len(NETWORK_RETRY_DELAYS):
                 raise
             _sleep_within(NETWORK_RETRY_DELAYS[attempt], deadline)
+    if response.status == 404:
+        raise NotFound("HTTP 404")
     if response.status not in (200, 206):
         raise Unavailable(f"HTTP {response.status}")
     return response.body
@@ -578,7 +588,7 @@ def best_cover(transport: HttpTransport, code: str, delay: float, *,
         > minimum_pixels
     ]
     if not candidates:
-        raise Unavailable("所有渠道都没有候选")
+        raise NotFound("所有渠道都没有候选")
 
     diagnostics = diagnostics if diagnostics is not None else {}
     def record(key):

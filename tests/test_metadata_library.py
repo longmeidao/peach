@@ -219,6 +219,67 @@ class LibraryNfoTests(unittest.TestCase):
                          ['ABW-001', 'FC2-PPV-1239052'])
         self.assertEqual(result['issue_count'], 0)
 
+    def test_files_without_a_code_are_registered_but_not_reported(self):
+        """账本里两万多行创作者作品本来就没有番号，逐行报问题只会淹掉真正要处理的几十条。"""
+        media = self.root / 'media'
+        media.mkdir()
+        (media / '某创作者的作品.mp4').write_bytes(b'video')
+        from PIL import Image
+        Image.new('RGB', (4, 6), 'teal').save(media / '某创作者的作品.png')
+        db = fresh_ledger(self.root)
+        config = PeachConfig(self.root, self.root / 'config.toml', present=True, locations={'local': (str(media),)})
+        factory = Mock()
+        result = process_library(config, db, self.root / 'generated', self.root / 'covers',
+                                 provider_factory=factory)
+        factory.assert_not_called()
+        self.assertEqual((result['status'], result['issue_count'], result['checked']), ('complete', 0, 1))
+        self.assertTrue((self.root / 'generated' / 'posters' / '1_4.jpg').is_file(), '本地海报照常登记')
+
+    def test_a_source_that_said_no_is_not_asked_again_for_a_week(self):
+        """r18.dev 不认识的番号每轮都重问、每条卡一次 2 秒的主机间隔，答案永远一样。
+
+        只记来源明确说「没有」的（`NotFound`）；超时与网络故障照旧下次再问。
+        「重试未完成项」按上一任务的失败集合强制重试，不看这份记忆。
+        """
+        from peach.jav_cover_fetch import NotFound, Unavailable
+        from peach.library_processing import _MissCache, misses_path
+        media = self.root / 'media'
+        media.mkdir()
+        (media / 'STP-26232.mp4').write_bytes(b'video')
+        db = fresh_ledger(self.root)
+        config = PeachConfig(self.root, self.root / 'config.toml', present=True, locations={'local': (str(media),)})
+        provider = Mock()
+        provider.query.side_effect = NotFound('HTTP 404')
+        provider.cover.side_effect = Unavailable('HTTP 503')
+        run = lambda **extra: process_library(config, db, self.root / 'generated', self.root / 'covers',
+                                              provider_factory=Mock(return_value=provider), **extra)
+        first = run()
+        self.assertEqual(provider.query.call_count, 1)
+        self.assertEqual([row['message'] for row in first['issue_preview']],
+                         ['外部来源没有这部片的资料，7 天内不再问', '封面未取得，请检查采集来源后重试'])
+        recorded = json.loads(misses_path(config).read_text(encoding='utf-8'))
+        self.assertEqual(list(recorded), ['r18dev'])
+        self.assertEqual(list(recorded['r18dev']), ['STP-26232'])
+
+        provider.cover.side_effect = NotFound('所有渠道都没有候选')
+        second = run()
+        self.assertEqual(provider.query.call_count, 1, '资料 7 天内不再问')
+        self.assertEqual(provider.cover.call_count, 2, '封面上次是来源故障，这次照问')
+        self.assertEqual([row['message'] for row in second['issue_preview']],
+                         ['外部来源没有这部片的资料，7 天内不再问', '外部来源没有这部片的封面，7 天内不再问'])
+        self.assertEqual(second['retryable_asset_ids'], [1])
+
+        third = run()
+        self.assertEqual((provider.query.call_count, provider.cover.call_count), (1, 2))
+        self.assertEqual(third['issue_count'], 2)
+
+        run(retry_ids=[1])
+        self.assertEqual((provider.query.call_count, provider.cover.call_count), (2, 3), '重试未完成项不看记忆')
+
+        cache = _MissCache(misses_path(config), now=lambda: time.time() + 8 * 24 * 3600)
+        self.assertFalse(cache.fresh('r18dev', 'STP-26232'), '7 天后再问一次')
+        self.assertFalse(_MissCache(self.root / 'missing.json').fresh('r18dev', 'STP-26232'))
+
     def test_management_controls_keep_credentials_and_empty_sections_visible(self):
         root = Path(__file__).resolve().parents[1]
         source = (root / 'web/app.js').read_text(encoding='utf-8')
@@ -285,6 +346,7 @@ class LibraryWatchdogTests(unittest.TestCase):
         media.mkdir()
         for index in range(25):
             (media / f'样品{index:02d}.mp4').write_bytes(b'video')
+            (media / f'样品{index:02d}.nfo').write_text('<movie><title>没闭合', encoding='utf-8')
         db = fresh_ledger(self.root)
         config = self._config(media)
         result = process_library(config, db, self.root / 'generated', self.root / 'covers')
@@ -319,12 +381,13 @@ class LibraryWatchdogTests(unittest.TestCase):
 
     @unittest.skipUnless(os.name == 'nt', '真实声明根使用 Windows 盘符')
     def test_each_issue_names_the_item_its_path_and_where_the_full_log_is(self):
-        """一句「未识别到番号」加一个链接，是哪个文件得逐个点开才知道；改名或去磁盘上
+        """一句「NFO 无法解析」加一个链接，是哪个文件得逐个点开才知道；改名或去磁盘上
         确认时要用的是路径。完整清单的地址跟着状态一起给出，不让人按 job_id 自己去拼。
         """
         media = self.root / 'media'
         media.mkdir()
         (media / '样品.mp4').write_bytes(b'video')
+        (media / '样品.nfo').write_text('<movie><title>没闭合', encoding='utf-8')
         db = fresh_ledger(self.root)
         config = self._config(media)
         result = process_library(config, db, self.root / 'generated', self.root / 'covers')

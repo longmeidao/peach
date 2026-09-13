@@ -15,7 +15,7 @@ from PIL import Image
 
 from .catalog_rules import is_korean_mib_code, release_code_from_filename, same_release_code
 from .field_owners import SCAN_FILENAME, write_owned_fields
-from .jav_cover_fetch import DeadlineExceeded
+from .jav_cover_fetch import DeadlineExceeded, NotFound
 from .library_nfo import directory_files, read_nfo, sidecars, local_art
 from .genre_decisions import load_genre_decisions
 from .metadata import extract_catalog_evidence, extract_peach_fields, identifies_code, validate_provider_code
@@ -43,6 +43,11 @@ STALL_AFTER_SECONDS = 120.0
 #: 单项外部动作预算：资料查询覆盖一次请求加一轮重试，封面覆盖证据查询与候选往返。
 #: 到点只结束当前项目并记为可重试，不让一个来源拖住整批任务。
 ACTION_BUDGETS = {'querying_metadata': 90.0, 'fetching_cover': 240.0}
+
+#: 来源明确答复「没有」之后多久不再问。「没有」不是永久的：来源会补录，片子可能后来上架。
+MISS_TTL_SECONDS = 7 * 24 * 3600
+MISS_MESSAGES = {'querying_metadata': '外部来源没有这部片的资料，7 天内不再问',
+                 'fetching_cover': '外部来源没有这部片的封面，7 天内不再问'}
 
 #: 状态文件与候选 CSV 的落盘节流。页面轮询读的是内存里的任务快照，文件只为进程没了
 #: 之后还能看到最后状态；候选 CSV 随处理进度越写越大，每条资产都重写一遍是平方级开销。
@@ -108,6 +113,10 @@ def state_path(config):
 
 def issues_path(config, job_id):
     return config.directory('state') / f'library-processing-{job_id}.issues.jsonl'
+
+
+def misses_path(config):
+    return config.directory('state') / 'library-metadata-misses.json'
 
 
 def _save(path, payload):
@@ -281,6 +290,119 @@ class _DirectoryIndex:
         return found
 
 
+class _MissCache:
+    """来源明确答复「没有」的番号，按来源分开记，期内不再问。
+
+    r18.dev 不认识的番号每轮「只采集」都重问一遍，每条卡在主机 2 秒间隔上，答案永远一样；
+    真实账本上这样的行有六百多条，一轮就是几十分钟。只记 `NotFound`：网络故障与超时
+    下次可能就好了，不该记。每记一条就落盘，任务被打断也不丢。
+    """
+
+    def __init__(self, path, *, ttl=MISS_TTL_SECONDS, now=time.time):
+        self._path = path
+        self._ttl = ttl
+        self._now = now
+        try:
+            loaded = json.loads(path.read_text(encoding='utf-8'))
+        except (OSError, ValueError):
+            loaded = {}
+        self._entries = {}
+        for source, codes in (loaded.items() if isinstance(loaded, dict) else ()):
+            if isinstance(codes, dict):
+                self._entries[source] = {code: float(stamp) for code, stamp in codes.items()
+                                         if isinstance(stamp, (int, float))}
+
+    def fresh(self, source, code):
+        stamp = self._entries.get(source, {}).get(code)
+        return stamp is not None and self._now() - stamp < self._ttl
+
+    def record(self, source, code):
+        now = self._now()
+        self._entries.setdefault(source, {})[code] = now
+        _save(self._path, {name: {key: stamp for key, stamp in codes.items() if now - stamp < self._ttl}
+                           for name, codes in self._entries.items()})
+
+
+class _RemoteSession:
+    """一个任务共用的外部来源连接，加上来源说过「没有」的记忆。"""
+
+    def __init__(self, config, provider_factory, misses, *, retrying):
+        self._config = config
+        self._factory = provider_factory
+        self._provider = None
+        self.misses = misses
+        # 「重试未完成项」按上一任务的失败集合强制重试，不看记忆；答复仍照记。
+        self._consult = not retrying
+
+    def provider(self):
+        if self._provider is None:
+            self._provider = (self._factory() if self._factory
+                              else LibraryMetadataProvider(self._config.directory('secrets') / 'follow'))
+        return self._provider
+
+    def reset(self):
+        if self._provider is not None and hasattr(self._provider, 'reset'):
+            self._provider.reset()
+
+    def close(self):
+        if self._provider is not None and hasattr(self._provider, 'close'):
+            self._provider.close()
+
+    def collect(self, row, code, missing, cover_root, *, update, issue):
+        """给这一行补外部资料与封面；返回 (证据条目, 新落盘的封面数)。"""
+        entries, covers = [], 0
+        asks_metadata, jav_catalog = _remote_sources(code)
+        if missing and asks_metadata:
+            entries = self._metadata(row, code, update=update, issue=issue)
+        if jav_catalog and not (cover_root / (code + '.jpg')).is_file():
+            covers = self._cover(row, code, cover_root, update=update, issue=issue)
+        return entries, covers
+
+    def _metadata(self, row, code, *, update, issue):
+        action = 'querying_metadata'
+        if self._consult and self.misses.fresh('r18dev', code):
+            issue(row, MISS_MESSAGES[action], action=action, retryable=True)
+            return []
+        budget = ACTION_BUDGETS[action]
+        update(stage='采集缺失资料', current_action=action,
+               current_started_at=time.time(), current_deadline_at=time.time() + budget)
+        try:
+            external = self.provider().query(code, 'r18dev', deadline=time.monotonic() + budget)
+            update(stage='保存资料候选')
+            evidence_path = self._config.directory('sources') / 'library-metadata' / (code + '-r18dev.json')
+            _save(evidence_path, external)
+            return [('r18dev', external, evidence_path)]
+        except DeadlineExceeded:
+            self.reset()
+            issue(row, '外部资料在预算时间内未取得，可稍后重试', action=action, retryable=True)
+        except NotFound:
+            self.misses.record('r18dev', code)
+            issue(row, MISS_MESSAGES[action], action=action, retryable=True)
+        except Exception:
+            issue(row, '外部资料未取得，请检查采集来源后重试', action=action, retryable=True)
+        return []
+
+    def _cover(self, row, code, cover_root, *, update, issue):
+        action = 'fetching_cover'
+        if self._consult and self.misses.fresh('cover', code):
+            issue(row, MISS_MESSAGES[action], action=action, retryable=True)
+            return 0
+        budget = ACTION_BUDGETS[action]
+        update(stage='采集缺失封面', current_action=action,
+               current_started_at=time.time(), current_deadline_at=time.time() + budget)
+        try:
+            return int(self.provider().cover(code, cover_root, deadline=time.monotonic() + budget))
+        except DeadlineExceeded:
+            self.reset()
+            issue(row, '封面在预算时间内未取得，可稍后重试', action=action, retryable=True)
+        except NotFound:
+            self.misses.record('cover', code)
+            issue(row, MISS_MESSAGES[action], action=action, retryable=True)
+        except Exception:
+            issue(row, '封面未取得，请检查采集来源后重试', action=action, retryable=True)
+        return 0
+
+
 def process_library(config, db_path, candidate_root, cover_root, *, location='configured',
                     report=lambda state: None, provider_factory=None, job_id=None,
                     retry_ids=None, active=lambda: True, stage=ALL_STAGES):
@@ -337,7 +459,7 @@ def process_library(config, db_path, candidate_root, cover_root, *, location='co
         def issue(asset, message, *, action='', retryable=False):
             """`asset` 是这一项的馆藏行，来源离线一类与具体项目无关的问题给 `None`。
 
-            每条问题都带上标题与路径：光有「未识别到番号」和一个链接，人得逐个点开
+            每条问题都带上标题与路径：光有「NFO 无法解析」和一个链接，人得逐个点开
             才知道是哪个文件，而路径才是去磁盘上确认或改名时真正要用的东西。
             """
             asset = asset or {}
@@ -361,12 +483,8 @@ def process_library(config, db_path, candidate_root, cover_root, *, location='co
             report(dict(state))
 
         update()
-        provider = None
+        remote = _RemoteSession(config, provider_factory, _MissCache(misses_path(config)), retrying=retrying)
         flush_candidates = lambda force=False: None
-
-        def reset_provider():
-            if provider is not None and hasattr(provider, 'reset'):
-                provider.reset()
 
         try:
             guard = DiskGuard(config.data_root, 1)
@@ -459,15 +577,18 @@ def process_library(config, db_path, candidate_root, cover_root, *, location='co
                         issue(row, str(error), action='reading_local')
                         continue
                 if not code and not payload:
-                    # 番号认不出不影响本地封面：正片旁边的同名 PNG／JPG 就是它的海报，
-                    # 落在 `{id}_4.jpg` 后卡片和详情直接用这一张，不再回退九宫格。
+                    # 没有番号不是问题项：账本里两万多行是创作者作品，本来就没有番号，
+                    # 逐行报「未识别到番号」只会把真正要处理的几十条淹掉。它们只登记本地海报：
+                    # 正片旁边的同名 PNG／JPG 落在 `{id}_4.jpg` 后卡片和详情直接用这一张。
                     try:
                         state['covers'] += int(_local_poster(
                             video, f"{row['id']}_4",
                             config.directory('generated') / 'posters', posters=posters))
                     except (OSError, ValueError):
                         issue(row, '本地封面无法读取', action='reading_local', retryable=True)
-                    issue(row, '未识别到番号，请在详情中补充资料', action='reading_local')
+                    update(checked=index + 1, candidates=len(groups),
+                           current_asset_id=None, current_asset_name='', current_action='',
+                           current_started_at=None, current_deadline_at=None)
                     continue
                 if code:
                     try:
@@ -494,45 +615,9 @@ def process_library(config, db_path, candidate_root, cover_root, *, location='co
                     entries.append(('local_nfo', payload, evidence_path))
                 local_fields = _fields(payload) if payload else {}
                 missing = _missing_fields(row, target_key, groups, local_fields)
-                asks_metadata, jav_catalog = _remote_sources(code)
-                if missing and asks_metadata:
-                    budget = ACTION_BUDGETS['querying_metadata']
-                    update(stage='采集缺失资料', current_action='querying_metadata',
-                           current_started_at=time.time(),
-                           current_deadline_at=time.time() + budget)
-                    try:
-                        if provider is None:
-                            provider = provider_factory() if provider_factory else LibraryMetadataProvider(config.directory('secrets') / 'follow')
-                        external = provider.query(code, 'r18dev',
-                                                  deadline=time.monotonic() + budget)
-                        update(stage='保存资料候选')
-                        evidence_path = config.directory('sources') / 'library-metadata' / (code + '-r18dev.json')
-                        _save(evidence_path, external)
-                        entries.append(('r18dev', external, evidence_path))
-                    except DeadlineExceeded:
-                        reset_provider()
-                        issue(row, '外部资料在预算时间内未取得，可稍后重试',
-                              action='querying_metadata', retryable=True)
-                    except Exception:
-                        issue(row, '外部资料未取得，请检查采集来源后重试',
-                              action='querying_metadata', retryable=True)
-                if jav_catalog and not (cover_root / (code + '.jpg')).is_file():
-                    budget = ACTION_BUDGETS['fetching_cover']
-                    update(stage='采集缺失封面', current_action='fetching_cover',
-                           current_started_at=time.time(),
-                           current_deadline_at=time.time() + budget)
-                    try:
-                        if provider is None:
-                            provider = provider_factory() if provider_factory else LibraryMetadataProvider(config.directory('secrets') / 'follow')
-                        state['covers'] += int(provider.cover(code, cover_root,
-                                                              deadline=time.monotonic() + budget))
-                    except DeadlineExceeded:
-                        reset_provider()
-                        issue(row, '封面在预算时间内未取得，可稍后重试',
-                              action='fetching_cover', retryable=True)
-                    except Exception:
-                        issue(row, '封面未取得，请检查采集来源后重试',
-                              action='fetching_cover', retryable=True)
+                found, covers = remote.collect(row, code, missing, cover_root, update=update, issue=issue)
+                entries.extend(found)
+                state['covers'] += covers
                 update(stage='保存资料候选', current_action='writing_candidates',
                        current_started_at=time.time(), current_deadline_at=None)
                 for source, document, evidence_path in entries:
@@ -556,7 +641,6 @@ def process_library(config, db_path, candidate_root, cover_root, *, location='co
         finally:
             # 被打断也把已经攒下的候选写全：文件里要么是上一份完整的，要么是这一份完整的。
             flush_candidates(force=True)
-            if provider is not None and hasattr(provider, 'close'):
-                provider.close()
+            remote.close()
         return state
 
