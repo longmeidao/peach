@@ -53,7 +53,7 @@ description: 在用户说并行、工作树、暂存、提交、ready、集成�
 
 - 提交前核对 README 影响；交付分支最后提交加 `README-Impact: updated; 说明` 或 `README-Impact: none; 原因`。
   它与 `Co-Authored-By` 等 trailer 连续写在消息末尾同一块里，中间隔一个空行就只算正文，解析不到。
-  触发面、格式、中英文同批与例外见 `docs/HANDOFF.md`「README 维护」；`ready/integrate` 拒收缺失或矛盾声明。
+  触发面、格式、中英文同批与例外见 `docs/README_MAINTENANCE.md`；`ready/integrate` 拒收缺失或矛盾声明。
 
 - 分支上每个提交都要署名，形态是 `Co-Authored-By: 工具 (模型 版本) <厂商 noreply>`：
   `Claude Code (Opus 5) <noreply@anthropic.com>`、`Codex (GPT-5.5) <noreply@openai.com>`。

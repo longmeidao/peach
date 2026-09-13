@@ -69,7 +69,7 @@ macOS 的 FFmpeg 走 PATH（`brew install ffmpeg`）；Windows 的 FFmpeg bundle
 
 目标是两台机器各持本地工作副本，Windows 内置盘上的专用 SMB 目录提供共享传输副本。
 **不是多主实时同步**——SQLite 没有安全的自动三方合并。见 ADR-0017、`src/peach/sync.py`
-与 README「账本复制」。
+与 README「数据属于自己」。
 
 - 服务启动只观察世代和写入端，不自动拉取或推送，也没有定时同步；marker 的 `device` 是唯一写入端、另一台只读，复制与「接管 Ledger 写入」只能由托盘显式执行，两边都动过就转只读报冲突、由人选一边。
 - 同步点不可达时本地仍可运行；媒体盘是否插入与账本同步无关。

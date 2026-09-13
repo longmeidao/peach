@@ -543,5 +543,43 @@ class ArchitectureDriftTests(unittest.TestCase):
                          "架构文档还在指已经不存在的模块，改名或删除时请一起改")
 
 
+#: `` `docs/HANDOFF.md`「数据安全」「身份、来源与标识采集」 `` 这种写法：一个路径后面跟一个或多个节名。
+SECTION_REFERENCE = re.compile(r"`([\w./-]+\.md)`((?:「[^」]+」)+)")
+
+
+def _headings(path: pathlib.Path) -> list[str]:
+    return [line.lstrip("#").strip() for line in path.read_text(encoding="utf-8").splitlines()
+            if line.startswith("#")]
+
+
+class SectionReferenceTests(unittest.TestCase):
+    """入口文件、技能与文档指向的「某文件某一节」必须真的有那一节。
+
+    2026-09-13 盘点时四个技能引用的 `docs/HANDOFF.md` 节名已经改掉了，技能读起来一切
+    正常，照着去找的人才发现找不到。节名跟着文件走，改标题的人看不见谁在引用它。
+    """
+
+    def test_every_referenced_section_exists(self):
+        sources = [REPO / "AGENTS.md", REPO / "CLAUDE.md", REPO / "README.md",
+                   *sorted((REPO / ".claude" / "skills").glob("*/SKILL.md")),
+                   *sorted(DOCS.glob("*.md"))]
+        broken = []
+        for source in sources:
+            for target, names in SECTION_REFERENCE.findall(source.read_text(encoding="utf-8")):
+                # 只写文件名的引用在 `docs/` 下找唯一同名文件（技能里引用参考快照就是这么写的）。
+                candidates = [REPO / target, source.parent / target,
+                              *(sorted(DOCS.rglob(target)) if "/" not in target else [])]
+                found = next((path for path in candidates if path.is_file()), None)
+                if found is None:
+                    broken.append(f"{source.relative_to(REPO).as_posix()} -> {target}（文件不存在）")
+                    continue
+                headings = _headings(found)
+                for name in re.findall(r"「([^」]+)」", names):
+                    if not any(heading == name or heading.startswith(name) for heading in headings):
+                        broken.append(f"{source.relative_to(REPO).as_posix()} -> {target}「{name}」")
+        self.assertEqual(broken, [],
+                         "这些引用指向的节已经不存在，改标题时请一起改引用：\n  " + "\n  ".join(broken))
+
+
 if __name__ == "__main__":
     unittest.main()
