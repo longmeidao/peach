@@ -36,6 +36,20 @@ def webp_vp8x(width, height):
         + struct.pack("<I", len(payload)) + payload
 
 
+def box(kind, payload, *, full=False):
+    body = (b"\x00\x00\x00\x00" if full else b"") + payload
+    return struct.pack(">I", 8 + len(body)) + kind + body
+
+
+def avif(width, height):
+    """ftyp，然后 meta（FullBox）里 iprp → ipco → ispe；主图之外还有一枚透明层的 ispe。"""
+    ispe = box(b"ispe", struct.pack(">II", width, height), full=True)
+    alpha = box(b"ispe", struct.pack(">II", 8, 8), full=True)
+    ipco = box(b"ipco", box(b"colr", b"nclx\x00\x01\x00\x0d\x00\x06\x80") + ispe + alpha)
+    meta = box(b"meta", box(b"hdlr", b"\x00" * 20) + box(b"iprp", ipco), full=True)
+    return box(b"ftyp", b"avif\x00\x00\x00\x00avifmif1miaf") + meta + box(b"mdat", b"\x00" * 16)
+
+
 def jpeg(width, height, *, exif_bytes=0, sof=0xC0):
     """SOI，一段 APP1（EXIF 占位），一段 DQT，然后才是 SOF。"""
     data = b"\xff\xd8"
@@ -57,6 +71,9 @@ class HeaderDimsTests(unittest.TestCase):
         self.assertEqual(dims_from_header(webp_vp8l(2048, 1536)), (2048, 1536))
         self.assertEqual(dims_from_header(webp_vp8x(4000, 3000)), (4000, 3000))
         self.assertEqual(dims_from_header(jpeg(1280, 720)), (1280, 720))
+        # 论坛把 AVIF 附件照旧起 `.png` 的名字，认字节不认后缀。
+        self.assertEqual(dims_from_header(avif(2560, 1440)), (2560, 1440))
+        self.assertIsNone(dims_from_header(avif(2560, 1440)[:40]))
 
     def test_jpeg_walks_past_exif_and_reads_progressive_frames_too(self):
         self.assertEqual(dims_from_header(jpeg(3000, 2000, exif_bytes=20_000)), (3000, 2000))

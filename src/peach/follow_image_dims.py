@@ -3,9 +3,10 @@
 图片墙按卡片高度分列，图落地前就得知道比例，否则每张加载完都把整墙重排一遍。
 来源接口给尺寸的（fanbox 的 imageMap、rule34.xxx 的 dapi）在连接器里直接记下；
 不给的（归档站、论坛附件）只能问文件本身——而尺寸都写在文件开头：PNG 的 IHDR、
-GIF 的逻辑屏幕、WebP 的 VP8/VP8L/VP8X 块都在前几十字节，JPEG 的 SOF 段通常在
-前几 KB，EXIF 缩略图大的也不过几十 KB。所以这里只发一个 `Range: bytes=0-N` 的
-请求，读到 `HEADER_BUDGET` 就停，一张几 MB 的原图只花几十 KB。
+GIF 的逻辑屏幕、WebP 的 VP8/VP8L/VP8X 块都在前几十字节，AVIF 的 `ispe` 盒在
+`meta` 里、`mdat` 之前，JPEG 的 SOF 段通常在前几 KB，EXIF 缩略图大的也不过几十
+KB。所以这里只发一个 `Range: bytes=0-N` 的请求，读到 `HEADER_BUDGET` 就停，一张
+几 MB 的原图只花几十 KB。
 
 判据只有这一份：连接器、回填脚本和界面回写落库前都经 `positive_dims` 归一。
 """
@@ -54,6 +55,56 @@ def dims_from_header(data: bytes) -> tuple[int, int] | None:
         return _webp_dims(data)
     if data[:2] == b"\xff\xd8":
         return _jpeg_dims(data)
+    if data[4:8] == b"ftyp":
+        # AVIF／HEIF 都是 ISO BMFF 盒结构；论坛把 AVIF 附件照旧起 `.png` 的名字，
+        # 所以只看字节不看后缀。
+        return _bmff_dims(data)
+    return None
+
+
+def _bmff_boxes(data: bytes, start: int, end: int):
+    """顺着列出 [start, end) 里的盒：(类型, 内容起点, 内容终点)。"""
+    offset = start
+    while offset + 8 <= end:
+        size = struct.unpack(">I", data[offset:offset + 4])[0]
+        kind = data[offset + 4:offset + 8]
+        header = 8
+        if size == 1:
+            if offset + 16 > end:
+                return
+            size = struct.unpack(">Q", data[offset + 8:offset + 16])[0]
+            header = 16
+        elif size == 0:
+            size = end - offset
+        if size < header:
+            return
+        yield kind, offset + header, min(offset + size, end)
+        offset += size
+
+
+def _bmff_find(data: bytes, kind: bytes, start: int, end: int, *,
+               full: bool = False) -> tuple[int, int] | None:
+    for found, body_start, body_end in _bmff_boxes(data, start, end):
+        if found == kind:
+            # FullBox 在内容前多 4 字节的版本与标志。
+            return (body_start + 4 if full else body_start), body_end
+    return None
+
+
+def _bmff_dims(data: bytes) -> tuple[int, int] | None:
+    """AVIF／HEIF：`meta` → `iprp` → `ipco` 里第一枚 `ispe`（主图的空间尺寸）。"""
+    meta = _bmff_find(data, b"meta", 0, len(data), full=True)
+    if meta is None:
+        return None
+    iprp = _bmff_find(data, b"iprp", *meta)
+    if iprp is None:
+        return None
+    ipco = _bmff_find(data, b"ipco", *iprp)
+    if ipco is None:
+        return None
+    for kind, start, end in _bmff_boxes(data, *ipco):
+        if kind == b"ispe" and end - start >= 12:
+            return positive_dims(*struct.unpack(">II", data[start + 4:start + 12]))
     return None
 
 

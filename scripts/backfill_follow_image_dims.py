@@ -10,10 +10,11 @@ r"""给已入库的关注图片补上固有宽高。
   原始响应都归档在 `sources/follow/rule34xxx/` 下。不用再发一个请求，把归档里
   每个帖子的尺寸按帖子号对回条目即可。
 - **探测**：归档站（kemono、coomer、pawchive）、paheal、论坛附件这些来源不报
-  尺寸，只能问文件本身——但只问文件头：`Range: bytes=0-65535`，PNG/GIF/WebP
-  几十字节就够，JPEG 的 SOF 段在 EXIF 之后，64 KiB 覆盖绝大多数。地址与请求头
-  走界面同一条 `FollowMediaResolver`，凭据与 Referer 同一口径；解析不了的退回
-  公开缩略图。每个主机各自限速。
+  尺寸，只能问文件本身——但只问文件头：`Range: bytes=0-65535`，PNG/GIF/WebP/
+  AVIF 几十到几百字节就够，JPEG 的 SOF 段在 EXIF 之后，64 KiB 覆盖绝大多数。
+  先问卡片实际显示的公开缩略图（归档站的原文件主机对脚本直接 403），再按界面
+  同一条 `FollowMediaResolver` 拿媒体地址与请求头，凭据与 Referer 同一口径。
+  每个主机各自限速。
 
 判据只有 `peach.follow_image_dims` 一份；落库走 `FollowStore.set_image_dims`，
 只补空缺，条数不增不减。默认 dry-run。`--apply` 必须同时给 `--backup`，与本仓库
@@ -37,7 +38,7 @@ if str(SRC_DIR) not in sys.path:
 from peach.config import GENERATED_DIR, SECRETS_DIR, SHARED_CREDENTIAL_ROOT, SOURCES_DIR
 from peach.follow_image_dims import ImageDimsUnavailable, positive_dims, probe_image_dims
 from peach.follow_secrets import credential_store_for
-from peach.follow_sources import f95_attachment_media_items
+from peach.follow_sources import display_thumb_url, f95_attachment_media_items
 from peach.follow_store import FollowItemRow, FollowStore
 from peach.follow_stream import FollowMediaResolver, FollowMediaUnavailable
 from peach.http import HttpTransport, HttpxTransport
@@ -131,32 +132,46 @@ def pending_targets(items: tuple[FollowItemRow, ...],
     return targets
 
 
-def probe_target(resolver: FollowMediaResolver, transport: HttpTransport,
-                 limiter: HostLimiter, item: FollowItemRow, index: int | None,
-                 media: dict | None) -> tuple[tuple[int, int] | None, str]:
-    """问一张图的尺寸。返回（尺寸或 None，说明）。
+def probe_attempts(resolver: FollowMediaResolver, item: FollowItemRow, index: int | None,
+                   media: dict | None) -> tuple[list[tuple[str, dict, str]], list[str]]:
+    """一张图按顺序可以去问的地址：（地址，请求头，来路），以及排不上的原因。
 
-    先按界面同一条解析器拿地址与请求头（凭据、Referer 都在里面）；解析器拒了
-    （来源不受支持、缺凭据）就退回公开缩略图裸取。两条都不行按未取得记。
+    先问卡片实际显示的那张——公开缩略图，不带请求头，浏览器也是这么取的，它的
+    比例才是排版要的那一个；归档站的原文件主机对脚本请求直接 403（pawchive 回的
+    是一句「stop before I block」），缩略图主机照常给。缩略图不行再按界面同一条
+    解析器拿媒体地址与请求头（凭据、Referer 都在里面）。
     """
+    attempts: list[tuple[str, dict, str]] = []
+    notes: list[str] = []
+    thumb = str((media or {}).get("thumb_url") or "") if media is not None \
+        else str(display_thumb_url(item) or "")
+    if thumb.startswith("https://"):
+        attempts.append((thumb, {}, "缩略图"))
     try:
         resolved = resolver.resolve(item, index)
-        url = resolved.url
+    except FollowMediaUnavailable as error:
+        notes.append(f"解析器拒收：{error}")
+    else:
         headers = dict(resolved.headers or {})
         if resolved.referer:
             headers.setdefault("Referer", resolved.referer)
-        via = "媒体地址"
-    except FollowMediaUnavailable as error:
-        url = str((media or {}).get("thumb_url") if media else item.thumb_url or "")
-        if not url.startswith("https://"):
-            return None, f"解析器拒收（{error}），也没有公开缩略图"
-        headers = {}
-        via = f"缩略图（解析器拒收：{error}）"
-    limiter.wait(url)
-    try:
-        return probe_image_dims(transport, url, headers, timeout=PROBE_TIMEOUT), via
-    except (ImageDimsUnavailable, OSError, httpx.HTTPError) as error:
-        return None, f"{via}：{type(error).__name__}: {error}"[:160]
+        if resolved.url != thumb:
+            attempts.append((resolved.url, headers, "媒体地址"))
+    return attempts, notes
+
+
+def probe_target(resolver: FollowMediaResolver, transport: HttpTransport,
+                 limiter: HostLimiter, item: FollowItemRow, index: int | None,
+                 media: dict | None) -> tuple[tuple[int, int] | None, str]:
+    """问一张图的尺寸。返回（尺寸或 None，说明）；每条地址各限速一次。"""
+    attempts, notes = probe_attempts(resolver, item, index, media)
+    for url, headers, via in attempts:
+        limiter.wait(url)
+        try:
+            return probe_image_dims(transport, url, headers, timeout=PROBE_TIMEOUT), via
+        except (ImageDimsUnavailable, OSError, httpx.HTTPError) as error:
+            notes.append(f"{via}：{type(error).__name__}: {error}"[:120])
+    return None, "；".join(notes) or "没有可问的地址"
 
 
 def run(args: argparse.Namespace, transport: HttpTransport | None = None) -> int:
