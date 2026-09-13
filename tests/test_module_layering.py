@@ -241,6 +241,26 @@ class LayeringTests(unittest.TestCase):
             "非 web 模块不得依赖 web 层：把共享的纯规则下沉到 catalog_rules 一类的策略模块",
         )
 
+    def test_route_modules_only_depend_on_the_auth_routes(self):
+        """路由层内部也是单向的：`routes_auth` 在最下面，别的 `routes_*` 只许 import 它。
+
+        `same_origin` 曾住在 `routes_configuration`，登录路由要用就在函数里反向 import；
+        `board_entry_style` 与运行信息住在 `routes_pages`，配置路由同样反向去拿。三个模块
+        于是成了一个靠函数内 import 撑住的环——import 图上看不出来，读代码的人也说不清
+        谁在谁上面。共享件下沉到 web 层（`web_entry`），路由模块之间只剩鉴权依赖这一个方向。
+        函数内的 import 一样算：`_local_imports` 扫整棵语法树，不只看文件顶部。
+        """
+        offenders = []
+        for path in sorted(SOURCE_ROOT.glob("routes_*.py")):
+            module = path.stem
+            allowed = set() if module == "routes_auth" else {"routes_auth"}
+            for imported in sorted(_local_imports(path) & ROUTE_MODULES - allowed):
+                offenders.append(f"{module} → {imported}")
+        self.assertEqual(
+            offenders, [],
+            "routes_* 之间只许依赖 routes_auth：两个路由都要的东西下沉到 web_* 模块",
+        )
+
     def test_catalog_rules_depends_on_nothing_inside_peach(self):
         """最底下那层必须是纯的：只要它开始 import 别的 Peach 模块，就不再是策略了。"""
         self.assertEqual(

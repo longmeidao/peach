@@ -37,6 +37,7 @@ from fastapi.responses import (
 from . import auth, distribution, onboarding, settings_file
 from .config import PROJECT_ROOT
 from .routes_auth import require_asset_auth, require_page_auth, set_auth_cookie
+from .web_entry import board_entry_style, runtime_fact_entries
 from .web_state import FAVICON
 
 router = APIRouter()
@@ -362,49 +363,11 @@ def _document(title: str, body: str) -> str:
             f'<style>{_board_button_rules()}</style><style>{facts_css}</style></head><body><svg width="0" height="0" aria-hidden="true" style="position:absolute">{symbols}</svg><main>{body}</main>{_SETUP_SCRIPT}{_SHARED_SCRIPT}</body></html>\n')
 
 
-def board_entry_style() -> str:
-    """入口页内联公共视觉层。首启和登录页不加载 app.js，样式得随 HTML 一起送到。"""
-    css = (PROJECT_ROOT / "web/board-entry.css").read_text(encoding="utf-8")
-    return f'<style id="boardEntryStyles">{css}</style>'
-
-
 def _check_html(name: str, text_html: str, *, checked: bool) -> str:
     """站内共用的自绘勾选框：文字与框同属一个 label，没有点不到的缝。"""
     return (f'<label class="check"><span class="pcheck"><input type="checkbox" name="{name}" value="y"'
             + (" checked" if checked else "")
             + f'><span aria-hidden="true">{_CHECK_SVG}</span></span><span>{text_html}</span></label>')
-
-
-def runtime_facts(config) -> tuple[tuple[str, str], ...]:
-    """这台机器上 Peach 的位置与版本：设置完成页和 `/api/configuration` 共用同一份。"""
-    from . import __version__
-    import platform as system_platform
-    from .ffmpeg import FFmpegResolver
-
-    available = FFmpegResolver(config.directory("tools") / "ffmpeg").ffmpeg() is not None
-    ffmpeg = "可用" if available else "未安装；MP4 可直接播放，转码和缩略图需要安装 FFmpeg。"
-    return (
-        ("版本", __version__),
-        ("操作系统", system_platform.system()),
-        ("数据目录", str(config.data_root)),
-        ("设置文件", str(config.path)),
-        ("日志目录", str(config.directory("logs"))),
-        ("FFmpeg", ffmpeg),
-    )
-
-
-def runtime_fact_entries(config) -> list[dict[str, str]]:
-    """运行信息中的缺失依赖附带官方下载入口。"""
-    from .ffmpeg import FFmpegResolver
-    entries = [{"term": term, "value": value} for term, value in runtime_facts(config)]
-    resolver = FFmpegResolver(config.directory("tools") / "ffmpeg")
-    missing = [name for name, choice in (("FFmpeg", resolver.ffmpeg()), ("ffprobe", resolver.ffprobe()))
-               if choice is None]
-    if missing:
-        entry = next(row for row in entries if row["term"] == "FFmpeg")
-        entry.update(value="未找到 " + "、".join(missing) + "；转码、媒体信息与缩略图需要 FFmpeg 工具包。",
-                     download_url="https://ffmpeg.org/download.html", download_label="下载 FFmpeg")
-    return entries
 
 
 def dependency_link(url: str, label: str) -> str:

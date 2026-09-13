@@ -15,6 +15,7 @@ from collections import OrderedDict
 import threading
 import time
 from . import access
+from .web_entry import board_entry_style
 from starlette.concurrency import run_in_threadpool
 from urllib.parse import parse_qs
 
@@ -82,9 +83,15 @@ class AssetLoginRequired(Exception):
     """页面资产（app.css/app.js）未授权：401 形态是 PlainText 提示。"""
 
 
+def same_origin(request: Request) -> None:
+    """浏览器发来的写请求必须来自 Peach 自己的页面：带了别处的 Origin 就拒。"""
+    origin = request.headers.get("origin")
+    if request.headers.get("sec-fetch-site") == "cross-site" or (origin and origin.rstrip("/") != str(request.base_url).rstrip("/")):
+        raise HTTPException(403, "请从 Peach 配置页提交")
+
+
 def require_auth(request: Request) -> dict[str, str]:
     if request.method not in {"GET", "HEAD", "OPTIONS"}:
-        from .routes_configuration import same_origin
         same_origin(request)
     args = _first_query_values(request)
     if not _authorized(request, request.app.state.settings.token, args):
@@ -118,7 +125,6 @@ def set_auth_cookie(response: Response, request: Request, *, days: int = 30, log
 
 
 def login_html(next_path: str, *, invalid: bool = False) -> str:
-    from .routes_pages import board_entry_style
     safe_next = html.escape(next_path, quote=True)
     error = '<p role="alert">访问密码不正确</p>' if invalid else ""
     return (
@@ -185,7 +191,6 @@ def login(request: Request, next: str = "/"):
 
 @router.post("/login")
 async def login_submit(request: Request):
-    from .routes_configuration import same_origin
     same_origin(request)
     _login_attempt(request)
     token = request.app.state.settings.token
