@@ -5752,6 +5752,7 @@ async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=fals
       <div class="smeta mono"><span>${followWhen(item)}</span>${realDuration(item.duration)?`<span>${fmtDur(item.duration)}</span>`:''}${badges?`<span class="fbadges">${badges}</span>`:''}</div>
       ${item.summary?`<p class="followdetailsummary">${esc(item.summary)}</p>`:''}
       ${mediaIssue?`<p class="fnote followmediaissue">${esc(mediaIssue)}</p>`:''}
+      <p class="fnote followmediaissue" data-media-load-issue hidden>媒体没有取回来：上游这一次没给出内容，多半是站点在限流——过一阵再打开。</p>
       ${followResourceLinks(item)}
       <div class="fb followdetailactions">
         <button class="later" data-follow-detail-save aria-label="${item.status==='saved'?'已保存':'保存到账本'}" title="${item.status==='saved'?'已保存':'保存到账本'}"${item.status==='saved'?' disabled':''}>${item.status==='saved'?icon('check'):icon('bookmark-plus')}</button>
@@ -5877,6 +5878,11 @@ async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=fals
     write(button,'/api/follow/media/hide',{item:item.id,media:index,hidden:false},()=>{
       reopenAfterMediaChange(index)},{message:'已恢复显示'});
   });
+  // 上游没给出媒体时，代理只会回一个不含缘由的失败；界面上把「这次没取到、
+  // 多半是限流」说在侧栏，别让人对着一块空画布猜。
+  const loadIssue=$('#stage').querySelector('[data-media-load-issue]');
+  $('#stage').querySelectorAll('.followdetailmedia img,.followdetailmedia video').forEach(el=>
+    el.addEventListener('error',()=>{if(loadIssue)loadIssue.hidden=false}));
   alignFollowImageControls();
   // 滚到舞台本身，不是页面头部——就近展开的意义就在于视线不被拽走。
   // 复用首页那套 sticky 偏移，标题不会被吸顶的筛选条盖住。
