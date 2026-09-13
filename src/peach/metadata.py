@@ -73,8 +73,6 @@ CREDENTIAL_STATUS_CODES = frozenset({401})
 #: 「换一份凭据」这句话只对其中一种。
 AMBIGUOUS_AUTH_STATUS_CODES = frozenset({403})
 
-AUTH_STATUS_CODES = CREDENTIAL_STATUS_CODES | AMBIGUOUS_AUTH_STATUS_CODES
-
 #: 判据明确时给出的下一步。措辞只有这一处。
 CREDENTIAL_ADVICE = "换一份凭据后重跑"
 
