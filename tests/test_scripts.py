@@ -16,8 +16,14 @@ from pathlib import Path, PureWindowsPath
 from types import SimpleNamespace
 from unittest import mock
 
-from peach import scripting
+from datetime import datetime, timezone
+
+from peach import follow_image_dims, scripting
+from peach.follow_sources import FollowCandidate, SourceFetch
+from peach.follow_store import FollowStore
+from peach.http import HttpResponse
 from peach.migrations import upgrade
+from support.ledger import fresh_ledger
 from peach.classification import is_probable_mainstream_release, is_structural_creator
 
 
@@ -291,13 +297,6 @@ class OperationalScriptTests(unittest.TestCase):
         判据与落库都复用 `follow_image_dims` 与 `FollowStore.set_image_dims`，
         只补空缺，条数不变，第二遍无事可做。
         """
-        from datetime import datetime, timezone
-        from peach import follow_image_dims
-        from peach.follow_sources import FollowCandidate, SourceFetch
-        from peach.follow_store import FollowStore
-        from peach.http import HttpResponse
-        from support.ledger import fresh_ledger
-
         backfill = load_script("backfill_follow_image_dims")
         self.assertIs(backfill.open_for_write, scripting.open_for_write)
         self.assertIs(backfill.probe_image_dims, follow_image_dims.probe_image_dims)
