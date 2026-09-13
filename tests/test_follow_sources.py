@@ -179,7 +179,8 @@ FANBOX_DETAIL_JSON = json.dumps({"body": {"post": {"type": "article", "body": {
     ],
     "imageMap": {
         "one": {"originalUrl": "https://downloads.fanbox.cc/one.jpg",
-                "thumbnailUrl": "https://downloads.fanbox.cc/one-thumb.jpg"},
+                "thumbnailUrl": "https://downloads.fanbox.cc/one-thumb.jpg",
+                "width": 1920, "height": 1080},
         "two": {"originalUrl": "https://downloads.fanbox.cc/two.jpg",
                 "thumbnailUrl": "https://downloads.fanbox.cc/two-thumb.jpg"},
     },
@@ -308,10 +309,12 @@ class OfficialConnectorTests(unittest.TestCase):
         self.assertEqual(result.candidates[0].group_hint, "fanbox:12489354")
         self.assertEqual(result.candidates[0].published_at, "2026-08-26T14:34:51Z")
         self.assertEqual(len(result.candidates[0].extra["media_items"]), 2)
+        self.assertEqual(result.candidates[0].extra["media_items"][0]["width"], 1920)
+        self.assertEqual(result.candidates[0].extra["media_items"][1]["width"], None)
         self.assertEqual(result.candidates[0].extra["links"],
                          ["https://gofile.io/d/OS2Qz9"])
         self.assertEqual(result.candidates[0].extra["post_type"], "article")
-        self.assertTrue(result.candidates[0].extra["cover_harvested"])
+        self.assertTrue(result.candidates[0].extra["media_dims"])
         self.assertEqual(result.candidates[0].extra["image_count"], 2)
         self.assertEqual(result.candidates[0].extra["video_count"], 0)
         self.assertEqual(result.candidates[0].extra["file_count"], 0)

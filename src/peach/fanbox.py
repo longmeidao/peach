@@ -33,6 +33,8 @@ class FanboxContent:
 _SUPPORTED_TYPES = frozenset({"image", "text", "file", "article", "video", "entry"})
 _URL_RE = re.compile(r"https?://[^\s\"'<>)\]]+", re.IGNORECASE)
 _IMAGE_SUFFIXES = frozenset({".avif", ".bmp", ".gif", ".jpeg", ".jpg", ".png", ".webp"})
+#: 封面地址里的裁切尺寸：`.../c/1200x630_90_a2_g5/...`。
+_COVER_DIMS_RE = re.compile(r"/c/(\d+)x(\d+)")
 _VIDEO_SUFFIXES = frozenset({".m4v", ".mkv", ".mov", ".mp4", ".webm"})
 
 
@@ -105,12 +107,14 @@ def _add_cover(post: Mapping[str, object], media: list[dict],
     """封面追加到媒体清单末尾。
 
     封面也是这篇的图，收进媒体清单；排在正文之后，卡片缩略图仍然落在正文首图上。
-    站点给的是 1200x630 的展示裁切版，不是原画质。
+    站点给的是 1200x630 的展示裁切版，不是原画质；裁切尺寸写在地址里，解析出来
+    供界面占位。
     """
     cover = _https_url(post.get("coverImageUrl"))
     if not cover or cover in media_urls:
         return
     media_urls.add(cover)
+    matched = _COVER_DIMS_RE.search(cover)
     media.append({
         "id": "cover",
         "name": "封面",
@@ -118,6 +122,8 @@ def _add_cover(post: Mapping[str, object], media: list[dict],
         "thumb_url": cover,
         "media_kind": "image",
         "size": None,
+        "width": int(matched.group(1)) if matched else None,
+        "height": int(matched.group(2)) if matched else None,
         "resource_provider": "fanbox",
     })
 
@@ -168,6 +174,9 @@ def normalize_fanbox_post(post: Mapping[str, object]) -> FanboxContent:
             "thumb_url": (thumb or url) if kind == "image" else thumb,
             "media_kind": kind,
             "size": node.get("size"),
+            # imageMap 自带的固有宽高跟着走：界面靠它在图片落地前占出正确的比例。
+            "width": node.get("width"),
+            "height": node.get("height"),
             "resource_provider": "fanbox",
         })
 
