@@ -2139,9 +2139,10 @@ class FanboxConnector(_BaseConnector):
     provider = "fanbox"
     #: 2026-08-27 实测公开接口单页 10 条，整页都能补上。
     DEFAULT_ENRICH_BUDGET = 10
-    #: 正文类型只有 post.info 给。详情被 Cloudflare 挡回来时它是 null，所以拿它
-    #: 当判据能让那一行下一轮再试一次，而不是当成「已经补齐」。
-    ENRICHED_MARK = "post_type"
+    #: 详情补齐一轮的标记：补全阶段在 extra 里写 `cover_harvested`。拿新键当判据，
+    #: 按 `post_type` 判成已补齐的旧行缺这一个键，下一轮检查会各重探一次详情——
+    #: 封面是这次才收进媒体清单的，旧行只有重探才能拿到。
+    ENRICHED_MARK = "cover_harvested"
     _CREATOR_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
     @classmethod
@@ -2192,20 +2193,25 @@ class FanboxConnector(_BaseConnector):
         creator = str(ref or "").strip()
         if not self._CREATOR_RE.fullmatch(creator):
             raise FollowSourceError(f"fanbox 的 ref 必须是创作者 id，收到：{ref!r}")
-        if page:
-            raise FollowSourceError("fanbox 官方来源暂不支持向前翻页")
         # 2026-08-27 实测公开接口单页为 10 条；不要把本地通用上限 100 原样塞给站点。
         query = urllib.parse.urlencode({"creatorId": creator,
                                         "limit": min(self.max_items, 10)})
         url = f"https://api.fanbox.cc/post.listCreator?{query}"
-        common, response = self._request(url, ref=creator, etag=etag,
-                                         last_modified=last_modified)
+        if page:
+            # 历史页是另一份资源，没有配过条件的缓存凭据，不带 If-None-Match。
+            common, response = self._request(self._history_page_url(creator, page),
+                                             ref=creator)
+        else:
+            common, response = self._request(url, ref=creator, etag=etag,
+                                             last_modified=last_modified)
         if response is None:
             return SourceFetch(not_modified=True, **common)
         payload = self.parse_json(response)
         posts = ((payload or {}).get("body") or {}).get("posts")
         if not isinstance(posts, list):
             raise FollowSourceError("fanbox 返回的帖子列表格式不符")
+        if page and not posts:
+            raise FollowHistoryEnd("没有更多历史内容")
         listed, skipped = [], 0
         for post in posts[:self.max_items]:
             if not isinstance(post, dict) or not str(post.get("id") or "").isdigit():
@@ -2218,6 +2224,27 @@ class FanboxConnector(_BaseConnector):
         candidates, probed = self.enrich(listed)
         return SourceFetch(candidates=candidates, skipped=skipped,
                            probed=probed, raw_body=response.body, **common)
+
+    def _history_page_url(self, creator: str, page: int) -> str:
+        """第 page 页历史（page 从 1 起）对应的站点游标地址。
+
+        站点自己的分页是 `post.paginateCreator`：先给一份按新到旧排序的游标页
+        清单，每张页 URL 用 `firstPublishedDatetime`+`firstId` 定位、含端点——
+        第 1 张就是最新一页，往后逐页更旧。公开接口不认 `offset` 参数，数字
+        偏移翻不动页。游标清单走完（page 超出张数）就是没有更多历史。
+        """
+        common, response = self._request(
+            "https://api.fanbox.cc/post.paginateCreator?"
+            + urllib.parse.urlencode({"creatorId": creator}), ref=creator)
+        if response is None:
+            raise FollowSourceError("fanbox 历史页清单意外返回 304")
+        payload = self.parse_json(response)
+        pages = ((payload or {}).get("body") or {}).get("pageUrls")
+        if not isinstance(pages, list) or not pages:
+            raise FollowSourceError("fanbox 的历史页清单格式不符")
+        if not 0 < page <= len(pages):
+            raise FollowHistoryEnd("没有更多历史内容")
+        return str(pages[page - 1])
 
     def _listed(self, post: dict, creator: str) -> FollowCandidate:
         """只用 post.listCreator 给的字段造一条候选。不联网。
@@ -2271,6 +2298,7 @@ class FanboxConnector(_BaseConnector):
             summary=detail["summary"] or candidate.summary,
             extra={**candidate.extra, "links": links, "media_items": media_items,
                    "media_error": None,
+                   "cover_harvested": True,
                    "post_type": detail.get("post_type"),
                    "image_count": detail.get("image_count", 0),
                    "video_count": detail.get("video_count", 0),

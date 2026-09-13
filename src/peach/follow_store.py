@@ -145,6 +145,7 @@ _ENRICHED_PREDICATES = {
     "published_at": "published_at IS NOT NULL AND published_at<>''",
     "tag_types": "json_extract(metadata_json,'$.tag_types') IS NOT NULL",
     "post_type": "json_extract(metadata_json,'$.post_type') IS NOT NULL",
+    "cover_harvested": "json_extract(metadata_json,'$.cover_harvested') IS NOT NULL",
 }
 
 

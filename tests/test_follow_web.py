@@ -292,6 +292,35 @@ class FollowContractTests(unittest.TestCase):
                       if row["provider"] == "f95zone")
         self.assertFalse(source["can_backfill"])
 
+    def test_backfill_all_walks_pages_until_history_ends(self):
+        self._seed()
+        pages = []
+
+        class _Paged:
+            provider, semantics = "rule34video", "work"
+
+            def fetch(self, ref, *, etag=None, last_modified=None, page=0):
+                pages.append(page)
+                if page > 3:
+                    raise FollowHistoryEnd("没有更多历史内容")
+                return SourceFetch(provider="rule34video", ref=ref,
+                                   request_url="https://rule34video.test/x",
+                                   semantics="work", candidates=(), raw_body=b"<html/>")
+
+        original = web_follow.build_connector
+        web_follow.build_connector = lambda provider, **kwargs: _Paged()
+        self.addCleanup(setattr, web_follow, "build_connector", original)
+
+        result = self._post("/api/follow/check", {"older": True, "backfill_all": True})
+        # 从游标 0 起步：抓 1、2、3，第 4 页就是尽头；游标停在最后成功的那页。
+        self.assertEqual(pages, [1, 2, 3, 4])
+        self.assertTrue(result["results"][0]["exhausted"])
+        with self.contract.database.read_connection() as connection:
+            state = connection.execute(
+                "SELECT backfill_page FROM follow_source WHERE id=?",
+                (self._get()["groups"][0]["primary"]["source_id"],)).fetchone()[0]
+        self.assertEqual(state, 3)
+
     def test_history_end_is_a_neutral_success_and_does_not_advance_cursor(self):
         source_id = self._seed()
 

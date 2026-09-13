@@ -1871,6 +1871,21 @@ def _run_follow_check(contract, body, job_id=None) -> dict:
             row, credentials=credentials, writer=writer,
             connector_factory=build_connector, older=older, progress=progress,
             initial_days=initial_days))
+        if older and body.get("backfill_all"):
+            # 全量回抓：一页记完接着抓下一页，直到站点说没有更多、某一页失败，
+            # 或游标不再前进（防环）。游标推进落在 ledger 的 `backfill_page`，
+            # 每轮把结果页写回工作行，下一轮从那里接着算。
+            rounds = 0
+            while (result.get("ok") and not result.get("exhausted")
+                   and isinstance(result.get("page"), int) and rounds < 500):
+                if job_id and contract.follow_job.snapshot() is None:
+                    break
+                row["backfill_page"] = result["page"]
+                result = _check_payload(run_check(
+                    row, credentials=credentials, writer=writer,
+                    connector_factory=build_connector, older=True, progress=progress,
+                    initial_days=initial_days))
+                rounds += 1
         result["author"] = _author_display_name(row)
         results.append(result)
         progress()

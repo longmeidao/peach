@@ -311,10 +311,48 @@ class OfficialConnectorTests(unittest.TestCase):
         self.assertEqual(result.candidates[0].extra["links"],
                          ["https://gofile.io/d/OS2Qz9"])
         self.assertEqual(result.candidates[0].extra["post_type"], "article")
+        self.assertTrue(result.candidates[0].extra["cover_harvested"])
         self.assertEqual(result.candidates[0].extra["image_count"], 2)
         self.assertEqual(result.candidates[0].extra["video_count"], 0)
         self.assertEqual(result.candidates[0].extra["file_count"], 0)
         self.assertEqual(result.probed, 1)
+
+    def test_fanbox_history_pages_follow_the_site_cursor_list(self):
+        seen = []
+        def route(request):
+            seen.append(request.url)
+            if "paginateCreator" in request.url:
+                return HttpResponse(200, {}, json.dumps({"body": {"pageUrls": [
+                    "https://api.fanbox.cc/post.listCreator?creatorId=x&firstId=11",
+                    "https://api.fanbox.cc/post.listCreator?creatorId=x&firstId=21",
+                ]}}).encode())
+            return HttpResponse(200, {}, FANBOX_JSON)
+        result = FanboxConnector(transport=_routed(route)).fetch("ffxivinitiala", page=2)
+        self.assertIn("paginateCreator", seen[0])
+        self.assertIn("firstId=21", seen[1])
+        # 其余请求是第二阶段的详情补全。
+        self.assertTrue(all("post.info" in url for url in seen[2:]))
+        self.assertEqual(result.candidates[0].external_id, "12489354")
+
+    def test_fanbox_history_walk_ends_when_the_cursor_list_runs_out(self):
+        def route(request):
+            return HttpResponse(200, {}, json.dumps({"body": {"pageUrls": [
+                "https://api.fanbox.cc/post.listCreator?creatorId=x&firstId=11",
+            ]}}).encode())
+        connector = FanboxConnector(transport=_routed(route))
+        with self.assertRaises(FollowHistoryEnd):
+            connector.fetch("ffxivinitiala", page=2)
+
+    def test_fanbox_history_walk_ends_on_an_empty_cursor_page(self):
+        def route(request):
+            if "paginateCreator" in request.url:
+                return HttpResponse(200, {}, json.dumps({"body": {"pageUrls": [
+                    "https://api.fanbox.cc/post.listCreator?creatorId=x&firstId=11",
+                ]}}).encode())
+            return HttpResponse(200, {}, json.dumps({"body": {"posts": []}}).encode())
+        connector = FanboxConnector(transport=_routed(route))
+        with self.assertRaises(FollowHistoryEnd):
+            connector.fetch("ffxivinitiala", page=1)
 
     def test_a_fanbox_video_post_keeps_the_cover_as_its_thumbnail(self):
         """视频帖的缩略图退回列表封面，不拿视频地址当图。

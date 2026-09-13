@@ -61,11 +61,13 @@ class ProviderRegistryTests(unittest.TestCase):
             self.assertEqual(follow_providers.PROVIDERS[key].hosts, ())
             self.assertNotIn(key, _PROVIDER_HOSTS)
 
-    def test_backfill_providers_are_archive_sites_with_real_paging(self):
-        """只有支持真实历史分页的来源才显示「抓更早一页」；官方渠道不支持。"""
-        self.assertTrue(_BACKFILL_PROVIDERS.isdisjoint(_OFFICIAL_IDENTITY_PROVIDERS))
-        for key in _BACKFILL_PROVIDERS:
-            self.assertIn(key, CONNECTORS)
+    def test_backfill_providers_are_sites_with_real_paging(self):
+        """「抓更早一页」只给历史页走得完的来源：归档站按偏移翻页，fanbox 走
+        站点自己的游标清单（`post.paginateCreator`）。官方身份与可回填是两回事：
+        fanbox 两者都是，subscribestar、patreon 没有公开分页就不进这一档。"""
+        self.assertTrue(_BACKFILL_PROVIDERS <= set(CONNECTORS))
+        self.assertIn("fanbox", _BACKFILL_PROVIDERS)
+        self.assertTrue(_BACKFILL_PROVIDERS.isdisjoint({"subscribestar", "patreon"}))
 
     def test_registry_carries_no_credential_policy(self):
         """凭据同步策略必须留在 CREDENTIAL_GUIDE 里逐字段声明，不进这张通用表。
