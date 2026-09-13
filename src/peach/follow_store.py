@@ -19,6 +19,7 @@ from pathlib import Path
 
 from . import follow_providers
 from .follow import FollowSourceError, write_immutable
+from .follow_image_dims import positive_dims
 from .follow_sources import (
     FollowCandidate, Rule34VideoConnector, SourceFetch, canonical_source_ref,
     official_profile_handle,
@@ -122,7 +123,17 @@ _FULL_UPDATE = (
     "  duration=COALESCE(excluded.duration, follow_item.duration),"
     "  release_key=excluded.release_key, variant_kind=excluded.variant_kind,"
     "  variant_label=excluded.variant_label, group_hint=excluded.group_hint,"
-    "  metadata_json=excluded.metadata_json, last_seen_at=excluded.last_seen_at"
+    # 条目级的图片宽高多半不是连接器给的：归档站不报尺寸，是回填脚本问过文件头、
+    # 或界面加载完图片后回写的。整块替换 metadata 会把它抹掉，下一轮检查更新后
+    # 第一页的卡片又退回无尺寸占位。新值自己带尺寸时照常以新值为准。
+    "  metadata_json=CASE"
+    "    WHEN json_extract(excluded.metadata_json,'$.width') IS NULL"
+    "     AND json_extract(follow_item.metadata_json,'$.width') IS NOT NULL"
+    "    THEN json_set(excluded.metadata_json,"
+    "      '$.width', json_extract(follow_item.metadata_json,'$.width'),"
+    "      '$.height', json_extract(follow_item.metadata_json,'$.height'))"
+    "    ELSE excluded.metadata_json END,"
+    "  last_seen_at=excluded.last_seen_at"
 )
 
 #: `partial=True` 的候选（只有列表视图、详情这次没取）更新已有行时用的 SET 子句。
@@ -661,6 +672,32 @@ class FollowStore:
         self._connect().execute(
             "UPDATE follow_item SET hidden_media_json=? WHERE id=?", (value, item_id))
         return tuple(current)
+
+    def set_image_dims(self, item_id: int, width: int, height: int, *,
+                       media_index: int | None = None) -> bool:
+        """给一条（或它第 N 张媒体）补上图片宽高，只补空缺。
+
+        写了返回 True；条目不存在、那张媒体不在 metadata 的 `media_items` 里，或
+        已经有一对正尺寸时不动，返回 False。尺寸只用来定比例，来自来源接口、
+        文件头探测或界面加载完的 naturalWidth 都算同一个字段；已有的不覆盖，
+        因为三处给的都是同一张图的比例，没有谁更权威。
+        """
+        dims = positive_dims(width, height)
+        if dims is None:
+            raise FollowSourceError(f"图片宽高必须是正整数：{width}×{height}")
+        if media_index is None:
+            prefix = "$"
+            guard = ""
+        else:
+            prefix = f"$.media_items[{int(media_index)}]"
+            guard = f" AND json_type(metadata_json,'{prefix}')='object'"
+        cursor = self._connect().execute(
+            "UPDATE follow_item SET metadata_json=json_set(COALESCE(metadata_json,'{}'),"
+            f"'{prefix}.width',?,'{prefix}.height',?)"
+            " WHERE id=? AND json_valid(COALESCE(metadata_json,'{}'))" + guard +
+            f" AND COALESCE(json_extract(metadata_json,'{prefix}.width'),0)<=0",
+            (dims[0], dims[1], int(item_id)))
+        return cursor.rowcount > 0
 
     # ---- 作者别名 -------------------------------------------------------
 

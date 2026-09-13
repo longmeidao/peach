@@ -742,6 +742,72 @@ class FollowContractTests(unittest.TestCase):
         self.assertIsNone(item["media_items"][1]["width"])
         self.assertIsNone(item["media_items"][1]["height"])
 
+    def _items_by_external_id(self) -> dict:
+        found = {}
+        for group in self._get()["groups"]:
+            for item in (group["primary"], *group["variants"], *group["duplicates"]):
+                found[item["external_id"]] = item
+        return found
+
+    def _rule34_image(self, external_id, **extra):
+        return FollowCandidate(
+            provider="rule34xxx", external_id=external_id, title="fiona",
+            url=f"https://rule34.xxx/index.php?page=post&s=view&id={external_id}",
+            media_url=f"https://api-cdn.rule34.xxx/images/1/{external_id}.jpg",
+            thumb_url=f"https://api-cdn.rule34.xxx/samples/1/{external_id}.jpg",
+            extra={"tag": "lazyprocrastinator", **extra})
+
+    def test_item_level_dimensions_come_from_the_listing_and_the_browser_fills_the_gaps(self):
+        """直链图片的宽高与 media_items 里那对同义；没有的条目由界面加载完回写，只补空缺。"""
+        self._seed(candidates=(self._rule34_image("1", width=1280, height=720),
+                               self._rule34_image("2")),
+                   provider="rule34xxx", ref="lazyprocrastinator")
+        items = self._items_by_external_id()
+        self.assertEqual((items["1"]["width"], items["1"]["height"]), (1280, 720))
+        self.assertIsNone(items["2"]["width"])
+        self.assertIsNone(items["2"]["height"])
+
+        result = self._post("/api/follow/image-dims", {"entries": [
+            {"item": items["2"]["id"], "width": 900, "height": 1600},
+            {"item": items["1"]["id"], "width": 1, "height": 1},
+            {"item": items["2"]["id"] + 500, "width": 10, "height": 10},
+        ]})
+
+        self.assertEqual(result["learned"], 1, "已有尺寸的与不存在的条目都不算学到")
+        items = self._items_by_external_id()
+        self.assertEqual((items["2"]["width"], items["2"]["height"]), (900, 1600))
+        self.assertEqual((items["1"]["width"], items["1"]["height"]), (1280, 720))
+
+    def test_media_level_dimensions_are_learned_by_media_index(self):
+        self._seed(candidates=(FollowCandidate(
+            provider="fanbox", external_id="1", title="Post",
+            url="https://lazyprocrast.fanbox.cc/posts/1",
+            extra={"media_items": [
+                {"id": "art", "media_kind": "image", "resource_provider": "fanbox",
+                 "url": "https://downloads.fanbox.cc/images/post/1/art.png"},
+                {"id": "sketch", "media_kind": "image", "resource_provider": "fanbox",
+                 "url": "https://downloads.fanbox.cc/images/post/1/sketch.png"},
+            ]}),), provider="fanbox", ref="lazyprocrast")
+        item = self._get()["groups"][0]["primary"]
+        result = self._post("/api/follow/image-dims", {"entries": [
+            {"item": item["id"], "media": 1, "width": 1200, "height": 1600}]})
+        self.assertEqual(result["learned"], 1)
+        item = self._get()["groups"][0]["primary"]
+        self.assertIsNone(item["media_items"][0]["width"])
+        self.assertEqual((item["media_items"][1]["width"], item["media_items"][1]["height"]),
+                         (1200, 1600))
+        self.assertIsNone(item["width"], "媒体级尺寸不落到条目级")
+
+    def test_image_dims_refuse_malformed_batches(self):
+        self._seed()
+        item = self._get()["groups"][0]["primary"]
+        for body in ({"entries": {"item": item["id"]}},
+                     {"entries": [{"item": item["id"], "width": 0, "height": 10}]},
+                     {"entries": [{"item": item["id"], "width": "x", "height": 10}]},
+                     {"entries": [{"item": item["id"], "width": 1, "height": 1}] * 201}):
+            with self.subTest(body=str(body)[:60]), self.assertRaises(ValueError):
+                self._post("/api/follow/image-dims", body)
+
     def test_hidden_media_leaves_the_feed_and_the_card_thumb(self):
         chart = "https://downloads.fanbox.cc/images/post/1/w/1200/chart.jpeg"
         art = "https://downloads.fanbox.cc/images/post/1/w/1200/art.jpeg"

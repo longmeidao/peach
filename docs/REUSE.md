@@ -207,6 +207,7 @@ CloudDrive 为外部应用，本项目不捆绑其二进制或依赖其管理 AP
 - 关注的作者头像与来源图标是元数据，由 `follow_assets` 取回落在 `generated/follow-assets/` 再经 `/follow-avatar`、`/source-icon` 给页面：地址只从固定表或固定主机拼、字节先认成图再落盘、到期重取失败继续用旧的并退避一小时；保鲜期与 `/link-mark` 共用设置「头像与站点图标刷新」（`web_settings.metadata_refresh_seconds`）。视频与图片不落盘。
 - 厂牌标识由契约位 `has_logo` 决定出不出图：没装标识的厂牌一个 `<img>` 都不发，改用首字母底板，不靠 404 摘。
 - 关注检查分两阶段：列表阶段落 partial 行，详情补全按 provider 额度只补新行和未补齐行。
+- 图片的固有宽高只问文件头：`follow_image_dims.probe_image_dims` 发一个 `Range: bytes=0-65535` 请求，`dims_from_header` 认 PNG／GIF／WebP（VP8、VP8L、VP8X）／JPEG（跳过 EXIF 到 SOF）；判据 `positive_dims` 只有这一份，连接器、`backfill_follow_image_dims.py` 与界面回写（`/api/follow/image-dims`）落库前都经它归一，`FollowStore.set_image_dims` 只补空缺。
 - `/api/related` 用 Tag IDF 加 MMR 排序并缓存；搜索使用 FTS5 trigram，短查询回退 LIKE 并覆盖规范名、别名和检索词，搜索历史在 reader 写入被拒时降级到页面内存。
 - 复核页覆盖元数据、创作者标签、Logo、头像、身份、番号目录、FC2 证据和媒体失败；抓取与 AI 结果仍是候选，批准后才写真相字段，元数据候选保留 MetaTube 目录证据且不下载 URL。
 - 女优与创作者资料页的头像圆框角上有换头像入口：候选来自图库里同名的其他图和这个人取过的每一张图，另外两条路是本机文件与一个 https 地址。每一张取到的图都按内容哈希进候选缓存，被顶下来的那张留在里面，换回去不重新下载。页面只回递服务端自己列出来的 `ref`，图片地址由服务端按索引拼；手填地址是唯一的例外，它过 `http.public_https_url` 那道公网判据。

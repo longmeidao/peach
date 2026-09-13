@@ -820,6 +820,60 @@ class PartialCandidateTests(_StoreCase):
         self.assertEqual(row.metadata["tag_types"], {"tifa_lockhart": "general"})
 
 
+class ImageDimsTests(_StoreCase):
+    """图片宽高是给图片墙占位用的比例，三处来源（接口、文件头、界面回写）同权。"""
+
+    def _record(self, source_id, candidate):
+        self.store.record(source_id, _fetch([candidate], provider="kemono", ref="a"),
+                          moment=MOMENT)
+        return self.store.items(source_id=source_id)[0]
+
+    def _image(self, **extra):
+        return FollowCandidate(
+            provider="kemono", external_id="1", title="Sketch",
+            url="https://kemono.cr/fanbox/user/1/post/1",
+            media_url="https://kemono.cr/data/ab/cd/abcd.jpg",
+            thumb_url="https://kemono.cr/thumbnail/data/ab/cd/abcd.jpg", extra=extra)
+
+    def test_item_dims_fill_only_a_gap_and_say_whether_they_wrote(self):
+        source_id = self._source(provider="kemono", ref="a")
+        item = self._record(source_id, self._image())
+        self.assertTrue(self.store.set_image_dims(item.id, 800, 600))
+        self.assertFalse(self.store.set_image_dims(item.id, 1024, 768),
+                         "已有尺寸不覆盖：三处给的都是同一张图的比例，没有谁更权威")
+        metadata = self.store.item(item.id).metadata
+        self.assertEqual((metadata["width"], metadata["height"]), (800, 600))
+        self.assertFalse(self.store.set_image_dims(item.id + 99, 800, 600))
+        with self.assertRaises(FollowSourceError):
+            self.store.set_image_dims(item.id, 0, 600)
+
+    def test_media_dims_land_on_that_one_media_only(self):
+        source_id = self._source(provider="kemono", ref="a")
+        item = self._record(source_id, self._image(media_items=[
+            {"id": "a", "media_kind": "image", "url": "https://kemono.cr/data/a.png"},
+            {"id": "b", "media_kind": "image", "url": "https://kemono.cr/data/b.png"},
+        ]))
+        self.assertTrue(self.store.set_image_dims(item.id, 1920, 1080, media_index=1))
+        self.assertFalse(self.store.set_image_dims(item.id, 1, 1, media_index=5))
+        media_items = self.store.item(item.id).metadata["media_items"]
+        self.assertNotIn("width", media_items[0])
+        self.assertEqual((media_items[1]["width"], media_items[1]["height"]), (1920, 1080))
+        self.assertNotIn("width", self.store.item(item.id).metadata,
+                         "媒体级尺寸不该顺手写成条目级")
+
+    def test_a_full_refetch_keeps_learned_dims_until_the_source_reports_its_own(self):
+        source_id = self._source(provider="kemono", ref="a")
+        item = self._record(source_id, self._image(tags="a"))
+        self.store.set_image_dims(item.id, 800, 600)
+        # 下一轮检查更新是完整候选，走整块替换 metadata 的那条 SET。
+        metadata = self._record(source_id, self._image(tags="a b")).metadata
+        self.assertEqual(metadata["tags"], "a b")
+        self.assertEqual((metadata["width"], metadata["height"]), (800, 600))
+        # 来源自己开始报尺寸时以来源为准。
+        metadata = self._record(source_id, self._image(width=1600, height=1200)).metadata
+        self.assertEqual((metadata["width"], metadata["height"]), (1600, 1200))
+
+
 class EnrichedMarkTests(_StoreCase):
     """「这一行不必再打详情页」怎么从 ledger 里读出来。"""
 

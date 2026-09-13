@@ -5934,12 +5934,18 @@ function followCard(group,authorSources=[]){
   const thumbUrl=selectedMedia?.thumb_url||item.thumb_url;
   /* width/height 属性让浏览器在图片落地前就按固有比例占位：瀑布流按卡片高度
      分列，没有这两个属性时未加载的图高度是零，每一张加载完都把整墙的列重新
-     平衡一遍，卡片就在列间跳。没有可靠尺寸的来源不硬猜，走无尺寸占位那套。 */
-  const dims=selectedMedia&&selectedMedia.thumb_url===thumbUrl
-    &&selectedMedia.width>0&&selectedMedia.height>0
-    ?` width="${selectedMedia.width}" height="${selectedMedia.height}"`:'';
+     平衡一遍，卡片就在列间跳。尺寸来自媒体清单里那张（fanbox）或条目本身
+     （rule34.xxx 的接口、回填脚本问过的文件头、上次加载后回写的）；都没有就
+     不硬猜，走无尺寸占位那套，并在这张图加载完后把 natural 尺寸回写给条目。 */
+  const mediaDims=selectedMedia&&selectedMedia.thumb_url===thumbUrl
+    &&selectedMedia.width>0&&selectedMedia.height>0?selectedMedia:null;
+  const itemDims=!selectedMedia&&item.media_kind==='image'&&item.width>0&&item.height>0?item:null;
+  const sized=mediaDims||itemDims;
+  const dims=sized?` width="${sized.width}" height="${sized.height}"`:'';
+  const learnable=!sized&&(selectedMedia||item.media_kind==='image');
+  const learn=learnable?` data-learn-dims="${item.id}"${selectedMedia?` data-learn-media="${selectedMedia.index}"`:''}`:'';
   const thumb=thumbUrl
-    ? `<img${dims} src="${esc(thumbUrl)}" alt="" loading="lazy" referrerpolicy="no-referrer" data-drop="self">`
+    ? `<img${dims}${learn} src="${esc(thumbUrl)}" alt="" loading="lazy" referrerpolicy="no-referrer" data-drop="self">`
     : `<span class="fnothumb">${sourceIcon(item.resource_provider||item.provider)}</span>`;
   const videos=followMediaView==='videos'?followVideoItems(group):[],embedded=item.media_items||[];
   const groupedOwner=followMediaView==='videos'?followGroupedMediaOwner(group):null;
@@ -7060,9 +7066,38 @@ async function openFollowManage(push=true,workspace='list'){
 }
 
 /* ── 共用接线 ── */
+/* 这次会话里已经回写过的图，`条目:媒体序号`。回写只补空缺，服务端本来就会
+   忽略已有尺寸的条目，但每次重渲染都把同一批再发一遍是白跑。 */
+const followDimsReported=new Set();
+let followDimsQueue=[],followDimsTimer=0;
+function flushFollowDims(){
+  followDimsTimer=0;
+  if(!followDimsQueue.length)return;
+  const entries=followDimsQueue.splice(0,200);
+  /* 静默：这是顺手学习，不是用户的动作；只读端 409 和网络抖动都不该弹提示。 */
+  api('/api/follow/image-dims',{method:'POST',body:JSON.stringify({entries})}).catch(()=>{});
+  if(followDimsQueue.length)followDimsTimer=setTimeout(flushFollowDims,800);
+}
+function wireImageDimsLearning(root){
+  root.querySelectorAll('img[data-learn-dims]').forEach(img=>{
+    const record=()=>{
+      if(!img.naturalWidth||!img.naturalHeight)return;
+      const item=+img.dataset.learnDims,media=img.dataset.learnMedia;
+      const key=`${item}:${media??''}`;
+      if(followDimsReported.has(key))return;
+      followDimsReported.add(key);
+      const entry={item,width:img.naturalWidth,height:img.naturalHeight};
+      if(media!==undefined)entry.media=+media;
+      followDimsQueue.push(entry);
+      if(!followDimsTimer)followDimsTimer=setTimeout(flushFollowDims,800);
+    };
+    if(img.complete)record();else img.addEventListener('load',record,{once:true});
+  });
+}
 function wireFollowItems(){
   const root=$('#stats');
   wireFollowDetail(root);
+  wireImageDimsLearning(root);
   root.querySelectorAll('[data-follow-status]').forEach(button=>button.onclick=async event=>{
     event.stopPropagation();
     await followWrite(button,'/api/follow/status',
