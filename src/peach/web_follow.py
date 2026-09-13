@@ -702,12 +702,24 @@ def _media_projection(item) -> tuple[list[dict], list[dict]]:
                           if kind == "video" else None,
             "thumb_url": thumb if thumb.startswith("https://") else None,
             "size": media.get("size"),
+            # 固有宽高给瀑布流预留比例用：fanbox 的 imageMap 带原尺寸，没有的
+            # 来源保持 None，前端按无尺寸那套占位。
+            "width": _positive_dim(media.get("width")),
+            "height": _positive_dim(media.get("height")),
             "resource_provider": str(media.get("resource_provider") or ""),
             "resource_group": str(media.get("resource_group") or "") or None,
             "resource_group_label": str(media.get("resource_group_label") or "") or None,
         }
         (concealed if _media_key(media) in hidden else visible).append(projected)
     return visible, concealed
+
+
+def _positive_dim(value) -> int | None:
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        return None
+    return number if number > 0 else None
 
 
 def _media_items(item) -> list[dict]:
