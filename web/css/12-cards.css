@@ -68,7 +68,7 @@ main{position:relative;z-index:1;padding:14px 16px 90px}
 #i-shuffle .strand{stroke-dasharray:var(--strand-dash,none);
   animation:peach-strand-draw var(--strand-cycle,0s) linear infinite}
 #i-shuffle .strand-b{animation-name:peach-strand-draw-late}
-.count[aria-busy="true"] #batchAction svg,
+.count[aria-busy="true"] :is(#batchAction,#followShuffle) svg,
 body.refreshing #batchAction svg,
 .entitycollectionhead[aria-busy="true"] .entitybatch svg{
   --strand-dash:100;--strand-cycle:2.2s}
@@ -92,6 +92,11 @@ body.refreshing #batchAction svg,
    按钮变成一块纯色方块。 */
 .count .sorts .batchaction,.entitycollectionhead .sorts .batchaction{font-weight:600;width:36px;padding:0;display:inline-grid;place-items:center}
 .count .sorts .batchaction svg,.entitycollectionhead .sorts .batchaction svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2}
+/* 「仅显示图片」是一枚 30px 见方的图标开关，跟旁边版式分段器的每一枚选项同一副身量；
+   开着时垫的玻璃由筛选条那块滑动玻璃给（GLIDE_ROWS.imagesonly），这里只管形状。那块
+   玻璃挂在这枚键自己身上，键是它的定位基准，字形要压在它上面，跟媒体那几枚圆键同一条。 */
+.count .sorts .followimagesonly{width:30px;padding:0;display:inline-grid;place-items:center;position:relative}
+.count .sorts .followimagesonly svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2;position:relative;z-index:1}
 /* 目录列表是一叠卡：连续的一段视频合成一个 `.grid`，竖屏带插进来时把那一段从行边界
    剪开，上下两半于是各自成为一张独立的卡。`#grid` 本身只是这叠卡的容器，不再是网格。 */
 .gridstack{display:flex;flex-direction:column;gap:16px}

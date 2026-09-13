@@ -29,8 +29,10 @@
 .followitem.imagecard{display:flex;width:100%;margin:0}
 .followitem.imagecard .pic{aspect-ratio:4/3;min-height:0;background:var(--sunk)}
 .followitem.imagecard .followvisual .pic>img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:var(--sunk)}
-/* 翻动面板遮住静止封面，底色要跟着这张卡自己的底走：图片墙是浅底，视频卡是黑底。 */
-.followitem.imagecard .mixfaces{background:var(--sunk)}
+/* 翻动面板遮住静止封面，底色要跟着这张卡自己的底走：图片墙是浅底，视频卡是黑底。
+   面板里每一张面也是 `.poster`，它自带的黑底是给视频卡留白用的，在浅底的图片卡上一悬浮
+   就把留白翻成黑的，所以两层一起换。 */
+.followitem.imagecard :is(.mixfaces,.mixface .poster){background:var(--sunk)}
 .followitem a{text-decoration:none}.followitem a:hover{text-decoration:none}
 .followitem[data-status="ignored"],.followitem[data-status="seen"]{opacity:.62}
 .followvisual{position:relative;isolation:isolate}.followvisual .pic{z-index:1}
