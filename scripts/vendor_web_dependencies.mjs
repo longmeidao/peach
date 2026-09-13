@@ -113,6 +113,8 @@ const lucideIcons = new Map([
   ["table", "table"],
   // 关注图片墙「仅显示图片」：划掉字幕，卡片只留图不留文字；不与视频／图片切换那两枚重复。
   ["captions-off", "captions-off"],
+  // 关注详情的「隐藏这张图」：划掉的是当前这一张，不是整个条目（那是 eye-off）。
+  ["image-off", "image-off"],
   // 名字和上游对不上的只有排序键：Peach 叫 `sort`，Lucide 叫 `sort-desc`。
   ["sort", "sort-desc"], ["arrow-up", "arrow-up"], ["arrow-down", "arrow-down"],
   ["calendar", "calendar"], ["download", "download"], ["monitor", "monitor"],

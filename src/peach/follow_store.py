@@ -206,6 +206,8 @@ class FollowItemRow:
     asset_id: int | None
     first_seen_at: str
     last_seen_at: str
+    #: 用户按图隐藏的媒体稳定键（`id` 优先、`url` 兜底）。抓取流程只读不写。
+    hidden_media: tuple[str, ...] = ()
     metadata: dict = field(default_factory=dict)
 
 
@@ -565,6 +567,10 @@ class FollowStore:
             metadata = json.loads(row["metadata_json"] or "{}")
         except (TypeError, ValueError):
             metadata = {}
+        try:
+            hidden = json.loads(row["hidden_media_json"] or "[]")
+        except (TypeError, ValueError, IndexError):
+            hidden = []
         return FollowItemRow(
             id=row["id"], source_id=row["source_id"], provider=row["provider"],
             ref=row["ref"], source_label=row["source_label"], entity_id=row["entity_id"],
@@ -577,6 +583,7 @@ class FollowStore:
             variant_kind=row["variant_kind"], variant_label=row["variant_label"],
             group_hint=row["group_hint"], status=row["status"], asset_id=row["asset_id"],
             first_seen_at=row["first_seen_at"], last_seen_at=row["last_seen_at"],
+            hidden_media=tuple(key for key in hidden if isinstance(key, str) and key),
             metadata=metadata if isinstance(metadata, dict) else {},
         )
 
@@ -627,6 +634,32 @@ class FollowStore:
             raise FollowSourceError("`saved` 只能由 save_asset() 设置")
         self._connect().execute(
             "UPDATE follow_item SET status=? WHERE id=?", (status, item_id))
+
+    def set_media_hidden(self, item_id: int, key: str, hidden: bool) -> tuple[str, ...]:
+        """记录或撤销一张媒体的隐藏，返回这条目当前的隐藏键集。
+
+        键是媒体的稳定标识（`id` 优先、`url` 兜底），由调用方从 media_items 里
+        解出来；这里只管集合的增删。集合为空时列写回 NULL，未隐藏过的行保持
+        NULL，不制造一列空 JSON。
+        """
+        row = self._connect().execute(
+            "SELECT hidden_media_json FROM follow_item WHERE id=?", (int(item_id),)
+        ).fetchone()
+        if row is None:
+            raise FollowSourceError(f"追更条目不存在：{item_id}")
+        try:
+            current = [key for key in json.loads(row[0] or "[]")
+                       if isinstance(key, str) and key]
+        except ValueError:
+            current = []
+        if hidden and key not in current:
+            current.append(key)
+        if not hidden:
+            current = [item for item in current if item != key]
+        value = json.dumps(current, ensure_ascii=False) if current else None
+        self._connect().execute(
+            "UPDATE follow_item SET hidden_media_json=? WHERE id=?", (value, item_id))
+        return tuple(current)
 
     # ---- 作者别名 -------------------------------------------------------
 
