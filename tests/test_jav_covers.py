@@ -44,6 +44,24 @@ class FetchRetryTests(unittest.TestCase):
                                       prior_candidates=(candidate,), diagnostics=diagnostics)
             self.assertEqual(diagnostics, {expected: 1})
 
+    def test_source_saying_no_is_told_apart_from_source_trouble(self):
+        """404 与「所有渠道都没有候选」是来源明确说没有，采集任务据此记住一阵子；
+        5xx 与候选探测失败下次再问可能就好了，仍是普通的 Unavailable。"""
+        with self.assertRaises(covers.NotFound):
+            covers._fetch(lambda *args: _Response(404, b""), "https://example.test/x", referer="r", limit=10)
+        with self.assertRaises(covers.Unavailable) as raised:
+            covers._fetch(lambda *args: _Response(503, b""), "https://example.test/x", referer="r", limit=10)
+        self.assertNotIsInstance(raised.exception, covers.NotFound)
+        with patch.object(covers, "cached_metadata", return_value=covers.MetadataEvidence()):
+            with self.assertRaises(covers.NotFound):
+                covers.best_cover(lambda *args: None, "FC2-PPV-123456", 0)
+        candidate = covers.Candidate("test", "https://example.test/cover.jpg")
+        with patch.object(covers, "cached_metadata", return_value=covers.MetadataEvidence()), \
+                patch.object(covers, "probe_size", side_effect=covers.Unavailable("HTTP 503")):
+            with self.assertRaises(covers.Unavailable) as raised:
+                covers.best_cover(lambda *args: None, "FC2-PPV-123456", 0, prior_candidates=(candidate,))
+        self.assertNotIsInstance(raised.exception, covers.NotFound)
+
     def test_full_download_dimensions_must_match_probe_and_exceed_existing_image(self):
         candidate = covers.Candidate("test", "https://example.test/large.jpg")
         with patch.object(covers, "cached_metadata", return_value=covers.MetadataEvidence()), \

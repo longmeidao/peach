@@ -25,7 +25,7 @@ LIMIT = 30
 
 #: 键是 `<仓库相对路径>:<限定名>`，值是盘点当天的分支数。
 BASELINE: dict[str, int] = {
-    "src/peach/library_processing.py:process_library": 90,
+    "src/peach/library_processing.py:process_library": 74,
     "src/peach/web_batch.py:q_ads": 85,
     "scripts/scrape_codes.py:_scrape": 77,
     "scripts/localize_performer_names.py:collect": 64,

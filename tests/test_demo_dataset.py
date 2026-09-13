@@ -126,10 +126,11 @@ class DemoDatasetTests(unittest.TestCase):
                                  provider_factory=factory)
         factory.assert_not_called()
         coded = [item for item in items if item.kind == "coded"]
-        bare = [item for item in items if item.kind == "bare"]
+        self.assertTrue([item for item in items if item.kind == "bare"], "演示树要有裸文件")
         self.assertEqual(result["identified"], len(coded))
-        # 裸文件那条「未识别到番号」是演示要展示的问题项，不是失败。
-        self.assertEqual(result["issue_count"], len(bare))
+        # 裸文件没有番号，和创作者作品一样只是没番号的条目，不是问题项。
+        self.assertEqual(result["issue_count"], 0)
+        self.assertEqual(result["status"], "complete")
         for item in coded:
             self.assertTrue((self.root / "covers" / f"{item.code}.jpg").is_file(), item.code)
         with closing(sqlite3.connect(db)) as connection:
