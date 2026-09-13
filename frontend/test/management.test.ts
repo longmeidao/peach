@@ -40,11 +40,16 @@ describe('数据管理首屏', () => {
     expect(cards[0]?.querySelector('p')?.textContent).toBe('扫描媒体文件夹，导入已有资料，采集缺失信息。');
     expect(cards[0]?.querySelector('.skeleton')).toBeNull();
     // 扫描卡包含来源入口和禁用的分体操作。
-    expect(cards[0]?.querySelector('.geist-fieldset-footer > a.geist-button')?.getAttribute('href')).toBe('/scraping');
+    expect(cards[0]?.querySelector('.geist-fieldset-footer > a.board-link-button')?.getAttribute('href')).toBe('/scraping');
+    expect(cards[0]?.querySelector('.board-link-button use')?.getAttribute('href')).toBe('#i-arrow-up');
+    expect(cards[0]?.querySelector('.splitmain use')?.getAttribute('href')).toBe('#i-database');
     expect(cards[0]?.querySelector('.geist-fieldset-footer .splitbutton button.splitmain')?.hasAttribute('disabled')).toBe(true);
     expect(cards[1]?.classList.contains('cleanupemptyfolders')).toBe(true);
     expect(cards[1]?.querySelector('.geist-fieldset-footer use')?.getAttribute('href')).toBe('#i-scan-search');
-    expect(root.querySelectorAll('.cleanup-count-skeleton')).toHaveLength(12);
+    expect(root.querySelectorAll('.cleanup-count-skeleton')).toHaveLength(18);
+    expect(Array.from(root.querySelectorAll('.resourcesync > h2'), title => title.textContent)).toEqual(['链接管理', '资源同步']);
+    expect(root.querySelectorAll('.linkstats > div')).toHaveLength(5);
+    expect(root.querySelectorAll('.resourcesyncfooter button:disabled')).toHaveLength(2);
     expect(root.querySelector('#resource-sync')).toBeNull();
   });
 });

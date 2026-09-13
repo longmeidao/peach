@@ -43,6 +43,15 @@ describe('Board 页面骨架', () => {
     root.innerHTML = boardPageSkeleton('/follow-manage');
     wireBoardSegments(root);
     expect(root.querySelector('.board-segment-thumb')).toBeNull();
-    expect(root.querySelector('[data-board-segments]')).toBeNull();
+    expect(root.querySelector('.skeleton-segment-selected')?.textContent).toBe('关注列表');
+    expect(root.querySelectorAll('.skeleton-segments > span')).toHaveLength(3);
+  });
+  it('口味骨架保留分段背景与状态行间距', () => {
+    const root = document.createElement('div');
+    root.innerHTML = boardPageSkeleton('/taste');
+    expect(root.querySelector('.insightswitch[data-board-segments]')).not.toBeNull();
+    expect(root.querySelector('.skeleton-segment-selected')?.textContent).toBe('浏览器记录');
+    expect(root.querySelector('.tastehead + .tastestate + .tastesummaries')).not.toBeNull();
+    expect(root.querySelector('.tastehead .skeleton-tabs')).toBeNull();
   });
 });

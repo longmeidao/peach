@@ -633,17 +633,20 @@ function syncSettingsPanel(){
   void loadSyncedSettings();
   void loadVideoThumbnailSetting();
 }
-let settingsReturnFocus=null,settingsTransition=0;
-function openSettings(open=true){
+let settingsReturnFocus=null,settingsTransition=0,settingsRequestedSection='';
+let refreshSettingsTabs=null;
+function openSettings(open=true,section=''){
   const panel=$('#settingsPanel');
   if(open){
+    settingsRequestedSection=section;
     settingsTransition++;panel.classList.remove('closing');
     settingsReturnFocus=settingsReturnFocus||document.activeElement;panel.hidden=false;
     document.documentElement.style.overflow='hidden';
-    document.body.classList.add('settings-open');syncSettingsPanel();void syncMachineSettings();
+    document.body.classList.add('settings-open');syncSettingsPanel();void syncMachineSettings();refreshSettingsTabs?.();
     queueMicrotask(()=>$('#settingsClose').focus());return
   }
   if(panel.hidden||panel.classList.contains('closing'))return;
+  settingsRequestedSection='';
   const transition=++settingsTransition;panel.classList.add('closing');
   const finish=()=>{
     if(transition!==settingsTransition||!panel.classList.contains('closing'))return;
@@ -882,7 +885,6 @@ async function saveFollowInitialDays(value){
 let machineSettingsMounted=false;
 /* 左栏由 Board 外壳那段（`buildSettingsTabs`）画，它在自己的闭包里。这一格列出来之后
    左栏要多一块，得让它重画一遍，所以留这个口子。 */
-let refreshSettingsTabs=null;
 async function syncMachineSettings(){
   const host=$('#machineSettings'),group=$('#machineGroup');
   if(!host||machineSettingsMounted)return;
@@ -10761,7 +10763,9 @@ function buildSettingsTabs(){
     else sections[0].items.push({...item(machine),nodes:[machine.querySelector('.machinesettings')]});
   }
   settingsTabs=localTabs(settings,sections,settings.parentElement);
-  settingsTabs?.select(keep);
+  const requested=sections.flatMap(section=>section.items).findIndex(item=>item.title===settingsRequestedSection);
+  settingsTabs?.select(requested>=0?requested:keep);
+  if(requested>=0)settingsRequestedSection='';
 }
 refreshSettingsTabs=buildSettingsTabs;
 function decorate(){
@@ -10833,7 +10837,7 @@ api('/api/libraries').then(data=>{
   mark.innerHTML=libraryMark(choices.find(row=>row[0]===current)?.[2]||'database');boardBrand.querySelector('.mark').replaceWith(mark);
   libraryPicker.innerHTML=`<p>媒体库</p><div class="board-library-rows">${choices.map(([id,name,glyph])=>`<button type="button" data-library="${esc(id)}" aria-pressed="${id===current}"><span class="board-library-avatar">${libraryMark(glyph)}</span><span>${esc(name)}</span></button>`).join('')}</div><footer><button type="button" class="geist-button primary" data-library-manage>管理媒体库</button></footer>`;
   libraryPicker.querySelectorAll('[data-library]').forEach(button=>button.onclick=()=>{sessionStorage.setItem('peach.library',button.dataset.library);location.assign('/')});
-  libraryPicker.querySelector('[data-library-manage]').onclick=()=>{libraryFloating.setOpen(false);openDrawer(false);location.assign('/configuration')};
+  libraryPicker.querySelector('[data-library-manage]').onclick=()=>{libraryFloating.setOpen(false);openDrawer(false);openSettings(true,'媒体')};
   /* 委托在这一列上，不挂在每个按钮身上：菜单每次取回媒体库都整块重画。
      `pointerover`／`pointerout` 而不是 enter／leave，后两个不冒泡，委托接不到。 */
   const libraryRows=libraryPicker.querySelector('.board-library-rows');

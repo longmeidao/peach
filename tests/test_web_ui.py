@@ -4329,6 +4329,9 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("moveGlidePane(libraryGlide,animate?from:null,box,'y');")
         self.assertPageContains('<footer><button type="button" class="geist-button primary" '
                                 'data-library-manage>管理媒体库</button></footer>')
+        self.assertPageContains("libraryPicker.querySelector('[data-library-manage]').onclick=()=>{libraryFloating.setOpen(false);openDrawer(false);openSettings(true,'媒体')};")
+        self.assertPageContains("findIndex(item=>item.title===settingsRequestedSection)")
+        self.assertPageContains("settingsTabs?.select(requested>=0?requested:keep);")
 
     def test_glass_compositing_covers_search_snapshots_and_disposed_panels(self):
         board = (Path(__file__).resolve().parents[1] / 'web/board.css').read_text(encoding='utf-8')
@@ -9615,7 +9618,7 @@ class WebUiSourceTests(unittest.TestCase):
                       "border-radius:10px;background:var(--color-background-tertiary-default);", board)
         self.assertIn("min-height:28px;margin:0;padding:4px 10px;border:0;border-radius:6px;", board)
         self.assertIn(":is(.iconswitch:not(.themeswitch),.insightswitch,.insighttabs,"
-                      ".follow-workspace-switch)>.board-segment-thumb",
+                      ".follow-workspace-switch)>:is(.board-segment-thumb,.skeleton-segment-selected)",
                       board)
         self.assertIn("const selector='.iconswitch,.insightswitch,.insighttabs,"
                       ".follow-workspace-switch';", controls)
