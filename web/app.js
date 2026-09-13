@@ -1126,6 +1126,9 @@ function bindOutsideClose(anchor,inside,close){
    再走 disposeStage。顺序不能倒过来——拆解那一步要先把舞台放回 #main 的固定槽位，
    之后重画列表才不会把 #stage 一起删掉，所以动画只往拆解前面插一段等待，拆解和重画
    自身的次序原样不动。等待有上限：`animation` 被别的规则关掉时 animationend 不会来。 */
+/* 按下那一刻在不在浮窗外面。详情里进度条、音量条和队列都能拖，从控件上拖出边界再松手
+   同样会在 dialog 上收到一次 click——那是一次拖动的收尾，不是要关窗。 */
+let stageDismissArmed=false;
 function stageExit(){
   const stage=$('#stage');
   if(!stage.open||stage.classList.contains('closing')
@@ -1144,7 +1147,7 @@ function disposeStage(push=false,preserveInlineOrigin=false,{miniplayer=true}={}
   const stage=$('#stage');
   closePlayerMenu();
   // 没演完就被别的路径拆掉时把类摘干净，否则下一次开详情一上来就是退场那一帧。
-  stage.classList.remove('closing');
+  stage.classList.remove('closing');stageDismissArmed=false;
   if(stage.open)stage.close();
   // 关注详情会把舞台插到头像和筛选条之后。离开详情前先放回 main 的固定槽位，
   // 否则下一次重绘 #stats 会连同 #stage 一起删掉，后续所有详情都打不开。
@@ -1506,15 +1509,29 @@ function placeItemDetail(anchor,above=false){
   if(stage.parentElement!==main)main.insertBefore(stage,combo);
 }
 
+/* 退出详情只有这一条路：关闭键、Escape、点浮窗外面走的都是它。每个表面自己那份
+   `closeDetail` 挂在关闭键上，按它一下就把该还原的列表、筛选和路径一并带回去；
+   另写一份必然漏掉其中一样。关闭键还没画出来时（深链刚落地）才走兜底那条。 */
+function dismissStage(){
+  const close=$('#closeStage');
+  if(close){close.click();return}
+  stageExit().then(()=>{
+    disposeStage(false,false,{miniplayer:false});route(detailReturnPath||'/');restoreRoute()});
+}
 function presentItemDetail(){
   const stage=$('#stage');
   if(stage.hidden)return;
-  stage.oncancel=event=>{
-    event.preventDefault();const close=$('#closeStage');
-    if(close)close.click();
-    else stageExit().then(()=>{
-      disposeStage(false,false,{miniplayer:false});route(detailReturnPath||'/');restoreRoute()});
+  stage.oncancel=event=>{event.preventDefault();dismissStage()};
+  /* 点浮窗外面就退出。原生模态里「外面」还是这个 dialog 自己——遮罩归它，落在遮罩上的
+     事件 target 就是它本人，所以判据取坐标不取 target：浮窗自己 `overflow:auto`，
+     滚动条也长在它身上，按 target 判会把「拖一下滚动条」也算成点了外面。 */
+  const outside=event=>{
+    const box=stage.getBoundingClientRect();
+    return event.clientX<box.left||event.clientX>box.right
+      ||event.clientY<box.top||event.clientY>box.bottom;
   };
+  stage.onpointerdown=event=>{stageDismissArmed=outside(event)};
+  stage.onclick=event=>{if(stageDismissArmed&&outside(event))dismissStage()};
   if(!stage.open)stage.showModal();
 }
 
