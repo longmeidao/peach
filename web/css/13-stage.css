@@ -9,7 +9,9 @@
   background:radial-gradient(circle at 28% 24%,color-mix(in srgb,var(--video-glow,#15202a) 40%,transparent),transparent 58%),
     color-mix(in srgb,var(--surface) 88%,transparent);scroll-margin-top:calc(var(--topH) + 8px);
   border:1px solid var(--line);overflow:auto}
-.stage::backdrop{background:rgba(0,0,0,.35)}
+/* 遮罩和设置弹层同一档：两个都是盖住整页的弹层，底下都是同一片馆藏，压成两种深浅
+   只会让人以为自己打开的是两种东西。值与依据在 `01-base.css` 的 `--scrim`。 */
+.stage::backdrop{background:var(--scrim)}
 body.detail-open{overflow:hidden}
 .stage:not(.ambient-on){background:color-mix(in srgb,var(--surface) 88%,transparent)}
 .stage[hidden]{display:none}

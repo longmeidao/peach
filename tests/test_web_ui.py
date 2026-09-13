@@ -632,20 +632,43 @@ class WebUiSourceTests(unittest.TestCase):
         # 拉宽并落在屏幕正中，而定位算的是 left/top。
         self.assertPageContains(".popmenu[popover]{inset:auto;margin:0}")
 
-    def test_the_settings_backdrop_dims_into_the_page_palette_without_blur(self):
-        """设置面板的遮罩是当前主题里退一档的底色，不是压暗的黑，也不带模糊。
+    def test_every_full_page_overlay_dims_with_the_same_scrim_without_blur(self):
+        """盖住整页的弹层用同一档遮罩，值只写在 `--scrim` 上，也不带模糊。
 
-        2026-09-05 实测 vercel.com 的 Modal：浅色是 `#F2F2F2` 压到 80% 不透明度、不带
-        `backdrop-filter`，暗色换成纯黑同样 80%。压暗的黑在浅色主题下会把整页拉成一片脏灰，
-        而这一档只是把底下的内容退到同一片浅灰里，卡片仍然是全站最白的那一块。
+        设置面板和作品详情浮窗底下都是同一片馆藏，压成两种深浅只会让人以为自己打开的
+        是两种东西。两档主题同值：Board UI 那一版的弹层就是一块黑纱，浅色主题下也不换。
+
+        值只许有一处定义。同一个属性在两张表里各写一份实色时，后一张用双类名就能把前一张
+        整条压掉，而断言仍可能守着那个已经不上屏的值——测试于是变成一份看着绿的假证据。
         """
-        self.assertPageContains("background:rgba(242,242,242,.8);padding:18px;")
-        self.assertPageContains(':root[data-theme="dark"] .settingspanel{background:rgba(0,0,0,.8)}')
         css = stylesheet_source()
+        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
+        self.assertIn("--scrim:rgba(0,0,0,.7);", css)
+        self.assertIn("background:var(--scrim);padding:18px;", css)
+        self.assertIn(".stage::backdrop{background:var(--scrim)}", css)
+        for source, label in ((css, "app.css"), (board, "board.css")):
+            self.assertNotIn("rgba(0,0,0,.7)", source.replace("--scrim:rgba(0,0,0,.7)", ""),
+                             f"{label} 里遮罩的值只能来自 --scrim")
         for name in (".settingspanel", ".settingscard", ".settingshead"):
             start = css.index(name + "{")
             rule = css[start:css.index("}", start)]
             self.assertNotIn("backdrop-filter", rule, f"{name} 不带模糊")
+
+    def test_the_detail_overlay_enters_on_the_same_motion_as_the_settings_dialog(self):
+        """作品详情浮窗和设置弹层用同一组进场关键帧、同一个时长 token。
+
+        一个缩放着淡进来、另一个直接闪出来的话，读起来像两种东西。遮罩也同一条淡入。
+        进场填充用 `backwards` 不用 `both`：终点帧留下的 `filter:blur(0)` 会另起一个
+        backdrop root，浮窗里任何 `backdrop-filter` 从此只采样得到浮窗自己的内容。
+        """
+        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
+        self.assertIn(".stage{animation:board-dialog-in var(--board-dialog-motion) backwards}", board)
+        self.assertIn(".settingscard.settingscard{border:0;"
+                      "animation:board-dialog-in var(--board-dialog-motion) backwards}", board)
+        self.assertIn(".stage::backdrop{animation:settings-backdrop-in "
+                      ".35s cubic-bezier(.4,0,.2,1) both}", board)
+        self.assertIn(".settingspanel:not([hidden]){animation:settings-backdrop-in "
+                      ".35s cubic-bezier(.4,0,.2,1) both}", stylesheet_source())
 
     def test_the_page_recedes_so_chrome_and_boxes_can_float_on_it(self):
         """页面底是退到后面那张面，顶栏、窄栏和页面上的盒子填浮在它上面那张。

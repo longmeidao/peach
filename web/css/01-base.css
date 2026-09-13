@@ -73,6 +73,10 @@
      菜单与 Toast 盖住它：dialog 以上三档都不是这个位置。 */
   --layer-miniplayer:900; --layer-dialog:1000; --layer-popover:1100; --layer-tooltip:1200;
   --frost-panel:rgba(250,250,250,.92); --frost-light:rgba(255,255,255,.86);
+  /* 盖住整页的弹层共用这一档遮罩：设置面板和作品详情浮窗底下都是同一片馆藏，压成两种
+     深浅只会让人以为自己打开的是两种东西。取值沿用设置面板在 Board UI 一版里的实际渲染
+     （`board.css` 的 `.settingspanel.settingspanel`），两档主题同值、不带模糊。 */
+  --scrim:rgba(0,0,0,.7);
   --overlay-5:rgba(0,0,0,.05);--border-10:rgba(0,0,0,.10);--border-15:rgba(0,0,0,.15);
   /* 输入框静止那条边。2026-09-05 实测 vercel.com 的输入框：静止 1px 的
      gray-alpha-400、悬停 alpha-500。焦点不是蓝的——蓝在这套里只给链接和数据。
