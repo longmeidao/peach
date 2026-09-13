@@ -4706,6 +4706,25 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("const container=(named.includes('.')?named.split('.').pop()")
         self.assertPageContains("detailStreamSession&&!options.source?")
 
+    def test_follow_image_cards_reserve_their_ratio_from_either_tier_and_learn_the_rest(self):
+        """图片墙按卡片高度分列，图落地前就要知道比例，否则每张加载完整墙重排。
+
+        尺寸有两层：媒体清单里那张（fanbox）或条目本身（rule34.xxx 接口、回填、回写）。
+        两层都没有的卡片不硬猜，加载完把 natural 尺寸回写给条目，下一次渲染就有了。
+        """
+        self.assertCode("const itemDims=!selectedMedia&&item.media_kind==='image'&&item.width>0&&item.height>0?item:null;")
+        self.assertCode("const sized=mediaDims||itemDims;")
+        self.assertCode('const dims=sized?` width="${sized.width}" height="${sized.height}"`:\'\';')
+        self.assertCode('` data-learn-dims="${item.id}"${selectedMedia?` data-learn-media="${selectedMedia.index}"`:\'\'}`')
+        self.assertPageContains("function wireImageDimsLearning(root)")
+        self.assertPageContains("wireImageDimsLearning(root);")
+        self.assertPageContains("root.querySelectorAll('img[data-learn-dims]')")
+        self.assertPageContains("if(!img.naturalWidth||!img.naturalHeight)return;")
+        # 学习是顺手的事：攒一批再发，失败静默，同一张这次会话只报一次。
+        self.assertPageContains("api('/api/follow/image-dims',{method:'POST',body:JSON.stringify({entries})}).catch(()=>{});")
+        self.assertPageContains("if(followDimsReported.has(key))return;")
+        self.assertPageContains("if(img.complete)record();else img.addEventListener('load',record,{once:true});")
+
     def test_player_stats_keep_a_rolling_history_instead_of_only_the_latest_value(self):
         """单个瞬时值看不出卡顿是刚发生还是一直如此，三条指标各留 24 秒采样窗口。"""
         self.assertPageContains("const PLAYER_STATS_HISTORY=24")

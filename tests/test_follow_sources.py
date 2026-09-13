@@ -528,6 +528,7 @@ RULE34XXX_JSON = json.dumps([
      "file_url": "https://api-cdn-mp4.rule34.xxx/images/1232/3df1.mp4",
      "sample_url": "https://api-cdn.rule34.xxx/images/1232/3df1.jpg",
      "preview_url": "https://api-cdn.rule34.xxx/thumbnails/1232/t_3df1.jpg",
+     "width": 1280, "height": 720,
      "score": 72, "source": "https://lazyprocrast.fanbox.cc/posts/12304831"},
     {"id": 18534396, "image": "3bda1572c365b223d8b287c538a38956.mp4", "parent_id": 0,
      "tags": "lazyprocrastinator fiona video", "change": 1787445300,
@@ -1305,6 +1306,16 @@ class Rule34XxxConnectorTests(unittest.TestCase):
         self.assertIn("api_key=sekret", seen[0].url)
         self.assertNotIn("api_key", result.request_url)
         self.assertNotIn("sekret", result.request_url)
+
+    def test_the_listing_keeps_the_file_dimensions_the_dapi_reports(self):
+        """图片墙要在图落地前占好比例，而 dapi 随帖就给宽高——不必再问文件。"""
+        by_id = {candidate.external_id: candidate
+                 for candidate in self._connector().fetch("lazyprocrastinator").candidates}
+        self.assertEqual(by_id["18534395"].extra["width"], 1280)
+        self.assertEqual(by_id["18534395"].extra["height"], 720)
+        # 没给的帖子一个键也不写：界面按「没有」处理，加载完再回写。
+        self.assertNotIn("width", by_id["18534396"].extra)
+        self.assertNotIn("height", by_id["18534396"].extra)
 
     def test_post_page_taxonomy_is_recorded_without_guessing_from_tag_words(self):
         seen = []

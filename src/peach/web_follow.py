@@ -26,6 +26,7 @@ from .follow_discovery import (
     MAX_SUGGESTIONS, archive_suggestions, discover, discovery_plan, no_backoff,
     suggest_term, tag_suggestions,
 )
+from .follow_image_dims import positive_dims
 from .follow_secrets import (
     CREDENTIAL_GUIDE, CredentialError, CredentialStore, credential_store_for,
 )
@@ -896,6 +897,10 @@ def _item_payload(item, credential_providers: frozenset[str] = frozenset()) -> d
         "media_error": str(item.metadata.get("media_error") or "") or None,
         "has_media": bool(item.media_url) or bool(media_items),
         "media_kind": media_kind,
+        # 条目级直链图片的固有宽高，与 media_items 里每张自带的那对同义：图片墙
+        # 拿它在图落地前占好比例。没有的来源保持 None，界面加载完会回写。
+        "width": _positive_dim(item.metadata.get("width")),
+        "height": _positive_dim(item.metadata.get("height")),
         "media_type": _video_media_type(item.media_url)
                       if media_kind == "video" else None,
         # 可直接读取的附件与仍需会话解析的外链可以同时存在。后者不能把
@@ -1734,6 +1739,42 @@ def w_follow_media_hide(contract, body) -> dict:
         hidden_keys = store.set_media_hidden(item_id, key, hidden)
     contract.cache_bust()
     return {"ok": True, "item": item_id, "hidden_media": list(hidden_keys)}
+
+
+#: 一次回写最多带多少张图。一屏图片墙几十张，翻两屏也远不到这个数；再多就是
+#: 请求体不对劲，直接拒。
+IMAGE_DIMS_BATCH_LIMIT = 200
+
+
+def w_follow_image_dims(contract, body) -> dict:
+    """界面把加载完的图片固有宽高回写给还没有尺寸的条目。
+
+    连接器不给尺寸的来源（归档站、论坛附件）第一次只能按无尺寸占位；浏览器一旦
+    把图读出来就知道 naturalWidth/naturalHeight，回写之后下一次渲染就能预留比例。
+    只补空缺，已有尺寸的条目一律不动；条目不存在、媒体序号不在清单里也只是
+    不计数，不报错——卡片可能是上一轮渲染留下的。
+    """
+    entries = body.get("entries")
+    if not isinstance(entries, list):
+        raise ValueError("entries 必须是列表")
+    if len(entries) > IMAGE_DIMS_BATCH_LIMIT:
+        raise ValueError(f"一次最多回写 {IMAGE_DIMS_BATCH_LIMIT} 张")
+    learned = 0
+    with contract.database.write_transaction() as connection:
+        store = _store(contract, connection)
+        for entry in entries:
+            if not isinstance(entry, dict):
+                raise ValueError("每一项必须是对象")
+            dims = positive_dims(entry.get("width"), entry.get("height"))
+            if dims is None:
+                raise ValueError("width/height 必须是正整数")
+            media = entry.get("media")
+            index = int(media) if media is not None else None
+            if store.set_image_dims(int(entry["item"]), *dims, media_index=index):
+                learned += 1
+    if learned:
+        contract.cache_bust()
+    return {"ok": True, "learned": learned}
 
 
 def w_follow_play(contract, body) -> dict:

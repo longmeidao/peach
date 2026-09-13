@@ -915,7 +915,7 @@ class WebDataTests(unittest.TestCase):
             "/api/links/check", "/api/links/prune",
             "/api/resource-sync/scan", "/api/resource-sync/apply",
             "/api/follow/check", "/api/follow/status", "/api/follow/media/hide",
-            "/api/follow/save",
+            "/api/follow/image-dims", "/api/follow/save",
             "/api/follow/play", "/api/follow/activity",
             "/api/follow/source", "/api/follow/resolve", "/api/follow/credential",
             "/api/follow/author-alias", "/api/follow/schedule",

@@ -28,6 +28,7 @@ from .follow import (
 )
 from .follow_secrets import Credential, CredentialError
 from .follow_gofile import GofileExpander, folder_labels
+from .follow_image_dims import positive_dims
 from .http import CurlCffiTransport, HttpRequest, HttpResponse, HttpTransport, HttpxTransport
 
 
@@ -209,6 +210,12 @@ def _iso_from_epoch(value) -> str | None:
         return _iso_utc(datetime.fromtimestamp(int(value), tz=timezone.utc))
     except (TypeError, ValueError, OSError, OverflowError):
         return None
+
+
+def _dims_extra(width, height) -> dict[str, int]:
+    """来源接口报的宽高进 extra 前先归一：不是一对正整数就一个键也不写。"""
+    dims = positive_dims(width, height)
+    return {"width": dims[0], "height": dims[1]} if dims else {}
 
 
 def _iso_from_text(value) -> str | None:
@@ -1513,7 +1520,10 @@ class Rule34XxxConnector(_BaseConnector):
             partial=True,
             extra={"tag": tag, "tags": tags, "score": post.get("score"),
                    "source": source, "title_from": title_from,
-                   "preview_url": post.get("preview_url")},
+                   "preview_url": post.get("preview_url"),
+                   # dapi 随帖给出原文件的宽高；图片墙靠它在图落地前占好比例。
+                   # sample 与 preview 都是等比缩放，比例与原文件一致。
+                   **_dims_extra(post.get("width"), post.get("height"))},
         )
 
     @classmethod

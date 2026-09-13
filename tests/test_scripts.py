@@ -284,6 +284,101 @@ class OperationalScriptTests(unittest.TestCase):
             json.loads(backfill.merge_tag_types({"tags": "a b"}, {"a": "artist"})),
             {"tags": "a b", "tag_types": {"a": "artist"}})
 
+    def test_follow_image_dims_backfill_reads_archives_first_and_probes_headers_for_the_rest(self):
+        """图片墙的比例占位要每张图都有宽高；存量行里只有 fanbox 记过。
+
+        rule34.xxx 的尺寸就在归档的 dapi 响应里，不发请求；归档站只问文件头。
+        判据与落库都复用 `follow_image_dims` 与 `FollowStore.set_image_dims`，
+        只补空缺，条数不变，第二遍无事可做。
+        """
+        from datetime import datetime, timezone
+        from peach import follow_image_dims
+        from peach.follow_sources import FollowCandidate, SourceFetch
+        from peach.follow_store import FollowStore
+        from peach.http import HttpResponse
+        from support.ledger import fresh_ledger
+
+        backfill = load_script("backfill_follow_image_dims")
+        self.assertIs(backfill.open_for_write, scripting.open_for_write)
+        self.assertIs(backfill.probe_image_dims, follow_image_dims.probe_image_dims)
+
+        root = Path(tempfile.mkdtemp()).resolve()
+        self.addCleanup(shutil.rmtree, root, ignore_errors=True)
+        database = fresh_ledger(root)
+        self.assertEqual(backfill.run(backfill.build_parser().parse_args(
+            ["--db", str(database), "--apply"])), 2)
+
+        moment = datetime(2026, 9, 1, tzinfo=timezone.utc)
+        connection = sqlite3.connect(database)
+        connection.row_factory = sqlite3.Row
+        store = FollowStore(lambda: connection, sources_root=root / "sources")
+        def seed(provider, ref, candidates):
+            source_id = store.register(provider=provider, ref=ref, label=ref,
+                                       url=f"https://{provider}.test/{ref}", semantics="work",
+                                       moment=moment)
+            store.record(source_id, SourceFetch(
+                provider=provider, ref=ref, request_url=f"https://{provider}.test/{ref}",
+                semantics="work", candidates=tuple(candidates), raw_body=None), moment=moment)
+        seed("rule34xxx", "tag", [
+            FollowCandidate(provider="rule34xxx", external_id="11", title="a",
+                            url="https://rule34.xxx/index.php?id=11",
+                            media_url="https://api-cdn.rule34.xxx/images/1/a.jpg",
+                            thumb_url="https://api-cdn.rule34.xxx/samples/1/a.jpg"),
+            # 视频不占图片墙，不问。
+            FollowCandidate(provider="rule34xxx", external_id="12", title="v",
+                            url="https://rule34.xxx/index.php?id=12",
+                            media_url="https://api-cdn-mp4.rule34.xxx/images/1/v.mp4"),
+        ])
+        seed("pawchive", "user", [
+            FollowCandidate(provider="pawchive", external_id="21", title="b",
+                            url="https://pawchive.pw/post/21",
+                            media_url="https://file.pawchive.pw/data/ab/cd/abcd.png",
+                            thumb_url="https://img.pawchive.pw/thumbnail/data/ab/cd/abcd.png"),
+        ])
+        connection.commit()
+        connection.close()
+        archive = root / "follow" / "rule34xxx" / "k"
+        archive.mkdir(parents=True)
+        (archive / "20260901T000000Z-abc.raw").write_bytes(json.dumps(
+            [{"id": 11, "width": 1280, "height": 720}, {"id": 99, "width": 1, "height": 1}]
+        ).encode())
+        (archive / "20260901T000000Z-abc.json").write_bytes(b"{}")
+
+        seen = []
+        def transport(request, timeout, max_bytes):
+            seen.append(request)
+            header = (b"\x89PNG\r\n\x1a\n" + (13).to_bytes(4, "big") + b"IHDR"
+                      + (800).to_bytes(4, "big") + (600).to_bytes(4, "big"))
+            return HttpResponse(206, {}, header)
+
+        out = root / "dims.csv"
+        args = backfill.build_parser().parse_args([
+            "--db", str(database), "--archives", str(root / "follow"), "--out", str(out),
+            "--apply", "--backup", str(root / "backup.db")])
+        with redirect_stdout(io.StringIO()):
+            self.assertEqual(backfill.run(args, transport=transport), 0)
+
+        self.assertEqual(len(seen), 1, "rule34.xxx 从归档取，只有归档站要探测")
+        self.assertEqual(seen[0].headers["Range"], "bytes=0-65535")
+        self.assertIn("pawchive.pw", seen[0].url)
+        connection = sqlite3.connect(database)
+        self.addCleanup(connection.close)
+        dims = {row[0]: json.loads(row[1]) for row in connection.execute(
+            "SELECT external_id, metadata_json FROM follow_item")}
+        self.assertEqual((dims["11"]["width"], dims["11"]["height"]), (1280, 720))
+        self.assertEqual((dims["21"]["width"], dims["21"]["height"]), (800, 600))
+        self.assertNotIn("width", dims["12"])
+        with out.open(encoding="utf-8", newline="") as handle:
+            rows = list(csv.DictReader(handle))
+        self.assertEqual({(row["external_id"], row["mode"], row["result"]) for row in rows},
+                         {("11", "归档", "取得"), ("21", "探测", "取得")})
+        self.assertTrue((root / "backup.db").exists())
+
+        # 第二遍：全部已有尺寸，没有待补，也不再发请求。
+        connection.row_factory = sqlite3.Row
+        items = FollowStore(lambda: connection).items()
+        self.assertEqual(backfill.pending_targets(items, set()), [])
+
     def test_test_entrypoint_enforces_worktree_source_and_unittest(self):
         windows = (ROOT / "scripts" / "test.ps1").read_text(encoding="utf-8")
         self.assertIn("rev-parse --git-common-dir", windows)
