@@ -25,9 +25,15 @@ if not __package__:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     __package__ = "scripts"
 from . import changelog, version_bump
-from .agent_worktree import MASTER_WRITER
 
 ROOT = Path(__file__).resolve().parents[1]
+
+#: 主检出的 master 上该落提交的只有本脚本与 `agent_worktree.py integrate`。它们调用 git 时
+#: 带上这个配置，`scripts/githooks/pre-commit` 据此放行，别的提交与手工 merge 一律拒收。
+#: 它住在这里而不是 `agent_worktree`：`--verify-sha` 跟着 Release 工作流跑，那一步只有裸
+#: Python，依赖要到后面的构建步骤才装；反过来引用就把 `test_evidence` 那条链（filelock）拘进来，
+#: 标签推上去也发不出东西。
+MASTER_WRITER = "peach.masterWriter"
 
 #: 定版只该改这两份：版本号一行，变更日志一节。`--ship` 拒绝夹带别的文件。
 RELEASE_FILES = (version_bump.VERSION_FILE, changelog.CHANGELOG)

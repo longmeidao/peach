@@ -17,6 +17,7 @@ if not __package__:
     __package__ = "scripts"
 from . import (changelog, check_readme_impact, co_author, commit_subject,
                test_evidence, test_runner, version_bump)
+from .release_tag import MASTER_WRITER
 
 #: `create` 的落点，建在主检出旁边（ADR-0017 的四个运行时目录之一）。
 WORKTREE_ROOT = "peach-worktrees"
@@ -36,11 +37,8 @@ class WorkspaceError(RuntimeError):
 RELEASE_TAG_ENTRY = "scripts/release_tag.py"
 
 #: 仓库自带的 git hook。`create` 与 `integrate` 每次都把 `core.hooksPath` 指到这里：
-#: 哪台机器先走一遍工作流就在哪台装上，不靠人记着去配。
+#: 哪台机器先走一遗工作流就在哪台装上，不靠人记着去配。
 HOOKS_PATH = "scripts/githooks"
-#: 主检出的 master 上该落提交的只有 `integrate` 与 `RELEASE_TAG_ENTRY`。它们调用 git 时
-#: 带上这个配置，`scripts/githooks/pre-commit` 据此放行，别的提交与手工 merge 一律拒收。
-MASTER_WRITER = "peach.masterWriter"
 
 
 def _git(repo: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess[str]:

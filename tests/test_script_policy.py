@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import ast
 import re
+import subprocess
+import sys
 import unittest
 from pathlib import Path
 
@@ -148,6 +150,31 @@ class ScriptWriteGatePolicyTests(unittest.TestCase):
         self.assertTrue(DML.search("INSERT OR IGNORE INTO asset_tag(asset_id,tag)"))
         self.assertTrue(DML.search("UPDATE asset SET path=? WHERE id=?"))
         self.assertIsNone(DML.search("SELECT count(*) FROM asset"))
+
+
+class ReleaseEntryImportTests(unittest.TestCase):
+    """门槛（d）：发布入口导入时只靠标准库。
+
+    Release 工作流核对标签提交那一步只有 `setup-python` 装的裸解释器，依赖要到后面的
+    构建步骤才装——次序是故意的：不给一个没过 CI 的提交花十分钟构建。入口只要多引一条
+    第三方依赖，那一步就 `ModuleNotFoundError`，而此时标签已经推上去了：版本有标签、却没有
+    任何可下载的制品，而发布流程的全部意义就是「每个 X.Y.Z 对应一份制品」。
+    """
+
+    def test_the_release_entry_imports_with_a_bare_interpreter(self):
+        base = Path(sys.base_prefix)
+        interpreter = next((path for path in (base / "python.exe",
+                                              base / "bin" / "python3",
+                                              base / "bin" / "python") if path.is_file()), None)
+        if interpreter is None:
+            self.skipTest(f"找不到不带 site-packages 的基底解释器：{base}")
+        done = subprocess.run(
+            [str(interpreter), "-X", "utf8", "-c",
+             "import scripts.release_tag as entry; print(entry.MASTER_WRITER)"],
+            cwd=str(ROOT), capture_output=True, text=True, encoding="utf-8",
+            errors="replace", check=False)
+        self.assertEqual(done.returncode, 0,
+                         "发布入口得能裸解释器导入：" + (done.stderr or done.stdout).strip())
 
 
 if __name__ == "__main__":
