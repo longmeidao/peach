@@ -5,8 +5,9 @@ description: 在 macOS 上开工、改动路径解析或挂载判定、遇到 gi
 
 # 跨 Windows / macOS 双机开发
 
-最后复核：2026-08-21
-证据来源：`src/peach/platform.py`、ADR-0017、2026-08-19 的 macOS 迁移实测与 2026-08-21 的 Windows 现状核对。
+最后复核：2026-09-14
+证据来源：`src/peach/platform.py`、ADR-0017、2026-08-19 的 macOS 迁移实测、
+2026-08-21 的 Windows 现状核对，以及 2026-09-14 用 junction 复现的临时目录别名。
 
 ## 何时使用
 
@@ -64,6 +65,11 @@ macOS 的 FFmpeg 走 PATH（`brew install ffmpeg`）；Windows 的 FFmpeg bundle
 测试入口：Windows `scripts/test.ps1`，macOS/Linux `scripts/test.sh`。两者契约相同。
 **两边都必须绿**；只在一台上通过的改动不算完成。Windows 托盘专属的 DPI 声明和单实例
 锁在非 Windows 上按 `skipUnless` 跳过，不要改成在 macOS 上伪造通过。
+
+用例里的临时根一律先 `.resolve()` 再交给被测代码：被测那边多半自己也 `resolve()`，而 CI runner
+的临时目录是别名（Windows 的短名与 junction、macOS 的 `/var` 软链），本机两边相等、runner 上
+不等，包含关系与路径断言于是本机全绿、CI 全红。本机复现它：拿 `mklink /J` 做一个 junction，
+把 `TEMP` / `TMP` 指过去再跑那几条用例。
 
 ## 账本复制
 
