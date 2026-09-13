@@ -86,7 +86,10 @@ let followAuthors=new Set(),followProviders=new Set(),followTags=new Set(),follo
 const FOLLOW_FEED_SORTS=[['new','更新时间'],['hot','热度'],['dur','时长']];
 const FOLLOW_FEED_DIR_WORDS={new:['从新到旧','从旧到新'],hot:['从高到低','从低到高'],
   dur:['从长到短','从短到长']};
-let followSort='new',followDir='desc';
+/* 「换一批」按下去就是这一档：整批更新按一粒种子打散，跟首页同一个意思。它没有自己的
+   排序键——那三枚键任一按下就离开它；种子写进地址，刷新和后退回到的是同一批次序。 */
+const FOLLOW_RANDOM_SORT='rand';
+let followSort='new',followDir='desc',followSeed=0;
 const selectedIndexTags=new Set();
 let entityPhotos=null,entityMediaView=emptyMediaView(),photoWallItems=[];
 /* 事务所页看的是它签了谁，所以进页面先摆艺人。视频照样在，只是换一个开关的距离：
@@ -912,7 +915,8 @@ async function syncMachineSettings(){
 
 /* 随机排序每次进入首页都换种子；同一次访问继续复用该种子，保证筛选和分页
    不会重复或漏项。「换一批」仍可在当前访问里主动生成下一批。 */
-const newSeed=()=>String((Date.now()^(Math.random()*1e9|0))%99991);
+/* 异或结果是有符号 32 位，先转无符号再取模：种子要写进地址，后端只认非负整数。 */
+const newSeed=()=>String(((Date.now()^(Math.random()*1e9|0))>>>0)%99991);
 const rollSeed=()=>newSeed();
 /* 种子随机：FNV-1a 把「种子 + 键」压成一个 32 位数当排序键。同一个种子下顺序稳定，
    换种子就是另一套顺序，客户端不必存 PRNG 状态，也不必让后端多带一个参数。 */
@@ -5365,6 +5369,7 @@ const followPageUrl=offset=>
   /* 排序也归服务端，理由同上：分页在它那一侧。浏览器只拿到当前这几页，在这里排
      等于每加载一页就把先后顺序重算一次，越往下翻越乱。 */
   +(followSort!=='new'?`&sort=${followSort}`:'')
+  +(followSort===FOLLOW_RANDOM_SORT?`&seed=${followSeed}`:'')
   +(followDir!=='desc'?`&dir=${followDir}`:'');
 /* 分组在取回之后做，所以同一个作品可能被这一页的边界切开：
    前 300 条里有它的一个变体，后 300 条里有另一个。按 release_key 合并，
@@ -5932,6 +5937,7 @@ function followViewPath(){
   if(followMediaView==='images')params.set('media','images');
   // 默认那一档不写进地址：`/follow` 本身就是「按更新时间从新到旧」。
   if(followSort!=='new')params.set('sort',followSort);
+  if(followSort===FOLLOW_RANDOM_SORT)params.set('seed',String(followSeed));
   if(followDir!=='desc')params.set('dir',followDir);
   const search=params.toString();return '/follow'+(search?'?'+search:'');
 }
@@ -5949,7 +5955,9 @@ function readFollowView(){
   followMediaView=params.get('media')==='images'?'images':'videos';
   // 认不出的键退回默认那一档，同上一条的道理：不能停在一个没有任何键按下去的排序上。
   const sort=params.get('sort');
-  followSort=FOLLOW_FEED_SORTS.some(([key])=>key===sort)?sort:'new';
+  followSort=sort===FOLLOW_RANDOM_SORT||FOLLOW_FEED_SORTS.some(([key])=>key===sort)?sort:'new';
+  // 地址里没带种子的随机链接照样能开，只是开出来的是哪一批不保证跟上次一样。
+  followSeed=Number(params.get('seed'))>>>0||followSeed||Number(rollSeed());
   followDir=params.get('dir')==='asc'?'asc':'desc';
 }
 /* 创作者、来源两行是多选：按下的算「只看这些」，一个都不按就是全部；标签行是「同时具备」的
@@ -5987,18 +5995,17 @@ function followComboHtml(conditions){
   return conditions.map(row=>`<span class="cb">${row.kind==='标签'?'':esc(row.kind)+' '}${esc(row.label)}<b data-follow-drop="${esc(row.key)}" data-follow-drop-kind="${esc(row.kind)}">✕</b></span>`).join('')
     +`<button class="clr" type="button">全部清除</button>`;
 }
-/* 下排右端那一组：换一批、去问一遍来源，再是几枚排序键。
+/* 下排右端那一组：换一批，图片墙上再加一枚「仅显示图片」，然后是几枚排序键。
 
-   「换一批」在这里换的是上面那三排：创作者、题材、标签都按本次访问的种子随机取，这一枚
-   重掷种子再画一遍，不联网。要联网的是它右边那枚：去问一遍每个来源有没有新东西。
-   两件事各一枚键——共用一枚的话，只想换一批看的人会顺手发起一轮抓取。两枚都是动作键，
-   所以并排站在一起，中间不隔竖线：竖线分的是「动作」和「这批怎么摆」，不是每两枚都分。 */
+   「换一批」换的是整页：上面三排创作者、题材、标签按种子重新取样，下面的列表也按同一粒
+   种子打散重取——跟首页那一枚同一个意思。只重掷上面三排、列表纹丝不动的话，人按了几下
+   看到的还是按更新时间排的同一批，读成「没生效」。去问一遍来源那枚不在这一排：它是这一页
+   唯一联网的动作，站在页头「管理关注」右边当主按钮。 */
 function followFeedControlsHtml(){
   return sortControlsHtml({
     shuffleId:'followShuffle',shuffleClass:'',items:FOLLOW_FEED_SORTS,
     renderItem:([key,label])=>sortButtonHtml(key,label,followSort,followDir,'data-follow-sort',FOLLOW_FEED_DIR_WORDS),
-    extra:`<button type="button" class="followrecheck" data-follow-recheck title="检查更新"
-      aria-label="检查全部来源的更新">${icon('refresh-cw')}</button>`+(followMediaView==='images'?photoControlsHtml({follow:true}):'')});
+    extra:followMediaView==='images'?photoControlsHtml({follow:true}):''});
 }
 /* 看的那一页上唯一一次联网：去问每个来源有没有新东西。管理页那几枚按的是同一条路径，
    区别在它还要把失败详情摊进那一页的报告块；这一页上没有放报告的地方，失败只留一条
@@ -6117,13 +6124,16 @@ function renderFollow(){
      才是来源和标签这些可加可不加的筛选。观看状态在首页、资料页和这里三处是同一个控件，
      画成三种样子就得学三遍。
 
-     下排左端读数照首页那条写，右端那一组也照首页：两枚动作键——换一批、去问一遍来源，
-     然后是几枚排序键。生效的筛选不挤进这一排，它在浮层正下方那条交集筛选条上，跟首页
-     和资料页同一个位置。「管理关注」是去另一页的入口，不是这一页的主动作，蓝色留给
-     「换一批」那一枚。 */
+     下排左端读数照首页那条写，右端那一组也照首页：换一批，然后是几枚排序键。生效的
+     筛选不挤进这一排，它在浮层正下方那条交集筛选条上，跟首页和资料页同一个位置。
+
+     页头右端两枚：「管理关注」是去另一页的入口，次级；「检查更新」是这一页唯一联网的
+     动作，也是这一屏唯一的主按钮。一个来源都没有时不出它——没有可问的对象，而空态里
+     那枚「添加关注」已经是主按钮。 */
   $('#stats').innerHTML=`<div class="follow">
-    <div class="followhead"><h2 class="disp pagetitle">关注</h2>
-      <button class="fbtn fcheck" data-follow-manage>${icon('settings')}管理关注</button></div>
+    <div class="followhead"><h2 class="disp pagetitle">关注</h2><span class="fheadactions">
+      <button class="fbtn fcheck" data-follow-manage>${icon('settings')}管理关注</button>${sources.length
+        ?`<button class="fbtn primary" data-follow-recheck aria-label="检查每个来源的更新">检查更新</button>`:''}</span></div>
     ${authors.size?`<div class="tier followauthors" aria-label="按创作者筛选">${randomizedAuthors.map(([key,author])=>
       `<button class="av" data-follow-author="${esc(key)}" aria-pressed="${followAuthors.has(key)}">
         <span class="ring">${followAuthorAvatar(author.sources)}</span><span class="nm">${esc(author.name)}</span></button>`
@@ -6192,12 +6202,12 @@ function renderFollow(){
     const next=nextSortState(button.dataset.followSort,followSort,followDir,FOLLOW_FEED_DIR_WORDS);
     if(!next)return;
     followSort=next.sort;followDir=next.dir;applyFollowView()});
-  /* 换一批只动种子：三排的取样都读它，重画一遍就是新的一批。不重取——列表本身没变，
-     换的是上面那三排露出谁。 */
+  /* 换一批掷一粒新种子，上面三排的取样和下面列表的次序都读它：列表归服务端排，所以要
+     重取；排序键上没有「随机」这一档，进随机就是三枚键都抬起来，按任一枚就离开。 */
   const shuffle=countRow.querySelector('#followShuffle');
   if(shuffle)shuffle.onclick=()=>{
-    followDiscoverySeed=Math.floor(Math.random()*0xffffffff);renderFollow()};
-  wireFollowRecheck(countRow.querySelector('[data-follow-recheck]'));
+    followSeed=Number(rollSeed());followDiscoverySeed=followSeed;followSort=FOLLOW_RANDOM_SORT;applyFollowView()};
+  wireFollowRecheck($('#stats').querySelector('[data-follow-recheck]'));
   wireFollowConditions($('#stats').querySelector('.followcombo'),applyFollowView);
   const toggle=(set,key)=>{if(set.has(key))set.delete(key);else set.add(key)};
   $('#stats').querySelectorAll('[data-follow-author]').forEach(button=>button.onclick=()=>{
@@ -8127,7 +8137,7 @@ function photoLayout(){return allowedSetting(appSettings.photoLayout,['fixed','m
 function photoViewActive(){return [...document.querySelectorAll('.photowall,.followphotowall')]
   .some(wall=>wall.getClientRects().length>0)}
 function photoControlsHtml({follow=false}={}){return iconSwitchHtml('photo-layout','图片布局',PHOTO_LAYOUTS,photoLayout(),
-  {attr:'data-photo-layout',className:'photolayout'})+(follow?`<button type="button" data-follow-images-only aria-pressed="${!!appSettings.followImagesOnly}">仅显示图片</button>`:'')}
+  {attr:'data-photo-layout',className:'photolayout'})+(follow?`<button type="button" class="batchaction followimagesonly" data-follow-images-only aria-pressed="${!!appSettings.followImagesOnly}" title="仅显示图片" aria-label="仅显示图片">${icon('pics')}</button>`:'')}
 function syncPhotoWalls(){
   document.querySelectorAll('.photowall,.followphotowall').forEach(wall=>{
     wall.dataset.size=photoSize();wall.dataset.layout=wall.closest('.skeletonpanel')?'fixed':photoLayout()});

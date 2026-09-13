@@ -8487,18 +8487,23 @@ class WebUiSourceTests(unittest.TestCase):
                         "    $('#index').hidden=true;route(followViewPath());openFollow(false)});")
         self.assertPageContains("online:onlineTags||onlineAuthors")
 
-    def test_the_follow_feed_controls_are_two_actions_then_the_sort_keys(self):
-        """下排右端：换一批、去问一遍来源，然后才是排序键。
+    def test_the_follow_feed_controls_are_shuffle_then_the_sort_keys(self):
+        """下排右端：换一批、图片墙上的「仅显示图片」，然后才是排序键。
 
-        两枚都是动作键，并排站在一起，中间不隔竖线——竖线分的是「动作」和「这批怎么
-        摆」，不是每两枚都分。「换一批」只重掷种子重画上面那三排，不联网；去问一遍来源
-        发起的是一轮抓取。共用一枚的话，只想换一批看的人会顺手发起抓取。
+        「换一批」换的是整页：三排取样和列表次序都读同一粒种子，列表归服务端排所以要
+        重取；排序键上没有「随机」这一档，进随机就是三枚键都抬起来，按任一枚就离开。
+        去问一遍来源那枚不在这一排：它是这一页唯一联网的动作，站在页头当主按钮。
         """
         self.assertCode("function followFeedControlsHtml(){\n"
                         "  return sortControlsHtml({\n"
                         "    shuffleId:'followShuffle',shuffleClass:'',items:FOLLOW_FEED_SORTS,")
-        self.assertPageContains('''    extra:`<button type="button" class="followrecheck" data-follow-recheck title="检查更新"''')
-        self.assertPageContains('''aria-label="检查全部来源的更新">${icon('refresh-cw')}</button>`+(followMediaView==='images'?photoControlsHtml({follow:true}):'')});''')
+        self.assertPageContains("    extra:followMediaView==='images'?photoControlsHtml({follow:true}):''});")
+        self.assertPageLacks('class="followrecheck"')
+        self.assertPageContains("followSeed=Number(rollSeed());followDiscoverySeed=followSeed;followSort=FOLLOW_RANDOM_SORT;applyFollowView()};")
+        # 种子跟着地址走：刷新和后退回到的是同一批次序；没带种子的随机链接照样能开。
+        self.assertPageContains("if(followSort===FOLLOW_RANDOM_SORT)params.set('seed',String(followSeed));")
+        self.assertPageContains("followSort=sort===FOLLOW_RANDOM_SORT||FOLLOW_FEED_SORTS.some(([key])=>key===sort)?sort:'new';")
+        self.assertPageContains("+(followSort===FOLLOW_RANDOM_SORT?`&seed=${followSeed}`:'')")
         # 槽位只剩 extra 一个：排序键一律排在最末，挨着它说明的那批内容。
         self.assertPageContains("export function sortControlsHtml({items=[],renderItem=String,extra='',"
                                 "shuffleId='',shuffleClass='entitybatch'}={}){")
@@ -8510,10 +8515,22 @@ class WebUiSourceTests(unittest.TestCase):
         # 排序归服务端：分页在它那一侧，浏览器只拿到当前这几页。
         self.assertPageContains("+(followSort!=='new'?`&sort=${followSort}`:'')")
         self.assertPageContains("+(followDir!=='desc'?`&dir=${followDir}`:'');")
+        # 「仅显示图片」是一枚图标开关，跟「换一批」同一副身量；关着退成玻璃上那档淡字。
+        self.assertPageContains('class="batchaction followimagesonly" data-follow-images-only aria-pressed="${!!appSettings.followImagesOnly}" title="仅显示图片" aria-label="仅显示图片">${icon(\'pics\')}</button>')
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
-        self.assertIn(".board-filter-frame .sorts .followrecheck{", board,
-                      "浮层里这枚图标键的尺寸与颜色跟着 Board 那一层走")
+        self.assertIn('.board-filter-frame.board-filter-frame .sorts .followimagesonly[aria-pressed="true"]{\n  background:var(--board-blue);color:#fff', board)
+        self.assertIn('.board-filter-frame.board-filter-frame .sorts .followimagesonly[aria-pressed="false"]{', board)
+        self.assertNotIn(".followrecheck", board)
         self.assertPageLacks("followconditionmenu")
+
+    def test_check_updates_is_the_primary_action_in_the_follow_page_head(self):
+        """页头右端两枚：「管理关注」次级，「检查更新」是这一页唯一联网的动作，也是唯一的
+        主按钮。一个来源都没有时不出它——空态里那枚「添加关注」已经是主按钮。"""
+        self.assertPageContains('<div class="followhead"><h2 class="disp pagetitle">关注</h2><span class="fheadactions">')
+        self.assertPageContains('<button class="fbtn fcheck" data-follow-manage>${icon(\'settings\')}管理关注</button>${sources.length')
+        self.assertPageContains('?`<button class="fbtn primary" data-follow-recheck aria-label="检查每个来源的更新">检查更新</button>`:\'\'}</span></div>')
+        self.assertPageContains("wireFollowRecheck($('#stats').querySelector('[data-follow-recheck]'));")
+        self.assertPageContains(".fheadactions{display:inline-flex;align-items:center;gap:8px;flex:none}")
 
     def test_the_follow_filters_in_effect_reuse_the_home_intersection_bar(self):
         """生效的筛选摊在浮层正下方，用的就是首页那条交集筛选条。
