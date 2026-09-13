@@ -40,9 +40,9 @@ main{position:relative;z-index:1;padding:14px 16px 90px}
 .count.count-actions-only{position:relative;top:auto;min-height:0;margin:0 0 16px;padding:0;justify-content:flex-end}
 .count.count-actions-only:empty{display:none}
 .resourcesync{scroll-margin-top:calc(var(--topH) + 18px);display:grid;gap:16px}.resourcesync>h2{margin:0;font-size:var(--fs-xl)}
-.resourcesyncbox,.resourcepanel{overflow:clip;border:1px solid var(--field-ring);border-radius:var(--floating-radius);background:var(--ground)}.resourcesyncbody{padding:20px}.resourcesyncbody p{max-width:760px;margin:0;color:var(--muted);font-size:var(--fs-sm);line-height:1.55}.resourcesyncfooter,.resourceapplyrow{box-sizing:border-box;min-height:var(--fieldset-bar-h);display:flex;align-items:center;justify-content:flex-end;gap:8px;padding:12px 20px;border-top:1px solid var(--line-soft);background:var(--overlay-5)}.resourcesyncfooter p,.resourceapplyrow>p{margin:0;color:var(--muted);font-size:var(--fs-xs);line-height:1.5}.resourceaction{box-sizing:border-box;height:36px;padding:0 12px;border:0;border-radius:var(--control-radius);box-shadow:0 0 0 1px var(--line-soft);background:var(--ground);color:var(--ink-2);display:inline-flex;align-items:center;justify-content:center;gap:8px;flex:none;font:inherit;font-size:var(--fs-sm);font-weight:500;cursor:pointer;transition:background-color .12s,color .12s}.resourceaction:hover:not(:disabled){background:color-mix(in srgb,var(--ink) 8%,var(--ground));color:var(--ink)}.resourceaction:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}.resourceaction:disabled{background:var(--sunk);color:var(--muted);cursor:not-allowed}.resourceaction svg{width:16px;height:16px;stroke:currentColor;fill:none}#linkCheckResult:empty,#resourceSyncResult:empty{display:none}.resourcescanning{margin:0;padding:14px 16px;border:1px solid var(--line-soft);border-radius:var(--control-radius);color:var(--muted)}.resourcesources{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr)}.resourcesources article{display:grid;gap:4px;min-width:0;padding:16px}.resourcesources article+article{border-left:1px solid var(--line-soft)}.resourcesourcetitle{display:flex;align-items:center;justify-content:space-between;gap:12px}.resourcesourcetitle span{font-size:var(--fs-xs)}.resourcesources .online{color:var(--success)}.resourcesources .offline{color:var(--drop)}.resourcesources strong{margin-top:10px;font-size:var(--fs-2xl);font-variant-numeric:tabular-nums}.resourcesources small,.resourcecache small{color:var(--muted)}/* 这里是一排读数，不是又一个盒子。原先它自带填色和分格线，和下面的操作条同色，
-   两条带子连在一起看不出边界；框里再套框也是多余的一层。 */
-.resourcecache{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 32px;border-top:1px solid var(--line-soft);padding:16px 20px}.resourcecache>div{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:baseline;gap:4px 16px}.resourcecache b{font-size:var(--fs-2xl);font-variant-numeric:tabular-nums}.resourcecache span{font-weight:600}.resourcecache small{grid-column:1/-1}.resourceapplyrow .resourcesyncok{color:var(--success)}.resourcesyncok{margin:0;color:var(--success)}
+.resourcesyncbox,.resourcepanel{overflow:clip;border:1px solid var(--field-ring);border-radius:var(--floating-radius);background:var(--ground)}.resourcesyncbody{padding:20px}.resourcesyncbody p{max-width:760px;margin:0;color:var(--muted);font-size:var(--fs-sm);line-height:1.55}.resourcesyncfooter,.resourceapplyrow{box-sizing:border-box;min-height:var(--fieldset-bar-h);display:flex;align-items:center;justify-content:flex-end;gap:8px;padding:12px 20px;border-top:1px solid var(--line-soft);background:var(--overlay-5)}.resourcesyncfooter p,.resourceapplyrow>p{margin:0;color:var(--muted);font-size:var(--fs-xs);line-height:1.5}.resourceaction{box-sizing:border-box;height:36px;padding:0 12px;border:0;border-radius:var(--control-radius);box-shadow:0 0 0 1px var(--line-soft);background:var(--ground);color:var(--ink-2);display:inline-flex;align-items:center;justify-content:center;gap:8px;flex:none;font:inherit;font-size:var(--fs-sm);font-weight:500;cursor:pointer;transition:background-color .12s,color .12s}.resourceaction:hover:not(:disabled){background:color-mix(in srgb,var(--ink) 8%,var(--ground));color:var(--ink)}.resourceaction:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}.resourceaction:disabled{background:var(--sunk);color:var(--muted);cursor:not-allowed}.resourceaction svg{width:16px;height:16px;stroke:currentColor;fill:none}#linkCheckResult:empty,#resourceSyncResult:empty{display:none}.resourcescanning{margin:0;padding:14px 16px;border:1px solid var(--line-soft);border-radius:var(--control-radius);color:var(--muted)}/* 扫描中的环形进度和加载点同一只框：链接检查的进度住在 resourcepanel 里有边，
+   这条独居在结果槽里，自己带框才和页面其他进度一个形状。 */
+#resourceSyncResult>.board-job-progress{margin:0;padding:14px 16px;border:1px solid var(--line-soft);border-radius:var(--control-radius)}.resourceapplyrow .resourcesyncok{color:var(--success)}.resourcesyncok{margin:0;color:var(--success)}
 .tagbar,.count,.entitytagbar,.entitycollectionhead{transition:background-color .16s ease,border-color .16s ease}
 /* 吸顶那条是底色的半透明版，配方跟着 --ground 走：写死深色底会在浅色主题下
    变成一条黑带压在白底内容上。 */
@@ -72,6 +72,42 @@ main{position:relative;z-index:1;padding:14px 16px 90px}
 body.refreshing #batchAction svg,
 .entitycollectionhead[aria-busy="true"] .entitybatch svg{
   --strand-dash:100;--strand-cycle:2.2s}
+/* 数据管理里两枚「扫一遍」的键各自适配忙态，不统一转圈：检查文件的 git-compare 照
+   lucide-animated 的 GitCompare 逐笔描画（右下圆→两条枝→左上圆，画完停住再一起淡出），
+   扫描空文件夹的 scan-search 四角按左上右下／右上左下两拍轮流亮，放大镜保持不动。
+   机制同换批键：动效写在 symbol 自己的零件上，忙态把动画名和周期传下去；空闲时名字是
+   none，什么都不动。全局的 prefers-reduced-motion 规则会关掉它们。 */
+@keyframes peach-gc-draw-a{
+  0%{stroke-dashoffset:100;opacity:1}
+  17%,86%{stroke-dashoffset:0;opacity:1}
+  100%{stroke-dashoffset:0;opacity:0}}
+@keyframes peach-gc-draw-b{
+  0%,25%{stroke-dashoffset:100;opacity:1}
+  42%,86%{stroke-dashoffset:0;opacity:1}
+  100%{stroke-dashoffset:0;opacity:0}}
+@keyframes peach-gc-draw-c{
+  0%,50%{stroke-dashoffset:100;opacity:1}
+  67%,86%{stroke-dashoffset:0;opacity:1}
+  100%{stroke-dashoffset:0;opacity:0}}
+@keyframes peach-scan-corner-a{
+  0%,40%{opacity:1}
+  50%,90%{opacity:.25}
+  100%{opacity:1}}
+@keyframes peach-scan-corner-b{
+  0%,40%{opacity:.25}
+  50%,90%{opacity:1}
+  100%{opacity:.25}}
+#i-git-compare .gc-part{stroke-dasharray:var(--gc-dash,none);
+  animation-name:var(--gc-anim,none);animation-duration:var(--gc-cycle,1.8s);
+  animation-timing-function:linear;animation-iteration-count:infinite}
+#i-git-compare .gc-line-a,#i-git-compare .gc-line-b{animation-name:var(--gc-anim-b,none)}
+#i-git-compare .gc-end-b{animation-name:var(--gc-anim-c,none)}
+#i-scan-search .scan-corner{animation-name:var(--scan-anim,none);
+  animation-duration:var(--scan-cycle,1.2s);animation-timing-function:ease-in-out;animation-iteration-count:infinite}
+#i-scan-search .scan-corner-b{animation-name:var(--scan-anim-b,none)}
+#resourceScan[aria-busy="true"] svg,[data-cleanup-empty-scan][aria-busy="true"] svg{
+  --gc-dash:100;--gc-anim:peach-gc-draw-a;--gc-anim-b:peach-gc-draw-b;--gc-anim-c:peach-gc-draw-c;
+  --scan-anim:peach-scan-corner-a;--scan-anim-b:peach-scan-corner-b}
 .count .sorts,.entitycollectionhead .sorts{display:flex;gap:5px;margin-left:auto;flex-wrap:nowrap;
   overflow-x:auto;scrollbar-width:none;min-width:0}
 .count .sorts::-webkit-scrollbar,.entitycollectionhead .sorts::-webkit-scrollbar{display:none}

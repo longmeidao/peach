@@ -465,6 +465,30 @@ body :is(#manageTitle,#manageCrumb,#manageLede){max-width:var(--board-content);w
 .cleanupgrid>.cleanupemptyfolders>.geist-fieldset-content{min-height:0;padding:24px}
 .cleanupgrid>.cleanupemptyfolders>.geist-fieldset-footer{border:0;padding:24px;background:none;display:flex;gap:8px;flex-wrap:wrap}
 .cleanupgrid>.cleanupemptyfolders strong{font:var(--board-body);color:var(--color-text-secondary);letter-spacing:0}
+/* 来源行和资源同步结果面板取同一份站标；离线那枚跟着结果面板的 offline 用色。 */
+.cleanupgrid>.cleanupemptyfolders .cleanupmeta{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px}
+.cleanupsourcemark{display:inline-flex;align-items:center;gap:6px}
+.cleanupsourcemark .gselectmark{width:14px;height:14px}
+.cleanupsourcemark.cleanupsourcelost{color:var(--drop)}
+/* 资源同步的结果照 Board 的 stat cards 排：和数据管理顶上一排读数同一副卡片，
+   三个来源带官方站标，缓存与回收站两张读数跟在后面凑成同一行节奏。卡片不是入口，
+   不接悬停抬色；在线状态挂在标题行最右，标题行放不下的说明在窄屏折行。 */
+.resourcestats{margin:0}
+.resourcestat{cursor:default}
+.resourcestat:hover{background:var(--color-background-secondary-default)}
+.resourcestat-tile svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.resourcestat-tile img{width:20px;height:20px;object-fit:contain}
+.resourcestat-state{margin-left:auto;font:var(--board-caption)}
+.resourcestat-state.online{color:var(--success)}
+.resourcestat-state.offline{color:var(--drop)}
+.resourcestat .cleanupmeta{white-space:normal}
+/* 检查结果 Note 在空文件夹卡里顶满左右：两侧吃掉内容区的内边距直抵框边，
+   侧边不再自带圆角和描边，读起来是卡片自己的一条结果带。 */
+.cleanupgrid>.cleanupemptyfolders .cleanupstate .geist-note{margin-inline:-24px;border-inline:0;border-radius:0}
+#resourceSyncResult>.cleanupstats{margin:0}
+/* 结果槽里三层各管各的间距：读数卡、说明 Note、操作行都不再共享一只面板框。 */
+#resourceSyncResult>.geist-note{margin:16px 0 0}
+#resourceSyncResult>.resourceapplyrow{margin:16px 0 0;min-height:0;border:0;background:none;padding:0}
 .library-processing-outcome:empty{display:none}
 /* 首页那条整理提示是正文列里的一条 Note，上下两条线是它自己的收口。少了这个空当，
    两条线一边挨着身份行、一边挨着筛选浮层，看着像三块东西粘在一起。下面照浮层那个数
@@ -1106,7 +1130,8 @@ body :is(button.danger:not(.frowicon),.reviewactions button.error,.batchbar butt
 .followmanage .fsec>.faliasmanager,.followmanage .fsec>.faliasmanager[open]{background:transparent}
 .followmanage .fcred{box-sizing:border-box;min-height:64px;padding:16px}.followmanage .fcred summary{box-sizing:border-box;min-height:32px;margin:0;padding:0}.followmanage .fcred.none{height:64px;align-items:center}
 .followmanage .fmain>.fsec:has(>.fsecfoot){overflow:hidden;border-radius:18px}
-.followmanage .fmain>.fsec:has(>.fsecfoot)>.frows,.followmanage .fmain>.fsec:has(>.fsecfoot) .board-follow-list,.followmanage .fmain>.fsec:has(>.fsecfoot) .fauthor:last-child{border-bottom-left-radius:0;border-bottom-right-radius:0}
+/* 末位作者卡下面还隔着分页条才到批量条，卡不再与条子相接，四角都圆回去。 */
+.followmanage .fmain>.fsec:has(>.fsecfoot)>.frows,.followmanage .fmain>.fsec:has(>.fsecfoot) .board-follow-list{border-bottom-left-radius:0;border-bottom-right-radius:0}
 .followmanage .fmain>.fsec>.fsecfoot{border-top-left-radius:0;border-top-right-radius:0}
 .configfieldset>.geist-fieldset-footer,.cleanupfieldset>.geist-fieldset-footer,.resourcesyncfooter,.resourceapplyrow{border-top-left-radius:0;border-top-right-radius:0;background:var(--board-card-foot)}
 .followmanage .board-follow-list{display:grid;grid-template-columns:minmax(0,1fr);gap:16px;padding:0;background:none}
@@ -1195,7 +1220,7 @@ body :is(.sbadge,.faliasbadge,.tasteconfidence,.board-chip,.badge){display:inlin
 body :is(.sbadge.ok,.board-chip.success){background:color-mix(in srgb,#84cc16 16%,var(--color-background-primary-default));color:#4d7c0f}body :is(.sbadge.error,.board-chip.error){background:color-mix(in srgb,#f43f5e 12%,var(--color-background-primary-default));color:#e11d48}.sbadge i,.tasteconfidence i{display:none}
 .fprovider{display:flex;align-items:center;gap:6px;flex-wrap:wrap}.fprovider .sbadge{flex:none}.followmanage .fsource.frow{grid-template-columns:20px minmax(120px,1fr) minmax(100px,auto) auto auto}
 .board-sankey-card :is([data-flow-node],[data-flow-source]){outline:none}.board-sankey-card :is([data-flow-node],[data-flow-source]):focus-visible{outline:2px solid var(--color-border-focus-ring);outline-offset:3px}
-.board-button-group{display:inline-flex;align-items:center;overflow:hidden;border:1px solid var(--color-border-button-default);border-radius:10px;background:var(--color-background-primary-default);box-shadow:0 1px 2px #0000000d}.board-button-group>button{height:34px;padding:0 12px;border:0;border-radius:0;box-shadow:none;background:transparent;color:var(--color-text-secondary);font:var(--board-body)}.board-button-group>button+button{border-left:1px solid var(--color-border-button-default)}.board-button-group>button:is(:hover,[aria-pressed=true]){background:var(--control-hover);color:var(--color-text-primary)}
+.board-button-group{display:inline-flex;align-items:center;overflow:hidden;border:1px solid var(--color-border-button-default);border-radius:10px;background:var(--color-background-primary-default);box-shadow:0 1px 2px #0000000d}.board-button-group>button{height:34px;padding:0 12px;border:0;border-radius:0;box-shadow:none;background:transparent;color:var(--color-text-secondary);font:var(--board-body)}.board-button-group>button+button{border-left:1px solid var(--color-border-button-default)}.board-button-group>button:is(:hover,[aria-pressed=true]):not(.primary){background:var(--control-hover);color:var(--color-text-primary)}
 .followmanage .fpickactions .fbtn{height:36px;min-height:36px;padding:8px 12px}
 .photolight .photonav{width:36px;height:36px;border:1px solid var(--color-border-button-default);border-radius:10px;background:var(--color-background-primary-default);color:var(--color-text-secondary);box-shadow:0 1px 2px #0000000d}.photolight .photonav:hover{background:var(--color-background-primary-hover)}.photolight .photonav svg{width:20px;height:20px}.photolight .photonav.swiper-button-disabled{opacity:.4;pointer-events:none}
 .board-carousel-pagination{display:flex;align-items:center;justify-content:center;gap:8px;max-width:160px;margin-inline:auto;overflow:hidden;height:28px}.board-carousel-pagination .swiper-pagination-bullet{width:6px;height:6px;flex:none;margin:0!important;border:0;padding:0;border-radius:999px;background:#a3a3a3;opacity:1;transition:width .2s ease-out,background .2s ease-out}.board-carousel-pagination .swiper-pagination-bullet-active{width:16px;background:#fafafa}
@@ -1265,7 +1290,13 @@ body [data-board-tabs] button[aria-selected=true],body .managebar [data-board-ta
 .splitbutton.board-button-group>.splittoggle{border-left:1px solid var(--color-border-button-default)}
 /* 这两半压上去换的那一面跟站内其他次级按钮是同一个 token。基线那条按 `--inset` 填，
    特指度还比这一组的规则高，两处今天算出来是同一个值，改其中一个就会分家。 */
-.splitbutton.board-button-group>button:hover:not(:disabled){background:var(--control-hover)}
+.splitbutton.board-button-group>button:is(:hover,[aria-pressed=true]):not(.primary){background:var(--control-hover)}
+/* 分隔按钮的强调档：主钮与箭头钮各挂 `geist-button primary`，那一面由全站唯一那条
+   强调档规则给，悬停的淡入也是。箭头钮是展开不是操作，但它跟主钮长在同一颗键上，
+   半蓝半灰读起来像坏了一半；中缝那条线换成压暗的蓝，整颗仍是同一枚实底键。 */
+body .splitbutton.primary{border:0;box-shadow:none}
+body .splitbutton.primary>button:disabled{background:var(--sunk);color:var(--muted)}
+body .splitbutton.primary>.splittoggle{border-left-color:color-mix(in srgb,#000 20%,var(--board-blue))}
 body [data-cleanup-empty][hidden]{display:none}
 dialog.board-icon-popover{position:fixed;inset:auto;margin:0;width:min(360px,calc(100vw - 16px));max-height:calc(100dvh - 16px);box-sizing:border-box;padding:8px;border:0;border-radius:24px;background:var(--color-background-secondary-default);color:var(--ink);box-shadow:0 12px 40px #00000024;overflow:auto}
 .board-icon-popover::backdrop{background:transparent}.board-icon-panel{padding:12px;border-radius:20px;background:var(--color-background-primary-default);box-shadow:0 1px 2px #0000000d}.board-icon-panel h3{font:var(--board-body-medium);margin:0 0 10px;padding:0 4px}.board-icon-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}.board-icon-grid label{position:relative;display:grid;place-items:center;height:40px;border-radius:8px;cursor:pointer}.board-icon-grid label:hover{background:var(--color-background-primary-hover)}.board-icon-grid label.selected{background:var(--picked);color:var(--tungsten)}.board-icon-grid input{position:absolute;opacity:0;width:1px;height:1px}.board-icon-grid label:focus-within{outline:2px solid var(--tungsten)}.board-icon-popover footer{display:flex;justify-content:flex-end;gap:8px;padding:8px 4px 0}
@@ -1348,7 +1379,9 @@ html.board-high-contrast :is(.selectiondock,.reviewcontrols.is-stuck,.reviewgrou
    10px 圆角，滑块 6px 圆角、transform／width／height 各 200ms cubic-bezier(.4,0,.2,1)）。
    这三四个面板是同一份数据的互斥视图，一条横线会把它读成页面层级的导航。 */
 .insightpanel>header:has(.insighttabs){padding:12px 16px;min-height:0}
-.insighttabs{position:relative;display:inline-flex;align-items:center;gap:2px;width:auto;max-width:100%;min-height:0;margin:0;padding:4px;border:0;border-radius:10px;background:var(--color-background-tertiary-default);overflow-x:auto;overflow-y:hidden;scrollbar-width:none}
+/* 轨道不裁剪：滑块换位带着冲过落点再荡回的那一下，裁了就跟其他分段器两个动法。
+   统计维度只有三个短标签，窄屏也摆得下，横滚的裁剪在这里没有存在的理由。 */
+.insighttabs{position:relative;display:inline-flex;align-items:center;gap:2px;width:auto;max-width:100%;min-height:0;margin:0;padding:4px;border:0;border-radius:10px;background:var(--color-background-tertiary-default);overflow:visible}
 .insighttabs button{position:relative;z-index:1;display:inline-flex;flex:none;align-items:center;gap:6px;height:auto;min-height:28px;margin:0;padding:4px 10px;border:0;border-radius:6px;background:none;box-shadow:none;color:var(--color-text-secondary);font:var(--board-body);white-space:nowrap;transition:color .2s cubic-bezier(.4,0,.2,1)}
 /* 取消基线那条下划线要连选中态一起写：`web/css` 那份把线挂在
    `.insighttabs button[aria-selected="true"]:after` 上，只写 `button::after` 权重更低，

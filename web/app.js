@@ -16,7 +16,7 @@ import { mountIsland, unmountIsland, islandMounted, createReviewSelection, wireR
 import { catalogSuggestions, catalogEmptyHtml, emptyCatalogLayout, syncSidebarSurface, sidebarTagCounts, sidebarHasCatalogContent, cleanupSkeletonHtml, cloudLocations, cloudPreferenceLocations, tasteHistoryGuideHtml, wireTasteHistoryGuide, TASTE_GUIDE_KEY } from './dist/peach-ui.js';
 import { javImageKind, normalizeJavImage, normalizeJavLayout, normalizeJavPreferences, panelFrame, syncJavImages, nativeImageFit, matchesFaceSource, entitySkeletonHtml } from './dist/peach-ui.js';
 import {
-  attachOverlayScrollbar, breadcrumbHtml, checkboxHtml, collectionSummaryHtml, closeAnchoredMenu, confirmModal, dismissMenu, emptyStateHtml, fieldsetTitle,
+  attachOverlayScrollbar, breadcrumbHtml, checkboxHtml, collectionSummaryHtml, closeAnchoredMenu, confirmModal, dismissMenu, emptyStateHtml, fieldsetTitle, selectOptionIconHtml,
   fillSkeletonTier, fitSkeleton, formModal, iconSwitchHtml, indexSkeletonHtml, loadingDotsHtml,
   mediaViewButtonsHtml, boardTabsHtml, mountFilterFrame, filterChipHtml, moveGlidePane, glideEase, sortControlsHtml, collectionHeaderHtml, wireHorizontalScroller, noteHtml, presentMenu, progressHtml, gaugeHtml, scrollerHtml, searchInputHtml, selectFieldHtml,
   setActionBusy, skeletonHtml, spinnerHtml, wireAnchoredMenu, wireBusyActions, wireCollapse, wireDragReorder,
@@ -2476,10 +2476,18 @@ $('#batchbar').querySelectorAll('[data-junk-batch]').forEach(button=>button.oncl
 /* 密度：大图为主，密集为辅 */
 const TILES={big:'336px',dense:'168px'};   /* 168px 模块单位 */
 let density=localStorage.getItem('density')||'big';
+/* 顶栏这颗键和筛选框里的版式开关问同一件事「现在是哪种排法」，所以字形也取同一份
+   映射（PHOTO_SIZES 的第三位），按下去跟着换成当前状态的图标。 */
+function syncDensityIcon(size){
+  const button=$('#density');if(!button)return;
+  const glyph=PHOTO_SIZES.find(([key])=>key===size)?.[2];if(!glyph)return;
+  button.querySelector('use')?.setAttribute('href',`#i-${glyph}`);
+  button.setAttribute('aria-label',size==='big'?'切换为小图':'切换为大图')}
 function applyDensity(){document.documentElement.style.setProperty('--tile',TILES[density]);
   document.body.dataset.density=density;
   $('#density').setAttribute('aria-pressed',density==='dense');
-  $('#density').title='当前：'+(density==='big'?'大图':'密集')}
+  $('#density').title='当前：'+(density==='big'?'大图':'密集');
+  syncDensityIcon(density==='big'?'big':'small')}
 $('#density').onclick=()=>{if(photoViewActive()){
     setPhotoSize(photoSize()==='big'?'small':'big');return}
   density=density==='big'?'dense':'big';
@@ -4216,7 +4224,7 @@ function linkManagerMarkup(){
       <div class="resourcesyncbody geist-fieldset-content">${fieldsetTitle('linkBoxTitle','站外链接')}
       <div id="linkSummary" class="linksummary"></div></div>
       <div class="resourcesyncfooter geist-fieldset-footer" data-geist-fieldset-footer>
-      <button class="resourceaction" type="button" id="linkCheck">${icon('unlink')}<span>检查死链</span></button></div></div>
+      <button class="resourceaction primary" type="button" id="linkCheck">${icon('unlink')}<span>检查死链</span></button></div></div>
     <div id="linkCheckResult" aria-live="polite"></div></section>`;
 }
 async function wireLinkManager(){
@@ -4262,8 +4270,8 @@ async function wireLinkManager(){
        分钟，所以这里能挑着重试：勾中哪几条就只问哪几条，别的结论原样留着。 */
     const retryable=done?(payload.unclear||[]):[];
     const retryRow=retryable.length?`<div class="linkretryrow">
-      <button class="resourceaction" type="button" id="linkRetryPicked" disabled>${icon('rotate-cw')}<span>重试选中的链接</span></button>
-      <button class="resourceaction" type="button" id="linkRetryAll">${icon('rotate-cw')}<span>全部重试（${retryable.length}）</span></button></div>`:'';
+      <button class="resourceaction primary" type="button" id="linkRetryPicked" disabled>${icon('rotate-cw')}<span>重试选中的链接</span></button>
+      <button class="resourceaction primary" type="button" id="linkRetryAll">${icon('rotate-cw')}<span>全部重试（${retryable.length}）</span></button></div>`:'';
     const unclear=table('本次未访问成功',payload.unclear||[],'未必失效：部分站点拒绝程序访问，也可能是临时故障。这些链接保留，可勾选后单独重试。',{pick:retryable.length>0,footer:retryRow});
     const apply=(done&&(payload.gone||[]).length)?`<div class="resourceapplyrow"><p>删除前会逐条重验一次；此操作不可撤销。</p>
       <button class="resourceaction danger" type="button" id="linkPrune">删除 ${payload.gone.length} 条失效链接</button></div>`:'';
@@ -4336,7 +4344,7 @@ function resourceSyncMarkup(){
       <div class="resourcesyncbody geist-fieldset-content">${fieldsetTitle('resourceBoxTitle','文件与记录核对')}
       <p>按馆藏记录逐条查找本地磁盘与网盘上的文件，列出文件已不存在的记录，以及不再被引用的缓存。</p></div>
       <div class="resourcesyncfooter geist-fieldset-footer" data-geist-fieldset-footer>
-      <button class="resourceaction" type="button" id="resourceScan">${icon('git-compare')}<span>检查文件</span></button></div></div>
+      <button class="resourceaction primary" type="button" id="resourceScan">${icon('git-compare')}<span>检查文件</span></button></div></div>
     <div id="resourceSyncResult" aria-live="polite"></div></section>`;
 }
 async function wireResourceSync(){
@@ -4882,8 +4890,10 @@ async function openDataCleanup(push=true){
   const scanSources=(sources.sources||[]).filter(source=>['local','115','pikpak'].includes(source.location));
   const sourceName=source=>esc(LOC[source.location]||source.location);
   const online=scanSources.filter(source=>source.online),offline=scanSources.filter(source=>!source.online);
-  const sourceLine=[online.map(sourceName).join(' · '),
-    offline.length?`${offline.map(sourceName).join(' · ')} 离线`:''].filter(Boolean).join(' · ');
+  /* 来源行的站标和资源同步结果面板同一份（MEDIA_SOURCE_ICONS）；离线的归到同一枚标记后。 */
+  const sourceBadge=source=>`<span class="cleanupsourcemark">${selectOptionIconHtml(MEDIA_SOURCE_ICONS[source.location]||'database')}${sourceName(source)}</span>`;
+  const sourceLine=[online.map(sourceBadge).join(''),
+    offline.length?`${offline.map(sourceBadge).join('')}<span class="cleanupsourcemark cleanupsourcelost">离线</span>`:''].filter(Boolean).join('');
   const junkCounts=junk.counts||{};
   const junkBreakdown=[...JUNK_KIND_OPTIONS.filter(([key])=>key&&Number(junkCounts[key])>0)
     .map(([key,label])=>`${esc(label)} ${Number(junkCounts[key]).toLocaleString()}`),
@@ -4915,8 +4925,8 @@ async function openDataCleanup(push=true){
     empty:`<section class="cleanupfieldset cleanupemptyfolders" data-geist-fieldset aria-labelledby="cleanupEmptyTitle">
       <div class="geist-fieldset-content">${fieldsetTitle('cleanupEmptyTitle','空文件夹')}
         <strong>${online.length.toLocaleString()} 个来源可扫描</strong>
-        <p class="cleanupmeta">${sourceLine}</p><p class="cleanupstate" aria-live="polite"></p></div>
-      <footer class="geist-fieldset-footer" data-geist-fieldset-footer><button type="button" data-cleanup-empty-scan ${online.length?'':'disabled'}>${icon('scan-search')}<span>扫描空文件夹</span></button><button type="button" class="danger" data-cleanup-empty hidden>${icon('trash')}<span>删除空文件夹</span></button></footer>
+        <p class="cleanupmeta">${sourceLine}</p><div class="cleanupstate" aria-live="polite"></div></div>
+      <footer class="geist-fieldset-footer" data-geist-fieldset-footer><button type="button" class="geist-button primary" data-cleanup-empty-scan ${online.length?'':'disabled'}>${icon('scan-search')}<span>扫描空文件夹</span></button><button type="button" class="danger" data-cleanup-empty hidden>${icon('trash')}<span>删除空文件夹</span></button></footer>
     </section>`,
     review:entryCard('review'),quality:entryCard('quality'),trash:entryCard('trash'),
   };
@@ -4939,12 +4949,14 @@ async function openDataCleanup(push=true){
   const emptyScan=$('#stats').querySelector('[data-cleanup-empty-scan]');
   emptyScan.onclick=async()=>{
     const status=$('#stats').querySelector('.cleanupstate');setActionBusy(emptyScan);emptyButton.hidden=true;
-    status.textContent='正在检查空文件夹…';
+    /* 空文件夹扫描是挂载点上的慢活，接口只有跑完才回话：状态行用 Loading Dots 说
+       「还在推进」，不假装有百分比。 */
+    status.innerHTML=loadingDotsHtml('正在检查空文件夹…');
     try{const result=await api('/api/data-cleanup/empty-folders',{method:'POST',body:JSON.stringify({dry_run:true})});
       if(!surfaceCurrent(surface))return;
-      status.textContent=`已检查 ${Number(result.scanned||0).toLocaleString()} 个目录，发现 ${Number(result.empty||0).toLocaleString()} 个空文件夹${result.errors?`，${result.errors} 个目录读取失败`:''}。`;
+      status.innerHTML=noteHtml(`已检查 ${Number(result.scanned||0).toLocaleString()} 个目录，发现 ${Number(result.empty||0).toLocaleString()} 个空文件夹${result.errors?`，${result.errors} 个目录读取失败`:''}。`,{label:'检查结果'});
       emptyButton.hidden=!(result.empty>0);
-    }catch(error){status.textContent=`扫描失败：${error.message}`}finally{setActionBusy(emptyScan,false)}
+    }catch(error){status.innerHTML=noteHtml(error.message,{variant:'error',label:'扫描失败'})}finally{setActionBusy(emptyScan,false)}
   };
   emptyButton.onclick=async()=>{
     return confirmModal({title:'删除空文件夹',body:'将删除已连接磁盘和网盘中的空文件夹，保留来源根目录。',confirmLabel:'删除空文件夹',danger:true,onConfirm:async()=>{
@@ -4953,7 +4965,7 @@ async function openDataCleanup(push=true){
     status.textContent='正在自底向上检查已挂载来源…';
     try{
       const result=await api('/api/data-cleanup/empty-folders',{method:'POST',body:'{}'});
-      status.textContent=`已检查 ${Number(result.scanned||0).toLocaleString()} 个目录，删除 ${Number(result.removed||0).toLocaleString()} 个${result.errors?`，${Number(result.errors).toLocaleString()} 个读取或删除失败`:''}。`;
+      status.innerHTML=noteHtml(`已检查 ${Number(result.scanned||0).toLocaleString()} 个目录，删除 ${Number(result.removed||0).toLocaleString()} 个${result.errors?`，${Number(result.errors).toLocaleString()} 个读取或删除失败`:''}。`,{label:'清理结果',variant:result.errors?'warning':'success'});
       if(result.errors)actionFailure('空文件夹清理',new Error(`${result.errors} 个目录处理失败`));
       else actionReceipt(`已删除 ${Number(result.removed||0).toLocaleString()} 个空文件夹`);
     }finally{setActionBusy(emptyButton,false);emptyButton.innerHTML=original;emptyButton.hidden=true}
@@ -6009,19 +6021,15 @@ function followCheckToast(report){
     {warn:!!failed,timeout:failed?8000:6000,
      action:{label:'去看更新',run:()=>openFollow()}});
 }
-/* 页内持久行：只装失败与取证缺档，渲染在管理页自己的检查区里。全部成功时
-   返回空串——成功摘要整条交给 toast，页面上不再出现通栏横条。关注页不渲染
-   这块：那里的持久行是 .fwarn，带「去管理关注」的恢复入口。 */
+/* 页内持久行：只装失败与取证缺档，渲染在管理页自己的检查区里。「没有更多内容」
+   一类的抓取完摘要不落页内——它跟着检查完成的右下角 notification（followCheckToast）
+   走，页内只留要处理的东西。全部成功时返回空串。关注页不渲染这块：那里的持久行
+   是 .fwarn，带「去管理关注」的恢复入口。 */
 function followCheckFailNote(report){
   const rows=report.results||[];
   const failed=rows.filter(r=>!r.ok);
-  const exhausted=rows.filter(r=>r.exhausted);
   const evidence=rows.filter(r=>r.evidence_error);
-  if(!failed.length&&!evidence.length&&!exhausted.length)return '';
-  const ended=exhausted.length?`<div class="geist-note geist-note-secondary fcheckreport" role="note">
-    ${icon('info')}<div><p><b>${exhausted.length} 个来源没有更多内容</b></p>
-    ${exhausted.map(row=>`<p class="fchecknote">${esc([row.provider_label||row.provider,row.ref]
-      .filter(Boolean).join(' '))}：没有更多历史内容</p>`).join('')}</div></div>`:'';
+  if(!failed.length&&!evidence.length)return '';
   const errors=failed.length||evidence.length?`<div class="geist-note geist-note-error fcheckreport" role="alert">${icon('alert')}<div>
     ${failed.length?`<p><b>${failed.length} 个来源检查失败</b></p>`:''}
     ${failed.map(row=>`<p class="fcheckfail"><strong>${esc(row.provider_label||row.provider||'')}</strong>
@@ -6029,7 +6037,7 @@ function followCheckFailNote(report){
     ${evidence.length?`<p class="fchecknote">候选已入库，但这一次的原始响应没有留档：${
       esc(evidence[0].evidence_error)}</p>`:''}
   </div></div>`:'';
-  return `<div class="fcheckreports">${ended}${errors}</div>`;
+  return `<div class="fcheckreports">${errors}</div>`;
 }
 
 /* ── 看的那一页 ── */
@@ -6792,9 +6800,9 @@ function followAliasManager(groups,suggestions){
     <form class="faliasform" id="followAliasAdd">
       <input class="geist-input" name="canonical" required placeholder="规范创作者名" aria-label="规范创作者名">
       <input class="geist-input" name="alias" required placeholder="平台别名" aria-label="平台别名">
-      <button class="fbtn" type="submit">保存别名</button>
+      <button class="fbtn primary" type="submit">保存别名</button>
     </form>
-    ${detected?`<div class="faliasheading"><h4>待合并</h4><div class="faliasactions"><button type="button" class="fbtn" data-follow-alias-selected disabled>合并所选（0）</button><button type="button" class="fbtn" data-follow-alias-all>全部合并（${suggestions.length}）</button></div></div>
+    ${detected?`<div class="faliasheading"><h4>待合并</h4><div class="faliasactions"><button type="button" class="fbtn" data-follow-alias-selected disabled>合并所选（0）</button><button type="button" class="fbtn primary" data-follow-alias-all>全部合并（${suggestions.length}）</button></div></div>
       <div class="ftableframe"><div class="ftablewrap"><table class="ftable faliastable" aria-label="待合并创作者别名"><thead><tr><th scope="col" class="faliascheck"><label>${checkboxHtml('data-follow-alias-select-all aria-label="全选待合并别名"')}</label></th><th scope="col">规范创作者</th><th scope="col">平台别名</th><th scope="col">依据</th><th scope="col">操作</th></tr></thead><tbody>${detected}</tbody></table></div></div>`:''}
     <div class="faliasheading"><h4>已保存别名</h4><span>${groups.length} 组</span></div>
     ${saved?`<div class="ftableframe"><div class="ftablewrap"><table class="ftable faliastable faliassaved" aria-label="已保存创作者别名"><thead><tr><th scope="col">规范创作者</th><th scope="col">平台别名</th></tr></thead><tbody>${saved}</tbody></table></div></div>`:emptyState('users','还没有保存创作者别名','填写规范创作者名和平台别名以添加。',{className:'compact'})}
@@ -8271,6 +8279,7 @@ function syncPhotoWalls(){
   if(photoViewActive()){
     $('#density').setAttribute('aria-pressed',String(photoSize()==='small'));
     $('#density').title='当前：'+(photoSize()==='big'?'大图':'小图');
+    syncDensityIcon(photoSize());
   }else applyDensity();
 }
 function wirePhotoControls(root){

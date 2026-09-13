@@ -5,7 +5,7 @@ const source = (location: string, online = true): ResourceSource => ({location, 
 describe('文件检查结果', () => {
   it.each([['local'], ['115', 'pikpak'], ['local', '115', 'pikpak']])('呈现实际来源 %s', (...locations) => {
     document.body.innerHTML = resourceScanHtml({sources: locations.map(location => source(location)), missing: 2}, () => '0 B');
-    expect(document.querySelectorAll('.resourcesources article')).toHaveLength(locations.length);
+    expect(document.querySelectorAll('.resourcestats .board-plain-stat')).toHaveLength(locations.length + 2);
     expect(document.body.textContent).toContain('找不到文件');
     expect(document.body.textContent).toContain('2 项读取失败，已跳过');
     expect(document.querySelector('#resourceApply')?.textContent).toBe('清理失效记录与缓存');
