@@ -86,13 +86,14 @@ class LooseFileGuardTests(unittest.TestCase):
                              ["REVIEW.md", "ds_store.md", "probe.json"])
 
 
-class BuiltInWorktreeTests(unittest.TestCase):
-    """`.claude/worktrees/` 里不许留下未登记的目录。
+class UnregisteredWorktreeTests(unittest.TestCase):
+    """两个工作树落点里都不许留下未登记的目录。
 
-    Claude Code 内置的工作树在分支被集成后会被回收，目录却留在原地，成了主检出里一份
-    看不出区别的旧副本——在里面跑 git 全部作用于主检出的 master。别的会话此刻可能正
-    合法地占着一个内置工作树，所以判据是「有没有登记」而不是「有没有目录」，登记过的
-    放行，本测试也从不删东西。
+    工作树被回收后目录可能留在原地，成了一份看不出区别的旧副本——在里面跑 git
+    全部作用于主检出的 master。`peach-worktrees/` 是 `create` 的落点，也是智能体被告知
+    要去干活的地方，所以它和 `.claude/worktrees/` 同一条判据。别的会话此刻可能正合法地
+    占着一个工作树，所以判据是「有没有登记」而不是「有没有目录」，登记过的放行，
+    本测试也从不删东西。
     """
 
     def _git(self, *args: str) -> str:
@@ -102,26 +103,27 @@ class BuiltInWorktreeTests(unittest.TestCase):
             self.skipTest(f"git 不可用或不是仓库：{done.stderr.strip()}")
         return done.stdout
 
-    def test_no_unregistered_directory_lingers_under_claude_worktrees(self):
-        # 主检出才有 `.claude/worktrees/`。`--git-common-dir` 在工作树里指向主检出的
-        # `.git`，在主检出里是相对路径，所以统一按 REPO 解析再取上一级。
+    def test_no_unregistered_directory_lingers_in_either_worktree_root(self):
+        # `--git-common-dir` 在工作树里指向主检出的 `.git`，在主检出里是相对路径，
+        # 所以统一按 REPO 解析再取上一级。只 clone 了 peach-app 的机器上两个落点都可能
+        # 不存在，不存在的那一个跳过。
         common = pathlib.Path(self._git("rev-parse", "--git-common-dir").strip())
         main = (REPO / common).resolve().parent
-        builtin = main / ".claude" / "worktrees"
-        if not builtin.is_dir():
-            return
         registered = {
             pathlib.Path(line[len("worktree "):]).resolve()
             for line in self._git("worktree", "list", "--porcelain").splitlines()
             if line.startswith("worktree ")
         }
-        residue = sorted(child.name for child in builtin.iterdir()
-                         if child.is_dir() and child.resolve() not in registered)
-        self.assertEqual(
-            residue, [],
-            f"{builtin} 下有未登记的工作树残留：确认没人在用后手动删除，"
-            "新工作树用 scripts/agent_worktree.py create 建在 peach-worktrees/",
-        )
+        for root in (main.parent / "peach-worktrees", main / ".claude" / "worktrees"):
+            if not root.is_dir():
+                continue
+            residue = sorted(child.name for child in root.iterdir()
+                             if child.is_dir() and child.resolve() not in registered)
+            self.assertEqual(
+                residue, [],
+                f"{root} 下有未登记的工作树残留：`prune --apply` 扫空目录，"
+                "里面还有文件的按它报的路径确认没人在用后手动删",
+            )
 
 
 class BundledImageTests(unittest.TestCase):

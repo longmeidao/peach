@@ -18,6 +18,9 @@ if not __package__:
 from . import (changelog, check_readme_impact, co_author, commit_subject,
                test_evidence, test_runner, version_bump)
 
+#: `create` 的落点，建在主检出旁边（ADR-0017 的四个运行时目录之一）。
+WORKTREE_ROOT = "peach-worktrees"
+
 #: Claude Code 内置工作树的落点。分支集成后它自己不收：目录留在主检出里，成了一份看不出
 #: 区别的旧副本（见 CLAUDE.md）。`tests/test_repo_hygiene.py` 拦得住，但拦住之后没有任何
 #: 入口能清掉已经在那儿的，只能让人手删——`prune --apply` 顺带扫掉这块。
@@ -75,7 +78,7 @@ def create(repo: Path, agent: str, task: str, root: Path | None = None) -> dict[
     main = _main_worktree(repo)
     agent_slug, task_slug = _slug(agent), _slug(task)
     branch = f"agent/{agent_slug}/{task_slug}"
-    target_root = root or (main.parent / "peach-worktrees")
+    target_root = root or (main.parent / WORKTREE_ROOT)
     target = target_root / f"{agent_slug}-{task_slug}"
     if target.exists():
         raise WorkspaceError(f"target exists: {target}")
@@ -274,36 +277,42 @@ def _reclaim(main: Path, path: Path, branch: str) -> tuple[str, dict[str, str]]:
     return "reclaimed", {"path": str(path), "branch": branch}
 
 
-def _sweep_builtin(main: Path, here: Path, *, apply: bool
-                   ) -> tuple[list[str], list[dict[str, str]], list[dict[str, str]]]:
-    """扫掉 `.claude/worktrees/` 里已经不登记的空目录。
+def _sweep_unregistered(main: Path, here: Path, *, apply: bool
+                        ) -> tuple[list[str], list[dict[str, str]], list[dict[str, str]]]:
+    """扫掉两个工作树落点里已经不登记的空目录。
 
-    这些目录不在 `git worktree list` 里，上面那轮按登记项遍历的回收永远碰不到它们，
-    人却会走进去当工作树用。只删空的：里面还有文件就可能是别人正在用的检出，或者是
-    没提交的东西，那种一律留着报出来，不替人做判断。
+    两个落点都要扫：`create` 建工作树的 `WORKTREE_ROOT`，和 Claude Code 内置的
+    `BUILTIN_WORKTREES`。这些目录不在 `git worktree list` 里，上面那轮按登记项遍历的
+    回收永远碰不到它们，人却会走进去当工作树用——而在里面跑 git 全作用于主检出的
+    master。漏掉 `create` 那一侧最贵：那里是智能体被告知要去干活的地方。
+    2026-09-13 清点：`peach-worktrees/` 下四个未登记目录共 246 MB，两份是带 `.venv`
+    的整树副本，其中一份的句柄还被一个跑在 8931 端口的预览服务占着。  # copy-lint-disable-line
+
+    只删空的：里面还有文件就可能是别人正在用的检出，或者是没提交的东西，那种一律
+    留着报出来，不替人做判断。
     """
     swept: list[str] = []
     residue: list[dict[str, str]] = []
     kept: list[dict[str, str]] = []
-    root = main / BUILTIN_WORKTREES
-    if not root.is_dir():
-        return swept, residue, kept
     registered = {Path(item["path"]).resolve() for item in _worktree_entries(main)}
-    for path in sorted(root.iterdir()):
-        if not path.is_dir() or path.resolve() in registered or path.resolve() == here:
+    for root in (main.parent / WORKTREE_ROOT, main / BUILTIN_WORKTREES):
+        if not root.is_dir():
             continue
-        if any(child.is_file() for child in path.rglob("*")):
-            kept.append({"path": str(path), "branch": "",
-                         "why": "未登记的目录里还有文件，确认没人在用后手动删"})
-            continue
-        if not apply:
-            swept.append(str(path))
-            continue
-        left = _delete_tree(path)
-        if left:
-            residue.append({"path": str(path), "branch": "", "why": "目录删不掉：" + left})
-        else:
-            swept.append(str(path))
+        for path in sorted(root.iterdir()):
+            if not path.is_dir() or path.resolve() in registered or path.resolve() == here:
+                continue
+            if any(child.is_file() for child in path.rglob("*")):
+                kept.append({"path": str(path), "branch": "",
+                             "why": "未登记的目录里还有文件，确认没人在用后手动删"})
+                continue
+            if not apply:
+                swept.append(str(path))
+                continue
+            left = _delete_tree(path)
+            if left:
+                residue.append({"path": str(path), "branch": "", "why": "目录删不掉：" + left})
+            else:
+                swept.append(str(path))
     return swept, residue, kept
 
 
@@ -319,8 +328,8 @@ def prune(repo: Path, target_branch: str = "master", *,
     一律拒收并单独列出，交给人看，不给 `--force` 这个口子。
 
     单个工作树回收失败不影响其它工作树：结果分成 reclaimed / swept / residue / failed /
-    dirty / kept 六组，整轮照样 ok。理由见 `_reclaim`。`swept` 是 `.claude/worktrees/`
-    里已经不登记的空目录，见 `_sweep_builtin`。
+    dirty / kept 六组，整轮照样 ok。理由见 `_reclaim`。`swept` 是两个工作树落点里
+    已经不登记的空目录，见 `_sweep_unregistered`。
     """
     main = _main_worktree(repo)
     merged = {line.strip().lstrip("+* ") for line in
@@ -361,7 +370,7 @@ def prune(repo: Path, target_branch: str = "master", *,
         else:
             failed.append(record)
 
-    swept, swept_residue, swept_kept = _sweep_builtin(main, here, apply=apply)
+    swept, swept_residue, swept_kept = _sweep_unregistered(main, here, apply=apply)
 
     return {
         "ok": True,
