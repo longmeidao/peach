@@ -200,6 +200,25 @@ class LibraryNfoTests(unittest.TestCase):
         self.assertEqual([item.args[0] for item in provider.query.call_args_list], ['ABW-001'])
         self.assertEqual([item.args[0] for item in provider.cover.call_args_list], ['ABW-001'])
 
+    def test_fc2_codes_ask_no_r18_metadata_but_still_try_a_cover(self):
+        """r18.dev 没有 FC2，问一次就是白等一次主机间隔；封面另有 FC2 自己的来源。"""
+        media = self.root / 'media'
+        media.mkdir()
+        for name in ('FC2-PPV-1239052.mp4', 'ABW-001.mp4'):
+            (media / name).write_bytes(b'video')
+        db = fresh_ledger(self.root)
+        config = PeachConfig(self.root, self.root / 'config.toml', present=True, locations={'local': (str(media),)})
+        provider = Mock()
+        provider.query.return_value = {'maker': 'Studio', 'id': 'ABW-001', 'source_url': ''}
+        provider.cover.return_value = False
+        result = process_library(config, db, self.root / 'generated', self.root / 'covers',
+                                 provider_factory=Mock(return_value=provider))
+        self.assertEqual(result['status'], 'complete')
+        self.assertEqual([item.args[0] for item in provider.query.call_args_list], ['ABW-001'])
+        self.assertEqual(sorted(item.args[0] for item in provider.cover.call_args_list),
+                         ['ABW-001', 'FC2-PPV-1239052'])
+        self.assertEqual(result['issue_count'], 0)
+
     def test_management_controls_keep_credentials_and_empty_sections_visible(self):
         root = Path(__file__).resolve().parents[1]
         source = (root / 'web/app.js').read_text(encoding='utf-8')
