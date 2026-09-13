@@ -3097,7 +3097,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(
             "#i-shuffle .strand-b{animation-name:peach-strand-draw-late}")
         self.assertPageContains(
-            '.count[aria-busy="true"] #batchAction svg,\n'
+            '.count[aria-busy="true"] :is(#batchAction,#followShuffle) svg,\n'
             'body.refreshing #batchAction svg,\n'
             '.entitycollectionhead[aria-busy="true"] .entitybatch svg{\n'
             "  --strand-dash:100;--strand-cycle:2.2s}")
@@ -4450,7 +4450,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn(".gridstack .card:not(.junkcard) .pic{border-radius:12px;overflow:hidden}", board)
         self.assertIn(".card:hover .pic::after,.card.selected .pic::after{box-sizing:border-box;border-radius:inherit}", board)
         self.assertIn(".board-filter-frame.board-filter-frame{border-radius:22px;isolation:isolate;color:var(--glass-text);overflow:visible}", board)
-        self.assertPageContains("const host=pill.closest('.board-filter-frame');if(!host)return null;")
+        self.assertPageContains("const host=pill.closest(within);if(!host)return null;")
         self.assertPageContains("x-=n.scrollLeft;y-=n.scrollTop;")
         self.assertPageContains("if(rect.right<=viewport.left||rect.left>=viewport.right)return null;")
         self.assertPageContains("if(scroller)scroller.onscroll=()=>syncViewGlide(false,null,kind);")
@@ -6503,9 +6503,14 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn("wireBoardSegments(root);wireBoardTabs(root);wireGrowingCharts(root)", controls)
         self.assertIn(".insightswitch[data-board-segments]{position:relative;display:inline-flex;align-items:center;gap:2px;padding:4px;"
                       "border:0;border-radius:10px;background:var(--color-background-tertiary-default);box-shadow:none}", board)
-        self.assertIn(".count .sorts .iconswitch[data-board-segments]>label,.entitycollectionhead .sorts .iconswitch[data-board-segments]>label"
-                      "{height:24px;min-height:24px;width:30px;padding:0;border-radius:5px}", board)
-        self.assertIn(".count .sorts,.entitycollectionhead .sorts{padding:0 2px}", board)
+        # 浮层上的分段器滑块就是整枚选项：30px 见方、8px 圆角，跟旁边那块滑动玻璃同一副尺寸。
+        self.assertIn(".board-filter-frame.board-filter-frame .iconswitch[data-board-segments]>label,\n"
+                      ".entitytagbar.entitytagbar .iconswitch[data-board-segments]>label,\n"
+                      ".entitycollectionhead.entitycollectionhead .iconswitch[data-board-segments]>label"
+                      "{height:30px;min-height:30px;width:30px;padding:0;border-radius:8px}", board)
+        self.assertNotIn("{padding:3px;border-radius:8px;gap:2px}", board)
+        # 横滚容器会裁掉滑块与玻璃的落影：上下各留 14px 再用负外边距收回，行高不变。
+        self.assertIn(".count .sorts,.entitycollectionhead .sorts{padding:14px 2px;margin-block:-14px}", board)
         # 下划线只归管理导航与设置分区；洞察页的维度是分段控件，复核分类是次级菜单，判据各在
         # test_the_stats_and_taste_dimensions_switch_as_a_segmented_control 与
         # test_the_review_categories_look_like_a_secondary_menu。
@@ -7073,8 +7078,9 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(
             '${faceUrls.length>1?`<div class="mixfaces" '
             'data-mix-faces="${esc(JSON.stringify(faceUrls))}" hidden></div>`:\'\'}')
-        # 遮住静止封面的底色跟着这张卡自己的底走：图片墙是浅底，视频卡是黑底。
-        self.assertPageContains(".followitem.imagecard .mixfaces{background:var(--sunk)}")
+        # 遮住静止封面的底色跟着这张卡自己的底走：图片墙是浅底，视频卡是黑底。面板里每一张
+        # 面也是 `.poster`，自带的黑底得一起换，否则浅底卡一悬浮留白就翻成黑的。
+        self.assertPageContains(".followitem.imagecard :is(.mixfaces,.mixface .poster){background:var(--sunk)}")
 
     def test_follow_image_only_controls_are_scoped_and_reversible(self):
         self.assertPageContains('data-follow-images-only aria-pressed="${!!appSettings.followImagesOnly}"')
@@ -7333,7 +7339,7 @@ class WebUiSourceTests(unittest.TestCase):
         # 浮层下面那块列表——页头、两排头像和玻璃此刻就能给出最终样子，它们没在等。
         self.assertPageContains("placeholder:partial?'':renderForDetail?detailSkeletonHtml():followSkeletonHtml('正在读取关注内容')})")
         self.assertPageContains("const list=$('#stats').querySelector('.follow .followlist');\n"
-                                "  const partial=!!list&&!renderForDetail;")
+                                "  const partial=!!list&&!list.closest('[data-skeleton]')&&!renderForDetail;")
         self.assertPageContains("list.outerHTML=pageSkeletonHtml('正在读取关注内容',\n"
                                 "      {cards:true,className:'follow-content-skeleton postercard-skeleton'});")
         self.assertPageContains("pageSkeletonHtml('正在读取统计',{variant:'dashboard'})")
@@ -8567,12 +8573,30 @@ class WebUiSourceTests(unittest.TestCase):
         # 排序归服务端：分页在它那一侧，浏览器只拿到当前这几页。
         self.assertPageContains("+(followSort!=='new'?`&sort=${followSort}`:'')")
         self.assertPageContains("+(followDir!=='desc'?`&dir=${followDir}`:'');")
-        # 「仅显示图片」是一枚图标开关，跟「换一批」同一副身量；关着退成玻璃上那档淡字。
-        self.assertPageContains('class="batchaction followimagesonly" data-follow-images-only aria-pressed="${!!appSettings.followImagesOnly}" title="仅显示图片" aria-label="仅显示图片">${icon(\'pics\')}</button>')
+        # 「仅显示图片」是一枚 30px 见方的图标开关，不是 `.batchaction`：蓝色留给换一批，开着时
+        # 垫的是筛选条那块滑动玻璃（跟版式分段器、媒体那一档同一块料），关着走排序键的淡字。
+        # 字形是「收起说明」，不跟左边媒体那一档的图片字形撞。
+        self.assertPageContains('class="followimagesonly" data-follow-images-only aria-pressed="${!!appSettings.followImagesOnly}" title="仅显示图片" aria-label="仅显示图片">${icon(\'captions-off\')}</button>')
+        self.assertPageContains('<symbol id="i-captions-off" viewBox="0 0 24 24">')
+        self.assertPageContains(".count .sorts .followimagesonly{width:30px;padding:0;display:inline-grid;place-items:center;position:relative}")
+        self.assertPageContains(".count .sorts .followimagesonly svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2;position:relative;z-index:1}")
+        # 玻璃挂在这枚键自己身上：旁边的分段器是插进文档后才由观察器换几何的，钉在外框坐标上
+        # 的玻璃量早一步就跟键错开半个身位；挂在键上坐标恒为零。
+        self.assertPageContains("imagesonly:{selector:'.followcount .sorts',host:'.followimagesonly',\n"
+                                "              pressed:'[data-follow-images-only][aria-pressed=\"true\"]'},")
+        self.assertPageContains("function viewGlideGeometry(pill,within='.board-filter-frame'){\n  const host=pill.closest(within);if(!host)return null;")
+        self.assertPageContains("const box=viewGlideGeometry(active,GLIDE_ROWS[kind].host);")
+        self.assertPageContains("imagesOnly.setAttribute('aria-pressed',String(appSettings.followImagesOnly));\n    syncViewGlide(false,null,'imagesonly')};")
+        self.assertPageContains("Object.keys(GLIDE_ROWS).forEach(kind=>syncViewGlide(false,null,kind))},{passive:true});")
+        # 落位在搭完外框之后：wirePhotoControls 跑在 mountFilterFrame 之前，那时量不到外框。
+        self.assertPageContains("  syncViewGlide(false,null,'imagesonly');\n  scheduleStickySurfaces();")
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
-        self.assertIn('.board-filter-frame.board-filter-frame .sorts .followimagesonly[aria-pressed="true"]{\n  background:var(--board-blue);color:#fff', board)
-        self.assertIn('.board-filter-frame.board-filter-frame .sorts .followimagesonly[aria-pressed="false"]{', board)
+        self.assertNotIn(".followimagesonly[aria-pressed=", board)
+        self.assertNotIn("var(--board-blue);color:#fff;font-weight:600}", board)
         self.assertNotIn(".followrecheck", board)
+        # 等数据时换批键自己画，跟首页同一个忙态：标记挂在读数那一排上，选择器认两页的键。
+        self.assertPageContains("$('#stats').querySelector('.followcount')?.setAttribute('aria-busy','true');")
+        self.assertPageContains('.count[aria-busy="true"] :is(#batchAction,#followShuffle) svg,')
         self.assertPageLacks("followconditionmenu")
 
     def test_check_updates_is_the_primary_action_in_the_follow_page_head(self):
@@ -9069,12 +9093,12 @@ class WebUiSourceTests(unittest.TestCase):
         # 描边走满一圈，不只压上缘那一道；外影取主题给的那一档。
         self.assertIn("box-shadow:inset 0 0 0 1px var(--glass-rim),var(--glass-pick-shadow)}", board)
         # 玻璃由外框承载，几何扣除横滚量，回弹和阴影允许溢出内容边沿。
-        self.assertIn("const host=pill.closest('.board-filter-frame');if(!host)return null;", app)
+        self.assertIn("const host=pill.closest(within);if(!host)return null;", app)
         self.assertIn("x-=n.scrollLeft;y-=n.scrollTop;", app)
         self.assertIn("for(let n=pill;n&&n!==host;n=n.offsetParent){x+=n.offsetLeft;y+=n.offsetTop}", app)
         self.assertIn("if(glide.pane.parentElement!==box.host)box.host.prepend(glide.pane);", app)
-        # 视口变化时按按钮的新位置重新落位。
-        self.assertIn("syncViewGlide(false)},{passive:true});", app)
+        # 视口变化时每一排的玻璃都按按钮的新位置重新落位，不只四枚视图那一排。
+        self.assertIn("Object.keys(GLIDE_ROWS).forEach(kind=>syncViewGlide(false,null,kind))},{passive:true});", app)
         # 冲过落点再弹回：那条曲线是一次弹簧模拟的采样，峰值 1.103、313ms 收住。
         self.assertIn("--spring-pane:linear(0,0.1515,", board)
         self.assertIn(",1.0477,1.096,1.1029,1.0901,1.0641,", board)
@@ -11112,7 +11136,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn("    overflow-x:auto;overflow-y:hidden;scrollbar-width:none;\n", board)
         self.assertIn("  .board-filter-frame .count .sorts,.entitycollectionhead .sorts{flex:none;"
                       "width:max-content;max-width:none;min-width:0;\n    margin-left:auto;"
-                      "overflow:visible;padding:0}}", board)
+                      "overflow:visible;padding:0;margin-block:0}}", board)
         for lacking, why in (
             (".board-filter-frame .count{display:flex;flex-wrap:wrap;", "换行就是三行"),
             (".board-filter-frame .count>.mono{width:100%}", "读数不占满一行"),

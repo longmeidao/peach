@@ -564,7 +564,7 @@ body>.board-filter-frame{margin-inline:16px}
   .board-filter-frame .count::-webkit-scrollbar,.entitycollectionhead::-webkit-scrollbar{display:none}
   .board-filter-frame .count>.mono,.entitycollectionhead>h3,.entitycollectionhead>.photoback{flex:none;white-space:nowrap}
   .board-filter-frame .count .sorts,.entitycollectionhead .sorts{flex:none;width:max-content;max-width:none;min-width:0;
-    margin-left:auto;overflow:visible;padding:0}}
+    margin-left:auto;overflow:visible;padding:0;margin-block:0}}
 [data-overflow-right="true"]{mask-image:linear-gradient(to right,#000 calc(100% - 18px),transparent)}
 [data-overflow-left="true"]{mask-image:linear-gradient(to right,transparent,#000 18px)}
 [data-overflow-left="true"][data-overflow-right="true"]{mask-image:linear-gradient(to right,transparent,#000 18px,#000 calc(100% - 18px),transparent)}
@@ -621,16 +621,10 @@ body>.board-filter-frame{margin-inline:16px}
   color:color-mix(in srgb,var(--glass-text) 60%,transparent)}
 .board-filter-frame.board-filter-frame .followmediaview .mediaviewbutton:hover,
 .board-filter-frame.board-filter-frame .followmediaview .mediaviewbutton[aria-pressed="true"]{color:var(--glass-text)}
-/* 图片墙上的「仅显示图片」跟「换一批」同一副身量：同宽同高同圆角、同一枚 16px 字形。
-   它是开关不是动作，开着才铺强调档那块蓝；关着退成玻璃上那档淡字，悬停提到常规字色，
-   跟这一排其它未选中的键一个规矩。排序键那条「按下即去底」的规则按属性选择器胜过
-   `.batchaction`，所以开着那档要在这里点名铺蓝。 */
-.board-filter-frame.board-filter-frame .sorts .followimagesonly[aria-pressed="true"]{
-  background:var(--board-blue);color:#fff;font-weight:600}
-.board-filter-frame.board-filter-frame .sorts .followimagesonly[aria-pressed="true"]:hover{background:var(--board-blue-hover);color:#fff}
-.board-filter-frame.board-filter-frame .sorts .followimagesonly[aria-pressed="false"]{
-  background:transparent;box-shadow:none;color:color-mix(in srgb,var(--glass-text) 60%,transparent)}
-.board-filter-frame.board-filter-frame .sorts .followimagesonly[aria-pressed="false"]:hover{color:var(--glass-text)}
+/* 图片墙上的「仅显示图片」是开关不是动作，蓝色留给换一批；它自己不铺底——开着时垫的
+   是筛选条上那块滑动玻璃（GLIDE_ROWS.imagesonly），跟版式分段器、媒体那一档同一块料。
+   关着和悬停走这一排排序键的规矩（六成字色、悬停提满），按下的字色由上面那条
+   `[aria-pressed="true"]` 给，都不另写。 */
 /* 资料卡照 Board 的卡排：secondary 底、18px 圆角、不描边，卡底那条带取卡脚那一档色阶。
    标题是 Title 3（24/32、500），别名行 Body 1，外链是 36px 的 secondary Button。 */
 .entityhero{border-radius:18px;background:var(--ground);box-shadow:none}
@@ -1318,13 +1312,26 @@ html.board-high-contrast :is(.selectiondock,.reviewcontrols.is-stuck,.reviewgrou
 .insightswitch[data-board-segments] label:has(input:checked)>span{background:transparent;box-shadow:none;color:var(--color-text-primary);font:var(--board-body-medium)}
 :root[data-theme="dark"] :is(.iconswitch:not(.themeswitch),.insightswitch,.insighttabs,.follow-workspace-switch)>:is(.board-segment-thumb,.skeleton-segment-selected){background:color-mix(in srgb,var(--color-text-primary) 14%,var(--color-background-tertiary-default));box-shadow:0 1px 2px #00000040}
 @media(prefers-color-scheme:dark){:root:not([data-theme]) :is(.iconswitch:not(.themeswitch),.insightswitch,.insighttabs,.follow-workspace-switch)>:is(.board-segment-thumb,.skeleton-segment-selected){background:color-mix(in srgb,var(--color-text-primary) 14%,var(--color-background-tertiary-default));box-shadow:0 1px 2px #00000040}}
-/* 排序行里的版式切换跟同一行的排序键、换批键一样高（30px）：轨道 3px 内边距、选项 24px、图标 16px。
-   筛选行与排序行上下留白都是 8px，排序滚动容器不再自己多垫 4px。 */
-.count .sorts .iconswitch[data-board-segments],.entitycollectionhead .sorts .iconswitch[data-board-segments]{padding:3px;border-radius:8px;gap:2px}
-.count .sorts .iconswitch[data-board-segments]>label,.entitycollectionhead .sorts .iconswitch[data-board-segments]>label{height:24px;min-height:24px;width:30px;padding:0;border-radius:5px}
-.count .sorts .iconswitch[data-board-segments] svg,.entitycollectionhead .sorts .iconswitch[data-board-segments] svg{width:16px;height:16px}
-.count .sorts .iconswitch[data-board-segments]>.board-segment-thumb,.entitycollectionhead .sorts .iconswitch[data-board-segments]>.board-segment-thumb{border-radius:5px}
-.count .sorts,.entitycollectionhead .sorts{padding:0 2px}
+/* 浮层上的分段器（版式、大小这类）跟同一排的圆键、药丸和「仅显示图片」那枚开关一样高
+   （30px），滑块就是整枚选项：轨道不留内边距，选项 30px 见方、图标 16px，圆角跟那块滑动
+   玻璃同一个 8px。轨道留 3px 的话滑块比旁边那块玻璃矮一圈、圆角也小一档，同一块料在
+   同一排里出现两种尺寸。筛选行与排序行上下留白都是 8px，排序滚动容器不再自己多垫。 */
+.board-filter-frame.board-filter-frame .iconswitch[data-board-segments],
+.entitytagbar.entitytagbar .iconswitch[data-board-segments],
+.entitycollectionhead.entitycollectionhead .iconswitch[data-board-segments]{padding:0;border-radius:8px;gap:2px}
+.board-filter-frame.board-filter-frame .iconswitch[data-board-segments]>label,
+.entitytagbar.entitytagbar .iconswitch[data-board-segments]>label,
+.entitycollectionhead.entitycollectionhead .iconswitch[data-board-segments]>label{height:30px;min-height:30px;width:30px;padding:0;border-radius:8px}
+.board-filter-frame.board-filter-frame .iconswitch[data-board-segments] svg,
+.entitytagbar.entitytagbar .iconswitch[data-board-segments] svg,
+.entitycollectionhead.entitycollectionhead .iconswitch[data-board-segments] svg{width:16px;height:16px}
+.board-filter-frame.board-filter-frame .iconswitch[data-board-segments]>.board-segment-thumb,
+.entitytagbar.entitytagbar .iconswitch[data-board-segments]>.board-segment-thumb,
+.entitycollectionhead.entitycollectionhead .iconswitch[data-board-segments]>.board-segment-thumb{border-radius:8px}
+/* 这一组是横滚容器，会把里面东西的落影从上下两边裁掉——版式分段器的滑块和「仅显示图片」
+   那块玻璃最远那层影落在 14px 外，贴着容器边就只剩一条平切的底。上下各留出这 14px 再
+   用负外边距收回，排在行里还是 30px 高，影和聚焦环都露得出来。 */
+.count .sorts,.entitycollectionhead .sorts{padding:14px 2px;margin-block:-14px}
 /* 浮层上的滑块。深色那两条按主题给的填充和影写在上面，特指度到 0-5-0，所以这里也得
    数够——`[data-board-segments]` 那一节的几何照旧，换掉的只有材质。 */
 .entitytagbar.entitytagbar.entitytagbar .iconswitch[data-board-segments]>.board-segment-thumb,

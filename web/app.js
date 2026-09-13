@@ -3483,8 +3483,12 @@ const viewPillsHtml=filterState=>VIEW_PILLS.map(v=>
    新值，等它就等于点完先僵一下再跳。 */
 /* 动画层由外框承载，允许回弹与阴影越过内容边沿。横滚只裁剪按钮内容；
    玻璃坐标扣除祖先滚动量，目标完全滚出可视区域时收起。 */
-function viewGlideGeometry(pill){
-  const host=pill.closest('.board-filter-frame');if(!host)return null;
+/* 玻璃默认挂在整块外框上；`within` 可以把它挂近一点。挂在外框上的那几排都靠左端，坐标
+   只跟自己排里的东西有关；靠右端那一组前面是一段会变宽的读数，旁边的分段器又是插进
+   文档之后才由观察器换成 30px 那副几何——量早了一步，钉在外框坐标上的玻璃就跟键错开
+   半个身位。只有一枚键的开关干脆把玻璃挂在键自己身上：坐标恒为零，量不早也量不晚。 */
+function viewGlideGeometry(pill,within='.board-filter-frame'){
+  const host=pill.closest(within);if(!host)return null;
   let x=0,y=0;
   for(let n=pill;n&&n!==host;n=n.offsetParent){x+=n.offsetLeft;y+=n.offsetTop}
   const rect=pill.getBoundingClientRect();
@@ -3519,6 +3523,12 @@ const GLIDE_ROWS={
      四个角先露出来，读起来是玻璃底下还垫着别的东西。 */
   media:{selector:'.entitymediaview,.followmediaview',pressed:'[data-media-view][aria-pressed="true"]',
          className:'viewglide-round'},
+  /* 图片墙上「仅显示图片」那枚开关开着时垫的也是这块玻璃：它跟版式分段器一样答的是
+     「你在哪儿」，料就该是同一块，不另写一份材质。它只有一枚，玻璃只有出现和收起两态。
+     玻璃挂在这枚键自己身上（`host`），不挂外框：键在哪儿玻璃就在哪儿，旁边的分段器晚一步
+     换几何、前面的读数换宽，都动不了它。 */
+  imagesonly:{selector:'.followcount .sorts',host:'.followimagesonly',
+              pressed:'[data-follow-images-only][aria-pressed="true"]'},
 };
 function viewPillsRow(kind){
   for(const row of document.querySelectorAll(GLIDE_ROWS[kind].selector)){
@@ -3547,7 +3557,7 @@ function syncViewGlide(animate,target,kind='views'){
   const active=row&&(target||row.querySelector(GLIDE_ROWS[kind].pressed));
   let glide=viewGlides.get(kind);
   if(!active){if(glide)glide.pane.hidden=true;return}
-  const box=viewGlideGeometry(active);
+  const box=viewGlideGeometry(active,GLIDE_ROWS[kind].host);
   if(!box||!box.w){if(glide)glide.pane.hidden=true;return}
   if(!glide){
     const pane=document.createElement('span');
@@ -6209,6 +6219,9 @@ function renderFollow(){
      一块的话，点一下图片，玻璃会从「未看」那儿飞过来。 */
   const mediaRow=filterRow.querySelector('.followmediaview');
   if(mediaRow)wireViewGlideRow(mediaRow,[...mediaRow.querySelectorAll('[data-media-view]')],'media');
+  /* 「仅显示图片」那块玻璃也在这里落位，不在 wirePhotoControls 里：那一步跑在搭框之前，
+     量不到外框。每次重画都要落一次——换到视频那一档时开关不在了，玻璃得跟着收起来。 */
+  syncViewGlide(false,null,'imagesonly');
   scheduleStickySurfaces();
   paintSelection();
   /* 一律先把新状态写进 URL 再重取：openFollow 现在照 URL 推导，不先写就会被
@@ -6352,15 +6365,20 @@ async function openFollow(push=true,renderForDetail=false){
      行、题材行和那块玻璃此刻就能给出最终样子，它们从来没在等：整块铺骨架的代价是浮层
      连同上面两排一起先消失再出现——换一次排序，屏幕上大半的东西都闪一遍，而真正在等
      的只有列表里摆哪些东西。列表整个换掉而不是往里塞：`.followlist` 自己是网格容器，
-     骨架有自己的算式，套在里面就成了网格里的一个单元格。 */
+     骨架有自己的算式，套在里面就成了网格里的一个单元格。
+     图片墙的骨架为了借真网格的算式，自己的内层也叫 `.followlist`；深链启动先画了它、路由
+     到位再进来一次时，它不算「已经在这一页上」——把它当列表换掉，就是往骨架里再套一张
+     骨架，外层那张的网格把内层整张压成一个单元格。 */
   const list=$('#stats').querySelector('.follow .followlist');
-  const partial=!!list&&!renderForDetail;
+  const partial=!!list&&!list.closest('[data-skeleton]')&&!renderForDetail;
   showManagementBody({manage:false,
     placeholder:partial?'':renderForDetail?detailSkeletonHtml():followSkeletonHtml('正在读取关注内容')});
   if(partial){
     list.outerHTML=pageSkeletonHtml('正在读取关注内容',
       {cards:true,className:'follow-content-skeleton postercard-skeleton'});
     fitSkeleton($('#stats'));
+    // 等数据的这段时间换批键自己画，跟首页同一个忙态；这一排随后整个重画，标记不用手动摘。
+    $('#stats').querySelector('.followcount')?.setAttribute('aria-busy','true');
   }
   const [data,credentials]=await Promise.all([
     surfaceApi(surface,followPageUrl(0)),
@@ -8166,7 +8184,7 @@ function photoLayout(){return allowedSetting(appSettings.photoLayout,['fixed','m
 function photoViewActive(){return [...document.querySelectorAll('.photowall,.followphotowall')]
   .some(wall=>wall.getClientRects().length>0)}
 function photoControlsHtml({follow=false}={}){return iconSwitchHtml('photo-layout','图片布局',PHOTO_LAYOUTS,photoLayout(),
-  {attr:'data-photo-layout',className:'photolayout'})+(follow?`<button type="button" class="batchaction followimagesonly" data-follow-images-only aria-pressed="${!!appSettings.followImagesOnly}" title="仅显示图片" aria-label="仅显示图片">${icon('pics')}</button>`:'')}
+  {attr:'data-photo-layout',className:'photolayout'})+(follow?`<button type="button" class="followimagesonly" data-follow-images-only aria-pressed="${!!appSettings.followImagesOnly}" title="仅显示图片" aria-label="仅显示图片">${icon('captions-off')}</button>`:'')}
 function syncPhotoWalls(){
   document.querySelectorAll('.photowall,.followphotowall').forEach(wall=>{
     wall.dataset.size=photoSize();wall.dataset.layout=wall.closest('.skeletonpanel')?'fixed':photoLayout()});
@@ -8179,9 +8197,11 @@ function syncPhotoWalls(){
 }
 function wirePhotoControls(root){
   const imagesOnly=root?.querySelector('[data-follow-images-only]');
+  /* 不是一排里选一枚，所以不接悬停跟随，只在按下时让玻璃出现或收起。 */
   if(imagesOnly)imagesOnly.onclick=()=>{
     appSettings.followImagesOnly=!appSettings.followImagesOnly;saveSettings();syncPhotoWalls();
-    imagesOnly.setAttribute('aria-pressed',String(appSettings.followImagesOnly))};
+    imagesOnly.setAttribute('aria-pressed',String(appSettings.followImagesOnly));
+    syncViewGlide(false,null,'imagesonly')};
   wireIconSwitch(root,'data-photo-layout',value=>{
     appSettings.photoLayout=allowedSetting(value,['fixed','masonry'],'masonry');saveSettings();syncPhotoWalls()});
 }
@@ -9342,7 +9362,7 @@ window.addEventListener('scroll',()=>{
    会变，玻璃该落在哪一层跟着变，量出来的位置也跟着变。不重落的话它留在旧的那一层上，
    坐标还是按旧的算的，停在离按钮几百像素远的地方。 */
 window.addEventListener('resize',()=>{scheduleStickySurfaces();alignFollowImageControls();
-  syncViewGlide(false)},{passive:true});
+  Object.keys(GLIDE_ROWS).forEach(kind=>syncViewGlide(false,null,kind))},{passive:true});
 
 $('#scrim').onclick=()=>openDrawer(false);
 
