@@ -412,6 +412,25 @@ class FollowContractTests(unittest.TestCase):
         self.assertTrue(item["media_needs_credential"])
         self.assertTrue(all("url" not in media for media in item["media_items"]))
 
+    def test_confirmed_discussion_attachment_projects_a_gofile_placeholder(self):
+        image = "https://attachments.f95zone.to/2026/09/6456143_attachment-3.gif"
+        self._seed(candidates=(FollowCandidate(
+            provider="f95zone", external_id="21521132", title="Collection",
+            url="https://f95zone.to/threads/62305/post-21521132",
+            media_url="https://f95zone.to/masked/gofile.io/62305/resource",
+            thumb_url=image,
+            extra={"attachments": [image], "links": ["https://gofile.io/d/resource"],
+                   "media_items": [{"url": image, "thumb_url": image,
+                                    "media_kind": "image", "resource_provider": "f95zone"}]},
+        ),), provider="f95zone", ref="62305", semantics="release")
+        item = self._get()["groups"][0]["primary"]
+        self.assertIsNone(item["thumb_url"])
+        self.assertEqual(item["media_items"], [])
+        self.assertEqual(item["media_kind"], "external")
+        self.assertEqual(item["resource_provider"], "gofile")
+        self.assertFalse(item["playable"])
+        self.assertEqual(item["resource_urls"], ["https://gofile.io/d/resource"])
+
     def test_saved_f95_session_forces_one_reparse_instead_of_accepting_304(self):
         source_id = self._seed(candidates=(FollowCandidate(
             provider="f95zone", external_id="21435168", title="Image set",
@@ -3188,18 +3207,10 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("const surface=claimSurface(renderForDetail?surfacePath():'/follow')")
         self.assertPageContains("if(!surfaceCurrent(surface))return")
         self.assertPageContains("await openFollow(push,true);await openFollowDetail(params.id,push)")
-        self.assertPageContains("const followList=$('#stats').querySelector('.followlist')")
-        # 就近展开：插在被点击那张卡片所在的一行之后，不是整个列表之前。
-        # 插在列表前等于每次都把视线拽回页面顶部，翻了几屏点开一条尤其明显。
-        self.assertPageContains("last.after($('#stage'))")
-        self.assertPageContains("Math.abs(card.offsetTop-row)<2",
-                                "按行插入，避免把卡片那一行截断")
-        # 列表还没渲染出来时（直达详情链接）仍回退到列表前
-        self.assertPageContains("followList.before($('#stage'))")
-        self.assertPageContains("followList?.classList.contains('followphotowall')")
-        self.assertPageContains(".followlist>.stage{grid-column:1/-1;width:100%;min-width:0}")
-        self.assertPageContains("scrollItemDetailIntoView();",
-                                "滚到舞台本身而不是页面头部")
+        self.assertPageContains("placeItemDetail(detailOriginAnchor,detailOriginAbove);")
+        self.assertPageContains("if(!stage.open)stage.showModal();")
+        self.assertPageLacks("last.after($('#stage'))")
+        self.assertPageContains("if(!$('#stats .followlist')){if(followData)renderFollow();else await openFollow(false)}")
         self.assertPageContains("if(stage.parentElement!==main)main.insertBefore(stage,combo)")
 
     def test_follow_filters_put_all_first_and_sources_are_icon_only(self):
@@ -3777,8 +3788,8 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("followMediaView==='images'?' followphotowall':''")
         self.assertPageContains(".followlist.followphotowall{grid-template-columns:repeat(5,minmax(0,1fr))")
         self.assertPageLacks(".followlist.followphotowall>.stage{column-span:all}")
-        self.assertPageContains("followList?.classList.contains('followphotowall')",
-                                "图片详情必须脱离图片网格，避免改变所有行的排列")
+        self.assertPageContains("placeItemDetail(detailOriginAnchor,detailOriginAbove);",
+                                "图片详情复用独立浮窗，保持图片墙布局")
         self.assertPageContains(".followitem.imagecard .pic{aspect-ratio:4/3;min-height:0")
         self.assertPageContains(".followitem.imagecard .followvisual .pic>img{position:absolute")
         self.assertPageLacks(".followlist.followphotowall{display:block;column-count:5")

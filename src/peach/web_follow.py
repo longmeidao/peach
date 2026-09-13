@@ -32,7 +32,7 @@ from .follow_secrets import (
 from .follow_stream import proxyable
 from .follow_sources import (
     CONNECTORS, KemonoConnector, Rule34VideoConnector, build_connector,
-    canonical_source_ref, display_thumb_url, f95_attachment_media_items,
+    canonical_source_ref, display_thumb_url, f95_attachment_media_items, f95_discussion_image,
     is_history_end_error, parse_source_url, resource_links,
 )
 from .follow_store import (
@@ -597,6 +597,8 @@ def _media_items(item) -> list[dict]:
     for index, media in enumerate(raw):
         if not isinstance(media, dict):
             continue
+        if item.provider == "f95zone" and f95_discussion_image(media.get("url") or media.get("thumb_url")):
+            continue
         kind = str(media.get("media_kind") or "")
         if kind not in {"video", "image"}:
             continue
@@ -623,6 +625,8 @@ def _thumb_url(item) -> str | None:
     /follow-cover 抽首帧并缓存。这两条是 Peach 自己的路由决定，所以留在这一层；
     其余全是「这个站的缩略图 URL 长什么样」，那是站点知识，实现在各连接器里。
     """
+    if item.provider == "f95zone" and f95_discussion_image(item.thumb_url):
+        return next((media["thumb_url"] for media in _media_items(item) if media["thumb_url"]), None)
     if item.provider == "fanbox":
         thumb = display_thumb_url(item)
         media_items = item.metadata.get("media_items") or []
@@ -689,6 +693,17 @@ def _item_payload(item, credential_providers: frozenset[str] = frozenset()) -> d
     media_items = _media_items(item)
     if media_items:
         media_kind = media_items[0]["media_kind"]
+    elif item.provider == "f95zone" and f95_discussion_image(item.thumb_url):
+        media_kind = "external"
+    resource_provider = item.provider
+    try:
+        resource_url = urllib.parse.urlsplit(str(item.media_url or ""))
+    except ValueError:
+        resource_url = urllib.parse.urlsplit("")
+    if (resource_url.hostname in {"gofile.io", "www.gofile.io"}
+            or (resource_url.hostname == "f95zone.to"
+                and resource_url.path.startswith("/masked/gofile.io/"))):
+        resource_provider = "gofile"
     recorded_links = item.metadata.get("links")
     safe_resource_urls = resource_links(
         "\n".join(str(value) for value in recorded_links)
@@ -705,6 +720,7 @@ def _item_payload(item, credential_providers: frozenset[str] = frozenset()) -> d
         "id": item.id,
         "provider": item.provider,
         "provider_label": PROVIDER_LABELS.get(item.provider, item.provider),
+        "resource_provider": resource_provider,
         "source_id": item.source_id,
         "source_label": item.source_label,
         "external_id": item.external_id,

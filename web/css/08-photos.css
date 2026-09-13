@@ -30,6 +30,7 @@
    旧三行 grid 会和动态后载的 Swiper 百分比高度形成循环，超宽视口下主图行收成 0，
    结果就是工具跑到顶部、缩略图贴左、原图按自然尺寸溢出。 */
 .photolight{position:fixed;inset:0;z-index:200;background:#000;display:block;overflow:hidden}
+.photolight:modal{margin:0;padding:0;border:0;max-width:none;max-height:none;width:100vw;height:100dvh;color:#fff}
 body.photolight-open{overflow:hidden}
 /* 主画布始终占满视口，安全内边距为顶部工具、左右翻页和底部缩略图留位；
    单图没有缩略图条，底部空间会自动还给图片。 */

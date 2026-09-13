@@ -1056,6 +1056,14 @@ class F95ZoneConnectorTests(unittest.TestCase):
         self.assertEqual([row.external_id for row in result.candidates], ["21383374"])
         self.assertEqual(result.skipped, 2)
 
+    def test_confirmed_discussion_images_keep_the_file_resource(self):
+        for name in ("6453006_IMG_2124.jpeg", "6456143_attachment-3.gif"):
+            body = F95_HTML.replace(b"6372325_preview.png", name.encode())
+            candidate = F95ZoneConnector(transport=_transport(body=body)).fetch("50685").candidates[1]
+            self.assertEqual(candidate.media_url, "https://pixeldrain.com/u/preview-pack")
+            self.assertIsNone(candidate.thumb_url)
+            self.assertEqual(candidate.extra["media_items"], ())
+
     def test_media_is_flagged_as_needing_a_login_session(self):
         # 发现不需要 cookie，取附件需要。下载动作必须先看这个标志。
         result = F95ZoneConnector(transport=_transport(body=F95_HTML)).fetch("50685")

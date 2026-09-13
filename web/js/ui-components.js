@@ -142,7 +142,7 @@ export function mountFilterFrame(top,bottom,{views,tags,readout,controls}){
   const previous=frame.querySelector('[data-filter-row="bottom"]');
   if(previous!==bottom){
     const active=document.activeElement;
-    const key=previous?.contains(active)?['id','data-sort','data-entity-sort','data-photo-size','aria-label'].map(attr=>[attr,active.getAttribute(attr)]).find(([,value])=>value):null;
+    const key=previous?.contains(active)?['id','data-sort','data-entity-sort','aria-label'].map(attr=>[attr,active.getAttribute(attr)]).find(([,value])=>value):null;
     previous?.remove();frame.append(bottom);
     if(key)[...bottom.querySelectorAll('button,input,[tabindex]')].find(node=>node.getAttribute(key[0])===key[1])?.focus({preventScroll:true});
   }

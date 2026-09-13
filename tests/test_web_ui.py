@@ -6894,7 +6894,7 @@ class WebUiSourceTests(unittest.TestCase):
         Mix 不再发第二个请求。
         """
         self.assertPageContains('<div class="mixfaces" data-mix-faces hidden></div>')
-        self.assertPageContains(".mixface.on{opacity:1;z-index:2;transform:none}")
+        self.assertPageContains(".mixface.on{opacity:1;z-index:2;transform:none;transition:none}")
         self.assertPageContains(".mixface.off{opacity:0;z-index:3;transform:translateY(-11%)")
         self.assertPageContains("function wireMixFlip(el,seedId){")
         self.assertPageContains("wireMixFlip(el,seedId);")
@@ -6987,6 +6987,12 @@ class WebUiSourceTests(unittest.TestCase):
             'data-mix-faces="${esc(JSON.stringify(faceUrls))}" hidden></div>`:\'\'}')
         # 遮住静止封面的底色跟着这张卡自己的底走：图片墙是浅底，视频卡是黑底。
         self.assertPageContains(".followitem.imagecard .mixfaces{background:var(--sunk)}")
+
+    def test_follow_image_only_controls_are_scoped_and_reversible(self):
+        self.assertPageContains('data-follow-images-only aria-pressed="${!!appSettings.followImagesOnly}"')
+        self.assertPageContains('appSettings.followImagesOnly=!appSettings.followImagesOnly;saveSettings();syncPhotoWalls();')
+        self.assertPageContains('.followphotowall[data-images-only="true"] .followitem :is(.meta,.badge,.mixbadge,.fstate){display:none}')
+        self.assertPageLacks('data-photo-size')
 
     def test_mix_and_persistent_playlists_share_the_routed_side_queue(self):
         self.assertPageContains('class="card mixcard" data-mix-seed=')
@@ -7184,37 +7190,23 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("const returnPath=detailReturnPath||'/',restoreSurface=detailReturnNeedsRestore")
         self.assertPageContains("if(restoreSurface)await restoreRoute()")
 
-    def test_direct_detail_restores_the_home_list_and_card_details_open_inline(self):
+    def test_direct_detail_restores_the_home_list_and_uses_shared_dialog(self):
         self.assertPageContains("const needsReturnRestore=detailReturnNeedsRestore||(!push&&!returnSurfaceReady)")
         self.assertPageContains("function placeItemDetail(anchor,above=false)")
-        self.assertPageContains("getComputedStyle(container).display==='grid'")
-        self.assertPageContains("container.insertBefore(stage,above?edge:edge.nextSibling)")
+        self.assertPageContains('id="stage" aria-label="作品详情" hidden></dialog>')
+        self.assertPageContains("if(stage.parentElement!==main)main.insertBefore(stage,combo);")
         self.assertPageContains("anchor.getBoundingClientRect().top+anchor.getBoundingClientRect().height/2>window.innerHeight/2")
         self.assertPageContains(".grid>.stage{grid-column:1/-1;width:100%;min-width:0}")
 
-    def test_inline_detail_stays_below_the_visible_sticky_navigation(self):
-        """详情展开后停在最后一层粘着的东西下面 8px。
-
-        名单要跟着粘的那一层走：`#tagbar` 与 `#count` 被收进 `.board-filter-frame` 之后
-        自己是 `position:relative`，只按这两个名字量就只剩顶栏那 64px，详情停在 144px、
-        浮层底边却在 168px，最上面 24px 连同关闭键一起压在它下面。这两个名字仍留在名单里：
-        `syncFilterFrame()` 判定不是馆藏版式时会把它们放回原位，那时粘着的是它们自己。
-
-        顶栏那一段另有出处：`html` 的 `scroll-padding-top` 已经替它留好，而它和
-        `scroll-margin-top` 是叠加的，再算一遍就把落点压低整整一个顶栏（要 176px，
-        实测落在 248px）。
-        """
-        self.assertPageLacks("body.detail-open .tagbar{position:relative;top:auto;z-index:1}")
-        self.assertPageContains("function itemDetailStickyOffset()")
-        self.assertPageContains("['.top','.board-filter-frame','#tagbar','#count',"
-                                "'.entitytagbar','.entitycollectionhead']")
-        self.assertPageContains("el.compareDocumentPosition(stage)&Node.DOCUMENT_POSITION_FOLLOWING")
-        self.assertPageContains("el.offsetParent===null||css.position!=='sticky'")
-        self.assertPageContains("getComputedStyle(document.documentElement).scrollPaddingTop)||0")
-        self.assertPageContains("stage.style.scrollMarginTop="
-                                "`${Math.max(0,itemDetailStickyOffset()+8-paved)}px`")
-        self.assertIn("html{color-scheme:light;scroll-padding-top:calc(var(--topH) + 8px);",
-                      stylesheet_source())
+    def test_detail_dialog_uses_top_layer_and_preserves_list_position(self):
+        """原生模态浮窗提供顶层、焦点与退出行为，列表不参与详情布局。"""
+        self.assertPageContains("if(!stage.open)stage.showModal();")
+        self.assertPageContains("else{disposeStage(false,false,{miniplayer:false});route(detailReturnPath||'/');restoreRoute()}")
+        self.assertPageContains("if(stage.open)stage.close();")
+        self.assertPageContains("box.showModal();")
+        self.assertPageContains("if(stage.open)stage.append(menu);")
+        self.assertPageContains("max-height:calc(100dvh - 32px)")
+        self.assertPageLacks("stage.scrollIntoView(")
         self.assertCode("buildBars();\n  scrollItemDetailIntoView();")
 
     def test_catalog_skeleton_collects_the_bottom_loading_dots(self):
@@ -8468,7 +8460,7 @@ class WebUiSourceTests(unittest.TestCase):
                         "  return sortControlsHtml({\n"
                         "    shuffleId:'followShuffle',shuffleClass:'',items:FOLLOW_FEED_SORTS,")
         self.assertPageContains('''    extra:`<button type="button" class="followrecheck" data-follow-recheck title="检查更新"''')
-        self.assertPageContains('''aria-label="检查全部来源的更新">${icon('refresh-cw')}</button>`+(followMediaView==='images'?photoControlsHtml():'')});''')
+        self.assertPageContains('''aria-label="检查全部来源的更新">${icon('refresh-cw')}</button>`+(followMediaView==='images'?photoControlsHtml({follow:true}):'')});''')
         # 槽位只剩 extra 一个：排序键一律排在最末，挨着它说明的那批内容。
         self.assertPageContains("export function sortControlsHtml({items=[],renderItem=String,extra='',"
                                 "shuffleId='',shuffleClass='entitybatch'}={}){")
@@ -10376,7 +10368,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('id="javImageSetting"')
         self.assertPageContains("Object.assign(appSettings,normalizeJavPreferences(appSettings));")
         self.assertPageContains("syncJavImages(document,appSettings.javImage);")
-        self.assertPageContains("syncJavImages(box,appSettings.javImage);")
+        self.assertPageContains("syncJavImages(staging,appSettings.javImage);")
         self.assertPageContains("? javArtwork(it,jav?layout:'small',eager)")
 
     def test_jav_cover_source_and_size_are_independent_settings(self):

@@ -1,12 +1,16 @@
-/* ── 放大播放（就地展开） ── */
+/* ── 作品详情浮窗 ── */
 /* 氛围色定义在这里，右侧详情栏、切换队列和「接着看」共用同一档。三块同属
    一格详情，底色差 4% 就会在整幅宽度上留下一条界线，看着像两块面板拼起来；
    分块靠留白和小标题，不靠色差。 */
 .stage{--detail-surface:color-mix(in srgb,var(--video-glow,#15202a) 12%,var(--surface) 88%);
-  margin:0 0 22px;border-radius:var(--floating-radius);
+  position:fixed;inset:16px;margin:auto;padding:0;width:min(1440px,calc(100vw - 32px));
+  max-width:calc(100vw - 32px);max-height:calc(100dvh - 32px);height:fit-content;
+  color:var(--ink);border-radius:var(--floating-radius);overscroll-behavior:contain;
   background:radial-gradient(circle at 28% 24%,color-mix(in srgb,var(--video-glow,#15202a) 40%,transparent),transparent 58%),
     color-mix(in srgb,var(--surface) 88%,transparent);scroll-margin-top:calc(var(--topH) + 8px);
-  border:1px solid var(--line);overflow:hidden}
+  border:1px solid var(--line);overflow:auto}
+.stage::backdrop{background:rgba(0,0,0,.35)}
+body.detail-open{overflow:hidden}
 .stage:not(.ambient-on){background:color-mix(in srgb,var(--surface) 88%,transparent)}
 .stage[hidden]{display:none}
 .grid>.stage{grid-column:1/-1;width:100%;min-width:0}
