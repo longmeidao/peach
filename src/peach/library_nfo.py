@@ -1,4 +1,5 @@
 """Kodi/Jellyfin 影片及单集 NFO 的本地边车适配。"""
+import os
 from pathlib import Path
 import re
 import xml.etree.ElementTree as ET
@@ -7,8 +8,19 @@ from .catalog_rules import release_code_from_text
 from .scan import VIDEO
 
 
-def sidecars(video: Path):
-    files = {path.name.casefold(): path for path in video.parent.iterdir() if path.is_file()}
+def directory_files(directory: Path) -> dict[str, Path]:
+    """目录里的普通文件，按 casefold 文件名索引。
+
+    走 `os.scandir`：Windows 的目录列表自带类型，`is_file()` 不再逐个 stat。网盘挂载上
+    一次 stat 就是一趟往返，几百个文件的文件夹用 `iterdir()` 要付几百趟。
+    """
+    with os.scandir(directory) as entries:
+        return {entry.name.casefold(): Path(entry.path) for entry in entries if entry.is_file()}
+
+
+def sidecars(video: Path, files: dict[str, Path] | None = None):
+    """`video` 旁边的 NFO 与海报候选；`files` 是调用方已列好的同目录索引，省掉再列一遍。"""
+    files = directory_files(video.parent) if files is None else files
     single = sum(path.suffix.lower() in VIDEO for path in files.values()) == 1
     nfo = files.get((video.stem + '.nfo').casefold())
     if nfo is None and single:

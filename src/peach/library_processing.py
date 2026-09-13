@@ -16,7 +16,7 @@ from PIL import Image
 from .catalog_rules import is_korean_mib_code, release_code_from_filename, same_release_code
 from .field_owners import SCAN_FILENAME, write_owned_fields
 from .jav_cover_fetch import DeadlineExceeded
-from .library_nfo import read_nfo, sidecars, local_art
+from .library_nfo import directory_files, read_nfo, sidecars, local_art
 from .genre_decisions import load_genre_decisions
 from .metadata import extract_catalog_evidence, extract_peach_fields, identifies_code, validate_provider_code
 from .platform import root_online, translate_ledger_path
@@ -43,6 +43,15 @@ STALL_AFTER_SECONDS = 120.0
 #: 单项外部动作预算：资料查询覆盖一次请求加一轮重试，封面覆盖证据查询与候选往返。
 #: 到点只结束当前项目并记为可重试，不让一个来源拖住整批任务。
 ACTION_BUDGETS = {'querying_metadata': 90.0, 'fetching_cover': 240.0}
+
+#: 状态文件与候选 CSV 的落盘节流。页面轮询读的是内存里的任务快照，文件只为进程没了
+#: 之后还能看到最后状态；候选 CSV 随处理进度越写越大，每条资产都重写一遍是平方级开销。
+STATE_FLUSH_SECONDS = 0.5
+CANDIDATE_FLUSH_SECONDS = 5.0
+
+#: 采集要补的字段，以及它们在 `asset` 表里的列名（没列出的与字段同名或不在表里）。
+COLLECTED_FIELDS = ('title', 'performers', 'studio', 'release_date', 'tags')
+COLUMN_OF = {'title': 'catalog_title'}
 
 
 class LibraryMetadataProvider:
@@ -159,11 +168,14 @@ def snapshot(config):
     return decorate(state)
 
 
-def _local_poster(video, code, cover_root, payload=None):
+def _local_poster(video, code, cover_root, payload=None, posters=None):
+    """`posters` 是调用方已经从同目录索引里挑出的海报候选，给了就不再列目录。"""
     target = cover_root / (code + '.jpg')
     if target.is_file():
         return False
-    _, posters = sidecars(video)
+    if posters is None:
+        _, posters = sidecars(video)
+    posters = list(posters)
     reference = local_art(video, payload or {})
     if reference:
         posters.insert(0, reference)
@@ -196,6 +208,66 @@ def _fields(payload, genre_decisions=None):
     return fields
 
 
+def _require_writer(config, db_path):
+    if config.replication.enabled:
+        from .sync import writer_device
+        device_path = config.directory('state') / 'device-id'
+        device = device_path.read_text(encoding='utf-8').strip() if device_path.is_file() else ''
+        if not device or writer_device(Path(db_path), config.shared_root / 'database' / 'ledger.db') != device:
+            raise ValueError('这台电脑是只读端，请在写入端扫描和导入资料')
+
+
+def _merge_candidates(groups, row, code, source, document, evidence_path, genre_decisions):
+    """把 `document` 里认得出的字段并进 `groups`：同来源的旧候选换掉，别的来源保留。"""
+    local = source == 'local_nfo'
+    for field, value in _fields(document, genre_decisions).items():
+        key = f"asset:{row['id']}:{field}"
+        identity = hashlib.sha256(json.dumps([source, value['value']], ensure_ascii=False, sort_keys=True).encode()).hexdigest()
+        candidate = dict(candidate_key=identity, source=source, provider='local-nfo' if local else 'r18-json',
+                         value=value['value'], display_value=value.get('display_value', str(value['value'])),
+                         warnings=value.get('warnings', []), confidence=0.9 if local else 0.75,
+                         source_url=document.get('source_url', ''), raw_snapshot=str(evidence_path),
+                         source_kind='local' if local else 'official_mirror', official=False,
+                         catalog_evidence=extract_catalog_evidence(document))
+        # 只有 tags 字段有未收录原文；别的字段挂一个空列表只是让每条候选都胖一圈。
+        if value.get('unmapped_genres'):
+            candidate['unmapped_genres'] = value['unmapped_genres']
+        group = groups.get(key, dict(item_key=key, code=code or '', query=code or row['name'],
+            asset_id=row['id'], asset_path=row['path'], field=field,
+            field_label=LABELS[field], current_value=row.get(COLUMN_OF.get(field, field)) or '',
+            candidates_json='[]', source_count=0, source_profile='library', policy_version='library-v1',
+            status='candidate', size_gb=round((row['size'] or 0)/1024**3, 2), videos=1, fetched_at=''))
+        choices = [entry for entry in json.loads(group['candidates_json']) if entry['source'] != source]
+        choices.append(candidate)
+        group.update(candidates_json=json.dumps(choices, ensure_ascii=False), source_count=len(choices),
+                     fetched_at=time.strftime('%Y-%m-%d %H:%M:%S'))
+        groups[key] = group
+
+
+def _missing_fields(row, target_key, groups, local_fields=()):
+    """这一行还缺、本地资料没给、候选表里也还没有的字段。"""
+    return [field for field in COLLECTED_FIELDS
+            if field not in local_fields and f'{target_key}:{field}' not in groups
+            and not row.get(COLUMN_OF.get(field, field))]
+
+
+class _DirectoryIndex:
+    """同一个文件夹只列一次。账本按 id 排，同目录的片子挨在一起，缓存几个目录就够。"""
+
+    def __init__(self, limit=8):
+        self._limit = limit
+        self._cache: dict[str, dict[str, Path]] = {}
+
+    def files(self, directory: Path) -> dict[str, Path]:
+        key = str(directory)
+        found = self._cache.get(key)
+        if found is None:
+            if len(self._cache) >= self._limit:
+                del self._cache[next(iter(self._cache))]
+            found = self._cache[key] = directory_files(directory)
+        return found
+
+
 def process_library(config, db_path, candidate_root, cover_root, *, location='configured',
                     report=lambda state: None, provider_factory=None, job_id=None,
                     retry_ids=None, active=lambda: True, stage=ALL_STAGES):
@@ -209,14 +281,7 @@ def process_library(config, db_path, candidate_root, cover_root, *, location='co
     文件登记完就能用，不必等采集；采集被网络拖住时要的是后者，重跑不必再扫一遍
     磁盘。缺省两段都跑。
     """
-    def require_writer():
-        if config.replication.enabled:
-            from .sync import writer_device
-            device_path = config.directory('state') / 'device-id'
-            device = device_path.read_text(encoding='utf-8').strip() if device_path.is_file() else ''
-            if not device or writer_device(Path(db_path), config.shared_root / 'database' / 'ledger.db') != device:
-                raise ValueError('这台电脑是只读端，请在写入端扫描和导入资料')
-    require_writer()
+    _require_writer(config, db_path)
     path = state_path(config)
     path.parent.mkdir(parents=True, exist_ok=True)
     retrying = retry_ids is not None
@@ -238,14 +303,22 @@ def process_library(config, db_path, candidate_root, cover_root, *, location='co
         for stale in log_path.parent.glob('library-processing-*.issues.jsonl'):
             stale.unlink(missing_ok=True)
 
+        saved_at = 0.0
+
+        def flush_state(force=False):
+            nonlocal saved_at
+            if force or time.time() - saved_at >= STATE_FLUSH_SECONDS:
+                _save(path, state)
+                saved_at = time.time()
+
         def update(**values):
-            require_writer()
+            _require_writer(config, db_path)
             if not active():
                 raise InterruptedError('处理任务已停止')
             state.update(values)
             state['last_progress_at'] = time.time()
             state['progress_seq'] += 1
-            _save(path, state)
+            flush_state(force='status' in values)
             report(dict(state))
 
         def issue(asset, message, *, action='', retryable=False):
@@ -271,11 +344,12 @@ def process_library(config, db_path, candidate_root, cover_root, *, location='co
             if retryable and asset_id is not None and asset_id not in state['retryable_asset_ids']:
                 state['retryable_asset_ids'].append(asset_id)
             state['last_progress_at'] = time.time()
-            _save(path, state)
+            flush_state()
             report(dict(state))
 
         update()
         provider = None
+        flush_candidates = lambda force=False: None
 
         def reset_provider():
             if provider is not None and hasattr(provider, 'reset'):
@@ -293,7 +367,7 @@ def process_library(config, db_path, candidate_root, cover_root, *, location='co
                     if not root_online(translate_ledger_path(root)):
                         issue(None, f'{source} 来源离线', action='reading_local')
                         continue
-                    online_roots.append(translate_ledger_path(root).resolve())
+                    online_roots.append(translate_ledger_path(root))
                     if not retrying and stage != COLLECT_STAGE:
                         result = scan_location(db_path, source, root, declared_roots=config.locations,
                                                mounts=mounts, report=lambda line: update(stage='扫描文件'))
@@ -315,26 +389,53 @@ def process_library(config, db_path, candidate_root, cover_root, *, location='co
                 parameters = []
             with closing(sqlite3.connect(db_path, timeout=30)) as connection:
                 connection.row_factory = sqlite3.Row
+                # 归属判断只比路径字面：声明根与账本路径同出一个口径，`resolve()` 在网盘
+                # 挂载上是每行一次往返，几万行就是几分钟还没开始干活。
                 rows = [dict(row) for row in connection.execute(query, parameters)
                         if row['location'] in locations
-                        and any(translate_ledger_path(row['path']).resolve().is_relative_to(root) for root in online_roots)]
+                        and any(translate_ledger_path(row['path']).is_relative_to(root) for root in online_roots)]
                 # 用户在复核页收录过的 genre 从这一批起就是已知词，不该再作为未收录回来问一遍。
                 genre_decisions = load_genre_decisions(connection)
             output = candidate_root / 'library-metadata-field-candidates.csv'
             groups = {row['item_key']: row for row in read_rows(output, missing_ok=True)}
+            listing = _DirectoryIndex()
+            csv_dirty = False
+            csv_written_at = time.monotonic()
+
+            def flush_candidates(force=False):
+                nonlocal csv_dirty, csv_written_at
+                if csv_dirty and (force or time.monotonic() - csv_written_at >= CANDIDATE_FLUSH_SECONDS):
+                    write_rows(output, FIELDS, groups.values(), atomic=True)
+                    csv_dirty = False
+                    csv_written_at = time.monotonic()
+
             for index, row in enumerate(rows):
                 guard.check()
                 update(stage='读取本地资料', checked=index, total=len(rows),
                        current_asset_id=row['id'], current_asset_name=Path(str(row['name'] or '')).name,
                        current_action='reading_local', current_started_at=time.time(),
                        current_deadline_at=None)
+                target_key = f"asset:{row['id']}"
+                # 番号早已落库、字段都有着落、封面在位的行没有可采集的东西，连磁盘都不碰。
+                # 重跑「只采集」时这是绝大多数行，每行省下的是网盘上的一次 stat 和一次列目录。
+                if row['code'] and not _missing_fields(row, target_key, groups) and (
+                        is_korean_mib_code(row['code']) or (cover_root / (row['code'] + '.jpg')).is_file()):
+                    update(checked=index + 1, candidates=len(groups),
+                           current_asset_id=None, current_asset_name='', current_action='',
+                           current_started_at=None, current_deadline_at=None)
+                    continue
                 video = translate_ledger_path(row['path'])
-                if not video.is_file():
+                # 文件在不在看目录列表，不单独 stat：一部片一个文件夹的网盘上，那是每行一半的往返。
+                try:
+                    files = listing.files(video.parent)
+                except OSError:
+                    files = {}
+                if video.name.casefold() not in files:
                     issue(row, '媒体文件不可访问', action='reading_local', retryable=True)
                     continue
                 code = row['code'] or release_code_from_filename(row['name'])
                 payload = None
-                nfo, _ = sidecars(video)
+                nfo, posters = sidecars(video, files)
                 if nfo:
                     try:
                         payload, raw = read_nfo(nfo)
@@ -350,7 +451,7 @@ def process_library(config, db_path, candidate_root, cover_root, *, location='co
                     try:
                         state['covers'] += int(_local_poster(
                             video, f"{row['id']}_4",
-                            config.directory('generated') / 'posters'))
+                            config.directory('generated') / 'posters', posters=posters))
                     except (OSError, ValueError):
                         issue(row, '本地封面无法读取', action='reading_local', retryable=True)
                     issue(row, '未识别到番号，请在详情中补充资料', action='reading_local')
@@ -368,7 +469,8 @@ def process_library(config, db_path, candidate_root, cover_root, *, location='co
                     state['identified'] += 1
                 try:
                     poster_root = cover_root if code else config.directory('generated') / 'posters'
-                    state['covers'] += int(_local_poster(video, code or f"{row['id']}_4", poster_root, payload))
+                    state['covers'] += int(_local_poster(video, code or f"{row['id']}_4", poster_root, payload,
+                                                         posters=posters))
                 except (OSError, ValueError):
                     issue(row, '本地封面无法读取', action='reading_local', retryable=True)
                 entries = []
@@ -378,10 +480,7 @@ def process_library(config, db_path, candidate_root, cover_root, *, location='co
                     evidence_path.write_bytes(raw)
                     entries.append(('local_nfo', payload, evidence_path))
                 local_fields = _fields(payload) if payload else {}
-                target_key = f"asset:{row['id']}"
-                missing = [field for field in ('title', 'performers', 'studio', 'release_date', 'tags')
-                           if field not in local_fields and f'{target_key}:{field}' not in groups
-                           and not row.get({'title': 'catalog_title'}.get(field, field))]
+                missing = _missing_fields(row, target_key, groups, local_fields)
                 # 韩国 MIB 的编号不在 JAV 目录站上，资料与封面都不问：番号相同的日本作品
                 # 会原样通过番号核验，取回来的是别的片。
                 jav_catalog = bool(code) and not is_korean_mib_code(code)
@@ -426,32 +525,14 @@ def process_library(config, db_path, candidate_root, cover_root, *, location='co
                 update(stage='保存资料候选', current_action='writing_candidates',
                        current_started_at=time.time(), current_deadline_at=None)
                 for source, document, evidence_path in entries:
-                    for field, value in _fields(document, genre_decisions).items():
-                        key = f'{target_key}:{field}'
-                        identity = hashlib.sha256(json.dumps([source, value['value']], ensure_ascii=False, sort_keys=True).encode()).hexdigest()
-                        candidate = dict(candidate_key=identity, source=source, provider='local-nfo' if source == 'local_nfo' else 'r18-json',
-                                         value=value['value'], display_value=value.get('display_value', str(value['value'])),
-                                         warnings=value.get('warnings', []), confidence=0.9 if source == 'local_nfo' else 0.75,
-                                         source_url=document.get('source_url', ''), raw_snapshot=str(evidence_path),
-                                         source_kind='local' if source == 'local_nfo' else 'official_mirror', official=False,
-                                         catalog_evidence=extract_catalog_evidence(document))
-                        # 只有 tags 字段有未收录原文；别的字段挂一个空列表只是让每条候选都胖一圈。
-                        if value.get('unmapped_genres'):
-                            candidate['unmapped_genres'] = value['unmapped_genres']
-                        group = groups.get(key, dict(item_key=key, code=code or '', query=code or row['name'],
-                            asset_id=row['id'], asset_path=row['path'], field=field,
-                            field_label=LABELS[field], current_value=row.get({'title': 'catalog_title'}.get(field, field)) or '',
-                            candidates_json='[]', source_count=0, source_profile='library', policy_version='library-v1',
-                            status='candidate', size_gb=round((row['size'] or 0)/1024**3, 2), videos=1, fetched_at=''))
-                        choices = [entry for entry in json.loads(group['candidates_json']) if entry['source'] != source]
-                        choices.append(candidate)
-                        group.update(candidates_json=json.dumps(choices, ensure_ascii=False), source_count=len(choices),
-                                     fetched_at=time.strftime('%Y-%m-%d %H:%M:%S'))
-                        groups[key] = group
-                write_rows(output, FIELDS, groups.values(), atomic=True)
+                    _merge_candidates(groups, row, code, source, document, evidence_path, genre_decisions)
+                if entries:
+                    csv_dirty = True
+                flush_candidates()
                 update(checked=index + 1, candidates=len(groups),
                        current_asset_id=None, current_asset_name='', current_action='',
                        current_started_at=None, current_deadline_at=None)
+            flush_candidates(force=True)
             update(status='failed' if state['issue_count'] else 'complete', stage='处理结束',
                    checked=len(rows),
                    error=f"{state['issue_count']} 项需要处理，请查看详情并重试。" if state['issue_count'] else '',
@@ -462,6 +543,8 @@ def process_library(config, db_path, candidate_root, cover_root, *, location='co
             _save(path, state)
             raise
         finally:
+            # 被打断也把已经攒下的候选写全：文件里要么是上一份完整的，要么是这一份完整的。
+            flush_candidates(force=True)
             if provider is not None and hasattr(provider, 'close'):
                 provider.close()
         return state

@@ -1,7 +1,7 @@
 """函数复杂度棘轮：已经很复杂的函数不许再长，新函数不许长到那个程度。
 
 2026-09-13 全仓盘点，`src/peach/` 与 `scripts/` 里分支数达到 30 的函数有 42 个，
-最大的两个（`library_processing.process_library`、`web_batch.q_ads`）分别是 99 与 85。
+最大的两个（`library_processing.process_library`、`web_batch.q_ads`）分别是 91 与 85。
 它们不是一次写成的，是每次「顺手加一个 if」堆出来的；这个门槛拦的就是那一个 if。
 
 计数是纯 AST 分支数：每个 `if`／`elif`／`for`／`while`／`except`／`with`／`assert`、
@@ -25,7 +25,7 @@ LIMIT = 30
 
 #: 键是 `<仓库相对路径>:<限定名>`，值是盘点当天的分支数。
 BASELINE: dict[str, int] = {
-    "src/peach/library_processing.py:process_library": 99,
+    "src/peach/library_processing.py:process_library": 91,
     "src/peach/web_batch.py:q_ads": 85,
     "scripts/scrape_codes.py:_scrape": 77,
     "scripts/localize_performer_names.py:collect": 64,
