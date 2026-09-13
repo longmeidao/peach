@@ -149,6 +149,41 @@ class ScanResult:
                 f"字幕 {self.subtitles:,} 条（孤立 {self.orphan_subtitles:,} 条）")
 
 
+def _walk(top: Path):
+    """自顶向下遍历，每个目录给出它里面的非目录条目（`os.DirEntry`）。
+
+    与 `os.walk` 的差别只在一处：条目的大小与时间从 `DirEntry.stat()` 拿。Windows 的目录
+    列表自带这两项，不必再对每个文件发一次 `os.stat`——网盘挂载上那一次就是一趟往返，
+    几万个文件就是几万趟。读不了的目录跳过；符号链接指向的目录列出但不进入。
+    """
+    stack = [os.fspath(top)]
+    while stack:
+        directory = stack.pop()
+        try:
+            with os.scandir(directory) as scanner:
+                entries = list(scanner)
+        except OSError:
+            continue
+        files = []
+        subdirectories = []
+        for entry in entries:
+            try:
+                is_dir = entry.is_dir()
+            except OSError:
+                is_dir = False
+            if is_dir:
+                try:
+                    if not entry.is_symlink():
+                        subdirectories.append(entry.path)
+                except OSError:
+                    pass
+            else:
+                files.append(entry)
+        # 倒着压栈，弹出来就是字典序，进度行读起来和目录里看到的一致。
+        stack.extend(sorted(subdirectories, reverse=True))
+        yield directory, sorted(files, key=lambda entry: entry.name)
+
+
 def scan_location(
     db_path: str | os.PathLike[str], location: str, root: str, *,
     declared_roots: Mapping[str, str], mounts: Mapping[str, str | Path] | None = None,
@@ -174,12 +209,13 @@ def scan_location(
     connection = sqlite3.connect(db_path)
     try:
         connection.execute("PRAGMA journal_mode=WAL")
-        for directory, _subdirs, names in os.walk(walk_root, onerror=lambda _error: None):
+        for directory, entries in _walk(walk_root):
             relative = Path(directory).relative_to(walk_root).parts
             here: dict[str, tuple[int, str]] = {}
-            for name in names:
+            for entry in entries:
+                name = entry.name
                 try:
-                    stat = os.stat(os.path.join(directory, name))
+                    stat = entry.stat()
                 except OSError:
                     continue
                 ledger_path = str(ledger_root.joinpath(*relative, name))
