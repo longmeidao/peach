@@ -1,7 +1,7 @@
 import { LOC as e, esc as t, fmtDur as n, fmtSize as r, icon as i, requestErrorMessage as a, siteMarkUrl as o } from "/js/core.js";
 import { MEDIA_SOURCE_ICONS as s, attachOverlayScrollbar as c, checkboxHtml as l, collectionSummaryHtml as u, confirmModal as d, emptyStateHtml as f, fieldsetTitle as p, loadingDotsHtml as m, moveGlidePane as h, noteHtml as g, progressHtml as _, projectBannerHtml as v, selectFieldHtml as y, selectOptionIconHtml as b, setActionBusy as x, wireAnchoredMenu as S, wireCollapse as C, wireSelectField as w } from "/js/ui-components.js";
 //#region node_modules/preact/dist/preact.module.js
-var T, E, D, O, k, A, ee, te, j, M, N, P, ne, re, ie, ae = {}, oe = [], se = /acit|ex(?:s|g|n|p|$)|rph|grid|ows|mnc|ntw|ine[ch]|zoo|^ord|itera/i, ce = Array.isArray;
+var T, E, D, O, k, A, j, ee, M, te, N, ne, P, re, ie, ae = {}, oe = [], se = /acit|ex(?:s|g|n|p|$)|rph|grid|ows|mnc|ntw|ine[ch]|zoo|^ord|itera/i, ce = Array.isArray;
 function F(e, t) {
 	for (var n in t) e[n] = t[n];
 	return e;
@@ -56,11 +56,11 @@ function he(e) {
 	}), he(e);
 }
 function ge(e) {
-	(!e.__d && (e.__d = !0) && k.push(e) && !_e.__r++ || A != E.debounceRendering) && ((A = E.debounceRendering) || ee)(_e);
+	(!e.__d && (e.__d = !0) && k.push(e) && !_e.__r++ || A != E.debounceRendering) && ((A = E.debounceRendering) || j)(_e);
 }
 function _e() {
 	try {
-		for (var e, t = 1; k.length;) k.length > t && k.sort(te), e = k.shift(), t = k.length, me(e);
+		for (var e, t = 1; k.length;) k.length > t && k.sort(ee), e = k.shift(), t = k.length, me(e);
 	} finally {
 		k.length = _e.__r = 0;
 	}
@@ -107,7 +107,7 @@ function Ce(e, t, n, r, i) {
 			if (typeof r == "string" && (e.style.cssText = r = ""), r) for (t in r) n && t in n || Se(e.style, t, "");
 			if (n) for (t in n) r && n[t] == r[t] || Se(e.style, t, n[t]);
 		}
-	} else if (t[0] == "o" && t[1] == "n") a = t != (t = t.replace(P, "$1")), o = t.toLowerCase(), t = o in e || t == "onFocusOut" || t == "onFocusIn" ? o.slice(2) : t.slice(2), e.l ||= {}, e.l[t + a] = n, n ? r ? n[N] = r[N] : (n[N] = ne, e.addEventListener(t, a ? ie : re, a)) : e.removeEventListener(t, a ? ie : re, a);
+	} else if (t[0] == "o" && t[1] == "n") a = t != (t = t.replace(ne, "$1")), o = t.toLowerCase(), t = o in e || t == "onFocusOut" || t == "onFocusIn" ? o.slice(2) : t.slice(2), e.l ||= {}, e.l[t + a] = n, n ? r ? n[N] = r[N] : (n[N] = P, e.addEventListener(t, a ? ie : re, a)) : e.removeEventListener(t, a ? ie : re, a);
 	else {
 		if (i == "http://www.w3.org/2000/svg") t = t.replace(/xlink(H|:h)/, "h").replace(/sName$/, "s");
 		else if (t != "width" && t != "height" && t != "href" && t != "list" && t != "form" && t != "tabIndex" && t != "download" && t != "rowSpan" && t != "colSpan" && t != "role" && t != "popover" && t in e) try {
@@ -121,8 +121,8 @@ function we(e) {
 	return function(t) {
 		if (this.l) {
 			var n = this.l[t.type + e];
-			if (t[M] == null) t[M] = ne++;
-			else if (t[M] < n[N]) return;
+			if (t[te] == null) t[te] = P++;
+			else if (t[te] < n[N]) return;
 			return n(E.event ? E.event(t) : t);
 		}
 	};
@@ -248,9 +248,9 @@ T = oe.slice, E = { __e: function(e, t, n, r) {
 	typeof e == "function" && (e = e(F({}, n), this.props)), e && F(n, e), e != null && this.__v && (t && this._sb.push(t), ge(this));
 }, fe.prototype.forceUpdate = function(e) {
 	this.__v && (this.__e = !0, e && this.__h.push(e), ge(this));
-}, fe.prototype.render = I, k = [], ee = typeof Promise == "function" ? Promise.prototype.then.bind(Promise.resolve()) : setTimeout, te = function(e, t) {
+}, fe.prototype.render = I, k = [], j = typeof Promise == "function" ? Promise.prototype.then.bind(Promise.resolve()) : setTimeout, ee = function(e, t) {
 	return e.__v.__b - t.__v.__b;
-}, _e.__r = 0, j = Math.random().toString(8), M = "__d" + j, N = "__a" + j, P = /(PointerCapture)$|Capture$/i, ne = 0, re = we(!1), ie = we(!0);
+}, _e.__r = 0, M = Math.random().toString(8), te = "__d" + M, N = "__a" + M, ne = /(PointerCapture)$|Capture$/i, P = 0, re = we(!1), ie = we(!0);
 //#endregion
 //#region src/sort-preferences.ts
 function Pe(e, t, n) {
@@ -753,8 +753,12 @@ function xt(e) {
 	return e.current_asset_name ? `当前：${e.current_asset_name} · ${t}${n}` : t + n;
 }
 function St({ data: e, error: t, toast: n, onComplete: r, mode: i, monitor: a, preview: o }) {
-	let [s, c] = B(e || { status: "idle" }), [l, u] = B(t), [d, f] = B(!1), [m, h] = B(!1), _ = U(new AbortController()), y = U(0), b = U(s.status), x = d || s.status === "running";
-	async function S() {
+	let [s, c] = B(e || { status: "idle" }), [l, u] = B(t), [d, f] = B(!1), [m, h] = B(!1), _ = U(new AbortController()), y = U(0), b = U(s.status), x = U(null);
+	V(() => {
+		x.current && C(x.current, ".geist-note-details", "library-issues");
+	}, [s, l]);
+	let S = d || s.status === "running";
+	async function w() {
 		let e = ++y.current;
 		await mt({
 			read: (e) => G("/api/library-processing", e),
@@ -766,21 +770,21 @@ function St({ data: e, error: t, toast: n, onComplete: r, mode: i, monitor: a, p
 			disconnected: () => u("连接中断，正在重新读取处理进度")
 		});
 	}
-	V(() => (!o && (s.status === "running" || i === "notice" || a) && S(), () => _.current.abort()), []);
-	async function C(e) {
-		if (!(x || o)) {
+	V(() => (!o && (s.status === "running" || i === "notice" || a) && w(), () => _.current.abort()), []);
+	async function T(e) {
+		if (!(S || o)) {
 			f(!0), u(""), h(!1);
 			try {
 				let t = await K("/api/library-processing", e, "POST", _.current.signal);
 				if (_.current.signal.aborted) return;
-				b.current = t.status, c(t), f(!1), await S();
+				b.current = t.status, c(t), f(!1), await w();
 			} catch (e) {
 				_.current.signal.aborted || (u(W(e)), f(!1));
 			}
 		}
 	}
-	let w = () => void C({}), T = () => {
-		!s.job_id || !s.retryable_asset_ids?.length || C({
+	let E = () => void T({}), D = () => {
+		!s.job_id || !s.retryable_asset_ids?.length || T({
 			job_id: s.job_id,
 			retry: s.retryable_asset_ids
 		});
@@ -796,9 +800,9 @@ function St({ data: e, error: t, toast: n, onComplete: r, mode: i, monitor: a, p
 			...s.status === "running" && s.total !== void 0 ? { max: s.total } : {}
 		}) } });
 	}
-	let E = s.issue_preview || [], D = s.status === "failed" && !!s.retryable_asset_ids?.length, O = s.status === "failed" && E.length ? {
-		label: s.issues_truncated ? `问题清单：共 ${s.issue_count || 0} 项，展开查看前 ${E.length} 项` : `问题清单：共 ${s.issue_count || 0} 项`,
-		items: E.map((e) => ({
+	let O = s.issue_preview || [], k = s.status === "failed" && !!s.retryable_asset_ids?.length, A = O.length ? {
+		label: s.issues_truncated ? `${s.status === "complete" ? "采集记录" : "问题清单"}：共 ${s.issue_count || 0} 项，展开查看前 ${O.length} 项` : `${s.status === "complete" ? "采集记录" : "问题清单"}：共 ${s.issue_count || 0} 项`,
+		items: O.map((e) => ({
 			label: e.title || (e.asset_id ? `视频 ${e.asset_id}` : "媒体来源"),
 			href: e.asset_id ? `/item/${e.asset_id}` : "",
 			note: e.message,
@@ -832,25 +836,25 @@ function St({ data: e, error: t, toast: n, onComplete: r, mode: i, monitor: a, p
 					href: "/review",
 					children: "复核资料"
 				}),
-				(s.status !== "failed" || !D) && /* @__PURE__ */ q(vt, {
+				(s.status !== "failed" || !k) && /* @__PURE__ */ q(vt, {
 					id: "libraryProcessingMenu",
 					label: "更多扫描与采集方式",
-					busy: x,
+					busy: S,
 					actions: [
 						{
 							label: "扫描并补全资料",
 							icon: "database",
-							run: w
+							run: E
 						},
 						{
 							label: "只扫描",
 							icon: "hard-drive",
-							run: () => void C({ stage: "scan" })
+							run: () => void T({ stage: "scan" })
 						},
 						{
 							label: "只采集",
 							icon: "globe",
-							run: () => void C({ stage: "collect" })
+							run: () => void T({ stage: "collect" })
 						}
 					]
 				})
@@ -859,6 +863,7 @@ function St({ data: e, error: t, toast: n, onComplete: r, mode: i, monitor: a, p
 	}), /* @__PURE__ */ q("div", {
 		class: "library-processing-outcome",
 		"aria-live": "polite",
+		ref: x,
 		children: [
 			s.status === "running" && s.stalled && /* @__PURE__ */ q("div", {
 				class: "library-processing-stalled",
@@ -871,13 +876,13 @@ function St({ data: e, error: t, toast: n, onComplete: r, mode: i, monitor: a, p
 			(l || s.status === "failed") && /* @__PURE__ */ q("div", {
 				role: "alert",
 				onClick: (e) => {
-					e.target.closest("[data-note-action]") && T();
+					e.target.closest("[data-note-action]") && D();
 				},
 				dangerouslySetInnerHTML: { __html: g(l || s.error || "处理未完成，请重试", {
 					variant: "error",
 					filled: !0,
-					actionLabel: D ? "重试未完成项" : "",
-					details: O
+					actionLabel: k ? "重试未完成项" : "",
+					details: A
 				}) }
 			}),
 			m && /* @__PURE__ */ q("div", {
@@ -886,7 +891,11 @@ function St({ data: e, error: t, toast: n, onComplete: r, mode: i, monitor: a, p
 					variant: "success",
 					label: "处理完成"
 				}) }
-			})
+			}),
+			s.status === "complete" && A && /* @__PURE__ */ q("div", { dangerouslySetInnerHTML: { __html: g(`${s.issue_count || 0} 项采集记录`, {
+				variant: "secondary",
+				details: A
+			}) } })
 		]
 	})] });
 }
@@ -2919,21 +2928,21 @@ function sr({ data: e, receipt: t }) {
 		"local",
 		"115",
 		"pikpak"
-	].includes(e.location)), [r, i] = B(n?.length ? n.map((e) => e.path) : e.media_dirs.length ? e.media_dirs : [""]), [a, o] = B(n?.map((e) => e.location) ?? []), [s, c] = B(n?.map((e) => e.root) ?? []), [l, u] = B(n?.map((e) => e.library || "") ?? []), [d, f] = B(n?.map((e) => e.library_icon || "") ?? []), [m, h] = B(String(e.port)), [_, v] = B(!1), [y, b] = B([]), [S, C] = B(""), [w, T] = B(""), [E, D] = B(null), [O, k] = B(null), A = U(!1), ee = U(e.revision), te = U([]), j = U(null);
+	].includes(e.location)), [r, i] = B(n?.length ? n.map((e) => e.path) : e.media_dirs.length ? e.media_dirs : [""]), [a, o] = B(n?.map((e) => e.location) ?? []), [s, c] = B(n?.map((e) => e.root) ?? []), [l, u] = B(n?.map((e) => e.library || "") ?? []), [d, f] = B(n?.map((e) => e.library_icon || "") ?? []), [m, h] = B(String(e.port)), [_, v] = B(!1), [y, b] = B([]), [S, C] = B(""), [w, T] = B(""), [E, D] = B(null), [O, k] = B(null), A = U(!1), j = U(e.revision), ee = U([]), M = U(null);
 	H(() => {
-		O !== null && (te.current[O]?.focus(), k(null));
+		O !== null && (ee.current[O]?.focus(), k(null));
 	}, [O]), V(() => {
 		if (!E) return;
 		let e = setTimeout(() => location.assign(E.url), er);
 		return () => clearTimeout(e);
 	}, [E]);
-	let M = (e, t) => {
+	let te = (e, t) => {
 		i((n) => n.map((n, r) => r === e ? t : n));
 	}, N = () => {
 		k(r.length), i((e) => [...e, ""]);
-	}, P = (e) => {
+	}, ne = (e) => {
 		o((t) => t.filter((t, n) => n !== e)), c((t) => t.filter((t, n) => n !== e)), u((t) => t.filter((t, n) => n !== e)), f((t) => t.filter((t, n) => n !== e)), i((t) => t.filter((t, n) => n !== e)), b((t) => t.filter((t, n) => n !== e));
-	}, ne = (e, t) => {
+	}, P = (e, t) => {
 		b((n) => {
 			let r = [...n];
 			for (; r.length <= e;) r.push("");
@@ -2944,9 +2953,9 @@ function sr({ data: e, receipt: t }) {
 			x(t, !0);
 			try {
 				let { path: t } = await K($n, { initial: r[e] ?? "" });
-				t && (M(e, t), ne(e, ""));
+				t && (te(e, t), P(e, ""));
 			} catch (t) {
-				ne(e, W(t));
+				P(e, W(t));
 			} finally {
 				x(t, !1);
 			}
@@ -2977,10 +2986,10 @@ function sr({ data: e, receipt: t }) {
 		"aria-labelledby": "configTitle",
 		onSubmit: async (n) => {
 			if (n.preventDefault(), !A.current) {
-				A.current = !0, x(j.current, !0), T("");
+				A.current = !0, x(M.current, !0), T("");
 				try {
 					let n = await K(Qn, {
-						revision: ee.current,
+						revision: j.current,
 						media_dirs: r,
 						...e.media_sources ? { media_sources: r.map((e, t) => ({
 							path: e,
@@ -2992,12 +3001,12 @@ function sr({ data: e, receipt: t }) {
 						port: m,
 						scan_now: _
 					});
-					ee.current = n.revision, b([]), C(""), t("已保存配置"), D(n);
+					j.current = n.revision, b([]), C(""), t("已保存配置"), D(n);
 				} catch (e) {
 					let t = rr(e);
 					t ? (b(t.media_dirs ?? []), C(t.port ?? "")) : (b([]), C(""), T(W(e)));
 				} finally {
-					A.current = !1, x(j.current, !1);
+					A.current = !1, x(M.current, !1);
 				}
 			}
 		},
@@ -3031,9 +3040,9 @@ function sr({ data: e, receipt: t }) {
 										value: t,
 										"aria-label": `媒体文件夹 ${n + 1}`,
 										"aria-invalid": y[n] ? "true" : void 0,
-										onInput: (e) => M(n, e.currentTarget.value),
+										onInput: (e) => te(n, e.currentTarget.value),
 										ref: (e) => {
-											te.current[n] = e;
+											ee.current[n] = e;
 										}
 									}),
 									/* @__PURE__ */ q("button", {
@@ -3051,7 +3060,7 @@ function sr({ data: e, receipt: t }) {
 										type: "button",
 										class: "geist-button configrm danger",
 										"aria-label": "移除这个文件夹",
-										onClick: () => P(n),
+										onClick: () => ne(n),
 										children: /* @__PURE__ */ q("svg", {
 											viewBox: "0 0 24 24",
 											"aria-hidden": "true",
@@ -3207,7 +3216,7 @@ function sr({ data: e, receipt: t }) {
 			children: [/* @__PURE__ */ q("p", { children: e.port_editable === !1 ? "保存后 Peach 会重新载入配置。" : "保存后 Peach 会重新启动，端口改了就用新地址打开。" }), /* @__PURE__ */ q("button", {
 				type: "submit",
 				class: "geist-button primary",
-				ref: j,
+				ref: M,
 				children: "保存配置"
 			})]
 		})]
@@ -4434,94 +4443,95 @@ function Fi(e) {
 function Ii(e, t) {
 	let n = e.querySelector(".reviewlist");
 	if (!n || !t.rows.length || t.locked) return;
-	let r = t.state, i = [...n.querySelectorAll("[data-review-key]")];
+	let r = t.state, a = [...n.querySelectorAll("[data-review-key]")];
 	t.category !== void 0 && r.category !== t.category && (r.category = t.category, r.filter = "", r.groupBy = "candidates", r.anchor = null);
-	let a = t.catalog || t.rows, o = ji(a, t.metadata);
-	o.some((e) => e[0] === r.groupBy) || (r.groupBy = "candidates", r.filter = "");
-	let s = Mi(a, r.groupBy);
-	s.some((e) => e.key === r.filter) || (r.filter = "");
-	let c = () => [...n.querySelectorAll("[data-review-key]")].filter((e) => !e.closest("[hidden]")), u = () => c().filter((e) => r.selected.has(e.dataset.reviewKey)), d = () => t.rows.filter((e) => u().some((t) => t.dataset.reviewKey === e.item_key)), f = (e) => !e.querySelector("[data-review-status=\"approved\"]")?.disabled, p = (e, t = "") => {
+	let o = t.catalog || t.rows, s = ji(o, t.metadata);
+	s.some((e) => e[0] === r.groupBy) || (r.groupBy = "candidates", r.filter = "");
+	let c = Mi(o, r.groupBy);
+	c.some((e) => e.key === r.filter) || (r.filter = "");
+	let u = () => [...n.querySelectorAll("[data-review-key]")].filter((e) => !e.closest("[hidden]")), d = () => u().filter((e) => r.selected.has(e.dataset.reviewKey)), f = () => t.rows.filter((e) => d().some((t) => t.dataset.reviewKey === e.item_key)), p = (e) => !e.querySelector("[data-review-status=\"approved\"]")?.disabled, m = (e, t = "") => {
 		let n = document.createElement("button");
 		return n.type = "button", n.className = `geist-button ${t}`.trim(), n.textContent = e, n;
-	}, m = document.createElement("div");
-	m.className = "reviewbulkbar reviewbulktoolbar", m.setAttribute("role", "group"), m.setAttribute("aria-label", "复核批量操作");
-	let h = document.createElement("div");
-	h.className = "reviewgroupby", h.innerHTML = y(o, r.groupBy, { label: "筛选分组方式" });
-	let g = w(h.firstElementChild);
-	h.querySelectorAll("[data-select-option] .gselectmark").forEach((e) => e.remove()), g.addEventListener("change", () => {
-		if (r.busy || !o.some((e) => e[0] === g.value)) return;
-		r.groupBy = g.value, r.filter = "", r.anchor = null;
+	}, h = document.createElement("div");
+	h.className = "reviewbulkbar reviewbulktoolbar", h.setAttribute("role", "group"), h.setAttribute("aria-label", "复核批量操作");
+	let g = document.createElement("div");
+	g.className = "reviewgroupby", g.innerHTML = y(s, r.groupBy, { label: "筛选分组方式" });
+	let _ = w(g.firstElementChild);
+	g.querySelectorAll("[data-select-option] .gselectmark").forEach((e) => e.remove()), _.addEventListener("change", () => {
+		if (r.busy || !s.some((e) => e[0] === _.value)) return;
+		r.groupBy = _.value, r.filter = "", r.anchor = null;
 		let n = e.parentElement;
 		t.refresh(), n?.querySelector(".reviewgroupby button")?.focus({ preventScroll: !0 });
 	});
-	let _ = document.createElement("div");
-	_.className = "reviewcategoryfilter", _.hidden = s.length < 2, _.innerHTML = y([[
+	let v = document.createElement("div");
+	v.className = "reviewcategoryfilter", v.hidden = c.length < 2, v.innerHTML = y([[
 		"",
 		"全部分类",
 		"list-filter"
-	], ...s.map((e) => [
+	], ...c.map((e) => [
 		e.key,
 		`${e.title} · ${e.rows.length}`,
 		"list-filter"
 	])], r.filter, { label: r.groupBy === "field" ? "筛选字段分类" : "筛选当前分类" });
-	let v = _.querySelector("[data-select-menu]");
-	if (v) {
+	let b = v.querySelector("[data-select-menu]");
+	if (b) {
 		let e = document.createElement("div");
 		e.setAttribute("role", "group"), e.setAttribute("aria-label", r.groupBy === "field" ? "字段分类" : "当前分类");
 		let t = document.createElement("div");
-		t.className = "reviewfilterheading", t.textContent = e.getAttribute("aria-label"), t.setAttribute("aria-hidden", "true"), e.append(t, ...Array.from(v.children).slice(1)), v.append(e);
+		t.className = "reviewfilterheading", t.textContent = e.getAttribute("aria-label"), t.setAttribute("aria-hidden", "true"), e.append(t, ...Array.from(b.children).slice(1)), b.append(e);
 	}
-	let b = w(_.firstElementChild);
-	_.querySelectorAll("[data-select-option] .gselectmark").forEach((e) => e.remove()), b.addEventListener("change", () => {
-		if (r.busy || b.value && !s.some((e) => e.key === b.value)) return;
-		r.filter = b.value, r.anchor = null;
+	let S = w(v.firstElementChild);
+	v.querySelectorAll("[data-select-option] .gselectmark").forEach((e) => e.remove()), S.addEventListener("change", () => {
+		if (r.busy || S.value && !c.some((e) => e.key === S.value)) return;
+		r.filter = S.value, r.anchor = null;
 		let n = e.parentElement;
 		t.refresh(), n?.querySelector(".reviewcategoryfilter button")?.focus({ preventScroll: !0 });
 	});
-	let S = p("全选本页"), C = p("通过所选", "primary"), T = p("拒绝所选", "error"), E = document.createElement("span");
-	E.className = "reviewselectedcount selectiondockcount", E.setAttribute("role", "status");
-	let D = document.createElement("div");
-	D.className = "reviewbulksource", D.hidden = !t.metadata;
-	let O = document.createElement("p");
-	O.className = "reviewstate reviewbulkfeedback", O.setAttribute("role", "status");
-	let k = document.createElement("div");
-	k.className = "reviewbulkdecisions", k.append(C, T);
+	let C = m("全选本页"), T = m("通过所选", "primary"), E = m("拒绝所选", "error"), D = document.createElement("span");
+	D.className = "reviewselectedcount selectiondockcount", D.setAttribute("role", "status");
+	let O = document.createElement("div");
+	O.className = "reviewbulksource", O.hidden = !t.metadata;
+	let k = document.createElement("p");
+	k.className = "reviewstate reviewbulkfeedback", k.setAttribute("role", "status");
 	let A = document.createElement("div");
-	A.className = "selectiondock reviewdock", A.setAttribute("role", "group"), A.setAttribute("aria-label", "复核所选项目");
-	let ee = p("取消选择");
-	A.append(E, D, k, ee, O), m.append(h, _, S);
-	let te = e.querySelector(".reviewcontrols");
-	te ? te.after(m) : n.before(m), e.append(A), n.classList.add("reviewgroups");
-	let j = () => {
+	A.className = "reviewbulkdecisions", A.append(T, E);
+	let j = document.createElement("div");
+	j.className = "selectiondock reviewdock", j.setAttribute("role", "group"), j.setAttribute("aria-label", "复核所选项目");
+	let ee = m("取消选择");
+	j.append(D, O, A, ee, k), h.append(g, v, C);
+	let M = e.querySelector(".reviewcontrols");
+	M ? M.after(h) : n.before(h), e.append(j), n.classList.add("reviewgroups");
+	let te = () => {
 		r.selected.clear(), r.anchor = null, P();
 	};
 	ee.onclick = () => {
-		r.busy || (j(), S.focus({ preventScroll: !0 }));
-	}, S.onclick = () => {
+		r.busy || (te(), C.focus({ preventScroll: !0 }));
+	}, C.onclick = () => {
 		if (r.busy) return;
-		let e = c(), t = u().length === e.length;
+		let e = u(), t = d().length === e.length;
 		e.forEach((e) => t ? r.selected.delete(e.dataset.reviewKey) : r.selected.add(e.dataset.reviewKey)), P();
-	}, C.onclick = () => ne("approved", C), T.onclick = () => ne("rejected", T);
-	let M = [];
-	for (let e of s) {
-		let t = e.rows.map((e) => i.find((t) => t.dataset.reviewKey === e.item_key)).filter((e) => !!e);
+	}, T.onclick = () => re("approved", T), E.onclick = () => re("rejected", E);
+	let N = [];
+	for (let e of c) {
+		let t = e.rows.map((e) => a.find((t) => t.dataset.reviewKey === e.item_key)).filter((e) => !!e);
 		if (!t.length) continue;
-		let a = document.createElement("section");
-		a.className = "reviewgroup", a.hidden = !!r.filter && e.key !== r.filter;
-		let o = document.createElement("div");
-		o.className = "reviewbulkbar reviewgroupbar";
-		let s = document.createElement("h3");
-		s.textContent = `${e.title} · ${t.length}`;
-		let u = p("全选本组"), d = document.createElement("div");
-		d.className = "reviewlist", o.append(s, u), a.append(o, d), n.append(a), u.onclick = () => {
+		let o = document.createElement("section");
+		o.className = "reviewgroup", o.hidden = !!r.filter && e.key !== r.filter;
+		let s = document.createElement("div");
+		s.className = "reviewbulkbar reviewgroupbar";
+		let c = document.createElement("h3");
+		c.textContent = `${e.title} · ${t.length}`;
+		let d = m("全选本组"), f = document.createElement("div");
+		f.className = "reviewlist", s.append(c, d), o.append(s, f), n.append(o), d.onclick = () => {
 			if (r.busy) return;
 			let e = t.map((e) => e.dataset.reviewKey);
 			Di(r.selected, e, !e.every((e) => r.selected.has(e))), P();
-		}, M.push(() => {
-			u.textContent = t.every((e) => r.selected.has(e.dataset.reviewKey)) ? "清空本组" : "全选本组";
+		}, N.push(() => {
+			let e = t.every((e) => r.selected.has(e.dataset.reviewKey));
+			d.innerHTML = i(e ? "check-check-outline" : "check-check") + (e ? "清空本组" : "全选本组"), d.setAttribute("aria-pressed", String(e));
 		});
 		for (let e of t) {
-			d.append(e);
+			f.append(e);
 			let t = e.dataset.reviewKey;
 			r.errors.has(t) && (e.querySelector(".reviewstate").textContent = r.errors.get(t));
 			let n = e.querySelector("h4,.reviewentity b") || e, i = document.createElement("label");
@@ -4532,7 +4542,7 @@ function Ii(e, t) {
 				e.className = "reviewpickname", e.append(...n.childNodes), n.classList.add("reviewpickheading"), n.append(i, e);
 			} else e.prepend(i);
 			let o = (e, n) => {
-				Ni(r, c().map((e) => e.dataset.reviewKey), t, e, n), P();
+				Ni(r, u().map((e) => e.dataset.reviewKey), t, e, n), P();
 			};
 			if (i.addEventListener("mousedown", (e) => {
 				e.shiftKey && e.preventDefault();
@@ -4545,11 +4555,11 @@ function Ii(e, t) {
 					if (n.key === " ") n.preventDefault(), o(!0, !0);
 					else if (n.key === "ArrowDown" || n.key === "ArrowUp") {
 						n.preventDefault();
-						let i = c(), a = i[i.indexOf(e) + (n.key === "ArrowDown" ? 1 : -1)];
+						let i = u(), a = i[i.indexOf(e) + (n.key === "ArrowDown" ? 1 : -1)];
 						a && (r.anchor === null && (r.anchor = t), Ni(r, i.map((e) => e.dataset.reviewKey), a.dataset.reviewKey, !0, !0), P(), a.querySelector(".reviewpickitem input")?.focus());
 					}
 				}
-			}), M.push(() => {
+			}), N.push(() => {
 				a.checked = r.selected.has(t);
 			}), r.assets.has(t)) {
 				let n = r.assets.get(t), i = [...e.querySelectorAll("[data-review-asset]")];
@@ -4569,40 +4579,40 @@ function Ii(e, t) {
 		}
 	}
 	e.addEventListener("keydown", (t) => {
-		r.busy || !e.contains(n) || (t.key === "Escape" && r.selected.size && (t.preventDefault(), t.stopPropagation(), j()), (t.ctrlKey || t.metaKey) && t.key.toLowerCase() === "a" && !t.target.matches("textarea,input:not([type=\"checkbox\"]):not([type=\"radio\"])") && (t.preventDefault(), t.stopPropagation(), c().forEach((e) => r.selected.add(e.dataset.reviewKey)), P()));
+		r.busy || !e.contains(n) || (t.key === "Escape" && r.selected.size && (t.preventDefault(), t.stopPropagation(), te()), (t.ctrlKey || t.metaKey) && t.key.toLowerCase() === "a" && !t.target.matches("textarea,input:not([type=\"checkbox\"]):not([type=\"radio\"])") && (t.preventDefault(), t.stopPropagation(), u().forEach((e) => r.selected.add(e.dataset.reviewKey)), P()));
 	});
-	let N = "";
+	let ne = "";
 	function P() {
-		let e = u();
-		S.textContent = e.length === c().length ? "清空当前选择" : r.filter ? "全选当前分类" : "全选本页", A.hidden = !e.length, Oi({
-			count: E,
+		let e = d(), n = e.length > 0 && e.length === u().length;
+		C.innerHTML = i(n ? "check-check-outline" : "check-check") + (n ? "清空当前选择" : r.filter ? "全选当前分类" : "全选本页"), C.setAttribute("aria-pressed", String(n)), j.hidden = !e.length, Oi({
+			count: D,
 			label: `已选 ${e.length} 项`,
-			summary: Ei(r.selected, c().map((e) => e.dataset.reviewKey)),
-			actions: [C, T]
-		}), C.disabled ||= e.some((e) => !f(e));
-		let n = Fi(d());
-		D.hidden = !t.metadata || !d().some((e) => (e.candidates?.length || 0) > 1);
-		let i = e.length && !n.length ? "所选项目无共同来源" : "统一选择来源", a = JSON.stringify([i, n]);
-		if (a !== N) {
-			N = a, D.innerHTML = y([["", i], ...n.map((e) => [e, e])], "", { label: "统一选择来源" });
-			let e = w(D.firstElementChild);
-			e.disabled = !n.length, e.addEventListener("change", () => {
-				if (!(r.busy || !Fi(d()).includes(e.value))) {
-					for (let n of u()) {
+			summary: Ei(r.selected, u().map((e) => e.dataset.reviewKey)),
+			actions: [T, E]
+		}), T.disabled ||= e.some((e) => !p(e));
+		let a = Fi(f());
+		O.hidden = !t.metadata || !f().some((e) => (e.candidates?.length || 0) > 1);
+		let o = e.length && !a.length ? "所选项目无共同来源" : "统一选择来源", s = JSON.stringify([o, a]);
+		if (s !== ne) {
+			ne = s, O.innerHTML = y([["", o], ...a.map((e) => [e, e])], "", { label: "统一选择来源" });
+			let e = w(O.firstElementChild);
+			e.disabled = !a.length, e.addEventListener("change", () => {
+				if (!(r.busy || !Fi(f()).includes(e.value))) {
+					for (let n of d()) {
 						let i = t.rows.find((e) => e.item_key === n.dataset.reviewKey).candidates.find((t) => t.source === e.value);
 						n.querySelectorAll("input[type=\"radio\"]").forEach((e) => {
 							e.checked = e.value === i.candidate_key;
 						}), r.choices.set(n.dataset.reviewKey, i.candidate_key);
 					}
-					O.textContent = `已选择 ${e.value}，点击通过所选采用。`;
+					k.textContent = `已选择 ${e.value}，点击通过所选采用。`;
 				}
 			});
 		}
-		M.forEach((e) => e());
+		N.forEach((e) => e());
 	}
-	async function ne(n, i) {
-		if (r.busy || !u().length) return;
-		let a = u().map((e) => ({
+	async function re(n, i) {
+		if (r.busy || !d().length) return;
+		let a = d().map((e) => ({
 			key: e.dataset.reviewKey,
 			payload: {
 				...t.payload(e),
@@ -4610,21 +4620,21 @@ function Ii(e, t) {
 			}
 		}));
 		if (n === "approved" && t.metadata && a.some((e) => !e.payload.candidate_key)) {
-			O.textContent = "请先为所选的多来源候选选择来源。", u().find((e) => !e.querySelector("input[type=\"radio\"]:checked"))?.querySelector("input[type=\"radio\"]")?.focus();
+			k.textContent = "请先为所选的多来源候选选择来源。", d().find((e) => !e.querySelector("input[type=\"radio\"]:checked"))?.querySelector("input[type=\"radio\"]")?.focus();
 			return;
 		}
-		r.busy = !0, O.textContent = `正在处理 0 / ${a.length}`, x(i, !0);
+		r.busy = !0, k.textContent = `正在处理 0 / ${a.length}`, x(i, !0);
 		let o = [...e.querySelectorAll("button,input")], s = o.map((e) => e.getAttribute("aria-disabled"));
 		o.forEach((e) => e.setAttribute("aria-disabled", "true"));
 		let c = (e) => {
 			e instanceof KeyboardEvent && e.key === "Tab" || (e.preventDefault(), e.stopImmediatePropagation());
 		};
 		e.addEventListener("click", c, !0), e.addEventListener("keydown", c, !0);
-		let l = 0, d = await Pi(a, async (e) => {
+		let l = 0, u = await Pi(a, async (e) => {
 			try {
 				return await t.submit(e);
 			} finally {
-				l++, t.active() && (O.textContent = `正在处理 ${l} / ${a.length}`);
+				l++, t.active() && (k.textContent = `正在处理 ${l} / ${a.length}`);
 			}
 		}, (e) => {
 			r.selected.delete(e), r.errors.delete(e), t.applied(e);
@@ -4633,7 +4643,7 @@ function Ii(e, t) {
 			let n = s[t];
 			n === null ? e.removeAttribute("aria-disabled") : e.setAttribute("aria-disabled", n);
 		}), x(i, !1), !t.active()) return;
-		t.notify(`已${n === "approved" ? "通过" : "拒绝"} ${d.completed} 项${d.failures.length ? `，${d.failures.length} 项未完成` : ""}`), d.failures.forEach((e) => r.errors.set(e.key, e.message));
+		t.notify(`已${n === "approved" ? "通过" : "拒绝"} ${u.completed} 项${u.failures.length ? `，${u.failures.length} 项未完成` : ""}`), u.failures.forEach((e) => r.errors.set(e.key, e.message));
 		let f = e.parentElement;
 		t.refresh(), f?.querySelector(".reviewbulktoolbar button")?.focus({ preventScroll: !0 });
 	}
@@ -4908,10 +4918,10 @@ function qi(e, t, n) {
 }
 //#endregion
 //#region src/board-skeleton.ts
-var Q = (e = "60%") => `<span class="skeleton" style="width:${e}"></span>`, Ji = () => `${Q("80%")}${Q("48%")}`, $ = (e, t) => e.repeat(t), Yi = (e, t = "metricstrip") => `<div class="${t}">${e.map((e) => `<div class="tastesummary"><span class="board-stat-label">${e}</span><b class="board-stat-value">${Q("45%")}</b><small class="board-stat-footer">${Q("60%")}</small></div>`).join("")}</div>`, Xi = (e, t = "skeleton-tabs") => `<div class="${t}">${e.map((e) => `<span>${e}</span>`).join("")}</div>`, Zi = (e, t) => `<div class="${t} skeleton-segments" data-board-segments="true">${e.map((e, t) => `<span${t === 0 ? " class=\"skeleton-segment-selected\"" : ""}>${e}</span>`).join("")}</div>`, Qi = (e) => `<section class="board-radial-card"><header><span>${e}</span><b>${Q()}</b></header><div class="board-rings skeleton-rings"><span class="skeleton skeleton-ring"></span></div><div class="skeleton-lines">${Ji()}</div></section>`, $i = (e) => `<section class="insightpanel"><header>${e}</header><div class="insightpanelbody skeleton-lines">${$(Ji(), 3)}</div></section>`, ea = (e) => `<button class="fbtn" type="button" disabled>${e}</button>`, ta = () => `<div class="fsechead" data-collapse-toolbar><h3>关注列表</h3><span class="fmeta">${Q("100px")}</span><span class="fmanagesort" data-collapse-field>${i("sort")}${y([["checked", "检查时间"]], "checked", {
+var Q = (e = "60%") => `<span class="skeleton" style="width:${e}"></span>`, Ji = () => `${Q("80%")}${Q("48%")}`, $ = (e, t) => e.repeat(t), Yi = (e, t = "metricstrip") => `<div class="${t}">${e.map((e) => `<div class="tastesummary"><span class="board-stat-label">${e}</span><b class="board-stat-value">${Q("45%")}</b><small class="board-stat-footer">${Q("60%")}</small></div>`).join("")}</div>`, Xi = (e, t = "skeleton-tabs") => `<div class="${t}">${e.map((e) => `<span>${e}</span>`).join("")}</div>`, Zi = (e, t) => `<div class="${t} skeleton-segments" data-board-segments="true">${e.map((e, t) => `<span${t === 0 ? " class=\"skeleton-segment-selected\"" : ""}>${e}</span>`).join("")}</div>`, Qi = (e) => `<section class="board-radial-card"><header><span>${e}</span><b>${Q()}</b></header><div class="board-rings skeleton-rings"><span class="skeleton skeleton-ring"></span></div><div class="skeleton-lines">${Ji()}</div></section>`, $i = (e) => `<section class="insightpanel"><header>${e}</header><div class="insightpanelbody skeleton-lines">${$(Ji(), 3)}</div></section>`, ea = (e) => `<button class="fbtn" type="button" disabled>${e}</button>`, ta = (e) => `<div class="fsechead" data-collapse-toolbar><h3>关注列表</h3><span class="fmeta">${Q("100px")}</span><div class="followtoolbaractions"><button class="fbtn primary followcheckall" disabled>${i("refresh-cw")}<span data-collapse-label>检查全部</span></button><div class="iconswitch" data-board-segments="true"><label>${i("layout-grid")}</label><label>${i("table")}</label></div><span class="fmanagesort" data-collapse-field>${i("sort")}${y([["checked", "检查时间"]], "checked", {
 	label: "关注列表排序",
 	attr: "disabled"
-})}</span><button class="fbtn fmanagedir" disabled>${i("arrow-down")}</button><div class="iconswitch" data-board-segments="true"><label>${i("layout-grid")}</label><label>${i("table")}</label></div><button class="fbtn" disabled>${i("refresh-cw")}<span data-collapse-label>检查全部</span></button></div>`, na = () => `<div class="fsource frow"><span class="fchannelcheck">${Q("18px")}</span><b>${Q("85%")}</b><span class="fprovider">${Q("54px")}</span><span class="fmeta fchecked">${Q("40px")}</span><span class="fsourceactions"><span class="skeleton skeleton-icon"></span><span class="skeleton skeleton-icon"></span></span></div>`, ra = () => `<details class="fauthor" open><summary class="fauthorhead"><span class="favatar skeleton"></span><b>${Q("90px")}</b><span class="skeleton skeleton-icon"></span><span class="fmeta">${Q("40px")}</span><span class="board-author-actions"><button type="button" class="fbtn small" data-follow-author-select disabled>${i("check-check")}<span data-author-select-label>全选</span></button><span class="skeleton skeleton-icon"></span></span></summary><div class="fauthorsources">${$(na(), 3)}</div></details>`;
+})}</span><button class="fbtn fmanagedir" disabled>${i("arrow-down")}</button>${e ? "" : ea(i("chevron-up") + "<span data-collapse-label>全部收起</span>")}</div></div>`, na = () => `<div class="fsource frow"><span class="fchannelcheck">${Q("18px")}</span><b>${Q("85%")}</b><span class="fprovider">${Q("54px")}</span><span class="fmeta fchecked">${Q("40px")}</span><span class="fsourceactions"><span class="skeleton skeleton-icon"></span><span class="skeleton skeleton-icon"></span></span></div>`, ra = () => `<details class="fauthor" open><summary class="fauthorhead"><span class="favatar skeleton"></span><b>${Q("90px")}</b><span class="skeleton skeleton-icon"></span><span class="fmeta">${Q("40px")}</span><span class="board-author-actions"><button type="button" class="fbtn small" data-follow-author-select disabled>${i("check-check")}<span data-author-select-label>全选</span></button><span class="skeleton skeleton-icon"></span></span></summary><div class="fauthorsources">${$(na(), 3)}</div></details>`;
 function ia() {
 	return `<div data-skeleton="detail" role="status" aria-label="正在读取作品详情"><div class="sgrid" aria-hidden="true"><div class="vwrap skeleton-detail-media skeleton"></div><aside class="side"><div class="sidecontent skeleton-lines">${Q("85%")}${Q("65%")}${$(Ji(), 4)}</div></aside></div></div>`;
 }
@@ -4938,7 +4948,7 @@ function aa(e, t = {}) {
 			"状态",
 			"上次检查",
 			"操作"
-		].map((e) => `<th>${e}</th>`).join("")}</tr></thead><tbody>${$(`<tr>${[
+		].map((e) => `<th>${e === "选择" ? "<label>" + l("disabled aria-label=\"全选本页来源\"") + "</label>" : e}</th>`).join("")}</tr></thead><tbody>${$(`<tr>${[
 			"20px",
 			"90px",
 			"120px",
@@ -4956,7 +4966,7 @@ function aa(e, t = {}) {
 			"关注列表",
 			"添加关注",
 			"来源和凭证"
-		], "follow-workspace-switch")}<div class="fmain"><section class="fsec" data-follow-workspace-panel="list">${ta()}<div class="board-follow-selection"><label>${l("disabled")}全选本页</label>${e ? "" : ea("全部收起")}</div><div class="frows fsources" data-layout="${e ? "table" : "default"}">${r}<div class="followpagefooter"><div class="followpageinfo">${Q("120px")}${Q("100px")}</div></div></div></section></div></div>`;
+		], "follow-workspace-switch")}<div class="fmain"><section class="fsec" data-follow-workspace-panel="list">${ta(e)}<div class="board-follow-selection"${e ? " hidden" : ""}><label>${l("disabled")}全选本页</label></div><div class="frows fsources" data-layout="${e ? "table" : "default"}">${r}<div class="followpagefooter"><div class="followpageinfo">${Q("120px")}${Q("100px")}</div></div></div></section></div></div>`;
 	} else if (e === "/configuration") n = `<div class="configpage">${Xi([
 		"通用",
 		"媒体",

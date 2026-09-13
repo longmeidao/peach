@@ -1,4 +1,5 @@
 import { checkboxHtml, setActionBusy, selectFieldHtml, wireSelectField } from '@peach/legacy/ui';
+import { icon } from '@peach/legacy/core';
 import { errorMessage } from './api';
 import { selectRange, selectGroup, selectionSummary, syncSelectionToolbar } from './selection';
 
@@ -150,7 +151,7 @@ export function wireReviewSelection(root: HTMLElement, options: {
     const select = button('全选本组'), grid = document.createElement('div'); grid.className = 'reviewlist';
     bar.append(title, select); section.append(bar, grid); list.append(section);
     select.onclick = () => { if (state.busy) return; const keys=groupCards.map(card=>card.dataset.reviewKey!); selectGroup(state.selected,keys,!keys.every(key=>state.selected.has(key))); update(); };
-    controls.push(() => { select.textContent = groupCards.every(card => state.selected.has(card.dataset.reviewKey!)) ? '清空本组' : '全选本组'; });
+    controls.push(() => { const checked=groupCards.every(card => state.selected.has(card.dataset.reviewKey!));select.innerHTML=icon(checked?'check-check-outline':'check-check')+(checked?'清空本组':'全选本组');select.setAttribute('aria-pressed',String(checked)); });
     for (const card of groupCards) {
       grid.append(card); const key = card.dataset.reviewKey!;
       if (state.errors.has(key)) card.querySelector<HTMLElement>('.reviewstate')!.textContent = state.errors.get(key)!;
@@ -193,7 +194,9 @@ export function wireReviewSelection(root: HTMLElement, options: {
   });
   let sourceSignature = '';
   function update() {
-    const chosen = selected(); all.textContent = chosen.length === visible().length ? '清空当前选择' : state.filter ? '全选当前分类' : '全选本页';
+    const chosen = selected(), checked=chosen.length>0&&chosen.length===visible().length;
+    all.innerHTML=icon(checked?'check-check-outline':'check-check')+(checked?'清空当前选择':state.filter?'全选当前分类':'全选本页');
+    all.setAttribute('aria-pressed',String(checked));
     dock.hidden = !chosen.length;
     syncSelectionToolbar({count,label:`已选 ${chosen.length} 项`,
       summary:selectionSummary(state.selected,visible().map(card=>card.dataset.reviewKey!)),actions:[approve,reject]});

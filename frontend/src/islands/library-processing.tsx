@@ -1,16 +1,17 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { apiGet, apiSend, errorMessage } from '../api';
-import { fieldsetTitle, noteHtml, projectBannerHtml } from '@peach/legacy/ui';
+import { fieldsetTitle, noteHtml, projectBannerHtml, wireCollapse } from '@peach/legacy/ui';
 import { jobActivityHtml, watchJob } from '../jobs';
 import type { JobState } from '../jobs';
 import { LinkButton } from '../link-button';
 import { SplitAction } from '../split-action';
 import type { IslandState } from '../islands';
 
-export interface LibraryProcessingIssue { asset_id: number | null; title?: string; path?: string; message: string }
+export interface LibraryProcessingIssue { asset_id: number | null; title?: string; path?: string; message: string; severity?: 'info' | 'error' }
 export interface LibraryProcessingData extends JobState {
   stage?: string; scanned?: number; identified?: number; candidates?: number; covers?: number;
   issue_count?: number; issue_preview?: LibraryProcessingIssue[]; issues_log?: string;
+  error_count?: number;
   issues_truncated?: boolean; retryable_asset_ids?: number[];
   current_asset_id?: number | null; current_asset_name?: string; current_action?: string;
   current_started_at?: number; last_progress_at?: number; stalled?: boolean; waited_seconds?: number;
@@ -38,6 +39,8 @@ export function LibraryProcessing({ data, error, toast, onComplete, mode, monito
   const lifetime = useRef(new AbortController());
   const generation = useRef(0);
   const previousStatus = useRef(state.status);
+  const outcome = useRef<HTMLDivElement>(null);
+  useEffect(() => { if(outcome.current)wireCollapse(outcome.current,'.geist-note-details','library-issues'); }, [state,problem]);
   const busy = submitting || state.status === 'running';
   async function follow() {
     const epoch = ++generation.current;
@@ -90,10 +93,10 @@ export function LibraryProcessing({ data, error, toast, onComplete, mode, monito
   const retryable = state.status === 'failed' && !!state.retryable_asset_ids?.length;
   /* 问题清单收进那条错误 Note 的折叠里：卡片下面先看到的应该是「这一趟怎么了」，
      逐条明细是要展开才读的东西。完整清单在状态给出的日志文件里，界面只留前 20 条。 */
-  const issueDetails = state.status === 'failed' && issues.length ? {
+  const issueDetails = issues.length ? {
     label: state.issues_truncated
-      ? `问题清单：共 ${state.issue_count || 0} 项，展开查看前 ${issues.length} 项`
-      : `问题清单：共 ${state.issue_count || 0} 项`,
+      ? `${state.status === 'complete'?'采集记录':'问题清单'}：共 ${state.issue_count || 0} 项，展开查看前 ${issues.length} 项`
+      : `${state.status === 'complete'?'采集记录':'问题清单'}：共 ${state.issue_count || 0} 项`,
     items: issues.map(issue => ({
       label: issue.title || (issue.asset_id ? `视频 ${issue.asset_id}` : '媒体来源'),
       href: issue.asset_id ? `/item/${issue.asset_id}` : '',
@@ -119,12 +122,13 @@ export function LibraryProcessing({ data, error, toast, onComplete, mode, monito
         ]} />}
       </footer>
     </section>
-    <div class="library-processing-outcome" aria-live="polite">
+    <div class="library-processing-outcome" aria-live="polite" ref={outcome}>
       {state.status === 'running' && state.stalled && <div class="library-processing-stalled" dangerouslySetInnerHTML={{ __html: noteHtml(
         '这个项目处理时间较长，暂时没有新进展。可以继续等待，或在任务结束后重试未完成项。',
         { variant: 'warning', label: '处理较慢', filled: true }) }} />}
       {(problem || state.status === 'failed') && <div role="alert" onClick={event=>{if((event.target as HTMLElement).closest('[data-note-action]'))retry();}} dangerouslySetInnerHTML={{ __html: noteHtml(problem || state.error || '处理未完成，请重试', { variant: 'error',filled:true,actionLabel:retryable?'重试未完成项':'',details:issueDetails }) }} />}
       {receipt && <div class="library-processing-result" dangerouslySetInnerHTML={{ __html: noteHtml(`已扫描 ${state.scanned || 0} 个文件，识别 ${state.identified || 0} 个番号，整理 ${state.candidates || 0} 组资料候选。`, { variant: 'success', label: '处理完成' }) }} />}
+      {state.status === 'complete' && issueDetails && <div dangerouslySetInnerHTML={{__html:noteHtml(`${state.issue_count || 0} 项采集记录`,{variant:'secondary',details:issueDetails})}} />}
     </div>
   </>;
 }

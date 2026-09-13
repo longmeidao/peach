@@ -222,7 +222,11 @@
 .reviewcontrols,.reviewgroupbar{background:transparent;border-bottom:1px solid transparent}
 .reviewcontrols.is-stuck,.reviewgroupbar.is-stuck{background:var(--ground);border-bottom-color:var(--line-soft)}
 .reviewgroupbar{position:sticky;top:calc(var(--topH) + var(--review-controls-height,0px));z-index:59;padding-block:8px}
-.reviewgroupbar.is-stuck h3{margin-right:0}
+.reviewgroupbar.is-stuck h3{margin-right:auto}
+.reviewgroupbar>button{margin-left:auto;flex:none}
+.reviewpickname{display:flex;align-items:center;gap:12px;min-width:0}
+.reviewpickname>.reviewfieldname{flex:none}
+.reviewpickname>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .reviewcontrols .reviewtabs{margin-bottom:0}
 .reviewbulkfeedback{color:var(--muted)}
 .reviewbulksource{min-width:0;max-width:100%}

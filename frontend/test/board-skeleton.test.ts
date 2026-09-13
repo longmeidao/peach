@@ -58,7 +58,8 @@ describe('Board 页面骨架', () => {
     expect(root.querySelectorAll('.board-follow-list .fauthor')).toHaveLength(4);
     expect(root.querySelectorAll('.fauthorsources .fsource.frow')).toHaveLength(12);
     expect(root.querySelectorAll('.fsource.frow > *')).toHaveLength(60);
-    expect(root.querySelectorAll('.board-follow-selection button')).toHaveLength(1);
+    expect(root.querySelectorAll('.board-follow-selection button')).toHaveLength(0);
+    expect(root.querySelector('.followtoolbaractions')?.lastElementChild?.textContent).toBe('全部收起');
     expect(root.querySelector('.followpagefooter')).not.toBeNull();
     expect(root.querySelector('.selectiondock')).toBeNull();
   });

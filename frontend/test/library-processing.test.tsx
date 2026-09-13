@@ -4,6 +4,14 @@ import { act } from 'preact/test-utils';
 import { LibraryProcessing } from '../src/islands/library-processing';
 
 let host: HTMLDivElement;
+it('没有来源资料显示中性记录且不提供失败重试',async()=>{
+  host=document.createElement('div');document.body.append(host);
+  await act(async()=>render(h(LibraryProcessing,{data:{status:'complete',error_count:0,issue_count:1,issue_preview:[{asset_id:1,title:'孤立资源',message:'来源未收录',severity:'info'}]},error:'',toast:vi.fn(),preview:true}),host));
+  expect(host.textContent).toContain('1 项采集记录');
+  expect(host.querySelector('.geist-note-error')).toBeNull();
+  expect(host.textContent).not.toContain('重试未完成项');
+  expect(host.querySelector('.geist-note-details a')?.getAttribute('href')).toBe('/item/1');
+});
 it('三种扫描采集方式使用分体菜单并提交对应阶段', async () => {
   const bodies: object[] = [];
   vi.stubGlobal('fetch', vi.fn(async (_url: string, init?: RequestInit) => {

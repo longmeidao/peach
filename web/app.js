@@ -6667,7 +6667,7 @@ function followSourceTable(groups,selectable,page=1,perPage=Infinity){
   }).join('');
   // 外框只管边线与圆角，里层只管横向滚动：渐隐遮罩落在里层，右边线才不会跟着内容一起淡掉。
   return `<div class="ftableframe"><div class="ftablewrap"><table class="ftable"><thead><tr>
-    <th scope="col"><span class="sr-only">${selectable?'选择':'启用'}</span></th>
+    <th scope="col" class="ftcheck">${selectable?`<label>${checkboxHtml('data-follow-select-all aria-label="全选本页来源"')}</label>`:'<span class="sr-only">启用</span>'}</th>
     ${followTableHeader('author','创作者')}
     ${followTableHeader('source','来源')}${followTableHeader('provider','站点')}${followTableHeader('status','状态')}
     ${followTableHeader('checked','上次检查')}
@@ -6794,6 +6794,8 @@ function refreshFollowSourcePage(){
   const list=document.querySelector('#stats .fsources');if(!list)return;
   list.dataset.layout=followListLayout();
   list.innerHTML=followSourceListHtml(followAuthorGroups(followData.sources||[]));
+  const selection=document.querySelector('[data-follow-page-selection]');
+  if(selection){selection.hidden=followListLayout()==='table';selection.querySelector('input').disabled=selection.hidden}
   const params=new URLSearchParams(location.search);params.set('page',String(followManagePage));
   route('/follow-manage?'+params);
   wireFollowManage(followCredentials?.providers||[],true);
@@ -6864,15 +6866,15 @@ function renderFollowManage(credentials){
         <div class="fsechead" data-collapse-toolbar><h3>关注列表</h3>
           <span class="fmeta">${sources.length} 个来源${
             counts.new?` · <b>${counts.new}</b> 条未看`:''}</span>
+          <div class="followtoolbaractions"><button class="fbtn primary followcheckall" data-follow-check="" title="检查全部" aria-label="检查全部"${sources.length?'':' disabled'}>${icon('refresh-cw')}<span data-collapse-label>检查全部</span></button>
+          ${followLayoutButtons()}
           <span class="fmanagesort" data-collapse-field title="关注列表排序">${icon('sort')}${selectFieldHtml(FOLLOW_SORT_OPTIONS,followManageSort,
             {label:'关注列表排序',attr:'data-follow-sort'})}</span>
           <button class="fbtn fmanagedir" type="button" data-follow-dir aria-label="${
             followSortLabel()}">${icon(followManageDir==='asc'?'arrow-up':'arrow-down')}</button>
-          ${followLayoutButtons()}
-          <button class="fbtn" data-follow-check="" title="检查全部" aria-label="检查全部"${sources.length?'':' disabled'}>${
-            icon('refresh-cw')}<span data-collapse-label>检查全部</span></button></div>
+          <button class="fbtn" type="button" data-follow-collapse-all${sources.length?'':' disabled'}>${icon('chevron-up')}<span data-collapse-label>全部收起</span></button></div></div>
         ${followCheckReport?followCheckFailNote(followCheckReport):''}
-        ${sources.length?`<div class="board-follow-selection"><label>${checkboxHtml('data-follow-select-all aria-label="全选本页来源"')}全选本页</label><button class="fbtn" type="button" data-follow-collapse-all>全部收起</button></div><div class="selectiondock followselectiondock" role="group" aria-label="关注来源批量操作" hidden><span class="selectiondockcount" data-follow-selected-count role="status">已选 0</span><button class="geist-button" data-follow-check="" data-follow-sources="" data-follow-selection-action disabled>检查所选</button><button class="geist-button" data-follow-selection-enabled="true" data-follow-selection-action disabled>启用</button><button class="geist-button" data-follow-selection-enabled="false" data-follow-selection-action disabled>暂停</button><button class="geist-button danger" data-follow-selection-remove data-follow-selection-action disabled>删除</button><button class="geist-button" data-follow-selection-clear>取消选择</button></div>`:''}
+        ${sources.length?`<div class="board-follow-selection" data-follow-page-selection${followListLayout()==='table'?' hidden':''}><label>${checkboxHtml('data-follow-select-all aria-label="全选本页来源"')}全选本页</label></div><div class="selectiondock followselectiondock" role="group" aria-label="关注来源批量操作" hidden><span class="selectiondockcount" data-follow-selected-count role="status">已选 0</span><button class="geist-button" data-follow-check="" data-follow-sources="" data-follow-selection-action disabled>检查所选</button><button class="geist-button" data-follow-selection-enabled="true" data-follow-selection-action disabled>启用</button><button class="geist-button" data-follow-selection-enabled="false" data-follow-selection-action disabled>暂停</button><button class="geist-button danger" data-follow-selection-remove data-follow-selection-action disabled>删除</button><button class="geist-button" data-follow-selection-clear>取消选择</button></div>`:''}
         ${sources.length?`<div class="frows fsources" data-layout="${followListLayout()}">${sourceList}</div>
           ${counts.new?`<div class="fsecfoot"><p class="fnote fbulkrow"><span class="fbulkcounts">未看 ${counts.new} · 已看 ${counts.seen||0}
             · 已保存 ${counts.saved||0} · 已忽略 ${counts.ignored||0}</span>
@@ -6990,7 +6992,7 @@ function wireFollowManage(creds=[],listOnly=false){
   wireCollapse(root,'details.fauthor','follow-author-collapse','[data-follow-author-toggle]');
   const allKeys=()=>followAuthorGroups(followData.sources||[]).map(group=>String(group[0].author_key||group[0].id));
   const collapseAll=root.querySelector('[data-follow-collapse-all]');
-  const syncCollapseAll=()=>{if(collapseAll){collapseAll.hidden=followListLayout()==='table';collapseAll.textContent=allKeys().every(key=>collapsedFollowAuthors.has(key))?'全部展开':'全部收起'}};
+  const syncCollapseAll=()=>{if(collapseAll){const collapsed=allKeys().every(key=>collapsedFollowAuthors.has(key));collapseAll.hidden=followListLayout()==='table';collapseAll.innerHTML=icon(collapsed?'chevron-down':'chevron-up')+'<span data-collapse-label>'+ (collapsed?'全部展开':'全部收起')+'</span>';collapseAll.title=collapsed?'全部展开':'全部收起';collapseAll.setAttribute('aria-label',collapseAll.title)}};
   if(collapseAll)collapseAll.onclick=()=>{
     const keys=allKeys(),collapse=!keys.every(key=>collapsedFollowAuthors.has(key));
     keys.forEach(key=>collapse?collapsedFollowAuthors.add(key):collapsedFollowAuthors.delete(key));
@@ -7026,7 +7028,7 @@ function wireFollowManage(creds=[],listOnly=false){
   const selectedIds=()=>(followData.sources||[]).filter(source=>followSourceSelection.has(source.id)).map(source=>source.id);
   const syncSelection=()=>{
     const ids=selectedIds(),count=root.querySelector('[data-follow-selected-count]');
-    const all=root.querySelector('[data-follow-select-all]');
+    const all=root.querySelector(followListLayout()==='table'?'.ftable [data-follow-select-all]':'[data-follow-page-selection] [data-follow-select-all]');
     const summary=selectionSummary(followSourceSelection,selectable.map(field=>Number(field.dataset.followSelect)));
     syncSelectionToolbar({count,label:`已选 ${ids.length} 个来源`,all,summary:{...summary,count:ids.length},
       actions:root.querySelectorAll('[data-follow-selection-action]'),locked:!!followRuntime?.ledger_read_only});
@@ -7037,6 +7039,7 @@ function wireFollowManage(creds=[],listOnly=false){
       const fields=[...button.closest('.fauthor').querySelectorAll('[data-follow-select]')],count=fields.filter(field=>field.checked).length;
       const label=count===fields.length?'取消全选':'全选';
       button.querySelector('[data-author-select-label]').textContent=label;
+      button.querySelector('svg').outerHTML=icon(count===fields.length?'check-check-outline':'check-check');
       button.title=`${label} ${button.dataset.followAuthorName} 的来源`;
       button.setAttribute('aria-label',button.title);
       button.setAttribute('aria-pressed',count===fields.length?'true':count?'mixed':'false');
@@ -7053,7 +7056,7 @@ function wireFollowManage(creds=[],listOnly=false){
     selectGroup(followSourceSelection,fields.map(field=>Number(field.dataset.followSelect)),checked);
     fields.forEach(field=>{field.checked=checked});syncSelection();
   });
-  const selectAll=root.querySelector('[data-follow-select-all]');
+  const selectAll=root.querySelector(followListLayout()==='table'?'.ftable [data-follow-select-all]':'[data-follow-page-selection] [data-follow-select-all]');
   const clearSelection=root.querySelector('[data-follow-selection-clear]');
   if(clearSelection)clearSelection.onclick=()=>{followSourceSelection.clear();selectable.forEach(field=>{field.checked=false});syncSelection();selectAll?.focus({preventScroll:true})};
   if(selectAll)selectAll.onchange=()=>{selectGroup(followSourceSelection,selectable.map(field=>Number(field.dataset.followSelect)),selectAll.checked);selectable.forEach(field=>{field.checked=selectAll.checked});syncSelection()};
