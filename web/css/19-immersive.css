@@ -80,7 +80,7 @@
 .emptystate .es-copy{display:grid;justify-items:center;gap:8px}
 .emptystate h3{margin:0;font-size:var(--fs-md);font-weight:600;color:var(--ink)}
 .emptystate p{margin:0;max-width:340px;font-size:var(--fs-sm);line-height:1.55;color:var(--muted)}
-.emptystate .es-actions{display:flex;justify-content:center;gap:8px;margin-top:8px}
+.emptystate .es-actions{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;margin-top:8px}
 .selectiondock{position:fixed;left:50%;bottom:max(22px,env(safe-area-inset-bottom));z-index:180;transform:translateX(-50%);display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:7px;width:max-content;max-width:calc(100vw - 24px);box-sizing:border-box;
   padding:9px 11px;border:1px solid var(--line);border-radius:var(--floating-radius);background:var(--surface);
   box-shadow:0 8px 24px #0005}.selectiondock[hidden]{display:none}

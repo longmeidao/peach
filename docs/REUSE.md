@@ -4,6 +4,8 @@
 
 - 作者别名管理复用 `.ftable` 和既有别名 API；Board Table 的公开结构与固定资源见 `BOARD_UI.md`。Data Table 的排序、分页在当前别名规模下不需要，未引入其 React Aria 与 TanStack 依赖。`frontend/src/split-action.tsx` 复用口味页分体按钮外观、共享菜单定位和键盘行为，扫描三种方式使用已有 Lucide 图标，无新增依赖。
 
+- 关注列表分页复用 `pagination.ts` 的页码范围、边界裁剪与 Board 外观；默认视图按创作者组，表格按来源。批量操作复用人工复核与馆藏的 `selectiondock` 样式和 `selection.ts` 状态同步，跨页选择由来源 ID 集合管理。官方分页源码固定哈希见 `BOARD_UI.md`；沿用现有实现和 Lucide，未增加 React Aria、TanStack 或 Remix Icon 依赖。隔离样例验证了 25 位创作者、75 个来源的分页与跨页选择。
+
 - 窄屏筛选框共用 `filterScrollState()`、现有滚动帧调度和原生 sticky；同一方向累计 8px 再切换吸顶，保留文档占位与键盘可达性，无新增依赖。
 
 - 搜索玻璃复用 `glideEase()` 的采样弹簧；`web/js/search-morph.js` 只负责视口边界与轮廓关键帧，证据与差异见 `BOARD_UI.md`，无新增依赖。

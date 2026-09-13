@@ -1562,7 +1562,7 @@ class WebUiSourceTests(unittest.TestCase):
         """
         app = (Path(__file__).resolve().parents[1] / "web/app.js").read_text(encoding="utf-8")
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
-        self.assertIn('aria-label="全选 ${esc(name)} 的来源">全选</button>', app)
+        self.assertIn('aria-label="全选 ${esc(name)} 的来源">${icon(\'check-check\')}<span data-author-select-label>全选</span></button>', app)
         self.assertIn("count===fields.length?'取消全选':'全选'", app)
         self.assertIn(".fauthorhead>.fmeta{margin-left:auto}", board)
         self.assertIn(".fauthorhead>.fmeta~.fmeta,.fauthorhead>.fmeta~.board-author-actions"
@@ -5544,6 +5544,21 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("if(reset&&d.items.length)setGridCards(html)")
         self.assertPageLacks('class="trashempty"')
 
+    def test_empty_follow_actions_open_the_add_workspace(self):
+        self.assertPageContains('href="/follow-manage?tab=add">添加关注</a>')
+        self.assertPageContains("followManageWorkspace=['list','add','source'].includes(params.get('tab'))?params.get('tab'):'list'")
+        self.assertPageContains("params.set('tab',key)")
+        self.assertPageContains("params.set('tab',followManageWorkspace)")
+        self.assertPageContains("if(tab){tab.click();tab.focus()}")
+        self.assertPageContains("else void openFollowManage(true,'add')")
+        self.assertPageContains('.emptystate .es-actions{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;margin-top:8px}')
+
+    def test_follow_author_actions_stay_in_the_heading_row(self):
+        board = (Path(__file__).resolve().parents[1] / 'web/board.css').read_text(encoding='utf-8')
+        self.assertIn('.followmanage .board-follow-list .fauthorhead{flex-wrap:nowrap}', board)
+        self.assertIn('.followmanage .board-follow-list .board-author-actions{width:auto;flex:none}', board)
+        self.assertNotIn('.board-author-actions{width:100%', board)
+
     def test_follow_fieldset_headers_share_one_control_height(self):
         self.assertPageContains('.fsechead{display:flex;align-items:center;gap:12px;flex-wrap:wrap;box-sizing:border-box;min-height:56px')
 
@@ -8645,6 +8660,7 @@ class WebUiSourceTests(unittest.TestCase):
             self.assertPageContains(needle)
         # 关注来源那三处问的就是「有没有更新」，转圈归它们。
         self.assertPageContains('aria-label="检查 ${esc(name)} 的全部来源">${icon(\'refresh-cw\')}')
+        self.assertPageContains("${icon('check-check')}<span data-author-select-label>全选</span>")
         # 两个空态各说自己那件事：筛不出结果，和一次比对没有发现。
         self.assertPageContains("emptyState('search-x','当前筛选下没有更新'")
         self.assertPageContains("emptyState('file-stack','没有找到重复文件'")

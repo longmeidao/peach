@@ -310,7 +310,7 @@ const MANAGEMENT_PLACEHOLDERS={
     ${pageSkeletonHtml('正在读取采集来源',{cards:true,count:4,fill:false,className:'cleanup-skeleton'})}</div>`,
 };
 const managementPlaceholder=path=>
-  boardPageSkeleton(path)||
+  boardPageSkeleton(path,{followLayout:followListLayout()})||
   (MANAGEMENT_PLACEHOLDERS[path]||(()=>pageSkeletonHtml('正在读取页面')))();
 function showDetailLoading(){
   const stage=$('#stage');
@@ -4045,22 +4045,22 @@ async function openStats(push=true){
     ${statCardBody(label,value,detail,{inventory:'database',viewing:'eye',coverage:'tags',storage:'hard-drive'}[key])}</button>`;
   const tagsTable=d.top_tags.length?`<ol class="insightranking">${d.top_tags.map((t,index)=>`<li><button type="button" class="insightrankrow" data-k="${esc(t.k)}">
     <span class="insightrankpos">${index+1}</span><span>${esc(tagLabel(t.k))}</span><b>${t.n.toLocaleString()}</b></button></li>`).join('')}</ol>`
-    :emptyStateHtml('tags','还没有内容标签','补全资料或添加标签后，这里会显示馆藏中的内容标签。');
+    :emptyStateHtml('tags','还没有内容标签','补全资料或添加标签后，这里会显示馆藏中的内容标签。',{actions:'<a class="geist-button" href="/data-cleanup">补全资料</a>'});
   const recentTable=d.recent.length?`<div class="board-watch-history">${d.recent.map(row=>{
     const real=row.duration?Math.min(row.play_seconds/row.duration,1)*100:0;
     const reached=(row.max_reached||0)*100;
     const note=row.kind==='online'?'在线直接观看':(real<reached-25?'快进扫过':(row.o_count?`高潮 ${row.o_count}`:'正常观看'));
     return `<article class="board-watch-entry"><div><h3><a href="${row.kind==='online'?'/follow/item/':'/item/'}${Number(row.id)}" data-middle-truncate>${esc(row.name)}</a></h3><p>${esc(row.creator||'')}<span>${note}</span></p></div>
       <div class="board-watch-measures">${progressHtml(`真实观看 ${real.toFixed(0)}%`,real,100)}<small>真实 ${real.toFixed(0)}% · 到达 ${reached.toFixed(0)}%</small></div></article>`}).join('')}</div>`:
-    `<div class="insightempty">${emptyStateHtml('history','还没有观看记录','开始播放后，这里会显示最近的真实观看证据。')}</div>`;
+    `<div class="insightempty">${emptyStateHtml('history','还没有观看记录','开始播放后，这里会显示最近的真实观看证据。',{actions:'<a class="geist-button" href="/">浏览馆藏</a>'})}</div>`;
   const sourceTable=d.tag_source.length?`<div class="board-source-list">${d.tag_source.map(row=>`<article><header><h3>${esc(row.k)}</h3><b>${row.assets.toLocaleString()} <small>个视频</small></b></header>
     ${progressHtml(`${row.k} 覆盖视频`,row.assets,a.videos)}<small>${row.n.toLocaleString()} 条标签</small></article>`).join('')}</div>`:
-    `<div class="insightempty">${emptyStateHtml('tags','还没有标签来源','刮削或手动打标之后，这里会显示每个来源覆盖了多少视频。')}</div>`;
+    `<div class="insightempty">${emptyStateHtml('tags','还没有标签来源','刮削或手动打标之后，这里会显示每个来源覆盖了多少视频。',{actions:'<a class="geist-button" href="/data-cleanup">补全资料</a>'})}</div>`;
   const storageTable=(d.storage_volumes||[]).length?`<div class="board-volume-list">${(d.storage_volumes||[]).map(row=>{
     const measured=row.total!=null, usedPct=measured?pct(row.used,row.total):0;
     return `<article><header><h3>${esc(row.label)}</h3><b>${measured?usedPct+'%':(row.online===false?'离线':'容量未取得')}</b></header><small>${row.root?esc(row.root):'未映射'}</small>
       ${measured?progressHtml(`${row.label}空间使用率`,row.used,row.total)+`<div class="board-volume-values"><span>已用 <b>${gb(row.used)}</b></span><span>可用 <b>${gb(row.free)}</b></span></div>`:''}</article>`}).join('')}</div>`
-    :emptyStateHtml('hard-drive','还没有存储来源','添加媒体文件夹后，这里会显示存储空间。');
+    :emptyStateHtml('hard-drive','还没有存储来源','添加媒体文件夹后，这里会显示存储空间。',{actions:'<button class="geist-button" data-empty-settings>添加媒体文件夹</button>'});
   $('#stats').innerHTML=`
     <div class="insightpage statsdashboard" data-stats-dashboard>
       <header class="insighttoolbar"><p>账本当前快照 · ${totalVideos.toLocaleString()} 个视频 · ${gb(totalBytes)}</p></header>
@@ -5409,7 +5409,7 @@ function localTime(iso){
 function localTimeHtml(iso){
   const text=localTime(iso);
   return /^\d{4}-/.test(text)
-    ? `<i class="fyear">${esc(text.slice(0,5))}</i>${esc(text.slice(5))}`
+    ? `<i class="fyear">${esc(text.slice(0,5))}</i>${esc(text.slice(5,10))}<span class="fclock">${esc(text.slice(10))}</span>`
     : esc(text);
 }
 
@@ -6141,7 +6141,7 @@ function renderFollow(){
       return followCard(group,siblings)}).join('')
       :groups.length?emptyState('search-x','当前筛选下没有更新','切换媒体类型、创作者、来源或标签后再试。')
       :sources.length?emptyState('rss','没有符合条件的更新','切换状态或来源筛选后再试。')
-      :emptyState('rss','还没有关注任何来源','添加创作者或订阅来源后，更新会集中显示在这里。',{actions:'<button class="fbtn primary" data-follow-manage>添加关注</button>'})}</div>
+      :emptyState('rss','还没有关注任何来源','添加创作者或订阅来源后，更新会集中显示在这里。',{actions:'<a class="geist-button primary" href="/follow-manage?tab=add">添加关注</a>'})}</div>
     ${followData.has_more||sources.some(source=>source.can_backfill)?`<div class="followpagination">
       ${followData.has_more?`<span class="followpageaction"><button class="fbtn" data-follow-more>${icon('chevron-down')}加载更多</button></span>`:''}
       ${sources.some(source=>source.can_backfill)?`<span class="followpageaction"><button class="fbtn" data-follow-older>${icon('history')}抓更早的一页</button>
@@ -6548,7 +6548,7 @@ function followAuthorBlock(group){
         group.map(source=>sourceIcon(source.provider)).join('')
         }<span class="sr-only">来源：${esc(providers)}</span></span>
       ${bad?`<span class="fmeta warn">${bad} 个失败</span>`:''}
-      <span class="board-author-actions"><button type="button" class="fbtn small" data-follow-author-select aria-pressed="false" aria-label="全选 ${esc(name)} 的来源">全选</button><button type="button" class="frowicon board-author-toggle" data-follow-author-toggle="${esc(key)}" aria-controls="follow-author-${group[0].id}" aria-expanded="${!collapsed}" aria-label="${collapsed?'展开':'收起'} ${esc(name)} 的来源">${icon('chevron-down')}</button></span>
+      <span class="board-author-actions"><button type="button" class="fbtn small" data-follow-author-select data-follow-author-name="${esc(name)}" aria-pressed="false" title="全选 ${esc(name)} 的来源" aria-label="全选 ${esc(name)} 的来源">${icon('check-check')}<span data-author-select-label>全选</span></button><button type="button" class="frowicon board-author-toggle" data-follow-author-toggle="${esc(key)}" aria-controls="follow-author-${group[0].id}" aria-expanded="${!collapsed}" aria-label="${collapsed?'展开':'收起'} ${esc(name)} 的来源">${icon('chevron-down')}</button></span>
     </summary>
     ${sources}</details>`;
 }
@@ -6575,7 +6575,7 @@ function followSourceCells(source,selectable=false){
   const provider=(extra='',withText=false)=>`<span class="fmeta fprovider${
       withText?'':' iconly'}" title="${esc(source.provider_label)}">${sourceIcon(source.provider)
       }<span>${esc(source.provider_label)}</span>${extra}</span>`;
-  const checked=`<span class="fmeta fchecked">${source.last_checked_at?localTimeHtml(source.last_checked_at):'未检查'}</span>`;
+  const checked=`<span class="fmeta fchecked" tabindex="0" title="${esc(source.last_checked_at?localTime(source.last_checked_at):'未检查')}" aria-label="上次检查：${esc(source.last_checked_at?localTime(source.last_checked_at):'未检查')}">${source.last_checked_at?localTimeHtml(source.last_checked_at):'未检查'}</span>`;
   const actions=`<span class="fsourceactions">
       <button class="frowicon" data-follow-check="${source.id}" title="检查更新"
         ${source.enabled?'':'disabled'}
@@ -6600,8 +6600,7 @@ function followSourceRow(source,selectable=false){
 
 /* 表格视图照 boardui.com/components/data-table（取证见 docs/BOARD_UI.md）：一行一条来源，
    创作者列每行都写，表头两列能点，点的是工具栏里已有的那两种排序。它有而这里不要的三样：
-   页码——列表本来就是全量；表尾的密度档——视图开关自己就是；表头里的全选——全选连着
-   批量动作留在上面那条选择栏，两个全选框会互相打架。排序方向沿用工具栏那对箭头字形。
+   表尾密度由视图开关承担，表头全选归上方的本页选择栏。排序方向沿用工具栏那对箭头字形。
    五列都能点：创作者、上次检查按创作者分组比，来源、站点、状态按单条来源比，此时表格按
    那一列拉平排，不再按创作者聚在一起。 */
 const FOLLOW_TABLE_SORT={author:'name',source:'source',provider:'provider',status:'status',checked:'checked'};
@@ -6610,14 +6609,15 @@ function followTableHeader(key,label){
   const ascending=active&&followManageDir==='asc';
   return `<th scope="col" aria-sort="${active?(ascending?'ascending':'descending'):'none'}"><button type="button" class="ftsort" data-follow-table-sort="${sort}" aria-label="按${label}排序">${label}${icon(ascending?'arrow-up':'arrow-down')}</button></th>`;
 }
-function followSourceTable(groups,selectable){
+function followSourceTable(groups,selectable,page=1,perPage=Infinity){
   const pairs=groups.flatMap(group=>group.map(source=>[source,group]));
   const bySource=FOLLOW_SOURCE_SORTS[followManageSort];
   if(bySource){
     const flip=followManageDir===(FOLLOW_SORT_DEFAULT_DIR[followManageSort]||'desc')?1:-1;
     pairs.sort(([a],[b])=>flip*bySource(a,b));
   }
-  const rows=pairs.map(([source,group])=>{
+  const visible=Number.isFinite(perPage)?pairs.slice((page-1)*perPage,page*perPage):pairs;
+  const rows=visible.map(([source,group])=>{
       const name=followAuthorName(group);
       const cell=followSourceCells(source,selectable);
       return `<tr class="${cell.className}">
@@ -6641,6 +6641,7 @@ function followSourceTable(groups,selectable){
 function followAliasManager(groups,suggestions){
   groups=groups||[];suggestions=suggestions||[];
   const detected=suggestions.map(item=>`<tr>
+    <td class="faliascheck"><label>${checkboxHtml(`data-follow-alias-select aria-label="选择别名 ${esc(item.alias)}，归入 ${esc(item.canonical)}"`)}</label></td>
     <td><b>${esc(item.canonical)}</b></td><td>${esc(item.alias)}</td>
     <td class="faliasevidence">${esc(item.evidence)}</td>
     <td><button class="fbtn small" data-follow-alias-add
@@ -6661,8 +6662,8 @@ function followAliasManager(groups,suggestions){
       <input class="geist-input" name="alias" required placeholder="平台别名" aria-label="平台别名">
       <button class="fbtn" type="submit">保存别名</button>
     </form>
-    ${detected?`<div class="faliasheading"><h4>待合并</h4><button type="button" class="fbtn" data-follow-alias-all>全部合并（${suggestions.length}）</button></div>
-      <div class="ftableframe"><div class="ftablewrap"><table class="ftable faliastable" aria-label="待合并创作者别名"><thead><tr><th scope="col">规范创作者</th><th scope="col">平台别名</th><th scope="col">依据</th><th scope="col">操作</th></tr></thead><tbody>${detected}</tbody></table></div></div>`:''}
+    ${detected?`<div class="faliasheading"><h4>待合并</h4><div class="faliasactions"><button type="button" class="fbtn" data-follow-alias-selected disabled>合并所选（0）</button><button type="button" class="fbtn" data-follow-alias-all>全部合并（${suggestions.length}）</button></div></div>
+      <div class="ftableframe"><div class="ftablewrap"><table class="ftable faliastable" aria-label="待合并创作者别名"><thead><tr><th scope="col" class="faliascheck"><label>${checkboxHtml('data-follow-alias-select-all aria-label="全选待合并别名"')}</label></th><th scope="col">规范创作者</th><th scope="col">平台别名</th><th scope="col">依据</th><th scope="col">操作</th></tr></thead><tbody>${detected}</tbody></table></div></div>`:''}
     <div class="faliasheading"><h4>已保存别名</h4><span>${groups.length} 组</span></div>
     ${saved?`<div class="ftableframe"><div class="ftablewrap"><table class="ftable faliastable faliassaved" aria-label="已保存创作者别名"><thead><tr><th scope="col">规范创作者</th><th scope="col">平台别名</th></tr></thead><tbody>${saved}</tbody></table></div></div>`:emptyState('users','还没有保存创作者别名','填写规范创作者名和平台别名以添加。',{className:'compact'})}
   </details>`;
@@ -6723,6 +6724,9 @@ function followCredentialRow(row){
 /* 关注列表的两种视图共用同一份来源集合、创作者顺序和勾选：默认视图按创作者分卡，
    表格视图一行一条来源。 */
 const FOLLOW_LAYOUTS=[['default','默认视图','layout-grid'],['table','表格视图','table']];
+const FOLLOW_PAGE_SIZES=[10,20,50,100];
+let followManagePage=1;
+function followPageSize(){return allowedSetting(Number(appSettings.followPageSize),FOLLOW_PAGE_SIZES,20)}
 function followListLayout(){
   return allowedSetting(appSettings.followLayout,FOLLOW_LAYOUTS.map(([k])=>k),'default');
 }
@@ -6731,6 +6735,7 @@ function followLayoutButtons(){
     {attr:'data-follow-layout'});
 }
 function setFollowListLayout(value){
+  followManagePage=1;
   appSettings.followLayout=value;
   saveSettings();
   // 两种视图的 DOM 不同，但换的只有列表本身：只重画 `.fsources`，页头那枚开关留在原地，
@@ -6738,13 +6743,24 @@ function setFollowListLayout(value){
   // followSourceSelection 里，收起的创作者记在 collapsedFollowAuthors 里，重画后都还在。
   const list=document.querySelector('#stats .fsources');
   if(!list){renderFollowManage(followCredentials||{});return}
-  list.dataset.layout=value;
-  list.innerHTML=followSourceListHtml(followAuthorGroups(followData.sources||[]));
-  wireFollowManage(followCredentials?.providers||[]);
+  refreshFollowSourcePage();
 }
 function followSourceListHtml(groups){
-  return followListLayout()==='table'?followSourceTable(groups,true)
-    :`<div class="board-follow-list">${groups.map(followAuthorBlock).join('')}</div>`;
+  const table=followListLayout()==='table',size=followPageSize();
+  const total=table?groups.reduce((sum,group)=>sum+group.length,0):groups.length;
+  const pages=pageCount(total,size);followManagePage=clampPage(followManagePage,pages);
+  const start=(followManagePage-1)*size,end=Math.min(start+size,total);
+  const content=table?followSourceTable(groups,true,followManagePage,size)
+    :`<div class="board-follow-list">${groups.slice(start,end).map(followAuthorBlock).join('')}</div>`;
+  return content+(total?`<div class="followpagefooter"><div class="followpageinfo"><span>${start+1}–${end} / ${total} ${table?'个来源':'位创作者'}</span><div>${selectFieldHtml(FOLLOW_PAGE_SIZES.map(value=>[String(value),`每页 ${value} ${table?'条':'位'}`]),String(size),{label:'每页显示数量',attr:'data-follow-page-size'})}</div></div>${paginationHtml(followManagePage,pages,'关注列表分页')}</div>`:'');
+}
+function refreshFollowSourcePage(){
+  const list=document.querySelector('#stats .fsources');if(!list)return;
+  list.dataset.layout=followListLayout();
+  list.innerHTML=followSourceListHtml(followAuthorGroups(followData.sources||[]));
+  const params=new URLSearchParams(location.search);params.set('page',String(followManagePage));
+  route('/follow-manage?'+params);
+  wireFollowManage(followCredentials?.providers||[],true);
 }
 
 /* 版式判据来自 docs/reference-sources.json 的 vercel-report-design：
@@ -6752,9 +6768,20 @@ function followSourceListHtml(groups){
    细小灰字加随意字号。所以这里不再用嵌套卡片盒子——分组靠标题和一条发丝分隔线，
    行与行之间也只用分隔线，不各自套框。控件尺寸按实测 Geist：32px 高、6px 圆角、14px。 */
 let followManageWorkspace='list';
+document.addEventListener('click',event=>{
+  if(event.target.closest?.('[data-empty-settings]')){openSettings(true,'媒体');return}
+  const link=event.target.closest?.('a[href="/follow-manage?tab=add"]');
+  if(!link||event.defaultPrevented||event.button||event.metaKey||event.ctrlKey||event.shiftKey||event.altKey)return;
+  event.preventDefault();
+  const tab=location.pathname==='/follow-manage'&&document.querySelector('[data-follow-workspace="add"]');
+  if(tab){tab.click();tab.focus()}
+  else void openFollowManage(true,'add');
+});
 function renderFollowManage(credentials){
   const workspace=followManageWorkspace;
   const sources=followData.sources||[],counts=followData.counts||{};
+  const availableIds=new Set(sources.map(source=>source.id));
+  for(const id of followSourceSelection)if(!availableIds.has(id))followSourceSelection.delete(id);
   const groups=followAuthorGroups(sources);
   const sourceList=followSourceListHtml(groups);
   const broken=sources.filter(s=>s.last_status==='error'||s.last_status==='unauthorized');
@@ -6809,13 +6836,13 @@ function renderFollowManage(credentials){
           <button class="fbtn" data-follow-check="" title="检查全部" aria-label="检查全部"${sources.length?'':' disabled'}>${
             icon('refresh-cw')}<span data-collapse-label>检查全部</span></button></div>
         ${followCheckReport?followCheckFailNote(followCheckReport):''}
-        ${sources.length?`<div class="board-follow-selection"><label>${checkboxHtml('data-follow-select-all aria-label="全选来源"')}全选</label><span data-follow-selected-count>已选 0</span><button class="fbtn" data-follow-check="" data-follow-sources="" data-follow-selection-action disabled>检查所选</button><button class="fbtn" data-follow-selection-enabled="true" data-follow-selection-action disabled>启用</button><button class="fbtn" data-follow-selection-enabled="false" data-follow-selection-action disabled>暂停</button><button class="fbtn danger" data-follow-selection-remove data-follow-selection-action disabled>删除</button></div>`:''}
+        ${sources.length?`<div class="board-follow-selection"><label>${checkboxHtml('data-follow-select-all aria-label="全选本页来源"')}全选本页</label><button class="fbtn" type="button" data-follow-collapse-all>全部收起</button></div><div class="selectiondock followselectiondock" role="group" aria-label="关注来源批量操作" hidden><span class="selectiondockcount" data-follow-selected-count role="status">已选 0</span><button class="geist-button" data-follow-check="" data-follow-sources="" data-follow-selection-action disabled>检查所选</button><button class="geist-button" data-follow-selection-enabled="true" data-follow-selection-action disabled>启用</button><button class="geist-button" data-follow-selection-enabled="false" data-follow-selection-action disabled>暂停</button><button class="geist-button danger" data-follow-selection-remove data-follow-selection-action disabled>删除</button><button class="geist-button" data-follow-selection-clear>取消选择</button></div>`:''}
         ${sources.length?`<div class="frows fsources" data-layout="${followListLayout()}">${sourceList}</div>
           ${counts.new?`<div class="fsecfoot"><p class="fnote fbulkrow"><span class="fbulkcounts">未看 ${counts.new} · 已看 ${counts.seen||0}
             · 已保存 ${counts.saved||0} · 已忽略 ${counts.ignored||0}</span>
             <span class="fbulk"><button class="fbtn" data-follow-bulk="seen">全部标记已看</button>
             <button class="fbtn" data-follow-bulk="ignored">全部忽略</button></span></p></div>`:''}`
-          :emptyState('rss','还没有关注来源','关注来源及其检查状态会显示在这里。',{className:'compact'})}
+          :emptyState('rss','还没有关注来源','关注来源及其检查状态会显示在这里。',{className:'compact',actions:'<a class="geist-button primary" href="/follow-manage?tab=add">添加关注</a>'})}
       </section>
       <section class="fsec" data-follow-workspace-panel="source">
         <div class="fsechead"><h3>来源和凭证</h3>
@@ -6830,7 +6857,13 @@ function renderFollowManage(credentials){
     </div></div>`;
   wireFollowManage(creds);
   const tabs=[...$('#stats').querySelectorAll('[data-follow-workspace]')],panels=[...$('#stats').querySelectorAll('[data-follow-workspace-panel]')];
-  tabs.forEach(tab=>tab.onclick=()=>{const key=tab.dataset.followWorkspace;followManageWorkspace=key;tabs.forEach(t=>t.setAttribute('aria-selected',String(t===tab)));panels.forEach(panel=>panel.hidden=panel.dataset.followWorkspacePanel!==key)});
+  tabs.forEach(tab=>tab.onclick=()=>{
+    const key=tab.dataset.followWorkspace;followManageWorkspace=key;
+    const params=new URLSearchParams(location.search);params.set('tab',key);
+    route('/follow-manage?'+params);
+    tabs.forEach(t=>t.setAttribute('aria-selected',String(t===tab)));
+    panels.forEach(panel=>panel.hidden=panel.dataset.followWorkspacePanel!==key);
+  });
   tabs.forEach(tab=>tab.setAttribute('aria-selected',String(tab.dataset.followWorkspace===workspace)));
   panels.forEach(panel=>panel.hidden=panel.dataset.followWorkspacePanel!==workspace);
   void wireFollowProgress();
@@ -6838,6 +6871,7 @@ function renderFollowManage(credentials){
     '#followAdd input,#followAdd button,[data-follow-remove],[data-follow-check],'+
     '[data-follow-enabled],[data-follow-selection-enabled],[data-follow-selection-remove],'+
     '[data-follow-bulk],[data-follow-guess],[data-follow-alias-add],[data-follow-alias-all],'+
+    '[data-follow-alias-selected],[data-follow-alias-select],[data-follow-alias-select-all],'+
     '[data-follow-alias-remove],#followAliasAdd input,#followAliasAdd button,[data-cred-form] input,'+
     '[data-cred-form] button,[data-cred-clear]'
   ).forEach(control=>{control.disabled=true});
@@ -6847,7 +6881,9 @@ function renderFollowManage(credentials){
 /* 排序落在地址栏上，返回同一页还是同一个顺序。方向等于该列默认值时不写进地址，
    免得地址栏挂一个和默认完全一样的参数。 */
 function routeFollowManageSort(){
-  const params=new URLSearchParams();
+  followManagePage=1;
+  const params=new URLSearchParams(location.search);params.delete('sort');params.delete('dir');params.set('page','1');
+  params.set('tab',followManageWorkspace);
   if(followManageSort!=='checked')params.set('sort',followManageSort);
   if(followManageDir!==(FOLLOW_SORT_DEFAULT_DIR[followManageSort]||'desc'))params.set('dir',followManageDir);
   const query=params.toString();
@@ -6857,11 +6893,14 @@ function routeFollowManageSort(){
   // 关注列表。直接重画，页面不闪、位置不动。
   renderFollowManage(followCredentials||{});
 }
-async function openFollowManage(push=true){
+async function openFollowManage(push=true,workspace='list'){
+  if(push)followManagePage=1;
   releaseHoverPreviews();disposeStage(false);enterManagementSurface();
-  if(push){followManageSort='checked';followManageDir='desc';route('/follow-manage')}
+  if(push){followManageWorkspace=workspace;followManageSort='checked';followManageDir='desc';route('/follow-manage'+(workspace==='list'?'':'?tab='+workspace))}
   else if(location.pathname==='/follow-manage'){
     const params=new URLSearchParams(location.search),requested=params.get('sort');
+    followManagePage=Math.max(1,Math.floor(Number(params.get('page')))||1);
+    followManageWorkspace=['list','add','source'].includes(params.get('tab'))?params.get('tab'):'list';
     followManageSort=FOLLOW_SORT_OPTIONS.some(([key])=>key===requested)?requested:'checked';
     const requestedDir=params.get('dir');
     followManageDir=requestedDir==='asc'||requestedDir==='desc'?requestedDir
@@ -6909,28 +6948,62 @@ function wireFollowItems(){
   });
 }
 
-function wireFollowManage(creds=[]){
-  void wireResolveProgress();
-  const root=$('#stats'),form=root.querySelector('#followAdd');
+function wireFollowManage(creds=[],listOnly=false){
+  if(!listOnly)void wireResolveProgress();
+  const root=$('#stats'),form=listOnly?null:root.querySelector('#followAdd');
   wireCollapse(root,'details.fauthor','follow-author-collapse','[data-follow-author-toggle]');
+  const allKeys=()=>followAuthorGroups(followData.sources||[]).map(group=>String(group[0].author_key||group[0].id));
+  const collapseAll=root.querySelector('[data-follow-collapse-all]');
+  const syncCollapseAll=()=>{if(collapseAll){collapseAll.hidden=followListLayout()==='table';collapseAll.textContent=allKeys().every(key=>collapsedFollowAuthors.has(key))?'全部展开':'全部收起'}};
+  if(collapseAll)collapseAll.onclick=()=>{
+    const keys=allKeys(),collapse=!keys.every(key=>collapsedFollowAuthors.has(key));
+    keys.forEach(key=>collapse?collapsedFollowAuthors.add(key):collapsedFollowAuthors.delete(key));
+    root.querySelectorAll('[data-follow-author-toggle]').forEach(button=>{if((button.getAttribute('aria-expanded')==='true')===collapse)button.click()});
+    syncCollapseAll();
+  };
   root.querySelectorAll('[data-follow-author-toggle]').forEach(button=>button.onclick=event=>{
     event.stopPropagation();
     const expanded=button.getAttribute('aria-expanded')==='true';
     button.setAttribute('aria-label',button.getAttribute('aria-label').replace(/^(展开|收起)/,expanded?'收起':'展开'));
     if(expanded)collapsedFollowAuthors.delete(button.dataset.followAuthorToggle);else collapsedFollowAuthors.add(button.dataset.followAuthorToggle);
+    syncCollapseAll();
+  });
+  root.querySelectorAll('details.fauthor').forEach(detail=>detail.addEventListener('toggle',()=>{
+    if(!detail.isConnected)return;
+    const key=detail.querySelector('[data-follow-author-toggle]').dataset.followAuthorToggle;
+    if(detail.open)collapsedFollowAuthors.delete(key);else collapsedFollowAuthors.add(key);
+    syncCollapseAll();
+  }));
+  syncCollapseAll();
+  root.querySelectorAll('.followpagefooter [data-page]').forEach(button=>button.onclick=()=>{
+    followManagePage=Number(button.dataset.page);refreshFollowSourcePage();
+    root.querySelector('.board-page[aria-current="page"]')?.focus({preventScroll:true});
+    root.querySelector('[data-follow-workspace-panel="list"]')?.scrollIntoView({block:'start'});
+  });
+  const pageSizeField=root.querySelector('[data-follow-page-size]');
+  if(pageSizeField)wireSelectField(pageSizeField).addEventListener('change',()=>{
+    const value=Number(pageSizeField.value);if(!FOLLOW_PAGE_SIZES.includes(value))return;
+    appSettings.followPageSize=value;saveSettings();followManagePage=1;refreshFollowSourcePage();
+    root.querySelector('[data-follow-page-size] button')?.focus({preventScroll:true});
   });
   const selectable=[...root.querySelectorAll('[data-follow-select]')];
-  const selectedIds=()=>selectable.filter(field=>field.checked).map(field=>Number(field.dataset.followSelect));
+  const selectedIds=()=>(followData.sources||[]).filter(source=>followSourceSelection.has(source.id)).map(source=>source.id);
   const syncSelection=()=>{
     const ids=selectedIds(),count=root.querySelector('[data-follow-selected-count]');
     const all=root.querySelector('[data-follow-select-all]');
-    syncSelectionToolbar({count,label:`已选 ${ids.length}`,all,summary:selectionSummary(new Set(ids),selectable.map(field=>Number(field.dataset.followSelect))),
+    const summary=selectionSummary(followSourceSelection,selectable.map(field=>Number(field.dataset.followSelect)));
+    syncSelectionToolbar({count,label:`已选 ${ids.length} 个来源`,all,summary:{...summary,count:ids.length},
       actions:root.querySelectorAll('[data-follow-selection-action]'),locked:!!followRuntime?.ledger_read_only});
+    const dock=root.querySelector('.followselectiondock');if(dock)dock.hidden=!ids.length;
     root.querySelectorAll('[data-follow-selection-action][data-follow-check]').forEach(button=>{button.dataset.followSources=ids.join(',')});
     selectable.forEach(field=>field.closest('.fsource').classList.toggle('selected',field.checked));
     root.querySelectorAll('[data-follow-author-select]').forEach(button=>{
       const fields=[...button.closest('.fauthor').querySelectorAll('[data-follow-select]')],count=fields.filter(field=>field.checked).length;
-      button.textContent=count===fields.length?'取消全选':'全选';button.setAttribute('aria-pressed',count===fields.length?'true':count?'mixed':'false');
+      const label=count===fields.length?'取消全选':'全选';
+      button.querySelector('[data-author-select-label]').textContent=label;
+      button.title=`${label} ${button.dataset.followAuthorName} 的来源`;
+      button.setAttribute('aria-label',button.title);
+      button.setAttribute('aria-pressed',count===fields.length?'true':count?'mixed':'false');
     });
   };
   selectable.forEach(field=>field.onchange=()=>{const id=Number(field.dataset.followSelect);if(field.checked)followSourceSelection.add(id);else followSourceSelection.delete(id);syncSelection()});
@@ -6945,6 +7018,8 @@ function wireFollowManage(creds=[]){
     fields.forEach(field=>{field.checked=checked});syncSelection();
   });
   const selectAll=root.querySelector('[data-follow-select-all]');
+  const clearSelection=root.querySelector('[data-follow-selection-clear]');
+  if(clearSelection)clearSelection.onclick=()=>{followSourceSelection.clear();selectable.forEach(field=>{field.checked=false});syncSelection();selectAll?.focus({preventScroll:true})};
   if(selectAll)selectAll.onchange=()=>{selectGroup(followSourceSelection,selectable.map(field=>Number(field.dataset.followSelect)),selectAll.checked);selectable.forEach(field=>{field.checked=selectAll.checked});syncSelection()};
   root.querySelectorAll('[data-follow-selection-enabled]').forEach(button=>button.onclick=async()=>{
     const ids=selectedIds(),enabled=button.dataset.followSelectionEnabled==='true';if(!ids.length)return;
@@ -6969,7 +7044,7 @@ function wireFollowManage(creds=[]){
     }});
   };
   wireScrollers(root);
-  const sortField=root.querySelector('[data-follow-sort]');
+  const sortField=listOnly?null:root.querySelector('[data-follow-sort]');
   if(sortField)wireSelectField(sortField).addEventListener('change',()=>{
     followManageSort=sortField.value;
     followManageDir=FOLLOW_SORT_DEFAULT_DIR[followManageSort]||'desc';
@@ -6988,8 +7063,8 @@ function wireFollowManage(creds=[]){
     routeFollowManageSort();
   });
   wireIconSwitch(root,'data-follow-layout',setFollowListLayout);
-  renderFollowSrcFilter(root.querySelector('#followSrcFilter'),creds);
-  const tooltipTrigger=root.querySelector('[data-fdesc-tooltip]');
+  if(!listOnly)renderFollowSrcFilter(root.querySelector('#followSrcFilter'),creds);
+  const tooltipTrigger=listOnly?null:root.querySelector('[data-fdesc-tooltip]');
   const tooltip=root.querySelector('#follow-credential-tooltip');
   if(tooltipTrigger&&tooltip)wireContextCard(tooltipTrigger.closest('.fdesc'),tooltipTrigger,tooltip);
   /* 创作者别名和凭据行都走 Geist Collapse，两处同一份实现。凭据行的 `details.fcred`
@@ -7142,24 +7217,41 @@ function wireFollowManage(creds=[]){
     }catch(error){setActionBusy(button,false);actionFailure('合并创作者别名',error)}
   };
   const mergeAll=root.querySelector('[data-follow-alias-all]');
-  if(mergeAll)mergeAll.onclick=()=>{
-    const pending=[...root.querySelectorAll('[data-follow-alias-add]')].map(button=>({
+  const mergeSelected=root.querySelector('[data-follow-alias-selected]');
+  const aliasSelectAll=root.querySelector('[data-follow-alias-select-all]');
+  const aliasFields=()=>[...root.querySelectorAll('[data-follow-alias-select]')];
+  const syncAliasSelection=()=>{
+    const fields=aliasFields(),count=fields.filter(field=>field.checked).length;
+    fields.forEach(field=>field.closest('tr').classList.toggle('selected',field.checked));
+    if(aliasSelectAll){aliasSelectAll.checked=fields.length>0&&count===fields.length;aliasSelectAll.indeterminate=count>0&&count<fields.length}
+    if(mergeSelected){mergeSelected.disabled=count===0;mergeSelected.textContent=`合并所选（${count}）`}
+    if(mergeAll){mergeAll.disabled=fields.length===0;mergeAll.textContent=`全部合并（${fields.length}）`}
+  };
+  aliasFields().forEach(field=>field.onchange=syncAliasSelection);
+  if(aliasSelectAll)aliasSelectAll.onchange=()=>{aliasFields().forEach(field=>{field.checked=aliasSelectAll.checked});syncAliasSelection()};
+  const mergeAliases=(trigger,selectedOnly)=>{
+    const pending=[...root.querySelectorAll('[data-follow-alias-add]')]
+      .filter(button=>!selectedOnly||button.closest('tr').querySelector('[data-follow-alias-select]').checked).map(button=>({
       canonical:button.dataset.canonical,alias:button.dataset.alias,button}));
-    return confirmModal({title:'合并全部创作者别名',
+    if(!pending.length)return;
+    return confirmModal({title:selectedOnly?'合并所选创作者别名':'合并全部创作者别名',
       body:`将合并以下 ${pending.length} 组创作者：${pending.map(item=>`「${item.alias}」归入「${item.canonical}」`).join('；')}。`,
-      confirmLabel:'合并全部别名',onConfirm:async()=>{
-        setActionBusy(mergeAll);
+      confirmLabel:selectedOnly?'合并所选别名':'合并全部别名',onConfirm:async()=>{
+        setActionBusy(trigger);
         try{
           while(pending.length){
             const item=pending[0];
             await api('/api/follow/author-alias',{method:'POST',body:JSON.stringify({action:'add',canonical:item.canonical,alias:item.alias})});
-            pending.shift();item.button.closest('tr')?.remove();
+            pending.shift();item.button.closest('tr')?.remove();syncAliasSelection();
           }
-          await openFollowManage(false);actionReceipt('已合并全部创作者别名');
+          await openFollowManage(false);actionReceipt(selectedOnly?'已合并所选创作者别名':'已合并全部创作者别名');
         }catch(error){throw new Error(`还有 ${pending.length} 组未合并：${error.message}`)}
-        finally{setActionBusy(mergeAll,false)}
+        finally{setActionBusy(trigger,false)}
       }});
   };
+  if(mergeAll)mergeAll.onclick=()=>mergeAliases(mergeAll,false);
+  if(mergeSelected)mergeSelected.onclick=()=>mergeAliases(mergeSelected,true);
+  syncAliasSelection();
   root.querySelectorAll('[data-follow-alias-add]').forEach(button=>button.onclick=()=>
     saveAuthorAlias(button.dataset.canonical,button.dataset.alias,button));
   const aliasForm=root.querySelector('#followAliasAdd');

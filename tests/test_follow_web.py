@@ -2442,7 +2442,7 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains('class="frows fsources"')
         grid = self.page[self.page.index(".fsources{"):]
         self.assertIn("repeat(auto-fit,minmax(430px,1fr))", grid[:grid.index("}")])
-        self.assertPageContains("groups.map(followAuthorBlock).join('')")
+        self.assertPageContains("groups.slice(start,end).map(followAuthorBlock).join('')")
         self.assertNotIn(".fsources>.fauthor{display:grid", self.page,
                          "多栏单位是作者组，不能拆开作者下面的来源行")
         self.assertPageContains('class="fsourcelink externallink" href="${esc(source.url)}"')
@@ -2865,13 +2865,15 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("wireIconSwitch(root,'data-follow-layout',setFollowListLayout)")
         self.assertPageContains('<div class="frows fsources" data-layout="${followListLayout()}">${sourceList}</div>')
         self.assertPageContains(
-            "return followListLayout()==='table'?followSourceTable(groups,true)")
+            "const content=table?followSourceTable(groups,true,followManagePage,size)")
         # 切换只换列表本身：页头那枚开关留在原地，滑块才有得滑。
         self.assertPageContains("const list=document.querySelector('#stats .fsources');\n"
                                 "  if(!list){renderFollowManage(followCredentials||{});return}\n"
-                                "  list.dataset.layout=value;\n"
-                                "  list.innerHTML=followSourceListHtml(followAuthorGroups(followData.sources||[]));\n"
-                                "  wireFollowManage(followCredentials?.providers||[]);")
+                                "  refreshFollowSourcePage();")
+        self.assertPageContains("groups.slice(start,end).map(followAuthorBlock)")
+        self.assertPageContains("const selectedIds=()=>(followData.sources||[]).filter(source=>followSourceSelection.has(source.id)).map(source=>source.id);")
+        self.assertPageContains('class="selectiondock followselectiondock" role="group" aria-label="关注来源批量操作" hidden')
+        self.assertPageContains("const FOLLOW_PAGE_SIZES=[10,20,50,100];")
         self.assertPageContains("const sourceList=followSourceListHtml(groups);")
         self.assertPageContains("const collapsed=collapsedFollowAuthors.has(key);")
         self.assertPageContains("group.map(source=>followSourceRow(source,true))")
@@ -2902,7 +2904,12 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains('aria-label="待合并创作者别名"')
         self.assertPageContains('aria-label="已保存创作者别名"')
         self.assertPageContains('data-follow-alias-all')
-        self.assertPageContains("confirmLabel:'合并全部别名'")
+        self.assertPageContains("confirmLabel:selectedOnly?'合并所选别名':'合并全部别名'")
+        self.assertPageContains('data-follow-alias-selected disabled>合并所选（0）')
+        self.assertPageContains('data-follow-alias-select-all aria-label="全选待合并别名"')
+        self.assertPageContains("aliasSelectAll.indeterminate=count>0&&count<fields.length")
+        self.assertPageContains(".filter(button=>!selectedOnly||button.closest('tr').querySelector('[data-follow-alias-select]').checked)")
+        self.assertPageContains("pending.shift();item.button.closest('tr')?.remove();syncAliasSelection();")
         self.assertPageContains("const sources=(followData?.sources||[]).filter(source=>source.author_key===`name:${group.canonical_key}`);")
 
     def test_both_views_render_the_same_source_cells(self):
@@ -2925,7 +2932,7 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains('<td class="ftactions">${cell.actions}</td></tr>')
         self.assertPageContains("selectable.forEach(field=>field.closest('.fsource').classList.toggle('selected',field.checked))")
         # 时间格两边同一个写法，<i> 只是包一层，不是排版意图。
-        self.assertPageContains('<i class="fyear">${esc(text.slice(0,5))}</i>${esc(text.slice(5))}')
+        self.assertPageContains('<i class="fyear">${esc(text.slice(0,5))}</i>${esc(text.slice(5,10))}<span class="fclock">${esc(text.slice(10))}</span>')
         self.assertPageContains(".fsource .fchecked .fyear{font-style:normal}")
         self.assertPageContains('<span class="fmeta fprovider${')
         self.assertPageContains('title="${esc(source.provider_label)}">')
@@ -3667,7 +3674,7 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("function followAuthorGroups(sources)")
         self.assertPageContains("source.author_key")
         self.assertPageContains("const groups=followAuthorGroups(sources);")
-        self.assertPageContains("groups.map(followAuthorBlock)")
+        self.assertPageContains("groups.slice(start,end).map(followAuthorBlock)")
         # 组标题用作者本人的名字：四条来源合成一组之后还挂着其中一条的平台后缀，
         # 等于说这一组只属于 fanbox，正是这次要消掉的误读。
         self.assertPageContains("function followAuthorName(group)")

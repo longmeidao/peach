@@ -29,9 +29,11 @@ describe('馆藏与资料空状态', () => {
   it('空首页提供添加内容与来源的真实入口', () => {
     const html = catalogEmptyHtml({ configurable: true });
     expect(html).toContain('data-geist-empty-state');
-    expect(html).toContain('href="/configuration"');
-    expect(html).toContain('href="/follow-manage"');
-    expect(catalogEmptyHtml()).not.toContain('href="/configuration"');
+    expect(html).toContain('data-empty-settings');
+    expect(html).toContain('href="/follow-manage?tab=add"');
+    expect(catalogEmptyHtml()).not.toContain('data-empty-settings');
+    expect(catalogEmptyHtml()).toContain('class="geist-button primary" href="/follow-manage?tab=add"');
+    expect(catalogEmptyHtml({ configurable: true }).match(/class="geist-button primary"/g)).toHaveLength(1);
   });
   it('JAV 与筛选无结果可查看未筛选内容', () => {
     expect(catalogEmptyHtml({ jav: true })).toContain('尚未补充发行资料');

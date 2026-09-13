@@ -328,7 +328,18 @@ p.fnote .followtask{color:var(--ink-2)}
 .faliasheading>span,.faliasevidence{color:var(--muted)}
 .faliastable{width:100%;min-width:0;table-layout:fixed}
 .faliastable th,.faliastable td{white-space:normal;overflow-wrap:anywhere}
-.faliastable th:last-child:nth-child(4){width:80px}
+.faliastable th:last-child:nth-child(5){width:80px}
+.faliastable:not(.faliassaved) th:nth-child(2),.faliastable:not(.faliassaved) th:nth-child(3){width:18%}
+.faliastable .faliascheck{width:40px;text-align:center}
+.faliastable tr.selected{background:var(--picked)}
+.faliasactions{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}
+.followpagefooter{margin-top:16px}
+.followmanage .ftablewrap{position:relative}
+.followpageinfo{display:flex;align-items:center;justify-content:space-between;gap:12px;color:var(--muted)}
+.followpageinfo>div{flex:none}
+.followmanage:has(.followselectiondock:not([hidden])){padding-bottom:180px}
+.followmanage [data-follow-workspace-panel="list"]{scroll-margin-top:calc(var(--topH) + 16px)}
+@media(max-width:640px){.followpagefooter .board-pagination{flex-wrap:wrap}.followpagefooter .board-pagination>ul{order:3;justify-content:center;width:100%}.followpageinfo{font-size:var(--fs-sm)}}
 .faliasidentity{display:flex;align-items:center;gap:10px;min-width:0}
 .faliasidentity>.favatar{flex:none}
 .faliastable .faliaschip{margin:3px 10px 3px 0;max-width:100%;overflow-wrap:anywhere}
