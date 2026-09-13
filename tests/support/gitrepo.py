@@ -57,5 +57,8 @@ def seed_repository(destination: Path, files: dict[str, str | bytes], message: s
         _git(template, "add", "--", *files)
         _git(template, "commit", "-q", "-m", message)
         _templates[key] = template
-    shutil.copytree(template, destination)
+    # 跳过 `.lock`：git 自己的锁文件是模板那个进程的临时状态（`objects/maintenance.lock`、
+    # `index.lock` 之类），复制途中它可能正好消失，`copytree` 就整条报错；真复制过去也只是
+    # 给副本留一把假锁。副本要的是提交和对象，不是锁。
+    shutil.copytree(template, destination, ignore=shutil.ignore_patterns("*.lock"))
     return destination
