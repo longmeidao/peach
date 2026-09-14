@@ -148,8 +148,9 @@ body:has(#batchbar:not([hidden])) #stage{padding-bottom:180px}
   /* 关注详情只有三四个动作键，撑满一行就是四个大得离谱的方块。 */
   .fb.followdetailactions{width:max-content;max-width:100%}
   .fb.followdetailactions button,.fb.followdetailactions .fdownload{flex:0 0 auto}
-  /* 顶栏在窄屏会被搜索框撑破 —— 搜索收成一个按钮，点了才展开 */
-  .top{gap:4px;padding:0 8px;overflow:hidden}
+  /* 顶栏在窄屏会被搜索框撑破 —— 搜索收成一个按钮，点了才展开。只裁横向：竖向也裁的话，
+     那几枚玻璃按钮往下落的投影在顶栏下沿被切平，头像那一排上方就多出一条横线。 */
+  .top{gap:4px;padding:0 8px;overflow:clip visible}
   .top:has(.search.open){overflow:visible}
   .brand h1{font-size:var(--fs-lg)}
   .ib{width:36px;height:36px}
