@@ -44,8 +44,9 @@ def identity_key(text: str) -> str:
 
     同一个人在各站的写法差的是分隔符——`Ria_neearts`、`ria-neearts`、
     `RiaNeearts` 是同一个手柄。把分隔符抹掉之后才谈得上「这条命中的是不是他」。
+    字母数字按 Unicode 算：`鈴太郎_3D` 与 `鈴太郎-3d` 同一个键，中日文名不会被抹成空串。
     """
-    return re.sub(r"[^0-9a-z]+", "", str(text).casefold())
+    return re.sub(r"[\W_]+", "", str(text).casefold())
 
 
 def spelling_variants(term: str) -> tuple[str, ...]:
