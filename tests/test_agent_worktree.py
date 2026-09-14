@@ -319,7 +319,7 @@ class UnregisteredLeftoverTests(_WorktreeCase):
                 shutil.rmtree(used)
 
     def test_a_registered_worktree_under_either_root_is_not_swept(self):
-        """登记着的工作树归上面那轮按分支状态处理，扇残留这步不许碰。"""
+        """登记着的工作树归上面那轮按分支状态处理，扫残留这步不许碰。"""
         for index, root in enumerate(self.roots()):
             with self.subTest(root=root.name):
                 task = f"in-place-{index}"
