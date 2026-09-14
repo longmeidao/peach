@@ -561,6 +561,13 @@ body::before{display:none}
    资料页那块在 `#index` 里，`main` 的 16px 已经把它让开了。这里补的就是那 16px，取的
    也是 `main` 自己的那个数，所以两页的浮层和底下的网格对在同一条竖线上。 */
 body>.board-filter-frame{margin-inline:16px}
+/* 窄屏的吸顶玻璃收到视口宽度的九成以下、居中。iOS 26 的 Safari 在状态栏下沿正中取一点，顺着命中元素
+   往上找第一个 fixed/sticky 祖先给状态栏取色：宽度不足视口（减 8px）九成的直接跳过，够宽且带
+   backdrop-filter 的整条栏盖成一块实色；而且取到以后只要那个元素还可见就一直沿用。这几块玻璃往上
+   滑走时必经那一点，够宽的话滑过一次，之后整页上下滚状态栏都透不出内容。
+   门槛见 WebKit LocalFrameView::fixedContainerEdges。 */
+@media(max-width:760px){.board-filter-frame.board-filter-frame,.entitytagbar.entitytagbar,.entitycollectionhead.entitycollectionhead{
+  max-width:calc(88vw - 8px);margin-inline:auto}}
 .board-filter-frame .tagbar,.board-filter-frame .count{position:relative;top:auto;left:auto;width:auto;margin:0;background:transparent;box-shadow:none;border:0;padding:10px 16px}
 .board-filter-frame .tagbar{border-bottom:0;border-radius:16px 16px 0 0}
 .board-filter-frame .count{border-radius:0 0 16px 16px;min-width:0}
@@ -783,9 +790,13 @@ body>.board-filter-frame{margin-inline:16px}
 @media(max-width:1080px){.stage{overflow:hidden auto}.stage .vwrap:has(>.video-js){position:sticky;top:0;z-index:3}}
 /* 手机上浮窗离屏幕边只留 8px，画面格按视频自己的比例排：竖屏和方形视频装进 16:9 的格子里
    只剩中间一小块画面。比例由播放器读到元数据后写进 `--peach-video-ratio`，读到之前仍是 16:9；
-   高度封顶 56dvh，吸顶以后下面至少还有四成屏给详情。 */
+   高度封顶 56dvh，吸顶以后下面至少还有四成屏给详情。
+   上沿让出状态栏、下沿按 dvh 停在地址栏之上：iOS 26 的 Safari 在状态栏下沿和地址栏上沿各取一点给
+   两条栏取色，点落在浮窗上就刷成浮窗的底色，落在 ::backdrop 上取的是遮罩那一档暗色，和底下
+   被压暗的页面连成一片。 */
 @media(max-width:760px){
-  .stage{inset:8px;width:calc(100vw - 16px);max-width:calc(100vw - 16px);max-height:calc(100dvh - 16px)}
+  .stage{inset:calc(env(safe-area-inset-top) + 8px) 8px auto;margin:0 auto;width:calc(100vw - 16px);max-width:calc(100vw - 16px);
+    max-height:calc(100dvh - env(safe-area-inset-top) - 16px)}
   .vwrap>.video-js{aspect-ratio:var(--peach-video-ratio,16/9);max-height:56dvh}
 }
 @media(max-width:760px){.settingspanel.settingspanel{padding:12px;grid-template-columns:minmax(0,1fr)}.settingscard.settingscard{width:calc(100vw - 24px);max-width:calc(100vw - 24px);min-width:0}.settingscard .settingsscroll .settingrow:has(.board-optional-number){grid-template-columns:minmax(0,1fr) auto;gap:12px}.settingscard>.board-local-nav{min-width:0;max-width:100%}}
@@ -865,7 +876,11 @@ html.board-high-contrast .settingscard.settingscard>.board-local-nav{background:
   .drawer:not(.open) .board-sidebar-head #filterBtn{height:20px}
 }
 @media(max-width:760px){
-  .drawer.drawer{top:12px;bottom:12px;z-index:102;transform:translateX(calc(-100% - 16px));transition:transform var(--board-dialog-motion)}
+  /* 收起时不可见，不只是移出屏幕：iOS 26 的 Safari 取到过这块玻璃给状态栏上色后，只要它仍可见就一直沿用，
+     开合一次状态栏就再也透不出内容。visibility 跟着位移一起过渡，过渡期间两头都算可见，滑出动画照常播完。 */
+  .drawer.drawer{top:12px;bottom:12px;z-index:102;transform:translateX(calc(-100% - 16px));
+    transition:transform var(--board-dialog-motion),visibility var(--board-dialog-motion)}
+  .drawer.drawer:not(.open){visibility:hidden}
   .drawer.drawer.open{transform:translateX(0)}
   .scrim.scrim.on{top:0;z-index:101;background:#0007}
   .index .ihead .geist-search{flex-basis:160px}
