@@ -184,6 +184,65 @@ class LibraryNfoTests(unittest.TestCase):
         provider.query.assert_called_once()
 
     @windows_ledger_roots
+    def test_fields_the_local_nfo_gives_take_no_remote_candidate(self):
+        """NFO 给了日文原题，r18 再给一条英文机翻只会变成一道复核题。"""
+        from PIL import Image
+        media = self.root / 'media'
+        media.mkdir()
+        (media / 'ABW-358.mp4').write_bytes(b'video')
+        (media / 'ABW-358.nfo').write_text('<movie><title>涼森れむ流</title><sorttitle>ABW-358</sorttitle>'
+            '<actor><name>涼森れむ</name></actor></movie>', encoding='utf-8')
+        Image.new('RGB', (40, 60), 'blue').save(media / 'ABW-358-poster.jpg')
+        db = fresh_ledger(self.root)
+        config = PeachConfig(self.root, self.root / 'config.toml', present=True, locations={'local': (str(media),)})
+        provider = Mock()
+        provider.query.return_value = {'id': 'ABW-358', 'title': 'Remu Style', 'maker': 'Prestige',
+                                       'actresses': [{'japanese_name': 'Remu Suzumori'}]}
+        process_library(config, db, self.root / 'generated', self.root / 'covers',
+                        provider_factory=Mock(return_value=provider))
+        groups = {row['field']: [entry['source'] for entry in json.loads(row['candidates_json'])]
+                  for row in read_rows(self.root / 'generated/library-metadata-field-candidates.csv')}
+        self.assertEqual(groups['title'], ['local_nfo'])
+        self.assertEqual(groups['performers'], ['local_nfo'])
+        self.assertEqual(groups['studio'], ['r18dev'])
+
+    def test_r18_metadata_takes_japanese_title_series_and_names(self):
+        from peach.library_processing import LibraryMetadataProvider
+        detail = {'content_id': '118abw358', 'title': 'Remu Style', 'maker': {'name': 'Prestige'},
+                  'series': {'name': 'HOW TO SEX'}, 'actresses': [{'name': 'Remu Suzumori'}]}
+        combined = {'content_id': '118abw358', 'title_ja': '涼森れむ流', 'series_name_ja': '保健室の先生',
+                    'label_name_ja': 'ABSOLUTELY WONDERFUL', 'maker_name_ja': 'プレステージ',
+                    'actresses': [{'name_kanji': '涼森れむ', 'name_romaji': 'Remu Suzumori'}],
+                    'directors': [{'name_kanji': 'チャーリー中田'}]}
+        pages = lambda transport, url, **kwargs: json.dumps(combined if 'combined=' in url else detail)
+        provider = LibraryMetadataProvider.__new__(LibraryMetadataProvider)
+        provider.transport = Mock()
+        with patch('peach.jav_cover_fetch._fetch', side_effect=pages) as fetch:
+            payload = provider.query('ABW-358')
+        self.assertIn('combined=118abw358', fetch.call_args_list[1].args[1])
+        fields = _fields(payload)
+        self.assertEqual(fields['title']['value'], '涼森れむ流')
+        self.assertEqual(fields['series']['value'], '保健室の先生')
+        self.assertEqual(fields['performers']['display_value'], '涼森れむ')
+        # 账本厂牌实体用品牌名，日文写法会另起一个实体。
+        self.assertEqual(fields['studio']['value'], 'Prestige')
+
+    def test_r18_metadata_keeps_english_when_the_japanese_page_fails(self):
+        from peach.jav_cover_fetch import Unavailable
+        from peach.library_processing import LibraryMetadataProvider
+        detail = {'content_id': '118abw358', 'title': 'Remu Style', 'actresses': [{'name': 'Remu Suzumori'}]}
+        def pages(transport, url, **kwargs):
+            if 'combined=' in url:
+                raise Unavailable('HTTP 503')
+            return json.dumps(detail)
+        provider = LibraryMetadataProvider.__new__(LibraryMetadataProvider)
+        provider.transport = Mock()
+        with patch('peach.jav_cover_fetch._fetch', side_effect=pages):
+            payload = provider.query('ABW-358')
+        self.assertEqual(_fields(payload)['title']['value'], 'Remu Style')
+        self.assertNotIn('translations', payload)
+
+    @windows_ledger_roots
     def test_korean_mib_codes_ask_no_jav_source_for_metadata_or_cover(self):
         """`HA-101` 是 MIB 的编号，也是一部日本片的番号：问了就取回那部日本片。"""
         media = self.root / 'media'

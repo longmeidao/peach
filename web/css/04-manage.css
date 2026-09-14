@@ -74,8 +74,8 @@
 .metadatasole input{display:none}
 .metadatacandidates{display:grid;gap:8px;margin:10px 0}
 .metadatacandidate{cursor:pointer}
-.metadatacandidatevalue{grid-column:1;grid-row:1;display:grid;gap:3px;min-width:0;padding:12px 4px 12px 16px}
-.metadatasole .metadatacandidatevalue{grid-column:1/-1;padding-right:16px}
+.metadatacandidatevalue{grid-column:1/-1;grid-row:1;display:grid;gap:3px;min-width:0;padding:12px 48px 12px 16px}
+.metadatasole .metadatacandidatevalue{padding-right:16px}
 .metadatacandidate>input{grid-column:2;grid-row:1;align-self:center;margin:0 20px 0 8px;accent-color:var(--ink)}
 .metadatacandidatevalue b{font-size:var(--fs-xs);color:var(--ink)}
 .metadatacandidatevalue>span{font-size:var(--fs-sm);line-height:1.45;overflow-wrap:anywhere}

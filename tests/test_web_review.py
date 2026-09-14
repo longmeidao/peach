@@ -314,6 +314,31 @@ class ReviewQueueTests(unittest.TestCase):
         self.assertEqual(json.loads(note)["rule"],
                          "adr-0018-empty-field-single-community-source")
 
+    def test_auto_apply_takes_a_local_nfo_value_but_not_a_disagreeing_one(self):
+        """NFO 的番号已经和文件名对过，是补空证据；和在线来源写法不一时仍是一道取舍题。"""
+        self._asset(90, "ABW-358", "ABW-358.mp4")
+        self._asset(91, "ABW-359", "ABW-359.mp4")
+        self.write_metadata_rows([
+            {"item_key": "ABW", "field": "title", "current": "",
+             "candidates": ["涼森れむ流 HOW TO SEX！！"], "code": "ABW-358", "source": "local_nfo"},
+            {"item_key": "ABX", "field": "title", "current": "",
+             "candidates": ["涼森れむ流", {"value": "Remu Style", "source": "r18dev"}],
+             "code": "ABW-359", "source": "local_nfo"},
+        ])
+        self.assertEqual(self._auto()["applied"], 1)
+        con = sqlite3.connect(self.db_path)
+        try:
+            title, owners = con.execute(
+                "SELECT catalog_title,field_owners FROM asset WHERE id=90").fetchone()
+            note = con.execute(
+                "SELECT note FROM review_decision WHERE item_key='ABW'").fetchone()[0]
+        finally:
+            con.close()
+        self.assertEqual(title, "涼森れむ流 HOW TO SEX！！")
+        self.assertEqual(owner_of(owners, "catalog_title"), "auto:local_nfo")
+        self.assertEqual(json.loads(note)["rule"], "adr-0029-empty-field-local-nfo")
+        self.assertEqual(self.queue_keys("metadata_fields"), ["ABX"])
+
     def test_auto_apply_records_the_source_as_the_field_owner(self):
         self._asset(96, "EEE-5", "EEE-5.mp4")
         self.write_metadata_rows([

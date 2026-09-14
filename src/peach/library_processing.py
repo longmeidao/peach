@@ -76,13 +76,48 @@ class LibraryMetadataProvider:
         if not identifies_code(code, {'content_id': raw.get('content_id')}):
             raise ValueError('来源返回的番号不匹配')
         name = lambda key: (raw.get(key) or {}).get('name', '')
-        return dict(id=code, content_id=raw.get('content_id'), source_url=url,
-                    title=raw.get('title'), maker=name('maker'), series=name('series'),
-                    release_date=raw.get('release_date'),
-                    director=raw.get('director'), label=name('label'), runtime=raw.get('runtime_minutes'),
-                    cover_url=(raw.get('images') or {}).get('jacket_image'),
-                    actresses=[{'japanese_name': row.get('name', '')} for row in raw.get('actresses', [])],
-                    genres=[row.get('name', '') for row in raw.get('categories', [])], raw=raw)
+        payload = dict(id=code, content_id=raw.get('content_id'), source_url=url,
+                       title=raw.get('title'), maker=name('maker'), series=name('series'),
+                       release_date=raw.get('release_date'),
+                       director=raw.get('director'), label=name('label'), runtime=raw.get('runtime_minutes'),
+                       cover_url=(raw.get('images') or {}).get('jacket_image'),
+                       actresses=[{'japanese_name': row.get('name', '')} for row in raw.get('actresses', [])],
+                       genres=[row.get('name', '') for row in raw.get('categories', [])], raw=raw)
+        return self._with_japanese(payload, deadline=deadline)
+
+    def _with_japanese(self, payload, *, deadline=None):
+        """补上 r18 combined 页的日文写法，形状与 Javinizer-Go 快照的 `translations` 一致。
+
+        `dvd_id` 入口只给英文，标题和系列多是机翻（ABW-358 的 `title_en_is_machine_translation`
+        为真），演员只有罗马字。日文在 `combined=<content_id>` 那一页：`title_ja`、
+        `series_name_ja`、演员 `name_kanji`。厂牌不取日文——账本的厂牌实体用品牌名
+        （`Prestige`、`MOODYZ`），换成 `プレステージ` 会另起一个实体。
+        这一页取不到时照旧交英文，不让一次失败吞掉整条资料。
+        """
+        from .jav_cover_fetch import R18_COMBINED, Unavailable, _fetch
+        from urllib.parse import quote
+        import httpx
+        content_id = str(payload.get('content_id') or '')
+        if not content_id:
+            return payload
+        try:
+            combined = json.loads(_fetch(self.transport, R18_COMBINED.format(content_id=quote(content_id)),
+                                         referer='https://r18.dev/', limit=2 * 1024 * 1024, deadline=deadline))
+        except (Unavailable, ValueError, httpx.TransportError):
+            return payload
+        if not isinstance(combined, dict) or combined.get('content_id') != content_id:
+            return payload
+        directors = [row.get('name_kanji') for row in combined.get('directors') or [] if row.get('name_kanji')]
+        payload['translations'] = [dict(language='ja', title=combined.get('title_ja') or '',
+                                        series=combined.get('series_name_ja') or '',
+                                        label=combined.get('label_name_ja') or '',
+                                        director=directors[0] if directors else '')]
+        actresses = [{'japanese_name': row.get('name_kanji') or row.get('name_romaji') or ''}
+                     for row in combined.get('actresses') or []]
+        if any(row['japanese_name'] for row in actresses):
+            payload['actresses'] = actresses
+        payload['combined'] = combined
+        return payload
 
     def cover(self, code, cover_root, *, deadline=None):
         from .jav_cover_fetch import best_cover
@@ -252,10 +287,17 @@ def _require_writer(config, db_path):
             raise ValueError('这台电脑是只读端，请在写入端扫描和导入资料')
 
 
-def _merge_candidates(groups, row, code, source, document, evidence_path, genre_decisions):
-    """把 `document` 里认得出的字段并进 `groups`：同来源的旧候选换掉，别的来源保留。"""
+def _merge_candidates(groups, row, code, source, document, evidence_path, genre_decisions, local_fields=()):
+    """把 `document` 里认得出的字段并进 `groups`：同来源的旧候选换掉，别的来源保留。
+
+    本地 NFO 已给出的字段只收 NFO 这一条（ADR-0029）。NFO 的番号已经和文件名对过，
+    是用户自己刮削留下的；在线来源再给一条同字段候选，唯一的效果是把「英文机翻标题
+    对日文原题」这种写法差异变成一道人工复核题。
+    """
     local = source == 'local_nfo'
     for field, value in _fields(document, genre_decisions).items():
+        if not local and field in local_fields:
+            continue
         key = f"asset:{row['id']}:{field}"
         identity = hashlib.sha256(json.dumps([source, value['value']], ensure_ascii=False, sort_keys=True).encode()).hexdigest()
         candidate = dict(candidate_key=identity, source=source, provider='local-nfo' if local else 'r18-json',
@@ -272,7 +314,8 @@ def _merge_candidates(groups, row, code, source, document, evidence_path, genre_
             field_label=LABELS[field], current_value=row.get(COLUMN_OF.get(field, field)) or '',
             candidates_json='[]', source_count=0, source_profile='library', policy_version='library-v1',
             status='candidate', size_gb=round((row['size'] or 0)/1024**3, 2), videos=1, fetched_at=''))
-        choices = [entry for entry in json.loads(group['candidates_json']) if entry['source'] != source]
+        choices = [entry for entry in json.loads(group['candidates_json'])
+                   if entry['source'] != source and not (local and entry['source'] != 'local_nfo')]
         choices.append(candidate)
         group.update(candidates_json=json.dumps(choices, ensure_ascii=False), source_count=len(choices),
                      fetched_at=time.strftime('%Y-%m-%d %H:%M:%S'))
@@ -649,7 +692,8 @@ def process_library(config, db_path, candidate_root, cover_root, *, location='co
                 update(stage='保存资料候选', current_action='writing_candidates',
                        current_started_at=time.time(), current_deadline_at=None)
                 for source, document, evidence_path in entries:
-                    _merge_candidates(groups, row, code, source, document, evidence_path, genre_decisions)
+                    _merge_candidates(groups, row, code, source, document, evidence_path, genre_decisions,
+                                      local_fields)
                 if entries:
                     csv_dirty = True
                 flush_candidates()
