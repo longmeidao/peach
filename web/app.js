@@ -10075,7 +10075,7 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
       </div>
       <button class="obtn" data-kind="o">${icon('sperm')}<span>记一次高潮</span><b class="mono" id="oCount">${it.o_count||0}</b></button>
     </div></div></div>
-    ${queueContext?'':`<div class="next"><h3>接着看</h3><div class="nrow" id="nrow">${
+    ${queueContext||!(appSettings.relatedLimit>0)?'':`<div class="next"><h3>接着看</h3><div class="nrow" id="nrow">${
       pageSkeletonHtml('正在读取推荐',{cards:true,className:'related-skeleton'})}</div></div>`}`;
   $('#stage').classList.toggle('ambient-on',appSettings.ambientMode);
   $('#stage').classList.toggle('theater-mode',appSettings.theaterMode);
@@ -10336,7 +10336,9 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
 
   if(!queueContext&&appSettings.relatedLimit>0)api('/api/related?id='+it.id+'&limit='+appSettings.relatedLimit).then(d=>{
     const n=$('#nrow'); if(!n)return; cache(d.items);
-    n.innerHTML=d.items.length?d.items.map(x=>cardHtml(x,'ncard')).join(''):'<span class="empty">暂无</span>';
+    /* 没有可接着看的就整块拿掉，不留一个标题配空白。 */
+    if(!d.items.length){n.closest('.next')?.remove();return}
+    n.innerHTML=d.items.map(x=>cardHtml(x,'ncard')).join('');
     /* 这一排每开一次详情就重新生成，启动时那次 `wireAllDrag()` 登记的是早已不在页面上的旧节点；
        它又没有滚动条，不在这里登记，滚轮和拖动都推不动它。 */
     wireCards(n);wireDrag(n);});
