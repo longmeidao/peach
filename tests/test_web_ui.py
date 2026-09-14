@@ -4561,13 +4561,13 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("$('#searchBtn').onclick=()=>{setNarrowSearchOpen(true);$('#q').focus({preventScroll:true})};")
         self.assertPageContains("$('#searchBtn').focus({preventScroll:true});")
 
-    def test_mobile_search_bar_follows_the_visual_viewport_above_the_keyboard(self):
-        # iOS 弹键盘时可视视口在布局视口里往下挪，吸顶顶栏与 fixed 下拉栏按它的偏移贴顶。
-        self.assertPageContains("$('#searchBtn').setAttribute('aria-expanded',String(open));\n  syncSearchViewport();")
-        self.assertPageContains("window.visualViewport?.addEventListener('scroll',syncSearchViewport);")
-        self.assertPageContains("root.style.setProperty('--search-viewport-top',")
-        self.assertPageContains(".top:has(.search.open){overflow:visible;top:var(--search-viewport-top,0px)}")
-        self.assertPageContains("top:calc(56px + var(--search-viewport-top,0px));max-height:min(70vh,calc(var(--search-viewport-height,100vh) - 64px))")
+    def test_narrow_topbar_is_fixed_and_the_page_makes_room_for_it(self):
+        # 吸顶顶栏在文档流里，iPhone 聚焦搜索框时 Safari 会把整页往上滚；与 YouTube 手机版一样
+        # 顶栏 fixed、正文让出同样高度。
+        self.assertPageContains(".top{position:fixed;top:0;left:0;right:0}\n  body{padding-top:var(--topH)}")
+        self.assertPageContains(".top:has(.search.open){overflow:visible}")
+        self.assertPageLacks("syncSearchViewport")
+        self.assertPageLacks("--search-viewport-top")
 
     def test_glass_compositing_covers_search_snapshots_and_disposed_panels(self):
         board = (Path(__file__).resolve().parents[1] / 'web/board.css').read_text(encoding='utf-8')
@@ -8229,7 +8229,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("recommendations.map")
         self.assertPageContains("rememberSearch(query)")
         self.assertPageContains("body:JSON.stringify({query})}).catch(()=>null)")
-        self.assertPageContains(".top:has(.search.open){overflow:visible;")
+        self.assertPageContains(".top:has(.search.open){overflow:visible}")
         self.assertPageLacks("setTimeout(runSearch,320)")
         self.assertPageContains("runSearch(!picked,true)")
 
@@ -8259,8 +8259,7 @@ class WebUiSourceTests(unittest.TestCase):
         """七组补全装不进一屏，滚到底不把身后的列表一起翻走。"""
         self.assertCode("max-height:min(60vh,520px);overflow:auto;overscroll-behavior:contain;")
         self.assertCode(
-            ".searchmenu{position:fixed;left:8px;right:8px;top:calc(56px + var(--search-viewport-top,0px));"
-            "max-height:min(70vh,calc(var(--search-viewport-height,100vh) - 64px));"
+            ".searchmenu{position:fixed;left:8px;right:8px;top:56px;max-height:70vh;"
             "overflow:auto;overscroll-behavior:contain}")
 
     def test_a_suggestion_keeps_its_alias_and_count_subordinate(self):

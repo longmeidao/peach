@@ -151,9 +151,13 @@ body:has(#batchbar:not([hidden])) #stage{padding-bottom:180px}
   /* 顶栏在窄屏会被搜索框撑破 —— 搜索收成一个按钮，点了才展开。只裁横向：竖向也裁的话，
      那几枚玻璃按钮往下落的投影在顶栏下沿被切平，头像那一排上方就多出一条横线。 */
   .top{gap:4px;padding:0 8px;overflow:clip visible}
-  /* iOS 弹键盘不缩布局视口，而是让可视视口在里面往下挪，吸顶的顶栏随之被推出屏幕上沿。
-     展开搜索期间按脚本量出的可视视口偏移贴顶，见 `syncSearchViewport`。 */
-  .top:has(.search.open){overflow:visible;top:var(--search-viewport-top,0px)}
+  /* 顶栏 fixed、正文让出同样的高度，与 YouTube 手机版同一写法：`ytm-mobile-topbar-renderer`
+     fixed 贴顶，`ytm-app` 让出 48px。吸顶顶栏留在文档流里，iPhone 上一聚焦搜索框，Safari 把
+     整页往上滚来显露它（用户录屏量得约 200px），筛选框也跟着翻出来。取证与未取得的部分见
+     docs/reference-snapshots/youtube-mobile-topbar-measured.md。 */
+  .top{position:fixed;top:0;left:0;right:0}
+  body{padding-top:var(--topH)}
+  .top:has(.search.open){overflow:visible}
   .brand h1{font-size:var(--fs-lg)}
   .ib{width:36px;height:36px}
   .ib svg{width:19px;height:19px}
@@ -174,7 +178,7 @@ body:has(#batchbar:not([hidden])) #stage{padding-bottom:180px}
   .top:has(.search.open) #selectMode,
   .top:has(.search.open) #settingsBtn{display:none!important}
   .top:has(.search.open) .searchback{display:inline-flex;position:absolute;left:8px;top:calc(50% - 18px);z-index:6}
-  .searchmenu{position:fixed;left:8px;right:8px;top:calc(56px + var(--search-viewport-top,0px));max-height:min(70vh,calc(var(--search-viewport-height,100vh) - 64px));overflow:auto;overscroll-behavior:contain}
+  .searchmenu{position:fixed;left:8px;right:8px;top:56px;max-height:70vh;overflow:auto;overscroll-behavior:contain}
   #searchBtn{display:inline-flex!important}
   /* 移动端不需要密度切换和筛选抽屉按钮挤在一起 */
   #density{display:none}
