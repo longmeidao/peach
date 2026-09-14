@@ -323,33 +323,35 @@ class OperationalScriptTests(unittest.TestCase):
                             url="https://rule34.xxx/index.php?id=11",
                             media_url="https://api-cdn.rule34.xxx/images/1/a.jpg",
                             thumb_url="https://api-cdn.rule34.xxx/samples/1/a.jpg"),
-            # 卡面没有缩略图的视频无处可问：视频原文件量不出宽高。
+            # 视频不占图片墙，不问——带缩略图也一样。
             FollowCandidate(provider="rule34xxx", external_id="12", title="v",
                             url="https://rule34.xxx/index.php?id=12",
-                            media_url="https://api-cdn-mp4.rule34.xxx/images/1/v.mp4"),
-            # 有缩略图的视频按卡面比例补；dapi 给的视频宽高与同帧样图同比例，从归档取。
-            FollowCandidate(provider="rule34xxx", external_id="13", title="w",
-                            url="https://rule34.xxx/index.php?id=13",
-                            media_url="https://api-cdn-mp4.rule34.xxx/images/1/w.mp4",
-                            thumb_url="https://api-cdn.rule34.xxx/samples/1/w.jpg"),
+                            media_url="https://api-cdn-mp4.rule34.xxx/images/1/v.mp4",
+                            thumb_url="https://api-cdn.rule34.xxx/samples/1/v.jpg"),
         ])
         seed("pawchive", "user", [
             FollowCandidate(provider="pawchive", external_id="21", title="b",
                             url="https://pawchive.pw/post/21",
                             media_url="https://file.pawchive.pw/data/ab/cd/abcd.png",
                             thumb_url="https://img.pawchive.pw/thumbnail/data/ab/cd/abcd.png"),
-            # 视频条目只问卡面缩略图，不去碰 mp4。
-            FollowCandidate(provider="pawchive", external_id="22", title="c",
-                            url="https://pawchive.pw/post/22",
-                            media_url="https://file.pawchive.pw/data/ef/gh/efgh.mp4",
-                            thumb_url="https://img.pawchive.pw/thumbnail/data/ef/gh/efgh.gif"),
+            # 多图帖只问卡面那一张，其余几张只在详情里翻。
+            FollowCandidate(provider="pawchive", external_id="23", title="d",
+                            url="https://pawchive.pw/post/23",
+                            media_url="https://file.pawchive.pw/data/ij/kl/one.png",
+                            thumb_url="https://img.pawchive.pw/thumbnail/data/ij/kl/one.png",
+                            extra={"media_items": [
+                                {"id": f"/ij/kl/{name}.png", "media_kind": "image",
+                                 "url": f"https://file.pawchive.pw/data/ij/kl/{name}.png",
+                                 "thumb_url": f"https://img.pawchive.pw/thumbnail/data/ij/kl/{name}.png",
+                                 "resource_provider": "pawchive"}
+                                for name in ("one", "two")]}),
         ])
         connection.commit()
         connection.close()
         archive = root / "follow" / "rule34xxx" / "k"
         archive.mkdir(parents=True)
         (archive / "20260901T000000Z-abc.raw").write_bytes(json.dumps(
-            [{"id": 11, "width": 1280, "height": 720}, {"id": 13, "width": 1920, "height": 1080},
+            [{"id": 11, "width": 1280, "height": 720}, {"id": 12, "width": 1920, "height": 1080},
              {"id": 99, "width": 1, "height": 1}]
         ).encode())
         (archive / "20260901T000000Z-abc.json").write_bytes(b"{}")
@@ -378,14 +380,14 @@ class OperationalScriptTests(unittest.TestCase):
             "SELECT external_id, metadata_json FROM follow_item")}
         self.assertEqual((dims["11"]["width"], dims["11"]["height"]), (1280, 720))
         self.assertEqual((dims["21"]["width"], dims["21"]["height"]), (800, 600))
-        self.assertEqual((dims["13"]["width"], dims["13"]["height"]), (1920, 1080))
-        self.assertEqual((dims["22"]["width"], dims["22"]["height"]), (800, 600))
+        first, second = dims["23"]["media_items"]
+        self.assertEqual((first["width"], first["height"]), (800, 600))
+        self.assertNotIn("width", second)
         self.assertNotIn("width", dims["12"])
         with out.open(encoding="utf-8", newline="") as handle:
             rows = list(csv.DictReader(handle))
         self.assertEqual({(row["external_id"], row["mode"], row["result"]) for row in rows},
-                         {("11", "归档", "取得"), ("13", "归档", "取得"),
-                          ("21", "探测", "取得"), ("22", "探测", "取得")})
+                         {("11", "归档", "取得"), ("21", "探测", "取得"), ("23", "探测", "取得")})
         self.assertTrue((root / "backup.db").exists())
 
         # 第二遍：全部已有尺寸，没有待补，也不再发请求。

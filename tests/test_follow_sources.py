@@ -712,6 +712,41 @@ class KemonoConnectorTests(unittest.TestCase):
         self.assertEqual(candidate.thumb_url,
                          "https://img.kemono.cr/thumbnail/data/cover/release.webp")
 
+    def test_archive_posts_with_several_media_list_them_for_the_detail_carousel(self):
+        """两张以上图或视频的帖子把它们列进媒体清单，详情里才翻得到第二张。
+
+        交付文件排第一（条目级媒体类型跟清单首项走），其余按帖子顺序；`file` 在附件里
+        重复列出的按路径去重；文本、压缩包不进清单。只有一张的帖子不建清单。
+        """
+        posts = [
+            {"id": "multi", "title": "Pack", "published": "2026-08-27T00:00:00Z",
+             "file": {"name": "cover.gif", "path": "/a/cover.gif"},
+             "attachments": [{"name": "cover.gif", "path": "/a/cover.gif"},
+                             {"name": "clip.mp4", "path": "/a/clip.mp4"},
+                             {"name": "notes.txt", "path": "/a/notes.txt"},
+                             {"name": "page2.jpg", "path": "/a/page2.jpg"}]},
+            {"id": "single", "title": "One", "published": "2026-08-26T00:00:00Z",
+             "file": {"name": "only.png", "path": "/b/only.png"},
+             "attachments": [{"name": "only.zip", "path": "/b/only.zip"}]},
+        ]
+        result = KemonoConnector("pawchive", transport=_transport(
+            body=json.dumps(posts).encode())).fetch("patreon/1")
+        multi, single = result.candidates
+        self.assertEqual(multi.media_url, "https://file.pawchive.pw/data/a/clip.mp4")
+        items = multi.extra["media_items"]
+        self.assertEqual([(media["id"], media["media_kind"]) for media in items],
+                         [("/a/clip.mp4", "video"), ("/a/cover.gif", "image"),
+                          ("/a/page2.jpg", "image")])
+        self.assertEqual(items[1], {
+            "id": "/a/cover.gif", "name": "cover.gif",
+            "url": "https://file.pawchive.pw/data/a/cover.gif",
+            "thumb_url": "https://img.pawchive.pw/thumbnail/data/a/cover.gif",
+            "media_kind": "image", "resource_provider": "pawchive"})
+        self.assertIsNone(items[0]["thumb_url"])
+        # 卡面封面与清单里第一张图是同一张，界面据此沿用条目级量过的比例。
+        self.assertEqual(multi.thumb_url, items[1]["thumb_url"])
+        self.assertNotIn("media_items", single.extra)
+
     def test_no_thumbnail_is_offered_for_things_that_have_none(self):
         # 视频和压缩包没有缩略图，给了也是 404——那会让卡片显示一张碎图，
         # 比一个干净的占位更糟。

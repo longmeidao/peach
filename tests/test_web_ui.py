@@ -4710,6 +4710,9 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertCode("if(fallback&&el.getAttribute('src')!==fallback){")
         self.assertCode("el.src=fallback;if(thumbFallback)thumbFallback.hidden=false;return}")
         self.assertPageContains("data-media-thumb-fallback hidden>原图没取回来，这里先显示缩略图")
+        # 灯箱里翻到的每一张同样退回它自己的缩略图。
+        self.assertCode("box.querySelectorAll('.photomain img').forEach((img,at)=>img.addEventListener('error',()=>{")
+        self.assertCode("if(thumb&&img.getAttribute('src')!==thumb)img.src=thumb},{once:true}));")
 
     def test_follow_detail_gets_the_same_player_stats_overlay(self):
         """作品详情与关注详情共用同一段统计模板，关注详情里的在线视频同样有统计入口。"""
@@ -4725,16 +4728,15 @@ class WebUiSourceTests(unittest.TestCase):
     def test_follow_image_cards_reserve_their_ratio_from_either_tier_and_learn_the_rest(self):
         """图片墙按卡片高度分列，图落地前就要知道比例，否则每张加载完整墙重排。
 
-        比例是卡面那张图的，有两层：卡面用媒体清单里那张（fanbox）就落在那张上，
-        其余落在条目上——视频条目也一样，量的是它的缩略图或封面帧。两层都没有的卡片
-        不硬猜，加载完把 natural 尺寸回写给它的主人，下一次渲染就有了。
+        只有图片视图摆成瀑布流，视频卡片不占位也不回写。比例是卡面那张图的，有两层：
+        卡面是媒体清单里那张就落在那张上；卡面就是条目自己的缩略图时落在条目上。两层都
+        没有的卡片不硬猜，加载完把 natural 尺寸回写给它的主人，下一次渲染就有了。
         """
         self.assertCode("const cardMedia=selectedMedia&&selectedMedia.thumb_url===thumbUrl?selectedMedia:null;")
-        self.assertCode("const sized=dimsOwner.width>0&&dimsOwner.height>0?dimsOwner:null;")
+        self.assertCode("const itemOwnsCard=!cardMedia||thumbUrl===item.thumb_url;")
+        self.assertCode("const sized=imageView?[cardMedia,itemOwnsCard?item:null].find(owner=>owner?.width>0&&owner.height>0):null;")
         self.assertCode('const dims=sized?` width="${sized.width}" height="${sized.height}"`:\'\';')
-        self.assertCode('const learn=!sized&&thumbUrl?` data-learn-dims="${item.id}"${cardMedia?` data-learn-media="${cardMedia.index}"`:\'\'}`:\'\';')
-        self.assertNotIn("item.media_kind==='image'&&item.width>0", self.page,
-                         "视频卡片的缩略图同样要按比例占位")
+        self.assertCode('const learn=imageView&&!sized&&thumbUrl?` data-learn-dims="${item.id}"${cardMedia?` data-learn-media="${cardMedia.index}"`:\'\'}`:\'\';')
         self.assertPageContains("function wireImageDimsLearning(root)")
         self.assertPageContains("wireImageDimsLearning(root);")
         self.assertPageContains("root.querySelectorAll('img[data-learn-dims]')")

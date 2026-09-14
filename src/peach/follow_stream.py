@@ -192,6 +192,15 @@ class FollowMediaResolver:
                 return ResolvedFollowMedia(
                     url, item.url, {"Cookie": cookie} if cookie else None,
                     allowed_hosts=("attachments.f95zone.to",))
+            if resource_provider and resource_provider == item.provider \
+                    and _PROVIDER_HOSTS.get(item.provider):
+                # 归档站（kemono、coomer、pawchive）帖子的附件清单：媒体就在条目自己的
+                # 站上，按该来源的主机白名单放行，与下面的直链分支同一口径。
+                if not _allowed(item.provider, url):
+                    raise FollowMediaUnavailable("来源媒体地址不可用")
+                return ResolvedFollowMedia(
+                    url, item.url, allowed_hosts=tuple(_PROVIDER_HOSTS[item.provider]),
+                    public_hosts=item.provider in _PUBLIC_MEDIA_PROVIDERS)
             raise FollowMediaUnavailable("媒体来源不受支持")
         if item.metadata.get("media_needs_credential"):
             raise FollowMediaUnavailable("媒体需要来源登录会话")
