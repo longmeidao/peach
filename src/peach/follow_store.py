@@ -14,7 +14,7 @@ import json
 import re
 import sqlite3
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from . import follow_providers
@@ -656,8 +656,8 @@ class FollowStore:
             else item
             for item in items
         )
-        aligned = _align_by_group_hint(
-            _split_ambiguous_works(split_posts, _hint_linked(split_posts)))
+        aligned = _align_by_group_hint(_align_title_families(
+            _split_ambiguous_works(split_posts, _hint_linked(split_posts))))
         primaries = group_duplicates(aligned)
         buckets: dict[int, tuple[FollowItemRow, list[FollowItemRow]]] = {}
         for item, primary in zip(aligned, primaries):
@@ -1093,6 +1093,62 @@ def _split_ambiguous_works(items: tuple[FollowItemRow, ...],
         and (item.provider, item.external_id) not in linked else item
         for item in items
     )
+
+
+#: 相似标题归组的边界：尾巴至多几个词、两条至多隔多久发布、哪些词说明是续作。
+_FAMILY_MAX_TAIL = 4
+_FAMILY_WINDOW = timedelta(days=7)
+_FAMILY_SEQUEL_RE = re.compile(
+    r"\d|^(?:part|pt|episode|ep|chapter|ch|vol|volume|season|act|scene|round)$")
+
+
+def _align_title_families(items: tuple[FollowItemRow, ...]) -> tuple[FollowItemRow, ...]:
+    """同一来源里，标题是另一条标题接一小段尾巴的变体归到那一条的键下。
+
+    Pantsushi 把一个作品按清晰度拆成几帖发：`2B Love at Sunset - 720p`、`- 1080p`、
+    `- 4K Ultra HD Unwatermarked`。前两条剥完变体标记是同一个键；第三条尾巴上的
+    `Ultra HD` 不在词表里，键多出几个词。词表追不上每个创作者的写法，所以这里看
+    标题之间的关系：一条的键等于另一条的键再接一段尾巴，就是同一作品的另一版。
+
+    判据本身宽，由三个条件收住：接尾巴的那条自己带变体标记（关键词是佐证）；尾巴至多
+    `_FAMILY_MAX_TAIL` 个词，不含数字和 `part`、`episode` 这类续作词
+    （`Sayuri - Cowgirl 2` 是另一部）；两条发布相隔不超过 `_FAMILY_WINDOW`——同一
+    作品的几个版本是一起发的。归到能接上的最短那个键，几版因此落在同一组。
+    """
+    keys: dict[int, dict[str, list[FollowItemRow]]] = {}
+    for item in items:
+        if item.semantics == "release" or not item.release_key or "\u0000" in item.release_key:
+            continue
+        keys.setdefault(item.source_id, {}).setdefault(item.release_key, []).append(item)
+    renamed: dict[int, str] = {}
+    for by_key in keys.values():
+        for key, members in by_key.items():
+            tokens = key.split(" ")
+            for cut in range(max(1, len(tokens) - _FAMILY_MAX_TAIL), len(tokens)):
+                base = " ".join(tokens[:cut])
+                if base not in by_key or any(
+                        _FAMILY_SEQUEL_RE.search(token) for token in tokens[cut:]):
+                    continue
+                for member in members:
+                    if member.variant_kind != "main" and member.id not in renamed and any(
+                            _published_near(member, other) for other in by_key[base]):
+                        renamed[member.id] = base
+    if not renamed:
+        return items
+    return tuple(
+        FollowItemRow(**{**item.__dict__, "release_key": renamed[item.id]})
+        if item.id in renamed else item
+        for item in items
+    )
+
+
+def _published_near(left: FollowItemRow, right: FollowItemRow) -> bool:
+    try:
+        gap = (datetime.fromisoformat(str(left.published_at).replace("Z", "+00:00"))
+               - datetime.fromisoformat(str(right.published_at).replace("Z", "+00:00")))
+    except (TypeError, ValueError):
+        return False
+    return abs(gap) <= _FAMILY_WINDOW
 
 
 def _align_by_group_hint(items: tuple[FollowItemRow, ...]) -> tuple[FollowItemRow, ...]:

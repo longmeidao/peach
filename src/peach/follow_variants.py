@@ -39,7 +39,7 @@ _WIP_MARKERS: tuple[tuple[str, str], ...] = (
 )
 
 _ALT_MARKERS: tuple[tuple[str, str], ...] = (
-    (r"no[\s\-]?water[\s\-]?mark(?:ed)?|no[\s\-]?wm", "no watermark"),
+    (r"(?:no|un)[\s\-]?water[\s\-]?mark(?:ed)?|no[\s\-]?wm", "no watermark"),
     (r"water[\s\-]?mark(?:ed)?", "watermarked"),
     (r"nude|naked|topless", "nude"),
     (r"clothed|dressed|clothes[\s\-]?on", "clothed"),

@@ -11,11 +11,99 @@ from bs4 import BeautifulSoup
 
 from .follow import FollowSourceError
 from .http import HttpRequest, HttpTransport, HttpxTransport
+from .social_links import meta_content, twimg_tiers
 
 
 MAX_PROFILE_BYTES = 1024 * 1024
 _USER_ID_RE = re.compile(r"^\d{1,20}$")
 _CREATOR_ID_RE = re.compile(r"^[a-zA-Z0-9_-]{1,80}$")
+#: 名片链接里换得到头像的社交资料：服务名 → 手柄的合法形状。
+_PROFILE_HANDLE_RES = {
+    "twitter": re.compile(r"[A-Za-z0-9_]{1,15}"),
+    "patreon": re.compile(r"[A-Za-z0-9_.-]{1,64}"),
+}
+_PATREON_AVATAR_HOST_RE = re.compile(r"c\d+\.patreonusercontent\.com")
+#: 一个头像请求最多带几份社交资料。名片上同一个人通常一两个账号。
+MAX_PROFILE_IDENTITIES = 4
+
+
+def profile_identities(value: str) -> tuple[tuple[str, str], ...]:
+    """`twitter:Rekin3D,patreon:sharkarts` → 校验过的 `(服务, 手柄)`。
+
+    这串从页面递回来，有一段不合法就整串作废，不挑着用其中合法的几段。
+    """
+    pairs: list[tuple[str, str]] = []
+    for part in str(value or "").split(","):
+        service, _, handle = part.partition(":")
+        pattern = _PROFILE_HANDLE_RES.get(service)
+        if pattern is None or not pattern.fullmatch(handle):
+            return ()
+        pairs.append((service, handle))
+    unique = tuple(dict.fromkeys(pairs))
+    return unique if len(unique) <= MAX_PROFILE_IDENTITIES else ()
+
+
+def profile_avatar_tiers(service: str, handle: str, *,
+                         transport: HttpTransport | None = None) -> list[str]:
+    """一份社交资料的头像地址，从原图到小图排好。取不到抛 `FollowSourceError`。
+
+    两家都不带凭据：X 的登出页用 og:image 声明本人头像（`_200x200` 那档），
+    `social_links.twimg_tiers` 把它展开成原图、400、200 三档；Patreon 的公开
+    campaigns 接口按 vanity 查，`avatar_photo_image_urls` 里 `original` 是上传原图。
+    主机写死在这里，返回的地址不会指向别处。
+    """
+    pattern = _PROFILE_HANDLE_RES.get(service)
+    if pattern is None or not pattern.fullmatch(str(handle or "")):
+        raise FollowSourceError("不支持这个社交资料")
+    request = transport or HttpxTransport()
+    if service == "twitter":
+        return _x_avatar_tiers(handle, request)
+    return _patreon_avatar_tiers(handle, request)
+
+
+def _x_avatar_tiers(handle: str, request: HttpTransport) -> list[str]:
+    page = request(
+        HttpRequest("GET", f"https://x.com/{handle}", {
+            "Accept": "text/html", "User-Agent": USER_AGENT,
+        }),
+        15.0,
+        MAX_PROFILE_BYTES,
+    )
+    if page.status != 200:
+        raise FollowSourceError(f"X 资料页返回 HTTP {page.status}")
+    image = meta_content(page.body.decode("utf-8", "replace"), "og:image")
+    if not image.startswith("https://pbs.twimg.com/profile_images/"):
+        raise FollowSourceError("X 资料页没有本人头像")
+    return twimg_tiers(image)
+
+
+def _patreon_avatar_tiers(handle: str, request: HttpTransport) -> list[str]:
+    url = "https://www.patreon.com/api/campaigns?" + urllib.parse.urlencode({
+        "filter[vanity]": handle, "fields[campaign]": "avatar_photo_image_urls,vanity",
+    })
+    response = request(
+        HttpRequest("GET", url, {"Accept": "application/json", "User-Agent": USER_AGENT}),
+        15.0,
+        MAX_PROFILE_BYTES,
+    )
+    if response.status != 200:
+        raise FollowSourceError(f"Patreon 资料返回 HTTP {response.status}")
+    try:
+        campaigns = json.loads(response.body.decode("utf-8")).get("data") or []
+        urls = next(
+            campaign["attributes"].get("avatar_photo_image_urls") or {}
+            for campaign in campaigns
+            if str(campaign["attributes"].get("vanity") or "").casefold() == handle.casefold()
+        )
+        tiers = [str(urls.get(size) or "") for size in ("original", "default_large", "default")]
+    except (StopIteration, AttributeError, KeyError, TypeError, ValueError) as error:
+        raise FollowSourceError("Patreon 资料里没有这个创作者") from error
+    trusted = [tier for tier in tiers
+               if (parsed := urllib.parse.urlsplit(tier)).scheme == "https"
+               and _PATREON_AVATAR_HOST_RE.fullmatch(parsed.hostname or "")]
+    if not trusted:
+        raise FollowSourceError("Patreon 资料没有可信的头像地址")
+    return trusted
 
 
 @dataclass(frozen=True)

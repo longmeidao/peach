@@ -24,6 +24,7 @@ from typing import Callable
 import httpx
 
 from .follow_sources import KemonoConnector
+from .images import measure_image_size
 from .user_agent import USER_AGENT
 
 #: 落在 `generated/` 下的目录名。头像与来源图标各占一个子目录，方便按类清理。
@@ -116,6 +117,25 @@ def is_fresh(path: Path, ttl: int | None, now: float | None = None) -> bool:
     except OSError:
         return False
     return ttl is None or 0 <= age < ttl
+
+
+def largest_image(client: httpx.Client, tier_lists: list[list[str]]) -> bytes | None:
+    """几份头像候选里留像素最多的那张。
+
+    每一份按档位从大到小排好，取到第一张能用的就停；几份之间比实际像素，不比档位名
+    ——`_400x400` 那档在原图更小时回的仍是原图。一张都取不到回 None。
+    """
+    best, best_area = None, 0
+    for tiers in tier_lists:
+        for url in tiers:
+            body = fetch_image(client, url)
+            if body is None:
+                continue
+            size = measure_image_size(body)
+            if size and size[0] * size[1] > best_area:
+                best, best_area = body, size[0] * size[1]
+            break
+    return best
 
 
 def fetch_image(client: httpx.Client, url: str) -> bytes | None:

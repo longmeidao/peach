@@ -381,6 +381,30 @@ class GroupingTests(_StoreCase):
         self.assertTrue(group.has_wip)
         self.assertEqual(group.primary.variant_kind, "main")
 
+    def test_versions_posted_together_fold_by_title_family(self):
+        # 同一作品按清晰度分帖发：尾巴上的 `Ultra HD` 不在变体词表里，靠「键接一小段
+        # 尾巴、自己带变体标记、同期发布」归进同一组。
+        source_id = self._source()
+        self.store.record(source_id, _fetch([
+            _candidate("1", "2B Love at Sunset - 720p", published_at="2026-08-31T23:57:42Z"),
+            _candidate("2", "2B Love at Sunset - 1080p", published_at="2026-08-31T23:59:24Z"),
+            _candidate("3", "2B Love at Sunset - 4K Ultra HD Unwatermarked",
+                       published_at="2026-09-01T00:19:38Z"),
+            # 续作编号、隔了几个月的相似标题、尾巴上没有变体标记的，各自成组。
+            _candidate("4", "Sayuri - Cowgirl [4K]", published_at="2026-09-01T00:00:00Z"),
+            _candidate("5", "Sayuri - Cowgirl Part 2 [4K]", published_at="2026-09-01T00:00:00Z"),
+            _candidate("6", "Tifa Beach [4K]", published_at="2026-05-01T00:00:00Z"),
+            _candidate("7", "Tifa Beach Night [4K]", published_at="2026-09-01T00:00:00Z"),
+            _candidate("8", "Aerith Garden", published_at="2026-09-01T00:00:00Z"),
+            _candidate("9", "Aerith Garden Party", published_at="2026-09-01T00:00:00Z"),
+        ]), moment=MOMENT)
+        groups = self.store.group(self.store.items())
+        sunset = [group for group in groups
+                  if group.primary.title.startswith("2B Love at Sunset")]
+        self.assertEqual(len(sunset), 1)
+        self.assertEqual(sorted(item.external_id for item in sunset[0].variants), ["2", "3"])
+        self.assertEqual(len(groups), 7)
+
     def test_groups_are_ordered_newest_first(self):
         source_id = self._source()
         self.store.record(source_id, _fetch([

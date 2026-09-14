@@ -494,11 +494,49 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(hits, ["https://kemono.cr/icons/fanbox/30917150"])
         # 没有实测过头像端点的来源、缺 ref 的请求都不出网，直接给占位图。
         for query in ("provider=rule34video&ref=1", "provider=kemono&ref=noslash",
-                      "service=fanbox&id=not-a-number", "service=patreon&id=1"):
+                      "service=fanbox&id=not-a-number", "service=patreon&id=1",
+                      "service=profile&id=twitter:../x", "service=profile&id=fanbox:1"):
             missing = await self.client.get(f"/follow-avatar?t=secret&{query}")
             self.assertEqual(missing.status_code, 404, query)
             self.assertEqual(missing.headers["content-type"], PLACEHOLDER_CONTENT_TYPE, query)
         self.assertEqual(len(hits), 1)
+
+    async def test_profile_avatars_keep_the_sharpest_of_x_and_patreon(self):
+        """名片上的 X 与 Patreon 各退到能用的最大一档，两家之间按实际像素留大的那张。"""
+        import io
+        from PIL import Image
+
+        def png(side):
+            buffer = io.BytesIO()
+            Image.new("RGB", (side, side)).save(buffer, "PNG")
+            return buffer.getvalue()
+        bodies = {
+            "https://pbs.twimg.com/profile_images/1/a_400x400.jpg": png(400),
+            "https://c10.patreonusercontent.com/original.png": png(256),
+        }
+        hits = []
+
+        def upstream(request):
+            hits.append(str(request.url))
+            body = bodies.get(str(request.url))
+            if body is None:
+                return httpx.Response(404, request=request)
+            return httpx.Response(200, content=body, request=request,
+                                  headers={"content-type": "image/png"})
+        self._swap_http_client(upstream)
+        tiers = {
+            "twitter": ["https://pbs.twimg.com/profile_images/1/a.jpg",
+                        "https://pbs.twimg.com/profile_images/1/a_400x400.jpg"],
+            "patreon": ["https://c10.patreonusercontent.com/original.png"],
+        }
+        with patch("peach.routes_media.profile_avatar_tiers",
+                   side_effect=lambda service, handle: tiers[service]):
+            response = await self.client.get(
+                "/follow-avatar?t=secret&service=profile&id=twitter:Rekin3D,patreon:sharkarts")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.content, bodies[
+            "https://pbs.twimg.com/profile_images/1/a_400x400.jpg"])
+        self.assertEqual(hits, [*tiers["twitter"], *tiers["patreon"]])
 
     async def test_the_work_icon_walks_the_candidates_until_one_shows_a_clear_face(self):
         """题材圆标顺着候选往下取，停在第一张脸够大的那里，取景写在图旁边。

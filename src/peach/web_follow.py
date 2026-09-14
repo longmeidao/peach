@@ -31,6 +31,7 @@ from .follow_secrets import (
     CREDENTIAL_GUIDE, CredentialError, CredentialStore, credential_store_for,
 )
 from .follow_stream import proxyable
+from .follow_avatar import MAX_PROFILE_IDENTITIES, profile_identities
 from .follow_sources import (
     CONNECTORS, KemonoConnector, Rule34VideoConnector, build_connector,
     canonical_source_ref, display_thumb_url, f95_attachment_media_items, f95_discussion_image,
@@ -1087,8 +1088,9 @@ def _official_fanbox_identity(metadata: dict) -> str:
     """名片链接里那个能换到官方头像的 FANBOX 身份，没有就回空串。
 
     FANBOX 的创作者 id 直接就是 `creator.get` 的参数，一个请求到头像；pixiv 的数字
-    id 还要先过一次官方页换算，所以排在后面。别的服务（Patreon、X、SubscribeStar）
-    没有不带凭据就能读的头像接口，**未取得**——那几条只当身份证据用。
+    id 还要先过一次官方页换算，所以排在后面。X 与 Patreon 由
+    `_official_profile_identities` 接着找；SubscribeStar 没有不带凭据就能读的头像
+    接口，**未取得**，只当身份证据用。
     """
     links = metadata.get("official_links")
     if not isinstance(links, list):
@@ -1096,6 +1098,19 @@ def _official_fanbox_identity(metadata: dict) -> str:
     handles = {str(link.get("service") or ""): str(link.get("handle") or "")
                for link in links if isinstance(link, dict)}
     return handles.get("fanbox") or handles.get("pixiv") or ""
+
+
+def _official_profile_identities(metadata: dict) -> str:
+    """名片上 X 与 Patreon 的手柄，拼成 `/follow-avatar?service=profile` 的 id。
+
+    几家都交给服务端，由它各取最大一档再留像素最多的那张；形状不合法的那条直接略过。
+    """
+    links = metadata.get("official_links")
+    pairs = [f"{link.get('service')}:{link.get('handle')}"
+             for link in (links if isinstance(links, list) else ())
+             if isinstance(link, dict)]
+    usable = [pair for pair in dict.fromkeys(pairs) if profile_identities(pair)]
+    return ",".join(usable[:MAX_PROFILE_IDENTITIES])
 
 
 def _official_avatar_url(row) -> str | None:
@@ -1114,11 +1129,16 @@ def _official_avatar_url(row) -> str | None:
             return None
         return "/follow-avatar?" + urllib.parse.urlencode(
             {"service": service, "id": user})
-    identity = _official_fanbox_identity(_source_metadata(row))
-    if not identity:
+    metadata = _source_metadata(row)
+    identity = _official_fanbox_identity(metadata)
+    if identity:
+        return "/follow-avatar?" + urllib.parse.urlencode(
+            {"service": "fanbox", "id": identity})
+    profiles = _official_profile_identities(metadata)
+    if not profiles:
         return None
     return "/follow-avatar?" + urllib.parse.urlencode(
-        {"service": "fanbox", "id": identity})
+        {"service": "profile", "id": profiles})
 
 
 def _source_payload(row, aliases: dict[str, str] | None = None) -> dict:
@@ -1991,6 +2011,11 @@ def _run_follow_check(contract, body, job_id=None) -> dict:
                 if job_id and contract.follow_job.snapshot() is None:
                     break
                 row["backfill_page"] = result["page"]
+                # 首页重放只该有一次：`run_check` 已把标记写回 ledger，工作行里的旧
+                # metadata 还带着它，不摘掉的话每一轮都判成重放，第 0 页连抓到轮数上限。
+                row["metadata_json"] = json.dumps({
+                    **json.loads(row.get("metadata_json") or "{}"),
+                    "initial_history_first_page_pending": False})
                 result = _check_payload(run_check(
                     row, credentials=credentials, writer=writer,
                     connector_factory=build_connector, older=True, progress=progress,
