@@ -10638,7 +10638,6 @@ function setNarrowSearchOpen(open){
   const anchor=button.getBoundingClientRect();
   search.classList.toggle('open',open);
   $('#searchBtn').setAttribute('aria-expanded',String(open));
-  syncSearchViewport();
   if(innerWidth>760||matchMedia('(prefers-reduced-motion:reduce)').matches)return;
   const expanded=search.getBoundingClientRect(),css=getComputedStyle(search);
   const padding=parseFloat(css.paddingLeft);
@@ -10659,19 +10658,6 @@ addEventListener('resize',()=>{
   searchMorphViewport=innerWidth;finishSearchMorph();
 },{passive:true});
 matchMedia('(prefers-reduced-motion:reduce)').addEventListener('change',finishSearchMorph);
-/* iOS 弹键盘时布局视口不动，可视视口在它里面往下挪；吸顶的顶栏和 fixed 的下拉栏都跟着
-   布局视口走，于是整条被推出屏幕上沿。展开搜索期间把可视视口的偏移和高度交给 CSS，
-   顶栏与下拉栏按它贴顶、下拉栏不伸进键盘底下；收起搜索就撤掉。 */
-function syncSearchViewport(){
-  const viewport=window.visualViewport,root=document.documentElement;
-  if(!viewport||!$('.search').classList.contains('open')){
-    root.style.removeProperty('--search-viewport-top');root.style.removeProperty('--search-viewport-height');return;
-  }
-  root.style.setProperty('--search-viewport-top',`${Math.max(0,Math.round(viewport.offsetTop))}px`);
-  root.style.setProperty('--search-viewport-height',`${Math.round(viewport.height)}px`);
-}
-window.visualViewport?.addEventListener('resize',syncSearchViewport);
-window.visualViewport?.addEventListener('scroll',syncSearchViewport);
 $('#searchBtn').onclick=()=>{setNarrowSearchOpen(true);$('#q').focus({preventScroll:true})};
 /* 窄屏退出搜索。失焦那条 140ms 的兜底只在输入框为空时才收起搜索栏，
    输入过内容就没有出口了；返回按钮无条件收起，并清掉下拉栏。 */
