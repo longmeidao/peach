@@ -311,7 +311,7 @@ def _rule34xxx_candidates(term: str, transport, credential: Credential | None) -
     if credential is None or picked:
         return picked
     # 补全一次只回十条，热门前缀会把完整写法挤出去。有凭据时再按原样查一次标签，
-    # 这条路径不受那个上限影响；只有补全一个精确命中都没给到时才轮到它。
+    # 这条路径不受那个上限影响；只有补全连一个候选都没给到时才轮到它。
     tag = canonical_source_ref("rule34xxx", re.sub(r"\s+", "_", term.strip()))
     if not connector.fetch(tag).candidates:
         return picked
