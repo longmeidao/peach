@@ -369,6 +369,15 @@ html.board-high-contrast .board-filter-frame.board-filter-frame.board-filter-fra
 .gridstack .card:not(.junkcard) .pic{border-radius:12px;overflow:hidden}
 .gridstack>.grid{row-gap:24px;column-gap:16px}
 .top{isolation:isolate}
+/* 顶栏本身 visibility:hidden，只让里面的控件可见。iOS 26 的 Safari 在状态栏下沿正中命中元素，顺着祖先找第一个
+   fixed/sticky 容器给状态栏上色：这条通栏吸顶的 `<header>` 永远被选中，头一次取到页面底色就一直沿用，状态栏
+   变成一条实色，内容透不上去。WebKit 判容器是否可见只看它自己画的内容，自带图层的后代不算，所以直接子元素都
+   带上 position 各自成层；`:where` 不占特异性，已有的定位和隐藏规则照旧生效。空的 ::before 铺满整条接住按钮
+   间隙的点按，不让它落到栏下面的卡片上。门槛见 WebKit LocalFrameView::fixedContainerEdges 与
+   RenderLayer::computeHasVisibleContent。 */
+.top.top{visibility:hidden}
+:where(.top>*){visibility:visible;position:relative}
+.top::before{content:'';position:absolute;inset:0;z-index:-1;visibility:visible}
 body.board-scrolled .top{box-shadow:none;border-bottom:0}
 /* 吸顶那一刻这块板离开纸面往上抬一档，三层影跟着加重：它盖住内容滚过去，两层之间
    要有东西说明谁在上面。类名写三遍是为了压过上面那组玻璃规则——两条都从
