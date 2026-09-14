@@ -7853,6 +7853,16 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".scrim.on{display:block;opacity:1;pointer-events:auto}")
         self.assertPageContains("@starting-style{.scrim.on{opacity:0}}")
 
+    def test_ios_status_bar_tint_skips_closed_drawer_and_detail_stage(self):
+        """iOS 26 的 Safari 取到一块 fixed 元素的颜色后，只要它仍可见就一直沿用。窄屏抽屉收起时必须
+        visibility:hidden，且可见性跟着位移过渡，滑出动画才播得完。详情浮窗上沿让出状态栏、下沿按 dvh
+        停在地址栏之上，两个取样点落在 ::backdrop 上取遮罩的暗色。"""
+        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
+        self.assertIn("    transition:transform var(--board-dialog-motion),visibility var(--board-dialog-motion)}\n"
+                      "  .drawer.drawer:not(.open){visibility:hidden}\n", board)
+        self.assertIn("  .stage{inset:calc(env(safe-area-inset-top) + 8px) 8px auto;margin:0 auto;", board)
+        self.assertIn("    max-height:calc(100dvh - env(safe-area-inset-top) - 16px)}", board)
+
     def test_card_hover_hides_source_and_duration_and_missing_size_is_explicit(self):
         self.assertPageContains('.card:hover .badge,.card:hover .dur{opacity:0}')
         # max-height 兜住 WebKit：标题里的番号块是 inline-flex，line-clamp 在那里不截。
@@ -11350,10 +11360,15 @@ class WebUiSourceTests(unittest.TestCase):
         左右那 16px 归首页那块：它住在 `body` 底下，两侧没有东西给它留白，22px 的圆角
         直接切在屏幕边沿上；资料页那块在 `#index` 里，`main` 的 16px 已经把它让开了。
         补的就是 `main` 自己那个数，两页的浮层因此和底下的网格对在同一条竖线上。
+
+        窄屏上这几块吸顶玻璃收到视口宽度的九成以下、居中：iOS 26 的 Safari 给状态栏取色时
+        跳过不足视口九成宽的吸顶元素，够宽的玻璃滑过状态栏一次，整页状态栏就一直是实色。
         """
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
         self.assertPageContains("main{position:relative;z-index:1;padding:14px 16px 90px}")
         self.assertIn("body>.board-filter-frame{margin-inline:16px}", board)
+        self.assertIn("@media(max-width:760px){.board-filter-frame.board-filter-frame,.entitytagbar.entitytagbar,"
+                      ".entitycollectionhead.entitycollectionhead{\n  max-width:calc(88vw - 8px);margin-inline:auto}}", board)
         self.assertIn("  .board-filter-frame .count,.entitycollectionhead{display:flex;"
                       "flex-wrap:nowrap;align-items:center;gap:10px;\n", board)
         self.assertIn("    overflow-x:auto;overflow-y:hidden;scrollbar-width:none;\n", board)
