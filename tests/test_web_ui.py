@@ -9666,6 +9666,17 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".geist-note-details ul{box-sizing:border-box;display:grid;gap:8px;max-height:min(40vh,520px);")
         self.assertIn("wireCollapse(outcome.current,'.geist-note-details','library-issues')", island)
 
+    def test_a_finished_scan_is_announced_once_even_if_it_ended_before_the_page_opened(self):
+        """完成用通知报。首次引导那一趟常在跳到目录页之前就跑完，横幅从没见过「运行中」，
+        所以刚结束的任务第一次读到也要报；目录页横幅和数据整理页卡片按任务号只报一次。"""
+        island = (Path(__file__).resolve().parents[1]
+                  / "frontend" / "src" / "islands" / "library-processing.tsx").read_text(encoding="utf-8")
+        self.assertIn("if (witnessed || mode === 'notice') announceCompletion(next, toast, witnessed);", island)
+        self.assertIn("Date.now() / 1000 - state.completed_at < FRESH_COMPLETION_SECONDS", island)
+        self.assertIn("localStorage.getItem(ANNOUNCED_KEY) === state.job_id", island)
+        self.assertIn("toast(`扫描与资料采集已完成：识别 ${state.identified || 0} 个番号", island)
+        self.assertNotIn("toast('已完成扫描与资料采集')", island)
+
     def test_the_pinned_review_bars_share_one_pane_of_glass(self):
         """粘住的工具条和分组条是一块玻璃，中间没有接缝。
 

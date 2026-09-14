@@ -772,6 +772,21 @@ def _auto_apply_rule(candidate: dict, agreed: int) -> str:
     return f"adr-0018-empty-field-single-{kind}-source"
 
 
+def _evidence_candidates(row: dict) -> list[dict]:
+    """能当补空证据的候选：已登记来源与本地 NFO。
+
+    采集任务只在官方渠道落空时才问社区来源，这时一家之言不够：ABW-358 的发行日期
+    javdb 给的是 MGS 上架日。只剩一家社区来源时一条都不算（ADR-0030）。
+    """
+    candidates = [c for c in row.get("candidates") or []
+                  if str(c.get("source") or "").strip() in SOURCE_SPECS
+                  or str(c.get("source") or "").strip() == LOCAL_NFO_SOURCE]
+    sources = {str(c.get("source") or "").strip() for c in candidates}
+    lone_community = (len(sources) == 1 and str(row.get("source_profile") or "").strip() == "library"
+                      and not any(source == LOCAL_NFO_SOURCE or SOURCE_SPECS[source].official for source in sources))
+    return [] if lone_community else candidates
+
+
 def metadata_auto_apply_candidate(connection, row: dict) -> dict | None:
     """这一行能否不经复核直接落库；不能就返回 None。
 
@@ -809,9 +824,7 @@ def metadata_auto_apply_candidate(connection, row: dict) -> dict | None:
         return None
     if str(row.get("current_value") or "").strip():
         return None
-    candidates = [c for c in row.get("candidates") or []
-                  if str(c.get("source") or "").strip() in SOURCE_SPECS
-                  or str(c.get("source") or "").strip() == LOCAL_NFO_SOURCE]
+    candidates = _evidence_candidates(row)
     if not candidates:
         return None
     values = {_candidate_value_key(field, candidate) for candidate in candidates}

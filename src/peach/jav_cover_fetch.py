@@ -21,7 +21,8 @@ r"""按番号抓官方封套：把所有候选量一遍，留像素最多的那�
 - 有 Prestige 厂牌证据时，直连 Prestige API 与 MGS EnlargeImage；
 - 上轮成功日志里的原 URL，保住已经发现但当前无法重新检索的 DUGA 等官方图。
 
-AVBase 已返回 Cloudflare 验证页，不再进入批量流程，也不尝试绕过。DUGA 批量搜索 API
+批量流程不请求 AVBase 与 javdb；采集任务在官方渠道落空时经 `peach.community_catalog`
+去问这两家，封面要两个图源比对一致才用（ADR-0030）。DUGA 批量搜索 API
 需要代理店应用 ID，未配置前只复用成功日志中已经取得的精确图片 URL。
 
 两条番号改写规则，都由实测得出：
@@ -85,6 +86,13 @@ DEFAULT_FC2_METADATA_LOG = GENERATED_DIR / "fc2-candidate-log.csv"
 
 #: 低于这个宽度的是缩略图或占位图，不当封套。实测最低的正片封套是 800 宽。
 MIN_WIDTH = 700
+#: 采集任务找不到大图时退而求其次的下限。素人系官方图只有 300×300，有图比没图好；
+#: 官方那张 147×200 的独立正封仍然太小，不当封面。
+SMALL_MIN_WIDTH = 240
+#: DMM 缺图时 302 到「NOW PRINTING」占位图（590×800），尺寸像一张正常封面。
+PLACEHOLDER = re.compile(r"now_?printing", re.I)
+#: 官方候选一张都量不出可用尺寸时的两种说法，下标是「有没有量到过偏小的图」。
+NO_USABLE_OFFICIAL = ("官方封面地址都没有取到图片", "官方封面只有缩略图或占位图")
 #: 韩国 MIB 的编号不在 JAV 目录站上，封面来源一律不问；记进日志算确认落空，不重探。
 MIB_NOT_JAV = "韩国 MIB 不适用 JAV 封面来源"
 #: 量尺寸只需要 JPEG 头部，别把整张 1 MB 的图拉下来。
@@ -132,12 +140,14 @@ class HostLimitedTransport:
     """把请求间隔按主机分别计算；不同官方站点互不阻塞。"""
 
     def __init__(self, inner: HttpxTransport, interval: float, *,
+                 intervals: dict[str, float] | None = None,
                  clock=time.monotonic, sleeper=time.sleep) -> None:
         self.inner = inner
         self.interval = max(0.0, interval)
         self.clock = clock
         self.sleeper = sleeper
-        self.limiter = HostLimiter({}, default_interval=self.interval, clock=clock, sleeper=sleeper)
+        self.limiter = HostLimiter(dict(intervals or {}), default_interval=self.interval,
+                                   clock=clock, sleeper=sleeper)
 
     def __call__(self, request: HttpRequest, timeout: float, limit: int):
         self.limiter.wait(request.url)
@@ -215,6 +225,9 @@ def _fetch(transport: HttpTransport, url: str, *, referer: str,
             if attempt == len(NETWORK_RETRY_DELAYS):
                 raise
             _sleep_within(NETWORK_RETRY_DELAYS[attempt], deadline)
+    final_url = getattr(response, "url", "")
+    if isinstance(final_url, str) and PLACEHOLDER.search(final_url):
+        raise NotFound("来源给的是「准备中」占位图")
     if response.status == 404:
         raise NotFound("HTTP 404")
     if response.status not in (200, 206):
@@ -545,6 +558,7 @@ def best_cover(transport: HttpTransport, code: str, delay: float, *,
                prior_candidates: tuple[Candidate, ...] = (),
                known_sizes: dict[str, tuple[int, int]] | None = None,
                minimum_pixels: int = 0,
+               minimum_width: int = MIN_WIDTH,
                deadline: float | None = None,
                diagnostics: dict[str, int] | None = None,
                ) -> tuple[Candidate, tuple[int, int], bytes]:
@@ -607,12 +621,12 @@ def best_cover(transport: HttpTransport, code: str, delay: float, *,
             continue
         finally:
             _sleep_within(delay, deadline)
-        if width >= MIN_WIDTH:
+        if width >= minimum_width:
             measured.append((width * height, candidate, (width, height)))
         else:
             record("too_small")
     if not measured:
-        raise Unavailable("候选都不是可用封套")
+        raise Unavailable(NO_USABLE_OFFICIAL[bool(diagnostics.get("too_small"))])
 
     for _pixels, winner, size in sorted(measured, key=lambda item: item[0], reverse=True):
         try:
@@ -628,7 +642,7 @@ def best_cover(transport: HttpTransport, code: str, delay: float, *,
         except (OSError, ValueError, Image.DecompressionBombError):
             record("invalid_image")
             continue
-        if actual_size != size or actual_size[0] < MIN_WIDTH:
+        if actual_size != size or actual_size[0] < minimum_width:
             record("dimension_mismatch")
             continue
         if actual_size[0] * actual_size[1] <= minimum_pixels:

@@ -135,6 +135,20 @@ class ScrapingAccessTests(unittest.TestCase):
                 SourceTransport(self.root)(request, 1, 100)
         factory.assert_not_called()
 
+    def test_a_community_source_that_refuses_is_paused_as_a_whole(self):
+        """javdb 超配额回 403 不带 Retry-After，接着问只会每条都再撞一次、把封期拖长。"""
+        from peach.scraping_access import SourcePaused
+        transport = SourceTransport(self.root)
+        transport.transports["javdb"] = lambda *args: HttpResponse(403, {}, b"")
+        with self.assertRaises(SourcePaused):
+            transport(HttpRequest("GET", "https://javdb.com/search?q=ABW-358", {}), 1, 100)
+        with patch("peach.scraping_access.client_for") as factory, self.assertRaises(SourcePaused):
+            SourceTransport(self.root)(HttpRequest("GET", "https://c0.jdbstatic.com/covers/x.jpg", {}), 1, 100)
+        factory.assert_not_called()
+        transport.transports["dmm"] = lambda *args: HttpResponse(403, {}, b"")
+        self.assertEqual(transport(HttpRequest("GET", "https://pics.dmm.co.jp/x", {}), 1, 100).status, 403,
+                         '官方来源的 403 照常交给调用方判断')
+
     def test_full_quality_bytes_are_installed_and_cache_avoids_download(self):
         from peach.web_scraping import _fetch_cover
         from peach.jav_cover_fetch import Candidate

@@ -105,7 +105,7 @@ it('失败项都不可重试时仍能重新发起整批任务', async () => {
   expect(host.querySelector('[data-note-action]')).toBeNull();
   expect(host.querySelector('.geist-fieldset-footer .splitmain')?.textContent).toBe('扫描并补全资料');
 });
-it('首页从空闲发现后台任务，完成后收起并在卸载后停止查询', async () => {
+it('首页从空闲发现后台任务，完成后收起横幅、用通知报完成，卸载后停止查询', async () => {
   vi.useFakeTimers();
   let status='running';
   const fetch=vi.fn(async (_url: string, _init?: RequestInit)=>({ok:true,json:async()=>({status,stage:'采集缺失资料',checked:2,total:5})}));
@@ -119,7 +119,7 @@ it('首页从空闲发现后台任务，完成后收起并在卸载后停止查�
   status='complete';
   await act(async()=>{await vi.advanceTimersByTimeAsync(2000);});
   expect(host.textContent).toBe('');
-  expect(toast).not.toHaveBeenCalled();
+  expect(toast).toHaveBeenCalledTimes(1);
   render(null,host);
   const calls=fetch.mock.calls.length;
   await vi.advanceTimersByTimeAsync(4000);
@@ -134,4 +134,19 @@ it('设置持续查询已有任务，只在任务结束时提示一次', async (
   await act(async()=>render(h(LibraryProcessing,{data:{status:'running'},error:'',toast,monitor:true}),host));
   await act(async()=>{await vi.advanceTimersByTimeAsync(4000);});
   expect(toast).toHaveBeenCalledTimes(1);
+});
+it('刚结束的任务在目录页横幅第一次读到时也提示，同一任务只提示一次', async () => {
+  vi.useFakeTimers();
+  const job={status:'complete' as const,job_id:'job-fresh',identified:3,candidates:2,completed_at:Date.now()/1000};
+  vi.stubGlobal('fetch',vi.fn(async()=>({ok:true,json:async()=>job})));
+  localStorage.removeItem('peach.library-processing.announced');
+  const toast=vi.fn();
+  for (let round=0; round<2; round++) {
+    host=document.createElement('div');document.body.append(host);
+    await act(async()=>render(h(LibraryProcessing,{data:job,error:'',toast,mode:'notice'}),host));
+    await act(async()=>{await vi.advanceTimersByTimeAsync(4000);});
+    render(null,host);
+  }
+  expect(toast).toHaveBeenCalledTimes(1);
+  expect(toast.mock.calls[0][0]).toBe('扫描与资料采集已完成：识别 3 个番号，整理 2 组资料候选');
 });
