@@ -738,7 +738,7 @@ def _thumb_url(item) -> str | None:
     if item.provider == "f95zone" and f95_discussion_image(item.thumb_url):
         return next((media["thumb_url"] for media in _media_items(item) if media["thumb_url"]), None)
     if item.provider == "fanbox":
-        thumb = _fanbox_card_thumb(item) or display_thumb_url(item)
+        thumb = _fanbox_card_thumb(item) or _unhide_thumb(item, display_thumb_url(item))
         media_items = item.metadata.get("media_items") or []
         videos = [media for media in media_items if isinstance(media, dict)
                   and media.get("media_kind") == "video"
@@ -785,7 +785,7 @@ def _unhide_thumb(item, thumb: str | None) -> str | None:
     """缩略图落在被隐藏的媒体上时，改用第一张可见媒体的缩略图。
 
     卡片缩略图存的是抓取时的正文首图；用户把那张图藏起来之后，卡面还挂着它
-    就等于隐藏没生效。
+    就等于隐藏没生效。一张可见的都没有时不给缩略图，卡片走无图占位。
     """
     hidden = frozenset(item.hidden_media or ())
     if not hidden or not thumb:
@@ -795,7 +795,7 @@ def _unhide_thumb(item, thumb: str | None) -> str | None:
     if thumb not in hidden_thumbs:
         return thumb
     return next((media["thumb_url"] for media in _media_items(item) if media["thumb_url"]),
-                thumb)
+                None)
 
 
 def _f95_has_resource(media_url: str | None, metadata: dict) -> bool:
@@ -1974,8 +1974,8 @@ def _run_follow_check(contract, body, job_id=None) -> dict:
             initial_days=initial_days))
         if older and body.get("backfill_all"):
             # 全量回抓：一页记完接着抓下一页，直到站点说没有更多、某一页失败，
-            # 或游标不再前进（防环）。游标推进落在 ledger 的 `backfill_page`，
-            # 每轮把结果页写回工作行，下一轮从那里接着算。
+            # 或满 500 轮。每轮把结果页写回工作行，`run_check` 从它加一起算，页码
+            # 只增不减、不会原地打转；ledger 里的游标落在 `backfill_page`。
             rounds = 0
             while (result.get("ok") and not result.get("exhausted")
                    and isinstance(result.get("page"), int) and rounds < 500):

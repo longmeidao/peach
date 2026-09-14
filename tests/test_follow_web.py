@@ -835,6 +835,11 @@ class FollowContractTests(unittest.TestCase):
         self.assertEqual([media["index"] for media in item["hidden_media"]], [0])
         self.assertEqual(item["thumb_url"], art)
 
+        # 两张都藏起来：卡面不再挂任何一张被隐藏的图，走无图占位。
+        self._post("/api/follow/media/hide", {"item": item["id"], "media": 1, "hidden": True})
+        self.assertIsNone(self._get()["groups"][0]["primary"]["thumb_url"])
+        self._post("/api/follow/media/hide", {"item": item["id"], "media": 1, "hidden": False})
+
         self._post("/api/follow/media/hide",
                    {"item": item["id"], "media": 0, "hidden": False})
         item = self._get()["groups"][0]["primary"]
