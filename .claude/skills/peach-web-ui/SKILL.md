@@ -5,7 +5,7 @@ description: 在新增、修改或复核 Peach 页面、控件、提示、错误
 
 # Peach Web UI 复用门槛
 
-最后复核：2026-09-08
+最后复核：2026-09-15
 
 ## 开工顺序
 
@@ -84,7 +84,8 @@ description: 在新增、修改或复核 Peach 页面、控件、提示、错误
 
 1. 为语义、DOM、ARIA、复用模块和响应式规则补页面源测试；数据语义变更另补 API／数据层测试。
 2. Windows 从隔离 worktree 根运行 `& .\scripts\test.ps1`，默认 `auto`；按影响域补测，规则见 `peach-worktree`。
-3. 在本地预览检查桌面与 390×844：页面宽度不大于视口、弹层不越界、菜单内部滚动、键盘 focus 可见、控制台无错误。托盘服务发的是主检出的 `web/`，看不到 worktree 里的改动：从 worktree 根另起一个实例再验收，`python -m peach serve --host 127.0.0.1 --port 8099 --no-mdns --no-ledger-sync`（`PYTHONPATH=<worktree>/src`），验完停掉，托盘那个不动。点第一下之前先把 `peach.settings.v1` 的 `detailAutoplay` 置 false：用户就在这台机器旁，任何一次点进详情都会出声，无论这轮验收的是不是播放器。
-4. 接口字段、sidecar 取值和锚点算术走 Python 严格 HTTPS（项目 CA 加 `ProxyHandler({})`）核对，不进浏览器。浏览器只留给布局后才成立的事实：`getComputedStyle`、真实裁切几何、hover／focus 态和实际像素；用读源码顶替这几样是降精度。
-5. 一轮验收要读的页面状态先列全，再合成一次 `javascript_tool` 调用取回。私有网络主机（`.local` 与 `10.`／`172.16-31.`／`192.168.` 段的局域网 IP 归同一类）在桌面应用里只能逐次授权，站点级放行只给只读工具，点击与执行 JS 拿不到常驻许可，每多发一次调用就多一次弹窗。
-6. 按 `peach-surfaces` 报告数据层、API、页面、契约、测试与文档各影响面；未部署不得称为生产已生效。
+3. 桌面与 390×844 的通用不变量（无横向溢出、无越出视口的元素、等待态会结束、控制台无错误、无失败请求）由 `web` 域的 `tests/test_web_e2e.py` 执行，不再逐页手测；新路由加进 `frontend/e2e/smoke.test.ts` 的 `ROUTES`。浏览器里发现的可判定问题（几何、computed style、状态切换），先在 `frontend/e2e/` 写出失败用例再修。
+4. Browser 面板只留给用例表达不了的：新布局首次成形、对齐外部参考、hover／focus 与观感判断。托盘服务发的是主检出的 `web/`：从 worktree 根另起实例，`python -m peach serve --host 127.0.0.1 --port 8099 --no-mdns --no-ledger-sync`（`PYTHONPATH=<worktree>/src`），验完停掉。点第一下之前先把 `peach.settings.v1` 的 `detailAutoplay` 置 false：用户就在这台机器旁，点进详情会出声。
+5. 接口字段、sidecar 取值和锚点算术走 Python 严格 HTTPS（项目 CA 加 `ProxyHandler({})`）核对，不进浏览器。浏览器只留给布局后才成立的事实：`getComputedStyle`、真实裁切几何、hover／focus 态和实际像素；用读源码顶替这几样是降精度。
+6. 一轮验收要读的页面状态先列全，再合成一次 `javascript_tool` 调用取回。私有网络主机（`.local` 与 `10.`／`172.16-31.`／`192.168.` 段的局域网 IP 归同一类）在桌面应用里只能逐次授权，站点级放行只给只读工具，点击与执行 JS 拿不到常驻许可，每多发一次调用就多一次弹窗。
+7. 按 `peach-surfaces` 报告数据层、API、页面、契约、测试与文档各影响面；未部署不得称为生产已生效。

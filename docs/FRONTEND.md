@@ -111,6 +111,14 @@ npm --prefix frontend run typecheck
 它的门槛在 CI 的 `web-bundle` job：`npm run build` 之后 `git diff --exit-code -- web/dist`。
 **改了 `frontend/src` 就必须重新构建并把 `web/dist/` 一起提交**，否则 CI 会红。
 
+同一个域里还有真浏览器冒烟 `tests/test_web_e2e.py`：它在临时数据根上生成 12 条合成演示库、
+起回环 `peach serve --no-auth`，再跑 `npm --prefix frontend run e2e`。用例在
+`frontend/e2e/smoke.test.ts`，每条主路由在桌面与 390×844 下断言：无页面异常与 `console.error`、
+无同源 4xx/5xx 与失败请求、`aria-busy` 与 `data-skeleton` 会消失、无横向溢出、无越出视口的元素。
+浏览器取本机 Google Chrome（`PEACH_E2E_CHROME` 可指定），短片由 ffmpeg 编码；缺 npm、
+`playwright-core`、ffmpeg 或 Chrome 时显式跳过。声明根是 Windows 形态，目前只在 Windows 上执行。界面验收里发现的同类问题，
+先在这里补一条用例再修。
+
 ## 挂载契约
 
 ```js
@@ -227,6 +235,7 @@ vendor 到 `web/vendor/` 的四个包（video.js、swiper、lucide-static、heal
 | `typescript` | 类型即契约：注册表、props 与端点响应都靠它在编译期拦住漂移 |
 | `vitest` | 前端测试运行器。与 Vite 共用同一份配置解析，不必再维护第二套转译 |
 | `happy-dom` | vitest 的 DOM 环境。断言的是真实 DOM 结构，比 jsdom 轻且启动快 |
+| `playwright-core` | `frontend/e2e/` 的浏览器驱动，只驱动本机 Chrome、不下载浏览器。happy-dom 没有布局，横向溢出、等待态卡住这类事实只有真浏览器测得出；不用 `@playwright/test`，用例跑在 `node:test` 上，与 docu.md（`markdown-viewer/markdown-viewer-extension` 的 `test/helpers/browser-render-harness.ts`）同一做法 |
 | `react`、`react-dom` | React 子树的渲染层。BoardUI 源码是 React 组件，交互建在 React Aria 上，Preact 的兼容层不在 React Aria 的支持范围内 |
 | `react-aria-components` | BoardUI 输入框与勾选框的交互和无障碍语义：标签关联、键盘操作、`aria-invalid` |
 | `tailwind-merge` | BoardUI 的 `cx()` 合并类名时去掉互相冲突的工具类 |
