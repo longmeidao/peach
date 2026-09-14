@@ -44,8 +44,9 @@ export async function launch(): Promise<Browser> {
   return chromium.launch({ headless: true, executablePath: requiredEnv('PEACH_E2E_CHROME') });
 }
 
-/** 等待态以 `aria-busy="true"` 与 `data-skeleton` 为准；超时就是等待态卡住了。 */
-async function settle(page: Page): Promise<void> {
+/** 等待态以 `aria-busy="true"` 与 `data-skeleton` 为准；超时就是等待态卡住了。
+ * 两个标记由页面自己写：island、遗留模板和 React 子树都得发出，这里才等得到。 */
+export async function settle(page: Page): Promise<void> {
   await page.waitForLoadState('networkidle');
   await page.waitForFunction(
     () => !document.querySelector('[aria-busy="true"],[data-skeleton]'),

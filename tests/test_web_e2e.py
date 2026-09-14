@@ -180,10 +180,17 @@ class WebE2ESmokeTests(unittest.TestCase):
     def test_every_route_holds_the_layout_and_runtime_invariants(self):
         env = dict(os.environ, PEACH_E2E_ORIGIN=self.origin, PEACH_E2E_ITEM=str(self.item),
                    PEACH_E2E_CHROME=self.chrome)
-        completed = subprocess.run(
-            [self.npm, "--prefix", str(FRONTEND), "run", "e2e", "--silent"],
-            capture_output=True, text=True, encoding="utf-8", errors="replace",
-            cwd=str(FRONTEND), env=env, timeout=E2E_SECONDS, check=False)
+        try:
+            completed = subprocess.run(
+                [self.npm, "--prefix", str(FRONTEND), "run", "e2e", "--silent"],
+                capture_output=True, text=True, encoding="utf-8", errors="replace",
+                cwd=str(FRONTEND), env=env, timeout=E2E_SECONDS, check=False)
+        except subprocess.TimeoutExpired as expired:
+            # 已经跑完的那几条 TAP 行指出卡在哪一条之后；只报超时等于什么都没说。
+            partial = expired.stdout or ""
+            if isinstance(partial, bytes):
+                partial = partial.decode("utf-8", errors="replace")
+            self.fail(f"{E2E_SECONDS} 秒内没跑完，已输出：\n{partial[-4000:]}")
         output = f"{completed.stdout}\n{completed.stderr}"
         self.assertEqual(completed.returncode, 0, f"{output}\n--- serve.log ---\n{self._server_log()}")
         self.assertRegex(output, r"# pass [1-9]\d*", output)

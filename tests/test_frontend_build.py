@@ -366,14 +366,29 @@ class SharedStateContractTests(unittest.TestCase):
 
 
 class VitestTests(unittest.TestCase):
-    """vitest 走同一个测试入口，但缺 Node 时跳过而不是红。"""
+    """vitest 与 tsc 走同一个测试入口，但缺 Node 时跳过而不是红。
 
-    def test_the_island_suite_passes(self):
+    两者互不覆盖：vitest 经 Vite 转译时只剥掉类型、不做检查，类型错误照样跑绿。
+    """
+
+    def _npm(self, tool: str, package: str) -> str:
         npm = shutil.which("npm")
         if npm is None:
-            self.skipTest("跳过 vitest：本机没有 npm。装 Node 24+ 后 `-Scope web` 会带上它")
-        if not (FRONTEND / "node_modules" / "vitest").is_dir():
-            self.skipTest("跳过 vitest：frontend/node_modules 还没装，先 `npm --prefix frontend ci`")
+            self.skipTest(f"跳过 {tool}：本机没有 npm。装 Node 24+ 后 `-Scope web` 会带上它")
+        if not (FRONTEND / "node_modules" / package).is_dir():
+            self.skipTest(f"跳过 {tool}：frontend/node_modules 还没装，先 `npm --prefix frontend ci`")
+        return npm
+
+    def test_the_frontend_sources_typecheck(self):
+        npm = self._npm("tsc", "typescript")
+        completed = subprocess.run(
+            [npm, "--prefix", str(FRONTEND), "run", "typecheck", "--silent"],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            cwd=str(FRONTEND), check=False)
+        self.assertEqual(completed.returncode, 0, f"{completed.stdout}\n{completed.stderr}")
+
+    def test_the_island_suite_passes(self):
+        npm = self._npm("vitest", "vitest")
         completed = subprocess.run(
             [npm, "--prefix", str(FRONTEND), "test", "--silent"],
             capture_output=True, text=True, encoding="utf-8", errors="replace",

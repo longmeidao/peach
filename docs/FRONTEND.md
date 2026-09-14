@@ -101,12 +101,12 @@ watch 模式只负责把产物写回 `web/dist/`。刷新页面就能看到改�
 测试与类型仍然只有一个入口：
 
 ```bash
-& .\scripts\test.ps1 -Scope web   # Windows；含 vitest、产物与契约断言
+& .\scripts\test.ps1 -Scope web   # Windows；含 tsc、vitest、产物与契约断言
 ./scripts/test.sh web             # macOS
-npm --prefix frontend run typecheck
 ```
 
-`web` 域里的 vitest 在没有 npm 或没装 `frontend/node_modules` 时**显式跳过**，不会让
+vitest 转译时只剥掉类型、不做检查，所以 `web` 域另跑一遍 `npm --prefix frontend run typecheck`。
+两者在没有 npm 或没装 `frontend/node_modules` 时**显式跳过**，不会让
 测试域变红。「产物是否由当前源码构建出来」这一条本机验不了（不装 Node 就无法重建），
 它的门槛在 CI 的 `web-bundle` job：`npm run build` 之后 `git diff --exit-code -- web/dist`。
 **改了 `frontend/src` 就必须重新构建并把 `web/dist/` 一起提交**，否则 CI 会红。
@@ -212,7 +212,7 @@ await ui.refreshStore('quality-goals');   // 挂着的那屏自己重画，不�
 5. `tests/test_web_ui.py`：把对那段渲染源的断言换成断言挂载契约；搬走的语义契约
    （中间省略、空态、标签文案）在 `tests/test_frontend_build.py` 的
    `IslandSourceContractTests` 里补回来，不能让它无声消失。
-6. 按顺序跑 `npm --prefix frontend run typecheck`、`& .\scripts\test.ps1 -Scope web`，
+6. 跑 `& .\scripts\test.ps1 -Scope web`（含 tsc 与 vitest），
    再 `npm --prefix frontend run build` 并把 `web/dist/` 一起提交。
 
 Preact island 继续用 `web/css/` 下的分区，复用原有的类名，`peach-ui.js` 不出样式表。
