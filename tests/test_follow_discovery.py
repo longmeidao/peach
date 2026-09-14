@@ -137,6 +137,12 @@ class DiscoveryPlanTests(unittest.TestCase):
         self.assertEqual(identity_key("Ria_neearts"), identity_key("ria-neearts"))
         self.assertNotEqual(identity_key("Ria_neearts"), identity_key("riahri"))
 
+    def test_the_identity_key_keeps_names_written_in_cjk(self):
+        # 中日文名不能被抹成空串：空键会让 rule34.xxx 那一路直接认定无从比对。
+        self.assertEqual(identity_key("鈴太郎_3D"), "鈴太郎3d")
+        self.assertEqual(identity_key("鈴太郎_3D"), identity_key("鈴太郎-3d"))
+        self.assertEqual(identity_key("うるしばら"), "うるしばら")
+
     def test_a_spaced_term_is_left_alone(self):
         self.assertEqual(search_variants("Lazy Procrastinator"), ("Lazy Procrastinator",))
 

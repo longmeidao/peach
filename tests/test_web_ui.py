@@ -4699,6 +4699,18 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("const speedText=speed?`${(speed/1e6).toFixed(1)} Mbps`:'—';")
         self.assertPageLacks("× 实时")
 
+    def test_follow_detail_image_falls_back_to_the_card_thumbnail(self):
+        """原图经代理取不到时换上缩略图，不留一块空画布。
+
+        pawchive 的原文件主机挂着 ddos-guard，服务端去取一律 403；缩略图由浏览器直接读
+        公开主机，照常能看。换上之后侧栏说明这是缩略图；缩略图也取不到才报没取回来。
+        """
+        self.assertCode("const detailThumb=selectedMedia?.thumb_url||item.thumb_url||'';")
+        self.assertCode('${detailThumb&&detailThumb!==src?` data-fallback-src="${esc(detailThumb)}"`:\'\'} referrerpolicy="no-referrer">')
+        self.assertCode("if(fallback&&el.getAttribute('src')!==fallback){")
+        self.assertCode("el.src=fallback;if(thumbFallback)thumbFallback.hidden=false;return}")
+        self.assertPageContains("data-media-thumb-fallback hidden>原图没取回来，这里先显示缩略图")
+
     def test_follow_detail_gets_the_same_player_stats_overlay(self):
         """作品详情与关注详情共用同一段统计模板，关注详情里的在线视频同样有统计入口。"""
         self.assertPageContains("function playerStatsOverlayHtml()")
@@ -4713,13 +4725,16 @@ class WebUiSourceTests(unittest.TestCase):
     def test_follow_image_cards_reserve_their_ratio_from_either_tier_and_learn_the_rest(self):
         """图片墙按卡片高度分列，图落地前就要知道比例，否则每张加载完整墙重排。
 
-        尺寸有两层：媒体清单里那张（fanbox）或条目本身（rule34.xxx 接口、回填、回写）。
-        两层都没有的卡片不硬猜，加载完把 natural 尺寸回写给条目，下一次渲染就有了。
+        比例是卡面那张图的，有两层：卡面用媒体清单里那张（fanbox）就落在那张上，
+        其余落在条目上——视频条目也一样，量的是它的缩略图或封面帧。两层都没有的卡片
+        不硬猜，加载完把 natural 尺寸回写给它的主人，下一次渲染就有了。
         """
-        self.assertCode("const itemDims=!selectedMedia&&item.media_kind==='image'&&item.width>0&&item.height>0?item:null;")
-        self.assertCode("const sized=mediaDims||itemDims;")
+        self.assertCode("const cardMedia=selectedMedia&&selectedMedia.thumb_url===thumbUrl?selectedMedia:null;")
+        self.assertCode("const sized=dimsOwner.width>0&&dimsOwner.height>0?dimsOwner:null;")
         self.assertCode('const dims=sized?` width="${sized.width}" height="${sized.height}"`:\'\';')
-        self.assertCode('` data-learn-dims="${item.id}"${selectedMedia?` data-learn-media="${selectedMedia.index}"`:\'\'}`')
+        self.assertCode('const learn=!sized&&thumbUrl?` data-learn-dims="${item.id}"${cardMedia?` data-learn-media="${cardMedia.index}"`:\'\'}`:\'\';')
+        self.assertNotIn("item.media_kind==='image'&&item.width>0", self.page,
+                         "视频卡片的缩略图同样要按比例占位")
         self.assertPageContains("function wireImageDimsLearning(root)")
         self.assertPageContains("wireImageDimsLearning(root);")
         self.assertPageContains("root.querySelectorAll('img[data-learn-dims]')")
