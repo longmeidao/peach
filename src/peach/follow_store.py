@@ -123,18 +123,53 @@ _FULL_UPDATE = (
     "  duration=COALESCE(excluded.duration, follow_item.duration),"
     "  release_key=excluded.release_key, variant_kind=excluded.variant_kind,"
     "  variant_label=excluded.variant_label, group_hint=excluded.group_hint,"
-    # 条目级的图片宽高多半不是连接器给的：归档站不报尺寸，是回填脚本问过文件头、
-    # 或界面加载完图片后回写的。整块替换 metadata 会把它抹掉，下一轮检查更新后
-    # 第一页的卡片又退回无尺寸占位。新值自己带尺寸时照常以新值为准。
-    "  metadata_json=CASE"
-    "    WHEN json_extract(excluded.metadata_json,'$.width') IS NULL"
-    "     AND json_extract(follow_item.metadata_json,'$.width') IS NOT NULL"
-    "    THEN json_set(excluded.metadata_json,"
-    "      '$.width', json_extract(follow_item.metadata_json,'$.width'),"
-    "      '$.height', json_extract(follow_item.metadata_json,'$.height'))"
-    "    ELSE excluded.metadata_json END,"
-    "  last_seen_at=excluded.last_seen_at"
+    # 整块替换；上一轮学到的图片宽高由 `_carry_image_dims` 在写入前并进新值。
+    "  metadata_json=excluded.metadata_json, last_seen_at=excluded.last_seen_at"
 )
+
+
+def _learned_media_dims(media_items: object) -> dict[str, tuple[int, int]]:
+    """清单里已有尺寸的图，按媒体稳定键（`id` 优先、`url` 兜底）索引。"""
+    learned: dict[str, tuple[int, int]] = {}
+    for media in media_items if isinstance(media_items, list) else ():
+        if not isinstance(media, dict):
+            continue
+        key = str(media.get("id") or media.get("url") or "")
+        dims = positive_dims(media.get("width"), media.get("height"))
+        if key and dims:
+            learned[key] = dims
+    return learned
+
+
+def _carry_image_dims(metadata: dict, previous_json: str | None) -> dict:
+    """整行重写时把上一轮学到的图片宽高带进新 metadata，新值自己带尺寸的以新值为准。
+
+    宽高多半不是连接器给的：归档站不报尺寸，是回填脚本问过文件头、或界面加载完
+    图片后回写的。整块替换 metadata 会把它们抹掉，下一轮检查更新后卡片又退回无尺寸
+    占位。条目级和清单里每张图同一条规则；清单里的图按媒体稳定键对回，作者增删
+    图片也不会把尺寸安到别的图上。
+    """
+    try:
+        previous = json.loads(previous_json or "{}")
+    except ValueError:
+        return metadata
+    if not isinstance(previous, dict):
+        return metadata
+    if positive_dims(metadata.get("width"), metadata.get("height")) is None:
+        dims = positive_dims(previous.get("width"), previous.get("height"))
+        if dims:
+            metadata["width"], metadata["height"] = dims
+    learned = _learned_media_dims(previous.get("media_items"))
+    if learned and isinstance(metadata.get("media_items"), list):
+        carried = []
+        for media in metadata["media_items"]:
+            dims = learned.get(str(media.get("id") or media.get("url") or "")) \
+                if isinstance(media, dict) else None
+            if dims and positive_dims(media.get("width"), media.get("height")) is None:
+                media = {**media, "width": dims[0], "height": dims[1]}
+            carried.append(media)
+        metadata["media_items"] = carried
+    return metadata
 
 #: `partial=True` 的候选（只有列表视图、详情这次没取）更新已有行时用的 SET 子句。
 #: 列表本来就权威的那几列照常更新；详情才能给出的 media_url、thumb_url、
@@ -397,25 +432,28 @@ class FollowStore:
                             ("exact" if candidate.published_at else "unknown"))
             if precision not in ("exact", "approximate", "unknown"):
                 precision = "unknown"
+            # author 与 summary 单独并进来：连接器把它们放在 DTO 的具名字段上而不是
+            # extra 里，但界面要显示「谁发的、说了什么」——f95 线程里九条回复的标题
+            # 全是线程名，摘要才是那条动态的内容。摘要截断，追更不做全文存档。
+            metadata = {"markers": list(verdict.markers),
+                        **({"author": candidate.author} if candidate.author else {}),
+                        **({"summary": candidate.summary[:400]} if candidate.summary else {}),
+                        **dict(candidate.extra)}
+            previous = connection.execute(
+                "SELECT metadata_json FROM follow_item WHERE source_id=? AND external_id=?",
+                (source_id, candidate.external_id)).fetchone()
+            existed = previous is not None
+            if existed and not candidate.partial:
+                metadata = _carry_image_dims(metadata, previous[0])
             values = (
                 source_id, candidate.external_id, candidate.title, candidate.url,
                 candidate.media_url, candidate.thumb_url, candidate.published_at,
                 precision, verdict.version, candidate.duration, release_key,
                 verdict.variant_kind, verdict.variant_label, candidate.group_hint,
                 evidence,
-                # author 与 summary 单独并进来：连接器把它们放在 DTO 的具名字段上而不是
-                # extra 里，但界面要显示「谁发的、说了什么」——f95 线程里九条回复的标题
-                # 全是线程名，摘要才是那条动态的内容。摘要截断，追更不做全文存档。
-                json.dumps({"markers": list(verdict.markers),
-                            **({"author": candidate.author} if candidate.author else {}),
-                            **({"summary": candidate.summary[:400]}
-                               if candidate.summary else {}),
-                            **dict(candidate.extra)}, ensure_ascii=False),
+                json.dumps(metadata, ensure_ascii=False),
                 stamp, stamp,
             )
-            existed = connection.execute(
-                "SELECT 1 FROM follow_item WHERE source_id=? AND external_id=?",
-                (source_id, candidate.external_id)).fetchone() is not None
             connection.execute(
                 "INSERT INTO follow_item(source_id,external_id,title,url,media_url,"
                 "thumb_url,published_at,published_precision,version,duration,release_key,"
