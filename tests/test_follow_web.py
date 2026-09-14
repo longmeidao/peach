@@ -1647,11 +1647,17 @@ class FollowContractTests(unittest.TestCase):
         用户实测：状态条写着「未看 2292」，下面视频 220 + 图片 11 只有 231。
         两个数都对，差的是口径，所以响应必须带上 has_more 让界面能说清楚、能续取。
         """
-        self._seed()
+        # 一页数的是组：种两部作品，一页只装一部。
+        self._seed(candidates=(
+            FollowCandidate(provider="rule34video", external_id="1", title="Fiona - Paizuri",
+                            published_at="2026-08-18T00:00:00Z"),
+            FollowCandidate(provider="rule34video", external_id="2", title="Sayuri - Cowgirl",
+                            published_at="2026-08-17T00:00:00Z"),
+        ))
         page = self._get(limit=1)
         self.assertEqual(page["limit"], 1)
         self.assertEqual(page["offset"], 0)
-        self.assertTrue(page["has_more"], "还有条目没取，has_more 必须为真")
+        self.assertTrue(page["has_more"], "还有作品没取，has_more 必须为真")
         # counts 不随分页缩小：它统计的是整库。
         self.assertGreater(sum(page["counts"].values()), len(page["groups"]))
 
@@ -1676,6 +1682,43 @@ class FollowContractTests(unittest.TestCase):
             self.assertLess(offset, 50, "分页没有收敛")
         self.assertEqual(sorted(set(seen)), sorted(set(everything)),
                          "逐页取回的条目集合必须和一次取全一致")
+
+    def test_a_page_counts_groups_so_one_work_never_splits_across_pages(self):
+        """按条目切页再分组的话，同一作品夹着别的条目时会落在两页，页面上是两张卡。"""
+        self._seed(candidates=(
+            FollowCandidate(provider="rule34video", external_id="1", title="Sunset [4K]",
+                            published_at="2026-08-20T00:00:00Z"),
+            FollowCandidate(provider="rule34video", external_id="2", title="Beach",
+                            published_at="2026-08-19T00:00:00Z"),
+            FollowCandidate(provider="rule34video", external_id="3", title="Sunset [1080p]",
+                            published_at="2026-08-18T00:00:00Z"),
+        ))
+        page = self._get(limit=1)
+        self.assertTrue(page["has_more"])
+        self.assertEqual([sorted(row["external_id"] for row in (group["primary"], *group["variants"]))
+                          for group in page["groups"]], [["1", "3"]])
+        self.assertFalse(self._get(limit=2)["has_more"])
+
+    def test_one_work_the_author_uploaded_to_two_sites_is_one_card(self):
+        """rule34video 的标题里夹着作者名，FANBOX 镜像上没有；两条来源都没绑实体。"""
+        self._seed(candidates=(FollowCandidate(
+            provider="kemono", external_id="f1", title="2B Love at Sunset - 1080p",
+            published_at="2026-08-31T23:59:24Z"),), provider="kemono",
+            ref="fanbox/30917150", label="Pantsushi · fanbox")
+        self._seed(candidates=(FollowCandidate(
+            provider="rule34video", external_id="v1", title="2B Love at Sunset [pantsushi] 4K",
+            url="https://rule34video.com/video/1/x/", published_at="2026-09-02T00:00:00Z"),),
+            ref="pantsushi", label="pantsushi")
+        groups = self._get()["groups"]
+        self.assertEqual(len(groups), 1)
+        members = [groups[0]["primary"], *groups[0]["variants"], *groups[0]["duplicates"]]
+        self.assertEqual(sorted(row["external_id"] for row in members), ["f1", "v1"])
+        for row in members:
+            with self.subTest(item=row["external_id"]):
+                direct = self._get(item=str(row["id"]))["groups"]
+                self.assertEqual(sorted(member["external_id"] for member in (
+                    direct[0]["primary"], *direct[0]["variants"], *direct[0]["duplicates"])),
+                    ["f1", "v1"])
 
     def test_sources_are_listed_with_their_last_status(self):
         self._seed()

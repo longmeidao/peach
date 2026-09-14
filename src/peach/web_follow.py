@@ -981,6 +981,28 @@ def author_key(row, aliases: dict[str, str] | None = None) -> str:
     return f"source:{row['id']}"
 
 
+def group_authors(source_rows, aliases: dict[str, str] | None = None,
+                  ) -> dict[int, tuple[str, frozenset[str]]]:
+    """每条来源的作者键，连同这位作者在各个来源上的全部名字写法。
+
+    分组靠它剥掉标题里夹着的作者名、跨同一作者的来源对版本。名字取归一化后的写法，
+    与 `author_key` 同一口径：来源标签、来源记下的作者键、别名表里指向同一人的键。
+    """
+    keys = {int(row["id"]): author_key(row, aliases) for row in source_rows}
+    names: dict[str, set[str]] = {}
+    for row in source_rows:
+        spellings = names.setdefault(keys[int(row["id"])], set())
+        for raw in (normalized_author_name(str(row["label"] or row["ref"] or ""),
+                                           provider=str(row["provider"] or "")),
+                    str(_source_metadata(row).get("author_key") or "").strip()):
+            if raw:
+                spellings.update((raw, (aliases or {}).get(raw, raw)))
+    for alias, canonical in (aliases or {}).items():
+        if f"name:{canonical}" in names:
+            names[f"name:{canonical}"].add(alias)
+    return {source_id: (key, frozenset(names.get(key, ()))) for source_id, key in keys.items()}
+
+
 #: 一次最多提议多少条别名。这是给人一条条看的清单，不是批处理。
 MAX_ALIAS_SUGGESTIONS = 12
 #: 名片手柄不值得提议成别名的服务。论坛账号名常常是搬运工自己的账号，
@@ -1197,7 +1219,7 @@ def _follow_facets(store, items, by_source, alias_map, icon_root=None) -> dict:
     providers: set[str] = set()
     tags: dict[str, int] = {}
     works: dict[str, dict] = {}
-    for group in store.group(items):
+    for group in store.group(items, group_authors(tuple(by_source.values()), alias_map)):
         row = by_source.get(group.primary.source_id)
         if row is not None:
             key = author_key(row, alias_map)
@@ -1638,18 +1660,23 @@ def q_follow(contract, args) -> dict:
                            if item.source_id in enabled_source_ids and not _excluded_item(item))
         counted = _sorted_items(
             tuple(item for item in everything if _matches(item)), sort, direction, seed)
+        by_author = group_authors(source_rows, alias_map)
         if item_id is not None:
-            items = tuple(item for item in store.items_for_item(item_id)
-                          if item.source_id in enabled_source_ids and not _excluded_item(item))
+            # 直达详情取这一条所在的整组。组是读时拼的（剥作者名、相似标题），只按库里
+            # 同键去捞会漏掉别的站上那几份，详情就比列表里的卡片少。
+            ranked = tuple(group for group in store.group(everything, by_author)
+                           if item_id in {member.id for member in
+                                          (group.primary, *group.variants, *group.duplicates)})
             has_more = False   # 直达详情只取这一组，没有下一页
         else:
-            # 分页在筛选之后：SQL 先分页、前端再筛的话，选个冷门作者会看到一页里
-            # 只剩两三条，得反复点「加载更多」才凑出一屏。
-            page = [item for item in counted if not statuses or item.status in statuses]
-            has_more = len(page) > offset + limit
-            items = tuple(page[offset:offset + limit])
-        groups = [_group_payload(group, credential_providers)
-                  for group in _sorted_groups(store.group(items), sort, direction, seed)]
+            # 分页在筛选与分组之后：SQL 先分页、前端再筛的话，选个冷门作者会看到一页里
+            # 只剩两三条，得反复点「加载更多」才凑出一屏；按条目切页再分组的话，同一作品
+            # 的几份上传落在相邻两页，页面上就是两张卡。所以整批分组，`limit` 数的是组。
+            page = tuple(item for item in counted if not statuses or item.status in statuses)
+            ranked = _sorted_groups(store.group(page, by_author), sort, direction, seed)
+            has_more = len(ranked) > offset + limit
+            ranked = ranked[offset:offset + limit]
+        groups = [_group_payload(group, credential_providers) for group in ranked]
         facets = _follow_facets(store, everything, by_source, alias_map,
                                 work_icon_root(contract))
         # counts 与列表同源，两边都从 `counted` 出发：筛选怎么变，数字就怎么变，
