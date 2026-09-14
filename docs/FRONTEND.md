@@ -18,8 +18,11 @@ Vite + TypeScript + Preact。迁移方式是 strangler：**遗留路由继续拥
 | `frontend/src/api.ts` | 带 `AbortController` 的取数封装 |
 | `frontend/src/management.ts` | 数据管理首屏 Fieldset、网盘能力显隐与浏览历史导入指南 |
 | `frontend/src/legacy/*.d.ts` | `/js/core.js`、`/js/ui-components.js` 的手写类型 |
-| `frontend/test/` | vitest 用例与遗留模块的桩 |
+| `frontend/src/react/` | React 子树：`entry.tsx` 是构建入口，`bundle.d.ts` 是对外契约，`boardui/` 逐字复制 BoardUI 源码 |
+| `frontend/src/react-slot.tsx` | Preact island 里挂 React 子树的交接组件 |
+| `frontend/test/` | vitest 用例与遗留模块的桩；`test/react/` 按 React JSX 转换 |
 | `web/dist/peach-ui.js` | 构建产物，**进 Git**，由 `/dist/{name}` 提供 |
+| `web/dist/peach-react.js`、`peach-react.css` | React 子树的构建产物，**进 Git** |
 
 首次运行页（未配置时的 `GET /` 与 `POST /setup`）不在这张表里：它是 SPA 外壳之外的一张
 独立页面，HTML 与样式都自包含在 `src/peach/routes_pages.py`，只借 `/js/ui-components.js` 的 `attachOverlayScrollbar` 与 `wireCollapse` 画整页滚动条和「高级设置」的折叠，此外不引 `web/` 的资产，也不是
@@ -204,8 +207,10 @@ await ui.refreshStore('quality-goals');   // 挂着的那屏自己重画，不�
 6. 按顺序跑 `npm --prefix frontend run typecheck`、`& .\scripts\test.ps1 -Scope web`，
    再 `npm --prefix frontend run build` 并把 `web/dist/` 一起提交。
 
-样式暂时继续用 `web/css/` 下的分区：已迁的页面复用原有的类名，产物这一轮不出 `peach-ui.css`。
-`/dist/{name}` 已经允许 `.css`，等某个 island 真的需要自己的样式时再开。
+Preact island 继续用 `web/css/` 下的分区，复用原有的类名，`peach-ui.js` 不出样式表。
+React 子树的样式是 Tailwind v4 加 BoardUI 主题，产物 `peach-react.css`；它与旧样式表同处一页的
+三条约束（工具类不分层、只扫描 `src/react/`、Preflight 限定在 `.peach-react` 里）写在
+`frontend/src/react/styles.css` 开头，逐字复制与没有复制的上游文件见 `frontend/src/react/boardui/ORIGIN.md`。
 
 ## 依赖清单
 
@@ -222,6 +227,16 @@ vendor 到 `web/vendor/` 的四个包（video.js、swiper、lucide-static、heal
 | `typescript` | 类型即契约：注册表、props 与端点响应都靠它在编译期拦住漂移 |
 | `vitest` | 前端测试运行器。与 Vite 共用同一份配置解析，不必再维护第二套转译 |
 | `happy-dom` | vitest 的 DOM 环境。断言的是真实 DOM 结构，比 jsdom 轻且启动快 |
+| `react`、`react-dom` | React 子树的渲染层。BoardUI 源码是 React 组件，交互建在 React Aria 上，Preact 的兼容层不在 React Aria 的支持范围内 |
+| `react-aria-components` | BoardUI 输入框与勾选框的交互和无障碍语义：标签关联、键盘操作、`aria-invalid` |
+| `tailwind-merge` | BoardUI 的 `cx()` 合并类名时去掉互相冲突的工具类 |
+| `@remixicon/react` | BoardUI 组件内置的图标 |
+| `tailwindcss`、`@tailwindcss/vite` | 按 `src/react/` 里实际用到的类名生成 `peach-react.css` |
+| `@types/react`、`@types/react-dom` | React 子树的类型检查 |
+
+React 子树单独构建（`vite.react.config.ts`）。`peach-react.js` 424 kB（gzip 110.6 kB），
+只在页面挂 React 子树时由 island 动态加载；`peach-react.css` 67 kB（gzip 11.8 kB），
+由 `index.html` 在旧样式表之前引入。
 
 `@preact/signals` 钉在 2.11.1：它对 `preact` 的 peer 要求是 `>= 10.25.0`，和这里的
 10.29.8 对得上；运行时另外带一个 `@preact/signals-core`，是它自己的依赖，由 lockfile

@@ -7,19 +7,29 @@
   },
   "scripts": {
     "dev": "vite build --watch",
-    "build": "vite build",
-    "typecheck": "tsc --noEmit",
+    "dev:react": "vite build -c vite.react.config.ts --watch",
+    "build": "vite build && vite build -c vite.react.config.ts",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p src/react",
     "test": "vitest run",
     "test:watch": "vitest"
   },
   "dependencies": {
     "@preact/signals": "2.11.1",
+    "@remixicon/react": "4.9.0",
     "d3-sankey": "0.12.3",
-    "preact": "10.29.8"
+    "preact": "10.29.8",
+    "react": "19.3.0",
+    "react-aria-components": "1.21.1",
+    "react-dom": "19.3.0",
+    "tailwind-merge": "3.7.0"
   },
   "devDependencies": {
+    "@tailwindcss/vite": "4.3.3",
     "@types/d3-sankey": "0.12.5",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
     "happy-dom": "20.14.0",
+    "tailwindcss": "4.3.3",
     "typescript": "7.0.2",
     "vite": "8.2.2",
     "vitest": "5.0.0"

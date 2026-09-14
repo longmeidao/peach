@@ -1,0 +1,18 @@
+{
+  // React 子树（ADR-0022 试点）。Vite 与 tsc 都按「离文件最近的 tsconfig」决定 JSX 运行时，
+  // 所以这一层只换 jsxImportSource，其余继承 frontend/tsconfig.json。
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "jsxImportSource": "react",
+    // boardui/ 逐字复制上游源码，上游没有按这两条写；在这里放宽，而不是改上游文件。
+    "exactOptionalPropertyTypes": false,
+    "noUncheckedIndexedAccess": false,
+    "paths": {
+      "@/*": ["./boardui/*"],
+      "@peach/legacy/core": ["../legacy/core.d.ts"],
+      "@peach/legacy/ui": ["../legacy/ui.d.ts"]
+    }
+  },
+  "include": ["./", "../../test/react"],
+  "exclude": []
+}

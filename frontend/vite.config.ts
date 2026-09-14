@@ -16,6 +16,11 @@ export const LEGACY_MODULES = {
   '@peach/legacy/ui': '/js/ui-components.js',
 } as const;
 
+/** React 子树的产物（`vite.react.config.ts`）。island 只在挂 React 子树时动态 import 它。 */
+export const REACT_BUNDLE = {
+  '@peach/react': '/dist/peach-react.js',
+} as const;
+
 export default defineConfig({
   build: {
     outDir: '../web/dist',
@@ -32,9 +37,9 @@ export default defineConfig({
       fileName: () => 'peach-ui.js',
     },
     rollupOptions: {
-      external: Object.keys(LEGACY_MODULES),
+      external: [...Object.keys(LEGACY_MODULES), ...Object.keys(REACT_BUNDLE)],
       output: {
-        paths: LEGACY_MODULES,
+        paths: { ...LEGACY_MODULES, ...REACT_BUNDLE },
         // island 之间不做代码分割：入口是浏览器直接 import 的单一模块。
         codeSplitting: false,
         assetFileNames: 'peach-ui.[ext]',

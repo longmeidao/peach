@@ -1,0 +1,59 @@
+/* React 子树的样式入口（`web/dist/peach-react.css`）。
+ *
+ * 旧样式表仍在同一页面上，所以和上游 globals.css 的写法有三处不同，来源与原因见
+ * `boardui/ORIGIN.md`：
+ * - 工具类不进层叠层。旧样式表不分层，`button,input,textarea{color:inherit}` 这类标签规则
+ *   在层外，会压过层里的任何工具类；不分层时工具类凭类名的优先级胜出。
+ * - 只扫描 `src/react/`。Preact 与遗留层里的 `hidden`、`flex` 这类类名不生成工具类，
+ *   页面上生成出来的全局类名只来自 React 子树。
+ * - Preflight 与根元素基线限定在 `.peach-react` 容器里。 */
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" source(none);
+@import "./preflight-scoped.css";
+@import "./boardui/styles/theme.css";
+@import "./boardui/styles/typography.css";
+
+@source "./";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* 上游 `--font-sans` 引用 Next.js 字体加载器注入的 `--font-inter`；Peach 的 Inter 由
+ * board.css 引入的 `/vendor/inter/` 提供。 */
+:root {
+  --font-inter: "Inter Variable", "Inter";
+}
+
+/* 上游 globals.css 里 html、body 的基线，落在 React 子树的容器上。 */
+.peach-react {
+  font-family: var(--font-sans);
+  line-height: 1.5;
+  color: var(--color-text-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-variant-ligatures: contextual;
+  font-kerning: normal;
+}
+
+/* 以下逐字取自上游 globals.css：Checkbox 打勾的描线动画。 */
+
+/* Checkbox tick: draws the stroke on like it's being ticked by hand.
+ * The path sets pathLength=1 so the dash math is resolution-independent. */
+@keyframes check-draw {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+.animate-check-draw {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: check-draw 200ms cubic-bezier(0.65, 0, 0.35, 1) forwards;
+}
+@media (prefers-reduced-motion: reduce) {
+  .animate-check-draw {
+    animation: none;
+    stroke-dashoffset: 0;
+  }
+}

@@ -1401,10 +1401,12 @@ class WebUiSourceTests(unittest.TestCase):
         灰色小字和旁边「至少 8 个字符」那种填表提示长得一模一样，扫一眼就滑过去。
         """
         access = (Path(__file__).resolve().parents[1]
-                  / "frontend/src/islands/access-settings.tsx").read_text(encoding="utf-8")
-        note = access[access.index("state.mode === 'open' ?"):][:400]
-        self.assertIn("variant:'warning'", note)
-        self.assertIn("未设置访问密码", note)
+                  / "frontend/src/react/settings/access-settings.tsx").read_text(encoding="utf-8")
+        note = access[access.index("state.mode === 'open'\n"):][:200]
+        self.assertIn('<Warning label="未设置访问密码">', note)
+        warning = access[access.index("function Warning("):access.index("export function AccessSettings(")]
+        self.assertIn('role="note"', warning)
+        self.assertIn("bg-status-yellow-background", warning)
 
     def test_a_spinner_announces_the_work_and_not_the_button_it_sits_in(self):
         """`spinnerHtml()` 的名字说正在做什么，不复读按钮自己的名字。

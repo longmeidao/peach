@@ -7,12 +7,16 @@ import { defineConfig, mergeConfig } from 'vitest/config';
 import base from './vite.config.ts';
 
 const stub = (name: string) => fileURLToPath(new URL(`./test/stubs/${name}`, import.meta.url));
+const source = (path: string) => fileURLToPath(new URL(`./src/${path}`, import.meta.url));
 
 export default mergeConfig(base, defineConfig({
   resolve: {
     alias: {
       '@peach/legacy/core': stub('legacy-core.ts'),
       '@peach/legacy/ui': stub('legacy-ui.ts'),
+      // 测试里 island 直接拿到 React 子树的源码入口，不经过 web/dist 产物。
+      '@peach/react': source('react/entry.tsx'),
+      '@': source('react/boardui'),
     },
   },
   test: {

@@ -84,6 +84,77 @@ class IslandBundleTests(unittest.TestCase):
         self.assertIn("await import('/dist/peach-ui.js')", app_js)
 
 
+REACT_BUNDLE = DIST / "peach-react.js"
+REACT_STYLES = DIST / "peach-react.css"
+
+
+class ReactBundleTests(unittest.TestCase):
+    """React 子树（BoardUI 源码 + Tailwind）与旧样式表同处一页的门槛。
+
+    这几条都是「tsc 和 vitest 看不见、页面上才出事」的约束：产物引用路径、样式表顺序、
+    工具类有没有被层叠层压住、Preflight 有没有漏到整页。
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        for path in (BUNDLE, REACT_BUNDLE, REACT_STYLES):
+            if not path.is_file():
+                raise unittest.SkipTest(
+                    f"{path.relative_to(ROOT)} 不在：先 `npm --prefix frontend run build`")
+        cls.islands = BUNDLE.read_text(encoding="utf-8")
+        cls.react = REACT_BUNDLE.read_text(encoding="utf-8")
+        cls.css = REACT_STYLES.read_text(encoding="utf-8")
+
+    def test_islands_load_the_react_bundle_by_its_served_path(self):
+        """island 按 `@peach/react` 写，产物里必须改写成服务端真的提供的路径，且 React 不进 peach-ui.js。"""
+        self.assertIn('import("/dist/peach-react.js")', self.islands)
+        self.assertNotIn("react-dom", self.islands)
+        self.assertIn("mountAccessSettings", self.react)
+
+    def test_the_react_bundle_keeps_the_legacy_modules_external(self):
+        self.assertIn('from "/js/core.js"', self.react)
+        self.assertNotIn("process.env", self.react, "库模式没替换 NODE_ENV，浏览器里没有 process")
+
+    def test_utilities_stay_outside_cascade_layers(self):
+        """旧样式表不分层。工具类放进层里，`button,input,textarea{color:inherit}` 这类标签规则就会压过它。"""
+        layers = set(re.findall(r"@layer\s+([\w-]+)", self.css))
+        self.assertNotIn("utilities", layers)
+        self.assertNotIn("base", layers)
+
+    def test_preflight_only_reaches_the_react_subtree(self):
+        self.assertEqual(self.css.count("@scope"), 1)
+        self.assertRegex(self.css, r"@scope\s*\(\.peach-react\)")
+        scoped = (FRONTEND / "src" / "react" / "preflight-scoped.css").read_text(encoding="utf-8")
+        upstream = FRONTEND / "node_modules" / "tailwindcss" / "preflight.css"
+        if not upstream.is_file():
+            self.skipTest("跳过 Preflight 原文比对：frontend/node_modules 还没装")
+        opening = "@scope (.peach-react) {\n"
+        self.assertIn(opening, scoped)
+        self.assertTrue(scoped.endswith("}\n"))
+        self.assertEqual(scoped[scoped.index(opening) + len(opening):-2],
+                         upstream.read_text(encoding="utf-8"),
+                         "preflight-scoped.css 与 tailwindcss 依赖里的原文不一致，按文件开头的说明重新生成")
+
+    def test_the_legacy_focus_ring_stays_out_of_the_react_subtree(self):
+        """旧样式表排在后面，全局 `:focus-visible` 与 `outline-none` 同特指度时它赢，输入框会多画一圈。"""
+        base = (ROOT / "web" / "css" / "01-base.css").read_text(encoding="utf-8")
+        self.assertIn(":where(:not(.peach-react *)):focus-visible{outline:2px solid var(--tungsten);", base)
+        self.assertNotRegex(base, r"(?m)^:focus-visible\{")
+
+    def test_react_styles_load_before_the_legacy_stylesheets(self):
+        """同名 `--color-*` token 由后面的 board.css 定值，未迁移页面的颜色才不受影响。"""
+        index = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
+        order = [index.index(f'href="{href}"') for href in ("/dist/peach-react.css", "/app.css", "/board.css")]
+        self.assertEqual(order, sorted(order))
+
+    def test_the_dark_class_follows_the_theme_in_both_places(self):
+        """BoardUI 的深色 token 挂在 `.dark` 上；首帧脚本和 applyTheme() 都要按实际深浅加减它。"""
+        index = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
+        app_js = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+        self.assertIn("classList.toggle('dark',", index)
+        self.assertIn("root.classList.toggle('dark',dark)", app_js)
+
+
 class FrontendManifestTests(unittest.TestCase):
     """依赖清单和根 `package.json` 是两份，各自的口径都要精确。"""
 
