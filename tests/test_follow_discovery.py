@@ -294,11 +294,44 @@ class DiscoverTests(_DiscoveryCase):
         self.assertEqual([c.ref for c in found.candidates], ["ria-neearts"])
         self.assertEqual(found.failures, {})
 
-    def test_a_tag_that_merely_starts_with_the_term_is_not_a_hit(self):
-        # 补全按前缀返回，`riahri` 也在结果里。名字不同就不是这个人，不能拿来登记。
+    def test_an_exact_hit_leaves_out_prefix_neighbors(self):
+        # 精确写法就是这个人；名字相似但不同的标签不再并列出现，候选列表只留给
+        # 真正命中的那一个。
+        routes = {"autocomplete.php": HttpResponse(200, {}, b"["
+                  b"{\"label\": \"ria (12)\", \"value\": \"ria\"},"
+                  b"{\"label\": \"ria-neearts (248)\", \"value\": \"ria-neearts\"},"
+                  b"{\"label\": \"riahri (156)\", \"value\": \"riahri\"}]")}
+        found = self._discover("ria", routes, providers=("rule34xxx",))
+        self.assertEqual([c.ref for c in found.candidates], ["ria"])
+        self.assertEqual(found.candidates[0].evidence, "站内标签 ria 下有 12 件作品")
+
+    def test_a_prefix_hit_is_a_candidate_when_no_spelling_matched_exactly(self):
+        # 敲名字的开头、站上的标签比它长时，精确判据一这条也找不到。前缀命中的
+        # 写法仍是站上真实存在的标签，照列出来、证据写明以该词开头，由人分辨。
         routes = {"autocomplete.php": HttpResponse(200, {}, R34_AUTOCOMPLETE_HIT)}
         found = self._discover("ria", routes, providers=("rule34xxx",))
-        self.assertEqual(found.candidates, ())
+        self.assertEqual([c.ref for c in found.candidates], ["ria-neearts", "riahri"])
+        self.assertEqual(found.candidates[0].evidence,
+                         "站内标签以该词开头：ria-neearts 下有 248 件作品")
+        self.assertEqual(found.candidates[1].evidence,
+                         "站内标签以该词开头：riahri 下有 156 件作品")
+        self.assertIn("tags=ria-neearts", found.candidates[0].url)
+
+    def test_a_prefix_hit_without_a_count_still_states_itself(self):
+        routes = {"autocomplete.php": HttpResponse(200, {}, b"["
+                  b"{\"label\": \"forceball_fx\", \"value\": \"forceball_fx\"}]")}
+        found = self._discover("forceball", routes, providers=("rule34xxx",))
+        self.assertEqual([c.ref for c in found.candidates], ["forceball_fx"])
+        self.assertEqual(found.candidates[0].evidence,
+                         "站内存在以该词开头的标签 forceball_fx")
+
+    def test_prefix_neighbors_do_not_shadow_the_variant_that_matched_exactly(self):
+        # 补全按字面前缀返回：`Ria_neearts` 查不出 `ria-neearts`，要换分隔符写法
+        # 再问一次。前一种写法带回来的相似标签不能盖住后一种写法的精确命中。
+        routes = {"autocomplete.php?q=Ria_neearts": HttpResponse(200, {}, R34_AUTOCOMPLETE_HIT),
+                  "autocomplete.php?q=Ria-neearts": HttpResponse(200, {}, R34_AUTOCOMPLETE_HIT)}
+        found = self._discover("Ria_neearts", routes, providers=("rule34xxx",))
+        self.assertEqual([c.ref for c in found.candidates], ["ria-neearts"])
 
     def test_an_f95_collection_thread_is_found_by_the_forum_search(self):
         # `latest_data.php` 只索引 Latest Updates，艺术家的 Collection 帖不在里面。

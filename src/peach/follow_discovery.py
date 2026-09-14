@@ -265,32 +265,53 @@ def _rule34xxx_candidates(term: str, transport, credential: Credential | None) -
     先前这里把手柄逐字当标签查一遍，写法差一个分隔符就是零命中：`Ria_neearts`
     什么都查不到，站上写作 `ria-neearts`，248 件作品。补全接口不需要凭据，
     因此发现阶段也不再需要——凭据仍然是**抓取**这条订阅的前提。
+
+    补全按字面前缀返回，而敲进查找框的常常是名字的开头。抹掉分隔符后与输入
+    相同的写法是精确命中，只列它们；一个精确命中都没有时，前缀命中的标签也是
+    站上真实存在的写法，照列出来、证据写明以该词开头，由人分辨是不是同一个人。
     """
     wanted = identity_key(term)
     if not wanted:
         return []
     connector = Rule34XxxConnector(transport=transport, credential=credential, max_items=1)
-    picked: list[Candidate] = []
-    seen: set[str] = set()
+    exact: list[tuple[str, int]] = []
+    partial: list[tuple[str, int]] = []
     for probe in spelling_variants(term):
         for tag, count in connector.autocomplete(probe):
-            canonical = canonical_source_ref("rule34xxx", tag)
-            if identity_key(tag) != wanted or canonical in seen:
+            key = identity_key(tag)
+            if not key.startswith(wanted):
                 continue
-            seen.add(canonical)
-            picked.append(Candidate(
-                "rule34xxx", canonical, _rule34xxx_tag_url(canonical),
-                canonical.replace("_", " "), "work",
-                f"站内标签 {canonical} 下有 {count} 件作品" if count
-                else f"站内存在标签 {canonical}"))
-            if len(picked) >= MAX_CANDIDATES_PER_SOURCE:
-                return picked
-        if picked:
-            return picked
-    if credential is None:
+            (exact if key == wanted else partial).append((tag, count))
+        # 精确写法有命中就不必再试其余分隔符；前缀相似的命中要等所有写法都问完，
+        # 才知道真的没有精确的那一个。
+        if exact:
+            break
+    # 精确命中就是这个人，只列它们；一个精确命中都没有时，才把前缀相似的
+    # 写法列出来当候选，证据写明以该词开头。
+    hits = exact if exact else partial
+    prefix_hit = not exact
+    picked: list[Candidate] = []
+    seen: set[str] = set()
+    for tag, count in hits:
+        canonical = canonical_source_ref("rule34xxx", tag)
+        if canonical in seen:
+            continue
+        seen.add(canonical)
+        if prefix_hit:
+            evidence = (f"站内标签以该词开头：{canonical} 下有 {count} 件作品" if count
+                        else f"站内存在以该词开头的标签 {canonical}")
+        else:
+            evidence = (f"站内标签 {canonical} 下有 {count} 件作品" if count
+                        else f"站内存在标签 {canonical}")
+        picked.append(Candidate(
+            "rule34xxx", canonical, _rule34xxx_tag_url(canonical),
+            canonical.replace("_", " "), "work", evidence))
+        if len(picked) >= MAX_CANDIDATES_PER_SOURCE:
+            break
+    if credential is None or picked:
         return picked
     # 补全一次只回十条，热门前缀会把完整写法挤出去。有凭据时再按原样查一次标签，
-    # 这条路径不受那个上限影响。
+    # 这条路径不受那个上限影响；只有补全一个精确命中都没给到时才轮到它。
     tag = canonical_source_ref("rule34xxx", re.sub(r"\s+", "_", term.strip()))
     if not connector.fetch(tag).candidates:
         return picked
