@@ -1814,10 +1814,19 @@ def w_follow_check(contract, body) -> dict:
 
     没有 `source` 就检查全部已启用来源。逐个来源独立成败：一个来源缺凭据或被
     机器人验证挡住，不该让其余来源的更新一起消失。
+
+    翻页只有 `older` 一个开关：常规检查只看第一页，`older` 从游标往前抓一页，界面上
+    「抓更早的一页」就是它。`backfill_all` 与 `rewind` 只跟着 `older` 生效，是存量行
+    重抓的运维入口、不进界面：前者一页记完接着抓到尽头，后者把这一轮的起点拨回第
+    1 页。连接器新学到一个字段（图片宽高、封面）之后，已经入库的旧行要靠这一组参数
+    重走一遍才补得上，做法见 `docs/REUSE.md`「关注检查」一条。
     """
     if "sources" in body and (not isinstance(body["sources"], list)
             or not body["sources"] or not all(type(value) is int for value in body["sources"])):
         raise ValueError("sources must be a nonempty list of source ids")
+    if (body.get("backfill_all") or body.get("rewind")) and not body.get("older"):
+        # 不带 `older` 时这两个参数什么都不做，默默跑成一轮常规检查只会让人以为重抓过了。
+        raise ValueError("backfill_all and rewind only apply together with older")
     finished = threading.Event()
     outcome = {}
     request_id = uuid.uuid4().hex

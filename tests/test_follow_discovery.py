@@ -268,7 +268,12 @@ class DiscoverTests(_DiscoveryCase):
         found = self._discover("Lazy", self.ROUTES, providers=("kemono",))
         evidence = {c.label: c.evidence for c in found.candidates}
         self.assertIn("LazyProcrastinator · fanbox", evidence)
-        self.assertEqual(evidence["LazyProcrastinator · fanbox"], "创作者名包含该词")
+        self.assertEqual(evidence["LazyProcrastinator · fanbox"], "创作者名以该词开头")
+
+    def test_a_name_that_only_contains_the_term_says_so(self):
+        found = self._discover("Mazer", self.ROUTES, providers=("kemono",))
+        self.assertEqual([(c.label, c.evidence) for c in found.candidates],
+                         [("LazyMazer · patreon", "创作者名包含该词")])
 
     def test_one_source_failing_does_not_lose_the_others(self):
         routes = {**self.ROUTES}
@@ -294,22 +299,26 @@ class DiscoverTests(_DiscoveryCase):
         self.assertEqual([c.ref for c in found.candidates], ["ria-neearts"])
         self.assertEqual(found.failures, {})
 
-    def test_an_exact_hit_leaves_out_prefix_neighbors(self):
-        # 精确写法就是这个人；名字相似但不同的标签不再并列出现，候选列表只留给
-        # 真正命中的那一个。
+    def test_an_exact_hit_leads_its_prefix_neighbors(self):
+        # 精确写法排最前；下拉里同时给过的相似标签照列在后，由人分辨是不是同一个人。
         routes = {"autocomplete.php": HttpResponse(200, {}, b"["
-                  b"{\"label\": \"ria (12)\", \"value\": \"ria\"},"
                   b"{\"label\": \"ria-neearts (248)\", \"value\": \"ria-neearts\"},"
-                  b"{\"label\": \"riahri (156)\", \"value\": \"riahri\"}]")}
+                  b"{\"label\": \"riahri (156)\", \"value\": \"riahri\"},"
+                  b"{\"label\": \"ria (12)\", \"value\": \"ria\"}]")}
         found = self._discover("ria", routes, providers=("rule34xxx",))
-        self.assertEqual([c.ref for c in found.candidates], ["ria"])
+        self.assertEqual([c.ref for c in found.candidates], ["ria", "ria-neearts", "riahri"])
         self.assertEqual(found.candidates[0].evidence, "站内标签 ria 下有 12 件作品")
+        self.assertEqual(found.candidates[1].evidence,
+                         "站内标签以该词开头：ria-neearts 下有 248 件作品")
 
     def test_a_prefix_hit_is_a_candidate_when_no_spelling_matched_exactly(self):
-        # 敲名字的开头、站上的标签比它长时，精确判据一这条也找不到。前缀命中的
+        # 敲名字的开头、站上的标签比它长时，精确判据下这条也找不到。前缀命中的
         # 写法仍是站上真实存在的标签，照列出来、证据写明以该词开头，由人分辨。
+        # 没有凭据就不去 dapi 确认精确写法，只问补全。
         routes = {"autocomplete.php": HttpResponse(200, {}, R34_AUTOCOMPLETE_HIT)}
-        found = self._discover("ria", routes, providers=("rule34xxx",))
+        calls = []
+        found = self._discover("ria", routes, providers=("rule34xxx",), calls=calls)
+        self.assertFalse(any("index.php" in url for url in calls))
         self.assertEqual([c.ref for c in found.candidates], ["ria-neearts", "riahri"])
         self.assertEqual(found.candidates[0].evidence,
                          "站内标签以该词开头：ria-neearts 下有 248 件作品")
@@ -332,6 +341,36 @@ class DiscoverTests(_DiscoveryCase):
                   "autocomplete.php?q=Ria-neearts": HttpResponse(200, {}, R34_AUTOCOMPLETE_HIT)}
         found = self._discover("Ria_neearts", routes, providers=("rule34xxx",))
         self.assertEqual([c.ref for c in found.candidates], ["ria-neearts"])
+
+    def _typed_r34(self):
+        self._write_credential("rule34xxx", {"user_id": "1", "api_key": "k"})
+        # 分类缓存是模块级的，留到下一个用例里就会让它凭空少打几次请求。
+        follow_discovery._TAG_TYPES.clear()
+        self.addCleanup(follow_discovery._TAG_TYPES.clear)
+
+    def test_the_exact_tag_pushed_out_of_the_autocomplete_still_leads(self):
+        # 补全一次只回十条，热门前缀会把完整写法挤出去。有凭据时按原样问一次 dapi，
+        # 标签下有帖子就是精确命中，排在前缀命中之前；前缀命中照列。
+        self._typed_r34()
+        post = json.dumps([{"id": 1, "image": "a.jpg", "tags": "ria",
+                            "file_url": "https://api-cdn.rule34.xxx/images/1/a.jpg"}])
+        routes = {"autocomplete.php": HttpResponse(200, {}, R34_AUTOCOMPLETE_HIT),
+                  "s=post": HttpResponse(200, {}, post.encode()),
+                  "s=tag": HttpResponse(200, {}, b'<tags type="array"></tags>')}
+        found = self._discover("ria", routes, providers=("rule34xxx",))
+        self.assertEqual([c.ref for c in found.candidates], ["ria", "ria-neearts", "riahri"])
+        self.assertEqual(found.candidates[0].evidence, "站内标签 ria 下有作品")
+        self.assertEqual(found.failures, {})
+
+    def test_a_rejected_credential_keeps_the_prefix_hits(self):
+        # 确认精确写法那一问只是锦上添花；凭据被拒时补全给的前缀命中照列。
+        self._typed_r34()
+        rejected = HttpResponse(200, {}, b'"Missing authentication. Go to api.rule34.xxx"')
+        routes = {"autocomplete.php": HttpResponse(200, {}, R34_AUTOCOMPLETE_HIT),
+                  "s=post": rejected, "s=tag": rejected}
+        found = self._discover("ria", routes, providers=("rule34xxx",))
+        self.assertEqual([c.ref for c in found.candidates], ["ria-neearts", "riahri"])
+        self.assertEqual(found.failures, {})
 
     def test_an_f95_collection_thread_is_found_by_the_forum_search(self):
         # `latest_data.php` 只索引 Latest Updates，艺术家的 Collection 帖不在里面。
@@ -674,6 +713,64 @@ class TagSuggestionTests(unittest.TestCase):
 
         self.assertEqual(tag_suggestions("l", transport=call), ())
         self.assertEqual(calls, [])
+
+
+class SearchKeepsWhatWasSuggestedTests(_DiscoveryCase):
+    """添加框下拉里给过的名字，按回车查找之后必须还在结果里。"""
+
+    def setUp(self):
+        super().setUp()
+        follow_discovery._TAG_TYPES.clear()
+        self.addCleanup(follow_discovery._TAG_TYPES.clear)
+
+    def test_archive_names_offered_for_a_prefix_survive_the_search(self):
+        # 名字中间带这个词的九位排在清单前面；按清单原序截八条就轮不到下拉里那两位。
+        rows = [{"id": str(n), "name": f"x{n}lewd", "service": "fanbox"} for n in range(9)]
+        rows += [{"id": "90", "name": "lewdgazer", "service": "fanbox"},
+                 {"id": "91", "name": "Lewdgatta", "service": "patreon"}]
+        path = self.state / "follow" / "creators-kemono.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(rows), encoding="utf-8")
+        offered = [row.value for row in archive_suggestions(
+            "lewd", state_root=self.state, providers=("kemono",))]
+        found = self._discover("lewd", {}, providers=("kemono",))
+        self.assertEqual(offered, ["Lewdgatta", "lewdgazer"])
+        self.assertEqual([c.label.split(" · ")[0] for c in found.candidates[:2]], offered)
+        self.assertEqual(found.candidates[0].evidence, "创作者名以该词开头")
+
+    def test_site_tags_offered_for_a_prefix_survive_the_search(self):
+        """`lewd` 本身是标签，下拉里的作者 `lewdrex` 和角色 `lewd_dorky` 也得在结果里。
+
+        排法跟下拉一致：精确写法最前，其余作者在前、别的分类在后，证据写明站上的分类。
+        """
+        self._write_credential("rule34xxx", {"user_id": "1", "api_key": "k"})
+        rows = json.dumps([{"label": "lewd (8548)", "value": "lewd"},
+                           {"label": "lewd_dorky (401)", "value": "lewd_dorky"},
+                           {"label": "lewdrex (57)", "value": "lewdrex"}]).encode()
+        #: dapi 的分类代号：0 是 general、1 是 artist、4 是 character。
+        types = {"lewd": 0, "lewd_dorky": 4, "lewdrex": 1}
+        calls = []
+
+        def call(request, _timeout, _max_bytes):
+            calls.append(request.url)
+            if "autocomplete.php" in request.url:
+                return HttpResponse(200, {}, rows)
+            name = urllib.parse.parse_qs(urllib.parse.urlsplit(request.url).query)["name"][0]
+            return HttpResponse(200, {}, (f'<tags type="array"><tag type="{types[name]}"'
+                                          f' count="1" name="{name}"/></tags>').encode())
+
+        offered = tag_suggestions("lewd", transport=call, credential=Credential(
+            "rule34xxx", {"user_id": "1", "api_key": "k"}))
+        found = discover("lewd", secrets_root=self.secrets, state_root=self.state,
+                         transport=call, providers=("rule34xxx",))
+        self.assertEqual({row.value for row in offered}, {c.ref for c in found.candidates})
+        self.assertEqual([c.ref for c in found.candidates], ["lewd", "lewdrex", "lewd_dorky"])
+        self.assertEqual([c.evidence for c in found.candidates],
+                         ["站内标签 lewd 下有 8548 件作品",
+                          "站内标签以该词开头：lewdrex 下有 57 件作品，站上归为作者",
+                          "站内标签以该词开头：lewd_dorky 下有 401 件作品，站上归为角色"])
+        # 补全里已经有精确写法，就不花一次 dapi 请求去确认它。
+        self.assertFalse(any("s=post" in url for url in calls))
 
 
 if __name__ == "__main__":
