@@ -5589,7 +5589,8 @@ class WebUiSourceTests(unittest.TestCase):
         """关注页顶上两排对着首页那两排：作者对女优，题材对厂牌。
 
         题材收来源记成 copyright 的作品与记成 character 的人物，不按词形猜——画师手柄
-        在字面上跟作品名没有区别。按下是「任一」，跟作者、来源一样；标签那一维仍是交集。
+        在字面上跟作品名没有区别。作者、来源、题材点什么就只看什么，一维只按着一枚；
+        标签那一维仍是交集。
         两页的头像和药丸共用 board.css 里同一份规则，只按 `#tiers` 写的话关注页会
         落回 flat 层那份 64px 头像加一圈描边，同一个人在两页大小都不一样。
         """
@@ -5602,10 +5603,15 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(
             "const workRows=followRandomOrder(facets.works||[],row=>row[0]).slice(0,ROW_FIRST);")
         self.assertPageContains("const randomizedAuthors=followRandomOrder([...authors],row=>row[0]);")
-        self.assertPageContains("toggle(followWorks,button.dataset.followWork);applyFollowView()});")
+        self.assertPageContains("const pick=(set,key)=>{const again=set.has(key);set.clear();if(!again)set.add(key)};")
+        self.assertPageContains("pick(followAuthors,button.dataset.followAuthor);applyFollowView()});")
+        self.assertPageContains("pick(followProviders,button.dataset.followProvider);applyFollowView()});")
+        self.assertPageContains("pick(followWorks,button.dataset.followWork);applyFollowView()});")
+        self.assertPageContains("toggle(followTags,button.dataset.followTag);applyFollowView()});")
+        self.assertPageContains("const one=key=>new Set([...csv(key)].slice(0,1));")
         self.assertPageContains("+(followWorks.size?`&work=${encodeURIComponent([...followWorks].join(','))}`:'')")
         self.assertPageContains("if(followWorks.size)params.set('work',[...followWorks].join(','));")
-        self.assertPageContains("followWorks=csv('work');")
+        self.assertPageContains("followWorks=one('work');")
         self.assertPageContains("wireDrag($('#stats').querySelector('.followworks'));")
         # 两排的形归 board.css 同一份规则，关注页那两排跟着一起写进选择器。
         self.assertIn("#tiers .av,:is(.followauthors,.followworks) .av{display:flex;"
