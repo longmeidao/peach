@@ -368,6 +368,38 @@ class FollowContractTests(unittest.TestCase):
             ).fetchone()[0]
         self.assertEqual(state, 3)
 
+    def test_a_pending_first_page_replays_once_before_walking_older_pages(self):
+        # 首轮检查按时间窗跳过过历史的来源，回抓先把第 0 页重放一次；之后从第 1 页往下走，
+        # 不能每一轮都重放第 0 页。
+        self._seed()
+        pages = []
+
+        class _Paged:
+            provider, semantics = "rule34video", "work"
+
+            def fetch(self, ref, *, etag=None, last_modified=None, page=0):
+                pages.append(page)
+                if len(pages) > 6 or page > 2:
+                    raise FollowHistoryEnd("没有更多历史内容")
+                return SourceFetch(provider="rule34video", ref=ref,
+                                   request_url="https://rule34video.test/x",
+                                   semantics="work", candidates=(), raw_body=b"<html/>")
+
+        original = web_follow.build_connector
+        web_follow.build_connector = lambda provider, **kwargs: _Paged()
+        self.addCleanup(setattr, web_follow, "build_connector", original)
+        source_id = self._get()["groups"][0]["primary"]["source_id"]
+        with self.contract.database.write_transaction() as connection:
+            connection.execute(
+                "UPDATE follow_source SET metadata_json=json_set(COALESCE(metadata_json,'{}'),"
+                " '$.initial_history_first_page_pending', json('true')) WHERE id=?",
+                (source_id,))
+
+        result = self._post("/api/follow/check",
+                            {"older": True, "backfill_all": True, "rewind": True})
+        self.assertEqual(pages, [0, 1, 2, 3])
+        self.assertTrue(result["results"][0]["exhausted"])
+
     def test_history_end_is_a_neutral_success_and_does_not_advance_cursor(self):
         source_id = self._seed()
 
@@ -3922,10 +3954,17 @@ class FollowWebSourceTests(unittest.TestCase):
                 '{"official_links":[{"service":"pixiv","handle":"30917150"}]}')),
             "/follow-avatar?service=fanbox&id=30917150",
         )
-        # 名片上只有 X 和 Patreon 时没有不带凭据就能读的头像接口，**未取得**。
-        self.assertIsNone(web_follow._official_avatar_url(source_row(
-            "f95zone", "189698",
-            '{"official_links":[{"service":"twitter","handle":"Memz3D"}]}')))
+        # 没有 FANBOX 时交给 X 与 Patreon：几家都递给服务端去比谁更清楚，
+        # 取不到头像的 SubscribeStar 和形状不对的手柄不进这串。
+        self.assertEqual(
+            web_follow._official_avatar_url(source_row(
+                "f95zone", "13899",
+                '{"official_links":[{"service":"twitter","handle":"Rekin3D"},'
+                '{"service":"patreon","handle":"sharkarts"},'
+                '{"service":"subscribestar","handle":"sharkart"},'
+                '{"service":"twitter","handle":"not a handle"}]}')),
+            "/follow-avatar?service=profile&id=twitter%3ARekin3D%2Cpatreon%3Asharkarts",
+        )
         self.assertIsNone(web_follow._official_avatar_url(
             source_row("f95zone", "63802")))
         for provider, ref in (("rule34video", "1290582"),

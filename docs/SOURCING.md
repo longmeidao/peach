@@ -385,8 +385,11 @@ av911.tv，三条候选已进复核队列。
   是 `equalizzoR`、`50685` 是 `thesuperfatcat`），XenForo 的发帖人头像因此不能当作者头像。正文的链接区
   才是名片：带 cookie 时 `63802` 给出 `patreon/strauzek`、`twitter/strauzek`、`twitter/Mr_Strauz` 和
   F95 会员页，游客态这三条站外链接全被换成 `/login/`，有的版块对游客整个关闭（`189698` 回登录页）。
-  名片里有 FANBOX 创作者 id 或 pixiv 数字 id 才拿得到头像（实测 `50685`、`87212`、`295303` 三条有），
-  只有 Patreon 和 X 的**未取得**——那两家没有不带凭据就能读的头像接口。认哪些主机算身份写死在
+  名片里有 FANBOX 创作者 id 或 pixiv 数字 id 时头像取 FANBOX（`50685`、`87212`、`295303` 三条有）；
+  没有时取 X 与 Patreon，两家都不带凭据：X 登出页的 og:image 按 `social_links.twimg_tiers` 从原图往下退，
+  Patreon 公开的 `api/campaigns?filter[vanity]=` 给 `avatar_photo_image_urls.original`。两家各取到能用
+  的最大一档后比实际像素留大的（`13899` 的 X 原图 400×400、Patreon 原图 256×256）；SubscribeStar
+  **未取得**。认哪些主机算身份写死在
   `follow_sources.profile_link_identity`：论坛正文是谁都能贴链接的地方，放开主机等于把别人贴的地址
   当成作者。
 - **jae.tokyo 的女优名录是第三个来源**（用户 2026-09-04 指定，同一站的厂牌名录见下一节）。三届的资料页

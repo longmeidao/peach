@@ -4710,6 +4710,11 @@ class WebUiSourceTests(unittest.TestCase):
         """
         self.assertCode("const detailThumb=selectedMedia?.thumb_url||item.thumb_url||'';")
         self.assertCode('${detailThumb&&detailThumb!==src?` data-fallback-src="${esc(detailThumb)}"`:\'\'} referrerpolicy="no-referrer">')
+        # 画框比例跟整组图走：换图、原图没加载完、退回缩略图时详情都不忽高忽低。
+        self.assertCode("const framedOwners=(imageCarousel?[...imageMedia,item]:[selectedMedia,item]).filter(owner=>owner?.width>0&&owner.height>0);")
+        self.assertCode("${frameRatio?' framed':''}\"${frameRatio?` style=\"--follow-frame-ratio:${frameRatio.toFixed(4)}\"`:''}>")
+        online = (Path(__file__).resolve().parents[1] / 'web/css/21-online.css').read_text(encoding='utf-8')
+        self.assertIn(".followdetailmedia.framed .followdetailposter{width:100%;aspect-ratio:var(--follow-frame-ratio)}", online)
         self.assertCode("if(fallback&&el.getAttribute('src')!==fallback){")
         self.assertCode("el.src=fallback;if(thumbFallback)thumbFallback.hidden=false;return}")
         self.assertPageContains("data-media-thumb-fallback hidden>原图没取回来，这里先显示缩略图")

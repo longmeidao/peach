@@ -42,6 +42,9 @@ class ClassifyTests(unittest.TestCase):
         self.assertEqual(verdict.variant_kind, "alt")
         self.assertEqual(verdict.variant_label, "no watermark")
         self.assertEqual(verdict.release_key, "bertha riding")
+        unwatermarked = self._key("Juno Facial - 4K Unwatermarked")
+        self.assertEqual(unwatermarked.release_key, "juno facial")
+        self.assertEqual(unwatermarked.markers, ("4K", "no watermark"))
 
     def test_wip_markers_win_over_alt_markers(self):
         verdict = self._key("Mitsuru - School Movie [WIP] (nude)")

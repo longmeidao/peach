@@ -34,7 +34,7 @@ from . import (
 )
 from .config import GENERATED_DIR
 from .follow import FollowSourceError
-from .follow_avatar import resolve_official_avatar
+from .follow_avatar import profile_avatar_tiers, profile_identities, resolve_official_avatar
 from .follow_covers import (
     PLACEHOLDER_CONTENT_TYPE, PLACEHOLDER_IMAGE, FollowCoverUnavailable,
 )
@@ -486,7 +486,8 @@ def follow_avatar(request: Request, service: str = "", id: str = "",
     """作者头像：官方资料页的那张（`service`+`id`）或归档站的那张（`provider`+`ref`）。
 
     两种都由服务端取回存在本机再交给页面，浏览器不直接碰对方站点。地址只从固定主机
-    拼：官方那条由 `resolve_official_avatar` 认 pixiv.pximg.net 一个主机，归档那条由
+    拼：官方那条由 `resolve_official_avatar` 认 pixiv.pximg.net 一个主机、
+    `profile_avatar_tiers` 认 X 与 Patreon 各自的图床，归档那条由
     `follow_assets.mirror_avatar_url` 按 provider 查表；前端递不进任何 URL。
     """
     state = request.app.state
@@ -499,6 +500,21 @@ def follow_avatar(request: Request, service: str = "", id: str = "",
 
         def fetch():
             return follow_assets.fetch_image(client, target)
+    elif service == "profile":
+        # 名片上的 X 与 Patreon：每家取到能用的最大一档，几家之间留像素最多的那张。
+        identities = profile_identities(id)
+        if not identities:
+            return _asset_response(request, None)
+        key = f"official:profile:{id}"
+
+        def fetch():
+            tier_lists = []
+            for name, handle in identities:
+                try:
+                    tier_lists.append(profile_avatar_tiers(name, handle))
+                except (OSError, FollowSourceError):
+                    continue
+            return follow_assets.largest_image(client, tier_lists)
     else:
         # 官方身份有两种写法：归档 ref 带的 pixiv 数字 id，和论坛名片链接里的
         # FANBOX 创作者 id（`jul3dnsfw.fanbox.cc`）。两种的合法形状都由

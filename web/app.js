@@ -5743,6 +5743,10 @@ async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=fals
   // 原图经代理取，缩略图由浏览器直接读公开主机：归档站的原文件主机会拦下服务端
   // （pawchive 的 file. 子域挂着 ddos-guard，一律 403），缩略图主机照常给。
   const detailThumb=selectedMedia?.thumb_url||item.thumb_url||'';
+  // 画框比例跟整组图走、不跟当前这张：换图时详情不忽高忽低，图没加载完也先占住位置。
+  // 有尺寸的图里取最高的那张（宽高比最小）；一张都没有时轮播用方框，单图由图片自己撑开。
+  const framedOwners=(imageCarousel?[...imageMedia,item]:[selectedMedia,item]).filter(owner=>owner?.width>0&&owner.height>0);
+  const frameRatio=selectedKind!=='image'?0:framedOwners.length?Math.min(...framedOwners.map(owner=>owner.width/owner.height)):imageCarousel?1:0;
   const media=item.playable&&selectedKind==='video'
     ?`<video class="video-js vjs-big-play-centered" controls playsinline preload="metadata"${item.thumb_url?` poster="${esc(item.thumb_url)}"`:''}></video>`
     :item.playable&&selectedKind==='image'
@@ -5767,7 +5771,7 @@ async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=fals
   placeItemDetail(detailOriginAnchor,detailOriginAbove);
   $('#stage').hidden=false;document.body.classList.add('detail-open');
   $('#stage').innerHTML=`<div class="sgrid followdetailgrid${collection||embeddedQueue?' mixgrid':''}">
-    <div class="vwrap followdetailmedia${selectedKind==='image'?' image':''}">${selectedKind==='video'?'<canvas class="ambientcanvas" width="32" height="18"></canvas>':''}<button class="closestage" id="closeStage" title="关闭" aria-label="关闭">${icon('x')}</button>${selectedKind==='video'?playerStatsOverlayHtml():''}${media}${imageControls}</div>
+    <div class="vwrap followdetailmedia${selectedKind==='image'?' image':''}${frameRatio?' framed':''}"${frameRatio?` style="--follow-frame-ratio:${frameRatio.toFixed(4)}"`:''}>${selectedKind==='video'?'<canvas class="ambientcanvas" width="32" height="18"></canvas>':''}<button class="closestage" id="closeStage" title="关闭" aria-label="关闭">${icon('x')}</button>${selectedKind==='video'?playerStatsOverlayHtml():''}${media}${imageControls}</div>
     ${embeddedQueue?followEmbeddedQueueHtml(item,selectedMedia.index):(collection?followQueueHtml(collection,item.id):'')}
     <div class="side followdetailside"><div class="sidecontent">
       <div class="followdetailtitle"><div class="stitle">${esc(item.title)}</div>${item.url?`<a class="followorigin externallink" href="${esc(item.url)}" target="_blank" rel="noreferrer noopener" title="打开来源页面" aria-label="打开来源页面">${icon('external-link','externalmark')}</a>`:''}</div>
