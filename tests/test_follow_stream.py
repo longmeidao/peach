@@ -103,6 +103,25 @@ class FollowMediaResolverTests(unittest.TestCase):
         target = FollowMediaResolver(lambda *_args: None).resolve(item, 1)
         self.assertEqual(target.url, "https://downloads.fanbox.cc/two.jpg")
 
+    def test_archive_attachment_list_resolves_only_on_the_items_own_site(self):
+        """归档站帖子的附件清单按条目自己站点的主机白名单取，别的主机、别的来源一律拒收。"""
+        item = SimpleNamespace(
+            id=15, provider="pawchive", url="https://pawchive.pw/patreon/user/1/post/15",
+            media_url="https://file.pawchive.pw/data/a/clip.mp4", metadata={"media_items": [
+                {"url": "https://file.pawchive.pw/data/a/clip.mp4", "resource_provider": "pawchive"},
+                {"url": "https://file.pawchive.pw/data/a/page2.jpg", "resource_provider": "pawchive"},
+                {"url": "https://127.0.0.1/data/a/private.jpg", "resource_provider": "pawchive"},
+                {"url": "https://kemono.cr/data/a/page3.jpg", "resource_provider": "kemono"},
+            ]},
+        )
+        resolver = FollowMediaResolver(lambda *_args: None)
+        target = resolver.resolve(item, 1)
+        self.assertEqual(target.url, "https://file.pawchive.pw/data/a/page2.jpg")
+        self.assertEqual(target.referer, item.url)
+        for index in (2, 3):
+            with self.assertRaises(FollowMediaUnavailable):
+                resolver.resolve(item, index)
+
     def test_legacy_f95_attachment_is_resolved_as_an_image(self):
         item = SimpleNamespace(
             id=13, provider="f95zone", url="https://f95zone.to/threads/1/post-13",

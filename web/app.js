@@ -5945,16 +5945,16 @@ function followCard(group,authorSources=[]){
   const thumbUrl=selectedMedia?.thumb_url||item.thumb_url;
   /* width/height 属性让浏览器在图片落地前就按固有比例占位：瀑布流按卡片高度
      分列，没有这两个属性时未加载的图高度是零，每一张加载完都把整墙的列重新
-     平衡一遍，卡片就在列间跳。比例取卡面上这张图自己的：卡面用的是媒体清单里那张
-     （fanbox）就落在那张媒体上，其余落在条目上——图片条目是图本身，视频条目是它的
-     缩略图或封面帧。来路有 rule34.xxx 的接口、回填脚本问过的文件头、上次加载后
-     回写的；原文件主机拦脚本时缩略图照样量得到。都没有就不硬猜，走无尺寸占位那套，
-     并在这张图加载完后把 natural 尺寸回写给它的主人。 */
+     平衡一遍，卡片就在列间跳。只有图片视图摆成瀑布流，视频卡片不占位也不回写。
+     比例取卡面上这张图自己的：卡面是媒体清单里那张就落在那张上；卡面就是条目自己的
+     缩略图时落在条目上（归档站多附件帖的首图与条目封面是同一张，清单补上之前量过的
+     仍然算数）。来路有来源接口、回填脚本问过的文件头、上次加载后回写的；都没有就
+     不硬猜，走无尺寸占位那套，并在这张图加载完后把 natural 尺寸回写给它的主人。 */
   const cardMedia=selectedMedia&&selectedMedia.thumb_url===thumbUrl?selectedMedia:null;
-  const dimsOwner=cardMedia||item;
-  const sized=dimsOwner.width>0&&dimsOwner.height>0?dimsOwner:null;
+  const itemOwnsCard=!cardMedia||thumbUrl===item.thumb_url;
+  const sized=imageView?[cardMedia,itemOwnsCard?item:null].find(owner=>owner?.width>0&&owner.height>0):null;
   const dims=sized?` width="${sized.width}" height="${sized.height}"`:'';
-  const learn=!sized&&thumbUrl?` data-learn-dims="${item.id}"${cardMedia?` data-learn-media="${cardMedia.index}"`:''}`:'';
+  const learn=imageView&&!sized&&thumbUrl?` data-learn-dims="${item.id}"${cardMedia?` data-learn-media="${cardMedia.index}"`:''}`:'';
   const thumb=thumbUrl
     ? `<img${dims}${learn} src="${esc(thumbUrl)}" alt="" loading="lazy" referrerpolicy="no-referrer" data-drop="self">`
     : `<span class="fnothumb">${sourceIcon(item.resource_provider||item.provider)}</span>`;
@@ -8655,6 +8655,11 @@ async function openPhotoLightbox(index,source=null){
   const resize=new ResizeObserver(()=>{main.update();strip.update();zoomBar.resize()});
   resize.observe(box);
   activeLightbox={box,main,strip,resize,zoomBar,detail};
+  // 原图取不到时换上这张的缩略图：归档站的原文件主机会拦下代理（pawchive 的 file.
+  // 子域挂着 ddos-guard），缩略图由浏览器直接读公开主机。
+  box.querySelectorAll('.photomain img').forEach((img,at)=>img.addEventListener('error',()=>{
+    const thumb=items[at].thumb;
+    if(thumb&&img.getAttribute('src')!==thumb)img.src=thumb},{once:true}));
   box.querySelector('.photoclose').onclick=closePhotoLightbox;
   // 主画布铺满视口后，黑色留白属于 zoom 容器而不是最外层；两者都视为背景。
   // 点图片、缩略图条、工具栏和翻页按钮仍不退出。

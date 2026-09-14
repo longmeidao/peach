@@ -36,7 +36,6 @@ BASELINE: dict[str, int] = {
     "scripts/merge_duplicate_identities.py:collect": 50,
     "src/peach/jav_cover_fetch.py:run": 50,
     "src/peach/web_review.py:_apply_metadata_candidate": 48,
-    "src/peach/follow_stream.py:FollowMediaResolver.resolve": 46,
     "src/peach/web_review.py:_attach_review_asset_context": 46,
     "src/peach/web_review.py:w_review_decision": 46,
     "scripts/harvest_social_avatars.py:run": 45,

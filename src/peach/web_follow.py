@@ -897,9 +897,8 @@ def _item_payload(item, credential_providers: frozenset[str] = frozenset()) -> d
         "media_error": str(item.metadata.get("media_error") or "") or None,
         "has_media": bool(item.media_url) or bool(media_items),
         "media_kind": media_kind,
-        # 条目卡面那张图的固有宽高，与 media_items 里每张自带的那对同义：图片条目是
-        # 图本身，视频条目是它的缩略图或封面帧。图片墙拿它在图落地前占好比例；没有的
-        # 来源保持 None，界面加载完会回写。
+        # 条目级直链图片的固有宽高，与 media_items 里每张自带的那对同义：图片墙
+        # 拿它在图落地前占好比例。没有的来源保持 None，界面加载完会回写。
         "width": _positive_dim(item.metadata.get("width")),
         "height": _positive_dim(item.metadata.get("height")),
         "media_type": _video_media_type(item.media_url)
@@ -1748,11 +1747,10 @@ IMAGE_DIMS_BATCH_LIMIT = 200
 
 
 def w_follow_image_dims(contract, body) -> dict:
-    """界面把加载完的卡面图固有宽高回写给还没有尺寸的条目。
+    """界面把加载完的图片固有宽高回写给还没有尺寸的条目。
 
     连接器不给尺寸的来源（归档站、论坛附件）第一次只能按无尺寸占位；浏览器一旦
     把图读出来就知道 naturalWidth/naturalHeight，回写之后下一次渲染就能预留比例。
-    视频条目回写的是它卡面缩略图或封面帧的尺寸：瀑布流要的就是卡面的比例。
     只补空缺，已有尺寸的条目一律不动；条目不存在、媒体序号不在清单里也只是
     不计数，不报错——卡片可能是上一轮渲染留下的。
     """

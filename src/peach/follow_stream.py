@@ -145,6 +145,57 @@ class FollowMediaResolver:
         self._credential_loader = loader
         return self
 
+    def _resolve_listed(self, item: FollowItemRow, media_items: list,
+                        media_index: int | None) -> ResolvedFollowMedia:
+        """媒体清单里的第 N 张：按它自己的 `resource_provider` 挑白名单与请求头。"""
+        index = 0 if media_index is None else media_index
+        if index < 0 or index >= len(media_items):
+            raise FollowMediaUnavailable("媒体序号不存在")
+        media = media_items[index]
+        if not isinstance(media, dict):
+            raise FollowMediaUnavailable("媒体条目格式不符")
+        url = str(media.get("url") or "")
+        resource_provider = str(media.get("resource_provider") or "")
+        if resource_provider == "gofile":
+            if not _allowed_resource(url, ("gofile.io",)):
+                raise FollowMediaUnavailable("Gofile 返回了不受信任的媒体地址")
+            loader = getattr(self, "_credential_loader", None)
+            credential = loader("gofile") if loader else None
+            token = str(credential.values.get("api_token") or "") if credential else ""
+            if not token:
+                raise FollowMediaUnavailable("Gofile API token 未配置")
+            return ResolvedFollowMedia(
+                url, item.url, {"Authorization": f"Bearer {token}"},
+                allowed_hosts=("gofile.io",))
+        if resource_provider == "fanbox":
+            # 正文图在 downloads.fanbox.cc；封面在 pixiv.pximg.net——pixiv 官方
+            # CDN，fanbox 封面都从它出，与 fanbox.cc 同属一个运营方。
+            if not _allowed_resource(url, ("fanbox.cc", "pixiv.pximg.net")):
+                raise FollowMediaUnavailable("FANBOX 返回了不受信任的图片地址")
+            return ResolvedFollowMedia(url, item.url,
+                                       allowed_hosts=("fanbox.cc", "pixiv.pximg.net"))
+        if resource_provider == "f95zone":
+            if not _allowed_resource(url, ("attachments.f95zone.to",)):
+                raise FollowMediaUnavailable("F95 返回了不受信任的图片地址")
+            loader = getattr(self, "_credential_loader", None)
+            credential = loader("f95zone") if loader else None
+            cookie = str(credential.values.get("cookie") or "") if credential else ""
+            if item.metadata.get("media_needs_credential") and not cookie:
+                raise FollowMediaUnavailable("F95 附件需要登录会话")
+            return ResolvedFollowMedia(
+                url, item.url, {"Cookie": cookie} if cookie else None,
+                allowed_hosts=("attachments.f95zone.to",))
+        if resource_provider and resource_provider == item.provider \
+                and _PROVIDER_HOSTS.get(item.provider):
+            # 归档站（kemono、coomer、pawchive）帖子的附件清单：媒体就在条目自己的
+            # 站上，按该来源的主机白名单放行，与 `resolve` 的直链分支同一口径。
+            if not _allowed(item.provider, url):
+                raise FollowMediaUnavailable("来源媒体地址不可用")
+            return ResolvedFollowMedia(
+                url, item.url, allowed_hosts=tuple(_PROVIDER_HOSTS[item.provider]),
+                public_hosts=item.provider in _PUBLIC_MEDIA_PROVIDERS)
+        raise FollowMediaUnavailable("媒体来源不受支持")
+
     def resolve(self, item: FollowItemRow, media_index: int | None = None,
                 height: int | None = None) -> ResolvedFollowMedia:
         """解析可播地址。`height` 指定清晰度，只有 rule34video 有多档可选；
@@ -155,44 +206,7 @@ class FollowMediaResolver:
                 and item.provider == "f95zone":
             media_items = f95_attachment_media_items(item.metadata)
         if isinstance(media_items, list) and media_items:
-            index = 0 if media_index is None else media_index
-            if index < 0 or index >= len(media_items):
-                raise FollowMediaUnavailable("媒体序号不存在")
-            media = media_items[index]
-            if not isinstance(media, dict):
-                raise FollowMediaUnavailable("媒体条目格式不符")
-            url = str(media.get("url") or "")
-            resource_provider = str(media.get("resource_provider") or "")
-            if resource_provider == "gofile":
-                if not _allowed_resource(url, ("gofile.io",)):
-                    raise FollowMediaUnavailable("Gofile 返回了不受信任的媒体地址")
-                loader = getattr(self, "_credential_loader", None)
-                credential = loader("gofile") if loader else None
-                token = str(credential.values.get("api_token") or "") if credential else ""
-                if not token:
-                    raise FollowMediaUnavailable("Gofile API token 未配置")
-                return ResolvedFollowMedia(
-                    url, item.url, {"Authorization": f"Bearer {token}"},
-                    allowed_hosts=("gofile.io",))
-            if resource_provider == "fanbox":
-                # 正文图在 downloads.fanbox.cc；封面在 pixiv.pximg.net——pixiv 官方
-                # CDN，fanbox 封面都从它出，与 fanbox.cc 同属一个运营方。
-                if not _allowed_resource(url, ("fanbox.cc", "pixiv.pximg.net")):
-                    raise FollowMediaUnavailable("FANBOX 返回了不受信任的图片地址")
-                return ResolvedFollowMedia(url, item.url,
-                                           allowed_hosts=("fanbox.cc", "pixiv.pximg.net"))
-            if resource_provider == "f95zone":
-                if not _allowed_resource(url, ("attachments.f95zone.to",)):
-                    raise FollowMediaUnavailable("F95 返回了不受信任的图片地址")
-                loader = getattr(self, "_credential_loader", None)
-                credential = loader("f95zone") if loader else None
-                cookie = str(credential.values.get("cookie") or "") if credential else ""
-                if item.metadata.get("media_needs_credential") and not cookie:
-                    raise FollowMediaUnavailable("F95 附件需要登录会话")
-                return ResolvedFollowMedia(
-                    url, item.url, {"Cookie": cookie} if cookie else None,
-                    allowed_hosts=("attachments.f95zone.to",))
-            raise FollowMediaUnavailable("媒体来源不受支持")
+            return self._resolve_listed(item, media_items, media_index)
         if item.metadata.get("media_needs_credential"):
             raise FollowMediaUnavailable("媒体需要来源登录会话")
         if item.provider != "rule34video":

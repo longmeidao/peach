@@ -967,8 +967,41 @@ class KemonoConnector(_BaseConnector):
             group_hint=f"{service}:{post_id}" if post_id else None,
             extra={"service": service, "user": user,
                    "edited": post.get("edited"),
-                   "attachment_count": len(attachments)},
+                   "attachment_count": len(attachments),
+                   **({"media_items": items}
+                      if (items := self._media_items([primary, *attachments], media)) else {})},
         )
+
+    #: 媒体清单里认作视频的扩展名；图片沿用 `_THUMBABLE`。压缩包、文本不进清单，
+    #: 仍由 `media_url` 作资源交付。
+    _PLAYABLE = (".mp4", ".webm", ".mov", ".m4v")
+
+    def _media_items(self, entries: list[dict], media: str | None) -> list[dict]:
+        """一帖里能看的图和视频，给详情的多图轮播与媒体队列。
+
+        交付文件排第一：条目级的媒体类型由清单首项决定，要与 `media_url` 是同一个；
+        其余按帖子里的顺序。`file` 常在附件里再列一遍，按路径去重。只有一张的帖子
+        不建清单，条目级字段已经说全了。视频没有缩略图（给了也是 404），`thumb_url`
+        留空。
+        """
+        host = self.FILE_HOSTS.get(self.provider, self.host)
+        items: list[dict] = []
+        seen: set[str] = set()
+        for entry in sorted(entries, key=lambda entry: entry.get("path") != media):
+            path = str(entry.get("path") or "")
+            lowered = path.lower()
+            kind = ("image" if lowered.endswith(self._THUMBABLE)
+                    else "video" if lowered.endswith(self._PLAYABLE) else None)
+            if kind is None or path in seen:
+                continue
+            seen.add(path)
+            items.append({"id": path,
+                          "name": str(entry.get("name") or path.rsplit("/", 1)[-1]),
+                          "url": f"https://{host}/data{path}",
+                          "thumb_url": self._thumb_url(path),
+                          "media_kind": kind,
+                          "resource_provider": self.provider})
+        return items if len(items) > 1 else []
 
 
 
