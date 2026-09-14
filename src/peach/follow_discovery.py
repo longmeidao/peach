@@ -201,13 +201,19 @@ def _kemono_candidates(provider: str, term: str, index: CreatorIndex) -> list[Ca
     # 所以按 casefold 比；数字 id 过一遍 casefold 也还是它自己。
     exact_id = [row for row in rows if row["id"].casefold() == folded]
     by_name = [row for row in rows if row["name"].casefold() == folded]
-    partial = [row for row in rows
-               if folded in row["name"].casefold() and row not in by_name]
+    # 部分命中的排法与 `archive_suggestions` 同一个键：以该词开头的在前，名字短的在前。
+    # 下拉里给过的名字按回车之后必须还在结果里；按清单原序截八条的话，子串命中多的
+    # 词会把下拉里那几位整批挤出去。
+    partial = sorted((row for row in rows
+                      if folded in row["name"].casefold() and row not in by_name),
+                     key=lambda row: (not row["name"].casefold().startswith(folded),
+                                      len(row["name"]), row["name"].casefold()))
     host = KemonoConnector.HOSTS[provider]
     picked, seen = [], set()
     for row, why in ([(r, "站内 id 精确匹配") for r in exact_id]
                      + [(r, "创作者名精确匹配") for r in by_name]
-                     + [(r, "创作者名包含该词") for r in partial]):
+                     + [(r, "创作者名以该词开头" if r["name"].casefold().startswith(folded)
+                         else "创作者名包含该词") for r in partial]):
         key = (row["service"], row["id"])
         if key in seen:
             continue
@@ -260,63 +266,65 @@ def _rule34xxx_tag_url(tag: str) -> str:
 
 
 def _rule34xxx_candidates(term: str, transport, credential: Credential | None) -> list[Candidate]:
-    """按标签补全反查站上真实的写法，再拿写法去登记。
+    """按标签补全反查站上真实的写法，列出的与添加框建议里的是同一批标签。
 
-    先前这里把手柄逐字当标签查一遍，写法差一个分隔符就是零命中：`Ria_neearts`
-    什么都查不到，站上写作 `ria-neearts`，248 件作品。补全接口不需要凭据，
-    因此发现阶段也不再需要——凭据仍然是**抓取**这条订阅的前提。
+    写法差一个分隔符就是零命中：`Ria_neearts` 逐字当标签什么都查不到，站上写作
+    `ria-neearts`，248 件作品。所以按 `spelling_variants` 逐个写法问补全，抹掉分隔符
+    后与输入相同的是精确命中，以它开头的是前缀命中。补全公开、不要凭据；凭据仍然是
+    **抓取**这条订阅的前提。
 
-    补全按字面前缀返回，而敲进查找框的常常是名字的开头。抹掉分隔符后与输入
-    相同的写法是精确命中，只列它们；一个精确命中都没有时，前缀命中的标签也是
-    站上真实存在的写法，照列出来、证据写明以该词开头，由人分辨是不是同一个人。
+    建议和查找是同一件事的两步：下拉里给过的标签，按回车之后必须还在结果里。所以
+    精确命中排最前，前缀命中照列在后、证据写明以该词开头，由人分辨是不是同一个人；
+    有凭据时按站方分类把作者排在其余标签前，与下拉里作者一组在标签组之前同一个顺序。
+
+    补全一次只回十条，热门前缀会把完整写法挤出去。补全里没有精确命中而手上有凭据时，
+    再按原样问一次 dapi，标签下有帖子就是精确命中。
     """
     wanted = identity_key(term)
     if not wanted:
         return []
     connector = Rule34XxxConnector(transport=transport, credential=credential, max_items=1)
-    exact: list[tuple[str, int]] = []
-    partial: list[tuple[str, int]] = []
+    #: 标签 → 帖子数；`None` 是「有帖子，但补全没报数」。
+    exact: dict[str, int | None] = {}
+    partial: dict[str, int | None] = {}
     for probe in spelling_variants(term):
         for tag, count in connector.autocomplete(probe):
             key = identity_key(tag)
-            if not key.startswith(wanted):
-                continue
-            (exact if key == wanted else partial).append((tag, count))
-        # 精确写法有命中就不必再试其余分隔符；前缀相似的命中要等所有写法都问完，
-        # 才知道真的没有精确的那一个。
+            if key.startswith(wanted):
+                (exact if key == wanted else partial).setdefault(
+                    canonical_source_ref("rule34xxx", tag), count)
+        # 精确写法有命中就不必再试其余分隔符。
         if exact:
             break
-    # 精确命中就是这个人，只列它们；一个精确命中都没有时，才把前缀相似的
-    # 写法列出来当候选，证据写明以该词开头。
-    hits = exact if exact else partial
-    prefix_hit = not exact
+    if not exact and credential is not None:
+        tag = canonical_source_ref("rule34xxx", re.sub(r"\s+", "_", term.strip()))
+        try:
+            if connector.search(tag, limit=1):
+                exact[tag] = None
+        except (FollowSourceError, CredentialError):
+            # 这一问只为找回挤出补全的精确写法；问不成，补全给的前缀命中照列。
+            pass
+    hits = [(tag, count, True) for tag, count in exact.items()]
+    hits += [(tag, count, False) for tag, count in partial.items() if tag not in exact]
+    hits = hits[:MAX_CANDIDATES_PER_SOURCE]
+    types = _tag_types(connector, [tag for tag, _count, _exact in hits])
+    # 排序是稳定的：同一档里保持站方补全给的顺序（按帖子数从多到少）。
+    hits.sort(key=lambda hit: (not hit[2], types.get(hit[0]) != "artist"))
     picked: list[Candidate] = []
-    seen: set[str] = set()
-    for tag, count in hits:
-        canonical = canonical_source_ref("rule34xxx", tag)
-        if canonical in seen:
-            continue
-        seen.add(canonical)
-        if prefix_hit:
-            evidence = (f"站内标签以该词开头：{canonical} 下有 {count} 件作品" if count
-                        else f"站内存在以该词开头的标签 {canonical}")
+    for tag, count, is_exact in hits:
+        if count is None:
+            evidence = f"站内标签 {tag} 下有作品"
+        elif is_exact:
+            evidence = f"站内标签 {tag} 下有 {count} 件作品" if count else f"站内存在标签 {tag}"
         else:
-            evidence = (f"站内标签 {canonical} 下有 {count} 件作品" if count
-                        else f"站内存在标签 {canonical}")
-        picked.append(Candidate(
-            "rule34xxx", canonical, _rule34xxx_tag_url(canonical),
-            canonical.replace("_", " "), "work", evidence))
-        if len(picked) >= MAX_CANDIDATES_PER_SOURCE:
-            break
-    if credential is None or picked:
-        return picked
-    # 补全一次只回十条，热门前缀会把完整写法挤出去。有凭据时再按原样查一次标签，
-    # 这条路径不受那个上限影响；只有补全连一个候选都没给到时才轮到它。
-    tag = canonical_source_ref("rule34xxx", re.sub(r"\s+", "_", term.strip()))
-    if not connector.fetch(tag).candidates:
-        return picked
-    return [Candidate("rule34xxx", tag, _rule34xxx_tag_url(tag),
-                      tag.replace("_", " "), "work", "标签下有作品")]
+            evidence = (f"站内标签以该词开头：{tag} 下有 {count} 件作品" if count
+                        else f"站内存在以该词开头的标签 {tag}")
+        kind = types.get(tag, "")
+        if kind and kind != "general":
+            evidence += f"，站上归为{TAG_TYPE_LABELS.get(kind, kind)}"
+        picked.append(Candidate("rule34xxx", tag, _rule34xxx_tag_url(tag),
+                                tag.replace("_", " "), "work", evidence))
+    return picked
 
 
 def search_variants(term: str) -> tuple[str, ...]:
