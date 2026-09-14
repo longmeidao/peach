@@ -62,9 +62,13 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 .dnav svg{width:20px;height:20px;flex:none;stroke:currentColor;fill:none;stroke-width:2;
   stroke-linecap:round;stroke-linejoin:round}
 .drawer .chip{font-size:var(--fs-xs);padding:4px 10px}
-.scrim{position:fixed;inset:0;z-index:95;background:rgba(0,0,0,.42);opacity:0;pointer-events:none;
-  transition:opacity .18s}
-.scrim.on{opacity:1;pointer-events:auto}
+/* 收起时整块 display:none，不能只靠 opacity:0：iOS 26 的 Safari 给状态栏和地址栏取色时会读贴着屏幕
+   上下沿、铺满宽度的 fixed 元素的底色，透明度为 0 的也照读，于是这层看不见的黑遮罩把两条栏刷成实色，
+   页面内容透不上去。淡入淡出靠 allow-discrete 让 display 跟着 opacity 一起过渡。 */
+.scrim{position:fixed;inset:0;z-index:95;background:rgba(0,0,0,.42);opacity:0;pointer-events:none;display:none;
+  transition:opacity .18s,display .18s allow-discrete}
+.scrim.on{display:block;opacity:1;pointer-events:auto}
+@starting-style{.scrim.on{opacity:0}}
 .sec{border-top:1px solid var(--line-soft);padding-top:11px;margin-bottom:13px}
 .sec:first-of-type{border-top:0;padding-top:0}
 .sec > h3{margin:0 0 7px;font-size:var(--fs-xs);letter-spacing:.2em;text-transform:uppercase;

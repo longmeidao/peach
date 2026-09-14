@@ -7840,9 +7840,18 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("/api/trash/empty")
         self.assertPageContains("r.blocked&&r.blocked.length")
 
+    def test_closed_scrim_leaves_the_render_tree(self):
+        """iOS 26 的 Safari 按贴边、铺满宽度的 fixed 元素底色给状态栏和地址栏取色，opacity:0 的也算。
+        遮罩收起时必须 display:none，淡入淡出靠 allow-discrete 与 @starting-style 保住。"""
+        self.assertPageContains(".scrim{position:fixed;inset:0;z-index:95;background:rgba(0,0,0,.42);opacity:0;pointer-events:none;display:none;")
+        self.assertPageContains("transition:opacity .18s,display .18s allow-discrete}")
+        self.assertPageContains(".scrim.on{display:block;opacity:1;pointer-events:auto}")
+        self.assertPageContains("@starting-style{.scrim.on{opacity:0}}")
+
     def test_card_hover_hides_source_and_duration_and_missing_size_is_explicit(self):
         self.assertPageContains('.card:hover .badge,.card:hover .dur{opacity:0}')
-        self.assertPageContains('.meta .t{font-size:var(--fs-md);line-height:1.35;min-height:2.7em;')
+        # max-height 兜住 WebKit：标题里的番号块是 inline-flex，line-clamp 在那里不截。
+        self.assertPageContains('.meta .t{font-size:var(--fs-md);line-height:1.35;min-height:2.7em;max-height:2.7em;')
         self.assertPageContains("const sizeText=Number(shownSize)>0?fmtSize(Number(shownSize)):'大小未知';")
         self.assertPageContains('<span class="size">${sizeText}</span>')
 

@@ -366,7 +366,9 @@ body[data-density="dense"] .junkcard .junkactions button span{display:none}
 .mavstack .mav:hover{z-index:4;box-shadow:0 0 0 2px var(--ink-2)}
 .meta .whomore{color:var(--muted)}
 .mtext{display:flex;flex-direction:column;gap:3px;min-width:0;flex:1}
-.meta .t{font-size:var(--fs-md);line-height:1.35;min-height:2.7em;overflow:hidden;display:-webkit-box;
+/* 高度另用 max-height 封在两行：标题里的番号块是 inline-flex，WebKit 的 line-clamp 遇到非行内的
+   子元素就不截，iOS 上长标题会整段摊开，把「接着看」那一排撑得老高。 */
+.meta .t{font-size:var(--fs-md);line-height:1.35;min-height:2.7em;max-height:2.7em;overflow:hidden;display:-webkit-box;
   -webkit-line-clamp:2;-webkit-box-orient:vertical;word-break:break-all}
 .meta .cardtitle{width:100%;padding:0;border:0;background:transparent;color:inherit;text-align:left;cursor:pointer}
 .javidentity{display:inline-flex;align-items:center;gap:5px;vertical-align:baseline;white-space:nowrap}
