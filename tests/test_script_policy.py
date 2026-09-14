@@ -168,8 +168,10 @@ class ReleaseEntryImportTests(unittest.TestCase):
                                               base / "bin" / "python") if path.is_file()), None)
         if interpreter is None:
             self.skipTest(f"找不到不带 site-packages 的基底解释器：{base}")
+        # `-S` 不载入 site：基底解释器自己的 site-packages 里也可能装着 filelock，
+        # 载入了就会让重依赖混过这道门槛。`-E` 不认 PYTHONPATH，理由相同。
         done = subprocess.run(
-            [str(interpreter), "-X", "utf8", "-c",
+            [str(interpreter), "-S", "-E", "-X", "utf8", "-c",
              "import scripts.release_tag as entry; print(entry.MASTER_WRITER)"],
             cwd=str(ROOT), capture_output=True, text=True, encoding="utf-8",
             errors="replace", check=False)

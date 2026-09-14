@@ -873,6 +873,31 @@ class ImageDimsTests(_StoreCase):
         metadata = self._record(source_id, self._image(width=1600, height=1200)).metadata
         self.assertEqual((metadata["width"], metadata["height"]), (1600, 1200))
 
+    def test_a_full_refetch_keeps_learned_media_dims_by_media_identity(self):
+        """清单里每张图学到的尺寸按媒体稳定键对回：作者在前面插了一张，尺寸不串位。"""
+        source_id = self._source(provider="kemono", ref="a")
+        item = self._record(source_id, self._image(media_items=[
+            {"id": "a", "media_kind": "image", "url": "https://kemono.cr/data/a.png"},
+            {"id": "b", "media_kind": "image", "url": "https://kemono.cr/data/b.png"},
+        ]))
+        self.store.set_image_dims(item.id, 1920, 1080, media_index=1)
+        media_items = self._record(source_id, self._image(media_items=[
+            {"id": "new", "media_kind": "image", "url": "https://kemono.cr/data/new.png"},
+            {"id": "a", "media_kind": "image", "url": "https://kemono.cr/data/a.png"},
+            {"id": "b", "media_kind": "image", "url": "https://kemono.cr/data/b.png",
+             "width": 640, "height": 480},
+            {"id": "c", "media_kind": "image", "url": "https://kemono.cr/data/c.png"},
+        ])).metadata["media_items"]
+        self.assertNotIn("width", media_items[0])
+        self.assertNotIn("width", media_items[1])
+        self.assertEqual((media_items[2]["width"], media_items[2]["height"]), (640, 480),
+                         "来源自己报了尺寸时以来源为准")
+        self.assertNotIn("width", media_items[3])
+        media_items = self._record(source_id, self._image(media_items=[
+            {"id": "b", "media_kind": "image", "url": "https://kemono.cr/data/b.png"},
+        ])).metadata["media_items"]
+        self.assertEqual((media_items[0]["width"], media_items[0]["height"]), (640, 480))
+
 
 class EnrichedMarkTests(_StoreCase):
     """「这一行不必再打详情页」怎么从 ledger 里读出来。"""

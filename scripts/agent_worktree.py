@@ -37,7 +37,7 @@ class WorkspaceError(RuntimeError):
 RELEASE_TAG_ENTRY = "scripts/release_tag.py"
 
 #: 仓库自带的 git hook。`create` 与 `integrate` 每次都把 `core.hooksPath` 指到这里：
-#: 哪台机器先走一遗工作流就在哪台装上，不靠人记着去配。
+#: 哪台机器先走一遍工作流就在哪台装上，不靠人记着去配。
 HOOKS_PATH = "scripts/githooks"
 
 
