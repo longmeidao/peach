@@ -148,5 +148,5 @@ it('刚结束的任务在目录页横幅第一次读到时也提示，同一任�
     render(null,host);
   }
   expect(toast).toHaveBeenCalledTimes(1);
-  expect(toast.mock.calls[0][0]).toBe('扫描与资料采集已完成：识别 3 个番号，整理 2 组资料候选');
+  expect(toast).toHaveBeenNthCalledWith(1,'扫描与资料采集已完成：识别 3 个番号，整理 2 组资料候选');
 });
