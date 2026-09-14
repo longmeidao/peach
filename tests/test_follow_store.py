@@ -405,6 +405,41 @@ class GroupingTests(_StoreCase):
         self.assertEqual(sorted(item.external_id for item in sunset[0].variants), ["2", "3"])
         self.assertEqual(len(groups), 7)
 
+    def test_the_same_author_on_other_sites_folds_once_names_are_stripped(self):
+        # 来源没绑实体时，标题里夹着的作者名入库剥不掉。给了作者映射，分组前剥掉，
+        # 相似标题的版本也跨这位作者的来源去对；一个词的标题底下不接别的作品。
+        fanbox = self._source(provider="kemono", ref="fanbox/30917150", label="Pantsushi · fanbox")
+        video = self._source(ref="pantsushi", label="pantsushi")
+        self.store.record(fanbox, _fetch([
+            _candidate("f1", "2B Love at Sunset - 1080p", provider="kemono",
+                       published_at="2026-08-31T23:59:24Z"),
+            _candidate("f2", "Kasumi Training - Alt Black 4K Ultra HD", provider="kemono",
+                       published_at="2026-06-24T00:00:00Z"),
+            _candidate("f3", "Tifa Lifeguard [4K]", provider="kemono",
+                       published_at="2026-06-20T00:00:00Z"),
+        ], provider="kemono", ref="fanbox/30917150"), moment=MOMENT)
+        self.store.record(video, _fetch([
+            _candidate("v1", "2B Love at Sunset [pantsushi] 4K", published_at="2026-09-02T00:00:00Z"),
+            _candidate("v2", "Kasumi Training - Alt Black 4K", published_at="2026-06-25T00:00:00Z"),
+            _candidate("v3", "Tifa [pantsushi]", published_at="2026-06-23T00:00:00Z"),
+            # 剥完等于别的作者的标题，而这位作者自己没有这部：不借剥名去撞别人的键。
+            _candidate("v4", "Kyrie Canaan [pantsushi]", published_at="2026-06-01T00:00:00Z"),
+        ], ref="pantsushi"), moment=MOMENT)
+        other = self._source(ref="billyhhyb", label="billyhhyb")
+        self.store.record(other, _fetch([
+            _candidate("o1", "Kyrie Canaan", published_at="2026-06-01T00:00:00Z"),
+        ], ref="billyhhyb"), moment=MOMENT)
+        items = self.store.items()
+        pantsushi = ("name:pantsushi", frozenset({"pantsushi"}))
+        authors = {fanbox: pantsushi, video: pantsushi,
+                   other: ("name:billyhhyb", frozenset({"billyhhyb"}))}
+        folded = {frozenset(item.external_id for item in (g.primary, *g.variants, *g.duplicates))
+                  for g in self.store.group(items, authors)}
+        self.assertEqual(folded, {frozenset({"f1", "v1"}), frozenset({"f2", "v2"}),
+                                  frozenset({"f3"}), frozenset({"v3"}),
+                                  frozenset({"v4"}), frozenset({"o1"})})
+        self.assertEqual(len(self.store.group(items)), 8)
+
     def test_groups_are_ordered_newest_first(self):
         source_id = self._source()
         self.store.record(source_id, _fetch([

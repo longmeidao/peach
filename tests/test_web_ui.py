@@ -4561,6 +4561,14 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("$('#searchBtn').onclick=()=>{setNarrowSearchOpen(true);$('#q').focus({preventScroll:true})};")
         self.assertPageContains("$('#searchBtn').focus({preventScroll:true});")
 
+    def test_mobile_search_bar_follows_the_visual_viewport_above_the_keyboard(self):
+        # iOS 弹键盘时可视视口在布局视口里往下挪，吸顶顶栏与 fixed 下拉栏按它的偏移贴顶。
+        self.assertPageContains("$('#searchBtn').setAttribute('aria-expanded',String(open));\n  syncSearchViewport();")
+        self.assertPageContains("window.visualViewport?.addEventListener('scroll',syncSearchViewport);")
+        self.assertPageContains("root.style.setProperty('--search-viewport-top',")
+        self.assertPageContains(".top:has(.search.open){overflow:visible;top:var(--search-viewport-top,0px)}")
+        self.assertPageContains("top:calc(56px + var(--search-viewport-top,0px));max-height:min(70vh,calc(var(--search-viewport-height,100vh) - 64px))")
+
     def test_glass_compositing_covers_search_snapshots_and_disposed_panels(self):
         board = (Path(__file__).resolve().parents[1] / 'web/board.css').read_text(encoding='utf-8')
         self.assertIn('.top .search.search.search{--glass-optic:blur(22px)}', board)
@@ -8204,7 +8212,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("recommendations.map")
         self.assertPageContains("rememberSearch(query)")
         self.assertPageContains("body:JSON.stringify({query})}).catch(()=>null)")
-        self.assertPageContains(".top:has(.search.open){overflow:visible}")
+        self.assertPageContains(".top:has(.search.open){overflow:visible;")
         self.assertPageLacks("setTimeout(runSearch,320)")
         self.assertPageContains("runSearch(!picked,true)")
 
@@ -8234,8 +8242,9 @@ class WebUiSourceTests(unittest.TestCase):
         """七组补全装不进一屏，滚到底不把身后的列表一起翻走。"""
         self.assertCode("max-height:min(60vh,520px);overflow:auto;overscroll-behavior:contain;")
         self.assertCode(
-            ".searchmenu{position:fixed;left:8px;right:8px;top:56px;"
-            "max-height:70vh;overflow:auto;overscroll-behavior:contain}")
+            ".searchmenu{position:fixed;left:8px;right:8px;top:calc(56px + var(--search-viewport-top,0px));"
+            "max-height:min(70vh,calc(var(--search-viewport-height,100vh) - 64px));"
+            "overflow:auto;overscroll-behavior:contain}")
 
     def test_a_suggestion_keeps_its_alias_and_count_subordinate(self):
         """命中的别名和作品数都是这一行的注脚，不与统称争分量。"""

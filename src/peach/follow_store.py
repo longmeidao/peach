@@ -594,23 +594,6 @@ class FollowStore:
         ).fetchone()
         return self._row(row) if row is not None else None
 
-    def items_for_item(self, item_id: int) -> tuple[FollowItemRow, ...]:
-        """Return the target and its grouping peers for a direct detail route."""
-        target = self.item(item_id)
-        if target is None:
-            return ()
-        clauses = ["i.release_key=?"]
-        params: list[object] = [target.release_key]
-        if target.group_hint:
-            clauses.append("i.group_hint=?")
-            params.append(target.group_hint)
-        rows = self._connect().execute(
-            self._SELECT + " WHERE " + " OR ".join(clauses) +
-            " ORDER BY COALESCE(i.published_at, i.first_seen_at) DESC, i.id DESC",
-            params,
-        ).fetchall()
-        return tuple(self._row(row) for row in rows)
-
     @staticmethod
     def _row(row) -> FollowItemRow:
         try:
@@ -638,11 +621,16 @@ class FollowStore:
         )
 
     @staticmethod
-    def group(items: tuple[FollowItemRow, ...]) -> tuple[ReleaseGroup, ...]:
+    def group(items: tuple[FollowItemRow, ...],
+              authors: dict[int, tuple[str, frozenset[str]]] | None = None,
+              ) -> tuple[ReleaseGroup, ...]:
         """把条目折叠成作品分组。
 
         先按来源自带的 `group_hint` 合并（booru 的 `parent_id` 比标题可靠），
         再按标题推出的 `release_key` 合并，最后同一组里选主条目。
+
+        `authors` 把来源 id 映射到（作者键, 这位作者的全部名字写法）。给了它，标题里
+        夹着的作者名在分组前剥掉，相似标题的版本也跨同一作者的各个来源去对。
         """
         # 先按标题判据拆开同站撞车，再按来源自带的关系合并：来源自己声明过的关系
         # 优先，绝不能被标题判据拆散。
@@ -656,8 +644,9 @@ class FollowStore:
             else item
             for item in items
         )
+        stripped = _strip_author_names(split_posts, authors or {})
         aligned = _align_by_group_hint(_align_title_families(
-            _split_ambiguous_works(split_posts, _hint_linked(split_posts))))
+            _split_ambiguous_works(stripped, _hint_linked(stripped)), authors))
         primaries = group_duplicates(aligned)
         buckets: dict[int, tuple[FollowItemRow, list[FollowItemRow]]] = {}
         for item, primary in zip(aligned, primaries):
@@ -1095,36 +1084,104 @@ def _split_ambiguous_works(items: tuple[FollowItemRow, ...],
     )
 
 
-#: 相似标题归组的边界：尾巴至多几个词、两条至多隔多久发布、哪些词说明是续作。
+#: 作者名在标题里至多占几个相邻的词（`Lazy Procrastinator` 占两个），以及多短的名字不剥。
+_AUTHOR_NAME_MAX_TOKENS = 4
+_AUTHOR_NAME_MIN_LENGTH = 3
+
+
+def _strip_author_names(items: tuple[FollowItemRow, ...],
+                        authors: dict[int, tuple[str, frozenset[str]]],
+                        ) -> tuple[FollowItemRow, ...]:
+    """把标题里夹着的作者名从 `release_key` 里剥掉。
+
+    同一部作品在 rule34video 上写成 `2B Love at Sunset [pantsushi] 4K`，在 Patreon 上是
+    `2B Love at Sunset - 1080p`。来源绑了实体时，入库那一步已按实体别名剥过；没绑的
+    来源只有名字，这里按同一作者全部来源的名字写法再剥一次，相邻几个词拼起来等于
+    名字也算。剥完不足 `_FAMILY_MIN_BASE` 个词的键保持原样：`Ahri Evil_Rise7` 剥成
+    `Ahri`，一个角色名底下是这位作者好几部作品，同键就会并成一张卡。剥完的键还得在
+    这位作者别的条目里对得上（相同，或是它们的开头）：剥名只为让同一作者的几份落到
+    一起，不借它跟别的作者撞键——lazyprocrastinator 的 `Kyrie Canaan [lazyprocrastinator]`
+    剥完正好等于另一位作者的 `Kyrie Canaan`。
+    """
+    keys_by_author: dict[str, set[str]] = {}
+    for item in items:
+        known = authors.get(item.source_id)
+        if known and item.release_key and chr(0) not in item.release_key:
+            keys_by_author.setdefault(known[0], set()).add(item.release_key)
+    renamed: dict[int, str] = {}
+    for item in items:
+        known = authors.get(item.source_id)
+        key = item.release_key
+        if not known or not key or chr(0) in key:
+            continue
+        names = {name for name in known[1] if len(name) >= _AUTHOR_NAME_MIN_LENGTH}
+        tokens = key.split(" ")
+        kept: list[str] = []
+        index = 0
+        while index < len(tokens):
+            for end in range(min(len(tokens), index + _AUTHOR_NAME_MAX_TOKENS), index, -1):
+                if "".join(tokens[index:end]) in names:
+                    index = end
+                    break
+            else:
+                kept.append(tokens[index])
+                index += 1
+        stripped = " ".join(kept)
+        if _FAMILY_MIN_BASE <= len(kept) < len(tokens) and any(
+                other == stripped or other.startswith(stripped + " ")
+                for other in keys_by_author[known[0]] if other != key):
+            renamed[item.id] = stripped
+    if not renamed:
+        return items
+    return tuple(
+        FollowItemRow(**{**item.__dict__, "release_key": renamed[item.id]})
+        if item.id in renamed else item
+        for item in items
+    )
+
+
+#: 相似标题归组的边界：被接的标题至少几个词、尾巴至多几个词、两条至多隔多久发布、
+#: 哪些词说明是续作。
+_FAMILY_MIN_BASE = 2
 _FAMILY_MAX_TAIL = 4
 _FAMILY_WINDOW = timedelta(days=7)
 _FAMILY_SEQUEL_RE = re.compile(
     r"\d|^(?:part|pt|episode|ep|chapter|ch|vol|volume|season|act|scene|round)$")
 
 
-def _align_title_families(items: tuple[FollowItemRow, ...]) -> tuple[FollowItemRow, ...]:
-    """同一来源里，标题是另一条标题接一小段尾巴的变体归到那一条的键下。
+def _align_title_families(items: tuple[FollowItemRow, ...],
+                          authors: dict[int, tuple[str, frozenset[str]]] | None = None,
+                          ) -> tuple[FollowItemRow, ...]:
+    """同一作者的来源里，标题是另一条标题接一小段尾巴的变体归到那一条的键下。
 
     Pantsushi 把一个作品按清晰度拆成几帖发：`2B Love at Sunset - 720p`、`- 1080p`、
     `- 4K Ultra HD Unwatermarked`。前两条剥完变体标记是同一个键；第三条尾巴上的
     `Ultra HD` 不在词表里，键多出几个词。词表追不上每个创作者的写法，所以这里看
     标题之间的关系：一条的键等于另一条的键再接一段尾巴，就是同一作品的另一版。
+    同一作者在别的站上传的那份也这样对：Patreon 的 `Kasumi Secret Ninja Training -
+    Alt Black 4K unwatermarked` 与隔天 rule34video 的 `... Alt Black 4K`。没有作者
+    映射的来源只在自己里面对。
 
-    判据本身宽，由三个条件收住：接尾巴的那条自己带变体标记（关键词是佐证）；尾巴至多
-    `_FAMILY_MAX_TAIL` 个词，不含数字和 `part`、`episode` 这类续作词
-    （`Sayuri - Cowgirl 2` 是另一部）；两条发布相隔不超过 `_FAMILY_WINDOW`——同一
-    作品的几个版本是一起发的。归到能接上的最短那个键，几版因此落在同一组。
+    判据本身宽，由四个条件收住：接尾巴的那条自己带变体标记（关键词是佐证）；被接的
+    标题至少 `_FAMILY_MIN_BASE` 个词（`Tifa` 底下接得出 `Tifa Lifeguard`、
+    `Tifa Workout` 好几部）；尾巴至多 `_FAMILY_MAX_TAIL` 个词，不含数字和 `part`、
+    `episode` 这类续作词（`Sayuri - Cowgirl 2` 是另一部）；两条发布相隔不超过
+    `_FAMILY_WINDOW`——同一作品的几个版本是一起发的。归到能接上的最短那个键，几版
+    因此落在同一组。
     """
-    keys: dict[int, dict[str, list[FollowItemRow]]] = {}
+    keys: dict[str, dict[str, list[FollowItemRow]]] = {}
     for item in items:
         if item.semantics == "release" or not item.release_key or "\u0000" in item.release_key:
             continue
-        keys.setdefault(item.source_id, {}).setdefault(item.release_key, []).append(item)
+        known = (authors or {}).get(item.source_id)
+        bucket = known[0] if known else f"source:{item.source_id}"
+        keys.setdefault(bucket, {}).setdefault(item.release_key, []).append(item)
     renamed: dict[int, str] = {}
     for by_key in keys.values():
         for key, members in by_key.items():
             tokens = key.split(" ")
-            for cut in range(max(1, len(tokens) - _FAMILY_MAX_TAIL), len(tokens)):
+            for cut in range(max(_FAMILY_MIN_BASE, len(tokens) - _FAMILY_MAX_TAIL),
+                             len(tokens)):
                 base = " ".join(tokens[:cut])
                 if base not in by_key or any(
                         _FAMILY_SEQUEL_RE.search(token) for token in tokens[cut:]):
