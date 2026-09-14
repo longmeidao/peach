@@ -34,6 +34,46 @@
   font-kerning: normal;
 }
 
+/* `web/board.css` 在 `:root` 上给同名 token 另定了值，旧样式表排在后面会盖过 theme.css。
+ * React 子树在容器上按 theme.css 的 `:root` 与 `.dark` 原文重新声明，BoardUI 组件读到的是上游值。
+ * 渲染到容器外的浮层（Popover、Menu）不在这里面。 */
+.peach-react {
+  --color-text-primary:         var(--color-neutral-950);
+  --color-text-secondary:       var(--color-neutral-500);
+  --color-text-tertiary:        var(--color-neutral-400);
+  --color-text-disabled:        var(--color-neutral-300);
+  --color-text-white:           var(--color-white);
+  --color-background-full:              var(--color-white);
+  --color-background-primary-default:   var(--color-white);
+  --color-background-primary-hover:     var(--color-neutral-100);
+  --color-background-secondary-default: var(--color-neutral-100);
+  --color-background-tertiary-default:  var(--color-neutral-200);
+  --color-border-button-default:   var(--color-neutral-200);
+  --color-border-button-hover:     var(--color-neutral-300);
+  --color-border-button-active:    var(--color-neutral-400);
+  --color-border-checkbox-default: var(--color-neutral-300);
+  --color-border-checkbox-hover:   var(--color-neutral-400);
+  --color-border-focus-ring:       var(--color-accent-500);
+  --color-separator-border:        var(--color-neutral-200);
+}
+
+.dark .peach-react {
+  --color-text-primary:  var(--color-neutral-50);
+  --color-text-tertiary: var(--color-neutral-600);
+  --color-text-disabled: var(--color-neutral-800);
+  --color-background-full:              var(--color-neutral-925);
+  --color-background-primary-default:   var(--color-neutral-800);
+  --color-background-primary-hover:     color-mix(in srgb, var(--color-neutral-700) 60%, transparent);
+  --color-background-secondary-default: var(--color-neutral-900);
+  --color-background-tertiary-default:  var(--color-neutral-800);
+  --color-border-button-default:   var(--color-neutral-700);
+  --color-border-button-hover:     var(--color-neutral-500);
+  --color-border-button-active:    var(--color-neutral-600);
+  --color-border-checkbox-default: var(--color-neutral-700);
+  --color-border-checkbox-hover:   var(--color-neutral-500);
+  --color-separator-border:        var(--color-neutral-800);
+}
+
 /* 以下逐字取自上游 globals.css：Checkbox 打勾的描线动画。 */
 
 /* Checkbox tick: draws the stroke on like it's being ticked by hand.

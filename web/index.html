@@ -8,8 +8,9 @@
 <link rel="icon" href="/favicon.ico" type="image/x-icon">
 <link rel="stylesheet" href="/vendor/videojs/8.24.0/video-js.min.css">
 <title>Peach · 蜜桃</title>
-<!-- React 子树（BoardUI 源码 + Tailwind）排在旧样式表前面：两边同名的 `--color-*` token
-     由后面的 board.css 定值，未迁移页面的颜色不受这份样式影响。 -->
+<!-- React 子树（BoardUI 源码 + Tailwind）排在旧样式表前面：`:root` 上同名的 `--color-*` token
+     由后面的 board.css 定值，未迁移页面的颜色不受这份样式影响；React 子树在 `.peach-react`
+     容器上重新声明上游值。 -->
 <link rel="stylesheet" href="/dist/peach-react.css">
 <link rel="stylesheet" href="/app.css">
 <link rel="stylesheet" href="/board.css">

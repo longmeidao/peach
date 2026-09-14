@@ -88,6 +88,42 @@ REACT_BUNDLE = DIST / "peach-react.js"
 REACT_STYLES = DIST / "peach-react.css"
 
 
+class BoardTokenTests(unittest.TestCase):
+    """BoardUI 的语义 token 在 `web/board.css` 里另有一份定值，两份各管一片页面。"""
+
+    @staticmethod
+    def declarations(css, selector):
+        """同一选择器可能分几块写，合并后返回其中的 `--color-*` 声明。"""
+        found = {}
+        for block in re.finditer(rf"(?ms)^{re.escape(selector)} \{{\n(.*?)^\}}", css):
+            found.update(re.findall(r"(--color-[\w-]+):\s*([^;]+);", block.group(1)))
+        return found
+
+    def test_the_react_subtree_redeclares_shared_tokens_with_upstream_values(self):
+        """board.css 在 `:root` 上另定同名 token 且排在后面；React 容器上的值逐字等于 theme.css。"""
+        legacy = "".join(path.read_text(encoding="utf-8") for path in
+                         [ROOT / "web" / "board.css", *sorted((ROOT / "web" / "css").glob("*.css"))])
+        shared = set(re.findall(r"(--color-[\w-]+):", legacy))
+        theme = (FRONTEND / "src" / "react" / "boardui" / "styles" / "theme.css").read_text(encoding="utf-8")
+        styles = (FRONTEND / "src" / "react" / "styles.css").read_text(encoding="utf-8")
+        for upstream, local in ((":root", ".peach-react"), (".dark", ".dark .peach-react")):
+            expected = {name: value for name, value in self.declarations(theme, upstream).items()
+                        if name in shared}
+            self.assertTrue(expected, f"theme.css 的 {upstream} 块里没找到同名 token")
+            self.assertEqual(self.declarations(styles, local), expected,
+                             f"styles.css 的 {local} 要与 theme.css 的 {upstream} 同名 token 逐条一致")
+
+    def test_manual_and_system_dark_palettes_in_board_css_agree(self):
+        """手动选深色与跟随系统深色是同一副配色，两块分开写，只改一块时文字色会差一档。"""
+        board = (ROOT / "web" / "board.css").read_text(encoding="utf-8")
+        manual = re.search(r':root\[data-theme="dark"\]\{(--color-text-primary:[^}]*)\}', board)
+        system = re.search(r"@media\(prefers-color-scheme:dark\)\{:root:not\(\[data-theme\]\)\{"
+                           r"(--color-text-primary:[^}]*)\}", board)
+        self.assertIsNotNone(manual)
+        self.assertIsNotNone(system)
+        self.assertEqual(sorted(system.group(1).split(";")), sorted(manual.group(1).split(";")))
+
+
 class ReactBundleTests(unittest.TestCase):
     """React 子树（BoardUI 源码 + Tailwind）与旧样式表同处一页的门槛。
 

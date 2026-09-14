@@ -24,7 +24,7 @@
 | `globals`（`693885494e6f229637fe118852efbfb3df820dd8d174a2a7e47f65dadfcd96bf`） | 不复制整份；试点用到的 `check-draw` 动画和根元素的字体平滑搬进 `../styles.css`，作用域是 `.peach-react` | 整份 `@import "tailwindcss"` 会把 Preflight 和 `html`、`body` 的底色铺到整页，未迁移页面仍由旧样式表绘制 |
 | Tailwind Preflight | `../preflight-scoped.css` 逐字包进 `@scope (.peach-react)` | 同上 |
 | 深色模式 | 上游读 `<html class="dark">`；`web/app.js` 的 `applyTheme()` 与 `index.html` 首帧脚本按实际深浅加减这个类 | Peach 的主题选择写在 `data-theme`，跟随系统时不写属性 |
-| 与 `web/board.css` 同名的 `--color-*` token | 由 `board.css` 定值 | `peach-react.css` 排在旧样式表之前，未迁移页面的颜色保持不变 |
+| 与 `web/board.css` 同名的 `--color-*` token | `:root` 上由 `board.css` 定值；`../styles.css` 在 `.peach-react` 与 `.dark .peach-react` 上按 `theme.css` 原文重新声明 | 未迁移页面的颜色保持不变，React 子树读到上游值；渲染到容器外的浮层不在这个范围里，用到时另行处理 |
 | 焦点环 | 输入框只画 BoardUI 外框上的 `ring`；`web/css/01-base.css` 的全局 `:focus-visible` 排除 `.peach-react` 子树 | 旧样式表排在后面，同特指度时会盖过 `outline-none`，内层输入框多出一圈 |
 | 提交键忙态 | 写 `aria-busy` 与 `aria-disabled`，不画 Spinner | `button` 条目没有加载态 |
 | 行内警示 | `../settings/access-settings.tsx` 的 `Warning` 用 `status-yellow` token 组合 | 注册表里没有行内 Note 组件 |
