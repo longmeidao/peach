@@ -4182,8 +4182,9 @@ class WebUiSourceTests(unittest.TestCase):
         """播放器右键菜单照 YouTube f572e43c 的 .ytp-contextmenu 取舍，只留 Peach 有能力的项。
 
         循环播放、迷你播放器／展开、画中画、复制视频网址、复制当前时间的视频网址、播放统计。
-        嵌入代码、调试信息和排查播放问题没有对应能力，不列。外观：12px 圆角、rgba(0,0,0,.6) 加
-        blur(16px)、无阴影、每项 40px、图标格 44px、悬停 rgba(255,255,255,.1)。
+        嵌入代码、调试信息和排查播放问题没有对应能力，不列。外观与右下角设置面板同一份：
+        --floating-radius 圆角、rgba(0,0,0,.6) 加 blur(16px)、无阴影、每项 48px、图标列 56px、
+        白字、悬停 rgba(255,255,255,.1)。
         """
         self.assertPageContains('<div class="popmenu playermenu" id="playerMenu" role="menu" aria-label="播放器菜单" hidden></div>')
         self.assertPageContains("wirePlayerContextMenu(detailPlayer);")
@@ -4196,9 +4197,9 @@ class WebUiSourceTests(unittest.TestCase):
                 self.assertPageLacks(f"label:'{absent}'")
         self.assertPageContains("role=\"${checkable?'menuitemcheckbox':'menuitem'}\"")
         self.assertPageContains("link.searchParams.set('t',String(Math.floor(player.currentTime()||0)));")
-        self.assertPageContains(".popmenu.playermenu{padding:8px 0;border:0;gap:0;background:rgba(0,0,0,.6);backdrop-filter:blur(16px)")
-        self.assertPageContains("grid-template-columns:44px minmax(0,1fr) 44px;align-items:center;width:100%;height:40px;")
-        self.assertPageContains(".playermenuitem:hover,.playermenuitem:focus-visible{background:rgba(255,255,255,.1);outline:0}")
+        self.assertPageContains("#playerMenu.playermenu{padding:8px;border:0;gap:0;border-radius:var(--floating-radius);background:rgba(0,0,0,.6);")
+        self.assertPageContains("grid-template-columns:56px minmax(0,1fr) 32px;gap:0;align-items:center;width:100%;min-height:48px;")
+        self.assertPageContains("#playerMenu>.playermenuitem:hover,#playerMenu>.playermenuitem:focus-visible{background:rgba(255,255,255,.1);color:#fff;outline:0}")
         self.assertPageContains('.playermenuitem[aria-checked="true"]>.playermenucheck{visibility:visible}')
 
     def test_narrow_player_collapses_the_right_controls_instead_of_overflowing(self):
@@ -4408,7 +4409,9 @@ class WebUiSourceTests(unittest.TestCase):
         # `<use>` 克隆出来的影子树改不了 `d`，所以这两个键把 sprite 里的 <path> 搬进自己的 svg。
         self.assertPageContains("svg.setAttribute('class','vjs-peach-control-icon vjs-peach-morph-icon');")
         self.assertPageContains("svg.innerHTML=symbol.innerHTML;button.append(svg);return svg;")
-        self.assertPageContains('if(playPath)playPath.style.d=`path("${paused?playD:pauseD}")`;')
+        self.assertPageContains("if(playPath){if(cssPathD)playPath.style.d=`path(\"${d}\")`;else playPath.setAttribute('d',d)}")
+        # WebKit 不认 CSS 的 `d`，只写 style 的话 iOS 上图标永远停在播放那一枚。
+        self.assertPageContains("const cssPathD=CSS.supports('d','path(\"M0 0\")');")
         self.assertPageContains(".vjs-peach-morph-icon path{transition:d .2s cubic-bezier(.4,0,.2,1)}")
         self.assertPageContains(
             ".vwrap .video-js .vjs-control-bar>.vjs-play-control>.vjs-peach-control-icon{width:26px;height:26px}")
@@ -7379,6 +7382,9 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("['#tagScroll','#tagbar .filterscroll','#nrow','#count']"
                                 ".forEach(s=>wireDrag($(s)))")
         self.assertPageContains("document.querySelectorAll('.tier,.srow').forEach(wireDrag)")
+        # 「接着看」每开一次详情就重建，启动时的登记落在旧节点上；推荐结果渲染完要当场再登记一次。
+        self.assertPageContains("wireCards(n);wireDrag(n);});")
+        self.assertPageContains(".nrow{display:flex;gap:11px;overflow-x:auto;overflow-y:hidden;overscroll-behavior-inline:contain;")
         # 同一个元素宽屏不溢出、窄屏才溢出，不判溢出就会在宽屏抢走滚轮和拖动。
         self.assertPageContains("event.button!==0||el.scrollWidth-el.clientWidth<=1")
         self.assertPageContains("Math.abs(event.deltaY)<=Math.abs(event.deltaX)||el.scrollWidth<=el.clientWidth")

@@ -1921,8 +1921,11 @@ function mountPlayerChromeLayout(player){
   const playIcon=morphIcon(play,'player-play'),playPath=playIcon?.querySelector('path');
   const playD=spritePaths('player-play')[0]?.getAttribute('d')||'',pauseD=spritePaths('player-pause')[0]?.getAttribute('d')||'';
   const syncPlayTooltip=playerControlTooltip(play,'播放','K');
-  const syncPlayIcon=()=>{const paused=player.paused()||player.ended();
-    if(playPath)playPath.style.d=`path("${paused?playD:pauseD}")`;
+  /* WebKit（Safari 与 iOS 上的所有浏览器）不认 CSS 的 `d` 属性，写进 style 等于没写，图标
+     停在播放那一枚。那边直接改路径属性：没有插值，瞬间切换。 */
+  const cssPathD=CSS.supports('d','path("M0 0")');
+  const syncPlayIcon=()=>{const paused=player.paused()||player.ended(),d=paused?playD:pauseD;
+    if(playPath){if(cssPathD)playPath.style.d=`path("${d}")`;else playPath.setAttribute('d',d)}
     syncPlayTooltip(paused?'播放':'暂停')};
   player.on(['play','pause','ended'],syncPlayIcon);syncPlayIcon();
   const volume=controlBar.querySelector(':scope>.vjs-volume-panel');
@@ -2213,6 +2216,12 @@ async function mountDetailPlayer(it,video,autoplay,options={}){
   });
   detailPlayer.peachItem=it;
   wirePlayerContextMenu(detailPlayer);
+  /* 手机上的画面格按视频自己的比例排，见 board.css 的 `--peach-video-ratio`。 */
+  const ratioPlayer=detailPlayer;
+  ratioPlayer.on('loadedmetadata',()=>{
+    const tech=ratioPlayer.el()?.querySelector('video');
+    if(tech?.videoWidth&&tech.videoHeight)ratioPlayer.el().style.setProperty('--peach-video-ratio',`${tech.videoWidth}/${tech.videoHeight}`);
+  });
   // 非正时长一律当未知：强行 player.duration(-1) 会被 Video.js 转成 Infinity 并标成直播。
   const expected=realDuration(it.duration);
   const statsHistory={speed:[],activity:[],buffer:[]};
@@ -10338,7 +10347,9 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
   if(!queueContext&&appSettings.relatedLimit>0)api('/api/related?id='+it.id+'&limit='+appSettings.relatedLimit).then(d=>{
     const n=$('#nrow'); if(!n)return; cache(d.items);
     n.innerHTML=d.items.length?d.items.map(x=>cardHtml(x,'ncard')).join(''):'<span class="empty">暂无</span>';
-    wireCards(n);});
+    /* 这一排每开一次详情就重新生成，启动时那次 `wireAllDrag()` 登记的是早已不在页面上的旧节点；
+       它又没有滚动条，不在这里登记，滚轮和拖动都推不动它。 */
+    wireCards(n);wireDrag(n);});
 }
 
 function wireTelemetry(it,v,sel){

@@ -107,6 +107,16 @@
 :root{--glass-fill:rgba(252,253,255,.32);--glass-rim:rgba(255,255,255,.72);--glass-low:rgba(70,80,100,.1);--glass-text:#1d2129;--glass-shadow:0 1px 2px #1118270f,0 8px 18px #11182714,0 24px 48px #11182710;--glass-lift:0 2px 4px #11182714,0 12px 26px #1118271f,0 30px 60px #11182717;--glass-sheen:rgba(255,255,255,.5);--glass-lume:brightness(1.32) saturate(.5);--glass-pick:brightness(1.1) saturate(1.1);--glass-pick-fill:rgba(255,255,255,.52);--glass-pick-shadow:0 1px 2px #1118270f,0 4px 10px #11182714;--glass-drift-a:radial-gradient(20% 20% at 50% 50%,#ffffff1a,#ffffff0d 42%,transparent 72%);--glass-drift-b:radial-gradient(26% 26% at 50% 50%,#ffffff14,#ffffff0a 44%,transparent 74%)}
 :root[data-theme="dark"]{--glass-fill:rgba(24,27,33,.24);--glass-rim:rgba(255,255,255,.2);--glass-low:rgba(255,255,255,.05);--glass-text:#eceef3;--glass-shadow:0 1px 2px #00000047,0 10px 22px #00000038,0 28px 56px #0000002b;--glass-lift:0 2px 4px #00000052,0 14px 30px #00000047,0 34px 68px #00000038;--glass-sheen:rgba(230,239,255,.1);--glass-lume:brightness(.5) contrast(1.1);--glass-pick:brightness(1.7) saturate(1.15);--glass-pick-fill:rgba(255,255,255,.13);--glass-pick-shadow:0 1px 2px #00000024,0 6px 14px #0000001f}
 @media(prefers-color-scheme:dark){:root:not([data-theme]){--glass-fill:rgba(24,27,33,.24);--glass-rim:rgba(255,255,255,.2);--glass-low:rgba(255,255,255,.05);--glass-text:#eceef3;--glass-shadow:0 1px 2px #00000047,0 10px 22px #00000038,0 28px 56px #0000002b;--glass-lift:0 2px 4px #00000052,0 14px 30px #00000047,0 34px 68px #00000038;--glass-sheen:rgba(230,239,255,.1);--glass-lume:brightness(.5) contrast(1.1);--glass-pick:brightness(1.7) saturate(1.15);--glass-pick-fill:rgba(255,255,255,.13);--glass-pick-shadow:0 1px 2px #00000024,0 6px 14px #0000001f}}
+/* WebKit 在能显示 HDR 的屏幕上（iPhone、带 XDR 屏的 Mac）按扩展范围合成滤镜，`brightness()`
+   大于 1 算出来的像素比 SDR 白还亮，系统把这几块玻璃当 HDR 内容点亮，页面其余部分相对就暗了
+   下去。Chromium 会把滤镜结果收回 SDR，所以只在 WebKit 上换写法：提亮改成往上叠白色填充——
+   叠白是在底色和白之间插值，永远到不了白之上。浅色那档的饱和合起来仍是 160%×.5；暗色主体
+   本来就是压暗，只换选中那块。 */
+@supports (font:-apple-system-body){
+  :root{--glass-fill:rgba(252,253,255,.62);--glass-lume:saturate(.5);--glass-pick:none;--glass-pick-fill:rgba(255,255,255,.72)}
+  :root[data-theme="dark"]{--glass-pick:none;--glass-pick-fill:rgba(255,255,255,.22)}
+  @media(prefers-color-scheme:dark){:root:not([data-theme]){--glass-pick:none;--glass-pick-fill:rgba(255,255,255,.22)}}
+}
 /* 亮色玻璃用冷暖反光建立色差，白色页面上也能辨认移动的光斑。 */
 :root[data-theme="light"]{--glass-drift-a:radial-gradient(32% 32% at 50% 50%,#6686b84d,#6686b829 42%,transparent 72%);--glass-drift-b:radial-gradient(38% 38% at 50% 50%,#c69d7340,#c69d7324 44%,transparent 74%)}
 @media(prefers-color-scheme:light){:root:not([data-theme]){--glass-drift-a:radial-gradient(32% 32% at 50% 50%,#6686b84d,#6686b829 42%,transparent 72%);--glass-drift-b:radial-gradient(38% 38% at 50% 50%,#c69d7340,#c69d7324 44%,transparent 74%)}}
@@ -703,6 +713,9 @@ body>.board-filter-frame{margin-inline:16px}
 @media(max-width:760px){
   :root,body.drawer-open{--railW:0px}
   .drawer{top:64px;bottom:12px;width:min(320px,calc(100vw - 24px));border-radius:20px;z-index:97}
+  /* 窄屏的抽屉盖在内容上面，身后常是整张视频封面，薄玻璃上的导航字读不出来。填充加厚到
+     --ground 的 86%，光斑、内缘亮线和模糊照旧。 */
+  .drawer.drawer{--glass-fill:color-mix(in srgb,var(--ground) 86%,transparent)}
   .scrim.on{display:block;top:56px}
   .top{z-index:98;background:var(--page)}
   .managebar{width:100%;margin:16px 0 24px}.managebar .managebar-menu{padding:0;gap:0}
@@ -764,6 +777,17 @@ body>.board-filter-frame{margin-inline:16px}
 .card .pic{border-radius:var(--surface-radius)}
 .card .info{background:transparent}
 @media(max-width:760px){.sidecontent{padding:16px}.stage{border-radius:12px}.stage .side{border-left:0;border-top:1px solid var(--line-soft)}}
+/* 单列时媒体、详情栏和队列上下排成一列，总高超过浮窗，整块浮窗自己纵向滚；上面那条
+   `overflow:clip` 只该管横向。视频格吸在浮窗顶上，往下翻标签和动作时画面还在；图片不吸——
+   一张竖图就能占满整屏，吸住它下面就没有地方可滚。 */
+@media(max-width:1080px){.stage{overflow:hidden auto}.stage .vwrap:has(>.video-js){position:sticky;top:0;z-index:3}}
+/* 手机上浮窗离屏幕边只留 8px，画面格按视频自己的比例排：竖屏和方形视频装进 16:9 的格子里
+   只剩中间一小块画面。比例由播放器读到元数据后写进 `--peach-video-ratio`，读到之前仍是 16:9；
+   高度封顶 56dvh，吸顶以后下面至少还有四成屏给详情。 */
+@media(max-width:760px){
+  .stage{inset:8px;width:calc(100vw - 16px);max-width:calc(100vw - 16px);max-height:calc(100dvh - 16px)}
+  .vwrap>.video-js{aspect-ratio:var(--peach-video-ratio,16/9);max-height:56dvh}
+}
 @media(max-width:760px){.settingspanel.settingspanel{padding:12px;grid-template-columns:minmax(0,1fr)}.settingscard.settingscard{width:calc(100vw - 24px);max-width:calc(100vw - 24px);min-width:0}.settingscard .settingsscroll .settingrow:has(.board-optional-number){grid-template-columns:minmax(0,1fr) auto;gap:12px}.settingscard>.board-local-nav{min-width:0;max-width:100%}}
 /* 纯图标按钮不继承浏览器按钮的水平内边距。 */
 :is(.settingshead button,.avatarpick-close,.srctools button,.detailtitletools button,.sidebarorderrow button,#drawerClose){padding:0;display:inline-grid;place-items:center;line-height:1;flex-shrink:0}

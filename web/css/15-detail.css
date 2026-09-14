@@ -138,7 +138,8 @@
    那条明确的线画出来——「接着看」是另一件事，同色的两块之间只留白读不出边界。 */
 .next{border-top:1px solid var(--line-soft);padding:11px 15px 12px;background:var(--detail-surface)}
 .next h3{margin:0 0 8px;font-size:var(--fs-xs);letter-spacing:.1em;color:var(--muted);text-transform:uppercase}
-.nrow{display:flex;gap:11px;overflow-x:auto;padding-bottom:6px}
+/* 横滚写法与详情下方的切换带 `.mixlist` 同一份：竖向不滚，滑到头也不把手势交给外面那层浮窗。 */
+.nrow{display:flex;gap:11px;overflow-x:auto;overflow-y:hidden;overscroll-behavior-inline:contain;padding-bottom:6px}
 .ncard{flex:none;width:216px;cursor:pointer}
 .ncard .why{color:var(--loupe)}
 /* 216px 的窄卡上，第三个头像挤掉的正好是署名那一行的宽度，元数据于是折成三到四行，
