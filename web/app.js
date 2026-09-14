@@ -9471,7 +9471,16 @@ function updateMobileFilterScroll(){
   for(const frame of frames){
     const free=frame===active&&mobileFilterScroll.free;
     if(free)frame.style.setProperty('--filter-free-top',`${-frame.offsetHeight-12}px`);
+    if(free===frame.classList.contains('mobile-filter-free'))continue;
+    /* `top` 一步到位，再用 translate 从量到的起点滑到落点：逐帧改 `top` 每一帧都要重排，滚动中主线程一忙
+       就一顿一顿，translate 走合成线程。起点量的是连着上一段滑动的实际位置，半路反向也接得上。 */
+    const from=frame.getBoundingClientRect().top;
+    frame.getAnimations().forEach(a=>a.id==='filter-slide'&&a.cancel());
     frame.classList.toggle('mobile-filter-free',free);
+    const shift=from-frame.getBoundingClientRect().top;
+    const [duration,easing]=getComputedStyle(document.documentElement).getPropertyValue('--board-motion').trim().split(' ');
+    if(Math.abs(shift)>=1&&parseFloat(duration)>0)
+      frame.animate([{translate:`0 ${shift}px`},{translate:'0 0'}],{id:'filter-slide',duration:parseFloat(duration)*1000,easing});
   }
 }
 function updateStickySurfaces(){
@@ -9480,7 +9489,7 @@ function updateStickySurfaces(){
   ['.board-filter-frame','#tagbar','#count','.entitytagbar','.entitycollectionhead'].forEach(selector=>{
     const el=$(selector),css=el&&getComputedStyle(el),top=css?parseFloat(css.top):NaN;
     const stuck=!!el&&css.position==='sticky'&&el.offsetParent!==null&&window.scrollY>0&&
-      Number.isFinite(top)&&el.getBoundingClientRect().top<=top+1;
+      Number.isFinite(top)&&el.getBoundingClientRect().top-(parseFloat(css.translate.split(' ')[1])||0)<=top+1;
     if(el)el.classList.toggle('is-stuck',stuck);
     if(el?.matches('.board-filter-frame'))el.classList.toggle('board-is-stuck',stuck);
   });

@@ -2916,12 +2916,13 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("document.querySelectorAll('[data-filter-frame]')")
         self.assertPageContains("const active=frames.find(frame=>frame.offsetParent!==null);")
         self.assertPageContains("mobileFilterScroll=filterScrollState(mobileFilterScroll,y,innerWidth<=760,hold);")
-        # 窄屏这条和主题切换那条材质过渡同权重、又排在后面，`top` 得和材质写在一起，
-        # 否则它把材质那条整个顶掉，浮层在明暗之间又变回一刀切。
-        self.assertIn(".board-filter-frame.board-filter-frame{transition:top var(--board-motion),"
-                      "background-color .28s ease,backdrop-filter .28s ease,"
-                      "-webkit-backdrop-filter .28s ease}", board)
+        # 收起和放出时 `top` 一步到位，滑动交给合成线程上的 translate；`top` 不进过渡，逐帧重排会卡。
         self.assertIn(".board-filter-frame.board-filter-frame.mobile-filter-free{top:var(--filter-free-top)}", board)
+        self.assertNotIn("transition:top var(--board-motion)", board)
+        self.assertPageContains("if(free===frame.classList.contains('mobile-filter-free'))continue;")
+        self.assertPageContains("frame.getAnimations().forEach(a=>a.id==='filter-slide'&&a.cancel());")
+        self.assertPageContains("frame.animate([{translate:`0 ${shift}px`},{translate:'0 0'}],{id:'filter-slide',duration:parseFloat(duration)*1000,easing});")
+        self.assertPageContains("el.getBoundingClientRect().top-(parseFloat(css.translate.split(' ')[1])||0)<=top+1;")
         self.assertPageContains("document.documentElement.scrollHeight-innerHeight")
 
     def test_unlinked_identity_does_not_look_clickable(self):
@@ -4586,8 +4587,6 @@ class WebUiSourceTests(unittest.TestCase):
         切换结束撤掉那个标记时，一整块底色瞬间变成透明玻璃，读出来像主题又切了第二次。
         所以过渡写在常态上，快照态那条规则自己把过渡关掉——正在拍旧状态的快照时，
         路上的中间色会被拍进去。
-        窄屏那条给筛选浮层改 `top` 的规则同权重且在后，材质过渡要在那里一并写上，
-        否则它把这条整个顶掉。
         """
         board = (Path(__file__).resolve().parents[1] / 'web/board.css').read_text(encoding='utf-8')
         self.assertIn('.board-filter-frame.board-filter-frame,.entitytagbar.entitytagbar,'
@@ -4596,8 +4595,6 @@ class WebUiSourceTests(unittest.TestCase):
                       '-webkit-backdrop-filter .28s ease}', board)
         snapshot_rule = board.split('html[data-theme-snapshot] .review.review-has-pane::before{', 1)[1]
         self.assertIn('transition:none!important', snapshot_rule.split('}', 1)[0])
-        self.assertIn('transition:top var(--board-motion),background-color .28s ease,'
-                      'backdrop-filter .28s ease,-webkit-backdrop-filter .28s ease', board)
 
     def test_notes_and_navigation_links_keep_their_own_presentation(self):
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
@@ -7865,28 +7862,18 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".scrim.on{display:block;opacity:1;pointer-events:auto}")
         self.assertPageContains("@starting-style{.scrim.on{opacity:0}}")
 
-    def test_ios_status_bar_tint_skips_closed_drawer_and_detail_stage(self):
-        """iOS 26 的 Safari 取到一块 fixed 元素的颜色后，只要它仍可见就一直沿用。窄屏抽屉收起时必须
-        visibility:hidden，且可见性跟着位移过渡，滑出动画才播得完。详情浮窗上沿让出状态栏、下沿按 dvh
-        停在地址栏之上，两个取样点落在 ::backdrop 上取遮罩的暗色。"""
+    def test_mobile_detail_stage_clears_status_bar_and_address_bar(self):
+        """手机上详情浮窗上沿让出状态栏、下沿按 dvh 停在地址栏之上，吸顶的画面不钻到两条栏底下。"""
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
-        self.assertIn("    transition:transform var(--board-dialog-motion),visibility var(--board-dialog-motion)}\n"
-                      "  .drawer.drawer:not(.open){visibility:hidden}\n", board)
         self.assertIn("  .stage{inset:calc(env(safe-area-inset-top) + 8px) 8px auto;margin:0 auto;", board)
         self.assertIn("    max-height:calc(100dvh - env(safe-area-inset-top) - 16px)}", board)
 
-    def test_top_bar_shell_is_invisible_to_ios_status_bar_tinting(self):
-        """通栏吸顶的 `<header>` 永远落在 iOS 26 Safari 给状态栏取色的那一点上，取到过一次颜色就一直沿用。
-        顶栏本身 visibility:hidden，直接子元素各自成层保持可见，WebKit 就把这条栏判成不可见的容器跳过；
-        ::before 铺满接住按钮间隙的点按，也挡住从顶栏底下滑过的吸顶玻璃，筛选框保持全宽。
-        窄屏侧栏的遮罩同理：暗色画在 ::before 上，遮罩外壳对取色不可见，一开侧栏状态栏不整块变色。"""
+    def test_mobile_scrim_shell_is_skipped_by_ios_status_bar_tinting(self):
+        """窄屏侧栏遮罩铺满视口、底色半透明，iOS 26 的 Safari 会把它当压暗层给状态栏取色。暗色画在 ::before 上，
+        遮罩外壳 visibility:hidden，Safari 跳过这层沿用顶栏的颜色，一开侧栏状态栏不整块变暗。"""
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
-        self.assertIn(".top.top{visibility:hidden}\n"
-                      ":where(.top>*){visibility:visible;position:relative}\n"
-                      ".top::before{content:'';position:absolute;inset:0;z-index:-1;visibility:visible}\n", board)
         self.assertIn("  .scrim.scrim.on{top:0;z-index:101;background:none;visibility:hidden}\n"
                       "  .scrim.scrim.on::before{content:'';position:absolute;inset:0;background:#0007;visibility:visible}\n", board)
-        self.assertNotIn("max-width:calc(88vw - 8px)", board)
 
     def test_card_hover_hides_source_and_duration_and_missing_size_is_explicit(self):
         self.assertPageContains('.card:hover .badge,.card:hover .dur{opacity:0}')

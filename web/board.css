@@ -369,15 +369,6 @@ html.board-high-contrast .board-filter-frame.board-filter-frame.board-filter-fra
 .gridstack .card:not(.junkcard) .pic{border-radius:12px;overflow:hidden}
 .gridstack>.grid{row-gap:24px;column-gap:16px}
 .top{isolation:isolate}
-/* 顶栏本身 visibility:hidden，只让里面的控件可见。iOS 26 的 Safari 在状态栏下沿正中命中元素，顺着祖先找第一个
-   fixed/sticky 容器给状态栏上色：这条通栏吸顶的 `<header>` 永远被选中，头一次取到页面底色就一直沿用，状态栏
-   变成一条实色，内容透不上去。WebKit 判容器是否可见只看它自己画的内容，自带图层的后代不算，所以直接子元素都
-   带上 position 各自成层；`:where` 不占特异性，已有的定位和隐藏规则照旧生效。空的 ::before 铺满整条接住按钮
-   间隙的点按，不让它落到栏下面的卡片上；取样点也先命中它，从顶栏底下滑过的筛选框等吸顶玻璃够不到那一点，
-   宽度不必为此收窄。门槛见 WebKit LocalFrameView::fixedContainerEdges 与 RenderLayer::computeHasVisibleContent。 */
-.top.top{visibility:hidden}
-:where(.top>*){visibility:visible;position:relative}
-.top::before{content:'';position:absolute;inset:0;z-index:-1;visibility:visible}
 body.board-scrolled .top{box-shadow:none;border-bottom:0}
 /* 吸顶那一刻这块板离开纸面往上抬一档，三层影跟着加重：它盖住内容滚过去，两层之间
    要有东西说明谁在上面。类名写三遍是为了压过上面那组玻璃规则——两条都从
@@ -561,11 +552,7 @@ body::before{display:none}
    8px 还被 `.combo` 的下边距吃掉，加起来 32px，下面却只有 20px，同一块浮层上下差出 12px。
    上面这 22px 改不动（两处都是别的页面共用的），所以自己不再加，下面照同一个数写。 */
 .board-filter-frame{position:sticky;top:calc(var(--topH) + 8px);z-index:60;border:0;border-radius:16px;background:var(--ground);margin:0 0 22px;box-shadow:0 2px 14px #00000014}
-@media(max-width:760px){
-  /* 窄屏这条要把材质那两样带上：同权重、排在后面，整条 `transition` 会把上面那份换掉。 */
-  .board-filter-frame.board-filter-frame{transition:top var(--board-motion),background-color .28s ease,backdrop-filter .28s ease,-webkit-backdrop-filter .28s ease}
-  .board-filter-frame.board-filter-frame.mobile-filter-free{top:var(--filter-free-top)}
-}
+@media(max-width:760px){.board-filter-frame.board-filter-frame.mobile-filter-free{top:var(--filter-free-top)}}
 /* 首页那块住在 `body` 底下，两侧没有任何东西给它留白，22px 的圆角直接切在屏幕边沿上；
    资料页那块在 `#index` 里，`main` 的 16px 已经把它让开了。这里补的就是那 16px，取的
    也是 `main` 自己的那个数，所以两页的浮层和底下的网格对在同一条竖线上。 */
@@ -793,9 +780,7 @@ body>.board-filter-frame{margin-inline:16px}
 /* 手机上浮窗离屏幕边只留 8px，画面格按视频自己的比例排：竖屏和方形视频装进 16:9 的格子里
    只剩中间一小块画面。比例由播放器读到元数据后写进 `--peach-video-ratio`，读到之前仍是 16:9；
    高度封顶 56dvh，吸顶以后下面至少还有四成屏给详情。
-   上沿让出状态栏、下沿按 dvh 停在地址栏之上：iOS 26 的 Safari 在状态栏下沿和地址栏上沿各取一点给
-   两条栏取色，点落在浮窗上就刷成浮窗的底色，落在 ::backdrop 上取的是遮罩那一档暗色，和底下
-   被压暗的页面连成一片。 */
+   上沿让出状态栏、下沿按 dvh 停在地址栏之上，浮窗和吸在它顶上的画面不钻到这两条栏底下。 */
 @media(max-width:760px){
   .stage{inset:calc(env(safe-area-inset-top) + 8px) 8px auto;margin:0 auto;width:calc(100vw - 16px);max-width:calc(100vw - 16px);
     max-height:calc(100dvh - env(safe-area-inset-top) - 16px)}
@@ -878,15 +863,11 @@ html.board-high-contrast .settingscard.settingscard>.board-local-nav{background:
   .drawer:not(.open) .board-sidebar-head #filterBtn{height:20px}
 }
 @media(max-width:760px){
-  /* 收起时不可见，不只是移出屏幕：iOS 26 的 Safari 取到过这块玻璃给状态栏上色后，只要它仍可见就一直沿用，
-     开合一次状态栏就再也透不出内容。visibility 跟着位移一起过渡，过渡期间两头都算可见，滑出动画照常播完。 */
-  .drawer.drawer{top:12px;bottom:12px;z-index:102;transform:translateX(calc(-100% - 16px));
-    transition:transform var(--board-dialog-motion),visibility var(--board-dialog-motion)}
-  .drawer.drawer:not(.open){visibility:hidden}
+  .drawer.drawer{top:12px;bottom:12px;z-index:102;transform:translateX(calc(-100% - 16px));transition:transform var(--board-dialog-motion)}
   .drawer.drawer.open{transform:translateX(0)}
   /* 暗色画在 ::before 上，遮罩本身 visibility:hidden：它铺满视口、没有子元素、底色半透明，iOS 26 的 Safari
-     会把它当压暗层，拿暗色和页面底色混成实色刷满状态栏，一开侧栏状态栏就整块变色。自带图层的 ::before
-     不计入外壳的可见内容，Safari 跳过这层，点在暗色上仍然落到遮罩身上收起侧栏。 */
+     会把它当压暗层给状态栏取色，一开侧栏状态栏就整块变暗。自带图层的 ::before 不计入外壳的可见内容，
+     Safari 跳过这层、沿用顶栏的颜色，点在暗色上仍然落到遮罩身上收起侧栏。 */
   .scrim.scrim.on{top:0;z-index:101;background:none;visibility:hidden}
   .scrim.scrim.on::before{content:'';position:absolute;inset:0;background:#0007;visibility:visible}
   .index .ihead .geist-search{flex-basis:160px}
