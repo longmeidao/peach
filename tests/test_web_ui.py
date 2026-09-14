@@ -7871,6 +7871,15 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn("  .stage{inset:calc(env(safe-area-inset-top) + 8px) 8px auto;margin:0 auto;", board)
         self.assertIn("    max-height:calc(100dvh - env(safe-area-inset-top) - 16px)}", board)
 
+    def test_top_bar_shell_is_invisible_to_ios_status_bar_tinting(self):
+        """通栏吸顶的 `<header>` 永远落在 iOS 26 Safari 给状态栏取色的那一点上，取到过一次颜色就一直沿用。
+        顶栏本身 visibility:hidden，直接子元素各自成层保持可见，WebKit 就把这条栏判成不可见的容器跳过；
+        ::before 铺满接住按钮间隙的点按。"""
+        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
+        self.assertIn(".top.top{visibility:hidden}\n"
+                      ":where(.top>*){visibility:visible;position:relative}\n"
+                      ".top::before{content:'';position:absolute;inset:0;z-index:-1;visibility:visible}\n", board)
+
     def test_card_hover_hides_source_and_duration_and_missing_size_is_explicit(self):
         self.assertPageContains('.card:hover .badge,.card:hover .dur{opacity:0}')
         # max-height 兜住 WebKit：标题里的番号块是 inline-flex，line-clamp 在那里不截。
