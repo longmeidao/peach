@@ -319,7 +319,9 @@ Python、npm 与 GitHub Actions 的版本由 `.github/dependabot.yml` 每周检�
    Javinizer-Go 原始快照，再汇总 DMM 新旧 CDN、MGS `EnlargeImage`、Prestige `packageImage` 与历史成功
    URL，仍由 Range 量尺寸、像素面积最大者胜出和仅更大才原子升级。2026-08-31 真实 POC 中 `ABW-232`
    的 Prestige 官方图为 1024×690、DUGA 为 1000×674、MGS 为 840×563、DMM mono 为 800×539。
-   AVBase 已变为 Cloudflare 验证页，批量流程不再请求也不绕过；DUGA Web API 需代理店应用 ID，未配置前
+   批量流程不请求 AVBase 与 javdb；既有库采集在官方渠道落空时经 `peach.community_catalog` 查这两家
+   （AVBase 搜索页 `/works?q=` 的 `__NEXT_DATA__`，2026-09-14 实测可取），封面按 dHash 要两个图源一致
+   才用，遇验证页不绕过（ADR-0030）。DUGA Web API 需代理店应用 ID，未配置前
    只复用成功日志的精确 URL。MDC-NG 公共仓库只证明 Amazon 日本渠道存在，后端匹配逻辑未公开，故只留
    POC 候选。该流程不新增依赖、不写 ledger，操作步骤见 `peach-jav-cover-workflow`。
 

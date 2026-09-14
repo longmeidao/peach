@@ -99,7 +99,7 @@ def _fetch_cover(contract, code):
             reason, message = "source_error", "来源服务异常（HTTP 5xx），请稍后重试。"
         elif str(exc) == "所有渠道都没有候选":
             reason, message = "no_candidate", "本次来源未返回匹配该番号的封面候选，无法判断是否还有高清版。"
-        elif str(exc) == "候选都不是可用封套":
+        elif str(exc) in {"官方封面只有缩略图或占位图", "官方封面地址都没有取到图片"}:
             reason, message = "unusable_candidate", "候选封面未通过检查：图片未取得、无法解码或宽度不足 700px。"
         else:
             reason, message = "download_failed", "候选封面完整下载或图片校验失败，未取得可保存的图片。"

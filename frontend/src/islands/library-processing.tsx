@@ -15,6 +15,7 @@ export interface LibraryProcessingData extends JobState {
   issues_truncated?: boolean; retryable_asset_ids?: number[];
   current_asset_id?: number | null; current_asset_name?: string; current_action?: string;
   current_started_at?: number; last_progress_at?: number; stalled?: boolean; waited_seconds?: number;
+  completed_at?: number;
 }
 export interface LibraryProcessingProps { toast(message: string): void; onComplete?(): void; mode?: 'notice'; monitor?: boolean; preview?: boolean }
 export const loadLibraryProcessing = (_props: LibraryProcessingProps, signal: AbortSignal) =>
@@ -29,6 +30,22 @@ function currentLine(state: LibraryProcessingData): string {
   const action = ACTION_LABELS[state.current_action || ''] || state.stage || '正在处理';
   const waited = state.waited_seconds ? ` · 已等待 ${state.waited_seconds} 秒` : '';
   return state.current_asset_name ? `当前：${state.current_asset_name} · ${action}${waited}` : action + waited;
+}
+
+/* 完成用通知报一次。目录页的横幅和数据整理页的卡片看的是同一个任务，谁先看到结束谁报，
+   另一处按任务号认出来就不再报。首次引导添加文件夹后那一趟常在跳到目录页之前就跑完
+   （一个文件一秒），横幅从没见过「运行中」，所以刚结束的任务第一次读到时也报。 */
+const ANNOUNCED_KEY = 'peach.library-processing.announced';
+const FRESH_COMPLETION_SECONDS = 120;
+function announceCompletion(state: LibraryProcessingData, toast: (message: string) => void, witnessed: boolean): void {
+  if (state.status !== 'complete') return;
+  const fresh = !!state.job_id && !!state.completed_at && Date.now() / 1000 - state.completed_at < FRESH_COMPLETION_SECONDS;
+  if (!witnessed && !fresh) return;
+  try {
+    if (state.job_id && localStorage.getItem(ANNOUNCED_KEY) === state.job_id) return;
+    if (state.job_id) localStorage.setItem(ANNOUNCED_KEY, state.job_id);
+  } catch { /* 存储不可用时照常提示，最多重复一次 */ }
+  toast(`扫描与资料采集已完成：识别 ${state.identified || 0} 个番号，整理 ${state.candidates || 0} 组资料候选`);
 }
 
 export function LibraryProcessing({ data, error, toast, onComplete, mode, monitor, preview }: LibraryProcessingProps & IslandState<LibraryProcessingData>) {
@@ -50,7 +67,9 @@ export function LibraryProcessing({ data, error, toast, onComplete, mode, monito
       keepWatching: mode === 'notice' || !!monitor,
       render: next => {
         setState(next); setProblem('');
-        if (next.status === 'complete' && previousStatus.current === 'running' && mode !== 'notice') { setReceipt(true); toast('已完成扫描与资料采集'); }
+        const witnessed = next.status === 'complete' && previousStatus.current === 'running';
+        if (witnessed && mode !== 'notice') setReceipt(true);
+        if (witnessed || mode === 'notice') announceCompletion(next, toast, witnessed);
         if (previousStatus.current === 'running' && (next.status === 'complete' || next.status === 'failed')) onComplete?.();
         previousStatus.current = next.status;
       },

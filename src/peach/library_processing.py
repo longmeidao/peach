@@ -19,6 +19,7 @@ from .jav_cover_fetch import DeadlineExceeded, NotFound
 from .library_nfo import directory_files, read_nfo, sidecars, local_art
 from .genre_decisions import load_genre_decisions
 from .metadata import extract_catalog_evidence, extract_peach_fields, identifies_code, validate_provider_code
+from .metadata_policy import SOURCE_SPECS
 from .platform import root_online, translate_ledger_path
 from .review_csv import read_rows, write_rows
 from .scan import scan_location
@@ -46,6 +47,24 @@ ACTION_BUDGETS = {'querying_metadata': 90.0, 'fetching_cover': 240.0}
 
 #: 来源明确答复「没有」之后多久不再问。「没有」不是永久的：来源会补录，片子可能后来上架。
 MISS_TTL_SECONDS = 7 * 24 * 3600
+
+#: 主机间隔。默认 2 秒；javdb 按出口 IP 计配额，5 秒一页是它的来源下限（docs/SOURCING.md）。
+SOURCE_INTERVALS = {'javdb.com': 5.0, 'jdbstatic.com': 5.0}
+SOURCE_LABELS = {'r18dev': 'r18.dev', 'avbase': 'AVBase', 'javdb': 'javdb', 'local_nfo': '本地 NFO'}
+PROVIDER_NAMES = {'local_nfo': 'local-nfo', 'r18dev': 'r18-json', 'avbase': 'avbase-search', 'javdb': 'javdb-page'}
+
+
+def describe_failure(error):
+    """把来源失败写成问题清单里能直接读懂的一句。"""
+    import httpx
+    from .jav_cover_fetch import Unavailable
+    from .scraping_access import SourcePaused
+    text = str(error).strip()
+    if isinstance(error, Unavailable) and text.startswith('HTTP '):
+        return f'来源返回 {text}'
+    if isinstance(error, (Unavailable, SourcePaused, httpx.TransportError)) and text:
+        return text
+    return f'处理出错（{type(error).__name__}）'
 MISS_MESSAGES = {'querying_metadata': '外部来源没有这部片的资料，7 天内不再问',
                  'fetching_cover': '外部来源没有这部片的封面，7 天内不再问'}
 
@@ -65,7 +84,34 @@ class LibraryMetadataProvider:
         from .scraping_access import SourceTransport
         from .jav_cover_fetch import HostLimitedTransport
         self.transport = HostLimitedTransport(SourceTransport(secrets_root, max_requests=1000,
-            max_bytes=128 * 1024 * 1024, max_seconds=3600), 2.0)
+            max_bytes=128 * 1024 * 1024, max_seconds=3600), 2.0, intervals=SOURCE_INTERVALS)
+
+    def community(self, code, *, deadline=None):
+        """官方渠道落空时问 AVBase 与 javdb，返回 `[(来源, 资料)]`。
+
+        资料和封面两步都可能要它，同一个番号只问一次：javdb 的配额经不起每部片问两遍。
+        两家都明确说没有才是 `NotFound`；有一家出错且谁都没给资料时，带着原因报 `Unavailable`。
+        """
+        from .community_catalog import COMMUNITY_SOURCES
+        from .jav_cover_fetch import Unavailable
+        cache = self.__dict__.setdefault('_community', {})
+        if code not in cache:
+            found, problems = [], []
+            for source, fetch in COMMUNITY_SOURCES:
+                try:
+                    found.append((source, fetch(self.transport, code, deadline=deadline)))
+                except DeadlineExceeded:
+                    raise
+                except NotFound:
+                    continue
+                except Exception as error:
+                    text = describe_failure(error)
+                    problems.append(text if text.startswith(SOURCE_LABELS[source]) else f'{SOURCE_LABELS[source]}：{text}')
+            cache[code] = (found or (Unavailable('；'.join(problems)) if problems
+                                     else NotFound('社区来源都没有这个番号')))
+        if isinstance(cache[code], Exception):
+            raise type(cache[code])(str(cache[code]))
+        return cache[code]
 
     def query(self, code, source='r18dev', *, deadline=None):
         from .jav_cover_fetch import R18_DETAIL, _fetch
@@ -120,17 +166,42 @@ class LibraryMetadataProvider:
         return payload
 
     def cover(self, code, cover_root, *, deadline=None):
-        from .jav_cover_fetch import best_cover
+        """官方大图优先；没有就用社区来源里两个图源对得上的那张；再没有就用官方小图。
+
+        小图也比没有封面强（素人系官方图只有 300×300），但社区来源的大图只有被另一个
+        图源印证过才用，官方小图本身也算一个图源（ADR-0030）。
+        """
+        from .community_catalog import verified_cover
+        from .jav_cover_fetch import MIN_WIDTH, SMALL_MIN_WIDTH, Unavailable, best_cover
         target = cover_root / (code + '.jpg')
         if target.is_file():
             return False
-        candidate, size, data = best_cover(self.transport, code, 0, deadline=deadline)
+        official, verified_by, problems = None, (), []
+        try:
+            official = best_cover(self.transport, code, 0, deadline=deadline, minimum_width=SMALL_MIN_WIDTH)
+        except NotFound:
+            pass
+        except Unavailable as error:
+            problems.append(describe_failure(error))
+        chosen = official
+        if official is None or official[1][0] < MIN_WIDTH:
+            try:
+                *picked, verified_by = verified_cover(self.transport, code, self.community(code, deadline=deadline),
+                                                      reference=official, deadline=deadline)
+                chosen = tuple(picked)
+            except NotFound:
+                pass
+            except Unavailable as error:
+                problems.append(describe_failure(error))
+        if chosen is None:
+            raise Unavailable('；'.join(problems)) if problems else NotFound('官方与社区来源都没有这部片的封面')
+        candidate, size, data = chosen
         cover_root.mkdir(parents=True, exist_ok=True)
         temporary = target.with_suffix('.processing.tmp')
         temporary.write_bytes(data)
         temporary.replace(target)
         _save(target.with_suffix('.scraping.json'), dict(source=candidate.source,
-            source_url=candidate.url, width=size[0], height=size[1],
+            source_url=candidate.url, width=size[0], height=size[1], verified_by=list(verified_by),
             raw_sha256=hashlib.sha256(data).hexdigest(), checked_at=time.time()))
         return True
 
@@ -295,16 +366,21 @@ def _merge_candidates(groups, row, code, source, document, evidence_path, genre_
     对日文原题」这种写法差异变成一道人工复核题。
     """
     local = source == 'local_nfo'
+    spec = SOURCE_SPECS.get(source)
+    official = bool(spec and spec.official)
     for field, value in _fields(document, genre_decisions).items():
         if not local and field in local_fields:
             continue
         key = f"asset:{row['id']}:{field}"
         identity = hashlib.sha256(json.dumps([source, value['value']], ensure_ascii=False, sort_keys=True).encode()).hexdigest()
-        candidate = dict(candidate_key=identity, source=source, provider='local-nfo' if local else 'r18-json',
+        # 来源自报的番号跟着候选走：落库前要再核一次身份，javdb 的详情页地址里没有番号。
+        candidate = dict(candidate_key=identity, source=source, provider=PROVIDER_NAMES.get(source, source),
                          value=value['value'], display_value=value.get('display_value', str(value['value'])),
-                         warnings=value.get('warnings', []), confidence=0.9 if local else 0.75,
+                         warnings=value.get('warnings', []),
+                         confidence=0.9 if local else 0.75 if official else 0.6,
                          source_url=document.get('source_url', ''), raw_snapshot=str(evidence_path),
-                         source_kind='local' if local else 'official_mirror', official=False,
+                         provider_id=str(document.get('id') or ''), content_id=str(document.get('content_id') or ''),
+                         source_kind='local' if local else spec.kind if spec else 'community', official=official,
                          catalog_evidence=extract_catalog_evidence(document))
         # 只有 tags 字段有未收录原文；别的字段挂一个空列表只是让每条候选都胖一圈。
         if value.get('unmapped_genres'):
@@ -427,28 +503,46 @@ class _RemoteSession:
             covers = self._cover(row, code, cover_root, update=update, issue=issue)
         return entries, covers
 
+    def _evidence(self, source, code, payload):
+        evidence_path = self._config.directory('sources') / 'library-metadata' / f'{code}-{source}.json'
+        _save(evidence_path, payload)
+        return (source, payload, evidence_path)
+
     def _metadata(self, row, code, *, update, issue):
+        """先问 r18.dev；它没有或出错，再问 AVBase 与 javdb。
+
+        社区来源的值照常进候选，要不要免复核由落库那道闸按「几家一致」判（ADR-0030）。
+        两边各自记「没有」的记忆：r18.dev 说没有的番号，一周内直接去问社区来源。
+        """
         action = 'querying_metadata'
-        if self._consult and self.misses.fresh('r18dev', code):
-            issue(row, MISS_MESSAGES[action], action=action, retryable=True)
-            return []
         budget = ACTION_BUDGETS[action]
         update(stage='采集缺失资料', current_action=action,
                current_started_at=time.time(), current_deadline_at=time.time() + budget)
-        try:
-            external = self.provider().query(code, 'r18dev', deadline=time.monotonic() + budget)
+        deadline = time.monotonic() + budget
+        problems = []
+        for source in ('r18dev', 'community'):
+            if self._consult and self.misses.fresh(source, code):
+                continue
+            try:
+                if source == 'r18dev':
+                    found = [('r18dev', self.provider().query(code, 'r18dev', deadline=deadline))]
+                else:
+                    found = self.provider().community(code, deadline=deadline)
+            except DeadlineExceeded:
+                self.reset()
+                issue(row, '外部资料在预算时间内未取得，可稍后重试', action=action, retryable=True)
+                return []
+            except NotFound:
+                self.misses.record(source, code)
+                continue
+            except Exception as error:
+                problems.append(f"{SOURCE_LABELS.get(source, '社区来源')}：{describe_failure(error)}"
+                                if source == 'r18dev' else describe_failure(error))
+                continue
             update(stage='保存资料候选')
-            evidence_path = self._config.directory('sources') / 'library-metadata' / (code + '-r18dev.json')
-            _save(evidence_path, external)
-            return [('r18dev', external, evidence_path)]
-        except DeadlineExceeded:
-            self.reset()
-            issue(row, '外部资料在预算时间内未取得，可稍后重试', action=action, retryable=True)
-        except NotFound:
-            self.misses.record('r18dev', code)
-            issue(row, MISS_MESSAGES[action], action=action, retryable=True)
-        except Exception:
-            issue(row, '外部资料未取得，请检查采集来源后重试', action=action, retryable=True)
+            return [self._evidence(name, code, payload) for name, payload in found]
+        issue(row, '外部资料未取得：' + '；'.join(problems) if problems else MISS_MESSAGES[action],
+              action=action, retryable=True)
         return []
 
     def _cover(self, row, code, cover_root, *, update, issue):
@@ -467,8 +561,8 @@ class _RemoteSession:
         except NotFound:
             self.misses.record('cover', code)
             issue(row, MISS_MESSAGES[action], action=action, retryable=True)
-        except Exception:
-            issue(row, '封面未取得，请检查采集来源后重试', action=action, retryable=True)
+        except Exception as error:
+            issue(row, f'封面未取得：{describe_failure(error)}', action=action, retryable=True)
         return 0
 
 

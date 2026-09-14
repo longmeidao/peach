@@ -242,6 +242,93 @@ class LibraryNfoTests(unittest.TestCase):
         self.assertEqual(_fields(payload)['title']['value'], 'Remu Style')
         self.assertNotIn('translations', payload)
 
+    def test_community_sources_are_asked_once_per_code_and_say_why_they_failed(self):
+        """资料和封面两步都要社区来源的结果，javdb 的配额经不起同一部片问两遍。"""
+        from peach.jav_cover_fetch import NotFound, Unavailable
+        from peach.library_processing import LibraryMetadataProvider
+        provider = LibraryMetadataProvider.__new__(LibraryMetadataProvider)
+        provider.transport = Mock()
+        avbase = Mock(side_effect=NotFound('AVBase 没有这个番号'))
+        javdb = Mock(return_value={'id': 'ORETD-615'})
+        with patch('peach.community_catalog.COMMUNITY_SOURCES', (('avbase', avbase), ('javdb', javdb))):
+            self.assertEqual(provider.community('ORETD-615'), [('javdb', {'id': 'ORETD-615'})])
+            provider.community('ORETD-615')
+            javdb.side_effect = TimeoutError()
+            with self.assertRaisesRegex(Unavailable, r'^javdb：处理出错（TimeoutError）$'):
+                provider.community('ORETD-616')
+            with self.assertRaisesRegex(Unavailable, 'javdb：'):
+                provider.community('ORETD-616')
+            javdb.side_effect = Unavailable('javdb 要求登录')
+            with self.assertRaisesRegex(Unavailable, '^javdb 要求登录$'):
+                provider.community('ORETD-617')
+            javdb.side_effect = NotFound('javdb 没有这个番号')
+            with self.assertRaises(NotFound):
+                provider.community('ORETD-618')
+        self.assertEqual(javdb.call_count, 4)
+
+    def test_a_small_official_cover_stays_unless_a_bigger_one_is_confirmed_by_another_origin(self):
+        """小封面比没有封面强；社区来源的大图要另一个图源对得上才换上（ADR-0030）。"""
+        from peach.jav_cover_fetch import Candidate, NotFound, Unavailable
+        from peach.library_processing import LibraryMetadataProvider
+        provider = LibraryMetadataProvider.__new__(LibraryMetadataProvider)
+        provider.transport = Mock()
+        provider.community = Mock(return_value=[('javdb', {'cover_urls': ['https://c0.jdbstatic.com/covers/x.jpg']})])
+        small = (Candidate('image.mgstage.com', 'https://image.mgstage.com/pf_o1.jpg'), (300, 200), b'small')
+        large = (Candidate('c0.jdbstatic.com', 'https://c0.jdbstatic.com/covers/x.jpg'), (1200, 800), b'large',
+                 ('javdb', 'mgstage'))
+        covers = self.root / 'covers'
+        with patch('peach.jav_cover_fetch.best_cover', return_value=small) as official, \
+                patch('peach.community_catalog.verified_cover', return_value=large) as verified:
+            self.assertTrue(provider.cover('ORETD-615', covers))
+        self.assertEqual(official.call_args.kwargs['minimum_width'], 240)
+        self.assertEqual(verified.call_args.kwargs['reference'], small)
+        self.assertEqual((covers / 'ORETD-615.jpg').read_bytes(), b'large')
+        evidence = json.loads((covers / 'ORETD-615.scraping.json').read_text(encoding='utf-8'))
+        self.assertEqual((evidence['width'], evidence['verified_by']), (1200, ['javdb', 'mgstage']))
+
+        with patch('peach.jav_cover_fetch.best_cover', return_value=small), \
+                patch('peach.community_catalog.verified_cover', side_effect=Unavailable('社区来源的封面没有第二个图源能对上')):
+            self.assertTrue(provider.cover('ORETD-616', covers))
+        self.assertEqual((covers / 'ORETD-616.jpg').read_bytes(), b'small')
+
+        with patch('peach.jav_cover_fetch.best_cover', side_effect=Unavailable('官方封面只有缩略图或占位图')), \
+                patch('peach.community_catalog.verified_cover', side_effect=Unavailable('社区来源的封面下载失败')), \
+                self.assertRaisesRegex(Unavailable, '^官方封面只有缩略图或占位图；社区来源的封面下载失败$'):
+            provider.cover('ORETD-617', covers)
+        provider.community.side_effect = NotFound('社区来源都没有这个番号')
+        with patch('peach.jav_cover_fetch.best_cover', side_effect=NotFound('所有渠道都没有候选')), \
+                self.assertRaises(NotFound):
+            provider.cover('ORETD-618', covers)
+
+    @windows_ledger_roots
+    def test_codes_r18_does_not_know_are_collected_from_the_community_sources(self):
+        """r18.dev 没有的番号问 AVBase 与 javdb，两家各留一条候选；免不免复核由落库那道闸按几家一致判。"""
+        from peach.jav_cover_fetch import NotFound
+        media = self.root / 'media'
+        media.mkdir()
+        (media / 'ORETD-615.mp4').write_bytes(b'video')
+        db = fresh_ledger(self.root)
+        config = PeachConfig(self.root, self.root / 'config.toml', present=True, locations={'local': (str(media),)})
+        provider = Mock()
+        provider.query.side_effect = NotFound('HTTP 404')
+        provider.community.return_value = [
+            ('avbase', {'id': 'ORETD-615', 'title': 'たまき', 'release_date': '2024-01-05',
+                        'source_url': 'https://www.avbase.net/works/orenoshirouto:ORETD-615'}),
+            ('javdb', {'id': 'ORETD-615', 'title': 'たまき', 'release_date': '2024-01-04',
+                       'source_url': 'https://javdb.com/v/abc'})]
+        provider.cover.return_value = False
+        result = process_library(config, db, self.root / 'generated', self.root / 'covers',
+                                 provider_factory=Mock(return_value=provider))
+        self.assertEqual((result['status'], result['issue_count']), ('complete', 0))
+        rows = {row['field']: row for row in read_rows(self.root / 'generated/library-metadata-field-candidates.csv')}
+        title = json.loads(rows['title']['candidates_json'])
+        self.assertEqual(sorted((c['source'], c['provider'], c['source_kind'], c['official'], c['provider_id'])
+                                for c in title),
+                         [('avbase', 'avbase-search', 'community', False, 'ORETD-615'),
+                          ('javdb', 'javdb-page', 'community', False, 'ORETD-615')])
+        self.assertEqual(rows['title']['source_profile'], 'library')
+        self.assertEqual(len(json.loads(rows['release_date']['candidates_json'])), 2)
+
     @windows_ledger_roots
     def test_korean_mib_codes_ask_no_jav_source_for_metadata_or_cover(self):
         """`HA-101` 是 MIB 的编号，也是一部日本片的番号：问了就取回那部日本片。"""
@@ -314,20 +401,21 @@ class LibraryNfoTests(unittest.TestCase):
         config = PeachConfig(self.root, self.root / 'config.toml', present=True, locations={'local': (str(media),)})
         provider = Mock()
         provider.query.side_effect = NotFound('HTTP 404')
+        provider.community.side_effect = NotFound('社区来源都没有这个番号')
         provider.cover.side_effect = Unavailable('HTTP 503')
         run = lambda **extra: process_library(config, db, self.root / 'generated', self.root / 'covers',
                                               provider_factory=Mock(return_value=provider), **extra)
         first = run()
-        self.assertEqual(provider.query.call_count, 1)
+        self.assertEqual((provider.query.call_count, provider.community.call_count), (1, 1))
         self.assertEqual([row['message'] for row in first['issue_preview']],
-                         ['外部来源没有这部片的资料，7 天内不再问', '封面未取得，请检查采集来源后重试'])
+                         ['外部来源没有这部片的资料，7 天内不再问', '封面未取得：来源返回 HTTP 503'])
         recorded = json.loads(misses_path(config).read_text(encoding='utf-8'))
-        self.assertEqual(list(recorded), ['r18dev'])
+        self.assertEqual(list(recorded), ['r18dev', 'community'])
         self.assertEqual(list(recorded['r18dev']), ['STP-26232'])
 
         provider.cover.side_effect = NotFound('所有渠道都没有候选')
         second = run()
-        self.assertEqual(provider.query.call_count, 1, '资料 7 天内不再问')
+        self.assertEqual((provider.query.call_count, provider.community.call_count), (1, 1), '资料 7 天内不再问')
         self.assertEqual(provider.cover.call_count, 2, '封面上次是来源故障，这次照问')
         self.assertEqual([row['message'] for row in second['issue_preview']],
                          ['外部来源没有这部片的资料，7 天内不再问', '外部来源没有这部片的封面，7 天内不再问'])

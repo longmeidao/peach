@@ -28,12 +28,23 @@ SOURCES = {
     "mgstage": {"label": "MGStage", "domains": ("mgstage.com",), "login": "https://www.mgstage.com/"},
     "fc2cmadb": {"label": "FC2CMADB", "domains": ("fc2cmadb.com",), "login": "https://fc2cmadb.com/", "cookie": True},
     "instagram": {"label": "Instagram", "domains": ("instagram.com", "cdninstagram.com"), "login": "https://www.instagram.com/accounts/login/", "cookie": True},
+    # 两家社区来源拒绝访问时回 403，不发 Retry-After：javdb 是出口 IP 超了配额（一封 3～7 日，
+    # docs/SOURCING.md），AVBase 是 Cloudflare 验证。封期里接着问只会每条都再撞一次，
+    # `blocked_pause` 秒内整个来源停下。
+    "javdb": {"label": "JavDB", "domains": ("javdb.com", "jdbstatic.com", "jdbimgs.com"), "login": "https://javdb.com/", "blocked_pause": 24 * 3600},
+    "avbase": {"label": "AVBase", "domains": ("avbase.net",), "login": "https://www.avbase.net/", "blocked_pause": 6 * 3600},
 }
 _LOCK = threading.RLock()
 
 
 class SourcePaused(RuntimeError):
     """来源冷却期内停止请求，保留已有图像。"""
+
+
+def _pause(cooldown: Path, until: float) -> None:
+    with _LOCK:
+        cooldown.parent.mkdir(parents=True, exist_ok=True)
+        cooldown.write_text(json.dumps({"until": max(until, time.time() + 1)}), encoding="utf-8")
 
 
 def source_for(url: str) -> str | None:
@@ -217,10 +228,12 @@ class SourceTransport:
                     until = parsedate_to_datetime(retry).timestamp()
                 except (ValueError, TypeError, OverflowError):
                     until = time.time() + 900
-            with _LOCK:
-                cooldown.parent.mkdir(parents=True, exist_ok=True)
-                cooldown.write_text(json.dumps({"until": max(until, time.time() + 1)}), encoding="utf-8")
+            _pause(cooldown, until)
             raise SourcePaused("来源限流，已记录冷却时间；已有图片保留")
+        blocked_pause = SOURCES.get(source or "", {}).get("blocked_pause")
+        if response.status == 403 and blocked_pause:
+            _pause(cooldown, time.time() + blocked_pause)
+            raise SourcePaused("来源拒绝访问，暂停向它请求一段时间；已有图片保留")
         return response
 
     def renew(self):

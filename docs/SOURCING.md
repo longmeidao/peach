@@ -261,6 +261,8 @@ av911.tv，三条候选已进复核队列。
 - 可用来源实测结论：r18.dev、av-wiki.net、Gfriends 可用；javlibrary、missav、xslist 被
   Cloudflare 拦，njav 有验证墙，jav321 无独立女优字段。被 Cloudflare 拦的站一律放弃，不绕过机器人检测。
   javdb.com 抓得到，但它自己按出口 IP 封速率（2026-09-04 封 3～7 日），只能小批量慢跑，见下文。
+  既有库采集只在官方渠道落空时按番号问 javdb 与 AVBase：javdb 主机间隔 5 秒，两家回 403 就整源停下
+  （`scraping_access.SOURCES` 的 `blocked_pause`），资料与封面的比对规则见 ADR-0030。
   Gfriends 只按 `Filetree.json` 和单张 raw 媒体当外部 Provider 用，不克隆图库、不把图片放进 Git。
   索引缓存按 mtime 计龄（一天），取不到新索引就退回旧缓存并在输出里告警；那一轮的「未收录」
   记 error 不记 no_match，否则 `--resume` 会把一次网络失败固化成永久答案。

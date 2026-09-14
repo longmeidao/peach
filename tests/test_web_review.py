@@ -70,7 +70,7 @@ class ReviewQueueTests(unittest.TestCase):
     def write_metadata_candidates(self, rows):
         path = self.candidates / "metadata-field-candidates-20260822.csv"
         fields = ["item_key", "code", "query", "field", "field_label", "current_value",
-                  "candidates_json", "source_count", "status", "size_gb", "videos", "fetched_at"]
+                  "candidates_json", "source_count", "source_profile", "status", "size_gb", "videos", "fetched_at"]
         with path.open("w", encoding="utf-8-sig", newline="") as handle:
             writer = csv.DictWriter(handle, fieldnames=fields)
             writer.writeheader(); writer.writerows(rows)
@@ -106,8 +106,8 @@ class ReviewQueueTests(unittest.TestCase):
                 "candidates_json": _json.dumps([
                     self._candidate(item, i, source, value)
                     for i, value in enumerate(item["candidates"])], ensure_ascii=False),
-                "source_count": "1", "status": "candidate", "size_gb": "",
-                "videos": "1", "fetched_at": "",
+                "source_count": "1", "source_profile": item.get("profile", ""),
+                "status": "candidate", "size_gb": "", "videos": "1", "fetched_at": "",
             })
         return self.write_metadata_candidates(payload)
 
@@ -338,6 +338,31 @@ class ReviewQueueTests(unittest.TestCase):
         self.assertEqual(owner_of(owners, "catalog_title"), "auto:local_nfo")
         self.assertEqual(json.loads(note)["rule"], "adr-0029-empty-field-local-nfo")
         self.assertEqual(self.queue_keys("metadata_fields"), ["ABX"])
+
+    def test_library_collection_needs_two_community_sources_to_agree(self):
+        """采集任务问社区来源时官方已经落空，javdb 一家之言可能是别家店铺的上架日（ADR-0030）。"""
+        self._asset(90, "ABW-358", "ABW-358.mp4")
+        self._asset(91, "ABW-359", "ABW-359.mp4")
+        self._asset(92, "ABW-360", "ABW-360.mp4")
+        self.write_metadata_rows([
+            {"item_key": "ONE", "field": "release_date", "current": "", "profile": "library",
+             "candidates": ["2023-05-23"], "code": "ABW-358", "source": "javdb"},
+            {"item_key": "TWO", "field": "release_date", "current": "", "profile": "library",
+             "candidates": ["2023-05-26", {"value": "2023-05-26", "source": "avbase"}],
+             "code": "ABW-359", "source": "javdb"},
+            {"item_key": "R18", "field": "release_date", "current": "", "profile": "library",
+             "candidates": ["2023-05-26"], "code": "ABW-360", "source": "r18dev"},
+        ])
+        self.assertEqual(self._auto()["applied"], 2)
+        con = sqlite3.connect(self.db_path)
+        try:
+            dates = dict(con.execute("SELECT id,release_date FROM asset WHERE id IN (90,91,92)"))
+            note = con.execute("SELECT note FROM review_decision WHERE item_key='TWO'").fetchone()[0]
+        finally:
+            con.close()
+        self.assertEqual(dates, {90: None, 91: "2023-05-26", 92: "2023-05-26"})
+        self.assertEqual(json.loads(note)["rule"], "adr-0025-empty-field-2-agreed-community-sources")
+        self.assertEqual(self.queue_keys("metadata_fields"), ["ONE"])
 
     def test_auto_apply_records_the_source_as_the_field_owner(self):
         self._asset(96, "EEE-5", "EEE-5.mp4")
