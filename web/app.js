@@ -6083,10 +6083,12 @@ function followViewPath(){
 function readFollowView(){
   const params=new URLSearchParams(location.search);
   const csv=key=>new Set((params.get(key)||'').split(',').filter(Boolean));
-  followAuthors=csv('author');
-  followProviders=csv('provider');
+  // 作者、来源、题材一维只按着一个；旧链接里逗号连着的几个取第一个。
+  const one=key=>new Set([...csv(key)].slice(0,1));
+  followAuthors=one('author');
+  followProviders=one('provider');
   followTags=csv('tag');
-  followWorks=csv('work');
+  followWorks=one('work');
   const status=params.get('status');
   // 这一排上没有的那一档按「全部」读：旧链接里的 `status=seen` 落在这一条上，
   // 否则页面停在一个没有任何药丸按下去的筛选里，看不出自己正被什么筛着。
@@ -6099,8 +6101,8 @@ function readFollowView(){
   followSeed=Number(params.get('seed'))>>>0||followSeed||Number(rollSeed());
   followDir=params.get('dir')==='asc'?'asc':'desc';
 }
-/* 创作者、来源两行是多选：按下的算「只看这些」，一个都不按就是全部；标签行是「同时具备」的
-   交集（服务端如此判）。这一页是浏览用的，不配批量选择键，想回到不筛就把按下的几个抬起来。 */
+/* 创作者、来源、题材三行各按着一个：点什么就只看什么，一个都不按就是全部；标签行是「同时
+   具备」的交集（服务端如此判）。这一页是浏览用的，不配批量选择键，想回到不筛就把按下的抬起来。 */
 /* 这一档排在筛选条最左端，跟资料页那一组同一个位置、同一块玻璃：它答的是「这一页现在
    摆的是哪一类东西」，比它右边那些「这一类里看哪些」粗一级。摆到下排右端的话，它挨着
    的是排序键和动作键，读起来像给当前这批加的又一个条件，而它换掉的是整页内容。
@@ -6351,16 +6353,18 @@ function renderFollow(){
     followSeed=Number(rollSeed());followDiscoverySeed=followSeed;followSort=FOLLOW_RANDOM_SORT;applyFollowView()};
   wireFollowRecheck($('#stats').querySelector('[data-follow-recheck]'));
   wireFollowConditions($('#stats').querySelector('.followcombo'),applyFollowView);
+  /* 作者、来源、题材点什么就只看什么：按下一枚换掉同一排里按着的那枚，再点一次抬起。
+     只有标签是交集，按下几枚就要同时带着这几个标签。 */
   const toggle=(set,key)=>{if(set.has(key))set.delete(key);else set.add(key)};
+  const pick=(set,key)=>{const again=set.has(key);set.clear();if(!again)set.add(key)};
   $('#stats').querySelectorAll('[data-follow-author]').forEach(button=>button.onclick=()=>{
-    toggle(followAuthors,button.dataset.followAuthor);applyFollowView()});
+    pick(followAuthors,button.dataset.followAuthor);applyFollowView()});
   $('#stats').querySelectorAll('[data-follow-provider]').forEach(button=>button.onclick=()=>{
-    toggle(followProviders,button.dataset.followProvider);applyFollowView()});
+    pick(followProviders,button.dataset.followProvider);applyFollowView()});
   $('#stats').querySelectorAll('[data-follow-tag]').forEach(button=>button.onclick=()=>{
     toggle(followTags,button.dataset.followTag);applyFollowView()});
-  /* 题材跟创作者、来源一样是「任一」：按下两枚是这两部作品都看，不是只看同时占两部的。 */
   $('#stats').querySelectorAll('[data-follow-work]').forEach(button=>button.onclick=()=>{
-    toggle(followWorks,button.dataset.followWork);applyFollowView()});
+    pick(followWorks,button.dataset.followWork);applyFollowView()});
   $('#stats').querySelectorAll('[data-follow-manage]').forEach(button=>
     button.onclick=()=>openFollowManage());
 

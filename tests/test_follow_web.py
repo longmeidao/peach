@@ -3589,7 +3589,7 @@ class FollowWebSourceTests(unittest.TestCase):
             "function followBackfillState", 1)[0]
         self.assertNotIn("全部来源", watch)
         self.assertNotIn("全部标签", watch)
-        self.assertPageContains("toggle(followProviders,button.dataset.followProvider);applyFollowView()")
+        self.assertPageContains("pick(followProviders,button.dataset.followProvider);applyFollowView()")
         self.assertPageContains("toggle(followTags,button.dataset.followTag);applyFollowView()")
 
     def test_follow_horizontal_rails_are_wired_after_each_render(self):
