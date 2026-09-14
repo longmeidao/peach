@@ -373,8 +373,8 @@ html.board-high-contrast .board-filter-frame.board-filter-frame.board-filter-fra
    fixed/sticky 容器给状态栏上色：这条通栏吸顶的 `<header>` 永远被选中，头一次取到页面底色就一直沿用，状态栏
    变成一条实色，内容透不上去。WebKit 判容器是否可见只看它自己画的内容，自带图层的后代不算，所以直接子元素都
    带上 position 各自成层；`:where` 不占特异性，已有的定位和隐藏规则照旧生效。空的 ::before 铺满整条接住按钮
-   间隙的点按，不让它落到栏下面的卡片上。门槛见 WebKit LocalFrameView::fixedContainerEdges 与
-   RenderLayer::computeHasVisibleContent。 */
+   间隙的点按，不让它落到栏下面的卡片上；取样点也先命中它，从顶栏底下滑过的筛选框等吸顶玻璃够不到那一点，
+   宽度不必为此收窄。门槛见 WebKit LocalFrameView::fixedContainerEdges 与 RenderLayer::computeHasVisibleContent。 */
 .top.top{visibility:hidden}
 :where(.top>*){visibility:visible;position:relative}
 .top::before{content:'';position:absolute;inset:0;z-index:-1;visibility:visible}
@@ -570,13 +570,6 @@ body::before{display:none}
    资料页那块在 `#index` 里，`main` 的 16px 已经把它让开了。这里补的就是那 16px，取的
    也是 `main` 自己的那个数，所以两页的浮层和底下的网格对在同一条竖线上。 */
 body>.board-filter-frame{margin-inline:16px}
-/* 窄屏的吸顶玻璃收到视口宽度的九成以下、居中。iOS 26 的 Safari 在状态栏下沿正中取一点，顺着命中元素
-   往上找第一个 fixed/sticky 祖先给状态栏取色：宽度不足视口（减 8px）九成的直接跳过，够宽且带
-   backdrop-filter 的整条栏盖成一块实色；而且取到以后只要那个元素还可见就一直沿用。这几块玻璃往上
-   滑走时必经那一点，够宽的话滑过一次，之后整页上下滚状态栏都透不出内容。
-   门槛见 WebKit LocalFrameView::fixedContainerEdges。 */
-@media(max-width:760px){.board-filter-frame.board-filter-frame,.entitytagbar.entitytagbar,.entitycollectionhead.entitycollectionhead{
-  max-width:calc(88vw - 8px);margin-inline:auto}}
 .board-filter-frame .tagbar,.board-filter-frame .count{position:relative;top:auto;left:auto;width:auto;margin:0;background:transparent;box-shadow:none;border:0;padding:10px 16px}
 .board-filter-frame .tagbar{border-bottom:0;border-radius:16px 16px 0 0}
 .board-filter-frame .count{border-radius:0 0 16px 16px;min-width:0}
@@ -891,7 +884,11 @@ html.board-high-contrast .settingscard.settingscard>.board-local-nav{background:
     transition:transform var(--board-dialog-motion),visibility var(--board-dialog-motion)}
   .drawer.drawer:not(.open){visibility:hidden}
   .drawer.drawer.open{transform:translateX(0)}
-  .scrim.scrim.on{top:0;z-index:101;background:#0007}
+  /* 暗色画在 ::before 上，遮罩本身 visibility:hidden：它铺满视口、没有子元素、底色半透明，iOS 26 的 Safari
+     会把它当压暗层，拿暗色和页面底色混成实色刷满状态栏，一开侧栏状态栏就整块变色。自带图层的 ::before
+     不计入外壳的可见内容，Safari 跳过这层，点在暗色上仍然落到遮罩身上收起侧栏。 */
+  .scrim.scrim.on{top:0;z-index:101;background:none;visibility:hidden}
+  .scrim.scrim.on::before{content:'';position:absolute;inset:0;background:#0007;visibility:visible}
   .index .ihead .geist-search{flex-basis:160px}
   .index .ihead .geist-search input,.geist-input,.configfield input,.settingscard .board-number-control input{font-size:16px}
   .settingscard .board-number-control{height:40px}.settingscard .board-number-control input{height:38px}

@@ -7569,6 +7569,10 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("if(!refine)showIndexLoading('正在读取'+(INDEX_TITLES[kind]||'标签'),kind,q)")
         self.assertPageContains("$('#loadSentinel').innerHTML=loadingDotsHtml('继续载入中…')")
         self.assertPageContains("pageSkeletonHtml('正在读取推荐',{cards:true,className:'related-skeleton'})")
+        # 「接着看」没有内容就整块不出现：推荐条数设为 0 时不生成，取回空列表时整块拿掉。
+        self.assertPageContains("${queueContext||!(appSettings.relatedLimit>0)?'':`<div class=\"next\"><h3>接着看</h3>")
+        self.assertPageContains("if(!d.items.length){n.closest('.next')?.remove();return}")
+        self.assertPageLacks("'<span class=\"empty\">暂无</span>'")
         self.assertPageLacks("count.innerHTML=`${spinnerHtml(label)}<span>载入中…</span>`")
         self.assertPageLacks("function showItemDetailLoading(anchor,above)")
         self.assertPageLacks("detailpending")
@@ -7874,11 +7878,15 @@ class WebUiSourceTests(unittest.TestCase):
     def test_top_bar_shell_is_invisible_to_ios_status_bar_tinting(self):
         """通栏吸顶的 `<header>` 永远落在 iOS 26 Safari 给状态栏取色的那一点上，取到过一次颜色就一直沿用。
         顶栏本身 visibility:hidden，直接子元素各自成层保持可见，WebKit 就把这条栏判成不可见的容器跳过；
-        ::before 铺满接住按钮间隙的点按。"""
+        ::before 铺满接住按钮间隙的点按，也挡住从顶栏底下滑过的吸顶玻璃，筛选框保持全宽。
+        窄屏侧栏的遮罩同理：暗色画在 ::before 上，遮罩外壳对取色不可见，一开侧栏状态栏不整块变色。"""
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
         self.assertIn(".top.top{visibility:hidden}\n"
                       ":where(.top>*){visibility:visible;position:relative}\n"
                       ".top::before{content:'';position:absolute;inset:0;z-index:-1;visibility:visible}\n", board)
+        self.assertIn("  .scrim.scrim.on{top:0;z-index:101;background:none;visibility:hidden}\n"
+                      "  .scrim.scrim.on::before{content:'';position:absolute;inset:0;background:#0007;visibility:visible}\n", board)
+        self.assertNotIn("max-width:calc(88vw - 8px)", board)
 
     def test_card_hover_hides_source_and_duration_and_missing_size_is_explicit(self):
         self.assertPageContains('.card:hover .badge,.card:hover .dur{opacity:0}')
@@ -11378,15 +11386,10 @@ class WebUiSourceTests(unittest.TestCase):
         左右那 16px 归首页那块：它住在 `body` 底下，两侧没有东西给它留白，22px 的圆角
         直接切在屏幕边沿上；资料页那块在 `#index` 里，`main` 的 16px 已经把它让开了。
         补的就是 `main` 自己那个数，两页的浮层因此和底下的网格对在同一条竖线上。
-
-        窄屏上这几块吸顶玻璃收到视口宽度的九成以下、居中：iOS 26 的 Safari 给状态栏取色时
-        跳过不足视口九成宽的吸顶元素，够宽的玻璃滑过状态栏一次，整页状态栏就一直是实色。
         """
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
         self.assertPageContains("main{position:relative;z-index:1;padding:14px 16px 90px}")
         self.assertIn("body>.board-filter-frame{margin-inline:16px}", board)
-        self.assertIn("@media(max-width:760px){.board-filter-frame.board-filter-frame,.entitytagbar.entitytagbar,"
-                      ".entitycollectionhead.entitycollectionhead{\n  max-width:calc(88vw - 8px);margin-inline:auto}}", board)
         self.assertIn("  .board-filter-frame .count,.entitycollectionhead{display:flex;"
                       "flex-wrap:nowrap;align-items:center;gap:10px;\n", board)
         self.assertIn("    overflow-x:auto;overflow-y:hidden;scrollbar-width:none;\n", board)
