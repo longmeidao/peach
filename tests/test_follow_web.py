@@ -292,6 +292,17 @@ class FollowContractTests(unittest.TestCase):
                       if row["provider"] == "f95zone")
         self.assertFalse(source["can_backfill"])
 
+    def test_history_walk_flags_are_refused_without_older(self):
+        # 不带 older 时这两个参数什么都不做；拒收，免得一轮常规检查被当成重抓过了。
+        self._seed()
+        factory = mock.Mock()
+        with mock.patch.object(web_follow, "build_connector", factory):
+            for body in ({"backfill_all": True}, {"rewind": True},
+                         {"backfill_all": True, "rewind": True}):
+                with self.subTest(body=body), self.assertRaises(ValueError):
+                    self._post("/api/follow/check", body)
+        factory.assert_not_called()
+
     def test_backfill_all_walks_pages_until_history_ends(self):
         self._seed()
         pages = []

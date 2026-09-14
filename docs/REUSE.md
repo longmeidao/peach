@@ -206,7 +206,8 @@ CloudDrive 为外部应用，本项目不捆绑其二进制或依赖其管理 AP
 - 外链圆标与厂牌标识取站点自己声明的资产，宽扁字标不参加小圆标竞选；`/logo` 的 `variant` 分 `icon`、`logo` 与最清晰的 `large`，大图版式和资料页取 `large`，紧凑版式取 `icon`。头像与标识共用 `nativeImageFit`：按屏幕像素密度折算的源尺寸不足框四成时等比居中且不放大，四周同图模糊补底；框短边小于 64 px 不补底，70 px 紧凑圆框适用。加载、图片回落和版式切换均重新度量。
 - 关注的作者头像与来源图标是元数据，由 `follow_assets` 取回落在 `generated/follow-assets/` 再经 `/follow-avatar`、`/source-icon` 给页面：地址只从固定表或固定主机拼、字节先认成图再落盘、到期重取失败继续用旧的并退避一小时；保鲜期与 `/link-mark` 共用设置「头像与站点图标刷新」（`web_settings.metadata_refresh_seconds`）。视频与图片不落盘。
 - 厂牌标识由契约位 `has_logo` 决定出不出图：没装标识的厂牌一个 `<img>` 都不发，改用首字母底板，不靠 404 摘。
-- 关注检查分两阶段：列表阶段落 partial 行，详情补全按 provider 额度只补新行和未补齐行。
+- 关注检查分两阶段：列表阶段落 partial 行，详情补全按 provider 额度只补新行和未补齐行。「补齐过」由连接器的 `ENRICHED_MARK` 声明、判据登记在 `follow_store._ENRICHED_PREDICATES`。
+- 存量行重抓：连接器新学到一个字段（图片宽高、封面）后，旧行不会自己补上——常规检查只看第一页，补齐过的行也不再打详情页。做法固定为两步：把 `ENRICHED_MARK` 换成新字段落库后才有的键并登记判据，让旧行判为未补齐；再 `POST /api/follow/check` 发 `{"older":true,"backfill_all":true,"rewind":true,"background":true}`（可加 `"sources":[id,…]` 只走部分来源），从第 1 页逐页走到站点说没有更多，进度读 `GET /api/follow/check`。`backfill_all`、`rewind` 离开 `older` 会被拒收，不进界面；ledger 的回填游标只进不退。这是长跑任务，重启前按 `peach-batch-jobs` 先查。
 - 图片的固有宽高只问文件头：`follow_image_dims.probe_image_dims` 发一个 `Range: bytes=0-65535` 请求，`dims_from_header` 认 PNG／GIF／WebP（VP8、VP8L、VP8X）／JPEG（跳过 EXIF 到 SOF）；判据 `positive_dims` 只有这一份，连接器、`backfill_follow_image_dims.py` 与界面回写（`/api/follow/image-dims`）落库前都经它归一，`FollowStore.set_image_dims` 只补空缺。
 - `/api/related` 用 Tag IDF 加 MMR 排序并缓存；搜索使用 FTS5 trigram，短查询回退 LIKE 并覆盖规范名、别名和检索词，搜索历史在 reader 写入被拒时降级到页面内存。
 - 复核页覆盖元数据、创作者标签、Logo、头像、身份、番号目录、FC2 证据和媒体失败；抓取与 AI 结果仍是候选，批准后才写真相字段，元数据候选保留 MetaTube 目录证据且不下载 URL。
