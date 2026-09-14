@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-r"""给已入库的关注图片补上固有宽高。
+r"""给已入库的关注卡面图补上固有宽高。
 
 图片墙靠 `<img width height>` 在图落地前占好比例；没有这两个数的卡片按 1:1
-占位，图一到就整墙重排。尺寸只有 fanbox 一家一直在记（imageMap 自带），其余
-来源的存量行都是空的。这一趟分两路补：
+占位，图一到就整墙重排。条目级那对是卡面那张图的：图片条目是图本身，视频条目是
+它的缩略图——视频原文件量不出宽高，卡面缩略图的比例才是排版要的。尺寸只有 fanbox
+一家一直在记（imageMap 自带），其余来源的存量行都是空的。这一趟分两路补：
 
 - **归档**：rule34.xxx 的 dapi 响应本来就带 `width`/`height`，每次检查更新的
   原始响应都归档在 `sources/follow/rule34xxx/` 下。不用再发一个请求，把归档里
@@ -46,9 +47,9 @@ from peach.review_csv import write_rows
 from peach.scripting import (
     BACKUP_REQUIRED, HostLimiter, add_ledger_write_args, open_for_write, open_readonly,
 )
-# 「这条是不是图片」与界面同一判据：卡片按它决定要不要预留比例，这里就按它决定
-# 要不要去问尺寸。
-from peach.web_follow import _media_kind as media_kind_of
+# 「这条是不是图片」与「卡面挂的是哪张图」都与界面同一判据：卡片按卡面那张图预留
+# 比例，这里就按同一张去问尺寸。
+from peach.web_follow import _media_kind as media_kind_of, _thumb_url as card_thumb_of
 
 FIELDS = ("item_id", "provider", "external_id", "media", "mode", "result",
           "width", "height", "note")
@@ -105,11 +106,12 @@ def archived_dims(root: Path) -> dict[str, tuple[int, int]]:
 
 def pending_targets(items: tuple[FollowItemRow, ...],
                     providers: set[str]) -> list[tuple[FollowItemRow, int | None, dict | None]]:
-    """待补的（条目，媒体序号，媒体）。序号 None 是条目级直链图片。
+    """待补的（条目，媒体序号，媒体）。序号 None 是条目级那张卡面图。
 
     有媒体清单的条目按清单里每张缺尺寸的图各出一条；F95 的附件清单是读时合成的，
-    不在 metadata 里，尺寸没有地方落，跳过。没有清单的条目按 `media_kind` 判：
-    只有图片才问。
+    不在 metadata 里，尺寸没有地方落，跳过。没有清单的条目：图片条目问图本身；
+    视频等条目只在卡面挂着一张公开缩略图时问它——`/follow-cover` 这类站内抽帧的
+    封面没有可问的外部地址，由界面加载后回写。
     """
     targets: list[tuple[FollowItemRow, int | None, dict | None]] = []
     for item in items:
@@ -125,9 +127,10 @@ def pending_targets(items: tuple[FollowItemRow, ...],
             continue
         if item.provider == "f95zone" and f95_attachment_media_items(item.metadata):
             continue
-        if media_kind_of(item) != "image":
+        if positive_dims(item.metadata.get("width"), item.metadata.get("height")) is not None:
             continue
-        if positive_dims(item.metadata.get("width"), item.metadata.get("height")) is None:
+        if (media_kind_of(item) == "image"
+                or str(card_thumb_of(item) or "").startswith("https://")):
             targets.append((item, None, None))
     return targets
 
@@ -143,6 +146,12 @@ def probe_attempts(resolver: FollowMediaResolver, item: FollowItemRow, index: in
     """
     attempts: list[tuple[str, dict, str]] = []
     notes: list[str] = []
+    if media is None and media_kind_of(item) != "image":
+        # 视频的原文件不是图，文件头量不出宽高；只问卡面那张缩略图。
+        thumb = str(card_thumb_of(item) or "")
+        if thumb.startswith("https://"):
+            attempts.append((thumb, {}, "缩略图"))
+        return attempts, notes
     thumb = str((media or {}).get("thumb_url") or "") if media is not None \
         else str(display_thumb_url(item) or "")
     if thumb.startswith("https://"):

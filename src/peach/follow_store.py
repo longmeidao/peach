@@ -713,12 +713,13 @@ class FollowStore:
 
     def set_image_dims(self, item_id: int, width: int, height: int, *,
                        media_index: int | None = None) -> bool:
-        """给一条（或它第 N 张媒体）补上图片宽高，只补空缺。
+        """给一条（或它第 N 张媒体）补上卡面图的宽高，只补空缺。
 
         写了返回 True；条目不存在、那张媒体不在 metadata 的 `media_items` 里，或
-        已经有一对正尺寸时不动，返回 False。尺寸只用来定比例，来自来源接口、
-        文件头探测或界面加载完的 naturalWidth 都算同一个字段；已有的不覆盖，
-        因为三处给的都是同一张图的比例，没有谁更权威。
+        已经有一对正尺寸时不动，返回 False。尺寸只用来定比例：条目级那对是卡面那张
+        图的，图片条目是图本身，视频条目是它的缩略图或封面帧。来自来源接口、文件头
+        探测或界面加载完的 naturalWidth 都算同一个字段；已有的不覆盖，因为三处给的
+        都是同一张图的比例，没有谁更权威。
         """
         dims = positive_dims(width, height)
         if dims is None:

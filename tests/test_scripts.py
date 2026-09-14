@@ -323,23 +323,34 @@ class OperationalScriptTests(unittest.TestCase):
                             url="https://rule34.xxx/index.php?id=11",
                             media_url="https://api-cdn.rule34.xxx/images/1/a.jpg",
                             thumb_url="https://api-cdn.rule34.xxx/samples/1/a.jpg"),
-            # 视频不占图片墙，不问。
+            # 卡面没有缩略图的视频无处可问：视频原文件量不出宽高。
             FollowCandidate(provider="rule34xxx", external_id="12", title="v",
                             url="https://rule34.xxx/index.php?id=12",
                             media_url="https://api-cdn-mp4.rule34.xxx/images/1/v.mp4"),
+            # 有缩略图的视频按卡面比例补；dapi 给的视频宽高与同帧样图同比例，从归档取。
+            FollowCandidate(provider="rule34xxx", external_id="13", title="w",
+                            url="https://rule34.xxx/index.php?id=13",
+                            media_url="https://api-cdn-mp4.rule34.xxx/images/1/w.mp4",
+                            thumb_url="https://api-cdn.rule34.xxx/samples/1/w.jpg"),
         ])
         seed("pawchive", "user", [
             FollowCandidate(provider="pawchive", external_id="21", title="b",
                             url="https://pawchive.pw/post/21",
                             media_url="https://file.pawchive.pw/data/ab/cd/abcd.png",
                             thumb_url="https://img.pawchive.pw/thumbnail/data/ab/cd/abcd.png"),
+            # 视频条目只问卡面缩略图，不去碰 mp4。
+            FollowCandidate(provider="pawchive", external_id="22", title="c",
+                            url="https://pawchive.pw/post/22",
+                            media_url="https://file.pawchive.pw/data/ef/gh/efgh.mp4",
+                            thumb_url="https://img.pawchive.pw/thumbnail/data/ef/gh/efgh.gif"),
         ])
         connection.commit()
         connection.close()
         archive = root / "follow" / "rule34xxx" / "k"
         archive.mkdir(parents=True)
         (archive / "20260901T000000Z-abc.raw").write_bytes(json.dumps(
-            [{"id": 11, "width": 1280, "height": 720}, {"id": 99, "width": 1, "height": 1}]
+            [{"id": 11, "width": 1280, "height": 720}, {"id": 13, "width": 1920, "height": 1080},
+             {"id": 99, "width": 1, "height": 1}]
         ).encode())
         (archive / "20260901T000000Z-abc.json").write_bytes(b"{}")
 
@@ -357,20 +368,24 @@ class OperationalScriptTests(unittest.TestCase):
         with redirect_stdout(io.StringIO()):
             self.assertEqual(backfill.run(args, transport=transport), 0)
 
-        self.assertEqual(len(seen), 1, "rule34.xxx 从归档取，只有归档站要探测")
+        self.assertEqual(len(seen), 2, "rule34.xxx 从归档取，只有归档站要探测")
         self.assertEqual(seen[0].headers["Range"], "bytes=0-65535")
-        self.assertIn("pawchive.pw", seen[0].url)
+        self.assertTrue(all("img.pawchive.pw/thumbnail/" in request.url for request in seen),
+                        [request.url for request in seen])
         connection = sqlite3.connect(database)
         self.addCleanup(connection.close)
         dims = {row[0]: json.loads(row[1]) for row in connection.execute(
             "SELECT external_id, metadata_json FROM follow_item")}
         self.assertEqual((dims["11"]["width"], dims["11"]["height"]), (1280, 720))
         self.assertEqual((dims["21"]["width"], dims["21"]["height"]), (800, 600))
+        self.assertEqual((dims["13"]["width"], dims["13"]["height"]), (1920, 1080))
+        self.assertEqual((dims["22"]["width"], dims["22"]["height"]), (800, 600))
         self.assertNotIn("width", dims["12"])
         with out.open(encoding="utf-8", newline="") as handle:
             rows = list(csv.DictReader(handle))
         self.assertEqual({(row["external_id"], row["mode"], row["result"]) for row in rows},
-                         {("11", "归档", "取得"), ("21", "探测", "取得")})
+                         {("11", "归档", "取得"), ("13", "归档", "取得"),
+                          ("21", "探测", "取得"), ("22", "探测", "取得")})
         self.assertTrue((root / "backup.db").exists())
 
         # 第二遍：全部已有尺寸，没有待补，也不再发请求。

@@ -5731,10 +5731,13 @@ async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=fals
   if(!authorSources.length&&source)authorSources.push(source);
   const src=item.playable?`/follow-stream?id=${item.id}${selectedMedia?`&media=${selectedMedia.index}`:''}`:'';
   const selectedKind=selectedMedia?.media_kind||item.media_kind;
+  // 原图经代理取，缩略图由浏览器直接读公开主机：归档站的原文件主机会拦下服务端
+  // （pawchive 的 file. 子域挂着 ddos-guard，一律 403），缩略图主机照常给。
+  const detailThumb=selectedMedia?.thumb_url||item.thumb_url||'';
   const media=item.playable&&selectedKind==='video'
     ?`<video class="video-js vjs-big-play-centered" controls playsinline preload="metadata"${item.thumb_url?` poster="${esc(item.thumb_url)}"`:''}></video>`
     :item.playable&&selectedKind==='image'
-      ?`<img class="followdetailposter" src="${src}" alt="${esc(item.title)}">`
+      ?`<img class="followdetailposter" src="${src}" alt="${esc(item.title)}"${detailThumb&&detailThumb!==src?` data-fallback-src="${esc(detailThumb)}"`:''} referrerpolicy="no-referrer">`
       :item.thumb_url
         ?`<img class="followdetailposter" src="${esc(item.thumb_url)}" alt="${esc(item.title)}" referrerpolicy="no-referrer">`
         :`<div class="followdetailplaceholder">${sourceIcon(item.resource_provider||item.provider)}<span>没有可用预览</span></div>`;
@@ -5765,6 +5768,7 @@ async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=fals
       ${item.summary?`<p class="followdetailsummary">${esc(item.summary)}</p>`:''}
       ${mediaIssue?`<p class="fnote followmediaissue">${esc(mediaIssue)}</p>`:''}
       <p class="fnote followmediaissue" data-media-load-issue hidden>媒体没有取回来：上游这一次没给出内容，多半是站点在限流——过一阵再打开。</p>
+      <p class="fnote followmediaissue" data-media-thumb-fallback hidden>原图没取回来，这里先显示缩略图：上游拦下了这一次请求。</p>
       ${followResourceLinks(item)}
       <div class="fb followdetailactions">
         <button class="later" data-follow-detail-save aria-label="${item.status==='saved'?'已保存':'保存到账本'}" title="${item.status==='saved'?'已保存':'保存到账本'}"${item.status==='saved'?' disabled':''}>${item.status==='saved'?icon('check'):icon('bookmark-plus')}</button>
@@ -5890,11 +5894,18 @@ async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=fals
     write(button,'/api/follow/media/hide',{item:item.id,media:index,hidden:false},()=>{
       reopenAfterMediaChange(index)},{message:'已恢复显示'});
   });
-  // 上游没给出媒体时，代理只会回一个不含缘由的失败；界面上把「这次没取到、
-  // 多半是限流」说在侧栏，别让人对着一块空画布猜。
+  // 上游没给出媒体时，代理只会回一个不含缘由的失败。有缩略图就换上缩略图并在侧栏
+  // 说明这是缩略图；连缩略图也取不到，才说「这次没取到、多半是限流」——别让人对着
+  // 一块空画布猜。
   const loadIssue=$('#stage').querySelector('[data-media-load-issue]');
+  const thumbFallback=$('#stage').querySelector('[data-media-thumb-fallback]');
   $('#stage').querySelectorAll('.followdetailmedia img,.followdetailmedia video').forEach(el=>
-    el.addEventListener('error',()=>{if(loadIssue)loadIssue.hidden=false}));
+    el.addEventListener('error',()=>{
+      const fallback=el.dataset.fallbackSrc;
+      if(fallback&&el.getAttribute('src')!==fallback){
+        el.src=fallback;if(thumbFallback)thumbFallback.hidden=false;return}
+      if(thumbFallback)thumbFallback.hidden=true;
+      if(loadIssue)loadIssue.hidden=false}));
   alignFollowImageControls();
   // 滚到舞台本身，不是页面头部——就近展开的意义就在于视线不被拽走。
   // 复用首页那套 sticky 偏移，标题不会被吸顶的筛选条盖住。
@@ -5934,16 +5945,16 @@ function followCard(group,authorSources=[]){
   const thumbUrl=selectedMedia?.thumb_url||item.thumb_url;
   /* width/height 属性让浏览器在图片落地前就按固有比例占位：瀑布流按卡片高度
      分列，没有这两个属性时未加载的图高度是零，每一张加载完都把整墙的列重新
-     平衡一遍，卡片就在列间跳。尺寸来自媒体清单里那张（fanbox）或条目本身
-     （rule34.xxx 的接口、回填脚本问过的文件头、上次加载后回写的）；都没有就
-     不硬猜，走无尺寸占位那套，并在这张图加载完后把 natural 尺寸回写给条目。 */
-  const mediaDims=selectedMedia&&selectedMedia.thumb_url===thumbUrl
-    &&selectedMedia.width>0&&selectedMedia.height>0?selectedMedia:null;
-  const itemDims=!selectedMedia&&item.media_kind==='image'&&item.width>0&&item.height>0?item:null;
-  const sized=mediaDims||itemDims;
+     平衡一遍，卡片就在列间跳。比例取卡面上这张图自己的：卡面用的是媒体清单里那张
+     （fanbox）就落在那张媒体上，其余落在条目上——图片条目是图本身，视频条目是它的
+     缩略图或封面帧。来路有 rule34.xxx 的接口、回填脚本问过的文件头、上次加载后
+     回写的；原文件主机拦脚本时缩略图照样量得到。都没有就不硬猜，走无尺寸占位那套，
+     并在这张图加载完后把 natural 尺寸回写给它的主人。 */
+  const cardMedia=selectedMedia&&selectedMedia.thumb_url===thumbUrl?selectedMedia:null;
+  const dimsOwner=cardMedia||item;
+  const sized=dimsOwner.width>0&&dimsOwner.height>0?dimsOwner:null;
   const dims=sized?` width="${sized.width}" height="${sized.height}"`:'';
-  const learnable=!sized&&(selectedMedia||item.media_kind==='image');
-  const learn=learnable?` data-learn-dims="${item.id}"${selectedMedia?` data-learn-media="${selectedMedia.index}"`:''}`:'';
+  const learn=!sized&&thumbUrl?` data-learn-dims="${item.id}"${cardMedia?` data-learn-media="${cardMedia.index}"`:''}`:'';
   const thumb=thumbUrl
     ? `<img${dims}${learn} src="${esc(thumbUrl)}" alt="" loading="lazy" referrerpolicy="no-referrer" data-drop="self">`
     : `<span class="fnothumb">${sourceIcon(item.resource_provider||item.provider)}</span>`;
