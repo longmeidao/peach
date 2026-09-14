@@ -175,6 +175,7 @@ AUTO_SCOPE_PREFIXES: tuple[tuple[str, str | tuple[str, ...]], ...] = (
     ("scripts/harvest_", ("metadata", "tooling")),
     ("scripts/sync_brand_marks.py", ("catalog", "tooling")),
     ("scripts/detect_cover_faces.py", ("web", "tooling")),
+    ("scripts/demo_dataset.py", ("web", "tooling")),
     ("scripts/vendor_web_dependencies.mjs", ("web", "tooling")),
     ("scripts/audit_video_endcards.py", ("media", "tooling")),
     ("scripts/setup_macos_port80.sh", ("sync", "tooling")),
