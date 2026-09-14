@@ -75,6 +75,7 @@ AWS_LEGACY_DIGITAL = (
 AWS_MODERN = "https://awsimgsrc.dmm.com/dig/{kind}/{cid}/{cid}pl.jpg"
 AWS_LEGACY = "https://awsimgsrc.dmm.co.jp/pics_dig/{kind}/{cid}/{cid}pl.jpg"
 R18_DETAIL = "https://r18.dev/videos/vod/movies/detail/-/dvd_id={code}/json"
+R18_COMBINED = "https://r18.dev/videos/vod/movies/detail/-/combined={content_id}/json"
 MGS_DETAIL = "https://www.mgstage.com/product/product_detail/{code}/"
 PRESTIGE_SEARCH = "https://www.prestige-av.com/api/search"
 PRESTIGE_PRODUCT = "https://www.prestige-av.com/api/product/{uuid}"

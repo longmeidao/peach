@@ -752,6 +752,9 @@ def _only_mib_official(row: dict) -> bool:
     return sources == {MIB_OFFICIAL_SOURCE}
 
 
+LOCAL_NFO_SOURCE = "local_nfo"
+
+
 def _auto_apply_rule(candidate: dict, agreed: int) -> str:
     """这条自动落库该记在哪条规则名下。
 
@@ -759,7 +762,10 @@ def _auto_apply_rule(candidate: dict, agreed: int) -> str:
     是「哪些值是 community 源补的」，而 note 是唯一留着这个区别的地方。多来源一致
     （ADR-0025）与单来源（ADR-0018）同样要分得开：前者的证据强度不一样。
     """
-    spec = SOURCE_SPECS.get(str(candidate.get("source") or "").strip())
+    source = str(candidate.get("source") or "").strip()
+    if source == LOCAL_NFO_SOURCE:
+        return "adr-0029-empty-field-local-nfo"
+    spec = SOURCE_SPECS.get(source)
     kind = "official" if spec is not None and spec.official else "community"
     if agreed > 1:
         return f"adr-0025-empty-field-{agreed}-agreed-{kind}-sources"
@@ -794,6 +800,9 @@ def metadata_auto_apply_candidate(connection, row: dict) -> dict | None:
 
     来源级别一律按当前 policy 解析，不读候选 CSV 里的同名字段：那是抓取当时的
     快照，实测 r18dev 在 CSV 里写着 False，而现行 policy 认它是 official_mirror。
+
+    本地 NFO 不在登记表里，却同样构成证据（ADR-0029）：采集时它的番号已经和文件名
+    对过，第 3 条照样再核一遍。
     """
     field = str(row.get("field") or "").strip()
     if field not in AUTO_APPLY_FIELDS:
@@ -801,7 +810,8 @@ def metadata_auto_apply_candidate(connection, row: dict) -> dict | None:
     if str(row.get("current_value") or "").strip():
         return None
     candidates = [c for c in row.get("candidates") or []
-                  if str(c.get("source") or "").strip() in SOURCE_SPECS]
+                  if str(c.get("source") or "").strip() in SOURCE_SPECS
+                  or str(c.get("source") or "").strip() == LOCAL_NFO_SOURCE]
     if not candidates:
         return None
     values = {_candidate_value_key(field, candidate) for candidate in candidates}
