@@ -2,7 +2,6 @@ import csv
 import importlib.util
 import json
 import sqlite3
-import struct
 import tempfile
 import unittest
 from contextlib import closing
@@ -10,6 +9,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from peach import __version__
+from support.mp4 import minimal_mp4
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -104,10 +104,6 @@ VALUES('local-default','local','Default',1,'{}','2026-08-14T12:17:23Z','2026-08-
 """
 
 
-def _box(kind: bytes, payload: bytes) -> bytes:
-    return struct.pack(">I", len(payload) + 8) + kind + payload
-
-
 def tiny_jpeg(tone: int, width: int = 64, height: int = 48) -> bytes:
     """一张真的能解开的小图。
 
@@ -119,22 +115,6 @@ def tiny_jpeg(tone: int, width: int = 64, height: int = 48) -> bytes:
 
     canvas = numpy.full((height, width, 3), tone, dtype=numpy.uint8)
     return bytes(cv2.imencode(".jpg", canvas)[1])
-
-
-def minimal_mp4(*, timescale: int, sample_delta: int, samples: int, keyframe_every: int) -> bytes:
-    """只含时间表的最小 MP4：够 peach.mp4index 解析关键帧，不含真实媒体数据。"""
-    mdhd = _box(b"mdhd", struct.pack(">4sIIII HH", bytes(4), 0, 0, timescale,
-                                     samples * sample_delta, 0, 0))
-    hdlr = _box(b"hdlr", struct.pack(">4sI4s", bytes(4), 0, b"vide") + bytes(12))
-    stts = _box(b"stts", struct.pack(">IIII", 0, 1, samples, sample_delta))
-    sync = [n for n in range(1, samples + 1) if (n - 1) % keyframe_every == 0]
-    stss = _box(b"stss", struct.pack(">II", 0, len(sync))
-                + b"".join(struct.pack(">I", n) for n in sync))
-    stbl = _box(b"stbl", stts + stss)
-    mdia = _box(b"mdia", mdhd + hdlr + _box(b"minf", stbl))
-    return (_box(b"ftyp", b"isom" + bytes(8))
-            + _box(b"moov", _box(b"trak", mdia))
-            + _box(b"mdat", bytes(64)))
 
 
 class MediaCacheHeaderTests(unittest.TestCase):

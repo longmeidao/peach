@@ -1,31 +1,13 @@
 """HLS 分片：关键帧对齐、时间戳连续、播放列表报真实时长。"""
 import asyncio
-import struct
 import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
 
-from peach.mp4index import keyframe_seconds, segment_plan
+from peach.mp4index import composition_offsets_present, keyframe_seconds, segment_plan
 from peach.segments import HlsSegmentService, StreamSessionRegistry, build_hls_playlist
-
-
-def box(kind: bytes, payload: bytes) -> bytes:
-    return struct.pack(">I", len(payload) + 8) + kind + payload
-
-
-def synthetic_mp4(timescale: int, sample_delta: int, samples: int, keyframe_every: int) -> bytes:
-    """构造一个只含时间表的最小 MP4：足够 stss/stts 解析，不含真实媒体数据。"""
-    mdhd = box(b"mdhd", struct.pack(">4sIIII HH", b"\0\0\0\0", 0, 0, timescale, samples * sample_delta, 0, 0))
-    hdlr = box(b"hdlr", struct.pack(">4sI4s", b"\0\0\0\0", 0, b"vide") + b"\0" * 12)
-    stts = box(b"stts", struct.pack(">IIII", 0, 1, samples, sample_delta))
-    sync = [n for n in range(1, samples + 1) if (n - 1) % keyframe_every == 0]
-    stss = box(b"stss", struct.pack(">II", 0, len(sync)) + b"".join(struct.pack(">I", n) for n in sync))
-    stbl = box(b"stbl", stts + stss)
-    minf = box(b"minf", stbl)
-    mdia = box(b"mdia", mdhd + hdlr + minf)
-    trak = box(b"trak", mdia)
-    return box(b"ftyp", b"isom" + b"\0" * 8) + box(b"moov", trak) + box(b"mdat", b"\0" * 64)
+from support.mp4 import minimal_mp4
 
 
 class Mp4IndexTests(unittest.TestCase):
@@ -43,12 +25,12 @@ class Mp4IndexTests(unittest.TestCase):
 
     def test_keyframe_times_come_from_the_sync_sample_table(self):
         # 1000 刻度、每样本 40 刻度（25fps），每 25 个样本一个关键帧 = 每秒一个。
-        path = self.write(synthetic_mp4(1000, 40, 250, 25))
+        path = self.write(minimal_mp4(timescale=1000, sample_delta=40, samples=250, keyframe_every=25))
         self.assertEqual(keyframe_seconds(path)[:5], [0.0, 1.0, 2.0, 3.0, 4.0])
 
     def test_moov_at_the_end_is_still_found(self):
         """非 faststart 的文件把 moov 放在结尾；顺序读到它可能要拉几个 GB。"""
-        full = synthetic_mp4(1000, 40, 100, 25)
+        full = minimal_mp4(timescale=1000, sample_delta=40, samples=100, keyframe_every=25)
         moov_start = full.index(b"moov") - 4
         moov_size = int.from_bytes(full[moov_start:moov_start + 4], "big")
         moov = full[moov_start:moov_start + moov_size]
@@ -58,6 +40,21 @@ class Mp4IndexTests(unittest.TestCase):
     def test_unparsable_input_returns_none_so_callers_fall_back_to_range(self):
         self.assertIsNone(keyframe_seconds(self.write(b"not an mp4 at all")))
         self.assertIsNone(keyframe_seconds(self.root / "missing.mp4"))
+
+    def test_composition_offsets_are_read_from_the_video_track(self):
+        """有 B 帧却没有 ctts 的片源要改走转码，所以这张表在不在必须答得准。"""
+        plain = self.write(minimal_mp4(
+            timescale=1000, sample_delta=40, samples=100, keyframe_every=25))
+        reordered = self.write(minimal_mp4(
+            timescale=1000, sample_delta=40, samples=100, keyframe_every=25,
+            composition_offsets=True), name="reordered.mp4")
+        self.assertIs(composition_offsets_present(plain), False)
+        self.assertIs(composition_offsets_present(reordered), True)
+
+    def test_unreadable_moov_answers_none_instead_of_guessing(self):
+        """读不出 moov 就不知道有没有这张表；猜「没有」会把好片源推去转码。"""
+        self.assertIsNone(composition_offsets_present(self.write(b"not an mp4 at all")))
+        self.assertIsNone(composition_offsets_present(self.root / "missing.mp4"))
 
     def test_plan_snaps_to_keyframes_and_covers_the_whole_duration(self):
         keyframes = [round(value * 8.33, 2) for value in range(12)]
