@@ -4,10 +4,8 @@ from __future__ import annotations
 import hashlib
 import io
 import json
-import os
 import threading
 import time
-import uuid
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -15,6 +13,7 @@ from pathlib import Path
 from PIL import Image, UnidentifiedImageError
 
 from .avatar_face import FaceProbe, drop_sidecar, write_sidecar
+from .fsutil import atomic_write_bytes
 
 
 POLICY_VERSION = "performer-avatar-provider-v1"
@@ -84,17 +83,6 @@ def file_sha256(path: Path) -> str:
         return hashlib.file_digest(handle, "sha256").hexdigest()
 
 
-def atomic_write(path: Path, data: bytes) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
-    try:
-        temporary.write_bytes(data)
-        os.replace(temporary, path)
-    except BaseException:
-        temporary.unlink(missing_ok=True)
-        raise
-
-
 def install_entity_avatar(avatar_root: Path, kind: str, entity_id: int, body: bytes,
                           content_type: str, provenance: dict,
                           face: dict | None = None, *, probe_face: bool = True) -> Path:
@@ -111,15 +99,8 @@ def install_entity_avatar(avatar_root: Path, kind: str, entity_id: int, body: by
     """
     from .previews import entity_image_key
 
-    avatar_root.mkdir(parents=True, exist_ok=True)
-    destination = avatar_root / f"{entity_image_key(kind, entity_id)}.img"
-    staging = destination.with_name(f"{destination.name}.{uuid.uuid4().hex}.tmp")
-    try:
-        staging.write_bytes(body)
-        os.replace(staging, destination)
-    except BaseException:
-        staging.unlink(missing_ok=True)
-        raise
+    destination = atomic_write_bytes(
+        avatar_root / f"{entity_image_key(kind, entity_id)}.img", body)
     Path(f"{destination}.ct").write_text(content_type, encoding="utf-8")
     record = FaceProbe()(destination) if probe_face and face is None else face
     if record:
@@ -177,7 +158,7 @@ class AvatarCandidateCache:
         request_path = self._request_path(url)
         with self._lock:
             if not object_path.is_file():
-                atomic_write(object_path, data)
+                atomic_write_bytes(object_path, data)
             request = {
                 "url": url,
                 "sha256": avatar.sha256,
@@ -186,7 +167,7 @@ class AvatarCandidateCache:
                 "width": avatar.width,
                 "height": avatar.height,
             }
-            atomic_write(
+            atomic_write_bytes(
                 request_path,
                 (json.dumps(request, ensure_ascii=False, indent=2) + "\n").encode("utf-8"),
             )
@@ -200,7 +181,7 @@ class AvatarCandidateCache:
             # entity + content hash makes this evidence immutable. Cache reuse must not
             # rewrite cached_at and make identical upstream evidence look like a new fact.
             if not path.is_file():
-                atomic_write(
+                atomic_write_bytes(
                     path,
                     (json.dumps(asdict(provenance), ensure_ascii=False, indent=2) + "\n").encode(
                         "utf-8"
