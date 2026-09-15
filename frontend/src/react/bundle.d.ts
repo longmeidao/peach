@@ -86,6 +86,25 @@ export interface ReactMount<P> {
   unmount(): void;
 }
 
+/** 整页归 React 的那些页面（`islands.ts` 的 React 档）。
+ *
+ * `prefetch` 把首屏写进共用的 Query 缓存，`mount` 创建这一页的 React 根。两件事分开是因为
+ * 「取完数才画」的契约：遗留层已经铺了骨架，页面自己再转一次圈就是同一次进入里两段等待态。 */
+export interface ReactPage<P> {
+  /** 首屏取数。中止后抛 `AbortError`，挂载方据此放弃这一次。 */
+  prefetch(props: P, signal: AbortSignal): Promise<void>;
+  mount(el: Element, props: P): ReactMount<P>;
+}
+
+/** 活动页没有来自遗留层的助手：整页的数据都来自 `/api/tasks`。 */
+export type ActivityProps = Record<string, never>;
+
+export interface ReactPages {
+  activity: ReactPage<ActivityProps>;
+}
+
+export declare const pages: ReactPages;
+
 export declare function mountGeneralSettings(el: Element, props: ConfigurationGroupProps): ReactMount<ConfigurationGroupProps>;
 export declare function mountMediaSettings(el: Element, props: ConfigurationGroupProps): ReactMount<ConfigurationGroupProps>;
 export declare function mountNetworkSettings(el: Element, props: ConfigurationGroupProps): ReactMount<ConfigurationGroupProps>;

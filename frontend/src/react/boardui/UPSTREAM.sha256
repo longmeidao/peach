@@ -1,4 +1,5 @@
 80ab66fcbaca762d75032deca7279043742b3f8637b4b1b8008993e3dfda6744  components/application/settings/settings-rows.tsx
+dd31f5ed329ecf176fcecbad11c1b32cdd31710f6290e7ac6a4e25a2fa25c4b4  components/base/badges/chip.tsx
 a49800d5cc58a9f8a98c07a7251e5923904b483b2f3e6e63e4fa0797acff101d  components/base/buttons/button.tsx
 6b67368aadfe2f0e9c409f29ad118dfab52b227741a97e59e67c6e381cfc77c7  components/base/buttons/icon-button.tsx
 f56415d9b83cfb4af68d9f359ccb8925f885bce60e6d29d38d73b14966499aaf  components/base/buttons/link-button.tsx

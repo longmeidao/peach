@@ -33,8 +33,7 @@ import { Scraping, loadScraping } from './islands/scraping';
 import type { ScrapingData, ScrapingProps } from './islands/scraping';
 import { LibraryProcessing, loadLibraryProcessing } from './islands/library-processing';
 import type { LibraryProcessingData, LibraryProcessingProps } from './islands/library-processing';
-import { Activity, loadActivity } from './islands/activity';
-import type { ActivityData, ActivityProps } from './islands/activity';
+import type * as ReactBundle from '@peach/react';
 
 /* 跨岛共享状态的入口一起从这里出去。遗留层拿到的是一个 bundle，它有两种用法：
  * `mountIsland` 挂一屏，`refreshStore` 告诉已经挂着的那屏「数据变了」。
@@ -61,31 +60,42 @@ export interface IslandState<D> {
   error: string;
 }
 
-/** 每个 island 的 props 与首屏数据类型。新增 island 时在这里登记，注册表随之要求实现。 */
+/** 每个 island 的 props 与首屏数据类型。新增 island 时在这里登记，注册表随之要求实现。
+ *  React 档的页面自己管数据（首屏落在共用的 Query 缓存里），`data` 写成 `null`。 */
 export interface IslandContracts {
   'library-processing': { props: LibraryProcessingProps; data: LibraryProcessingData };
   'scraping': { props: ScrapingProps; data: ScrapingData };
   'quality-goals': { props: QualityGoalsProps; data: QualityGoalsData };
   configuration: { props: ConfigurationProps; data: ConfigurationData };
-  activity: { props: ActivityProps; data: ActivityData };
+  activity: { props: ReactBundle.ActivityProps; data: null };
 }
 
 export type IslandName = keyof IslandContracts;
 type PropsOf<N extends IslandName> = IslandContracts[N]['props'];
 type DataOf<N extends IslandName> = IslandContracts[N]['data'];
 
-interface IslandDefinition<N extends IslandName> {
+/** Preact 档：这里取数、这里渲染。 */
+interface PreactIsland<N extends IslandName> {
   /** 首屏取数。中止后抛 `AbortError`，`mountIsland` 会静默放弃。 */
   load(props: PropsOf<N>, signal: AbortSignal): Promise<DataOf<N>>;
   component: ComponentType<PropsOf<N> & IslandState<DataOf<N>>>;
 }
+
+/** React 档：整页在 `@peach/react` 的 `pages` 里，这里只记它的名字（ADR-0031）。
+ *
+ *  两侧的契约是同一条：先 `prefetch` 把首屏取回来，再换掉遗留骨架、创建 React 根。 */
+interface ReactIsland {
+  react: keyof ReactBundle.ReactPages;
+}
+
+type IslandDefinition<N extends IslandName> = PreactIsland<N> | ReactIsland;
 
 const REGISTRY: { [N in IslandName]: IslandDefinition<N> } = {
   'library-processing': { load: loadLibraryProcessing, component: LibraryProcessing },
   'scraping': { load: loadScraping, component: Scraping },
   'quality-goals': { load: loadQualityGoals, component: QualityGoals },
   configuration: { load: loadConfiguration, component: Configuration },
-  activity: { load: loadActivity, component: Activity },
+  activity: { react: 'activity' },
 };
 
 /** 已注册的 island 名字。遗留层与测试用它核对路由表，不必知道注册表结构。 */
@@ -95,6 +105,8 @@ interface Mount {
   controller: AbortController;
   /** 是否已经真的画过。没画过就不许 `render(null, el)`：那会连遗留骨架一起清掉。 */
   painted: boolean;
+  /** React 档画过之后，卸载那棵根并撤掉它的容器。Preact 档没有。 */
+  dispose?: () => void;
 }
 
 const mounted = new Map<Element, Mount>();
@@ -117,6 +129,7 @@ export async function mountIsland<N extends IslandName>(
   unmountIsland(el);
   const mount: Mount = { controller: new AbortController(), painted: false };
   mounted.set(el, mount);
+  if ('react' in island) return mountReactPage(island, el, props, mount, options);
   let state: IslandState<DataOf<N>>;
   try {
     state = { data: await island.load(props, mount.controller.signal), error: '' };
@@ -124,21 +137,50 @@ export async function mountIsland<N extends IslandName>(
     if (mount.controller.signal.aborted) return;
     state = { data: null, error: errorMessage(cause) };
   }
+  if (!claimContainer(el, mount, options)) return;
+  // 注册表有多个 island 之后 `PropsOf<N>` 是按名字分发的索引类型，TS 推不出它与
+  // `Attributes` 相交仍是同一个对象，这里把结论写给它。
+  const attrs = { ...props, ...state } as Attributes & PropsOf<N> & IslandState<DataOf<N>>;
+  render(h(island.component, attrs), el);
+}
+
+/** 取数回来之后还能不能画：期间没有被重挂，遗留层也还停在这一页。能画就顺手清掉遗留骨架。 */
+function claimContainer(el: Element, mount: Mount, options: MountOptions): boolean {
   // 期间被卸载或重新挂载：这一次的结果已经过期，不许往新内容上盖。
-  if (mounted.get(el) !== mount) return;
+  if (mounted.get(el) !== mount) return false;
   // 遗留层已经换了页面：容器现在归别人，画上去就是把别的页面盖掉。
   if (options.isCurrent && !options.isCurrent()) {
     mounted.delete(el);
-    return;
+    return false;
   }
   // 遗留骨架不是 Preact 画的，交给 diff 会按标签复用节点、留下 data-skeleton 之类的
   // 旧属性。整个清掉再画，一次替换，只有一次布局变化。
   el.textContent = '';
   mount.painted = true;
-  // 注册表有多个 island 之后 `PropsOf<N>` 是按名字分发的索引类型，TS 推不出它与
-  // `Attributes` 相交仍是同一个对象，这里把结论写给它。
-  const attrs = { ...props, ...state } as Attributes & PropsOf<N> & IslandState<DataOf<N>>;
-  render(h(island.component, attrs), el);
+  return true;
+}
+
+/** React 档：动态取回 React 产物，先把首屏落进共用的 Query 缓存，再换掉骨架、创建根。 */
+async function mountReactPage<N extends IslandName>(
+  island: ReactIsland, el: Element, props: PropsOf<N>, mount: Mount, options: MountOptions,
+): Promise<void> {
+  const bundle = await import('@peach/react');
+  const page = bundle.pages[island.react] as ReactBundle.ReactPage<PropsOf<N>>;
+  try {
+    await page.prefetch(props, mount.controller.signal);
+  } catch {
+    // 中止就是用户已经走开，这一次不画。其余失败照画：原因和重试的节律都在页面自己手里，
+    // 它从 Query 缓存里读到的就是这次的错误。
+    if (mount.controller.signal.aborted) return;
+  }
+  if (!claimContainer(el, mount, options)) return;
+  // token、Preflight 与焦点规则都作用在 `.peach-react` 上，React 根要挂在带这个类的容器里。
+  // 容器本身归遗留层所有（它会直接 `innerHTML=`），所以另建一个，卸载时连它一起撤掉。
+  const host = el.ownerDocument.createElement('div');
+  host.className = 'peach-react';
+  el.append(host);
+  const root = page.mount(host, props);
+  mount.dispose = () => { root.unmount(); host.remove() };
 }
 
 /** 这个容器上是不是已经挂着一个 island。
@@ -154,7 +196,8 @@ export function unmountIsland(el: Element): void {
   mount.controller.abort();
   mounted.delete(el);
   // 只清自己画过的东西。还在取数时容器里是遗留骨架，那不属于 island。
-  if (mount.painted) render(null, el);
+  if (mount.dispose) mount.dispose();
+  else if (mount.painted) render(null, el);
 }
 
 export { javImageKind, normalizeJavImage, normalizeJavLayout, normalizeJavPreferences, panelFrame, syncJavImages } from './jav-artwork';

@@ -1,7 +1,8 @@
 /* 配置页各分区共用的组合件。
  *
  * 外框取 BoardUI 设置弹层的 `SettingsSectionLabel` + `SettingsCard`，开关行直接用 `SettingsRow`。
- * 注册表里没有行内提示、进度条和折叠，这三样用 BoardUI token 组合，差异登记在 `boardui/ORIGIN.md`。 */
+ * 注册表里没有折叠，它用 BoardUI token 组合，差异登记在 `boardui/ORIGIN.md`。
+ * 提示与进度条另有页面共用的一份，在 `../components/`。 */
 import { useId, useRef, useState } from 'react';
 import type { FormEvent, MouseEvent, ReactNode } from 'react';
 import { RiArrowRightSLine, RiExternalLinkLine } from '@remixicon/react';
@@ -66,30 +67,6 @@ export function FieldLabel({ children }: { children: ReactNode }) {
   return <p className="text-body-medium text-text-primary">{children}</p>;
 }
 
-type Tone = 'neutral' | 'info' | 'success' | 'warning' | 'error';
-
-/** 字段、分区旁的持久提示。没有密码、保存失败这类是当前状态，不和字段说明共用灰色小字。 */
-export function Note({ tone, title, children }: { tone: Tone; title?: string; children: ReactNode }) {
-  const content = (
-    <>
-      {title ? <p className="text-body-medium">{title}</p> : null}
-      <p className="text-body-2-regular">{children}</p>
-    </>
-  );
-  switch (tone) {
-    case 'info':
-      return <div role="status" className="flex flex-col gap-0.5 rounded-2lg bg-notification-information-background px-3 py-2 text-notification-information-foreground">{content}</div>;
-    case 'success':
-      return <div role="status" className="flex flex-col gap-0.5 rounded-2lg bg-notification-success-background px-3 py-2 text-notification-success-foreground">{content}</div>;
-    case 'warning':
-      return <div role="note" className="flex flex-col gap-0.5 rounded-2lg bg-status-yellow-background px-3 py-2 text-status-yellow-text">{content}</div>;
-    case 'error':
-      return <div role="alert" className="flex flex-col gap-0.5 rounded-2lg bg-background-tertiary-error px-3 py-2 text-text-error-primary">{content}</div>;
-    default:
-      return <div role="note" className="flex flex-col gap-0.5 rounded-2lg bg-background-tertiary-default px-3 py-2 text-text-secondary">{content}</div>;
-  }
-}
-
 /** 新窗口打开的外部链接，尾部带外链字形。 */
 export function ExternalLink({ href, children }: { href: string; children: ReactNode }) {
   return (
@@ -110,19 +87,6 @@ export function Fact({ term, children }: { term: ReactNode; children: ReactNode 
       <dt className="flex shrink-0 items-center gap-2 text-body-regular text-text-secondary">{term}</dt>
       <dd className="flex min-w-0 flex-wrap items-center justify-end gap-2 text-right text-body-regular break-all text-text-primary">{children}</dd>
     </div>
-  );
-}
-
-/** 已知总量的进度。宽度按比例画在 SVG 里：条宽写进 `rect` 的属性，不用内联样式。 */
-export function Progress({ label, value, max = 100, stops = [] }: { label: string; value: number; max?: number; stops?: number[] }) {
-  const filled = Math.min(Math.max(value, 0), max);
-  return (
-    <svg role="progressbar" aria-label={label} aria-valuemin={0} aria-valuemax={max} aria-valuenow={value}
-      viewBox={`0 0 ${max} 1`} preserveAspectRatio="none" className="h-1.5 w-full overflow-hidden rounded-full">
-      <rect width={max} height={1} className="fill-background-tertiary-default" />
-      <rect width={filled} height={1} className="fill-border-focus-ring" />
-      {stops.map((stop) => <rect key={stop} x={stop} width={0.4} height={1} className="fill-background-secondary-default" />)}
-    </svg>
   );
 }
 

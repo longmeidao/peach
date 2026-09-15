@@ -19,10 +19,11 @@ import { Select, SelectItem } from '@/components/base/select/select';
 import { ApiError, apiGet, apiSend, errorMessage } from '../../api';
 import { CONFIGURATION_URL, PICK_FOLDER_URL } from '../../configuration-endpoints';
 import type { ConfigurationData, ConfigurationGroupProps } from '../bundle';
+import { Note } from '../components/note';
 import { CloudDriveGuide } from './clouddrive-guide';
 import { LibraryIconPicker } from './library-icon-picker';
 import {
-  ErrorText, ExternalLink, Fact, FactList, FieldLabel, Footer, Help, Note, Section, SourceMark, Stack,
+  ErrorText, ExternalLink, Fact, FactList, FieldLabel, Footer, Help, Section, SourceMark, Stack,
 } from './section';
 import { busyProps, useAction } from './use-action';
 

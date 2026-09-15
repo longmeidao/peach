@@ -8251,9 +8251,13 @@ class WebUiSourceTests(unittest.TestCase):
     def test_the_activity_page_is_the_one_place_that_shows_every_task(self):
         """任务中心的界面：谁在跑、谁被挡下了、刚跑完的怎么样，一屏三段。
 
-        它是 island（ADR-0022），遗留层只铺骨架、交容器；数据契约由 `/api/tasks`
-        与 frontend/test/activity.test.tsx 各自守着。入口进管理菜单而不是挂在某一页
-        下面：扫描、追更、批量都会出现在它上面，从其中任何一页进都像是那一页的下一步。
+        它是 React 档（ADR-0031）：遗留层只铺骨架、交容器，整页在
+        `frontend/src/react/activity/` 里。所以这里断言的是外壳——路由、菜单入口与
+        深链冷启动的骨架。三段怎么分、轮询节律和失败时留下什么由
+        `frontend/test/react/activity.test.tsx` 守，徽章的三档颜色与失败卡的框线由
+        `frontend/e2e/design.test.ts` 读计算值守，数据契约由 `/api/tasks` 的路由测试守。
+        入口进管理菜单而不是挂在某一页下面：扫描、追更、批量都会出现在它上面，
+        从其中任何一页进都像是那一页的下一步。
         """
         self.assertRoute('/activity', "section:'activity'", "title:'活动'",
                          "openActivity(push)")
@@ -8266,18 +8270,13 @@ class WebUiSourceTests(unittest.TestCase):
         # 深链冷启动要铺的是这一页自己的骨架，不是默认那张。
         self.assertPageContains("'/activity':()=>pageSkeletonHtml('正在读取任务活动',")
         self.assertPageContains("'/configuration','/activity']);")
-        # 一条一条的记录，跟数据管理同一条 812px 窄列。
+        # 骨架那几张空卡跟数据管理同一条 812px 窄列，React 子树接手后正文停在同一条中线。
         self.assertPageContains(
             ".activitypage{width:min(812px,100%);margin:0 auto;display:grid;gap:32px}")
-        # 卡片、底部说明区与元信息全用管理区那一份 Geist Fieldset，本页不另起一套。
-        self.assertPageContains(".activity-run>.geist-fieldset-content{display:grid;gap:6px}")
-        # 失败：整框的线换成 danger，配方与 Note 的错误态同一条，不写新色值；
-        # 被挡下、被叫停、被打断都是正常终止，框线不变。
-        self.assertPageContains(
-            '.activity-run[data-status="failed"]'
-            '{border-color:color-mix(in srgb,var(--drop) 30%,var(--ground))}')
-        self.assertPageLacks(".activity-error{")
-        self.assertPageLacks(".activity-meta,")
+        # 正文归 React 子树：卡片、徽章与进度用 BoardUI 的源码加 Tailwind，
+        # 遗留样式表里只剩骨架要的那几条。
+        self.assertPageLacks(".activity-run-head{")
+        self.assertPageLacks(".activity-progress{")
 
     def test_the_configuration_page_is_an_island_inside_the_management_shell(self):
         """这台电脑的媒体文件夹与端口是主站里的一屏，不是另一套独立页面。
