@@ -32,7 +32,7 @@ export function PeachProxy({ initial, receipt }: { initial: PeachProxyState; rec
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     void action.run('save', (signal) => apiSend<PeachProxyState>('/api/configuration/peach-proxy', { mode, proxy: address }, 'POST', signal),
-      (next) => { setSaved(next); setAddress(''); receipt('已保存 Peach 代理'); });
+      (next) => { setSaved(next); setAddress(''); receipt('已保存配置'); });
   };
 
   return (
@@ -55,7 +55,7 @@ export function PeachProxy({ initial, receipt }: { initial: PeachProxyState; rec
         </Stack>
       ) : null}
       <Footer>
-        <Button type="submit" {...busyProps(action.busy === 'save')}>保存代理</Button>
+        <Button type="submit" {...busyProps(action.busy === 'save')}>保存配置</Button>
       </Footer>
     </Section>
   );

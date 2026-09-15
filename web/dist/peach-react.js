@@ -19447,7 +19447,7 @@ function Hp({ startup: e, receipt: t }) {
 				enabled: n,
 				silent: i,
 				desktop: o
-			}, "POST", e), () => t("已保存开机自启"));
+			}, "POST", e), () => t("已保存配置"));
 		},
 		children: [
 			/* @__PURE__ */ (0, J.jsxs)(Tp, { children: [
@@ -19781,7 +19781,6 @@ function am({ initial: e, initialJob: t }) {
 						children: "下载并安装"
 					}) : null,
 					/* @__PURE__ */ (0, J.jsx)(Cu, {
-						variant: "secondary",
 						disabled: f,
 						onClick: g,
 						...Bp(l.busy === "check"),
@@ -19821,7 +19820,7 @@ function cm({ initial: e, receipt: t }) {
 		r.preventDefault(), e.available && o.run("save", (e) => _p("/api/configuration/automatic-updates", {
 			mode: n,
 			interval_hours: i
-		}, "POST", e), () => t("已保存自动更新设置"));
+		}, "POST", e), () => t("已保存配置"));
 	}, c = e.available ? e.download_available ? "开启后一分钟内开始检查。下载完成后，在此确认重启安装。" : "开启后一分钟内开始检查。源码运行请前往发布页获取新版本。" : "自动更新需要由托盘管理的服务。";
 	return /* @__PURE__ */ (0, J.jsxs)(wp, {
 		title: "自动更新",
@@ -19868,11 +19867,10 @@ function cm({ initial: e, receipt: t }) {
 				children: /* @__PURE__ */ (0, J.jsx)(kp, { children: o.error })
 			}) : null,
 			/* @__PURE__ */ (0, J.jsx)(Dp, { children: /* @__PURE__ */ (0, J.jsx)(Cu, {
-				variant: "secondary",
 				type: "submit",
 				disabled: !e.available,
 				...Bp(o.busy === "save"),
-				children: "保存自动更新"
+				children: "保存配置"
 			}) })
 		]
 	});
@@ -20497,7 +20495,6 @@ function Rm({ data: e, receipt: t }) {
 						}, r))
 					}),
 					/* @__PURE__ */ (0, J.jsx)(Cu, {
-						variant: "secondary",
 						className: "self-start",
 						onClick: E,
 						children: "添加文件夹"
@@ -20583,7 +20580,6 @@ function Bm({ data: e }) {
 				children: /* @__PURE__ */ (0, J.jsx)(kp, { children: r.error })
 			}) : null,
 			/* @__PURE__ */ (0, J.jsx)(Dp, { children: /* @__PURE__ */ (0, J.jsx)(Cu, {
-				variant: "secondary",
 				onClick: () => void r.run("refresh", (e) => gp(bm, e), (e) => n(e.media_sources)),
 				...Bp(r.busy === "refresh"),
 				children: "刷新挂载状态"
@@ -20614,7 +20610,7 @@ function Hm({ initial: e, receipt: t }) {
 			password: u ? "" : o,
 			confirmation: u ? "" : c
 		}, "POST", e), (e) => {
-			r(e), a(""), s(""), l(""), d(!1), p({}), t(e.mode === "open" ? "已关闭访问密码" : "已保存访问密码");
+			r(e), a(""), s(""), l(""), d(!1), p({}), t(e.mode === "open" ? "已关闭访问密码" : "已保存配置");
 		}, (e) => {
 			let t = e instanceof pp ? e.body : null, n = t?.errors || t?.detail?.errors;
 			n ? p(n) : h.setError(hp(e));
@@ -20723,7 +20719,7 @@ function Gm({ initial: e, receipt: t }) {
 				mode: i,
 				proxy: o
 			}, "POST", e), (e) => {
-				r(e), s(""), t("已保存 Peach 代理");
+				r(e), s(""), t("已保存配置");
 			});
 		},
 		children: [
@@ -20765,7 +20761,7 @@ function Gm({ initial: e, receipt: t }) {
 			/* @__PURE__ */ (0, J.jsx)(Dp, { children: /* @__PURE__ */ (0, J.jsx)(Cu, {
 				type: "submit",
 				...Bp(c.busy === "save"),
-				children: "保存代理"
+				children: "保存配置"
 			}) })
 		]
 	});

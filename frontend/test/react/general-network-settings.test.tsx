@@ -22,7 +22,7 @@ it('开机自启：静默启动跟着开机自启解锁，保存发出三颗开�
   await settle();
   expect(fetcher.mock.calls[0]?.[0]).toBe('/api/configuration/startup');
   expect(sentBody(fetcher)).toEqual({ enabled: true, silent: true, desktop: false });
-  expect(receipt).toHaveBeenCalledWith('已保存开机自启');
+  expect(receipt).toHaveBeenCalledWith('已保存配置');
 });
 
 it('桌面快捷方式被别的安装占着时只锁那一颗，并说出原因', async () => {
@@ -48,7 +48,7 @@ it('Peach 代理：选自定义才出地址栏，保存后清空地址并记住�
   await submit(host.querySelector('form'));
   await settle();
   expect(sentBody(fetcher)).toEqual({ mode: 'proxy', proxy: 'http://127.0.0.1:7890' });
-  expect(receipt).toHaveBeenCalledWith('已保存 Peach 代理');
+  expect(receipt).toHaveBeenCalledWith('已保存配置');
   const saved = host.querySelector<HTMLInputElement>('#peachProxyAddress');
   expect(saved?.value).toBe('');
   expect(saved?.placeholder).toBe('已保存，留空保留');

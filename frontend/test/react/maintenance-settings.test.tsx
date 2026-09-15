@@ -47,7 +47,7 @@ describe('自动更新', () => {
     await submit(host.querySelector('form'));
     await settle();
     expect(sentBody(fetcher)).toEqual({ mode: 'download', interval_hours: 168 });
-    expect(receipt).toHaveBeenCalledWith('已保存自动更新设置');
+    expect(receipt).toHaveBeenCalledWith('已保存配置');
     await click(switches(host)[0]);
     await submit(host.querySelector('form'));
     await settle();
