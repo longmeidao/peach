@@ -53,7 +53,7 @@ export function LibraryIconPicker({ value, label, kind = 'local', onChange }: {
           <Heading slot="title" className="px-1 text-body-medium text-text-primary">选择媒体库图标</Heading>
           {/* 格子里只放图标，名字走 aria-label：带着字的话 42 个候选要排十几行。 */}
           <RadioGroup aria-label="候选图标" value={draft || AUTO} onChange={(next) => setDraft(next === AUTO ? '' : next)}
-            className="grid grid-cols-7 gap-1">
+            className="inline-grid grid-cols-7 gap-1">
             {LIBRARY_ICON_CHOICES.map(([key, name]) => (
               <Radio key={key || AUTO} value={key || AUTO} aria-label={key ? name : autoLabel}
                 className="flex h-10 cursor-pointer items-center justify-center rounded-lg text-foreground-icon-secondary outline-none hover:bg-dropdown-item-hover-background focus-visible:ring-2 focus-visible:ring-border-focus-ring data-selected:bg-dropdown-item-hover-background data-selected:text-text-primary">

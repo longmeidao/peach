@@ -26,7 +26,7 @@ export function CloudDriveGuide() {
           {CLOUDDRIVE_PROFILES.map((profile) => (
             <li key={profile.name} className="flex flex-col gap-2 rounded-2lg border border-separator-border p-3">
               <p className="text-body-medium text-text-primary">{profile.name}</p>
-              <dl className="grid grid-cols-1 gap-2 @md:grid-cols-3">
+              <dl className="inline-grid grid-cols-1 gap-2 @md:grid-cols-3">
                 {READINGS.map(([key, term]) => (
                   <div key={key} className="flex flex-col">
                     <dt className="text-caption-1-regular text-text-secondary">{term}</dt>

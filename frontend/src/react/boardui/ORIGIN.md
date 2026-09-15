@@ -36,6 +36,7 @@
 | 与 `web/board.css` 同名的 `--color-*` token | `:root` 上由 `board.css` 定值；`../styles.css` 在 `.peach-react` 与 `.dark .peach-react` 上按 `theme.css` 原文重新声明 | 未迁移页面的颜色保持不变，React 子树读到上游值 |
 | 弹出层的挂载位置 | `../entry.tsx` 用 `react-aria` 的 `UNSAFE_PortalProvider` 把 Popover 渲染进 `body` 末尾一个同样带 `.peach-react` 的容器 | 上游 Popover 渲染到 `body`，落在 token 重声明与 Preflight 的作用域外，读到的是 `board.css` 的值 |
 | 焦点环 | 输入框只画 BoardUI 外框上的 `ring`；`web/css/01-base.css` 的全局 `:focus-visible` 排除 `.peach-react` 子树 | 旧样式表排在后面，同特指度时会盖过 `outline-none`，内层输入框多出一圈 |
+| 与旧样式表同名的类 | 网格容器放在 flex 父元素里写 `inline-grid`，块级化后按 `display:grid` 计算，类名不和卡片网格撞，也不触发任意值 lint；`../styles.css` 用 `@source not inline("ring")` 不生成注释里扫到的 `ring`；`frontend/test/legacy-class-names.test.ts` 核对产物与旧样式表无同名类 | 旧样式表排在后面，卡片网格那条同名规则会把 `grid-cols-*` 压成一列，生成的 `.ring` 也会落到旧页面的 `.ring` 元素上 |
 | 提交键忙态 | 写 `aria-busy` 与 `aria-disabled`，不画 Spinner | `button` 条目没有加载态 |
 | 行内提示 | `../settings/section.tsx` 的 `Note` 按语气取 `status-yellow`、`background-tertiary-error`、`notification-*` token 组合 | 注册表里没有行内 Note 组件；`notification` 条目是带关闭键和动效的浮动通知 |
 | 进度条 | `../settings/section.tsx` 的 `Progress` 用 SVG 矩形画 | 注册表里没有进度组件 |

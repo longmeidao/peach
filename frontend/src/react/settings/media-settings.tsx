@@ -195,7 +195,7 @@ function MediaForm({ data, receipt }: ConfigurationGroupProps) {
                     ? <IconButton icon={RiCloseLine} aria-label="移除这个文件夹" onClick={() => remove(index)} />
                     : null}
                 </div>
-                <div className="grid grid-cols-1 gap-3 @lg:grid-cols-2">
+                <div className="inline-grid grid-cols-1 gap-3 @lg:grid-cols-2">
                   <Input label="媒体库名称" maxLength={80} placeholder="同名文件夹归入同一个媒体库"
                     value={row.library} onChange={(library) => edit(index, { library })} />
                   <div className="flex flex-col gap-1.5">
