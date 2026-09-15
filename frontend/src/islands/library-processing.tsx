@@ -11,7 +11,7 @@ export interface LibraryProcessingIssue { asset_id: number | null; title?: strin
 export interface LibraryProcessingData extends JobState {
   stage?: string; scanned?: number; identified?: number; candidates?: number; covers?: number;
   issue_count?: number; issue_preview?: LibraryProcessingIssue[]; issues_log?: string;
-  error_count?: number;
+  notes?: Record<string, number>;
   issues_truncated?: boolean; retryable_asset_ids?: number[];
   current_asset_id?: number | null; current_asset_name?: string; current_action?: string;
   current_started_at?: number; last_progress_at?: number; stalled?: boolean; waited_seconds?: number;
@@ -25,6 +25,16 @@ const ACTION_LABELS: Record<string, string> = {
   reading_local: '读取本地资料', querying_metadata: '查询外部资料',
   fetching_cover: '采集缺失封面', writing_candidates: '保存资料候选',
 };
+/* 来源说「没有」按类型报一个数，不进问题清单：馆藏里大量独立资源和创作者作品
+   任何目录站都收不到，它们不是待办。键与 `library_processing.MISS_MESSAGES` 同源。 */
+const NOTE_LABELS: Record<string, string> = { querying_metadata: '没有资料', fetching_cover: '没有封面' };
+
+function notesLine(notes: Record<string, number>): string {
+  const parts = Object.entries(notes)
+    .filter(([key, count]) => NOTE_LABELS[key] && count > 0)
+    .map(([key, count]) => `${NOTE_LABELS[key]} ${count} 部`);
+  return parts.length ? `外部来源${parts.join('、')}，7 天内不再问。` : '';
+}
 
 function currentLine(state: LibraryProcessingData): string {
   const action = ACTION_LABELS[state.current_action || ''] || state.stage || '正在处理';
@@ -109,13 +119,14 @@ export function LibraryProcessing({ data, error, toast, onComplete, mode, monito
   /* 进度条讲的是卡片上那个按钮此刻在做什么，留在卡片里；结果和故障讲的是这一趟任务
      的下场，挂在卡片外面，和链接管理、资源同步那两块同一个写法。 */
   const issues = state.issue_preview || [];
+  const notes = notesLine(state.notes || {});
   const retryable = state.status === 'failed' && !!state.retryable_asset_ids?.length;
   /* 问题清单收进那条错误 Note 的折叠里：卡片下面先看到的应该是「这一趟怎么了」，
      逐条明细是要展开才读的东西。完整清单在状态给出的日志文件里，界面只留前 20 条。 */
   const issueDetails = issues.length ? {
     label: state.issues_truncated
-      ? `${state.status === 'complete'?'采集记录':'问题清单'}：共 ${state.issue_count || 0} 项，展开查看前 ${issues.length} 项`
-      : `${state.status === 'complete'?'采集记录':'问题清单'}：共 ${state.issue_count || 0} 项`,
+      ? `问题清单：共 ${state.issue_count || 0} 项，展开查看前 ${issues.length} 项`
+      : `问题清单：共 ${state.issue_count || 0} 项`,
     items: issues.map(issue => ({
       label: issue.title || (issue.asset_id ? `视频 ${issue.asset_id}` : '媒体来源'),
       href: issue.asset_id ? `/item/${issue.asset_id}` : '',
@@ -147,7 +158,8 @@ export function LibraryProcessing({ data, error, toast, onComplete, mode, monito
         { variant: 'warning', label: '处理较慢', filled: true }) }} />}
       {(problem || state.status === 'failed') && <div role="alert" onClick={event=>{if((event.target as HTMLElement).closest('[data-note-action]'))retry();}} dangerouslySetInnerHTML={{ __html: noteHtml(problem || state.error || '处理未完成，请重试', { variant: 'error',filled:true,actionLabel:retryable?'重试未完成项':'',details:issueDetails }) }} />}
       {receipt && <div class="library-processing-result" dangerouslySetInnerHTML={{ __html: noteHtml(`已扫描 ${state.scanned || 0} 个文件，识别 ${state.identified || 0} 个番号，整理 ${state.candidates || 0} 组资料候选。`, { variant: 'success', label: '处理完成' }) }} />}
-      {state.status === 'complete' && issueDetails && <div dangerouslySetInnerHTML={{__html:noteHtml(`${state.issue_count || 0} 项采集记录`,{variant:'secondary',details:issueDetails})}} />}
+      {state.status !== 'running' && !!notes && <div dangerouslySetInnerHTML={{__html:noteHtml(
+        notes + (state.issues_log ? ` 完整记录：${state.issues_log}` : ''), { variant: 'secondary' })}} />}
     </div>
   </>;
 }

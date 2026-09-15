@@ -67,8 +67,12 @@ def describe_failure(error):
     if isinstance(error, (Unavailable, SourcePaused, httpx.TransportError)) and text:
         return text
     return f'处理出错（{type(error).__name__}）'
+#: 来源说「没有」不是待办：馆藏里本来就有大量独立资源和创作者作品，任何目录站都收不到
+#: 它们。逐条记在日志里备查，界面只按这两类各报一个数（`state['notes']`），不进问题清单。
 MISS_MESSAGES = {'querying_metadata': '外部来源没有这部片的资料，7 天内不再问',
                  'fetching_cover': '外部来源没有这部片的封面，7 天内不再问'}
+#: 日志里的写法反查回上面的键，界面按键取自己的短标签。
+NOTE_KEYS = {message: key for key, message in MISS_MESSAGES.items()}
 
 #: 状态文件与候选 CSV 的落盘节流。页面轮询读的是内存里的任务快照，文件只为进程没了
 #: 之后还能看到最后状态；候选 CSV 随处理进度越写越大，每条资产都重写一遍是平方级开销。
@@ -270,8 +274,32 @@ def decorate(state, *, now=None):
 
 
 def _issue_classification(message, retryable):
-    informational = message in MISS_MESSAGES.values()
-    return informational, 'info' if informational else 'error', retryable and not informational
+    """这条记录写进日志的级别，以及它值不值得重试。告知项两样都不是问题。"""
+    note = NOTE_KEYS.get(message)
+    return 'info' if note else 'error', retryable and not note
+
+
+def _record_issue(state, log_path, record):
+    """把一条记录写进日志，并按类型计进状态。
+
+    告知项只按类型各记一个数：它们占着那 20 条预览的话，一条真问题就被几百条
+    「来源没有这部片」挤出屏幕，而全库有大量片子任何目录站都收不到。
+    """
+    with open(log_path, 'a', encoding='utf-8') as handle:
+        handle.write(json.dumps(record, ensure_ascii=False) + '\n')
+    note = NOTE_KEYS.get(record['message'])
+    if note:
+        state['notes'][note] = state['notes'].get(note, 0) + 1
+        return
+    state['issue_count'] += 1
+    if len(state['issue_preview']) < ISSUE_PREVIEW_LIMIT:
+        state['issue_preview'].append({key: record[key] for key in
+                                       ('asset_id', 'title', 'path', 'message', 'severity')})
+    else:
+        state['issues_truncated'] = True
+    asset_id = record['asset_id']
+    if record['retryable'] and asset_id is not None and asset_id not in state['retryable_asset_ids']:
+        state['retryable_asset_ids'].append(asset_id)
 
 
 def snapshot(config):
@@ -292,25 +320,31 @@ def snapshot(config):
                     _save(state_path(config), state)
         except Timeout:
             pass
-    if 'error_count' not in state and state.get('status') in ('complete', 'failed') and state.get('job_id'):
+    # 状态文件没有 `notes` 时按日志重算：每条记录都在日志里，告知项和问题分得开。
+    # 行数对不上说明日志被截断过，那时宁可原样显示。
+    if 'notes' not in state and state.get('status') in ('complete', 'failed') and state.get('job_id'):
         try:
-            count, errors, retryable = 0, 0, set()
+            count, problems, notes, retryable = 0, 0, {}, set()
             with issues_path(config, state['job_id']).open(encoding='utf-8') as handle:
                 for line in handle:
                     item = json.loads(line)
                     count += 1
-                    if item.get('message') not in MISS_MESSAGES.values():
-                        errors += 1
-                        if item.get('retryable') and item.get('asset_id') is not None:
-                            retryable.add(item['asset_id'])
+                    key = NOTE_KEYS.get(item.get('message'))
+                    if key:
+                        notes[key] = notes.get(key, 0) + 1
+                        continue
+                    problems += 1
+                    if item.get('retryable') and item.get('asset_id') is not None:
+                        retryable.add(item['asset_id'])
             if count == state.get('issue_count'):
-                state['error_count'] = errors
-                state['retryable_asset_ids'] = sorted(retryable)
-                for item in state.get('issue_preview', []):
-                    item['severity'] = 'info' if item.get('message') in MISS_MESSAGES.values() else 'error'
+                preview = [item for item in state.get('issue_preview', [])
+                           if item.get('message') not in NOTE_KEYS]
+                state.update(notes=notes, issue_count=problems, issue_preview=preview,
+                             issues_truncated=problems > len(preview),
+                             retryable_asset_ids=sorted(retryable))
                 if state.get('error') == f'{count} 项需要处理，请查看详情并重试。':
-                    state['status'] = 'failed' if errors else 'complete'
-                    state['error'] = f'{errors} 项需要处理，请查看详情并重试。' if errors else ''
+                    state['status'] = 'failed' if problems else 'complete'
+                    state['error'] = f'{problems} 项需要处理，请查看详情并重试。' if problems else ''
         except (OSError, ValueError, TypeError):
             pass
     return decorate(state)
@@ -626,7 +660,7 @@ def process_library(config, db_path, candidate_root, cover_root, *, location='co
         state = dict(job_id=job_id or uuid.uuid4().hex, status='running',
                      stage='读取本地资料' if retrying else '扫描文件',
                      checked=0, total=0, scanned=0, identified=0, candidates=0, covers=0,
-                     issue_count=0, error_count=0, issue_preview=[], issues_truncated=False,
+                     issue_count=0, issue_preview=[], issues_truncated=False, notes={},
                      retryable_asset_ids=[],
                      last_progress_at=time.time(), progress_seq=0,
                      current_asset_id=None, current_asset_name='', current_action='',
@@ -667,20 +701,11 @@ def process_library(config, db_path, candidate_root, cover_root, *, location='co
             asset_id = asset.get('id')
             title = str(asset.get('catalog_title') or '') or Path(str(asset.get('name') or '')).name
             asset_path = str(asset.get('path') or '')
-            informational, severity, retryable = _issue_classification(message, retryable)
-            with open(log_path, 'a', encoding='utf-8') as handle:
-                handle.write(json.dumps({'asset_id': asset_id, 'title': title, 'path': asset_path,
-                    'message': message, 'severity': severity, 'failed_action': action, 'retryable': retryable,
-                    'last_failed_at': time.time()}, ensure_ascii=False) + '\n')
-            state['issue_count'] += 1
-            state['error_count'] += not informational
-            if len(state['issue_preview']) < ISSUE_PREVIEW_LIMIT:
-                state['issue_preview'].append(dict(asset_id=asset_id, title=title,
-                                                   path=asset_path, message=message, severity=severity))
-            else:
-                state['issues_truncated'] = True
-            if retryable and asset_id is not None and asset_id not in state['retryable_asset_ids']:
-                state['retryable_asset_ids'].append(asset_id)
+            severity, retryable = _issue_classification(message, retryable)
+            _record_issue(state, log_path, {
+                'asset_id': asset_id, 'title': title, 'path': asset_path, 'message': message,
+                'severity': severity, 'failed_action': action, 'retryable': retryable,
+                'last_failed_at': time.time()})
             state['last_progress_at'] = time.time()
             flush_state()
             report(dict(state))
@@ -834,9 +859,9 @@ def process_library(config, db_path, candidate_root, cover_root, *, location='co
                        current_asset_id=None, current_asset_name='', current_action='',
                        current_started_at=None, current_deadline_at=None)
             flush_candidates(force=True)
-            update(status='failed' if state['error_count'] else 'complete', stage='处理结束',
+            update(status='failed' if state['issue_count'] else 'complete', stage='处理结束',
                    checked=len(rows),
-                   error=f"{state['error_count']} 项需要处理，请查看详情并重试。" if state['error_count'] else '',
+                   error=f"{state['issue_count']} 项需要处理，请查看详情并重试。" if state['issue_count'] else '',
                    completed_at=time.time(), current_asset_id=None, current_asset_name='',
                    current_action='', current_started_at=None, current_deadline_at=None)
         except Exception:
