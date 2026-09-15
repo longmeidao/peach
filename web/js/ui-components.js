@@ -716,17 +716,6 @@ export function wireCollapse(root,selector,idPrefix,triggerSelector='summary'){
     if(expanded)body.classList.add('fcollapse-settled');
     summary.setAttribute('aria-controls',body.id);
     summary.setAttribute('aria-expanded',String(expanded));
-    const settle=(run,fn)=>{
-      let done=false,timer;
-      const finish=e=>{
-        if(e&&e.propertyName!=='height')return;
-        if(done)return;done=true;
-        body.removeEventListener('transitionend',finish);clearTimeout(timer);
-        if(run===transitionRun)fn();
-      };
-      body.addEventListener('transitionend',finish);
-      timer=setTimeout(finish,260);
-    };
     summary.addEventListener('click',event=>{
       event.preventDefault();
       expanded=!expanded;const run=++transitionRun;
@@ -735,17 +724,39 @@ export function wireCollapse(root,selector,idPrefix,triggerSelector='summary'){
         body.inert=false;
         const start=details.open?body.getBoundingClientRect().height:0;
         details.open=true;
-        body.style.height=start+'px';body.getBoundingClientRect();
-        body.style.height=body.scrollHeight+'px';
-        settle(run,()=>{body.style.height='auto';body.classList.add('fcollapse-settled')});
+        growCollapse(body,start,()=>run===transitionRun);
       }else{
         body.inert=true;body.classList.remove('fcollapse-settled');
         body.style.height=body.getBoundingClientRect().height+'px';body.getBoundingClientRect();
         body.style.height='0px';
-        settle(run,()=>{details.open=false;body.style.height=''});
+        settleHeight(body,()=>{if(run===transitionRun){details.open=false;body.style.height=''}});
       }
     });
   });
+}
+
+/* 高度过渡跑完再收尾；减少动效时没有 transitionend，260ms 兜底。 */
+function settleHeight(body,fn){
+  let done=false,timer;
+  const finish=e=>{
+    if(e&&e.propertyName!=='height')return;
+    if(done)return;done=true;
+    body.removeEventListener('transitionend',finish);clearTimeout(timer);
+    fn();
+  };
+  body.addEventListener('transitionend',finish);
+  timer=setTimeout(finish,260);
+}
+
+/**
+ * `.fcollapse` 从 `start` 长到内容此刻的高度，跑完交回 `auto` 并摘掉裁边。Collapse 展开与
+ * 侧栏名单摊开共用这一份。`isCurrent` 返回 false 说明中途又被收起，收尾就不做。
+ */
+export function growCollapse(body,start,isCurrent=()=>true){
+  body.classList.remove('fcollapse-settled');
+  body.style.height=start+'px';body.getBoundingClientRect();
+  body.style.height=body.scrollHeight+'px';
+  settleHeight(body,()=>{if(isCurrent()){body.style.height='auto';body.classList.add('fcollapse-settled')}});
 }
 
 /* 锚定在触发钮上的菜单：无展开动画，固定在视口内，内容在菜单内滚动。

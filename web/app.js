@@ -19,7 +19,7 @@ import {
   attachOverlayScrollbar, breadcrumbHtml, checkboxHtml, collectionSummaryHtml, closeAnchoredMenu, confirmModal, dismissMenu, emptyStateHtml, fieldsetTitle, selectOptionIconHtml,
   fillSkeletonTier, fitSkeleton, formModal, iconSwitchHtml, indexSkeletonHtml, loadingDotsHtml,
   mediaViewButtonsHtml, boardTabsHtml, mountFilterFrame, filterChipHtml, moveGlidePane, glideEase, sortControlsHtml, collectionHeaderHtml, wireHorizontalScroller, noteHtml, presentMenu, progressHtml, gaugeHtml, scrollerHtml, searchInputHtml, selectFieldHtml,
-  setActionBusy, skeletonHtml, spinnerHtml, wireAnchoredMenu, wireBusyActions, wireCollapse, wireDragReorder,
+  setActionBusy, skeletonHtml, spinnerHtml, growCollapse, wireAnchoredMenu, wireBusyActions, wireCollapse, wireDragReorder,
   wireIconSwitch, wireOverlayScrollbars, wireScrollers, wireSelectField, wireContextCard, configurationSkeletonHtml, wireLoadMore,
 } from './js/ui-components.js';
 
@@ -3992,7 +3992,11 @@ async function buildBars(){
        现在要看第几条。名单一变长，浏览器会顺着焦点和锚定把这一列推走，所以记下再放回。 */
     const scroller=$('#drawerScroll'),keep=scroller.scrollTop;
     const hold=()=>{scroller.scrollTop=keep};
+    const body=group.querySelector(':scope > .fcollapse'),before=body?.getBoundingClientRect().height;
     group.querySelector('.chips').outerHTML=chips(src,k,false,expanded?lim:999);
+    /* 摊开时名单从二十几条长到全部，和分组的 Collapse 走同一份高度过渡；中途收起整组就不收尾。 */
+    const toggle=group.querySelector('.board-section-toggle');
+    if(!expanded&&body)growCollapse(body,before,()=>toggle.getAttribute('aria-expanded')==='true');
     b.setAttribute('aria-expanded',String(!expanded));
     b.setAttribute('aria-label',(expanded?'展开全部':'收起')+name);
     /* 收起收的是整组。名单已经摊到最长，把它退回二十几条只是换一个断点，人还站在同一

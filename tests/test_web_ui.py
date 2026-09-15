@@ -6962,6 +6962,9 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("group.querySelector('.chips').outerHTML=chips(src,k,false,expanded?lim:999);")
         self.assertPageContains("b.setAttribute('aria-expanded',String(!expanded));")
         self.assertPageContains("if(expanded)group.querySelector('.board-section-toggle').click();")
+        # 摊开那一下和分组 Collapse 走同一份高度过渡，不是整段名单瞬间铺出来。
+        self.assertPageContains("if(!expanded&&body)growCollapse(body,before,()=>toggle.getAttribute('aria-expanded')==='true');")
+        self.assertPageContains("export function growCollapse(body,start,isCurrent=()=>true){")
         # 摊开的内容全在按下的这个点以下，这一列停在哪儿归人自己管。
         self.assertPageContains("const scroller=$('#drawerScroll'),keep=scroller.scrollTop;")
         self.assertPageContains("bind();hold();requestAnimationFrame(hold);});")
@@ -10386,7 +10389,8 @@ class WebUiSourceTests(unittest.TestCase):
         盖的那种要先猜卡片是什么底色，猜错就在图上留一道横带；淡的这种在任何底色上都
         成立。boardui 实测：列表自己带 `linear-gradient(#000 calc(100% - 44px),transparent)`，
         展开就取消，正好露五行、淡掉最后 44px。两头高度由 JS 量好写进变量，展开收起的
-        高度过渡与箭头旋转共用同一组 200ms 曲线。
+        高度过渡与共用 Collapse 同为 `.2s ease-in-out`：展开要长上千像素，先快后慢的曲线
+        在头一帧就把视口里那一截长完，看着像没有动画。
         """
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
         controls = (Path(__file__).resolve().parents[1] / "frontend/src/board-controls.ts").read_text(encoding="utf-8")
@@ -10394,7 +10398,9 @@ class WebUiSourceTests(unittest.TestCase):
                       "{mask-image:linear-gradient(#000 calc(100% - 44px),transparent)}", board)
         self.assertNotIn(".board-expand-ranks:not(.expanded)::after", board)
         # 过渡只挂在点展开键的那一下：切维度标签时内容换了、量出的高度跟着变，常驻过渡会让列表抖一下。
-        self.assertIn(".board-expand-ranks.toggling>.board-rank-list{transition:max-height .2s cubic-bezier(0,0,.2,1)}", board)
+        self.assertIn(".board-expand-ranks.toggling>.board-rank-list{transition:max-height .2s ease-in-out}", board)
+        self.assertIn(".fcollapse{overflow:hidden;transition:height .2s ease-in-out}", (
+            Path(__file__).resolve().parents[1] / "web/css/08-photos.css").read_text(encoding="utf-8"))
         self.assertNotIn("overflow:hidden;transition:max-height", board)
         self.assertIn(".board-rank-list,.board-expand-ranks.toggling>.board-rank-list,"
                       ".board-rank-expand svg{transition:none}", board)
