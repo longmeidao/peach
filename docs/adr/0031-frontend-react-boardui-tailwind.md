@@ -2,56 +2,99 @@
 
 - 状态：Accepted
 - 日期：2026-09-15
+- 修订：2026-09-15 补齐迁移桥接契约、弹层样式作用域、上游升级方式、lint 边界与验收定义
 - 关系：替代 ADR-0022 的框架与样式选择；沿用它的绞杀式迁移、构建产物入库、`/dist/` 路由与单一测试入口；ADR-0014 的 Video.js 保留。
 
 ## 背景
 
 ADR-0022 选了 Preact 加手写 CSS，BoardUI 的外观靠把样式规则抄进 `web/css/` 与 `web/board.css`。抄写没有单一真相：同一个 token 在 BoardUI 与 `board.css` 各有一份定值，浅色中性灰、焦点蓝和跟随系统深色的三档文字色都对不上，界面反复「没对齐」。
 
-BoardUI 通过 shadcn 注册表发布 React + Tailwind v4 源码，交互建在 React Aria 上。React Aria 不在 Preact 兼容层的支持范围内，留在 Preact 里就只能继续抄样式。
+BoardUI 通过 shadcn 注册表发布 React + Tailwind v4 源码，表单与弹层交互建在 React Aria 上。留在 Preact 里，要么继续抄样式，要么经 `preact/compat` 运行 React Aria 并自行验证每个组件的焦点、弹层与键盘行为。
 
 2026-09-14 在配置页「访问密码」分区做了试点：BoardUI 源码逐字复制，React 子树由 Preact 岛经 `ReactSlot` 挂载，与旧样式表同页共存。量到的代价与约束：
 
 - `peach-react.js` gzip 110.6 kB，只在挂 React 子树的页面动态加载；`peach-react.css` gzip 11.8 kB，每页加载；
-- Tailwind Preflight 必须限定在 `.peach-react` 容器内，工具类不能进层叠层；
-- `board.css` 的同名 token 排在后面，React 容器上要按 `theme.css` 原文重新声明；
-- 旧的全局 `:focus-visible` 会给 React 输入框多画一圈，必须排除 React 子树。
+- 旧样式表不分层，其中 `button,input{color:inherit}` 这类标签规则会压过层叠层里的工具类；
+- Tailwind Preflight 铺到整页会改掉未迁移页面的标题、表单与图片基线；
+- `board.css` 的同名 token 排在后面，会盖过 `theme.css` 的上游值；
+- 旧的全局 `:focus-visible` 会给 React 输入框多画一圈。
 
 测试也要换写法。`tests/test_web_ui.py` 639 个用例里有 597 个只读旧前端源码的字符串；页面迁走后，这批断言如果改绑新源码的字符串，等于把「没对齐」从 CSS 挪进测试。
 
 曾评估但不采用的方案：
 
 - 继续 Preact + 手写 CSS：正是反复没对齐的来源。
-- Preact + `preact/compat` 跑 BoardUI：React Aria 不支持兼容层。
+- Preact + `preact/compat` 跑 BoardUI：兼容层下 React Aria 的焦点管理、Portal 与键盘行为需要逐组件验证，升级时还要重验。Peach 不承担这份适配维护。
 - 只引入 Tailwind、组件自己写：样式仍是抄的，只是换成类名。
 - 整站 React 重写：没有可验收的中间态，违反「替代实现测试通过后才删旧代码」。
-- Next.js 等服务端渲染框架：单人自托管没有收益，还让运行时依赖 Node。
+- Next.js：本次迁移用不到它的路由与服务端能力；静态导出同样不需要 Node 运行时，但既有 Vite 构建加 Python 静态服务已经满足需要，换框架只增加迁移面。
 - 用 ESLint 承载 `@shadcn/lint`：`@typescript-eslint/parser` 的 peer 只到 TypeScript 6.0，项目用的是 7.0.2。
 
 ## 决策
 
+### 技术栈与上游源码
+
 - 新页面与迁移页面用 **React 19 + TypeScript（strict）+ Tailwind v4**，源码在 `frontend/src/react/`，单测用 vitest。
-- **BoardUI 源码只加不改**：从注册表逐字复制到 `frontend/src/react/boardui/`，来源与条目哈希记在 `ORIGIN.md`，逐文件 SHA-256 记在 `UPSTREAM.sha256`。Peach 需要不同组合或外观时，在 `src/react/` 下 Peach 自己的目录里组合，差异写进 `ORIGIN.md`。
-- **迁移节奏不变**：Preact 岛通过 `ReactSlot` 挂 React 子树，逐页替换，每次一到两个页面、独立分支集成；旧渲染函数、旧 CSS 与旧断言随页面删除，不保留双实现。最后一个 Preact 岛迁完移除 Preact；壳与路由迁完删除 `web/app.js`，`board.css` 里与 BoardUI 同名的 token 一并删除。
+- JSX 运行时按目录分开：`frontend/src/react/tsconfig.json` 只把 `jsxImportSource` 换成 `react`，未迁移代码继续按 Preact 编译。Vite 与 tsc 都取离文件最近的 tsconfig，不改全局配置。
+- **BoardUI 源码日常开发只读**：从注册表逐字复制到 `frontend/src/react/boardui/`，来源与条目哈希记在 `ORIGIN.md`，逐文件 SHA-256 记在 `UPSTREAM.sha256`。Peach 需要不同组合或外观时，在 `src/react/` 下 Peach 自己的目录里组合，差异写进 `ORIGIN.md`。
+- **上游升级走独立提交**：整文件重新复制，同一提交更新 `ORIGIN.md` 条目哈希、`UPSTREAM.sha256`、`theme.css` 与相关依赖，跑 `web` 域回归。发现上游缺陷时同样以组合件绕开或等上游修复后整文件替换，不在副本上打补丁。没有引用者的上游文件连同哈希行一起删除。哈希只证明副本没有偏离登记版本，组件行为仍由 vitest 与浏览器断言验证。
+
+### 迁移桥接
+
+- **迁移节奏不变**：逐页替换，每次一到两个页面、独立分支集成；旧渲染函数、旧 CSS 与旧断言随页面删除，不保留双实现。
+- **`ReactSlot` 是迁移期唯一的 React 挂载桥**，契约如下：
+  - 每个容器只创建一个 React root，参数变化经 `update` 更新同一个 root；
+  - Preact 卸载容器（切页、`unmountIsland`、错误态替换）时，清理函数调用 `root.unmount()`，React 子树的请求经 `AbortController` 一并取消；
+  - React 产物是动态加载的，加载完成后先确认容器仍在、本次挂载没有被取消，再创建 root。
+- **业务状态只有一份**：React 子树经 props 拿数据、经回调（如 `receipt`）交回结果，不订阅 Preact signals，也不在两侧各存一份同一数据。需要的遗留能力（`confirmModal`、来源图标表）只经 `@peach/legacy/*` 的声明模块调用。
+- Peach 自己以 HTML 字符串拼出的 Board 风格组件（`board-sankey.ts`、`board-analytics.ts`、`board-controls.ts`）随使用它们的页面改写成 `src/react/` 下的组合件，复用其中的数据与布局计算。
+- 删除顺序：最后一个 Preact 岛迁完、`ReactSlot` 与 `@peach/legacy/*` 的调用方清空后移除 Preact；壳与路由迁完删除 `web/app.js`；上述自写组件全部改写后删除 `board.css` 里与 BoardUI 同名的 token。
+
+### 新旧样式并存
+
+以下做法只服务于新旧样式表同页的阶段，由 `tests/test_frontend_build.py` 的 `BoardTokenTests`、`ReactBundleTests` 钉住：
+
+- 工具类不进层叠层，旧样式表的标签规则因此压不过类名；
+- Preflight 逐字包进 `@scope (.peach-react)`；
+- React 容器上按 `theme.css` 的 `:root` 与 `.dark` 块重新声明同名 token。这份声明不是手工副本，`BoardTokenTests` 逐条比对它与 `theme.css`，不一致即失败；
+- 全局 `:focus-visible` 排除 `.peach-react` 子树。
+
+**作用域覆盖弹层**：React Aria 的 Popover、Select 列表与 Dialog 经 Portal 渲染到容器外。`entry.tsx` 用 `UNSAFE_PortalProvider` 把它们统一挂到 `body` 末尾一个同样带 `.peach-react` 的容器，读到的 token、Preflight 与焦点规则和页面内一致。弹层不塞进可能裁切它的局部容器。
+
+旧样式表全部退出后重新评估上述四条：仍被第三方样式（如 Video.js）需要的隔离保留并写明原因，其余删除，Tailwind 回到上游默认的层叠层写法。
+
+### 测试与门槛
+
 - **沿用 ADR-0022**：`npm run build` 的产物提交进 `web/dist/`，运行时不需要 Node；`/dist/{path}` 路由不变；测试入口仍是 `scripts/test.ps1` / `scripts/test.sh` 的 `web` 域；依赖精确锁定，在 `docs/FRONTEND.md` 登记用途。
 - **旧断言先分类再删**。页面迁走时，它在 `tests/test_web_ui.py` 等处的源码字符串断言逐条归入三类，去向写进提交说明：
   - 设计决定（用户定过的颜色、状态色块、焦点样式）写成 `frontend/e2e/design.test.ts` 里读 `getComputedStyle` 的断言，或由 lint 规则覆盖；
   - 行为（提交什么、错误写回哪个字段、控件何时可用）写成 vitest；
   - 布局与运行期问题（溢出、等待态、控制台报错）归 `frontend/e2e/smoke.test.ts`。
-- **门槛**：
-  - `npm run lint` 用 Oxlint 跑 `@shadcn/lint` 的六条规则，只查 `src/react/`、排除 `boardui/`；`web` 域与 CI 都执行。
-  - `tests/test_frontend_build.py` 按 `UPSTREAM.sha256` 逐文件比对 `boardui/`。
-  - React 子树在请求期间写 `aria-busy`，首屏骨架写 `data-skeleton`，冒烟靠这两个标记判断页面稳定；BoardUI 组件不带加载态，由 Peach 的组合件补上。
+  - 三类各管一件事：lint 查源码是否守约定，`getComputedStyle` 查浏览器实际应用的样式，vitest 与浏览器交互查点击和键盘行为，互不替代。
+- **lint**：`npm run lint` 用 Oxlint 跑 `@shadcn/lint` 的六条规则，只查 `src/react/`、排除 `boardui/`；`web` 域与 CI 都执行。
+  - `no-restyle` 按 `settings.shadcn.ui`（`@/components`）识别 BoardUI 组件，所以 Peach 代码一律经 `@/components/...` 别名引用 BoardUI，不写相对路径；
+  - 规则约束的是随手改颜色、间距与组件外观。由数据决定的几何（进度、定位、媒体尺寸）走 SVG／元素属性或 React Aria 自带定位；确需内联样式时逐行禁用并在同一行写明原因，不整条关规则。
+- **哈希**：`tests/test_frontend_build.py` 按 `UPSTREAM.sha256` 逐文件比对 `boardui/`。
+- **页面稳定判据**：冒烟先断言目标页面主体已出现（成功内容、空态或错误态之一），再等 `aria-busy` 与 `data-skeleton` 消失。只看等待标记消失不算稳定：页面完全没渲染时也没有这两个标记。React 子树在请求期间写 `aria-busy`，首屏骨架写 `data-skeleton`；BoardUI 组件不带加载态，由 Peach 的组合件补上。
 
 ## 后果
 
 - 迁移期同一页会有两种外观：未迁移的分区仍是旧写法。
-- 每个页面多加载 11.8 kB gzip 的 `peach-react.css`。
+- 每个页面多加载一份 `peach-react.css`，体积随迁移的页面增长，当前值记在 `docs/FRONTEND.md`。
 - Oxlint 的 JS 插件 API 仍是 alpha，`@shadcn/lint` 只有 0.1.0：两者精确钉版本，升级前先跑 `web` 域。`eslint` 作为 `@shadcn/lint` 的 peer 会装进 `node_modules`，不调用。
-- 设计决定的浏览器断言和冒烟一样依赖本机 Chrome，缺 Chrome 时整组显式跳过。
-- `tests/test_frontend_build.py` 的 `ReactBundleTests`（Preflight 作用域、样式表顺序、焦点环排除）只在新旧并存期成立，最后一个旧页面迁完时删除。
+- 冒烟与设计决定断言依赖 npm、ffmpeg 与 Chrome。本机缺任一项时整组显式跳过，这只适用于非验收运行。CI 的 `web-bundle` 任务跑 typecheck、lint、vitest 与 build，不跑 e2e；CI 接入带浏览器的 e2e 任务、并在 CI 里把缺依赖判为失败之前，迁移分支须在本机 `web` 域输出里确认 e2e 实际执行。
+- `ReactBundleTests` 与 `BoardTokenTests` 里只在新旧并存期成立的断言，随「新旧样式并存」一节的做法一起删除。
 
 ## 验收门槛
 
-- 每个迁移分支：目标页面在桌面与 390×844 下功能等价；`web` 域与 `full` 全绿（含 tsc、vitest、lint、冒烟与设计决定断言）；`web/dist/` 与源码一致；旧断言的去向写进提交说明。
-- 迁移完成的定义：`web/app.js` 删除，Preact 移除，`ReactBundleTests` 删除，`tests/test_web_ui.py` 删空，AGENTS.md 与 README 的前端章节只描述 React。
+- 每个迁移分支：
+  - 目标页面在桌面与 390×844 下功能等价；
+  - `web` 域与 `full` 全绿，含 tsc、vitest、lint、冒烟与设计决定断言，e2e 显示为跳过的运行不算通过；
+  - 反复进入、离开、返回页面，以及请求未完成时切页，都不重复请求、不留旧数据覆盖新页面，控制台无报错；
+  - 页面含弹层时，在浏览器里核对明暗主题、焦点进出与恢复、层叠顺序与滚动锁定；
+  - `web/dist/` 与源码一致；旧断言的去向写进提交说明。
+- 迁移完成的定义：
+  - `web/app.js` 删除，Preact、`ReactSlot` 与 `@peach/legacy/*` 移除；
+  - 并存期断言按上一节删除；
+  - `tests/test_web_ui.py` 里依赖旧实现的断言迁移或删除完毕，仍然成立的静态资源、页面服务与构建契约测试保留或迁往对应测试文件；
+  - AGENTS.md 与 README 的前端章节只描述 React。
