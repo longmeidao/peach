@@ -8,16 +8,22 @@
 <link rel="icon" href="/favicon.ico" type="image/x-icon">
 <link rel="stylesheet" href="/vendor/videojs/8.24.0/video-js.min.css">
 <title>Peach · 蜜桃</title>
+<!-- React 子树（BoardUI 源码 + Tailwind）排在旧样式表前面：`:root` 上同名的 `--color-*` token
+     由后面的 board.css 定值，未迁移页面的颜色不受这份样式影响；React 子树在 `.peach-react`
+     容器上重新声明上游值。 -->
+<link rel="stylesheet" href="/dist/peach-react.css">
 <link rel="stylesheet" href="/app.css">
 <link rel="stylesheet" href="/board.css">
 <!-- 主题必须在第一次绘制之前定下来。app.js 是 module，等同 defer：轮到它跑的时候
      浏览器已经按系统色画过一帧，手动选了浅色的人每次进页面都要先看一下深色。
-     这段只做两件事——把选择写到 <html> 的 data-theme、把地址栏色块切到同一档；
-     色板只在 web/css/01-base.css 一份，切换逻辑只在 app.js 的 applyTheme() 一份。 -->
+     这段只做三件事——按实际深浅给 <html> 加减 `dark` 类、把选择写到 data-theme、
+     把地址栏色块切到同一档；色板只在 web/css/01-base.css 一份，切换逻辑只在 app.js 的
+     applyTheme() 一份。 -->
 <script>
 (()=>{try{
   document.documentElement.classList.toggle('board-high-contrast',localStorage.getItem('peach.high-contrast')==='true');
   const choice=JSON.parse(localStorage.getItem('peach.settings.v1')||'{}').theme;
+  document.documentElement.classList.toggle('dark',choice==='dark'||(choice!=='light'&&matchMedia('(prefers-color-scheme: dark)').matches));
   if(choice!=='light'&&choice!=='dark')return;
   document.documentElement.dataset.theme=choice;
   document.querySelectorAll('meta[data-theme-color]').forEach(meta=>{

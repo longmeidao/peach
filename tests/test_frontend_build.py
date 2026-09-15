@@ -15,6 +15,7 @@ ADR-0022 的取舍是「构建产物进 Git」：运行时的 Python 服务、Py
 """
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 import re
@@ -84,6 +85,138 @@ class IslandBundleTests(unittest.TestCase):
         self.assertIn("await import('/dist/peach-ui.js')", app_js)
 
 
+REACT_BUNDLE = DIST / "peach-react.js"
+REACT_STYLES = DIST / "peach-react.css"
+
+
+class BoardTokenTests(unittest.TestCase):
+    """BoardUI 的语义 token 在 `web/board.css` 里另有一份定值，两份各管一片页面。"""
+
+    @staticmethod
+    def declarations(css, selector):
+        """同一选择器可能分几块写，合并后返回其中的 `--color-*` 声明。"""
+        found = {}
+        for block in re.finditer(rf"(?ms)^{re.escape(selector)} \{{\n(.*?)^\}}", css):
+            found.update(re.findall(r"(--color-[\w-]+):\s*([^;]+);", block.group(1)))
+        return found
+
+    def test_the_react_subtree_redeclares_shared_tokens_with_upstream_values(self):
+        """board.css 在 `:root` 上另定同名 token 且排在后面；React 容器上的值逐字等于 theme.css。"""
+        legacy = "".join(path.read_text(encoding="utf-8") for path in
+                         [ROOT / "web" / "board.css", *sorted((ROOT / "web" / "css").glob("*.css"))])
+        shared = set(re.findall(r"(--color-[\w-]+):", legacy))
+        theme = (FRONTEND / "src" / "react" / "boardui" / "styles" / "theme.css").read_text(encoding="utf-8")
+        styles = (FRONTEND / "src" / "react" / "styles.css").read_text(encoding="utf-8")
+        for upstream, local in ((":root", ".peach-react"), (".dark", ".dark .peach-react")):
+            expected = {name: value for name, value in self.declarations(theme, upstream).items()
+                        if name in shared}
+            self.assertTrue(expected, f"theme.css 的 {upstream} 块里没找到同名 token")
+            self.assertEqual(self.declarations(styles, local), expected,
+                             f"styles.css 的 {local} 要与 theme.css 的 {upstream} 同名 token 逐条一致")
+
+    def test_manual_and_system_dark_palettes_in_board_css_agree(self):
+        """手动选深色与跟随系统深色是同一副配色，两块分开写，只改一块时文字色会差一档。"""
+        board = (ROOT / "web" / "board.css").read_text(encoding="utf-8")
+        manual = re.search(r':root\[data-theme="dark"\]\{(--color-text-primary:[^}]*)\}', board)
+        system = re.search(r"@media\(prefers-color-scheme:dark\)\{:root:not\(\[data-theme\]\)\{"
+                           r"(--color-text-primary:[^}]*)\}", board)
+        self.assertIsNotNone(manual)
+        self.assertIsNotNone(system)
+        self.assertEqual(sorted(system.group(1).split(";")), sorted(manual.group(1).split(";")))
+
+
+class ReactBundleTests(unittest.TestCase):
+    """React 子树（BoardUI 源码 + Tailwind）与旧样式表同处一页的门槛。
+
+    这几条都是「tsc 和 vitest 看不见、页面上才出事」的约束：产物引用路径、样式表顺序、
+    工具类有没有被层叠层压住、Preflight 有没有漏到整页。
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        for path in (BUNDLE, REACT_BUNDLE, REACT_STYLES):
+            if not path.is_file():
+                raise unittest.SkipTest(
+                    f"{path.relative_to(ROOT)} 不在：先 `npm --prefix frontend run build`")
+        cls.islands = BUNDLE.read_text(encoding="utf-8")
+        cls.react = REACT_BUNDLE.read_text(encoding="utf-8")
+        cls.css = REACT_STYLES.read_text(encoding="utf-8")
+
+    def test_islands_load_the_react_bundle_by_its_served_path(self):
+        """island 按 `@peach/react` 写，产物里必须改写成服务端真的提供的路径，且 React 不进 peach-ui.js。"""
+        self.assertIn('import("/dist/peach-react.js")', self.islands)
+        self.assertNotIn("react-dom", self.islands)
+        self.assertIn("mountAccessSettings", self.react)
+
+    def test_the_react_bundle_keeps_the_legacy_modules_external(self):
+        self.assertIn('from "/js/core.js"', self.react)
+        self.assertNotIn("process.env", self.react, "库模式没替换 NODE_ENV，浏览器里没有 process")
+
+    def test_utilities_stay_outside_cascade_layers(self):
+        """旧样式表不分层。工具类放进层里，`button,input,textarea{color:inherit}` 这类标签规则就会压过它。"""
+        layers = set(re.findall(r"@layer\s+([\w-]+)", self.css))
+        self.assertNotIn("utilities", layers)
+        self.assertNotIn("base", layers)
+
+    def test_preflight_only_reaches_the_react_subtree(self):
+        self.assertEqual(self.css.count("@scope"), 1)
+        self.assertRegex(self.css, r"@scope\s*\(\.peach-react\)")
+        scoped = (FRONTEND / "src" / "react" / "preflight-scoped.css").read_text(encoding="utf-8")
+        upstream = FRONTEND / "node_modules" / "tailwindcss" / "preflight.css"
+        if not upstream.is_file():
+            self.skipTest("跳过 Preflight 原文比对：frontend/node_modules 还没装")
+        opening = "@scope (.peach-react) {\n"
+        self.assertIn(opening, scoped)
+        self.assertTrue(scoped.endswith("}\n"))
+        self.assertEqual(scoped[scoped.index(opening) + len(opening):-2],
+                         upstream.read_text(encoding="utf-8"),
+                         "preflight-scoped.css 与 tailwindcss 依赖里的原文不一致，按文件开头的说明重新生成")
+
+    def test_the_legacy_focus_ring_stays_out_of_the_react_subtree(self):
+        """旧样式表排在后面，全局 `:focus-visible` 与 `outline-none` 同特指度时它赢，输入框会多画一圈。"""
+        base = (ROOT / "web" / "css" / "01-base.css").read_text(encoding="utf-8")
+        self.assertIn(":where(:not(.peach-react *)):focus-visible{outline:2px solid var(--tungsten);", base)
+        self.assertNotRegex(base, r"(?m)^:focus-visible\{")
+
+    def test_react_styles_load_before_the_legacy_stylesheets(self):
+        """同名 `--color-*` token 由后面的 board.css 定值，未迁移页面的颜色才不受影响。"""
+        index = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
+        order = [index.index(f'href="{href}"') for href in ("/dist/peach-react.css", "/app.css", "/board.css")]
+        self.assertEqual(order, sorted(order))
+
+    def test_the_dark_class_follows_the_theme_in_both_places(self):
+        """BoardUI 的深色 token 挂在 `.dark` 上；首帧脚本和 applyTheme() 都要按实际深浅加减它。"""
+        index = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
+        app_js = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+        self.assertIn("classList.toggle('dark',", index)
+        self.assertIn("root.classList.toggle('dark',dark)", app_js)
+
+
+class BoardUiUpstreamTests(unittest.TestCase):
+    """`frontend/src/react/boardui/` 是 BoardUI 注册表源码的逐字副本，只加不改（ADR-0031）。
+
+    `UPSTREAM.sha256` 记下复制时每个文件的 SHA-256。改了副本、多出没登记的文件、登记了却
+    删掉，都在这里红。比的是登记的快照而不是线上注册表：上游随时会改，测试不能联网。
+    升级上游时重新复制文件、重算对应行，并更新 `ORIGIN.md` 的条目哈希。
+    """
+
+    BOARDUI = FRONTEND / "src" / "react" / "boardui"
+    RECORDS = ("ORIGIN.md", "UPSTREAM.sha256")
+
+    def test_the_copied_sources_match_their_recorded_upstream_hashes(self):
+        recorded = {}
+        for line in (self.BOARDUI / "UPSTREAM.sha256").read_text(encoding="utf-8").splitlines():
+            digest, path = line.split("  ", 1)
+            recorded[path] = digest
+        present = {file.relative_to(self.BOARDUI).as_posix(): file for file in self.BOARDUI.rglob("*")
+                   if file.is_file() and file.name not in self.RECORDS}
+        self.assertEqual(sorted(present), sorted(recorded),
+                         "boardui/ 的文件要与 UPSTREAM.sha256 一一对应；Peach 自己的组合放在 boardui/ 外面")
+        for path, file in present.items():
+            self.assertEqual(hashlib.sha256(file.read_bytes()).hexdigest(), recorded[path],
+                             f"boardui/{path} 与复制时的上游内容不同；外观差异在 boardui/ 外面组合")
+
+
 class FrontendManifestTests(unittest.TestCase):
     """依赖清单和根 `package.json` 是两份，各自的口径都要精确。"""
 
@@ -124,7 +257,8 @@ class FrontendManifestTests(unittest.TestCase):
         """
         workflow = (ROOT / ".github" / "workflows" / "test.yml").read_text(encoding="utf-8")
         for step in ("actions/setup-node", "npm --prefix frontend ci",
-                     "npm --prefix frontend run typecheck", "npm --prefix frontend test",
+                     "npm --prefix frontend run typecheck", "npm --prefix frontend run lint",
+                     "npm --prefix frontend test",
                      "npm --prefix frontend run build",
                      "git add --intent-to-add -- web/dist",
                      "git diff --exit-code -- web/dist"):
@@ -259,14 +393,44 @@ class SharedStateContractTests(unittest.TestCase):
 
 
 class VitestTests(unittest.TestCase):
-    """vitest 走同一个测试入口，但缺 Node 时跳过而不是红。"""
+    """vitest、tsc 与 lint 走同一个测试入口，但缺 Node 时跳过而不是红。
 
-    def test_the_island_suite_passes(self):
+    三者互不覆盖：vitest 经 Vite 转译时只剥掉类型、不做检查，类型错误照样跑绿；
+    裸色值、任意值和在 BoardUI 组件上改样式，类型和行为测试都看不见。
+    """
+
+    def _npm(self, tool: str, package: str) -> str:
         npm = shutil.which("npm")
         if npm is None:
-            self.skipTest("跳过 vitest：本机没有 npm。装 Node 24+ 后 `-Scope web` 会带上它")
-        if not (FRONTEND / "node_modules" / "vitest").is_dir():
-            self.skipTest("跳过 vitest：frontend/node_modules 还没装，先 `npm --prefix frontend ci`")
+            self.skipTest(f"跳过 {tool}：本机没有 npm。装 Node 24+ 后 `-Scope web` 会带上它")
+        if not (FRONTEND / "node_modules" / package).is_dir():
+            self.skipTest(f"跳过 {tool}：frontend/node_modules 还没装，先 `npm --prefix frontend ci`")
+        return npm
+
+    def test_the_frontend_sources_typecheck(self):
+        npm = self._npm("tsc", "typescript")
+        completed = subprocess.run(
+            [npm, "--prefix", str(FRONTEND), "run", "typecheck", "--silent"],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            cwd=str(FRONTEND), check=False)
+        self.assertEqual(completed.returncode, 0, f"{completed.stdout}\n{completed.stderr}")
+
+    def test_the_react_sources_follow_the_design_system_lint(self):
+        """`@shadcn/lint` 挡住裸色值、任意值、内联样式和在 BoardUI 组件上改样式（ADR-0031）。"""
+        npm = self._npm("lint", "oxlint")
+        completed = subprocess.run(
+            [npm, "--prefix", str(FRONTEND), "run", "lint", "--silent", "--", "--format=json"],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            cwd=str(FRONTEND), check=False)
+        output = f"{completed.stdout}\n{completed.stderr}"
+        self.assertEqual(completed.returncode, 0, output)
+        report = json.loads(completed.stdout)
+        self.assertEqual(report["diagnostics"], [], output)
+        # 没有问题时 Oxlint 什么都不打印，路径写错查了 0 个文件也照样退出 0。
+        self.assertGreater(report["number_of_files"], 0, output)
+
+    def test_the_island_suite_passes(self):
+        npm = self._npm("vitest", "vitest")
         completed = subprocess.run(
             [npm, "--prefix", str(FRONTEND), "test", "--silent"],
             capture_output=True, text=True, encoding="utf-8", errors="replace",

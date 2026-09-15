@@ -18,7 +18,7 @@ class DesktopSettingsTests(unittest.TestCase):
     def test_configuration_order_and_danger_area_share_the_ui_contract(self):
         root = Path(__file__).resolve().parents[1]
         configuration = (root / 'frontend/src/islands/configuration.tsx').read_text(encoding='utf-8')
-        names = ['<StartupSettings', '<ConfigurationForm', '<MountStatus', '<PeachProxy', '<AccessSettings', '<ReleaseUpdates', '<Facts', '<UninstallSettings']
+        names = ['<StartupSettings', '<ConfigurationForm', '<MountStatus', '<PeachProxy', '<ReactSlot mount="mountAccessSettings"', '<ReleaseUpdates', '<Facts', '<UninstallSettings']
         # 定位配置主页面，排除同文件中组件定义的内部 JSX。
         page = configuration[configuration.index('export function Configuration('):]
         self.assertEqual(sorted(names, key=page.index), names)

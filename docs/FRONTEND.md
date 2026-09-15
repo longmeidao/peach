@@ -1,9 +1,9 @@
 # 前端 island 层
 
 Peach 的界面正在从 `web/app.js`（无构建、6.7k 行的原生 ES module）逐页迁到
-Vite + TypeScript + Preact。迁移方式是 strangler：**遗留路由继续拥有外壳和每一个页面**，
-一页被重写成 island 之后，遗留入口只负责铺骨架、把容器和自己独有的助手交出去。
-为什么这么做、以及不做整体重写的理由见 `docs/adr/0022-frontend-vite-preact-strangler.md`。
+React + Tailwind v4 + BoardUI 源码，已迁出的 Preact island 是过渡层。迁移方式是 strangler：
+**遗留路由继续拥有外壳和每一个页面**，一页被重写之后，遗留入口只负责铺骨架、把容器和自己独有的助手交出去。
+为什么这么做、以及不做整体重写的理由见 `docs/adr/0031-frontend-react-boardui-tailwind.md`。
 
 只有一条不可变的约束：**运行时没有 Node**。Python 服务、PyInstaller 包和 macOS 上的
 检出都直接读 `web/`，所以构建产物提交进 Git，不用任何 CDN。
@@ -18,8 +18,11 @@ Vite + TypeScript + Preact。迁移方式是 strangler：**遗留路由继续拥
 | `frontend/src/api.ts` | 带 `AbortController` 的取数封装 |
 | `frontend/src/management.ts` | 数据管理首屏 Fieldset、网盘能力显隐与浏览历史导入指南 |
 | `frontend/src/legacy/*.d.ts` | `/js/core.js`、`/js/ui-components.js` 的手写类型 |
-| `frontend/test/` | vitest 用例与遗留模块的桩 |
+| `frontend/src/react/` | React 子树：`entry.tsx` 是构建入口，`bundle.d.ts` 是对外契约，`boardui/` 逐字复制 BoardUI 源码 |
+| `frontend/src/react-slot.tsx` | Preact island 里挂 React 子树的交接组件 |
+| `frontend/test/` | vitest 用例与遗留模块的桩；`test/react/` 按 React JSX 转换 |
 | `web/dist/peach-ui.js` | 构建产物，**进 Git**，由 `/dist/{name}` 提供 |
+| `web/dist/peach-react.js`、`peach-react.css` | React 子树的构建产物，**进 Git** |
 
 首次运行页（未配置时的 `GET /` 与 `POST /setup`）不在这张表里：它是 SPA 外壳之外的一张
 独立页面，HTML 与样式都自包含在 `src/peach/routes_pages.py`，只借 `/js/ui-components.js` 的 `attachOverlayScrollbar` 与 `wireCollapse` 画整页滚动条和「高级设置」的折叠，此外不引 `web/` 的资产，也不是
@@ -98,15 +101,31 @@ watch 模式只负责把产物写回 `web/dist/`。刷新页面就能看到改�
 测试与类型仍然只有一个入口：
 
 ```bash
-& .\scripts\test.ps1 -Scope web   # Windows；含 vitest、产物与契约断言
+& .\scripts\test.ps1 -Scope web   # Windows；含 tsc、vitest、产物与契约断言
 ./scripts/test.sh web             # macOS
-npm --prefix frontend run typecheck
 ```
 
-`web` 域里的 vitest 在没有 npm 或没装 `frontend/node_modules` 时**显式跳过**，不会让
+vitest 转译时只剥掉类型、不做检查，所以 `web` 域另跑一遍 `npm --prefix frontend run typecheck`。
+两者在没有 npm 或没装 `frontend/node_modules` 时**显式跳过**，不会让
 测试域变红。「产物是否由当前源码构建出来」这一条本机验不了（不装 Node 就无法重建），
 它的门槛在 CI 的 `web-bundle` job：`npm run build` 之后 `git diff --exit-code -- web/dist`。
 **改了 `frontend/src` 就必须重新构建并把 `web/dist/` 一起提交**，否则 CI 会红。
+
+同一个域里还有真浏览器冒烟 `tests/test_web_e2e.py`：它在临时数据根上生成 12 条合成演示库、
+起回环 `peach serve --no-auth`，再跑 `npm --prefix frontend run e2e`。用例在
+`frontend/e2e/smoke.test.ts`，每条主路由在桌面与 390×844 下断言：无页面异常与 `console.error`、
+无同源 4xx/5xx 与失败请求、`aria-busy` 与 `data-skeleton` 会消失、无横向溢出、无越出视口的元素。
+浏览器取本机 Google Chrome（`PEACH_E2E_CHROME` 可指定），短片由 ffmpeg 编码；缺 npm、
+`playwright-core`、ffmpeg 或 Chrome 时显式跳过。声明根是 Windows 形态，目前只在 Windows 上执行。界面验收里发现的同类问题，
+先在这里补一条用例再修。
+
+设计决定另有 `frontend/e2e/design.test.ts`，读 `getComputedStyle` 断言用户定过的外观：React 输入框不带旧焦点环、
+React 子树读到 BoardUI 的 token 原值、持久警示是状态色块。页面迁到 React 时，旧的源码字符串断言按 ADR-0031
+分三类再删：设计决定进这里或 lint，行为进 vitest，布局与运行期进冒烟。
+
+`npm --prefix frontend run lint` 检查 `src/react/` 的设计系统规则，`web` 域与 CI 都跑。`no-restyle` 报在
+BoardUI 组件上的间距或外观，处理办法是在组件外面套一层普通元素，不给规则加例外。
+`src/react/boardui/` 只加不改，`UPSTREAM.sha256` 记着复制时每个文件的哈希，由 `tests/test_frontend_build.py` 比对。
 
 ## 挂载契约
 
@@ -201,11 +220,13 @@ await ui.refreshStore('quality-goals');   // 挂着的那屏自己重画，不�
 5. `tests/test_web_ui.py`：把对那段渲染源的断言换成断言挂载契约；搬走的语义契约
    （中间省略、空态、标签文案）在 `tests/test_frontend_build.py` 的
    `IslandSourceContractTests` 里补回来，不能让它无声消失。
-6. 按顺序跑 `npm --prefix frontend run typecheck`、`& .\scripts\test.ps1 -Scope web`，
+6. 跑 `& .\scripts\test.ps1 -Scope web`（含 tsc 与 vitest），
    再 `npm --prefix frontend run build` 并把 `web/dist/` 一起提交。
 
-样式暂时继续用 `web/css/` 下的分区：已迁的页面复用原有的类名，产物这一轮不出 `peach-ui.css`。
-`/dist/{name}` 已经允许 `.css`，等某个 island 真的需要自己的样式时再开。
+Preact island 继续用 `web/css/` 下的分区，复用原有的类名，`peach-ui.js` 不出样式表。
+React 子树的样式是 Tailwind v4 加 BoardUI 主题，产物 `peach-react.css`；它与旧样式表同处一页的
+三条约束（工具类不分层、只扫描 `src/react/`、Preflight 限定在 `.peach-react` 里）写在
+`frontend/src/react/styles.css` 开头，逐字复制与没有复制的上游文件见 `frontend/src/react/boardui/ORIGIN.md`。
 
 ## 依赖清单
 
@@ -222,6 +243,18 @@ vendor 到 `web/vendor/` 的四个包（video.js、swiper、lucide-static、heal
 | `typescript` | 类型即契约：注册表、props 与端点响应都靠它在编译期拦住漂移 |
 | `vitest` | 前端测试运行器。与 Vite 共用同一份配置解析，不必再维护第二套转译 |
 | `happy-dom` | vitest 的 DOM 环境。断言的是真实 DOM 结构，比 jsdom 轻且启动快 |
+| `playwright-core` | `frontend/e2e/` 的浏览器驱动，只驱动本机 Chrome、不下载浏览器。happy-dom 没有布局，横向溢出、等待态卡住这类事实只有真浏览器测得出；不用 `@playwright/test`，用例跑在 `node:test` 上，与 docu.md（`markdown-viewer/markdown-viewer-extension` 的 `test/helpers/browser-render-harness.ts`）同一做法 |
+| `oxlint`、`@shadcn/lint` | `npm run lint`：Oxlint 加载 `@shadcn/lint` 的六条规则，只查 `src/react/`、排除 `boardui/`。不用 ESLint，因为 `@typescript-eslint/parser` 的 peer 只到 TypeScript 6.0；`eslint` 作为 `@shadcn/lint` 的 peer 会装进来，不调用 |
+| `react`、`react-dom` | React 子树的渲染层。BoardUI 源码是 React 组件，交互建在 React Aria 上，Preact 的兼容层不在 React Aria 的支持范围内 |
+| `react-aria-components` | BoardUI 输入框与勾选框的交互和无障碍语义：标签关联、键盘操作、`aria-invalid` |
+| `tailwind-merge` | BoardUI 的 `cx()` 合并类名时去掉互相冲突的工具类 |
+| `@remixicon/react` | BoardUI 组件内置的图标 |
+| `tailwindcss`、`@tailwindcss/vite` | 按 `src/react/` 里实际用到的类名生成 `peach-react.css` |
+| `@types/react`、`@types/react-dom` | React 子树的类型检查 |
+
+React 子树单独构建（`vite.react.config.ts`）。`peach-react.js` 424 kB（gzip 110.6 kB），
+只在页面挂 React 子树时由 island 动态加载；`peach-react.css` 67 kB（gzip 11.8 kB），
+由 `index.html` 在旧样式表之前引入。
 
 `@preact/signals` 钉在 2.11.1：它对 `preact` 的 peer 要求是 `>= 10.25.0`，和这里的
 10.29.8 对得上；运行时另外带一个 `@preact/signals-core`，是它自己的依赖，由 lockfile

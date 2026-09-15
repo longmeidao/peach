@@ -23,8 +23,11 @@
 
     "paths": {
       "@peach/legacy/core": ["./src/legacy/core.d.ts"],
-      "@peach/legacy/ui": ["./src/legacy/ui.d.ts"]
+      "@peach/legacy/ui": ["./src/legacy/ui.d.ts"],
+      "@peach/react": ["./src/react/bundle.d.ts"]
     }
   },
-  "include": ["src", "test", "vite.config.ts", "vitest.config.ts"]
+  "include": ["src", "test", "vite.config.ts", "vite.react.config.ts", "vitest.config.ts"],
+  // React 子树按 React JSX 检查，入口是 src/react/tsconfig.json（`npm run typecheck` 两份都跑）。
+  "exclude": ["src/react", "test/react"]
 }

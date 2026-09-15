@@ -522,14 +522,17 @@ document.documentElement.style.setProperty('--hover-delay',`${appSettings.hoverD
 const saveSettings=()=>localStorage.setItem(SETTINGS_KEY,JSON.stringify(appSettings));
 if(sortDefaultsMigrated)saveSettings();
 /* 主题只写属性，不写颜色：两套色板都在 web/css/01-base.css，选跟随系统就把属性摘掉，
-   交还给 `prefers-color-scheme`。地址栏色块跟着同一次调用走——两枚 meta 各代表一档，
+   交还给 `prefers-color-scheme`。React 子树里的 BoardUI 源码把深色 token 挂在 `.dark` 上，
+   所以同一次调用按实际深浅给 <html> 加减 `dark` 类，跟随系统时也算上系统那一档。
+   地址栏色块跟着同一次调用走——两枚 meta 各代表一档，
    选中的那枚开到 `all`、另一枚关成 `not all`，否则手机上的地址栏还留在系统那一档。
-   `index.html` 的首屏内联脚本做的是同两件事，它只负责第一帧，之后都从这里出。 */
+   `index.html` 的首屏内联脚本做的是同三件事，它只负责第一帧，之后都从这里出。 */
 const prefersDark=matchMedia('(prefers-color-scheme: dark)');
 function applyTheme(choice=appSettings.theme){
   const root=document.documentElement;
   if(choice==='system')delete root.dataset.theme;else root.dataset.theme=choice;
   const dark=choice==='dark'||(choice==='system'&&prefersDark.matches);
+  root.classList.toggle('dark',dark);
   document.querySelectorAll('[data-board-theme]').forEach(button=>button.setAttribute('aria-pressed',String((button.dataset.boardTheme==='dark')===dark)));
   document.querySelector('.board-theme-toggle')?.classList.toggle('is-dark',dark);
   document.querySelectorAll('meta[data-theme-color]').forEach(meta=>{

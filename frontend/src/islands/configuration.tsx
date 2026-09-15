@@ -13,7 +13,8 @@ import type { JSX } from 'preact';
 import { fieldsetTitle, noteHtml, setActionBusy, MEDIA_SOURCE_ICONS, selectOptionIconHtml } from '@peach/legacy/ui';
 import { SelectField } from '../settings-controls';
 import { ApiError, apiGet, apiSend, errorMessage } from '../api';
-import { AccessSettings, type AccessState } from './access-settings';
+import type { AccessState } from '@peach/react';
+import { ReactSlot } from '../react-slot';
 import { ReleaseUpdates, type ReleaseState, type UpdateJob } from './release-updates';
 import { AutomaticUpdateSettings, type AutomaticUpdateState } from './automatic-updates';
 import { PeachProxy, type PeachProxyState } from './peach-proxy';
@@ -358,7 +359,7 @@ export function Configuration({ receipt, data, error }: ConfigurationProps & Sta
       <MountStatus data={data} />
       {data.peach_proxy || data.access ? <h2 class="configgroup">网络与访问</h2> : null}
       {data.peach_proxy ? <PeachProxy initial={data.peach_proxy} receipt={receipt} /> : null}
-      {data.access ? <AccessSettings initial={data.access} receipt={receipt} /> : null}
+      {data.access ? <ReactSlot mount="mountAccessSettings" props={{ initial: data.access, receipt }} /> : null}
       <h2 class="configgroup">更新与维护</h2>
       {data.automatic_updates ? <AutomaticUpdateSettings initial={data.automatic_updates} receipt={receipt} /> : null}
       {data.updates ? <ReleaseUpdates initial={data.updates} initialJob={data.update_job} /> : null}

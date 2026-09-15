@@ -82,7 +82,7 @@
 `.claude/skills/peach-reference-evidence/SKILL.md`。本节只索引快照，不复制测量值。
 React 渲染的规格页、用户截图这类给不出可重抓字节的实测不进登记表，但要在快照正文写明理由——`tests/test_reference_updates.py` 会拒绝既没登记也没说明的快照。
 
-- 复核页的中间内容与右侧分类布局见 [BoardUI 复核布局取证](reference-snapshots/board-review-layout.md)。
+- BoardUI：[复核布局](reference-snapshots/board-review-layout.md)；React 源码 `frontend/src/react/boardui/ORIGIN.md`。
 
 - 相关推荐算法：`openaver-related-ranking`，固定 revision，只参考 Tag IDF 与结构化共同点，MMR 和稳定破同分是 Peach 自加，不复制上游界面或源码。
 - 网格、控件半径、语义 token 与中间省略：`vercel-geist-grid`、`vercel-geist-controls-measured`、`vercel-geist-middle-truncate`；中间省略只用于路径、URL、ID、SHA 这类首尾都有信息的值，必须显式 `data-middle-truncate`，标题、说明、人名和标签保留末尾省略。
@@ -155,7 +155,7 @@ CloudDrive 见 `docs/CLOUDDRIVE.md`，部署见 `docs/OPERATIONS.md`。
 - Ledger 拥有真相和行为；服务运行期媒体解析只有文件系统一条路径，ADR-0021 已删 Stash 适配层，Stash 客户端与两个离线导入脚本也已退役，Stash 只剩账本里的溯源数据。
 - 规范女优、厂牌、标签、创作者进入 `entity`、`entity_external_ref`、`asset_entity`；扁平 `asset_tag` 和 creator/studio 字段只是兼容投影。
 - FastAPI 与前端保持单体部署，在线来源和 AI 只通过显式适配器进入；AI runtime 与推理 API 的协议边界见 ADR-0003。
-- 前端按 ADR-0022 走 strangler 迁移：新逻辑进 `frontend/` 的 Vite + TypeScript + Preact 岛，按岛替换现有页面，不做整站重写；面向陌生人分发的阶段划分见 ADR-0023。
+- 前端按 ADR-0031 走 strangler 迁移：新页面进 `frontend/src/react/`（React + Tailwind + BoardUI 源码），逐页替换，不做整站重写；分发阶段见 ADR-0023。
 - 当前页面、路由、交互与性能实现只写 `docs/STATUS.md`，由 API 和 `tests/test_web_ui.py` 守住；本文件不复制易过期的版本号、像素值和控件清单。
 - `/taste` 只读合并 Peach 行为与本机私有浏览历史，明确以浏览器记录为主要画像、Peach 内部为辅助证据，两者分别排序，不把「不合口味」自动归因或降权到 Tag。
 - 查询词里的负号项整体排除，下划线是组合词边界的一部分，不得把 `-ai_generated` 拆成正向 `generated`；模糊时长旧 Tag 只作兼容识别，不进入口味、索引、详情和筛选状态。

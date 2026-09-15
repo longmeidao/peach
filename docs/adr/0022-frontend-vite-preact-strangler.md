@@ -1,6 +1,6 @@
 # ADR-0022：前端改用 Vite + TypeScript + Preact，按页面绞杀式迁移
 
-- 状态：Accepted
+- 状态：Superseded by ADR-0031（绞杀式迁移、产物入库、`/dist/` 路由与单一测试入口仍有效）
 - 日期：2026-09-02
 - 关系：细化 ADR-0001 的「独立 web 表面」；替代 AGENTS.md 中「不做 React 重写」的字面约束（结论不变：不整体重写）；ADR-0014 的 Video.js 保留。
 

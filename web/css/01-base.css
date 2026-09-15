@@ -153,7 +153,8 @@ body::before{content:"";position:absolute;z-index:0;pointer-events:none;top:var(
   font-variant-numeric:tabular-nums;font-size:var(--fs-xs)}
 button,input,textarea{font:inherit;color:inherit}
 button,a,input,textarea,select,summary{touch-action:manipulation}
-:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}
+/* React 子树的焦点环由 BoardUI 组件自己画（输入框画在外框上）；`:where` 让特指度保持 0,1,0。 */
+:where(:not(.peach-react *)):focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 /* Geist Spinner = 用户触发动作的即时反馈；Loading Dots = 后台任务仍在推进。 */
 @keyframes geist-spinner-opacity{0%{opacity:1}100%{opacity:.15}}
