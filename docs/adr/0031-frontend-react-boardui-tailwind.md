@@ -123,7 +123,7 @@ BoardUI 通过 shadcn 注册表发布 React + Tailwind v4 源码，表单与弹�
 
 | 库 | 决定 | 时机与边界 |
 | --- | --- | --- |
-| TanStack Query | 引入 | 随第一个整页归 React 的页面进入：活动页的三段读 `/api/tasks` 一个 `queryKey`，轮询写成 `refetchInterval`。`/quality-goals` 列表迁移时接管 `frontend/src/state/quality-goals.ts` 的缓存、合流与序号，该 store 与 `refreshStore` 随之删除；数据管理卡片的总数在数据管理页迁移时读同一个 `queryKey`。API 地址、响应类型、错误文案与 `useAction` 的提交互斥保留。所有 React root 共用 `frontend/src/react/query.ts` 里那一个 `QueryClient`：`retry: 0`，不因窗口聚焦或重新挂载自动重取（首屏由页面级 `prefetch` 决定，重进页面就是重取）；本机接口用 `networkMode: 'always'`；对外部来源的采集与追更仍只走显式触发，不进 Query 的自动重取；`AbortSignal` 必须传到实际 `fetch` |
+| TanStack Query | 引入 | 随第一个整页归 React 的页面进入：活动页的三段读 `/api/tasks` 一个 `queryKey`，轮询写成 `refetchInterval`。高清版页随页面迁移接进同一个 client，前端没有 Preact signals store、`frontend/src/state/` 与 `refreshStore`，`@preact/signals` 不在依赖清单里；数据管理卡片的总数在数据管理页迁移时读高清版页同一个 `queryKey`。API 地址、响应类型、错误文案与 `useAction` 的提交互斥保留。所有 React root 共用 `frontend/src/react/query.ts` 里那一个 `QueryClient`：`retry: 0`，不因窗口聚焦或重新挂载自动重取（首屏由页面级 `prefetch` 决定，重进页面就是重取）；本机接口用 `networkMode: 'always'`；对外部来源的采集与追更仍只走显式触发，不进 Query 的自动重取；`AbortSignal` 必须传到实际 `fetch` |
 | TanStack Table | 随复杂表格引入 | BoardUI 的 Data Table 本身由它驱动，关注管理的表格视图迁移时一起进；别名表、只读信息表用 BoardUI 基础 Table。选择以来源 ID、条目 ID 为身份，卡片与表格两个视图共用一份选择集合，跨页批量以 ID 集合为准；筛选与排序仍由后端做全量，界面不把「只排当前页」表现成排了整个结果集 |
 | React Router | 外壳阶段接管 | 在迁移 `web/app.js` 的壳与路由那一步用 Declarative 模式接管客户端导航，此前旧路由是唯一导航管理者，不在 React 子树里另设路由。迁移要保留 `web/js/routes.js` 的既有规则：数字 ID 校验、实体名称吃掉后续含斜杠的路径、返回列表的状态与播放期间的导航行为 |
 | TanStack Virtual | 随馆藏网格迁移引入；旧壳先用 `content-visibility` 缓解 | 见下节实测：连续加载到 1500 张卡片时滚动帧间隔到 48 ms，给卡片加一条 `content-visibility: auto` 就降到 18 ms。网格是分段、竖屏带、悬停预览与就地舞台的组合，不是均匀列表，虚拟化要同时解决动态高度、滚动位置恢复与页内查找，所以在网格迁到 React 时作为该页的设计输入一起做，不在旧壳里再写一份。旧壳阶段只加那条 CSS，随 `web/css/12-cards.css` 的改动走 e2e |
