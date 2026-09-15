@@ -80,7 +80,12 @@ COLUMN_OF = {'title': 'catalog_title'}
 
 
 class LibraryMetadataProvider:
-    """复用封面采集的 R18 JSON 入口与按来源配置的传输。"""
+    """复用封面采集的 R18 JSON 入口与按来源配置的传输。
+
+    `secrets_root` 是凭据根本身（`peach-data/secrets`），不是它底下的 `follow`：
+    `CredentialStore` 自己会拼上那一层。多给一层的表现不是报错，是每个来源都读成
+    「没有凭据」——采集设置里贴好的 JavBus、javdb Cookie 一条都不会被带上。
+    """
     def __init__(self, secrets_root):
         from .scraping_access import SourceTransport
         from .jav_cover_fetch import HostLimitedTransport
@@ -495,7 +500,7 @@ class _RemoteSession:
     def provider(self):
         if self._provider is None:
             self._provider = (self._factory() if self._factory
-                              else LibraryMetadataProvider(self._config.directory('secrets') / 'follow'))
+                              else LibraryMetadataProvider(self._config.directory('secrets')))
         return self._provider
 
     def reset(self):
