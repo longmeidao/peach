@@ -135,7 +135,10 @@ export function wireExpandableRanks(root:ParentNode) {
        淡掉最后 44px）。多留一截空白的话渐隐盖的是空处，看不出下面还有内容。 */
     const size=()=>{const row=list.children[4] as HTMLElement;if(!list.offsetWidth)return;outer.style.setProperty('--rank-collapsed-height',`${row.offsetTop-list.offsetTop+row.offsetHeight}px`);outer.style.setProperty('--rank-expanded-height',`${list.scrollHeight}px`)};
     const update=()=>{const expanded=button.getAttribute('aria-expanded')==='true';outer.classList.toggle('expanded',expanded);[...list.children].forEach((child,i)=>(child as HTMLElement).inert=!expanded&&i>=5);size()};
-    button.onclick=()=>{const expanded=button.getAttribute('aria-expanded')!=='true';button.setAttribute('aria-expanded',String(expanded));button.setAttribute('aria-label',expanded?'收起排名':'展开更多排名');update()};
+    /* 高度过渡只挂在点按那一下。切维度标签时内容换了、量出的高度跟着变，常驻过渡会让列表抖一下。 */
+    const settle=(event:Event)=>{if(event.target===list)outer.classList.remove('toggling')};
+    list.addEventListener('transitionend',settle);list.addEventListener('transitioncancel',settle);
+    button.onclick=()=>{const expanded=button.getAttribute('aria-expanded')!=='true';button.setAttribute('aria-expanded',String(expanded));button.setAttribute('aria-label',expanded?'收起排名':'展开更多排名');outer.classList.add('toggling');update()};
     new ResizeObserver(size).observe(list);update();
   });
 }
