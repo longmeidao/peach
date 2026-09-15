@@ -513,7 +513,6 @@ const OVERLAY_SCROLLERS=[
   '.insighttabs','.insightstorage','.skeletondashstrip','.followpagination','.linktablewrap',
   '.reviewtabs','.junkfilters','.ftablewrap','.board-local-nav','.managebar-menu',
   '.follow-workspace-switch','.fmanagenav','.board-heat-scroll','.board-sankey-scroll',
-  '.cloudguide-tablewrap',
 ].join(',');
 /* Board 层里会超宽的横向滚动层：两端按滚动位置渐隐说明「那边还有」，鼠标停在上面时竖向
    滚轮转成横向。边线留给外层框，渐隐只落在这一层。
@@ -522,7 +521,7 @@ const OVERLAY_SCROLLERS=[
    /taste 的两张图溢出 44px 与 322px，实测都是既没有渐隐也不接滚轮。组件自己量溢出，
    不溢出的宽度上登记等于空转，所以按可能溢出的层登记，不按某一个断点登记。 */
 const BOARD_EDGE_SCROLLERS='.reviewtabs,.ftablewrap,.board-local-nav,.managebar-menu,'
-  +'.follow-workspace-switch,.fmanagenav,.board-heat-scroll,.board-sankey-scroll,.cloudguide-tablewrap';
+  +'.follow-workspace-switch,.fmanagenav,.board-heat-scroll,.board-sankey-scroll';
 
 /**
  * 覆盖式滚动条：滑块浮在内容上，一列宽度都不占。

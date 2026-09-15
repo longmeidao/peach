@@ -6,7 +6,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type * as ReactBundle from '@peach/react';
 
-type MountName = 'mountAccessSettings';
+type MountName = 'mountGeneralSettings' | 'mountMediaSettings' | 'mountNetworkSettings' | 'mountMaintenanceSettings';
 type PropsOf<N extends MountName> = Parameters<(typeof ReactBundle)[N]>[1];
 
 export function ReactSlot<N extends MountName>({ mount, props }: { mount: N; props: PropsOf<N> }) {

@@ -49,9 +49,6 @@
    那几段配置。里面没有一段亮着，就是用户在看左栏上半段的某一项，这时整个外壳都不该
    占位置。 */
 .settingscard .settingsscroll>.settinggroup:has(>.machinesettings):not(:has(.board-group-active)){display:none}
-/* 框里的输入件照配置页那边抬一档底色。那条规则挂在 `body.configuration-layout` 上，
-   弹层不带这个类，控件就落回 `--surface`，压在同一张卡上几乎看不出边。 */
-.settingscard .machinesettings :is(.gselectfield,.geist-input,input.geist-input,.board-icon-trigger){background:var(--color-background-primary-default)}
 .settingscard .settingsscroll .settingrow{min-height:52px;padding:10px 10px 10px 0;gap:16px;border-top:0;border-bottom:1px solid var(--line-soft)}
 .settingscard .settingsscroll .settingrow:last-child{border-bottom:0}
 /* 一组里排在设置行后面的分区（「左侧导航」是唯一一处）不自己画上边线：这一层的线挂在
@@ -394,7 +391,7 @@ body{background:var(--page)}
 /* 强调档不写在这一段：它那一面连同悬停归 `body :is(…).primary` 一处。在这里再写一份
    的话，静止那条会被后面那条压掉、悬停那条却比它重一个类，一颗按钮的静止和悬停就由
    两处规则分别给出。 */
-.geist-input,.geist-select,.configfield input,.search{box-shadow:0 1px 2px #00000004}
+.geist-input,.geist-select,.search{box-shadow:0 1px 2px #00000004}
 .configfieldset,[data-geist-fieldset]{border-radius:var(--surface-radius);overflow:hidden}
 @media(prefers-color-scheme:dark){:root:not([data-theme]){--page:#111;--ground:#1c1c1c;--surface:#232323;--sunk:#171717;--ink:#fafafa;--ink-2:#d4d4d4;--muted:#a3a3a3;--line:#383838;--line-soft:#303030;--inset:#303030;--picked:#303030;--hover:rgba(255,255,255,.07)}}
 
@@ -765,7 +762,7 @@ body>.board-filter-frame{margin-inline:16px}
 .srctools button,.detailtitletools button{border-radius:8px;background:var(--surface)}
 .geist-fieldset,.configfieldset,.cleanupfieldset,.resourcepanel,.resourcesyncbox{border-color:var(--line);border-radius:var(--surface-radius);background:var(--ground);overflow:clip}
 .geist-fieldset-footer,.configfieldset>.geist-fieldset-footer{background:var(--surface);border-top:1px solid var(--line-soft)}
-.geist-input,.geist-select,.gselectfield,.configfield input,.configfield select,.configfield textarea{background:var(--surface);border-color:var(--line);border-radius:10px}
+.geist-input,.geist-select,.gselectfield{background:var(--surface);border-color:var(--line);border-radius:10px}
 .iconswitch{padding:3px;background:var(--surface);border:1px solid var(--line-soft);border-radius:10px}
 .iconswitch label{border-radius:8px}
 .iconswitch label:has(input:checked){background:var(--ground);box-shadow:0 1px 3px #0002}
@@ -871,7 +868,7 @@ html.board-high-contrast .settingscard.settingscard>.board-local-nav{background:
   .scrim.scrim.on{top:0;z-index:101;background:none;visibility:hidden}
   .scrim.scrim.on::before{content:'';position:absolute;inset:0;background:#0007;visibility:visible}
   .index .ihead .geist-search{flex-basis:160px}
-  .index .ihead .geist-search input,.geist-input,.configfield input,.settingscard .board-number-control input{font-size:16px}
+  .index .ihead .geist-search input,.geist-input,.settingscard .board-number-control input{font-size:16px}
   .settingscard .board-number-control{height:40px}.settingscard .board-number-control input{height:38px}
   .settingscard .settingsscroll .gselect,.settingscard .settingsscroll .gselectfield{height:40px;font-size:14px}
   .settingscard .settingsscroll .board-number-control>span{font-size:14px}
@@ -1060,14 +1057,14 @@ html.board-high-contrast .settingscard.settingscard>.board-local-nav{background:
    面板、筛选条、交集条和标签骨架都从它取值，一处改完五处一起走。 */
 :root{--tag-radius:8px}
 body,.disp{font-family:var(--board-font);letter-spacing:0}body{font:var(--board-body)}button,input,textarea,select{font-family:var(--board-font)}
-.pagetitle,.listtitle,body #manageTitle,.index .ihead h2,.indexheading,.playlistpage h2{font:var(--board-title);letter-spacing:0}.settingscard .settingshead h2,.configfieldset h2,.configfieldset h3,.cleanupfieldset h3,.followmanage .fsechead h3,.resourcesync>h2{font:var(--board-heading);letter-spacing:0}.metricstrip>button .board-stat-value,.tastesummary>.board-stat-value{font:var(--board-figure);letter-spacing:0}.drawer .dnav button,.board-library-rows button,.settingrow b,.fsource.frow>b{font:var(--board-body)}.fmeta,.confighelp,.settingrow small{font:var(--board-compact)}.board-stat-footer,.board-watch-measures small,.tasterank small,.insighttoolbar p{font:var(--board-caption);letter-spacing:.15px}
+.pagetitle,.listtitle,body #manageTitle,.index .ihead h2,.indexheading,.playlistpage h2{font:var(--board-title);letter-spacing:0}.settingscard .settingshead h2,.configfieldset h2,.configfieldset h3,.cleanupfieldset h3,.followmanage .fsechead h3,.resourcesync>h2{font:var(--board-heading);letter-spacing:0}.metricstrip>button .board-stat-value,.tastesummary>.board-stat-value{font:var(--board-figure);letter-spacing:0}.drawer .dnav button,.board-library-rows button,.settingrow b,.fsource.frow>b{font:var(--board-body)}.fmeta,.settingrow small{font:var(--board-compact)}.board-stat-footer,.board-watch-measures small,.tasterank small,.insighttoolbar p{font:var(--board-caption);letter-spacing:.15px}
 .geist-button,.fbtn,.resourceaction{background-color:var(--color-background-primary-default);border-color:var(--color-border-button-default);color:var(--color-text-primary);transition:background-color .15s ease,border-color .15s ease,color .15s ease}
 /* 悬停只抬填充，那圈线一步不动：按钮静止态已经带一圈 1px，悬停再把它加深，
    鼠标扫过一排次级键就是一排边框忽明忽暗，而键本身并没有变化。 */
 .geist-button:hover:not(:disabled),.fbtn:hover:not(:disabled),.resourceaction:hover:not(:disabled){background-color:var(--color-background-primary-hover);color:var(--color-text-primary)}
 /* 强调档那一面连同悬停只在下面 `body :is(…).primary` 一处给出。 */
 .geist-button.danger:hover:not(:disabled),.fbtn.danger:hover:not(:disabled),.resourceaction.danger:hover:not(:disabled){background:var(--drop);color:#fff}
-@media(max-width:760px){.pagetitle,.listtitle,body #manageTitle,.index .ihead h2,.indexheading{font:var(--board-figure)}input.geist-input,.configfield input,.geist-search input{font-size:16px}}
+@media(max-width:760px){.pagetitle,.listtitle,body #manageTitle,.index .ihead h2,.indexheading{font:var(--board-figure)}input.geist-input,.geist-search input{font-size:16px}}
 
 /* 每类骨架保留实际内容的列宽、轮廓和留白。 */
 .board-page-skeleton{max-width:var(--board-content);width:100%;margin:auto}
@@ -1309,7 +1306,6 @@ body [data-board-tabs] button[aria-selected=true],body .managebar [data-board-ta
 @media(prefers-reduced-motion:reduce){[data-board-tabs].board-tabs-ready::before{transition:none}}
 .followmanage .fsource:has([data-follow-select]){background:var(--color-background-primary-default)}
 .followmanage .fsource.selected:has([data-follow-select]){border-color:var(--color-border-focus-ring)}
-.board-icon-trigger{width:100%;gap:8px;justify-content:flex-start!important;min-height:var(--control-h);height:var(--control-h)!important}.board-icon-trigger>span:first-child,.board-icon-grid label>span{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;flex:none}.board-icon-trigger svg,.board-icon-grid svg{display:block;width:20px;height:20px;stroke-width:2}.board-icon-trigger img,.board-icon-grid img{display:block;width:20px;height:20px;margin:0}
 /* 两半之间那条线交给右半的左边界，跟这一组里 `button+button` 的分隔线是同一条规则，
    上下顶满。四角与外圈仍归外框：两半各自带边和圆角的话，交界处是两条线叠着。 */
 .splitbutton.board-button-group>.splitmain,.splitbutton.board-button-group>.splittoggle{border:0;border-radius:0;box-shadow:none}
@@ -1324,8 +1320,6 @@ body .splitbutton.primary{border:0;box-shadow:none}
 body .splitbutton.primary>button:disabled{background:var(--sunk);color:var(--muted)}
 body .splitbutton.primary>.splittoggle{border-left-color:color-mix(in srgb,#000 20%,var(--board-blue))}
 body [data-cleanup-empty][hidden]{display:none}
-dialog.board-icon-popover{position:fixed;inset:auto;margin:0;width:min(360px,calc(100vw - 16px));max-height:calc(100dvh - 16px);box-sizing:border-box;padding:8px;border:0;border-radius:24px;background:var(--color-background-secondary-default);color:var(--ink);box-shadow:0 12px 40px #00000024;overflow:auto}
-.board-icon-popover::backdrop{background:transparent}.board-icon-panel{padding:12px;border-radius:20px;background:var(--color-background-primary-default);box-shadow:0 1px 2px #0000000d}.board-icon-panel h3{font:var(--board-body-medium);margin:0 0 10px;padding:0 4px}.board-icon-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}.board-icon-grid label{position:relative;display:grid;place-items:center;height:40px;border-radius:8px;cursor:pointer}.board-icon-grid label:hover{background:var(--color-background-primary-hover)}.board-icon-grid label.selected{background:var(--picked);color:var(--tungsten)}.board-icon-grid input{position:absolute;opacity:0;width:1px;height:1px}.board-icon-grid label:focus-within{outline:2px solid var(--tungsten)}.board-icon-popover footer{display:flex;justify-content:flex-end;gap:8px;padding:8px 4px 0}
 .reviewitem .reviewstage[data-framed]{padding:0;border:0;background:transparent;box-shadow:none}.reviewitem .reviewtags{min-height:28px;align-content:start}.reviewitem .reviewempty{min-height:160px;max-height:190px;border-radius:12px;background:var(--color-background-secondary-default)}.reviewitem .reviewstage{flex:0 0 auto}.reviewitem .reviewevidence{border:0;padding:12px 0 0}.reviewitem .reviewactions{border:0;border-radius:0 0 16px 16px;background:var(--color-background-secondary-default);margin-top:auto}
 .reviewitem{content-visibility:auto;contain-intrinsic-size:auto var(--review-fieldset-height)}
 body .reviewactions button,body .junkactions button:not(.danger){height:36px;border:1px solid var(--color-border-button-default);border-radius:10px;padding:8px 12px;background:var(--color-background-primary-default);color:var(--ink);box-shadow:0 1px 2px #0000000d;font:var(--board-body-medium)}
@@ -1334,12 +1328,6 @@ body .reviewactions button.warning,body [data-follow-bulk],body [data-follow-sta
 .reviewtabs{overflow-x:auto!important;overflow-y:hidden;scrollbar-width:none!important;touch-action:pan-x pan-y;overscroll-behavior-x:contain}.reviewtabs::-webkit-scrollbar{display:none!important}.reviewtabs .os-scrollbar{display:none!important}
 .settingsscroll .settingrow{margin-right:16px}.settingsscroll .settinggroup{border-bottom:0}
 .iconswitch.themeswitch[data-board-segments]{padding:4px;border:0;border-radius:24px;background:var(--picked);gap:4px}.iconswitch.themeswitch[data-board-segments]>label{width:32px;height:32px;border-radius:50%}.themeswitch .board-segment-thumb{border-radius:50%;background:var(--ground)}
-.configsource{align-items:start}.configsource input.geist-input,.configsource .gselectfield{height:var(--control-h);min-height:var(--control-h);box-sizing:border-box}
-/* 配置页的下拉由里面那枚按钮定尺寸，`.gselect` 只是它的定位外壳。上面给设置开关行写的
-   那份 `.gselect` 尺寸（32px 高、6px/8px 内边距）在这儿不成立：那边外壳就是控件本身，
-   这边按钮是 `--control-h`（36px），比外壳高 4px 往下探出 10px，左边缘还被内边距推右
-   8px——同一格里它和上面那个输入框既不同高、也不从同一条竖线起。 */
-.settingscard .settingsscroll .machinesettings .gselect{min-width:0;min-height:0;height:auto;padding:0}.configpage .configcheck{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 20px 12px 16px;border:1px solid var(--color-border-button-default);border-radius:10px;background:var(--color-background-primary-default);cursor:pointer}.configpage .configcheck>.pcheck{order:2}.configpage .configcheck:hover{background:var(--color-background-primary-hover)}
 .card .pic>.badge{padding:4px;border-radius:10px;background:var(--glass-fill);box-shadow:inset 0 1px 0 var(--glass-rim),var(--glass-shadow);backdrop-filter:blur(16px) saturate(145%)}.card .pic>.badge .src{background:transparent;padding:0;width:20px;height:20px}
 body .selectiondock{border:0;border-radius:22px;background:var(--glass-drift-a),var(--glass-drift-b),linear-gradient(125deg,var(--glass-sheen),transparent 42%,var(--glass-low)),var(--glass-fill);background-size:200% 200%,200% 200%,auto;background-repeat:no-repeat,no-repeat,repeat;background-position:50% 20%,80% 70%,0 0;animation:glassdriftx 41s linear infinite,glassdrifty 67s linear infinite;backdrop-filter:var(--glass-optic,blur(22px)) saturate(145%);box-shadow:inset 0 1px 0 var(--glass-rim),inset 1px 0 0 var(--glass-low),inset -1px 0 0 var(--glass-low),inset 0 -1px 0 var(--glass-low),var(--glass-shadow)}
 html.board-high-contrast :is(.selectiondock,.reviewcontrols.is-stuck,.reviewgroupbar.is-stuck,.batchbar,.tagselection,.card .badge){background:var(--ground);backdrop-filter:none;-webkit-backdrop-filter:none;animation:none}
@@ -1583,7 +1571,7 @@ body .tastesource>button svg{width:20px;height:20px}
 body :is(.geist-button,.fbtn,.resourceaction,.tagselection button,.reviewpickhead button,.fcredactions button,.fpickactions button,.geist-fieldset-footer>a,.geist-fieldset-footer>button).primary{box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;gap:4px;height:36px;min-height:36px;padding:8px 12px;border-radius:10px;font:var(--board-body-medium);white-space:nowrap}
 body .reviewdock .geist-button.primary{height:var(--control-h);min-height:0}
 /* 灰卡上的控件用 primary 白底：secondary 底上再放 secondary 控件就看不出框。 */
-body.configuration-layout .configpage :is(.gselectfield,.geist-input,input.geist-input,.board-icon-trigger),body .followmanage .faddform .geist-search input{background:var(--color-background-primary-default)}
+body .followmanage .faddform .geist-search input{background:var(--color-background-primary-default)}
 /* 提醒条与上下内容留 12px：关注页检查结果、扫描卡失败都是同一个 Note。 */
 body .followmanage .fcheckreport,body .followmanage .fwarn{margin:0 0 12px}
 body .library-processing [role=alert]>.geist-note{margin-top:12px}
