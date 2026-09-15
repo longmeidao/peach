@@ -25,6 +25,8 @@ export declare function selectFieldHtml(items: string[][], current: string,
   options?: { label?: string; attr?: string; className?: string }): string;
 export declare function wireSelectField(root: Element): HTMLElement & { value: string; disabled: boolean };
 export declare function wireCollapse(root: ParentNode, selector: string, idPrefix: string, triggerSelector?: string): void;
+/** 共用 Collapse 的开合：`body` 是带 `.fcollapse` 的那层，高度按它的过渡长到或收到位。 */
+export declare function setCollapseOpen(details: HTMLDetailsElement, body: HTMLElement, expanded: boolean): void;
 /** 一排里标出「当前是哪一个」的那块底板换位；`from` 给 null 只落位不动画。 */
 export declare function moveGlidePane(
   pane: HTMLElement,

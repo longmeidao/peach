@@ -1,3 +1,4 @@
+import { act } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { CONFIGURATION_URL, PICK_FOLDER_URL } from '../../src/configuration-endpoints';
@@ -204,4 +205,25 @@ it('CloudDrive 建议按硬盘分三档，页内只留怎么填，原理链到�
     'https://www.clouddrive2.com/help.html',
     'https://github.com/longmeidao/peach/blob/master/docs/CLOUDDRIVE.md',
   ]);
+});
+
+it('折叠开合走共用 Collapse：点开长到内容高度，收起时高度收回 0 并锁住正文', async () => {
+  vi.useFakeTimers();
+  const host = await mount(<CloudDriveGuide />);
+  const details = host.querySelector('details')!;
+  const summary = details.querySelector('summary')!;
+  const body = document.getElementById(summary.getAttribute('aria-controls')!)!;
+  expect(body.parentElement).toBe(details);
+  expect(body.inert).toBe(true);
+  await click(summary);
+  expect(details.open).toBe(true);
+  expect(summary.getAttribute('aria-expanded')).toBe('true');
+  expect(body.classList.contains('fcollapse')).toBe(true);
+  expect(body.inert).toBe(false);
+  await act(async () => { vi.advanceTimersByTime(260); });
+  expect(body.style.height).toBe('auto');
+  await click(summary);
+  expect(summary.getAttribute('aria-expanded')).toBe('false');
+  expect(body.style.height).toBe('0px');
+  expect(body.inert).toBe(true);
 });

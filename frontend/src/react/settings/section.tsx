@@ -2,8 +2,10 @@
  *
  * 外框取 BoardUI 设置弹层的 `SettingsSectionLabel` + `SettingsCard`，开关行直接用 `SettingsRow`。
  * 注册表里没有行内提示、进度条和折叠，这三样用 BoardUI token 组合，差异登记在 `boardui/ORIGIN.md`。 */
-import type { FormEvent, ReactNode } from 'react';
+import { useId, useRef, useState } from 'react';
+import type { FormEvent, MouseEvent, ReactNode } from 'react';
 import { RiArrowRightSLine, RiExternalLinkLine } from '@remixicon/react';
+import { setCollapseOpen } from '@peach/legacy/ui';
 
 import { SettingsCard, SettingsSectionLabel } from '@/components/application/settings/settings-rows';
 import { LinkButton } from '@/components/base/buttons/link-button';
@@ -124,15 +126,29 @@ export function Progress({ label, value, max = 100, stops = [] }: { label: strin
   );
 }
 
-/** 展开正文。原生 `details`：键盘、状态与无障碍语义都由浏览器给。 */
+/** 展开正文。原生 `details` 给键盘与无障碍语义；开合交给共用 Collapse 的 `setCollapseOpen`，
+ *  它给正文外层挂上旧样式表的 `.fcollapse` 让高度过渡。内边距放在里层，高度才能收到 0。 */
 export function Disclosure({ summary, children }: { summary: string; children: ReactNode }) {
+  const id = useId();
+  const details = useRef<HTMLDetailsElement>(null);
+  const body = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+  const toggle = (event: MouseEvent) => {
+    event.preventDefault();
+    if (!details.current || !body.current) return;
+    setCollapseOpen(details.current, body.current, !open);
+    setOpen(!open);
+  };
   return (
-    <details className="group">
-      <summary className="flex w-fit cursor-pointer list-none items-center gap-1 rounded-sm text-body-2-medium text-text-secondary outline-none select-none hover:text-text-primary focus-visible:ring-2 focus-visible:ring-border-focus-ring">
-        <RiArrowRightSLine aria-hidden className="size-4 shrink-0 transition-transform group-open:rotate-90" />
+    <details ref={details}>
+      <summary aria-expanded={open} aria-controls={id} onClick={toggle}
+        className="flex w-fit cursor-pointer list-none items-center gap-1 rounded-sm text-body-2-medium text-text-secondary outline-none select-none hover:text-text-primary focus-visible:ring-2 focus-visible:ring-border-focus-ring">
+        <RiArrowRightSLine aria-hidden className={open ? 'size-4 shrink-0 rotate-90 transition-transform' : 'size-4 shrink-0 transition-transform'} />
         {summary}
       </summary>
-      <div className="flex flex-col gap-2 pt-3">{children}</div>
+      <div ref={body} id={id} inert={!open}>
+        <div className="flex flex-col gap-2 pt-3">{children}</div>
+      </div>
     </details>
   );
 }
