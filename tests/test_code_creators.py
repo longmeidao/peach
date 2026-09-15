@@ -8,9 +8,25 @@ from pathlib import Path
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "audit_code_creators.py"
 _spec = importlib.util.spec_from_file_location("audit_code_creators", SCRIPT)
-audit = importlib.util.module_from_spec(_spec)
-sys.modules["audit_code_creators"] = audit
-_spec.loader.exec_module(audit)
+_script = importlib.util.module_from_spec(_spec)
+sys.modules["audit_code_creators"] = _script
+_spec.loader.exec_module(_script)
+
+
+class _Audit:
+    """判定与清理归 `peach.code_creators`，命令行入口留在脚本里；测试两边都要够得着。"""
+    from peach.catalog_rules import release_code_from_filename as code_from_filename
+    from peach.catalog_rules import release_code_from_text as canonical_code
+    from peach.code_creators import (  # noqa: F401  逐个点名，测试不跟着模块表面漂移
+        FIELDS, VERDICT_CODE, VERDICT_KEEP, VERDICT_SITE, VERDICT_UNCLEAR,
+        apply_rows, classify, collect, is_filesystem_path,
+    )
+    build_parser = staticmethod(_script.build_parser)
+    run = staticmethod(_script.run)
+    main = staticmethod(_script.main)
+
+
+audit = _Audit
 
 
 SCHEMA = """
