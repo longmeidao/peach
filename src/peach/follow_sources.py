@@ -186,17 +186,38 @@ class SourceFetch:
     raw_body: bytes | None = field(default=None, repr=False, compare=False)
 
 
-def within_history(candidate: FollowCandidate, after: datetime | None) -> bool:
-    """有限历史范围只排除日期明确且早于边界的条目。"""
-    if after is None or not candidate.published_at:
-        return True
+def published_stamp(candidate: FollowCandidate) -> datetime | None:
+    """候选的发布时间；没有或解析不了就是 `None`。"""
+    if not candidate.published_at:
+        return None
     try:
         stamp = datetime.fromisoformat(str(candidate.published_at).replace('Z', '+00:00'))
     except (TypeError, ValueError, OverflowError):
-        return True
-    if stamp.tzinfo is None:
-        stamp = stamp.replace(tzinfo=timezone.utc)
-    return stamp >= after
+        return None
+    return stamp if stamp.tzinfo is not None else stamp.replace(tzinfo=timezone.utc)
+
+
+def within_history(candidate: FollowCandidate, after: datetime | None) -> bool:
+    """有限历史范围只排除日期明确且早于边界的条目。"""
+    stamp = published_stamp(candidate) if after is not None else None
+    return stamp is None or stamp >= after
+
+
+def history_window(candidates, after: datetime | None, floor: int = 0) -> tuple:
+    """有限历史范围内的条目；不足 `floor` 条时按列表顺序补入更早的，补满为止。
+
+    列表是新的在前，所以补进来的是边界之外最近的那几条。
+    """
+    within = sum(1 for candidate in candidates if within_history(candidate, after))
+    spare = max(0, floor - within)
+    kept = []
+    for candidate in candidates:
+        if within_history(candidate, after):
+            kept.append(candidate)
+        elif spare:
+            kept.append(candidate)
+            spare -= 1
+    return tuple(kept)
 
 
 def _iso_utc(value: datetime) -> str:
@@ -448,12 +469,21 @@ class _BaseConnector:
         self.progress = None
         self.history_after = None
         self.history_skipped = 0
+        #: 首次采集的条数下限。边界之外最多放行这么多条，精确裁剪由 `run_check`
+        #: 按 `history_window` 做：连接器逐条判断时还不知道后面有几条落在边界内。
+        self.history_floor = 0
+        self._history_spares: set[str] = set()
 
     def within_history(self, candidate: FollowCandidate) -> bool:
-        accepted = within_history(candidate, self.history_after)
-        if not accepted:
-            self.history_skipped += 1
-        return accepted
+        if within_history(candidate, self.history_after):
+            return True
+        key = str(candidate.external_id)
+        if key in self._history_spares or len(self._history_spares) < self.history_floor:
+            # 同一条可能先在列表阶段、再在补全阶段各问一次，按 id 记住才不重复占名额。
+            self._history_spares.add(key)
+            return True
+        self.history_skipped += 1
+        return False
 
     def _headers(self) -> dict[str, str]:
         return {"User-Agent": USER_AGENT}

@@ -287,7 +287,7 @@ class LibraryNfoTests(unittest.TestCase):
         self.assertEqual((evidence['width'], evidence['verified_by']), (1200, ['javdb', 'mgstage']))
 
         with patch('peach.jav_cover_fetch.best_cover', return_value=small), \
-                patch('peach.community_catalog.verified_cover', side_effect=Unavailable('社区来源的封面没有第二个图源能对上')):
+                patch('peach.community_catalog.verified_cover', side_effect=Unavailable('社区来源的封面只有 javdb 一个图源，缺第二个图源印证')):
             self.assertTrue(provider.cover('ORETD-616', covers))
         self.assertEqual((covers / 'ORETD-616.jpg').read_bytes(), b'small')
 

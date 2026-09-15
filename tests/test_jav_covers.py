@@ -44,6 +44,17 @@ class FetchRetryTests(unittest.TestCase):
                                       prior_candidates=(candidate,), diagnostics=diagnostics)
             self.assertEqual(diagnostics, {expected: 1})
 
+    def test_official_placeholders_only_say_the_work_was_taken_down(self):
+        """DMM 下架的片各版本都 302 到「准备中」，原因要说成下架，不是没取到图。"""
+        candidate = covers.Candidate("test", "https://example.test/cover.jpg")
+        diagnostics = {}
+        with patch.object(covers, "cached_metadata", return_value=covers.MetadataEvidence()), \
+                patch.object(covers, "probe_size", side_effect=covers.NotFound(covers.PLACEHOLDER_REASON)):
+            with self.assertRaisesRegex(covers.Unavailable, f"^{covers.OFFICIAL_PLACEHOLDER_ONLY}$"):
+                covers.best_cover(lambda *args: None, "FC2-PPV-123456", 0,
+                                  prior_candidates=(candidate,), diagnostics=diagnostics)
+        self.assertEqual(diagnostics, {"placeholder": 1})
+
     def test_source_saying_no_is_told_apart_from_source_trouble(self):
         """404 与「所有渠道都没有候选」是来源明确说没有，采集任务据此记住一阵子；
         5xx 与候选探测失败下次再问可能就好了，仍是普通的 Unavailable。"""

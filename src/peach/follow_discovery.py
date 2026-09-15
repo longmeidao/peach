@@ -14,7 +14,7 @@ import re
 import time
 import urllib.parse
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from .follow import FollowSourceError
@@ -77,6 +77,8 @@ class Candidate:
     semantics: str
     #: 为什么认为它命中了。界面照实显示，不要替用户断言「就是这个」。
     evidence: str
+    #: 作者名片上与检索词不同的手柄。人勾选登记这一条时，它们随之记成检索词的别名。
+    aliases: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -230,19 +232,19 @@ def _kemono_candidates(provider: str, term: str, index: CreatorIndex) -> list[Ca
 
 def _fanbox_candidates(archive_candidates: list[Candidate], transport) -> list[Candidate]:
     """Resolve verified FANBOX archive identities to their official creator pages."""
-    user_ids = []
+    user_ids: dict[str, tuple[str, ...]] = {}
     for candidate in archive_candidates:
         service, separator, user_id = candidate.ref.partition("/")
         if (candidate.provider in KemonoConnector.HOSTS and separator
                 and service == "fanbox" and user_id.isdigit()
                 and user_id not in user_ids):
-            user_ids.append(user_id)
+            user_ids[user_id] = candidate.aliases
     candidates = []
-    for user_id in user_ids[:MAX_CANDIDATES_PER_SOURCE]:
+    for user_id, aliases in list(user_ids.items())[:MAX_CANDIDATES_PER_SOURCE]:
         profile = resolve_official_profile("fanbox", user_id, transport=transport)
         candidates.append(Candidate(
             "fanbox", profile.creator_id, profile.url,
-            profile.name, "work", "FANBOX 官方资料与归档身份一致",
+            profile.name, "work", "FANBOX 官方资料与归档身份一致", aliases,
         ))
     return candidates
 
@@ -459,28 +461,71 @@ def _f95_candidates(term: str, transport,
     return _forum_candidates("f95zone", "f95zone.to", term, connector)
 
 
-DEFAULT_PROVIDERS = ("kemono", "coomer", "pawchive", "fanbox", "rule34video",
-                     "rule34xxx", "simpcity", "f95zone")
+#: 最多读几个 F95 命中线程的首楼名片。每读一个是一次登录态请求，排在后面的命中
+#: 多半是标题碰巧带这个词的别人的线程。
+MAX_PROFILE_THREADS = 2
+#: 名片手柄最多拿几个去其余来源再查一遍。每个手柄都要把名字类来源重问一轮。
+MAX_PROFILE_HANDLES = 4
+#: 名片上不当作者别名的服务。论坛账号名常常是搬运工自己的账号，
+#: 而 pixiv 的身份是一串数字，当别名只会在列表里多出一个数字「作者」。
+PROFILE_ALIAS_SKIP_SERVICES = frozenset({"pixiv", "f95zone", "simpcity"})
+#: 名片手柄会拿去再查一遍的来源：按名字、id 或标签查的那几家。
+_HANDLE_SEARCH_PROVIDERS = frozenset({"kemono", "coomer", "pawchive", "rule34video",
+                                      "rule34xxx", "simpcity"})
+#: 只按名字或标签查、纯数字的词不去碰运气的来源。
+_NAME_ONLY_PROVIDERS = frozenset({"rule34video", "rule34xxx", "simpcity"})
+
+DEFAULT_PROVIDERS = ("f95zone", "kemono", "coomer", "pawchive", "fanbox", "rule34video",
+                     "rule34xxx", "simpcity")
 
 
 def discovery_plan(term: str, providers: tuple[str, ...] | None = None) -> tuple[str, ...]:
     """这一轮实际会去问的来源，按执行顺序。
 
-    数字的词不去 rule34video / rule34.xxx / simpcity 碰运气——那三个都按名字或
-    标签查——fanbox 只是把归档身份换算成官方页。计划先算出来，调用方才能把
-    进度摊到每个来源上，而不是整轮查完只跳一格。
+    F95 排第一：它的线程首楼整理了作者在其他平台的账号，名片上的手柄要赶在其余
+    来源开查之前拿到。数字的词不去 rule34video / rule34.xxx / simpcity 碰运气——
+    那三个都按名字或标签查——fanbox 只是把归档身份换算成官方页。计划先算出来，
+    调用方才能把进度摊到每个来源上，而不是整轮查完只跳一格。
     """
     wanted = providers or DEFAULT_PROVIDERS
-    tasks = [provider for provider in ("kemono", "coomer", "pawchive")
-             if provider in wanted]
-    if "fanbox" in wanted:
-        tasks.append("fanbox")
-    if not _NUMERIC_RE.match(term):
-        tasks.extend(provider for provider in ("rule34video", "rule34xxx", "simpcity")
-                     if provider in wanted)
-    if "f95zone" in wanted:
-        tasks.append("f95zone")
-    return tuple(tasks)
+    return tuple(provider for provider in DEFAULT_PROVIDERS if provider in wanted
+                 and not (provider in _NAME_ONLY_PROVIDERS and _NUMERIC_RE.match(term)))
+
+
+def _f95_profile_handles(candidates: list[Candidate], term: str, transport,
+                         credential: Credential | None) -> tuple[list[Candidate], list[str]]:
+    """F95 命中线程首楼名片上、与检索词不同的手柄。
+
+    搜 `cekc` 只能在 rule34.xxx 上碰到以它开头的标签，作者在那里写作 `Ceeeeekc`；
+    F95 首楼替人把这些写法整理好了。读名片要登录 cookie，没有就不读，查找照常。
+    返回带上各自手柄的 F95 候选，以及去重后要拿去其余来源再查的手柄。
+    """
+    if credential is None or not credential.values.get("cookie"):
+        return candidates, []
+    connector = F95ZoneConnector(transport=transport, credential=credential)
+    wanted = identity_key(term)
+    handles: dict[str, str] = {}
+    marked: list[Candidate] = []
+    for index, candidate in enumerate(candidates):
+        if index >= MAX_PROFILE_THREADS:
+            marked.append(candidate)
+            continue
+        try:
+            links = connector.thread_profile(candidate.ref)["links"]
+        except (FollowSourceError, CredentialError):
+            links = ()
+        own: list[str] = []
+        for link in links:
+            handle = str(link.get("handle") or "").strip()
+            key = identity_key(handle)
+            if (str(link.get("service") or "") in PROFILE_ALIAS_SKIP_SERVICES
+                    or not key or key == wanted):
+                continue
+            if handle not in own:
+                own.append(handle)
+            handles.setdefault(key, handle)
+        marked.append(replace(candidate, aliases=tuple(own)) if own else candidate)
+    return marked, list(handles.values())[:MAX_PROFILE_HANDLES]
 
 
 def discover(term: str, *, secrets_root: Path, state_root: Path,
@@ -509,24 +554,48 @@ def discover(term: str, *, secrets_root: Path, state_root: Path,
     failures: dict[str, str] = {}
     external_searches: list[ExternalSearch] = []
 
+    handles: list[str] = []
+
     def run(name: str, fn) -> None:
         try:
-            found.extend(fn())
+            found.extend(fn(text))
         except (FollowSourceError, CredentialError) as error:
             failures[name] = str(error)
+        if name not in _HANDLE_SEARCH_PROVIDERS:
+            return
+        for handle in handles:
+            if name in _NAME_ONLY_PROVIDERS and _NUMERIC_RE.match(handle):
+                continue
+            try:
+                hits = fn(handle)
+            except (FollowSourceError, CredentialError):
+                # 检索词本身那一问的成败已经报过；手柄是追加的一轮，问不成就少这几条。
+                continue
+            known = {(row.provider, canonical_source_ref(row.provider, row.ref)) for row in found}
+            found.extend(
+                replace(hit, evidence=f"F95 首楼名片上的手柄 {handle}：{hit.evidence}",
+                        aliases=(handle,))
+                for hit in hits
+                if (hit.provider, canonical_source_ref(hit.provider, hit.ref)) not in known)
+
+    def f95(term: str) -> list[Candidate]:
+        credential = credentials.load("f95zone")
+        hits, learned = _f95_profile_handles(
+            _f95_candidates(term, transport, credential), term, transport, credential)
+        handles.extend(learned)
+        return hits
 
     runners = {
-        "kemono": lambda: _kemono_candidates("kemono", text, index),
-        "coomer": lambda: _kemono_candidates("coomer", text, index),
-        "pawchive": lambda: _kemono_candidates("pawchive", text, index),
-        "fanbox": lambda: _fanbox_candidates(found, transport),
-        "rule34video": lambda: _rule34video_candidates(text, transport),
-        "rule34xxx": lambda: _rule34xxx_candidates(text, transport,
-                                                   credentials.load("rule34xxx")),
-        "simpcity": lambda: _simpcity_candidates(text, transport,
-                                                 credentials.load("simpcity")),
-        "f95zone": lambda: _f95_candidates(text, transport,
-                                           credentials.load("f95zone")),
+        "f95zone": f95,
+        "kemono": lambda term: _kemono_candidates("kemono", term, index),
+        "coomer": lambda term: _kemono_candidates("coomer", term, index),
+        "pawchive": lambda term: _kemono_candidates("pawchive", term, index),
+        "fanbox": lambda _term: _fanbox_candidates(found, transport),
+        "rule34video": lambda term: _rule34video_candidates(term, transport),
+        "rule34xxx": lambda term: _rule34xxx_candidates(term, transport,
+                                                        credentials.load("rule34xxx")),
+        "simpcity": lambda term: _simpcity_candidates(term, transport,
+                                                      credentials.load("simpcity")),
     }
     for position, name in enumerate(tasks):
         if on_progress:

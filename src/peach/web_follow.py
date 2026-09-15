@@ -23,8 +23,8 @@ from .follow import FollowSourceError
 from .follow_check import plan_check, run_check
 from .web_settings import follow_initial_days
 from .follow_discovery import (
-    MAX_SUGGESTIONS, archive_suggestions, discover, discovery_plan, no_backoff,
-    suggest_term, tag_suggestions,
+    MAX_SUGGESTIONS, PROFILE_ALIAS_SKIP_SERVICES, archive_suggestions, discover,
+    discovery_plan, no_backoff, suggest_term, tag_suggestions,
 )
 from .follow_image_dims import positive_dims
 from .follow_secrets import (
@@ -1005,9 +1005,6 @@ def group_authors(source_rows, aliases: dict[str, str] | None = None,
 
 #: 一次最多提议多少条别名。这是给人一条条看的清单，不是批处理。
 MAX_ALIAS_SUGGESTIONS = 12
-#: 名片手柄不值得提议成别名的服务。论坛账号名常常是搬运工自己的账号，
-#: 而 pixiv 的身份是一串数字，当别名只会在列表里多出一个数字「作者」。
-_ALIAS_SKIP_SERVICES = frozenset({"pixiv", "f95zone", "simpcity"})
 
 
 def _profile_link_suggestions(rows, aliases: dict[str, str]) -> list[dict]:
@@ -1032,7 +1029,7 @@ def _profile_link_suggestions(rows, aliases: dict[str, str]) -> list[dict]:
             service = str(link.get("service") or "")
             handle = str(link.get("handle") or "").strip()
             alias_key = normalized_author_name(handle)
-            if service in _ALIAS_SKIP_SERVICES or not alias_key:
+            if service in PROFILE_ALIAS_SKIP_SERVICES or not alias_key:
                 continue
             if aliases.get(alias_key, alias_key) == aliases.get(
                     canonical_key, canonical_key):
@@ -2117,6 +2114,30 @@ def _profile_links(provider: str, ref: str, credential) -> list[dict] | None:
         return None
 
 
+def _discovery_aliases(body) -> list[str]:
+    aliases = body.get("aliases") or []
+    if not isinstance(aliases, list) or len(aliases) > MAX_DISCOVERY_ALIASES:
+        raise ValueError(f"aliases must be a list of at most {MAX_DISCOVERY_ALIASES} names")
+    return [str(alias).strip() for alias in aliases]
+
+
+def _save_discovery_aliases(store, author_name: str, aliases: list[str]) -> list[dict]:
+    """查找结果带来的名片手柄，随登记一步记成检索词的别名。
+
+    人勾选登记这一条就是确认，不再落进「待合并」等人第二次点。自动来源不覆盖
+    已有映射，人工改过的分组不动。
+    """
+    author_key = normalized_author_name(author_name) if author_name else ""
+    learned = []
+    for alias in aliases:
+        if not author_key or normalized_author_name(alias) in {"", author_key}:
+            continue
+        row = store.upsert_author_alias(author_name, alias, source="profile:f95zone")
+        if row is not None:
+            learned.append(row)
+    return learned
+
+
 def w_follow_source(contract, body) -> dict:
     """粘一条来源链接就登记，并立刻检查一次。
 
@@ -2151,17 +2172,20 @@ def w_follow_source(contract, body) -> dict:
     credential = credentials.load(parsed.provider)
     label = str(body.get("label") or "").strip() or _resolve_label(
         contract, parsed, credential)
-    author_hint = str(body.get("author") or "").strip()
-    author_hint = normalized_author_name(author_hint) if author_hint else ""
+    author_name = str(body.get("author") or "").strip()
+    author_hint = normalized_author_name(author_name) if author_name else ""
+    aliases = _discovery_aliases(body)
     metadata = {"author_key": author_hint} if author_hint else {}
     links = _profile_links(parsed.provider, parsed.ref, credential)
     if links is not None:
         metadata["official_links"] = links
     metadata = metadata or None
     with contract.database.write_transaction() as connection:
-        source_id = _store(contract, connection).register(
+        store = _store(contract, connection)
+        source_id = store.register(
             provider=parsed.provider, ref=parsed.ref, label=label, url=parsed.url,
             semantics=parsed.semantics, metadata=metadata)
+        learned = _save_discovery_aliases(store, author_name, aliases)
     checked = ({"results": []} if body.get("defer_check") else
                w_follow_check(contract, {"source": source_id}))
     outcome = next((row for row in checked["results"]
@@ -2178,7 +2202,8 @@ def w_follow_source(contract, body) -> dict:
                         "已登记，另一次检查正在进行，这条稍后再查"),
         }
     return {"ok": True, "source": source_id, "provider": parsed.provider,
-            "ref": parsed.ref, "label": label, "checked": outcome}
+            "ref": parsed.ref, "label": label, "checked": outcome,
+            "author_aliases_learned": learned}
 
 
 def w_follow_author_alias(contract, body) -> dict:
@@ -2206,6 +2231,8 @@ def w_follow_author_alias(contract, body) -> dict:
 
 #: 一次最多解析多少行。粘一屏链接是正常的，粘一整个书签导出不是。
 MAX_RESOLVE_LINES = 40
+#: 登记一条来源时最多随带写下几个名片别名；名片本身最多认八个身份。
+MAX_DISCOVERY_ALIASES = 8
 
 
 def _candidate_payload(candidate, *, author: str = "") -> dict:
@@ -2213,6 +2240,7 @@ def _candidate_payload(candidate, *, author: str = "") -> dict:
             "provider_label": PROVIDER_LABELS.get(candidate.provider, candidate.provider),
             "ref": canonical_source_ref(candidate.provider, candidate.ref),
             "url": candidate.url, "label": candidate.label, "author": author,
+            "aliases": list(getattr(candidate, "aliases", ())),
             "semantics": candidate.semantics, "evidence": candidate.evidence}
 
 

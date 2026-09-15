@@ -46,6 +46,11 @@ SIMPCITY_SEARCH_RESULTS = b"""<html><body>
 R34_AUTOCOMPLETE_HIT = json.dumps(
     [{"label": "ria-neearts (248)", "value": "ria-neearts"},
      {"label": "riahri (156)", "value": "riahri"}]).encode()
+R34_CEEEEEKC = json.dumps([{"label": "ceeeeekc (40)", "value": "ceeeeekc"}]).encode()
+# 首楼名片：一个与检索词不同的手柄、一个同名手柄、一个 pixiv 数字 id。
+F95_PROFILE_PAGE = b"""<html><body><article class="message"><div class="message-userContent">
+<a href="https://twitter.com/Ceeeeekc">X</a><a href="https://www.patreon.com/cekc">Patreon</a>
+<a href="https://www.pixiv.net/users/123456">pixiv</a></div></article></body></html>"""
 FANBOX_PROFILE = ("<html><meta name='metadata' content='"
                   + json.dumps({"urlContext": {"host": {"creatorId": "lazyprocrast"}}})
                     .replace("'", "&#39;")
@@ -120,6 +125,11 @@ class DiscoveryPlanTests(unittest.TestCase):
     def test_a_handle_includes_the_name_searching_sources(self):
         tasks = discovery_plan("suzutaro3d")
         self.assertEqual(tasks, DEFAULT_PROVIDERS)
+
+    def test_f95zone_is_asked_first_so_its_profile_handles_reach_the_rest(self):
+        self.assertEqual(discovery_plan("cekc")[0], "f95zone")
+        self.assertEqual(discovery_plan("Lazy", providers=("kemono", "f95zone")),
+                         ("f95zone", "kemono"))
 
     def test_a_numeric_word_skips_the_name_searching_sources(self):
         tasks = discovery_plan("30917150")
@@ -432,6 +442,23 @@ class DiscoverTests(_DiscoveryCase):
         discover("strauzek", secrets_root=self.secrets, state_root=self.state,
                  transport=call, providers=("f95zone",))
         self.assertEqual(queries, ["strauzek"])
+
+    def test_f95_profile_handles_are_searched_on_the_other_sources(self):
+        """搜 `cekc` 在 rule34.xxx 上碰不到 `Ceeeeekc`；F95 首楼名片上写着这个手柄。"""
+        self._write_credential("f95zone", {"cookie": "xf_user=1"})
+        routes = {"latest_data.php": HttpResponse(200, {}, F95_MISS),
+                  "/search/search": HttpResponse(200, {}, F95_SEARCH_RESULTS),
+                  "f95zone.to/search/": HttpResponse(200, {}, F95_SEARCH_FORM),
+                  "f95zone.to/threads/146348/": HttpResponse(200, {}, F95_PROFILE_PAGE),
+                  "autocomplete.php?q=cekc": HttpResponse(200, {}, b"[]"),
+                  "autocomplete.php?q=Ceeeeekc": HttpResponse(200, {}, R34_CEEEEEKC)}
+        found = self._discover("cekc", routes, providers=("rule34xxx", "f95zone"))
+        self.assertEqual([(c.provider, c.ref) for c in found.candidates],
+                         [("f95zone", "146348"), ("rule34xxx", "ceeeeekc")])
+        f95, tag = found.candidates
+        self.assertEqual(f95.aliases, ("Ceeeeekc",), "与检索词同名的 patreon 手柄和 pixiv 数字 id 不算别名")
+        self.assertEqual(tag.aliases, ("Ceeeeekc",))
+        self.assertTrue(tag.evidence.startswith("F95 首楼名片上的手柄 Ceeeeekc："))
 
     def test_without_a_cookie_the_forum_search_is_skipped_not_guessed(self):
         calls = []

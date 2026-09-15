@@ -2173,6 +2173,29 @@ class FollowSourceAddTests(FollowContractTests):
         source = self._get()["sources"][0]
         self.assertEqual(source["author_key"], "name:lazyprocrastinator")
 
+    def test_discovery_profile_aliases_are_saved_with_the_source_in_one_step(self):
+        """勾选登记名片手柄查到的来源就是确认；别名不再落进待合并等第二次点。"""
+        with mock.patch.object(web_follow, "build_connector") as factory:
+            factory.return_value.fetch.return_value = SourceFetch(
+                provider="rule34xxx", ref="ceeeeekc",
+                request_url="https://rule34.xxx/x", semantics="work",
+                not_modified=True)
+            added = self._post("/api/follow/source", {
+                "action": "add",
+                "url": "https://rule34.xxx/index.php?page=post&s=list&tags=ceeeeekc",
+                "author": "cekc", "aliases": ["Ceeeeekc", "cekc"],
+            })
+        self.assertEqual(added["author_aliases_learned"], [
+            {"canonical": "cekc", "alias": "Ceeeeekc", "source": "profile:f95zone"}])
+        payload = self._get()
+        self.assertEqual(payload["sources"][0]["author_key"], "name:cekc")
+        self.assertEqual([alias["name"] for alias in payload["author_aliases"][0]["aliases"]],
+                         ["Ceeeeekc"])
+        self.assertEqual(payload["alias_suggestions"], [])
+        with self.assertRaises(ValueError):
+            self._post("/api/follow/source", {"action": "add", "aliases": "Ceeeeekc",
+                                              "url": "https://rule34video.com/models/x/"})
+
     def test_a_name_miss_exposes_the_google_f95_fallback_without_adding_it(self):
         fallback = ExternalSearch(
             provider="f95zone", label="用 Google 继续查找 F95zone",
@@ -2203,7 +2226,7 @@ class FollowSourceAddTests(FollowContractTests):
         self.assertEqual(row["candidates"], [{
             "provider": "fanbox", "provider_label": "FANBOX",
             "ref": "lazyprocrast", "url": "https://lazyprocrast.fanbox.cc/",
-            "label": "lazyprocrast", "author": "", "semantics": "work",
+            "label": "lazyprocrast", "author": "", "aliases": [], "semantics": "work",
             "evidence": "链接直接指明", "known": False,
         }])
 

@@ -14,10 +14,19 @@ from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 from typing import Mapping
 
+from . import follow_providers
 from .follow import FollowHistoryEnd, FollowSourceError
 from .follow_secrets import CredentialError
-from .follow_sources import SourceFetch, enrichment_mark, within_history
+from .follow_sources import SourceFetch, enrichment_mark, history_window, published_stamp
 from .follow_store import RecordOutcome
+
+#: 新来源首次采集至少收下多少条。历史范围只按天数算时，更新稀疏的作者一条都
+#: 进不来；按条数又会让高产作者一下子塞满未看。取 30：大约一屏，kemono 一页 50
+#: 条不必翻页，rule34video（一页 24）、fanbox（一页 10）翻一两页就够。
+INITIAL_HISTORY_FLOOR = 30
+#: 为补足下限最多往前翻几页。每页都是真实请求，下限不值得拿无界的翻页去换。
+MAX_FLOOR_PAGES = 5
+_BACKFILL_PROVIDERS = follow_providers.backfill_providers()
 
 
 @dataclass(frozen=True)
@@ -106,19 +115,15 @@ def run_check(row: Mapping, *, credentials, writer, connector_factory,
     base = {"source_id": source_id, "provider": provider, "ref": ref,
             "label": str(row["label"] or ""), "page": page, "older": older}
     force = bool(row.get("force_media_reparse")) or replay_first
-    history_after = metadata.get('initial_history_after')
-    if 'initial_history_after' not in metadata and not row.get('last_checked_at'):
-        history_after = ((moment - timedelta(days=initial_days)).isoformat()
-                         if initial_days and not older else '')
-        with writer() as store:
-            store.merge_source_metadata(source_id, {'initial_history_after': history_after}, moment)
-    cutoff = datetime.fromisoformat(history_after) if history_after and not older else None
+    cutoff, floor = _history_limits(row, metadata, writer, moment,
+                                    older=older, initial_days=initial_days)
     try:
         connector = build_connector_for(
             provider, credentials, connector_factory,
             enrich_skip=frozenset(row.get("enrich_skip") or ()))
         connector.history_after = cutoff
         connector.history_skipped = 0
+        connector.history_floor = floor
         if progress is not None:
             connector.progress = progress
         fetch = connector.fetch(
@@ -135,7 +140,7 @@ def run_check(row: Mapping, *, credentials, writer, connector_factory,
         return _record_failure(writer, base, error, moment, "unauthorized")
     except FollowSourceError as error:
         return _record_failure(writer, base, error, moment, "error")
-    candidates = tuple(candidate for candidate in fetch.candidates if within_history(candidate, cutoff))
+    candidates = history_window(fetch.candidates, cutoff, floor)
     history_skipped = getattr(connector, 'history_skipped', 0) + len(fetch.candidates) - len(candidates)
     fetch = replace(fetch, candidates=candidates)
     with writer() as store:
@@ -148,9 +153,74 @@ def run_check(row: Mapping, *, credentials, writer, connector_factory,
             source_id, fetch,
             creator_aliases=store.creator_aliases(row["entity_id"]),
             moment=moment, page=page)
+    if floor and not fetch.not_modified:
+        fetch, outcome = _fill_floor(row, connector, writer, fetch, outcome, cutoff, floor, moment)
+    with writer() as store:
         learned = store.learn_official_author_alias(provider, ref, fetch.candidates)
     return CheckResult(**base, fetch=fetch, outcome=outcome,
                        author_alias_learned=learned, history_skipped=history_skipped)
+
+
+def _history_limits(row, metadata: dict, writer, moment: datetime, *,
+                    older: bool, initial_days: int) -> tuple[datetime | None, int]:
+    """这次检查的历史边界与条数下限；新来源首次检查时把两者固定进 metadata。
+
+    重试和自动更新沿用固定下来的值，不按当时的设置重算。往回翻页不设边界。
+    """
+    history_after = metadata.get('initial_history_after')
+    floor = int(metadata.get('initial_history_floor') or 0)
+    if 'initial_history_after' not in metadata and not row.get('last_checked_at'):
+        history_after = ((moment - timedelta(days=initial_days)).isoformat()
+                         if initial_days and not older else '')
+        floor = INITIAL_HISTORY_FLOOR if history_after else 0
+        with writer() as store:
+            store.merge_source_metadata(int(row["id"]), {'initial_history_after': history_after,
+                                                         'initial_history_floor': floor}, moment)
+    if not history_after or older:
+        return None, 0
+    return datetime.fromisoformat(history_after), floor
+
+
+def _fill_floor(row, connector, writer, fetch, outcome, cutoff, floor, moment):
+    """首次采集不足下限时往前翻页补足，再把边界挪到实际收下的最早一条。
+
+    往前翻的页整页收下，回填游标因此和「已经抓到第几页」一致，之后手动加载更早
+    接着往前走，不会漏掉半页。边界跟着挪，是为了之后的常规检查仍把这些条目
+    算在范围内，不在每次检查里重复报「跳过」。
+    """
+    source_id, provider, ref = int(row["id"]), str(row["provider"]), str(row["ref"])
+    kept = list(fetch.candidates)
+    totals = {"discovered": outcome.discovered, "added": outcome.added, "updated": outcome.updated}
+    counts = {"skipped": fetch.skipped, "skipped_compilations": fetch.skipped_compilations,
+              "probed": fetch.probed}
+    page = 0
+    connector.history_after = None
+    while len(kept) < floor and provider in _BACKFILL_PROVIDERS and page < MAX_FLOOR_PAGES:
+        page += 1
+        try:
+            more = connector.fetch(ref, etag=None, last_modified=None, page=page)
+        except FollowHistoryEnd:
+            break
+        except (CredentialError, FollowSourceError):
+            # 首页已经落库，补页失败只是这次补得少，之后手动加载更早还能接着翻。
+            break
+        with writer() as store:
+            extra = store.record(source_id, more,
+                                 creator_aliases=store.creator_aliases(row["entity_id"]),
+                                 moment=moment, page=page)
+        kept.extend(more.candidates)
+        for key in totals:
+            totals[key] += getattr(extra, key)
+        for key in counts:
+            counts[key] += getattr(more, key)
+    stamps = [stamp for stamp in map(published_stamp, kept) if stamp is not None]
+    patch = {'initial_history_floor': 0}
+    if stamps and min(stamps) < cutoff:
+        patch['initial_history_after'] = min(stamps).isoformat()
+    with writer() as store:
+        store.merge_source_metadata(source_id, patch, moment)
+    return (replace(fetch, candidates=tuple(kept), **counts),
+            replace(outcome, **totals))
 
 
 def _record_failure(writer, base: dict, error: Exception, moment: datetime,

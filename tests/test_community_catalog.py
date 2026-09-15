@@ -116,8 +116,13 @@ class VerifiedCoverTests(unittest.TestCase):
         self.assertEqual((candidate.url, size, origins), (JAVDB_COVER, (800, 534), ("dmm", "javdb")))
         self.assertEqual(candidate.referer, "https://javdb.com/")
         pages[DMM_COVER] = gradient(400, 267, rising=False)
-        with self.assertRaisesRegex(Unavailable, "没有第二个图源能对上"):
+        with self.assertRaisesRegex(Unavailable, "^dmm、javdb 给的封面不是同一张图"):
             verified_cover(serve(pages), "ABW-358", works)
+
+    def test_a_cover_only_javdb_has_names_the_missing_second_origin(self):
+        works = [("avbase", {"cover_urls": []}), ("javdb", {"cover_urls": [JAVDB_COVER]})]
+        with self.assertRaisesRegex(Unavailable, "^社区来源的封面只有 javdb 一个图源，缺第二个图源印证$"):
+            verified_cover(serve({JAVDB_COVER: gradient(800, 534)}), "IPX-060", works)
 
     def test_a_small_official_cover_counts_as_the_second_origin(self):
         works = [("javdb", {"cover_urls": [JAVDB_COVER]})]

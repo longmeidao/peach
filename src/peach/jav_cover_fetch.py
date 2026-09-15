@@ -93,6 +93,10 @@ SMALL_MIN_WIDTH = 240
 PLACEHOLDER = re.compile(r"now_?printing", re.I)
 #: 官方候选一张都量不出可用尺寸时的两种说法，下标是「有没有量到过偏小的图」。
 NO_USABLE_OFFICIAL = ("官方封面地址都没有取到图片", "官方封面只有缩略图或占位图")
+#: 占位图是来源自己说「没有图」：DMM 下架的作品两个版本都只剩这一张。
+PLACEHOLDER_REASON = "来源给的是「准备中」占位图"
+#: 官方候选里取到的只有占位图、没有偏小的真图时的说法。
+OFFICIAL_PLACEHOLDER_ONLY = "官方封面地址只回「准备中」占位图，作品多半已从官方下架"
 #: 韩国 MIB 的编号不在 JAV 目录站上，封面来源一律不问；记进日志算确认落空，不重探。
 MIB_NOT_JAV = "韩国 MIB 不适用 JAV 封面来源"
 #: 量尺寸只需要 JPEG 头部，别把整张 1 MB 的图拉下来。
@@ -227,12 +231,24 @@ def _fetch(transport: HttpTransport, url: str, *, referer: str,
             _sleep_within(NETWORK_RETRY_DELAYS[attempt], deadline)
     final_url = getattr(response, "url", "")
     if isinstance(final_url, str) and PLACEHOLDER.search(final_url):
-        raise NotFound("来源给的是「准备中」占位图")
+        raise NotFound(PLACEHOLDER_REASON)
     if response.status == 404:
         raise NotFound("HTTP 404")
     if response.status not in (200, 206):
         raise Unavailable(f"HTTP {response.status}")
     return response.body
+
+
+def _probe_failure(error: Exception) -> str:
+    """量尺寸失败记进诊断的哪一格：占位图单列，它是来源自己说没有图。"""
+    return "placeholder" if isinstance(error, NotFound) and str(error) == PLACEHOLDER_REASON else "probe_failed"
+
+
+def _no_usable_official(diagnostics: dict) -> str:
+    """官方候选一张都量不出可用尺寸时的原因。"""
+    if diagnostics.get("placeholder") and not diagnostics.get("too_small"):
+        return OFFICIAL_PLACEHOLDER_ONLY
+    return NO_USABLE_OFFICIAL[bool(diagnostics.get("too_small"))]
 
 
 def code_variants(code: str) -> list[str]:
@@ -613,8 +629,8 @@ def best_cover(transport: HttpTransport, code: str, delay: float, *,
     for candidate in candidates:
         try:
             width, height = probe_size(transport, candidate, deadline=deadline)
-        except (Unavailable, httpx.TransportError):
-            record("probe_failed")
+        except (Unavailable, httpx.TransportError) as error:
+            record(_probe_failure(error))
             continue
         except (UnidentifiedImageError, OSError):
             record("invalid_image")
@@ -626,7 +642,7 @@ def best_cover(transport: HttpTransport, code: str, delay: float, *,
         else:
             record("too_small")
     if not measured:
-        raise Unavailable(NO_USABLE_OFFICIAL[bool(diagnostics.get("too_small"))])
+        raise Unavailable(_no_usable_official(diagnostics))
 
     for _pixels, winner, size in sorted(measured, key=lambda item: item[0], reverse=True):
         try:
