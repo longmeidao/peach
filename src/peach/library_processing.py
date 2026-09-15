@@ -50,8 +50,9 @@ MISS_TTL_SECONDS = 7 * 24 * 3600
 
 #: 主机间隔。默认 2 秒；javdb 按出口 IP 计配额，5 秒一页是它的来源下限（docs/SOURCING.md）。
 SOURCE_INTERVALS = {'javdb.com': 5.0, 'jdbstatic.com': 5.0}
-SOURCE_LABELS = {'r18dev': 'r18.dev', 'avbase': 'AVBase', 'javdb': 'javdb', 'local_nfo': '本地 NFO'}
-PROVIDER_NAMES = {'local_nfo': 'local-nfo', 'r18dev': 'r18-json', 'avbase': 'avbase-search', 'javdb': 'javdb-page'}
+SOURCE_LABELS = {'r18dev': 'r18.dev', 'avbase': 'AVBase', 'javbus': 'JavBus', 'javdb': 'javdb', 'local_nfo': '本地 NFO'}
+PROVIDER_NAMES = {'local_nfo': 'local-nfo', 'r18dev': 'r18-json', 'avbase': 'avbase-search',
+                  'javbus': 'javbus-page', 'javdb': 'javdb-page'}
 
 
 def describe_failure(error):
@@ -87,10 +88,10 @@ class LibraryMetadataProvider:
             max_bytes=128 * 1024 * 1024, max_seconds=3600), 2.0, intervals=SOURCE_INTERVALS)
 
     def community(self, code, *, deadline=None):
-        """官方渠道落空时问 AVBase 与 javdb，返回 `[(来源, 资料)]`。
+        """官方渠道落空时问 AVBase、JavBus 与 javdb，返回 `[(来源, 资料)]`。
 
         资料和封面两步都可能要它，同一个番号只问一次：javdb 的配额经不起每部片问两遍。
-        两家都明确说没有才是 `NotFound`；有一家出错且谁都没给资料时，带着原因报 `Unavailable`。
+        几家都明确说没有才是 `NotFound`；有一家出错且谁都没给资料时，带着原因报 `Unavailable`。
         """
         from .community_catalog import COMMUNITY_SOURCES
         from .jav_cover_fetch import Unavailable

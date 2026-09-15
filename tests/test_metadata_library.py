@@ -287,9 +287,17 @@ class LibraryNfoTests(unittest.TestCase):
         self.assertEqual((evidence['width'], evidence['verified_by']), (1200, ['javdb', 'mgstage']))
 
         with patch('peach.jav_cover_fetch.best_cover', return_value=small), \
-                patch('peach.community_catalog.verified_cover', side_effect=Unavailable('社区来源的封面只有 javdb 一个图源，缺第二个图源印证')):
+                patch('peach.community_catalog.verified_cover', side_effect=Unavailable('javdb、mgstage 给的封面不是同一张图，无法互相印证')):
             self.assertTrue(provider.cover('ORETD-616', covers))
         self.assertEqual((covers / 'ORETD-616.jpg').read_bytes(), b'small')
+
+        lone = (Candidate('c0.jdbstatic.com', 'https://c0.jdbstatic.com/covers/y.jpg'), (800, 538), b'lone', ())
+        with patch('peach.jav_cover_fetch.best_cover', side_effect=NotFound('所有渠道都没有候选')), \
+                patch('peach.community_catalog.verified_cover', return_value=lone):
+            self.assertTrue(provider.cover('IPX-060', covers))
+        evidence = json.loads((covers / 'IPX-060.scraping.json').read_text(encoding='utf-8'))
+        self.assertEqual(((covers / 'IPX-060.jpg').read_bytes(), evidence['verified_by']), (b'lone', []),
+                         '只有一个图源的封面照样装上，verified_by 为空即未经印证')
 
         with patch('peach.jav_cover_fetch.best_cover', side_effect=Unavailable('官方封面只有缩略图或占位图')), \
                 patch('peach.community_catalog.verified_cover', side_effect=Unavailable('社区来源的封面下载失败')), \
