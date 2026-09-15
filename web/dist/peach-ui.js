@@ -1293,9 +1293,17 @@ function Wt(e) {
 		}, o = (t) => {
 			t.target === e && n.classList.remove("toggling");
 		};
-		e.addEventListener("transitionend", o), e.addEventListener("transitioncancel", o), r.onclick = () => {
+		e.addEventListener("transitionend", o), e.addEventListener("transitioncancel", o);
+		let s = () => {
+			let e = r.getBoundingClientRect().top, t = performance.now() + 300, n = () => {
+				let i = r.getBoundingClientRect().top - e;
+				i && window.scrollBy(0, i), performance.now() < t && requestAnimationFrame(n);
+			};
+			n();
+		};
+		r.onclick = () => {
 			let e = r.getAttribute("aria-expanded") !== "true";
-			r.setAttribute("aria-expanded", String(e)), r.setAttribute("aria-label", e ? "收起排名" : "展开更多排名"), n.classList.add("toggling"), a();
+			r.setAttribute("aria-expanded", String(e)), r.setAttribute("aria-label", e ? "收起排名" : "展开更多排名"), n.classList.add("toggling"), a(), e || s();
 		}, new ResizeObserver(i).observe(e), a();
 	});
 }

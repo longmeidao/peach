@@ -138,7 +138,11 @@ export function wireExpandableRanks(root:ParentNode) {
     /* 高度过渡只挂在点按那一下。切维度标签时内容换了、量出的高度跟着变，常驻过渡会让列表抖一下。 */
     const settle=(event:Event)=>{if(event.target===list)outer.classList.remove('toggling')};
     list.addEventListener('transitionend',settle);list.addEventListener('transitioncancel',settle);
-    button.onclick=()=>{const expanded=button.getAttribute('aria-expanded')!=='true';button.setAttribute('aria-expanded',String(expanded));button.setAttribute('aria-label',expanded?'收起排名':'展开更多排名');outer.classList.add('toggling');update()};
+    /* 收起时展开键钉在指针下。排名卡多在页底，列表变短后视口必须回退；不钉的话键先被带着上移、
+       到底后才换成页面回滚，方向中途一折就是「滚了一下」。过渡期间逐帧按它的位移回滚。 */
+    const pin=()=>{const top=button.getBoundingClientRect().top,until=performance.now()+300;
+      const hold=()=>{const shift=button.getBoundingClientRect().top-top;if(shift)window.scrollBy(0,shift);if(performance.now()<until)requestAnimationFrame(hold)};hold()};
+    button.onclick=()=>{const expanded=button.getAttribute('aria-expanded')!=='true';button.setAttribute('aria-expanded',String(expanded));button.setAttribute('aria-label',expanded?'收起排名':'展开更多排名');outer.classList.add('toggling');update();if(!expanded)pin()};
     new ResizeObserver(size).observe(list);update();
   });
 }

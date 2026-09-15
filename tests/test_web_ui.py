@@ -10405,6 +10405,9 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn(".board-rank-list,.board-expand-ranks.toggling>.board-rank-list,"
                       ".board-rank-expand svg{transition:none}", board)
         self.assertIn("outer.classList.add('toggling')", controls)
+        # 收起时展开键钉在指针下，页面回退朝一个方向完成，不先上移再回滚。
+        self.assertIn("outer.classList.add('toggling');update();if(!expanded)pin()", controls)
+        self.assertIn("if(shift)window.scrollBy(0,shift)", controls)
         # 箭头是描边字形。只给宽高的话 use 里那条折线会被默认 fill 填成一枚实心三角。
         self.assertIn(".board-rank-expand svg{width:14px;height:14px;fill:none;stroke:currentColor;"
                       "stroke-width:2;stroke-linecap:round;stroke-linejoin:round;"
