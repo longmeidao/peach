@@ -56,6 +56,7 @@ SCOPES: dict[str, tuple[str, ...]] = {
               "test_frame_capture.py", "test_timeline_sheets.py",
               "test_web_timeline_thumbnails.py",
               "test_interaction.py", "test_media.py", "test_mp4repair.py",
+              "test_web_media_repair.py",
               "test_previews.py",
               "test_providers.py", "test_segments.py", "test_streaming.py",
               "test_subtitles.py", "test_transcodes.py"),
@@ -161,6 +162,8 @@ AUTO_SCOPE_PREFIXES: tuple[tuple[str, str | tuple[str, ...]], ...] = (
     # 关键帧与 ctts 都从 moov 读，测试住在 `test_segments.py` 里。
     ("src/peach/mp4index.py", "media"),
     ("src/peach/mp4repair.py", "media"),
+    # 批量修头是播放链路的任务，但住在 web 层，两个域都要跑到。
+    ("src/peach/web_media_repair.py", ("media", "web")),
     ("src/peach/desktop_startup.py", "tooling"),
     ("src/peach/desktop_uninstall.py", "tooling"),
     ("src/peach/peach_proxy.py", "tooling"),
