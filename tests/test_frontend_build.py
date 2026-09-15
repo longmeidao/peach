@@ -330,6 +330,29 @@ class IslandSourceContractTests(unittest.TestCase):
         self.assertEqual(len(routed), 1, f"quality-goals 声明在 {routed}")
 
 
+class ScrapingEndpointTests(unittest.TestCase):
+    """来源和凭证页的四条端点，声明处都只有这一页的数据模块。
+
+    这一页除了读列表还有三个写操作，散着写最容易在第二处悄悄改一条路径。基址是另外三条
+    的前缀，所以按带引号的字面量数，`'/api/scraping'` 不会把 `/settings` 那条也算进来。
+    """
+
+    SCRAPING = FRONTEND / "src" / "react" / "scraping" / "scraping.ts"
+
+    def test_the_endpoints_are_declared_once(self):
+        sources = sorted(path for path in (FRONTEND / "src").rglob("*.ts*"))
+        for endpoint in ("'/api/scraping'", "'/api/scraping/settings'",
+                         "'/api/scraping/check'", "'/api/scraping/cover'"):
+            with self.subTest(endpoint=endpoint):
+                declared = [path for path in sources
+                            if endpoint in path.read_text(encoding="utf-8")]
+                self.assertEqual(declared, [self.SCRAPING],
+                                 f"{endpoint} 声明在 {[path.name for path in declared]}")
+        routed = [path.name for path in sorted((ROOT / "src" / "peach").glob("web_*.py"))
+                  if "/api/scraping" in path.read_text(encoding="utf-8")]
+        self.assertEqual(len(routed), 1, f"/api/scraping 的路由声明在 {routed}")
+
+
 class ConfigurationEndpointTests(unittest.TestCase):
     """配置页的 Preact 外壳和 React 分区读同一条 `/api/configuration`，两份产物各打包一份。"""
 

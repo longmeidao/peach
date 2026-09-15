@@ -12,6 +12,8 @@ import type * as Bundle from './bundle';
 import { QualityGoalsPage } from './quality-goals/quality-goals-page';
 import { prefetchQualityGoals } from './quality-goals/quality-goals';
 import { queryClient } from './query';
+import { ScrapingPage } from './scraping/scraping-page';
+import { prefetchScraping } from './scraping/scraping';
 import { GeneralSettings } from './settings/general-settings';
 import { MaintenanceSettings } from './settings/maintenance-settings';
 import { MediaSettings } from './settings/media-settings';
@@ -52,6 +54,7 @@ export const pages: Bundle.ReactPages = {
   'quality-goals': {
     prefetch: (_props, signal) => prefetchQualityGoals(signal), mount: mounter(QualityGoalsPage),
   },
+  scraping: { prefetch: (_props, signal) => prefetchScraping(signal), mount: mounter(ScrapingPage) },
 };
 
 export const mountGeneralSettings: typeof Bundle.mountGeneralSettings = mounter(GeneralSettings);

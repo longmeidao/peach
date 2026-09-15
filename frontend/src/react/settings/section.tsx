@@ -14,15 +14,22 @@ import { LinkButton } from '@/components/base/buttons/link-button';
 interface SectionProps {
   title: string;
   id?: string;
+  /** 跟着标题走的次要内容（来源站点的外链）。标题占剩下的宽度，它靠右。 */
+  aside?: ReactNode;
   /** 给了就画成表单：回车提交，提交键放在 `Footer` 里。 */
   onSubmit?: (event: FormEvent<HTMLFormElement>) => void;
   children: ReactNode;
 }
 
-export function Section({ title, id, onSubmit, children }: SectionProps) {
+export function Section({ title, id, aside, onSubmit, children }: SectionProps) {
   const body = (
     <>
-      <SettingsSectionLabel>{title}</SettingsSectionLabel>
+      {aside
+        ? <div className="flex w-full flex-wrap items-center justify-between gap-2">
+            <div className="min-w-0 flex-1"><SettingsSectionLabel>{title}</SettingsSectionLabel></div>
+            {aside}
+          </div>
+        : <SettingsSectionLabel>{title}</SettingsSectionLabel>}
       <SettingsCard>{children}</SettingsCard>
     </>
   );
@@ -67,10 +74,11 @@ export function FieldLabel({ children }: { children: ReactNode }) {
   return <p className="text-body-medium text-text-primary">{children}</p>;
 }
 
-/** 新窗口打开的外部链接，尾部带外链字形。 */
+/** 新窗口打开的外部链接，尾部带外链字形。`rel` 两项都写：新标签页不继承这一页的会话，
+ *  来源地址也不带走 Peach 自己的地址。 */
 export function ExternalLink({ href, children }: { href: string; children: ReactNode }) {
   return (
-    <LinkButton href={href} target="_blank" rel="noreferrer" size="small" trailingIcon={RiExternalLinkLine}>
+    <LinkButton href={href} target="_blank" rel="noopener noreferrer" size="small" trailingIcon={RiExternalLinkLine}>
       {children}
     </LinkButton>
   );

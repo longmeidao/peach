@@ -353,7 +353,7 @@ class WebUiSourceTests(unittest.TestCase):
         ".geist-progress", ".watchprogress", ".vjs-play-progress", ".vjs-progress-holder",
         ".trace .bar", ".tokbar",  # 进度与数据
         ".ptoggle:checked",  # Toggle 开态：Geist Toggle 实测轨道 rgb(0,112,243)
-        ".entitylink", ".flink", ".fsourcelink", ".fcred a", ".tokauthor>a", ".taste-history-guide-content a", ".scraping-url",  # 真正的链接
+        ".entitylink", ".flink", ".fsourcelink", ".fcred a", ".tokauthor>a", ".taste-history-guide-content a",  # 真正的链接
     )
 
     def test_tungsten_is_reserved_for_focus_links_progress_and_toggle(self):
@@ -2133,8 +2133,8 @@ class WebUiSourceTests(unittest.TestCase):
         for gone in ("google.com/s2/favicons", "faviconFallbackUrl", "SITE_FAVICONS"):
             self.assertPageLacks(gone, "站点图标不得由浏览器向站外取")
         scraping = (Path(__file__).resolve().parents[1]
-                    / "frontend/src/islands/scraping.tsx").read_text(encoding="utf-8")
-        self.assertIn("<img src={siteMarkUrl({ source: source.source })}", scraping)
+                    / "frontend/src/react/scraping/scraping-page.tsx").read_text(encoding="utf-8")
+        self.assertIn("<img src={siteMarkUrl({ source })}", scraping)
         self.assertNotIn("faviconUrl", scraping)
 
     def test_no_caller_ever_hands_the_link_mark_endpoint_a_url(self):
@@ -5040,24 +5040,27 @@ class WebUiSourceTests(unittest.TestCase):
                          "统计页只讲库里现在有多少，不该再挂对齐外部现实的面板")
         self.assertNotIn("resourceSyncMarkup()", stats)
 
-    def test_scraping_uses_shared_controls_and_source_links(self):
+    def test_scraping_is_reachable_from_the_library_processing_card(self):
+        """来源和凭证自成一页，入口在数据管理那张「扫描与采集」卡上。
+
+        这一页是 React 档（ADR-0031）：遗留层只铺骨架、交容器，正文在
+        `frontend/src/react/scraping/` 里。所以这里断言的是外壳——路由、名字与入口。
+        连接方式、Cookie 二选一、保存与撤销交什么、检查结果怎么说由
+        `frontend/test/react/scraping.test.tsx` 守，页脚三键的外观与来源外链的
+        `rel` 由 `frontend/e2e/design.test.ts` 读计算值守。
+        """
         self.assertPageContains("'/scraping':'来源和凭证'")
         self.assertPageContains('id="libraryProcessing"')
         processing = (Path(__file__).resolve().parents[1] / 'frontend/src/islands/library-processing.tsx').read_text(encoding='utf-8')
         self.assertIn('href="/scraping"', processing)
-        self.assertPageContains('.scraping-fields .gselectfield{justify-content:space-between;padding-right:16px;')
-        # 来源链接是站外地址：站标加外链标，读者不点也知道这一跳会离开 Peach。
-        # 站标和地址之间那 4px 挂在站标身上，行内的 gap 只管地址与外链标之间的 2px。
-        self.assertPageContains('.scraping-fields .scraping-url{display:inline-flex;align-items:center;gap:2px;')
-        self.assertPageContains('.scraping-fields .scraping-url img{flex:none;margin-inline-end:4px;')
-        # 来源地址使用链接蓝，悬停通过下划线反馈。
-        self.assertPageContains('.scraping-fields .scraping-url:hover{color:var(--tungsten);text-decoration:underline;text-underline-offset:3px}')
-        self.assertPageContains('.scraping-fields .scraping-cover-form{display:flex;align-items:center;')
-        source = (Path(__file__).resolve().parents[1] / 'frontend/src/islands/scraping.tsx').read_text(encoding='utf-8')
-        self.assertIn('wireSelectField(root.firstElementChild!)', source)
-        self.assertNotIn('<select', source)
-        self.assertIn('提供 Cookie 的方式（二选一）', source)
-        self.assertIn('class="scraping-url externallink" href={source.login}', source)
+        self.assertPageContains(
+            "await ui.mountIsland('scraping',$('#stats'),{toast},"
+            "{isCurrent:()=>surfaceCurrent(surface)})")
+        # 正文归 React 子树：控件、来源外链与 Cookie 二选一用 BoardUI 的源码加 Tailwind，
+        # 遗留样式表里只剩骨架要的那两条。
+        self.assertPageLacks('.scraping-fields')
+        self.assertPageLacks('.scraping-url')
+        self.assertPageLacks('.scraping-cover-form')
 
     def test_data_management_subpages_carry_geist_breadcrumbs(self):
         """数据管理五张卡进的是它的子页，得有回去的路和自己的名字。
@@ -10390,12 +10393,15 @@ class WebUiSourceTests(unittest.TestCase):
         它要挨个问几家站点、还可能走代理，没有可数的总量，也不能编一个百分比出来，
         所以是 Loading Dots 不是 Progress。关掉页面它照样在跑、回来能接上，状态就得
         留在页面上——按钮的忙态随着重进页面一起没了。
+
+        页面归 React 子树（ADR-0031）：轮询接不接得上、首屏读到的旧结果画不画、回执发
+        几次由 `frontend/test/react/scraping.test.tsx` 守，等待点的外观由共用组件与
+        `frontend/e2e/design.test.ts` 守。这里只钉「用哪一种等待态」这个选择。
         """
-        island = (Path(__file__).resolve().parents[1]
-                  / "frontend/src/islands/scraping.tsx").read_text(encoding="utf-8")
-        self.assertIn("loadingDotsHtml", island.split("from '@peach/legacy/ui';", 1)[0])
-        self.assertIn("{running && <div aria-live=\"polite\" dangerouslySetInnerHTML="
-                      "{{ __html: loadingDotsHtml('正在抓取封面') }} />}", island)
+        page = (Path(__file__).resolve().parents[1]
+                / "frontend/src/react/scraping/scraping-page.tsx").read_text(encoding="utf-8")
+        self.assertIn("<LoadingDots label=\"正在抓取封面\" />", page)
+        self.assertNotIn("<Progress", page)
 
     def test_the_floating_filter_panel_leaves_the_same_gap_above_and_below(self):
         """浮层上下留一样宽的空隙；上面那段由页面给，它自己就不再加一层。
@@ -11123,7 +11129,9 @@ class WebUiSourceTests(unittest.TestCase):
                          self.app_js.count("icon('external-link','externalmark')"),
                          "web/app.js 里每一枚外链标都带 externalmark")
         root = Path(__file__).resolve().parents[1]
-        for name in ('islands/scraping.tsx', 'management.ts', 'review-evidence.ts'):
+        # React 子树的外链标是 BoardUI `LinkButton` 的 `trailingIcon`，不走雪碧图，
+        # 所以只数仍在拼 HTML 字符串的那几处。
+        for name in ('management.ts', 'review-evidence.ts'):
             source = (root / 'frontend/src' / name).read_text(encoding='utf-8')
             self.assertEqual(source.count('#i-external-link'),
                              source.count('class="externalmark" viewBox="0 0 24 24"'),
