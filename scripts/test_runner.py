@@ -55,7 +55,8 @@ SCOPES: dict[str, tuple[str, ...]] = {
               "test_task_runs.py", "test_task_center_integration.py",
               "test_frame_capture.py", "test_timeline_sheets.py",
               "test_web_timeline_thumbnails.py",
-              "test_interaction.py", "test_media.py", "test_previews.py",
+              "test_interaction.py", "test_media.py", "test_mp4repair.py",
+              "test_previews.py",
               "test_providers.py", "test_segments.py", "test_streaming.py",
               "test_subtitles.py", "test_transcodes.py"),
     "sync": ("test_sync*.py", "test_platform.py", "test_mount.py", "test_tray.py", "test_log_retention.py",
@@ -159,6 +160,7 @@ AUTO_SCOPE_PREFIXES: tuple[tuple[str, str | tuple[str, ...]], ...] = (
     ("src/peach/media.py", "media"),
     # 关键帧与 ctts 都从 moov 读，测试住在 `test_segments.py` 里。
     ("src/peach/mp4index.py", "media"),
+    ("src/peach/mp4repair.py", "media"),
     ("src/peach/desktop_startup.py", "tooling"),
     ("src/peach/desktop_uninstall.py", "tooling"),
     ("src/peach/peach_proxy.py", "tooling"),

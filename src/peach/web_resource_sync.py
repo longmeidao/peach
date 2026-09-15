@@ -225,7 +225,8 @@ def _resource_orphan_plan(contract: ResourceSyncContract, excluded_ids: Sequence
     patterns = (
         (contract.poster_root, "posters", re.compile(r"^(\d+)_\d+\.jpg$")),
         (contract.photo_root, "photo-thumbs", re.compile(r"^(\d+)\.jpg$")),
-        (contract.transcode_root, "transcodes", re.compile(r"^(\d+)-.+\.mp4$")),
+        # 重建的 MP4 头（`.mp4hdr`）和整片转码缓存住在一起，判据和回收也共用一套。
+        (contract.transcode_root, "transcodes", re.compile(r"^(\d+)-.+\.(?:mp4|mp4hdr)$")),
     )
     for root, kind, pattern in patterns:
         if not _managed_cache_root(contract, root) or not root.is_dir():

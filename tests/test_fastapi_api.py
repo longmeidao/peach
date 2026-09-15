@@ -1899,6 +1899,54 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.headers["content-type"], "video/mp2t")
         self.assertTrue(segment.exists(), "片段要留在缓存里，重复请求不该再跑一次 FFmpeg")
 
+    async def test_a_repaired_header_takes_a_broken_timestamp_file_off_the_transcode_path(self):
+        """时间戳错乱的片子一旦有了修好的头，就该按 Range 无损播，不再实时转码。"""
+        from peach.mp4repair import RepairedHeader
+
+        source = self.media_root / "decode-order.mp4"
+        source.write_bytes(b"OLDHEAD" + bytes(range(64)))
+        header = RepairedHeader(prefix=b"NEWHEADER", payload_start=7, payload_end=71)
+        con = sqlite3.connect(self.db)
+        con.execute("UPDATE asset SET path=?, duration=13.5 WHERE id=1", (str(source),))
+        con.commit()
+        con.close()
+        service = self.app.state.transcode_service
+
+        with patch.object(service, "requires_conversion", return_value=True), \
+                patch.object(service, "decode_order_timestamps", return_value=True), \
+                patch.object(service, "browser_path",
+                             side_effect=AssertionError("whole movie conversion")), \
+                patch.object(self.app.state.header_repairs, "lookup", return_value=header), \
+                patch.object(self.app.state.header_repairs, "request",
+                             side_effect=AssertionError("已经有头了还要再算一遍")):
+            plan = (await self.client.get("/api/stream-plan?id=1&session=s&t=secret")).json()
+            response = await self.client.get(
+                "/stream?id=1", headers={"X-Token": "secret", "Range": "bytes=5-12"})
+
+        self.assertEqual(plan["protocol"], "range")
+        self.assertEqual(response.status_code, 206)
+        self.assertEqual(response.content, (b"NEWHEADER" + bytes(range(64)))[5:13])
+        self.assertEqual(response.headers["content-type"], "video/mp4")
+
+    async def test_a_broken_timestamp_file_without_a_header_still_slices_and_asks_for_one(self):
+        """头还没算出来时照旧走 HLS，同时在后台补一份，下次播就换成 Range。"""
+        con = sqlite3.connect(self.db)
+        con.execute("UPDATE asset SET path=?, duration=13.5 WHERE id=1", (str(self.hls_file),))
+        con.commit()
+        con.close()
+        service = self.app.state.transcode_service
+        asked: list[int] = []
+
+        with patch.object(service, "requires_conversion", return_value=True), \
+                patch.object(service, "decode_order_timestamps", return_value=True), \
+                patch.object(self.app.state.header_repairs, "lookup", return_value=None), \
+                patch.object(self.app.state.header_repairs, "request",
+                             new=lambda asset_id, source: asked.append(asset_id)):
+            plan = (await self.client.get("/api/stream-plan?id=1&session=s&t=secret")).json()
+
+        self.assertEqual(plan["protocol"], "hls")
+        self.assertEqual(asked, [1])
+
     async def test_transcoded_stream_has_browser_mime_and_marker(self):
         avi = self.media_root / "two.avi"
         avi.write_bytes(b"avi-source")

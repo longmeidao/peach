@@ -8,6 +8,29 @@ from peach.mp4index import segment_plan
 from peach.segments import build_hls_playlist
 
 
+async def _collect(response, requested: bytes | None, method: str = "GET"):
+    """把一个 ASGI 响应跑完，返回 (状态码, 响应头, 响应体)。"""
+    messages: list[dict] = []
+
+    async def receive() -> dict:
+        await asyncio.Event().wait()
+        return {"type": "http.disconnect"}
+
+    async def send(message: dict) -> None:
+        messages.append(message)
+
+    await response({
+        "type": "http", "method": method, "path": "/stream",
+        "headers": [(b"range", requested)] if requested else [],
+    }, receive, send)
+    start = messages[0]
+    return (
+        start["status"],
+        {key.decode(): value.decode() for key, value in start["headers"]},
+        b"".join(message.get("body", b"") for message in messages[1:]),
+    )
+
+
 class StreamSessionRegistryTests(unittest.IsolatedAsyncioTestCase):
     async def test_cancel_stops_every_active_request_in_the_session(self):
         registry = StreamSessionRegistry()
@@ -125,6 +148,61 @@ class StreamSessionRegistryTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(BufferedFileResponse.chunk_size, 1 << 20)
         self.assertEqual(CancellableFileResponse.chunk_size, 1 << 20)
+
+    async def test_a_spliced_file_serves_ranges_across_the_seam(self):
+        """头在边车里、内容在原文件中间，跨接缝的 Range 必须拼出连续的字节。"""
+        import tempfile
+        from pathlib import Path
+
+        from peach.mp4repair import RepairedHeader
+        from peach.streaming import SplicedMp4Response
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "remote.mp4"
+            path.write_bytes(b"OLDHEAD" + bytes(range(64)) + b"TAIL")
+            header = RepairedHeader(
+                prefix=b"NEWHEADER", payload_start=7, payload_end=71, suffix=b"END")
+            whole = b"NEWHEADER" + bytes(range(64)) + b"END"
+
+            for label, requested, status, expected in (
+                ("没有 Range 头", None, 200, whole),
+                ("整份也按 Range 答", b"bytes=0-", 206, whole),
+                ("跨头与内容的接缝", b"bytes=5-12", 206, whole[5:13]),
+                ("只要内容", b"bytes=20-30", 206, whole[20:31]),
+                ("开区间到尾", b"bytes=70-", 206, whole[70:]),
+                ("末尾若干字节", b"bytes=-4", 206, whole[-4:]),
+            ):
+                with self.subTest(label):
+                    status_code, headers, body = await _collect(
+                        SplicedMp4Response(path, header), requested)
+                    self.assertEqual(status_code, status)
+                    self.assertEqual(body, expected)
+                    self.assertEqual(headers["content-length"], str(len(expected)))
+                    self.assertEqual(headers["accept-ranges"], "bytes")
+
+            status_code, headers, body = await _collect(
+                SplicedMp4Response(path, header), b"bytes=999-")
+            self.assertEqual(status_code, 416)
+            self.assertEqual(headers["content-range"], f"bytes */{len(whole)}")
+
+    async def test_a_spliced_head_request_reports_the_size_without_a_body(self):
+        import tempfile
+        from pathlib import Path
+
+        from peach.mp4repair import RepairedHeader
+        from peach.streaming import SplicedMp4Response
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "remote.mp4"
+            path.write_bytes(b"OLDHEAD" + bytes(range(64)))
+            header = RepairedHeader(prefix=b"NEWHEADER", payload_start=7, payload_end=71)
+            status_code, headers, body = await _collect(
+                SplicedMp4Response(path, header), None, method="HEAD")
+
+        self.assertEqual(status_code, 200)
+        self.assertEqual(headers["content-length"], "73")
+        self.assertEqual(headers["content-type"], "video/mp4")
+        self.assertEqual(body, b"")
 
     def test_hls_playlist_is_time_addressable_without_full_file_ranges(self):
         # 分片边界由真实关键帧决定，不再按固定秒数等分（见 tests/test_segments.py）。
