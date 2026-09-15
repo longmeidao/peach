@@ -7604,7 +7604,7 @@ function renderFollowPicks(results){
     const failures=Object.entries(row.failures||{});
     const items=(row.candidates||[]).map((c,ci)=>`<label class="fpickitem${c.known?' known':''}" data-provider="${esc(c.provider_label||'')}">
       ${checkboxHtml(`data-pick="${index}-${ci}" value="${esc(c.url)}"`
-        +` data-author="${esc(c.author||'')}"`
+        +` data-author="${esc(c.author||'')}" data-aliases="${esc(JSON.stringify(c.aliases||[]))}"`
         +` data-label="${esc(c.label)}"${c.known?' disabled':' checked'}`)}
       <span><b>${esc(c.provider_label)}</b> ${esc(c.label)}
         <i>${esc(c.known?'已经关注':c.evidence)}</i></span></label>`).join('');
@@ -7644,7 +7644,7 @@ function renderFollowPicks(results){
       try{
         const registered=await api('/api/follow/source',{method:'POST',body:JSON.stringify(
           {action:'add',url:input.value,label:input.dataset.label,
-           author:input.dataset.author,defer_check:true})});
+           author:input.dataset.author,aliases:JSON.parse(input.dataset.aliases||'[]'),defer_check:true})});
         sources.push(registered.source);
       }catch(error){
         // 一条失败不该把其余的一起丢掉，逐条报。

@@ -57,7 +57,6 @@ BASELINE: dict[str, int] = {
     "scripts/clean_names.py:run": 33,
     "scripts/harvest_studio_icons.py:icon_row": 32,
     "scripts/smoke_desktop.py:main": 32,
-    "src/peach/follow_check.py:run_check": 32,
     "src/peach/jav_cover_fetch.py:best_cover": 32,
     "scripts/find_ads.py:find_candidates": 31,
     "scripts/rehome_unknown_jav.py:build_plan": 31,
