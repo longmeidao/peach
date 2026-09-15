@@ -58,6 +58,18 @@ describe('范围控件',()=>{
     list.dispatchEvent(new Event('transitionend'));
     expect(outer.classList.contains('toggling')).toBe(false);
   });
+  it('收起时展开键钉在原位：它被带着上移多少，页面就回滚多少；展开不动页面',()=>{
+    document.body.innerHTML='<div class="tasteranks">'+Array.from({length:7},()=>'<button>排名</button>').join('')+'</div>';
+    wireExpandableRanks(document);
+    const toggle=document.querySelector<HTMLButtonElement>('.board-rank-expand')!;
+    const scroll=vi.spyOn(window,'scrollBy').mockImplementation(()=>{});
+    vi.stubGlobal('requestAnimationFrame',()=>0);
+    try{
+      toggle.click();expect(scroll).not.toHaveBeenCalled();
+      vi.spyOn(toggle,'getBoundingClientRect').mockReturnValueOnce({top:400} as DOMRect).mockReturnValueOnce({top:300} as DOMRect);
+      toggle.click();expect(scroll).toHaveBeenCalledWith(0,-100);
+    }finally{vi.unstubAllGlobals();scroll.mockRestore()}
+  });
   it('两个端点分别保留数值与不限状态，重复接线不增加气泡',()=>{
     document.body.innerHTML='<div class="dual-range"><input id="durMin" type="range" min="0" max="180" value="20"><input id="durMax" type="range" min="0" max="180" value="180"></div>';
     const inputs=[...document.querySelectorAll('input')];inputs.forEach(syncBoardRange);inputs.forEach(syncBoardRange);
