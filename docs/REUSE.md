@@ -160,6 +160,7 @@ CloudDrive 为外部应用，本项目不捆绑其二进制或依赖其管理 AP
 | 自研实现 | 被拒绝的候选 | 不可替代约束 |
 |---|---|---|
 | `mp4index.py` 有界 MP4 关键帧索引 | PyAV、`pymp4`、Bento4 | PyAV 需要 demux，`pymp4` 依赖旧 Construct，Bento4 是额外二进制；都不能证明在云盘文件上保留「只读 moov/stss/stts、避免整片流量」的约束。 |
+| `mp4repair.py` 重建缺失的 `ctts`，新头存成边车 | `ffmpeg -c copy` 重封装、`untrunc`、Bento4 `mp4edit` | ffmpeg 的 h264 解复用器拿不回显示顺序（实测重封装后仍有 986/2015 帧倒着走），`untrunc` 修的是截断不是缺表，`mp4edit` 只会原地重写整个文件——网盘上的片子改一个字节就是几 GB 重传。约束是「原文件一个字节不动、播放时拼出合规 MP4」。 |
 | `certs.py` 固定项目 CA 与短期叶证书（编码继续调用 OpenSSL） | mkcert、cryptography | mkcert 会接管本机 CA 安装/私钥，不能保持跨设备固定项目 CA；cryptography 只替换证书编码且增加原生依赖，不能删除 Peach 的 Apple 398 天与 CA 生命周期策略。 |
 | `migrations.py` SQLite 迁移 | Alembic | Alembic 会引入 SQLAlchemy/Mako/greenlet；现有范围只需顺序 SQL、校验和、备份与 PyInstaller 资源定位，没有 ORM 消费者。 |
 | Gofile API 直接 HTTP | 社区 wrapper | 官方没有维护中的 Python SDK；社区 wrapper 只是薄封装，不能绕过 Premium `contents` 权限，也不能减少 Peach 的 Bearer 隔离与媒体规范化。 |
@@ -194,6 +195,7 @@ CloudDrive 为外部应用，本项目不捆绑其二进制或依赖其管理 AP
 - 缓存型资产路由一律先问缓存，不先解析源文件：`media_engine.file_for()` 里那句存在性检查落在 CloudDrive 挂的网盘上，实测一次 137–402 毫秒，一屏几十张缩略图全部命中缓存也要为这几十次往返等好几秒。缩好之后源文件在不在都不改变响应，`/photo-thumb` 因此先问 `photo_service.cached()`。
 - 账本路径在 Windows 只做 `abspath`，不 `resolve()`：PikPak 的 A: 是 WinFsp 映射的网络驱动器，实测（2026-09-13）`resolve()` 一条文件路径 7.5 秒、结果是 UNC 形态，对它 stat 14 秒、open 7 秒，同一文件走盘符 1 毫秒；115 的 B: 不受影响。播放链路里每个请求都要经过 `file_for()`，这一处决定 PikPak 的 stream-plan 与每个 Range 请求是几十秒还是零点几秒。
 - 不兼容片源（HEVC、mp3 以外的音轨、非 MP4 容器）一律按 6 秒片重编码给 HLS，账本没记时长或记成负数时用 ffprobe 报的时长切；探测也拿不到才回 Range。分片重编码链与整片转码相同（CUDA 解码加 NVENC、软件解码加 NVENC、libx264），同一分片并发只起一个 FFmpeg，Range 响应按 1 MiB 读文件、客户端一断开就停读。uvicorn 断开后 `send()` 静默返回、Starlette 的 `FileResponse` 不监听断开，`BufferedFileResponse` 因此自己盯 `http.disconnect`；实测（2026-09-13）不盯的话拖一次进度条就留下一个幽灵读者，把 115 上整部片剩下的几 GB 经 CloudDrive 拉完，新位置排在它后面，直到整部片进缓存才能播。
+- 有 B 帧却没有 `ctts` 的 MP4 只是时间戳错乱：容器声明的显示时刻其实是解码顺序，浏览器把倒着走的帧全丢掉（6297 实测整片掉两成，PotPlayer 与 FFmpeg 按解码器输出重排所以本地看着正常）。这类片源不重编码，改为重建一份 `moov`（游程编码的 `ctts`、编辑列表补整体平移、`stco`/`co64` 按头长差平移）存成 `transcode_root` 里的 `.mp4hdr` 边车，`/stream` 用「边车的头 + 原文件那段 mdat」拼出虚拟文件按 Range 发。显示顺序由一趟 `ffprobe -ignore_editlist 1 -show_entries frame=pts` 取得——解码器按显示顺序出帧、每帧的 pts 原样来自它那个样本；`pkt_dts` 记的是出帧时最后喂进去的包，不能用。边车没算出来前照旧走 HLS 转码，同一部片后台只算一次，算不出来就不再试。
 - 「只采集」对齐全的行（番号已落库、字段有着落或已在候选表、封面在位）不碰磁盘；文件在不在看目录列表，同目录只列一次；候选 CSV 每 5 秒落盘一次、被打断也在收尾写全；扫描从目录列表自带的大小与时间登记文件，不逐个 stat。账本副本、外部来源换桩、媒体挂载只读的实测（2026-09-13）：本地盘 2553 行 2 秒，115 每秒约 65 行、PikPak 约 35 行，进入首行前的准备 0.4 秒；真实运行每条缺资料的行另加联网时间，联网仍是串行。
 - 一个控件在两页出现时，选中态怎么表现也归它，不只是外框和材质：首页与资料页的「全部／没看过／稍后看／已标记」共用 `syncViewGlide` 那块滑动玻璃，填充只由玻璃给，两排各自不铺底。找那一排按结构（`#viewPills,.entityviews`）加「此刻量得出宽度」，不按 id：两排在同一份文档里一直都在，另一页开着的时候只是被祖先收起来，写死 id 会一直取到看不见的那一排。
 - 统计与口味两页按登录态 Vercel Analytics／Speed Insights 的当前页面重做，排行与数据源共用父网格的引导线。

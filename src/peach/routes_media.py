@@ -48,7 +48,7 @@ from .platform import within_root
 from .previews import PreviewUnavailable
 from .routes_auth import require_auth
 from .segments import SegmentCancelled, SegmentUnavailable, build_hls_playlist
-from .streaming import BufferedFileResponse, CancellableFileResponse
+from .streaming import BufferedFileResponse, CancellableFileResponse, SplicedMp4Response
 from .transcodes import TranscodeCancelled, TranscodeUnavailable
 
 router = APIRouter()
@@ -127,19 +127,51 @@ def _attachment_disposition(title: str, url: str) -> str:
     return f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{quote(name)}"
 
 
-def _hls_plan(state, asset_id: int, session: str = ""):
+def _repaired_header(state, asset_id: int, source: Path):
+    """已经修好的 MP4 头；没有就是 None。只查不算，算是 `_needs_conversion` 的事。"""
+    store = getattr(state, "header_repairs", None)
+    return None if store is None else store.lookup(asset_id, source)
+
+
+def _needs_conversion(state, asset_id: int, source: Path, session: str) -> bool:
+    """起播时要不要转码。只有 `/api/stream-plan` 问这一句。
+
+    缺 ctts 的片子只是时间戳错乱，重建一份头就能直接按 Range 播，不必重编码。头还没
+    算出来时先照旧走 HLS，同时在后台补上；补好之后同一部片下次起播就走 Range。
+
+    HLS 那两个端点不问：一次播放的分片计划要在整段会话里保持同一个形状，边车中途落地
+    会让固定 6 秒的计划换成按关键帧切的，剩下的分片索引全对不上。
+    """
+    if not state.transcode_service.requires_conversion(
+            source, session=session, registry=state.stream_sessions):
+        return False
+    store = getattr(state, "header_repairs", None)
+    if store is None or not state.transcode_service.decode_order_timestamps(
+            source, session=session, registry=state.stream_sessions):
+        return True
+    if store.lookup(asset_id, source) is not None:
+        return False
+    store.request(asset_id, source)
+    return True
+
+
+def _hls_plan(state, asset_id: int, session: str = "", conversion: bool | None = None):
     """解析 HLS 的片源路径与分片计划；任何一步不成立就返回 None 走 Range。
 
     要重编码的片源按固定 6 秒切，时长先看账本，账本没记或记成负数就用 ffprobe 报的；
     探测也拿不到才放弃，否则浏览器只能退回 `/stream`，那条路要先把整部片转完才出第一个字节。
     原样封装的 HLS 仍要账本时长与关键帧表。
+
+    `conversion` 是起播时已经得出的结论。给不出时按片源本身判：播放列表和分片端点走的
+    就是这条，它们不看重建好的 MP4 头，理由见 `_needs_conversion`。
     """
     asset = state.media_engine.asset(asset_id)
     # 播放列表和分片端点本身就是 HLS 路径，按 ADR-0016 显式要计划，不受默认值影响。
     choice = state.media_engine.stream_plan(asset_id, mode="hls")
     source = state.media_engine.filesystem.file_for(asset, thumbnail=False)
     duration = asset.duration if asset.duration and asset.duration > 0 else 0.0
-    if state.transcode_service.requires_conversion(source, session=session, registry=state.stream_sessions):
+    if conversion if conversion is not None else state.transcode_service.requires_conversion(
+            source, session=session, registry=state.stream_sessions):
         duration = duration or state.transcode_service.media_duration(
             source, session=session, registry=state.stream_sessions)
         plan = state.hls_service.conversion_plan(duration) if duration > 0 else []
@@ -155,6 +187,11 @@ def stream(request: Request, id: int, session: str = "", args: dict[str, str] = 
     state = request.app.state
     asset = state.media_engine.asset(id)
     path = state.media_engine.filesystem.file_for(asset, thumbnail=False)
+    header = _repaired_header(state, id, path)
+    if header is not None:
+        return SplicedMp4Response(
+            path, header, session=session, registry=state.stream_sessions,
+        )
     try:
         path, transcoded = state.transcode_service.browser_path(
             id, path, session=session, registry=state.stream_sessions,
@@ -188,9 +225,9 @@ def stream_plan(request: Request, id: int, session: str = "", mode: str = "", ar
     plan = state.media_engine.stream_plan(id, mode=mode or "auto")
     # 只有真的能读出关键帧才宣告 HLS，否则客户端会拿到一个必然 404 的播放列表。
     source_path = state.media_engine.filesystem.file_for(asset, thumbnail=False)
-    conversion = state.transcode_service.requires_conversion(
-        source_path, session=session, registry=state.stream_sessions)
-    resolved = _hls_plan(state, id, session) if conversion or plan.protocol == "hls" else None
+    conversion = _needs_conversion(state, id, source_path, session)
+    resolved = (_hls_plan(state, id, session, conversion)
+                if conversion or plan.protocol == "hls" else None)
     if resolved and session:
         return {
             "id": id,

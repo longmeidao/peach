@@ -48,6 +48,7 @@ from .media import (
     MediaUnavailable,
 )
 from .mdns import create_mdns_publisher
+from .mp4repair import HeaderRepairStore
 from .previews import PhotoThumbnailService, PreviewService
 from .providers import OpenCodeGoClient, default_registry
 from .repository import LedgerDatabase, LedgerRepository
@@ -141,6 +142,7 @@ def create_app(
     )
     photo_service = PhotoThumbnailService(settings.photo_root)
     transcode_service = TranscodeService(resolver, settings.transcode_root)
+    header_repairs = HeaderRepairStore(settings.transcode_root, resolver)
     hls_plan_executor = ThreadPoolExecutor(
         max_workers=2, thread_name_prefix="PeachHlsPlan",
     )
@@ -241,6 +243,7 @@ def create_app(
     app.state.preview_service = preview_service
     app.state.photo_service = photo_service
     app.state.transcode_service = transcode_service
+    app.state.header_repairs = header_repairs
     app.state.hls_plan_executor = hls_plan_executor
     app.state.hls_service = hls_service
     app.state.mdns = mdns

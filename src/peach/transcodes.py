@@ -79,6 +79,18 @@ class TranscodeService:
         profile = self._profile_for(source, session, registry)
         return profile is None or not self._browser_compatible(source, profile)
 
+    def decode_order_timestamps(self, source: Path, *, session: str = "", registry=None) -> bool:
+        """是不是只有时间戳错乱的那一类：有 B 帧却没有 ctts，码流本身浏览器解得出来。
+
+        这类片源不必重编码，重建一份头就够了；其余不兼容的原因（编码、像素格式、容器）
+        换不掉，只能转码。
+        """
+        if self.needs_transcode(source) or self.resolver.ffprobe() is None:
+            return False
+        profile = self._profile_for(source, session, registry)
+        return bool(profile and profile.decode_order_timestamps
+                    and self._decodes_in_browser(source, profile))
+
     def media_duration(self, source: Path, *, session: str = "", registry=None) -> float:
         """ffprobe 报的总时长（秒）；账本没记时长的片源靠它切片。探测不到返回 0。"""
         if self.resolver.ffprobe() is None:
