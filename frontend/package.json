@@ -16,7 +16,7 @@
     "e2e": "node --test --test-reporter=tap \"e2e/**/*.test.ts\""
   },
   "dependencies": {
-    "@preact/signals": "2.11.1",
+    "@preact/signals": "2.11.2",
     "@remixicon/react": "4.9.0",
     "d3-sankey": "0.12.3",
     "preact": "10.29.8",
