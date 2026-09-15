@@ -1,6 +1,6 @@
 # 前端 island 层
 
-Peach 的界面正在从 `web/app.js`（无构建、6.7k 行的原生 ES module）逐页迁到
+Peach 的界面正在从 `web/app.js`（无构建、一万一千余行的原生 ES module）逐页迁到
 React + Tailwind v4 + BoardUI 源码，已迁出的 Preact island 是过渡层。迁移方式是 strangler：
 **遗留路由继续拥有外壳和每一个页面**，一页被重写之后，遗留入口只负责铺骨架、把容器和自己独有的助手交出去。
 为什么这么做、以及不做整体重写的理由见 `docs/adr/0031-frontend-react-boardui-tailwind.md`。
