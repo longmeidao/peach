@@ -124,7 +124,7 @@ Peach 使用 Board 的视觉与组件语义，保留 Vite、Preact、FastAPI 和
 | https://www.boardui.com/r/segmented-control.json | 62300be25310fef31962ddc237818739a2efd0d0143dd0832f3d1a2166c28e38 |
 | https://www.boardui.com/r/button.json | 89cc2c176d1d94d481bbfc6e34f233ccf109c10d319533cc7c1e98923b6e7d69 |
 
-Input 的上游错误信息位于字段下方，并通过 `errorMessage` 关联；锚定的小提示是用户指定的 Peach 差异。设置布局来自公开 `settings-modal.json`：871×614、274px 导航、32px 内容边距、24px 外圆角。原始设置参考保存在同目录下 `boardui-full/settings-reference.json`。
+Input 的上游错误信息位于字段下方，并通过 `errorMessage` 关联；锚定的小提示是用户指定的 Peach 差异。设置布局来自公开 `settings-modal.json`：871×614、274px 导航、32px 内容边距、24px 外圆角。每组设置坐在一张灰卡上（16px 圆角、左内边距 12px），上半列的开关行与「这台电脑」下的配置页同一种卡；卡里再分块（媒体文件夹、CloudDrive 分档）用白底加分隔线色描边，不和外面的卡同色。原始设置参考保存在同目录下 `boardui-full/settings-reference.json`。
 
 ## 排版、动画与进度
 

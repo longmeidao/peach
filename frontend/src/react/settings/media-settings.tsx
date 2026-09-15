@@ -183,7 +183,7 @@ function MediaForm({ data, receipt }: ConfigurationGroupProps) {
           <FieldLabel>媒体文件夹</FieldLabel>
           <div role="group" aria-label="媒体文件夹" className="flex flex-col gap-3">
             {rows.map((row, index) => (
-              <div key={index} data-folder-row className="@container flex flex-col gap-3 rounded-2lg border border-separator-border p-3">
+              <div key={index} data-folder-row className="@container flex flex-col gap-3 rounded-2lg border border-separator-border bg-background-primary-default p-3">
                 <div className="flex items-start gap-2">
                   <Input className="min-w-0 flex-1" aria-label={`媒体文件夹 ${index + 1}`} placeholder="本机文件夹路径"
                     value={row.path} onChange={(path) => edit(index, { path })}

@@ -39,11 +39,12 @@
 .settingscard .settingshead button,.avatarpick-close{width:24px;height:24px;border-radius:50%;background:var(--surface)}
 .settingscard .settingshead button svg,.avatarpick-close svg{width:16px;height:16px}
 .settingscard.settingscard .settingsscroll{padding:var(--settings-gap) 32px 32px;min-height:0;overflow-y:auto}
-/* 右侧这一栏从标题一路到底连成一片，开关行不套在自己的一块底上：亮色的 `--page` 是
-   纯白、`--ground` 是 #f5f5f5，两块拼起来就是一条硬边界横在标题下面，而暗色那两个值
-   只差 5/255，同一条规则在两个主题上读出来是两回事。行与行由 `--line-soft` 那道分隔线
-   断开，够用。 */
-.settingscard .settingsscroll>.settinggroup{background:none;padding:0}
+/* 右侧这一栏和「这台电脑」下的配置页是同一套分区：标题与页底是 `--page`，每组开关行坐在
+   一张 `--ground` 灰卡上，16px 圆角、左内边距 12px，行的分隔线在卡片左沿内 12px 收住——
+   即 BoardUI `SettingsCard` 的尺寸。「这台电脑」那一格的外壳不铺底：卡片由里面的配置页
+   自己画，外壳再铺一层就是灰卡外面套灰卡。 */
+.settingscard .settingsscroll>.settinggroup{background:var(--ground);border-radius:16px;padding:0 0 0 12px}
+.settingscard .settingsscroll>.settinggroup:has(>.machinesettings){background:none;border-radius:0;padding:0}
 .settingscard .settingsscroll>.settinggroup>h3{display:none}
 /* 「这台电脑」那一格装的是整张配置页，不是一列开关行；它的外壳不是面板，面板是里面
    那几段配置。里面没有一段亮着，就是用户在看左栏上半段的某一项，这时整个外壳都不该
