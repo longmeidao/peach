@@ -115,6 +115,22 @@ async function openScraping(browser: Browser): Promise<Visit> {
   return opened;
 }
 
+/** 按给定的一份 `/api/library-processing` 打开某一页：演示库里那趟任务早就跑完了，
+ *  而运行态和失败态正是这两条要看的东西。字段以 `src/peach/web_library_processing.py` 为准。 */
+async function openProcessing(
+  browser: Browser, path: string, job: Record<string, unknown>,
+): Promise<Visit> {
+  const opened = await visit(browser, path, DESKTOP);
+  await opened.page.route('**/api/library-processing', (route) => route.fulfill({
+    status: 200, contentType: 'application/json', body: JSON.stringify(job),
+  }));
+  await opened.page.reload({ waitUntil: 'load' });
+  return opened;
+}
+
+/** 一趟跑到一半的扫描与采集。 */
+const RUNNING_JOB = { status: 'running', stage: '采集缺失资料', checked: 38, total: 100 };
+
 describe('设计决定', () => {
   let browser: Browser;
 
@@ -257,6 +273,58 @@ describe('设计决定', () => {
       const plain = opened.page.locator('form[aria-label="演示来源乙"]');
       assert.equal(await plain.getByRole('button', { name: '撤销 Cookie', exact: true }).count(), 0);
       assert.deepEqual(opened.problems, []);
+    } finally {
+      await opened.close();
+    }
+  });
+
+  it('目录页那条处理横幅在跑的时候不占语气色，失败了才换成状态红并报警', { timeout: 60_000 }, async () => {
+    const running = await openProcessing(browser, '/', RUNNING_JOB);
+    try {
+      const banner = running.page.locator('#libraryProcessingNotice [role="status"]');
+      await banner.waitFor({ state: 'visible', timeout: 15_000 });
+      assert.match(await banner.innerText(), /采集缺失资料 · 38 \/ 100/);
+      // 一圈长度钉成 100，画出来的那一段就是百分比本身。
+      assert.equal(await banner.locator('[role="progressbar"]').getAttribute('aria-valuenow'), '38');
+      assert.equal(
+        await banner.evaluate((element) => getComputedStyle(element).backgroundColor),
+        'rgba(0, 0, 0, 0)',
+        '任务在跑是正在发生的事，配上状态底色就和「出事了」一个分量');
+    } finally {
+      await running.close();
+    }
+
+    const failed = await openProcessing(browser, '/', { status: 'failed', error: '来源离线' });
+    try {
+      const banner = failed.page.locator('#libraryProcessingNotice [role="alert"]');
+      await banner.waitFor({ state: 'visible', timeout: 15_000 });
+      assert.equal(
+        await banner.evaluate((element) => getComputedStyle(element).backgroundColor),
+        await tokenColor(failed.page, '.peach-react', '--color-background-tertiary-error'));
+    } finally {
+      await failed.close();
+    }
+  });
+
+  it('扫描卡的进度条走焦点环色，底槽是三级底，按下的那颗键转成忙态', { timeout: 60_000 }, async () => {
+    const opened = await openProcessing(browser, '/data-cleanup', RUNNING_JOB);
+    try {
+      const card = opened.page.locator('section[aria-label="扫描与采集"]');
+      await card.waitFor({ state: 'visible', timeout: 15_000 });
+      const bar = card.locator('[role="progressbar"]');
+      assert.equal(await bar.getAttribute('aria-valuenow'), '38');
+      assert.equal(await bar.getAttribute('aria-valuemax'), '100');
+      const fill = (at: number) =>
+        bar.locator('rect').nth(at).evaluate((element) => getComputedStyle(element).fill);
+      assert.equal(await fill(0),
+        await tokenColor(opened.page, '.peach-react', '--color-background-tertiary-default'));
+      assert.equal(await fill(1),
+        await tokenColor(opened.page, '.peach-react', '--color-border-focus-ring'));
+      // 忙态不改 `disabled`：控件仍可聚焦，重复触发由页面自己挡。
+      const scan = card.getByRole('button', { name: '扫描并补全资料', exact: true });
+      assert.equal(await scan.getAttribute('aria-busy'), 'true');
+      assert.equal(await scan.evaluate((element) => (element as HTMLButtonElement).disabled), false,
+        '用原生 disabled 挡的话按钮连焦点都拿不到');
     } finally {
       await opened.close();
     }

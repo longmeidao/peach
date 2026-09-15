@@ -4,7 +4,10 @@ import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { islandMounted, islandNames, mountIsland, unmountIsland } from '../src/islands';
 import { queryClient } from '../src/react/query';
 
-import { deferredFetch, legacyProps, processing } from './helpers';
+import { configuration, deferredFetch, legacyProps } from './helpers';
+
+// Preact 档只剩配置页，它的四个分区本身是 React 子树；这里量的是挂载契约，不挂那四棵根。
+vi.mock('../src/react-slot', () => ({ ReactSlot: () => null }));
 
 // React 档挂的是一棵真的 React 根，更新要在 `act` 里落地，否则断言读到的是上一帧。
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -46,18 +49,24 @@ describe('island 注册表', () => {
   });
 });
 
+/** 只有「通用」这一组要 `startup` 才画得出来，用它区分两趟取数回来的是哪一份。 */
+const startup = {
+  available: true, enabled: false, silent: true, message: '', desktop: false, desktop_message: '',
+};
+const groups = (el: Element) => [...el.querySelectorAll('.configgroup')].map((title) => title.textContent);
+
 describe('mountIsland', () => {
   it('取数期间保留遗留骨架，数据到位才一次性换掉', async () => {
-    const fetch = deferredFetch(processing());
+    const fetch = deferredFetch(configuration());
     fetch.install();
     const el = container();
-    const mounting = mountIsland('library-processing', el, legacyProps());
+    const mounting = mountIsland('configuration', el, legacyProps());
     await Promise.resolve();
     expect(el.querySelector('[data-skeleton]'), '骨架被提前撤掉会出现第二段等待态').not.toBeNull();
     fetch.resolve();
     await mounting;
     expect(el.querySelector('[data-skeleton]')).toBeNull();
-    expect(el.querySelectorAll('.library-processing')).toHaveLength(1);
+    expect(el.querySelectorAll('.configpage')).toHaveLength(1);
   });
 
   it('首屏取数失败时画出原因，不留在骨架上', async () => {
@@ -67,44 +76,44 @@ describe('mountIsland', () => {
       json: async () => ({ message: '账本当前只能浏览' }),
     })));
     const el = container();
-    await mountIsland('library-processing', el, legacyProps());
+    await mountIsland('configuration', el, legacyProps());
     expect(el.querySelector('.geist-note-error')?.textContent).toContain('账本当前只能浏览');
   });
 
   it('取数期间用户走开就不画：遗留层换页的判据是代，不是信号', async () => {
-    const fetch = deferredFetch(processing());
+    const fetch = deferredFetch(configuration());
     fetch.install();
     const el = container();
     let current = true;
-    const mounting = mountIsland('library-processing', el, legacyProps(), {
+    const mounting = mountIsland('configuration', el, legacyProps(), {
       isCurrent: () => current,
     });
     await Promise.resolve();
     current = false;
     fetch.resolve();
     await mounting;
-    expect(el.querySelector('.library-processing'), '页面已经换掉，数据不能盖上去').toBeNull();
+    expect(el.querySelector('.configpage'), '页面已经换掉，数据不能盖上去').toBeNull();
     expect(el.querySelector('[data-skeleton]')).not.toBeNull();
   });
 
   it('重新挂载时上一次的迟到响应不再写进容器', async () => {
-    const stale = deferredFetch(processing({ status: 'failed', error: '上一趟的原因' }));
+    const stale = deferredFetch(configuration({ startup }));
     stale.install();
     const el = container();
-    const first = mountIsland('library-processing', el, legacyProps());
+    const first = mountIsland('configuration', el, legacyProps());
     await Promise.resolve();
 
-    const fresh = deferredFetch(processing({ status: 'failed', error: '这一趟的原因' }));
+    const fresh = deferredFetch(configuration());
     fresh.install();
-    const second = mountIsland('library-processing', el, legacyProps());
+    const second = mountIsland('configuration', el, legacyProps());
     fresh.resolve();
     await second;
     stale.resolve();
     await first;
 
-    expect(el.querySelectorAll('.library-processing')).toHaveLength(1);
-    expect(el.textContent).toContain('这一趟的原因');
-    expect(el.textContent).not.toContain('上一趟的原因');
+    expect(el.querySelectorAll('.configpage')).toHaveLength(1);
+    expect(groups(el), '迟到的那一份带着「通用」，它不能盖到这一次的结果上')
+      .toEqual(['媒体', '更新与维护']);
   });
 });
 
@@ -178,15 +187,15 @@ describe('mountIsland 的 React 档', () => {
 
 describe('unmountIsland', () => {
   it('中止在途取数并清空容器', async () => {
-    const fetch = deferredFetch(processing());
+    const fetch = deferredFetch(configuration());
     fetch.install();
     const el = container();
-    const mounting = mountIsland('library-processing', el, legacyProps());
+    const mounting = mountIsland('configuration', el, legacyProps());
     await Promise.resolve();
     unmountIsland(el);
     await mounting;
     expect(fetch.signal()?.aborted, '离开页面必须真的中止请求').toBe(true);
-    expect(el.querySelector('.library-processing')).toBeNull();
+    expect(el.querySelector('.configpage')).toBeNull();
     expect(el.querySelector('[data-skeleton]'),
       '还没画过就卸载时容器里是遗留骨架，island 不该清掉不属于它的东西').not.toBeNull();
   });
@@ -199,12 +208,12 @@ describe('unmountIsland', () => {
 
   it('容器上挂没挂着，遗留层问得出来', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => ({
-      ok: true, status: 200, json: async () => processing(),
+      ok: true, status: 200, json: async () => configuration(),
     })));
     const el = container();
     expect(islandMounted(el)).toBe(false);
     // 取数还没回来也算挂着：这段时间里再挂一次会把在途那次作废，白等一趟。
-    const mounting = mountIsland('library-processing', el, legacyProps());
+    const mounting = mountIsland('configuration', el, legacyProps());
     expect(islandMounted(el)).toBe(true);
     await mounting;
     expect(islandMounted(el)).toBe(true);
@@ -212,5 +221,27 @@ describe('unmountIsland', () => {
     expect(islandMounted(el)).toBe(false);
     // 遗留层拿到的可能是个空引用——那时页面上根本没有这个容器。
     expect(islandMounted(null)).toBe(false);
+  });
+
+  it('连子孙容器一起卸：壳只对外层调一次，里面那格也得停', async () => {
+    const surface = container();
+    // `/data-cleanup` 的形状：卡片挂在管理区正文里更深的一格上。
+    const card = surface.ownerDocument.createElement('div');
+    card.id = 'libraryProcessing';
+    surface.append(card);
+
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: true, status: 200, json: async () => ({ status: 'idle' }),
+    })));
+    await act(async () => {
+      await mountIsland('library-processing', card, { toast: vi.fn(), monitor: true });
+    });
+    expect(islandMounted(card)).toBe(true);
+
+    // 遗留壳换页时只认识管理区正文这一个容器（`claimSurface` 对 `#stats` 调卸载）。
+    await act(async () => { unmountIsland(surface) });
+    expect(islandMounted(card), '外层卸了里面那棵根还活着的话，离开这页也会照原节律继续敲库')
+      .toBe(false);
+    expect(card.querySelector('.peach-react')).toBeNull();
   });
 });

@@ -6,12 +6,19 @@ import type { ReactNode } from 'react';
 
 type Tone = 'neutral' | 'info' | 'success' | 'warning' | 'error';
 
-/** 没有密码、保存失败、账本缺表这类是当前状态，不和字段说明共用灰色小字。 */
-export function Note({ tone, title, children }: { tone: Tone; title?: string; children: ReactNode }) {
+/** 没有密码、保存失败、账本缺表这类是当前状态，不和字段说明共用灰色小字。
+ *
+ *  `extra` 收结论以外的东西（重试键、折叠起来的问题清单）：它们讲的是同一件事，摆到
+ *  Note 外面就成了一句话加一个不知道属于谁的按钮。正文是段落，塞不进这些块级内容。 */
+export function Note(
+  { tone, title, extra, children }:
+  { tone: Tone; title?: string; extra?: ReactNode; children: ReactNode },
+) {
   const content = (
     <>
       {title ? <p className="text-body-medium">{title}</p> : null}
       <p className="text-body-2-regular">{children}</p>
+      {extra}
     </>
   );
   switch (tone) {

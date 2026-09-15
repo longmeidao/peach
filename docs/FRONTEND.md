@@ -13,7 +13,7 @@ React + Tailwind v4 + BoardUI 源码，已迁出的 Preact island 是过渡层�
 | 路径 | 是什么 |
 | --- | --- |
 | `frontend/src/islands.ts` | 挂载契约与注册表，构建入口 |
-| `frontend/src/islands/*.tsx` | 每个 island 一个文件 |
+| `frontend/src/islands/configuration.tsx` | Preact 档只剩配置页这一个外壳，它的四个分区本身是 React 子树 |
 | `frontend/src/api.ts` | 带 `AbortController` 的取数封装 |
 | `frontend/src/management.ts` | 数据管理首屏 Fieldset、网盘能力显隐与浏览历史导入指南 |
 | `frontend/src/legacy/*.d.ts` | `/js/core.js`、`/js/ui-components.js` 的手写类型 |
@@ -148,7 +148,10 @@ await ui.mountIsland('quality-goals', $('#stats'), props, {isCurrent: () => surf
 - `options.isCurrent` 是换页判据。遗留路由用「代」而不是 `AbortSignal` 判当前页
   （`claimSurface`／`surfaceCurrent`），取数期间用户走开时，island 靠这个谓词决定不画。
 - `unmountIsland(el)` 中止在途取数，并且只清自己画过的东西：还没画就卸载时容器里
-  是遗留骨架，那不属于 island。
+  是遗留骨架，那不属于 island。它连子孙容器一起卸（`el` 自己，加上所有 `el.contains`
+  得到的已挂载容器）：壳只对管理区正文那一个容器调它，而「扫描与采集」卡片挂在里面
+  更深的一格上（`#libraryProcessing` 在 `#stats` 里），只卸最外层的话，离开这一页之后
+  那棵根还活着，照着原节律继续敲库。
 - 容器归遗留层所有，它会在别的页面进入时直接 `innerHTML=`，所以 `mountIsland` 每次
   都先自我卸载。
 - 注册表有两档。Preact 档写 `{load, component}`；整页归 React 的写 `{react: '<page>'}`，
@@ -176,11 +179,27 @@ await ui.mountIsland('quality-goals', $('#stats'), props, {isCurrent: () => surf
 有第二个读者就让两个读者读**同一个 `queryKey`**，不另建一份状态。整个 React 子树只有
 `src/react/query.ts` 那一个 `QueryClient`（`tests/test_frontend_build.py` 盯着），页面级
 `prefetch` 写进去的那一份，任何组件的 `useQuery` 都直接读得到，谁先谁后都是同一个数。
-现成的例子是高清版目标：`/quality-goals` 整页列表要 `items`，`/data-cleanup` 上的
-「高清版」卡片只要一个 `total`。卡片现在还在 `web/app.js` 里，自己发一次
-`/api/quality-goals?limit=1`；它随数据管理页迁移时改读 `QUALITY_GOALS_KEY`，那一刻这
-份数据才真的只剩一个来源。**遗留层里的读者等它所在的页面迁过来再接**，不为它在产物
-上另开一个通知入口。
+现成的例子是扫描与采集那趟后台任务：`/data-cleanup` 上的卡片（容器 `#libraryProcessing`）
+要进度、结果和重试，目录页顶上那条横幅（容器 `#libraryProcessingNotice`）只要一句话和一个
+去处。两个容器不相邻，各由遗留层自己的时机挂载，读的却是同一个 `LIBRARY_PROCESSING_KEY`：
+
+```tsx
+// src/react/library-processing/use-library-processing.ts —— 卡片与横幅都调它
+const job = useQuery({
+  queryKey: LIBRARY_PROCESSING_KEY,
+  queryFn: ({ signal }) => fetchLibraryProcessing(signal),
+  refetchInterval: (query) => pollInterval(query.state.data, watching),
+});
+```
+
+两处同时在场时一个周期只发一趟请求：两个 observer 的定时器在每次查询更新后一起重排，
+并发的 `fetch` 由 Query 自己合并。反过来各存一份状态的话，两边的轮询各走各的节律，卡片
+说「已完成」、横幅还挂着进度。
+
+高清版目标是同一条判据下还没接上的一处：`/quality-goals` 整页列表要 `items`，
+`/data-cleanup` 上的「高清版」卡片只要一个 `total`，而卡片还在 `web/app.js` 里自己发一次
+`/api/quality-goals?limit=1`。它随数据管理页迁移时改读 `QUALITY_GOALS_KEY`。
+**遗留层里的读者等它所在的页面迁过来再接**，不为它在产物上另开一个通知入口。
 
 端点字符串在 `frontend/src` 里只许出现一次，就在这一页的数据模块里
 （`src/react/quality-goals/quality-goals.ts`）——要拦的是「两个地方各写一遍这条 URL」。
@@ -266,8 +285,8 @@ vendor 到 `web/vendor/` 的四个包（video.js、swiper、lucide-static、heal
 | `tailwindcss`、`@tailwindcss/vite` | 按 `src/react/` 里实际用到的类名生成 `peach-react.css` |
 | `@types/react`、`@types/react-dom` | React 子树的类型检查 |
 
-React 子树单独构建（`vite.react.config.ts`）。`peach-react.js` 743 kB（gzip 193.2 kB），
-只在页面挂 React 子树时由 island 动态加载；`peach-react.css` 85 kB（gzip 13.3 kB），
+React 子树单独构建（`vite.react.config.ts`）。`peach-react.js` 759.5 kB（gzip 197.4 kB），
+只在页面挂 React 子树时由 island 动态加载；`peach-react.css` 85.7 kB（gzip 13.4 kB），
 由 `index.html` 在旧样式表之前引入。它的 `build.cssTarget` 对齐 Tailwind v4 的浏览器基线
 （Chrome 111、Firefox 128、Safari 16.4），oklch 颜色原样输出：目标再旧，lightningcss 会补
 `lab()` 回退，末位小数随平台浮点不同，CI 在 Linux 上重建的产物就与提交的对不上。

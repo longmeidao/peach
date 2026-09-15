@@ -4,7 +4,7 @@
  * 之后，它的入口只做两件事：铺好加载占位，然后把一个容器交给这里。
  *
  *     const ui = await import('/dist/peach-ui.js');
- *     await ui.mountIsland('scraping', $('#stats'), props);
+ *     await ui.mountIsland('configuration', $('#stats'), props);
  *
  * `mountIsland` 是 async 且**取完数才画**：遗留层已经铺了骨架，island 若先画一个空
  * 容器再自己转圈，同一次进入就会出现两段等待态（`peach-web-ui` 明确禁止）。所以这里
@@ -16,7 +16,6 @@ import { h, render } from 'preact';
 export { preferredDirection } from './sort-preferences';
 export { boundedPreference, mountNumberSetting, syncNumberSetting } from './number-setting';
 export { statCardBody, rankedChart, radarChart, distributionChart, jobProgressHtml } from './board-metrics';
-export { mountBoardStatePreview } from './board-state-preview';
 export { initBoardControls, syncBoardRange, wireExpandableRanks, wireGrowingCharts } from './board-controls';
 export { creatorSankeyHtml, wireCreatorSankey } from './board-sankey';
 export { radialCardHtml, wireRadialCards, activityChartsHtml, wireActivityCharts } from './board-analytics';
@@ -26,8 +25,6 @@ import type { Attributes, ComponentType } from 'preact';
 import { errorMessage } from './api';
 import { Configuration, loadConfiguration } from './islands/configuration';
 import type { ConfigurationData, ConfigurationProps } from './islands/configuration';
-import { LibraryProcessing, loadLibraryProcessing } from './islands/library-processing';
-import type { LibraryProcessingData, LibraryProcessingProps } from './islands/library-processing';
 import type * as ReactBundle from '@peach/react';
 
 export { watchJob, followJobProgress, jobActivityHtml } from './jobs';
@@ -53,7 +50,7 @@ export interface IslandState<D> {
 /** 每个 island 的 props 与首屏数据类型。新增 island 时在这里登记，注册表随之要求实现。
  *  React 档的页面自己管数据（首屏落在共用的 Query 缓存里），`data` 写成 `null`。 */
 export interface IslandContracts {
-  'library-processing': { props: LibraryProcessingProps; data: LibraryProcessingData };
+  'library-processing': { props: ReactBundle.LibraryProcessingProps; data: null };
   'scraping': { props: ReactBundle.ScrapingProps; data: null };
   'quality-goals': { props: ReactBundle.QualityGoalsProps; data: null };
   configuration: { props: ConfigurationProps; data: ConfigurationData };
@@ -81,7 +78,7 @@ interface ReactIsland {
 type IslandDefinition<N extends IslandName> = PreactIsland<N> | ReactIsland;
 
 const REGISTRY: { [N in IslandName]: IslandDefinition<N> } = {
-  'library-processing': { load: loadLibraryProcessing, component: LibraryProcessing },
+  'library-processing': { react: 'library-processing' },
   'scraping': { react: 'scraping' },
   'quality-goals': { react: 'quality-goals' },
   configuration: { load: loadConfiguration, component: Configuration },
@@ -179,8 +176,18 @@ async function mountReactPage<N extends IslandName>(
  *  内容清掉：内容根本没变时，那一下只是一次白白的布局塌陷。 */
 export const islandMounted = (el: Element | null): boolean => !!el && mounted.has(el);
 
-/** 卸载容器上的 island：中止在途取数并清空自己画过的内容。没挂过的容器是空操作。 */
+/** 卸载容器上的 island：中止在途取数并清空自己画过的内容。没挂过的容器是空操作。
+ *
+ *  连子孙容器一起卸。遗留壳在 `claimSurface` 只对管理区正文那一个容器（`#stats`）调它，
+ *  而卡片挂在里面更深的一格上（`#libraryProcessing` 在 `#stats` 里）：只卸最外层的话，
+ *  离开这一页之后那棵根还活着，照着原节律继续敲库。 */
 export function unmountIsland(el: Element): void {
+  for (const container of [...mounted.keys()]) {
+    if (container === el || el.contains(container)) disposeIsland(container);
+  }
+}
+
+function disposeIsland(el: Element): void {
   const mount = mounted.get(el);
   if (!mount) return;
   mount.controller.abort();

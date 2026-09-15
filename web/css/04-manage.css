@@ -40,7 +40,6 @@
 .reviewpickitem[hidden],.reviewbulkbar [hidden]{display:none}
 .reviewgroup>.reviewactions .reviewstate:not(:empty){flex-basis:100%;text-align:right}
 .reviewstate:empty{display:none}
-.library-processing-result{margin-top:16px}
 .reviewitem .reviewactions{flex:0 0 auto;box-sizing:border-box;min-height:56px;margin:0;padding:12px 12px 12px 20px;background:var(--overlay-5);border-top:1px solid var(--line-soft);border-radius:0 0 var(--floating-radius) var(--floating-radius);display:flex;gap:8px;justify-content:flex-end}
 /* 卡片中段是一个框：预览铺满它，判断依据贴在框底。没抽帧、没取到图的那两种卡
    在框里放空状态，同样铺满——一行小字挂在半屏留白上方，读起来像界面坏了，而这
@@ -166,7 +165,6 @@
 .fsrcoption{display:flex;align-items:center;gap:8px;justify-content:space-between}
 .fsrcoption label{flex:1;min-width:0}
 .fsrcoption .geist-button{font-size:var(--fs-sm);white-space:nowrap}
-.library-processing-outcome{min-width:0;max-width:100%}
 .statsdashboard .emptystate{border:0;background:var(--ground)}
 .taste-history-guide-content a{color:var(--tungsten);text-decoration:none}
 .taste-history-guide-content a:hover{text-decoration:underline;text-underline-offset:3px}

@@ -6,7 +6,7 @@
 
 ## 运行态
 
-- BoardUI：状态演示 `/state-preview`；验收见 `BOARD_UI.md`。
+- BoardUI：验收见 `BOARD_UI.md`。
 
 - 女优头像 545 张，脸宽中位数 320px，37 张带水印待复核；被顶掉的整套留在 `avatars-superseded/`，判据见 `SOURCING.md`。
 - 小图、资料骨架、官网图标、社媒品牌色与自动播放开关已实现；请求共用 Chrome UA。厂牌标识 198 张随仓库分发（ADR-0026）。

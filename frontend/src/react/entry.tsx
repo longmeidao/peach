@@ -9,6 +9,9 @@ import { createRoot } from 'react-dom/client';
 import { ActivityPage } from './activity/activity-page';
 import { prefetchTasks } from './activity/tasks';
 import type * as Bundle from './bundle';
+import { prefetchLibraryProcessing } from './library-processing/library-processing';
+import { LibraryProcessingCard } from './library-processing/library-processing-card';
+import { LibraryProcessingNotice } from './library-processing/library-processing-notice';
 import { QualityGoalsPage } from './quality-goals/quality-goals-page';
 import { prefetchQualityGoals } from './quality-goals/quality-goals';
 import { queryClient } from './query';
@@ -48,9 +51,19 @@ function mounter<P extends object>(Component: ComponentType<P>) {
   };
 }
 
+/* 扫描与采集一个名字两种形态：数据管理页那张卡片，和目录页顶上那条横幅。两边读同一个
+ * `queryKey`，所以同时挂着时它们看的是同一份快照，Query 也只发一份轮询。 */
+const LibraryProcessing = (props: Bundle.LibraryProcessingProps) => (
+  props.mode === 'notice' ? <LibraryProcessingNotice {...props} /> : <LibraryProcessingCard {...props} />
+);
+
 /** 整页归 React 的那些页面，按名字给遗留层的 React 档用。 */
 export const pages: Bundle.ReactPages = {
   activity: { prefetch: (_props, signal) => prefetchTasks(signal), mount: mounter(ActivityPage) },
+  'library-processing': {
+    prefetch: (_props, signal) => prefetchLibraryProcessing(signal),
+    mount: mounter(LibraryProcessing),
+  },
   'quality-goals': {
     prefetch: (_props, signal) => prefetchQualityGoals(signal), mount: mounter(QualityGoalsPage),
   },

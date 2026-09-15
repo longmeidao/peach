@@ -12,8 +12,6 @@ export declare function emptyStateHtml(
   options?: { className?: string; actions?: string },
 ): string;
 
-/** Geist Fieldset 的标题：放在框体里的 h3，不用原生 legend。 */
-export declare function fieldsetTitle(id: string, title: string): string;
 export declare function collectionSummaryHtml(label: string, value: string, detail?: string): string;
 export declare function badgeHtml(text: string): string;
 export declare function checkboxHtml(inputAttrs?: string): string;
@@ -51,7 +49,6 @@ export declare function attachOverlayScrollbar(
 /** 用户触发的动作等待结果时的忙态：`aria-busy` 与 `aria-disabled` 一起写，控件仍可聚焦，
  *  重复触发由遗留层的 `wireBusyActions` 拦住。请求等待期不许改用原生 `disabled`。 */
 export declare function setActionBusy(control: Element | null, busy?: boolean): void;
-export declare function wireAnchoredMenu(mount: Element, toggle: Element, menu: Element): {setOpen(open: boolean): void; isOpen(): boolean};
 
 /** Geist Note：字段、卡片、分区旁的持久反馈。 */
 export declare function noteHtml(
@@ -72,4 +69,3 @@ export declare function noteHtml(
     } | null;
   },
 ): string;
-export declare function projectBannerHtml(message:string,options:{variant?:'gray'|'success'|'warning'|'error';href:string;label:string;value?:number;max?:number}):string;
