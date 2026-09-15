@@ -55,12 +55,13 @@ describe('自动更新', () => {
     expect(receipt).toHaveBeenCalledTimes(2);
   });
 
-  it('源码运行锁住自动下载，失败原因留在分区里且不报成功', async () => {
+  it('源码运行锁住自动下载，说明写在检查频率那一行里，失败原因留在分区里且不报成功', async () => {
     vi.stubGlobal('fetch', fetchMock(400, { detail: '设置正在保存' }));
     const receipt = vi.fn();
     const host = await mount(<AutomaticUpdates initial={{ ...automatic, mode: 'check', download_available: false }} receipt={receipt} />);
     expect(switches(host)[1]!.disabled).toBe(true);
-    expect(host.textContent).toContain('源码运行请前往发布页获取新版本。');
+    const interval = [...host.querySelectorAll('p')].find((p) => p.textContent === '检查频率');
+    expect(interval?.nextElementSibling?.textContent).toBe('开启后一分钟内开始检查。源码运行请前往发布页获取新版本。');
     await submit(host.querySelector('form'));
     await settle();
     expect(host.querySelector('[role="alert"]')?.textContent).toContain('设置正在保存');

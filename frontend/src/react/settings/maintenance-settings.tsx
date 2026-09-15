@@ -56,17 +56,14 @@ export function AutomaticUpdates({ initial, receipt }: { initial: AutomaticUpdat
             isDisabled={!initial.available || !initial.download_available || mode === 'off'}
             onChange={(on) => setMode(on ? 'download' : 'check')} />
         </SettingsRow>
-        <SettingsRow label="检查频率">
+        <SettingsRow label="检查频率" description={help}>
           <Select aria-label="检查频率" selectedKey={String(hours)} isDisabled={!initial.available}
             onSelectionChange={(key) => { if (key !== null) setHours(Number(key)); }}>
             {INTERVALS.map(([key, name]) => <SelectItem key={key} id={key}>{name}</SelectItem>)}
           </Select>
         </SettingsRow>
       </Rows>
-      <Stack divided>
-        <Help>{help}</Help>
-        {action.error ? <ErrorText>{action.error}</ErrorText> : null}
-      </Stack>
+      {action.error ? <Stack divided><ErrorText>{action.error}</ErrorText></Stack> : null}
       <Footer>
         <Button variant="secondary" type="submit" disabled={!initial.available} {...busyProps(action.busy === 'save')}>保存自动更新</Button>
       </Footer>

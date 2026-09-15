@@ -12,8 +12,8 @@ export const emptyStateHtml = (
   + `<div class="es-icon" data-icon="${iconName}"></div>`
   + `<div class="es-copy"><h3>${title}</h3><p>${description}</p></div>${options.actions || ''}</div>`;
 
-// @ts-expect-error 横幅复用正式模板。
-export {projectBannerHtml, collectionSummaryHtml, wireAnchoredMenu} from '../../../web/js/ui-components.js';
+// @ts-expect-error 横幅复用正式模板，折叠开合用正式实现。
+export {projectBannerHtml, collectionSummaryHtml, wireAnchoredMenu, setCollapseOpen} from '../../../web/js/ui-components.js';
 export const fieldsetTitle = (id: string, title: string): string =>
   `<h3 class="geist-fieldset-title" id="${id}">${title}</h3>`;
 export const loadingDotsHtml = (label: string): string => `<span>${label}</span>`;

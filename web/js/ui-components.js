@@ -707,7 +707,7 @@ export function wireCollapse(root,selector,idPrefix,triggerSelector='summary'){
     body.appendChild(inner);details.appendChild(body);
     const summary=details.querySelector(triggerSelector);
     if(triggerSelector!=='summary')details.querySelector('summary').addEventListener('click',event=>event.preventDefault());
-    let expanded=details.open,transitionRun=0;
+    let expanded=details.open;
     body.id=`${idPrefix}-${index}`;
     body.inert=!expanded;
     /* 高度过渡要 `overflow:hidden`，可展开着不动时它还在裁——里面最后那一行卡片的落影
@@ -718,21 +718,33 @@ export function wireCollapse(root,selector,idPrefix,triggerSelector='summary'){
     summary.setAttribute('aria-expanded',String(expanded));
     summary.addEventListener('click',event=>{
       event.preventDefault();
-      expanded=!expanded;const run=++transitionRun;
+      expanded=!expanded;
       summary.setAttribute('aria-expanded',String(expanded));
-      if(expanded){
-        body.inert=false;
-        const start=details.open?body.getBoundingClientRect().height:0;
-        details.open=true;
-        growCollapse(body,start,()=>run===transitionRun);
-      }else{
-        body.inert=true;body.classList.remove('fcollapse-settled');
-        body.style.height=body.getBoundingClientRect().height+'px';body.getBoundingClientRect();
-        body.style.height='0px';
-        settleHeight(body,()=>{if(run===transitionRun){details.open=false;body.style.height=''}});
-      }
+      setCollapseOpen(details,body,expanded);
     });
   });
+}
+
+/**
+ * 把一个 Collapse 开到或收到 `expanded`，`body` 是 summary 后面那层容器，`.fcollapse` 由这里挂上。
+ * `wireCollapse` 与 React 设置页的 `Disclosure` 共用这一份；过渡途中又被反向点按时，前一次的收尾不再做。
+ */
+const collapseRuns=new WeakMap();
+export function setCollapseOpen(details,body,expanded){
+  body.classList.add('fcollapse');
+  const run=(collapseRuns.get(body)||0)+1;collapseRuns.set(body,run);
+  const isCurrent=()=>collapseRuns.get(body)===run;
+  if(expanded){
+    body.inert=false;
+    const start=details.open?body.getBoundingClientRect().height:0;
+    details.open=true;
+    growCollapse(body,start,isCurrent);
+  }else{
+    body.inert=true;body.classList.remove('fcollapse-settled');
+    body.style.height=body.getBoundingClientRect().height+'px';body.getBoundingClientRect();
+    body.style.height='0px';
+    settleHeight(body,()=>{if(isCurrent()){details.open=false;body.style.height=''}});
+  }
 }
 
 /* 高度过渡跑完再收尾；减少动效时没有 transitionend，260ms 兜底。 */

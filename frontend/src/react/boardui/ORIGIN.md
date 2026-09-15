@@ -40,5 +40,5 @@
 | 提交键忙态 | 写 `aria-busy` 与 `aria-disabled`，不画 Spinner | `button` 条目没有加载态 |
 | 行内提示 | `../settings/section.tsx` 的 `Note` 按语气取 `status-yellow`、`background-tertiary-error`、`notification-*` token 组合 | 注册表里没有行内 Note 组件；`notification` 条目是带关闭键和动效的浮动通知 |
 | 进度条 | `../settings/section.tsx` 的 `Progress` 用 SVG 矩形画 | 注册表里没有进度组件 |
-| 折叠 | `../settings/section.tsx` 的 `Disclosure` 用原生 `details` | 注册表里没有折叠组件 |
+| 折叠 | `../settings/section.tsx` 的 `Disclosure` 用原生 `details`，开合调 `/js/ui-components.js` 的 `setCollapseOpen`，高度按共用 Collapse 的 `.fcollapse` 过渡（`.2s ease-in-out`） | 注册表里没有折叠组件；原生 `details` 不过渡高度 |
 | 图标选择 | `../settings/library-icon-picker.tsx` 用 React Aria 的 `Popover`、`RadioGroup` 组合，面板取 `menu-styles.ts` 的外观 | 注册表里没有网格单选的弹出面板 |
