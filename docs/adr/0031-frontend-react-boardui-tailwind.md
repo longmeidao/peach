@@ -2,7 +2,7 @@
 
 - 状态：Accepted
 - 日期：2026-09-15
-- 修订：2026-09-15 补齐迁移桥接契约、弹层样式作用域、上游升级方式、lint 边界与验收定义；同日写下前端基础库的取舍与引入时机
+- 修订：2026-09-15 补齐迁移桥接契约、弹层样式作用域、上游升级方式、lint 边界与验收定义；同日写下前端基础库的取舍与引入时机。2026-09-16 活动页迁入后把挂载方式写成 React 档与 `ReactSlot` 两种，Query 的引入时机与共用方式按实际落地改写
 - 关系：替代 ADR-0022 的框架与样式选择；沿用它的绞杀式迁移、构建产物入库、`/dist/` 路由与单一测试入口；ADR-0014 的 Video.js 保留。
 
 ## 背景
@@ -42,13 +42,12 @@ BoardUI 通过 shadcn 注册表发布 React + Tailwind v4 源码，表单与弹�
 ### 迁移桥接
 
 - **迁移节奏不变**：逐页替换，每次一到两个页面、独立分支集成；旧渲染函数、旧 CSS 与旧断言随页面删除，不保留双实现。
-- **`ReactSlot` 是迁移期唯一的 React 挂载桥**，契约如下：
-  - 每个容器只创建一个 React root，参数变化经 `update` 更新同一个 root；
-  - Preact 卸载容器（切页、`unmountIsland`、错误态替换）时，清理函数调用 `root.unmount()`，React 子树的请求经 `AbortController` 一并取消；
-  - React 产物是动态加载的，加载完成后先确认容器仍在、本次挂载没有被取消，再创建 root。
-- **业务状态只有一份**：React 子树经 props 拿数据、经回调（如 `receipt`）交回结果，不订阅 Preact signals，也不在两侧各存一份同一数据。需要的遗留能力（`confirmModal`、来源图标表）只经 `@peach/legacy/*` 的声明模块调用。
+- **迁移期只有两种 React 挂载方式**，都由 `frontend/src/islands.ts` 的 `mountIsland` / `unmountIsland` 对遗留层暴露，遗留层不区分：
+  - **整页归 React 的页面走 React 档**：注册表写 `{react: '<page>'}`，`@peach/react` 的 `pages.<page>` 提供 `prefetch(props, signal)` 与 `mount(el, props)`。`mountIsland` 先 `prefetch` 把首屏写进 Query 缓存（取完数才画，中止就放弃这一次），再在容器里建一个 `.peach-react` 宿主创建 React root；`unmountIsland` 卸根、撤宿主。遗留壳在 `claimSurface` 换页时对 `#stats` 调 `unmountIsland`，所以离开页面后组件不再活着，轮询随组件一起停。
+  - **仍在 Preact 岛里的 React 子树走 `ReactSlot`**（配置页四个分区），契约如下：每个容器只创建一个 React root，参数变化经 `update` 更新同一个 root；Preact 卸载容器（切页、`unmountIsland`、错误态替换）时，清理函数调用 `root.unmount()`，React 子树的请求经 `AbortController` 一并取消；React 产物是动态加载的，加载完成后先确认容器仍在、本次挂载没有被取消，再创建 root。
+- **业务状态只有一份**：取数与缓存归 TanStack Query，所有 React root 共用一个 `QueryClient`，一页一个 `queryKey`，第二个读者读同一个键；页面之间不经 Preact signals 传数据，也不在两侧各存一份同一数据。`ReactSlot` 里的子树仍经 props 拿数据、经回调（如 `receipt`）交回结果。需要的遗留能力（`confirmModal`、来源图标表、番号标题）只经 `@peach/legacy/*` 的声明模块或 props 传入的遗留函数调用，不抄一份。
 - Peach 自己以 HTML 字符串拼出的 Board 风格组件（`board-sankey.ts`、`board-analytics.ts`、`board-controls.ts`）随使用它们的页面改写成 `src/react/` 下的组合件，复用其中的数据与布局计算。
-- 删除顺序：最后一个 Preact 岛迁完、`ReactSlot` 与 `@peach/legacy/*` 的调用方清空后移除 Preact；壳与路由迁完删除 `web/app.js`；上述自写组件全部改写后删除 `board.css` 里与 BoardUI 同名的 token。
+- 删除顺序：最后一个 Preact 岛迁完、`ReactSlot` 与 `@peach/legacy/*` 的调用方清空后移除 Preact、`ReactSlot` 与 `mountIsland` 的 Preact 档，此后 `peach-ui.js` 只剩把遗留壳接到 `pages` 上的那层；壳与路由迁完，React Router 直接挂页面，删除 `web/app.js`、React 档与 `peach-ui.js`；上述自写组件全部改写后删除 `board.css` 里与 BoardUI 同名的 token。
 
 ### 新旧样式并存
 
@@ -94,7 +93,7 @@ BoardUI 通过 shadcn 注册表发布 React + Tailwind v4 源码，表单与弹�
   - 页面含弹层时，在浏览器里核对明暗主题、焦点进出与恢复、层叠顺序与滚动锁定；
   - `web/dist/` 与源码一致；旧断言的去向写进提交说明。
 - 迁移完成的定义：
-  - `web/app.js` 删除，Preact、`ReactSlot` 与 `@peach/legacy/*` 移除；
+  - `web/app.js` 删除，Preact、`ReactSlot`、`mountIsland` 两档与 `@peach/legacy/*` 移除；
   - 并存期断言按上一节删除；
   - `tests/test_web_ui.py` 里依赖旧实现的断言迁移或删除完毕，仍然成立的静态资源、页面服务与构建契约测试保留或迁往对应测试文件；
   - AGENTS.md 与 README 的前端章节只描述 React。
@@ -124,7 +123,7 @@ BoardUI 通过 shadcn 注册表发布 React + Tailwind v4 源码，表单与弹�
 
 | 库 | 决定 | 时机与边界 |
 | --- | --- | --- |
-| TanStack Query | 引入 | 随第一个有两个读者的数据域迁移：`/quality-goals` 列表与数据管理卡片的总数。`frontend/src/state/quality-goals.ts` 里的缓存、`shared` 合流、`issued` 序号与 `ensure` / `refresh` / `reset` 由它接管；API 地址、响应类型、错误文案与 `useAction` 的提交互斥保留。所有 `ReactSlot` 共用一个 `QueryClient`，不让 Preact store 与 Query 各持一份同一数据。本机接口用 `networkMode: 'always'`；对外部来源的采集与追更仍只走显式触发，不进 Query 的自动重取；`AbortSignal` 必须传到实际 `fetch` |
+| TanStack Query | 引入 | 随第一个整页归 React 的页面进入：活动页的三段读 `/api/tasks` 一个 `queryKey`，轮询写成 `refetchInterval`。`/quality-goals` 列表迁移时接管 `frontend/src/state/quality-goals.ts` 的缓存、合流与序号，该 store 与 `refreshStore` 随之删除；数据管理卡片的总数在数据管理页迁移时读同一个 `queryKey`。API 地址、响应类型、错误文案与 `useAction` 的提交互斥保留。所有 React root 共用 `frontend/src/react/query.ts` 里那一个 `QueryClient`：`retry: 0`，不因窗口聚焦或重新挂载自动重取（首屏由页面级 `prefetch` 决定，重进页面就是重取）；本机接口用 `networkMode: 'always'`；对外部来源的采集与追更仍只走显式触发，不进 Query 的自动重取；`AbortSignal` 必须传到实际 `fetch` |
 | TanStack Table | 随复杂表格引入 | BoardUI 的 Data Table 本身由它驱动，关注管理的表格视图迁移时一起进；别名表、只读信息表用 BoardUI 基础 Table。选择以来源 ID、条目 ID 为身份，卡片与表格两个视图共用一份选择集合，跨页批量以 ID 集合为准；筛选与排序仍由后端做全量，界面不把「只排当前页」表现成排了整个结果集 |
 | React Router | 外壳阶段接管 | 在迁移 `web/app.js` 的壳与路由那一步用 Declarative 模式接管客户端导航，此前旧路由是唯一导航管理者，不在 React 子树里另设路由。迁移要保留 `web/js/routes.js` 的既有规则：数字 ID 校验、实体名称吃掉后续含斜杠的路径、返回列表的状态与播放期间的导航行为 |
 | TanStack Virtual | 随馆藏网格迁移引入；旧壳先用 `content-visibility` 缓解 | 见下节实测：连续加载到 1500 张卡片时滚动帧间隔到 48 ms，给卡片加一条 `content-visibility: auto` 就降到 18 ms。网格是分段、竖屏带、悬停预览与就地舞台的组合，不是均匀列表，虚拟化要同时解决动态高度、滚动位置恢复与页内查找，所以在网格迁到 React 时作为该页的设计输入一起做，不在旧壳里再写一份。旧壳阶段只加那条 CSS，随 `web/css/12-cards.css` 的改动走 e2e |
