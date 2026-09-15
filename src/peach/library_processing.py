@@ -13,7 +13,8 @@ from pathlib import Path
 from filelock import FileLock, Timeout
 from PIL import Image
 
-from .catalog_rules import is_korean_mib_code, release_code_from_filename, same_release_code
+from .catalog_rules import (is_jav_code, is_korean_mib_code, normalise_code_key,
+                            release_code_from_filename, same_release_code)
 from .field_owners import SCAN_FILENAME, write_owned_fields
 from .jav_cover_fetch import DeadlineExceeded, NotFound
 from .library_nfo import directory_files, read_nfo, sidecars, local_art
@@ -367,6 +368,25 @@ def _require_writer(config, db_path):
 def _text(raw):
     """比对取值用的写法：空白差异和大小写不算两个值。"""
     return ' '.join(str(raw or '').split()).casefold()
+
+
+def _provider_code(raw):
+    """能拿去问来源的番号；不是发行番号的写法返回空串。
+
+    `asset.code` 里有一部分存的是目录名而不是番号：创作者账号（`BANBI_555`、
+    `RAIKUN325`）、片源站编号（`WX17`）和创作者自编号（`DTW003`）。2026-09-16 只读
+    盘点，本机账本 617 行是这样的值。它们问哪家来源都只会查空，拿番号形态逐行校验
+    还会把这 617 行全报成问题项，真正要处理的几十条就此淹掉。当作没有番号处理：
+    这些行本来就只登记本地海报。
+    """
+    if not is_jav_code(raw):
+        return ''
+    try:
+        return validate_provider_code(normalise_code_key(raw))
+    except ValueError:
+        # 形态两把尺（`is_jav_code` 与 `metadata._SAFE_CODE`）对不上的写法，本机账本
+        # 1673 个番号里一个都没有；真出现也只能当作没有番号，采集不为一行停摆。
+        return ''
 
 
 def _merge_candidates(groups, row, code, source, document, evidence_path, genre_decisions, local_fields=()):
@@ -754,7 +774,7 @@ def process_library(config, db_path, candidate_root, cover_root, *, location='co
                 if video.name.casefold() not in files:
                     issue(row, '媒体文件不可访问', action='reading_local', retryable=True)
                     continue
-                code = row['code'] or release_code_from_filename(row['name'])
+                code = _provider_code(row['code']) or release_code_from_filename(row['name'])
                 payload = None
                 nfo, posters = sidecars(video, files)
                 if nfo:
@@ -762,7 +782,7 @@ def process_library(config, db_path, candidate_root, cover_root, *, location='co
                         payload, raw = read_nfo(nfo)
                         if payload['id'] and code and not same_release_code(code, payload['id']):
                             raise ValueError('文件名与 NFO 番号冲突，请复核')
-                        code = code or payload['id']
+                        code = code or _provider_code(payload['id'])
                     except (OSError, ValueError, ET.ParseError) as error:
                         issue(row, str(error), action='reading_local')
                         continue
@@ -780,12 +800,6 @@ def process_library(config, db_path, candidate_root, cover_root, *, location='co
                            current_asset_id=None, current_asset_name='', current_action='',
                            current_started_at=None, current_deadline_at=None)
                     continue
-                if code:
-                    try:
-                        code = validate_provider_code(code)
-                    except ValueError:
-                        issue(row, '番号格式无效，请复核影片资料', action='reading_local')
-                        continue
                 if code and not row['code']:
                     with closing(sqlite3.connect(db_path, timeout=30)) as connection, connection:
                         write_owned_fields(connection, [row['id']], {'code': code},

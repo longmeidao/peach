@@ -482,6 +482,49 @@ class LibraryNfoTests(unittest.TestCase):
         self.assertTrue((self.root / 'generated' / 'posters' / '1_4.jpg').is_file(), '本地海报照常登记')
 
     @windows_ledger_roots
+    def test_a_directory_name_sitting_in_the_code_column_counts_as_no_code(self):
+        """`asset.code` 里的创作者自编号不是发行番号：问不到来源，也不该报成格式无效。"""
+        media = self.root / 'media'
+        media.mkdir()
+        (media / 'DTW003-放课后.mp4').write_bytes(b'video')
+        from PIL import Image
+        Image.new('RGB', (4, 6), 'teal').save(media / 'DTW003-放课后.png')
+        db = fresh_ledger(self.root)
+        config = PeachConfig(self.root, self.root / 'config.toml', present=True, locations={'local': (str(media),)})
+        provider = Mock()
+        provider.query.return_value = {'id': 'DTW003', 'maker': 'Studio', 'source_url': ''}
+        provider.cover.return_value = False
+        process_library(config, db, self.root / 'generated', self.root / 'covers',
+                        stage='scan', provider_factory=lambda: provider)
+        with closing(sqlite3.connect(db)) as connection, connection:
+            connection.execute("UPDATE asset SET code='DTW003'")
+        result = process_library(config, db, self.root / 'generated', self.root / 'covers',
+                                 stage='collect', provider_factory=lambda: provider)
+        provider.query.assert_not_called()
+        self.assertEqual((result['status'], result['issue_count'], result['checked']), ('complete', 0, 1))
+        self.assertTrue((self.root / 'generated' / 'posters' / '1_4.jpg').is_file(), '本地海报照常登记')
+
+    @windows_ledger_roots
+    def test_a_tokyo_hot_code_written_with_the_site_name_is_asked_for(self):
+        """账本里按目录名落的 `TOKYO-HOT-N0762` 是真番号，要按规范写法去问来源。"""
+        media = self.root / 'media'
+        media.mkdir()
+        (media / 'n0762.mp4').write_bytes(b'video')
+        db = fresh_ledger(self.root)
+        config = PeachConfig(self.root, self.root / 'config.toml', present=True, locations={'local': (str(media),)})
+        provider = Mock()
+        provider.query.return_value = {'id': 'n0762', 'maker': 'Tokyo-Hot', 'source_url': ''}
+        provider.cover.return_value = False
+        process_library(config, db, self.root / 'generated', self.root / 'covers',
+                        stage='scan', provider_factory=lambda: provider)
+        with closing(sqlite3.connect(db)) as connection, connection:
+            connection.execute("UPDATE asset SET code='TOKYO-HOT-N0762'")
+        result = process_library(config, db, self.root / 'generated', self.root / 'covers',
+                                 stage='collect', provider_factory=lambda: provider)
+        self.assertEqual([item.args[0] for item in provider.query.call_args_list], ['n0762'])
+        self.assertEqual(result['issue_count'], 0)
+
+    @windows_ledger_roots
     def test_a_source_that_said_no_is_not_asked_again_for_a_week(self):
         """r18.dev 不认识的番号每轮都重问、每条卡一次 2 秒的主机间隔，答案永远一样。
 
