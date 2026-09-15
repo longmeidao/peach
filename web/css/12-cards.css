@@ -139,6 +139,14 @@ body.refreshing #batchAction svg,
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--tile),1fr));gap:16px 8px}
 .card{cursor:pointer;display:flex;flex-direction:column;gap:8px;min-width:0;
   position:relative;transition:transform .18s ease,filter .18s ease;transform-origin:center}
+/* 视口外的卡片跳过渲染：一屏滚动要算的只剩屏上那几十张，连续加载到一千五百张时帧间隔
+   仍在预算附近（实测见 ADR-0031「馆藏网格连续加载的实测」）。`auto 320px` 是占位高度，
+   没渲染过的卡先按 320px 排进来，渲染过的记住自己的实际尺寸。
+   四类卡不在其内：Mix 卡和分卷／版次卡的叠层纸边靠 transform 抬到卡片盒外 7px，跳过渲染
+   连带的 paint containment 会把那一截裁掉；垃圾文件卡自己声明了更高的占位值；竖屏带的卡
+   横着排在 `.srow` 里，320px 与 9:16 的封面对不上。 */
+#grid article.card:not(.mixcard,.partcard,.junkcard,.scard){
+  content-visibility:auto;contain-intrinsic-size:auto 320px}
 /* 叠层往上溢出到行间距里，卡片本体不为它留白。留白的写法（padding-top:7px）会把
    整张卡压低 7px 并加高 7px，同一行里 Mix、分卷、版次卡的封面和下面的文字就比
    邻居矮一截；往上堆之后卡片盒和普通卡完全同高，下沿自然平齐。 */

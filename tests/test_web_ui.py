@@ -2678,6 +2678,28 @@ class WebUiSourceTests(unittest.TestCase):
         # 回收站卡片的缩略图不描边，抵消的对象也得跟着是伪元素。
         self.assertPageContains(".junkcard:hover .pic::after{content:none}")
 
+    def test_catalog_cards_skip_rendering_outside_the_viewport(self):
+        """馆藏网格的卡片交给浏览器按视口取舍，一屏滚动只算屏上那几十张。
+
+        连续加载到 1525 张时帧间隔 18.2 ms，仍在 16.7 ms 的帧预算附近（ADR-0031
+        「馆藏网格连续加载的实测」）。`auto 320px` 只是占位，渲染过的卡记住自己的尺寸。
+
+        四类卡在规则之外。Mix 卡和分卷／版次卡的叠层纸边靠 transform 抬到卡片盒外
+        7px，跳过渲染连带的 paint containment 会把那一截裁掉；垃圾文件卡自己声明占位
+        高度，这条选择器压过去会把它改矮；竖屏带的卡横着排在 `.srow` 里，320px 与
+        9:16 的封面对不上。
+        """
+        cards = (Path(__file__).resolve().parents[1]
+                 / "web/css/12-cards.css").read_text(encoding="utf-8")
+        selector = "#grid article.card:not(.mixcard,.partcard,.junkcard,.scard){"
+        self.assertIn(selector, cards, "跳过渲染只施加给馆藏网格里不带叠层的卡片")
+        rule = cards[cards.index(selector) + len(selector):]
+        rule = rule[:rule.index("}")]
+        self.assertIn("content-visibility:auto", rule)
+        self.assertIn("contain-intrinsic-size:auto 320px", rule)
+        # 垃圾文件卡的占位高度归它自己，所以它留在上面那条的 `:not()` 里。
+        self.assertIn("content-visibility:auto;contain-intrinsic-size:auto 360px", cards)
+
     def test_big_jav_layout_crops_to_the_front_cover(self):
         """大图＝宽度不变、高度拉长，只留封套右侧那块正封。
 
