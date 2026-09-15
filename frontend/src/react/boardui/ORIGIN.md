@@ -19,6 +19,12 @@
 | `input` | `ac1e66c9ed15f9db2750dd528bc894c856ac84e79f72ff4acb96f14b1ab9c249` | `components/base/input/{input,label,hint-text}.tsx` |
 | `checkbox` | `6210fdb4c54aab6dd89db3ae1bc387596a2dbacde62896aecaa2a7e15ece859c` | `components/base/checkbox/{checkbox,checkbox-glyph}.tsx` |
 | `settings-modal` | `eb01742ca56daa473f042244176cd697fc20010ab18f680e3a3a8012d69f6c5b` | `components/application/settings/settings-rows.tsx` |
+| `switch` | `3412c1910b2fa7f5d17404bf50bd2503e9ca097cf9d741366379cf18e09ebeb6` | `components/base/switch/switch.tsx` |
+| `select` | `36a3a2b91508bdb278ecf84d24b35a7324e8be0781677e5bc12d8333eb9ff5ef` | `components/base/select/select.tsx`、`components/base/dropdown/menu-styles.ts` |
+| `chevrons` | `b08900e01f7a82dcd38a66f46041a576fcefae667ed7afaba5d177c480ae85b0` | `components/foundations/icons/chevrons.tsx` |
+| `use-dismiss-on-outside-press` | `854569e5d2188146c1ebb41ceccc9eaaddb3d4a31b623946e7dd72be650636b1` | `utils/use-dismiss-on-outside-press.ts` |
+| `link-button` | `05eb37b3cf1334c153e0702de05fe4989e4359c9c74d5ba55cc552a58e4629bd` | `components/base/buttons/link-button.tsx` |
+| `icon-button` | `1441e8301efc6e16e0693194f876ce285ca5fe8d440156a060a9266e012d2c90` | `components/base/buttons/icon-button.tsx` |
 
 ## 没有逐字复制的部分
 
@@ -27,7 +33,11 @@
 | `globals`（`693885494e6f229637fe118852efbfb3df820dd8d174a2a7e47f65dadfcd96bf`） | 不复制整份；试点用到的 `check-draw` 动画和根元素的字体平滑搬进 `../styles.css`，作用域是 `.peach-react` | 整份 `@import "tailwindcss"` 会把 Preflight 和 `html`、`body` 的底色铺到整页，未迁移页面仍由旧样式表绘制 |
 | Tailwind Preflight | `../preflight-scoped.css` 逐字包进 `@scope (.peach-react)` | 同上 |
 | 深色模式 | 上游读 `<html class="dark">`；`web/app.js` 的 `applyTheme()` 与 `index.html` 首帧脚本按实际深浅加减这个类 | Peach 的主题选择写在 `data-theme`，跟随系统时不写属性 |
-| 与 `web/board.css` 同名的 `--color-*` token | `:root` 上由 `board.css` 定值；`../styles.css` 在 `.peach-react` 与 `.dark .peach-react` 上按 `theme.css` 原文重新声明 | 未迁移页面的颜色保持不变，React 子树读到上游值；渲染到容器外的浮层不在这个范围里，用到时另行处理 |
+| 与 `web/board.css` 同名的 `--color-*` token | `:root` 上由 `board.css` 定值；`../styles.css` 在 `.peach-react` 与 `.dark .peach-react` 上按 `theme.css` 原文重新声明 | 未迁移页面的颜色保持不变，React 子树读到上游值 |
+| 弹出层的挂载位置 | `../entry.tsx` 用 `react-aria` 的 `UNSAFE_PortalProvider` 把 Popover 渲染进 `body` 末尾一个同样带 `.peach-react` 的容器 | 上游 Popover 渲染到 `body`，落在 token 重声明与 Preflight 的作用域外，读到的是 `board.css` 的值 |
 | 焦点环 | 输入框只画 BoardUI 外框上的 `ring`；`web/css/01-base.css` 的全局 `:focus-visible` 排除 `.peach-react` 子树 | 旧样式表排在后面，同特指度时会盖过 `outline-none`，内层输入框多出一圈 |
 | 提交键忙态 | 写 `aria-busy` 与 `aria-disabled`，不画 Spinner | `button` 条目没有加载态 |
-| 行内警示 | `../settings/access-settings.tsx` 的 `Warning` 用 `status-yellow` token 组合 | 注册表里没有行内 Note 组件 |
+| 行内提示 | `../settings/section.tsx` 的 `Note` 按语气取 `status-yellow`、`background-tertiary-error`、`notification-*` token 组合 | 注册表里没有行内 Note 组件；`notification` 条目是带关闭键和动效的浮动通知 |
+| 进度条 | `../settings/section.tsx` 的 `Progress` 用 SVG 矩形画 | 注册表里没有进度组件 |
+| 折叠 | `../settings/section.tsx` 的 `Disclosure` 用原生 `details` | 注册表里没有折叠组件 |
+| 图标选择 | `../settings/library-icon-picker.tsx` 用 React Aria 的 `Popover`、`RadioGroup` 组合，面板取 `menu-styles.ts` 的外观 | 注册表里没有网格单选的弹出面板 |

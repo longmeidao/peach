@@ -30,10 +30,13 @@ island。原因是那一套一上来就打 `/api/items`，而未配置的机器�
 状态，原生 `<form method="post">` 不写一行 JS 就能工作。设置成功以浏览器 cookie 登录并跳入馆藏。
 它的配色 token 从 `web/css/01-base.css` 的 `:root` 两段抽出来，跟随系统深浅色。
 
-配置好之后改文件夹与端口的那张页由 `frontend/src/islands/configuration.tsx` 渲染，
-数据契约是 `/api/configuration`（`src/peach/routes_configuration.py`）。
+配置好之后改文件夹与端口的那张页，外壳是 `frontend/src/islands/configuration.tsx`：它同步画出
+「通用 / 媒体 / 网络与访问 / 更新与维护」四个 `h2.configgroup` 标题，每个标题下挂一个 `ReactSlot`，
+分区本身是 `frontend/src/react/settings/` 里的 React 子树。数据契约是 `/api/configuration`
+（`src/peach/routes_configuration.py`）。
 日常入口是右上角的设置弹层：同一个 island 挂进 `#machineSettings`，左栏「这台电脑」
-那一块按它自己的 `.configgroup` 拆成「通用 / 媒体 / 网络与访问 / 更新与维护」四条。
+那一块按 `.configgroup` 标题拆成四条。标题留在 Preact 外壳里同步输出，是因为拆分发生在
+island 挂载的那一刻，React 子树那时还没加载。
 `/configuration` 这条路由保留，媒体库选单和首次配置引导都指向它。
 服务端按两道门放行：托盘管理的服务、发起连接的是本机；并在 `/healthz` 里按调用方回
 `configurable`，遗留层据此决定这一块是挂 island 还是换成一句「该配置需在服务端设备修改」。
@@ -245,15 +248,16 @@ vendor 到 `web/vendor/` 的四个包（video.js、swiper、lucide-static、heal
 | `happy-dom` | vitest 的 DOM 环境。断言的是真实 DOM 结构，比 jsdom 轻且启动快 |
 | `playwright-core` | `frontend/e2e/` 的浏览器驱动，只驱动本机 Chrome、不下载浏览器。happy-dom 没有布局，横向溢出、等待态卡住这类事实只有真浏览器测得出；不用 `@playwright/test`，用例跑在 `node:test` 上，与 docu.md（`markdown-viewer/markdown-viewer-extension` 的 `test/helpers/browser-render-harness.ts`）同一做法 |
 | `oxlint`、`@shadcn/lint` | `npm run lint`：Oxlint 加载 `@shadcn/lint` 的六条规则，只查 `src/react/`、排除 `boardui/`。不用 ESLint，因为 `@typescript-eslint/parser` 的 peer 只到 TypeScript 6.0；`eslint` 作为 `@shadcn/lint` 的 peer 会装进来，不调用 |
-| `react`、`react-dom` | React 子树的渲染层。BoardUI 源码是 React 组件，交互建在 React Aria 上，Preact 的兼容层不在 React Aria 的支持范围内 |
-| `react-aria-components` | BoardUI 输入框与勾选框的交互和无障碍语义：标签关联、键盘操作、`aria-invalid` |
+| `react`、`react-dom` | React 子树的渲染层。BoardUI 源码是 React 组件，交互建在 React Aria 上；Peach 不经 Preact 兼容层运行 React Aria（ADR-0031） |
+| `react-aria-components` | BoardUI 输入框、勾选框、开关、下拉与弹出面板的交互和无障碍语义：标签关联、键盘操作、焦点进出、`aria-invalid` |
+| `react-aria` | 只用 `UNSAFE_PortalProvider`：把 Popover 与下拉列表挂进 `body` 末尾同样带 `.peach-react` 的容器，弹层读到与页面内一致的 token 与 Preflight |
 | `tailwind-merge` | BoardUI 的 `cx()` 合并类名时去掉互相冲突的工具类 |
 | `@remixicon/react` | BoardUI 组件内置的图标 |
 | `tailwindcss`、`@tailwindcss/vite` | 按 `src/react/` 里实际用到的类名生成 `peach-react.css` |
 | `@types/react`、`@types/react-dom` | React 子树的类型检查 |
 
-React 子树单独构建（`vite.react.config.ts`）。`peach-react.js` 424 kB（gzip 110.6 kB），
-只在页面挂 React 子树时由 island 动态加载；`peach-react.css` 67 kB（gzip 11.8 kB），
+React 子树单独构建（`vite.react.config.ts`）。`peach-react.js` 669 kB（gzip 174.0 kB），
+只在页面挂 React 子树时由 island 动态加载；`peach-react.css` 86 kB（gzip 14.1 kB），
 由 `index.html` 在旧样式表之前引入。
 
 `@preact/signals` 钉在 2.11.1：它对 `preact` 的 peer 要求是 `>= 10.25.0`，和这里的

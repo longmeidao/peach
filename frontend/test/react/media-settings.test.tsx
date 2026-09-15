@@ -1,0 +1,207 @@
+import { describe, expect, it, vi } from 'vitest';
+
+import { CONFIGURATION_URL, PICK_FOLDER_URL } from '../../src/configuration-endpoints';
+import type { ConfigurationData } from '../../src/react/bundle';
+import { CloudDriveGuide } from '../../src/react/settings/clouddrive-guide';
+import { MediaSettings } from '../../src/react/settings/media-settings';
+import { buttonNamed, choose, click, fetchMock, mount, section, sentBody, settle, submit, type } from './render';
+
+const data = (over: Partial<ConfigurationData> = {}): ConfigurationData => ({
+  editable: true, notice: '', revision: 'rev-1', media_dirs: ['D:\\Media'], port: 9123, facts: [], ...over,
+});
+
+const open = (over: Partial<ConfigurationData> = {}, receipt = vi.fn()) =>
+  mount(<MediaSettings data={data(over)} receipt={receipt} />);
+const rows = (root: ParentNode) => [...root.querySelectorAll('[data-folder-row]')];
+const paths = (root: ParentNode) => [...root.querySelectorAll<HTMLInputElement>('input[aria-label^="媒体文件夹 "]')];
+
+it('托盘管理访问端口时不画端口字段，底栏说保存后重新载入', async () => {
+  const host = await open({ port_editable: false });
+  expect(host.querySelector('#configPort')).toBeNull();
+  expect(host.textContent).toContain('保存后 Peach 会重新载入配置。');
+  expect(host.querySelector('form')).not.toBeNull();
+});
+
+it('网盘来源缺依赖时给新窗口下载链接，已装的不提示', async () => {
+  const host = await open({
+    media_sources: [{ location: '115', root: 'B:\\', path: 'B:\\' }],
+    mount_dependencies: [
+      { name: 'CloudDrive', available: false, download_url: 'https://www.clouddrive2.com/download.html' },
+      { name: 'WinFsp', available: true, download_url: 'https://winfsp.dev/rel/' },
+    ],
+  });
+  const link = host.querySelector('a[href="https://www.clouddrive2.com/download.html"]');
+  expect(link?.getAttribute('target')).toBe('_blank');
+  expect(link?.querySelector('svg')).not.toBeNull();
+  expect(host.textContent).not.toContain('下载 WinFsp');
+});
+
+it('不能编辑时只说原因，不画表单', async () => {
+  const host = await open({ editable: false, notice: '请在运行 Peach 的电脑上打开配置' });
+  expect(host.querySelector('form')).toBeNull();
+  expect(host.querySelector('[role="note"]')?.textContent).toContain('请在运行 Peach 的电脑上打开配置');
+});
+
+describe('媒体文件夹', () => {
+  it('Windows 只填本机路径，选了网盘才出 CloudDrive 帮助', async () => {
+    const host = await open({ windows: true, media_sources: [{ location: 'local', root: 'D:/', path: 'D:/' }] });
+    expect(host.textContent).not.toContain('Windows 中的对应路径');
+    expect(host.textContent).not.toContain('挂载帮助');
+    await choose(rows(host)[0]?.querySelector('[aria-haspopup="listbox"]'), 'CloudDrive · 115');
+    expect(host.textContent).toContain('挂载帮助');
+  });
+
+  it('其它系统每行带 Windows 对应路径，挂载状态同时给文字和来源标识', async () => {
+    const host = await open({ windows: false, media_sources: [
+      { location: '115', root: 'B:/', path: '/Volumes/115', online: true },
+      { location: 'pikpak', root: 'A:/', path: '/Volumes/PikPak', online: false },
+      { location: 'local', root: 'D:/', path: '/Volumes/Media' },
+    ] });
+    expect(rows(host)).toHaveLength(3);
+    expect(rows(host).every((row) => row.textContent?.includes('Windows 中的对应路径'))).toBe(true);
+    const mounts = section(host, '挂载状态')!;
+    expect([...mounts.querySelectorAll('[data-mount]')].map((node) => [node.getAttribute('data-mount'), node.textContent]))
+      .toEqual([['online', '在线'], ['offline', '离线'], ['unknown', '未检测']]);
+    expect([...mounts.querySelectorAll('dt use')].map((node) => node.getAttribute('href')))
+      .toEqual(['#i-fixture-115', '#i-fixture-pikpak', '#i-hard-drive']);
+  });
+
+  it('刷新挂载状态只换状态，不动没保存的路径', async () => {
+    const media_sources = [{ location: '115', path: 'B:/', root: 'B:/', online: false }];
+    const fetcher = fetchMock(200, data({ media_sources: [{ ...media_sources[0]!, online: true }] }));
+    vi.stubGlobal('fetch', fetcher);
+    const host = await open({ windows: true, media_sources });
+    await type(paths(host)[0], 'B:/Movies');
+    await click(buttonNamed('刷新挂载状态', host));
+    await settle();
+    expect(fetcher.mock.calls[0]?.[0]).toBe(CONFIGURATION_URL);
+    expect(paths(host)[0]?.value).toBe('B:/Movies');
+    expect(section(host, '挂载状态')?.textContent).toContain('在线');
+  });
+
+  it('按来源回填全部挂载点，提交带上盘符映射与媒体库', async () => {
+    const fetcher = fetchMock(200, { saved: true, url: '/', revision: 'rev-2' });
+    vi.stubGlobal('fetch', fetcher);
+    const host = await open({ windows: false, media_sources: [
+      { location: '115', root: 'B:\\', path: '/Volumes/115', online: false, library: '收藏', library_icon: 'heart' },
+      { location: 'pikpak', root: 'A:\\', path: '/Volumes/PikPak', online: true },
+    ] });
+    expect(paths(host).map((input) => input.value)).toEqual(['/Volumes/115', '/Volumes/PikPak']);
+    await submit(host.querySelector('form'));
+    await settle();
+    expect(sentBody(fetcher).media_sources).toEqual([
+      { location: '115', root: 'B:\\', path: '/Volumes/115', library: '收藏', library_icon: 'heart' },
+      { location: 'pikpak', root: 'A:\\', path: '/Volumes/PikPak', library: '', library_icon: '' },
+    ]);
+  });
+
+  it('一行一个文件夹，只有一行时没有移除键', async () => {
+    const host = await open();
+    expect(paths(host).map((input) => input.value)).toEqual(['D:\\Media']);
+    expect(host.querySelector('[aria-label="移除这个文件夹"]')).toBeNull();
+  });
+
+  it('新加的一行接过焦点，之后每行都能移除', async () => {
+    const host = await open();
+    await click(buttonNamed('添加文件夹', host));
+    expect(paths(host)).toHaveLength(2);
+    expect(document.activeElement).toBe(paths(host)[1]);
+    const removes = host.querySelectorAll('[aria-label="移除这个文件夹"]');
+    expect(removes).toHaveLength(2);
+    await click(removes[0]);
+    expect(paths(host).map((input) => input.value)).toEqual(['']);
+  });
+});
+
+describe('选择文件夹', () => {
+  it('让这台电脑弹系统对话框，选中的路径填回这一行', async () => {
+    const fetcher = fetchMock(200, { path: 'E:\\Movies' });
+    vi.stubGlobal('fetch', fetcher);
+    const host = await open();
+    const pick = host.querySelector('[aria-label="选择文件夹"]')!;
+    await click(pick);
+    await settle();
+    const [url, init] = fetcher.mock.calls[0] ?? [];
+    expect(url).toBe(PICK_FOLDER_URL);
+    expect(init?.method).toBe('POST');
+    expect(sentBody(fetcher)).toEqual({ initial: 'D:\\Media' });
+    expect(paths(host)[0]?.value).toBe('E:\\Movies');
+    expect(pick.getAttribute('aria-busy'), '对话框关了忙态要撤掉').toBeNull();
+  });
+
+  it('取消什么也不改；打不开对话框时原因写在这一行', async () => {
+    vi.stubGlobal('fetch', fetchMock(200, { path: null }));
+    const host = await open();
+    await click(host.querySelector('[aria-label="选择文件夹"]'));
+    await settle();
+    expect(paths(host)[0]?.value).toBe('D:\\Media');
+    expect(paths(host)[0]?.getAttribute('aria-invalid')).toBeNull();
+    vi.stubGlobal('fetch', fetchMock(501, { error: '这个系统上没有可用的文件夹对话框' }));
+    await click(host.querySelector('[aria-label="选择文件夹"]'));
+    await settle();
+    expect(rows(host)[0]?.textContent).toContain('没有可用的文件夹对话框');
+    expect(paths(host)[0]?.getAttribute('aria-invalid')).toBe('true');
+  });
+});
+
+describe('保存', () => {
+  it('提交带上指纹、全部文件夹、端口与是否扫描，成功后回执并留下新地址', async () => {
+    const fetcher = fetchMock(200, { saved: true, url: 'http://127.0.0.1:9124/', revision: 'rev-2' });
+    vi.stubGlobal('fetch', fetcher);
+    const receipt = vi.fn();
+    const host = await open({}, receipt);
+    await type(host.querySelector<HTMLInputElement>('#configPort'), '9124');
+    await submit(host.querySelector('form'));
+    await settle();
+    const [url, init] = fetcher.mock.calls[0] ?? [];
+    expect(url).toBe(CONFIGURATION_URL);
+    expect(init?.method).toBe('POST');
+    expect(sentBody(fetcher)).toEqual({ revision: 'rev-1', media_dirs: ['D:\\Media'], port: '9124', scan_now: false });
+    expect(receipt).toHaveBeenCalledWith('已保存配置');
+    expect(host.querySelector('[role="status"]')?.textContent).toContain('正在重新启动');
+    expect(host.querySelector('a[href="http://127.0.0.1:9124/"]')?.textContent).toBe('进入馆藏');
+    expect(host.querySelector('form'), '保存后表单不再留在页面上').toBeNull();
+  });
+
+  it('服务端按字段退回的原因写回原位，不发回执', async () => {
+    vi.stubGlobal('fetch', fetchMock(400, {
+      error: '有几项需要修改',
+      errors: { media_dirs: ['', '和上面的文件夹重复了'], port: '端口要在 1024 到 65535 之间' },
+    }));
+    const receipt = vi.fn();
+    const host = await open({ media_dirs: ['D:\\Media', 'D:\\Media'] }, receipt);
+    await submit(host.querySelector('form'));
+    await settle();
+    expect(paths(host).map((input) => input.getAttribute('aria-invalid'))).toEqual([null, 'true']);
+    expect(rows(host)[1]?.textContent).toContain('和上面的文件夹重复了');
+    expect(host.querySelector('#configPort')?.getAttribute('aria-invalid')).toBe('true');
+    expect(host.textContent).toContain('端口要在 1024 到 65535 之间');
+    expect(receipt).not.toHaveBeenCalled();
+    expect(host.textContent, '字段级原因不再叠一条整体提示').not.toContain('没有保存');
+  });
+
+  it('其它失败留在表单里等重试', async () => {
+    vi.stubGlobal('fetch', fetchMock(409, { error: '配置已变更，请刷新后再保存' }));
+    const host = await open();
+    await submit(host.querySelector('form'));
+    await settle();
+    expect(host.querySelector('[role="alert"]')?.textContent).toContain('配置已变更');
+    expect(host.querySelector('form')).not.toBeNull();
+    expect(buttonNamed('保存配置', host)?.getAttribute('aria-busy'), '失败后忙态要撤掉').toBeNull();
+  });
+});
+
+it('CloudDrive 建议按硬盘分三档，页内只留怎么填，原理链到仓库文档', async () => {
+  const host = await mount(<CloudDriveGuide />);
+  const tiers = host.querySelectorAll('[aria-label="按缓存所在硬盘分档"] > li');
+  expect(tiers).toHaveLength(3);
+  expect([...tiers[0]!.querySelectorAll('dt')].map((dt) => dt.textContent))
+    .toEqual(['缓存上限', '读取长度（默认 / 最小）', '同时处理视频']);
+  expect(host.textContent).toContain('256 / 128 KB');
+  expect(host.textContent).toContain('上限不要填 0');
+  expect(host.querySelector('details')?.open).toBe(false);
+  expect([...host.querySelectorAll('a')].map((a) => a.getAttribute('href'))).toEqual([
+    'https://www.clouddrive2.com/help.html',
+    'https://github.com/longmeidao/peach/blob/master/docs/CLOUDDRIVE.md',
+  ]);
+});

@@ -65,13 +65,16 @@ class IslandBundleTests(unittest.TestCase):
     def test_the_startup_switches_and_their_payload_are_in_the_shipped_bundle(self):
         """「开机自启」那三颗开关的标签和它们发出去的键，判据落在产物上。
 
-        `web/dist/peach-ui.js` 是提交进 Git 的产物。改了 `frontend/src` 不重建，浏览器拿到
+        `web/dist/peach-react.js` 是提交进 Git 的产物。改了 `frontend/src` 不重建，浏览器拿到
         的仍是旧的那一份，而 tsc 和 vitest 都只看源码，谁都不会红——只有扫产物这一条会。
         """
+        if not REACT_BUNDLE.is_file():
+            self.skipTest(f"{REACT_BUNDLE.relative_to(ROOT)} 不在：先 `npm --prefix frontend run build`")
+        react = REACT_BUNDLE.read_text(encoding="utf-8")
         for label in ("开机后启动 Peach", "静默启动", "在桌面创建快捷方式"):
-            self.assertIn(label, self.bundle,
+            self.assertIn(label, react,
                           f"产物里没有「{label}」，先跑 npm --prefix frontend run build")
-        payload = self.bundle[self.bundle.index('"/api/configuration/startup"'):][:240]
+        payload = react[react.index('"/api/configuration/startup"'):][:240]
         for key in ("enabled:", "silent:", "desktop:"):
             self.assertIn(key, payload, f"保存开机自启没带上 {key}")
 
@@ -146,7 +149,9 @@ class ReactBundleTests(unittest.TestCase):
         """island 按 `@peach/react` 写，产物里必须改写成服务端真的提供的路径，且 React 不进 peach-ui.js。"""
         self.assertIn('import("/dist/peach-react.js")', self.islands)
         self.assertNotIn("react-dom", self.islands)
-        self.assertIn("mountAccessSettings", self.react)
+        for mount in ("mountGeneralSettings", "mountMediaSettings", "mountNetworkSettings",
+                      "mountMaintenanceSettings"):
+            self.assertIn(mount, self.react)
 
     def test_the_react_bundle_keeps_the_legacy_modules_external(self):
         self.assertIn('from "/js/core.js"', self.react)
@@ -321,46 +326,14 @@ class IslandSourceContractTests(unittest.TestCase):
         self.assertEqual(len(routed), 1, f"quality-goals 声明在 {routed}")
 
 
-class ConfigurationIslandContractTests(unittest.TestCase):
-    """配置页搬进 island 之后仍要守住的几条：控件复用、忙态、端点唯一、主动作唯一。"""
-
-    def setUp(self):
-        self.source = (FRONTEND / "src" / "islands" / "configuration.tsx").read_text(
-            encoding="utf-8")
-
-    def test_feedback_and_titles_reuse_the_shared_components(self):
-        """Note、Fieldset 标题与忙态都走 `/js/ui-components.js`，island 里不另画一份。"""
-        self.assertIn("from '@peach/legacy/ui'", self.source)
-        for helper in ("noteHtml(", "fieldsetTitle(", "setActionBusy("):
-            self.assertIn(helper, self.source)
-        self.assertNotIn("disabled=", self.source, "请求等待期用 aria-busy，不用原生 disabled")
-
-    def test_there_is_one_primary_action_and_the_add_row_button_is_not_it(self):
-        """每屏只有一个 `--ink` 底的主动作，是「保存配置」；「添加文件夹」是次级。"""
-        self.assertEqual(self.source.count('class="geist-button primary"'), 1)
-        self.assertIn('class="geist-button configadd"', self.source)
-        self.assertIn('aria-label="移除这个文件夹"', self.source)
-
-    def test_each_row_can_ask_this_machine_for_the_system_folder_dialog(self):
-        """选择键夹在输入框和移除键中间；对话框由服务端弹，页面只等 `path` 回来。"""
-        self.assertIn('class="geist-button configpick" aria-label="选择文件夹"', self.source)
-        self.assertIn('href="#i-folder-search"', self.source)
-        self.assertIn("PICK_FOLDER_URL = '/api/pick-folder'", self.source)
-        pick = self.source.index('class="geist-button configpick"')
-        self.assertLess(self.source.index('class="geist-input"'), pick)
-        self.assertLess(pick, self.source.index('class="geist-button configrm danger"'))
-
-    def test_validation_reasons_come_from_the_server(self):
-        """字段级原因读 400 的 `errors`，前端不复制一份路径与端口的判定。"""
-        self.assertIn("cause.status !== 400", self.source)
-        self.assertIn("fields.media_dirs", self.source)
-        self.assertIn("fields.port", self.source)
+class ConfigurationEndpointTests(unittest.TestCase):
+    """配置页的 Preact 外壳和 React 分区读同一条 `/api/configuration`，两份产物各打包一份。"""
 
     def test_the_endpoint_is_declared_once(self):
         sources = sorted(path for path in (FRONTEND / "src").rglob("*.ts*"))
         declared = [path.name for path in sources
                     if "'/api/configuration'" in path.read_text(encoding="utf-8")]
-        self.assertEqual(declared, ["configuration.tsx"], f"端点声明在 {declared}")
+        self.assertEqual(declared, ["configuration-endpoints.ts"], f"端点声明在 {declared}")
 
 
 class SharedStateContractTests(unittest.TestCase):
@@ -458,7 +431,7 @@ class CloudDriveGuideScopeTests(unittest.TestCase):
     """
 
     def setUp(self):
-        self.source = (FRONTEND / "src" / "islands" / "clouddrive-guide.tsx").read_text(
+        self.source = (FRONTEND / "src" / "react" / "settings" / "clouddrive-guide.tsx").read_text(
             encoding="utf-8")
         self.doc = (ROOT / "docs" / "CLOUDDRIVE.md").read_text(encoding="utf-8")
         self.operations = (ROOT / "docs" / "OPERATIONS.md").read_text(encoding="utf-8")
@@ -471,9 +444,8 @@ class CloudDriveGuideScopeTests(unittest.TestCase):
             self.assertNotIn(moved, self.source, f"「{moved}」这一段归 docs/CLOUDDRIVE.md")
 
     def test_the_page_links_to_the_document_that_holds_the_reasoning(self):
-        self.assertIn("https://github.com/longmeidao/peach/blob/master/docs/CLOUDDRIVE.md",
+        self.assertIn('<ExternalLink href="https://github.com/longmeidao/peach/blob/master/docs/CLOUDDRIVE.md">',
                       self.source)
-        self.assertIn('class="externallink"', self.source)
 
     def test_the_document_holds_the_steps_the_reasoning_and_the_provenance(self):
         for section in ("## 配置步骤", "## 三处缓存是三处设置", "## 缓存上限与清理",

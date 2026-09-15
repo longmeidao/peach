@@ -349,15 +349,20 @@ def _board_button_rules() -> str:
     return ''.join(palettes) + ''.join(switches) + ':root{' + ';'.join(fonts) + '}' + ''.join(rules)
 
 
+#: 运行信息的术语／取值两列，窄屏叠成一列。只有带 `configfacts` 的页面才内联。
+_FACTS_STYLE = (
+    ".configfacts{margin:0;display:grid;grid-template-columns:max-content minmax(0,1fr);gap:10px 24px;align-items:baseline}\n"
+    ".configfacts dt{color:var(--muted);font-size:var(--fs-sm)}.configfacts dd{margin:0;overflow-wrap:anywhere}\n"
+    ".configfacts dt .gselectmark{vertical-align:-3px;margin-inline-end:8px}\n"
+    "@media(max-width:560px){.configfacts{grid-template-columns:minmax(0,1fr)}.configfacts dd{margin-top:-6px}}"
+)
+
+
 def _document(title: str, body: str) -> str:
     # 页内脚本对两张页面都生效：找不到对应控件时它什么也不做。
     index = (PROJECT_ROOT / "web/index.html").read_text(encoding="utf-8")
     symbols = ''.join(re.findall(r'<symbol id="i-(?:check|chevron-down|hard-drive)"[^>]*>.*?</symbol>', index))
-    facts_css = ''
-    if 'class="configfacts"' in body:
-        configuration_css = (PROJECT_ROOT / 'web/css/23-configuration.css').read_text(encoding='utf-8')
-        facts_css = '\n'.join(line for line in configuration_css.splitlines()
-                              if line.startswith(('.configfacts', '@media(max-width:560px){.configfacts')))
+    facts_css = _FACTS_STYLE if 'class="configfacts"' in body else ''
     return (f"{_SETUP_HEAD}<title>{title}</title><style>{_theme_tokens()}{_scrollbar_rules()}</style>"
             f'{_SETUP_STYLE}<style>{_button_rules()}</style>{board_entry_style()}'
             f'<style>{_board_button_rules()}</style><style>{facts_css}</style></head><body><svg width="0" height="0" aria-hidden="true" style="position:absolute">{symbols}</svg><main>{body}</main>{_SETUP_SCRIPT}{_SHARED_SCRIPT}</body></html>\n')

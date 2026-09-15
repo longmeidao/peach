@@ -353,7 +353,7 @@ class WebUiSourceTests(unittest.TestCase):
         ".geist-progress", ".watchprogress", ".vjs-play-progress", ".vjs-progress-holder",
         ".trace .bar", ".tokbar",  # 进度与数据
         ".ptoggle:checked",  # Toggle 开态：Geist Toggle 实测轨道 rgb(0,112,243)
-        ".entitylink", ".flink", ".fsourcelink", ".fcred a", ".tokauthor>a", ".confighelp a", ".taste-history-guide-content a", ".scraping-url",  # 真正的链接
+        ".entitylink", ".flink", ".fsourcelink", ".fcred a", ".tokauthor>a", ".taste-history-guide-content a", ".scraping-url",  # 真正的链接
     )
 
     def test_tungsten_is_reserved_for_focus_links_progress_and_toggle(self):
@@ -1352,8 +1352,7 @@ class WebUiSourceTests(unittest.TestCase):
         同一份 Vercel 取证：16px SVG、`stroke:currentColor`、展开 `rotate(90deg)`。
         """
         css = stylesheet_source()
-        for prefix in (".faliasmanager>summary", ".configdirectories>summary",
-                       ".cloudguide summary", ".taste-history-guide summary"):
+        for prefix in (".faliasmanager>summary", ".taste-history-guide summary"):
             start = css.index(prefix + ">svg{")
             rule = css[start:css.index("}", start)]
             # 描边色不进这份共用契约：作者别名那一枚故意钉在 --muted 上不随当前项提亮。
@@ -1363,36 +1362,9 @@ class WebUiSourceTests(unittest.TestCase):
             self.assertPageContains(prefix + '[aria-expanded="true"]>svg'
                                              "{transform:rotate(90deg)}")
         # 原生三角要一起去掉，否则同一行会出现两枚指示符。
-        for prefix in (".cloudguide summary", ".taste-history-guide summary"):
-            self.assertPageContains(prefix + "::-webkit-details-marker{display:none}")
-            self.assertPageContains(prefix + "{cursor:pointer;", "标题自己是 flex 容器")
-
-    def test_a_config_card_cell_never_widens_past_the_card(self):
-        """配置卡正文里的格子收回 0 宽，撑不宽卡片。
-
-        网盘建议表按 520px 起画。卡片比它窄时，grid 的格子按内容的最小宽度撑开，
-        整条轨道跟着变宽，而卡片是 clip：表格右边、下面那段说明文字和底部操作条
-        一起被裁在卡片外，既看不见也够不着。560px 视口实测溢出 12px。格子收回 0，
-        表格自己那层 `overflow-x:auto` 才接得住。
-        """
-        self.assertIn(".configfieldset>.geist-fieldset-content>*{min-width:0}", self.css)
-
-    def test_the_cache_table_stacks_under_its_own_column_names(self):
-        """卡片放不下四列时网盘建议表一行一块，每格左边跟着自己的列名。
-
-        判据按容器不按视口：同一个视口里，侧栏收没收、卡片落在哪一栏，留给这张表的
-        宽度能差出两百多像素，按视口写会在该堆叠的时候不堆叠。堆叠之后列名由
-        `data-label` 画出来，那几串字必须和表头是同一份，否则同一张表在宽窄两种
-        卡片里说的话不一样。
-        """
-        self.assertIn(".cloudguide{min-width:0;container-type:inline-size}", self.css)
-        self.assertIn("@container(max-width:520px){", self.css)
-        guide = (Path(__file__).resolve().parents[1]
-                 / "frontend/src/islands/clouddrive-guide.tsx").read_text(encoding="utf-8")
-        heads = re.findall(r'<th scope="col">([^<]+)</th>', guide)[1:]
-        labels = re.findall(r'<td data-label="([^"]+)"', guide)
-        self.assertEqual(labels, heads, "堆叠时的列名要和表头写的是同一串字")
-        self.assertIn(".cloudguide-table tbody td::before{content:attr(data-label)", self.css)
+        prefix = ".taste-history-guide summary"
+        self.assertPageContains(prefix + "::-webkit-details-marker{display:none}")
+        self.assertPageContains(prefix + "{cursor:pointer;", "标题自己是 flex 容器")
 
     def test_a_spinner_announces_the_work_and_not_the_button_it_sits_in(self):
         """`spinnerHtml()` 的名字说正在做什么，不复读按钮自己的名字。
@@ -3568,20 +3540,9 @@ class WebUiSourceTests(unittest.TestCase):
         """文字链接允许悬停下划线，默认状态保持清爽。"""
         self.assertPageContains(".entitylink:hover,.unownedlink:hover{color:var(--ink);text-decoration:none}")
         self.assertPageContains(".idcell.entitylink:hover,.idcell.unownedlink:hover,.mav.entitylink:hover{text-decoration:none}")
-        self.assertPageContains(".confighelp a:hover{text-decoration:underline;")
         for selector, declarations in re.findall(r'([^{}]+)\{([^{}]*)\}', stylesheet_source()):
             if "text-decoration:underline" in declarations:
                 self.assertTrue(":hover" in selector or selector.strip() == ".project-banner>a", selector)
-
-    def test_configuration_uses_fieldset_surfaces_and_shared_select(self):
-        css = stylesheet_source()
-        for selector, expected in ((".configfieldset", "background:var(--ground)"),
-                                   (".configfieldset>.geist-fieldset-footer", "background:var(--surface)")):
-            start = css.index(selector + "{")
-            rule = css[start:css.index("}", start)]
-            self.assertIn(expected, rule)
-            self.assertIn("solid var(--line)", rule)
-        self.assertIn(".configsourcecontrol .gselectfield{padding-inline:14px}", css)
 
     def test_every_identity_cell_can_carry_its_own_portrait(self):
         # 人物格走和顶栏圆头像同一个 entityFaceImg；这一格没有代表作头像可退，
@@ -4593,8 +4554,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn('body a:is(.externallink,[target=_blank]):not(:has(.entitylinkicon)):not(.cardlink):hover'
                       '{background:transparent;text-decoration:underline;box-shadow:none}', board)
         self.assertIn('.board-link-button:hover{background:transparent;text-decoration:underline;box-shadow:none}', board)
-        release = (Path(__file__).resolve().parents[1] / 'frontend/src/islands/release-updates.tsx').read_text(encoding='utf-8')
-        self.assertNotIn('geist-button externallink', release)
 
     def test_card_hover_and_view_glide_can_extend_outside_content(self):
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
@@ -4996,10 +4955,6 @@ class WebUiSourceTests(unittest.TestCase):
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
         self.assertIn(".settingscard .settingsscroll>.settinggroup:has(>.machinesettings)"
                       ":not(:has(.board-group-active)){display:none}", board)
-        # 控件底色照配置页那边抬一档：那条规则挂在 `body.configuration-layout` 上，
-        # 弹层不带这个类，控件就落回 `--surface`，压在同一张卡上几乎看不出边。
-        self.assertIn(".settingscard .machinesettings :is(.gselectfield,.geist-input,input.geist-input,"
-                      ".board-icon-trigger){background:var(--color-background-primary-default)}", board)
 
     def test_each_settings_tab_takes_its_glyph_from_its_own_name(self):
         """字形按条目自己的名字取，不按它排第几。
@@ -5334,25 +5289,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("state={...state,creator:'',studio:'',tag:'',tag_match:'all'")
         self.assertPageContains("function enterManagementSurface()")
         self.assertPageContains("loadRequestSeq++;listLoading=false;$('#combo').innerHTML=''")
-
-    def test_the_media_source_select_stands_on_the_same_line_as_its_neighbours(self):
-        """「媒体来源」那一格和同一网格里的输入框同高、同起点、同间距。
-
-        `.gselect` 在配置页只是个定位外壳，尺寸归里面的 `.gselectfield`。设置开关行那份
-        `.gselect` 尺寸在那边成立——外壳就是控件本身——套到配置页就错三样：外壳 32px 而
-        按钮 `--control-h` 是 36px，按钮往下探出 10px 把它和下面那条分隔线的间距吃掉；
-        6px/8px 的内边距把按钮左边缘推右 8px，跟上面那个输入框对不上一条竖线；那 6px 还
-        叠在 `.configsourcelabel` 自己的 8px 上，标题到控件比隔壁远一截。
-        """
-        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
-        self.assertIn(".settingscard .settingsscroll .machinesettings .gselect"
-                      "{min-width:0;min-height:0;height:auto;padding:0}", board)
-        # 压平那一条必须排在给开关行写的那条后面，同权重比它高一级才压得住。
-        self.assertGreater(board.index(".settingscard .settingsscroll .machinesettings .gselect"),
-                           board.index(".settingscard .settingsscroll .gselect{min-width:90px;"))
-        # 高度的唯一出处仍是 --control-h，两个控件不各写一个像素数。
-        self.assertIn(".configsource input.geist-input,.configsource .gselectfield"
-                      "{height:var(--control-h);min-height:var(--control-h);box-sizing:border-box}", board)
 
     def test_sidebar_add_row_wears_the_shared_input_and_primary_button(self):
         """这一行有三条判据：颜色只走 token、高度只引用 --control-h、主次动作分得开。
@@ -6609,7 +6545,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn(".metricstrip>button:hover{background:color-mix(in srgb,var(--color-text-primary) 6%,var(--ground))}", board)
         self.assertIn("body .tastesource>button{width:36px;height:36px;border:0;border-radius:10px;background:transparent;color:var(--color-text-secondary);transform:none;", board)
         self.assertIn(".geist-fieldset-footer>a,.geist-fieldset-footer>button).primary{box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;gap:4px;height:36px;min-height:36px;padding:8px 12px;border-radius:10px;font:var(--board-body-medium);", board)
-        self.assertIn("body.configuration-layout .configpage :is(.gselectfield,.geist-input,input.geist-input,.board-icon-trigger),body .followmanage .faddform .geist-search input{background:var(--color-background-primary-default)}", board)
+        self.assertIn("body .followmanage .faddform .geist-search input{background:var(--color-background-primary-default)}", board)
         self.assertIn("body .review{width:100%;max-width:var(--board-content);margin:0 auto;box-sizing:border-box}", board)
         self.assertIn("body .review .reviewcontrols{position:static;", board)
         self.assertIn("body .review .reviewbulktoolbar{position:sticky;top:var(--topH);z-index:60;width:auto;", board)
@@ -6632,33 +6568,21 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn("root?.querySelector<HTMLElement>('.reviewbulktoolbar')", bulk)
         self.assertIn("if (context) context.after(toolbar); else list.before(toolbar);", bulk)
 
-    def test_the_library_icon_picker_is_a_grid_of_glyphs(self):
-        """媒体库图标选择器的格子只放图标，一行七个，21 个候选三行排完。
+    def test_the_library_icon_choices_exist_on_the_server_and_in_the_sprite(self):
+        """媒体库图标的 42 枚候选每一枚都在服务端白名单和雪碧图里。
 
-        每格 40px、图标 22px；名字留在 title 与 aria-label 上。带着字排四列要六行，
-        面板比触发它的设置卡还高，用户回执「不需要图标下面的文字」「高度太长了」。
+        取值是雪碧图的字形名，服务端按 `peach.media_libraries.LIBRARY_ICONS` 校验：前端多出
+        一枚，保存时被拒；雪碧图少一枚，格子里是空的。三份名单分属 Python、TSX 与 HTML，
+        只有这里能同时读到。格子的排法与选择流程由 vitest 断言。
         """
-        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
-        self.assertIn(".board-icon-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}", board)
-        self.assertIn(".board-icon-grid label{position:relative;display:grid;place-items:center;height:40px;border-radius:8px;cursor:pointer}", board)
-        # 格子里和触发钮上是同一枚字形：同 20px、同 2 描边、同一个 20px 的盒子居中。
-        self.assertIn(".board-icon-trigger svg,.board-icon-grid svg{display:block;width:20px;height:20px;stroke-width:2}", board)
-        self.assertIn(".board-icon-trigger>span:first-child,.board-icon-grid label>span{display:inline-flex;align-items:center;"
-                      "justify-content:center;width:20px;height:20px;flex:none}", board)
-        self.assertNotIn(".board-icon-grid small", board)
-        picker = (Path(__file__).resolve().parents[1] / "frontend/src/library-icon-picker.tsx").read_text(encoding="utf-8")
-        self.assertNotIn("<small>{name}</small>", picker)
-        self.assertIn("<label title={choiceLabel(key,name)} class={draft===key?'selected':''}>", picker)
-        # 42 枚候选每一枚都在服务端白名单和雪碧图里；网盘库不另选时用来源站标，本地路径就是默认磁盘。
+        picker = (Path(__file__).resolve().parents[1]
+                  / "frontend/src/react/settings/library-icon-picker.tsx").read_text(encoding="utf-8")
         choices = re.findall(r"\['([a-z0-9-]*)', ?'([^']+)'\]", picker.split("LIBRARY_ICON_CHOICES = [", 1)[1].split("] as const", 1)[0])
         self.assertEqual(len(choices), 42)
         from peach.media_libraries import LIBRARY_ICONS
         for key, _name in choices[1:]:
             self.assertIn(key, LIBRARY_ICONS)
             self.assertPageContains(f'<symbol id="i-{key}" viewBox="0 0 24 24">')
-        self.assertIn("return mark?[mark,'自动识别']:['hard-drive','默认'];", picker)
-        self.assertIn("kind={kinds[index] || 'local'}",
-                      (Path(__file__).resolve().parents[1] / "frontend/src/islands/configuration.tsx").read_text(encoding="utf-8"))
 
     def test_the_follow_list_is_one_card_and_its_checkboxes_draw_their_tick(self):
         """关注列表整段进框，和「添加关注」同一只卡；来源行是 boardui 的 CheckboxCard，勾选框照
@@ -8270,30 +8194,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("const paint=(id,now)=>{if(stopped||id!==run)return;")
         self.assertPageLacks("scheduled=false")
 
-    def test_the_folder_row_takes_its_red_from_the_single_danger_tier(self):
-        """「移除这个文件夹」的红只有 01-base 那一份，静止与悬停必须是两个值。
-
-        这颗键曾在页面 CSS 末尾被追加过一条静止态实底红，却没有同步同文件里的悬停规则：
-        两条渲染出来是同一块 `--drop` 加白字，鼠标压上去一点变化都没有。同一颗键的两个
-        状态分写在两处、值又相同，是这类缺陷的固定形状——所以红收回 `.danger`，页面只
-        留几何。`border-color` 在 `border:0` 之后也是死声明，一并收掉。
-
-        几何这一份也要压得过 board 那层：那边给普通按钮钉了 36px 定高，特指度比只写
-        两个 class 高，而它的 `:not()` 放过 `danger`。只写两个 class 的话，窄屏
-        `--control-h` 是 44px，同一行两枚按钮一个 44 一个 36，挨着 44px 的输入框
-        一高一矮。
-        """
-        # 标记本身在 island 包里，由 test_frontend_build 的岛屿产物断言守；这里只管样式。
-        self.assertPageContains("body .configpage :is(.configrm,.configpick).geist-button"
-                                "{width:var(--control-h);height:var(--control-h)"
-                                ";min-height:var(--control-h);flex:none;padding:0}")
-        self.assertPageContains(".configpick.geist-button{color:var(--muted)}")
-        css = stylesheet_source()
-        for stale in (".configrm.geist-button{color:var(--drop)}",
-                      ".configrm.geist-button:hover:not(:disabled){",
-                      ".configrm.geist-button:not(:disabled){"):
-            self.assertNotIn(stale, css, "移除键的红不在页面里自己写第二份")
-
     def test_the_whole_detail_box_takes_one_ambient_tone(self):
         """右侧详情栏和「接着看」是同一格详情的两块，底色必须同源。
 
@@ -9038,7 +8938,7 @@ class WebUiSourceTests(unittest.TestCase):
         # 数据管理页「空文件夹」那张卡说的是目录本身：不是打开它，也不是去里面找。
         self.assertPageContains("'空文件夹':'folder',")
         self.assertPageContains('<symbol id="i-folder" viewBox="0 0 24 24">')
-        self.assertIn('href="#i-folder-search"', (Path(__file__).resolve().parents[1] / "frontend" / "src" / "islands" / "configuration.tsx")
+        self.assertIn('href="#i-folder-search"', (Path(__file__).resolve().parents[1] / "frontend" / "src" / "react" / "settings" / "media-settings.tsx")
                       .read_text(encoding="utf-8"))
         # 主题三档各归各的：太阳是浅色、月亮是深色；跟随系统那档说的是「照这台设备走」，
         # 讲的是设备不是明暗，所以跟 vercel.com 后台一样用显示器。画面尺寸量的是画幅本身，
@@ -10408,8 +10308,7 @@ class WebUiSourceTests(unittest.TestCase):
         overlay = page.split("const OVERLAY_SCROLLERS=[", 1)[1].split("].join(',')", 1)[0]
         edge = page.split("const BOARD_EDGE_SCROLLERS=", 1)[1].split(";", 1)[0]
         for selector in (".board-local-nav", ".managebar-menu", ".follow-workspace-switch",
-                         ".fmanagenav", ".board-heat-scroll", ".board-sankey-scroll",
-                         ".cloudguide-tablewrap"):
+                         ".fmanagenav", ".board-heat-scroll", ".board-sankey-scroll"):
             self.assertIn(selector, edge, f"{selector} 会横向溢出，要按横滚层登记")
         # 扫描只看前一份名单，只写进后一份等于没登记。
         scanned = set(re.findall(r"'(\.[a-z0-9-]+)'", overlay))
@@ -11167,9 +11066,7 @@ class WebUiSourceTests(unittest.TestCase):
                          self.app_js.count("icon('external-link','externalmark')"),
                          "web/app.js 里每一枚外链标都带 externalmark")
         root = Path(__file__).resolve().parents[1]
-        for name in ('islands/scraping.tsx', 'islands/configuration.tsx',
-                     'islands/release-updates.tsx', 'management.ts',
-                     'review-evidence.ts'):
+        for name in ('islands/scraping.tsx', 'management.ts', 'review-evidence.ts'):
             source = (root / 'frontend/src' / name).read_text(encoding='utf-8')
             self.assertEqual(source.count('#i-external-link'),
                              source.count('class="externalmark" viewBox="0 0 24 24"'),

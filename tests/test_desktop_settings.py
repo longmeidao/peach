@@ -15,14 +15,8 @@ from peach import desktop_startup, desktop_uninstall, peach_proxy, scraping_acce
 
 
 class DesktopSettingsTests(unittest.TestCase):
-    def test_configuration_order_and_danger_area_share_the_ui_contract(self):
+    def test_the_danger_area_face_is_painted_in_the_board_layer(self):
         root = Path(__file__).resolve().parents[1]
-        configuration = (root / 'frontend/src/islands/configuration.tsx').read_text(encoding='utf-8')
-        names = ['<StartupSettings', '<ConfigurationForm', '<MountStatus', '<PeachProxy', '<ReactSlot mount="mountAccessSettings"', '<ReleaseUpdates', '<Facts', '<UninstallSettings']
-        # 定位配置主页面，排除同文件中组件定义的内部 JSX。
-        page = configuration[configuration.index('export function Configuration('):]
-        self.assertEqual(sorted(names, key=page.index), names)
-        css = (root / 'web/css/23-configuration.css').read_text(encoding='utf-8')
         # 危险区那副面在 `board.css` 末尾：给卡描边、给底栏铺面的通用规则有五六条，都在
         # Board 那一层按自己的面色重写过一遍，色写在这一层会被它们逐条盖掉。
         board = (root / 'web/board.css').read_text(encoding='utf-8')
@@ -34,8 +28,6 @@ class DesktopSettingsTests(unittest.TestCase):
         for generic in ('.geist-fieldset,.configfieldset,', '.geist-fieldset-footer,.configfieldset>.geist-fieldset-footer{'):
             self.assertGreater(board.index('[data-geist-fieldset][data-fieldset-type=error]'), board.index(generic),
                                '危险区那几条要排在通用面色之后，同特指度时在后面的才算数')
-        self.assertIn('.configselect{width:min(320px,100%)}', css)
-        self.assertIn('.configdirectories .fcollapsebody{padding:12px 4px 4px}', css)
 
     def test_cleanup_risk_colors_follow_the_operation_effect(self):
         root = Path(__file__).resolve().parents[1]
