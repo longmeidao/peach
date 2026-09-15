@@ -137,8 +137,8 @@ class HlsSegmentService:
 
     def cached_path(self, source: Path, asset_id: int, index: int, *, transcode: bool = False) -> Path:
         _, size, mtime = self.fingerprint(source)
-        # 版本号跟着转码命令走：命令变了，磁盘上按旧命令转出来的片段必须失效，
-        # 否则解码器换掉了、播放器拿到的还是上一版那些绿帧。
+        # 版本号跟着转码命令走：命令一变，磁盘上按另一套命令转出来的片段就得失效，
+        # 否则换了解码器，播放器拿到的仍是缓存里那些绿帧。
         flavor = '-h264-v2' if transcode else ''
         return self.work_root / str(asset_id) / f"{size}-{mtime}-{self.segment_seconds}{flavor}" / f"{index}.ts"
 
@@ -246,7 +246,7 @@ class HlsSegmentService:
         最后 libx264；没有显卡的机器只是多失败两次，不会没有分片。
 
         NVDEC 解得出来的编码才走 CUDA 解码，`codec` 空或不在名单里就从软件解码起。
-        判据放在跑之前是因为坏结果不会自报：实测 `MIAD573_02.wmv`（vc1、1080p）经
+        判据要在开跑前定，因为坏结果不会自报：实测 `MIAD573_02.wmv`（vc1、1080p）经
         `-hwaccel cuda` 出来的首个分片，开头 21 帧在黑场与纯绿之间交替（色度均值在
         128 与 0 之间跳），而 FFmpeg 退出码 0、stderr 全空，绿帧就这么写进缓存，
         下次命中还是它。同一段去掉 CUDA 解码后色度全程 128，一帧绿都没有。

@@ -25,6 +25,9 @@ import re
 import sqlite3
 
 from .catalog_rules import (
+    compact_label,
+    is_jav_code,
+    normalise_code_key,
     release_code_from_filename as code_from_filename,
     release_code_from_text as canonical_code,
 )
@@ -54,14 +57,38 @@ def is_filesystem_path(path: str) -> bool:
     return bool(path) and not re.match(r"^[a-z][a-z0-9+.-]*://", path, re.I)
 
 
+def embedded_code(name: str, assets: list) -> str:
+    """目录名里嵌着的发行番号，没有就是空串。
+
+    `canonical_code` 认的是「整个名字就是番号」。下载站在番号前后贴上站名、画质和
+    分享标记后它就认不出了，而这些目录同样不是创作者：`Jav.li_MIAD573_HD`、
+    `[98t.tv][98t.tv]ABW-251`、`nes@第一会所@ATID-479`、`kpxvs-300MIUM-698`。
+
+    以资产那一侧的番号为准去名字里找，名字形态不参与判断——反过来从名字里抠番号，
+    会把 `banbi_555` 这类上传者账号抠成 `BANBI-555`。番号要么账本已记、要么由文件名
+    解析得出，两头对上才算数；`is_jav_code` 把目录名冒充的番号挡在外面。
+    """
+    compact = compact_label(name)
+    for row in assets:
+        code = (str(row["code"] or "").strip()
+                or code_from_filename(str(row["name"] or "")) or "")
+        if code and is_jav_code(code) and compact_label(code) in compact:
+            return normalise_code_key(code)
+    return ""
+
+
 def classify(name: str, assets: list) -> tuple[str, str, str]:
     """返回 (判定, 归一标识, 理由)。只有文件级证据成立才判为可清理。"""
     post = site_post_id(name)
     code = canonical_code(name)
-    if not post and not code:
-        return VERDICT_KEEP, "", "名字不是番号形态"
     if not all(is_filesystem_path(str(row["path"] or "")) for row in assets):
         return VERDICT_KEEP, "", "存在 URL 身份（如 pixiv 画师），不是发行目录"
+    if not post and not code:
+        embedded = embedded_code(name, assets)
+        if not embedded:
+            return VERDICT_KEEP, "", "名字不是番号形态"
+        return (VERDICT_CODE, embedded,
+                f"目录名里嵌着番号 {embedded}，与目录内文件对得上")
 
     identity = post or code or ""
     hit = any(

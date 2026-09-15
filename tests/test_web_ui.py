@@ -11673,7 +11673,10 @@ class WebUiSourceTests(unittest.TestCase):
         """ADR-0018：无可判断的条目不该在队列里白占一轮。"""
         self.assertPageContains("api('/api/review/auto-apply',{method:'POST',body:'{}'})")
         # 只读端本来就会 409，那是正常状态：失败不拦页面，但也不静默吞掉。
-        self.assertPageContains("console.info('自动落库未执行：'+e.message)")
+        self.assertPageContains("catch(e){reviewAutoApply={error:e.message}}")
+        # 这一步没有按钮，页面上不报一句的话，它跑没跑只能靠数队列长度猜。
+        self.assertPageContains("${autoApplyNote()}")
+        self.assertPageContains("function autoApplyNote(){")
 
     def test_entity_cards_do_not_print_the_name_twice(self):
         """创作者入口里已经写了名字，卡片顶上再来一个 h4 就是同一行字上下两遍。"""
@@ -11693,10 +11696,12 @@ class WebUiSourceTests(unittest.TestCase):
         写在标题末尾的话，一条无番号视频的文件名会先把它挤出省略号，卡上就只剩
         一串文件名和一个候选值，读不出这一票投给的是哪个字段。
         """
-        self.assertPageContains('<h4 class="reviewfieldhead"><b class="reviewfieldname">')
+        self.assertPageContains('<h4 class="reviewfieldhead"><b class="sbadge reviewfieldname">')
         self.assertPageContains("const fieldName=metadata?String(row.field_label||row.field||'').trim():'';")
-        # 省略号只许吃作品标识那一半，字段名不参与收缩。
-        self.assertPageContains(".reviewfieldname{flex:none;")
+        # 省略号只许吃作品标识那一半，字段名不参与收缩。底色归 Board UI 的 `.sbadge`：
+        # 自己写 `--hover` 的话，亮色主题下它和卡片头都是 #f5f5f5，徽章整个没入背景。
+        self.assertPageContains(".reviewfieldname{flex:none}")
+        self.assertPageLacks(".reviewfieldname{flex:none;padding:2px 8px;")
         self.assertPageContains(".reviewfieldhead>span{min-width:0;overflow:hidden;text-overflow:ellipsis")
 
     def test_source_values_are_radio_cards_and_the_two_halves_are_told_apart(self):
