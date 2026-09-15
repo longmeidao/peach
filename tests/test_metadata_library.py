@@ -223,6 +223,63 @@ class LibraryNfoTests(unittest.TestCase):
         self.assertEqual(groups['performers'], ['local_nfo'])
         self.assertEqual(groups['studio'], ['r18dev'])
 
+    @windows_ledger_roots
+    def test_online_sources_only_offer_fields_the_ledger_has_no_value_for(self):
+        """账本有日文原题，r18 的英文机翻不是分歧，只是写法。"""
+        media = self.root / 'media'
+        media.mkdir()
+        (media / 'DASS-468.mp4').write_bytes(b'video')
+        db = fresh_ledger(self.root)
+        config = PeachConfig(self.root, self.root / 'config.toml', present=True, locations={'local': (str(media),)})
+        provider = Mock()
+        provider.query.return_value = {'id': 'DASS-468', 'title': 'I Was Spoiled To Death', 'maker': 'Das',
+                                       'series': 'Spoiled To Death', 'release_date': '2024-09-10',
+                                       'actresses': [{'japanese_name': '胡桃さくら'}]}
+        factory = Mock(return_value=provider)
+        candidates = self.root / 'generated/library-metadata-field-candidates.csv'
+        process_library(config, db, self.root / 'generated', self.root / 'covers', provider_factory=factory)
+        self.assertEqual({row['field'] for row in read_rows(candidates)},
+                         {'title', 'studio', 'series', 'release_date', 'performers'})
+        with closing(sqlite3.connect(db)) as connection, connection:
+            asset_id = connection.execute("SELECT id FROM asset WHERE code='DASS-468'").fetchone()[0]
+            connection.execute("UPDATE asset SET catalog_title=?, studio=?, series=?, release_date=? WHERE id=?",
+                               ('ふわとろ巨乳の年下義母 胡桃さくら', 'Das', 'ふわとろ巨乳の年下義母',
+                                '2024-09-06', asset_id))
+            connection.execute("INSERT INTO asset_tag(asset_id, tag, confidence, source) VALUES(?,?,?,?)",
+                               (asset_id, '巨乳', 1.0, 'user'))
+            connection.execute("INSERT INTO entity(kind, canonical_name, normalized_name, created_at, updated_at) "
+                               "VALUES(?,?,?,?,?)",
+                               ('performer', '胡桃樱花', 'hutaoyinghua', '2026-09-15', '2026-09-15'))
+            entity_id = connection.execute("SELECT id FROM entity WHERE canonical_name='胡桃樱花'").fetchone()[0]
+            connection.execute("INSERT INTO asset_entity(asset_id, entity_id, role, source, confidence) "
+                               "VALUES(?,?,?,?,?)", (asset_id, entity_id, 'performer', 'user', 1.0))
+        candidates.unlink()
+        process_library(config, db, self.root / 'generated', self.root / 'covers', provider_factory=factory)
+        self.assertEqual(list(read_rows(candidates, missing_ok=True)), [])
+        provider.query.assert_called_once()
+
+    @windows_ledger_roots
+    def test_a_candidate_repeating_the_current_value_is_not_a_question(self):
+        """连本地 NFO 也一样：值和账本里那个字一模一样时没有什么可判断的。"""
+        media = self.root / 'media'
+        media.mkdir()
+        (media / 'ABW-358.mp4').write_bytes(b'video')
+        (media / 'ABW-358.nfo').write_text('<movie><title>涼森れむ流</title><sorttitle>ABW-358</sorttitle>'
+            '<studio>Prestige</studio></movie>', encoding='utf-8')
+        db = fresh_ledger(self.root)
+        config = PeachConfig(self.root, self.root / 'config.toml', present=True, locations={'local': (str(media),)})
+        provider = Mock()
+        provider.query.return_value = {'id': 'ABW-358'}
+        factory = Mock(return_value=provider)
+        candidates = self.root / 'generated/library-metadata-field-candidates.csv'
+        process_library(config, db, self.root / 'generated', self.root / 'covers', provider_factory=factory)
+        self.assertIn('title', {row['field'] for row in read_rows(candidates)})
+        with closing(sqlite3.connect(db)) as connection, connection:
+            connection.execute("UPDATE asset SET catalog_title=? WHERE code='ABW-358'", ('涼森れむ流',))
+        candidates.unlink()
+        process_library(config, db, self.root / 'generated', self.root / 'covers', provider_factory=factory)
+        self.assertNotIn('title', {row['field'] for row in read_rows(candidates)})
+
     def test_r18_metadata_takes_japanese_title_series_and_names(self):
         from peach.library_processing import LibraryMetadataProvider
         detail = {'content_id': '118abw358', 'title': 'Remu Style', 'maker': {'name': 'Prestige'},
