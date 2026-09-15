@@ -262,8 +262,10 @@ _KOREAN_MIB_FILENAME = re.compile(
 
 DUPLICATE_TOLERANCE = 0.005
 DUPLICATE_FLOOR_SECONDS = 15.0
+#: 卷号写成 `01`、`02` 的和写成 `1`、`2` 的一样多：`MIAD573_01.wmv` 与 `_02` 是同一部
+#: 片的两卷，不认前导零就各占一张卡、互相成了「同创作者的另一部作品」。`00` 不是卷号。
 _PART_MARKER = re.compile(
-    r"(?:^|[^a-z0-9])(?:part|pt|cd|disc|disk|dvd|vol)?[-_ ]?([1-9]\d?|[a-h])(?=\.[a-z0-9]{2,4}$)",
+    r"(?:^|[^a-z0-9])(?:part|pt|cd|disc|disk|dvd|vol)?[-_ ]?(0?[1-9]|[1-9]\d|[a-h])(?=\.[a-z0-9]{2,4}$)",
     re.I,
 )
 
