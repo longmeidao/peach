@@ -51,9 +51,8 @@ class IslandBundleTests(unittest.TestCase):
                                 f"{name} 带了内容哈希，app.js 里写死的路径会指向不存在的文件")
 
     def test_bundle_exports_the_mount_contract(self):
-        # `refreshStore` 是遗留层通知岛「共享数据变了」的入口（ADR-0022 里 signals 的
-        # 那一半）。它不在产物里，`web/app.js` 就只剩整屏重新挂载这一种刷新方式。
-        for symbol in ("mountIsland", "unmountIsland", "islandNames", "refreshStore"):
+        # 遗留层只按这三个名字与 island 层打交道：挂一屏、卸一屏、核对路由表。
+        for symbol in ("mountIsland", "unmountIsland", "islandNames"):
             self.assertIn(f"as {symbol}", self.bundle, f"产物没有导出 {symbol}")
 
     def test_bundle_keeps_the_legacy_modules_external(self):
@@ -286,41 +285,44 @@ class FrontendManifestTests(unittest.TestCase):
 class IslandSourceContractTests(unittest.TestCase):
     """从 `web/app.js` 搬过来时不能把语义契约丢在原地。
 
-    `tests/test_web_ui.py` 对页面源断言这些标记，高清版目标页搬进 island 之后那份
+    `tests/test_web_ui.py` 对页面源断言这些标记，高清版目标页搬进 `frontend/` 之后那份
     断言少了一处；缺口补在这里，而不是让它无声消失。
     """
 
+    QUALITY_GOALS = FRONTEND / "src" / "react" / "quality-goals"
+
     def setUp(self):
-        self.source = (FRONTEND / "src" / "islands" / "quality-goals.tsx").read_text(
-            encoding="utf-8")
+        self.source = "\n".join(
+            (self.QUALITY_GOALS / name).read_text(encoding="utf-8")
+            for name in ("quality-goals.ts", "quality-goals-page.tsx"))
 
     def test_titles_still_use_middle_truncation(self):
         """文件名和番号的差别常在尾部，末尾省略会把要看的东西切掉。"""
         self.assertIn("data-middle-truncate", self.source)
 
     def test_empty_and_error_states_reuse_the_shared_components(self):
-        """空态与失败态走 `/js/ui-components.js`，不是一行灰字。"""
-        self.assertIn("emptyStateHtml(", self.source)
-        self.assertIn("noteHtml(", self.source)
+        """空态与失败态走 `src/react/components/` 的组合件，不是一行灰字。"""
+        self.assertIn("<EmptyState", self.source)
+        self.assertIn("<Note", self.source)
         self.assertIn("没有标记中的高清版目标", self.source)
 
     def test_readings_reuse_the_legacy_formatters(self):
-        """时长、体积、来源名共用遗留口径，不在 island 里再写一套。"""
+        """时长、体积、来源名共用遗留口径，不在页面里再写一套。"""
         self.assertIn("from '@peach/legacy/core'", self.source)
         for helper in ("fmtDur(", "fmtSize(", "LOC["):
             self.assertIn(helper, self.source)
 
     def test_the_endpoint_is_declared_once(self):
-        """端点在前端只能有一个声明处，现在是那份共享 store。
+        """端点在前端只能有一个声明处，就是这一页的数据模块。
 
-        取数已经从 island 搬进 `frontend/src/state/quality-goals.ts`：`/manage` 的
-        「高清版」卡片读的是同一个真相。所以这里扫整棵 `frontend/src`，而不是钉住
-        某个文件——要拦的是「两个地方各写一遍这条 URL」，不是它住在哪儿。
+        数据管理页那张「高清版」卡片读的是同一个真相，它随那一页迁移时接同一个
+        `queryKey`。所以这里扫整棵 `frontend/src`——要拦的是「两个地方各写一遍这条 URL」。
         """
         sources = sorted(path for path in (FRONTEND / "src").rglob("*.ts*"))
-        declared = [path.name for path in sources
+        declared = [path for path in sources
                     if "/api/quality-goals?limit=200" in path.read_text(encoding="utf-8")]
-        self.assertEqual(declared, ["quality-goals.ts"], f"端点声明在 {declared}")
+        self.assertEqual(declared, [self.QUALITY_GOALS / "quality-goals.ts"],
+                         f"端点声明在 {[path.name for path in declared]}")
         # 扫整个 web 层：路由表已经从 `web_contract.py` 搬到 `web_router.py`，
         # 前者只剩再导出。island 关心的是这条路由存在且只声明一次，不是它在哪个文件。
         routed = [path.name for path in sorted((ROOT / "src" / "peach").glob("web_*.py"))
@@ -339,32 +341,24 @@ class ConfigurationEndpointTests(unittest.TestCase):
 
 
 class SharedStateContractTests(unittest.TestCase):
-    """跨岛共享状态只有一个家（ADR-0022）。
+    """一份数据有第二个读者时，两个读者读同一个 `queryKey`（ADR-0031）。
 
-    这两条门槛拦的是同一件事：共享数据长出第二个来源。运行期那一半由 vitest 盯着
-    （`test/state.test.ts` 断言直接赋值会抛 TypeError），这里盯的是源码布局——
-    等到跑起来才发现两个岛各存一份，已经晚了。
+    共享数据的家是 `src/react/query.ts` 那一个 QueryClient。这条门槛盯的是源码布局：
+    等到跑起来才发现两处各存一份，已经晚了。
     """
 
-    def setUp(self):
-        self.state = FRONTEND / "src" / "state"
-        self.sources = sorted((FRONTEND / "src").rglob("*.ts*"))
+    def test_the_react_subtree_has_exactly_one_query_client(self):
+        sources = sorted(path for path in (FRONTEND / "src").rglob("*.ts*"))
+        declared = [path.name for path in sources
+                    if "new QueryClient(" in path.read_text(encoding="utf-8")]
+        self.assertEqual(declared, ["query.ts"], f"QueryClient 建在 {declared}")
 
-    def test_stores_expose_read_only_views(self):
-        """可写的 signal 不导出：写入只能走 store 自己的函数，「谁改了它」才数得出来。"""
-        for path in sorted(self.state.glob("*.ts")):
-            source = path.read_text(encoding="utf-8")
-            self.assertNotRegex(
-                source, r"export\s+(?:const|let)\s+\w+[^=\n]*=\s*signal\(",
-                f"{path.name} 导出了可写 signal，组件可以绕过写入函数直接赋值")
-
-    def test_signals_only_live_in_the_state_folder(self):
-        """岛自己的临时状态用 hooks。在别处 import signal，就是共享数据有了第二个家。"""
-        outside = [path.name for path in self.sources
-                   if self.state not in path.parents
-                   and "@preact/signals" in path.read_text(encoding="utf-8")]
+    def test_pages_do_not_keep_a_second_copy_of_shared_data(self):
+        """跨页共享的数据不另起一套订阅：`@preact/signals` 已经没有读者。"""
+        outside = [path.name for path in sorted((FRONTEND / "src").rglob("*.ts*"))
+                   if "@preact/signals" in path.read_text(encoding="utf-8")]
         self.assertEqual(outside, [],
-                         f"{outside} 在 state/ 之外用了 signal：共享状态请建 store，局部状态用 hooks")
+                         f"{outside} 用了 signal：跨页共享请读同一个 queryKey，局部状态用 hooks")
 
 
 class VitestTests(unittest.TestCase):

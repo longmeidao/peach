@@ -6950,6 +6950,16 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn("@media(prefers-reduced-motion:reduce){#libraryProcessingNotice{transition:none}}",
                       board)
 
+    def test_changing_pages_unmounts_whatever_owns_the_management_body(self):
+        """管理区正文那个容器上挂着的东西，换页时跟着页面一起走。
+
+        React 档的页面是一棵自己管取数的根：不卸掉它，离开之后那棵根还活着，有轮询的
+        页面照着原节律继续敲库。`claimSurface` 是所有页面共同经过的换页点，卸载落在这里
+        才不会漏掉新迁过来的那一页；没挂过东西的容器 `unmountIsland` 直接返回。
+        离场之后还有第二道闸：取数落地时 island 按 `isCurrent` 决定不画。
+        """
+        self.assertPageContains("  unmountIsland($('#stats'));")
+
     def test_the_top_discovery_bar_and_the_drawer_read_one_scope(self):
         """顶部发现栏按「换一批」的种子抽样，抽屉那一列读同一份 facets。
 
@@ -8235,18 +8245,28 @@ class WebUiSourceTests(unittest.TestCase):
                                 "padding:11px 15px 12px;background:var(--detail-surface)}")
 
     def test_better_version_targets_have_a_management_page(self):
+        """账本里标记为「还该有更好一版」的作品在管理区自成一页。
+
+        它是 React 档（ADR-0031）：遗留层只铺骨架、交容器，再把自己独有的助手（番号标题、
+        来源徽标、打开作品）作为 props 递进去，整页在 `frontend/src/react/quality-goals/` 里。
+        所以这里断言的是外壳——路由、菜单入口、骨架与挂载契约。卡片上有什么、点哪里打开
+        作品、进出这一页各发几次请求由 `frontend/test/react/quality-goals.test.tsx` 守，
+        封面的宽度与比例、长标题的中间省略由 `frontend/e2e/design.test.ts` 读计算值守，
+        数据契约由 `/api/quality-goals` 的路由测试守。
+        """
         self.assertPageContains("['quality','高清版','sparkles']")
         self.assertRoute('/quality-goals', "section:'quality'", "openQualityGoals(push)")
         self.assertPageContains("async function openQualityGoals(push=true)")
-        # 这一页已经迁到 Preact island（ADR-0022）：取数与渲染在 frontend/ 里，遗留层
-        # 只剩外壳。所以这里断言的是挂载契约，而不是端点字符串——端点由
-        # frontend/test/quality-goals.test.tsx 与 web_contract 的路由测试各自守着。
         self.assertPageContains("const ui=await import('/dist/peach-ui.js')")
         self.assertPageContains(
             "await ui.mountIsland('quality-goals',$('#stats'),props,"
             "{isCurrent:()=>surfaceCurrent(surface)})")
         self.assertPageContains("const props={openItem,javTitleHtml,javDisplayName,srcBadge}")
         self.assertPageLacks("data-quality-open")
+        # 正文归 React 子树：卡片、汇总行与按钮用 BoardUI 的源码加 Tailwind，
+        # 遗留样式表里只剩骨架要的那几条。
+        self.assertPageLacks(".qualityfallback{")
+        self.assertPageLacks(".qualityreason{")
 
     def test_the_activity_page_is_the_one_place_that_shows_every_task(self):
         """任务中心的界面：谁在跑、谁被挡下了、刚跑完的怎么样，一屏三段。
@@ -8485,7 +8505,7 @@ class WebUiSourceTests(unittest.TestCase):
                 # 外链标才留得住：中缩靠改写 textContent 实现，同一节点里的图标会被抹掉。
                 '<span data-middle-truncate>${esc(item.url)}</span>'):
             self.assertPageContains(consumer)
-        # 高清版目标页由 island 测试覆盖；最近观看的文件名也保留首尾。
+        # 高清版目标页归 React 子树，由 frontend 的用例覆盖；最近观看的文件名也保留首尾。
         self.assertEqual(self.app_js.count("data-middle-truncate"), 12)
         self.assertEqual(self.app_js.count('class="mixitemtext"'), 3)
         self.assertEqual(self.app_js.count("data-truncate-end"), 4)
@@ -8497,8 +8517,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("event.clipboardData.setData('text/plain',state.full)")
         self.assertPageContains("export { initMiddleTruncate, middleTruncateText }")
         self.assertPageContains("*[data-middle-truncate]{min-width:0;overflow:hidden;white-space:nowrap;text-overflow:clip}")
-        self.assertPageContains(".qualityitem h3 button{display:block;width:100%")
-        self.assertPageLacks(".qualityitem h3 button{max-width:100%;border:0;background:transparent;padding:0;color:inherit;text-align:left;cursor:pointer;overflow-wrap:anywhere;display:-webkit-box")
 
     def test_every_end_truncation_selector_is_explicitly_reviewed(self):
         """新增 CSS 省略必须先决定它是语义文本，还是应改用 MiddleTruncate。"""

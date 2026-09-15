@@ -407,6 +407,10 @@ const claimSurface=path=>{
      二十来毫秒后落回原处，比它要说的那句话显眼得多。目录页之间它一直挂着，自己在轮询
      库那边的进度；离开目录页才收起，那些页面本来就不该有它。 */
   if(!isCatalogPath(path))unmountIsland($('#libraryProcessingNotice'));
+  /* 管理区正文的容器每次换页都经过这里，所以卸载也落在这里。React 档的页面是一棵自己
+     管取数的根：不卸掉它，离开之后那棵根还活着，有轮询的页面照着原节律继续敲库。
+     没挂过东西的容器 unmountIsland 直接返回，逐页判断反而会漏掉新迁过来的那一页。 */
+  unmountIsland($('#stats'));
   surfaceRequests?.abort();
   surfaceRequests=new AbortController();
   surfaceEpoch++;return surfaceToken(path)};

@@ -59,6 +59,34 @@ async function openActivity(browser: Browser, runs: unknown[]): Promise<Visit> {
   return opened;
 }
 
+/** 一条待升级的目标。字段以 `/api/quality-goals`（`src/peach/web_contract.py`）为准。 */
+const qualityGoal = (id: number, name: string) => ({
+  id, name, code: null, location: 'local', size: 2147483648, duration: 3725,
+  reason: '只有 720p', cost: 'free', has_thumb: true, has_cover: false,
+});
+
+/** 1×1 的透明 PNG，够让 `<img>` 走完一次加载。 */
+const PIXEL = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+
+/** 高清版目标页按给定的一份 `/api/quality-goals` 打开：演示库里凑不齐很长的标题。 */
+async function openQualityGoals(browser: Browser, items: unknown[]): Promise<Visit> {
+  const opened = await visit(browser, '/quality-goals', DESKTOP);
+  await opened.page.route('**/api/quality-goals?limit=200', (route) => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({ total: items.length, items, offset: 0, has_more: false }),
+  }));
+  /* 这几条目标是造出来的，演示库里没有对应的抽帧，预览图会 404——而失败请求本身是另一
+     条判据。这一条量的是封面那块的几何，给它一张能加载完的图就够。 */
+  await opened.page.route('**/poster**', (route) => route.fulfill({
+    status: 200, contentType: 'image/png', body: Buffer.from(PIXEL, 'base64'),
+  }));
+  await opened.page.reload({ waitUntil: 'load' });
+  await opened.page.locator('li[data-goal-id]').first().waitFor({ timeout: 15_000 });
+  await settle(opened.page);
+  return opened;
+}
+
 describe('设计决定', () => {
   let browser: Browser;
 
@@ -154,6 +182,32 @@ describe('设计决定', () => {
       assert.equal(await badge('cancelled'), await token('--color-status-yellow-background'));
       // 第四种状态不另给颜色：三档之外都读同一个中性底，颜色才还说得出「成功／失败／被叫停」。
       assert.equal(await badge('pending'), await token('--color-background-tertiary-default'));
+      assert.deepEqual(opened.problems, []);
+    } finally {
+      await opened.close();
+    }
+  });
+
+  it('高清版卡片的封面是 150px 宽的 16/10 方块，长标题从中间省略', { timeout: 60_000 }, async () => {
+    const long = '这是一个长到必须省略才放得下的文件名，用来盯住中间截断在 React 插进来的节点上也生效.mp4';
+    const opened = await openQualityGoals(browser, [
+      qualityGoal(1, long), qualityGoal(2, 'short.mp4'),
+    ]);
+    try {
+      const cover = opened.page.locator('li[data-goal-id="1"] button').first();
+      const box = await cover.evaluate((element) => ({
+        width: getComputedStyle(element).width,
+        ratio: getComputedStyle(element).aspectRatio,
+      }));
+      assert.equal(box.width, '150px');
+      assert.equal(box.ratio.replaceAll(' ', ''), '16/10');
+      // 中间截断由 `web/js/middle-truncate.js` 的 MutationObserver 接手：React 插进来的
+      // 节点不经过遗留层的渲染函数，观察器认不出它就只剩尾部省略。
+      const title = opened.page.locator('li[data-goal-id="1"] h3 button');
+      await title.waitFor({ timeout: 5_000 });
+      await opened.page.locator('li[data-goal-id="1"] h3 button.middle-truncated')
+        .waitFor({ timeout: 10_000 });
+      assert.ok((await title.textContent())!.includes('…'), '长标题没有被省略');
       assert.deepEqual(opened.problems, []);
     } finally {
       await opened.close();

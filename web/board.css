@@ -1648,10 +1648,7 @@ body[data-surface="/duplicates"] .duppath{grid-column:2/-1}
 body[data-surface="/quality-goals"] .qualitylist{grid-template-columns:repeat(auto-fill,minmax(min(100%,280px),1fr));gap:20px}
 body[data-surface="/quality-goals"] .qualityitem{display:grid;grid-template-columns:150px minmax(0,1fr);grid-template-rows:1fr auto;gap:0 16px;padding:12px;overflow:hidden;border:1px solid var(--line-soft);border-radius:var(--surface-radius)}
 body[data-surface="/quality-goals"] .qualitycover{position:relative;display:grid;place-items:center;grid-row:1 / span 2;width:150px;aspect-ratio:16/10;border-radius:var(--control-radius);background:var(--color-background-tertiary-default)}
-.qualityfallback{color:var(--muted);font:var(--board-body)}
-body[data-surface="/quality-goals"] .qualitycover img{position:absolute;inset:0;background:var(--color-background-tertiary-default)}
 .qualitybody{padding:4px 4px 0;min-width:0}
-.qualityreason{padding-top:12px;border-top:1px solid var(--line-soft)}
 .qualityactions{display:flex;justify-content:flex-end;padding:8px 4px 0;background:transparent}
 body[data-surface="/junk-files"] .junksummary{width:100%}
 body[data-surface="/junk-files"] .collection-summary{margin:0}

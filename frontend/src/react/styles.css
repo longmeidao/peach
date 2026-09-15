@@ -7,8 +7,8 @@
  * - 只扫描 `src/react/`。Preact 与遗留层里的 `hidden`、`flex` 这类类名不生成工具类，
  *   页面上生成出来的全局类名只来自 React 子树。
  * - 生成的类名避开旧样式表的类选择器。旧样式表排在后面，同名时旧规则胜出；网格容器放在 flex
- *   父元素里写 `inline-grid`（flex 子项块级化后按 `display:grid` 计算），注释里的 `ring` 不生成工具类
- *   （`test/legacy-class-names.test.ts`）。
+ *   父元素里写 `inline-grid`（flex 子项块级化后按格布局计算），注释里扫到的 `ring` 与
+ *   `grid` 不生成工具类（`test/legacy-class-names.test.ts`）。
  * - Preflight 与根元素基线限定在 `.peach-react` 容器里。 */
 @import "tailwindcss/theme.css" layer(theme);
 @import "tailwindcss/utilities.css" source(none);
@@ -17,7 +17,10 @@
 @import "./boardui/styles/typography.css";
 
 @source "./";
+/* 扫描不分代码与注释：这两个词各在注释里出现过一次，生成出来就和旧样式表的 `.ring`、
+ * `.grid` 同名。React 子树两个类都不用，直接不生成。 */
 @source not inline("ring");
+@source not inline("grid");
 
 @custom-variant dark (&:where(.dark, .dark *));
 
@@ -25,6 +28,17 @@
  * (`#manageTitle`) 也钉在同一个数上；这里只把它接成 `max-w-board`，不另写一个像素值。 */
 @theme {
   --container-board: var(--board-content, 1120px);
+  /* 列表卡片左侧那块封面：宽度与 16/10 的比例在高清版、重复项、复核对照上是同一套几何，
+   * 所以取一个共用的名字，而不是每页各写一次像素值。 */
+  --container-card-cover: 150px;
+  --aspect-card-cover: 16 / 10;
+}
+
+/* 卡片网格：按可用宽度自动折行，一列放不下 360px 时自己退成一列。工具类里没有
+ * `auto-fill` 这一档，写成 utility，类名照常由 Tailwind 生成，也就不必写任意值。 */
+@utility card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 360px), 1fr));
 }
 
 /* 后台任务仍在推进、又说不出总量时的 Loading Dots。工具类里没有 animation-delay 这一档，

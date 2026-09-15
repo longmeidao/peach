@@ -3,6 +3,7 @@
  * Preact 那一侧按 `@peach/react` 引用这份产物，构建时改写成 `/dist/peach-react.js`；
  * `entry.tsx` 按这里的签名实现，两边的类型检查各自对照同一份声明。
  * 配置数据的形状以 `/api/configuration`（`src/peach/routes_configuration.py`）为准。 */
+import type { QualityGoal } from './quality-goals/quality-goals';
 
 export interface AccessState { mode: 'open' | 'password' | 'legacy' | 'locked'; revision: string }
 
@@ -99,8 +100,21 @@ export interface ReactPage<P> {
 /** 活动页没有来自遗留层的助手：整页的数据都来自 `/api/tasks`。 */
 export type ActivityProps = Record<string, never>;
 
+/** 高清版目标页仍由遗留层提供的能力。全是纯函数或导航，页面不持有它们的状态。 */
+export interface QualityGoalsProps {
+  /** 打开作品详情（遗留层的整页视图，含播放器与队列）。 */
+  openItem(id: number): void;
+  /** 番号 + 版次徽章 + 标题的 HTML。非 JAV 条目退化成转义后的文件名。 */
+  javTitleHtml(item: QualityGoal): string;
+  /** 同一条目的纯文本形态，用于无障碍名称。 */
+  javDisplayName(item: QualityGoal): string;
+  /** 来源徽标（含计费标记）的 HTML。 */
+  srcBadge(location: string, cost: string): string;
+}
+
 export interface ReactPages {
   activity: ReactPage<ActivityProps>;
+  'quality-goals': ReactPage<QualityGoalsProps>;
 }
 
 export declare const pages: ReactPages;

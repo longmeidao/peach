@@ -77,14 +77,10 @@ button.serieslink.entitylink:hover{color:var(--tungsten);text-decoration:none}
 .dupmarks i{font-style:normal;font-size:var(--fs-xs);padding:1px 6px;border-radius:var(--badge-radius)}
 .dupmarks i.big{background:var(--hover);color:var(--ink-2)}
 .dupmarks i.long{background:color-mix(in srgb,var(--keep) 22%,transparent);color:var(--keep)}
-.qualitylist{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:14px}
-.qualityitem{display:grid;grid-template-columns:150px minmax(0,1fr);gap:14px;min-width:0;padding:12px;
-  border:1px solid var(--line-soft);border-radius:var(--floating-radius);background:var(--ground)}
-.qualitycover{width:150px;aspect-ratio:16/10;border:0;border-radius:var(--surface-radius);overflow:hidden;background:#000;padding:0;cursor:pointer}
-.qualitycover img{width:100%;height:100%;object-fit:contain;display:block}
-.qualityitem h3{margin:2px 0 8px;font-size:var(--fs-lg)}
-.qualityitem h3 button{display:block;width:100%;max-width:100%;border:0;background:transparent;padding:0;color:inherit;text-align:left;cursor:pointer;overflow:hidden;white-space:nowrap}
-.qualityitem h3 button:hover{color:var(--ink-2)}.qualityitem p{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 0;color:var(--muted)}
+/* 高清版目标页的正文归 React 子树（ADR-0031）。这两条只服务遗留骨架的那几张空卡，
+   列数、间距与卡片几何由 `board.css` 的 `body[data-surface="/quality-goals"]` 那组给。 */
+.qualitylist{display:grid}
+.qualityitem{min-width:0;background:var(--ground)}
 .revieworigin{display:grid;grid-template-columns:132px minmax(0,1fr);gap:10px;align-items:center;margin:10px 0;padding:8px;
   border-radius:var(--surface-radius);background:var(--overlay-5)}
 .reviewcompare{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:10px 0}
@@ -116,7 +112,7 @@ button.serieslink.entitylink:hover{color:var(--tungsten);text-decoration:none}
 .revieworigin>div{min-width:0}.revieworigin b{display:block;overflow:hidden;white-space:nowrap;margin-bottom:8px}
 .revieworigin>div button{display:inline-flex;align-items:center;gap:6px;border:0;border-radius:var(--control-radius);background:var(--hover);padding:6px 9px;color:var(--ink-2);cursor:pointer}
 .revieworigin>div button:hover{color:var(--ink)}.revieworigin>div button svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2}
-@media(max-width:640px){.qualitylist{grid-template-columns:1fr}.qualityitem{grid-template-columns:110px minmax(0,1fr)}.qualitycover{width:110px}.reviewcompare{grid-template-columns:1fr}.revieworigin{grid-template-columns:110px minmax(0,1fr)}.revieworigincover{width:110px}}
+@media(max-width:640px){.reviewcompare{grid-template-columns:1fr}.revieworigin{grid-template-columns:110px minmax(0,1fr)}.revieworigincover{width:110px}}
 
 .indexmore[hidden],.entitymore[hidden]{display:none}
 .indexmore,.entitymore{display:flex;align-items:center;justify-content:center;margin:20px auto 0;min-width:124px;
