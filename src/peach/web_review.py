@@ -26,6 +26,7 @@ from .catalog_rules import (
     same_release_code,
     superseded_taste_tags,
 )
+from .code_creators import collect
 from .config import GENERATED_DIR
 from .entities import (
     canonicalize_entity_name,
@@ -78,7 +79,6 @@ CANDIDATE_PREFIX = {
     "performer_avatars": "performer-avatar-candidate-",
     # 这三类此前只落在 CSV 里没有界面入口，复核负担等于被丢回给用户去翻文件。
     "western_identity": "babepedia-candidates",
-    "code_creators": "code-creator-review",
     "cover_sources": "cover-fetch-log",
     "fc2_markings": "fc2-candidate-log",
     "fc2_similarity": "fc2-similarity-candidate-",
@@ -97,12 +97,17 @@ CANDIDATE_KEY = {
     "studio_logos": "studio",
     "performer_avatars": "entity_id",
     "western_identity": "entity_id",
-    "code_creators": "entity_id",
     "cover_sources": "code",
     "fc2_markings": "code",
     "fc2_similarity": "pair_key",
     "video_endcards": "candidate_key",
 }
+#: 队列现算、不读候选文件的类别，取行的函数见 `LIVE_CATEGORY_ROWS`。判据的输入就是
+#: 账本本身，没有需要留存的外部证据，所以 CSV 只是某一次跑脚本时的快照：实测那份
+#: 44 行里有 27 行的实体早已不在库里，点进去无事可做，真正该看的只有 24 条。
+LIVE_CATEGORIES = ("code_creators",)
+#: 复核页的类别全集。页面的 tab 次序由 `app.js` 的 `REVIEW_LABELS` 定，与这里无关。
+REVIEW_CATEGORIES = (*CANDIDATE_PREFIX, *LIVE_CATEGORIES)
 #: 复核卡片上那张脸属于哪种实体。页面按同一张表决定 `/entity-image` 的 kind
 #: （`app.js` 的 `ENTITY_REVIEW_CATEGORIES`），两边必须逐字一致：这边判成 creator、
 #: 页面按 performer 取图，就是标志说有图而请求照样 404。不在表里的类别没有这个位置。
@@ -431,10 +436,32 @@ def _fold_genre_decisions(field: str, candidate: dict, decided: dict[str, str | 
                          if not genres_in_warning(warning)]}
 
 
-def _review_rows(contract: ReviewContract, category: str) -> tuple[list[dict], str | None, int]:
+def _code_creator_rows(connection) -> list[dict]:
+    """番号目录被投影成创作者的队列，按 `peach.code_creators` 的判据现算。"""
+    rows = [dict(row) for row in collect(connection)]
+    for row in rows:
+        row["item_key"] = str(row["entity_id"])
+    return rows
+
+
+#: 现算类别取行的函数。写成表而不是分支：`_review_rows` 已经顶着复杂度基线，
+#: 每加一类都往里塞一个 if 的话，最先撑不住的是那个函数而不是这张表。
+LIVE_CATEGORY_ROWS = {"code_creators": _code_creator_rows}
+
+
+def _queue_rows(contract: ReviewContract, category: str,
+                connection) -> tuple[list[dict], str | None, int]:
+    """这一类队列的原始行与来源说明：现算类别问账本，其余读候选文件。"""
+    live = LIVE_CATEGORY_ROWS.get(category)
+    if live:
+        return live(connection), "ledger", 0
     rows, source, skipped = read_candidates(category, contract.candidate_root)
-    rows = [row for row in rows if _needs_review(category, row)]
+    return [row for row in rows if _needs_review(category, row)], source, skipped
+
+
+def _review_rows(contract: ReviewContract, category: str) -> tuple[list[dict], str | None, int]:
     with contract.read_connection() as connection:
+        rows, source, skipped = _queue_rows(contract, category, connection)
         decisions = {
             row["item_key"]: dict(row) for row in connection.execute(
                 "SELECT item_key,status,note,updated_at FROM review_decision WHERE category=?",
@@ -964,7 +991,7 @@ def q_review(contract: ReviewContract):
         row["asset_preview_url"] = ""
     failures = _pending_first(failures)
     sections, sources, skipped = {}, {}, {}
-    for category in CANDIDATE_PREFIX:
+    for category in REVIEW_CATEGORIES:
         rows, source, dropped = _review_rows(contract, category)
         sections[category] = rows
         sources[category] = source
