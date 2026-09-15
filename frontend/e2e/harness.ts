@@ -45,7 +45,10 @@ export async function launch(): Promise<Browser> {
 }
 
 /** 等待态以 `aria-busy="true"` 与 `data-skeleton` 为准；超时就是等待态卡住了。
- * 两个标记由页面自己写：island、遗留模板和 React 子树都得发出，这里才等得到。 */
+ * 两个标记由页面自己写：island、遗留模板和 React 子树都得发出，这里才等得到。
+ *
+ * 它只证明「没有东西在等」，证明不了页面画出来了：主体完全没渲染时同样立刻成立。
+ * 所以调用方先等到目标页面自己的主体出现，再调它。 */
 export async function settle(page: Page): Promise<void> {
   await page.waitForLoadState('networkidle');
   await page.waitForFunction(
@@ -82,8 +85,8 @@ export async function visit(browser: Browser, path: string, viewport: Viewport):
       problems.push(`failed ${request.url().slice(origin.length)} ${reason}`);
     }
   });
+  // 只打开到 load：等哪块主体、何时 settle 由用例决定，见 `settle` 的说明。
   await page.goto(origin + path, { waitUntil: 'load' });
-  await settle(page);
   return { page, problems, close: () => context.close() };
 }
 

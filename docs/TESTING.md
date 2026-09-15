@@ -42,6 +42,8 @@ npm 的两份清单还有一层派生产物：根 `package.json` 对应 `web/ven
 
 全量在两个独立 runner 按测试文件稳定分片；汇总任务要求所有分片和必需任务成功。分片子进程不签发记录。
 
+浏览器冒烟与设计决定断言（`tests/test_web_e2e.py`）由 `web-e2e` job 每次在 `windows-latest` 上执行 `web` 域，它装 Node 24、`frontend/node_modules`、ffmpeg，并经 `PEACH_E2E_CHROME` 指定 runner 自带的 Chrome。需要这些外部前置条件的用例在本机缺失时跳过，在 CI（`GITHUB_ACTIONS=true`）里判失败，判定集中在 `tests/support/conditions.py` 的 `missing_prerequisite`；所以 `python` 矩阵里 `core` 以外的行也装 Node，Windows 行另装 ffmpeg 与 Chrome。
+
 本机默认并行：入口传 `--jobs auto`（Windows `-Jobs`），运行器按同一套稳定分片切成并发数四倍的片，最多四个子进程各领一片、先完成的接着领下一片，父进程汇总成败、用例数与逐用例耗时后按原口径签发一份记录，一片红整轮红。`-Jobs 1` 退回串行。测试之间没有共享的端口或全局目录，账本与仓库夹具都在各自的临时目录里，并行才是安全的；新增测试保持这一点。
 
 Windows 的路径、挂载、托盘、证书、进程编码、更新、认证及迁移属于 `core`。构建和工作流修改选择 `packaging` 与 `tooling`；测试调度自身仍全量。仅 uv 工具版本或项目展示字段变化不算依赖图变化；无法解析时全量。

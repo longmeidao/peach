@@ -104,6 +104,27 @@ jobs:
         with:
           enable-cache: true
           cache-dependency-glob: uv.lock
+      # `web` 与 `packaging` 域里的 tsc、lint、vitest 和浏览器冒烟在 CI 缺前置条件时判失败
+      # （`tests/support/conditions.py`）。`core` 不含这些用例，其余域都要装齐。
+      - uses: actions/setup-node@v7
+        if: matrix.scope != 'core'
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: 安装前端依赖
+        if: matrix.scope != 'core'
+        run: npm --prefix frontend ci
+      # 浏览器冒烟只在 Windows 上执行（声明根是盘符），只有那里要 ffmpeg 与 Chrome。
+      - uses: FedericoCarboni/setup-ffmpeg@v3
+        if: runner.os == 'Windows' && matrix.scope != 'core'
+      - name: 指定 e2e 用的 Chrome
+        if: runner.os == 'Windows' && matrix.scope != 'core'
+        shell: pwsh
+        run: |
+          $peachChrome = Join-Path $env:ProgramFiles 'Google\Chrome\Application\chrome.exe'
+          if (-not (Test-Path -LiteralPath $peachChrome)) { throw "runner 上没有 Chrome：$peachChrome" }
+          "PEACH_E2E_CHROME=$peachChrome" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
       - name: 安装 Windows 依赖
         if: runner.os == 'Windows'
         shell: pwsh
@@ -163,6 +184,42 @@ jobs:
           done
           exit 1
 
+  # 浏览器冒烟（`frontend/e2e/smoke.test.ts`）与设计决定断言（`design.test.ts`）。
+  # `python` 矩阵的 Windows 行在 PR 上只跑 `core`，这两组用例只有在这里每次都执行。
+  web-e2e:
+    name: 浏览器冒烟与设计决定断言
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.14'
+      - uses: astral-sh/setup-uv@v10.0.1
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm --prefix frontend ci
+      - uses: FedericoCarboni/setup-ffmpeg@v3
+      - name: 指定 e2e 用的 Chrome
+        shell: pwsh
+        run: |
+          $peachChrome = Join-Path $env:ProgramFiles 'Google\Chrome\Application\chrome.exe'
+          if (-not (Test-Path -LiteralPath $peachChrome)) { throw "runner 上没有 Chrome：$peachChrome" }
+          "PEACH_E2E_CHROME=$peachChrome" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+      - name: 安装 Python 依赖
+        shell: pwsh
+        run: |
+          uv sync --locked --all-extras --python python
+          if ($LASTEXITCODE -ne 0) { throw 'uv 锁定安装失败' }
+      - name: 运行 web 域
+        shell: pwsh
+        run: '& .\scripts\test.ps1 -Scope web -Fresh'
+
   web-vendor:
     name: 固定前端依赖
     runs-on: ubuntu-latest
@@ -189,7 +246,7 @@ jobs:
   verified:
     name: 完整验证结果
     if: always()
-    needs: [plan, python, wheel-smoke, web-bundle, web-vendor]
+    needs: [plan, python, wheel-smoke, web-bundle, web-e2e, web-vendor]
     runs-on: ubuntu-latest
     steps:
       - name: 所有必需任务均成功
