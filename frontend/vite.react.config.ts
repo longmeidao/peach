@@ -23,6 +23,9 @@ export default defineConfig({
     outDir: '../web/dist',
     emptyOutDir: false,
     target: 'es2022',
+    // CSS 目标对齐 Tailwind v4 的浏览器基线。按 es2022 推出的目标偏旧，lightningcss 会给每个
+    // oklch 颜色补一份 lab() 回退，末位小数随平台浮点不同，CI 的 Linux 重建就对不上提交的产物。
+    cssTarget: ['chrome111', 'edge111', 'firefox128', 'safari16.4', 'ios16.4'],
     minify: 'oxc',
     sourcemap: false,
     cssCodeSplit: false,
