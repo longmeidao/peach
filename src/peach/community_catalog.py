@@ -248,6 +248,10 @@ def verified_cover(transport, code: str, works: list[tuple[str, dict]], *,
         if len(origins) >= 2 and (best is None or one.pixels > best[0].pixels):
             best = (one, tuple(sorted(origins)))
     if best is None:
-        raise Unavailable("社区来源的封面没有第二个图源能对上" if len(pool) > (reference is not None)
-                          else "社区来源的封面下载失败")
+        if len(pool) <= (reference is not None):
+            raise Unavailable("社区来源的封面下载失败")
+        origins = sorted({one.origin for one in pool})
+        if len(origins) == 1:
+            raise Unavailable(f"社区来源的封面只有 {origins[0]} 一个图源，缺第二个图源印证")
+        raise Unavailable(f"{'、'.join(origins)} 给的封面不是同一张图，无法互相印证")
     return best[0].candidate, best[0].size, best[0].data, best[1]

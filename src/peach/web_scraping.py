@@ -29,7 +29,8 @@ def w_scraping_cover(contract, body):
 
 
 def _fetch_cover(contract, code):
-    from .jav_cover_fetch import (best_cover, HostLimitedTransport, Unavailable,
+    from .jav_cover_fetch import (best_cover, HostLimitedTransport, NO_USABLE_OFFICIAL,
+                                 OFFICIAL_PLACEHOLDER_ONLY, Unavailable,
                                  fc2_cover_candidates, logged_success_evidence)
     from .review_csv import read_rows
     target = contract.cover_root / (code + ".jpg")
@@ -99,11 +100,13 @@ def _fetch_cover(contract, code):
             reason, message = "source_error", "来源服务异常（HTTP 5xx），请稍后重试。"
         elif str(exc) == "所有渠道都没有候选":
             reason, message = "no_candidate", "本次来源未返回匹配该番号的封面候选，无法判断是否还有高清版。"
-        elif str(exc) in {"官方封面只有缩略图或占位图", "官方封面地址都没有取到图片"}:
-            reason, message = "unusable_candidate", "候选封面未通过检查：图片未取得、无法解码或宽度不足 700px。"
         else:
-            reason, message = "download_failed", "候选封面完整下载或图片校验失败，未取得可保存的图片。"
-        labels = {"probe_failed": "图片头请求失败", "invalid_image": "图片无法解码",
+            reason, message = {
+                OFFICIAL_PLACEHOLDER_ONLY: ("placeholder_only", f"{OFFICIAL_PLACEHOLDER_ONLY}。"),
+                **dict.fromkeys(NO_USABLE_OFFICIAL, (
+                    "unusable_candidate", "候选封面未通过检查：图片未取得、无法解码或宽度不足 700px。")),
+            }.get(str(exc), ("download_failed", "候选封面完整下载或图片校验失败，未取得可保存的图片。"))
+        labels = {"placeholder": "「准备中」占位图", "probe_failed": "图片头请求失败", "invalid_image": "图片无法解码",
                   "too_small": "图片宽度不足 700px", "download_failed": "完整下载失败",
                   "dimension_mismatch": "完整图片尺寸与探测结果不一致"}
         details = "；".join(f"{label} {diagnostics[key]} 张" for key, label in labels.items() if diagnostics.get(key))
