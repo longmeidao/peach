@@ -7,10 +7,11 @@ import threading
 import time
 import uuid
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from .ffmpeg import FFmpegResolver
+from .mp4index import composition_offsets_present
 
 
 BROWSER_NATIVE_SUFFIXES = frozenset({".mp4", ".m4v", ".webm", ".ogv", ".ogg"})
@@ -26,6 +27,8 @@ class _MediaProfile:
     audio_codec: str
     #: 容器报的总时长（秒）；探测不到时为 0，切片计划据此决定能不能按时间切。
     duration: float = 0.0
+    #: 有 B 帧却没有 ctts：容器声明的显示时刻其实是解码顺序，直接播会掉帧。
+    decode_order_timestamps: bool = False
 
 
 @dataclass(frozen=True)
@@ -113,7 +116,7 @@ class TranscodeService:
                 profile = self._profile_for(source, session, registry)
             except OSError as exc:
                 raise TranscodeUnavailable("source unavailable") from exc
-            if profile is not None and self._browser_compatible(source, profile):
+            if profile is not None and self._decodes_in_browser(source, profile):
                 return source, False
 
         choice = self.resolver.ffmpeg()
@@ -183,7 +186,8 @@ class TranscodeService:
         if source.suffix.lower() in {".mp4", ".m4v"}:
             return (profile.video_codec == "h264"
                     and profile.pixel_format in DIRECT_MP4_PIXEL_FORMATS
-                    and profile.audio_codec in {"", "aac", "mp3"})
+                    and profile.audio_codec in {"", "aac", "mp3"}
+                    and not profile.decode_order_timestamps)
         if source.suffix.lower() == ".webm":
             return (profile.video_codec in {"vp8", "vp9", "av1"}
                     and profile.audio_codec in {"", "opus", "vorbis"})
@@ -198,7 +202,8 @@ class TranscodeService:
             return None
         command = (
             str(choice.path), "-v", "error", "-show_entries",
-            "stream=codec_type,codec_name,pix_fmt:format=duration", "-of", "json", str(source),
+            "stream=codec_type,codec_name,pix_fmt,has_b_frames:format=duration",
+            "-of", "json", str(source),
         )
         try:
             returncode, stdout, _stderr = self._execute(
@@ -234,7 +239,41 @@ class TranscodeService:
             pixel_format=str(video.get("pix_fmt") or "").lower(),
             audio_codec=str(audio.get("codec_name") or "").lower(),
             duration=max(0.0, duration),
+            decode_order_timestamps=self._decode_order_timestamps(source, video),
         )
+
+    @staticmethod
+    def _decodes_in_browser(source: Path, profile: _MediaProfile) -> bool:
+        """浏览器能不能解出画面。时间戳错乱不算解不出来。
+
+        整片转码要占满一个编码位、写一份和原片同量级的缓存，只有编码本身不被支持才值得。
+        缺 `ctts` 的片源画面解得出来，错的只是容器写的显示顺序，交给 HLS 转码分片按需修
+        就够。卡片悬停预览直接打 `/stream`，鼠标划过一张卡片不能启动一次整片转码。
+        """
+        return TranscodeService._browser_compatible(
+            source, replace(profile, decode_order_timestamps=False),
+        )
+
+    @staticmethod
+    def _decode_order_timestamps(source: Path, video: dict) -> bool:
+        """有 B 帧却没有 `ctts` 的 MP4，容器声明的显示时刻就是解码顺序。
+
+        浏览器信容器的时间戳，凡是比已显示帧更早的一律丢掉，于是整片掉两成帧、看着
+        持续卡顿；FFmpeg 和本地播放器按解码器输出顺序排，同一个文件反而正常。这类片子
+        原样送给浏览器修不好，播放要走转码分片，让编码器重新写一份对的时间轴。
+
+        判据放在探测里做一次，结论跟 profile 一起缓存：`moov` 动辄几 MB，每个分片请求
+        都读一遍等于把挂载网盘反复拉一遍。
+        """
+        if source.suffix.lower() not in {".mp4", ".m4v"}:
+            return False
+        try:
+            reorder_depth = int(video.get("has_b_frames") or 0)
+        except (TypeError, ValueError):
+            return False
+        if reorder_depth <= 0:
+            return False
+        return composition_offsets_present(source) is False
 
     def _attempts(
         self,

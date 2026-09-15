@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 from peach.ffmpeg import BinaryChoice
 from peach.transcodes import TranscodeCancelled, TranscodeService, TranscodeUnavailable
+from support.mp4 import minimal_mp4
 
 
 class _Resolver:
@@ -91,6 +92,69 @@ class TranscodeServiceTests(unittest.TestCase):
                     self.assertEqual(sum("ffprobe" in c[0] for c in commands), 1)
                     if expected:
                         self.assertEqual(result[0].read_bytes(), b"mp4")
+
+    def test_b_frames_without_composition_offsets_are_sent_to_transcode(self):
+        """有 B 帧却没有 ctts 的 MP4，容器声明的显示时刻是解码顺序。
+
+        浏览器照单全收，凡是比已显示帧更早的一律丢掉，整片掉两成帧；本地播放器按解码器
+        输出顺序排，同一个文件看着正常。没有 B 帧的片源本来就不需要这张表，缺了不算毛病。
+        """
+        cases = (
+            (2, False, True),
+            (2, True, False),
+            (0, False, False),
+        )
+        for reorder_depth, composition_offsets, expected in cases:
+            with self.subTest(has_b_frames=reorder_depth, ctts=composition_offsets):
+                with tempfile.TemporaryDirectory() as tmp:
+                    root = Path(tmp).resolve()
+                    source = root / "movie.mp4"
+                    source.write_bytes(minimal_mp4(
+                        timescale=1000, sample_delta=40, samples=100, keyframe_every=25,
+                        composition_offsets=composition_offsets))
+                    service = TranscodeService(
+                        _Resolver(root / "ffmpeg.exe", root / "ffprobe.exe"),
+                        root / "cache", prefer_hardware=False,
+                    )
+                    commands = []
+                    streams = [
+                        {"codec_type": "video", "codec_name": "h264", "pix_fmt": "yuv420p",
+                         "has_b_frames": reorder_depth},
+                        {"codec_type": "audio", "codec_name": "aac"},
+                    ]
+                    with patch("peach.transcodes.subprocess.Popen",
+                               side_effect=_media_process(commands, streams)):
+                        self.assertEqual(service.requires_conversion(source), expected)
+                    entries = commands[0][commands[0].index("-show_entries") + 1]
+                    self.assertIn("has_b_frames", entries)
+
+    def test_a_broken_timestamp_table_never_starts_a_whole_file_transcode(self):
+        """缺 ctts 的片源照原样发，播放由 HLS 转码分片修。
+
+        整片转码写一份和原片同量级的缓存，只有编码本身不被支持才值得。卡片悬停预览
+        直接打 `/stream`，鼠标划过一张卡片不能启动一次整片转码。
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp).resolve()
+            source = root / "movie.mp4"
+            source.write_bytes(minimal_mp4(
+                timescale=1000, sample_delta=40, samples=100, keyframe_every=25))
+            service = TranscodeService(
+                _Resolver(root / "ffmpeg.exe", root / "ffprobe.exe"),
+                root / "cache", prefer_hardware=False,
+            )
+            commands = []
+            streams = [
+                {"codec_type": "video", "codec_name": "h264", "pix_fmt": "yuv420p",
+                 "has_b_frames": 2},
+                {"codec_type": "audio", "codec_name": "aac"},
+            ]
+            with patch("peach.transcodes.subprocess.Popen",
+                       side_effect=_media_process(commands, streams)):
+                self.assertTrue(service.requires_conversion(source))
+                self.assertEqual(service.browser_path(7, source), (source, False))
+            self.assertEqual(
+                [c for c in commands if Path(c[0]).stem.lower() == "ffmpeg"], [])
 
     def test_native_mp4_is_returned_without_ffmpeg(self):
         source = Path("movie.mp4")

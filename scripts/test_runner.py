@@ -157,6 +157,8 @@ AUTO_SCOPE_FILES: dict[str, tuple[str, ...]] = {
 # tooling 里的脚本策略门槛验它的形态。
 AUTO_SCOPE_PREFIXES: tuple[tuple[str, str | tuple[str, ...]], ...] = (
     ("src/peach/media.py", "media"),
+    # 关键帧与 ctts 都从 moov 读，测试住在 `test_segments.py` 里。
+    ("src/peach/mp4index.py", "media"),
     ("src/peach/desktop_startup.py", "tooling"),
     ("src/peach/desktop_uninstall.py", "tooling"),
     ("src/peach/peach_proxy.py", "tooling"),

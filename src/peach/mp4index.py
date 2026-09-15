@@ -6,6 +6,9 @@ HLS 分片必须切在关键帧上，所以要先知道关键帧在哪。用
 
 MP4 把关键帧表（`stss`）和时长表（`stts`）都放在 `moov` 里，通常位于文件开头，
 读几 MB 就够。解析不出来就返回 None，由调用方回退到标准 Range，绝不猜。
+
+同一份 `moov` 还回答另一个问题：视频轨有没有 `ctts`（显示时间偏移表）。有 B 帧的片子
+靠它才能把解码顺序还原成显示顺序，缺了它容器声明的显示时刻就是解码顺序。
 """
 from __future__ import annotations
 
@@ -43,8 +46,8 @@ def _find(payload: bytes, start: int, end: int, kind: bytes):
     return None
 
 
-def _video_sample_table(payload: bytes, start: int, end: int):
-    """返回视频轨的 (timescale, stts 区间, stss 区间)。"""
+def _video_stbl(payload: bytes, start: int, end: int):
+    """返回视频轨的 (timescale, stbl 区间)。"""
     for box, body, stop in _iter_boxes(payload, start, end):
         if box != b"trak":
             continue
@@ -63,11 +66,20 @@ def _video_sample_table(payload: bytes, start: int, end: int):
             continue
         version = payload[mdhd[0]]
         timescale = struct.unpack_from(">I", payload, mdhd[0] + (20 if version == 1 else 12))[0]
-        stts = _find(payload, *stbl, b"stts")
-        stss = _find(payload, *stbl, b"stss")
-        if timescale and stts and stss:
-            return timescale, stts, stss
+        if timescale:
+            return timescale, stbl
     return None
+
+
+def _video_sample_table(payload: bytes, start: int, end: int):
+    """返回视频轨的 (timescale, stts 区间, stss 区间)。"""
+    found = _video_stbl(payload, start, end)
+    if found is None:
+        return None
+    timescale, stbl = found
+    stts = _find(payload, *stbl, b"stts")
+    stss = _find(payload, *stbl, b"stss")
+    return (timescale, stts, stss) if stts and stss else None
 
 
 def _sync_sample_seconds(payload: bytes, timescale: int, stts, stss) -> list[float]:
@@ -143,13 +155,34 @@ def _read_moov(handle, limit: int) -> bytes | None:
         offset += size
 
 
-def keyframe_seconds(path: Path | str, probe_bytes: int = HEADER_PROBE_BYTES) -> list[float] | None:
-    """返回 MP4 的关键帧时间（秒）。拿不到就返回 None，由调用方回退到标准 Range。"""
+def _moov_of(path: Path | str, probe_bytes: int) -> bytes | None:
     try:
         with open(path, "rb") as handle:
-            moov = _read_moov(handle, probe_bytes)
+            return _read_moov(handle, probe_bytes)
     except OSError:
         return None
+
+
+def composition_offsets_present(
+    path: Path | str, probe_bytes: int = HEADER_PROBE_BYTES,
+) -> bool | None:
+    """视频轨里有没有 `ctts`。读不出 `moov` 或没有视频轨返回 None。
+
+    回答的是「有没有这张表」，不是「该不该有」：没有 B 帧的片子本来就不需要 ctts。
+    调用方要把它和帧重排深度（ffprobe 的 `has_b_frames`）放在一起看才有结论。
+    """
+    moov = _moov_of(path, probe_bytes)
+    if not moov:
+        return None
+    found = _video_stbl(moov, 0, len(moov))
+    if found is None:
+        return None
+    return _find(moov, *found[1], b"ctts") is not None
+
+
+def keyframe_seconds(path: Path | str, probe_bytes: int = HEADER_PROBE_BYTES) -> list[float] | None:
+    """返回 MP4 的关键帧时间（秒）。拿不到就返回 None，由调用方回退到标准 Range。"""
+    moov = _moov_of(path, probe_bytes)
     if not moov:
         return None
     table = _video_sample_table(moov, 0, len(moov))
