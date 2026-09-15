@@ -359,18 +359,30 @@ def _require_writer(config, db_path):
             raise ValueError('这台电脑是只读端，请在写入端扫描和导入资料')
 
 
+def _text(raw):
+    """比对取值用的写法：空白差异和大小写不算两个值。"""
+    return ' '.join(str(raw or '').split()).casefold()
+
+
 def _merge_candidates(groups, row, code, source, document, evidence_path, genre_decisions, local_fields=()):
     """把 `document` 里认得出的字段并进 `groups`：同来源的旧候选换掉，别的来源保留。
 
     本地 NFO 已给出的字段只收 NFO 这一条（ADR-0029）。NFO 的番号已经和文件名对过，
     是用户自己刮削留下的；在线来源再给一条同字段候选，唯一的效果是把「英文机翻标题
     对日文原题」这种写法差异变成一道人工复核题。
+
+    账本已经有值的字段，联网来源同样不给候选，取值与现值相同的谁给都不要（ADR-0033）。
+    一次抓取回来的是整份资料，缺 tags 也会顺带带回标题、厂牌、发行日期；不拦住就是
+    每部片多出几道「英文机翻对日文原题」和「同一个值对同一个值」。
     """
     local = source == 'local_nfo'
     spec = SOURCE_SPECS.get(source)
     official = bool(spec and spec.official)
     for field, value in _fields(document, genre_decisions).items():
-        if not local and field in local_fields:
+        current = _text(row.get(COLUMN_OF.get(field, field)))
+        if not local and (field in local_fields or current):
+            continue
+        if current and current == _text(value.get('display_value', value['value'])):
             continue
         key = f"asset:{row['id']}:{field}"
         identity = hashlib.sha256(json.dumps([source, value['value']], ensure_ascii=False, sort_keys=True).encode()).hexdigest()
@@ -675,14 +687,21 @@ def process_library(config, db_path, candidate_root, cover_root, *, location='co
                        error=f"{state['issue_count']} 项需要处理，请查看详情并重试。"
                              if state['issue_count'] else '')
                 return state
+            # 演员和标签是另外两张表，`asset` 上没有这两列。不带上它们，采集就把每部片都
+            # 当成缺演员缺标签，逐个去问 r18，再把账本早就有的写法变成一道复核题。
+            multi = ("(SELECT group_concat(entity.canonical_name) FROM asset_entity"
+                     " JOIN entity ON entity.id=asset_entity.entity_id"
+                     " WHERE asset_entity.asset_id=asset.id AND entity.kind='performer') AS performers,"
+                     " (SELECT group_concat(asset_tag.tag) FROM asset_tag"
+                     " WHERE asset_tag.asset_id=asset.id) AS tags")
             if retrying:
                 placeholders = ','.join('?' * len(chosen_ids))
-                query = (f"SELECT * FROM asset WHERE id IN ({placeholders}) AND medium='video' "
+                query = (f"SELECT asset.*, {multi} FROM asset WHERE id IN ({placeholders}) AND medium='video' "
                          "AND (disposal IS NULL OR disposal<>'trash') ORDER BY id")
                 parameters = chosen_ids
             else:
-                query = ("SELECT * FROM asset WHERE medium='video' AND (disposal IS NULL OR disposal<>'trash') "
-                         "ORDER BY id")
+                query = (f"SELECT asset.*, {multi} FROM asset "
+                         "WHERE medium='video' AND (disposal IS NULL OR disposal<>'trash') ORDER BY id")
                 parameters = []
             with closing(sqlite3.connect(db_path, timeout=30)) as connection:
                 connection.row_factory = sqlite3.Row
