@@ -8,7 +8,7 @@ import { after, before, describe, it } from 'node:test';
 
 import type { Browser, Locator, Page } from 'playwright-core';
 
-import { launch, settle, visit, VIEWPORTS, type Visit } from './harness.ts';
+import { configurationBody, expectBody, launch, settle, visit, VIEWPORTS, type Visit } from './harness.ts';
 
 const DESKTOP = VIEWPORTS.find((viewport) => !viewport.mobile)!;
 
@@ -24,9 +24,11 @@ async function tokenColor(page: Page, scope: string, token: string): Promise<str
   }, [scope, token] as const);
 }
 
-/** 配置页「网络与访问」下的访问密码分区。演示库没有 access.json，分区处于系统口令状态。 */
+/** 配置页「网络与访问」下的访问密码分区。演示库没有 access.json，分区处于系统口令状态。
+ * 与冒烟同一口径：先等配置页主体，再 settle、再切分区。 */
 async function openAccess(browser: Browser): Promise<Visit & { form: Locator }> {
   const opened = await visit(browser, '/configuration', DESKTOP);
+  await expectBody(opened.page, '/configuration', configurationBody(opened.page));
   await settle(opened.page);
   await opened.page.getByRole('tab', { name: '网络与访问' }).click({ timeout: 5_000 });
   await settle(opened.page);

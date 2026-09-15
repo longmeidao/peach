@@ -55,7 +55,8 @@ def main() -> None:
     print(json.dumps(result, ensure_ascii=False, indent=2))
     if output := os.environ.get("GITHUB_OUTPUT"):
         with Path(output).open("a", encoding="utf-8") as stream:
-            for key in ("matrix", "wheel_matrix"):
+            # `wide` 给 `web-e2e` job 的执行条件用：全量矩阵已含 `web` 域，它就不再跑。
+            for key in ("matrix", "wheel_matrix", "wide"):
                 stream.write(f"{key}={json.dumps(result[key])}\n")
 
 

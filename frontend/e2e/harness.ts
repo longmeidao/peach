@@ -6,7 +6,9 @@
  *
  * 用例只写语义断言（没有横向溢出、等待态会结束、控制台无错误），不做截图比对：
  * 单人部署里维护基线图的成本高于它能拦住的问题。 */
-import { chromium, type Browser, type BrowserContext, type Page } from 'playwright-core';
+import assert from 'node:assert/strict';
+
+import { chromium, type Browser, type BrowserContext, type Locator, type Page } from 'playwright-core';
 
 export interface Viewport {
   name: string;
@@ -54,6 +56,29 @@ export async function settle(page: Page): Promise<void> {
   await page.waitForFunction(
     () => !document.querySelector('[aria-busy="true"],[data-skeleton]'),
     undefined, { timeout: 15_000 });
+}
+
+/** 等目标页面自己的主体出现：每个定位器都要可见，之后才轮到 `settle`。
+ * 等不到就带上此刻 `#main` 的无障碍树失败：CI 上只有这段输出，看得出停在骨架、
+ * 空态换了文案还是整块没画。 */
+export async function expectBody(page: Page, where: string, body: readonly Locator[]): Promise<void> {
+  for (const locator of body) {
+    try {
+      await locator.waitFor({ state: 'visible', timeout: 15_000 });
+    } catch (error) {
+      const snapshot = await page.locator('#main').ariaSnapshot({ timeout: 5_000 }).catch(() => '未取得');
+      assert.fail(`${where}：页面主体没有出现，等不到 ${locator}\n${(error as Error).message}\n`
+        + `#main 当时的无障碍树：\n${snapshot.slice(0, 3000)}`);
+    }
+  }
+}
+
+/** 配置页的主体：路由标题加上「通用」那一格的 tab。冒烟与设计决定用例都从这里进配置页。 */
+export function configurationBody(page: Page): Locator[] {
+  return [
+    page.locator('#main').getByRole('heading', { name: '配置', exact: true }),
+    page.locator('#stats').getByRole('tab', { name: '通用' }),
+  ];
 }
 
 export async function visit(browser: Browser, path: string, viewport: Viewport): Promise<Visit> {

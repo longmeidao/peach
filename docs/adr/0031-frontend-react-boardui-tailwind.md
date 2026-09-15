@@ -109,7 +109,8 @@ BoardUI 通过 shadcn 注册表发布 React + Tailwind v4 源码，表单与弹�
   `missing_prerequisite` 判定：本机缺失时显式跳过，`GITHUB_ACTIONS=true` 时判失败。
   `test_frontend_build.py` 的 tsc、lint、vitest 同一口径。
 - CI 新增 `web-e2e` job，在 `windows-latest` 上装齐四样、经 `PEACH_E2E_CHROME` 指定 Chrome，
-  每次执行 `web` 域，并纳入 `verified` 汇总。`python` 矩阵里 `core` 以外的行也装 Node，Windows 行
+  执行 `web` 域并纳入 `verified` 汇总；矩阵扩成全量时 Windows 全量行已含 `web` 域，它按条件跳过，
+  同一批用例不跑两遍。`python` 矩阵里 `core` 以外的行也装 Node，Windows 行
   另装 ffmpeg 与 Chrome，否则全量行上的这些用例会判失败。工作流结构由 `test_frontend_build.py` 断言。
   本机确认 e2e 实际执行那一条随之由 CI 兜住；本机跳过仍不算验收通过。
 - `frontend/e2e/smoke.test.ts` 为每条路由写明主体：路由自己的标题，加上内容区、索引条目或明确的空态。

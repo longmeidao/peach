@@ -451,6 +451,21 @@ class BrowserSuiteWorkflowTests(unittest.TestCase):
         self.assertIsNotNone(needs, "verified job 没有 needs 列表")
         self.assertIn("web-e2e", [name.strip() for name in needs.group(1).split(",")])
 
+    def test_the_browser_job_yields_to_a_wide_matrix_that_already_runs_the_web_scope(self):
+        """全量矩阵的 Windows 行本身就跑 `web` 域，`web-e2e` 再跑就是同一批用例两遍。
+
+        它只按 `plan` 的 `wide` 让路，汇总也只在 `wide` 时接受它的 skipped；条件写错或
+        `wide` 没写进 `GITHUB_OUTPUT`，PR 上它一停，汇总就红，不会变成静默不跑。
+        """
+        job = self.job("web-e2e")
+        self.assertIn("needs: [plan]", job)
+        self.assertIn("if: needs.plan.outputs.wide != 'true'", job)
+        verified = self.job("verified")
+        self.assertIn("WIDE: ${{ needs.plan.outputs.wide }}", verified)
+        self.assertIn('name == "web-e2e" and wide and job["result"] == "skipped"', verified)
+        self.assertIn('"wide"', (ROOT / "scripts" / "ci_plan.py").read_text(encoding="utf-8"),
+                      "ci_plan.py 没把 wide 写进 GITHUB_OUTPUT")
+
     def test_matrix_rows_beyond_core_install_what_the_node_suites_need(self):
         job = self.job("python")
         for step in ("actions/setup-node", "npm --prefix frontend ci",
