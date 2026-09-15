@@ -27,6 +27,7 @@ async function tokenColor(page: Page, scope: string, token: string): Promise<str
 /** 配置页「网络与访问」下的访问密码分区。演示库没有 access.json，分区处于系统口令状态。 */
 async function openAccess(browser: Browser): Promise<Visit & { form: Locator }> {
   const opened = await visit(browser, '/configuration', DESKTOP);
+  await settle(opened.page);
   await opened.page.getByRole('tab', { name: '网络与访问' }).click({ timeout: 5_000 });
   await settle(opened.page);
   const form = opened.page.locator('form[aria-label="访问密码"]');

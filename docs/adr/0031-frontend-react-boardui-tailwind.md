@@ -98,3 +98,19 @@ BoardUI 通过 shadcn 注册表发布 React + Tailwind v4 源码，表单与弹�
   - 并存期断言按上一节删除；
   - `tests/test_web_ui.py` 里依赖旧实现的断言迁移或删除完毕，仍然成立的静态资源、页面服务与构建契约测试保留或迁往对应测试文件；
   - AGENTS.md 与 README 的前端章节只描述 React。
+
+## 修订：浏览器用例在 CI 执行，冒烟逐路由写明主体（2026-09-15）
+
+「后果」里约定：CI 接入带浏览器的 e2e 任务、并把缺依赖判为失败之前，迁移分支须在本机确认 e2e 实际执行。
+当时 `python` 矩阵没有 Node、`frontend/node_modules`、ffmpeg 与 Chrome，`tests/test_web_e2e.py` 在 CI 上每次都跳过；
+冒烟也只等 `aria-busy` 与 `data-skeleton` 消失，「页面稳定判据」要求的主体断言还没有落到用例里。两件事现已接入：
+
+- 需要 Node、前端依赖、ffmpeg 或 Chrome 的用例统一经 `tests/support/conditions.py` 的
+  `missing_prerequisite` 判定：本机缺失时显式跳过，`GITHUB_ACTIONS=true` 时判失败。
+  `test_frontend_build.py` 的 tsc、lint、vitest 同一口径。
+- CI 新增 `web-e2e` job，在 `windows-latest` 上装齐四样、经 `PEACH_E2E_CHROME` 指定 Chrome，
+  每次执行 `web` 域，并纳入 `verified` 汇总。`python` 矩阵里 `core` 以外的行也装 Node，Windows 行
+  另装 ffmpeg 与 Chrome，否则全量行上的这些用例会判失败。工作流结构由 `test_frontend_build.py` 断言。
+  本机确认 e2e 实际执行那一条随之由 CI 兜住；本机跳过仍不算验收通过。
+- `frontend/e2e/smoke.test.ts` 为每条路由写明主体：路由自己的标题，加上内容区、索引条目或明确的空态。
+  先等主体可见，再 `settle`，再量几何。新增路由要同时写明它的主体。

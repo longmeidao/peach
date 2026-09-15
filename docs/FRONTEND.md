@@ -109,17 +109,20 @@ watch 模式只负责把产物写回 `web/dist/`。刷新页面就能看到改�
 ```
 
 vitest 转译时只剥掉类型、不做检查，所以 `web` 域另跑一遍 `npm --prefix frontend run typecheck`。
-两者在没有 npm 或没装 `frontend/node_modules` 时**显式跳过**，不会让
-测试域变红。「产物是否由当前源码构建出来」这一条本机验不了（不装 Node 就无法重建），
+两者在本机没有 npm 或没装 `frontend/node_modules` 时**显式跳过**，不会让测试域变红；
+CI（`GITHUB_ACTIONS=true`）里缺这些就判失败，由工作流负责装齐。「产物是否由当前源码构建出来」这一条本机验不了（不装 Node 就无法重建），
 它的门槛在 CI 的 `web-bundle` job：`npm run build` 之后 `git diff --exit-code -- web/dist`。
 **改了 `frontend/src` 就必须重新构建并把 `web/dist/` 一起提交**，否则 CI 会红。
 
 同一个域里还有真浏览器冒烟 `tests/test_web_e2e.py`：它在临时数据根上生成 12 条合成演示库、
 起回环 `peach serve --no-auth`，再跑 `npm --prefix frontend run e2e`。用例在
-`frontend/e2e/smoke.test.ts`，每条主路由在桌面与 390×844 下断言：无页面异常与 `console.error`、
-无同源 4xx/5xx 与失败请求、`aria-busy` 与 `data-skeleton` 会消失、无横向溢出、无越出视口的元素。
+`frontend/e2e/smoke.test.ts`，每条主路由在桌面与 390×844 下先等到目标页面主体出现（路由自己的标题，
+加上内容区、索引条目或明确的空态），再断言：无页面异常与 `console.error`、无同源 4xx/5xx 与失败请求、
+`aria-busy` 与 `data-skeleton` 会消失、无横向溢出、无越出视口的元素。主体一项不能省：页面完全没渲染时，
+其余几条照样全部成立。新增路由要在 `ROUTES` 里写明它的主体。
 浏览器取本机 Google Chrome（`PEACH_E2E_CHROME` 可指定），短片由 ffmpeg 编码；缺 npm、
-`playwright-core`、ffmpeg 或 Chrome 时显式跳过。声明根是 Windows 形态，目前只在 Windows 上执行。界面验收里发现的同类问题，
+`playwright-core`、ffmpeg 或 Chrome 时本机显式跳过，CI 里判失败。声明根是 Windows 形态，目前只在 Windows 上执行，
+CI 由 `web-e2e` job 在 `windows-latest` 上每次执行 `web` 域。界面验收里发现的同类问题，
 先在这里补一条用例再修。
 
 设计决定另有 `frontend/e2e/design.test.ts`，读 `getComputedStyle` 断言用户定过的外观：React 输入框不带旧焦点环、

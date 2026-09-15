@@ -7,8 +7,9 @@ ADR-0022 的取舍是「构建产物进 Git」：运行时的 Python 服务、Py
 
 - **不需要 Node 的**：产物在不在、导出对不对、引用的遗留模块路径对不对、清单是否
   精确钉版本、语义契约有没有从 `web/app.js` 搬进 island 时丢掉。这些在任何机器上都跑。
-- **需要 Node 的**：vitest。npm 或 `frontend/node_modules` 不在就显式跳过——本机可能
-  根本没装 Node，让整个测试域红掉只会让人绕过入口，而不是去装 Node。
+- **需要 Node 的**：tsc、lint 与 vitest。npm 或 `frontend/node_modules` 不在时本机显式
+  跳过——本机可能根本没装 Node，让整个测试域红掉只会让人绕过入口，而不是去装 Node。
+  CI（`GITHUB_ACTIONS=true`）里判失败：工作流负责装齐，跳过等于这几道门槛在 CI 里从不执行。
 
 「产物是否由当前源码构建出来」这一条不在这里：不装 Node 就无法重建，无从比较。
 那道门槛在 CI 的 `web-bundle` job 里，`npm run build` 之后 `git diff --exit-code web/dist`。
@@ -23,6 +24,7 @@ import shutil
 import subprocess
 import unittest
 
+from support.conditions import missing_prerequisite
 
 ROOT = Path(__file__).resolve().parents[1]
 FRONTEND = ROOT / "frontend"
@@ -375,9 +377,9 @@ class VitestTests(unittest.TestCase):
     def _npm(self, tool: str, package: str) -> str:
         npm = shutil.which("npm")
         if npm is None:
-            self.skipTest(f"跳过 {tool}：本机没有 npm。装 Node 24+ 后 `-Scope web` 会带上它")
+            missing_prerequisite(f"跳过 {tool}：本机没有 npm。装 Node 24+ 后 `-Scope web` 会带上它")
         if not (FRONTEND / "node_modules" / package).is_dir():
-            self.skipTest(f"跳过 {tool}：frontend/node_modules 还没装，先 `npm --prefix frontend ci`")
+            missing_prerequisite(f"跳过 {tool}：frontend/node_modules 还没装，先 `npm --prefix frontend ci`")
         return npm
 
     def test_the_frontend_sources_typecheck(self):
@@ -418,6 +420,42 @@ class VitestTests(unittest.TestCase):
         counted = re.search(r"Tests\s+(\d+) passed", plain)
         assert counted is not None
         self.assertGreaterEqual(int(counted.group(1)), 10, output)
+
+
+class BrowserSuiteWorkflowTests(unittest.TestCase):
+    """CI 里的浏览器冒烟与设计决定断言只能执行或失败，不能静默跳过。
+
+    缺前置条件在 CI 判失败（`tests/support/conditions.py`）只做了一半：工作流还得真的装齐
+    Node、依赖、ffmpeg 与 Chrome，并让结果进入 `verified` 的汇总。任一处被删掉，冒烟就回到
+    从未在 CI 执行的状态，或者让 `python` 矩阵的全量行判失败。
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.workflow = (ROOT / ".github" / "workflows" / "test.yml").read_text(encoding="utf-8")
+
+    def job(self, name: str) -> str:
+        found = re.search(rf"(?ms)^  {re.escape(name)}:\n(.*?)(?=^  \S|\Z)", self.workflow)
+        self.assertIsNotNone(found, f"CI 没有 {name} job")
+        return found.group(1)
+
+    def test_the_browser_job_installs_every_prerequisite_and_runs_the_web_scope(self):
+        job = self.job("web-e2e")
+        for step in ("runs-on: windows-latest", "actions/setup-node", 'node-version: "24"',
+                     "npm --prefix frontend ci", "FedericoCarboni/setup-ffmpeg",
+                     "PEACH_E2E_CHROME=", "& .\\scripts\\test.ps1 -Scope web"):
+            self.assertIn(step, job, f"web-e2e job 缺了 {step}")
+
+    def test_the_summary_requires_the_browser_job(self):
+        needs = re.search(r"(?ms)^  verified:\n.*?^    needs: \[([^\]]*)\]", self.workflow)
+        self.assertIsNotNone(needs, "verified job 没有 needs 列表")
+        self.assertIn("web-e2e", [name.strip() for name in needs.group(1).split(",")])
+
+    def test_matrix_rows_beyond_core_install_what_the_node_suites_need(self):
+        job = self.job("python")
+        for step in ("actions/setup-node", "npm --prefix frontend ci",
+                     "FedericoCarboni/setup-ffmpeg", "PEACH_E2E_CHROME="):
+            self.assertIn(step, job, f"python 矩阵缺了 {step}，全量行上的用例会判失败")
 
 
 class CloudDriveGuideScopeTests(unittest.TestCase):

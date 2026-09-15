@@ -10,8 +10,9 @@
 路径翻译，声明根若沿用内建默认，process 读到的就是这台机器的真实媒体目录。
 
 短片由 ffmpeg 编码成真能解码的 2 秒片段：详情页的播放器会预加载源，占位字节只会让
-`/stream` 返回 503。缺 npm、`playwright-core`、ffmpeg 或本机 Chrome 时显式跳过，与 vitest
-同一口径；浏览器不另外下载，`PEACH_E2E_CHROME` 可以指定可执行文件。
+`/stream` 返回 503。缺 npm、`playwright-core`、ffmpeg 或本机 Chrome 时，本机显式跳过，
+CI（`GITHUB_ACTIONS=true`）判失败，与 vitest 同一口径；浏览器不另外下载，
+`PEACH_E2E_CHROME` 可以指定可执行文件。CI 的 `web-e2e` job 负责装齐这四样。
 """
 from __future__ import annotations
 
@@ -29,12 +30,13 @@ import urllib.error
 import urllib.request
 from contextlib import closing
 from pathlib import Path
+from unittest import mock
 
 from peach import settings_file
 from peach.config import FFMPEG_DIR
 from peach.ffmpeg import FFmpegResolver
 from peach.library_processing import process_library
-from support.conditions import windows_ledger_roots
+from support.conditions import missing_prerequisite, windows_ledger_roots
 from support.ledger import fresh_ledger
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -89,15 +91,15 @@ class WebE2ESmokeTests(unittest.TestCase):
     def setUpClass(cls):
         npm = shutil.which("npm")
         if npm is None:
-            raise unittest.SkipTest("跳过 e2e：本机没有 npm。装 Node 24+ 后 `-Scope web` 会带上它")
+            missing_prerequisite("跳过 e2e：本机没有 npm。装 Node 24+ 后 `-Scope web` 会带上它")
         if not (FRONTEND / "node_modules" / "playwright-core").is_dir():
-            raise unittest.SkipTest("跳过 e2e：frontend/node_modules 还没装，先 `npm --prefix frontend ci`")
+            missing_prerequisite("跳过 e2e：frontend/node_modules 还没装，先 `npm --prefix frontend ci`")
         ffmpeg = FFmpegResolver(FFMPEG_DIR).ffmpeg()
         if ffmpeg is None:
-            raise unittest.SkipTest("跳过 e2e：没找到 ffmpeg，演示库的短片编码不出来")
+            missing_prerequisite("跳过 e2e：没找到 ffmpeg，演示库的短片编码不出来")
         chrome = chrome_executable()
         if chrome is None:
-            raise unittest.SkipTest("跳过 e2e：没找到 Chrome；装 Google Chrome 或用 PEACH_E2E_CHROME 指定")
+            missing_prerequisite("跳过 e2e：没找到 Chrome；装 Google Chrome 或用 PEACH_E2E_CHROME 指定")
         cls.npm, cls.ffmpeg, cls.chrome = npm, str(ffmpeg.path), chrome
         cls.root = Path(tempfile.mkdtemp(prefix="peach-e2e-")).resolve()
         cls.server = None
@@ -195,6 +197,19 @@ class WebE2ESmokeTests(unittest.TestCase):
         self.assertEqual(completed.returncode, 0, f"{output}\n--- serve.log ---\n{self._server_log()}")
         self.assertRegex(output, r"# pass [1-9]\d*", output)
         self.assertRegex(output, r"# fail 0\b", output)
+
+
+class MissingPrerequisiteTests(unittest.TestCase):
+    """CI 里浏览器用例只能执行或失败，不能静默跳过；工作流那一半由 `test_frontend_build.py` 守。"""
+
+    def test_missing_prerequisites_skip_locally_and_fail_on_ci(self):
+        with mock.patch.dict(os.environ, {"GITHUB_ACTIONS": "true"}):
+            with self.assertRaisesRegex(AssertionError, "没有 npm"):
+                missing_prerequisite("没有 npm")
+        local = {key: value for key, value in os.environ.items() if key != "GITHUB_ACTIONS"}
+        with mock.patch.dict(os.environ, local, clear=True):
+            with self.assertRaises(unittest.SkipTest):
+                missing_prerequisite("没有 npm")
 
 
 if __name__ == "__main__":
