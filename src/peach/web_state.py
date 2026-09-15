@@ -157,7 +157,12 @@ class WebContract:
         self.thumbnail_job = self._job(
             "PeachTimelineThumbnailJob", "timeline-thumbnails")
         self.resource_apply_job = self._job("PeachResourceApplyJob", "resource-apply")
+        self.media_repair_job = self._job("PeachMediaRepairJob", "media-repair")
         self.follow_scheduler = None
+        #: 批量修 MP4 头要的两件东西，由 `api` 在装配时接上：它们属于播放链路，
+        #: 建在 app 那一侧，契约这边只留接口。没接上时修复端点会说清楚。
+        self.header_repairs = None
+        self.transcode_service = None
         # 两块后台任务的锁、状态和线程都归 BackgroundJob 管，契约上只留这两个字段。
         # 任务 id 的键名沿用各自原有的名字：它随公开投影下发，是前端契约。
         self.resource_scan = self._job(

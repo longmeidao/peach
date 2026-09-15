@@ -168,6 +168,8 @@ def create_app(
         available=sync is None or not sync.read_only,
     )
     contract.follow_scheduler = follow_scheduler
+    contract.header_repairs = header_repairs
+    contract.transcode_service = transcode_service
     # 只读端不写任务中心：`task_run` 也在账本里，reader 往里写会造成无法自动合并的
     # 分叉。活动页在只读端照常能看——读不受影响，只是看到的是写入端那台的记录。
     contract.task_runs.enabled = (

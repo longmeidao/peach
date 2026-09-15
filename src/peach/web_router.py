@@ -63,6 +63,7 @@ from .web_follow import (
 )
 from .web_links import w_links, w_links_check, w_links_prune
 from .web_library_processing import q_library_processing, q_library_processing_issues, w_library_processing
+from .web_media_repair import q_media_repair, w_media_repair
 from .web_playlists import q_playlist, q_playlists, w_playlist
 from .web_resource_sync import w_purge_missing, w_resource_sync_apply, w_resource_sync_scan
 from .web_review import q_review, w_review_auto_apply, w_review_decision, w_review_genre
@@ -246,6 +247,7 @@ GET_HANDLERS = {
     "/api/taste/refresh": lambda contract, args: contract.taste_refresh_job.snapshot() or {"status": "idle"},
     "/api/links/prune": lambda contract, args: contract.link_prune_job.snapshot() or {"status": "idle"},
     "/api/resource-sync/apply": lambda contract, args: contract.resource_apply_job.snapshot() or {"status": "idle"},
+    "/api/media-repair": q_media_repair,
     "/api/items": q_items,
     "/api/item": _get_item,
     "/api/parts": q_parts,
@@ -307,6 +309,7 @@ POST_HANDLERS = {
     "/api/links/prune": w_links_prune,
     "/api/resource-sync/scan": w_resource_sync_scan,
     "/api/resource-sync/apply": w_resource_sync_apply,
+    "/api/media-repair": w_media_repair,
     "/api/review/auto-apply": w_review_auto_apply,
     "/api/review/decision": w_review_decision,
     "/api/review/genre": w_review_genre,
@@ -324,6 +327,8 @@ READ_ONLY_POST_ROUTES = frozenset({
     "/api/follow/resolve", "/api/follow/credential",
     "/api/taste/refresh", "/api/taste/source", "/api/resource-sync/scan",
     "/api/links/check", "/api/data-cleanup/empty-folders",
+    # 修复只写 `transcode_root` 里的边车，那是本机缓存，不是账本。
+    "/api/media-repair",
 })
 
 

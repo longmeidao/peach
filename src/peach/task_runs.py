@@ -66,6 +66,7 @@ TASK_LABELS = {
     "resource-scan": "资源对账扫描",
     "resource-apply": "资源对账执行",
     "scraping-cover": "封面采集",
+    "media-repair": "播放兼容修复",
     "batch": "批量操作",
     "scrape-codes": "番号资料刮削",
     "jav-covers": "封面批量抓取",
