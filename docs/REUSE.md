@@ -323,7 +323,8 @@ Python、npm 与 GitHub Actions 的版本由 `.github/dependabot.yml` 每周检�
    的 Prestige 官方图为 1024×690、DUGA 为 1000×674、MGS 为 840×563、DMM mono 为 800×539。
    批量流程不请求社区来源，Javinizer-Go 的社区站快照只借厂牌；既有库采集在官方渠道落空时经
    `peach.community_catalog` 查 AVBase、JavBus 与 javdb（AVBase 搜索页 `/works?q=` 的 `__NEXT_DATA__`，
-   2026-09-14 实测可取），封面按 dHash 先求两个图源一致，只有一个图源时照用并留空 `verified_by`，
+   2026-09-14 实测可取；资料取商品号认得出这个番号的那条店铺条目，名寄せ的作品标题可能来自收录本作的
+   合集），封面按 dHash 先求两个图源一致，只有一个图源时照用并留空 `verified_by`，
    遇验证页不绕过（ADR-0030、ADR-0032）。DUGA Web API 需代理店应用 ID，未配置前
    只复用成功日志的精确 URL。MDC-NG 公共仓库只证明 Amazon 日本渠道存在，后端匹配逻辑未公开，故只留
    POC 候选。该流程不新增依赖、不写 ledger，操作步骤见 `peach-jav-cover-workflow`。

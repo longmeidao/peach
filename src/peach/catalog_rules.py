@@ -90,6 +90,8 @@ _TOKYO_HOT_BODY = re.compile(r"^(?:([nk])(\d{3,5})|red[-_]?(\d{2,4}))$", re.I)
 #: 所以站名出现时才允许在名字中段搜编号。
 _TOKYO_HOT_SITE_TOKEN = r"tokyo[-_. ]?hot"
 _TOKYO_HOT_SITE = re.compile(rf"(?i)(?<![a-z0-9]){_TOKYO_HOT_SITE_TOKEN}(?![a-z0-9])")
+#: 站名写在编号前面的番号写法（`TOKYO-HOT-N0762`），账本里按目录名落的 `code` 是这个形状。
+_TOKYO_HOT_SITE_PREFIX = re.compile(rf"(?i)^{_TOKYO_HOT_SITE_TOKEN}[-_. ]*")
 #: 名字开头就是编号的写法（`n1025_rena_yamamoto_ss_n_fhd.wmv`）。本编固定四位，
 #: 放宽到三位就会把 `no0037`、`k12` 这类一起收进来。
 _TOKYO_HOT_HEAD = re.compile(r"^(?:[nk]\d{4}|red[-_]\d{3})(?![0-9])", re.I)
@@ -297,8 +299,11 @@ def tokyo_hot_code(value: str | None) -> str:
 
     补零到发行方自己的位数（本编四位、Red Hot 三位），大小写一律折成小写。
     形态判据与小写这一点的出处见 `_TOKYO_HOT_BODY`。
+
+    站名写在编号前面的一并认（`TOKYO-HOT-N0762`）：账本里按目录名落的 `code` 就是这个
+    写法，站名不剥掉的话它既不成番号形态，也进不了封面缓存键。
     """
-    shape = _TOKYO_HOT_BODY.match(str(value or "").strip())
+    shape = _TOKYO_HOT_BODY.match(_TOKYO_HOT_SITE_PREFIX.sub("", str(value or "").strip()))
     if not shape:
         return ""
     if shape.group(3):
