@@ -437,7 +437,8 @@ class HeaderRepairStore:
     def repair_now(self, asset_id: int, source: Path) -> bool:
         """当场算一份头并存下来。已经有、正在算或上次算不出来都返回 False。"""
         name = self._name(asset_id, source)
-        if not name or self.resolver.ffprobe() is None or (self.root / name).exists():
+        ffprobe = self.resolver.ffprobe()
+        if not name or ffprobe is None or (self.root / name).exists():
             return False
         with self._guard:
             if name in self._running or name in self._failed:
@@ -445,8 +446,7 @@ class HeaderRepairStore:
             self._running.add(name)
         try:
             with self._slots:
-                write_sidecar(self.root / name,
-                              repaired_header(source, Path(self.resolver.ffprobe())))
+                write_sidecar(self.root / name, repaired_header(source, ffprobe.path))
             for stale in self.root.glob(f"{asset_id}-*{SIDECAR_SUFFIX}"):
                 if stale.name != name:
                     stale.unlink(missing_ok=True)

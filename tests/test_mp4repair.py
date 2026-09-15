@@ -11,6 +11,7 @@ from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from peach import mp4repair
+from peach.ffmpeg import BinaryChoice
 from peach.mp4index import _find, _iter_boxes, _video_stbl
 from peach.mp4repair import (
     HeaderRepairStore, RepairUnavailable, RepairedHeader, read_sidecar,
@@ -221,6 +222,19 @@ class HeaderRepairStoreTests(unittest.TestCase):
 
         self.assertEqual(self.store.lookup(6297, self.source), self.header)
 
+    def test_the_probe_that_gets_run_is_the_one_the_resolver_points_at(self):
+        """定位器答的是 `BinaryChoice`，解码那一步要的是它里面那条路径。"""
+        seen: list[Path] = []
+
+        def build(source: Path, ffprobe: Path):
+            seen.append(ffprobe)
+            return self.header
+
+        with patch.object(mp4repair, "repaired_header", build):
+            self.assertTrue(self.store.repair_now(6297, self.source))
+
+        self.assertEqual(seen, [Path("ffprobe")])
+
     def test_a_source_that_cannot_be_repaired_is_not_tried_again(self):
         """修不了的片子每次播放都重解一遍，就是把一分多钟的整片读白扔一次。"""
         attempts: list[Path] = []
@@ -266,10 +280,10 @@ class _Probe:
 
 
 class _Resolver:
-    """够 `HeaderRepairStore` 用的 FFmpeg 定位器。"""
+    """够 `HeaderRepairStore` 用的 FFmpeg 定位器：答案和生产里一样是 `BinaryChoice`。"""
 
-    def ffprobe(self) -> str:
-        return "ffprobe"
+    def ffprobe(self) -> BinaryChoice:
+        return BinaryChoice(Path("ffprobe"), "test")
 
 
 if __name__ == "__main__":
