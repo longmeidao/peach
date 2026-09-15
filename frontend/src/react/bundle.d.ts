@@ -112,9 +112,16 @@ export interface QualityGoalsProps {
   srcBadge(location: string, cost: string): string;
 }
 
+/** 来源和凭证页只要遗留层的 Toast：保存与撤销是写操作，回执归全站那一份。 */
+export interface ScrapingProps {
+  /** 写操作在服务端落地之后的过去时回执。 */
+  toast(message: string): void;
+}
+
 export interface ReactPages {
   activity: ReactPage<ActivityProps>;
   'quality-goals': ReactPage<QualityGoalsProps>;
+  scraping: ReactPage<ScrapingProps>;
 }
 
 export declare const pages: ReactPages;

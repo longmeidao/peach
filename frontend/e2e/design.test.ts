@@ -87,6 +87,34 @@ async function openQualityGoals(browser: Browser, items: unknown[]): Promise<Vis
   return opened;
 }
 
+/** 一个采集来源。字段以 `/api/scraping`（`src/peach/web_scraping.py`）为准。 */
+const scrapingSource = (source: string, label: string, cookie: boolean) => ({
+  source, label, login: `https://${source}.example/login`,
+  accepts_cookie: cookie, network: 'peach', cookie_saved: cookie,
+});
+
+/** 来源和凭证页按给定的一份 `/api/scraping` 打开：演示库里未必同时有收 Cookie 和不收的来源。
+ *
+ * 站标走服务端的 `/site-mark`，而这几个来源是造出来的，那一趟必然取不到；那是另一条判据，
+ * 这里给它一张能加载完的图，免得运行期问题名单里混进与本条无关的失败。 */
+async function openScraping(browser: Browser): Promise<Visit> {
+  const opened = await visit(browser, '/scraping', DESKTOP);
+  await opened.page.route('**/api/scraping', (route) => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({
+      sources: [scrapingSource('demoa', '演示来源甲', true), scrapingSource('demob', '演示来源乙', false)],
+    }),
+  }));
+  await opened.page.route('**/site-mark**', (route) => route.fulfill({
+    status: 200, contentType: 'image/png', body: Buffer.from(PIXEL, 'base64'),
+  }));
+  await opened.page.reload({ waitUntil: 'load' });
+  await opened.page.locator('form[aria-label="演示来源甲"]').waitFor({ timeout: 15_000 });
+  await settle(opened.page);
+  return opened;
+}
+
 describe('设计决定', () => {
   let browser: Browser;
 
@@ -208,6 +236,38 @@ describe('设计决定', () => {
       await opened.page.locator('li[data-goal-id="1"] h3 button.middle-truncated')
         .waitFor({ timeout: 10_000 });
       assert.ok((await title.textContent())!.includes('…'), '长标题没有被省略');
+      assert.deepEqual(opened.problems, []);
+    } finally {
+      await opened.close();
+    }
+  });
+
+  it('一张来源卡底下只有写入那一颗是主按钮，其余次级', { timeout: 60_000 }, async () => {
+    const opened = await openScraping(browser);
+    try {
+      const card = opened.page.locator('form[aria-label="演示来源甲"]');
+      const fill = (name: string) => card.getByRole('button', { name, exact: true })
+        .evaluate((element) => getComputedStyle(element).backgroundColor);
+      // 收 Cookie 且已存了一份的来源，底下三颗：撤销、检查、保存；只有保存是写入。
+      assert.equal(await fill('保存'), await tokenColor(opened.page, '.peach-react', '--color-button-primary'));
+      const secondary = await tokenColor(opened.page, '.peach-react', '--color-background-primary-default');
+      assert.equal(await fill('检查连接'), secondary, '检查连接被画成了主按钮');
+      assert.equal(await fill('撤销 Cookie'), secondary, '撤销 Cookie 被画成了主按钮');
+      // 没存过 Cookie 的来源没有可撤的对象，那一颗不画。
+      const plain = opened.page.locator('form[aria-label="演示来源乙"]');
+      assert.equal(await plain.getByRole('button', { name: '撤销 Cookie', exact: true }).count(), 0);
+      assert.deepEqual(opened.problems, []);
+    } finally {
+      await opened.close();
+    }
+  });
+
+  it('新窗口打开的来源地址两项 rel 都写：不带走会话，也不带走来处', { timeout: 60_000 }, async () => {
+    const opened = await openScraping(browser);
+    try {
+      const link = opened.page.locator('form[aria-label="演示来源甲"] a[target="_blank"]');
+      assert.equal(await link.getAttribute('href'), 'https://demoa.example/login');
+      assert.equal((await link.getAttribute('rel'))!.split(/\s+/).sort().join(' '), 'noopener noreferrer');
       assert.deepEqual(opened.problems, []);
     } finally {
       await opened.close();

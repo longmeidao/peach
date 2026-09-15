@@ -26,8 +26,6 @@ import type { Attributes, ComponentType } from 'preact';
 import { errorMessage } from './api';
 import { Configuration, loadConfiguration } from './islands/configuration';
 import type { ConfigurationData, ConfigurationProps } from './islands/configuration';
-import { Scraping, loadScraping } from './islands/scraping';
-import type { ScrapingData, ScrapingProps } from './islands/scraping';
 import { LibraryProcessing, loadLibraryProcessing } from './islands/library-processing';
 import type { LibraryProcessingData, LibraryProcessingProps } from './islands/library-processing';
 import type * as ReactBundle from '@peach/react';
@@ -56,7 +54,7 @@ export interface IslandState<D> {
  *  React 档的页面自己管数据（首屏落在共用的 Query 缓存里），`data` 写成 `null`。 */
 export interface IslandContracts {
   'library-processing': { props: LibraryProcessingProps; data: LibraryProcessingData };
-  'scraping': { props: ScrapingProps; data: ScrapingData };
+  'scraping': { props: ReactBundle.ScrapingProps; data: null };
   'quality-goals': { props: ReactBundle.QualityGoalsProps; data: null };
   configuration: { props: ConfigurationProps; data: ConfigurationData };
   activity: { props: ReactBundle.ActivityProps; data: null };
@@ -84,7 +82,7 @@ type IslandDefinition<N extends IslandName> = PreactIsland<N> | ReactIsland;
 
 const REGISTRY: { [N in IslandName]: IslandDefinition<N> } = {
   'library-processing': { load: loadLibraryProcessing, component: LibraryProcessing },
-  'scraping': { load: loadScraping, component: Scraping },
+  'scraping': { react: 'scraping' },
   'quality-goals': { react: 'quality-goals' },
   configuration: { load: loadConfiguration, component: Configuration },
   activity: { react: 'activity' },

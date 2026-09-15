@@ -121,9 +121,6 @@
    操作条固定 52px、竖直居中，按钮一律靠右；左侧有说明时说明推到最左。
    字阶照 Geist 示例实测：标题 20px/600、说明 14px/400——标题必须压过正文。 */
 .geist-fieldset-title{margin:0 0 8px;color:var(--ink);font-size:var(--fs-xl);font-weight:600}
-.geist-fieldset-heading{display:grid;gap:8px;min-width:0}
-.geist-fieldset-heading .geist-fieldset-title{margin:0}
-.geist-fieldset-heading>p{margin:0}
 .cleanupfieldset>.geist-fieldset-footer{box-sizing:border-box;min-height:var(--fieldset-bar-h);
   margin:0;padding:12px 12px 12px 20px;display:flex;align-items:center;justify-content:flex-end;gap:8px;
   border-top:1px solid var(--line-soft);background:var(--overlay-5)}
@@ -175,39 +172,10 @@
 .taste-history-guide-content a:hover{text-decoration:underline;text-underline-offset:3px}
 .stats h2{margin:0 0 4px;font-size:var(--fs-2xl)}
 .stats .sub{color:var(--muted);margin:0}
-/* 采集来源表单复用管理页 Fieldset。 */
+/* 来源和凭证页的正文归 React 子树（ADR-0031）。这两条只服务遗留骨架：那一句静态说明
+   和四块占位卡，宽度另由 `board.css` 那条钉到 `--board-content`。 */
 .scraping-page{width:min(812px,100%);margin:0 auto;display:grid;gap:20px}
 .scraping-page>h1,.scraping-page p{margin:0}
-.scraping-fields .scraping-cover-form{display:flex;align-items:center;gap:8px;min-width:0}
-.scraping-cover-form>input{flex:1}
-.scraping-cover-form>button{height:var(--control-h);white-space:nowrap}
-.scraping-fields{padding:20px;display:grid;gap:20px;min-width:0}
-.scraping-fields .geist-fieldset-title{margin:0}
-.scraping-fields label,.scraping-label{display:grid;gap:8px;min-width:0}
-.scraping-fields input:not([type=radio]):not([type=file]){width:100%;min-width:0;min-height:var(--control-h);box-sizing:border-box}
-.scraping-fields .scraping-url{display:inline-flex;align-items:center;gap:2px;align-self:start;min-width:0;text-decoration:none;color:var(--tungsten);overflow-wrap:anywhere;font-size:var(--fs-md)}
-.scraping-fields .scraping-url:hover{color:var(--tungsten);text-decoration:underline;text-underline-offset:3px}
-.scraping-fields .scraping-url img{flex:none;margin-inline-end:4px;width:16px;height:16px;border-radius:var(--badge-radius);object-fit:contain}
-.scraping-fields .scraping-url>span{min-width:0;overflow-wrap:anywhere}
-.scraping-network,.scraping-network .gselect{width:100%;min-width:0}
-.scraping-fields .gselectfield{justify-content:space-between;padding-right:16px;border-color:var(--field-ring)}
-.scraping-fields .gselectmenu button{border:0;justify-content:flex-start;padding:0 8px;background:transparent}
-.scraping-fields .gselectmenu button:hover,.scraping-fields .gselectmenu button[aria-selected=true]{background:var(--hover)}
-.scraping-cookie-method{justify-self:start}
-.scraping-cookie-method label{display:block}
-.scraping-cookie-method input:checked+span{font-weight:400}
-.scraping-file-control{position:relative;display:flex;align-items:center;gap:12px;min-width:0;min-height:var(--control-h)}
-/* 这颗假按钮站在 --ground 的卡面上，而次级档填的也是 --ground：去掉边框之后它和卡面
-   同色，就只剩「选择文件」四个字。操作条上的次级不用管（条子是 --overlay-5，比它暗一档），
-   站在卡面上的这一颗要自己沉下去一档才有边界。 */
-.scraping-file-control>.geist-button{flex:none;height:var(--control-h);background:var(--sunk)}
-.scraping-file-control>.geist-button:hover{background:var(--hover)}
-.scraping-file-name{min-width:0;overflow-wrap:anywhere;color:var(--muted)}
-.scraping-file-control>input{position:absolute;inset:0;opacity:0;width:100%;height:100%;cursor:pointer}
-.scraping-file-control:focus-within{outline:2px solid var(--tungsten);outline-offset:2px;border-radius:var(--control-radius)}
-.scraping-source{min-width:0}
-.scraping-source .geist-fieldset-footer{flex-wrap:wrap}
-@media(max-width:600px){.scraping-page{--control-h:44px}.scraping-source button{min-height:44px}.scraping-cookie-method span{height:44px}}
 #libraryProcessing{scroll-margin-top:80px}
 
 .reviewbulktoolbar{padding-block:0;margin-bottom:0}
