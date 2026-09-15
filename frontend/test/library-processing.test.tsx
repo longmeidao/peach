@@ -4,13 +4,17 @@ import { act } from 'preact/test-utils';
 import { LibraryProcessing } from '../src/islands/library-processing';
 
 let host: HTMLDivElement;
-it('没有来源资料显示中性记录且不提供失败重试',async()=>{
+it('来源说没有只报一个数，不算问题也不提供失败重试',async()=>{
   host=document.createElement('div');document.body.append(host);
-  await act(async()=>render(h(LibraryProcessing,{data:{status:'complete',error_count:0,issue_count:1,issue_preview:[{asset_id:1,title:'孤立资源',message:'来源未收录',severity:'info'}]},error:'',toast:vi.fn(),preview:true}),host));
-  expect(host.textContent).toContain('1 项采集记录');
+  await act(async()=>render(h(LibraryProcessing,{data:{status:'complete',issue_count:0,issue_preview:[],
+    notes:{querying_metadata:30,fetching_cover:162},
+    issues_log:'C:\peach-data\state\library-processing-one.issues.jsonl'},
+    error:'',toast:vi.fn(),preview:true}),host));
+  expect(host.textContent).toContain('外部来源没有资料 30 部、没有封面 162 部，7 天内不再问。');
+  expect(host.textContent).toContain('C:\peach-data\state\library-processing-one.issues.jsonl');
   expect(host.querySelector('.geist-note-error')).toBeNull();
   expect(host.textContent).not.toContain('重试未完成项');
-  expect(host.querySelector('.geist-note-details a')?.getAttribute('href')).toBe('/item/1');
+  expect(host.querySelector('.geist-note-details')).toBeNull();
 });
 it('三种扫描采集方式使用分体菜单并提交对应阶段', async () => {
   const bodies: object[] = [];

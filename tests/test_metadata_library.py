@@ -547,7 +547,8 @@ class LibraryNfoTests(unittest.TestCase):
         first = run()
         self.assertEqual((provider.query.call_count, provider.community.call_count), (1, 1))
         self.assertEqual([row['message'] for row in first['issue_preview']],
-                         ['外部来源没有这部片的资料，7 天内不再问', '封面未取得：来源返回 HTTP 503'])
+                         ['封面未取得：来源返回 HTTP 503'], '来源说没有只报一个数，不占问题清单')
+        self.assertEqual(first['notes'], {'querying_metadata': 1})
         recorded = json.loads(misses_path(config).read_text(encoding='utf-8'))
         self.assertEqual(list(recorded), ['r18dev', 'community'])
         self.assertEqual(list(recorded['r18dev']), ['STP-26232'])
@@ -556,21 +557,28 @@ class LibraryNfoTests(unittest.TestCase):
         second = run()
         self.assertEqual((provider.query.call_count, provider.community.call_count), (1, 1), '资料 7 天内不再问')
         self.assertEqual(provider.cover.call_count, 2, '封面上次是来源故障，这次照问')
-        self.assertEqual([row['message'] for row in second['issue_preview']],
-                         ['外部来源没有这部片的资料，7 天内不再问', '外部来源没有这部片的封面，7 天内不再问'])
+        self.assertEqual(second['issue_preview'], [])
+        self.assertEqual(second['notes'], {'querying_metadata': 1, 'fetching_cover': 1})
         self.assertEqual(second['retryable_asset_ids'], [])
-        self.assertEqual((second['status'], second['error_count']), ('complete', 0))
-        self.assertTrue(all(row['severity'] == 'info' for row in second['issue_preview']))
-        self.assertEqual((first['status'], first['error_count']), ('failed', 1))
-        stored = dict(second, status='failed', error='2 项需要处理，请查看详情并重试。')
-        stored.pop('error_count')
+        self.assertEqual((second['status'], second['issue_count']), ('complete', 0))
+        self.assertEqual((first['status'], first['issue_count']), ('failed', 1))
+        # 状态文件里没有 `notes` 的任务，读出来要按日志把告知项和问题分开重算。
+        stored = dict(second, status='failed', error='2 项需要处理，请查看详情并重试。', issue_count=2,
+                      issue_preview=[{'asset_id': 1, 'title': 'STP-26232.mp4', 'path': '',
+                                      'message': message, 'severity': 'error'}
+                                     for message in ('外部来源没有这部片的资料，7 天内不再问',
+                                                     '外部来源没有这部片的封面，7 天内不再问')])
+        stored.pop('notes')
         state_path(config).write_text(json.dumps(stored), encoding='utf-8')
-        self.assertEqual(snapshot(config)['status'], 'complete')
+        projected = snapshot(config)
+        self.assertEqual((projected['status'], projected['issue_count'], projected['issue_preview']),
+                         ('complete', 0, []))
+        self.assertEqual(projected['notes'], {'querying_metadata': 1, 'fetching_cover': 1})
         self.assertEqual(json.loads(state_path(config).read_text(encoding='utf-8'))['status'], 'failed')
 
         third = run()
         self.assertEqual((provider.query.call_count, provider.cover.call_count), (1, 2))
-        self.assertEqual(third['issue_count'], 2)
+        self.assertEqual(third['issue_count'], 0)
         self.assertEqual((third['status'], third['retryable_asset_ids']), ('complete', []))
 
         run(retry_ids=[1])
