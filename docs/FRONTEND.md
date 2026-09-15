@@ -19,6 +19,8 @@ React + Tailwind v4 + BoardUI 源码，已迁出的 Preact island 是过渡层�
 | `frontend/src/management.ts` | 数据管理首屏 Fieldset、网盘能力显隐与浏览历史导入指南 |
 | `frontend/src/legacy/*.d.ts` | `/js/core.js`、`/js/ui-components.js` 的手写类型 |
 | `frontend/src/react/` | React 子树：`entry.tsx` 是构建入口，`bundle.d.ts` 是对外契约，`boardui/` 逐字复制 BoardUI 源码 |
+| `frontend/src/react/query.ts` | React 子树唯一的 TanStack Query 客户端，页面级 `prefetch` 与组件读的是同一份缓存 |
+| `frontend/src/react/components/` | Peach 自己的组合件（说明条、进度、空态、等待点），BoardUI 注册表里没有对应条目的那些 |
 | `frontend/src/react-slot.tsx` | Preact island 里挂 React 子树的交接组件 |
 | `frontend/test/` | vitest 用例与遗留模块的桩；`test/react/` 按 React JSX 转换 |
 | `web/dist/peach-ui.js` | 构建产物，**进 Git**，由 `/dist/{name}` 提供 |
@@ -150,9 +152,15 @@ await ui.mountIsland('quality-goals', $('#stats'), props, {isCurrent: () => surf
   是遗留骨架，那不属于 island。
 - 容器归遗留层所有，它会在别的页面进入时直接 `innerHTML=`，所以 `mountIsland` 每次
   都先自我卸载。
+- 注册表有两档。Preact 档写 `{load, component}`；整页归 React 的写 `{react: '<page>'}`，
+  `mountIsland` 动态取回 `@peach/react`，先 `pages.<page>.prefetch(props, signal)` 把首屏
+  写进共用的 Query 缓存，再换掉骨架、在一个 `.peach-react` 容器里创建 React 根。两档
+  对遗留层是同一个调用，`unmountIsland` 对 React 档卸根、撤容器。
 - 现状：遗留外壳**还没有**在换页时调 `unmountIsland`——它的离场路径是直接
   `innerHTML=`，没有统一的钩子。所以离场靠 `isCurrent` 保证不误画，在途请求要等自然
-  结束。把 `unmountIsland` 接进壳的换页路径属于路由本体迁移那一步，不在单页迁移里做。
+  结束；已经画出来的那一屏离场后组件仍然活着，有轮询的页面照着原节律继续（实测离开
+  `/activity` 之后仍是两秒一轮）。再进这一页时 `mountIsland` 先自我卸载，同时只有一份。
+  把 `unmountIsland` 接进壳的换页路径属于路由本体迁移那一步，不在单页迁移里做。
 
 遗留助手不打进产物：`LOC`、`fmtDur`、`fmtSize`、`emptyStateHtml`、`noteHtml` 在浏览器里
 仍是 `/js/*.js`，源码用 `@peach/legacy/*` 引用，`output.paths` 在产物里改写回真实路径。
@@ -210,23 +218,31 @@ await ui.refreshStore('quality-goals');   // 挂着的那屏自己重画，不�
 
 ## 迁移下一个页面
 
-先挑一个**数据来自单个 `/api/...` GET、容器不与别人共用、没有写操作和轮询**的页面。
+整页归 React（ADR-0031），`frontend/src/islands/` 不再新增文件。先挑一个**数据来自单个
+`/api/...` GET、容器不与别人共用、写操作少**的页面。
 
-1. `frontend/src/islands/<page>.tsx`：导出数据类型、props 类型、端点常量、`load<Page>()`
-   和组件。组件只接 `{...props, data, error}`，不自己取数。这份数据要是还有第二个
-   读者，就按上一节把数据类型、端点和取数一起搬进 `frontend/src/state/<page>.ts`，
-   island 这边只剩 props、`load` 和组件。
-2. `frontend/src/islands.ts`：在 `IslandContracts` 里登记类型，在 `REGISTRY` 里登记
-   `{load, component}`。类型不登记会直接编译不过。
-3. `frontend/test/<page>.test.tsx`：用假 fetch 断言读数口径、空态、失败态与交互。
-   遗留模块在测试里走 `frontend/test/stubs/`（只在 `vitest.config.ts` 里 alias，
-   不影响构建）。
-4. `web/app.js`：把该页的渲染函数体换成上面那段挂载块，保留 `enterManagementSurface()`
-   与 `showManagementBody({placeholder:...})`，删掉只服务它的模块级状态。
-5. `tests/test_web_ui.py`：把对那段渲染源的断言换成断言挂载契约；搬走的语义契约
-   （中间省略、空态、标签文案）在 `tests/test_frontend_build.py` 的
-   `IslandSourceContractTests` 里补回来，不能让它无声消失。
-6. 跑 `& .\scripts\test.ps1 -Scope web`（含 tsc 与 vitest），
+1. `frontend/src/react/<page>/<page>.ts`：端点常量、`queryKey`、数据类型和纯折算函数，
+   外加一个 `prefetch<Page>(signal)`——`queryClient.fetchQuery` 包住 `src/api.ts` 的
+   `apiGet`，信号透到真正的 `fetch` 上。一页只用一个 `queryKey`：一屏里的几段要是分开
+   取，就会出现这一段是新的、那一段是旧的。
+2. `frontend/src/react/<page>/<page>-page.tsx`：组件用 `useQuery` 读同一个 `queryKey`，
+   要轮询就写 `refetchInterval`，间隔按上一次拿到的内容算，不另起 `setInterval`。
+3. `frontend/src/react/entry.tsx`：在 `pages` 里登记 `{prefetch, mount: mounter(Page)}`，
+   签名写进 `bundle.d.ts` 的 `ReactPages`；`frontend/src/islands.ts` 里 `IslandContracts`
+   的 `props` 取 bundle 的类型、`data` 写 `null`，`REGISTRY` 登记 `{react: '<page>'}`。
+4. 外观按 BoardUI：注册表里有的条目逐字复制进 `src/react/boardui/`，哈希记进
+   `ORIGIN.md` 与 `UPSTREAM.sha256`；注册表里没有的（分区标题、空态、进度、说明条）
+   用 `src/react/components/` 下 Peach 自己的组合件，第二个页面要用就搬进那里，不复制一份。
+5. `frontend/test/react/<page>.test.tsx`：假 fetch 加 `test/react/render.tsx` 的挂载助手，
+   断言结构、请求次数、轮询节律和失败时留下什么，用例之间 `queryClient.clear()`。
+   外观决定进 `frontend/e2e/design.test.ts`：`page.route` 造出真实数据里凑不齐的状态，
+   断言读 `getComputedStyle`。
+6. `web/app.js` 的挂载块不变；`web/css/` 里只服务这一页正文的规则删掉，遗留骨架还要用
+   的留着。
+7. `tests/test_web_ui.py` 里这一页的断言分三处：路由、菜单入口与骨架留在原地，CSS
+   字符串删掉（设计决定改由 `design.test.ts` 读计算值），行为搬进 vitest；搬到哪里写进
+   提交说明。
+8. 跑 `& .\scripts\test.ps1 -Scope web`（含 tsc、lint、vitest 与真浏览器冒烟），
    再 `npm --prefix frontend run build` 并把 `web/dist/` 一起提交。
 
 Preact island 继续用 `web/css/` 下的分区，复用原有的类名，`peach-ui.js` 不出样式表。
@@ -254,13 +270,14 @@ vendor 到 `web/vendor/` 的四个包（video.js、swiper、lucide-static、heal
 | `react`、`react-dom` | React 子树的渲染层。BoardUI 源码是 React 组件，交互建在 React Aria 上；Peach 不经 Preact 兼容层运行 React Aria（ADR-0031） |
 | `react-aria-components` | BoardUI 输入框、勾选框、开关、下拉与弹出面板的交互和无障碍语义：标签关联、键盘操作、焦点进出、`aria-invalid` |
 | `react-aria` | 只用 `UNSAFE_PortalProvider`：把 Popover 与下拉列表挂进 `body` 末尾同样带 `.peach-react` 的容器，弹层读到与页面内一致的 token 与 Preflight |
+| `@tanstack/react-query` | React 页面的取数与缓存：页面级 `prefetch` 与组件里的 `useQuery` 共用一份缓存，「取完数才画」不必把首屏数据当 props 串一路；轮询写成 `refetchInterval`，卸载时跟着组件一起停 |
 | `tailwind-merge` | BoardUI 的 `cx()` 合并类名时去掉互相冲突的工具类 |
 | `@remixicon/react` | BoardUI 组件内置的图标 |
 | `tailwindcss`、`@tailwindcss/vite` | 按 `src/react/` 里实际用到的类名生成 `peach-react.css` |
 | `@types/react`、`@types/react-dom` | React 子树的类型检查 |
 
-React 子树单独构建（`vite.react.config.ts`）。`peach-react.js` 669 kB（gzip 174.0 kB），
-只在页面挂 React 子树时由 island 动态加载；`peach-react.css` 82 kB（gzip 12.8 kB），
+React 子树单独构建（`vite.react.config.ts`）。`peach-react.js` 723 kB（gzip 187.8 kB），
+只在页面挂 React 子树时由 island 动态加载；`peach-react.css` 85 kB（gzip 13.2 kB），
 由 `index.html` 在旧样式表之前引入。它的 `build.cssTarget` 对齐 Tailwind v4 的浏览器基线
 （Chrome 111、Firefox 128、Safari 16.4），oklch 颜色原样输出：目标再旧，lightningcss 会补
 `lab()` 回退，末位小数随平台浮点不同，CI 在 Linux 上重建的产物就与提交的对不上。
