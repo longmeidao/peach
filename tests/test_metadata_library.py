@@ -258,6 +258,20 @@ class LibraryNfoTests(unittest.TestCase):
         self.assertEqual(list(read_rows(candidates, missing_ok=True)), [])
         provider.query.assert_called_once()
 
+    def test_the_collector_carries_the_cookies_saved_in_scraping_settings(self):
+        """采集设置里贴的 JavBus Cookie 要真的跟着采集走。
+
+        凭据根多给一层 `follow` 不会报错，只会让每个来源都读成「没贴过 Cookie」，
+        表现是 JavBus 一直回年龄确认页。
+        """
+        from peach import scraping_access
+        from peach.library_processing import _RemoteSession
+        config = PeachConfig(self.root, self.root / 'config.toml', present=True)
+        scraping_access.save(config.directory('secrets'), 'javbus', {'cookie': 'existmag=all; age=verified'})
+        session = _RemoteSession(config, None, None, retrying=False)
+        root = session.provider().transport.inner.root
+        self.assertTrue(list(scraping_access.cookie_jar(scraping_access.values_for(root, 'javbus'), 'javbus')))
+
     @windows_ledger_roots
     def test_a_candidate_repeating_the_current_value_is_not_a_question(self):
         """连本地 NFO 也一样：值和账本里那个字一模一样时没有什么可判断的。"""
