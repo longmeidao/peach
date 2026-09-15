@@ -9,6 +9,8 @@ import { createRoot } from 'react-dom/client';
 import { ActivityPage } from './activity/activity-page';
 import { prefetchTasks } from './activity/tasks';
 import type * as Bundle from './bundle';
+import { QualityGoalsPage } from './quality-goals/quality-goals-page';
+import { prefetchQualityGoals } from './quality-goals/quality-goals';
 import { queryClient } from './query';
 import { GeneralSettings } from './settings/general-settings';
 import { MaintenanceSettings } from './settings/maintenance-settings';
@@ -47,6 +49,9 @@ function mounter<P extends object>(Component: ComponentType<P>) {
 /** 整页归 React 的那些页面，按名字给遗留层的 React 档用。 */
 export const pages: Bundle.ReactPages = {
   activity: { prefetch: (_props, signal) => prefetchTasks(signal), mount: mounter(ActivityPage) },
+  'quality-goals': {
+    prefetch: (_props, signal) => prefetchQualityGoals(signal), mount: mounter(QualityGoalsPage),
+  },
 };
 
 export const mountGeneralSettings: typeof Bundle.mountGeneralSettings = mounter(GeneralSettings);

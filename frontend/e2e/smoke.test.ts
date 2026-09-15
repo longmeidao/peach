@@ -28,6 +28,8 @@ interface Route {
 const heading = (page: Page, scope: string, name: string): Locator =>
   page.locator(scope).getByRole('heading', { name, exact: true });
 
+const DESKTOP = VIEWPORTS.find((viewport) => !viewport.mobile)!;
+
 /** 索引条目（`data-k`）或明确的空态，先出现哪个算哪个。选择器里就带 `:visible`：
  * 不然 `.first()` 可能落在一个隐藏的匹配上，等它可见等到超时，主体其实早画好了。 */
 const indexEntries = (page: Page): Locator =>
@@ -113,4 +115,49 @@ describe('路由冒烟', () => {
       });
     }
   }
+
+  /* React 档的页面自己管取数：轮询跟着那棵根活，而不是跟着遗留层的「代」。遗留层换页时
+     多数管理页直接 `innerHTML=`，根被挤出文档却照样活着——这一条盯的就是它有没有被卸掉。
+     换页走 pushState + popstate：侧栏按钮、抽屉和浏览器后退最后走的都是这一条路。 */
+  it('离开活动页之后轮询停下，回到这一页又接上', { timeout: 120_000 }, async () => {
+    const opened = await visit(browser, '/activity', DESKTOP);
+    try {
+      const polls: string[] = [];
+      opened.page.on('request', (request) => {
+        if (request.url().includes('/api/tasks')) polls.push(request.url());
+      });
+      const waitForPolls = async (least: number, what: string) => {
+        for (let step = 0; step < 80; step += 1) {
+          if (polls.length >= least) return;
+          await opened.page.waitForTimeout(250);
+        }
+        assert.fail(`${what}：只看到 ${polls.length} 次 /api/tasks，要 ${least} 次`);
+      };
+      await expectBody(opened.page, '/activity',
+        [heading(opened.page, '#stats', '还没有任务记录')]);
+      // 先确认轮询真的在跑，否则下面「停下来了」在它从没开始时也成立。
+      await waitForPolls(2, '活动页的轮询没有跑起来');
+
+      await opened.page.evaluate(() => {
+        history.pushState({}, '', '/stats');
+        window.dispatchEvent(new PopStateEvent('popstate'));
+      });
+      await expectBody(opened.page, '/stats',
+        [opened.page.locator('#stats').getByText('馆藏视频', { exact: true })]);
+      await settle(opened.page);
+      const stopped = polls.length;
+      assert.equal(await opened.page.locator('#stats .peach-react').count(), 0,
+        '换页之后活动页的 React 根还留在管理区正文里');
+      await opened.page.waitForTimeout(3_000);
+      assert.equal(polls.length, stopped, '离开活动页之后 /api/tasks 还在轮询');
+
+      await opened.page.goBack();
+      await expectBody(opened.page, '/activity',
+        [heading(opened.page, '#stats', '还没有任务记录')]);
+      await waitForPolls(stopped + 2, '回到活动页之后轮询没有接上');
+      await assertHolds(opened.page, opened.problems, '/activity 换页往返');
+    } finally {
+      await opened.close();
+    }
+  });
 });

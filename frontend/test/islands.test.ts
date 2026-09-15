@@ -3,9 +3,8 @@ import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { islandMounted, islandNames, mountIsland, unmountIsland } from '../src/islands';
 import { queryClient } from '../src/react/query';
-import { resetStores } from '../src/state';
 
-import { deferredFetch, goal, legacyProps, payload, seedGoals } from './helpers';
+import { deferredFetch, legacyProps, processing } from './helpers';
 
 // React 档挂的是一棵真的 React 根，更新要在 `act` 里落地，否则断言读到的是上一帧。
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -13,16 +12,14 @@ import { deferredFetch, goal, legacyProps, payload, seedGoals } from './helpers'
 const container = () => {
   const el = document.createElement('div');
   // 遗留层进入页面时先铺骨架，island 接手的容器里已经有东西。
-  el.innerHTML = '<div class="geist-skeleton" data-skeleton="cards">正在读取高清版目标</div>';
+  el.innerHTML = '<div class="geist-skeleton" data-skeleton="cards">正在读取处理进度</div>';
   document.body.append(el);
   return el;
 };
 
 afterEach(() => {
   document.body.innerHTML = '';
-  // 共享 store 是模块级的，会活过单个用例；不清就变成用例之间的隐藏耦合。
-  resetStores();
-  // React 档的首屏落在共用的 Query 缓存里，同样活过单个用例。
+  // React 档的首屏落在共用的 Query 缓存里，它是模块级的，会活过单个用例。
   queryClient.clear();
   vi.unstubAllGlobals();
 });
@@ -51,16 +48,16 @@ describe('island 注册表', () => {
 
 describe('mountIsland', () => {
   it('取数期间保留遗留骨架，数据到位才一次性换掉', async () => {
-    const fetch = deferredFetch(payload([goal()]));
+    const fetch = deferredFetch(processing());
     fetch.install();
     const el = container();
-    const mounting = mountIsland('quality-goals', el, legacyProps());
+    const mounting = mountIsland('library-processing', el, legacyProps());
     await Promise.resolve();
     expect(el.querySelector('[data-skeleton]'), '骨架被提前撤掉会出现第二段等待态').not.toBeNull();
     fetch.resolve();
     await mounting;
     expect(el.querySelector('[data-skeleton]')).toBeNull();
-    expect(el.querySelectorAll('.qualityitem')).toHaveLength(1);
+    expect(el.querySelectorAll('.library-processing')).toHaveLength(1);
   });
 
   it('首屏取数失败时画出原因，不留在骨架上', async () => {
@@ -70,44 +67,44 @@ describe('mountIsland', () => {
       json: async () => ({ message: '账本当前只能浏览' }),
     })));
     const el = container();
-    await mountIsland('quality-goals', el, legacyProps());
+    await mountIsland('library-processing', el, legacyProps());
     expect(el.querySelector('.geist-note-error')?.textContent).toContain('账本当前只能浏览');
   });
 
   it('取数期间用户走开就不画：遗留层换页的判据是代，不是信号', async () => {
-    const fetch = deferredFetch(payload([goal()]));
+    const fetch = deferredFetch(processing());
     fetch.install();
     const el = container();
     let current = true;
-    const mounting = mountIsland('quality-goals', el, legacyProps(), {
+    const mounting = mountIsland('library-processing', el, legacyProps(), {
       isCurrent: () => current,
     });
     await Promise.resolve();
     current = false;
     fetch.resolve();
     await mounting;
-    expect(el.querySelector('.qualityitem'), '页面已经换掉，数据不能盖上去').toBeNull();
+    expect(el.querySelector('.library-processing'), '页面已经换掉，数据不能盖上去').toBeNull();
     expect(el.querySelector('[data-skeleton]')).not.toBeNull();
   });
 
   it('重新挂载时上一次的迟到响应不再写进容器', async () => {
-    const stale = deferredFetch(payload([goal({ id: 7, name: 'stale.mp4' })]));
+    const stale = deferredFetch(processing({ status: 'failed', error: '上一趟的原因' }));
     stale.install();
     const el = container();
-    const first = mountIsland('quality-goals', el, legacyProps());
+    const first = mountIsland('library-processing', el, legacyProps());
     await Promise.resolve();
 
-    const fresh = deferredFetch(payload([goal({ id: 9, name: 'fresh.mp4' })]));
+    const fresh = deferredFetch(processing({ status: 'failed', error: '这一趟的原因' }));
     fresh.install();
-    const second = mountIsland('quality-goals', el, legacyProps());
+    const second = mountIsland('library-processing', el, legacyProps());
     fresh.resolve();
     await second;
     stale.resolve();
     await first;
 
-    expect(el.querySelectorAll('.qualityitem')).toHaveLength(1);
-    expect(el.textContent).toContain('fresh.mp4');
-    expect(el.textContent).not.toContain('stale.mp4');
+    expect(el.querySelectorAll('.library-processing')).toHaveLength(1);
+    expect(el.textContent).toContain('这一趟的原因');
+    expect(el.textContent).not.toContain('上一趟的原因');
   });
 });
 
@@ -181,15 +178,15 @@ describe('mountIsland 的 React 档', () => {
 
 describe('unmountIsland', () => {
   it('中止在途取数并清空容器', async () => {
-    const fetch = deferredFetch(payload([goal()]));
+    const fetch = deferredFetch(processing());
     fetch.install();
     const el = container();
-    const mounting = mountIsland('quality-goals', el, legacyProps());
+    const mounting = mountIsland('library-processing', el, legacyProps());
     await Promise.resolve();
     unmountIsland(el);
     await mounting;
     expect(fetch.signal()?.aborted, '离开页面必须真的中止请求').toBe(true);
-    expect(el.querySelector('.qualityitem')).toBeNull();
+    expect(el.querySelector('.library-processing')).toBeNull();
     expect(el.querySelector('[data-skeleton]'),
       '还没画过就卸载时容器里是遗留骨架，island 不该清掉不属于它的东西').not.toBeNull();
   });
@@ -202,12 +199,12 @@ describe('unmountIsland', () => {
 
   it('容器上挂没挂着，遗留层问得出来', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => ({
-      ok: true, status: 200, json: async () => payload([goal()]),
+      ok: true, status: 200, json: async () => processing(),
     })));
     const el = container();
     expect(islandMounted(el)).toBe(false);
     // 取数还没回来也算挂着：这段时间里再挂一次会把在途那次作废，白等一趟。
-    const mounting = mountIsland('quality-goals', el, legacyProps());
+    const mounting = mountIsland('library-processing', el, legacyProps());
     expect(islandMounted(el)).toBe(true);
     await mounting;
     expect(islandMounted(el)).toBe(true);
@@ -215,25 +212,5 @@ describe('unmountIsland', () => {
     expect(islandMounted(el)).toBe(false);
     // 遗留层拿到的可能是个空引用——那时页面上根本没有这个容器。
     expect(islandMounted(null)).toBe(false);
-  });
-
-  it('卸载之后共享状态再变也不重画：订阅要跟着组件一起走', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => ({
-      ok: true, status: 200, json: async () => payload([goal({ id: 1, name: 'one.mp4' })]),
-    })));
-    const el = container();
-    const props = legacyProps();
-    await mountIsland('quality-goals', el, props);
-    expect(el.querySelectorAll('.qualityitem')).toHaveLength(1);
-    const painted = props.javTitleHtml.mock.calls.length;
-    expect(painted).toBeGreaterThan(0);
-
-    unmountIsland(el);
-    // 换一份完全不同的数据。还留着订阅的话，组件会为一个已经卸载的容器再画一次。
-    await seedGoals([goal({ id: 2, name: 'after.mp4' }), goal({ id: 3, name: 'more.mp4' })]);
-    expect(props.javTitleHtml.mock.calls.length, '卸载后组件仍在响应 signal，订阅泄漏了')
-      .toBe(painted);
-    expect(el.querySelector('.qualityitem')).toBeNull();
-    expect(el.textContent).not.toContain('after.mp4');
   });
 });

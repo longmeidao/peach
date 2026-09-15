@@ -4,7 +4,7 @@
 
 ## BoardUI 正式前端迁移
 
-Board 视觉层是唯一一套界面，没有切换开关；Board 风格的视觉层与控件映射已在生产。迁移按 [ADR-0031](adr/0031-frontend-react-boardui-tailwind.md) 逐页改写成 React + Tailwind v4 + BoardUI 原版源码，每次一到两个页面、独立分支集成，旧渲染函数、旧 CSS 与旧断言随页面删除。已迁到 React 的只有配置页四个分区；activity、library-processing、quality-goals、scraping 仍是 Preact island，其余页面仍在 `web/app.js`。布尔开关对应 Board Switch，互斥选择对应 Segmented Control；数值配置支持合法范围内自定义，可关闭功能用 Switch，开启才展示数字输入。
+Board 视觉层是唯一一套界面，没有切换开关；Board 风格的视觉层与控件映射已在生产。迁移按 [ADR-0031](adr/0031-frontend-react-boardui-tailwind.md) 逐页改写成 React + Tailwind v4 + BoardUI 原版源码，每次一到两个页面、独立分支集成，旧渲染函数、旧 CSS 与旧断言随页面删除。已迁到 React 的是配置页四个分区、活动页与高清版页；configuration 外壳、library-processing、scraping 仍是 Preact island，其余页面仍在 `web/app.js`。布尔开关对应 Board Switch，互斥选择对应 Segmented Control；数值配置支持合法范围内自定义，可关闭功能用 Switch，开启才展示数字输入。
 
 前端基础库随页面引入，取舍与时机见 ADR-0031「前端基础库」一节：TanStack Query 随第一个有两个读者的数据域（`/quality-goals` 与数据管理卡片）进；TanStack Table 随关注管理表格与 BoardUI Data Table 进；React Router 在外壳与路由迁移那一步接管；TanStack Virtual 在馆藏网格迁到 React 时按实测决定。Remix Icon 候选审查在预览 `/icon-review.html`，现有已选图标保留至用户筛选。迁移不包含版本号或其他分支发布工作。
 
@@ -131,7 +131,7 @@ Board 视觉层是唯一一套界面，没有切换开关；Board 风格的视�
     - 领域层：`catalog_rules` 里站名交替串、TLD 列表各写两份；`transcodes.requires_conversion`／`browser_path` 是同一段缓存逻辑；`code_variants` 在 `jav_cover_fetch` 与 `catalog_rules` 各一份；`library_processing` 是第三条 r18 请求路径且跨模块拿私有 `_fetch`；`metadata_seesaa.RoutedMetadataProvider` 只有 `scrape_codes.py` 用，内联。
     - scripts：`audit_creator_attributions.py`（查的 `legacy:asset` 已无写入者）、`apply_metadata_tags.py`（绕过 `/review`）、`creator_tags.py --apply-review`（与 `web_review` 判据不同的第二条写路，`--export-review` 要留）建议删；`backfill_rule34_tag_types.py` 2026-09-08 已跑完全部待补条目，连接器早已在入库时取类型，脚本可删；7 处绕开 `scripting.open_for_write`、5 处自拼只读 URI、5 处手写线性重试要接上共享实现；`audit_video_endcards.py`、`audit_fc2_similarity.py`、`localize_series_names.py`、`find_ads.py` 还会用但文档没登记，归到 `peach-batch-jobs` 或 `docs/SOURCING.md`。
     - tests：约 3 700 条源码文本断言集中在 `test_web_ui.py`（近 90 天 20% 的提交都在改它）与 `test_follow_web.py`；页面断言设施两处各写一份；`test_fastapi_api.BASE_SCHEMA` 手写 22 张表，与 `migrations/*.sql` 的漂移未取得；31 个文件手写 `CREATE TABLE`，`tests/support/ledger.py` 有 22 个在用。方向是触碰时迁到 `test_web_js.py` 与 `fresh_ledger()`，不整体重写；`check_copy_final_state.py` 的词表不拦「过去／此前」。
-    - 前端：11 处 `await import('/dist/peach-ui.js')` 与文件顶部静态 import 并存（`test_frontend_build.py` 与 `test_web_ui.py` 钉住了这种写法，要同改）；`wireNavigationDrag` 与 `ui-components.wireDragReorder` 双实现；`refreshStore` 零消费；`.fnote` 在 21 与 22 号 CSS 互相覆盖。
+    - 前端：11 处 `await import('/dist/peach-ui.js')` 与文件顶部静态 import 并存（`test_frontend_build.py` 与 `test_web_ui.py` 钉住了这种写法，要同改）；`wireNavigationDrag` 与 `ui-components.wireDragReorder` 双实现；`.fnote` 在 21 与 22 号 CSS 互相覆盖。
     - 文档：同一条规则最多写在 19 个文件里（测试入口）；`CLAUDE.md` 正文与 AGENTS、worktree 技能重复；本文件的操作 28 与 30 同题，另有一节评审记录；`docs/PIKPAK.md` 是按日期的 runbook，流程该归 `peach-batch-jobs`。
 36. 归一后要用户判的 10 张厂牌标识：AttractiveLLC ×3、C-more_Entertainment ×3、Bambi_Promotion ×2、Deep_s、Tameike_Goro。补到内容外接圆这条规则在「设计上就出血到边」的标识上会把内容推离边缘，逐张判词在 `peach-data/review/refit-review-20260908.csv`，原图在 `peach-data/archive/logos-pre-refit-20260908/`，对比页 `build/logo_compare.html` 的第一节。占宽和圆外损失都分不开 C-more（0.98／0.97）与 MARRION（0.95／0.94），所以没加窄化条件——先由用户定还原哪几张，再按定下来的形状写判据和测试。
 37. 补底到 64 的 7 张还没落盘：`normalize_studio_logos.py --apply` 要用户自己跑（DorcelClub.img、Flower 三张、LINX.img、HEYZO.icon、Prestige.icon，逐张前后见对比页第三节）。

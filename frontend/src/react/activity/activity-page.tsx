@@ -19,6 +19,7 @@ import type { ActivityProps } from '../bundle';
 import { EmptyState } from '../components/empty-state';
 import { LoadingDots } from '../components/loading-dots';
 import { Note } from '../components/note';
+import { Page } from '../components/page';
 import { Progress } from '../components/progress';
 import {
   elapsedText, fetchTasks, momentText, pollInterval, statusLabel, summaryText,
@@ -108,11 +109,6 @@ function RunList({ live = false, children }: { live?: boolean; children: ReactNo
   return (
     <ul aria-live={live ? 'polite' : undefined} className="flex min-w-0 flex-col gap-3">{children}</ul>
   );
-}
-
-/** 页面正文的一条窄列，与管理区标题同一条中线（`--board-content`）。 */
-function Page({ children }: { children: ReactNode }) {
-  return <div className="mx-auto flex w-full max-w-board flex-col gap-8">{children}</div>;
 }
 
 export function ActivityPage(_props: ActivityProps) {

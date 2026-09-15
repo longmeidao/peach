@@ -4,7 +4,7 @@
  * 之后，它的入口只做两件事：铺好加载占位，然后把一个容器交给这里。
  *
  *     const ui = await import('/dist/peach-ui.js');
- *     await ui.mountIsland('quality-goals', $('#stats'), props);
+ *     await ui.mountIsland('scraping', $('#stats'), props);
  *
  * `mountIsland` 是 async 且**取完数才画**：遗留层已经铺了骨架，island 若先画一个空
  * 容器再自己转圈，同一次进入就会出现两段等待态（`peach-web-ui` 明确禁止）。所以这里
@@ -26,19 +26,12 @@ import type { Attributes, ComponentType } from 'preact';
 import { errorMessage } from './api';
 import { Configuration, loadConfiguration } from './islands/configuration';
 import type { ConfigurationData, ConfigurationProps } from './islands/configuration';
-import { QualityGoals, loadQualityGoals } from './islands/quality-goals';
-import type { QualityGoalsProps } from './islands/quality-goals';
-import type { QualityGoalsData } from './state/quality-goals';
 import { Scraping, loadScraping } from './islands/scraping';
 import type { ScrapingData, ScrapingProps } from './islands/scraping';
 import { LibraryProcessing, loadLibraryProcessing } from './islands/library-processing';
 import type { LibraryProcessingData, LibraryProcessingProps } from './islands/library-processing';
 import type * as ReactBundle from '@peach/react';
 
-/* 跨岛共享状态的入口一起从这里出去。遗留层拿到的是一个 bundle，它有两种用法：
- * `mountIsland` 挂一屏，`refreshStore` 告诉已经挂着的那屏「数据变了」。
- * 怎么写一个 store 见 `./state/index.ts` 和 `docs/FRONTEND.md`。 */
-export { refreshStore, storeNames } from './state';
 export { watchJob, followJobProgress, jobActivityHtml } from './jobs';
 export { identityEvidenceHtml, reviewImageHtml, wireReviewPictures } from './review-evidence';
 export { createReviewSelection, wireReviewSelection, updateReviewSticky, groupReviewRows } from './review-bulk';
@@ -52,7 +45,6 @@ export { catalogSuggestions, catalogEmptyHtml, emptyCatalogLayout } from './cata
 export { syncSidebarSurface, sidebarTagCounts, sidebarHasCatalogContent } from './sidebar';
 export { cleanupSkeletonHtml, cloudLocations, cloudPreferenceLocations, tasteHistoryGuideHtml, wireTasteHistoryGuide, TASTE_GUIDE_KEY } from './management';
 export { resourceScanHtml } from './resource-sync';
-export type { StoreName } from './state';
 
 /** 首屏取数的结果。`data` 与 `error` 恰有一个成立。 */
 export interface IslandState<D> {
@@ -65,7 +57,7 @@ export interface IslandState<D> {
 export interface IslandContracts {
   'library-processing': { props: LibraryProcessingProps; data: LibraryProcessingData };
   'scraping': { props: ScrapingProps; data: ScrapingData };
-  'quality-goals': { props: QualityGoalsProps; data: QualityGoalsData };
+  'quality-goals': { props: ReactBundle.QualityGoalsProps; data: null };
   configuration: { props: ConfigurationProps; data: ConfigurationData };
   activity: { props: ReactBundle.ActivityProps; data: null };
 }
@@ -93,7 +85,7 @@ type IslandDefinition<N extends IslandName> = PreactIsland<N> | ReactIsland;
 const REGISTRY: { [N in IslandName]: IslandDefinition<N> } = {
   'library-processing': { load: loadLibraryProcessing, component: LibraryProcessing },
   'scraping': { load: loadScraping, component: Scraping },
-  'quality-goals': { load: loadQualityGoals, component: QualityGoals },
+  'quality-goals': { react: 'quality-goals' },
   configuration: { load: loadConfiguration, component: Configuration },
   activity: { react: 'activity' },
 };

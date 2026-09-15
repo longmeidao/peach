@@ -14,7 +14,6 @@ React + Tailwind v4 + BoardUI 源码，已迁出的 Preact island 是过渡层�
 | --- | --- |
 | `frontend/src/islands.ts` | 挂载契约与注册表，构建入口 |
 | `frontend/src/islands/*.tsx` | 每个 island 一个文件 |
-| `frontend/src/state/*.ts` | 跨岛共享状态，一份数据一个文件；`index.ts` 是登记处 |
 | `frontend/src/api.ts` | 带 `AbortController` 的取数封装 |
 | `frontend/src/management.ts` | 数据管理首屏 Fieldset、网盘能力显隐与浏览历史导入指南 |
 | `frontend/src/legacy/*.d.ts` | `/js/core.js`、`/js/ui-components.js` 的手写类型 |
@@ -156,11 +155,11 @@ await ui.mountIsland('quality-goals', $('#stats'), props, {isCurrent: () => surf
   `mountIsland` 动态取回 `@peach/react`，先 `pages.<page>.prefetch(props, signal)` 把首屏
   写进共用的 Query 缓存，再换掉骨架、在一个 `.peach-react` 容器里创建 React 根。两档
   对遗留层是同一个调用，`unmountIsland` 对 React 档卸根、撤容器。
-- 现状：遗留外壳**还没有**在换页时调 `unmountIsland`——它的离场路径是直接
-  `innerHTML=`，没有统一的钩子。所以离场靠 `isCurrent` 保证不误画，在途请求要等自然
-  结束；已经画出来的那一屏离场后组件仍然活着，有轮询的页面照着原节律继续（实测离开
-  `/activity` 之后仍是两秒一轮）。再进这一页时 `mountIsland` 先自我卸载，同时只有一份。
-  把 `unmountIsland` 接进壳的换页路径属于路由本体迁移那一步，不在单页迁移里做。
+- 离场有两道闸。第一道是壳：`claimSurface` 是所有页面共同经过的换页点，它在那里对
+  管理区正文的容器（`#stats`）调 `unmountIsland`，React 档的根连同它的轮询一起停。
+  多数管理页的离场路径是直接 `innerHTML=`，根被挤出文档却照样活着，所以卸载必须由这
+  一个公共点负责，而不是逐页判断。第二道是 `isCurrent`：取数落地时用户可能已经走开，
+  这时不画。再进这一页时 `mountIsland` 先自我卸载，同时只有一份。
 
 遗留助手不打进产物：`LOC`、`fmtDur`、`fmtSize`、`emptyStateHtml`、`noteHtml` 在浏览器里
 仍是 `/js/*.js`，源码用 `@peach/legacy/*` 引用，`output.paths` 在产物里改写回真实路径。
@@ -171,50 +170,25 @@ await ui.mountIsland('quality-goals', $('#stats'), props, {isCurrent: () => surf
 
 判据只有一条：**这份数据有没有第二个读者**。
 
-没有就用 hooks。展开、悬停、翻到第几页这些东西只属于一个岛，搬进 store 只是把本来
-局部的东西变成全局的。第一份 store 之所以存在，是因为高清版目标确实有两个读者：
-`/quality-goals` 整页列表要 `items`，`/data-cleanup` 上的「高清版」卡片只要一个
-`total`，为此另发了一次 `/api/quality-goals?limit=1`——同一个真相取两次，显示的数
-就可能对不上。
+没有就用 hooks。展开、悬停、翻到第几页这些东西只属于一页，提上去只是把本来局部的
+东西变成全局的。
 
-有第二个读者就在 `frontend/src/state/` 建一个文件，规矩三条：
+有第二个读者就让两个读者读**同一个 `queryKey`**，不另建一份状态。整个 React 子树只有
+`src/react/query.ts` 那一个 `QueryClient`（`tests/test_frontend_build.py` 盯着），页面级
+`prefetch` 写进去的那一份，任何组件的 `useQuery` 都直接读得到，谁先谁后都是同一个数。
+现成的例子是高清版目标：`/quality-goals` 整页列表要 `items`，`/data-cleanup` 上的
+「高清版」卡片只要一个 `total`。卡片现在还在 `web/app.js` 里，自己发一次
+`/api/quality-goals?limit=1`；它随数据管理页迁移时改读 `QUALITY_GOALS_KEY`，那一刻这
+份数据才真的只剩一个来源。**遗留层里的读者等它所在的页面迁过来再接**，不为它在产物
+上另开一个通知入口。
 
-1. **一份数据一个文件**，文件名就是它的名字，再在 `state/index.ts` 里登记。
-2. **只导出 `computed` 视图，不导出可写的 signal。** 写入只能通过该文件导出的函数，
-   所以「谁改了它」在源码里数得出来；组件里直接赋值会抛 TypeError，不是靠约定。
-3. **取数归 store。** `ensureX()` 是「读一次就够」，已有数据直接给、并发调用合流成
-   一个请求；`refreshX(signal?)` 是「重新取」，页面刷新和写完数据之后走它。
+端点字符串在 `frontend/src` 里只许出现一次，就在这一页的数据模块里
+（`src/react/quality-goals/quality-goals.ts`）——要拦的是「两个地方各写一遍这条 URL」。
 
-```ts
-// frontend/src/state/quality-goals.ts
-const state = signal<QualityGoalsState>(BLANK);        // 不导出
-export const qualityGoals = computed(() => state.value);
-export const qualityGoalsTotal = computed(() => state.value.data?.total ?? null);
-export async function refreshQualityGoals(abort?: AbortSignal) { /* 写 state.value */ }
-export async function ensureQualityGoals() { /* 有就给，没有才 refresh */ }
-```
-
-岛这边只是读：组件里读 `qualityGoals.value` 就自动订阅，数据之后再变这一屏自己重画，
-不需要重新 `mountIsland`。卸载时订阅跟着组件一起走（`test/islands.test.ts` 里有一条
-mount → unmount → 改 signal 的用例盯着这件事）。`mountIsland` 仍然会把 `{data, error}`
-作为 props 传进来——那是所有 island 共用的首屏契约——由 store 支撑的岛不看它们：
-同一份数据两个来源，刷新之后就会各说一套。
-
-首屏该用哪个函数看路由表：`/quality-goals` 是 `refresh:'reopen'`，刷新就是重新进这一页，
-所以它的 `load` 走 `refreshQualityGoals`，不吃缓存。
-
-**遗留层改完数据怎么通知岛**：产物上多导出一个 `refreshStore(name)`，用法和
-`mountIsland(name, ...)` 一样按名字来。
-
-```js
-const ui = await import('/dist/peach-ui.js');
-await ui.refreshStore('quality-goals');   // 挂着的那屏自己重画，不必重新挂载
-```
-
-它取数失败时不抛，只返回 `false`：失败已经落进 store 的错误态、显示在屏幕上了，而
-调用点在 `app.js` 里是 fire-and-forget，再抛一次只会变成没人接的 rejection。名字不在
-注册表里则立刻抛错——那是写错了，不是运行时状况。目前 `web/app.js` 还没有调用
-它——`/data-cleanup` 那张卡片接进来属于下一批迁移，本轮只把入口备好。
+首屏要不要吃缓存看路由表：`/quality-goals` 是 `refresh:'reopen'`，刷新就是重新进这一页，
+所以它的 `prefetch` 不给 `staleTime`，每次进来都重取。要按节律更新的页面写
+`refetchInterval`（活动页 2 秒／10 秒），不另起 `setInterval`：轮询跟着组件走，
+换页时壳在 `claimSurface` 卸根，它自己就停了。
 
 ## 迁移下一个页面
 
@@ -233,12 +207,18 @@ await ui.refreshStore('quality-goals');   // 挂着的那屏自己重画，不�
 4. 外观按 BoardUI：注册表里有的条目逐字复制进 `src/react/boardui/`，哈希记进
    `ORIGIN.md` 与 `UPSTREAM.sha256`；注册表里没有的（分区标题、空态、进度、说明条）
    用 `src/react/components/` 下 Peach 自己的组合件，第二个页面要用就搬进那里，不复制一份。
+   `auto-fill` 网格、固定像素的封面这类工具类里没有的档位，在 `styles.css` 里加
+   `@theme` 或 `@utility`，类名照常由 Tailwind 生成；lint 不收任意值。
 5. `frontend/test/react/<page>.test.tsx`：假 fetch 加 `test/react/render.tsx` 的挂载助手，
    断言结构、请求次数、轮询节律和失败时留下什么，用例之间 `queryClient.clear()`。
    外观决定进 `frontend/e2e/design.test.ts`：`page.route` 造出真实数据里凑不齐的状态，
    断言读 `getComputedStyle`。
-6. `web/app.js` 的挂载块不变；`web/css/` 里只服务这一页正文的规则删掉，遗留骨架还要用
-   的留着。
+6. `web/app.js` 的挂载块不变；`web/css/` 与 `web/board.css` 里只服务这一页正文的规则删掉，
+   遗留骨架还要用的留着——骨架仍然用旧类名（`boardPageSkeleton`），它要的那几条不能一起删。
+   遗留层只在 `app.js` 里有的助手（`javTitleHtml`、`srcBadge` 这类返回 HTML 的）继续由
+   props 递进来，用 `dangerouslySetInnerHTML` 插；它们是全站语义契约的唯一实现，在页面里
+   重写一份就会漂。而 `emptyStateHtml`、`noteHtml`、`collectionSummaryHtml` 这类只是
+   「画个通用块」的助手不跟过来：React 页用 `components/` 下的组合件。
 7. `tests/test_web_ui.py` 里这一页的断言分三处：路由、菜单入口与骨架留在原地，CSS
    字符串删掉（设计决定改由 `design.test.ts` 读计算值），行为搬进 vitest；搬到哪里写进
    提交说明。
@@ -260,7 +240,6 @@ vendor 到 `web/vendor/` 的四个包（video.js、swiper、lucide-static、heal
 | 依赖 | 为什么需要它 |
 | --- | --- |
 | `preact` | island 的渲染层。10 kB gzip 的运行时，配 `dangerouslySetInnerHTML` 能直接复用遗留层返回 HTML 的助手 |
-| `@preact/signals` | 跨岛共享状态的载体。组件读 `.value` 就订阅，数据变了只重画读它的那一屏，不用把状态提到某个共同祖先——岛之间没有共同祖先 |
 | `vite` | 构建入口。库模式出单个 ES module，`external` + `output.paths` 把遗留模块留在外面 |
 | `typescript` | 类型即契约：注册表、props 与端点响应都靠它在编译期拦住漂移 |
 | `vitest` | 前端测试运行器。与 Vite 共用同一份配置解析，不必再维护第二套转译 |
@@ -276,16 +255,11 @@ vendor 到 `web/vendor/` 的四个包（video.js、swiper、lucide-static、heal
 | `tailwindcss`、`@tailwindcss/vite` | 按 `src/react/` 里实际用到的类名生成 `peach-react.css` |
 | `@types/react`、`@types/react-dom` | React 子树的类型检查 |
 
-React 子树单独构建（`vite.react.config.ts`）。`peach-react.js` 723 kB（gzip 187.8 kB），
-只在页面挂 React 子树时由 island 动态加载；`peach-react.css` 85 kB（gzip 13.2 kB），
+React 子树单独构建（`vite.react.config.ts`）。`peach-react.js` 728 kB（gzip 189.2 kB），
+只在页面挂 React 子树时由 island 动态加载；`peach-react.css` 85 kB（gzip 13.3 kB），
 由 `index.html` 在旧样式表之前引入。它的 `build.cssTarget` 对齐 Tailwind v4 的浏览器基线
 （Chrome 111、Firefox 128、Safari 16.4），oklch 颜色原样输出：目标再旧，lightningcss 会补
 `lab()` 回退，末位小数随平台浮点不同，CI 在 Linux 上重建的产物就与提交的对不上。
-
-`@preact/signals` 钉在 2.11.1：它对 `preact` 的 peer 要求是 `>= 10.25.0`，和这里的
-10.29.8 对得上；运行时另外带一个 `@preact/signals-core`，是它自己的依赖，由 lockfile
-钉住，不进清单。产物因此从 17.7 kB 涨到 31.5 kB（gzip 6.6 → 10.6 kB）：多出来的是
-`signals` + `signals-core` + `preact/hooks` 三份，第三份随第一个用 hooks 的岛进入。
 
 没有引入 `@testing-library/preact`：`preact` 的 `render` 加 `querySelector` 已经够用，
 断言的本来就是真实 DOM。
