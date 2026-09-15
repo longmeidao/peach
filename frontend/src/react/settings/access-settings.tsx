@@ -49,7 +49,7 @@ export function AccessSettings({ initial, receipt }: AccessSettingsProps) {
       current_password: current, password: disable ? '' : password, confirmation: disable ? '' : confirmation,
     }, 'POST', signal), (next) => {
       setState(next); setCurrent(''); setPassword(''); setConfirmation(''); setDisable(false); setFields({});
-      receipt(next.mode === 'open' ? '已关闭访问密码' : '已保存访问密码');
+      receipt(next.mode === 'open' ? '已关闭访问密码' : '已保存配置');
     }, (cause) => {
       const payload = cause instanceof ApiError ? cause.body as { errors?: FieldErrors; detail?: { errors?: FieldErrors } } : null;
       const errors = payload?.errors || payload?.detail?.errors;

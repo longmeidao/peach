@@ -36,7 +36,7 @@ export function AutomaticUpdates({ initial, receipt }: { initial: AutomaticUpdat
     event.preventDefault();
     if (!initial.available) return;
     void action.run('save', (signal) => apiSend<AutomaticUpdateState>('/api/configuration/automatic-updates',
-      { mode, interval_hours: hours }, 'POST', signal), () => receipt('已保存自动更新设置'));
+      { mode, interval_hours: hours }, 'POST', signal), () => receipt('已保存配置'));
   };
 
   const help = !initial.available
@@ -65,7 +65,7 @@ export function AutomaticUpdates({ initial, receipt }: { initial: AutomaticUpdat
       </Rows>
       {action.error ? <Stack divided><ErrorText>{action.error}</ErrorText></Stack> : null}
       <Footer>
-        <Button variant="secondary" type="submit" disabled={!initial.available} {...busyProps(action.busy === 'save')}>保存自动更新</Button>
+        <Button type="submit" disabled={!initial.available} {...busyProps(action.busy === 'save')}>保存配置</Button>
       </Footer>
     </Section>
   );

@@ -109,6 +109,7 @@ Peach 使用 Board 的视觉与组件语义，保留 Vite、Preact、FastAPI 和
   尺寸、颜色和布局的底稿在 `web/css/`，board.css 只做覆盖，选择器权重必须压得过底稿。
 - 「增加对比度」关闭透明与折射；系统降低透明度偏好也使用实色。折射只作用于导航背景，不扭曲文字。
 - 设置标题与控件在桌面同排，手机宽度不足时换行。单位与数值属于同一输入框；可关闭的功能显示开关，关闭时隐藏数值。
+- 设置页的保存键统一叫「保存配置」，回执「已保存配置」；保存、检查、添加、刷新这类操作键用 BoardUI `Button` 的 `primary`（缺省值，蓝底白字）。`secondary` 只给面板触发键与「取消」，不可逆操作用 `danger`（`frontend/test/settings-buttons.test.ts`）。
 - 数值非法时不保存；关闭搜索记录后不读取或记入搜索记录，关闭相关推荐后不请求该模块。
 - Board 免费源码以官网声明的 MIT 条款使用；Pro 图表与模板不取用收费源码。项目自有图表不宣称来自 Pro，也不承诺 Pro 更新权益。
 - Remix Icon 固定为 4.9.1，按包内 Remix Icon License v1.0 登记；官网所写的 Apache 2.0 不代替实际包许可证。保留已确认图标，候选由 `attic/evidence/20260908-boardui-preview/boardui-full/icon-review.html` 审查。
