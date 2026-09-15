@@ -18,6 +18,30 @@ def directory_files(directory: Path) -> dict[str, Path]:
         return {entry.name.casefold(): Path(entry.path) for entry in entries if entry.is_file()}
 
 
+POSTER_EXTENSIONS = ('.jpg', '.jpeg', '.png', '.tbn')
+_NUMBERED = re.compile(r'(.*\D|)(\d+)(\D*)')
+
+
+def _numbered_image_set(stem: str, files: dict[str, Path]) -> bool:
+    """`stem` 是不是一组连号文件里的一个号，而同组别的号只有图片、没有视频。
+
+    批量改名的图集把正片和图片编进同一组号：`(1).mp4` 旁边是 `(1).jpg` 到 `(119).jpg`，
+    同名的那张只是图集第一张，不是海报。多部番号放一个目录时 `ABC-124.jpg` 有自己的
+    `ABC-124.mp4`，不算图集。
+    """
+    match = _NUMBERED.fullmatch(stem.casefold())
+    if match is None:
+        return False
+    videos = {path.stem.casefold() for path in files.values() if path.suffix.lower() in VIDEO}
+    for path in files.values():
+        other = _NUMBERED.fullmatch(path.stem.casefold())
+        if (path.suffix.lower() in POSTER_EXTENSIONS and other is not None
+                and other.group(1, 3) == match.group(1, 3) and other.group(2) != match.group(2)
+                and path.stem.casefold() not in videos):
+            return True
+    return False
+
+
 def sidecars(video: Path, files: dict[str, Path] | None = None):
     """`video` 旁边的 NFO 与海报候选；`files` 是调用方已列好的同目录索引，省掉再列一遍。"""
     files = directory_files(video.parent) if files is None else files
@@ -25,11 +49,13 @@ def sidecars(video: Path, files: dict[str, Path] | None = None):
     nfo = files.get((video.stem + '.nfo').casefold())
     if nfo is None and single:
         nfo = files.get('movie.nfo')
-    names = [video.stem + '-poster', video.stem]
+    names = [video.stem + '-poster']
+    if not _numbered_image_set(video.stem, files):
+        names.append(video.stem)
     if single:
         names.extend(['poster', 'folder', 'cover'])
     posters = [files[name.casefold() + extension] for name in names
-               for extension in ('.jpg', '.jpeg', '.png', '.tbn')
+               for extension in POSTER_EXTENSIONS
                if name.casefold() + extension in files]
     return nfo, posters
 

@@ -54,6 +54,23 @@ class LibraryNfoTests(unittest.TestCase):
         named.touch()
         self.assertEqual(sidecars(video)[0], named)
 
+    def test_numbered_image_set_beside_the_video_is_not_its_poster(self):
+        gallery = self.root / 'gallery'
+        gallery.mkdir()
+        video = gallery / 'TG@BOT- (1).mp4'
+        for name in ('TG@BOT- (1).mp4', 'TG@BOT- (1).jpg', 'TG@BOT- (2).jpg', 'TG@BOT- (10).jpg'):
+            (gallery / name).touch()
+        self.assertEqual(sidecars(video)[1], [])
+        (gallery / 'cover.jpg').touch()
+        self.assertEqual(sidecars(video)[1], [gallery / 'cover.jpg'])
+
+    def test_releases_sharing_a_folder_keep_their_same_name_posters(self):
+        for code in ('ABC-123', 'ABC-124'):
+            (self.root / f'{code}.mp4').touch()
+            (self.root / f'{code}.jpg').touch()
+        (self.root / 'ABC-123-fanart.jpg').touch()
+        self.assertEqual(sidecars(self.root / 'ABC-123.mp4')[1], [self.root / 'ABC-123.jpg'])
+
     def test_episode_and_plain_set_without_jav_identity(self):
         path = self.root / 'episode.nfo'
         path.write_text('<episodedetails><title>Episode</title><uniqueid type="tmdb">123</uniqueid>'
