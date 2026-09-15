@@ -122,7 +122,7 @@ CI（`GITHUB_ACTIONS=true`）里缺这些就判失败，由工作流负责装齐
 其余几条照样全部成立。新增路由要在 `ROUTES` 里写明它的主体。
 浏览器取本机 Google Chrome（`PEACH_E2E_CHROME` 可指定），短片由 ffmpeg 编码；缺 npm、
 `playwright-core`、ffmpeg 或 Chrome 时本机显式跳过，CI 里判失败。声明根是 Windows 形态，目前只在 Windows 上执行，
-CI 由 `web-e2e` job 在 `windows-latest` 上每次执行 `web` 域。界面验收里发现的同类问题，
+CI 由 `web-e2e` job 在 `windows-latest` 上执行 `web` 域，矩阵扩成全量时改由 Windows 全量行覆盖（`docs/TESTING.md`）。界面验收里发现的同类问题，
 先在这里补一条用例再修。
 
 设计决定另有 `frontend/e2e/design.test.ts`，读 `getComputedStyle` 断言用户定过的外观：React 输入框不带旧焦点环、

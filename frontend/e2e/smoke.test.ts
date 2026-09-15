@@ -17,7 +17,7 @@ import { after, before, describe, it } from 'node:test';
 
 import type { Browser, Locator, Page } from 'playwright-core';
 
-import { layout, launch, requiredEnv, settle, visit, VIEWPORTS } from './harness.ts';
+import { configurationBody, expectBody, layout, launch, requiredEnv, settle, visit, VIEWPORTS } from './harness.ts';
 
 interface Route {
   path: string;
@@ -28,9 +28,10 @@ interface Route {
 const heading = (page: Page, scope: string, name: string): Locator =>
   page.locator(scope).getByRole('heading', { name, exact: true });
 
-/** 索引条目（`data-k`）或明确的空态，先出现哪个算哪个。 */
+/** 索引条目（`data-k`）或明确的空态，先出现哪个算哪个。选择器里就带 `:visible`：
+ * 不然 `.first()` 可能落在一个隐藏的匹配上，等它可见等到超时，主体其实早画好了。 */
 const indexEntries = (page: Page): Locator =>
-  page.locator('#index [data-k], #index [data-geist-empty-state]').first();
+  page.locator('#index [data-k]:visible, #index [data-geist-empty-state]:visible').first();
 
 const ROUTES: readonly Route[] = [
   { path: '/', body: (page) => [page.locator('#grid article.card').first()] },
@@ -54,10 +55,7 @@ const ROUTES: readonly Route[] = [
     path: '/data-cleanup',
     body: (page) => [heading(page, '#main', '数据管理'), heading(page, '#stats', '扫描与采集')],
   },
-  {
-    path: '/configuration',
-    body: (page) => [heading(page, '#main', '配置'), page.locator('#stats').getByRole('tab', { name: '通用' })],
-  },
+  { path: '/configuration', body: configurationBody },
   { path: '/activity', body: (page) => [heading(page, '#main', '活动'), heading(page, '#stats', '还没有任务记录')] },
   {
     path: `/item/${requiredEnv('PEACH_E2E_ITEM')}`,
@@ -67,19 +65,6 @@ const ROUTES: readonly Route[] = [
     },
   },
 ];
-
-async function assertBody(page: Page, route: Route): Promise<void> {
-  for (const locator of route.body(page)) {
-    try {
-      await locator.waitFor({ state: 'visible', timeout: 15_000 });
-    } catch (error) {
-      // 带上此刻的无障碍树：CI 上只有这段输出，看得出停在骨架、空态换了文案还是整块没画。
-      const snapshot = await page.locator('#main').ariaSnapshot({ timeout: 5_000 }).catch(() => '未取得');
-      assert.fail(`${route.path}：页面主体没有出现，等不到 ${locator}\n${(error as Error).message}\n`
-        + `#main 当时的无障碍树：\n${snapshot.slice(0, 3000)}`);
-    }
-  }
-}
 
 async function assertHolds(page: Page, problems: string[], where: string): Promise<void> {
   assert.deepEqual(problems, [], `${where}：页面报错或有失败请求`);
@@ -106,7 +91,7 @@ describe('路由冒烟', () => {
       it(`${route.path} @ ${viewport.name}`, { timeout: 60_000 }, async () => {
         const opened = await visit(browser, route.path, viewport);
         try {
-          await assertBody(opened.page, route);
+          await expectBody(opened.page, route.path, route.body(opened.page));
           await settle(opened.page);
           await assertHolds(opened.page, opened.problems, route.path);
           // 设置浮层的那一排 tab 常驻 DOM、关着时不可见；只点页面上看得见的那一排。

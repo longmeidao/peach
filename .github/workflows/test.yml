@@ -185,9 +185,12 @@ jobs:
           exit 1
 
   # 浏览器冒烟（`frontend/e2e/smoke.test.ts`）与设计决定断言（`design.test.ts`）。
-  # `python` 矩阵的 Windows 行在 PR 上只跑 `core`，这两组用例只有在这里每次都执行。
+  # `python` 矩阵的 Windows 行平时只跑 `core`，这两组用例靠这里执行；矩阵扩成全量
+  # （`plan` 的 `wide`）时 Windows 行已经把 `web` 域跑过一遍，这里就不再跑第二遍。
   web-e2e:
     name: 浏览器冒烟与设计决定断言
+    needs: [plan]
+    if: needs.plan.outputs.wide != 'true'
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
@@ -249,8 +252,11 @@ jobs:
     needs: [plan, python, wheel-smoke, web-bundle, web-e2e, web-vendor]
     runs-on: ubuntu-latest
     steps:
+      # `web-e2e` 只在矩阵没扩成全量时执行；全量矩阵下它按条件跳过，`web` 域已由
+      # Windows 全量行覆盖。别的 job 跳过或失败都算红。
       - name: 所有必需任务均成功
         env:
           RESULTS: ${{ toJSON(needs) }}
+          WIDE: ${{ needs.plan.outputs.wide }}
         run: |
-          python -c 'import json, os; results=json.loads(os.environ["RESULTS"]); assert all(job["result"] == "success" for job in results.values()), results'
+          python -c 'import json, os; results=json.loads(os.environ["RESULTS"]); wide=os.environ["WIDE"] == "true"; bad={name: job["result"] for name, job in results.items() if job["result"] != "success" and not (name == "web-e2e" and wide and job["result"] == "skipped")}; assert not bad, (bad, results)'
