@@ -1,11 +1,11 @@
-"""社区来源的解析与封面比对：AVBase、javdb 各自的页面形状，以及「两个图源对得上才用」。"""
+"""社区来源的解析与封面比对：AVBase、JavBus、javdb 各自的页面形状，以及图源印证与只有一个图源时的退路。"""
 import io
 import json
 import unittest
 
 from PIL import Image
 
-from peach.community_catalog import IMAGE_LIMIT, avbase_work, javdb_work, verified_cover
+from peach.community_catalog import IMAGE_LIMIT, avbase_work, javbus_work, javdb_work, verified_cover
 from peach.http import HttpResponse
 from peach.jav_cover_fetch import Candidate, NotFound, Unavailable, _fetch
 
@@ -31,6 +31,7 @@ TITLE = "涼森れむ流 HOW TO SEX！！"
 DMM_COVER = "https://pics.dmm.co.jp/mono/movie/adult/118abw358/118abw358pl.jpg"
 MGS_COVER = "https://image.mgstage.com/images/prestige/abw/358/pb_e_abw-358.jpg"
 JAVDB_COVER = "https://c0.jdbstatic.com/covers/zb/Zb7mX.jpg"
+JAVBUS_COVER = "https://www.javbus.com/pics/cover/9x2a_b.jpg"
 AVBASE_DATA = {"props": {"pageProps": {"works": [
     {"work_id": "ABW-3580", "title": "別の作品", "products": []},
     {"prefix": "prestige", "work_id": "ABW-358", "title": TITLE, "actors": [{"name": "涼森れむ"}], "products": [
@@ -45,6 +46,7 @@ AVBASE_DATA = {"props": {"pageProps": {"works": [
     ]},
 ]}}}
 AVBASE_SEARCH = "https://www.avbase.net/works?q=ABW-358"
+JAVBUS_WORK = "https://www.javbus.com/ABW-358"
 JAVDB_SEARCH = "https://javdb.com/search?q=ABW-358&f=all"
 JAVDB_DETAIL = "https://javdb.com/v/Zb7mX?locale=zh"
 
@@ -54,6 +56,17 @@ def avbase_page(data):
             + json.dumps(data, ensure_ascii=False) + "</script></html>").encode()
 
 
+#: 形状取自厂牌回查缓存的 JavBus 作品页（PRED-340）：字段行之间有换行与缩进，演员不在字段行里。
+JAVBUS_PAGE = (f"<h3>ABW-358 {TITLE}</h3>\n"
+               '<a class="bigImage" href="/pics/cover/9x2a_b.jpg"><img src="/pics/cover/9x2a_b.jpg"></a>\n'
+               '<p><span class="header">識別碼:</span> <span style="color:#CC0000;">ABW-358</span>\n</p>\n'
+               '<p><span class="header">發行日期:</span> 2023-05-26</p>\n'
+               '<p><span class="header">長度:</span> 210分鐘</p>\n'
+               '<p><span class="header">製作商:</span> <a href="https://www.javbus.com/studio/x">プレステージ</a>\n'
+               '            </p>            <p><span class="header">發行商:</span> '
+               '<a href="https://www.javbus.com/label/y">ABSOLUTELY WONDERFUL</a>\n</p>'
+               '<p class="header">類別:<span id="genre-toggle"></span></p>\n'
+               '<div class="star-name"><a href="https://www.javbus.com/star/z" title="涼森れむ">涼森れむ</a></div>').encode()
 JAVDB_RESULTS = ('<a href="/v/Q1" class="box" title="別"><div class="video-title"><strong>ABW-3580</strong></div></a>'
                  '<a href="/v/Zb7mX" class="box" title="涼森れむ流"><div class="video-title"><strong>ABW-358</strong> '
                  + TITLE + "</div></a>").encode()
@@ -85,6 +98,22 @@ class CommunityCatalogTests(unittest.TestCase):
             avbase_work(serve({AVBASE_SEARCH: avbase_page(empty)}), "ABW-358")
         with self.assertRaisesRegex(Unavailable, "AVBase 页面结构未识别"):
             avbase_work(serve({AVBASE_SEARCH: b"<html><title>Just a moment...</title></html>"}), "ABW-358")
+
+    def test_javbus_reads_the_work_page_fields_and_the_big_cover(self):
+        work = javbus_work(serve({JAVBUS_WORK: JAVBUS_PAGE}), "ABW-358")
+        self.assertEqual((work["id"], work["title"], work["maker"], work["label"], work["release_date"], work["runtime"]),
+                         ("ABW-358", TITLE, "プレステージ", "ABSOLUTELY WONDERFUL", "2023-05-26", 210))
+        self.assertEqual(work["actresses"], [{"japanese_name": "涼森れむ"}])
+        self.assertEqual((work["source_url"], work["cover_urls"]), (JAVBUS_WORK, [JAVBUS_COVER]))
+
+    def test_javbus_tells_a_missing_code_apart_from_its_age_gate(self):
+        """番号页 404 是没有；年龄门回 200 却没有「識別碼」，要让人去贴 Cookie，而不是记成没有。"""
+        with self.assertRaisesRegex(NotFound, "JavBus 没有这个番号"):
+            javbus_work(serve({}), "ABW-358")
+        with self.assertRaisesRegex(NotFound, "JavBus 没有这个番号"):
+            javbus_work(serve({JAVBUS_WORK: JAVBUS_PAGE.replace(b">ABW-358</span>", b">ABW-359</span>")}), "ABW-358")
+        with self.assertRaisesRegex(Unavailable, "贴上浏览器里的 Cookie"):
+            javbus_work(serve({JAVBUS_WORK: b"<html><title>Age Verification JavBus</title></html>"}), "ABW-358")
 
     def test_javdb_opens_the_exact_code_and_keeps_the_japanese_maker(self):
         work = javdb_work(serve({JAVDB_SEARCH: JAVDB_RESULTS, JAVDB_DETAIL: JAVDB_PAGE}), "ABW-358")
@@ -119,10 +148,18 @@ class VerifiedCoverTests(unittest.TestCase):
         with self.assertRaisesRegex(Unavailable, "^dmm、javdb 给的封面不是同一张图"):
             verified_cover(serve(pages), "ABW-358", works)
 
-    def test_a_cover_only_javdb_has_names_the_missing_second_origin(self):
+    def test_javbus_is_an_origin_of_its_own(self):
+        works = [("javbus", {"cover_urls": [JAVBUS_COVER]}), ("javdb", {"cover_urls": [JAVDB_COVER]})]
+        pages = {JAVBUS_COVER: gradient(800, 538), JAVDB_COVER: gradient(800, 534)}
+        candidate, _size, _data, origins = verified_cover(serve(pages), "ABW-358", works)
+        self.assertEqual((candidate.url, candidate.referer, origins),
+                         (JAVBUS_COVER, "https://www.javbus.com/", ("javbus", "javdb")))
+
+    def test_a_cover_only_one_origin_has_is_used_without_verification(self):
+        """没有第二个图源可比时照样用最大那张，印证图源留空（ADR-0032）：卡着没有封面更糟。"""
         works = [("avbase", {"cover_urls": []}), ("javdb", {"cover_urls": [JAVDB_COVER]})]
-        with self.assertRaisesRegex(Unavailable, "^社区来源的封面只有 javdb 一个图源，缺第二个图源印证$"):
-            verified_cover(serve({JAVDB_COVER: gradient(800, 534)}), "IPX-060", works)
+        candidate, size, _data, origins = verified_cover(serve({JAVDB_COVER: gradient(800, 534)}), "IPX-060", works)
+        self.assertEqual((candidate.url, size, origins), (JAVDB_COVER, (800, 534), ()))
 
     def test_a_small_official_cover_counts_as_the_second_origin(self):
         works = [("javdb", {"cover_urls": [JAVDB_COVER]})]
@@ -131,6 +168,11 @@ class VerifiedCoverTests(unittest.TestCase):
         candidate, _size, _data, origins = verified_cover(serve({JAVDB_COVER: gradient(900, 600)}), "ORETD-615",
                                                           works, reference=reference)
         self.assertEqual((candidate.url, origins), (JAVDB_COVER, ("javdb", "mgstage")))
+        with self.assertRaisesRegex(Unavailable, "下载失败"):
+            verified_cover(serve({}), "ORETD-615", works, reference=reference)
+        with self.assertRaisesRegex(Unavailable, "^javdb、mgstage 给的封面不是同一张图"):
+            verified_cover(serve({JAVDB_COVER: gradient(900, 600, rising=False)}), "ORETD-615",
+                           works, reference=reference)
         with self.assertRaisesRegex(Unavailable, "下载失败"):
             verified_cover(serve({}), "ORETD-615", works)
         with self.assertRaises(NotFound):

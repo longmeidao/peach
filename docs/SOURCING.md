@@ -261,12 +261,14 @@ av911.tv，三条候选已进复核队列。
 - 可用来源实测结论：r18.dev、av-wiki.net、Gfriends 可用；javlibrary、missav、xslist 被
   Cloudflare 拦，njav 有验证墙，jav321 无独立女优字段。被 Cloudflare 拦的站一律放弃，不绕过机器人检测。
   javdb.com 抓得到，但它自己按出口 IP 封速率（2026-09-04 封 3～7 日），只能小批量慢跑，见下文。
-  既有库采集只在官方渠道落空时按番号问 javdb 与 AVBase：javdb 主机间隔 5 秒，两家回 403 就整源停下
-  （`scraping_access.SOURCES` 的 `blocked_pause`），资料与封面的比对规则见 ADR-0030。
-  失败原因分开说：官方各版本只回「准备中」占位图是作品多半已下架（MIDE-594）；社区只有一个图源有图是
-  缺第二个图源印证（IPX-060 只有 javdb）；两个图源各有图但 dHash 对不上是「不是同一张图」。
-  JavBus 不作封面兜底：2026-09-15 实测番号页不带年龄确认 Cookie 回答题式年龄验证页，伪造 Cookie 属于绕过验证；
-  IPX-060 在 JavBus 也是 404。
+  既有库采集只在官方渠道落空时按番号问 AVBase、JavBus 与 javdb：javdb 主机间隔 5 秒，javdb 与 AVBase 回 403
+  就整源停下（`scraping_access.SOURCES` 的 `blocked_pause`），资料与封面的比对规则见 ADR-0030、ADR-0032。
+  失败原因分开说：官方各版本只回「准备中」占位图是作品多半已下架（MIDE-594）；两个图源各有图但 dHash 对不上是
+  「不是同一张图」，不用。社区来源的图只出自一个图源时照样装上，`.scraping.json` 的 `verified_by` 为空即未经印证
+  （IPX-060 只有 javdb）。JavBus 有年龄门，2026-09-15 实测番号页不带 Cookie 回答题式年龄验证页；javdb 有登录墙。
+  两家的 Cookie 由用户在浏览器里过门或登录后贴进采集设置，公开采集随请求带上。MIDE-594 在 JavBus 有封面
+  （用户 2026-09-15 核对），IPX-060 在 JavBus 是 404。Javinizer-Go 的 JavBus、javdb 快照只借厂牌选官方渠道，
+  封面不当官方候选：JavBus 搜不到原番号时返回的是别的作品。
   Gfriends 只按 `Filetree.json` 和单张 raw 媒体当外部 Provider 用，不克隆图库、不把图片放进 Git。
   索引缓存按 mtime 计龄（一天），取不到新索引就退回旧缓存并在输出里告警；那一轮的「未收录」
   记 error 不记 no_match，否则 `--resume` 会把一次网络失败固化成永久答案。

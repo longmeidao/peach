@@ -1,6 +1,6 @@
-"""采集任务的社区来源：AVBase 与 javdb 按番号取作品资料和封面，封面要互相比对才用。
+"""采集任务的社区来源：AVBase、JavBus 与 javdb 按番号取作品资料和封面，封面先求互相比对。
 
-官方渠道（r18.dev、DMM CDN、MGS、Prestige）落空时才问这两家，决策见 ADR-0030。
+官方渠道（r18.dev、DMM CDN、MGS、Prestige）落空时才问这三家，决策见 ADR-0030 与 ADR-0032。
 
 **AVBase**（2026-09-14 实测）：`/works?q=<番号>` 是 Next.js 页，`__NEXT_DATA__` 里
 `props.pageProps.works[]` 就是命中的作品，每部带 `work_id`、日文 `title`、`actors[]`，
@@ -9,15 +9,21 @@
 不必再进作品页。商品里可能混着收录这段内容的合集（素人系常见），合集的标题和番号
 都对不上本作，按这两条筛掉。
 
+**JavBus**：作品页就是 `/<番号>`（厂牌回查留下的 126 页缓存为证），字段在
+`<p><span class="header">識別碼:</span> …</p>` 这样的行里，封面是 `bigImage` 链接
+（`/pics/cover/<id>_b.jpg`），女优在 `star-name`。它有年龄门，要带用户在采集设置里贴的
+Cookie；门页上没有「識別碼」，按这一点报错。
+
 **javdb**：搜索页 `/search?q=<番号>&f=all` 的结果卡片带番号，番号一致的那张进详情页；
 详情页 `?locale=zh` 下面板字段是 `番號`、`日期`、`片商`、`發行`、`系列`、`導演`、`演員`，
 演员里女优带 `actor-female`。它按出口 IP 计配额，限速与封禁的处理在 `scraping_access`
-和调用方的主机间隔里，这里只管解析。两家的值常有出入：ABW-358 在 javdb 上发行日期是
+和调用方的主机间隔里，这里只管解析。几家的值常有出入：ABW-358 在 javdb 上发行日期是
 MGS 的 5/23、标题带 MGS 附注、演员里有男优，所以社区来源的资料一律要两家一致才免复核。
 
 封面比对用 dHash：两张图宽高比相差不超过 4%、64 位指纹相差不超过 10 位就算同一张。
-同一张图要出现在两个不同的图源（DMM、DUGA、MGS、javdb 各算一个）才采用；官方渠道
-只取到小图时，那张小图也参加比对。
+同一张图出现在两个不同的图源（DMM、DUGA、MGS、JavBus、javdb 各算一个）就算印证；官方渠道
+只取到小图时，那张小图也参加比对。可用的图全出自一个图源、没有别家可比时，取其中最大的
+那张，印证图源留空（ADR-0032）；两个图源各给了图却对不上，是有证据的冲突，不用。
 """
 from __future__ import annotations
 
@@ -40,6 +46,8 @@ from .scripting import host_under, hostname_of
 
 AVBASE_SEARCH = "https://www.avbase.net/works?q={code}"
 AVBASE_WORK = "https://www.avbase.net/works/{key}"
+JAVBUS_BASE = "https://www.javbus.com"
+JAVBUS_WORK = JAVBUS_BASE + "/{code}"
 JAVDB_BASE = "https://javdb.com"
 JAVDB_SEARCH = JAVDB_BASE + "/search?q={code}&f=all"
 PAGE_LIMIT = 4 * 1024 * 1024
@@ -49,7 +57,10 @@ IMAGE_LIMIT = 16 * 1024 * 1024
 AVBASE_PRODUCT_ORDER = ("fanza", "mgs", "duga")
 #: 图源按店铺算，不按主机名：`pics.dmm.co.jp` 与 `awsimgsrc.dmm.co.jp` 是同一家的两条路径。
 IMAGE_ORIGINS = (("dmm", ("dmm.co.jp", "dmm.com")), ("duga", ("duga.jp",)),
-                 ("mgstage", ("mgstage.com",)), ("javdb", ("jdbstatic.com", "jdbimgs.com", "javdb.com")))
+                 ("mgstage", ("mgstage.com",)), ("javbus", ("javbus.com",)),
+                 ("javdb", ("jdbstatic.com", "jdbimgs.com", "javdb.com")))
+#: 社区站自己的图要带站内 Referer；店铺的图按 `candidate_for` 取官方 Referer。
+ORIGIN_REFERERS = {"javbus": JAVBUS_BASE + "/", "javdb": JAVDB_BASE + "/"}
 ASPECT_TOLERANCE = 0.04
 HASH_DISTANCE = 10
 
@@ -57,6 +68,10 @@ _NEXT_DATA = re.compile(r'<script id="__NEXT_DATA__" type="application/json">(.*
 _AVBASE_DATE = re.compile(r"^[A-Za-z]{3} ([A-Za-z]{3}) (\d{1,2}) (\d{4})")
 _MONTHS = {name: index for index, name in enumerate(
     ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"), 1)}
+_JAVBUS_FIELD = re.compile(r'<p><span class="header">([^<:：]+)[:：]</span>(.*?)</p>', re.S)
+_JAVBUS_TITLE = re.compile(r"<h3>([^<]*)</h3>")
+_JAVBUS_COVER = re.compile(r'<a class="bigImage" href="([^"]+)"')
+_JAVBUS_ACTRESS = re.compile(r'<div class="star-name"><a[^>]*>([^<]+)</a>')
 _JAVDB_BOX = re.compile(r'<a href="(/v/[A-Za-z0-9]+)" class="box" title="[^"]*">.*?<strong>([^<]+)</strong>', re.S)
 _JAVDB_PANEL = re.compile(r'<div class="panel-block[^"]*">\s*<strong>([^<:：]+)[:：]</strong>\s*(?:&nbsp;)?\s*'
                           r'<span class="value">(.*?)</span>', re.S)
@@ -134,6 +149,31 @@ def avbase_work(transport, code: str, *, deadline: float | None = None) -> dict:
                 cover_urls=covers, cover_url=covers[0] if covers else "")
 
 
+def javbus_work(transport, code: str, *, deadline: float | None = None) -> dict:
+    url = JAVBUS_WORK.format(code=urllib.parse.quote(code))
+    try:
+        page = _text(_fetch(transport, url, referer=JAVBUS_BASE + "/", limit=PAGE_LIMIT, deadline=deadline))
+    except NotFound:
+        raise NotFound("JavBus 没有这个番号") from None
+    fields = {clean(label): clean(value) for label, value in _JAVBUS_FIELD.findall(page)}
+    shown = fields.get("識別碼", "").replace(" ", "")
+    if not shown:
+        raise Unavailable("JavBus 回的不是作品页，多半是年龄确认页：到采集设置给 JavBus 贴上浏览器里的 Cookie")
+    if not same_release_code(code, shown):
+        raise NotFound("JavBus 没有这个番号")
+    heading = _JAVBUS_TITLE.search(page)
+    cover = _JAVBUS_COVER.search(page)
+    covers = [urllib.parse.urljoin(JAVBUS_BASE, cover.group(1))] if cover else []
+    runtime = re.search(r"\d+", fields.get("長度", ""))
+    return dict(id=shown, source_url=url,
+                title=clean(heading.group(1)).removeprefix(shown).strip() if heading else "",
+                actresses=[{"japanese_name": clean(name)} for name in _JAVBUS_ACTRESS.findall(page)],
+                maker=fields.get("製作商", ""), label=fields.get("發行商", ""),
+                series=fields.get("系列", ""), director=fields.get("導演", ""),
+                release_date=fields.get("發行日期", ""), runtime=int(runtime.group()) if runtime else None,
+                cover_urls=covers, cover_url=covers[0] if covers else "")
+
+
 def _javdb_page(transport, url: str, *, deadline: float | None) -> str:
     page = _text(_fetch(transport, url, referer=JAVDB_BASE + "/", limit=PAGE_LIMIT, deadline=deadline))
     if JAVDB_LOGIN.search(page):
@@ -169,8 +209,20 @@ def javdb_work(transport, code: str, *, deadline: float | None = None) -> dict:
                 cover_urls=[cover.group(1)] if cover else [], cover_url=cover.group(1) if cover else "")
 
 
-#: 采集任务问社区来源的顺序。AVBase 一次请求，javdb 两次且配额紧，排在后面。
-COMMUNITY_SOURCES = (("avbase", avbase_work), ("javdb", javdb_work))
+#: 采集任务问社区来源的顺序。AVBase 与 JavBus 各一次请求，javdb 两次且配额紧，排在最后。
+COMMUNITY_SOURCES = (("avbase", avbase_work), ("javbus", javbus_work), ("javdb", javdb_work))
+
+
+def origin_of(url: str) -> str:
+    host = hostname_of(url)
+    return next((name for name, domains in IMAGE_ORIGINS if host_under(host, domains)), host)
+
+
+def _candidate(url: str) -> Candidate:
+    origin = origin_of(url)
+    if origin in ORIGIN_REFERERS:
+        return Candidate(hostname_of(url), url, ORIGIN_REFERERS[origin])
+    return candidate_for(url)
 
 
 @dataclass(frozen=True)
@@ -182,8 +234,7 @@ class Picture:
 
     @property
     def origin(self) -> str:
-        host = hostname_of(self.candidate.url)
-        return next((name for name, domains in IMAGE_ORIGINS if host_under(host, domains)), host)
+        return origin_of(self.candidate.url)
 
     @property
     def pixels(self) -> int:
@@ -213,24 +264,9 @@ def same_picture(one: Picture, other: Picture) -> bool:
             and bin(one.fingerprint ^ other.fingerprint).count("1") <= HASH_DISTANCE)
 
 
-def verified_cover(transport, code: str, works: list[tuple[str, dict]], *,
-                   reference: tuple[Candidate, tuple[int, int], bytes] | None = None,
-                   deadline: float | None = None) -> tuple[Candidate, tuple[int, int], bytes, tuple[str, ...]]:
-    """社区来源给的封面里，至少两个图源对得上的最大那张；返回值末尾是参与印证的图源。
-
-    `reference` 是官方渠道取到的小图，它也算一个图源：javdb 的大图和 DMM 的小图是同一张
-    时，大图就有了官方印证。
-    """
-    urls: dict[str, Candidate] = {}
-    for source, payload in works:
-        for url in payload.get("cover_urls") or []:
-            urls.setdefault(url, Candidate(hostname_of(url), url, JAVDB_BASE + "/") if source == "javdb"
-                            else candidate_for(url))
-    if not urls:
-        raise NotFound("社区来源没有这部片的封面")
-    pool = []
-    if reference is not None:
-        pool.append(picture(reference[0], reference[2]))
+def _pictures(transport, urls: dict[str, Candidate], reference, *, deadline: float | None) -> list[Picture]:
+    """官方小图（有的话）加上社区来源里下载得到、宽度够小图门槛的图。"""
+    pool = [picture(reference[0], reference[2])] if reference is not None else []
     for url, candidate in urls.items():
         if reference is not None and url == reference[0].url:
             continue
@@ -242,16 +278,37 @@ def verified_cover(transport, code: str, works: list[tuple[str, dict]], *,
             continue
         if found.size[0] >= SMALL_MIN_WIDTH:
             pool.append(found)
+    return pool
+
+
+def _unverified(pool: list[Picture], downloaded: bool) -> tuple[Candidate, tuple[int, int], bytes, tuple[str, ...]]:
+    """没有两个图源对得上时的退路：图全出自一个图源就取最大那张，印证图源留空。"""
+    if not downloaded:
+        raise Unavailable("社区来源的封面下载失败")
+    origins = sorted({one.origin for one in pool})
+    if len(origins) > 1:
+        raise Unavailable(f"{'、'.join(origins)} 给的封面不是同一张图，无法互相印证")
+    largest = max(pool, key=lambda one: one.pixels)
+    return largest.candidate, largest.size, largest.data, ()
+
+
+def verified_cover(transport, code: str, works: list[tuple[str, dict]], *,
+                   reference: tuple[Candidate, tuple[int, int], bytes] | None = None,
+                   deadline: float | None = None) -> tuple[Candidate, tuple[int, int], bytes, tuple[str, ...]]:
+    """社区来源给的封面里，至少两个图源对得上的最大那张；返回值末尾是参与印证的图源。
+
+    `reference` 是官方渠道取到的小图，它也算一个图源：javdb 的大图和 DMM 的小图是同一张
+    时，大图就有了官方印证。没有第二个图源可比时按 `_unverified` 取图，末尾为空。
+    """
+    urls = {url: _candidate(url) for _source, payload in works for url in payload.get("cover_urls") or []}
+    if not urls:
+        raise NotFound("社区来源没有这部片的封面")
+    pool = _pictures(transport, urls, reference, deadline=deadline)
     best = None
     for one in pool:
         origins = {other.origin for other in pool if same_picture(one, other)}
         if len(origins) >= 2 and (best is None or one.pixels > best[0].pixels):
             best = (one, tuple(sorted(origins)))
     if best is None:
-        if len(pool) <= (reference is not None):
-            raise Unavailable("社区来源的封面下载失败")
-        origins = sorted({one.origin for one in pool})
-        if len(origins) == 1:
-            raise Unavailable(f"社区来源的封面只有 {origins[0]} 一个图源，缺第二个图源印证")
-        raise Unavailable(f"{'、'.join(origins)} 给的封面不是同一张图，无法互相印证")
+        return _unverified(pool, downloaded=len(pool) > (reference is not None))
     return best[0].candidate, best[0].size, best[0].data, best[1]

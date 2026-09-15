@@ -149,6 +149,23 @@ class ScrapingAccessTests(unittest.TestCase):
         self.assertEqual(transport(HttpRequest("GET", "https://pics.dmm.co.jp/x", {}), 1, 100).status, 403,
                          '官方来源的 403 照常交给调用方判断')
 
+    def test_community_sources_carry_the_pasted_cookie_on_public_requests(self):
+        """JavBus 的年龄门和 javdb 的登录墙靠用户贴的 Cookie 过；别的来源公开采集不带会话。"""
+        self.assertTrue(describe(self.root, "javdb")["accepts_cookie"])
+        save(self.root, "javbus", {"cookie": "existmag=all; age=verified"})
+        transport = SourceTransport(self.root)
+        self.addCleanup(transport.close)
+        with patch("peach.scraping_access.client_for") as factory:
+            fake = factory.return_value
+            fake.stream.return_value.__enter__.return_value.iter_bytes.return_value = [b"ok"]
+            transport(HttpRequest("GET", "https://www.javbus.com/MIDE-594", {}), 1, 10)
+            transport(HttpRequest("GET", "https://pics.dmm.co.jp/x", {}), 1, 10)
+        self.assertEqual([call.args[1] for call in factory.call_args_list], ["javbus", "dmm"])
+        self.assertEqual([call.kwargs["session"] for call in factory.call_args_list], [True, False])
+        with httpx.Client(cookies=cookie_jar(values_for(self.root, "javbus"), "javbus")) as client:
+            self.assertIn("age=verified", client.build_request("GET", "https://www.javbus.com/MIDE-594").headers["cookie"])
+            self.assertNotIn("cookie", client.build_request("GET", "https://pics.dmm.co.jp/x").headers)
+
     def test_full_quality_bytes_are_installed_and_cache_avoids_download(self):
         from peach.web_scraping import _fetch_cover
         from peach.jav_cover_fetch import Candidate

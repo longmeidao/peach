@@ -272,6 +272,18 @@ class OfficialSourceTests(unittest.TestCase):
             {candidate.url for candidate in evidence.candidates},
         )
 
+    def test_community_snapshots_lend_their_maker_but_not_their_cover(self):
+        """JavBus 搜不到原番号时返回别的作品，快照里的图不能跳过图源印证直接当官方候选。"""
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = Path(tmp) / "HEYZO-1380"
+            folder.mkdir()
+            (folder / "javbus.json").write_text(json.dumps({"source": "javbus", "result": {
+                "source": "javbus", "maker": "Prestige", "content_id": "heyzo-1380",
+                "cover_url": "https://www.javbus.com/imgs/cover/zps_b.jpg"}}), encoding="utf-8")
+            evidence = covers.cached_metadata(Path(tmp), "HEYZO-1380")
+        self.assertEqual((evidence.candidates, evidence.sources), ((), frozenset({"javbus"})))
+        self.assertTrue(covers._is_prestige(evidence))
+
     def test_mgstage_uses_only_the_enlarge_image(self):
         page = (b'<img src="https://image.mgstage.com/related_thumb.jpg">'
                 b'<a id="EnlargeImage" '

@@ -15,14 +15,15 @@ r"""按番号抓官方封套：把所有候选量一遍，留像素最多的那�
 
 候选不是固定优先级，而是汇总后量像素：
 
-- 已保存的 Javinizer-Go 原始证据，离线复用 cover URL 与 content_id；
+- 已保存的 Javinizer-Go 原始证据，离线复用官方与官方镜像快照的 cover URL 与 content_id
+  （JavBus、javdb 这类社区站的快照只借厂牌选渠道，它们的图要走社区来源的图源印证）；
 - r18.dev 官方 DMM jacket（本地没有成功快照时才联网补）；
 - DMM 新旧 awsimgsrc CDN 的 digital/video、digital/amateur、mono/movie 路径；
 - 有 Prestige 厂牌证据时，直连 Prestige API 与 MGS EnlargeImage；
 - 上轮成功日志里的原 URL，保住已经发现但当前无法重新检索的 DUGA 等官方图。
 
-批量流程不请求 AVBase 与 javdb；采集任务在官方渠道落空时经 `peach.community_catalog`
-去问这两家，封面要两个图源比对一致才用（ADR-0030）。DUGA 批量搜索 API
+批量流程不请求社区来源；采集任务在官方渠道落空时经 `peach.community_catalog` 去问
+AVBase、JavBus 与 javdb，封面先求两个图源比对一致（ADR-0030、ADR-0032）。DUGA 批量搜索 API
 需要代理店应用 ID，未配置前只复用成功日志中已经取得的精确图片 URL。
 
 两条番号改写规则，都由实测得出：
@@ -69,6 +70,7 @@ from peach.catalog_rules import (
     is_korean_mib_code,
     normalise_code_key,
 )
+from peach.metadata_policy import SOURCE_SPECS
 
 AWS_LEGACY_DIGITAL = (
     "https://awsimgsrc.dmm.co.jp/pics_dig/digital/video/{cid}/{cid}pl.jpg"
@@ -370,6 +372,11 @@ def cached_metadata(metadata_root: Path | None, code: str) -> MetadataEvidence:
             for value in (result.get("maker"), result.get("label")):
                 if isinstance(value, str) and value.strip():
                     makers.add(value.strip().lower())
+            # 社区站的快照只借厂牌选渠道：JavBus 搜不到原番号时返回别的作品，它的图与
+            # content_id 要走 `peach.community_catalog` 的图源印证，不在这里当官方候选。
+            spec = SOURCE_SPECS.get(source.lower())
+            if spec is not None and not spec.official:
+                continue
             cover_url = result.get("cover_url")
             if isinstance(cover_url, str) and IMAGE_URL.fullmatch(cover_url.strip()):
                 candidates.extend(dmm_cdn_images(cover_url.strip()))
