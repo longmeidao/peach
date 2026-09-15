@@ -255,7 +255,7 @@ Radial Chart Card、Bar List Card、Heatmap 与 Sankey 的 Pro 源码**未取得
 | 位置 | 上游 | Peach |
 | --- | --- | --- |
 | 排名行 | 行 36px、圆角 8、无悬停类；填充条 `absolute inset-y-0 left-0` 圆角 8，`chart-6` 14% 透明，只对宽度和颜色做 500ms 过渡 | 行与填充条圆角 8，填充 14%，去掉行悬停底（两层叠一起就是回执里的「违和」）；行高保留 44 容两行字 |
-| 「Show N more」 | 40×20 药丸，居中贴底 4px，`border-button-default` 描边、primary 底、xs 阴影，14px 箭头，悬停 primary-hover 150ms；被折起的行直接不渲染，没有渐隐 | 同尺寸同色；列表高度不再做 240ms 过渡（上游没有高度动画，切维度标签时它会跟着抖一下）；保留 48px 渐隐是主动差异 |
+| 「Show N more」 | 40×20 药丸，居中贴底 4px，`border-button-default` 描边、primary 底、xs 阴影，14px 箭头，悬停 primary-hover 150ms；被折起的行直接不渲染，没有渐隐 | 同尺寸同色；保留 48px 渐隐是主动差异；点按展开键时列表高度与箭头同走 200ms 过渡（用户要求，上游没有高度动画），过渡只在点按那一下挂上，切维度标签引起的高度变化直接到位，不跟着抖 |
 | 数据源卡的删除键 | 站上图标键 `size-9 rounded-2lg text-foreground-icon-secondary`，只过渡颜色 | 36px、圆角 10、透明底，悬停主文字色 6% 薄底加 `--drop` 文字，`transform:none` |
 | 指标卡悬停 | 无对应 | `--surface` 与 `--ground` 在亮色里同为白，改主文字色 6% 混底 |
 | 管理页标题 | 无对应 | `body body.cleanup-layout` 写错让标题一直留在 812px 窄列；标题、面包屑、导语不看布局类一律对齐 1120（复核、高清版、重复文件这些子页没有布局类），复核页容器同宽 |

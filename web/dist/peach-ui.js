@@ -1290,10 +1290,12 @@ function Wt(e) {
 		}, a = () => {
 			let t = r.getAttribute("aria-expanded") === "true";
 			n.classList.toggle("expanded", t), [...e.children].forEach((e, n) => e.inert = !t && n >= 5), i();
+		}, o = (t) => {
+			t.target === e && n.classList.remove("toggling");
 		};
-		r.onclick = () => {
+		e.addEventListener("transitionend", o), e.addEventListener("transitioncancel", o), r.onclick = () => {
 			let e = r.getAttribute("aria-expanded") !== "true";
-			r.setAttribute("aria-expanded", String(e)), r.setAttribute("aria-label", e ? "收起排名" : "展开更多排名"), a();
+			r.setAttribute("aria-expanded", String(e)), r.setAttribute("aria-label", e ? "收起排名" : "展开更多排名"), n.classList.add("toggling"), a();
 		}, new ResizeObserver(i).observe(e), a();
 	});
 }

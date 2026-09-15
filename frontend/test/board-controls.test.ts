@@ -46,6 +46,18 @@ describe('范围控件',()=>{
     expect(sixth.inert).toBe(true);toggle.click();expect(sixth.inert).toBe(false);
     expect(toggle.getAttribute('aria-expanded')).toBe('true');toggle.click();expect(sixth.inert).toBe(true);
   });
+  it('排名的高度过渡只挂在点按那一下，过渡结束即摘掉',()=>{
+    document.body.innerHTML='<div class="tasteranks">'+Array.from({length:7},()=>'<button>排名</button>').join('')+'</div>';
+    wireExpandableRanks(document);
+    const outer=document.querySelector('.board-expand-ranks')!,list=document.querySelector('.board-rank-list')!;
+    expect(outer.classList.contains('toggling')).toBe(false);
+    document.querySelector<HTMLButtonElement>('.board-rank-expand')!.click();
+    expect(outer.classList.contains('toggling')).toBe(true);
+    list.firstElementChild!.dispatchEvent(new Event('transitionend',{bubbles:true}));
+    expect(outer.classList.contains('toggling')).toBe(true);
+    list.dispatchEvent(new Event('transitionend'));
+    expect(outer.classList.contains('toggling')).toBe(false);
+  });
   it('两个端点分别保留数值与不限状态，重复接线不增加气泡',()=>{
     document.body.innerHTML='<div class="dual-range"><input id="durMin" type="range" min="0" max="180" value="20"><input id="durMax" type="range" min="0" max="180" value="180"></div>';
     const inputs=[...document.querySelectorAll('input')];inputs.forEach(syncBoardRange);inputs.forEach(syncBoardRange);

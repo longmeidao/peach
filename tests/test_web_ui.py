@@ -6539,7 +6539,6 @@ class WebUiSourceTests(unittest.TestCase):
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
         self.assertIn(".board-rank-expand{position:absolute;z-index:1;bottom:4px;left:50%;transform:translateX(-50%);display:grid;place-items:center;width:40px;height:20px;", board)
         self.assertIn(".board-rank-expand svg{width:14px;height:14px;", board)
-        self.assertNotIn("transition:max-height", board)
         self.assertIn(".board-rank-list .tasterank{position:relative;isolation:isolate;border:0;border-radius:8px;", board)
         self.assertNotIn(".board-rank-list .tasterank:hover{background:var(--color-background-primary-hover)}", board)
         self.assertIn(".metricstrip>button:hover{background:color-mix(in srgb,var(--color-text-primary) 6%,var(--ground))}", board)
@@ -10386,13 +10385,20 @@ class WebUiSourceTests(unittest.TestCase):
 
         盖的那种要先猜卡片是什么底色，猜错就在图上留一道横带；淡的这种在任何底色上都
         成立。boardui 实测：列表自己带 `linear-gradient(#000 calc(100% - 44px),transparent)`，
-        展开就取消，正好露五行、淡掉最后 44px；展开没有高度动画，只有箭头转 200ms。
+        展开就取消，正好露五行、淡掉最后 44px。两头高度由 JS 量好写进变量，展开收起的
+        高度过渡与箭头旋转共用同一组 200ms 曲线。
         """
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
         controls = (Path(__file__).resolve().parents[1] / "frontend/src/board-controls.ts").read_text(encoding="utf-8")
         self.assertIn(".board-expand-ranks:not(.expanded)>.board-rank-list"
                       "{mask-image:linear-gradient(#000 calc(100% - 44px),transparent)}", board)
         self.assertNotIn(".board-expand-ranks:not(.expanded)::after", board)
+        # 过渡只挂在点展开键的那一下：切维度标签时内容换了、量出的高度跟着变，常驻过渡会让列表抖一下。
+        self.assertIn(".board-expand-ranks.toggling>.board-rank-list{transition:max-height .2s cubic-bezier(0,0,.2,1)}", board)
+        self.assertNotIn("overflow:hidden;transition:max-height", board)
+        self.assertIn(".board-rank-list,.board-expand-ranks.toggling>.board-rank-list,"
+                      ".board-rank-expand svg{transition:none}", board)
+        self.assertIn("outer.classList.add('toggling')", controls)
         # 箭头是描边字形。只给宽高的话 use 里那条折线会被默认 fill 填成一枚实心三角。
         self.assertIn(".board-rank-expand svg{width:14px;height:14px;fill:none;stroke:currentColor;"
                       "stroke-width:2;stroke-linecap:round;stroke-linejoin:round;"
