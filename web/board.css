@@ -447,9 +447,6 @@ body :is(#manageTitle,#manageCrumb,#manageLede){max-width:var(--board-content);w
 .cleanupfieldset>.geist-fieldset-footer{background:transparent;border-top:1px solid var(--line-soft);padding:12px 20px;min-height:56px}
 .cleanupfieldset>.geist-fieldset-footer button{font-size:13px}
 .cleanupgrid>#libraryProcessing{grid-column:1/-1;display:grid;gap:16px}
-#libraryProcessing>.cleanupfieldset{display:grid;grid-template-columns:1fr auto;align-items:center}
-#libraryProcessing>.cleanupfieldset>.geist-fieldset-content{min-height:0;padding:24px}
-#libraryProcessing>.cleanupfieldset>.geist-fieldset-footer{border:0;padding:24px;background:none;display:flex;gap:8px;flex-wrap:wrap}
 /* ── 数据管理页照 Board 的 dashboard 模板排：顶上一排 plain stat card（stat-cards.tsx：132px 高、圆角 16、secondary 底、
    内边距 16，32px 的图标格里 20px 字形，标签 Body Medium 次文字色，读数 title-1-medium 24/34）。Peach 把整张卡做成
    按钮——它就是那一页的入口，读数下面那行 Caption 是同一份 payload 里的分项。五张在 1120 内一行摆下，窄了折两列、
@@ -497,17 +494,18 @@ body :is(#manageTitle,#manageCrumb,#manageLede){max-width:var(--board-content);w
 /* 结果槽里三层各管各的间距：读数卡、说明 Note、操作行都不再共享一只面板框。 */
 #resourceSyncResult>.geist-note{margin:16px 0 0}
 #resourceSyncResult>.resourceapplyrow{margin:16px 0 0;min-height:0;border:0;background:none;padding:0}
-.library-processing-outcome:empty{display:none}
 /* 首页那条整理提示是正文列里的一条 Note，上下两条线是它自己的收口。少了这个空当，
    两条线一边挨着身份行、一边挨着筛选浮层，看着像三块东西粘在一起。下面照浮层那个数
    留一样宽（上面由 `.tiers` 收尾与 `main` 上沿凑够）。 */
 /* 要不要画这一条，得等 `/api/library-processing` 回话才知道，而它一出现就把底下整块
    推下六十来像素。跟交集条同一个处理：高度从 0 走到 auto，二百来毫秒，推的过程看得见
-   就不叫跳。那趟任务跑完它自己会消失，缩回去同样是走的。 */
+   就不叫跳。那趟任务跑完它自己会消失，缩回去同样是走的。
+   容器里常驻一个 `.peach-react`（React 根的宿主，`frontend/src/islands.ts`），所以「有没有
+   东西」看的是那一层空不空。 */
 #libraryProcessingNotice{overflow:hidden;interpolate-size:allow-keywords;height:auto;
   transition:height .22s cubic-bezier(0,0,.2,1),margin-bottom .22s cubic-bezier(0,0,.2,1)}
-#libraryProcessingNotice:empty{height:0}
-#libraryProcessingNotice:not(:empty){margin:0 0 22px}
+#libraryProcessingNotice:empty,#libraryProcessingNotice:has(>.peach-react:empty){height:0}
+#libraryProcessingNotice:not(:empty):not(:has(>.peach-react:empty)){margin:0 0 22px}
 @media(prefers-reduced-motion:reduce){#libraryProcessingNotice{transition:none}}
 .board-card-icon{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border:1px solid var(--line-soft);background:var(--surface);border-radius:10px;margin-right:10px;vertical-align:middle;color:var(--ink-2)}
 .board-card-icon svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
@@ -703,7 +701,7 @@ body>.board-filter-frame{margin-inline:16px}
 #applyUISetting{padding:8px 12px;border:1px solid var(--line);border-radius:8px;cursor:pointer}
 #applyUISetting[hidden]{display:none}
 
-@media(max-width:1000px){#libraryProcessing>.cleanupfieldset{grid-template-columns:minmax(0,1fr);align-items:stretch;text-align:left}#libraryProcessing>.cleanupfieldset>.geist-fieldset-content{width:100%;box-sizing:border-box}#libraryProcessing>.cleanupfieldset>.geist-fieldset-footer{padding:0 24px 24px;border:0;justify-content:flex-start;min-width:0}.settingscard{width:calc(100vw - 32px)}}
+@media(max-width:1000px){.settingscard{width:calc(100vw - 32px)}}
 @media(max-width:760px){
   :root,body.drawer-open{--railW:0px}
   .drawer{top:64px;bottom:12px;width:min(320px,calc(100vw - 24px));border-radius:20px;z-index:97}
@@ -1293,7 +1291,6 @@ body .gselectmenu [role=option][aria-selected=true],body .popmenu [aria-checked=
 @media(max-width:1000px){.board-inventory-charts,.board-activity-charts{grid-template-columns:1fr}.board-rings{height:260px}}
 @media(max-width:600px){.board-radial-card,.board-heat-card{padding:16px}.board-radial-tiles>button{flex-basis:calc(50% - 8px)}}
 @media(prefers-reduced-motion:reduce){.board-ring-value,.board-heat-card [data-heat-value]{animation:none;transition:none}.board-radial-tiles>button{transition:none}}
-.board-state-preview{max-width:1180px;margin:0 auto;padding:28px 20px;color:var(--ink)}
 /* 切换器展开时自己带一圈 2px 描边，导航列表首项又会抬起 hover 底：两者之间留 4px
    的话这两块底色是挨着的，读起来像切换器压在第一项上。 */
 .drawer .board-sidebar-head{margin-bottom:0!important}.drawer .dnav{margin-top:12px;gap:4px}.drawer #brandHome{height:36px;min-height:36px;box-sizing:border-box}.drawer .dnav button{height:36px;min-height:36px}
@@ -1334,10 +1331,6 @@ body .selectiondock{border:0;border-radius:22px;background:var(--glass-drift-a),
 html.board-high-contrast :is(.selectiondock,.reviewcontrols.is-stuck,.reviewgroupbar.is-stuck,.batchbar,.tagselection,.card .badge){background:var(--ground);backdrop-filter:none;-webkit-backdrop-filter:none;animation:none}
 @media(prefers-reduced-transparency:reduce){body :is(.selectiondock,.reviewcontrols.is-stuck,.reviewgroupbar.is-stuck,.batchbar,.tagselection,.card .badge){background:var(--ground);backdrop-filter:none;animation:none}}
 @media(prefers-reduced-motion:reduce){body :is(.selectiondock,.reviewcontrols.is-stuck,.reviewgroupbar.is-stuck,.batchbar,.tagselection){animation:none}}
-.board-state-preview>header{display:flex;align-items:center;justify-content:space-between;gap:16px}.board-state-preview h1{font-size:28px}.board-state-preview h2{font-size:18px;margin:20px 0 12px}.board-state-preview h3{font-size:15px}.board-state-preview p{color:var(--muted);line-height:1.6}
-.board-state-preview>nav{display:flex;flex-wrap:wrap;gap:8px;margin:20px 0}.board-state-preview>nav [aria-pressed=true]{outline:2px solid var(--tungsten);outline-offset:1px}
-.board-preview-tools{display:flex;align-items:center;gap:20px;flex-wrap:wrap}.board-preview-tools label{display:flex;align-items:center;gap:12px}.board-preview-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.board-preview-grid article{padding:20px;border-radius:16px;background:var(--ground);min-width:0}.board-state-preview .cleanupgrid{padding-bottom:0}
-@media(max-width:600px){.board-preview-grid{grid-template-columns:1fr}.board-state-preview>header{align-items:flex-start}.board-state-preview{padding:16px}}
 /* 收起时最后一行是被 mask 淡掉的，不是被一块渐变色盖住（boardui 实测：列表自己带
    `linear-gradient(#000 calc(100% - 44px),transparent)`，展开就取消）。盖的那种要先猜卡片
    是什么底色，猜错就在图上留一道横带；淡的这种在任何底色上都成立。 */

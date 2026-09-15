@@ -353,6 +353,31 @@ class ScrapingEndpointTests(unittest.TestCase):
         self.assertEqual(len(routed), 1, f"/api/scraping 的路由声明在 {routed}")
 
 
+class LibraryProcessingEndpointTests(unittest.TestCase):
+    """扫描与采集这一条端点只在数据模块里声明一次。
+
+    它有两个读者——数据管理页那张卡片和目录页顶上那条横幅——两边读同一个 `queryKey`。
+    端点在第二处再写一遍就是分头取数的第一步：各存一份快照之后，卡片说「已完成」、
+    横幅还挂着进度。读同一个键这件事由 `SharedStateContractTests` 从另一头守。
+    """
+
+    LIBRARY_PROCESSING = (FRONTEND / "src" / "react" / "library-processing"
+                          / "library-processing.ts")
+
+    def test_the_endpoint_is_declared_once(self):
+        sources = sorted(path for path in (FRONTEND / "src").rglob("*.ts*"))
+        declared = [path for path in sources
+                    if "'/api/library-processing'" in path.read_text(encoding="utf-8")]
+        self.assertEqual(declared, [self.LIBRARY_PROCESSING],
+                         f"端点声明在 {[path.name for path in declared]}")
+        keyed = [path.name for path in sources
+                 if "LIBRARY_PROCESSING_KEY = [" in path.read_text(encoding="utf-8")]
+        self.assertEqual(keyed, ["library-processing.ts"], f"queryKey 声明在 {keyed}")
+        routed = [path.name for path in sorted((ROOT / "src" / "peach").glob("web_*.py"))
+                  if "/api/library-processing" in path.read_text(encoding="utf-8")]
+        self.assertEqual(len(routed), 1, f"/api/library-processing 的路由声明在 {routed}")
+
+
 class ConfigurationEndpointTests(unittest.TestCase):
     """配置页的 Preact 外壳和 React 分区读同一条 `/api/configuration`，两份产物各打包一份。"""
 

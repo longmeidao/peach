@@ -51,3 +51,6 @@
 | 选文件 | 同上：原生 `input[type=file]` 只留着接文件，点它的是一颗 `secondary` 按钮，选中的文件名跟在旁边 | 注册表里没有文件选择组件；原生控件的按钮长相由浏览器决定，改不动 |
 | 分区标题旁的次要内容 | `../settings/section.tsx` 的 `Section` 收一个 `aside`，标题占剩下的宽度、它靠右（来源站点的站标与登录地址） | `SettingsSectionLabel` 只画标题；把外链塞进标题里会进无障碍名称 |
 | 站点标识 | `../scraping/scraping-page.tsx` 的 `SiteMark` 直接画 `<img>` 取服务端的 `/site-mark`，取不到就把节点摘掉 | `../settings/section.tsx` 的 `SourceMark` 只认雪碧图字形与内嵌 PNG，采集来源的图标是一条服务端地址 |
+| 主键带下拉 | `../library-processing/library-processing-card.tsx` 的 `ScanActions`：触发键是一颗 `iconOnly` 的 `Button`，面板用 React Aria 的 `Popover` + `Dialog`，行的外观取 `components/base/dropdown/menu-styles.ts` | `dropdown` 条目的 `DropdownTrigger` 自己就是那颗按钮、外观全由 `className` 给，`@shadcn/lint` 的 `no-restyle` 只放行布局类，套不进 `Button` 的档位 |
+| 行内横幅 | `../library-processing/library-processing-notice.tsx` 按语气取 `status-yellow`、`background-tertiary-error` 与 `separator-border` 组合，一行里放进度环、一句话和一个去处 | 注册表里没有行内横幅；`notification` 条目是带关闭键和计时的浮动通知 |
+| 进度环 | 同上的 `Gauge`：SVG 两圈，`pathLength={100}` 把一圈长度钉成 100，画出来的那一段就是百分比 | 注册表里没有环形进度；`../components/progress.tsx` 那一份是横条，横幅那一行放不下 |

@@ -118,8 +118,22 @@ export interface ScrapingProps {
   toast(message: string): void;
 }
 
+/** 扫描与采集。同一份数据两个读者，所以同一个名字挂两种形态：数据管理页那张卡片，
+ *  和目录页顶上那条横幅（`mode: 'notice'`）。 */
+export interface LibraryProcessingProps {
+  /** 任务跑完时的一次通知。同一趟按 `job_id` 只报一次，谁先看到结束谁报。 */
+  toast(message: string): void;
+  /** 这一趟从运行走到终态：让遗留层重画数据管理页那几个计数。 */
+  onComplete?(): void;
+  /** 画成目录页顶上那条横幅，而不是数据管理页那张卡片。 */
+  mode?: 'notice';
+  /** 卡片闲着时也接着问：任务由后台自己起，页面要认出「现在跑起来了」。 */
+  monitor?: boolean;
+}
+
 export interface ReactPages {
   activity: ReactPage<ActivityProps>;
+  'library-processing': ReactPage<LibraryProcessingProps>;
   'quality-goals': ReactPage<QualityGoalsProps>;
   scraping: ReactPage<ScrapingProps>;
 }

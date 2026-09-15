@@ -199,6 +199,11 @@ class WebUiSourceTests(unittest.TestCase):
         self.fail(f"index.html 缺少这段代码（已忽略排版）：{needle!r}"
                   + (f"（{message}）" if message else ""))
 
+    def read_react(self, relative: str) -> str:
+        """React 子树里的一份源码（ADR-0031）。迁过去的页面正文不在 `web/` 里。"""
+        return (Path(__file__).resolve().parents[1] / "frontend" / "src" / "react"
+                / relative).read_text(encoding="utf-8")
+
     def test_the_format_insensitive_matcher_still_tells_code_from_content(self):
         """`code_shape` 本身也有逻辑，也得有人守。
 
@@ -5051,7 +5056,10 @@ class WebUiSourceTests(unittest.TestCase):
         """
         self.assertPageContains("'/scraping':'来源和凭证'")
         self.assertPageContains('id="libraryProcessing"')
-        processing = (Path(__file__).resolve().parents[1] / 'frontend/src/islands/library-processing.tsx').read_text(encoding='utf-8')
+        processing = (
+            Path(__file__).resolve().parents[1]
+            / 'frontend/src/react/library-processing/library-processing-card.tsx'
+        ).read_text(encoding='utf-8')
         self.assertIn('href="/scraping"', processing)
         self.assertPageContains(
             "await ui.mountIsland('scraping',$('#stats'),{toast},"
@@ -6939,7 +6947,8 @@ class WebUiSourceTests(unittest.TestCase):
         收起，那些页面本来就不该有它。
 
         真该出现的那一次仍是从无到有：要不要画得等 `/api/library-processing` 回话。
-        所以照交集条那样长出来，高度从 0 走到 auto。
+        所以照交集条那样长出来，高度从 0 走到 auto。容器里常驻一个 `.peach-react`
+        宿主（React 根挂在它里面），「有没有东西」就看那一层空不空。
         """
         self.assertPageContains("  if(!isCatalogPath(path))unmountIsland($('#libraryProcessingNotice'));")
         self.assertCode(
@@ -6949,7 +6958,12 @@ class WebUiSourceTests(unittest.TestCase):
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
         self.assertIn("#libraryProcessingNotice{overflow:hidden;interpolate-size:allow-keywords;height:auto;",
                       board)
-        self.assertIn("#libraryProcessingNotice:empty{height:0}", board)
+        self.assertIn(
+            "#libraryProcessingNotice:empty,#libraryProcessingNotice:has(>.peach-react:empty)"
+            "{height:0}", board)
+        self.assertIn(
+            "#libraryProcessingNotice:not(:empty):not(:has(>.peach-react:empty))"
+            "{margin:0 0 22px}", board)
         self.assertIn("@media(prefers-reduced-motion:reduce){#libraryProcessingNotice{transition:none}}",
                       board)
 
@@ -9564,21 +9578,24 @@ class WebUiSourceTests(unittest.TestCase):
         不同的东西。`#libraryProcessing` 因此是这一格本身，卡片是它的第一个孩子，
         提示是第二个，间距由这一格的 `gap` 给。进度条留在卡片里：它说的是卡片上那个
         按钮此刻在做什么。
+
+        这一页是 React 档（ADR-0031），正文在 `frontend/src/react/library-processing/`；
+        结果、故障与重试怎么说由 `frontend/test/react/library-processing.test.tsx` 守。
         """
         self.assertPageContains('<div class="cleanupscraping" id="libraryProcessing">')
         self.assertPageContains('<section class="cleanupfieldset" data-geist-fieldset aria-labelledby="cleanupScrapingTitle">')
-        island = (Path(__file__).resolve().parents[1]
-                  / "frontend" / "src" / "islands" / "library-processing.tsx").read_text(encoding="utf-8")
-        self.assertIn('<div class="library-processing-outcome" aria-live="polite" ref={outcome}>', island)
-        head, outcome = island.split('<div class="library-processing-outcome"', 1)
-        self.assertIn("jobActivityHtml(", head.split("return <>", 1)[1])
-        for banner in ("noteHtml(problem", "library-processing-result"):
-            self.assertIn(banner, outcome)
+        card = self.read_react("library-processing/library-processing-card.tsx")
+        # 提示排在 `Section` 之后，两块由外面这一层的 `gap` 分开。
+        self.assertIn(
+            "      </Section>\n"
+            "      <Outcome state={state} problem={problem} settled={settled} onRetry={retry} />",
+            card)
+        # 空着时整块收起：`aria-live` 的容器留一条空轨道，卡片底下会凭空多出一个间距。
+        self.assertIn('<div aria-live="polite" className="flex flex-col gap-4 empty:hidden">', card)
+        # 进度条留在卡片里，和那颗按钮同一格。
+        self.assertIn("<Progress label={line} value={state.checked || 0} max={state.total} />", card)
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
         self.assertIn(".cleanupgrid>#libraryProcessing{grid-column:1/-1;display:grid;gap:16px}", board)
-        self.assertIn("#libraryProcessing>.cleanupfieldset{display:grid;grid-template-columns:1fr auto;align-items:center}", board)
-        # 一格里空着的第二行照样占一条轨道，卡片底下会凭空多出一个间距。
-        self.assertIn(".library-processing-outcome:empty{display:none}", board)
 
     def test_a_failed_scan_folds_its_issue_list_into_the_error_note(self):
         """处理失败先给一句结论，逐条明细收在这条 Note 自己的 details 里，默认折叠。
@@ -9586,28 +9603,32 @@ class WebUiSourceTests(unittest.TestCase):
         一次扫描能攒下几千条问题，摊开写就把结论、重试键和下面两块面板全推走了。每条
         给标题、说明和路径三段：只给一个链接的话，是哪个文件得逐个点开才知道，而路径
         才是去磁盘上确认或改名时要用的。前 20 条之外的去完整日志里看，地址写在折叠底部。
+
+        默认折叠、重试只交失败那些项由 `frontend/test/react/library-processing.test.tsx` 守。
         """
-        island = (Path(__file__).resolve().parents[1]
-                  / "frontend" / "src" / "islands" / "library-processing.tsx").read_text(encoding="utf-8")
-        self.assertIn("actionLabel:retryable?'重试未完成项':'',details:issueDetails", island)
-        self.assertIn("label: issue.title || (issue.asset_id ? `视频 ${issue.asset_id}` : '媒体来源'),", island)
-        self.assertIn("note: issue.message, hint: issue.path || '',", island)
-        self.assertIn("footnote: state.issues_log ? `完整记录：${state.issues_log}` : '',", island)
-        self.assertPageContains('<details class="geist-note-details"><summary>${esc(label)}</summary>')
-        self.assertPageContains(".geist-note-details{grid-column:2/-1;")
-        self.assertPageContains(".geist-note-details ul{box-sizing:border-box;display:grid;gap:8px;max-height:min(40vh,520px);")
-        self.assertIn("wireCollapse(outcome.current,'.geist-note-details','library-issues')", island)
+        data = self.read_react("library-processing/library-processing.ts")
+        self.assertIn("label: issue.title || (issue.asset_id ? `视频 ${issue.asset_id}` : '媒体来源'),", data)
+        self.assertIn("note: issue.message,", data)
+        self.assertIn("hint: issue.path || '',", data)
+        self.assertIn("footnote: state.issues_log ? `完整记录：${state.issues_log}` : '',", data)
+        card = self.read_react("library-processing/library-processing-card.tsx")
+        # 结论、重试键和这份清单都在同一条 Note 里：摆到外面就成了一句话加两块没有出处的东西。
+        note, extra = card.split('<Note tone="error" extra={', 1)
+        self.assertIn("重试未完成项", extra)
+        self.assertIn("<Disclosure summary={details.label}>", extra)
+        self.assertIn("{details.footnote", extra)
+        self.assertNotIn("<Disclosure", note)
 
     def test_a_finished_scan_is_announced_once_even_if_it_ended_before_the_page_opened(self):
         """完成用通知报。首次引导那一趟常在跳到目录页之前就跑完，横幅从没见过「运行中」，
         所以刚结束的任务第一次读到也要报；目录页横幅和数据整理页卡片按任务号只报一次。"""
-        island = (Path(__file__).resolve().parents[1]
-                  / "frontend" / "src" / "islands" / "library-processing.tsx").read_text(encoding="utf-8")
-        self.assertIn("if (witnessed || mode === 'notice') announceCompletion(next, toast, witnessed);", island)
-        self.assertIn("Date.now() / 1000 - state.completed_at < FRESH_COMPLETION_SECONDS", island)
-        self.assertIn("localStorage.getItem(ANNOUNCED_KEY) === state.job_id", island)
-        self.assertIn("toast(`扫描与资料采集已完成：识别 ${state.identified || 0} 个番号", island)
-        self.assertNotIn("toast('已完成扫描与资料采集')", island)
+        data = self.read_react("library-processing/library-processing.ts")
+        self.assertIn("Date.now() / 1000 - state.completed_at < FRESH_COMPLETION_SECONDS", data)
+        self.assertIn("localStorage.getItem(ANNOUNCED_KEY) === state.job_id", data)
+        self.assertIn("toast(`扫描与资料采集已完成：识别 ${state.identified || 0} 个番号", data)
+        self.assertNotIn("toast('已完成扫描与资料采集')", data)
+        shared = self.read_react("library-processing/use-library-processing.ts")
+        self.assertIn("if (witnessed || mode === 'notice') announceCompletion(state, toast, witnessed);", shared)
 
     def test_the_pinned_review_bars_share_one_pane_of_glass(self):
         """粘住的工具条和分组条是一块玻璃，中间没有接缝。
@@ -10376,7 +10397,9 @@ class WebUiSourceTests(unittest.TestCase):
         gutter = re.search(r"\bmain\{[^}]*?padding:(\d+)px \d+px", base)
         self.assertTrue(rail and gutter, "读不到 .tiers 的收尾与 main 的上沿")
         gap = int(rail.group(1)) + int(gutter.group(1))
-        self.assertIn(f"#libraryProcessingNotice:not(:empty){{margin:0 0 {gap}px}}", board)
+        self.assertIn(
+            "#libraryProcessingNotice:not(:empty):not(:has(>.peach-react:empty))"
+            f"{{margin:0 0 {gap}px}}", board)
 
     def test_a_progress_ring_lines_up_with_the_lists_under_it(self):
         """资源面板里的进度环和它下面那几组链接表对同一条左边。
