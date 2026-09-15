@@ -24,7 +24,7 @@ export function CloudDriveGuide() {
         {/* 三档同形、跨档比较：窄处每档一块纵排，宽处三项读数排成三列对齐。 */}
         <ul aria-label="按缓存所在硬盘分档" className="flex flex-col gap-2">
           {CLOUDDRIVE_PROFILES.map((profile) => (
-            <li key={profile.name} className="flex flex-col gap-2 rounded-2lg border border-separator-border p-3">
+            <li key={profile.name} className="flex flex-col gap-2 rounded-2lg border border-separator-border bg-background-primary-default p-3">
               <p className="text-body-medium text-text-primary">{profile.name}</p>
               <dl className="inline-grid grid-cols-1 gap-2 @md:grid-cols-3">
                 {READINGS.map(([key, term]) => (

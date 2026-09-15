@@ -10081,15 +10081,18 @@ class WebUiSourceTests(unittest.TestCase):
                         if row.startswith("html.board-high-contrast .settingscard.settingscard>"))
         self.assertIn("animation:none", contrast, "高对比下那层漂移的光晕要停")
 
-    def test_the_settings_panel_reads_as_one_sheet_from_the_title_down(self):
-        """设置弹层右侧从标题一路到底是同一张底，开关行不套在自己的一块底上。
+    def test_the_settings_groups_sit_on_the_same_card_as_the_machine_pages(self):
+        """设置弹层上半列的每组开关行和「这台电脑」下的配置页坐在同一种卡上。
 
-        亮色的 `--page` 是纯白、`--ground` 是 #f5f5f5，两块拼起来就是一条硬边界横在标题
-        下面；暗色那两个值只差 5/255，同一条规则在两个主题上读出来是两回事。行与行由
-        `--line-soft` 那道分隔线断开。
+        配置页走 BoardUI `SettingsCard`：灰底、16px 圆角、左内边距 12px，行的分隔线在卡片
+        左沿内收住。上半列照这张卡的尺寸画，标题与页底仍是 `--page`；「这台电脑」那一格的
+        外壳不铺底，否则配置页自己的灰卡外面又套一层灰。
         """
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
-        self.assertIn(".settingscard .settingsscroll>.settinggroup{background:none;padding:0}", board)
+        self.assertIn(".settingscard .settingsscroll>.settinggroup"
+                      "{background:var(--ground);border-radius:16px;padding:0 0 0 12px}", board)
+        self.assertIn(".settingscard .settingsscroll>.settinggroup:has(>.machinesettings)"
+                      "{background:none;border-radius:0;padding:0}", board)
         self.assertIn(".settingscard.settingscard>.settingshead,"
                       ".settingscard.settingscard>.settingsscroll{background:var(--page)}", board)
         self.assertIn(".settingscard .settingsscroll .settingrow{min-height:52px;"

@@ -20130,7 +20130,7 @@ function Cm() {
 					"aria-label": "按缓存所在硬盘分档",
 					className: "flex flex-col gap-2",
 					children: xm.map((e) => /* @__PURE__ */ (0, Y.jsxs)("li", {
-						className: "flex flex-col gap-2 rounded-2lg border border-separator-border p-3",
+						className: "flex flex-col gap-2 rounded-2lg border border-separator-border bg-background-primary-default p-3",
 						children: [/* @__PURE__ */ (0, Y.jsx)("p", {
 							className: "text-body-medium text-text-primary",
 							children: e.name
@@ -20411,7 +20411,7 @@ function Lm({ data: e, receipt: t }) {
 						className: "flex flex-col gap-3",
 						children: n.map((t, r) => /* @__PURE__ */ (0, Y.jsxs)("div", {
 							"data-folder-row": !0,
-							className: "@container flex flex-col gap-3 rounded-2lg border border-separator-border p-3",
+							className: "@container flex flex-col gap-3 rounded-2lg border border-separator-border bg-background-primary-default p-3",
 							children: [/* @__PURE__ */ (0, Y.jsxs)("div", {
 								className: "flex items-start gap-2",
 								children: [
